@@ -27,6 +27,8 @@ Operations (`OPS`; each is {"op": name, ...}):
                (negative amount: tapering). The hinge edge keeps its length.
   lengthen     lengthen / shorten below a level on every piece named (the side seams stay matched when both sides
                are named: say so, or `consistency` will).
+  square       true a corner to `angle` deg (90): the edge's first `straight` m turned to leave the corner square
+               to its neighbour edge, blended back into the edge's line by `blend` m (a waist off a contoured CB seam).
   extend       push an edge outward by an amount (a button stand, a wrap overlap, a vent extension).
   reshape      move a named point (a neckline lowered, a hem curved), neighbours eased along.
   facing       a new piece traced from a piece along edges, `width` deep (a facing, a hem facing); sewn to the edges
@@ -359,6 +361,38 @@ def op_take_in(D: dict, line: str, amount: float, y: float | None = None, length
     press_note(D, line)
     D["log"].append(f"take in {line}: {amount * 1000:.0f} mm at y {y * 1000:.0f} mm, {share * 100:.0f}% from the side "
                     f"panel ({la * 1000:.1f} / {lb * 1000:.1f} mm)")
+
+
+def op_square(D: dict, piece: str, corner: str, edge: str, angle: float = 90.0, straight: float = 0.012,
+              blend: float = 0.05, **_) -> None:
+    """Pattern makers square a waist (or a hem) off the centre seam after shaping it: a corner sewn to its mirror at CB
+    must be 90 deg or the line dips (or peaks) in a V there. `edge` starts at `corner` (e.g. "cWaist>sideWaist"); its
+    points are turned about the corner (fully over the first `straight` m, easing to none at `blend`) until the angle
+    to the OTHER outline edge at the corner is `angle`. The edge's length is unchanged up to the blend's bend (< 0.5 mm
+    on a jeans yoke); a seam sewn to it is measured after (`consistency`).
+    dt_tess jeans dj9: the yoke's take_in slid its CB end in, the yoke's CB tilted and its waist corner was 104.5 deg;
+    the waistband stood 16 mm off both yokes at CB."""
+    pc = D["pieces"][piece]
+    densify_edge(pc, edge, step=0.006)
+    ix = pattern.arc_indices(pc, edge)
+    n, i0 = len(pc["P"]), ix[0]
+    if pc["names"].get(corner) != i0:
+        raise DraftError(f"square: edge {edge!r} of {piece} must start at {corner!r}")
+    nb = (i0 - 1) % n if ix[1] == (i0 + 1) % n else (i0 + 1) % n
+    P0 = pc["P"][i0].copy()
+    ref = pc["P"][nb] - P0
+    L = pc["P"][ix]
+    cum = np.r_[0, np.cumsum(np.linalg.norm(np.diff(L, axis=0), axis=1))]
+    first = L[int(np.searchsorted(cum, min(straight, cum[-1] * 0.5)))] - P0
+    cur = math.atan2(ref[0] * first[1] - ref[1] * first[0], ref @ first)
+    want = math.copysign(math.radians(angle), cur)
+    delta = want - cur
+    f = np.clip((blend - cum) / max(blend - straight, 1e-9), 0, 1)
+    f = f * f * (3 - 2 * f)
+    for k, j in enumerate(ix[1:], 1):
+        if f[k] > 0:
+            pc["P"][j] = _rot(L[k], P0, delta * f[k])
+    D["log"].append(f"square {piece}:{corner}: {math.degrees(abs(cur)):.1f} -> {angle:.1f} deg (blended over {blend * 1000:.0f} mm)")
 
 
 def press_note(D: dict, line: str) -> None:
@@ -709,7 +743,8 @@ def op_reshape(D: dict, piece: str, point: str, by, falloff: float = 0.06, **o) 
 
 def op_facing(D: dict, piece: str, edges, width: float = 0.06, name: str | None = None, **o) -> None:
     """A facing traced from `piece` along `edges` (a chain of its edges, or a named edge of the draft), `width` deep:
-    its outer edge is the same line (sewn 1:1), turned under."""
+    its outer edge is the same line (sewn 1:1), turned under. Interfaced by default (a fused facing stiffens its piece
+    along that edge in the sim); "interfaced": false = a soft facing."""
     name = name or f"{piece}_facing"
     chain = []
     for e_ in ([edges] if isinstance(edges, str) else list(edges)):  # named edges of the draft, or edge specs
@@ -809,7 +844,10 @@ def op_facing(D: dict, piece: str, edges, width: float = 0.06, name: str | None 
     D["seams"].append(seam)
     D["notes"][json.dumps(seam)] = {"ease": [-0.004, 0.004], "turned": "under",
                                     "why": f"{name} is sewn to the edge it was traced from and turned in"}
-    D["interfaced"].append(name)
+    # interfaced (fused interfacing) unless "interfaced": false: then a soft facing, plain cloth in the sim (dress-tess
+    # 2026-10-16: dg_garrett j17b keeps its soft gorge facing, the sim Joe reviewed, simulated before fused facings stiffened)
+    if o.get("interfaced", True):
+        D["interfaced"].append(name)
     D["log"].append(f"facing {name}: traced from {piece} along {len(chain)} edge(s), {pattern.length(L) * 1000:.0f} mm "
                     f"long, {width * 1000:.0f} mm deep; sewn 1:1 and turned in")
 
@@ -1205,7 +1243,7 @@ def op_waistband(D: dict, height: float = 0.04, overlap: float = 0.035, ratio: f
                     "(generated at unfold from the waist edges as they are then)")
 
 
-OPS = {"waistband": op_waistband, "style_line": op_style_line, "take_in": op_take_in, "dart": op_dart, "dart_to_ease": op_dart_to_ease,
+OPS = {"waistband": op_waistband, "style_line": op_style_line, "take_in": op_take_in, "square": op_square, "dart": op_dart, "dart_to_ease": op_dart_to_ease,
        "flare": op_flare, "lengthen": op_lengthen, "extend": op_extend, "reshape": op_reshape, "facing": op_facing,
        "collar": op_collar, "sleeve": op_sleeve, "two_piece": op_two_piece}
 

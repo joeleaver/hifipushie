@@ -804,6 +804,67 @@ def test_preflight_fails_a_start_past_the_strain_limiter():
     assert cloth_job.start_strain_check(start(4), dict(cfg, placement="placed"))["ok"]  # rest = start: n/a
     assert not cloth_job.preflight(start(4), cfg)["ok"]
 
+def test_cloth_render_base_colour_prefers_the_basecolor_map():
+    """dress-tess a35: the jeans' gold J-stitch rendered dark: blender_cloth._material used the greyscale shade map x the
+    flat colour whenever a shade map existed, so the basecolor PNG (colour + coloured thread) never reached a render."""
+    import ast
+    from pathlib import Path
+    src = (Path(__file__).parent.parent / "src/hifipushie/blender_cloth.py").read_text()
+    fn = next(n for n in ast.parse(src).body if isinstance(n, ast.FunctionDef) and n.name == "base_source")
+    ns = {}
+    exec(compile(ast.Module([fn], []), "blender_cloth", "exec"), ns)  # (blender_cloth imports bpy: the helper alone)
+    bs = ns["base_source"]
+    assert bs({"shade": "s.png", "basecolor": "b.png"}) == "basecolor"
+    assert bs({"shade": "s.png"}) == "shade" and bs({}) is None and bs(None) is None
+    print("ok base colour source")
+
+
+def test_start_through_the_under_garment_is_refused():
+    """dress-tess dc20 at straighten 0.5: the coat sleeve, laid on the half-bent arm, started INSIDE the sweater sleeve
+    at the elbow crook; the clearing pass pushed under-garment hits away on the side they were on (further in, onto the
+    arm: 0.43 -> 0.77 mm) and the standoff guard refused it only after that. cloth.start_through_under finds draped
+    cloth on the body's side of the under garment's cloth before any clearing (the build refuses it with a message).
+    Here: an arm (closed tube), a sweater sleeve 6 mm off it, a coat sleeve 12 mm off; the coat dipped to 3 mm over a
+    patch is through, the coat as laid is not."""
+    import numpy as np
+    from hifipushie import cloth
+
+    def tube(r, nz=24, nt=32, z0=0.0, z1=0.3, caps=False):
+        th = np.linspace(0, 2 * np.pi, nt, endpoint=False)
+        zs = np.linspace(z0, z1, nz)
+        V = np.array([[r * np.cos(t), r * np.sin(t), z] for z in zs for t in th])
+        F = []
+        for i in range(nz - 1):
+            for j in range(nt):
+                a, b, c, d = i * nt + j, i * nt + (j + 1) % nt, (i + 1) * nt + j, (i + 1) * nt + (j + 1) % nt
+                F += [[a, b, d], [a, d, c]]  # wound outward
+        if caps:
+            V = np.r_[V, [[0, 0, z0], [0, 0, z1]]]
+            lo, hi = len(V) - 2, len(V) - 1
+            for j in range(nt):
+                F += [[lo, (j + 1) % nt, j], [hi, (nz - 1) * nt + j, (nz - 1) * nt + (j + 1) % nt]]
+        return V, np.array(F)
+
+    bV, bT = tube(0.04, caps=True, z0=-0.05, z1=0.35)
+    uV, uT = tube(0.046)
+    uT = uT[:, ::-1]  # (an under garment's cloth is wound as its pattern lies: either way)
+    cV, cT = np.r_[bV, uV], np.r_[bT, uT + len(bV)]
+    X, F = tube(0.052, z0=0.02, z1=0.28)
+    th = np.arctan2(X[:, 1], X[:, 0])
+    M = {"names": ["sleeve.L"], "piece": np.zeros(len(X), np.int64), "uv": X[:, :2] * 0 + np.c_[th, X[:, 2]], "F": F}
+    free = np.ones(len(X), bool)
+    assert cloth.start_through_under(X, M, free, cV, cT, len(bT)) == {}
+    Xd = X.copy()
+    patch = (np.abs(th) < 0.5) & (np.abs(X[:, 2] - 0.15) < 0.04)  # the elbow crook dips inside the sweater
+    Xd[patch, :2] *= 0.043 / 0.052
+    hit = cloth.start_through_under(Xd, M, free, cV, cT, len(bT))
+    assert "sleeve.L" in hit and hit["sleeve.L"][0] >= patch.sum() * 0.8, (hit, patch.sum())
+    assert 2.5 < hit["sleeve.L"][1] < 3.5, hit  # 3 mm inside the sweater's cloth
+    # cloth just outside (0.5 mm off the sweater, the standoff guard's business) is not through
+    Xn = X.copy()
+    Xn[patch, :2] *= 0.0465 / 0.052
+    assert cloth.start_through_under(Xn, M, free, cV, cT, len(bT)) == {}
+
 
 if __name__ == "__main__":
     fails = 0

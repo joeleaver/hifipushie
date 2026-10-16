@@ -84,7 +84,36 @@ def test_key():
     print("ok key")
 
 
+def test_collider_false(tmp=None):
+    """finish "collider": false: the garment over this one settles on the result AS CONSTRUCTED (V_collider), while the
+    garment itself (renders, export, the over garment's bands) carries the finished V; without the option the finished
+    V is the collider; a finish made on another construct result is stale and not applied."""
+    import tempfile
+    V, M = sheets()
+    off = np.zeros_like(V)
+    lift = [9 * 9 + j * 9 + i for j in (3, 4, 5) for i in (5, 6)]
+    off[lift, 2] = 0.003
+    d = Path(tempfile.mkdtemp())
+    f = d / "fin.npz"
+    np.savez(f, offset=off)
+    key = cloth.finish_key(V)
+    for col in (False, None):
+        g = {"finish": {"file": str(f), "key": key, **({"collider": col} if col is not None else {})}}
+        res = cloth.post_finish({"V": V.copy()}, g, M, body=plane(-0.05), log=lambda *_: None)
+        assert np.allclose(res["V"][lift, 2], 0.003) and "finished" in res, res.get("finished")
+        cv = cloth.collider_verts(res)
+        if col is False:
+            assert np.allclose(cv, V) and not np.allclose(cv, res["V"]), "over garments settle on the constructed V"
+        else:
+            assert "V_collider" not in res and cv is res["V"], "without the option the finished V is the collider"
+    stale = cloth.post_finish({"V": V + 1e-3}, {"finish": {"file": str(f), "key": key, "collider": False}}, M,
+                              log=lambda *_: None)
+    assert stale.get("finish_stale") and "V_collider" not in stale and "finished" not in stale
+    print("ok collider false")
+
+
 if __name__ == "__main__":
     test_seam_moves_as_one()
     test_crossing_goes_back()
     test_key()
+    test_collider_false()

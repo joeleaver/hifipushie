@@ -239,3 +239,13 @@ if __name__ == "__main__":
         if k.startswith("test_"):
             f()
             print("ok", k)
+
+
+def test_front_balance_auto_from_the_body_tapes():
+    # dress-garrett 2026-10-15: with the hps on the shoulder crest a man's front tape (hps -> seat) is longer than the
+    # back's; a front cut as long as the back swung an open jacket apart at the hem. "auto" drafts the difference.
+    from hifipushie import pattern_blocks as pb
+    assert abs(pb.front_balance({"hpsToSeatFront": 713.0, "hpsToSeatBack": 673.0}) - 0.040) < 1e-9
+    assert pb.front_balance({"hpsToSeatFront": 678.0, "hpsToSeatBack": 711.0}) == 0.0  # old hps: the old cut
+    assert pb.front_balance({}) == 0.0
+    assert pb.front_balance({"hpsToSeatFront": 713.0, "hpsToSeatBack": 673.0}, 0.0) == 0.0  # explicit wins

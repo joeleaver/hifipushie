@@ -331,6 +331,112 @@ def test_hug_neckline_draws_the_seam_to_what_is_under_it():
     assert info["seam_pull_mm"]["max"] <= 30.0 + 1e-6
 
 
+def _cyl(r=0.150, z0=-0.3, z1=0.3, na=96, nz=40):
+    th = np.linspace(0, 2 * np.pi, na, endpoint=False); zs = np.linspace(z0, z1, nz)
+    V = np.stack([np.outer(np.ones(nz), r * np.cos(th)), np.outer(np.ones(nz), r * np.sin(th)), np.repeat(zs[:, None], na, 1)], -1).reshape(-1, 3)
+    F = []
+    for i in range(nz - 1):
+        for j in range(na):
+            a, b = i * na + j, i * na + (j + 1) % na
+            F += [[a, b, b + na], [a, b + na, a + na]]
+    return V, np.array(F)
+
+
+def _garment(n=60, rs=0.175, rflare=0.200, cut=0.10, fold=0.05, ratio=0.8):
+    """body tube: rows z 0.10 .. 0 (r rs); band: (n+1) columns (its ends sewn shut) x rows over the cut; the outer half
+    flares down to rflare at the fold, the inner half back up inside it."""
+    th = np.linspace(0, 2 * np.pi, n, endpoint=False)
+    Vb = np.concatenate([np.c_[rs * np.cos(th), rs * np.sin(th), np.full(n, z)] for z in (0.10, 0.05, 0.0)])
+    Fb = cm.grid_faces(3, n)  # (unused shape check only)
+    C = 2 * np.pi * rs
+    L0 = ratio * C
+    rows = np.linspace(0, cut, 11)
+    thb = np.linspace(0, 2 * np.pi, n + 1)
+    Vband, uvb = [], []
+    for t in rows:
+        tf = t if t <= fold else 2 * fold - t
+        r = rs + (rflare - rs) * tf / fold - (0.003 if t > fold else 0)
+        z = -tf
+        Vband.append(np.c_[r * np.cos(thb), r * np.sin(thb), np.full(n + 1, z)])
+        uvb.append(np.c_[np.linspace(0, L0, n + 1), np.full(n + 1, t)])
+    Vband, uvb = np.concatenate(Vband), np.concatenate(uvb)
+    nb = len(Vb)
+    V = np.r_[Vb, Vband]
+    uv = np.r_[np.c_[np.tile(np.linspace(0, C, n, endpoint=False), 3), np.repeat([0.1, 0.05, 0.0], n)], uvb]
+    piece = np.r_[np.zeros(nb, int), np.ones(len(Vband), int)]
+    m = n + 1
+    sew = [[2 * n + (j % n), nb + j] for j in range(n + 1)]  # band row 0 to the body's last ring (both ends: station 0)
+    sew += [[nb + r * m, nb + r * m + n] for r in range(1, len(rows))]  # the band's own closing seam
+    F = np.r_[cm.grid_faces(len(rows), m).reshape(-1, 3) * 0]  # (faces aren't used by made_band)
+    return V, {"names": ["front", "hem_band"], "piece": piece, "uv": uv, "sew": np.array(sew), "F": F}, nb, n, m, len(rows)
+
+
+def test_made_band_folded_welt():
+    bV, bF = _cyl()
+    V, M, nb, n, m, nr = _garment()
+    V2, info = cm.made_band(V, M, "hem_band", [{"V": bV, "F": cm.outward(bV, bF)}], gap=0.004, fold=0.05, layer=0.0025)
+    band = V2[nb:].reshape(nr, m, 3)
+    # the sewn row sits on the garment's side of the seam: the seam stays shut
+    assert np.allclose(band[0, :n], V2[2 * n:3 * n], atol=1e-9), "seam opened"
+    # the band drew in from the seam (r 175) towards its pattern girth (0.8: r 140) and stopped on the body
+    r = np.linalg.norm(band[..., :2], axis=-1)
+    assert r[5].max() < 0.165, f"fold ring not drawn in: {r[5].max():.4f}"
+    assert r.min() > 0.150 + 0.004 - 0.0006, f"band inside the body's clearance: {r.min():.4f}"
+    # the outside half lies over the turned-under half
+    assert (r[1:5].mean(1) > r[9:5:-1].mean(1)).all(), "turned-under half not inside"
+    # its own closing seam is shut and its depth is the finished (folded) depth
+    assert np.allclose(band[:, 0], band[:, n], atol=1e-9)
+    assert abs(band[5, :, 2].mean() + 0.05) < 0.006, band[5, :, 2].mean()
+    assert info["folded"] and info["girth_mm"]["built_free_edge"] >= info["girth_mm"]["target_free_edge"] - 1
+    print("ok", info)
+
+
+
+
+def test_made_band_fold_read_from_drape():
+    """dress-tess w1 (2026-10-15): construct.bands on the real sweater found no 360 deg fold record, so fold "auto"
+    built the welt UNFOLDED at its whole cut (114.8 mm, "folded": false, 62% crumpled, 286 crossings). Without a record
+    the fold is read from the drape (`drape_fold`): the folded band's rows turn back at the fold."""
+    bV, bF = _cyl()
+    V, M, nb, n, m, nr = _garment()
+    assert not M.get("folds")
+    V2, info = cm.made_band(V, M, "hem_band", [{"V": bV, "F": cm.outward(bV, bF)}], gap=0.004, fold="drape", layer=0.0025)
+    assert info["folded"] and abs(info["depth_mm"] - 50) < 6, info
+    # "auto" without a fold record = single layer (generate "fold": true always records its fold)
+    _, info = cm.made_band(V, M, "hem_band", [{"V": bV, "F": cm.outward(bV, bF)}], gap=0.004, fold="auto", layer=0.0025)
+    assert not info["folded"] and abs(info["depth_mm"] - 100) < 1, info
+    # a single-layer band (rows run straight down, no turn) stays unfolded
+    Vs = V.copy()
+    k = np.arange(nb, len(V))
+    tt = M["uv"][k, 1]
+    Vs[k, 2] = -tt
+    Vs[k, :2] *= (0.175 + 0.025 * tt / 0.10)[:, None] / np.linalg.norm(V[k, :2], axis=1)[:, None]
+    assert cm.drape_fold(Vs, k, tt, Vs[np.asarray(M["sew"])[:n, 0]]) is None
+    # the real w1 drape (the welt stood off, crumpled) shows no turn either: fold "half" = the cut's middle
+    _, info = cm.made_band(Vs, M, "hem_band", [{"V": bV, "F": cm.outward(bV, bF)}], gap=0.004, fold="half", layer=0.0025)
+    assert info["folded"] and abs(info["depth_mm"] - 50) < 6, info
+
+
+def test_made_band_depth_on_a_curved_cut():
+    """dress-tess w1's welt "lost its fold record" (2026-10-15): it never had one. It is a single-layer knitted_rib
+    ("fold": false) cut as an annular sector (top_ratio 0.92), and made_band read depth along ONE pattern axis, which
+    took in the sewn arc's sagitta: 114.8 mm "cut" for a 50 mm welt, built at twice its depth. Depth is now the
+    distance from the sewn edge in the flat, and each row's length its own arc."""
+    bV, bF = _cyl()
+    h, tr = 0.05, 0.92
+    V, M, nb, n, m, nr = _garment(cut=h, fold=h)
+    uv = np.array(M["uv"], float)
+    k = np.arange(nb, len(V))
+    L0 = uv[k, 0].max()
+    R1 = h / (1 - tr)
+    ph = (uv[k, 0] - L0 / 2) / R1
+    R = R1 - uv[k, 1]
+    uv[k] = np.c_[R * np.sin(ph), R * np.cos(ph)]
+    M = dict(M, uv=uv)
+    _, info = cm.made_band(V, M, "hem_band", [{"V": bV, "F": cm.outward(bV, bF)}], gap=0.004, fold="auto", layer=0.0025)
+    assert not info["folded"] and abs(info["depth_mm"] - 50) < 1 and abs(info["cut_mm"] - 50) < 1, info
+    assert abs(info["girth_mm"]["pattern_free_edge"] - tr * L0 * 1000) < 0.01 * L0 * 1000, (info, tr * L0 * 1000)
+
 def test_seam_gaps_leave_out_pieces_a_made_part_replaces():
     """dg_j8 / j10: the simulated collar (replaced by the made one, never shipped) read as the collar seam open 59-137
     mm; the shipped collar met the neckline at 0.0 mm. seam_gaps(made=) measures the shipped part instead."""
@@ -345,11 +451,6 @@ def test_seam_gaps_leave_out_pieces_a_made_part_replaces():
     assert g1["made_seam"]["pairs"] == 1 and abs(g1["made_seam"]["max"] - 1.0) < 1e-6
 
 
-if __name__ == "__main__":
-    for k, f in list(globals().items()):
-        if k.startswith("test_"):
-            f()
-            print("ok", k)
 
 
 def test_mirror_pairs_and_symmetrize_make_left_and_right_one_shape():
@@ -378,3 +479,97 @@ def test_mirror_pairs_and_symmetrize_make_left_and_right_one_shape():
     P[: m, 2] += 0.004
     Q, mis = cm.mirror_part(P, (n, m), 0.0)
     assert mis < 0.03 and np.allclose(Q.reshape(n, m, 3)[:, :, 2], Q.reshape(n, m, 3)[::-1, :, 2])
+
+
+def test_construct_bands_clear_the_finished_under_garment_with_a_scoop():
+    """dress-tess ds37 (2026-10-16): the sweater's welt crossed the jeans at 17-25 vertices. construct_bands was handed
+    the jeans PRESSED (the collider the sweater was simulated over: loose cloth capped 8 mm off the body), which lies up
+    to ~38 mm inside the jeans as drawn and checked; and over the front pocket's scoop (a cut edge, the pocket bag
+    behind it) a closed-surface layer let the band settle into the opening. The band is now built clear of the FINISHED
+    under garment, as a sheet with its render thickness."""
+    bV, bF = _cyl()
+    V, M, nb, n, m, nr = _garment()
+    na, nz = 96, 40
+    th = np.linspace(0, 2 * np.pi, na, endpoint=False)
+    zs = np.linspace(-0.3, 0.3, nz)
+
+    def tube(r, keep=lambda t, z: True):
+        P = np.stack([np.outer(np.ones(nz), r * np.cos(th)), np.outer(np.ones(nz), r * np.sin(th)),
+                      np.repeat(zs[:, None], na, 1)], -1).reshape(-1, 3)
+        F = []
+        for i in range(nz - 1):
+            for j in range(na):
+                a, b = i * na + j, i * na + (j + 1) % na
+                tc, zc = th[j] + np.pi / na, 0.5 * (zs[i] + zs[i + 1])
+                if keep(tc, zc):
+                    F += [[a, b, b + na], [a, b + na, a + na]]
+        return P, np.array(F)
+    scoop = lambda t, z: 0.3 < t < 1.2 and -0.08 < z < 0.03  # the pocket mouth: no front panel there
+    pV, pF = tube(0.155)  # pressed
+    fV, fF = tube(0.165, keep=lambda t, z: not scoop(t, z))  # finished front panel, scoop cut out
+    gV, gF = tube(0.158, keep=lambda t, z: 0.2 < t < 1.3 and -0.12 < z < 0.05)  # the pocket bag behind it
+    # one under mesh: panel + bag (same topology for pressed / finished: the pressed bag lies on the pressed panel)
+    uF = np.r_[fF, gF + len(fV)]
+    under_fin = np.r_[fV, gV]
+    under_pr = np.r_[pV, pV]
+    opt = {"bands": ["hem_band"], "band_options": {"fold": 0.05}}
+    Fo = cm.outward(bV, bF)
+
+    def worst(Vb):
+        """mm by which band vertices lie inside the finished under cloth (panel outside the scoop, the bag in it)."""
+        P = Vb[nb:]
+        r = np.linalg.norm(P[:, :2], axis=1)
+        t = np.mod(np.arctan2(P[:, 1], P[:, 0]), 2 * np.pi)
+        z = P[:, 2]
+        core = (t > 0.3) & (t < 1.2) & (z > -0.08) & (z < 0.03)
+        wall = np.where(core, 0.158, 0.165)
+        # (at the cut edge either may hold: within a cell of it)
+        edge = (((np.abs(t - 0.3) < 0.08) | (np.abs(t - 1.2) < 0.08)) & (z > -0.1) & (z < 0.05)) | \
+            ((np.abs(z + 0.08) < 0.016) & (t > 0.2) & (t < 1.3))
+        bad = ~edge & (r < wall)
+        return float(((wall - r) * bad).max() * 1000), int(bad.sum())
+    # as before: only the pressed jeans -> the band sits inside the finished jeans
+    V_old, _ = cm.construct_bands(np.array(V), M, bV, Fo, {}, {"V": under_pr, "F": uF}, opt)
+    mm_old, n_old = worst(V_old)
+    assert n_old > 0 and mm_old > 3, (mm_old, n_old)
+    # now: clear of the finished jeans, panel and bag
+    V_new, info = cm.construct_bands(np.array(V), M, bV, Fo, {}, {"V": under_pr, "F": uF, "finished": under_fin,
+                                                                 "thickness": 0.0006,
+                                                                 "piece": np.r_[np.zeros(len(fV), int), np.ones(len(gV), int)]}, opt)
+    mm_new, n_new = worst(V_new)
+    assert n_new == 0, (mm_new, n_new)
+    # and the band still drew in where nothing holds it out more (the scoop: down to the bag)
+    P = V_new[nb:]
+    t = np.mod(np.arctan2(P[:, 1], P[:, 0]), 2 * np.pi)
+    rin = np.linalg.norm(P[:, :2], axis=1)[(t > 0.5) & (t < 1.0) & (P[:, 2] < -0.01) & (P[:, 2] > -0.06)]
+    assert len(rin) and rin.min() < 0.165, rin.min()
+    print("ok", mm_old, n_old, "->", mm_new, n_new, info["hem_band"]["depth_mm"])
+
+
+def test_untuck_crossings_reverts_only_what_the_tuck_pushed_through():
+    """ds37: worn_together's tuck laid the jeans' pocket corners through the sweater's welt (10 -> 31 crossing vertices).
+    untuck_crossings sends back only moved vertices in new crossings; other tuck moves stay."""
+    from hifipushie import cloth
+    n = 12
+    g = np.linspace(-0.1, 0.1, n)
+    P = np.array([[x, y, 0.0] for x in g for y in g])
+    Fg = cm.grid_faces(n, n)
+    V0 = P + [0.0061, 0.0047, -0.010]  # the under garment as finished: 10 mm under the outer one (off its vertices)
+    V = V0.copy()
+    V[:, 2] -= 0.002  # the tuck lays everything 2 mm further in ...
+    k = (np.abs(P[:, 0]) < 0.03) & (np.abs(P[:, 1]) < 0.03)
+    V[k, 2] = 0.006  # ... and pushes a patch out through the outer cloth
+    outer = {"V": P, "mesh": {"F": Fg}}
+    assert cloth._layer_crossing_verts(V, Fg, P, Fg).any()
+    V2 = cloth.untuck_crossings(V0, V, {"F": Fg}, outer)
+    assert not cloth._layer_crossing_verts(V2, Fg, P, Fg).any()
+    far = (np.abs(P[:, 0]) > 0.06) | (np.abs(P[:, 1]) > 0.06)
+    assert np.allclose(V2[far], V[far]), "a tuck move away from the crossing was undone"
+    assert np.allclose(V2[k], V0[k])
+
+
+if __name__ == "__main__":
+    for k, f in list(globals().items()):
+        if k.startswith("test_"):
+            f()
+            print("ok", k)

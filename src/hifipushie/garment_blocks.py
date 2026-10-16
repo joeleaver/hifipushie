@@ -19,6 +19,7 @@ Generated pieces (garment key "generate", applied after the draft, so they follo
 from __future__ import annotations
 
 import json
+import math
 
 import numpy as np
 
@@ -204,13 +205,34 @@ def generate(pcs: dict, entry: dict, extra: dict | None = None) -> tuple[dict, l
     L = Lc * ratio + lap
     x0, x1 = -L / 2, L / 2
     at_end = lap > 0 and entry.get("extension") == "end"  # the underlap runs on past the chain's END (default: its start)
-    pts = [("sw", [x0, 0.0])]
-    if lap > 0 and not at_end:
-        pts.append(("lapStart", [x0 + lap, 0.0]))
-    pts += [("s", [0.0, 0.0])]
-    if at_end:
-        pts.append(("lapEnd", [x1 - lap, 0.0]))
-    pts += [("se", [x1, 0.0]), ("ne", [x1, h]), ("n", [0.0, h]), ("nw", [x0, h])]
+    # `top_ratio`: the free edge's length over the sewn edge's (default 1: a straight strip). Not 1: the band is cut as
+    # an annular sector, so its REST shape is a cone: < 1 leans in (a crew neckband that lies on the slope of the
+    # neck's base instead of standing up the neck like a mock neck: a straight strip stretched on only leans by the
+    # strain it holds across its 2 cm, and a knit spreads that strain; dress-tess s19-s27), > 1 flares out.
+    tr = float(entry.get("top_ratio", 1.0))
+    if abs(tr - 1.0) > 1e-6:
+        if lap > 0 or entry.get("fold"):
+            raise ValueError(f"generate {nm}: top_ratio is for a single-layer ring band (no overlap, no fold)")
+        sg = 1.0 if tr < 1 else -1.0
+        R1 = h / abs(1.0 - tr)  # the sewn edge's radius; the free edge's is R1 - sg * h
+        if L / R1 > 2 * math.pi * 0.95:
+            raise ValueError(f"generate {nm}: top_ratio {tr} curls the band past a full circle (at most "
+                             f"{1 - 2 * math.pi * 0.95 * h / L:.2f}..{1 + 2 * math.pi * 0.95 * h / L:.2f} here)")
+        Rf = R1 - sg * h
+        n_ = max(8, int(L / 0.01))
+        a_ = np.linspace(-L / 2 / R1, L / 2 / R1, 2 * n_ + 1)
+        sew = [[R1 * math.sin(a), sg * R1 * (1 - math.cos(a))] for a in a_]
+        top = [[Rf * math.sin(a), sg * (R1 - Rf * math.cos(a))] for a in a_]
+        pts = [("sw", sew[0])] + sew[1:n_] + [("s", sew[n_])] + sew[n_ + 1:-1] + [("se", sew[-1])]
+        pts += [("ne", top[-1])] + top[-2:n_:-1] + [("n", top[n_])] + top[n_ - 1:0:-1] + [("nw", top[0])]
+    else:
+        pts = [("sw", [x0, 0.0])]
+        if lap > 0 and not at_end:
+            pts.append(("lapStart", [x0 + lap, 0.0]))
+        pts += [("s", [0.0, 0.0])]
+        if at_end:
+            pts.append(("lapEnd", [x1 - lap, 0.0]))
+        pts += [("se", [x1, 0.0]), ("ne", [x1, h]), ("n", [0.0, h]), ("nw", [x0, h])]
     d = {"outline": _outline(pts), "grain": 0 if entry.get("grain") is None else entry["grain"]}
     marks, lines = {}, {}
     if lap > 0:  # the ends lap: a button on the underlap, its hole on the other end, `L - lap` apart (the chain)
@@ -222,6 +244,15 @@ def generate(pcs: dict, entry: dict, extra: dict | None = None) -> tuple[dict, l
     d["marks"], d["lines"] = marks, lines
     pc = pattern.from_spec(nm, d)
     pc["wrap"] = dict(entry.get("wrap") or {"to": "torso"})
+    if lap > 0 and abs(tr - 1.0) <= 1e-6:
+        # the piece is centred on its whole length, but the SEWN chain runs only over L - lap of it: its middle (the
+        # centre back of a waistband opening at the front, the centre front of one opening at the back) is lap / 2
+        # off the piece's x = 0, the point the torso placement lays at the start. Shifted so the chain's middle
+        # starts there: unshifted, dt_tess' jeans waistband started 20 mm round the waist from the trousers it is
+        # sewn to, the sewing turned the whole back 13-16 mm off the centre, and yoke.R / the waistband stayed 17-18 mm open
+        mid = (x0 + 0.5 * Lc * ratio) if at_end else (x0 + lap + 0.5 * Lc * ratio)
+        sh = list(pc["wrap"].get("shift") or [0.0, 0.0])
+        pc["wrap"]["shift"] = [float(sh[0]) - mid, float(sh[1])]
     pc["role"] = entry.get("role", nm)
     seams = [[f"{nm}:sw>s>lapEnd" if at_end else f"{nm}:{'lapStart' if lap > 0 else 'sw'}>s>se", along]]
     if entry.get("ring"):

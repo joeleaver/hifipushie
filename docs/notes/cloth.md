@@ -2908,6 +2908,26 @@ Spend so far: $0.93 (python3 /mnt/data/hifipushie/dress_tess/spend.py).
    (with 3 other ready sims as Oxidegen's 4-at-once batch if possible).
 4. Rib texture reads as paint/maps only; denim surface + wear paint for cloth are not built.
 
+## dress-tess round 2026-10-14 evening (continues the 17:30 handover)
+- Cloth test set (15 files, one process each through bin/slot) GREEN at 3b65802.
+- s22 / s24 / s24b fine settles (fail in ~41-53 s on the rented fleet; s21's worked): their STARTS are clean (0
+  crossings by cloth._crossing_hits, no non-neighbour cloth pairs under 1 mm, body 2.4-3.1 mm, stretch within the
+  limit): the stall happens inside the settle and the rented box returned only "see error.log". Not resubmitted.
+  The runner now puts the solver's own diagnosis (### lines, the frame / newton step reached, error.log's panic) in its
+  error (cloth_zozo._solver_said). s24b's cuffs came out of the coarse sim with their own seam 49 mm open (cuff ring
+  125 mm flat on a ~150 mm wrist: the start ring is ~100 mm open); s24's coarse closed them and its fine still failed.
+- Tools: look(result=) applies to the FIRST garment named, the rest from cache (sweater result over cached jeans);
+  scratch prime.py (answer a coarse sim from an existing job IF inputs identical: s24b's placement had moved 4 mm,
+  refused), fsdiag / fsstrain / fscross / fsnear (a fine start's contacts, stretch, crossings), capvar GARMENT=.
+- s24 coarse reviewed (rv/s24c/review.md, FAIL): MAJORs boxy / hem doesn't grip; grid surface; white sheen streaks;
+  neckband stands off the neck; rib pale stripes. Causes found: welt 826 mm on a ~730 mm high hip over jeans (0.88 of a
+  939 mm body hem), neckband 388 mm (0.86) vs a ~360 mm neck base, sheen tint white on a mustard yarn.
+  s25: welt 0.78, neckband 0.80, stitch 7 x 6 mm + jitter 0.18, sheen tinted by the base colour (blender_cloth),
+  fine_settle false. KB: hem rib_ratio 0.72-0.92 (gripping welt), coat underarm_mm 35-80.
+- Coat: c11's sleeve cap was 289 mm (111% of the armhole depth: the sweater's tall-cap fault) on a 639 mm armhole.
+  c13: chest 22%, shoulder +8%, across back 1.0 / front 0.98 (ease into the shoulders, not the armhole width),
+  underarm 0.055, biceps +70%, hem 0.30 -> armhole 589, cap 215 (84%), underarm seam 307; stage 2-3 pass.
+  Checklists written: workspace/checklists/tess_labcoat.json, tess_jeans.json.
 ## Guide rewrite (2026-10-14, "guides" agent): history moved out of the cloth guides
 
 cloth_guide.md went from 918 lines to a ~170-line core (describe the garment first, construction before solver,
@@ -3109,6 +3129,1011 @@ the model), upd.py (sets garment keys in the saved spec), chk.py (check_garment 
   crawl (j5): compare its job with c12_n18's (chest ease, underarm). (2) trousers t1 with timeout 15 min (stage.sh TMIN=15),
   then judge rise / length / crease against the checklist. (3) review per garment (bin/review, --stage/--not as the
   brief), seated check: export_asset's rig layers_seated (rig_audit.seated) + a seated render. (4) shirt review.
+
+## Handover 2026-10-15 11:00 (dress-tess, Tess's outfit; model dt_tess)
+Branch worktree-agent-ac06d0eb5553e576b (worktree .claude/worktrees/agent-ac06d0eb5553e576b), merged with
+worktree-agent-a772e41978c43cfa6 (start clearance). Cloth tests green at 3b65802; NOT re-run after: 10ca1cd (runner
+diagnosis), 03181e7 (look result= first garment), d28dc63 (sheen tint, KB ranges), 62a9a83 (rib_stitch), the merge.
+Run /mnt/data/hifipushie/dress_tess/tests_slot.sh (one file per process through bin/slot) first.
+Scratch /mnt/data/hifipushie/dress_tess (as in the 10-14 handover) + preflight.py in stage.sh (refuses starts within
+2 mm), prime.py, fs*.py diagnostics, capvar.py GARMENT=<g>, rv_renders.py (RESULT=<out.npz> env), tests_slot.sh.
+Where: NICO-TOP (LOCAL=1 bash stage.sh <queue> 3) by default while online (coordinator 10-15: a rented 4090 runs these
+at NICO-TOP's speed); rented only when busy / parallel. Spend today: s25 $0.117, s26 $0.029, c13 $0.061 (+ s24b $0.015
+on 10-14 night): spend.py prints the running total.
+
+State per garment (none approved; checklists workspace/checklists/tess_{sweater,labcoat,jeans}.json):
+- Sweater: s26 = best CLEAN result (fits, 0 crossings, cuffs closed, underarm 24-25 mm), review rv/s26/review.md FAIL:
+  box with no folds (coarse-only drape: fine_settle false), square shoulders / puffed cap, neckline too wide/low, a flap
+  at the band's right side, too orange. IN FLIGHT: s27 on NICO-TOP (stage_s27.out; fine settle ON, shoulders -5%,
+  biceps +25% cap 166 mm, neckline 40 mm, #86602a). If its fine settle fails, the error now carries the solver's ###
+  lines: read them before any change; never resubmit. Review crops: rv_renders.py sweater,jeans <tag>
+  front=0,-0.1,1.15,0.68,front+three neck=0,-0.08,1.35,0.22,front+three hem=0,-0.1,0.91,0.3,front+three, then
+  rvpairs.py <tag> rv/<tag> front=410,260,640,760@0 neck=430,250,610,370@0 hem=400,620,640,760@0 and bin/review
+  (stage / not lines as in the brief). Neckband MAJOR survived lean -20 (s19), ratio 0.80 (s25), lower neckline (s26):
+  one more different approach then it is STUCK. The hem band can't draw in past the jeans (790 mm there).
+- Coat: c13 simmed over s26 (underarm 59-62 mm ok) but CORRUPT: made collar x fronts 107 crossings. c14 (collar sewn
+  and simulated, no construct) passes stages 1-3; NEXT sim over the s27 result (spec dt_tess coat = c14 now).
+- Jeans: j6 unchanged; checklist written; faults from the coordinator still open (folds, denim surface, hardware).
+- Oxidegen's 4-at-once batch still owed (needs 4 independent real sims ready at once).
+
+### dress-tess 2026-10-15 afternoon
+- Cloth test set (tests_slot.sh, one file per process through bin/slot) at b5e9696c (= the 5 commits since 3b65802 +
+  main 7f472faf): 15 files rc 0, 0 failures.
+- s27 sat 15 min "queued" on NICO-TOP (8+ other agents' jobs ahead, GPU busy): cancelled before it started and moved to
+  the rented fleet (same job, not a failed one; TMIN=15).
+- s27 (rented, $0.061 with its fine settle: the fine settle RAN, 16 s, no stall): fits, 0 crossings, underarm 31/33 mm,
+  folds 3.7 mm. Review rv/s27 FAIL: rigid box; neckline now too HIGH, the band rises up the neck like a mock neck
+  (s26 the opposite: too wide / low with a 13 mm gap at the front); hem band a rigid flaring tube with a ledge; rib dark
+  streaks. Colour now MINOR "too brown / dull": lit patch (rv crops, x 70-150 y 330-420 of the 512 px pair) ref
+  #966c2c, s26 #865e27 (same hue, 10% dark), s27 #76572e (too dark). Kept #86602a for now.
+- Neckband diagnosis (lean.py: band angle from vertical per 45 deg round the neck): s26 / s27 lean in 24-36 deg at the
+  back and sides but OUT 3-11 deg at the front. The seam ring is tilted ~29 deg (front 60 mm lower than the back) and
+  a straight rib strip, stretched on 25%, holds only ~12% of that across its 22 mm (the knit spreads the strain), so
+  it stays a near-cylinder on a tilted ring: vertical / standing off at the front, up the neck at the sides.
+- NEW (code): `generate` `top_ratio` cuts a band as an annular sector (rest shape a cone); knit_surface runs a sector
+  band's rib radially. Test test_a_band_cut_as_a_cone_has_its_free_edge_shorter.
+- s28 = s27 + neckband top_ratio 0.85 + neckline front back to 50 mm ($0.038): the band hugs (gap 3-4 mm all round,
+  max 7) but the free edge (0.80 x 0.85 = 0.68 of the neckline, ~310 mm, under the neck's 350 mm girth at z 1.41) pulls
+  the front up the throat: band top 31 mm under the HPS (checklist 35-60). Review rv/s28 FAIL: band stands away / up at
+  the sides, few broad ribs; inflated shoulders; box; hem doesn't draw in, no blousing.
+- Review dispute (evidence): the reference shows the sweater only between the coat's fronts: its sides, shoulders and
+  sleeves are hidden, so "box", "15-20% wider than the hips" and "side lines" are compared with the coat's lapels.
+  Kept the crop (same framing) and noted; the shoulders' puff is a real fault regardless (sleeve-head lumps).
+- Tooling: cloth.cached memoises found results per spec content in a process: the 3 review crops went 45 -> 9.5 min
+  (each lookup re-places jeans + sweater: ~200 s per garment).
+- Coat c14 over s27 ($0.024): CORRUPT 174 crossings (collar / fronts), collar neck seams 44-60 mm open; its PLACE stage
+  (never run over a simmed sweater before: ck.py dt_tess coat place) FAILS: fronts L/R through each other at the start,
+  collar through the fronts, underarm as placed 10 cm. Stage 4 must pass before the next coat sim.
+- s29 in flight: neckband ratio 0.92 (free edge 0.78 of the neckline ~357 mm = the neck base) + hem band top_ratio 0.92.
+- s29 = s28 + neckband ratio 0.92 + hem band top_ratio 0.92 (rented $0.068): fits, 0 crossings, underarm 34/33,
+  folds 3.8 mm; band top 39.5 mm under the HPS at CF (checklist 35-60: PASS), gap to the body 4-8 mm. Review rv/s29
+  FAIL: neckline "too high and tight, the band stands up like a funnel / mock neck" (opening should be wider and lower,
+  near the collarbones); ribs coarse pleats; no drape (rigid shell, no folds); hem band a rigid flaring cylinder, no
+  blousing; shoulders / armholes puff. Hem band girth mid-height 790 mm on both s28 / s29 (the jeans' girth there).
+
+### Handover 2026-10-15 14:00 (dress-tess)
+- NECKBAND = STUCK (reported to main). The "stands up / too high" MAJOR survived s19 lean -20, s25 ratio 0.80, s26
+  neckline lower (front 50, widen 8: then "too wide / low", 13 mm front gap), s27 front 40 (too high), and the
+  genuinely different attempt: the band cut as a cone (s28 top_ratio 0.85; s29 + ratio 0.92). The cone works
+  physically (lean.py / nk.py: gap 13 -> 4-8 mm all round, CF band top 31 -> 39.5 mm, in the checklist's band). My read
+  of the pairs: the painted reference has a much longer, slimmer neck (chin to band ~2x ours in the same framing) and
+  its band sits low at the SIDES too (side-to-CF dip ~28 mm vs ours ~52 mm: ours climbs the neck-shoulder junction at
+  the sides). A decision for Joe / the coordinator: judge the neckline by body landmarks (checklist: passes) or match
+  the painting's look (would need widen ~+5..10 mm with the CF kept ~45 mm, i.e. between s26 and s29).
+- Spec dt_tess sweater = s29 now (design s29.json). Coat spec = c14 (CORRUPT over s27; its place stage FAILS: fronts
+  L/R crossed at the start, collar through the fronts; fix stage 4 before the next coat sim). Jeans j6 unchanged.
+- Open sweater MAJORs by size: no drape / rigid shell (all rounds; check whether "start pushed off the body ... becomes
+  rest stretch" (back 18-27 mm) inflates the rest shape); hem band can't draw in past the jeans (790 mm): blousing would
+  need more body girth at the hem (hips_ease), within the checklist's 1.00-1.06; shoulder / sleeve-head puff; rib
+  reads as coarse pleats (rib_knit/purl 1x1 at 5.5 mm wale: try a finer wale on bands, lower rib_depth).
+- Review crops dispute: the reference's sweater sides / shoulders are under the coat (box / width faults compare with
+  the coat's lapels).
+- Spend today (spend.py): this session s27 $0.061, c14 $0.024, s28 $0.038, s29 $0.068 (+ ~$0.21 before) ~ $0.40.
+- Tests: cloth set 15/15 at b5e9696c; new test in test_pattern_tailor (top_ratio). Not re-run the whole set after
+  e7e7f065 / 5514488e (generate top_ratio, cached memo, knit radial ribs): run tests_slot.sh first next session.
+
+### dress-tess 2026-10-15 evening (fresh session after the 14:00 handover)
+- Cloth test set (tests_slot.sh, 15 files one process each) GREEN at db54b0a8 (e7e7f065 top_ratio + 5514488e memo).
+- Coordinator decisions (not to be re-asked): neckline = match the painting's look (side point out, CF ~45, dip ~28 mm);
+  then drape first; box / shoulders judged after the drape fix and finally AS WORN under the coat; hem blousing vs
+  the jeans' 790 mm a known constraint; no coat sims before its place stage passes; colour toward lit #966c2c.
+- DRAPE hypothesis TESTED, FALSE: "start pushed off the body becomes rest stretch" is true only for placed (Blender)
+  jobs. ZOZO smooth jobs rest on the flat pattern (cloth_zozo: rest "flat"; made = [] for the sweater). rs.py on s29
+  (job eae0051f7d3c3810): start area ratio 1.00 (the wrap shears 6-10% / 4-7%), RESULT stretch 1.00 everywhere,
+  s2 p10 0.99 (nothing compressed). rsd.py: the front hangs taut DOWN 1.5-1.8% from z 0.90 to 1.10 (between the bust
+  and the welt); across 3% at the bust / shoulder blades. Cause of the "rigid shell": no excess cloth anywhere to
+  buckle: the body hem (829 mm) is no wider than the welt as worn (790 on the jeans): blouse ratio 0.998. The welt is
+  cut as a ratio OF the hem, so hips_ease alone keeps the gathering the same (hemt.py). Report / stage-4 texts that
+  said "becomes rest stretch" corrected (smooth: start stretch only).
+- Neckline: dip.py (place-only, neckline seam + band top at side vs CF). s29 start -> result: band top side 1.396 ->
+  1.400, CF 1.351 -> 1.365 (the sim lifts CF ~14 mm, side ~4): band top dip 45 -> 35 mm, side 4 mm under the HPS (it
+  climbs the neck). Widen 0.008 / 0.014 / 0.020 (front 0.045): side top 4 / 12 / 16 mm under the HPS, dip 43 / 34 / 31
+  in the start. The coordinator's "5-10 mm out" measures short: ~2 cm is needed for the side to sit on the neck base.
+- s30 = s29 + neckline front 0.055 widen 0.024, hips_ease 0.20 (body hem 891 mm) + welt ratio 0.80 (712: S15 -20%),
+  colour #aa7728 (s27 rendered #86602a as #76572e: x0.88 / 0.91 / 1.10 per channel; aimed at #966c2c). Stages 1-4
+  pass (underarm placed 1.7 cm). Rented (NICO-TOP: GPU busy, 4 GB free). Expect: CF ~45, side ~15, dip ~30, body
+  gathered ~12% into the welt.
+- s30 result (rented $0.031: coarse $0.017 + fine $0.014): fits, 0 crossings, seams closed, folds 3.9 mm (s29 3.8).
+  msw: band top CF 47.7 mm under the HPS (35-60 PASS), band 20 mm, welt bottom 510 (465-505: 5 mm low, as s29),
+  welt 48.6, blouse 1.029 (PASS, was 0.998), underarm 14 mm. dip.py: band top side 1.393 (11 mm under the HPS), CF
+  1.356, dip 36 mm (s29 35): CF moved down 8 mm, the side only 7 mm down: the side still climbs the neck. rsd: the
+  welt gathers the front 11% across at z 0.90 (the bottom 5 cm only); the front still hangs taut DOWN 1.4% from the
+  bust to the welt. Lit-patch colour #966b2d vs ref #956a2b: MATCHED (s29 #77582e).
+- Review rv/s30/review.md FAIL. Front: stiff box (MAJOR), flat squared shoulder ledge into a bulge on the upper arm
+  (MAJOR), no blousing over the welt (MAJOR), micro-grid surface, body 10-15% short, colour "lighter / more orange"
+  (MINOR; disputed: the measured lit patch matches within 2 levels). Neck: now "too WIDE, stands away from the neck,
+  gap at both sides" (MAJOR; s29 "too HIGH, climbs the neck"), rib coarse plastic pleats (MAJOR). Hem: band flares
+  past the body with a step on the left (MAJOR), dotted lines along the ribs (MINOR).
+- NECKLINE CLOSED (coordinator's rule: no more neckband rounds): the review flipped from too high (s29, widen 0) to
+  too wide (s30, widen 0.024) with the measured dip still 36 (ref ~28): the band's side climbs the neck whatever the
+  neckline (the painted neck is longer and slimmer: OTHER STAGES, body / head). Final neckline = the midpoint, widen
+  0.012, front 0.055 (in s31). DISPUTED, evidence: s29 / s30 pairs and the dip numbers above.
+- s31 (designed, NOT simmed): s30 + neckline widen 0.012 + the front lengthened 25 mm at CF fading to the sides
+  (op reshape cfHem by [0, -0.025] falloff 0.16: a knitter's short-row bust, so the front falls from the bust and
+  pouches over the welt). Stage 2 FAILS "ease at hips -60.6% (body 780)": a gate artefact (the curved CF hem now
+  reaches the hip level over the middle of the front only; the body hem is 893 mm): fix the gate (ease only where the
+  garment spans the girth) or a smaller lengthening, then sim. Model spec restored to s30 (= the simmed result).
+- Spend this session: s30 $0.031 (rented: NICO-TOP had its GPU busy and 4 GB free).
+STATE: dt_tess sweater = s30 (best, review FAIL); s31.json waits on the hips-ease gate. NEXT: (1) the hips gate, sim s31,
+measure rsd (front no longer taut down; compression above the welt), review; (2) shoulder ledge / sleeve-head bulge
+(shoulder_ease -0.05, cap -6%: read the cap height vs the armhole and the shoulder slope before changing); (3) coat
+stage 4 (fronts through each other, collar through the fronts) before any coat sim; (4) rib reads as pleats: finer wale /
+lower rib depth on bands (render only).
+
+### Handover 2026-10-15 late (dress-tess; coordinator's 100-tool-call clock)
+Read the evening section above: it is the whole state. Scratch tools new this session (in /mnt/data/hifipushie/dress_tess):
+rs.py <job key> [stage] (start / result stretch vs the flat pattern per piece, body distance), rsd.py <job key> <stage>
+(stretch across / down per height band, share compressed), dip.py '<patch>'... | <pkl> (neckline seam + band top side vs
+CF, place-only per variant; {"neckline": {...}} edits the existing op: a list in a patch replaces ALL ops), hemt.py
+<hips_ease>... (body hem girth + welt per hips_ease), nlt.py. Never `pkill -f <pattern>` from a shell whose own command line
+holds the pattern (it killed itself twice). Cloth tests green at db54b0a8 (+ test_cloth_workflow / test_cloth_check after
+the message change).
+
+### dress-tess 2026-10-15 late evening (fresh session; s31)
+- Before s31's local fix, the two pattern / material causes of the "stiff box" (coordinator) were checked:
+  (a) EASE, not the cause: flat-pattern ease chest +15.6% (130 mm on 838: Craft Yarn Council "loose" is +10-15 cm),
+  waist +38.8% (hangs straight from the bust). A sweater with that ease is relaxed, not one that only just fits. Checklist
+  tess_sweater.json now DESCRIBES waist_ease (+25..+60%), blousing (msw blouse >= 1.03) and fabric (items 17-19).
+  (b) FABRIC, too stiff: kb sweater_knit had bending length 11-15 mm (13 mm = Kawabata B 0.082 gf cm2/cm at 375 g/m2),
+  as stiff as french_terry (12-16) though its own _doc says softer. Plain weft knits measure B ~0.01-0.03 gf cm2/cm
+  (Ucar 2003, Turkish J. Eng. Env. Sci. 27, plain knits vs tightness; cloth_job's jersey ~0.01); a heavier worsted gauge
+  ~0.03-0.05. Now 8-12 mm (mean 10 = B 0.037 gf cm2/cm, ZOZO gets bend 3.68e-6 N m; was 8.08e-6). Mass 375 g/m2 kept
+  (in a worsted stockinette's range). Source recorded in the kb (_source_bending).
+- The s31 hips-ease artefact fixed in the gate: cloth.sizing marks a girth "partial" when some torso piece has zero
+  width there (a curved hem crossing the line), and cloth_workflow skips it with an info line. s31 stages 1-4 pass.
+  Cloth tests 15/15 green after the change (tests_slot.sh).
+- s31 = s30 + neckline widen 0.012 (closed, the midpoint) + front short-row (reshape cfHem [0, -0.025] falloff 0.16)
+  + the softer knit: ONE sim on NICO-TOP (LOCAL=1 stage.sh q_s31.txt).
+
+### dress-tess 2026-10-15 night: s31 big read, then the FINISH stage (Joe's method change: sim for the big read, finish by hand)
+- s31 (rented, coarse $0.032 + fine settle $0.013 = $0.045): fits, 0 crossings, seams closed (sleeve / cuff seams 0.8-1.8
+  mm). rsd: the front still hangs taut DOWN 0.7-1.0% from z 0.95 to 1.10 (s30 1.4-1.8%); the welt gathers the front
+  3.5% across at z 0.90. The softer knit (bending 8-12 mm) did NOT change the big read. Review rv/s31/review.md FAIL:
+  stiff box (MAJOR), puffy squared shoulders / sleeve heads + underarm dent (MAJOR), welt flares (MAJOR), knit surface a
+  flat grid (MAJOR: maps), colour too bright (MAJOR; measured lit patch matched on s30: disputed), neckband funnel / gap
+  (MAJOR), faceted inner edge, crumpled patch at the band's right shoulder. My read of the pair: fit and silhouette are
+  close (the reference's sides are under the coat); the remaining faults are local. Sweater sim budget long spent
+  (s19-s31): NO MORE SWEATER SIMS. Finishing instead.
+- Dip numbers on s31's result (dip.py fin/s31.pkl): band top side 1.399 (5 mm under the HPS), CF 1.361 (43), dip 38.
+- FINISH tooling (scratch /mnt/data/hifipushie/dress_tess/fin/, repeatable):
+  prep.py (pickles the sweater as cloth.garments gives it, without sculpt), sync.py (server.sync cloth_only: 14 min,
+  most of it re-placing jeans + sweater), aux.py (aux.npz: pieces, body verts / normals, jeans verts / normals for
+  clearance; dry run of fin/moves.json on the pickle with dip numbers + band clearance), finish.py (the moves, numpy;
+  mathutils.kdtree inside Blender: Blender's python has no scipy), bl_finish.py (blender -b scene.blend --python
+  fin/bl_finish.py -- fin/aux.npz "$(cat fin/moves.json)": applies the moves to cloth:sweater and saves), pull.py
+  (scene.pull: offsets kept as cloth.sweater.sculpt, key de98b675f1d137fa). The synced scene before any finish is kept as
+  fin/scene_s31_synced.blend (copy it back to replay the list from scratch).
+- Finish f31a = fin/moves.json, in order (2284 verts moved):
+  1. neck_settle out 14 mm / down 14 mm at the sides (weight sin^2 round the neck, 0 at CF / CB), fading 6 cm down the
+     body, body clearance 4 mm, 3 smoothing passes: the band settles out and down onto the neck base at the sides.
+  2. deflate the neckband onto the neck (5 mm max, clearance 3.5 mm): band clearance median 6.8 -> 3.9 mm.
+  3. deflate the shoulder points (+-0.18, 0, 1.33), radius 7 cm, 6 mm max (5.0 moved), clearance 4: the sleeve-head puff.
+  4. welt_hug: the hem band's radius per angle held to its seam radius, narrowing 3% to the edge (max 34.5 mm in: the
+     flare), clearance 3 mm over the jeans.
+  5. blouse: front body pouched over the welt, 8 mm out / 4 mm down peaking ~3 cm above the seam over an 8 cm band
+     (back at half).
+  Result (dry run = Blender run): band top side 1.390 (14 mm under the HPS), CF 1.358 (46), dip 31 (painting ~28,
+  coordinator's target side ~15 / CF ~45 / dip ~30: MET).
+- Tooling bug seen: cloth.garments' verdict still prints "TOO SMALL: negative ease at hips -473 mm" for s31 (the partial-
+  girth skip is in the workflow gate only).
+- f31a review (rv/f31a/review.md, NICO-TOP renders) FAIL, and WORSE than s31 in new ways (my finish's faults, not the
+  sim's): (a) holes: the body shows through at both shoulders / beside the neck; (b) the neckband pulled off the body's
+  neckline: a cream gap all round (move 2 deflated the band ALONE, so the band left the front / back seam vertices
+  behind); band now reads a thin rolled cord and too wide / low at the sides (the out 14 mm went too far for the
+  reviewer even though the dip numbers hit the target); (c) the jeans poke through the welt in ~10 hexagon holes (move 4:
+  a 3 mm clearance to the jeans' VERTICES is not enough: the jeans render solidified + triangles between vertices);
+  (d) blouse made a rounded ledge with a shadow over a separate-looking welt. Still MAJOR: stiff box, knit surface.
+  The finish is taken OFF the spec (fin/unsculpt.py; offsets kept in fin/f31a_sculpt.npz; scene.blend restored to
+  fin/scene_s31_synced.blend): dt_tess sweater = plain s31 again.
+- Lessons for the next finish (write them into finish.py before running again):
+  1. Move sewn pieces TOGETHER: any move on one piece must carry the vertices sewn to it (seam pairs from M["sew"]: give
+     both sides the max weight), or seams open.
+  2. Clearance against a SURFACE, not vertices: query the closest point on the body / under-garment triangles (Body
+     has a KD tree and T; or cloth.Body's own distance query), margin = the under layer's render thickness + 3 mm
+     (jeans thickness from cloth.fabric) and >= 5 mm on the shoulders; check with cloth.integrity / a crossing count
+     against body + jeans after every move, and refuse a move that adds crossings.
+  3. Neck: out ~6-8 mm with down 12-14 (the s31 band already read "stands away"; the side must DROP more than it moves
+     out), seam-carried; then no separate band deflate.
+  4. Blouse: smaller (4-5 mm) and spread over 10-12 cm with folds rather than one smooth roll, or leave the
+     blousing to a pattern change (body length +2-3 cm at the welt); a smooth bump reads as a ledge.
+  5. Judge each move alone with a small crop before stacking five.
+- Spend this session: s31 $0.045 (rented). Renders f31a on NICO-TOP.
+
+### Handover 2026-10-15 night (dress-tess; 70-tool-call stop)
+STATE: dt_tess sweater = s31 (sim only, review FAIL; sweater sims STOPPED: budget spent, the rest is finishing / maps /
+colour). Finish tooling in /mnt/data/hifipushie/dress_tess/fin works end to end (sync -> bl_finish in Blender -> pull ->
+cloth.sweater.sculpt, dry run on the pickle = the Blender run to the mm) but f31a's moves broke seams and clearance.
+NEXT: (1) finish.py: seam-carried moves + triangle clearance + crossing check (lessons above), then the neck alone
+(f31b: out 7 / down 13, seam-carried), review the neck crop only; then shoulders; then welt (clearance >= jeans thickness
++ 3 mm); blousing last or via a +2-3 cm body length. (2) Knit surface (MAJOR every round: "flat machine grid") = maps,
+not geometry: finer, softer rib on bands, some yarn irregularity. (3) Colour: reviewer says too bright on every round
+though the lit patch measured equal on s30: try one darker step (#9c6c26) on the next render, judge by the pair. (4) Coat:
+build collar / lapels on the drape (construct after the sim), body sim only once its place stage passes (fronts L/R crossed
+at the start). (5) Jeans after.
+Known tooling bug: cloth.garments' verdict prints "TOO SMALL: negative ease at hips -473 mm" for s31 (partial-girth skip
+is only in the workflow gate). Blender's python has no scipy (finish.py falls back to mathutils.kdtree).
+
+### dress-tess 2026-10-15 late night (fresh session): guarded finishing, f31b neck / f31c welt, colour step
+- fin/finish.py rewritten (offline only now; Blender is no longer in the loop): fin/run.py <moves.json> <tag> [--apply]
+  runs the list on fin/s31.pkl and writes cloth.sweater.sculpt directly (offset file + the sim key, as scene.pull does:
+  no 14 min sync). Every move goes through `guarded`:
+  1. seam carry: seam groups (connected components of M["sew"]) get their members' max weight, and the final
+     displacement of every group is its largest member's (a seam's sides can't part);
+  2. clearance against SURFACES: exact closest point on the body's / jeans' triangles, signed by the triangle's
+     outward normal (body: agrees with its vertex normals; jeans: faces away from the body); margin = the sweater's
+     render thickness (2.5 mm: its inner face sits that far in) + the jeans' (1.0) + the move's clear_mm;
+  3. after the move: crossings of the sweater's outer AND inner shell with body and jeans (_layer_crossing_verts),
+     self-crossings (_crossing_verts with seams joined), seam gaps, moved vertices' clearance; a move that adds a
+     crossing, opens a seam > 0.5 mm or leaves a moved vertex under its margin is REFUSED and logged.
+- s31's own baseline: the INNER shell (2.5 mm in) touches the body at 282 verts (sleeves 193, front / back 77 at z
+  1.02-1.34, shoulders and upper arms) and the jeans at 3; outer shell 0. The guard compares against that.
+- f31b = neck alone (out 7 / down 13, seam-carried): OK, 848 verts, max 19.1 mm, body crossings 282 -> 260, seam gap
+  max 1.8 -> 1.8 mm. Band top side 1.392 (12 under the HPS), CF 1.360 (44), dip 32 (target side ~15 / CF ~45 / dip ~30).
+- Welt: the guard REFUSED the old welt_hug twice (jeans 3 -> 6, self 0 -> 12/15: the band's top ring moved in alone
+  and the front's side folded through it; and one global top height for a curved hem). Fixed in welt_hug: the body
+  cloth above follows the top ring in over 6 cm, band top / bottom per angle. f31c = f31b + welt_hug (clear 1.5): OK,
+  jeans crossings 3 -> 0, self 0. BUT the flare is the jeans' own hip: fin/flare.py (band radius bottom - top per
+  angle) s31 median +5.5 / p90 +19.0 mm; hugged before clearance -3.5 / -1.4; after the surface clearance +5.0 / +16.4.
+  The band can't hug tighter than the jeans under it: a welt flare that still reads is a length / position question
+  (where the welt sits on the hips), not a finish.
+- Renders on NICO-TOP now for real: f31a's "NICO-TOP renders" were in fact local look_cloth renders (571 s). New:
+  fin/rvpack.py packs look_cloth's cloth.render job (json + data + maps) per region (COLOR=#.. = a colour variant,
+  spec untouched); spikes/offload/job_clothrender.py renders them there; fin/rvunpack.py rebuilds out/rv_<tag>_<reg>.png
+  for rvpairs.py. Round 1: f31b neck, f31c hem, front at #9c6c26 (colour only).
+- Tooling: cloth.garments' verdict skips partial girths (cloth._tight_rows, test in tests/test_cloth_check.py).
+- Shoulders dry run (fin/m_f31d.json = f31c + deflate (+-0.18, 0, 1.33) r 7 cm, 5 mm, clear 5): guard OK, 382 verts,
+  max 5.5 mm, body (inner shell) crossings 260 -> 140, seam gap unchanged. NOT applied: it waits for the neck review
+  (neck and shoulders touch the same cloth).
+
+### Handover 2026-10-15 23:59 (dress-tess; 70-tool-call stop)
+STATE: dt_tess sweater = s31 + finish f31c (neck_settle out 7 / down 13 + welt_hug clear 1.5; guarded: 0 new
+crossings, jeans crossings 3 -> 0, seams unchanged) as cloth.sweater.sculpt (1469 verts). Round-1 renders (neck f31b,
+hem f31c, front at #9c6c26 for colour only) are batch dt-f31b on NICO-TOP: still QUEUED after ~45 min behind other
+agents' long jobs (client pid detached; rr/f31b/submit.log). rr/f31b/review.sh is running detached: when renders.tar
+lands it unpacks, crops (rvpairs) and runs three blind reviews -> rv/f31b/{neck,hem,colour}/review.md (log
+rr/f31b/review.log, ends F31B_REVIEW_DONE). Nothing is judged yet: no verdict on f31b / f31c / the colour.
+NEXT: (1) read rv/f31b/*/review.md (crops, not sheets). Neck FAIL -> adjust m_f31b numbers, re-run fin/run.py --apply,
+repack (fin/rvpack.py) in a NEW folder rr/<tag>/ and submit. (2) Neck passes -> shoulders (fin/m_f31d.json, guard OK
+in the dry run), crop the shoulders. (3) Welt: if "flares" is still the verdict, it is the jeans' hip under it (flare
+numbers above): a welt position / length change in the pattern, not a finish. Blousing last (small, 4-5 mm over 10-12
+cm) or +2-3 cm body length. (4) Knit maps: next round try detail.knit {jitter 0.2, fuzz 0.1, depth 0.0008} beside the
+current, colour per the colour review. (5) COAT (coordinator, 2026-10-15): before the crossed-fronts place fault,
+cherry-pick dress-garrett's 05ad2a92 (worktree agent-a772e41978c43cfa6: pattern_blocks bodice front_balance "auto" =
+front tape - back tape, clamped 0-80 mm, with a test; the HPS fix moved the hps->seat tapes ~+-40 mm and a bodice
+cut the front as long as the back: Garrett's front 7 cm short, fronts swung open). Tess's coat is a bodice block:
+check whether a wrong front balance is part of the crossed fronts. Then collar / lapels built on the drape.
+Tooling: fin/run.py (guarded finish -> sculpt), fin/xdiag.py (where crossings are), fin/flare.py (welt flare),
+fin/rvpack.py + spikes/offload/job_clothrender.py + fin/rvunpack.py (NICO-TOP cloth renders). bl_finish.py / aux.py
+are obsolete (the old Blender path).
+
+### dress-tess 2026-10-16 (fresh session after the 23:59 handover)
+- Round-1 renders dt-f31b still QUEUED on NICO-TOP (~70 min, behind other agents' jobs). The review chain
+  (rr/f31b/review.sh) is alive; added rr/f31b/waitguard.sh (detached `offload wait dt-f31b`: on fail / dead client it
+  writes rv/f31b/ERROR and stops the chain). Nothing judged yet: no verdict on neck, hem or colour; m_f31d not applied.
+- COAT, front balance: cherry-picked dress-garrett 05ad2a92 (front_balance "auto"). Tess (this worktree's tailor, no
+  HPS-crest fix ba565b2b): hps->seat front 657.6 < back 690.5 mm -> auto 0 = the old cut. Front balance is NOT the
+  crossed fronts' cause here. (ba565b2b not cherry-picked: it changes every tape, so the finished sweater's draft too.)
+- COAT, length (coordinator: the HPS fix shortened HPS-tape-length blocks on Garrett): Tess's coat length is a fixed
+  number (0.89 m down CB), not a tape, and the HPS fix isn't in this worktree, so that cause doesn't apply. But the coat
+  WAS short anyway: placed CB hem 852 mm under the HPS (1.404 -> 0.552) vs checklist 900-1000 (ref ~950). c15 = 0.97.
+- COAT, crossed fronts: coatx.py (the place stage's start, crossings by vertex): front.L / front.R through each other at
+  z 1.19-1.23, x within +-18 mm of CF, on the lapel roll rows: the BREAK, at about the armpit's level, where open_gap was
+  0 (it grew from 0 at the armpit to 0.16 at the hem), so the two extensions started on top of each other. The
+  reference shows the fronts 15-18 cm apart at the chest. Placement fix (cloth.open_gap takes [armpit, hem], commit
+  80c27897): open_gap [0.15, 0.26] -> front.L/front.R 0 crossings, the fronts' self crossings gone too.
+- c15 (= c14 + length 0.97 + open_gap [0.15, 0.26], spec v82): stages design / pattern / construction / place all PASS.
+  Place warnings left: underarm as placed 9.0-9.4 cm (kind 3.5-8; c13's sim settled at 59-62 mm), sewn-pair start
+  crossings back.L/front.L and collar/front.L/R (allowed at the start; c14 went CORRUPT on collar x fronts, so read the
+  sim's crossings). c15 draft sim 1 of ~3 launched (stage.sh q_c15.txt -> dc15.log, stage_c15.out). Collar and lapels
+  are built on the drape after it (construct {"collar": true} already on).
+- JEANS j6 measured against workspace/checklists/tess_jeans.json (jmeas.py on cloth_jeans.npz):
+  type: kind jeans straight: PASS. clean: 0 through the body, 0 through the sweater: PASS (seams not re-measured).
+  leg_shape: hem / knee girth 0.83 L / 0.79 R (tol 0.9-1.05): FAIL, tapered (knee 390-398, hem 313-324 mm).
+  hem_width: front-view width 102 mm (tol 170-215): FAIL. The item is ill-posed: 190-200 mm is a FLAT half-girth
+  (the draft's hem 0.19), not a seen width. As a half girth: 157-162 mm, still under 170: FAIL. Rewrite the item.
+  ease: thigh +27/+28% (tol 6-15), knee +47/+50% (tol 15-30): FAIL, too loose (draft knee 0.20 half = 400 mm over a
+  266 mm knee slice). Check the body slice before cutting the knee (266 mm is small for an adult knee).
+  length_break: front hem z 0.046-0.053 m, ankle joint 0.071: the hem is below the ankle, on the shoe; "sock not
+  visible" needs a look. colour: albedo #171b26 (= spec), lit patch vs #22282d needs a render: in the next batch.
+  knee_folds / surface / fly_front: look items, open since the coordinator's faults (folds, denim surface, hardware).
+STATE: sweater waits for dt-f31b reviews; coat c15 draft sim running; jeans measured (leg shape, hem and ease FAIL).
+NEXT: (1) dt-f31b reviews -> MAJORs by cause; neck pass -> m_f31d; knit maps; welt as a pattern change (no sweater
+re-sim: the welt needs a made-piece construct, which cloth_made doesn't have yet for welts). (2) c15 result: crossings,
+underarm, hem, front opening vs the checklist; then collar / lapels on the drape. (3) Jeans: knee / hem girth in the
+pattern (knee down, hem up to hem/knee ~0.95) after a body-slice check; one jeans sim; lit colour in the next batch.
+
+### Handover 2026-10-16 20:10 (dress-tess; 70-tool-call stop)
+STATE: sweater = s31 + f31c (unchanged); round-1 renders dt-f31b STILL QUEUED on NICO-TOP (~90 min); review chain
+rr/f31b/review.sh + rr/f31b/waitguard.sh detached (outputs rv/f31b/{neck,hem,colour}/review.md, or rv/f31b/ERROR).
+Coat c15 (spec v82: length 0.97, open_gap [0.15, 0.26]) passed stages 1-4; its draft sim 1 is RUNNING on the broker
+(batch 44a66580..., job_56695659a4aa1d9a_sim, 4177 verts, zozo); stage.sh q_c15.txt (detached, stage_c15.out) pulls it
+in round 2 and writes dc15.log (report + renders workspace/cloth_renders/dc15*.png). dc15.log's "remote cloth job
+failed (exit 9) / no broker result yet" is round 1's normal stop, not a failure. Jeans measured (see above).
+NEXT: (1) read dc15.log when stage_c15.out says done: crossings (collar x fronts was c14's CORRUPT), underarm, CB hem
+under the HPS (target ~950), front opening at chest / hem vs the checklist (120-220 / 180-380 mm). Clean -> collar and
+lapels on the drape (construct), draft sims left ~2 + 2 finals. (2) Reviews -> MAJORs by cause; neck pass -> apply
+fin/m_f31d.json (fin/run.py --apply), knit maps (detail.knit jitter 0.2 / fuzz 0.1 / depth 0.0008 beside current),
+welt: pattern change needs a construct-on-drape path for the hem band (cloth_made has collars / lapels only) since the
+sweater can't be re-simmed: build that, or ask the coordinator. ONE render batch for the round (incl. the jeans' lit
+colour patch and knee / fly crops). (3) Jeans: knee / hem girths in the pattern after checking the knee body slice.
+Tooling this session: coatx.py (place-stage start crossings by vertex; GKEYS='{json}' patches garment keys, TAG=),
+jmeas.py (jeans checklist numbers), coatfb.py (front balance + tapes), c15set.py.
+
+### dress-tess 2026-10-16 evening (fresh session after the 20:10 handover)
+- dt-f31b landed (50 s on NICO-TOP after a ~45 min queue). rr/f31b/review.sh failed at unpack (run.sh cds into the
+  worktree: relative paths missed); the predecessor switched it to absolute paths in SCRATCH only and relaunched; it then
+  died after the neck review, so the hem / colour reviews were run from rr/f31b/rest.sh (cd $G first). Scratch scripts
+  that call bin/review must cd to $G or use absolute paths.
+- Reviews, MAJORs grouped by cause:
+  NECK (rv/f31b/neck) FAIL. Cause A, the band as simulated: stands off / funnels at the sides, thick ridged sides,
+  jagged edge, step at the seam -> build the neckband on the drape (made_band, below; it is a rib band like the welt).
+  Cause B, the neckline's placement (pattern / big read): sides ride high on the trapezius, opening wide, CF nearly
+  straight (the reference: a rounder U, low, CF dipping) -> more side drop on the seam ring (finish, seam-carried) than
+  f31b's 13 mm, or a neckline change; no sweater re-sim.
+  HEM (rv/f31b/hem) FAIL. Cause A, the welt as simulated: flares / stands off, hard ledge at the join, ragged lower edge,
+  dots through it -> the welt built on the drape (made_band). Cause B, length: "hem too high" -> a deeper welt is now a
+  made-piece change (the band's cut depth), not a re-sim.
+  COLOUR (rv/f31b/colour, the #9c6c26 variant) PASS; minors: a touch orange (toward yellow-ochre), flat value range.
+  Other stages every time: knit surface (maps), coat missing (expected), jeans read grey (lit colour: in the next batch).
+- cloth_made.made_band + construct.bands (commit 1257bfd8, test tests/test_cloth_made.py test_made_band_folded_welt):
+  a knitted band built on the drape. Columns leave the seam as it ended (the band's sewn row lands on the garment side:
+  seam shut), walk the band's FINISHED depth (a 360 deg fold record on the piece: outside half from the seam, the
+  turned-under half a layer inside it, mirrored), each row drawn in to the band's PATTERN girth (eased in over 40% of
+  the depth), stopped by the under garment / body at render thickness + 1.5 mm; the band's own closing seam shut.
+  Vertex ids and topology kept (maps, look, scene, export read it unchanged). Keys: construct {"bands": ["hem_band"],
+  "band_options": {gap, layer, draw, step, fold}}; "cuff" matches cuff.L / cuff.R. The sculpt is applied before
+  construct, so the band follows the finished seam ring; a later scene pull stores the band's built offsets as sculpt
+  (harmless: the band is rebuilt on top). dt_tess sweater construct = {"lapels": false, "bands": ["hem_band"]} (spec
+  v83); band/w1.py runs it through cloth.garments (log band/w1.log: BANDS / CROSS lines).
+- COAT c15 draft sim 1 (rented, $0.021): NOT clean. CORRUPT on the SIMULATED collar (collar x front.L/R 38/42, collar
+  self 18; collar neck seams open to 57 / 47 mm; made collar stretch p95 1.73, max 8.5), the same fault as c14. Underarm
+  57 mm (coat kind 35-80: PASS). Length: at the knee in dc15.png (reads right; not measured: no coat npz outside a
+  sync). Front opening: open ~10-15 cm at the chest, but the fronts swing back in and OVERLAP at the hem (the viewer's
+  right front over the left; checklist hem gap 180-380 mm): FAIL. Side view: A-line bell at the back hem, boxy back.
+  Collar / lapels on the drape NOT built yet: the drape fails the big read. Causes to fix before draft sim 2: (a) the
+  simulated collar crossing the fronts (by rule 3 the collar is a made piece: sim without it, or tack it, is a
+  tooling question: construct needs the simulated collar's seam today); (b) the fronts' hem overlap (front balance /
+  extension of an open coat: auto front balance was 0 on Tess).
+- JEANS. Knee slice: jmeas.py's vertex-slab hull UNDER-READ girths on the coarse cloth.Body (knee 266 vs 280.5 mm by
+  exact plane section; kneeslice.py). The exact field agrees (measure z 0.46: 81 x 81 mm, area 0.0061 m2 ->
+  circle-equivalent 277 mm), so cloth.Body is right; jmeas.py now cuts exact sections. The BODY is slim below the knee:
+  knee 280, calf max 276 (z 0.34-0.42), thigh 383 (z 0.667), ankle 166 (adult women's knee / calf are typically
+  ~35-37 cm: recalled, NOT checked against a dataset in the repo). Reported to the coordinator as a body question, not
+  compensated in the pattern. Re-measured j6 (exact sections): thigh ease 23-24% (6-15), knee 39-41% (15-30), hem half
+  girth 152-159 mm (175-215), hem / knee 0.77-0.82 (0.9-1.05): all FAIL. Note the BUILD tapers: draft hem / knee
+  0.19 / 0.20 = 0.95, built 0.77-0.82 (hem built ~17% under its draft; knee 2%): find why (the hem on the shoe? a turned
+  hem?) before cutting. A consistent target on this body: knee and hem ~352 mm full (176 half: knee ease 25%, hem/knee
+  1.0, hem at the tolerance's low end), thigh ~428 (12%).
+- Checklist tess_jeans.json hem_width rewritten: flat half-girth 195 mm, tol 175-215 (+-10%), tol_source =
+  cloth_reference_guide.md "Tolerances are what a picture supports: 8-12% on widths" (tech-pack POM tolerances are
+  production specs a picture can't support). The old front-view-width item was ill-posed.
+
+### Handover 2026-10-16 21:40 (dress-tess; tool-call stop)
+STATE: sweater = s31 + f31c sculpt + construct {"lapels": false, "bands": ["hem_band"]} (spec v83, welt built on the
+drape; commit 1257bfd8). band/w1.py (cloth.garments, ~16 min, detached, log band/w1.log) prints BANDS (depth, free-edge
+girth built vs pattern, moved) and CROSS (band x body / jeans): NOT read yet. f31b reviews: neck FAIL, hem FAIL,
+colour PASS (#9c6c26). Coat c15 draft 1: not clean (simulated collar CORRUPT, fronts overlap at the hem); collar /
+lapels NOT built. Jeans: checklist hem item rewritten; exact sections all FAIL; body knee 280 mm (slim, reported).
+Render-speed fix on main: check RESTART.txt before the next render submit.
+NEXT: (1) read band/w1.log: band crossings 0 and depth ~ the band's finished height, else fix made_band (gap / fold).
+Then construct.bands += "neckband" (the neck's Cause A), check w1 again; neck Cause B = a seam-carried side drop
+(~25 mm at the sides) via fin/run.py, then shoulders m_f31d, knit maps (detail.knit jitter 0.2 / fuzz 0.1 / depth
+0.0008), colour a step toward yellow-ochre; welt length: a deeper welt cut if "too short" persists. ONE NICO-TOP batch
+(fin/rvpack.py) with neck / hem / shoulders / front crops + the jeans' lit colour patch + knee / fly crops; then
+bin/review per region. (2) Coat: fix the hem overlap (front balance / extension for an open coat) and decide with the
+coordinator how the simulated collar stops crossing the fronts (it is a made piece) before draft sim 2. (3) Jeans: find
+why the built hem is ~17% under the draft (crop dj7_hem.png), then knee / hem ~0.176 half, thigh ~12% ease, one sim.
+
+### dress-tess 2026-10-15 evening: welt w1, jeans hem "shrink" explained, coat hem gap measured, body vs ANSUR II
+- WELT w1 (band/w1.py, cloth.garments with construct.bands [hem_band]): FAIL. "hem_band band built (114.8 mm deep,
+  free edge 665 mm round, pattern 622; moved p50 55.1 mm)" -> integrity "CORRUPT: hem_band (62% crumpled, 286
+  crossings)". 114.8 mm is about the band's whole CUT, not its finished (folded) height. Suspect: fold "auto" found no 360 deg
+  fold on hem_band (made_band's depth = cut when fold is None), so the welt was laid out unfolded at twice its height and its
+  turned-under half's flipped faces count as crumpled. Check: the BANDS line (info "folded", "depth_mm" vs "cut_mm")
+  when w1 ends (it was still in the coat stage at the handover). If folded is false: pass band_options {"fold": cut/2}
+  or fix the auto lookup. If true: the crossings are the inner half vs the jeans (gap / layer).
+- JEANS (c), the "17% hem shrink" is a MEASUREMENT ARTIFACT (jhem.py). The hem is tilted (front 91-97 mm, back 49-55 mm
+  above the floor: it rests on the shoe), so jmeas's horizontal plane 30 mm over the lowest point cut only part of
+  the ring. Measured on the pattern's own hem edge (front + back bottom edges, per leg):
+  drafted 380.0 -> placed 381.4 -> simulated 380.5 / 380.9 -> cleaned 369.4 / 365.4 mm. Pattern-space girths 30 / 100 /
+  250 mm up: drafted 381 / 384 / 391, simulated 368-375 / 379-381 / 388, cleaned 361-366 / 376 / 382-386. Knee (body knee
+  plane) 401 drafted, 391-398 worn. So neither placement nor the material stretch shrinks it. The sim is within 1-3%. The
+  clean-up takes another 3-4% at the hem (a small clean-up pull; not chased). Worn hem / knee is ~0.92-0.95 = the draft.
+  The leg_shape FAIL (0.79-0.83) was the bad section. jmeas.py's hem must use the pattern edge (TODO there).
+- COAT (b), c15 (coatgap.py, coatarc.py). PLACED front gap: 213 mm at the hem, 170 at the hip, 129-160 at the chest
+  (open_gap is fine). SIMULATED: 37-81 mm at the chest; the fronts CROSS from z 0.62 to 0.78 (front.L's edge at x -53, front.R's at
+  +93: up to 145 mm overlap), front.L in front. The sim swings the fronts in, so the placement isn't the cause.
+  Pattern: front.L is a straight box below the waist, 276 mm from the side seam to the edge (20 mm extension), back 256.
+  The coat girth drafted (no extension) is 1024 against an under-hull of 872 (chest z 1.12) / 788 (hip) / 648 (z 0.65, the legs).
+  Front panel vs the arc from the hull's side to x = 90 mm (where the edge must hang for a 180 mm gap): excess 160 mm
+  (chest), 205 (z 0.95), 185 (hip), 276 at z 0.65. That surplus front cloth has nowhere to go but in to CF. Front balance:
+  front = back = 970 mm (no bust length), which would swing the fronts APART, so balance isn't it. Extension 20 mm is too small
+  to matter. Target for the fix: the front's hem / hip width so the surplus at the hip <= ~60 mm (a straight-hanging front edge
+  from the bust): a side-seam / side-panel move of front width to the back, or a front edge cut plumb from the break with
+  the hem width taken out at the side seam. NOT applied yet; it needs a placement-start check (coatgap PLACED) + preflight.
+- COAT (a), plan (not coded): sim without the collar ("collar" left out of the sim's pieces). construct: when "collar"
+  is not in M["names"], rebuild the full pattern mesh (cloth.mesh with the collar, deterministic), take seam_chain on it
+  by sew pairs (no V needed except P), map its body-side ids onto the no-collar mesh by (piece, uv) nearest (uv per piece
+  is identical), collar_pattern from the full mesh's collar uv / F, then notched_collar exactly as today. Simplest way
+  in: cloth stores M["collar_draft"] = {uv, F, made_idx, body_idx (in M ids), roll rows} when the collar is held out of
+  the sim. Test: a synthetic two-piece body + collar, chain ids from the held-out path == the ids from the sewn path.
+- BODY (d, coordinator): body_check (src/hifipushie/body_check.py, tests/test_body_check.py, commit 00a92c87).
+  ANSUR II female CSV at /mnt/data/hifipushie/headbody/ansur (n 1986; NO knee girth: knee vs lowerthighcircumference).
+  dt_tess (weight 0.15): under p1 on waist 620, seat 812, thigh 417, knee 280, calf 277, ankle 164, biceps 232, forearm
+  188, wrist 117 (neck p57, chest p8, height p56). Garrett (dg_garrett = gp_h6c): only forearm 244 / wrist 144 under p1
+  (likely a level / flexed bias: weight barely moves Tess's ankle / wrist / forearm either). Regression (OLS on ANSUR II):
+  calf from height + seat + thigh = 300 mm (resid SD 18.1, r2 0.60), knee 300 (18.8); from height + seat + waist + chest:
+  calf 320 (19.1), knee 323 (20.7). Weight 0.35 / 0.5 / 0.65 on copies: calf 296 / 310 / 317, thigh 457 / 488 / 505, seat
+  858 / 894 / 918, waist 661 / 693 / 725. ESCALATED to the coordinator: weight (moves the torso: sweater re-draft) vs
+  leg-only base.girth vs keep. Body not edited.
+STATE: welt FAIL (made_band suspected unfolded), jeans hem explained (no shrink), coat gap cause measured (surplus front
+width), collar plan written, body flagged + tool committed; no sim, no render this session; spend unchanged.
+NEXT: (1) the coordinator's body decision, then fix the body, re-draft the jeans, one jeans sim. (2) w1 BANDS line ->
+fix the welt fold. (3) code (a) + its test, apply (b) with the surplus target, preflight, coat sim 2. (4) neckband, neck
+side drop, shoulders, knit maps, colour; ONE NICO-TOP batch (check main for the "one Blender per job" merge first).
+
+### Handover 2026-10-15 20:55 (dress-tess; tool-call stop)
+See the section above. Scratch: /mnt/data/hifipushie/dress_tess/{jhem,coatgap,coatarc,bodyck,bodyw}.py (run with
+run.sh). band/w1.py may still be running (pgrep -f band/w1.py); its log is band/w1.log.
+
+### dress-tess 2026-10-15 21:20: Tess's build (Joe: "average slender young woman, not weird")
+Target (coordinator / Joe): ANSUR II women aged 18-30; waist, seat, thigh, calf, biceps all ~p20-35 and balanced;
+chest near its current rank; neck and height unchanged. Every garment re-drafts on the new body (the sweater gets a NEW
+sim budget: s31 + f31c are invalid on it); no sims until Joe confirms the sheet. Option B (leg-only girth) is off the table.
+Sweep (body/tsheet2.py, copies, nothing saved; 18-30 subset percentiles; score = RMS of the five around p27.5):
+  w0.65 m0.4 19.9 | w0.75 m0.4 18.0 | w0.85 m0.4 17.8 | w0.95 m0.4 15.3 (best) | w1.0 m0.4 17.0; muscle 0.6: 22.7-27.3;
+  0.8: 26.5-36.3. Best w0.95 m0.4: waist 795 p33, seat 966 p27, thigh 544 p11, calf 331 p6, biceps 298 p48, chest 934
+  p55 (was p11), neck 350 p91 (was 332). FAIL on balance: weight can't bring the legs up (calf <= p10 at weight 1.0)
+  before the torso overshoots, muscle makes it worse, and weight moves the neck. By eye, w0.95 side has a belly.
+  Sheets: /mnt/data/hifipushie/dress_tess/body/tess_weight_sheet.png (w 0.15-0.65), tess_build_sheet.png (current |
+  0.85 | 0.95 pick | 1.0), concept left, hair NOT drawn (flat PIL pass; the groom needs Blender).
+NEXT: sweep MakeHuman's proportion macro + leg modifiers (upper / lower leg) as a whole-build change, keeping the neck;
+then a sheet with head AND hair (Blender, NICO-TOP or a light local pass) for Joe. body_check TODO (coordinator): measure
+ankle / wrist / forearm at ANSUR's landmarks (wrist at the stylion, forearm max) so Garrett's flags become real or go
+away; add an `ages` filter to body_check.table (tsheet2.py has the 18-30 subset inline).
+
+### Handover 2026-10-15 21:25 (dress-tess; 70-tool-call stop)
+STATE: body_check committed (00a92c87); Tess's build target not met by weight / muscle (sheets above); jeans untouched
+(hem explained); coat (a) planned, (b) measured, not applied; welt w1 FAIL (suspect unfolded band); no sims / renders.
+NEXT: in the section above, then the coat (a) + (b) and sweater neck per the coordinator; garments re-draft after Joe picks.
+
+### dress-tess 2026-10-15 22:10: body_check CALIBRATED to ANSUR II's landmarks (why Tess "looks plausible" yet reads p0)
+Handbook: the ANSUR II measurer's handbook (Hotzman et al. 2011, NATICK/TR-11/017) could NOT be fetched (DTIC 403; the
+Penn State mirror link serves an app shell; /mnt/data/hifipushie/ansur_handbook_dl/ is empty of it). Definitions used
+(the standard ANSUR II wording, from memory, so mark them unverified): waist = horizontal at the OMPHALION; buttock =
+horizontal at the buttocks' greatest backward protrusion; thigh = square to the thigh's axis at the lowest point of the
+gluteal furrow; calf = maximum horizontal; biceps = FLEXED maximum, arm raised; chest = horizontal at the bust point.
+The landmark HEIGHTS are measured in ANSUR II itself (waistheightomphalion, buttockheight, crotchheight, chestheight):
+body_check uses their median stature ratios.
+Where the tailor's tapes sat (body/calib.py, MakeHuman default young woman, H 1590): waist at the natural waist 0.618 H
+(omphalion 0.604); seat at the largest level section, 0.480 H, slid onto the thigh tops (ANSUR buttock 0.511); thigh
+LEVEL 5 cm under the crotch (crotch 0.464 vs ANSUR 0.480); chest 0.731 (ANSUR 0.721); biceps relaxed.
+Fix (body_check.girths(ansur=True), the default; the tailor's kept as tailor_<k>; tailor.measure itself untouched:
+drafting uses the natural waist): waist at the omphalion ratio; seat at the level of greatest +Y protrusion; thigh
+square to hip->knee at the crotch; chest at the most forward point 2-20 cm under the armpit; biceps / forearm x FLEX
+1.05 (basis THIN). Also `percentiles(..., age=(18, 30))`, `ages`, `ratio`, `bmi` (closed-mesh volume x 1010 kg/m3).
+Reference bodies (body/calib2.log; 18-30 percentiles, tailor value in brackets):
+  MH default woman: BMI 19.2 | waist 719 p8 (683) seat 905 p7 (946) thigh 556 p16 (516) calf 341 p12 biceps 299 p50 (285) chest 838 p10 neck 298 p4
+  MH default man:   BMI 21.4 | waist 762 p6 (747) seat 917 p12 (948) thigh 557 p15 (547) calf 370 p28 biceps 352 p51 (335) chest 938 p11
+  So MakeHuman's "average" is itself ANSUR p6-16 below the arms: ANSUR is soldiers, women 18-30 BMI p5 20.1 / p25 22.6
+  / p50 24.7. A slender civilian woman (BMI 19-21) lands near ANSUR p5-15, NOT p20-35 (Joe's target and "slender"
+  pull apart on this population: flag to the coordinator).
+  Tess w0.15 (as saved): BMI 15.4 (41 kg at 1.636 m) | waist 675 p2 seat 784 p0 thigh 450 p0 calf 277 p0 biceps 244 p1
+  chest 832 p9 neck 332 p64. THE MISMATCH EXPLAINED: the tapes were biased (waist -40 to -55 mm, thigh -33 to -40 mm),
+  but that's not why she reads p0: she IS very thin (BMI 15.4 is clinical thinness), made thinner still by
+  base.style.human limbs 0.9 / hips 0.92 / waist 0.95 (clearing them alone: seat 812 -> 901, calf 277 -> 314, thigh +51).
+  The eye accepts it because the concept is a clothed A-pose and slim figures read "plausible" at sheet scale.
+  Sweep columns, calibrated: w0.85 BMI 20.4 rms 24.5 (seat p9 calf p4 biceps p71); w0.95 BMI 21.1 rms 23.7 (waist p48,
+  seat p14, thigh p26, calf p6, biceps p69, chest p50, neck p91); w1.0 rms 25.8. Weight alone still can't balance:
+  hips 0.92 / limbs 0.9 hold seat and calf down while the waist runs ahead.
+STATE: body_check calibrated + tested (tests/test_body_check.py, MH default woman readings). NEXT: build sweep with
+style.human hips / limbs / waist toward 1.0 + weight (+ MakeHuman measure-hips / waist targets), keeping the neck.
+- WELT w1 cause CONFIRMED (band/w1.log BANDS): "folded": false, depth_mm = cut_mm = 114.8: fold "auto" found no 360 deg
+  fold record for hem_band on the mesh construct() got, so the welt was built unfolded at its whole cut. Fix
+  (cloth_made, tests test_made_band_fold_read_from_drape): (1) without a record, `drape_fold` reads the turn from the
+  drape (rows reach furthest from the seam at the fold); (2) fold "half" = the cut's middle (a rib band generated
+  "fold": true). On the REAL w1 drape (band/realfold.py: cloth_sweater.npz) drape_fold returns None (the simulated welt
+  stands off 18-31 mm under the seam at every row: no turn to read), so for the re-drafted sweater set
+  construct.band_options {"fold": "half"} (not saved: dt_tess waits for Joe's body). Still OPEN: why the record is
+  missing (trace Bp["folds"] -> mesh() fold_recs for the rib_band generate path; the 22 mm neckband shares it).
+  Not re-run (no sims until the body is confirmed): welt w1 remains FAIL until a run shows folded true + 0 crossings.
+- BUILD SWEEP 3 (body/sweep3.py, calibrated tool, 18-30; weight x style.human limbs / hips / waist, then neck_circ +
+  style chest re-solved; log body/sweep3.log, 36 grid points). style.human back to neutral is the lever weight lacked:
+  BEST w0.45 m0.4, limbs 1.0, hips 1.0, waist 0.95, chest 0.97: BMI 19.1 (51 kg), waist 732 p10, seat 910 p8, thigh 557
+  p16, calf 340 p12, biceps 297 p47*, chest 834 p9 (held), neck 338 p76 (+6 mm: neck_circ at its floor 0.0 did NOT hold
+  it; a FAIL on "neck unchanged"), belly 5.9 mm (MH default woman 5.7: no belly), RMS 16.9. Heavier w0.60: BMI 20.3,
+  waist p19 seat p15 thigh p30 calf p21 biceps p66 neck 341. Lighter w0.30: BMI 17.8, p3-5 legs.
+  p20-35 on all five was NOT reached on a slender build: on ANSUR soldiers "slender" is ~p10-20 (BMI 19-20); w0.60 is the
+  closest to the numbers that still reads slender. Biceps runs ahead because limbs thickens arms and legs together (no arm-only
+  lever; * = the thin FLEX estimate). Proportion macro / per-region leg targets: NOT in our MakeHuman pack (only
+  macrodetails, measure hips/waist/bust/neck/shoulder, neck, breast): fetch targets/measure thigh / calf / upperarm + the
+  proportions macro next if Joe wants legs and arms decoupled.
+  Sheet: /mnt/data/hifipushie/dress_tess/body/tess_build_sheet3.png (concept | current | BEST w0.45 | lighter 0.30 |
+  heavier 0.60, front + side flat clay, head on, HAIR OMITTED: the groom needs a Blender render; column order puts best
+  2nd, not between its neighbours). By eye: BEST and heavier read slender young woman, no belly; current reads thin in the leg.
+  sweep3.json bug: r["chest"] overwrote the style chest value (0.970 from the FIX line, sheet3.py patches it).
+
+### Handover 2026-10-15 23:10 (dress-tess; 70-tool-call stop)
+STATE: body_check calibrated (e9788787: landmark girths, ages, bmi; test on MH default woman); welt fold fix + test
+(a318f49e; real w1 drape needs construct.band_options {"fold": "half"} on the re-draft; root cause of the missing fold
+record still OPEN); build sheet 3 sent to the coordinator; nothing saved to dt_tess. Coat (a) collar-without-sim and (b)
+front width NOT started (plans above). No sims, no renders beyond flat PIL.
+NEXT: Joe picks w0.45 / w0.60 (or asks for decoupled arms / legs: fetch MakeHuman measure thigh / calf / upperarm
+targets); hold the neck (neck_circ had no effect: check it reaches the onemesh body); then save, re-draft all garments,
+coat (b) on the new body, coat (a), the fold-record trace.
+## Pre-placement cache (2026-10-16, render1b agent)
+cloth.build caches its finished result under a key of its inputs BEFORE placement (`cloth.pre_key`: garment, body
+mesh + joints + key, the garment under it (sim key, pressed verts, its own pre_key), worn colliders, frames, the
+source of the whole package + json): `_cache/cloth/pre_<key>.pkl`, used only while the sim npz it names exists; a
+cached_only build that found no sim leaves `pre_<key>.miss` (that sim key), so an unsimulated garment isn't placed
+again. garments() / cached() memoise builds and body meshes for the call (the jeans were built 3x, body_mesh 6x).
+dt_tess COPY (jeans simulated, sweater + coat not): cloth-only garments() 464-657 s cold -> 13 s warm; jeans V,
+V_sim, X0, rest, mesh F/uv/piece and sim key identical to the old path. Any edit under src/hifipushie re-keys every
+pre entry once (the sim npz keys are unchanged); renders, `result=` and place_only always run; a pre hit doesn't
+replay build()'s log lines; HIFIPUSHIE_CLOTH_PRE=0 turns it off. tests/test_cloth_precache.py. Agents: merge main.
+
+### dress-tess 2026-10-15 late: welt "missing fold record" ROOT CAUSE (made_band read depth along one axis)
+- There was no lost record. Tess's welt is `knitted_rib` ("fold": false: a SINGLE-LAYER welt by the kb's own definition),
+  so generate never wrote a fold. It is cut as an annular sector (top_ratio 0.92: R1 = h / (1 - tr) = 625 mm), and
+  made_band measured depth as |uv[bx] - median(seam uv[bx])| on ONE pattern axis, which took in the sewn arc's sagitta.
+  Real s31 drape (band/realdepth.py): old one-axis cut 115.3 mm, distance from the sewn edge 50.2 mm (= the 50 mm draft),
+  folds on the mesh []. So fold "half" (57 mm) was a wrong workaround that happened to land near 50: DROP it from the
+  re-draft plan (construct.band_options stays default).
+- Fix (cloth_made `_band_coords`): depth = distance from the sewn edge in the flat (the edge run on straight past its
+  ends so an underlap keeps its depth), station = arc position along it, row length = its arc span x rho (free edge's
+  length / span: 1 on a straight strip, 0.92 on the welt). fold "auto" = the 360 deg record or single layer;
+  drape_fold only on fold "drape" (explicit). Straight bands unchanged (test_made_band_folded_welt info identical).
+  Tests: test_made_band_depth_on_a_curved_cut (a sector welt: depth 50, free edge 0.92 L0); test_made_band_fold_read_
+  from_drape updated. tests/test_cloth_made.py's __main__ sat mid-file, so the last test never ran: moved to the end.
+  The 22 mm neckband (top_ratio 0.85) read the same way: its built depth was also over-read. Not re-run (no sims).
+STATE: welt depth fixed at the source + tests. NEXT: coat (b) draft rule, coat (a) collar without the sim.
+
+### dress-tess 2026-10-15 late: coat (a) collar without the sim; shoulders in body_check; handbook
+- COAT (a) CODED (no sim run): construct {"collar": true, "sim_collar": false}. cloth._build drafts the full pattern, simulates
+  `cloth_made.hold_out(Bp, ("collar",))` (no collar, no seam / stitch / fold / interfacing naming it), and at construct
+  meshes the full draft again (M["collar_full"]); `held_chain` reads the collar's sewn pairs there and maps the garment side
+  onto the simulated mesh by piece + nearest uv. Test tests/test_cloth_heldcollar.py on a drafted coat: 42 stations vs 43
+  sewn, map 6.5 mm at h 10 mm (the neckline without the collar is sampled on its own: a station can land one edge
+  along). NOT yet run through a full construct on a drape: the first coat sim with sim_collar false is that check.
+  Hypothesis to check on that sim: the simulated collar crossing the fronts (c15: 38 / 42) may also be what pulled the
+  fronts in to overlap at the hem.
+- COAT (b) NOT done. Estimate from the draft (coatgap numbers): reaching a 180 mm hem gap with <= 60 mm front surplus
+  needs ~126 mm off each front at the hip on Tess (front 276 -> ~150 mm side seam to edge). That is a design move, not a
+  tailoring adjustment (side-seam moves are 1-2 cm): run the sim_collar-false coat first; if the fronts still overlap,
+  bring the options (side seam forward, cut-away front edge, front balance) to the coordinator with numbers.
+- BODY_CHECK shoulders (coordinator, after dress-garrett's HPS work 4e6be7bb): MAP += biacromial (biacromialbreadth:
+  2 x the tailor shoulder point's |x|) and shoulderLength (shoulderlength: HPS -> shoulder point, straight; ANSUR is over
+  the skin, ours a few mm under, basis THIN). test_shoulder_items_read_against_ansur (313 mm reads < p5). NOT yet read on
+  Tess's picked build: do it when Joe picks; if under p5, list options (style.human shoulders / a MakeHuman shoulder
+  modifier) as a whole-build setting for the coordinator, don't apply.
+- ANSUR handbook, one more try: DTIC ADA548497 pdf + citation 403; Open Design Lab's ansur2 page links
+  tools.openlab.psu.edu/publicData/ANSURII-TR11-017.pdf and -TR15-007.pdf, both serve the lab's app shell (645-byte HTML),
+  /mnt/data/hifipushie/ansur_handbook_dl/try2. Landmark definitions stay UNVERIFIED.
+
+### Handover 2026-10-15 23:59 (dress-tess; 70-tool-call stop)
+STATE: main merged (dcfe749a), cloth tests green one per process; welt root cause fixed at the source (9efd0c2d: depth
+along one axis on a sector-cut single-layer welt; fold "half" workaround DROPPED); coat (a) coded + flat test; body_check
+shoulders + test; handbook still unverified. Coat (b) not applied (see above). No sims, no renders, nothing saved to dt_tess.
+NEXT: on Joe's pick: save the body, body_check incl. shoulders (options if < p5), re-draft all three garments (sweater
+WITHOUT fold "half"; coat with construct sim_collar false), plan sims for the coordinator: sweater big read, jeans, coat
+draft (its hem gap decides (b)).
+
+### dress-tess 2026-10-16: Tess's build SAVED (coordinator decision: "average slender young woman")
+- dt_tess v84: base.body weight 0.5, muscle 0.4; style.human limbs 1.0, hips 1.0, waist 0.95, chest 0.97 (legs 1.03).
+  Calibrated body_check (ANSUR II women 18-30; body/b05.py, b05.json): BMI 19.5 (52 kg; target 19.5-20.5 PASS at the edge),
+  waist 741 p13, seat 920 p10, thigh 570 p21, calf 346 p16, biceps 303 p55*, chest 837 p10, neck 340 p78 (+8 mm: still
+  FAIL on "neck unchanged"), belly 6.6 mm vs MH default woman 5.7 (FAIL by 0.9 mm strict; not visible; belly RISES with
+  weight: w0.55 BMI 19.9 belly 6.8, so weight can't fix it; waist 0.9 at w0.45 gave 5.7). Shoulders: biacromial 341 p9,
+  shoulder length 123 p11 (old body 313 / 111 = p0: limbs 0.9 had narrowed them): above p5, no options needed.
+  Sheet body/tess_body_set.png (concept | old | new, front + side flat clay, head on, hair omitted); by eye slender,
+  ordinary, no belly. Sent to the coordinator as a show-after.
+- Tests: cloth set + heldcollar + precache + body_check green, one file per process. body_check's MakeHuman skip = only
+  the asset path (the worktree's workspace/_templates has no makehuman; HIFIPUSHIE_ASSETS -> main's: passes).
+- origin/main merged (cloth pre-cache in). dress-garrett's base-of-neck HPS (4e6be7bb) is NOT on main: not here.
+STATE: body saved; garments still drafted for the old body. NEXT: re-draft sweater (welt single-layer, no fold half),
+jeans (knee / hem from measured targets on the new body), coat (sim_collar false); place + preflight; sims one at a time.
+
+### dress-tess 2026-10-16: base-of-neck hps cherry-picked; shoulders re-read FAIL (options); garments re-drafted (v85)
+- 4e6be7bb (dress-garrett) cherry-picked as ba598fa4 (coordinator), conflicts to its side, test_hem_height dropped (it
+  tests the nape-tape length commit, not taken). pattern_tailor / draft / styles, cloth, cloth_workflow, body_check pass.
+- Shoulders on the saved body WITH the base hps (jt.py): biacromial 341 p9, shoulder length 119 p4 (UNDER p5; under the old
+  hps it read 123 p11). MH default woman: 307 p0 / 120.5 p7. ANSUR takes shoulder length over the skin, ours straight
+  (a few mm short: basis THIN). Whole-build options, NOT applied (copies): MakeHuman measure-shoulder-dist base.body
+  "shoulders" 0.7 -> 361 p41 / 129 p28 (chest, biceps unchanged, BMI 19.6); 0.9 -> 381 p80 / 139 p63; style.human
+  shoulders 1.04 -> 343 p11 / 120 p4; 1.08 -> 356 p30 / 127 p19 but chest +25 mm (837 -> 862). Sent to the coordinator.
+- Jeans targets from the new body's measured legs (tailor, mm): knee 340.6, calf 345.6, heel 252.6, ankle 176 (the old
+  body's knee was 280). knee half 0.208 (ease 22%, checklist 15-30), hem half 0.197 (hem / knee 0.947; checklist hem
+  half-girth 195 +- 10%). Coat construct {collar: true, sim_collar: false}. Sweater unchanged (s31 design; welt =
+  knitted_rib single layer with the depth fix; no fold "half"). Saved dt_tess v85 (savegar.py).
+- Order: the sweater is "over" the jeans, so the jeans draft sim runs FIRST (the sweater's place needs it).
+STATE: v85 drafted; nothing simulated. NEXT: jeans place + preflight + rented draft sim; then the sweater, then the coat.
+
+### dress-tess 2026-10-16: shoulders set (coordinator: option 1), dt_tess v86
+- A jeans stage (dj8) was started on v85 and STOPPED during its build, before any job went up (sent.txt unchanged): the
+  shoulder change re-keys every draft.
+- base.body shoulders (MakeHuman measure-shoulder-dist), measured (body/sh.py, sh2.py; base-of-neck hps): 0.55 -> biacromial
+  346 p13 / length 122 p8; 0.6 -> 351 p20 / 124 p13; 0.62 -> 353 p23 / 125 p17 (CHOSEN: both in p15-25); 0.65 -> 356 p31
+  / 127 p19. At 0.62: chest 838 p10 (837), biceps 303 p55, neck 340 p78, waist 741, seat 920, thigh 570, calf 346, BMI
+  19.6 (19.5): all held. Saved v86. Legs unchanged, so the jeans' knee / hem targets stand (knee 341 mm). Sheet
+  body/tess_body_set_shoulders.png (v85 | v86 flat front + side): a small widening at the shoulder line, no other change.
+STATE: v86 = the body for all three garments. NEXT: jeans draft sim (rented), then the sweater, then the coat.
+
+### dress-tess 2026-10-16: jeans draft sim on the approved body (v86; Joe approved body/tess = dt_tess v86)
+- dj8 (stage_q_j8_225454: rented coarse + fine settle, preflight 3.3 mm min edge distance): integrity 0 crossings, nothing
+  crumpled. Checklist (jm8.py: hem from the pattern's own bottom edge, knee / thigh by exact section vs the body):
+  hem half-girth L 190.8 / R 184.8 (175-215 PASS); knee ease 19.9 / 19.5% (15-30 PASS); thigh ease 11.2 / 12.2% (6-15
+  PASS; z 0.715 = knee + 0.25: no crotch joint); hem / knee 0.935 / 0.908 (0.9-1.05 PASS, R near the edge); hem front /
+  back 95-98 / 57-59 mm over the floor (on the shoe). FAULTS: 19 of 579 sewn pairs open after clean-up, widest yoke.R
+  17 mm and the waistband 18 mm (both under the sweater hem: hidden in the concept, still a construction fault to fix
+  before export).
+STATE: jeans draft read PASS on the measured items. NEXT: sweater big read (ds32), then coat (dc16).
+
+### (cherry-picked 22d53eda, dress-garrett's note)
+## Handover 2026-10-15 p (dress-garrett; 70-call clock)
+- (1) j15 start = base hps + notch placement + cap rule + underarm 0.035 (the j8 allowance), placement only (BROKER
+  run.py, jacket over pinned dg_s6; $G/runp.py = run.py printing B["sleeve_set"]; HP_DEBUG_ARM=1 for the cylinders):
+  - sleeve_set {top: 0.0}: at 0.035 the cap (75%) is high enough, so notch placement does nothing here (as asked).
+  - As handed over (job_1a286cd4581c6256): longest gap 126 mm top.L-under.L, self check FAIL (side.R 0.78 / 0.88 mm):
+    notch placement did NOT cure the self check. Armhole bottom 1300 = 62 mm under the armpit (j8's 62).
+  - (2) the sleeve pairing, diagnosed ($G/tu.py: seam pairs by angle round the arm): the UNDER sleeve was pushed out
+    round the arm on its own by the push-out rounds (its corner at the armpit; the body isn't radial to the arm there):
+    R 59 -> 78 -> 97 -> 121 mm while the top stayed at Rp 88, both sleeve seams ~75 deg apart (j8: ~55 deg, 82 mm).
+    FIX (cloth._sleeve_push_out): a piece aligned to another on its arm is never pushed out alone; its local push is
+    left to the clearance pass. Test tests/test_tooling.py test_aligned_under_sleeve_is_not_pushed_out_alone.
+    After: sleeve seams 83-86 mm (j8 90-92). Longest gap now back.L-side.L 111 mm (j8 100): a torso seam, from the
+    base-hps draft (present before the fix too). Per pair: $G/pairgap.py <job keys>.
+  - Self check: the crushed pairs are the side panel's armhole bottom (z 1.30, edges at 0.11 x) and, after the fix,
+    the under sleeve's front corner at the armpit (0.66 mm, a Z-press). Added cloth._self_crushed / _uncrush /
+    _unstack after the clearance pass (open crushed edges to 0.5 x, lift same-facing pairs to 1.5 mm, only round the
+    self check's pairs). On the jacket: self check ok. But on Tess's jeans (whose start RAN) it raised the start
+    stretch 0.04 -> 0.35 even when local: their sub-1 mm pairs (my mask is ~made_v, the preflight also skips
+    carryIdx / fold rings: that difference is the next thing to read) are harmless. So it is OFF by default:
+    HP_UNCRUSH=1 turns it on. Underarm 0.040 (not asked): sleeves 84, back-side 93, one pair at 0.96 mm.
+- (4) Regression (place_only, $G/regr.py; old = 7f41b098 in $G/oldsrc): defaults on the new code = old on
+  dg_garrett:shirt (101 mm, p95 92, stretch 1.067) and dt_tess:jeans (185 / 157 / 0.04); jeans' start arrays
+  byte-identical (only the key, which hashes the code, moved: I copied job_0b4e1e25's out.npz into job_8be5228f so
+  the layers over them can place). Sweater / coat need the jeans' / sweater's sims under the new key: the sweater's
+  new start NOT compared (old: 119 mm cuff-cuff, p95 74). wf_/pd_/ga_ gates not run. ga_tess has no cloth key.
+- (5) probe dg_probe_s8_base: still QUEUED on NICO-TOP (~1 h) when this session stopped. Not read.
+- No sim run, $0 (day ~$2.39 of $5).
+STATE: j15 start (HP_UNCRUSH=1, underarm 0.035): longest gap 111 mm (<= 120), preflight body 7.1 mm ok + self ok,
+armhole 62 mm under the armpit (= j8). Ready for the ONE approved rented sim; not submitted (calls).
+NEXT: (a) submit j15 with HP_UNCRUSH=1 (same command as dg_j15j35 in $G, without BROKER, under the submit opt-in),
+measure the hang against j8 (hem |x| 59/74, waist 51/60, chest 74/78): PASS -> j15 base, finish by hand; FAIL ->
+STUCK; (b) the sweater regression (needs the jeans sim under the new key, or pin); (c) why the jeans' pairs are
+harmless (mask vs preflight skips), then UNCRUSH on by default; (d) probe logs; (e) armhole depth later.
+- Late check: with the defaults (HP_UNCRUSH off) jeans read 220 / 165 / 0.045, but dt_tess/spec.json was edited at
+  22:53 by dress-tess mid-run (history 0086): not comparable. The align-fix-only run on the unedited spec matched old
+  exactly. Re-run regr.py on a frozen copy of dt_tess next time. HP_UNCRUSH=1 jacket start = job_8d2453a84a44a9d7.
+
+## dress-garrett 2026-10-15 q (in progress)
+- j15 rented sim (HP_UNCRUSH=1, job_8d2453a84a44a9d7) FAILED at frame 0, $0.0014: "ccd failed (toi 0)". Cause = ZOZO's
+  strain limiter (strain_toi.kernel: a face starting at / past its limit returns SL_toi 0), not a contact pair.
+  cloth_zozo gives over-limit draped triangles a local limit only while they are <= start_over 3% of the cloth: j15
+  3.47% over 5% (217 faces; worst side.R armhole bottom 1.42x, front shoulders z 1.47-1.50 1.26-1.39x) -> no local
+  limit -> fail. Every base-hps j15 variant 3.23-3.47% (uncrush adds ~14 faces). j8 (ran) 2.27%, 0 past.
+- Shirt probe dg_probe_s8_base, the frame-0 "pair": the same limiter. Base-hps shirt 3.04% (OFF), worst front.R at the
+  neckline z 1.52, 4.25x = the solver's max_sigma 4.252; s8 2.50% (on) with 31 faces past the 100% cap (s5 / s6 ran with
+  26-28: s8 is marginal there). Tool: $G/slstart.py <job dirs>.
+- cloth_job.start_strain_check (replays cloth_zozo's limits without editing it) in preflight; run_zozo now refuses a
+  PAID submit whose start fails preflight (HP_SKIP_PREFLIGHT=1 overrides). Test test_preflight_fails_a_start_past_the_
+  strain_limiter. On real jobs: j15 FAIL, base shirt FAIL, j8 / s6 ok.
+- Coordinator: NOT start_over (solver tuning); the base-hps draft no longer fits at the shoulders / neckline / armhole
+  bottom: diagnose pattern edge vs body path, fix in the draft from the base-of-neck ring, relax only a residual.
+
+### dress-tess 2026-10-16: sweater / coat HELD (coordinator: the base hps draft fault); starts checked with the strain preflight
+- The sweater big read ds32 had gone up (batch 01112f3a, preflight body 3.02 mm) when the HOLD came: CANCELLED while
+  sewing, $0.0045 (job_8ead4ecea535cb98_sim stays in sent.txt: it re-keys anyway once the draft fix lands).
+  Spend this session: jeans $0.0345 + $0.0086, sweater cancel $0.0045 = ~$0.048.
+- 22d53eda cherry-picked as a2a2dc6c (cloth_job.preflight / start_self_check / start_strain_check; the run_zozo paid
+  gate + its test NOT taken: they need an earlier dress-garrett commit; stage.sh already refuses a failing preflight).
+- Starts (pfs.py / pfself.py <job dirs>; coat placed ALONE with over=null, BROKER=1: dc16x, job_56b6adee0468fda6):
+  sweater (job_8ead4ecea535cb98): STRAIN ok (0 faces over; worst hem_band 1.26x, knit); SELF FAIL 226 pairs (sleeve.L / R
+  108 each at 0.0 mm, neckband 10). The SAME self FAIL is on sweater starts that RAN (job_de98b675f1d137fa 194 pairs,
+  job_36691414a12d4957 186; same sleeve vertices): a false positive on the knit sleeve (cap kept at the armhole, sewn
+  crossings allowed; one-piece tube), not a new fault. The check is calibrated on wovens only: needs a knit / tube
+  exemption (dress-garrett's code: ask before changing it).
+  coat (sim_collar false, no sweater under it): STRAIN ok (30 faces over = 0.37%, local limit ON, 0 past, worst back.L
+  1.21x, fronts 1.13-1.16x at the neck / shoulders: the base-hps neck fault shows, but under the limiter); SELF FAIL 10
+  pairs, sleeves at the front armhole 0.36-0.45 mm (z 1.14-1.15). Not yet compared with c15's start.
+  jeans (job_c556c6ad86e798b3, ran): all ok.
+
+### Handover 2026-10-16 23:40 (dress-tess; 70-tool-call stop)
+STATE: body APPROVED by Joe (body/tess = dt_tess v86: w0.5, muscle 0.4, style.human limbs 1 / hips 1 / waist 0.95 /
+chest 0.97, base.body shoulders 0.62). Base-of-neck hps (ba598fa4) + strain preflight (a2a2dc6c) cherry-picked. Garments
+re-drafted on v86 (jeans knee 0.208 / hem 0.197; coat construct sim_collar false; sweater s31 unchanged). Jeans draft
+dj8 SIMULATED: hem / knee / thigh / hem-knee PASS; open seams yoke.R 17 mm + waistband 18 mm (hidden) FAULT. Sweater /
+coat sims HELD for dress-garrett's draft fix (neckline / neck width from the base ring). No renders, no review yet.
+NEXT: when dress-garrett's draft fix lands (main or its worktree commit, coordinator says which): cherry-pick, tests,
+re-place sweater (q_s32.txt, new tag) + coat (q_c16.txt), pfs.py both (self-check false positive on knit sleeves:
+compare with the ran starts as above; strain must be ok), then rented sweater big read (stage.sh), coat draft (hem gap
+decides the front width; coatgap.py), one NICO-TOP render batch (--stage) for jeans + sweater + coat, bin/review blind.
+
+### dress-tess 2026-10-16: jeans open seams (yoke.R 17 mm, waistband 18 mm): cause = waistband PLACEMENT, fixed
+- Read (scratch seamdiag.py / seamdiag2.py / seamdiag3.py / flyx.py, dj8's cached build): PATTERN lengths match
+  (waistband sewn edge 787.6 = waist chain 787.6 mm, every piece; yoke.a>yoke.b back 242.2 / yoke 246.5 on BOTH sides).
+  The yoke L / R start gaps are mirror images (arc +-10.2 mm, dz 18.4), but L closed and R stayed open: not the yoke.
+  The waistband START was turned 20.4 mm (median arc offset of its pairs) round the waist from the edge it is sewn to;
+  after the sim the whole back sat turned to +X: CB seam at x +13 mm, yoke CB +16 mm. The turn sheared yoke.R off
+  back.R (gap vector x +10 mm) and left the waistband's CB pairs 17-18 mm off the yoke corners.
+- Cause: garment_blocks.generate centres a lapped band on its WHOLE length (chain + 40 mm extension), and the torso
+  placement lays the piece's x = 0 at the wrap start (CB): the sewn chain's middle was lap / 2 = 20 mm off it.
+  Fix: the generator adds wrap "shift" = -(chain middle) (either extension side). Test: test_pattern_tailor
+  test_crease_fly_and_front_waistband (shift = lap / 2; the other way for an underlap at the start).
+  New jeans start (wbstart.py, place_only): waistband arc offset p10/50/90 -63 / 0.0 / +63 (was -84 / -20.4 / +41).
+- Affects every lapped torso band (draft waistbands, skirt_block): their starts re-key.
+STATE: cause in placement, fixed + test. NEXT: coordinator's HPS revert + 9b6a7a24, re-place all three, preflight,
+jeans re-sim (approved: placement cause) with the sweater / coat.
+
+### dress-tess 2026-10-16: HPS back to "widest" (coordinator decision) + knit self-check fix
+- ba598fa4 (base-of-neck hps cherry-pick) REVERTED (5873db6a): the coordinator set the hps default back to the widest
+  neck-loop point, the definition every garment that hung right was drafted on; the base-of-neck hps is parked as
+  opt-in research on dress-garrett's branch until its neckline draft is ready. Body v86 stays as approved (the hps
+  doesn't move the body; the v86 shoulder numbers above were read with the base hps only).
+- 9b6a7a24 cherry-picked (eadcf297): start_self_check treats a sewn vertex on the faces one ring from its own sew
+  partner as a seam closing (knit one-piece sleeve tubes: the sweater's 186-226 false pairs).
+
+### dress-tess 2026-10-16: jeans made pieces vs the reference (tess_jeans.json; concept crop at the waist)
+- SEEN: the fly's topstitched J line (gold, just under the sweater hem), the fly closure (front.L over front.R).
+  Built: closure "fly" (zip, 12 of 12 closed) + fly_stitch line on front.L; to check on the drape: the J line reads in
+  the texture / normal map at a waist close-up under the sweater hem (thread #b8843a). Nothing to model.
+- HIDDEN (cannot_show: under the sweater hem and the coat): waistband (sim piece, button + hole stitched), belt
+  loops, back pockets (sim pieces, seated), rivets, side seams at the hip. Belt loops / rivets: INFERRED for 5-pocket
+  jeans, not built (never seen in the concept or the game camera with the sweater down); listed so it's decided.
+- Plan on the drape: no new made pieces. After the jeans re-sim: waist close-up (J stitch visible, waistband seams
+  closed < 3 mm) as part of the one NICO-TOP batch.
+- Tests after the waistband fix + hps revert + 9b6a7a24 (one file per process): folds 13, cloth 30, layers 13,
+  closures 13, check 1, workflow 20, draft 9, styles 8, tailor 21, collar 6, seams 5, reference 12, suit7 6, suit8 6,
+  made 17, heldcollar 3, precache 5, body_check 7: all pass. test_tooling: 2 FAIL, pre-existing, not from these
+  commits: test_set_in_sleeve_is_set_by_its_underarm_notch / test_aligned_under_sleeve_is_not_pushed_out_alone came
+  in with a2a2dc6c but their functions (cloth._sleeve_notches / _sleeve_push_out) are dress-garrett's sleeve code,
+  not in this branch. Self-check tests (incl. the tube one) pass.
+STATE: code settled for the stage. NEXT: stage q_all9.txt (dj9 jeans -> ds33 sweater -> dc17 coat), rented, preflight
+per batch (stage.sh refuses a failing start).
+
+### dress-tess 2026-10-16: stage q_all9 (dj9 jeans -> ds33 sweater -> dc17 coat), rented; stopped at the sweater gate
+- Scratch stage2.sh = stage.sh + cloth_job.preflight (pfs.py: body + self + strain) on every batch (stage.sh only
+  checked body clearance). Jeans dj9 (job_2acc944221baae96 sim + fine settle; preflight ok: body 3.31 mm, self ok,
+  strain 0 over): integrity 0 crossings; hem half 187.7 / 185.4 (PASS), knee ease 19.3 / 19.5% (PASS), thigh 11.5 /
+  11.1% (PASS), hem / knee 0.925 / 0.911 (PASS); hem 95-99 / 56-59 mm over the floor. OPEN pairs 19 -> 9 of 579:
+  yoke.R CLOSED (the waistband turn was its cause); the waistband still open at the CENTRE BACK only, now symmetric
+  (yoke.L / yoke.R CB corners 15.8-16.3 mm off the waistband; dj8: 17-18 one-sided) + pocket scoop.R 1.6 mm.
+- The remaining CB gap, diagnosed (not fixed): the back / yoke's waist corner at the CB seam is 104.5 deg, not square.
+  Two such corners sewn at CB make the waist line dip in a V (gap vector: yoke corner 14 mm LOWER and 8 mm behind the
+  straight waistband). Pattern makers square the waist off the CB seam (90 deg, blended into the side). Source:
+  pattern_blocks.trouser back: cWaist at (cin 0.035, up 0.02), straight to dartA / sideWaist; with waist_drop 0.07
+  the short waistToSeat leans the CB seam more. FIX (next session): the back's (and front's) waist leaves cWaist square
+  to the centre seam (a short curve into the first waist point); test: corner angle 90 +- 2 at cWaist of the trouser
+  back with and without waist_drop, then the jeans start + one jeans re-sim (cause in the pattern: approved rule).
+- Sweater ds33 start (job_d9c250882c09e834, now under the widest hps): body 3.00 mm, STRAIN ok (0 over, hem_band 1.24x),
+  SELF FAIL 1 pair: back, at x 0.169 z 1.216 (the armhole bottom), 0.45 mm, 5 edges < 0.25 mm. The knit-tube false
+  positive is gone (226 -> 1); this one is at the armhole bottom like dress-garrett's crushed side-panel pairs. stage2
+  REFUSED the batch (nothing submitted). Coat not reached (it is over the sweater).
+- Spend this session: jeans sim + fine settle (2 small jobs, ~$0.04; see bl logs stage_q_all9_233258.r1 / 234035.r1).
+- Scratch tools: seamdiag.py (pattern length vs start / sim / final gap per seam), seamdiag2.py (per-pair arc map of a
+  multi-piece seam; dumps out/seams_<g>.npz), seamdiag3.py (gap vectors + offset over the body), flyx.py (waist ring
+  turn: CB seam x), wbstart.py (place_only start offsets), stage2.sh.
+
+### Handover 2026-10-16 (dress-tess; 70-tool-call stop)
+STATE: waistband start turn fixed (2104ff41, test); hps reverted to widest (5873db6a, coordinator); knit self-check
+cherry-picked (eadcf297); tests green except 2 pre-existing test_tooling sleeve tests (dress-garrett functions not
+here). Jeans dj9 simulated: all measured items PASS, yoke.R closed, waistband CB 16 mm open (pattern: CB corner
+104.5 deg). Sweater ds33 start: self FAIL 1 pair at the armhole bottom (0.45 mm): refused, $0. Coat not placed.
+NEXT: (1) square the trouser waist at CB (pattern_blocks.trouser) + test, jeans re-place + one re-sim; (2) the
+sweater's armhole-bottom self pair: read it (pfself.py), fix in the draft/placement or ask dress-garrett whether
+_uncrush (HP_UNCRUSH) is the tool; (3) then stage2.sh q_all9.txt (new tags) for sweater -> coat; (4) one NICO-TOP
+render batch with --stage + bin/review blind; waist close-up for the fly J stitch.
+
+### dress-tess 2026-10-16: trouser waist squared to the centre seam (jeans CB waistband gap cause)
+- Measured (scratch corner.py, dt_tess jeans flat pieces): yoke.L/R waist corner at CB 104.5 deg, front.L/R 95.0.
+  Two causes: (a) pattern_blocks.trouser drew a straight waist from cWaist on a leaning centre seam (cin / up, more
+  lean with waist_drop's shorter waist-to-seat); (b) the jeans yoke's take_in slides its CB end in level, which tilts
+  the yoke's CB above it another ~6 deg (the block fix alone left the yoke at 96.5-98).
+- Fix: (a) the block's waist leaves cWaist square to the cWaist-cSeat line for 12 mm, then a Bezier blends into the
+  waist (front and back, darted or not); (b) new draft op `square` (pattern_draft.op_square: an edge's first `straight`
+  m turned about the corner to `angle`, easing out by `blend`) and the jeans yoke detail (garment_kb darts.yoke)
+  runs {"op": "square", "piece": "yoke", "corner": "cWaist", "edge": "cWaist>sideWaist"} after its style line.
+  After: yoke 90.0 (5 mm) / 91.1 (15 mm) / 95.7 (30 mm, the blend); front 90.0 / 90.8.
+- Test: test_pattern_tailor test_trouser_waist_is_square_to_the_centre_seam (block with / without waist_drop, darted,
+  and the jeans yoke + fronts: 90 +- 2 deg; seams consistent). Cloth / pattern test files all pass (body_check 6,
+  cloth 30, check 3, heldcollar 2, layers 13, made 16, precache 5, reference 12, workflow 20, collar 6, draft 10,
+  styles 8, tailor 22, seams 5, suit7 6, suit8 6).
+STATE: pattern fix + test committed. NEXT: jeans preflight on the new start, one rented jeans re-sim (dj10).
+
+### dress-tess 2026-10-16: jeans dj10 (squared waist) simulated: CB waistband still OPEN -> FAIL on the target
+- One rented re-sim (stage2.sh q_j10.txt; job_52b235eb506121a1 sim $0.0483 + fine settle $0.0090 = $0.057; day ~$2.61).
+  Preflight ok (body 3.31 mm, self ok). Integrity 0 crossings. Open pairs 12 of 579 (dj9: 9): waistband / yoke.L 15.5,
+  yoke.R 15.3 mm (dj9 15.8-16.3), pocket scoop.R 1.6 mm. Leg items not re-measured yet (jmeas.py; legs unchanged).
+- Read (seamdiag2.py on a FRESH dump: out/seams_jeans.npz was dj9's and is kept as seams_jeans_dj9.npz: delete the npz
+  before re-reading a new sim; cbrise.py, cbrise2.py): the yoke CB corners now reach the band (yoke CB top z 0.954, band
+  0.955); the open pairs are 20-30 mm EITHER SIDE of CB, the yoke 13 mm below and 7 mm behind the band, and the yoke CB
+  seam is stretched 10% (strain limit), the back CB 3.5%. The corner angle was not the cause (or not the main one):
+  the CB is pulled down by a back rise too short for this body with waist_drop 0.07 (start gap at those pairs 83-91 mm:
+  the leg-wrapped yokes start far below the torso-wrapped band; the band, a closed interfaced ring, holds the waist).
+- The squaring stays (a real drafting rule, front + yoke 90 deg, tested), but it did not close the seam.
+NEXT for (1): measure the back rise (cWaist>cSeat>fork, + the yoke's CB) against the body's CB waist-to-crotch at the
+  dropped waist (the body's back tape) and raise the back's CB ('up', the seat angle) by the shortfall; place_only and
+  check the start gap / CB stretch before any sim (no sim without coordinator approval: the one approved re-sim is spent).
+NEXT for (2), read this session (armpair.py): ds33's single self pair is the BACK at the left armhole bottom
+  (v 434, x 0.169 z 1.216, 0.73 mm off its own sheet, facing 0.45), edge 434-457 squeezed to 0.18 x its pattern length;
+  not sewn, not a sleeve. s31 (ran) had the same squeeze on the right (0.225 x) without a pair. Cause = the clearance
+  pass squeezing the back in plane into the armpit hollow (dress-garrett's j15 diagnosis). Plan: port ONLY 939057e7's
+  _self_crushed / _uncrush / _unstack (HP_UNCRUSH, opt-in) and _sleeve_push_out (identical to the inline code for a
+  piece without "align": a one-piece knit sleeve is unaffected); NOT cf58214f's notch-set sleeves (it also re-drafts
+  jacket cap heights: the coat would change). Both apply only with conflicts (context: _sleeve_notches missing):
+  port by hand, then re-place the sweater with HP_UNCRUSH=1 and accept only if the self check passes AND the start
+  stretch doesn't rise vs ds33. test_tooling: the push-out test then passes, the notch test stays failing (noted).
+
+### Handover 2026-10-16 00:40 (dress-tess; 70-tool-call stop)
+STATE: trouser waist squared at CB (ba0c5b71, test, all cloth / pattern tests green). Jeans dj10 simulated ($0.057):
+CB waistband still open 15.5 mm = FAIL; cause now read as a short back rise (yoke CB stretched 10%), not the corner.
+Sweater self pair read (back, armpit squeeze); uncrush port planned, not done. Coat, renders, review not reached.
+NEXT: (1) back rise vs the body's CB tape, raise the back CB, place_only check, ask the coordinator for the jeans re-sim;
+(2) hand-port 939057e7's uncrush + _sleeve_push_out, sweater HP_UNCRUSH=1 re-place, pfs.py; (3)-(4) as before.
+
+### dress-tess 2026-10-16: jeans back rise measured against the body (no sim); CB waistband closed by hand on dj10
+- Back rise vs the body's tape (scratch cbtape.py, FRESH out/seams_jeans.npz; body x = 0 section, crotch point z 0.767):
+  back (yoke CB 83.0 + back CB 211.1) = 294.1 mm vs the body's CB tape from the drape's waist seam (z 0.954) 274.3 mm:
+  ease +19.8 mm (7.2%); front (CF 105.6 + 122.5) = 228.1 vs 207.9: +20.2 mm (9.7%); total crotch ease +40 mm. The fork
+  sits 4 mm below the crotch point. So the back rise is NOT short against the tape: no block change. What the drape shows
+  instead: the CB stands 12-14 mm off the body round the seat (vertex distance), so its 3D path band -> fork is 310 mm
+  (yoke CB stretched 10%, back CB 3.5%) vs the front's 233 mm (2-3%): the back has the same ease as the front where a
+  jeans back usually carries more (seat). Candidate for the NEXT jeans sim only (not done, needs the coordinator): ~+15
+  mm on the back's CB rise ('up'), measured against this drape path, not the tape.
+- Hand finish (scratch fin/prep_j.py pickles dj10 as the scene gets it; fin/run_j.py, one guarded `close` move): every
+  waistband-seam pair gets a displacement field (band side 30% of the gap, yoke / front side 70%; normalised Gaussian
+  over the seam's own pairs, sigma 15 mm, so closed pairs carry ~0; smoothstep falloff 90 mm on the side pieces, 40 mm
+  on the band); touched seam groups snapped to their mean (sewn vertices end as one point), cleared over the body
+  SURFACE (render thickness 1.0 + 3 mm), snapped again; refused if body / self crossings rise, any seam opens > 0.5 mm
+  or a moved vertex is under its margin. jc1: 292 verts moved (band 73), max 9.7 mm; waistband seam max 15.5 -> 0.0 mm;
+  body crossings 61 -> 61, self 0 -> 0; moved-face edge length ratio p5 / p95 yoke 0.85 / 1.18, band 0.88 / 1.17.
+  Wider falloffs (130 / 160 mm) spread the strain (0.89-0.92 / 1.08-1.10) but reach the back pockets: self 0 -> 54 / 173,
+  REFUSED by the guard. jc1 applied as cloth.jeans.sculpt (key 52b235eb506121a1, 270 verts moved > 0.2 mm).
+STATE: jeans CB closed on the drape (hand finish, hidden under sweater + coat). NEXT: sweater uncrush port (step 2).
+
+### dress-tess 2026-10-16: sweater start self pair cleared (939057e7's uncrush hand-ported, HP_UNCRUSH_TO=0.35)
+- Ported by hand from dress-garrett 939057e7 (no notch-set sleeves): `_sleeve_push_out` (identical for a one-piece knit
+  sleeve), `_self_crushed` / `_uncrush` / `_unstack` and the opt-in start pass round the self check's pairs (HP_UNCRUSH=1).
+  test_tooling: test_aligned_under_sleeve_is_not_pushed_out_alone PASS; test_set_in_sleeve_is_set_by_its_underarm_notch
+  still fails (`_sleeve_notches` not ported, on purpose: it re-drafts jacket caps).
+- Start stretch (scratch stst.py: largest principal stretch per triangle, X vs uv of the job's in.npz; pfs.py = preflight):
+  | start | uncrush | self | stretch max (where) | near the armhole bottom |
+  | ds33 (old jeans) | off | FAIL (1 pair) | +0.244 hem band | 0.14-0.17 |
+  | ds34 | 1, to 0.5 | ok | +0.303 BACK at the armhole bottom | 0.30: REJECTED |
+  | ds35 | 1, to 0.35 | ok | +0.248 hem band | <= 0.23 |
+  | ds36 (control) | off | FAIL | +0.248 hem band | - |
+  Offline on ds33's start (uncx.py): to 0.5 -> 0.308 there, to 0.35 -> 0.244 overall (unchanged), crushed 0. The 0.004
+  rise ds33 -> ds35 is the hem band over the hand-finished jeans (ds36, no uncrush, has the same +0.248), not the uncrush.
+  So against the coordinator's literal criterion ds35's max is 0.004 HIGHER than ds33's; the uncrush itself adds none.
+- New: UNCRUSH_TO reads HP_UNCRUSH_TO (default 0.5 = dress-garrett's). The sweater is run with HP_UNCRUSH=1 HP_UNCRUSH_TO=0.35.
+STATE: ds35 start accepted on that evidence (preflight ok: body 3.0 mm, self ok, strain over 0). NEXT: stage2 q_sc.txt
+(sweater ds35 + coat dc18, rented), then measure; renders.
+
+### dress-tess 2026-10-16: sweater ds35 + coat dc18 big reads (rented): sweater integrity FAIL, coat front opening FAIL
+- One staged run (stage2.sh q_sc.txt, HP_UNCRUSH=1 HP_UNCRUSH_TO=0.35): sweater job_6c6d0e71c7bc882d sim $0.0296 + fine
+  settle $0.0102, coat job_4570f7cc1439ac01 sim $0.0261 (sim_collar false). Session spend $0.066.
+- SWEATER ds35 = FAIL (integrity): the report's crossings 64 (s31: 0). Read (scratch xs35.py, as the scene gets it):
+  vs jeans 51 verts (front 24, hem_band 27) at the FRONT hips (x +-0.12-0.16, y -0.17..-0.02, z 0.93-1.00, the jeans'
+  front waist / pocket scoops), IDENTICAL with and without the jeans' hand finish (the CB close is not the cause);
+  self 216 (hem_band 203); vs body 5 (sleeve.L at z 1.12). Open seams 12 of 484, max 1.5 mm (cuffs / underarm). The
+  start was clean (preflight ok), so the sim crumpled the hem band over the dj10 jeans' front waist. Not re-simulated:
+  the sweater is far past its sim budget; the coordinator decides (pattern: welt length / ease over the jeans' hip, or a
+  finish on the drape).
+- COAT dc18 = FAIL on front_opening (scratch coatgap18.py, cleaned result): front edge gap by height z 0.541 130 mm (hem,
+  target 180-380), 0.638 5, 0.736 24, 0.833 45, 0.931 74, 1.028 76, chest z 1.088 64 (target 120-220), 1.223 30. 0
+  crossings; lapel_gap [7.1, 3.3] mm (target 0-6); open seams max 1.3 mm. The fronts hang nearly closed below the
+  waist: this answers the front-width question toward NARROWER fronts (less front width / extension below the break),
+  for the coordinator.
+- Render batch a35 (rr/a35/run.sh, detached): packs coat / front / legs (jeans + sweater + coat, front + three) and the
+  jeans-only waist close-up (fly J stitch), BATCH dt-a35 on NICO-TOP, then rvunpack + rvpairs + three blind reviews
+  -> rv/a35/{coat,front,legs}/ (log rr/a35/run.log ends A35_DONE; rv/a35/ERROR on a failed wait). The waist crop
+  (out/rv_a35w_waist.png) is not reviewed blind: the reference's sweater covers the fly.
+- a35 renders done on NICO-TOP (free, ~1 min of render); blind reviews rv/a35/{coat,front,legs}/review.md: all FAIL.
+  My look first (rv/a35/coat/pair_0.png): coat hem near the crotch (ref: about the knee), fronts swung in to the centre
+  with buttons on the edge, A-line flare below, puffy pockets, thick "foam" edges. MAJORs grouped by cause:
+  | cause | MAJORs |
+  | coat PATTERN / placement | fronts almost closed + buttons on the opening edge (coat, front, legs); coat too short,
+    hem at crotch / upper thigh vs about the knee (coat, legs); A-line flare below the last button vs straight hang |
+  | coat MADE PIECES | collar / lapels: roll line too short, notch too high (front); hip + chest patch pockets oversized,
+    puffy, too high and forward (coat, front) |
+  | RENDER / shader | coat reads as thick rubber / foam: rounded swollen edges, no twill, no crisp creases (all three);
+    jeans charcoal-black satin, no indigo, no denim twill (legs); sweater knit a fine flat grid, no chunky relief (front) |
+  | jeans PATTERN (length) | hems pool over the shoes (ref: end on the trainer top, slight stack): contradicts the
+    measured hem-height PASS: the item needs re-reading against the reference |
+  | sweater PATTERN | fit too tight with vertical pulls (front) |
+  | OTHER STAGES | lanyard / badge missing; shoes are dark clogs vs grey lace-up trainers |
+  Shared causes first: (1) the coat's front width / extension + its length (one pattern change answers 4 MAJORs);
+  (2) render thickness / edge rounding of the coat + fabric maps (3 MAJORs on every crop).
+
+### Handover 2026-10-16 01:35 (dress-tess; 70-tool-call stop)
+STATE: (1) jeans: back rise measured vs the body tape (+19.8 mm back, +20.2 front: not short, no block change; drape
+path says the back is ~16 mm short of the front's share: candidate +15 mm 'up' for the NEXT jeans sim only); CB
+waistband CLOSED by a guarded hand move (fin/run_j.py jc1, 15.5 -> 0 mm, no new crossings), applied as cloth.jeans.sculpt.
+(2) uncrush ported (83c6e895), HP_UNCRUSH_TO=0.35; ds35 start self ok, stretch +0.248 (= control without uncrush;
+ds33 +0.244 over the unfinished jeans). Sweater ds35 simulated: integrity FAIL (64 crossings: hem band over the jeans'
+front waist, self 216 in the hem band). (3) coat dc18 simulated: front opening FAIL (hem 130 mm, chest 64 mm; fronts hang
+nearly closed). Spend $0.066. (4) render batch a35 + 3 blind reviews: FAIL, MAJORs grouped above.
+NEXT (coordinator calls): coat front width / extension narrower + length to the knee + less flare (pattern, then one
+draft sim); coat render thickness / edges; sweater hem band vs the jeans' front waist (welt ease / length, or a finish);
+jeans material colour; jeans hem length re-read. Waist close-up out/rv_a35w_waist.png (looked at): the fly J curve and
+the waistband / pocket stitch lines are there but read DARK and tonal, not gold (detail.thread #b8843a): FAIL on the
+gold J stitch (the thread colour does not reach the render: shader / detail-map cause, same group as the jeans colour).
+
+### dress-tess 2026-10-16: pattern round (coordinator calls 1-3): coat c19, sweater s32, jeans j7; one staged run
+- Concept measured at 1.24 mm/px (scratch tmp/concept_legs.png, concept_chest.png with pixel rulers; stature 1631 vs our
+  body 1636, so mm compare directly). Coat: hem y ~1050 = ~25 mm under the knee joint (knee ~y 1030 by proportion);
+  front gap chest ~150 mm, waist ~175, hem ~260; coat width hem / hip line 527 / 533 (straight, 0.98); break ~242 mm under
+  the HPS; notch ~70 mm under it, ~108 mm out from CF; lapel ~56 mm; chest pocket top ~188 mm under the HPS, 60-100 wide;
+  hip pocket top ~430-445. Jeans: front hem ~109 mm above the floor (laces show), sides ~90-100.
+- dc18 measured (scratch cm.py <tag>, the coat's items vs the knee): front hem 81 mm ABOVE the knee (z 0.546, knee 0.465),
+  back hem 33 mm lower than the front; hem / hip width 1.11 (flare); gap hem 4, mid-thigh 20, hip 58, chest 64.
+- Coat c19 (scratch c19.json, ONE pattern change for the 4 MAJORs): length 0.97 -> 1.05 below the HPS; fronts narrowed
+  (lapel extension 20 -> 10 mm; contour front side seam 35 mm into the front at the waist, 45 at hips / hem; back let out
+  10 mm: total chest ease unchanged at the underarm (+22%), hips +13%, seat +11% flat: worn open, the low girth makes the
+  fronts hang apart); lapel width 0.06, break 0.24, gorge drop 0.07; hip pockets 150 x 170 at [0.13, -0.47], chest pocket
+  85 x 105. Pattern checks pass (side seams 771 / 768 mm).
+- Sweater s32 (scratch s32.json): the body as its checklist says (straight relaxed tube; ds35 was FITTED, waist +18%
+  against the item's +25..+60): fitted off, chest 0.15 (+18.5% flat, band 12-22), waist +47%, hips 0.24; welt 0.80 -> 0.88
+  of the hem. Cause of the ds35 crumple: the welt's girth (sewn 854, free edge x0.92 = 786 mm) was SHORTER than the jeans'
+  drape girth under it (scratch jg.py on dj10: 790 mm at z 0.98, 836 at 0.94); now 939 / 864 mm. Placed underarm 1.9 cm.
+  Holding the band out of the sim (like sim_collar false) is not possible today: construct.bands rebuilds the band's own
+  vertices on the drape (made_band) but needs them in the simulated mesh; a held-out band = a separate made part (new
+  code, not done). ds35's front body piece also crossed the jeans (24 verts), so the band was not the only cause.
+- Jeans: the length item was WRONG (reviewer right): "front hem touches the shoe" passed with the hem over the vamp.
+  scratch jlen.py on dj10: front 81 / 88 mm above the floor, sides 54-56, back 51 (concept front ~109, sides ~90-100).
+  Item rewritten with that target (front 85-135, side 70-120). Coordinator approved one jeans sim: j7 length 935 -> 905 mm
+  from the waist. The CB waistband hand close must be redone on the new drape.
+- Checklists updated (workspace/checklists/tess_jeans.json, tess_labcoat.json; backups in scratch checklists/): coat
+  length_hem now vs the knee (-15..+65 mm under it), front_opening, lapel / notch, pockets from the concept, new item
+  straight_hang (0.92-1.05).
+- Staged run (scratch q_jsc.txt: dj11 jeans r1, ds37 sweater r2, dc19 coat r3; HP_UNCRUSH=1 HP_UNCRUSH_TO=0.35; log
+  stage_q_jsc.main.log). No src commits until it ends (the code hash is in the sim key).
+STATE: pattern round done, sims in flight. NEXT: measure dj11 / ds37 / dc19 (jlen.py, msw.py + xs35.py, cm.py), redo the
+jeans CB close, then the render / material batch (item 4) and ONE NICO-TOP review batch.
+
+### dress-tess 2026-10-16: staged run q_jsc results (dj11 jeans, ds37 sweater, dc19 coat; rented, $0.115 this run)
+- Jeans dj11 (j7, 30 mm shorter): hem above the floor L front 85 / side 78 / back 77, R 87 / 76 / 76 mm (target front
+  85-135, side 70-120): PASS on the numbers, front at the edge (the front still breaks onto the vamp: the shortening went
+  mostly to the sides / back). 0 crossings after the clean-up. CB waistband open again 15.8 mm: the hand close
+  (fin/run_j.py) must be redone on dj11 (not done).
+- Sweater ds37 (s32: unfitted, chest +18.5%, welt 0.88): CORRUPT, integrity FAIL: hem_band 25 crossings (was 64 / 51 vs
+  the jeans), 17% crumpled, first at x -0.13 y -0.10 z 0.92 (the jeans' front right hip). The sim itself ended with 0
+  crossings: they appear in the clean-up / construct (construct.bands -> made_band rebuilds the welt on the drape over
+  the jeans). Next suspect = made_band over the jeans' front pocket scoop (its `gap` / draw-in), not the pattern. Ease /
+  "vertical pulls" not judged yet (no render).
+- Coat dc19 (c19): length_hem PASS (front hem 17 mm under the knee, target -15..+65), hem level PASS (19 mm), straight_hang
+  PASS (hem / hip 1.02), 0 crossings. front_opening FAIL and WORSE: gap hem -4 (the fronts overlap), mid-thigh 5, hip 9,
+  chest 38 mm (dc18: 130 / 20 / 58 / 64). The narrowing hypothesis was wrong: taking girth out of the fronts (hip-level
+  coat width 467 -> 398 mm; the concept's is ~533) made the coat WRAP the hips tighter, so the fronts were pulled to CF.
+  The concept's coat is FULLER at the hip and its fronts hang straight down from the shoulders. Next (draft 3, the
+  coordinator's call): put the girth back (hips ease >= 0.25, front contour off, keep extension 10 mm, length 1.05) and
+  find what drags the fronts to CF in the sim (start open_gap, the lapel / facing pull, the collar held out).
+
+### Handover 2026-10-16 02:45 (dress-tess; 70-tool-call stop)
+STATE: pattern round + one staged run done (above). Jeans dj11 length PASS (front borderline), CB band open 15.8 mm.
+Sweater ds37 integrity FAIL (hem_band 25 crossings, made in the clean-up / made_band, not the sim). Coat dc19 length /
+level / straight hang PASS, front opening FAIL (fronts overlap). Checklists rewritten with measured targets (jeans
+length_break, coat length vs the knee, opening, lapel / notch, pockets, new straight_hang). Render items NOT done yet.
+NOT MERGED: main 43dcdf5a (dress-garrett: full preflight, notch sleeves, finish hook, spec-durable under.* keys,
+cloth.<g>.uncrush garment key). The run has ended, so merging is allowed now: merge main, reconcile 83c6e895 / a2a2dc6c /
+eadcf297 with main's versions, then set cloth.sweater.uncrush (HP_UNCRUSH=1, TO 0.35) as a spec key.
+Render / material causes (read-only trace, item 4; fix after the merge, then ONE NICO-TOP batch rr/a36 like rr/a35):
+- J-stitch thread dark: blender_cloth._material (~558-569) prefers the greyscale shade map x the flat colour over the
+  basecolor PNG (an elif): the gold thread in tex_*_basecolor never reaches Blender renders (only the glTF export).
+  Fix: use the basecolor map when present (or mix a thread mask over shade x colour).
+- Jeans charcoal satin: default sheen 0.3 (blender_cloth ~544 / 553) + specular default; roughness 0.85. Measured
+  concept jeans lit median RGB (31,37,42) thigh, (38,45,51) shin vs our dark pixels (40,41,47): ours too grey (B-R +7 vs
+  +11..13). Set jeans roughness 0.95, lower sheen (needs a key), a touch bluer base; no twill surface exists (slot it
+  beside the knit at cloth.py ~9353).
+- Coat foam: Solidify 0.6 mm (cotton_twill KB) is thin; the swollen look is all-smooth shading (no auto-smooth / edge
+  split) + made collar thickness 3 mm (cloth_made NOTCHED) + pockets 1.5 mm proud. Coat lit (226,222,217) concept vs
+  ours (211,210,207): warmer and brighter.
+- Sweater knit grid: V legs 0.14 wale wide (< a texel at 2048), normal strength 1.0, height map unused. Spec:
+  detail.texture 4096, knit depth 0.0018, jitter 0.25, trough 0.25, wale 0.0065, course 0.0055.
+NOT MINE (to the coordinator): the lanyard + badge (missing in renders), the shoes (dark clogs vs grey trainers).
+NEXT: (1) merge main + uncrush key; (2) the sweater welt crossings in made_band (measure where vs the jeans' scoop);
+(3) coat front-opening draft 3 (coordinator: girth back, find the CF drag); (4) jeans CB close on dj11;
+(5) render fixes + rr/a36 NICO-TOP batch + blind reviews, MAJORs grouped by cause.
 
 ## dress-garrett, 2026-10-15 (continued)
 - Merged main (7f472faf). Shirt review r1 on dg_s1 (simon defaults): FAIL. MAJORs: the collar a ring standing off the
@@ -3658,17 +4683,6 @@ hpsToSeatFront, the front balance) come from the armpit / waist levels, not the 
 armhole depth and front / back balance do not move when the hps moves 40 mm. Measure with the underarm check
 (target about 30 mm), then j15 (approved). The s8 probe and the trouser fleck probe need no money.
 
-## Pre-placement cache (2026-10-16, render1b agent)
-cloth.build caches its finished result under a key of its inputs BEFORE placement (`cloth.pre_key`: garment, body
-mesh + joints + key, the garment under it (sim key, pressed verts, its own pre_key), worn colliders, frames, the
-source of the whole package + json): `_cache/cloth/pre_<key>.pkl`, used only while the sim npz it names exists; a
-cached_only build that found no sim leaves `pre_<key>.miss` (that sim key), so an unsimulated garment isn't placed
-again. garments() / cached() memoise builds and body meshes for the call (the jeans were built 3x, body_mesh 6x).
-dt_tess COPY (jeans simulated, sweater + coat not): cloth-only garments() 464-657 s cold -> 13 s warm; jeans V,
-V_sim, X0, rest, mesh F/uv/piece and sim key identical to the old path. Any edit under src/hifipushie re-keys every
-pre entry once (the sim npz keys are unchanged); renders, `result=` and place_only always run; a pre hit doesn't
-replay build()'s log lines; HIFIPUSHIE_CLOTH_PRE=0 turns it off. tests/test_cloth_precache.py. Agents: merge main.
-
 ## Handover 2026-10-15 m (dress-garrett; 70-call clock)
 - Merged main (one Blender per job 01917898, pre-placement cache b9551475; d4cac458). Cloth tests one file per
   process: all pass (before and after the change below).
@@ -3787,58 +4801,6 @@ STATE: cap-height-by-kind + notch setting + align double-down fix in, tests pass
 Regression unread. NOT MERGEABLE until regr_new is no worse than regr_old.
 NEXT: (1) read regr outputs; (2) print B["sleeve_set"] / wraps for the jacket (add to run.py) and fix the top-under
 separation; (3) then j15 placement again, sim only if gap <= ~100 and underarm ~30; (4) probe logs; (5) footwear.
-
-## Handover 2026-10-15 p (dress-garrett; 70-call clock)
-- (1) j15 start = base hps + notch placement + cap rule + underarm 0.035 (the j8 allowance), placement only (BROKER
-  run.py, jacket over pinned dg_s6; $G/runp.py = run.py printing B["sleeve_set"]; HP_DEBUG_ARM=1 for the cylinders):
-  - sleeve_set {top: 0.0}: at 0.035 the cap (75%) is high enough, so notch placement does nothing here (as asked).
-  - As handed over (job_1a286cd4581c6256): longest gap 126 mm top.L-under.L, self check FAIL (side.R 0.78 / 0.88 mm):
-    notch placement did NOT cure the self check. Armhole bottom 1300 = 62 mm under the armpit (j8's 62).
-  - (2) the sleeve pairing, diagnosed ($G/tu.py: seam pairs by angle round the arm): the UNDER sleeve was pushed out
-    round the arm on its own by the push-out rounds (its corner at the armpit; the body isn't radial to the arm there):
-    R 59 -> 78 -> 97 -> 121 mm while the top stayed at Rp 88, both sleeve seams ~75 deg apart (j8: ~55 deg, 82 mm).
-    FIX (cloth._sleeve_push_out): a piece aligned to another on its arm is never pushed out alone; its local push is
-    left to the clearance pass. Test tests/test_tooling.py test_aligned_under_sleeve_is_not_pushed_out_alone.
-    After: sleeve seams 83-86 mm (j8 90-92). Longest gap now back.L-side.L 111 mm (j8 100): a torso seam, from the
-    base-hps draft (present before the fix too). Per pair: $G/pairgap.py <job keys>.
-  - Self check: the crushed pairs are the side panel's armhole bottom (z 1.30, edges at 0.11 x) and, after the fix,
-    the under sleeve's front corner at the armpit (0.66 mm, a Z-press). Added cloth._self_crushed / _uncrush /
-    _unstack after the clearance pass (open crushed edges to 0.5 x, lift same-facing pairs to 1.5 mm, only round the
-    self check's pairs). On the jacket: self check ok. But on Tess's jeans (whose start RAN) it raised the start
-    stretch 0.04 -> 0.35 even when local: their sub-1 mm pairs (my mask is ~made_v, the preflight also skips
-    carryIdx / fold rings: that difference is the next thing to read) are harmless. So it is OFF by default:
-    HP_UNCRUSH=1 turns it on. Underarm 0.040 (not asked): sleeves 84, back-side 93, one pair at 0.96 mm.
-- (4) Regression (place_only, $G/regr.py; old = 7f41b098 in $G/oldsrc): defaults on the new code = old on
-  dg_garrett:shirt (101 mm, p95 92, stretch 1.067) and dt_tess:jeans (185 / 157 / 0.04); jeans' start arrays
-  byte-identical (only the key, which hashes the code, moved: I copied job_0b4e1e25's out.npz into job_8be5228f so
-  the layers over them can place). Sweater / coat need the jeans' / sweater's sims under the new key: the sweater's
-  new start NOT compared (old: 119 mm cuff-cuff, p95 74). wf_/pd_/ga_ gates not run. ga_tess has no cloth key.
-- (5) probe dg_probe_s8_base: still QUEUED on NICO-TOP (~1 h) when this session stopped. Not read.
-- No sim run, $0 (day ~$2.39 of $5).
-STATE: j15 start (HP_UNCRUSH=1, underarm 0.035): longest gap 111 mm (<= 120), preflight body 7.1 mm ok + self ok,
-armhole 62 mm under the armpit (= j8). Ready for the ONE approved rented sim; not submitted (calls).
-NEXT: (a) submit j15 with HP_UNCRUSH=1 (same command as dg_j15j35 in $G, without BROKER, under the submit opt-in),
-measure the hang against j8 (hem |x| 59/74, waist 51/60, chest 74/78): PASS -> j15 base, finish by hand; FAIL ->
-STUCK; (b) the sweater regression (needs the jeans sim under the new key, or pin); (c) why the jeans' pairs are
-harmless (mask vs preflight skips), then UNCRUSH on by default; (d) probe logs; (e) armhole depth later.
-- Late check: with the defaults (HP_UNCRUSH off) jeans read 220 / 165 / 0.045, but dt_tess/spec.json was edited at
-  22:53 by dress-tess mid-run (history 0086): not comparable. The align-fix-only run on the unedited spec matched old
-  exactly. Re-run regr.py on a frozen copy of dt_tess next time. HP_UNCRUSH=1 jacket start = job_8d2453a84a44a9d7.
-
-## dress-garrett 2026-10-15 q (in progress)
-- j15 rented sim (HP_UNCRUSH=1, job_8d2453a84a44a9d7) FAILED at frame 0, $0.0014: "ccd failed (toi 0)". Cause = ZOZO's
-  strain limiter (strain_toi.kernel: a face starting at / past its limit returns SL_toi 0), not a contact pair.
-  cloth_zozo gives over-limit draped triangles a local limit only while they are <= start_over 3% of the cloth: j15
-  3.47% over 5% (217 faces; worst side.R armhole bottom 1.42x, front shoulders z 1.47-1.50 1.26-1.39x) -> no local
-  limit -> fail. Every base-hps j15 variant 3.23-3.47% (uncrush adds ~14 faces). j8 (ran) 2.27%, 0 past.
-- Shirt probe dg_probe_s8_base, the frame-0 "pair": the same limiter. Base-hps shirt 3.04% (OFF), worst front.R at the
-  neckline z 1.52, 4.25x = the solver's max_sigma 4.252; s8 2.50% (on) with 31 faces past the 100% cap (s5 / s6 ran with
-  26-28: s8 is marginal there). Tool: $G/slstart.py <job dirs>.
-- cloth_job.start_strain_check (replays cloth_zozo's limits without editing it) in preflight; run_zozo now refuses a
-  PAID submit whose start fails preflight (HP_SKIP_PREFLIGHT=1 overrides). Test test_preflight_fails_a_start_past_the_
-  strain_limiter. On real jobs: j15 FAIL, base shirt FAIL, j8 / s6 ok.
-- Coordinator: NOT start_over (solver tuning); the base-hps draft no longer fits at the shoulders / neckline / armhole
-  bottom: diagnose pattern edge vs body path, fix in the draft from the base-of-neck ring, relax only a residual.
 
 ## Handover 2026-10-15 q (dress-garrett; 70-call clock)
 - (1) j15 rented sim submitted as approved (HP_UNCRUSH=1, $G/q_dg_j15s.sh, job_8d2453a84a44a9d7): FAILED at frame 0,
@@ -4258,6 +5220,266 @@ each through the finish hook or construct options, measured first ON BOUNDARY VE
 - Merged to main squashed (see RESTART.txt for the commit). STATE: j17b waits on Joe's look. NEXT: jacket MINORs
   (handover v (b)).
 
+### dress-tess 2026-10-16 (fresh session after the 02:45 handover): merge, keys, J-stitch, diagnoses (no sims, $0)
+- Merged origin/main 43dcdf5a (28dd57b9). Main's `uncrush` garment key replaces our hand-port; extended to
+  `"uncrush": {"to": x}` (cloth.uncrush_to; the build carries `uncrush_to`; env HP_UNCRUSH_TO only as a fallback; validated
+  0.3 < to <= 1). dt_tess cloth.{jeans,sweater,coat}.uncrush = {"to": 0.35}, which is how the q_jsc run ran, by env, for
+  all three. Our NICO-TOP job (a job.json per r_<name>/) is now spikes/offload/job_clothjobs.py; fin/rvpack.py points to
+  it, and main's sheet job keeps job_clothrender.py. All 23 cloth / pattern / tooling test files pass, one per process ($G/tests.sh).
+- Main re-keyed every design-drafted sim: the design compile now writes pattern "kind", and the sim key hashed it as
+  well as the draft it produces (inputs). Fixed in c33523b4: "kind" is dropped from the garment-dict part. The jeans dj11
+  (b42a9f4361767be4) and the sweater ds37 (f632a4a90f1e5be4) hit their cached sims again. The coat dc19 still MISSES:
+  main's code changed its draft or start (kind "coat" drafting defaults or notch-set sleeves). Draft 3 re-sims it anyway.
+  Its measured prediction must be taken on the NEW start.
+- Render item J-stitch FIXED in code (2ce1de6d): blender_cloth.base_source picks the basecolor PNG when it exists, and the
+  shade map x flat colour only when it doesn't; test_tooling covers it. Not rendered yet.
+- Sweater welt crossings, cause found ($G/capbands.py captures construct_bands' inputs past the pre-placement cache into
+  out/bands_in.pkl; $G/bandfix.py rebuilds the welt offline in 4 s):
+  (a) made_band clears the WRONG jeans. The under garment it gets (cloth.model_body -> build(_garment_for_sim(u))) is
+  not the jeans the sweater is checked against or rendered with: 1% of vertices are 32-38 mm apart (p99 32 mm), because
+  _garment_for_sim strips the jeans' finish keys (sculpt). The hem_band crosses the final jeans at 17 vertices, x
+  0.115..0.16, y -0.115..-0.056, z 0.92..0.94 (the jeans' front LEFT pocket scoop).
+  (b) Rebuilt against the FINAL jeans: 10 vertices. Final jeans plus their 0.6 mm render thickness as the layer gap: 7.
+  The remaining 7 sit in the pocket mouth (x 0.115..0.136, y -0.115..-0.097, z 0.918..0.929). There Under.settle treats
+  the jeans as a closed surface (no "sheet", tangent unlimited), so the band settles over the pocket bag, inside the
+  front panel's cut edge.
+  FIX (not done): (1) the under garment for an over garment = the FINISHED result (sculpt / finish applied) in
+  model_body, which re-keys the sweater's placement: check that the sim key holds; (2) in construct_bands, pass the jeans as
+  a "sheet" layer with depth, gap = band th + 1.5 mm + under render thickness, and add a test with a scooped
+  under-surface. Then rebuild on ds37 and require 0 crossings.
+- Coat front opening (decision 1), diagnosis so far ($G/coatconv.py <job sim dir>). The jobs keep NO frames (out.npz holds
+  only V / Vprev; job "trace" = garment key _trace, empty), so we can't tell whether sewing or settling closes the
+  fronts. A rerun with _trace would cost a sim. What the start and the end show:
+  | job | fabric | start gap hem / mid / chest mm | final | front.L start off body p50 | body pose move max |
+  | dc19 (Tess coat) | cotton_twill "denim" | +229 / +186 / +144 | -6 / +5 / +55 | 53 mm | 235 mm (x span 1.089 -> 0.996) |
+  | dg j8 (Garrett, hangs open) | wool_coating | +128 / +59 / +62 | +162 / +103 / +102 | 34 mm | 70 mm |
+  Garrett's fronts OPEN during the sim. Tess's close by ~235 mm. Two causes stand out, both in placement, not the pattern:
+  (i) the start is 53 mm off the body (Garrett 34). Pulled in at a fixed arc length from the side seam, each CF edge
+  travels round the body: at r ~0.2 m and s ~0.3 m that is ~60 mm per side, ~125 mm in all (geometry estimate);
+  (ii) the pose stage swings the arms in 235 mm (Garrett 70). The sleeves and armholes rotate the fronts toward CF.
+  Not yet checked: the held-out collar's neckline tension, front_balance (main's default now reads side-neck tapes), the
+  break and roll line, the shoulder slope. Prediction still to make: measure the start gap and the pose on the new start
+  (with girth back), then compare a start with the arms already lowered (lower_arms / lower_frames) or open_gap at
+  Garrett's offset.
+- Coordinator's props (tess_props/patch.json: trainers + lanyard) go on AFTER the coat sim, as made pieces. Re-run
+  spikes/tess/props.py on the current sweater drape, check the coat collar against the strap at the back neck, and re-measure
+  the jeans' hem height against the new soles (23-30 mm). The patch replaces our lany_* / lanyard_* stand-ins.
+
+### Handover 2026-10-16 03:00 (dress-tess; 70-tool-call stop)
+STATE: main merged + tests green; uncrush key; sim-key "kind" fix (jeans / sweater caches back; coat re-sims); J-stitch
+code fix. Sweater welt crossings: cause found (stale under jeans + the pocket scoop treated as closed), fix designed, not
+coded. Coat: start / end measured against Garrett; placement suspects (start offset 53 mm, arm swing 235 mm); no frames.
+NOT DONE: (2) made_band fix + test; (3) jeans CB close as a finish; (4) jeans sheen / colour, coat made-piece thickness +
+twill, sweater knit scale; (1) coat draft 3 (girth back, prediction, preflight, sim); (5) the NICO-TOP batch + review.
+NEXT, in order: made_band (under = finished jeans, sheet layer, test) -> rebuild on ds37 with 0 crossings -> jeans CB close
+-> render items -> coat draft 3 (measure the new start's gap / pose first) -> one batch.
+
+### dress-tess 2026-10-16 (session 3): welt crossings fixed, jeans CB close as a finish, jeans render keys ($0, no sims)
+- WHICH JEANS made_band got (confirmed in code; the 03:00 handover's "_garment_for_sim strips the sculpt" was WRONG):
+  cloth.build hands construct the under garment PRESSED (`pressed`: loose cloth capped UNDER_CAP off the body, the
+  collider the sweater was simulated over): 6145 of 10772 jeans vertices off the finished jeans, up to ~38 mm. The jeans
+  the sweater is checked / drawn against are worn_together's TUCKED jeans (the finished jeans re-laid under the sweater).
+  (The jeans' dj10 `sculpt` was never applied on dj11 at all: key and shape 11054 vs 10772 differ, `sculpt_stale`.)
+- Fix (9c048c28), each step measured on ds37 offline ($G/capbands.py -> out/bands_in.pkl, $G/bandfix2.py, bandfix3.py,
+  tuckx.py): construct gets `finished` (the under garment's own V), `thickness` (its fabric's render thickness) and
+  `piece`; construct_bands lays the finished under garment as one SHEET layer PER PIECE (depth UNDER_SHEET_DEPTH 30 mm,
+  gap + thickness). One nearest point over the whole jeans found the pocket bag behind the front panel and never the
+  panel (synthetic test: 9 verts 4.6 mm inside the panel until split by piece). made_band settles each band vertex
+  once more after the bilinear interpolation off its ring stations (~8 mm apart: chords cut the fly ridge), and
+  `_unpierce` eases out band vertices whose faces the under cloth's cut edges still pierce (10 -> 2, those 2 next to the
+  held sewn row). Then the TUCK made new crossings (10 -> 31: it laid 16 jeans pocket-corner vertices along the welt
+  edge's normals, some outward): `cloth.untuck_crossings` sends back moved under vertices in new crossings (a ring
+  more per round, kept only while the count falls). ds37 sweater vs jeans as drawn: 25 -> 0 crossing vertices, hem_band 0;
+  sweater sim key f632a4a90f1e5be4 holds. Tests: test_construct_bands_clear_the_finished_under_garment_with_a_scoop,
+  test_untuck_crossings_reverts_only_what_the_tuck_pushed_through (test_cloth_made's runner moved to the file's end: the
+  last two tests were defined after it and never ran).
+- Jeans CB waistband close as the post-construct FINISH (f2c627dc; $G/fin/prep_j2.py pickles dj11 -> fin/dj11.pkl,
+  fin/run_j2.py jd1 [--apply] = run_j.py's guarded close): 241 verts, max 10.4 mm, waistband seam 15.8 -> 0.0 mm, body /
+  self crossings 0 -> 0, yoke edge ratio p5/p95 0.84-0.88 / 1.18. Applied as cloth.jeans.finish (key f835a69ffcfd5a7b),
+  the stale sculpt removed. It RE-KEYED the sweater (the over garment's collider is pressed from the under's V): new
+  finish key "collider": false = a hand finish of what is hidden under the garments over it: they settle on the result
+  as constructed (res["V_collider"]), bands and tuck still clear the finished V. With it the sweater hits its cache
+  again, welt 0 crossings, coat unaffected. (No unit test for V_collider: model_body needs a based model; checked on
+  dt_tess with $G/keyck2.py.)
+- Render keys: garment key "sheen" (scene object + look renders + frozen; NOT_SIM; the scene key changes only when set).
+  dt_tess jeans: roughness 0.95, sheen 0.1, colour #171b26 -> #151b29. NOT rendered or measured yet.
+- Tests: $G/tests.sh 21 files, 20 rc 0. test_cloth_spec_durable rc 1 ("the jacket's sim is not cached under the spec's
+  key") fails identically WITHOUT these changes (git stash): dg_garrett's spec changed 01:27 under the frozen_j17b
+  fixture (another agent); dg_garrett has no construct bands, and worn_together is not on model_body's path.
+- Coat draft 3 diagnosis, config only (no placement run yet): Tess's coat carries keys Garrett's jacket doesn't:
+  layer_gap 0.006 (default 0.003: the padded body = sweater + layer_gap, a direct cause of the 53 vs 34 mm start
+  offset), under_cap 0.004, open_gap [0.15, 0.26]. The pose stage's arm swing is NOT lower_arms (that is the hanger stage
+  only, hg not None): it is the body's own poses from the placement pose to Tess's pose (carry "poses"), so it is reduced
+  only by placing on a body nearer her pose. To measure next: build(place_only=True) on main's code: X0's front gap per
+  band and front.L offset with layer_gap 0.006 vs 0.003, and the poses' max move.
+
+### Handover 2026-10-16 (session 3; 70-tool-call stop)
+STATE: (1) welt PASS offline (0 crossings, key holds); (2) jeans CB close PASS as finish (collider false); (3) jeans
+sheen / roughness / colour set, unrendered; coat made-piece thickness + twill and knit scale vs texel NOT done.
+NEXT, in order: (4) coat: $G script build(place_only=True) with layer_gap 0.006 vs 0.003 (start gap per band, front.L
+offset, poses' max move), predict the pull-in, then ONE rented coat sim with "_trace" (approval, $5/day); (5) props
+patch (tess_props/patch.json; spikes/tess/props.py from worktree-agent-acadbedb6d174a03c on the current sweater drape) -
+COORDINATOR (14917ffb on main, a fast-forward of c2173b7c: MERGE MAIN FIRST): set the trainers' shoe parts
+hides ["body", "socks"] (docs/notes/asset.md "## hides") and take the 10 mm toe spring from workspace/dt_tess_hide
+(midsole_toe.L / outsole_toe.L tilted + lifted, shoe_toe.L lifted half); judge the upper's lumpy toe and the light
+line between the sole pieces at y -0.08; collar vs strap; jeans hem vs the new soles; (6) one NICO-TOP batch (all
+garments + props + waist close-up, --stage) and the blind review, with the jeans render items measured against the
+concept (thigh (31,37,42), B-R +11..13).
+
+### dress-tess 2026-10-16 (session 4): merge, finish test, coat placement measured ($0, no sims)
+- Merged origin/main 9ca28f52 (hides 14917ffb, c2173b7c). Cloth set ($G/tests.sh, now + test_hides): 22 files rc 0,
+  test_cloth_spec_durable rc 1 ("the jacket's sim is not cached under the spec's key"). NOT this branch: the same test
+  fails identically on a clean origin/main 9ca28f52 checkout and on c2173b7c ($G/mainwt, PYTHONPATH=its src;
+  t_durable_main.log / t_durable_c217.log), with HIFIPUSHIE_HOME only or with env.sh. dg_garrett's jacket has
+  under.pin = dress_garrett/out/dg_s6_pinned_under.pkl (written 00:59; the spec 01:27); the pinned under's key is
+  pin_b9a2622faaea and the jacket's cache 7aca63ae26eb8a5c.npz (23:39) exists, so the key computed today differs
+  from the cached one: the fixture / pin moved under the test, not the code. To the coordinator / dress-garrett.
+- (1) DONE: cloth.post_finish / cloth.collider_verts factored out of _build (no behaviour change);
+  test_cloth_finish.test_collider_false: with "collider": false over garments settle on the constructed V, the
+  garment carries the finished V; without it the finished V is the collider; a stale finish is not applied.
+- New keys, default unchanged: cleanup.pockets {"lies": m} (patch pocket gap off its piece; POCKET_LIES 1.5 mm
+  default) and garment key "straighten" (share of the elbows' bend taken out for the placement pose; default 1).
+  construct.collar_options.thickness already reaches notched_collar (NOTCHED 3 mm). Neither set on dt_tess yet.
+- (2) Coat place_only on dt_tess ($G/coatpl.py <layer_gap> [straighten], ~450 s each, logs coatpl_*.log):
+  | start | front gap hem .. chest mm (z 0.44 .. 1.37) | front.L off body p10/p50/p90 | body move max |
+  | layer_gap 0.006 | +229 +215 +190 +173 +161 +101 +121 | 12 / 50 / 70 mm | 251 mm |
+  | layer_gap 0.003 | +229 +215 +190 +173 +162 +100 +116 | 13 / 52 / 71 mm | 251 mm |
+  | 0.003 + straighten 0.5 | same | 13 / 52 / 71 mm | 127 mm (14 self-crossing start verts; sleeves p50 29 mm off) |
+  layer_gap is NOT the cause of the 50 mm front offset (Garrett 34): no change at all. Her elbows bend 39 deg, upper arm
+  42 deg from vertical; the swing is the elbow straightening (only straight_arms), halved by straighten 0.5. The
+  crossing count of the full-straighten start was not printed (script crashed on an empty carry), so the 14 has no baseline.
+- _trace does nothing on the zozo backend (only blender_cloth reads it). Frames on zozo: garment key zozo {"snap": N}
+  (cloth_zozo keeps every N-th frame as S<frame> in out.npz). Use that for the coat's "when do the fronts converge".
+- Coordinator's decision (option a): props first (trainers + hides + toe spring; lanyard after the coat sim), then ONE
+  staged run jeans r1 -> sweater r2 -> coat r3 (rented, approved, ~3 sims), then redo offline the welt (0 crossings)
+  and the jeans CB close (its finish key goes stale on the new jeans: fin/prep_j2.py + run_j2.py).
+
+### Handover 2026-10-16 (session 4; stopped at the tool-call clock)
+STATE: (1) done + committed; (2) placement measured: layer_gap ruled out, straighten 0.5 halves the swing (unverified
+start); spec unchanged; props NOT applied; no sims run, $0.
+NEXT, in order: (a) baseline the self-crossings of the straighten 1.0 start (coatpl.py 0.006, fixed script) vs 0.5's
+14; if 0.5 is no worse, set dt_tess coat "straighten": 0.5 and zozo {"snap": 12}; look for the 50 mm front offset in
+place() (open_gap [0.15, 0.26]? the front's arc from the side seam), not layer_gap; (b) apply the trainers from
+tess_props/patch.json (remove sole.L / heel.L, add midsole/outsole/laces/shoe blobs + parts; toe spring as
+hides/demo.py tess(): toe pieces tilted asin(0.01 / 2 half) and lifted 5 mm, shoe_toe.L lifted 5 mm; parts shoes /
+soles / outsole "hides": ["body", "socks"]; jeans collide + "outsole"); keep the lanyard stand-ins; (c) commit, then
+$G/stage2.sh with q_r4.txt "dj12 dt_tess jeans / ds38 dt_tess sweater / dc20 dt_tess coat" (no commits between rounds);
+(d) coat collar_options.thickness / cleanup.pockets.lies set against the reference; then the batch (step 5).
+
+### dress-tess 2026-10-16 (session 5): coat start measured per band, straighten 0.5, trainers on ($0 so far)
+- Coat start ($G/coatpl3.py <tag> [straighten] [open_gap], place_only, ~260-300 s, 1.0 GB peak; logs coatpl3_*.log),
+  layer_gap 0.006 as in the spec: self-crossing start verts 0 at straighten 1.0 / 0.9 / 0.75 / 0.5; body move max
+  251 / 227 / 190 / 127 mm. (Session 4's "14 crossings at 0.5" was the layer_gap 0.003 override, not straighten.) The torso
+  start is identical at every straighten (only the sleeves move). -> dt_tess coat "straighten": 0.5, "zozo": {"snap": 12}.
+- The 50 mm front offset is NOT front-only: offset off the padded body p50 by height, CF half / side half:
+  | z | 1.30 | 1.20 | 1.10 | 1.00 | 0.90 | 0.75 | 0.55 |
+  | front.L | 14 / 16 | 10 / 21 | 65 / 58 | 63 / 54 | 50 / 48 | 48 / 49 | 69 / 69 |
+  | back.L  | 17 / 14 | 30 / 25 | 72 / 70 | 60 / 54 | 43 / 40 | 60 / 52 | 83 / 69 |
+  The back stands off as far as the fronts, so the extension and the collar hold-out (front-only) are ruled out. It is
+  _worn_levels' level curve: perimeter = the pieces' span + the open gap, i.e. offset = (ease + gz) / 2 pi; the open_gap
+  [0.15, 0.26] alone adds 24 mm (armpit) to 41 mm (hem) all round, the rest is the coat's 22-25% ease (Garrett: 9-14%,
+  gap 0 -> 0.16). No placement defect found, so no code change and no test: the start is what the code means it to be.
+- Why the fronts converge (prediction, $G/curtain.py, from the s1 start): compare each level's start loop with the
+  "curtain" (convex hull of the padded torso from the armpit down to that level, |x| < 0.17-0.19: cloth hanging from above
+  can't follow the body back in under the bust / seat). Loop - curtain: z1.10 +364, 1.00 +330, 0.90 +247, 0.75 +259..278,
+  0.60 +270..288, 0.50 +278..296 mm. Take the gap out (cloth = loop - gz): at the hem the cloth is only ~+18 mm longer
+  than the curtain, at z 0.9 ~+46, at z 1.1 ~+210. Cloth that settles onto the curtain therefore covers it: hem gap ~-18,
+  mid ~-46, chest open. dc19 ended -6 / +5 / +55 (hem / mid / chest): the same pattern. So the convergence is the start
+  tube (gap counted as circumference) collapsing onto the curtain, and the fix is in the PATTERN, not the placement: for a
+  hem gap of 260 mm the hem cloth must be about curtain + 2 pi * stand-off - 0.26 (~0.86 m at a 15 mm stand-off,
+  vs ~1.04 now), unless the twill holds the fronts flat in front of the hips. TO TEST on r3's frames (snap 12): if
+  the gap closes as the tube falls (z 0.5-0.9 first, chest last), this is the cause; if it closes during the pose stage,
+  it is the arm swing.
+- Trainers on dt_tess ($G/applyprops.py: from workspace/dt_tess_hide = tess_props/patch.json + 10 mm toe spring):
+  sole.L / heel.L out; midsole / outsole / laces / shoe blobs + parts in; shoes / soles / outsole "hides": ["body",
+  "socks"]; jeans collide + "outsole". Lanyard / badge stand-ins kept (the patch's lanyard after the coat sim). Spec
+  compiles (78 prims). Jeans re-key -> the staged run below. $G/run.py: env NOSHEET=1 skips its render sheets (the laptop
+  does flat / ID passes only; sheets go to NICO-TOP in step 5).
+STATE: (1) start measured, straighten 0.5 + snap 12 set, no placement defect (prediction written); (2) trainers on.
+NEXT: (3) $G/stage2.sh q_r4.txt 4 with NOSHEET=1 (dj12 jeans -> ds38 sweater -> dc20 coat, rented, preflight each
+round; no commits until it ends); (4) welt + jeans CB close redone offline on the new drapes, coat frames read against
+the prediction, lanyard; (5) one NICO-TOP batch + blind review.
+- Staged run (approved, rented): $G/stage2.sh q_r4.txt 4 (NOSHEET=1), then q_r4c.txt for the coat. Rounds: r1 jeans sim
+  job_3e42fc7c870b3383 ($0.0379, preflight least cloth-collider edge 3.37 mm), r2 jeans fine settle ($0.0089), r3 sweater
+  sim job_ac35eb1dfaa337db ($0.0284), r4 sweater fine settle ($0.0085). Both garments built (dj12 / ds38 DONE 0). Spend
+  $0.084 (24 h total ~$0.56 of the $5 cap). The jeans and sweater each have a fine settle, so 4 rounds ran out before the coat.
+- COAT r5: FAIL before any money. cloth's guard refused the start: "the start lies inside the solver's contact standoff
+  (3.0 mm) from the body / the garment under it: sleeve.L 0.77 mm at [-0.102, -0.15]". Nothing was sent ($0). The
+  placement checks above (0 self-crossings) ran on the OLD sweater drape and at straighten 0.5. Not yet known whether the
+  new ds38 sleeve or straighten 0.5 (the sleeve tube laid on a half-bent arm) causes it.
+
+### Handover 2026-10-16 05:45 (dress-tess session 5; 70-tool-call stop)
+STATE: (1) coat start measured: the offset is the level tube (ease + open gap), not front-only; no placement defect, so
+no code change; convergence prediction written (curtain); straighten 0.5 + zozo snap 12 in the spec. (2) Trainers on
+dt_tess (applyprops.py). (3) jeans dj12 + sweater ds38 simulated and built ($0.084); coat FAILED the standoff guard
+(sleeve.L 0.77 mm), $0, no frames. (4) and (5) not started.
+NEXT, in order: (a) place_only on the NEW sweater ($G/coatpl3.py with the guard's check, or run.py dc20 with BROKER=1)
+at straighten 0.5 vs 1.0. If 1.0 clears the 3 mm standoff, use it (swing 251 mm, the frames will show whether the swing
+matters). If not, the sleeve needs wrap out or more layer_gap on sleeve.L near the elbow; (b) coat round:
+NOSHEET=1 $G/stage2.sh q_r4c.txt 2 (no commits between rounds), and read the snap frames against the curtain
+prediction; (c) the jeans CB close is stale on dj12: redo it with fin/prep_j2.py + run_j2.py jd2 --apply, and check the
+welt crossings on ds38 (0 expected from the made_band code); (d) lanyard from the patch on the new sweater; (e) one
+NICO-TOP batch + blind review (step 5).
+
+### dress-tess 2026-10-16 (session 6): coat start cleared (straighten 1.0), coat sim dc20, convergence read from frames
+- Standoff refusal at straighten 0.5 found ($G/sodiag.py <tag> <straighten> dumps every start_in_standoff call;
+  $G/soan.py <tag> names the collider): at 0.5, 9 sleeve.L / 6 sleeve.R start vertices within 3 mm, at the elbow
+  (x 0.37-0.40, z 1.03-1.08), half of them against the SWEATER sleeve on its inner side, half against the arm itself:
+  the coat sleeve laid on the half-bent arm starts through the sweater sleeve at the elbow crook. _clear_exact pushes
+  under-garment hits "away on the side they are on", i.e. further in, onto the arm: 0.43 -> 0.77 mm, still refused.
+  At straighten 1.0 start_in_standoff is empty (no clearing needed). -> dt_tess coat "straighten": 1.0 (v99). No code
+  change: 0.5's fault is a start that passes through the under garment, which a clearance pass can't undo (a placement
+  fix would have to detect the crossing first). Preflight least cloth-collider edge 3.04 mm.
+- Coat round (approved, rented): job_a2f99cb63bfbbdb4, 75 s, $0.0345 (24 h total ~$0.60 of $5). dc20 built (DONE 0),
+  lapel gap 5.1 / 3.1 mm ok.
+- Front gap per snap frame ($G/frames.py <job key>; fronts' min / max x at 6 heights, hem -> chest, mm):
+  | frame | z0.47 | 0.65 | 0.83 | 1.01 | 1.19 | 1.37 |
+  | start | +229 | +209 | +184 | +166 | +118 | +122 |
+  | 12 (sew) | -28 | +24 | +51 | +71 | +85 | +108 |
+  | 60 (sew end) | +9 | +27 | +47 | +66 | +85 | +108 |
+  | 90 (pose end) | +8 | +23 | +34 | +55 | +70 | +106 |
+  | final | +10 | +19 | +23 | +34 | +66 | +105 |
+  WHEN: in the first 12 sew frames (hem -257, z0.83 -133, chest -14); the pose (arm swing, straighten 1.0) costs
+  only another 10-25 mm at mid height. WHERE: hem most, chest least. The curtain prediction holds in shape (hem / mid
+  close, chest open); its numbers were ~30-70 mm too closed (hem -18 vs +10, z0.9 -46 vs +23).
+- Hem / hip in front view ($G/hemw.py): coat width hips 423, hem 413 mm = 0.98; the concept reads 1.11 (dc18 note).
+  The curtain model's fix (hem cloth ~250 mm shorter than at the hips) would take that to ~0.85: a pegged hem, against
+  the reference. So the reference needs the fronts to hang in front of the curtain, not less cloth: the "unless the
+  twill holds the fronts flat" branch. A real lab coat's front facing runs the full front edge to the hem; ours stops
+  at the break (lapel_edge + gorge). Facings are fused + interfaced in the sim, so the full facing is the next test:
+  the curtain model predicts NO change (same cloth), the flat-front hypothesis an open hem. Hips / hem cloth unchanged.
+- Jeans CB close redone on dj12 (fin/prep_j2.py -> fin/run_j2.py jd2 --apply): 247 verts, max 10.4 mm, waistband seam
+  15.9 -> 0.0, body crossings 4 -> 4 (pre-existing), self 0 -> 0; finish key 7bfb1dbe04f56092. Sweater ds38 vs the
+  jeans as worn together ($G/weltck.py): 0 crossing vertices (target 0), sweater key ac35eb1dfaa337db held.
+- Lanyard re-seated on ds38 (props.py from bddb7a8d -> $G/props/props.py on the copy dt_tess_lany with the worn
+  sweater dumped by $G/props/mksw.py; patch $G/props/patch_ds38.json: 17 points, 10 on the sweater, moved 5-9 mm vs
+  the old patch). $G/props/applylany.py [--save] puts only lanyard / clip / badge on dt_tess (trainers as applied):
+  dry run compiles (98 prims). NOT saved yet: held until after the facing sim so that sim differs by one change.
+STATE: (1) PASS start (straighten 1.0); (2) coat dc20 simulated, gap hem / mid / chest +10 / +23 / +66..105 = FAIL vs
+hem 180-380, chest 120-220; convergence timed (sew frames 0-12); (4) jeans close PASS, welt 0 PASS; (5) lanyard ready.
+NEXT: facing-to-hem coat sim (one change), then lanyard --save, collar vs strap check, the NICO-TOP batch.
+- Facing-to-hem coat sim dc21 (approved, the ONE sim; facing edges cfHem>break + lapel_edge + gorge, nothing else
+  changed): job_e7a40f48cef60b85, 83 s, $0.0376 (24 h ~$0.64 of $5). Final gap hem / z0.66 / z0.84 / z1.02 / z1.20 /
+  z1.38: -7 / +6 / +17 / +30 / +67 / +102 mm (dc20: +10 / +19 / +23 / +34 / +66 / +105); hem / hip width 405 / 415 =
+  0.98. Same timing (hem -266 in the first 12 sew frames). FAIL; the curtain model's "no change" held.
+  BUT the test did NOT test front stiffness: in.npz "stiff" is 0 on every vertex in BOTH jobs. cloth.pieces (cloth.py
+  ~377-391) sets fused pieces aside and filters Bp["interfaced"] to the kept pieces, so a fused facing's interfacing
+  never reaches the sim: no facing in this pipeline stiffens anything (the lapel's included). The facing is back to the
+  break (dt_tess v101 = the dc20 design, cached). TOOLING GAP (needs a code change + test): a fused facing should
+  become an interfaced BAND on its host piece ({"piece": host, "near": the traced edge, "within": width}, the
+  cut-on-placket form interfacing() already reads), per side after unfold. Every faced garment re-keys.
+
+### Handover 2026-10-16 06:25 (dress-tess session 6; 70-tool-call stop)
+STATE: (1) start PASS at straighten 1.0 (0.5 starts the sleeve through the sweater sleeve at the elbow; no code
+change). (2) coat dc20 simulated + built ($0.0345): fronts close in the first 12 SEW frames, hem most, chest least
+(curtain shape confirmed, numbers ~30-70 mm too closed); gaps hem +10 / mid +23 / chest +66..105 = FAIL. (3) the
+curtain fix (hem cloth -250 mm) contradicts the concept's hem / hip 1.11 (ours 0.98), so it was NOT run; the one sim
+went to a full-length front facing (dc21, $0.0376): no change, and found that fused facings carry no interfacing.
+(4) jeans CB close redone (jd2 applied), welt crossings 0: PASS. (5) lanyard re-seated on ds38, patch ready, NOT
+saved ($G/props/applylany.py --save). Spend this session $0.072.
+NEXT: (a) coordinator decision: fix the fused-facing interfacing (code + test, then one coat sim with the facing to
+the hem) vs a hem-cloth cut that fails hem / hip; (b) $G/props/applylany.py --save, then the collar vs strap check on
+dc20; (c) the NICO-TOP batch (step 6) on dc20 or its successor, blind review by distance.
 ## Handover 2026-10-16 x (dress-garrett; durable pins, test_cloth_spec_durable on main)
 - The failure on main (9ca28f52 / c2173b7c: j17b missed 7aca63ae26eb8a5c) was NOT the pin file: $G/out/dg_s6_pinned_under.pkl
   has been unchanged since 00:59:14, before j17b's cache hit (01:01) and the passing test (~01:30); it is a byte copy of
@@ -4277,3 +5499,206 @@ each through the finish hook or construct options, measured first ON BOUNDARY VE
 - test_cloth_spec_durable: reads no scratch file (spec refs must all be pins, frozen pieces from FROZEN_PINS; FROZEN=<dir>
   overrides), plus a unit test of pin immutability / tamper refusal / under.pin path refusal. j17b: 0.0000 mm on every
   piece, key 7aca63ae26eb8a5c. STATE: j17b unchanged, waits on Joe's look. NEXT: jacket MINORs (handover v (b)).
+
+### dress-tess 2026-10-16 (session 7): fused facings interfaced, through-start refusal, coat dc22 (facing to the hem, stiff)
+- Merged main 0e76482e (pins; post_finish reads finish files through pin_path).
+- FIX (5ebb828d): a fused, interfaced facing is its piece's interfaced BAND (cloth.fused_interfacing: one band
+  {"piece": host, "edge": "a>b", "within": facing depth} per host edge of its seam; interfacing() reads "edge" bands;
+  sheet hatch + workflow report too). Test test_pattern_tailor.test_fused_facing_stiffens_its_front_along_the_edge
+  (stiff > 0.99 within 30 mm of the faced edge, 0 past the facing, the front not "made"). dt_tess coat re-keys
+  (a2f99cb6 misses). dg_garrett j17b: its fused bands sit inside the design's own lapel band (break>lapelPoint within
+  0.1), so its interfacing and key 7aca63ae26eb8a5c are unchanged; test_cloth_spec_durable reproduces the frozen pieces
+  (0.0000 mm). No legacy key needed.
+- Tooling (item 3): cloth.start_through_under(X, M, free, collider V, T, n body tris): draped vertices on the BODY's side
+  of the under garment's cloth (within 6 mm of it, > 0.2 mm behind it along its normal turned away from the body, nearer
+  the body than that cloth). _build checks it right after place(), before any clearing, and raises ClothError (place_only:
+  logs it, Bp["_through"]). Test test_tooling.test_start_through_the_under_garment_is_refused (arm / sweater / coat tubes:
+  a 3 mm dip inside is found at 2.5-3.5 mm, 0.5 mm outside is not). Real starts ($G/thruck.py): dt_tess coat straighten 0.5
+  REFUSED (sleeve.L 5 verts 4.85 mm in, sleeve.R 6 verts 4.44 mm, at the elbow), straighten 1.0 clean, dg_garrett jacket clean.
+- PREDICTION for dc22 (facing to the hem, now 40x bending (cloth_job interfacing_bend) over a ~90 mm band along the
+  whole front edge; nothing else changed): the closing is the start tube collapsing onto the curtain with its arc length
+  kept (sew frames 0-12), which bending does not resist: a stiff strip can still swing round the hips as the plain cloth
+  behind it wraps. Bending length scales as B^(1/3): twill ~3.5 cm, x40 ~12 cm, so the 9 cm band stays flat (no curl at
+  the edge) but the ~15-20 cm of plain cloth between it and the side seam still lies on the curtain. A flat 9 cm tangent
+  instead of an arc on a ~0.2 m hull moves the edge ~s^2/2R ~ 20 mm outward and only a few mm sideways. Predicted gap
+  change: hem / mid / chest within +-15 / +-15 / +-10 mm of dc20 (+10 / +23 / +66..105): still FAIL (hem 180-380). To hold
+  the fronts open the cloth must not lie on the curtain at all (fronts hanging as planes from the lapel / break), which
+  needs the whole front stiff in bending (bending length ~ the 0.2-0.3 m span: B ~ 200-600x twill), not a facing band.
+- Coat dc22 (approved, the ONE rented sim; facing cfHem>break + lapel_edge + gorge, dt_tess v102; nothing else changed):
+  job_59dd2d0143597d57, 68 s, $0.0322 (24 h ~$0.67 of $5). in.npz stiff now > 0.5 on 529 of 4354 vertices (dc20: 0).
+  Built DONE 0, 0 crossings. Front gap ($G/frames.py), hem -> chest, mm:
+  | frame | z0.47 | 0.65 | 0.84 | 1.02 | 1.20 | 1.38 |
+  | start | +229 | +209 | +184 | +166 | +118 | +122 |
+  | S12 (sew) | +53 | +54 | +59 | +59 | +86 | +108 |
+  | S60 (sew end) | +43 | +42 | +49 | +55 | +88 | +107 |
+  | S96 (pose) | +3 | +21 | +42 | +59 | +82 | +105 |
+  | final | +25 | +37 | +52 | +64 | +77 | +105 |
+  | dc20 final | +10 | +19 | +23 | +34 | +66 | +105 |
+  Change vs dc20: +15 / +18 / +29 / +30 / +11 / 0. Prediction was +-15 at hem / mid, +-10 chest: hem and chest held, mid
+  (z0.84-1.02) opened ~2x more than predicted. Sewing now closes less (S12 hem +53 vs -28), but the pose (arm swing) takes
+  the hem to +3 before it settles at +25. FAIL: hem 180-380, chest 120-220. Coat width at z0.47 451 mm ($G/hemw.py; hip
+  line not re-read). Consistent with the model above: a stiff edge band doesn't stop the plain cloth lying on the curtain.
+- Tests ($G/tests.sh, all 22 files): every file rc 0 EXCEPT test_cloth_spec_durable: FAIL after bc5ca884 ("the jacket's
+  sim is not cached under the spec's key"), reproduced alone. It PASSED (0.0000 mm, key 7aca63ae26eb8a5c) after 5ebb828d,
+  and $G/thruck.py (place_only, same code) found the jacket's start clean. Cause NOT found: suspect the placement that
+  bc5ca884's pre-placement re-key recomputes (the earlier pass may have read a pre-placement entry), or the through
+  check's position in _build. DO NOT MERGE until it passes: first check out 5ebb828d's cloth.py and rerun the test
+  (pre cache cold both times), then print the computed key vs 7aca63ae26eb8a5c.
+
+### Handover 2026-10-16 07:45 (dress-tess session 7; 70-tool-call stop)
+STATE: (1) fused-facing fix + test (5ebb828d); (3) through-start refusal + test (bc5ca884): coat at straighten 0.5
+refused at the elbow, 1.0 clean; (2) coat dc22 with the stiff full-length facing simulated + built ($0.0322): gaps +25 /
++37 / +52 / +64 / +77 / +105 = FAIL (predicted: no rescue from a band). test_cloth_spec_durable FAILS on the current
+tree: j17b's key no longer found (see above): blocking any merge. dt_tess spec v102 = the dc22 design (facing to the hem).
+NEXT: (a) fix the durable test failure (bisect 5ebb828d vs bc5ca884, pre cache cold); (b) coordinator decision on the
+coat front: the band doesn't hold it; whole-front interfacing (bending length ~ the span) or a front hanging from the
+lapel / break as made; (c) $G/props/applylany.py --save, collar vs strap; (d) the NICO-TOP batch + blind review by distance.
+
+### dress-tess 2026-10-16 (session 8): j17b blocker found and fixed; coat side seams forward (dc23)
+- BLOCKER CAUSE: 5ebb828d (fused facings interfaced), NOT bc5ca884. $G/keyck.py (place_only, pre cache off, every sha1
+  fed to the sim key logged) gives d970fd68ed8df604 at BOTH commits (legacy kind-key d05c7d74); the through check is
+  read-only. $G/keyck2.py vs job_7aca63ae26eb8a5c/sim/in.npz: Xstart, uv, F, sew, rest identical (0 diff); only `stiff`
+  moved, on 32 vertices (16 per front) at the GORGE: the facing's band along lapelPoint>cfNeck (within 0.095) is outside
+  the design's own band (near break / lapelPoint within 0.1); stiffness up to +0.64 there. Last session's "j17b
+  unchanged" was wrong: its passing run read a stale pre-placement entry.
+- FIX (coordinator decision (b)): facing op option "interfaced": false (default true: a fused facing stiffens its front;
+  false = a soft facing, plain cloth). Kept out of the sim key (its effect is the interfacing array, keyed in `inputs`).
+  dg_garrett v10: jacket facing "interfaced": false ($G/garrett_soft_gorge.py); no pins needed re-pinning (the spec's pin
+  refs are unchanged). j17b keeps a soft gorge (interfaced: false) so it stays the sim Joe reviewed; if Joe wants the
+  stiff gorge facing, flip it and re-sim once (~$0.04). test_cloth_spec_durable now runs with the pre-placement cache
+  OFF (HIFIPUSHIE_CLOTH_PRE=0: neither read nor written) and asserts the result has no pre_key: key 7aca63ae26eb8a5c,
+  0.0000 mm on every piece. test_pattern_tailor: a soft facing stays fused and makes no band (interfacing all 0).
+- Tests: all 22 cloth files rc 0, one per process ($G/tests.sh).
+- COAT dc23 PREDICTION (before the sim), from dc22's final drape ($G/sidepred.py, sidepred3.py, job 59dd2d0143597d57):
+  front.L is 250 mm of cloth from the side seam to the edge at hip / hem, back.L 295; each lies on the coat's own hull
+  (cloth width = on-hull arc within 1-3%), the seam at -11 deg (54 mm in FRONT of the hull's side at the hem): the coat
+  is a taut tube on the curtain, gap = hull perimeter - cloth (1112 - 2 x 545 = 22 vs measured +26). Two models:
+  (A) SEAM STAYS where it hangs (coordinator's thesis): edge gain = 2 x the x travel over the last d of front cloth:
+  d 40 / 60 / 80 / 100 / 120 mm -> hem +72 / +108 / +145 / +182 / +220. Hem 180-380 needs d >= ~85 (mid ~130).
+  (B) CURTAIN (predicted dc20-dc22 in shape): the cloth slides round the tube, girth kept -> the seam moves forward by
+  ~d and the edge stays: gap change ~0 (+-20). The seam already sitting 54 mm forward of the side favours (B).
+  Chest (z1.38) is above the armhole: no change in either (stays ~+105, FAIL by 15). Draft: d = 100 mm at hips + hem
+  (front contour 0.145, back -0.11; waist unchanged), dt_tess v103. Hip pockets had to move to x 0.065, width 0.11 to
+  stay on a 130 mm front: the hip-pocket item (outer edge ~50 mm from the side, width 130-170) FAILS by design at this d.
+  So: (A) -> hem ~+208, chest ~+105; (B) -> hem ~+25 +-20. Either way front_opening FAILS on the chest by ~15 mm.
+- COAT dc23 (approved, the ONE rented sim; dt_tess v103, through-start clean, preflight least edge 3.00 mm):
+  job_83aaf1e98322baa6, 91 s, $0.0451 (24 h ~$0.71 of $5). Built DONE 0. Front gap ($G/frames.py), hem -> chest, mm:
+  | frame | z0.48 | 0.66 | 0.84 | 1.02 | 1.20 | 1.38 |
+  | S12 (sew) | -21 | +10 | +49 | +72 | +81 | +109 |
+  | S96 (pose) | +5 | +31 | +63 | +66 | +80 | +103 |
+  | final | -15 | +15 | +51 | +62 | +78 | +103 |
+  | dc22 final | +25 | +37 | +52 | +64 | +77 | +105 |
+  FAIL (hem 180-380, chest 120-220). Model (B), the curtain, held; (A) (seam stays, hem ~+208) is refuted: the side seam
+  slid FORWARD round the tube with the cloth ($G/sidepred3.py: seam at -45 deg at the hem vs dc22's -11; back.L 395 mm
+  on 392 of hull, front.L 150 on 162) and the edge stayed (hem a little more closed: -40 mm). With the coat lying on
+  the curtain all round, WHERE the girth is split does not move the front edge: only the girth (vs the curtain) or the
+  fronts leaving the curtain can. dt_tess v104 = the dc22 coat again (dc23's pockets broke the hip-pocket item anyway).
+  Options left for the coordinator (each tested only by model so far): (i) girth: hem cloth ~250 mm less (hem / hip
+  ~0.85, against the concept's straight hang 0.98 item); (ii) fronts held OFF the curtain: whole-front stiffness
+  (bending length ~ the span: B ~200-600x twill, i.e. a "made" front, not a facing band), or the front hung from the
+  break as made; (iii) a pose / camera reading: the concept's open front may be the arms-back stance.
+
+### Handover 2026-10-16 08:40 (dress-tess session 8; 70-tool-call stop)
+STATE: (1) j17b blocker FIXED (b2dca113): cause 5ebb828d's gorge band, j17b's facing "interfaced": false, key
+7aca63ae26eb8a5c, 0.0000 mm; all 22 cloth test files pass. (2) coat dc23 side seams 100 mm forward: FAIL, hem -15 /
+chest +103 (curtain model held; seam slid forward with the cloth). dt_tess v104 = dc22 coat. Spend this session $0.0451.
+NEXT: (a) coordinator decision on the coat front (options i-iii above); (b) $G/props/applylany.py --save, collar vs
+strap; (c) the NICO-TOP batch (all garments, props, waist close-up, 1 m / 3 m), --stage, blind review by distance.
+
+### dress-tess 2026-10-16 (session 9): the straight-hang item re-measured; option (i) does NOT satisfy the concept
+- Concept re-measured ($G/concept_sil.py: tess_apose_v4 rows, pixel mask = RGB deviation from the backdrop or local
+  texture, 1.24 mm/px; heights by the knee anchor z = 0.465 + (1030 - y) x 1.24 mm). Coat body alone (sleeves and hands
+  are separate runs at these rows), ours = dc22 final ($G/coat_sil.py 59dd2d0143597d57):
+  | z | concept width | concept gap | ours width | ours gap |
+  | 0.90 (hip line) | 428 | 197 | 432 | +55 |
+  | 0.85 | 443 | 208 | 450 | +53 |
+  | 0.75 | 471 | 224 | 455 | +42 |
+  | 0.63 | 495 | 248 | 455 | +34 |
+  | 0.50 (hem) | 537 | 268 | 453 | +28 |
+  Each concept panel shows 115-145 mm in front of the gap. The old item (hem / hip 527 / 533 = 0.98, "straight")
+  was mis-read: at y ~640 (z 0.95) the forearm joins the coat's outline (546 mm). The concept FLARES from the hip:
+  hem / hip 1.25. Ours matches the concept to z 0.85 and stays ~455 below it: -84 mm at the hem.
+- Implied cloth girth at the concept's hem (ellipse 537 wide, depth from ours 241 mm, gap arc removed): ~994 mm
+  (depth 180-300 mm: 927-1068), vs ours 1090: -20..-160, centre ~-95. Option (i) is -250 (840 mm): on our hull it
+  gives the gap (266 mm predicted, curtain) but the silhouette stays the curtain's ~450 mm: hem width FAILS by ~85 mm
+  (item tol 490-580). So (1) does NOT hold: the concept's skirt stands OFF the curtain (more flare AND fronts held out),
+  which is option (ii) (a made / stiff front, or a flared skirt that stands), not a girth cut. NO sim run.
+- (iii) arm angle: concept sleeve outer line 19-21 deg from vertical (rows 420-720); ours (dc22 sleeve.L) outer line
+  35 deg, axis 30 deg: our arms are ~15 deg further out. Not chased (pose unchanged); it acts at the armhole, not the hem.
+- Checklist: straight_hang rewritten as silhouette widths at matched heights (gap included), tol hip 400-460, hem
+  490-580, hem / hip 1.12-1.35 (backup $G/checklists/tess_labcoat.before_silhouette.json). dc22 against it: hip 432
+  PASS, hem 453 FAIL, ratio 1.05 FAIL.
+STATE: coat front decision back with the coordinator (option (i) refuted by measurement; (ii) is the bigger build).
+NEXT: coordinator call on (ii); then lanyard --save, collar vs strap, the NICO-TOP batch, blind review by distance.
+- Coordinator (after the report): keep the rewritten item; Joe decides standing skirt vs twill hang from BOTH coats.
+- COAT dci = option (i) (approved, ONE rented sim): $G/coat_hem_i.py 0.25 --save -> dt_tess v105 (contours +62.5 mm
+  at the hem on front and back, hips kept). PREDICTION (curtain, before the sim): hem gap ~+266, silhouette ~450 (the
+  curtain's), hip unchanged. job_134932cd04f172db, 122 s, $0.0520 (24 h ~$0.76 incl. dc23; all rented today well
+  under $5). Built DONE 0, 0 crossings, pockets kept. Result ($G/coat_sil.py, frames.py), mm:
+  | z | 0.45 | 0.52 | 0.62 | 0.72 | 0.85 | 0.90 | 1.00 |
+  | width | 401 | 388 | 418 | 458 | 480 | 461 | 377 |
+  | gap | +117 | +116 | +111 | +103 | +97 | +98 | +94 |
+  chest (z1.38) +100. Items: hip 461 (400-460) borderline FAIL by 1, hem 401 FAIL (490-580), hem / hip 0.87 FAIL,
+  front_opening hem +117 FAIL (180-380), chest +100 FAIL (120-220). PREDICTION WRONG: the gap opened +92 vs dc22,
+  not +240; the narrower tube pulled IN round the legs (hem width -52) instead of the curtain staying put: the
+  "curtain" below the knee is the coat's own hang, not a fixed hull. A pegged hem (0.87), the opposite of the concept.
+- Lanyard saved (props/applylany.py --save): dt_tess v106 = dci coat + lanyard / clip / badge (98 prims). Collar vs strap:
+  NOT measured numerically (left to the side / 3/4 renders and the review brief).
+- Batch b01 ($G/rr/b01/run.sh, fin/rvpack2.py: COATV=<version> swaps the coat design for a pack): both coats on the
+  dressed Tess, regions fig / torso / coat (front, three, side) + jeans waist close-up, blind reviews per coat ->
+  $G/rv/b01/<dc22|dci>/<region>/. The fig / torso regions are orthographic stand-ins for 3 m / 1 m, NOT the game
+  camera (rvpack has none): a gap against gates.md "## Game distance".
+- b01 first launch: ERROR, nothing packed: look_cloth found no garment "cached" (cloth.cached is the finished-build
+  cache that dress() fills; run.py / stage builds don't write it). Fix: $G/dressall.py (cloth.dress wait, BROKER=1 so
+  a sim miss writes its job instead of spending; COATV=<v> = that version's coat) and $G/rr/b01/chain.sh: dress v106,
+  dress the dc22 coat (COATV=104), then rr/b01/run.sh. Launched detached, log $G/chain.log (ends B01_DONE or CHAIN_FAIL;
+  rv/b01/ERROR on a failure).
+
+### Handover 2026-10-16 (dress-tess session 9; 70-tool-call stop)
+STATE: (1) concept re-measured: it FLARES from the hip (428 -> 537 mm, gap 197 -> 268); straight_hang rewritten as
+silhouette widths (coordinator: keep it). (2) option (i) coat dci simulated ($0.052): gap hem +117 / chest +100, hem
+width 401 (pegged 0.87): FAIL on every opening / hem item, curtain prediction wrong (the tube pulled in). (3) lanyard
+saved: dt_tess v106 = dci coat + lanyard. (4) batch b01 (both coats) running via $G/rr/b01/chain.sh, NOT checked.
+Collar vs strap not measured. Spend this session $0.052.
+NEXT: (a) tail $G/chain.log: if CHAIN_FAIL read rv/b01/ERROR (a dress needing a sim = a re-key: STOP, report, no
+paid sim without approval); if B01_DONE, look at out/rv_b01{dc22,dci}_*.png and rv/b01/<coat>/<region>/review.md,
+classify MAJORs by distance (fig ~3 m, torso ~1 m: orthographic stand-ins). (b) Joe's sheet: concept | dc22 | dci,
+front + three, gaps and silhouette widths printed (tables above), path to the coordinator. (c) collar vs strap from the
+side / three renders. (d) dt_tess is on the dci coat (v106): which coat stays is Joe's call (dc22 = v104's coat).
+
+### dress-tess 2026-10-16 (session 10): every dt_tess sim missed after the lanyard save; the sim cache is now addressed by inputs too
+FOUND: b01's dress (BROKER=1) missed all three garments; nothing was submitted, and chain.log ended CHAIN_FAIL.
+cloth.worn_parts (garment key "collide": shoes / soles / outsole under the jeans) keyed the worn mesh as store.build's
+key. That key hashes the WHOLE expanded spec of the STORED model (store.build loads the model; it never sees the spec
+it was handed, so version_spec(104/105) missed too). The lanyard save (v106) moved it, the jeans re-keyed
+(3e42fc7c870b3383 -> bcaf06d1e81f8abf), and the sweater and coat moved through `under`. job_bcaf06d1/sim/in.npz +
+job.json are byte-identical to job_3e42fc7c's (the out path aside): same sim, new key. Every "collide" garment had this
+(dg_garrett's trousers too): an edit anywhere on the model re-keyed them.
+FIX (marked FOR MERGE TO MAIN, coordinator-approved):
+- worn_parts keys the worn mesh by its content ("worn:<sha of V, F>:<parts>").
+- The sim cache is also addressed by the job's actual inputs: cloth_job.input_hash = job.json as job_config writes it
+  (no "out") + in.npz's arrays (name, dtype, shape, bytes). _build assembles the job (_assemble_job: cfg + arrays,
+  standoff clearing included) when the key misses. If the inputs hash to a cached sim (cloth.cached_by_inputs; the
+  index is _cache/cloth/inputs/<hash> -> key), that result is used under ITS OWN key, so the garments over it and its
+  sculpt / finish files keep their keys. New sims are noted at save. Kept job folders are backfilled once on the first
+  miss (index_job_inputs; a folder's hash is kept in it as inputs_hash): 382 folders -> 379 distinct inputs, so 3 sims
+  had already been run twice under two keys. Under cached_only, a job the solver would refuse is just a miss.
+- Cost: a key miss now drafts and places in order to assemble the job (it returned None at once before). The
+  pre-placement .miss record still skips that the next time.
+TESTS: tests/test_cloth_inputs_cache.py (hash invariants; two keys with identical inputs = one sim; dt_tess jeans found
+again under a moved body key with _blender_job stubbed to fail). test_cloth_spec_durable with HIFIPUSHIE_CLOTH_PRE=0:
+dg_garrett j17b holds, every piece max diff 0.0000 mm.
+RESULT: dt_tess v106 found under the ORIGINAL keys: jeans 3e42fc7c870b3383 (by inputs, 27 s), sweater ac35eb1dfaa337db,
+coat dci 134932cd04f172db (286 s: the coat's job assembly). No sim, $0. Whole cloth test set, one file per process: all
+ok (logs /mnt/data/hifipushie/dress_tess/rekey/tests/).
+
+### Handover 2026-10-16 10:30 (dress-tess session 10; 70-tool-call stop)
+STATE: (1) the re-key bug is fixed and committed (8787dbf9, FOR MERGE TO MAIN): worn parts keyed by mesh content, and the
+sim cache is addressed by job inputs as well. dt_tess v106 is found under its original keys, $0. Cloth tests all ok;
+j17b 0.0000 mm with the pre cache off. (2) b01 relaunched about 10:20: both dresses are cached (v106 = dci coat, COATV=104 =
+dc22) and rr/b01/run.sh is rendering. Log /mnt/data/hifipushie/dress_tess/chain.log (ends B01_DONE or CHAIN_FAIL).
+NOT DONE this session: the b01 review classification, Joe's coat sheet, collar vs strap, the rvpack game camera.
+NEXT: (a) when B01_DONE: rv/b01/<dc22|dci>/<region>/review.md, MAJORs classified by distance (fig ~3 m, torso ~1 m are
+orthographic stand-ins; add a 1 m / 3 m perspective game camera to rvpack if that is small). (b) $G/joe_coat_sheet.png:
+concept | dc22 | dci, front + 3/4, widths and gaps at z 0.45 / 0.62 / 0.85 / 0.90 + chest vs the concept; path to
+the coordinator. (c) collar vs lanyard strap on the side / 3/4 renders. (d) no coat sims until Joe decides.

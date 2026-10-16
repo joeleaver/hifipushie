@@ -24,8 +24,17 @@ def test_notch_mismatch():
     off = cloth_check.seams(_design(0.52, 0.03), "overcoat")[0]["notches_off"]  # the sleeve's top notch 3 cm forward
     assert off and off[0][2] > 20, off
 
+def test_verdict_skips_partial_girths():
+    """dress-tess s31: a curved hem's tip crossing the hip line read "TOO SMALL: negative ease at hips -473 mm" in
+    cloth.garments' verdict (the workflow gate already skipped partial rows): a partial row is not a girth."""
+    from hifipushie import cloth
+    rows = {"chest": {"ease": 0.08, "ease_mm": 70.0},
+            "hips": {"ease": -0.47, "ease_mm": -473.0, "partial": ["back"]},
+            "waist": {"ease": -0.05, "ease_mm": -40.0}}
+    assert cloth._tight_rows(rows) == ["waist"]
 
 if __name__ == "__main__":
     test_cap_bands()
     test_notch_mismatch()
+    test_verdict_skips_partial_girths()
     print("ok")

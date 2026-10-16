@@ -1283,7 +1283,257 @@ def collar_pattern(uv: np.ndarray, F_piece: np.ndarray, chain_made: np.ndarray, 
 
 # ---- wiring: what cloth.build calls after its clean-up (garment key `construct`)
 
-CONSTRUCT = {"lapels": True, "collar": False, "lapel_lay": 0.003, "wedge": 0.35, "press": ["lapel"], "lapel": "made"}
+def _ring_len(X: np.ndarray, closed: bool) -> float:
+    d = np.linalg.norm(np.diff(X, axis=0), axis=1).sum()
+    return float(d + (np.linalg.norm(X[0] - X[-1]) if closed else 0.0))
+
+
+def drape_fold(V: np.ndarray, sel: np.ndarray, t: np.ndarray, seam: np.ndarray, bins: int = 12) -> float | None:
+    """Where a band folded in half turns back, read from its drape: the band's rows (t = pattern distance from the
+    seam) reach furthest from the seam ring at the fold and come back toward it after. The pattern depth of that
+    turn, or None when the rows run out monotonically (a single-layer band)."""
+    P = np.asarray(V, float)[sel]
+    c = np.asarray(seam, float).mean(0)
+    d = P.mean(0) - c
+    if np.linalg.norm(d) < 1e-9:
+        return None
+    d /= np.linalg.norm(d)
+    cut = float(t.max())
+    if cut <= 0:
+        return None
+    e = np.linspace(0, cut, bins + 1)
+    k = np.clip(np.digitize(t, e) - 1, 0, bins - 1)
+    prof = np.array([((P[k == i] - c) @ d).mean() if (k == i).any() else np.nan for i in range(bins)])
+    tm = 0.5 * (e[:-1] + e[1:])
+    ok = ~np.isnan(prof)
+    if ok.sum() < 5:
+        return None
+    prof, tm = prof[ok], tm[ok]
+    i = int(np.argmax(prof))
+    if not (0.25 * cut <= tm[i] <= 0.75 * cut) or prof[-1] > prof[0] + 0.6 * (prof[i] - prof[0]):
+        return None
+    return float(tm[i])
+
+
+def _band_coords(su: np.ndarray, Q: np.ndarray) -> tuple:
+    """Points Q of a band's flat against its sewn edge su (pattern points in order): (depth = distance from the edge,
+    arc position along it, the edge's arc length at each of its points). The edge runs on straight past its ends (an
+    underlap / extension beyond the seam keeps its depth)."""
+    from .folds import side_dist
+    su = np.asarray(su, float)
+    Ls = np.r_[0, np.cumsum(np.linalg.norm(np.diff(su, axis=0), axis=1))]
+    d0, d1 = _unit(su[0] - su[1]), _unit(su[-1] - su[-2])
+    E = np.vstack([su[0] + d0, su, su[-1] + d1])  # (1 m on at each end)
+    sd, u, _, _ = side_dist(E, np.asarray(Q, float))
+    return np.abs(sd), u - 1.0, Ls
+
+
+def made_band(V: np.ndarray, M: dict, band: str, layers: list, gap: float = 0.004, step: float = 0.004,
+              draw: float = 0.4, hug: float = 0.012, passes: int = 3, fold=None, layer: float = 0.0025) -> tuple:
+    """A knitted band (welt, cuff) BUILT on the drape from its seam, as the band's own vertices placed again (ids and
+    topology kept: maps, looks, the scene and the export read it unchanged): (V, info).
+    The band's columns leave the seam as it ended (`seam_chain`: the band's sewn row lands on the garment's side of
+    it, so the seam stays shut), walk its pattern depth along the band's axis (seam centroid -> free edge centroid, as
+    simulated) over what is under it (`layers`: [{"V", "F" wound outward}], kept `gap` off: the band's render
+    thickness + a margin), and each row is drawn in to the band's PATTERN girth at that row (a rib's relaxed length),
+    eased in from the seam's girth over `draw` of the depth; what is under it stops the draw-in (the rib lies on
+    the hips / wrist). A band's own closing seam is shut (both sides to their midpoint).
+    fold: the pattern depth of a fold turned under (a rib folded in half lengthwise: 360 deg), "auto" (the mesh's
+    360 deg fold record, none = single layer), "half" (the cut's middle) or "drape" (`drape_fold`): the half from the seam
+    is the outside, built `layer` further off what is under; the turned-under half lies `layer` inside it, row for
+    row mirrored about the fold."""
+    names, piece, uv = list(M["names"]), np.asarray(M["piece"]), np.asarray(M["uv"], float)
+    V = np.array(V, float)
+    k = names.index(band)
+    sel = np.where(piece == k)[0]
+    ch = seam_chain(V, M, (band,))
+    idx, midx = np.asarray(ch["idx"]), np.asarray(ch["made_idx"])
+    su = uv[midx]
+    # pattern depth = distance from the sewn edge in the flat, station = arc position along it. Not one axis: a band
+    # cut as an annular sector (generate top_ratio, dress-tess's welt 0.92) has a curved sewn edge, and its depth read
+    # along one axis took in the arc's sagitta (114.8 mm "cut" for a 50 mm single-layer welt: built at twice its depth)
+    t_all, u_all, Ls = _band_coords(su, uv[sel])
+    cut = float(t_all.max())
+    if fold == "half":  # folded in half lengthwise as cut (a generated rib band, "fold": true): the cut's middle
+        fold = 0.5 * cut
+    if fold == "drape":  # read the turn from the drape itself (a band whose draft doesn't say)
+        fold = drape_fold(V, sel, t_all, V[idx])
+    elif isinstance(fold, str):  # "auto": the band's own fold turned under (360 deg), its depth from the fold's rows
+        fold = None
+        for fd in M.get("folds") or []:
+            if fd.get("piece") == band and fd.get("rows") and float(fd.get("angle", 180)) >= 359:
+                fold = float(np.median(_band_coords(su, uv[np.asarray(fd["rows"][0], np.int64)])[0]))
+        # no record = a single-layer band: generate "fold": true always records its fold (garment_blocks.generate).
+        # dress-tess w1's welt (knitted_rib, "fold": false) had none for that reason, not a lost record.
+    depth = float(fold) if fold else cut
+    if fold:
+        gap = gap + layer
+    m = max(3, int(np.ceil(depth / step)) + 1)
+    tr = np.linspace(0.0, depth, m)
+    # the band's pattern length per row (a taper in the draft: top / bottom ratio)
+    # (a row's arc span along the seam, scaled to its own length: rho = the free edge's length / its span, 1 on a
+    # straight strip, < 1 on a sector leaning in; linear in depth like the sector's radius)
+    fe = t_all >= cut - min(0.002, 0.1 * cut)
+    o_ = np.argsort(u_all[fe])
+    ufe = uv[sel[fe]][o_]
+    rho = float(np.linalg.norm(np.diff(ufe, axis=0), axis=1).sum() / max(np.ptp(u_all[fe]), 1e-9)) if fe.sum() >= 2 else 1.0
+    L = np.array([np.ptp(u_all[np.abs(t_all - t) <= 0.5 * depth / (m - 1) + 1e-6]) * (1 + (rho - 1) * t / cut) if
+                  (np.abs(t_all - t) <= 0.5 * depth / (m - 1) + 1e-6).sum() >= 2 else np.nan for t in tr])
+    L = np.interp(tr, tr[np.isfinite(L)], L[np.isfinite(L)])
+    P0 = V[idx]
+    n = len(P0)
+    spacing = np.median(np.linalg.norm(np.diff(P0, axis=0), axis=1))
+    closed = bool(np.linalg.norm(P0[0] - P0[-1]) < 4 * spacing)
+    free = sel[np.abs(t_all - depth) < 0.2 * depth]  # (the band's lower edge as simulated: its fold, or its free edge)
+    a = _unit(V[free].mean(0) - P0.mean(0))
+    c0 = P0.mean(0)
+    rad = (P0 - c0) - ((P0 - c0) @ a)[:, None] * a
+    N0 = _unit(rad)
+    D0 = np.tile(a, (n, 1))
+    under = Under(layers)
+    X, _ = march(P0, D0, N0, np.tile(tr, (n, 1)), under, gap, hug=hug, step=0.003)
+    C0 = _ring_len(P0, closed)
+    s_ = np.clip(tr / max(draw * depth, 1e-6), 0, 1)
+    ease = s_ * s_ * (3 - 2 * s_)
+    target = C0 + (np.minimum(L, C0 * L / L[0]) - C0) * ease
+    for _ in range(passes):
+        for j in range(1, m):
+            Xj = X[:, j]
+            cj = Xj.mean(0)
+            off = Xj - cj
+            al = (off @ a)[:, None] * a
+            Cj = _ring_len(Xj, closed)
+            f = target[j] / max(Cj, 1e-9)
+            X[:, j] = cj + al + (off - al) * min(f, 1.0)
+        # rings smoothed round (a closed ring wraps), the seam row held
+        for _s in range(2):
+            Y = X.copy()
+            if closed:
+                Y[:, 1:] = 0.5 * X[:, 1:] + 0.25 * (np.roll(X[:, 1:], 1, 0) + np.roll(X[:, 1:], -1, 0))
+            else:
+                Y[1:-1, 1:] = 0.5 * X[1:-1, 1:] + 0.25 * (X[:-2, 1:] + X[2:, 1:])
+            X = Y
+        flat = X[:, 1:].reshape(-1, 3)
+        flat, _, _ = under.settle(flat, gap, hug=0.0)
+        X[:, 1:] = flat.reshape(n, m - 1, 3)
+    # every band vertex from its pattern place: station by its position along the seam, row by its depth
+    fi = np.interp(u_all, Ls, np.arange(n).astype(float))
+    tt = np.where(t_all > depth, 2 * depth - t_all, t_all) if fold else t_all
+    inner = (t_all > depth + 1e-6) if fold else np.zeros(len(sel), bool)
+    fj = np.clip(tt / depth * (m - 1), 0, m - 1)
+    i0 = np.clip(np.floor(fi).astype(int), 0, n - 2)
+    j0 = np.clip(np.floor(fj).astype(int), 0, m - 2)
+    wi, wj = (fi - i0)[:, None], (fj - j0)[:, None]
+    Pn = ((1 - wi) * (1 - wj) * X[i0, j0] + wi * (1 - wj) * X[i0 + 1, j0]
+          + (1 - wi) * wj * X[i0, j0 + 1] + wi * wj * X[i0 + 1, j0 + 1])
+    if inner.any():  # (the turned-under half: a layer inside the outside, along the ring's outward direction)
+        cr = np.array([X[:, j].mean(0) for j in range(m)])
+        cen = (1 - wj) * cr[j0] + wj * cr[j0 + 1]
+        rv = Pn - cen
+        rv = _unit(rv - (rv @ a)[:, None] * a)
+        Pn[inner] -= layer * rv[inner]
+    # each vertex settled once more where it finally lies: interpolated between the ring stations (~8 mm apart) a band
+    # vertex cut the chord over a ridge of what is under (ds37: the welt 21 vertices into the jeans' fly and front
+    # waist, every station clear); the sewn row stays on the seam
+    lo_ = t_all > 1e-6
+    if lo_.any():
+        gv_ = np.where(inner, gap - layer, gap) if fold else np.full(len(sel), gap)
+        Pn[lo_] = under.settle(Pn[lo_], gv_[lo_], hug=0.0)[0]
+    moved = np.linalg.norm(Pn - V[sel], axis=1)
+    V[sel] = Pn
+    V[midx] = V[idx]  # (the sewn row exactly on the garment's side)
+    shut = 0
+    if M.get("sew") is not None and len(M["sew"]):
+        sw = np.asarray(M["sew"]).reshape(-1, 2)
+        own = (piece[sw[:, 0]] == k) & (piece[sw[:, 1]] == k)
+        if own.any():
+            p_ = sw[own]
+            mid = 0.5 * (V[p_[:, 0]] + V[p_[:, 1]])
+            V[p_[:, 0]] = mid
+            V[p_[:, 1]] = mid
+            shut = int(own.sum())
+    got = np.array([_ring_len(X[:, j], closed) for j in range(m)])
+    info = {"band": band, "stations": int(n), "rows": int(m), "depth_mm": round(depth * 1000, 1), "cut_mm": round(cut * 1000, 1), "folded": bool(fold), "closed": closed,
+            "girth_mm": {"seam": round(C0 * 1000), "pattern_free_edge": round(float(L[-1]) * 1000),
+                         "target_free_edge": round(float(target[-1]) * 1000), "built_free_edge": round(float(got[-1]) * 1000)},
+            "held_out_by_under_mm": round(float(got[-1] - target[-1]) * 1000, 1),
+            "moved_mm": {"p50": round(float(np.median(moved)) * 1000, 1), "max": round(float(moved.max()) * 1000, 1)},
+            "own_seam_pairs_shut": shut}
+    return V, info
+
+
+UNDER_SHEET_DEPTH = 0.03  # m: a band point this far behind the under cloth is past its other side, not through it
+
+
+def construct_bands(V: np.ndarray, M: dict, bV: np.ndarray, bFo: np.ndarray, g: dict, under: dict | None, opt: dict) -> tuple:
+    """The garment's knitted bands named in construct.bands (piece names; "cuff" = cuff.L and cuff.R) built on the
+    drape (`made_band`): over the under garment and the body, the band's render thickness + 1.5 mm off them."""
+    from .cloth import fabric
+    th = float(fabric(g).get("thickness", 0.0008))
+    layers = []
+    if under is not None:
+        # the under garment as it is FINISHED (drawn and checked against), when given: the pressed collider the
+        # garment was simulated over lies up to ~38 mm inside it (loose cloth capped), so a band settled on that
+        # crossed the finished cloth. As a SHEET (cloth: an open surface with cut edges, a pocket scoop), its render
+        # thickness added to the gap
+        # Each PIECE its own sheet: one nearest point over the whole garment found the pocket bag behind the front
+        # panel and never saw the panel the band was inside
+        uV_ = np.asarray(under.get("finished", under["V"]), float)
+        uF_ = away(uV_, np.asarray(under["F"]), np.asarray(bV, float), bFo)
+        pc_ = under.get("piece")
+        fp_ = np.asarray(pc_)[uF_[:, 0]] if pc_ is not None and len(uF_) else np.zeros(len(uF_), int)
+        for k_ in np.unique(fp_):
+            layers.append({"V": uV_, "F": uF_[fp_ == k_], "sheet": True, "depth": UNDER_SHEET_DEPTH,
+                           "gap": float(under.get("thickness", 0.0))})
+    layers.append({"V": np.asarray(bV, float), "F": bFo})
+    info = {}
+    for nm in M["names"]:
+        if not any(nm == b or nm.startswith(b + ".") for b in opt.get("bands") or []):
+            continue
+        kw = dict({"gap": th + 0.0015, "layer": th, "fold": "auto"}, **dict(opt.get("band_options") or {}))
+        V, info[nm] = made_band(V, M, nm, layers, **kw)
+        if under is not None:
+            V, info[nm]["pierced"] = _unpierce(V, M, nm, uV_, uF_, layers)
+    return V, info
+
+
+def _unpierce(V: np.ndarray, M: dict, band: str, uV: np.ndarray, uF: np.ndarray, layers: list, step: float = 0.001,
+              rounds: int = 25) -> tuple:
+    """The band's faces that the under garment still pierces (every band vertex clear of every sheet, the cut edge of a
+    pocket or a fly ridge passing between vertices ~8 mm apart: ds37, 10 vertices) eased out along the normal of what
+    lies under them, `step` a round, the sewn row held: (V, [crossing vertices before, after])."""
+    from .cloth import _layer_crossing_verts
+    F = np.asarray(M["F"])
+    if not len(F):
+        return V, [0, 0]
+    piece = np.asarray(M["piece"])
+    k = list(M["names"]).index(band)
+    sw = np.asarray(M.get("sew") if M.get("sew") is not None else np.zeros((0, 2), int)).reshape(-1, 2)
+    held = np.zeros(len(V), bool)
+    if len(sw):
+        x = (piece[sw[:, 0]] == k) != (piece[sw[:, 1]] == k)
+        held[sw[x].ravel()] = True
+    mine = (piece == k) & ~held
+    fb = np.all(piece[F] == k, axis=1)
+    Fb = F[fb]
+    if not len(Fb) or not len(uF):
+        return V, [0, 0]
+    und = Under(layers)
+    m = _layer_crossing_verts(V, Fb, uV, uF) & mine
+    n0 = int(m.sum())
+    V = np.array(V, float)
+    for _ in range(rounds):
+        if not m.any():
+            break
+        _, nrm, _ = und.settle(V[m], 0.0, rounds=1)
+        ok = np.linalg.norm(nrm, axis=1) > 0.5
+        idx = np.flatnonzero(m)[ok]
+        V[idx] += step * nrm[ok]
+        m = _layer_crossing_verts(V, Fb, uV, uF) & mine
+    return V, [n0, int(m.sum())]
+
+
+CONSTRUCT = {"lapels": True, "collar": False, "sim_collar": True, "lapel_lay": 0.003, "wedge": 0.35, "press": ["lapel"], "lapel": "made", "bands": []}
 
 
 def away(V: np.ndarray, F: np.ndarray, bV: np.ndarray, bFo: np.ndarray) -> np.ndarray:
@@ -1315,12 +1565,50 @@ def _weld(V: np.ndarray, F: np.ndarray, tol: float = 0.0006) -> np.ndarray:
     return Fg[(Fg[:, 0] != Fg[:, 1]) & (Fg[:, 1] != Fg[:, 2]) & (Fg[:, 0] != Fg[:, 2])]
 
 
+def hold_out(Bp: dict, held: tuple = ("collar",)) -> dict:
+    """The drafted pattern without the pieces `held` (and every seam, stitch, fold and interfacing that names them):
+    what is simulated when a made piece is built only on the drape (construct "sim_collar": false). The full draft is
+    meshed again for construct (`held_chain`)."""
+    held = set(held)
+    nm_ = lambda e: e.split(":")[0] if isinstance(e, str) else (e.get("piece") if isinstance(e, dict) else None)
+    side = lambda s: all(nm_(e) not in held for e in ([s] if isinstance(s, (str, dict)) else s))
+    out = dict(Bp)
+    out["pieces"] = {k: v for k, v in Bp["pieces"].items() if k not in held}
+    out["seams"] = [s for s in Bp.get("seams") or [] if side(s[0]) and side(s[1])]
+    out["stitches"] = [s for s in Bp.get("stitches") or [] if side(s[0]) and side(s[1])]
+    out["folds"] = [f for f in Bp.get("folds") or [] if f.get("piece") not in held]
+    out["interfaced"] = [e for e in Bp.get("interfaced") or [] if nm_(e) not in held]
+    out["held_out"] = sorted(held & set(Bp["pieces"]))
+    return out
+
+
+def held_chain(V: np.ndarray, M: dict, Mf: dict, made: str = "collar") -> dict:
+    """seam_chain for a made piece that was NOT simulated: its sewn pairs read on the full draft's mesh `Mf` (the same
+    pieces meshed with it), the garment side mapped onto the simulated mesh `M` by pattern place (same piece,
+    nearest uv): {"idx" (in M), "made_idx" (in Mf), "P", "s", "uv" (the made piece's sewn-edge uv), "map_mm" (the
+    largest uv distance of that mapping: the two meshes sample the seam alike up to it)}."""
+    chf = seam_chain(np.zeros((len(Mf["uv"]), 3)), Mf, (made,))
+    namesf, pf, uvf = list(Mf["names"]), np.asarray(Mf["piece"]), np.asarray(Mf["uv"], float)
+    names, p, uv = list(M["names"]), np.asarray(M["piece"]), np.asarray(M["uv"], float)
+    idx, dd = np.zeros(len(chf["idx"]), np.int64), np.zeros(len(chf["idx"]))
+    for k in np.unique(pf[chf["idx"]]):
+        w = pf[chf["idx"]] == k
+        cand = np.where(p == names.index(namesf[k]))[0]
+        d, j = cKDTree(uv[cand]).query(uvf[chf["idx"][w]])
+        idx[w], dd[w] = cand[j], d
+    keep = np.r_[True, idx[1:] != idx[:-1]]
+    return {"idx": idx[keep], "made_idx": np.asarray(chf["made_idx"])[keep], "P": np.asarray(V, float)[idx[keep]],
+            "s": np.asarray(chf["s"])[keep], "uv": np.asarray(chf["uv"])[keep], "map_mm": round(float(dd.max()) * 1000, 2)}
+
+
 def options(g: dict) -> dict | None:
     """The garment's `construct` key resolved (None: nothing is constructed): true / {} = the defaults (lapels
     pressed, the collar as simulated), false = off, {"lapels", "collar", "lapel_lay", "wedge", "collar_options",
     "lapel_options" (made_lapel keys: roll_top / roll_break / roll_width = the canvassed roll), "hug" (with
     collar and an under garment: the neckline drawn in to the under collar, hug_neckline; false or {gap, reach, max_pull,
-    gorge}), "over_under" (pressed lapels lifted out over the under garment; default on), "board" (the forepart under a
+    gorge}), "sim_collar" (default true; false with collar: the collar is left out of the sim (`hold_out`) and built
+    on the drape from the full draft's mesh, `held_chain`: a simulated collar crossed the fronts, dress-tess c14 / c15),
+    "over_under" (pressed lapels lifted out over the under garment; default on), "board" (the forepart under a
     lapel laid as a ruled strip first, board_lapel; default OFF, experimental: on Garrett it straightened the roll line
     (18-34 -> 8-9 mm) but folded pouches at the breaks and bulges under the lapels), "lapel": "made" (the lapel
     constructed, made_lapel: straight roll line and outer edge, laid on the drape; the default) | "pressed" (press_flap:
@@ -1440,13 +1728,16 @@ def construct(V: np.ndarray, M: dict, bV: np.ndarray, bT: np.ndarray, g: dict, u
     collar / stand)} the garment worn under it, as it lies."""
     opt = options(g)
     flaps = lapel_flaps(M, tuple(opt.get("press") or ("lapel",))) if opt else []
+    bands = {}
+    if opt and opt.get("bands"):  # knitted bands (welt, cuffs) built on the drape: made_band
+        V, bands = construct_bands(np.array(V, float), M, bV, outward(np.asarray(bV, float), np.asarray(bT)), g, under, opt)
     if not opt or not flaps or not (opt["lapels"] or opt["collar"]):
-        return V, None
+        return V, ({"lapels": [], "parts": [], "info": {"bands": bands}} if bands else None)
     V = np.array(V, float)
     F = np.asarray(M["F"])
     uv = np.asarray(M["uv"])
     bFo = outward(np.asarray(bV, float), np.asarray(bT))
-    made = {"lapels": [], "parts": [], "info": {}}
+    made = {"lapels": [], "parts": [], "info": {"bands": bands} if bands else {}}
     # mirror (open fronts): both lapels and the collar pressed to ONE shape, as a tailor works both sides from one
     # template; the drape round them made symmetric first (eased out over `mirror_reach`), so each side is built on
     # the same base (dg_j10: a symmetric start simulated to rolls of 51 / 142 deg, then built into two lapels)
@@ -1602,9 +1893,23 @@ def construct(V: np.ndarray, M: dict, bV: np.ndarray, bT: np.ndarray, g: dict, u
         V = symmetrize(V, iL, iR, x0, wm, keep=mir if mir in ("mean", "L") else "mean")
         made["info"]["mirror"]["lapels_moved_mm"] = round(float(np.linalg.norm(V - Vb_, axis=1).max()) * 1000, 1)
     names, piece = list(M["names"]), np.asarray(M["piece"])
-    if opt["collar"] and "collar" in names and M.get("sew") is not None and any("Fb" in L for L in flaps):
-        mj = piece == names.index("collar")
-        ch = seam_chain(V, M, ("collar",))
+    # the collar held out of the sim (construct "sim_collar": false): built from the full draft's mesh (M["collar_full"])
+    held = "collar" not in names and M.get("collar_full") is not None
+    if opt["collar"] and ("collar" in names or held) and M.get("sew") is not None and any("Fb" in L for L in flaps):
+        if held:
+            Mc = M["collar_full"]
+            uvc = np.asarray(Mc["uv"], float)
+            mjc = np.asarray(Mc["piece"]) == list(Mc["names"]).index("collar")
+            Fc = np.asarray(Mc["F"])[mjc[np.asarray(Mc["F"])].all(1)]
+            Fnc = F
+            chain = lambda V_: held_chain(V_, M, Mc)
+            roll = [fd for fd in Mc.get("folds") or [] if fd.get("piece") == "collar" and fd.get("rows")]
+        else:
+            mj = piece == names.index("collar")
+            uvc, mjc, Fc, Fnc = uv, mj, F[mj[F].all(1)], F[~mj[F].any(1)]
+            chain = lambda V_: seam_chain(V_, M, ("collar",))
+            roll = [fd for fd in M.get("folds") or [] if fd.get("piece") == "collar" and fd.get("rows")]
+        ch = chain(V)
         hug = opt.get("hug", True)
         if hug and under is not None:
             # the collar's ease: the neckline drawn in to the under collar (hug_neckline), the gorge left (mostly) be
@@ -1624,15 +1929,12 @@ def construct(V: np.ndarray, M: dict, bV: np.ndarray, bT: np.ndarray, g: dict, u
             V, hinfo = hug_neckline(V, ch["idx"], w_, tgt, np.asarray(bV, float), bFo, clear=[{"V": uV, "F": uF}],
                                     **{"reach": 0.12, "max_pull": 0.02, **hk})
             made["info"]["hug"] = {k: v for k, v in hinfo.items() if k != "params"}
-            ch = seam_chain(V, M, ("collar",))
-        Fnc = F[~mj[F].any(1)]
+            ch = chain(V)
         own = away(V, _weld(V, Fnc), bV, bFo)
         flap_all = np.zeros(len(V), bool)
         for L in flaps:
             flap_all[L["flap"]] = True
-        Fc = F[mj[F].all(1)]
-        roll = [fd for fd in M.get("folds") or [] if fd.get("piece") == "collar" and fd.get("rows")]
-        pat = collar_pattern(uv, Fc, ch["made_idx"], np.asarray(roll[0]["rows"][0], np.int64) if roll else None)
+        pat = collar_pattern(uvc, Fc, ch["made_idx"], np.asarray(roll[0]["rows"][0], np.int64) if roll else None)
         part = piece[ch["idx"]]
         ends = []
         for L in flaps:
@@ -1641,7 +1943,7 @@ def construct(V: np.ndarray, M: dict, bV: np.ndarray, bT: np.ndarray, g: dict, u
                 continue
             sd_ = 1.0 if ii.mean() > 0.5 * len(part) else -1.0
             ii = ii if sd_ > 0 else ii[::-1]
-            ends.append({"side": sd_, "edge_a": ch["uv"][ii], "edge_b": uv[ch["idx"][ii]], "uv_a": uv[mj], "uv_b": uv[L["sel"]],
+            ends.append({"side": sd_, "edge_a": ch["uv"][ii], "edge_b": uv[ch["idx"][ii]], "uv_a": uvc[mjc], "uv_b": uv[L["sel"]],
                          "line": L["line"], "V": V, "F": L["Fb"], "uv": uv, "out": L["out"], "lay": opt["lapel_lay"]})
         P = V[ch["idx"]]
         c = P.mean(0)
@@ -1666,8 +1968,10 @@ def construct(V: np.ndarray, M: dict, bV: np.ndarray, bT: np.ndarray, g: dict, u
             pt["V"], mis_ = mirror_part(pt["V"], pt["grid"], x0, keep=mir if mir in ("mean", "L") else "mean")
             made["info"]["mirror"]["collar_mismatch_mm"] = round(mis_ * 1000, 1)
         made["parts"].append({"name": "collar", "V": pt["V"], "F": pt["F"], "uv": pt["uv"], "grid": pt["grid"],
-                              "thickness": float(nc["info"]["params"]["thickness"]), "replaces": ["collar"]})
+                              "thickness": float(nc["info"]["params"]["thickness"]), "replaces": [] if held else ["collar"]})
         made["info"]["collar"] = {k: v for k, v in nc["info"].items() if k != "params"}
+        if held:
+            made["info"]["collar"]["held_out_of_sim"] = {"map_mm": ch["map_mm"], "stations": int(len(ch["idx"]))}
     return V, made
 
 

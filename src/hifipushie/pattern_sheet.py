@@ -107,7 +107,9 @@ def render(Bp: dict, title: str = "", px_per_m: float = 900.0, width_m: float = 
             step = 0.012
             from .cloth import _inside, _seg_dist
             ref = None
-            if not isinstance(e, str):
+            if not isinstance(e, str) and "edge" in e:  # (a fused facing's band: along an outline arc)
+                ref = np.asarray(pc["P"], float)[pattern.arc_indices(pc, e["edge"])]
+            elif not isinstance(e, str):
                 r_ = e["near"]
                 if isinstance(r_, str) and r_ not in (pc.get("lines") or {}):
                     ref = np.asarray([pc["P"][pattern.index_of(pc, r_)] if r_ in pc["names"] else pc["marks"][r_]], float)

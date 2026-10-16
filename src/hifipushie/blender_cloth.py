@@ -541,6 +541,14 @@ def render(job, d):
     log("rendered", ", ".join(out))
 
 
+def base_source(maps) -> str | None:
+    """Which map gives a cloth material its base colour: the basecolor PNG when there is one (it carries the colour
+    AND the coloured detail: a jeans' gold J-stitch thread, which the greyscale shade map x the flat colour turned
+    dark; dress-tess a35 waist close-up), else the shade map x the flat colour, else the flat colour (None)."""
+    maps = maps or {}
+    return "basecolor" if maps.get("basecolor") else "shade" if maps.get("shade") else None
+
+
 def _material(name, color, roughness=0.85, maps=None, sheen=0.3):
     """A Principled cloth material: base colour (or its basecolor map on the "pattern" uv), its normal map, sheen."""
     mat = bpy.data.materials.new(name)
@@ -555,7 +563,8 @@ def _material(name, color, roughness=0.85, maps=None, sheen=0.3):
     rgb = nt.nodes.new("ShaderNodeRGB")  # the garment's colour, a person can change it (pulled back: `read`)
     rgb.name = "hp_color"
     rgb.outputs[0].default_value = (*_rgb(color), 1.0)
-    if maps.get("shade"):  # the detail's shading (grooves darker, stitches) times the colour
+    src_ = base_source(maps)
+    if src_ == "shade":  # the detail's shading (grooves darker, stitches) times the colour
         tex = nt.nodes.new("ShaderNodeTexImage")
         tex.image = bpy.data.images.load(maps["shade"], check_existing=True)
         tex.image.colorspace_settings.name = "Non-Color"
@@ -566,13 +575,20 @@ def _material(name, color, roughness=0.85, maps=None, sheen=0.3):
         nt.links.new(rgb.outputs[0], mix.inputs[6])
         nt.links.new(tex.outputs["Color"], mix.inputs[7])
         nt.links.new(mix.outputs[2], bsdf.inputs["Base Color"])
-    elif maps.get("basecolor"):
+    elif src_ == "basecolor":
         tex = nt.nodes.new("ShaderNodeTexImage")
         tex.image = bpy.data.images.load(maps["basecolor"], check_existing=True)
         nt.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
     else:
         nt.links.new(rgb.outputs[0], bsdf.inputs["Base Color"])
     mat["hp_set"] = [*_rgb(color), float(roughness)]
+    # the sheen in the fibres' own colour: a dyed fibre's fuzz scatters its dye, not white (dress-tess review: a
+    # mustard knit under the default white sheen read as "satin / poly-knit" streaks on the shoulders and pale rib
+    # stripes at grazing light)
+    if "Sheen Tint" in bsdf.inputs and sheen > 0:
+        src = next((lk.from_socket for lk in nt.links if lk.to_socket == bsdf.inputs["Base Color"]), None)
+        if src is not None and getattr(bsdf.inputs["Sheen Tint"], "type", "") == "RGBA":
+            nt.links.new(src, bsdf.inputs["Sheen Tint"])
     if maps.get("normal"):
         tex = nt.nodes.new("ShaderNodeTexImage")
         tex.image = bpy.data.images.load(maps["normal"], check_existing=True)
@@ -622,7 +638,7 @@ def _render_textured(job, d):
             m.thickness = float(o["thickness"])
             m.offset = 1.0
         ob.data.materials.append(_material(f"m_{nm}", o.get("color", "#cccccc"), float(o.get("roughness", 0.85 if o.get("maps") else 0.6)),
-                                           o.get("maps"), sheen=0.3 if o.get("maps") else 0.0))
+                                           o.get("maps"), sheen=float(o.get("sheen", 0.3 if o.get("maps") else 0.0))))
     lo = np.min([np.min(d[o["name"] + "_V"], 0) for o in job["objects"]], 0)
     hi = np.max([np.max(d[o["name"] + "_V"], 0) for o in job["objects"]], 0)
     if job.get("box"):
@@ -746,7 +762,7 @@ def show(entries: list) -> list:
         sol.offset = 1.0
         ob["hp_npz"] = e["npz"]
         mat = _material(f"cloth:{e['name']}", e.get("color", "#8fb3d9"), float(e.get("roughness", 0.85)),
-                        e.get("maps"))
+                        e.get("maps"), sheen=float(e.get("sheen", 0.3)))
         me.materials.append(mat)
         made.append(e["name"])
         oldb = bpy.data.objects.get(e["name"] + ".buttons")

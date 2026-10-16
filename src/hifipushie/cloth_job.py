@@ -183,20 +183,49 @@ def stages(cfg: dict) -> list:
     return out
 
 
-def write(job_dir: Path, cfg: dict, arrays: dict, names: list | None = None) -> Path:
-    """job.json + in.npz in job_dir (the Blender runner reads the same folder: its own keys are kept as they were)."""
-    job_dir.mkdir(parents=True, exist_ok=True)
-    np.savez(job_dir / "in.npz", **arrays)
-    cfg = dict(cfg, out=str(job_dir / "out.npz"), format=FORMAT, fps=FPS)
+def job_config(cfg: dict, names: list | None = None) -> dict:
+    """job.json as write() writes it, without its "out" path."""
+    cfg = dict(cfg, format=FORMAT, fps=FPS)
     cfg.setdefault("mode", "sim")
     if names is not None:
         cfg["pieces"] = list(names)
     if "fabric" in cfg:
         cfg["fabric"] = dict(cfg["fabric"], physical=physical(cfg["fabric"]))
     cfg["stages"] = stages(cfg)
+    return cfg
+
+
+def input_hash(cfg: dict, arrays: dict) -> str:
+    """The hash of a job's actual inputs: job.json (as job_config gives it; "out" never counts) and in.npz's arrays
+    (name, dtype, shape, bytes). Two jobs with this hash are the same sim, whatever their cache keys."""
+    c = {k: v for k, v in cfg.items() if k != "out"}
+    h = hashlib.sha1(json.dumps(json.loads(json.dumps(c, default=_jsonable)), sort_keys=True).encode())
+    for k in sorted(arrays):
+        a = np.ascontiguousarray(arrays[k])
+        h.update(f"|{k}|{a.dtype.str}|{a.shape}|".encode())
+        h.update(a.tobytes())
+    return h.hexdigest()[:20]
+
+
+def write(job_dir: Path, cfg: dict, arrays: dict, names: list | None = None) -> Path:
+    """job.json + in.npz in job_dir (the Blender runner reads the same folder: its own keys are kept as they were)."""
+    job_dir.mkdir(parents=True, exist_ok=True)
+    np.savez(job_dir / "in.npz", **arrays)
+    cfg = dict(job_config(cfg, names), out=str(job_dir / "out.npz"))
     (job_dir / "job.json").write_text(json.dumps(cfg, indent=1, default=_jsonable))
     (job_dir / "out.npz").unlink(missing_ok=True)
     return job_dir
+
+
+def job_input_hash(job_dir: Path) -> str | None:
+    """input_hash of a written job folder (job.json + in.npz), None when either is missing or unreadable."""
+    try:
+        cfg = json.loads((job_dir / "job.json").read_text())
+        with np.load(job_dir / "in.npz", allow_pickle=False) as z:
+            arrays = {k: z[k] for k in z.files}
+    except Exception:
+        return None
+    return input_hash(cfg, arrays)
 
 
 def _jsonable(o):

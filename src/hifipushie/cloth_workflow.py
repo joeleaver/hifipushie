@@ -224,6 +224,10 @@ def stage_pattern(c: Ctx, image: bool = True) -> dict:
         for reg, v in sz.items():
             if v["garment_mm"] <= 0:
                 continue  # the garment doesn't reach that girth
+            if v.get("partial"):  # only a curved hem's tip crosses it: not a girth
+                o["info"].append(f"ease at {reg}: not measured (the hem crosses this girth; {', '.join(v['partial'])}"
+                                 f" end above it)")
+                continue
             ease = v["ease"]
             how = "flat pattern"
             if reg == "waist" and "waistband" in R and "waistband_over_waist" in D:
@@ -484,7 +488,7 @@ def stage_construction(c: Ctx) -> dict:
     whole = [e for e in Bp["interfaced"] if isinstance(e, str)]
     bands = [e for e in Bp["interfaced"] if not isinstance(e, str)]
     o["info"].append(f"interfacing (bending x{fab.get('stiff')} over the shell): whole {', '.join(whole) or 'none'}; bands "
-                     + (", ".join(f"{e['piece']} near {e['near']} within {e.get('within', 0.02) * 1000:.0f} mm" for e in bands) or "none"))
+                     + (", ".join(f"{e['piece']} near {e.get('near', e.get('edge'))} within {e.get('within', 0.02) * 1000:.0f} mm" for e in bands) or "none"))
     o["info"].append(f"rest as made in the solver today (wholly interfaced: they keep their placed shape): {', '.join(whole) or 'none'}")
     # made vs draped: what is constructed finished on the table, and what takes its shape from the body
     md = garment_design.made_or_draped(Bp, c.res, c.sheet)
@@ -794,7 +798,10 @@ def stage_place(c: Ctx, image: bool = True) -> dict:
             o["fail"].append(f"{p} ({garment_design.role_of(p, pc)}) started {v} mm inside the neck/jaw: the band is "
                              "taller than this neck allows (lower it: the draft's stand/band width option)")
         elif v > 15:
-            o["warn"].append(f"{p} was pushed {v} mm off the body at the start (that stretch goes into the rest shape)")
+            # (smooth / ZOZO: the membrane rests on the flat pattern, so the push is start stretch the sim lets go of
+            # (dress-tess s29: back pushed 19 mm, the result's stretch 1.00); placed (Blender): the rest is the start)
+            o["warn"].append(f"{p} was pushed {v} mm off the body at the start" + (
+                " (start stretch only: the rest is the flat pattern)" if smooth else " (that stretch goes into the rest shape)"))
     if push:
         o["info"].append(f"start pushed off the body (mm): {push}")
     if smooth:

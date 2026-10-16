@@ -315,6 +315,15 @@ def test_crease_fly_and_front_waistband():
     assert wb["marks"]["button1"][0] > wb["marks"]["buttonhole1"][0]  # the button on the extension at the high end
     chain = abs(wb["marks"]["button1"][0] - wb["marks"]["buttonhole1"][0])
     assert abs(chain - garment_blocks._chain_length(D["pieces"], gen["along"])) < 1e-6
+    # the placement lays the piece's x = 0 at the wrap's start (the centre back here): the SEWN chain's middle must
+    # land there, not the piece's (lap / 2 off it). dt_tess jeans dj8: 20 mm off, the back turned 13-16 mm, seams open
+    P = np.asarray(wb["P"], float); nm_ = wb["names"]
+    a_, b_ = P[nm_["sw"]][0], P[nm_["lapEnd"]][0]
+    assert abs(0.5 * (a_ + b_) + wb["wrap"]["shift"][0]) < 1e-9 and abs(wb["wrap"]["shift"][0] - 0.02) < 1e-9
+    gen0 = dict(gen, extension=None)  # the underlap at the chain's start: the shift the other way
+    w0 = garment_blocks.generate(D["pieces"], gen0)[0]["waistband"]
+    P0, n0 = np.asarray(w0["P"], float), w0["names"]
+    assert abs(0.5 * (P0[n0["lapStart"]][0] + P0[n0["se"]][0]) + w0["wrap"]["shift"][0]) < 1e-9
     # a RIB band (cloth10, for knits): cut shorter than its edge and folded in half, closed in a ring: its seam's
     # stretch and its fold are declared for the checks (not a plain +-1.5% seam, a real fold line)
     import json
@@ -416,6 +425,39 @@ def test_jeans_are_construction():
     assert Bp["pieces"]["back_pocket.L"]["wrap"].get("lies_on")
 
 
+
+def _corner_deg(pc, corner, d=0.005):
+    P = np.asarray(pc["P"], float)[:, :2]
+    i, n = pc["names"][corner], len(P)
+    def along(step):
+        acc, j = 0.0, i
+        while acc < d:
+            k = (j + step) % n
+            acc += np.linalg.norm(P[k] - P[j])
+            j = k
+        return P[j] - P[i]
+    a, b = along(-1), along(1)
+    return float(np.degrees(np.arccos(a @ b / np.linalg.norm(a) / np.linalg.norm(b))))
+
+
+def test_trouser_waist_is_square_to_the_centre_seam():
+    """dress-tess 2026-10-16 (dt_tess jeans dj9): the trouser back's waist met its leaning centre seam at 104.5 deg on
+    the jeans yoke (the block's lean + the yoke take_in sliding its CB end in); two such corners sewn at CB dip the waist
+    in a V, and the straight waistband stood 16 mm off both yokes at CB. Pattern makers square the waist off the CB /
+    CF line (then blend): every waist corner at the centre seam is 90 deg, with and without waist_drop, darted or not,
+    and on the jeans' yoke after its take_in."""
+    from hifipushie import cloth, garment_design as gd
+    mm_ = dict(MM, waistToSeat=220.0, waistToUpperLeg=270.0, waistToFloor=1040.0, waistToKnee=580.0, seat=972.2)
+    for o in ({}, {"waist_drop": 0.07}, {"back_dart": 0.02, "waist_drop": 0.04}, {"back_dart": 0.0}):
+        T = pd.start("trouser", mm_, o)
+        for k in ("front", "back"):
+            assert abs(_corner_deg(T["pieces"][k], "cWaist") - 90.0) < 2.0, (o, k, _corner_deg(T["pieces"][k], "cWaist"))
+        assert all(ok for ok, _ in pd.consistency(T)), [t for ok, t in pd.consistency(T) if not ok]
+    pat = gd.compile_sheet({"kind": "jeans", "fit": "straight", "block_options": {"waist_drop": 0.07}})["pattern"]
+    Bp = cloth.pieces({"pattern": pat}, mm_)
+    for k in ("yoke.L", "yoke.R", "front.L", "front.R"):
+        assert abs(_corner_deg(Bp["pieces"][k], "cWaist") - 90.0) < 2.0, (k, _corner_deg(Bp["pieces"][k], "cWaist"))
+
 def test_the_underarm_lands_below_the_armpit_down_the_back_tape():
     """dress-tess / coordinator 2026-10-14: every block places the underarm `underarm` (2.5 cm) below the armpit down
     the back's own tape (hpsToArmpitBack); the old rule (waistToArmpit up from the waist along the whole back's tape,
@@ -454,6 +496,36 @@ def test_jeans_legs_start_on_their_tubes():
     lowest = min(fr, key=lambda o: float(pcs[o]["P"][:, 1].min()))
     assert lowest == "front.L", lowest
 
+
+def test_a_band_cut_as_a_cone_has_its_free_edge_shorter():
+    """generate top_ratio: the band is an annular sector (its rest shape a cone: a crew neckband that lies on the neck's
+    base instead of standing up it, dress-tess s28); the sewn edge keeps its length, the free edge is top_ratio of it;
+    a sector band's rib runs radially in the knit surface (cloth.knit_surface)."""
+    import numpy as np
+    from hifipushie import pattern, cloth, garment_blocks
+    pcs = {"front": pattern.from_spec("front", {"outline": [{"at": [0, 0], "name": "a"}, {"at": [0.4, 0], "name": "b"},
+                                                             [0.4, 0.3], [0, 0.3]]})}
+    for tr in (0.85, 1.15):
+        out, seams, _, _ = garment_blocks.generate(pcs, {"band": "nb", "along": "front:a>b", "ratio": 0.9,
+                                                         "height": 0.022, "ring": True, "top_ratio": tr})
+        pc = out["nb"]
+        ls = pattern.length(pc["P"][pattern.arc_indices(pc, "sw>s>se")])
+        lt = pattern.length(pc["P"][pattern.arc_indices(pc, "ne>n>nw")])
+        assert abs(ls - 0.36) < 1e-3 and abs(lt / ls - tr) < 0.01, (tr, ls, lt)
+        assert seams == [["nb:sw>s>se", "front:a>b"], ["nb:sw>nw", "nb:se>ne"]]
+    try:
+        garment_blocks.generate(pcs, {"band": "nb", "along": "front:a>b", "height": 0.022, "top_ratio": 0.5})
+        raise AssertionError("a band curled past a circle was accepted")
+    except ValueError:
+        pass
+    # the rib: radial on the sector (constant phase along a ray from its centre), straight bands unchanged
+    B = {"pieces": dict(pcs, **garment_blocks.generate(pcs, {"band": "neckband", "along": "front:a>b", "height": 0.022,
+                                                               "ring": True, "top_ratio": 0.85})[0]), "seams": [], "stitches": []}
+    M = cloth.mesh(B, 0.01)
+    uv, side = cloth.atlas_uv(M)
+    T = 512
+    H, shade = cloth.knit_surface(M, uv, side, T, side / T, {"knit": {"jitter": 0.0}})
+    assert np.isfinite(H).all() and H.shape == (T, T)
 
 def test_side_neck_point_on_the_shoulder_crest(monkeypatch=None):
     """The hps is where the shoulder's crest meets the neck loop, not the loop's widest point: a deep neck section
@@ -589,6 +661,39 @@ def test_neckline_is_drafted_on_the_base_ring():
     os.environ.pop("HP_HPS", None)
     if not done:
         print("skip: no workspace bodies")
+
+
+def test_fused_facing_stiffens_its_front_along_the_edge():
+    """A facing fused to its front (one cloth in the sim) is that front's interfaced BAND along the edge it was traced
+    from, as deep as the facing (dress-tess 2026-10-16: cloth.pieces set fused pieces aside and then dropped them from
+    the interfaced list, so no faced front, lapels included, was ever stiffer than plain cloth in a sim)."""
+    from hifipushie import cloth
+    ops = [{"op": "facing", "piece": "front", "edges": ["centre_front"], "width": 0.06}]
+    Bp = cloth.pieces({"pattern": {"from": "draft", "block": "bodice", "ops": ops}}, MM)
+    assert Bp["fused"]["pieces"], "the facing is fused to its front"
+    bands = Bp["fused_bands"]
+    assert {b["piece"] for b in bands} == {"front.L", "front.R"}, bands
+    assert all(0.055 < b["within"] < 0.065 for b in bands), bands  # the facing's own depth
+    M = cloth.mesh(Bp, 0.01)
+    st = cloth.interfacing(Bp, M)
+    for nm in ("front.L", "front.R"):
+        pc, sel = Bp["pieces"][nm], M["piece"] == M["names"].index(nm)
+        b = next(b for b in bands if b["piece"] == nm)
+        L = np.asarray(pc["P"], float)[pattern.arc_indices(pc, b["edge"])]
+        d = cloth._seg_dist(M["uv"][sel], L, closed=False)
+        s = st[sel]
+        assert (s[d < 0.03] > 0.99).all(), (nm, s[d < 0.03].min())  # stiff along the faced edge
+        assert (s[d > 0.065] == 0).all(), nm  # plain cloth past the facing
+        assert 0.0 < s.mean() < 0.9, s.mean()  # a band, not the whole front (that would rest the front as made)
+    assert not set(cloth.made_pieces(M, st)) & {"front.L", "front.R"}
+    # a facing that isn't interfaced, or kept a piece of its own ("separate"), makes no band
+    Bs = cloth.pieces({"pattern": {"from": "draft", "block": "bodice", "ops": [dict(ops[0], separate=True)]}}, MM)
+    assert not Bs["fused_bands"] and not Bs["fused"]["pieces"]
+    # "interfaced": false = a soft facing: still fused, no band, plain cloth (dg_garrett j17b's soft gorge facing)
+    Bn = cloth.pieces({"pattern": {"from": "draft", "block": "bodice", "ops": [dict(ops[0], interfaced=False)]}}, MM)
+    assert Bn["fused"]["pieces"] and not Bn["fused_bands"], Bn["fused_bands"]
+    Mn = cloth.mesh(Bn, 0.01)
+    assert not cloth.interfacing(Bn, Mn).any()
 
 
 if __name__ == "__main__":

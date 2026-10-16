@@ -97,6 +97,9 @@ def main():
     test_draft_kind_validates()
     test_pins()
     os.environ.pop("HP_UNCRUSH", None)  # (the spec alone decides the start)
+    # the pre-placement cache OFF for this run (neither read nor written): an entry from an earlier code state let a
+    # pass at 5ebb828d skip the placement and the key it would have computed (dress-tess 2026-10-16)
+    os.environ["HIFIPUSHIE_CLOTH_PRE"] = "0"
     if "dg_garrett" not in store.list_models():
         print("skip: no dg_garrett model here")
         return
@@ -120,6 +123,7 @@ def main():
     print("key", res["key"], "sculpted", res.get("sculpted"), "finished", res.get("finished"),
           "under sculpted", res.get("under_sculpted"))
     assert res["key"] == "7aca63ae26eb8a5c", res["key"]
+    assert "pre_key" not in res, "read from the pre-placement cache"
     assert not res.get("sculpt_stale") and not res.get("finish_stale") and not res.get("under_sculpt_stale")
 
     def same(a, b, what, tol=1e-6):

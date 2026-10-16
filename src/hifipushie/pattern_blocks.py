@@ -633,6 +633,18 @@ def trouser(m: dict, opts: dict | None = None) -> dict:
         dart = 0.0 if fr else float(o["back_dart"])
         side_w = cin + wq + dart
         pts = [("cWaist", [cin, Y(-up)])]
+        # the waist leaves the centre seam SQUARE to it (pattern makers square 1-2 cm off the CB / CF line, then blend
+        # into the waist): the leaning centre seam (cin, up; more with waist_drop's shorter waist-to-seat) met a straight
+        # waist at 95 (front) / 104.5 deg (back); two such corners sewn at CB dip the waist in a V and the straight
+        # waistband stood 16 mm off the yoke corners (dt_tess jeans dj9)
+        c0, cs = np.array([cin, Y(-up)]), np.array([0.0, Y(wts)])
+        u_cb = (c0 - cs) / np.linalg.norm(c0 - cs)
+        sq_dir = np.array([u_cb[1], -u_cb[0]])  # perpendicular, toward the side seam
+        tgt = np.array([cin + 0.5 * wq, Y(-up * 0.5)]) if dart > 0 else np.array([min(side_w, w + 0.01), 0.0])
+        s0 = c0 + 0.012 * sq_dir
+        u_w = (tgt - s0) / np.linalg.norm(tgt - s0)
+        Lw = float(np.linalg.norm(tgt - s0))
+        pts += [(None, s0.tolist())] + _curve_pts(bez(s0, s0 + sq_dir * Lw / 3, tgt - u_w * Lw / 3, tgt, n=8))
         if dart > 0:
             dx = cin + 0.5 * wq
             dl = float(o["dart_length"]) if o["dart_length"] else 0.11
