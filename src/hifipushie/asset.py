@@ -484,7 +484,7 @@ def split(spec: dict, resolution: int, instancing: bool, log: list, min_share: i
         log.append(f"prefab {pf}: {len(d['instances'])} instances share one mesh and one set of texels, baked at "
                    f"{d['bake']} (its paint, AO and sky as it stands there; voxel {v * 1000:.1f} mm)")
     return {"streams": xs, "origin": origin, "frames": frames, "voxel": float(voxel), "full": full,
-            "prefabs": {pf: d for pf, d in shared.items() if d["parts"]}}
+            "prefabs": {pf: d for pf, d in shared.items() if d["parts"]}, "defs": spec.get("parts") or {}}
 
 
 def mesh_parts(ctx: dict, out: Path) -> Path:
@@ -671,6 +671,71 @@ def _deep_hidden(V: np.ndarray, hidden: np.ndarray, part: np.ndarray, rim: float
     return deep
 
 
+def _hide_covered(ctx: dict, z: dict, names: list, hidden: np.ndarray, log: list) -> None:
+    """spec parts.<p>.hides (hides.py) on the high mesh, in place on `hidden`: the hidden part's faces its covers
+    enclose go (poke-through islands too), and a cover's faces buried only in the hidden part come back where that
+    part is now gone (a shoe's inside under toes it hides would leave a see-through hole)."""
+    from scipy.spatial import cKDTree
+    from . import hides as hidesmod
+    rules = hidesmod.rules(ctx.get("defs") or {})
+    if not rules:
+        return
+    origin = ctx["origin"]
+    by_part = {k: ps for k, ps in ctx["streams"].items() if origin.get(k, k) == k}
+    V = z["verts"].astype(np.float64)
+    for i, nm in enumerate(names):
+        rule = rules.get(origin.get(nm, nm))
+        cov = hidesmod.covers(rule, by_part) if rule else []
+        if not cov:
+            continue
+        sel = np.flatnonzero(z["part"] == i)
+        fsel = z["faces"][z["part"][z["faces"][:, 0]] == i]
+        loc = np.full(len(V), -1, np.int64)
+        loc[sel] = np.arange(len(sel))
+        hid = hidesmod.covered(V[sel], loc[fsel], cov, rule["margin"], rule["reach"], rule["rim"])
+        hidden[sel] |= hid
+        log.append(f"{nm}: {int(hid.sum())} vertices hidden under {', '.join(rule['covers'])}")
+        if not hid.any():
+            continue
+        tree = cKDTree(V[sel])
+        for c in rule["covers"]:
+            if c not in names:
+                continue
+            cs = np.flatnonzero((z["part"] == names.index(c)) & hidden)
+            if not len(cs):
+                continue
+            inB = sdf.field_at(ctx["streams"][nm], V[cs]) < -0.5 * ctx["voxel"]
+            gone = hid[tree.query(V[cs])[1]]
+            others = {k: q for k, q in ctx["streams"].items() if k != nm}
+            still = surface.hidden(others, V[cs], np.zeros(len(cs), int), [c], ctx["voxel"]) > 0.5
+            back = inB & gone & ~still
+            hidden[cs[back]] = False
+            if back.any():
+                log.append(f"{c}: {int(back.sum())} vertices inside {nm} kept (that part is hidden there)")
+
+
+def hide_export_part(ctx: dict, pn: str, p: dict, log: list) -> int:
+    """spec parts.<p>.hides on a finished export part (its corner arrays, after decimation or a template wrap):
+    triangles whose corners the covers enclose are culled. Returns how many were dropped."""
+    from . import hides as hidesmod
+    rule = hidesmod.rules(ctx.get("defs") or {}).get(ctx["origin"].get(pn, pn))
+    by_part = {k: ps for k, ps in ctx["streams"].items() if ctx["origin"].get(k, k) == k}
+    cov = hidesmod.covers(rule, by_part) if rule else []
+    if not cov:
+        return 0
+    cv = np.asarray(p["corner_vert"], np.int64)
+    keep = hidesmod.keep_faces(np.asarray(p["verts"], np.float64), cv.reshape(-1, 3), cov, rule)
+    if keep.all():
+        return 0
+    cm = np.repeat(keep, 3)
+    for k_ in ("corner_vert", "uv", "normal", "tangent", "sign"):
+        if k_ in p:
+            p[k_] = np.asarray(p[k_])[cm]
+    n = int((~keep).sum())
+    log.append(f"{pn}: {n} of {len(keep)} triangles under {', '.join(rule['covers'])} culled (parts hides)")
+    return n
+
+
 def prune_hidden(ctx: dict, mesh: Path, log: list, own_surface: dict | None = None) -> Path:
     """Drop faces buried inside another part (skin under solid clothing shells, the back of an eyeball in its
     socket, tooth roots, a chair's feet in the floor): nobody sees them, and they'd take triangles and atlas space.
@@ -682,6 +747,7 @@ def prune_hidden(ctx: dict, mesh: Path, log: list, own_surface: dict | None = No
     hidden = surface.hidden(ctx["streams"], z["verts"].astype(np.float64), z["part"], names, ctx["voxel"],
                             ctx.get("apart")) > 0.5
     hidden = _deep_hidden(z["verts"].astype(np.float64), hidden, z["part"])
+    _hide_covered(ctx, z, names, hidden, log)
     for pn, pts in (own_surface or {}).items():
         from scipy.spatial import cKDTree
         for i, nm in enumerate(names):
@@ -1902,6 +1968,8 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
             continue
         sizes = {ai: min(texture, _pow2(0.97 * need[ai])) for ai in need}
         break
+    hid_tris = {pn: hide_export_part(ctx, pn, parts[pn], log) for pn in parts}  # (parts.<p>.hides: also after a
+    # template wrap or a decimation, which bring back what the high mesh had already lost)
     ntri = sum(len(p["corner_vert"]) // 3 for p in parts.values())
     log.append(f"low poly: {ntri} triangles in the file in {time.time() - t1:.1f}s (joint decimation {binfo['joint_s']:.1f}s, "
                f"per-part {binfo['decimate_s'] - binfo['joint_s']:.1f}s, unwrap + pack {binfo['unwrap_s']:.1f}s)")
@@ -1917,6 +1985,8 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
                       **({"uv": "planar", "material": f"{aname}_{names[p['atlas']]}_material"} if pn in planar else {})}
         if pn in pf_of:
             report[pn]["prefab"] = pf_of[pn]
+        if hid_tris.get(pn):
+            report[pn]["hidden_dropped"] = hid_tris[pn]
         if "focus_mm_per_texel" in tsz[pn]:
             report[pn]["focus_mm_per_texel"] = tsz[pn]["focus_mm_per_texel"]
         des = _designed_interior(topo.get(pn), p["verts"])

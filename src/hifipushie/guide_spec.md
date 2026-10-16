@@ -27,6 +27,9 @@ Spec:
   parts:  {name: {"shell"?: base part, "offset"?, "color"?}}; any element takes "part": name (default "body").
           Each part is a separate mesh (and material later): eyes, teeth, clothing. A shell part is its base
           pushed out by offset, cut to its own layer-0 adds (a garment's region); strokes on it make folds.
+          "hides": ["body", ...] (or {"parts", "margin" 0.001, "reach" 0.02, "rim" 0.004}): faces of those parts
+          this part encloses (and poke-through patches ringed by it) are not drawn and are culled on export
+          (shoes over feet, gloves, tight garments): the cover can take its real shape over the body.
   joints may be {"on": surface address (as for strokes), "lift", "shift", "r"}: seated on the surface
           (a tusk rooted on the lip, a horn on the skull), following it when the model changes.
   strokes: {name: {"op": "clay" | "crease" | "flatten", "path": [surface points], "width", "depth", ...}}

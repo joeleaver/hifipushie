@@ -317,6 +317,8 @@ def objects(name: str, resolution: int = 256, log: list | None = None) -> tuple[
     from .base import part_defs
     defs = part_defs(spec)  # (the base's implied parts too: a clear cornea's lens)
     pf_of = {pn: pf for pf, d in ctx["prefabs"].items() for pn in d["parts"]}
+    from . import hides as hidesmod
+    hide = hidesmod.rules(defs)
     objs, meshed = [], 0
     for key, ps in ctx["streams"].items():
         pf = pf_of.get(key)
@@ -368,13 +370,29 @@ def objects(name: str, resolution: int = 256, log: list | None = None) -> tuple[
                 normals /= np.maximum(np.linalg.norm(normals, axis=1, keepdims=True), 1e-12)
             np.savez(f, verts=verts.astype(np.float32), faces=faces, normals=normals.astype(np.float32))
             meshed += 1
-        objs.append({"key": key, "mesh": str(f), "hash": h, "part": ctx["origin"][key], "prefab": pf, "voxel": fr[1],
+        rule = hide.get(ctx["origin"][key]) if pf is None else None
+        cov = hidesmod.covers(rule, {ctx["origin"][k]: q for k, q in ctx["streams"].items()
+                                     if k not in pf_of}) if rule else []
+        if cov:  # faces the covering parts enclose (spec parts.<p>.hides): not drawn
+            hk = hidesmod.key(rule, cov)
+            fh = cache / f"{h}_hide_{hk}.npz"
+            if not fh.exists():
+                z = dict(np.load(f))
+                kf = hidesmod.keep_faces(z["verts"], z["faces"], cov, rule)
+                v_, n_, f_ = _compact(z["verts"], z["normals"], z["faces"][kf])  # (Blender drops loose vertices)
+                np.savez(fh, verts=v_, faces=f_, normals=n_)
+                log.append(f"{key}: {int((~kf).sum())} faces hidden under {', '.join(rule['covers'])}")
+            src, f, h = str(f), fh, f"{h}:{hk}"
+        else:
+            src = None
+        objs.append({"key": key, "mesh": str(f), "src_mesh": src, "hash": h, "part": ctx["origin"][key], "prefab": pf, "voxel": fr[1],
                      "color": store.part_colour(ctx["origin"][key], defs, len(objs)).tolist()})
     insts = [{"name": inst, "prefab": pf, "matrix": M.tolist()}
              for pf, d in ctx["prefabs"].items() for inst, M in d["instances"].items()]
     log.append(f"{len(objs)} objects ({meshed} meshed, {len(objs) - meshed} from the cache), {len(insts)} instances")
     prog = _paint_inputs(spec, ctx, objs, insts, cache, log)
-    used = {o["mesh"] for o in objs} | {o["inputs"] for o in objs if o.get("inputs")}
+    used = {o["mesh"] for o in objs} | {o["inputs"] for o in objs if o.get("inputs")} | {
+        o["src_mesh"] for o in objs if o.get("src_mesh")}  # (a hidden part's full mesh: the next edit's start)
     st = cache / "inputs_state.json"
     if st.exists():  # the field and mask files of the last full measuring run: the next edit reuses them
         used |= set(json.loads(st.read_text()).get("files", []))

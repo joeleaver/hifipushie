@@ -325,7 +325,12 @@ def _build(spec, key, resolution, box, lkey, mesh_p, sil_p, meta_p) -> dict:
     live = _LIVE.setdefault(lkey, {})
     V, F, N, P, C, sils, names, empty, redone = [], [], [], [], [], [], [], [], []
     changed: dict[str, list] = {}
-    for ps in sdf.streams(prims):  # each part meshed on its own, on one shared grid
+    from . import hides as hidesmod
+    hide = hidesmod.rules(defs)
+    allstreams = sdf.streams(prims)
+    by_part = {ps[0].part: ps for ps in allstreams}
+    hidden_n = {}
+    for ps in allstreams:  # each part meshed on its own, on one shared grid
         pname = ps[0].part
         st = live.setdefault(pname, {"grid": sdf.PartGrid(), "mesh": None})
         base = (defs.get(pname) or {}).get("shell")
@@ -340,6 +345,10 @@ def _build(spec, key, resolution, box, lkey, mesh_p, sil_p, meta_p) -> dict:
             empty.append(pname)  # nothing of it inside this grid (or its region misses the base)
             continue
         v, fc, n, sil = st["mesh"]
+        if pname in hide and hidesmod.covers(hide[pname], by_part):  # faces the covering parts enclose: not drawn
+            kf = hidesmod.keep_faces(v, fc, hidesmod.covers(hide[pname], by_part), hide[pname])
+            hidden_n[pname] = int((~kf).sum())
+            fc = fc[kf]
         sils.append(sil)
         F.append(fc + sum(len(x) for x in V))
         V.append(v)
@@ -362,6 +371,8 @@ def _build(spec, key, resolution, box, lkey, mesh_p, sil_p, meta_p) -> dict:
     meta = {"key": key, "mesh": str(mesh_p), "verts": len(verts), "faces": len(faces),
             "voxel": float(voxel), "bounds": [lo.tolist(), hi.tolist()], "seconds": round(time.time() - t, 2),
             "parts": names, "empty_parts": empty, "rebuilt_parts": redone}
+    if hidden_n:
+        meta["hidden_faces"] = hidden_n
     meta_p.write_text(json.dumps(meta))
     return meta
 

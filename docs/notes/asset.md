@@ -64,3 +64,26 @@ Moved out of CLAUDE.md on 2026-10-09 so agents don't load every thread's history
   (~0.1 texel at 4x zoom) is bilinear reconstruction of a sub-texel edge at each chart's own phase: a texture made
   analytically from the low poly's own z shows the same. `asset.preview(denoise=False)` for texture close-ups.
 
+## hides (2026-10-16, "hides" agent)
+`parts.<cover>.hides: ["body", "socks"]` (or `{"parts", "margin" 1 mm, "reach" 20 mm, "rim" 4 mm}`; `hides.py`): what
+game studios do with body masks under shoes / gloves / tight garments. A vertex of a hidden part is covered when the
+union of its covers' fields is < -margin there, or it lies on an outside patch of the mesh (connected components of
+the uncovered vertices) that never gets farther than `reach` from the covers: a poke-through ringed by covered skin
+(bare toes under a sprung toe, skin through a shoe's throat). Covered vertices within `rim` of a showing one stay, so
+the cut lies under the cover. A face goes when all 3 corners are covered. Faces only: the part's shape never changes
+(an approved body stays approved). Several parts hiding one part cover it together (shoes + soles + outsole).
+Where it applies:
+- clay builds (`store._build`): faces dropped from the hidden part, vertices kept (meta `hidden_faces`).
+- the scene (`scene.objects`): `<hash>_hide_<key>.npz` beside the full mesh, compacted (Blender drops loose vertices,
+  which misaligned the Cycles AO arrays), object hash `<h>:<key>`; the full mesh stays in the cache (`src_mesh`).
+- export: `prune_hidden` (`_hide_covered` on the high mesh; it also gives back a cover's faces buried only in the part
+  it hides where that part is now gone, else a see-through hole) and `hide_export_part` on every finished low-poly
+  part (after a template wrap / decimation), report `parts.<p>.hidden_dropped`.
+Tests: tests/test_hides.py (synthetic leg + foot in a shoe shell whose floor stops 5 mm up: rules, clay build, scene
+objects, export pruning + culling, deterministic). Not yet run: a full export_asset of a hiding model (Blender) and a
+painted scene look.
+Demo on copies (scripts /mnt/data/hifipushie/hides/demo.py, probe.py; clay passes out/h1_<model>.png, `_hide0` =
+before): dt_tess_hide (props patch + 10 mm toe spring: midsole_toe / outsole_toe tilted about x and lifted half the
+spring, shoe_toe lifted too; outsole tip 9.5 mm, midsole 10.6 mm off the floor): body vertices drawn outside the
+covers below the collar 552 (to 4.7 mm) -> 0. dg_garrett_hide: 256 (to 6.4 mm, the white toe flecks) -> 0.
+

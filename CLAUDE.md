@@ -50,6 +50,8 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   npz carries `part`/`part_names`/`part_colors`, OBJ export writes one object per part). A shell part
   (`spec["parts"][name] = {"shell": base, "offset"}`) is its base part's field pushed out (`sd_shell`),
   intersected (op "intersect") with the union of its layer-0 adds. Solid on purpose: thin sheets alias.
+- `hides.py` (2026-10-16): `parts.<cover>.hides: [parts]` hides faces the cover encloses (+ poke-through islands it rings)
+  in clay builds, the scene and export (faces only, shape untouched; game-style body masking). -> docs/notes/asset.md "## hides"
 - `surface.py`: `Points`, a set of surface points (mesh vertices or baked texels) with position/normal/part and
   lazily computed field inputs: `curvature` (field Laplacian / 2), `thickness` (depth where rays along -normal
   leave the part), `hidden` (buried in another part), `grain`/`grain_seed` (element axis). `ao` and `sky` come

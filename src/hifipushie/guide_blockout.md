@@ -55,6 +55,8 @@ addressed on the surface. Rules that matter:
   with `"part": "shorts"` mark where it exists (their union cuts the shell), strokes with
   `"part": "shorts"` make folds, and a belt can be a shell of the shorts. Shells are solid (the inside is
   hidden in the body); offsets of 1.5+ voxels at your judging resolution.
+- Footwear (and gloves, tight garments): `"shoes": {..., "hides": ["body", "socks"]}` (soles too) hides the skin
+  the shoe encloses, so a toe spring or a slim last never shows toes through it. The body's shape is untouched.
 - Seated joints root attachments on the surface: `{"on": {"at": "face_mouth_corner.L", "offset": [...]},
   "lift": -0.003, "r": 0.0065}` for a tusk's root, and the same address with `"shift": [dx,dy,dz]` for its
   tip. They follow the surface when the face or body changes.
