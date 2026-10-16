@@ -6,7 +6,12 @@ stand (under_collar). Needs the dg_garrett model, its cached sim and the frozen 
 "uncrush" (the env var HP_UNCRUSH is only a fallback): this test unsets the env var, so the spec alone decides.
   HIFIPUSHIE_HOME=<workspace> uv run python tests/test_cloth_spec_durable.py
 Also (always run): the uncrush key's precedence over the env var, and a design's compiled draft pattern (with its
-"kind") passing cloth.validate, so store.save can check such a spec."""
+"kind") passing cloth.validate, so store.save can check such a spec; pins (cloth.pin_file / pin_path) immutable and
+checked, under.pin refusing a path.
+No scratch file is read (2026-10-16 x): the spec's under.pin / sculpt / under_sculpt / finish are content-addressed pins in
+workspace/dg_garrett/_pins, and the expected frozen j17b pieces are pins too (FROZEN_PINS; FROZEN=<dir> reads that dir
+instead). The jacket's sim was cached while the sim key still held the design pattern's "kind" (main c2173b7c took it
+out): cloth._build finds such a legacy entry under its old key, so 7aca63ae26eb8a5c holds."""
 import os
 import pickle
 import sys
@@ -19,7 +24,40 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from hifipushie import cloth, store  # noqa: E402
 
-FROZEN = Path(os.environ.get("FROZEN", "/mnt/data/hifipushie/dress_garrett/frozen_j17b"))
+FROZEN = os.environ.get("FROZEN")
+FROZEN_PINS = {"jacket": "pin:170b2da13df3f024", "shirt": "pin:38c8842a46f1af9d"}  # (frozen_j17b, 2026-10-16 01:01)
+
+
+def test_pins():
+    import tempfile
+    old = store.HOME
+    with tempfile.TemporaryDirectory() as td:
+        store.HOME = Path(td)
+        try:
+            src = Path(td) / "a.npz"
+            np.savez(src, offset=np.ones((3, 3)))
+            ref = cloth.pin_file("m", src)
+            assert cloth.PIN_RE.fullmatch(ref), ref
+            assert cloth.pin_file("m", src) == ref  # (same content: the same pin, not rewritten)
+            f = cloth.pin_path(ref, "m:garment")
+            assert np.load(f)["offset"].sum() == 9
+            src.write_bytes(b"other")  # (the scratch source rewritten: the pin keeps its content)
+            assert np.load(cloth.pin_path(ref, "m"))["offset"].sum() == 9
+            os.chmod(f, 0o644)
+            f.write_bytes(b"tampered")
+            try:
+                cloth.pin_path(ref, "m")
+                raise AssertionError("a rewritten pin must be refused")
+            except cloth.ClothError as e:
+                assert "no longer matches" in str(e), e
+            try:
+                cloth.under_pinned(str(src), "m")
+                raise AssertionError("under.pin must refuse a path")
+            except cloth.ClothError as e:
+                assert "pin reference" in str(e), e
+        finally:
+            store.HOME = old
+    print("ok pins: content-addressed, immutable, checked; under.pin takes pins only")
 
 
 def test_uncrush_key():
@@ -57,15 +95,23 @@ def test_draft_kind_validates():
 def main():
     test_uncrush_key()
     test_draft_kind_validates()
+    test_pins()
     os.environ.pop("HP_UNCRUSH", None)  # (the spec alone decides the start)
-    if "dg_garrett" not in store.list_models() or not (FROZEN / "garrett_jacket.pkl").exists():
-        print("skip: no dg_garrett model or frozen pieces here")
+    if "dg_garrett" not in store.list_models():
+        print("skip: no dg_garrett model here")
         return
-    fj = pickle.load(open(FROZEN / "garrett_jacket.pkl", "rb"))
-    fs = pickle.load(open(FROZEN / "garrett_shirt.pkl", "rb"))
+    try:
+        fp = {k: Path(FROZEN) / f"garrett_{k}.pkl" if FROZEN else cloth.pin_path(v, "dg_garrett") for k, v in FROZEN_PINS.items()}
+    except cloth.ClothError as e:
+        print(f"skip: frozen pieces not pinned here ({e})")
+        return
+    fj = pickle.load(open(fp["jacket"], "rb"))
+    fs = pickle.load(open(fp["shirt"], "rb"))
     fj, fs = fj.get("res", fj), fs.get("res", fs)
     spec = store.load("dg_garrett")
     g = spec["cloth"]["jacket"]
+    refs = [g["under"]["pin"]] + [g[k]["file"] for k in ("sculpt", "under_sculpt", "finish")]
+    assert all(cloth.PIN_RE.fullmatch(r) for r in refs), f"the spec reads a scratch path: {refs}"
     assert g.get("uncrush") is True and spec["cloth"]["shirt"].get("uncrush") is True
     cloth.validate(spec)  # (the stored spec passes the checked save's cloth validation: the design's "kind")
     res = cloth.build(cloth._garment_for_sim(g), cloth.model_body("dg_garrett", spec, g), "dg_garrett:jacket",

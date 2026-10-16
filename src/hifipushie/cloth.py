@@ -6997,7 +6997,9 @@ def _build(g: dict, body_src: dict, name: str = "garment", log=print, frames: in
     gs = {k: v for k, v in g.items() if k not in NOT_SIM}
     gs.pop("backend", None)
     gs.pop("uncrush", None)  # (it changes only the placed start, keyed in `inputs`: on by env var or key, one key)
+    gs_kind = None  # (the pattern as keyed before its "kind" left the key: a legacy cache entry under that key is used)
     if isinstance(gs.get("pattern"), dict) and "kind" in gs["pattern"]:
+        gs_kind = gs["pattern"]
         # (a design's pattern "kind" picks drafting defaults: what it changes is the draft, keyed in `inputs` (uv, F,
         # sew). Keyed here too it re-keyed every design-drafted sim when the design compile began writing it, with
         # identical inputs: dress-tess dj11 / ds37 / dc19 after the main 43dcdf5a merge)
@@ -7018,6 +7020,12 @@ def _build(g: dict, body_src: dict, name: str = "garment", log=print, frames: in
         keyed.append(["strain_limit", strain_limit_of(g)])  # (a knit's own limit: woven sims keep their keys)
     key = hashlib.sha1(json.dumps(keyed, sort_keys=True, default=str).encode()).hexdigest()[:16]
     cache = _cache_dir() / f"{key}.npz"
+    if gs_kind is not None and not cache.exists():
+        # (sims cached while the key still held the pattern's "kind" (dress-garrett j17b = 7aca63ae26eb8a5c, cached
+        # 2026-10-15; its sculpt / finish files are keyed on it): the same inputs, found under that key, keep it)
+        legacy = hashlib.sha1(json.dumps([keyed[0], dict(gs, pattern=gs_kind)] + keyed[2:], sort_keys=True, default=str).encode()).hexdigest()[:16]
+        if (_cache_dir() / f"{legacy}.npz").exists():
+            key, cache = legacy, _cache_dir() / f"{legacy}.npz"
     coll = _collider(body_real, under, smooth, move=g.get("move"))
     Bp.pop("_worn_body", None)  # (a Body: not part of the result)
     res = {"pieces": Bp, "mesh": M, "X0": X0, "body": body_real, "collider": body, "under": under,
@@ -7406,7 +7414,7 @@ def _build(g: dict, body_src: dict, name: str = "garment", log=print, frames: in
                     res["V"][m_] = acc_[wgrp_[m_]] / wsize_[m_][:, None]
     sc = g.get("sculpt")
     if sc and sc.get("key") == key:
-        f = Path(sc["file"])
+        f = pin_path(sc["file"], name)
         if f.exists():
             off = np.load(f)["offset"]
             if off.shape == res["V"].shape:
@@ -7519,8 +7527,8 @@ def _build(g: dict, body_src: dict, name: str = "garment", log=print, frames: in
         if fi_:
             if fi_.get("key") != res["finish_key"]:
                 res["finish_stale"] = True  # made on another construct result: not applied
-            elif Path(fi_["file"]).exists():
-                off_ = np.load(fi_["file"])["offset"]
+            elif pin_path(fi_["file"], name).exists():
+                off_ = np.load(pin_path(fi_["file"], name))["offset"]
                 if off_.shape == res["V"].shape:
                     und2_ = None if under is None or under.get("res") is None else (np.asarray(under["V"], float), np.asarray(under["res"]["mesh"]["F"]))
                     res["V"], res["finished"] = finish_apply(res["V"], off_, M, (body_real.V, body_real.T) if len(body_real.V) else None,
@@ -7553,7 +7561,7 @@ def _build(g: dict, body_src: dict, name: str = "garment", log=print, frames: in
         # garment AS PRESSED under this one (what draws), keyed on this sim (the pressing is this sim's)
         us_ = g.get("under_sculpt")
         if us_:
-            o_ = np.load(us_["file"])["offset"] if Path(us_["file"]).exists() else None
+            o_ = np.load(pin_path(us_["file"], name))["offset"] if pin_path(us_["file"], name).exists() else None
             if o_ is not None and us_.get("key") == key and o_.shape == res["under_V"].shape:
                 res["under_V"] = res["under_V"] + o_
                 res["under_sculpted"] = int((np.linalg.norm(o_, axis=1) > 2e-4).sum())
@@ -7601,14 +7609,64 @@ def _build(g: dict, body_src: dict, name: str = "garment", log=print, frames: in
 # ---------------------------------------------------------------- layered: the under garment pinned, finished, made collar
 
 
-def under_pinned(path: str) -> dict:
-    """A finished under-garment result pinned by file (garment key under.pin): the pickled result dict (V, mesh, key
-    "pin_...", ...) as it was built once. Its key goes into the over garment's sim key."""
+PIN_RE = re.compile(r"pin:([0-9a-f]{16})")
+
+
+def _pins_dir(name: str) -> Path:
+    from . import store
+    return store._dir(str(name).split(":")[0]) / "_pins"
+
+
+def pin_file(name: str, src, ext: str | None = None) -> str:
+    """Pin a file a garment's spec refers to (under.pin, sculpt / under_sculpt / finish "file") into the model's own
+    content store, workspace/<model>/_pins/<sha1[:16]><ext>, and return its reference "pin:<sha1[:16]>" for the spec.
+    A pin is immutable: written once (read-only), an existing pin is checked byte for byte, never replaced. `src` = a
+    path or bytes. A spec must never point at a scratch path something can rewrite (dress-garrett j17b: its sims are
+    keyed on the pinned shirt's key; a rewritten scratch pickle silently re-keys the jacket)."""
+    if isinstance(src, (bytes, bytearray)):
+        data = bytes(src)
+    else:
+        src = Path(src).expanduser()
+        data, ext = src.read_bytes(), ext or src.suffix
+    sha = hashlib.sha1(data).hexdigest()[:16]
+    d = _pins_dir(name)
+    d.mkdir(parents=True, exist_ok=True)
+    f = d / f"{sha}{ext or '.bin'}"
+    if f.exists():
+        if f.read_bytes() != data:
+            raise ClothError(f"pin {f}: exists with other content (a pin is never rewritten)")
+    else:
+        tmp = f.with_suffix(f.suffix + f".tmp{os.getpid()}")
+        tmp.write_bytes(data)
+        os.chmod(tmp, 0o444)
+        os.replace(tmp, f)
+    return f"pin:{sha}"
+
+
+def pin_path(ref: str, name: str) -> Path:
+    """The file a spec reference names: "pin:<sha>" = that model's pin (its content checked against the hash), else a
+    plain path (legacy: sculpt / finish files; under.pin takes pins only)."""
+    m = PIN_RE.fullmatch(str(ref))
+    if not m:
+        return Path(str(ref)).expanduser()
+    hits = sorted(_pins_dir(name).glob(m.group(1) + ".*"))
+    hits = [h for h in hits if ".tmp" not in h.suffix]
+    if not hits:
+        raise ClothError(f"{ref}: no such pin in {_pins_dir(name)}")
+    if hashlib.sha1(hits[0].read_bytes()).hexdigest()[:16] != m.group(1):
+        raise ClothError(f"{ref}: {hits[0]} no longer matches its hash (a pin must never be rewritten)")
+    return hits[0]
+
+
+def under_pinned(ref: str, name: str) -> dict:
+    """A finished under-garment result pinned (garment key under.pin = "pin:<sha>", from pin_file): the pickled result
+    dict (V, mesh, key "pin_...", ...) as it was built once. Its key goes into the over garment's sim key, so the pin is
+    content-addressed in the model's _pins, never a scratch path."""
     import pickle
-    p = Path(path).expanduser()
-    if not p.exists():
-        raise ClothError(f"under.pin {p}: no such file")
-    with open(p, "rb") as f:
+    if not PIN_RE.fullmatch(str(ref)):
+        raise ClothError(f"under.pin {ref!r}: must be a pin reference \"pin:<sha>\" (cloth.pin_file(model, path)), not a "
+                         "path: a scratch file can be rewritten, and the over garment's sim key moves with it")
+    with open(pin_path(ref, name), "rb") as f:
         return pickle.load(f)
 
 
@@ -8841,7 +8899,7 @@ def model_body(name: str, spec: dict, g: dict, simulate: bool = True) -> dict:
             pin_ = (expanded(g).get("under") or {}).get("pin")
             # (garment key under = {"pin": <pickled finished result>}: the garment under this one IS that result (its
             # own key "pin_..." goes into this one's sim key), not a build of the spec's own garment)
-            ures = under_pinned(pin_) if pin_ else thaw(spec, u)[1] if u.get("frozen") else build(
+            ures = under_pinned(pin_, name) if pin_ else thaw(spec, u)[1] if u.get("frozen") else build(
                 _garment_for_sim(u), model_body(name, spec, u, simulate), f"{name}:{ug}",
                 log=lambda *_: None, cached_only=not simulate)
             src = dict(src, under=None if ures is None else {"V": ures["V"], "F": ures["mesh"]["F"], "key": ures["key"],

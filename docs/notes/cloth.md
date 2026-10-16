@@ -4257,3 +4257,23 @@ each through the finish hook or construct options, measured first ON BOUNDARY VE
   19 files, all rc 0, no failures (test_tooling's notch-set sleeve tests pass).
 - Merged to main squashed (see RESTART.txt for the commit). STATE: j17b waits on Joe's look. NEXT: jacket MINORs
   (handover v (b)).
+
+## Handover 2026-10-16 x (dress-garrett; durable pins, test_cloth_spec_durable on main)
+- The failure on main (9ca28f52 / c2173b7c: j17b missed 7aca63ae26eb8a5c) was NOT the pin file: $G/out/dg_s6_pinned_under.pkl
+  has been unchanged since 00:59:14, before j17b's cache hit (01:01) and the passing test (~01:30); it is a byte copy of
+  run.py's pin_cache/5c09eea602448e58.pkl (22:05), made by hand when spec_j17.py was written (no script in $G writes it;
+  run.py writes only pin_cache/<sha>.pkl). The cause was c2173b7c taking the design pattern's "kind" out of the sim key:
+  j17b's sim was cached while the key held it (pre-merge cloth.py passes the test, merged fails). Fix: `_build` computes
+  the legacy key (pattern WITH kind) when the new key has no cache entry, and uses it if that entry exists (dress-tess's
+  kind-free keys and j17b's both hold; new sims are written under the new key). Note: q_dg_j17b.sh's freeze= REWRITES
+  $G/frozen_j17b every run - another scratch writer.
+- The durability hole was real anyway: pins. `cloth.pin_file(model, path|bytes)` -> "pin:<sha1[:16]>", stored
+  read-only in workspace/<model>/_pins/<sha><ext>, written once, an existing pin checked byte for byte, never replaced;
+  `cloth.pin_path(ref, name)` resolves a ref and refuses a pin whose bytes no longer match its hash. under.pin takes pin
+  refs ONLY (a path raises); sculpt / under_sculpt / finish "file" take pins or (legacy) paths. dg_garrett spec v9:
+  jacket under.pin pin:5aa957c3c35d9848 (= the s6 pinned shirt), sculpt pin:55843201904bc9d4, under_sculpt
+  pin:ce0accd5c4d28393, finish pin:1f5273b62c9d6346 ($G/pin_spec.py). The expected frozen j17b pieces are pinned too
+  (jacket pin:170b2da13df3f024, shirt pin:38c8842a46f1af9d); the scratch pin files are chmod 444.
+- test_cloth_spec_durable: reads no scratch file (spec refs must all be pins, frozen pieces from FROZEN_PINS; FROZEN=<dir>
+  overrides), plus a unit test of pin immutability / tamper refusal / under.pin path refusal. j17b: 0.0000 mm on every
+  piece, key 7aca63ae26eb8a5c. STATE: j17b unchanged, waits on Joe's look. NEXT: jacket MINORs (handover v (b)).
