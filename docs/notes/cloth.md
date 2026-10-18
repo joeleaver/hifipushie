@@ -5529,6 +5529,221 @@ dc20; (c) the NICO-TOP batch (step 6) on dc20 or its successor, blind review by 
 STATE: cause of the gashes and the standing collar = the scratch sheet's draw (raw faces, sim collar); fixed in
 cloth.drawn_faces + run.py. j17c = j17b drawn right (no model change), NICO-TOP batch running.
 NEXT: tiles (back seams, side seam, sleeve, collar back, lapels, shirt collar, placket) ref | j17c, review.
+## dress-garrett 2026-10-18 z (scripts $G/seam_z/)
+- (1) BLIND REVIEW of j17c ($G/seam_y/tiles, ref | dg_j17c_<item>; bin/review's account out, so a fresh blind subagent
+  with the gates brief, images only, no captions). MAJORs per tile: back seams 3, side panel seam 2, sleeve 1, jacket
+  collar back 3, lapels 2, shirt collar 3, shirt placket 4 (18 MAJOR, 10 MINOR; every region FAIL). Read by cause:
+  - SEAMS NOW DON'T READ AT ALL (back 3, side 2, sleeve 1 = 6 MAJORs): "no centre back seam", "no side-back seams",
+    "armhole seam doesn't read". The reference (coat_hanger_back) shows every seam as a fine pressed line. j17c removed
+    the gashes AND the line: a seam needs a fine line (the pressed_open map line, ~1% contrast now; the floor ~3%), not
+    zero. New measured item needed: seam line contrast in the ref crop vs ours (mc.py), target from the reference.
+  - jacket collar back: "lies flat, no stand" (the made collar rolls onto the shirt collar: the reference coat is on a
+    hanger, no neck, so its stand reads higher: partly the ref), "ragged top edge, jagged tips at both ends" (= step 3's
+    serrated edge), "too low vs the shirt collar, 1.5 cm of shirt collar showing" (target 10-15 mm: on the edge).
+  - lapels: "no notch / gorge", "lapel too narrow, no roll" (the lapel tile crop is too wide/low to show the notch: the
+    crop, not only the model; recrop before trusting).
+  - shirt collar: jagged shards, no band / fall structure, no points (step 3).
+  - placket: crumpled lumpy ridge, wanders 1-2 cm, no buttons (buttons: Joe's call, not touched), torn open-neck V.
+- (2) PLACKET RUFFLE: MEASURED CAUSE = the fronts' overlap crushed by the pressing, not waviness. $G/seam_z/ov.py (front-most
+  y per 2 mm cell of front.L / front.R, z 1.09-1.30 = above the trousers' waistband, top 1.084 at CF): shirt's own drape
+  front.L (the over lap, edge x -16 mm) lies 4.5 mm (p50) in front of front.R; pressed under the jacket (j17c) they are
+  COINCIDENT (p50 -0.01 mm) and front.R is in front in 51% of cells (up to 100% of the columns near the edge) = the
+  serrated two-layer strip. (The fronts' "front band" press folds have strength 0: the band extension is single layer.)
+  Front-most surface waviness off a 20 mm-smoothed copy was only 1.0 mm rms pressed vs 3.1 own: amplitude was never it.
+- FIX = the over band BUILT on the drape from its own vertices ($G/seam_z/pb.py, SG=8 ZLO=1.05): front.L's free edge onto a
+  cubic in z; the band (edge .. +34 mm) onto one smooth surface (per 5 mm row a line across through the front-most of both
+  layers, smoothed along z sigma 40 mm), 1.2 mm in front of it; front.R under the band 1.2 mm behind it; eased over 25 mm
+  past the band, 4 cm at the ends (starts under the waistband). Guarded cloth.finish_apply (body + jacket + self): 264
+  verts, max 4.7 mm, nothing kept back; trousers crossings 179 -> 179. Delta $G/out/dg_j17_placket_z2_delta.npz (key
+  7aca63ae26eb8a5c; run.py under_sculpt=). ROWS z 1.09-1.30 (target waviness < 1 mm), j17c -> z2 ($G/seam_z/bw.py):
+  front.R in front 51% -> 0%; layer gap p50 -0.01 -> 2.4 mm; band across rms/max 0.38/0.85 -> 0.04/0.12 mm; along
+  0.56/1.36 -> 0.25/0.85 mm; edge y 0.77/2.19 -> 0.23/0.68 mm; edge x rms 0.50 -> 0.01 mm. Local crop (with trousers):
+  $G/seam_z/r1/base_vs_z2.png: the serrated strip is gone, one straight lap edge; a faint beading of the edge highlight left.
+STATE: placket fixed on a local check (z2); j17e = j17c + z2 delta, build + NICO-TOP render launched (chain_j17e.sh).
+NEXT: j17e tiles + blind review of the placket; then step 3 (shirt collar points, jacket collar serrated edge).
+- (3) SHIRT COLLAR "jagged points": MEASURED, it is not the made collar's points. $G/seam_z/nk.py on frozen_j17b + local
+  neck crop with the made parts tinted ($G/seam_z/r2/neck.png, NECK=1 pr.py): the made stand + collar (c3: points 65 mm,
+  spread 15) end at the NECK SIDES (front-most point x -0.082, z 1.53; collar z min 1.486: no point ever comes down);
+  the neckline from x +-85 mm to CF has no collar. What reads as torn collar leaves are the shirt FRONTS' unbuttoned tops
+  (sim; z up to 1.548, lying in front of the made collar: y -0.147 vs -0.138), crumpled: dihedral > 60 deg on 8-19 edges
+  per front above z 1.30 (0 below), max 120-178 deg (folded-over facets). So the fix is structural, not a points finish:
+  (a) the made collar's chain must run to the fronts' neck points (where does under_collar's chain stop: cloth.under_collar
+  -> seam_chain on the stand seam; the shirt's "open neck.L/R roll 95 deg" folds sit at the top of the fronts), and
+  (b) the fronts' tops above ~1.38 laid as a turned-back open neck (a small V under the collar points), built on the drape
+  like the band (a guarded under_sculpt), not left as the sim's crumple.
+## dress-garrett 2026-10-18 aa (scripts $G/seam_aa/)
+- (0) j17e (j17c + placket z2) collected (batch dgrr-094114), tiles made. LOOK: the placket edge is straighter, layer
+  order right, but still reads as a lumpy beaded ridge at tile scale (the z "faint beading" is not faint). Not re-fixed.
+- (1) STRAY TRIANGLE (Joe on j17c front): $G/seam_aa/spike2.py (every drawn surface at the front neck, edges > 120 deg,
+  ortho z-buffer for visibility). FOUND: shirt front.R faces 9812 / 9814 (verts 6252, 4447, 6275, 6474), at x -38 y -115
+  z 1487 mm, a 216 mm2 triangle folded 178 deg over its neighbour, visible = the white shard at the collar in front
+  (Garrett's right). SOURCE ($G/seam_aa/src.py): the PRESSING (cloth.pressed, the shirt under the jacket): sim and own
+  finish fold 4 deg there; the press moves those verts 26-43 mm (each along its own nearest body normal by its own
+  clearance, the open neck standing 3-4 cm off the chest); u2 / z2 sculpts 0 there. Also found: the jacket's MADE collar
+  10 faces folded 120-179 deg at both ends (cols 4-6, 54-62, |x| 113-142 mm, z 1.52-1.55: the "jagged tips"); the
+  shirt's MADE collar 82 at its points (x +-93..96); the finished jacket 3 faces at (-220, -38, 859) mm (finish moves).
+  FIX at the source (cloth.py): `unfold_press(V0, V1, F)` relaxes the move field over edges the move folded past 120 deg
+  (V0 < 60): applied to res["under_V"] (the shirt as pressed: 205 fold faces -> 0, front tops > 120 deg 8 -> 0, jacket
+  crossings 0 -> 0) and to the finished garment vs V_sim (after post_finish: 3 -> 0, 11 verts). `despike(V, F)` relaxes
+  made parts (under_collar's parts, construct's parts): jacket collar 10 -> 0 (max 5.7 mm), shirt collar 82 -> 0 (14 mm).
+  `spikes(V, F, V_ref=)` = the check; $G/run.py `_spike_gate()` runs it on garment / made / under / under made BEFORE
+  any sheet and exits "SPIKE GATE FAIL" (ALLOW_SPIKES=1 draws anyway). j17f: first build FAILED the gate (the jacket's 3
+  hip faces) -> fixed -> PASS. Test test_seams.test_press_fold_unfolded_and_spike_gate.
+- (3) SEAMS as a fine pressed line: $G/seam_aa/sc.py (line contrast, profile averaged along the tracked line, minus the
+  same tracker 20 px off). Reference CB (ref_back_seams) net 24.2%; j17c / j17e 0% (-0.3). Lever proven on a local crop
+  ($G/seam_aa/sl.py + seam_y/rp.py, sl_r_*): seam_line 0 -> 4.6%, 0.3 -> 16.1%. Set: garment_kb pressed_open "line" 0.45,
+  "line_width" 0.8 mm (predicted ~22%, target 17-31%), detail key `seam_line` overrides; cavity only, no height (the
+  groove stays 0.3 mm). test_seam_finish_in_the_maps_is_a_fine_line now asserts a 30-60% darkening under 3 mm wide.
+- (4) lapels tile recropped (seam_y/tiles.py: ref (0.3, 0.15, 0.7, 0.36), ours (0.27, 0.03, 0.73, 0.40)): notch in frame.
+- (2) shirt front tops as a turned-back V: NOT done this session (budget went to 1 and 3).
+STATE: j17g = j17e + unfold / despike + seam line 0.45 (SPIKE GATE PASS), render submitted to NICO-TOP (rr_dg_j17g.out).
+NEXT: collect j17g, tiles, before / after neck tile (j17c | j17g), seam contrast on the j17g tiles, blind review.
+- (5) j17g RENDERED (NICO-TOP, dgrr batch, ~10 min). LOOK, front neck j17c | j17g ($G/seam_aa/neck_j17c_vs_j17g.png, the j17c
+  front framing): the white shard at Garrett's right collar is GONE (that front's top lies flat). NEW FAULT: a small
+  skin-coloured hole on Garrett's left front top (image right, ~x +80 mm, z ~1.47): the relaxed press move pulled the
+  open neck INTO the body (unfold_press has no body guard). Seam contrast on the j17g back tile still 0% (-0.3): the
+  back / side / sleeve tiles come from the CLAY sheet (dg_j17g.png), which draws no maps; the line exists only in
+  textured sheets (proven 16% on the local textured crop). So for the tiles the line must also go into the clay draw
+  (a cavity / vertex-colour darkening along the weld line in run.py's untextured sheet), or the seam tiles must be cut
+  from a textured back view (run.py renders only a front _tex sheet).
+- Body guard added (cloth.py, under_V): the unfold goes through finish_apply(body=). j17h build: guard kept back 61 of
+  526 verts and that LEFT 15 folded faces at (174, -23, 960) mm (shirt side / hip, under the jacket): SPIKE GATE FAIL,
+  so j17h drew nothing (the gate works). Not rendered. No blind review this session (no passing build to review).
+STATE: stray triangle's cause found (the pressing) and gone in j17g; j17g has a new poke-through at the left front top;
+the guarded version (j17h) fails the spike gate (hidden hip folds). Seam line in maps only: invisible in clay tiles.
+NEXT: (a) unfold_press with a body floor INSIDE its loop (each Jacobi step: clamp each vertex's move so its body clearance
+stays >= min(own clearance, 2 mm); then no finish_apply kept-back folds), rebuild (q_dg_j17h.sh), gate must PASS;
+(b) seam line in the clay sheet: darken colour per vertex near welded seams (or add a textured back view to run.py and
+cut back / side / sleeve tiles from it), re-measure with seam_aa/sc.py vs ref 24%; (c) one NICO-TOP render, tiles
+(lapels recropped), blind review (subagent; bin/review out until 2026-10-19 13:00 MT); (d) step 2: shirt fronts' tops
+as a turned-back V on the drape (not started); (e) placket edge still beaded at tile scale (j17e).
+## Handover 2026-10-18 aa (dress-garrett; 70-call clock)
+See the aa section above: STATE / NEXT. Code: cloth.unfold_press / despike / spikes / _edge_folds (cloth.py), the build
+applies them (under_V with a body guard, finished garment vs V_sim, made parts); garment_kb pressed_open line 0.45;
+test_seams.test_press_fold_unfolded_and_spike_gate. Scratch: $G/run.py _spike_gate (+ UNDER UNFOLD line), $G/seam_aa/
+(spike2, src, uf, jc, sc, sl), $G/seam_y/tiles.py lapels recrop. NOT ready for Joe.
+## dress-garrett 2026-10-18 ab (scripts $G/seam_ab/)
+- (1) BODY FLOOR INSIDE THE UNFOLD: `cloth.unfold_press(..., floor=Body, clear=UNFOLD_FLOOR 2 mm)`: after every Jacobi step
+  each relaxed vertex is lifted out along the body's normal to min(2 mm, its clearance as pressed). The build's under_V
+  unfold passes floor=body_real; the after-the-fact finish_apply guard (j17h: 61 kept back, 15 folds left) is gone.
+  Local proof on j17e's pressed shirt ($G/seam_ab/uf2.py): unfold alone (= j17g) front crossings 9 -> 26, clearance < 0
+  on 3 front verts; unfold + floor: 9 -> 9, 0 < 0, 205 folds -> 0, 38 lifts. j17i (= j17h's queue with this code, local
+  build, $G/q_dg_j17i.sh): SPIKE GATE PASS, UNDER UNFOLD 205 -> 0 left. $G/seam_ab/m17.py (drawn shirt vs body):
+  | build | front crossings | at the neck (abs x < 150, z > 1.38) | front clear < 0 | j17g hole region min clear |
+  | j17g | 26 | 17 | 3 | -1.1 mm |
+  | j17i | 9 | 0 | 0 | +2.0 mm |
+  The 9 left are at abs x 210-222 mm, z 1.48-1.49 (shoulder tops under the jacket, +2.5..4.8 mm clear: an edge spanning the
+  shoulder's curve), all present as pressed (before any unfold): not this fault, not visible. Test
+  test_seams.test_unfold_keeps_the_body_floor (flat body, an outlier deep move: unfloored sinks, floored keeps the floor).
+  Neck tile: at the one NICO-TOP render (step 5).
+STATE: hole fixed by measurement (neck crossings 17 -> 0), gate passes. NEXT: (2) seam line in tiles.
+- (2) SEAM LINE IN THE TILES: the line lives in the maps (garment_kb pressed_open line 0.45), so the tiles must come from
+  a textured draw, not a clay vertex-colour fake. $G/run.py now ALWAYS renders the whole textured sheet {tag}_tex.png
+  (TEXSHEET=1 default; before, only for detail.folds / settle garments), and $G/seam_y/tiles.py cuts back_seams /
+  side_seam / sleeve from it when it exists (the other tiles stay on the clay sheets). Contrast measured on j17j (step 5).
+- (3) TURNED-BACK V: TRIED, NOT KEPT. $G/seam_ab/vt.py presses each "open neck" roll flap (folds._geom flap0) onto its
+  front across the roll row's pattern chord (cloth_made.press_flap, lay 1.5 mm). The flaps are not the crumple: open
+  neck.R's flap is 7 verts, .L's 52, and .L's mirror images fall off its base (press_flap's barycentric weights renormalise
+  to ~0: a 31 m move); the guard kept 164 back, the front-top crumple went 74 -> 84 faces > 60 deg. The fold's flap does
+  not cover the crumpled region (front tops z > 1.30, abs x < 120 mm: 74 faces > 60 deg on j17i). Needs its own made
+  piece: a V roll line from the stand's end (x +-82, z 1.49) to the first closed button at CF, the cloth CF-side of it laid
+  back by a 3D ruled sheet over the chord (made_lapel's method, not press_flap's pattern mirror), its region chosen from
+  the drape, not from the fold's flap.
+- (4) PLACKET BEADING, MEASURED ($G/seam_ab/bead.py, front.L's lap edge z 1.09-1.36, 28 edge verts at 10 mm): edge normal
+  azimuth 1.3 deg rms off a 30 mm smooth (max 4.6), edge y 0.97 mm rms, x 0.82 mm rms; autocorrelation gives no period
+  above one vertex spacing (lag-1 0.66): the kinks are the 10 mm edge polyline itself. Rim fixes tried (guarded, spikes 0):
+  edge onto its smooth curve + 25 mm cosine falloff: edge y 0.97 -> 0.54, x 0.82 -> 0.36 mm but normal rms 1.3 -> 2.0 deg
+  (worse shading); + Taubin 10 / 30 on the band: moves 7-9 mm (the open edge shrinks), normals 1.5 / 1.3 deg. Neither kept
+  (j17j = j17i = z2 placket). The geometry's normals are already smooth to ~1 deg, so the beaded highlight at tile scale is
+  the draw of a 10 mm polyline edge (and its 0.4 mm Solidify rim) more than the surface: the made-piece rim is a drawn,
+  subdivided band edge (a made part, like the collar), not a finish of the sim cloth.
+STATE: (2) wired, (3) and (4) measured, not fixed. j17j (= j17i + whole textured sheet) built (gate PASS), NICO-TOP batch
+dgrr-102502 queued. NEXT: collect, tiles, seam contrast (seam_aa/sc.py), neck tile, blind review.
+- (5) j17j RENDERED (NICO-TOP dgrr-102502). Tiles $G/seam_y/tiles/dg_j17j_*; back / side / sleeve from dg_j17j_tex.png.
+  CB SEAM CONTRAST (seam_aa/sc.py, x 257, rows 40-380): j17j net 20.3% (j17c -0.1%). Target 24.2% +-30% = 17-31%: IN.
+  NECK ($G/seam_ab/neck_j17g_vs_j17j.png, collar sheet front panel): j17g's skin-coloured hole at Garrett's left front top
+  is GONE in j17j; the fronts' crumpled open-neck tops remain (step 3).
+  PLACKET at tile scale ($G/seam_ab/ft0.png, front_tex panel 0): the lap edge reads as a clear sawtooth, ~25 px period (~11 mm
+  at 0.44 mm / px = the 10 mm edge vertex spacing), a few px deep: the drawn 10 mm polyline edge, as (4) concluded.
+  BLIND REVIEW (fresh subagent, images only, gates brief, buttons out of scope): 8 MAJOR / 14 MINOR (j17c: 18 MAJOR).
+  back seams PASS (0 MAJOR); side seam FAIL 1 (no curved side-back panel seam visible); sleeve PASS (0); collar back FAIL 2
+  (lies flat, no stand; wavy top edge, shards at the ends); lapels FAIL 1 (notch malformed: pointed flaps at the top);
+  shirt collar FAIL 2 (crumpled, faceted, no clean points / band); placket FAIL 2 (no straight band: crumpled ridge; jagged
+  edge from the neck down = the open-neck tops); neck tile PASS (no hole).
+- TESS CHECK: $G/seam_ab/tess_spk.py (cloth.cached on dt_tess history/0109.json, read-only) returned a MISS for the coat
+  ("not cached"): the gate did not run on her coat. The unfold / floor run after the sim and don't enter the sim key, so
+  the miss is most likely the history spec vs the stored model (worn body / pins), not this change; not resolved.
+- Tests: test_seams all ok (incl. test_unfold_keeps_the_body_floor); test_cloth.py running at handover
+  ($G/seam_ab/test_cloth.log, ends EXIT <rc>).
+## Handover 2026-10-18 ab (dress-garrett; 70-call clock)
+STATE: (1) DONE: body floor inside unfold_press (132a0c75); gate PASS on j17i / j17j; neck crossings 17 -> 0; hole gone in
+the render. (2) DONE: seam tiles from the textured whole sheet ($G/run.py TEXSHEET, tiles.py), CB contrast 20.3% (ref 24%).
+(3) turned-back V: press_flap on the fold flaps failed (flaps don't cover the crumple), not kept. (4) placket beading
+measured (= the 10 mm edge polyline), rim smoothing tried, not kept. (5) j17j rendered, 8 MAJOR / 14 MINOR.
+NOT ready for Joe: shirt collar / open-neck tops / placket band / jacket collar stand are the MAJORs left.
+Tests: test_cloth.py EXIT 0 (31 ok), test_seams all ok.
+NEXT: (b) Tess's coat gate: find why cloth.cached
+misses on history/0109.json (try the stored spec, cloth.cached("dt_tess", store.load spec, "coat")), then run
+seam_ab/tess_spk.py; (c) open-neck tops as a MADE V (3D ruled sheet over a chord from the stand end x +-82 z 1.49 to the
+first closed button, made_lapel's method, region from the drape); (d) placket band edge drawn as a made, subdivided rim;
+(e) jacket collar stand / end shards, lapel notch.
+## dress-garrett 2026-10-18 ac (scripts $G/seam_ac/)
+- (1) TESS GATE: ab's lookup used history/0109.json; dt_tess has moved on (live spec.json = history/0110.json; 0109's coat
+  differs from the live coat), so a miss there says nothing about this branch. Re-run on the LIVE spec twice, read-only:
+  $G/seam_ac/tess_spk.py [spec path] with this worktree's code (tess_w.log) and with main's src (XPATH, tess_main.log): a hit
+  under both = gate result; a miss under ours only = this branch re-keys her coat (not merge-ready). Results below.
+- (2) OPEN-NECK V AS A MADE PIECE: TRIED, NOT KEPT. $G/seam_ac/vfold.py: per front a roll line in PATTERN coords from the
+  front edge at the 2nd button (z 1.385) to the free neckline's outer end (stand end, x +-84 z 1.50), the CF-side
+  triangle laid back flat on a plane fitted round the line. The pattern has almost no facing there: flap 0 (front.L) /
+  15 (front.R) verts, the front edge above B is only ~45 mm before the neckline turns out; the plane fit is poor on .L
+  (17 mm p90) and the guard kept back 399 of 404 moves (folds 74 -> 174). $G/seam_ac/vsmooth.py (each front's top laid on
+  a robust quadratic y(x, z), free edges smoothed): moves 84-102 mm, guard refused (3-4 new crossings): the fronts' tops
+  are already ROLLED (a two-layer fold, $G/seam_ac/pv_j17j.png, a quick z-buffer view of the shirt alone), so a
+  single-valued surface can't describe them. What the tile shows as shards sits where those rolled tops meet the made
+  shirt collar's points. A real fix is a drafted turned-back facing (the front's pattern extended above the 2nd button
+  with a facing to fold, i.e. a design change before the sim) or a made V that REPLACES the rolled top (cut the front
+  above the roll line out of the drawn mesh and draw a made facing strip there, like the made collar hides the sim one).
+- (5) SIDE-BACK SEAM ($G/seam_ac/sb.py): the pattern HAS one (back.L/R + side.L/R + front, 29 sewn pairs back-side), but it
+  sits at the side: x 175-181 mm, y 17-45 mm at z 1.30-0.90, i.e. 13-32 deg round from the side toward the back. The
+  reference's (ref_side_seam.png, a back view) leaves the back of the armhole and curves down well onto the back. From a
+  back view ours is at the silhouette, foreshortened: not a draw fault, a pattern-placement one (the back panel too
+  wide / side panel too far forward). Fix = re-draft (side panel moved back) + one sim: a design call, not done here.
+- (1) RESULT. Live spec, main's src: cache HIT (it got past cached() and stopped at cloth.spikes, which main lacks). This
+  branch: MISS. So this branch RE-KEYED her coat. Cause: the finished-garment unfold (aa, `res["V"] = unfold_press(V_sim,
+  V)` after post_finish) changed her SWEATER's finished V, and a garment's finished V is in the key of every garment
+  simulated over it (`_arr_hash(under["V"])`). FIX (28910253): that unfold is OPT-IN, garment key `unfold_finish` (in
+  NOT_SIM and GARMENT_KEYS; never a sim key). The under_V unfold (the drawn pressed shirt) and the made parts' despike stay
+  on: neither keys anything. Re-run with this code (tess_w2.log): HIT. TESS GATE: coat 0 spike faces, made collar 0;
+  UNDER (her sweater as pressed under the coat) the pressing folded 531 faces, the unfold + floor fixed all but 2, at
+  (-138, -82, 932) mm (her right hip, front, at the coat's front edge: may show in the open coat's gap). Without this
+  branch (main) all 531 draw. Reported to the coordinator / dress-tess; her files untouched.
+  dg_garrett's jacket needs it (its 3 hip faces): j17k passes `unfold_finish=true` (run.py key override); to make it the
+  spec's, set cloth.jacket.unfold_finish = true in dg_garrett (not a sim key: no re-sim).
+  MERGE: the shared cloth.py changes are merge-ready now (Tess's coat found under its key, tests ok).
+- (4) JACKET COLLAR, quick lever: construct.collar_options {"show": 0.010, "stand": 0.032} and {"show": 0.008, "stand":
+  0.036, "fall": 0.040} ($G/seam_ac/cs.sh, j17k_cA / cB): collar_show_mm 21.9 and collar_hug 7.3 in BOTH, = j17j: the
+  stand is not what sets them (top_z clamps it; or the tell reads the sim collar). Not kept; not traced further (budget).
+- (3) PLACKET EDGE: the sawtooth is the 10 mm polyline drawn as is (ab). Lever: a per-object `subdiv` in the sheet draw
+  (blender_cloth, both sheet paths: Catmull-Clark level n before the Solidify, boundary_smooth ALL; cloth.render passes
+  it; e7b6cc0c); $G/run.py SUBDIV=n gives the shirt objects (under, under made parts) subdiv n. j17k = j17j +
+  unfold_finish + SUBDIV=1 (SPIKE GATE PASS), NICO-TOP batch dgrr-105513.
+STATE: j17k (= j17j + unfold_finish + SUBDIV=1) built, SPIKE GATE PASS, NICO-TOP batch dgrr-105513 still "queued" after
+40+ min at handover (NICO-TOP not picking it up); chain_j17k.sh keeps running and copies the sheets to cloth_renders when it
+lands (chain_j17k.out ends CHAIN DONE). No blind review this session (no new render).
+## Handover 2026-10-18 ac (dress-garrett; 70-call clock)
+DONE: (1) Tess gate: this branch re-keyed her coat (the finished-garment unfold changed her sweater's V, which keys the
+coat); fixed by making it opt-in (`unfold_finish`, 28910253); her coat is found again; gate: coat 0 / made collar 0 / under
+(sweater as pressed) 2 faces at (-138, -82, 932) mm, vs 531 on main. Shared cloth.py changes MERGE-READY (test_seams ok).
+NOT KEPT: (2) made V (vfold / vsmooth: the pattern has no facing to turn back, the tops are a rolled two-layer fold);
+(4) collar_options show / stand / fall: no change to collar_show 21.9 / hug 7.3.
+FOUND: (5) the side-back seam exists but sits at the side (13-32 deg round from the side): a re-draft call.
+NEXT: (a) collect j17k (chain_j17k.out); tiles as for j17j (seam_y/tiles.py with T=dg_j17k); placket tile j17j | j17k:
+keep SUBDIV only if the sawtooth is visibly gone and nothing else got soft; (b) blind review (bin/review after
+2026-10-19 13:00 MT, else a fresh subagent, images only); (c) set cloth.jacket.unfold_finish true in dg_garrett's spec;
+(d) jacket collar: trace why collar_show ignores collar_options (does the tell read the sim collar, or does top_z clamp
+the stand below the option?); (e) open-neck V: a drafted facing above the 2nd button (design op, one sim) or a made strip
+replacing the drawn rolled top; (f) side-back panel moved back in the draft (design call).
+NOT ready for Joe: the shirt collar / open-neck tops / jacket collar stand MAJORs are unchanged.
 ### dress-tess 2026-10-16 (session 7): fused facings interfaced, through-start refusal, coat dc22 (facing to the hem, stiff)
 - Merged main 0e76482e (pins; post_finish reads finish files through pin_path).
 - FIX (5ebb828d): a fused, interfaced facing is its piece's interfaced BAND (cloth.fused_interfacing: one band
@@ -5976,3 +6191,23 @@ lapels, shirt collar, placket" --not "body and head; colour and fabric texture o
 z 0.95-1.32), then a guarded under_sculpt that smooths that strip's surface (not the edge); pin it into the spec only
 when it shows; (3) shirt collar points (made c3 options or a hand finish of the made part); (4) made collar's serrated top
 edge at the neck sides; (5) made parts are drawn in flat colour in textured sheets (no maps): give them the jacket's maps.
+## Handover 2026-10-18 z (dress-garrett; 70-call clock)
+STATE: (1) blind review of j17c done: 18 MAJOR / 10 MINOR, every tile FAIL (back 3, side 2, sleeve 1, collar back 3,
+lapels 2, shirt collar 3, placket 4). The biggest shared cause: seams now don't read at all (6 MAJORs): need a fine
+seam line with a contrast target from the reference. (2) placket ruffle fixed on a local check (z2, rows above: layer
+order 51% -> 0% wrong, band waviness < 1 mm); j17e = j17c + $G/out/dg_j17_placket_z2_delta.npz, built (DONE 0) and
+QUEUED on NICO-TOP (chain_j17e.sh, batch dgrr-094114) for 20+ min (queued, not running) when I stopped: NOT collected.
+(3) shirt collar diagnosed (above), not fixed. Item 0 (coordinator: Joe's "stray triangle popping out of the shirt
+collar in front", b_vs_c.png right panel) STARTED: $G/seam_z/spike.py (drawn shirt faces, edges with dihedral > 120 deg,
+source = pressing move / u2) finds 209 such edges in the drawn shirt, all in hidden areas (back near the hem z 0.89-0.98
+pressed 34-41 mm; back/yoke at the shoulders z 1.32 / 1.46; none on the fronts above z 1.38). So the stray triangle is NOT
+in the shirt's base faces: next look in the made stand / collar parts (res under_made parts: run spike's dihedral test on
+each part's F) and the jacket's made collar / lapel near the front neck (poke-through), per Joe's location.
+NEXT: (0) finish item 0: run the dihedral + normal-outlier test on the made parts and the jacket's drawn faces, name the
+verts and their source, fix at the source, and make the test a check over every garment's drawn faces (cloth.drawn_faces
+output) that fails before a sheet; before/after collar-front tile. (a) collect j17e: `cat $G/chain_j17e.out`; if still
+queued, re-run `bash $G/rr.sh dg_j17e`; tiles `bash $G/run.sh $G/seam_y/tiles.py dg_j17e`; blind review of the placket
+tile (subagent, gates brief). (b) seams: a measured fine line. (c) shirt collar: the fronts' crumpled open-neck tops
+(dihedral > 60 deg on 8-19 edges per front above z 1.30) laid as a turned-back V, built on the drape like the band; the
+made collar's points come down only to z 1.486 (stand ends at the V's corners, x +-82 mm). (d) jacket collar's serrated
+top edge; (e) maps for made parts in textured sheets.

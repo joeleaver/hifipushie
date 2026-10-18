@@ -4613,7 +4613,7 @@ def interfacing(Bp: dict, M: dict) -> np.ndarray:
     return stiff
 
 
-NOT_SIM = ("color", "roughness", "sheen", "cleanup", "detail", "sculpt", "finish", "under", "under_sculpt", "under_collar", "note", "design", "_design", "trims", "construct")  # never change the sim
+NOT_SIM = ("color", "roughness", "sheen", "cleanup", "detail", "sculpt", "finish", "unfold_finish", "under", "under_sculpt", "under_collar", "note", "design", "_design", "trims", "construct")  # never change the sim
 # (a design sheet changes the sim only through the keys it compiles into)
 
 
@@ -6552,6 +6552,122 @@ def pressed(under: dict, body: "Body", cap: float = UNDER_CAP, fall: float | Non
     return V - n * move[:, None]
 
 
+UNFOLD_FOLD = 120.0  # deg: an edge folded past this where the unpressed cloth wasn't (< UNFOLD_OWN) is a press fold
+UNFOLD_OWN = 60.0
+
+
+def _edge_folds(V: np.ndarray, F: np.ndarray):
+    """(edges' two faces a, b, their dihedral in degrees) over the interior edges of F."""
+    n = np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]])
+    n = n / (np.linalg.norm(n, axis=1)[:, None] + 1e-15)
+    e = np.sort(np.concatenate([F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]]), 1)
+    fi = np.tile(np.arange(len(F)), 3)
+    o = np.lexsort(e.T[::-1]); e, fi = e[o], fi[o]
+    same = (e[1:] == e[:-1]).all(1)
+    a, b = fi[:-1][same], fi[1:][same]
+    return a, b, np.degrees(np.arccos(np.clip((n[a] * n[b]).sum(1), -1, 1)))
+
+
+UNFOLD_FLOOR = 0.002  # m: an unfolded vertex keeps at least min(this, its own pressed clearance) off the body
+
+
+def unfold_press(V0: np.ndarray, V1: np.ndarray, F: np.ndarray, rounds: int = 30, grow: int = 1,
+                 floor: "Body | None" = None, clear: float = UNFOLD_FLOOR) -> tuple[np.ndarray, dict]:
+    """V1 (a pressed / moved copy of V0) with the edges the move FOLDED unfolded: wherever an edge's dihedral went past
+    UNFOLD_FOLD while the unpressed cloth's was under UNFOLD_OWN, the move field (V1 - V0) over its two faces and `grow`
+    rings round them is relaxed (Jacobi, each vertex to its neighbours' mean move) until no such edge is left. Why
+    (dress-garrett aa): pressed() moves each vertex along its own nearest body normal by its own clearance; where an open
+    shirt neck's front stands 3-4 cm off the chest those moves differ by 1-2 cm between neighbours, and a 216 mm2
+    triangle of front.R folded 178 deg over its neighbour: the stray white triangle at the shirt collar in front (j17c,
+    Joe). floor (a Body: what the cloth lies on) is a floor INSIDE the relaxation: after every Jacobi step each relaxed
+    vertex is lifted back out along the body's normal to at least min(`clear`, its clearance as pressed in V1), so
+    unfolding and no-penetration hold together (dress-garrett ab: the unguarded relax pulled the open neck into the
+    chest, j17g's skin-coloured hole; guarding afterwards with finish_apply kept 61 vertices back and left 15 folds,
+    j17h). Returns (V, {"folds": before, "left": after, "moved": vertices changed, "lifted": floor lifts})."""
+    F = np.asarray(F)
+    a, b, d0 = _edge_folds(V0, F)
+    V1 = np.asarray(V1, float)
+    D = V1 - V0
+    if floor is not None:
+        vn_, tree_ = floor.normals()
+        need = np.minimum(floor.clearance(V1), clear)
+    lifted = 0
+    E = np.unique(np.sort(np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]], 1), axis=0)
+    def bad(D_):
+        _, _, d1 = _edge_folds(V0 + D_, F)
+        m = (d1 > UNFOLD_FOLD) & (d0 < UNFOLD_OWN)
+        return np.unique(np.r_[a[m], b[m]])
+    t = bad(D); rep = {"folds": int(len(t))}
+    touched = np.zeros(len(V0), bool)
+    for _ in range(rounds):
+        if not len(t):
+            break
+        reg = np.zeros(len(V0), bool); reg[F[t].ravel()] = True
+        for _g in range(grow):
+            r_ = reg.copy(); r_[E[reg[E[:, 0]], 1]] = True; r_[E[reg[E[:, 1]], 0]] = True; reg = r_
+        touched |= reg
+        for _j in range(3):
+            acc, wt = np.zeros_like(D), np.zeros(len(D))
+            np.add.at(acc, E[:, 0], D[E[:, 1]]); np.add.at(wt, E[:, 0], 1.0)
+            np.add.at(acc, E[:, 1], D[E[:, 0]]); np.add.at(wt, E[:, 1], 1.0)
+            D = np.where(reg[:, None], acc / np.maximum(wt, 1)[:, None], D)
+            if floor is not None:
+                ix = np.flatnonzero(reg)
+                X = V0[ix] + D[ix]
+                lo = need[ix] - floor.clearance(X)
+                up = lo > 0
+                if up.any():
+                    _, i4 = tree_.query(X[up], k=4)
+                    n_ = vn_[i4].mean(1); n_ /= np.linalg.norm(n_, axis=1, keepdims=True) + 1e-12
+                    D[ix[up]] += n_ * lo[up, None]
+                    lifted += int(up.sum())
+        t = bad(D)
+    rep.update(left=int(len(t)), moved=int(touched.sum()), lifted=lifted)
+    return V0 + D, rep
+
+
+SPIKE_FOLD = 120.0  # deg: a drawn cloth surface (a made part, a finished garment) has no edge folded past this
+
+
+def despike(V: np.ndarray, F: np.ndarray, limit: float = SPIKE_FOLD, rounds: int = 30) -> tuple[np.ndarray, dict]:
+    """V with every edge folded past `limit` relaxed away: the two faces' vertices and one ring round them move to their
+    neighbours' mean (Jacobi) until no such edge is left. For MADE parts (no unpressed copy to compare with: a made
+    piece is built smooth, so any edge folded that far is a fault): the jacket's made collar had 10 faces folded
+    120-179 deg at both ends (the "jagged tips"), the shirt's made collar 82 at its points (dress-garrett aa).
+    Returns (V, {"folds": before, "left": after, "moved": vertices changed})."""
+    F = np.asarray(F); V = np.array(V, float)
+    E = np.unique(np.sort(np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]], 1), axis=0)
+    def bad(V_):
+        a, b, d = _edge_folds(V_, F)
+        return np.unique(np.r_[a[d > limit], b[d > limit]])
+    t = bad(V); rep = {"folds": int(len(t))}; touched = np.zeros(len(V), bool)
+    for _ in range(rounds):
+        if not len(t):
+            break
+        reg = np.zeros(len(V), bool); reg[F[t].ravel()] = True
+        r_ = reg.copy(); r_[E[reg[E[:, 0]], 1]] = True; r_[E[reg[E[:, 1]], 0]] = True; reg = r_
+        touched |= reg
+        for _j in range(3):
+            acc, wt = np.zeros_like(V), np.zeros(len(V))
+            np.add.at(acc, E[:, 0], V[E[:, 1]]); np.add.at(wt, E[:, 0], 1.0)
+            np.add.at(acc, E[:, 1], V[E[:, 0]]); np.add.at(wt, E[:, 1], 1.0)
+            V = np.where(reg[:, None], 0.5 * V + 0.5 * acc / np.maximum(wt, 1)[:, None], V)
+        t = bad(V)
+    rep.update(left=int(len(t)), moved=int(touched.sum()))
+    return V, rep
+
+
+def spikes(V: np.ndarray, F: np.ndarray, limit: float = SPIKE_FOLD, V_ref: np.ndarray | None = None) -> np.ndarray:
+    """Faces of (V, F) on an edge folded past `limit` degrees (a face folded back over its neighbour); with V_ref (the
+    same mesh before a move: the simulated / unpressed cloth), only edges that were under UNFOLD_OWN there (folds the
+    move made). Sheets refuse a garment with any (dress-garrett aa: the stray triangle Joe saw on j17c)."""
+    a, b, d = _edge_folds(np.asarray(V, float), np.asarray(F))
+    m = d > limit
+    if V_ref is not None:
+        m &= _edge_folds(np.asarray(V_ref, float), np.asarray(F))[2] < UNFOLD_OWN
+    return np.unique(np.r_[a[m], b[m]])
+
+
 def under_fall(g: dict) -> float | None:
     """Garment key "under_fall" (m | false): how far over the pressed cloth the under garment's collar fall lies under
     this garment (pressed: _fall_down). Default UNDER_FALL for a worn top (a jacket, a coat), off for anything else."""
@@ -7740,6 +7856,10 @@ def _build(g: dict, body_src: dict, name: str = "garment", log=print, frames: in
             res["made"] = None
             log(f"  construct: not made ({type(ex_).__name__}: {ex_})")
         if res.get("made"):
+            for pt_ in res["made"].get("parts") or []:  # (dress-garrett aa) no edge of a made part folded over
+                pt_["V"], dr_ = despike(pt_["V"], pt_["F"])
+                if dr_["folds"]:
+                    log(f"  made {pt_.get('name')}: despiked {dr_}")
             log("  constructed: " + "; ".join(f"{l_['piece']} lapel pressed ({l_['vertices']} vertices, {l_['moved_mm']} mm)"
                                               for l_ in res["made"]["lapels"])
                 + ("; collar built " + str(res["made"]["info"].get("collar", {}).get("stretch")) if res["made"]["parts"] else "")
@@ -7752,6 +7872,13 @@ def _build(g: dict, body_src: dict, name: str = "garment", log=print, frames: in
         post_finish(res, g, M, (body_real.V, body_real.T) if len(body_real.V) else None,
                     None if under is None or under.get("res") is None else (np.asarray(under["V"], float), np.asarray(under["res"]["mesh"]["F"])),
                     log, name)
+        # (dress-garrett aa) no edge the finishing (clean-up, sculpt, construct, finish) folded over that the sim hadn't.
+        # OPT-IN (garment key "unfold_finish": true; ac): a garment's finished V keys every garment simulated over it
+        # (_arr_hash(under["V"])), so on by default it re-keyed dt_tess's coat (her sweater's finish moved) = a new sim
+        if g.get("unfold_finish"):
+            res["V"], uf_ = unfold_press(res["V_sim"], res["V"], M["F"])
+            if uf_["folds"]:
+                log(f"  unfolded the finished garment: {uf_}")
     if not hang and len(body_real.V):
         # the buttons sit on the cloth as it finally lies: pressing the lapels moves the fronts round the break, and a
         # button built before that stayed where its vertex was (dg_j15: the top button 22 mm down and 2-3 cm behind
@@ -7773,6 +7900,11 @@ def _build(g: dict, body_src: dict, name: str = "garment", log=print, frames: in
     if under is not None and under.get("res") is not None:  # layered: the tailoring tells against the garment under it
         from . import cloth_layers
         res["under_V"] = np.asarray(under["V"], float)  # the under garment as pressed under this one
+        if np.shape(under["res"].get("V")) == res["under_V"].shape:  # (dress-garrett aa) no edge folded over by the pressing
+            # the body is a floor inside the relaxation (ab): the unguarded relax pulled the open neck into the chest
+            # (j17g), guarding it afterwards (finish_apply) kept folds back (j17h)
+            res["under_V"], res["under_unfold"] = unfold_press(np.asarray(under["res"]["V"], float), res["under_V"],
+                                                               under["res"]["mesh"]["F"], floor=body_real if len(body_real.V) else None)
         # garment key under_sculpt = {"file": npz offset, "key": this garment's sim key}: a hand finish of the under
         # garment AS PRESSED under this one (what draws), keyed on this sim (the pressing is this sim's)
         us_ = g.get("under_sculpt")
@@ -7904,7 +8036,7 @@ def under_collar(U: np.ndarray, Mu: dict, bV: np.ndarray, bT: np.ndarray, opts: 
     ax = vt[2] * np.sign(vt[2][2])
     sc = cm.shirt_collar(P, {"V": np.asarray(bV, float), "F": cm.outward(np.asarray(bV, float), np.asarray(bT))},
                          [{"V": U, "F": cm.outward(U, Fb)}], (c, ax), **opts)
-    return {"parts": [{k: p[k] for k in ("name", "V", "F", "uv", "grid")} for p in sc["parts"]], "hides": hides,
+    return {"parts": [dict({k: p[k] for k in ("name", "F", "uv", "grid")}, V=despike(p["V"], p["F"])[0]) for p in sc["parts"]], "hides": hides,
             "info": {k: v for k, v in sc["info"].items() if k != "params"}}
 
 
@@ -8946,7 +9078,7 @@ class ClothError(ValueError):
 GARMENT_KEYS = {"pattern", "pieces", "seams", "stitches", "drop", "alter", "fabric", "interfaced", "color", "roughness", "sheen",
                 "state", "resolution", "coarse", "quality", "frames", "self_collision", "self_collision_sew", "assemble",
                 "sew_force", "sew_frames", "worn_frames", "settle_frames", "hang_frames", "hang_sew_force", "hang_air", "refine_frames",
-                "refine_ease", "cleanup", "detail", "sculpt", "finish", "under", "under_sculpt", "under_collar", "note", "backend", "placement", "lower_arms", "lower_frames", "zozo", "_trace",
+                "refine_ease", "cleanup", "detail", "sculpt", "finish", "unfold_finish", "under", "under_sculpt", "under_collar", "note", "backend", "placement", "lower_arms", "lower_frames", "zozo", "_trace",
                 "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin", "under_cap", "closures", "trims", "tie", "collide", "construct", "made_folds", "worn_top", "press_lay", "worn_envelope", "collar_spread", "open_gap", "open_lap", "mirror_mesh", "fine_relax", "under_fall", "collar_ends", "pad_over", "move", "pose_frames", "set_sleeves", "wrap", "uncrush", "straighten"}
 WRAPS = ("torso", "arm.L", "arm.R", "leg.L", "leg.R", "neck", "head", "seam", "flat")
 
@@ -9715,7 +9847,7 @@ def report(gname: str, res: dict) -> str:
 
 # ---------------------------------------------------------------- detail: seams, topstitching, hems, buttons
 
-DETAIL = {"thread": None, "button": None, "seam_finish": None, "seam_finishes": None,
+DETAIL = {"thread": None, "button": None, "seam_finish": None, "seam_finishes": None, "seam_line": None,
           "seam": None, "seam_width": None, "allowance": None, "topstitch": None, "stitch": 0.003,
           "stitch_gap": 0.0015, "stitch_depth": 0.0003, "hem": 0.02, "hem_height": 0.0007, "buttons": True,
           "texture": 2048, "folds": None, "fold_gain": 1.0, "fold_opts": None, "surface": None, "knit": None,
@@ -9880,6 +10012,7 @@ def detail_maps(M: dict, uv: np.ndarray, side: float, g: dict, texture: int | No
     # allowances under the cloth a faint broad rise (both sides when pressed open, the toward side when pressed to one
     # side), its rows of topstitching. A groove narrower than a texel can't be drawn: it is held to 0.8 texel (the
     # normal map would alias it into dashes). detail seam / seam_width / allowance set override every finish.
+    sline = np.zeros((T, T), np.float32)  # darkening of the seams' pressed line (finish "line" / detail seam_line)
     for c in range(2, len(codes)):
         m = kind == c
         if not m.any():
@@ -9890,6 +10023,10 @@ def detail_maps(M: dict, uv: np.ndarray, side: float, g: dict, texture: int | No
         al = o["allowance"] if o["allowance"] is not None else fin["allowance"]
         mine = fin["sides"] == "both" or sd == 1
         H -= np.where(m, gr * np.exp(-(d / gw) ** 2), 0)
+        ln_ = o["seam_line"] if o.get("seam_line") is not None else fin.get("line", 0.0)
+        if ln_:  # (dress-garrett aa) the pressed seam's fine line: shading, not a trench (cavity only, no height)
+            lw_ = max(fin.get("line_width", 0.0008), 0.8 * mpt)
+            sline = np.maximum(sline, np.where(m, ln_ * np.exp(-(d / lw_) ** 2), 0))
         if mine and al:
             aw = max(fin["allowance_width"], 1.5 * mpt)
             H += np.where(m, al * np.exp(-((d - fin["allowance_at"]) / aw) ** 2), 0)
@@ -10061,7 +10198,7 @@ def detail_maps(M: dict, uv: np.ndarray, side: float, g: dict, texture: int | No
     Hc = H - (np.asarray(extra, np.float32) * inside if extra is not None else 0)  # (folds don't darken like grooves)
     if Hw is not None:  # (nor does the cloth's crush)
         Hc = Hc - Hw * inside
-    cav = (np.clip(1 + Hc / 0.004, 0.7, 1.0) * np.where(inside, shadow, 1)).astype(np.float32)
+    cav = (np.clip(1 + Hc / 0.004, 0.7, 1.0) * np.where(inside, shadow, 1) * (1 - sline * inside)).astype(np.float32)
     if knit_v is not None:  # (yarn: the troughs between stitches darker, the fibre's fuzz a fine mottle)
         cav = (cav * np.where(inside, knit_v, 1.0)).astype(np.float32)
     btn *= inside
@@ -10957,7 +11094,7 @@ def render(objects: list, prefix: str, views=("front", "side", "back"), resoluti
         if o.get("uv_corner") is not None:  # (per corner: welded faces whose seam vertices are shared keep each
             # side's own uv)
             data[o["name"] + "_UVC"] = np.asarray(o["uv_corner"], np.float32)
-        objs.append({k: v for k, v in o.items() if k in ("name", "color", "thickness", "offset", "maps", "roughness")})
+        objs.append({k: v for k, v in o.items() if k in ("name", "color", "thickness", "offset", "maps", "roughness", "subdiv")})
     tag = Path(prefix).name
     np.savez(d / f"_{tag}_render.npz", **data)
     job = {"mode": "render", "data": f"_{tag}_render.npz", "objects": objs, "out_prefix": prefix,

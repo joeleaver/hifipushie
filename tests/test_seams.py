@@ -94,7 +94,11 @@ def test_seam_finish_in_the_maps_is_a_fine_line():
     d, w, dm = line("pressed_open")
     assert d <= 0.00035 and w < 0.003, (d, w)
     assert dm["thread"].max() == 0  # no stitching shows on a seam pressed open
-    assert dm["cavity"].min() > 0.9  # hardly darkened
+    # (dress-garrett aa) the pressed line: darkened at the join (the reference's CB seam reads at ~24% contrast), but
+    # only a fine line (no height trench: the groove above stays <= 0.35 mm)
+    dk = 1 - dm["cavity"][dm["inside"]]
+    assert 0.3 < dk.max() < 0.6, dk.max()
+    assert (dk > 0.5 * dk.max()).sum() * (side / 1024) ** 2 / seam_len < 0.003  # under 3 mm wide at half strength
     dw, ww, _ = line("welt")
     assert dw > 3 * d and ww > w
     _, _, df = line("felled")
@@ -213,6 +217,57 @@ def test_drawn_faces_weld_and_draw_made_parts():
     assert not (pid[Fc2] == M["names"].index("b")).all(1).any()  # the replaced piece isn't drawn
     assert len(parts2) == 1 and parts2[0][0] == "b_made"
 
+
+
+def _grid(n=12, h=0.01):
+    """A flat n x n vertex sheet in the xz plane (h apart) and its triangles."""
+    i, j = np.meshgrid(np.arange(n), np.arange(n), indexing="ij")
+    V = np.c_[i.ravel() * h, np.zeros(n * n), j.ravel() * h].astype(float)
+    k = (i[:-1, :-1] * n + j[:-1, :-1]).ravel()
+    F = np.r_[np.c_[k, k + n, k + 1], np.c_[k + 1, k + n, k + n + 1]]
+    return V, F
+
+
+def test_press_fold_unfolded_and_spike_gate():
+    """(dress-garrett aa) a move that folds one vertex's faces over (the shirt's stray triangle: pressing moved neighbours
+    1-2 cm apart along different normals) is found by spikes(V_ref=) and unfolded by unfold_press; a made part's folded
+    tip is found by spikes() and relaxed by despike(); smooth moves are left alone."""
+    V0, F = _grid()
+    c = 6 * 12 + 6
+    V1 = V0.copy(); V1[:, 1] -= 0.004 * np.exp(-((V0[:, 0] - 0.06) ** 2 + (V0[:, 2] - 0.06) ** 2) / 0.03 ** 2)  # a smooth press
+    assert len(cloth.spikes(V1, F, V_ref=V0)) == 0
+    V2, rep = cloth.unfold_press(V0, V1, F)
+    assert rep["folds"] == 0 and np.allclose(V2, V1)
+    V1[c] += [0.025, 0.002, 0.0]  # one vertex dragged 2.5 cm past its neighbours: its fan folds over
+    assert len(cloth.spikes(V1, F, V_ref=V0)) > 0
+    V2, rep = cloth.unfold_press(V0, V1, F)
+    assert rep["folds"] > 0 and rep["left"] == 0 and len(cloth.spikes(V2, F, V_ref=V0)) == 0
+    far = np.linalg.norm(V0[:, [0, 2]] - V0[c, [0, 2]], axis=1) > 0.055
+    assert np.allclose(V2[far], V1[far])  # only the fold's neighbourhood moves
+    V3, rep = cloth.despike(V1, F)
+    assert rep["left"] == 0 and len(cloth.spikes(V3, F)) == 0
+
+def test_unfold_keeps_the_body_floor():
+    """(dress-garrett ab) the relaxed press move must not pull cloth into the body: a sheet pressed 1 mm off a flat body
+    with one vertex's move dragged 2.5 cm sideways and 2 cm deep (an outlier press move) folds its fan; relaxing that
+    fold averages the deep move into its neighbours, which sink into the body (the j17g hole at the shirt's open neck).
+    With floor=body every relaxed vertex keeps min(its pressed clearance, 2 mm) off the body, and the fold is still gone."""
+    V0, F = _grid(); V0[:, 1] = -0.03
+    BV, BF = _grid(n=16, h=0.01); BV[:, [0, 2]] -= 0.02
+    body = cloth.Body({"V": BV, "F": BF, "J": {}})
+    if body.clearance(V0[:1])[0] < 0:
+        body = cloth.Body({"V": BV, "F": BF[:, ::-1], "J": {}})
+    V1 = V0.copy(); V1[:, 1] = -0.001  # pressed 1 mm off the body
+    k = 6 * 12 + 6
+    V1[k] += [0.025, 0.02, 0.0]
+    assert len(cloth.spikes(V1, F, V_ref=V0)) > 0
+    Vn, rn = cloth.unfold_press(V0, V1, F)
+    Vf, rf = cloth.unfold_press(V0, V1, F, floor=body)
+    need = np.minimum(body.clearance(V1), cloth.UNFOLD_FLOOR)
+    assert rn["left"] == 0 and (body.clearance(Vn) < -2e-4).any()  # without the floor the relax sinks into the body
+    assert rf["left"] == 0 and rf["lifted"] > 0 and len(cloth.spikes(Vf, F, V_ref=V0)) == 0
+    ok = np.ones(len(V0), bool); ok[k] = False
+    assert (body.clearance(Vf)[ok] >= need[ok] - 2e-4).all()
 
 if __name__ == "__main__":
     for k, fn in list(globals().items()):

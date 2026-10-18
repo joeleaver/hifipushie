@@ -484,6 +484,12 @@ def render(job, d):
         ob = _mesh(nm, V, F)
         for p in ob.data.polygons:
             p.use_smooth = True
+        if o.get("subdiv"):  # (dress-garrett ac) Catmull-Clark before the thickness: a free edge drawn from the 10 mm sim
+            # polyline read as an 11 mm sawtooth at tile scale (the shirt's placket edge); boundaries smoothed as curves
+            sd = ob.modifiers.new("subdiv", "SUBSURF")
+            sd.levels = sd.render_levels = int(o["subdiv"])
+            sd.boundary_smooth = "ALL"
+            sd.uv_smooth = "PRESERVE_BOUNDARIES"
         if o.get("thickness"):
             m = ob.modifiers.new("solid", "SOLIDIFY")
             m.thickness = float(o["thickness"])
@@ -633,6 +639,12 @@ def _render_textured(job, d):
             UV = d[nm + "_UV"]
             uvl = ob.data.uv_layers.new(name="pattern")
             uvl.data.foreach_set("uv", UV[np.asarray(F).ravel()].astype(np.float32).ravel())
+        if o.get("subdiv"):  # (dress-garrett ac) Catmull-Clark before the thickness: a free edge drawn from the 10 mm sim
+            # polyline read as an 11 mm sawtooth at tile scale (the shirt's placket edge); boundaries smoothed as curves
+            sd = ob.modifiers.new("subdiv", "SUBSURF")
+            sd.levels = sd.render_levels = int(o["subdiv"])
+            sd.boundary_smooth = "ALL"
+            sd.uv_smooth = "PRESERVE_BOUNDARIES"
         if o.get("thickness"):
             m = ob.modifiers.new("solid", "SOLIDIFY")
             m.thickness = float(o["thickness"])
