@@ -197,6 +197,23 @@ def test_export_ships_made_parts_not_the_pieces_they_replace(tmp_path=None):
     assert (uvs >= 0).all() and (uvs <= 1).all()  # its pattern uv placed in the garment's atlas
 
 
+def test_drawn_faces_weld_and_draw_made_parts():
+    """Every sheet draws a result through cloth.drawn_faces (2026-10-18: scratch sheets drew raw M["F"], every seam an
+    open double boundary = a dark gash, and the simulated collar instead of the constructed one)."""
+    g, M, V, ia, ib = _two()
+    body = _Body(np.c_[np.random.default_rng(0).uniform(-0.2, 0.6, (400, 2)), np.full(400, -0.05)])
+    Fw, Fc, parts = cloth.drawn_faces({"mesh": M, "V": V}, body=body)
+    sw = M["sew"]
+    assert not np.isin(sw[:, 1], Fw).any() or not np.isin(sw[:, 0], Fw).any()  # one vertex per sewn pair drawn
+    assert len(Fw) == len(Fc) and parts == []
+    made = {"parts": [{"name": "b_made", "replaces": ["b"], "V": V[ib] + [0, 0, 0.03],
+                       "F": np.array([[0, 1, 2]]), "thickness": 0.002}]}
+    Fw2, Fc2, parts2 = cloth.drawn_faces({"mesh": M, "V": V, "made": made}, body=body)
+    pid = M["piece"]
+    assert not (pid[Fc2] == M["names"].index("b")).all(1).any()  # the replaced piece isn't drawn
+    assert len(parts2) == 1 and parts2[0][0] == "b_made"
+
+
 if __name__ == "__main__":
     for k, fn in list(globals().items()):
         if k.startswith("test_"):

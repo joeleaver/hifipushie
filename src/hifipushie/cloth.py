@@ -10727,17 +10727,11 @@ def look(name: str, which: list | None = None, views=("front", "side", "back", "
     for gn, g, res in results:
         o = {"name": f"g_{gn}", "V": res["V"], "F": res["mesh"]["F"], "color": g.get("color", "#8fb3d9"), "roughness": float(g.get("roughness", 0.85)), **({"sheen": float(g["sheen"])} if g.get("sheen") is not None else {}),
              "thickness": max(0.0006, fabric(g).get("thickness", 0.0008))}
-        Fw, Fc = welded_faces(res["mesh"], res["V"], body=res["body"], corners=True)
-        o["F"] = Fw  # (one surface: the seams' vertices shared, the pieces wound alike)
-        if (res.get("made") or {}).get("parts"):  # constructed parts replace their simulated pieces
-            from . import cloth_made
-            hide_, parts_ = cloth_made.drawn(res)
-            if len(Fc) == len(Fw):
-                keep_ = ~hide_[np.asarray(Fc).reshape(len(Fw), -1)].all(1)
-                Fw, Fc = Fw[keep_], np.asarray(Fc)[keep_]
-                o["F"] = Fw
-            for nm_, V_, F_ in parts_:
-                objs.append({"name": f"made_{gn}_{nm_}", "V": V_, "F": F_, "color": o["color"], "roughness": o["roughness"]})
+        # (one surface: the seams' vertices shared, the pieces wound alike; constructed parts replace their pieces)
+        Fw, Fc, parts_ = drawn_faces(res)
+        o["F"] = Fw
+        for nm_, V_, F_ in parts_:
+            objs.append({"name": f"made_{gn}_{nm_}", "V": V_, "F": F_, "color": o["color"], "roughness": o["roughness"]})
         if textured and g.get("detail", {}) is not False:
             uv, side = atlas_uv(res["mesh"])
             maps = write_maps(tmp / f"look_{gn}", res["mesh"], uv, side, g, extra=fine_folds(res, g, uv, side))
@@ -10913,6 +10907,25 @@ def welded_faces(M: dict, V: np.ndarray, tol: float = 0.0006, body=None, orient:
     dup[first] = False
     ok &= ~dup
     return (Fw[ok], F[ok]) if corners else Fw[ok]
+
+
+def drawn_faces(res: dict, V: np.ndarray | None = None, body=None, hide_pieces=()) -> tuple:
+    """How every look / sheet must draw a garment result: (Fw welded + oriented faces, Fc the same faces in the mesh's
+    own vertex ids (per-corner uv: uv[Fc.ravel()]), [(name, V, F)] constructed part slabs). Pieces a made part
+    `replaces` (and `hide_pieces`) are left out. 2026-10-18 (dress-garrett y): scratch sheets drew raw M["F"]: every
+    seam two open boundaries with their own normals + Solidify rims on mis-wound pieces (Joe: "huge, garish gashes"),
+    and the SIMULATED collar instead of the constructed one."""
+    from . import cloth_made
+    M = res["mesh"]
+    V = np.asarray(res["V"] if V is None else V, float)
+    Fw, Fc = welded_faces(M, V, body=body if body is not None else res.get("body"), corners=True)
+    Fc = np.asarray(Fc).reshape(len(Fw), -1)
+    hide, parts = cloth_made.drawn(res) if (res.get("made") or {}).get("parts") else (np.zeros(len(M["piece"]), bool), [])
+    for nm in hide_pieces:
+        if nm in list(M["names"]):
+            hide |= np.asarray(M["piece"]) == list(M["names"]).index(nm)
+    keep = ~hide[Fc].all(1)
+    return Fw[keep], Fc[keep], parts
 
 
 def strain_colors(strain: np.ndarray, limit: float) -> np.ndarray:

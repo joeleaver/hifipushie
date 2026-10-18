@@ -5500,6 +5500,35 @@ dc20; (c) the NICO-TOP batch (step 6) on dc20 or its successor, blind review by 
   overrides), plus a unit test of pin immutability / tamper refusal / under.pin path refusal. j17b: 0.0000 mm on every
   piece, key 7aca63ae26eb8a5c. STATE: j17b unchanged, waits on Joe's look. NEXT: jacket MINORs (handover v (b)).
 
+## dress-garrett 2026-10-18 y (Joe on j17b: "seams are huge, garish gashes", "the collar and such isn't right yet"; scripts $G/seam_y/)
+- MEASURE first ($G/seam_y/sm.py, gaps.py, mc.py on out/dg_j17b.pkl + frozen_j17b):
+  - GEOMETRY IS CLEAN at the seams: all 372 sewn pairs closed in the final V except the jacket's sim collar/front pairs
+    (the made collar replaces that piece); normal break at closed pairs CB 5.9 deg, back/side 10, cloth's own 8.9; groove
+    / ridge from a plane fit 5-25 mm out: CB -0.3 / 0.0 mm, back/side 0.1 / 0.0 mm (sleeve seams 35-43 deg: the 2 cm tube's
+    own curvature, as the seams agent found). The mesh is ~2 cm edges (edge p50 19.9 mm): it CAN'T carry a 3 mm trench.
+  - So the gash is the DRAW. $G/run.py's sheet() (every dg_ sheet, local and NICO-TOP via RJOB) drew the garment with RAW
+    M["F"]: every seam two coincident open boundaries, each side its own normals, and Solidify (0.6 mm) on pieces wound
+    opposite ways (back.L/R, top.L, under.L face in) = one rim out, one in. The seams agent's fix (welded_faces /
+    oriented_faces / shared_normals) is in look_cloth, the scene and the export, never in the scratch sheets.
+  - It also drew the SIMULATED collar piece: run.py never drew res["made"]["parts"] (the jacket's constructed collar, 1072
+    verts, replaces "collar"). The flaring, standing back collar in every dg_ sheet was the sim collar, Solidified unwelded.
+  - PROOF, cheap local crops (same j17b result, maps, light; $G/seam_y/rp.py, rc.py -> seam_y/r1/stack.png, r2/cmp_*.png):
+    CB seam contrast in the back crop (dip vs 4-12 px either side, $G/seam_y/mc.py) raw 16% p50 / 18% p90 -> welded 4 / 6%
+    (no normal map 3 / 5%: the pressed_open map line is ~1%, the floor ~3%). The side-panel "trench + ridge" is gone at the
+    same light. Back collar drawn made: rolls over and lies on the shirt collar, CB line invisible.
+- FIX (shared, for dress-tess too): `cloth.drawn_faces(res, V=None, body=None, hide_pieces=())` -> (welded + oriented faces,
+  the same faces in mesh ids for per-corner uv: uv[Fc.ravel()], the made part slabs), pieces a made part replaces left out.
+  look_cloth uses it (same behaviour as before). ANY sheet that draws a garment result must draw it through this, not
+  M["F"]. dress_tess's $T/run.py draws raw M["F"] too (grep '"F": M\["F"\]'): same gashes on Tess's coat.
+  Test: tests/test_seams.py test_drawn_faces_weld_and_draw_made_parts. $G/run.py (scratch; run_pre_y.py = before) draws
+  through it (RAWFACES=1 = the old draw); the shirt under the jacket is welded too (made stand + collar hide theirs).
+- ROWS (made collar, frozen_j17b; target from a pressed suit: shirt collar showing 10-15 mm over the jacket's at CB,
+  jacket collar lying on it): sim collar (drawn before) CB 24 mm under the shirt collar top, gap p50 4.6 / max 11 mm;
+  made collar (after) 19 mm under, gap 8.6 / 9.9 mm, neck sides 7 mm under. Placket (shirt front edge, wave from a cubic
+  fit z 0.95-1.30): front.L rms 2.0 / max 4.2 mm, front.R 1.5 / 3.1 mm.
+STATE: cause of the gashes and the standing collar = the scratch sheet's draw (raw faces, sim collar); fixed in
+cloth.drawn_faces + run.py. j17c = j17b drawn right (no model change), NICO-TOP batch running.
+NEXT: tiles (back seams, side seam, sleeve, collar back, lapels, shirt collar, placket) ref | j17c, review.
 ### dress-tess 2026-10-16 (session 7): fused facings interfaced, through-start refusal, coat dc22 (facing to the hem, stiff)
 - Merged main 0e76482e (pins; post_finish reads finish files through pin_path).
 - FIX (5ebb828d): a fused, interfaced facing is its piece's interfaced BAND (cloth.fused_interfacing: one band
@@ -5909,3 +5938,41 @@ a "twill" surface in detail_maps (the coat's normal map is flat, and every revie
   detail {"surface": "twill"} (detail is NOT_SIM). NOT YET SEEN IN A RENDER: the next coat look / NICO-TOP pack shows it.
   NOT ADDRESSED (geometry, wait for the coat call): smooth-shaded 10 mm faces and the swollen made-piece rims (pockets,
   lapels) — the 12 mm row on flat panels (.008 vs .021) is partly these.
+- (worktree note) the worktree was behind main: dress-tess's spec v10 (facing "interfaced": false) re-keyed j17b on the old
+  code (test_cloth_spec_durable failed, CACHED_ONLY builds returned None). Merged main (f56bed53): key 7aca63ae26eb8a5c holds.
+- RENDERS, ONE NICO-TOP batch ($0; `bash $G/chain_j17cd.sh`): j17c = j17b drawn through drawn_faces (no model change),
+  j17d = j17c + placket edge straightened (under_sculpt delta $G/out/dg_j17_placket_y1_delta.npz = $G/seam_y/pk.py: both
+  front edges onto a cubic in z, carried 3.5 cm in, guarded finish_apply with body + jacket at scale 0.8 (1.0 refused,
+  2 crossings), 375 verts, max 3.3 mm; full u2+y1 offset $G/out/dg_j17_under_sculpt_y1.npz, NOT pinned / not in the spec).
+  cloth_renders/dg_j17c*.png, dg_j17d*.png.
+- LOOK-FIRST (mine, before any review): back and side seams are GONE as gashes on the full sheet (j17b | j17c back panel:
+  $G/seam_y/b_vs_c.png): the CB trench, the side-panel ridge and the sleeve-seam lines no longer read at sheet scale. The
+  back collar now rolls over and lies on the shirt collar (made collar drawn); its top edge shows small serrations at the
+  neck sides (collar back tile). Lapels: the notched made collar sits on the lapels now; far collar point a little high.
+  SHIRT: the placket ruffle is NOT the edge: j17d's edge move changes nothing visible. The ruffle is a crushed vertical
+  fold 1-3 cm in from CF in the shirt front (the pressing under the jacket; handover u: fronts 13% faces < 70% area).
+  Shirt collar (made c3): still jagged at the points.
+- TILES (ref | result, 420 px, $G/seam_y/tiles.py <tag>): $G/seam_y/tiles/ref_<item>.png, dg_j17c_<item>.png (also
+  dg_j17b_ / dg_j17d_) for back_seams, side_seam, sleeve, collar_back, lapels, shirt_collar, placket. Refs: coat_hanger_back
+  (seams, collar back), concept_v8 (sleeve, lapels, placket), shirt_collar_worn (shirt collar). Overview tiles_overview.png
+  (ref | j17b | j17d).
+- REVIEW NOT RUN: bin/review failed ("You've hit your weekly limit", resets Oct 19 1 pm America/Denver). Command to re-run
+  is the last line of this section's handover.
+
+## Handover 2026-10-18 y (dress-garrett; 70-call clock)
+STATE: the gashes' cause = the scratch sheet's draw (raw M["F"] + Solidify on mis-wound pieces + the SIM collar drawn
+instead of the made one), not geometry or maps. Shared fix cloth.drawn_faces (look_cloth uses it; test in test_seams);
+$G/run.py draws through it. j17c = j17b drawn right, rendered; seams and back collar fixed to my eye; NO blind review yet.
+dress-tess: $T/run.py's sheet draws raw M["F"] too (line ~166): switch to cloth.drawn_faces (see $G/run.py sheet(), the
+`_raw` block: garment F + Fc for uv_corner + made part objects; the under shirt welded with hide_pieces).
+NEXT: (1) run the review on the j17c tiles: cd $G/seam_y/tiles && /mnt/data/hifipushie/bin/review $G/seam_y/rv_j17c
+"back seams=ref_back_seams.png:dg_j17c_back_seams.png" "side panel seam=ref_side_seam.png:dg_j17c_side_seam.png"
+"sleeve=ref_sleeve.png:dg_j17c_sleeve.png" "jacket collar, back=ref_collar_back.png:dg_j17c_collar_back.png"
+"lapels=ref_lapels.png:dg_j17c_lapels.png" "shirt collar=ref_shirt_collar.png:dg_j17c_shirt_collar.png"
+"shirt placket=ref_placket.png:dg_j17c_placket.png" --context "a game character's charcoal two-button suit jacket worn
+open over a pale dress shirt, simulated cloth, finish details" --stage "finish of the jacket and shirt: seams, collar,
+lapels, shirt collar, placket" --not "body and head; colour and fabric texture of the references; buttons colour; hang and fit";
+(2) placket: measure the front strip's fold (rms of the shirt front's height off a heavily smoothed copy, |x| < 5 cm,
+z 0.95-1.32), then a guarded under_sculpt that smooths that strip's surface (not the edge); pin it into the spec only
+when it shows; (3) shirt collar points (made c3 options or a hand finish of the made part); (4) made collar's serrated top
+edge at the neck sides; (5) made parts are drawn in flat colour in textured sheets (no maps): give them the jacket's maps.
