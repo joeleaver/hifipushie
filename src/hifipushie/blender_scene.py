@@ -1172,6 +1172,12 @@ def _light_rig(scene, lt, job, base):
         ld.color = _lin(L.get("color", [1.0, 1.0, 1.0]))
         if job.get("clip") or L.get("shadow") is False:  # a section: what's cut away would still cast the
             ld.use_shadow = False  # sun's shadow (EEVEE's shadow pass doesn't see the clip)
+        # a game's shadow map: its texel (m, the first cascade of a sun at 1-3 m view: 2048 px over ~5-8 m, 2.5-4 mm) and
+        # its PCF filter; EEVEE's virtual shadow maps resolve sub-mm card holes, which a few TAA samples left as grain
+        if "shadow_res" in L and hasattr(ld, "shadow_maximum_resolution"):
+            ld.shadow_maximum_resolution = float(L["shadow_res"])
+        if "shadow_filter" in L and hasattr(ld, "shadow_filter_radius"):
+            ld.shadow_filter_radius = float(L["shadow_filter"])
         if "diffuse" in L:  # a highlight-only light (a catchlight: its window reflects, the sun itself lights nothing)
             ld.diffuse_factor = float(L["diffuse"])
             # (and nothing THROUGH the skin either: transmission / volume default to 1, and NVIDIA's EEVEE lit the skin's
@@ -1368,6 +1374,17 @@ def render(job):
                 ao.rotation_euler = dv.to_track_quat("Z", "Y").to_euler()
             elif ao is not None:
                 ao.data.energy = 0.0
+        bpy.context.view_layer.update()
+        if any(m.get("hp_wrap") is not None for m in bpy.data.materials):  # the cards' wrapped diffuse follows the suns
+            import blender_cards
+            blender_cards.set_wrap_lights()
+        if v.get("card_shadow") is not None:  # a hair shadow LOD per view (shading.py hair_cards: off at 3 m+)
+            prox = any(ob.get("hp_shadow_proxy") for ob in bpy.data.objects)
+            for ob in bpy.data.objects:  # (with a shadow proxy the proxy casts and the cards never do)
+                if ob.get("hp_shadow_proxy") or (ob.get("hp_card") and not prox):
+                    ob.visible_shadow = bool(v["card_shadow"]) and job.get("card_shadow") is not False
+                elif ob.get("hp_card"):
+                    ob.visible_shadow = False
         t = time.time()
         bpy.ops.render.render(write_still=True)
         print(f"@@frame {time.time() - t:.2f}", flush=True)
@@ -1777,6 +1794,18 @@ def hair_look(job):
     if (job.get("hair") or {}).get("strands"):
         import blender_strands
         print("@@strands", json.dumps(blender_strands.stats()), flush=True)
+    if job.get("groom_shadow"):  # "opaque": the strands cast, their materials' shadow opaque (a fair source for cards
+        for ob in bpy.data.objects:  # judged with a hair shadow: the dithered strands' transparent shadow cast ~none)
+            if ob.get("hp_strands"):
+                ob.visible_shadow = True
+                for ms in ob.material_slots:
+                    if ms.material is not None and hasattr(ms.material, "use_transparent_shadow"):
+                        ms.material.use_transparent_shadow = job["groom_shadow"] != "opaque"
+        print("@@groom_shadow", job["groom_shadow"], flush=True)
+    if job.get("groom_proxy"):  # the strand groom's shadow caster (an opaque inset hull of its strands, shadow-only: the
+        import blender_cards  # cards' own recipe), so the source casts the hair's shadow as the cards' proxy does
+        po = blender_cards.shadow_proxy(job["groom_proxy"], [o for o in bpy.data.objects if o.get("hp_strands")])
+        print("@@groom_proxy", None if po is None else len(po.data.polygons), flush=True)
     cw = float((((job.get("hair") or {}).get("strands") or {}).get("look") or {}).get("cycles_width") or 1.0)
     if job.get("look_engine") == "cycles" and cw != 1.0 and (job.get("hair") or {}).get("strands"):
         import blender_strands
@@ -1849,10 +1878,21 @@ def hair_glb_look(job):
                                                              float(job.get("cutoff", 0.33)), job.get("card_params"))
                     bases[built[key].name] = img
                 ms.material = built[key]
+    if mode == "game" and job.get("glb") and job.get("shadow_proxy", True) is not False:  # the export's shadow caster
+        import blender_cards
+        sp = job["shadow_proxy"] if isinstance(job.get("shadow_proxy"), str) else job["glb"][:-4] + "_shadow.obj"
+        po = blender_cards.shadow_proxy(sp, [o for o in new if o.type == "MESH"])
+        info["shadow_proxy"] = None if po is None else {"file": sp, "tris": len(po.data.polygons)}
+        if po is not None and job.get("card_shadow") is False:
+            po.visible_shadow = False
     for ob in new:
         if ob.type != "MESH":
             continue
         me = ob.data
+        if mode == "game":
+            ob["hp_card"] = True
+        if job.get("card_shadow") is False:  # a test pass: the cards cast no shadow (is the neck's grain their shadow?)
+            ob.visible_shadow = False
         info["objects"].append({"name": ob.name, "verts": len(me.vertices), "tris": len(me.polygons),
                                 "attributes": sorted(a.name for a in me.attributes),
                                 "colors": sorted(a.name for a in me.color_attributes),

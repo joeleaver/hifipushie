@@ -839,6 +839,32 @@ def part_line(sc: Scalp, g: dict):
     return np.stack([a, e], 1)
 
 
+def part_side_of(sc: Scalp, g: dict):
+    """A function roots (k, 3) -> (side -1 / +1 of the parting, distance m to its line) for the clump cut
+    (hair_clumps.cut: no card spans the part), or None if the groom has no parting."""
+    try:
+        pl = part_line(sc, g)
+    except (KeyError, TypeError):
+        return None
+    if pl is None or len(pl) < 2:
+        return None
+    L = _catmull(sc.point(np.asarray(pl)[:, 0], np.asarray(pl)[:, 1], 0.0), 40)
+
+    def f(Rt):
+        Rt = np.asarray(Rt, float)
+        A, AB = L[:-1], L[1:] - L[:-1]
+        t = np.clip(((Rt[:, None] - A[None]) * AB[None]).sum(-1) / np.maximum((AB * AB).sum(-1), 1e-12)[None], 0, 1)
+        near = A[None] + t[..., None] * AB[None]
+        d = np.linalg.norm(Rt[:, None] - near, axis=-1)
+        k = d.argmin(1)
+        i = np.arange(len(Rt))
+        nb = near[i, k]
+        radial = _unit(nb - sc.C)
+        side = np.sign((np.cross(AB[k], radial) * (Rt - nb)).sum(-1))
+        return side, d[i, k]
+    return f
+
+
 def _part_x(g):
     pt = g["parting"]
     side = pt.get("side", "left")
@@ -2484,7 +2510,7 @@ SHORT_GREY = 0.45  # a short cut's card is darker by this x (the greyest locks' 
 SHORT_ATLAS = 2048
 CARD_TIERS = {
     "hero": {"cap_step": 6.0, "group": "sub", "layers": 3, "card_width": 0.012, "segment": 0.008,
-             "fly": 2, "baby": 2.0, "core_sides": 12, "mass": 5000},
+             "fly": 2, "baby": 2.0, "core_sides": 12, "mass": 5000, "cut": "clumps"},
     "main": {"cap_step": 5.0, "group": "pair", "layers": 2, "card_width": 0.02, "segment": 0.012,
              "baby": 0.6, "core_sides": 10, "mass": 3500},
     "npc": {"cap_step": 8.0, "group": "lock", "layers": 1, "card_width": 0.028, "segment": 0.025,
@@ -2531,6 +2557,8 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
         S = {**S, "atlas": max(int(S["atlas"]), SHORT_ATLAS), "fly": int(S.get("fly", 0)) if tier_given else 0,
              "short": True}
     lk = look_of(spec, h)
+    if (h.get("export") or {}).get("card_gain") is not None:  # the cards' colour gain measured against the strand look
+        lk["card_gain"] = float(h["export"]["card_gain"])  # (an export setting: the approved groom's look stays)
     # grey hairs in the cards' pictures: the share the strand look draws (the look's own + the locks' mean grey)
     gl = [float((k_.get("inputs") or {}).get("Grey", k_.get("grey", 0.0)) or 0.0) for k_ in locks]
     lk["grey_share"] = round(float(np.clip(float(lk.get("grey_amount", 0.0))
@@ -2551,8 +2579,11 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
             chart = _CHARTS[ck]
         else:
             chart = hs.cap_chart(sc, g, hairline(sc, g), S, D, e_chart, int(S["atlas"]))
-        at = hc.atlas(S, lk, lines=hs.tile_lines(S), cap=chart,
-                      key=hs.key(sd) + (f"short{hair_cap.VERSION}" if short else ""))
+        akey_ = hs.key(sd) + (f"short{hair_cap.VERSION}" if short else "")
+
+        def make_atlas(bake=None):
+            return hc.atlas(S, lk, lines=hs.tile_lines(S), cap=chart, key=akey_, bake=bake)
+        at = make_atlas()
     else:
         at = hc.atlas(S, lk)
     import re
@@ -2564,15 +2595,25 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
             k_["at_hairline"] = bool(h0[0] < 0.01 and inside(sc, line, a0, e0)[0] < 0.008)
         # FACE-FRAMING: hair off the head rooted near the hairline in front of the ears (wisps, curls, loose locks
         # at the temples): the budget keeps it with the coverage. Ranked as single hairs, Tess's W18 lost every
-        # face wisp at every tier (the assembly review, hair_r2)
-        k_["face"] = bool(float(k_.get("free", 0.0)) > 0.5 and h0[0] < 0.02 and inside(sc, line, a0, e0)[0] < FACE_IN
+        # face wisp at every tier (the assembly review, hair_r2). Not a halo's single hairs rooted at the part (1-2
+        # hairs: as face-framing wisps they were 2-3 cards each, a tuft standing up out of the part, review c3)
+        k_["face"] = bool(float(k_.get("free", 0.0)) > 0.5 and h0[0] < 0.02 and int(k_.get("hairs") or 0) not in (1, 2)
+                          and inside(sc, line, a0, e0)[0] < FACE_IN
                           and abs(((float(a0[0]) + 180.0) % 360.0) - 180.0) < FACE_AZ)
         k_["off_head"] = bool(float(k_.get("free", 0.0)) > 0.5 and h0[0] > 0.02)  # (rooted in hanging hair: a tail's strays)
     hair_locks = [k_ for k_ in locks if k_ not in bands]
     core = None
-    if D is not None:  # cards cut from the groom's own strands, clustered as coarsely as the tier asks
+    clumped = D is not None and not short and S.get("cut") == "clumps"
+    St_ = None
+    if clumped:  # cards cut by visual clumps across locks and textured from their own strands (hair_clumps.py)
+        from . import hair_clumps
+        cards = hair_clumps.cut(D, hair_locks, sc.C, S, part_side_of(sc, g), int(g.get("seed", 0)),
+                                triangles=int(0.8 * int(budget)) if budget else 20000)
+        St_ = cards[0].pop("_St") if cards else None
+    elif D is not None:  # cards cut from the groom's own strands, clustered as coarsely as the tier asks
         cards = hc.clump_cards(D, hair_locks, sc.C, S, lk, int(g.get("seed", 0)))
-        if budget and not short:
+    if D is not None:
+        if budget and not short and not clumped:
             # a groom with many locks (tesshair7's volume rows, halo, curls: Tess's W18 cut 7,123 cards / 243k
             # triangles for a 40k hero) left the budget to drop whole layers AND whole regions (the tail's cards, every
             # layer over the coverage one: 34 % of her silhouette bare). Cut coarser instead, as an artist would: the
@@ -2758,7 +2799,39 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
         info["fixed_parts"] = {"cap": len(cap["tris"]), "core": len(core["tris"]) if core is not None else 0,
                                "baby": len(mb["tris"]), "tie": sum(len(b["tris"]) for b in band)}
         info["by_class"] = card_classes(before_, cards, S, seg, {k_["name"]: k_ for k_ in hair_locks})
+    if clumped and St_ is not None:  # each kept clump card's picture baked from its own strands, under the tiles
+        from . import hair_clumps
+        bk = [c_ for c_ in cards if c_["kind"] == "baked"]
+        Wt = int(at["color"].shape[1])
+        Hb = int(S.get("bake_rows") or Wt // 2)
+        nt_ = int(S.get("bake_tiles", hair_clumps.TILES))
+        if nt_ > 0:  # shared pictures (a few dozen tiles at a fine texel, tinted per card): unique islands for ~500
+            # cards in one block were ~1 texel/mm, smeared bands with no strands (c5-c7)
+            B = hair_clumps.bake_tiles(bk, St_, Wt, Hb, n=nt_, seed=int(g.get("seed", 0)), look=lk, C=sc.C,
+                                       locks=hair_locks)
+        else:
+            B = hair_clumps.bake(bk, St_, Wt, Hb, seed=int(g.get("seed", 0)), look=lk, C=sc.C, locks=hair_locks)
+        at = make_atlas({**B, "key": hashlib.sha1(B["alpha"].tobytes()).hexdigest()})
+        Ht, Hall = at["rows"], at["rows_total"]
+        tint_ = B.get("tint", np.ones(len(bk)))
+        for c_, (x_, y_, w_, h_), t_ in zip(bk, B["islands"], tint_):
+            c_["tone_k"] = at["bake_k"] * float(t_)
+            c_["island"] = ((x_ + 0.5) / Wt, (x_ + w_ - 0.5) / Wt, 1 - (Ht + y_ + 0.5) / Hall, 1 - (Ht + y_ + h_ - 0.5) / Hall)
+        info["bake"] = {"cards": len(bk), "texel_mm": round(B["texel"] * 1000, 3), "rows": Hb,
+                        "tiles": len(B.get("reps", [])) or None}
+    if S.get("colour_model", True) and not short:  # the atlas is lifted by the colour model's peak and the cards'
+        # vertex colours carry tone / peak (hc.mesh); the cap, the tail's core and the tie wore 0.8-1.0: twice the
+        # cards' value wherever they showed (the pale helmet / crown patch, the pale stripe down the back)
+        from . import hair_colour as hcol
+        pk_ = hcol.peak(lk)
+        cap = {**cap, "col": np.asarray(cap["col"], np.float32) / pk_}
+        core = None if core is None else {**core, "col": np.asarray(core["col"], np.float32) / pk_}
+        band = [{**b_, "col": np.asarray(b_["col"], np.float32) / pk_} for b_ in band]
     mc = hc.mesh(cards, S, lk, at["tiles"], segment=seg)
+    if clumped:  # everything else wears the tiles / chart, now the top rows of the atlas
+        mc = hc.remap_v(mc, at, mc["baked"])
+        cap, core, mb = hc.remap_v(cap, at), hc.remap_v(core, at), hc.remap_v(mb, at)
+        band = [hc.remap_v(b_, at) for b_ in band]
     # against the body's own signed distance (hair_loose.collider), not the scalp's rays: a ray from the head's centre
     # meets the EAR first, so cards lying on the head behind and over the ear read 5-6 cm "under the skin" and were
     # moved out to the ear's silhouette (Garrett: 936 hero vertices, the ragged dark patches behind the ear and at
@@ -2777,6 +2850,10 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
                 det[c["lock"]] = round(min(det.get(c["lock"], 0.0), d_) * 1000, 1)
     clearance["detached"] = det
     m = hc.join(core, mc, mb, *band)
+    if os.environ.get("HP_CARDS_DUMP"):  # (debug: the kept cards, for probes)
+        import pickle as _pk
+        _pk.dump([{k_: c_.get(k_) for k_ in ("lock", "P", "X", "N", "hw", "layer", "kind", "prio", "s", "cls")} for c_ in cards],
+                 open(os.environ["HP_CARDS_DUMP"], "wb"))
     np.savez(tmp / "cards.npz", **m)
     np.savez(tmp / "cards_cap.npz", **cap)
     files = hc.write_atlas(at, str(tmp / "hair"))
@@ -2811,7 +2888,9 @@ def card_classes(before: list, after: list, S: dict, seg, locks: dict) -> dict:
     return dict(sorted(out.items()))
 
 
+CAP_BARE_FLOOR = True  # a cap vertex with no coverage card within CAP_FAR lies at the floor (False: its mass height, before round 18)
 CAP_UNDER = 0.0025  # m: the cap stays this far under the lowest coverage card over it
+CAP_FAR = 12.0  # deg: a cap vertex with no card within CAP_REACH takes the nearest cards' height within this
 CAP_REACH = 4.0  # deg: the cards over a cap vertex are those within this angle of it (seen from the head's centre)
 
 
@@ -2822,13 +2901,31 @@ def cap_under_cards(sc: Scalp, V, cards: list, floor: float = 0.0015):
     V = np.asarray(V, float)
     if not cards:
         return V
-    P = np.concatenate([np.asarray(c["P"], float) for c in cards])
+    # the cards' whole surface (centre line and both edges), not their centre lines alone: at a coarse cut (24 mm
+    # cards) most cap vertices had no centre line within reach, kept the groom's envelope and stood up through the
+    # cards as a crest over the crown (Tess's hero at 25k)
+    P = np.concatenate([np.asarray(c["P"], float) + k_ * np.asarray(c["X"], float) * np.asarray(c["hw"], float)[:, None]
+                        for c in cards for k_ in (-1.0, 0.0, 1.0)])
     pa, pe, ph = sc.coords(P)
     va, ve, vh = sc.coords(V)
     tree = cKDTree(dirs(pa, pe))
-    near = tree.query_ball_point(dirs(va, ve), 2 * np.sin(np.radians(CAP_REACH) / 2))
+    dv = dirs(va, ve)
+    near = tree.query_ball_point(dv, 2 * np.sin(np.radians(CAP_REACH) / 2))
     lo = np.array([ph[n].min() if n else np.inf for n in near])
-    h = np.where(np.isfinite(lo), np.minimum(vh, np.maximum(lo - CAP_UNDER, floor)), vh)
+    far = ~np.isfinite(lo)  # no card over it: the nearest cards within CAP_FAR set its height (the hair over it lies
+    if far.any():  # no higher than the cards round it)
+        dd, ii = tree.query(dv[far], k=8, distance_upper_bound=2 * np.sin(np.radians(CAP_FAR) / 2))
+        ok = np.isfinite(dd)
+        lo[far] = np.where(ok.any(1), np.where(ok, ph[np.minimum(ii, len(ph) - 1)], np.inf).min(1), np.inf)
+    # no card over a vertex nor near it: a hole in the coverage (the part's gap, a narrowed card), so the cap lies on
+    # the scalp there (CAP_BARE_FLOOR). Kept at its mass height, those vertices stood up through the hair as points
+    # (b25's front-top "cat ears" where BEND_HW narrowed layer-0 cards; b26's knob at the strand part, round 18)
+    h = np.where(np.isfinite(lo), np.minimum(vh, np.maximum(lo - CAP_UNDER, floor)),
+                 np.minimum(vh, floor) if CAP_BARE_FLOOR else vh)
+    # and no vertex stands over its neighbours' mean (single vertices left at the envelope were spikes)
+    vt = cKDTree(dv)
+    nb = vt.query_ball_point(dv, 2 * np.sin(np.radians(CAP_REACH) / 2))
+    h = np.minimum(h, np.array([h[n].mean() for n in nb]) + 0.001)
     return V + (h - vh)[:, None] * _unit(V - sc.C)
 
 
@@ -3763,7 +3860,7 @@ def export_part(name: str, out_dir: Path, spec: dict | None = None, texture: int
     return part, files
 
 
-EXPORT_CARDS = {"triangles": 12000, "tier": None, "cap_step": 6.0, "alpha_cutoff": 0.33}  # spec["hair"]["export"] overrides
+EXPORT_CARDS = {"triangles": 12000, "tier": None, "cap_step": 6.0, "alpha_cutoff": 0.33, "shadow_proxy": True}  # spec["hair"]["export"] overrides
 CARD_RECIPE = (
     "Hair cards. Draw two-sided with one normal for both faces (the mesh's normals are already bent toward the hair "
     "volume: do not flip them on back faces). Alpha: the base colour's alpha, alpha-tested at alpha_cutoff with "
@@ -3794,6 +3891,12 @@ def export_hair(name: str, out_dir, tiers=("main", "npc", "far"), groom: bool = 
         sp = {**spec, "hair": {**h, "export": {**(h.get("export") or {}), "tier": tier}}}
         part, files = export_cards(name, out_dir, sp, log)
         hc_ = part.pop("hair")
+        sp_ = part.pop("shadow_proxy", None)
+        if sp_ is not None and len(sp_["tris"]):  # a shadow-only caster beside the GLB (shading.py hair_cards "shadows")
+            spf = out_dir / f"{name}_hair_{tier}_shadow.obj"
+            hc.write_obj(spf, sp_["verts"], sp_["tris"], f"{name}_hair_shadow")
+            hc_["shadow_proxy"] = {"file": spf.name, "triangles": int(len(sp_["tris"])), "inset": sp_["inset"],
+                                   "use": "cast shadows only, hidden from camera; the cards cast none"}
         hc_["aux_texture"] = list(files).index("aux")
         # (engines: COLOR_0 multiplies the base colour (the root-to-tip ramp, a value per card). glTF says so, but
         # Godot's importer leaves BaseMaterial3D.vertex_color_use_as_albedo off: set it, or the hair is pale and flat)
@@ -3885,6 +3988,9 @@ def export_cards(name: str, out_dir: Path, spec: dict, log: list) -> tuple[dict,
             "vcolor": M["col"].astype(np.float32),
             "hair": {"alpha_cutoff": float(ex["alpha_cutoff"]), "layers": ranges, "recipe": CARD_RECIPE,
                      "strands": hc.strands_of(spec), "budget": cd["budget"], "clearance": cd.get("clearance")}}
+    if ex.get("shadow_proxy", True):  # the hair's shadow caster (opaque hull of the cards, shadow-only)
+        sp_ = hc.shadow_proxy(M["verts"], M["tris"])
+        part["shadow_proxy"] = sp_
     aux = np.asarray(Image.open(cd["aux"]).convert("RGBA"), np.float32) / 255
     files = {"basecolor": out_dir / "hair_basecolor.png", "orm": out_dir / "hair_orm.png",
              "normal": out_dir / "hair_normal.png", "specular": out_dir / "hair_specular_gltf.png",

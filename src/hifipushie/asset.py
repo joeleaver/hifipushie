@@ -2520,10 +2520,11 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
             ratio_of = True
         cards = [pn for pn in parts if report[pn].get("curves") or report[pn].get("lashes")]
         tier_parts = {}
-        if locals().get("hair_cards") and rigged:  # hair LODs are the groom's own card TIERS (one atlas for all:
-            # hair.export_hair), cut for their budget; thinning LOD0's cards dropped the tail first
+        if locals().get("hair_cards"):  # hair LODs are the groom's own card TIERS (one atlas for all:
+            # hair.export_hair), cut for their budget; thinning LOD0's cards dropped the tail first. (Unrigged too,
+            # round 25: whole layers dropped once, 11996 -> 5324 at LOD1 and flat at LOD2 / LOD3.)
             from . import hair as hairmod
-            hb_ = next((i for i, b in enumerate(rigged["bones"]) if b["name"].endswith("Head")), 0)
+            hb_ = next((i for i, b in enumerate(rigged["bones"]) if b["name"].endswith("Head")), 0) if rigged else 0
             for k, r in enumerate(ratios, 1):
                 tier_ = lodmod.HAIR_TIERS[min(k, len(lodmod.HAIR_TIERS)) - 1]
                 sp_ = {**spec, "hair": {**spec["hair"], "export": {**(spec["hair"].get("export") or {}), "tier": tier_}}}

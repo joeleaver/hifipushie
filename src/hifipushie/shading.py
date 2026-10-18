@@ -144,6 +144,33 @@ def notes(info: dict, aname: str, looks: dict | None = None, hair_look: dict | N
                       "0.45; per-strand shift jitter 0.3 x (aux.g - 0.5)  (T = the bitangent of TANGENT: the atlas's v "
                       "runs root to tip)",
                       "diffuse: wrapped  max(0, (N.L + 0.45) / 1.45); keep ~0.55 of the shadow map (hair lets light through)",
+                      "shadows: a SHADOW PROXY per hair asset (the export's <stem>_shadow.obj, extras "
+                      "hifipushie_hair.shadow_proxy): an opaque, smooth, low-poly hull of the cards' volume, inset ~4 mm "
+                      "under the outer cards, that casts the hair's shadow and is never drawn; the cards cast none (they "
+                      "are shadowed by the proxy, which stands in for their self-shadow). Unreal: the proxy as a static "
+                      "mesh component with Visible off + Hidden Shadow (or Cast Shadow + Render in Main Pass off), the "
+                      "cards' Cast Shadow off; Unity: the proxy's Mesh Renderer Cast Shadows = Shadows Only, the cards' "
+                      "Off; Godot: GeometryInstance3D cast_shadow = SHADOW_CASTING_SETTING_SHADOWS_ONLY on the proxy, "
+                      "OFF on the cards. Filter the shadow (PCF / PCSS): an opaque hull's shadow is smooth only if the "
+                      "filter is (EEVEE: shadow_ray_count 4 took the grain 0.65 -> 0.41 at 8 samples, proxy and cards "
+                      "alike; the in-Blender game look renders with shadow_ray_count 4 as its preview of an engine's "
+                      "filtered soft shadow, groom source frames too, and the strand groom it is judged against casts "
+                      "an opaque shadow: a groom that casts none is no engine's look). Fallback without a proxy: the cards cast from a COARSE alpha, not the full-res one: the shadow pass reads the "
+                      "coverage of the cut (alpha > cutoff) at a coarse mip (~mip 4, 16 x 16 texels averaged, the "
+                      "preview's SHADOW_MIP) as a soft opacity, PCF-filtered at the first cascade's texel (~4-8 mm at "
+                      "1-3 m): a soft hair shadow on the neck, not grain (full-res alpha-tested cards drew a speckle, "
+                      "skin grain 0.42 vs the groom's 0.31). Unreal: a separate shadow material / opacity-mask input "
+                      "sampled at a fixed MipBias (or a baked shadow-alpha channel) in the card material's shadow depth "
+                      "pass (Shadow Pass Switch node); Unity HDRP: a shadow-caster pass sampling the alpha with "
+                      "SAMPLE_TEXTURE2D_LOD at a coarse mip (Shader Graph: a custom Alpha Clip Threshold Shadow + "
+                      "LOD sample); Godot: a shadow-only material pass (render_mode / ShadowCastingSetting SHADOWS_ONLY "
+                      "on a duplicate mesh) whose alpha reads textureLod(..., 4.0). Contact shadows on",
+                      "shadow LOD: LOD0 (the 1 m view) cards cast alpha-tested at their cutoff + contact shadows; LOD1+ "
+                      "(3 m and beyond) cards cast NO shadow-map shadow, contact shadows only (a thin card's penumbra over "
+                      "the neck reads as a dark smear at 3 m). Unreal hair cards: per-LOD Cast Shadow on the groom's card "
+                      "LODs (or the static mesh LOD's sections); Unity: Mesh Renderer Cast Shadows Off on the LOD1+ "
+                      "renderers of the LOD Group (HDRP: contact shadows in the Volume); Godot: cast_shadow off on the "
+                      "LOD1+ mesh instances (visibility ranges)",
                       "scalp: the cap carries the scalp chart; under it the skin's own scalp tint"]
                 m["params"] = {"alpha_mode": "MASK", "alpha_cutoff": 0.33, "two_sided": True,
                                "albedo_terms": dict(HAIR_ALBEDO_TERMS), "aux_shade": None,

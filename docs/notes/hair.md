@@ -2574,6 +2574,169 @@ at HEAD; batch views per Blender start: shader compile 50-90 s).
 6. Then main / npc / far, the checklist workspace/checklists/tess_hair_cards.json (NOT written yet), the shading notes'
    game terms (root-to-tip, per-strand tint, th_63 colour), docs.
 
+## hair-cards round 2 (2026-10-14 evening, restarted agent)
+- Offload: e3a never ran: remote.sh asked 16 GB, NICO-TOP's slot is 14.1 GB (offload.sh now RAM=10 CPUS=6). The route
+  works (e4a: strands 4 views 82 s, cards 61 s at 1024 / 24 samples; shader compile ~53 s of it). Jobs queue behind
+  other agents' (GPU one at a time): 10-40 min waits. Light local checks (768 px / 8 samples, one view, frames 1.5-6.5 s)
+  through capped WITHOUT the heavy slot (shots.py via capped directly) while a round is queued.
+- Cherry-picked 13e1d85 (assembly: albedo terms applied once; params.albedo_terms in the shading notes).
+- COLOUR: front L* (1024 / 24 samples) strands 31.4 | cards gain 1: 15.2, gain 3: 35.0 -> look.card_gain 2.55
+  (interpolated in log luminance; chroma / hue already match: 11.9 / 64 deg). Passed via hx.py look= (not yet in
+  hc_s2's spec: it is the approved model; decide where the card gain lives: export setting vs look).
+- Pooled halo (33 cards / 400 tris): ranked PRIO_HALO 0.35 (kept at 25k); narrowed to 2.4-4 mm (at 10 mm the fly tile's
+  hairs were 0.7 mm: brown leaves).
+- Blind review c1 (e4g, gain 3): FAIL. MAJORs: crown crest of upright planks; tail patchwork of light / dark blocks;
+  tail too light; black blob at the tie; pale stripe down the centre back; temples' hard blunt edge; face wisps missing.
+  * crest = the CAP (layer isolation, s_hc_s2_e5Lcap_v0): vertices with no card CENTRE LINE within CAP_REACH (4 deg)
+    kept the groom's envelope (the halo's height). cap_under_cards now uses the cards' whole surface (centre +- hw
+    edges), CAP_FAR 12 deg for orphans, and no vertex above its neighbours' mean + 1 mm. Crest gone (e6 cap render).
+  * patchwork = per-card highlights on 24-48 mm cards (a ribbon is a few mm): no highlight on cards wider than
+    HIGHLIGHT_W 8 mm.
+  * tie blob = the gather cards ran out to 15 % width at the tie and showed the band (strands hide it): to 50 %.
+  * face wisps: Tess's face-framing locks are tk* (9-16 hairs, 12-19 cm) + tw*; on the fly tile at <= 7 mm they were
+    grey wires. Now: 8+ hairs = a bundle: first card on the sparse tile, up to 10 mm, its 3 cards spread 1.3 sx apart,
+    all three kept (prio 0.3 per layer); fly_light applied to fly / wisp / pooled cards (strands do it, cards did not).
+  * tried and reverted: turning cards to the strands' principal spread (PCA): cards stood out 10 cm at the sides.
+    Card frames now carried by a rotation-minimising transport where "outward" is unsure (no visible change at 25k).
+- Round 3 (e7/e8, review c2/c3, 2026-10-15): tie black hole FIXED (band tile in the hair's median colour x 0.8 unless
+  look.card_band; the strands hide their band). Crown "tuft" = halo single hairs (th, 1-2 hairs) flagged face-framing
+  (rooted at the hairline near the part) -> 2-3 wisp cards each: face now needs hairs not in (1, 2) (tuft 32 -> 21 mm).
+  "Silver-grey strips" at the temples / grey wisps = atlas highlight strands on the 14-hair fly tile (2 lit hairs = a
+  pale card): no atlas highlights on fly / baby tiles. Pale strips across the sweep = fly_light on every fly card:
+  only face-framing bundles now. Dark wire rim = 'fine' gather rows on the sparse tile at the outline (rimk.py): lifted
+  by half the fly_light (untested in review). A facing-weighted translucent rim term in blender_cards DARKENED the
+  hair (reverted). Highlights now ribbons in the atlas (22 % x highlights of dense / medium / sparse strands).
+- Coverage is NOT the budget: area ratio (cards / strands mask) 0.74-0.80 at 25k, 0.77-0.81 at 40k, 0.82-0.85 at 60k,
+  0.79-0.85 at 80k (e7 code); the tail tip ~30 px short and the lower tail width 0.75-0.87 at every budget. Tail locks
+  (39 tt, 33-42 mm) all have full-length L0 cards whose widths sum to 1.5-2x the lock width (ttprobe.py), yet the
+  strands' tail has a right-hand lobe and S-waves the cards lack. Open.
+- card_gain: 2.55 gave front L* 29.6-30.2 once the per-card highlights went (target 31.4): 2.7 from e9.
+- Probes in /mnt/data/hifipushie/haircards: planks.py / card1.py / part.py (card geometry vs lock spines: spines are not
+  the strands' top, misleading), tuft.py (cards standing off the scalp near the part), rimk.py (who makes the outline),
+  ttprobe.py (tail locks' cards), tailL.py (L* by region), wisp2.py / tailk.py (lock classes). HP_CARDS_DUMP=<pkl>
+  on hx.py dumps the kept cards.
+
+## Handover 2026-10-15 (hair-cards agent, round 4; stopped for context size)
+Branch worktree-agent-a54a66de6d6970c0b at this commit. Scratch /mnt/data/hifipushie/haircards (see the 10-14 handover
+for the scripts; new: probes listed in "round 3", tailL.py, review/c1..c4_*). Offload: `./offload.sh <job>
+remote/r_<x>.json <exp dirs>` (commit first; RAM=10 CPUS=6 default now); several renders per job; queue waits vary
+(minutes to an hour when NICO-TOP is busy). Light local checks: shots.py through capped directly (768 px / 8 samples,
+one or two views, frames 1-6 s).
+- Current best: e9 (hero 25k, card_gain 2.7 via hx.py look=; NOT yet written into a spec / export setting).
+  Measures vs strands (1024 / 24 samples): front L* 30.9 | 31.4, chroma 11.3 | 12.0 (COLOUR PASSES);
+  IoU v0/v1/v2/backl 0.74 / 0.80 / 0.81 / 0.81; area 0.75-0.83; tail tip 25-35 px short; lower tail width 0.76-0.83.
+- TRIANGLE CURVE (e9 code, reviewed blind, review/c4_e9*): MAJORs 25k 27 | 40k 28 | 60k 26 | 80k 25, all FAIL; IoU
+  front 0.74 / 0.76 / 0.80 / 0.76, back 0.81 / 0.83 / 0.85 / 0.86. THE LOOK IS NOT BOUGHT WITH TRIANGLES: the faults
+  are the same at every budget (structural). Evidence for Joe: more than 25k does not fix this groom's cards; the
+  cut (one card per 38 mm lock / pair) loses the strands' waves and volume.
+- Open MAJORs (every round, c2-c4), worst first:
+  1. TAIL: a straight flat sheet, no S-wave clumps, narrow, ends cut straight (brush), zig-zag texture in the lower
+     tail, a dark flat polygon where it turns down from the tie. Tried: hanging cards 3.2 sigma wide / FREE_END 0.06
+     (little change), no per-card highlights (patchwork gone). Idea: cut the tail per SUB clump (or by the strands'
+     own wave phase) even at 25k, paid by dropping head L0 overlap; ragged ends: vary u1 per card / extend cards by the
+     tile's tip fade; zig-zag = check the dense tile at the tail's stretch (UV v scale) / normal map.
+  2. CROWN FLYAWAYS: halo as cards (pooled, 2.4-4 mm) read as thick dark kinked ribbons; tried: cap crest fix, face
+     flag excludes 1-2 hair locks, narrower pooled cards. Next: drop the halo cards above the crown at hero (a MINOR
+     "no flyaways" beats a MAJOR), or a lighter, finer fly tile.
+  3. FACE WISPS: still faint / grey straight ribbons (bundle = sparse tile, fly_light). Strands' are thick light-blonde
+     wavy locks to the jaw: cut them per sub clump with the medium tile, warm tint (sun_warm) not just lighter.
+  4. DARK RIM at the outline (fine gather rows on the sparse tile): half fly_light did not fix it; try the medium tile
+     for fine rows or wrapped diffuse in the notes' shader; NOT a translucent mix (darkened, reverted).
+  5. PART: light criss-cross of card roots at the part, skin notch; 6. centre-back seam strip (a gather card or cap
+     chart showing between L0 cards).
+- Not yet done: tests for cap_under_cards / face priority / pooled singles / tier_triangles; checklist
+  workspace/checklists/tess_hair_cards.json IS written (DESCRIBE done); main / npc / far tiers.
+
+## hair-cards: top/part research (2026-10-15, hair-cards agent; Joe: "a different strategy for the top of the head/part area")
+What shipped pipelines and card artists do (sources below; marked where nothing was found):
+- Layers from the scalp out: a CAP under the cards ("some sort of cap under ur cards ... separate geo or painted straight
+  onto the head", Polycount), then a CORE / coverage layer of wide, mostly opaque cards that "should not intersect the scalp"
+  (Epic's Hair Card Generator tutorial: coverage 50 clumps / 2k tris / 25 textures, shared heavily; mid 200 / 7.5k / 60;
+  top 500 / 25k / 60; flyaways one card per strand, 371; short hairs 500 / 10k / 75), then mid, top, flyaways. Cards get
+  narrower and sparser outward (80.lv "Creating hair for real-time game characters"). Triangles and texture detail go to
+  the VISIBLE layers; coverage repeats few textures.
+- Cards are cut from strand CLUMPS ("strands that converge, creating a distinct volume"), each clump optionally three cards
+  for volume; textures are the clump's strands projected onto the card (Epic: Depth, Coverage, Tangent, Attributes);
+  "Num Textures" < cards: islands are shared; "Texture Compression" squeezes along the strand direction.
+- The cap / helmet: Unreal projects a groom's strands onto any mesh's UVs ("Trace Type" inside for hair, "Trace
+  Distance") into the same maps, "for grooms made of cards and ... hair helmets" (Generating Groom Textures). FiberBake
+  (Blender) bakes colour / opacity / root-tip / flow / depth / ID per card and paints card layers onto a head. So the
+  part and root density live in the CAP's baked picture, not in card geometry.
+- Part line: NO primary source found on part handling. Practice (forum / general): the part sits where the comb changes
+  direction; cards are placed per side, combed away from it, with finer shorter cards over the seam; the scalp shows
+  only as the cap's own picture there. (Unsourced: treat as craft knowledge, check against the reference.)
+- Root zone alpha: alpha-to-coverage = a multi-sampled alpha test (~9 levels at MSAA, "softer result", Polycount);
+  dithered alpha + TAA (screen-door) used by shipped games for most hair (a GDC/SIGGRAPH write-up on gcores), with ghosting
+  on fast motion. Both are ENGINE settings; we author soft alpha (roots faded in, edges faded) that survives them.
+- Shells / parallax on the cap: no source found for head hair (fur shells are a fur technique); not chosen.
+- Naughty Dog: no part-specific talk found ("tons of cards, tons of time, manually place cards", Polycount on their
+  workshop). Frostbite / EA: strand rendering, not cards. MetaHuman: strands at LOD0-1, cards from LOD2 (or "Use Cards").
+Sources: https://dev.epicgames.com/documentation/unreal-engine/creating-hair-cards-and-lods-using-hair-card-generator ,
+https://dev.epicgames.com/documentation/unreal-engine/hair-card-generator-for-grooms-in-unreal-engine ,
+https://dev.epicgames.com/documentation/unreal-engine/generating-groom-textures-in-unreal-engine ,
+https://80.lv/articles/creating-hair-for-real-time-game-characters/ , https://polycount.com/discussion/comment/2609200 ,
+https://polycount.com/discussion/comment/2500017 , https://www.gcores.com/articles/180107 ,
+https://superhivemarket.com/products/fiberbake-hair-cards ,
+https://dev.epicgames.com/documentation/metahuman/controlling-metahuman-levels-of-detail-lods .
+CHOSEN for Tess's part and crown: (1) the cap wears the strands BAKED onto it (part gap, root density, flow) in a chart
+without a pole at the crown; (2) top cards are clumps cut PER SIDE of the part (no card spans it), their roots start
+3-4 mm off the part line, faded in, lying flat along the comb; (3) the crown's halo becomes a few single-strand flyaway
+cards (Epic's one card per strand) with soft sparse alpha, only where they break the silhouette.
+
+## hair-cards: clump cards baked from strands (2026-10-15, hair-cards agent, round 5: the change of approach)
+Why: one card per 38 mm lock lost the waves and volume at every budget (25-80k all FAIL). Now (hair_clumps.py, tier
+"cut": "clumps", hero default): as Epic's Hair Card Generator / FiberBake do (sources in "top/part research" above).
+- CUT: the groom's lock strands (not the scalp layer) per class: head (lying / gathered), tail (hanging), face (each
+  face-framing lock its own clump), single (halo, strays, baby: flyaways). Per class and layer (coverage / mid / top)
+  k-means on positions at 6 fractions of length + length, K from the triangle budget (LAYERS shares x 0.8 budget /
+  triangles per card). Head strands rooted within PART_SPLIT 4 cm of the part are clustered PER SIDE (a hard split: a
+  soft side key in the features still mixed them; test_no_card_spans_the_part). Flyaways: one card per single strand
+  (FLY_TRIS share), the furthest off the mass but under FLY_FAR 2 cm (spikes otherwise).
+- FIT: along a REFERENCE strand (the clump's ~longest; along_reference maps every strand point to its nearest
+  reference station). Averaged at the same distance from each root, the clump's centre started mid-way between its
+  roots: the front of the head bare (b1 top view). Width = 90th percentile spread (97th for the tail), capped per layer.
+- BAKE: each kept card's strands projected into its own frame (across, along, depth over the plane), PIL-drawn at 2x
+  into its island: alpha, id, depth, root-to-tip, flow, TONE (hair_colour.strand_tone per strand from root cells, as
+  blender_strands' cells; / peak, normalised by its mean in the atlas: at tone x peak the 8-bit atlas clipped and the
+  hair went grey-white, b3). Islands shelf-packed into a 2048 x 1024 block UNDER the tiles + cap chart (atlas 2048^2),
+  texel ~0.57 mm across, x3 along (Epic's "texture compression" along the strand). Coverage cards get an opaque core
+  (blurred coverage) that stops before the tips; every picture fades in over 4 mm at the root and out at the sides
+  (>= 1.5 texels). Non-baked meshes' v remapped to the top rows (hc.remap_v).
+- FOUND on the way: the cap / tail core / tie wore vertex colour 0.8-1.0 while cards carry tone / peak (~0.5): wherever
+  the cap showed it was twice as light (the pale crown patch in b1; likely the old "lighter helmet" and the pale
+  centre-back stripe). Now / peak.
+- Card gain: hair.export.card_gain (export setting, read by cards_job over look.card_gain): 1.8 on hc_s2 (local 768 px
+  measure: front L* 33.4 -> target 27.2 at gain 2.7 with baked tone). Re-check on the offload renders.
+- Numbers (local, v0 / v2): b4 IoU 0.748 / 0.803, tail lower width 232 | 296 px, tail tip 798 | 828, top 141 | 115 px.
+
+## Handover 2026-10-15 late (hair-cards agent, clump cards; stopped at the 100-tool-call rule)
+Branch worktree-agent-a54a66de6d6970c0b (main merged at the start of this round). Code: src/hifipushie/hair_clumps.py
+(new), hair_cards.py (atlas bake block, remap_v, island uvs, tone_k), hair.py (cards_job "cut": "clumps" for hero,
+part_side_of, export.card_gain, cap / core / tie colour / peak, bake after the budget fit), tests/test_hair_clumps.py (8).
+Scratch /mnt/data/hifipushie/haircards/bake/: dumpin.py (pickles clump_cards' inputs: in_hero.pkl, for fast offline
+iteration), cut0.py / bake0.py / topv.py (top view of kept cards by layer) / proud.py (cards over the strands' envelope) /
+nchk.py / tonechk*.py, setgain.py (hc_s2 hair.export.card_gain: now 2.85, from the b5 OFFLOAD measure; local 768 px
+renders read lighter than offload ones, never calibrate locally).
+- Reviews (offload 1024 / 24, blind): c5_b5 27 MAJORs, c6_b8 27 MAJORs, both FAIL. Fixed since c6 but NOT yet
+  reviewed: crown crest (head cards stood 6-8 mm over the strands near the part -> envelope clamp; crown halo flyaways
+  dropped), flat light colour (baked tone now has the strands' depth in the mass, strand_shade), tail as one sheet
+  (tail clumps within their locks), dark stair-step bars across the flow (ANISO 3 -> 2, coverage islands at 0.55
+  density). b11 (all of these) was exporting + queued for offload when I stopped: out/off_b11.txt; renders land as
+  out/s_hc_s2_b11R_*; then: measure_hc (tagA=R tagB=_b11R), crops.py review/c7_b11 ... + rv.sh (absolute paths: runl.sh
+  cds into the worktree). NICO-TOP queue waits were 40-90 min today; offload.sh's outer timeout killed b9 in the queue.
+- Still open from c6 (worst first): tail S-wave clumps / dark gaps and its ragged blocky end; the part read (a soft V of
+  skin instead of a crisp dark line: the cap chart's part is what should show; check the cap under the part cards);
+  face wisps too wide / too many / pale flat (now 4 hairs a card, 3.5 mm: unreviewed); nape under the tail a dark hard
+  slab (coverage core now starts 12 mm from the root: unreviewed); temple fragments / black specks (texels with id/depth
+  padding at low alpha: look at EDGE padding in bake); colour vs reference (2.85 gain + shade: measure).
+- Local look at b10 (before ANISO 2): tail shows lock waves now but the texture swirls (strands of a lock crossing in the
+  card frame); side of head reads as brush strokes. The approach is not yet near a pass; the same MAJORs (crown, part,
+  wisps, tail, colour) have had 1-2 honest attempts each under the new cut, not 3.
+- Joe approved head/tess = tp_k19: keep developing on hc_s2 / tp_h3; when near a pass, `mk_seat.py <dst> head=tp_k19`
+  (src hc_s2 or th_W18) and do the final reviews there.
+STATE: clump cards + strand bake implemented and tested; 2 blind reviews FAIL; b11 queued. NEXT: review b11 (c7), fix the
+worst MAJOR, loop; then re-seat on tp_k19.
+
 ## Handover 2026-10-14 17:40 (hair-garrett agent -> successor)
 Branch `hair-heads2`, worktree /home/joe/dev/hifipushie/.claude/worktrees/agent-a9414ffa57394154a (main merged in at
 f630998; last commit: see `git log -1`). Repo rule: stage by path, never `git add -A`; nothing of Garrett's photos or
@@ -3796,3 +3959,1085 @@ Successor 8 was stopped past its tool-call clock with no handover; rebuilt from 
   runs skintone.py. NEXT: (1) after the review reset, review G88a pairs + game pairs (count_review.py); (2) back / sides
   lightness: groom.grey.sides / back down toward the v0 photo values (measured row: colour_regions v1, back_lightness);
   (3) the decision Joe asked about: strands vs cards for Garrett (see PLATEAU).
+
+## hair-cards round 6 (2026-10-15 evening, fresh session)
+- b11's export had died when the old session stopped; it was rerun with b11chain.sh (export, then offload with
+  TIMEOUT=240, detached with setsid). Batch hc-b11a.
+- FOUND (bake): texels inside a coverage card's opaque core but between drawn strands had tone 0. tn2 = m / cov with
+  m = 0, and the solid fill only reaches texels where alpha <= 0.5. Those texels drew dark dashes, so the side of the
+  head read as brush strokes (b10). Fix: tone / root / flow at those texels come from the nearest drawn strand.
+  Also: a strand is drawn on a card only if IN_SHARE 0.6 of its points lie inside the card (36-41% of layer-2 points
+  fell outside: fragments); segments running more across than along the card (SIDEWAYS 0.5) are skipped. Offline
+  preview: bake/bk1.py old|new on bake/cut_now.pkl. In b12, not in b11.
+STATE: b11 queued (review c7 when it lands); bake fixes committed for b12. NEXT: c7 review, then b12 with the fixes plus the worst MAJOR.
+- FOUND (fit): a clump's centre line is the mean of its strands, and it jumps wherever one starts or ends. 74 of 154
+  tail cards kinked 45-130 deg in their last 20% (the crumpled-paper tail ends, b12 back view), and 43 of 190 head
+  cards at their staggered roots. Fix in hair_cards._clump: Gaussian-smoothed, sigma 1 station where the strands
+  are full and 4 where few run, padded by carrying each end straight on. With mode "nearest", sigma 6 was worse:
+  squashed end stations gave random tangents. Kinks are now 16 tail / 6 head (bake/loops2.py <out pkl>).
+  test_centre_line_does_not_kink_where_strands_end.
+- Own look at b12 (local, bake fixes only): the tail from the back is wide flat ribbons with a card looping over the
+  tie; dark thick wires in L3 hanging singles; a crumpled bottom (above); the crown still carries a dark row of loops.
+- Review c7_b11 (offload, blind; review/c7_b11): FAIL with 29 MAJORs, the same families as c6. Crown crest (4 regions);
+  colour too light (4: L* 34.7 vs 31.7 measured); tail: crumpled lower half, blocky chips at the tips, smeared swirl
+  texture with black slits, ribbons splaying to the right, a flag shape; head reads as flat ribbons with smeared bands;
+  part a smudge; temple fragments and specks; side sheet over the temple; nape broken into jagged cards.
+- Fixes since (b14): the crest was three FREE halo flyaways (off_head, rooted in the mass at 84 mm) that the crown
+  rule exempted. Now FLY_CROWN_FREE 0.06 applies to them (bake/flyc.py, bake/topsil.py: L3 at the crown 99 -> none).
+  Card gain 2.85 -> 2.5 (setgain.py; the L* measure). A strand's card-frame coordinates are median+Gaussian smoothed
+  along the strand: nearest-station switches made jumps (bake/jumps.py: tail 0.8% of segments -> 0.35%). The
+  polyline closest-point projection was WORSE (medial-axis switches on the inside of bends): reverted.
+- New rule (Joe, via coordinator): ALL renders go to NICO-TOP (offload.sh). The laptop is only for small check crops
+  and ID passes. The local layer-isolation render (layers.sh) was stopped.
+- Face wisps: the cards' pictures are drawn at FACE_ALPHA 0.55 (c7: solid pale ribbons; 4 hairs a texel wide each).
+  This edit landed while the b14 exports were starting: b14a has it for sure, b14 maybe (check the face islands' alpha).
+  b14a = ANISO 1 (square texels), to test the stair steps across the flow on the side of the head.
+
+## Handover 2026-10-15 night (hair-cards agent, round 6; stopped at the 100-tool-call rule)
+Branch worktree-agent-a54a66de6d6970c0b. Commits this round: bake tone fill between strands + IN_SHARE / SIDEWAYS
+(5c6f5677); _clump centre-line smoothing (c94c3ac1); ENV_PCT 90 (no visible effect: the head cards were not over the
+radial envelope; topsil.py); FLY_CROWN_FREE + smoothed strand card coords (7f6e7723); FACE_ALPHA 0.55 (fc1004ce).
+hc_s2 hair.export.card_gain = 2.5 (store history).
+- IN FLIGHT (detached, nothing to babysit): b14 (all the above) and b14a (the same + ANISO 1, square texels) are exported
+  (exp/b14, exp/b14a) and queued as ONE offload, batch hc-b14 (out/off_b14.txt; TIMEOUT 240). c8.sh waits for its
+  DONE, then writes review/c8_b14 and review/c8_b14a (crops, measure.txt, review.md via rv.sh) and touches
+  review/c8.done. NEXT: read both review.md files (MAJOR count, VERDICT); check v0 colour L* in measure.txt
+  (target 31.7); compare b14 and b14a on the side-of-head / tail stair steps and keep the better ANISO.
+- Still open, worst first (from c7 + my own look at b12/b13): tail (flat ribbons with gaps from behind, crumpled
+  lower half: the centre-line kinks are fixed in b14, unreviewed; blocky rectangular tips; ribbons splaying to the
+  right that read dark; a card looping over the tie, the U at the tie in back view); head texture (smeared horizontal
+  bands: b14 / b14a test); part a smudge, not a crisp dark line; temple specks / fragments in front of the ear;
+  a side sheet over the temple (screen-left in the front view); nape under the tail broken into jagged dark cards.
+  Tail card GEOMETRY is wider than the strands (bake/tailw.py: 108 vs 90 mm at mid-height), so the narrow, gappy tail
+  is the cards' PICTURES (sparse strands, edge fade, DENSITY 0.55), not their placement.
+- Tools (bake/): loops2.py <out.pkl> (cut from in_hero.pkl + centre-line kink stats), loops.py, jumps.py <pkl> [s]
+  (card-frame coordinate jumps), flyc.py / crown2.py / topsil.py (cards over the crown, front-view top silhouette),
+  tailv.py / tailw.py (tail cards' coverage and width), bk1.py old|new (offline atlas preview). hx.py takes aniso=.
+- RULES now: ALL renders go to NICO-TOP (offload.sh <job> <renders.json> <exp dirs>, its own folder, detached; batch
+  several candidates per submit). The laptop is only for small crops and ID passes. CPU cap: 10 cores for all agents.
+STATE: c7 FAIL (29 MAJORs); b14 / b14a queued with an auto-review (c8). NEXT: read c8, fix the worst MAJOR (tail
+pictures / density), loop; re-seat on tp_k19 only when near a PASS.
+
+## hair-cards: shared card pictures (2026-10-15 late, hair-cards agent, round 7: the change of approach for the SURFACE)
+Why: c5-c7 failed on the same card-surface faults (smeared bands, no fine strands, blocky tips; 27-29 MAJORs) while the
+big read was close. MEASURED (bake/texd.py <exp dir>: texels per mm along / across per layer from the GLB's UVs):
+b11 (unique islands, ANISO 2) layer0 0.79 / 0.43, layers 1-3 ~1.4 across / 0.72 along; b14a (ANISO 1) 0.5-1.0 square.
+One 2048 x 1024 block shared by ~500 unique islands cannot do better than ~1.3 texel/mm (cards' world area ~1.6 m2
+incl. layers): a hair is ~0.08 mm, so each texel averaged ~12 strands = the smear. Not a tuning problem.
+- NOW (hair_clumps.bake_tiles, default TILES 24; S["bake_tiles"] = 0 restores unique islands): as studios do (Epic's
+  Hair Card Generator texture groups, "Num Textures" << cards; clump tile libraries). Cards are grouped by class
+  (head / tail / face / fly) x coverage-or-upper, k-means on (3 log length, log width), tiles per group ~ sqrt(area);
+  each cluster's medoid (among its clusters' denser half by strand count) is baked at a fine SQUARE texel
+  (TILE_ANISO 1); every card of the cluster wears that island; tint = its own strands' mean tone / the tile's
+  (0.7-1.4, multiplied into tone_k = the vertex colour). Skyline packing for <= 64 islands (shelves wasted the space
+  under the tallest island). Texel: b15 2.7 (coverage, DENSITY 0.55) / 4.3-6.6 texel/mm (upper layers), 0.22 mm.
+- Fine texel exposed the groom's sparseness (a 3 cm clump has 300-900 strands drawn 1 texel wide: mostly holes), so a
+  tile's strands are drawn as children ("kids": offset across ~ card width / strands, depth jitter, tone x 0.88-1.12)
+  until widths sum to KID_COVER 1.4 x the card width; each child ends up to KID_TIP 30% early, so the TIP is a feathered
+  fringe in alpha, not a cut block (the blocky tips of c7).
+- Known: one tile (a tail card near the tie) has crossing strands (kinked clump chosen as medoid): pick medoids by
+  straightness if it shows. Bottom quarter of the bake block unused (the tallest tile sets the texel).
+- b15 (24 tiles, KID_COVER 1.4) and b15b (16 tiles, KID_COVER 2.0; texel 3.0-7.7/mm) queued on NICO-TOP as batch
+  hc-b15; c9.sh writes review/c9_b15, review/c9_b15b. hx.py takes hk.<CONST>=<v> (any hair_clumps constant).
+STATE: tiles built + tested (test_shared_tiles...); b14/b14a (hc-b14) and b15/b15b (hc-b15) both queued.
+NEXT: read c8 + c9 reviews; if tiles beat unique islands on lock texture / tips, keep and fix the next MAJOR family.
+- c8 EMPTY, CAUSE (coordinator caught it): hc-b14 never rendered. NICO-TOP fetched the repo bundle expecting fc1004ce's
+  archive (sha 59a515a8) and got a872d5b5's (b6a4cb16): submitting hc-b15 from the SAME worktree while hc-b14 was still
+  queued replaced the served repo.tar.gz, so the queued job's download failed its hash. c8.sh then hid it (crops.py
+  `|| continue` on missing renders, no ERROR). FIX: cr.sh <round> <off file> <tags> (replaces c8.sh / c9.sh) writes
+  review/<round>_<tag>/ERROR on missing renders or an empty review; b14re.sh resubmits hc-b14 only after hc-b15's
+  DONE. Root cause fixed on main bef0229c (remote.sh serves repo_<sha>.tar.gz per commit), cherry-picked here as a3d89c8e
+  (taken whole: it also carries main's ram_gb <= 12 cap). b14re.sh still serialises; harmless. cr.sh's ERROR file stays.
+STATE: hc-b15 queued (b15 / b15b, tiles); hc-b14 resubmit chained after it; cr.sh c9 / c8 review each on landing.
+NEXT: read c9 (tiles) + c8 (unique islands), fix every independent MAJOR in one round, grouped by cause.
+
+## Handover 2026-10-16 (hair-cards agent, round 7; stopped at the 70-tool-call rule)
+Branch worktree-agent-a54a66de6d6970c0b, not pushed. Commits: a872d5b5 bake_tiles (shared pictures), a3d89c8e
+(main's remote.sh per-commit archive, cherry-picked), the wisp fix below, notes.
+REVIEWS (all FAIL; review/<r>_<t>/review.md, pair_0..7; lines naming MAJOR): c8_b14 24, c8_b14a 28 (unique islands),
+c9_b15 26, c9_b15b 30 (tiles 24 / 16). (ERROR files there are empty: crops.py's stderr; empty = fine.)
+- Texture family, mentions of smear / brush / no strands / texture: b14 6, b14a 8, b15 3, b15b 5. Tiles help, which
+  supports the texel hypothesis. But b15 is not a clear win on the count: the wisps vanished (below), and the crown
+  and holes got more mentions. Keep tiles (24, b15). ANISO 1 (b14a) is not better than 2 for unique islands.
+- My look, front pair_6 ref | b14 | b15 (bake/cmp_tail_b14_b15.jpg): b15's side hair is smoother and darker, but its
+  face-framing wisps are GONE. Cause: at 0.22 mm texels a lone hair at 0.45-0.55 alpha disappears. FIXED in b16: face /
+  fly tiles get child hairs (KID_WISP 0.7, kid_max 3 fly / 6 face) at WISP_ALPHA 0.9.
+- In flight: hc-b16 (b16 = b15 + the wisp fix) on NICO-TOP via b16chain.sh; cr.sh c10 writes review/c10_b16.
+Remaining MAJOR families in c9_b15, grouped by cause (geometry, not texture; unchanged by tiles):
+  1 CROWN: cards flip up into a loop at the front of the crown; white slivers between top cards; the part is crossed
+    or unreadable. Look at the top-layer cards' normals and bend at the crown (bake/crown2.py, flyc.py).
+  2 TAIL: pinched to a point at the tie (the reference is broad from the tie), separate flat ribbons splaying right,
+    shredded and blocky lower third, sawtooth ends. Card ends are cut square in GEOMETRY: taper hw to ~0 over the last
+    15% of each card, and fan the tail's root cards wider at the tie (bake/tailw.py: 108 vs 90 mm, mid-height only).
+  3 SIDE BANDING: hard light / dark bands between stacked layers from temple to tie. Per-card tint (0.7-1.4) on
+    stacked cards plus hard layer edges: clamp tint to 0.85-1.15 on head cards and widen EDGE_FADE for upper layers.
+  4 HAIRLINE / EAR: dark card ends on the forehead at the temples; the ear left fully exposed (the reference covers its
+    back half). Side cards need more stand-off over the ear.
+  5 SILHOUETTE: no frizz or flyaways over the crown (FLY_CROWN_FREE removed them for b12). Retry with the tile wisps.
+STATE: tiles in (b15 = 26 MAJOR mentions); b16 (wisp fix) queued with the c10 review. NEXT: read c10; fix families
+2 and 3 (geometry taper, tint clamp) and 1 (crown) in one round, then judge again.
+
+## hair-cards round 8 (2026-10-16, game distance; resumed session, ran beside the round-7 agent's last steps)
+- hc-b15 had rendered (out/s_hc_s2_b15R_*, b15bR_*); only the DONE line and the reviews were missing (the session
+  died). c9 reviews: b15 26, b15b 30 MAJOR lines (the round-7 handover above has the families). hc-b14 was
+  resubmitted by the round-7 agent (c8_b14 24, c8_b14a 28).
+- GAME-DISTANCE judging (gates.md): spikes/haircards/shots.py views g<m><view> (g1v0, g3backl: the game camera at
+  1 / 3 m from the head centre, vertical fov 59, size=1080 = the centre columns of a 1920x1080 frame, native pixels;
+  vN = the photo camera's direction, under its photo light). spikes/haircards/gsheet.py <out.png> <tags>: photo
+  (scaled to the same px/m from the fitted camera's f / depth) | strand groom | cards, rows g1v0 g1v1 g1v2 g1backl
+  g3v0 g3backl, plus the measures; gpairs.py <dir> <tag> [sheet col]: blind-review pairs (rv.sh). Batch hc-g1
+  (strands gS, b15, b15b, b14a), sheet /mnt/data/hifipushie/haircards/game/gm_g1.png (+ .json measures).
+- MEASURED at 1 m, hair pixels (strand id mask on the photo; each render's own id mask), L* units:
+  coherence (structure tensor): photo 0.79-0.82, strands 0.81-0.84, cards 0.78-0.84 = equal: the cards read as
+  COHERENT hair, not needles. Fine band (DoG 0.8-2.5, speckle / needles): photo 3.0-3.3, strands 2.9-4.4 (the
+  needle look; 4.35 front), cards 2.2-2.4 = smoother than the photo. Lock band (DoG 2.5-8): photo 4.8-5.2, strands
+  5.6-6.6, cards 5.8-7.0 = TOO STRIPY at lock scale (the "flat painted bands" / side banding). Card hair area is
+  ~65-75% of the strand groom's in every view (lost wisps, flyaways, tail bulk). L*: cards 31-32 front (photo 27).
+- g1_b15 blind review (review/g1_b15, against the photo for v0-v2, the groom for the back): FAIL, 21 hair MAJORs, the
+  reviewer marked EVERY one visible at its size (1 m and 3 m). Game-visible, grouped by cause:
+  1 CROWN: white slivers / holes along the top, a looped flap, a hard dark rim (1 m all views; a lump at 3 m).
+  2 WISPS: no face-framing locks (1 m, 3 m); b16 (round 7's wisp tiles) is the fix in test. b14a (unique islands)
+    keeps them: the tile path lost them.
+  3 TAIL: thin paddle / strip from the front (vs the photo: also the groom's own bulk), blunt sawtooth ends (1 m
+    profile), separate dark straps splaying right and gaps (1 m and 3 m back).
+  4 SURFACE: flat painted bands, bark-like stripes (1 m 3/4 + profile) = the lock-band measure above.
+  5 HAIRLINE / NAPE: hard dark-rimmed hairline, dark marks on the temple skin, a dark jagged mass behind the ear.
+  6 SILHOUETTE: cap-tight, ears exposed (vs the photo; partly the groom).
+  7 NECK NOISE: grainy dithered dark speckle on the neck / back under the tail (1 m back). Not in the strand render.
+    Untested guess: the cards' shadows (dithered render method, low samples) or nape fuzz cards. Test next: one back
+    view with card shadows off.
+  Close-up-only: none new; the c9 close-up MAJORs are mostly these families again.
+- FIXED for b17 (29d1c1d5): clump card GEOMETRY tapers over its last 15% to 0.12 of its width (TIP_TAPER / TIP_FLOOR;
+  test_clump_cards_taper_to_a_point_not_a_square_end); tile tint clamped 0.85-1.15 on head / tail cards (TINT_RANGE;
+  face / fly keep 0.7-1.4).
+- IN FLIGHT: b17chain.sh (export exp/b17, waits for hc-b16, ONE offload hc-b17: b17 std + game views, b16 game
+  views), then game/gm_g2.png (gS, gb17, gb16, gb15), review/g2_b17 (game, blind) and review/c11_b17 (close-up).
+STATE: cards are coherent and not needly at 1 m (the target), but FAIL on geometry families 1-7, all game-visible.
+NEXT: read g2_b17 + c11_b17 (does the taper kill the sawtooth, the clamp lower the lock band toward 5?); then the
+crown (family 1: top-layer card normals / bend at the front of the crown, bake/crown2.py) and the neck-noise test.
+- Handover (round 8, stopped at the tool-call clock): b17 exported (exp/b17); hc-b17 QUEUED on NICO-TOP (busy), its
+  client and b17chain.sh run detached and write game/gm_g2.png (+ gm_g2.txt measures), review/g2_b17 (game, blind) and
+  review/c11_b17 (close-up), then review/g2.done. Nothing to babysit. The 1 m verdict went to the coordinator.
+STATE: b15 FAIL at game distance (21 visible MAJORs); b17 (taper + tint clamp + b16's wisp tiles) in the queue.
+NEXT: read gm_g2 (lock band toward the photo's ~5? sawtooth gone? wisps back?) + g2_b17; then crown (family 1) and the
+neck-noise test (one back view, card shadows off).
+
+## hair-cards round 9 (2026-10-16, fresh session after the round-8 handover; game-distance families)
+hc-b17 sat QUEUED on NICO-TOP the whole round (busy with other batches): gm_g2 / g2_b17 / c11_b17 not read yet. Work done
+on the laptop with measures (no renders), scripts in /mnt/data/hifipushie/haircards/:
+- crownprobe.py <model> <glb>...: rays from the scalp centre through ~2400 scalp directions (within 5 deg of a lock root):
+  card alpha coverage (1 - prod(1 - a)), the outer card's vertex normal facing, its height off the scalp, and the GAP
+  from the outer opaque card to the next one under it, per region; crown gaps attributed to export layers.
+  b15 / b17: NO scalp holes over the crown (coverage 1.00, 0% < 0.5; the only "holes" are the forehead rim at az ~0,
+  el 11-46 = bare skin under the swept-back front, expected); NO card normals face in (exported normals are radial,
+  n.out >= 0.95). So the crown's "white slivers / holes" are NOT gaps to the scalp and NOT flipped normals: they are the
+  render BACKDROP seen between cards that stand off each other (sliver pixels = the backdrop's 219 grey, the brightest
+  in the crown). Crown: outer card p90 18 mm off the scalp, outer->next gap p90 9.2 mm, 38% of crown rays gap > 4 mm.
+- FIX 1 (a3a193ef, test_head_layers_lie_close_over_frizzy_clumps): head layer offsets use the clump's normal spread
+  capped at HEAD_SN_MAX 3 mm (layer_offset; tails keep theirs). b18: crown gap p90 9.2 -> 7.1, rays > 4 mm 38 -> 31%,
+  top-front p90 9.4 -> 4.8, top-back 5.9 -> 4.0; sides / back unchanged in height (no volume lost).
+- Remaining crown gaps: outer = layer1 (mid) cards over layer0 AND layer2 = mid cards bent UP by their clumps (the
+  "looped flap"). The groom itself has a frizz-loop halo dome over the crown (bake/crown_gS_b15.png: gS | b15 at 1 m).
+  ENV_PCT 75 (b18e) does NOT fix it (crown > 4 mm 34%) and shrinks the sides 2 mm: rejected.
+- FIX 2 (in test as b19): CROWN_LOOP: head strands rooted over the crown whose chord < 0.6 x length are left out of the
+  head cards (crown_loops; test_crown_loops_found_straight_hair_kept). Numbers below.
+- NECK NOISE: test pass wired (blender_scene hair_glb_look card_shadow False; shots.py shadow=0); b18chain renders
+  g1backl with and without card shadows and prints the skin fine-band L* std under the hair (gm_g3.txt "neck").
+- SILHOUETTE (silh.py <tags>: widths at 20..140 mm below the vertex, 1 m, photo segmented as dark-or-coloured against its
+  neutral backdrop; game/silh_*.png masks): front g1v0, mm:
+    depth      20   40   60   80  100  120  140
+    photo     114  148  169  177  205  213  215
+    strands   129  159  185  201  203  201  194
+    cards b15 118  154  176  186  185  182  191
+  The crown is NOT narrow: cards = photo +/- 7 mm at 20-60 mm. At ear height (100-140) the photo is 205-215 (incl. the
+  tail showing beside the neck), strands 194-203, cards 182-191: cards lose 10-20 mm to their groom (ENV_PCT 90 cap +
+  ENV_UNDER on the sides), and the GROOM is 2-21 mm under the photo at ear level. GROOM ITEM for the coordinator (th_W18
+  / hc_s2 approved: not changed here): side fullness over / behind the ear, ~+10-20 mm total width at ear height.
+- HAIRLINE (hairline.py: L* of hair within 3 px of the face skin minus hair 6-15 px in, upper half; dark marks = skin
+  within 12 px of hair under the skin's p5 - 10): g1v0 strands +17.8 (a light, see-through hairline), b15 +1.5, b14a
+  +4.4; g1v1 strands +19.0, b15 -1.1. Temple marks g1v1: b15 5.1% vs strands 0.6%. = the hard dark rim, measured.
+  Cause not fixed: alpha-tested cards can't show skin between sparse hairs; the fix to try is a lighter, sparser root
+  picture on hairline cards (hairline cards' first BASE_IN mm drawn at the strands' skin-blended tone, alpha under the
+  cutoff in gaps) and no strand_shade darkening at roots that sit on the outside at the hairline.
+- b19 (CROWN_LOOP 0.6, exp/b19, crownprobe): crown rays gap > 4 mm 31 -> 25%, but the crown's outer card height p50
+  9.3 -> 2.2 mm (the cap is now the outer surface over much of the crown: the crown FLATTER, ~7 mm lower) and the gap p90
+  stays 9.1 (layer1 over the cap). Mixed: NOT adopted. CROWN_LOOP is 0 (off) in the code; b19 waits for a render beside
+  b18 (hx.py hk.CROWN_LOOP=0.6 re-exports it) before any verdict. Likely better: keep loop strands for the picture but
+  fit the mid-layer centre line on the clump's non-loop strands only (height kept, flap gone).
+
+## Handover 2026-10-16 (hair-cards agent, round 9; stopped at the 70-tool-call rule)
+Commits: a3a193ef (HEAD_SN_MAX layer cap), e35ce7ea (card_shadow test pass), + this one (CROWN_LOOP, off; notes).
+IN FLIGHT (detached, nothing to babysit): hc-b17 still QUEUED on NICO-TOP; its b17chain.sh writes game/gm_g2.png,
+review/g2_b17, review/c11_b17. b18chain.sh waits for off_b17 DONE, then ONE offload hc-b18 (b18 game set + g1backl with
+shadow=0), then game/gm_g3.png + gm_g3.txt (measures, silh, hairline, "neck" lines) and review/g3_b18 (blind, game);
+review/g3.done when finished. `offload wait hc-b18` to chain on it.
+STATE: crown faults measured (backdrop between stand-off cards, not holes / flipped normals); b18 cuts crown gaps
+(p90 9.2 -> 7.1); silhouette short at ear height (cards -10..-20 mm vs groom, groom -2..-21 vs photo); hairline rim
+measured (cards +1.5 vs groom +17.8 L*). Not judged on renders yet: everything waits on NICO-TOP.
+NEXT: (1) read gm_g2 / g2_b17 (taper sawtooth, clamp band vs 4.8-5.2, wisps) and gm_g3 / g3_b18 (crown slivers, neck
+line gb18 vs gb18ns: if the no-shadow std drops toward gS, the noise is card shadows -> cast shadows from a coarser
+proxy or a shadow-only alpha with a lower cutoff; else nape fuzz cards); (2) crown: mid-layer centre line from non-loop
+strands (above); (3) sides at ear height: per-region envelope (ENV_PCT 97 for el < 30) to win back the 10-20 mm;
+(4) hairline root picture (above). Groom item for the coordinator: side fullness at ear height.
+
+## hair-cards round 10 (2026-10-16, fresh session; hc-b17 / b18 still queued on NICO-TOP)
+- EAR-HEIGHT WIDTH, measured geometrically (/mnt/data/hifipushie/haircards/silhgeo.py <tag> [hk.X=v]: export, then front
+  widths of the strands (1 mm bins, coverage > 7%) and of the cards (alpha > 0.5 samples), no render; it matches the
+  render silhouettes within ~6 mm). g0 (= b18 code) at 100/120/140 mm under the top: strands 203/199/206, cards
+  191/188/187. THE ENVELOPE CAP IS NOT THE CAUSE: uncapped (ENV_PCT 100, ENV_UNDER 0) +2-3 mm only. Cause: the head's top
+  card sat at its clump's mean + 0.6 x spread, the outer strands ~2 spreads out. Per side (-x / +x): head strands p99.7
+  +-93..96, cards +-88..93; the +x excess at 140 (strands +111) is the TAIL beside the neck and flyaways (tail strands
+  +104, singles +104), not the head.
+- FIX (card_offset / side_weight, SIDE_EL 20-40 deg, SIDE_OUT_PCT 90, SIDE_ENV_PCT 99): on the sides the head's layers
+  move out TOGETHER until the top one lies on the clump's p90 outer strands; the envelope there is p99. s4: cards
+  195/192/187 (-x half 95/94/90 vs strands 98/97/95: within 3-5 mm; +x 100/98/97 vs 105/102/111: the tail). Top layer
+  alone moved (s3): same width but side rays gap > 4 mm 12.5 -> 16.0%; together (s4) 14.3%, back 18.4 -> 17.9%.
+  Crown untouched (identical crown numbers). Test test_side_head_layers_reach_clump_outer_strands. Not met: within 5 mm
+  at 140 on +x (the tail); next lever there = the tail's own outline, not the head.
+- TEMPLE "DARK MARKS" WERE THE BROWS: marks.py <tag> <view> (game/marks_gb15_g1v1.png) puts b15's 5.1% on the brows and
+  the far brow tail, dark skin the cards' hair came within 12 px of. hairline.py now drops marks that are dark in the
+  strand groom's frame too (ctl=gS): b15 0.0% (g1v0, g1v1), gS 0.6%. The visible temple fault is HAIR: dark scribbled
+  face wisps / hairline-card roots at the temple and forehead edge (same crop), i.e. the rim below.
+- HAIRLINE ROOTS (bake, card "edge" = majority lock at_hairline, or face): over HL_SOFT 10 mm from the root the picture
+  fades in from HL_ALPHA 0.45 of its alpha, the depth shade goes to 0 at the root, tone x (1 + HL_LIFT 0.35). Texture
+  pass (atlasdiff.py s4 h1, same layout): 4129 texels change (0.10% of the atlas), over the 0.33 cutoff 88 -> 74%,
+  base colour L* over the cutoff 51.3 -> 54.8 (the depth part acts in the shader, not in base colour). Whether that
+  reaches the groom's +18 L* edge needs b19's frames (hairline.py; variant with HL_LIFT 0.6 / HL_ALPHA 0.35).
+- b19 READY, NOT LAUNCHED (the brief: read b17 / b18 first): exp/b19 (= HEAD d440d4e9 code) and exp/b19h (HL_LIFT 0.6,
+  HL_ALPHA 0.35; atlasdiff b19 b19h: over cutoff 71 -> 64%, L* 56.8 -> 58.8); b19_renders.json (gb19, gb19h game set,
+  gb19ns = g1backl without card shadows); b19chain.sh waits for review/g3.done, offloads ONE batch, writes
+  game/gm_g4.png + gm_g4.txt (silh, hairline with the gS control, silhgeo widths, neck std) and review/g4_b19 (blind,
+  every fault with its distance class), review/g4.done (review/g4.ERROR if frames are missing).
+
+## Handover 2026-10-16 (hair-cards agent, round 10; stopped at the 70-tool-call rule)
+Commits: b018aa1a (side layers to the clump's outer strands, card_offset / side_weight + test), d440d4e9 (hairline
+roots; temple-marks finding), + this notes commit. Scratch tools new this round: silhgeo.py, silhdiag.py, marks.py,
+atlasdiff.py; hairline.py now takes ctl=gS.
+IN FLIGHT: hc-b17 still QUEUED on NICO-TOP (behind the skin batch); b18chain.sh detached behind it (writes gm_g3,
+review/g3_b18, review/g3.done). Nothing of b19 is running.
+STATE: (1) ear-height width: the envelope cap was NOT the cause; fix in, -x side within 3-5 mm of the groom; FAIL on +x at
+140 mm (cards 97 vs strands 111: the tail beside the neck + flyaways, not the head). (2) hairline: roots sparser /
+lighter in the texture (measured in texture space only); temple marks = brows (metric fixed, cards 0.0%). Render
+verification of both waits on b19.
+NEXT: when review/g3.done: read gm_g3 / gm_g3.txt / review/g3_b18 + gm_g2 / g2_b17 / c11_b17 (taper, tint clamp 4.8-5.2,
+wisps, crown gaps, neck: gb18 vs gb18ns std); revert losses; a neck fix if the no-shadow view clears the noise; re-export
+b19 / b19h if code changed (silhgeo.py b19 export=1; b19h with hk.HL_LIFT=0.6 hk.HL_ALPHA=0.35), commit, then
+`setsid nohup ./b19chain.sh > out/b19chain.log 2>&1 &`. Tail width: the tail's own outline (spread / top-layer offset
+on the side facing out), measured with silhgeo. offload.sh still packs without --stage: add --stage _g3_hc_s2 per
+RESTART.txt (after a local stage.ensure) before launching.
+
+## hair-cards round 11 (2026-10-16, fresh session; b17 / b18 read, b19 launched)
+- READ gm_g3 (gS, gb18, gb17, gb15) + g2_b17 + g3_b18 (blind, game distance). g3_b18: FAIL, 26 hair MAJORs, ALL
+  game-visible (1 m or 3 m; none close-up-only). Families: tail (thin from the front, flat paddle / slab in 3/4 and profile,
+  jagged comb ends, short vs the groom), no face-framing wisps / temple volume + no centre part (also the groom: it is
+  swept back; the photo has a centre part = GROOM items for the coordinator), crown loop card standing over the scalp
+  (backdrop under it, 1 m all views, a bump at 3 m), stiff dark strings in front of the ear, neck haze (1 m + 3 m),
+  colour (vs the photo: lighter / ashier = the groom's colour too; vs the groom: darker, contrasty).
+- KEPT (no losses): b17 taper + tint clamp, b18 HEAD_SN_MAX. Lock band (DoG 2.5-8) g1v0 photo 5.49 / gS 6.29 / b15 5.96 /
+  b17 5.56 / b18 5.86; g1v1 5.25 / 6.14 / 6.51 / 6.45 / 6.40; g1v2 5.35 / 5.56 / 6.30 / 6.24 / 6.14: the clamp lowered it
+  0.06-0.4 but the TARGET 4.8-5.2 is NOT met (FAIL; the groom itself is 5.6-6.3). Sawtooth: still "jagged comb-like ends"
+  in profile and back (FAIL; the taper alone doesn't do it). Crown: b18 back view no longer "blotchy" (g2's MAJOR), the
+  front loop card remains (b17 = b18 at 1 m: a raised flap at the top front).
+- NECK = CARD SHADOWS (confirmed): gb18ns (cards cast no shadow) is clean (crop: gS | gb18 | gb18ns). neck.py <tags>
+  (skin under the tail, g1backl): skin L* gS 63.3, gb18 58.2, gb18ns 63.9; fine-band std 1.07 / 1.19 / 1.13 (fine std
+  does NOT see it: the haze is a broad darkening). Hair L* 39.6 / 31.3 / 34.6: card self-shadow is ~3 of the cards'
+  8 L* "darker than the groom". FIX (7fb76afc): game look `card_shadow: "proxy"` (blender_scene._card_shadow_proxy;
+  shots.py shadow=proxy): the cards cast no shadow, a shadow-only copy (same mesh) casts from the atlas alpha at 1/4 size,
+  cut 0.2 (an engine's shadow LOD). Target: skin L* >= 62 with the shadow kept as a soft darkening.
+- WISPS measured (wispL.py <tags>: hair pixels below the brows in front of the ear, g1v1): gS 2175 px L* 54.2; b17 / b18
+  560 px L* 38.6; b15 95 px L* 11.4 (b16's wisp tiles helped, not enough). FIX: face cards WISP_LIFT 0.4 (tone x 1.4,
+  depth shade off: dep = 1) and WISP_KIDS_FACE 10 hairs a picture (was 6).
+- TAIL OUTLINE (TAIL_OUT 1.0: tail layers out together to the clump's p90 outer strands, like the head's sides):
+  silhgeo front +x at 140 mm 97 -> 100 (strands 111): FAIL by 11 mm; profile unchanged (264 vs 308 at 140: the tail's
+  back reach is 43 mm short in geometry). Next lever: a tail-specific SIDE_OUT_PCT (97) and SIDE_OUT_MAX over 12 mm.
+- b19 batch (ONE offload hc-b19, --stage _g3_hc_s2 now packed by offload.sh): gb19 (all of the above, proxy shadows),
+  gb19h (+ HL_LIFT 0.6 / HL_ALPHA 0.35), gb19c (+ CROWN_LOOP 0.6: silhgeo ear width 195 -> 187 at 100 mm, a loss to
+  weigh against the crown flap), gb19sd (b19, default shadows: g1v1, g1backl), gb19ns (b19, no shadow). b19chain.sh writes
+  game/gm_g4.png + gm_g4.txt (incl. neck.py, wispL.py) and review/g4_b19, review/g4.done.
+- b19 RESULTS (hc-b19 on NICO-TOP; game/gm_g4.png + gm_g4.txt; review/g4_b19 blind): FAIL, 19 hair MAJORs (b18's g3:
+  26; different reviewer runs, so the drop is partly noise), ALL game-visible: 15 at 3 m, 4 at 1 m only, 0 close-up-only.
+  Left at 3 m: tight cap / no side volume, ears exposed (GROOM item: the groom is 2-21 mm under the photo); no
+  face-framing locks; crown arc / loop (front) + notched crown gaps (back); tail a flat fanned sheet with blunt clumped
+  ends, detached dark ribbons on the right; near-black nape wedge behind the ear; neck haze. 1 m only: streaky card
+  planes, the hairline patchy with a dark top rim.
+- SHADOW PROXY: NO EFFECT (gb19 proxy = gb19sd default shadows: skin L* 57.9 vs 58.1; gb19ns 63.9; the crops look the
+  same). So the haze is NOT hair-scale alpha in the shadow map: any card shadow does it (the soft sun's penumbra over
+  the neck, resolved at 24 samples). The strand groom casts almost none (gS 63.3 = no shadow). REVERTED (no dead code).
+  Next to try: the light's shadow settings in the game look (sun angle / filter / jitter, more samples on one test view)
+  or a cheap test of card_shadow off for the hair object, judged as a game-look choice by the coordinator.
+- WISPS: WISP_LIFT works on tone: g1v1 wisp L* 38.6 -> 49.6 (groom 54.2), the reviewer now calls them light stray
+  lines (MINOR, 1 m only). WISP_KIDS_FACE 10 did NOT add area (571 vs 560 px; groom 2175): the missing area is
+  geometry (face-framing LOCKS to the jaw; the groom's own wisps are long), not hairs per picture. Kept both.
+- HAIRLINE: rim - inner g1v0 +2.1 -> +5.0, g1v1 0.0 -> +3.2 (groom +17.8 / +19.0). b19h (HL_LIFT 0.6, HL_ALPHA 0.35)
+  rendered the SAME rim numbers to 0.1 as b19 (GLBs differ): the stronger setting does nothing visible at 1 m. Defaults kept.
+- CROWN_LOOP 0.6 ADOPTED (gb19c): the knob over the 3/4 crown is gone; the front still shows an arc with backdrop under
+  it; front widths at 1 m kept (191 at 100 mm, 197 at 140). Hairline rim g1v1 +6.1.
+- TAIL_OUT kept: front width at 140 mm 192 -> 194 (render), geometric +x 97 -> 100 vs strands 111 (FAIL by 11 mm).
+- Tooling: offload.sh's stage pack ran under plain python3 (no hifipushie module): the job synced the stage on the
+  machine instead (+~3 min, harmless). Fixed: `capped uv run --project $W python ... --stage _g3_hc_s2`.
+
+## Handover 2026-10-16 (hair-cards agent, round 11)
+Commits: 7fb76afc (wisps lit, TAIL_OUT, the shadow proxy), notes, + this one (proxy reverted, CROWN_LOOP 0.6 on).
+Nothing in flight. Scratch new: neck.py, wispL.py (both <tags>).
+STATE: b19 FAIL, 19 game-visible MAJORs (15 at 3 m). Wins kept: wisp tone, crown loop, tail out, hairline +3-5 L*.
+NEXT: (1) neck haze: the game look's shadow settings (not the cards' alpha); (2) the tail as one rounded rope
+(profile: flat fanned sheet; detached right ribbons = tail clumps' outer layer stand-off); (3) nape wedge behind the
+ear (L* of the nape cards vs the groom); (4) front crown arc; (5) groom items for the coordinator: side volume over the
+ears, face-framing locks to the jaw, centre part, colour.
+
+## hair-cards round 12 (2026-10-16, fresh session; b20 batch, game/gm_g5.png, review/g5_b20)
+- RESULT: FAIL, 21 game-visible hair MAJORs (14 at 3 m, 7 at 1 m only, 0 close-up-only); g4_b19 had 19 (15 at 3 m). Same
+  prompt / settings as g4. Reviewed gb20 (b19c + face cards 6 mm + edge normals + game shadow map).
+- NEW TOOLS (scratch /mnt/data/hifipushie/haircards): tailx.py <tags> (tail cross-section strands vs card GLB: sd major x
+  minor, roundness, r97, angular fill, facing |n . radial|), wedge.py <tag> <view> <others> (darkest hair blob L*),
+  nape.py <tag> <view> <x> <y> (GLB verts under a pixel: n . to-eye), tailprof.py (ID-pass tail outline: does NOT work
+  on gS, its ID pass isn't hair-red). shots.py flat=1 + params {"flat": 1}: unlit albedo game pass (laptop OK, 8 s).
+  shots.py shadow=game[:mm[:filter]] -> light keys shadow_res / shadow_filter (blender_scene._light_rig: EEVEE
+  shadow_maximum_resolution / shadow_filter_radius = a game cascade's texel + PCF).
+- (1) SHADOW: game practice = alpha-TESTED shadow casting at the card cutoff (UE masked; HDRP Alpha Clip Threshold
+  Shadow), PCF-filtered at a cascade texel, contact shadows; written into shading.py's hair_cards notes. Our
+  game_material is already a binary alpha cut, so the grain is not alpha hashing. Skin L* under the tail: gS 63.3, no
+  card shadow 63.9, default 58.1, game 4 mm / filter 2 58.8, game 8 mm / filter 3 59.8. Target >= 62: FAIL (+1.7 best).
+  The reviewer still calls it a dark dithered smear at 3 m. Next: the EEVEE soft-sun penumbra over thin cards
+  (sun angle 3 deg; shadow ray / step count) or a judged game-look choice by the coordinator: card shadows off at
+  game distance (hair shadow LOD), contact only. Keep shadow=game:8:3 for game sets (most game-like, best number).
+- (2) TAIL: measured, the cards ARE already a round bundle in geometry and normals (tailx at 40-200 mm from the tie:
+  roundness strands 0.66-0.79 / cards 0.69-0.72, r97 within 5 mm, fill 0.88-1.0, facing 0.83-0.90). So "a flat fanned
+  sheet / curtain" is NOT the card distribution. Profile crops: the cards' tail juts ~50 px further back at the bottom
+  and misses the groom's in-curl of its lower third; ends blunt. Edge-rounded normals (EDGE_ROUND 1: each card edge
+  gets the cylinder's normal there) did nothing visible: reverted to 0 (knob kept). Next: the tail's lower third
+  follows the mean (fit end_share 0.08) and loses the curl: fit the tail cards per wave phase lower down / shorter
+  end clumps; then a tube judged in profile against the groom.
+- (3) WISPS: face cards half width 3.5 -> 6 mm: wisp area g1v1 534 -> 1403 px (groom 2175), L* 52.8 (groom 54.2). KEPT,
+  but the reviewer now calls them PALE grey/blonde ribbons in front of the ear (a 3 m MAJOR): WISP_LIFT 0.4 x wider
+  cards = bright planks. Next: WISP_LIFT 0.2 and FACE_ALPHA down, measured against the photo's cheek L* not the groom's.
+- (4) STRIPING: band g1v0 6.25 -> 6.38, g1v1 6.16 -> 6.23, g1v2 6.00 -> 6.11, back 5.17 -> 5.10 (target 4.8-5.2): FAIL.
+  TINT_RANGE 0.93-1.07 (gb20t) gave the SAME band to 0.04: per-card tint does not drive the lock bands. Edge normals
+  don't either. Left: the atlas tiles' own contrast (tile picture variety: 24 tiles, depth shade baked in) and layer
+  order (coverage layer showing through the top layer's gaps). Next: band of the atlas tiles alone (flat pass, one
+  tile everywhere) to split picture vs geometry.
+- (5) NAPE WEDGE: traced. Flat albedo there L* 51.4 (normal); lit 7.6; no card shadow 8.1; groom 33.5. So LIGHTING, not
+  albedo or card shadow. nape.py: the visible verts are TAIL cards (y +0.14 m) whose shading normals turn from the eye
+  (n . to-eye -0.10, 68% < 0): the tail's neck-facing side. backscatter 1.0 (gb20w) 7.9, edge normals 7.5: FAIL. The
+  notes' wrap diffuse ((N.L + 0.45) / 1.45, 0.55 of the shadow) is NOT in blender_cards.game_material (Principled, no
+  wrap): the in-Blender game look is darker on the far side than the engine we describe. Next: wrap diffuse in
+  game_material (a Translucent lobe weighted to the wrap, or a shader-to-RGB-free mix), then re-measure the wedge.
+- Groom items (unchanged, coordinator's): side volume over the ears, centre part, colour (lighter / greyer than the
+  photo at 3 m), face-framing locks to the jaw.
+
+## Handover 2026-10-16 (hair-cards agent, round 12)
+Commits: dc4ef7a7 (b20 tooling + changes) + this one (EDGE_ROUND off, shading shadow note, notes). Nothing in flight.
+STATE: b20 FAIL, 21 game-visible MAJORs (14 at 3 m). Kept: wider face cards (area x2.6), shadow=game:8:3 for game sets.
+NEXT: (1) wrap diffuse in game_material (nape wedge + dark ribbons), (2) wisp tone down (pale ribbons), (3) tail's
+lower-third curl in profile, (4) striping: split atlas vs geometry, (5) neck smear: sun penumbra / shadow LOD decision.
+
+## hair-cards round 13 (2026-10-16, fresh session; coordinator's five decisions; b21 batch, game/gm_g6.png, review/g6_b21)
+- (1) WRAP DIFFUSE in blender_cards.game_material (c0f4e91a): the notes' max(0, (N.L + 0.45) / 1.45). Principled keeps
+  Lambert + the shadow map; the rest of the wrap (wrap - max(0, N.L)) is added per sun as emission, albedo x sun
+  irradiance / pi x lift, unshadowed (light through hair). Suns (hp_sun*) are copied into the material before EVERY
+  frame (blender_cards.set_wrap_lights; views re-aim the suns). params "wrap": w (0 = plain Lambert). TEST
+  spikes/haircards/wraptest.py (one card, albedo 0.5, one sun, no world, EXR): ratio to N.L = 1 at N.L 0.71 / 0.17 /
+  0 / -0.20 / -0.34 / -0.45 / -0.77 = 0.799 / 0.430 / 0.318 / 0.173 / 0.075 / 0 / 0 vs the formula 0.798 / 0.430 /
+  0.310 / 0.173 / 0.074 / 0 / 0: PASS (lit radiance 0.4788 vs 0.5 x 3 / pi = 0.4775, so the calibration is right).
+  Deviation from the notes: "keep ~0.55 of the shadow map" is not in (the lift is unshadowed, the Lambert part fully
+  shadowed): nodes can't read one sun's shadow term. Test gotcha: an image made by images.new + pixels renders
+  transparent in EEVEE (alpha cut); load it from a PNG file like the GLB's atlas.
+- (2) HAIR SHADOW LOD (shading.py hair_cards notes, with the engine mapping: UE per-LOD Cast Shadow, Unity LOD Group
+  renderers Cast Shadows Off at LOD1+, HDRP contact shadows in the Volume, Godot cast_shadow per visibility range):
+  LOD0 (1 m) cards cast alpha-tested at the cutoff + contact shadows; 3 m+ no card shadow. Game render: shots.py
+  shadow=game* views g3* get card_shadow False (view key; blender_scene sets visible_shadow on hp_card objects per
+  frame); shadowlod=0 keeps them. EEVEE 5.1 has no contact shadows: the stage's horizon scan (fast GI) is the
+  stand-in for the screen-space contact term.
+- (3) TAIL lower third, measured in PROFILE against the strands (new scratch tailside.py <tags>: side-view coverage
+  raster, 10 mm bands under the tie, visible back edge at 7% / 50% coverage + weighted p97 / mean / p3): b20's cards
+  are NOT further back than the groom anywhere (lower third: visible back edge -10.1 mm at 7%, -4.3 at 50%; the
+  geometry ends no lower). The round-12 read ("juts ~50 px further back") came from the 3/4 v2 camera, not the side
+  plane. What IS off: the bottom 30-40 mm stop short of the groom's curl (back edge at 170 mm: -28 at 7%) and the
+  bottom front edge doesn't swing forward (190 mm: +12 mm). TAIL_END knob (fa8d2283; default 0.08): b21e = 0.03, the
+  cards run on into the curl: lower-third back edge -3.6 mm at 7% (max 0), +2.3 at 50%; front edge at 190 still +11.8.
+- (4) WISPS: WISP_LIFT 0.4 -> 0.2 in b21 / b21e (measured in the batch: wispL.py, groom L* 54.2, b20 52.8).
+- (5) STRIPING split: b21u = b21 with the atlas colour made uniform (alpha-weighted mean RGB, alpha kept: same
+  coverage). If its lock band stays near b21's: geometry (normals / layer order); if it drops to ~4.8-5.2: the pictures.
+- b21 batch (ONE offload hc-b21, b21chain.sh, MAIN = gb21e): gb21e (all, 6 views), gb21 (TAIL_END 0.08), gb21nw (wrap
+  off: g1v1, g1backl), gb21u (uniform atlas: 4 x 1 m), gb21L0 (card shadows kept at 3 m). Same review prompt as g4 / g5.
+- b21 RESULTS (hc-b21, 10 min on NICO-TOP; game/gm_g6.png + gm_g6.txt (+ gm_g6_first.txt: the chain's first sheet call
+  died on gb21u, which has no 3 m frames; b21chain.sh fixed, b21post.sh reran sheet / pairs / review); review/g6_b21,
+  MAIN gb21e, same prompt / settings as g4 / g5): FAIL, 29 game-visible hair MAJORs (25 at 3 m, 4 at 1 m only, 0
+  close-up-only); b20 had 21. The colour fault ("too light / grey vs the dark brown") is now counted in 4 regions.
+- NAPE (wedge.py, b20's darkest blob, g1backl; groom 33.5): b20 7.3 -> gb21 22.1 / gb21e 23.0 (wrap), wrap off gb21nw
+  8.2: the wrap is the lever, +15 L*; still 11 short (FAIL). The reviewer still calls a dark ragged block behind the ear
+  (1 m only). Next: the notes' "0.55 of the shadow" term (not in nodes) or the wrap applied to the card's back side.
+- SHADOW LOD (neck skin L*, groom 63.3 / 63.2): 3 m gb21 (no card shadow) 64.0 vs gb21L0 (kept) 59.7: PASS at 3 m.
+  1 m (LOD0 casts, by decision) 59.4. The reviewer still lists "grainy speckle on the upper back" at 3 m (region 4).
+- STRIPING (gsheet band, DoG 2.5-8; target 4.8-5.2): gb20 6.38 / 6.23 / 6.11 / back 5.10 -> gb21 5.49 / 5.26 / 5.62 /
+  4.29, gb21e 5.83 / 5.66 / 5.49 / 4.33. So most of the lock banding was LIGHTING (the far side of every card went
+  black under Lambert), not the pictures or the tint. gb21u (uniform atlas) frames exist (1 m only) but its band was not
+  measured: gsheet needs the 3 m frames; next session: a 1 m-only band read of gb21u vs gb21 to split what is left.
+- WISPS (wispL, groom g1v1 54.2 / g1v0 46.2): gb21 53.3 / 41.3 (b20 52.8 / 35.5): the wrap lifted them more than
+  WISP_LIFT 0.2 took off; the reviewer still calls them pale beige ribbons (3 m). Next: WISP_LIFT 0 with the wrap, and
+  narrower / darker face cards; judge against the photo's temple, not the groom's.
+- TAIL: gb21e (TAIL_END 0.03) vs gb21: reviewer still "flat paddle / blunt comb ends / dark crunchy patch mid-tail".
+  Geometry matches the groom's side profile within ~4 mm; the read is the cards' planar picture + ends, not the reach.
+- HAIR L* (gsheet): gb21 36.3 / gS 32.1 / photo 41.2 at g1v1; the wrap brightened the cards past the groom (colour
+  MAJORs). Kept the wrap (it is the spec); next: tone the albedo down by the wrap's average lift.
+
+## Handover 2026-10-16 (hair-cards agent, round 13; stopped at the 70-tool-call rule)
+Commits: c0f4e91a (wrap diffuse + shadow LOD + wraptest), fa8d2283 (TAIL_END), a18f4cce + this (notes). Nothing in flight.
+STATE: b21 FAIL, 29 game-visible MAJORs (25 at 3 m) vs b20 21. Wins measured: nape +15 L*, lock band -0.6 to -0.8
+(near target), 3 m neck skin = groom. Losses: hair too light (wrap lift on an albedo tuned for Lambert), wisps paler.
+NEXT: (1) albedo down by the wrap's mean lift (hair L* back to the groom's 32), (2) WISP_LIFT 0 + darker face cards,
+(3) band of gb21u at 1 m, (4) nape: wrap on the back side / shadow leak, (5) tail ends + mid-tail dark patch.
+Scratch new: tailside.py <tags>, b21chain.sh, b21post.sh, neck.py NV=<view>.
+
+## hair-cards round 14 (2026-10-16, fresh session; b22 batch, game/gm_g7.png, review/g7_b22)
+- RESULT: FAIL, 21 game-visible hair MAJORs (15 at 3 m, 6 at 1 m only, 0 close-up-only); b21 had 29. Same prompt /
+  settings as g4-g6 (b22chain.sh). Against the groom, colour is now a MINOR in both groom pairs ("close to the groom",
+  "slightly darker, no highlights"). Against the photo it is still a MAJOR in 4 pairs ("too light / grey vs the dark
+  warm brown"): that is the GROOM's colour (cards' chroma / hue = the groom's to 0.5 C* / 2 deg), the coordinator's item.
+- TOOLS (spikes/haircards + scratch): colour.py <tag> (hair L* / C* / hue on the COMMON mask of both ID passes, and
+  the albedo factor k that brings the cards' mean L* to the groom's through Blender's AgX curve: out/agx_ramp.png, an
+  AgX'd grey ramp, no render). gsheet.py draws a blank cell for a tag's missing frame (1 m-only tags). hx.py gain=
+  (hair.export.card_gain) and hc.<CONST>= (hair_cards constants). Flat passes per triangle range (shots.py only=
+  [[start, count]] from the export json "layers"; core = cap range's last fixed_parts.core tris) = the ID trace.
+- (1) COLOUR: wrap's mean lift measured 1.28 (gb21 / gb21nw, g1v1 and g1backl). k to the groom on gb21e: 1 m
+  0.79-0.90 (mean 0.84), 3 m 0.88-0.94. b22 card_gain 2.5 -> 2.10 (x 0.84): g1v1 L* 31.9 (groom 32.2) PASS; g1v0 33.3 /
+  34.1, g1backl 35.0 / 36.2; but 3 m now dark: g3v0 33.6 / 36.3, g3backl 36.2 / 39.4. The model under-predicted the
+  darkening (k after = 1.02-1.17, the spec doesn't scale but AgX's shoulder does). b22k (1.95, the full wrap lift) is
+  darker everywhere: rejected. Next: gain ~2.25 (between, per colour.py on gb22: 1 m k 1.02-1.13) if 3 m matters more.
+- (2) WISPS: WISP_LIFT 0 + gain: wisp L* g1v1 53.4 -> 41.6 (groom 54.2), g1v0 41.1 -> 36.3 (groom 46.2): now DARKER
+  than the groom; the reviewer calls them "thin, stiff, dark" cards in front of the ear (1 m only, was pale ribbons at
+  3 m). Area unchanged (1436 px vs groom 2175). The fault is shape (stiff planks standing off), not tone. Next:
+  WISP_LIFT ~0.15, and fewer / thinner / closer-to-the-cheek face cards.
+- (3) STRIPING: gb21u (uniform atlas) band 4.92 / 5.03 / 5.27 / back 3.53 vs gb21 5.49 / 5.26 / 5.62 / 4.29: the tile
+  pictures add 0.2-0.6, the rest is geometry / light. b22 band 5.61 / 6.02 / 5.80 / 4.45 (target 4.8-5.2): FAIL, UP
+  from gb21e (5.83 / 5.66 / 5.49); the darker albedo didn't shrink it. Hairline rim also fell: rim-inner g1v1 +3.6
+  (gb21e +6.5, groom +19): HL_LIFT's light roots darkened with the gain. Next: HL_LIFT up to keep the rim; band
+  needs the tiles' contrast (gb21u says ~0.4 of it) plus the geometry part, not tone.
+- (4) NAPE: shadow_leak (game_material param, the notes' 0.55 shadow keep: Principled x (1 - leak) + leak x Lambert
+  unshadowed in the wrap emission; wraptest lit PASS) changed NOTHING at the nape (b20 blob gb22 19.7 / gb22sk 18.5,
+  groom 33.5; neck numbers identical): the nape hair is not in the shadow map's shadow, it faces away from the sun
+  (wrap 0 under N.L -0.45). Preview limit noted in the param doc: the leak also scales world ambient. Flat pass: the
+  dark serrated block behind the ear is ALBEDO (dark in flat): layers 0 / 1 head cards under the tie, the deep-shaded
+  underside of the picture. The reviewer: "dark spiky saw-tooth fringe" (1 m MAJOR x2). Next: lighten the depth shade
+  on the underside of nape head cards (or HL-like soft roots at the nape hairline), not lighting.
+- (5) TAIL: dark mid-tail patch TRACED and FIXED: flat passes per range (layers 0-3 clean, the cap range's tail CORE
+  dark): the core tube's square ragged end showed through the thinning cards. CORE_SHARE 0.2 -> 0.5 (ends inside the
+  cards) + CORE_TAPER 0.25 (closes to a point): gone in flat (fb22) and no reviewer mention of a dark patch. Tail ends:
+  TIP_TAPER_TAIL 0.3 + TIP_FADE_TAIL 0.12 (alpha fade under the cutoff): the reviewer still says "blunt comb-like",
+  "cut square, jagged comb-tooth" (3 m MAJOR), and the groom pair now says "thin and straggly". Tail SHAPE (paddle /
+  volume) is the bigger fault.
+- Kept in b22: gain 2.10, WISP_LIFT 0, TAIL_END 0.03, tail tips, core 0.5 / 0.25 (exp/b22, hx.py hc_s2 exp/b22 gain=2.10
+  hc.CORE_SHARE=0.5 hc.CORE_TAPER=0.25 hk.WISP_LIFT=0 hk.TAIL_END=0.03 hk.TIP_TAPER_TAIL=0.3 hk.TIP_FADE_TAIL=0.12).
+  Module defaults unchanged (b21 behaviour) until the coordinator approves.
+
+## Handover 2026-10-16 (hair-cards agent, round 14; stopped at the 70-tool-call rule)
+Commits: ad80a61d (tail tips, shadow_leak, gsheet, colour.py), f8bab542 (core knobs, wraptest leak) + this (notes).
+Nothing in flight. STATE: b22 FAIL, 21 game-visible MAJORs (15 at 3 m) from 29. Colour vs groom matches at 1 m (3 m
+-3 L*); mid-tail dark patch gone. NEXT: (1) gain ~2.25 (3 m), HL_LIFT up (hairline rim), (2) face cards: shape, not
+tone (WISP_LIFT ~0.15, closer to the cheek), (3) nape: underside depth shade of head cards under the tie (albedo),
+(4) striping: tile contrast (~0.4) + geometry, (5) tail shape / volume (paddle) before ends. Scratch: b22chain.sh,
+b22exp2.sh, b22_renders.json, colour.py, gsheet_lite.py. Note: an earlier mis-run (tesshair7's shots.py picked by
+run.sh's _find for a bare "shots.py") rewrote out/s_hc_s2_v0/v1/v2.png and right.png (strand groom, same model).
+
+## hair-cards round 15 (2026-10-16, fresh session; b23 batch, game/gm_g8.png, review/g8_b23)
+- DEFAULTS (coordinator): b22's values are the module defaults now (hair_cards CORE_SHARE 0.5, CORE_TAPER 0.25;
+  hair_clumps TAIL_END 0.03, TIP_TAPER_TAIL 0.3, TIP_FADE_TAIL 0.12; blender_cards SHADOW_LEAK 0.45 = game_material's
+  default) and hc_s2's spec carries hair.export.card_gain 2.10 (history v6): exports no longer need command-line knobs
+  (hx.py hc_s2 <dir> = b22 + this round). Hair tests, one file per process: all pass (test_face_wisp_cards_are_lit_and_lighter
+  wants WISP_LIFT > 0: 0.15 now, item 5).
+- Scratch fix: env.sh's _find now looks in spikes/haircards before spikes/tesshair7 (a bare "shots.py" resolved to
+  tesshair7's, the round-14 mis-run).
+- (1) 3 m COLOUR: NOT the cards. gsheet own-mask L* 1 m -> 3 m (gm_g7): photo 42.0 -> 40.4 (g1v0 / g3v0), cards gb22
+  33.3 -> 33.5, strand groom gS 35.2 -> 39.6. The cards hold their L* with distance like the photo; the GROOM gets ~4 L*
+  lighter at 3 m (its sub-pixel strands drawn wider: the light front hairs cover more of each pixel). So "3 m dark vs the
+  groom" is the groom's render, and a per-LOD gain would be wrong (no engine does it; the photo says distance-invariant).
+  Mips checked anyway (numpy box chain of exp/b22's atlas, cutoff 0.33): alpha coverage x1.00 / 1.02 / 1.04 / 1.05 /
+  1.06 to mip 4 (x1.20 at mip 7), colour over covered texels within 1% (basecolor is dilated under alpha 0): no mip
+  darkening. Coverage-preserving mips (shading.py notes already ask for them) stay the engine instruction.
+- (2) NAPE: NAPE_LIFT (hair_clumps.bake_tiles: head cards rooted under the head centre and beside / behind it get tint
+  x (1 + 0.6), NAPE_BAND / NAPE_Y smoothstep ramps). First try (y ramp from the centre back) left the dark serrated
+  marks behind the ear untouched (flat g1backl: NAPE_LIFT 0.6 and 1.2 identical, b23 / b23n); NAPE_Y now starts 25 mm
+  in front of the centre. Measured in the batch (wedge.py + crops).
+- (4) TAIL measured before changing (tailx.py b22, slices along the tail axis): cross-section matches the groom within
+  ~10% (sd 18.7 x 13.3 vs 18.5 x 14.6 at 40 mm, 27.2 x 19.9 vs 29.6 x 19.5 at 200 mm; roundness 0.69-0.73 vs 0.66-0.79;
+  r97 3-5 mm short). The 3 m crops: the groom's tail is wavy, curling, ragged-full at the end; the cards' a smooth
+  straight sheet ending in aligned tapered points (the "comb"). Change: TAIL_END_JIT 0.15 (each tail card ends at its
+  own share: staggered ends); b23t = TIP_TAPER_TAIL 0.15 (less point per card). The wave itself is not in the cards.
+- (5) WISPS: WISP_LIFT 0.15, FACE_PER 4 -> 6 (b23 face/L0 60 cards), FACE_YO 0.5 (face card layers half as far off
+  their clump's centre).
+- (6) HL_LIFT 0.35 -> 0.8.
+- (3) STRIPING: per-layer frames in the batch (gb23cap / gb23layer0..3, 1 m, lit, own id masks: layerband.py).
+- b23 batch (ONE offload hc-b23, 23 min on NICO-TOP; b23exp.sh + b23chain.sh + b23mk.py; game/gm_g8.png + gm_g8.txt,
+  review/g8_b23, same prompt / settings as g4-g7): FAIL, 24 game-visible hair MAJORs (15 at 3 m, 9 at 1 m only, 0
+  close-up-only); b22 had 21. Colour is no longer a MAJOR in any pair. New or louder: "thin cap / scalp through the
+  cards / forehead open" (3 m, photo pairs), "narrow silhouette", "tail short, stops at chin" (photo pairs: the groom's
+  own length), "crown flap" at the upper left (3 m, groom pairs), speckle on the neck / back (1 m).
+- Numbers b22 -> b23 (groom): hairline rim-inner g1v1 +3.6 -> +7.4, g1v0 +5.5 -> +6.2 (+19 / +17.8): better, still
+  FAIL. Wisp L* g1v1 41.6 -> 45.3 (54.2), g1v0 36.3 -> 37.3 (46.2); wisp area 1436 -> 1314 px (2175): the face
+  cards still read as "stiff straight strips" (1 m, 3 pairs). Band g1v0 / g1v1 / g1v2 / back 5.61 / 6.02 / 5.80 / 4.45
+  -> 5.67 / 5.71 / 5.61 / 4.36. Hair L* = the groom's at 1 m (k 1.00-1.03 except g1v2 1.18).
+- (3) STRIPING BY LAYER (layerband.py, each range alone, own id mask, 1 m, g1v0 | g1v1): cap 5.05 | 6.81, layer0
+  5.51 | 5.63, layer1 6.54 | 5.90, layer2 8.05 | 6.43, layer3 (singles) no pixels. The TOP layer (layer2, 64 head
+  cards) stripes most, then layer1; the coverage layer0 is near the target. Not fixed this round: next is layer2's
+  per-card normal / tint spread (fewer, wider, lower-contrast top cards or its tint range narrowed), measured the
+  same way.
+- (2) NAPE: FAIL. wedge blob gb22 19.7 -> gb23 18.6, gb23n (NAPE_LIFT 1.2) 18.6: the lift does not reach the dark
+  marks even with NAPE_Y (the cards drawing them are probably not "head" cards rooted low: cap range or tail /
+  hairline cards). Next: flat pass per range (shots only=) at g1backl to name the range, then lift THAT.
+- (4) TAIL: TAIL_END_JIT and b23t (TIP_TAPER_TAIL 0.15) change nothing measurable (cross-section, side profile within
+  1-2 mm of b22; lower-third back edge -19.3 / -18.3 vs -19.0 mm). The reviewer: "flat broad sheet, repeating diagonal
+  streaks", "spiky ends", "straight stringy sheets" vs a wide WAVY mass. The miss is the wave (cards follow straight
+  clump centre lines) and the bottom 150-180 mm (back edge -33 mm: the curl), not the width.
+- (1) 3 m colour: see above (the groom brightens at 3 m; cards and photo don't). No change made.
+
+## Handover 2026-10-16 (hair-cards agent, round 15; stopped at the 70-tool-call rule)
+Commits: b0f91ab8 (b22 values as defaults + round-15 knobs), 05af25b8 (NAPE_Y), notes. Nothing in flight.
+STATE: b23 FAIL, 24 game-visible MAJORs (15 at 3 m) vs b22 21. Wins: hairline rim, wisp tone, band at g1v1 / g1v2,
+colour off the MAJOR list. No effect: NAPE_LIFT, tail end jitter / taper. Defaults now = b23 (exports need no knobs).
+NEXT: (1) the nape: name the dark marks' triangle range by flat passes per range, (2) striping: layer2 (top) first,
+(3) tail wave / curl (cards along the clump's wavy centre line, not a straight one), (4) crown flap upper left (new at
+3 m), (5) neck speckle at 1 m (shadow leak / dithering?). Scratch: b23exp.sh, b23chain.sh, b23mk.py, layerband.py.
+
+## hair-cards round 16 (2026-10-16, fresh session; coordinator's gate change; b24 batch, game/gm_g9.png, review/gg9_b24)
+- GATE SCOPE (coordinator): the cards gate is CARDS vs the STRAND GROOM at 1 m / 3 m; the photo stays on the sheet as
+  context only, photo-vs faults the groom shares go to the coordinator's groom list. Rule written in gates.md "Source-asset
+  scope" (59debb1e). Scratch: gpairs_g.py <dir> <sheet> <cards col> (groom gS = the reference in all six rows), rvg.sh <dir>
+  (the scoped review prompt: "cards reproducing the strand groom shown as the reference").
+- (1) BASELINE b23 vs the groom (review/gg8_b23, no new render): FAIL, 24 game-visible MAJORs (19 at 3 m, 5 at 1 m only,
+  0 close-up-only). By cause: colour flat, the groom's light / blonde strands lost (4: front, 3/4, profile, front 3 m);
+  face wisps darker, fewer, shorter than the groom's (4); crown card standing off / faceted crown outline (4, upper left
+  in back 3/4, top in profile); tail narrower / straighter / shorter / pointed ends / detached strips (4); nape fragments
+  + neck speckle (3); hairline strips, no centre part (2); ears bare (1). Note the groom DOES show a part and blonde
+  highlights: these are now cards faults, not photo faults.
+- (5) NAPE TRACED: flat passes per triangle range at g1backl (flatr.sh <exp> <view> name=start,count ...; b23 ranges:
+  cap, layer0 halves, layer1 halves, layer2, layer3, then layer1's head end 12982+686 and hanging/L1 13668+3446): the dark
+  serrated marks behind the ear are drawn ONLY by HANGING (tail) layer-1 cards; head cards draw none. That's why
+  NAPE_LIFT (head cards only) changed nothing in round 15. Fix: NAPE_LIFT also lifts tail cards by the same root test.
+- (3) TAIL WAVE: tail / face cards' centre line = the mean of their strands by station, which straightens a wavy lock
+  (phases differ) and smooths the curl (sigma 4 where few run). hair_cards._medoid_line: the line moved onto the clump's
+  long strand nearest the mean (offset held before its root / past its end, sigma 1). MEDOID_TAIL / MEDOID_FACE = 1.
+  tailside.py (no render): lower-third back edge b24m0 (medoid off) -19.3 mm, b24 -14.1 mm; mean -5.6 -> -0.5 mm; at
+  150-160 mm -34 / -33 -> -22 / -17 mm. Better, not closed (the curl's outer strands stand further back than any medoid).
+- (4) WISPS: FACE_END 0 (face cards run to their longest strand: wisps stopped at the jaw), WISP_LIFT 0.15 -> 0.5 (round
+  15 measured +3.7 L* for +0.15; the groom's wisps are +9 L* over b23's), medoid curve. Tris 23268 -> 23720 (+2%).
+- (2) STRIPING: TINT_TOP (0.93, 1.07) for the top head layer (was TINT_RANGE 0.85-1.15), measured per layer in the batch.
+- (7) CROWN FLAP: flats show broad layer-1 / layer-2 head cards arcing over the upper-left crown with scalp under them;
+  not changed this round (no time).
+- b24 RESULT (ONE offload hc-b24, ~45 min incl. queue; b24chain.sh / b24mk.py / b24exp.sh; game/gm_g9.png + gm_g9.txt;
+  review/gg9_b24 = cards vs the GROOM): FAIL, 20 game-visible MAJORs (13 at 3 m, 7 at 1 m only, 0 close-up-only) vs the
+  b23 baseline 24 (19 at 3 m) under the same groom-scoped prompt. Remaining by cause: crown card plate / arched card at
+  the upper left + shards at the top front (5, the biggest: 3 m in three views); tail straight / flat / ribbon strips
+  flaring right / folded flap at its end (5); no centre part + dark flat top "helmet" (2); the groom's light streaks
+  lost (1 side, plus in tail / crown faults); wisps short / sparse (3); hairline pale blotches (2, new: HL_LIFT 0.8 +
+  WISP_LIFT 0.5 drew pale patches at the left forehead); neck / back speckle + nape stubble (1).
+- Numbers b23 -> b24 (groom): nape wedge L* 18.6 -> 32.9 (33.5) PASS: tracing to hanging/L1 was right. Wisp L* g1v1
+  45.3 -> 50.9 (54.2), g1v0 37.3 -> 44.4 (46.2); wisp AREA g1v1 1314 -> 1004 px (2175; b24m0 = 1314: the medoid line
+  pulled the face cards onto one strand, narrower spread). Hairline rim-inner g1v1 +7.4 -> +8.6, g1v0 +6.2 -> +8.2 (+19 /
+  +17.8). Layer2 band g1v0 8.05 -> 8.23, g1v1 6.43 -> 5.97 (whole hair 5.67 / 5.71 -> 6.27 / 5.28): TINT_TOP is not the
+  striping's lever (the tile pictures / card geometry are). Hair L* at 1 m now LIGHTER than the groom (k 0.83-0.89 at
+  g1v0 / g1v1 / g1backl, 3 m within 5%): b24m0 is the same, so it's the nape lift on tail cards + TINT_TOP, not the
+  medoid; next round: lift only the cards the trace named (hanging/L1 rooted at the nape), not every tail card in the band.
+- My look (pair_1 / pair_3): the neck speckle is plain at 1 m (dithered shadow under the tail); the groom's light
+  streaks (crown, tail) are what the cards lose most; the tail reads lighter and flatter than the groom's.
+- New groom-vs-photo items for the coordinator: none new; the scoped review sent nothing to OTHER STAGES.
+
+## Handover 2026-10-16 (hair-cards agent, round 16; stopped at the 70-tool-call rule)
+Commits: 59debb1e (gates.md source-asset scope), ec33a4d0 (medoid tail / face, FACE_END, WISP_LIFT 0.5, TINT_TOP),
+the NAPE_LIFT-on-tail commit, notes. Nothing in flight. STATE: b24 FAIL, 20 game-visible MAJORs vs the groom (13 at 3 m);
+groom-scoped baseline b23 = 24 (19). NEXT: (1) crown plate upper left (flats: broad layer-1 / layer-2 head cards arcing
+over the upper-left crown with scalp under them: name the cards by range, then hold them under the envelope or drop
+them), (2) light streaks: the groom's highlight strands per card tile (tile pictures average them away), (3) tail:
+ribbon strips flaring right (tail L2 / L3 singles?) + folded flap at the end; curl back edge still -17..-22 mm at
+150-160 mm, (4) wisp area (MEDOID_FACE 0.5?), hairline pale patches (HL_LIFT / WISP_LIFT down a step), (5) neck speckle
+(shadow dithering of alpha-hashed cards on the skin), (6) the 1 m L* overshoot (narrow the tail nape lift to the traced
+cards), (7) part line. Scratch: gpairs_g.py, rvg.sh, flatr.sh, b24*.
+
+## hair-cards round 17 (2026-10-16, fresh session; b25 batch, game/gm_g10.png, review/gg10_b25)
+- New measures (no render): crownx.py <tags> (scratch): per card (connected triangles of the GLB) the area of its
+  alpha > 0.5 samples standing > 3 mm over the head + tail strands' p97 radius (3-deg direction bins) over the top
+  (elevation > 20), per range the area > 5 / 8 mm from any strand point, and FOLDS (edge-adjacent triangles of one card
+  turned > 120 deg). streak.py <tags> (frames): light-streak spread p95 - p50 L* and DoG detail std inside each render's
+  own hair mask (g1v1 / g1v2 / g1backl / g3v0), a part dip at g1v0's top band, skin grain (DoG 0.6-1.5) under the tail
+  at g1backl.
+- BASELINE streak.py (gS | gb23 | gb24): p95 - p50 g1v1 21.9 | 10.4 | 13.0, g1v2 17.7 | 8.5 | 12.1, g1backl 14.6 | 9.6 |
+  10.8, g3v0 26.9 | 11.7 | 15.6; median L* g1v1 30.6 | 32.2 | 35.4. The groom = a DARKER mass with light strands far over
+  it; the cards = a lighter, flat mass (half the streak spread). Part dip g1v0 3.5 (col 245) | 2.0 | 2.6 (col 285: not at
+  the groom's part). Skin grain g1backl std 0.31 | 0.42 | 0.42, skin L* 66.0 | 61.4 | 61.0 (the cards' shadow).
+- (2) CROWN PLATE traced (crownx b24): ONE card stands off over the top, layer-1 card 133 (tri0 12398, 133 mm, arcing
+  front -> over the pole -> back, az 7..341, el -4..87), 1.46 cm2 > 3 mm off; 37% of its vertices sit on NaN envelope
+  bins: near the pole the 3-deg (az, el) bins are slivers with < 20 strand points, so _under_envelope never held it.
+  Not a normal flip (no inward normals), not a stood-off layer. Fix: envelope() falls back to uniform cells on the unit
+  sphere (~6 then ~12 deg). b25: 1.05 cm2 (partly closed; the rest not traced yet).
+- (3) TAIL FLAP traced: hanging/L0 card 201 (60 mm wide at the tail's curl, z -90..-150 mm) has 10-11 folded triangle
+  pairs; its strip's edges swap sides over ~30 mm: a half-turn TWIST of the frame where the curling line passes its core
+  ("outward" swings round), not an in-plane bend (BEND_HW did nothing for it). Fix: TWIST_HANG 10 deg / station for
+  hanging cards (hair_cards._clump twist=). Ribbons: HW_PER_STRAND 0.6 mm half width per running strand for tail cards
+  (a few outer strands wore an 18 mm dense-tile ribbon).
+- (1) colour: NAPE_LIFT on tail cards only for layer 1 (the traced range); TINT_TOP back from (0.93, 1.07).
+- (4) streaks: TINT_TOP (0.85, 1.35): the top layer may run lighter than its tile, not darker; b25t = (0.85, 1.15)
+  control, b25s = TINT_RANGE (0.85, 1.35) too (every head / tail card). Part: not changed (no time).
+- (5) MEDOID_FACE 0.5 (b24 1.0 cut wisp area 1314 -> 1004 px), HL_LIFT 0.8 -> 0.5 (pale forehead blotches).
+- (6) neck speckle: traced in the batch: b25 g1backl with shadow filter 6 (gb25sf) and with no card shadow (gb25ns).
+- (3) after TWIST_HANG (crownx b25): folded pairs over all cards 74 -> 28, folded cards 31 -> 8; tail card 201 10 -> 6
+  pairs (still folded, less). The crown card 133 standoff 1.46 -> 1.05 cm2. (crownx's "cap" row now shows 3.9 cm2 > 3 mm
+  over the top: the cap's alpha in the new atlas, at scalp level under sparse crown strands. A measurement artefact,
+  not a plate; exclude the cap next time.)
+- b25 RESULT (ONE offload hc-b25, 6 jobs; b25exp.sh / b25mk.py / b25chain.sh; game/gm_g10.png + gm_g10.txt + geo_b25.txt;
+  review/gg10_b25 = cards vs the GROOM): FAIL, 30 game-visible MAJORs (25 at 3 m, 5 at 1 m only, 0 close-up-only), up
+  from b24's 20. NEW and the loudest: pointed card tips stand up out of the silhouette at the FRONT TOP / over the left
+  forehead ("cat ears", pairs 0 / 1 / 2 / 4, 3 m; plain in pair_1). Still there: no centre part / dark cap, flat colour
+  without blonde streaks (all six pairs), short / sparse wisps, the tail narrow / straight / in strips with a detached
+  dark strand at frame-right, nape shards, neck grain, crown planks / jagged top edge.
+- Numbers b24 -> b25 (groom): 1 m L* k (cards -> groom) g1v0 0.83 -> 0.91, g1v1 0.84 -> 0.96, g1backl 0.89 -> 0.98
+  (the overshoot is gone; g1v2 1.02 -> 1.14 and 3 m 1.04-1.12 now a little dark). Nape wedge 32.9 -> 29.8 (33.5): giving
+  the lift to tail layer 1 only cost 3 L*. Wisp area g1v1 1004 -> 1564 px (2175), g1v0 4998 -> 5100 (7214); wisp L*
+  g1v0 44.4 -> 40.2 (46.2). Hairline rim-inner +8.1 / +8.7 (+17.8 / +19). Layer-2 band g1v0 7.96 / g1v1 6.10.
+  Streaks p95 - p50: g1v1 13.0 -> 13.2 (gS 21.9), g3v0 15.6 -> 17.4 (26.9). Part dip 2.5 (3.5, at another column).
+- TINT_TOP / TINT_RANGE up to 1.35 changed NOTHING: gb25, gb25t and gb25s are identical to 0.1 L* in every metric. The
+  per-card tint (a card's mean strand tone / its tile's) never reaches 1.15, so the clip is not what holds the streaks
+  back. Streaks need light strands INSIDE the tile pictures (or a per-card tone from its lightest strands), not the tint.
+- (6) NECK SPECKLE TRACED: the cards' SHADOW on the skin. No card shadow (gb25ns): skin grain std 0.29, skin L* 65.9 =
+  the groom's 0.31 / 66.0; with it (gb25) 0.42 / 61.1; a wider shadow filter (game:8:6, gb25sf) is worse (0.46). The
+  groom casts almost no shadow there. Coordinator decision: a game's card shadow (shadow LOD at 1 m, a shadow-only alpha
+  read at a coarse mip, or contact shadow only), or accept the groom's render as unshadowed.
+- CAT EARS, partly traced (no render): crownx says TWIST_HANG is not it (b25tw0 = b25 over the top); MEDOID_FACE 1
+  (b25mf1) cuts the top's standing-off area 4.9 -> 3.2 cm2 (b24 1.6), so MEDOID_FACE 0.5 (face lines half-way between
+  the clump mean and a strand) is one cause; the envelope fallback is the other candidate. crownx does not single out
+  the ear cards: they need a flat ID pass at g1v1 per range.
+
+## Handover 2026-10-16 (hair-cards agent, round 17; stopped at the 70-tool-call rule)
+Commits: 831bb630 (envelope fallback, nape lift on tail L1 only, TINT_TOP, HW_PER_STRAND, BEND_HW, MEDOID_FACE 0.5,
+HL_LIFT 0.5), 793d63dd (TWIST_HANG), notes. Nothing in flight. STATE: b25 FAIL, 30 game-visible MAJORs (25 at 3 m) vs
+b24 20: WORSE, because of new front-top "cat ears". The colour regression is fixed; the speckle is traced to the card
+shadow; the tint lever for the streaks is ruled out.
+NEXT: (1) cat ears: flat passes per range at g1v1 (flatr.sh b25 g1v1 ...), then A/B MEDOID_FACE 1 and the envelope
+fallback off (b25mf1 exported). If nothing better comes up, return MEDOID_FACE to 1 and get the wisp area some other
+way (FACE_PER). (2) streaks: light strands in the tiles (strand_tones' spread kept in the bake) and not the tint.
+(3) the neck shadow: the coordinator decides. (4) the nape wedge is back to 29.8: NAPE_LIFT 0.8 for tail L1.
+(5) tail card 201 still has 6 folded pairs: TWIST_HANG 6. (6) the part: still untouched.
+Scratch: crownx.py, c133.py, c201.py, streak.py, b25*.
+
+## hair-cards round 18 (2026-10-16, fresh session; b26 batch, game/gm_g11.png, review/gg11_b26)
+- (1) CAT EARS NAMED (flat passes per range at g1v1, flatr.sh): they are the CAP (tris 0-3700), not a card layer. A/B:
+  MEDOID_FACE 1 (b25mf1) and ENV_FALLBACK 0 (b25ef0, new knob) both still have them; b24 has none; TWIST_HANG 0 (b25tw0)
+  has them; BEND_HW 0 (b25bh0) has NONE. Cause: BEND_HW narrowed layer-0 head cards at their bends, so cap vertices had
+  no card within CAP_REACH / CAP_FAR and cap_under_cards left them at the MASS height: two points standing up. (Round
+  17's crownx "cap" 3.9 cm2 row was this, not an artefact.) BEND_HW -> 0 (it never touched the tail flap). The strand
+  part then made the same fault again (a cap knob at the front top: the part gap leaves cap vertices uncovered), so the
+  structural fix: hair.CAP_BARE_FLOOR, a cap vertex with no coverage card in reach lies on the scalp (b26 cap flats at
+  g1v1 / g1v0 clean, t18/b26flat3.png). Envelope fallback and MEDOID_FACE 0.5 kept (crown plate stays held).
+  The review still names ONE dark jagged tuft above the top-left crown at 3 m (pair 0): not traced yet (a card, not the cap).
+- (2) CARD SHADOW from a coarse mip (coordinator decision): blender_cards.SHADOW_MIP 16: the shadow pass (Light Path Is
+  Shadow Ray) reads the cut coverage (alpha > cutoff) box-averaged 16 x 16 texels as a soft opacity (transparent
+  shadows). Unit test spikes/haircards/shadowmip_test.py: a striped card's floor shadow std 0.42 -> 0.08 at the same mean.
+  Shading notes (shading.py hair_cards "shadows") rewritten with the Unreal / Unity HDRP / Godot mapping. RESULT on the
+  head: FAIL, it does not take the grain: skin under the tail g1backl grain / L* = mip 1 0.44 / 61.9, mip 16 (gb26) 0.42 /
+  61.5, mip 32 0.44 / 62.0, no card shadow 0.29 / 66.2; groom 0.31 / 66.0. So the speckle is NOT the alpha's detail: it
+  is the shadow map itself (shots shadow=game:8:3: 8 mm texels, filter 3, dithered transparent shadows over many
+  overlapping cards) and its mean darkening (-4.5 L*). Next: a softer / wider-filtered hair-only shadow (filter at the
+  texel of a coarse cascade, or the shadow_leak raised for the skin under hair), or contact-shadow-only at 1 m too;
+  measure grain + L* against 0.31 / 66 for each.
+- (3) STREAKS: hair_clumps.TILE_TONE_POOL 1: a tile's child hairs draw their tone ratio from the per-strand mean tones of
+  every card wearing the tile (ratio p5 / p50 / p95 / p99 0.58 / 0.99 / 1.43 / 1.60, 21 tiles). Control b26tp0 (pool
+  off): frames differ but every metric is equal to 0.01: NO measurable effect. Streak spread p95 - p50 g1v1 gS 21.9 |
+  b25 11.6 | b26 14.2, g3v0 26.9 | 17.4 | 19.8: the gain is from the other b26 changes (cap / part / bends), not the pool.
+  The tile's strands are not where the light streaks are lost: a per-card tone from its lightest strands, or more
+  tiles for the top layer, are the next candidates.
+- (4) PART: hair_clumps.strand_part reads the part from the strands (top roots, el > 35, first 3 cm sweep x share >= 0.35:
+  hc_s2 has 1505 +x / 984 -x votes, a clean split at x = 0, spikes/haircards/partprobe.py) and wins over the spec's
+  default line (hc_s2 has no parting: the default line sat at x = 3 cm). Result: FAIL, part dip g1v0 gS 3.5 | b25 2.5 |
+  b26 1.1 | b26pt0 (strand part off) 2.9, all at col ~283 (the groom's at 245). The split leaves a gap but the cards
+  over it don't sweep away from it; the review still says "no part, dark cap" (3 m). Not kept as a win; keep the code
+  (it's what exposed the cap knob) but the part needs the cards' ROOT ends turned away from the line, not just a split.
+- (5) NAPE_LIFT 0.8: wedge 29.8 -> 30.2 (groom 33.5), small. TWIST_HANG 6. The detached dark strand at frame right:
+  not traced (the review: "a large clump swings out to the right at tie height + 100 px", pair 3).
+- b26 RESULT (ONE offload hc-b26, 6 jobs, NICO-TOP; b26mk.py / b26chain.sh; cards vs the GROOM): FAIL, 17 game-visible
+  MAJORs (14 at 3 m, 3 at 1 m only, 0 close-up-only) vs b25's 30 and b24's 20: the best count so far. Remaining by
+  cause: top dark / flat / no blonde streaks (5), no part / dark cap (2), wisps few / short / faint (3), tail narrow /
+  strips / blocky ends / detached clump (4), dark tuft over the top-left crown (1), crown blotches (1), neck speckle (1).
+  Hairline rim-inner g1v1 +9.7 (+19), wisp area g1v1 1566 px (2175).
+
+## Handover 2026-10-16 (hair-cards agent, round 18; stopped at the 70-tool-call rule)
+Commits: f0c2449b (SHADOW_MIP + ENV_FALLBACK knob), 22823757 (TILE_TONE_POOL), 8f9b6496 (BEND_HW 0, strand_part,
+NAPE_LIFT 0.8, TWIST_HANG 6), 267d977d (strand part first), a815a680 (shading notes), 9c07ce81 (CAP_BARE_FLOOR), notes.
+Nothing in flight. STATE: b26 FAIL, 17 game-visible MAJORs (14 at 3 m) vs the groom, best so far; cat ears gone (cap).
+NEXT: (1) the card shadow: coarse mip did nothing, the grain is the shadow map's (try filter / leak / contact-only at
+1 m, measure vs 0.31 / 66); (2) streaks: tone pool did nothing measurable; try a per-card tone from its lightest strands
+or top-layer tiles; (3) part: turn the cards' roots away from the strand part (sweep), measure the dip at the groom's
+column; (4) the dark tuft over the top-left crown (flat pass per layer at g1v0); (5) tail detached clump (pair 3).
+Scratch: r18a-f.sh, b26mk.py, b26chain.sh, t18/ (flat sheets, partprobe.py), shadowmip_test.py.
+
+## hair-cards round 19 (2026-10-16, fresh session; b27 batch launched: game/gm_g12.png, review/gg12_b27)
+- (1) SHADOW PROXY (coordinator decision): hair_cards.shadow_proxy (card triangles sampled into a 4 mm grid, closed 4
+  voxels, holes filled, eroded 4 mm in, blurred 1.2 voxels, marching cubes step 2: ~9k tris on hc_s2, 0.6 s), written
+  by export_hair beside each GLB as `<name>_hair_<tier>_shadow.obj` (Y-up), named in extras hifipushie_hair.shadow_proxy;
+  hair_glb_look imports it shadow-only (blender_cards.shadow_proxy: camera / diffuse / glossy / transmission rays off),
+  the cards' visible_shadow off; the per-view shadow LOD toggles the proxy instead of the cards. shots.py proxy=0 = the
+  old card shadow. Shading notes (shading.py hair_cards "shadows") now lead with the proxy + Unreal / Unity / Godot.
+  LOCAL PROOF (g1backl 1080, 8 samples, b26 + its proxy, t19/l19_neck.png): the proxy casts and the cards don't (frame
+  diff proxy vs cards 0.45 mean, the shadow's outline changes), BUT skin grain / L*: cards 0.65 / 63.1, proxy 0.65 /
+  62.9, none 0.29 / 66.7. FAIL on the target: the grain is NOT the dithered cards, it is EEVEE's shadow-ray noise on
+  any shadowed skin (STAGE_EEVEE shadow_ray_count 4 + step 16: cards 0.41, proxy 0.42, same for both). And the target
+  0.31 / L* 66 is an UNSHADOWED skin: the groom casts no shadow at all (blender_strands.py: the groom object's
+  visible_shadow = False). Any honest hair shadow will read darker than the groom there. Coordinator call: shadow the
+  groom too (fair A/B), or judge the neck with both unshadowed; and raise shadow_ray_count for game renders.
+- (3) PART: hair_clumps._part_root (PART_ROOT_REACH 0.03): a head card rooted within 3 cm of the strand part gets a
+  Hermite lead-in from the part's edge (PART_GAP off), leaving sideways, into its own start. Flat g1v0 part dip 1.75
+  (off, b27p0) -> 1.93 (on, b27p), col 256 (groom 3.5 at 245): moves the row, but little. Kept (on). Flat
+  t19/part_flat.png: the cards' top is a flat mass, the groom's a dark V where both sides sweep down; and a dark knob
+  over the top-left crown in both (the tuft, (6), still untraced).
+- (2) STREAKS, traced: the groom's light streaks are its HIGHLIGHT RIBBONS (blender_strands hair colour: cells ~4 mm
+  across (hp_ch) / ~15 mm (hp_cb), ~40% of cells over the threshold, half their strands up to +60% value, a sine along
+  the length), coherent over several mm. The tile tone pool (round 18) lit single 0.2 mm hairs, which a 1 mm pixel
+  averages away (why b26tp0 = b26). Also: the cards' strand_tones passes sun_x 0 (the groom adds the locks' strands.sun,
+  +-0.2 on ~180 locks, to the ribbon pick): small. New lever: hair_clumps RIBBON_W / RIBBON_SHARE / RIBBON_GAIN, bands
+  across each tile picture lighten half their hairs. Flat proof (g1v1 / g3v0 p95-p50): off (b27p) 11.3 / 15.1, share 0.4
+  gain 0.6 (b27) 10.6 / 13.5 (p50 +1.5): WORSE, it lifts the mass, not streaks -> default 0. b27s = share 0.15, gain 1.2:
+  r19e.sh measures it and the batch's main export is b27s only if its g1v1 spread beats b27p's by >= 0.5 (out/b27main).
+- (4) tail, (5) wisps, (6) tuft: not reached this round.
+- BATCH (r19e.sh -> b27chain.sh; ONE offload hc-b27, exports b27p / b27s): gb27 = main export (proxy on), gb27r0 (ribbons
+  off, if main is b27s), gb27pc (proxy off: cards cast), gb27ns (no shadow); sheet game/gm_g12.png, review
+  review/gg12_b27, done flag review/g12.done (ERROR file review/g12.ERROR). offload.sh now ships *_shadow.obj.
+
+## Handover 2026-10-16 (hair-cards agent, round 19; stopped at the 70-tool-call rule)
+Commits: e2e341ac (shadow proxy, part roots, ribbons), ribbons default 0, notes + shading notes. IN FLIGHT: r19e.sh
+(b27s export + flat proof, then b27chain.sh: the NICO-TOP batch and the review vs the GROOM). Wait with
+`/mnt/data/hifipushie/bin/offload wait b27`, then read review/gg12_b27 and game/gm_g12.txt; count the MAJORs (b26 17).
+STATE: shadow proxy works as plumbing but does NOT reach the groom's neck numbers (the groom casts no shadow; the grain
+is EEVEE shadow-ray noise). Part lever moves its row a little (1.75 -> 1.93). Ribbons 0.4 / 0.6 dead (worse).
+NEXT: (1) coordinator: groom shadow on for the A/B, or both off; shadow_ray_count 4 in game renders (STAGE_EEVEE);
+(2) streaks: if b27s failed its proof, try ribbons on the top layer only (head L2) and pass the locks' sun into
+strand_tones; (3) part: the dark V needs the top cards to bend DOWN away from the line (not only start at it): measure
+how many cards got a lead-in (c["part_root"]); (4) tail width / strips / blocky ends / pair-3 clump; (5) wisps; (6) the
+top-left tuft (flat pass per layer at g1v0, it shows in t19/part_flat.png).
+Scratch: r19a-e.sh, proxytest.py, glbmesh.py, b27mk.py, b27chain.sh, t19/.
+
+## hair-cards round 20 (2026-10-16, fresh session after round 19's handover)
+- b27 main = b27p: ribbons share 0.15 / gain 1.2 (b27s) flat g1v1 spread 11.67 vs 11.30 (+0.37 < 0.5): DEAD, ribbons stay 0.
+- GROOM SHADOW, corrected: round 19's note was wrong. `visible_shadow = False` in blender_strands is the SCALP tint
+  object, not the groom. The groom curves DO cast, but Blender's material default `use_transparent_shadow = True`
+  (checked: 5.1.2) plus a 1 mm default shadow texel (light shadow_maximum_resolution 0.001) under 0.07 mm dithered
+  strands (fine_alpha 0.5, tip alpha) cast ~nothing. Coordinator decision (a): shots.py `gshadow=opaque` ->
+  blender_scene.hair_look sets the strands visible_shadow and their materials' transparent shadow OFF. Decision (b):
+  shots.py `rays=<n>` (default 4) = scene.eevee.shadow_ray_count for groom AND cards; recorded in shading.py
+  hair_cards "shadows". Old gS frames also predate the game-camera fix (framing differs from the card frames).
+- PART (flat g1v0 part dip, groom 3.5): PART_GAP 4 mm 1.93, 8 mm 2.70, 12 mm 3.16, 16 mm 3.52; PART_ROOT_REACH 5 cm
+  adds nothing over 3 cm. Default now 16 mm. CAUTION: the number reaches the groom's but the crops (t20/part.png)
+  show NO dark V yet: the cards' top still reads as a flat mass. Judged in the batch (gb28).
+- TUFT (6), traced (t20/tuft.png, flat g1v0 per layer of b27p): the top-left knob is head layer-1 cards (a dark knob)
+  plus a layer-2 card rising above the dome. crownx: they do NOT stand off the strands' p97 envelope, so the groom has
+  strands there (its frizz), which it draws as fine translucent flyaways and the cards as an opaque clump. Fix
+  direction (not done): top-of-head cards from sparse / frizz clumps become thin low-alpha wisps or are dropped.
+- BATCH hc-gs (gschain.sh, after hc-b27): gSo (groom shadow ON, all 6 game views = the NEW reference), controls at
+  g1backl gSt (transparent strand shadow, rays 4) / gSof (opaque + 0.25 mm texel), cards gb27x (b27p, rays 4) and gb28
+  (b28i = PART_GAP 16 mm, all views). Out: t20/neck.txt, game/gm_g13.png, review/gg13_b28 (vs gSo).
+- b27 READ (game/gm_g12.txt, review/gg12_b27 vs the OLD unshadowed groom gS): FAIL, 19 MAJORs (b26 17). Neck g1backl
+  grain / L* (rays 1): gS 0.31 / 66.0, gb27 proxy 0.42 / 60.8, gb27pc cards cast 0.44 / 62.0, gb27ns none 0.29 / 66.2.
+  Lit part dip gb27 1.75 at col 283 (gS 3.51 at 245): the part is still at the wrong column in the lit frame. MAJORs
+  by theme: face-framing wisps missing / short / grey (4), crown a dark helmet with a broken top silhouette, notches,
+  tuft (4), tone darker / cooler, no blonde streaks (4), ponytail narrow, no wave, cut-off ends, smeared sheet (4), a
+  thick dark detached arching strand right of the tail (2), neck speckle (1), card strips with dark edges on the crown.
+
+## Handover 2026-10-16 (hair-cards agent, round 20; stopped at the 70-tool-call rule)
+Commits: 8146dca9 (rays=, gshadow=opaque), shading notes (rays 4), PART_GAP 16 mm, these notes.
+IN FLIGHT: hc-gs (gschain.sh, ONE offload): gSo = groom with its shadow ON at all 6 game views (the NEW reference),
+gSt / gSof controls, gb27x (b27p at rays 4), gb28 (b28i, PART_GAP 16 mm). Wait `/mnt/data/hifipushie/bin/offload wait
+hc-gs`, then review/g13.done (or g13.ERROR); read t20/neck.txt, game/gm_g13.txt, review/gg13_b28 (vs gSo).
+STATE: b27 FAIL (19 MAJORs). Ribbons dead. Part lever reaches the groom's number flat (3.52 vs 3.5) but shows no V.
+Groom-shadow cause found (transparent strand shadow + 1 mm texel), fix plumbed, not yet seen.
+NEXT: (1) neck: is gSo's neck shadowed now (L* < 66)? if gSo ~ gSt the opaque switch is not enough: use gSof's 0.25 mm
+texel for the source; then gb28 vs gSo grain / L*. (2) part: if gb28's lit dip is still at col 283, the cards' part
+line (strand_part) sits 3.8 cm off the groom's visible part: trace the column, not the gap. (3) tail (narrow, strips,
+cut ends, the detached arching strand) and the wisps (most MAJORs); (4) tuft: thin / drop top cards from frizz clumps.
+
+## hair-cards round 21b (2026-10-18, fresh session; round 21 died on a usage limit with no commits)
+- r21 left only scratch (t21/: gshprobe.py, neck.txt, streak.py): nothing in the repo to finish or revert.
+- GROOM SHADOW still OFF in the source frames: gSo (gshadow=opaque) reads EXACTLY gS (neck g1backl L* 66.0 / p10 56.8
+  / fine 0.31 both; part dip 3.51 both), gSof (+ 0.25 mm texel) = gSt. The switch reaches the strands (probe: the
+  CURVES objects carry hp_strands, visible_shadow True) but sub-texel 0.07 mm strands still cast nothing in EEVEE's
+  virtual shadow maps. So gSo = the old unshadowed reference; the card proxy's neck shadow (L* 60.7) is a known
+  difference the source lacks (decision for the coordinator: a groom shadow proxy, e.g. the cards' own shadow proxy
+  under the groom, if the source should be shadowed).
+- b28 READ (review/gg13_b28 vs gSo): FAIL, 25 MAJORs (b27 19, b26 17; 3 of b28's are 1 m only). Look-first (my own
+  read of pair_1 / pair_3 before the review): agreed. Crown lower and flat with spikes at the top front, no visible part,
+  face-framing wisps short / grey, darker flatter tone without the light streaks, tail narrower / shorter with blunt
+  striped ends, two dark ribbon cards arching out right of the tail (back 3/4, still there at 3 m), nape stubs.
+  PART_GAP 16 mm: lit part dip 3.44 at col 259 (b27 1.75 at 283, groom 3.51 at 245): the number moved, the reviewer
+  still sees no part. Not reverted (no measure got worse); judged with the crown below.
+- NEW MEASURE cardsil.py <src> <frames> <glb tags> (no render): the cards' alpha samples projected with the game
+  frames + the body = the figure; DEFICIT px (groom figure the cards miss) and EXCESS px by thirds of the figure's
+  height. Calibrated on b28i against its render: top-band deficit g1v0 3245 vs 3136 rendered, g1v2 2822 vs 2658,
+  g1backl 1991 vs 1905. b28i top-band deficit 8058 px (sum of the three 1 m views); excess ~0 (the ribbons right of
+  the tail lie INSIDE the groom's figure: its flyaways; they are a width / opacity fault, not a placement one).
+  Deficit maps (t21b/sil_b28_*.png, blue): a 10-20 px (~10-20 mm) band over the WHOLE crown: the top layer sits at its
+  clump's mean (+ <= 3 mm, HEAD_SN_MAX) under the ENV_PCT 90 cap, the sides already sit on their outer strands
+  (SIDE_OUT_PCT, SIDE_EL 20-40 deg). Lever: the side placement further up (SIDE_EL) / the cap (ENV_PCT).
+  STATE: r21a.sh sweeping c1 SIDE_EL 60-80, c2 85-90, c3 ENV_PCT 97, c4 c2 + SIDE_OUT_MAX 20 mm -> t21b/crown.txt.
+  Target: top-band deficit -40% with excess < 200 px and no crownx far cards. NEXT: the best on a flat render.
+- CROWN sweep (t21b/crown.txt), top-band deficit px g1v0 + g1v2 + g1backl: b28i 8058; c1 SIDE_EL 60-80 6543 (-19%);
+  c2 85-90 6534 (saturates: same as c1); c3 ENV_PCT 97 7943 (-1%: the cap is not what holds the top down); c4 c2 +
+  SIDE_OUT_MAX 20 mm 6456 but a new far card (299, 1.15 cm2 > 8 mm off every strand). c1 costs 0.27 cm2 standing > 3 mm
+  off the envelope over the top (b28i 0). Short of the -40% target: the rest of the band is the groom's translucent frizz
+  halo (fg threshold counts it) that cards are not meant to copy. c1 kept as the base, not yet a default.
+- RIBBONS right of the tail traced (t21b/ribbon_trace.png: b28i flat g1backl, all | layer3 only | layer2 only): NOT fly
+  cards (layer3 draws ~nothing at the cutoff) but top-layer (layer2) TAIL cards arcing out from the tie; card 345 is
+  0.77 cm2 > 8 mm from every strand (crownx far). STATE: r21c.sh on c1: d1 MEDOID_TAIL 0.5, d2 TAIL_END 0.08, d3 both
+  -> t21b/tail.txt (far area per range, low-band deficit must not grow).
+- TAIL sweep (t21b/tail.txt, top.txt; on c1): d1 MEDOID_TAIL 0.5 (all tail layers): layer2 > 8 mm off 0.77 -> 0 but the
+  profile figure deficit +957 px (the tail's kick / wave is the medoid's): rejected. d2 TAIL_END 0.08: far card 345
+  still there (0.90): rejected. NEW knob MEDOID_TAIL_TOP (the top tail layer only): e1 0.5: layer2 > 5 mm 10.96 ->
+  2.30 cm2, > 8 mm 0.77 -> 0, figure deficit +0.7% (profile -49, back +69); e2 0.0: 0.92 cm2 but back +190. Kept e1.
+- DEFAULTS (committed): SIDE_EL (60, 80), MEDOID_TAIL_TOP 0.5. b29 = these.
+  STATE: b29chain.sh (ONE offload hc-b29): export b29, 6 game views gb29, sheet game/gm_g14.png (gSo, gb29, gb28),
+  cardsil rows in game/gm_g14.txt, pairs review/gg14_b29, then review/g14.done (or g14.ERROR). NEXT: blind review.
+- b29 READ (game/gm_g14.png, tiles review/gg14_b29, blind SUBAGENT reviewer, not bin/review: counts are not strictly
+  comparable with b26-b28's): FAIL, 19 MAJORs (b28 25 by bin/review). Rendered figure deficit vs gSo at 1 m (4 views):
+  b28 17458 -> b29 15917 px (-9%); top band 10499 -> 8687 (-17%); profile mid band +338 (tail). LOOK-FIRST (mine, ref |
+  b29 | b28, t21b/ref_b29_b28.png): the back of the crown is a little fuller; the DARK LOCK ARCHING OFF THE RIGHT OF THE
+  TIE IS STILL THERE (the reviewer names it at 1 m and 3 m). So MEDOID_TAIL_TOP fixed what crownx measured (layer-2
+  area off every strand) but not the visible lock: that lock lies NEAR strands (the groom's flyaways there) and is a
+  card too wide / opaque for the 2-3 hairs it stands for. Lesson: the measure must be the visible fault; trace by the
+  frame box (cardsil box=<view>:x0,y0,x1,y1, done for b28i: layer-2 tail cards 345 / 340 / 331 / 326 / 322 dominate the box
+  at 630-685, 455-570 in g1backl, but the box also catches the tail's edge: narrow it to 645-685, 470-545).
+
+## Handover 2026-10-18 (hair-cards agent, round 21b; stopped at the 70-tool-call rule)
+Commits: notes; hair_clumps SIDE_EL (60, 80) + MEDOID_TAIL_TOP 0.5 (new knob, top tail layer only) = b29.
+Scratch: cardsil.py (figure deficit / excess vs the groom without a render, + card trace by frame box), r21a-d.sh,
+b29chain.sh, t21b/ (crown.txt, tail.txt, top.txt, sil_*.png, ribbon_trace.png, ref_b29_b28.png).
+STATE: b29 FAIL, 19 MAJORs (subagent reviewer). Nothing in flight.
+NEXT: (1) the stray dark lock right of the tie: trace it with a NARROW box (cardsil box=g1backl:645,470,685,545 on b29)
+plus a flat only=<that card's tris> render; lever = a tail card's width / alpha follows the strand count still running
+at each station (HW_PER_STRAND exists: check it reaches layer 2's sparse arcing strands), or drop top-layer cards whose
+clump is under N strands. (2) hairline: skin band + pale flat strips above the forehead (HL_ALPHA / HL_LIFT / root fade)
+and NO visible part (3 rounds of PART_GAP moved the number, never the look). (3) crown spikes (top-front, all views).
+(4) tail texture: smeared sheet + swirl, blunt ends; right side volume over the ear in the front view.
+(5) groom shadow: gSo == gS (the opaque switch casts nothing: sub-texel strands); coordinator decides whether the
+source gets a shadow caster.
+
+## hair-cards round 22 (2026-10-18, fresh session; coordinator: groom shadow yes, levers judged by the tile of the fault)
+- (1) THE DARK LOCK off the right of the tie, traced (cardsil box=g1backl:645,470,685,545 on b29 + flat renders per layer,
+  t22_lock_trace.png): NOT one stray card. Layer-0 card 230, layer-1 299 / 300 and layer-2 322 / 331 / 345 are the tail's
+  right-edge clumps; their frame faced "outward" from the tail core, i.e. sideways (+x), so from the back AND the front
+  they were seen EDGE-ON: thin dark arching ribbons where the groom shows a broad rounded bulge (t22_lock_b29.png).
+  NEW knob hair_cards.PCA_FRAME (hanging = tail / face cards): the card's width turns onto its clump's cross-section major
+  axis where the section is flat (anisotropy ramp 0.3-0.7, smoothed as a doubled angle; then the TWIST_HANG limiter).
+  Tile (t22/lock_flat_b29_p1.png, flat g1backl, b29 | PCA_FRAME 1): the arching ribbons are GONE and the right bulge is a
+  filled mass like the groom's. Figure deficit vs gSo (geofig, 1 m views): b29 13191 -> p1 11826 px (-10%; profile mid
+  1453 -> 667), excess <= 34 px a view; 0.5 worse on the back (2078 vs 1623). KEPT: PCA_FRAME 1.0 default.
+- GROOM SHADOW (coordinator: yes): gproxy.py builds the groom's caster with the cards' own recipe (hair_cards.shadow_proxy)
+  from its head + tail strands (10.6k tris, voxel 4 mm, inset 4 mm); shots.py gproxy=<obj> -> blender_scene imports it
+  shadow-only (blender_cards.shadow_proxy). Lever proof (local 540 px, gS vs gSc, t22/gproxy_zoom.png): the neck under the
+  tail takes the shadow (crop mean 146 -> 141 /255) and the tail's inner strands self-shadow. The new reference is "gSc".
+  STATE: committed with PCA_FRAME; NEXT: hairline, part, then one batch b30 (+ gSc 6 views) on NICO-TOP.
+- FRONT TOP sweep (r22c.sh, on PCA_FRAME 1 = p1; geofig vs gSo, 1 m, t22/geofig_q.txt; flat tile t22/front_q.png p1 | q1 | q2 | q3):
+  q1 PART_GAP 6 mm (16 in b28 / b29): top-band deficit g1v0 2650 -> 1960 (-26%), g1v1 2322 -> 1695 (-27%), g1v2 2411 ->
+  1656 (-31%), back 1261 -> 1153; back low band +266 px (watch). Tile: the front top is fuller and rounder, the right spike
+  smaller. The 16 mm gap left a bare band ALONG THE PART, which over the top of the head IS the silhouette: the crown
+  deficit was mostly the part gap, not the envelope caps (21b's SIDE_EL / ENV_PCT chased the rest). KEPT (default 6 mm).
+  q2 HL_LIFT 0.15: no change in the flat tile at 540 px (tone only, geometry identical): lever not proven, NOT shipped.
+  q3 HEAD_SN_MAX 8 mm: top band +6% worse: rejected.
+  STATE: b30chain.sh (ONE offload hc-b30): b30 = PCA_FRAME 1 + PART_GAP 6 mm, gSc (groom + gproxy caster) 6 views,
+  neck / part t22/neck.txt (gSo, gSc, gb29, gb30), sheet game/gm_g15.png (gSc | gb30 | gb29), pairs review/gg15_b30.
+- b30 launched 11:2x (hc-b30 queued on NICO-TOP behind rs_r9 / x62 / dgrr: the chain runs on by itself and writes
+  review/g15.done; then a blind subagent review of review/gg15_b30 tiles 0-5 (gSc = the reference) is still owed).
+  NOT tried this round (budget): (3) the part as a SCALP TINT (a dark line painted on the head under the part, and under
+  the hairline: the cards' skin gap) instead of more card geometry; (5) tail texture (smear / blunt ends); hairline pale
+  strips (HL_LIFT is tone only: prove it on a LIT local 540 px frame, not the flat one, before shipping).
+- b30 READ (game/gm_g15.png; tiles review/gg15_b30 vs gSc; blind SUBAGENT reviewer, images only, gates brief): FAIL,
+  13 MAJORs (b29 19, same kind of reviewer): front 1 m 3, 3/4 1 m 3, profile 1 m 2, back 3/4 1 m 3, front 3 m 1, back
+  3/4 3 m 1. LOOK-FIRST (mine, before the review; t22/look_b30.png = gSc | b30 | b29, back and front top): the dark lock
+  arching off the tie is GONE and the bulge right of the tie is a filled rounded mass like the groom's; the reviewer no
+  longer names it. NEW in its place: dark leaf-shaped shards / gaps between broad tail cards near the tie ("torn leaf
+  cards", 3 m): PCA_FRAME turns cards to face the camera broadly, so their own picture gaps and shapes show. Front top:
+  a little fuller, still ragged / spiky and lower than the groom; part still not seen; hairline skin gaps + flecks remain.
+  Numbers vs gSc (img rows, rendered): figure deficit 1 m b29 -> b30: front 3702 -> 2676, 3/4 3402 -> 2485, profile 5761
+  -> 3985, back 3120 -> 2396 (-26..-31%); excess 113-327 px (mid band). Part dip (streak.py): gSo 3.51, gSc 3.29, b29
+  2.85, b30 2.02 (weaker, as expected from the 6 mm gap; the reviewer saw no part in either).
+- GROOM SHADOW measured (t22/neck.txt, g1backl neck common px): gSo L* 66.2 / p10 56.8 -> gSc 62.6 / p10 49.4 (the
+  groom now casts); cards b29 64.7 / 56.3, b30 64.6 / 56.1: the cards' neck is now LIGHTER than the source (p10 +6.7).
+  Speckle unchanged (0.31 -> 0.34). gSc is the reference from now on (its frames in out/, s_hc_s2_gSc_*).
+
+## Handover 2026-10-18 (hair-cards agent, round 22; stopped at the 70-tool-call rule)
+Commits: PCA_FRAME 1.0 (hair_cards: hanging cards' width on the clump's flat section) + groom shadow caster (shots.py
+gproxy=, blender_scene groom_proxy; scratch gproxy.py builds exp/gshadow/groom_shadow.obj); PART_GAP 6 mm; notes.
+Scratch: r22a-c.sh, b30chain.sh + b30_renders.json (the gSc reference render job), t22/ (geofig_p / geofig_q, neck.txt,
+lock / front / look tiles), t22_lock_b29.png, t22_lock_trace.png.
+STATE: b30 FAIL, 13 MAJORs (b29 19): the first drop after three flat rounds. Nothing in flight.
+VERDICT (look-first): converging where a lever fixed a CAUSE seen in a tile (edge-on frames, the bare part band), not by
+counted measures. Cards are not hopeless, but the tail's surface (smear, leaf shards, blunt ends, short at the back) and
+the front hairline are now the bulk, and both are PICTURE / ALPHA faults, not placement.
+NEXT, in order: (1) tail: the leaf shards near the tie (trace them in g1backl with cardsil box= as in r22; likely layer-1/2
+cards whose picture gaps now face the camera: denser tile / KID_COVER for tail, or the TWIST limiter after PCA), tail
+length at the back (-30 px: TAIL_END / TAIL_END_JIT), blunt ends. (2) hairline skin gaps + flecks and the part: a scalp
+tint (dark under the part line and the hairline band on the head's texture) is the untried lever; HL_LIFT must be proven
+on a LIT local frame. (3) crown flaps at the top front (trace the standing cards with crownx.py). (4) face wisps short /
+pale strips (FACE_END, WISP_LIFT). (5) cards' neck now lighter than the shadowed groom (proxy inset / SHADOW_LEAK).
+
+## hair-cards round 23 (2026-10-18, fresh session; order: tail surface, hairline / part, crown flaps, face wisps)
+- (1) TAIL LEAF SHARDS traced (t23/bk_flat_lit_b30.png: b30 g1backl flat albedo | lit): the dark leaf-shaped shards between
+  the tail cards near the tie are LIT ONLY (the flat albedo has none). Not the cards' cast shadow either
+  (t23/bk_shadow_AB.png: gSc | b30 lit | b30 shadow=0: same shards). Winding agrees with the vertex normals (t23/wind.py:
+  1.2% opposed in b29 and b30 alike). Cause (inferred): PCA_FRAME turns a card's plane up to 90 deg off the outward frame,
+  so from outside the tail the camera sees its BACK, and a double-sided card's back is shaded with the flipped normal
+  (inward: dark). NEW knob hair_cards.PCA_MAX (deg, 90 = round 22's unlimited turn).
+  STATE: r23c.sh: u1 PCA_MAX 45, u2 60, u3 FREE_END 0.03 (tail ~30 px short at the back) -> lit g1backl / g1v1 local
+  1080 + t23/geofig_u.txt. NEXT: tile ref | b30 | u1 | u2 of the tie.
+- TAIL sweep READ (t23/tie_u.png, t23/back_u_s.png: gSc | b30 | u1 PCA_MAX 45 | u2 60 | u3 FREE_END 0.03, lit g1backl 1080
+  local; t23/geofig_u.txt): u2: the big dark leaf shards near the tie are gone (a few small flecks left), the tail reads as
+  one surface; the right bulge stays a mass. u1: shards gone too but a NEW dark edge-on wedge at the tail's bottom left.
+  Back figure deficit b30 1805 -> u2 1957 px (mid band 348 -> 498: the bulge a little narrower), 3/4 front 2051 -> 2033.
+  u3 FREE_END: geometry IDENTICAL to b30 (dead lever for this tail: the hanging cards' end is set elsewhere). KEPT
+  PCA_MAX 60 default (the fault seen in the tile is gone; the +150 px is the cost, watched).
+- TAIL TONE (t23/lstat.py, L* in a tail box g1backl 570,440,690,620 incl. some background): gSc mean 36.1 / p10 15.2,
+  b30 45.0 / 27.7, u2 46.6 / 28.7; crown box: gSc 52.3, b30 59.2. The cards are ~7-10 L* lighter and lack the dark depths
+  now that the groom casts (gSc). Candidate: the cards' SHADOW_LEAK (0.45, tuned against the unshadowed groom).
+  STATE: r23e.sh renders u2 at shadow_leak 0.3 / 0.1 (g1backl, g1v0). r23d.sh: hairline h1 CAP_BASE_IN 0, h2 CAP_PART_CUT
+  0.3, h3 HL_LIFT 0.1 (lit g1v0).
+- HAIRLINE levers DEAD at 1 m front (lit g1v0 local 1080, t23/hl_h2.png gSc | b30 | h1 | h2 | h3): h1 CAP_BASE_IN 0, h2
+  CAP_PART_CUT 0.3, h3 HL_LIFT 0.1 each differ from b30 only by the local-vs-offload noise (~800 px > 12 levels, the
+  same box for all three), and h1 vs h3 by 62 px. So the pale strips / skin gaps at the hairline are neither the cap's
+  base nor the hairline cards' tone. A box trace (cardsil box=g1v0:450,380,495,460) is useless there: it counts every card
+  the box's rays cross at all depths (the cap 28.6k samples, layer 0 12k, 1 8k, 2 5.9k). NEXT: trace by a flat ID render
+  per layer (flatr.sh ranges: cap = tris 0-3219, layer 0 from 3220 ...) and look at which layer is the pale strip.
+  The knobs stay at their old defaults (CAP_BASE_IN 0.25, CAP_PART_CUT 0.8).
+- TONE lever DEAD: shadow_leak 0.45 -> 0.3 / 0.1 on u2 moves the tail box < 1 L* (46.6 -> 46.3 / 45.8), crown 0.1 L*. The
+  cards' ~7-10 L* surplus over gSc is ALBEDO (the lit hair is not in the map's shadow), i.e. card_gain (hair.match_cards
+  measured it against the UNSHADOWED groom look; gSc's strands self-shadow). NEXT: re-measure card_gain against gSc.
+  STATE: b31chain.sh launched 11:43 (ONE offload hc-b31: b31 = PCA_MAX 60, all else b30; sheet game/gm_g16.png gSc | gb31
+  | gb30, pairs review/gg16_b31, review/g16.done).
+- HAIRLINE PALE STRIPS traced (flat g1v0, u2: t23/hl_flat3.png all | cap only | no cap): the cap alone has a clean dark
+  hairline and NO pale strips; the pale beige strips over the temples / forehead sides are CARDS (non-cap). Without the
+  cap the mid-front shows bare skin under the part: the cap is what covers it. w1 WISP_LIFT 0.15 (0.5): flat front
+  795 px moved, the strips a little less pale but still broad beige bands (t23/wisp_flat3.png u2 | w1): not a visible
+  fix, NOT kept. So they are broad, opaque face / hairline cards lying flat on the forehead (shape, not tone).
+
+## Handover 2026-10-18 (hair-cards agent, round 23; stopped at the 70-tool-call rule)
+Commits: hair_cards.PCA_MAX 60 (new knob, the PCA turn held off the outward frame); hair_strands CAP_BASE_IN / CAP_PART_CUT
+(knobs, old defaults, proved dead at 1 m); notes. Scratch: r23a-e.sh, b31chain.sh + b31_renders.json, hx.py (hs.<CONST>),
+t23/ (tile.py <out> <view> <box> <tags>: native crops side by side; lstat.py: L* in a box; wind.py: winding vs normals;
+tie_u / back_u_s / leak / hl_h2 / hl_flat3 / wisp_flat3 tiles; geofig_u.txt).
+STATE: b31 (PCA_MAX 60, all else b30) QUEUED on NICO-TOP as hc-b31 (11:5x); the chain writes game/gm_g16.png, pairs
+review/gg16_b31 (0-5) and review/g16.done by itself. The blind review of b31 is OWED (bin/review from 2026-10-19 13:00 MT,
+else a fresh subagent: images only, gates brief, gSc = the reference).
+VERDICT (look-first, local tiles only): the tail's dark leaf shards near the tie are fixed in the tile (they were the BACKS
+of PCA-turned cards, shaded with the flipped normal). Still wrong, by size: the cards are ~7-10 L* lighter than gSc with
+no dark depths (albedo / card_gain, not shadow), broad pale face / hairline cards at the temples, the ragged spiky crown
+top, no part, tail short / blunt (FREE_END is a dead lever here).
+NEXT, in order: (1) read b31 (review). (2) card_gain re-measured against gSc (hair.match_cards on the shadowed groom): the
+biggest visible difference left at 1 m and 3 m. (3) the temple pale strips: trace which cards (flat ID render per card
+range, cardsil only counts all depths) and narrow / thin them (FACE_PER, FACE_ALPHA, WISP_KIDS_FACE). (4) tail length:
+find what ends hanging cards (hair_clumps end_share for tails, not hair_cards.FREE_END). (5) crown flaps, part.
+
+## hair-cards round 24 (2026-10-18, fresh session; Joe: only what's left to get Tess game-ready; the assembly agent takes the best build)
+BEST CARDS FOR EXPORT: b32 = code at 4352c62a + hc_s2's spec (/mnt/data/hifipushie/haircards/exp/b32/hc_s2_hair_hero.glb, hero 23.8k
+  tris). Through export_asset: set hc_s2 hair.export.tier "hero" first (EXPORT_CARDS default cuts 12000 tris, see (6); untested).
+- (1) b31 (hc-b31, PCA_MAX 60) still in the offload queue at 11:57 (chain b31chain.sh alive; review/g16.done not yet).
+  (2) card_gain: r24a.sh k1 gain 1.5 / k2 gain 1.25 (default 2.10 on hc_s2) -> lit g1backl / g1v0 / g1v1 local 1080; target
+  gSc tail box (g1backl 570,440,690,620) L* 36.1 / crown 52.3 (u2 46.6 / 59.2-ish). (3) temples: flatr.sh u2 g1v0 per layer
+  (L0-L3 ranges from the b31 report) to see which layer the pale strips are. (4) tail end: r24b.sh t1 = hair_clumps TAIL_END 0
+  + TAIL_END_JIT 0.05 (FREE_END was dead: the tail cards end at hair_clumps.TAIL_END 0.03 + up to 0.15 jitter).
+  STATE: r24a, flatr, r24b queued on the local heavy slot. NEXT: read k1 / k2 L* + tiles.
+- (2) GAIN READ (t24/gain_back.png, t24/gain_front.png: gSc | u2 (gain 2.10) | k1 1.5 | k2 1.25, lit local 1080; t23/lstat2.py =
+  L* over hair pixels only, L* < 78): tail back g1backl 570,440,690,620: gSc 28.1 | u2 37.0 | k1 29.3 | k2 25.5; head back
+  450,300,700,430: 34.1 | 36.4 | 29.1 | 25.4; 3/4 tail g1v1 634,486,718,606: 35.3 | 38.3 | 30.3 | 26.3; 3/4 crown 470,375,610,440:
+  33.9 | 33.6 | 28.4 | 25.9. So the surplus is the TAIL's (+9 back, +3 3/4), the head cards are within ~2 L*: a global gain
+  overshoots the head by 5. NOT kept. New knob hair_clumps.TAIL_TONE (tail cards' tone x, default 1.0): r24c tt1 0.75.
+- (3) TEMPLE STRIPS traced (t24/temple_layers.png, flat g1v0 per layer of u2): the pale bands at both temples are all in
+  LAYER 0 and are the face-framing cards (face/L0: 60 cards; WISP_LIFT x1.5 tone, no depth shade, half width 6 mm); layers
+  1-3 have none. r24d f1 = FACE_PER 3 (narrower clumps) + WISP_LIFT 0.15.
+  STATE: r24b (t1 tail end), r24c (tt1 tail tone), r24d (f1 face cards) chained on the local heavy slot; b31 still queued.
+- (4) TAIL END: t1 (TAIL_END 0 + TAIL_END_JIT 0.05) NOT kept: at g1backl the tail is no longer than u2's (gSc's ends at the
+  same height: length was not the fault, the ends' look is), +1.7 L*, broader flat bottom (t24/tail_t1_tt1.png).
+- (2b) TAIL_TONE 0.75 KEPT (t24/tail_t1_tt1.png gSc | u2 | t1 | tt1): tail back 37.0 -> 30.5 (gSc 28.1), 3/4 38.3 -> 31.4
+  (gSc 35.3), head box unchanged 36.4 (gSc 34.1). The pale tail panels are gone in the tile.
+- (3b) TEMPLES: f1 FACE_PER 3 + WISP_LIFT 0.15: 119 face cards (+870 tris), left band still broad: NOT kept. f2 WISP_KIDS_FACE 4
+  + WISP_ALPHA 0.7 (same tris): left temple sheet see-through strands, right strip thinner (t24/temple_f2_zoom.png gSc | gb30
+  | f1 | f2): KEPT (WISP_ALPHA also applies to fly cards; test_face_wisp updated).
+- (5) crown flaps / part: no change this round (crownx on tt1: no top card > 8 mm off; the spiky top is card ends in the
+  outline, layers 1-2, t24/temple_layers.png).
+- b32 (defaults at 4352c62a), all 6 game views LOCAL 1080 (offload b31 was still queued after 1 h: killed, b31 = u2 locally).
+  Before / after tiles t24/ba_<view>.png (gSc | gb30 | b32). Blind subagent review (images only, review/r24_b32/<view>.png
+  ref | result): FAIL, 22 MAJORs over 6 regions (g1v0 5, g1v1 3, g1v2 3, g1backl 3, g3v0 3, g3backl 2; b30 baseline under
+  bin/review was ~20). Biggest by size: (a) tone flat, no blonde highlight streaks / clump contrast (every view; the
+  reviewer calls it "too dark": the MEAN matches gSc, p90 is 7-10 L* short: the fault is missing highlights, not level);
+  (b) torn / spiky crown silhouette + no centre part (front, 3/4, side, still at 3 m); (c) dark shards under the tie and a
+  blunt shredded tail bottom; plus the upper-left forehead pale sheet (still MAJOR at 1 and 3 m) and face wisps now thin
+  / grey (f2 made them fainter at 3/4: the reviewer wants thicker, warmer wisps to the jaw).
+- (6) EXPORTABILITY (exa.py hc_s2 exp/asset_b32, export_asset role hero, lods, no preview; 721 s; out/exa_b32.log): runs
+  end to end, GLB + LOD1-3 written, hair_cards budget 11996 of 25000, alpha cutoff 0.33 from EXPORT_CARDS. BUT export_asset
+  cuts the hair at hair.EXPORT_CARDS triangles 12000 (tier None): 574 cards, 826 dropped, card_width 43 mm, NOT the judged
+  23.8k hero build. Set spec hair.export.tier = "hero" (hair.py: budget = ex["tier"] or triangles) before the RC export
+  (untested). LODs: hair 11996 -> 5324 at LOD1 and stays 5324 at LOD2 / LOD3 (whole layers dropped once, then nothing).
+
+## Handover 2026-10-18 (hair-cards agent, round 24; stopped at the 70-tool-call rule)
+Commits: hair_clumps.TAIL_TONE (0.75), WISP_KIDS_FACE 4, WISP_ALPHA 0.7 (4352c62a), test updated, notes. Scratch: r24a-g.sh,
+exa.py (export_asset check), t23/lstat2.py (L* over hair pixels), t24/ (gain / tail / temple / ba_ tiles, ba/ crops),
+review/r24_b32 (blind pairs). Nothing in flight (b31 offload chain killed: superseded).
+VERDICT (look-first, t24/ba_*.png): b32 is better than b30 on the tail (tone near gSc, no pale panels or leaf shards in the
+lit tail) and the left temple (see-through instead of an opaque sheet). It still reads as cards at 1 m and 3 m: flat tone
+with no highlight streaks, spiky crown outline, no part, blunt tail bottom, shards under the tie. Blind review FAIL (22 MAJOR).
+NEXT, in order: (1) highlights / clump contrast: gSc's p90 is 45-49 vs ours 37-38 in every hair box: the atlas's per-card
+light streaks (look highlights / variation, TINT_TOP), measured as p90 and p10 per box, not the mean. (2) export: set hc_s2
+hair.export.tier "hero" and re-run exa.py (confirm 23.8k hair, LOD steps). (3) crown outline + part (layers 1-2 card ends
+in the top silhouette; the cap has a clean outline). (4) the face wisps: warmer / thicker at 3/4 (WISP_LIFT, FACE_END) without
+the temple sheet coming back. (5) tie shards.
+
+## hair-cards round 25 (2026-10-18, fresh session; Joe: only what's left for Tess / Garrett game-ready; b32 -> Tess's RC)
+BEST CARDS FOR EXPORT: b33 = hair_clumps defaults at this round's last commit (= b33c: TONE_CONTRAST 2.2, _DARK 1.3, _TAIL 3.5,
+  TAIL_ROOT_LIFT 0.6, TIP_FADE_TAIL 0.3) + hc_s2's spec (/mnt/data/hifipushie/haircards/exp/b33c/hc_s2_hair_hero.glb, hero 23.8k).
+  EXPORT SETTINGS: spec hair.export = {"tier": "hero"} (else EXPORT_CARDS cuts 12000 tris), export_asset(role="hero", lods=True);
+  alpha_cutoff 0.33, shadow_proxy on. LODs now come from the card TIERS rigged or not (asset.py, this round): hair 23844 /
+  12496 / 8246 / 2498 tris at LOD0..3 (t25/tiers.py; budgets hero hair_cards 25000 / 12500 / 8250 / 2500). Not yet run
+  through a full export_asset with the tier set (exa.py with tier hero: ~12 min heavy).
+- (1) HIGHLIGHTS MEASURED (t25/hl.py: Lab over hair pixels L* < 78 per box, local 1080 game renders): the deficit is CONTRAST,
+  not level or hue. gSc | b32: back tail p10 14.7 | 21.9, p90 45.1 | 37.6; back head p10 20.5 | 25.4, p90 48.1 | 44.3; 3/4 tail
+  p10 21.9 | 24.0, p90 49.1 | 38.2 (L* > 50: 9.0% | 0.3%); front crown p90 60.2 | 43.6. Top-10% pixels' hue 65-66 deg both,
+  chroma 12-14 both: the streaks are lighter strands of the same hue. Streaks (runs over the box's p75) 2 px wide every 4 px
+  in gSc, ours 1 px every 12-33 px. So ours has half the p10..p90 spread (~15 vs ~30 L*) at the same mean.
+  NEW knob hair_clumps.TONE_CONTRAST (default 1.0): head / tail card pictures' hair tones x k about each island's median
+  (both ends move, the mean stays). r25a: c16 = 1.6, c22 = 2.2, c16r = 1.6 + RIBBON_SHARE 0.3 (views g1backl, g1v1, g1v0).
+- (2) CROWN traced: cardsil.py gSc lb32 b32: no card stands OUTSIDE the groom's figure at the top (excess 0 / 76 px top
+  band), the top band is DEFICIT (1878 / 1585 px at g1v0 / g1v1): the torn outline is the dark slab card tops left
+  between gaps, not cards sticking out (t25/crown_front.png). r25b: flat per-layer g1v0 (cap / L0 / L1 / L2) to see whose.
+- (5) LODs: export_asset used the groom's card TIERS (main / npc / far = budgets hero hair_cards 12500 / 8250 / 2500) only
+  when RIGGED; unrigged it fell back to dropping whole layers once (11996 -> 5324 flat). asset.py: tiers unrigged too.
+  r25c (t25/tiers.py): hair.export_cards per tier, triangles per tier (the cap alone is 3220: far 2500 may not fit).
+  STATE: r25a / r25b / r25c chained on the local heavy slot. NEXT: read c16 / c22 tiles + hl.py.
+- (1b) CONTRAST READ (t25/c_back.png, t25/c_v1.png: gSc | b32 | c22 | c16r; hl.py): c16 head back spread p10..p90 18.9 ->
+  24.8 (gSc 27.6), streak gap 12 -> 5 px (gSc 7); c22: head back p10 21.1 p90 50.4 (gSc 20.5 / 48.1), L*>50 10.9% (gSc 7.4,
+  b32 1.9): the back of the head now shows light / dark strands in the tile (VISIBLE, kept as the base). The TAIL barely
+  moves (back tail p90 37.6 -> 41.3 at 2.2, gSc 45.1; 3/4 tail 38.2 -> 41.4, gSc 49.1); c16r (+ RIBBON_SHARE 0.3) no better
+  than c22 at the tail. Front crown p10 dropped (12.3 -> 7.1: darker, gSc 19.9): watch the front.
+  NEW knobs: TONE_CONTRAST_TAIL (r25d c22t: tail 3.5), TAIL_ROOT_LIFT / TAIL_ROOT_LEN (tail roots under the tie lit, depth
+  shade off: r25e e1 0.6), e2 = TIP_FADE_TAIL 0.3 (0.12: the blunt shredded tail bottom).
+- (2b) CROWN per layer (t25/crown_layers.png, flat g1v0 L0 | L1 | L2; NB these frames may be round 24's u2, flatr re-runs
+  them for b32): L0 covers the sides only (scalp bare over the top, the cap carries it) + the pale left-forehead sheet
+  (face/L0); L1 = hairline cards with dashes over the forehead top; L2 = two hooked flaps up at the top left / right =
+  the spikes in the outline. Not changed this round (crownx: no top card > 8 mm off the strands; the hooks lie in the
+  groom's frizz band).
+  STATE: r25b (flat), r25c (tiers), r25d (c22t), r25e (e1, e2) chained locally. NEXT: read, pick b33, review side by side.
+- (1c) c22t (TONE_CONTRAST_TAIL 3.5): tail p90 back 44.8 (gSc 45.1), 3/4 44.9 (49.1), streak gap 20 -> 7 px (gSc 4): KEPT.
+  e1 TAIL_ROOT_LIFT 0.6: the under-tie shards barely lighter (t25/e_zoom.png): marginal, kept in b33 only because b33c had it.
+  e2 TIP_FADE_TAIL 0.3: finer, wispier tail ends: KEPT. TONE_CONTRAST_DARK 1.3: c22's front darks came back up (front crown
+  p10 7.1 -> 12.1; gSc 19.9). b33c (all of these; hl.py): head back p10 / p50 / p90 24.4 / 41.0 / 50.5 (gSc 20.5 / 33.0 /
+  48.1), tail back 24.5 / 36.3 / 46.0 (gSc 14.7 / 25.8 / 45.1): highlights now there, but the MEAN is +8-10 L* light (the
+  darks are short now, not the lights). Front crown unchanged (12 / 23 / 43 vs 20 / 32 / 60: the front is dark L1/L2 cards).
+- SIDE-BY-SIDE BLIND REVIEW (one fresh subagent, review/r25_sbs/<view>.png = ref | X | Y, order shuffled, key.txt): b33c
+  closer in 6 regions (3/4 tone + tail; back tone, under the tie, ear wisps; side tone), b32 closer in 1 (back: tail length /
+  taper), same in 12. Remaining in both: jagged notched crown, no centre part, front too dark / no blonde streaks over the
+  top, face wisps short / grey, ponytail ends blunt (not wavy), dark comb marks behind the ear (nape), holes in the tail.
+  Tiles: t25/b33_front.png, b33_v1.png, b33_back.png, b33_side.png (gSc | b32 | b33c).
+
+## Handover 2026-10-18 (hair-cards agent, round 25; stopped at the 70-tool-call rule)
+Commits: TONE_CONTRAST (+ _DARK, _TAIL), TAIL_ROOT_LIFT / LEN, TIP_FADE_TAIL 0.3 as defaults (= b33); hair tier LODs unrigged
+(asset.py). Scratch t25/ (hl.py highlight stats, pair.py tiles, tiers.py, tiles), r25a-g.sh, review/r25_sbs. Nothing in flight.
+VERDICT (look-first): b33 is better than b32 at the back and 3/4 (light / dark strands through the head and tail, finer tail
+ends); the front is unchanged and still the weakest view (dark, jagged crown, no part). Still reads as cards at 1 m.
+NEXT, in order: (1) the tone MEAN: b33 is +8-10 L* light at the back (darks short): lower the tail / head base a little
+(TAIL_TONE 0.75 -> ~0.65, or TONE_CONTRAST_DARK 1.3 -> 1.8 at the back only) measured by hl.py p10 / p50. (2) the front top:
+L1 / L2 cards there are dark (front crown p50 23 vs 32) and hook up at the outline (t25/crown_layers.png): lift the front-top
+cards' tone (like HL_LIFT) and pull the two L2 hooks under the envelope; the part needs the cards' roots turned away from the
+line. (3) full export_asset with hair.export.tier "hero" (exa.py) to confirm LOD0..3 = 23.8k / 12.5k / 8.2k / 2.5k, check each
+LOD at its game distance. (4) the nape comb marks behind the ear, holes in the tail. Test update: tests/test_* for the new
+knobs not added (defaults only).
+

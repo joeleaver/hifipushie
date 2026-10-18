@@ -4,6 +4,9 @@ shading notes in nodes (shading.py "hair_cards"), so judging a card export judge
     albedo = basecolor.rgb * COLOR_0.rgb * (1 - 0.35 aux.r) * lerp(0.65, 1, aux.b) * (1 + 0.12 (2 aux.g - 1))
     coverage = basecolor.a > cutoff (dithered: TAA / alpha-to-coverage resolve it), two-sided, one normal
     specular: tinted, half strength (a card is many round hairs, not a mirror), roughness 0.5
+    diffuse: wrapped  max(0, (N.L + w) / (1 + w)), w = 0.45 (the notes'): Principled gives max(0, N.L) with the
+             shadow map; the rest of the wrap, wrap - max(0, N.L), is added per sun as emission (albedo x sun
+             irradiance / pi x lift), unshadowed (light through hair). Suns are read before every frame (set_wrap_lights).
 
 `game_material` is shared by blender_scene.hair_glb_look ("game" alpha) and can serve blender_game."""
 import bpy
@@ -36,7 +39,8 @@ def _mul_rgb(nt, a, b):
 def game_material(name, base_img, aux_img=None, color_attr=None, cutoff=0.33, params=None):
     """A hair-card material from the notes' formula. params: {"specular": level, "roughness", "sheen": [r, g, b]
     linear (the specular tint), "backscatter": 0..1 (a warm translucent term weighted to thin hair, aux.b high),
-    "back_tint": [r, g, b]}."""
+    "back_tint": [r, g, b], "wrap": w (default 0.45, the notes'; 0 = plain Lambert), "shadow_leak": share of the sun's
+    diffuse that ignores the shadow map (default SHADOW_LEAK, the notes' 0.45)}."""
     p = params or {}
     mat = bpy.data.materials.new(name)
     mat.use_nodes = True
@@ -67,7 +71,12 @@ def game_material(name, base_img, aux_img=None, color_attr=None, cutoff=0.33, pa
             nt.links.new(g, cg.inputs[k])
         albedo = _mul_rgb(nt, albedo, cg.outputs["Color"])
         shade_b = sep.outputs["Blue"]
-    nt.links.new(albedo, pb.inputs["Base Color"])
+    leak = float(p.get("shadow_leak", SHADOW_LEAK)) if float(p.get("wrap", WRAP)) > 0 and not p.get("flat") else 0.0
+    # (the notes' "keep ~0.55 of the shadow map": sun diffuse = (1 - leak) x shadowed Lambert + leak x unshadowed, i.e.
+    # Lambert x (leak + (1 - leak) x shadow). Nodes can't read one sun's shadow term, so Principled's diffuse is scaled
+    # by 1 - leak and the leak is added unshadowed in the wrap's emission. Preview limit: the world's ambient diffuse
+    # is scaled by 1 - leak too; an engine applies the leak to the sun's shadow term only.)
+    nt.links.new(albedo if leak <= 0 else _mul_rgb(nt, albedo, _rgb(nt, [1.0 - leak] * 3)), pb.inputs["Base Color"])
     pb.inputs["Roughness"].default_value = float(p.get("roughness", 0.5))
     pb.inputs["Specular IOR Level"].default_value = float(p.get("specular", 0.25))
     if p.get("sheen"):
@@ -87,7 +96,61 @@ def game_material(name, base_img, aux_img=None, color_attr=None, cutoff=0.33, pa
         nt.links.new(surf, mix.inputs[1])
         nt.links.new(tr.outputs["BSDF"], mix.inputs[2])
         surf = mix.outputs["Shader"]
+    wrap = float(p.get("wrap", WRAP))
+    if wrap > 0 and not p.get("flat"):  # the notes' wrapped diffuse: the part of the wrap past Lambert, per sun
+        geo = nt.nodes.new("ShaderNodeNewGeometry")
+        lift = None
+        for i in range(MAX_SUNS):
+            dn = nt.nodes.new("ShaderNodeCombineXYZ")
+            dn.name = f"hp_wrap_dir{i}"
+            cn = nt.nodes.new("ShaderNodeRGB")
+            cn.name = f"hp_wrap_col{i}"
+            cn.outputs[0].default_value = (0.0, 0.0, 0.0, 1.0)
+            dot = nt.nodes.new("ShaderNodeVectorMath")
+            dot.operation = "DOT_PRODUCT"
+            nt.links.new(geo.outputs["Normal"], dot.inputs[0])
+            nt.links.new(dn.outputs["Vector"], dot.inputs[1])
+            d = dot.outputs["Value"]
+            wv = _math(nt, "MAXIMUM", _math(nt, "MULTIPLY_ADD", d, 1.0 / (1.0 + wrap), wrap / (1.0 + wrap)), 0.0)
+            lv = _math(nt, "SUBTRACT", wv, _math(nt, "MAXIMUM", d, 0.0) if leak <= 0 else
+                       _math(nt, "MULTIPLY", _math(nt, "MAXIMUM", d, 0.0), 1.0 - leak))
+            term = _mul_rgb(nt, cn.outputs[0], _gray(nt, lv))
+            if lift is None:
+                lift = term
+            else:
+                ad = nt.nodes.new("ShaderNodeMix")
+                ad.data_type, ad.blend_type = "RGBA", "ADD"
+                ad.inputs["Factor"].default_value = 1.0
+                nt.links.new(lift, ad.inputs["A"])
+                nt.links.new(term, ad.inputs["B"])
+                lift = ad.outputs["Result"]
+        em = nt.nodes.new("ShaderNodeEmission")
+        nt.links.new(_mul_rgb(nt, albedo, lift), em.inputs["Color"])
+        add = nt.nodes.new("ShaderNodeAddShader")
+        nt.links.new(surf, add.inputs[0])
+        nt.links.new(em.outputs["Emission"], add.inputs[1])
+        surf = add.outputs["Shader"]
+        mat["hp_wrap"] = wrap
+    if p.get("flat"):  # a flat pass: the albedo unlit, same coverage (is a dark patch the picture or the light?)
+        em = nt.nodes.new("ShaderNodeEmission")
+        nt.links.new(albedo, em.inputs["Color"])
+        surf = em.outputs["Emission"]
     cut = _math(nt, "GREATER_THAN", bc.outputs["Alpha"], float(cutoff))
+    mip = int(p.get("shadow_mip", SHADOW_MIP))
+    if mip > 1 and base_img is not None and not p.get("flat"):  # the shadow reads a coarse mip of the cut's coverage
+        sh = nt.nodes.new("ShaderNodeTexImage")
+        sh.image = _shadow_alpha(base_img, float(cutoff), mip)
+        sh.image.colorspace_settings.name = "Non-Color"
+        sh.interpolation = "Linear"
+        lp = nt.nodes.new("ShaderNodeLightPath")
+        mixf = nt.nodes.new("ShaderNodeMix")
+        mixf.data_type = "FLOAT"
+        nt.links.new(lp.outputs["Is Shadow Ray"], mixf.inputs["Factor"])
+        nt.links.new(cut, mixf.inputs["A"])
+        nt.links.new(sh.outputs["Color"], mixf.inputs["B"])
+        cut = mixf.outputs["Result"]
+        if hasattr(mat, "use_transparent_shadow"):
+            mat.use_transparent_shadow = True
     tp = nt.nodes.new("ShaderNodeBsdfTransparent")
     mx = nt.nodes.new("ShaderNodeMixShader")
     nt.links.new(cut, mx.inputs[0])
@@ -98,6 +161,96 @@ def game_material(name, base_img, aux_img=None, color_attr=None, cutoff=0.33, pa
     if hasattr(mat, "surface_render_method"):
         mat.surface_render_method = "DITHERED"
     return mat
+
+
+WRAP = 0.45     # shading.py hair_cards "diffuse: wrapped"
+SHADOW_MIP = 16  # the cards' shadow reads their cut coverage (alpha > cutoff) box-averaged over this many texels (a
+# coarse mip, ~mip 4): engines don't cast hair-card shadows from the full-res alpha (shadow maps sample a coarser mip or a
+# dedicated shadow alpha), so a card shadow is soft, not grain. Full res (1) drew the neck speckle (b25: skin grain 0.42 vs
+# the groom's 0.31, L* 61 vs 66). 1 = the cut alpha (before round 18).
+_SHADOW_ALPHA = {}
+
+
+def _shadow_alpha(img, cutoff: float, f: int):
+    """A float image 1/f the size of `img`: the share of each f x f block whose alpha passes `cutoff` (the shadow's
+    coverage, read with linear filtering)."""
+    import numpy as np
+    key = (img.name, round(cutoff, 4), f)
+    if key in _SHADOW_ALPHA and _SHADOW_ALPHA[key].name in bpy.data.images:
+        return _SHADOW_ALPHA[key]
+    w, h = img.size
+    px = np.empty(w * h * 4, np.float32)
+    img.pixels.foreach_get(px)
+    a = (px[3::4].reshape(h, w) > cutoff).astype(np.float32)
+    hh, ww = h // f, w // f
+    c = a[:hh * f, :ww * f].reshape(hh, f, ww, f).mean(axis=(1, 3))
+    out = bpy.data.images.new(f"{img.name}_shadow{f}", ww, hh, alpha=False, float_buffer=True)
+    rgba = np.repeat(c.reshape(-1, 1), 4, axis=1)
+    rgba[:, 3] = 1.0
+    out.pixels.foreach_set(rgba.ravel())
+    out.pack()
+    _SHADOW_ALPHA[key] = out
+    return out
+def shadow_proxy(path, cards=()):
+    """The hair's shadow caster (shading.py hair_cards "shadows"): the export's `<glb stem>_shadow.obj` imported as an
+    opaque mesh that casts shadows only (hidden from the camera and from every other ray), and the cards cast none.
+    Returns the proxy object (None when the file is missing)."""
+    import os
+    if not path or not os.path.exists(path):
+        return None
+    before = set(bpy.data.objects)
+    bpy.ops.wm.obj_import(filepath=str(path), forward_axis="NEGATIVE_Z", up_axis="Y")
+    new = [o for o in bpy.data.objects if o not in before and o.type == "MESH"]
+    if not new:
+        return None
+    ob = new[0]
+    ob["hp_shadow_proxy"] = True
+    m = bpy.data.materials.get("hp_shadow_proxy") or bpy.data.materials.new("hp_shadow_proxy")
+    ob.data.materials.clear()
+    ob.data.materials.append(m)
+    for k in ("visible_camera", "visible_diffuse", "visible_glossy", "visible_transmission", "visible_volume_scatter"):
+        if hasattr(ob, k):
+            setattr(ob, k, False)
+    ob.visible_shadow = True
+    for c in cards:
+        c.visible_shadow = False
+    return ob
+
+
+SHADOW_LEAK = 0.45  # shading.py hair_cards: "keep ~0.55 of the shadow map" (default from b22, 2026-10-16)
+MAX_SUNS = 4
+
+
+def _gray(nt, v):
+    cc = nt.nodes.new("ShaderNodeCombineColor")
+    for k in ("Red", "Green", "Blue"):
+        nt.links.new(v, cc.inputs[k])
+    return cc.outputs["Color"]
+
+
+def set_wrap_lights():
+    """Copy the scene's suns (hp_sun*: direction toward the light, colour x energy x diffuse factor / pi = the
+    irradiance a white Lambert surface turns into radiance) into every wrap material. Call before each frame: views
+    re-aim and re-weight the suns."""
+    import math
+    suns = [ob for ob in bpy.data.objects if ob.type == "LIGHT" and ob.data.type == "SUN" and not ob.hide_render]
+    suns.sort(key=lambda o: o.name)
+    for m in bpy.data.materials:
+        if m.get("hp_wrap") is None or not m.node_tree:
+            continue
+        for i in range(MAX_SUNS):
+            dn, cn = m.node_tree.nodes.get(f"hp_wrap_dir{i}"), m.node_tree.nodes.get(f"hp_wrap_col{i}")
+            if dn is None or cn is None:
+                continue
+            if i < len(suns):
+                ob = suns[i]
+                z = ob.matrix_world.to_3x3().col[2].normalized()
+                k = ob.data.energy * getattr(ob.data, "diffuse_factor", 1.0) / math.pi
+                for j, a in enumerate("XYZ"):
+                    dn.inputs[a].default_value = z[j]
+                cn.outputs[0].default_value = (*[c * k for c in ob.data.color], 1.0)
+            else:
+                cn.outputs[0].default_value = (0.0, 0.0, 0.0, 1.0)
 
 
 def _rgb(nt, c):

@@ -246,12 +246,15 @@ def _tile(kind: str, w: int, H: int, S: dict, rng, ss: int = 3, lines: list | No
     return {"alpha": a, "id": idm, "depth": dep}
 
 
-def atlas(S: dict, look: dict, lines: dict | None = None, cap: dict | None = None, key: str = "") -> dict:
+def atlas(S: dict, look: dict, lines: dict | None = None, cap: dict | None = None, key: str = "",
+          bake: dict | None = None) -> dict:
     """The strand atlas: {"color" (H, W, 4) sRGB floats, straight alpha; "normal" (H, W, 3); "aux" (H, W, 4): root
     gradient, strand id, depth, alpha; "tiles": [{"kind", "u0", "u1"}] (v runs the whole height: 0 = the root, at the
-    top of the picture)}. Colour = the look's gap colour deep down to its lit colour on top, a value per strand."""
+    top of the picture)}. Colour = the look's gap colour deep down to its lit colour on top, a value per strand.
+    `bake` (hair_clumps.bake: cards' own strands, a block as wide as the tiles + chart): stacked UNDER the tiles; the
+    tiles' rows are then the top `rows` of `rows_total` (every tile / chart uv's v is remapped: remap_v)."""
     key = hashlib.sha1(json.dumps([{k: S.get(k) for k in ("clump", "frizz", "curl", "tips", "atlas", "short")},
-                                   {k: look.get(k) for k in ("gap", "lit", "vary", "band", "card_gain", "card_sat", "grey", "grey_share", "card_grey", "grey_locks", "grey_amount", "sun", "highlights", "highlight_contrast", "variation")}, key, sorted(SHORT_TILE.items()), SHORT_DEPTH, EDGE_SOLID], sort_keys=True).encode()).hexdigest()
+                                   {k: look.get(k) for k in ("gap", "lit", "vary", "band", "card_band", "card_gain", "card_sat", "grey", "grey_share", "card_grey", "grey_locks", "grey_amount", "sun", "highlights", "highlight_contrast", "variation")}, key, sorted(SHORT_TILE.items()), SHORT_DEPTH, EDGE_SOLID, (bake or {}).get("key")], sort_keys=True).encode()).hexdigest()
     if key in _ATLAS:
         return _ATLAS[key]
     from scipy import ndimage
@@ -274,10 +277,38 @@ def atlas(S: dict, look: dict, lines: dict | None = None, cap: dict | None = Non
             t_["u0"], t_["u1"] = t_["u0"] / 2, t_["u1"] / 2
         tiles.append({"kind": "cap", "u0": 0.5, "u1": 1.0})
     a, idm, dep = (np.concatenate([c[k] for c in cols], 1) for k in ("alpha", "id", "depth"))
+    Ht = H  # the tiles' rows (a bake block goes under them)
+    bake_k = 1.0
+    if bake is not None:
+        if bake["alpha"].shape[1] != a.shape[1]:
+            raise ValueError("hair atlas: the bake block must be as wide as the tiles")
+        a, idm, dep = (np.concatenate([m, bake[k].astype(np.float32)], 0) for m, k in ((a, "alpha"), (idm, "id"), (dep, "depth")))
     gap, lit = _lin(look.get("gap", "#221310")), _lin(look.get("lit", "#56352d"))
     shade = (0.45 + 0.55 * dep ** 0.8)[..., None]
     # a value per strand: what makes a card read as hairs, not a painted sheet (strands: +-vary and more)
     val = (1 + float(look.get("vary", 0.25)) * 3.0 * (idm - 0.5))[..., None]
+    hl_ = float(look.get("highlights") or 0.0)
+    if hl_ > 0 and not S.get("short"):  # highlight RIBBONS as strands of the tiles (a share of the ids, lighter): a
+        # card is 10-48 mm wide, a highlight a few mm; lit per card the tail was a patchwork of pale blocks
+        hs_ = np.clip((idm - (1.0 - 0.22 * hl_)) / 0.03, 0.0, 1.0) * np.clip((dep - 0.32) / 0.2, 0.0, 1.0)
+        xk_ = 0  # (not on the fly / baby tiles: of their 14 hairs two lit ones made a wisp card a silver-grey strip)
+        for (kind_, _w), c_ in zip(TILES, cols):
+            w_ = c_["alpha"].shape[1]
+            if kind_ in ("fly", "baby"):
+                hs_[:Ht, xk_:xk_ + w_] = 0.0
+            xk_ += w_
+        if bake is not None:  # (the baked strands carry their own ribbons in their tone)
+            hs_[Ht:] = 0.0
+        val = val * (1 + float(look.get("highlight_contrast", 0.6)) * hs_)[..., None]
+    if bake is not None and bake.get("tone") is not None:  # the baked strands' own tone (hair_clumps.strand_tones,
+        # / peak: the cards' vertex colours then carry only the root ramp)
+        from . import hair_colour as hcol
+        # (normalised by their mean: the atlas's 8 bits clip over 1, and at tone x peak the highlights went white-grey;
+        # the cards' vertex colours carry the mean back: mesh(), card["tone_k"])
+        from .hair_clumps import TONE_HEAD
+        tb_ = bake["tone"].astype(np.float32) * hcol.peak(look) * TONE_HEAD
+        bake_k = float(np.mean(tb_[bake["alpha"] > 0.5])) if (bake["alpha"] > 0.5).any() else 1.0
+        val[Ht:] = (tb_ / max(bake_k, 1e-3))[..., None]
     gain = float(look.get("card_gain", 1.0))  # measured against the strand look (hair.match_cards)
     if S.get("colour_model", True) and not S.get("short"):  # (the cards' vertex colours carry tone / peak: mesh())
         from . import hair_colour as hcol
@@ -292,7 +323,7 @@ def atlas(S: dict, look: dict, lines: dict | None = None, cap: dict | None = Non
         isg = (np.clip((idm - (1.0 - gs)) / 0.04, 0.0, 1.0) * np.clip((dep - 0.32) / 0.2, 0.0, 1.0))[..., None]  # (the
         # base under the strands sits at depth 0.3: it is the shadow between hairs, never grey)
         if cap is not None and cap.get("grey") is not None:  # a baked chart knows which of its strands are grey
-            isg[:, cap_x0:cap_x0 + size, 0] = rs(cap["grey"])  # (per region: the locks' own shares)
+            isg[:Ht, cap_x0:cap_x0 + size, 0] = rs(cap["grey"])  # (per region: the locks' own shares)
         base = base * (1 - isg) + grey[None, None] * (0.6 + 0.4 * shade) * isg
     lin = base * val * gain
     cs = float(look.get("card_sat", 1.0))  # x the colour's saturation (cards measured against the strand look)
@@ -301,10 +332,17 @@ def atlas(S: dict, look: dict, lines: dict | None = None, cap: dict | None = Non
         lin = yl + (lin - yl) * cs
     col = _srgb(np.clip(lin, 0, 1))
     x = 0
+    # the tie: under strands the hair gathered into it hides the band; cards run INTO it and the look's band colour
+    # (a dark elastic) showed as a black hole (Tess, review c2). It wears the hair's own median colour unless the
+    # look names `card_band`
+    hair_ = col[(a > 0.5)] if (a > 0.5).any() else None
+    band_ = (np.array([int(look["card_band"].lstrip("#")[i:i + 2], 16) / 255 for i in (0, 2, 4)]) if look.get("card_band")
+             else (np.median(hair_, 0) * 0.8 if hair_ is not None else
+                   np.array([int(look.get("band", "#23252b").lstrip("#")[i:i + 2], 16) / 255 for i in (0, 2, 4)])))
     for c in cols:  # the tie's own colour
         w = c["alpha"].shape[1]
         if c.get("band"):
-            col[:, x:x + w] = np.array([int(look.get("band", "#23252b").lstrip("#")[i:i + 2], 16) / 255 for i in (0, 2, 4)])
+            col[:Ht, x:x + w] = band_
         x += w
     hgt = ndimage.gaussian_filter(dep * (a > 0.1), 0.8)
     gx, gy = np.gradient(hgt, axis=1) * 2.2, np.gradient(hgt, axis=0) * 0.6
@@ -315,20 +353,38 @@ def atlas(S: dict, look: dict, lines: dict | None = None, cap: dict | None = Non
     flow[..., 1], flow[..., 2] = 1.0, 1.0
     if cap is not None and cap.get("normal") is not None:
         rs3 = lambda m: np.stack([rs(m[..., i] * 0.5 + 0.5) * 2 - 1 for i in range(3)], -1)  # noqa: E731
-        nrm[:, cap_x0:cap_x0 + size] = _unit(rs3(cap["normal"])) * 0.5 + 0.5
+        nrm[:Ht, cap_x0:cap_x0 + size] = _unit(rs3(cap["normal"])) * 0.5 + 0.5
         fl = rs3(np.concatenate([cap["flow"][..., :2], cap["flow"][..., 2:3] * 2 - 1], -1))
-        flow[:, cap_x0:cap_x0 + size, :2] = _unit(fl[..., :2])
-        flow[:, cap_x0:cap_x0 + size, 2] = np.clip(fl[..., 2] * 0.5 + 0.5, 0, 1)
-    root = np.repeat(1 - (np.arange(H)[:, None] + 0.5) / H, a.shape[1], 1)
+        flow[:Ht, cap_x0:cap_x0 + size, :2] = _unit(fl[..., :2])
+        flow[:Ht, cap_x0:cap_x0 + size, 2] = np.clip(fl[..., 2] * 0.5 + 0.5, 0, 1)
+    root = np.repeat(1 - (np.arange(Ht)[:, None] + 0.5) / Ht, a.shape[1], 1)
+    if bake is not None:  # the baked strands' own directions (across, along: down the picture = -up) and root-to-tip
+        fb = bake["flow"]
+        nb = np.maximum(np.linalg.norm(fb, axis=-1, keepdims=True), 1e-6)
+        flow[Ht:, :, 0], flow[Ht:, :, 1] = fb[..., 0] / nb[..., 0], -fb[..., 1] / nb[..., 0]
+        flow[Ht:, :, 2] = np.clip(nb[..., 0], 0, 1)
+        root = np.concatenate([root, bake["root"].astype(np.float32)], 0)
     out = {"color": np.concatenate([col, a[..., None]], -1).astype(np.float32), "normal": nrm.astype(np.float32),
            "aux": np.stack([root, idm, dep, a], -1).astype(np.float32), "tiles": tiles, "size": size,
            "flow": np.concatenate([flow[..., :2] * 0.5 + 0.5, flow[..., 2:]], -1).astype(np.float32),
            "coverage": {t["kind"]: round(float(c["alpha"].mean()), 2) for t, c in zip(tiles, cols)},
-           "source": "groom" if lines else "drawn"}
+           "source": "groom" if lines else "drawn", "rows": Ht, "rows_total": a.shape[0], "bake_k": bake_k}
     if len(_ATLAS) > 6:
         _ATLAS.pop(next(iter(_ATLAS)))
     _ATLAS[key] = out
     return out
+
+
+def remap_v(m: dict | None, at: dict, skip=None) -> dict | None:
+    """A mesh's uv made for the tiles alone (v over the whole height) moved to the tiles' rows of an atlas with a bake
+    block under them; `skip` (per vertex bool): already in the full atlas's coordinates (baked cards)."""
+    if m is None or at.get("rows_total", at.get("rows")) == at.get("rows") or not len(m["uv"]):
+        return m
+    vb = 1.0 - at["rows"] / at["rows_total"]
+    uv = np.array(m["uv"], np.float32)
+    sel = np.ones(len(uv), bool) if skip is None else ~np.asarray(skip, bool)
+    uv[sel, 1] = vb + uv[sel, 1] * (1.0 - vb)
+    return {**m, "uv": uv}
 
 
 def write_atlas(at: dict, stem: str) -> dict:
@@ -486,8 +542,9 @@ def _resample(c: dict, m: int) -> dict:
     o = dict(c)
     for k in ("P", "X", "N", "bend", "T"):
         o[k] = np.stack([np.interp(si, s, c[k][:, j]) for j in range(3)], 1)
-    for k in ("hw", "u"):
-        o[k] = np.interp(si, s, c[k])
+    for k in ("hw", "u", "rad"):
+        if k in c and np.ndim(c[k]):
+            o[k] = np.interp(si, s, c[k])
     o["s"] = si
     return o
 
@@ -501,7 +558,7 @@ def mesh(cards: list, S: dict, look: dict, tiles: list, segment: float | None = 
     by = {}
     for i, t in enumerate(tiles):
         by.setdefault(t["kind"], []).append(i)
-    V, F, UV, Nn, Tn, COL, AL, LAY, CID = [], [], [], [], [], [], [], [], []
+    V, F, UV, Nn, Tn, COL, AL, LAY, CID, BK = [], [], [], [], [], [], [], [], [], []
     off = 0
     rootd, rootl = (0.7 if S.get("short") else 0.62), (0.45 if S.get("short") else float(look.get("root", 0.12)))  # (a short cut's cards
     # root in the cap, which carries the shade: darkened roots were dark flakes on it)
@@ -512,16 +569,35 @@ def mesh(cards: list, S: dict, look: dict, tiles: list, segment: float | None = 
         length = float(c["s"][-1] - c["s"][0])
         per = seg if float(S["wave"]) <= 0 else min(seg, lam / 6)
         m = int(np.clip(np.ceil(length / max(per, 1e-4)), 2, 200)) + 1
+        hwm = float(np.max(c["hw"]))
         c = _resample(c, m)
-        t = tiles[by[c["kind"]][int(rng.integers(len(by[c["kind"]])))]]
-        ua, ub = (t["u0"], t["u1"]) if rng.random() < 0.5 else (t["u1"], t["u0"])
         vv = (c["s"] - c["s"][0]) / max(length, 1e-9)
         left, right = c["P"] - c["X"] * c["hw"][:, None], c["P"] + c["X"] * c["hw"][:, None]
         V.append(np.stack([left, right], 1).reshape(-1, 3))
-        UV.append(np.stack([np.stack([np.full(m, ua), 1 - vv], 1), np.stack([np.full(m, ub), 1 - vv], 1)], 1).reshape(-1, 2))
+        if c.get("island") is not None:  # its own baked picture (hair_clumps.bake): across = the clump's spread
+            u0, u1, vt, vb = c["island"]
+            fr = c["hw"] / max(2 * hwm, 1e-9)
+            vi = vt - vv * (vt - vb)
+            UV.append(np.stack([np.stack([u0 + (0.5 - fr) * (u1 - u0), vi], 1),
+                                np.stack([u0 + (0.5 + fr) * (u1 - u0), vi], 1)], 1).reshape(-1, 2))
+            BK.append(np.ones(2 * m, bool))
+        else:
+            t = tiles[by[c["kind"]][int(rng.integers(len(by[c["kind"]])))]]
+            ua, ub = (t["u0"], t["u1"]) if rng.random() < 0.5 else (t["u1"], t["u0"])
+            UV.append(np.stack([np.stack([np.full(m, ua), 1 - vv], 1), np.stack([np.full(m, ub), 1 - vv], 1)], 1).reshape(-1, 2))
+            BK.append(np.zeros(2 * m, bool))
         nb = c["N"] * np.where((c["N"] * c["bend"]).sum(-1, keepdims=True) < 0, -1.0, 1.0)
         nb = _unit((1 - rnd) * nb + rnd * c["bend"])
-        Nn.append(np.repeat(nb, 2, 0))
+        if EDGE_ROUND > 0 and np.ndim(c.get("rad")):
+            # each edge its own normal: the volume's outward direction THERE (a card on a cylinder of radius R: n at the
+            # edge = R n + / - hw X), so neighbouring cards shade as one rounded mass instead of flat planks, each with
+            # its own tilt (lock-scale bands, a tail of flat sheets, dark wedges where a wide card's plane turns from the
+            # light: g4_b19). Turned at most ~60 deg (R >= hw / 1.7)
+            R_ = np.maximum(np.asarray(c["rad"], float), c["hw"] / 1.7)
+            k_ = (EDGE_ROUND * c["hw"] / np.maximum(R_, 1e-6))[:, None]
+            Nn.append(np.stack([_unit(nb - c["X"] * k_), _unit(nb + c["X"] * k_)], 1).reshape(-1, 3))
+        else:
+            Nn.append(np.repeat(nb, 2, 0))
         Tn.append(np.repeat(c["T"], 2, 0))
         ramp = rootd + (1 - rootd) * _ss(c["u"] / max(rootl, 1e-3))
         ramp = ramp * (1 + tip_amt * 0.35 * _ss((c["u"] - 0.55) / 0.45))
@@ -535,8 +611,19 @@ def mesh(cards: list, S: dict, look: dict, tiles: list, segment: float | None = 
             nm = str(c.get("lock", ""))
             hsh_ = int(hashlib.md5(nm.encode()).hexdigest()[:8], 16)
             age = (c["s"] - c["s"][0]) + (hcol.TAIL_AGE if _re.fullmatch(r"t\d*[ty]\d+", nm) else 0.0)
+            # a highlight is a RIBBON of a few mm: on a card wider than HIGHLIGHT_W the whole card lit up, a pale
+            # rectangle (Tess's tail at the 'lock' cut: a patchwork of light and dark blocks)
+            hl_ = ((hsh_ // 1000 + ci * 7919) % 1000) / 999.0 + 1e-4 if 2 * float(np.median(c["hw"])) <= HIGHLIGHT_W else None
             tone = hcol.lock_tone(look, (hsh_ % 1000) / 999.0, float(c.get("shade", 0.0))) \
-                * hcol.along_tone(look, age, ((hsh_ // 1000 + ci * 7919) % 1000) / 999.0 + 1e-4, float(c.get("sun", 0.0)))
+                * hcol.along_tone(look, age, hl_, float(c.get("sun", 0.0)))
+            if c.get("island") is not None:  # its picture carries its strands' tone (hair_clumps.strand_tones)
+                tone = np.full(np.shape(age), float(c.get("tone_k", 1.0)))
+            if c.get("fine"):  # rows the strands draw FINE (see-through, light against the sky: the outline): half the lift;
+                # at full tone the sparse tile's hairs were a hard dark wire rim round the head (review c2)
+                tone = tone * (1 + 0.3 * hcol._k(look, "fly_light", 0.3))
+            if c.get("wisp") and c.get("island") is None:  # face-framing bundles read lighter (the strands' fly_light; Tess's are near blonde). Not
+                # every fly card: the halo's and the hairline's lying on the head were pale strips across the sweep
+                tone = tone * (1 + 0.6 * hcol._k(look, "fly_light", 0.3))
             ramp = ramp * tone / hcol.peak(look)
         COL.append(np.repeat(np.clip(ramp * lay * c.get("value", 1.0) * c.get("cval", 1.0), 0, 1)[:, None]
                              * np.ones(3)[None], 2, 0))
@@ -550,12 +637,12 @@ def mesh(cards: list, S: dict, look: dict, tiles: list, segment: float | None = 
         z = np.zeros((0, 3), np.float32)
         return {"verts": z, "tris": np.zeros((0, 3), np.int32), "uv": np.zeros((0, 2), np.float32), "normal": z,
                 "tangent": z, "col": z, "along": np.zeros(0, np.float32), "layer": np.zeros(0, np.float32),
-                "card": np.zeros(0, np.int32)}
+                "card": np.zeros(0, np.int32), "baked": np.zeros(0, bool)}
     return {"verts": np.concatenate(V).astype(np.float32), "tris": np.concatenate(F).astype(np.int32),
             "uv": np.concatenate(UV).astype(np.float32), "normal": np.concatenate(Nn).astype(np.float32),
             "tangent": np.concatenate(Tn).astype(np.float32), "col": np.concatenate(COL).astype(np.float32),
             "along": np.concatenate(AL).astype(np.float32), "layer": np.concatenate(LAY),
-            "card": np.concatenate(CID)}
+            "card": np.concatenate(CID), "baked": np.concatenate(BK)}
 
 
 def cards_of(locks: list, C, S: dict, look: dict | None = None) -> list:
@@ -577,7 +664,8 @@ def cards_of(locks: list, C, S: dict, look: dict | None = None) -> list:
 
 GRID = 40  # stations along a lock at which its strands are compared
 FINE_SPARSE = 0.5  # a lock whose strands are drawn at least this fine (strands.fine: see-through) is cut on the sparse tile
-FREE_END = 0.1  # hanging hair's cards run on until only this share of their strands is left (at 0.3 Tess's tail ended ~5 cm short)
+FREE_SPREAD, FREE_CLIP = 3.2, 1.3  # hanging cards' half width in the clump's sigmas, and its cap in card widths
+FREE_END = 0.06  # hanging hair's cards run on until only this share of their strands is left (at 0.3 Tess's tail ended ~5 cm short)
 
 
 def strand_grid(D: dict, locks: list, n: int = GRID) -> dict:
@@ -637,7 +725,44 @@ def _nan_smooth(x, k: int = 2):
     return out
 
 
-def _clump(A, U, cen_of, min_share: float = 0.3, start_share: float = 0.04, end_share: float | None = None):
+def _medoid_line(A, P, w: float):
+    """P moved (share `w`) onto one of its clump's own long strands, the one nearest the mean: hanging hair's mean over
+    strands of other phases is straight (a wavy tail's cards hung as straight sheets, its bottom curl lost: b23 back
+    edge -33 mm at 150-180 mm, review "straight stringy sheets"); a real strand keeps the wave and the curl. Before the
+    strand starts and past its end the offset is held (the line stays continuous)."""
+    from scipy.ndimage import gaussian_filter1d
+    fin = np.isfinite(A[..., 0])
+    n = fin.sum(1)
+    if not n.max():
+        return P
+    long_ = n >= np.percentile(n, 75)
+    with np.errstate(invalid="ignore"), __import__("warnings").catch_warnings():
+        __import__("warnings").simplefilter("ignore")
+        dist = np.nanmean(np.linalg.norm(A - P[None], axis=-1), 1)
+    dist = np.where(long_ & np.isfinite(dist), dist, np.inf)
+    j = int(np.argmin(dist))
+    f = fin[j]
+    k = np.nonzero(f)[0]
+    if len(k) < 4:
+        return P
+    D = np.zeros_like(P)
+    D[k] = A[j, k] - P[k]
+    D[:k[0]] = D[k[0]]
+    D[k[-1] + 1:] = D[k[-1]]
+    D = gaussian_filter1d(D, 1.0, axis=0)
+    return P + w * D
+
+
+PCA_FRAME = 1.0  # (0 before round 22) hanging (tail / face) cards: share of the turn toward the clump's flat cross-section (0 = off, the
+# outward frame only, before round 22)
+PCA_MAX = 60.0  # deg (round 23; 90 = unlimited, round 22): the PCA turn is held to this angle from the outward frame. A card turned
+# past ~60 deg is seen from its BACK from outside the tail, and a double-sided card's back is shaded with the flipped
+# (inward) normal: b30's dark leaf-shaped shards between the tail cards near the tie (lit only; flat albedo and shadow=0
+# both still had them; round 23)
+
+
+def _clump(A, U, cen_of, min_share: float = 0.3, start_share: float = 0.04, end_share: float | None = None,
+           medoid: float = 0.0, twist: float = 0.0):
     """A set of strands (m, n, 3 with NaN) as one clump: its centre line, frame and spread, over the stations where
     at least `min_share` of its strands run (`end_share`: on to the last station where that share still runs: hanging
     hair's ragged ends). None if too short."""
@@ -663,6 +788,21 @@ def _clump(A, U, cen_of, min_share: float = 0.3, start_share: float = 0.04, end_
         good = np.isfinite(P[:, 0])
         k = np.arange(len(P))
         P = np.stack([np.interp(k, k[good], P[good, c]) for c in range(3)], 1)
+    # the mean jumps wherever a strand starts or ends: smoothed more where few strands run (a hanging tail's last 20%
+    # kinked by 45-130 deg a station: crumpled paper ends, b12; head cards hooked at their staggered roots)
+    from scipy.ndimage import gaussian_filter1d
+    few = np.clip(1.0 - cnt[sl] / max(min_share * len(A), 1.0), 0.0, 1.0)[:, None]
+    if len(P) > 4:
+        # padded by carrying each end straight on (mode "nearest" squashed the last stations together: tiny segments,
+        # random tangents at the ends)
+        n_ = 12
+        t0, t1 = P[0] - P[min(3, len(P) - 1)], P[-1] - P[-1 - min(3, len(P) - 1)]
+        st_ = np.arange(1, n_ + 1)[:, None] / 3.0
+        Pp = np.r_[P[0] + t0 * st_[::-1], P, P[-1] + t1 * st_]
+        P = (gaussian_filter1d(Pp, 1.0, axis=0) * (1 - np.r_[few[:1].repeat(n_, 0), few, few[-1:].repeat(n_, 0)])
+             + gaussian_filter1d(Pp, 4.0, axis=0) * np.r_[few[:1].repeat(n_, 0), few, few[-1:].repeat(n_, 0)])[n_:-n_]
+    if medoid > 0 and len(A) > 1 and len(P) > 4:
+        P = _medoid_line(A[:, sl], P, medoid)
     T = _unit(np.gradient(P, axis=0))
     cen = cen_of(P)
     out = _unit(P - cen)
@@ -685,6 +825,45 @@ def _clump(A, U, cen_of, min_share: float = 0.3, start_share: float = 0.04, end_
             v = w * _unit(perp[i]) + (1 - w) * _unit(pt)
             N[i] = v / max(np.linalg.norm(v), 1e-9)
             prev_ = N[i]
+    if twist > 0 and PCA_FRAME > 0 and len(A) > 2:  # hanging cards: turn the frame so the card's WIDTH lies along the
+        # clump's widest spread (its cross-section's major axis) where that section is clearly flat. "Outward" from the core
+        # made the tail's edge clumps face sideways, so from the back (and front) they were seen edge-on as thin dark
+        # ribbons arching off the tie (round 22, b29 g1backl cards 230 / 299 / 345), where the groom shows a broad mass
+        X0 = _unit(np.cross(T, N))
+        with np.errstate(invalid="ignore"), __import__("warnings").catch_warnings():
+            __import__("warnings").simplefilter("ignore")
+            d_ = A[:, sl] - P[None]
+            a_, b_ = (d_ * X0[None]).sum(-1), (d_ * N[None]).sum(-1)
+            ok_ = np.isfinite(a_) & np.isfinite(b_)
+            a_, b_ = np.where(ok_, a_, 0.0), np.where(ok_, b_, 0.0)
+            n_ok = np.maximum(ok_.sum(0), 1)
+            ma, mb = a_.sum(0) / n_ok, b_.sum(0) / n_ok
+            caa = (a_ * a_).sum(0) / n_ok - ma * ma
+            cbb = (b_ * b_).sum(0) / n_ok - mb * mb
+            cab = (a_ * b_).sum(0) / n_ok - ma * mb
+        tr_ = np.maximum(caa + cbb, 1e-12)
+        an_ = np.sqrt((caa - cbb) ** 2 + 4 * cab ** 2) / tr_  # 0 round .. 1 flat
+        w_ = np.clip((an_ - 0.3) / 0.4, 0.0, 1.0) * (ok_.sum(0) >= 3)
+        c2, s2 = gaussian_filter1d((caa - cbb) / tr_ * w_, 2.0), gaussian_filter1d(2 * cab / tr_ * w_, 2.0)
+        th = 0.5 * np.arctan2(s2, c2)  # the major axis' angle from X0 (axial, smoothed as a doubled angle)
+        th = th * PCA_FRAME * np.clip(gaussian_filter1d(w_.astype(float), 2.0) / 0.5, 0.0, 1.0)
+        th = np.clip(th, -np.radians(PCA_MAX), np.radians(PCA_MAX))
+        Xn = X0 * np.cos(th)[:, None] + N * np.sin(th)[:, None]
+        Nn = _unit(np.cross(Xn, T))
+        Nn = np.where(((Nn * N).sum(-1) < 0)[:, None], -Nn, Nn)
+        N = Nn
+    if twist > 0:  # the frame turns about the hair by at most `twist` rad per station: hanging hair's "outward" swings
+        # round where the line curls past its core, a 60 mm tail card twisted half a turn in ~30 mm (b24 / b25 hanging/L0
+        # card 201: the "folded flap" at the tail's end, 10-11 folded triangle pairs, crownx.py)
+        for rng_ in (range(i0 + 1, len(P)), range(i0 - 1, -1, -1)):
+            for i in rng_:
+                j = i - 1 if rng_.step == 1 else i + 1
+                pt = _unit(_transport(N[j], T[j], T[i]))
+                pt = _unit(pt - (pt @ T[i]) * T[i])
+                a = float(np.arctan2(np.cross(pt, N[i]) @ T[i], pt @ N[i]))
+                if abs(a) > twist:
+                    b = np.sign(a) * twist
+                    N[i] = pt * np.cos(b) + np.cross(T[i], pt) * np.sin(b)
     X = _unit(np.cross(T, N))
     with np.errstate(invalid="ignore"), __import__("warnings").catch_warnings():
         __import__("warnings").simplefilter("ignore")
@@ -694,7 +873,7 @@ def _clump(A, U, cen_of, min_share: float = 0.3, start_share: float = 0.04, end_
         mx = np.nanmedian(dx, 1)  # each strand's side of the clump
     sx, sn = np.nan_to_num(sx), np.nan_to_num(sn)
     return {"P": P, "T": T, "N": N, "X": X, "sx": _nan_smooth(sx), "sn": _nan_smooth(sn), "u": U[sl], "mx": mx,
-            "bend": out, "share": cnt[sl] / max(len(A), 1), "i0": int(idx[0])}
+            "bend": out, "rad": np.linalg.norm(P - cen, axis=1), "share": cnt[sl] / max(len(A), 1), "i0": int(idx[0])}
 
 
 def clump_cards(D: dict, locks: list, C, S: dict, look: dict | None = None, seed: int = 0) -> list:
@@ -772,18 +951,25 @@ def clump_cards(D: dict, locks: list, C, S: dict, look: dict | None = None, seed
                 if s[-1] < 0.01:
                     continue
                 # (cards overlap their neighbours by a third: where they only met, every seam was a slit of shadow)
-                hw_full = np.clip(2.5 * c["sx"], 0.003, 0.9 * cw)
+                # hanging hair is its OUTLINE: a tail's outer strands stand 3 sigma off the clump's mean (at 2.5 sigma,
+                # clipped to 0.9 card widths, Tess's tail was 75 % of the strands' width)
+                hw_full = np.clip((FREE_SPREAD if free else 2.5) * c["sx"], 0.003, (FREE_CLIP if free else 0.9) * cw)
                 thin = free and float(lk["inputs"]["Width"]) < 0.016  # (a wisp: a lock of a few hairs off the head)
+                # a wisp of 8+ hairs (Tess's face-framing locks: 9-16 hairs, 12-19 cm) reads as a light BUNDLE in the
+                # strands: its first card wears the sparse tile (on the fly tile alone it was two or three grey wires)
+                bundle = thin and int(lk.get("hairs") or 0) >= 8
                 if thin:  # a wisp is a few hairs: a narrow card that runs out to a point (at full width an alpha
                     # test at any distance fills it: a brown slat down the cheek)
-                    hw_full = np.clip(1.4 * c["sx"], 0.002, 0.0035) * (1 - 0.5 * _ss((s / s[-1] - 0.5) / 0.5))
+                    hw_full = (np.clip(1.4 * c["sx"], 0.002, 0.005) if bundle else np.clip(1.4 * c["sx"], 0.0012, 0.0025)) \
+                        * (1 - 0.5 * _ss((s / s[-1] - 0.5) / 0.5))
                 if gather:  # into the tie a card runs out to nothing (its square end stood over the crown)
-                    hw_full = hw_full * (1 - 0.85 * _ss((s / s[-1] - 0.8) / 0.2))
+                    hw_full = hw_full * (1 - 0.5 * _ss((s / s[-1] - 0.8) / 0.2))  # (to nothing, 0.85, the tie's band
+                    # showed between them: a black blob the strands hide)
                 off_c = abs((j + 0.5) / na - 0.5) * 2 if na > 1 else 0.0
                 nl = (3 if L > 2 else 2) if thin else L
                 for la in range(nl):
                     if thin:  # a wisp: two or three thin cards of separate hairs side by side, never a filled
-                        kind = "fly"  # ribbon (under an alpha test that was a dark slash)
+                        kind = "sparse" if (bundle and la == 0) else "fly"  # ribbon (under an alpha test: a dark slash)
                     elif fine:  # a lock the strands draw FINE (part rows, the rim: see-through hair): never the dense
                         kind = "sparse"  # tile (Tess's part rows rose off the part as opaque planks: the "fan" at the part)
                     elif la == 0:
@@ -796,8 +982,10 @@ def clump_cards(D: dict, locks: list, C, S: dict, look: dict | None = None, seed
                         kind = ("hairline" if (la == 1 and not free and L > 2) else "medium") if (la <= 2 - int(free) and not thin) else "sparse"
                     yo = c["sn"] * (-0.3 + 0.4 * la) + (0.0003 * la)  # (layers lie close: lifted, each cast a shadow line)
                     xo = (rng.uniform(-0.35, 0.35) * hw_full if la > 0 else 0.0)
-                    if thin:
-                        xo = (la - (nl - 1) / 2) * 0.9 * hw_full + rng.uniform(-0.2, 0.2) * hw_full
+                    if thin:  # (a bundle's cards spread as its hairs do: at 0.9 card widths apart its 9-16 hairs,
+                        # splayed over 2-3 cm, were three wires side by side)
+                        xo = (la - (nl - 1) / 2) * (np.maximum(0.9 * hw_full, 1.3 * c["sx"]) if bundle else 0.9 * hw_full) \
+                            + rng.uniform(-0.2, 0.2) * hw_full
                     hw = hw_full * (1.0 if la == 0 else 0.9)
                     u0 = 0.0 if la == 0 else Rr * rng.uniform(0.0, 0.25)
                     u1 = 1.0 if (la == 0 or gather) else 1.0 - float(S["tips"]) * Rr * rng.uniform(0.0, 0.2)
@@ -810,9 +998,10 @@ def clump_cards(D: dict, locks: list, C, S: dict, look: dict | None = None, seed
                     P = c["P"] + c["X"] * (np.zeros(len(s)) + xo)[:, None] + c["N"] * yo[:, None]
                     out.append({"P": P[keep], "X": c["X"][keep], "N": c["N"][keep], "hw": hw[keep], "u": c["u"][keep],
                                 "s": s[keep], "kind": kind, "layer": la,
-                                "prio": la + 0.3 * off_c + (0.25 if (thin and la > 0) else 0.0),
+                                "prio": (0.3 * la if bundle else la) + 0.3 * off_c + (0.25 if (thin and la > 0) else 0.0),
                                 "cval": 1 + Rr * rng.uniform(-0.2, 0.2), "bend": c["bend"][keep], "T": c["T"][keep],
-                                "lock": lk["name"], "value": val, "sn": np.asarray(c["sn"])[keep] if np.ndim(c["sn"]) else c["sn"]})
+                                "lock": lk["name"], "value": val, "sn": np.asarray(c["sn"])[keep] if np.ndim(c["sn"]) else c["sn"],
+                                "wisp": bool(bundle), "fine": bool(fine)})
             nf = int(S.get("fly", 0))
             if nf and not gather and len(Ag) >= 6:  # single strands that stand off the clump: a card each
                 with np.errstate(invalid="ignore"), __import__("warnings").catch_warnings():
@@ -842,6 +1031,9 @@ def clump_cards(D: dict, locks: list, C, S: dict, look: dict | None = None, seed
     return out
 
 
+EDGE_ROUND = 0.0  # share of a card's across-curvature given to its edge normals (mesh; 0 = one normal across). b20 at
+# 1.0: lock band 6.25 -> 6.38 front, 6.16 -> 6.23 3/4, nape wedge L* 7.6 -> 7.5, tail still "flat": no gain, off
+HIGHLIGHT_W = 0.008  # m: cards wider than this carry no highlight of their own (a ribbon is a few mm)
 SINGLES_PER_CARD = 8  # single-hair locks (a halo, escaped hairs) pooled onto one fly card: a card of the fly tile pictures
 # a few hairs; 420 halo hairs cut as 3 cards each (Tess's W18) were 7k triangles, all of them cut by any game budget
 
@@ -878,11 +1070,17 @@ def pooled_singles(G: dict, locks: list, pool: list, C, L: int, rng) -> list:
         s = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(c["P"], axis=0), axis=1))]
         if s[-1] < 0.01:
             continue
-        hw = np.clip(1.6 * c["sx"], 0.002, 0.005) * (1 - 0.4 * _ss((s / s[-1] - 0.6) / 0.4))
+        # narrow: the fly tile's hairs are a share of the card's width (FLY_HAIR), at 10 mm cards they were 0.7 mm
+        # wide, a halo of brown leaves over the crown
+        hw = np.clip(1.2 * c["sx"], 0.0012, 0.002) * (1 - 0.4 * _ss((s / s[-1] - 0.6) / 0.4))
         out.append({"P": c["P"], "X": c["X"], "N": c["N"], "hw": hw, "u": c["u"], "s": s, "kind": "fly", "layer": L,
                     "prio": L + 1.0, "cval": 1.0, "bend": c["bend"], "T": c["T"], "lock": locks[lis[0]]["name"],
                     "value": 1.0, "sn": c["sn"], "pooled": True})
     return out
+
+
+CORE_SHARE = 0.5  # a tail core runs while this share of its strands still run (b22: it ends inside the cards; 0.2 before: its square end showed mid-tail)
+CORE_TAPER = 0.25  # share of the core's length over which its radius closes to a point (b22; 0 = square cut, before)
 
 
 def tail_cores(D: dict, locks: list, sides: int = 10, stations: int = 28, fill: float = 0.8) -> dict | None:
@@ -911,7 +1109,7 @@ def tail_cores(D: dict, locks: list, sides: int = 10, stations: int = 28, fill: 
             __import__("warnings").simplefilter("ignore")
             cnt = np.isfinite(A[..., 0]).sum(0)
             Pm = np.nanmean(A, 0)
-        ok = np.nonzero(cnt >= max(3, 0.2 * len(A)))[0]
+        ok = np.nonzero(cnt >= max(3, CORE_SHARE * len(A)))[0]
         if len(ok) < 4:
             continue
         sl = slice(ok[0], ok[-1] + 1)
@@ -943,6 +1141,11 @@ def tail_cores(D: dict, locks: list, sides: int = 10, stations: int = 28, fill: 
             Rr = (np.roll(Rr, 1, 1) + 2 * Rr + np.roll(Rr, -1, 1)) / 4
             Rr[1:-1] = (Rr[:-2] + 2 * Rr[1:-1] + Rr[2:]) / 4
         Rr = np.maximum(Rr * fill, 0.002)
+        if CORE_TAPER > 0:  # the core closes over its last CORE_TAPER (a tube cut square was a dark ragged block showing
+            # through the thinning tail cards: b21 review "dark crunchy patch mid-tail", traced by flat passes per range)
+            sa = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(Pm, axis=0), axis=1))]
+            uu = np.clip((sa[-1] - sa) / max(CORE_TAPER * sa[-1], 1e-6), 0.0, 1.0)
+            Rr = np.maximum(Rr * (uu * uu * (3 - 2 * uu))[:, None], 0.0005)
         s = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(Pm, axis=0), axis=1))]
         ns = len(Pm)
         ring = (np.cos(ang)[None, :, None] * e1[:, None] + np.sin(ang)[None, :, None] * e2[:, None])  # (ns, sides, 3)
@@ -1114,3 +1317,66 @@ def join(*meshes) -> dict:
     out["card"] = np.concatenate(cards)
     out["tris"] = np.concatenate(tris)
     return out
+
+
+# ------------------------------------------------------------------------------------------------ shadow proxy
+
+SHADOW_PROXY = {"voxel": 0.004, "close": 4, "inset": 0.004, "smooth": 1.2, "step": 2}  # (round 19: the cards' own
+# shadow was a dithered shadow map over many transparent sheets: grain on the skin (std 0.42 vs the groom's 0.31) and
+# -4.5 L*. Engines give card hair a separate opaque, smooth caster: shading.py hair_cards "shadows")
+
+
+def shadow_proxy(V, T, voxel: float | None = None, close: int | None = None, inset: float | None = None,
+                 smooth: float | None = None, step: int | None = None) -> dict:
+    """An opaque, smooth, low-poly hull of the cards' volume that casts the hair's shadow in place of the cards (a
+    shadow-only mesh: invisible to the camera). The card triangles are sampled into a `voxel` grid, closed (dilate
+    `close` voxels, fill holes, erode back), shrunk by `inset` (the outer cards stay lit, the hull sits under them),
+    blurred (`smooth` voxels: a soft round body, not a voxel staircase) and meshed with marching cubes at `step` voxels.
+    Returns {"verts", "tris", "voxel", "inset"}."""
+    from scipy import ndimage
+    from skimage import measure
+    o = {**SHADOW_PROXY, **{k: v for k, v in dict(voxel=voxel, close=close, inset=inset, smooth=smooth, step=step).items()
+                            if v is not None}}
+    h = float(o["voxel"])
+    V = np.asarray(V, np.float64)
+    T = np.asarray(T, np.int64)
+    A, B, C = V[T[:, 0]], V[T[:, 1]], V[T[:, 2]]
+    L = np.maximum(np.maximum(np.linalg.norm(B - A, axis=1), np.linalg.norm(C - A, axis=1)), np.linalg.norm(C - B, axis=1))
+    k = np.clip(np.ceil(L / (0.5 * h)).astype(int), 1, 64)  # samples per edge: every voxel a triangle crosses is hit
+    pts = []
+    for kk in np.unique(k):
+        sel = k == kk
+        u, v = np.meshgrid(np.arange(kk + 1), np.arange(kk + 1), indexing="ij")
+        m = (u + v) <= kk
+        u, v = u[m] / kk, v[m] / kk
+        a, b, c = A[sel], B[sel], C[sel]
+        pts.append((a[:, None] + u[None, :, None] * (b - a)[:, None] + v[None, :, None] * (c - a)[:, None]).reshape(-1, 3))
+    P = np.concatenate(pts)
+    pad = int(o["close"]) + 4
+    lo = P.min(0) - pad * h
+    n = np.ceil((P.max(0) + pad * h - lo) / h).astype(int) + 1
+    g = np.zeros(n, bool)
+    ij = np.floor((P - lo) / h).astype(int)
+    g[ij[:, 0], ij[:, 1], ij[:, 2]] = True
+    ball = ndimage.generate_binary_structure(3, 1)
+    c = int(o["close"])
+    g = ndimage.binary_dilation(g, ball, iterations=c)
+    g = ndimage.binary_fill_holes(g)
+    g = ndimage.binary_erosion(g, ball, iterations=c + int(round(float(o["inset"]) / h)))
+    f = ndimage.gaussian_filter(g.astype(np.float32), float(o["smooth"]))
+    if f.max() < 0.5:
+        return {"verts": np.zeros((0, 3), np.float32), "tris": np.zeros((0, 3), np.int64), "voxel": h, "inset": o["inset"]}
+    vv, ff, _, _ = measure.marching_cubes(f, 0.5, step_size=int(o["step"]), allow_degenerate=False)
+    return {"verts": (vv * h + lo).astype(np.float32), "tris": ff.astype(np.int64), "voxel": h, "inset": float(o["inset"])}
+
+
+def write_obj(path, verts, tris, name: str = "hair_shadow", yup: bool = True) -> None:
+    """A plain OBJ (positions + faces): what every engine and DCC imports. yup: Blender's Z-up written Y-up (as the
+    GLB beside it, and as OBJ importers expect: x, z, -y)."""
+    V = np.asarray(verts, np.float64)
+    if yup:
+        V = np.stack([V[:, 0], V[:, 2], -V[:, 1]], 1)
+    with open(path, "w") as fh:
+        fh.write(f"o {name}\n")
+        np.savetxt(fh, V, fmt="v %.5f %.5f %.5f")
+        np.savetxt(fh, np.asarray(tris) + 1, fmt="f %d %d %d")

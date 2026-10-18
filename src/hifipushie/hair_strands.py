@@ -998,6 +998,11 @@ def tile_lines(S: dict) -> dict:
     return out
 
 
+CAP_BASE_IN = 0.25  # the cap's opaque base starts this x soft inside the hairline (round 23: lever for the cards' skin gaps
+# under the hairline; the groom's scalp tint covers the scalp by density right to the hairline)
+CAP_PART_CUT = 0.8  # the base is cut by this share along the part (round 23: lever for the part's dark root lines)
+
+
 def cap_chart(sc, g: dict, line, S: dict, D: dict | None, e0: float, size: int = 1024, short: bool = False) -> dict:
     """The scalp's hair as a picture on the scalp chart (u = azimuth / 360, v = elevation over e0..90, row 0 = the
     top): every strand that runs close over the scalp drawn where it lies, over an opaque base that starts `soft` m
@@ -1041,9 +1046,9 @@ def cap_chart(sc, g: dict, line, S: dict, D: dict | None, e0: float, size: int =
     soft = max(float(S["soft"]), 0.001)
     rng = np.random.default_rng(5)
     streak = np.repeat(rng.uniform(0, 1, (1, W)), H, 0).astype(np.float32)
-    base = _ss((d_in - 0.25 * soft) / soft)
+    base = _ss((d_in - CAP_BASE_IN * soft) / soft)
     pw = float(g["parting"].get("width", 0.012))
-    base = base * (1 - 0.8 * np.clip(_part(sc, g, AA, EE, 0.25 * pw), 0, 1))
+    base = base * (1 - CAP_PART_CUT * np.clip(_part(sc, g, AA, EE, 0.25 * pw), 0, 1))
     if short:  # the crown is hair whatever the parting's mask says there (a bald disc at the pole of a crop)
         base = np.where((EE > 72.0) & (d_in > 0.02), 1.0, base)
     a_ = np.where(d_in > -0.004, a_, 0.0)

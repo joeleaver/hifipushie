@@ -1,11 +1,12 @@
 """shots.py <model> [stage=<model whose head stage is used>] [size=768] [samples=8] [views=v0,v1,v2,backl] [tag=]
-[like=<model>] [glb=<hair GLB> params=<json> alpha=game cutoff=0.33 only=<json tri ranges>]: hair renders for the
+[like=<model>] [glb=<hair GLB> params=<json> alpha=game cutoff=0.33 only=<json tri ranges> shadow=0]: hair renders for the
 hair-cards gates, ALL views in ONE Blender start (per-view light rigs: blender_scene.render's view "lights"), each with
 the hair's id pass at the same frame (an exact hair mask): $TOUT/s_<model><tag>_<v>.png, id_<model><tag>_<v>.png.
 - views v0, v1, v2: the reference pictures' fitted cameras under the fitted photo light (spikes/tesshair7 shots7);
   backl / backq / right / back / left / front / crown / top: the front light turned round with the camera.
 - like=<model>: THAT model's cameras, moved and scaled with the head (scalp centre / median radius): the same view
   OF THE HEAD, for a groom re-seated on a different head (hair.reseat).
+- g1v0 / g3backl ...: game-distance views (game_view: 1 m / 3 m, fov 59, render with size=1080 = native game pixels).
 - glb=: an exported hair GLB drawn as a game draws it (blender_cards.game_material: the export's shading notes) in
   place of the model's strand groom; only= keeps triangle ranges (the report's "layers") to isolate one.
 Light by design: 768 px, 8 samples by default (heavy hair renders reset the laptop's GPU, 2026-10-14); full renders
@@ -62,8 +63,40 @@ st["hair"] = spec["hair"]
 GLB = kw.get("glb")
 CARD = json.loads(open(kw["params"][1:]).read() if kw.get("params", "").startswith("@") else kw.get("params", "{}"))
 
+GAME_FOV = 59.0  # gates.md game distance: 1920x1080, vertical fov ~59 deg; a square N=1080 frame = its centre columns
+
+
+def game_view(v, i):
+    """g<metres><view> (g1v0, g3backl): the game camera at that distance from the head centre along the view's
+    direction (vN: the fitted photo camera's), vertical fov 59 deg, no lens shift: render size=1080 for native pixels."""
+    dist, b = float(v[1]), v[2:]
+    if b[0] == "v" and b[1:].isdigit():
+        f0 = stage.fitted_frame(refs["cameras"][int(b[1:])], BOX, b)
+        d, up = np.asarray(f0["dir"], float), f0["up"]
+        lt = stage.photo_light(like or m, int(b[1:]))
+    else:
+        d, up = np.asarray(DIRS[b], float) / np.linalg.norm(DIRS[b]), [0, 0, 1]
+        lt = None
+    t = c if not like else CB + KS * (c - CA)
+    f = render.camera_frame({"eye": (t + d * dist).tolist(), "target": t.tolist(), "fov": GAME_FOV, "up": up, "name": v}, i)
+    return f, lt
+
+
 frames, rigs = [], []
 for i, v in enumerate(views):
+    if v[0] == "g" and v[1].isdigit():
+        f, lt = game_view(v, i)
+        if lt is None:
+            e = np.asarray(f["eye"], float) - np.asarray(f["center"], float)
+            a = np.arctan2(e[0], -e[1])
+            R = np.array([[np.cos(a), -np.sin(a), 0], [np.sin(a), np.cos(a), 0], [0, 0, 1]])
+            lt = copy.deepcopy(stage.FRONT_LIGHT)
+            for l in lt["lights"]:
+                l["dir"] = (R @ np.asarray(l["dir"], float)).tolist()
+                l.pop("window", None)
+        frames.append(f)
+        rigs.append(lt)
+        continue
     if v[0] == "v" and v[1:].isdigit():
         f = stage.fitted_frame(refs["cameras"][int(v[1:])], BOX, v)
         lt = stage.photo_light(like or m, int(v[1:]))
@@ -79,6 +112,12 @@ for i, v in enumerate(views):
             l.pop("window", None)
     frames.append(moved(f))
     rigs.append(lt)
+if kw.get("shadow", "").startswith("game"):  # shadow=game[:<texel mm>[:<filter>]]: a game's shadow map (blender_scene
+    g_ = kw["shadow"].split(":")  # light keys shadow_res / shadow_filter), on every view's suns
+    for lt_ in rigs:
+        for l in lt_["lights"]:
+            l["shadow_res"] = float(g_[1]) / 1000 if len(g_) > 1 else 0.004
+            l["shadow_filter"] = float(g_[2]) if len(g_) > 2 else 2.0
 # (one rig shape for every view: the first view's, with a window on its key; views re-aim / re-weight its suns)
 base = copy.deepcopy(next((r for r in rigs if any(l.get("window") for l in r["lights"])), rigs[0]))
 
@@ -86,21 +125,36 @@ with resources.heavy(f"haircards shots {m}{TAG}", gb=8), tempfile.TemporaryDirec
     vf, idf = [], []
     for v, f, lt in zip(views, frames, rigs):
         vf.append({**f, "name": v, "out": str(Path(tmp) / f"{v}.png"), "lights": lt["lights"]})
+        if kw.get("shadow", "").startswith("game") and kw.get("shadowlod", "1") == "1" and v[0] == "g" and v[1].isdigit():
+            vf[-1]["card_shadow"] = float(v[1]) < 3  # the shading notes' hair shadow LOD: cards cast at 1 m, not at 3 m+
         idf.append({**f, "name": v + "_id", "out": str(Path(tmp) / f"{v}_id.png")})
     job = {"blend": str(scene.blend_path(sn)), "views": vf, "size": N, "samples": int(kw.get("samples", 8)), "hide": [],
-           "flat": False, "transparent": True, "lighting": {**base, "target": frames[0]["center"]}, "eevee": stage.STAGE_EEVEE,
+           "flat": kw.get("flat") == "1", "transparent": True, "lighting": {**base, "target": frames[0]["center"]},
+           # rays=<n> (default 4, round 20): EEVEE's shadow rays per sample, for groom AND cards. At 1 (the old default) any
+           # shadowed skin read as grain (0.65 vs 0.29 unshadowed); 4 stands in for an engine's filtered soft shadow
+           "eevee": {**stage.STAGE_EEVEE, "shadow_ray_count": int(kw.get("rays", 4))},
            "mode": "hair_look", "clay_views": [], "id_views": idf, "look_engine": "eevee"}
     if GLB:
         job.update(mode="hair_glb_look", glb=GLB, alpha=kw.get("alpha", "game"), card_params=CARD,
                    aux=str(Path(GLB).parent / "hair_aux.png"), cutoff=float(kw.get("cutoff", 0.33)))
         if kw.get("only"):
             job["only_tris"] = json.loads(kw["only"])
+        if kw.get("shadow") == "0":  # shadow=0: the cards cast no shadow (test pass)
+            job["card_shadow"] = False
+        if kw.get("proxy") == "0":  # proxy=0: no shadow proxy (the cards cast their own shadow, as before round 19)
+            job["shadow_proxy"] = False
     else:
         job["hair"] = hair.job(sn, st)
+        if kw.get("gshadow"):  # gshadow=opaque: the strand groom's own shadow made opaque (no transparent shadow), the
+            job["groom_shadow"] = kw["gshadow"]  # strands cast explicitly (round 20: the source frames' groom cast ~none)
+        if kw.get("gproxy"):  # gproxy=<obj>: the groom's shadow caster (gproxy.py: the cards' shadow-proxy recipe on the
+            job["groom_proxy"] = kw["gproxy"]  # strands), shadow-only; the strands cast none (round 22, "gSc")
     t0 = time.time()
     out = scene._blender(job, 3600)
     fr = [float(ln.split()[1]) for ln in str(out).splitlines() if ln.startswith("@@frame")]
     print(f"{m}{TAG}: {len(views)} views in {time.time() - t0:.0f} s wall; frames {fr} s", flush=True)
+    json.dump({v: {k: f[k] for k in ("eye", "center", "fov", "dir", "up")} for v, f in zip(views, frames)},
+              open(f"{OUT}/frames_{m}{TAG}.json", "w"))
     for v, f, lt in zip(views, vf, rigs):
         im = Image.open(f["out"])
         if im.mode == "RGBA":
