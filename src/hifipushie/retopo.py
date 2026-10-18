@@ -1287,6 +1287,9 @@ def base_quads(spec: dict, log: list) -> dict | None:
             moved = np.linalg.norm(dlt, axis=1) > 1e-6
             inner |= (gnm >= 0) & moved[np.clip(rid, 0, len(moved) - 1)]
     V = surface.newton(prims, V, voxel * 0.125, voxel, iterations=12)[0]
+    if one and (FACE_KEEP or LID_KEEP):  # GNM's face stays as the approved head has it (see face_keep)
+        w = face_keep(gnm, fq) if FACE_KEEP else lid_keep(gnm, fq)
+        V = V0 + (1.0 - w)[:, None] * (V - V0)
     # (the cage stands <= ~2.5 mm off; what moves further is the neck tube's upper rings inside a grafted head, cut
     # away below, or a step that went astray)
     far = np.linalg.norm(V - V0, axis=1) > 0.004
@@ -1309,9 +1312,62 @@ def base_quads(spec: dict, log: list) -> dict | None:
     return out
 
 
+LID_KEEP = True  # (r41) GNM's eye region (expression_basis_*_eye skin) is NOT dropped onto the field: the smoothed field rounds
+# the lids, and dropped, their skin moved up to 1 mm (upper lid up +0.44 and back +0.27 mm on average), so the exported
+# neutral eye opening was 10.0 mm against the approved GNM head's 8.6 (ga_tess v55, game_ready.md r41)
+LID_KEEP_RINGS = 3  # the keep fades out over this many rings of quads past the group (no step where the drop resumes)
+
+
+FACE_KEEP = True  # (r42) generalises LID_KEEP to the whole face: the drop moved the LIPS' skin by 1.2 mm on average (max 6.6 mm),
+# the lower vermilion 3.5 mm shorter at the centre, the upper 1.5 mm ("neutral lips thin" in the r41 review), the nose tip 0.34 mm
+# back (r42/fid_before.txt in the assembly scratch). GNM's expression-basis regions (eyes, mouth / nose / ears) keep the cage
+FACE_KEEP_GROUPS = ("expression_basis_left_eye", "expression_basis_right_eye", "expression_basis_mouth_nose_ears")
+
+
+def lid_keep(gnm, faces, rings: int | None = None) -> np.ndarray:
+    """(one mesh) per cage vertex, 0..1: how much of its drop onto the field is undone. 1 on GNM's eye regions
+    (expression_basis_left_eye / _right_eye: the lids and the skin round them), fading to 0 over LID_KEEP_RINGS rings."""
+    return face_keep(gnm, faces, rings, FACE_KEEP_GROUPS[:2])
+
+
+def face_keep(gnm, faces, rings: int | None = None, groups=None) -> np.ndarray:
+    """(one mesh) per cage vertex, 0..1: how much of its drop onto the field is undone: 1 on GNM's face (the
+    FACE_KEEP_GROUPS: eyes, mouth, nose; the cage there is the approved head), fading to 0 over LID_KEEP_RINGS rings."""
+    from . import base as basemod
+    from . import gnmloops
+    g = basemod._gnm_data()
+    gnm = np.asarray(gnm, int)
+    rid = np.maximum(gnmloops.raw_id(gnm), 0)
+    eye = np.zeros(len(rid), bool)
+    for k in (FACE_KEEP_GROUPS if groups is None else groups):
+        eye |= (np.asarray(g["groups"][k]) > 0.5)[rid]
+    eye &= gnm >= 0
+    w = eye.astype(float)
+    if not eye.any():
+        return w
+    a, b = [], []
+    for f in faces:
+        f = list(f)
+        a += f; b += f[1:] + f[:1]
+    a, b = np.array(a), np.array(b)
+    n = LID_KEEP_RINGS if rings is None else rings
+    for i in range(n):  # ring by ring outward: ring k keeps 1 - k / (n + 1)
+        nb = np.zeros(len(w), bool)
+        nb[b[w[a] > 0]] = True
+        nb[a[w[b] > 0]] = True
+        new = nb & (w == 0)
+        w[new] = 1.0 - (i + 1) / (n + 1)
+    return w
+
+
 SOCK_TUCK = 0.004  # m: (one mesh) the mouth sock narrows and sinks back over this distance in from the lips' loop
 SOCK_NARROW, SOCK_SINK = 0.45, 0.004  # its width taken in by this share, and m sunk back, at full tuck (0.25 / 3 mm left Garrett's
 # narrower mouth with the sock's sides out through both lip corners in the exported neutral)
+SOCK_CARRY = True  # the head's own moves of its skin carried onto the sock (nearest skin vertex)
+SOCK_FALLOFF = 0  # (r20: 0 again: with 6 (v32-v36) the head's texels astray 3.75% -> 4.89% and the closed upper lip baked torn streaks (seam/r20_alb_31_32_36.png); r17: rest ring-1 roughness 3.4 -> 2.0 mm unironed, rings 2+ as GNM) rings: > 0 replaces the carry and the tuck: the lips' loop's own offset from GNM's rest (what the head
+# did to its skin) extended harmonically into the sock, fading to 0 over this many rings of the sock's quads
+SOCK_FALLOFF_EASE = True  # (with SOCK_FALLOFF) the harmonic offset also eased by a smoothstep of the ring
+SOCK_FALLOFF_NARROW = 0.0  # (with SOCK_FALLOFF) share of the tuck's narrowing kept, faded the same way
 
 
 def _with_mouth_sock(V, L, S, gnm, spec, s, log):
@@ -1342,17 +1398,20 @@ def _with_mouth_sock(V, L, S, gnm, spec, s, log):
     # the skin it hangs from: left as placed, a corner push left the sock standing out through the lips' corners
     own = np.flatnonzero(ok)
     near = own[np.linalg.norm(np.asarray(c["V"], float)[gnm[own]][:, None] - np.asarray(c["V"], float)[new][None], axis=2)
-               .argmin(0)] if len(own) * len(new) < 4e7 else None
+               .argmin(0)] if len(own) * len(new) < 4e7 and SOCK_CARRY else None
+    if SOCK_FALLOFF > 0:
+        Xw = _sock_falloff(V, Xw, where[q], len(V), gnm, place, np.asarray(c["V"], float), int(SOCK_FALLOFF))
+        near = None
     if near is not None:
         Xw = Xw + (V[near] - place(np.asarray(c["V"], float)[gnm[near]]))
     # and tucked in behind the lips: GNM's sock is as wide as ITS mouth, and a narrowed, pushed or fitted face
     # (Garrett's) left the sock's sides standing out through the lips' corners. Past the loop it narrows toward the
     # mouth's middle and sinks back, by how far in it is
     loop = np.unique(where[q][~sock[q]])
-    if len(loop):
+    if len(loop) and (SOCK_FALLOFF <= 0 or SOCK_FALLOFF_NARROW > 0):
         from scipy.spatial import cKDTree as _T
         d = _T(V[loop]).query(Xw)[0]
-        t = np.clip(d / SOCK_TUCK, 0, 1)[:, None]
+        t = np.clip(d / SOCK_TUCK, 0, 1)[:, None] * (SOCK_FALLOFF_NARROW if SOCK_FALLOFF > 0 else 1)
         mid = V[loop].mean(0)
         fwd = np.asarray(h["forward"], float)
         Xw = mid + (Xw - mid) * np.c_[1 - SOCK_NARROW * t, np.ones_like(t), np.ones_like(t)] - fwd * (SOCK_SINK * t)
@@ -1362,6 +1421,62 @@ def _with_mouth_sock(V, L, S, gnm, spec, s, log):
     gnm = np.r_[gnm, new]
     log.append(f"mouth: GNM's mouth sock added to the quads ({len(new)} vertices, {len(q)} faces)")
     return V, L, S, gnm
+
+
+def _sock_falloff(V, Xw, Wq, n0, gnm, place, CV, rings):
+    """The sock's placed vertices Xw (indices n0.. in the quads Wq) moved by the lips' loop's offset from GNM's rest
+    (V[loop] - place(GNM[loop]): the head's pushes, the drop onto the field, gnmloops), extended into the sock as a
+    harmonic (umbrella-Laplace) field held at the loop and at 0 from `rings` rings in, then eased by a smoothstep of
+    the ring: no nearest-vertex carry (it sheared the first rings: rest roughness 3.4 mm at ring 1 vs GNM's 0.85)."""
+    nn = len(Xw)
+    loop = np.unique(Wq[Wq < n0])
+    ok = gnm[loop] >= 0
+    loop = loop[ok]
+    D0 = V[loop] - place(CV[gnm[loop]])
+    # graph over loop + sock vertices: local ids, loop first
+    ids = np.r_[loop, n0 + np.arange(nn)]
+    lid = {v: i for i, v in enumerate(ids)}
+    E = []
+    for k in range(Wq.shape[1]):
+        a, b = Wq[:, k], Wq[:, (k + 1) % Wq.shape[1]]
+        E += [(lid[x], lid[y]) for x, y in zip(a, b) if x in lid and y in lid]
+    E = np.unique(np.sort(np.array(E), 1), axis=0)
+    m = len(ids)
+    nb = [[] for _ in range(m)]
+    for x, y in E:
+        nb[x].append(y)
+        nb[y].append(x)
+    ring = np.full(m, -1)
+    ring[:len(loop)] = 0
+    fr = list(range(len(loop)))
+    r = 0
+    while fr:
+        r += 1
+        nx = [y for x in fr for y in nb[x] if ring[y] < 0]
+        nx = list(set(nx))
+        ring[nx] = r
+        fr = nx
+    ring[ring < 0] = 10 ** 6
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.linalg import spsolve
+    fixed = (ring == 0) | (ring >= rings)
+    val = np.zeros((m, 3))
+    val[:len(loop)] = D0
+    A = coo_matrix((np.ones(2 * len(E)), (np.r_[E[:, 0], E[:, 1]], np.r_[E[:, 1], E[:, 0]])), (m, m)).tocsr()
+    deg = np.asarray(A.sum(1)).ravel()
+    from scipy.sparse import diags
+    Lp = (diags(deg) - A).tocsr()
+    fr_ = np.flatnonzero(~fixed)
+    fx = np.flatnonzero(fixed)
+    if len(fr_):
+        rhs = -(Lp[fr_][:, fx] @ val[fx])
+        sol = spsolve(Lp[fr_][:, fr_].tocsc(), rhs)
+        val[fr_] = np.asarray(sol).reshape(-1, 3)
+    t = np.clip(ring / float(rings), 0, 1)
+    w = 1 - t * t * (3 - 2 * t)
+    # the harmonic field already reaches 0 at `rings`; the ease flattens its slope at the far end
+    off = val * (w[:, None] if SOCK_FALLOFF_EASE else 1.0)
+    return Xw + off[len(loop):]
 
 
 def wrap(spec: dict, template: str = "male_stylized", log: list | None = None) -> dict:

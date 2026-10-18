@@ -96,7 +96,7 @@ def test_shapes_on_the_goblin():
     log = []
     got = faceshapes.apply(_spec(), parts, True, log)
     names = faceshapes.names_of(True)
-    assert len(names) == 53 and names[-1] == "jawOpen_mouthClose"  # all 52 ARKit names + the corrective
+    assert len(names) == 54 and names[-2:] == ["jawOpen_mouthClose", "jawOpen_mouthSmile"]  # all 52 ARKit names + the correctives
     assert set(got) == {"body", "teeth", "tongue", "eyes"}, got  # the eyeballs: only eyeLook*
     assert all(got[pn] == names for pn in got)
     E = parts["eyes"]["shapes"]
@@ -111,7 +111,7 @@ def test_shapes_on_the_goblin():
     for nm, (d, n0, n1) in S.items():
         assert d.shape == before["body"].shape and n0.shape == n1.shape == d.shape
         assert np.abs(d[far]).max() == 0.0, nm
-        assert nm.startswith("eyeLook") or np.abs(d).max() > 1e-4, f"{nm} moves nothing"
+        assert nm.startswith("eyeLook") or nm == "jawOpen_mouthSmile" or np.abs(d).max() > 1e-4, f"{nm} moves nothing"  # (jawOpen_mouthSmile: the GNM path only)
     _no_shared_offset(S)
     # mouthClose alone barely moves (A2F drives it with the jaw shut); the corrective does the closing
     assert np.linalg.norm(S["mouthClose"][0], axis=1).max() < 0.2 * np.linalg.norm(S["jawOpen_mouthClose"][0], axis=1).max()
@@ -452,7 +452,10 @@ def test_blink_lids_meet():
                 g1, r1 = _lid_line(face, X, D[f"eyeBlink{s}"], s)
                 assert len(g1) >= 8, (s, len(g1))
                 assert g1.max() < 0.0006, (s, "an open slit between the lids", g1.max())
-                assert g1.min() > -0.0010, (s, "the lids cross", g1.min())
+                # the upper lid is MEANT to pass the lower lid's line by LID_OVER (a seal, no slit), and by LID_SAG
+                # more mid-eye (the closed lid's line dips over the globe): more than half a millimetre past that is
+                # a fault
+                assert g1.min() > -(faceshapes.LID_OVER + faceshapes.LID_SAG + 0.0005), (s, "the lids cross", g1.min())
                 assert np.ptp(g1) < 0.4 * np.ptp(g0), (s, "no tidier than unsealed", np.ptp(g1), np.ptp(g0))
                 assert r1 < 0.00025 and r1 < r0, (s, "the lid line is ragged", r1, r0)
                 # the seal only moves the lids: nothing past the eye's own neighbourhood
@@ -601,7 +604,9 @@ def test_gnm_head_shapes():
     sl, _ = face._onto(lm, face._gnm["dW"]["mouthSmileLeft"])
     sr, _ = face._onto(lm, face._gnm["dW"]["mouthSmileRight"])
     assert sl[54] @ face.up > 0.003 and sl[54] @ face.up > 2 * (sl[48] @ face.up)
-    assert np.allclose(sl[54] * [-1, 1, 1], sr[48], atol=5e-4), (sl[54], sr[48])
+    # (relative: the smile is GNM's expression prototype split per side on the head's own, slightly asymmetric
+    # identity: the corners move ~25 mm and differ by ~5%, which an absolute 0.5 mm can't hold)
+    assert np.allclose(sl[54] * [-1, 1, 1], sr[48], rtol=0.08, atol=5e-4), (sl[54], sr[48])
     # a blink never sinks the skin into the eyeball: no deeper than its clearance, or than the neutral already sits
     # (the neutral lower lids are a hair inside it; pushing them out to the clearance was round 2's under-eye leak)
     for s in ("Left", "Right"):
@@ -614,7 +619,8 @@ def test_gnm_head_shapes():
     # far from the face (the back of the head, the neck) nothing moves (brows do pull the forehead a little)
     eyes = 0.5 * (face.eyes["Left"]["c"] + face.eyes["Right"]["c"])
     far = (np.linalg.norm(V - face.M, axis=1) > 0.16) & (np.linalg.norm(V - eyes, axis=1) > 0.12)
-    assert far.sum() > 100 and max(np.abs(d[far]).max() for d in D.values()) < 2e-4
+    worst = max(((float(np.abs(d[far]).max()), k) for k, d in D.items()))
+    assert far.sum() > 100 and worst[0] < 2e-4, worst
     # the tongue rides the jaw and comes out past the lips
     tp = [p for p in compile_prims(spec) if p.name == "face_tongue"][0]
     tv = tp.params["c"] + np.array([[0, 0, 0], [0, -tp.params["size"][1], 0]])
@@ -652,7 +658,14 @@ def test_jaw_leaves_the_body_under_the_neck():
     moved = {}
     for how, idx in (("by index", gnm), ("projected", None)):
         Xn = V + face.neutral(V, "skin", idx)
-        D = face.displacements(V, Xn, faceshapes.vertex_normals(Xn, T), "skin", ["jawOpen", "tongueOut"], None, idx)
+        D = face.displacements(V, Xn, faceshapes.vertex_normals(Xn, T), "skin", ["jawOpen", "tongueOut", "eyeBlinkLeft"],
+                               None, idx)
+        if idx is not None:  # (2026-10-16, expr_r8..r12: the closed lips showed a flap of inner roll / a dark gap)
+            # the lips' seam is closed at neutral and at eyeBlink: nothing inside the contact ring seen from the front
+            for nm, X in (("neutral", Xn), ("eyeBlinkLeft", Xn + D["eyeBlinkLeft"])):
+                a = face.seam_showing(X, T, idx)
+                assert a is not None and a <= faceshapes.SEAM_SHOWING, (nm, a)
+        D.pop("eyeBlinkLeft")
         mv = np.max([np.linalg.norm(d, axis=1) for d in D.values()], 0)
         assert mv[~trunk].max() > 0.015, how  # (the jaw does open)
         assert mv[trunk].max() < rigmod.MOVED[0], (how, float(mv[trunk].max()))
@@ -667,6 +680,204 @@ def test_jaw_leaves_the_body_under_the_neck():
         Jr, Wr = rigmod.rigid_near(bones, {"body": (J, W)}, {"body": V}, {"body": mv}, band=0.08)["body"]
         head = np.where(np.asarray(Jr) == hi, np.asarray(Wr), 0.0).sum(1)
         assert head[~trunk].max() > 0.99 and head[trunk].max() == 0.0, (how, float(head[trunk].max()))
+
+
+def _lid_edges(V: dict, centre, half: float):
+    """Per eye: the eyeball's visible top / bottom (m, z) seen from the front in its centre columns (+-15% of its
+    half width), rays along +Y (the face looks down -Y): the lids' margins as a render sees them."""
+    from types import SimpleNamespace
+    f = SimpleNamespace(M=np.asarray(centre, float), out=np.array([0.0, -1.0, 0.0]), up=np.array([0.0, 0.0, 1.0]),
+                        side=np.array([1.0, 0.0, 0.0]), width=0.03)
+    xs = np.linspace(-0.15 * half, 0.15 * half, 7)
+    zs = np.arange(-0.010, 0.010, 0.00005)
+    hit, _ = _front_hits(V, f, xs, zs)
+    top, bot = [], []
+    for k in range(len(xs)):
+        r = np.flatnonzero(hit[:, k] == "eyes")
+        if len(r):
+            top.append(zs[r.max()]), bot.append(zs[r.min()])
+    return np.mean(top), np.mean(bot)
+
+
+def test_exported_squint_matches_fit():
+    """(r40) The fitted smile's squint survives the export: in the exported GLB (HP_SQUINT_GLB), mouthSmile + cheekSquint
+    at 1 move each lid's visible margin (front rays at the eye's centre columns, against the GLB's own eyeballs) as far
+    as the FITTED GNM head (HP_SQUINT_SPEC: the head model's spec.json, e.g. tp_k19's, posed read-only with the fit's coefficients, the eye
+    components x SMILE_FIT_EYE_GAIN) moves it, within 0.25 mm. Skipped without HP_SQUINT_GLB / HP_SQUINT_SPEC / HP_SMILE_FIT."""
+    glb = os.environ.get("HP_SQUINT_GLB")
+    if not glb or not faceshapes.SMILE_FIT or not os.environ.get("HP_SQUINT_SPEC"):
+        print("skip: HP_SQUINT_GLB / HP_SQUINT_SPEC / HP_SMILE_FIT not set")
+        return
+    import copy
+    from hifipushie import base, humanfit, likeness, rig_audit
+    g = rig_audit.read_glb(glb)["meshes"]
+    W = {"mouthSmileLeft": 1.0, "mouthSmileRight": 1.0, "cheekSquintLeft": 1.0, "cheekSquintRight": 1.0}
+
+    def posed(m, w):
+        V = np.asarray(m["V"], float).copy()
+        for k, a in w.items():
+            if k in m.get("targets", {}):
+                V = V + a * np.asarray(m["targets"][k], float)
+        return V
+    names = [str(n) for n in base._gnm_data()["expression_names"]]
+    e = np.asarray(np.load(faceshapes.SMILE_FIT), float).copy()
+    for i, n in enumerate(names[:len(e)]):
+        if n.startswith(("left_eye", "right_eye")):
+            e[i] *= faceshapes.SMILE_FIT_EYE_GAIN
+    spec = json.loads(Path(os.environ["HP_SQUINT_SPEC"]).read_text())  # (this module points HIFIPUSHIE_HOME at a temp dir)
+
+    def gnm(ev):
+        s = copy.deepcopy(spec)
+        if ev is not None:
+            s["base"]["head"]["expression"] = {n: float(x) for n, x in zip(names, ev) if abs(x) > 1e-5}
+        m = likeness.model_mesh_from_state(humanfit.state(s["base"]))
+        F = np.asarray(m["F"])
+        if F.shape[1] == 4:
+            F = np.concatenate([F[:, [0, 1, 2]], F[:, [0, 2, 3]]])
+        return np.asarray(m["V"], float), F
+    G0, GF = gnm(None)
+    G1, _ = gnm(e)
+    E0 = posed(g["eyes"], {})
+    for side, sel in (("L", E0[:, 0] > 0), ("R", E0[:, 0] < 0)):
+        c = E0[sel].mean(0)
+        half = 0.5 * np.ptp(E0[sel][:, 0])
+        Eg = (np.asarray(g["eyes"]["V"], float), np.asarray(g["eyes"]["F"]))
+        moved = {}
+        for lab, n, s_ in (("export", {"head": (posed(g["head"], {}), np.asarray(g["head"]["F"])), "eyes": Eg},
+                                       {"head": (posed(g["head"], W), np.asarray(g["head"]["F"])),
+                                        "eyes": (posed(g["eyes"], W), Eg[1])}),
+                           ("fit", {"head": (G0, GF), "eyes": Eg}, {"head": (G1, GF), "eyes": Eg})):
+            t0, b0 = _lid_edges(n, c, half)
+            t1, b1 = _lid_edges(s_, c, half)
+            moved[lab] = (t1 - t0, b1 - b0, t0 - b0)
+        ex, fi = moved["export"], moved["fit"]
+        print(f"eye{side}: upper {1e3 * ex[0]:+.2f} (fit {1e3 * fi[0]:+.2f}) lower {1e3 * ex[1]:+.2f} (fit {1e3 * fi[1]:+.2f}) mm,"
+              f" neutral opening {1e3 * ex[2]:.2f} (fit head {1e3 * fi[2]:.2f}) mm")
+        # (r43) the export's lower lid travels SMILE_LOWLID_GAIN x the fit's at the lid's centre (a hand pass on the solve)
+        lo = fi[1] * float(os.environ.get("HP_SMILE_LOWLID_GAIN", faceshapes.SMILE_LOWLID_GAIN))
+        assert abs(ex[0] - fi[0]) < 0.00025 and abs(ex[1] - lo) < 0.00025, (side, ex, fi, lo)
+
+
+
+def _lid_profile(V: dict, centre, half: float, n: int = 9):
+    """The eyeball's visible top / bottom (m, z) seen from the front at n columns across the eye (15% .. 85% of its
+    width): the lids' margins along the whole eye, as a render sees them (nan where no eye shows)."""
+    from types import SimpleNamespace
+    f = SimpleNamespace(M=np.asarray(centre, float), out=np.array([0.0, -1.0, 0.0]), up=np.array([0.0, 0.0, 1.0]),
+                        side=np.array([1.0, 0.0, 0.0]), width=0.03)
+    xs = np.linspace(-0.7 * half, 0.7 * half, n)
+    zs = np.arange(-0.010, 0.010, 0.00005)
+    hit, _ = _front_hits(V, f, xs, zs)
+    top, bot = np.full(n, np.nan), np.full(n, np.nan)
+    for k in range(n):
+        r = np.flatnonzero(hit[:, k] == "eyes")
+        if len(r):
+            top[k], bot[k] = zs[r.max()], zs[r.min()]
+    return top, bot
+
+
+def test_exported_neutral_eye_opening_matches_source():
+    """(r41) The exported head's NEUTRAL lid margins are the approved source head's: in the GLB (HP_SQUINT_GLB), each lid's
+    visible margin at 9 columns across each eye (front rays against the GLB's own eyeballs) lies within 0.2 mm of the
+    source GNM head's (HP_SQUINT_SPEC, e.g. tp_k19's spec.json, read-only), and the opening at the centre within 0.2 mm.
+    Before retopo.LID_KEEP the drop onto the smoothed field moved the lids' skin up to 1 mm: 9.9 against 8.6 mm."""
+    glb = os.environ.get("HP_SQUINT_GLB")
+    if not glb or not os.environ.get("HP_SQUINT_SPEC"):
+        print("skip: HP_SQUINT_GLB / HP_SQUINT_SPEC not set")
+        return
+    from hifipushie import humanfit, likeness, rig_audit
+    g = rig_audit.read_glb(glb)["meshes"]
+    spec = json.loads(Path(os.environ["HP_SQUINT_SPEC"]).read_text())
+    m = likeness.model_mesh_from_state(humanfit.state(spec["base"]))
+    F = np.asarray(m["F"])
+    if F.shape[1] == 4:
+        F = np.concatenate([F[:, [0, 1, 2]], F[:, [0, 2, 3]]])
+    E = np.asarray(g["eyes"]["V"], float)
+    Eg = (E, np.asarray(g["eyes"]["F"]))
+    for side, sel in (("L", E[:, 0] > 0), ("R", E[:, 0] < 0)):
+        c = E[sel].mean(0)
+        half = 0.5 * np.ptp(E[sel][:, 0])
+        ex = _lid_profile({"head": (np.asarray(g["head"]["V"], float), np.asarray(g["head"]["F"])), "eyes": Eg}, c, half)
+        so = _lid_profile({"head": (np.asarray(m["V"], float), F), "eyes": Eg}, c, half)
+        dt, db = 1e3 * (ex[0] - so[0]), 1e3 * (ex[1] - so[1])
+        mid = len(dt) // 2
+        op_e, op_s = 1e3 * (ex[0][mid] - ex[1][mid]), 1e3 * (so[0][mid] - so[1][mid])
+        print(f"eye{side}: neutral opening export {op_e:.2f} source {op_s:.2f} mm; upper margin export - source "
+              f"{np.round(dt, 2)}, lower {np.round(db, 2)} mm")
+        ok = ~np.isnan(dt) & ~np.isnan(db)
+        assert ok.sum() >= len(dt) - 2, (side, dt, db)
+        assert np.abs(dt[ok]).max() < 0.2 and np.abs(db[ok]).max() < 0.2 and abs(op_e - op_s) < 0.2, (side, dt, db)
+
+
+_FACE_REGIONS = ("upper_lip", "lower_lip", "upper_lip_region", "lower_lip_region", "nose_region", "chin_region",
+                 "middle_brow_region", "left_brow_region", "left_orbital_region", "right_orbital_region")
+
+
+def _face_items(X, grp):
+    """Feature items on GNM-indexed vertices (mm): mouth width / corners, vermilion height and front per column,
+    nose tip / width, philtrum depth, brow front (grp(name): the cage's exterior vertices of that GNM group)."""
+    o = {}
+    U, L = grp("upper_lip"), grp("lower_lip")
+    lips = U | L
+    xs = X[lips, 0]
+    w, cx = np.ptp(xs), 0.5 * (xs.max() + xs.min())
+    o["mouth width"] = w
+    o["corner L z"] = X[lips & (X[:, 0] > cx + 0.45 * w), 2].mean()
+    o["corner R z"] = X[lips & (X[:, 0] < cx - 0.45 * w), 2].mean()
+    for c in (-0.3, -0.15, 0.0, 0.15, 0.3):
+        band = np.abs(X[:, 0] - (cx + c * w)) < 0.0025
+        for nm, sel in (("upper", U & band), ("lower", L & band)):
+            o[f"{nm} vermilion height @{c:+.2f}"] = np.ptp(X[sel, 2])
+            o[f"{nm} lip front @{c:+.2f}"] = X[sel, 1].min()
+    nz = grp("nose_region")
+    tip = np.argmin(np.where(nz, X[:, 1], 9))
+    o["nose tip y"], o["nose tip z"] = X[tip, 1], X[tip, 2]
+    o["nose width"] = np.ptp(X[nz & (np.abs(X[:, 2] - (X[tip, 2] - 0.008)) < 0.004), 0])
+    ph = grp("upper_lip_region") & ~U
+    mid = ph & (np.abs(X[:, 0] - cx) < 0.0015)
+    zc = X[mid, 2].mean()
+    mid &= np.abs(X[:, 2] - zc) < 0.004
+    rid = ph & (np.abs(np.abs(X[:, 0] - cx) - 0.0045) < 0.0015) & (np.abs(X[:, 2] - zc) < 0.004)
+    o["philtrum depth"] = X[mid, 1].mean() - X[rid, 1].mean()
+    for r in ("middle_brow_region", "left_brow_region", "right_brow_region"):
+        o[f"{r} front"] = X[grp(r), 1].mean()
+    return {k: 1e3 * v for k, v in o.items()}
+
+
+def test_face_keep_regions_match_source():
+    """(r42) The export's head surface IS the approved GNM head on the whole face, not just at the lids: retopo.base_quads
+    dropped the cage onto the SMOOTHED body field, which moved the lips' skin 1.2 mm on average (max 6.6), the lower
+    vermilion 3.5 mm shorter, the nose tip 0.34 mm back ("neutral lips thin"). With retopo.FACE_KEEP every feature item
+    (lips per column, corners, nose, philtrum, brows) and every region's vertices stay within 0.1 mm of the cage.
+    Model: HP_FACE_KEEP_SPEC (a one-mesh GNM model's spec.json, e.g. ga_tess_v54's; read-only)."""
+    m = os.environ.get("HP_FACE_KEEP_SPEC")
+    if not m:
+        print("skip: HP_FACE_KEEP_SPEC not set")
+        return
+    from hifipushie import base as basemod, onemesh, gnmloops, retopo
+    from hifipushie.spec import expand_mirror
+    spec = json.loads(Path(m).read_text())
+    log = []
+    r = retopo.base_quads(spec, log)
+    sf = basemod.surface(expand_mirror(spec), spec["base"])
+    Vq = np.asarray(sf["quads"][0], float)
+    tpl = basemod.source(spec["base"])
+    gnm = np.asarray(onemesh.asset()["gnm_exact"], int)[np.asarray(tpl["fid"])]
+    rid = np.maximum(gnmloops.raw_id(gnm), 0)
+    g = basemod._gnm_data()
+    ext = (gnm >= 0) & (np.asarray(g["groups"]["skin_exterior"]) > 0.5)[rid]
+    V = np.asarray(r["verts"], float)[:len(Vq)]
+
+    def grp(k):
+        return ext & (np.asarray(g["groups"][k]) > 0.5)[rid]
+    for k in _FACE_REGIONS:
+        d = 1e3 * np.linalg.norm(V[grp(k)] - Vq[grp(k)], axis=1)
+        print(f"{k:22s} |d| mean {d.mean():.3f} max {d.max():.3f} mm")
+        assert d.max() < 0.1, (k, d.max())
+    a, b = _face_items(Vq, grp), _face_items(V, grp)
+    for k in a:
+        print(f"{k:32s} source {a[k]:9.2f} export {b[k] - a[k]:+.3f} mm")
+        assert abs(b[k] - a[k]) < 0.1, (k, a[k], b[k])
 
 
 if __name__ == "__main__":

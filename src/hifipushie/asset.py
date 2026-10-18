@@ -243,6 +243,17 @@ def _min_triangles(defs: dict, pn: str) -> int | None:
     return int(v)
 
 
+def _max_triangles(defs: dict, pn: str) -> int | None:
+    """parts.<p>.max_triangles: this part's ceiling per copy (a LOD0 split inside a budget group: GNM's tooth rows
+    and tongue came in whole at 2828 / 1824 and put eyes_mouth_lashes at 2.6x the hero's 5000)."""
+    v = (defs.get(pn) or {}).get("max_triangles")
+    if v is None:
+        return None
+    if int(v) < 1:
+        raise ValueError(f"parts.{pn}.max_triangles must be >= 1")
+    return int(v)
+
+
 def focus_regions(spec: dict, pn: str) -> list:
     """parts.<p>.texel_focus: [{"at": point | joint | blob | {"bone", "t"}, "radius": m, "density": w}] as
     [[x, y, z, radius, density]]: islands inside get `density` times the part's own (the face of a character)."""
@@ -263,6 +274,9 @@ def focus_regions(spec: dict, pn: str) -> list:
     return out
 
 
+EYES_AO_OFF = True  # (r23: the export's sclera AO read mean 0.38, CoV 0.77, p5 0.02 in the rest pose's lid shadow: the
+# "blotchy sclera" in engine renders, absent from the scene's gate render; real-time eyes take their occlusion from
+# the lids as they stand, not a baked map) the base's eyes part gets AO 1
 DECAL_MAX = 2000.0  # texels per metre a decal asks for at most (0.5 mm: small print stays readable)
 DECAL_GAIN = 16.0  # and at most this many times its part's own density
 
@@ -585,8 +599,18 @@ def topology_parts(spec: dict, ctx: dict, out_dir: Path, log: list) -> dict:
         rm = np.full(len(V), -1)
         rm[used] = np.arange(len(used))
         Vk, Lk, Sk = V[used], rm[np.concatenate(kept)], np.array([len(f) for f in kept])
+        gk = np.asarray(r["gnm"])[used] if r.get("gnm") is not None else None
+        if (defs.get(ctx["origin"][pn]) or {}).get("joint_density", True) and spec.get("rig", {}) is not False:
+            # the same triangles spent where it bends: hinge zones split, shafts thinned (topodensity.py)
+            from . import rig as _rig
+            from . import topodensity
+            try:
+                Vk, Lk, Sk, gk = topodensity.rebalance(_rig.rig_bones(spec), Vk, Lk, Sk, gk, ctx["streams"][pn],
+                                                       ctx["voxel"], log)
+            except Exception as e:  # (the plain wrap is still a body)
+                log.append(f"WARNING body density: not rebalanced ({type(e).__name__}: {e})")
         path = out_dir / f"topology_{pn}.npz"
-        extra = {"gnm": np.asarray(r["gnm"])[used]} if r.get("gnm") is not None else {}  # (one mesh: GNM vertex ids,
+        extra = {"gnm": gk} if gk is not None else {}  # (one mesh: GNM vertex ids,
         # face shapes go by index)
         np.savez(path, verts=Vk, loops=Lk, sizes=Sk, **extra)
         out[pn] = (str(path), hashlib.sha1(Vk.tobytes() + Lk.tobytes()).hexdigest()[:12])
@@ -669,6 +693,44 @@ def _deep_hidden(V: np.ndarray, hidden: np.ndarray, part: np.ndarray, rim: float
             d, _ = cKDTree(V[vis]).query(V[hid], distance_upper_bound=rim)
             deep[hid[np.isfinite(d)]] = False
     return deep
+
+
+def own_mouth_meshes(mesh: Path, mp: dict, log: list) -> None:
+    """GNM's tooth rows and tongue as their OWN quads (triangulated) in place of the parts' field meshes in the high mesh: the
+    field (IMLS shell, 0.4 mm) decimated to 1200 triangles a row read "jagged, separate pegs with gaps, fang tips"
+    (expr_r4 / r5) where GNM's 1414 quads are clean teeth. The parts' min_triangles (base.MOUTH_PARTS) keep them whole.
+    Normals: area-weighted from the quads, turned so the front of the row faces forward."""
+    from . import base as basemod
+    z = dict(np.load(mesh))
+    names = [str(n) for n in z["part_names"]]
+    V, F, N, P = z["verts"].astype(np.float64), z["faces"], z["normals"].astype(np.float64), z["part"]
+    for gn, pn in (("teeth_upper", basemod.TEETH_PARTS[0]), ("teeth_lower", basemod.TEETH_PARTS[1]), ("tongue", "tongue")):
+        if pn not in names:
+            continue
+        i = names.index(pn)
+        Vg = np.asarray(mp[gn]["verts"], np.float64)
+        Q = np.asarray(mp[gn]["faces"])
+        T = np.concatenate([Q[:, [0, 1, 2]], Q[:, [0, 2, 3]]])
+        c = Vg[T]
+        fn = np.cross(c[:, 1] - c[:, 0], c[:, 2] - c[:, 0])
+        Ng = np.zeros_like(Vg)
+        for k in range(3):
+            np.add.at(Ng, T[:, k], fn)
+        Ng /= np.maximum(np.linalg.norm(Ng, axis=1, keepdims=True), 1e-12)
+        front = Vg[:, 1] < np.percentile(Vg[:, 1], 15)  # (Blender axes: the face looks toward -y; the tongue's tip)
+        if (Ng[front, 1] > 0).mean() > 0.5:
+            T, Ng = T[:, [0, 2, 1]], -Ng
+        keepv = P != i
+        remap = np.cumsum(keepv) - 1
+        keepf = keepv[F].all(1)
+        F = remap[F[keepf]]
+        V, N, P = V[keepv], N[keepv], P[keepv]
+        F = np.concatenate([F, T + len(V)])
+        V, N = np.concatenate([V, Vg]), np.concatenate([N, Ng])
+        P = np.concatenate([P, np.full(len(Vg), i, P.dtype)])
+        log.append(f"{pn}: GNM's own {gn} quads as its mesh ({len(T)} triangles), not the field's")
+    z.update(verts=V.astype(z["verts"].dtype), faces=F.astype(z["faces"].dtype), normals=N.astype(z["normals"].dtype), part=P)
+    np.savez(mesh, **z)
 
 
 def _hide_covered(ctx: dict, z: dict, names: list, hidden: np.ndarray, log: list) -> None:
@@ -968,7 +1030,8 @@ def _across_seams(parts, given, baked, share, ys, xs, tri, P, fill, tpart, texel
     return out, done, int(ok.sum())
 
 
-INNER_PAINT_ROUGHNESS = 0.25  # the wet inner lip
+INNER_PAINT_ROUGHNESS = 0.4  # the inner lip: moist, a soft sheen (0.25 read as wet plastic streaks in every
+# smile and the jaw open: coordinator on m18, 2026-10-15)
 
 
 def inner_paint(parts: dict, topo: dict, head: dict, log: list) -> None:
@@ -979,15 +1042,62 @@ def inner_paint(parts: dict, topo: dict, head: dict, log: list) -> None:
     val = sfe.inner_lip_values(head)
     if val is None:
         return
+    deep = sfe.mouth_interior_values(head)
+    if deep is None:
+        deep = np.zeros(len(val))
+    on_sock = deep > 0
+    val = np.where(on_sock, 1.0, val)  # the sock is wet mucosa too: red at the rim, darkening inward
     for pn, (tp, _) in topo.items():
         z = np.load(tp)
         if pn not in parts or "gnm" not in z.files or len(z["verts"]) != len(parts[pn]["verts"]):
             continue
         gi = np.asarray(z["gnm"], int)
         v = np.where((gi >= 0) & (gi < len(val)), val[np.clip(gi, 0, len(val) - 1)], 0.0)
-        parts[pn]["inner_paint"] = v[parts[pn]["corner_vert"]][:, None].astype(np.float32)
+        dv = np.where((gi >= 0) & (gi < len(deep)), deep[np.clip(gi, 0, len(deep) - 1)], 0.0)
+        parts[pn]["inner_paint"] = np.stack([v, dv], 1)[parts[pn]["corner_vert"]].astype(np.float32)
         log.append(f"{pn}: the lips' inner rolls painted on {int((v > 0.99).sum())} vertices (GNM's rings to the "
                    f"contact ring)")
+
+
+def face_keep_paint(parts: dict, topo: dict, log: list) -> None:
+    """(one mesh, retopo.FACE_KEEP) each low-poly corner's "keep" weight: 1 where the head's surface IS the approved GNM
+    head (retopo.face_keep: eyes, mouth, nose), fading over its rings. bake() doesn't project those texels onto the field:
+    the field is the smoothed copy of that head (the lips up to 6.6 mm off, game_ready.md r42), so projected, the lips'
+    texels went astray (r41's lip gate 2.69 -> 4.27% with the lids kept) and their normals were the smoothed lips'."""
+    from . import retopo
+    if not retopo.FACE_KEEP:
+        return
+    for pn, (tp, _) in topo.items():
+        z = np.load(tp)
+        if pn not in parts or "gnm" not in z.files or len(z["verts"]) != len(parts[pn]["verts"]):
+            continue
+        L, S = np.asarray(z["loops"], int), np.asarray(z["sizes"], int)
+        faces = np.split(L, np.cumsum(S)[:-1])
+        w = retopo.face_keep(np.asarray(z["gnm"], int), faces)
+        parts[pn]["keep"] = w[parts[pn]["corner_vert"]].astype(np.float32)[:, None]
+        log.append(f"{pn}: {int((w > 0.999).sum())} vertices of the approved face kept, not projected in the bake")
+
+
+def lip_front_share(P: np.ndarray, bad: np.ndarray, lipw: np.ndarray) -> tuple[float | None, int]:
+    """The share of the lips' FRONT band texels whose projection went astray (bake), and their count (None under
+    50 texels). The band: in front of the inner rolls (lipw > 0.5: hidden in the closed seam, ~28% astray even when
+    clean, so left out), within 1.2 half-widths across and 0.6 up / down of the rolls' centre (Blender axes, faces
+    -y). Clean (retopo.SOCK_FALLOFF 0, v31/v37) 2.5%, x32's torn streaks (6) 6.5% (tests/test_lip_astray.py)."""
+    rolls = lipw > 0.5
+    if rolls.sum() < 50:
+        return None, 0
+    r = P[rolls]
+    c = r.mean(0)
+    hw = np.abs(r[:, 0] - c[0]).max()
+    Q = P - c
+    lips = (np.abs(Q[:, 0]) < 1.2 * hw) & (np.abs(Q[:, 2]) < 0.6 * hw) & (Q[:, 1] < 0) & ~rolls
+    if lips.sum() < 50:
+        return None, 0
+    return float(bad[lips].mean()), int(lips.sum())
+
+
+LIP_ASTRAY_WARN = 0.045  # bake(): the share of the lips' front-band texels whose projection went astray, over which
+# the log warns (clean v31/v37 2.5%, v32's torn streaks 6.5%: tests/test_lip_astray.py; a narrow margin, 2.6x)
 
 
 def bake(parts: dict, size: int, ctx: dict, log: list, atlas: int | None, given: dict) -> dict:
@@ -1014,14 +1124,34 @@ def bake(parts: dict, size: int, ctx: dict, log: list, atlas: int | None, given:
 
     # project onto the exact surface of the texel's own part
     X, G = P.copy(), Nl.copy()
+    lip_astray = {}
     t1 = time.time()
     island = uv_islands(parts)[tri]
+    # the lips' texels (inner_paint's roll weight > 0: GNM's rings from the sock to past the contact ring), so a
+    # projection that goes astray there is named on its own: a whole-part share hid x32's torn lip streaks
+    # (3.75 -> 4.89% of the head, ~all of the rise in the lips' band; game_ready.md r20/r21)
+    lipw = None
+    if any("inner_paint" in p for p in parts.values()):
+        # (column 1 = the mouth sock's depth: the sock takes column 0 = 1 too, but lies hidden behind the closed
+        # lips, where a projection astray is expected; only the lips' own rolls count)
+        lc = np.concatenate([(np.where(p["inner_paint"][:, 1] > 0, 0.0, p["inner_paint"][:, 0]) if "inner_paint" in p
+                              else np.zeros(len(p["corner_vert"]))).reshape(-1, 3) for p in parts.values()]).astype(np.float64)
+        lipw = (bary * lc[tri]).sum(1)
+    kw = None
+    if any("keep" in p for p in parts.values()):  # (face_keep_paint: the approved face is the low poly itself)
+        for p_ in parts.values():
+            p_.setdefault("keep", np.zeros((len(p_["corner_vert"]), 1), np.float32))
+        kw = np.clip(interp("keep")[:, 0], 0, 1)
     for pi, pn in enumerate(names):
         sel = np.flatnonzero(part == pi)
         if not len(sel):
             continue
         vx = ctx["frames"][pn][1]
         x, g = _project(ctx["streams"][pn], X[sel], ys[sel], xs[sel], island[sel], vx)
+        if kw is not None:  # kept: the low poly's own position / normal (fading out over the keep's rings)
+            k_ = kw[sel][:, None]
+            x = P[sel] + (1 - k_) * (x - P[sel])
+            g = _unit(k_ * Nl[sel] + (1 - k_) * _unit(g))
         # a texel that wandered off (onto the far side of a thin sheet, or out of a thin gap) keeps the low-poly
         # surface. Steep but outward normals (a shingle's butt end, a board's edge) are real detail: keep those.
         bad = (np.linalg.norm(x - P[sel], axis=1) > 6 * vx) | ((_unit(g) * Nl[sel]).sum(1) < -0.2)
@@ -1031,6 +1161,16 @@ def bake(parts: dict, size: int, ctx: dict, log: list, atlas: int | None, given:
             log.append(f"  {pn}: {bad.mean():.2%} of texels kept the low-poly surface (projection went astray)"
                        + (": WARNING, the low poly is too far from thin geometry: raise its triangle_weight "
                           "(or min_triangles)" if bad.mean() > 0.2 else ""))
+        if os.environ.get("HP_ASTRAY_DUMP"):  # (debug: where the astray texels are, to compare two exports)
+            np.savez(Path(os.environ["HP_ASTRAY_DUMP"]) / f"astray_{pn}_{atlas}.npz", P=P[sel], bad=bad,
+                     lipw=lipw[sel] if lipw is not None else np.zeros(len(sel)))
+        share, nl = lip_front_share(P[sel], bad, lipw[sel]) if lipw is not None else (None, 0)
+        if share is not None:
+            lip_astray[pn] = share
+            log.append(f"  {pn}: {share:.2%} of the lips' {nl} front texels kept the low-poly surface"
+                       + (f": WARNING, the lips' texels projected astray (over {LIP_ASTRAY_WARN:.1%}): torn streaks "
+                          f"bake into the lips (the mouth sock moved onto their exact surface? retopo.SOCK_FALLOFF)"
+                          if share > LIP_ASTRAY_WARN else ""))
     log.append(f"projected onto the exact surface in {time.time() - t1:.1f}s")
     # texels whose ray found no scene mesh (alpha 0) take their nearest baked neighbour
     share = given["color"][..., 3].astype(np.float64)  # (supersampled: the share of the texel's points baked)
@@ -1099,25 +1239,38 @@ def bake(parts: dict, size: int, ctx: dict, log: list, atlas: int | None, given:
     if any("inner_paint" in p for p in parts.values()):  # (inner_paint: the lips' rolls, hidden in the scene)
         from . import skin_features as sfe
         for pn_, p_ in parts.items():
-            p_.setdefault("inner_paint", np.zeros((len(p_["corner_vert"]), 1), np.float32))
-        w_ = np.zeros(lin.shape[:2])
-        w_[ys, xs] = np.clip(interp("inner_paint")[:, 0], 0, 1)
-        w_ = _dilate(w_[..., None], own)[..., 0]
-        lin = lin * (1 - w_[..., None]) + np.asarray(sfe.INNER_LIP_COLOR, float) * w_[..., None]
+            p_.setdefault("inner_paint", np.zeros((len(p_["corner_vert"]), 2), np.float32))
+        ip_ = interp("inner_paint")
+        w_ = np.zeros(lin.shape[:2] + (2,))
+        w_[ys, xs] = np.clip(ip_[:, :2], 0, 1)
+        w_ = _dilate(w_, own)
+        d_ = w_[..., 1:2]
+        w_ = w_[..., 0]
+        inner_c = (1 - d_) * np.asarray(sfe.INNER_LIP_COLOR, float) + d_ * np.asarray(sfe.MOUTH_DEEP_COLOR, float)
+        lin = lin * (1 - w_[..., None]) + inner_c * w_[..., None]
         rms = given["rms"].astype(np.float64).copy()
         rms[..., 0] = rms[..., 0] * (1 - w_) + INNER_PAINT_ROUGHNESS * w_
         given = {**given, "rms": rms}
-    put_given("basecolor", np.where(lin <= 0.0031308, 12.92 * lin, 1.055 * np.clip(lin, 0, None) ** (1 / 2.4) - 0.055))
+    put_given("basecolor", _srgb(lin))
     put_given("roughness", given["rms"][..., :1])
     put_given("metallic", given["rms"][..., 1:2])
     put_given("specular", given["rms"][..., 2:3])
-    put_given("ao", given["ao"][..., :1])
+    ao_ = given["ao"][..., :1].astype(np.float64)
+    off_ = [names.index(pn_) for pn_ in (ctx.get("ao_off") or ()) if pn_ in names]
+    if off_ and EYES_AO_OFF:  # (the eyeball: its baked AO is the lids' shadow in the rest pose, wrong once a lid moves)
+        m_ = np.isin(tpart[tri], off_)  # (tpart is per triangle)
+        ao_ = ao_.copy()
+        ao_[ys[m_], xs[m_]] = 1.0
+        log.append(f"ao: {', '.join(names[i] for i in off_)} left unoccluded ({int(m_.sum())} texels): the lids move")
+    put_given("ao", ao_)
     if "blink" in given:   # (skin) the crease line and the lid's occlusion as their own multiplier map, out of basecolor
-        put_given("blink", given["blink"][..., :3])
+        # (sRGB-encoded like basecolor: the notes declare it sRGB, as engines sample colour maps. Written as the raw
+        # linear ratio it was decoded to ~ratio^2.2: the lids' crease and occlusion twice as dark and orange, expr_r15)
+        put_given("blink", _srgb(given["blink"][..., :3]))
     put("normal", tn * 0.5 + 0.5, 0.5)
     put("height", (height / hr * 0.5 + 0.5)[:, None], 0.5)
     maps["orm"] = np.concatenate([maps["ao"], maps["roughness"], maps["metallic"]], -1)
-    return {"maps": maps, "height_range": hr, "coverage": float(drawn.sum()) / size ** 2}
+    return {"maps": maps, "height_range": hr, "coverage": float(drawn.sum()) / size ** 2, "lip_astray": lip_astray}
 
 
 def _bilinear(img: np.ndarray, uv: np.ndarray) -> np.ndarray:
@@ -1357,6 +1510,11 @@ def write_fbx(glb: Path, fbx: Path) -> None:
         raise RuntimeError(f"fbx export failed:\n{r.stdout[-2000:]}\n{r.stderr[-2000:]}")
 
 
+def _srgb(lin: np.ndarray) -> np.ndarray:
+    """linear [0, 1] -> sRGB-encoded"""
+    return np.where(lin <= 0.0031308, 12.92 * lin, 1.055 * np.clip(lin, 0, None) ** (1 / 2.4) - 0.055)
+
+
 def _png(path: Path, img: np.ndarray, srgb_input: bool = True, bits: int = 8):
     a = np.clip(img, 0, 1)
     if bits == 16:
@@ -1444,6 +1602,17 @@ BEND_RECIPE = ("Bend helpers (<joint>Bend: ForeArmBend at the elbow, LegBend at 
                "the slerped rotation in _process).")
 
 
+CORRECTIVE_RECIPE = (
+    "Pose correctives are morph targets named corr_<Side><Joint>_<motion><deg> (on the skin and the parts worn over the "
+    "joint; every LOD keeps them). Each is faded in by its joint's angle, every frame after the animation and the "
+    "helper / twist drivers: take the joint's local rotation from its rest, split it into swing (about an axis across "
+    "the bone) and twist (about the bone); deg = swing angle x dot(swing axis, axis_rest) (axis_rest in the parent's "
+    "frame at rest = the json's Blender axes; glTF: (x, z, -y)); weight = 0 below from_deg, rising linearly to 1 at "
+    "key_deg, then (when to_deg is set) falling to 0 at to_deg while the next key of the motion rises. Unreal: a Pose "
+    "Driver node (swing, the joint, these targets as curves) or a Control Rig writing the curves; Unity: a script or "
+    "Animation Rigging job setting SkinnedMeshRenderer.SetBlendShapeWeight (x100) in LateUpdate; Godot: a script "
+    "setting MeshInstance3D.set_blend_shape_value in _process after the AnimationPlayer. Left at 0 the mesh bends "
+    "by its weights alone (the arc weights, still sound).")
 TWIST_RECIPE = {
     "what": "Twist bones are extra leaf joints after the Mixamo set (children of the Arm / ForeArm / UpLeg / Leg "
             "joints, named <segment>Twist<k>, k counted away from the body). Nothing animates them: left alone they "
@@ -1663,8 +1832,10 @@ def write_glb(path: Path, name: str, parts: dict, atlases: list[tuple[str, dict[
                 cm = np.repeat(np.asarray(tm, bool), 3)
                 q = {**p, "corner_vert": p["corner_vert"][cm], "uv": p["uv"][cm], "normal": p["normal"][cm],
                      "tangent": p["tangent"][cm], "sign": p["sign"][cm]}
-                if mn not in (p.get("shape_meshes") or [mn]):
-                    q.pop("shapes", None)
+                if mn not in (p.get("shape_meshes") or [mn]):  # (pose correctives go on every mesh of the part)
+                    q["shapes"] = {k: v for k, v in (q.get("shapes") or {}).items() if k.startswith("corr_")}
+                    if not q["shapes"]:
+                        q.pop("shapes")
                 subs.append((mn, q))
         for mn, q in subs:
             meshes.append({"name": mn, "primitives": [primitive(q, pn)]})
@@ -1799,7 +1970,7 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
             atlases: int = 1, texel_density: float | None = None, instancing: bool = True, rig: bool | dict = False,
             fbx: bool = False, face_shapes: bool | list | None = None, asset_name: str | None = None,
             lods: bool | list | None = None, cloth_triangles: int | None = None,
-            cull_under_cloth: bool = True, role: str | None = None) -> dict:
+            cull_under_cloth: bool = True, role: str | None = None, correctives: bool = True) -> dict:
     """Build, decimate + unwrap, bake every map, write PNGs, <name>.glb and <name>.json into out_dir.
     asset_name: what the files, nodes, meshes and materials are called (default: the model's name): an engine's
     importer and tools key on them (s0urc3's Garrett is model rg_garrett, asset "garrett": garrett_body, ...).
@@ -1874,6 +2045,11 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
         pts = {k: basemod._piece_points(mp[k]["verts"], mp[k]["faces"])["verts"] for k in ("teeth_upper", "teeth_lower", "tongue")}
         own_surface = {basemod.TEETH_PARTS[0]: pts["teeth_upper"], basemod.TEETH_PARTS[1]: pts["teeth_lower"],
                        "tongue": pts["tongue"]}
+        own_mouth_meshes(high, mp, log)
+        # (their own vertices ARE the surface: every face kept, whatever covers the rows in the neutral)
+        own_surface.update({basemod.TEETH_PARTS[0]: np.asarray(mp["teeth_upper"]["verts"], float),
+                            basemod.TEETH_PARTS[1]: np.asarray(mp["teeth_lower"]["verts"], float),
+                            "tongue": np.asarray(mp["tongue"]["verts"], float)})
     prune_hidden(ctx, high, log, own_surface)
     if texel_density:
         split_big(high, ctx, {pn: _weight(defs, origin[pn], "texel_density") * texel_density for pn in ctx["streams"]},
@@ -1935,6 +2111,7 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
                     "copies": len(ctx["prefabs"][pf_of[pn]]["instances"]) if pn in pf_of else 1,
                     **({} if _min_triangles(defs, origin[pn]) is None else  # (absent: cached decimations stay valid)
                        {"min": _min_triangles(defs, origin[pn])}),
+                    **({} if _max_triangles(defs, origin[pn]) is None else {"max": _max_triangles(defs, origin[pn])}),
                     **({"fixed": topo[pn][0], "fixed_sum": topo[pn][1]} if pn in topo else {})} for pn in areas}
         t1 = time.time()
         from . import lashes as _lashes  # the lash ribbons come out of the same budget (their own count, fixed)
@@ -2047,13 +2224,18 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
                        "material's extras")
     if face_shapes and getattr(fface, "gnm_mouth", False):  # the lips' inner rolls: hidden in the closed scene,
         inner_paint(parts, topo, fface.head, log)            # painted on the low poly's own triangles
+    face_keep_paint(parts, topo, log)
     given = scene_maps(name, parts, sizes, ctx, resolution, log)
+    ek_ = (spec.get("base") or {}).get("eyes")
+    ctx["ao_off"] = [ek_] if isinstance(ek_, str) else []
     for ai, an in enumerate(names):
         stem = aname if len(names) == 1 else f"{aname}_{an}"
         if len(names) > 1:
             log.append(f"atlas {an}:")
         res = bake(parts, sizes[ai], ctx, log, ai, given[ai])
         maps = res["maps"]
+        for pn, sh in res.get("lip_astray", {}).items():
+            report[pn]["lip_astray"] = {"share": round(sh, 4), "warn": sh > LIP_ASTRAY_WARN}
         for pn, p in parts.items():  # seams: does the baked colour run on across each chart border? (~1 = yes)
             if p["atlas"] == ai:
                 st = {k: seam_steps(p, maps[k]) for k in ("basecolor", "orm")}
@@ -2248,8 +2430,14 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
                 parts[pn]["gnm_index"] = z["gnm"]
             elif pn in parts and "gnm" in z.files:
                 log.append(f"WARNING face shapes: {pn}'s low poly isn't its topology's vertices: shapes by projection")
-        shapes = faceshapes.apply(spec, {pn: p for pn, p in parts.items()
-                                         if pn not in pf_of and not report[pn].get("curves")}, face_shapes, log)
+        moving = {pn: p for pn, p in parts.items() if pn not in pf_of and not report[pn].get("curves")}
+        if os.environ.get("HP_SHAPES_DUMP"):  # (debug / fast tuning: the parts as faceshapes.apply gets them, so a
+            # shape constant can be retried on them in seconds; spikes/game_ready/shapesfast.py)
+            import copy
+            import pickle
+            with open(os.environ["HP_SHAPES_DUMP"], "wb") as fh:
+                pickle.dump({"spec": spec, "parts": copy.deepcopy(moving), "face_shapes": face_shapes}, fh)
+        shapes = faceshapes.apply(spec, moving, face_shapes, log)
         from . import skin_folds
         fx = skin_folds.expression(spec, {pn: parts[pn] for pn in shapes}, log)   # the folds' own change with each shape
         for pn, nms in shapes.items():
@@ -2281,6 +2469,31 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
     for p in parts.values():  # (the lashes' roots: only face shapes needed them)
         p.pop("lash_root", None)
         p.pop("lash_centre", None)
+    corr_keys = []
+    if rigged and correctives:  # pose correctives (correctives.py): morph targets faded in by the joint's angle
+        from . import correctives as cormod
+        tc = time.time()
+        corr_keys = cormod.keys(rigged["bones"])
+        nc_ = 0
+        for pn in list(rigged["weights"]):
+            if pn not in skin_at or report[pn].get("curves") or report[pn].get("lashes") or \
+                    (defs.get(origin.get(pn, pn)) or {}).get("rig_bone"):
+                continue
+            Jp, Wp = rigged["weights"][pn]
+            Fp = parts[pn]["corner_vert"].reshape(-1, 3)
+            D = cormod.solve(rigged["bones"], skin_at[pn], Fp, Jp, Wp, corr_keys, log if pn == "body" else [])
+            D = {k: v for k, v in D.items() if np.abs(v).max() > cormod.EPS}
+            if not D:
+                continue
+            n0 = cormod.vertex_normals(skin_at[pn], Fp)
+            sh = parts[pn].setdefault("shapes", {})
+            for k in corr_keys:
+                if k["name"] in D:
+                    sh[k["name"]] = (D[k["name"]], n0, cormod.vertex_normals(skin_at[pn] + D[k["name"]], Fp))
+            report[pn]["pose_correctives"] = [k["name"] for k in corr_keys if k["name"] in D]
+            nc_ += len(D)
+        log.append(f"pose correctives: {len(corr_keys)} ({', '.join(sorted({k['motion'] for k in corr_keys}))}), "
+                   f"{nc_} targets over the parts, {time.time() - tc:.1f}s")
     seam = head_body_meshes(spec, parts, topo, log)
     if seam:
         report[seam["part"]]["meshes"] = seam["report"]
@@ -2335,6 +2548,9 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
             lp, lr, rep_l = lodmod.lod_parts({pn: p for pn, p in parts.items() if pn not in pf_of}, rigged, rr_, skip=cards,
                                              cards={pn_h: hair_cards["layers"]} if locals().get("hair_cards") and k not in tier_parts else None,
                                              mesh_ratios=mesh_r, shapes=(shape_lods is None or k in shape_lods))
+            if lash and lash[0] in lp:  # the lashes thinned by whole lashes (lods.LASH_LODS)
+                lp[lash[0]], rep_l[lash[0]] = lodmod.thin_strands(
+                    lp[lash[0]], lodmod.LASH_LODS[min(k, len(lodmod.LASH_LODS)) - 1])
             if k in tier_parts:
                 tp_, w_, tier_ = tier_parts[k]
                 lp[pn_h] = tp_
@@ -2403,6 +2619,8 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
                                       "carry the same per joint in glTF axes (axis_parent) and local (+Y)",
                         "twist_recipe": TWIST_RECIPE,
                         "bend": rigmod.bend_table(rigged["bones"]), "bend_recipe": BEND_RECIPE,
+                        **({"correctives": __import__("hifipushie.correctives", fromlist=["table"]).table(corr_keys),
+                            "corrective_recipe": CORRECTIVE_RECIPE} if corr_keys else {}),
                         "head": (f"rigid: {hf['how']}; falloff to the neck over {hf['band'] * 1e3:.0f} mm below; "
                                  "face-shape vertices, teeth, tongue and eyes Head 1.0") if hf else "not rigid"}}
                if rigged else {}),
@@ -2433,6 +2651,13 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
         info["shading"] = {"json": str(sj), "md": str(sm)}
     except Exception as e:  # (notes never fail an export; said in the log)
         log.append(f"WARNING shading notes not written: {type(e).__name__}: {e}")
+    try:  # the rig's drivers (twist, bend helpers, pose correctives) per engine (rignotes.py)
+        from . import rignotes
+        rn = rignotes.write(info, out_dir, aname)
+        if rn:
+            info["rig_notes"] = {"json": str(rn[0]), "md": str(rn[1])}
+    except Exception as e:
+        log.append(f"WARNING rig notes not written: {type(e).__name__}: {e}")
     (out_dir / f"{aname}.json").write_text(json.dumps(info, indent=1))
     return info
 

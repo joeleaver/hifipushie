@@ -30,6 +30,8 @@ from __future__ import annotations
 import numpy as np
 
 VERSION = 16  # 14-15: iris crypts (eyedetail); 16: bigger visible pores (skin3)
+EYE_VERSION = 1  # eye_image only. 1 (r27): the sclera's outward warm / pink drift halved: with the lids' shade on top the
+# visible sclera baked (0.85, 0.79, 0.79) of skin.eyes.sclera (assembly/eyedecal.py, ga_tess v41)
 SIZE = 1024
 PERIOD = {"pores": 0.016, "lines": 0.016, "coarse": 0.024, "lips": 0.012, "stubble": 0.012, "freckles": 0.06,
           "wrinkles": 0.05, "hairs": 0.02}  # m of skin across the swatch
@@ -246,7 +248,7 @@ def eye_image(iris, pupil: float = 0.36, veins: float = 0.4, sclera=(0.92, 0.89,
     from PIL import Image, ImageDraw, ImageFilter
     from . import images
     iris = tuple(round(float(c), 4) for c in iris)
-    key = hashlib.sha1(repr((iris, pupil, veins, tuple(sclera), seed, span, VERSION) + ((limbal, contrast, limbal_width) if (limbal, contrast, limbal_width) != (0.72, 1.0, 0.2) else ())
+    key = hashlib.sha1(repr((iris, pupil, veins, tuple(sclera), seed, span, VERSION, EYE_VERSION) + ((limbal, contrast, limbal_width) if (limbal, contrast, limbal_width) != (0.72, 1.0, 0.2) else ())
                               + ((tuple(round(float(x), 4) for x in inner), round(float(inner_to), 3)) if inner is not None else ())).encode()).hexdigest()[:12]
     out = images.store_dir() / f"eye_{key}.png"
     if out.exists():
@@ -260,7 +262,7 @@ def eye_image(iris, pupil: float = 0.36, veins: float = 0.4, sclera=(0.92, 0.89,
     th = np.arctan2(y - cy, x - cx)
     # sclera: off-white, warmer and pinker outward
     t = np.clip((r - 1.0) / (span - 1.0), 0, 1)[..., None]
-    img = np.asarray(sclera)[None, None] * (1 - 0.1 * t) + t * 0.16 * (np.array([0.9, 0.62, 0.58]) - np.asarray(sclera))
+    img = np.asarray(sclera)[None, None] * (1 - 0.05 * t) + t * 0.08 * (np.array([0.9, 0.62, 0.58]) - np.asarray(sclera))
     # vessels: thin wandering lines from the rim inward, mostly at the sides (toward the corners)
     vim = Image.new("L", (S, S), 0)
     d = ImageDraw.Draw(vim)

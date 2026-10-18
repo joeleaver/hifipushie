@@ -703,6 +703,9 @@ def lowpoly(job):
         if eq[pn] and counts[pn] > eq[pn]:
             w = min(nfaces[pn], round(want[pn] * counts[pn] / eq[pn]))
             extra[pn], want[pn] = w - want[pn], w
+    for pn in names:  # parts.<p>.max_triangles: a ceiling (the budget it frees is left unspent, not handed on)
+        if cfg[pn].get("max") is not None and eq[pn]:
+            want[pn] = min(want[pn], int(cfg[pn]["max"]))
     obs, info, redo_parts = {}, {}, {}
     for k, pn in enumerate(names):
         redo, s = abs(want[pn] - counts[pn]) > 0.1 * max(counts[pn], 1), sym and ratio < 1.0
@@ -1024,6 +1027,8 @@ def preview(job):
     for i, pose in enumerate(poses):  # face shapes: the morph targets (shape keys on import) at these weights
         for ob in keyed:
             for kb in ob.data.shape_keys.key_blocks[1:]:
+                if kb.name.startswith("corr_"):  # pose correctives are driven by joint angles, never reset here
+                    continue
                 kb.slider_min = min(kb.slider_min, -1.0)
                 kb.value = float(pose.get(kb.name, 0.0))
         # "turns": {joint: [x, y, z, deg]}: each joint turned about a model-space axis through its own head, on top

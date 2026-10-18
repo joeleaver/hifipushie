@@ -48,6 +48,14 @@ The faults were in the PROCESS, at four points:
      with the lever at two values: if the measured row doesn't move, the lever is dead (plumbing, layer order, a cached
      attribute, a mask). Fix that first, and never send a dead lever to a batch. (2026-10-16 skin r5 / r6: lid_shade was
      dropped under a stack, then painted over; sheen moved nothing; assembly TONGUE_DOME. Each one cost a full round.)
+   - FACES ARE REVIEWED ON FEATURE TILES (2026-10-18, coordinator after Joe: "Tess's smile is truly horrific"). Eleven
+     expression rounds (r35-r45) sent whole 1 m frames to the reviewer: an 812x422 pair, the face ~150 px, the mouth ~40 px,
+     the reference not scale-matched. No review ever named "grimace" or "lips not touching the teeth". For every face pose
+     (smile, jaw open, neutral, squint ...) the LOOK input is single-feature tiles, ref | result, each aligned on that
+     feature's landmarks (scale + shift) to the photo, the feature filling a tile of >= ~400 px, no captions: the mouth
+     (nose base to chin), each eye with its lower lid, each cheek / nasolabial area (front, + 3/4 when a 3/4 photo exists).
+     Tool: assembly scratch r46/tiles.py (MediaPipe, similarity per feature); spikes/tour/tour.py does the same for heads
+     from the block-in. The 1 m / 3 m frames stay, but only as the separate game-readability check under the game rig.
    - Scope the review to the stage: `--stage "<what this stage owns>" --not "<other stages>"`. Faults outside
      the stage come back under OTHER STAGES, don't count toward the verdict, and go to the coordinator (who
      routes them; an approved piece is reopened only with Joe). Hide other stages' parts when they cover the

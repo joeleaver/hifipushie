@@ -70,6 +70,9 @@ FILL_REACH = (0.8, 2.0, 5.0, 15.0, 40.0)   # mm: unmeasured texels take each lay
 CAVITY = (0.85, 0.45, 1.3, 0.5)   # unmeasured texels with ambient occlusion under the first: + neutral (up to the third) and
                                   # haemoglobin (up to the fourth) at occlusion first - second: nostrils, the lip seam, the
                                   # socket's edge read dark and warm, not as the lightest skin
+CAVITY_SPREAD = (2.5, 2.0, 0.97, 0.12)   # mm, gain, AO under (eased over the fourth): the cavity's darkness carried (a blur x gain, max with its own) over
+                                  # the rest of the SAME unmeasured region where it isn't open skin: the nostril's inner alar
+                                  # wall (AO 0.7-0.85, filled from the rim) stayed a pale crescent round the dark core (r17)
 LIP_REACH = 1.0          # mm: the lips layer's support reaches this far past GNM's lips (a Gaussian's sigma)
 LIP_FADE = 0.12          # ... and is full where that blur is over this (about 3 mm out), fading to nothing beyond
 OPACITY = {"brows": 0.4, "periorbital": 0.4}   # (periorbital: a bag's shadow the head has no form for was taken as pigment: a
@@ -527,7 +530,11 @@ def decompose(name: str, spec: dict | None = None, log=print, lips: str = "texel
     cav = np.where(~meas, np.clip((CAVITY[0] - ao) / CAVITY[1], 0, 1), 0.0)
     # only inside an unmeasured REGION (a nostril, the seam's inner faces), never along a sliver of unmeasured texels (a
     # UV seam or a thin gap between views on open skin drew a thin dark scratch on a jaw)
-    cav = cav * np.clip((sp._blur(at, (~meas).astype(float), None, 1.0) - 0.6) / 0.3, 0, 1)
+    reg_um = np.clip((sp._blur(at, (~meas).astype(float), None, 1.0) - 0.6) / 0.3, 0, 1)
+    cav = cav * reg_um
+    if CAVITY_SPREAD:
+        sp_ = np.clip(sp._blur(at, cav, None, CAVITY_SPREAD[0]) * CAVITY_SPREAD[1], 0, 1) * reg_um * np.clip((CAVITY_SPREAD[2] - ao) / CAVITY_SPREAD[3], 0, 1)
+        cav = np.maximum(cav, sp_)
     # never on the lids: the skin tucked under a fold is occluded at rest but a blink shows it (a dark patch on a closed
     # lid); only surfaces that stay hidden (nostril interiors, the lip seam) take the dark-warm term
     X_ = sp.interp(at, at["V"])

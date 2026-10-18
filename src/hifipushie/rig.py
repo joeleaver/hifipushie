@@ -383,12 +383,124 @@ def bend_table(bones: list[dict]) -> list[dict]:
             for b in bones if b.get("bend")]
 
 
-def _share_bend(rb: list[dict], J: np.ndarray, W: np.ndarray):
-    """The bend helpers take each vertex's overlap between a hinge's two bones (parent and joint, their twist joints
+# Arc weights (2026-10-14, rig_r3 STUCK on the flat knee front, the back-of-knee pinch, the seated buttock bag and the
+# deltoid tube). The helpers above only took MakeHuman's own blend zone (2 x min(w parent, w joint)): a knee's zone is a
+# few cm wide and the same front and back, so at 90 deg the front still ran straight across the chord. A rigger paints a
+# hinge by SIDE: the outer skin (knee front, olecranon, buttock, armpit) is a wide zone that must be carried round the
+# arc; the inner skin (back of the knee, crook of the elbow, groin, top of the shoulder) a narrow one that folds into a
+# crease. So the hinge's skin is repainted from geometry: across the joint (axial s from the pivot along the limb) a
+# vertex's turn phi goes 0 -> 1 over a zone whose half width depends on its side (outer wide, inner narrow); phi 0..0.5
+# blends parent -> helper (half angle), 0.5..1 helper -> joint. The skin is turned round the pivot in two 45 deg steps
+# at 90 (radius kept to cos 22.5 = 92 %, LBS over one blend: 71 %, the chord). Purely geometric, so every part (skin,
+# briefs, socks) gets the same weights where it lies: the garment rides the skin under it.
+#   joint: (outer side in rest (world dir) or "rest" (the convex side of the rest bend), zone half width outer, inner,
+#           radial reach (all x the joint's own segment length), axis "hinge" (bisector) | "ball" (the joint's bone))
+BEND_ARC = {"ForeArm": ("rest", 0.13, 0.05, 0.30, "hinge"),
+            "Leg": ((0.0, -1.0, 0.0), 0.12, 0.04, 0.28, "hinge"),
+            "UpLeg": ((0.0, 1.0, 0.0), 0.20, 0.10, 0.36, "ball"),
+            "Arm": ((0.0, 0.0, -1.0), 0.18, 0.16, 0.36, "ball")}  # a narrow top crease kinked the raised shoulder
+BEND_WEIGHTS = "arc"  # "arc" (BEND_ARC) | "overlap" (the helpers take MakeHuman's own zone, before 2026-10-14)
+ARC_MID = 0.04  # m: the side mask runs from 0 to 1 over this across the midline (half each side at the crotch)
+ARC_AXIAL = 3.0  # x the outer half width: past it along the limb (and one more) a vertex keeps its weights
+ARC_CHILD = {"ForeArm": "Hand", "Leg": "Foot", "UpLeg": "Leg", "Arm": "ForeArm"}
+
+
+def _sstep(x):
+    x = np.clip(x, 0.0, 1.0)
+    return x * x * (3 - 2 * x)
+
+
+def arc_frames(rb: list[dict]) -> list[dict]:
+    """Per bend helper: pivot, axis u, outer direction o, zone half widths, reach, and the side mask's centre."""
+    names = [b["name"] for b in rb]
+    out = []
+    hips = rb[names.index(PREFIX + "Hips")]["head"] if PREFIX + "Hips" in names else None
+    for hi, hb in enumerate(rb):
+        if not hb.get("bend"):
+            continue
+        dn, pn = hb["bend"]["driver"], hb["bend"]["of"]
+        short = dn[len(PREFIX):]
+        side = "Left" if short.startswith("Left") else "Right"
+        jn = short[len(side):]
+        if jn not in BEND_ARC or (PREFIX + side + ARC_CHILD[jn]) not in names:
+            continue
+        outer, k_out, k_in, k_reach, kind = BEND_ARC[jn]
+        jd, jp = names.index(dn), names.index(pn)
+        piv = np.asarray(rb[jd]["head"], float)
+        ch = np.asarray(rb[names.index(PREFIX + side + ARC_CHILD[jn])]["head"], float)
+        ln = float(np.linalg.norm(ch - piv))
+        ud = (ch - piv) / ln
+        up = piv - np.asarray(rb[jp]["head"], float)
+        up /= max(np.linalg.norm(up), 1e-9)
+        u = ud if kind == "ball" else (ud + up) / max(np.linalg.norm(ud + up), 1e-9)
+        if isinstance(outer, str):  # the convex side of the rest bend
+            o = -(ud - (ud @ up) * up)
+        else:
+            o = np.asarray(outer, float)
+        o = o - (o @ u) * u
+        o /= max(np.linalg.norm(o), 1e-9)
+        out.append({"helper": hi, "driver": jd, "of": jp, "pivot": piv, "u": u, "o": o, "len": ln,
+                    "outer": k_out * ln, "inner": k_in * ln, "reach": k_reach * ln, "joint": jn,
+                    "side": (1.0 if side == "Left" else -1.0), "mid": None if hips is None else float(hips[0])})
+    return out
+
+
+def _arc_bend(rb: list[dict], V: np.ndarray, J: np.ndarray, W: np.ndarray):
+    """BEND_ARC's repaint (see above) of every hinge with a helper; vertices out of a zone keep their weights."""
+    fr = arc_frames(rb)
+    if not fr:
+        return J, W
+    fam = np.arange(len(rb))
+    for i, b in enumerate(rb):
+        if b.get("twist"):
+            fam[i] = b["parent"]
+    V = np.asarray(V, float)
+    D = np.zeros((len(V), len(rb)))
+    np.add.at(D, (np.repeat(np.arange(len(V)), J.shape[1]), np.asarray(J).ravel()), np.asarray(W, float).ravel())
+    for f in fr:
+        d = V - f["pivot"]
+        s = d @ f["u"]
+        q = d - s[:, None] * f["u"]
+        rho = np.linalg.norm(q, axis=1)
+        c = (q @ f["o"]) / np.maximum(rho, 1e-9)
+        L = f["inner"] + (f["outer"] - f["inner"]) * (1 + c) / 2
+        phi = _sstep(s / (2 * L) + 0.5)
+        m = (1 - _sstep((rho - 0.7 * f["reach"]) / (0.3 * f["reach"])))
+        m *= 1 - _sstep((np.abs(s) - ARC_AXIAL * f["outer"]) / f["outer"])
+        if f["mid"] is not None:  # this side of the body only (a hip's reach crosses to the other thigh)
+            m *= _sstep(0.5 + ((V[:, 0] - f["mid"]) * f["side"]) / ARC_MID)
+        famp, famd = fam == f["of"], fam == f["driver"]
+        wp, wd, wh = D[:, famp].sum(1), D[:, famd].sum(1), D[:, f["helper"]]
+        S = wp + wd + wh
+        sel = np.flatnonzero((m > 1e-4) & (S > 1e-6))
+        if not len(sel):
+            continue
+        ph, mm, Ss = phi[sel], m[sel], S[sel]
+        np_, nh, nd = Ss * np.maximum(0, 1 - 2 * ph), Ss * (1 - np.abs(2 * ph - 1)), Ss * np.maximum(0, 2 * ph - 1)
+        for mask, w_old, w_new, own in ((famp, wp, np_, f["of"]), (famd, wd, nd, f["driver"])):
+            cols = np.flatnonzero(mask)
+            old = D[np.ix_(sel, cols)]
+            share = np.where(w_old[sel, None] > 1e-9, old / np.maximum(w_old[sel, None], 1e-12),
+                             (cols == own)[None, :].astype(float))
+            D[np.ix_(sel, cols)] = (1 - mm[:, None]) * old + mm[:, None] * share * w_new[:, None]
+        D[sel, f["helper"]] = (1 - mm) * wh[sel] + mm * nh
+    k = J.shape[1]
+    order = np.argsort(-D, axis=1, kind="stable")[:, :k]
+    Wk = np.take_along_axis(D, order, 1)
+    Wk /= np.maximum(Wk.sum(1, keepdims=True), 1e-12)
+    Jk = np.where(Wk > 0, order, 0)
+    return Jk.astype(np.asarray(J).dtype), Wk
+
+
+def _share_bend(rb: list[dict], J: np.ndarray, W: np.ndarray, V: np.ndarray | None = None):
+    """The bend helpers' weights: BEND_WEIGHTS "arc" repaints each hinge from geometry (`_arc_bend`, needs V); else
+    the helpers take each vertex's overlap between a hinge's two bones (parent and joint, their twist joints
     counted as them): 2 x min(w parent, w joint) x BEND_TAKE, half from each side."""
     hs = [(i, b) for i, b in enumerate(rb) if b.get("bend")]
     if not hs:
         return J, W
+    if BEND_WEIGHTS == "arc" and V is not None:
+        return _arc_bend(rb, V, J, W)
     names = [b["name"] for b in rb]
     fam = np.arange(len(rb))
     for i, b in enumerate(rb):
@@ -511,7 +623,7 @@ def _spread_twist(rb: list[dict], verts: np.ndarray, J: np.ndarray, W: np.ndarra
     """Each twisted segment's weight shared out along it: a vertex's weight on the segment's bone is split between
     the two stations it lies between (the bone itself is the station at the undriven end), linearly. Undriven, the
     twist bones move with their parent, so the skin is what it was; driven, the roll runs linearly joint to joint."""
-    J, W = _share_bend(rb, J, W)
+    J, W = _share_bend(rb, J, W, verts)
     chains: dict = {}
     for i, b in enumerate(rb):
         if b.get("twist"):

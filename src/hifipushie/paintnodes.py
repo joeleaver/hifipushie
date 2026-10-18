@@ -445,5 +445,6 @@ def _distance(spec: dict, lname: str, near, pos: np.ndarray) -> np.ndarray:
             from .lidfold import line_distance
             d = np.minimum(d, line_distance(pos, p.params, side))
             continue
-        d = np.minimum(d, sdf.SDF[p.kind](pos, p.params))
+        dd = sdf.SDF[p.kind](pos, p.params)
+        d = np.minimum(d, np.abs(dd) if side == "both" else dd)  # (side "both": unsigned, as paint._near_mask)
     return d

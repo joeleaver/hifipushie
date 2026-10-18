@@ -24,6 +24,8 @@ MIN_PART = 1000  # triangles: smaller parts (eyes, teeth, props) are kept whole 
 CARDS_MIN = 0.2  # a hair LOD keeps at least this share of its card layer's triangles (the biggest cards)
 
 
+POSE_SHAPE = "corr_"  # pose correctives (correctives.py) stay in every LOD: a LOD without face shapes still bends
+
 def _split(p: dict, tri_mesh: np.ndarray | None):
     """glTF vertices of a part: (key rows -> unique split vertices: src vertex, uv, normal, tangent, sign; triangles
     over them (T, 3); patch label per triangle)."""
@@ -132,9 +134,10 @@ def lod_part(p: dict, weights: tuple | None, ratio: float, mesh_ratios: dict | N
     vsrc = src[corners]  # part vertices (n, 3) of each new vertex's triangle
     if p.get("vcolor") is not None:
         out["vcolor"] = np.einsum("nk,nkc->nc", bb, np.asarray(p["vcolor"], np.float64)[vsrc]).astype(np.float32)
-    if p.get("shapes") and shapes:
+    keep_sh = {nm: v for nm, v in (p.get("shapes") or {}).items() if shapes or nm.startswith(POSE_SHAPE)}
+    if keep_sh:
         sh = {}
-        for nm, (d, n0, n1) in p["shapes"].items():
+        for nm, (d, n0, n1) in keep_sh.items():
             d_ = np.einsum("nk,nkc->nc", bb, np.asarray(d, np.float64)[vsrc])
             a0 = np.einsum("nk,nkc->nc", bb, np.asarray(n0, np.float64)[vsrc])
             a1 = np.einsum("nk,nkc->nc", bb, np.asarray(n1, np.float64)[vsrc])
@@ -235,7 +238,10 @@ def lod_parts(parts: dict, rigged: dict | None, ratio, skip=(), cards: dict | No
                 neww[pn] = w
             continue
         if pn in skip or len(p["corner_vert"]) // 3 < MIN_PART:
-            out[pn] = p if shapes or not p.get("shapes") else {k: v for k, v in p.items() if k != "shapes"}
+            out[pn] = p if shapes or not p.get("shapes") else {
+                **{k: v for k, v in p.items() if k != "shapes"},
+                **({"shapes": {nm: v for nm, v in p["shapes"].items() if nm.startswith(POSE_SHAPE)}}
+                   if any(nm.startswith(POSE_SHAPE) for nm in p["shapes"]) else {})}
             if w is not None:
                 neww[pn] = w
             rep[pn] = {"triangles0": len(p["corner_vert"]) // 3, "triangles": len(p["corner_vert"]) // 3, "kept": True}
@@ -247,3 +253,36 @@ def lod_parts(parts: dict, rigged: dict | None, ratio, skip=(), cards: dict | No
         rep[pn] = r
     rig = dict(rigged, weights=neww) if rigged else None
     return out, rig, rep
+
+
+LASH_LODS = (0.5, 0.25, 0.1)  # share of the lashes' triangles kept at LOD1, 2, 3 (whole lashes, longest first): they
+# were 4.9k at every LOD, more than the hero's whole eyes / mouth / lashes budget at LOD0 (budgets.json)
+
+
+def thin_strands(p: dict, share: float) -> tuple[dict, dict]:
+    """A part made of separate strands (the lashes): whole strands kept, the largest first, to `share` of its
+    triangles (vertices kept: weights and morph targets stay valid)."""
+    T = np.asarray(p["corner_vert"], np.int64).reshape(-1, 3)
+    n = len(T)
+    if n == 0 or share >= 1:
+        return p, {"triangles0": n, "triangles": n}
+    nv = len(p["verts"])
+    e = np.r_[T[:, [0, 1]], T[:, [1, 2]]]
+    _, lab = connected_components(coo_matrix((np.ones(len(e)), (e[:, 0], e[:, 1])), shape=(nv, nv)), directed=False)
+    strand = lab[T[:, 0]]
+    V = np.asarray(p["verts"], np.float64)
+    area = 0.5 * np.linalg.norm(np.cross(V[T[:, 1]] - V[T[:, 0]], V[T[:, 2]] - V[T[:, 0]]), axis=1)
+    sa, sc = np.bincount(strand, area), np.bincount(strand)
+    order = np.argsort(-sa)
+    # spread the kept strands along each eye (every k-th by size rank is near enough: sizes vary along the lid)
+    chosen = np.zeros(len(sa), bool)
+    tot = 0
+    for k in order:
+        if sc[k] and tot + sc[k] <= share * n:
+            chosen[k] = True
+            tot += sc[k]
+    keep = chosen[strand]
+    cm = np.repeat(keep, 3)
+    q = {**p, "corner_vert": p["corner_vert"][cm], "uv": p["uv"][cm], "normal": p["normal"][cm],
+         "tangent": p["tangent"][cm], "sign": p["sign"][cm]}
+    return q, {"triangles0": n, "triangles": int(keep.sum())}

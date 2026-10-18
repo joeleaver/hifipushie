@@ -300,7 +300,7 @@ def build(spec: dict, p: dict, J: dict, out: dict, T, ctx: dict) -> list:
     return ctx["smooth"]
 
 
-INNER_LIP_COLOR = [0.38, 0.11, 0.11]  # linear: the wet inner lip (mucosa): redder and darker than the vermilion, lighter than the bag
+INNER_LIP_COLOR = [0.38, 0.148, 0.11]  # (r29: [0.38, 0.11, 0.11] rendered the band over the smile's upper teeth (175, 101, 103) sRGB, G/R 0.58, magenta beside our vermilion (G/R 0.62); the reference's wet inner lip (jaw open) is the vermilion's own hue, G/R 0.66 vs 0.65, a little lighter: G linear 0.39 x R) linear: the wet inner lip (mucosa): redder and darker than the vermilion, lighter than the bag
 
 
 def inner_lip_values(head) -> np.ndarray | None:
@@ -342,11 +342,79 @@ def inner_lip_values(head) -> np.ndarray | None:
         front = nxt
     val = np.zeros(n)
     for v, lv in lev.items():
+        # (v25 faded the contact ring itself, nothing past it, against "a jagged pink band with a notch" (expr_r8..r10):
+        # the notch was the upper roll folded forward through the seam (faceshapes._rolls_behind), and without the
+        # wet colour on the contact ring the closed seam showed the projected skin's dark lip line as a jagged
+        # dark gap (expr_r11 / r12): back to the ring at 1, the next at INNER_LIP_FADE)
         val[v] = 1.0 if lv <= ring else INNER_LIP_FADE if lv == ring + 1 else 0.0
     return val
 
 
 INNER_LIP_FADE = 0.3  # the ring outside the contact ring: the wet line fading into the vermilion
+MOUTH_DEEP_COLOR = [0.035, 0.008, 0.008]  # linear: the mouth's interior (GNM's sock) a few rings in: dark, a throat
+MOUTH_DARK_SIDE = (0.55, 0.8, 0.003, 0.006)  # (r32) the sock also darkens past this share of the mouth's half width (ramp a..b), from this depth behind the lips' front (ramp, m): the side walls in shadow; None = off
+MOUTH_DARK_DEPTH = (0.008, 0.012)  # (4-8 mm: dark sock shards at the closed seam, expr_r11) m behind the lips' front: the sock darkens fully over this (by depth, beside the rings)
+TONGUE_BACK = (0.04, 0.06)  # (r28: back with JAW_TONGUE off, expr_r23 jaw row worse than r22) (r26: with JAW_TONGUE's bowed dorsum the front sees rest depths 41-62 mm (p5-p95), so 40-60 turned 74% of the visible tongue dark) (r23: 28-50 mm: jawOpen sees the dorsum 36-42 mm back, so it read (122, 58, 58) sRGB with a black band, "tongue missing", expr_r19) (r17: 12-30 mm blacked out the whole visible dorsum, v32) m behind the tongue's tip: its colour darkens to MOUTH_DEEP_COLOR over this (None: off)
+TEETH_BACK = (0.009, 0.022, 0.8, [0.1, 0.075, 0.06])  # m behind each row's front (along the mouth's `out`), strength,
+# linear colour: the teeth darkened toward the molars (expr_r16 smile: "the teeth run all the way into the mouth corners";
+# a real smile's outer teeth fall into the buccal corridor's shadow; flat-coloured teeth stayed lit to the corners)
+MOUTH_DEEP_RINGS = 2  # (3 left the sock walls at the corners lit pink in jawOpen: "raw red fleshy shapes", expr_r7) rings of the sock from the lips' rim over which the inner lip red darkens to MOUTH_DEEP_COLOR
+
+
+def mouth_interior_values(head) -> np.ndarray | None:
+    """Per GNM vertex 0..1: how deep in the mouth's sock it is (0 off the sock, rising ring by ring from the rim to 1 at
+    MOUTH_DEEP_RINGS). The sock is in the low poly but hidden in the closed scene, so the bake painted it grey: grey
+    shards inside every parted mouth and a grey dot at the upper lip's centre in the neutral (review expr_r2)."""
+    import collections
+    from . import base as _base
+    if head is None or head.get("gnm_world") is None:
+        return None
+    g = _base._gnm_data()
+    mp = _base.gnm_mouth(head)
+    n = len(np.asarray(head["gnm_world"]))
+    sock = np.asarray(g["groups"]["mouth_sock"]) > 0.5
+    Q = np.asarray(g["quads"])
+    adj = collections.defaultdict(set)
+    for q in Q:
+        for k in range(4):
+            a, b = int(q[k]), int(q[(k + 1) % 4])
+            adj[a].add(b), adj[b].add(a)
+    own = sock[mp["sock"]["ids"]]
+    rim = [int(v) for v in mp["sock"]["ids"][~own]]
+    if not rim:
+        return None
+    lev = {v: 0 for v in rim}
+    front = list(rim)
+    while front:
+        nxt = []
+        for v in front:
+            for u in adj[v]:
+                if u not in lev and u < len(sock) and sock[u]:
+                    lev[u] = lev[v] + 1
+                    nxt.append(u)
+        front = nxt
+    val = np.zeros(n)
+    for v, lv in lev.items():
+        if v < len(sock) and sock[v]:
+            val[v] = min(1.0, lv / MOUTH_DEEP_RINGS)
+    val[:len(sock)][sock & (val[:len(sock)] == 0)] = 1.0  # sock vertices out of reach of the rim: deep
+    # and by depth behind the lips' front: the corners' walls are near the rim in rings but 5-10 mm in, beside the
+    # teeth; lit pink they read as torn lining in every jawOpen (expr_r7..r9). A cavity in shadow is dark.
+    ml = _base.mouth_lips(head)
+    W = np.asarray(head["gnm_world"], float)
+    lm = np.asarray(head["lm68"], float)
+    front = float(np.max((lm[[48, 54, 51, 57]] - ml["M"]) @ ml["out"]))
+    depth = front - (W - ml["M"]) @ np.asarray(ml["out"], float)
+    by_depth = np.clip((depth - MOUTH_DARK_DEPTH[0]) / (MOUTH_DARK_DEPTH[1] - MOUTH_DARK_DEPTH[0]), 0, 1)
+    if MOUTH_DARK_SIDE:  # (r32) the side walls past the dental arch, a little in: the cheeks' inner walls in shadow
+        # (jaw: lit pink walls beside the tongue with a black edge-on line between, "black vertical side lines")
+        a, b, d0, d1 = MOUTH_DARK_SIDE
+        u = np.abs((W - ml["M"]) @ np.asarray(ml["side"], float)) / max(0.5 * ml["width"], 1e-6)
+        by_depth = np.maximum(by_depth, np.clip((u - a) / (b - a), 0, 1) * np.clip((depth - d0) / (d1 - d0), 0, 1))
+    on = np.zeros(n, bool)
+    on[:len(sock)] = sock
+    val[on] = np.maximum(val[on], by_depth[on])
+    return val
 
 
 def _gnm_mouth(spec, out, part) -> None:
@@ -379,7 +447,7 @@ def _gnm_mouth(spec, out, part) -> None:
     # (the inner rolls are NOT a scene layer: with the lips closed the scene's surface has no rolls (the fill behind the
     # seam), so a painted cloud there found the outer lips instead (v8: lipstick red). The export paints them on the
     # low poly's own triangles by GNM index: asset.bake's "inner_paint", values from inner_lip_values)
-    out["skin:mouth_bag"] = {"part": part, "color": list(_base.BAG_COLOR), "roughness": 0.3, "specular": 0.5,
+    out["skin:mouth_bag"] = {"part": part, "color": list(_base.BAG_COLOR), "roughness": 0.4, "specular": 0.5,
                              "mask": [{"painted": pid}]}
     for k, tpart in (("teeth_upper", _base.TEETH_PARTS[0]), ("teeth_lower", _base.TEETH_PARTS[1])):
         V, F = mp[k]["verts"], [list(map(int, f)) for f in mp[k]["faces"]]
@@ -391,7 +459,32 @@ def _gnm_mouth(spec, out, part) -> None:
         N, h = _base._normals_and_h(V, F)
         pid = _paint.save_painted(V, N, np.clip((gum[:, 0] - 0.35) / 0.3, 0, 1), 0.0012)
         out["skin:gums" + ("" if tpart == "teeth" else "_lower")] = {
-            "part": tpart, "color": list(_base.GUM_COLOR), "roughness": 0.25, "specular": 0.6, "mask": [{"painted": pid}]}
+            "part": tpart, "color": list(_base.GUM_COLOR), "roughness": 0.4, "specular": 0.5, "mask": [{"painted": pid}]}
+    if TEETH_BACK:
+        out_ = np.asarray(mp["frame"][1], float)
+        for k, tpart in (("teeth_upper", _base.TEETH_PARTS[0]), ("teeth_lower", _base.TEETH_PARTS[1])):
+            V, F = mp[k]["verts"], [list(map(int, f)) for f in mp[k]["faces"]]
+            for _ in range(_base.MOUTH_SUBDIVIDE):
+                V, F = _base._catmull_clark(V, F)
+            N, _h = _base._normals_and_h(V, F)
+            dep = float((V @ out_).max()) - V @ out_
+            u = np.clip((dep - TEETH_BACK[0]) / (TEETH_BACK[1] - TEETH_BACK[0]), 0, 1)
+            pid = _paint.save_painted(V, N, TEETH_BACK[2] * u * u * (3 - 2 * u), 0.0012)
+            out["skin:teeth_back" + ("" if tpart == "teeth" else "_lower")] = {
+                "part": tpart, "color": list(TEETH_BACK[3]), "roughness": 0.4, "specular": 0.5, "mask": [{"painted": pid}]}
+    if TONGUE_BACK and "tongue" in mp and len(mp["tongue"]["verts"]):
+        # the tongue's back darkened into the throat (expr_r15: the flat-coloured dorsum read as "a flat red back wall"
+        # in jawOpen; a real tongue's back falls into the mouth's shadow): by depth behind its tip, along the mouth's `out`
+        V, F = mp["tongue"]["verts"], [list(map(int, f)) for f in mp["tongue"]["faces"]]
+        for _ in range(_base.MOUTH_SUBDIVIDE):
+            V, F = _base._catmull_clark(V, F)
+        N, _h = _base._normals_and_h(V, F)
+        out_ = np.asarray(mp["frame"][1], float)
+        dep = float((V @ out_).max()) - V @ out_
+        u = np.clip((dep - TONGUE_BACK[0]) / (TONGUE_BACK[1] - TONGUE_BACK[0]), 0, 1)
+        pid = _paint.save_painted(V, N, u * u * (3 - 2 * u), 0.0012)
+        out["skin:tongue_back"] = {"part": "tongue", "color": list(MOUTH_DEEP_COLOR), "roughness": 0.45,
+                                   "specular": 0.5, "mask": [{"painted": pid}]}
 
 
 EYE_KEYS = ("iris", "iris_size", "pupil", "veins", "sclera", "tear", "waterline", "limbal", "limbal_width",
@@ -479,19 +572,28 @@ def _eyes(spec, p, J, out, layer, T, ctx) -> None:
         # and a narrow soft band all round where the lids lie on the ball (the corners darkest)
         if occ > 0:
             # (one layer: each layer costs shader; the band all round is the max over the upper lid's shadow)
-            out[f"skin:eye_shade{nm}"] = {"part": part, "color": [0.6, 0.43, 0.41], "mix": "multiply",
-                                          "opacity": round(min(0.6 * occ, 1.0), 3),
+            # (r27: opacity 0.6 -> 0.25 and a greyer shadow (was [0.6, 0.43, 0.41]): with the picture's own warm edge the
+            # true visible sclera baked (0.85, 0.79, 0.79) of the paint, both eyes alike; the L/R "asymmetry" was the
+            # measure taking iris texels. Fast path (assembly/eyevar.py): mid sclera -> (0.94, 0.90, 0.90) L, (0.95, 0.92, 0.92) R)
+            out[f"skin:eye_shade{nm}"] = {"part": part, "color": [0.7, 0.64, 0.62], "mix": "multiply",
+                                          "opacity": round(min(0.25 * occ, 1.0), 3),
+                                          # (r26: both terms keyed to the distance from the lids, unsigned: the ball lies
+                                          # INSIDE the head's field, so "near base" was 1 over the whole visible sclera,
+                                          # baked x(0.76, 0.66, 0.65), and the height-keyed upper shadow darkened the eye
+                                          # whose lids sit higher: L 49 vs R 68 against the paint's ~90)
                                           "mask": [{"mask": [{"axis": {"dir": [0, 0, 1], "at": f"eye{sd}", "from": round(0.1 * r, 5),
                                                                        "to": round(0.55 * r, 5)}},
-                                                             {"spot": {"at": f"eye{sd}", "radius": round(1.6 * r, 5), "soft": 0.2}}],
+                                                             {"spot": {"at": f"eye{sd}", "radius": round(1.6 * r, 5), "soft": 0.2}},
+                                                             {"near": ["base"], "side": "both", "within": round(0.04 * r, 5),
+                                                              "soft": round(0.16 * r, 5)}],
                                                     "weight": 0.85},
-                                                   {"near": ["base"], "within": round(0.02 * r, 5), "soft": round(0.09 * r, 5),
-                                                    "blend": "max"}]}
+                                                   {"near": ["base"], "side": "both", "within": round(0.02 * r, 5),
+                                                    "soft": round(0.09 * r, 5), "blend": "max"}]}
         # the tear line: the strip of tear film standing where the lower lid meets the ball, a thin bright wet line
         if float(e.get("tear", 1.0)) > 0:
             out[f"skin:eye_tear{nm}"] = {"part": part, "color": [0.97, 0.86, 0.84], "opacity": round(0.4 * float(e.get("tear", 1.0)), 3),
                                          "roughness": 0.02, "specular": 1.0,
-                                         "mask": [{"near": ["base"], "within": round(0.015 * r, 5), "soft": round(0.035 * r, 5)},
+                                         "mask": [{"near": ["base"], "side": "both", "within": round(0.015 * r, 5), "soft": round(0.035 * r, 5)},
                                                   {"axis": {"dir": [0, 0, -1], "at": f"eye{sd}", "from": round(0.05 * r, 5), "to": round(0.2 * r, 5)}}]}
     # on the skin: the caruncle (the pink, wet corner by the nose) and the lower lid's waterline
     car = e.get("caruncle")

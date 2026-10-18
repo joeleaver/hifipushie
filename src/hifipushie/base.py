@@ -2073,11 +2073,12 @@ MOUTH_PARTED = 0.0015  # m: inner lips further apart than this = an open mouth (
 EYE_PART_VOXEL = 0.00025   # m: the eyes part's own voxel (see implied_parts)
 # GNM's two tooth rows are separate parts: in one part's field the rows touch at the bite and were meshed as ONE
 # piece, so jawOpen (the lower row's move, the upper row's none) stretched the triangles joining them into shards.
-# min_triangles per row: at 600 for both rows a decimated row bulged out through the closed lips.
+# min_triangles per row: at 600 for both rows a decimated row bulged out through the closed lips; the export now takes
+# GNM's own quads for the rows (asset.own_mouth_meshes, 2828 triangles a row) and the floor keeps them whole.
 TEETH_PARTS = ("teeth", "teeth_lower")  # (upper row, lower row), each with its gums
-MOUTH_PARTS = {"teeth": {"color": [0.86, 0.83, 0.74], "roughness": 0.3, "voxel": 0.0004, "min_triangles": 1200},
-               "teeth_lower": {"color": [0.86, 0.83, 0.74], "roughness": 0.3, "voxel": 0.0004, "min_triangles": 1200},
-               "tongue": {"color": [0.62, 0.3, 0.3], "roughness": 0.45, "voxel": 0.0008}}
+MOUTH_PARTS = {"teeth": {"color": [0.86, 0.83, 0.74], "roughness": 0.3, "voxel": 0.0004, "min_triangles": 4000},
+               "teeth_lower": {"color": [0.86, 0.83, 0.74], "roughness": 0.3, "voxel": 0.0004, "min_triangles": 4000},
+               "tongue": {"color": [0.62, 0.46, 0.43], "roughness": 0.45, "voxel": 0.0008, "min_triangles": 4000}}
 GUM_COLOR = [0.68, 0.32, 0.33]
 BAG_COLOR = [0.2, 0.07, 0.07]
 MOUTH_SUBDIVIDE = 2  # Catmull-Clark rounds on GNM's teeth / tongue before their field (edges ~2 mm -> ~0.5 mm)
@@ -2157,10 +2158,62 @@ def gnm_mouth(head: dict) -> dict:
         if name.startswith("teeth"):
             out[name]["gum"] = (gr["gums"] & ~gr["teeth"])[ids]
     ml = mouth_lips(head)
+    for name, sgn in (("teeth_upper", 1.0), ("teeth_lower", -1.0)):
+        out[name]["verts"] = _grow_crowns(out[name]["verts"], out[name]["gum"], ml, sgn)
+    # (r37) base.head.teeth_place = {"upper": [up mm, forward mm], "lower": [...]}: each row moved RIGIDLY in the mouth's
+    # frame (teeth are rigid to the skull / jaw). Solved from the person's expression photos (the incisal edge's line
+    # against the lips: assembly r37 teethline), not by eye: GNM's identity puts the rows where its population does
+    tp = head.get("teeth_place") or {}
+    for name, key in (("teeth_upper", "upper"), ("teeth_lower", "lower")):
+        if tp.get(key):
+            du, df = (float(x) * 1e-3 for x in tp[key][:2])
+            out[name]["verts"] = out[name]["verts"] + du * np.asarray(ml["up"]) + df * np.asarray(ml["out"])
     out["frame"] = (ml["M"], ml["out"], ml["up"], ml["side"])
     out["gap"] = ml["gap"]
     head["_mouth"] = out
     return out
+
+
+TEETH_CROWN_GROW = 1.35  # GNM's crowns are ~7 mm tall where a front incisor's is ~10.5 (adult mean); reviews expr_r7 /
+# r8 and the coordinator: "small pegs", the reference's incisors about twice the height below the lip
+TEETH_ARC = 0.0008  # m: the biting edge rises this much from the centrals to the canines (16 mm out), on a parabola
+TEETH_LEVEL_BAND = 0.0012  # m across: the neighbourhood a vertex reads its tooth's edge from
+TEETH_WIDEN = 1.05  # the arch across (GNM's 27 mm at 6 mm behind the front; inter-canine ~34 mm)
+
+
+def _grow_crowns(V: np.ndarray, gum: np.ndarray, ml: dict, sgn: float) -> np.ndarray:
+    """A tooth row with its crowns TEETH_CROWN_GROW taller, from the biting edge (it stays put) toward the gum, the
+    gum carried along rigidly by the extra height; the arch TEETH_WIDEN wider about the midline. sgn: +1 the upper
+    row (crowns grow up), -1 the lower."""
+    V = np.asarray(V, float)
+    up, side, M = np.asarray(ml["up"], float), np.asarray(ml["side"], float), np.asarray(ml["M"], float)
+    h = sgn * ((V - M) @ up)
+    crown = ~np.asarray(gum, bool)
+    if not crown.any():
+        return V
+    x = (V - M) @ side
+    mid = float(np.median(x))
+    # the biting edge levelled onto a smile arc: GNM's mean row has its canines ~1 mm BELOW the centrals and 1 mm
+    # of left / right difference (lips/teethsize.py on v21), which read as "irregular, fang-like canines" (expr_r8 / r9).
+    # Per vertex: the edge across its neighbours within TEETH_LEVEL_BAND, moved onto the arc, fading to 0 at the gum
+    from scipy.spatial import cKDTree
+    ci = np.where(crown)[0]
+    tr = cKDTree(x[ci, None])
+    dd, nb = tr.query(x[:, None], k=min(64, len(ci)))
+    hh = np.where(dd <= max(TEETH_LEVEL_BAND, 0.0), h[ci[nb]], np.nan)
+    hh[:, 0] = h[ci[nb[:, 0]]]  # (a gum vertex past the crowns' ends: its nearest crown vertex's tooth)
+    tip, gtop = np.nanmin(hh, 1), np.nanmax(hh, 1)
+    c0 = float(np.percentile(tip[ci][np.abs(x[ci] - mid) < 0.006], 50))
+    target = c0 + TEETH_ARC * ((x - mid) / 0.016) ** 2
+    wv = np.clip(1 - (h - tip) / np.maximum(gtop - tip, 1e-4), 0, 1) * crown
+    V = V + (sgn * (target - tip) * wv)[:, None] * up[None]
+    h = sgn * ((V - M) @ up)
+    edge = float(np.percentile(h[crown], 1))
+    top = float(np.percentile(h[crown], 97))
+    t = h - edge
+    ht = top - edge
+    grow = np.where(t <= 0, 0.0, np.where(t < ht, t, ht)) * (TEETH_CROWN_GROW - 1)
+    return V + (sgn * grow)[:, None] * up[None] + ((x - mid) * (TEETH_WIDEN - 1))[:, None] * side[None]
 
 
 def _piece_points(V, faces, rounds: int = MOUTH_SUBDIVIDE) -> dict:
@@ -2557,6 +2610,7 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
     rim = lm[42:48]
     return {"verts": W, "faces": faces, "normals": N, "h": h, "hmax": float(h.max()), "tree": cKDTree(W),
             "eyes": eyes, "eye_r": r_ball, "forward": -back, "eye_gnm": eye_gnm, "mouth_off": mouth_off,
+            "teeth_place": head.get("teeth_place"),  # (r37) rigid tooth-row placement, see gnm_mouth
             # every GNM vertex (skin, sock, eyeballs, teeth, tongue) as placed: one evaluation of GNM's bases
             "gnm_world": place(V),
             "eye_open": float(np.mean(rim[[1, 2], 2]) - np.mean(rim[[4, 5], 2])),  # the opening's height

@@ -25,6 +25,7 @@ import bpy
 import json
 import math
 import sys
+import os
 from pathlib import Path
 from mathutils import Matrix, Quaternion, Vector
 
@@ -57,12 +58,20 @@ def import_glb(path, **kw):
 
 clear()
 scene = bpy.context.scene
-ours, arm = import_glb(job["glb"])
+# merge_vertices: the GLB splits vertices at UV seams; an engine shades a face shape with its morph NORMAL deltas
+# (smooth across the seams), Blender ignores those and recomputes per split vertex: under a smile the cheek's UV seam
+# showed as a stair-stepped edge (expr_r6 / r7). Merged (UVs stay per corner), Blender's normals match the engine's.
+ours, arm = import_glb(job["glb"], **({"merge_vertices": True} if job.get("merge_vertices", True) else {}))
 _jp = Path(job.get("json") or str(Path(job["glb"]).with_suffix(".json")))
 if not _jp.exists() and Path(job["glb"]).stem.split("_LOD")[0] != Path(job["glb"]).stem:  # a LOD: its asset's report
     _jp = Path(job["glb"]).parent / (Path(job["glb"]).stem.split("_LOD")[0] + ".json")
 info = json.load(open(_jp)) if _jp.exists() else {"parts": {}, "glb": job["glb"]}
 meshes = [o for o in ours if o.type == "MESH"]
+if os.environ.get("GE_PLAIN"):  # (debug) the importer's custom split normals dropped: Blender's own smooth normals
+    for o in meshes:
+        if o.data.has_custom_normals:
+            with bpy.context.temp_override(object=o, active_object=o, selected_objects=[o]):
+                bpy.ops.mesh.customdata_custom_splitnormals_clear()
 if job.get("mush"):  # a delta mush (Blender's Corrective Smooth) after the skinning: what a corrective layer can give
     for o in meshes:
         if any(m.type == "ARMATURE" for m in o.modifiers) and len(o.data.vertices) > 2000:
@@ -78,22 +87,91 @@ if job.get("dqs"):  # dual-quaternion skinning (Blender's "Preserve Volume"): wh
 
 # ---- game-like EEVEE: no ray tracing, shadow maps, a plain world, two suns
 scene.render.engine = "BLENDER_EEVEE" if "BLENDER_EEVEE" in [e.identifier for e in bpy.types.RenderSettings.bl_rna.properties["engine"].enum_items] else "BLENDER_EEVEE_NEXT"
+if os.environ.get("GE_ENGINE"):  # (debug) another engine, e.g. BLENDER_WORKBENCH: is a fault in the geometry?
+    scene.render.engine = os.environ["GE_ENGINE"]
 ee = scene.eevee
-for k, v in (("use_raytracing", False), ("use_gtao", True), ("taa_render_samples", 16), ("use_shadows", True)):
+for k, v in (("use_raytracing", False), ("use_gtao", not os.environ.get("GE_NOAO")), ("taa_render_samples", 16),
+             ("use_shadows", not os.environ.get("GE_NOSHADOW"))):
     if hasattr(ee, k):
         setattr(ee, k, v)
-scene.view_settings.view_transform = job.get("view", "AgX")
-scene.world = scene.world or bpy.data.worlds.new("w")
-scene.world.use_nodes = True
-bg = scene.world.node_tree.nodes.get("Background")
-bg.inputs["Color"].default_value = (0.30, 0.32, 0.36, 1)
-bg.inputs["Strength"].default_value = 0.8
-for k, (d, e, ang) in enumerate((((-1.0, -1.2, 1.4), 3.0, 2.0), ((1.4, -0.6, 0.6), 1.0, 10.0), ((0.3, 1.5, 1.0), 1.5, 3.0))):
-    ld = bpy.data.lights.new(f"sun{k}", "SUN")
-    ld.energy, ld.angle = e, math.radians(ang)
-    lo = bpy.data.objects.new(f"sun{k}", ld)
-    lo.rotation_euler = Vector(d).to_track_quat("Z", "Y").to_euler()
-    scene.collection.objects.link(lo)
+# (2026-10-16: AgX rolled lit skin off grey, "skin reads grey" in every expression review; the skin looks
+# (skin_look.py) and glTF viewers use Khronos PBR Neutral, which keeps the albedo's hue and saturation)
+try:
+    scene.view_settings.view_transform = job.get("view", "Khronos PBR Neutral")
+except TypeError:  # (older Blender)
+    scene.view_settings.view_transform = "AgX"
+_VIEW0 = scene.view_settings.view_transform
+
+
+def _lin(c):
+    return [x / 12.92 if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4 for x in c[:3]]
+
+
+def light_rig(lt=None, target=(0.0, 0.0, 0.0)):
+    """The shot's light. None: the GAME rig (a plain grey world 0.8 + three suns: key 3.0 from the head's right-front-
+    above with a 2 deg angle (hard shadow maps), fill 1.0, back 1.5): game-distance readability. A dict: a whole rig in
+    blender_scene's "lighting" format (lights: dir toward the light, energy, color (sRGB), angle, shadow, specular,
+    diffuse, window; world; view; exposure), e.g. the approved head sheet's stage.photo_light (r44: likeness views are
+    judged under the reference's fitted light, as the head was approved; the game rig only for the 1 m / 3 m reads).
+    Any rig already made (gl_*) is removed first, so every shot of one Blender can carry its own."""
+    for ob in [o for o in bpy.data.objects if o.name.startswith("gl_") and o.type == "LIGHT"]:
+        ld = ob.data
+        bpy.data.objects.remove(ob, do_unlink=True)
+        if ld.users == 0:
+            bpy.data.lights.remove(ld)
+    scene.world = scene.world or bpy.data.worlds.new("w")
+    scene.world.use_nodes = True
+    bg = scene.world.node_tree.nodes.get("Background")
+    vs = scene.view_settings
+    if lt is None:
+        vs.view_transform, vs.exposure = _VIEW0, 0.0
+        bg.inputs["Color"].default_value = (0.30, 0.32, 0.36, 1)
+        bg.inputs["Strength"].default_value = 0.8
+        lt = {"lights": [{"dir": d, "energy": e, "angle": a, "lin": True} for d, e, a in
+                         (((-1.0, -1.2, 1.4), 3.0, 2.0), ((1.4, -0.6, 0.6), 1.0, 10.0), ((0.3, 1.5, 1.0), 1.5, 3.0))]}
+    else:
+        try:
+            vs.view_transform = lt.get("view", _VIEW0)
+        except TypeError:
+            pass
+        vs.exposure = float(lt.get("exposure", 0.0))
+        wc = lt.get("world") or {}
+        bg.inputs["Color"].default_value = (*_lin(wc.get("color", [0.8, 0.8, 0.8])), 1)
+        bg.inputs["Strength"].default_value = float(wc.get("strength", 0.6))
+    for k, L in enumerate(lt.get("lights") or []):
+        ld = bpy.data.lights.new(f"gl_sun{k}", "SUN")
+        ld.energy, ld.angle = float(L.get("energy", 3.0)), math.radians(float(L.get("angle", 3.0)))
+        if not L.get("lin"):
+            ld.color = _lin(L.get("color", [1.0, 1.0, 1.0]))
+        if L.get("shadow") is False:
+            ld.use_shadow = False
+        for key, attr in (("diffuse", "diffuse_factor"), ("specular", "specular_factor")):
+            if key in L:
+                setattr(ld, attr, float(L[key]))
+        # (EEVEE's virtual shadow maps default to 1 mm texels: in a 0.11 m close-up a self-shadow edge on the cheek drew
+        # 5 px stairs, read as "stair-stepped cheek geometry" in expr_r6 / r7; a hero's face shadows aren't that coarse)
+        for k_, v_ in (("shadow_maximum_resolution", 0.0002), ("shadow_filter_radius", 2.0)):
+            if hasattr(ld, k_):
+                setattr(ld, k_, v_)
+        lo = bpy.data.objects.new(f"gl_sun{k}", ld)
+        lo.rotation_euler = Vector(L["dir"]).to_track_quat("Z", "Y").to_euler()
+        scene.collection.objects.link(lo)
+        if L.get("window"):  # the highlight from a rectangle (stage's soft box): the sun keeps diffuse + shadows
+            w = L["window"]
+            size, dist = w.get("size", [1.0, 1.4]), float(w.get("distance", 2.5))
+            ld.specular_factor = 0.0
+            al = bpy.data.lights.new(f"gl_window{k}", "AREA")
+            al.shape, al.size, al.size_y = "RECTANGLE", float(size[0]), float(size[1])
+            al.energy = 4 * math.pi * float(L.get("energy", 3.0)) * dist ** 2 * float(w.get("gain", 1.0))
+            al.color, al.diffuse_factor, al.use_shadow = ld.color, 0.0, False
+            ao = bpy.data.objects.new(f"gl_window{k}", al)
+            scene.collection.objects.link(ao)
+            dv = Vector(L["dir"]).normalized()
+            ao.location = Vector(target) + dv * dist
+            ao.rotation_euler = dv.to_track_quat("Z", "Y").to_euler()
+
+
+light_rig()
 cam_d = bpy.data.cameras.new("cam")
 cam_d.clip_start, cam_d.clip_end = 0.01, 200
 cam = bpy.data.objects.new("cam", cam_d)
@@ -163,7 +241,8 @@ def build(m):
     kind = m["model"]
     P = m.get("params") or {}
     if kind == "skin":
-        if "blink" in m["maps"]:  # albedo = basecolor * lerp(1, blink, 1 - eyeBlink)
+        if "blink" in m["maps"] and not os.environ.get("GE_NOBLINKMAP"):  # albedo = basecolor * lerp(1, blink, 1 - eyeBlink)
+            # (GE_NOBLINKMAP: debug, the multiplier left out)
             bt = tex(nt, m, "blink")
             mixf = nt.nodes.new("ShaderNodeMix")
             mixf.data_type = "RGBA"
@@ -478,7 +557,55 @@ def drive_twist():
         hp_.rotation_mode = "QUATERNION"
         hp_.rotation_quaternion = Rh.inverted() @ half @ Rh
         n += 1
+    n += drive_correctives()
     bpy.context.view_layer.update()
+    return n
+
+
+def drive_correctives():
+    """Pose correctives (correctives.py; json rig.correctives): the joint's turn from rest as swing about an axis
+    across the bone, read along the key's axis; piecewise-linear weights per motion (from_deg .. key_deg .. to_deg)."""
+    rows = info.get("rig", {}).get("correctives", [])
+    if not rows:
+        return 0
+    keys_of = {}
+    for o in bpy.data.objects:
+        if o.type == "MESH" and o.data.shape_keys:
+            for kb in o.data.shape_keys.key_blocks:
+                keys_of.setdefault(kb.name, []).append(kb)
+    n = 0
+    for r in rows:
+        j = r["joint"]
+        if j not in arm.pose.bones:
+            continue
+        dp = arm.pose.bones[j]
+        dp.rotation_mode = "QUATERNION"
+        Rd = arm.data.bones[j].matrix_local.to_quaternion()
+        delta = Rd @ dp.rotation_quaternion @ Rd.inverted()  # armature space
+        bdir = seg_axis(arm.data.bones[j])
+        v = Vector(delta[1:])
+        tw = Quaternion((delta[0], *(bdir * v.dot(bdir))))
+        if tw.magnitude < 1e-9:
+            tw = Quaternion()
+        tw.normalize()
+        sw = delta @ tw.inverted()
+        ang = 2 * math.atan2(Vector(sw[1:]).length, abs(sw[0]))
+        ax = Vector(sw[1:]).normalized() * (1 if sw[0] >= 0 else -1) if Vector(sw[1:]).length > 1e-9 else Vector((0, 0, 1))
+        deg = math.degrees(ang) * ax.dot(Vector(r["axis_rest"]).normalized())
+        lo, k, hi = float(r.get("from_deg") or 0.0), float(r["key_deg"]), r.get("to_deg")
+        if deg <= lo:
+            w = 0.0
+        elif deg <= k:
+            w = (deg - lo) / (k - lo)
+        elif hi is None:
+            w = 1.0
+        else:
+            w = max(0.0, (float(hi) - deg) / (float(hi) - k))
+        for kb in keys_of.get(r["target"], []):
+            kb.value = w
+        if w > 0 or os.environ.get("GE_CORR"):
+            print(f"@@corrective {r['target']}: {deg:.1f} deg -> {w:.2f}")
+            n += 1
     return n
 
 
@@ -565,7 +692,8 @@ def preview_frames():
         for ob in meshes:
             if ob.data.shape_keys:
                 for kb in ob.data.shape_keys.key_blocks[1:]:
-                    kb.value = float(pose.get(kb.name, 0.0))
+                    if not kb.name.startswith("corr_"):  # (pose correctives: drive_correctives' own)
+                        kb.value = float(pose.get(kb.name, 0.0))
         blink = max([float(pose.get(k, 0.0)) for k in ("eyeBlinkLeft", "eyeBlinkRight")] + [0.0])
         for v in blink_nodes:
             v.outputs[0].default_value = 1.0 - blink
@@ -632,7 +760,8 @@ for pz in job.get("shots", []):
     for ob in meshes:
         if ob.data.shape_keys:
             for kb in ob.data.shape_keys.key_blocks[1:]:
-                kb.value = float(shapes.get(kb.name, 0.0))
+                if not kb.name.startswith("corr_"):  # (pose correctives: drive_correctives' own)
+                    kb.value = float(shapes.get(kb.name, 0.0))
     blink = max([float(shapes.get(k, 0.0)) for k in ("eyeBlinkLeft", "eyeBlinkRight")] + [0.0])
     for v in blink_nodes:
         v.outputs[0].default_value = (1.0 - blink) if pz.get("blink_map", True) else 0.0
@@ -662,6 +791,7 @@ for pz in job.get("shots", []):
     cam_d.type = "ORTHO" if pz.get("ortho") else "PERSP"
     if pz.get("ortho"):
         cam_d.ortho_scale = float(pz["ortho"]) * max(1.0, scene.render.resolution_x / scene.render.resolution_y)
+    light_rig(pz.get("lighting"), at)  # (r44) the shot's own rig, else the game rig
     for v in pz.get("views", ["front"]):
         d = Vector(DIRS[v]).normalized()
         shift = Vector()

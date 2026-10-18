@@ -39,7 +39,7 @@ def test_roles_and_parts():
 
 
 def test_triangles_and_lods():
-    assert budgets.triangles("hero") == 100000
+    assert budgets.triangles("hero") == 103000  # (r40: eyes_mouth_lashes derived from its components)
     assert budgets.triangles("hero", "head", lod=1) == 12500
     assert budgets.triangles("hero", "body", lod=1) == 3750
     assert budgets.triangles("hero", "hair_cards", overrides={"hair_cards": 40000}) == 40000

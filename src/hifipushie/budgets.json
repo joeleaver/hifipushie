@@ -32,9 +32,9 @@
       "hero": {
         "what": "the player character, seen close up in gameplay and cutscenes",
         "on_screen": 1,
-        "lod0_triangles": {"default": 100000, "range": [60000, 150000], "basis": "derived",
+        "lod0_triangles": {"default": 103000, "range": [60000, 150000], "basis": "derived",
           "src": ["hunt_budgets", "ps_blog_2019", "ryse_dice", "ff7_rebirth", "metahuman_lod", "vrchat_ranks"],
-          "note": "Hunt: Showdown hunters 35-70k (PC/PS4, 2019); Kratos 80k with 32k face (PS4, 2018); Marius 85k (Xbox One, 2013); Cloud ~220k with hair half of it (PS5, 2024); MetaHuman LOD0 ~100k vertices across head, body and card hair (estimate ~150-200k triangles). Mid-range PC ~ PS5, but 220k is one stylised hero with signature hair: 100k is the conservative middle."},
+          "note": "Hunt: Showdown hunters 35-70k (PC/PS4, 2019); Kratos 80k with 32k face (PS4, 2018); Marius 85k (Xbox One, 2013); Cloud ~220k with hair half of it (PS5, 2024); MetaHuman LOD0 ~100k vertices across head, body and card hair (estimate ~150-200k triangles). Mid-range PC ~ PS5, but 220k is one stylised hero with signature hair: 100k is the conservative middle. 100k -> 103k (2026-10-16, r40): eyes_mouth_lashes was derived from its components (7996, was a thin 5000), and the parts' defaults must fit the total; the sources' spread covers it."},
         "parts": {
           "head": {"default": 25000, "range": [15000, 40000], "basis": "derived", "src": ["ps_blog_2019", "metahuman_lod"],
             "note": "Kratos face 32k (PS4); MetaHuman head 24k vertices at LOD0 (incl. eyes and mouth interior)."},
@@ -44,8 +44,9 @@
             "note": "No primary per-garment numbers found. Remainder of the total after head, body and hair; Hunt notes gear drives hero counts up."},
           "hair_cards": {"default": 25000, "range": [15000, 50000], "basis": "derived", "src": ["metahuman_lod", "ff7_rebirth"],
             "note": "MetaHuman card hair 30k vertices at LOD0 (+15k facial hair). Cloud's hair was ~110k (half of 220k) as a signature stylised feature; the real cost of cards is overdraw, not triangles."},
-          "eyes_mouth_lashes": {"default": 5000, "range": [3000, 8000], "basis": "thin", "src": [],
-            "note": "Eyeballs, teeth, tongue, lashes, brows together. No per-part source found."},
+          "eyes_mouth_lashes": {"default": 7996, "range": [3000, 8000], "basis": "derived", "src": [],
+            "components": {"eyes": 628, "teeth": 2828, "teeth_lower": 1400, "tongue": 700, "lashes": 2440},
+            "note": "Derived 2026-10-16 (r40, assembly) as the sum of its components' measured needs at hero role, not a sourced figure. eyes 628: both globes + cornea as exported (smallest that stays round in the 1 m close shot). teeth 2828: the upper row whole; it is visible in every smile at 1 m, and decimation was the suspected source of jagged crowns (r20s), so it is not cut. teeth_lower 1400: decimated from 2828 with fewer folds (26 vs 74 folded edges, r39); shown only with the jaw open. tongue 700: 900 -> 700 in v54; no tongue faceting in the 1 m jaw review (x54). lashes 2440: 610 ribbons x 2 segments x 2 triangles (LOD1 already ships that); fewer ribbons changes the eye look (Joe's call). Brows are in the head's texture, none here."},
           "accessories": {"default": 5000, "range": [0, 15000], "basis": "derived", "src": ["ff7_rebirth"],
             "note": "Held hero prop for scale: the Buster Sword is ~8k on PS5."}
         },

@@ -27,6 +27,7 @@ Masks (generators, each 0..1 per point):
            all it generates, e.g. "hand.L"): skin within "within"
            (m, default 0) of those primitives' own surfaces, fading over "soft" (m, 0.01) beyond. A primitive's
            own surface is inside the blended skin, so "within" ~ the blend radius covers its whole footprint.
+           "side": "both" measures unsigned (points INSIDE the shapes count only near their surface).
   facing:  [x, y, z]: by how much the skin faces that way (normal . dir), ramping from "range"[0] to "range"[1]
            (default [0, 0.7]). [0, 0, 1] with a dark colour darkens the back; [0, 0, -1] lightens the belly
            (countershading). "element": along the point's own element's long axis, either way (|normal . axis|):
@@ -1206,7 +1207,10 @@ def _near_mask(spec: dict, name: str, ly: dict, v: np.ndarray) -> np.ndarray:
             continue
         if p.kind not in sdf.SDF or p.kind == "shell":
             raise SpecError(f"paint {name!r}: {w!r} is a {p.kind}, not a shape")
-        d = np.minimum(d, sdf.SDF[p.kind](v, p.params))
+        dd = sdf.SDF[p.kind](v, p.params)
+        # "side": "both" = the unsigned distance (a point inside the shape is not "near" unless it is near its surface:
+        # an eyeball in a head's socket lies inside the head's field, so its lids' shadow band covered the whole ball)
+        d = np.minimum(d, np.abs(dd) if ly.get("side") == "both" else dd)
     within, soft = float(ly.get("within", 0.0)), float(ly.get("soft", 0.01))
     return 1 - _ramp(d, within, within + max(soft, 1e-6))
 
