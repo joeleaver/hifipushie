@@ -1963,7 +1963,15 @@ def export(name: str, out_dir: Path, *args, **kw) -> dict:
         except OSError:
             pass
     with resources.heavy(f"export {name}", kind="export_asset", model=name, log=waiting):
-        return _export(name, out_dir, *args, **kw)
+        from . import faceshapes
+        notes = []
+        with faceshapes.character_fits(store.load(name), notes, store._dir(name)):  # per-character fits from the spec, not the env
+            for m in notes:
+                waiting(m)
+            res = _export(name, out_dir, *args, **kw)
+        if isinstance(res, dict) and isinstance(res.get("log"), list):
+            res["log"][:0] = notes
+        return res
 
 
 def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int = 2048, resolution: int = 256,

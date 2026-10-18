@@ -1154,10 +1154,61 @@ SMILE_FIT_EYE_GAIN = float(__import__("os").environ.get("HP_SMILE_FIT_EYE_GAIN",
 SMILE_LOWLID_GAIN = float(__import__("os").environ.get("HP_SMILE_LOWLID_GAIN", 1.0))  # (r43) the fitted smile's LOWER
 # lid travel x this (centre most, corners not): the fit lifts it ~60% of the photo's (lidshape: +3.0 / +2.5 % chord vs +4.7 / +4.5)
 SMILE_FIT_FOLD = float(__import__("os").environ.get("HP_SMILE_FIT_FOLD", 0.0))  # (r44) with SMILE_FIT: the hand smile's
+
+
 # nasolabial fold + cheek mass (SMILE_FOLD, CHEEK_LIFT; not its corner lift: the fit owns the corners) carried on top of the
 # fitted smile x this. The fitted smile has no fold and its apples lift +2.6 / +4.6 % io (photo +9.3 / -0.5): every
 # blind review since r38 "cheeks don't lift, no fold from the nose wing". 0 = off (the r43 behaviour)
 SMILE_FIT_SOFT = 80  # (r37) _soft_edge rounds on the fitted smile's halves (SOFT_ROUNDS for the hand shapes)
+
+
+def env_fits() -> dict:
+    """The per-CHARACTER face-shape inputs set from the environment ({name: file}): fitted expression coefficients
+    (HP_SMILE_FIT, HP_JAW_FIT: fitted to one person's photos) and hand sculpts (HP_SHAPE_SCULPT). They apply to WHATEVER
+    head is exported, so a shell left with Tess's settings gives Garrett her fitted smile without a word; the export logs
+    each one as a WARNING (2026-10-18, the Garrett assembly)."""
+    return {k: v for k, v in (("HP_SMILE_FIT", SMILE_FIT), ("HP_JAW_FIT", JAW_FIT), ("HP_SHAPE_SCULPT", SHAPE_SCULPT)) if v}
+
+
+FIT_KEYS = {"smile": "SMILE_FIT", "jaw": "JAW_FIT", "sculpt": "SHAPE_SCULPT"}  # spec base.head.face_fits key -> global
+
+
+@__import__("contextlib").contextmanager
+def character_fits(spec: dict, log=None, base_dir=None):
+    """The per-CHARACTER face-shape inputs from the SPEC: base.head.face_fits = {"smile": .npy, "jaw": .npy, "sculpt":
+    .npz} (paths; relative ones from the model's folder). Inside the block SMILE_FIT / JAW_FIT / SHAPE_SCULPT are the
+    spec's: a key the spec gives replaces the environment's; one it doesn't is cleared, unless the spec has no face_fits
+    at all (then the environment stays, and each value set there is logged as a WARNING: it belongs to whoever set it).
+    Restored on exit. (2026-10-18, the Garrett assembly: Tess's fitted smile / jaw sat in env vars and applied to any head.)"""
+    import os
+    from pathlib import Path
+    g = globals()
+    old = {v: g[v] for v in FIT_KEYS.values()}
+    ff = (((spec.get("base") or {}).get("head") or {}).get("face_fits"))
+    say = log.append if log is not None else (lambda m: None)
+    try:
+        if ff is None:
+            for k, v in env_fits().items():
+                say(f"WARNING: face shapes: {k}={v} (a per-character fit / sculpt from the environment, applied to THIS "
+                    f"head; put it in base.head.face_fits instead)")
+        else:
+            bad = set(ff) - set(FIT_KEYS)
+            if bad:
+                raise ValueError(f"base.head.face_fits: unknown keys {sorted(bad)} (known: {sorted(FIT_KEYS)})")
+            for k, var in FIT_KEYS.items():
+                v = ff.get(k) or ""
+                if v and not os.path.isabs(v) and base_dir is not None:
+                    v = str(Path(base_dir) / v)
+                if v and not os.path.exists(v):
+                    raise FileNotFoundError(f"base.head.face_fits.{k}: {v} not found")
+                g[var] = v
+                if v:
+                    say(f"face shapes: {k} fit from the spec: {v}")
+        yield
+    finally:
+        g.update(old)
+
+
 SMILE_FOLD = (0.0024, 0.0022, 0.002, 0.008)  # (r30: 1.2 -> 2.4 mm with SMILE_FOLD_CORNER 9 mm: x44's fold dip -0.157 / -0.164 vs the reference -0.21 / -0.33 at 1.2 mm) (r24: depth 1.5 -> 1.2 mm with FOLD_PAST 0.15: corners 0 back faces)  # m: the smile's nasolabial crease depth, width; the cheek's push, reach
 SMILE_LIFT = (0.001, 0.008)  # (r28: 2 -> 1 mm with SMILE_CORNER_UP 0.6: Tess's corners rose 20.1 / 18.8% io vs the reference 12.1 / 14.1 (lidlift.py); 3D 21.6 / 20.3 -> 15.4 / 14.1) m: the smile lifts each mouth corner this much, fading over this radius
 SMILE_UPPER_HOLD = 1.0  # (r35: sweep35c h6 with SMILE_LOWER_HOLD 0.8 and the smile pose smile 0.92 / upperUp 0.3 / lowerDown 0.15: proxy philtrum 12.5 -> 19.3% io (reference 20.0), upper vermilion 15.0 -> 10.1 (10.3), lower 19.6 -> 15.8 (14.2); proxy darkline 1 segment 335+29 where the tree had none: close-up item) (r35) share of SMILE_PROTO's own rise of the upper lip's OUTER edge (landmarks 50-52, half at 49 / 53) taken back in the solve: the philtrum kept (reference smile: philtrum 90% of neutral, ours 52%; the upper lip thins rather than climbs to the nose)

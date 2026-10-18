@@ -16,6 +16,8 @@ out = os.path.join(job, "out")
 os.makedirs(out, exist_ok=True)
 spec = {"glb": os.path.join(job, "asset.glb"), "json": os.path.join(job, "asset.json"),
         "out": os.path.join(out, "x"), "shots": json.load(open(os.path.join(job, "shots.json")))}
+if os.path.exists(os.path.join(job, "anim.glb")):  # (Garrett assembly) a Mixamo-named clip source (e.g. Xbot.glb) for "anim" shots
+    spec["anim"] = os.path.join(job, "anim.glb")
 jf = os.path.join(job, "ge_job.json")
 json.dump(spec, open(jf, "w"))
 e = dict(os.environ)

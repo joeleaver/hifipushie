@@ -116,6 +116,54 @@ def _sheet_part(n=24):
     return p, (J, W)
 
 
+def test_per_character_face_fits_from_the_environment_are_reported():
+    """(Garrett assembly 2026-10-18) HP_SMILE_FIT / HP_JAW_FIT / HP_SHAPE_SCULPT are ONE person's fitted / sculpted face
+    inputs but apply to whatever head is exported: env_fits() names them, so the export can log each as a WARNING."""
+    from hifipushie import faceshapes as fs
+    old = (fs.SMILE_FIT, fs.JAW_FIT, fs.SHAPE_SCULPT)
+    try:
+        fs.SMILE_FIT, fs.JAW_FIT, fs.SHAPE_SCULPT = "", "", ""
+        assert fs.env_fits() == {}
+        fs.SMILE_FIT, fs.JAW_FIT = "/x/smile_w4_shape.npy", "/x/jaw_w1_shape.npy"
+        assert fs.env_fits() == {"HP_SMILE_FIT": "/x/smile_w4_shape.npy", "HP_JAW_FIT": "/x/jaw_w1_shape.npy"}
+    finally:
+        fs.SMILE_FIT, fs.JAW_FIT, fs.SHAPE_SCULPT = old
+    src = open(fs.__file__.replace("faceshapes.py", "asset.py")).read()
+    assert "faceshapes.character_fits(" in src
+
+
+def test_per_character_face_fits_come_from_the_spec():
+    """(Garrett assembly 2026-10-18) base.head.face_fits replaces the environment's fits inside character_fits (keys it
+    leaves out are cleared), relative paths resolve from the model folder, the globals come back after; with no
+    face_fits the environment's stay and are logged as WARNINGs."""
+    import tempfile, os
+    import pytest
+    from hifipushie import faceshapes as fs
+    old = (fs.SMILE_FIT, fs.JAW_FIT, fs.SHAPE_SCULPT)
+    d = tempfile.mkdtemp()
+    np.save(os.path.join(d, "smile.npy"), np.zeros(3))
+    try:
+        fs.SMILE_FIT, fs.JAW_FIT, fs.SHAPE_SCULPT = "/tess/smile.npy", "/tess/jaw.npy", ""
+        log = []
+        with fs.character_fits({"base": {"head": {"face_fits": {"smile": "smile.npy"}}}}, log, d):
+            assert fs.SMILE_FIT == os.path.join(d, "smile.npy") and fs.JAW_FIT == "" and fs.SHAPE_SCULPT == ""
+        assert (fs.SMILE_FIT, fs.JAW_FIT) == ("/tess/smile.npy", "/tess/jaw.npy")
+        assert any("from the spec" in m for m in log) and not any("WARNING" in m for m in log)
+        log = []
+        with fs.character_fits({"base": {"head": {}}}, log, d):
+            assert fs.JAW_FIT == "/tess/jaw.npy"
+        assert sum("WARNING" in m for m in log) == 2
+        with pytest.raises(FileNotFoundError):
+            with fs.character_fits({"base": {"head": {"face_fits": {"jaw": "nope.npy"}}}}, [], d):
+                pass
+        with pytest.raises(ValueError):
+            with fs.character_fits({"base": {"head": {"face_fits": {"grin": "smile.npy"}}}}, [], d):
+                pass
+        assert fs.JAW_FIT == "/tess/jaw.npy"
+    finally:
+        fs.SMILE_FIT, fs.JAW_FIT, fs.SHAPE_SCULPT = old
+
+
 def test_lod_keeps_seams_weights_and_shapes():
     from hifipushie import lods
     p, w = _sheet_part()

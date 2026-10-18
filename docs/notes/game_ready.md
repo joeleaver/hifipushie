@@ -2477,3 +2477,47 @@ STATE: freezing (heavy slot). NEXT: mk_rc, export (v60's face-shape settings: wh
   badge, badge_card, outsole, laces, teeth, teeth_lower, tongue; cloth coat / sweater / jeans frozen).
   Export r50/run_rc.sh (v60 face-shape env, HP_SHAPE_SCULPT unset; hero, lods, cull_under_cloth) -> exp/rc_tess, log out/exp_rc_tess.log.
 STATE: export running (heavy slot, CAP=20G). NEXT: the GLB game check (ge.sh, local, r50/shots_rc.json + Xbot clips).
+
+## Garrett (2026-10-18, assembly agent "assembly_garrett", first session; branch worktree-agent-a369eb41a63e51a4a)
+Joe: "focus on what's remaining to get game ready Garrett and Tess." Tess's recipe run on Garrett end to end with today's
+pieces, to surface every gap. Scratch /mnt/data/hifipushie/assembly_garrett/ (env.sh, run.sh = light, export.sh = heavy
+slot CAP=20G, rge.sh = NICO-TOP game check for ANY asset name + its LODs, mk_ag_garrett.py, mkshots.py, freeze*.sh, logs/).
+Gap list: /mnt/data/hifipushie/assembly_garrett/RC_garrett.md.
+- Pieces (bin/approve list): head gp_h6c APPROVED; body (dg_garrett) NOT approved; jacket c12_n18c approved on his OLD body
+  (j17k used: the drape on dg_garrett's body, WIP); skin gp_h6c_s15 (projskin round garrett_g14; rounds g15 / g16 = s16 / s17
+  exist) NOT approved; hair hg_G88a (strands) NOT approved; shirt, trousers, shoes NOT approved.
+- CODE: the export needs THREE unmerged branches: the Tess assembly branch (worktree-agent-ad0815704f43e0e00, 179 commits
+  past main: main's game_ready.md is ~2000 lines behind), hair-heads2 (G88a's groom keys: loose.blend / body_along /
+  lift_fall / trace), projskin2 (skin.zone_colors in gp_h6c_s15). This branch = all three merged (clean merges).
+- Model ag_garrett (mk_ag_garrett.py): dg_garrett (body + shoes / socks / soles + garment defs) + gp_h6c_s15's base.head,
+  base.lashes, skin + hg_G88a's hair copied whole (locks too) + frozen jacket j17k and the shirt as drawn under it
+  (dress-garrett's run.py freeze=, their code, cached only). A frozen garment takes ONLY cloth.FROZEN_KEYS: the script keeps
+  color / detail / roughness / sheen and drops the sim keys. A garment with no frozen drape is DROPPED (it would be simulated).
+- TROUSERS BROKEN: t5 (q_dg_t5.txt overrides on dg_garrett) is no longer in the cloth cache (cached_only -> None: its key
+  moved, likely with the shirt under it), and the light out/dg_t5.pkl lacks what the export's maps need. Garrett exports with
+  bare MakeHuman legs. Owner: dress-garrett (freeze= at the end of every final sim).
+- TESS ASSUMPTIONS found: (a) v60's face shapes use TESS's fitted smile / jaw (HP_SMILE_FIT=fx/smile_w4_shape.npy,
+  HP_JAW_FIT=fx/jaw_w1_shape.npy: env vars applied to WHATEVER head is exported): Garrett gets the generic (hand prototype)
+  shapes, so the A2 mix (measured on Tess's fitted shapes) is not the same smile on him. FIX: faceshapes.env_fits() + a
+  WARNING line in the export for each one set (test_game_ready.test_per_character_face_fits_from_the_environment_are_reported).
+  The right fix is per-character fits in the SPEC (base.head), not env: open. (b) base.head.teeth_place and teeth_lower
+  max_triangles exist only in Tess's v54 head. (c) assembly/rge2.sh copied ga_tess.glb by name: rge.sh here takes any name.
+  (d) spikes/offload/job_ge.py never passed an anim source, so "anim" shots had no clip: FIXED (anim.glb in the job folder).
+  (e) dress-garrett's run.py freeze= names any garment garrett_jacket.pkl (their script). (f) Tess's gate tests
+  (HP_FACE_KEEP_SPEC, HP_SQUINT_SPEC) point at her specs.
+STATE: export ag_garrett_v1 running ({"role": "hero", "lods": true}). NEXT: game check (rge.sh), sheet, blind review.
+### Handover (assembly_garrett session 1, tool-call budget)
+- DONE: model ag_garrett; jacket + shirt frozen (assembly_garrett/frozen/); three branches merged here; two general fixes
+  (env_fits warning + test; job_ge anim); RC_garrett.md gap list (top: trousers BROKEN, code on 3 unmerged branches,
+  face shapes Tess-tuned).
+- IN FLIGHT: export exp/ag_garrett_v1 (heavy slot; logs/exp_v1.log, "EXPORT EXIT"). Nothing else waits.
+- NEXT: (1) read exp_v1.log: hair card count, budgets per LOD, the cloth cut-under; (2) bash rge.sh ag1 exp/ag_garrett_v1
+  shots_ag.json, then bin/offload wait ag1; (3) Joe sheet (training front photo first, big labels); (4) blind tile review;
+  (5) ask dress-garrett for a full freeze of the trousers (their run.py freeze= after the final sim).
+- NOT done: no renders, no sheet, no review, no look-first verdict (nothing rendered yet).
+- UPDATE: export ag_garrett_v1 FAILED at the bake (~70 s): "Cycles ran out of shader stack on material(s) ['part:body']"
+  (the s15 skin stack + paint layers; the guard in the export refuses a black bake). Before it: body quality TORN OR TANGLED
+  at lm_lid_lower_in.L (by eye_front.L), 120 folded edges; teeth_lower 68 folded edges. NEXT (first): count body layers with
+  height in paint.layers(ag_garrett) vs Tess's rc_tess (same code), find which s15 / projskin2 layers cost the stack, and ask
+  the skin agent (owner) to thin them or mark broad masks "vertex": true; then re-export (export.sh ag_garrett ag_garrett_v1).
+  Nothing is in flight now.
