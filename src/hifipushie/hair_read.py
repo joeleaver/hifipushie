@@ -244,6 +244,9 @@ def compare_text(ro: dict, rp: dict) -> str:
         lo, lp = v_o.get("light_share_by_region") or {}, v_p.get("light_share_by_region") or {}
         if lo and lp:
             L.append(f"    light share by region: " + ", ".join(f"{k} {lo.get(k)} | {lp.get(k)}" for k in REGIONS if k in lo or k in lp))
+        lo, lp = v_o.get("L_by_region") or {}, v_p.get("L_by_region") or {}
+        if lo and lp:
+            L.append(f"    L* by region: " + ", ".join(f"{k} {lo.get(k)} | {lp.get(k)}" for k in REGIONS if k in lo or k in lp))
     return "\n".join(L)
 
 
@@ -733,6 +736,9 @@ def read(name: str, spec: dict | None = None, authority: int | None = None, log=
             T = v["colour"]["threshold_L"]
             v["light_share_by_region"] = {r: round(float((L[hit & (reg == r)] > T).mean()), 3)
                                           for r in REGIONS if (hit & (reg == r)).sum() >= 100}
+            # (2026-10-16) the region's median L*: the whole-head colour item (sides / back too light while the front passed)
+            v["L_by_region"] = {r: round(float(np.median(L[hit & (reg == r)])), 1)
+                                for r in REGIONS if (hit & (reg == r)).sum() >= 100}
         # LONG hair: how far down it reaches (the hair mask's lowest point, on the plane through the head centre facing
         # the camera: m under the centre) and how WAVY its lengths are (below the ear)
         v.update(lengths(f, sc, hn["solid"], mm))

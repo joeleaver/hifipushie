@@ -2,6 +2,7 @@
 (one=1: every view in ONE Blender, each under its own light; one=0: a Blender per view, the old way)
 The model's CURRENT hair (its spec, in memory) on its dressed head stage (spikes/garrett3/stage.py), EEVEE:
   v<i>     through the i-th reference's fitted camera under the picture's fitted light (the whole picture, squared)
+  g<m>[y<deg>] a 1080p game camera (vertical fov 59) <m> metres from the head, native-pixel crop (size, ss=1)
   y<deg>   the FRONT fitted camera turned <deg> round the head's vertical axis (+ = toward his left: y125 = the back
            three-quarter from his left, y180 = the back), its light turned with it: framed like the front, so the
            unfitted back pictures (same generator framing) sit beside it
@@ -38,6 +39,9 @@ TAG = kw.get("tag", "")
 eng = kw.get("engine", "eevee")
 
 _ss = skin_look.stage_spec
+_sk = kw.get("skin", "")
+EV = float(kw.get("ev", 0))  # ev=<stops>: added to every view's exposure (the skin-tone row: skintone.py; hair seen rescaled to match)
+SKIN_OVER = json.loads(open(_sk[1:]).read() if _sk.startswith("@") else _sk) if _sk else {}
 
 
 def _known_skin(sk):
@@ -46,6 +50,8 @@ def _known_skin(sk):
     sk = {k: v for k, v in (sk or {}).items() if k in skin_mod.KEYS}
     if isinstance(sk.get("eyes"), dict):
         sk["eyes"] = {k: v for k, v in sk["eyes"].items() if k in skin_features.EYE_KEYS}
+    if SKIN_OVER:  # skin=<json | @file>: the stand-in's keys replaced (calibrated to the photo's tone: skintone.py)
+        sk = {**sk, **SKIN_OVER}
     return sk
 
 
@@ -57,6 +63,11 @@ def stage_spec(spec, region, voxel=None):
 
 
 skin_look.stage_spec = stage_spec
+
+
+def _pl(name, vi=None):
+    lt = stage.photo_light(name, vi)
+    return {**lt, "exposure": float(lt.get("exposure", 0.0)) + EV} if EV else lt
 _load = store.load
 
 
@@ -147,13 +158,29 @@ with resources.heavy(f"hair-garrett shots {m}", gb=8):
         if v[0] == "v":
             i = int(v[1:])
             f = stage.fitted_frame(refs["cameras"][i], BOX, v)
-            lt = stage.photo_light(m, i)
+            lt = _pl(m, i)
+        elif v[0] == "g":  # g<metres>[y<deg>]: GAME DISTANCE (docs/notes/gates.md): a 1920x1080 game camera (vertical
+            # fov 59 deg) <metres> from the head, level, the front photo's light; the tile is the NATIVE-pixel square
+            # crop (size x size, ss=1) of that frame round the head: fov = the crop's share of the 59 deg
+            d_, _, deg_ = v[1:].partition("y")
+            f0 = stage.fitted_frame(refs["cameras"][0], BOX, v)
+            T = np.asarray(C, float) + [0.0, 0.0, -0.04]
+            hz = np.asarray(f0["eye"], float) - T
+            hz[2] = 0.0
+            hz /= np.linalg.norm(hz)
+            eye = T + float(d_) * hz
+            fov_ = float(np.degrees(2 * np.arctan(N0 / 1080 * np.tan(np.radians(59.0 / 2)))))
+            f = {**f0, "eye": eye.tolist(), "dir": hz.tolist(), "up": [0.0, 0.0, 1.0], "fov": fov_, "shift": [0.0, 0.0],
+                 "center": (eye - hz).tolist()}
+            lt = _pl(m, 0)
+            if deg_:
+                f, lt = turned(f, lt, float(deg_), C)
         elif v[0] == "t":  # t<deg>: the front camera tipped <deg> over the top (60 = looking down on the parting)
             f0 = stage.fitted_frame(refs["cameras"][0], BOX, v)
-            f, lt = tipped(f0, stage.photo_light(m, 0), float(v[1:]), C)
+            f, lt = tipped(f0, _pl(m, 0), float(v[1:]), C)
         else:
             f0 = stage.fitted_frame(refs["cameras"][0], BOX, v)
-            f, lt = turned(f0, stage.photo_light(m, 0), float(v[1:]), C)
+            f, lt = turned(f0, _pl(m, 0), float(v[1:]), C)
         shots.append((v, f, lt))
     groups = [shots] if kw.get("one", "1") == "1" else [[x] for x in shots]
     for g in groups:

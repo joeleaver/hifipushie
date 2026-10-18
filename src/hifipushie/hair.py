@@ -659,14 +659,16 @@ def inside(sc: Scalp, line, az, el):
 _LINES: dict = {}
 
 
-def weights(az, el, d_in):
+def weights(az, el, d_in, blend: float = 1.0):
     """Region weights (n, 5) in REGIONS order from where a point sits: front = the first few cm behind the front
-    hairline, top above ~30 deg, sides round the ears, back behind, nape low at the back."""
+    hairline, top above ~30 deg, sides round the ears, back behind, nape low at the back. `blend` x: every transition
+    that many times wider about its middle (groom.loose.blend: no ledge where a lifted top meets close sides)."""
     fa = np.abs(((np.asarray(az) + 180) % 360) - 180)  # 0 front .. 180 back
-    front = (1 - _ss((d_in - 0.02) / 0.03)) * (1 - _ss((fa - 30) / 25))
-    top = _ss((np.asarray(el) - 22) / 20)
-    back = _ss((fa - 105) / 40)
-    nape = _ss((-np.asarray(el) + 0) / 20)
+    k = max(float(blend), 0.1)
+    front = (1 - _ss((d_in - 0.035 + 0.015 * k) / (0.03 * k))) * (1 - _ss((fa - 42.5 + 12.5 * k) / (25 * k)))
+    top = _ss((np.asarray(el) - 32 + 10 * k) / (20 * k))
+    back = _ss((fa - 125 + 20 * k) / (40 * k))
+    nape = _ss((-np.asarray(el) + 10 - 10 * k) / (20 * k))
     rest = (1 - front) * (1 - top)
     W = np.stack([front, (1 - front) * top, rest * (1 - back), rest * back * (1 - nape), rest * back * nape], -1)
     return W / np.maximum(W.sum(-1, keepdims=True), 1e-9)
@@ -883,7 +885,7 @@ def _poisson(sc: Scalp, rng, spacing_at, ok, n_try=6000):
 # the groom's keys in metres (scaled with the head by `fit`); lists of [az, z] keep az and scale z about the centre
 _METRE_KEYS = {("length",), ("volume",), ("hairline", "temples"), ("hairline", "temple_dip"), ("hairline", "ear"),
                ("hairline", "sideburns"), ("hairline", "nape"), ("parting", "offset"), ("parting", "width"),
-               ("parting", "length"), ("parting", "front"), ("loose", "length"), ("loose", "spacing"), ("loose", "lift"),
+               ("parting", "length"), ("parting", "front"), ("loose", "length"), ("loose", "spacing"), ("loose", "lift"), ("loose", "lift_ramp"),
                ("loose", "body"), ("loose", "thickness"), ("loose", "level"), ("loose", "swoop", "depth"),
                ("loose", "swoop", "length"), ("loose", "fringe", "length"), ("loose", "fringe", "depth"),
                ("loose", "fringe", "level"), ("tie", "out"), ("tie", "gather", "lift"), ("tie", "gather", "width"),

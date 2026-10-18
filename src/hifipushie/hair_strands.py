@@ -347,8 +347,26 @@ def scalp_mesh(sc, g: dict, line, S: dict, step: float = 3.0) -> dict:
             from .hair_loose import FADE
             fd_ = {**FADE, **(fd_ if isinstance(fd_, dict) else {})}
             backw_ = _ss((fa_ - 100.0) / 30.0)
-            ramp_ = _ss(d_in / max(float(fd_["width"]), 1e-3))
+            if fd_.get("taper"):  # a TAPER thins only at the very line (over its lowest third), as hair_loose's
+                ramp_ = _ss(np.clip(d_in / (0.35 * float(fd_["taper"])), 0, 1))
+            else:
+                ramp_ = _ss(d_in / max(float(fd_["width"]), 1e-3))
             dens_even = dens_even * (1 - backw_ * (1 - (float(fd_["density"]) + (1 - float(fd_["density"])) * ramp_)))
+            ff_ = fd_.get("front")
+            if ff_:  # the soft FRONT edge (hair_loose fade.front): fewer roots of every layer near the front line too
+                frw_ = 1 - _ss((fa_ - 80.0) / 30.0)
+                rf_ = _ss(d_in / max(float(ff_.get("width", 0.012)), 1e-3))
+                k_ = 1 - frw_ * (1 - (float(ff_.get("density", 0.3)) + (1 - float(ff_.get("density", 0.3))) * rf_))
+                dens_even, dens = dens_even * k_, dens * k_
+    wh_ = (g.get("loose") or {}).get("whorl")
+    if isinstance(wh_, dict) and float(wh_.get("thin") or 0.0) > 0:  # the WHORL's scalp show (hair_loose whorl.thin):
+        # fewer roots of every layer at its centre, a Gaussian of thin_radius m
+        from .hair_loose import WHORL
+        wh_ = {**WHORL, **wh_}
+        Wc_ = sc.point(np.array([float(wh_["at"][0]) % 360.0]), np.array([float(wh_["at"][1])]), 0.0004)[0]
+        k_ = 1 - float(wh_["thin"]) * np.exp(-0.5 * (np.linalg.norm(V - Wc_, axis=1).reshape(AA.shape)
+                                                     / max(float(wh_["thin_radius"]), 1e-3)) ** 2)
+        dens_even, dens = dens_even * k_, dens * k_
     # the SPLIT ZONE (strands.even 1): where neighbouring guides comb opposite ways, a child averaging them takes the
     # middle path (over the cheek at a tuck's edge; down the face where the face rule turns hair aside): there a
     # child copies its NEAREST guide; everywhere else it blends three (copies of one guide on short dense hair were
@@ -449,7 +467,7 @@ def collide_mesh(sc, step: float = 4.0) -> dict:
 def _longest(g: dict) -> float:
     """The loose groom's longest length (m), 0 without one."""
     ln = (g.get("loose") or {}).get("length", 0.0)
-    return max(float(v) for v in ln.values()) if isinstance(ln, dict) else float(ln or 0.0)
+    return max(float(v) for k, v in ln.items() if k != "top_el") if isinstance(ln, dict) else float(ln or 0.0)
 
 
 def _split_zone(sc, g: dict, AA, EE, d_in, fa):
@@ -460,7 +478,7 @@ def _split_zone(sc, g: dict, AA, EE, d_in, fa):
     lo = g.get("loose") or {}
     z = np.zeros_like(d_in, dtype=float)
     ln = lo.get("length", 0.0)
-    lmax = max(float(v) for v in ln.values()) if isinstance(ln, dict) else float(ln or 0.0)
+    lmax = max(float(v) for k, v in ln.items() if k != "top_el") if isinstance(ln, dict) else float(ln or 0.0)
     if lmax > 0.15:
         return np.ones_like(d_in, dtype=float)
     tk = lo.get("tuck")

@@ -2673,3 +2673,1126 @@ their checklists are in workspace/checklists/.
 3. Then the two family heads (their open items: workspace/private_notes/), same gates.
 4. Coordinator also asked: a garrett_hair_export checklist (card export beside the strand groom at the same cameras,
    now in game-like EEVEE per gates.md) once Garrett's groom is checkpointed.
+
+## hair-garrett 2026-10-14 evening (successor): remote gate renders, direction
+- Remote runner works (spikes/offload/job_hairshots.py on NICO-TOP; ~75 s a 1024 ss2 full-count frame, ~15 min a 9-frame
+  job + queue). Scratch helpers (not in git): remote/mkjob.sh <model> <stage> <job> (pack + args), remround.sh <model>
+  <results job dir> <checklist> [prev] (untar, table, pairs, review), dirstrip.py (own look: ref | rounds direction crops).
+  Pitfalls: request <= 12 GB (NICO-TOP's slot cap is 14.1 GB: 16 GB sat queued forever); look='{json}' needs single
+  quotes in args.txt (shlex); stage paint images must travel (pack_model now copies _images / _painted ids the spec names).
+- G11 full review: FAIL. Own look at the direction crops: the front strands lean FORWARD (up and toward the face) in the
+  profile and three-quarter; the photo's rise from the line and go back. Measured colour L* 49.7 / grey 0.736 (G6 42.3 /
+  0.464): strands.clump 0.1 (added after G6) lightens it; G12+ set clump 0 (G6's look).
+- G12-G14 (light checks): front flow [0.1, 0.9, 0.4] (was [0.55, 0.6, 0.35]: mostly sideways to his left), top [0.12, 1, 0]
+  (was [0.4, 0.85, 0]); now flows back in both crops. G14 also front out 0 / lift 8 mm / lay 0.6 (flatter, leans back
+  more; G13 keeps the lifted front). Both rendered remote for the review.
+- SETTLED DIRECTION (coordinator, 2026-10-14 evening, from the tight crops; do NOT flip it again): top and front combed
+  FORWARD and slightly to his left, the front edge = strand TIPS over the line (short, sparse, lightly lifted, never a
+  heavy fringe / bowl edge); sides back and down; whorl high at the back right of centre. The earlier "rises from the
+  line, up and back" was a misread of whole-head views: G13 / G14 (back) read as slicked back with a widow's peak.
+- Remote (NICO-TOP) hair renders ~10 levels lighter than local (skin pixels equal): calibrate colour against G6 rendered
+  remote; colour items must come from the same renderer as the judged sheet. dirmeasure.py (spikes/hair_garrett):
+  structure-tensor strand angles per cell, ref vs ours (axial: tells "/" from "\", not forward from back).
+- The blind review is NOT a usable judge of comb direction: whatever our direction, it calls the reference the opposite
+  (G13 / G14 back -> "should be forward"; G22L / G24 forward -> "should sweep up and back"). Direction is settled by the
+  coordinator's decision above; review direction MAJORs are answered with that, not chased.
+- Forward groom: top / front flow {from: whorl [215, 42], bias [0.15, 0, 0.0 / 0.9 front]} (from the vertex [200, 72]
+  the top radiated in spikes); temple corners midway between G11 and G21 (with a forward comb the hair from behind
+  covered shallow corners); a single world direction for the top hung the temple-corner hair forward over the recession.
+  Shape faults the reviews agree on (and the table): sides 3 mm vs 12.6 stand-off, a ledge where top meets sides,
+  hard spiky front tips. G25: sides 2.2 cm / lift 9 mm, back 2.6 cm, nape 1.2 cm, front bias up 0.9, messy 0.25.
+- Laptop gate frames (when NICO-TOP is down): 0.47 s GPU a sample at the full 360k count and 1024 px ss 1; 10 samples
+  = ~4.7 s (localgate.sh in scratch). Scene load is ~15-20 s of the printed frame time.
+- G25r (remote, x0.84 look): colour PASS (L* 40.1 vs 42.4, grey 0.394 vs 0.466): the calibration works. hlinetrace
+  "none traced" on the forward grooms (the line is covered by tips): the hairline / temple items need another trace.
+  Review MAJORs: side slab + ledge + bald notch above the ear (sides lift 9 mm / out 0.1 stood off as a shell), boxy
+  back, blunt nape, whorl small. G26-G31 (light): sides 1.8 cm lift 6 mm out 0.03 lay 0.6, sides flow {from: whorl,
+  bias [0, 1.2, -0.6]}, G6's temple points (shallower), back 1.8 cm laid 0.8. NAPE: hairline.nape is a HEIGHT (+ raises
+  the line: 0.03 made it worse); -0.012 lowers it below the ear lobes and, with fade {width 0.07, length 2 mm, density
+  0.2} (fade acts behind fa 100 deg only), gives a sparse taper instead of the hanging horizontal cut.
+
+## Handover 2026-10-15 (hair-garrett agent -> successor)
+Branch `hair-heads2` (main merged at ec950f6a; private subjects stay out of tracked files entirely: workspace/private_notes/).
+Read: the two "hair-garrett 2026-10-14 evening" sections above (remote renders, SETTLED DIRECTION, review unreliable on
+direction, calibration, nape findings).
+### State
+- Direction SETTLED by the coordinator: forward and slightly to his left, tips at the line, sides back and down. Sent
+  to the coordinator as STUCK on the review (it flips every round): out/send_forward_G25r_G31r.png. Don't chase review
+  direction MAJORs.
+- In flight: G32r on NICO-TOP (batch hgf32; log remote/jf32.log; results remote/results/hgf32/jf_G32r). Then
+  `./remround.sh hg_G32r remote/results/hgf32/jf_G32r <checklist> hg_G31r` (prints the table, writes
+  out/review_hg_G32r/review.md). G32 = G31's sides + G23's temple points (receded) + nape 0 / fade 6 cm + top 4 cm,
+  lift front 14 / top 11 mm.
+- Styles: scratch styles/g_G<n>.json (local look) and g_G<n>r.json (remote look = seen x0.84, grey #9c9791; the
+  remote renderer draws hair ~9 levels lighter). Colour passed on G25r (L* 40.1 / 42.4).
+### Open faults (G25r / G31r reviews and table), worst first
+1. Top: flat short cap with no front lift (stand-off front 8-9 vs 14.5 mm); front edge dense to the line, not soft and
+   sparse. Next: front-edge thinning (there is no front `fade`; the back fade code in hair_loose.py ~line 370 is
+   behind fa 100 deg only: a general "fade at any hairline" would serve), more front lift.
+2. Back: boxy and too light / speckled vs the photo's darker smooth back; nape a horizontal cut. hairline.nape is a
+   HEIGHT (+ raises it); -0.012 left sparse long strands down the neck (coverage behind 6.9 %).
+3. Whorl: pinched starburst; the review wants it broad and soft with slight scalp show (whorl radius / spiral / core).
+4. hlinetrace finds no line on forward grooms (the tips cover it): the hairline / temple items need a trace that
+   ignores overhanging tips, or the review only.
+### Tools (scratch /mnt/data/hifipushie/hair_garrett, not in git)
+remote/mkjob.sh <model> <stage> <job> [args], remote.sh call: `BATCH=x TIMEOUT=60 spikes/offload/remote.sh
+spikes/offload/job_hairshots.py tiles.tar,log.txt 12 8 gpu <job>` (12 GB max), remround.sh, lc.sh <round> [prev]
+(VIEWS=... light check + ref | prev | this strip), localgate.sh (laptop gate frames, 10 samples, only if NICO-TOP is
+down), dirstrip.py. In git: spikes/hair_garrett/dirmeasure.py; hair_loose flow {from, bias}.
+### NEXT
+Review G32r; fix the worst MAJOR (top lift / soft front edge); loop. Then temple M, nape, whorl. Then the private heads
+(state in workspace/private_notes/). The export checklist (handover 2026-10-14 NEXT 4) is still owed.
+
+## hair-garrett 2026-10-15 (successor 2): length and softness
+Coordinator's read of G25r / G31r: the biggest fault is LENGTH and SOFTNESS (a short stiff standing bristle; the photo is
+longer on top, soft, lying in flowing strands, sparse soft front edge; back darker, smooth, tapered). Direction settled.
+- G32r never rendered: its job failed on NICO-TOP with a sha256 mismatch because a NEW remote.sh submit from the same
+  directory re-pointed `repo.tar.gz` (a symlink to the HEAD archive) while G32r was queued. RULE: one directory per
+  queued batch (remote/b<n>/), or don't commit + submit while a batch is queued. G32r (the bristle look) was dropped.
+- Photos (85 mm direction crops): top strands run 3-5 cm visible; the front is a rounded mass lifted ~1.5 cm above
+  the line whose tips end about at the line, fine wisps over it; no lip, no dark band.
+- New code: `fade.front {width, density, reach}` (hair_loose + the even / scalp layers' density in hair_strands):
+  fewer roots near the front line; forward-combed tips end `reach` (x0.3-1.7 per lock) past the line. `length.top_el
+  [e0, e1]`: the top's length only above e0..e1 deg (a long top hung down the upper sides as a bowl).
+- Light checks G33-G44 (laptop, 120k strands): long front + low stiff + forward comb = a fringe / bowl (G33, G35);
+  reach caps it at the line (G36+); front lift 12 mm + stiff 0.6 made an overhanging lip with a dark band of short hairs
+  in its shadow under it (G37-G39): lift 6 mm / out 0.05 / stiff 0.45 / lay 0.6 lies onto the line (G40). Top bias
+  [1.0, -0.5, 0] (more to his left, a little forward) reads as the photo's sweep in the three-quarter. top_el [32, 72]
+  (a [50, 66] band left a step where top meets sides).
+- Back: the bare band over the nape with sparse long strands (G31-G43) was the FADE (length 3-4 mm, density 0.3-0.65
+  over 2.5-6 cm: a barber's fade the photo doesn't have). G44: fade width 2 cm / length 8 mm / density 0.9, back 1.5 /
+  nape 0.9 cm, back stiff 0.45 lay 0.9 lift 2 mm, grey back 0.07: dense to a rounded tapered nape, darker.
+- G44 = lengths front 4.5 / top 5 / sides 1.8 / back 1.5 / nape 0.9 cm, clump 0.08, whorl radius 5 cm spiral 50.
+STATE: G44r queued on NICO-TOP (remote/b44). NEXT: remround.sh on it, review, fix worst MAJOR; send pairs when
+length / softness read right.
+
+## Handover 2026-10-15 ~15:20 (hair-garrett successor 2 -> next; stopped at the 100-tool-call rule)
+- IN FLIGHT: G44r on NICO-TOP, submitted from its OWN folder: client log remote/b44/jf44.log (nohup, keep it alive;
+  it was queued behind a 20 GB lashes batch the coordinator is having resubmitted). Results land in
+  remote/b44/results/hgf44/jf_G44r. Then: `./remround.sh hg_G44r remote/b44/results/hgf44/jf_G44r
+  /home/joe/dev/hifipushie/workspace/checklists/garrett_hair.json hg_G31r` (scratch /mnt/data/hifipushie/hair_garrett).
+- RULE (remote): one folder per submit (remote/b<n>/): remote.sh re-points ./repo.tar.gz, which killed G32r. The runner
+  path must be ABSOLUTE ($W/spikes/offload/job_hairshots.py). Build the remote model first: `./run.sh hround.py hg_h6
+  hg_G<n>r patch=@$PWD/styles/g_G<n>r.json`, then `remote/mkjob.sh hg_G<n>r hg_h6 remote/b<n>/jf_G<n>r`.
+- mksheet pairs= needs an ABSOLUTE path (relative wrote into the worktree's out/).
+- Whorl (light checks, back view): az 215 / el 42 drew it high and right of the photo's; G46 / G47 whorl.at [207, 28-30],
+  radius 6 cm, spiral 70 sits about where the photo's is (slightly right of centre, ~15 % down the head). Keep the
+  top / front / sides flow `from` at [215, 42] (G47): moving it with the whorl straightened the top's sweep. Still a
+  point-like centre; the photo's is broad with scalp showing (no whorl density option yet).
+- NEXT: review G44r (length / softness / front edge / back); if length and softness read right, send front, 3/4, top,
+  back pairs to the coordinator. Then G47r (G44 + whorl). Open: strand texture reads speckled / striped (white vs dark
+  strands; colour calibration from G25r kept); front view still a thin cap vs the photo's fuller rounded sides.
+
+## 2026-10-15 ~15:30 (hair-garrett successor 3)
+- G44r's client in remote/b44 died (log stuck at "queued"); resubmitted G44r + G47r (G44r + whorl.at [207, 30], radius
+  6 cm, spiral 70) as ONE batch hgf4447 from remote/b4447/ (12 GB, 8 cpus, gpu, TIMEOUT=240). Log
+  remote/b4447/jf4447.log; results remote/b4447/results/hgf4447/jf_G44r, jf_G47r.
+- STATE: queued on NICO-TOP. NEXT: remround.sh on both (prev hg_G31r for G44r, hg_G44r for G47r), review.
+- G44r / G47r rendered (batch hgf4447, ~75 min incl. queue). Table (both): colour PASS (L* 43.4 / 42.4, grey 0.51 /
+  0.47), coverage PASS, hairline centre / temple PASS; STAND-OFF FAILS on 5 of 6: front 8.2 / 14.5, top 7.9 / 12.7,
+  sides 4.4 (G47r 3.7) / 12.6, back 5.6 / 12.1, nape 2.0 / 9.3 mm (crown 8 / 10.9 passes). Review FAIL (both).
+  My look (ref | result x0.84, tmp/g44_a.png, g44_b.png, g47_b.png): thin cap that follows the scalp, flat sides,
+  blunt front ledge; back a flat laid curtain ending in a ragged pointed nape; strand texture striped / speckled;
+  whorl a pinpoint. Answers: direction MAJORs (comb back / radial) = disputed, direction settled with Joe; volume,
+  nape, whorl, texture = accepted. Whorl: on the back view the photo's centre is ~on the head's midline (+3 px of a
+  ~300 px head); G47r's [207, 30] is ~54 px right (~24 deg az): az 180 = midline, so az ~182. Scalp-show at the whorl:
+  no option yet. A stray vertical strand down the neck centre (nape crop).
+- Submitted batch hgf4849 (remote/b4849/, detached setsid): G48r / G49r = G47r + whorl [182, 30] r 8 cm + volume:
+  G48r lift f/t/s/b/n 10/9/8/6/3 mm, lay .5/.6/.6/.7/.8; G49r lift 14/12/11/9/4 mm, lay .45/.5/.5/.6/.75.
+- STATE: hgf4849 queued. NEXT: remround both (prev hg_G47r); pick the one closer on stand-off without a shell / slab
+  look; then nape taper (short, darker, no ragged points) and strand texture.
+- G49r (G47r + whorl [182, 30] r 8 cm, lift 14/12/11/9/4 mm, lay .45/.5/.5/.6/.75): stand-off front 14.4 / 14.5,
+  top 13.9 / 12.7, crown 13.9 / 10.9 PASS; sides 9.1 / 12.6, back 6.2 / 12.1, nape 3.8 / 9.3 FAIL; colour PASS (L* 40.9,
+  grey 0.42). Review 29 MAJOR lines (G47r 36). My look (tmp/g49_a.png): top finally rounded with a fuller front;
+  whorl now ~on the photo's spot (still a tight point, no scalp show); a ledge where the lifted top overhangs the
+  flat sides (profile); back / nape still laid flat; texture still speckled / lock-striped. G48r (milder) not
+  reviewed: G49r is the direction.
+- Submitted hgf5051 (remote/b5051/): G50r = G49r + sides / back / nape lift 15 / 13 / 7 mm, lay .4 / .45 / .6;
+  G51r = G50r + look.vary 0.08 (from 0.25: lock-to-lock brightness = the stripes?).
+- STATE: hgf5051 queued. NEXT: remround both (prev hg_G49r); keep the volume if sides / back pass without a shell;
+  judge vary on the texture.
+- G50r / G51r: sides 10.3 / 12.6 PASS now (lift 15 mm lay .4), back 7.9 / 12.1, nape 4.8 / 9.3 FAIL; front / top /
+  crown PASS. G51r (vary 0.08) colour L* 42.0 / 42.4, grey 0.46 / 0.47 (closest yet); review MAJOR lines 24 (G50r 34,
+  G49r 29): lower vary softens the lock stripes, KEEP. My look (tmp/g51_a.png): sides fuller; nape still a hard dark
+  cut with a drooping fringe and the stray vertical strand down the neck centre; front view still thinner than the
+  photo's rounded sides; whorl still a pinch point (no thinning option); profile ledge top over sides persists.
+- Submitted hgf5253 (remote/b5253/): G52r = G51r + back lift 18 mm lay .35, nape lift 10 mm lay .5 length 6 mm,
+  fade {width .04, length .004, density .4}; G53r = G52r + sides lift 20 mm, out .06 (front fullness).
+- STATE: hgf5253 queued. NEXT: remround both (prev hg_G51r).
+- G52r / G53r: back stand-off PASS (9.6 / 9.9 vs 12.1), G53r sides 12.7 / 12.6 PASS (lift 20 mm, out .06: fuller front
+  and 3/4, the best top / sides yet); nape 5 / 9.3 FAIL. REGRESSION: fade {width .04, length .004, density .4} opened a
+  bald rectangle across the lower back with sparse long strands (coverage behind 5.1 %): DON'T use it. Review 30 / 27
+  MAJOR lines; also a "seam" between the pale top and darker spiky back, temple not silver enough.
+
+## Handover 2026-10-15 ~19:30 (hair-garrett successor 3 -> next; stopped at the 100-tool-call rule)
+- IN FLIGHT: G54r = G53r with G51r's fade restored ({width .02, length .008, density .9}); batch hgf54 from
+  remote/b54/ (detached setsid; log remote/b54/jf54.log; results remote/b54/results/hgf54/jf_G54r). Then:
+  `./remround.sh hg_G54r remote/b54/results/hgf54/jf_G54r /home/joe/dev/hifipushie/workspace/checklists/garrett_hair.json hg_G51r`
+  and tmp/strip.py (run from $W with `uv run python`): `strip.py <pairs dir> <out.png> front three_quarter profile
+  back nape__back` = ref | result x0.84 rows.
+- Best so far: G53r's top / sides / back (styles/g_G53r.json) + G51r's nape. Kept: whorl [182, 30] r 8 cm (on the
+  photo's spot; az 180 = midline), look.vary 0.08 (softer lock stripes), lift f/t/s/b/n 14/12/20/18/10 mm, lay
+  .45/.5/.4/.35/.5, sides out .06.
+- Open, worst first: (1) nape: hard dark cut + drooping fringe + a stray vertical strand down the neck centre; nape
+  stand-off 5 / 9.3 mm; the fade knob is all-or-nothing (density .4 = bald band): needs a real length taper toward
+  the nape line, not a density cut. (2) Whorl: a tight point, the photo's is broad with scalp showing: no thinning
+  option (a whorl density / part halo would serve). (3) Profile ledge where the lifted top meets the sides; "seam"
+  pale top vs darker back. (4) Temples should read more silver. Direction MAJORs: disputed (settled with Joe).
+- Every round goes to NICO-TOP (Joe's rule 2026-10-15): one folder per submit, detached, as many variants per batch
+  as useful. Queue waits 50-90 min; render ~15 min per job.
+
+## 2026-10-15 ~20:00 (hair-garrett successor 4)
+- Measured targets from the photo crops (G53r pairs, scratch tmp/whorlmeas.py, templemeas.py, stepmeas.py):
+  whorl scalp show = warm (skin) pixels in the crown__back crop: photo 1.14 % of hair px, centroid (271, 259), spread
+  sd 25 x 19 px (~7 x 5 mm) vs G53r 0.16 %. Temples (lower 3/4 of the temple crops, neutral hair px): photo L* 45.0 /
+  46.4, light share (L* > 55) 0.27 / 0.21, chroma 2.9 / 4.4; G53r L* 42.7 / 44.1, light 0.09 / 0.17, chroma 4.7 / 4.8.
+  Profile's lower band (sides above the ear) L* photo 54.9 vs ours 36.1: the sides read silver in the photo. Back view
+  L* photo 35-36 vs ours 42-43 (our back is too LIGHT, not darker). Profile ledge / seam: my outline and row-L* metrics
+  did not separate photo from ours (internal edges, not the silhouette): judged by the review's MAJOR only.
+- Cause of the bald nape band (G52r / G53r): fade.length 0.004 makes those locks < 8 mm, and grow() never grows a lock
+  under 8 mm (`s[-1] < 0.008: continue`): the fade's band had no locks at all, only the thinned even layer.
+- New groom options (hair_loose / hair_strands / hair.weights, tests in test_hair_loose.py): fade.taper (m; length AND
+  lift ramp to `floor` x over `taper` above the nape line, line jittered `rough` m, density to `density` only over the
+  lowest third, locks kept >= 9 mm), whorl.thin / thin_radius (Gaussian root thinning at the whorl, locks + even layer),
+  loose.blend (region transitions x wider about the same middles; 1 = old weights exactly).
+- Cherry-picked bef0229c (remote.sh per-commit archive) and 01917898 (one Blender per job, pack_model --stage).
+- G55r = G54r + nape length 12 mm, fade {taper .025, floor .35, density .75, rough .004, front kept}, whorl thin .55 r
+  12 mm, blend 1.6, grey sides / temples .55, sideburns .5, back .04. G56r = G55r + blend 2.2, whorl thin .7 r 15 mm,
+  grey sides / temples .65, sideburns .6, taper .03 floor .3. Targets: nape stand-off 9.3 +- 3 mm with no bald band or
+  stray strand; whorl warm share ~1 % near (271, 259); temple L* 45-46, light share .2-.27; no ledge / seam MAJOR.
+- Found while checking the builds: G54r had NO locks at the back centre below z -0.023 m (head-centre frame): the
+  nape's 6 mm length (and the fade's) are under grow()'s 8 mm floor, so the whole nape was even-layer children copying
+  the back's longer guides (the drooping fringe / stray strands). G55r / G56r (taper, nape 12 mm): 208 back-centre
+  locks down to z -0.101, all >= 9 mm; 2091 locks vs 1707.
+- Submitted hgf5556 (remote/b5556/, both jobs packed with `--stage _g3_hg_h6` after a local stage.ensure: 125 MiB
+  each; remote/mkjob.sh takes STAGE=). Chained detached: offload wait, then remround G55r and G56r (prev hg_G53r),
+  logs tmp/rr_G55r.log / rr_G56r.log, flag tmp/rr_5556.done. G54r's remround is chained too (tmp/rr_G54r.log).
+- STATE: hgf54 + hgf5556 queued. NEXT: tables + reviews; strip.py ref | result crops; keep the variant that hits the
+  targets, revert any regression.
+- G54r (G53r + G51r's fade): nape 4.8 / 9.3 FAIL, coverage behind 4.44 % FAIL, bald rectangle still there (its 8 mm
+  fade locks are under the grow floor too). Review FAIL.
+- G55r / G56r (hgf5556, 81 min incl. queue; packed stage worked): EVERY measured item PASSES on both, nape and
+  coverage behind for the first time. G56r: nape 9.0 / 9.3, coverage behind 0.41 %, front 14.6, top 14.1, crown 13.9,
+  sides 12.5, back 9.9, L* 43.0 / 42.4, grey .495 / .466. My measures (G56r | G55r | photo): whorl scalp share 1.30 % |
+  0.66 % | 1.14 %, its centroid (263, 301) | (265, 305) | (271, 259) = ~42 px LOW; temple L* 46.9-48.9 | 45.6-46.7 |
+  45.0-46.4, light share .23-.32 | .18-.24 | .21-.27; back view L* 42.5 | 41.3 | 36.8 (ours too light).
+  My look (scratch strip: ref | G56r | G55r): bald band GONE, dense hair to a soft taper; scalp now shows at the
+  whorl. Still wrong: nape ends in a V point (hairline.nape_v 8 mm; the photo's is near-horizontal) with spiky tips
+  and a few strays below it; the whorl is a tight spiral with a SATURATED PINK spot (photo: low-contrast thinning);
+  front-top visor / ledge in profile is unchanged by blend 1.6 / 2.2 (it is the front's lift + 45 mm length, not the
+  region weights); back reads uniformly light (photo darker at crown and nape).
+  Review FAIL on both (34-35 MAJOR lines incl. disputed direction / hairline / skin ones). On my targets: (1) nape
+  PASS on numbers, review MAJOR still (V point, strays); (2) whorl scalp share PASS on numbers, review MAJOR (pink,
+  tight, ~4 deg low); (3) ledge / seam FAIL (unchanged); (4) temples PASS on numbers (review wants softer edge).
+- KEEP G56r (styles/g_G56r.json) as the new best.
+
+## Handover 2026-10-15 ~23:00 (hair-garrett successor 4 -> next; 70-tool-call clock)
+- Best: hg_G56r. Code on hair-heads2: fade.taper, whorl.thin / thin_radius, loose.blend (tests in test_hair_loose.py),
+  cherry-picks of bef0229c + 01917898. Jobs: STAGE=_g3_hg_h6 remote/mkjob.sh <model> hg_h6 <job> packs the built stage
+  (run tmp/ensure_stage.py hg_h6 through run.sh first, from a clean tree at the commit you submit).
+- NEXT round, one batch, each with its target: (1) nape: hairline.nape_v 0.008 -> 0 (photo near-horizontal), taper
+  rough .004 -> .002; target: review no V / strays, nape stand-off stays 9.3 +- 3. (2) whorl: at el 30 -> ~34 (centroid
+  42 px low), thin .7 -> .5 and look.scalp_tint up so the spot isn't pink; target scalp share ~1.1 %, centroid within
+  15 px of (271, 259). (3) front visor: front length 45 -> ~35 mm and/or lay .45 -> .6 at the front only; target: no
+  ledge MAJOR with front stand-off >= 11.5. (4) back too light (L* 42.5 vs 36.8): a darker back / nape (grey back 0
+  and a per-region darkening, which doesn't exist yet: look.seen is global).
+
+## 2026-10-16 (hair-garrett successor 5): the checklist passed a crew cut; texture items added
+- Coordinator's read of G56r (all old items pass, review FAIL): a BRISTLY CREW CUT (short straight uniform bristles,
+  dark / light striping) where the photo's hair is longer, lies down and sweeps, tips flow and clump; a stiff front
+  visor; a dark blotch at the front-top hairline; back too light / uniform; nape V; hard lined hairline edge.
+- PROCESS: the checklist measured stand-off, coverage, colour, lines, never the strand texture. New tool
+  spikes/hair_garrett/texmeas.py <pairs dir> (ref | res crops, hair px = neutral + textured, eroded): lay (strand angle
+  to the image horizontal, coherence-weighted), coh (structure tensor at 4 px), len (p75 of skeletonised light-ridge
+  pieces), band (DoG 3-10 L* std = lock striping), edgec (DoG 1-4 std in the 25 px under the hair line), Lmean.
+  Measures that did NOT separate photo from ours (dropped): autocorrelation length along strands (2-5 px both),
+  orientation spread in 32 px windows, sparse-tail width of the hairline (7 vs 8 px).
+- Photo | G56r (new checklist items, targets = photo +- tolerance, in workspace/checklists/garrett_hair.json):
+  lay_top: 3q top-front 17.1 | 58.9, profile top-front 31.4 | 60.4, hairline 17.8 | 52.3 deg (tol 12).
+  strand_length: 3q 52 | 11, profile 62 | 10.5, back 62 | 11 px (min 30).
+  flow_coherence: 3q .75 | .52, profile .74 | .51, back .75 | .51, top-front .80 | .67 (min .70).
+  striping (band): top-front 3.68 | 4.45, profile top-front 3.33 | 4.18, hairline 3.20 | 4.26 (tol .3).
+  hairline_edge (edgec): hairline 2.83 | 3.49, temples 2.94 / 2.71 | 3.00 / 3.28 (tol .3).
+  back_lightness: back 34.8 | 42.3, crown 34.6 | 40.1, nape 35.4 | 42.6 L* (tol 3).
+- Causes found (geometry, spikes scratch tmp/blotdbg.py: lock points by (az, el) over the front hairline):
+  every lock's `lift` is reached within 3 cm of arc (clear = lift * ss(s / 0.03)), so a 45 mm lock lifted 14 mm spends
+  most of its length rising: a standing bristle. The stand-off should come from layers (`body` x layer rank), the
+  lock lying (`lay`). The front flow {"from": crown, bias} points FORWARD-DOWN at the hairline (away from the crown,
+  laid in the forehead's near-vertical tangent plane: the bias's y is mostly projected out there, only z survives);
+  G56r's bias z .6 + 14 mm lift = the visor; fade.front.reach (.01) is what stops forward tips: dropping it with lay
+  .75 draped 90 locks up to 25 deg down the forehead. The front locks on his right go to his left (bias x .9), so the
+  hairline at az -30..-10 is covered only by the roots' first stretch: root_dark (.5 default) + the dark under layer
+  show there = the dark blotch (hypothesis; G57r lowers root_dark, G58r combs the front up and back over it).
+- Round G57r / G58r (one batch hgf5758, remote/b5758/, chain.sh: remote.sh -> offload wait -> remround both, prev
+  hg_G56r; flag tmp/rr_5758.done). Both = G56r + top length 60 mm, lift top 8 mm, lay top .75, body per region
+  (front / top 14, sides 8, back 10, nape 8 mm), front length 52 mm, lay .55, lift 12 mm; hairline.nape_v 0; fade.rough
+  .002; whorl at [182, 34], thin .5; look.scalp_tint .5 (pink whorl), root_dark .3, variation .2 (lock lightness:
+  striping), seen x .82 with grey top / front .18 -> .32, back / nape 0 (a darker back without a new per-region option:
+  the darker base carries the back, more grey hairs keep the front's L*). G58r also: front bias [.5, 1.5, 2.5] (up and
+  back over the hairline: 8 locks dip under it vs 87 at G56r-like settings without reach), strands.clump .25,
+  variation .1.
+- STATE: hgf5758 queued on NICO-TOP. NEXT: texmeas on pairs_hg_G57r / G58r + remround tables + reviews.
+- CORRECTION: strand_length photo 52 / 62 vs ours 11 px was a COLUMN MISREAD (cut on a fixed-width table). Real: photo
+  11-22 px, ours 10-19 px: the ridge-piece length does NOT separate them. Item kept as unmeasured (status in the
+  checklist); visible length is the review's until a better measure. The other five items were read from full tables.
+- G57r / G58r (hgf5758, 45 min incl. queue). Photo | G56r | G57r | G58r:
+  lay_top (3q top-front / profile top-front / hairline, deg): 17/31/18 | 59/60/52 | 62/62/53 | 48/68/41: FAIL all;
+  G58r's front-up-and-back is the only move that lowered it (3q, hairline).
+  flow_coherence (3q / profile / back / 3q top-front): .75/.74/.75/.80 | .52/.51/.51/.67 | .57/.54/.52/.71 | .56/.52/.52/.68:
+  FAIL (whole views unchanged by clump .25).
+  striping band (3q top-front / profile top-front / hairline / profile): 3.68/3.33/3.20/3.58 | 4.45/4.18/4.26/4.46 |
+  4.96/4.51/4.35/4.86 | 4.92/4.53/4.33/4.80: REGRESSED (grey hairs .18 -> .32 on a darker base = more white-on-dark
+  contrast; the review agrees: "near-white strands over dark streaks").
+  hairline_edge edgec (hairline / temples): 2.83/2.94/2.71 | 3.49/3.00/3.28 | 3.88/3.95/3.04 | 3.63/2.83/2.81: G58r
+  temples PASS, hairline FAIL.
+  back_lightness L* (back / crown / nape): 34.8/34.6/35.4 | 42.3/40.1/42.6 | 37.3/36.2/35.4 | 37.3/36.2/35.4: PASS both
+  (seen x .82, back grey 0).
+  Old items: stand-off front 11.4 / 11.2 vs 14.5 FAIL (G56r 14.6: REGRESSION from front lift 14 -> 12 mm and the
+  up-and-back comb), back G57r 8.9 FAIL / G58r 9.1 PASS, top / crown / nape PASS, coverage PASS; colour_front G57r L*
+  43.8 PASS (G58r's colour rows came out n/a: cmp.py did not write them, unexplained).
+  Review FAIL both (MAJOR lines 35 / 31; G56r 34). Hair MAJORs on G58r: colour too light and contrasty (all views);
+  "reads as fur / bristle: short thick white dashes on a dark brown base"; strands "thick, flat, ribbon-like with dark
+  outlines"; white halo line on the top silhouette; nape a hard bristle row (no V now, but blunt); sides flare like a
+  helmet; front: "points down onto the forehead / bowl fringe" on one view, "lifts" wanted.
+  My look (scratch cmp.png, ref | G56r | G57r | G58r): the front-top dark blotch is GONE in both (root_dark .5 -> .3,
+  and on G58r the front combed up over the bare stretch); nape V gone; back darker and closer; whorl less pink. G58r's
+  top-front shows the first lying, sweeping strands; still a bristle texture everywhere else.
+- Verdict: FAIL. Keep G58r as the base for the front / back / nape / blotch fixes, but NOT its grey .32 (revert to .18
+  with the darker base, or lighten the base less) and NOT its front stand-off (front lift back to 14 mm or body front up).
+- The biggest remaining gap is the STRAND RENDER, not the groom: the review's "thick white dashes / ribbon strands with
+  dark outlines" and our coherence .52 vs .75 are the per-strand look (strands.thickness .7, fine_alpha .3, the grey
+  share as pure white strands, root_dark / depth giving each strand a dark core). Test thinner strands with more count
+  and a grey that is mid-grey, not white (look.grey #9c9791 is light), against the band / coh items.
+
+## Handover 2026-10-16 (hair-garrett successor 5 -> next; 70-tool-call clock)
+- Best: G58r for blotch / nape / back L* / top-front lay; G56r for front stand-off and colour contrast. Neither passes.
+- New checklist items (workspace/checklists/garrett_hair.json): lay_top, flow_coherence, striping, hairline_edge,
+  back_lightness (measured: spikes/hair_garrett/texmeas.py <pairs dir>; print the FULL table, never cut columns),
+  strand_length (unmeasured). gatetable.py does not read them yet (rows n/a): run texmeas beside remround.
+- Geometry check without renders: scratch tmp/blotdbg.py <model> (locks over the front hairline by az / el and those
+  dipping under it): front flow {"from"} points forward-down at the hairline; fade.front.reach is what holds tips back.
+- NEXT round (one batch): G59r = G58r + grey top / front .18 (striping), front lift .014 / body front .016 (stand-off
+  14.5), look.grey darker (mid-grey, e.g. #8a8681) and strands.thickness .7 -> .5 with count 360k -> 480k (bristle /
+  ribbon look; check the 12 GB cap); G60r = G59r + root_dark .15, depth .3 (dark strand cores). Targets: band <= photo
+  + .3, coh >= .70, lay hairline <= 30, stand-off front >= 11.5, back L* within 3.
+
+## 2026-10-16 (hair-garrett successor 6): lay as a groom lever, render lever, A / B / C batch
+- Merged origin/main (game-camera fix b32d303f etc.).
+- NEW groom options (hair_loose, test_lift_profile_lies_down_along_the_lock): `lift_ramp` (m, per region; arc to full
+  lift, default .03 = before), `lift_fall` (0..1: lift given back toward the tip), `body_along` (0..1: body x layer
+  reached gently along the lock, not only on descent: the height of a short top from lying layers). Defaults grow
+  identical locks. Tried and dropped: a `settle` pull toward the clearance: no effect, the locks already hug the
+  clearance floor (lay .75 presses them down), so the lock's height profile IS the clearance profile.
+- spikes/hair_garrett/laygeo.py <model> [patch.json ...]: lay / stand-off / front-reach on the lock geometry, no render
+  (silhouette-band image angle in ortho yaw 45 / -90, p90 height over the front hairline, locks dipping > 5 deg below
+  the front line). Calibration: stand-off G56r 14.5 / G58r 11.4 vs rendered 14.6 / 11.2 (good). Image lay G56r 25 / 16,
+  G58r 41 / 40 deg vs RENDERED 59 / 60 and 48 / 68: G56r's curves already lay low, yet rendered 59: most of the measured
+  lay gap is in the strand RENDER (short dashes read as random orientation, coherence .52), not the groom. G58r's
+  front-up-and-back + top flowing sideways (bias x 1.0) made the curves themselves steep (in profile a sideways flow
+  shows only its rise: the vertical dashes of the profile crop).
+- Groom A (G59a): G58r + front / top flow from the crown forward (bias [.1, 0, 0] / [.1, 0, -.3]), lift front .006 /
+  top .004, lift_ramp .02, body_along 1 front / top, body front .014 / top .014, fade.front.reach .01 (the limit stays:
+  without it 74 locks draped up to 24 deg down the forehead). Geometry: lay 20 / 17 deg (photo 17 / 31), stand-off
+  16.6 mm (14.5 +- 3), dips 0 (G58r 3). lift_fall not used (tips falling lowered the stand-off; body_along carried it).
+- Render B (G59b): G58r + grey top / front .32 -> .18, look.grey #9c9791 -> #8a8681, strands.thickness .7 -> .5,
+  count 360k -> 480k, root_dark .3 -> .15, depth .5 -> .3. C (G59c) = A's groom + B's render.
+- gatetable.py now measures the texmeas items on the LOOK pairs (one row per crop); remround runs it after mksheet.
+  colour_front stays n/a on G58r: cmp.py prints no view-0 colour line for it (view 0 hair mask?), unexplained.
+- Batch hgf59 on NICO-TOP (remote/b59/, chain.sh -> remround x3 vs hg_G58r, flag tmp/rr_59.done).
+- RESULTS hgf59 (~75 min incl. queue; tables out/table_hg_G59{a,b,c}.md, reviews out/review_hg_G59*). G58r | A | B | C:
+  lay_top 3q / profile / hairline: 48/68/41 | 56/58/54 | 47/68/40 | 55/58/53 (photo 17/31/18): FAIL all; A's groom made
+  3q and hairline WORSE. coherence (3q / profile / back / 3q top): .56/.52/.52/.68 | .55/.52/.49/.66 | .56/.51/.48/.67 |
+  .53/.49/.45/.65: FAIL, no lever moved it. striping (3q top / pro top / hairline / profile): 4.92/4.53/4.33/4.80 |
+  5.16/4.48/4.77/4.78 | 4.43/4.14/4.52/4.69 | 4.66/3.68/4.41/4.88: B best, still FAIL. hairline_edge (hl / temples):
+  3.63/2.83/2.81 | 3.85/3.44/3.45 | 3.26/2.54/2.45 | 3.75/2.94/3.30: B best (temples PASS). back L* (back / crown /
+  nape): 37.3/36.2/35.4 | 31.5/28.3/30.5 | 34.1/31.9/33.9 | 27.8/23.2/28.6: G58r / B PASS, A / C too DARK (FAIL).
+  stand-off front 11.2 | 17.2 | 11.2 | 17.2 (14.5 +- 3: A / C PASS) but top 16.4 / crown 16.4 FAIL on A / C (12.7 / 10.9);
+  temple_corners A +23 mm, C +21 mm FAIL; coverage_behind A 2.19 %, C .99 % FAIL. grey_mix B .327 / C .228 FAIL (G58r n/a).
+  Reviews: all FAIL (MAJOR lines A 35, B 41, C 38; G58r 31). A: "top combed forward and down toward the brow, reads as a
+  fringe; reference swept BACK and slightly to his left"; front edge a brim / cap peak; sides 1.5 cm out. B: helmet
+  (low flat top, bell sides), strands "painted, scratchy streaks", hard hairline edge, M-shape / temple recession and
+  sideburn missing (the last are hairline items, unchanged since G56r).
+- My look (ref | G58r | A | B | C, top-front 3q and profile crops): A / C radiate from a visible crown point and come
+  forward-down into a bowl fringe with a hard ledge; strands still read vertical. B ~ G58r, slightly finer and less
+  contrasty. No variant shows the photo's long, soft, back-sweeping strands.
+- LESSONS: (1) laygeo's silhouette-band image angle said A lies at 20 / 17 deg; the render read 56 / 58. The proxy only
+  sees the top silhouette; the crops are dominated by the camera-facing slope, where a forward flow from the crown
+  runs toward the viewer = vertical in the image. Do not trust laygeo's img3q / imgpro as lay until it measures the
+  crop's own region (project the texmeas crop box). Stand-off and dip proxies DID calibrate. (2) The photo's top is
+  combed BACK (slightly to his left), not forward from the crown. (3) Coherence / lay of the rendered crops did not move
+  with groom or strand thickness: the dash texture is in how strands are built (short segments, clump structure), the
+  next lever to study, e.g. strands.clump / tips / segment length, not grey or thickness.
+- KEEP / REVERT per item: KEEP B's render (grey top / front .18, look.grey #8a8681, thickness .5, count 480k, root_dark
+  .15, depth .3): striping and hairline_edge improved, back L* still PASS; its grey_mix FAIL (.327) needs the target
+  checked. REVERT A's groom (forward flow, body_along top): lay, top / crown stand-off, temples, coverage, back L* all
+  worse. The lift options stay in the code (defaults = old locks, tested). Best now: G59b (styles/g_G59b.json).
+
+## Handover 2026-10-16 (hair-garrett successor 6 -> next; 70-tool-call clock)
+- Verdict FAIL (all three). Best = G59b (G58r groom + finer, mid-grey render).
+- NEXT round (one batch): G60 = G59b + front / top flow combed BACK and a little to his left (e.g. front bias
+  [.3, 2.0, .3] from the crown, top [.3, 1.5, 0]) with the lying profile (lift front .008 / top .005, lift_ramp .02,
+  body_along front / top .6, body front .016 / top .012), fade.front.reach .01; check laygeo stand-off 14.5 +- 3 and
+  dip5 ~0 first, and top / crown stand-off <= 12.7 / 10.9 + 3. A second variant on the strand build (clump, tips,
+  segment length) for coherence. Hairline M-shape / temple recession / sideburn (review MAJORs every round) is a
+  separate hairline item, not lay.
+
+## 2026-10-16 (hair-garrett successor 7): what LAY measures (calibrated), the gap is real, G60 batch
+- Coordinator: two lay measures disagreed by ~35 deg (laygeo 16-25 vs render 56-60): settle the measure before grooming.
+- spikes/hair_garrett/laycal.py. `synth`: grey strand patches at KNOWN image angles 15 / 30 / 60 / 85, texmeas `lay` |
+  windowed `flow` (48 px doubled-angle resultant, weighted by its length):
+  long strands 18.6/32.3/60.4/81.1 | 17.7/32.2/60.5/84.3; clumped locks 16.1/33.2/58.6/83.5; SHORT DENSE DASHES (8-16 px)
+  14.9/30.0/60.0/83.8 (exact); isotropic dashes 46.8 (coh .31, R .10); dots = strands end-on 45.8 (coh .19, R .05).
+  So texmeas lay is right whenever there IS a direction, short dashes included; texture without direction reads ~46,
+  never "standing" (90), and shows as coh < .35 / R < .15 (our renders: coh .55-.70: they have a direction).
+- `strands <model> <count> <outdir> [patch.json ...]`: the model's EVALUATED strands (hair.job + hair_strands.strands_of_model:
+  Blender geometry, no render, ~20 s warm, CPU), every segment projected through the FITTED review cameras into the gate
+  crops (v1 az 30 el 60 85 mm, v2 az 45 el 58 85 mm, v0 az 0 el 38 95 mm, as mksheet), front-most only (2 px z-buffer,
+  1.5 mm), length-weighted |angle|; plus a FLAT raster of them (lines, per-strand grey) measured by texmeas.
+  G59b (3q / profile / hairline): evaluated geometry 51 / 61 / 41, flat raster 50 / 68 / 44, EEVEE render 47 / 68 / 40,
+  photo 17 / 31 / 18 (lay) = 15 / 31 / 17 (flow). The flat raster of the real strands looks like the render.
+  => the render measure is VALID and the ~30-37 deg gap is real geometry. laygeo's img3q / imgpro were wrong twice over:
+  an orthographic silhouette band, and LOCKS (guides) instead of the strands (G59b locks through the real cameras
+  38 / 39 / 29: hair_even's interpolated children run 12-22 deg steeper than their guides). Use `laycal strands` as the
+  pre-render lay check; laygeo stays for stand-off / dips (those calibrated).
+- Where the steepness is (crops): the profile's lower half = the SIDES combed down (vertical); the front hairline =
+  strands rising straight back from the line (back-combed reads vertical from the front). Photo, signed dominant angle
+  (+ = rising to the right): 3q -11, profile -11, front +1: the front top lies level and runs back (slightly falling),
+  the front hairline hair runs SIDEWAYS. Ours G59b -49 / +76 / -26.
+- Geometry sweep on the evaluated strands (flat-raster lay 3q / pro / hl; laygeo stand-off; all dip5 0), base = G59b +
+  lift front .008 / top .005, lift_ramp .02, body_along .6, body front .016 / top .012, fade.front.reach .01:
+  i1 front bias [.3,2,.3] top [.3,1.5,0]: 35/67/42, 15.0 mm | i3 front [.4,3,.8] top [.4,3,.3]: 35/51/47, 13.8 |
+  j1 i3 + front [1.5,2,.6] top [.8,3,.3] sides [0,2,-.3]: 32/56/37 | j2 j1 + lift_ramp .01 + lay .5: 41/62/42 (worse) |
+  j3 j1 front [2.5,1.5,.6]: 33/56/35 | k1 i3 + front [2.5,1.5,.6]: 32/53/35, 15.1 mm (BEST: sum over photo 54 vs G59b 96) |
+  k2 k1 + sides [0,1.6,-.2]: same as k1. s1 (G59b + clump .6, tips .6, length front .06 / top .072): 56/68/48 (no lay
+  change, as expected); s2 = s1 + even .5: 52/59/44. k1s = k1 + s1: 32/52/35. (all from=[215,42])
+  Profile stays ~52 against 31 in every variant: the sides' downward comb and the level run-back over the top are not
+  reached by flow bias alone (next lever: the side region's flow / lay, and front lift kept level instead of following
+  the scalp).
+- Batch hgf60 (remote/b60/chain.sh, one submit, 12 GB): (i) hg_G60k1, (ii) hg_G60s1, (iii) hg_G60k1s, remround vs
+  hg_G59b, flag tmp/rr_60.done. Styles in styles/g_G60*.json.
+- Hairline M-shape / temple recession / sideburns NOT done this round (budget): still review MAJORs; hairline_centre
+  +3.0 mm and temple_corners +6.8 mm FAIL on G59b are the measured rows to start from.
+- RESULTS hgf60 (~60 min incl. queue; tables out/table_hg_G60{k1,s1,k1s}.md, reviews out/review_hg_G60*). G59b | k1 | s1 | k1s:
+  lay_top 3q / profile / hairline: 47/68/40 | 34/57/35 | 53/68/44 | 33/58/35 (photo 17/31/18, pass <= 29/43/30): FAIL all,
+  k1 the first real move in four rounds. PREDICTION HELD: laycal strands said k1 32/53/35, s1 56/68/48 (rendered 34/57/35,
+  53/68/44): the evaluated-strand flat raster predicts the render within ~1-4 deg; use it before every render.
+  coherence (3q / profile / back / 3q top): .56/.51/.48/.67 | .52/.49/.43/.67 | .60/.56/.51/.69 | .53/.51/.46/.65: FAIL; s1
+  (clump .6, tips .6) the only one up. hairline_edge hl: 3.26 | 3.42 | 2.53 PASS | 3.37. back L* (back / crown / nape):
+  34.1/31.9/33.9 | 27.7/23.2/28.2 FAIL | 34.2/32.3/33.9 | 28.6/24.8/28.6 FAIL. temple_corners +6.8 | +21.7 | n/a | +21.9 (FAIL);
+  coverage_behind .13 | 1.41 FAIL | .19 | 1.55 FAIL; colour_front L* 38.5 | 34.0 FAIL | 37.7 | 33.7; stand-off: k1 / k1s
+  front 13.2 PASS (G59b 11.2 FAIL), sides 11.2 PASS, nape 13.6 FAIL. Reviews all FAIL, MAJORs G59b 41 | k1 35 | s1 33 | k1s 34
+  (k1: sides flare like a helmet, colour split dark top / light sides, step from the front of the top to the crown;
+  s1: flat cap with a blunt fringe edge, top / side layer step, a dark shelf of vertical strands at the front).
+- My look (ref | G59b | k1 | s1; 3q top-front, profile top-front, 3q head): k1's top runs more across and back (better),
+  but a dark root band / brim sits along its front hairline and the temple corner is cut back; s1 ~ G59b, a little softer.
+  Profile top-front still vertical in all three. None reads like the photo.
+- Cause read (HYPOTHESIS, not tested alone): k1 / k1s share with G59a (last round) the LIFT BUNDLE (lift_ramp .02,
+  body_along .6, body front .016, fade.front.reach .01) and all three have the dark back (L* 23-31), temple corners
+  +21-23 mm and coverage_behind 1-2 %; G59b / s1 (no bundle) do not. The flow is the lay lever; the bundle is the cost.
+- KEEP / REVERT: KEEP k1's FLOW (front {"from":[215,42],"bias":[2.5,1.5,0.6]}, top bias [0.4,3.0,0.3]): lay -13 / -11 / -5.
+  REVERT the lift bundle (back L*, temples, coverage). s1: keep clump .6 / tips .6 candidates (coherence +.04-.05,
+  hairline_edge PASS) but REVERT its length change (top .072 / front .06: lay 3q +6) -- untested apart, check on laycal.
+  Best stays G59b for the gate; k1 is the lay lead.
+
+## Handover 2026-10-16 (hair-garrett successor 7 -> next; 70-tool-call clock)
+- Verdict FAIL (k1, s1, k1s). The lay measure is settled: texmeas lay is valid, the gap was real geometry, and
+  `laycal.py strands <model> 120000 <outdir>` (20 s warm per variant + 50 s hround build) predicts the render's lay
+  within ~4 deg. laygeo's img3q / imgpro are WRONG (locks, ortho band): use laygeo only for stand-off / dips.
+- NEXT round, one batch, every variant screened on laycal strands first:
+  (a) G59b + k1 flow ONLY (no lift bundle): expect lay ~k1 and back L* / temples / coverage back at G59b; check stand-off
+      front (G59b 11.2 FAIL vs 14.5 +- 3) with laygeo; if short, raise lift front alone, not the bundle;
+  (b) (a) + clump .6 / tips .6 (no length change);
+  (c) the profile: ~55 in every variant is the SIDES combed down and the front top following the scalp; try sides flow
+      more back with less lay on the sides, screened on laycal before rendering.
+- Hairline M-shape / temple recession / sideburns: still not done. Rows: hairline_centre +2.8-3.4 mm (tol 2), temple_corners
+  (G59b +6.8, tol 6); review MAJORs every round. Independent of lay: do it in the same round.
+- Models hg_G60{i1,i3,j1,j2,j3,k1,k2,s1,s2,k1s} in workspace (styles/g_G60*.json); flats in $HG/laycal/.
+
+## 2026-10-16 (hair-garrett successor 8): the pre-render SCREEN (calibrated), lever log
+- spikes/hair_garrett/screen.py <model> <outdir> (driver $HG/scr.sh <round>...: hround build from hg_h6 + styles/g_<round>.json,
+  then the screen; ~2.5 min a variant, no render). The model's evaluated strands (full count, hair.job) drawn as a FLAT
+  raster (optical density: width max(2r, one render px), the strands job's scalp hp_density x look.scalp_tint as the
+  root-shadow tint, head z-buffer from the scalp grid on 3 px cells) through the gate cameras, measured with the GATE's
+  own code: stand-off = hair_read.hairness + outline_rays per fitted view, median; hairline = hlinetrace's cast of the
+  hair / skin boundary vs the photos' parser line, per |az| bin; coverage = hcover's magenta test on the flat ID raster
+  (magenta = density x 1.0), share over the render's figure area (constant: the flat has no body); lay = laycal strands.
+- CALIBRATION (flat | render): stand-off front / sides / nape G59b 10.9/9.5/9.6 | 11.2/8.9/9.9, k1 12.9/12.8/13.4 |
+  13.2/11.2/13.6, s1 11.3/9.5/9.4 | 11.6/9.4/10.1 (within ~0.6 mm, k1 sides +1.6); hairline_centre (flat - 1.9 mm bias,
+  per bin G59b flat 4.7/5.0/5.8/8.9 vs render hlinetrace 2.6/3.3/4.2/6.8) 2.9/2.6/2.7 | 3.0/2.9/3.4; temple az-30 bin
+  7.0/7.2 | 6.8/6.7; coverage_behind .20/1.49/.33 | .13/1.41/.19 (flat reads +0.1-0.15: pass at <= 0.65);
+  coverage_above .03/.26/.03 | .01/.18/.01; lay as successor 7 (1-4 deg).
+- FINDING: k1's temple_corners +21.7 was a BIN ARTEFACT, not a regression: gatetable averages the |az| 30-40 and 40-50
+  bins, and the 40-50 bin (where the photo's line runs down the temple toward the sideburn, ours ~+37 mm) only exists
+  when the render's parser finds > 3 points there (G59b render: none, so +6.8 = bin 30 alone; k1: 6.7 and 36.7). The
+  az-30 bin is unchanged (6.8 -> 6.7). The flat finds the 40-50 gap on EVERY variant (+35-38 mm): a real, constant miss
+  (no hair coming down the temple side), reported apart as temple_side. k1's real costs: coverage_behind and nape.
+- PITFALL: laycal / screen `patch.json` deep-merged into spec["hair"] in memory does NOT regrow the locks (they are
+  stored in the spec; groom_hair regrows them): ten patched screens came out identical to the base. Variants must be
+  BUILT (hround / scr.sh). (Successor 7's i1..k1 numbers were from built models: valid.)
+- LEVER LOG G61 (each = G59b + k1's flow (front bias [2.5,1.5,.6], top [.4,3,.3]) + ONE lever; screen numbers: stand-off
+  front / sides / back / nape mm | hairline_centre / temple az30 mm | coverage_behind % | lay 3q / profile / hairline deg;
+  photo lay 17 / 31 / 18):
+  G59b       10.9 / 9.5 / 9.4 / 9.6  | +2.9 / +7.0   | .20  | 50 / 68 / 44
+  k1 (built) 12.9 / 12.8 / 13.8 / 13.4 | +2.6 / +7.2 | 1.49 | 32 / 53 / 35
+  a  flow    9.4 / 9.2 / 9.9 / 9.6   | -7.8 / -12.4  | .20  | 50 / 59 / 39   (flow alone: profile -9, but the front falls
+             over the forehead 8 mm: flow is NOT the 3q lay lever)
+  +lift .008/.005 (al)  7.2 / 8.3 / 8.9 / 9.6 | -8.6 / -13.4 | .17 | 50 / 60 / 37   (front stand-off down)
+  +lift_ramp .02 (ar)   10.6 / 12.2 / 13.1 / 12.9 | -8.6 / -12.1 | 1.11 | 51 / 62 / 41  (= THE coverage_behind and
+             back / nape stand-off cost of k1)
+  +body_along .6 (ab)   14.2 / 11.4 / 12.2 / 11.1 | -4.5 / -7.8 | .73 | 48 / 51 / 40  (front stand-off PASS; some coverage)
+  +fade.front.reach .01 (af) 7.9 / 9.2 / 9.9 / 9.6 | +1.0 / +5.3 | .18 | 21 / 46 / 27  (= THE LAY LEVER: 3q -29, hairline
+             -12, hairline back in tolerance; front stand-off drops)
+  +body front .016 (ad), sides lay .75 (ps), sides flow [0,2.5,-.2] (pf), sides lift .012 (pl), front / top lay .9 (pt):
+             no effect beyond noise (sides lift: sides stand-off -1.7). The profile's sides do not answer to sides lay / flow.
+  So successor 7's "the flow is the lay lever, the bundle is the cost" was wrong on both halves: the lay came from
+  fade.front.reach, the coverage / back from lift_ramp; flow alone drops the front onto the forehead.
+
+## Handover 2026-10-16 (successor 8, reconstructed)
+Successor 8 was stopped past its tool-call clock with no handover; rebuilt from $HG/screen/scr_hg_*.json and styles/.
+- STATE: NO screened variant passes. Nothing rendered since G60. The G63 sweep (d1 d2 d4 d5 d6) was written
+  (styles/g_G63d*.json) and WAS running (scr.sh pid alive at restart; `pgrep -f screen` misses it while hround builds:
+  check `pgrep -af "scr.sh|hround|screen.py"`). Successor 9 started a duplicate by mistake, killed it within seconds.
+- Targets (screen.py): stand-off front / top / crown / sides / back / nape 14.5 / 12.7 / 10.9 / 12.6 / 12.1 / 9.3 +-3;
+  hairline_centre 0 +-2, temple az30 0 +-6; coverage_behind <= 0.65 flat; lay 17.1 / 31.4 / 17.8 +-5.
+- G62 (each = G61a (G59b + k1 flow) + body_along .6 front/top + fade.front.reach, plus one extra):
+  (cols: stand-off f/t/c/s/b/n | hc / tc | cov_behind | lay 3q / profile / hairline)
+  c1 reach .01            12.9/16.1/16.5/11.4/12.4/11.3 | +2.0 / +7.1 | .73 | 30 / 40 / 34
+  c2 = c1 without body_along.top: IDENTICAL to c1 (body_along.top does nothing; front is the one that counts)
+  c3 c1 + body.sides .012 : = c1 (sides +0.3) -> body.sides is dead
+  c4 c2 + lift_ramp.sides .02: 15.1/16.2/16.5/13.3/14.1/13.4 | +2.6/+7.3 | 1.49 | 37/58/39 (ramp again = coverage + lay cost)
+  c5 reach .02            13.9/16.2/16.5/11.4/12.4/11.3 | +0.8 / +6.2 | .73 | 32 / 45 / 33
+- Best so far by item: G61af (reach .01 alone) has the best lay 21/46/27 (3q PASS, profile +15, hairline +9) and
+  coverage .18, but front stand-off 7.9 (-6.6) and sides 9.2 (-3.4). body_along .6 buys the front stand-off (12.9-14.2)
+  but costs the lay (+9 3q vs af), lifts top / crown to 16+ (+3.5 / +5.6 FAIL), and coverage_behind .73 (FAIL).
+  So: reach and body_along fight over the lay; reach .02 on top of body_along gains only 1-5 deg.
+- Lever effects (summary): fade.front.reach = lay (3q / hairline) + drops the front; body_along.front = front / top /
+  crown stand-off + coverage_behind cost + lay cost; lift_ramp = coverage_behind + back / nape cost; flow = profile lay
+  a bit but drops the front onto the forehead; body.sides, body_along.top, sides lay / flow: dead. temple_side +38 is
+  constant on every variant (no hair down the temple side; no lever tried yet reaches it).
+- NEXT: run G63 (body_along .3 with reach .01 / .02 = d1 / d2; lift.front .014 instead of body_along = d4 / d5; d6 = d4 +
+  lift.sides .024 for the sides stand-off): the question is whether lift.front restores the front stand-off WITHOUT
+  body_along's top / crown / coverage cost. The profile lay (+9..15 everywhere) has no lever yet.
+
+## 2026-10-16 (successor 9): G63, the region-mean pitfall, G64
+- G63 (screen; cols as above): af = reach .01 alone for reference
+  G61af reach .01                 7.9/10.5/10.0/9.2/9.9/9.6   | +1.0/+5.3 | .18 | 21/46/27
+  d1 body_along .3 + reach .01    9.9/13.2/13.1/10.6/11.2/10.4 | +1.5/+5.5 | .46 | 24/42/29
+  d2 body_along .3 + reach .02    11.0/13.3/13.1/10.6/11.2/10.4| +0.3/+7.5 | .46 | 31/51/32
+  d4 lift.front .014 + reach .01  10.3/12.4/10.2/9.3/9.9/9.6  | +1.2/+5.3 | .18 | 25/45/30
+  d5 lift.front .014 + reach .02  10.9/12.7/10.2/9.4/9.9/9.6  | +0.7/+4.9 | .18 | 32/53/34
+  d6 d4 + lift.sides .024         10.4/12.4/10.2/9.7/10.2/9.8 | +1.2/+5.3 | .18 | 25/44/30
+  -> reach is NOT monotonic: .02 is worse than .01 on every pairing (+6..9 deg 3q). lift.front buys +2.4 mm front for
+  +4 deg 3q, no coverage cost. lift.sides barely moves the sides stand-off (+0.4).
+- PITFALL (hair_loose.by_region): a per-region dict gives the regions LEFT OUT the MEAN of those given, not the default.
+  {"front": .6, "top": .6} for body_along put .6 on sides / back / nape too: that is where G61ab / G62 / G63d1's
+  coverage_behind (.46-.73) and top / crown / back stand-off cost came from, not from the front. Name every region.
+  (lift_ramp {"sides": .02} in c4 = .02 everywhere = the same as ar.) G64e7 / e8 retest body_along front-only.
+- G64 (base d4 = af + lift.front .014 unless named; screen/tab.sh <variants> prints these rows):
+  e1 lift_fall front .5           10.3/12.1/10.2/9.2/9.9/9.6  | +1.2/+5.3 | .18 | 27/47/31  (lift_fall: dead)
+  e2 lift.front .02 + fall .5     14.1/14.8/10.2/9.4/9.9/9.6  | +1.8/+6.6 | .18 | 35/47/41  (front PASS, lay +10)
+  e3 af + reach .006              7.0/10.1/10.0/9.2/9.9/9.6   | +0.9/+5.6 | .18 | 19/41/26  (BEST LAY so far: 3q PASS)
+  e4 lift_ramp front .012         12.8/12.7/10.2/9.2/9.9/9.6  | +3.0/+7.4 | .18 | 37/49/47
+  e5 lift_fall front+top .5       10.3/11.8/9.6/8.9/9.6/9.6   | = e1
+  e6 length.front .065            = d4 exactly (front length is set by fade.front.reach: tips end reach past the line)
+  e7 af + body_along front .6 ONLY 11.7/13.3/10.2/9.4/9.9/9.6 | +2.0/+7.0 | .18 | 28/45/33  (front PASS, NO coverage
+     cost once the regions are named; lay +7)
+  e8 af + body_along front+top .6  12.9/16.1/16.5/10.0/10.2/9.6 | .30 | 29/41/34 (top .6 = top / crown +6: the old cost)
+  -> Front stand-off and lay are COUPLED through every front lever tried (lift, ramp, body_along: ~+1 deg 3q per
+  +0.4 mm). reach: none 50, .006 19, .01 21, .02 ~30 deg 3q (U-shaped). Profile lay never under 41 (photo 31).
+- G65 (base af = G61a + reach .01; f2.. change reach):
+  f1 reach .006 + body_along front .6 10.6/13.1/10.2/9.2/9.9/9.6 | +2.4/+7.0 | .18 | 28/42/34
+  f2 reach .004                    6.3/10.1/10.0/9.1/9.9/9.6   | +1.3/+5.8 | .19 | 18/38/27  (best lay; front -8)
+  f3 reach .008                    7.4/10.3/10.0/9.2/9.9/9.6   | +1.0/+5.3 | .18 | 20/44/27
+  f4 reach .006 + back .3          6.9/10.4/10.0/9.1/9.9/9.6   | +1.2/+5.0 | .18 | 20/45/26  (back: dead)
+  f5 reach .006 + stiff top .25 / front .3  8.1/10.0/...       | 35/59/27  (low stiff: worse, gravity hooks)
+  f6 reach .006 + body_along front .9 12.7/14.4/10.2/9.2/...   | +2.8/+7.4 | .18 | 31/42/40
+  -> reach is monotonic below .01 (.004 best), None jumps to 50 (another code path). body_along.front buys the front
+  stand-off at ~+1.3 deg 3q / mm, same exchange rate as lift. The profile lay sits at 38-45 whatever the front does:
+  it is the top-side strands (flat: they arc down the side of the top), G66 tries the top flow bias.
+- G66 (base f2 = af with reach .004):
+  g1 reach .002                    6.0/10.1/10.1/9.1/9.9/9.6 | +1.2/+6.4 | .18 | 17/36/26
+  g2 top flow bias [.4,3,-.5]      6.6/... | 18/42/26 (down: worse)
+  g3 top flow bias [.4,4.5,.3]     6.5/10.3/10.2/9.1/9.9/9.6 | +1.4/+5.4 | .18 | 17/33/26  (PROFILE LAY PASSES: the top's
+     back bias IS the profile lever; 3q and profile both in tolerance for the first time)
+  g4 out.sides .15                 = f2 (dead)
+  g5 body_along front .6 + lay.front .9   10.0/13.1/... | 28/39/35 ; g6 ba .9 + lay.front 1.0  11.9/14.2/... | 32/41/42
+     (lay.front does not break the coupling)
+  STILL FAILING on the best (g3): front stand-off 6.5 (photo 14.5), sides 9.1 (12.6), hairline lay 26 (18).
+- G67 (base g3; h2.. on h1 = g3 + reach .002):
+  h1 reach .002                    5.9/10.1/10.2/9.1/9.9/9.6   | +1.2/+5.9 | .18 | 17/31/26
+  h2 top bias [.4,6,.3]            6.0/... | 17/29/27 (saturates past 4.5)
+  h3 body_along front .6           9.6/12.8/10.5/... | +2.7/+7.2 | 28/35/37 ; h4 lift.front .014  7.6/11.8/... | 23/33/31
+  h5 front bias [2.5,3,.6]         5.3/... | +2.2/+6.8 | 19/32/33 (front combed back: hairline lay worse)
+  h6 length.sides .025             5.9/10.1/10.2/11.5/11.1/11.1 | +1.2/+5.9 | .16 | 17/32/26  (SIDES PASS: sides
+     stand-off is the sides LENGTH, not lift / body / out. BEST: everything passes except front stand-off 5.9 vs 14.5
+     and hairline lay 26 vs 18)
+- G68 (base h6):
+  i1 body_along front .4           8.6/11.9/10.4/11.5/11.1/11.1 | +2.3/+7.1 | 24/35/33
+  i2 + lift.front .02              11.9/16.7/11.3/... | 39/39/51
+  i3 front bias [2.5,.5,.6]        6.1/10.1/10.2/11.5/11.1/11.1 | +1.0/+5.4 | .16 | 15/32/24  (BEST: hairline lay +6)
+  i4 lay.front .95 = h6 ; i5 messy.front .05 = h6 (dead) ; i6 ba .6 + messy .05 9.5/... | 28/36/37
+  -> STUCK on the front stand-off: five levers (lift, lift_ramp, body_along, lay.front pressing, lift + body_along) each
+  raise it only by steepening the 3q / hairline lay at ~1.3-2 deg per mm; none gives 14.5 mm at 17 deg.
+- G69 (base i3):
+  j1 front bias [2.5,0,.6]         6.3/10.1/10.2/11.5/11.1/11.1 | +1.1/+5.3 | .16 | 15/32/23  (BEST overall)
+  j2 fade.front.width .01 / j3 density .5 / j4 both: hairline_centre -> 0 (+0.1 / -0.1 / -0.3), no stand-off, no lay
+  j5 body.front .03                = i3 (body.front dead)
+  j6 body_along front .3           7.6/11.2/10.4/... | +2.0/+6.6 | 21/32/28 (half step: +1.5 mm for +6 deg 3q)
+
+## Handover 2026-10-16 (successor 9)
+- VERDICT: FAIL, no variant passes the screen; nothing rendered (rule: render only a screened pass). 59 tool calls, 42
+  variants screened (G63-G69), all levers logged above.
+- BEST = G69j1 (styles/g_G69j1.json, model workspace/hg_G69j1, built): passes stand-off top / crown / sides / back /
+  nape, hairline centre +1.1, temple az30 +5.3, coverage_behind .16, lay 3q 15 / profile 32. FAILS: front stand-off 6.3
+  vs 14.5 (-8.2), hairline lay 23 vs 18 (+5.2, at the edge). temple_side +38 constant (no lever reaches it).
+  Recipe from G61a: fade.front.reach .002, flow.top.bias [.4,4.5,.3], flow.front.bias [2.5,0,.6], length.sides .025.
+- The levers that WORKED: reach (lay 3q / hairline, down to .002), top flow back-bias (profile lay), sides LENGTH
+  (sides / back / nape stand-off), front flow less back (hairline lay). Dead: lift_fall, length.front (reach sets it),
+  back, out.sides, messy.front, lay.front, body.front, body.sides, lift.sides (weak), fade.front width / density.
+- STUCK (gates rule: 3+ approaches): front stand-off vs lay. lift, lift_ramp, body_along (front only), lay pressing
+  and their combinations all raise the front only by steepening the 3q / hairline lay (~1.3-2 deg per mm). The photo's
+  14.5 mm at 17 deg needs a front that is long and lying: with reach .002 the front-fade tips end 2 mm past the line,
+  so the front zone has no length to build height from. Candidate NEXT (new capability, not a slider): a front zone
+  whose locks keep their length (reach applied only to the hairline row, the rest of the front at length.front) with
+  body_along front-only layered on; or measure whether the photo's front stand-off is the top's mass seen from the
+  front (then the top's length / body_along.top named-only, not the front, is the lever). Coordinator / Joe call.
+- PITFALL found: by_region gives regions left out the MEAN of those given (name every region).
+- Tooling: screen/tab.sh <variants> prints one row per screened variant.
+
+## Successor 10 (2026-10-16)
+- Merged origin/main (hides, sim-key fix, game camera fix, game-distance gate). Hair tests green, one file per process.
+- by_region FIX (hair_loose.by_region, the top-lay branch, _lengths): regions left out take the parameter's DEFAULT,
+  not the mean of the given ones. Test test_regions_left_out_take_the_default. Scan of 6135 specs / styles
+  (workspace/*/spec.json, hair_garrett/styles, examples, spikes): partial dicts in G60-G63 (body_along / lift_ramp
+  {"front","top"} or {"front"}: those rounds' "front-only" body_along and lift_ramp reached sides / back / nape too,
+  so their dead-lever verdicts are UNRELIABLE), old styles iE/iF/iG (length {"nape"}: nape length everywhere), and
+  four family-head workspace specs (lay {"sides": .3} = .3 everywhere; names in workspace/private_notes/) were rewritten
+  value-preserving (lay .3 named on every region). G64-G69 name every region: unaffected.
+  STATE: fix + test in. NEXT: re-screen G69j1 (G69j1f), validate the front stand-off item.
+- Re-screen of G69j1 under the fix (hg_G69j1f): identical numbers (front 6.3 / top 10.1 / crown 10.2 / sides 11.5 /
+  back 11.1 / nape 11.1, hc 1.1, tc 5.3, ts 38.4, cov .16, lay 15 / 32 / 23).
+- FRONT STAND-OFF ITEM VALIDATED (scratch s10/frontdiag.py <model> <out>: each view's front-region rays, grazing
+  point az / el, stand-off, ours vs photo, + overlays fd_*.png). The front rows come ONLY from view 1 (3q, grazing
+  |az| ~36, the forehead corner) and view 2 (profile, grazing |az| ~6, the forehead); view 0 gives none (its outline
+  grazes the sides / top). So it is NOT the top's mass seen from the front camera. Profile el 30-45 / 45-55: ours
+  6.6 / 8.7 vs photo 17.2 / 14.8 mm; 3q 2.5 / 5.2 vs 14.1 / 16.4. On the profile overlay the photo's front locks stand
+  up and FORWARD over the receded front (a forelock ~1 cm over the forehead); ours end at the line, close to the
+  skull. Real front-height gap: the item stands.
+- NEW: fade.front.row (m): the reach cut only within `row` of the line; the front behind it keeps its length
+  (test_front_reach_row_keeps_the_front_length). Screens G70a (row .012), G70b (row .012, front 35 mm,
+  body_along front .5), G70c (row .02, front 40 mm, body_along .5, lift front 14 mm).
+  STATE: G70a-c screening. NEXT: best of them + G69j1 in ONE NICO-TOP batch (b70: pairs + magenta + game 1 m / 3 m).
+- TEMPLE_SIDE ITEM CHECKED (no lever built): it is view 0's |az| 40-50 bin, ours - photo median z of the hair / skin
+  line. G69j1f per view (ours | photo, mm): view 0 bin 40 1745.0 | 1706.6 (the +38); view 1 (3q, the view that faces
+  the temple) bin 40 1745.0 | 1745.6 (+-0.6: AGREES), bin 50 1739.1 | 1706.4; view 2 bin 40 1744.5 | 1749.6, bin 50
+  1738.3 | 1724.7. So the +38 is where the photo's line turns DOWN the temple toward the sideburn: in the front view
+  that near-vertical stretch grazes the camera and lands in bin 40, in the 3q view in bin 50. A median z per az bin
+  of a near-vertical line measures where in the bin the descent falls, not a height. The item as written does not
+  measure "temple height". Proposal: replace it with the |az| at which the line crosses a fixed z (e.g. 1730) in view
+  1, ours vs photo (the descent's position: it looks ~5-10 deg further forward on the photo).
+- G70 screens (stand-off f/t/c/s/b/n | hc tc ts | cov | lay 3q / profile / hairline; targets 14.5/12.7/10.9/12.6/
+  12.1/9.3, lay 17 / 31 / 18 +- 5):
+  G69j1f 6.3/10.1/10.2/11.5/11.1/11.1 | 1.1 5.3 38.4 | .16 | 15/32/23  FAIL front, lay hairline
+  G70a   8.6/10.7/...                  | -9.2 -9.5    | .17 | 50/57/39  (long front falls over the line: hc -9)
+  G70b  11.0/12.8/...                  | 0.9 7.1      | .16 | 29/47/31
+  G70c  14.0/14.7/10.5/11.6/11.1/11.1 | 2.0 5.9 39.0 | .16 | 34/48/36  PASSES every stand-off; FAILS all three lays
+  The row capability gives front height (14.0) without the hairline coverage breaking, but the coupling holds:
+  the kept front length stands up STEEP (+13 to +18 deg on all lay items). Front height is no longer stuck; lay is.
+- b70 batch on NICO-TOP (hgf70, remote/b70/, chain.sh RS="G69j1 G70c"): pairs + magenta + game set
+  (views g1, g1y45, g1y90, g1y180, g3, g3y45 size 384 ss 1). G70c is in as the other side of the trade, so the look
+  decides which error shows. Sheet script s10/gamesheet.py <out> <models...> (photo scaled to game px/m).
+  STATE: hgf70 running. NEXT: remround tables + reviews, game sheet, MAJORs classified game-visible / close-up-only.
+- b70 / hgf70 DONE (2 jobs, ~6.5 min each on NICO-TOP, game frames 118 s for 6 views incl. load). Gate tables
+  ($TOUT/table_hg_G69j1.md, table_hg_G70c.md), reviews ($TOUT/review_hg_<m>/review.md), pairs ($TOUT/pairs_hg_<m>/),
+  game sheet $TOUT/game_hgf70.png (rows g1, g1y45, g1y90, g1y180, g3, g3y45; ref | G69j1 | G70c), 1 m crop
+  game_hgf70_1m.png. CAVEAT: the reference column is scaled by the photo's mm/px at the head and reads ~1.2-1.3x
+  larger than ours: check the scale (frames' mm vs the stage camera) before the next sheet.
+  RENDER ITEMS, G69j1 | G70c: stand-off front 6.5 FAIL | 14.1 PASS (others pass both); lay 3q / profile / hairline
+  17.0 / 42.8 / 23.4 PASS (+-12) | 40.6 / 56.9 / 41.2 FAIL; hairline_centre +2.5 | +3.2 FAIL; temple_corners +7.1 |
+  +21.2 FAIL; colour_front L* 32.6 | 34.5 vs 42.4 FAIL; grey_mix .15 | .22 vs .47 FAIL; flow_coherence .48-.61 |
+  .49-.69 vs >= .7 FAIL (4 views); striping FAIL on 4 views both; hairline_edge 3.16 | 3.21 vs 3.13 FAIL;
+  back_lightness 34.2 / 31.9 PASS both.
+  REVIEW (blind) MAJORs, both FAIL, with my game-distance class from the 1 m / 3 m sheet:
+  GAME-VISIBLE: (a) texture = white speckle / needle noise, not strands (coherence + striping agree); (b) colour
+  darker, browner than the photo's silver salt-and-pepper, temples not lighter (colour_front, grey_mix agree);
+  (c) no sideburn / temple too bare in front of the ear (profile and 3q at 1 m: obvious); (d) silhouette: sides
+  and back flare (helmet / mushroom), back slab with a blunt hem; (e) hard, high, straight front hairline.
+  CLOSE-UP-ONLY (recorded, not blocking): crown whorl centred / starburst and the crown seam line, the dark band
+  at the hairline roots, the bristly hem detail. G70c adds a game-visible dark streak on top at the front (g1).
+- VERDICT: FAIL. G69j1 stays the best (G70c buys front stand-off with lays +23..+25 and a dark top streak).
+  The numbers that still fail are the RENDER items (texture, colour, sideburn) more than geometry: those are the
+  game-visible ones.
+
+## Handover 2026-10-16 (successor 10)
+- Done: by_region fix + test (G60-G63 "front-only" verdicts unreliable), front stand-off item validated (real gap,
+  forehead rays in views 1-2), fade.front.row capability + test (front height reachable: G70c 14.0), temple_side item
+  shown to measure the line's descent position, not a height, b70 rendered with the game set (hgshots g<m>[y<deg>]).
+- NEXT, game-visible first: (1) strand texture / coherence (speckle; look.variation, clump, fine_alpha; striping
+  item); (2) colour + grey mix (seen lighter, grey share .15 -> .47); (3) sideburn / temple coverage in front of the
+  ear (hairline.sideburns .022 is too short or the temple points too far back; a temple_side item measured as the
+  descent azimuth in view 1 first); (4) side / back flare (lift.sides .02, back .018 are the suspects). Front height
+  with row only if a lay-preserving comb is found (row + lay.front .9 + top flow back: untested).
+- Fix the game sheet's reference scale first (CAVEAT above).
+
+## Successor 11 (2026-10-16): game-sheet scale, new shape items, groom geometry + colour
+- GAME SHEET SCALE (s11/gamesheet.py; scratch): the photo is now scaled by INTEROCULAR (bisenet eye centroids on the
+  full frontal picture vs on the first model's g1 tile; one factor for every row). The frames' mm at the head centre
+  is NOT the error source (cameras 1.7-2.8 m away: eye-plane vs centre depth only 2-3 %). Measured: photo IO 224.5 px
+  = 63.2 game px at the mm scale vs ours 68.5 px -> photo x1.084 (the old sheet showed the photo ~8 % too SMALL).
+  With the eyes matched, the photo's head + hair mass still reads larger than ours: that part is real proportion
+  (head / hair size per interocular), not the sheet.
+- NEW SCREEN ITEMS (screen.py): temple_descent = view 1, first 2-deg |az| bin from 30 out whose line median is under
+  z 1730 (ours | photo; replaces temple_side, which measured where a vertical stretch falls in a bin); width_front
+  +40/+60/+80 mm over the head centre (view 0 silhouette, head + hair, mm); hem z / soft / spread (view 2, 40-90 mm
+  behind the centre: the hair's lowest edge, 0.8 -> 0.2 fall, p90-p10 of the edge height). tab.sh prints them.
+  G69j1f: descent 65 | 51 deg (FAIL: our temple line descends 14 deg too far back), widths 170/139/86 | 174/146/90
+  (ours NOT wider: the "helmet flare" is not a width excess at these heights), hem z 91 | 92, soft 6.6 | 8.2,
+  spread 74 | 62.
+  STATE: items in. NEXT: G71 screens (front forward lay on row, temple line forward + sideburns, grey + seen colour).
+- G71 screens (cols: stand-off f/t/c/s/b/n | hc tc | descent ours/photo | lay 3q / profile / hairline):
+  G71a G70c + front bias forward [2.5,-1.5,.6]        14.0/14.4/... | 1.9 6.5 | 65/51 | 34/47/37 (forward comb: lay unchanged)
+  G71b a + lift.front .008 + body_along .3          9.1/10.6/... | 0.0 4.6 | 63/51 | 35/50/33
+  G71c b + bias [1.5,-3,.3]                          9.2/... | -2.9 6.9 | 63/51 | 36/48/38
+  G71d b + lay.front .9                              = b (lay.front dead again)
+  G71t1 G69j1 + temple line forward (42.5-67.5 deg: 1739/1729/1716/1706/1699/1693 mm) + sideburns .03
+                                                     5.9/10.1/10.0/11.5/11.0/11.2 | 1.1 5.6 | 53/51 PASS | 15/35/23
+  G71t2 steeper line (1737/1722/1708/1699/1692/1687) + sideburns .036
+                                                     6.4/10.0/9.9/11.9/11.0/10.9 | 0.8 5.4 | 51/51 PASS | 16/35/24, cov .24
+  -> FRONT: the kept-length front's lay (34-36 deg 3q vs 17) does NOT respond to the comb direction (forward bias),
+  lift, body_along or lay.front: it comes with the LENGTH (G69j1's short front lays at 15). Forward over-and-down needs
+  a new capability (a bend along the lock: rise for the first cm, then lie forward), not these sliders.
+  TEMPLE: the descent item passes with the line moved forward (t2: 51 = photo).
+- G72 (screen, then the batch): a = t2 + colour (seen [.34,.326,.317] = L* +5, grey #999692 = +6, grey shares front .45
+  top .35 sides .75 back .4 nape .2 temples .75 sideburns .7; photo light share .47 vs ours .15, L* 42.4 vs 32.6;
+  chroma 4.1 vs 4.9, hue 66 vs 65: NOT browner by measure, the brown read is darkness); b = a + G70c's row front at
+  28 mm, body_along .3, lift .01 (a middle trade); c = a + fade.taper .045 (hem softness 5.5 vs 8.2 mm).
+- G72 screens: a 6.4/10.0/9.9/11.9/11.0/10.9 | hc .8 tc 5.4 | descent 51/51 | lay 16/35/24 | FAIL front, hairline lay
+  b 9.8/11.3/10.2/12.0/11.0/10.9 | hc 1.5 tc 6.0 | 51/51 | lay 22/41/26 | FAIL front (-4.7), profile lay (+10), hairline (+8)
+  c (taper .045) = a with sides stand-off -1.3 and hem softness unchanged (5.4 vs photo 8.2): taper does not soften
+  the hem edge; dropped. Widths stay 170/140/85 vs photo 174/146/90 (ours a little NARROWER: no flare excess measured).
+- b72 on NICO-TOP (hgf72, remote/b72/, RS="G72a G72b", same views as b70 incl. the game set).
+  STATE: hgf72 running. NEXT: remround tables + reviews, s11/gamesheet.py (interocular) ref | G69j1 | G72a | G72b.
+
+## Handover 2026-10-16 (successor 11)
+- VERDICT: FAIL so far (screen): no variant passes front stand-off AND the lays. Renders of G72a / G72b are queued
+  on NICO-TOP (hgf72, queued 20+ min behind other batches at handover); chain remote/b72/chain.sh (client pid in
+  `offload status`) runs the remround tables + blind reviews itself and touches tmp/rr_72.done.
+- Done: (1) game sheet scale fixed by interocular (s11/gamesheet.py: photo x1.084; the photo was SMALLER, and with
+  eyes matched its head + hair mass still reads larger: real proportion). (2) Front: forward comb / lift / lay.front
+  on the kept-length front do not lower its lay (G71a-d): lay comes with the length -> needs a new capability (a lock
+  that rises then bends to lie forward), G72b is the middle trade (front 9.8, lay 22/41/26). (3) Temple: temple_descent
+  item (view 1, |az| of the line crossing z 1730) replaces temple_side; the line moved forward + sideburns .036 passes
+  it (51 = photo 51) at no lay / coverage cost (G71t2). (4) Flare / hem: width_front and hem items measure ours a
+  little NARROWER (170/140/85 vs 174/146/90) and the hem at the photo's height; no width flare to fix; hem softness
+  5.5 vs 8.2 mm and fade.taper does not move it. (5) Colour: measured not browner (chroma / hue match), darker; G72
+  sets seen L* +5, grey +6, grey shares up (front .45 top .35 sides .75 back .4 nape .2): verify on hgf72's cmp.
+- NEXT: when tmp/rr_72.done exists: read $TOUT/table_hg_G72a.md / G72b, review_hg_<m>/review.md; then
+  `./run.sh $HG/s11/gamesheet.py $HG/s11/game_hgf72.png hg_G72a hg_G69j1 hg_G72b` (crop rows 0-1212 for the 1 m sheet)
+  and classify MAJORs game-visible / close-up-only; colour_front / grey_mix from cmp_hg_G72a.txt (if short: colour_step).
+  Then the front bend capability (rise then lie forward), screened on lay + stand-off together.
+- Privacy: tracked notes no longer name family heads; one older commit SUBJECT on this branch (91de24ef "profover:
+  ...") still names one: rewording needs a history rewrite of unpushed commits: coordinator's call.
+
+## Successor 12 (2026-10-16): bend capability, head vs hair proportion
+- BEND (src hair_loose.py `groom.loose.bend`, commit 68e1fd59): a per-region lock PROFILE: rise straight for `rise` m
+  (leaning `up` 0..1 to the scalp normal; no gravity, no lay on the way up), bend by `angle` deg toward the comb over
+  `arc` m, then lie with its own `lay` (replaces the region's lay after the bend) and the region's stiff. Bend locks are
+  resampled every 4 mm (the 2 cm resample turned the bend into a chord). Test tests/test_hair_loose.py::
+  test_bend_rises_then_lies_over measures on synthetic ball-head locks: height at the bend 12 +- 2.5 mm, angle 90 / 60
+  +- 12 deg (60 measured with lay 0 + stiff 1: lay 1 presses any lie flat onto its height, as it should), after-bend
+  elevation |.| < 15 deg, zero-rise regions bit-identical, plain front lock < 6 mm at the same arc.
+- HEAD vs HAIR PROPORTION (coordinator's item 3; s12/iomm.py + s11/ioprobe.py on hg_G72b, view 0 fitted camera):
+  photo eye-mask centroid IO 224.5 px; ours projects 227.9 px (eye_front, cornea apex) / 237.5 (eye centres) in the
+  SAME fitted camera: ours only 1.5 % wider at the eye plane. The game sheet's x1.084 is mostly PERSPECTIVE: the game
+  camera stands 1 m from C - 4 cm, the eyes 86 mm in front of C -> magnified ~9.4 % against the outline's plane; the
+  photo camera (2.77 m) magnifies them only 3.2 %. Matching by interocular blows the photo's OUTLINE (head + hair, near
+  C's depth) up by ~6 %: that is the "photo's head and hair still read larger". The head's outline is matched by the
+  fitted camera (block-in), so the HEAD is not bigger (eye spacing 1.5 % wider is head-shape, for the coordinator).
+  What is real and mine: the hair is a little SMALLER than the photo: stand-off front 9.8 vs 14.5, top 11.3 / 12.7,
+  back 11.0 / 12.1, sides 12.0 / 12.6; widths +40/+60/+80 170.7 / 140.1 / 87.3 vs 173.7 / 145.9 / 90.2 (-2..-4 %).
+  Sheet fix: scale the photo per DEPTH (outline at mm@C, K = 1; the face K = (Zc/Zeye)_game / (Zc/Zeye)_photo ~ 1.06),
+  or judge outline rows at K = 1 (NOIO=1).
+- BEND SCREEN (s12/scr_G73..76.log, screen/log_G7[3-6]*.txt; base G72b: front 9.8, lay 22.1 / 41.3 / 26.5 vs photo
+  14.5 / 17.1 / 31.4 / 17.8). VERDICT FAIL: no variant passes front stand-off AND the lays. The bend buys height
+  (front 14.0-16.6 PASS) but every bend variant's lays are WORSE than G72b's:
+  | round | change | front | lay 3q / profile / hairline |
+  | G73a-d | rise .012-.016, up .7-.8, no from | 9.9-11.3 | 27-33 / 38-40 / 38-46 (rising hairline row = bristles) |
+  | G74a-d | + from .012-.015, rise .018-.022 (+ top .006) | 12.1-14.1 | 35-50 / 40-42 / 46-62 (the lie hooks DOWN the forehead: the front comb from the crown points down it) |
+  | G75a-d | + toward [1,-.3,.2] for ALL bend locks | 16.2-16.6 | 56-63 / 65-75 / 52-57 (the top's bend locks turned sideways too) |
+  | G76a-d | toward per region {front: ..} | 12.3-14.1 | 39-47 / 47-58 / 44-54 |
+  Seen on the G76 rasters (s12/cmp_G76.png): the lie-over tops now arc sideways as wanted, but below them a band of
+  vertical RISING shafts shows (nothing covers them from the front) and the hairline row's short rises hook. In the
+  photo the lie OVERHANGS forward past the roots and hides the rise. Capability additions this round (all tested):
+  bend.from (rise ramps in behind the line), bend.toward (world lie direction, per region).
+- NOT LAUNCHED: the NICO-TOP bend batch (coordinator item 4): the screen fails, so a batch would render a known FAIL.
+  hgf72 (G72a done, G72b rendering at handover) is the chain's own; its tables / reviews land at tmp/rr_72.done.
+- NEXT (successor 13): (a) when tmp/rr_72.done exists: G72a/b render items (colour L*, grey mix from cmp_hg_G72*.txt;
+  coherence / striping), reviews classified game-visible vs close-up-only; the helmet read: compare top curvature and
+  hem line SHAPE (screen's widths / hem items) before calling it texture (texture -> hair-cards thread).
+  (b) bend: make the lie COVER the rise: a forward overhang (toward with more -y, longer after-bend length: lie length
+  >= rise + the from band) and NO bend on the hairline row (bend weight 0 under `from`, not a short rise that hooks:
+  make `from` gate the bend itself, rise_b = 0 there). Also check whether the hair_even strands (interpolated between
+  locks) reproduce the vertical shafts: measure lay per object (screen prints hair_even / hair_under). Screen only
+  front + lays; then ONE batch (--stage _g3_hg_h6, remote/b72/chain.sh as the template, own folder b7x) with the best.
+  (c) gamesheet: scale the photo per depth (outline K = 1), see the proportion note above.
+- PRIVACY: branch commit 91de24ef's subject names a family head. Not rewritten (coordinator). The MERGE to main must be
+  squashed with a GENERIC message; branch subjects never reach the public repo.
+- STATE: bend capability on branch (68e1fd59 + from + toward), screen FAIL, no batch launched. NEXT: (b) above.
+- hgf72 LANDED (07:14, $0; tables out/table_hg_G72a|b.md, reviews out/review_hg_G72a|b/review.md): VERDICT FAIL both
+  (G72a 38 MAJOR lines, G72b 28). COLOUR OVERSHOT: G72's raise (seen L* +5, grey +6, grey shares up) made it too
+  LIGHT: cmp_hg_G72b view 1 L* photo 34.1 | ours 41.2, light share .26 | .48; view 2 39.4 | 38.2 (ok); back_lightness
+  photo 34.8 | ours 51.8 (crown-back 34.6 | 49.6). Every review pair says "too light / silvery white". colour_front and
+  grey_mix rows are n/a in the table (cmp didn't write them: run colour_step). Coherence .48-.63 vs >= .7 FAIL,
+  striping 3 of 4 FAIL. Review MAJORs by cause: colour (all views); sides / back stand-off + flare ("helmet", "skirt to
+  mid-ear", back 150 vs 117 px behind the ear: the reviewers see SILHOUETTE flare at the sides / back although
+  width_front at +40..+80 mm measures us narrower: those items sit ABOVE the ear; add a width item at ear height and
+  a back stand-off item behind the ear in view 2); top / crown seam (two flows meeting); hard hairline edge; nape hem
+  bristly. Game-distance classification NOT done this session (gamesheet not run): next step.
+- NEXT first: revert the colour raise toward G69j1 (seen L* target from view 1: -7; light share .26), add the
+  ear-height width / behind-ear stand-off items, then (b) bend overhang.
+
+## Successor 13 (2026-10-16): colour by region, ear-height items, bend gate, depth-scaled game sheet
+- COLOUR READ CORRECTED: cmp_hg_*.txt prints `ours | picture` (the picture's numbers are constant across rounds). The
+  handover's "view 1 photo 34.1 | ours 41.2" was read backwards: view 1 is ours 34.1 vs photo 41.2 (ours DARKER by
+  mean, but the mean is shadow-heavy), view 2 ours 39.4 vs 38.2 (ok), back_lightness ours 51.8 vs 34.8 (too LIGHT),
+  light share view 1 top .459 vs .221, view 2 back .532 vs .223. The game-distance review and the reviewers all say
+  "nearly white / silvery": the overshoot is the GREY MIX (G72 raised back 0 -> .4, nape 0 -> .2, top .18 -> .35),
+  not a uniform -7 L*. G77/G78 colour (between G69j1 and G72b per region, from those numbers): seen .315 (G69j1 .294,
+  G72b .34), grey #918d89, grey top .22, front .35, sides .65, back .10, nape .05, temples .65, sideburns .6. Back
+  share target .223 interpolates to grey ~.14 and back L* 34.8 to ~.01: .10 between. Needs the render to measure.
+- NEW SCREEN ITEMS (spikes/hair_garrett/screen.py, e0ae1a7f): width_front at C +0 / -20 / -40 mm (ear height),
+  back_extent +0 / -20 / -40 mm (profile view: how far the silhouette reaches behind C), hem_soft with a tolerance
+  (+- 2.5 mm, flat). On G72b they FAIL as the reviewers saw: width +0 199.0 vs photo 186.9, -20 191.4 vs 183.4;
+  back extent 114.0 / 115.1 / 111.7 vs 109.4 / 108.9 / 104.7. (+40..+80 widths pass: the flare is at ear height.)
+- FLARE (G77, s13/scr_G77.log): sides / back lift .02 / .018 -> .012 (G77b, d) kills the flare (width +0 186.9, back
+  extent PASS) but the stand-off rays' median falls to 8.3-8.7 vs 12.6 / 12.1 (FAIL); sides / back lay .6 / .5 + out
+  .03 (G77c) changes nothing. The flare is the LOWER part of the side locks: G78a-d try lift_fall (the lift given
+  back toward the tip) to keep the high stand-off and pull the ear-height silhouette in.
+- BEND GATE (src hair_loose.py, 1e8446d4): bend.from now gates the bend: roots under BEND_GATE (.35) of the ramp get no
+  bend at all and lie as plain locks (a short rise bent by the full angle was the hairline row's hook); test
+  test_bend_from_gates_the_bend (hairline-row locks identical to the no-bend groom).
+- GAME SHEET BY DEPTH (s13/gamesheet.py + s13/gameround.sh): the photo is scaled at the head centre's depth (K = 1:
+  the hair outline to scale); the label prints K_face (1 m 1.060, 3 m 0.998: the face is nearer both cameras, the
+  1 m game camera magnifies it 6 % more than the 2.77 m photo camera). DEPTH=face scales by K_face; IO=1 is the old
+  interocular match. gameround.sh writes the 1 m / 3 m pairs and runs the blind review on them
+  ($TOUT/review_<m>_game; ERROR file when pairs are missing).
+- BEFORE (G72b) game-distance review: 17 game-visible MAJORs (out/review_hg_G72b_game/review.md): hairline reads too
+  high / temples bare (the photo's front mass overhangs the forehead: the bend overhang item), sides puffed at temple
+  height (the flare), colour nearly white, grainy surface / no comb direction ("gravel", "coiled"), flat top, a ragged
+  strip in front of the ear, squarish back. Skin MAJOR -> other stage.
+- G78 / G79 SCREENS (s13/scr_G78.log, scr_G79.log; screen/log_G7[89]*.txt):
+  - lift_fall did NOTHING on sides / back (G78a, c identical to G72b): lift_ramp (default 3 cm) is longer than those
+    locks (2.5 / 1.5 cm), so the fall never starts. With lift_ramp .008 (G79a) the lift lands lower: sides / back
+    stand-off up (14.4 / 13.4) and the flare WORSE (width +0 197.5, back extent 116-117). Not the lever.
+  - FLARE FIX = less root lift + shorter back: G78d (lift sides .016, back .015, back length .012) passes width +0 /
+    -20 (192.8 / 189.0 vs 186.9 / 183.4), back extent +0 / -20 / -40 (110.9 / 111.4 / 108.6 vs 109.4 / 108.9 / 104.7),
+    sides 9.7 PASS, back 8.7 vs 12.1 FAIL (-0.4 past tol), hem_soft 4.4 vs 8.2 FAIL. G79b (= G78d, back lift .018):
+    back 9.5 PASS, width +0 193.4 FAIL (+0.5 past), back extent -40 FAIL (+0.7 past), hem_soft 4.5 FAIL. Both keep
+    G72b's front 9.3 FAIL and lays 22 / 42 / 26.5 (profile, hairline FAIL). Both rendered in hgf79.
+  - BEND OVERHANG FAILS AGAIN (G78e-h: front length .05-.06, rise .012-.016, from .010-.015, toward forward
+    [.6..1, -.8..-1, -.1..-.2], angle 110-120): front stand-off only 10.2-10.5 (the gate takes the rise off the first
+    rows, so less height than G74-G76) and lays 52-58 / 56-58 / 40-50 (front region 69-74 deg in 3q).
+  - INTERPOLATION IS NOT THE CAUSE: per object, hair_even 43-49 deg vs hair_under 25-31; with the even layer on the
+    nearest guide (strands.even_guides 1, G79c) or 2 (G79d) the even lays are the same (46-48). The even children copy
+    the BEND GUIDES' own shape; the under layer (1.6 cm) is too short to reach the bend. The upright band is the
+    guides' rise itself, seen past a lie that is too short / too high to cover it. Next idea (not tried): the rise
+    lower and shorter (rise <= .008) with a longer, flatter lie (lay 1, angle 140+, after-bend length >= 3 cm) so the
+    lie sits in front of the rise from the front camera; or drop the bend and get front height from body_along.
+- hgf79 LANDED ($0, NICO-TOP; tables out/table_hg_G78d|G79b.md, reviews out/review_hg_<m>[_game]/review.md, 1 m / 3 m
+  sheet out/game_hg_G78d.png = photo at head-centre depth | G78d | G72b). VERDICT FAIL both.
+  | model | game-visible MAJORs (1 m / 3 m) | close-up MAJORs | table PASS / FAIL | L* v1 / v2 (photo 41.2 / 38.2) |
+  | G72b (before) | 17 | 27 | 12 / 13 | 34.1 / 39.4 |
+  | G78d | 16 | 26 | 7 / 18 | 31.2 / 28.5 |
+  | G79b | 16 | 34 | 9 / 17 | 30.0 / 28.4 |
+  Gone at game distance: "sides puffed above the ears" (the flare fix reads) and "hairline too high". Left, by cause:
+  (1) SURFACE / CONTRAST: "speckle noise, not hair", "curly / wiry", "white flecks on near-black" in every view, flow
+  coherence .49-.64 vs >= .7: the grey strands are near-white over a near-black base. The MEAN L* is now too DARK
+  (31 / 28.5) while the reviewers still say "too white": the fault is the VALUE RANGE between the grey and dark
+  strands, not the mean. CAUTION: cmp says G78d's shadow / highlight L* are BOTH under the photo's (v1 18.9 / 43.5
+  vs 28.3 / 54.1; v2 17.5 / 39.1 vs 24.3 / 53.1): the whole range sits low, yet the eye sees white flecks on black.
+  The flecks are thin single strands (sub-pixel at 1 m), so area statistics miss them. Next: measure the fleck
+  contrast first (strand-scale L* p95 - p5 on a 1 m crop, ours vs the photo), then lift the base (seen up, shadow
+  L* +8) and calm the grey strands' value against it; don't darken the grey by eye. (2) FLAT TOP / no front lift (front stand-off 9.3 vs 14.5; the bend screens still fail the lays).
+  (3) comb direction unread (follows (1)). (4) G78d close-up: back slab / ragged hem at jaw level behind the ear
+  (profile), a dark blotch at the front-centre crown, straight temple edge.
+- STATE: G78d = best (flare fixed, game MAJORs 17 -> 16, FAIL). Code: screen items e0ae1a7f, bend gate 1e8446d4.
+- NEXT (successor 14): (a) value range: grey hex + seen from the cmp shadow / highlight rows, screen nothing (colour
+  needs a render): ONE batch, 2 variants. (b) front lift without the bend's band: body_along / lift on front only,
+  or a lower shorter rise with a long flat lie (see the G78 / G79 note). (c) G78d's back slab: back length / hem.
+
+## Successor 14 (2026-10-16): the outline TRACED from the photo, scope split (strand-render / cards), colour by measure
+- SCOPE (coordinator, A): the game asset is CARDS. Speckle, flecks and strand contrast at 1 m are strand-render
+  effects the card pipeline replaces (hair-cards thread): review items of that kind are listed as "strand-render /
+  cards", outside this thread's gate count. The groom's COLOUR is still fixed by measurement (the cards bake from it).
+- TRACE (B; src hair_loose.py `groom.loose.trace`, spikes/hair_garrett/fronttrace.py + mktrace.py): the photo's hair
+  outline through the fitted cameras, per outline ray (hair_read.outline_rays on the photo's frame, views 0 / 1 / 2):
+  the skull edge's scalp point (az, el) and the stand-off there; the same rays on screen's flat raster of ours. Locks
+  rooted in `trace.regions` are HELD at the traced height where they pass over the traced area (Gaussian `sigma` deg),
+  layered (`under`), reached over `rise` m, the hairline row lying (`from` m). The heights are SOLVED, not swept:
+  mktrace's fixed-point step h_cmd *= h_photo / h_ours per ray (clipped .6..1.8), against the screen's own outline.
+  Per-ray read of G78d (s14/trace_G78d.json): front deficit is at the far temple-front corner in the 3/4 view (az 322,
+  el 35-52: photo 13-16 mm, ours 5-9) and the profile's hairline (el 27-36: the photo's front edge stands 11-17 mm
+  off the forehead, ours never meets the backdrop there); back: 3/4 view back-side (az 133) photo ~20 vs ours ~10,
+  profile back-centre (az 166) photo 3-5 vs ours 6-10 (the back is too FULL at the centre, too thin at the sides).
+- SCREENS (styles/g_G80*.json, screen/log_G80*.txt; stand-off front / back, lays 3q / profile / hairline):
+  | G78d (before) | 9.3 F / 8.7 F | 22.3 / 42.0 / 26.5 |
+  | G80a/b rise .008 | 11.2 F / 8.7 F (b: 11.6 P, back samples) | 32.7 / 46.0 / 50.8 |
+  | G80f-i rise .025, from .01, under .6 | 9.4-9.7 F / 10.1-10.2 P | 22.3 / 42.3 / 28.7 (= G78d) |
+  | G80k-m hairline row held (from 0) + dense front edge | 10.0-10.8 F | 41-49 / 59-64 / 48-52 (bristles) |
+  | G80n (G80i + one solve step) | 11.6 P / 10.5 P | 28.0 / 44.6 / 37.2 |
+  | G80q-s (2nd step, from .02 / .03, under .4) | 11.4-11.9 / 10.8-10.9 | 24.7-27 / 42-44 / 34.8-39.6 |
+  | G80u (G80r + hem taper / rough, messy front .05) | 11.8 P / 10.8 P | 26.1 / 43.6 / 37.3 |
+  Every stand-off row and the width / back-extent rows PASS from G80n on (G80u: width +80 97 vs 90 +-6, 0.5 over);
+  lays FAIL and are worse than G78d at the hairline (+11 deg): height gained over a 2.8 cm lock is rise you can see
+  from the front. The profile lay's excess is the SIDES (share .46-.48 at 51 deg), not the front, in every variant.
+  hem_soft does not move with fade taper / rough / density (4.2-5.2 vs 8.2): not the lever, unexplained.
+- COLOUR (D; G78d cmp: mean L* 31.2 / 28.5 vs 41.2 / 38.2, shadow 18.9 / 17.5 vs 28.3 / 24.3, highlight 43.5 / 39.1
+  vs 54.1 / 53.1, light share .18 / .12 vs .48 / .42, back light share .01 vs .43 / .22, L_sd matched 11.0 vs 11.6):
+  the whole range sits low and the grey share is low, not a too-wide range. G81a = G80u + seen x1.5 linear
+  ([.383 .367 .357]) + grey x1.15 (#9b9692); G81b = seen x1.8 ([.418 .400 .389]), grey kept; both: grey front .55,
+  top .30, sides .75, back .22, nape .10 (between G78d and G72b per region by the light-share rows).
+- BATCH hgf81 (remote/b81/chain.sh, RS="G81a G81b"): gate renders + game set, then remround / gameround vs hg_G78d.
+- hgf81 LANDED ($0, NICO-TOP; out/table_hg_G81a|b.md, out/review_hg_G81[ab][_game]/review.md, 1 m / 3 m sheet
+  out/game_hg_G81b.png = photo | G81b | G78d). VERDICT FAIL. Game-visible MAJORs, split per the coordinator's scope:
+  | model | shape | colour | strand-render / cards | total | render stand-off front / back / nape | lay hairline (render) |
+  | G78d (before) | 8 | 3 | 4 | 15 (+ skin) | 9.2 F / 8.9 F / 5.9 F | 26.5 P |
+  | G81a | 9 | 6 | 2 | 17 | 12.1 P / 11.2 P / 5.9 F | 36.5 F |
+  | G81b | 6 | 6 | 3 | 15 | 12.1 P / 11.0 P / 8.5 P | 35.2 F |
+  Render tables: G81b every stand-off row PASSES (first time: front 9.2 -> 12.1 vs 14.5). Shape MAJORs left on G81b:
+  hairline a hard flat cut-out, little top volume / no front lift (still seen: the trace's +3 mm doesn't read as the
+  photo's forelock projection), temple a hard step, outline flat front + bulging rear crown, back / nape boxy and too low.
+  The "back slab hanging to jaw level" item of G78d is gone; the low back remains.
+- COLOUR OVERSHOT (my fault: two changes on one row). Base lift + grey shares together: light share .70-.76 vs .47
+  (top .80 vs .22, sides .95-.98 vs .59), view 0 mean L* 47.4 vs 42.4, shadow 36.8 vs 30.7. And back .22 against sides
+  .75 made a HARD SEAM behind the ear (all three reviews). Next: G78d's grey shares back, ONLY seen lifted (x1.35 linear:
+  view 0/1 shadow then ~+6 L*), back / sides shares within .3 of each other; one change per row, measured.
+- STATE: best SHAPE = G80u geometry (G81b without its colour); best COLOUR = G78d's. Code: trace f2f87255, test 7e49f110.
+- NEXT (successor 15): (1) colour as above (G82 = G80u geometry + G78d grey + seen x1.35), screen nothing, one batch.
+  (2) the hairline lay (35 vs 17.8; the traced height costs ~10 deg there): the photo's front edge stands as a projected
+  forelock; the trace holds locks only radially. Try a hold whose target is the traced outline POINT (profile view: the
+  hair's 3D edge on the midline plane) so the front locks run forward over the line, not up. (3) hem_soft never moved
+  (4.2-5.2 vs 8.2): read how screen.hem measures before trying more fade keys. (4) Hand to the cards pipeline only once
+  shape MAJORs are low: they are 6 now; propose it to the coordinator, don't export.
+
+## Successor 15 (2026-10-16): colour by seen alone, the seam diagnosed, forward hold, hem item fixed
+- Merged main 1547b2ed; hair tests all pass (pytest per file; test_hair_lift / strands / tied run as scripts).
+- SEAM behind the ear is NOT the grey map. Lock grey by (|az|, el) is continuous in G78d and G81b (sides .70-.74 ->
+  back .22-.29 over |az| 80-180 at blend 2.2, the step to 8 neighbours p90 .05), and lock DIRECTION is continuous
+  across the back (s14/seam.py: jump to neighbours 3-9 deg, ~20 only at the whorl). The render's block (rear view: a
+  horizontal edge at the whorl's height across the width plus a band at the left side, tone AND direction) is born
+  in the strand children (even layer / under layer in Blender), not in the locks: a strand-render item. The cards
+  bake grey from the locks (hair_cap.strand_grey), so it should not carry over to cards. Unlocated: a next step
+  is the child curves' hp_gr / direction read back from the Blender geometry (no render).
+- whorl.spiral 70 -> 120 (G82d) changes NOTHING in the screen (identical to G80u): the key doesn't reach the locks.
+- FORWARD HOLD (src hair_loose `trace.forward`, test test_trace_forward_leans_the_front_hold_over_the_hairline):
+  the hold's push leans forward along the scalp by forward x the root's front weight. Screens (lay 3q / profile /
+  hairline, target 17.1 / 31.4 / 17.8; front stand-off 14.5):
+  | G80u (before) | 26.1 / 43.6 / 37.3 | 11.8 |
+  | G82b forward .6 | 20.7 / 37.4 / 42.8 | 12.5 |
+  | G82c forward 1.0 | 18.5 P / 35.0 P / 42.8 F | 12.4 |
+  3q and profile lays PASS for the first time; the HAIRLINE lay gets worse (+5.5): FAIL. Leaning the push forward
+  doesn't make the hairline row lie across. Next: read the per-region hairline numbers (front vs top share).
+- HEM_SOFT read the wrong thing: the photo's "hair" is the parsing net's probability, ours was strand coverage.
+  screen.py now runs the same net on our flat image ("hem_soft (net, as the photo)"). G80u: 13.5 against 8.2. Ours
+  is too SOFT, the opposite of the old row (4.9). The fade isn't too hard, it's too wide or thin. Untouched.
+- COLOUR: G82a = G80u + seen x1.35 linear ([.364 .349 .339]), G78d grey; G82e = x1.7 ([.407 .390 .379]). Estimate
+  from L* = 116 Y^(1/3) - 16: G78d's 31.2 needs ~x1.9 linear for 42.4, so x1.35 likely lands ~36. The bracket
+  measures it.
+- BATCH hgf82 (remote/b82/chain.sh, RS="G82a G82e G82c"; launched detached 2026-10-16, $0 NICO-TOP): gate renders +
+  game set, then remround / gameround vs hg_G78d (tmp/rr_G82*.log, tmp/rg_G82*.log, out/game_hg_G82*.png).
+- Not done: shape items (4) unmeasured this session (hairline cut-out, temple step, profile top curve, boxy back).
+- STATE: best geometry G82c (G80u + forward 1.0) on 3q / profile lays; colour pending hgf82. Code a9b85ad0, 371141b1.
+- NEXT: (1) read hgf82: pick seen by L* / light share (interpolate between x1.35 and x1.7). (2) the hairline row's
+  lay. (3) hem: the net says too soft; narrow the fade taper. (4) the seam in strand children. (5) shape items.
+  Shape MAJORs are still 6 and the hairline lay still fails, so it's not time to hand over to cards.
+
+## Successor 16 (2026-10-16): the hairline lay is not the hairline row; a per-side lean passes all three lays
+- hgf82 read (gate tables, same cameras): colour_front L* / light share: G82a (seen x1.35, no forward) 40.6 / .431,
+  G82e (seen [.407 .390 .379]) 43.3 / .549, G82c (x1.35 + forward 1.0) 38.0 FAIL / .361. The forward hold darkens
+  the front read by 2.6 L*. back_lightness FAILs in all three (43.9 / 47.0 / 43.9 vs 34.8: the back is too LIGHT,
+  and more seen makes it worse); game reviews call the hair too light and contrasty (white flecks on black speckle),
+  so the front's low L* is not "too dark overall". Pick: seen [.4098 .3926 .3815] (G82a x1.125; slope 64 L* and 2.8
+  share per unit seen from G82a -> G82e: est. L* ~40.9, share ~.49 on the forward-hold geometry).
+- WHICH LOCKS MAKE THE HAIRLINE CROP'S LAY (spikes/hair_garrett/hlrow.py, G82c, by strand root distance behind the
+  line): 0-10 mm 6% of visible length (27-29 deg), 10-20 mm 18% (33-36), 20-30 mm 21% (44.5), 30-45 mm 36% (47.8),
+  45+ 18% (31.5). The crop is made by roots 20-45 mm back, where the trace hold is full (trace.from 0.03) and the
+  forward lean acts: not the hairline row. orgrid.py (signed orientation, 4x4 windows): the photo's front is a DOME
+  (his right side +25 / +37 deg rising to the image right, centre +9 / +14, his left -18 / -22, coherence .77); our
+  render's left side (his right) was vertical (-88 / +84, coherence .2-.4), his left already matched (-13 / -21).
+- Flow bias does nothing there (front bias x 2.5 -> 4: 43.0; top bias x 0.4 -> 2: 45.0, profile FAIL): the hold
+  decides the path. src: trace.forward takes a world direction [x, y, z] or per side {"left", "right"} (blended over
+  az +-10; test_trace_forward_per_side_sweeps_across). Screens (lay 3q / profile / hairline; target 17.1 / 31.4 /
+  17.8 +- 5):
+  | G82c forward 1.0 | 18.5 P / 35.0 P / 42.8 F |
+  | G83L1 all [.8 -.6 0] | 35.0 F / 46.3 F / 27.1 F |
+  | G83S1 right [.8 -.6 0] (over the top) | 27.6 F / 36.6 P / 31.3 F |
+  | G83S3 right [-.8 -.6 0] (down to his right temple) | 17.6 P / 35.8 P / 24.8 F |
+  | G83S5 right [-1 -.4 0] | 17.6 P / 35.3 P / 23.6 F |
+  | G83S6 right [-1.1 -.7 0] | 17.2 P / 35.1 P / 22.6 P |
+  The lay is axial, so +x and -x read the same angle in the front view; the paths differ (over the top crosses
+  into the 3q crop, down the temple doesn't).
+- HEM (net soft, target 8.2 +- 2.5; G82c 13.7): fade.taper .045 -> .027 12.6, .015 9.7 P, .012 11.7 (not monotonic:
+  the per-lock rough jitter); rough .006 -> .003 13.0; floor .3 -> .15 13.4. Taper .015 taken; spread grows 98 ->
+  107 (photo 61.5): the edge's height varies more behind the ear, next item for the hem.
+- SHAPE items measured (G84b screen, ours | photo, mm): widths at z +80 98.2 | 90.2 (+8: the flat / wide top the
+  reviews call boxy), z 0 192.8 | 186.9, z -20 189.3 | 183.4 (sides flare +6); back_extent at z -40 108.6 | 104.7
+  (+3.9: the boxy low back), 0 / -20 +1.5 / +2.8; M shape (temple - centre) 0.1 | -3.9; temple_side (az 40, uncal.)
+  +35. The hairline_edge row PASSES (2.34 <= 3.13) while every review calls the edge hard: that checklist item is
+  incomplete (gates rule) and needs a measure the eye agrees with before any change. Not changed this round.
+- BATCH hgf84 (remote/b84/chain.sh, RS="G84b G84a", NICO-TOP, $0): G84b = G82c + forward {"left": 1.0, "right":
+  [-1.1, -0.7, 0]} + fade.taper .015 + seen [.4098 .3926 .3815] (screen: 17.6 P / 35.5 P / 22.2 P, hem_soft 9.6 P,
+  hairline_centre 1.6 P); G84a = same with right [-.8 -.6 0] (24.7 F). Styles in $HG/styles/g_G84*.json.
+- hgf84 RESULT (gate renders, $0): G84b | G84a: hairline lay 22.4 P | 22.35 P (G82c 47.4, G82a 37.4), 3q 23.9 P |
+  24.0 P, PROFILE 45.2 F | 45.7 F (G82c 45.2: the screen's 35 doesn't predict the render's profile lay; calibrate),
+  colour_front L* 43.0 P | 42.7 P, grey_mix .533 P | .516 P, standoff_front 17.8 F | 18.1 F (14.5; G82a 12.1: the
+  lean lifts the front), back_lightness 47.4 F (34.8), hairline_centre +3.4 F, temple_corners +17.8 F, hairline_edge
+  1.97 P. Reviews: pairs 33 | 32 MAJORs, game 18 | 18. G84b pairs by scope (32 + 1 skin): SHAPE / GROOM 21 (sides
+  puff, flat top, long behind the ear and nape, squared back, nape flare, hard hairline / temple edges x6, temple
+  step, a SWIRL / fan from a point at the front top (pairs 8, 9, profile: likely the per-side lean diverging at
+  az 0, NEW), whorl pinched x2, crown stubble), COLOUR 4 (too light / silver sides, a pale band, flat nape),
+  STRAND-RENDER 7 (dark blocks and the crown seam, dark smears).
+- My look at the 1 m sheet (out/game_hg_G84b.png): LIGHTER than G78d and the photo (the photo is mid-dark grey);
+  the profile's dark rear block and seam are unchanged; flat top, hard hairline. The colour row PASSES while every
+  review says too light: colour_front (one front crop) is an incomplete item. Raising seen was the wrong lever; the
+  next colour row needs a whole-head / sides L* item from the photo before any change, and seen back toward G78d.
+- STATE: code fc9b6830 (trace.forward per side). Best for lays: G84b (hairline and 3q pass in render, profile fails).
+  Hem: taper .015 (screen 9.6 P; render review still says long / ragged behind the ear: spread 107 vs 61.5).
+  Shape MAJORs 21, so NOT time for the cards handoff.
+- NEXT: (1) colour: add the whole-head L* item (sides, back at game distance), revert seen toward G78d; (2) the
+  front swirl from the lean: give the blend over the centre more width (az +-10 -> +-25) or lean the left side the
+  same way; check standoff_front; (3) calibrate the screen's profile lay against renders (35 screen vs 45 render);
+  (4) shape: wide top (+8 mm at z +80), low back (+3.9 at z -40), length behind the ear, a hairline-edge measure the
+  eye agrees with; (5) the strand-render blocks / seam (children).
+
+## Successor 17 (2026-10-16): comparable counts, profile screen, colour item, front lean, hem, hairline edge
+- COUNTS: the "shape 21 (was 6)" compared two different reviews (21 = the 12-pair close-up review by hand; 6 = the
+  1 m / 3 m game review). Same prompts and pairs in both rounds (remround.sh / s13/gameround.sh unchanged, 12 pairs,
+  same names). One counting rule now: spikes/hair_garrett/count_review.py (first sentence of each MAJOR; order skin
+  (OTHER STAGES) / strand / direction / colour / shape). Re-counted:
+  | review | G78d | G81b | G84b |  (shape / colour / direction / strand, hair total)
+  | pairs | 11 / 10 / 3 / 2 = 26 | 19 / 17 / 4 / 2 = 42 | 15 / 10 / 5 / 2 = 32 |
+  | game  | 9 / 5 / 1 / 1 = 16 | 6 / 6 / 1 / 2 = 15 | 8 / 5 / 2 / 1 = 16 |
+  So G84b is NOT a shape regression of 6 -> 21: game shape 6 -> 8 (+2: radial stripes = the new swirl, jagged strip
+  in front of the ear), pairs shape 19 -> 15.
+- STATE: counts comparable. NEXT: profile screen calibration.
+- PROFILE SCREEN CALIBRATED: the screen's lay used 120k strands; the render uses strands.count (480k). At 120k the
+  under layers show through the flat raster and the profile crop's sides (lower right quadrant, 0.9 of its hair px:
+  photo 46 / render 69 / flat-120k 54 deg) read flatter. laycal.strands(count=0) = the spec's count; screen.py uses
+  it (~20 s a variant). Also: head occlusion is now a z-buffer of the head surface (LAYCAL_HEADOCC=0 = old normal
+  test; it changed the profile by only -0.5). Screen (full count) | render, 3q / profile / hairline:
+  | G84b | 20.7 / 43.0 / 21.9 | 23.9 / 45.2 / 22.4 |
+  | G82a | 29.1 / 52.8 / 38.7 | 26.8 / 53.8 / 37.4 |
+  | G78d | 26.5 / 53.5 / 26.5 | 27.7 / 55.1 / 26.5 |
+  | G82c | 22.3 / 44.1 / 49.9 | 25.1 / 45.2 / 47.4 |
+  profile within 2.2 deg (was 10-13 low), 3q within 3.2, hairline within 2.5.
+- STATE: screen predicts the render's lays. NEXT: colour_regions item, front lean, hem, hairline band.
+- COLOUR ITEM: hair_read now reports each view's median L* by region (`L_by_region`, cmp "L* by region"); gatetable
+  item colour_regions (checklist) rows per view 0 / 1 and region. Averaged over views 0-2 it PASSED on G84b (top 39.1 |
+  35.6, sides 45.0 | 44.4): the profile view reads darker than the photo (front 31.4 | 38.9, sides 37.7 | 41.7) and
+  cancelled the front / 3q views' too-light top (v0 43.5 | 36.7, v1 41.2 | 33.9) and sides (v1 48.8 | 44.8). Per view it
+  fails where the reviews say. back_lightness (back crops) 47.4 | 34.8. Change: seen x0.81 ([.332 .318 .309], from
+  successor 16's slope 64 L* a unit seen: -5 L* on the lit views), toward G78d's .315.
+- HAIRLINE EDGE MEASURE (spikes/hair_garrett/edgewidth.py; checklist hairline_band): per column of the hairline__front
+  crop, the px from 90 % to 10 % of the column's hair cover (skin -> hair Lab axis). photo 11 px, G78d / G84b 4 px with
+  86-88 % of columns a "cut" (< 6 px), agreeing with every review; texmeas' hairline_edge (passes) is incomplete. The
+  photo's edge is long leading strands lying over the skin; ours a dense mat ending in short spikes. Lever: fade.front
+  .reach .002 -> .006 (tips lie further over the line; hairline_centre is +3.4 mm high, so the same direction).
+- FRONT: trace.forward_blend (deg, default 10) widens the per-side blend at the centre: the swirl / fan at the front
+  top is the two sides' diverging leans meeting over 20 deg. Screen (full count) 3q / profile / hairline, stand-off front:
+  G84b 20.7 / 43.0 / 21.9, 12.3 | G85a blend 25: 20.0 / 42.8 / 20.2, 12.4 | G85b blend 25 + lean x0.6: 22.4 / 45.0 /
+  26.0, 12.4 | G85c blend 40: 19.8 / 42.9 / 19.8, 12.5. Taken G85c. NOTE the screen's front stand-off does NOT see the
+  render's lean lift (G84b render 17.8 vs screen 12.3; G84a 18.1 vs 12.1; G82c forward 1.0 12.8 vs 12.4): uncalibrated
+  for the per-side lean, so the fan's removal is a bet that the render's +5 mm is the fan standing up.
+- HEM: fade.taper_from (deg, default 100): where the taper starts; 75 takes it round behind the ear (backw was 0 at
+  |az| < 100, so the sides' full .025 hung there).
+- SCREENS G86 (G85c +): G86a = taper_from 75 + reach .006 + seen x0.81, G86b = taper_from 75 + seen. 3q / profile /
+  hairline, front stand-off, hairline_centre, hem net spread: G85c 19.8 / 42.9 / 19.8, 12.5, 1.7, 107.5 | G86a 19.3 /
+  42.7 / 19.6, 12.6, 1.0, 109.2 | G86b 18.8 / 42.9 / 19.6, 12.5, 1.7, 111.0. taper_from did NOT move the hem: dropped.
+- HEM DIAGNOSED (screen.hem now prints z by 10 mm column, 40 mm behind the centre first): the HARD edge matches the
+  photo (ours 23 / 89 / 99 / 105 / 87 / 77 mm under the centre, photo 29 / 88 / 98 / 100 / 92 / 76). The NET edge (the
+  thin strands) reaches 179-187 mm under the centre at 70-90 mm behind: stray / flyaway strands hanging down the neck
+  (the reviews' "jagged spikes to jaw level"). The row compares net 107 with the photo's 61.5: the lever is the strays
+  at the nape (strands.stray .9 / flyaway .024 have no region scope yet), not the cut. Not changed this round.
+- BATCH hgf86 (remote/b86/chain.sh, RS="G86c G85c", NICO-TOP): G86c = G85c (G84b + forward_blend 40) + fade.front
+  .reach .006 + seen [.332 .318 .309]; G85c isolates the blend. Styles $HG/styles/g_G86c.json, g_G85c.json.
+- HANDOVER (successor 17, 70-call clock): hgf86 was queued 50 min behind projskin's rs_r7 and is RUNNING at the stop
+  (chain detached: remote/b86/chain.sh -> remround / gameround vs hg_G84b, then tmp/sum_86.txt = hairline_band
+  (edgewidth) + count_review.py pairs / game counts for G86c, G85c, G84b; tmp/rr_86.done when finished). The 1 m sheet
+  will be out/game_hg_G86c.png (photo | G86c | G84b). NOT YET JUDGED: no verdict on G86c.
+- Row status going in (G84b render): PASS hairline lay 22.4, 3q 23.9, hem_soft, colour_front, grey_mix. FAIL profile
+  lay 45.2 (31.4; the screen now predicts it within ~2: no screened variant reaches it, G85c 42.9), standoff_front 17.8
+  (screen blind to it), back_lightness 47.4 (34.8), colour_regions per view (v0 top +6.8, v1 top +7.3, v1 sides +4.0),
+  hairline_band 4 px (11), hem net spread 107 (61.5; strays down the neck, not the cut).
+- NEXT: (1) read tmp/sum_86.txt + out/table_hg_G86c.md (colour_regions rows, back_lightness, standoff_front, lays) and
+  LOOK at out/game_hg_G86c.png before the numbers; count with count_review.py only. (2) If the front stand-off is still
+  +3: the lean itself lifts it in the render while the flat doesn't see it: find why (render outline vs flat outline at
+  the front, same camera) before more front changes. (3) Hem: a nape scope for strays / flyaways (strands.stray .9,
+  flyaway .024 are global), measured on screen.hem net cols. (4) Profile lay 43 vs 31.4: the sides combed down make it
+  (lower-right quadrant 69 vs photo 46); a sides flow more back, screened at full count. (5) back_lightness: if seen
+  x0.81 leaves the back > 38, the back's own grey share (groom.grey.back) is the next lever.
+- STATE: code 35aeda81 + this note. hgf86 running.
+
+## Successor 18 (2026-10-18): skin tone on hair sheets, the unrecorded G87 length screens
+- PICKED UP: commits 280fed90..d4330973 (lenmeas.py, flowtrace.py, groom.loose.comb_trace) were a successor that hit the
+  usage limit before writing notes. Its G87a-e were built and SCREENED ($HG/screen/log_G87*.txt) but never recorded:
+  a = G86c + comb_trace (the photo's traced flow), b = a + lengths front .044 / sides .045 / back .03 (photo visible runs
+  44-45 mm vs ours 23-26), c = b + front traced, d / e = c + sides / back lay .8 / .9, lift .008 / .005. Kept (code is
+  opt-in: comb_trace only acts when set).
+- SKIN TONE (Joe 2026-10-18: "last one I saw he was very dark-skinned", out/game_hg_G86c.png). NEW skintone.py <model>
+  [views=] [tag=]: median Lab in the skin thread's boxes (forehead / cheek_R / cheek_L, MediaPipe on the photo, same
+  code as spikes/projskin/skincheck.py; the photo values reproduce the skin thread's to 0.2 L), on photo | our tile,
+  pass |dL| <= 5; the skin thread's garrett_g14 render printed beside; hair_front = info. G86c v0: forehead 59.6 vs photo
+  75.8, cheek_R 46.2 vs 63.0, cheek_L 39.9 vs 53.9 (-14 to -17 L; the skin thread's render 77.9 / 62.0 / 52.6).
+- CAUSE, measured (local light renders, v0 512 px, 60k strands; hgshots skin=<json> NEW: the stand-in skin's keys
+  replaced): sun 0 + variation .3: no change; tone melanin 0 / blood .1 (albedo ~ the projskin stack's own base
+  [.83 .73 .67]): +2.5..3.5 L only; shading subsurface 0 / specular: no change. The procedural tone is ALREADY the
+  stack's base colour (tone_rgb(G86c's tone) = [.83 .72 .65]). The gap is the LIGHT: hair sheets use stage.photo_light
+  (FRONT_LIGHT re-balanced, PBR Neutral, exposure -0.55); the skin thread renders under skin_project.stage_light (the
+  fitted SH light, Standard, 0 EV). Under the hair light, skin of the right albedo reads ~1 EV dark, while the hair's
+  colour rows pass: the hair's look.seen (.33) was calibrated UP into a dim light (about 2x its albedo).
+- LIGHT FIX, measured (local v0 512 px): hgshots ev=<stops> NEW (added to every view's exposure). ev +1.0: forehead
+  80.5 | 75.8, cheek_R 66.3 | 63.0, cheek_L 58.6 | 53.9 (tone melanin 0 / blood .1; +3..+5 L: PASS at the edge; the
+  model's own tone is ~3 L darker, so ev 1.0 with the model's tone lands ~0..+2 L). Hair goes ~1 EV lighter with it, so
+  the hair's colours are rescaled by 0.5 in LINEAR (sRGB x 0.73): seen [.332 .318 .309] -> [.242 .232 .226], grey
+  #918d89 -> #6a6764. The model's own skin (no skin= override): the stand-in tone is the stack's base colour already.
+  RULE from here: every Garrett hair render passes ev=1.0 with the rescaled colours, and skintone.py runs on every sheet.
+- LENGTH SCREENS (full count, calibrated lays 3q / profile / hairline; G85c 19.8 / 42.9 / 19.8, target profile 31.4):
+  | G87a comb_trace | 21.2 / 48.2 / 19.1 | hem_soft net 12.8 F |
+  | G87b + lengths .044/.045/.03 | 32.6 / 51.5 / 36.8 | stand-off sides 20 back 22 |
+  | G87c + front traced | 35.5 / 51.8 / 40.4 | |
+  | G87d / e + sides lay .8 / .9 | 44.3 / 66.1 / 36.4, 44.5 / 66.2 / 36.3 | |
+  | G87f = G86c + lengths .044/.045/.03 (no trace) | 30.6 / 49.3 / 37.1 | hem net soft 6.3 P |
+  | G87g = G86c + lengths .036/.035/.02 | 24.0 / 47.4 / 26.4 | hem net soft 8.3 P, stand-off sides 17.6 back 16.7 |
+  The traced comb did NOT improve any lay (profile +5 worse); longer strands worsen every lay in proportion to the
+  length (they show more of the comb's direction error). Length and direction are coupled: length can't be raised to
+  the photo's runs (44-45 mm) without the direction field right first.
+- BATCH hgf88 (remote/b88/chain.sh, RS="G88a G88b", PREV=hg_G86c, args ev=1.0): G88a = G86c + rescaled colours (THE
+  re-skinned G86c), G88b = G87g + rescaled colours (mid lengths, to measure length with lenmeas on the render).
+  Styles $HG/styles/g_G88*.json. The chain adds skintone rows to tmp/sum_88.txt.
+- hgf88 RESULT (NICO-TOP, $0). SKIN (skintone, G88a): v0 forehead 79.4 | 75.8, cheek_R 65.7 | 63.0, cheek_L 58.1 | 53.9,
+  v1 forehead +3.8, cheek_L +4.7: ROW PASS (+3..+5 L, a* +5..+7: a little light and pink; the skin thread's render is
+  +2 / -1 / -1 L). My look at out/game_hg_G88a.png (photo | G88a | G86c): the face now reads the photo's lightness
+  (G86c's ruddy-dark face is gone); slightly peachy-pink; the bare shoulders are a flat peach (no shirt on the stage).
+  A further ev 0.8 would centre the tone (~16 L / EV here) but moves the hair too: left at 1.0.
+- HAIR under the new light (G88a, table_hg_G88a.md): colour_regions v0 PASS (front 34.8 | 37.1, top 33.4 | 36.7, sides
+  49.6 | 46.6), v1 top 41.1 | 33.9, sides 52.7 | 44.8, back 50.4 | 39.0 FAIL; back_lightness 44.8 | 34.8 FAIL;
+  colour_front 38.2 | 42.4 FAIL (now too dark; it was the light-dependent single crop). Lays 3q 23.2 P, hairline 21.1 P,
+  profile 45.9 F (31.4). Stand-offs all PASS. hairline_band (edgewidth) med 6 px (G86c 5, photo 11), cut share .44 (.83).
+  The back / sides are +8..+11 L too light in every light: groom.grey.sides .57 / back .34 is the lever (not seen).
+- LENGTH (lenmeas sline p75, photo | ours): G88b (lengths .036/.035/.02) 3q 168 | 116 (G86c 117), profile 167 | 116
+  (112), temple his-left 217 | 146 (127), back 149 | 176 (159), crown-back 182 | 187 (167). Mid lengths moved the
+  temples +19 px and over-lengthened the back; the top / front runs did not move (they are the comb's direction, not
+  the length). Not adopted.
+- REVIEWS: none this round. bin/review exits 3: "You've hit your weekly limit, resets Oct 19, 1pm (America/Denver)".
+  The pairs / game pairs are on disk (out/pairs_hg_G88[ab], out/gpairs_hg_G88[ab]): re-run remround's / gameround's
+  review lines after the reset, count with count_review.py. No MAJOR count for G88; last counted: G86c game 16 (shape 8,
+  colour 5, direction 3), pairs 29; G84b 16, G85c 14, G78d 16.
+- PLATEAU (plain): game-visible hair MAJORs have sat at 14-16 since G78d (successors 14-17, ~12 rounds). Rows that never
+  pass by any screened lever: profile lay (42-48 vs 31.4), hairline band (4-6 px vs 11), back lightness (+10 L), strand
+  run length (115 vs 167 px; longer strands make every lay worse). The strand groom has plateaued on the comb-direction
+  field: length, profile lay and the front lean all trace back to it, and comb_trace (the photo's flow) did not fix it.
+- HANDOVER (successor 18). STATE: code 715cb590 + skintone fix; G88a = G86c re-lit (ev 1.0, seen [.242 .232 .226], grey
+  #6a6764) is the current best and the sheet to show; every hair render from now passes ev=1.0 and these colours, and
+  runs skintone.py. NEXT: (1) after the review reset, review G88a pairs + game pairs (count_review.py); (2) back / sides
+  lightness: groom.grey.sides / back down toward the v0 photo values (measured row: colour_regions v1, back_lightness);
+  (3) the decision Joe asked about: strands vs cards for Garrett (see PLATEAU).

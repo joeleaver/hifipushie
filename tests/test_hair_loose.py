@@ -122,6 +122,53 @@ def test_lift_by_region():
     assert abs(s1 - s0) < 0.0015, (s0, s1)
 
 
+def test_regions_left_out_take_the_default():
+    """A per-region dict that names some regions leaves the others at the parameter's DEFAULT, not the mean of the
+    given ones (hair-garrett G60-G63: body_along {"front", "top"} silently reached sides, back and nape)."""
+    crop = {"length": 0.03, "spacing": 0.012, "stiff": 0.6, "out": 0.0, "body": 0.0, "messy": 0.0, "uneven": 0.0,
+            "lay": 0.6, "thickness": 0.003}
+
+    def h_sides(loose):
+        sc, _col, locks = _grow(loose, parting="none")
+        R = np.array([np.asarray(lk["pts"])[0] + sc.C for lk in locks.values()])
+        M = np.array([np.asarray(lk["pts"])[len(lk["pts"]) // 2] + sc.C for lk in locks.values()])
+        _, el, _ = sc.coords(R)
+        _, _, h = sc.coords(M)
+        return np.median(h[(el > 0) & (el < 35)])
+    s_def = h_sides({**crop, "lift": hl.LOOSE["lift"]})
+    s_top = h_sides({**crop, "lift": {"top": 0.03}})
+    assert abs(s_top - s_def) < 0.0015, (s_def, s_top)  # (the mean would have lifted the sides by 3 cm)
+    W = np.eye(len(hair.REGIONS))
+    L = hl._lengths({"nape": 0.01}, W)
+    assert np.allclose(L[hair.REGIONS.index("nape")], 0.01) and np.allclose(L[hair.REGIONS.index("top")], 0.2), L
+
+
+def test_front_reach_row_keeps_the_front_length():
+    """fade.front.reach cuts every front lock to end just past the line; with "row" only the hairline row is cut and the
+    front behind it keeps its length (Garrett: no front height to build from with reach on the whole front)."""
+    base = {"length": {"front": 0.05, "top": 0.05, "sides": 0.03, "back": 0.03, "nape": 0.02}, "spacing": 0.01,
+            "messy": 0.0, "uneven": 0.0, "lay": 0.5, "thickness": 0.003, "lift": 0.002,
+            "flow": {"front": [0.0, -1.0, 0.0]}}
+
+    def front(loose):
+        sc, _c, locks = _grow(loose, parting="none")
+        E, L = [], []
+        for lk in locks.values():
+            P = np.asarray(lk["pts"]) + sc.C
+            a, e, _ = sc.coords(P[:1])
+            if abs(((a[0] + 180) % 360) - 180) < 30:
+                E.append(e[0])
+                L.append(np.linalg.norm(np.diff(P, axis=0), axis=1).sum())
+        E, L = np.array(E), np.array(L)
+        lo = E < np.percentile(E, 15)
+        return np.median(L[lo]), np.median(L[(E >= np.percentile(E, 25)) & (E < np.percentile(E, 45))])
+    fd = {"width": 0.02, "density": 0.5, "reach": 0.002}
+    r0, d0 = front({**base, "fade": {"front": fd}})
+    r1, d1 = front({**base, "fade": {"front": {**fd, "row": 0.015}}})
+    assert d1 > d0 + 0.01, (r0, d0, r1, d1)  # (the front behind the row keeps its 5 cm)
+    assert r1 < d1 - 0.01 and r0 < r1 + 0.005, (r0, r1, d1)  # (the hairline row is still cut short)
+
+
 def test_tuck_passes_behind_the_ear_on_one_side():
     """tuck "left": hair rooted over / in front of the ear on the person's left passes behind the ear at ear height;
     the right side still hangs in front."""
@@ -514,3 +561,301 @@ def test_default_grey_follows_age():
     assert hair.look_of({"base": {"body": {"age": 19}}, "hair": {}})["grey_locks"] == 0.0
     assert hair.look_of({"base": {"body": {"age": 19}}, "hair": {"look": {"grey_locks": 0.7}}})["grey_locks"] == 0.7
     assert hair.look_of({"hair": {}})["grey_locks"] == 1.0
+
+
+def test_fade_taper_shortens_toward_the_line_without_a_bald_band():
+    """fade.taper (Garrett's nape, 2026-10-15): length and lift ramp down over `taper` m above the nape line; every
+    nape root still grows a lock (the cut's 4 mm locks were never grown: a bald band, G52r / G53r); density drops only
+    at the very line."""
+    base = {"length": {"front": 0.05, "top": 0.05, "sides": 0.02, "back": 0.02, "nape": 0.015}, "spacing": 0.008,
+            "messy": 0.0, "uneven": 0.0, "lay": 0.5, "thickness": 0.003, "lift": 0.006}
+
+    def nape(loose):
+        sc, _c, locks = _grow(loose, parting="none")
+        line = hair.hairline(sc, hair._merge(hair.GROOM, {"loose": loose, "parting": {"side": "none"}, "seed": 2}))
+        rows = []
+        for lk in locks.values():
+            P = np.asarray(lk["pts"]) + sc.C
+            a, e, _ = sc.coords(P[:1])
+            if abs(((a[0] + 180) % 360) - 180) > 150 and e[0] < 0:
+                d = float(hair.inside(sc, line, a, e)[0])
+                rows.append((d, np.linalg.norm(np.diff(P, axis=0), axis=1).sum(),
+                             (lk.get("strands") or {}).get("density", 1.0)))
+        return np.asarray(rows)
+    r0 = nape(base)
+    r1 = nape({**base, "fade": {"taper": 0.03, "floor": 0.3, "density": 0.7, "rough": 0.0}})
+    assert len(r1) >= len(r0), (len(r0), len(r1))  # (no roots lost: no bald band)
+    lo, hi = r1[:, 0] < 0.008, r1[:, 0] > 0.03
+    assert lo.any() and hi.any()
+    assert np.median(r1[lo, 1]) < np.median(r1[hi, 1]) - 0.003, (np.median(r1[lo, 1]), np.median(r1[hi, 1]))
+    assert r1[:, 1].min() >= 0.008
+    assert r1[hi, 2].min() > 0.99 and r1[lo, 2].min() >= 0.69, r1[:, 2].min()
+
+
+def test_whorl_thin_shows_the_scalp_at_its_centre():
+    """whorl.thin: lock densities fall toward the whorl's centre (a Gaussian of thin_radius), untouched far away."""
+    loose = {"length": 0.04, "spacing": 0.008, "messy": 0.0, "uneven": 0.0,
+             "whorl": {"at": [180.0, 60.0], "radius": 0.04, "thin": 0.6, "thin_radius": 0.012}}
+    sc, _c, locks = _grow(loose, parting="none")
+    W = sc.point(np.array([180.0]), np.array([60.0]), 0.0)[0]
+    near, far = [], []
+    for lk in locks.values():
+        d = np.linalg.norm(np.asarray(lk["pts"])[0] + sc.C - W)
+        de = (lk.get("strands") or {}).get("density", 1.0)
+        (near if d < 0.008 else far if d > 0.05 else []).append(de)
+    assert near and far and max(near) < 0.75 and min(far) > 0.99, (near, min(far))
+
+
+def test_region_blend_widens_the_transitions():
+    """groom.loose.blend: the region weights' transitions widen about the same middles; 1 = the old weights."""
+    el = np.linspace(-30, 80, 111)
+    az = np.full_like(el, 90.0)
+    d = np.full_like(el, 0.06)
+    w1, w2 = hair.weights(az, el, d), hair.weights(az, el, d, 2.0)
+    top1, top2 = w1[:, 1], w2[:, 1]
+    assert np.allclose(top1[el <= 22], 0) and np.allclose(top1[el >= 42], 1)
+    i = np.argmin(np.abs(el - 32))
+    assert abs(top1[i] - top2[i]) < 0.02  # (same middle)
+    assert top2[el == 22][0] > 0.05 and top2[el == 42][0] < 0.95  # (wider)
+
+
+def _heights(sc, locks, top=True):
+    """Per lock: (root elevation, heights over the scalp along it) for locks rooted on the top of the head."""
+    out = []
+    for lk in locks.values():
+        P = np.asarray(lk["pts"], float) + sc.C
+        a, e, h = sc.coords(P)
+        if not top or e[0] > 40:
+            out.append((e[0], h))
+    return out
+
+
+def test_lift_profile_lies_down_along_the_lock():
+    """lift_ramp / lift_fall / body_along (Garrett: each crop lock reached its lift within 3 cm and stood up as a
+    bristle). The defaults grow the same locks as before; a long ramp climbs less over the first 3 cm; body_along
+    builds the top's height from layers: locks rooted higher lie higher, and lift_fall gives the root lift back."""
+    crop = {"length": 0.06, "spacing": 0.02, "lay": 0.75, "lift": 0.012, "stiff": 0.4, "messy": 0.0}
+    _, _, a = _grow(crop)
+    _, _, b = _grow({**crop, "lift_ramp": 0.03, "lift_fall": 0.0, "body_along": 0.0})
+    assert all(np.allclose(a[k]["pts"], b[k]["pts"]) for k in a)
+    sc, _, slow = _grow({**crop, "lift_ramp": 0.06})
+    def early(locks):  # mean height 3 cm along the lock
+        hs_ = []
+        for _, h in _heights(sc, locks):
+            hs_.append(h[min(len(h) - 1, int(round(0.03 / 0.06 * (len(h) - 1))))])
+        return float(np.mean(hs_))
+    assert early(slow) < early(a) - 0.002, (early(slow), early(a))
+    _, _, fall = _grow({**crop, "lift_fall": 0.8, "body": 0.0})
+    tip_a = np.mean([h[-1] for _, h in _heights(sc, a)])
+    tip_f = np.mean([h[-1] for _, h in _heights(sc, fall)])
+    assert tip_f < tip_a - 0.003, (tip_f, tip_a)
+    _, _, lay = _grow({**crop, "lift": 0.004, "body": 0.02, "body_along": 1.0})
+    eh = np.array([(e0, h[-1]) for e0, h in _heights(sc, lay, top=False)])
+    hi, lo = eh[eh[:, 0] > np.percentile(eh[:, 0], 70), 1], eh[eh[:, 0] < np.percentile(eh[:, 0], 30), 1]
+    assert hi.mean() > lo.mean() + 0.003, (hi.mean(), lo.mean())
+
+
+def _bend_profile(sc, lk, rise, arc, r0=0.095):
+    """One lock's measured profile: height off the ball at arc length `rise`, the angle between its rising chord and
+    the chord after the bend, and that after-chord's elevation off the scalp's tangent plane (deg, + = outward)."""
+    P = np.asarray(lk["pts"]) + sc.C
+    s = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(P, axis=0), axis=1))]
+    at = lambda x: np.array([np.interp(x, s, P[:, c]) for c in range(3)])  # noqa: E731
+    h = np.linalg.norm(at(rise) - sc.C) - r0
+    a = at(rise - 0.001) - at(0.001)
+    b = at(min(rise + arc + 0.009, s[-1])) - at(rise + arc + 0.001)
+    a, b = a / np.linalg.norm(a), b / np.linalg.norm(b)
+    ang = np.degrees(np.arccos(np.clip(a @ b, -1, 1)))
+    rn = at(rise + arc + 0.005) - sc.C
+    elev = np.degrees(np.arcsin(np.clip(b @ (rn / np.linalg.norm(rn)), -1, 1)))
+    return h, ang, elev
+
+
+def test_bend_rises_then_lies_over():
+    """groom.loose.bend (Garrett's forelock): a front lock rises `rise` m, bends by `angle` and lies over (lay 1: flat on
+    its own height). Measured on the locks: height at the bend, bend angle, after-bend elevation; regions without a rise
+    are untouched, and the height does not come with lying the lock outward."""
+    base = {"length": {"front": 0.045, "top": 0.04, "sides": 0.02, "back": 0.02, "nape": 0.015}, "spacing": 0.008,
+            "messy": 0.0, "uneven": 0.0, "lay": 0.5, "stiff": 0.6, "lift": 0.002, "body": 0.0, "thickness": 0.003,
+            "flow": {"front": [1.0, -0.3, 0.0]}}
+
+    def front(locks, npt=6):
+        out = []
+        for lk in locks.values():
+            P = np.asarray(lk["pts"]) + sc.C
+            a, e, _ = sc.coords(P[:1])
+            if abs(((a[0] + 180) % 360) - 180) < 20 and len(P) > npt:
+                out.append(lk)
+        return out
+    sc, _c, plain = _grow(base, parting="none")
+    # (90 deg laid flat; 60 deg with no lay and no gravity: lay 1 would press a 60 deg lie down onto its height too)
+    for ang, lay_, stiff_ in ((90.0, 1.0, 0.6), (60.0, 0.0, 1.0)):
+        bend = {"rise": {"front": 0.012}, "angle": ang, "lay": lay_, "up": 1.0, "arc": 0.004}
+        sc, _c, bent = _grow({**base, "stiff": stiff_, "bend": bend}, parting="none")
+        fr = front(bent)
+        assert len(fr) >= 5, len(fr)
+        H, A, E = np.array([_bend_profile(sc, lk, 0.012, 0.004) for lk in fr]).T
+        assert abs(np.median(H) - 0.012) < 0.0025, (ang, np.median(H))
+        assert abs(np.median(A) - ang) < 12, (ang, np.median(A))
+        if ang == 90.0:
+            assert abs(np.median(E)) < 15, np.median(E)  # (lies over: along its height, not out or down)
+    sc, _c, bent = _grow({**base, "bend": {"rise": {"front": 0.012}, "lay": 1.0, "up": 1.0}}, parting="none")
+    # the back is not touched (its rise is 0): its locks are the plain build's
+    back = {n: lk for n, lk in plain.items() if np.asarray(lk["pts"])[0][1] > 0.06}
+    assert back and all(bent.get(n) == lk for n, lk in back.items())
+    # without a bend the front lock at this length lies at a much lower height near its root
+    hp = np.median([_bend_profile(sc, lk, 0.012, 0.004)[0] for lk in front(plain, 0)])
+    assert hp < 0.006, hp
+
+
+def test_bend_from_keeps_the_hairline_row_down():
+    """bend.from: the rise comes in behind the hairline; the hairline row's locks stay low (Garrett G73: a rising row
+    read as bristles from the front)."""
+    base = {"length": {"front": 0.045, "top": 0.04, "sides": 0.02, "back": 0.02, "nape": 0.015}, "spacing": 0.008,
+            "messy": 0.0, "uneven": 0.0, "lay": 0.5, "stiff": 0.6, "lift": 0.002, "body": 0.0, "thickness": 0.003,
+            "flow": {"front": [1.0, -0.3, 0.0]}}
+    bend = {"rise": {"front": 0.012}, "lay": 1.0, "up": 1.0}
+
+    def rows(loose):
+        sc, _c, locks = _grow(loose, parting="none")
+        line = hair.hairline(sc, hair._merge(hair.GROOM, {"loose": loose, "parting": {"side": "none"}, "seed": 2}))
+        out = []
+        for lk in locks.values():
+            P = np.asarray(lk["pts"]) + sc.C
+            a, e, _ = sc.coords(P[:1])
+            if abs(((a[0] + 180) % 360) - 180) < 20:
+                d = float(hair.inside(sc, line, a, e)[0])
+                out.append((d, np.linalg.norm(P - sc.C, axis=1).max() - 0.095))
+        return np.array(out)
+    r0, r1 = rows({**base, "bend": bend}), rows({**base, "bend": {**bend, "from": 0.02}})
+    row0, row1 = r0[r0[:, 0] < 0.01, 1], r1[r1[:, 0] < 0.01, 1]
+    back1 = r1[(r1[:, 0] > 0.015) & (r1[:, 0] < 0.03), 1]  # (deeper, the front region gives way to the top: no rise)
+    assert len(row1) >= 3 and np.median(row1) < np.median(row0) - 0.004, (np.median(row0), np.median(row1))
+    assert np.median(back1) > np.median(row1) + 0.003, (np.median(back1), np.median(row1))  # (behind the ramp: risen)
+
+
+def test_bend_from_gates_the_bend():
+    """bend.from: roots under BEND_GATE of the ramp get NO bend (G76: a short rise bent by the full angle hooked): the
+    hairline row is the same lock as without any bend."""
+    from hifipushie import hair_loose as hl
+    base = {"length": {"front": 0.045, "top": 0.04, "sides": 0.02, "back": 0.02, "nape": 0.015}, "spacing": 0.008,
+            "messy": 0.0, "uneven": 0.0, "lay": 0.5, "stiff": 0.6, "lift": 0.002, "body": 0.0, "thickness": 0.003,
+            "flow": {"front": [1.0, -0.3, 0.0]}}
+    fr = 0.02
+
+    def locks(loose):
+        sc, _c, lk = _grow(loose, parting="none")
+        line = hair.hairline(sc, hair._merge(hair.GROOM, {"loose": loose, "parting": {"side": "none"}, "seed": 2}))
+        out = {}
+        for k, v in lk.items():
+            P = np.asarray(v["pts"]) + sc.C
+            a, e, _ = sc.coords(P[:1])
+            out[k] = (float(hair.inside(sc, line, a, e)[0]), P)
+        return out
+    l0 = locks(base)
+    l1 = locks({**base, "bend": {"rise": {"front": 0.012}, "lay": 1.0, "up": 1.0, "from": fr}})
+    x = np.linspace(0, 1, 201)
+    x_gate = x[np.argmax(x * x * (3 - 2 * x) >= hl.BEND_GATE)] * fr  # the ramp's depth at the gate
+    row = [k for k, (d, _) in l1.items() if d < 0.8 * x_gate and k in l0]
+    assert len(row) >= 3
+    for k in row:
+        P0, P1 = l0[k][1], l1[k][1]
+        assert P0.shape == P1.shape and np.allclose(P0, P1, atol=1e-6), k
+
+
+def test_bend_toward_sets_the_lie():
+    """bend.toward: after the bend the lock lies toward a world direction (over to his left), not down its comb."""
+    base = {"length": {"front": 0.045, "top": 0.04, "sides": 0.02, "back": 0.02, "nape": 0.015}, "spacing": 0.008,
+            "messy": 0.0, "uneven": 0.0, "lay": 0.5, "stiff": 0.9, "lift": 0.002, "body": 0.0, "thickness": 0.003,
+            "flow": {"front": [0.0, -0.3, -1.0]}}
+    sc, _c, locks = _grow({**base, "bend": {"rise": {"front": 0.012}, "lay": 1.0, "up": 1.0, "toward": {"front": [1.0, 0.0, 0.0]}}},
+                          parting="none")
+    xs = []
+    for lk in locks.values():
+        P = np.asarray(lk["pts"]) + sc.C
+        a, e, _ = sc.coords(P[:1])
+        if abs(((a[0] + 180) % 360) - 180) < 15 and len(P) > 6:
+            s_ = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(P, axis=0), axis=1))]
+            q0, q1 = (np.array([np.interp(x, s_, P[:, c]) for c in range(3)]) for x in (0.018, min(0.028, s_[-1])))
+            xs.append(_unit3(q1 - q0))
+    xs = np.array(xs)
+    assert len(xs) >= 5 and np.median(xs[:, 0]) > 0.7, np.median(xs, 0)  # (lies to +x, not down the forehead)
+
+
+def _unit3(v):
+    return v / np.linalg.norm(v)
+
+
+def test_trace_holds_locks_at_the_traced_height():
+    """loose.trace: locks rooted in its regions are held at the traced stand-off where they pass over the samples
+    (a front traced at 12 mm stands off ~12 mm there, far over the untraced lock); no samples = the plain groom."""
+    base = {"length": {"front": 0.04, "top": 0.04, "sides": 0.02, "back": 0.02, "nape": 0.015}, "spacing": 0.008,
+            "messy": 0.0, "uneven": 0.0, "lay": 0.5, "stiff": 0.6, "lift": 0.002, "body": 0.0, "thickness": 0.003}
+    samples = [[float(a), float(e), 0.012] for a in range(-30, 31, 5) for e in range(30, 61, 5)]
+    tr = {"samples": samples, "regions": {"front": 1.0, "top": 1.0}, "sigma": 8, "under": 1.0, "rise": 0.01}
+
+    def heights(loose):
+        sc, _c, lk = _grow(loose, parting="none")
+        hs = []
+        for v in lk.values():
+            P = np.asarray(v["pts"]) + sc.C
+            a, e, h = sc.coords(P)
+            fa = np.abs(((a + 180) % 360) - 180)
+            k = (fa < 20) & (e > 38) & (e < 52)
+            s = np.r_[0, np.cumsum(np.linalg.norm(np.diff(P, axis=0), axis=1))]
+            k &= s > 0.015
+            hs += list(h[k])
+        return np.median(hs) if hs else np.nan
+    h0, h1 = heights(base), heights({**base, "trace": tr})
+    assert h0 < 0.007, h0
+    assert 0.009 < h1 < 0.0135, h1
+    assert np.isclose(heights({**base, "trace": {**tr, "samples": []}}), h0)
+
+
+def test_trace_forward_leans_the_front_hold_over_the_hairline():
+    """loose.trace.forward: front locks reach the traced height moving forward (their points further toward -Y than
+    the radial hold's), still held off the scalp; 0 = the radial hold."""
+    base = {"length": {"front": 0.04, "top": 0.04, "sides": 0.02, "back": 0.02, "nape": 0.015}, "spacing": 0.008,
+            "messy": 0.0, "uneven": 0.0, "lay": 0.5, "stiff": 0.6, "lift": 0.002, "body": 0.0, "thickness": 0.003}
+    samples = [[float(a), float(e), 0.012] for a in range(-30, 31, 5) for e in range(20, 61, 5)]
+    tr = {"samples": samples, "regions": {"front": 1.0, "top": 1.0}, "sigma": 8, "under": 1.0, "rise": 0.01}
+
+    def front(loose):
+        sc, _c, lk = _grow(loose, parting="none")
+        ys, hs = [], []
+        for v in lk.values():
+            P = np.asarray(v["pts"]) + sc.C
+            a, e, h = sc.coords(P[:1])
+            if abs(((a[0] + 180) % 360) - 180) < 20 and e[0] < 45:
+                ys.append(P[-1, 1] - P[0, 1])
+                hs.append(sc.coords(P[-1:])[2][0])
+        return np.mean(ys), np.median(hs)
+    y0, h0 = front({**base, "trace": tr})
+    y1, h1 = front({**base, "trace": {**tr, "forward": 1.0}})
+    assert y1 < y0 - 0.002, (y0, y1)
+    assert h1 > 0.006, h1
+    assert front({**base, "trace": {**tr, "forward": 0.0}})[0] == y0
+
+
+def test_trace_forward_per_side_sweeps_across():
+    """loose.trace.forward {"left": .., "right": [x, y, z]}: front locks rooted on his RIGHT (az < 0) lean toward the
+    given world direction (here across to his left, +x: their tips move +x more than the plain forward hold's),
+    his LEFT side keeps the number (identical to the plain hold there)."""
+    base = {"length": {"front": 0.04, "top": 0.04, "sides": 0.02, "back": 0.02, "nape": 0.015}, "spacing": 0.008,
+            "messy": 0.0, "uneven": 0.0, "lay": 0.5, "stiff": 0.6, "lift": 0.002, "body": 0.0, "thickness": 0.003}
+    samples = [[float(a), float(e), 0.012] for a in range(-30, 31, 5) for e in range(20, 61, 5)]
+    tr = {"samples": samples, "regions": {"front": 1.0, "top": 1.0}, "sigma": 8, "under": 1.0, "rise": 0.01}
+
+    def side(loose, lo, hi):
+        sc, _c, lk = _grow(loose, parting="none")
+        xs = []
+        for v in lk.values():
+            P = np.asarray(v["pts"]) + sc.C
+            a = ((sc.coords(P[:1])[0][0] + 180) % 360) - 180
+            if lo < a < hi and sc.coords(P[:1])[1][0] < 45:
+                xs.append(P[-1, 0] - P[0, 0])
+        return np.mean(xs)
+    plain = {**base, "trace": {**tr, "forward": 1.0}}
+    sided = {**base, "trace": {**tr, "forward": {"left": 1.0, "right": [1.0, -0.3, 0.0]}}}
+    assert side(sided, -30, -12) > side(plain, -30, -12) + 0.002
+    assert abs(side(sided, 12, 30) - side(plain, 12, 30)) < 1e-9
