@@ -495,7 +495,7 @@ def stubble_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dic
         return str(path), sp["img"], json.loads(stats_f.read_text())
     rng = np.random.default_rng(900 + int(o.get("seed", 0)))
     dens = beard_density(J, o, curvature_at(spec, part, J))
-    P, Nrm, d = scatter(V, N, F, dens, HAIRS_PER_M2, rng)
+    P, Nrm, d = scatter(V, N, F, dens, HAIRS_PER_M2 * float(o.get("count", 1.0)), rng)   # (count: more hairs, not a darker shadow)
     keep = outward(sp, P, Nrm, V)   # (no hairs on skin facing in: the mouth's inside, a lip's inner roll)
     P, Nrm, d = P[keep], Nrm[keep], d[keep]
     n = len(P)

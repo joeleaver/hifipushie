@@ -232,7 +232,7 @@ def test_features_and_shader_budget(tmp=None):
                          "skin:flush", "skin:tan"):
                 assert want in pre, want
             # what a renderer's shader must hold stays small, and none of it is procedural noise: swatches, images, spots
-            assert sum(1 for v in fine.values() if v.get("part", "body") == "body") <= 43, len(fine)   # (37: skin3 moved the stubble shadow per pixel; 41: skin4's face base map, 4 layers; 43: projskin's face microrelief cells + cells_fine. Cycles rendered the projskin heads (a stack + these) once the blemishes under a stack lost their height; the full spec here not rendered)
+            assert sum(1 for v in fine.values() if v.get("part", "body") == "body") <= 44, len(fine)   # (44: lips.under_shade on by default, the commissures drawn in it; 37: skin3 moved the stubble shadow per pixel; 41: skin4's face base map, 4 layers; 43: projskin's face microrelief cells + cells_fine. Cycles rendered the projskin heads (a stack + these) once the blemishes under a stack lost their height; the full spec here not rendered)
             for k, v in fine.items():
                 found = set()
                 _gens({kk: vv for kk, vv in v.items() if kk == "mask"}, found)
@@ -405,6 +405,145 @@ def test_makeup_looks():
         assert "skin:" + k in eve, k
     liner = json.dumps(eve["skin:makeup_eyeliner"]["mask"])
     assert '"near": ["eye.L"' in liner and liner.count('"spot"') >= 2   # the lash zone (near the eyeballs) + a wing per side
+
+
+def test_lip_rim_lower():
+    """skin.lips.rim_lower (mouth_eye_bias): the pale vermilion rim drawn under the LOWER lip at this share. Photos show a
+    lower lip as a lit pad over its own shadow; a pale ring there made our lower lips read darker than the skin under
+    them on every head (docs/notes/mouth_eye_bias.md)."""
+    from hifipushie.surface import Points
+    J = {k: np.asarray(v, float) for k, v in LM.items()}
+    above = J["lm_lip_upper"] + [0, 0, 0.0006]
+    below = J["lm_lip_lower"] - [0, 0, 0.0006]
+    inside = 0.5 * (J["lm_lip_upper"] + J["lm_lip_seam"])
+    got = {}
+    for rl in (0.0, 0.5, 1.0):
+        spec = head_spec(tone={"fitzpatrick": 2}, age=30, lips={"rim_lower": rl})
+        L = paint.layers(spec)
+        P = Points(spec, np.array([above, below, inside]), np.tile([0, -1.0, 0], (3, 1)), np.zeros(3, int), ["body"], 0.002)
+        got[rl] = paint.layer_mask(spec, "skin:lip_border", L["skin:lip_border"], paint._View(P, np.arange(3)))
+    for rl, m in got.items():
+        assert m[0] > 0.2 and m[2] < 0.05, (rl, m)     # the rim over the upper lip stays; nothing inside the red
+    assert got[0.0][1] < 0.05 < got[0.5][1] < got[1.0][1], {k: v.round(3).tolist() for k, v in got.items()}
+    try:
+        paint.layers(head_spec(lips={"rim_low": 0}))
+        raise AssertionError("an unknown lips key must fail")
+    except SpecError:
+        pass
+
+
+def test_lip_under_shade():
+    """skin.lips.under_shade (mouth_eye_bias): a warm multiply band on the skin just under the lower lip, deepest under
+    the middle, never on the red; off at 0."""
+    from hifipushie.surface import Points
+    J = {k: np.asarray(v, float) for k, v in LM.items()}
+    mid = J["lm_lip_lower"] - [0, 0, 0.0018]
+    side = J["lm_lip_lower_side.L"] - [0, 0, 0.0012]
+    red = 0.5 * (J["lm_lip_lower"] + J["lm_lip_seam"])
+    spec = head_spec(tone={"fitzpatrick": 2}, age=30, lips={"under_shade": 1.0})
+    L = paint.layers(spec)
+    ly = L["skin:lip_under_shade"]
+    assert ly["mix"] == "multiply" and 0 < ly["opacity"] <= 1
+    P = Points(spec, np.array([mid, side, red]), np.tile([0, -1.0, 0], (3, 1)), np.zeros(3, int), ["body"], 0.002)
+    m = paint.layer_mask(spec, "skin:lip_under_shade", ly, paint._View(P, np.arange(3)))
+    assert m[0] > 0.1 and m[0] > 2 * m[1] and m[2] < 0.05, m
+    assert "skin:lip_under_shade" not in paint.layers(head_spec(tone={"fitzpatrick": 2}, age=30, lips={"under_shade": 0}))
+
+def test_lid_shade_zone():
+    """skin.zones.lid_shade: off by default; asked for, a neutral-cool multiply on the eyelid zone (the photographed lid is
+    darker AND a little less red / yellow than the cheek: melanin or the blood-red eyelids zone would warm it)"""
+    spec = head_spec(tone={"fitzpatrick": 2}, age=45)
+    assert "skin:lid_shade" not in paint.layers(spec)
+    spec["skin"]["zones"] = {"lid_shade": 1.0}
+    ly = paint.layers(spec)["skin:lid_shade"]
+    col = np.asarray(ly["color"], float)
+    assert ly.get("mix") == "multiply" and col.max() < 0.8 and col[2] >= col[0] - 1e-9, "darker, neutral to cool"
+    assert "eyelid" in str(ly["mask"]) or "spot" in str(ly["mask"])
+    spec["skin"]["zones"] = {"lid_shade": 1.6}
+    assert paint.layers(spec)["skin:lid_shade"]["opacity"] > ly["opacity"]
+
+
+
+
+def test_zone_colors_override():
+    """skin.zone_colors.<layer>: the zone's own colour replaced (the cool lid_shade turned Garrett's and B's sockets grey-lilac,
+    r7 2026-10-16: eye sock - cheek b* -5.6 vs photo -0.1); unknown layers and bad colours refuse."""
+    spec = head_spec(tone={"fitzpatrick": 2}, age=45, zones={"lid_shade": 1.0}, zone_colors={"lid_shade": [0.8, 0.71, 0.64]})
+    ly = paint.layers(spec)["skin:lid_shade"]
+    assert ly["color"] == [0.8, 0.71, 0.64] and ly["mix"] == "multiply"
+    for bad in ({"nope": [0.5, 0.5, 0.5]}, {"lid_shade": [0.5, 0.5]}, {"lid_shade": [1.5, 0.5, 0.5]}):
+        try:
+            paint.layers(head_spec(tone={"fitzpatrick": 2}, zone_colors=bad))
+        except Exception as e:
+            assert "zone_colors" in str(e)
+        else:
+            raise AssertionError(bad)
+
+
+def test_lips_over_stack():
+    """lips.over_stack: the lips' own colour laid after a stack, not "_pre" (under a stack, stack_base covered it: Tess's
+    lips.melanin 12 moved nothing, 2026-10-16); off by default"""
+    st = {"box": [0.56, 0.65, 1.0, 0.99], "base": [0.86, 0.76, 0.66], "coverage": "c" * 16,
+          "layers": [{"name": "pigment", "image": "a" * 16, "opacity": 0.8}]}
+    L = skin.layers(head_spec(tone={"fitzpatrick": 2}, stack=st))
+    assert L["skin:lips_upper"].get("_pre")
+    L = skin.layers(head_spec(tone={"fitzpatrick": 2}, stack=st, lips={"over_stack": True}))
+    ks = list(L); top = max(i for i, k in enumerate(ks) if k.startswith("skin:stack_"))
+    for nm in ("skin:lips_upper", "skin:lips_lower"):
+        assert not L[nm].get("_pre") and ks.index(nm) > top, nm
+
+
+def test_lid_shade_survives_a_stack():
+    """A measured stack drops our colour zones (they painted over its base), but lid_shade (off unless asked, the lid's
+    measured lever) stays: dropping it made every stacked head's lid_shade a silent no-op (r5, 2026-10-16)."""
+    st = {"box": [0.56, 0.65, 1.0, 0.99], "base": [0.86, 0.76, 0.66], "coverage": "c" * 16,
+          "layers": [{"name": "pigment", "image": "a" * 16, "opacity": 0.8}]}
+    L = skin.layers(head_spec(tone={"fitzpatrick": 2}, stack=st, zones={"lid_shade": 0.6, "under_eye": 1.2}))
+    assert "skin:lid_shade" in L and "skin:stack_pigment" in L
+    assert "skin:under_eye" not in L and "skin:midface_red" not in L
+    ks = list(L)   # ... and lies OVER the stack (laid first, stack_base's normal mix at opacity 1 covered it: r6 moved nothing)
+    assert ks.index("skin:lid_shade") > max(i for i, k in enumerate(ks) if k.startswith("skin:stack_"))
+
+
+def test_under_eye_shade_survives_a_stack():
+    """skin.zones.under_eye_shade: off by default; asked for, a multiply on the under-eye zone that a stack keeps and lays
+    after itself (the "under_eye" zone is dropped under a stack: nothing moved the under-eye row in r6, 2026-10-16)."""
+    st = {"box": [0.56, 0.65, 1.0, 0.99], "base": [0.86, 0.76, 0.66], "coverage": "c" * 16,
+          "layers": [{"name": "pigment", "image": "a" * 16, "opacity": 0.8}]}
+    assert "skin:under_eye_shade" not in skin.layers(head_spec(tone={"fitzpatrick": 2}, stack=st))
+    L = skin.layers(head_spec(tone={"fitzpatrick": 2}, stack=st, zones={"lid_shade": 0.6, "under_eye_shade": 1.0}))
+    L2 = skin.layers(head_spec(tone={"fitzpatrick": 2}, stack=st, zones={"lid_shade": 0.6, "under_eye_shade": 1.5}))
+    ks = list(L); top = max(i for i, k in enumerate(ks) if k.startswith("skin:stack_"))
+    assert ks.index("skin:under_eye_shade") > top and ks.index("skin:lid_shade") > top
+    assert L["skin:under_eye_shade"]["mix"] == "multiply" and L2["skin:under_eye_shade"]["opacity"] > L["skin:under_eye_shade"]["opacity"]
+    # not "_pre": pre layers are composited into the base under the shader's stack_base, which covers them (2026-10-16)
+    assert not L["skin:under_eye_shade"].get("_pre") and not L["skin:lid_shade"].get("_pre")
+    sp_ = head_spec(tone={"fitzpatrick": 2}, stack=st)
+    sp_["skin"].setdefault("hair", {})["brows"] = {"density": 1.0}
+    assert not skin.layers(sp_)["skin:brow_shadow"].get("_pre")
+    sp_ = head_spec(tone={"fitzpatrick": 2})
+    sp_["skin"].setdefault("hair", {})["brows"] = {"density": 1.0}
+    assert skin.layers(sp_)["skin:brow_shadow"].get("_pre")   # (no stack: unchanged)
+
+
+def test_rough_layers_follow_shading_roughness():
+    """The rough_* layers are offsets from skin.shading.roughness when it is set (they used the oil-derived value and
+    covered the part's own: r6's shading.roughness moved no sheen row, 2026-10-16)."""
+    def tz(**sh):
+        sp_ = head_spec(tone={"fitzpatrick": 2})
+        if sh:
+            sp_["skin"]["shading"] = sh
+        return skin.layers(sp_)["skin:rough_tzone"]["roughness"]
+    assert abs((tz(roughness=0.6) - tz(roughness=0.4)) - 0.2) < 2e-3, (tz(roughness=0.6), tz(roughness=0.4))
+
+
+def test_brows_shadow_scales_the_skin_shadow():
+    """hair.brows.shadow multiplies the skin-level shadow under the hairs (a strong one filled the gaps: "solid sticker")."""
+    def op(sh):
+        sp_ = head_spec(tone={"fitzpatrick": 2})
+        sp_["skin"].setdefault("hair", {})["brows"] = {"density": 1.0, **({"shadow": sh} if sh is not None else {})}
+        return skin.layers(sp_)["skin:brow_shadow"]["opacity"]
+    assert abs(op(0.5) - 0.5 * op(None)) < 2e-3, (op(0.5), op(None))
 
 
 if __name__ == "__main__":

@@ -646,9 +646,9 @@ def _paint_inputs(spec: dict, ctx: dict, objs: list, insts: list, cache: Path, l
         for f in (ffile[o["key"]], mfile[o["key"]]):
             with np.load(f) as z:
                 vals.update({k: z[k] for k in z.files})
-        packs = {}  # a GPU shader reads ~16 vertex attributes: scalars go three to a vector
+        packs = {}  # an EEVEE material reads at most paintnodes.MAX_ATTRS vertex attributes: scalars go four to one
         for attr, (pk, ch) in prog["packing"].get(o["part"], {}).items():
-            packs.setdefault(pk, np.zeros((len(v), 3), np.float32))[:, ch] = vals[attr]
+            packs.setdefault(pk, np.zeros((len(v), paintnodes.PACK), np.float32))[:, ch] = vals[attr]
         vec = {k: vals[k].astype(np.float32) for k in VECTOR_INPUTS if k in vals}  # their own vector attributes
         arrays = {"wpos": v.astype(np.float32), "wnrm": n.astype(np.float32), **packs, **vec}
         if "ao_raw" in rt.get(o["key"], {}):  # a plain attribute: baked into the export's AO map

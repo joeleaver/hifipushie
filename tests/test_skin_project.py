@@ -137,6 +137,71 @@ def test_spec_layers():
     assert skin.params({"skin": {}})["projection"] is None
 
 
+def _cut_case():
+    """The atlas' cut (GNM's back midline, crown to neck) and a smooth function of position painted into the atlas
+    image as its alpha: texels near the cut on both sides, their known values."""
+    from hifipushie import images
+    at = setup()["at"]
+    H, W = at["shape"]
+    X = sp.interp(at, at["V"])
+
+    def f(P):
+        return 0.5 + 0.4 * np.sin(60 * P[:, 2]) * np.cos(40 * P[:, 1])
+    img = np.zeros((H, W))
+    valid = np.zeros((H, W), bool)
+    img[at["ii"], at["jj"]], valid[at["ii"], at["jj"]] = f(X), True
+    pix = np.zeros((H, W, 4), np.float32)
+    pix[..., 3] = sp._bleed(img, valid)
+    path = "/nonexistent/cut_test.png"
+    images._PIX[path] = pix
+    geo = "cut_test"
+    images._UVBASE[geo] = B
+    fr = {"path": path, "wrap": "uv", "geo": geo, "box": at["box"], "channel": "alpha", "flip": False, "mirror": False}
+    sp.lookup(B, X[:1], both=True)
+    ds = sp._LOOK["seam"].query(X)[0]
+    return fr, f, X[ds < 0.006], images
+
+
+def test_cut_continuous():
+    """A uv-wrapped layer is continuous across the atlas' cut: its value at points either side of the back midline is
+    the painted function (one coordinate set faded to 0 there: a light stripe down the back of the neck), and a
+    triangle straddling the cut interpolates the two coordinate sets to the right value."""
+    if not _have():
+        return
+    fr, f, P, images = _cut_case()
+    N = np.tile([0.0, 1.0, 0.0], (len(P), 1))
+    m, _ = images._one(fr, P, N)
+    ua, va, w0 = sp.lookup(B, P)
+    w = sp.lookup(B, P, both=True)[5]
+    ok = w > 0.95                                   # (the neck's fade from the body: not the cut's business)
+    assert ok.sum() > 200, ok.sum()
+    err = np.abs(m - f(P) * w)[ok]
+    assert np.percentile(err, 99) < 0.03 and err.max() < 0.06, (np.percentile(err, 99), err.max())
+    assert w0[ok].min() < 0.05                      # (the single set's fade really was there)
+    # pairs across the cut, as the corners of one triangle: the midpoint of their attributes samples their mean
+    xs = P[:, 0]
+    a, b = np.flatnonzero(ok & (xs > 0.0008) & (xs < 0.003)), np.flatnonzero(ok & (xs < -0.0008) & (xs > -0.003))
+    from scipy.spatial import cKDTree
+    d, j = cKDTree(P[b] * [0, 1, 1]).query(P[a] * [0, 1, 1])
+    a, b = a[d < 0.0015], b[j[d < 0.0015]]
+    assert len(a) > 30, len(a)
+    at = setup()["at"]
+    u0, v0, u1, v1 = at["box"]
+    A = np.stack(sp.lookup(B, P[a], both=True), 1)
+    Bb = np.stack(sp.lookup(B, P[b], both=True), 1)
+    assert (A[:, 4] < 0.5).all() and (Bb[:, 4] > 0.5).all()          # side A is one side of the cut, B the other
+    M = 0.5 * (A + Bb)
+    pix = images.pixels(fr["path"])
+
+    def at_uv(uu, vv):
+        return images.sample(pix, (uu - u0) / (u1 - u0), (vv - v0) / (v1 - v0))[:, 3]
+    val = at_uv(M[:, 0], M[:, 1]) * (1 - M[:, 4]) + at_uv(M[:, 2], M[:, 3]) * M[:, 4]
+    want = 0.5 * (f(P[a]) + f(P[b]))
+    assert np.abs(val - want).max() < 0.05, np.abs(val - want).max()
+    one = at_uv(0.5 * (ua[a] + ua[b]), 0.5 * (va[a] + va[b]))      # one set: the midpoint lands across the atlas
+    assert np.abs(one - want).max() > 0.1
+
+
 if __name__ == "__main__":
     for k, f in list(globals().items()):
         if k.startswith("test_"):

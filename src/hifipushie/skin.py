@@ -21,6 +21,8 @@ spec["skin"] = {
   "thin": 0..1 (0.5),             thin skin shows blood, veins and under-eye colour more, and scatters more
   "sun": 0..1 (0.3),              sun exposure: uneven pigment, freckles' kin, age spots with age
   "zones": {layer: strength},     per-layer strength of the built-in colour zones (see ZONE_LAYERS), 0 turns one off
+  "zone_colors": {layer: [r, g, b]}  a zone layer's own colour replaced (linear 0..1; for the multiply levers lid_shade /
+                                  under_eye_shade: the default is a hair cool, which turned some heads' sockets grey-lilac)
   "lips": {"blood": 1, "melanin": 1, "roughness": 0.36, "dry": 0, "gradient": 1 (darker toward the wet line and the
            corners, a lighter lower-lip body; 0 = one flat colour), "border": 1.5 (mm: the vermilion border's
            softness), "strength": 1 (0.2..2: x how much of the vermilion is the lips' own colour; a man's is 0.65 by default), "lower": {"blood": 1, "melanin": 1} (the lower
@@ -71,7 +73,10 @@ import numpy as np
 
 from .spec import SpecError
 
-VERSION = 10  # 10: stacked faces: pores everywhere the photos show them, cells' colour faint; 9: pores at full strength under a measured stack (projskin); 8: the face microrelief (cells network base, sparser pores; projskin); 4: lash_roots, eye film / occlusion (eyedetail); 5: the face's base map (skin4); 6: lower lip (gnmdetail2); 7: the vermilion's gradient and soft border (skinfolds)
+CORNER_FADE = 0.003  # m: the vermilion's colour fades over the last ~3 mm before each commissure
+UNDER_SHADE = 1.0  # skin.lips.under_shade: the lower lip's own shade on the skin under it (mouth_eye_bias: photos 5-17 L darker there, ours ~4)
+RIM_LOWER = 1.0  # skin.lips.rim_lower: the pale rim's share under the LOWER lip (mouth_eye_bias)
+VERSION = 12  # 12: the visible eye (lash frame past the outer canthus, darker lower line, inner canthus tip, occlusion .5) and lip volume (soft sheen, wet seam, pocketed corners, under_shade 1); 11: cells capped at detail 1, pores tint at most 0.3 (above detail 1 they printed as stubble dots); 10: stacked faces: pores everywhere the photos show them, cells' colour faint; 9: pores at full strength under a measured stack (projskin); 8: the face microrelief (cells network base, sparser pores; projskin); 4: lash_roots, eye film / occlusion (eyedetail); 5: the face's base map (skin4); 6: lower lip (gnmdetail2); 7: the vermilion's gradient and soft border (skinfolds)
 LOWER_LIP = {"melanin": 0.72, "blood": 3.8, "epidermis": 0.0, "oxygenation": 0.66}  # x the lips' melanin / blood (see _build)
 # the face's base map layers (skin_marks.base_map): opacities of blood up, blood or melanin down, melanin up; relief depth (m).
 # x sqrt(variation) / sqrt(detail): tuned on Tess (variation .6, detail .45); linear, Garrett's 1.3 / 1.8 read as sandpaper
@@ -487,7 +492,7 @@ def expand_zones(spec: dict, ly: dict, what: str = "paint") -> dict:
 
 KEYS = {"part", "tone", "age", "variation", "detail", "oil", "thin", "sun", "zones", "lips", "features", "wrinkles",
         "hair", "scars", "tattoos", "makeup", "shading", "nails", "seed", "eyes", "sex", "only", "folds", "fold_relief", "fold_expressions",
-        "projection", "stack"}
+        "projection", "stack", "zone_colors"}
 GROUPS = ("shading", "zones", "lips", "roughness", "micro", "features", "eyes", "eye_rims")
 
 
@@ -508,7 +513,7 @@ def group_of(layer: str) -> str:
         return "zones"
     return "features"
 ZONE_LAYERS = {"forehead_yellow": 1.0, "midface_red": 1.0, "nose_red": 1.0, "perioral_red": 1.0, "ears_red": 1.0, "lower_cool": 1.0,
-               "under_eye": 1.0, "eyelids": 1.0, "periorbital": 0.0, "neck": 1.0, "palms": 1.0, "soles": 1.0, "knuckles": 1.0,
+               "under_eye": 1.0, "eyelids": 1.0, "periorbital": 0.0, "lid_shade": 0.0, "under_eye_shade": 0.0, "neck": 1.0, "palms": 1.0, "soles": 1.0, "knuckles": 1.0,
                "elbows_knees": 1.0, "fingertips": 1.0, "nails": 1.0}
 
 
@@ -544,15 +549,30 @@ def params(spec: dict) -> dict:
     if bad:
         raise SpecError(f"skin zones: unknown {sorted(bad)} (have {', '.join(ZONE_LAYERS)})")
     p["zones"] = {**ZONE_LAYERS, **{k: float(v) for k, v in z.items()}}
+    zc = sk.get("zone_colors") or {}
+    bad = set(zc) - set(ZONE_LAYERS)
+    if bad:
+        raise SpecError(f"skin zone_colors: unknown {sorted(bad)} (have {', '.join(ZONE_LAYERS)})")
+    for k, v in zc.items():
+        if not (isinstance(v, (list, tuple)) and len(v) == 3 and all(0 <= float(c) <= 1 for c in v)):
+            raise SpecError(f"skin zone_colors.{k} is [r, g, b], each 0..1")
+    p["zone_colors"] = {k: [float(c) for c in v] for k, v in zc.items()}
     lips = sk.get("lips") or {}
-    bad = set(lips) - {"blood", "melanin", "roughness", "dry", "lower", "gradient", "border", "strength"}
+    bad = set(lips) - {"blood", "melanin", "roughness", "dry", "lower", "gradient", "border", "strength", "rim_lower", "under_shade", "over_stack", "sheen", "specular"}
     low = lips.get("lower") or {}
     if bad or not isinstance(low, dict) or set(low) - {"blood", "melanin"}:
         raise SpecError(f"skin lips: unknown keys {sorted(bad)} (have blood, melanin, roughness, dry, gradient, border, strength, lower: {{blood, melanin}})")
     p["lips"] = {"blood": float(lips.get("blood", 1.0)), "melanin": float(lips.get("melanin", 1.0)),
                  "roughness": float(lips.get("roughness", 0.36)), "dry": float(lips.get("dry", 0.0)),
+                 # sheen: the lower lip's pad roughness (default lips.roughness - .1, never below .24: the pad paints over the
+                 # lower lip's own roughness, so lips.roughness under .34 never reached the highlight; r10 2026-10-18);
+                 # specular: the pad's and the lower lip's specular level (None: the skin's)
+                 "sheen": (float(lips["sheen"]) if lips.get("sheen") is not None else None),
+                 "specular": (float(lips["specular"]) if lips.get("specular") is not None else None),
                  "strength": float(np.clip(lips.get("strength", 1.0), 0.2, 2.0)),
                  "gradient": float(np.clip(lips.get("gradient", 1.0), 0, 2.5)), "border": float(np.clip(lips.get("border", 1.5), 0.3, 4.0)),
+                 "rim_lower": float(np.clip(lips.get("rim_lower", RIM_LOWER), 0.0, 1.0)),
+                 "under_shade": float(np.clip(lips.get("under_shade", UNDER_SHADE), 0.0, 2.0)),
                  "lower": {"blood": float(low.get("blood", 1.0)), "melanin": float(low.get("melanin", 1.0))}}
     sh = sk.get("shading") or {}
     bad = set(sh) - {"subsurface", "radius", "scale", "specular", "roughness", "coat", "coat_roughness", "sheen", "thickness"}
@@ -615,6 +635,10 @@ def part_base(spec: dict) -> tuple[str, dict] | None:
 def _roughness(p: dict) -> float:
     child = 1 - _age_curve(p["age"], 6, 18)
     return float(np.clip(0.49 - 0.05 * (p["oil"] - 0.5) + 0.06 * _age_curve(p["age"], 45, 85) - 0.03 * child, 0.2, 0.9))
+
+
+AFTER_STACK = ("skin:lid_shade", "skin:under_eye_shade")   # zone levers kept over a measured stack, laid after it
+OVER_STACK = ("skin:brow_shadow",)   # feature layers laid after the stack anyway: under one they are shader layers, not pre
 
 
 def _z(*names, grow=1.0) -> list:
@@ -707,6 +731,8 @@ def _build(spec: dict, J: dict) -> dict:
             return
         if "opacity" in ly:
             ly["opacity"] = round(float(np.clip(ly["opacity"] * s, 0, 1)), 4)
+        if name in p["zone_colors"]:
+            ly["color"] = list(p["zone_colors"][name])
         out[f"skin:{name}"] = {"part": part, "_pre": True, **ly}
 
     # 1. colour zones: where blood shows (mid-face, ears, nose, fingertips), where it doesn't (forehead: yellower),
@@ -732,6 +758,17 @@ def _build(spec: dict, J: dict) -> dict:
         # tired eyes, many South Asian and Mediterranean faces)
         add("periorbital", 1.0, color=T(blood=1.5, oxygenation=0.35, melanin=2.2, epidermis=0.85), opacity=0.3,
             mask=_z("eyelid", "under_eye", "eye_corner", grow=1.15))
+        # the upper lid's own darkening (off unless asked: skin.zones.lid_shade), on the eyelid zone alone: a NEUTRAL, a hair
+        # cool multiply. Measured (skincheck "eye lid - cheek", the band 1-3 mm above the margin, r3 gate renders): the
+        # photographed lid is darker than the cheek (Garrett dL -19 / -13, Tess -14 / -9) and a little LESS red and yellow
+        # (da* -0.4 .. -3.8, db* -0.7 .. -4.5); ours -3 / +1 and warmer. So not melanin (it adds b*: L -13 costs b* +7),
+        # not the blood-red "eyelids" zone (read orange), not periorbital (reaches the under-eye: a grey bruise; moved
+        # nothing measurable on garrett_g9). Zone 1 multiplies by ~0.82, 1.66 by 0.7 (dL ~ -14 at L 65)
+        add("lid_shade", 1.0, color=[0.7, 0.7, 0.74], mix="multiply", opacity=0.6, mask=_z("eyelid"))
+        # the under-eye's own darkening (off unless asked: skin.zones.under_eye_shade), the tear trough alone: a slightly violet
+        # multiply. Under a measured stack the "under_eye" zone is dropped with the other zones, so nothing moved the
+        # under-eye / cheek row (ours 1.10-1.27 vs photo 1.05-1.20, lighter; r6 2026-10-16). Kept over a stack like lid_shade.
+        add("under_eye_shade", 1.0, color=[0.74, 0.7, 0.74], mix="multiply", opacity=0.6, mask=_z("under_eye"))
         add("neck", var, color=T(blood=0.85, melanin=0.94), opacity=0.4, mask=_z("neck"))
     if hands:
         add("palms", 1.0, color=T(melanin=0.22 + 0.1 * (1 - dark), blood=1.7), opacity=0.85, mask=_z("palm"))
@@ -790,9 +827,14 @@ def _build(spec: dict, J: dict) -> dict:
         # man's 0.65 by default). THE "STUCK" LIPS: at 0.65 a third of a man's lip is his skin's colour whatever
         # lips.blood / melanin say (blood saturates at 3): Garrett's upper lip stayed 11 L lighter than the painting's
         lop = round(float(np.clip((0.85 - 0.2 * p["masc"]) * lp["strength"], 0.0, 1.0)), 3)
+        # ROUNDED, POCKETED CORNERS (mouth_eye_bias -> skin, 2026-10-15): in photos the red fades out before the
+        # commissure and the corner itself is a small dark rounded pocket; our vermilion ran as a flat fill out to sharp
+        # points (wide, thin, pasted on). The lips' own colour loses ~70 % over the last CORNER_FADE m of each corner
+        _crn = ("verm_u00", f"verm_u{_VN - 1:02d}") if f"verm_u{_VN - 1:02d}" in J else ("lm_mouth_corner.R", "lm_mouth_corner.L")
+        corner_fade = [{"spot": {"at": list(_crn), "radius": CORNER_FADE, "soft": 1.0}, "blend": "subtract", "weight": 0.7}]
         out["skin:lips_upper"] = {"part": part, "_pre": True, "color": T(melanin=lm * 1.15, blood=6.0 * lp["blood"], epidermis=le,
                                                            oxygenation=ox(0.62)), "opacity": lop, "roughness": lp["roughness"] + 0.04,
-                                  "mask": _z("lips", grow=bg)}  # (all the vermilion: the lower layer paints over its own
+                                  "mask": _z("lips", grow=bg) + corner_fade}  # (all the vermilion: the lower layer paints over its own
         # part next. Drawn as lip_upper (border -> the contact ring) it missed ~2/3 of the upper vermilion: seen from the
         # front the contact ring lies ABOVE the lip's own lower front, so the face's pale layers showed there and
         # skin.lips never reached the upper lip; the likeloop agent's "lip colour stuck")
@@ -803,16 +845,43 @@ def _build(spec: dict, J: dict) -> dict:
         out["skin:lips_lower"] = {"part": part, "_pre": True, "color": T(melanin=lm * LOWER_LIP["melanin"] * lp["lower"]["melanin"],
                                                                    blood=LOWER_LIP["blood"] * lp["blood"] * lp["lower"]["blood"],
                                                                    epidermis=le + LOWER_LIP["epidermis"], oxygenation=ox(LOWER_LIP["oxygenation"])),
-                                  "opacity": lop, "roughness": lp["roughness"], "mask": _z("lip_lower", grow=bgl)}
+                                  "opacity": lop, "roughness": lp["roughness"], "mask": _z("lip_lower", grow=bgl) + corner_fade,
+                                  **({"specular": round(lp["specular"], 3)} if lp.get("specular") is not None else {})}
         # the vermilion border: a paler, slightly raised rim where lip meets skin (clearer on light skin)
+        rl = lp.get("rim_lower", RIM_LOWER)
+        rim = ([{"zone": {"name": "lips", "grow": 1.6}}] if rl >= 1.0 else
+               [{"zone": {"name": "lip_upper", "grow": 1.6}}] if rl <= 0.0 else
+               [{"zone": {"name": "lip_upper", "grow": 1.6}}, {"zone": {"name": "lip_lower", "grow": 1.6}, "blend": "max", "weight": rl}])
         out["skin:lip_border"] = {"part": part, "_pre": True, "color": T(melanin=0.7, blood=0.8), "opacity": round(0.22 * (1 - 0.6 * dark), 3),
-                                  "mask": [{"zone": {"name": "lips", "grow": 1.6}},
-                                                              {"zone": {"name": "lips", "grow": 0.4}, "blend": "subtract"}]}
+                                  "mask": rim + [{"zone": {"name": "lips", "grow": 0.4}, "blend": "subtract"}]}
+        # THE SHADE UNDER THE LOWER LIP (lips.under_shade; mouth_eye_bias): in photographs the skin just under the lower
+        # lip is 5-17 L* darker than the skin over the upper lip (the everted pad's own shadow and the sulcus turning
+        # away), deepest under the middle; our heads under the photo's fitted light showed ~4 (no overhang to cast it,
+        # a frontal fill). Without it the lower lip reads as a flat band, thin, running to the corners. A soft warm
+        # multiply band under the border, widest at the middle, never on the red.
+        us = lp.get("under_shade", UNDER_SHADE)
+        if us > 0 and "lm_lip_lower" in J:
+            # the lower lip's outline with a wide soft edge (its outer half falls off over ~2.5 mm under the border), off
+            # the red, and only under the lip's middle (a wide flat ellipse under its centre: the pad's shadow fades
+            # toward the corners)
+            out["skin:lip_under_shade"] = {"part": part, "color": [0.56, 0.45, 0.42], "mix": "multiply",
+                                           "opacity": round(min(1.0 * us, 1.0), 3),
+                                           "mask": [{"zone": {"name": "lip_lower", "grow": 4.0}},
+                                                    {"zone": {"name": "lips", "grow": 0.3}, "blend": "subtract"},
+                                                    {"spot": {"at": [{"at": "lm_lip_lower", "offset": [0.0, 0.0, -0.002]}],
+                                                              "radius": [[0.014, 0.012, 0.006]], "soft": 0.9}}]
+                                           # (+ the commissures' rounded pockets: the same warm shade; one layer, the budget)
+                                           + ([{"spot": {"at": list(_crn), "radius": 0.0022, "soft": 1.0}, "blend": "max",
+                                                "weight": round(min(0.4 * lp["gradient"] / max(us, 1e-6), 1.0), 3)}] if lp["gradient"] > 0 else [])}
         # the lower lip's moist centre: smoother, so it catches a highlight (bare lips read matte and painted without it)
         if "lm_lip_lower" in J and "lm_lip_inner_lower" in J:
-            out["skin:lip_sheen"] = {"part": part, "_pre": True, "roughness": round(max(lp["roughness"] - 0.22, 0.12), 3), "opacity": 0.7,
-                                     "mask": [{"spot": {"at": [{"at": "lm_lip_lower", "offset": [0.0, -0.0005, 0.0025]}],
-                                                        "radius": [[0.011, 0.006, 0.0025]], "soft": 0.9}}, {"zone": {"name": "lip_lower", "grow": 0.6}}]}
+            # (a SOFT sheen on the lower lip's pad, not a gloss: Joe 2026-10-15, the export mouths read as wet plastic;
+            # lips.roughness - 0.22 down to 0.12 was that. The pad's highlight comes broad and dim from the photo light)
+            out["skin:lip_sheen"] = {"part": part, "_pre": True, "opacity": 0.8,
+                                     "roughness": round(lp["sheen"] if lp.get("sheen") is not None else max(lp["roughness"] - 0.1, 0.24), 3),
+                                     **({"specular": round(lp["specular"], 3)} if lp.get("specular") is not None else {}),
+                                     "mask": [{"spot": {"at": [{"at": "lm_lip_lower", "offset": [0.0, -0.0005, 0.0028]}],
+                                                        "radius": [[0.013, 0.007, 0.0032]], "soft": 1.0}}, {"zone": {"name": "lip_lower", "grow": 0.6}}]}
         # (the seam ends at the vermilion's own corners on a GNM head: lm_mouth_corner sits ~6 mm further out on the cheek
         # there, and the line ran on past the mouth as a dark slit; Garrett 2026-10-09)
         cr, cl = ("verm_u00", f"verm_u{_VN - 1:02d}") if f"verm_u{_VN - 1:02d}" in J else ("lm_mouth_corner.R", "lm_mouth_corner.L")
@@ -825,8 +894,11 @@ def _build(spec: dict, J: dict) -> dict:
             out["skin:lip_inner"] = {"part": part, "_pre": True, "color": inner, "opacity": round(min(0.5 * gr, 1.0), 3),
                                      "mask": [{"spot": {"at": seam, "radius": [0.0022, 0.0042, 0.0048, 0.0042, 0.0022], "soft": 1.0, "line": True}},
                                               {"zone": {"name": "lips", "grow": 0.8}}]}
-            out["skin:lip_corners"] = {"part": part, "_pre": True, "color": inner, "opacity": round(min(0.45 * gr, 1.0), 3),
-                                       "mask": [{"spot": {"at": [cr, cl], "radius": 0.0045, "soft": 1.0}}, {"zone": {"name": "lips", "grow": 0.8}}]}
+            # the commissures: a small dark ROUNDED pocket at each corner (multiply, a little inside the corner point
+            # and onto the skin round it), not the vermilion's red carried into a point
+            if not (lp.get("under_shade", UNDER_SHADE) > 0 and "lm_lip_lower" in J):   # (else drawn in skin:lip_under_shade)
+                out["skin:lip_corners"] = {"part": part, "color": [0.6, 0.47, 0.45], "mix": "multiply", "opacity": round(min(0.4 * gr, 0.8), 3),
+                                           "mask": [{"spot": {"at": [cr, cl], "radius": 0.0022, "soft": 1.0}}]}
             if "lm_lip_lower" in J:
                 out["skin:lip_body"] = {"part": part, "_pre": True,
                                         "color": T(melanin=lm * 0.45 * LOWER_LIP["melanin"] * lp["lower"]["melanin"],
@@ -835,16 +907,20 @@ def _build(spec: dict, J: dict) -> dict:
                                         "opacity": round(min(0.4 * gr, 1.0), 3),
                                         "mask": [{"spot": {"at": [{"at": "lm_lip_lower", "offset": [0.0, -0.0005, 0.003]}],
                                                            "radius": [[0.012, 0.006, 0.0032]], "soft": 1.0}}, {"zone": {"name": "lip_lower", "grow": 0.6}}]}
-        out["skin:lip_seam"] = {"part": part, "_pre": True, "color": T(melanin=lm * 1.6, blood=3.2, oxygenation=0.5), "opacity": 0.7,
+        # THE WET SEAM: darker than before and soft, darkest over the middle, thinning to nothing before the corners (a hard
+        # even line running out to points read as drawn; mouth_eye_bias)
+        out["skin:lip_seam"] = {"part": part, "_pre": True, "color": T(melanin=lm * 2.2, blood=3.0, oxygenation=0.42), "opacity": 0.85,
                                 "mask": [{"spot": {"at": [cr, "lm_lip_inner_upper.R", "lm_lip_seam",
                                                           "lm_lip_inner_upper.L", cl],
-                                                   "radius": [0.0008, 0.0016, 0.0018, 0.0016, 0.0008], "soft": 0.8, "line": True}}]}
+                                                   "radius": [0.0002, 0.0017, 0.0021, 0.0017, 0.0002], "soft": 1.0, "line": True}}]}
     if hands:
         add("nails", 1.0, color=T(melanin=0.12, blood=2.4, epidermis=0.4), opacity=0.75, roughness=0.22, specular=0.5,
             mask=_z("nails"))
 
-    # 4. roughness: sebum on the T-zone, drier rougher joints, and it is never even
-    base_r = _roughness(p)
+    # 4. roughness: sebum on the T-zone, drier rougher joints, and it is never even. The layers are offsets from the
+    # part's OWN base: skin.shading.roughness when set (it was ignored here, so the rough_* layers at opacity .6-.85 laid
+    # the oil-derived value over it: Garrett's shading.roughness .42 moved sheen 4.5 -> 4.5, Tess's .55 never showed; r6)
+    base_r = float(p["shading"].get("roughness", _roughness(p)))
     if face:
         out["skin:rough_tzone"] = {"part": part, "_pre": True, "roughness": round(float(np.clip(base_r - 0.07 - 0.12 * (p["oil"] - 0.3), 0.18, 0.9)), 3),
                                    "opacity": 0.8, "mask": _z("forehead", "glabella", "nose_bridge", "nose_tip", "nose_wing") +
@@ -880,9 +956,12 @@ def _build(spec: dict, J: dict) -> dict:
             # base everywhere on the face, finer on the lids and under the eye, deeper with age; the pores are a
             # second, sparser layer on the nose and central cheeks only (they were round pits everywhere, too big)
             age_k = 1.0 + 0.9 * old
-            micro.append(("cells", "lines", 0.0003 * d * age_k, _z("face") + [{"zone": "lips", "blend": "subtract"},
+            # (the cells' depth follows detail only up to 1: deeper, the swatch's tiling read as directional hatching /
+            # "scales" in blind reviews (Garrett detail 2, a private head 1.6); detail above 1 deepens the pores instead)
+            dc = min(d, 1.0)
+            micro.append(("cells", "lines", 0.0003 * dc * age_k, _z("face") + [{"zone": "lips", "blend": "subtract"},
                                                                                 {"mask": _z("eyelid", "under_eye", grow=1.2), "blend": "subtract"}]))
-            micro.append(("cells_fine", "lines_fine", 0.00022 * d * age_k, _z("eyelid", "under_eye", grow=1.2)))
+            micro.append(("cells_fine", "lines_fine", 0.00022 * dc * age_k, _z("eyelid", "under_eye", grow=1.2)))
             # (under a measured stack the pores are the face's visible grain everywhere the photographs show it: forehead,
             # cheeks, nose, chin; a blind review read the stacked face as wax with only the nose and cheeks pored)
             pz = ("nose_tip", "nose_wing", "cheek", "forehead", "chin", "upper_lip", "cheekbone", "temple") if p.get("stack") else ("nose_tip", "nose_wing", "cheek")
@@ -898,7 +977,7 @@ def _build(spec: dict, J: dict) -> dict:
             tile = {"swatch": "lines", "size": round(0.45 * 0.016, 5)} if sw == "lines_fine" else {"swatch": sw}   # (lids: cells ~0.2-0.5 mm)
             stack = [{"tile": tile}] + ([{"mask": mask, "blend": "multiply", "vertex": True}] if mask else []) + copy.deepcopy(no_pores)
             out[f"skin:micro_{name}"] = {"part": part, "_detail": True, "height": -round(depth, 7), "color": [0.7, 0.55, 0.5] if name == "pores" else [0.8, 0.66, 0.62], "mix": "multiply",
-                                         "opacity": round(min(((0.15 if base_map is not None and not p.get("stack") else 0.6 if p.get("stack") else 0.3) if name == "pores" else 0.45 if name == "lip_lines" else (0.03 if p.get("stack") else 0.22) if name.startswith("cells") else 0.3) * d, 1), 3),   # (stacked: the cells' colour read as hatch strokes) "roughness": round(min(base_r + 0.22, 0.95), 3),
+                                         "opacity": round(min(((0.15 if base_map is not None and not p.get("stack") else min(0.6, 0.3 / max(d, 1e-6)) if p.get("stack") else 0.3) if name == "pores" else 0.45 if name == "lip_lines" else (0.03 if p.get("stack") else 0.22) if name.startswith("cells") else 0.3) * d, 1), 3),   # (stacked: the cells' colour read as hatch strokes) "roughness": round(min(base_r + 0.22, 0.95), 3),
                                          "mask": stack}
         if base_map is not None:  # the face's own relief: baked into the export's unique normal map (not a tiling detail)
             out["skin:micro_map"] = {"part": part, "height": -round(BASE_MAP["depth"] * d ** 0.5, 7), "mask": [base_map("r")] + copy.deepcopy(no_pores)}
@@ -907,7 +986,31 @@ def _build(spec: dict, J: dict) -> dict:
     _aperture_keep_out(spec, part, out)
     if p.get("stack") and float(p["stack"].get("base_opacity", 1.0)) > 0:   # (projskin) the colour is the stack of measured maps: our own colour zones and mottle are not laid
         # over it (they painted over the stack's base: a stippled "moustache" above Tess's lip, blotches on her lids)
-        out = {k: v for k, v in out.items() if group_of(k) != "zones" or k.startswith("skin:stack_")}
+        # lid_shade stays: it is off unless asked and is the measured lid lever ("eye lid - cheek"); dropping it here made
+        # every stacked head's lid_shade a silent no-op (r5: Garrett .5 and Tess .58 moved nothing; 2026-10-16)
+        out = {k: v for k, v in out.items() if group_of(k) != "zones" or k.startswith("skin:stack_") or k in AFTER_STACK}
+        # ... and it goes AFTER the stack: laid first (zones come first), stack_base (normal mix, opacity 1) painted over it,
+        # so r6's live lid_shade still moved nothing (upper lid / cheek .92 -> .92 Tess R, .97 -> .97 Garrett; 2026-10-16)
+        for nm in AFTER_STACK:
+            if nm in out:
+                ls = out.pop(nm)
+                ks = list(out)
+                last = max((i for i, k in enumerate(ks) if k.startswith("skin:stack_") or k in AFTER_STACK), default=len(ks) - 1)
+                out = {**{k: out[k] for k in ks[:last + 1]}, nm: ls, **{k: out[k] for k in ks[last + 1:]}}
+        # ... and none of them is "_pre": pre layers are composited per vertex into the base the SHADER starts from, and
+        # stack_base (an image layer, normal mix, opacity 1 over its coverage) paints over that base, so a pre layer under
+        # the stack shows nowhere, whatever its order (lever check 2026-10-16: lid_shade .58 -> 1.2 moved lid - cheek
+        # -6.1 -> -6.2, under_eye_shade 0 -> 1 moved under-eye / cheek 1.09 -> 1.10, brows.shadow 1 -> .35 moved nothing)
+        for nm in (*AFTER_STACK, *OVER_STACK):
+            if nm in out:
+                out[nm].pop("_pre", None)
+        # lips.over_stack (opt-in): the lips' own colour laid OVER the stack (it is "_pre", so under a stack stack_base
+        # covered it: Tess's lips.melanin 12 changed nothing, her upper lip stayed the stack's, 7 L lighter than the photo;
+        # r8 lever check 2026-10-16). Off by default: every stacked head's lips are the measured stack's today.
+        if ((spec.get("skin") or {}).get("lips") or {}).get("over_stack"):
+            for nm in ("skin:lips_upper", "skin:lips_lower"):
+                if nm in out:
+                    ly = out.pop(nm); ly.pop("_pre", None); out[nm] = ly
     if p["only"] is not None:  # only some groups; without the shading nothing can be composited into the part's base
         out = {k: v for k, v in out.items() if group_of(k) in p["only"]}
         if "shading" not in p["only"]:

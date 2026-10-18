@@ -117,11 +117,16 @@ class _Nodes:
             if vector:
                 n = self.node("ShaderNodeAttribute", attribute_type="GEOMETRY", attribute_name=name)
                 self.attrs[key] = n.outputs["Vector"]
+                self.attrs[(name, "node")] = n
             else:
                 if name not in self.packing:
                     raise KeyError(f"measured input {name} isn't packed for this part (showing a pre-composited layer "
                                    f"whose mask has per-vertex entries isn't supported: evaluate it with paint.layer_mask)")
                 pk, ch = self.packing[name]
+                if ch == 3:  # a pack is a FLOAT_COLOR: its fourth scalar is the attribute's alpha
+                    self.attr(pk, True)
+                    self.attrs[key] = self.attrs[(pk, "node")].outputs["Alpha"]
+                    return self.attrs[key]
                 if (pk, "sep") not in self.attrs:
                     sep = self.node("ShaderNodeSeparateXYZ")
                     self._in(sep.inputs[0], self.attr(pk, True))
@@ -442,7 +447,12 @@ class _Nodes:
         """The image file as a datablock: colour (sRGB) or data (Non-Color: masks read the stored values)."""
         name = f"hp:{Path(path).stem}:{'data' if data else 'srgb'}"
         im = bpy.data.images.get(name)
-        if im is None or bpy.path.abspath(im.filepath) != path:
+        # (a saved scene stores the path relative, "//../_images/x.png", and abspath keeps the "..": compared raw, every
+        # call on a re-synced scene loaded a NEW copy, x.001, x.002 ..., each one more texture sampler: gp_h6c_s11x had
+        # 55 images for 26 files after one re-sync and failed "too many fragment shader texture samplers" = magenta)
+        if im is None or os.path.realpath(bpy.path.abspath(im.filepath)) != os.path.realpath(path):
+            if im is not None:
+                print(f"hp image: reloading {name}: stored {im.filepath!r} != {path!r}", flush=True)
             im = bpy.data.images.load(path, check_existing=False)
             im.name = name
             im.colorspace_settings.name = "Non-Color" if data else "sRGB"
@@ -455,8 +465,11 @@ class _Nodes:
         ramp. Returns (mask, linear colour)."""
         wrap = e.get("wrap", "planar")
         nrm = self.vmath("NORMALIZE", self.attr("wnrm", True))
+        cut = None
         if wrap in ("surface", "uv"):  # measured coordinates (geodesic, or the model's atlas); the weight holds depth, facing and reach
-            u, v, wgt = (self.attr(a) for a in uv_attrs)
+            u, v, wgt = (self.attr(a) for a in uv_attrs[:3])
+            if len(uv_attrs) == 6:  # the atlas' second coordinate set across its cut and side B's share (images.project both=True)
+                cut = [self.attr(a) for a in uv_attrs[3:]]
         elif wrap in ("cylinder", "sphere"):  # images.wrap_coords
             q = self.vmath("SUBTRACT", self.attr("wpos", True), fr["o"])
             t = self.vmath("DOT_PRODUCT", q, fr["k"])
@@ -508,37 +521,48 @@ class _Nodes:
             win = self.ramp(s, e["depth"], 0.8 * e["depth"])
             wgt = self.math("MULTIPLY", win, self.ramp(self.vmath("DOT_PRODUCT", nrm, fr["dir"]),
                                                        e["facing"] - 0.15, e["facing"]))
-        uv = self.node("ShaderNodeCombineXYZ")
-        self._in(uv.inputs[0], u)
-        self._in(uv.inputs[1], v)
+        def sample(u, v):
+            uv = self.node("ShaderNodeCombineXYZ")
+            self._in(uv.inputs[0], u)
+            self._in(uv.inputs[1], v)
 
-        def tex(data):
-            n = self.node("ShaderNodeTexImage", interpolation="Cubic" if not data else "Linear", extension="CLIP")
-            n.image = self.image(e["path"], data)
-            self._in(n.inputs["Vector"], uv.outputs[0])
-            return n
-        col = tex(False)
-        ch = e["channel"]
-        inside = self.math("MULTIPLY", self.math("MULTIPLY", self.math("GREATER_THAN", u, 0.0), self.math("LESS_THAN", u, 1.0)),
-                           self.math("MULTIPLY", self.math("GREATER_THAN", v, 0.0), self.math("LESS_THAN", v, 1.0)))
-        if ch == "coverage":
-            val = inside
-        elif ch == "alpha":
-            val = col.outputs["Alpha"]
-        else:
-            data = tex(True)
-            if ch == "luma":
-                sep = self.node("ShaderNodeSeparateColor")
-                self._in(sep.inputs[0], data.outputs["Color"])
-                val = self.math("ADD", self.math("ADD", self.math("MULTIPLY", sep.outputs[0], 0.2126),
-                                                 self.math("MULTIPLY", sep.outputs[1], 0.7152)),
-                                self.math("MULTIPLY", sep.outputs[2], 0.0722))
+            def tex(data):
+                n = self.node("ShaderNodeTexImage", interpolation="Cubic" if not data else "Linear", extension="CLIP")
+                n.image = self.image(e["path"], data)
+                self._in(n.inputs["Vector"], uv.outputs[0])
+                return n
+            col = tex(False)
+            ch = e["channel"]
+            inside = self.math("MULTIPLY", self.math("MULTIPLY", self.math("GREATER_THAN", u, 0.0), self.math("LESS_THAN", u, 1.0)),
+                               self.math("MULTIPLY", self.math("GREATER_THAN", v, 0.0), self.math("LESS_THAN", v, 1.0)))
+            if ch == "coverage":
+                val = inside
+            elif ch == "alpha":
+                val = col.outputs["Alpha"]
             else:
-                sep = self.node("ShaderNodeSeparateColor")
-                self._in(sep.inputs[0], data.outputs["Color"])
-                val = sep.outputs["rgb".index(ch)]
-            val = self.math("MULTIPLY", val, inside)
-        return self.math("MULTIPLY", val, wgt), col.outputs["Color"]
+                data = tex(True)
+                if ch == "luma":
+                    sep = self.node("ShaderNodeSeparateColor")
+                    self._in(sep.inputs[0], data.outputs["Color"])
+                    val = self.math("ADD", self.math("ADD", self.math("MULTIPLY", sep.outputs[0], 0.2126),
+                                                     self.math("MULTIPLY", sep.outputs[1], 0.7152)),
+                                    self.math("MULTIPLY", sep.outputs[2], 0.0722))
+                else:
+                    sep = self.node("ShaderNodeSeparateColor")
+                    self._in(sep.inputs[0], data.outputs["Color"])
+                    val = sep.outputs["rgb".index(ch)]
+                val = self.math("MULTIPLY", val, inside)
+            return val, col.outputs["Color"]
+        val, colour = sample(u, v)
+        if cut is not None:  # across the atlas' cut: both sides' samples, mixed by side B's share
+            val2, colour2 = sample(cut[0], cut[1])
+            val = self.math("ADD", self.math("MULTIPLY", val, self.math("SUBTRACT", 1.0, cut[2])), self.math("MULTIPLY", val2, cut[2]))
+            mix = self.node("ShaderNodeMix", data_type="RGBA", blend_type="MIX")
+            self._in(mix.inputs[0], cut[2])
+            self._in(mix.inputs[6], colour)
+            self._in(mix.inputs[7], colour2)
+            colour = mix.outputs[2]
+        return self.math("MULTIPLY", val, wgt), colour
 
     def tiles(self, u, w, e):
         """paint._tiles on one plane: running bond, rows shifted by offset (or at random), joints gap wide."""
@@ -742,8 +766,47 @@ def _paint_material(part, base, layers, quantiles, prog_hash, packing, show=None
         t.links.new(tv.outputs[0], out.inputs["Thickness"])
         m.thickness_mode = "SLAB"
         m.use_thickness_from_shadow = True
+    used = material_attributes(t)
+    if len(used) > MAX_ATTRS:  # EEVEE won't compile it: the part renders magenta with no error a job sees
+        raise RuntimeError(f"material {name}: reads {len(used)} vertex attributes, EEVEE takes at most {MAX_ATTRS} "
+                           f"(it renders magenta): {sorted(used)}")
+    files = {}
+    for im in material_images(t):
+        files.setdefault((os.path.realpath(bpy.path.abspath(im.filepath)), im.colorspace_settings.name), []).append(im.name)
+    dup = {f: n for f, n in files.items() if len(n) > 1}
+    if dup:  # every copy is one more texture sampler: past the GPU's limit the material renders magenta
+        raise RuntimeError(f"material {name}: one image file loaded as several datablocks (one sampler each): {dup}")
     m["hp_prog"] = prog_hash
     return m
+
+
+def material_images(tree, seen=None) -> set:
+    """Image datablocks a node tree samples, its node groups included."""
+    seen = set() if seen is None else seen
+    out = set()
+    for n in tree.nodes:
+        if n.type == "TEX_IMAGE" and n.image:
+            out.add(n.image)
+        elif n.type == "GROUP" and n.node_tree and n.node_tree.name not in seen:
+            seen.add(n.node_tree.name)
+            out |= material_images(n.node_tree, seen)
+    return out
+
+
+MAX_ATTRS = 14  # = paintnodes.MAX_ATTRS (measured on Blender 5.1.2: 15 fails "uses too many attributes")
+
+
+def material_attributes(tree, seen=None) -> set:
+    """Distinct geometry attribute names a node tree reads, its node groups included."""
+    seen = set() if seen is None else seen
+    out = set()
+    for n in tree.nodes:
+        if n.type == "ATTRIBUTE" and n.attribute_type == "GEOMETRY" and n.attribute_name:
+            out.add(n.attribute_name)
+        elif n.type == "GROUP" and n.node_tree and n.node_tree.name not in seen:
+            seen.add(n.node_tree.name)
+            out |= material_attributes(n.node_tree, seen)
+    return out
 
 
 def _mesh(name, path):
@@ -806,7 +869,10 @@ def _inputs(me, path):
             me[f"hp_sum:{k[9:]}"] = _paint_sum(a)
             me.color_attributes.active_color = at
             continue
-        if a.ndim == 2:
+        if a.ndim == 2 and a.shape[1] == 4:  # a pack of four scalars (paintnodes.PACK): rgb + alpha, read raw
+            at = me.attributes.new(k, "FLOAT_COLOR", "POINT")
+            at.data.foreach_set("color", a.ravel())
+        elif a.ndim == 2:
             at = me.attributes.new(k, "FLOAT_VECTOR", "POINT")
             at.data.foreach_set("vector", a.ravel())
         else:
@@ -1072,6 +1138,9 @@ def _light_rig(scene, lt, job, base):
             bpy.data.objects.remove(ob)
             if ld.users == 0:
                 bpy.data.lights.remove(ld)
+    for c in list(bpy.data.collections):   # (a window's light-linking receivers from an earlier view's rig)
+        if c.name.startswith(("hp_window", "hp_sun")) and c.name.endswith("_receivers"):
+            bpy.data.collections.remove(c)
     vs = scene.view_settings
     vs.view_transform = base[0]
     try:
@@ -1105,6 +1174,11 @@ def _light_rig(scene, lt, job, base):
             ld.use_shadow = False  # sun's shadow (EEVEE's shadow pass doesn't see the clip)
         if "diffuse" in L:  # a highlight-only light (a catchlight: its window reflects, the sun itself lights nothing)
             ld.diffuse_factor = float(L["diffuse"])
+            # (and nothing THROUGH the skin either: transmission / volume default to 1, and NVIDIA's EEVEE lit the skin's
+            # transmission with a "diffuse 0" catchlight: red pin-dots on its side of the face, ears, neck; AMD's showed none)
+            for k in ("transmission_factor", "volume_factor"):
+                if hasattr(ld, k):
+                    setattr(ld, k, min(getattr(ld, k), float(L["diffuse"])))
         if "specular" in L:  # a fill that lights without its own highlight (two round catchlights in an eye: a toy)
             ld.specular_factor = float(L["specular"])
         sun = bpy.data.objects.new(f"hp_sun{i}", ld)
@@ -1112,6 +1186,14 @@ def _light_rig(scene, lt, job, base):
         if job.get("engine") == "cycles" and float(L.get("angle", 3.0)) > 20.0:   # (Cycles reflects a broad sun's whole
             sun.visible_glossy = False   # disc: big grey patches over the irises in the cornea; EEVEE's soft highlight kept)
         sun.rotation_euler = Vector(L["dir"]).to_track_quat("Z", "Y").to_euler()
+        if L.get("receivers") and not L.get("window"):   # light linking on the sun itself: ONLY these parts see it (a
+            # highlight-only skin key: the photo's skin sheen comes from its key light, but a specular sun on the eyes
+            # lays its disc in the cornea; the eyes keep their own catch window)
+            rc = bpy.data.collections.new(f"hp_sun{i}_receivers")
+            for ob in list(scene.objects):
+                if ob.get("hp_part") in L["receivers"]:
+                    rc.objects.link(ob)
+            sun.light_linking.receiver_collection = rc
         if L.get("window"):  # the light's HIGHLIGHT comes from a rectangle (a window, a soft box) instead of the sun's
             # disc: the sun keeps the diffuse light and shadows; an area light of the same irradiance at the target
             # gives only the reflection (P = 4 pi S d^2)
@@ -1122,11 +1204,21 @@ def _light_rig(scene, lt, job, base):
             al.shape, al.size, al.size_y = "RECTANGLE", float(size[0]), float(size[1])
             al.energy = 4 * np.pi * float(L.get("energy", 3.5)) * dist ** 2 * float(w.get("gain", 1.0))
             al.color, al.diffuse_factor, al.use_shadow = ld.color, 0.0, False
+            for k in ("transmission_factor", "volume_factor"):   # (the reflection only: see "diffuse" above)
+                if hasattr(al, k):
+                    setattr(al, k, 0.0)
             ao = bpy.data.objects.new(f"hp_window{i}", al)
             scene.collection.objects.link(ao)
             dv = Vector(L["dir"]).normalized()
             ao.location = Vector(w.get("target", lt.get("target", [0, 0, 0]))) + dv * dist
             ao.rotation_euler = dv.to_track_quat("Z", "Y").to_euler()
+            if w.get("receivers"):   # light linking: ONLY these parts see the window (a catchlight window for the
+                # eyes mirrored as a hard rectangle on every glossy skin / brow / lash patch: the "wet streaks" on all heads)
+                rc = bpy.data.collections.new(f"hp_window{i}_receivers")
+                for ob in list(scene.objects):
+                    if ob.get("hp_part") in w["receivers"]:
+                        rc.objects.link(ob)
+                ao.light_linking.receiver_collection = rc
 
 
 def render(job):

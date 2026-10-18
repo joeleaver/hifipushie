@@ -24,11 +24,13 @@ HAIR (skin.hair; colours sRGB):
   brows      {"color", "density": 0..1 (0.8), "thickness": 1, "length": m (0.006), "grey": 0..1, "drop": m (0: the
              brow lower, onto the orbital rim), "arch": 1 (x the landmarks' slope: 0 = level), "tilt": deg (the whole
              brow turned, tail up +), "fall": 1 (x how far the tail drops past the arch: 0.3 = a straight, rising
-             brow), "lift": [inner, tail] m (each end up + / down -), "apart": m (both brows off the mid-line), "soft": 0..1 (a soft mass rather than hairs one by one), "taper":
+             brow), "lift": [inner, tail] m (each end up + / down -), "apart": m (both brows off the mid-line), "soft": 0..1 (a soft mass rather than hairs one by one), "shadow": x the skin-level shadow under the hairs (1; lower = gaps and a fading head show), "taper":
              0..1 (0.82: how much the band thins toward the tail; 0.95 = a clean thin tail on a thick brow), "tail":
-             0..1 (1: how far along the hairs reach)}: hairs as strokes, growing up at the inner end and out along the brow.
-  lashes     {"color", "amount": 0..1 (0.7)}: the lash lines darkened (upper more).
-  stubble    {"amount", "color", "where", "size": 1 (the dots' size), "shadow": 1 (the under-skin shadow's strength; "shadow_color",
+             0..1 (1: how far along the hairs reach), "head": 0..0.6 (0: the share of the length over which the inner end fades
+             in, sparse single hairs; 0.65 matches the photos' ramp), "head_density": 0..1 (0.05: the share of hairs kept at the inner end)}: hairs as strokes, growing up at the inner end and out along the brow.
+  lashes     {"color", "amount": 0..1 (0.7), "width": 1 (x the lash line's width, with lash geometry)}: the lash lines
+             darkened (upper more).
+  stubble    {"amount", "color", "where", "size": 1 (the dots' size), "count": 1 (hairs per area x, .25-4: density saturates at 1), "shadow": 1 (the under-skin shadow's strength; "shadow_color",
              "shadow_breakup": its noise, 0 = an even field: a dense stubble shadow reads as one grey-brown field),
              "grey": 0..1 (+ "grey_color": a share of white hairs: salt and pepper), "zones": {moustache, chin, soul_patch, jaw,
              cheeks, neck: weight 0..1.5 (1)} (where it grows: a goatee, bare cheeks)}: the beard area: a shadow under the
@@ -487,6 +489,11 @@ def _gnm_mouth(spec, out, part) -> None:
                                    "specular": 0.5, "mask": [{"painted": pid}]}
 
 
+FRAME_PAST = 0.0022   # m: the upper lash line's dark frame past the outer canthus (the visible eye's outer end)
+CANTHUS_TIP = 0.0012  # m: the inner corner's dark point, on past the caruncle's pocket toward the nose
+LOWER_FRAME = 0.8     # the lower lash line's weight against the upper's (was 0.55: weak, the eye read short)
+EYE_OCCLUSION = 0.5   # skin.eyes.occlusion default (the lids' shadow on the ball). mouth_eye_bias: at 1 it takes 0.6-0.8 mm of the
+#                       detector's eye opening and ~0.5 mm of the fissure against photos; proposed 0.5 (docs/notes/mouth_eye_bias.md)
 EYE_KEYS = ("iris", "iris_size", "pupil", "veins", "sclera", "tear", "waterline", "limbal", "limbal_width",
             "iris_contrast", "gloss", "occlusion", "caruncle", "crease", "canthus", "iris_inner", "iris_inner_to")
 
@@ -555,7 +562,7 @@ def _eyes(spec, p, J, out, layer, T, ctx) -> None:
                                  limbal_width=float(e.get("limbal_width", 0.2)),
                                  inner=_hex(e["iris_inner"]) if e.get("iris_inner") else None, inner_to=float(e.get("iris_inner_to", 0.55)))
     gloss = float(e.get("gloss", 1.0))
-    occ = float(e.get("occlusion", 1.0))
+    occ = float(e.get("occlusion", EYE_OCCLUSION))
     for sd in (".L", ".R"):
         c, f = J[f"eye{sd}"], J[f"eye_front{sd}"]
         r = float(np.linalg.norm(f - c))
@@ -615,7 +622,17 @@ def _eyes(spec, p, J, out, layer, T, ctx) -> None:
         from .skin import _sp
         m = [dict(_sp(sg, [0.0007, 0.0011, 0.0010], soft=0.35, line=True), **({"blend": "max"} if k else {})) for k, sg in enumerate(segs)]
         layer("caruncle", pre=True, color=T(blood=6.0, melanin=0.8), opacity=round(min(0.85 * a, 1.0), 3), roughness=0.15, mask=m)
-        layer("caruncle_wet", pre=True, color=[0.7, 0.55, 0.52], mix="multiply", opacity=round(min(0.75 * a, 1.0), 3), mask=m)
+        # THE INNER CANTHUS' TIP (mouth_eye_bias -> skin): in a photo the inner corner ends in a dark POINT (the pocket's
+        # shadow where the lids meet past the caruncle), not a rounded white / pink end: a thin dark wedge from the
+        # pocket's medial end on toward the nose, tapering to nothing over ~CANTHUS_TIP; drawn in the caruncle's wet
+        # multiply (one layer: the shader budget), darker there
+        tips = []
+        for sd in (".L", ".R"):
+            i_ = np.asarray(J[f"lm_eye_inner{sd}"], float)
+            sx = 1.0 if sd == ".L" else -1.0
+            tips.append(dict(_sp([i_ + np.array([sx * 0.0008, 0.0, 0.0]), i_, i_ + np.array([-sx * CANTHUS_TIP, 0.0, -0.0002])],
+                                 [0.00045, 0.0003, 0.00006], soft=0.5, line=True), blend="max"))
+        layer("caruncle_wet", pre=True, color=[0.64, 0.49, 0.47], mix="multiply", opacity=round(min(0.75 * a, 1.0), 3), mask=m + tips)
         # ... and on the eyeball's nose-side end: the caruncle's flesh and the plica stand in FRONT of the sclera there
         # (a photographed inner corner is 3-4 mm of pink before any white); GNM's pocket alone is a slit
         for sd, sx in ((".L", 1.0), (".R", -1.0)):
@@ -788,7 +805,8 @@ def _hair(p, J, layer, T, ctx) -> None:
     if ctx["face"]:
         io = interocular(J)
         o = _opt(h.get("brows", 1.0), "hair.brows", ("color", "density", "thickness", "length", "grey", "drop", "soft", "arch",
-                                                     "tilt", "fall", "lift", "apart", "taper", "tail"))
+                                                     "tilt", "fall", "lift", "apart", "taper", "tail", "shadow", "head",
+                                                     "head_density"))
         if o:
             col = _hex(o["color"]) if "color" in o else dflt
             g = float(o.get("grey", 0.0))
@@ -802,7 +820,8 @@ def _hair(p, J, layer, T, ctx) -> None:
             width = 1.22 * span
             path, (wmm, hmm) = skin_swatch.brow_image(dens, thick, float(o.get("length", 0.006)) * 1000, width * 1000, seed,
                                                        fall=float(o.get("fall", 1.0)), taper=float(o.get("taper", 0.82)),
-                                                       tail=float(o.get("tail", 1.0)))
+                                                       tail=float(o.get("tail", 1.0)), head=float(o.get("head", 0.0)),
+                                                       head_density=float(o.get("head_density", 0.05)))
             c = 0.5 * (a_ + b_)
             c[2] = (a_[2] + 2 * m_[2] + b_[2]) / 4 - 0.02 * io
             c[1] = m_[1]
@@ -825,10 +844,15 @@ def _hair(p, J, layer, T, ctx) -> None:
             moved = any(o.get(k) for k in ("drop", "lift", "tilt", "apart"))
             ctx["brow_area"] = [{"image": img}] if moved else None   # (makeup under the brows follows the hairs too)
             layer("brow_shadow", pre=True, color=_shade(col, 1.6) if sum(col) < 0.6 else col,
-                  opacity=min(0.3 * min(dens, 1) + 0.06 + 0.45 * soft, 0.9),
+                  # shadow: x the skin-level shadow under the hairs. It is uniform over the landmark zone: a strong one fills the
+                  # gaps between hairs (flat inside) and the sparse head (a blunt front): r5 / r6 brows read as a "solid
+                  # sticker", skincheck brow inside spread ~half the photo's, front / middle ~.9 vs ~.45 (2026-10-16)
+                  opacity=min((0.3 * min(dens, 1) + 0.06 + 0.45 * soft) * float(o.get("shadow", 1.0)), 0.9),
                   mask=[{"image": img}] if moved else _zones(["brow"], 0.9 * thick))
-            layer("brow_hairs", color=col, opacity=round(0.95 * (1 - 0.45 * soft), 3), roughness=0.42, specular=0.45, height=0.00012, image=img)
-        o = _opt(h.get("lashes", 0.7 if ctx["eyes"] else None), "hair.lashes", ("color",))
+            # matte: a drawn picture of hairs shinier than the skin read as a grey, glossy bar with a hot highlight under a
+            # studio catchlight (Tess s14: brow L 58-62 vs the photo's 34-36 although its colour was #2a1c12)
+            layer("brow_hairs", color=col, opacity=round(0.95 * (1 - 0.45 * soft), 3), roughness=0.68, specular=0.22, height=0.00012, image=img)
+        o = _opt(h.get("lashes", 0.7 if ctx["eyes"] else None), "hair.lashes", ("color", "width"))
         if o:
             col = _hex(o["color"]) if "color" in o else _shade(dflt, 0.45)
             op = 0.9 * min(o["amount"] * (1 + 0.45 * ctx.get("fem", 0.0)) + 0.2, 1)
@@ -838,10 +862,32 @@ def _hair(p, J, layer, T, ctx) -> None:
                 # 1.4 mm smaller than the clay's on Garrett)
                 from .skin import _sp
                 tubes = []
-                for lid, rad, wgt in (("upper", 0.0008, 1.0), ("lower", 0.0004, 0.55)):
+                # THE VISIBLE EYE (mouth_eye_bias -> skin, 2026-10-15): a photographed eye's width is its white plus the
+                # lash line's dark frame, and that frame runs ON past the outer canthus (the lashes' roots, the lid
+                # margins meeting, their shadow): ours stopped at the last lash and the eye read ~25 % short. So the
+                # upper line is fullest over its outer third and goes on ~FRAME_PAST mm past the outer end along its own
+                # tangent, tapering to a point; the lower line is darker than before (0.55 -> LOWER_FRAME)
+                # width: x the line's radius (r4 measure: the RIM 0..1 mm outside the opening reads 3..27 L lighter than the
+                # photo's on every head; the waterline alone moved it ~1.5 L: the dark frame has to reach that band)
+                wd = float(o.get("width", 1.0))
+                for lid, rad, wgt in (("upper", 0.0008 * wd, 1.0), ("lower", 0.0005 * wd, LOWER_FRAME)):
                     for c in cu[lid]:
+                        c = np.asarray(c, float)
                         n = len(c)
+                        if n < 3:
+                            continue
+                        out_end = abs(c[-1][0]) > abs(c[0][0])   # (the outer end: farther from the mid-line)
+                        if not out_end:
+                            c = c[::-1]
+                        t = np.linspace(0.0, 1.0, n)
                         taper = 0.35 + 0.65 * np.sin(np.linspace(0.15, np.pi - 0.35, n)) ** 0.5
+                        if lid == "upper":
+                            taper = np.maximum(taper, np.clip((t - 0.55) / 0.3, 0, 1) * 1.15)   # fullest over the outer third
+                            tan = c[-1] - c[-3]
+                            tan /= max(float(np.linalg.norm(tan)), 1e-9)
+                            ext = [c[-1] + tan * FRAME_PAST * k / 3 for k in (1, 2, 3)]
+                            c = np.vstack([c, ext])
+                            taper = np.concatenate([taper, [0.8, 0.5, 0.15]])
                         tubes.append({"mask": [_sp(c, rad * taper, soft=0.6, line=True)], "vertex": True,  # (per vertex: shader stack)
                                       **({"blend": "max"} if tubes else {}),
                                       **({"weight": wgt} if wgt < 1 else {})})
@@ -850,7 +896,7 @@ def _hair(p, J, layer, T, ctx) -> None:
                 layer("lashes", color=col, opacity=op, roughness=0.4,
                       mask=_zones(["lash_upper"]) + [{"zone": "lash_lower", "blend": "max", "weight": 0.5}])
         o = _opt(h.get("stubble"), "hair.stubble", ("color", "length", "size", "shadow", "shadow_color", "shadow_breakup", "grey", "grey_color",
-                                                     "style", "density", "patchy", "trim", "cheeks", "cheek_line", "neckline", "engine", "zones"))
+                                                     "style", "density", "patchy", "trim", "cheeks", "cheek_line", "neckline", "engine", "zones", "count"))
         if o and o.get("engine", "map") == "map" and "lm_jaw_1.L" in J:
             _stubble_map(ctx["spec"], p, J, o, layer, T, ctx)
             o = None
@@ -932,7 +978,11 @@ def stubble_options(o: dict, age: float = 35) -> dict:
     if not isinstance(zw, dict) or set(zw) - set(skin_marks.BEARD_ZONES):
         raise SpecError(f"skin hair.stubble: zones is {{zone: weight}} over {', '.join(skin_marks.BEARD_ZONES)}")
     zw = {k: round(float(np.clip(v, 0, 1.5)), 3) for k, v in zw.items() if abs(float(v) - 1.0) > 1e-6}
-    return {**({"zones": zw} if zw else {}),
+    # count: hairs per area x (1 = ~80 / cm2 where full). density is a 0..1 share of that and saturates at 1 where the beard
+    # is full, so it can't make a dense beard denser: Garrett's photo stubble covers ~.5 of the chin / jaw pixels, ours .2-.25
+    # at density 1 (2026-10-16). Left out of the options at 1 so existing maps keep their cache keys.
+    cnt = float(np.clip(o.get("count", 1.0), 0.25, 4.0))
+    return {**({"zones": zw} if zw else {}), **({"count": round(cnt, 3)} if abs(cnt - 1.0) > 1e-6 else {}),
             "length": float(o.get("length", base["length"])), "density": float(np.clip(o.get("density", base["density"]) * min(a, 1.0), 0.02, 1.0)),
             "grey": float(np.clip(o.get("grey", 0.0), 0, 1)), "patchy": float(np.clip(o.get("patchy", base["patchy"]), 0, 1)),
             "trim": float(np.clip(o.get("trim", base["trim"]), 0, 1)), "cheeks": float(np.clip(o.get("cheeks", base["cheeks"]), 0, 1)),

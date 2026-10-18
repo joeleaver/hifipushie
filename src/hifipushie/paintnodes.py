@@ -29,6 +29,12 @@ from .spec import SpecError
 NATIVE = {"facing", "axis", "noise", "ao", "sky", "thickness", "cavity", "near", "mask", "tiles", "cells", "rings",
           "image", "spot", "tile"}
 QUANTILES = json.loads(Path(__file__).with_name("noise_quantiles.json").read_text())
+# Vertex attributes one EEVEE material may read (measured, Blender 5.1.2: 15 distinct Attribute nodes fail to compile with
+# "EEVEE: Material ... uses too many attributes" and the material renders MAGENTA, silently in a headless job: gp_h6c_s11,
+# 2026-10-16, 15 = wpos + wnrm + 13 packs). Scalar inputs go PACK to an attribute (a FLOAT_COLOR: rgb + alpha).
+MAX_ATTRS = 14
+PACK = 4
+FIXED_ATTRS = ("wpos", "wnrm")
 
 
 class _Compiler:
@@ -200,11 +206,12 @@ class _Compiler:
                                                "sg") if k in fr})
             elif fr["wrap"] in ("surface", "uv"):  # coordinates measured per vertex (decalmap / the model's atlas; images.project)
                 from . import decalmap
-                ver = (decalmap.VERSION, decalmap.method()) if fr["wrap"] == "surface" else ("uv", fr["geo"], {k: v for k, v in e["image"].items() if k in ("box",)})
+                ver = (decalmap.VERSION, decalmap.method()) if fr["wrap"] == "surface" else ("uv", fr["geo"], {k: v for k, v in e["image"].items() if k in ("box",)}, "cut2")
+                # wrap "uv": u, v, weight + the second coordinate set across the atlas' cut (u2, v2, s; images.project both=True)
                 def uvw(mir):
                     return [self.attr("decal", layer, e["image"], parts, mir, comp,
                                       key=("decal", e["image"] if fr["wrap"] == "surface" else None, parts, mir, comp, *ver), parts=self.parts)
-                            for comp in range(3)]
+                            for comp in range(6 if fr["wrap"] == "uv" else 3)]
                 ent["uv"] = uvw(False)
                 if fr["mirror"]:
                     ent["uv_mirrored"] = uvw(True)
@@ -288,10 +295,33 @@ def compile(spec: dict) -> dict:
         for p in list(need) + [p for p in spec.get("parts") or {} if p not in need]:
             need.setdefault(p, [])
             need[p] += [a for a in star if a not in need[p]]
-    packing = {p: {a: [f"hp{i // 3}", i % 3] for i, a in enumerate(attrs)} for p, attrs in need.items()}
+    packing = {p: {a: [f"hp{i // PACK}", i % PACK] for i, a in enumerate(attrs)} for p, attrs in need.items()}
+    _attr_budget(need, layers, pre_attrs)
     return {"layers": layers, "pre": pre_attrs, "pre_layers": pre_layers, "inputs": sorted(c.inputs), "fallbacks": c.fallbacks,
             "quantiles": QUANTILES,
             "where": {k: sorted(v) for k, v in c.where.items()}, "packing": packing}
+
+
+def attr_count(n_scalars: int) -> int:
+    """Vertex attributes a part's material reads for n packed scalar inputs (+ wpos, wnrm)."""
+    return -(-n_scalars // PACK) + len(FIXED_ATTRS)
+
+
+def _attr_budget(need: dict, layers: list, pre_attrs: dict) -> None:
+    """A part whose material would read more than MAX_ATTRS vertex attributes is an error HERE, naming the layers that
+    read the most inputs: EEVEE can't compile it and renders it magenta with no error a job sees."""
+    for p, attrs in need.items():
+        n = attr_count(len(attrs))
+        if n <= MAX_ATTRS:
+            continue
+        per = sorted(((len(_attrs(ly["entries"])), ly["name"]) for ly in layers if p in ly["parts"] or "*" in ly["parts"]),
+                     reverse=True)
+        top = ", ".join(f"{name} ({k})" for k, name in per[:8] if k)
+        raise SpecError(f"paint: part {p!r} reads {len(attrs)} measured inputs = {n} vertex attributes "
+                        f"({PACK} to an attribute + {', '.join(FIXED_ATTRS)}); an EEVEE material takes at most {MAX_ATTRS} "
+                        f"(more renders magenta). Most inputs: {top}"
+                        + (f"; pre-composited {len(pre_attrs.get(p, []))}" if pre_attrs.get(p) else "")
+                        + ". Drop or merge layers (several near / path masks of one shape are one input).")
 
 
 def _pre_base(spec: dict, part: str, base: dict) -> dict:
@@ -375,11 +405,10 @@ def measure(spec: dict, prog: dict, pos: np.ndarray, nrm: np.ndarray, part: np.n
                 fr = images.frame(spec, img, paint._expanded(spec), what=f"paint {lname!r} image", parts=on)
                 if mir:
                     fr = images.mirrored(fr)
-                full = np.zeros((len(pos), 3), np.float32)
-                full[:, :2] = -1.0
+                full = np.zeros((len(pos), 6), np.float32)
+                full[:, [0, 1, 3, 4]] = -1.0
                 if len(idx):
-                    u, v, w = images.project(fr, pos[idx], nrm[idx])
-                    full[idx] = np.stack([u, v, w], 1)
+                    full[idx] = np.stack(images.project(fr, pos[idx], nrm[idx], both=True), 1)
                 decals[ck] = full
             val = decals[ck][:, comp].copy()
         else:

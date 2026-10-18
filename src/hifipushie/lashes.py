@@ -22,7 +22,8 @@ Purely geometric: it follows any head (sliders, pose, identity) the field is bui
 spec["base"]["lashes"] = false | true | {"upper": {...}, "lower": {...}, "color", "roughness", "seed", "segments"};
 per lid: "count", "length" (mm, the longest), "curl" (deg over the length), "lift" (deg at the root, + = away from
 the eye's middle line), "flare" (deg the outer ones sweep outward), "thickness" (mm at the root), "clump" (0..1),
-"offset" (mm out from the visible rim). Default ON for one-mesh human heads (base.body.source "human").
+"offset" (mm out from the visible rim), "taper_out" (0.25: how much shorter the outermost quarter gets; negative =
+longer toward the outer corner: an eye that reads long). Default ON for one-mesh human heads (base.body.source "human").
 """
 from __future__ import annotations
 
@@ -31,12 +32,12 @@ import json
 
 import numpy as np
 
-VERSION = 20  # 5: a fully closed lid roots on its closed line, never a fold slit; 4: the lid line's piece scored by size and height (a fold's slit was taken); 3: a blink's slit joined, the largest piece taken (projskin); 2: seated on the filled front map (holes in the sampled skin threw points off)
+VERSION = 21  # 21: taper_out; 5: a fully closed lid roots on its closed line, never a fold slit; 4: the lid line's piece scored by size and height (a fold's slit was taken); 3: a blink's slit joined, the largest piece taken (projskin); 2: seated on the filled front map (holes in the sampled skin threw points off)
 DEFAULTS = {
     "upper": {"count": 230, "length": 9.0, "curl": 62.0, "lift": -12.0, "flare": 24.0, "thickness": 0.15,
-              "clump": 0.6, "clump_size": [3, 6], "vary": 0.35, "rows": 0.25, "offset": 0.15, "start": 0.08, "end": 1.0},
+              "clump": 0.6, "clump_size": [3, 6], "vary": 0.35, "rows": 0.25, "offset": 0.15, "start": 0.08, "end": 1.0, "taper_out": 0.25},
     "lower": {"count": 75, "length": 3.0, "curl": 10.0, "lift": 55.0, "flare": 16.0, "thickness": 0.04,
-              "clump": 0.5, "clump_size": [2, 4], "vary": 0.45, "rows": 0.15, "offset": 0.5, "start": 0.2, "end": 0.97},
+              "clump": 0.5, "clump_size": [2, 4], "vary": 0.45, "rows": 0.15, "offset": 0.5, "start": 0.2, "end": 0.97, "taper_out": 0.25},
     "color": "#120e0c", "lower_color": "#3a302a", "roughness": 0.5, "seed": 0, "segments": 4,
 }
 _CACHE: dict = {}
@@ -353,7 +354,7 @@ def build(head: dict, cfg: dict, sides=(".L", ".R")) -> dict:
                 # stood up into the closed lid and were pushed out of the skin as a short black streak at the seam)
                 outv = np.tile(-L["up"], (len(outv), 1))
             # length profile: short at the inner canthus, longest over the middle-outer third, a little shorter outside
-            prof = (0.5 + 0.5 * np.clip((s - p["start"]) / 0.45, 0, 1) ** 0.8) * (1 - 0.25 * np.clip((s - 0.75) / 0.25, 0, 1) ** 2)
+            prof = (0.5 + 0.5 * np.clip((s - p["start"]) / 0.45, 0, 1) ** 0.8) * (1 - float(p.get("taper_out", 0.25)) * np.clip((s - 0.75) / 0.25, 0, 1) ** 2)
             length = p["length"] * 1e-3 * prof * rng.uniform(1.0 - float(p["vary"]), 1.08, cnt)
             lift = np.radians(p["lift"] + rng.normal(0, 5, cnt))
             curl = np.radians(p["curl"] * rng.uniform(0.75, 1.2, cnt))

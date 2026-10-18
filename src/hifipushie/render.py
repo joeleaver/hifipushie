@@ -322,3 +322,29 @@ def draw_strokes(img: Image.Image, frame: dict, strokes: list[dict]) -> Image.Im
                 d.line([(x, y), (x0, y0 + 7)], fill=col, width=1)
             d.text((x0, y0), st["label"], fill=col, font=FONT, stroke_width=2, stroke_fill=(20, 20, 20))
     return img
+
+
+def missing_texture_fraction(img) -> float:
+    """Fraction of an image's pixels in Blender's missing-texture / failed-shader MAGENTA (hue 275..325 deg, saturated,
+    not dark). Skin, lips, irises and backdrops never reach it. A render set whose tiles are magenta-dominant lost an
+    image (garrett_g10, 2026-10-16: face 81 %, mouth 100 % magenta, exit 0, no error in the job log): it must FAIL before
+    any review or measurement sees it (`magenta_tiles`)."""
+    a = np.asarray(img.convert("RGB"), dtype=np.float32) / 255.0
+    mx, mn = a.max(axis=2), a.min(axis=2)
+    r, g, b = a[..., 0], a[..., 1], a[..., 2]
+    sat = (mx - mn) / np.maximum(mx, 1e-6)
+    hue_mag = (r > 1.6 * g) & (b > 1.6 * g) & (np.abs(r - b) < 0.45 * mx)   # R ~ B >> G
+    return float((hue_mag & (sat > 0.5) & (mx > 0.15)).mean())
+
+
+def magenta_tiles(paths, limit: float = 0.2) -> dict:
+    """{path: magenta fraction} for every rendered tile over `limit` (references "*_ref.png" are skipped)."""
+    bad = {}
+    for p in paths:
+        p = str(p)
+        if p.endswith("_ref.png"):
+            continue
+        f = missing_texture_fraction(Image.open(p))
+        if f > limit:
+            bad[p] = round(f, 3)
+    return bad

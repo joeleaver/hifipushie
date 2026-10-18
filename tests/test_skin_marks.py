@@ -56,6 +56,18 @@ def test_beard_zones_from_landmarks():
 
 
 @_tmp
+def test_stubble_count_adds_hairs():
+    """hair.stubble.count: hairs per area x (density saturates at 1 where the beard is full, so it can't make a full beard
+    denser: Garrett's chin / jaw coverage .2 vs the photo's .5, 2026-10-16). count 1 leaves the options (cache key) alone."""
+    spec = head_spec()
+    J = skin._joints(spec)
+    assert "count" not in stubble_options({"amount": 1.0}) and stubble_options({"amount": 1.0, "count": 9})["count"] == 4.0
+    n1 = mk.stubble_map(spec, "body", J, stubble_options({"amount": 1.0}))[2]["hairs"]
+    n2 = mk.stubble_map(spec, "body", J, stubble_options({"amount": 1.0, "count": 2.0}))[2]["hairs"]
+    assert 1.8 < n2 / n1 < 2.2, (n1, n2)
+
+
+@_tmp
 def test_stubble_map_deterministic_and_styles():
     """Same inputs, same map (content-cached, byte-identical when rebuilt); clean shaven shows almost no hair, a
     longer style more; grey puts hairs in the white channel only when asked; the shadow follows the dark roots."""

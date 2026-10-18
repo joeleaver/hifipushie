@@ -1646,3 +1646,911 @@ NEXT, in order
   (catch=0) shows none, flat none: they are glints of the blemish cores (blemish_bump: roughness base - 0.14) under the
   specular-only window light, which NVIDIA EEVEE shows and the laptop's AMD EEVEE didn't. The reviewer reads them as red
   dots the reference doesn't have. Fix in the CONTENT (Tess's reference shows no papules), not the renderer.
+- Tess closed-lid seam (pale sliver + orange-red corner slits, MAJOR s5-s8): OUT OF STAGE. It survived 3 skin approaches
+  (corner reds faded by pose; canthus 0.8 -> 0.5; waterline 0.3 -> 0.1). The lids don't meet at eyeBlink=1, which is geometry;
+  the coordinator routed it to the expressions owner. Skin reviews: answer it as out-of-stage, don't keep tuning it.
+- Correction: the NICO-TOP red dots are NOT the catchlight's transmission (9a45ebf1 kept as harmless hygiene; dots stayed:
+  s9 56). Window gain 0 (sheen=0) and the window on the other side (catch_x=0.9): same count. dots1's "catch=0: none" was
+  at 512 px (too small to count); dots3 (768: catch=0 / flat / 64 samples) in flight. Treat dots in NICO-TOP renders as a
+  renderer artifact until then; reviews list them and I discount them.
+- Garrett's light back-of-neck stripe (reproduces on a fresh build: not a stale cache) = the head atlas' cut down the back
+  midline: skin_project.lookup fades every uv-wrapped layer's weight to 0 within SEAM (1.5 + 3 mm) of the cut (per-vertex
+  coordinates can't cross it), so the procedural body tone shows there, 7.8 L lighter than his stack at the jaw. Fix as
+  content: spikes/projskin/necktone.py (body tone fitted to the stack's jaw colour; needs <model>/skin_layers/recomposed.png:
+  copy it from the model whose stack pigment id matches, e.g. gp_h6c_les). General fix owed: a second, unfolded coordinate
+  set across the cut blended in the shader, so the cut needs no fade (paintnodes/blender_scene "uv" decals).
+- Hand passes from here leave detail at ~0.45-0.9 (defaults read as scratch / hash strokes on every head) and run necktone.
+- Coordinator 2026-10-15: Garrett first, then the private heads; Tess minimal until tp_h4 (Joe's small jaw / eyes / lips
+  edits) is settled, then re-seat her skin on it. Tess s9 regressed (brow / lip fills lowered: those fills carry the
+  darkness); s10 (from s8, stronger brow fill) rendered, not reviewed.
+
+## Handover 2026-10-15 10:00 (projskin successor; next agent start here, then docs/notes/gates.md)
+BRANCH projskin2 (worktree .claude/worktrees/projskin2), main merged in (fe2ef302); all work committed, not pushed.
+Scratch $S=/mnt/data/hifipushie/projskin: rset_remote.sh <model> <ref> <own> <out> [views] <checklist> (pack + cu.txt + NICO-TOP;
+EXTRA="@spikes/projskin/nape.py size=512" adds the back-of-neck view), rset.sh = the same set on the laptop (heavy.sh: capped +
+GPU lock), rev.sh <dir> review1. Review --context: for NICO-TOP renders the coordinator allows adding "ignore red pin-dot
+render artifacts" (laptop renders have none). dotcount: scratch script counted red dots (r-g minus 7 px median > 18).
+QUEUED on NICO-TOP (machine "lost" since ~09:50; Joe asked to bring it back). Clients are running locally and block until
+done; outputs land in $S/jobs/results_<tag>/, and the wrapper then runs eyecmp + skincheck into out/private/gate/<tag>/:
+garrett_g3 (gp_h6c_s3), privA_g2 (private notes), privB_g3 (private notes), dots3 (renderer diagnosis: face_v0_{D catch=0,
+E flat, F 64 samples} at 768 in out/private/gate/dots3 after untar; HOLD for NICO-TOP). If you rerun on the laptop instead,
+kill the matching bundle_client (match by pid, never pkill a pattern that is in your own command line).
+
+PER HEAD
+- Garrett (frozen head gp_h6c): gp_h6c_s1 = g2 (tones 4/5 pass, cheeks b* ~6 low). gp_h6c_s3 = s2 hand pass (brows #5e5650
+  stack .8 soft .5, stubble amount .9 grey .5 #3e3832, redness .5, periorbital .6, detail .9, iris #6a7568 / #5c5a48,
+  crease 1.6) + necktone (body tone fitted to the stack's jaw: the back-midline stripe band shows it). g2 review open:
+  too pink, hash-stroke texture, no stubble visible, iris should read green-grey, dim catchlight, crease too light.
+- Tess: s8 best numbers (lower lip passes), s9 regressed (fills lowered), s10 rendered on NICO-TOP (out/private/gate/tess_s10,
+  not reviewed). Closed seam = out of stage (lid geometry). Coordinator: Tess MINIMAL until tp_h4 (Joe's jaw / eyes / lips
+  edits) is settled, then re-seat the skin on tp_h4.
+- Private heads: workspace/private_notes/skin_notes_projskin_full.md "## 2026-10-15".
+
+NEXT, in order
+1. The atlas-cut blend fix (coordinator's ask): skin_project.lookup fades every "uv"-wrapped layer to 0 within SEAM of the
+   cut (per-vertex coordinates can't cross it). Instead return a second coordinate set: near the cut (band ~3 mm, computed
+   out to ~2x band so straddling triangles stay continuous) uv1 = island i's map extrapolated (unclamped barycentrics of its
+   nearest triangle), uv2 = island j's (islands = UV-connected triangle components; i < j per cut edge), s = smooth side
+   weight across the cut (0 / 1 outside the band). Consumers: images.project (wrap "uv", images.py ~779), paintnodes "decal"
+   attrs (3 comps -> 6: u2, v2, s), blender_scene decal() (~458-525: sample at both, mix by s), skin_read.py:323 (its own
+   use of lookup: keep (u, v, w)). Test: a layer's value is continuous across the cut (points straddling the back midline).
+2. Laptop gate rounds ONE AT A TIME via rset.sh (capped + GPU lock; every frame < ~5 s, log times; drop samples / size a step
+   if over): Garrett g3 first, then the private heads.
+3. Tess minimal until tp_h4.
+
+## cutblend (2026-10-15, projskin): uv layers continuous across the head atlas' cut
+- The light stripe down Garrett's neck was skin_project.lookup fading every "uv"-wrapped layer to 0 within SEAM of the
+  atlas' back-midline cut (crown to neck, 63 edges, ONE island: the cut doesn't separate the atlas, so sides are local).
+- Now lookup(both=True) -> (u, v, u2, v2, s, w): the cut's edges get side A / side B by 2-colouring their vertices' atlas
+  copies (`_cut_sides`; on GNM A = +X); within 2 x CUT_BAND (3 mm) the other side's map is extrapolated from the nearest cut
+  edge's triangle (unclamped barycentrics, `_affine_uv`), the own side keeps the exact closest-point coordinates; s = side B's
+  share, smoothstep over CUT_BAND centred on the cut, computed out to 4 bands so triangles straddling where the extrapolated
+  set stops see the same side (its weight is 0 there). No fade. lookup() without both keeps the old fade (skin_read).
+- Consumers: images.project(both=True) / images._one (samples both, mixes value, colour and coverage by s), paintnodes
+  "decal" fallback = 6 attributes for wrap uv (cache key "cut2"), blender_scene.decal samples the image twice and mixes.
+- tests/test_skin_project.py test_cut_continuous: a smooth function painted into the atlas, read back at 5872 texel points
+  within 6 mm of the cut: p99 error 0.0013 (one set with the fade: 0.79); a pair of points straddling the cut interpolated as
+  one triangle's corners gives their mean (one set: the midpoint lands across the atlas).
+- Laptop nape render gp_h6c_s3 (out/cutfix_nape/pair_back.png, left g2 before): stripe gone. Build + 2 frames 5 min.
+- dots3 collected (NICO-TOP, tp_h3_s9 face 768, dotcount = red single-pixel fireflies): catch=0 57, flat 1, samples=64 134
+  (default 56-57). Lighting fireflies that grow with samples, not the catchlight. dots4 queued: raytracing / fast GI / shadows
+  off (cu.py eevee=<json>).
+- Garrett g3 (gp_h6c_s3, NICO-TOP 875 s, review out/private/gate/garrett_g3/review1, dots discounted in --context): FAIL;
+  15/27 items. MAJORs: colour pink-grey vs warm tan (cheek b* 11.5 vs 17.7), stubble sparse dashes (ref dense salt and
+  pepper), no age texture (pores, crow's feet, forehead lines; fine rms .017 vs .028), brows translucent grey smear, iris
+  saturated mint + no catchlight, lips pale, lash line dashed past the lid, lower-lid grey sliver, neck underside dark band,
+  temple horizontal scratch marks. g4 = gp_h6c_s4 (undertone -.97 -> -.35, redness .4 -> .25, detail 1.3, wrinkles .9,
+  oil .65, iris #6b6f66 limbal .4, lips blood 1.5 melanin 5.5 stack .9, brows #463f3a density 1.4 stack .5, stubble amount
+  1 length 2.5 mm size 1.3 grey .55 shadow .3) queued on NICO-TOP with the nape view.
+- CORRECTION: on a stacked head the face's colour is the stack's "base" x its multiply maps; skin.tone is the BODY (necktone
+  fits it to the jaw). Changing undertone moves the neck, not the face, and breaks the join. Every head's fitted tone sits at
+  undertone ~-1: that's the neck matching a cool stack, not a fit bug. Warm a face via the stack base, then refit the body
+  tone: $S/cut/rebase.py <src> <dst> r,g,b [tone_src] (target jaw = old jaw colour x new / old base, linear). The g4 job with
+  the undertone edit was cancelled; g4 = gp_h6c_s4b (s4's edits, base [.878 .780 .724] -> [.9 .785 .68]: Lab b 10.3 -> 17.2,
+  a 6.5 -> 6.3; body tone refitted) queued with the nape view.
+- dots4 (NICO-TOP, tp_h3_s9 face 768): use_raytracing off 0 dots, fast GI off 24, shadows off 56 (default 56). The red dots are
+  EEVEE's ray-traced reflections / GI fireflies on NICO-TOP's GPU (the laptop has none). Raytracing off also dulls the look
+  (sheen, catchlight, flatter shading: cut/dots_AG.png), so it isn't the fix. dots5 queued: clamp_surface_indirect 1 / 3 and
+  raytracing off with fast GI kept.
+- Garrett g4 (gp_h6c_s4b): 19/27 (g3 15): cheeks, brows, stubble numbers pass; nape on NICO-TOP clean (cut fix holds in the
+  6-attribute Blender path). Review FAIL: overshoots: forehead too yellow (b 20 vs 14), lips peach-orange (melanin 5.5),
+  brows a solid dark band, stubble long dark directional strands (2.5 mm), wrinkles .9 = smeared streaks at the temples and
+  forehead top; still smooth (pores), no catchlight, black inked lid seam dashes, lavender lower-lid band, grey under-eye.
+  g5 = gp_h6c_s5 (wrinkles .65, lips blood 1.6 melanin 4.5 stack .8, brows #4e4640 density 1.2 grey .45 stack .38, stubble
+  1.4 mm size 1 grey .65, base [.89 .783 .70] + body refit) queued.
+
+## Handover 2026-10-15 evening (projskin; next agent start here, then docs/notes/gates.md)
+BRANCH projskin2, all committed, not pushed. Scratch $S=/mnt/data/hifipushie/projskin; new scripts in $S/cut/: rev2.sh <dir>
+(the review with the NICO-TOP red-dot discount in --context, stage / not as briefed), diag.sh <model> <ref> <own> <tag> <cu
+lines file> (one NICO-TOP job with custom cu.py lines; cu.py now takes eevee=<json>), rebase.py <src> <dst> r,g,b [tone_src]
+(stack base + body tone refit: the way to change a stacked face's colour), dotcount.py, lab.py (Lab of sRGB triples), sk.py
+<model> (skin params, compact).
+DONE: atlas-cut blend (cutblend above; test_cut_continuous; nape clean on the laptop and on NICO-TOP). dots diagnosed:
+EEVEE ray tracing on NICO-TOP (dots4); dots5 (clamp_surface_indirect 1 / 3, raytracing off + fast GI) queued: if a clamp
+removes them without dulling the look, make it the stage default (spikes/garrett3/stage.py STAGE_EEVEE).
+IN FLIGHT on NICO-TOP (wrappers run locally and block; on return they untar + eyecmp + skincheck into out/private/gate/<tag>;
+then run cut/rev2.sh on the dir): dots5 ($S/jobs/dots5.log; untar by hand + dotcount), garrett_g5 (gp_h6c_s5), tess_s11
+(tp_h3_s11), privA_g4 (private notes).
+PER HEAD
+- Garrett: g3 15/27 -> g4 19/27; g5 queued (see the g4 line above for its edits). Open after g5 lands: pores (skin still
+  reads smooth at detail 1.3: the pores' depth / colour are the lever, skin.py micro "pores"), no catchlight (every head
+  fails it: the stage's catch window or the cornea, try cu.py sheen=2 on one head), the black inked lid-seam dashes at the
+  corners (lash roots / lashes painted line), lavender lower-lid band, grey under-eye crescent (check the stack's "shade" map
+  as on private A).
+- Tess (coordinator, 2026-10-15): eyes read ~30% short and lips flat = this stage. tp_h3_s11 = s10 + upper lashes
+  taper_out -0.15 (new lashes option: outer quarter longer), flare 34, count 260, lower taper_out -0.1, eyes canthus .9, lips
+  border .9 (crisper bow), gradient 2.2, roughness .16 (lower-lip volume via sheen). Judge: eye length and the visible fold vs
+  her reference crops; bow peaks and lower-lip volume. The head moves ~0.5 mm at the lids (jaw round from tp_k10): re-seat later.
+- Private heads: workspace/private_notes/skin_notes_projskin_full.md (private A g4 queued; private B: the blotches are shading, a
+  variants job is next).
+LESSON: on a stacked head skin.tone is the body; undertone edits move the neck only (cost a cancelled round).
+
+## projskin round 2026-10-15 afternoon (successor of the evening handover)
+- dots5: clamp_surface_indirect 1 and 3 leave all 56 dots; raytracing off (L) removes them but loses the forehead / nose
+  sheen (mean diff small, the look flatter). dots6 queued: trace_max_roughness .3 / .5, ray_tracing_method PROBE, denoise.
+- Catchlight: cu.py's window sat at 1.2 x up from the camera (~50 deg): its reflection lands on the cornea's top, under the
+  upper lid: no catchlight on ANY head. Now catch_up .45 / catch_x -.35 by default (catch1 test: 1.2 / .3 / .5 on Garrett).
+- Garrett g5 (gp_h6c_s5): skincheck tones 4/4 pass; review FAIL, 35 MAJOR: airbrushed (detail 1.3), matte, brows a
+  translucent grey band (soft .5 + stack brows), stubble a grey wash, lips peach (melanin 4.5), grey-purple under-eye
+  (stack shade .4), temple wavy smears, closed lid an inked line + dots past the corners, neck band. g6 = gp_h6c_s6
+  ($S/cut/mk_g6.py: detail 2, oil 1, wrinkles by region, lips blood 2.2 melanin 2.5 dry 1.5, brows soft .15 density 2,
+  stubble 1.6 / 1.35 grey .5 white, cheeks .5 neck .6, lashes #3b322c, painted lash line .35, tear .5, stack shade .1).
+- Tess s11 (tp_h3_s11): review FAIL 29 MAJOR: brows dense slabs on an airbrushed underlay + a grey ghost arc at the tail
+  (the photo's hair over her brow lands in the stack's brows map), socket grey arc / smoky lid (periorbital .4, eyelids 2.48),
+  blotchy redness (stack .96), lips flat with a liner-hard border (border .9 overshot), closed lid a black bar, neck greyer
+  than the face, nostrils light, pores one uniform stipple. DISPUTED: "lashes heaviest at the inner corner": in the crop
+  the dense long lashes are at the outer corner (image left of the image-left eye); the reviewer swapped sides (it also put
+  the brow's head fan at the tail). s12 = tp_h3_s12 ($S/cut/mk_t12.py): lips roughness .42 (Joe: NO gloss) border 1.4
+  gradient 3 lower melanin .15 blood 1.15; brows density 1.4 soft .3 taper .7 #2a1e16, stack brows .3; caruncle 1.2,
+  waterline .35, folds lid_fold .9 (tp_h3 had none; crease 1.35 vs 5.35 mm), eyelids 1.5, upper taper_out -.3, lower 60 /
+  .04; stack redness .6 periorbital .2 shade .1. Open: the neck tone (body) vs the face.
+- dots6: trace_max_roughness .3 / .5, PROBE, denoise: all 56 dots unchanged (pixel-identical to the default but PROBE).
+  So not the ray-traced reflections: bright saturated red-orange single pixels (255,151,129), gone only with use_raytracing
+  off (and 56 -> 24 with fast GI off). Suspect the horizon scan or a NaN path in the skin shader on NICO-TOP's GPU. dots7
+  queued: fast GI AO-only, 96 samples, fast GI half res, clamp_surface_direct 2.
+- Tess head approved: head/tess = tp_k19 (same topology as tp_h3). spikes/projskin/reseat.py <head> <skin model> <dst>: the
+  head + the skin model's whole skin + base.lashes + base.head.lid_fold and shape.eye_bag (tp_k19 had neither: without
+  lid_fold the crease map is EMPTY, crease_map reads base.head.lid_fold) + recrease. tp_k19_s12 = s12 re-seated (crease
+  texels 1432 as on tp_h3). Next Tess rounds on tp_k19_s*; re-check the crease height (margin moved ~0.5 mm).
+  NOTE: s12's skin.folds lid_fold .9 sits on top of the GNM lid_fold geometry: if s12 shows a doubled fold, drop it.
+- CATCHLIGHT FOUND (local renders on the cached _g3_gp_h6c_s3 scene, out/private/gate/catchL): the eye's coat (1, rough .03)
+  works; the window's mirror image sat under Garrett's low upper lid / lash fringe at every camera-relative height tried
+  (1.2, .45, .1); at -0.2 it appears. cu.py now AIMS the window by the eyes (catch_aim=gaze default: mean eye -> eye_front
+  axis; mirror point catch_deg -4 / catch_side -6 deg off it; the joint axis reads ~pupil-top, hence -4), window
+  catch_size .4 x .5 (was .25 x .3: a pin) and sheen 1.6 (was 1). catch_aim=camera keeps the old catch_up / catch_x.
+- Garrett g6 (gp_h6c_s6): 19 PASS; review FAIL 43 MAJOR: brows now black slabs (overshoot), stubble white sprinkle on a
+  cool grey base, lips salmon, temple ripple stripes (3rd round: wrinkles .9 / .65 / .5 + regions), grey under-eye with
+  streaks, matte (no catchlight: above), no nasolabial line, muddy band under the jaw. g7 = gp_h6c_s7 ($S/cut/mk_g7.py) +
+  diag gp_h6c_s7w (wrinkles 0: are the stripes wrinkles?).
+- Tess s12 (tp_h3_s12, old window): 14 PASS; review FAIL 33: matte everywhere (old pin window), lips now fully matte (.42),
+  a 2nd dark crease stroke above the closed seam (= s12's skin.folds lid_fold on top of the GNM lid_fold: dropped), brows
+  dense greyish bars, mottling (variation .6), iris saturated green + spokes, strip-lash fan (flare 34 / taper_out -.3 too
+  far), red seam corners. Crease height open 1.9-2.0 vs 4.8-5.35 mm still. s13 = tp_k19_s13 (FIRST on the approved head
+  tp_k19; $S/cut/mk_t13.py), rendered ref=tp_k19 own=tp_h3_lef2, with the gaze-aimed window.
+- skin VERSION 11 (micro relief): blind reviews on Garrett (detail 2) and a private head (1.6) read the cells swatch as
+  directional hatching / scales and the pores' dark tint as stubble dots. The cells' depth now follows detail only up to 1;
+  above 1 detail deepens the pores; the stacked pores' tint is at most 0.3 (was 0.6 x detail). test_skin passes.
+- A flat (albedo) tile on a private head showed no under-eye crescent at all: the grey-purple under-eye there is the head's
+  form in the stage light (head-shape stage), not paint. Check flat=1 before painting an under-eye fix.
+- DOTS FIXED (dots7 on NICO-TOP, tp_h3_s9 face 768): fast GI AO-only 57, 96 samples 192 (!), fast GI half res 0, direct
+  clamp 2 (clamp_surface_direct) 0. The fireflies are DIRECT light samples (more samples, more dots). STAGE_EEVEE default now
+  has clamp_surface_direct 2.0 (spikes/garrett3/stage.py): highlights' p99.5 unchanged, look the same (cut: KUV crop).
+  Every judging render on NICO-TOP from commit after 0fa59aad has it; rev2.sh's red-dot line can go once rounds confirm.
+- DRAWING (coordinator, from mouth_eye_bias; its 5 commits cherry-picked here, one VERSION conflict resolved): skin VERSION
+  12. Eyes: the upper lash line's paint is fullest over its outer third and runs FRAME_PAST 2.2 mm past the outer canthus
+  along its tangent, tapering; lower line weight LOWER_FRAME .8 (was .55); the inner canthus' dark point (CANTHUS_TIP
+  1.2 mm wedge toward the nose, drawn in caruncle_wet, now [.64 .49 .47]); EYE_OCCLUSION .5. Lips: soft sheen on the
+  lower pad (roughness - .1, >= .24; was - .22 down to .12 = the gloss), darker soft wet seam thinning to nothing before
+  the corners, the vermilion's colour fades 70 % over the last CORNER_FADE 3 mm, the commissures a small rounded dark
+  pocket (drawn inside lip_under_shade), UNDER_SHADE default 1. Shader budget test 43 -> 44 (under_shade on). test_skin
+  passes. NOT judged yet: no render with v12. Lash GEOMETRY at the corners (sparser) not done: lashes.py, coordinate first.
+- Lid / nostril orange (coordinator, export expr_r15): our own s12 render at the photo camera shows only a mild warm upper
+  lid and pale (not orange) nostrils; the export's strong orange is mostly the export / EEVEE side. Ours: lower Tess's
+  zones.eyelids (1.5 -> 1.0) in s14.
+
+## Handover 2026-10-15 late (projskin; next agent start here, then docs/notes/gates.md)
+Stopped at the 100-tool-call rule. BRANCH projskin2, committed, not pushed. Scratch $S=/mnt/data/hifipushie/projskin;
+new: cut/waitjob.sh <tag> (wait for a gate / diag job), cut/mk_g6/g7.py, mk_t12/t13.py, mk_lt5/lt6.py, mk_jw5g.py,
+spikes/projskin/reseat.py. Launch wrappers with `setsid nohup ... < /dev/null &`: plain nohup ones were killed (exit 143)
+mid-queue and had to be requeued.
+DONE today: dots fixed (stage clamp_surface_direct 2); catchlight found and fixed (gaze-aimed window, bigger, sheen 1.6);
+skin v11 (micro caps) and v12 (eye / lip drawing); Tess re-seated on tp_k19 (tp_k19_s12, s13).
+IN FLIGHT on NICO-TOP (collect in this order; each lands in out/private/gate/<tag>, then cut/rev2.sh <dir> review1):
+privA_g6 (plain nohup: may have died; check its remote.log), garrett_g7 (gp_h6c_s7, pre-v11 code), tess_s13 (tp_k19_s13,
+ref=tp_k19 own=tp_h3_lef2, v11 without the clamp), privB_g5, g7w (diag: Garrett wrinkles 0 -> are the temple ripple stripes
+wrinkles?). catch2 is obsolete.
+NEXT (order from the coordinator): 1. Tess s14 on tp_k19 with v12: from tp_k19_s13 (+ its review), eyes.occlusion .5
+(it was .6 explicit), lips.under_shade 1.5, zones.eyelids 1.0; judge the eyes by the VISIBLE extent (canthus tip to the
+frame's end), never on clay. 2. Garrett's LIPS only on v12 (his eye drawing waits for the garrett-eyes agent's approved
+shape); g8 from g7's review (brows between g5's grey band and g6's black slab; stubble dark-dominant; temple stripes per
+g7w). 3. Private heads (private notes). No head's skin has passed yet; nothing sent for approval.
+
+## projskin round 2026-10-15 late (successor of the "late" handover)
+- Collected: garrett_g7 (gp_h6c_s7) 19/27, review FAIL (lips: evenly spaced vertical stripes = lips.dry 1.5, pale
+  peach-orange fading into the skin, upper L 62 vs 51; also brows charcoal bands, stubble sparse dark, skin smooth, wet
+  specular, purple-grey under-eye crescent, inked closed seam). Private head g6 reviewed (private notes). tess_s13
+  (tp_k19_s13) 14/27, review FAIL 24: brows ash-grey with a grey ghost over the outer half (the stack's brows map),
+  L 56-58 vs 34-36; wet streaks (brow ridge, under-eye, cheek); flat tone (no warm under-eye, no cheek flush); pale pink
+  lower waterline band, lower lashes invisible (60 x .04); orange-red closed-seam ends; lower-lip gloss; upper lip L 59 vs
+  48; nostrils light (no paint lever: open). Crease height 6.0 / 6.35 vs 4.85 / 5.25 mm = the approved head's lid_fold.
+- Queued on NICO-TOP (skin v12, first renders of it): tess_s14 = tp_k19_s14 ($S/cut/mk_t14.py: occlusion .5, under_shade
+  1.5, eyelids 1.0 as briefed; brows #2a1c12 density 1.3 soft .4, stack brows 0, redness .75, periorbital .3, zones
+  under_eye 1.6 midface_red 1.3, shading roughness .55, lips blood 2.2 strength 1.3 roughness .4, waterline .15, caruncle
+  .9, lower lashes 80 x .06); garrett_g8 = gp_h6c_s8 (LIPS ONLY, $S/cut/mk_g8.py: dry .3, blood 2.6, melanin 2, strength
+  .9, border 1.5, gradient 1.6); a private head (private notes).
+- LESSON: base.lashes thickness .09 (mm) vanishes at the gate's 512 eye crops: keep >= .12.
+- g7w (Garrett, wrinkles 0) beside g7 (wrinkles .25 by region): no temple ripple stripes in either at the face crop, and
+  g7's review no longer names them: the stripes were g5 / g6's wrinkles (.9 / .65); g7's levels are clear of them.
+- ALL FOUR heads' reviews (private B g5 too) read the skin wet / plastic and the catchlight a hard square dead centre in the pupil:
+  the gaze-aimed window at catch_deg -4 / catch_side -6, sheen 1.6 sits nearly behind the camera, so every camera-facing
+  patch of skin mirrors it. cu.py defaults now 4 / -12, sheen 1.0 (e10dd63f); tess_s14 carries a c10 bracket eye tile
+  (catch_deg 10 / side -6). The first s14 / g8 / private submits were cancelled and resubmitted on it (+ a 2nd private
+  head); $S/cut/collect.sh <tags> waits for each and runs the review (log out/private/gate/collect_r1.log).
+- Joe's rule (coordinator, 2026-10-15): ALL renders on NICO-TOP by default (remote.sh, <= 12 GB, own folder, detached,
+  many frames per submit); the laptop only for small check crops / flat / ID passes; 10 cores for all agents.
+- Garrett EYES unblocked (garrett-eyes round 2: the lids are right, the slit look is TONE; ours vs photo sclera/lid
+  .92/.90 vs 1.18/1.29, sclera/iris 1.47/1.45 vs 2.18/2.29, lid/cheek .88/.92 vs .79/.86). gp_h6c_s8 (version 2) = g8's
+  lips + sclera #d6cec4 (was #b9b1a8), occlusion .3, iris #585c54 / inner #4e4c3e, zones eyelids 1.3, upper lashes
+  taper_out .5 thickness .12; submitted as garrett_g8e (g8 lips-only cancelled). Measure with garrett_eyes/id contrast.py /
+  litana.py: they read a prepared stage (prep.py <model> <stage>, lit_batch.sh renders locally): needs a prep for s8.
+  CONFLICT to settle: skincheck's "sclera (L)" says ours is BRIGHTER than the photo on Garrett (40 / 33 vs 22) and Tess
+  (37 / 53 vs 28), while garrett-eyes' ratios say Garrett's sclera is too DARK against the lid: skincheck's sclera box
+  is probably not the visible white: it is placed by the PHOTO's landmarks on both images (our aperture differs) and is
+  absolute L; garrett-eyes' ratios use each image's own eye frame against its own lid skin: trust the ratios.
+
+## Handover 2026-10-15 night (projskin; next agent start here, then docs/notes/gates.md)
+Stopped at the tool-call limit. BRANCH projskin2, committed, not pushed. Scratch $S=/mnt/data/hifipushie/projskin.
+RULE (Joe): ALL renders on NICO-TOP (rset_remote.sh / remote.sh, <= 12 GB, own folder, `setsid nohup ... < /dev/null &`);
+laptop only for small check crops / flat / ID passes. Cancel a queued batch: `OXIDEGEN_TOKEN=$(cat
+~/.config/oxidegen/hifipushie-cloth-token) python3 /home/joe/dev/oxidegen/scripts/bundle/bundle_client.py cancel <batch>`
+(batch id in out/private/gate/<tag>.remote.log). New: $S/cut/collect.sh <tags> (waits for each job, runs rev2.sh review1).
+IN FLIGHT (all on cu.py e10dd63f: catch window 4 / -12 deg, sheen 1.0), detached:
+- tess_s14 (tp_k19_s14, $S/cut/mk_t14.py; + a c10 bracket eye tile eyes_v0_c10.png) and two private heads (privA_g7, privB_g6):
+  collector $S/cut/collect.sh -> out/private/gate/collect_r1.log (one line per head: checks | MAJOR count | verdict); the
+  review is out/private/gate/<tag>/review1/review.md. If a line says NO PAIRS, run `$S/cut/rev2.sh <gate dir>` by hand once
+  check.log has "measured items". (collect_r1.log also lists garrett_g8: that submit was CANCELLED, ignore it.)
+- garrett_g8e (gp_h6c_s8 version 2: lips + eye tone) -> collector log out/private/gate/collect_r1g.log.
+FIRST: read the s14 review. Did the new window fix the wet skin / square catchlight on every head? (eyes_v0 vs eyes_v0_c10
+for the catch height.) Then loop Tess on the worst MAJOR.
+NEXT, Garrett eye TONE (coordinator; garrett-eyes round 2 proved the lids right, the slit look is tone; drawing goes on
+gp_h6c as is; sheet /mnt/data/hifipushie/garrett_eyes/out/private/sheet_r2.png, notes docs/notes/gnm_atlas.md
+"## garrett_eyes" ROUND 2 on branch worktree-agent-a7bbb816b8d44034e):
+  1. sclera ~1.2-1.3x the lid skin (colour + less occlusion shade; occlusion alone costs ~3 mm2 white per eye),
+  2. iris ~2.2x darker than the sclera, 3. upper lid / cheek ~0.8, 4. lighter / thinner lashes at the outer upper margin
+  (up to 4 mm2 of white). Photo: sclera/lid 1.18/1.29, sclera/iris 2.18/2.29, lid/cheek .79/.86, white 47/51 % of the
+  non-iris opening (ours were .92/.90, 1.47/1.45, .88/.92, 23/7 %). g8e is the first try (sclera #d6cec4, occlusion .3,
+  iris #585c54, eyelids 1.3, lashes taper_out .5 thickness .12). MEASURE with /mnt/data/hifipushie/garrett_eyes/id
+  contrast.py / litana.py: they read a prepared stage (prep.py <model> <stage> -> out/id/prep.json, lit_batch.sh lit
+  passes): make a prep for gp_h6c_s8 (or ask the garrett-eyes agent how). Then check Tess for the same sclera / iris tone
+  issue (skincheck's "sclera (L)" is not usable for this: photo-landmark box, absolute L).
+Garrett lips (g8: dry .3, blood 2.6, melanin 2, strength .9, border 1.5, gradient 1.6) ride in g8e. Private heads: private
+notes (workspace/private_notes/skin_notes_projskin_full.md). No head's skin has passed; nothing sent for approval.
+
+## Eye tone measure (2026-10-15 late, projskin)
+- skincheck's "sclera (L)" item is GONE (a box placed by the photo's landmarks, absolute L: on ours it missed the visible
+  white). Replaced by `eye_tone` in each image's OWN eye frame (its MediaPipe lid contours + iris): sclera = opening minus
+  iris (0.5 mm in from the margins), as RATIOS: sclera / lid skin (tol 0.08 log), sclera / iris (0.12), upper lid / cheek
+  (0.06), visible white fraction (> lid, 0.12 abs). On garrett_g7's face tile: photo 1.19/1.13, 1.61/1.70, .67/.77;
+  ours .96/.80, 1.38/1.32, .96/1.06 (all FAIL, same direction as garrett-eyes' contrast.py). The face tile is coarse
+  (sclera/iris reads lower than the eye-frame tool's 2.18/2.29): for Garrett the AUTHORITY is the eye-frame measure below.
+- Eye-frame measure on gate renders, no laptop lit pass: $S/geye/id (garrett-eyes' prep / ana / contrast / litana with
+  their own out dir $S/geye/out) + gtone.py <gate dir> <tag>: resamples the gate's face_v0 + eyesR_v0 + eyes_v0 tiles
+  into prep.json's eye frame (all crops of the photo camera: scale + shift) -> lit_<tag>_v0.png; then
+  `contrast.py <tag>`. prep made for gp_h6c_s8. Check: g7 R reads .90 / 1.47 (garrett-eyes' own dressed pass .92 / 1.47).
+- Tess (tess_s13 tiles, new items) R/L: sclera/lid photo 1.04/1.07 ours .93/.99; sclera/iris 1.59/1.72 ours 1.83/1.92
+  (iris contrast NOT short: our iris L 34 vs 25, but the sclera holds up); upper lid/cheek .74/.83 ours .90/.90; white frac
+  .53/.55 ours .30/.44. So Tess shares HALF the problem: the upper lid skin is too light against the cheek (no lid
+  darkening) and the sclera a little dim against it; the iris is fine. Fix on Tess = darker upper lid, not the iris.
+STATE: measure in place; waiting for g8e / s14 collections. NEXT: g8e eye tone vs targets; s14 review; Tess eye tone.
+- tess_s14 review (review1): 30 MAJOR, FAIL. New catch window did NOT fix the square catchlight (pair_3/4 MAJOR; catchlight
+  peak-median 177 vs 95/112) nor the wet streaks in the 3/4 and side views (brow ridge, nose bridge, under the eye).
+  WORST (5 MAJOR + the largest measured miss): brows grey-brown, glossy, thin: brow L 57.9/61.7 vs 35.9/34.3, and getting
+  LIGHTER each round (s12 48/52, s13 56/58) as soft / the stack's brows layer went up / off. Others: lips colour + hard
+  line past the corners, nostrils light brown, closed-lid seam red runs past the lids, black flat lash strip, pale
+  lower waterline, no cheek flush (L), skin a bit light (chin L +7).
+- s15 (mk_t15.py): brow_hairs layer MATTE in code (roughness .42 -> .68, specular .45 -> .22: a glossy hair picture under
+  the catchlight read grey), Tess brows soft .4 -> .1, density 1.45.
+STATE: s15 submitted to NICO-TOP (collector -> out/private/gate/collect_r2.log). NEXT: s15 brows; g8e eye tone.
+- garrett_g8e (gp_h6c_s8 v2) eye TONE, eye-frame measure (gtone + contrast), R/L vs photo: sclera/lid 1.12/1.00 (1.18/1.29;
+  g7 .90/.74), sclera/iris 2.06/1.93 (2.18/2.29; g7 1.47/1.25), upper lid/cheek .89/.94 (.79/.86), white frac .52/.25
+  (.47/.51). Sclera and iris now near the photo; the LID is still too light vs the cheek (skincheck agrees: .94/1.04 vs
+  .67/.77), L sclera dim (L white .25). Same lid fault as Tess. g8e review1: FAIL 32 MAJOR, eye-tone not among the worst:
+  no age texture (crow's feet, forehead / nasolabial lines), stubble no grey + hatching up the cheek, brows a solid dark
+  painted block (soft, sparse, grey in the photo), peach upper / grey lower face split, wet cheek sheen, GREY BRUISE
+  SMUDGE under the eyes, bluish-white sliver on the lower inner lid (needs a pink waterline).
+- garrett_g8f (gp_h6c_s9 = s8 + zones.periorbital .7, mk_g8f.py; + matte brows from code) SUBMITTED -> collect_r2g.log.
+  RISK: periorbital also reaches the under-eye (the bruise MAJOR): if it worsens, use a lid-only darkening (eyelids zone
+  colour is blood-red 1.9: Tess read orange; a melanin-only lid layer may be needed in skin.py).
+
+## Handover 2026-10-15 late night (projskin; next agent start here, then docs/notes/gates.md)
+Stopped at the tool-call limit. Branch projskin2, committed, not pushed. $S=/mnt/data/hifipushie/projskin.
+DONE this session: skincheck sclera item replaced by eye-frame tone ratios (eye_tone; see "Eye tone measure" above);
+eye-frame measure on gate renders ($S/geye/id/gtone.py + contrast.py, prep for gp_h6c_s8; re-run prep.py <model> only if
+the head SHAPE changes); brow_hairs layer matte in code (all heads: brows were the top MAJOR theme on every head).
+IN FLIGHT on NICO-TOP (detached, don't resubmit): tess_s15 -> out/private/gate/collect_r2.log; garrett_g8f ->
+collect_r2g.log. Wait with ONE blocking wait (timeout 590 bash -c "until [ -s <log> ]; do sleep 30; done").
+NEXT: 1. s15: did the brows reach L ~35 and lose the gloss? Then Tess's next worst: lips (hard line past the corners,
+upper L 55 vs 48), catchlight square (177 vs ~100: cu.py's catch box; Garrett's reads 80-100, so it is Tess's eye
+material/gaze), wet streaks in the side views. 2. g8f: `uv run python $S/geye/id/gtone.py $G/garrett_g8f g8f &&
+uv run python $S/geye/id/contrast.py g8e g8f`; targets lid/cheek .79/.86. 3. Tess lid: same darkening once g8f shows
+which way works. 4. Private heads: re-gate with the matte brows (private notes updated).
+
+## MAJORs grouped by cause (2026-10-15 night, projskin; coordinator: step back before fixing one by one)
+Source: the last review of each head (tess_s14, garrett_g8e, two private heads A / B: 30 / 32 / 30 / 29 MAJOR). Counts are
+skin-stage MAJORs (OTHER STAGES left out), T / G / A / B.
+| cause | what the reviews say | T | G | A | B | all |
+|---|---|---|---|---|---|---|
+| STAGE: the catch window (a 0.4 x 0.5 m rectangle, sheen 1, specular only) is mirrored by EVERY glossy surface | hard square catchlight; wet / white streaks on brow ridge, nose bridge, under the eye, cheekbone; grey sheen band through the brows; lashes pale and glossy; glossy patch on the lid | 6 | 2 | 4 | 5 | 17 |
+| PAINT: brow layer (colour, density, softness, shape) | grey-brown / solid block / hard edges / too heavy or too thin | 4 | 4 | 3 | 2 | 13 |
+| PAINT / zones: grey cast in shadowed / under-eye skin | grey bruise under the eye, grey-olive shadows, grey band under the jaw, grey chin | 2 | 3 | 4 | 0 | 9 |
+| PAINT: lips (colour too grey-mauve or too pale; hard line past the corners; no moist highlight) | | 3 | 2 | 1 | 3 | 9 |
+| GEOMETRY / normal detail: age texture, pores, fine lines (too little), hatch lines (too much detail) | | 0 | 9 | 5 | 0 | 14 |
+| PAINT: stubble reach and colour | hatching above the beard line, no grey | 0 | 6 | 0 | 0 | 6 |
+| GROOM: lashes (density, coverage on closed lids, strip look) | | 3 | 2 | 2 | 0 | 7 |
+| PAINT: redness / flush / freckles missing; nostrils light; lid seam colour past the corners; waterline; neck break; iris | | 6 | 2 | 3 | 9 | 20 |
+The single cause that reaches every head is the STAGE's catch window: it is a light for the eyes, but every glossy patch of
+skin, brow and lash mirrors it (the s14 / g8e window moves changed where the streaks sit, not that they exist), and the
+grey brow "sheen" is its rectangle on dark hairs. FIX (this round, all heads): the window lights ONLY the eyes part
+(`light["lights"][i]["window"]["receivers"] = [part, ...]`: Blender light linking, works in EEVEE 5.1, checked on a
+two-sphere scene; cu.py `catch_on=eyes` default, `catch_on=` = the old all-surfaces window). The skin keeps the key's
+own broad window (gain .2) for its sheen. The catchlight's hardness is then the window's size / sheen alone: bracket tiles
+catch_size / sheen ride along. After that, per head, one change per region from the rows above.
+- Round r3 (one NICO-TOP submit for all four heads: $S/rset_batch.sh <tag> <spec file> = rset_remote.sh with a job folder
+  per head; $EXTRA lines take @REF): s15 and g8f were still queued behind ~8 GPU jobs after 70 min and are superseded
+  (cancelled). r3 = the linked catch window (all heads) + one change per region ($S/cut/mk_r3.py):
+  Tess tp_k19_s16 = s15 (matte brows) + lips (melanin 22 -> 12, blood 3, border 1, under_shade .8, rough .32: grey-mauve,
+  hard line past the corners, no moist highlight) + zones.periorbital .5 (lid too light); Garrett gp_h6c_s10 = g8f's s9
+  (periorbital .7) + lower_cool 0 (grey bruise) + stubble grey .6 / cheeks zone .2 (no grey, hatching up the cheek) + brows
+  soft .6 / density 1.1 / grey .6 (solid block) + lips blood 3.6 / melanin 1.5 / dry .15 (pale, barcode); private heads
+  per the private notes. Bracket eye tile per head: catch_size .7 x .9, sheen .5 (tag cs) beside the default .4 x .5 / 1.
+STATE: r3 queued (out/private/gate/r3.remote.log; reviews -> collect_r3.log). NEXT: r3 grouping table again (did the
+linked window clear the catchlight / streak / brow-sheen MAJORs on every head?), gtone + contrast on garrett_g9 and tess_s16.
+- Projection coverage (assembly's item: white hooks inside the nostrils of the exported head; evidence
+  /mnt/data/hifipushie/assembly/seam/r19_nos_v33_v34.png, r19_nos_fix_uv.png): the photo's nostril-rim skin projected
+  onto the inner wall counted as MEASURED, so the cavity fill never reached it. skin_project.make now leaves out the nose
+  region's own cavity texels (ao < CAVITY_AO, unblurred), light or dark (rep "nostril_wall_left_out"). UNTESTED: takes
+  effect on the next skin_project run of a head (projections are cached by hash); check the nostril crops + the report
+  number on the next projection, and the export at the assembly agent's camera. Same row as "nostrils light" (Tess,
+  private A) in the grouping table: re-project before judging those.
+
+## Handover 2026-10-15 night (projskin; next agent start here, then docs/notes/gates.md)
+Stopped at the tool-call limit. Branch projskin2, committed, not pushed. $S=/mnt/data/hifipushie/projskin.
+DONE: MAJORs grouped by cause (table above); the stage's catch window now lights only the eyes (light linking,
+blender_scene window.receivers, cu.py catch_on); one batched round r3 for all four heads ($S/rset_batch.sh, $S/cut/r3.txt,
+$S/cut/mk_r3.py) with one change per region; s15 / g8f cancelled (superseded, queue was ~8 GPU jobs deep); nostril
+inner-wall texels unmeasured in skin_project (untested).
+IN FLIGHT (detached, don't resubmit): r3 batch -> out/private/gate/r3.remote.log; the collector runs eyecmp, skincheck
+and the review per head -> out/private/gate/collect_r3.log (tess_s16, garrett_g9, privA_g8, privB_g7; reviews in <tag>/review1).
+NEXT: 1. Per head, MAJOR counts by the table's rows, vs s14 / g8e / g7 / g6: did the linked window clear the catchlight,
+streak, brow-sheen and lash-gloss rows? Compare eyes_v0 with the cs bracket tile (catch .7 x .9, sheen .5) for the
+catchlight. 2. gtone + contrast on garrett_g9 and tess_s16 (`uv run python $S/geye/id/gtone.py $G/garrett_g9 g9 &&
+uv run python $S/geye/id/contrast.py g8e g9`): lid / cheek targets .79/.86 (G), .74/.83 (T); did periorbital spread into
+the under-eye (bruise row) now that lower_cool is 0? 3. Re-project one head with the nostril change and check the
+nostril crops. 4. Next round: the biggest remaining rows (brows paint, age texture for Garrett, lashes), all heads in one
+batch. If you touch the garrett-eyes tools, give them --out / --renders arguments (coordinator), don't sed-copy them.
+
+## projskin round 2026-10-15 evening (successor of the "night" handover)
+- Nostril re-projection checked (Tess's own projection tp_h3_lef2 -> copy tp_h3_lef2n, atlas crops in
+  $S/nos/tess_nos_atlas*.png: before / after / confidence). The cavity-unmeasured change alone (222 texels) only softened the
+  orange side streaks: the pale hook at the TOP of the nostril survived, and its confidence channel was "mirrored", not
+  direct: the other side's rim skin was mirrored into the wall. Fix: skin_project.make blocks the mirror into the nose's
+  cavity neighbourhood (regs nose & the CAVITY_MM-blurred cavity mask; the upper wall reads ao > CAVITY_AO, so `inner`
+  alone missed it); rep "nostril_wall_mirror_blocked" (2309 texels on Tess). After: hooks gone, the wall takes the
+  inpainted skin round it; left: faint hard-edged "ours" patches inside the cavity (in shadow when rendered) and a thin
+  dark measured line in one nostril. tests/test_skin_project.py passes. Heads pick it up on their next skin_project run.
+STATE: r3 still queued on NICO-TOP at 18:25 (submitted 18:03). NEXT: r3 grouping + gtone; next round with re-projected heads.
+- Full re-projection of the other heads (own models -> <own>n copies) moved MORE than the nostrils on Garrett (neck fill,
+  stubble dots, eyes: 194k texels > 20) and one private head (a slight tone shift over the whole atlas): drift since
+  their 10-14 projections. So the nostril fix goes in ALONE: $S/nos/graft.py lays the re-projection's nostril box
+  (atlas y 830-1000, x 900-1160, feathered 12 px; GNM's UV layout is shared) into each head's current albedo. Garrett
+  graft crop $S/nos/g_graft.png: pale wall patch smaller; hard-edged pale "ours" patches inside the cavity remain (fill =
+  the nose skin round it, so the wall is as light as the nose; if the render still shows hooks, the wall needs the fill
+  darkened toward the cavity, not more exclusion). Main repo cherry-pick bef0229c (per-commit archive link) done here.
+STATE: r3 running on NICO-TOP since 18:59 (collector waits). NEXT: r3 table + gtone, then r4 = graft + per-row fixes.
+- r3 results (review1 MAJOR, all stages): Tess s16 18 (s14 30), Garrett g9 33 (g8e 32), private A 42 (30), private B 16 (29).
+  CATCH-WINDOW ROWS CLEARED on every head: no wet streaks, no grey brow sheen, no glossy lashes / lid patch; the square
+  catchlight is gone on T / G / B, one mention left on A (an eye crop). The linking OVERSHOT: the skin now reads MATTE
+  (T "no specular response", G "matte like plastic", A "no oily shine on the nose", lips "no moist highlight").
+  r3 rows, T / G / A / B (skin-stage MAJORs; duplicates per crop counted):
+  | row | T | G | A | B |
+  |---|---|---|---|---|
+  | catch window (streaks, square, brow sheen, lash gloss) | 0 | 0 | 1 | 0 |
+  | NEW: no skin sheen (linked window) | 2 | 1 | 1 | 1 |
+  | brows | 3 (now near-black, dense: overshot) | 4 (translucent grey ribbon) | 7 | 0 |
+  | grey / dark under-eye | 1 | 3 | 5 | 0 |
+  | lips | 3 | 2 | 3 | 3 |
+  | age texture / pores / micro-texture | 1 | 9 | 6 | 1 |
+  | stubble | 0 | 6 | 3 (grey chin shading) | 0 |
+  | lashes | 0 | 2 | 2 | 0 |
+  | other paint (tone / flush / iris / sclera / waterline / lid seam / nostrils / neck break) | 5 | 6 | 9 | 9 |
+  Garrett eye tone (gtone + contrast, g9 vs g8e), R / L: sclera/lid 1.13 / 1.01 (1.12 / 1.00; target 1.18 / 1.29),
+  sclera/iris 2.06 / 1.93 (same; 2.18 / 2.29), lid/cheek .88 / .93 (.89 / .94; .79 / .86). periorbital .7 moved nothing
+  measurable; the under-eye did NOT darken (cheek L .625 / .600 vs .628 / .602) but the review still reads a grey smudge
+  there. Lid also "saturated orange" (eyelids zone 1.3). Garrett's micro-texture reads as diagonal DASHES (the stubble
+  strokes: long, sparse) not pores.
+- r4 = one batch, all heads ($S/cut/mk_r4.py + mk_r4_private.py, $S/cut/r4.txt; commit 124bbef8): every head gets the
+  nostril graft + cu.py's new skin-sheen window (a second window, 1.6 x 1.6 m, gain .35, all parts: broad sheen without
+  the small window's rectangle). Tess s17: brows density 1.0 / soft .35 / #4a3626, lips border .4 blood 4, waterline .5,
+  iris #6a5a3c, zones under_eye 1.6 -> .9, midface_red 1.6. Garrett s11: stubble amount 2.2 / length .8 mm / size .8 /
+  grey .75 / cheeks .6 (dense grey stipple to the sideburn), brows grey .3 / #3e352e / density 1.5 / soft .3, wrinkles
+  amount .6 (forehead .8 glabella .9 crows_feet .9 under_eye .9), nasolabial 1.0, zones eyelids .7 under_eye .25
+  nose_red 1.4, lips blood 4.5 dry .05. Private heads per the private notes. Nostril graft on the private heads changed
+  more texels (19-31k vs 1-2k) because their re-projection drifted in tone inside the box too: watch for a tone seam
+  round the nose tip.
+
+## Handover 2026-10-15 evening (projskin; next agent start here, then docs/notes/gates.md)
+Stopped at the tool-call limit. Branch projskin2, committed, not pushed. $S=/mnt/data/hifipushie/projskin.
+DONE: r3 counted by row (table above: catch-window rows cleared on every head, but the skin went matte); Garrett eye tone
+(lid still too light, periorbital no effect); nostril fix extended (no MIRROR into the nostril neighbourhood: that was the
+pale hook) and grafted into each head alone ($S/nos/graft.py); main bef0229c cherry-picked; cu.py skin-sheen window; r4
+submitted (one batch).
+IN FLIGHT (detached, don't resubmit): r4 -> $S/out/private/gate/r4.remote.log; collector -> collect_r4.log (tess_s17,
+garrett_g10, privA_g9, privB_g8). NICO-TOP took ~50 min to start r3 and ~55 min to run it.
+NEXT: 1. r4 table by the same rows: did skin sheen come back WITHOUT the streaks / square (if streaks return: sheen .2 or
+sheen_size 2.5)? Tess brows between r3's black and s14's grey? Garrett stubble stipple vs dashes, age lines visible?
+nostrils dark on every head (if still pale hooks in the render: darken the fill toward the cavity, see the graft note)?
+2. gtone g10 vs g9: if lid/cheek is still ~.88 / .93, the lid needs a melanin-only lid layer in skin.py (periorbital and
+the blood-red eyelids zone don't reach the target). 3. Then the next rows, all heads in one batch.
+
+## projskin round 2026-10-16 (successor of the evening handover): measured targets per row
+Coordinator's process change: every change in a round needs a MEASURED target (a crop statistic of the photo against ours),
+recorded as target / before / after per row; a change that worsens its row is reverted.
+- New skincheck rows (spikes/projskin/skincheck.py, all crop statistics on face_v0 at the photo camera, photo landmarks):
+  brow coverage (fraction of the brow box > 12 L below the forehead), brow hair / skin (L of those pixels / forehead L),
+  brow strand texture (fine rms); dots (stubble / pores: dark components vs a 3-px blur: per cm^2, median mm^2, elongation)
+  on chin, jaw_R, cheek_R; age lines (log-L band-pass 1..4 px rms) at crow's feet, forehead, under-eye; eye RIM (0..1 mm
+  outside the landmark opening: waterline + lash line), eye LID (1..3 mm above the margin), SOCKET (3..7 mm) as Lab minus
+  the cheek's; sclera blotch (L cv, a* p90-p10); opening h / w from each image's own landmarks. Measured on copies of the
+  r3 renders ($S/out/private/meas/<tag>).
+- r3 values, photo | ours (T = tess_s16, G = garrett_g9; private heads in the private notes):
+  | row | T R / L | G R / L |
+  |---|---|---|
+  | rim - cheek dL | -17 -21 / -12 -14 | -23 -21 / +5 +6 |
+  | lid - cheek dL | -14 -9 / -5 -3 | -19 -13 / -3 +1 |
+  | lid - cheek db* | -3.0 -4.5 / +1.1 -1.1 | -0.7 -2.7 / +1.9 +1.9 |
+  | brow coverage | .92 .86 / .68 .60 | .95 .97 / .70 .67 |
+  | brow hair / skin L | .44 .40 / .45 .43 | .58 .57 / .71 .69 |
+  | brow strand rms | .085 .081 / .099 .105 | .090 .084 / .034 .036 |
+  | crow's feet band rms | .061 .031 / .021 .006 | .052 .037 / .030 .018 |
+  | forehead band rms | .0079 / .0072 | .0172 / .0094 |
+  | stubble jaw_R dots/cm^2, mm^2 | | 81, .116 / 49, .029 |
+  | sclera blotch L cv | .27 .23 / .22 .22 | .21 .23 / .15 .16 |
+  | opening h / w | .351 .331 / .352 .335 | .272 .261 / .297 .289 |
+  Reads: (1) the RIM is the largest eye-region miss on every head (G +27 L, private A +17..+21, T +5..+7, B +2..+4): the
+  photo frames the opening with a dark lash line, ours with the pink waterline layer (0.5 opacity, blood 3.5): that is the
+  lash review's "pink / lilac rim" and why the opening reads TALL: Tess's opening h / w from landmarks equals the photo's
+  (.352 vs .351), so the tall read is TONE (the light rim widens the visible opening), as on Garrett. (2) Tess's sclera is
+  NOT blotchier than the photo's on the gate render (cv .22 vs .27), her socket matches (dL, da*, db* within 1 except L
+  socket -4 vs -2): the lash review's blotchy sclera / orange socket are on the ga_tess EXPORT (its own material bake), not
+  the projected skin; routed back as an export item. (3) Tess's brows are as DARK as the photo's (hair / skin .45 vs .44);
+  what differs is coverage (.68 vs .92) and the hard drawn edge: r3's "near-black" read is the hard edge, not the value.
+  (4) The upper lid is too light on T / G / A, and the photo's lid is a little LESS red / yellow than the cheek: a neutral
+  cool darkening, not melanin (T(melanin) for dL -13 costs db* +7).
+- Code: skin.zones.lid_shade (off by default): a neutral-cool multiply [.7 .7 .74] on the eyelid zone, opacity .6 x zone
+  (zone 1 ~ x0.82, 1.66 ~ x0.7); test tests/test_skin.py::test_lid_shade_zone. Replaces the planned melanin-only layer
+  (the measure says melanin warms it the wrong way).
+STATE: r4 on NICO-TOP (queued). NEXT: r4 table by rows + the new rows; r5 targets from the photo values above.
+
+## Handover 2026-10-15 20:45 (projskin; next agent start here, then docs/notes/gates.md)
+Stopped before the tool-call limit with r4 NOT yet started on NICO-TOP (queued since 20:05 behind hgf5253 / dgrr-192421;
+r3 took ~50 min to start and ~55 to run). Branch projskin2, committed, not pushed. $S=/mnt/data/hifipushie/projskin.
+DONE: skincheck rows for the unmeasured rows (brows coverage / hair-skin / strands, stubble dots, age lines, eye rim / lid /
+socket Lab vs cheek, sclera blotch, opening h / w), measured on the r3 renders (table in the section above, private heads
+in the private notes); skin.zones.lid_shade (neutral-cool multiply, measured hue; test); r5 plan with the measured targets
+in $S/cut/mk_r5.py (helper lid(k, need_dL) picks the zone from the measured dL). The lash review's Tess items: the pink
+rim = the waterline layer (rim dL short on every head; the opening's h / w from landmarks matches the photo, so "too tall"
+is tone); blotchy sclera and orange socket do NOT show on the gate render (export material: route to the export / lash
+agent); no visible crease = crease darkness .24 / .18 vs .32 / .29 (passes tol .12 but low: raise lid fold shade if the
+lid_shade change doesn't carry it).
+IN FLIGHT (detached, don't resubmit): r4 -> out/private/gate/r4.remote.log; collector (pid 1573024) -> collect_r4.log; it
+runs the NEW skincheck rows too (run.sh uses this worktree).
+NEXT: 1. `offload wait rs_r4`, then the collector; r4 table by the cause rows (catch / sheen streaks: if back, cu.py
+skin-sheen gain .2 or size 2.5) AND the new measured rows; keep wins, revert regressions row by row (private A first).
+2. Garrett lid: g10's "upper lid / cheek" and "eye lid - cheek (L)" rows; lid_shade from lid(k, need_dL). 3. Rim slope from
+Tess s16 -> s17 (waterline 1 -> .5), then waterline / lashes per head to the photo's rim dL. 4. r5: all heads, one batch
+($S/rset_batch.sh r5 $S/cut/r5.txt); merge main first if RESTART.txt says the render-speed fix (one Blender per job,
+--stage) has landed (not yet at 20:40; main has b35d437b, a gates note).
+
+## r4 landed 21:27 (projskin, same session; next agent start here)
+- review1 MAJOR r3 -> r4: Tess s17 18 -> 27 (WORSE), private A 42 -> 31, private B 16 -> 20 (worse), Garrett g10 = NO RESULT:
+  every g10 render is MAGENTA (Blender's missing-texture colour: face_v0 81 %, mouth 100 %), with no error in the job log
+  (garrett_g10.joblog.txt). skincheck then crashed on eyecmp's None (fixed: n/a row). FAIL, not a measurement: the
+  pack (jobs/garrett_g10/ws, 38 MB) or the grafted albedo (nos/graft.py on gp_h6c_s10 -> s11) lost an image. NEXT: open
+  gp_h6c_s11 locally (flat pass of one tile) to see which texture is missing; compare its image ids with ws/_images.
+- Tess measured rows r3 -> r4 (photo | r3 | r4): brows got LIGHTER and sparser: darkness L 35.9 / 34.3 | 46 / 57 | 60 / 65,
+  coverage .92 / .86 | .68 / .60 | .62 / .55, hair / skin .44 | .45 | .63, strands .085 | .099 | .069: REVERT r4's brows
+  (density 1.0 / soft .35 / #4a3626) to s16's; the hard-edge read needs another lever than soft + density. Rim dL
+  -17 / -21 | -12 / -14 | -14 / -15 (waterline 1 -> .5: better by ~1.5 L per -.5 waterline: waterline 0 gives only ~-3:
+  the rim needs the lash line darker, not just less pink). Lid, under-eye, lips, chin tone, catchlight 175 vs 95 unchanged.
+- Private A: fewer MAJORs; brow_L coverage and lips upper worse by the measure. Private B: rim and lid R worse
+  (waterline .8 made the rim lighter), lips upper worse: revert B's waterline and lips change. Details in private notes.
+STATE: r4 counted (Garrett failed: magenta). NEXT: Garrett's missing texture; r5 = revert Tess brows + B waterline / lips,
+keep A's r4, then the mk_r5.py plan (lid_shade, rim via lash line) with the measured targets; one batch.
+
+## Handover 2026-10-16 (projskin, after "r4 landed"; next agent start here)
+- Merged main (one Blender per job, packed stage, cloth cache): cu.py keeps one shoot per run with the gaze-aimed catch
+  window, the skin-sheen window, receivers, eevee and tag; blender_scene._light_rig carries window receivers (light
+  linking; their collections go with the rig) and no transmission or volume from diffuse-0 lights.
+- Garrett g10 MAGENTA: reproduced LOCALLY (gp_h6c_s11, one 256 px face tile: 82 % magenta, exit 0, no error), so the
+  pack is not the cause. The stage's scene.blend has every image (29 images, 21 in the body material, 7 attributes,
+  1105 nodes). The one layer s11 adds over s10 (69 -> 70 skin layers) is wrinkle_lip_lines (wrinkles.amount .25 -> .6):
+  an EEVEE shader that fails to compile renders magenta. Test queued: gp_h6c_s11x = s11 with lip_lines 0 -> out/mag2
+  (check.txt). If that is clean, the cause is shader size, and a layer budget or merge in paintnodes is the real fix (not done).
+- Magenta check: render.missing_texture_fraction / magenta_tiles + spikes/projskin/rendercheck.py (writes <dir>/ERROR,
+  exit 1); tests/test_rendercheck.py. In scratch, rset_batch.sh runs it before eyecmp / skincheck and fails on a nonzero
+  job exit; rev.sh refuses a set with ERROR. On g10 it flags 7 of 16 tiles, and 0 on every other head and on every reference.
+- skin hair.lashes.width (x the lash line's radius): the rim lever (waterline moved rim ~1.5 L only).
+- r5 IN FLIGHT (detached, don't resubmit): $S/chain_r5.sh -> out/private/gate/chain_r5.log. It waits for out/mag2, runs
+  cut/mk_r5_run.py (+ mk_r5_garrett.py, mk_r5_private.py), then ONE batch rset_batch.sh r5 cut/r5.txt with a flat mouth
+  tile per head. Garrett drops out if lip_lines 0 is still magenta. Not packed with --stage (the stage is re-meshed there).
+  r5 changes, target / r4: Tess s18: brows REVERTED to s16, then thickness 1.25, density 1.8, soft .2 (coverage
+  .92/.86 vs .62/.55, darkness 36/34 vs 60/65); lashes width 1.6 (rim -17.3/-20.5 vs -13.7/-15.3); lid_shade .58 (lid
+  -14.2/-8.6 vs -5.7/-2.9). Garrett s12: lip_lines 0, lid_shade .5 (lid/cheek .79/.86 vs r3 .88/.93), stubble size 2.2
+  (dots .116 mm^2 vs r3 .029), lashes 1.0 / #2a221d / width 1.4 (rim -23/-21 vs r3 +5/+6); crow's feet first measured in
+  r5. Private A g10 = r4 + lashes width 1.6 (rim); B g9 = r4 with waterline and lips REVERTED to g7, plus lashes width 1.3.
+- Doubled lower lip (coordinator): it is in Tess's EXPORT albedo (ga_tess v38c+, assembly/mh/v38c_sheet.png: a lighter
+  lip-coloured band below the vermilion in the smile). Tess's gate render (tp_k19_s17 mouth_v0) shows ONE border. Not yet
+  decided whether the cause is the bake (the export mesh's lip against the projection) or our lip paint falloff. The r5 flat
+  mouth tile (mouth_v0_flat) gives the neutral albedo at the photo camera: if it shows no band, route it to assembly
+  as the bake. Measuring script: $S/cut/lipedge.py (edge count down the centre; noisy on lit tiles, use flat).
+- Not done: sheen-streak check on the r4 crops; tests test_skin_project / test_skin not re-run after the merge (run one
+  file per process).
+STATE: r5 launched (detached). NEXT: read out/mag2/check.txt; `offload wait rs_r5`; count MAJORs by row per head against r4
+(T 27, A 31, B 20, G none), keep wins and revert losses; lip band from the flat tile; paintnodes layer budget if mag2 is clean.
+
+## Magenta fixed at the source (2026-10-16, projskin, after "Handover 2026-10-16")
+- out/mag2: gp_h6c_s11x (s11 with lip_lines 0) rendered clean, so the cause was s11's one extra layer. Measured cause:
+  the body material read 15 vertex attributes (wpos, wnrm + 13 packs of three scalars, hp0..hp12). Blender 5.1.2 EEVEE
+  fails at 15 with "EEVEE: Material ... uses too many attributes" (synthetic probe $S/cut/attrlimit.py: 14 compiles,
+  15 fails). The material renders magenta and the job still exits 0.
+- Fix: paintnodes.PACK = 4. Scalars go four to a FLOAT_COLOR attribute (the fourth is the Attribute node's Alpha).
+  paintnodes.MAX_ATTRS = 14 makes a part over budget a SpecError at compile time that names the layers reading the most
+  inputs. blender_scene._paint_material counts the built tree's attributes as a backstop (RuntimeError over 14).
+  gp_h6c_s11: 15 -> 12 attributes. Checks: s11x renders PIXEL-IDENTICAL to the old code (face_v0 256 px, max diff 1/255).
+  s11 (lip_lines .6, the magenta one) renders clean (rendercheck ok). Local checks are in $S/out/mag4.
+- A second magenta found on the way: the first re-sync of an existing stage left 55 image datablocks for 26 files
+  (x.001 ... x.006, one per image node). Linking failed with "Too many fragment shader texture samplers". The
+  mechanism was not pinned down: a unit test of save / reload with relative paths reuses the image even on the old
+  code. Hardened: Nodes.image compares realpaths and prints "hp image: reloading" when it replaces a same-named image.
+  The material build raises if one file and colour space sit in several datablocks. The next sync had 26 images.
+- Tests: tests/test_material_budget.py (pack of four, budget error, Blender reads a FLOAT_COLOR pack's four channels,
+  image reused after a save). After the main merge: test_skin 16 passed, test_skin_project 5, test_rendercheck 2.
+- Sheen-streak check on r4: no wet streaks or brow sheen on any r4 head (reviews and Tess 3/4 / side crops). The
+  opposite problem remains: skin is MATTE on every head (Tess, A: MAJOR "no specular on the nose tip / bridge /
+  forehead"). One MINOR on A: pale scratch-like streaks at the brow tail and temple. The profile eye's chrome stripe
+  (A, B) is the eye material, not skin sheen.
+STATE: magenta fixed and tested; r5 (rs_r5) running on NICO-TOP at 3ade4244 (old code: Garrett s12 has lip_lines 0, so
+it is safe). NEXT: collect r5 by rows; lip band from the flat tile; r6 with Garrett lip_lines back and skin sheen up.
+
+## r5 collected, lid_shade was dead, r6 launched (2026-10-16, projskin successor; next agent start here)
+- Merged origin/main (c7a22b92). r5 (rs_r5) collected: rendercheck clean on all 4 heads (Garrett too: magenta gone).
+  `$S/cut/rowcmp.py <before> <after>` = skincheck rows side by side (FAIL count, WIN / LOSS flips, moves > 25 % of tol).
+  NB the r4 sheen rows were scored with the old tol 4.0: their "LOSS" in rowcmp is the tolerance change, not a render change.
+- MAJORs (blind review totals incl. OTHER-stage lines) r4 -> r5: Tess 27 -> 43, A 31 -> 38, B 20 -> 24, Garrett 37 (r4 magenta).
+  Rows: Tess FAIL 36 -> 34: brows WIN (darkness 59/65 -> 43/43 vs photo 36/34, coverage .62/.55 -> .86/.77 vs .92/.86), rim
+  WIN (L -15.3 -> -21.0 vs -20.5). But the review flips the brows from "too light grey strokes" to "solid dark block, blunt
+  front, sticker": an overshoot the rows don't see (no softness / inner-texture row). New on Tess: closed-lid seam "cut"
+  (pale sliver + orange line, pairs 5/6), under-eye darkness missing, mottle. A / B numbers: workspace/private_notes.
+- DEAD LEVER (found here): with a skin.stack, skin.layers dropped every "zones" layer except stack_*, so zones.lid_shade
+  never reached a stacked head: r5's lid_shade (Tess .58, Garrett .5) moved nothing (Garrett lid / cheek .94 -> .97, worse
+  by noise). Fixed (02733194): lid_shade passes the stack filter; test_lid_shade_survives_a_stack. under_eye / eyelids /
+  periorbital zones are still dropped under a stack ON PURPOSE (they painted blotches over its base). Lesson: after an edit,
+  check the layer exists ($S/cut/haslayer.py <models>) before spending a batch on it.
+- Garrett r5 (s12): tones / lips / texture now measured (magenta fixed): FAIL 31. stubble size 1.1 -> 2.2 changed nothing in
+  "dots size" (.029 mm^2 both): probably the measure's pixel floor on the 512 cheek tile, NOT verified. Rim + 6 / + 7 vs photo
+  -23 / -21 (lashes width 1.4 moved nothing). Review: stubble sparse dots vs dense grey coverage; crow's feet smeared ripples.
+- Lower-lip doubled edge (item 3): the FLAT albedo tile (tess_s18/mouth_v0_flat) shows ONE border (lipedge: 1 edge, no light
+  band under the vermilion). So it is not in the projected texture: it is the export bake. Routed to the coordinator.
+- Tess export eye region (item 2, lashes r11 lit crops, $S/cut/eyebox.py ref ours [centres]): export lid band (1-3 mm above
+  the margin, lashes in) L -38.6 / -34.4 below the cheek vs photo -26.4 / -23.8 (TOO DARK in the export), while the gate
+  render's lid is TOO LIGHT (skincheck upper lid / cheek .92 / .93 vs .74 / .83). Under-eye lighter than the photo in both
+  (export -16.7 / -15.5 vs -20.9 / -18.7). Lower-lid band beside the iris, export: 12-17 L lighter than the photo over ~12 px
+  (the "white-pink shell" is LIGHTNESS, a* matches within ~2), brighter on the image-right eye (75 vs 61 L at the rim):
+  the two eyes differ there. Eye opening: h / w passes (.362 vs .351), so "flatter and wider" is tone, as on Garrett.
+  NOT done: lids with lashes hidden on the export (needs an export render job), the pale shard above the inner upper lid.
+- r6 (LAUNCHED, detached: $S/chain_r6.sh -> out/private/gate/chain_r6.log; ends "R6 CHAIN DONE", r6_rows.txt + reviews):
+  makes tp_k19_s19 (brows density 1.5 soft .4; oil .2 -> .6; lid_shade .58 now live), gp_h6c_s13 (lip_lines .6 back;
+  lid_shade 1.3; shading.roughness .42), private A g11 / B g10 (oil, lid_shade; private notes), builds the 4 stages locally
+  and packs them (rset_batch.sh STAGE=1 -> pack_model --stage _g3_<m>; falls back unpacked on a name mismatch), ONE batch
+  with the flat mouth tile and the GAME-DISTANCE SET: face_v0/1 at 234 px (tag game1m) and 78 px (game3m) = the pixels a
+  face covers at 1 m / 3 m at 1080p, 60 deg vfov. cu.py now tags the reference crops too (face_v0_ref_game1m.png).
+- Game-visible vs close-up-only (by the rule, until the game sets are read): VISIBLE at 1 m: matte skin, brows dark /
+  solid, lip colour, hue / neck shift, under-eye darkness, Garrett's stubble coverage. CLOSE-UP ONLY: pore speckle, closed
+  lid seam sliver, iris limbal ring, catchlight shape, lash comb, crow's feet ripples, sclera blotch.
+- Tests: test_skin (+1 new) passes the new test; the full test_skin / test_skin_project / test_rendercheck /
+  test_material_budget run was still going under capped at handover ($S/cut/tests_r6.sh -> out/r6tests.txt).
+STATE: r6 running. NEXT: read r6_rows.txt + reviews: keep wins, revert losses (oil = streak watch; Garrett lid_shade 1.3
+may overshoot); read the game1m / game3m tiles and reclassify MAJORs; export lids with lashes hidden (assembly / lashes job).
+
+## r6 collected, two more dead levers, new brow / stubble rows, r7 planned (2026-10-16, projskin2; next agent start here)
+- r6 tests ($S/out/r6tests.txt): test_skin, test_skin_project, test_rendercheck, test_material_budget all exit 0.
+- MAJORs (blind review incl. OTHER) r5 -> r6: Tess 43 -> 34, Garrett 37 -> 33, A 38 -> 39, B 24 -> 21.
+  GAME-VISIBLE (classified by `$S/cut/r7/gameclass.py <review.md>...` -> gate/r6_gameclass.txt, rule read off the 1 m sheet
+  gate/r6_game1m_sheet.png): Tess 21 -> 14, Garrett 19 -> 20, A 18 -> 21, B 10 (r5 not parsed). Close-up-only (catchlight,
+  iris fibres, lash / waterline bands, the closed-lid seam and its shadow, nostril interiors, pore speckle, mottle, lip
+  edges) do not block (gates.md). The game-visible set at 1 m: brows (block, hue), lip colour / material, overall hue /
+  redness / neck break, T-zone sheen, Garrett's stubble coverage (and grey stubble cast on A), under-eye shadow.
+- DEAD LEVERS in r6 (rows didn't move): (1) lid_shade: live after 02733194 but laid FIRST, and stack_base (normal mix,
+  opacity 1) painted over it. Fixed: it now goes after the last stack_ layer (test asserts the order). (2) sheen: Tess oil
+  .2 -> .6 moved sheen nose 5.2 -> 5.1 (photo 9.1); Garrett shading.roughness .42 moved 4.5 -> 4.5 (photo 11.1). NOT yet
+  found why: check whether rough_* layers / shading.roughness reach the gate render's material (cu.py) before spending a
+  batch on sheen. Lesson repeated: `$S/cut/r7/order.py <model>` prints the layer ORDER and mixes: an opaque normal-mix
+  layer after a lever kills it.
+- Tess brows r6 (density 1.5, soft .4) = LOSS on rows (darkness 42.9 -> 49.3 vs 35.9, hair/skin worse, inside spread worse):
+  soft raises brow_shadow (+.45 soft), the uniform zone shadow that fills the gaps. Revert soft to 0.
+- NEW ROWS (skincheck, 817e671d), the "incomplete checklist" items: brow edge width (20-80 % darkening, mm), brow inside
+  spread (L p90 - p10 inside the mask), brow front / middle darkening (medial fifth vs middle); stubble as coverage: beard
+  chin / jaw - forehead (L, chroma), beard hair coverage (frac of px off their 3-px blur by > 4 %), area-weighted dot size,
+  light dots. All four heads FAIL inside spread (ours ~14-17 vs photo 25-38) and most fail front / middle (.6-1.1 vs
+  .35-.57): that is the sticker. Edge width passes on Tess (so softness of the outline isn't it), fails on Garrett / A.
+  Garrett beard coverage .21 / .23 vs photo .50 / .48 (the review's "sparse dots vs dense grey").
+- Dot size FLOOR verified (cut/r7/dotfloor.py, synthetic dots at u 5.87 px/mm): .029 mm^2 = ONE pixel; true dots of .008 and
+  .03 mm^2 read .029 / .058. Garrett's .029 = sub-pixel stubble, not a measure bug; the area-weighted row and coverage
+  are the targets now.
+- New lever hair.brows.shadow (x the skin-level brow shadow opacity; skin_features; test_brows_shadow_scales_the_skin_shadow).
+- Export lids (coordinator, x52 lashes hidden; cut/r7/lidx.py, own MediaPipe landmarks per image): export lid band is
+  LIGHTER than the cheek (+4 / +6; lashes add only 2-4 L at the margin), photo -14 / -9, gate s18 -5.5 / -4.3: the lid is
+  too LIGHT everywhere. Rim asymmetry is the export's (gate matches the photo's direction, export reverses it): routed.
+  r6 also lightened Tess's image-right rim (-21.0 -> -14.9 vs -20.5): LOSS, watch in r7.
+- Under-eye: under-eye / cheek ratio is ours 1.10-1.27 vs photo 1.05-1.20 (ours lighter, Tess + Garrett); the review's
+  "grey bruise" blobs are on the open-eye crops (pair 3), the closed-lid shadow is close-up-only.
+- r7 PLAN (one batch, stages packed, as chain_r6.sh; mk_r7_run.py from mk_r6_run.py; tp_k19_s20 / gp_h6c_s14 / A g12 / B g11):
+  Tess: brows soft 0, shadow .35, density 1.5 (target inside spread ~31-38, front/middle ~.4, darkness ~36); lid_shade 1.0
+  (target lid - cheek -14 / -9; it is live now). Garrett: brows shadow .35; lid_shade 1.3 (now live: check overshoot
+  against .67 / .77); stubble toward coverage .5 (density / size up, sub-pixel now: make hairs >= 2 px at the 768 tile).
+  A / B: brows shadow .4, lid_shade per private notes. Sheen only after the dead-lever check. Run haslayer / order.py on
+  every r7 model before the batch.
+STATE: r6 collected and classified; lid_shade order fixed; brow shadow lever + new rows in. NEXT: sheen lever check, then
+the r7 batch above.
+
+## r7: the lever check before the batch found why three levers were dead (2026-10-16, projskin2 successor; next agent start here)
+- Gate rule followed (gates.md, main 04987715): a LOCAL two-value check per lever before the batch. Tool:
+  `$S/cut/r7b/lev.sh <base> <tag> <ref> <own> <checklist> <variant json>` (saves lv_<tag> = base + dotted skin edits, seeds its
+  stage from the base's stage so the sync is ~100 s, renders face + both eyes at view 0, 384 px, lit, 16 samples, then
+  skincheck); chains `$S/cut/r7b/levchain*.sh`, results `$S/out/private/lev1` (check 1) and `lev` (check 2); compare with
+  `cut/rowcmp.py <A> <B> --all`. A render is ~2 min on the laptop.
+- CHECK 1 (code as handed over): lid_shade .58 -> 1.2 moved Tess lid - cheek -6.1 -> -6.2; a new under-eye lever 0 -> 1 moved
+  under-eye / cheek 1.09 -> 1.10; brows.shadow 1 -> .35 moved nothing; roughness .55 -> .40 moved nose sheen 4.9 -> 4.4 (the
+  wrong way); Garrett roughness .42 -> .30 moved 3.5 -> 3.5. Only stubble moved (density 1, size 3: coverage .20 -> .25).
+- CAUSE 1 (lid_shade, under-eye, brow shadow): they were "_pre" layers. Pre layers are composited per vertex into the base
+  the SHADER starts from (paintnodes.compile), and stack_base is a shader image layer at opacity 1 over its coverage: it
+  paints over every pre layer, whatever the dict order (so 78d55dc4's reordering could not work). Fixed: over a stack,
+  lid_shade, under_eye_shade and brow_shadow drop "_pre" (skin.AFTER_STACK / OVER_STACK; test). The brows' "solid sticker"
+  was therefore never the skin-level brow shadow: under a stack it was invisible until now. soft 0 is what raised inside
+  spread locally (Tess 14 -> 22-28, ref 30-38).
+- CAUSE 2 (roughness): the rough_* layers (opacity .6-.85, T-zone, cheeks, patches) were offsets from the OIL-derived base,
+  so skin.shading.roughness only set the part base under them. Fixed: they offset from shading.roughness when set (test).
+  And rough_tzone's mask includes the eyelids (weight .8): oil also shines the lids (r6: Tess oil .2 -> .6 lightened the
+  image-right rim -21.0 -> -14.9 and the lid -4.3 -> -2.0). r7 reverts Tess oil to .2.
+- CAUSE 3 (sheen, NOT a material fault): in the gate rig the fitted suns have specular 0 (skin_project.stage_light: their
+  discs lay in the cornea) and the catch window lights only the eyes; the skin's only highlight is the large dim sheen window
+  (cu.py skin_sheen .35, 1.6 m). A smaller window (sheen_size .4) gave the same nose sheen to 0.1 L. So no roughness or oil
+  value can move the sheen row in the gate; it is a rig decision (a specular key on the skin only, by light linking, as the
+  catch window is linked to the eyes). Routed to the coordinator; r7 has no sheen change except A's roughness (now live).
+- NEW lever skin.zones.under_eye_shade (off by default; a slightly violet multiply on the under_eye zone, kept over a stack
+  like lid_shade): the "under_eye" zone is dropped under a stack, so nothing could move the under-eye row.
+- CHECK 2 (with the fixes): the levers are live on the model (Garrett A/B diff: -15 L over the lid / under-eye blocks), but
+  the eye rows are CONFOUNDED: skincheck's eye_tone "cheek" band (9-12 mm under the iris centre) lies in the under_eye zone,
+  so darkening the under-eye makes "lid - cheek" read LIGHTER (Garrett lid_shade 2.0 + under_eye_shade 1.5: lid R -8.2 -> +4.6
+  while the lid itself got darker). Clean single-lever reads: lid_shade .58 now non-pre moved Tess lid -6.1 -> -9.2 (R),
+  -2.7 -> -5.4 (L); Garrett lid_shade 1.3 moved -2.9 -> -8.2. Garrett at lid 2.0 + under 1.5 read as dark ovals (bruise).
+  Measurement follow-up: move eye_tone's cheek band below the under-eye zone (or measure lid against the forehead).
+- tests/test_skin.py: its __main__ block sat in the middle of the file, so the last tests (lid_shade survives a stack, brows
+  shadow) never ran as a script; moved to the end. Full run exit 0.
+- r7 LAUNCHED ($S/chain_r7.sh, log out/private/gate/chain_r7.log; models tp_k19_s20, gp_h6c_s14, A g12, B g11; gate dirs
+  tess_s20, garrett_g13, privA_g12, privB_g11): Tess brows soft 0 / shadow .6, oil .2, lid_shade 1.0, under_eye_shade .4;
+  Garrett brows shadow .6, stubble density 1 / size 5, lid_shade 1.8, under_eye_shade .5; A / B lid_shade (now live), brow
+  shadow 1 (both read lighter than the photo), A roughness (private notes for values). Not changed: the rim band at 1 mm
+  (no separate lever; lid_shade's eyelid zone reaches it), sheen (rig).
+STATE: three dead-lever causes fixed and tested (0c7f70e9, 29b457f2); r7 batch running. NEXT: collect r7 (offload wait rs_r7,
+then r7_rows.txt + reviews + gameclass), count game-visible MAJORs per head, keep wins / revert losses; the sheen rig and the
+eye_tone cheek band go to the coordinator.
+- HANDOVER (tool-call clock reached while rs_r7 ran on NICO-TOP; ~15 min a head, heads in series, then 4 reviews): the chain
+  is self-contained (renders, rendercheck, skincheck, reviews, rows). To collect: `offload wait rs_r7`, then
+  `grep "R7 CHAIN DONE" $S/out/private/gate/chain_r7.log`; rows `gate/r7_rows.txt`; game-visible MAJORs
+  `$S/cut/r7/gameclass.py gate/<head>.rev...md` (as r6, -> gate/r7_gameclass.txt) against r6's Tess 14 / Garrett 20 / A 21 / B 10.
+  Judge the eye rows with the eye_tone cheek-band confound in mind (look at the eyes pairs, not only the lid rows); revert any
+  head whose lids read as dark ovals.
+
+## eye_tone measure fix: the lid's reference band moved out of the under-eye zone (2026-10-16, projskin2 successor 2)
+- Coordinator decision (b). skincheck's "upper lid / cheek" compared the lid with a band 9-12 mm under the iris centre,
+  INSIDE skin.FACE under_eye (lm_lid_lower -0.13 io, z radius .13 io: it reaches ~18-19 mm under the lower-lid margin at
+  grow 1.2). The bands now live in spikes/projskin/eyetone.py (importable; skincheck imports it): the reference is the upper
+  cheek 21-26 mm under the lower-lid margin's middle landmark (145 / 374), +-6 mm about the iris centre. Row renamed
+  "upper lid / upper cheek {R,L}" so no one compares it with old numbers. tests/test_eyetone.py: clearance against
+  skin.FACE (io .068, grow 1.2, > 1.5 mm) and a synthetic under-eye darkening leaves the band alone (the old band moved).
+  Overlay check $S/out/private/eyeband_tess_s19.png (red = old band, green / cyan = lid + new band): clean cheek skin on both.
+- r5 and r6 gate dirs re-read on the fixed measure (old json kept as skincheck_pre_eyefix.json); r7's chain runs skincheck
+  from this worktree, so it reads the fixed measure itself. Photo vs ours (lid / upper cheek): Tess R .51 vs .77 (r6),
+  L .58 vs .86; Garrett R .58 vs .72, L .65 vs .80; A, B in the private gate. Every head's lid is too LIGHT on the fixed
+  measure too (ours .05-.28 above the photo; on Garrett the old band overstated it: .97 / 1.04 vs .67 / .77).
+- Seen on the overlay, NOT fixed: the lid band (1-3 mm above the margin) sits on the photo's lashes on Tess (dark), so the
+  photo's lid number includes lashes; our render's lashes are thinner. Read the eye pairs, not the lid row alone.
+
+## Sheen rig fix: a skin specular key (2026-10-16, projskin2 successor 2; coordinator decision (a))
+- RIG FIX. The fitted light (skin_project.stage_light) has NO key on these heads (report views.*.light.key is None for
+  tp_h3_lef2 and gp_h6c_lef): it is all soft suns with specular 0, so "specular 1 on the fitted key" had nothing to act on.
+  Instead cu.py takes `skin_key=<gain>` (default 0 = the old rig): a highlight-only sun (diffuse 0, specular 1, no shadow,
+  angle skin_key_angle 14 deg) from the fitted light's DOMINANT direction (energy-weighted mean of its suns), energy gain x
+  their total, light-linked to the skin part only (skin_key_on, default body). blender_scene: a sun with "receivers" is
+  light-linked like a window (hp_sun<i>_receivers, cleared between views). The catch window stays linked to the eyes.
+- Local two-value proof (`CUX="skin_key=v" cut/r7b/lev.sh`, view 0, 384 px, 16 samples; chains cut/r7b/skchain*.sh; out/private/lev):
+  Tess (ref nose 9.2 / forehead 4.0): skin_key 0 -> .5 -> 1.0 = nose 4.6 -> 3.8 -> 6.5, forehead 2.6 -> 4.8 -> 6.7 (forehead
+  passes at .5). Garrett (ref 11.6 / 5.5): 0 -> 1.0 = nose 3.5 -> 22.8 (overshoots), forehead 2.4 -> 7.6. The rows MOVE.
+  Cost: the 14 deg highlight is broad and lifts the median too: Tess tone forehead L 82.4 -> 86.9 -> 90.6 (ref 78.0), nose
+  78.9 -> 80.6 -> 82.1 (ref 75.4); that is also why Tess's nose sheen dipped at .5 (p50 rose with p99). Strip
+  $S/out/private/skinkey_tess.png (photo | 0 | .5 | 1.0): .5 reads as a soft sheen on forehead, bridge, lips, chin, no
+  wet streaks; 1.0 washes the forehead. r8 proposal: skin_key .5 with skin_key_angle 6 (a tighter highlight, less wash)
+  as the batch variant beside .5 / 14; Garrett ~.4-.5 (1.0 doubled his nose sheen).
+- The sheen rows are only comparable between rounds rendered with the same skin_key: r7 and before are skin_key 0.
+
+## Stubble count lever (2026-10-16, projskin2 successor 2)
+- hair.stubble.count (hairs per area x, .25-4, default 1 left out of the options so existing maps keep their cache keys;
+  skin_marks.stubble_map scatters HAIRS_PER_M2 x count). Why: density is a 0..1 share that saturates at 1 where the beard
+  is full (stubble_options clips it to 1), so no density value made Garrett's beard denser. test_stubble_count_adds_hairs.
+- Local check (Garrett r7 model gp_h6c_s14 = size 5, 384 px; gsk0 = count 1): coverage chin / jaw_R .34 / .40 -> count 2
+  .39 / .47 -> count 3 .34 / .49 (photo .53 / .52). count 2 moves +.05 / +.07 per step (meets the >.05 bar, barely, on the
+  chin); count 3 saturates on the chin (dense short hairs blur into a smooth field at this pixel size). With grey .75 the
+  extra hairs are mostly pale: beard chin - forehead L -16.3 -> -14.3 -> -13.3 (photo -14.8, still passing). r8: count 2.
+  The gate renders are larger than 384 px, so read the r8 row, not this number, for the absolute.
+
+## r7 collected on the fixed eye measure; HANDOVER (2026-10-16, projskin2 successor 2; next agent start here)
+- rs_r7 done, chain_r7 done (renders, rendercheck, skincheck from this worktree = the FIXED eye_tone measure, reviews).
+  "review exit 3" in gate/<head>.rev.log = verdict FAIL, not a crash; reviews are gate/<head>/review/review.md.
+  Rows (gate/r7_rows.txt, r6 re-read on the fixed measure first, so they compare): FAIL rows Tess 48 -> 42, Garrett 42 -> 38,
+  A 53 -> 52, B 57 -> 56 (of 96). No row flipped to LOSS. Tess: brow darkness WIN (49.3 -> 33.9, ref 35.9), inside spread
+  WIN both (14 / 17 -> 24.5 / 29.2), lid / upper cheek better (.77 -> .71, ref .51), under-eye better. Garrett: lid / upper
+  cheek WIN both (.72 -> .60, ref .58), beard coverage WIN chin .23 -> .45 (ref .48) and jaw .21 -> .43 (ref .50) from size 5
+  alone at gate size. A / B: lid rows better / one WIN, brows better (private gate for numbers).
+- GAME-VISIBLE MAJORs (gameclass, gate/r7_gameclass.txt) r6 -> r7: Tess 14 -> 8, Garrett 20 -> 21, A 21 -> 16, B 10 -> 13.
+  Keep all r7 changes for Tess and A. Garrett +1 and B +3 are NOT read yet (tool clock): read their GAME lines in
+  r7_gameclass.txt against r6_gameclass.txt; check the eyes pairs for dark ovals (lid_shade 1.8 + under_eye_shade .5 on
+  Garrett) and B's brows (shadow 1) before deciding to revert. Tess's remaining GAME items: lip colour / matte lips, no nose
+  sheen (the rig, below), cheek blotchiness, brow colour / solidity, jaw-underside grey band, neck colour break.
+- Stubble: r7's size 5 already brought Garrett near the coverage target at gate size; count 2 (local +.05 / +.07) would
+  likely overshoot the jaw a little: r8 count 1.5 at most, or none.
+- r8 PLAN (one NICO-TOP batch, mk_r8_run.py from mk_r7_run.py on the r7 models; renders with CUX-like cu.py kw added to the
+  batch lines): (1) skin_key .5 (angle 14) for all heads and a skin_key .5 angle 6 variant on Tess + Garrett (sheen rows
+  move; watch tone forehead / nose L, which the broad key lifts); (2) Garrett stubble count 1.5; (3) whatever the Garrett / B
+  review read says to revert; (4) Tess lips colour (pink-coral, lighter) and lip gloss as the next game-visible item.
+  Run order.py / the lever check on any NEW lever before the batch (gates.md).
+STATE: eye measure fixed (50e92e4d), sheen rig skin_key + stubble count in and proven locally (30ee8e2f, 030a1f69), r7
+collected. NEXT: read Garrett / B r7 reviews (keep / revert), then launch r8 as above.
+
+## r8: r7 reviews read, three levers found / fixed, lid measure lash-free, r8 launched (2026-10-16, projskin2 successor 3)
+- r7 READ. Garrett +1: the new MAJORs are "eye surround colour" / "lid colour" / under-eye "cool grey bruise": the cool
+  lid_shade colour [.7,.7,.74] at zone 1.8 and under_eye_shade .5. Row "eye sock - cheek" (3-7 mm ABOVE the margin, the
+  lid's fold) b* went .5 -> -5.6 (photo -.1). B +3: the new items are matte / nose sheen / cheek (the rig, untouched by r7:
+  review variance); its socket rows went cooler the same way (lid_shade .9). B's brows: every brow row better, kept.
+- NEW skin.zone_colors.{layer: [r,g,b]} (test): a zone layer's colour replaced. Lever check (384 px local, cut/r7b/lev.sh;
+  out/private/lev r8g*, r8b*): Garrett socket b* cool -5.2 / neutral [.745,.726,.716] -2.0 / warm [.8,.71,.64] +3.7 ->
+  interpolated [.762,.721,.693] measured -0.3 / -0.1 (photo 0 / -1.3). under_eye_shade .5 -> 0 moved under-eye / cheek
+  1.17 -> 1.18 (it did nothing measurable; the reviewer saw a bruise): off. Tool cut/r8/lidcol.py (Lab shift <-> multiply
+  colour; the render's b* moved ~2x what a plain multiply predicts, so calibrate with two renders, not the model).
+- LID MEASURE (eyetone.lash_line, test): at face distance (~4.5 px/mm) the photo's lashes on a hooded lid merge into a dark
+  band 1-2.5 mm tall, and the fixed 1-3 mm band sat on it (overlay out/private/lashov_tess_s20.png: red = lash line, green =
+  skin band). Lid skin is now read 0.3-2.3 mm above the lash line found per column; rows "upper lid skin / upper cheek" +
+  "lid band lash share" (ref .22 / .26 on Tess's photo, ours ~0: our lashes don't form a band). A black top-hat (thin dark
+  lines) found nothing in the photo: the lashes are a band, not lines, at this size. Tess's targets moved .51 / .58 -> .60 /
+  .69 (ours .71 / .79): the lid gap was mostly lashes. r7 gate dirs re-read (old json skincheck_pre_lash.json).
+- LIPS WERE DEAD UNDER THE STACK: lips_upper / lips_lower are "_pre" layers, stack_base covers them (as lid_shade before):
+  Tess's lips.melanin 12 changed nothing. NEW opt-in skin.lips.over_stack (test). Live: melanin 12 -> upper L 39 (photo 47.6),
+  melanin 3 / blood 3 / strength 1 -> 52; lower 55.4 a* 24 (photo 61 / 16). r8 Tess: melanin 5, blood 2.5, lower.blood .8.
+  Gloss (lips.roughness, dry) NOT checked: a lever for r9.
+- SHEEN (skin_key): FAIL on the stated goal. skin_key_angle 6 gives the SAME median lift as 14 (Tess forehead L 86.9 at .5
+  both): the lift is the specular lobe of roughness .55, not the sun's disc. Tess's forehead is already +4.4 L over the photo
+  at skin_key 0, so no key value keeps it within +-2 (.25: +6.8, sheen forehead 3.1 vs 4.0, nose 4.0 vs 9.2 unmoved);
+  key .5 + roughness .40 hit nose sheen 9.0 (ref 9.2) but forehead sheen 9.4 (ref 4.0) and L 90.6. Tess: NO key in r8; her
+  forehead / nose albedo (+4.4 / +3.5 L) is the lever to fix first. Garrett key .3 angle 6: nose 11.9 (ref 11.6), forehead
+  3.3 (5.5), L +2.9 (base +1.8). B key .3: nose 8.3 (8.2), forehead 3.1 (3.6), L +0.6 over base. A: over the photo's sheen
+  WITHOUT a key (nose 7.7 vs 4.2; .3 -> 12.5): no key. Sheen rows compare only between renders with the same key.
+- Stubble count: not changed (r7 coverage .45 / .43 vs .48 / .50 already within tol; count 2 overshoots the chin).
+- r8 (chain_r8.sh, log gate/chain_r8.log, batch rs_r8; models tp_k19_s21, gp_h6c_s15, privA_hd_g13, privB_hd_g12; gate dirs
+  tess_s21, garrett_g14, privA_g13, privB_g12; scripts cut/mk_r8_run.py, mk_r8_private.py, cut/r8.txt with a 7th column of
+  per-head cu.py kw, rset_batch.sh now reads it): Tess lid_shade 1.4 + neutral colour, lips over_stack; Garrett
+  under_eye_shade 0, lid colour, skin_key .3/6; A unchanged (control: review variance); B lid colour, skin_key .3/6.
+  The chain writes r8_rows.txt (vs r7 re-read on the lash-free measure) and r8_gameclass.txt.
+STATE: zone_colors (4059d6e1), lash-free lid (9b2a16b2), lips.over_stack (560ac621); r8 running. NEXT: `offload wait rs_r8`,
+`grep "R8 CHAIN DONE" gate/chain_r8.log`, count game-visible MAJORs vs r7 (Tess 8, Garrett 21, A 16, B 13; A is the
+no-change control: its delta is the review's noise), keep / revert per row; then Tess forehead / nose albedo (-4 L) before
+any key on her, lip gloss lever check, and B's brow hue (khaki / grey-green: no row measures brow hue yet: add one).
+
+## r9 (2026-10-18, projskin2 successor 4): r8 collected, review chain fixed, tile reviews, levers
+- r8 REVIEWS DID NOT RUN: every gate/<head>/review/review.md was "You've hit your weekly limit" (bin/review's `claude -p`
+  account, until 2026-10-19 13:00 MT) and gameclass printed GAME 0 for all four heads. FIX (scratch, not in the repo):
+  `/mnt/data/hifipushie/bin/review` now exits 4 and writes "REVIEW FAILED (no VERDICT line ...)" when claude fails or no
+  VERDICT line comes back (old copy projskin/review.bak_r9); `rev.sh` prints "REVIEW FAILED: did not run" for exit != 0/3;
+  `cut/r7/gameclass.py` prints "REVIEW FAILED" for such a file instead of zeros. "review exit 3" alone was never a crash test.
+- r8 ROWS (gate/r8_rows.txt; FAIL rows Tess 44 -> 42, Garrett 40 -> 39, A 52 -> 52 (control, no change), B 58 -> 55):
+  - Tess lips.over_stack + melanin 5 / blood 2.5: upper WIN (dE 8.7 -> 5.7). Lower worse inside tol (3.5 -> 5.7): a* 22.2 vs
+    16.8, too red. KEEP; r9: lower.blood down.
+  - Tess lid_shade 1.0 -> 1.4: lid rows better (L -6.0 -> -7.2 R, -3.2 -> -5.5 L; ref -14 / -9) but the socket (3-7 mm above
+    the margin) went darker MORE than the lid did: LOSS R -11.3 -> -14.2 (ref -8.2), L -8.7 -> -11.9 (ref -2.0). The eyelid
+    zone mask peaks at the fold, not at the lash line: this lever can't make the lid darker without the socket. REVERT to 1.0
+    (keep the neutral colour: socket b* better both sides). A lash-line-weighted lid mask is the real lever (NEXT).
+  - Garrett skin_key .3/6: sheen nose WIN (4.6 -> 10.5, ref 11.1), forehead better. Its side effects are relative rows: the
+    key lifts the cheek / forehead, so "eye sock - cheek" L (LOSS R, worse L) and "beard jaw - forehead" L (LOSS) went darker
+    without any paint change. KEEP the key; those rows compare only between renders with the same key.
+  - Garrett lid colour [.762,.721,.693]: socket b* WIN both (-5.6 -> -0.2, -4.5 -> 0.2) but lid L a* / b* LOSS (+1.9 / +2.2
+    warmer than ref). r9: halfway to the old cool colour, [.754,.724,.705] (both rows inside tol by linear interpolation).
+  - B skin_key .3/6: sheen nose / forehead WIN; brow_L rows a little worse (likely the key on the skin around it). KEEP.
+- LOOK (r8, feature tiles; bin/review still refused, so fresh blind subagent reviewers, images only, the gates brief, no
+  captions; tiles = the gate pairs minus the full-face frames: gate/<head>/tiles_r9/, reviews gate/<head>/review_r9.md).
+  GAME-visible MAJORs (gameclass): Tess 8, Garrett 14, A 14, B 10 (all FAIL). Not comparable 1:1 with r7's bin/review counts
+  (another reviewer, no full-face frames). Shared cause across ALL FOUR heads: BROWS (near-black / uniform blocks, blunt
+  heads, no fade): row "brow front / middle darkening" FAILs (Tess .88 / .59 vs .46 / .34, Garrett 1.07 / .82 vs .57 / .47)
+  while "darkness" passes: the mean is right, the distribution isn't. Then lips (Tess coral-pink matte, Garrett pale, A
+  mauve-brown, B dark plum), lip sheen (all), Garrett stubble read as salt-and-pepper DOTS + no beard-zone shadow, A tone
+  cool pink-mauve + violet-grey socket, B tone salmon + neck break, Tess iris olive (row iris FAIL: ours L 34 b* 18 vs 25 / 11).
+- NEW ROW "sheen lip_lower (L p99 - p50)" (skincheck; the lips.roughness lever had no row): Tess 4.1 vs photo 11.5, Garrett
+  5.7 vs 9.7. Lever checks running (cut/r9_lev.sh: lips.roughness .32 / .15; cut/r9_lev2.sh: brows shadow .3, density 1.0 +
+  a darker, less yellow iris), out/private/lev/r9*.
+STATE: r8 read, chain fixed, tile reviews in, lip-sheen row added; lever checks running. NEXT: read r9_lev*.log, then r9 batch.
+- LEVER CHECKS (Tess, 384 px local, out/private/lev r9lr32 / r9lr15 / r9bs3 / r9bd1):
+  - lips.roughness .32 -> .15: lip sheen 4.2 -> 5.3 (photo 11.8). ALIVE but weak; colour rows unchanged. Something else caps
+    the lip highlight (lips.dry 2.5? the light's size?): check dry and the specular level next.
+  - brows.shadow .6 -> .3: "front / middle darkening" .94 -> .94: DEAD for that row (hair / skin +.01). brows.density 1.5 -> 1.0:
+    front / middle also unmoved (.94); hair / skin .39 / .36 -> .46 / .45 (ref .44 / .40), darkness L 36.7 -> 45.7 (FAIL on L).
+    NO existing brow parameter fades the brow's head: the blunt-club read (all four heads' top GAME item) needs a NEW lever,
+    a density / shadow ramp over the inner ~25 % of the brow's length (skin_features brows, `taper` is tail-side only).
+  - iris #6a5a3c / inner #5c4a2e -> #584a34 / #4c3e2a: iris L / b* 34.5 / 18.4 -> 29.1 / 14.8 (ref 25.5 / 10.9), PASS. It
+    exposed "sclera / iris" 1.79 -> 2.09 (ref 1.58): the SCLERA is too bright (~L 60 vs ~40 in the photo), a row of its own.
+- r9 LAUNCHED (chain_r9.sh, log gate/chain_r9.log, batch rs_r9; models tp_k19_s22, gp_h6c_s16, privA_hd_g14, privB_hd_g13; gate
+  dirs tess_s22, garrett_g15, privA_g14, privB_g13; cut/mk_r9_run.py, mk_r9_private.py, cut/r9.txt): Tess lid_shade 1.4 -> 1.0
+  (revert), lips.lower.blood .8 -> .6, lips.roughness .15, brows.density 1.25, iris darker / less yellow; Garrett lid colour
+  halfway [.754,.724,.705]; A and B unchanged (two controls for review noise under the new tile reviewer).
+
+## Handover 2026-10-18 (projskin2 successor 4; next agent start here, then docs/notes/gates.md)
+1. COLLECT r9: `grep "R9 CHAIN DONE" /mnt/data/hifipushie/projskin/out/private/gate/chain_r9.log` (else `offload wait rs_r9`).
+   Rows: gate/r9_rows.txt (vs r8). Expect the chain's reviews to say REVIEW FAILED until bin/review's account resets
+   (2026-10-19 13:00 MT): then re-run tiles: copy each gate/<head>/pairs pair minus "full face" into gate/<head>/tiles_r9/
+   (NN_A_reference / NN_B_result + regions.txt; pairs.txt has no trailing newline: read the last line too) and spawn one
+   fresh blind reviewer per head with the gates brief (prompt in this session: images only, write review_r9.md in the
+   bin/review format, VERDICT line), then `cut/r7/gameclass.py <abs path>` (it needs absolute paths).
+   r8 tile counts to beat (GAME-visible): Tess 8, Garrett 14, A 14, B 10; A and B are unchanged controls in r9 = noise.
+2. Keep / revert per row: Tess socket rows should come back (lid_shade revert); iris row should PASS; watch brow darkness L
+   (density 1.25) and lips lower a*. Garrett: lid a* / b* and socket b* both inside tol is the goal.
+3. NEXT LEVERS (prove each locally with cut/r7b/lev.sh before a batch): (a) brow head fade (NEW, all four heads' top item;
+   row "front / middle darkening"); (b) lip sheen: lips.dry, specular; (c) lid darkening weighted to the lash line, not the
+   fold (Tess lid L still -7 vs -14 while the socket is already too dark); (d) sclera brightness row + lever; (e) Garrett
+   stubble reads as salt-and-pepper DOTS + no beard-zone shadow: no row measures dot contrast (add one: stubble white-dot
+   share / dot L spread vs photo), then stubble shadow / colour; (f) A: tone cool pink-mauve + violet socket, B: salmon tone,
+   neck break, brow length (A / B numbers in the private gate only); (g) B's brow hue row (from r8 NEXT, still open).
+4. Tone note for other threads: the hair-garrett sheets render ~1 stop darker than these; this thread's light is the
+   reference for tone (they added `ev=` to match; not checked here).
+STATE: r9 running on NICO-TOP; chain reports review failures explicitly now. NEXT: item 1 above.
+
+## r10 (2026-10-18, projskin2 successor 5): the brow head fade
+- r9 (rs_r9) started on NICO-TOP only at ~10:26 (the chain's stage syncs ran first); collect later (Handover item 1).
+- BROW PROFILE, DESCRIBED FROM THE PHOTOS (skincheck now prints `PROFILE brow_X ref / ours`: darkening mass per column in 10
+  bins medial -> lateral, over the middle's mean, and a row "head rise (mm, 20-80 % of middle mass)", tol .4 log). On the
+  r8 renders (tess_s21, garrett_g14, privA_g13, privB_g12) every photo brow ramps up from ~.2-.4 at the inner end to the body
+  at ~40-50 % along: ref bins 1-5 Tess R .37 .54 .75 .92 1.01, Garrett R .40 .74 .93 1.05 1.11, A R .29 .42 .66 .88 .99,
+  B R .17 .38 .68 .87 1.04; head rise 4.3-6.8 mm. OURS reach the body by 10-20 %: Tess R .70 1.05 1.10, Garrett R 1.01
+  1.12; rise 0.0-2.8 mm (B R 4.6 the one pass). (B's brow_L photo profile .01 .. 2.2 is a lit / masked oddity: don't fit it.)
+  The mean darkness passes because the club and a fading head have the same mean.
+- LEVER `hair.brows.head` (share of the length over which the inner end fades in, by hairs LEFT OUT, the count kept by
+  drawing the rest elsewhere) + `head_density` (share kept at the inner end, default .05) in skin_swatch.brow_image.
+  2D check on the drawn picture (the alpha saturates where hairs overlap, so a mild thinning shows nothing: head .4 /
+  density .25 gave bins .41 .84 1.10): head .65 / .05 gives ~.24 .6 .82 .99 1.05 (photo ~.3 .5 .75 .9 1.0); coverage -13 %.
+STATE: lever built, 2D-proven; Tess 3D lever check running (out/private/lev/r10h0 vs r10h65). NEXT: read it, then batch.
+- SCLERA LEVEL row (skincheck "sclera level R/L (eye_tone)", ratio tol .1): on the r8 renders ours / photo = Tess 1.43 / 1.33,
+  Garrett 1.24 / 1.11, A 1.25 / 1.09, B 1.55 / 1.62 (all too bright; "sclera / lid skin" passed on Tess because the lid is
+  too light as well). Lever: skin.eyes.sclera (sRGB hex) scaled by ~1 / ratio; to be proven locally.
+- LIP SHEEN, why lips.roughness was weak: the lower lip's sheen pad (skin:lip_sheen, opacity .8, painted after lips_lower)
+  sets roughness max(lips.roughness - .1, .24): below .34 the pad's highlight never changed. NEW `lips.sheen` (the pad's
+  roughness, no clamp) and `lips.specular` (pad + lower lip specular level; skin default .36). Row: sheen lip_lower
+  (Tess 4.1 vs 11.5, Garrett 5.7 vs 9.7; A / B pass). To be proven locally.
+- BROW LEVER, 3D CHECK (Tess tp_k19_s22, 384 px local; out/private/lev r10h0 vs r10h65; sheet out/private/lev/r10_brow_sheet.png
+  = photo | before | after): head .65 -> profile R .33 .54 .74 .83 1.00 (photo .39 .57 .78 .94 1.02), L .17 .35 .55 .75 .96
+  (photo .22 .42 .72 .91 1.00); front / middle R .94 -> .44 (ref .49) PASS, L .57 -> .26 (.32) PASS; head rise R 1.2 -> 6.5 mm
+  (6.2) PASS, L 2.8 -> 7.1 (5.9) PASS. ALIVE. Side effect: darkness L R 36.7 -> 50.1, L 41.8 -> 53.8 (ref ~35) FAIL, coverage
+  and hair / skin FAIL (the box mean includes the head; the body reads unchanged on the sheet). By eye: the inner ends are
+  sparse, feathered single hairs now (the photo's read), the club is gone. Next check: head .55 + density 1.5 (r10h55d15).
+STATE: brow lever proven; compensation check + sclera / lip check (r10sl) queued locally. NEXT: read both, batch r10.
+- COMPENSATION (r10h55d15: head .55, density 1.25 -> 1.5): profile R .27 .49 .78 .89 1.05, L .12 .31 .62 .80 .98; front /
+  middle and head rise PASS both; darkness L R 43.5 / L 46.4 (ref 35; tol 8: R just out); coverage R pass, L .71 vs .85.
+  BEFORE / AFTER TILE: out/private/lev/r10_brow_before_after.png (photo | r9 model | head .55 + density 1.5). Look: the inner
+  ends are sparse, feathered hairs growing up (the club is gone); the body is still a heavier, thicker band than the photo's.
+- SCLERA + LIPS CHECK (r10sl: sclera #d4c9bc -> #999187 (x.72), lips.sheen .14, lips.specular .6): sclera level R .568 -> .463
+  (ref .403), L .562 -> .441 (.439) PASS; sclera / iris R 2.05 -> 1.66, L 2.12 -> 1.69 (1.58 / 1.70) PASS both; sclera / lid
+  skin FAILs now (R .80 vs 1.02): the lid skin is too light, its own open fault (lid darkening at the lash line, item c).
+  Lip sheen 5.1 -> 7.1 (photo 11.8): ALIVE, still short (next: specular .8-1 / sheen .1, watching Joe's "wet plastic").
+- r10 BATCH (chain_r10.sh, waits for R9 CHAIN DONE; log gate/chain_r10.log; cut/mk_r10_run.py, mk_r10_private.py, cut/r10.txt;
+  models tp_k19_s23, gp_h6c_s17, privA_hd_g15, privB_hd_g14; gate dirs tess_s23, garrett_g16, privA_g15, privB_g14; rows r10_rows.txt
+  vs r9): ALL heads brows.head .55 + density x1.28 (cap 1.6: A was already at the clip (2.0 = 1.6), so A's brow will read
+  lighter: watch darkness), sclera x.72 Tess / x.77 Garrett, A / x.6 B (capped; B's photo white is in lid shadow), Tess and
+  Garrett lips.sheen .14 + specular .6.
+STATE: r10 queued behind r9. NEXT: collect r9 (keep / revert), then r10, tile reviews for both.
+- r9 COLLECTED (gate/r9_rows.txt vs r8; reviews: REVIEW FAILED on all four (bin/review account until 2026-10-19 13:00 MT): the
+  chain now says so instead of GAME 0). FAIL rows: Tess 47 -> 47 (of 103 now: the new r10 rows count), Garrett 44 -> 42,
+  A 55 -> 55, B 58 -> 58 (the two controls: rows reproduce exactly). KEEP ALL r9 changes:
+  - Tess iris darker: iris R / L WIN (dE 11.6 -> 5.1, 12.1 -> 5.5); sclera / iris L LOSS follows (the sclera is too bright: r10).
+  - Tess brows.density 1.25: hair / skin WIN both; brow_L darkness 35.6 -> 40.3 (PASS, worse).
+  - Tess lid_shade revert: socket R WIN (-14.2 -> -10.5, ref -8.2), socket L better (-11.9 -> -7.8, ref -2.0); lid L LOSS
+    (-5.5 -> -3.1, ref -8.6): as predicted, the zone lever can't do the lid alone (lash-line lid mask still NEXT).
+  - Tess lips lower blood .6: better (dE 5.7 -> 3.6, a* 22.2 -> 19.8); lips.roughness .15: sheen 4.1 -> 5.0 (the pad clamp).
+  - Garrett lid colour halfway: lid a* / b* WIN both (inside tol), socket b* stays inside tol. KEEP.
+  - SUSPECT: Tess "crease height mid L" 5.4 -> 12.9 mm (LOSS) with no lid geometry change: the crease reader likely jumped to
+    another edge once the lid got lighter. Check it on the eye tile before acting on it.
+STATE: r9 kept in full; r10 chain now running (it waited for R9 CHAIN DONE). NEXT: collect r10, tile reviews.

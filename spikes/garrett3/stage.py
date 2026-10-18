@@ -28,7 +28,9 @@ FRONT_LIGHT = {"lights": [{"dir": [0.08, -0.74, 0.67], "energy": 3.3, "color": [
 # EEVEE's fast GI at FULL resolution (default half): a 1.6 mm lid crease read dark 0.14 at half (Cycles 0.21, the photo
 # 0.32), 0.25 at full; ~same time on a head (gnmdetail2). A 1 mm crease reads in neither (0.02-0.07)
 STAGE_EEVEE = (json.loads(os.environ["STAGE_EEVEE"]) if os.environ.get("STAGE_EEVEE") else
-               {"fast_gi_resolution": "1", "fast_gi_quality": 1.0, "fast_gi_step_count": 16, "fast_gi_ray_count": 4})
+               {"fast_gi_resolution": "1", "fast_gi_quality": 1.0, "fast_gi_step_count": 16, "fast_gi_ray_count": 4,
+                "clamp_surface_direct": 2.0})   # (NICO-TOP's GPU: ~56 single-pixel red-orange fireflies per face, gone with
+# the direct light clamped at 2 (dots7 V; highlights' p99.5 unchanged); more samples made MORE of them (96: 192), so not GI)
 
 
 def photo_light(name, vi=None):

@@ -177,14 +177,20 @@ def crease_image(path_mm, width_mm: float = 0.5, span=(40.0, 30.0), centre=(0.0,
 
 
 def brow_image(density: float = 0.8, thickness: float = 1.0, length_mm: float = 6.0, width_mm: float = 62.0,
-               seed: int = 0, tail: float = 1.0, fall: float = 1.0, taper: float = 0.82):
+               seed: int = 0, tail: float = 1.0, fall: float = 1.0, taper: float = 0.82, head: float = 0.0,
+               head_density: float = 0.05):
     """A left eyebrow as hairs (RGBA PNG in the image store; white hairs, coverage in alpha: the layer gives the
     colour), inner end at the left: hairs grow up and out at the inner end, lie along the brow in its body and
     turn out and down in the tail; the band is thick inside and tapers. Returns (path, [width, height] in mm)."""
     from PIL import Image, ImageDraw
     from . import images
     key = f"{density:.3f}_{thickness:.3f}_{length_mm:.2f}_{width_mm:.1f}_{seed}_{tail:.2f}_{VERSION}" + \
-        (f"_f{fall:.2f}" if fall != 1.0 else "") + (f"_t{taper:.2f}" if taper != 0.82 else "")
+        (f"_f{fall:.2f}" if fall != 1.0 else "") + (f"_t{taper:.2f}" if taper != 0.82 else "") + \
+        (f"_h{head:.2f}_{head_density:.2f}" if head > 0 else "")
+    # (head: the share of the brow's length over which its inner end fades in, as hairs left out: a real brow's head is
+    # sparse single hairs growing up, its darkening rising from ~.3 of the body's at the inner end to the body's ~40-50 %
+    # along (skincheck PROFILE on all four photos, 2026-10-18); ours reached the body by ~15 %: a blunt club.
+    # head_density: the share of hairs kept at the very inner end. The hairs left out are drawn elsewhere: the mean stays)
     # (fall: how far the tail drops past the arch, x the default; taper: how much the band thins from the body to the
     # tail, 0.82 = to 18 %: a dense brow drawn thick (thickness > 1) kept its heavy tail)
     import hashlib
@@ -199,6 +205,15 @@ def brow_image(density: float = 0.8, thickness: float = 1.0, length_mm: float = 
         dr = ImageDraw.Draw(im)
         rng = np.random.default_rng(700 + seed)
         n = int(1150 * density * thickness)
+        def keep(t):
+            if head <= 0:
+                return 1.0
+            u = np.clip(t / head, 0, 1)
+            return head_density + (1 - head_density) * u * u * (3 - 2 * u)
+        if head > 0:  # the same number of hairs in all: the left-out share goes to the rest of the brow
+            ts = np.clip(rng.beta(1.25, 1.5, 4000) * (0.97 * tail) + 0.03, 0.02, 0.99)
+            n = int(n * len(ts) / max(sum(keep(float(v)) for v in ts), 1.0))
+            rng = np.random.default_rng(700 + seed)
         # the brow's spine: rises from the inner end to the arch (~62% along), then falls into the tail
         def spine(t):
             return 0.56 - 0.2 * np.sin(np.clip(t / 0.62, 0, 1) * np.pi / 2) + 0.3 * fall * np.clip((t - 0.62) / 0.38, 0, 1) ** 1.6
@@ -206,6 +221,8 @@ def brow_image(density: float = 0.8, thickness: float = 1.0, length_mm: float = 
             return thickness * (0.03 + 0.14 * np.clip((t + 0.02) / 0.12, 0, 1) * (1 - taper * np.clip((t - 0.25) / 0.75, 0, 1) ** 0.9))
         for _ in range(n):
             t = float(np.clip(rng.beta(1.25, 1.5) * (0.97 * tail) + 0.03, 0.02, 0.99))
+            if head > 0 and rng.random() > keep(t):
+                continue
             off = float(np.clip(rng.normal(0, 0.45), -1, 1))
             x = (0.04 + 0.92 * t) * W
             y = (spine(t) + off * half(t)) * H

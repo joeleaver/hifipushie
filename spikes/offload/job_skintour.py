@@ -1,7 +1,8 @@
 """Compute job: renders of a packed model (spikes/tour/pack_model.py; ref / own models packed alongside), tiles -> tiles.tar.
 Default: the skin feature tour (spikes/tour/skintour.py; features.txt). With cu.txt in the job: one spikes/projskin/cu.py
 run per line (the line = cu.py's arguments after <model> <out>, e.g. `ref=tp_h3 own=tp_h3_lef2 only=face views=0,1,2
-size=768 hair=0`): the gate render set's close-ups, all into tiles/."""
+size=768 hair=0`): the gate render set's close-ups, all into tiles/. A line "@<repo script> args" runs that script
+instead (<model> <out> args), e.g. "@spikes/projskin/nape.py size=512"."""
 import os, shlex, subprocess, sys, tarfile, time
 job = os.path.abspath(sys.argv[1]); env = os.environ["HP_DIR"]
 sys.path.insert(0, os.path.join(env, "spikes/tour"))
@@ -15,7 +16,8 @@ os.makedirs(e["XDG_RUNTIME_DIR"], exist_ok=True); os.makedirs(out, exist_ok=True
 py = os.path.join(env, ".venv/bin/python")
 cu = os.path.join(job, "cu.txt")
 if os.path.exists(cu):
-    runs = [[py, os.path.join(env, "spikes/projskin/cu.py"), m, out] + shlex.split(l)
+    runs = [[py, os.path.join(env, l.split()[0][1:]), m, out] + shlex.split(l)[1:] if l.startswith("@") else
+            [py, os.path.join(env, "spikes/projskin/cu.py"), m, out] + shlex.split(l)
             for l in open(cu).read().splitlines() if l.strip()]
 else:
     feats = open(os.path.join(job, "features.txt")).read().strip() if os.path.exists(os.path.join(job, "features.txt")) else "eyes,mouth"

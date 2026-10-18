@@ -757,8 +757,10 @@ def wrap_coords(fr: dict, pos: np.ndarray):
     return u, v, err, out
 
 
-def project(fr: dict, pos: np.ndarray, nrm: np.ndarray):
-    """(u, v, weight) per point: u, v in 0..1 across the decal (v up), weight = inside its depth x facing."""
+def project(fr: dict, pos: np.ndarray, nrm: np.ndarray, both: bool = False):
+    """(u, v, weight) per point: u, v in 0..1 across the decal (v up), weight = inside its depth x facing.
+    both=True: (u, v, weight, u2, v2, s): wrap "uv" has a second coordinate set near the atlas' cut, the image sampled
+    at both and mixed by s (skin_project.lookup(both=True)); other wraps give (u, v) again and s = 0."""
     nn = np.asarray(nrm, float)
     nn = nn / np.maximum(np.linalg.norm(nn, axis=1, keepdims=True), 1e-12)
     wrap = fr.get("wrap", "planar")
@@ -781,8 +783,11 @@ def project(fr: dict, pos: np.ndarray, nrm: np.ndarray):
         b = _UVBASE.get(fr["geo"])
         if b is None:
             raise RuntimeError("a uv image's frame must be made in this process (images.frame) before it's used")
-        ua, va, wgt = skin_project.lookup(b, pos)
         u0, v0, u1, v1 = fr["box"]
+        if both:  # the image's coordinates are the atlas' (no flip, no mirror for this wrap)
+            ua, va, ub, vb, s, wgt = skin_project.lookup(b, pos, both=True)
+            return ((ua - u0) / (u1 - u0), (va - v0) / (v1 - v0), wgt, (ub - u0) / (u1 - u0), (vb - v0) / (v1 - v0), s)
+        ua, va, wgt = skin_project.lookup(b, pos)
         u, v = (ua - u0) / (u1 - u0), (va - v0) / (v1 - v0)
     else:
         p = np.asarray(pos, float) - fr["c"]
@@ -793,6 +798,8 @@ def project(fr: dict, pos: np.ndarray, nrm: np.ndarray):
         wgt = wgt * _ramp(nn @ fr["dir"], fr["facing"] - 0.15, fr["facing"])
     if fr["flip"]:
         u = 1 - u
+    if both:
+        return u, v, wgt, u, v, np.zeros(len(u))
     return u, v, wgt
 
 
@@ -812,11 +819,18 @@ def sample(pix: np.ndarray, u: np.ndarray, v: np.ndarray) -> np.ndarray:
 
 
 def _one(fr: dict, pos, nrm):
-    u, v, wgt = project(fr, pos, nrm)
-    rgba = sample(pixels(Path(fr["path"])), u, v)
+    u, v, wgt, u2, v2, s = project(fr, pos, nrm, both=True)
+    pix = pixels(Path(fr["path"]))
+
+    def inside(a, b):
+        return ((a >= 0) & (a <= 1) & (b >= 0) & (b <= 1)).astype(float)
+    rgba, cov = sample(pix, u, v), inside(u, v)
+    if s.any():  # across the atlas' cut: the second coordinate set's sample, mixed by side B's share
+        rgba = rgba * (1 - s)[:, None] + sample(pix, u2, v2) * s[:, None]
+        cov = cov * (1 - s) + inside(u2, v2) * s
     ch = fr["channel"]
     if ch == "coverage":
-        val = ((u >= 0) & (u <= 1) & (v >= 0) & (v <= 1)).astype(float)
+        val = cov
     elif ch == "alpha":
         val = rgba[:, 3]
     elif ch == "luma":
