@@ -7642,16 +7642,18 @@ def _build(g: dict, body_src: dict, name: str = "garment", log=print, frames: in
     # welded, the cloth kept off the body
     # ZOZO's surface needs no smoothing (its sim crinkle is low): Taubin rounded its fold crests 20-40% (sleeve crest
     # radius p50 12 -> 17 mm at 1 cm) and wiped its smaller folds; welding and the push off the body stay
-    cu = g.get("cleanup", {"smooth": 0} if backend == "zozo" else {})
-    if construct and "cleanup" not in g:
+    cu = {"smooth": 0} if backend == "zozo" else {}
+    if construct:
         # the coarse drape carried onto the fine mesh is its facets: smoothed over about a coarse triangle (the made
         # pieces, constructed at the fine size, are left: cleanup doesn't smooth interfaced cloth)
         cu = {"smooth": int(round(1.5 * (hs / h) ** 2 * max(1.0, (h / 0.01) ** 2))), "keep": 0.3 * hs}
         if res["constructed"].get("fine_settle"):  # settled at the fine size: what is left of the coarse facets only
             cu = {"smooth": 3, "keep": 0.002}
+    # a garment's "cleanup" MERGES over these defaults (cleanup_opts): a coat-only {"press": ...} keeps the construct's
+    # smoothing (it used to replace it: dress-tess s15); false = no smoothing
+    cu = cleanup_opts(g.get("cleanup"), cu)
     # (the REAL body: layered, `body` is padded out over the garment underneath, and pushing the finished jacket
     # off that pad moved it 7 mm at p95 and through its own collar: 88 crossings the sim didn't have)
-    cu = dict(cu if isinstance(cu, dict) else {"smooth": 0} if cu is False else {})
     cu.setdefault("pressed", seam_press_mask(M, g))  # (seam kinds: a "welt" seam isn't pressed)
     res["V"], res["cleanup"] = cleanup(res["V_sim"], M, None if hang else body_real,  # hung: the body is gone
                                        cu, stiff=interfacing(Bp, M))
@@ -8597,6 +8599,17 @@ def _unkink(X: np.ndarray, M: dict, stiff: np.ndarray | None = None, rounds: int
         L_ = np.linalg.norm(D_, axis=1)
         X = X0 + D_ * np.minimum(1.0, KINK_MAX / np.maximum(L_, 1e-12))[:, None]
     return X, {"kinks": hist}
+
+
+
+def cleanup_opts(given, default: dict) -> dict:
+    """A garment's cleanup options: its "cleanup" dict merged OVER the build's default (zozo: no smoothing; constructed:
+    the fine settle's {"smooth": 3, "keep": 0.002} or the coarse facets' smoothing), so a key like {"press": ...}
+    changes only itself; false = {"smooth": 0}; absent = the default. ("pockets" / "seat" / "band_edges" ride along:
+    cleanup() ignores them.)"""
+    if given is False:
+        return {"smooth": 0}
+    return dict(default or {}, **(given if isinstance(given, dict) else {}))
 
 
 def cleanup(V: np.ndarray, M: dict, body: "Body", opts: dict, stiff: np.ndarray | None = None) -> tuple[np.ndarray, dict]:
@@ -10220,6 +10233,11 @@ WOVEN = {"pitch": 0.0008, "angle": 63.0, "weave_depth": 0.00004, "crush": 0.0003
 #   crests, `crush` = height (m).
 #   dress-tess s14: the concept's lab coat panels have 5x our fine (3-6 mm) contrast; what made the coat read
 #   "rubbery / puffy" at 1 m and 3 m was this, not sheen (sheen 0 vs 0.3: mean |diff| 0.002).
+#   CALIBRATE `crush` ON THE RENDER PATH (dress-tess s16), not on linear Lambert: renders and references are measured
+#   as 8-bit sRGB luminance, and on a pale cloth the sRGB encoding alone cuts relative contrast ~2.2x, the look rig's
+#   ambient + key direction ~0.8x, a 3 mm/px frame (4 texels a pixel) another ~0.75x. The 0.3 mm default gives CV
+#   .0045 at 1 mm/px through cloth.render (a linear proof said .012); a white lab coat matching a painted concept's
+#   crumple took 0.8 mm (detail "woven": {"crush": 0.0008}). The map path itself is faithful (EEVEE flat patch = numpy).
 
 
 def woven_surface(M: dict, uv: np.ndarray, side: float, T: int, mpt: float, o: dict) -> np.ndarray:
@@ -10437,6 +10455,68 @@ def untuck_crossings(V0: np.ndarray, V: np.ndarray, M: dict, outer: dict, rounds
     return V
 
 
+PUSH_UNDER_GAP = 0.0015  # m: how far under the outer garment's surface push_under puts a covered crossing vertex
+
+
+def push_under(V: np.ndarray, M: dict, outer: dict, covered: np.ndarray, gap: float = PUSH_UNDER_GAP,
+               rounds: int = 4, reach: float = 0.012) -> np.ndarray:
+    """The drawn under garment's COVERED vertices still crossing the outer garment (after the tuck and untuck) put
+    `gap` under the outer surface along its nearest point's outward normal, with a ring of covered neighbours eased
+    the same way from round 2 on; a round is kept only while the count of crossing vertices falls. A finish of the
+    drawing (looks, scene, export), no sim: the pair was simulated together, but the drawn finished under garment
+    (relief, made pieces) is not the pressed collider the outer one met. dress-tess s15: v109's sweater under the
+    coat crossed at 42 vertices on the upper back, the jeans under the sweater at 20 (all covered)."""
+    Fu = np.asarray(M["F"])
+    Vo = np.asarray(outer["V"], float)
+    if not len(Vo) or not np.any(covered):
+        return V
+    Fo = oriented_faces(outer["mesh"], Vo, body=outer.get("body"))
+    cross = lambda X: _layer_crossing_verts(X, Fu, Vo, Fo)
+    c = cross(V)
+    n = int((c & covered).sum())
+    if not n:
+        return V
+    from .closures import _closest_on
+    tree = cKDTree(Vo)
+    E = np.unique(np.sort(np.r_[Fu[:, [0, 1]], Fu[:, [1, 2]], Fu[:, [2, 0]]], 1), axis=0)
+    for r in range(rounds):
+        sel = c & covered
+        for _ring in range(r):
+            sel = sel | (np.bincount(E[:, 0], weights=sel[E[:, 1]], minlength=len(V))
+                         + np.bincount(E[:, 1], weights=sel[E[:, 0]], minlength=len(V)) > 0)
+        sel &= covered
+        idx = np.flatnonzero(sel)
+        # the outer surface's closest point and its (outward) face normal: a mean of nearby vertices misplaced it
+        # across the coat's back folds (6 nearest spread 9-13 mm in depth)
+        q, nq, _ = _closest_on(V[idx], Vo, Fo, k=16)
+        h = np.einsum("ij,ij->i", V[idx] - q, nq)  # height over the outer surface (+ = outside)
+        T = V.copy()
+        mv = h > -gap
+        T[idx[mv]] -= (h[mv] + gap)[:, None] * nq[mv]
+        # then under every outer point within `reach` across: a fold of the outer cloth dipping in through the under
+        # one (its crest inside, the nearest outer face still above) is cleared along the under cloth's own normal
+        fu = np.cross(T[Fu[:, 1]] - T[Fu[:, 0]], T[Fu[:, 2]] - T[Fu[:, 0]])
+        # (pieces wound alike, so a seam vertex's normal doesn't cancel; then each turned to face as the outer face over it)
+        fu *= np.where(piece_flips(M, T, outer.get("body"))[np.asarray(M["piece"])[Fu[:, 0]]], -1.0, 1.0)[:, None]
+        Nu = np.zeros_like(T)
+        for k_ in range(3):
+            np.add.at(Nu, Fu[:, k_], fu)
+        nu = Nu[idx] / np.maximum(np.linalg.norm(Nu[idx], axis=1, keepdims=True), 1e-12)
+        nu *= np.where(np.einsum("ij,ij->i", nu, nq) < 0, -1.0, 1.0)[:, None]  # out, as the outer face over it
+        for a, near in enumerate(tree.query_ball_point(T[idx], r=reach)):
+            if near:
+                sd = (Vo[near] - T[idx[a]]) @ nu[a]
+                if sd.min() < gap:
+                    T[idx[a]] += (sd.min() - gap) * nu[a]
+        ct = cross(T)
+        nt = int((ct & covered).sum())
+        if nt < n:
+            V, c, n = T, ct, nt
+        if not n:
+            break
+    return V
+
+
 def _worn_objects(name: str, spec: dict, wn: dict) -> list:
     """The body's worn parts (shoes under a hem) as look objects, one per part in that part's own colour / roughness.
     A worn mesh cached before per-vertex parts existed is relabelled from worn_parts (store.build's cached close-up),
@@ -10492,6 +10572,15 @@ def worn_together(results: list) -> list:
         k = by_[u]
         ogn, og, ores = out[k]
         out[k] = (ogn, og, _laid_under(ores, res, had_buttons.get(u, False)))
+    # a garment laid under its outer one before that one was itself laid under the next (jeans under the sweater, then
+    # the sweater under the coat) is checked again against the outer one as DRAWN (dress-tess s16: the sweater's tuck
+    # under the coat brought its front through the jeans' fly at 20 vertices)
+    for gn, u, d in pairs:
+        if d == 0 and out[by_[gn]][2] is not results[by_[gn]][2]:
+            ogn, og, ores = out[by_[u]]
+            if ores.get("covered") is not None:
+                out[by_[u]] = (ogn, og, dict(ores, V=push_under(np.asarray(ores["V"], float), ores["mesh"],
+                                                                out[by_[gn]][2], np.asarray(ores["covered"], bool))))
     return out
 
 
@@ -10509,6 +10598,7 @@ def _laid_under(ores: dict, res: dict, buttons: bool) -> dict:
     V = untuck_crossings(np.asarray(ores["V"], float), V, M, res)
     if ores.get("covered") is not None:
         cov = cov | np.asarray(ores["covered"], bool)
+    V = push_under(V, M, res, cov)
     new = dict(ores, V=V, covered=cov)
     if buttons:
         bt = closuremod.buttons_mesh(V, M, ores["body"])

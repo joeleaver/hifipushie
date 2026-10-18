@@ -747,6 +747,44 @@ def test_woven_surface_crush_moves_and_sub_texel_twill_is_left_out():
     assert np.abs(f(crush=0.0, pitch=0.004)).max() > 1e-5  # resolvable: drawn
 
 
+def test_cleanup_key_merges_over_the_default():
+    """A garment's "cleanup" merges over the build's default (a coat-only {"press": ...} keeps the construct's
+    smoothing; it used to replace it), false turns smoothing off, absent keeps the default."""
+    d = {"smooth": 3, "keep": 0.002}
+    assert cloth.cleanup_opts(None, d) == d
+    assert cloth.cleanup_opts({"press": {"reach": 0.03}}, d) == {"smooth": 3, "keep": 0.002, "press": {"reach": 0.03}}
+    assert cloth.cleanup_opts({"smooth": 5}, d) == {"smooth": 5, "keep": 0.002}
+    assert cloth.cleanup_opts(False, d) == {"smooth": 0}
+    assert cloth.cleanup_opts({"press": False}, {})["press"] is False
+
+
+def test_push_under_clears_covered_crossings():
+    """push_under: an under sheet's covered bump through the outer sheet is put under it; uncovered vertices stay."""
+    n = 21
+    xs = np.linspace(-0.1, 0.1, n)
+    X, Z = np.meshgrid(xs, xs)
+    F = []
+    for i in range(n - 1):
+        for j in range(n - 1):
+            a = i * n + j
+            F += [[a, a + 1, a + n + 1], [a, a + n + 1, a + n]]
+    F = np.array(F)
+    out_V = np.c_[X.ravel() + 0.0037, np.full(n * n, -0.010), Z.ravel() + 0.0041]  # the outer sheet, 1 cm in front (-Y)
+    # of the under one (offset: no crossing on a shared edge)
+    U = np.c_[X.ravel(), np.zeros(n * n), Z.ravel()]
+    bump = np.hypot(X, Z).ravel() < 0.03
+    U[bump, 1] -= 0.016 * (1 - np.hypot(X, Z).ravel()[bump] / 0.03)  # pokes out through the outer sheet
+    M = {"F": F, "piece": np.zeros(n * n, np.int64), "names": ["p"], "sew": np.zeros((0, 2), np.int64)}
+    outer = {"V": out_V, "mesh": {"F": F, "piece": np.zeros(n * n, np.int64), "names": ["p"], "sew": np.zeros((0, 2), np.int64)},
+             "body": {"V": np.array([[0.0, 0.3, 0.0]]), "F": np.zeros((0, 3), np.int64)}}
+    cross = lambda V: int(cloth._layer_crossing_verts(V, F, out_V, F).sum())
+    assert cross(U) > 0
+    V2 = cloth.push_under(U, M, outer, np.ones(n * n, bool))
+    assert cross(V2) == 0, cross(V2)
+    assert np.allclose(V2[~bump], U[~bump], atol=1e-3)
+    assert np.allclose(cloth.push_under(U, M, outer, np.zeros(n * n, bool)), U)  # nothing covered: untouched
+
+
 if __name__ == "__main__":
     for k, fn in list(globals().items()):
         if k.startswith("test_"):

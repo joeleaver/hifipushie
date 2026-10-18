@@ -6153,6 +6153,47 @@ a "twill" surface in detail_maps (the coat's normal map is flat, and every revie
   detail {"surface": "twill"} (detail is NOT_SIM). NOT YET SEEN IN A RENDER: the next coat look / NICO-TOP pack shows it.
   NOT ADDRESSED (geometry, wait for the coat call): smooth-shaded 10 mm faces and the swollen made-piece rims (pockets,
   lapels) — the 12 mm row on flat panels (.008 vs .021) is partly these.
+- MERGED to main ce712d6e (squash of this branch): worn-part colours, transitive worn_together, look_cloth props,
+  woven surface, spikes/offload/rvpack_cloth.py (sheen; env MODEL), remote.sh --check. Test set ($G/tests.sh, one file
+  per process, 24 files incl. test_cloth_inputs_cache / test_offload_packs): all rc 0; spec_durable with
+  HIFIPUSHIE_CLOTH_PRE=0: j17b 0.0000 mm. RESTART.txt line added.
+
+### Handover 2026-10-16 (dress-tess session 14; parked for Joe's coat call)
+STATE: dt_tess v108 = knit b03k (v107) + coat detail surface "twill" (woven crush, flat lit proof PASS at 3 / 6 mm).
+Everything merged to main (ce712d6e). No render of the twill coat yet. PARKED: the coat's next steps wait on Joe's
+decision (the concept's standing flare vs the twill hang; sheets $G/joe_coat_sheet2.png).
+NEXT (after Joe's call): (a) one NICO-TOP pack of the coat with v108 (spikes/offload/rvpack_cloth.py, MODEL=dt_tess),
+game g1f/g1t + fig front; re-measure rr/s14/puffy_measure.py boxes (target front-panel CV 3/6/12 mm
+.011-.014/.016-.023/.021-.031) and run bin/review on the coat region; if the crush reads as noise at 3 m, lower `crush`.
+(b) the coat re-sim with the whole stack as collider + collar/lapel numbers (session 12/13 lists). (c) geometry part of
+puffy: smooth-shaded 10 mm faces and swollen made-piece rims (pockets, lapels): not addressed.
+
+### dress-tess session 15 (2026-10-18)
+- UNPARKED: Joe 2026-10-18 on $G/joe_coat_sheet2.png: "Her coat is fine though." Approved garment/tess_coat = dt_tess,
+  the dc22 twill hang (b02), not the concept's standing flare. Shape / hang are fixed from here; only surface,
+  inter-layer crossings and finish may change, each judged against b02.
+- SPEC DRIFT FOUND: dt_tess's stored coat was dci (v105, hem girth -250 mm, made only for Joe's comparison) + v108's twill,
+  NOT the approved dc22. Every pack since b02 used COATV=104 to swap dc22 in, so nothing rendered was wrong, but the
+  stored model didn't match the approval. FIX: v109 = v104's coat design + detail {"surface": "twill"} (rr/s15/restore_dc22.py).
+  Packs no longer need COATV.
+- (a) LAUNCHED rr/s15/run.sh (log chain_s15a.log, ends S15_DONE / S15_DONE ERROR): two packs with the same code, knit
+  (v107) and props: s15tw (v109, twill) and s15b0 (PATCH cloth.coat.detail = {}: the b02 surface). Regions fig
+  (front + three), coat close-up (z 0.8, zoom 1.2), game g1f/g1t/g3f/g3t. One NICO-TOP batch dt-s15a.
+  STATE: (a) in flight. NEXT: A/B the coat region s15tw vs s15b0 (same hang, surface only), puffy_measure boxes, review.
+- (b) CROSSINGS MEASURED FIRST on v109 (pokedraw.py, drawn = worn_together; rr/s15/pokedraw_v109.log): jeans under
+  sweater 20 (front.L, z 0.89-0.94, all covered); sweater under coat 42 (piece back, z 1.18-1.24, x -0.08..+0.09, upper
+  back near CB, all covered: NOT at the underarm sides as noted for dci); jeans under coat 0. CROSSINGS_TOTAL 62.
+  Both remaining pairs are DIRECT pairs: the coat was already simulated over the sweater, the sweater over the jeans.
+  A "whole stack as collider" re-sim only adds the jeans to the coat's collider, and jeans-under-coat is already 0, so
+  it can't move these rows. It would re-sim the approved hang for nothing. NOT RUN (no rented sim spent). The 62 are
+  drawing / finish faults (the drawn finished sweater vs the pressed collider the coat met); they're a worn_together /
+  untuck job, all covered. Whether the 1 m "underarm speck" is one of them is checked on s15's g1f.
+- SEAM ROW (coordinator 2026-10-18, Joe on Garrett's jacket "seams are huge, garish gashes"; rr/s15/seam_row.py on the
+  drawn coat, 10 mm edges): each welded pair's height over the chord of its unsewn neighbours (groove.py), and the ring
+  beside it over the line-to-next-ring chord (ridge). Target: groove shallower than 0.5 mm, no ridge > +0.3 mm.
+  ALL 9 coat seams FAIL in geometry: medians -0.7..+2.0 mm, deepest p10 -2.8 mm, ridge p90 +0.8..+2.6 mm. Seams 2 / 3
+  (78 pairs each) stand OUT +1.4 / +2.0 mm (fins). The maps are pressed_open (0.3 mm groove x 0.7 mm, 0.12 mm allowance
+  rise): fine. A drape-curvature control (the same chord measure at unsewn vertices) is in seam_row2.log.
 - (worktree note) the worktree was behind main: dress-tess's spec v10 (facing "interfaced": false) re-keyed j17b on the old
   code (test_cloth_spec_durable failed, CACHED_ONLY builds returned None). Merged main (f56bed53): key 7aca63ae26eb8a5c holds.
 - RENDERS, ONE NICO-TOP batch ($0; `bash $G/chain_j17cd.sh`): j17c = j17b drawn through drawn_faces (no model change),
@@ -6211,3 +6252,116 @@ tile (subagent, gates brief). (b) seams: a measured fine line. (c) shirt collar:
 (dihedral > 60 deg on 8-19 edges per front above z 1.30) laid as a turned-back V, built on the drape like the band; the
 made collar's points come down only to z 1.486 (stand ends at the V's corners, x +-82 mm). (d) jacket collar's serrated
 top edge; (e) maps for made parts in textured sheets.
+- SEAM CONTROL (seam_row2.log): the same chord measure at unsewn coat vertices = drape curvature: median +0.07, p10 / p90
+  -0.76 / +1.19 mm. Seams: 0 / 1 shoulders (back.L|R-front.L|R, 14 pairs), 2 / 3 side seams (78), 4 / 5 armholes (58),
+  6 / 7 sleeve seams (33), 8 CB (105). Against the control the SIDE SEAMS are real fins (+1.37 / +2.02 median, their
+  p10 still +0.5 / +1.3: the whole line stands out); armholes have deep spots (p10 -2.7 / -2.8 against -0.76); shoulders,
+  sleeves and CB sit near the control. Geometry, 10 mm edges, sim-side (the free hinge), not the maps.
+- PRESS LEVER DEAD (rr/s15/press_trial.py: cloth.PRESS reach 0.05 / passes 120 in-process): coat move 0.0 mm, seam rows
+  identical. garments() serves the finished coat from its cache, so the press isn't re-run at draw time. Not chased:
+  the seam code is dress-garrett's. A coat-only `cleanup.press` key would also drop the construct default cleanup
+  (cloth.py ~7530: a garment "cleanup" REPLACES the fine_settle {"smooth": 3, "keep": 0.002}): it needs a merge there first.
+- DRAWING (coordinator: the Garrett "gashes" were sheets drawing raw M["F"]): merged origin/main a5cb607e
+  (cloth.drawn_faces). My packs go through cloth.look, which was already welded + oriented (welded_faces), so s15's
+  seams are drawn welded. $G/run.py's sheet() now draws cloth.drawn_faces (welded faces, uv per corner, made parts, the
+  under garment too); backup run.py.bak-s15.
+- (a) RESULT dt-s15a (NICO-TOP, $0). Sheet $G/s15_coat_twill_sheet.png: ref 1 m | b02 surface (s15b0) 1 m | twill (s15tw) 1 m
+  | ref 3 m | b0 3 m | tw 3 m, native pixels, game rig. Same hang on both (identical except the coat's normal map).
+  CV rows (fig front, 3 / 6 / 12 mm; target .011-.014 / .016-.023 / .021-.031): front L b0 .0020/.0027/.0076 -> tw
+  .0032/.0048/.0090; front R .0078/.0184/.0373 -> .0082/.0187/.0374; sleeve unchanged (drape folds). The lever moves,
+  but at ~1/4 of the flat proof (.012 at 3 mm): FAIL on the 3 mm row, 3.4x short. Game diff tw vs b0: 1 m mean |d| 0.0007
+  (8180 px > 0.02 in g1f), 3 m 0.0001 (343 px): invisible at 3 m.
+  LOOK-FIRST (mine): at 1 m the twill adds faint crumple creases on the fronts. It reads more like cloth and less like
+  rubber, and it isn't noise. At 3 m it can't be told from b02. It's no worse than b02 anywhere: KEPT (no revert).
+  Still unlike the concept: no strong crumple, padded pocket and lapel rims, smooth broad swells. Seams in the 1 m
+  frames read as fine lines, not trenches (drawn welded); the side-seam fins (+1.4 / +2.0 mm) aren't visible from the front.
+- REVIEW NOT RUN: bin/review returned "You've hit your weekly limit · resets Oct 19, 1pm". The pairs are ready in
+  rr/s15 (ref_g1f / game_g1f_tw, ref_g3f / game_g3f_tw, seam_side_1m_{ref,s15tw}, seam_shoulder_1m_{ref,s15tw}); the
+  command is in the handover.
+
+### Handover 2026-10-18 (dress-tess session 15)
+STATE: dt_tess v109 = the approved dc22 coat (restored; the stored coat had been dci) + twill (kept: faint at 1 m,
+invisible at 3 m, never worse than b02). Crossings 62, all covered direct pairs: no re-sim spent (a stack collider
+can't move them). Coat seams: geometry fins at the side seams (+1.4 / +2.0 mm over the 1.2 mm curvature p90) and deep
+armhole spots, but they read as fine lines at 1 m. The press lever is dead at draw time (cached). Merged origin/main
+(drawn_faces); $G/run.py draws drawn_faces.
+NEXT: (1) run the review after the limit resets:
+  bin/review $G/rv/s15 "coat front, 1 m=rr/s15/ref_g1f.png:rr/s15/game_g1f_tw.png" "coat, 3 m=rr/s15/ref_g3f.png:rr/s15/game_g3f_tw.png"
+  "coat side seam and underarm, 1 m=rr/s15/seam_side_1m_ref.png:rr/s15/seam_side_1m_s15tw.png" "coat shoulder seam, 1 m=..._ref:..._s15tw"
+  --stage "coat surface: fabric texture, creases, seams, sheen" --not "coat shape, hang and silhouette (approved); ...".
+(2) Twill is 3.4x short at 3 mm in the render. Find why the render is weaker than the flat proof (normal-map strength in
+  blender_cloth, or the atlas filtering at 2.97 mm/px) before raising `crush`. Prove it on one local flat look first.
+(3) Crossings: a worn_together finish (after untuck: push the remaining covered crossing verts gap under the outer
+  face) for the 42 back / 20 welt verts. No sim. (4) Side-seam fins: dress-garrett's seam code; a coat-only
+  cleanup.press first needs the construct default merged under a garment's cleanup (cloth.py ~7530).
+  (5) Geometry polish (pocket / lapel rims) after the review.
+
+
+### dress-tess session 16 (2026-10-18)
+- (1) TWILL AT 1/4 OF ITS PROOF: CAUSE = THE PROOF'S MEASURE, not the map path. rr/s16/flat_blender.py renders one flat
+  39 cm coat patch (0.76 mm texel, #e9e8e3, rough 0.8, sheen 0.3) through the real path (cloth.render textured, default
+  suns, world 0.6, Standard) and measures it the way puffy_measure measures renders (8-bit sRGB luminance, LANCZOS to 3 mm,
+  high-pass CV 3/6/12 mm). crush 0.3 mm: s14 proof (linear Lambert, one side light) .0122 -> same light in sRGB .0056
+  (encoding on a pale cloth: 2.2x) -> look rig in sRGB, numpy .0043 (ambient + key direction: 0.8x) -> EEVEE at 1 mm/px
+  .0045 (= numpy: normal strength / space / filtering are FAITHFUL) -> EEVEE at 3 mm/px .0032 (mip + AA at 4 texels/px:
+  0.75x; = s15's fig front .0032). Control crush 0: .0002 (1 mm) / .0016 (3 mm). Lever linear.
+  FIX: calibrate on the render path. The concept was measured at 1.24 mm/px, so the like-for-like frame is ~1 mm/px:
+  crush 0.8 mm -> .0115/.0161/.0185 (target .011-.014/.016-.023/.021-.031: PASS 3 / 6 mm, 12 mm low; the drape adds
+  there); 1.1 mm -> .0159/.0222/.0256 (over at 3 mm). Look (rr/s16/flat_crush_compare.png: concept | 0.3 | 0.8 | 1.1):
+  0.8 reads as crinkled cotton, not pebble; 1.1 busy. ADOPTED: dt_tess v110 = v109 + coat detail woven crush 0.0008
+  (detail only, NOT_SIM; hang untouched). WOVEN default stays 0.3 mm; the calibration rule is in the WOVEN comment.
+  STATE: (1) done locally, unrendered on the figure. NEXT: (2) crossings.
+- (2) CROSSINGS 62 -> 9 (rr/s16/pokedraw_push2.log; no sim). Two finishes in the layered draw (worn_together; looks,
+  scene and export all draw through it): cloth.push_under, after the tuck / untuck, puts the under garment's COVERED
+  vertices still crossing the outer one 1.5 mm under it (its closest point + face normal; then under every outer point
+  within 12 mm along the under cloth's own normal: a fold of the outer cloth dipping in), rounds kept only while the
+  count falls; and worn_together checks a garment again against its outer one AS DRAWN when that one was itself laid
+  under the next (the sweater's tuck under the coat had brought its front through the jeans' fly: the 20 jeans
+  crossings). jeans | sweater 20 -> 0; sweater | coat 42 -> 9 (back, x 0.05-0.08, z 1.19-1.23); jeans | coat 0.
+  The sweater's back crossing verts were up to 35 mm outside the coat (moves up to 41 mm, all covered cloth). Offline
+  loop: rr/s16/push_dump.py (pickles push_under's inputs) + push_iter.py. The 1 m underarm speck is NOT one of them
+  (all crossings are on the upper back, none at the sides). Test test_push_under_clears_covered_crossings.
+- (3) cloth.cleanup_opts: a garment's "cleanup" now MERGES over the build's default (zozo {"smooth": 0}; constructed:
+  the fine settle's {"smooth": 3, "keep": 0.002} or the coarse-facet smoothing), false = {"smooth": 0}. No stored
+  spec in workspace/ has a "cleanup" key, so no cached finish changes. Test test_cleanup_key_merges_over_the_default.
+  The finish cache key includes cleanup (cloth.py finish key), so a coat-only cleanup.press re-runs the finish, not the sim.
+- (3) SIDE-SEAM FINS: the press lever now LIVE (a coat-only cleanup key re-runs the finish) but too weak. rr/s16/press_key.py
+  (seam_row on the drawn coat, patched spec, unsaved): base side seams +1.37 / +2.02 mm; press reach 5 cm, 120 passes
+  +1.24 / +1.95 (coat moves p99 1.35, max 3.6 mm); + cap 1.0 +1.24 / +1.45 (max 4.45 mm). Target (drape baseline ~0.5 mm,
+  below) NOT reached: NOT ADOPTED (no cleanup key on the coat; the approved hang is untouched).
+  WHY (rr/s16/fin_control.py: the same chord height ACROSS the seam at unsewn vertices 1-4 rings in): seam 2 at the line
+  +1.37, r1 +3.21, r2 +0.98, r3 +0.58, r4 +0.34; seam 3 +2.02, +3.82, +1.30, +0.51, -0.19; CB (8) -0.48, -0.66, +0.04,
+  +0.08, +0.05. The side seams sit on a 3-4 cm wide convex BEAD (the cloth either side rounds over the line like a piped
+  edge; the flat CB has none). Taubin's lambda/mu press is a low-pass that keeps a 6-8-edge wavelength: it can't flatten a
+  bead that broad. Fix = a finish on the drape (the band from ring 5 to ring 5 refitted as a smooth surface across the
+  line, normal moves only), a geometry-polish job (step 5) and dress-garrett's seam code: NOT done here.
+- (4) RENDER dt-s16a (NICO-TOP; rr/s16/run.sh, log rr/s16/chain.log ends S16_DONE / S16_DONE ERROR): v110 (crush 0.8 mm)
+  + push_under, regions fig / coat / game (g1f g1t g3f g3t). b02 frames are reused from rr/s15 (s15b0). Tiles + rows:
+  `uv run python $G/rr/s16/post.py` -> rr/s16/tiles_<item>.png (ref | b02 | s16: front_panel, side_seam, shoulder,
+  lower_pocket, breast_pocket_lapel), CV rows (fig 3 mm/px and g1f 1 m), sheet $G/s16_coat_sheet.png (ref | s16 | b02, 1 m
+  and 3 m). REVIEW NOT RUN (coordinator: next session).
+  RESULT (S16_DONE, $0): fig 3 mm/px CV 3/6/12 mm (target front L .011/.016/.021, R .014/.023/.031): front L b02
+  .0020/.0027/.0076 -> s15 twill .0032/.0048/.0090 -> s16 .0070/.0108/.0145 (3.5x b02 at 3 mm; still under target at
+  3 mm/px, as the flat test predicted: 3 mm/px loses ~25%); front R .0078/.0184/.0373 -> .0101/.0208/.0390; sleeve
+  unchanged (drape folds). The g1f "front panel" box (980,780)-(1120,980) reads .021 even on b02: it catches a pocket or
+  edge, so it's NOT a clean panel row (fix the box next session).
+  LOOK-FIRST (mine, sheet $G/s16_coat_sheet.png): at 1 m the coat now carries short crumple creases all over, and it reads
+  as crinkled cotton rather than b02's smooth rubber, much nearer the concept. Risk for the review: the crinkle is even
+  everywhere and a little busy on the wearer's right front (the concept's creases run mostly along the hang, longer). At
+  3 m a faint texture shows (b02 had none). Pocket / lapel rims are still padded and swollen. No new artifacts seen at sheet scale.
+
+### Handover 2026-10-18 (dress-tess session 16)
+STATE: dt_tess v110 = approved dc22 coat + twill crush 0.8 mm (calibrated on the render path: the s14 proof's 4x was
+its linear-light measure, not the map path). Crossings 62 -> 9 by cloth.push_under in worn_together (no sim; jeans |
+sweater 0, sweater | coat 9 on the upper back; the 1 m underarm speck is NOT a crossing: look in the s16 g1f near the
+wearer's left armhole, maybe the armhole seam's deep spots p10 -2.8 mm letting the sweater show). cleanup key merges over
+the default (cleanup_opts, tested). Side-seam fins = a 3-4 cm convex bead the Taubin press can't flatten (best +1.24 /
++1.45 mm, not adopted). All cloth tests rc 0 ($G/tests.log). Commits on this branch: ff13c61e, 8025cf18, 0eac9bba, 995f3529.
+NEXT: (1) DONE: rows + look-first recorded above (fix the g1f panel box).
+(2) The blind review on the tiles: bin/review (if the account works after Oct 19 13:00 MT) or a fresh blind subagent:
+  bin/review $G/rv/s16 "coat front panel, 1 m=rr/s16/tile_ref_front_panel.png:rr/s16/tile_s16_front_panel.png" ... (one
+  pair per tile item) --stage "coat surface and finish: fabric texture, creases, seams, pockets, lapels"
+  --not "coat shape, hang and silhouette (approved); sweater, jeans, body".
+(3) Geometry polish after the review: the side-seam bead (refit the band ring 5 to ring 5 across the line, normal-only;
+  coordinate with dress-garrett, who owns the seam code), the smooth 10 mm faces, the swollen pocket / lapel rims.
+(4) The remaining 9 sweater | coat crossings: the sweater back verts up to 35 mm outside the coat (rr/s16/push_diag.py).
