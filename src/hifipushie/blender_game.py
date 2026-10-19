@@ -72,7 +72,10 @@ for _mn, _g in (job.get("swap") or {}).items():  # (judge.py) a part replaced by
     # e.g. a hair build tried on the character), static, with that GLB's own importer materials; named "swapped-<mesh>"
     # so the shading notes (the character's textures) never claim them
     _gone = [o for o in meshes if o.data.name == _mn]
-    ours = [o for o in ours if o not in _gone]
+    if not _gone:  # (2026-10-19) a key matching nothing left the old part drawn under the new one: the garment-game
+        # proof lost 0-14 to blotches that were v8's jacket showing through ours
+        raise SystemExit(f"swap: no mesh named {_mn!r} (meshes: {sorted(o.data.name for o in meshes)})")
+    ours =[o for o in ours if o not in _gone]
     meshes = [o for o in meshes if o not in _gone]
     for o in _gone:
         me_ = o.data
