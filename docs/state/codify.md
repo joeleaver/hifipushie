@@ -1,36 +1,48 @@
-# STATE: codify (durable lessons into the repo) -- rewritten 2026-10-19, session 1. Nothing in flight.
+# STATE: codify (durable lessons into the repo) -- rewritten 2026-10-19, session 2 (integration). Nothing in flight.
 
-## Current best
-- docs/notes/codified.md: THE LEDGER, one row per durable lesson (P process, R repo / machine, H head, S skin, A hair,
-  C clothes, E expressions / export / rig, X style / other) with where it is codified and its status.
-- docs/notes/character_recipe.md: the stage-order recipe for a new realistic game character (<= 250 lines).
-- docs/notes/traps.md: symptom -> real cause -> what to check first.
-- CLAUDE.md "Start here" points new characters at the recipe + traps.
+## Current best (all on the integration branch, a fast-forward of main 59b30291; see History)
+- docs/notes/codified.md: THE LEDGER, one row per durable lesson, status re-graded on the landed code.
+  Totals: 105 rows: ENFORCED 25, DOC 73, CHECK-PLANNED 3, TASTE 4 (before: ENFORCED 9, ENFORCED-BRANCH 4,
+  CHECK-PLANNED 8, DOC 80, TASTE 4). No ENFORCED-BRANCH rows left.
+- docs/notes/character_recipe.md (stage-order recipe), docs/notes/traps.md (symptom -> cause), CLAUDE.md pointer.
+- Checks (tests/test_codified.py, 20 pass, none skip): approved head + fold form (asset.approved_head,
+  fold_form_gate, FOLD_FORM_MAX_MM), sculpt refusal + EXPRESSION_PRESETS, hair budget in card faces
+  (hair.BUDGET_UNIT, card_allowance, asset.hair_budget), single-sided cards need back faces, review input gate
+  (reviewgate), heavy-job declaration, git guard hooks, doc sizes, incremental == cold, gate-measure self-tests.
+- Rule 5 (new): asset.same_view / game_light_view / MixedViewTransform; scene.look and asset.preview refuse the game
+  rig (GAME_LIGHT lights) under any view but its own; face_light_check(..., views=(stage, shipped)) is REQUIRED and
+  raises on a mix. Test: test_mixed_view_transforms_are_refused.
+- Rule 12 (new): known-answer self-tests for asset.face_light_check and cloth_check.seams (validated.GATE_MEASURES).
+- Hooks: shared .git/hooks == bin/hooks/guard.py (checked; no reinstall needed).
 
 ## Open items (by impact on the next character)
-1. CHECK-PLANNED rows: another agent is turning them into checks; the coordinator flips each row's status when one
-   lands (cite the function / test, grep it first).
-2. ENFORCED-BRANCH: the approved-head export gate (asset.approved_head) and FOLD_FORM_MAX_MM live only on
-   worktree-agent-ad0815704f43e0e00 / worktree-agent-a369eb41a63e51a4a, not main. Merge them, then mark ENFORCED.
-3. Hair budget unit contradiction (ledger A8): memory says the role default counts card faces and drawn must fit the
-   range max; code (hair.py cards fit, `bf_`) and both hair STATE pages fit DRAWN to the default. Coordinator decides.
-4. `hair_clumps.FILL` (bake packing share) is set to 1.0 by Tess RC rc2n's HP_FS_SET and hair-cards r45a's hk.FILL=1,
-   apparently meant as the crown fill (ARCH_FILL, default 1 already). Check what it did; rename to BAKE_FILL.
-5. Smile mix A2 lives only in /mnt/data/hifipushie/happy/NOTES.md: copy it into a faceshapes preset table.
-6. bin/ guards (review exit 4, review-ab, approve, capped) are outside the repo, unversioned (ledger P14).
+1. main ref not moved: main is checked out in the main checkout, which an isolated worker can't touch. Coordinator:
+   in the main checkout, `git merge --ff-only <integration head>` (fast-forward, no rewrite), then bin/link-tools.
+2. Gate measures still without a self-test: likeness_* rows, face_ruler / eye_ruler, skin_read crop stats,
+   spikes' tiles.py. Add each to validated.GATE_MEASURES with a known-answer test.
+3. Renders don't carry their view transform in the PNG: scripts comparing files must pass views= themselves.
+   Next step if it bites: write the view into the PNG text chunk in blender_scene / blender_game and read it back.
+4. Rule 7 (proxy pose == batch pose): no repo proxy tool yet; ledger E10 stays CHECK-PLANNED.
+5. Hair STATE pages (tess_hair, garrett_hair) still describe the old drawn-to-default fit; rewrite on next hair session.
+6. hair_clumps.FILL vs ARCH_FILL (ledger A11): rename to BAKE_FILL, warn in HP_FS_SET.
+7. tests/test_skin.py::test_features_and_shader_budget fails on main 59b30291 too (skin:wrinkle_folds carries a
+   per-pixel noise mask): pre-existing, not from this landing; skin thread owns it.
 
 ## Decisions in force
-- Statuses: ENFORCED only when the code refuses / a test fails, verified by grep; a default or warning is DOC.
-- No private-head names, codes or relations in any of these files; refer to "private heads".
-- New lesson: a row the same day (check if possible, else default, else recipe / traps line).
+- ENFORCED only when code refuses / a test fails, verified by grep on the landed tree; a default or warning is DOC.
+- Hair: the role default counts card faces; drawn <= the range max (and the tier's drawn max when it names one).
+- Colour is compared under one view transform; the game rig only under Khronos PBR Neutral.
+- No private-head names, codes or relations in any of these files.
 
 ## Dead ends
-- (none yet)
+- (none)
 
 ## Commands
-- Verify a claim: `grep -n <name> src/hifipushie/*.py tests/*.py`; on a branch: `git grep -n <name> <branch> -- src tests`.
+- `uv run python -m pytest -q tests/test_codified.py` (under /mnt/data/hifipushie/bin/slot).
+- Verify a claim: `grep -n <name> src/hifipushie/*.py tests/*.py`.
 - Size: `wc -c CLAUDE.md` (< 8192); `wc -l docs/state/*.md` (<= 60 each).
 
 ## History
-- Commits 66a5aedb (ledger), 8c251f0c (traps), ae1295c3 (recipe), then this page + the CLAUDE.md "Start here" line.
-NEXT: coordinator reconciles CHECK-PLANNED rows as checks land; resolve items 2-5.
+- Landed as squashes: ledger / recipe / traps; codify checks; Tess assembly export gates; Garrett assembly
+  (game light, face-light check, push-under, hair allowance); then rule 5 + rule 12. Notes: grep audit.md "codify".
+NEXT: coordinator fast-forwards main and runs bin/link-tools; then items 2-6.

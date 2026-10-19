@@ -3,10 +3,10 @@
 ## Current (branch worktree-agent-abd5ef7c5d758a6b3; tests: tests/test_codified.py, 16 pass + 1 skip)
 | rule | where enforced | test |
 |---|---|---|
-| 1/2 approved head, folds <= 1 mm | asset.approved_head / fold_form_gate: ONLY on export branches (-ad08..., -a369...); coordinator merges | test_export_gates_on_the_approved_head_and_fold_form (skips until merged) |
+| 1/2 approved head, folds <= 1 mm | asset.approved_head / fold_form_gate (landed) | test_export_gates_on_the_approved_head_and_fold_form (runs, passes) |
 | 3 expressions = parameter mixes | faceshapes.refuse_sculpt (env HP_SHAPE_SCULPT, face_fits.sculpt, _sculpted, teeth rest); opt-out HIFIPUSHIE_ALLOW_SHAPE_SCULPT=1 (WARNING); EXPRESSION_PRESETS["smile_tess"], expression() | test_sculpted_expression_deltas_are_refused, test_expression_presets_are_arkit_mixes |
 | 4 hair budget | asset.hair_budget + budget_check (card faces vs default, drawn vs range max = FAIL -> _export raises; vertices); hair.BUDGET_UNIT "card_faces" (cards fitted to card faces) | test_hair_budget_* |
-| 5 view transform (AgX vs PBR Neutral) | asset.GAME_LIGHT on export branch only (6a91c65f); no refusal anywhere | none (see NEXT) |
+| 5 view transform (AgX vs PBR Neutral) | asset.same_view / game_light_view (scene.look, asset.preview), face_light_check views= required -> MixedViewTransform | test_mixed_view_transforms_are_refused |
 | 6 half-sided hair | asset.write_glb raises on a single-sided card material whose extras say no back faces | test_single_sided_cards_without_back_faces_are_refused |
 | 7 proxy pose == batch pose | scratch only (/mnt/data/hifipushie/assembly/r48 test_proxy_batch.py); no repo proxy tool | SKIPPED |
 | 8 reviews | reviewgate.refuse_inputs (caption band, sheet size, numbers / claims) -> bin/review(-ab) exit 5; exit 4 kept; reviewgate.majors raises ReviewNotRun | test_review_*; spikes/hair_garrett/count_review.py skips + exit 4 on a review that didn't run |
@@ -32,9 +32,9 @@
 - Expressions: parameter mixes only; sculpt refused unless HIFIPUSHIE_ALLOW_SHAPE_SCULPT=1 (logged).
 
 ## NEXT
-1. Rule 5: once GAME_LIGHT is on main, make face_light_check take both renders' view transforms and raise when they differ.
+1. Rule 5: DONE at integration (see the table). Renders don't record their view in the PNG yet.
 2. Rule 7: a repo proxy tool doesn't exist; when one lands, record the pose table hash in its output and compare to the batch's.
-3. Gate measures not yet self-tested: likeness_* rows, face_ruler / eye_ruler, cloth_check, asset.face_light_check (branch),
+3. Gate measures not yet self-tested: likeness_* rows, face_ruler / eye_ruler, (cloth_check.seams and asset.face_light_check: DONE),
    skin_read crop stats, spikes' tiles.py. Add each to validated.GATE_MEASURES with a known-answer test.
 
 ## History (grep only): docs/notes/audit.md "## codify checks 2026-10-19"
