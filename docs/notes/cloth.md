@@ -7072,3 +7072,108 @@ rolled at the front edge, or the facing region's inner shell shading as the outs
 (b) not done (budget): pocket / lapel rims, side-seam bead, the 9 back crossings, the s17 tiles / blind review of dt-s17a
 (superseded by the game-render crush A/B). (c) the coat surface is now clean but flatter than the concept's soft swirl:
 a lower-frequency, lower-contrast fold relief (not more crush) would be the next lever, judged in the game render.
+
+## garment-game proof 2026-10-19
+
+Brief (coordinator, after Joe: "I still don't think we've arrived at a sane, repeatable method for making clothes"):
+prove on Garrett's shirt + jacket that a game garment can be made the way game artists make it, instead of shipping
+the decimated sim mesh and patching what the decimation breaks (push-under, despike, unfold, under-garment cull,
+inner shells, LOD_SEAT_PATCHES ...).
+
+Real practice (checked 2026-10-19, web): the MD / CLO drape is the HIGH poly; the game garment is retopologised on the
+FLAT pattern (2D) and transferred back onto the 3D drape, so the pattern layout is the UV set (George Crudo's MD quad
+/ UV tool; SideFX forum: MD exports come with "nice uvs", ray the attributes onto the quad version; Blender Retopo
+Planes / Shaper do the same). MD's own "Remeshing to Topology" (9.5) gives quads but no edge-flow control and loses
+seams. Folds / stitches are baked high -> low into normal (and AO) maps (Maya / Marmoset / Substance). Layered areas
+(pockets) are the hard part of retopo; thickness is added on the EDGES only; a uniform-quad target density (~1 cm2
+per poly for close-ups); a small uniform jacket ~10k tris. Matches the coordinator's diagnosis; no plan change except:
+our cloth export ALREADY used pattern-layout UVs (cloth.atlas_uv) and painted detail maps (cloth.write_maps); what it
+lacked was a clean low mesh and a real bake.
+
+Step 1, pattern coordinates: RECOVERABLE. res.mesh carries per vertex `piece` + `uv` (flat pattern, metres; 3D/2D
+edge ratio 0.94-1.03 per panel), `sew` pairs + `sew_seam`, no triangle spans two panels. Made parts are clean (u, v)
+grids (jacket collar 67x16, shirt stand 93x6, collar 87x15) with `replaces` / info.hides naming the sim pieces they
+supersede. The sim's mirrored .R panels come wound inward (52% of normals faced the body): orient per piece.
+
+Built (src/hifipushie/garment_game.py ~600 lines + blender_garment_game.py ~190; opt-in, export untouched):
+- per panel: outline loop split into seam runs / free runs (free runs break at pattern corners > 30 deg: a first
+  version cut hem corners and lapel points off, 0.7% area lost; the known-answer test caught it); every seam resampled
+  ONCE and shared by both sides (mean 3D point), so seams are exact, no T-junctions; hex grid inside at edge h,
+  Delaunay, trimmed; interior mapped onto the drape by barycentrics in the panel's sim triangle.
+- made parts re-gridded from their own grids, >= 8 rows across (MADE_MIN_ROWS: at 26 mm the collar had 3 rows and its
+  roll baked as a smeared band).
+- under-garment cull: a shirt vertex is covered when its outward normal ray hits the jacket / trousers within 6 cm, in
+  the rest pose AND all 16 export clip frames (s5/poses: idle, walk, run), every layer moved by the BODY's displacement
+  field (pose_by_body: per-garment fields from a different drape put 30% of the back "uncovered" in idle); covered
+  vertices > 3 cm from any uncovered one go. LOD0 drops 38% of shirt faces (sleeves / back / sides stay where arms
+  swing in run frames: conservative).
+- shell: outer + explicit inner faces (1 mm in, reversed, codified A7) + rims only on the garment's real free edges
+  (not on cull holes: saved ~550 tris at LOD0).
+- UVs: the garment's own cloth.atlas_uv slots, so cloth.write_maps' painted basecolor + detail normal fit unchanged.
+- bake (Blender, 36-52 s for 8 garment-LODs, CPU): normal selected-to-active from the full-res drape (made parts in,
+  replaced pieces out, oriented outward: an inward high bakes inverted normals and black AO) through a per-vertex cage
+  (1.5x face stray + 2 mm, <= 30 mm); AO from the drape with the character occluding (glTF occlusion); baked normal
+  RNM-combined with the detail normal; texels turned > 70 deg (rays onto the wrong sheet at island rims) set flat.
+- LODs: the same remesh at coarser h (no decimation), h solved so shirt+jacket drawn tris = v8's per LOD.
+
+Numbers (proof4, /mnt/data/hifipushie/garment_game/proof4/report.json; v8 = assembly_garrett/exp/ag_garrett_v8):
+| LOD | tris new (jacket+shirt) | tris v8 | h mm | folded faces rest new / v8 | shirt through jacket rest new / v8 | posed max new / v8 |
+see the STATE page table (rewritten each round). Folded = faces turned > ~100 deg against their edge neighbours;
+pierce = a shirt vertex with jacket surface within 15 mm BEHIND it (toward the body). Posed: ours moved by the body
+field, v8 by its own skinning (also run by the body field: higher, see report metrics_by_body).
+Texel density: same atlas as v8 (1450 px/m jacket at 2048, LOD1 724, LOD2 362, LOD3 181).
+Code: current cloth export path ~1450 lines (lods.py 1121 incl. head / hair LOD code + 14 cloth / cull functions in
+asset.py 331) and 68 tuning constants; the new path ~790 lines, 6 constants, 6 steps (remesh, cull, shell, atlas,
+bake, GLB) with no repair pass.
+
+garment-game proof result (proof4): geometry numbers far better than v8 at the same triangle totals (folded faces at rest
+6 vs 409, shirt through jacket 9 vs 93 at LOD0; table in docs/state/garment_game.md), but the blind A/B (fresh subagent,
+15 trios, concept as reference) went v8 14 / new 0 / tie 1: the new jacket renders with camouflage-like polygon
+blotches at 1 m and 3 m on every LOD. Collar crops at 0.5 m tie (the crumpled collar wing is in the drape). Cause not
+yet isolated (suspects: two-sided drawing of the 1 mm inner faces, the baked normal map, custom normals). Lesson: the
+metrics measured topology, not shading; a mesh that is clean by every count still lost on the first look.
+
+garment-game blotches 2026-10-19 (session 2): the proof4 "camouflage" blotches were never in our garment. Isolation on
+the LOD0 jacket, judge's own g1m / g3m shots, game light, PBR Neutral, one switch per render (blotch_variants.py +
+blotch_render.py): baseline, inner faces removed, normal map off, baked normal only, AO off, custom normals cleared,
+flat emission: ALL seven blotchy, including flat emission (so not lighting, normals, AO or inner faces). The judge audit
+listed ag_garrett11_cloth_jacket (5022 tris, v8) beside swapped-game_jacket (7472): `--swap ag_garrett11_cloth_jacket=`
+names the OBJECT; judge matches MESH data names (`cloth_jacket`) and silently ignored the key, so v8's jacket + shirt
+and ours were drawn on the same drape and z-fought. GE_FLATID pixel map (blotch_flatid.py): 1 m 3/4 jacket pixels 54%
+v8 / 46% ours / 0.0% our inner faces; same at 1 m front and 3 m front. With `--swap cloth_jacket=` the jacket is 100%
+ours and clean (blotch/iso_swapfix.png). Fix: judge_all5.sh uses mesh names and checks each run's audit that the v8
+garments are gone; blender_garment_game.export_one removes the mesh datablock after each GLB (LOD1-3 had exported as
+`game_jacket.001`, which judge's triangle check refused). proof5 = proof4 re-baked. Blind A/B (fresh subagent, 15
+key-shuffled trios, review-ab CLI rate-limited): LOD0 rows new 6 / v8 0 / tie 3; LOD1-3 rows v8 6 / new 0: with v8's
+jacket gone, the coarse shirt pokes through the jacket sleeves (flat-ID: shirt) and down the chest at LOD3, a fault
+proof4's sheet hid. Proof4's 0-14 measured the harness, not the garment.
+Trap: polygon-shaped blotches on a swapped / tried-on part at every LOD, still there in a flat-emission render ->
+the part it was meant to replace is still drawn (swap key matched nothing; object vs mesh name) -> check the run's
+audit object list (both meshes present?) or a GE_FLATID render before touching normals / bakes.
+
+garment-game LOD poke-through 2026-10-19 (session 3, branch garment-game-lodpoke): LOD1-3 lost the blind A/B 0-6
+because the shirt showed through the jacket (sleeve facets, LOD3 chest strip). MEASURE FIRST: the vertex pierce
+(PIERCE_REACH ray from shirt vertices) missed it because faces cross between vertices. New gate measure
+garment_game.pierce_faces = triangle-triangle (an edge of one through the other), registered in
+validated.GATE_MEASURES, self-test: crossing between vertices caught (vertex test reads 0), parallel sheets 2 mm apart
+read 0, a plane through a 4x4 sheet finds its 8 faces. A first self-test version used a cover grid aligned with the
+under grid (crossing points exactly on cover diagonals) and failed: known-answer tests need non-degenerate geometry.
+proof5 shirt faces crossing the jacket, rest / max over 16 clip frames: LOD0 8 / 325, LOD1 94 / 257, LOD2 114 / 197,
+LOD3 145 / 156 (of 253 shirt faces). Isolation (diag_cross.py, diag_gap.py, diag_lod3.py):
+- the cull's coverage ray looked only outward: a shirt vertex already poking through the coarse jacket read
+  "uncovered" and was kept, so the cull kept exactly the poking sleeves. CULL_BACK_REACH 2 cm (cover behind = covered):
+  LOD1 94 -> 19, LOD2 114 -> 34, LOD3 145 -> 97.
+- the jacket's chord sag (chord_sag, p95 over face centroids, ray to the drape) is 2.2 / 4.3 / 7.9 / 22 mm at LOD0-3;
+  the gap is a few mm and ~0 at the jacket's free edges. layer_gap = this LOD's sag on the kept-but-covered ring
+  (+1 ring: faces straddling the jacket edge). The first try moved nothing at LOD3 (97 -> 90): DEAD LEVER, because
+  the shirt's normals pointed INTO the body at LOD3 (31% outward): remesh's winding test used face centroids, which
+  sit inside the arm with 3 faces round a sleeve. Fixed (per-vertex test, 90% outward at LOD3); the gap moved along
+  outward() regardless. Proof6f: rest 0 / 0 / 4 / 39, posed max 146 / 51 / 33 / 43.
+- look (sheet6): sleeve facets gone LOD1-3, chest strip gone; LOD3 shirt now blotchy grey: the bake cast from the
+  moved (gapped) surface, 2 cm under the jacket drape, and hit it (normal map patches, AO). Fix: the bake casts from
+  V_bake (the ungapped drape surface), the GLB ships the gapped one (proof6g). Blotches gone (sheet7/lod_compare.png).
+- blind A/B (fresh subagent, 15 key-shuffled trios; review-ab at its weekly limit): LOD1-3 new 4 / v8 2 (was 0 / 6),
+  LOD0 new 6 / v8 3. Every 3 m FRONT row (LOD0, 1, 2) went to v8 for "blotchy streaky jacket shading": next fault.
+  LOD3 keeps 39 rest crossings at the jacket edges (bigger gap / more rings: 37 / 31, lever spent).
+Lesson: a cull that tests exposure with a one-sided ray is blind to the very fault it should hide; test both sides.
+Lesson: a lever that does nothing is a bug until shown otherwise (here: inward normals at the coarse LOD).

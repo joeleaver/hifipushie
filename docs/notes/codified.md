@@ -134,6 +134,7 @@ bin/ = the repo's bin/ (review, review-ab, approve, capped, slot, hooks; /mnt/da
 | C8 | Spike gate passes before sheets | cloth.spikes / cloth.despike | DOC (gate run is a session script). CHECK-PLANNED: cloth.freeze refuses a result with spikes > 0 |
 | C9 | Never change code under an in-flight multi-round stage script | cloth.md:4473 | DOC |
 | C10 | Clothing is generic, staged like a pattern maker | memory clothing-artist-workflow; cloth guides | DOC |
+| C12 | Layer poke-through is measured on FACES, not vertices (coarse LODs cross between vertices; the vertex pierce read 0 on a visible fault) | garment_game.pierce_faces (triangle-triangle) in validated.GATE_MEASURES, self-test garment_game._selftest_pierce_faces (crossing between vertices caught, parallel sheets 2 mm apart not); tests/test_garment_game.py::test_pierce_faces_known_answers, tests/test_codified.py::test_gate_measures_are_validated; cloth.md "garment-game LOD poke-through 2026-10-19" | ENFORCED (the measure is validated). CHECK-PLANNED: the game-garment export refuses a LOD with rest crossings > 0 |
 
 ## Expressions, export, rig
 
