@@ -4961,3 +4961,52 @@ STATE: v7g exporting unattended; nothing of v7g judged. RC stays v6.
   v8 = s15/chain16.sh (PID s15/PIDS): export exp/ag_garrett_v8 (hv 24 GB, queued at 08:0x) -> glb_v8 -> specks -> local
   game jobs offload/ag11 -> s15/CHAIN16_DONE. LOD1-3 hair = tiers main / npc / far (lods.HAIR_TIERS) under the same constants.
   STATE: v8 exporting. NEXT: (3) look, (4) A/B + sheet.
+- (3) v8 EXPORTED (exp/ag_garrett_v8/ag_garrett11.glb, EXIT 0, ~37 min; hair 13068 triangles = sh4T hero, LOD1-3 = main / npc /
+  far, far tier with its own maps). Game jobs offload/ag11 j0..3 EXIT 0. LOOK (s15/hair_v8.png: photo | v7g cards | v8 shells,
+  front / 3/4 / side / back): the shells are one coherent short mass that follows the hairline; v7g's crown shingles / flakes and
+  the top-vs-sides tone break are gone. Against the PHOTO, still: ~2 stops too DARK (charcoal vs mid-grey silver; the sides
+  should be the lightest), a stippled / curly "poodle" texture where the photo is short and combed straight, too little lift on
+  top at the front, ragged nape / sideburn edges. At LOD1-3 distance the hair reads light grey (fine). FACE = v7g's to the number
+  (fl_check s15/glb_v8 = s14/glb_v7g: photo lid-cheek -21.3 vs -16.0 WARNING, game -28.8 vs -17.2 WARNING, game forehead
+  texture 1.97 vs 1.20 WARNING); s15/face_v8.png: brows dark / heavy, irises blue-grey, stubble specks, lips pink.
+  NEW (sheet LOD3 switch shot): a dark vertical band down the shirt front at LOD3, not judged further (check offload/ag11/j3).
+- (4) review-ab CLI: EXIT 4 ("cannot import name 'reviewgate'": run before 13:00 MT). Fresh blind subagent on its trios
+  (s15/ab_v8_v6: ref = approved stage under GAME_LIGHT, hair hidden) + hair trios (s15/ab_hair: photo | v7g | v8, key.json):
+  FACE v8 2 / v6 1 (v8 wins eyes and 3/4; v6 wins the bust: v8's eyes narrowed / glassy, skin washed out; v8 3/4 MINORs lips pink,
+  brows dark). HAIR v8 shells 3 / v7g cards 0 (cards: flaky shingles, crown seam, tone split; shells: too dark, curly, ragged
+  edges). v6's own hair (c10L) has no game hair shots (offload/ag6 gone); c11L / v7g's cards beat it earlier.
+  Joe's sheet: sheets/garrett_v8_joe.png (s15/sheet.py; OFF=ag11). Checked: everything reads; title runs off the right edge and
+  two row-2 labels overlap (cosmetic, from s12's layout).
+STATE: v8 = new RC candidate (face A/B 2-1 over v6, hair 3-0 over cards). READY FOR JOE with the caveats above.
+
+### Handover (assembly_garrett session 15, tool-call budget)
+- DONE: v7g collected (prefilter did NOT act: face atlas = v7f's; underarm notch remains: the pose test keeps 98%). hair-heads2
+  merged (3bab7bc7). ag_garrett11 = ag_garrett10 + sh4T shells (checked equal to sh4T hero); s15/sh4t.py sets the shells
+  module constants (not spec keys: the hair thread should make them spec keys so a plain export reproduces sh4T). v8 exported,
+  judged, sheet built. Nothing running (s15/CHAIN16_DONE = OK).
+- NEXT: (a) Joe's call on v8 (sheets/garrett_v8_joe.png). (b) prefilter: find why it didn't act (scene-cache materials without
+  hp_px_m? job texel_m 0?) and capture the bake's stdout in the export log. (c) underarm notch: the pose-exposure test must ask
+  "visible in that frame", not "uncovered". (d) hair thread: lighter value / straighter combed texture / front lift (sh5).
+  (e) LOD3 shirt-front dark band. (f) skin thread: brows, iris (row P).
+
+## Garrett collar export diagnosis 2026-10-19 (branch garrett-collar-diag; scratch /mnt/data/hifipushie/assembly_garrett/collar/)
+Joe: "why is the shirt and jacket collars so messed up, we were so much closer before?" Freeze (frozen_s5 = dress_garrett
+frozen_ae, collar v3) reads fine in its clay draw; the GLBs (v6, v8) show the open shirt collar as flat pale facets.
+- Bisect (collar/dump.py: A = cloth.export_part, B = asset.decimate_cloth, C = + garment-under-garment cull, D = + LOD0
+  push_under; collar/rcol.py: one camera / light, 1 m, 0.34 m across, clay with BACK FACES RED; sheet collar/s_r1.png).
+  A = the freeze (72 back-face px over front / three / back). B: 2086 px, the shirt collar faceted with its back face
+  out. C, D: identical to B (cull and push-under do not touch the collar). v8 GLB 1511, v6 1511 (cull_exposed / skin).
+- ROOT CAUSE: export_part ships each made piece (shirt collar 5216 tris, stand 2228, jacket collar 4284) as a CLOSED
+  1 mm slab (cloth_made.solid: front, back, rim) after the shells; _lod_shell decimated that slab as ONE mesh at the made
+  floor (0.35): front and back decimate apart, mm of error >> 1 mm thickness, so they cross. The garment's own shells
+  had this exact fault in session 4 (black triangles) and got "decimate the outer, rebuild the inner"; made pieces never did.
+- FIX (0f5cf7fa): cloth.EXPORT_MADE_SHEETS lays the slabs out [outer | inner | made fronts | made backs | rims | buttons]
+  (shell "made", "made_rim", "made_thickness"); lods.LOD_MADE_SHEETS decimates the fronts at the made floor and rebuilds
+  each back made_thickness behind (rims dropped: 1 mm). Every LOD keeps the layout. Test:
+  test_game_ready.py::test_lod_made_slab_decimated_as_a_sheet. Stage B2 (fixed): 784 back-face px (three view 1365 -> 368;
+  what is left is the jacket's lapel EDGE, also a thin line in A). Collar rolls again (collar/z2.png: A | B | B2 | D2).
+- Older builds (collar/s_r3.png): v2 / v3 far worse (pre-r53 shells: red blotches everywhere); v4 (frozen_ag) a little
+  fewer collar back faces, same faceting; v5 = v6. No export ever had a clean collar: every one since the made collars
+  decimated them as slabs. "Closer before" = the freeze clay draws, not an export.
+- NOT export: the freeze's own shirt collar is rumpled and stands inside the jacket vs the concept's collar spread
+  over the lapels (concept crop in the tile sheet): dress-garrett (paused), not this fix.
