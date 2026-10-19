@@ -785,6 +785,44 @@ def test_push_under_clears_covered_crossings():
     assert np.allclose(cloth.push_under(U, M, outer, np.zeros(n * n, bool)), U)  # nothing covered: untouched
 
 
+def test_onto_collider_draws_a_redrafted_under_garment_onto_the_pinned_collider():
+    """onto_collider (dress-garrett ag): the drawn under sheet crossing an outer sheet that was simulated over ANOTHER
+    draft of it (the collider: same pattern, flat, clear under the outer) goes, at its crossing vertices, where the same
+    pattern place lies on the collider, the covered cloth round them following smoothly; cloth past the reach stays,
+    and edges in the region aren't torn. push_under runs it when the outer result carries under_collider."""
+    n = 31
+    xs = np.linspace(-0.15, 0.15, n)
+    X, Z = np.meshgrid(xs, xs)
+    F = []
+    for i in range(n - 1):
+        for j in range(n - 1):
+            a = i * n + j
+            F += [[a, a + 1, a + n + 1], [a, a + n + 1, a + n]]
+    F = np.array(F)
+    sheet = lambda: {"F": F, "piece": np.zeros(n * n, np.int64), "names": ["p"], "sew": np.zeros((0, 2), np.int64),
+                     "uv": np.c_[X.ravel(), Z.ravel()]}
+    out_V = np.c_[X.ravel() + 0.0031, np.full(n * n, -0.010), Z.ravel() + 0.0043]
+    rr = np.hypot(X, Z).ravel()
+    U = np.c_[X.ravel(), np.zeros(n * n), Z.ravel()]
+    bump = rr < 0.04
+    U[bump, 1] -= 0.03 * (1 - rr[bump] / 0.04)  # through the outer sheet
+    Vc = np.c_[X.ravel(), np.full(n * n, 0.004), Z.ravel()]  # the collider: clear under the outer one
+    M = sheet()
+    outer = {"V": out_V, "mesh": sheet(), "body": {"V": np.array([[0.0, 0.3, 0.0]]), "F": np.zeros((0, 3), np.int64)},
+             "under_collider": {"V": Vc, "mesh": sheet()}}
+    cross = lambda V: int(cloth._layer_crossing_verts(V, F, out_V, F).sum())
+    assert cross(U) > 0
+    V2 = cloth.onto_collider(U, M, outer, np.ones(n * n, bool))
+    assert cross(V2) == 0, cross(V2)
+    far = rr > 0.04 + cloth.ONTO_COLLIDER_REACH
+    assert far.any() and np.allclose(V2[far], U[far])
+    E = np.unique(np.sort(np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]], 1), axis=0)
+    L = lambda V: np.linalg.norm(V[E[:, 0]] - V[E[:, 1]], axis=1)
+    assert (L(V2) / L(Vc)).max() < 2.0, (L(V2) / L(Vc)).max()
+    assert cross(cloth.push_under(U, M, outer, np.ones(n * n, bool))) == 0  # push_under ends with it
+    assert np.allclose(cloth.onto_collider(U, M, outer, np.zeros(n * n, bool)), U)  # nothing covered: untouched
+
+
 if __name__ == "__main__":
     for k, fn in list(globals().items()):
         if k.startswith("test_"):

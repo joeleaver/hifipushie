@@ -5744,6 +5744,243 @@ keep SUBDIV only if the sawtooth is visibly gone and nothing else got soft; (b) 
 the stand below the option?); (e) open-neck V: a drafted facing above the 2nd button (design op, one sim) or a made strip
 replacing the drawn rolled top; (f) side-back panel moved back in the draft (design call).
 NOT ready for Joe: the shirt collar / open-neck tops / jacket collar stand MAJORs are unchanged.
+- (3) j17k LANDED (NICO-TOP dgrr-105513). Tiles $G/seam_y/tiles/dg_j17k_*. PLACKET before / after
+  $G/seam_ac/placket_j17j_vs_j17k.png (j17j | j17k = SUBDIV=1). LOOK: the shirt's facets are softer and the shards at the
+  neck less sharp, but the lap edge still reads as a beaded line (rounder beads, about the same spacing). The exact fault
+  is NOT gone, so it is NOT KEPT as the fix: SUBDIV stays an opt-in draw option, off by default. The edge needs a made rim
+  (a band edge resampled finer than the 10 mm sim spacing), not a smoothing of the drawn sim mesh.
+- (c) DONE: dg_garrett spec v11 sets cloth.jacket.unfold_finish = true ($G/seam_ac/setuf.py; not a sim key).
+- Coordinator merged the shared cloth.py work to main (339ed79d, tests green).
+## Handover 2026-10-18 ac, final (dress-garrett; supersedes the ac handover above)
+STATE: j17k rendered and tiled; placket subdiv not kept; Tess re-key fixed and merged; spec v11 has unfold_finish. No
+blind review this session (coordinator: the next session runs it). 8 MAJOR stands (j17j).
+DECISIONS (coordinator, 2026-10-18):
+(a) Open-neck V: draft a proper shirt front FACING above the second button (construction-correct, a design op on the
+    shirt's draft), then ONE rented sim (OK'd, $5/day cap). Not a drawn hack on the rolled tops.
+(b) Side-back seam placement belongs to the APPROVED jacket design (c12_n18c). Don't re-draft it. Record the reviewer's
+    side-seam note as "design, Joe's call"; it does NOT count as a blocker / MAJOR.
+(c) unfold_finish: true on the jacket in the spec: DONE (v11).
+(d) Trace why construct.collar_options stand / show don't move the rows (collar_show_mm 21.9, collar_hug_mm 7.3 in j17j,
+    cA {show 0.010, stand 0.032} and cB {show 0.008, stand 0.036, fall 0.040}, logs $G/seam_ac/dg_j17k_c*.log): does
+    cloth_layers.tells read the SIM collar rather than the made one, are the options reaching notched_collar (run.py's
+    key override -> g["construct"]["collar_options"] -> cloth_made.construct kw), or does top_z clamp the stand under them?
+NEXT, in order: (d) the trace (cheap, local); (a) the shirt facing draft + one sim; placket edge as a made rim; then one
+NICO-TOP render, tiles, blind review (side seam excluded per (b), buttons out of scope).
+## dress-garrett 2026-10-18 ad (scripts $G/seam_ad/)
+- (1) COLLAR OPTIONS TRACE: all three suspects were real. (i) cloth_layers.tells read BOTH SIM collars (the jacket's
+  simulated collar and the shirt's simulated collar / stand as pressed), while the MADE ones draw: j17j's 21.9 / 7.3 were
+  numbers of pieces nobody sees. (ii) The made collar's top_z (stand limit = shirt collar top - show) came from the shirt's
+  SIM collar too (construct ran before under_collar built the made shirt collar). (iii) With the draft's roll line, the
+  stand was `hp * min(1, stand / hp_cb)`: Garrett's draft rolls 11 mm up at CB, so every asked stand was capped at 11 mm
+  (cA / cB made-collar stretch identical to the digit). Logged now: "collar built ... stand {stand_asked_mm, stand_cb_mm,
+  top_z_limit, top_cb_z}". FIX (a07a5b12): the under garment as drawn (under_V, unfold, under_sculpt, under_made) is built
+  BEFORE the construction; construct gets und_["made_parts"] (the made shirt collar + stand): top_z and the stand's
+  clearance layers come from them; an ASKED collar_options.stand scales the draft's roll line (up or down, at most 45% of
+  the collar's width at CB); tells(outer_collar=, under_collar=) measure the drawn collars (cloth._drawn_collar).
+  No sim key touched (post-sim only). Local builds ($G/seam_ad/cs.sh, CACHED_ONLY, ~70 s each):
+  | build | collar_options | stand asked / at CB mm | collar_show mm (10-20) | collar_hug mm (0-6) |
+  | j17j (old tells, sim collars) | - | - / 11 | 21.9 | 7.3 |
+  | dg_ad_c0 (new tells) | {} | (24 default) / 11.0 | 16.7 | 9.7 |
+  | dg_ad_cA | stand 32, show 10 | / 11.0 (before (iii)) | 16.7 | 9.7 |
+  | dg_ad_s20 | stand 20, show 10 | 20 / 17.5 | 10.7 | 8.7 |
+  | dg_ad_s26 | stand 26, show 8 | 26 / 17.5 (45% cap: the draft collar is ~39 mm wide at CB) | 10.7 | 8.7 |
+  | dg_ad_s20h | stand 20, show 10, off 2, fall_hug 2 mm | 20 / 17.5 | 10.5 | 7.6 |
+  The lever now moves its rows. Hug stays > 6: the median takes the fall too, which lies over the jacket's own stand (two
+  layers + 3 mm thickness out from the shirt collar). The 45% cap binds: a 25-30 mm tailored stand needs a wider collar in
+  the draft (jacket design, approved: not changed here). SPIKE GATE PASS, 0 crossings on all.
+STATE: lever fixed and proven; dg_ad_s20h sent to NICO-TOP (rr_dg_ad_s20h.out) for the collar_back before / after tile.
+- (1b) COLLAR BACK TILES. NICO-TOP queue stuck again (dgrr-114605 "queued" 30+ min; rr.sh is detached and copies the
+  sheets to cloth_renders itself when it lands), so the _collar sheet ONLY was rendered locally (capped; job_clothrender on a
+  1-sheet sheets.pkl, $G/seam_ad/lj_<tag>/). Tiles $G/seam_ad/collar_back_4.png (ref | j17k | s20h | s15) and
+  shirt_collar_dg_j17k_vs_dg_ad_s20h.png. LOOK: j17k = wavy collar top, a wide band of shirt collar. s20h (stand 17.5) =
+  straighter, higher top, shirt strip ~10 mm, but a NEW bright sliver along the fall's lower edge (the fall, 39 - 17.5 = 21 mm
+  of draft, no longer covers the neck seam). s15 (stand 15, show 12: collar_show 12.9, hug 9.0) = straight top, small even
+  shirt strip, the sliver much fainter. Small visible improvement on the "wavy top" part; the reference's tall rolled
+  stand is NOT reached and can't be from this draft (collar ~39 mm wide at CB vs the reference's tall collar): the "no
+  stand" MAJOR needs a wider jacket collar in the draft = a change to the APPROVED design (Joe / coordinator call).
+  End shards unchanged in every variant. Shirt-collar tile unchanged (expected). NOT set in the spec (the decision on the
+  draft width comes first); candidate = construct.collar_options {"stand": 0.015, "show": 0.012} (not a sim key).
+- (2) SHIRT FACING: NOT STARTED as a sim (budget). Findings for whoever does it: simon's `alter` CUTS both placket folds
+  (turn front.R placketOuterFold, front.L placketFold1, keep neck): the turned-under layers are discarded, the fronts are
+  one layer with an interfaced CF strip (16 / 20 mm). A facing in this codebase = a fused, interfaced band
+  (cloth.fused_interfacing: {"piece", "edge": "a>b", "within": depth}) from the neck to below button 1, at the placket's
+  folded width. COST: the shirt's finished V keys the jacket's sim (ac), so a shirt re-sim forces a JACKET re-sim too
+  (2 rented sims, and the approved hang is re-simulated) unless the jacket is held on the old shirt (run.py under_pin
+  pins the under garment's V). That is a coordinator call before the sim.
+## Handover 2026-10-18 ad (dress-garrett; 70-call clock)
+DONE: (1) collar_options trace: three faults, all fixed in a07a5b12 (tells read the sim collars; top_z from the sim shirt
+collar; the draft's roll line capped any asked stand at 11 mm). Lever proven (stand 11 -> 15 / 17.5, show 16.7 -> 12.9 /
+10.7). Tests: test_cloth_layers, test_cloth_made, test_cloth_heldcollar, test_seams EXIT 0.
+NOT DONE: (2) facing + sim, (3) placket rim, (4) shirt collar points, full render, blind review.
+STATE: MAJORs unchanged at 8 (j17j review); collar_back's wavy top slightly better with stand 15, "no stand" blocked by the
+draft's collar width. NEXT: (a) coordinator: widen the jacket collar draft (approved design) or accept; and shirt re-sim
+forcing a jacket re-sim (2 sims) or under_pin; (b) then facing band + sim(s); (c) placket made rim (subdivided band edge
+as a made part); (d) shirt collar points; (e) NICO-TOP render + blind review. NOT ready for Joe.
+## dress-garrett 2026-10-18 ae (scripts $G/seam_ae/)
+- Merged main (6ee2d455, push_under) into the branch first.
+- (1) JACKET COLLAR WIDENED as a made piece: `construct.collar_options.widen` (m, cloth_made.notched_collar): the made
+  collar's columns longer than the draft's by that much at CB, easing (1 - (|a|/am)^2) * (1 - gorge) to nothing where
+  the collar leaves the seam for the lapel; the 45% stand cap and the fall (= column - stand) follow. Post-sim only: the
+  jacket's sim key is untouched (same cached sim, SPIKE GATE PASS, 0 crossings). Local builds ($G/seam_ae/cs.sh, ~3 min):
+  | build | collar_options | stand at CB mm | collar_show mm (10-20) | collar_hug mm (0-6) |
+  | dg_ad_s15 (ad best) | stand 15, show 12 | 15.0 | 12.9 | 9.0 |
+  | dg_ae_w25 | widen 25, stand 19, show 12 | 19.0 (top_z binds: 1.5531 of 1.5532) | 8.7 | 10.6 |
+  | dg_ae_w32 | widen 32, stand 22, show 10 | 22.0 | 6.3 | 11.3 |
+  The stand is now limited by the SHIRT collar (top_z = shirt collar top - show), not the draft: a taller jacket stand
+  hides the shirt collar at the back. Tile $G/seam_ae/collar_back_j17k_w25.png (ref | j17k | w25): w25 = a taller,
+  straight rolled band, the fall's edge low and even, no bright sliver (s20h's) under it. Visible improvement on "no
+  stand / thin band". End shards at the shoulders: still there (thin spikes on the collar's silhouette where the end
+  turns to the lapel, a dark gap under the end).
+- (F) FREEZE naming (coordinator): $G/run.py freeze=<dir> wrote every garment as garrett_jacket.pkl. Now
+  <dir>/<model suffix>_<garment>.pkl, and the under garment <suffix>_<over>.pkl (jacket run) or
+  <suffix>_<over>_under_<garment>.pkl (any other run, so a trousers run can't overwrite the jacket's shirt).
+  Trousers t5: a CACHED_ONLY rebuild with the current spec / code MISSES (log seam_ae/dg_t5c.log: the shirt under them
+  drafts / finishes differently now, armpit 9.2 vs t5's 12.3 mm, so the trousers' key moved). Retry pinned to t5's own
+  shirt (seam_ae/t5_shirt_pin.npz from out/dg_t5_under.pkl, run.py under_pin): seam_ae/dg_t5p.log.
+- (1b) END SHARDS: two post-sim levers on w25 (local _collar sheets, $G/seam_ae/lr.sh + ct.py): transition_widen 4 /
+  transition_widen_end 4 (w25t): spikes a little smaller, the dark hollow under each end stays; + end_hug 0.014 (w25e):
+  the hollows under the ends mostly close, the spikes stay (smaller). Tile $G/seam_ae/shards_w25_vs_w25e.png. show 15
+  (w25s) changes nothing (top_z doesn't bind at stand 19). KEPT: spec v12 cloth.jacket.construct.collar_options =
+  {widen 0.025, stand 0.019, show 0.015, transition_widen 4, transition_widen_end 4, end_hug 0.014} (not a sim key).
+  BLIND REVIEW (fresh subagent, images only, ref | result: $G/seam_ae/rv_collar_back_j17k.png, rv_collar_back_w25e.png):
+  j17k 3 MAJOR (no stand, no roll / fall, ragged ends); w25e 2 MAJOR (ends still spiky; the fall edge dips in a wavy hump
+  at CB) + 2 MINOR (stand a bit low / padded, a strip of shirt collar). Verdict: w25e clearly closer. Both FAIL.
+- (F2) TROUSERS RE-SIMULATED (t5 can't come back: the current shirt is another draft, 13125 vs 12870 vertices,
+  pinmap miss 40 mm; and an under_pin closure bug in $G/run.py: `v` was rebound by the later freeze= arg, fixed).
+  dg_t6 = the spec's trousers over the CURRENT shirt, HP_SUBMIT_SIMS=1, rented bundle: sim 275 s + fine settle 64 s GPU,
+  key e5ae8764ca63512f, integrity 0 crossings, SPIKE GATE PASS, but the report's crossings row says 35 (look: a small pale
+  spot below the fly front, shirt through the trousers?). Sheet $G/seam_ae/t5_vs_t6.png (t5 top | t6): same hang,
+  slightly slimmer, crease softer. Renders workspace/cloth_renders/dg_t6*.png.
+- FROZEN ($G/frozen_ae/, cloth.freeze format via $G/run.py freeze=): garrett_jacket.pkl + garrett_shirt.pkl from build
+  dg_ae_j18 (spec v12, jacket sim key 7aca63ae26eb8a5c = the approved hang, unchanged; widened collar; under_sculpt
+  dg_j17_placket_z2_delta), garrett_trousers.pkl + garrett_shirt_under_trousers.pkl from dg_t6.
+## Handover 2026-10-18 ae (dress-garrett; 70-call clock)
+FROZEN FOR EXPORT: /mnt/data/hifipushie/dress_garrett/frozen_ae/garrett_jacket.pkl, garrett_shirt.pkl (build dg_ae_j18,
+spec v12), garrett_trousers.pkl (+ garrett_shirt_under_trousers.pkl) (build dg_t6). Current best = dg_ae_j18 + dg_t6.
+DONE: jacket made collar widened (collar_options.widen, post-sim, 08223279) + stand 19 + ends hug: blind review 3 -> 2
+MAJOR on the collar; freeze naming per garment; trousers re-simulated over the current shirt and frozen.
+NOT DONE: shirt facing re-sim with the jacket held (needs run.py: the jacket's sim held on the OLD shirt by under_pin
+while the drawn under is the NEW shirt: under_pin today swaps both); placket made rim; shirt collar points; NICO-TOP
+full set; full blind review.
+NEXT: (a) trousers t6: chase the 35 crossings row (shirt at the fly?) before export trusts it; (b) collar: the end spikes
+(trace which rows of the end columns stand up: the end's outer corner / pattern end edge), the fall's CB dip
+(board_smooth / fall_board at the widened length); (c) facing (above); (d) placket rim, collar points.
+## dress-garrett 2026-10-18 af (scripts $G/seam_af/)
+- (1) TROUSERS 35 vs 0: both right, they count different things. "integrity: 0 crossings" = the trousers' SELF crossings.
+  The report's layered "crossings: 35" = trousers edges through the SHIRT AS PRESSED under them (res["under_V"], the
+  collider of their sim), which nothing draws. The export draws the shirt by worn_together (tuck, untuck, push_under):
+  - with garrett_shirt.pkl (the jacket's shirt, what the export wears): 0 x trousers, 0 x jacket (seam_af/xc.py).
+  - with the trousers' own shirt (garrett_shirt_under_trousers.pkl = the current spec shirt): 30 edges, 10 shirt verts at
+    the front tail tips, x +-0.02, z 0.87-0.89 = THE PALE SPOT below the fly. They were already 4-9 mm under the nearest
+    trouser face: the trousers' crotch curve folds in through them, and push_under's reach (12 mm) didn't see it
+    (reach 20 mm: 8, 30 mm: 0, tips moved <= 23 mm, 10 vertices).
+  FIX (cloth.py): push_under runs a second pass at PUSH_UNDER_REACH_WIDE = 30 mm only where the default pass left
+  crossings; build's layered crossings row now counts against the under garment AS DRAWN (_laid_under), the collider
+  count kept as "collider" and logged. dg_af_t6f (cached, key e5ae8764ca63512f): "35 against the pressed collider, 0
+  against the under garment as drawn", ok crossings 0, SPIKE GATE PASS. Both shirts x (jacket, trousers) by the export
+  rule: 0 / 0. test_cloth_layers EXIT 0. RE-FROZEN frozen_ae/garrett_trousers.pkl (+ _shirt_under_trousers) (pre-af copy:
+  $G/frozen_ae_pre_af/). The fix is in CODE (the export's worn_together): the assembly needs this branch merged.
+  STATE: (1) done. NEXT: (2).
+- (2) TOOLING: garment key under = {"pin": ..., "draw": "spec"} (cloth.model_body + _build): the pin is the collider the
+  garment is simulated over (sim key unchanged: "under" is NOT_SIM; pre_key gains the drawn garment's key only when
+  draw is set), the spec's own under garment is what is drawn (laid under by the export rule right after the sim, then
+  pressed view / under_collar / construct / tells / freeze use it; res["under_drawn"]). run.py needs nothing new:
+  'under.draw="spec"' patches it. TEST dg_af_jd (cached): jacket key 7aca63ae26eb8a5c (the approved hang, unchanged),
+  drawn shirt 354254cf1a529fe6 (the current spec shirt), SPIKE GATE PASS, frozen to seam_af/frz_jd/ (NOT for export).
+  FINDING: that shirt under the jacket held on the old shirt crosses it at 96 edges after push_under (wide pass
+  included): 16 back-piece verts at the armholes (|x| 0.17-0.26, z 1.24-1.32). The current code drafts the shirt
+  differently from the pinned one (armpit 9.2 vs 12.3 mm, 13291 vs 13139 verts), so ANY re-drafted shirt (the facing
+  one too) shown under the held jacket will cross at the armholes. The facing route therefore needs either (a) a jacket
+  re-sim over the new shirt (2 rented sims, the approved hang re-simulated: coordinator / Joe), or (b) a hand finish of
+  the armhole crossings (push the shirt back under along the jacket's armscye: a wider covered set / reach there).
+  NOT SPENT: the rented shirt sim (the facing isn't drafted yet; no sim before (a) / (b) is decided). Facing draft per
+  the ad notes: a fused interfaced band {"piece": front.*, "edge": neck>button-2, "within": placket width} on the
+  turned-back front above the 2nd button.
+  STATE: (2) tooling done + tested; facing sim blocked on the armhole decision.
+- (4) jacket collar end spikes, diagnosis only (out/dg_ae_j18.pkl): the made collar's end corners (x +-0.155..0.162,
+  z ~1.485, 4-7 mm Laplacian, boundary degree 3-4) are the tips seen on the silhouette; the jacket's own neckline
+  vertices (lap 22-33 mm at z 1.54-1.56) are hidden boundary. Not fixed.
+## Handover 2026-10-18 af (dress-garrett; 70-call clock)
+FROZEN FOR EXPORT: /mnt/data/hifipushie/dress_garrett/frozen_ae/garrett_jacket.pkl, garrett_shirt.pkl (dg_ae_j18,
+unchanged), garrett_trousers.pkl (+ garrett_shirt_under_trousers.pkl) RE-FROZEN from dg_af_t6f (same sim key
+e5ae8764ca63512f). Wear garrett_shirt.pkl as THE shirt; _shirt_under_trousers is the trousers' collider record. The
+fly / pale-spot fix is in the export rule (cloth.push_under's wide pass): merge this branch before exporting.
+DONE: (1) crossings resolved + fixed (0 drawn, both shirts); (2) under.draw tooling, tested on the cached jacket.
+NOT DONE: facing sim (blocked: armhole crossings of any re-drafted shirt under the held jacket, decision (a)/(b) above);
+(3) placket rim, shirt collar points; (4) collar end spikes + CB dip (diagnosis only); full render + blind review (no
+visual change to the export set this session, so none was run). MAJORs unchanged from ae (collar 2; j17j set 8).
+NEXT: coordinator decides (a) jacket re-sim or (b) armhole hand finish; then the facing draft + one sim; collar ends.
+## dress-garrett 2026-10-18 ag (scripts $G/seam_ag/)
+- Coordinator decision on af's question: (b), the jacket stays on its approved sim (7aca63ae26eb8a5c); the re-drafted
+  shirt's armhole crossings are FINISHED on the drape.
+- (1a) ARMHOLE FINISH: cloth.onto_collider, run at the end of push_under when the outer result carries
+  res["under_collider"] (written by _build for garment key under.draw: the pin's pressed V + its mesh uv / piece /
+  names; frozen with the jacket). Diagnosis (seam_ag/ah.py on seam_af/frz_jd): 96 edges, 16 back-piece verts, ALL
+  covered, ALL already 4-21 mm UNDER the nearest jacket face (side.R / under.R folding in at the right armscye), so no
+  push along a normal can clear them. Tried (ah3 / ah4): seeds onto the collider's closest point 16 -> 20; a smooth
+  Gaussian blend of that 32-155; per-vertex pattern correspondence (piece + uv on the old shirt) with a falloff: 0 but
+  edges torn (max 5.8x); mesh-smoothed correspondence: 13 left. KEPT: crossing verts pinned to their pattern place on
+  the collider, the covered cloth within 0.10 m following by a harmonic interpolation (0 at the region edge), still-
+  crossing verts join the pins (<= 5 rounds). On frz_jd through worn_together: 96 -> 0 edges; 797 verts moved (p95
+  7 mm, max 108 mm at a pin), x -0.33..-0.12, z 1.16-1.38 (under the jacket); edges in the region p1 0.27x p99 1.13x.
+  Test test_cloth.test_onto_collider_draws_a_redrafted_under_garment_onto_the_pinned_collider; test_cloth_layers EXIT 0.
+  The export set (frozen_ae) is unchanged: its jacket carries no under_collider.
+  STATE: (1a) done. NEXT: facing draft + one rented shirt sim.
+- (1b) FACING SIM launched (seam_ag/s1.sh, tag dg_ag_s1, HP_SUBMIT_SIMS=1, one rented shirt sim): garment key
+  interfaced += a fused facing band per front, along the front edge from the neck (y -0.075) to just above button 2
+  (y -0.227; button 2 at -0.239, button 1 is the open one), within 35 mm (front.L edge x -0.016, front.R +0.01).
+- (2) JACKET COLLAR END SPIKES: diagnosis (seam_ag/sp.py, plot seam_ag/collar_end_loop.png): each end of the made collar's
+  outline is a CROWDED run (boundary segments 1.5-1.9 mm vs a median ~8 mm) hooking 4-7 mm out past the end edge where
+  it turns to the lapel. FIX cloth_made.fair_edge_runs (post-sim, in _build right after despike, every made part;
+  construct.fair_edges false turns it off): crowded runs (< 0.35 x median, runs <= 3 segments apart merged) redrawn
+  evenly by arc length on a Hermite between the ordinary vertices either side (a corner end takes the chord's
+  direction), the interior cloth following (2 rings, 1/2 then 1/4). dg_ae_j18's collar: 2 runs, 30 verts, max 11.8 mm;
+  the end is one smooth curve (seam_ag/collar_end_loop_fair.png). Test test_cloth_made.test_fair_edge_runs_* EXIT 0.
+  CB DIP: the fall's outer edge (seam_ag/cb.py) is a smooth U, z 1.5174 at CB, 1.5293 at x 0.057, 1.540 past x 0.09;
+  no wave in the mesh numbers (the inner seam line dips 10 mm the same way). Not changed: a level edge needs the fall
+  width / board lengths re-thought, not a fairing; left for the review to say whether the U reads wrong.
+  STATE: (2) ends done (code), CB dip diagnosed only. NEXT: facing sim result, jacket build with under.draw.
+- (1c) FACING SIM dg_ag_s1: key 3707e1b718d2c497, rented bundle: sim 70 s + fine settle 24 s GPU (dressed 525 s wall),
+  ~2 min of rented GPU. Front closure: button 1 open 24.6 mm, the rest 1.4-7 mm. Open neck folds: neck.L turn 82 / 45 deg
+  (start / end), neck.R 36 / 4 deg. SPIKE GATE FAIL on the shirt's own sheets: 8 faces at the CUFFS (x +-408, z 1.02-1.03:
+  out of scope, covered by the jacket sleeve in the dressed set). Spec v13: cloth.shirt.interfaced = the two facing bands.
+- (1d) JACKET dg_ag_j1 (seam_ag/j1.sh: CACHED_ONLY, under.draw "spec", TROUSERS dg_af_t6f): key 7aca63ae26eb8a5c (the
+  approved hang, cached), the faced shirt drawn: "146 against the pressed collider, 0 against the under garment as drawn"
+  (onto_collider in), integrity 0, made collar edge runs faired (2 runs, 30 verts, max 10 mm), SPIKE GATE PASS.
+  OPEN SEAM 3 (side.R / front.R sideF: the side seam, out of scope). NICO-TOP render launched (rr.sh dg_ag_j1).
+- (4) RE-FROZEN: frozen_ae/garrett_jacket.pkl + garrett_shirt.pkl from dg_ag_j1 (seam_ag/frz_j1); pre-change copies in
+  $G/frozen_ae_pre_ag_2026-10-18/. Trousers files unchanged. Export rule (seam_af/xc.py on the new set): shirt x trousers
+  0, shirt x jacket 0. The jacket pickle carries res["under_collider"] (the old shirt pressed), which the export's
+  worn_together needs (onto_collider): a8de5010 must be merged.
+  STATE: (1) + (2 ends) + (4) done; render + review running. NEXT: (3) placket rim, shirt collar points; CB dip.
+- (5) RENDER (NICO-TOP, rr.sh dg_ag_j1, $0) + BLIND REVIEW (fresh subagent, images only, before = dg_j17k top / after =
+  dg_ag_j1 bottom; sheets $G/seam_ag/ba_collar.png, ba_front_tex.png): before 2 MAJOR, after 4 MAJOR, both FAIL, "A closer".
+  After: (a) shirt collar collapsed to a thin rolled tube, no leaf / points; shirt fronts faceted, blotchy; (c) shirt
+  pokes through the jacket as white flecks on the back / side shoulder; (d) large white shirt patches through the
+  trousers below the waistband. Better: jacket collar ends (MAJOR -> MINOR: fair_edge_runs works).
+  My look agrees. Causes to chase: (d) is the SHEET, not the export: run.py draws TROUSERS (dg_af_t6f) raw over the new
+  shirt (the export rule gives 0 shirt x trousers, seam_af/xc.py), so the sheets need worn_together for TROUSERS too;
+  (c) the flecks on the back are not counted by the build ("0 against the under garment as drawn"): check what the
+  sheet draws for the shirt (under_V pressed vs the laid result) at the shoulders; (a) the faced shirt's collar /
+  fronts came out of the new sim (dg_ag_s1, key 3707e1b7): the 35 mm interfaced band from the neck may have stiffened
+  the stand / collar seam region: compare its collar numbers with 354254cf's before another sim.
+  DECISION: the after set is a regression, so it is NOT frozen. frozen_ae/garrett_jacket.pkl + garrett_shirt.pkl
+  restored from $G/frozen_ae_pre_ag_2026-10-18/ (= dg_ae_j18, unchanged); the rejected pair is in
+  $G/seam_ag/frozen_ag_rejected/. Spec: shirt "interfaced" taken out again (v14), the facing bands are in s1.sh.
+## Handover 2026-10-18 ag (dress-garrett; 70-call clock)
+FROZEN FOR EXPORT: UNCHANGED from af: /mnt/data/hifipushie/dress_garrett/frozen_ae/garrett_jacket.pkl, garrett_shirt.pkl
+(dg_ae_j18), garrett_trousers.pkl (+ garrett_shirt_under_trousers.pkl) (dg_af_t6f). Commits the export needs: 1b9ac8a2
+(push_under wide pass, the fly). a8de5010 (onto_collider) and e8c4f31a (fair_edge_runs) are self-contained and safe
+(onto_collider only runs for a jacket pickle carrying under_collider; fair edges only on new builds), not needed by the
+current frozen set.
+DONE: (1) armhole finish onto_collider + test (96 -> 0 edges); facing drafted + ONE rented shirt sim (~2 min GPU,
+3707e1b718d2c497); (2) jacket collar end hooks faired (fair_edge_runs + test; review: ends MAJOR -> MINOR); CB dip
+diagnosed (a smooth U, not a wave); full render + blind review.
+NOT DONE: (3) placket rim, shirt collar points; the faced shirt is rejected (review 2 -> 4 MAJOR).
+NEXT: (a) run.py sheets: lay the shirt under TROUSERS by worn_together (the white patches are the sheet's); (b) the back
+flecks: diff the sheet's drawn shirt against the build's laid shirt at z 1.35-1.5; (c) the faced shirt's collar: the
+facing band must stop below the stand seam (start it 15-20 mm under the neck), compare collar numbers on a local
+place_only run before any new sim; (d) then fair_edge_runs on j18 alone (cached, no shirt change) as a freezable win.
 ### dress-tess 2026-10-16 (session 7): fused facings interfaced, through-start refusal, coat dc22 (facing to the hem, stiff)
 - Merged main 0e76482e (pins; post_finish reads finish files through pin_path).
 - FIX (5ebb828d): a fused, interfaced facing is its piece's interfaced BAND (cloth.fused_interfacing: one band
@@ -6365,3 +6602,339 @@ NEXT: (1) DONE: rows + look-first recorded above (fix the g1f panel box).
 (3) Geometry polish after the review: the side-seam bead (refit the band ring 5 to ring 5 across the line, normal-only;
   coordinate with dress-garrett, who owns the seam code), the smooth 10 mm faces, the swollen pocket / lapel rims.
 (4) The remaining 9 sweater | coat crossings: the sweater back verts up to 35 mm outside the coat (rr/s16/push_diag.py).
+## dress-garrett 2026-10-18 ah (scripts $G/seam_ah/)
+- Coordinator: BACK TO KNOWN GOOD. The shirt stays the af freeze (dg_ae_j18's shirt); no shirt sims. RESEARCH ITEM (parked):
+  the shirt front facing (fused, interfaced band, ag's dg_ag_s1, key 3707e1b718d2c497) collapsed the shirt collar into a
+  thin rolled tube and faceted the fronts (review 2 -> 4 MAJOR). ag's diagnosis: the 35 mm band started AT the neck
+  (y -0.075), so it stiffened the stand / collar seam region; a re-draft would start it 15-20 mm under the neck and
+  compare collar numbers on a local place_only run before any sim. Any re-drafted shirt also needs onto_collider under
+  the held jacket (a8de5010).
+- (1) JACKET COLLAR ENDS on the frozen j18 jacket, no rebuild: seam_ah/fair.py = cloth_made.fair_edge_runs on the frozen
+  pickle's made parts (the pass _build runs since e8c4f31a): collar 2 runs, 30 boundary verts (86 moved > 0.1 mm), max
+  11.8 mm (same as ag on dg_ae_j18). Old frozen set copied to $G/frozen_ae_pre_ah_2026-10-18/. RE-FROZEN
+  frozen_ae/garrett_jacket.pkl (shirt / trousers untouched). Tiles drawn by the EXPORT's rule (seam_ah/xs.py, below):
+  seam_ah/ba_collar_ah.png (top before, bottom after), ends crop ba_collar_ends_ah.png. My look: small change; the
+  shoulder-end tips are a little lower / rounder, a small notch is left at each end. Kept (it is a fairing of a
+  measured hook, nothing else moves).
+- (2a) FOUND while drawing the frozen set by the export rule: the frozen SHIRT's made stand + collar (cloth.under_collar,
+  written by run.py freeze) carry neither "replaces" nor "thickness" (the pieces they replace are in
+  made["info"]["hides"]). cloth_made.drawn (used by drawn_faces = look_cloth / sheets AND by the export's mesh step,
+  cloth.py ~10945) raised KeyError 'thickness' on it, and without "replaces" the simulated stand + collar would be
+  drawn UNDER the made ones (a doubled leaf). FIX cloth_made.drawn: a part named in info.hides replaces its piece; no
+  thickness = MADE_THICKNESS 0.8 mm.
+  STATE: (1) done, re-frozen. NEXT: (2) sheets = the export's draw.
+- (2) SHEETS = THE EXPORT'S DRAW. Tool $G/seam_ah/xs.py <frozen dir> <out> [focus] [zoom] [textured] [views] [size]
+  (GARMENTS=a,b to leave one out): ag_garrett2 (the assembly model) wearing <dir>'s shirt / jacket / trousers through
+  cloth.look = cached -> thaw onto the export body -> worn_together -> drawn_faces + made parts; the stored spec is not
+  changed (store.load patched in-process). run.py: XSHEET=1 with freeze=<dir> renders <tag>_x / _x_collar /
+  _x_shirtcollar / _x_waist that way after freezing (missing garments taken from frozen_ae); tested standalone
+  (seam_ah/xtest.py: 4 sheets rc 0). The raw run.py sheets stay (they draw res["under_V"], the shirt pressed under the
+  ONE garment built, with the trousers pasted over it unlaid: ag's white waist patches were that).
+  frozen_ae by the export rule (seam_ah/x_fig.png, x_waist.png, x_shoulder.png): NO white patches under the waistband,
+  NO back / shoulder flecks. One thing left: a ~1 cm pale shirt sliver at the trousers' crotch (x 0, z ~0.885, front;
+  seam_ah/x_fly_ab.png: with | without the shirt). Geometry says it is covered (seam_ah/fly.py, after thaw +
+  worn_together: shirt verts there 4-15 mm under the trousers, 0 visible by an x-z projection test against the trousers
+  + jacket faces, no open boundary of the drawn trousers there), so the cause is NOT found (render-side: Solidify
+  direction on a mis-wound crotch face? the oriented-face sign test failing in the fold?). Assembly: check the same
+  spot in the GLB's EEVEE render before calling it.
+  STATE: (2) done (tool + run.py hook), one open item (crotch sliver).
+- (3) SHIRT COLLAR POINTS / PLACKET RIM on the known-good shirt (export draw, seam_ah/x_shirtcollar.png): the collar
+  reads as a rolled band with the stand's edge showing above the fall at the sides (the "doubled leaf") and ragged points;
+  the placket edges are a 10 mm zigzag. Tried: fair_edge_runs on the shirt's made stand + collar: 0 crowded runs, nothing
+  moved (no lever there). Not changed: the doubled leaf is the made stand standing above the made fall (a stand height /
+  fall width finish on cloth_made.shirt_collar), and a finer rim needs either more rim vertices in the export mesh or a
+  normal-map edge; neither fitted in this session's budget. NO shirt change, shirt not re-frozen.
+- (5) BLIND REVIEW (bin/review CLI down until 2026-10-19 13:00 MT: fresh subagent, images only, the concept + A = after
+  (faired) / B = before, back / back-3q / side / front-3q + back-collar crops; seam_ah/rvA*.png, rvB*.png): jacket collar
+  A 3 MAJOR + 2 MINOR, B 3 MAJOR + 2 MINOR, both FAIL; "the difference is barely visible" (pixel diff only at the gorge /
+  notch). MAJORs on both: collar ends crumpled (ragged flaps at the shoulder, no clean notch), the end a boxy tab standing
+  off in side view, the left fall lifting off the shoulder with a dark gap. Other stages: shirt collar crumpled, right
+  point standing up, placket edges jagged. ag's "ends MAJOR -> MINOR" does not hold on the export draw.
+## Handover 2026-10-18 ah (dress-garrett; 70-call clock)
+FROZEN FOR EXPORT: /mnt/data/hifipushie/dress_garrett/frozen_ae/: garrett_jacket.pkl RE-FROZEN (= dg_ae_j18, sim key
+7aca63ae26eb8a5c, with fair_edge_runs on its made collar; pre-ah copy in $G/frozen_ae_pre_ah_2026-10-18/), garrett_shirt.pkl
+UNCHANGED (dg_ae_j18's, the known-good shirt), garrett_trousers.pkl (+ _shirt_under_trousers) UNCHANGED (dg_af_t6f).
+Commits the export needs: 1b9ac8a2 (push_under wide pass: the fly) and 3b870bd9 (cloth_made.drawn: the frozen shirt's made
+stand + collar hide their simulated pieces and get a default thickness; before it the export's made-part step raised
+KeyError 'thickness' on the shirt, or drew a doubled collar). a8de5010 / e8c4f31a not needed by this set.
+DONE: (1) collar ends faired + re-frozen (review: no visible change, 3 = 3 MAJOR); (2) export-rule sheets (xs.py, run.py
+XSHEET) and the frozen set checked by them: waist patches and back flecks were sheet-only; drawn() fix. Facing parked (above).
+NOT DONE: (3) no visible lever found in budget; crotch sliver cause; jacket collar ends still 3 MAJOR on the export draw.
+NEXT: (a) jacket collar ends: the end is a boxy tab standing off and the fall lifts at the left shoulder: end_hug / a
+seat-the-fall pass on the made collar, judged on xs.py tiles only; (b) shirt stand below the fall at the sides
+(cloth_made.shirt_collar stand height vs fall width); (c) crotch sliver in the GLB render.
+
+## dress-garrett 2026-10-18 ai (scripts $G/seam_ai/)
+- (1) JACKET COLLAR MAJORs MEASURED on the frozen j18 collar (seam_ai/meas.py raw, meas2.py thawed onto ag_garrett2 = the
+  export draw: identical within 0.1 mm, so the carry is not the cause). The made collar is grid 67 stations x 16 rows,
+  mirrored (L/R asymmetry max 3.9 mm): the "LEFT lift" is NOT a left-only fault, both sides measure the same; the
+  dark gap is light from one side. Per station (`info.collar.per_station`): ends wE=1 at stations 0-7 / 59-66, the
+  transition zone 4-21 / 45-62. Outer edge's distance over the jacket's own cloth (Under.settle "over"): back p50 0,
+  zone up to 20.9 mm (stations 3-12: the fall outer edge 20-26 mm off the forepart by nearest vertex); end column a
+  straight 30 mm board, outer-edge steps 2 / 8.5 / 11.8 / 5.9 mm at the ends (the bunched corner = the "ragged flaps").
+  CAUSE: in the transition the fall is the back's column + a straight run to a Hermite outer-edge curve (Oa end corner
+  -> Ob board end, tangents x chord) and the last settle only pushes OUT: nothing draws the zone's fall down; the
+  side "tab" is the end board (laid on the forepart at x +-0.16, z 1.49, 3 mm slab + end_over step) whose square
+  end reads as a block.
+- TRIED, all post-construct on the frozen pickle (seam_ai/seat.py), judged on the export draw (seam_ah/xs.py, collar
+  focus, back / back-3q / side / front-3q; before = seam_ah/collar_post.png):
+  s1 per-point hug (Under.settle hug=reach) of the rows past the roll top: back roll crumpled, CB fall stretched
+  62 -> 84 mm (ba_s1.png). s1b + column lengths kept: still crumpled. s2 the fall TURNED as a board about the seam
+  tangent at the roll top (least angle bringing the edge within 1 mm, Gaussian along the seam): outer max 45.7 ->
+  8.9 mm but the untouched back ridged (the final push-out against the jacket's own neckline under the stand) and the
+  end boards folded into the forepart (ba_s2.png). s3 push-out on turned stations only: back restored, ends still a
+  vertical crease. s4 ends kept (keep = ~zone), only the transition turned (24-36 deg): back-3q gap a little lower,
+  but a crease where the turned zone meets the unturned end board (ba_s4.png, zoom_s4.png).
+  BLIND REVIEW (fresh subagent, images only, concept + A = before / B = s4): "B's jacket change made the collar worse"
+  (B adds a crumpled pinched spike at the gorge and a lumpy patch at the back end), medium-high confidence. NOT KEPT.
+  KEPT IN CODE (opt-in, called by nothing): cloth_made.seat_fall (+ _at_lengths, _rodrigues) with a unit test
+  (tests/test_cloth_made.py::test_seat_fall_...). Lesson: a post-construct turn of the zone's fall can't meet the end
+  board without a crease (two hinges: the end lies on the lapel, the zone turns about the seam); the fix belongs IN
+  notched_collar: the transition's outer-edge curve (Oa/Ob/tangents) seated on the cloth before the columns are run to
+  it, and the end board's outer corner rounded (end_round) / its slab tapered at the end edge. Needs a construct
+  re-run on the frozen sim's V (no re-sim) - not in this budget.
+  STATE: jacket collar 3 MAJOR unchanged, jacket NOT re-frozen.
+- (2) SHIRT STAND vs FALL measured (seam_ai/shirtc.py, remake.py): the fold sits 3-5 mm above the stand top at every
+  station (not below it), the fall's outer edge reaches only 1-3 mm below the neck seam at the sides (stations 24-66
+  of 93) vs 28-31 mm at the points. remake.py re-makes the shirt's made stand + collar by cloth.under_collar on the
+  jacket build's under_V with the freeze's options ({open 2, stand .022, points .065, spread 15, fall_hug .0015}):
+  reproduces the frozen parts exactly. fall_over 0.012 -> 0.018: side reach 3 -> 8.5 mm (fall_hug .004, stand .019:
+  no more). Export draw (sc_pre.png | sc_fo18.png, ba_sc.png): almost invisible; blind review "B (before) marginally
+  better, almost no difference, low confidence". NOT KEPT. The reviewer's shirt MAJORs on both: stand and fall don't
+  read as two layers, points like stiff faceted cards, fall standing up beside the jaw; front edges saw-toothed.
+  The right point standing up: not reached.
+- (3) PLACKET EDGE: not reached.
+## Handover 2026-10-18 ai (dress-garrett; 70-call clock)
+FROZEN FOR EXPORT: UNCHANGED from ah: /mnt/data/hifipushie/dress_garrett/frozen_ae/ (jacket = dg_ae_j18 + ah's
+fair_edge_runs; shirt = dg_ae_j18's; trousers dg_af_t6f). Commits it needs: 1b9ac8a2, 3b870bd9 (as ah). Nothing of
+ai is needed by it (seat_fall is opt-in and unused). Candidates NOT frozen: seam_ai/frz (s4 collar), seam_ai/frs
+(shirt fall_over .018) - both rejected by look + blind review.
+MAJORs before / after: jacket collar 3 / 3 (attempts made it worse, reverted); shirt collar 2 / 2.
+NEXT: (a) jacket collar IN notched_collar (not post-hoc): seat the transition's outer-edge Hermite curve (Oa, Ob,
+tangents) on the forepart before running columns to it, and round / taper the end board's outer corner; test by
+re-running construct on the frozen sim V (place_only-style, no re-sim), judged on xs.py collar tiles; (b) shirt: the
+"two layers" read is fold geometry (a hard polygonal fold, fall standing up by the jaw), not stand height: the fall
+lying down = its outer half on the jacket collar, i.e. the jacket's made collar as a layer for under_collar;
+(c) placket edges: normal-map edge or rim vertices; (d) crotch sliver in the GLB render (ah).
+
+## dress-garrett 2026-10-18 aj (scripts $G/seam_aj/)
+- (0) TOOLS: construct() inputs of dg_ae_j18 re-dumped (run.py dumpcon=, CACHED_ONLY, same sim key 7aca63ae26eb8a5c, the
+  build reproduces the frozen collar: edge runs faired 2 / 30 / 11.8 mm): $G/out/con_aj_j18.pkl. seam_aj/cm.py <tag|->
+  [collar_options k=json ...] = construct() on it (~5 s) + the build's despike + fair_edge_runs, prints the made collar's
+  numbers (outer-edge standoff over the jacket's OWN cloth by closest point, unsigned; outer-edge steps; end columns) and
+  writes a frozen-format set seam_aj/frz_<tag>/ (jacket replaced, shirt / trousers linked to frozen_ae). xc.sh <dir> <name> =
+  ah's export-draw collar tiles; crop.py = back-3q / side / front-3q crops stacked; under.py = which layer lies under the end.
+- (1) MEASURED (baseline = frozen_ae): outer edge over own cloth: back p50 5.0 mm (= lay 2 + thickness 3, by design),
+  transition p50 15.2 / max 26.0, end board p50 17.5; end columns 30 mm, their middle rows 13-16 mm off the front with
+  NOTHING else under them (under.py: shirt 20-32 mm, body further): the board floats, the side "tab". Outer-edge steps in
+  end + transition 2.0 / 8.5 / 11.8 (p50 7.2, max/p50 1.64); corner angle 116 deg.
+  TARGETS (concept: the fall and the points lie flat on the jacket; inferred tailoring): outer edge over own cloth <= 6 mm
+  everywhere (the back's 5 + 1); end board <= 6 mm; edge steps max/p50 <= 1.3; a rounded point (R 6-10 mm, inferred).
+- (2) BUILT in notched_collar (all opt-in collar_options, defaults off, nothing else changes): `seat_transition` (hug m):
+  the transition's outer-edge curve seated on the cloth (settle with hug, back to each column's cut length from the roll
+  top, 4 rounds) BEFORE the columns run to it; `seat_end` (hug m) + `seat_smooth`: end-board and transition columns drawn
+  down onto the OWN cloth only, rows put back at their cut lengths (_at_lengths), smoothed per end; `even_outer`: stations
+  re-spaced evenly along each row over the end + transition runs (cm.even_outer, seam row kept); `end_corner` (R m): the end
+  column's outer corner on a fillet (cm.round_corner). Tests: test_even_outer_..., test_round_corner_... (24 pass).
+  Numbers (outer standoff zone p50/max, end p50/max, step max/p50, end-col standoff p50):
+  v1 seat_transition .04 + even_outer + end_corner .008: zone 7.4/16.8, end 9.6/15.9, steps 1.05, end col 11.0.
+  end_hug .03 / end_over 0 on top: no change (DEAD levers: the settle against every layer doesn't draw the board down).
+  v2 + seat_end .03: zone 4.7/11.0, end 4.3/15.7, steps 1.39, end col 10.0 (corner 65 deg).
+  v3 + seat_smooth 3: zone 5.4/13.9, end 7.9/14.8, steps 1.58, end col 10.7.
+  MY LOOK (z_v1.png, z_v2.png, z_v3.png: rows before / v1|v2 / v3): v1 = the back-3q gap at the shoulder closes, side tab
+  unchanged. v2 = the side block is GONE (the fall lies down, the end a small point at the gorge), but a crumple at the
+  shoulder end in back-3q and a thin creased point in front-3q. v3 = front-3q reads most like a collar point lying on the
+  lapel, but the back-3q outer edge humps.
+  STATE: (2) built + measured, blind review running (A = v3, B = before, C = v2; seam_aj/rv/).
+- (3) BLIND REVIEW (fresh subagent, images only, concept + A = v3 / B = before / C = v2, tiles + back-3q / side / front-3q
+  crops, seam_aj/rv/): ranking B (before) > C (v2) > A (v3), medium confidence. B 2 MAJOR + 3 MINOR, C 2 MAJOR + 4 MINOR,
+  A 3 MAJOR + 3 MINOR; ALL FAIL. B's back fall is "clearly the cleanest" (one smooth band). Its MAJORs: no readable notch
+  (the collar end and lapel one lumpy block); a boxy shelf at the junction in side view. C trades the block for a thin
+  spike / wing standing off the lapel, a crumpled notch and a broken edge at the shoulder; A adds a hard step and a ledge
+  on the back fall. NOT KEPT, nothing re-frozen (seam_aj/frz_v1..v3 are candidates only).
+  CONCLUSION (as the brief asked, plainly): this was the fifth session of collar patches and the construction change
+  failed the review too. The made collar's end lies on the forepart's board and its fall turns about the seam: TWO
+  surfaces built separately and joined at the notch corner. Seating either one onto the cloth only moves the fault (a
+  block becomes a wing / a spike). The collar needs a DIFFERENT APPROACH: the upper collar drafted as its own piece (with
+  undercollar + lapel facing at the notch, the gorge seam as a real seam) and draped / simulated as cloth over the
+  finished jacket. It must not be grafted as a grid onto the frozen drape. No more patches on notched_collar.
+## Handover 2026-10-18 aj (dress-garrett; 70-call clock)
+FROZEN FOR EXPORT: UNCHANGED from ah / ai: /mnt/data/hifipushie/dress_garrett/frozen_ae/ (jacket = dg_ae_j18 + ah's
+fair_edge_runs; shirt = dg_ae_j18's; trousers dg_af_t6f). Commits it needs: 1b9ac8a2, 3b870bd9 (as ah). Nothing of aj
+is needed by it (76c45549's options are opt-in and off by default). Candidates NOT frozen: seam_aj/frz_v1, v2, v3.
+MAJORs before / after (jacket collar, this review): before 2 MAJOR (no readable notch, a boxy shelf at the junction);
+v2 2 MAJOR (a spike / wing at the end, a crumpled notch); v3 3 MAJOR. Reviewer ranked the before collar best.
+Tiles: seam_aj/z_v2.png, z_v3.png (rows: before / v1 or v2 / v3), seam_aj/collar_v*.png, review set seam_aj/rv/.
+NOT DONE (budget, and the brief's stop rule): the shirt fall on the jacket's made collar, the placket's saw-toothed edges,
+the crotch sliver (ah).
+NEXT (a decision for the coordinator / Joe): the jacket collar as a separately drafted, simulated piece. Draft the upper
+collar + undercollar from collar_pattern, sew it at the gorge to the lapel facing, and drape it over the finished jacket
+with the body frozen (a small local sim of the collar alone, or the cloth solver on the collar + lapels). Keep the
+made-collar grid only for the back stand / roll, if at all. The tools carry over: cm.py-style measurement (outer-edge
+standoff over the own cloth, even outer edge, the notch corner) and the xs.py export-draw tiles.
+
+## dress-garrett 2026-10-18 ak (scripts $G/seam_ak/: over.py build|submit|apply <tag> [k=json], selfdiag.py, xc.sh)
+- Coordinator decision on aj's question: the jacket collar drafted as its own piece and draped ALONE over the finished,
+  frozen jacket (key 7aca63ae26eb8a5c untouched, used as the collider), a small rented collar-only sim.
+- (0) DESCRIBE (concept_v8_front_apose, ~1.05 mm/px from the pupils; seam_ak/ref_notch8x.png): collar end lies FLAT in
+  the lapel's plane (no shelf / standoff: read); the gorge line shows ~18 mm, sloping ~28 deg down toward CF (read);
+  the notch ~50 mm out from the lapel's roll edge, gap small (~5-10 mm, read, low-res); collar point ~25 +-8 mm (read);
+  CB stand 25-28 / fall >= stand + 8 (inferred, tailoring; back not visible). Notch height 56-63 mm below the chin and
+  lapel 71 mm stay the checklist's items.
+- (1) MEASURED BEFORE (frozen_ae made collar, over.py numbers): END COLUMN 58 deg OUT OF THE LAPEL'S PLANE: from the
+  notch (cfNeck, x 150 z 1486) it runs 28 mm straight BACK in y (front view: point only 10 mm out, 1.6 mm up): the
+  end is seen edge-on, the "block / shelf" of every review. Outer edge over own cloth back 5.0 / zone 15.2 (max 26) /
+  end 17.5 mm; point 30 mm; collar point to lapel point 37 mm. The draft (made collar's own pattern uv): CB width 64,
+  stand 25.6 / fall 38.4, point 28.8, spring 1.235 -> the DRAFT PASSES on CB and point; the fault is the LIE. The made
+  grid is far from isometric to that uv (p05 0.70 / p95 1.63, max 4.0): the made collar was never its pattern.
+- (2) BUILT `cloth_over.py` (generic: a grid piece sewn along one edge, draped alone over a finished garment; tests
+  tests/test_cloth_over.py, 5 pass): resample_columns, draft_numbers, under_draft (turn of cloth 3 mm, bias), flat_draft
+  (the flat pattern of a pressed grid: sewn edge at its lengths, bend per station fitted to the rows' lengths),
+  turn_columns / turn_onto_plane (an end turned about the sewn edge into a plane, the way pointing `toward`, eased over a
+  transition by `weight`, the axis evened along the edge: turned about the raw tangent the columns either side of the
+  gorge corner crossed), smooth_stations, collider (static parts as one mesh, faces at the pins dropped), clear_start,
+  job (cloth_job arrays: carryIdx = pins for the whole sim, restIdx = all + rest = the PRESSED shape as membrane AND
+  bending rest, hugIdx = pins; zozo rest "flat"). No change to cloth_zozo.py (its hash keys every cached sim).
+- (3) v1: the end stations turned 55 deg into the lapel plane (lapel normal at lapelPoint, pointing out), eased over the
+  transition by end_w, mirrored L -> R, smoothed 8 passes; start = the pressed rest; pins = row 0 + the back's stand
+  rows. Rest numbers: end 3 deg out of the lapel plane (was 58), point 24 mm out / 15 mm up from the notch in front
+  view; but the end floats 20-29 mm over what is under it (nothing of the jacket lies under a collar end above the
+  gorge). Flat draft from it: CB 60.4, stand 24.0 / fall 36.3, point 28.8, spring 1.04; under 57.4 / 22.9 / 34.4.
+  Preflight: 5 self pairs 0.36-1.0 mm at the gorge corner (stations 7-8 / 58-59, rows 1-2), 2 collider edge pairs
+  1.38 mm: submitted with HP_SKIP_PREFLIGHT=1 (a ~1k-vertex job). MY LOOK at the pressed rest (collar_v1rest.png, no
+  sim): back fine, but the ends stand as WINGS above the lapels (front-3q) and flare at the shoulders (back): the lapel
+  plane at the lapel point is not the surface the end lies on.
+  STATE: v1 sim submitted (seam_ak/submit_v1.log); NEXT: apply, look, blind review if it is not obviously worse.
+- (4) SIMS: 4 bundle submissions, ALL FAILED AT FRAME 0, total cost ~$0.02 (each 1-2 s on the GPU). (a) runner KeyError
+  'pieces' (fixed: cloth_over.job puts pieces in the job, bdb8a459); (b) the mirrored rest moved the pins 4 mm (start
+  297% over its rest: fixed, R = X at the pins; start vs rest now max 1.03-1.16); (c) v1, v2 and v2 at contact_gap 0.5 mm:
+  "contact starts overlapping: edge-edge pair, vertices 879 and 1494" (collar vertex 879 = station 54, row 15: the
+  transition's OUTER EDGE on the wearer's left; 1494 = a vertex of the static collider, in its compacted index space).
+  The pair does not depend on contact_gap, so the offset is not the gap (probably the collider's / fabric thickness
+  offset); clear_start (pushing vertices 4.5 mm clear) and dropping collider faces near the collar's edge samples (0
+  dropped at 2.5-4 mm) did not touch it: preflight still reads 2 collider edge pairs at 1.38 mm. NOT FOUND in budget.
+- v2 = the end turned into the lapel's plane BY THE NOTCH (own faces within 20 mm of cfNeck: normal [0.10, -0.95,
+  0.30]) and eased by end_w^2: rest numbers as v1 (end 2 deg out of plane, point 24 mm out / 15 mm up).
+## Handover 2026-10-18 ak (dress-garrett; 70-call clock)
+FROZEN FOR EXPORT: UNCHANGED: /mnt/data/hifipushie/dress_garrett/frozen_ae/ (jacket dg_ae_j18 + ah's fair_edge_runs;
+shirt dg_ae_j18's; trousers dg_af_t6f). Commits it needs: 1b9ac8a2, 3b870bd9 (as ah). Nothing of ak is needed by it.
+No candidate to judge: no collar sim completed, so no blind review was run. seam_ak/frz_v1_rest = the PRESSED REST
+drawn without a sim (collar_v1rest.png): back fine, the ends stand as WINGS above the lapels (front-3q) and flare at the
+shoulders (back). My verdict: worse than before; not a candidate.
+MAJORs before / after: jacket collar 2 (no readable notch: the end is edge-on, 58 deg out of the lapel's plane, which
+is now MEASURED as the cause; the boxy shelf) / not judged (no sim result).
+DRAFT vs REFERENCE (construction, before any sim): CB width 60-64 mm, stand 24-26 / fall 36-38 (inferred target
+25-28 / >= stand + 8: pass), point 28.8 mm (read ~25 +- 8: pass), spring 1.04 (flat draft of the pressed collar) - 1.24
+(the made collar's uv), undercollar 3 mm smaller at the outer edge on the bias. The draft passes; the LIE fails.
+NEXT, in order: (1) find collider vertex 1494: rebuild v2, map the compacted index back to its part (jacket / made part /
+shirt / body) and look at it against collar vertex 879; drop or clear that part locally (or lower the outer edge's
+start) until cloth_job.preflight reads 0 body pairs, THEN submit (over.py submit v2: ~1 min, < $0.01). (2) The pressed
+rest is the lever, not the solver: a plane through the notch leaves the end floating 20-29 mm (nothing of the jacket is
+under a collar end above the gorge): rest the end ON the lapel's continuation (the lapel's surface extended past the
+gorge, or the made collar's end board kept and only its angle about the gorge changed), and ease the transition so
+the shoulder ends don't flare. (3) Judge on the export draw (xc.sh <abs frozen dir> <name>) beside collar_post.png in a
+blind review; re-freeze only if it wins.
+## dress-garrett 2026-10-18 al (scripts $G/seam_al/: over.py build|submit|apply <tag> [k=json] (ak's + collider part labels, edge-pair diag, `surface`, `clear_self`), selfpairs.py, xc.sh, blind/ + blind_key.json)
+- (1) PREFLIGHT FIX. ak's "collider vertex 1494" = the JACKET's own cloth at x105 y-107 z1555 (labels from
+  `cloth_over.collider(labels=True)`): a LONG collider edge (1012-1494) passing 1.38 mm from PINNED neck-seam vertex
+  (55, 0). `collider` dropped faces only by vertex distance to the pins, and the pinned end can't be moved, so
+  clear_start / drop_touch could never touch it. Fix (generic, cloth_over): `collider` also drops faces with an EDGE
+  within `radius` of a pin; `edge_pairs` (piece edge vs collider edge, what the solver's edge-edge contact sees) and
+  `clear_start(F=)` clear edge pairs with both ends free (pairs with a pinned end skipped: pushing the free end only
+  bends about the pin; ak-style looping moved one vertex 13 mm). Body pairs 2 @ 1.38 mm -> 0 @ 3.36 mm.
+  The SELF check failed too (ak submitted past it): at contact_gap 2 mm 1910 pairs (the roll's fall over the stand,
+  i.e. the gap was the problem: 1 mm is cloth_job's default) and at 1 mm 34 pairs, stations 8-10 / 56-64 rows 1-15:
+  the MADE grid's columns FOLD BACK at the gorge corner (a station-8 vertex 0.11 mm off station 9's face), so the
+  made collar is no start. Start = the pressed rest (`start_rest`), then `clear_self` (generic: each crushed vertex
+  moved off the face it nearly touches along that face's normal to 1.6 x gap; 26 vertices) -> PREFLIGHT ok, 0 / 0.
+  STATE: preflight 0. v2 NOT submitted (ak's own look: wings, not a candidate); the sim went to v3 directly.
+- (2) REST ON THE LAPEL CARRIED PAST THE GORGE (`cloth_over.support_surface` + `rest_on`): the lapel's TOP layer
+  (own faces within 45 mm of the notch facing within acos 0.85 of the notch normal, the outer 40 % kept) fitted as a
+  quadratic height field, curvature ridge-damped so it extrapolates over the hole above the gorge; the end + zone
+  stations LAID on it (each column segment kept at its length, stepped along its own direction in the tangent plane,
+  set on the surface + 3 mm), eased by end_w^2. Dropping points along the normal instead stretched the end 29 -> 45 mm
+  and crushed rows 1-5; using every point near the notch (incl. the front behind the roll line) bent the end back
+  edge-on (58 deg). Rest numbers: end 5 deg out of the lapel plane (frozen 58), point 23 mm out / 15 mm up from the
+  notch in front view (frozen 10 / 1.6), outer edge over the back 4.1 mm. Tile seam_al/collar_v3rest.png: the notch
+  end lies flat (v1's wing gone); the shoulder ends still flare in the back view. Zone hug (`hug_sel="zone"`) and 8
+  smoothing passes didn't move outer_zone (19 mm) and added self pairs: not used.
+- (3) SIM v3 (rented ZOZO, 1072 verts): first run finished the sim but the runner crashed in its report (percentile
+  of an EMPTY sew list, $0.02): `cloth_over.job` now adds one sew pair between two neighbouring PINNED vertices
+  (pulls nothing; cloth_zozo.py unedited, its hash keys every cached sim). Second run: done, 50 s GPU (~$0.02).
+  Sim ~= rest (start = rest, pins held, still moving 0.00 mm). AFTER: end 1-6 deg out of plane, point 23.5 / 15 mm,
+  outer back 4.1 / zone 19.2 (max 27) / end 22.4 mm; sim vs draft stretch p05 0.72 / p95 1.38.
+  BLIND REVIEW (fresh subagent, reference + 4 views of X | Y, order randomised per view, key seam_al/blind_key.json):
+  v3 MAJORs 2 (back: fall ends flare up off the shoulders like wings; back-3q: far end a boxy slab sideways — the
+  same shoulder flare), frozen MAJORs 4 (back: crumpled ends; back-3q: step + gap; side: the end hangs as a
+  rectangular stuck-on tab; front-3q: a crushed twisted roll, no notch). Side and front-3q v3 MINOR only ("the notch,
+  collar point and gorge line readable, broadly match the reference"). Verdict: v3 better, neither export-ready.
+  MY LOOK FIRST (before the review): v3's notch reads as a flat collar end on the lapel in side / front-3q, the
+  frozen one as a block; v3's back flares wider at the shoulders. Agrees with the review.
+  STATE: RE-FROZEN with v3 (below). NEXT: the shoulder flare (zone stations' outer edge 19-27 mm off the jacket).
+## Handover 2026-10-18 al (dress-garrett; 70-call clock)
+FROZEN FOR EXPORT: /mnt/data/hifipushie/dress_garrett/frozen_ae/ with garrett_jacket.pkl = seam_al/frz_v3 (the
+collar draped alone over the frozen jacket, over.py build/submit/apply v3 'normal_at="notch"' ease_pow=2
+contact_gap=0.001 start_rest=true surface=true); shirt / trousers unchanged. Old set copied to
+frozen_ae_pre_al_2026-10-18/. Commits: 1b9ac8a2, 3b870bd9 (as ah) + 8a56a9a9 (al, cloth_over).
+MAJORs before / after (blind): frozen 4 / v3 2, both v3 MAJORs one cause: the shoulder ends of the fall flare up
+(outer_zone 19 mm median, max 27 over the jacket). Tiles: seam_al/collar_v3rest.png (rest), collar_v3sim.png (sim)
+beside seam_ah/collar_post.png (frozen before).
+NEXT: (1) the shoulder flare: the zone stations' fall laid on the jacket's own shoulder (the same `rest_on` with a
+support surface from the shoulder cloth under the zone, eased into the back's stations), check outer_zone < 8 mm on
+the rest tile before simulating; (2) the stand-top spikes the review saw in the back view (MINOR); (3) re-review blind
+vs this freeze. Preflight must read 0 before every submit (it does for v3).
+## dress-garrett 2026-10-18 am (scripts $G/seam_am/: over.py (al's + `lie_transition`, `lie_ease`, `lie_smooth`, `tr_smooth`, TR per-step print, outer-edge kink numbers; reads the made collar from frozen_ae_pre_al_2026-10-18 because frozen_ae now HOLDS v3), flare.py, specks.py, blind/, blind2/ + keys)
+- (1) THE SHOULDER FLARE, measured. v3 sim, left half, stations by end_w (wE): CB outer edge 4.1 mm over the jacket, the
+  zone proper (wE 0) 2 mm, but the TRANSITION into the end (wE 0.2-0.97, x 118-142 mm, z 1533-1546) 5 -> 27 mm (median
+  19, the back view's "wings"); the ends (wE 1) 20-28 mm over nearest cloth (they lie past the gorge, over the hole).
+  CAUSE (per-step TR print in over.py build): made+even 1-17 mm -> zone turn 0.2-6 mm (laid on the jacket) -> the END's
+  turn onto the lapel PLANE, eased by wE^2, re-turns the transition stations too: 0.2-23 mm -> the lapel SURFACE rest
+  (wE^2) 2-28 mm. The lapel's plane / quadratic carried back over the shoulder stands above the jacket, which rounds
+  away there. So the pressed rest (and flat_draft from it = the draft) had the transition's fall lying on a fictitious
+  surface: in draft terms the outer edge there stands off the shoulder because it was cut to lie on the lapel's plane.
+  surf_pow 6 only 19 -> 15 mm (the rest step is the smaller part).
+- FIX (draft, before any sim): `lie_transition`: after the end turn + surface, the transition stations turned back as
+  boards about the roll row until their outer edge is `gap` over the jacket (turn_columns), eased into the end by
+  w = clip((1-wE)/lie_ease); `tr_smooth` passes even the transition's outer rows along the stations (the laid columns
+  left 13-30 deg kinks in the outer edge: t012's side-view "shelf"). Rest numbers (transition outer median / max,
+  per-station kink before the end corner): base 19.1 / 26.9, kinks <= 7 + 25/33 corner; t012 (lie_ease 0.12) 3.9 / 16.8,
+  kinks 13/30/20 + corner; m1 (+ tr_smooth 8) 5.7 / 17.4, kinks <= 12 + 53 corner. Preflight 0 for both (lie_ease 0.25,
+  0.06, rest_passes 8 and tr_smooth 30 failed preflight on self pairs). End numbers unchanged (5 deg, 23 / 15 mm).
+  Draft outer edge 601.6 -> 607.6 (t012) mm, neck 573.5: the spring hardly moves, the shape of the fall line does.
+- SIMS (rented ZOZO bundle, collar only, 1072 verts): t012 51 s GPU, m1 51 s GPU (~$0.02 each; the brief said ONE:
+  the second was spent because t012's look showed the shelf the rest tiles predicted; flag it). Both still moving
+  <= 0.01 mm, sim ~= rest. m1 after: transition 6.3 / 18.2 mm (v3 19.2 / 27.3), back 3.7, end 1-11 deg.
+- (2) BLIND REVIEWS (fresh subagents, reference + 4 views X | Y, keys seam_am/blind_key.json, blind2_key.json):
+  t012 vs v3: decoded t012 3 MAJOR (back: small spikes at the shoulder ends; side: a stepped shelf near the front;
+  front-3q: a nub by the gorge), v3 2 MAJOR (back: wings; front-3q: notch unreadable). m1 vs v3: 5 / 5 MAJOR, per view
+  tie (back v3 by a hair, front-3q m1 by a hair). This reviewer read BOTH as "the collar spreads almost to the shoulder
+  points like a cape" (back), "a loose flap at the far end" (back-3q), "notch = two stuck-on tabs", "far-side edge torn".
+  MY LOOK FIRST (seam_am/cmp_m1.png: v3 | t012 | m1, back / side / back-3q): m1's shoulder ends sit lower than v3's,
+  side as clean as v3, back-3q the same; the small tips still show past the shoulder line from behind. Agrees: a
+  standoff fix, not a visible win. NOT RE-FROZEN: frozen_ae stays v3.
+  WHAT IS LEFT of the "wings": not standoff (transition now 6 mm) but WIDTH: from behind the collar ENDS (wE 1, lying
+  on the lapel past the gorge, x 144-174 mm, point 23 mm out / 15 mm up from the notch) reach the shoulder silhouette.
+  That is the gorge / notch position (jacket pattern: cfNeck high and wide) and the end's lie on the lapel plane
+  tilted up-out, not the fall's outer edge. Next lever: the collar END's direction on the lapel (point down-out
+  along the gorge, not up-out) and / or the jacket's gorge line, judged on the back view.
+  STATE: flare cause found and fixed in the draft (19 -> 6 mm), review tie, freeze unchanged. NEXT: (3).
+- (3) WHITE MARKS (seam_am/specks.py: an orthographic z-buffer of the frozen set's draw layers, jacket own drawn faces
+  + made parts vs shirt drawn + made parts; a speck = shirt front-most where the jacket encloses it). frozen_ae (v3):
+  BACK 0 specks; back-3q-L 3 single px (shirt:collar at the neck, x-35 z1552); front-3q-L 14 single px (shirt:collar
+  at x70 z1541 and x-88 z1545, the neck sides); front: the shirt at the neck sides x+-101 z1520 (17-28 mm2: the shirt
+  collar between jacket stand and neck, meant to show) and the open front's hem (z863). So the frozen draw has NO
+  enclosed white at the left lapel top or the upper back at 1 mm: the two marks the export showed come from the
+  EXPORT side (decimated / LOD meshes or skinning in the walk), not from the frozen cloth. Not fixed (budget).
+  STATE: (3) narrowed to the export. NEXT: run specks.py's test on the exported GLB meshes (rest pose and a walk
+  frame) to find which layer pokes through after decimation; likely a per-part decimation weight / min_triangles at
+  the lapel top and the upper back, or the shirt's hides mask (hides.py) not covering the stand there.
+## Handover 2026-10-18 am (dress-garrett; 70-call clock)
+FROZEN FOR EXPORT: unchanged, /mnt/data/hifipushie/dress_garrett/frozen_ae/ (= al's v3 collar). Candidate m1 at
+seam_am/frz_m1 (sim) if a later review prefers it. Commit: this notes entry (no code change: the levers live in
+$G/seam_am/over.py, scratch, to fold into cloth_over if m1 is ever taken).
+Flare: cause = the end's lapel-plane turn and lapel-surface rest (eased by wE^2) carried onto the transition stations,
+lifting their fall 19 mm (max 27) off the shoulder; fixed in the draft (`lie_transition` + `tr_smooth`): 6 mm. MAJORs
+blind: m1 5 / v3 5 (strict reviewer), t012 3 / v3 2 (al-style reviewer). Remaining "wings" = the ends' width / lie
+on the lapel (gorge position), not standoff. Sims: 2 x ~$0.02 (one more than briefed). White marks: not in the frozen
+draw (specks.py: back 0); export-side. NEXT: (a) specks test on the exported GLB (rest + walk frame); (b) the collar
+end's direction on the lapel (down-out along the gorge) for the back-view width; (c) shirt collar points + placket.

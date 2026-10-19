@@ -728,6 +728,7 @@ def notched_collar(chain_P: np.ndarray, into: np.ndarray, gorge: np.ndarray, bod
     across the lapel's roll line and laid on the forepart as a board (`on_pattern`), blended in over `before` m
     of seam ahead of the meeting point and `after` m past it."""
     p = dict(NOTCHED, **{"end": 0.034, "end_angle": 12.0, "tilt": 15.0, "stand_power": 2.0, "fall_hug": 0.004})
+    stand_asked = kw.get("stand") is not None  # (dress-garrett ad) an explicit stand overrides the draft's roll line
     p.update({k: v for k, v in kw.items() if v is not None})
     ap, ad = np.asarray(axis[0], float), _unit(np.asarray(axis[1], float))
     Pc = np.asarray(chain_P, float)
@@ -763,6 +764,14 @@ def notched_collar(chain_P: np.ndarray, into: np.ndarray, gorge: np.ndarray, bod
         Ou = _at_arc(po, s / L * ao[-1])
         colv = Ou - Eu
         coll = np.maximum(np.linalg.norm(colv, axis=1), 1e-6)
+        if p.get("widen"):
+            # (dress-garrett ae) collar_options.widen: the made collar's columns longer than the draft's by this much at
+            # CB, easing to nothing where the collar leaves the seam for the lapel (g) and toward the ends: room for a
+            # tailored stand (the 45% cap) with the fall still covering the neck seam. Post-sim only: never a sim key.
+            wf = np.clip(1 - np.clip(np.abs(a) / am, 0, 1) ** 2, 0, 1) * (1 - g)
+            add = float(p["widen"]) * wf
+            colv = colv * ((coll + add) / coll)[:, None]
+            coll = coll + add
         tE = _unit(np.gradient(Eu, axis=0))
         hp = np.zeros(n)
         if pattern.get("roll") is not None:
@@ -776,7 +785,11 @@ def notched_collar(chain_P: np.ndarray, into: np.ndarray, gorge: np.ndarray, bod
                 j = int(np.argmin(dd))
                 hp[i] = rr[j] * coll[i] if dd[j] < 0.0015 else 0.0
         if hp[k_cb] > 1e-4:
-            h = hp * min(1.0, st / hp[k_cb])
+            # the draft's roll line sets the stand; collar_options.stand (asked) moves the roll line up or down the
+            # columns, scaled along the collar, at most 45% of the collar's width at CB (dress-garrett ad: Garrett's
+            # draft rolls 11 mm up at CB and capped every asked stand there: "lies flat, no stand")
+            sc_ = st / hp[k_cb] if stand_asked else min(1.0, st / hp[k_cb])
+            h = np.minimum(hp * sc_, 0.45 * coll) if stand_asked else hp * sc_
             st = float(h[k_cb])
         pat = {"E": Eu, "col": colv, "len": coll,
                "alpha": np.arcsin(np.clip(np.sign(a) * (colv / coll[:, None] * tE).sum(1), -0.95, 0.95))}
@@ -1046,6 +1059,21 @@ def notched_collar(chain_P: np.ndarray, into: np.ndarray, gorge: np.ndarray, bod
                     Hc = top_ + _unit(Hc - top_) * Lr
                 ends[int(i)] = Hc
                 cols[int(i)] = (1.0, r0, top_, seglen / max(Lr, 1e-9))
+            if p.get("seat_transition"):
+                # (dress-garrett aj) the transition's outer edge SEATED on the cloth under it before the columns are run
+                # to it: the Hermite curve between the end's corner and the back's fall ran through the air (outer edge
+                # 18-26 mm off the forepart by the side neck, the "lifting fall"); each point is drawn down onto the
+                # cloth (`lay` over it) and put back at its column's cut length from the roll top, a few rounds
+                ks_ = [int(i) for i in idx]
+                Hs = np.array([ends[k_] for k_ in ks_])
+                tops_ = np.array([cols[k_][2] for k_ in ks_])
+                Ls_ = np.array([float(fr_of(k_, cols[k_][1])[1]) for k_ in ks_])
+                for _ in range(int(p.get("seat_rounds", 4))):
+                    Hs, _, _ = Under(u_own.layers).settle(Hs, lay, hug=float(p["seat_transition"]))
+                    Hs = tops_ + _unit(Hs - tops_) * Ls_[:, None]
+                Hs, _, _ = Under(u_own.layers).settle(Hs, lay, hug=float(p["seat_transition"]))
+                for k_, h_ in zip(ks_, Hs):
+                    ends[k_] = h_
         if ends and sm:
             ks = np.array(sorted(ends))
             Ee = np.array([ends[k] for k in ks])
@@ -1067,6 +1095,34 @@ def notched_collar(chain_P: np.ndarray, into: np.ndarray, gorge: np.ndarray, bod
                 Y = G.copy()
                 Y[zi, 1:-1] = 0.5 * G[zi, 1:-1] + 0.125 * (G[zi - 1, 1:-1] + G[zi + 1, 1:-1] + G[zi, :-2] + G[zi, 2:])
                 G = Y
+    if wE.any() and p.get("seat_end"):
+        # (dress-garrett aj) the end board and the transition laid DOWN on the jacket's own cloth: carried onto the
+        # forepart's pattern and stretched back to its cut length from the seam, the end's middle rows stood 13-16 mm off
+        # the front (nothing else under them), the side "tab"; end_hug's settle against every layer did not move them.
+        # Each such column's rows past the seam drawn onto the own cloth (`lay` + thickness over it), then put back at
+        # the column's own lengths along it, a few rounds
+        sel_ = np.where((wE > 0.5) | zone)[0]
+        u_o = Under([dict(Lc, sheet=True) for Lc in own], box)
+        Gs = G[sel_]
+        L0 = np.concatenate([np.zeros((len(sel_), 1)), np.cumsum(np.linalg.norm(np.diff(Gs, axis=1), axis=-1), axis=1)], 1)
+        wr = np.clip(np.arange(m) / 3.0, 0, 1)  # (the seam row stays, the first rows ease in)
+        for _ in range(int(p.get("seat_rounds", 4))):
+            t_, _, _ = u_o.settle(Gs[:, 1:].reshape(-1, 3), lay, hug=float(p["seat_end"]))
+            Gs[:, 1:] = Gs[:, 1:] + wr[None, 1:, None] * (t_.reshape(len(sel_), m - 1, 3) - Gs[:, 1:])
+            for _ in range(int(p.get("seat_smooth", 0))):  # (the drawn-down rows evened: per point they crumpled)
+                Y = Gs.copy()
+                for r_ in np.split(np.arange(len(sel_)), np.where(np.diff(sel_) > 1)[0] + 1):  # (each end on its own)
+                    if len(r_) > 2:
+                        Y[r_[1:-1], 1:] = 0.5 * Gs[r_[1:-1], 1:] + 0.25 * (Gs[r_[:-2], 1:] + Gs[r_[2:], 1:])
+                Y[:, 1:-1] = 0.5 * Y[:, 1:-1] + 0.25 * (Y[:, :-2] + Y[:, 2:])
+                Gs = Y
+            Gs = _at_lengths(Gs, L0)
+        G[sel_] = Gs
+    if wE.any() and p.get("even_outer"):
+        G = even_outer(G, (wE > 0) | zone)
+    if wE.any() and p.get("end_corner"):
+        for e_ in (0, n - 1):
+            G = round_corner(G, e_, float(p["end_corner"]))
     tail = G[:, 1:].reshape(-1, 3)
     tail, _, _ = Under(u_own.layers).settle(tail, gp.ravel(), hug=0.0)
     G[:, 1:] = tail.reshape(n, -1, 3)
@@ -1093,12 +1149,163 @@ def notched_collar(chain_P: np.ndarray, into: np.ndarray, gorge: np.ndarray, bod
     cf = Fg[np.any(Fg == kk, axis=1)][0]
     if np.cross(Vg[cf[1]] - Vg[cf[0]], Vg[cf[2]] - Vg[cf[0]]) @ out[k_cb] < 0:
         Fg = Fg[:, ::-1]
-    info = {"seam_mm": round(L * 1000, 1), "stand_cb_mm": round(st * 1000, 1), "fall_cb_mm": round(p["fall"] * 1000, 1),
+    info = {"seam_mm": round(L * 1000, 1), "stand_cb_mm": round(st * 1000, 1), "stand_asked_mm": round(p["stand"] * 1000, 1) if stand_asked else None,
+            "col_cb_mm": round(float(pat["len"][k_cb]) * 1000, 1) if pat is not None else None,
+            "top_z_limit": None if top_z is None else round(float(top_z), 4), "fall_cb_mm": round(p["fall"] * 1000, 1),
             "roll_meets_seam_mm_from_cb": [round(float(am_l) * 1000, 1), round(float(am_r) * 1000, 1)],
             "top_cb_z": round(float(G[k_cb, :, 2].max()), 4), "stations": int(n), "stretch": stretch(Vg, Fg, uv),
             "ends": einfo, "params": p,
             "per_station": {"h": np.round(h, 4), "gorge": np.round(g, 3), "end_w": np.round(wE, 3), "zone": zone.copy()}}
     return {"parts": [{"name": "collar", "V": Vg, "F": Fg, "uv": uv, "grid": (n, m), "seam_row": np.arange(n) * m}], "info": info}
+
+
+def even_outer(G: np.ndarray, sel: np.ndarray) -> np.ndarray:
+    """A made part's grid G [n stations, m rows, 3] with its stations re-spaced evenly along each row over every run of
+    `sel` stations, by row weight (the seam row 0 kept, the outer edge row m-1 fully even): a fan of columns left the
+    outer edge in uneven steps (dress-garrett aj: 2 / 8.5 / 11.8 mm at the jacket collar's ends)."""
+    G = np.array(G, float)
+    n, m = G.shape[:2]
+    sel = np.asarray(sel, bool)
+    for r_ in np.split(np.arange(n), np.where(np.diff(sel.astype(int)) != 0)[0] + 1):
+        if not sel[r_[0]] or len(r_) < 3:
+            continue
+        a, b = max(r_[0] - 1, 0), min(r_[-1] + 1, n - 1)  # (one fixed station either side)
+        for j in range(1, m):
+            P = G[a:b + 1, j]
+            cl = np.r_[0, np.cumsum(np.linalg.norm(np.diff(P, axis=0), axis=1))]
+            if cl[-1] < 1e-9:
+                continue
+            t = j / (m - 1)
+            want = (1 - t) * cl + t * np.linspace(0, cl[-1], len(cl))
+            G[a:b + 1, j] = np.stack([np.interp(want, cl, P[:, k]) for k in range(3)], 1)
+    return G
+
+
+def round_corner(G: np.ndarray, e: int, R: float) -> np.ndarray:
+    """The outer corner of a made part's end column e (0 or n-1) rounded with radius R: the points within the fillet's
+    tangent length of the corner, down the end column and along the outer edge, laid on the arc in order (the corner
+    point mid-arc), and the rows next to the end column moved with their column's edge. A square end read as a block
+    standing off the lapel (dress-garrett aj)."""
+    G = np.array(G, float)
+    n, m = G.shape[:2]
+    sd = 1 if e == 0 else -1
+    Cn = G[e, -1]
+    col = G[e, ::-1]  # (from the corner down the end column)
+    edg = G[e::sd, -1] if sd == 1 else G[e::-1, -1]  # (from the corner along the outer edge)
+    u1, u2 = _unit(col[1] - Cn), _unit(edg[1] - Cn)
+    phi = float(np.arccos(np.clip(u1 @ u2, -1, 1)))
+    if phi < np.radians(20) or phi > np.radians(170):
+        return G
+    T = R / np.tan(phi / 2)
+    c1 = np.r_[0, np.cumsum(np.linalg.norm(np.diff(col, axis=0), axis=1))]
+    c2 = np.r_[0, np.cumsum(np.linalg.norm(np.diff(edg, axis=0), axis=1))]
+    T = min(T, 0.45 * c1[-1], 0.45 * c2[-1])
+    A, B = Cn + T * u1, Cn + T * u2
+    bis = _unit(u1 + u2)
+    O = Cn + bis * (T / np.cos(phi / 2) if phi < np.pi else 0)
+    ra, rb = A - O, B - O
+    rr = 0.5 * (np.linalg.norm(ra) + np.linalg.norm(rb))
+    ang = float(np.arccos(np.clip(_unit(ra) @ _unit(rb), -1, 1)))
+    ax = _unit(np.cross(ra, rb))
+
+    def arc(f):  # (f 0 at A, 1 at B)
+        th = f * ang
+        v = _unit(ra)
+        return O + rr * (np.cos(th) * v + np.sin(th) * np.cross(ax, v))
+    for k in range(1, len(col)):  # (down the end column: rows m-1-k)
+        if c1[k] >= T:
+            break
+        f = 0.5 * (1 - c1[k] / T)
+        d = arc(f) - col[k]
+        G[e, m - 1 - k] = G[e, m - 1 - k] + d
+    for k in range(1, len(edg)):
+        if c2[k] >= T:
+            break
+        f = 0.5 + 0.5 * c2[k] / T
+        i = e + sd * k
+        d = arc(f) - G[i, -1]
+        w_ = np.linspace(0, 1, m) ** 2  # (the station's column follows its edge, the seam stays)
+        G[i] = G[i] + w_[:, None] * d[None]
+    G[e, -1] = arc(0.5)
+    return G
+
+
+def _at_lengths(G: np.ndarray, L0: np.ndarray) -> np.ndarray:
+    """Each column of G [n, m, 3] re-spaced so its rows sit at cumulative lengths L0 [n, m] along it (as cut): past the
+    column's own end, straight on along its last segment."""
+    out = np.array(G, float)
+    for i in range(len(G)):
+        P = G[i]
+        cl = np.r_[0, np.cumsum(np.linalg.norm(np.diff(P, axis=0), axis=1))]
+        cl = np.maximum.accumulate(cl + 1e-9 * np.arange(len(cl)))
+        for k in range(3):
+            out[i, :, k] = np.interp(L0[i], cl, P[:, k])
+        past = L0[i] > cl[-1]
+        if past.any():
+            d = _unit(P[-1] - P[-2])
+            out[i, past] = P[-1] + (L0[i, past] - cl[-1])[:, None] * d
+    return out
+
+
+def _rodrigues(X: np.ndarray, k: np.ndarray, th: np.ndarray) -> np.ndarray:
+    """Vectors X [n, r, 3] turned about unit axes k [n, 3] by th [n] radians."""
+    c, s_ = np.cos(th)[:, None, None], np.sin(th)[:, None, None]
+    kk = k[:, None, :]
+    return X * c + np.cross(kk, X) * s_ + kk * (X * kk).sum(-1, keepdims=True) * (1 - c)
+
+
+def seat_fall(G: np.ndarray, under: Under, gap: float, max_deg: float = 40.0, touch: float = 0.001, smooth: float = 2.0,
+              reach: float = 0.06, keep: np.ndarray | None = None) -> tuple:
+    """A made collar's FALL turned down onto what it lies on (dress-garrett ai): G [n stations, m rows (sewn edge ->
+    outer edge), 3]. The fall is a board hinged at the roll: each station's rows past its roll top (its highest row)
+    are turned as one about the seam's tangent there, by the least angle that brings the outer edge within `touch`
+    of `gap` over the cloth under it (at most `max_deg`); the angles evened along the seam (Gaussian, `smooth`
+    stations); stations already lying down are not moved. Turned, not drawn point by point: per-point projection onto
+    the forepart + turned lapel crumpled the fall and the back's roll (ai s1). The transition / end lay stood the outer
+    edge 20-26 mm off the forepart by the side neck (a boxy tab in side view, a dark gap under the edge) and nothing
+    drew it down (the final settle only pushes out). keep [n] bool: stations never turned (a notched collar's ends,
+    laid on the lapel as a board: turned about the seam they folded into the forepart, ai s3).
+    Returns (G, {"outer_over_mm" before / after [p50, max], "deg"})."""
+    G = np.array(G, float)
+    n, m = G.shape[:2]
+    r0 = np.minimum(np.argmax(G[:, :, 2], axis=1), m - 2)
+    H = G[np.arange(n), r0]
+    k = _unit(np.gradient(H, axis=0))
+    rows = np.arange(m)[None] > r0[:, None]  # (moved rows)
+
+    def turned(th):
+        X = G - H[:, None]
+        Y = _rodrigues(X, k, th) + H[:, None]
+        return np.where(rows[..., None], Y, G)
+
+    def over(X):
+        _, _, b = under.settle(X[:, -1].copy(), gap, hug=0.0, reach=reach)
+        return np.where(np.isfinite(b), b, np.inf)
+    o0 = over(G)
+    grid = np.radians(np.linspace(-max_deg, max_deg, int(2 * max_deg / 2.5) + 1))
+    O = np.stack([over(turned(np.full(n, t))) for t in grid])  # [angles, n]
+    th = np.zeros(n)
+    keep = np.zeros(n, bool) if keep is None else np.asarray(keep, bool)
+    for i in range(n):
+        if keep[i] or o0[i] <= touch or not np.isfinite(o0[i]):
+            continue
+        ok = np.where(O[:, i] <= touch)[0]
+        j = ok[np.argmin(np.abs(grid[ok]))] if len(ok) else int(np.argmin(O[:, i]))
+        th[i] = grid[j] if O[j, i] < o0[i] else 0.0
+    if smooth > 0:
+        x = np.arange(n)
+        W = np.exp(-0.5 * ((x[:, None] - x[None]) / smooth) ** 2)
+        th = np.where(keep, 0.0, (W @ th) / W.sum(1))
+    th = np.where(np.abs(th) > np.radians(0.5), th, 0.0)
+    G2 = turned(th)
+    # (kept clear, push out only, on the turned stations alone: the jacket's own neckline lies under the back's stand,
+    # and settling the untouched back against it ridged the roll, ai s2)
+    mv = rows & (th != 0)[:, None]
+    T, _, _ = under.settle(G2[:, 1:].reshape(-1, 3), gap, hug=0.0)
+    G2[:, 1:] = np.where(mv[:, 1:, None], T.reshape(n, m - 1, 3), G2[:, 1:])
+    o1 = over(G2)
+    f = lambda o: [round(float(np.percentile(o[np.isfinite(o)], 50)) * 1000, 1), round(float(o[np.isfinite(o)].max()) * 1000, 1)]
+    return G2, {"outer_over_mm": {"before": f(o0), "after": f(o1)}, "deg": np.round(np.degrees(th), 1)}
 
 
 def patch_transition(G: np.ndarray, s: np.ndarray, zone: np.ndarray, rowf: np.ndarray, widen: int = 1) -> np.ndarray:
@@ -1956,7 +2163,14 @@ def construct(V: np.ndarray, M: dict, bV: np.ndarray, bT: np.ndarray, g: dict, u
             uV, uF = np.asarray(under["V"], float), np.asarray(under["F"])
             inner = [{"V": uV, "F": away(uV, uF, bV, bFo)}]
             um = under.get("made")
-            if um is not None and np.any(um):
+            dm = under.get("made_parts")  # (dress-garrett ad) the shirt collar as DRAWN (made): it sets the stand's limit
+            if dm:
+                inner += [{"V": q["V"], "F": away(q["V"], q["F"], bV, bFo)} for q in dm]
+                cb = np.concatenate([q["V"] for q in dm])
+                cb = cb[(np.abs(cb[:, 0] - c[0]) < 0.025) & (cb[:, 1] > c[1])]
+                if len(cb):
+                    top_z = float(cb[:, 2].max()) - show
+            elif um is not None and np.any(um):
                 cb = uV[np.asarray(um, bool)]
                 cb = cb[(np.abs(cb[:, 0] - c[0]) < 0.025) & (cb[:, 1] > c[1])]
                 if len(cb):
@@ -1986,8 +2200,12 @@ def drawn(res: dict, V: np.ndarray | None = None) -> tuple:
     made = res.get("made") or {}
     parts = []
     hide = np.zeros(len(M["piece"]), bool)
+    # (dress-garrett ah) an under garment's made pieces as frozen by the layered build (cloth.under_collar: the shirt's
+    # stand + collar) carry the pieces they replace as made["info"]["hides"] and no thickness: without this the drawn
+    # shirt showed its simulated collar AND the made one (a doubled leaf at the points), and solid() raised KeyError
+    hides_ = list((made.get("info") or {}).get("hides") or [])
     for pt in made.get("parts") or []:
-        for nm in pt.get("replaces") or []:
+        for nm in pt.get("replaces") or ([pt["name"]] if pt.get("name") in hides_ else []):
             if nm in M["names"]:
                 hide |= np.asarray(M["piece"]) == list(M["names"]).index(nm)
         # (2026-10-18, Garrett's export) the shirt's made stand / collar carry no "thickness" (the jacket's collar does):
@@ -1995,3 +2213,91 @@ def drawn(res: dict, V: np.ndarray | None = None) -> tuple:
         th = pt.get("thickness") or made.get("thickness") or (res.get("fabric") or {}).get("thickness") or MADE_THICKNESS
         parts.append((pt["name"],) + solid(pt["V"], pt["F"], float(th)))
     return hide, parts
+
+
+MADE_THICKNESS = 0.0008  # a made part with no thickness of its own (an under garment's frozen collar): shirting
+EDGE_SHORT = 0.35  # fair_edge_runs: a boundary segment shorter than this x the loop's median is "crowded"
+EDGE_RUN_GAP = 3  # fair_edge_runs: crowded runs this few segments apart are one
+
+
+def fair_edge_runs(V: np.ndarray, F: np.ndarray, short: float = EDGE_SHORT, relax: int = 2) -> tuple[np.ndarray, dict]:
+    """A made part's outline with its CROWDED runs (consecutive boundary segments under `short` x the median: where the
+    construction folded rows together, e.g. a notched collar's end where it turns to the lapel) redrawn as one smooth
+    curve: each run, with one vertex either side, re-placed evenly by arc length on a cubic Hermite from the vertex
+    before it to the vertex after it (tangents from their outer neighbours), and the interior cloth next to it
+    following (`relax` rings, half then a quarter of the displacement). Corners with ordinary spacing are kept.
+    dress-garrett ag: the jacket's made collar ends (dg_ae_j18) hooked out 4-7 mm past the end edge at 1.5-1.9 mm
+    segments (median ~8 mm): the spikes on the silhouette where the collar turns to the lapel."""
+    V = np.asarray(V, float).copy()
+    L = boundary_loop(np.asarray(F))
+    n = len(L)
+    if n < 8:
+        return V, {"runs": 0, "moved": 0}
+    P = V[L]
+    seg = np.linalg.norm(P[(np.arange(n) + 1) % n] - P, axis=1)
+    sh = seg < short * np.median(seg)
+    if not sh.any() or sh.all():
+        return V, {"runs": 0, "moved": 0}
+    # runs of crowded segments (cyclic), as vertex index spans [a, b] in loop order, a run vertex = an end of a short seg
+    start = int(np.flatnonzero(~sh)[0])
+    order = (np.arange(n) + start) % n
+    runs, cur = [], None
+    for k in order:
+        if sh[k]:
+            cur = [k, (k + 1) % n] if cur is None else [cur[0], (k + 1) % n]
+        elif cur is not None:
+            runs.append(cur)
+            cur = None
+    if cur is not None:
+        runs.append(cur)
+    # runs a few ordinary segments apart are one crowded stretch (redrawn apart, the ordinary vertex between them
+    # zigzagged)
+    merged = []
+    for r_ in runs:
+        if merged and (r_[0] - merged[-1][1]) % n <= EDGE_RUN_GAP:
+            merged[-1][1] = r_[1]
+        else:
+            merged.append(list(r_))
+    runs = merged
+    D = np.zeros_like(V)
+    moved = 0
+    for a, b in runs:
+        a0, b0 = (a - 1) % n, (b + 1) % n  # the curve's ends: one ordinary vertex either side
+        idx = [(a0 + k) % n for k in range((b0 - a0) % n + 1)]
+        if len(idx) < 3 or len(idx) > n // 2:
+            continue
+        A_, B_ = P[a0], P[b0]
+        ch = np.linalg.norm(B_ - A_)
+        Ta = (A_ - P[(a0 - 1) % n]); Ta = Ta / max(np.linalg.norm(Ta), 1e-12) * ch
+        Tb = (P[(b0 + 1) % n] - B_); Tb = Tb / max(np.linalg.norm(Tb), 1e-12) * ch
+        # (an end that is a corner of the outline, its outer neighbour turned > 45 deg off the chord: the chord's
+        # direction there, or the curve bulged out past the corner)
+        cd = (B_ - A_) / max(ch, 1e-12)
+        Ta = Ta if Ta @ cd > np.cos(np.radians(45)) * ch else cd * ch
+        Tb = Tb if Tb @ cd > np.cos(np.radians(45)) * ch else cd * ch
+        t = np.linspace(0, 1, 200)
+        H = ((2 * t**3 - 3 * t**2 + 1)[:, None] * A_ + (t**3 - 2 * t**2 + t)[:, None] * Ta
+             + (-2 * t**3 + 3 * t**2)[:, None] * B_ + (t**3 - t**2)[:, None] * Tb)
+        s = np.r_[0, np.cumsum(np.linalg.norm(np.diff(H, axis=0), axis=1))]
+        want = np.linspace(0, s[-1], len(idx))
+        Q = np.c_[[np.interp(want, s, H[:, k]) for k in range(3)]].T
+        for j, li in enumerate(idx[1:-1], 1):
+            D[L[li]] = Q[j] - P[li]
+            moved += 1
+    if not moved:
+        return V, {"runs": 0, "moved": 0}
+    onb = np.zeros(len(V), bool)
+    onb[L] = True
+    F = np.asarray(F)
+    E = np.unique(np.sort(np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]], 1), axis=0)
+    src, fac = D.copy(), 0.5
+    for _ in range(relax):
+        acc, cnt = np.zeros_like(V), np.zeros(len(V))
+        for u_, v_ in ((E[:, 0], E[:, 1]), (E[:, 1], E[:, 0])):
+            m = (np.abs(src[v_]).sum(1) > 0) & ~onb[u_] & (np.abs(D[u_]).sum(1) == 0)
+            np.add.at(acc, u_[m], src[v_[m]])
+            np.add.at(cnt, u_[m], 1)
+        add = np.where(cnt[:, None] > 0, fac * acc / np.maximum(cnt, 1)[:, None], 0.0)
+        D += add
+        src, fac = add, fac * 0.5
+    return V + D, {"runs": len(runs), "moved": moved, "max_mm": round(float(np.linalg.norm(D, axis=1).max()) * 1000, 1)}

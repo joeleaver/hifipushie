@@ -129,14 +129,17 @@ def _pieces_of(res: dict, roles: tuple, wrap: str | None = None) -> np.ndarray:
     return np.where(np.isin(M["piece"], ks))[0]
 
 
-def tells(outer: dict, under: dict) -> dict:
+def tells(outer: dict, under: dict, outer_collar: list | None = None, under_collar: list | None = None) -> dict:
     """The tailoring tells of an outer garment over an under one, each {"value", "target", "ok"} (None where the
     garments don't have the pieces):
     collar_show_mm  the under collar's top above the outer collar's at centre back (a shirt collar shows 10-20 mm);
     cuff_show_mm    the under cuff past the outer sleeve's hem, along the forearm, per arm (10-15 mm);
     lapel_gap_mm    the lapels' flaps off the fronts they lie on (median; folds named lapel*);
     collar_hug_mm   the outer collar and stand off the under collar's surface, behind the neck's axis (median);
-    crossings       edges of either garment through the other's triangles."""
+    crossings       edges of either garment through the other's triangles.
+    outer_collar / under_collar: the collars as DRAWN ([{"V", "F"}]: a made collar that replaces the simulated one, the
+    shirt's made collar + stand); without them the simulated collar / stand pieces are measured (dress-garrett ad: the
+    j17 tells read both sim collars while the made ones drew, so collar_options never moved them)."""
     Vo, Vu = outer["V"], under["V"]
     Mo, Mu = outer["mesh"], under["mesh"]
     body = outer["body"]
@@ -151,17 +154,28 @@ def tells(outer: dict, under: dict) -> dict:
         out[k] = {"value": [round(float(x), digits) for x in vals] if isinstance(v, (list, tuple)) else round(float(v), digits),
                   "target": [lo, hi], "ok": bool(all(lo - 1e-9 <= x <= hi + 1e-9 for x in vals))}
     co, cu = _pieces_of(outer, ("collar", "stand")), _pieces_of(under, ("collar", "stand"))
+    Vco, Vcu, Su = Vo, Vu, None
+    if outer_collar:
+        Vco = np.concatenate([q["V"] for q in outer_collar])
+        co = np.arange(len(Vco))
+    if under_collar:
+        Vcu = np.concatenate([q["V"] for q in under_collar])
+        cu = np.arange(len(Vcu))
+        o_ = np.cumsum([0] + [len(q["V"]) for q in under_collar])
+        Su = _samples(Vcu, np.concatenate([np.asarray(q["F"]) + o_[i] for i, q in enumerate(under_collar)]))
     if len(co) and len(cu):
         # at centre back: within 2.5 cm of the middle, behind the neck's axis
         yc = float(body.J["neck"][1]) if "neck" in body.J else 0.0
-        bo = co[(np.abs(Vo[co, 0]) < 0.025) & (Vo[co, 1] > yc)]
-        bu = cu[(np.abs(Vu[cu, 0]) < 0.025) & (Vu[cu, 1] > yc)]
-        put("collar_show_mm", (Vu[bu, 2].max() - Vo[bo, 2].max()) * 1000 if len(bo) and len(bu) else None)
+        bo = co[(np.abs(Vco[co, 0]) < 0.025) & (Vco[co, 1] > yc)]
+        bu = cu[(np.abs(Vcu[cu, 0]) < 0.025) & (Vcu[cu, 1] > yc)]
+        put("collar_show_mm", (Vcu[bu, 2].max() - Vco[bo, 2].max()) * 1000 if len(bo) and len(bu) else None)
         # (the outer collar where it goes ROUND the neck: behind the neck's axis. A notched collar's ends lie on the
         # chest with the lapels, 5-10 cm from an under collar: with them in the median Garrett's jacket read 27 mm
         # whatever its back did)
-        hb = co[Vo[co, 1] > yc]
-        d, _ = cKDTree(_samples(Vu, Mu["F"][np.isin(Mu["piece"][Mu["F"][:, 0]], np.unique(Mu["piece"][cu]))])).query(Vo[hb if len(hb) else co])
+        hb = co[Vco[co, 1] > yc]
+        if Su is None:
+            Su = _samples(Vu, Mu["F"][np.isin(Mu["piece"][Mu["F"][:, 0]], np.unique(Mu["piece"][cu]))])
+        d, _ = cKDTree(Su).query(Vco[hb if len(hb) else co])
         put("collar_hug_mm", float(np.median(d)) * 1000)
     else:
         out["collar_show_mm"] = out["collar_hug_mm"] = None

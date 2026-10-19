@@ -568,6 +568,94 @@ def test_untuck_crossings_reverts_only_what_the_tuck_pushed_through():
     assert np.allclose(V2[k], V0[k])
 
 
+def test_fair_edge_runs_redraws_a_crowded_hooked_end_and_keeps_ordinary_corners():
+    """cloth_made.fair_edge_runs (dress-garrett ag): a made part's outline with a crowded run (short segments hooking
+    out past the edge, the jacket collar's ends) is redrawn as one smooth curve; a grid with even spacing (its four
+    corners ordinary) is left as it is."""
+    import numpy as np
+    from hifipushie import cloth_made
+    nx, nz = 12, 5
+    X, Z = np.meshgrid(np.linspace(0, 0.088, nx), np.linspace(0, 0.032, nz))
+    V = np.c_[X.ravel(), np.zeros(nx * nz), Z.ravel()]
+    F = []
+    for j in range(nz - 1):
+        for i in range(nx - 1):
+            a = j * nx + i
+            F += [[a, a + 1, a + nx + 1], [a, a + nx + 1, a + nx]]
+    F = np.array(F)
+    V2, info = cloth_made.fair_edge_runs(V, F)
+    assert info["moved"] == 0 and np.allclose(V2, V)
+    # crowd the bottom edge's last three vertices into a hook 6 mm below the edge
+    H = V.copy()
+    for k, i in enumerate((nx - 4, nx - 3, nx - 2)):
+        H[i] = [V[nx - 4, 0] + 0.0012 * k, 0.0, -0.006 + 0.0012 * k]
+    out = lambda W: float(-W[:nx, 2].min())
+    V3, info = cloth_made.fair_edge_runs(H, F)
+    assert info["moved"] > 0 and out(V3) < 0.5 * out(H), (out(H), out(V3), info)
+    assert np.allclose(V3[nx * 3:], H[nx * 3:])  # past the relaxed rings: untouched
+
+
+
+def test_seat_fall_turns_a_raised_fall_down_and_keeps_kept_stations():
+    """dress-garrett ai: seat_fall turns each station's rows past its roll top about the seam tangent until the outer
+    edge lies `gap` over the cloth; a station already down, or in `keep`, is not moved; column lengths are kept."""
+    import numpy as np
+    from hifipushie import cloth_made as cm
+    # the cloth: a floor at z=0 (a big two-triangle sheet, wound up)
+    fV = np.array([[-1, -1, 0], [1, -1, 0], [1, 1, 0], [-1, 1, 0]], float)
+    fF = np.array([[0, 1, 2], [0, 2, 3]])
+    u = cm.Under([{"V": fV, "F": fF, "sheet": True}])
+    n, m = 9, 6
+    G = np.zeros((n, m, 3))
+    for i in range(n):  # seam along x at z=0.02, the roll top row 1 at z=0.03, the fall standing out level along -y
+        G[i, 0] = [0.01 * i, 0.0, 0.02]
+        G[i, 1] = [0.01 * i, -0.005, 0.03]
+        for r in range(2, m):
+            G[i, r] = [0.01 * i, -0.005 - 0.008 * (r - 1), 0.03 - 0.0005 * (r - 1)]
+    keep = np.zeros(n, bool)
+    keep[0] = True
+    G2, info = cm.seat_fall(G, u, 0.004, smooth=0.0, keep=keep)
+    assert np.allclose(G2[0], G[0])  # kept
+    assert np.allclose(G2[:, :2], G[:, :2])  # the seam and the roll top stay
+    assert (G2[1:, -1, 2] < 0.012).all(), G2[1:, -1, 2]  # the outer edge turned down toward the floor
+    assert (G2[1:, -1, 2] > 0.0035).all()  # and kept clear of it
+    L = lambda X: np.linalg.norm(np.diff(X, axis=1), axis=-1).sum(1)
+    assert np.allclose(L(G2), L(G), atol=1e-6)  # turned as a board: its length as cut
+
+
+def test_even_outer_evens_the_outer_edge_and_keeps_the_seam():
+    # a flat 10 x 6 grid whose outer row is bunched (fanned columns): stations evened along the outer row, seam row kept
+    n, m = 10, 6
+    x = np.linspace(0, 0.09, n)
+    G = np.zeros((n, m, 3))
+    for j in range(m):
+        t = j / (m - 1)
+        xo = x + t * 0.004 * np.sin(np.linspace(0, np.pi, n)) ** 2 * np.r_[np.ones(5), -np.ones(5)]
+        G[:, j, 0], G[:, j, 1] = xo, 0.03 * t
+    sel = np.ones(n, bool)
+    E = cm.even_outer(G, sel)
+    st0 = np.linalg.norm(np.diff(G[:, -1], axis=0), axis=1)
+    st1 = np.linalg.norm(np.diff(E[:, -1], axis=0), axis=1)
+    assert st1.max() / st1.min() < 1.05 < st0.max() / st0.min()
+    assert np.allclose(E[:, 0], G[:, 0])
+
+
+def test_round_corner_rounds_the_end_column_corner():
+    # a flat grid, end column 0 along +y, outer edge along +x: the corner point moves in onto a fillet of radius R
+    n, m, R = 12, 16, 0.008
+    G = np.zeros((n, m, 3))
+    G[..., 0] = np.linspace(0, 0.06, n)[:, None]
+    G[..., 1] = np.linspace(0, 0.03, m)[None]
+    E = cm.round_corner(G, 0, R)
+    c = E[0, -1]
+    # the arc's mid point of a 90 deg fillet sits R (sqrt2 - 1) in from the square corner
+    assert abs(np.linalg.norm(c - G[0, -1]) - R * (np.sqrt(2) - 1)) < 1e-3
+    assert np.allclose(E[0, :m // 2], G[0, :m // 2]) and np.allclose(E[-1], G[-1])
+    assert np.allclose(E[..., 2], 0)  # (stays in the sheet's plane)
+    E2 = cm.round_corner(G, n - 1, R)
+    assert np.linalg.norm(E2[-1, -1] - G[-1, -1]) > 1e-3
+
+
 if __name__ == "__main__":
     for k, f in list(globals().items()):
         if k.startswith("test_"):

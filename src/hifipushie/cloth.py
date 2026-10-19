@@ -6988,7 +6988,9 @@ def pre_key(g: dict, body_src: dict, frames: int | None = None) -> str:
              _arr_hash(*[body_src["J"][k] for k in sorted(body_src["J"])]), sorted(body_src["J"]),
              body_src.get("under_missing"),
              None if under is None else [under.get("key"), under.get("name"), _arr_hash(under["V"]),
-                                         _arr_hash(under["F"]), (under.get("res") or {}).get("pre_key")],
+                                         _arr_hash(under["F"]), (under.get("res") or {}).get("pre_key"),
+                                         *([] if not under.get("draw") else [under["draw"]["key"], _arr_hash(under["draw"]["V"]),
+                                                                              (under["draw"]["res"] or {}).get("pre_key")])],
              None if not body_src.get("worn") else body_src["worn"].get("key")]
     return hashlib.sha1(json.dumps(keyed, sort_keys=True, default=str).encode()).hexdigest()[:20]
 
@@ -7835,6 +7837,49 @@ def _build(g: dict, body_src: dict, name: str = "garment", log=print, frames: in
             res["V"] = np.where(bad_[:, None], res["V_closed"], res["V"])
             res["band_kept_back"] = int(bad_.sum())
         res["buttons"] = closuremod.buttons_mesh(res["V"], M, None if hang else body_real)
+    if under is not None and under.get("draw") is not None:  # (af) under.draw: from here on the DRAWN under garment
+        # (the sim above met the pinned one): laid under this garment by the export's rule (tuck, untuck, push_under)
+        dr_ = under["draw"]
+        # (ag) the pinned collider's surface, kept (and frozen): push_under draws the drawn under garment's leftover
+        # crossings onto it (onto_collider), the export included
+        mc_ = (under.get("res") or {}).get("mesh") or {}
+        res["under_collider"] = {"V": np.asarray(under["V"], np.float32), "key": under.get("key"),
+                                 "mesh": {k_: mc_[k_] for k_ in ("uv", "piece", "names", "F") if k_ in mc_} or None}
+        try:
+            dV_ = _laid_under(dict(dr_["res"], body=dr_["res"].get("body", body_real)),
+                              dict(res, mesh=M, body=res.get("body", body_real)), False)["V"]  # (res carries under_collider)
+        except Exception as ex_:
+            log(f"  under.draw: laying it under failed ({type(ex_).__name__}: {ex_}); drawn as built")
+            dV_ = np.asarray(dr_["res"]["V"], float)
+        under = dict(under, V=dV_, F=dr_["F"], key=dr_["key"], res=dict(dr_["res"], V=dV_), drawn_from="spec")
+        res["under_drawn"] = {"key": dr_["key"], "collider_key": (body_src.get("under") or {}).get("key")}
+        res["under"] = under
+        log(f"  under.draw: the spec's {under.get('name')} (key {dr_['key']}) drawn under this garment, simulated over the pin")
+    if under is not None and under.get("res") is not None:  # layered: the under garment AS DRAWN under this one
+        # (dress-garrett ad) before the construction: the made collar's stand is limited by the shirt collar that DRAWS
+        # (the made one, under_collar), not by its simulated collar crushed under the jacket (j17j: collar_options
+        # stand / show moved nothing: the stand was clamped to its 8 mm floor by the sim collar's top)
+        res["under_V"] = np.asarray(under["V"], float)  # the under garment as pressed under this one
+        if np.shape(under["res"].get("V")) == res["under_V"].shape:  # (dress-garrett aa) no edge folded over by the pressing
+            # the body is a floor inside the relaxation (ab): the unguarded relax pulled the open neck into the chest
+            # (j17g), guarding it afterwards (finish_apply) kept folds back (j17h)
+            res["under_V"], res["under_unfold"] = unfold_press(np.asarray(under["res"]["V"], float), res["under_V"],
+                                                               under["res"]["mesh"]["F"], floor=body_real if len(body_real.V) else None)
+        # garment key under_sculpt = {"file": npz offset, "key": this garment's sim key}: a hand finish of the under
+        # garment AS PRESSED under this one (what draws), keyed on this sim (the pressing is this sim's)
+        us_ = g.get("under_sculpt")
+        if us_:
+            o_ = np.load(pin_path(us_["file"], name))["offset"] if pin_path(us_["file"], name).exists() else None
+            if o_ is not None and us_.get("key") == key and o_.shape == res["under_V"].shape:
+                res["under_V"] = res["under_V"] + o_
+                res["under_sculpted"] = int((np.linalg.norm(o_, axis=1) > 2e-4).sum())
+            else:
+                res["under_sculpt_stale"] = True
+        # garment key under_collar = {shirt_collar options}: the under garment's collar + stand MADE on its neckline as
+        # pressed (cloth_made.shirt_collar), drawn instead of its simulated ones (res["under_made"], hides them)
+        if g.get("under_collar") is not None:
+            bo_ = res.get("body", body_real)
+            res["under_made"] = under_collar(res["under_V"], under["res"]["mesh"], bo_.V, bo_.T, dict(g["under_collar"]))
     if not hang and len(body_real.V):
         # made parts CONSTRUCTED on the finished drape (cloth_made; garment key `construct`, post-sim: not in the
         # sim's key): lapels pressed onto their foreparts; with construct.collar a notched collar built from its draft
@@ -7850,6 +7895,8 @@ def _build(g: dict, body_src: dict, name: str = "garment", log=print, frames: in
                     "piece": np.asarray(Mu_["piece"]),
                     "made": np.isin(Mu_["piece"], [k_ for k_, nm_ in enumerate(Mu_["names"]) if nm_.split(".")[0] in ("collar", "stand")]),
                     "fall": np.isin(Mu_["piece"], [k_ for k_, nm_ in enumerate(Mu_["names"]) if nm_.split(".")[0] == "collar"])}
+            if res.get("under_made") is not None:  # (ad) the shirt's collar as drawn (made), what the stand must leave showing
+                und_["made_parts"] = [{"V": np.asarray(p_["V"], float), "F": np.asarray(p_["F"])} for p_ in res["under_made"]["parts"]]
         Vpre_ = res["V"]
         try:
             M_c = dict(M, collar_full=mesh(Bp_full, h, fw_)) if Bp_full is not None else M
@@ -7862,9 +7909,15 @@ def _build(g: dict, body_src: dict, name: str = "garment", log=print, frames: in
                 pt_["V"], dr_ = despike(pt_["V"], pt_["F"])
                 if dr_["folds"]:
                     log(f"  made {pt_.get('name')}: despiked {dr_}")
+                if (g.get("construct") or {}).get("fair_edges", True):  # (ag) crowded outline runs redrawn as one curve
+                    pt_["V"], fe_ = cloth_made.fair_edge_runs(pt_["V"], pt_["F"])
+                    if fe_["moved"]:
+                        log(f"  made {pt_.get('name')}: edge runs faired {fe_}")
             log("  constructed: " + "; ".join(f"{l_['piece']} lapel pressed ({l_['vertices']} vertices, {l_['moved_mm']} mm)"
                                               for l_ in res["made"]["lapels"])
-                + ("; collar built " + str(res["made"]["info"].get("collar", {}).get("stretch")) if res["made"]["parts"] else "")
+                + ("; collar built " + str(res["made"]["info"].get("collar", {}).get("stretch")) + " stand "
+                   + str({k_: res["made"]["info"].get("collar", {}).get(k_) for k_ in ("stand_asked_mm", "stand_cb_mm", "top_z_limit", "top_cb_z")})
+                   if res["made"]["parts"] else "")
                 + "".join(f"; {b_} band built ({i_['depth_mm']} mm deep, free edge {i_['girth_mm']['built_free_edge']} mm round, "
                           f"pattern {i_['girth_mm']['pattern_free_edge']}; moved p50 {i_['moved_mm']['p50']} mm)"
                           for b_, i_ in (res["made"]["info"].get("bands") or {}).items()))
@@ -7901,28 +7954,23 @@ def _build(g: dict, body_src: dict, name: str = "garment", log=print, frames: in
     res["sizing"] = sizing(res)
     if under is not None and under.get("res") is not None:  # layered: the tailoring tells against the garment under it
         from . import cloth_layers
-        res["under_V"] = np.asarray(under["V"], float)  # the under garment as pressed under this one
-        if np.shape(under["res"].get("V")) == res["under_V"].shape:  # (dress-garrett aa) no edge folded over by the pressing
-            # the body is a floor inside the relaxation (ab): the unguarded relax pulled the open neck into the chest
-            # (j17g), guarding it afterwards (finish_apply) kept folds back (j17h)
-            res["under_V"], res["under_unfold"] = unfold_press(np.asarray(under["res"]["V"], float), res["under_V"],
-                                                               under["res"]["mesh"]["F"], floor=body_real if len(body_real.V) else None)
-        # garment key under_sculpt = {"file": npz offset, "key": this garment's sim key}: a hand finish of the under
-        # garment AS PRESSED under this one (what draws), keyed on this sim (the pressing is this sim's)
-        us_ = g.get("under_sculpt")
-        if us_:
-            o_ = np.load(pin_path(us_["file"], name))["offset"] if pin_path(us_["file"], name).exists() else None
-            if o_ is not None and us_.get("key") == key and o_.shape == res["under_V"].shape:
-                res["under_V"] = res["under_V"] + o_
-                res["under_sculpted"] = int((np.linalg.norm(o_, axis=1) > 2e-4).sum())
-            else:
-                res["under_sculpt_stale"] = True
-        # garment key under_collar = {shirt_collar options}: the under garment's collar + stand MADE on its neckline as
-        # pressed (cloth_made.shirt_collar), drawn instead of its simulated ones (res["under_made"], hides them)
-        if g.get("under_collar") is not None:
-            bo_ = res.get("body", body_real)
-            res["under_made"] = under_collar(res["under_V"], under["res"]["mesh"], bo_.V, bo_.T, dict(g["under_collar"]))
-        res["tells"] = cloth_layers.tells(res, dict(under["res"], V=res["under_V"]))
+        res["tells"] = cloth_layers.tells(res, dict(under["res"], V=res.get("under_V", under["V"])),
+                                          outer_collar=_drawn_collar(res.get("made"), "outer"),
+                                          under_collar=_drawn_collar(res.get("under_made"), "under"))
+        # (dress-garrett af) the crossings row counts against the under garment AS DRAWN (worn_together's rule: its own
+        # finished surface laid under this one, push_under), what looks / scene / export show. Against the pressed
+        # collider (under_V) dg_t6's trousers read 35 while the drawn pair has 0: that collider is never drawn.
+        xr_ = (res.get("tells") or {}).get("crossings")
+        if isinstance(xr_, dict) and xr_.get("value"):
+            try:
+                ur_ = under["res"]
+                Vd_ = _laid_under(dict(ur_, body=ur_.get("body", body_real)), res, False)["V"]
+                n_ = cloth_layers.between_crossings(np.asarray(res["V"], float), np.asarray(M["F"]), Vd_,
+                                                    np.asarray(ur_["mesh"]["F"]))
+                log(f"  layered crossings: {xr_['value']} against the pressed collider, {n_} against the under garment as drawn")
+                res["tells"]["crossings"] = dict(xr_, value=n_, ok=n_ == 0, collider=xr_["value"])
+            except Exception as ex_:  # (the row stays the collider's, said so)
+                log(f"  layered crossings: drawn count failed ({type(ex_).__name__}: {ex_}); the row is the collider's")
     if hang:  # what carries it: the hanger's arms by contact (pins: the old pinned hang), and is the hanger inside it
         if hg is not None:
             pins_h, hx = np.zeros(0, np.int64), hg
@@ -8080,6 +8128,18 @@ def _carry_groups(D: np.ndarray, lab: np.ndarray) -> np.ndarray:
     D[idx] = D[best[lab[idx]]]
     return D
 
+
+
+def _drawn_collar(made, which: str):
+    """(dress-garrett ad) the collar as DRAWN for cloth_layers.tells: an outer garment's made collar that replaces its
+    simulated one, or an under garment's made collar + stand (under_collar) -> [{"V", "F"}] or None (= the sim pieces)."""
+    if not made or not made.get("parts"):
+        return None
+    if which == "outer":
+        ps = [p for p in made["parts"] if p.get("name") == "collar" and "collar" in (p.get("replaces") or [])]
+    else:
+        ps = list(made["parts"])
+    return [{"V": np.asarray(p["V"], float), "F": np.asarray(p["F"])} for p in ps] or None
 
 
 def post_finish(res: dict, g: dict, M: dict, body=None, under=None, log=print, name: str = "") -> dict:
@@ -9314,6 +9374,15 @@ def model_body(name: str, spec: dict, g: dict, simulate: bool = True) -> dict:
                 log=lambda *_: None, cached_only=not simulate)
             src = dict(src, under=None if ures is None else {"V": collider_verts(ures), "F": ures["mesh"]["F"], "key": ures["key"],
                                                               "name": ug, "res": ures})
+            # (dress-garrett af) garment key under = {"pin": ..., "draw": "spec"}: the PIN is the collider this garment
+            # was simulated over (its sim key unchanged), the spec's own under garment is what is DRAWN under it (pressed
+            # view, made pieces, tells, freeze): a re-drafted shirt shown under a jacket held on its approved hang
+            if pin_ and ures is not None and (expanded(g).get("under") or {}).get("draw") == "spec":
+                dres = thaw(spec, u)[1] if u.get("frozen") else build(
+                    _garment_for_sim(u), model_body(name, spec, u, simulate), f"{name}:{ug}",
+                    log=lambda *_: None, cached_only=not simulate)
+                if dres is not None:
+                    src["under"]["draw"] = {"V": collider_verts(dres), "F": dres["mesh"]["F"], "key": dres["key"], "res": dres}
             if ures is None:
                 src["under_missing"] = ug
         if expanded(g).get("collide"):
@@ -10514,7 +10583,96 @@ def push_under(V: np.ndarray, M: dict, outer: dict, covered: np.ndarray, gap: fl
             V, c, n = T, ct, nt
         if not n:
             break
+    if n and reach < PUSH_UNDER_REACH_WIDE:
+        # (dress-garrett af) still crossing: an outer FOLD reaching in from farther across (dg_t6's trousers' crotch
+        # curve through the shirt's front tail tips, 10 vertices 4-9 mm under the nearest trouser face: 30 edges at
+        # reach 12 mm, 8 at 20, 0 at 30, the tips moved <= 23 mm). Only where the default pass left crossings.
+        return push_under(V, M, outer, covered, gap=gap, rounds=rounds + 4, reach=PUSH_UNDER_REACH_WIDE)
+    if n and outer.get("under_collider") is not None:
+        V = onto_collider(V, M, outer, covered, cross)
     return V
+
+
+ONTO_COLLIDER_REACH = 0.10  # m: onto_collider's region round the crossing vertices (covered cloth only)
+
+
+def _collider_at(M: dict, Mc: dict, Vc: np.ndarray, k: int = 4) -> np.ndarray:
+    """Each vertex of mesh M at the SAME place on the pattern (piece name + pattern uv) on the collider mesh Mc posed at
+    Vc (inverse-distance mean of the k nearest uv points of that piece); NaN where Mc has no such piece."""
+    out = np.full((len(M["uv"]), 3), np.nan)
+    uv, uvc = np.asarray(M["uv"], float), np.asarray(Mc["uv"], float)
+    pn = np.asarray(M["names"])[np.asarray(M["piece"])]
+    pc = np.asarray(Mc["names"])[np.asarray(Mc["piece"])]
+    if len(pc) != len(Vc) or len(uvc) != len(Vc):
+        return out
+    for nm in np.unique(pn):
+        a_, b_ = np.flatnonzero(pn == nm), np.flatnonzero(pc == nm)
+        if len(b_) < k:
+            continue
+        d, j = cKDTree(uvc[b_]).query(uv[a_], k=k)
+        w = 1.0 / np.maximum(d, 1e-6)
+        w /= w.sum(1, keepdims=True)
+        out[a_] = np.einsum("ik,ikd->id", w, Vc[b_][j])
+    return out
+
+
+def onto_collider(V: np.ndarray, M: dict, outer: dict, covered: np.ndarray, cross=None,
+                  reach: float = ONTO_COLLIDER_REACH, rounds: int = 5) -> np.ndarray:
+    """A drawn under garment that is NOT the one the outer garment was simulated over (a held / pinned outer garment,
+    garment key under.draw: its sim met the pinned collider, res["under_collider"], the same garment drafted before)
+    and still crosses it after push_under: each crossing vertex goes where the SAME place on the pattern (piece + uv)
+    lies on the collider (the sim kept that cloth under the outer garment), and the covered cloth within `reach` of
+    them follows by a harmonic (mesh-Laplacian) interpolation of that displacement, 0 at the region's edge, so the
+    region bends smoothly instead of kinking; vertices still crossing join the pinned set, up to `rounds`. Kept only
+    if the crossing count falls. A finish of the drawing, no sim. dress-garrett ag: the re-drafted shirt (13291 verts)
+    under the jacket held on its approved sim over the old shirt crossed it at 96 edges, 16 back-piece vertices at the
+    right armhole, already 4-21 mm under the nearest jacket face (side panel and under-sleeve folding in at the
+    armscye): pushing along either garment's normal (push_under) or onto the collider's closest point (16 -> 20) or a
+    smooth blend over the region (13 left) didn't clear them; this does (0, edges in the region p99 1.12x)."""
+    import scipy.sparse as sps
+    col = outer["under_collider"]
+    Fu = np.asarray(M["F"])
+    if cross is None:
+        Vo = np.asarray(outer["V"], float)
+        Fo = oriented_faces(outer["mesh"], Vo, body=outer.get("body"))
+        cross = lambda X: _layer_crossing_verts(X, Fu, Vo, Fo)
+    covered = np.asarray(covered, bool)
+    c = cross(V) & covered
+    n = int(c.sum())
+    if not n or col.get("mesh") is None or "uv" not in M:
+        return V
+    C = _collider_at(M, col["mesh"], np.asarray(col["V"], float))
+    ok = np.isfinite(C[:, 0])
+    d, _ = cKDTree(V[c]).query(V, distance_upper_bound=reach)
+    reg = covered & ok & np.isfinite(d)
+    pin = c & ok
+    if not pin.any():
+        return V
+    E = np.unique(np.sort(np.r_[Fu[:, [0, 1]], Fu[:, [1, 2]], Fu[:, [2, 0]]], 1), axis=0)
+    A = sps.coo_matrix((np.ones(2 * len(E)), (np.r_[E[:, 0], E[:, 1]], np.r_[E[:, 1], E[:, 0]])),
+                       shape=(len(V), len(V))).tocsr()
+    deg = np.maximum(np.asarray(A.sum(1)).ravel(), 1)[:, None]
+    D0 = np.where(reg[:, None], np.nan_to_num(C - V), 0.0)
+    t = np.clip(1.0 - np.where(np.isfinite(d), d, reach) / reach, 0.0, 1.0)
+    D = D0 * (t * t * (3 - 2 * t))[:, None]
+    best = V
+    for _r in range(rounds):
+        for _ in range(60):
+            D = 0.5 * D + 0.5 * (A @ D) / deg
+            D *= reg[:, None]
+            D[pin] = D0[pin]
+        T = V + D
+        ct = cross(T) & covered
+        nt = int(ct.sum())
+        if nt < n:
+            best, n = T, nt
+        if not n or not (ct & reg & ~pin).any():
+            break
+        pin |= ct & reg
+    return best
+
+
+PUSH_UNDER_REACH_WIDE = 0.03  # m: push_under's second pass, only for crossings the default reach left
 
 
 def _worn_objects(name: str, spec: dict, wn: dict) -> list:
