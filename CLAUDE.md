@@ -64,5 +64,6 @@ OpenBLAS is capped at 4 threads in `__init__.py`.
 - Skin: docs/state/skin.md -> skin.md "## r<N>"
 - Dress Garrett (paused): docs/state/dress_garrett.md -> cloth.md "dress-garrett <date> <id>"
 - Dress Tess: docs/state/dress_tess.md -> cloth.md "dress-tess session <N>"
+- Pattern gate (sims refused without a PASS record): docs/state/pattern_gate.md -> pattern_gate.md
 - No state page yet (history only): topology, blender_scene, terrain, streambeds, vegetation, clutter, onemesh, likeness,
   refstudy, garrett_head, measuremodels, rig, base, retopo, images, faceshapes, headbody, resources, budgets, audit.

@@ -130,6 +130,26 @@ Defaults (in order, like a pattern maker):
 4. Hand finish on the draped mesh (recorded sculpt edits keyed on the sim; write each edit under a new file name: the
    name is the cache identity). Spike gate passes before sheets. Fine detail in maps.
 5. Freeze (`cloth.freeze`): the export consumes the frozen pickles.
+Order: pattern -> PATTERN GATE -> sim -> made pieces -> finish.
+
+### Pattern gate (ENFORCED, 2026-10-19)
+Joe: "we're spending too much time on sim before we validate our patterns." Before ANY sim of a drafted garment:
+- MEASURE: `cloth_check.pattern_gate(model, garment, refs=<saved cloth_reference.read reading>)` drafts and places the
+  pattern on the body (no sim: `cloth.build(place_only=True)`) and measures every cloth_checklist.json item of the
+  garment's kind it can read there: seam ease / notches, lengths and widths on the placed rest, design choices, plus
+  `neckline_standoff_mm` (INFO until a checklist item adopts it via "pattern_measure"). Items with no pattern-stage
+  measure (a "missing:" measure, no reference reading) are UNMEASURED and block; drape / fold / worn-tell items are SIM
+  (judged after the sim). Waive a row only by name with a reason (`waive={"id": "why"}`, recorded).
+- LOOK: `sheet=True` (under bin/capped: GPU lock) renders the placed garment on the body, clay, front / 3/4 / side /
+  back at ~1 m, the concept first: a pre-sim sheet a reviewer or Joe judges before any sim.
+- The record (`/mnt/data/hifipushie/pattern_gate/<key>.json`) is keyed by the pattern's content hash + the body's hash:
+  change the pattern and the record no longer applies.
+- ENFORCED: every sim (cloth._blender_job local, cloth_job.run_zozo local / rented, run_external) refuses
+  (SimNotSubmitted) without a PASS record, naming the failing / unmeasured rows. Override for the transition only:
+  `HIFIPUSHIE_SIM_WITHOUT_PATTERN_GATE="<reason>"` (logged in the record, the job folder and overrides.jsonl).
+- Pattern ops and construct option dicts that change a default carry `"source": "<where the number came from>"`;
+  the gate WARNS without one (traps.md "A misread note became a pattern default").
+
 Gate: pattern gates on the draft; sim judged for fit, silhouette, hang and main folds; finish judged in the game render
 at 1 m / 3 m. Re-freeze only when a blind review prefers the candidate. Joe approves each garment ("garment").
 Stop-loss: a review fault a sculptor would fix in minutes is a finishing job, never another sim.
