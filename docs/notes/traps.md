@@ -134,3 +134,9 @@ Symptom: many collar sessions tuning the drape; collar stands off the neck whate
 Cause: jacket neckline widen 0.018 / back 0.035 added from a misread "lie low and flat" note; every later session tuned
 on a wrong neckline. Check first: measure the pattern against the collar checklist (cloth_checklist.json) before any
 drape work; pattern parameters carry their source.
+
+## A swapped / tried-on part that never replaced the old one (2026-10-19, garment-game proof)
+Symptom: polygon-shaped blotches on a tried-on part at every LOD, still there under flat emission; the proof lost 0-14.
+Cause: judge --swap keyed by the OBJECT name matched no mesh and was ignored; v8's jacket was drawn inside ours.
+Check first: a GE_FLATID render (each object its own colour) or the run's object list. Now refused (blender_game swap).
+Same family as a hair lever matching 0 cards (r46g): any selector that matches nothing must raise.
