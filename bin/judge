@@ -1,0 +1,6 @@
+#!/bin/bash
+# judge: validated standard shots + measures + blind A/B for game assets (docs/notes/judge.md).
+# Runs this checkout's code; models / approvals from the main workspace unless HIFIPUSHIE_HOME is set.
+here="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+export HIFIPUSHIE_HOME="${HIFIPUSHIE_HOME:-/home/joe/dev/hifipushie/workspace}"
+exec uv run --project "$here" python -m hifipushie.judge "$@"

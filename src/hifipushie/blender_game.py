@@ -67,6 +67,29 @@ if not _jp.exists() and Path(job["glb"]).stem.split("_LOD")[0] != Path(job["glb"
     _jp = Path(job["glb"]).parent / (Path(job["glb"]).stem.split("_LOD")[0] + ".json")
 info = json.load(open(_jp)) if _jp.exists() else {"parts": {}, "glb": job["glb"]}
 meshes = [o for o in ours if o.type == "MESH"]
+_SWAPPED = []
+for _mn, _g in (job.get("swap") or {}).items():  # (judge.py) a part replaced by another GLB's meshes (same world frame:
+    # e.g. a hair build tried on the character), static, with that GLB's own importer materials; named "swapped-<mesh>"
+    # so the shading notes (the character's textures) never claim them
+    _gone = [o for o in meshes if o.data.name == _mn]
+    ours = [o for o in ours if o not in _gone]
+    meshes = [o for o in meshes if o not in _gone]
+    for o in _gone:
+        me_ = o.data
+        bpy.data.objects.remove(o, do_unlink=True)
+        if me_.users == 0:
+            bpy.data.meshes.remove(me_)
+    new_, _ = import_glb(_g, merge_vertices=bool(job.get("merge_vertices", True)))
+    for o in new_:
+        if o.type == "MESH":
+            o.name = f"swapped-{o.data.name}"
+            for ms in o.material_slots:
+                if ms.material is not None and hasattr(ms.material, "surface_render_method") and \
+                        ms.material.blend_method in ("CLIP", "HASHED", "BLEND"):
+                    ms.material.surface_render_method = "DITHERED"
+            _SWAPPED.append(o)
+    ours += new_
+meshes = [o for o in ours if o.type == "MESH"]
 if os.environ.get("GE_PLAIN"):  # (debug) the importer's custom split normals dropped: Blender's own smooth normals
     for o in meshes:
         if o.data.has_custom_normals:
@@ -101,6 +124,8 @@ try:
 except TypeError:  # (older Blender)
     scene.view_settings.view_transform = "AgX"
 _VIEW0 = scene.view_settings.view_transform
+if job.get("transparent"):  # (judge.py) RGBA renders: the alpha is the subject's mask for the measures
+    scene.render.film_transparent = True
 
 
 def _lin(c):
@@ -364,6 +389,24 @@ else:  # the importer's own, cards dithered, the blink map hooked in
                     m.blend_method in ("CLIP", "HASHED") or "hair" in m.name or "lashes" in m.name):
                 m.surface_render_method = "DITHERED"
 
+if job.get("cull"):  # (judge.py) drawn as an engine draws the GLB: back faces culled unless the glTF material is
+    # doubleSided (the shading notes' materials are two-sided; a preview that culls what the engine draws, or draws
+    # what it culls, judges a different asset). Materials shared by objects that disagree are copied.
+    for ob in meshes:
+        want = job["cull"].get(ob.data.name)
+        if want is None:
+            continue
+        for k, ms in enumerate(ob.material_slots):
+            if ms.material is None:
+                continue
+            c = not (want[k] if k < len(want) else want[-1])
+            if ms.material.use_backface_culling != c:
+                if ms.material.users > 1 and ms.material.get("_cull_set"):
+                    ms.material = ms.material.copy()
+                ms.material.use_backface_culling = c
+                if hasattr(ms.material, "use_backface_culling_shadow"):
+                    ms.material.use_backface_culling_shadow = c
+            ms.material["_cull_set"] = True
 if os.environ.get("GE_FLATID"):  # (debug) a flat colour per object, back faces at a third: which part shows where
     import colorsys
     for i, ob in enumerate(sorted(meshes, key=lambda o: o.name)):
@@ -707,7 +750,7 @@ def set_action(o, clip):
 
 
 DIRS = {"front": (0, -1, 0.05), "three_quarter": (0.6, -0.8, 0.12), "side": (1, 0, 0.05), "left": (-1, 0, 0.05),
-        "back": (0, 1, 0.1), "back_quarter": (-0.6, 0.8, 0.2)}
+        "back": (0, 1, 0.1), "back_quarter": (-0.6, 0.8, 0.2), "top": (0, 0.35, 1.0)}
 if arm is not None and arm.animation_data:
     arm.animation_data.action = None
 
@@ -760,6 +803,78 @@ def preview_frames():
 if job.get("frames"):
     cam_d.clip_end = 1000
     preview_frames()
+_AUDIT = {"renders": []}
+
+
+def _render_state(path):
+    """(judge.py) What one render was drawn under: view transform, look, exposure, the lights and world. judge refuses
+    to compare two images whose states differ (AgX vs PBR Neutral renders were compared once)."""
+    vs = scene.view_settings
+    bg = scene.world.node_tree.nodes.get("Background") if scene.world and scene.world.use_nodes else None
+    lights = sorted([[o.data.type, round(o.data.energy, 4), round(math.degrees(getattr(o.data, "angle", 0.0)), 3),
+                      [round(c, 4) for c in o.data.color], [round(r, 4) for r in o.rotation_euler],
+                      round(getattr(o.data, "specular_factor", 1.0), 3), bool(o.data.use_shadow)]
+                     for o in scene.objects if o.type == "LIGHT" and not o.hide_render])
+    return {"file": path, "engine": scene.render.engine, "view": vs.view_transform, "look": vs.look,
+            "exposure": round(vs.exposure, 4), "gamma": round(vs.gamma, 4), "transparent": scene.render.film_transparent,
+            "lights": lights, "world": None if bg is None else [[round(c, 4) for c in bg.inputs["Color"].default_value],
+                                                                 round(bg.inputs["Strength"].default_value, 4)]}
+
+
+def _write_audit():
+    """(judge.py) The drawn scene, for judge's self-checks: per mesh object its triangles (the rest mesh as drawn) and
+    material slots' back-face culling, and the uv probes: each {mesh, image, local: glTF-local [x, y, z]} located on
+    that mesh (closest point), its uv interpolated Blender's way and the image sampled there (bilinear)."""
+    from mathutils.bvhtree import BVHTree
+    from mathutils.interpolate import poly_3d_calc
+    objs = {}
+    for ob in meshes:
+        me = ob.data
+        me.calc_loop_triangles()
+        objs[ob.name] = {"mesh": me.name, "triangles": len(me.loop_triangles), "hide_render": ob.hide_render,
+                         "culling": [bool(ms.material.use_backface_culling) if ms.material else None
+                                     for ms in ob.material_slots],
+                         "materials": [ms.material.name if ms.material else None for ms in ob.material_slots]}
+    probes = []
+    trees, pix = {}, {}
+    for pr in job.get("uv_probe", []):
+        ob = next((o for o in meshes if o.data.name == pr["mesh"]), None) or next(
+            (o for o in meshes if o.name == pr["mesh"] or o.data.name.startswith(pr["mesh"])), None)
+        im = next((i for i in bpy.data.images if i.name == pr["image"] or i.name.startswith(pr["image"])), None)
+        if ob is None or im is None or not ob.data.uv_layers:
+            probes.append({**pr, "error": f"mesh {ob is not None} image {im is not None}"})
+            continue
+        me = ob.data
+        if ob.name not in trees:
+            trees[ob.name] = BVHTree.FromPolygons([v.co for v in me.vertices], [p.vertices for p in me.polygons])
+        x, y, z = pr["local"]
+        q = Vector((x, -z, y))  # glTF Y-up -> Blender Z-up (the importer converts mesh data)
+        loc, _, fi, dist = trees[ob.name].find_nearest(q)
+        poly = me.polygons[fi]
+        co = [me.vertices[v].co for v in poly.vertices]
+        w = poly_3d_calc(co, loc)
+        uvl = me.uv_layers[0].data
+        uv = sum((uvl[li].uv * wi for li, wi in zip(poly.loop_indices, w)), Vector((0.0, 0.0)))
+        W, H = im.size
+        if im.name not in pix:
+            import numpy as np
+            a_ = np.empty(W * H * 4, np.float32)
+            im.pixels.foreach_get(a_)  # (bottom row first, RGBA floats)
+            pix[im.name] = a_.reshape(H, W, 4)
+        px = pix[im.name]
+        def at(i, j):
+            return [float(v) for v in px[min(max(j, 0), H - 1), min(max(i, 0), W - 1), :3]]
+        fx, fy = uv.x * W - 0.5, uv.y * H - 0.5
+        i0, j0 = math.floor(fx), math.floor(fy)
+        tx, ty = fx - i0, fy - j0
+        c = [(1 - tx) * (1 - ty) * a + tx * (1 - ty) * b + (1 - tx) * ty * cc + tx * ty * d for a, b, cc, d in
+             zip(at(i0, j0), at(i0 + 1, j0), at(i0, j0 + 1), at(i0 + 1, j0 + 1))]
+        probes.append({**pr, "uv": [uv.x, uv.y], "dist": dist, "rgb": c, "colorspace": im.colorspace_settings.name,
+                       "size": [W, H]})
+    json.dump({"objects": objs, "probes": probes, **_AUDIT}, open(job["audit"], "w"), indent=1)
+    print(f"wrote audit {job['audit']}", flush=True)
+
+
 for pz in job.get("shots", []):
     for pb in arm.pose.bones:
         pb.rotation_mode = "QUATERNION"
@@ -872,4 +987,8 @@ for pz in job.get("shots", []):
         scene.render.filepath = f"{job['out']}_{pz['name']}_{v}.png"
         bpy.ops.render.render(write_still=True)
         print(f"wrote {scene.render.filepath} (retargeted {nret}, twist {ntw})", flush=True)
+        if job.get("audit"):
+            _AUDIT["renders"].append(_render_state(scene.render.filepath))
+if job.get("audit"):
+    _write_audit()
 print("done", flush=True)

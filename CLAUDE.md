@@ -38,6 +38,8 @@ Test subjects: examples/troll.json (reference), workspace/goblin, fox.
   (summed dabs); `assemble.py` prefabs / instances / arrays (docs/notes/assemble.md); `stylesheet.py` + `deform.py` style.
 - Parts / shells / `hides.py`; `surface.py` (`Points`); `paint.py` + `paintnodes.py` + `materials.py` (docs/notes/paint.md);
   `images.py` (docs/notes/images.md); `realism.py` story / weather; `plan.py` 2D blockout.
+- `judge.py` + bin/judge: THE way to judge a GLB (standard shots, feature crops, self-checked measures, blind A/B with
+  controls; docs/notes/judge.md).
 - `measure.py`, `compare.py`, `fit.py` (LM silhouette fit); `render.py` + `blender_render.py` (docs/notes/render.md).
 - `store.py` spec + history + build cache; `scene.py` + `blender_scene.py` live Blender scene (docs/notes/blender_scene.md).
 - Humans: `base.py` (docs/notes/base.md), `blockin.py` default for heads from pictures, GNM-native heads, `gnm_controls.py`
