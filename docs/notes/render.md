@@ -62,3 +62,29 @@ then 5 frames at 70-88 s each, every frame a fresh Blender: blend load + groom b
   garments pay placement just to find no cache. Fixes to do: memoise a pre-placement key (garment spec + body mesh
   hash + code) -> sim key file in _cache/cloth, so cached_only loads without placing; memoise build / body_mesh
   within one garments() call. DONE 2026-10-16: see docs/notes/cloth.md "## Pre-placement cache".
+
+## Diagnostic renders (diag_render, 2026-10-19)
+
+Why: Joe: "contrast-color or something so that what's really happening is super obvious to a vision model". Clay hides
+construction faults as subtle shading (the n8 jacket's shoulder-seam corner at the side neck). Like CLO / Marvelous
+pattern colours and strain maps, `src/hifipushie/diag_render.py` draws construction in flat colour.
+
+- Call: `cloth.render(objects, prefix, views, ..., diag=["panels", "seams", "turned"])`; a garment object carries
+  `"mesh"` (its pattern mesh dict: uv, piece, names, sew, sew_seam, folds) and optionally `"layer"` (inner -> outer).
+  The legend goes to `<prefix>_legend.png`. Sheets: `diag_render.sheet([(label, objects[, {"diag", "box"}])], out,
+  modes, views=("front", "three", "side", "back", "top"))` (rows, labels, legend + strain bar). The pattern sheet:
+  `diag_render.pattern_sheet_diag(res, prefix, modes)` (cloth_check.pattern_sheet itself is unchanged, clay).
+- Modes: panels (a palette colour per piece, sewn pieces never share), seams (dark tubes on sewn seams, dashed yellow
+  on fold lines), turned (a fold's flap orange on the side that shows once turned, dark brown on its other side:
+  dark = flap left flat / turned the wrong way), backfaces (red), strain (blue -10 % -> white -> red +10 % vs the flat
+  pattern, per face), layers (a colour per garment layer; inner faces crossing the outer one, or with it behind them,
+  magenta).
+- Reviews: ONE view per turn. `cloth.render(diag=...)` writes one PNG per camera; `sheet` keeps every view as
+  `<out stem>_r<row>_<view>.png` (+ `_legend.png`) beside the sheet. Reviewers (bin/review) get single-view
+  reference | result crops cut from those, never the contact sheet (that is for Joe and the coordinator).
+- How: EEVEE, emission only (per-corner front / back colours mixed on Backfacing), Standard view: the PNG pixel is
+  the declared sRGB colour, no light or shadow. A 1 px dark outline is drawn in post on the silhouette.
+- Known answers by pixel: `bin/capped uv run python tests/test_diag_render.py <outdir>` (two panels + seam + turned
+  flap; a 10 % stretched strip red only there; an inside-out piece red; a shirt poke magenta).
+- Default clay is untouched (no `diag` -> the old path). Example: /mnt/data/hifipushie/dress_garrett/pattern_stage/
+  n8_diag.py.

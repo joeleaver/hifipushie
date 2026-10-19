@@ -458,6 +458,8 @@ def render(job, d):
     """Objects from render.npz: for each name in job["objects"]: <name>_V, <name>_F, optional <name>_C (per-vertex
     RGB, linear), job colours; orthographic views front/side/back (+ an optional perspective three-quarter)."""
     sc = bpy.context.scene
+    if job.get("diag"):
+        return _render_diag(job, d)
     if job.get("textured"):
         return _render_textured(job, d)
     sc.render.engine = "BLENDER_WORKBENCH"
@@ -545,6 +547,94 @@ def render(job, d):
         bpy.ops.render.render(write_still=True)
         out.append(sc.render.filepath)
     log("rendered", ", ".join(out))
+
+
+def _render_diag(job, d):
+    """diag_render's flat pass: EEVEE, every object an emission of its per-corner colours (<name>_CC front, <name>_CB
+    back, sRGB; else its flat "color"), no lights, shadows or cavity, Standard view: a pixel is the declared colour."""
+    sc = bpy.context.scene
+    try:
+        sc.render.engine = "BLENDER_EEVEE_NEXT"
+    except Exception:
+        sc.render.engine = "BLENDER_EEVEE"
+    if hasattr(sc, "eevee") and hasattr(sc.eevee, "taa_render_samples"):
+        sc.eevee.taa_render_samples = 8
+    sc.render.film_transparent = False
+    sc.display_settings.display_device = "sRGB"
+    sc.view_settings.view_transform = "Standard"
+    sc.view_settings.look = "None"
+    sc.view_settings.exposure, sc.view_settings.gamma = 0.0, 1.0
+    world = bpy.data.worlds.new("w")
+    world.use_nodes = True
+    bgc = _rgb(job.get("bg", "#3c3c3c"))
+    world.node_tree.nodes["Background"].inputs[0].default_value = (*bgc, 1.0)
+    world.node_tree.nodes["Background"].inputs[1].default_value = 1.0
+    sc.world = world
+    for o in job["objects"]:
+        nm = o["name"]
+        V, F = d[nm + "_V"], d[nm + "_F"]
+        me = bpy.data.meshes.new(nm)
+        me.from_pydata([tuple(map(float, v)) for v in V], [], [tuple(map(int, f)) for f in F])
+        ob = bpy.data.objects.new(nm, me)
+        sc.collection.objects.link(ob)
+        nl = len(me.loops)
+        for an, key in (("col", "_CC"), ("colb", "_CB")):
+            src = nm + key if nm + key in d.files else nm + "_CC" if nm + "_CC" in d.files else None
+            if src:  # sRGB per corner -> linear
+                C = np.asarray(d[src], float).reshape(-1, 3)
+                lin = np.where(C <= 0.04045, C / 12.92, ((C + 0.055) / 1.055) ** 2.4)
+            else:  # (_rgb: hex -> linear)
+                lin = np.tile(np.asarray(_rgb(o.get("color", "#a8a8a8")), float), (nl, 1))
+            if len(lin) != nl:
+                raise RuntimeError(f"diag: {nm}{key} has {len(lin)} corners, mesh {nl}")
+            attr = me.color_attributes.new(an, "FLOAT_COLOR", "CORNER")
+            attr.data.foreach_set("color", np.c_[lin, np.ones(nl)].astype(np.float32).ravel())
+        mat = bpy.data.materials.new(f"diag_{nm}")
+        mat.use_nodes = True
+        mat.use_backface_culling = False
+        nt = mat.node_tree
+        nt.nodes.clear()
+        outn, em = nt.nodes.new("ShaderNodeOutputMaterial"), nt.nodes.new("ShaderNodeEmission")
+        geo, mix = nt.nodes.new("ShaderNodeNewGeometry"), nt.nodes.new("ShaderNodeMix")
+        a1, a2 = nt.nodes.new("ShaderNodeAttribute"), nt.nodes.new("ShaderNodeAttribute")
+        a1.attribute_name, a2.attribute_name = "col", "colb"
+        mix.data_type = "RGBA"
+        nt.links.new(a1.outputs["Color"], mix.inputs["A"])
+        nt.links.new(a2.outputs["Color"], mix.inputs["B"])
+        nt.links.new(geo.outputs["Backfacing"], mix.inputs["Factor"])
+        nt.links.new(mix.outputs["Result"], em.inputs["Color"])
+        em.inputs["Strength"].default_value = 1.0
+        nt.links.new(em.outputs[0], outn.inputs["Surface"])
+        me.materials.append(mat)
+    lo = np.min([np.min(d[o["name"] + "_V"], 0) for o in job["objects"]], 0)
+    hi = np.max([np.max(d[o["name"] + "_V"], 0) for o in job["objects"]], 0)
+    if job.get("box"):
+        lo, hi = np.asarray(job["box"][0]), np.asarray(job["box"][1])
+    c = (lo + hi) / 2
+    size = float(max(hi[2] - lo[2], hi[0] - lo[0], hi[1] - lo[1])) * 1.08
+    cam_d = bpy.data.cameras.new("cam")
+    cam_d.type = "ORTHO"
+    cam_d.ortho_scale = size
+    cam_d.clip_end = 100.0
+    cam = bpy.data.objects.new("cam", cam_d)
+    sc.collection.objects.link(cam)
+    sc.camera = cam
+    res = int(job.get("resolution", 700))
+    sc.render.resolution_x = int(res * job.get("aspect", 0.62))
+    sc.render.resolution_y = res
+    views = {"front": (0, -1, 0), "side": (-1, 0, 0), "back": (0, 1, 0), "side_r": (1, 0, 0), "top": (0, -0.05, 1)}
+    from mathutils import Vector
+    out = []
+    for v in job.get("views", ["front", "side", "back"]):
+        dirv, name = (np.asarray(v["dir"], float), v["name"]) if isinstance(v, dict) else (np.asarray(views[v], float), v)
+        dirv = dirv / np.linalg.norm(dirv)
+        cam.location = tuple(c + dirv * 5)
+        cam.rotation_mode = "QUATERNION"
+        cam.rotation_quaternion = Vector(tuple(-dirv)).to_track_quat("-Z", "Y")
+        sc.render.filepath = job["out_prefix"] + f"_{name}.png"
+        bpy.ops.render.render(write_still=True)
+        out.append(sc.render.filepath)
+    log("rendered (diag)", ", ".join(out))
 
 
 def base_source(maps) -> str | None:

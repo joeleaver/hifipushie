@@ -32,6 +32,10 @@ The faults were in the PROCESS, at four points:
    line>"`: a blind art-director review (a separate headless Claude) that sees ONLY reference | result pairs per
    checklist region, no captions, numbers or claims, and lists every fault MAJOR / MINOR with a "needs:" line,
    ending VERDICT PASS (no MAJOR) or FAIL. ~1 min. The agent fixes the worst MAJOR fault and loops.
+   - Construction reviews (patterns, form / pre-sim sheets, drapes, layered garments) put the DIAGNOSTIC render
+     (diag_render: panels + seams + turned; strain + layers) beside the clay one, both as review crops: flat
+     colours make a kink, a fold on the wrong side, a flap turned into the body or a shirt through a jacket
+     obvious, where clay shows only shading (Joe 2026-10-19). docs/notes/render.md "Diagnostic renders".
    - When a round trip is long (renders on NICO-TOP: ~1 h), one fault per round means one round per session. Fix
      EVERY independent MAJOR you can address in the same round (one change per region, each listed in the notes),
      then re-review all regions. "Worst first" orders the work; it is not one fix per round. Before fixing, group

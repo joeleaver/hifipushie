@@ -11443,9 +11443,26 @@ def strain_colors(strain: np.ndarray, limit: float) -> np.ndarray:
 
 
 def render(objects: list, prefix: str, views=("front", "side", "back"), resolution: int = 700, box=None,
-           aspect: float = 0.62, textured: bool = False, suns=None, shadows: bool | None = None) -> list:
+           aspect: float = 0.62, textured: bool = False, suns=None, shadows: bool | None = None, diag=None) -> list:
     """objects: [{"name", "V", "F", "color" | "C" (linear RGB per vertex), "thickness", "uv"?, "maps"?}] -> PNG paths.
-    textured: EEVEE with each object's maps (basecolor, normal) on its uv; else workbench clay."""
+    textured: EEVEE with each object's maps (basecolor, normal) on its uv; else workbench clay.
+    diag: a list of diagnostic modes (diag_render.MODES: panels, seams, turned, backfaces, strain, layers): flat
+    construction colours instead of clay; garment objects carry "mesh" (their pattern mesh dict). The legend is written
+    to <prefix>_legend.png. None (default): the clay look, unchanged."""
+    if diag:
+        from . import diag_render
+        paths, legend = diag_render.render(objects, prefix, diag, views=views, resolution=resolution, box=box,
+                                           aspect=aspect)
+        diag_render.legend_strip(legend, 900, strain="strain" in diag_render._modes(diag)).save(f"{prefix}_legend.png")
+        return paths
+    return _render_job(objects, prefix, views=views, resolution=resolution, box=box, aspect=aspect, textured=textured,
+                       suns=suns, shadows=shadows)
+
+
+def _render_job(objects: list, prefix: str, views=("front", "side", "back"), resolution: int = 700, box=None,
+                aspect: float = 0.62, textured: bool = False, suns=None, shadows: bool | None = None,
+                extra: dict | None = None) -> list:
+    """render's Blender job (blender_cloth.render); `extra` keys go into the job (diag_render: "diag", "bg")."""
     from . import render as rmod
     prefix = str(prefix)
     d = Path(prefix).parent
@@ -11456,6 +11473,9 @@ def render(objects: list, prefix: str, views=("front", "side", "back"), resoluti
         data[o["name"] + "_F"] = np.asarray(o["F"])
         if o.get("C") is not None:
             data[o["name"] + "_C"] = np.asarray(o["C"], np.float32)
+        for k in ("CC", "CB"):  # (diag_render: per-corner sRGB front / back colours)
+            if o.get(k) is not None:
+                data[o["name"] + "_" + k] = np.asarray(o[k], np.float32)
         if o.get("uv") is not None:
             data[o["name"] + "_UV"] = np.asarray(o["uv"], np.float32)
         if o.get("uv_corner") is not None:  # (per corner: welded faces whose seam vertices are shared keep each
@@ -11468,7 +11488,8 @@ def render(objects: list, prefix: str, views=("front", "side", "back"), resoluti
            "views": list(views), "resolution": resolution, "aspect": aspect, "textured": bool(textured), "suns": suns,
            "box": [list(map(float, box[0])), list(map(float, box[1]))] if box is not None else None,
            # (workbench shadows: stencil shadows of coarse cloth read as torn edges; HIFIPUSHIE_CLOTH_SHADOWS=0 off)
-           "shadows": bool(shadows) if shadows is not None else os.environ.get("HIFIPUSHIE_CLOTH_SHADOWS", "1") != "0"}
+           "shadows": bool(shadows) if shadows is not None else os.environ.get("HIFIPUSHIE_CLOTH_SHADOWS", "1") != "0",
+           **(extra or {})}
     jp = d / f"_{tag}_render.json"
     jp.write_text(json.dumps(job))
     # (render threads capped: the machine is shared; HIFIPUSHIE_BLENDER_THREADS, default 6)

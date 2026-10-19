@@ -135,6 +135,7 @@ bin/ = the repo's bin/ (review, review-ab, approve, capped, slot, hooks; /mnt/da
 | C9 | Never change code under an in-flight multi-round stage script | cloth.md:4473 | DOC |
 | C10 | Clothing is generic, staged like a pattern maker | memory clothing-artist-workflow; cloth guides | DOC |
 | C12 | Layer poke-through is measured on FACES, not vertices (coarse LODs cross between vertices; the vertex pierce read 0 on a visible fault) | garment_game.pierce_faces (triangle-triangle) in validated.GATE_MEASURES, self-test garment_game._selftest_pierce_faces (crossing between vertices caught, parallel sheets 2 mm apart not); tests/test_garment_game.py::test_pierce_faces_known_answers, tests/test_codified.py::test_gate_measures_are_validated; cloth.md "garment-game LOD poke-through 2026-10-19" | ENFORCED (the measure is validated). CHECK-PLANNED: the game-garment export refuses a LOD with rest crossings > 0 |
+| C13 | Construction reviews look at a DIAGNOSTIC render beside the clay one (flat panel colours, seam / fold lines, turned flaps, back faces red, strain map, layer pierce magenta): clay shading hides kinks, wrong-side folds and poke-through (Joe 2026-10-19) | diag_render (cloth.render(diag=[...]), diag_render.sheet / pattern_sheet_diag); gates.md LOOK; render.md "Diagnostic renders" | ENFORCED-BRANCH for the colours (tests/test_diag_render.py known answers read by pixel, branch diag-render); DOC for using it in reviews |
 
 ## Expressions, export, rig
 
