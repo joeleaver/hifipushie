@@ -184,3 +184,7 @@ to judge." It never sees the author's caption or numbers.
 - REVIEWS: keep / revert by a side-by-side review in ONE sitting (bin/review-ab); check the key against the descriptions.
   Counts from different reviewers are not comparable.
 - STATE pages (docs/state/) are the only required reading; notes are grep-only logs.
+- Isolate before tuning (2026-10-19): a visible fault (black specks, a seam, a flap) is first located (which mesh, which
+  face, front or back, ray-cast from the pixel) and its cause isolated by one-switch renders (AO off, flat emission,
+  culling on/off, one layer alone). Only then a fix. Turning look levers on an unlocated fault is how Garrett's nape
+  specks survived three levers that changed nothing (sh5).
