@@ -761,6 +761,52 @@ def apply(name: str, out: str | None = None, note: str = "", freckles: bool = Tr
     return r
 
 
+def stack_on_head(spec: dict, log: list) -> dict:
+    """(Garrett s9 / Tess rc2, coordinator: "the export's eyes read smaller and hooded, a dark band over the upper lids")
+    The stack's GEOMETRY-MEASURED layers (occlusion, occlusion_lid, crease: the blink map and the lid shading) belong to
+    the head they were baked on (stack.head). When the export's head differs (asset.approved_head swapped in the approved
+    head; the stack was measured on a lid_fold head), they are re-baked on the export's head: occlusion / occlusion_lid by
+    occlusion(), the crease by crease_map() (a head without lid_fold has no crease line: dropped). The colour layers stay."""
+    import tempfile
+    from pathlib import Path
+    from PIL import Image
+    from . import images, likeness_texture as lt
+    sk = spec.get("skin") or {}
+    st = sk.get("stack")
+    if not st or not any(st.get(k) for k in ("occlusion", "occlusion_lid", "crease")):
+        return spec
+    key = lt.head_key(spec["base"])
+    if st.get("head") == key:
+        return spec
+    at = sp.atlas(spec["base"])
+    H, W = at["shape"]
+    valid = sp.image(at, np.ones(len(at["ii"]), bool), False)
+    d = Path(tempfile.mkdtemp(prefix="hp_stack_"))
+
+    def save(v, fname, alpha=None):
+        a = np.zeros((H, W, 4), np.uint8)
+        a[..., :3] = sp._bleed(sp.image(at, (np.clip(sp._srgb(v), 0, 1) * 255 + 0.5).astype(np.uint8)), valid)
+        al = np.ones(len(at["ii"])) if alpha is None else alpha
+        a[..., 3] = sp._bleed(sp.image(at, (np.clip(al, 0, 1) * 255).astype(np.uint8)), valid)
+        Image.fromarray(a, "RGBA").save(d / fname)
+        return images.ingest(d / fname)
+    st = dict(st)
+    done = []
+    if st.get("occlusion"):
+        st["occlusion"] = save(occlusion(spec, at, "still"), "occlusion.png"); done.append("occlusion")
+    if st.get("occlusion_lid"):
+        st["occlusion_lid"] = save(occlusion(spec, at, "lid"), "occlusion_lid.png"); done.append("occlusion_lid")
+    if st.get("crease"):
+        cm = crease_map(spec, at)
+        if cm.max() > 0:
+            st["crease"] = save(np.tile(crease_tint(spec, at), (len(cm), 1)), "crease.png", alpha=cm); done.append("crease")
+        else:
+            st.pop("crease", None); st.pop("crease_strength", None); done.append("crease DROPPED (no lid_fold on this head)")
+    log.append(f"skin stack: measured on head {st.get('head')}, exported on {key}: {', '.join(done)} re-baked on the export's head")
+    st["head"] = key
+    return {**spec, "skin": {**sk, "stack": st}}
+
+
 def check(st) -> dict | None:
     from .spec import SpecError
     if st in (None, False, {}):

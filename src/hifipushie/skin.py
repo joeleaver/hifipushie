@@ -1026,7 +1026,7 @@ def _build(spec: dict, J: dict) -> dict:
     return out
 
 
-def export_recipe(spec: dict, out_dir, stem: str) -> dict | None:
+def export_recipe(spec: dict, out_dir, stem: str, baked: bool = False) -> dict | None:
     """What an engine needs beside the baked maps to shade this skin: the tiling micro-detail normal maps (written
     into out_dir; the unique maps hold everything down to the texel, the pores live here) and the scattering,
     coat and sheen numbers. Goes into the skin material's extras ("hifipushie_skin") and the export's json."""
@@ -1051,10 +1051,14 @@ def export_recipe(spec: dict, out_dir, stem: str) -> dict | None:
                  "micro_coarse": "knuckles, elbows, knees"}.get(name[5:], name[5:])
         details.append({"layer": name[5:], "normal": f.name, "period_m": float(tile.get("size", skin_swatch.PERIOD[sw])),
                         "depth_m": round(depth, 7), "cavity_tint": ly.get("color"), "cavity_opacity": ly.get("opacity"),
-                        "cavity_roughness": ly.get("roughness"), "where": where})
+                        "cavity_roughness": ly.get("roughness"), "where": where, "baked": baked})
     r, sc = base["subsurface_radius"], base["subsurface_scale"]
     return {
         "detail": details,
+        **({"detail_baked": "These details are ALREADY baked into the part's normal, roughness and base colour maps at the "
+                            "atlas's texel (any glTF viewer shows them). The tiling maps are an optional close-up extra: "
+                            "blend their normal only (no cavity tint / roughness: those are in the maps), faded in under "
+                            "~0.5 m."} if baked else {}),
         "detail_recipe": "Each detail normal map tiles: one repeat = period_m metres of skin. Lay it by world/object position "
                          "(triplanar by the normal: uv = position / period_m on the two axes across the dominant normal axis) or by "
                          "a uv with a known scale, blend its normal over the baked normal map (whiteout / reoriented), darken base "

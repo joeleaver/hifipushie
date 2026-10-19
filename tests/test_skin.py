@@ -551,3 +551,31 @@ if __name__ == "__main__":
         if name.startswith("test_"):
             fn()
             print("ok", name)
+
+
+def test_export_bakes_skin_detail_into_the_parts_maps():
+    """(r65, the lower lip's unbroken highlight) the skin's micro detail (the lip lines among it) is baked into the
+    part's own normal / roughness / colour maps: a GLB can carry a tiling detail map only as a note in the shading json,
+    which plain glTF viewers and blender_game don't apply. The export's Cycles bake keeps the detail on (hp_detail 1),
+    the recipe marks every detail baked, and the shading notes say the tiling maps are an optional normal-only extra."""
+    import inspect
+    import tempfile
+    from hifipushie import asset, shading, store
+    assert asset.BAKE_SKIN_DETAIL is True
+    src = inspect.getsource(asset)
+    assert 'ctx["bake_detail"] = BAKE_SKIN_DETAIL or' in src  # the bake job's "detail" flag (blender_scene: hp_detail)
+    with tempfile.TemporaryDirectory() as d:
+        home, store.HOME = store.HOME, __import__("pathlib").Path(d)
+        try:
+            spec = head_spec(tone={"fitzpatrick": 3}, age=60, lips={"dry": 0.5})
+            rec = skin.export_recipe(spec, d, "t", baked=True)
+            assert rec["detail"] and all(x["baked"] for x in rec["detail"]) and "ALREADY baked" in rec["detail_baked"]
+            assert any(x["layer"] == "micro_lip_lines" for x in rec["detail"]), [x["layer"] for x in rec["detail"]]
+            old = skin.export_recipe(spec, d, "t")
+            assert "detail_baked" not in old and not any(x["baked"] for x in old["detail"])
+            info = {"glb": "t.glb", "triangles": 1, "skin": {**rec, "part": "body"}, "parts": {"body": {}}, "atlases": {"a": {"parts": ["body"], "maps": {}}}}
+            n = shading.notes(info, "t")
+            txt = __import__("json").dumps(n)
+            assert "ALREADY in the baked normal" in txt and '"detail_baked"' in txt
+        finally:
+            store.HOME = home

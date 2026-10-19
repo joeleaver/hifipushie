@@ -272,6 +272,101 @@ def refine_box(ps: list, verts, faces, normals, voxel: float, r: dict):
     return V, F, N, int(len(fin))
 
 
+FACE_REFINE_VOXEL = 0.001  # (r68) m: the scene part carrying a kept approved face is meshed this fine over it
+FACE_REFINE_PAD = 0.012  # m round the kept face's clusters (the keep fades over 3 rings of quads past its groups)
+FACE_GAP_MAX_MM = 0.2  # median kept-face -> scene-mesh distance above this: the bake's source is off the export
+
+
+def kept_face(spec: dict) -> np.ndarray | None:
+    """World positions of the face the export KEEPS as the low poly itself (retopo.FACE_KEEP: GNM's expression-basis
+    eyes / mouth / nose / ears skin of a base's GNM head, one mesh or grafted), or None without one. The scene meshes
+    its part at the part's voxel (7 mm on a body): there the bake's source surface lay 1.0 mm median, 3-6 mm along the
+    alae, off the kept face (game_ready.md r67), which is what face_refine fixes."""
+    from . import base as basemod, retopo
+    from .spec import expand_mirror
+    b = spec.get("base") or {}
+    if not retopo.FACE_KEEP or not b.get("head") or (b.get("head") or {}).get("source", "gnm") != "gnm":
+        return None
+    h = basemod.head_of(expand_mirror(spec), b)
+    if h is None:
+        return None
+    g = basemod._gnm_data()
+    V = np.asarray(h["verts"], float)
+    ids = np.asarray(h["skin_index"], int) if h.get("skin_index") is not None else np.arange(len(V))
+    m = np.zeros(len(V), bool)
+    for k in retopo.FACE_KEEP_GROUPS:
+        grp = np.asarray(g["groups"][k]) > 0.5
+        ok = (ids >= 0) & (ids < len(grp))
+        m[ok] |= grp[ids[ok]]
+    return V[m] if m.any() else None
+
+
+def face_refine(P: np.ndarray, voxel: float, cell: float = 0.01) -> list:
+    """Refine boxes (parts.<p>.refine's form) over a kept face's points P: one box per cluster (points within `cell`
+    of each other: the face, each ear), padded by FACE_REFINE_PAD, at FACE_REFINE_VOXEL. [] when the part is no
+    coarser than that."""
+    from scipy import ndimage
+    if P is None or not len(P) or voxel <= FACE_REFINE_VOXEL * 1.0001:
+        return []
+    a = P.min(0) - cell
+    ijk = np.floor((P - a) / cell).astype(int)
+    occ = np.zeros(ijk.max(0) + 2, bool)
+    occ[tuple(ijk.T)] = True
+    lab, n = ndimage.label(occ, np.ones((3, 3, 3)))
+    which = lab[tuple(ijk.T)]
+    out = []
+    for c in range(1, n + 1):
+        Q = P[which == c]
+        if len(Q) < 8:
+            continue
+        out.append({"lo": np.round(Q.min(0) - FACE_REFINE_PAD, 4).tolist(),
+                    "hi": np.round(Q.max(0) + FACE_REFINE_PAD, 4).tolist(), "voxel": FACE_REFINE_VOXEL, "auto": "face"})
+    return out
+
+
+def point_mesh_distance(P: np.ndarray, V: np.ndarray, F: np.ndarray, k: int = 24) -> np.ndarray:
+    """Distance from each point to a triangle mesh (closest point on the k triangles with the nearest centroids;
+    Ericson's region test)."""
+    from scipy.spatial import cKDTree
+    P, V, F = np.asarray(P, float), np.asarray(V, float), np.asarray(F, int)
+    T = V[F]
+    k = min(k, len(F))
+    _, J = cKDTree(T.mean(1)).query(P, k=k)
+    J = J.reshape(len(P), k)
+    A, B, C = T[J, 0], T[J, 1], T[J, 2]
+    p = P[:, None, :]
+    ab, ac, ap = B - A, C - A, p - A
+    d1, d2 = (ab * ap).sum(-1), (ac * ap).sum(-1)
+    bp = p - B
+    d3, d4 = (ab * bp).sum(-1), (ac * bp).sum(-1)
+    cp = p - C
+    d5, d6 = (ab * cp).sum(-1), (ac * cp).sum(-1)
+    va, vb, vc = d3 * d6 - d5 * d4, d5 * d2 - d1 * d6, d1 * d4 - d3 * d2
+    den = np.where(np.abs(va + vb + vc) < 1e-30, 1e-30, va + vb + vc)
+    v, w = vb / den, vc / den
+    Q = A + ab * v[..., None] + ac * w[..., None]  # inside the face
+    def seg(X, Y, t):
+        return X + (Y - X) * np.clip(t, 0, 1)[..., None]
+    eps = 1e-30
+    r_ab = (vc <= 0) & (d1 >= 0) & (d3 <= 0)
+    Q = np.where(r_ab[..., None], seg(A, B, d1 / np.where(np.abs(d1 - d3) < eps, eps, d1 - d3)), Q)
+    r_ac = (vb <= 0) & (d2 >= 0) & (d6 <= 0)
+    Q = np.where(r_ac[..., None], seg(A, C, d2 / np.where(np.abs(d2 - d6) < eps, eps, d2 - d6)), Q)
+    r_bc = (va <= 0) & ((d4 - d3) >= 0) & ((d5 - d6) >= 0)
+    t_bc = (d4 - d3) / np.where(np.abs((d4 - d3) + (d5 - d6)) < eps, eps, (d4 - d3) + (d5 - d6))
+    Q = np.where(r_bc[..., None], seg(B, C, t_bc), Q)
+    Q = np.where(((d1 <= 0) & (d2 <= 0))[..., None], A, Q)
+    Q = np.where(((d3 >= 0) & (d4 <= d3))[..., None], B, Q)
+    Q = np.where(((d6 >= 0) & (d5 <= d6))[..., None], C, Q)
+    return np.linalg.norm(Q - p, axis=-1).min(1)
+
+
+def face_gap(P: np.ndarray, verts, faces) -> dict:
+    """The kept face's distance to a scene part's mesh, in mm (median, p90, max)."""
+    d = point_mesh_distance(P, verts, faces) * 1000
+    return {"median": float(np.median(d)), "p90": float(np.percentile(d, 90)), "max": float(d.max()), "n": int(len(d))}
+
+
 def _frame(ps: list, voxel: float, pad: float = 0.03):
     """A grid around a stream's primitives, snapped to a lattice of `voxel` fixed in space."""
     own = [q for q in ps if q.kind != "shell" and q.op in ("add", "intersect")]
@@ -320,6 +415,7 @@ def objects(name: str, resolution: int = 256, log: list | None = None) -> tuple[
     from . import hides as hidesmod
     hide = hidesmod.rules(defs)
     objs, meshed = [], 0
+    kept_P = False  # (the kept face's points: worked out once, for the part that carries the base)
     for key, ps in ctx["streams"].items():
         pf = pf_of.get(key)
         if pf is None:  # a scene part: its own voxel, from its thinnest element
@@ -336,6 +432,15 @@ def objects(name: str, resolution: int = 256, log: list | None = None) -> tuple[
             fr = _frame(ps, min(vx, float(np.round(max(thinnest(own) / 2.5, ext / 400), 4))))
         M0 = ctx["prefabs"][pf]["instances"][ctx["prefabs"][pf]["bake"]] if pf else None
         refine = (defs.get(key) or {}).get("refine") if pf is None else None
+        face = None
+        if pf is None and any(q.kind == "base" and q.name == "base" for q in ps):  # (r68) the part carrying a base: refined over the face
+            # the export keeps (whatever head that is), BEFORE the spec's own boxes (a finer lid / lip box still wins)
+            if kept_P is False:
+                kept_P = kept_face(spec)
+            face = kept_P
+            auto = face_refine(face, fr[1])
+            if auto:
+                refine = auto + list(refine or [])
         if pf is None:
             h = _hash(ps, fr, json.dumps(refine, sort_keys=True) if refine else "")
         else:  # the same shape in its own frame wherever its first instance stands: keyed on the definition
@@ -370,6 +475,12 @@ def objects(name: str, resolution: int = 256, log: list | None = None) -> tuple[
                 normals /= np.maximum(np.linalg.norm(normals, axis=1, keepdims=True), 1e-12)
             np.savez(f, verts=verts.astype(np.float32), faces=faces, normals=normals.astype(np.float32))
             meshed += 1
+        if face is not None and len(face):  # (r68) the gate: the bake's source must be the export's face here
+            z = np.load(f)
+            gp = face_gap(face, z["verts"], z["faces"])
+            log.append(f"{key}: kept face -> scene mesh {gp['median']:.2f} mm median, p90 {gp['p90']:.2f}, max "
+                       f"{gp['max']:.1f} ({gp['n']} points)" + (f"  WARNING: over {FACE_GAP_MAX_MM} mm: the bake's source "
+                                                                f"is not the export's face" if gp["median"] > FACE_GAP_MAX_MM else ""))
         rule = hide.get(ctx["origin"][key]) if pf is None else None
         cov = hidesmod.covers(rule, {ctx["origin"][k]: q for k, q in ctx["streams"].items()
                                      if k not in pf_of}) if rule else []

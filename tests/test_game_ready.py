@@ -638,6 +638,24 @@ def test_bake_cage_is_per_vertex():
     assert np.allclose(cg[:, :2], V[:, :2])
 
 
+def test_bake_cage_stops_short_of_the_opposite_wall():
+    """(r64) a cage vertex never reaches past its own part's opposite wall (Tess rc2p: the 2-voxel floor, ~14 mm on
+    "body", crossed the alar groove and the nostril rims; their texels baked the far wall: a dark blocky patch)."""
+    import numpy as np
+    from hifipushie import asset
+    q = np.array([[-1, -1], [1, -1], [1, 1], [-1, 1]], float) * 0.02
+    V = np.r_[np.c_[q, np.zeros(4)], np.c_[q, np.full(4, 0.005)]]   # a floor (up) and a ceiling 5 mm above it (down)
+    T = np.array([[0, 1, 2], [0, 2, 3], [4, 6, 5], [4, 7, 6]])
+    N = np.r_[np.tile([0, 0, 1.0], (6, 1)), np.tile([0, 0, -1.0], (6, 1))]
+    p = {"verts": V, "corner_vert": T.ravel(), "normal": N}
+    cg = asset.cage_verts(p, np.zeros(4 + 12), 0.007)   # stray 0, voxel 7 mm: the old cage was 14 mm
+    off = np.abs(cg[:, 2] - V[:, 2])
+    assert np.all(off <= asset.CAGE_CLEAR * 0.005 + 1e-9) and np.all(off > 0.001), off
+    # an open sheet keeps its full 2-voxel cage
+    p1 = {"verts": V[:4], "corner_vert": T[:2].ravel(), "normal": N[:6]}
+    assert np.allclose(asset.cage_verts(p1, np.zeros(2 + 6), 0.007)[:, 2], 0.014)
+
+
 def _grid_sheet(nx, ny, w, h, z):
     """A sheet over [0, w] x [0, h], height z(x, y), normals +z (the outward side), triangles in rows."""
     import numpy as np
@@ -1144,3 +1162,225 @@ def test_frozen_garments_keep_their_over_chain_in_the_export():
     log = []
     assert asset.garment_over({"cloth": {"a": {}, "b": {}}}, log.append) == {"a": None, "b": None}
     assert any(l.startswith("WARNING garment layers") for l in log)
+
+
+
+
+def test_skin_folds_over_a_millimetre_are_head_form():
+    """(coordinator, Garrett s8) the approved-head rule for skin.folds: relief <= 1 mm (a groove) ships; a fold that
+    changes form (nasolabial roll 1.3 mm at amount 1) is clamped to 1 mm with a WARNING, unless the approved head has it."""
+    from hifipushie import asset
+    log = []
+    sp = {"skin": {"folds": {"glabella": 1.0, "nasolabial": 1.0}}}
+    out = asset.fold_form_gate(sp, log)
+    assert out["skin"]["folds"]["glabella"] == 1.0
+    assert asset.fold_form("nasolabial", 1.0) > 1.0
+    assert abs(asset.fold_form("nasolabial", out["skin"]["folds"]["nasolabial"]) - 1.0) < 1e-6
+    assert any(m.startswith("WARNING head: skin.folds.nasolabial") for m in log)
+    log = []
+    out = asset.fold_form_gate(sp, log, approved={"nasolabial": 1.0})
+    assert out["skin"]["folds"]["nasolabial"] == 1.0 and not any("WARNING" in m for m in log)
+
+
+def test_export_head_is_the_approved_head():
+    """(Garrett s7) base.head_approved names an approval; approved_head composes that model's base.head (the build keeps
+    only "attach") and logs what it replaced (v6 carried s21's unapproved lid_fold + shape); an unknown approval raises."""
+    import json
+    from hifipushie import asset
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        (d / "gp").mkdir()
+        (d / "gp" / "spec.json").write_text(json.dumps({"base": {"head": {"identity": [1, 2], "attach": "native"}}}))
+        (d / "approved.json").write_text(json.dumps({"approved": {"head/x": {"model": "gp"}}}))
+        build = {"base": {"head_approved": "head/x", "head": {"identity": [1, 2], "attach": "seam",
+                                                             "lid_fold": {"thick": 1.2}, "shape": {"eye_bag": {}}}}}
+        log = []
+        out = asset.approved_head(build, log, d / "approved.json")
+        assert out["base"]["head"] == {"identity": [1, 2], "attach": "seam"}, out["base"]["head"]
+        assert "lid_fold" in build["base"]["head"] and "lid_fold, shape" in log[-1]
+        try:
+            asset.approved_head({"base": {"head_approved": "head/nope", "head": {}}}, [], d / "approved.json")
+            raise AssertionError("an unknown approval must raise")
+        except ValueError:
+            pass
+
+
+def test_stack_lid_layers_follow_the_export_head():
+    """(Garrett s9 / Tess rc2: the export's upper lids carried a dark crease band from a lid_fold head the approved head
+    does not have) the stack's occlusion / occlusion_lid / crease are re-baked on the export's head; a head without
+    lid_fold drops the crease; a stack measured on the same head is left alone."""
+    from unittest import mock
+    import numpy as np
+    from hifipushie import skin_layers as sl, likeness_texture as lt
+    spec = {"base": {"head": {"identity": [0.1]}}, "skin": {"stack": {"head": "other", "occlusion": "o", "occlusion_lid": "ol",
+                                                                       "crease": "c", "crease_strength": 1.6, "layers": []}}}
+    at = {"shape": (4, 4), "ii": np.arange(4), "jj": np.arange(4)}
+    with mock.patch.object(sl.sp, "atlas", return_value=at), mock.patch.object(sl.sp, "image", side_effect=lambda at_, v, *a: np.zeros((4, 4) + np.shape(v)[1:], np.uint8)), \
+            mock.patch.object(sl.sp, "_bleed", side_effect=lambda a, v: a), mock.patch.object(sl, "occlusion", return_value=np.ones((4, 3))), \
+            mock.patch.object(sl, "crease_map", return_value=np.zeros(4)), mock.patch("hifipushie.images.ingest", return_value="new"):
+        log = []
+        out = sl.stack_on_head(spec, log)
+        st = out["skin"]["stack"]
+        assert st["occlusion"] == "new" and st["occlusion_lid"] == "new" and "crease" not in st and "crease_strength" not in st
+        assert st["head"] == lt.head_key(spec["base"]) and "DROPPED" in log[0]
+        assert sl.stack_on_head(out, []) is out   # same head: untouched
+
+
+def test_push_under_takes_a_small_deep_flap_through_its_cover():
+    """(r65, rc2p's coat speck) a small flap of the under garment 15 mm through its cover, ringed by faces under the
+    cover, is a poke (pushed under), though deeper than LOD_UNDER_FACE_DEEP; the same depth at an open edge (neighbours
+    with no cover) is left alone."""
+    import numpy as np
+    from hifipushie import lods
+    # faces: 0-1 the flap (deep), 2-5 its ring (under), 6 a deep face whose neighbour 7 has no cover
+    F = np.array([[0, 1, 2], [1, 3, 2], [0, 2, 4], [2, 3, 5], [1, 0, 6], [3, 1, 6], [7, 8, 9], [8, 10, 9]])
+    deep_t = np.array([-0.015, -0.015, 0.003, 0.003, 0.003, 0.003, -0.015, np.inf])
+    t = np.where(deep_t > -lods.LOD_UNDER_FACE_DEEP, deep_t, np.inf)
+    r = lods.ringed_islands(F, deep_t, t, 11)
+    assert r.tolist() == [True, True, False, False, False, False, False, False], r
+    assert not lods.ringed_islands(F, deep_t, t, 11, most=1)[:2].any()  # an island over the size limit stays
+
+
+def test_missed_texels_fill_from_the_surface_not_the_atlas():
+    """(r66) a run of texels whose bake ray missed takes its colour from its 3D neighbours on the same part, not from
+    whatever lies next to it in the atlas (rc2p/q's blocky nostril patch: a tiny island beside a big one)."""
+    import numpy as np
+    from hifipushie import asset
+    size = 16
+    ys, xs = np.mgrid[0:size, 0:size]
+    ys, xs = ys.ravel(), xs.ravel()
+    # columns 0-7: the big island, a plane at z = 0 (x = column); columns 8-15: another island 0.5 m away in space
+    P = np.stack([xs * 0.001, ys * 0.001, np.where(xs < 8, 0.0, 0.5)], 1)
+    col = np.zeros((size, size, 4))
+    col[:, :8] = [0.8, 0.6, 0.5, 1]   # skin
+    col[:, 8:] = [0.1, 0.0, 0.0, 1]   # the far island: dark
+    miss = (xs >= 5) & (xs < 8)       # the big island's last 3 columns missed: in the atlas, column 8 (dark) is nearer
+    col[ys[miss], xs[miss], 3] = 0
+    baked = col[..., 3] > 0
+    given = {"color": asset._dilate(col, baked)}
+    assert given["color"][0, 7, 0] < 0.2  # the atlas fill: dark
+    out = asset._fill_missed_3d(given, baked, miss, ys, xs, P, np.zeros(len(P), int), [])
+    assert np.allclose(out["color"][ys[miss], xs[miss], :3], [0.8, 0.6, 0.5])
+
+
+def test_push_under_takes_a_flap_with_sideways_normals_through_its_cover():
+    """(r66) rc2q's coat speck: a sweater flap 17-23 mm out of the coat's back whose vertex normals point sideways, so
+    no cover lies along them: lods.stray_flaps finds it (outside the cover's nearest surface, ringed by vertices under
+    it) and push_under_layers takes it in; an open edge (no cover beyond the garment's edge) stays."""
+    import numpy as np
+    from hifipushie import lods
+
+    def grid(n, h, z, flap=None):
+        x, y = np.meshgrid(np.linspace(0, 0.2, n), np.linspace(0, h, n))
+        V = np.stack([x.ravel(), y.ravel(), np.full(x.size, z)], 1)
+        if flap is not None:
+            V[flap, 2] = 0.02          # out through the cover at z = 0.01
+            V[flap, 0] += 0.004
+        F = []
+        for i in range(n - 1):
+            for j in range(n - 1):
+                a = i * n + j
+                F += [[a, a + 1, a + n + 1], [a, a + n + 1, a + n]]
+        F = np.asarray(F)
+        N = np.zeros_like(V)
+        N[:, 2] = 1.0
+        if flap is not None:
+            N[flap] = [1.0, 0, 0]       # sideways
+        return {"verts": V, "corner_vert": F.ravel(), "normal": N[F.ravel()]}
+    n = 11
+    mid = 5 * n + 5
+    under = grid(n, 0.2, 0.0, flap=[mid])
+    cover = grid(n, 0.2, 0.01)
+    fi, fs, fn = lods.stray_flaps(under, [cover])
+    assert fi.tolist() == [mid]
+    rep = lods.push_under_layers({"u": under, "c": cover}, {"u": ["c"]}, gap=0.002)
+    assert rep["u"]["flaps"] == 1
+    # a cover over only half of the under layer: its uncovered edge has no cover beyond it, nothing is a flap
+    half = grid(n, 0.1, 0.01)
+    under2 = grid(n, 0.2, 0.0, flap=[9 * n + 5])
+    assert len(lods.stray_flaps(under2, [half])[0]) == 0
+
+
+def test_push_under_never_moves_a_flipped_normal_out_through_its_cover():
+    """(r67) rc2s's coat speck was made BY the push: a sweater fold's vertex normals pointed into the body, so the coat
+    (outside it) read as behind it, a poke, and the vertex was moved 'in' along that normal = 5-22 mm out through the
+    coat's back. under_depth now orients outward normals by the nearest cover's facing, and a poking face moves only
+    corners within 60 deg of it. A layer entirely under its cover stays under it."""
+    import numpy as np
+    from hifipushie import lods
+    n = 11
+    x, y = np.meshgrid(np.linspace(0, 0.2, n), np.linspace(0, 0.2, n))
+
+    def sheet(z):
+        V = np.stack([x.ravel(), y.ravel(), np.full(x.size, z)], 1)
+        F = []
+        for i in range(n - 1):
+            for j in range(n - 1):
+                a = i * n + j
+                F += [[a, a + 1, a + n + 1], [a, a + n + 1, a + n]]
+        F = np.asarray(F)
+        N = np.zeros_like(V)
+        N[:, 2] = 1.0
+        return V, F, N
+    V, F, N = sheet(0.0)
+    fold = [5 * n + 5, 5 * n + 6]
+    V[fold, 2] = 0.007                   # 3 mm under the cover at z = 0.01
+    N[fold] = [0.0, 0.3, -0.95]          # normals into the body
+    under = {"verts": V, "corner_vert": F.ravel(), "normal": N[F.ravel()]}
+    Vc, Fc, Nc = sheet(0.01)
+    cover = {"verts": Vc, "corner_vert": Fc.ravel(), "normal": Nc[Fc.ravel()]}
+    parts = {"u": under, "c": cover}
+    lods.push_under_layers(parts, {"u": ["c"]}, gap=0.002)
+    assert np.asarray(parts["u"]["verts"])[:, 2].max() <= 0.008 + 1e-9
+
+
+def _bump_part():
+    """A head-sized ball with a nose-sized bump: the bump is finer than a body's 7 mm scene voxel."""
+    from hifipushie import sdf
+    from hifipushie.spec import compile_prims
+    blobs = {"head": {"at": [0, 0, 0], "size": [0.08, 0.08, 0.08]}}
+    for i, x in enumerate(np.arange(-0.012, 0.0121, 0.006)):  # a patch of 2-3 mm lumps (alae, lips, lids)
+        for j, z in enumerate(np.arange(-0.012, 0.0121, 0.006)):
+            blobs[f"lump{i}{j}"] = {"at": [float(x), -0.08, float(z)], "size": [0.0025, 0.003, 0.0025], "blend": 0.0015}
+    spec = {"joints": {}, "bones": {}, "blobs": blobs}
+    return sdf.streams(compile_prims(spec))[0]
+
+
+def test_scene_auto_refine_brings_the_part_mesh_onto_the_kept_face():
+    """(r68) a kept approved face on a part meshed at the body's voxel was a bake source 1 mm median (3-6 mm at the
+    alae) off the export: scene.face_refine boxes over the kept face's points take the scene mesh to within
+    scene.FACE_GAP_MAX_MM median there. Fails without the boxes."""
+    from hifipushie import scene, sdf, store
+    ps = _bump_part()
+
+    def mesh(v, lo=None, hi=None):
+        fr = scene._frame(ps, v)
+        if lo is not None:
+            a = np.floor(np.asarray(lo) / v) * v
+            fr = (a, v, np.ceil((np.asarray(hi) - a) / v).astype(int) + 1)
+        field, _ = sdf.PartGrid().update(ps, fr)
+        V, F, N, _ = store._mesh_part(ps, field, fr[0], fr[1], [], {})
+        return V, F, N
+    # the "kept face": exact-surface points over the nose (a fine mesh's projected vertices)
+    Vf, Ff, _ = mesh(0.0004, [-0.03, -0.1, -0.025], [0.03, -0.06, 0.025])
+    P = Vf[(np.abs(Vf[:, 0]) < 0.014) & (np.abs(Vf[:, 2]) < 0.014) & (Vf[:, 1] < -0.07)]
+    V, F, N = mesh(0.007)
+    before = scene.face_gap(P, V, F)
+    boxes = scene.face_refine(P, 0.007)
+    assert len(boxes) == 1 and boxes[0]["voxel"] == scene.FACE_REFINE_VOXEL
+    for r in boxes:
+        V, F, N, nf = scene.refine_box(ps, V, F, N, 0.007, r)
+        assert nf > 0
+    after = scene.face_gap(P, V, F)
+    assert before["median"] > scene.FACE_GAP_MAX_MM, before
+    assert after["median"] < scene.FACE_GAP_MAX_MM, after
+    assert scene.face_refine(P, scene.FACE_REFINE_VOXEL) == []  # (a part already that fine: nothing to do)
+
+
+def test_point_mesh_distance_is_exact_on_a_triangle():
+    from hifipushie import scene
+    V = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0.0]])
+    F = np.array([[0, 1, 2]])
+    P = np.array([[0.2, 0.2, 0.5], [2, 0, 0], [-1, -1, 0], [0.5, 0.5, 1.0], [0.5, -1, 0]])
+    d = scene.point_mesh_distance(P, V, F)
+    assert np.allclose(d, [0.5, 1.0, np.sqrt(2), 1.0, 1.0]), d

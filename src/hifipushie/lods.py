@@ -12,6 +12,9 @@ vertices, so they read them exactly. Hair cards and the eyelash ribbons are card
 decimated here (hair LODs are its card tiers)."""
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 import numpy as np
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
@@ -876,6 +879,8 @@ LOD_UNDER_FACES = True  # (r57) push_under_layers also tests points inside faces
 LOD_UNDER_FACE_GRID = 4  # (r58) ... a barycentric grid with this many steps per edge (corners left out) + the centroid (1 = the centroid alone):
 # rc2h LOD2 showed a hexagonal sweater patch through the coat at her right armhole (flat-ID render + a ray pick: sweater
 # 5 mm in front of the coat) where every vertex AND centroid was under it: the coat bends between them
+LOD_UNDER_ORIENT = True  # (r67) under_depth: outward normals agree with the nearest cover's facing
+LOD_UNDER_FACE_ALIGN = 0.5  # (r67) a poking face moves only corners whose normal is within 60 deg of its own
 LOD_UNDER_FACE_DEEP = 0.008  # m: (r58) a face point more than this outside its cover is not a poke but a face that runs
 # out from under the cover's edge (a sweater cuff past the coat sleeve: -20 mm at the grid points), left alone
 LOD_UNDER_FACE_DEEP_FAR = 0.015  # m: (r61) ... at the far LOD (ratio below LOD_SMALL_FAR_RATIO: LOD3), where a coarse cover
@@ -918,7 +923,31 @@ def under_depth(p: dict, covers: list[dict], reach: float = LOD_UNDER_REACH):
     through), nan where no cover is in reach."""
     vid, N, fol = _vertex_out(p)
     V = np.asarray(p["verts"], np.float64)
+    if LOD_UNDER_ORIENT and len(vid) and covers:  # (r67) a fold's vertex normal can point INTO the body: its cover then
+        # reads as behind it (a poke) and the push moved it out (rc2s LOD0: 2 sweater vertices 5 mm out of the coat's
+        # back, none before the push). Out = the side the nearest cover surface faces.
+        Q, QN = _cover_samples(covers)
+        d, j = cKDTree(Q).query(V[vid], distance_upper_bound=reach)
+        ok = np.isfinite(d)
+        flip = ok & ((N * QN[np.where(ok, j, 0)]).sum(1) < 0)
+        if flip.any():
+            N = np.where(flip[:, None], -N, N)
     return vid, N, fol, cover_depth(V[vid], N, covers, reach)
+
+
+def _cover_samples(covers: list[dict]) -> tuple[np.ndarray, np.ndarray]:
+    """Points on the covers' OUTER shells (triangle centres and corners) with their faces' outward normals."""
+    Q, QN = [], []
+    for c in covers:
+        cv = np.asarray(c["corner_vert"], np.int64)
+        if c.get("shell"):
+            cv = cv[:3 * int(c["shell"]["outer"])]
+        T = np.asarray(c["verts"], np.float64)[cv.reshape(-1, 3)]
+        n = np.cross(T[:, 1] - T[:, 0], T[:, 2] - T[:, 0])
+        n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
+        Q += [T.mean(1), T.reshape(-1, 3)]
+        QN += [n, np.repeat(n, 3, 0)]
+    return np.concatenate(Q), np.concatenate(QN)
 
 
 def cover_depth(P: np.ndarray, N: np.ndarray, covers: list[dict], reach: float = LOD_UNDER_REACH) -> np.ndarray:
@@ -997,6 +1026,117 @@ def face_grid(k: int) -> np.ndarray:
     return np.r_[np.full((1, 3), 1.0 / 3.0), B[B.max(1) < 1.0 - 1e-9]]
 
 
+LOD_UNDER_ISLAND = 24  # (r65) faces: a patch of faces deeper than LOD_UNDER_FACE_DEEP outside the cover is still a poke
+# when it is a small island (at most this many faces) and every face around it is under the cover (rc2p LOD0: a 10-face
+# sweater flap 8-22 mm through the coat's upper back, kept as "a face that runs outside" at every export); 0 = off
+
+
+def ringed_islands(F: np.ndarray, deep_t: np.ndarray, t: np.ndarray, nv: int, most: int | None = None) -> np.ndarray:
+    """(r65) faces (rows of F) that stand deeper outside their cover than the face test trusts (deep_t < 0 where t, the
+    trusted depth, is inf) but form a small island (<= most faces, sharing vertices) whose every neighbouring face is
+    under the cover (t finite, >= 0): a flap poking through, not a garment running outside its cover (an open front's
+    edge has neighbours with no cover: kept)."""
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+    most = LOD_UNDER_ISLAND if most is None else most
+    deep = np.isfinite(deep_t) & (deep_t < 0) & ~np.isfinite(t)
+    out = np.zeros(len(F), bool)
+    if not deep.any() or not most:
+        return out
+    di = np.flatnonzero(deep)
+    A = coo_matrix((np.ones(3 * len(di)), (np.repeat(np.arange(len(di)), 3), F[di].ravel())), shape=(len(di), nv)).tocsr()
+    _, lab = connected_components(A @ A.T, directed=False)
+    size = np.bincount(lab)
+    vlab = np.full(nv, -1)
+    vlab[F[di].ravel()] = np.repeat(lab, 3)
+    rest = np.flatnonzero(~deep)
+    touch = vlab[F[rest]]  # each other face's island (by any corner), -1 = none
+    ok = np.ones(len(size), bool)
+    bad_n = ~(np.isfinite(t[rest]) & (t[rest] >= 0))  # a neighbour not under the cover
+    for k in range(3):
+        m = (touch[:, k] >= 0) & bad_n
+        ok[touch[m, k]] = False
+    ringed = ok & (size <= most) & (np.bincount(vlab[vlab >= 0], minlength=len(size)) > 0)
+    out[di] = ringed[lab]
+    return out
+
+
+LOD_UNDER_STRAY = 0.03  # m (r66): an under-layer vertex with NO cover along its own normal (within the reach) but outside
+# its cover's nearest surface (signed by the cover's outward normal) by up to this, in a small island ringed by vertices
+# under the cover, is a flap through it: moved in along the cover's normal to the gap under it. rc2p/q's coat speck: a
+# sweater flap 17-23 mm out of the coat's back whose vertex normals point sideways (0.78, -0.55, 0.28): along them no
+# cover in reach, so neither the vertex nor the face test ever saw it (game_ready.md r66). 0 = off.
+
+
+def stray_flaps(p: dict, covers: list[dict], reach: float = LOD_UNDER_REACH, far: float | None = None,
+                most: int | None = None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """(r66) push_under_layers' flaps: (vertex ids, how far outside, the cover's outward normal there). Candidates are
+    outward vertices with no cover along their normal within `reach` (under_depth nan); "outside" = the nearest cover
+    sample (outer-shell triangle centres and corners, normals from their faces) within `far` has the vertex on its outward
+    side. Kept only as small islands (<= most vertices, by the part's faces) every neighbour of which lies under a cover."""
+    far = LOD_UNDER_STRAY if far is None else far
+    most = LOD_UNDER_ISLAND if most is None else most
+    e = (np.zeros(0, np.int64), np.zeros(0), np.zeros((0, 3)))
+    if not far or not covers:
+        return e
+    vid, N, fol, t = under_depth(p, covers, reach)
+    cand = vid[~np.isfinite(t)]
+    if not len(cand):
+        return e
+    Q, QN = [], []
+    for c in covers:
+        cv = np.asarray(c["corner_vert"], np.int64)
+        if c.get("shell"):
+            cv = cv[:3 * int(c["shell"]["outer"])]
+        T = np.asarray(c["verts"], np.float64)[cv.reshape(-1, 3)]
+        n = np.cross(T[:, 1] - T[:, 0], T[:, 2] - T[:, 0])
+        n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
+        Q += [T.mean(1), T.reshape(-1, 3)]
+        QN += [n, np.repeat(n, 3, 0)]
+    Q, QN = np.concatenate(Q), np.concatenate(QN)
+    V = np.asarray(p["verts"], np.float64)
+    d, j = cKDTree(Q).query(V[cand], distance_upper_bound=far)
+    ok = np.isfinite(d)
+    j = np.where(ok, j, 0)
+    s = ((V[cand] - Q[j]) * QN[j]).sum(1)
+    out = ok & (s > 0)
+    if not out.any():
+        return e
+    cand, s, nq = cand[out], s[out], QN[j[out]]
+    tq = cover_depth(V[cand], nq, covers, far)  # and the cover really lies behind it along that normal (an open front's
+    sure = np.isfinite(tq) & (tq < 0)           # edge, beside a lapel, has none there)
+    cand, s, nq = cand[sure], -tq[sure], nq[sure]
+    if not len(cand):
+        return e
+    F = np.asarray(p["corner_vert"], np.int64).reshape(-1, 3)
+    if p.get("shell"):
+        F = F[:int(p["shell"]["outer"])]
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+    nv = len(V)
+    E_ = np.concatenate([F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]])
+    A = coo_matrix((np.ones(len(E_)), (E_[:, 0], E_[:, 1])), shape=(nv, nv)).tocsr()
+    A = ((A + A.T) > 0).tocsr()
+    # the island: these with the vertices already poking (cover inside them along their normal: the vertex test
+    # moves those); every vertex next to it must lie under the cover
+    pk = vid[np.isfinite(t) & (t < 0)]
+    mem_ = np.union1d(cand, pk)
+    sub = A[mem_][:, mem_]
+    _, lab = connected_components(sub, directed=False)
+    under = np.zeros(nv, bool)
+    under[vid[np.isfinite(t) & (t >= 0)]] = True
+    keep = np.zeros(len(mem_), bool)
+    for k in range(lab.max() + 1):
+        mem = mem_[lab == k]
+        if len(mem) > most or not np.isin(mem, cand).any():
+            continue
+        ring = np.setdiff1d(A[mem].indices, mem)
+        if len(ring) and under[ring].all():
+            keep[lab == k] = True
+    k_ = np.isin(cand, mem_[keep])
+    return cand[k_], s[k_], nq[k_]
+
+
 def push_under_layers(parts: dict, stack: dict, gap: float = LOD_UNDER_GAP, reach: float = LOD_UNDER_REACH,
                       rounds: int = 3, masks: dict | None = None, face_deep: float | None = None) -> dict:
     """(r53) After each garment is decimated ALONE for a LOD, the under garments are put back under the decimated
@@ -1019,6 +1159,24 @@ def push_under_layers(parts: dict, stack: dict, gap: float = LOD_UNDER_GAP, reac
         moved = np.zeros(len(V), bool)
         poke0 = None
         pokef = 0
+        nflap = 0
+        if os.environ.get("HP_PUSH_DUMP"):  # (r67) stray_flaps' input as the export sees it (diagnosis)
+            import pickle
+            Path(os.environ["HP_PUSH_DUMP"]).mkdir(parents=True, exist_ok=True)
+            with open(Path(os.environ["HP_PUSH_DUMP"]) / f"push_{un}_{len(p['corner_vert'])}.pkl", "wb") as fh:
+                pickle.dump({"p": p, "covers": covers, "ovs": ovs, "gap": gap, "reach": reach}, fh)
+        if LOD_UNDER_STRAY:  # (r66) flaps through the cover that no normal-line test sees: in along the cover's normal
+            fi, fs, fn = stray_flaps(p, covers, reach)
+            if len(fi):
+                dv = np.zeros_like(V)
+                dv[fi] = -(fs + gap)[:, None] * fn
+                fol0 = _vertex_out(p)[2]
+                if len(fol0):
+                    dv[fol0[:, 0]] = dv[fol0[:, 1]]
+                    moved[fol0[:, 0]] |= np.isin(fol0[:, 1], fi)
+                V = V + dv
+                moved[fi] = True
+                nflap = len(fi)
         for _ in range(rounds):
             p["verts"] = V
             vid, N, fol, t = under_depth(p, covers, reach)
@@ -1048,10 +1206,19 @@ def push_under_layers(parts: dict, stack: dict, gap: float = LOD_UNDER_GAP, reac
                     B = face_grid(LOD_UNDER_FACE_GRID)
                     tf = cover_depth(np.einsum("bk,fkd->fbd", B, V[F_]).reshape(-1, 3), np.repeat(nf, len(B), 0), covers,
                                      reach).reshape(len(F_), len(B))
-                    tf = np.where(np.isfinite(tf) & (tf > -(face_deep or LOD_UNDER_FACE_DEEP)), tf, np.inf).min(1)
+                    fd_ = face_deep or LOD_UNDER_FACE_DEEP
+                    tall = np.where(np.isfinite(tf), tf, np.inf).min(1)
+                    tf = np.where(np.isfinite(tf) & (tf > -fd_), tf, np.inf).min(1)
+                    if LOD_UNDER_ISLAND:  # (r65) a deep face is a poke after all when it is a small island ringed by faces
+                        tf = np.where(ringed_islands(F_, tall, tf, len(V)), tall, tf)  # under the cover (rc2p's coat speck)
                     bf = np.isfinite(tf) & (tf < 0)
-                    if bf.any():
-                        np.minimum.at(sv, F_[bf].ravel(), np.repeat(tf[bf] - gap, 3))
+                    if bf.any():  # (r67) each corner moves along its own normal only as far as that normal goes in:
+                        # depth / (its normal . the face's), and not at all when it turns > 60 deg from the face (a fold's
+                        # corner whose normal points into the body moved 20 mm OUT: rc2q-s's coat-back speck WAS this push)
+                        Fb = F_[bf]
+                        al = np.einsum("fkd,fd->fk", Nv[Fb], nf[bf])
+                        need = np.where(al >= LOD_UNDER_FACE_ALIGN, (tf[bf] - gap)[:, None] / np.maximum(al, LOD_UNDER_FACE_ALIGN), 0.0)
+                        np.minimum.at(sv, Fb.ravel(), need.ravel())
                         pokef += int(bf.sum()) if poke0 is None else 0
             sel_ = sv[vid] < 0
             if poke0 is None:
@@ -1099,7 +1266,7 @@ def push_under_layers(parts: dict, stack: dict, gap: float = LOD_UNDER_GAP, reac
         p["verts"] = V.astype(np.float32)
         parts[un] = p
         rep[un] = {"poking0": int(poke0 or 0), "poking": int((np.isfinite(t) & (t < 0)).sum()), "moved": int(moved.sum()),
-                   "faces_poking0": pokef}
+                   "faces_poking0": pokef, "flaps": nflap}
     return rep
 
 

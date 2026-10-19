@@ -1128,6 +1128,38 @@ def _dilate(img: np.ndarray, filled: np.ndarray) -> np.ndarray:
     return img[iy, ix]
 
 
+MISS_FILL_3D = 8  # (r66) texels whose Cycles ray found no scene mesh INSIDE their triangle take the inverse-distance mean
+# of this many nearest baked texels of the same part ON THE SURFACE (3D), not the nearest texel in the atlas: filled in
+# the atlas, a run of missed texels (rc2p/q: 1.9% of the head's, at the nostril rims and the ala's groove) copied its
+# border in a texel staircase, from whatever lay next to it in the atlas (a tiny island beside it: blocky dark / pink
+# patches, game_ready.md r64-r66). 0 = the atlas fill only.
+
+
+def _fill_missed_3d(given: dict, baked: np.ndarray, miss: np.ndarray, ys, xs, P, part, log: list) -> dict:
+    """bake(): each missed texel (rows of ys/xs/P/part, mask `miss`) from its MISS_FILL_3D nearest baked texels of the
+    same part by surface position, inverse-distance weighted."""
+    from scipy.spatial import cKDTree
+    ok = baked[ys, xs]
+    out = {k: v.copy() for k, v in given.items()}
+    n = 0
+    for pi in np.unique(part[miss]):
+        src = np.flatnonzero(ok & (part == pi))
+        dst = np.flatnonzero(miss & (part == pi))
+        if len(src) < MISS_FILL_3D or not len(dst):
+            continue
+        d, j = cKDTree(P[src]).query(P[dst], k=MISS_FILL_3D)
+        w = 1.0 / np.maximum(d, 1e-5) ** 2
+        w /= w.sum(1, keepdims=True)
+        sy, sx = ys[src][j], xs[src][j]
+        for k, v in given.items():
+            out[k][ys[dst], xs[dst]] = np.einsum("nk,nkc->nc", w, v[sy, sx].astype(np.float64)).astype(v.dtype)
+        n += len(dst)
+    if n:
+        log.append(f"    {n} texels missed inside their triangle: filled from their {MISS_FILL_3D} nearest baked texels on "
+                   f"the surface")
+    return out
+
+
 def _unit(v):
     return v / np.maximum(np.linalg.norm(v, axis=-1, keepdims=True), 1e-12)
 
@@ -1234,6 +1266,11 @@ def inner_paint(parts: dict, topo: dict, head: dict, log: list) -> None:
                    f"contact ring)")
 
 
+# (r65) the skin's tiling micro detail is baked into the part's own normal / roughness / colour maps (False = the
+# old split: tiling maps only, which the GLB can't carry)
+BAKE_SKIN_DETAIL = True
+
+
 def face_keep_paint(parts: dict, topo: dict, log: list) -> None:
     """(one mesh, retopo.FACE_KEEP) each low-poly corner's "keep" weight: 1 where the head's surface IS the approved GNM
     head (retopo.face_keep: eyes, mouth, nose), fading over its rings. bake() doesn't project those texels onto the field:
@@ -1251,6 +1288,31 @@ def face_keep_paint(parts: dict, topo: dict, log: list) -> None:
         w = retopo.face_keep(np.asarray(z["gnm"], int), faces)
         parts[pn]["keep"] = w[parts[pn]["corner_vert"]].astype(np.float32)[:, None]
         log.append(f"{pn}: {int((w > 0.999).sum())} vertices of the approved face kept, not projected in the bake")
+
+
+LIP_FLOOR_ROUGHNESS = 0.38  # (r66) bake(): the export's lower lip is never glossier than this. The stage's lip sheen pad
+# (skin:lip_sheen, 0.24 at 0.8) was tuned with the lip lines breaking its highlight; baked, those lines are sub-texel
+# (0.24 mm deep, ~1 mm period at 0.77 mm texels: a faint ripple, r65), so the GLB's lower lip was one unbroken, wet-plastic
+# highlight at ~0.31 (game_ready.md r64 / r65). The floor is laid by the skin's own lower-lip zone, per texel.
+LIP_FLOOR_ZONE = {"zone": {"name": "lip_lower", "grow": 0.6}}  # (lip_sheen's own zone: the pad never reaches past it)
+
+
+def lip_floor_mask(spec: dict, X: np.ndarray, n: np.ndarray) -> np.ndarray:
+    """0..1 per surface point (Blender coords, normals): the skin's lower-lip zone, where bake() floors the roughness at
+    LIP_FLOOR_ROUGHNESS. Zeros without a skin or its lip landmarks."""
+    from . import paint
+    from .surface import Points
+    sk = spec.get("skin") or {}
+    if not sk or not len(X):
+        return np.zeros(len(X))
+    try:
+        pts = Points(spec, X, n, np.zeros(len(X), int), [sk.get("part", "body")], 0.001)
+        pts.footprint = 0.0005
+        from . import skin
+        ly = skin.expand_zones(spec, {"mask": [LIP_FLOOR_ZONE]}, "lip floor")
+        return paint.layer_mask(spec, "lip_floor", ly, paint._View(pts, np.arange(len(X))))
+    except (KeyError, ValueError):  # (no lip landmarks on this model: no floor)
+        return np.zeros(len(X))
 
 
 def lip_front_share(P: np.ndarray, bad: np.ndarray, lipw: np.ndarray) -> tuple[float | None, int]:
@@ -1359,6 +1421,11 @@ def bake(parts: dict, size: int, ctx: dict, log: list, atlas: int | None, given:
             if m.size and m.mean() > 0.005:
                 log.append(f"    {pn}: {m.mean():.1%} of its texels missed inside their triangle")
         given = {k: _dilate(v, baked) for k, v in given.items()}
+        if MISS_FILL_3D:
+            given = _fill_missed_3d(given, baked, miss & inside, ys, xs, P, part, log)
+        if os.environ.get("HP_BAKE_DUMP"):  # (debug, r66: where the missed texels are, to mark them on a crop)
+            np.savez(Path(os.environ["HP_BAKE_DUMP"]) / f"miss_{atlas}.npz", P=P[miss], inside=inside[miss],
+                     part=part[miss], names=np.array(names), ys=ys[miss], xs=xs[miss], size=size)
 
     c = _corners(parts, "pos")[np.unique(tri)]  # the atlas's triangles: surface per texel
     area = np.linalg.norm(np.cross(c[:, 1] - c[:, 0], c[:, 2] - c[:, 0]), axis=1).sum() / 2
@@ -1423,9 +1490,30 @@ def bake(parts: dict, size: int, ctx: dict, log: list, atlas: int | None, given:
         w_ = w_[..., 0]
         inner_c = (1 - d_) * np.asarray(sfe.INNER_LIP_COLOR, float) + d_ * np.asarray(sfe.MOUTH_DEEP_COLOR, float)
         lin = lin * (1 - w_[..., None]) + inner_c * w_[..., None]
+        if os.environ.get("HP_BAKE_DUMP"):  # (debug, r70: Tess's ala patch is this overlay at w = 1, deep = 1 exactly,
+            # on texels whose GLB triangles carry no paint: which bake-time triangle / uv put it there)
+            np.savez(Path(os.environ["HP_BAKE_DUMP"]) / f"inner_{atlas}.npz", ys=ys, xs=xs, tri=tri, part=part,
+                     drawn=drawn, ip=ip_[:, :2].astype(np.float32), P=P.astype(np.float32), names=np.array(names),
+                     raw=given["color"].astype(np.float16), own=own, w=w_.astype(np.float16), d=d_[..., 0].astype(np.float16),
+                     **{f"uv_{pn_}": p_["uv"] for pn_, p_ in parts.items()},
+                     **{f"cv_{pn_}": p_["corner_vert"] for pn_, p_ in parts.items()},
+                     **{f"v_{pn_}": p_["verts"] for pn_, p_ in parts.items()})
         rms = given["rms"].astype(np.float64).copy()
         rms[..., 0] = rms[..., 0] * (1 - w_) + INNER_PAINT_ROUGHNESS * w_
         given = {**given, "rms": rms}
+    lf = ctx.get("lip_floor")  # (r66) the lower lip never glossier than LIP_FLOOR_ROUGHNESS (skin's lower-lip zone)
+    if lf is not None and lf[1] in names and LIP_FLOOR_ROUGHNESS > 0:
+        sel = np.flatnonzero(part == names.index(lf[1]))
+        mk = lip_floor_mask(lf[0], P[sel], Nl[sel]) if len(sel) else np.zeros(0)
+        if (mk > 0).any():
+            rms = given["rms"].astype(np.float64).copy()
+            r_ = rms[ys[sel], xs[sel], 0]
+            rms[ys[sel], xs[sel], 0] = r_ + mk * np.maximum(LIP_FLOOR_ROUGHNESS - r_, 0)
+            given = {**given, "rms": rms}
+            on = mk > 0.5
+            log.append(f"lip floor: {int(on.sum())} lower-lip texels, roughness mean {r_[on].mean():.3f} -> "
+                       f"{rms[ys[sel][on], xs[sel][on], 0].mean():.3f} (floor {LIP_FLOOR_ROUGHNESS})" if on.any() else
+                       "lip floor: no texel over half in the lower-lip zone")
     put_given("basecolor", _srgb(lin))
     put_given("roughness", given["rms"][..., :1])
     put_given("metallic", given["rms"][..., 1:2])
@@ -1690,7 +1778,50 @@ def cage_verts(p: dict, d: np.ndarray, vx: float) -> np.ndarray:
     n = np.zeros_like(V)
     np.add.at(n, C, np.asarray(p["normal"], np.float64))
     n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
+    # (r64) never past the part's own opposite wall: the 2-voxel floor is up to ~14 mm on "body" (model voxel 7.1 mm),
+    # where the head's low poly IS the high poly; at the alar groove and the nostril rims a texel's ray then started
+    # past the other wall and baked it (Tess rc2p: a dark blocky patch on her left ala, pink-dark nostril rims)
+    clear = _clearance(V, n, C.reshape(-1, 3), out)
+    out = np.minimum(out, np.maximum(CAGE_CLEAR * clear, CAGE_MIN))
     return V + n * out[:, None]
+
+
+CAGE_CLEAR = 0.45  # cage_verts: a vertex's cage at most this share of its clearance (first hit of the part's own surface
+CAGE_MIN = 0.0002  # along its cage normal), never under CAGE_MIN metres (a ray starting on the surface misses it)
+
+
+def _clearance(V: np.ndarray, n: np.ndarray, T: np.ndarray, reach: np.ndarray, chunk: int = 1000) -> np.ndarray:
+    """Per vertex, the distance along n to the first triangle of T (not one of its own) within reach (inf: none)."""
+    from scipy.spatial import cKDTree
+    A, B, Cc = V[T[:, 0]], V[T[:, 1]], V[T[:, 2]]
+    cen = (A + B + Cc) / 3
+    rad = np.max(np.linalg.norm(np.stack([A, B, Cc], 1) - cen[:, None], axis=2), axis=1)
+    tree = cKDTree(cen)
+    res = np.full(len(V), np.inf)
+    rmax = float(rad.max(initial=0.0))
+    for a in range(0, len(V), chunk):
+        idx = np.arange(a, min(a + chunk, len(V)))
+        near = tree.query_ball_point(V[idx], reach[idx] + rmax)
+        vi = np.repeat(idx, [len(x) for x in near])
+        if not len(vi):
+            continue
+        ti = np.concatenate([np.asarray(x, np.int64) for x in near])
+        own = (T[ti] == vi[:, None]).any(1)
+        vi, ti = vi[~own], ti[~own]
+        e1, e2 = B[ti] - A[ti], Cc[ti] - A[ti]
+        d = n[vi]
+        pv = np.cross(d, e2)
+        det = (e1 * pv).sum(1)
+        ok = np.abs(det) > 1e-14
+        inv = np.where(ok, 1.0 / np.where(ok, det, 1.0), 0.0)
+        tv = V[vi] - A[ti]
+        u = (tv * pv).sum(1) * inv
+        qv = np.cross(tv, e1)
+        w = (d * qv).sum(1) * inv
+        t = (e2 * qv).sum(1) * inv
+        hit = ok & (u >= 0) & (w >= 0) & (u + w <= 1) & (t > 1e-7)
+        np.minimum.at(res, vi[hit], t[hit])
+    return res
 
 
 def scene_maps(name: str, parts: dict, sizes: dict, ctx: dict, resolution: int, log: list) -> dict:
@@ -2302,6 +2433,87 @@ def decimate_cloth(cparts: list, cloth_triangles: int, log: list) -> list:
 ROLE_HAIR_TIER = {"hero": "hero", "main_npc": "main", "secondary_npc": "npc", "crowd": "far"}  # LOD0 card tier by role
 
 
+HEAD_KEEP_FROM_BUILD = ("attach",)  # base.head keys the build keeps over the approved head's (how it joins the body)
+
+
+def approved_head(spec: dict, log: list, approved_path: Path | None = None) -> dict:
+    """(Garrett s7, coordinator's rule) spec base.head_approved = an approval key in workspace/approved.json (e.g.
+    "head/garrett" -> gp_h6c): the export's head GEOMETRY is that approved model's base.head (the build keeps only
+    HEAD_KEEP_FROM_BUILD); skin TEXTURES still come from the build's skin. Garrett v6 carried s21's lid_fold and shape
+    (eye_bag, cheek_flat), which Joe never approved: the face drifted. Every key dropped or changed is logged; an
+    unknown key / missing model raises (never a silent fallback to the unapproved head)."""
+    key = (spec.get("base") or {}).get("head_approved")
+    if not key:
+        return spec
+    from . import store
+    ap = approved_path or (store.HOME / "approved.json")
+    ent = (json.loads(Path(ap).read_text()).get("approved") or {}).get(key)
+    if not ent or not ent.get("model"):
+        raise ValueError(f"base.head_approved {key!r}: no such approval in {ap}")
+    sp_ = Path(ap).parent / ent["model"] / "spec.json"
+    head0 = (json.loads(sp_.read_text()).get("base") or {}).get("head")
+    if not head0:
+        raise ValueError(f"base.head_approved {key!r}: {sp_} has no base.head")
+    build = spec["base"].get("head") or {}
+    head = {**head0, **{k: build[k] for k in HEAD_KEEP_FROM_BUILD if k in build}}
+    diff = sorted(k for k in set(build) | set(head) if build.get(k) != head.get(k))
+    log.append(f"head: the APPROVED head {key} = {ent['model']}'s base.head; the build's "
+               + (f"{', '.join(diff)} replaced / dropped" if diff else "head was already it"))
+    out = dict(spec)
+    out["base"] = {**spec["base"], "head": head}
+    approved_folds = (json.loads(sp_.read_text()).get("skin") or {}).get("folds") or {}
+    out = fold_form_gate(out, log, approved_folds)
+    from . import skin_layers   # (s9) the stack's lid shading / blink map re-baked on the head that ships
+    return skin_layers.stack_on_head(out, log)
+
+
+FOLD_FORM_MAX_MM = 1.0  # (coordinator, Garrett s8) skin.folds up to this much relief are SKIN detail (grooves, creases);
+# more (a roll / bag / cheek mass, a lid's overhang) changes the head's FORM: head geometry, Joe's approval
+
+
+def fold_form(name: str, v) -> float:
+    """The most a skin fold moves the surface, in mm: its groove, its roll (the swell beside it), its platform, at its
+    largest amount (a side's amount x the fold's)."""
+    from . import skin_folds
+    q = skin_folds.options({name: v}).get(name)
+    if not q:
+        return 0.0
+    rl = skin_folds.RELIEF[name]
+    a = q["amount"] * max([sd["amount"] for sd in q["sides"].values()] or [1.0])
+    return a * max(rl["depth"] * q["depth"], (rl["roll"][2] * q["roll"]) if rl.get("roll") else 0.0,
+                   rl["plat"][0] if rl.get("plat") else 0.0)
+
+
+def fold_form_gate(spec: dict, log: list, approved: dict | None = None) -> dict:
+    """(coordinator, Garrett s8) the approved-geometry rule for skin.folds: a fold whose relief is at most
+    FOLD_FORM_MAX_MM ships (skin detail); a larger one, unless the approved head carries the same fold, is clamped to
+    it (its roll and groove scaled: the crease line stays, the form change goes) with a WARNING naming it."""
+    from . import skin_folds
+    folds = (spec.get("skin") or {}).get("folds") or {}
+    if not folds:
+        return spec
+    out_f, msgs = {}, []
+    for name, v in folds.items():
+        mm = fold_form(name, v)
+        if mm <= FOLD_FORM_MAX_MM + 1e-9 or (approved or {}).get(name) == v:
+            out_f[name] = v
+            msgs.append(f"{name} {mm:.2f} mm ok")
+            continue
+        q = {"amount": float(v)} if isinstance(v, (int, float)) else dict(v)
+        rl = skin_folds.RELIEF[name]
+        k = FOLD_FORM_MAX_MM / mm
+        if rl.get("roll"):
+            q["roll"] = float(q.get("roll", 1.0)) * k
+        q["depth"] = float(q.get("depth", 1.0)) * min(1.0, k * mm / max(fold_form(name, {**q, "roll": 0.0}), 1e-9))
+        out_f[name] = q
+        log.append(f"WARNING head: skin.folds.{name} changes the head's FORM ({mm:.2f} mm > {FOLD_FORM_MAX_MM} mm: a roll / "
+                   f"bag / overhang is head geometry, not approved): clamped to {fold_form(name, q):.2f} mm for the export "
+                   "(Joe approves it into the head, or the skin thread lowers it)")
+    if msgs:
+        log.append("head: skin.folds within the skin-detail depth: " + ", ".join(msgs))
+    return {**spec, "skin": {**spec["skin"], "folds": out_f}}
+
+
 def hair_tier_default(spec: dict, role: str | None, log: list) -> dict:
     """LOD0's card tier: the groom's hair.export.tier, else the role's (ROLE_HAIR_TIER). Unset, hair.EXPORT_CARDS cut
     the cards to its 12000-triangle budget per lock (Garrett v3 / v4: 96 cards + cap, a helmet, while LOD1-3 got the
@@ -2369,6 +2581,25 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
         triangles = 15000
         log.append("WARNING budgets: no role given and no triangles: 15000 (not a stated budget; pass role=)")
     spec = store.load(name)
+    if (spec.get("base") or {}).get("head_approved"):  # (Garrett s7) the head geometry must BE the approved head's: a
+        # gate, not a swap (geometry is built from the stored model); compose the spec with approved_head first
+        lg_ = []
+        ah_ = approved_head(spec, lg_)
+        h_ = ah_["base"]["head"]
+        if h_ != spec["base"].get("head"):
+            raise ValueError(f"{name}: base.head is not the approved head ({lg_[0]}): write approved_head(spec)'s "
+                             "head into the model first")
+        if (ah_.get("skin") or {}).get("folds") != (spec.get("skin") or {}).get("folds"):  # (s8: folds that change form)
+            raise ValueError(f"{name}: skin.folds change the head's form ({'; '.join(m for m in lg_ if 'WARNING' in m)}): "
+                             "write approved_head(spec)'s skin.folds into the model first")
+        if (ah_.get("skin") or {}).get("stack") != (spec.get("skin") or {}).get("stack"):  # (r63) this gate's result
+            # is not what ships (textures come from the stored model): the lid layers re-baked by stack_on_head must be
+            # IN the model, or the blink map / lid shading of the lid_fold head ships (Tess rc2o did exactly that)
+            raise ValueError(f"{name}: skin.stack was measured on another head "
+                             f"({'; '.join(m for m in lg_ if m.startswith('skin stack'))}): write approved_head(spec)'s "
+                             "skin.stack into the model first")
+        log.append(f"head: = the approved head {spec['base']['head_approved']} (checked)")
+        log.extend(m for m in lg_ if "skin.folds" in m)
     aname = asset_name or name
     from .base import part_defs
     defs = part_defs(spec)  # (the base's implied parts too: a clear cornea's lens)
@@ -2567,17 +2798,24 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
             for pn, r in report.items() if r["atlas"] == an))
     atlas_files, maps_info, heights, cover = [], {}, {}, {}
     skin_recipe = None
-    if spec.get("skin"):  # the skin's pores and lines are tiling maps beside the unique ones, not baked into them
+    if spec.get("skin"):
+        # (r65, coordinator) the skin's micro detail (pores, cells, lines, the lip lines) is BAKED into the part's own
+        # maps: as tiling maps in the shading json alone, neither plain glTF viewers nor blender_game apply them, and
+        # the lower lip shipped as one smooth, unbroken highlight (game_ready.md r64). The tiling maps still ship, as
+        # an optional close-up extra (normal only: their tint / roughness are in the maps already).
         from . import skin as skinmod
-        skin_recipe = skinmod.export_recipe(spec, out_dir, name)
-        ctx["bake_detail"] = not (skin_recipe and skin_recipe["detail"])
+        skin_recipe = skinmod.export_recipe(spec, out_dir, name, baked=BAKE_SKIN_DETAIL)
+        ctx["bake_detail"] = BAKE_SKIN_DETAIL or not (skin_recipe and skin_recipe["detail"])
         if skin_recipe and skin_recipe["detail"]:
-            log.append("skin: micro detail left out of the baked maps and written as tiling normal maps ("
-                       + ", ".join(d["normal"] for d in skin_recipe["detail"]) + "): the recipe is in the json and the skin "
-                       "material's extras")
+            log.append("skin: micro detail " + ("baked into the part's maps; also written as tiling normal maps (close-up "
+                       "extra, normal only) (" if BAKE_SKIN_DETAIL else "left out of the baked maps and written as "
+                       "tiling normal maps (") + ", ".join(d["normal"] for d in skin_recipe["detail"]) + "): the recipe "
+                       "is in the json and the skin material's extras")
     if face_shapes and getattr(fface, "gnm_mouth", False):  # the lips' inner rolls: hidden in the closed scene,
         inner_paint(parts, topo, fface.head, log)            # painted on the low poly's own triangles
     face_keep_paint(parts, topo, log)
+    if spec.get("skin"):
+        ctx["lip_floor"] = (spec, (spec.get("skin") or {}).get("part", "body"))
     given = scene_maps(name, parts, sizes, ctx, resolution, log)
     ek_ = (spec.get("base") or {}).get("eyes")
     ctx["ao_off"] = [ek_] if isinstance(ek_, str) else []
@@ -2894,7 +3132,8 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
         if st0_:
             pu0_ = lodmod0_.push_under_layers(parts, st0_, gap=LOD0_UNDER_GAP)
             log.append("LOD0: under garments put back under their covers (lods.push_under_layers): " + ", ".join(
-                f"{pn} poking {v['poking0']} vertices / {v['faces_poking0']} faces -> {v['poking']} ({v['moved']} moved)"
+                f"{pn} poking {v['poking0']} vertices / {v['faces_poking0']} faces -> {v['poking']} ({v['moved']} moved"
+                f"{', ' + str(v['flaps']) + ' in a flap through the cover' if v.get('flaps') else ''})"
                 for pn, v in pu0_.items()))
             for pn, v in pu0_.items():
                 report.setdefault(pn, {})["under0"] = v

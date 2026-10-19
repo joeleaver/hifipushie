@@ -114,10 +114,15 @@ def notes(info: dict, aname: str, looks: dict | None = None, hair_look: dict | N
                       "(1.0, 0.55, 0.45) in the wrapped part",
                       "occlusion: orm.r multiplies ambient / indirect light only (the warm crease and lid occlusion are "
                       "already in basecolor and the blink map: do not multiply direct light by it)",
-                      "micro detail: the tiling normal maps in skin.detail, laid by position at period_m, blended over the "
-                      "baked normal (whiteout), faded out past ~1.5 m"]
+                      ("micro detail: ALREADY in the baked normal / roughness / basecolor (skin.detail_baked); the tiling "
+                       "normal maps in skin.detail are an optional close-up extra: normal only, laid by position at "
+                       "period_m, blended over the baked normal (whiteout), faded in under ~0.5 m"
+                       if skin.get("detail_baked") else
+                       "micro detail: the tiling normal maps in skin.detail, laid by position at period_m, blended over the "
+                       "baked normal (whiteout), faded out past ~1.5 m")]
                 m["params"] = {"subsurface": skin.get("subsurface"), "detail": skin.get("detail"),
-                               "detail_recipe": skin.get("detail_recipe"), "specular": skin.get("specular"),
+                               "detail_recipe": skin.get("detail_recipe"),
+                               "detail_baked": skin.get("detail_baked"), "specular": skin.get("specular"),
                                "sheen": skin.get("sheen"), "ao_direct": 0.0}
             elif k == "eye":
                 f += ["a wet cornea: clear coat 1.0 over the iris and sclera, coat roughness ~0.03 (the catchlight)",

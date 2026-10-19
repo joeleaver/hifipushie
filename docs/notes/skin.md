@@ -3253,3 +3253,11 @@ STATE: g2 rendering, r19 batch on NICO-TOP. NEXT: g2 look; the brow batch (s30 /
   heads tess_s30 / garrett_g25, A / B vs r19's tess_s29 / garrett_g24 (waits for "R19 CHAIN DONE"); log
   out/private/gate/chain_r19b.log, ends "R19B CHAIN DONE".
 STATE: r19 + r19b batches on NICO-TOP. NEXT: collect, A / B (cut/r19/ab19.sh <old> <new> <out>; TO=tiles_r17 for the r17 dirs).
+
+## Question from assembly (r68, 2026-10-19): mottled cheek roughness at a 1 mm scene mesh
+For the projskin2 / skin thread. Once the scene meshes the face at 1 mm (assembly r67's box; r68: scene.face_refine does it
+for every kept face), Tess's exported roughness shows a clearly MOTTLED cheek (assembly r67/maps_r_vs_s.png bottom row:
+rc2r at the 7 mm scene vs rc2s at 1 mm). It is the skin stack's own roughness break-up, visible in the scene too
+(assembly r67/refine_before_after.png); the 7 mm mesh had averaged it away, so it was never judged. QUESTION: is the
+stack's roughness variation at this amplitude / scale meant? If not, the fix is in the stack (its roughness noise), not
+in the bake. Answer in game_ready.md (assembly) or here.

@@ -3831,14 +3831,603 @@ STATE: rc2j beats rc2i 4/1/1 on the hair; LOD3 regression is off in code. NEXT: 
   flap: unchanged. (e) Crown: the card silhouette steps and a dull sheen remain: cards thread. Garrett v5 shares the
   hair-material cause; his next export picks the fix up.
 
-## r60 (2026-10-18, assembly agent, fresh session): rc2k re-export, the LOD2 fly slit probed offline, sock / neckline / pocket
-Scratch /mnt/data/hifipushie/assembly/r60/. Hair: the cards thread's round 36 did NOT make f1 the default ("no round-36
-build beats f1"): nothing to take.
-- rc2k export started (r60/k.sh = rc2j's chain with the current code: LOD_BORDER_SHARED off) with a new debug dump:
-  asset.export HP_LOD_DUMP=<pkl> pickles the LOD inputs (parts minus cards / prefabs, rigged, layer_stack, under_masks,
-  ratios, above / below) so a part's LOD steps can be probed offline (r60/probe.py <pkl> <part> <k>: new boundary edges
-  > 1 cm from LOD0's, clustered, after lod_part and after push-under).
-STATE: rc2k exporting. NEXT: probe the jeans at LOD2 on the dump.
+## r62 (2026-10-19, assembly agent, fresh session): merge, approved head gated, r38a crown, rc2n
+Scratch /mnt/data/hifipushie/assembly/r62/ (mk_rc2n.py, chain_n.sh, tests.log, rc2_tess_spec_before.json).
+- (1) MERGE origin/main dc4f3c21: main had my r51-r61 work squashed (6ac2c344 ...) plus later cards / skin / Garrett work:
+  every conflicted file taken as main's (the merged tree equals main's code and notes exactly; main already had r60 /
+  r61 here, plus a stray 8-line copy of r60's start before Garrett s6, removed). approved_head (Garrett s7 b5bfef14) + the fold-form gate (s8 23eb93cc) were NOT on
+  main (only on worktree-agent-a369eb41a63e51a4a): cherry-picked (code + their two tests; s7's push-under orient test left
+  out, its lods.orient_to_covers is not on main either). Tests: game_ready, hair_lods, hair_clumps, hair_back_faces,
+  hair_card_rows, cloth, cloth_layers, cloth_made, face_shapes all ok (r62/tests.log).
+STATE: merged + tests pass. NEXT: rc2n model.
+- (2) rc2n MODEL (r62/mk_rc2n.py on rc2_tess): base.head_approved = "head/tess"; base.head = asset.approved_head's (tp_k19):
+  the only difference was teeth_place (no code reads it: a dead key), shape already = tp_k19's (lip_bow only, NO lid_fold /
+  eye_bag: rc2's head never carried s28's). skin = tp_k19_s28's exactly (= the skin thread's tp_k19_a0: s28 on the approved
+  head); its a2 / a3 (re-projected on the approved head) are not judged yet: take them when skin.md names one. No skin.folds.
+  main's cloth.validate refuses a frozen garment with anything but FROZEN_KEYS: rc2_tess no longer loaded; the coat /
+  sweater / jeans kept frozen (s18, = dress-tess's FROZEN FOR EXPORT) + color / detail / roughness / sheen, the rest dropped
+  ("over" too: the export falls back to the pickles' own chain, Garrett s7). Hair: rc2's own th_W18 groom, tier hero, the
+  cards code at main (r38's defaults) + HP_FS_SET hair_clumps.FILL=1.0 (r38a). Smile = the r49 env (chain_n.sh = rc2m's).
+STATE: rc2n exporting (r62/chain_n.sh, PIDs r62/PIDS; crown + photo-light renders first -> CROWN_PL_DONE, then z / l / x,
+sheet gr_r62_tess.png -> SHEET_N_DONE). NEXT: tris, the face vs the approved head, the crown.
+
+- rc2n EXPORTED (exp/rc2n_tess, 1573 s; log "head: = the approved head head/tess (checked)": the gate ran and passed).
+  Triangles LOD0 90,659 / 103,000, LOD1 44,809 / 51,500, LOD2 24,854 / 25,750, LOD3 10,855 / 12,360: all under (hair LOD0
+  24,520, head 22,962). Tests after the merge: all ok (face_shapes 2 ok + 2 env skips).
+- FACE vs the APPROVED HEAD (r62/ah/face_vs_approved.png; helper r62/ah/glbshots.py <glb> <out> <tag> renders a GLB at the
+  skin thread's sh20 cameras (frames.json) + photo / game rigs, hair hidden; aligned to tp_k19 within 1-2 px, face_v1 6 px):
+  rc2n = rc2m to the eye (same geometry, same s28 skin). LOOK FIRST vs tp_k19: the export's EYES read smaller / hooded (upper
+  lids lower, a dark shade band over the lids, irises half covered) where the approved head's are open and round; brows a
+  heavier, straighter, darker block; nose tip pink / bulbous; lips paler, fuller, mauve; warm blotches on the scalp.
+  Geometry is the approved head's, so this is the s28 skin stack (lid shade, brows, lips) + the export's lashes / lid rest
+  state, NOT a head change. Not yet split: next step = render tp_k19_a0 (approved head + s28 skin, same frames) to see how
+  much is skin vs export (lashes, rest-pose lids, bake).
+- CROWN (r62/crown_n_vs_m.png: rc2n front | 3/4 | rc2m front | 3/4): r38a FILL 1.0 hardly changes it at this camera: the top
+  outline is still ragged with pale card tips at the front of the crown; 3/4 a touch fuller. Back not looked at.
+STATE: rc2n exported + face / crown looked. The chain (z / l / x renders, sheet gr_r62_tess.png -> SHEET_N_DONE) continues
+unattended (my PIDs in r62/PIDS).
+
+## Handover r62 (assembly agent, tool-call budget)
+- DONE: merge (main's code), approved_head + fold gate cherry-picked from Garrett's branch (commit 4969663f: land it on main
+  with Garrett's branch, or this one), rc2_tess = approved head (gated) + frozen-only garments; rc2n exported, all LODs under.
+- RUNNING: r62/chain_n.sh (renders + sheet; ends SHEET_N_DONE). Nothing else of mine.
+- NEXT: (a) when SHEET_N_DONE: check workspace/human_renders/gr_r62_tess.png yourself, and add the approved head beside the build
+  (r62/ah/face_vs_approved.png is that comparison; put it on the sheet or send both). (b) blind A/B rc2n vs rc2m: review-ab
+  CLI after 2026-10-19 13:00 MT (r61/tiles.py-style items: crown cr_* + z / l tiles + ah face rows), else a fresh blind
+  subagent. Expect ~tie on the body (same garments / LOD code); the crown is the only intended change. (c) the hooded-eye
+  read: render tp_k19_a0 through sh20 / glbshots frames to split skin vs export; route skin parts to the skin thread
+  (they own a2 / a3 on the approved head). (d) RC_tess.md not updated this session.
+
+## r63 (2026-10-19, assembly agent, fresh session): Tess lid band, the stack re-baked on the shipping head, rc2o
+Scratch /mnt/data/hifipushie/assembly/r63/ (mk_rc2o.py, chain_o.sh, tests.log).
+- (1) CHERRY-PICK Garrett's 56f8e4a4 (skin_layers.stack_on_head from asset.approved_head) -> 776457e4; nothing else needed
+  (approved_head was already here from r62). tests/test_game_ready.py 39 passed (r63/tests.log).
+- (2) rc2o MODEL (r63/mk_rc2o.py): rc2_tess skin = tp_k19_a2's exactly (skin.md r20: CURRENT BEST SKIN FOR EXPORT, approved
+  head geometry; projection re-made on 294e80bfe72e, brow strands 1, blemishes; skin.folds none). The export's approved_head
+  log: "skin stack: measured on head 6249f59d9ca4, exported on 294e80bfe72e: occlusion, occlusion_lid, crease DROPPED (no
+  lid_fold on this head)". NOTE from skin.md r21 (Garrett): his lid band was the zone lever skin.zones.lid_shade 1.8, not the
+  stack. Tess carries lid_shade 1.0 with zone_colors [.745 .726 .716]; but her PHOTO's crease band IS darker than the cheek
+  (r21 levers, photo light: crease/cheek photo .871, approved tp_k19 .993, a2 .901), so lid_shade stays (the skin's call).
+STATE: rc2o exporting (r63/chain_o.sh, PIDs r63/PIDS: export -> ah/rc2o face shots (AH_O_DONE) -> crown / zoom / LOD /
+x renders -> sheet gr_r63_tess.png (SHEET_O_DONE)). NEXT: face vs approved, eyes first.
+
+- rc2o EXPORTED (exp/rc2o_tess; tris = rc2n's: LOD0 90,659 / LOD1 44,809 / LOD2 24,854 / LOD3 10,855, all under) BUT THE
+  STACK FIX DID NOT SHIP: export_asset only GATES with approved_head (compares head / folds, then drops its result: textures
+  come from the stored model), so stack_on_head's re-baked lid layers were thrown away (no "skin stack" line in the export
+  log). Garrett's branch has the same hole (his v7b did it in the spec by hand). FIX (asset.py, committed): the gate also
+  raises unless the model's skin.stack == approved_head's ("write approved_head(spec)'s skin.stack into the model first"),
+  like head / folds. rc2o = a2 skin with the OLD lid layers: a brow + skin test only. Its chain was stopped after the face shots.
+- COORDINATOR (mid-session): Tess's skin best is now tp_k19_a6 (= a2 + brows.thickness 1.7, opacity 1; won 6 / 8 blind
+  regions vs the approved head's skin). rc2p MODEL (r63/mk_rc2p.py): rc2_tess skin = tp_k19_a6 + the stack re-baked on the
+  approved head written in (gate passes; crease dropped). rc2p exporting (r63/chain_p.sh, PIDs r63/PIDS_P: export -> ah/rc2p
+  (AH_P_DONE) -> crown / zoom / LOD / x -> gr_r63_tess.png (SHEET_P_DONE)).
+- LEVERS (r63/lev.py = the skin thread's m20 measure, face_v0 photo light):
+              brow L  crease band L  crease/cheek  lip a*  lip L  aperture
+    photo      50.2      61.4          .871        16.0    40.8    .341
+    approved   52.9      74.2          .993        13.3    52.4    .342
+    a2 scene   59.6      67.5          .903        16.8    53.7    .346
+    rc2n       49.6      66.7          .877        17.3    57.4    .334
+    rc2o       56.5      67.7          .889        17.3    57.0    .336
+  READ: the export's lid band is ~the PHOTO's lid / cheek ratio (and the a2 scene's): Tess's photo lid IS darker than her
+  cheek; the approved head's lids are lighter than the photo. What reads wrong is its SHAPE (a broad flat band over the whole
+  mobile lid, the photo has a pale lid + a crease line) and a 2% smaller aperture: skin thread (lid_shade zone, like Garrett's
+  a6 cool lid) more than the export. rc2o brows (a2 strands) lighter than rc2n's block (49.6 -> 56.5; photo 50.2).
+  PINK NOSE TIP: a pink blotch at her right nostril rim in BOTH exports, absent from both scene renders (approved, a2): an
+  EXPORT fault (bake / UV seam at the nostril), not skin. Open, owner export.
+STATE: rc2p exporting. NEXT: rc2p eyes (does the re-baked occlusion_lid / dropped crease change the band?), review-ab, sheet.
+
+- rc2p EXPORTED (exp/rc2p_tess; tris = rc2n's, all under; log "head: = the approved head (checked)", stack gate passed).
+  EYES (r63/eyes_p.png: ref | approved | a2 scene | rc2n | rc2o | rc2p; levers rc2p: brow L 47.2, crease/cheek .877,
+  aperture .333): the lid band is UNCHANGED by the re-baked occlusion_lid / dropped crease (rc2n .877, rc2o .889, rc2p .877).
+  The band is in the SKIN (the a2 scene render has it, .903; zones.lid_shade 1.0 x zone_colors [.745 .726 .716] + the
+  projection), and its lid / cheek ratio is the photo's (.871). What still reads wrong vs the photo: a broad flat grey band
+  over the whole mobile lid where the photo has a pale lid + a crease line, and less iris showing (aperture .333 vs .341).
+  The approved head's lids are LIGHTER than the photo (.993), which is why the build reads hooded beside it. Owner: skin
+  (lid_shade shape / tint, Garrett's a6 recipe), not the export. The stack fix is still right (no lid_fold crease ships).
+  BROWS: a6's darker strands (47.2, photo 50.2): tone right, but straighter / heavier than approved and, to the blind
+  reviewer, "painted strokes with hard edges" at eyes_v0. NOSE: pink / dark smudge at the nostril rim in every export, in
+  no scene render: EXPORT fault (bake at the nostril; seen in the RC2 blind review too). Lower-lip gloss reads wet plastic
+  under the game rig (both).
+- A / B rc2p (new) vs rc2n (old), review-ab CLI FAILED (weekly limit, resets 13:00 MT): fresh blind subagent on the same
+  trios (r63/ab_p_vs_n, key.json): face_v0 photo OLD, face_v1 photo OLD (slight), eyes_v0 photo OLD, face_v0 game ~SAME
+  leaning NEW. VERDICT: OLD (rc2n) on the face: a6's brows read drawn-on / hard-edged in the export; both: nostril smudge,
+  narrow eyes. NOTE the skin thread's a6 won 6 / 8 vs the APPROVED skin in its scene renders; in the export the strands lose.
+- SHEET: workspace/human_renders/gr_r63_tess_joe.png = gr_r63_tess.png (rc2p) + a strip ref | APPROVED head | rc2p at face_v0 /
+  eyes_v0 / face_v1. Look: body / garments / LODs = rc2n (same code); a dark brown speck on the coat's upper back (back,
+  LOD0, LOD1 at 3 m) is still there (also in r62); face beside the approved head: darker lids, heavier straight brows,
+  pink nostrils, fuller mauve lips.
+
+## Handover r63 (assembly agent, tool-call budget)
+- DONE: 56f8e4a4 cherry-picked (776457e4); the export gate now also demands approved_head's skin.stack in the model (the gate's
+  result never shipped: Garrett's branch has the same hole; tell his agent: write approved_head(spec)'s stack into ag_garrett
+  or his next export now raises); rc2o (a2 skin, old lid layers) and rc2p (a6 skin, lid layers re-baked) exported; eyes split;
+  blind A / B; Joe sheet. Nothing of mine is running.
+- RC: stays rc2n on the face (A / B); rc2p is the stack-correct build, same body. Neither fixes the lid band.
+- NEXT: (a) skin thread: Tess's lid band shape (lid_shade as a crease-line + pale mobile lid, Garrett a6-style) and the a6
+  brows' hard edges in the export (compare the export's brow texture vs the scene's: bake resolution / alpha?); then re-export
+  with r63/mk_rc2p.py (swap the source model) + r63/chain_p.sh. (b) export: the nostril-rim pink smudge (bake at the ala;
+  not in any scene render). (c) the coat's upper-back dark speck (back, LOD0 / LOD1). (d) review-ab CLI after 13:00 MT.
+STATE: r63 done; rc2p exported (stack fixed), face A / B prefers rc2n; lid band = skin, nostril smudge = export.
+
+## r64 (2026-10-19, assembly agent, fresh session): the nostril mark traced, the lip gloss path
+Scratch /mnt/data/hifipushie/assembly/r64/ (nose_uv.py, lone.py, uvrender.py, cageray.py, clear.py; pictures uvr_*.png).
+- HOUSEKEEPING: the worktree had a stale no-commit cherry-pick sequencer (b5bfef14, 23eb93cc: both already in as 4969663f):
+  `git cherry-pick --quit` (tree untouched).
+- (1) NOSTRIL MARK, traced (rc2p, LOD0). Tools: r64/uvrender.py = a front orthographic software render of the head's maps AS
+  MAPPED (no light), per map + a UV-island-size tile; r64/nose_uv.py = the ala's UV islands cropped in every map with the
+  wireframe. FINDINGS:
+  - WHICH MAP: BASECOLOR (also visible in roughness). The normal map is flat (0,0,1) over the whole head (the approved face is
+    kept: `keep`), the blink map is white at the nose, AO is smooth. The mark is in the Cycles colour bake, not a shading path.
+  - WHERE: a dark, blocky (texel-staircase) patch on her LEFT ala's upper crease (the alar groove, above / lateral of the
+    nostril; glTF ~(+0.012, 1.500, 0.163)), and a pink-dark blocky ring on the nostril rims (both sides, worse on her right).
+    Blocky = texels filled from a neighbour or baked from a wrong surface at texel scale, inside a BIG island (r64/uvr_ala.png:
+    basecolor | + small islands in red). NOT the small islands: the head has 167 faces in 1-5-face islands (the cone test in
+    blender_asset._charts leaves a face alone when it turns > 75 deg from every neighbour chart; 20 of them on the nose), and
+    their colour error vs their 3D neighbours is ~2x the big islands' (mean .031 vs .018, p95 .12 vs .05), but the visible
+    mark sits beside them, not on them.
+  - CAUSE (working hypothesis, being proven by r64/cageray.py: replays each texel's cage ray (interpolated cage point ->
+    low-poly point, first hit) on the head mesh for cages 2 / 4 / 6 / 10 mm and paints wrong hits red): the per-vertex cage
+    (r51 cage_verts) is stray x 1.5 + 2 VOXELS, and "body" (GNM head + wrapped body) is meshed at the model voxel (log: scene
+    voxel 7.1 mm), so the head's cage is up to ~14 mm even where the low poly IS the high poly (stray 0). Along vertex normals
+    on the head (r64/clear.py): clearance < cage for 0 nose vertices at 4 mm, 92 / 841 at 7 mm, 122 at 14.2 mm (the ala crease,
+    nostril rims, columella). A ray starting past the opposite wall bakes that wall (nostril inside = dark / pink).
+  - FIX (to make, general): cap each cage vertex at ~0.45 x its own clearance along the cage normal (first hit of the part's
+    low poly), floor ~0.3 mm; and where the stray is ~0 (kept / GNM-native faces) the 2-voxel floor should be a small fixed
+    floor, not 2 x the part's voxel. Test: a concave groove (two walls 5 mm apart) whose cage must not cross the far wall.
+- (2) LOWER-LIP GLOSS, the path (r64/uvr_lips_s.png: basecolor | roughness | specular | orm). The GLB carries lower lip
+  roughness 0.31 (cheek 0.57, upper lip 0.33) and specular level 0.63 (skin 0.36); spec rc2_tess skin.lips = roughness 0.15,
+  sheen 0.1 (pad; clamped >= .24), specular 0.9. So the export is NOT glossier than the stage's own values (Cycles' rms pass
+  carries them over, the blob is the pad). Differences that make it read as wet plastic in the export: (a) the game render
+  (blender_game) sets Specular IOR Level 0.5 flat and ignores the specular map (fine), (b) the stage's lip lines
+  (skin micro_lip_lines, depth 0.24 mm) break the highlight there, while in the GLB they are only a tiling detail map in the
+  shading json that neither blender_game nor a plain glTF viewer applies: the GLB's lower lip is a smooth, uniform 0.24-0.31
+  surface with a flat normal map = one unbroken highlight. Levers (untested): bake the lip lines into the head's normal map
+  under the lips' mask (they are the face's own relief, ~1 mm period at 0.77 mm texels: marginal; or at least into a
+  roughness break-up), or raise the export's lower-lip roughness floor to ~0.38. Owner call between skin (the 0.15 / 0.1 /
+  0.9 recipe was tuned on the stage with the lines) and export.
+- (1) FIX MADE (asset.cage_verts, committed): each cage vertex is capped at CAGE_CLEAR 0.45 x its clearance (first hit of
+  the part's own low poly along its cage normal, asset._clearance: Moller-Trumbore over a KD-tree of triangle centres),
+  floor CAGE_MIN 0.2 mm. Test tests/test_game_ready.py::test_bake_cage_stops_short_of_the_opposite_wall (floor + ceiling
+  5 mm apart, voxel 7 mm: old cage 14 mm, now <= 2.25 mm; an open sheet keeps its 14 mm). 40 passed. On rc2p's head + body
+  (15.6k verts): 24 s, 1.3 GB peak, 7.3% of vertices capped (17% within 30 mm of the nose tip), nose min 2.1 mm.
+  NOT YET PROVEN IN A BAKE: the cage-ray replay (r64/cageray.py) was too slow with trimesh's pure-python rays and was
+  stopped; the proof is the re-export (does the ala patch / rim ring go?). If it does not, next suspects: the 1.6% of body
+  texels that "missed inside their triangle" (filled from neighbours: blocky = nearest-fill look) and the tiny 1-5-face
+  islands (blender_asset._charts cone test).
+- (3) COAT SPECK, (4) RE-EXPORT + A/B + SHEET: NOT DONE this session (tool budget spent on the trace).
+STATE: nostril mark = basecolor bake at the ala crease / rims; cage capped by clearance (tested, unproven in a bake); lip
+gloss path measured (export = stage values; the stage's lip lines are missing from the GLB). NEXT: re-export (r63/mk_rc2p.py
+with the skin thread's current best + r63/chain_p.sh) and check the nose with r64/uvrender.py before any render.
+
+## Handover r64 (assembly agent, tool-call budget)
+- DONE: stale cherry-pick sequencer cleared; the nostril mark traced to the BASECOLOR bake (blocky dark patch on her left ala's
+  groove, pink-dark rims; normal / blink / AO clean); cage_verts capped by clearance + test; lip gloss path measured.
+  Nothing of mine is running.
+- NEXT, in order: (a) re-export with the skin thread's CURRENT BEST (skin.md "CURRENT BEST SKIN FOR EXPORT", projskin2
+  worktree) via r63/mk_rc2p.py (swap the source model) + r63/chain_p.sh, out to exp/rc2q_tess; first check
+  `R=600 python3 r64/uvrender.py exp/rc2q_tess r64/uvr_q.png 0 1.497 0.022` (assembly env python3: has trimesh) beside
+  r64/uvr_nose.png: the ala patch must be gone; also inner eye corners (centre +-0.032, 1.545) and mouth corners
+  (+-0.025, 1.468). (b) lip gloss: decide with the skin thread (bake lip lines into the head normal / roughness, or a
+  lower-lip roughness floor ~0.38 in the export). (c) the coat's upper-back speck (GE_FLATID=1 bash ge.sh ... back view
+  LOD0 / LOD1 + a ray pick). (d) LOOK, review-ab rc2q vs rc2n, sheet with the approved head, RC_tess.md.
+
+## r65 (2026-10-19, assembly agent, fresh session): skin detail baked in, the coat speck, rc2q
+Scratch /mnt/data/hifipushie/assembly/r65/ (chain_q.sh, poke.py, rpick.py, sp/, uvr_*.png).
+- (1) SKIN DETAIL BAKED IN (coordinator's decision: anything the GLB can carry only as a tiling detail map in the shading
+  json is baked into the part's own maps). asset.BAKE_SKIN_DETAIL = True: the export's Cycles bake keeps hp_detail on, so
+  the micro layers (lip lines, pores, cells, lines, coarse) reach basecolor (cavity tint), roughness and the painted-height
+  channel (-> normal map: bake() tilts the normal by the height slope AFTER the kept face, so the approved head's flat
+  normal map now carries them). skin.export_recipe(baked=True) marks every detail "baked" + "detail_baked" (the tiling maps
+  still ship: an optional close-up extra, normal only); shading notes say so. Sub-texel detail (pores ~0.3 mm vs 0.77 mm
+  texels) averages in the 2x supersample: watch the head's normal map for speckle. Test
+  tests/test_skin.py::test_export_bakes_skin_detail_into_the_parts_maps. (test_features_and_shader_budget fails on
+  'skin:wrinkle_folds' noise mask: untouched by this change.) Lower-lip roughness floor: only if the baked lines don't
+  break the highlight (the floor needs a lips mask on texels or a model value: not built yet).
+- (3) COAT SPECK, named. r65/sp/pair.png (rc2p LOD0, back, real | GE_FLATID): the speck is the SWEATER (flat-id green)
+  through the coat's upper back, her left of centre. Ray pick (r65/rpick.py, orthographic from behind over the upper back,
+  first hit not coat / hair): 74 rays, glTF x .008-.044, y 1.13-1.24; 10 sweater faces / 17 vertices; a flap standing
+  0.1-22 mm (median 8.3) outside the coat (the sweater's own back is ~11 mm under it). lods.push_under_layers' face test
+  drops faces deeper than LOD_UNDER_FACE_DEEP (8 mm: "a face that runs outside its cover"), so LOD0's push reported
+  "poking -> 0" and left it. FIX (lods.ringed_islands, LOD_UNDER_ISLAND 24): deep faces that form a small island
+  (<= 24 faces) whose every neighbouring face is under the cover are pokes after all; an open edge (neighbours with no
+  cover: the coat's open front) is kept. Test tests/test_game_ready.py::test_push_under_takes_a_small_deep_flap_through_its_cover.
+  41 passed. Proof = rc2q's ray pick (r65/rpick_q.txt: no sweater ray).
+- (2) rc2q export RUNNING: r65/chain_q.sh (PID in r65/PIDS) = rc2_tess (skin tp_k19_a6 = skin.md's CURRENT BEST FOR EXPORT,
+  unchanged since r63; the stack re-baked) on 85f62545 -> exp/rc2q_tess, then uvrender nose / mouth / eyes for q AND p
+  (r65/uvr_{q,p}_*.png, MAPS basecolor,roughness,normal) and the ray pick. No renders until the nose is checked.
+STATE: bake-in + speck fix committed (85f62545); rc2q exporting. NEXT: nose / lips / speck checks, then the render chain.
+- (2) rc2q EXPORTED (exp/rc2q_tess, 85f62545; log out/exp_rc2q_tess.log: "skin: micro detail baked into the part's maps").
+  Map checks, p (top) vs q (bottom): r65/cmp_nose.png, r65/cmp_mouth.png (basecolor | roughness | normal | small islands).
+  - NOSTRIL: NOT GONE. The blocky dark patch on her left ala's groove and the rim blotches are the same in q: the cage cap
+    (r64) is not the cause. Next suspects per r64: the 1.9% of body texels that "missed inside their triangle" (filled from
+    neighbours: the blocky look; 2.45% of all texels found no scene mesh) and the 1-5-face islands (red, they sit right
+    beside the patch). Check: HP_ASTRAY_DUMP-style dump of the missed texels' positions on the nose, or a bake with the
+    patch's triangles' ray length / cage logged.
+  - LIPS: the bake-in WORKS but is too weak to matter: the q normal map shows only a faint ripple over the lips (lip lines
+    0.24 mm deep, ~1 mm period at 0.77 mm texels: mostly averaged out by the 2x supersample); the lower lip's roughness is
+    still one dark (glossy) uniform pad. So the highlight is NOT broken by the lines: the lower-lip roughness floor (~0.38)
+    is needed. Not built: it needs a lips mask per texel in bake() (the zone "lip_lower" evaluated on texel Points via
+    paint.layer_mask) or the skin layer's own export value (skin:lip_sheen roughness floored when exporting; the scene is
+    synced from the stored model, so an in-memory spec change does not reach the bake).
+  - COAT SPECK: NOT GONE. r65/rpick_q.txt = the same 74 sweater rays at the same place; LOD0's push log unchanged ("poking
+    5 vertices / 33 faces -> 0 (110 moved)"). ringed_islands never fired on it: likely the flap's faces' cover_depth is inf
+    (the coat not within LOD_UNDER_REACH 20 mm ALONG the flap's face normals: a fold's faces face sideways) or the flap's
+    vertices are outside `vid` (under_depth's outward / mask selection), so they never reach the face test. Next: dump
+    under_depth / cover_depth for the 17 vertices (faces 9551.. in the GLB's sweater: map to the LOD0 part by position).
+  - Renders / A/B / sheet: NOT RUN (rc2q changes nothing visible over rc2p: nose same, lips ~same, speck same). The render
+    chain is ready: r65/chain_r.sh (glbshots -> r65/ah/rc2q, ge sets, speck close-up, sheet gr_r65_tess.png, ahsheet.py =
+    ref | APPROVED | rc2q | rc2n, trios.py -> blind trios r65/ab_q_vs_n + key.json).
+STATE: bake-in in code (weak on the lips); nostril patch and coat speck both survive their fixes. Nothing of mine running.
+
+## Handover r65 (assembly agent, tool-call budget)
+- DONE: skin micro detail baked into the part's maps (asset.BAKE_SKIN_DETAIL, recipe "baked", shading notes, test);
+  lods.ringed_islands (test) - did NOT catch the real speck; rc2q exported; nose / lips / speck checked on the maps.
+- BEST RC unchanged: rc2n on the face (rc2q = rc2p + faint baked lip lines).
+- NEXT, in order: (a) lower-lip roughness floor ~0.38 in the export (lips mask per texel in bake(), or floor skin:lip_sheen's
+  roughness for the export), re-check r65/cmp_mouth-style; (b) nostril: the missed-inside-triangle texels on the nose / the
+  tiny islands (r64 suspects); (c) speck: why the flap never enters the face test (dump under_depth / cover_depth for it);
+  then re-export, r65/chain_r.sh, LOOK, blind A/B vs rc2n (review-ab CLI after 13:00 MT, else trios.py + a fresh blind
+  subagent), sheet, RC_tess.md.
+
+## r66 (2026-10-19, assembly agent, fresh session): lip floor, missed-texel fill, the coat flap; rc2r
+Scratch /mnt/data/hifipushie/assembly/r66/ (lipfloor.py, speck_geo.py / speck_an.py / speck_fix2.py, missmark.py, chain_r1.sh).
+- (2) LOWER-LIP ROUGHNESS FLOOR (asset.LIP_FLOOR_ROUGHNESS 0.38, asset.lip_floor_mask: the skin's own "lip_lower" zone grow
+  0.6 = lip_sheen's zone, skin.expand_zones + paint.layer_mask on the texels' points; bake() raises roughness to the floor
+  by the mask, after the inner-lip paint). MAP CHECK on rc2q's own maps (r66/lipfloor.py: the GLB's roughness as mapped,
+  the mask at each pixel's surface point, floored): r66/lf_q.png (before | mask | after). Mask = the lower vermilion
+  exactly; 16,420 px over half: roughness mean .314 (min .184, p10 .235) -> .387 (min .285); outside the mask unchanged
+  (max diff .0017). Seen on the map: dark (glossy) blocky teeth BELOW the lower lip's border, outside the zone: the same
+  texel-staircase fill as the nostril (below).
+- (3) COAT SPECK, why the rule never ran (r66/speck_an.py on rc2q's GLB sweater / coat): the flap is 4 GLB vertices
+  (173 / 174 outer, 1540 / 1541 inner twins; glTF (.03-.044, 1.22, -.08)) standing 17-23 mm out of the coat's back along
+  -z, but their VERTEX NORMALS POINT SIDEWAYS ((.78, -.55, .28)): along them no cover within LOD_UNDER_REACH (20 mm) or
+  even 50 mm, so under_depth = nan: neither the vertex test, the face test nor r65's ringed_islands (needs a finite
+  depth) ever saw it. Its ring: 166 / 172 under (19 / 17 mm), 175 poking (-17.6), 161 / 167 nan too.
+  FIX lods.stray_flaps (LOD_UNDER_STRAY 30 mm), run first in push_under_layers: a vertex with no cover along its normal,
+  outside the cover's nearest OUTER-shell sample (signed by that face's normal) AND with the cover behind it along that
+  normal (cover_depth: an open front's edge has none), in a small island (with the already-poking vertices,
+  <= LOD_UNDER_ISLAND) whose every neighbour lies under the cover -> moved in along the cover's normal to `gap` under; the
+  inner twin follows. On the GLB copy it takes 161 / 167 / 173 / 174 (+ ~50 front collar vertices: the GLB has lost the
+  shells' layout, so the coat's inner shell signs are mixed there; the export's parts carry "shell": watch the log's
+  "N in a flap through the cover" count). Test test_push_under_takes_a_flap_with_sideways_normals_through_its_cover.
+- (1) NOSTRIL / missed texels: the Cycles ray miss (alpha 0) was filled by _dilate = the nearest texel IN THE ATLAS: a run
+  of missed texels copies its border in a staircase, from whatever lies next to it in the atlas (a tiny 1-5-face island
+  right beside the patch). FIX asset._fill_missed_3d (MISS_FILL_3D 8): each texel that missed inside its triangle =
+  inverse-distance mean of its 8 nearest baked texels of the same part ON THE SURFACE (KD-tree on the texel points).
+  Test test_missed_texels_fill_from_the_surface_not_the_atlas. HP_BAKE_DUMP=<dir> writes miss_<atlas>.npz (the missed
+  texels' points) so r66/missmark.py marks them on an r64/uvrender.py crop. The tiny islands are NOT merged (not needed if
+  the fill is right; next lever if the patch survives).
+  43 passed (tests/test_game_ready.py). Code a47fc7ee.
+- rc2r EXPORT RUNNING: r66/chain_r1.sh (PID r66/PIDS) -> exp/rc2r_tess, then uvr_r_nose(_miss).png, uvr_r_mouth.png,
+  rpick_r.txt, r_log_lines.txt; R1_DONE when finished (~25 min).
+STATE: three fixes in code + tested, lip floor proven on the map; rc2r exporting. NEXT: compare uvr_r_* with r65/uvr_q_*,
+rpick_r (no sweater ray), the flap count in the log; then r65/chain_r.sh retargeted to rc2r, A/B vs rc2n, sheet.
+
+- rc2r EXPORTED (exp/rc2r_tess, a47fc7ee; log out/exp_rc2r_tess.log). Map checks:
+  - LIP FLOOR in the export: "lip floor: 2916 lower-lip texels, roughness mean 0.357 -> 0.393". Works.
+  - NOSTRIL: NOT GONE. r66/uvr_r_nose.png is pixel-identical in look to r65/uvr_q_nose.png (the blocky patch on her left
+    ala, the rim blotches) although 44,250 missed texels were now filled on the surface. So the missed-texel fill is NOT
+    the cause either (nor the cage, r65). Remaining suspects: the Cycles bake itself HITS a wrong surface there (the scene
+    mesh's own colour at the ala / nostril: render the SCENE (look / scene render) at the nose before blaming the export),
+    or the tiny islands' own texels. r66/missmark.py's front filter (Blender y < -0.05) is too loose: it marked 21,559
+    texels (both sides of the head): use a z-buffer (uvrender's fid) to keep only the visible ones.
+  - COAT SPECK: NOT GONE. rpick_r = the same 74 sweater rays; LOD0's push log identical, no "in a flap" count = stray_flaps
+    found nothing on the export's LOD0 parts. Next: dump the LOD0 push inputs (parts + stack) in the export and run
+    stray_flaps on them (does the flap exist at push time, or does it come later, e.g. after cull_under_cloth's
+    "376 of 3710 sweater triangles under the coat dropped" or in the GLB write?).
+  - Renders / A/B / sheet: NOT RUN (only the lip roughness changed; r66/chain_r.sh is ready, retargeted to rc2r).
+
+## Handover r66 (assembly agent, tool-call budget)
+- DONE: lower-lip roughness floor (proven: map check r66/lf_q.png + export log); missed-texel 3D fill and stray_flaps (both
+  tested, both did NOT remove their target); rc2r exported. Nothing of mine is running.
+- BEST RC: rc2n on the face; rc2r = rc2q + lip floor (unreviewed).
+- NEXT: (a) nostril: render the scene (not the export) at the nose; if the patch is there, it is the skin / paint, not
+  the bake; else trace Cycles' hit per texel for the ala's islands. (b) speck: dump LOD0 push inputs, find where the flap
+  appears. (c) r66/chain_r.sh (renders, sheet gr_r66_tess.png, ahsheet, trios r66/ab_r_vs_n) + blind A/B vs rc2n.
+
+## r67 (2026-10-19, assembly agent, fresh session): where the nostril patch comes from; rc2s
+Scratch /mnt/data/hifipushie/assembly/r67/ (scene_flat.py = the SCENE's own colour / rms as a flat front ortho render in
+r64/uvrender.py's framing; dump_hi.py = the scene's body mesh at the nose; mk_rc2s.py; chain_s1.sh; chain_r.sh).
+- (1) NOSTRIL PATCH, ORIGIN FOUND (STOP RULE honoured: no bake change). r67/nose_scene_vs_export.png (scene colour | rc2r
+  basecolor): the scene's own colour at the ala is CLEAN; the patch is not in the skin stack / projection. But the scene's
+  nose has no nostrils: the scene's "body" object is meshed at the scene voxel (7.1 mm; 43.9k verts, median edge 5.9 mm),
+  while the export KEEPS the approved face (9805 vertices, GNM-native). The bake's source surface therefore sits off the
+  low poly by median 1.0 mm, p90 6.5 mm, up to 27 mm (nostril insides) near the nose; 3-6 mm along both alar grooves and
+  rims (r67/nose_gap.png: rc2r basecolor | low-poly -> scene-mesh distance, 0-8 mm). Texels there hit the blob at grazing
+  angles / the wrong place = the patch. Not the cage (r64), not missed texels (r66): the bake source is the wrong shape.
+- LIP "TEETH": r67/mouth_scene_vs_export.png (scene colour | export; scene rms | export roughness): the blocky glossy teeth
+  under the lower lip's border are ALREADY in the scene's roughness / specular: the lip zones are per-vertex masks on the
+  same 6 mm mesh (triangle staircases). Same root, not the skin recipe.
+- TEST on a copy (workspace/rc2_tess_r67 = rc2_tess + parts.body.refine [{lo [-.075,-.2,1.4], hi [.075,-.06,1.62],
+  voxel .001}], scene.sync 166 s, body 135k verts): r67/refine_before_after.png: the scene nose now has the alae and
+  nostril openings, the lip zones' rms is a clean vermilion shape (no teeth). Gap to the export's head near the nose:
+  median 0.11 mm (was 1.0), the rest is the nostril cavity (> 4 mm: 213 verts, deep inside).
+- APPLIED: rc2_tess v5 (r67/mk_rc2s.py: the same refine box). General follow-up (not built): the export should warn (or
+  the scene refine automatically) where the kept approved face lies > ~1 mm from the scene part's mesh: every GNM-native
+  head on a body meshed at the body's voxel has this.
+- (2) COAT SPECK: lods.push_under_layers dumps its input with HP_PUSH_DUMP=<dir> (push_<part>_<corners>.pkl: p, covers,
+  stack, gap, reach), so stray_flaps can be replayed on the export's own LOD0 parts.
+- rc2s EXPORT RUNNING: r67/chain_s1.sh (HP_PUSH_DUMP=r67/push) -> exp/rc2s_tess, map checks uvr_s_*.png, rpick_s.txt, S1_DONE;
+  then r67/chain_r.sh (glbshots, ge sets, sheet workspace/human_renders/gr_r67_tess.png, ahsheet, trios r67/ab_s_vs_n).
+STATE: nostril + lip teeth = the scene's 7 mm face mesh (bake source); refine box applied; rc2s exporting. NEXT: map check,
+replay stray_flaps on the dump, A/B vs rc2n.
+
+- (2) COAT SPECK, FIXED (e333e38b). Replay of the export's own LOD0 push input (r67/push/push_cloth_sweater_10002.pkl;
+  r67/flap_sd.py, glb_vs_dump.py, push_replay.py): at push time NO sweater vertex is outside the coat (max 0.3 mm); in the
+  GLB the flap vertices (the same 173/174/1540/1541 as r66) sit 19-22 mm off their push input. The PUSH ITSELF made the
+  flap: a fold's vertex normals point into the body, so the coat outside reads as behind them (a poke) and "in along the
+  normal" went OUT (face test: 16-22 mm, vertex test: ~6 mm). Not cull_under_cloth, not write_glb. FIX lods:
+  LOD_UNDER_ORIENT (under_depth flips an outward normal that disagrees with the nearest cover outer-shell sample's
+  facing, lods._cover_samples) + LOD_UNDER_FACE_ALIGN 0.5 (a poking face moves a corner by depth / (n_corner . n_face),
+  and not at all past 60 deg). Replay: after the push 0 back vertices outside the coat (min clearance 1.7 mm; was 2 out
+  by 5.0 mm with the face fix alone); poking0 5 -> 20 (more real pokes seen), left 1. Test
+  test_push_under_never_moves_a_flipped_normal_out_through_its_cover (fails without the fix). 44 passed.
+  NOT YET IN A GLB: rc2s was exported before the fix.
+- rc2s EXPORTED (exp/rc2s_tess, f8967a9d: face refine, speck NOT fixed). Map check r67/maps_r_vs_s.png (top: basecolor
+  rc2r | rc2s at the nose; bottom: roughness rc2r | rc2s at the mouth):
+  - LIP TEETH: GONE. The vermilion's roughness edge is clean. The cheeks' roughness is now mottled (the stack's own
+    roughness break-up, which the 6 mm mesh had averaged away; visible in the scene too, r67/refine_before_after.png):
+    the skin thread should say whether that is meant.
+  - NOSTRIL: NOT GONE. Her left ala's blocky patch is still there (her right nostril's inside is cleaner). So the 7 mm
+    scene mesh was A cause (3-6 mm source offset; the lip zones) but not THE patch's. What is left: it is not in the scene
+    colour, not the cage, not missed texels, not the source shape now. Next suspect: the tiny 1-5-face UV islands on
+    the nose (r64: 20 there, "right beside the patch"; blender_asset._charts' 75 deg cone test) = texels of a tiny island
+    padded / filled across its seam by asset._across_seams from a neighbour in the ATLAS. Test: paint each nose island a
+    flat id colour in the low poly's own UV (no bake) and see if the patch's outline = one island; or merge islands
+    under ~5 faces into their neighbour chart.
+- A/B / sheet: NOT RUN (rc2s carries the coat speck; the next export carries both fixes). The render chain is ready:
+  r67/chain_r.sh (retarget rc2s -> the next tag), ahsheet.py / trios.py copied. I stopped my glbshots / chain on rc2s.
+STATE: lip teeth fixed (face refine on rc2_tess v5); speck fixed in code (tested on the export's own push input); nostril
+patch survives a correct bake source. Nothing of mine running.
+
+## Handover r67 (assembly agent, tool-call budget)
+- DONE: nostril patch located OUT of the skin stack (scene colour clean); the scene's 7 mm face mesh found and fixed by a
+  1 mm refine box on rc2_tess (lip teeth gone, source offset 1.0 -> 0.11 mm) but the ala patch survives; the coat speck
+  traced to push_under_layers itself and fixed + tested; HP_PUSH_DUMP diagnostic. Commits f8967a9d, e333e38b.
+- BEST RC: still rc2n (rc2s unreviewed; carries the speck).
+- NEXT: (a) export rc2t = rc2_tess v5 on e333e38b (r67/chain_s1.sh with the tag changed), check rpick (no sweater ray) and
+  the log's LOD0 push line; (b) r67/chain_r.sh on rc2t -> renders, sheet gr_r67_tess.png, ahsheet, review-ab rc2t vs rc2n
+  (CLI after 13:00 MT, else trios + a blind subagent), RC_tess.md; (c) nostril: the tiny-island test above (no more bake
+  changes before it); (d) skin thread: is the mottled cheek roughness at 1 mm meant?
+- General follow-up: a kept approved face on a body meshed at the body's voxel is a bake source 3-6 mm off; the export
+  should refine the scene part over the kept face itself (or warn), not rely on a spec box.
+
+## r68 (2026-10-19, assembly agent, fresh session): the scene auto-refines over the kept face; rc2t; nose islands
+Scratch /mnt/data/hifipushie/assembly/r68/ (chain_t1.sh, mk_rc2t.py, islands.py, kept.py, keep_patch.png).
+- (1) AUTO-REFINE (3070f05b; coordinator: make r67's box general). scene.objects: the scene part that carries the
+  base primitive (name/kind "base") is refined over the face the export KEEPS (scene.kept_face: retopo.FACE_KEEP_GROUPS
+  of the base's GNM head, one mesh or grafted, via base.head_of; Tess 9374 points), one box per cluster (face, each ear;
+  scene.face_refine, +12 mm, FACE_REFINE_VOXEL 1 mm), applied BEFORE the spec's own refine boxes (finer lid / lip
+  boxes still win). Every sync logs "<part>: kept face -> scene mesh X mm median, p90, max" (exact point-to-triangle,
+  scene.point_mesh_distance) with a WARNING over FACE_GAP_MAX_MM 0.2. No per-model box: rc2_tess v6 drops r67's.
+  Tests: test_scene_auto_refine_brings_the_part_mesh_onto_the_kept_face (a ball with a patch of 2-3 mm lumps meshed
+  at 7 mm: median gap > 0.2 mm without the boxes, < 0.2 with), test_point_mesh_distance_is_exact_on_a_triangle.
+  GARRETT: the same applies to his assembly with no spec change (his base's head is the kept face); check his sync
+  log's "kept face" line, and drop any hand refine box that only covered the face.
+- (3) NOSE ISLAND TEST, on rc2s (no bake; r68/islands.py: basecolor | flat ID per UV island | outlines | islands of
+  <= 5 faces red): r68/islands_s_nose.png, zoom r68/islands_s_patch.png. 22 tiny (1-3 face) islands in the nose view,
+  but the ala PATCH IS NOT ONE: it lies inside the big cheek / ala island (teal), its inner edge ON the seam with the
+  nose island (the alar groove), extending ~5 mm out; the two 1-face islands next to it are outside it. Tiny islands
+  are ruled out (no merge done). Also ruled out at the patch: the keep fade (r68/keep_patch.png: every GLB vertex
+  there is a kept GNM vertex, keep = 1: the texels sit on the low poly itself) and missed texels (r67 dump: 0 inside
+  their triangle in the patch box; the mirror side has as many). Blocky dark texel-scale diamonds = a value copied at
+  coarse scale. Next suspects: the scene's colour at those exact texel hits at full res (r67's "scene colour clean"
+  was the 7 mm scene in a flat render), and the projection's detail map (skin.projection.detail, detail_depth 0.12 mm)
+  /confidence at the ala, sampled from the reference at grazing view.
+- (1) MEASURED on rc2_tess v6 (r68/gapcheck.py; sync 112 s, body 340k verts with the face + both ears at 1 mm): kept face
+  -> scene mesh median 0.046 mm, p90 0.16, max 8.1 (the nostril cavity) over 9374 points. (7 mm scene: 1.0 median;
+  r67's hand box: 0.11.) r67/sync.py prints only the last 30 log lines: the "kept face" line is earlier in the log.
+- (2) rc2t EXPORTING: r68/chain_t1.sh (v6 -> sync -> exp/rc2t_tess, uvr_t_*.png, rpick_t.txt, T1_DONE), then
+  r68/chain_r.sh starts by itself (renders, gr_r67_tess.png, ahsheet face_vs_approved.png, trios ab_t_vs_n).
+STATE: auto-refine done + measured; rc2t exporting. NEXT: rpick, sheet, A/B vs rc2n.
+
+## Handover r68 (assembly agent, tool-call budget; 05:31 MT)
+- DONE: (1) the general auto-refine (3070f05b: scene.kept_face / face_refine / face_gap, WARNING over 0.2 mm median;
+  tests; rc2_tess v6 has no hand box; measured 0.046 mm median). (3) the nose island test: the ala patch is NOT a tiny
+  UV island, NOT the keep fade, NOT missed texels (details above). Skin question on the mottled cheek roughness filed
+  in skin.md ("Question from assembly (r68)"). tests/test_eyedetail.py::test_lashes_build fails on 3f60ab54 too
+  (pre-existing, not mine).
+- RUNNING (mine; PIDs in r68/PIDS): r68/chain_t1.sh, at 05:31 still QUEUED for memory behind ag_garrett10's export
+  (24 GB, since 04:57): sync done, export rc2t not started. A waiter then runs r68/chain_r.sh by itself (renders,
+  workspace/human_renders/gr_r67_tess.png, r68/face_vs_approved.png (approved head), trios r68/ab_t_vs_n).
+- NEXT: (a) when r68/T1_DONE: rpick_t.txt must show NO sweater ray through the coat; t_log_lines.txt the LOD0 push
+  line; uvr_t_nose / uvr_t_mouth vs r67's. (b) when RENDER_T_DONE: look first at gr_r67_tess.png and
+  face_vs_approved.png, then review-ab rc2t vs rc2n (CLI after 13:00 MT; else a fresh blind subagent on
+  r68/ab_t_vs_n trios), update RC_tess.md (best RC is still rc2n). (c) nostril: sample the SCENE's colour at the patch's
+  exact texel hits at full res (r68/islands.py's view, centre 0.0142, 1.4983, half 0.006) and the projection's detail
+  / confidence maps at the ala; no bake change before that.
+- GARRETT: the auto-refine applies to his assembly with no spec change; check his sync log for the "kept face" line
+  (sync.py prints only the last 30 lines: grep the full log, or r68/gapcheck.py retargeted) and drop face-only boxes.
+
+## r69 (2026-10-19, assembly agent, fresh session): rc2t collected; the nostril patch's next suspects
+Scratch /mnt/data/hifipushie/assembly/r69/ (cagetest.py, uvov.py, ip.py / ip2.py, patch_scene_vs_s.png).
+- (4) NOSTRIL PATCH, four more suspects RULED OUT (rc2s, her left ala, centre 0.0142, 1.4983, half 6 mm):
+  - Scene colour at FULL RES (the v6 scene, face meshed at 1 mm, r67/scene_flat.py at 600 px over 12 mm = 0.02 mm/px):
+    CLEAN (r69/patch_scene_vs_s.png: scene | rc2s basecolor; the patch has a straight seam-side edge the scene lacks).
+    Gotcha: a scene.blend COPIED to another folder renders magenta (relative image paths): render it in place.
+  - Bake rays: r69/cagetest.py emulates asset.cage_verts on the GLB head (cage = 2 voxels = 14.2 mm everywhere there,
+    clearance never limits it) and casts each texel's ray cage -> low poly, first hit: 0% of 57.6k texels land > 0.3 mm
+    from their own point. The rays reach the right place (the kept face = the scene mesh within 0.05 mm).
+  - UV overlap: r69/uvov.py: no head texel is shared by two islands or by any other atlas-0 mesh (body, socks, clip,
+    badge card, eyes).
+  - inner_paint (the lip colour laid over the bake by GNM vertex): the patch's colour is ~ skin x 0.6 + INNER_LIP x 0.4
+    in all three channels, so tested: r69/ip2.py: 0 painted topology vertices within 8 mm of the patch; the only
+    vertices mapped > 2 mm off their GNM vertex are the sock's 406 (expected). Not it.
+  So the patch is not in the scene's colour, not where the rays land, not an overlap, not the lip paint. LEFT: the bake's
+  RAW output (given["color"] before asset.bake's post-steps: _dilate on missed texels, _fill_missed_3d, _across_seams,
+  put_given's _dilate) vs the final PNG at the patch's texels: one dump (e.g. HP_BAKE_DUMP extended to save the raw
+  colour atlas) decides bake vs post. The projection's detail / confidence maps feed the scene's material, so the clean
+  scene render covers them for colour.
+
+- (1) rc2t EXPORTED (exp/rc2t_tess; T1_DONE 06:04 after ~35 min queued behind Garrett's export). Kept face -> scene
+  mesh as r68 measured. LOD0 push: sweater poking 20 vertices / 45 faces -> 1 (198 moved); LOD1 62 -> 10, LOD2 22 -> 1,
+  LOD3 13 -> 1. Body: 1.8% of its texels missed inside their triangle (filled 3D). Lip floor: 2916 texels, 0.333 -> 0.389.
+- (2) SPECK: r68/rpick_t.txt: the coat speck's sweater rays 74 -> 1 (one ray on face 9566, x 0.008 y 1.132, the old
+  flap's lower edge; rc2r / rc2s had 74 over faces 9551..11268). Essentially fixed; the speck close-ups (r68/sp/t) were
+  still rendering when I stopped.
+- (3) A/B rc2t vs rc2n (review-ab CLI: "REVIEW FAILED", exit 4, before 13:00 MT; fresh blind subagent on r69/ab_blind
+  trios, key r69/key_blind.json): rc2n better on 3 (face_v0 / face_v1 / eyes photo-lit), rc2t marginally on 1 (face_v0
+  game-lit: rc2t's lower lip has a white specular blob, rc2n's upper lip is brick-dark; the reviewer
+  picked rc2t there). OVERALL rc2n. rc2t's faults named: LIPS a hard-edged saturated pink decal, too wide
+  (the 1 mm scene now draws the skin stack's lip zone edge exactly: the 7 mm mesh had blurred it); BROWS blurry
+  smudges with no hair, in a dark band. Both: the nose blotch (her left ala), stark eye whites, the cheek smudge (game
+  light). My own look first (r69/look_ref_n_t.png: ref | rc2n | rc2t) agreed: rc2t's lips read as a sticker.
+  => rc2t does NOT become the RC. BEST RC stays rc2n on the face; rc2t is the build with the speck fixed.
+STATE: rc2t collected and lost the face A/B 1-3 (lips decal, brows blurred by the face refine); speck 74 -> 1 ray;
+nostril patch survives four more suspects. NEXT: below.
+
+## Handover r69 (assembly agent, tool-call budget; 06:15 MT)
+- DONE: rc2t collected (speck 74 -> 1 ray); blind A/B: rc2n stays the RC (rc2t: decal lips, smudged brows); nostril
+  patch: scene colour at full res, ray landing, UV overlap and inner paint all ruled out (r69 above). Nothing sent to Joe.
+- STILL RUNNING (r68's, not mine): r68/chain_r.sh (GE_T, sheet workspace/human_renders/gr_r67_tess.png, speck shots
+  r68/sp/t, r68/face_vs_approved.png); it ends by itself (RENDER_T_DONE). Nothing of mine is running.
+- NEXT: (a) THE FACE REFINE CHANGED THE LOOK: the lip zone's edge and the brows. Before the next RC, decide with the skin
+  thread whether the stack's lip zone wants a soft edge (it was soft only because the 7 mm mesh blurred it) and why the
+  brows lost their hair (brow cards / brow paint now on a 1 mm mesh: compare the brow region of the scene render
+  rc2n-era vs v6). Fix at the source (skin stack), then A/B again on the same trios (r68/trios.py). (b) Nostril: dump
+  asset.bake's RAW colour atlas (before _dilate / _fill_missed_3d / _across_seams / put_given) and read the patch's
+  texels: bake vs post decides the next step. (c) look at r68/sp/t (the one remaining sweater ray) and the GE_T LOD
+  shots when RENDER_T_DONE.
+
+## r70 (2026-10-19, assembly agent, fresh session): the nostril patch, bake vs post; r68's renders collected
+Scratch /mnt/data/hifipushie/assembly/r70/ (rawbake.py: Cycles bakes ONLY the GLB's head into atlas 0 from the model's scene,
+cage = asset.cage_verts at stray 0, keeps the RAW colour atlas, then replays bake()'s post-steps one by one and draws the
+patch box front-ortho per stage beside the export's final PNG; ~1 heavy slot, no export).
+- (2) SPECK: r68/sp/t_speck_back.png (coat upper back, LOD0, 1200 px over ~0.5 m): clean, no orange through the coat. The
+  one remaining ray (face 9566) does not read. Closed.
+- (3) r68's renders, my look first: face_vs_approved.png (ref | approved tp_k19 | rc2t | rc2n, 4 rows): both exports carry
+  the dark speckled patch on her left ala (the approved head has none); rc2t's lips a saturated pink shape with a hard
+  edge, its brows a darker soft band; rc2n's brows crisper but blocky; both exports' eye whites grey/flat vs the approved
+  head. gr_r67_tess.png (rc2t game sheet): bodies, walk / run / idle, LODs from the back all clean; the coat back has no
+  speck at any LOD. Nothing new beyond r69's A/B (rc2n stays the RC).
+STATE: speck closed; r68 sheet seen. Skin's CURRENT BEST still tp_k19_a6 (projskin2 r23 running): no re-export yet.
+NEXT: rawbake (queued for the heavy slot behind Garrett's export).
+- (1) NOSTRIL PATCH: NAMED THE STEP. It is NOT Cycles and NOT the gap / seam filling:
+  - r70/rawbake.py (head only, 45 s of Cycles after a 14 min slot wait): the RAW colour atlas at the patch is clean skin
+    (r70/rb/patch_stages.png: raw | dilate | fill3d | across | put_given | FINAL png | miss mask). Replaying _dilate,
+    _fill_missed_3d, _across_seams and put_given's _dilate on it keeps it clean (box: 4725 texels, 29 missed, 0 inside).
+  - The final PNG's dark texels (179 at atlas rows 84-97, cols 821-842, her left ala x 0.012 z 1.493) are EXACTLY
+    sfe.MOUTH_DEEP_COLOR (r70/wfit.py: raw -> final fits raw x (1 - w) + deep x w at w 0.999, residual 0.0002), and the
+    roughness there is exactly INNER_PAINT_ROUGHNESS 0.4: so the step is bake()'s INNER_PAINT OVERLAY at w = 1, deep = 1.
+  - But the GLB's own triangles over those texels carry NO inner paint (r70/ipmap*.py, wreplay.py: their topo / GNM ids
+    459-478, 1965-3635 and 25 new loop vertices with parents 453-478 all give val = dv = 0 on the export's own face head;
+    inner_paint replayed on the GLB head gives w 0 there). In the atlas (r70/atlas_patch.png) the deep colour is a big
+    uniform block with a staircase edge, the look of a NEAREST-TEXEL fill from a sock island's border, not a painted
+    triangle. So at bake time those texels either belonged to other (sock-painted) triangles or were not drawn and were
+    filled by put_given / the w_ dilation from a deep-painted island; either way the bake-time triangles / uvs there are
+    not the GLB's. Checked and ruled out: vertex order (lowpoly_decimated body == topology_body.npz index for index),
+    coincident duplicates (none), sock ids in the ala (none), uv density of the GLB triangles there (normal, 3087 / m).
+  - NOT FIXED. Added a dump (asset.bake, HP_BAKE_DUMP: inner_<atlas>.npz = per texel tri / part / ip / own / w / d /
+    raw colour and every part's bake-time uv / corner_vert / verts) so the next export shows which triangles owned
+    rows 84-97, cols 821-842 at bake time. No test: the mechanism isn't proven yet.
+STATE: nostril patch = the inner-paint overlay (deep, w 1) on texels whose shipped triangles carry no paint: bake-time
+layout != shipped layout there (unproven which way). Dump hook in. Skin best unchanged (tp_k19_a6): no rc2u.
+NEXT: next Tess export with HP_BAKE_DUMP=<dir>: read inner_0.npz at rows 84-97 cols 821-842 (tri -> part, its corners'
+uv / verts vs the GLB's). If a sock triangle owned them: the uv pack overlapped islands (find which faces leave the
+part after the bake). If no triangle (own False): the GLB's ala uvs changed after the bake (the head / body split
+asset.py ~2188, or the LOD0 push). The general guard either way: apply inner paint only on drawn texels whose own
+triangle carries it (never through the w_ dilation into texels drawn by an unpainted triangle), with a test.
+
+## Handover r70 (assembly agent, tool-call budget; ~07:30 MT)
+- DONE: speck closed (r68/sp/t clean); r68 sheets looked at (nothing new: rc2n stays the RC); nostril patch traced to
+  bake()'s inner-paint overlay (exact MOUTH_DEEP_COLOR at w 1) on texels the shipped ala triangles own but don't paint;
+  Cycles raw and the fill steps are clean. Dump hook added (HP_BAKE_DUMP inner_<atlas>.npz). Nothing sent to Joe.
+- NOT DONE: the fix + test (mechanism unproven, see NEXT above); (4) rc2u: skin's CURRENT BEST is still tp_k19_a6
+  (projskin2 r23 in flight), so no re-export / A/B / sheet this round.
+- Nothing of mine is running.
+
+
+## r71 (2026-10-19, assembly agent, fresh session): the nostril patch's texels were misread (uv flipped twice)
+Scratch /mnt/data/hifipushie/assembly/r71/ (chain_d.sh: rc2u0 = rc2_tess exported with HP_BAKE_DUMP=r71/dump; rd*.py, cmp.py
+readers; rawbake2.py = r70's head-only raw bake with the uv fixed and RAY_MM; pr.py reads a raw atlas at the patch).
+- (1) DUMP READ (inner_0.npz of rc2u0, skin tp_k19_a6 = CURRENT BEST, unchanged): rows 84-97 / cols 821-842 are NOT drawn at
+  bake time (own False, no raster entry) and are filled from the mouth sock island's border (body tri 17284, ip [1, 1]): harmless
+  padding. They are NOT the ala: r70 (ipmap*.py, wfit.py, rawbake.py) and r69's uvov / cagetest read the GLB's head with trimesh
+  and flipped v again (`1 - uv`), but trimesh ALREADY flips glTF texcoords to v-up (checked against the GLB's raw accessor:
+  file v 0.854 = trimesh 0.146). So every "patch box" since r69 was the mirror image of the ala's texels.
+- THE REAL ALA TEXELS (GLB tris within 8 mm of x 0.016 z 1.494, front: rows ~100-200, cols ~50-130 + a few at the far corner):
+  the blotchy patch is there in rc2t's basecolor AND in the export's Cycles colour (dump raw), on texels with share 1 (fully
+  baked, not missed, not filled), inner-paint weight 0 there. So it IS the Cycles bake (r64's first reading), and r70's
+  "raw is clean" was the flipped box. r69's "scene colour clean at full res" stands (scene render, no uv involved).
+  r70's rawbake (head alone, cage at stray 0, ray = cage + 2 voxels) baked its own flipped layout, so its ala texels WERE in its
+  box: clean. The export's bake differs from it in the ray length (export: out_ + in_ of the whole body part) and the cage's
+  stray term. Testing: rawbake2 at the export's layout, ray 28 mm (r70's) vs 150 mm.
+- The r70 guard ("inner paint never through the w_ dilation") is a no-op on output: put_given re-fills every texel outside
+  `own` from the nearest own texel anyway, so no test can fail on the old behaviour. Not added.
+STATE: patch = Cycles colour at the real ala texels; r70's overlay finding was a uv-convention error. NEXT: rawbake2 A/B.
+
+- (2) RAY LENGTH RULED OUT; THE RAYS LAND RIGHT (on the low poly): r71/rawbake2.py (head alone, the GLB's uv the right way up)
+  at ray 28 mm (r70's) and 150 mm: the SAME blotch, texel for texel, as the export's Cycles colour (r71/rb_cmp.png: rb_0 | rb_150 |
+  export; pr.py: 658 / 658 / 920 blotch texels left of the island seam, shares 1). So it is deterministic and not the ray length,
+  the other parts or the stray term. r71/rays2.py: the cage there is the full 2-voxel 14.1 mm (the 0.45 x clearance cap does not
+  bite: clearance > 31 mm), and the cage -> texel rays' first hit on the head lands within 0.3 mm of the texel's own point for
+  98.8% (patch side) / 100% (the other side). Both sides lie inside the kept face (0.5-0.9 mm from its vertices).
+  What the patch IS (r69/patch_scene_vs_s.png, now read right): inside one export uv island, bounded by a straight edge on the
+  island's seam, the scene's own fine speckle (skin detail / the projected skin's texels) appears MAGNIFIED into blocks several
+  export texels wide, while the scene render shows it fine there. So the bake reads the scene's colour at the right 3D place
+  but at a coarser texture mapping / different attribute interpolation than the scene render does: suspects, in order:
+  (a) the high-poly object Blender's selected-to-active picks there is not the 1 mm refined face (a coarser duplicate / the
+  unrefined body object, both hp_key body) -> Blender-side ray_cast from the cage points, name the object + face + its uv;
+  (b) the scene material's image / attribute lookup during a bake uses another UV map or the per-vertex attributes of a coarser
+  mesh; (c) supersampling (BAKE_SS 2, max_px 8192) on this island. A Blender script on r71/rb_0/low0.npz (cage included)
+  answers (a) and (b) in one run.
+- (4) EYE WHITES: the export's sclera basecolor = the scene's colour exactly (dump raw sRGB median 0.907 / 0.875 / 0.835 vs
+  the PNG 0.910 / 0.878 / 0.839; AO 1.0, EYES_AO_OFF). So the grey whites in the game renders are SHADING / light of the game
+  render (and the skin's sclera tint, ~231/223/213 vs GNM's 236/232/226), not the bake.
+- (3) NOT DONE: no fix, so no rc2u / A/B / sheet. Nothing for Joe.
+- rc2u0 (exp/rc2u0_tess, OLD code + HP_BAKE_DUMP) was still in its LOD stage at hand-over; r71/chain_d.sh ends by itself
+  (D_DONE). It equals rc2t; use it only for its dump.
+STATE: patch = Cycles reading the scene's colour magnified on one ala island (rays land right; ray length irrelevant); r70's
+overlay finding retracted. Eye whites = not the export.
+
+## Handover r71 (assembly agent, tool-call budget; ~08:10 MT)
+- DONE: dump read; r69 / r70's uv convention error found (trimesh flips glTF v already; their patch boxes were the ala's mirror);
+  the patch is in Cycles' colour at the real ala texels, independent of ray length (two head-only raw bakes), rays land right.
+  Eye whites: not the export.
+- NEXT: one Blender script (scene.blend in place: copied blends render magenta) that loads r71/rb_0/low0.npz + cage, ray-casts
+  each patch texel (rows 92-142, cols 48-72 of atlas 0, v-up uv!) from its cage point toward its low-poly point against the
+  scene's hp_key "body" objects (all of them, evaluated), and prints the hit object / face / its UV-map names and the uv used by
+  the skin's image node, beside the same for the clean texels right of the seam. Then fix that (likely: the bake's high poly
+  set or the material's uv binding) in asset.scene_maps / blender_scene bake_maps, with a test, and export rc2u.
+- RUNNING (mine): r71/chain_d.sh (rc2u0 export, PID in r71/PIDS) ends by itself. Nothing else.
+- GOTCHA for every uv check: trimesh's GLB texcoords are ALREADY v-up (= ours); never `1 - uv` them.
+
+## r72 (2026-10-19, assembly agent, fresh session): the bake is exact at the nostril patch; the patch is the scene's own colour
+Scratch /mnt/data/hifipushie/assembly/r72/ (inv.py / inv2.py: scene inventory + bake-ray casts in Blender; graph.py -> graph.json:
+the body material's node graph; bk.py: head-only probe bake (r71/rb_0 low + cage) of colour / Image Texture.024's lookup vector /
+its colour / wpos; cam.py: Cycles camera renders of the same probes along the patch's normal, compared per texel).
+All run on workspace/rc2_tess/scene.blend IN PLACE (not saved). uv convention: r71's rays_raster (v-up, trimesh's, not re-flipped);
+check: the probe bake's wpos lands within 0.03 mm (p50) of each texel's own low-poly point on both sides of the seam.
+- Suspect (a) a coarser / duplicate high poly: NO. One hp_key "body" object (672k tris, no modifiers); every patch and clean
+  texel's bake ray hits it on 0.4-0.7 mm triangles, 0.02 mm (p50) from the texel's own point.
+- Suspect (b) another UV map / attribute: NO. The body has NO uv map; the material reads POINT-domain FLOAT_COLOR attributes
+  (hp0..hp8, wpos, wnrm) and image lookups through Combine XYZ of them (projected skin images 2048 x 1576 via hp1 / hp2; tiling
+  skin_*_16 detail via wpos). The baked lookup vector of Image Texture.024 = (hp2.x, hp2.a) interpolated at the BVH hit (p50 0.5-1
+  image px); the baked image colour = numpy's sample of that image at the baked vector (p50 0.0000).
+- Suspect (c) the bake vs the scene render: NO DIFFERENCE. cam.py: a Cycles camera render of the same emission (ortho along the
+  patch normal 0.79, -0.60, -0.15) vs the bake, per texel (761 patch / 713 clean texels visible): colour |cam - bake| p50 0.0014
+  (patch mean 0.559 / 0.337 / 0.227 in both; clean side 0.635 / 0.406 / 0.288 in both); col024 p50 0.0000; vector p50 0.001.
+  So Cycles bakes exactly the scene's colour at the exact place. The patch side of the seam IS darker / redder in the scene
+  (the lateral ala face). (INFERRED, not measured: r69's front-ortho "scene clean" read missed it at that angle / scale.)
+  What reads as the "blotch" in the export = the scene's colour there (darker, plus the coarse speckle of the tiling skin detail,
+  blocks ~0.2-0.5 mm, point-sampled at ~0.3 mm export texels, BAKE_SS 2): the island seam is where the sampling pattern changes.
+  (INFERRED: the speckle-aliasing reading is a hypothesis; the measured fact is bake == scene colour per texel.)
+- CAUSE (named, not a bake bug): the export faithfully samples the scene's skin at the ala; the darkness / speckle comes from the
+  skin stack itself (the projected skin and the tiling detail at wpos) and the export's texel size vs that speckle. No general
+  bake fix to make, so no test (nothing in the bake fails). r72/cam_patch.png: scene colour | texel overlay | Image 024 there.
+STATE: nostril patch = the scene's own skin colour, baked exactly; it is NOT an export fault. Hand to the SKIN thread (is the
+lateral ala's tone / speckle what the skin intends? the speckle's scale vs a 0.3 mm game texel: filter / prefilter the tiling
+detail before baking, e.g. BAKE_SS 4 or a mip-like blur of skin_*_16 for the bake) — a later round, not this one.
+- (3) A/B: no rc2u (no fix to ship). rc2t vs rc2n was already blind-A/B'd in r69 (rc2n 3-1; the CLI fails before 13:00 MT, it is
+  07:40 MT): same builds, nothing changed, so not re-run. RC stays rc2n. Nothing READY FOR JOE.
+NEXT: skin thread: the ala's tone + the detail speckle's aliasing at game texel size (A/B BAKE_SS 4 / a pre-blurred detail on a
+head-only rawbake, r71/rawbake2.py, before any export). Assembly: rc2u when the skin's current best changes.
+
+## Handover r72 (assembly agent; ~07:45 MT)
+- DONE: the nostril patch's cause: the bake reproduces the scene's colour texel for texel (camera vs bake per texel p50 0.0014);
+  one body object, no uv maps (attributes), lookups exact. The patch is the scene's own skin at the lateral ala, point-sampled.
+  Not an export bug: no fix, no rc2u, no A/B (rc2t vs rc2n done in r69). RC stays rc2n.
+- Nothing of mine running.
 
 ## Garrett, session 6 (2026-10-18, assembly_garrett, fresh; scratch /mnt/data/hifipushie/assembly_garrett/s6/)
 - (1) LOD0 HAIR TIER (code, asset.hair_tier_default): a card / strand groom with no hair.export.tier now takes the role's
