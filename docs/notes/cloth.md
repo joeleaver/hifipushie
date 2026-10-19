@@ -7481,6 +7481,43 @@ Lesson: a lever that does nothing is a bug until shown otherwise (here: inward n
   segment (one- vs two-piece, seat on / off) to confirm, then a fix.
 - Not done (paused): the KAT and fix, coordinator items a-e, collar B measure, collar A, LOOK, the gate. STATE lists them.
 
+## virtual fit: relax fix + validation 2026-10-19 (branch pattern-form-fit; scripts $PF = /mnt/data/hifipushie/pattern_form; NO sims)
+- CAUSE PROVEN (KAT test_two_panel_sleeve_on_real_arm: two panels, seams front / back, the o4 jacket's 364 / 326 mm girths,
+  placed round over Garrett's real forearm + upper arm cut from the body): the old relax (ARAP, a rigid cell per vertex fitted
+  to the FLAT pattern ring) prefers each panel flat and charges nothing for a crease AT a seam (the two sides are different
+  cells). Aspect / the arm's: 0.98 placed -> 0.81 (120 it) -> 0.64 (240) -> 0.57 (480); attraction off 0.78; SEAT_GRAVITY
+  0.66. One-piece tube -> teardrop 1.59, seam-adjacent points (10 %) carry 42 % of the turning. ARAP energy round 20139 ->
+  lens 1186 mm^2. ($PF/kat1.py, kat2.py, kat1*.log)
+- FIX pattern_form.FIT (default True): edge isometry (local step: current direction x pattern length; weight x FIT_STIFF 12,
+  pins / seams / closures scaled alike) + Bergou et al. 2006 quadratic bending on the SEWN surface (seams welded; cot
+  Laplacian of the pattern; interior, non-fold, non-made vertices; FIT_BEND 1.0 x mean edge^2). Folds, flaps, pressed seams
+  and made pieces keep their ARAP cells (folded rests). Sources: projective dynamics / ShapeOp (Bouaziz 2014), Marvelous
+  Designer arrangement + settle. Sweep: kb 0.005-0.1 weak (girth 91 %), kb 1-3 with stiffness 1 strains 9-16 %; FIT_STIFF 12
+  -> p99 1.9 %. Rest "smooth" (curvature smoothed over the one-ring) drifts to 1.26 at 480 it; "flat" holds 1.13 -> flat.
+  KAT now aspect 1.06 / 1.02, girth 99.4 / 100.5 %, p99 1.9 % (<= 6 %, KES-FB EMT 3-8 % at 500 gf/cm: an upper bound,
+  wear-load figure unverified). All 16 pattern_form KATs pass.
+- VALIDATION ($PF/val1.py, record.py -> validation.json; jacket over shirt, ~20 s): frozen_ae's drape is worn OPEN (closures
+  state open; break 51.5 / cfHem 86.2 mm off CF read on the drape). Closed form vs open drape read waist -7 %: same state
+  first (C34). Worn open as the drape: waist 386/397 (-2.8 %), hem 458/458, sleeve opening 106/110 (-2.8), forearm girth
+  +2.5 % aspect +6 %, hem aspect -13 %, length t 0.526/0.519: PASS; shoulder 479/465 (+3.0 %), sleeve hem girth -4.6 %,
+  collar CB 27.6/23.3 mm (drape collar is made): FAIL. Old relax: 3 of 10 pass (sleeve opening 63, aspect 0.45).
+  -> pattern_form.VALIDATED = False, form_validated() reads the record; tests/test_form_validation.py keeps them equal.
+  Bending weight does not move the waist (kb 10 / 50 narrowed it: flat-rest bending pulls the sides' curvature in).
+  Shirt rows INFO only: its drape is pressed under the jacket. Form strain p99 18 %: 92 % of the top 1 % within 2 cm of a
+  seam (neck point / collar seam, underarm junction).
+- SIMPLE GARMENTS ($PF/simple.py): straight skirt (skirt block) p99 3.5 %, hull 98.5-100 % of the cloth's own section
+  length, above the body: PASS. Tee (knit block; drafts no sleeves) p99 15 % (old 24.6): neckband 38 % (rib stretched by
+  design), chest cloth 924 < body 1019 (knit negative ease); hull 99.5 % at waist / hem.
+- LOOK $PF/look_fit12/ (clay_sheet, diag_sheet, pair_3m_{front,three,side,back}, pair_1m_{front,three}); review
+  $PF/review_fit12 (dry, one pair per reviewer turn, fresh subagent). Mine: sleeves round like the drape, silhouette and
+  length match; faults: fronts open less above the break, jacket collar flat with no roll, shirt collar a thin ring, +10 %
+  stretch band over the shoulders / yoke, shirt sleeve through the jacket at the upper arm. Reviewer: VERDICT FAIL (below).
+- BLIND REVIEW (fit12, 6 single pairs drape | form): VERDICT FAIL. MAJORs grouped by cause: (a) COLLARS: jacket collar a
+  flat slab with no roll / notch, shirt collar a thin cord with no stand or spread (all 6 regions); (b) FRONT OPENING ~half
+  the drape's (worn_open pulls only break + hem); (c) SHOULDER: sloped + rounded sleeve head vs the drape's square, dropped
+  shoulder, armhole ridges on the back; (d) BACK: a straight board in side view, clings to the seat at the hem. Sleeve
+  width: MINOR (15-20 % slim at the upper arm by eye; measured forearm girth +2.5 %). None names a lens. Next: (a) and (c).
+
 ## dress-garrett 2026-10-19 muslin 1 (branch garrett-muslin1 from garrett-form-sleeves; scripts $G/muslin1/: patch.py, run.sh, probe.py, gate.py, flat.py, summ.py, compare.md; NO sims, $0)
 Brief: one muslin sim of the corrected patterns. COURSE CHANGE mid-session (Joe: "We're so close to being able to produce
 a jacket. We need to go back to the pattern."): no sim; gate on flat checks, flat pattern sheets, compare with a standard.
@@ -7510,3 +7547,44 @@ in pattern_jacket.py (rules, jacket_neck, waist_suppression, collar_two_piece, j
 Three bodies vs Jaeger (three.py): 18 measures within tolerance. Lessons: the waist take-ins under-deliver ~35 % (fade):
 a trial pass on a copy scales them; a fade past the hip line pulled hips to -0.4 % (now fades by 0.9 x waist->hips);
 a one-piece crescent shows its sagitta only across the whole unfolded edge, not per half. Files /mnt/data/hifipushie/tailoring.
+
+## virtual fit: validation 2 (2026-10-19, branch pattern-form-validate2 from pattern-form-fit b38c343f + garrett-muslin1; scripts $PF/v2; NO sims)
+REFERENCE CHECK FIRST (coordinator: the drape's strain map is wild). The strain measure is right: frozen_ae jacket V_sim (raw
+sim) edge strain p50 0.1 % / p99 4.7 %, face p99 9.4 %. res["V"] is hand work: the closure step (V_closed) moved the L front
+hem 39 -> 86 mm off CF and 43 mm down (a mirror of R; face p99 66 %), sculpt / finish moved the L hps 17 mm and the break
+13 mm (sculpt_offset max 69 mm; p99 74 %). The validation is now against V_sim (R front where the sim is asymmetric: its
+L hem rode up / crossed in). Of the old rows, the widths / girths agree within ~1 % on V_sim and V; the opening (V chest
+154 / hips 178 vs V_sim 132 / 118 gap) and body length (0.519 vs 0.484 on L) were reading the hand spread.
+Rows now (val2.py, 16, tolerances in its docstring): widths +-3 %, sleeve girth forearm / hem at f 0.85 +-3 %, aspects
++-0.15, sleeve hem edge +-10 mm, body length t (R cfHem) +-0.013, opening per front at break / chest / waist / hips +-10 mm,
+back standoff z 1.0-1.2 +-10 mm, collar CB +-3 mm.
+1 FRONT OPENING. Per stage (open1.py TRACE): the first relax ran WITH the worn-open pins, dragging break / cfHem to their
+offsets; the swing then turned 0 deg (nothing left) and the edge between stayed by CF (hips 49 vs the sim 75 mm). Fix:
+SWING_UNPINNED (first relax without the pins; the swing turns the whole front): hips 49 -> 55, chest 50 -> 55, collar CB
+27.6 -> 24.5. Still short: the seat's attraction draws the swung front back onto the body (swing 72 -> seat 43 at the hips).
+Tried (opt-in, off): WORN_EDGE edge pins (x of the swung CF edge + roll line): opening all within 8 mm, BUT the fronts slid
+sideways (side seam +5 cm at the hem: hem sweep +23 %, waist +6 %, shoulder +4 %); weight 20 vs 5 identical; EDGE_FREE
+(no attraction near the edge) no change; swing kept only above the break (SWING_BELOW False) no change. Stop-loss.
+2 SHOULDER / SLEEVE HEAD (shoulder.py, cap.py). The pattern declares support ["sleeve_head"] and the form already uses it
+(the drape's body carries support_pad, 4.9 mm max; same body). details.shoulder says "pad_and_head" but no shoulder_pad is
+declared: a PATTERN item for the tailoring agent. Cap ease is not bunched as strain (along the cap seam: sim -0.2 %, form
+-1.3 %); it stands as SHAPE: the cap 7 mm further off the arm (r 52 vs 45 at f 0.08), 2x the ridges (14 vs 7), the
+outline +27 mm at x 240 where the sim's sleeve has already dropped (-8): no weight to pull the cap down. Shoulder slope
+x 140-220 is the same (form drops 12, sim 15 mm). Tried SEAT_GRAVITY (r 52 -> 49, ridges same) and HANG (a constant pull
+down: 1 mm/round drove the sleeve through the arm, r 21 mm): stop-loss; HANG stays 0 (A/B only).
+3 BACK (hemback.py): the SHAPE differs. Back pieces stand 35-52 mm off the body at z 1.0-1.2 vs the sim's 16-27; the CB
+profile 41-49 mm behind the body vs 20-25; equal at the blades and the seat. Bending is not it (FIT_BEND 0.3: 49 vs 52):
+the slack the sim drops into the small of the back as folds stays as a smooth bridge. No fake folds added.
+4 SLEEVE HEM GIRTH -4.6 % was a MEASURE artefact: the form's hem edge sits 5 mm higher (median, along the arm), so the
+f 0.9 plane cut the hem edge (25 vs 35 section points, a partial loop). At f 0.85 (inside both): -1.8 % PASS.
+RESULT (validation.json, from v2/val2_final.json): 12 of 16 rows pass (before, same rows: 11). FAIL shoulder +3.2 %, open
+chest -10.5 / hips -19.5 mm, back standoff +26 mm. form_validated() False; pattern_form.VALIDATED False.
+Gate: muslin-1 merged; cloth_check.form_validated() (FORM_VALIDATED override or pattern_form.form_validated()) is what
+gate_check reads; test_gate_form_switch_reads_the_validation_record. All 35 pattern_form / gate / validation tests pass.
+LOOK ($PF/look_v2final: 3m/ and 1m/ pair_{clay,construction,strain}_<view>.png, diag_sheet.png; diag_render.look_pairs,
+clay + diag by default). Mine: the sim jacket strain is clean; the form: +10 % band over the shoulders / upper back,
+magenta at both upper sleeves (the shirt sleeve on the form is 393 mm round at the biceps vs the jacket's 378: the shirt
+is not pressed under the jacket there), the fronts hug the body and pull in at the hem in side view, the back bridges.
+Blind review ($PF/review_v2final, fresh agent, one image per turn): FAIL: shirt through both upper sleeves, shoulder /
+back stretch, the front clings and pulls in at the hem (sim hangs straight), boxy square shoulder corner, stray seam
+lines across the upper back; opening at the chest judged within ~10 px. Collar / shirt under OTHER STAGES.

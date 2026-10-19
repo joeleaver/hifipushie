@@ -465,3 +465,46 @@ def pattern_sheet_diag(res: dict, prefix, diag, views=("front", "three", "side",
     with resources.heavy(f"diag sheet {p.name}", gb=4, gpu=True):
         return sheet([("garment", objs)], p, diag, views=views, resolution=resolution, box=(c - half, c + half),
                      aspect=0.62)
+
+
+LOOK_DIAG = (("construction", ("panels", "seams", "turned")), ("strain", ("strain", "layers")))
+
+
+def look_pairs(ref: list, ours: list, out_dir, views=("front", "three", "side", "back"), resolution: int = 640,
+               box=None, aspect: float = 0.8, diag=LOOK_DIAG, gap: int = 8) -> dict:
+    """Reviewer pairs, reference | ours, ONE view per PNG, clay AND diagnostic by default (coordinator 2026-10-19, after
+    Joe asked why the debug colours weren't used): per view <out_dir>/pair_clay_<view>.png and, for each (label, modes)
+    in `diag` (default: construction = panels + seams + turned, strain = strain + layers), pair_<label>_<view>.png, plus
+    legend_<label>.png. diag=() is clay only and has to be asked for. ref / ours: cloth.render objects (the diag modes
+    need "mesh" for strain / panels, "layer" for layers). Returns {"clay": [paths], label: [paths], "legend": {label:
+    path}}. The caller holds resources.heavy (GPU) under bin/capped."""
+    import os
+    from PIL import Image
+    from . import cloth
+    os.makedirs(out_dir, exist_ok=True)
+    VIEW = {"three": {"name": "three", "dir": [-0.65, -0.72, 0.15]}, "top": {"name": "top", "dir": [0.0, -0.05, 1.0]}}
+    vs = [VIEW.get(v, v) if isinstance(v, str) else v for v in views]
+    names = [v if isinstance(v, str) else v["name"] for v in vs]
+
+    def pair(a, b, out):
+        A, B = Image.open(a).convert("RGB"), Image.open(b).convert("RGB")
+        im = Image.new("RGB", (A.width + B.width + gap, max(A.height, B.height)), (255, 255, 255))
+        im.paste(A, (0, 0))
+        im.paste(B, (A.width + gap, 0))
+        im.save(out)
+        return str(out)
+
+    res = {"legend": {}}
+    a = cloth.render(ref, f"{out_dir}/ref_clay", views=vs, resolution=resolution, box=box, aspect=aspect)
+    b = cloth.render(ours, f"{out_dir}/ours_clay", views=vs, resolution=resolution, box=box, aspect=aspect)
+    res["clay"] = [pair(x, y, f"{out_dir}/pair_clay_{n}.png") for x, y, n in zip(a, b, names)]
+    for label, modes in diag or ():
+        a, leg = render(ref, f"{out_dir}/ref_{label}", list(modes), views=vs, resolution=resolution, box=box,
+                        aspect=aspect)
+        b, leg2 = render(ours, f"{out_dir}/ours_{label}", list(modes), views=vs, resolution=resolution, box=box,
+                         aspect=aspect)
+        res[label] = [pair(x, y, f"{out_dir}/pair_{label}_{n}.png") for x, y, n in zip(a, b, names)]
+        lg = list(leg) + [e for e in leg2 if e not in leg]
+        legend_strip(lg, 2 * Image.open(a[0]).width + gap, strain="strain" in modes).save(f"{out_dir}/legend_{label}.png")
+        res["legend"][label] = f"{out_dir}/legend_{label}.png"
+    return res

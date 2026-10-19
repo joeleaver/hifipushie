@@ -44,12 +44,55 @@ LOOSE_PRESS = 0.0005
 # (x the up-component of its normal): a garment on a dress form rests on the shoulders and the top of an arm and hangs
 # from them; drawn on all round, a loose sleeve's ease (wrist girth x 2) had nowhere to go and folded into a lens.
 SEAT_GRAVITY = False
+HANG = 0.0  # A/B (validation 2): weight as a constant downward pull on the proximal target, m
 # PRESS UNDER (same session): on_form assembles a garment over its under garment PRESSED as the sims press it
 # (cloth.pressed). OPT-IN until the gate reads it.
 PRESS_UNDER = False
 # TRACE (dress-garrett 2026-10-19 form sleeves): a callable (phase, X, M) called after each assembly phase (placement,
 # relax1, swing, band_init, turn_flaps, seat, let_go): bisect where a shape fault appears. None = off.
 TRACE = None
+# THE FIT RELAX (2026-10-19 virtual fit; Joe: "We shouldn't need a sim to drape it. We should be able to build a 'fit'").
+# The old relax was as-rigid-as-possible with one rigid cell per vertex fitted to the FLAT pattern one-ring: (a) a cell
+# prefers its ring flat, so every panel prefers to lie flat, and (b) the two sides of a seam are different cells, so a
+# crease AT a seam costs nothing. A sleeve of two panels (upper + under) went to a lens with creases at its seams (KAT
+# tests/test_pattern_form.py test_two_panel_sleeve_on_real_arm: aspect 0.98 -> 0.57 at 480 iterations, a one-piece
+# tube to a teardrop 1.59, attraction off or on; Garrett's jacket sleeve 142 x 156 -> 72 x 159 mm). FIT = True replaces
+# it, for every cell that isn't a fold / made piece, by what fashion and game cloth tools solve for a quick fit
+# (ShapeOp / projective dynamics, Bouaziz et al. 2014; Marvelous Designer's arrangement + settle):
+#   - ISOMETRY: each pattern edge keeps its length (local step: the edge's current direction at its pattern length), no
+#     preferred rotation, so no preferred flatness;
+#   - BENDING on the SEWN surface (seams welded): Bergou et al. 2006's quadratic bending for isometric surfaces,
+#     |cot Laplacian (pattern) x|^2 / area at interior vertices. Measured across seams, a crease costs what a crease
+#     anywhere costs; with the lengths kept, a closed tube's least bending is round (Euler's elastica: the circle).
+#     FIT_BEND_REST "flat" (cloth's own rest) or "smooth" (its rest is the current curvature smoothed over its one-ring
+#     x FIT_SMOOTH passes: only unevenness costs, not curvature);
+#   - folds, turned flaps, pressed seams and made pieces (bands / collars) keep their ARAP cells and folded rests.
+# Collision with the offset body / the garment under is unchanged; SEAT_GRAVITY / PRESS_UNDER stay optional.
+FIT = True
+FIT_BEND = 1.0  # bending weight (x h^2 of the mesh: the edge terms' scale)
+FIT_BEND_REST = "flat"
+FIT_SMOOTH = 2
+FIT_STIFF = 12.0  # an isometry edge's weight (x an ARAP cell edge's): the lengths hold against the obstacles' pushes
+# FORM VALIDATED (2026-10-19 virtual fit): True once frozen_ae's pattern assembled on the form matches the simulated
+# drape of the same pattern (waist / hem / sleeve girth +-3 %, sleeve aspect +-15 %, shoulder, length, collar stand;
+# tests/test_form_validation.py, record /mnt/data/hifipushie/pattern_form/validation.json). The pattern gate reads its
+# form items as INFO until this is True.
+VALIDATED = False  # validation 2 (2026-10-19, vs frozen_ae's RAW SIM V_sim, 16 rows): 12 pass; failing shoulder +3.2 %
+# (cap stands out, no weight), front opening chest -10.5 / hips -19.5 mm, back standoff +26 mm at the small of the back.
+# (The finished drape res["V"] is hand work: closure-step mirror + sculpt, face strain p99 74 % vs the sim's 9.4 %.)
+# Set True only from a record whose "validated" is true.
+VALIDATION_RECORD = "/mnt/data/hifipushie/pattern_form/validation.json"
+
+
+def form_validated(path: str = VALIDATION_RECORD) -> bool:
+    """VALIDATED, checked against the recorded validation (form vs the drape of the same pattern): True only when the
+    flag is set AND the record says every row passes; a missing record reads False."""
+    import json as _json
+    import os as _os
+    if not VALIDATED or not _os.path.exists(path):
+        return False
+    with open(path) as fh:
+        return bool(_json.load(fh).get("validated"))
 
 
 # ------------------------------------------------------------------ mesher sizing (cloth.mesh, garment key mesh_refine)
@@ -378,6 +421,67 @@ def _fit_residual(src, rest, cur, n):
     return float(np.sum((np.einsum("nij,nj->ni", R[src], r) - cur) ** 2))
 
 
+def _fit_bending(M, F, uv, n, sw, skip):
+    """The sewn surface's bending (FIT): returns (K (n, n) sparse, rhs(X) -> (n, 3) or None). Seams welded (sew pairs ->
+    one vertex, averaged), cot Laplacian from the flat pattern (exact for isometric maps), lumped areas, rows kept at
+    interior vertices not in `skip` (folds, made pieces). K = P^T L^T D L P (Bergou et al. 2006)."""
+    from scipy.sparse import csr_matrix
+    par = np.arange(n)
+
+    def find(a):
+        while par[a] != a:
+            par[a] = par[par[a]]
+            a = par[a]
+        return a
+    for a, b in sw:
+        ra, rb = find(int(a)), find(int(b))
+        if ra != rb:
+            par[max(ra, rb)] = min(ra, rb)
+    root = np.array([find(i) for i in range(n)])
+    _, wid = np.unique(root, return_inverse=True)
+    nw = int(wid.max()) + 1
+    cnt = np.bincount(wid, minlength=nw).astype(float)
+    P = csr_matrix((1.0 / cnt[wid], (wid, np.arange(n))), shape=(nw, n))
+    Fw = wid[F]
+    U = np.c_[uv, np.zeros(len(uv))]
+    I, J, Wt = [], [], []
+    area = np.zeros(nw)
+    for k in range(3):
+        i, j, o = F[:, k], F[:, (k + 1) % 3], F[:, (k + 2) % 3]
+        a_, b_ = U[i] - U[o], U[j] - U[o]
+        cr_ = np.linalg.norm(np.cross(a_, b_), axis=1)
+        cot = np.sum(a_ * b_, 1) / np.maximum(cr_, 1e-14)
+        I += [Fw[:, k], Fw[:, (k + 1) % 3]]
+        J += [Fw[:, (k + 1) % 3], Fw[:, k]]
+        Wt += [0.5 * cot, 0.5 * cot]
+        np.add.at(area, Fw[:, k], cr_ / 6.0)
+    I, J, Wt = np.concatenate(I), np.concatenate(J), np.concatenate(Wt)
+    Wm = coo_matrix((Wt, (I, J)), shape=(nw, nw)).tocsr()
+    L = diags(np.asarray(Wm.sum(1)).ravel()) - Wm
+    # boundary of the sewn surface: edges in one face only
+    Ew = np.sort(np.r_[Fw[:, [0, 1]], Fw[:, [1, 2]], Fw[:, [2, 0]]], 1)
+    ue, cnt_e = np.unique(Ew, axis=0, return_counts=True)
+    keep = np.ones(nw, bool)
+    keep[ue[cnt_e == 1].ravel()] = False
+    sk = np.zeros(nw, bool)
+    np.logical_or.at(sk, wid, skip)
+    keep &= ~sk
+    D = diags(keep / np.maximum(area, 1e-12))
+    LP = (L @ P).tocsr()
+    K = (LP.T @ D @ LP).tocsr()
+    if FIT_BEND_REST != "smooth":
+        return K, None
+    A = (abs(Wm) > 0).astype(float) + diags(np.ones(nw))
+    S = diags(1.0 / np.asarray(A.sum(1)).ravel()) @ A
+
+    def rhs(X):
+        d = LP @ X
+        for _ in range(FIT_SMOOTH):
+            d = S @ d
+        return LP.T @ (D @ d)
+    return K, rhs
+
+
 # ------------------------------------------------------------------ the assembly
 
 def _pins(M, X0, body, ease, bsurf, under_v=None):
@@ -450,6 +554,7 @@ def worn_open_pins(M: dict, X0: np.ndarray, worn_open: dict | None) -> list:
 # had put them; the seams then dragged them: Garrett o2, the jacket collar ends 31.5 mm off the lapel plane (n8 4.8),
 # the shirt stand crumpled into pleats. False restores the old order (A/B only).
 SWING_FIRST = True
+SWING_UNPINNED = True  # the first relax without the worn-open pins (the swing does the turning; see assemble)
 
 
 def _swing_open(M, X, ox, fast, bsurf):
@@ -499,6 +604,68 @@ def _swing_open(M, X, ox, fast, bsurf):
                 best = (e, th)
         X[sel] = piv + _rodrigues(X[sel] - piv, np.tile(ax, (len(sel), 1)), w * best[1])
     return X
+
+
+WORN_EDGE_W = 20.0  # the swung front edge's pull to its swung x (a worn-open point's is WORN_OPEN_W)
+WORN_EDGE = False  # opt-in: validation 2 A/B opened the fronts (hips 72 vs the sim's 75) but slid the fronts sideways (hem sweep +23 %, waist +6 %)
+EDGE_FREE = 0.08  # m (pattern): the seat's attraction fades to none toward a worn-open front edge (0: off)
+
+
+def worn_open_edge(M: dict, X: np.ndarray, ox: list, band: float = 0.01, reach: float = 0.005) -> list:
+    """The worn-open front EDGE held where the swing put it (validation 2, 2026-10-19): with only the named points
+    pinned, the seat's attraction wrapped the free edge between them back round the body toward CF (Garrett, hips:
+    swung 72 mm off CF, seated 43, let go 55; the sim of the same pattern 75). The edge = each worn-open piece's border
+    vertices that are CF-most in their 1 cm height band (within `reach`), from the lowest worn-open point to the
+    highest, plus the CF-most vertices of its roll line (first fold row) above it: the lapel line. A gravity-free
+    stand-in for the fronts' weight and stiffness keeping them hanging open; x only, so they still rest on what is
+    under them. Returns [(vertex, x target, weight)] in the worn_open_pins form."""
+    pid = np.asarray(M["piece"])
+    border = np.asarray(M.get("border") if M.get("border") is not None else np.zeros(len(X), bool), bool)
+    out, have = [], {int(v) for v, _, _ in ox}
+    for k in sorted({int(pid[v]) for v, _, _ in ox}):
+        zs = [float(X[v, 2]) for v, _, _ in ox if pid[v] == k]
+        side = 1.0 if float(np.mean(X[pid == k, 0])) >= 0 else -1.0
+        nm = M["names"][k]
+        roll = np.zeros(len(X), bool)
+        for fd in M.get("folds") or []:
+            if fd["piece"] == nm and len(fd["rows"]):
+                roll[np.asarray(fd["rows"][0], int)] = True
+        cand = np.where((pid == k) & ((border & (X[:, 2] >= min(zs) - 1e-6) & (X[:, 2] <= max(zs) + 1e-6))
+                                      | (roll & (X[:, 2] > max(zs)))))[0]
+        if not len(cand):
+            continue
+        sx = side * X[cand, 0]
+        bz = np.floor(X[cand, 2] / band).astype(int)
+        for b in np.unique(bz):
+            m = bz == b
+            lo = sx[m].min()
+            for v in cand[m][sx[m] <= lo + reach]:
+                if int(v) not in have:
+                    out.append((int(v), float(X[v, 0]), WORN_EDGE_W))
+    return out
+
+
+SWING_BELOW = False  # A/B: the whole front stays swung (False: only the lapel above the break; the edge pins open the rest)
+
+
+def _swing_front(M, X, ox, fast, bsurf):
+    """The worn-open start, validation 2: the fronts swung (_swing_open) give the open front EDGE's targets
+    (worn_open_edge); the swing itself is kept only above the highest worn-open point (the break: the lapel and the
+    neckline the collar is stood on), fading over 3 cm to the relaxed front below it. A whole-front rigid turn also swung
+    the side seams out at the hem (Garrett: hem sweep +25 %, waist +6.5 % vs the sim, whose fronts fall open at the
+    edge only); below the break the edge pins open the front and the side stays. Returns (X, edge pins or None)."""
+    Xs = _swing_open(M, X.copy(), ox, fast, bsurf)
+    edge = worn_open_edge(M, Xs, ox) if WORN_EDGE else None
+    if SWING_BELOW or edge is None:  # (without the edge pins the whole front stays swung: nothing else opens it)
+        return Xs, edge
+    pid = np.asarray(M["piece"])
+    Xn = X.copy()
+    for k in {int(pid[v]) for v, _, _ in ox}:
+        zb = max(float(X[v, 2]) for v, _, _ in ox if pid[v] == k)
+        sel = pid == k
+        w = np.clip((X[sel, 2] - (zb - 0.03)) / 0.03, 0.0, 1.0)[:, None]
+        Xn[sel] = X[sel] + w * (Xs[sel] - X[sel])
+    return Xn, edge
 
 
 def fastened(M: dict, fasten="default") -> list:
@@ -675,6 +842,8 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
         for k, nm in enumerate(names):
             if ((B["pieces"].get(nm) or {}).get("wrap") or {}).get("to") in ("neck", "seam"):
                 placed[k] = False
+    edge_free = np.ones(n)  # (the seat's attraction per vertex: faded near a worn-open edge, below)
+    edge = None  # (worn open: the front edge's x targets, read on the swung fronts)
     # a first relax of the torso before the bands are stood on it
     E = _edges(F)
     src = np.r_[E[:, 0], E[:, 1]]
@@ -690,6 +859,24 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
             over.append((fv, bv, np.asarray(g["base_tris"])))
     # off-the-body target per vertex
     off = ease + THICK * flapv
+    # FIT: which cells stay ARAP (folds: rows + flaps; made pieces) and the sewn surface's bending
+    cellv = np.zeros(n, bool)
+    for fd, g, turn in folds_:
+        for r_ in g["rows"]:
+            cellv[np.asarray(r_["row"], int)] = True
+            cellv[np.asarray(r_["v"], int)] = True
+    for k in range(len(names)):
+        if not placed[k]:
+            cellv[pid == k] = True
+    arap_e = cellv[src] if FIT else np.ones(len(src), bool)
+    if FIT:
+        hbar = float(np.mean(np.linalg.norm(uv[E[:, 0]] - uv[E[:, 1]], axis=1)))
+        kb = FIT_BEND * hbar ** 2
+        sw_b = sw[~(cellv[sw[:, 0]] | cellv[sw[:, 1]])] if len(sw) else sw  # (made pieces: not welded)
+        Kb, bend_rhs = _fit_bending(M, F, uv, n, sw_b, cellv)
+        Kb = kb * Kb
+    else:
+        Kb, bend_rhs, kb = None, None, 0.0
 
     def system(wc, sw=sw):
         w = wE
@@ -700,19 +887,21 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
         fa = np.asarray(fast, int).reshape(-1, 2)
         Fs = coo_matrix((np.ones(2 * len(fa)), (np.r_[fa[:, 0], fa[:, 1]], np.r_[fa[:, 0], fa[:, 1]])), shape=(n, n))
         Fo = coo_matrix((-np.ones(2 * len(fa)), (np.r_[fa[:, 0], fa[:, 1]], np.r_[fa[:, 1], fa[:, 0]])), shape=(n, n))
-        WS = 400.0
+        WS = 400.0 * PK
         A0 = Lp + WS * (S + So) + WS * (Fs + Fo) + diags(wc)
+        if Kb is not None:
+            A0 = A0 + Kb
         dp = np.zeros(n)
         for v, q, w_ in full:
-            dp[v] += w_
+            dp[v] += PK * w_
         dx = np.zeros(n)
         for v, w_ in cx:
-            dx[v] += w_
+            dx[v] += PK * w_
         for v, _, w_ in ox:
-            dx[v] += w_
+            dx[v] += PK * w_
         for a, b in cf_fast:
-            dx[a] += 100.0
-            dx[b] += 100.0
+            dx[a] += PK * 100.0
+            dx[b] += PK * 100.0
         return splu((A0 + diags(dp + dx)).tocsc()), splu((A0 + diags(dp)).tocsc())
 
     wc = np.full(n, 1.0 if bsurf is not None else 1e-3)
@@ -724,6 +913,9 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
         for r_ in g["rows"]:
             if bsurf is not None:  # (a free sheet has no obstacle to open it: plain ARAP is exact there)
                 wE[np.isin(src, np.asarray(r_["row"]))] = 1.0 + PRESS * float(fd.get("strength", 1.0))
+    PK = FIT_STIFF if FIT else 1.0  # (pins, seams and closures keep their weight relative to the cloth's edges)
+    if FIT:
+        wE = wE * FIT_STIFF
 
     def relax(X, iters, attract=attract, sw_=None, loose=0.0):
         Ax, Ayz = system(wc) if sw_ is None else system(wc, sw_)
@@ -742,7 +934,12 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                 Vt2[:, 2] *= -1
                 R[bad] = np.einsum("nji,nkj->nik", Vt2, U[bad])
             # global: sum over cells of |x_i - x_j - R_i (-(e_ij))|^2 ; rhs
-            Re = wE[:, None] * np.einsum("nij,nj->ni", R[src], -rest)  # target for x_i - x_j (weighted)
+            Re = np.einsum("nij,nj->ni", R[src], -rest)  # target for x_i - x_j
+            if not arap_e.all():  # FIT: an edge at its pattern length along its current direction (isometry)
+                ne = ~arap_e
+                ln = np.linalg.norm(cur[ne], axis=1, keepdims=True)
+                Re[ne] = cur[ne] / np.maximum(ln, 1e-12) * np.linalg.norm(rest[ne], axis=1, keepdims=True)
+            Re = wE[:, None] * Re
             b = np.zeros((n, 3))
             np.add.at(b, src, Re)
             np.add.at(b, dst, -Re)
@@ -754,6 +951,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                 T[lo] += nrm[lo] * (off[lo] - d[lo])[:, None]
                 hi = (d > off + 0.002) & (d < 0.06) & ~flapv  # (a turned flap lies on its base, not on the body)
                 aw_ = attract * (np.clip(nrm[hi, 2], 0.0, 1.0) if SEAT_GRAVITY else 1.0)
+                aw_ = aw_ * edge_free[hi]  # (worn open: the cloth near the open edge is not drawn onto the body)
                 T[hi] -= nrm[hi] * (aw_ * (d[hi] - off[hi]))[:, None]
                 if loose > 0:  # loose cloth pushed out along its own normal (oriented off the body): ease stands off evenly
                     fn_ = np.cross(X[F[:, 1]] - X[F[:, 0]], X[F[:, 2]] - X[F[:, 0]])
@@ -782,14 +980,18 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                     near = (dist < 0.03) & (du < off + 0.001)
                     T[near] += nu[near] * (off[near] + 0.001 - du[near])[:, None]
             b += wc[:, None] * T
+            if HANG > 0 and bsurf is not None:  # (A/B: the cloth's weight as a constant pull down, m per round)
+                b[:, 2] -= wc * HANG
+            if bend_rhs is not None:
+                b += kb * bend_rhs(X)
             bp = b.copy()
             for v, q, w_ in full:
-                bp[v] += w_ * q
+                bp[v] += PK * w_ * q
             bx = bp[:, 0].copy()
             for v, w_ in cx:
                 bx[v] += 0.0
             for v, x_, w_ in ox:
-                bx[v] += w_ * x_
+                bx[v] += PK * w_ * x_
             Xn = np.c_[Ax.solve(bx), Ayz.solve(bp[:, 1]), Ayz.solve(bp[:, 2])]
             X = Xn
         return X
@@ -803,19 +1005,37 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
         # dragged off the neck before the band was stood on it: the curved-collar known answer read 139 of 180 deg)
         unpl = np.array([not placed[k] for k in range(len(names))])
         keep = ~(unpl[pid[sw[:, 0]]] | unpl[pid[sw[:, 1]]]) if len(sw) else np.zeros(0, bool)
+        # (worn open: the first relax runs WITHOUT the worn-open pins: with them it dragged the two named points to
+        # their offsets, the swing then found nothing left to turn (0 deg) and the front edge between break and hem
+        # stayed by CF: Garrett hips gap 99 vs the drape's 178 mm. The swing turns the whole front; the pins settle it.)
+        ox_hold, ox = ox, ([] if SWING_FIRST and SWING_UNPINNED else ox)
         X = relax(X, max(20, iters // 3), sw_=sw[keep])
+        ox = ox_hold
         tr("relax1", X, M)
         if ox and SWING_FIRST:
-            X = _swing_open(M, X, ox, fast, bsurf)
+            X, edge = _swing_front(M, X, ox, fast, bsurf)
             tr("swing", X, M)
         X, info["stood_up"] = _band_init(M, B, X, placed)
         tr("band_init", X, M)
     elif ox and SWING_FIRST:
-        X = _swing_open(M, X, ox, fast, bsurf)
+        X, edge = _swing_front(M, X, ox, fast, bsurf)
     X = _turn_flaps(M, X, folds_, bsurf)
     tr("turn_flaps", X, M)
     if ox and not SWING_FIRST:
         X = _swing_open(M, X, ox, fast, bsurf)
+    if ox and WORN_EDGE:  # the swung front edge (lapel line) held open, not just its two named points
+        ox = ox + (edge if edge is not None else worn_open_edge(M, X, ox))
+        info["worn_edge_v"] = len(ox)
+    if ox and WORN_EDGE and EDGE_FREE > 0:
+        # an open front HANGS off the body near its edge (its own weight and stiffness: the sim's edge stands forward);
+        # drawn onto the body, the edge pins could open it only by sliding the whole front sideways (Garrett: hem sweep
+        # +25 %, the side seam 5 cm out). The seat's attraction fades to none at the edge over EDGE_FREE m (pattern).
+        from scipy.spatial import cKDTree
+        ev = np.array([v for v, _, _ in ox], int)
+        for k in {int(pid[v]) for v in ev}:
+            sel = np.where(pid == k)[0]
+            dd, _ = cKDTree(uv[ev[pid[ev] == k]]).query(uv[sel])
+            edge_free[sel] = np.clip(dd / EDGE_FREE, 0.0, 1.0)
     info["turned_deg_start"] = [round(fold_turned(M, X, g), 0) for fd, g, t in folds_]
     # each fold's rest turns the way its flap now lies (a proper rotation fits only one sense)
     for q, (fd, g, turn) in enumerate(folds_):
@@ -839,6 +1059,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
         X = _lay_pressed(M, X, folds_)
         src, dst, rest = np.r_[src, ps], np.r_[dst, pd], np.r_[rest, pr]
         wE = np.r_[wE, np.full(len(ps), PRESSED_W)]
+        arap_e = np.r_[arap_e, np.ones(len(ps), bool)]
     info["pressed_cells"] = int(len(ps))
     # onto the form (drawn toward the body's offset), then let go: the pattern's lengths decide how far it stands off
     # (a membrane can't resist a pull onto a curved form: held there it shrinks; the ease would read short)

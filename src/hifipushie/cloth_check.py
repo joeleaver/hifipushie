@@ -507,7 +507,15 @@ def option_sources(g: dict) -> list:
 # stand / fall, the notch read flat. Form readings (placed items, worn items, form strain) are INFO with their reading
 # and "form_status" kept. Set FORM_VALIDATED True only with the form's validation record (a KAT on a real arm segment:
 # docs/state/dress_garrett.md) in the same commit.
-FORM_VALIDATED = False
+FORM_VALIDATED = False  # (a manual override only; the gate reads form_validated(): this OR pattern_form's record)
+
+
+def form_validated() -> bool:
+    """The gate's form switch (virtual fit validation 2, 2026-10-19): True when FORM_VALIDATED is set, or when
+    pattern_form.form_validated() is (its VALIDATED flag AND its validation record, every row passing). The gate reads
+    this, never the constant alone, so a passing record + flag turns the form rows from INFO into gating rows."""
+    from . import pattern_form as _pf
+    return bool(FORM_VALIDATED or _pf.form_validated())
 FORM_FAULTS = ("dress-garrett 2026-10-19 form sleeves: its first relax flattens a two-piece sleeve into a lens (biceps "
                "142 x 156 -> 72 x 159 mm), and it over-reads strain (jacket p99 49 % on a block whose drape reads in band)")
 FLAT_MEASURES = ("collar_stand_cb_mm", "collar_fall_minus_stand_mm", "notch_flat")
@@ -838,7 +846,7 @@ def pattern_gate(model: str, garment: str, spec: dict | None = None, refs=None, 
     roles = [garment_design.role_of(n) for n in M["names"]]
     torso = np.isin(np.asarray(M["piece"]), [k for k, ro in enumerate(roles) if ro not in cr.NOT_TORSO])
     nk = neckline_standoff_mm(light["V"], M["F"], res["body"].V, ctx.L["neck_base"], keep=torso)
-    form_ok = FORM_VALIDATED
+    form_ok = form_validated()
     rows = gate_rows(res["pieces_full"], cr.items_for(kind), ctx, garment, targets, {"neckline_standoff_mm": nk},
                      garment_kind=kind or "", corners=g.get("truing_corners") or (), ease_bands=g.get("seam_ease"),
                      form_ok=form_ok, flat=flat_readings(res["pieces_full"]), drape=g.get("drape_readings"))

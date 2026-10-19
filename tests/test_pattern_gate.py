@@ -227,3 +227,24 @@ def test_collar_draft_read_flat():
     from test_collar import _notched
     cd = cc.collar_draft(_notched())
     assert cd and abs(cd["stand_cb_mm"] - 30.0) < 1.0 and cd["stand_end_mm"] < 1.0 and cd["tapers"], cd
+
+
+def test_gate_form_switch_reads_the_validation_record(tmp_path, monkeypatch):
+    """(virtual fit validation 2, 2026-10-19) The gate's form switch is cloth_check.form_validated(): FORM_VALIDATED (a
+    manual override) OR pattern_form.form_validated() (its VALIDATED flag AND a record whose rows all pass). A failing
+    record or a missing one reads False even with the flag set; a passing record + the flag reads True."""
+    import json
+    from hifipushie import pattern_form as pf
+    good, bad = tmp_path / "good.json", tmp_path / "bad.json"
+    good.write_text(json.dumps({"validated": True, "rows": []}))
+    bad.write_text(json.dumps({"validated": False, "rows": []}))
+    assert cc.FORM_VALIDATED is False
+    monkeypatch.setattr(pf, "VALIDATED", True)
+    monkeypatch.setattr(pf.form_validated, "__defaults__", (str(bad),))
+    assert cc.form_validated() is False
+    monkeypatch.setattr(pf.form_validated, "__defaults__", (str(tmp_path / "missing.json"),))
+    assert cc.form_validated() is False
+    monkeypatch.setattr(pf.form_validated, "__defaults__", (str(good),))
+    assert cc.form_validated() is True
+    monkeypatch.setattr(pf, "VALIDATED", False)
+    assert cc.form_validated() is False

@@ -35,4 +35,4 @@ bin/judge shots `--diag` (not done: judge renders GLBs in blender_game, it would
 - (none yet)
 
 ## History
-- docs/notes/render.md "## Diagnostic renders"; codified.md C13.
+- docs/notes/render.md "## Diagnostic renders"; codified.md C40.

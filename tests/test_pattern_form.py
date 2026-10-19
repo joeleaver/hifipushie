@@ -517,6 +517,132 @@ def test_worn_open_band_follows_front(off=0.05):
     del kf
 
 
+# ------------------------------------------------------------------ a two-panel sleeve on a real arm (2026-10-19 virtual fit)
+
+ARM_NPZ = "/mnt/data/hifipushie/pattern_form/body.npz"  # Garrett's body + arm landmarks (workspace data, never in the repo)
+
+
+def _arm_case(two_piece=True, top_t=0.5, G_top=0.364, G_wrist=0.326, up_frac=0.6, start=1.0, npz=ARM_NPZ, h=0.01):
+    """A sleeve over a real arm segment cut from Garrett's body (the upper arm from top_t of shoulder -> elbow down to
+    the wrist, clear of the torso): two panels (an upper sleeve on the outside, up_frac of the round, and an under
+    sleeve; two seams, at the front and back of the arm, as a tailored sleeve) or one (one seam under the arm). Girth
+    linear from G_top to G_wrist (the o4 jacket's biceps 364 / hem 326 mm). Placed ROUND round the arm (start x the
+    pattern's radius), as cloth.build's placement lays a sleeve. Returns (mesh, X0, body, frame) or None (no body)."""
+    import os
+    if not os.path.exists(npz):
+        return None
+    d = np.load(npz)
+    sh, el, wr = d["sh"], d["el"], d["wr"]
+    top = sh + top_t * (el - sh)
+    poly = np.array([wr, el, top])  # arc length from the wrist up
+    seg = np.linalg.norm(np.diff(poly, axis=0), axis=1)
+    Ls = float(seg.sum())
+
+    def axis_at(v):  # point + unit axis (up the arm) at arc length v
+        v = np.clip(np.atleast_1d(v), 0, Ls)
+        k = (v > seg[0]).astype(int)
+        t = np.where(k == 0, v / seg[0], (v - seg[0]) / seg[1])
+        a, b = poly[k], poly[k + 1]
+        ax = (b - a) / np.linalg.norm(b - a, axis=1, keepdims=True)
+        return a + (b - a) * t[:, None], ax
+
+    def frame(ax):  # u: across the arm in the front view (outward, +x), w: front-back
+        u = np.c_[ax[:, 2], np.zeros(len(ax)), -ax[:, 0]]
+        u /= np.linalg.norm(u, axis=1, keepdims=True)
+        u *= np.sign(u[:, 0] + 1e-12)[:, None]
+        return u, np.cross(ax, u)
+    # the arm: body triangles within 75 mm of the segment's axis, between its ends
+    V, T = np.asarray(d["V"], float), np.asarray(d["T"])
+    A, ab = poly[:-1], poly[1:] - poly[:-1]
+    t = np.clip(((V[:, None, :] - A[None]) * ab[None]).sum(-1) / (ab ** 2).sum(-1)[None], 0, 1)
+    dist = np.linalg.norm(V[:, None, :] - (A[None] + t[..., None] * ab[None]), axis=-1)
+    j = np.argmin(dist, 1)
+    vv = np.where(j == 0, t[:, 0] * seg[0], seg[0] + t[:, 1] * seg[1])
+    keep = (dist.min(1) < 0.075) & (vv > 0.01) & (vv < Ls - 0.005)
+    tk = keep[T].all(1)
+    used = np.unique(T[tk])
+    ix = -np.ones(len(V), int)
+    ix[used] = np.arange(len(used))
+    body = types.SimpleNamespace(V=V[used], T=ix[T[tk]], at={})
+    W = lambda v: G_wrist + (G_top - G_wrist) * np.asarray(v) / Ls  # noqa: E731
+    if two_piece:
+        fr = {"up": up_frac, "un": 1 - up_frac}
+        th0 = {"up": -math.pi * up_frac, "un": math.pi * up_frac}
+        seams = [["up:a1>a2", "un:a0>a3"], ["un:a1>a2", "up:a0>a3"]]
+    else:
+        fr, th0 = {"s": 1.0}, {"s": math.pi}  # (the seam under the arm, -u)
+        seams = [["s:a0>a3", "s:a1>a2"]]
+    pcs = {nm: _piece([[0, 0], [G_wrist * f, 0], [G_top * f, Ls], [0, Ls]], names={"a0": 0, "a1": 1, "a2": 2, "a3": 3})
+           for nm, f in fr.items()}
+    M = cloth.mesh(_B(pcs, seams=seams), h)
+    uv = np.asarray(M["uv"], float)
+    pid = np.asarray(M["piece"])
+    X0 = np.zeros((len(uv), 3))
+    for k, nm in enumerate(M["names"]):
+        m = pid == k
+        v = uv[m, 1]
+        th = th0[nm] + 2 * math.pi * fr[nm] * uv[m, 0] / (W(v) * fr[nm])
+        c, ax = axis_at(v)
+        u, w = frame(ax)
+        R = start * W(v) / (2 * math.pi)
+        X0[m] = c + R[:, None] * (np.cos(th)[:, None] * u + np.sin(th)[:, None] * w)
+    return M, X0, body, (axis_at, frame, Ls, W)
+
+
+def _section(X, F, o, ax, u, w):
+    """Width (along u) x depth (along w) and hull girth (m) of mesh (X, F) cut by the plane through o, normal ax."""
+    from scipy.spatial import ConvexHull
+    E = pf._edges(F)
+    dd = (X - o) @ ax
+    a, b = E[:, 0], E[:, 1]
+    x = (dd[a] * dd[b]) < 0
+    tt = dd[a[x]] / (dd[a[x]] - dd[b[x]])
+    Q = X[a[x]] + (X[b[x]] - X[a[x]]) * tt[:, None]
+    Q = Q[np.linalg.norm(Q - o, axis=1) < 0.15]
+    q2 = np.c_[(Q - o) @ u, (Q - o) @ w]
+    return float(np.ptp(q2[:, 0])), float(np.ptp(q2[:, 1])), float(ConvexHull(q2).area)
+
+
+def arm_sleeve_report(out_V, M, body, fr, at=(0.3, 0.75)):
+    """Per section (fraction of the segment from the wrist): cloth w x d (mm), aspect / the arm's, hull girth as % of
+    the pattern's; and face strain p99 (fraction)."""
+    from hifipushie import diag_render as dg
+    axis_at, frame, Ls, W = fr
+    rows = []
+    for f in at:
+        c, ax = axis_at(f * Ls)
+        u, w = frame(ax)
+        cw, cd, cg = _section(out_V, M["F"], c[0], ax[0], u[0], w[0])
+        aw, ad, ag = _section(body.V, body.T, c[0], ax[0], u[0], w[0])
+        rows.append({"at": f, "cloth_mm": [round(cw * 1000), round(cd * 1000)], "arm_mm": [round(aw * 1000), round(ad * 1000)],
+                     "aspect_ratio": round((cw / cd) / (aw / ad), 2), "girth_pct": round(cg / float(W(f * Ls)) * 100, 1)})
+    s = dg.face_strain(out_V, M["F"], M["uv"])
+    return rows, float(np.percentile(np.abs(s), 99))
+
+
+def test_two_panel_sleeve_on_real_arm(two_piece=True, verbose=True, **kw):
+    """A TWO-panel sleeve (upper + under, seams front and back) placed round over a real arm segment of Garrett's body
+    (mid upper arm to wrist, clear of the torso), the o4 jacket's girths (biceps 364 / hem 326 mm): on the form its
+    girth keeps the pattern's ease (hull >= 97 % of the pattern girth), its cross-section aspect stays within 1.3 x the
+    arm's own, and strain p99 <= 6 % (woven suiting EMT 3-8 % at 500 gf/cm, Kawabata KES-FB: a far larger load than its
+    own weight, so an upper bound). (2026-10-19 virtual fit: the old relax read the jacket sleeve 72 x 159 mm.)
+    Skipped without the workspace body (ARM_NPZ)."""
+    case = _arm_case(two_piece=two_piece)
+    if case is None:
+        print("SKIP: no", ARM_NPZ)
+        return None
+    M, X0, body, fr = case
+    out = pf.assemble({"mesh": M, "X0": X0}, body, iters=kw.pop("iters", 240), ease=0.003, **kw)  # (~ a garment's 40 + 60 + 120)
+    rows, p99 = arm_sleeve_report(out["V"], M, body, fr)
+    if verbose:
+        print(f"{'two' if two_piece else 'one'}-piece sleeve on Garrett's arm: {rows}, strain p99 {p99 * 100:.1f}%")
+    for r in rows:
+        assert 1 / 1.3 <= r["aspect_ratio"] <= 1.3, rows
+        assert r["girth_pct"] >= 97, rows
+    assert p99 <= 0.06, p99
+    return rows, p99
+
+
 def test_placement_error_selftest():
     pf.placement_error.selftest()
 
