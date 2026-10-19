@@ -1,0 +1,8 @@
+# docs/state/
+
+STATE pages are the only required reading for a thread; rewrite (don't append) yours at the end of every session;
+history goes to docs/notes/<thread>.md, append-only, read only by grep.
+
+- Max 60 lines. Sections: current best (id, path, exact settings) / open faults ranked by game visibility (1 m / 3 m) /
+  decisions in force / dead ends (one line each) / commands / history pointers.
+- Private / family heads: no details here or anywhere in the repo (one line "paused" at most).

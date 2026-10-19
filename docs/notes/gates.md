@@ -171,3 +171,16 @@ checklist item NAMES (not values), and this instruction: "You are a senior art d
 this work. For each pair, list everything about the result that reads wrong against the reference, worst
 first, concretely (where, what, how far off). Don't praise; don't guess at causes. Say if a crop is too small
 to judge." It never sees the author's caption or numbers.
+
+## Process rules (2026-10-19, Joe: "are we still learning or thrashing")
+- STOP-LOSS: a fault gets at most TWO rounds without a visible change on its own before / after tile. After that, either
+  change the METHOD (write it up first) or park the fault with its evidence. No third tweak of the same lever family.
+- MEASURE FIRST, AND VALIDATE THE MEASURE: before a measure drives a change, it must reproduce a known-good case (the
+  reference against itself, a planted fault found). Today's wasted rounds came from unvalidated measures: uvs read upside
+  down, AgX vs PBR Neutral compared, a half-sided preview, a photo mask dropping highlights, judging against the strand
+  groom instead of the photo, and swapped reviewer labels.
+- PROVE ON THE CHEAP PATH: try a change on a saved dump / a single-part bake in about a minute; full exports only confirm.
+- CROPS, NOT SHEETS: agents and reviewers look at single-feature crops at modest size. Full sheets are for Joe only.
+- REVIEWS: keep / revert by a side-by-side review in ONE sitting (bin/review-ab); check the key against the descriptions.
+  Counts from different reviewers are not comparable.
+- STATE pages (docs/state/) are the only required reading; notes are grep-only logs.
