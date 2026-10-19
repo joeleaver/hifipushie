@@ -2,13 +2,13 @@
 
 ## Current best (on main, 2026-10-19 integration)
 - Tools (server.py): `pattern_check`, `fit_garment`, `alter_pattern` (cloth); `review_view` (core); `judge_asset`
-  (export). `dress` refuses without a pattern-gate PASS up front (cloth_check.gate_status); `look_cloth` renders the
+  (export); `game_garment` (export: garment_game's pattern-space game garments, LOD pierce gate). `dress` refuses without a pattern-gate PASS up front (cloth_check.gate_status); `look_cloth` renders the
   diag rows by default (DIAG_DEFAULT: panels+seams+turned; strain+layers); `look` on a character ends with a judge line.
 - next_steps.py: every stage tool's "next:" lines, generated from its result.
 - INSTRUCTIONS + cloth guide (intro, order, stages table, rule 3, craft rules, self-review) + guide_spec: the order
   pattern -> pattern_check -> fit_garment -> judge clay + diag (one review_view per view) -> optional sim (wrinkles)
   -> game mesh. Topics "traps", "gates", "tailoring" (repo docs).
-- Audit table: docs/notes/mcp_audit.md. Codified M1-M8 (C4 superseded).
+- Audit table: docs/notes/mcp_audit.md. Codified M1-M8, M13 (C4 superseded).
 
 ## Decisions in force
 - Tools refuse what the gates forbid (dress, fit_garment before a PASS); `force` never bypasses the pattern gate (the
@@ -20,7 +20,10 @@
 
 ## Open
 1. Wired on landing (mcp_audit.md "Wired when the branches landed"); run the render test under capped once.
-2. garment_game has no MCP tool (export toolset): a follow-up.
+2. game_garment on ag_garrett2 (frozen_ae drapes, rest, no poses; mcp_tool/run.log, 25 s) REFUSES: shirt through
+   jacket 0 / 2 / 11 / 17 faces at LOD0-3 (proof6g 0 / 0 / 4 / 39 with its pose-set body + jacket-only gap) and 3
+   uncovered pattern-outline edges on the shirt at LOD1-3 (proof6g had 2 / 0 / 3 / 3, never gated). The bake path
+   (bake=True on a clean set) has not run through the tool yet: it waits on garment_game STATE fault 2 + the cracks.
 3. bin/review-ab not exposed (judge ab is the validated A/B).
 4. The running MCP server has the old code until restarted.
 

@@ -20,7 +20,7 @@ Codified rows M1-M8 (codified.md); tests tests/test_mcp_rules.py; STATE docs/sta
 | bin/judge (validated shots, measures, self-checks, blind A/B with controls) | main | none | `judge_asset` (export): shots + report (+ against); A/B stays `bin/judge ab` (text points to it) | tools_guide "judge_asset" | YES: refuses on a failed self-check |
 | bin/review, reviewgate (one view per turn, no captions, no sheets, --dry) | main | none | `review_view` (core): one region / one pair by signature, input gate, bin/review or dry pair + prompt | tools_guide "review_view" | YES |
 | bin/review-ab | main | none | not exposed (judge ab is the validated A/B; review_view covers single views) | - | gap, low |
-| garment_game (pattern-space game mesh) | main (opt-in) | none | not exposed (no tool; reached from session scripts) | - | GAP: needs a tool in export (follow-up) |
+| garment_game (pattern-space game mesh) | main (opt-in) | none | `game_garment` (export): every garment with a drape (+ the covers of an asked one), LODs by edge, rest + optional pose dumps, bake to GLBs | tools_guide "game_garment" | YES: refuses the bake on any LOD pierce / crack, names the fix; clean -> judge_asset + review_view (M13) |
 | Tailoring principles (docs/notes/tailoring_principles.md) | branch (tailoring-principles agent) | none | guide topic "tailoring" (pointer until it lands, then the file) | guide("tailoring") | WIRED |
 | Traps (docs/notes/traps.md) | main | none | guide topic "traps" | guide("traps") | YES |
 | Gates (docs/notes/gates.md) | main | none | guide topic "gates" | guide("gates") | YES |
@@ -39,6 +39,10 @@ Codified rows M1-M8 (codified.md); tests tests/test_mcp_rules.py; STATE docs/sta
   rows, fit_garment, judge".
 - look on a character / look_cloth: no reference -> "set one ... a look with nothing to compare to proves nothing";
   else "judge this ... BESIDE its reference before forwarding it, then an independent review_view per region".
+- game_garment: any LOD with an under layer crossing its cover (pierce_faces) or a crack -> "NOT baked, no GLB
+  written", per LOD + pair + count, fix = finer edge at that LOD / gap_rings=2 / draft it further under (never by
+  hand); clean, not baked -> "bake=True"; baked -> judge_asset each GLB then one crop per review_view; no poses ->
+  "rest pose only".
 - review_view: FAIL -> fix every independent MAJOR grouped by cause; no verdict -> "this is not 0 MAJORs".
 
 ## Wired when the branches landed (2026-10-19 integration)
@@ -59,3 +63,8 @@ Codified rows M1-M8 (codified.md); tests tests/test_mcp_rules.py; STATE docs/sta
   default on look_cloth, dress refusal up front, instructions + cloth guide order rewritten, traps / gates / tailoring
   topics, next_steps.py, tests/test_mcp_rules.py (8 light + 1 render under capped: skirt on a MakeHuman base, renders
   checked by eye: panels / seams / strain read, placed rest only on main).
+- 2026-10-19 game_garment (export): garment_game behind a tool (from_result for cached / frozen drapes, covers_of from
+  the "over" chain, build_lods outer garments first, write, bake under resources.heavy; covered_cull takes a rest body
+  when no poses). Gate: pierce_faces per LOD and under / cover pair + missing boundary edges; any -> nothing written,
+  fix named. Codified M13; tests: synthetic shirt / jacket sheets (crossing at the cover's free edge: 14 / 6 faces at
+  30 / 60 mm; clean: 0, low meshes written). Real check on ag_garrett2: refuses (0 / 2 / 11 / 17 faces, 3 cracks).

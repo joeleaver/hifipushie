@@ -117,3 +117,40 @@ def after_review(verdict: str | None, dry: bool) -> str:
         return ("next: fix every independent MAJOR (group them by cause first), then review this view again; answer "
                 "each point in the notes, never override a MAJOR by opinion")
     return "next: the review did NOT run (no verdict): this is not 0 MAJORs; retry or use dry=True"
+
+
+def after_game_garment(lods: list[dict], model: str, baked: list | None, posed: bool) -> str:
+    """game_garment's next step from what each LOD measured: an under layer crossing its cover (pierce_faces) or a
+    crack (missing boundary edges) at ANY LOD refuses the bake; clean -> judge the GLBs, one view per review."""
+    bad, cracks = [], []
+    for L in lods:
+        for r in L["pierce"]:
+            if r["faces"]:
+                bad.append(f"LOD{L['lod']} (edge {L['h'] * 1000:.0f} mm): {r['under']} crosses {r['cover']} in "
+                           f"{r['faces']} faces")
+        for g, n in (L.get("cracks") or {}).items():
+            if n:
+                cracks.append(f"LOD{L['lod']} {g}: {n} boundary edges missing (a crack at a seam)")
+    out = []
+    if bad or cracks:
+        out.append("next: NOT baked, no GLB written: an under layer showing through (or a crack) at any LOD fails the "
+                   "game garment:")
+        out += [f"  {b}" for b in bad + cracks]
+        if bad:
+            out.append("  fix: a finer edge at that LOD (lods=[...]: a coarse cover's faces sink further, its chord sag "
+                       "grows with the edge) or gap_rings=2 (the gap reaches one more ring past the cover's edge); at the "
+                       "cover's free edges (collar, lapel, cuffs) where neither moves it, draft the under garment further "
+                       "under on the pattern (\"over\" ease, pattern_check + fit_garment again). Never push vertices by hand")
+        out.append(f"  then game_garment(\"{model}\") again")
+        return "\n".join(out)
+    if baked is None:
+        out.append(f"next: clean at every LOD; game_garment(\"{model}\", bake=True) writes the GLBs (normal + AO baked "
+                   "from the drape)")
+    else:
+        out.append(f"next: judge_asset(\"{baked[0]}\") (and each LOD's GLB, against= the approved build's garment for "
+                   "the A/B), then the crops ONE per review_view call, reference beside each; a clean measure is not a "
+                   "right garment")
+    if not posed:
+        out.append("  rest pose only: give poses=[the export's clip dumps (npz)] to measure the crossings in motion "
+                   "(INFO until the garment is skinned)")
+    return "\n".join(out)

@@ -48,10 +48,15 @@ PIERCE_REACH = 0.015  # m: an under vertex with its cover this close BEHIND it (
 # ---------------------------------------------------------------- drape
 
 def load(pkl) -> dict:
-    """The frozen drape: V (sim, final), F, uv (flat pattern, metres), piece, names, sew pairs + seam ids, made parts
-    (grids), and the sim pieces the made parts replace or hide."""
+    """The frozen drape (cloth.freeze pickle): see from_result."""
     d = pickle.load(open(pkl, "rb"))
-    r, m = d["res"], d["res"]["mesh"]
+    return from_result(d["res"], d["g"], d["garment"])
+
+
+def from_result(r: dict, g: dict, name: str) -> dict:
+    """A built drape (cloth.cached / thaw result, g the expanded garment): V (sim, final), F, uv (flat pattern,
+    metres), piece, names, sew pairs + seam ids, made parts (grids), and the sim pieces the made parts replace or hide."""
+    m = r["mesh"]
     made = (r.get("made") or {}).get("parts", [])
     info = (r.get("made") or {}).get("info", {})
     drop = set()
@@ -60,11 +65,11 @@ def load(pkl) -> dict:
     hides = info.get("hides")
     if isinstance(hides, (list, tuple)):
         drop |= set(hides)
-    return {"name": d["garment"], "V": np.asarray(r["V"], float), "F": np.asarray(m["F"], np.int64),
+    return {"name": name, "V": np.asarray(r["V"], float), "F": np.asarray(m["F"], np.int64),
             "uv": np.asarray(m["uv"], float), "piece": np.asarray(m["piece"], np.int64), "names": list(m["names"]),
             "sew": np.asarray(m["sew"], np.int64).reshape(-1, 2), "sew_seam": np.asarray(m["sew_seam"], np.int64),
-            "made": made, "drop": drop, "color": d["g"].get("color"), "thickness": r["fabric"].get("thickness"),
-            "mesh": m, "g": d["g"]}
+            "made": made, "drop": drop, "color": g.get("color"), "thickness": (r.get("fabric") or {}).get("thickness"),
+            "mesh": m, "g": g}
 
 
 def sim_atlas(drape: dict) -> tuple[dict, float]:
@@ -481,18 +486,22 @@ def pose_by_body(z, X: np.ndarray) -> np.ndarray:
 
 
 def covered_cull(under: dict, covers: list[tuple[dict, str]], poses: list, margin: float | None = None,
-                 reach: float = CULL_REACH, back_reach: float | None = None) -> tuple[np.ndarray, dict]:
+                 reach: float = CULL_REACH, back_reach: float | None = None,
+                 body: np.ndarray | None = None) -> tuple[np.ndarray, dict]:
     """Faces of `under` (a merged mesh) covered in EVERY pose, with a margin: a vertex is covered when its normal ray
     hits a cover within reach, in the rest pose and in each pose; covered vertices within `margin` (3D) of an
     uncovered one stay. covers [(merged mesh, pose key)], poses [npz]: each pose moves every mesh by its key's
-    reference displacement (pose_field). Returns (face keep mask, report)."""
+    reference displacement (pose_field); no poses = the rest pose only, body (rest points) winds the normals.
+    Returns (face keep mask, report)."""
     br = CULL_BACK_REACH if back_reach is None else back_reach
     margin = CULL_MARGIN if margin is None else margin
     cov = np.ones(len(under["V"]), bool)
     frames = [None] + list(poses)
     for z in frames:
         Vu = under["V"] if z is None else pose_by_body(z, under["V"])
-        Nu = outward(Vu, normals(Vu, under["T"], under["weld"]), body_points(poses[0] if z is None else z, rest=z is None))
+        Bz = body if z is None and (body is not None and not poses) else body_points(poses[0] if z is None else z,
+                                                                                         rest=z is None)
+        Nu = outward(Vu, normals(Vu, under["T"], under["weld"]), Bz)
         hit = np.zeros(len(Vu), bool)
         for c, ck in covers:
             Vc = c["V"] if z is None else pose_by_body(z, c["V"])
@@ -695,7 +704,7 @@ def build(drape: dict, h: float, covers=None, poses=(), cull: bool = False, body
     m["key"] = f"cloth_{drape['name']}"
     keep_f, rep = np.ones(len(m["T"]), bool), {}
     if cull and covers:
-        keep_f, rep = covered_cull(m, covers, poses)
+        keep_f, rep = covered_cull(m, covers, poses, body=body)
         if layer_gap > 0:
             mv = m["covered"] & np.isin(np.arange(len(m["V"])), m["T"][keep_f])
             for _ in range(gap_rings):  # + the faces that straddle the cover's edge (one coarse face reaches under it)
@@ -726,3 +735,108 @@ def build(drape: dict, h: float, covers=None, poses=(), cull: bool = False, body
     return {"pieces": pieces, "merged": m, "kept": mk, "game": sh, "atlas_side_m": side, "cull": rep, "h": h,
             "missing_boundary_edges": sum(p["missing_boundary_edges"] for p in pieces),
             "triangles": len(sh["T"])}
+
+
+# ---------------------------------------------------------------- the MCP path (server.game_garment)
+
+LOD_EDGES = (0.03, 0.042, 0.0588, 0.0823)  # m: proof6g's LOD0-3 (each 1.4x coarser: ~v8's per-LOD triangle totals)
+GAP_RINGS = 1  # proof6g: the kept-but-covered ring + one face ring out (the faces straddling the cover's free edge)
+BAKE_GB = 6.0  # the Blender bake's declared peak (resources.heavy): Garrett jacket + shirt, 4 LODs, Cycles CPU
+
+
+def covers_of(over: dict, names) -> dict:
+    """{garment: the garments over it} (every garment whose chain of "over" reaches it: a coat covers the sweater
+    AND the shirt under it), from asset.garment_over's {garment: the one it is worn over}."""
+    out = {g: [] for g in names}
+    for o in names:
+        x, seen = over.get(o), set()
+        while x is not None and x not in seen and x != o:
+            seen.add(x)
+            if x in out:
+                out[x].append(o)
+            x = over.get(x)
+    return out
+
+
+def build_lods(drapes: dict, covers: dict, body: np.ndarray, edges=LOD_EDGES, poses=(), gap_rings: int = GAP_RINGS,
+               log=print) -> list[dict]:
+    """Every garment at every LOD edge, outer garments first (their kept LOD mesh is the cover the under ones are
+    culled by and measured against at THAT LOD); an under garment's covered ring sits the covers' chord sag deeper.
+    Per LOD: {"lod", "h", "builds" {garment: build}, "pierce" [{"under", "cover", "faces", "posed_max"}],
+    "cracks" {garment: missing boundary edges}}."""
+    order = sorted(drapes, key=lambda g: len(covers.get(g) or []))
+    highs: dict = {}
+    out = []
+    for li, h in enumerate(edges):
+        builds: dict = {}
+        for g in order:
+            cs = [c for c in covers.get(g) or [] if c in builds]
+            gap = 0.0
+            for c in cs:
+                if c not in highs:
+                    highs[c] = high_mesh(drapes[c], body)
+                gap = max(gap, chord_sag(builds[c]["kept"], *highs[c]))
+            builds[g] = build(drapes[g], float(h), covers=[(builds[c]["kept"], f"cloth_{c}") for c in cs],
+                              poses=poses, cull=bool(cs), body=body, layer_gap=gap, gap_rings=gap_rings if gap else 0)
+            log(f"LOD{li} h {h * 1000:.0f} mm {g}: {builds[g]['triangles']} triangles"
+                + (f", layer gap {gap * 1000:.1f} mm" if gap else ""))
+        rows = []
+        for g in order:
+            u = builds[g]["kept"]
+            for c in covers.get(g) or []:
+                cv = builds[c]["kept"]
+                r = {"under": g, "cover": c, "faces": pierce_faces(u["V"], u["T"], cv["V"], cv["T"]) if len(u["T"]) else 0}
+                if poses:
+                    r["posed_max"] = max(pierce_faces(pose_by_body(z, u["V"]), u["T"], pose_by_body(z, cv["V"]), cv["T"])
+                                         for z in poses) if len(u["T"]) else 0
+                rows.append(r)
+        out.append({"lod": li, "h": float(h), "builds": builds, "pierce": rows,
+                    "cracks": {g: int(b["missing_boundary_edges"]) for g, b in builds.items()}})
+    return out
+
+
+def write(lods: list[dict], drapes: dict, body: np.ndarray, out_dir, texture: int = 2048) -> list[dict]:
+    """Low meshes (npz), the high (bake source) and the painted detail maps per garment and LOD under out_dir/LOD<k>;
+    returns the Blender bake job's garment entries (blender_garment_game.py)."""
+    out_dir = Path(out_dir)
+    jobs = []
+    for L in lods:
+        d = out_dir / f"LOD{L['lod']}"
+        d.mkdir(parents=True, exist_ok=True)
+        size = max(256, int(texture) >> L["lod"])
+        for g, b in L["builds"].items():
+            gm = b["game"]
+            np.savez(d / f"low_{g}.npz", V=gm["V"], V_bake=gm.get("V_bake", gm["V"]), T=gm["T"], uv=gm["uv"], N=gm["N"],
+                     outer_faces=gm["outer_faces"])
+            hp = out_dir / f"high_{g}.npz"
+            if not hp.exists():
+                Vh, Fh = high_mesh(drapes[g], body)
+                np.savez(hp, V=Vh, F=Fh)
+            e = {"name": f"game_{g}", "low": str(d / f"low_{g}.npz"), "high": str(hp), "size": size,
+                 "color": drapes[g].get("color") or "#808080", "roughness": float(drapes[g]["g"].get("roughness", 0.85)),
+                 "out_glb": str(d / f"game_{g}.glb"), "out_dir": str(d)}
+            if "mesh" in drapes[g]:
+                dm = detail_maps(drapes[g], d / f"detail_{g}", size)
+                e.update(detail_normal=str(dm["normal"]), basecolor=str(dm["basecolor"]))
+            jobs.append(e)
+    return jobs
+
+
+def bake(jobs: list[dict], out_dir, occluders: str | None = None, log=print) -> dict:
+    """The high -> low normal + AO bake and the GLBs (one Blender job, under the machine's heavy-job queue)."""
+    import json
+    import subprocess
+    from . import render, resources
+    out_dir = Path(out_dir)
+    job = {"occluders_glb": occluders, "skip": [j["name"].replace("game_", "cloth_") for j in jobs] + ["hair", "lashes"],
+           "ao_distance": 0.15, "ao_samples": 32, "garments": jobs}
+    jp = out_dir / "bake_job.json"
+    jp.write_text(json.dumps(job, indent=1))
+    script = Path(__file__).with_name("blender_garment_game.py")
+    with resources.heavy("garment_game bake", gb=BAKE_GB, log=log):
+        r = subprocess.run([render.BLENDER, "-b", "--factory-startup", "--python", str(script), "--", str(jp)],
+                           capture_output=True, text=True)
+    if r.returncode != 0 or not all(Path(j["out_glb"]).exists() for j in jobs):
+        tail = "\n".join(ln for ln in (r.stdout + r.stderr).splitlines() if "Error" in ln or "Traceback" in ln)[-1500:]
+        raise RuntimeError(f"garment_game bake failed (rc {r.returncode}): {tail or r.stderr[-1500:]}")
+    return {"glbs": [j["out_glb"] for j in jobs], "job": str(jp)}

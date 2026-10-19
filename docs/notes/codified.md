@@ -200,6 +200,7 @@ Audit: docs/notes/mcp_audit.md. Tests: tests/test_mcp_rules.py.
 | M6 | Reviews take ONE view per call, no sheets / captions / claims, by an independent reviewer | server.review_view (one region by signature; reviewgate.refuse_inputs; bin/review, dry = a pair + prompt for a fresh agent); test_review_view_refuses_sheets_and_claims | ENFORCED |
 | M7 | A pattern edit is drafted before it is saved and needs a new gate record; seams are walked after it | server.alter_pattern (true / match where the branch has them); test_alter_pattern_drafts_before_saving_and_needs_a_new_gate | ENFORCED |
 | M8 | Stage tools end with the next step the gates require, generated from the result (not boilerplate); looks at a character say "reference beside it, judge before forwarding" | next_steps.py; look / look_cloth / pattern_check / fit_garment / alter_pattern / review_view / judge_asset; test_next_steps_follow_the_result | ENFORCED |
+| M13 | A game garment (pattern-space re-grid of the drape) is never baked while an under layer crosses its cover, or a seam cracks, at ANY LOD; the refusal names the LOD, the pair, the count and the fix (finer edge, gap_rings, draft it further under; never by hand) | server.game_garment (export toolset) -> garment_game.build_lods (pierce_faces per LOD and under / cover pair, missing boundary edges), next_steps.after_game_garment; test_game_garment_refuses_a_crossing_lod_and_names_the_fix, test_game_garment_clean_writes_lods_and_says_judge | ENFORCED |
 
 ## Expressions, export, rig
 

@@ -477,6 +477,33 @@ Heavy: renders under bin/capped with the GPU lock (minutes; cached per GLB conte
 verdict: the text ends with the next step (review the crops one per review_view call; the blind A/B with controls
 is `bin/judge ab`).
 
+### `game_garment`
+
+`game_garment(name, garments=None, lods=None, poses=None, bake=True, texture=2048, occluders=None, gap_rings=1,
+out_dir=None)`
+
+Opt-in game garments (garment_game.py; export_asset's own cloth path is untouched), made the way game artists make
+them from a Marvelous / CLO drape: the finished drape is the HIGH poly; each LOD is a clean re-grid of the FLAT pattern
+at one edge length, mapped onto the drape through each panel's own 2D -> 3D (seams resampled once and shared by both
+sides: no cracks, no T-junctions; made parts re-gridded from their own grids). UVs = the garment's own pattern atlas
+(its painted detail maps fit). An under garment's faces covered by the garments over it (the "over" chain: a coat
+covers the sweater AND the shirt) in the rest pose and every pose given are deleted, with a 3 cm margin; the kept
+ring under a cover sits that cover's chord sag deeper at THAT LOD (a coarse cover's faces sink 2 mm at LOD0, 22 mm at
+LOD3); gap_rings also moves the faces straddling the cover's free edge. Explicit inner faces + a rim on free edges.
+LODs are coarser re-grids (no decimation). garments: default every garment with a drape; the covers of an asked
+garment are added (said in the text). lods: edges in metres (default 0.03, 0.042, 0.059, 0.082: ~1.4x per LOD).
+poses: npz clip dumps from the export ("body:rest" / "body:posed" ...): the cull holds in every frame and posed
+crossings are reported (INFO: the garment moves by the body field until it is skinned).
+
+THE GATE: per LOD, every under layer's faces crossing its cover (garment_game.pierce_faces, triangle-triangle, known
+answers in validated.GATE_MEASURES) and missing boundary edges (cracks). Any crossing or crack at ANY LOD: nothing
+is written or baked, and the text names the LOD, the pair, the count and the fix (a finer edge at that LOD,
+gap_rings=2, or the under garment drafted further under on the pattern; never vertices pushed by hand). Clean: low
+meshes, the high and the detail maps under out_dir/LOD<k> (default <model dir>/game_garment); bake=True bakes the
+drape high -> low (tangent normal + AO, occluders = the character GLB for the AO) into one GLB per garment per LOD
+(texture halves per LOD, >= 256). Heavy: the bake runs Blender under the machine's heavy-job queue (minutes). The
+text ends with the next step: judge_asset on each GLB, then the crops one per review_view call.
+
 ### `call_tool`
 
 `call_tool(name, args=None)`

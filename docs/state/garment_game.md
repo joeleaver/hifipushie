@@ -40,12 +40,16 @@ Branch garment-game-lodpoke (from garment-game-blotches + main).
 3. Posed crossings (16 clip frames) 146 at LOD0 under the body-displacement pose (no skin weights yet): sleeves at
    the elbow. Needs the real skinning before it is judged.
 4. Collar 0.5 m front: thin black gaps at the shirt collar edge (lost 1 of 3 collar rows this round).
-5. GLB materials doubleSided AND explicit inner faces; posed metrics via body field; drapes differ (frozen_ae vs s5).
+5. Cracks: remesh_panel leaves pattern-outline edges uncovered (missing_boundary_edges: shirt 3 at LOD1-3 on
+   ag_garrett2; proof6g 2 / 0 / 3 / 3). The MCP tool game_garment now gates on them (codified M13).
+6. GLB materials doubleSided AND explicit inner faces; posed metrics via body field; drapes differ (frozen_ae vs s5).
 
 ## NEXT
 Fault 1 (3 m front shading: flat-ID + one-switch variants at g3m), then fault 2 (shared edge sample lines at LOD3).
 
 ## Commands (scripts in /mnt/data/hifipushie/garment_game/scripts/)
+- MCP: `game_garment(model)` (export toolset; garment_game.build_lods / write / bake): refuses the bake on any LOD
+  pierce or crack. Check run on ag_garrett2: /mnt/data/hifipushie/garment_game/mcp_tool/run.py (+ run.log).
 - Build + metrics: `GG_OUT=<dir> GG_GAP=sag GG_RINGS=1 bin/slot uv run python .../proof6.py` (~3 min).
 - Face-level pierce: `bin/slot uv run python .../pierce_lods.py <build> <json>`; where: diag_cross.py; lever check diag_gap.py.
 - Whole round: `bash .../run7.sh` (build, pierce, bake under capped, judge_all7.sh, sheet7.py). Blind A/B: ab6.sh

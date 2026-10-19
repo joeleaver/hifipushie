@@ -140,7 +140,7 @@ TOOL_GROUPS: dict[str, dict] = {
     "scene": {"about": "the Blender scene (sync, pull) and the heavy-job queue",
               "tools": ["sync", "pull", "heavy_status", "heavy_queue"]},
     "export": {"about": "OBJ export, game-ready assets (GLB/FBX, PBR maps), the export rig, judging a GLB",
-               "tools": ["export", "export_asset", "rig", "judge_asset"]},
+               "tools": ["export", "export_asset", "rig", "judge_asset", "game_garment"]},
     "human": {"about": "realistic humans: the base body, the artist block-in of a head from pictures (the default), "
                        "measurements, fits, skin",
               "tools": ["human", "measure_human", "fit_human", "nudge_human", "human_reference", "block_in_start",
@@ -3278,6 +3278,79 @@ def judge_asset(glb: str, head: str | None = None, tag: str | None = None, again
            + (f"; blind A/B with controls: bin/judge ab {ref} {run} <out dir> (--dry: one trio per reviewer turn)"
               if ref else ""))
     return (judge.format_report(rep) + f"\n\nrun {run}: {len(crops)} crops in {run / 'crops'}\n" + nxt)
+
+
+def _game_drapes(name: str, spec: dict, garments: list[str] | None) -> tuple[dict, dict, np.ndarray, list]:
+    """game_garment's inputs: {garment: garment_game drape} for the asked garments AND every garment over them (their
+    covers), {garment: covers}, the rest body points, and the covers added unasked."""
+    from . import asset, cloth, garment_game as gg
+    have = list(spec.get("cloth") or {})
+    if not have:
+        raise ValueError(f"{name} has no garments (design_garment / dress first)")
+    for g in garments or []:
+        if g not in have:
+            raise ValueError(f"no garment {g!r} (have {', '.join(have)})")
+    covers = gg.covers_of(asset.garment_over(spec), have)
+    want = list(garments or have)
+    added = [c for g in want for c in covers[g] if c not in want]
+    want += list(dict.fromkeys(added))
+    drapes, body, missing = {}, None, []
+    for g in want:
+        res = cloth.cached(name, spec, g)
+        if res is None:
+            missing.append(g)
+            continue
+        gx = cloth.thaw(spec, spec["cloth"][g])[0] if spec["cloth"][g].get("frozen") else cloth.expanded(spec["cloth"][g])
+        drapes[g] = gg.from_result(res, gx, g)
+        body = np.asarray(res["body"].V, float) if body is None else body
+    if missing:
+        raise ValueError(f"no drape for {', '.join(missing)}: the game garment is re-gridded from a finished drape "
+                         "(dress it, or a frozen drape) after pattern_check + fit_garment")
+    return drapes, {g: [c for c in covers[g] if c in drapes] for g in drapes}, body, added
+
+
+@mcp.tool(structured_output=False)
+def game_garment(name: str, garments: list[str] | None = None, lods: list[float] | None = None,
+                 poses: list[str] | None = None, bake: bool = True, texture: int = 2048, occluders: str | None = None,
+                 gap_rings: int = 1, out_dir: str | None = None) -> str:
+    """Opt-in game garments from the drape the way game artists make them: each LOD a clean re-grid of the FLAT
+    pattern mapped onto the drape (shared seams, pattern UVs), covered under-layer faces culled, the drape baked
+    high -> low (normal + AO) into GLBs. Measures every under layer crossing its cover at every LOD (pierce faces) and
+    REFUSES the bake if any crosses. lods (edges m), poses, bake, texture, occluders, gap_rings, out_dir. Details:
+    guide(topic="game_garment")."""
+    from . import garment_game as gg, next_steps
+    spec = store.load(name)
+    drapes, covers, body, added = _game_drapes(name, spec, garments)
+    zs = [np.load(Path(p).expanduser()) for p in poses or []]
+    log_lines: list = []
+    L = gg.build_lods(drapes, covers, body, tuple(lods or gg.LOD_EDGES), zs, gap_rings, log=log_lines.append)
+    od = Path(out_dir).expanduser() if out_dir else store._dir(name) / "game_garment"
+    lines = [f"{name}: game garments {', '.join(drapes)}" + (f" (covers added: {', '.join(added)})" if added else "")
+             + f" -> {od}"]
+    for x in L:
+        tris = ", ".join(f"{g} {b['triangles']}" for g, b in x["builds"].items())
+        lines.append(f"  LOD{x['lod']} edge {x['h'] * 1000:.0f} mm: triangles {tris}")
+        for g, b in x["builds"].items():
+            c = b.get("cull") or {}
+            if c:
+                lines.append(f"    {g}: {c['faces'] - c['faces_kept']} of {c['faces']} faces culled under its covers"
+                             + (f", covered ring {c['layer_gap_m'] * 1000:.1f} mm deeper ({c['layer_gap_vertices']} "
+                                "vertices)" if c.get("layer_gap_m") else ""))
+        for r in x["pierce"]:
+            lines.append(f"    pierce {r['under']} through {r['cover']}: {r['faces']} faces"
+                         + (f" (posed max {r['posed_max']}, INFO)" if "posed_max" in r else ""))
+        for g, n in x["cracks"].items():
+            if n:
+                lines.append(f"    CRACK {g}: {n} boundary edges missing")
+    clean = not any(r["faces"] for x in L for r in x["pierce"]) and not any(n for x in L for n in x["cracks"].values())
+    baked = None
+    if clean:
+        jobs = gg.write(L, drapes, body, od, texture)
+        lines.append(f"  low meshes + detail maps: {od}/LOD<k>")
+        if bake:
+            baked = gg.bake(jobs, od, occluders)["glbs"]
+            lines.append("  GLBs: " + ", ".join(baked))
+    return "\n".join(lines) + "\n" + next_steps.after_game_garment(L, name, baked, bool(zs))
 
 
 # ---------------------------------------------------------------- terrain

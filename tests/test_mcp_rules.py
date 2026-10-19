@@ -100,7 +100,7 @@ def test_instructions_and_guide_carry_the_order():
     assert "pattern_check" in g and "fit_garment" in g and "66-74" in g
     assert server.guide("traps").startswith("# Traps")
     assert server.guide("tailoring")  # the principles, or where they are while on their branch
-    for t in ("pattern_check", "fit_garment", "alter_pattern", "review_view", "judge_asset"):
+    for t in ("pattern_check", "fit_garment", "alter_pattern", "review_view", "judge_asset", "game_garment"):
         assert server.guide(t).startswith(f"### `{t}`"), t
 
 
@@ -176,6 +176,62 @@ def test_review_view_refuses_sheets_and_claims(tmp_path, home):
     (txt,) = _texts(out)
     assert len(_images(out)) == 1 and "independent" in txt and "collar, front" in txt
     assert "region" in inspect.signature(server.review_view).parameters  # one region per call, by signature
+
+
+# ------------------------------------------------------------------ game garments: the LOD pierce gate
+
+def _sheet(name, z):
+    from test_garment_game import _drape
+    d = _drape(11)
+    d["name"], d["g"] = name, {"roughness": 0.8}
+    d["V"] = d["V"].copy()
+    d["V"][:, 2] = z(d["V"][:, 0])
+    return d
+
+
+def _game_inputs(cross: bool):
+    """A shirt sheet (0.4 m, two panels sewn) under a jacket sheet over its middle (x 0.1-0.3), 1 cm above it, or
+    tilted through it near the jacket's free edge (x 0.113, inside the cull's margin: where real crossings survive)."""
+    sh = _sheet("shirt", lambda x: 0 * x)
+    jk = _sheet("jacket", (lambda x: 0.04 * (x - 0.026)) if cross else (lambda x: 0 * x + 0.01))
+    jk["V"][:, 0] = jk["V"][:, 0] * 0.5 + 0.1
+    X, Y = np.meshgrid(np.linspace(-0.1, 0.5, 13), np.linspace(-0.1, 0.3, 9))
+    body = np.stack([X.ravel(), Y.ravel(), np.full(X.size, -0.1)], 1)
+    return {"shirt": sh, "jacket": jk}, {"shirt": ["jacket"], "jacket": []}, body, []
+
+
+def test_game_garment_refuses_a_crossing_lod_and_names_the_fix(tmp_path, monkeypatch):
+    monkeypatch.setattr(server, "_game_drapes", lambda name, spec, garments: _game_inputs(True))
+    monkeypatch.setattr(store, "load", lambda name: {})
+    txt = server.game_garment("m", lods=[0.03, 0.06], out_dir=str(tmp_path / "gg"))
+    assert "pierce shirt through jacket: 14 faces" in txt and "LOD1" in txt
+    assert "NOT baked, no GLB written" in txt and "finer edge at that LOD" in txt and "gap_rings=2" in txt
+    assert "by hand" in txt and 'game_garment("m") again' in txt and "judge_asset" not in txt
+    assert not (tmp_path / "gg").exists()  # refused: nothing written, nothing baked
+
+
+def test_game_garment_clean_writes_lods_and_says_judge(tmp_path, monkeypatch):
+    monkeypatch.setattr(server, "_game_drapes", lambda name, spec, garments: _game_inputs(False))
+    monkeypatch.setattr(store, "load", lambda name: {})
+    txt = server.game_garment("m", lods=[0.03, 0.06], bake=False, out_dir=str(tmp_path / "gg"))
+    assert "pierce shirt through jacket: 0 faces" in txt and "faces culled under its covers" in txt
+    assert "NOT baked" not in txt and "bake=True) writes the GLBs" in txt and "rest pose only" in txt
+    for k in (0, 1):
+        for g in ("shirt", "jacket"):
+            assert (tmp_path / "gg" / f"LOD{k}" / f"low_{g}.npz").exists()
+    # baked: judge each GLB, then one crop per review_view call
+    L = [{"lod": 0, "h": 0.03, "pierce": [{"under": "shirt", "cover": "jacket", "faces": 0}], "cracks": {"shirt": 0}}]
+    t = next_steps.after_game_garment(L, "m", ["/x/LOD0/game_shirt.glb"], True)
+    assert 'judge_asset("/x/LOD0/game_shirt.glb")' in t and "ONE per review_view" in t and "rest pose" not in t
+    L[0]["cracks"] = {"shirt": 3}
+    assert "crack" in next_steps.after_game_garment(L, "m", None, True)
+
+
+def test_game_garment_needs_a_drape(home):
+    with pytest.raises(Exception, match="no drape for skirt"):
+        server._game_drapes(MODEL, store.load(MODEL), ["skirt"])
+    with pytest.raises(ValueError, match="no garment"):
+        server._game_drapes(MODEL, store.load(MODEL), ["cape"])
 
 
 # ------------------------------------------------------------------ renders (under bin/capped)
