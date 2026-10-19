@@ -7143,3 +7143,168 @@ hj.GREY_MAP={"top": 0.1, "fa": [0, 60, 100, 140, 180], "band": [0.6, 0.75, 0.5, 
 hj.VALUE_MAP={"top": 0.5, "band": [0.85, 0.7, 0.6, 0.55, 0.5], "low": [0.8, 0.7, 0.6, 0.55, 0.5]}
 look={"card_grey": 0.7, "grey": "#6c6966", "lit": "#524e4a", "gap": "#1e1b19"} hh.SHELL_EDGE_LIFT=0.0 hh.SHELL_CARD_VALUE=0.75.
 GLBs $HG/cards/exp/sh4T/hg_G88a_hair_{hero,main,npc,far}.glb. Future builds must beat sh4T AND, at hero, c14s.
+- (1) NAPE FRINGE OWNER = THE CAP. sh4T hero re-rendered with only the cards (faces 9300+) vs only cap + shells (0-9300),
+  views g1back / g1left (sh5/d1.sh, crops sh5/nape_split.png): cards-only black px (sum<30 / <90) 0/0 and 0/0 (their nape
+  hairline cards are faint strokes, no blobs); cap-only 24/54 back, 6/20 left: the black drops hang at the cap's alpha-tested
+  strand tips along the nape edge (same cause as sh4's rim: the cap's underside / gap, the nape edge still lifted inside the
+  5 mm ease because it hangs). Lever: hh.SHELL_LIFT_EASE (5 mm) -> 12 / 20 mm. Also: LAY_MIN / LAY_MAX added to the combed
+  cache key (were missing).
+  STATE: q1 (sh5/q1.sh): sh5n / sh5m (ease 12 / 20 mm, else sh4T), sh5t (texture only: EDGE_SHADE .3, LAY_DEP_T .3, combing
+  LAY_LEN 1.1, LAY_MIN 10 mm, LAY_WOBBLE .06), sh5a (all: ease 12 + texture + GREY_MAP band front .8 / 60 deg .9, VALUE_MAP
+  top .45 / band .9 .8 .6 .58 .58 / low .85 .78 .6 .58 .58, SHELL_CARD_VALUE .65). NEXT: blk_q1.txt, m_sh5t / m_sh5a.
+- (2) SHELL_LIFT_EASE IS A DEAD LEVER for the nape: sh5n / sh5m (12 / 20 mm) render differently elsewhere (1307 px) but the
+  nape black px are IDENTICAL to sh4T (back 22/50, left 4/19; sh5/blk_q1.txt). Not back faces either (cull=true render
+  sh4Tcull: 22/49), not shadows (sh3d vs sh3dns 80/150 both), no black texels in the atlas. At 8x (sh5/blob8x.png) the
+  black drops are DITHERED fragments right under the hair's edge where the id pass (alpha clip) says skin: low-alpha texels
+  drawn with the base's DARK depth (BASE_DEPTH .25 x .8 = .2; hair_cap's own comment: "at 0.22 a near-black band at the nape").
+  CODE: hair_cap.BASE_EDGE_DEPTH (None = off): the base's depth eases from BASE_DEPTH x .8 to it over BASE_EDGE toward the
+  hair's edge (set by hj.; in the combed key).
+  STATE: q2 (after q1): sh5d (sh4T + BASE_DEPTH .6, lever proof), sh5e (sh4T + BASE_EDGE_DEPTH .6). NEXT: blk_q2.txt.
+- (3) NAPE: STUCK (3 levers, none moved a pixel). sh5d (BASE_DEPTH .6) and sh5e (BASE_EDGE_DEPTH .6): back 22/50, left 4/19,
+  identical to sh4T, as with SHELL_LIFT_EASE and cull. The count is independent of the cap's texture and lift, and the
+  fragments are skin in the id pass. Untested hypothesis: EEVEE's horizon scan / contact AO darkens the skin where the cap
+  touches it at lift 0 (test: a render with horizon scan off). BASE_EDGE_DEPTH stays in the code, off.
+- (4) TEXTURE: sh5t (EDGE_SHADE .3, LAY_DEP_T .3, LAY_LEN 1.1, LAY_MIN 10 mm, wobble .06) left MID std unchanged (front 5.1,
+  side 5.1) = no visible change, try 1. sh5a (+ silver sides GREY_MAP band .8 / .9, VALUE_MAP, SHELL_CARD_VALUE .65): front mid
+  42.7 -> 44.3 (photo 51.2), but front all overshot 45.3 and the profile cards went 48.9 -> 50.0 (SHELL_CARD_VALUE .65 is dead).
+  Not kept.
+- (5) GAME-LIGHT VALUE (coordinator: "about 2 stops dark" on v8): measured on assembly_garrett/s15/hair_v8.png (mean linear Y
+  over the grey hair px vs the photo column) as front -0.01, q34 -0.15, side -0.37, back -0.46 stops. That is NOT 2 stops.
+  The charcoal read is CONTRAST: light flecks over a near-black base.
+- (6) sh5f = sh4T + VALUE_MAP {"top": .7, "band"/"low": [.9, .85, .8, .78, .78]} (the dark strands lifted toward the grey) +
+  combing try 2: LAY_LEN 2.0, LAY_MIN .02, LAY_MAX .05, LAY_WOBBLE .03. Hero p50 / MID std (photo): front 43.4 / 4.7 (43.1 / 3.7),
+  q34 41.9 / 4.7 (42.0 / 4.1), side 44.8 / 4.2 (37.9 / 3.6), back 38.2 / 3.5 (34.5 / 2.8); fine std 4.8 -> 3.4. On the stage the
+  side / back are now +7 / +4 L* over the photo, but the stage reads ~0.4 stop lighter than the game look at the side / back, so
+  in game they should land within ~0.2 stop (to verify on the v9 export). LOOK (mine, crop sh5/crop_sh4T_sh5f.png): combed strands
+  swept back, a visible direction, less stipple, lighter. Clearly better.
+  BLIND A/B (fresh general-purpose subagent, randomised trios sh5/blind_*, key sh5/blind_key.json): vs sh4T front OLD, q34 NEW,
+  side NEW, back NEW = NEW 3 / OLD 1. vs c14s front NEW, q34 NEW, side OLD, back NEW = NEW 3 / OLD 1. Label check: the reviewer
+  thought one render won all 8 and called it "X" (the only candidate with a combing direction). Its two OLD picks (sh4T front,
+  c14s side) contradict that, so they are likely mislabels. Faults it lists for the new one: the hard nape with black specks,
+  a black gap / skin specks at the sideburn top with a blunt sideburn end, a scraggly, recessed front hairline and temples, and
+  back streaks too long / high-contrast ("wet combed-down").
+  STATE: sh5T (all four tiers, sh5f settings) building (sh5/q4.sh). NEXT: tier budgets, then BEST.
+- (7) sh5T BUILT, all four tiers ($HG/cards/exp/sh5T): hero 13068 / main 7392 / npc 2832 / far 668 faces, the same as sh4T and in
+  budget. CODE: hair.export.constants (spec key; hair.export_constants, applied in export_cards on every path).
+## HANDOVER (hair-garrett sh5, 2026-10-19; LAST Garrett-hair round per Joe / the coordinator; nothing in flight)
+BEST GARRETT HAIR FOR EXPORT = exp/sh5T (style "shells", all tiers; blind 3-1 vs sh4T and 3-1 vs c14s; NOT Joe-approved). The
+settings are written as a hair.export.constants spec block in docs/state/garrett_hair.md (rewritten). Open: the nape specks
+(stuck, hypothesis: EEVEE AO on the skin), sideburn gap, scraggly hairline, long back streaks, top lift (untried).
+## Garrett short-hair shells sh6 (edge faults) (2026-10-19, fresh agent; Joe's side-view flags on sh5T: (a) black specks at the sideburn top, (b) a blobby beaded sideburn end, (c) black specks along the nape)
+Scratch $HG/shells/sh6/. Method this round: ISOLATE first (one switch per render, g1left + g1back, sh5T hero GLB, the crop's
+camera / light), then fix once. CODE (diagnostics, kept): blender_scene._glb_debug (hair_glb_look job keys "offset",
+"hide_hair", "skin_flat", "probe" = ray-cast px: every surface along the ray, face, front / back, texture alpha, mm to the
+skin), job "clip_start"; spikes/haircards/shots.py dbg=<json>.
+- (1) ISOLATION (sh6/d1-d3.sh, counts pure-black <30 / near-black <90, g1left | g1back; sh6/blk_d*.txt):
+  base 7/25 | 21/53. AO off (use_fast_gi false) 7/24 | 22/56; ray tracing off 7/24 | 23/57; culling on 7/25 | 21/53; no hair
+  shadow 7/25 | 21/53; clip_start .1 (depth precision x10) 7/24 | 21/52: NOT AO, shadows, culling or depth precision.
+  Cap + shells with a FLAT EMISSION material 11/27 | 29/59 and unlit flat skin 6/22 | 19/42: NOT shading of either. Skin
+  alone 0/0. Hair offset +.5 mm 15/56 | 13/38, +3 mm 24/82 | 17/37 (moves them, never clears: they travel WITH the hair).
+  By layer: cap alone 0/0 | 0/0, shell 1 alone 0/0, shell 2 alone 0/0, SHELLS 1 + 2 TOGETHER 8/19 | 12/29.
+  Ray-cast (s_base.log @@probe): every black px's ray first meets cap / shell faces with texture alpha 0 lying 0.01-0.1 mm
+  off the skin, several layers at the same spot (cap uv ~.8,.63; shell 1 ~.15,.017; shell 2 ~.40,.017), id pass = skin.
+  ROOT CAUSE: the shells are copies of the cap's vertices raised by shell_height - cap height, and both ease to 0 at the
+  hairline: along the nape and the sideburn top the cap and both shells are the SAME triangles. Coincident alpha-tested
+  layers render holes (EEVEE: black; an engine: z-fight). Earlier levers (lift ease, base depth, cull, shadows) left the
+  layers coincident, so they moved nothing.
+- (2) SIDEBURN: probes at its dabs hit LAYER1 faces 9651-9722 (the hairline-row CARDS, alpha 1), not the cap. Cards-only vs
+  cap-only (sh5 d1 renders, sh6/sb_cards_vs_cap.png): the cards are flat grey blocks with round ends; the cap alone has a
+  tapered strand wedge. ~45 hairline cards sit at 72-87 deg from the front, -5..-29 deg elevation (sh6/hrow.py).
+  CODE: hair.SHELL_MIN_GAP (.4 mm, default on): each shell >= that over the layer below, the hairline included.
+  hair.SHELL_HROW_DROP ({"fa": [a0, a1], "el_max": deg}, default None): hairline-row cards dropped in a region. hx7 hz.<C>=<json>.
+  STATE: q1 (sh6/q1.sh): sh6g (sh5T + gap), sh6s (sh6g + drop fa 65-95, el < -3). NEXT: blk_q1.txt, crops.
+- (3) q1 RESULTS (sh6/blk_q1.txt, pure / near-black px g1left | g1back): sh5f (= sh5T hero) 7/25 | 21/53; sh6g (gap only)
+  0/0 | 0/0; sh6s (gap + sideburn cards dropped: 39 of the hero's hairline cards, hero 12740 faces) 0/0 | 0/0. The gap is
+  the whole fix for (a) and (c), first try. LOOK (mine, sh6/sheet_sh5T_sh6s_sh6g.png, rows photo | sh6s | sh5T | sh6g; cols
+  sideburn 1 m, nape 1 m, side at the photo's camera): specks gone in both; sh6g keeps the beaded sideburn; sh6s's sideburn is
+  the cap's tapered strand wedge (clean, but narrower and pointier than the photo's, which reaches the tragus). Nape: clean
+  but a blunt straight cut in all (the photo fades into stubble).
+  BLIND A/B: bin/review-ab hit the weekly limit (exit 4, sh6/ab_*.log); fallback = a fresh general-purpose subagent on
+  review-ab's own randomised trios (copied to sh6/blind/p*.png, q*.png; keys sh6/ab_*/key.json). sh5T vs sh6s: sideburn NEW,
+  nape NEW, side NEW = NEW 3 / OLD 0. sh6g vs sh6s: sideburn sh6s, nape TIE, side sh6s = the drop wins 2 / tie 1. Faults it
+  still names: the blunt flat nape line with no fade, skin through the hair over the ear, a stiff cut-out sideburn edge.
+  CODE: hair.shell_gaps (+ tests), hair_cards.shadow_proxy returns empty when marching cubes finds no surface (sh6T's npc
+  tier: 26 cards left after the drop, the proxy's sliver crashed the export).
+  STATE: q2 (sh6/q2.sh): sh6T all four tiers. NEXT: tiers_sh6T.txt, budgets, BEST.
+- (4) sh6T BUILT, all four tiers ($HG/cards/exp/sh6T, sh6/q2.sh): hero 12740 / main 7152 / npc 2632 / far 668 faces (sideburn cards
+  dropped 39 / 30 / 25 / 0), all under sh5T's and in budget. Black px 0/0 on every hero view's g1left / g1back and every
+  main / npc / far view (g2v1, g4v1, g8v1, g2left). Sheet sh6/sheet_photo_sh6T_sh5T.png. BEST GARRETT HAIR FOR EXPORT = sh6T.
+  Spec key: the sh5T constants + "hair.SHELL_MIN_GAP": 0.0004, "hair.SHELL_HROW_DROP": {"fa": [65, 95], "el_max": -3.0}
+  (docs/state/garrett_hair.md); not yet in the live spec (main's export_constants would refuse the new names).
+  TRAP: shells / layered caps built as offset copies of one mesh coincide wherever the offset eases to 0: coincident
+  alpha-tested layers render holes. Isolate by layer (only=) before turning look levers.
+## HANDOVER (sh6, 2026-10-19; nothing in flight)
+BEST = exp/sh6T (blind 3-0 vs sh5T). Open: the blunt nape cut (no fade), skin through the hair over the ear, sideburn
+narrower than the photo's, sh5's hairline / back-streak faults. Land the branch, then the spec constants.
+## Garrett short-hair shells sh7 (edge fade) (2026-10-19, fresh agent; coordinator's look on sh6T: blunt nape line, narrow spiked sideburn, flat shelf over the ear, stray cards over the ear)
+Scratch $HG/shells/sh7/. Real practice: the short-hair fade, stubble and hairline transition are painted INTO THE HEAD SKIN
+(value + fine-hair gradient); mesh hair stops where the hair has volume. CODE: hair_fade.py (map in scalp-chart coords:
+u = azimuth / 360, v = elevation -75..45, 0.1 deg texels; edge line + fade_mm by angle from the front; cut hairs as short
+strokes along the flow, number ~ density^1.8, plus a smooth shadow tint; the skull radius with the ears opened away beside it
+so the ear itself is never painted); hair.export.fade = spec key (export writes <name>_hair_skin_fade.png / _skull.png / .json,
+each tier's report carries "skin_fade"); fade.trim cuts cap + shell alpha below a line (mesh edge moved up);
+SHELL_HROW_DROP may be a list of regions; blender_cards.skin_fade mixes the map into every non-hair material's base colour
+(hooked from game_material's params "skin_fade": blender_scene.py untouched, since it is in the shared stage's code hash).
+- (1) fade_a.json: edge dips to the tragus (fa 74-84, el -37..-39), curves round the ear (el -12..-15 over fa 92-108), nape
+  el -51; fade 8-14 mm sides, 26-30 mm nape; trim fa 72-86 at -22 (the spike), nape at -46; cards dropped fa 65-95 el<-3
+  and fa 95-180 el<0. STATE: q1.sh sh7a (hero + g1left / g1back / v2). NEXT: sheet, look.
+- (2) sh7a (sh7/sheet_a.png): sideburn paint showed (broad, to the tragus) but pale; NAPE GOT NO PAINT: the skull map was
+  indexed (el, az) for (az, el) (map_coordinates axes), so the radius test failed off the ear's columns. Fixed. sh7b
+  (fade_b: darker, trim_breakup_mm 3 = a ragged mesh edge via 2D noise): nape now a ragged edge over a grey fade band.
+- (3) sh7c (fade_c.json: shadow #57524e op .8 gamma 1, hairs #3a3633 / grey #a09b95 40 %, density_gamma 1.5, spacing .45 mm;
+  cards dropped fa 65-95 el<-3 and fa 90-180 el<20: the strays over the ear gone). Black px g1left / g1back 0/0 (a, b, c).
+  LOOK (mine, sh7/sheet_c.png rows photo | sh7c | sh6T): sideburn broad to the tragus and thinning, nape ragged with a grey
+  fade below, strays over the ear gone; still: the painted zones read lighter / flatter than the mesh hair (a two-tone
+  break at the sideburn top), the nape fade short and faint vs the photo, the shelf over the ear barely changed, one dark
+  block card at the nape's right end.
+  BLIND A/B: review-ab weekly limit again (exit 4, sh7/ab_old_new.log); fallback = fresh subagent on review-ab's own trios
+  (sh7/ab_old_new/trio_*.png, key.json): sideburn NEW, nape NEW, side NEW = NEW 3 / OLD 0. Its faults on the winner: the
+  sideburn a flat lighter decal with a straight diagonal edge and no density gradient; nape fade too short / faint, blocky
+  light chunks at the transition, no taper toward the neck; hard cut-out above / behind the ear remains.
+  STATE: q2.sh sh7T (all four tiers). NEXT: tiers_sh7T.txt, BEST.
+- (4) sh7T BUILT, all four tiers ($HG/cards/exp/sh7T, sh7/q2.sh): hero 12628 / main 7088 / npc 2576 / far 668 faces (cards
+  dropped 48 / 37 / 32 / 0), all under sh6T's. Black px pure 0 on every view; near-black 0 on g1left / g1back and every
+  main / npc / far view (v2 1460 vs sh6T's 1670: hair's own dark). Sheet sh7/sheet_photo_sh7T_sh6T.png. BEST = sh7T.
+  OPEN: the export's head bake (asset.py) doesn't read the fade yet: the maps sit beside the GLBs with the formula in the note.
+  TRAP: scipy map_coordinates takes coordinates in the ARRAY's axis order: meshgrid(ia, ie) (az, el) for an (az, el) array,
+  not reversed; a reversed grid gave a per-column constant radius and silently masked the nape's paint (radius test).
+  TRAP: blender_scene.py is in the garrett3 stage's code hash: editing it rebuilds the shared _g3_<model> stage for every agent.
+## HANDOVER (sh7, 2026-10-19; nothing in flight)
+BEST = exp/sh7T (blind 3-0 vs sh6T). Open: painted zones lighter / flatter than the mesh hair, sideburn front edge straight,
+nape fade short, the shelf over the ear, the asset head-bake hook. Land the branch, then the spec key.
+
+## Garrett short-hair shells sh8 (fade ships) (2026-10-19, fresh agent; order: merge main, export hook, junction / sideburn / nape / dark block, tests)
+- Merge: main into garrett-hair-sh8 (from sh7). Conflicts in hair.py (5), hair_cap.py, tests (shells, clumps), notes / STATE /
+  README: shells code = sh7 side (superset), budget hunk = main (BUDGET_UNIT), test_hair_clumps = main (+ part test). def /
+  class / CONSTANT names of both parents all present after (scripted check). SHELL_MIN_GAP, SHELL_HROW_DROP (list ok:
+  export_constants keeps a None-typed constant's JSON value), hair.export.fade are known names.
+- EXPORT HOOK: asset._export builds hair_fade.build(scalp, hair.export.fade) into ctx["skin_fade"] after scene_maps; asset.bake
+  mixes it into the skin part's linear base colour at each texel's exact surface point (hair_fade.bake_into = the look's node
+  tree in numpy, skull test included). Roughness unchanged. blender_scene.py untouched. Proof: $HG/shells/sh8/ship_f
+  (asset.export hg_G88a, spec patched in process by ship.py): log "hair fade: baked into body's base colour: 338988 texels
+  (alpha mean 0.94)"; GLB base-colour crops read back from the GLB (trimesh) glb_f_{nape,sideburn}.png / glb_f_crops.png:
+  cut-hair strokes in the shipped map. Hair budget: card faces 10,964 of 25,000, drawn 12,628 of 50,000.
+  Export traps: capped's default 12G cap OOM-killed the scene bake (use CAP=28G with the 24 GB declaration); a rig-less
+  export can't be judged (blender_game needs the armature); lashes_specular.png referenced but not written (copied a flat one).
+- Junction, sheet tiles L* p50 / p90-p10 (junc.py; mesh side | paint side):
+  photo  side 58.8/22.7 | 49.5/21.1   nape 27.8/24.9 | 24.3/24.1 (low 31.4/66.5)
+  sh7T   side 52.7/15.1 | 59.5/11.6   nape 32.8/13.9 | 58.7/39.6 (low 76.6/17.5)
+  sh8a   side 51.2/18.6 | 48.8/25.2   nape 32.8/13.9 | 44.0/50.4 (low 59.1/41.6: STREAKS down the neck)
+  sh8b   side 51.2/18.4 | 49.0/25.7   nape 32.8/13.9 | 46.5/51.1 (low 78.4/17.7: short, abrupt)
+  sh8c   side 51.5/20.9 | 50.3/25.5   nape 32.8/13.9 | 42.9/51.8 (low 75.3/37.2)
+- sh8a (fade_d: darker paint, edge_breakup / front_breakup / front_soft / clump, nape edge -61 + 40 mm, trim ramp moved to fa
+  100-106): sideburn fixed (no two-tone, ragged front); nape ran down the neck as long vertical streaks: "mm" were on the median
+  sphere, the neck's radius grows fast below el -55. clump as a multiplier punched bald holes: now only the fall-off's middle.
+- sh8b (fade_e: + surface_mm, nape edge -54 + 32 mm): streaks gone, dark block card gone (it was the cap kept below the trim
+  ramp at fa 118-126), nape short / abrupt. sh8c (fade_f: nape edge -58 + 50 mm, density_gamma 1.8, shadow_gamma 1.6):
+  longer tapered nape with a V toward the middle. BEST = sh8c. Black px g1left / g1back 0/0 in a, b, c.
+- Tests: tests/test_hair_fade.py (8): known answer on the skull map's axis order, chart coords (front = az 0, +X = 90), sample
+  / wrap / ear, linear mix, density at the edge, surface_mm, trim breakup. Traps rows added (map_coordinates axis order;
+  blender_scene.py in the head stage's hash).
+- SHIPPED look: re-exported with the rig (ship_fr, judge needs the armature), `bin/judge shots` run sh8c_shipr_8f880a9b
+  (re-imported GLB, game light): the fade is there (sideburn continuous with the hair, nape dark tapered band). Sheet
+  $HG/shells/sh8/sheet_photo_ship8c_sh7T.png (photo | shipped sh8c re-imported | sh7T look tiles; framing differs: judge
+  crops). Junction on the judge crops (game light, darker): side mesh 28.2/14.5 | paint 25.1/25.8, nape 20.0/19.3 | 12.8/36.8
+  (the shipped nape paint reads ~7 L* darker than the mesh hair under the game light: next lever = paint value at the nape).
+- Blind A/B (fresh subagent, key-shuffled trios ab/, same look framing, sh7c = sh7T hero vs sh8c): NEW 2 (nape, side) / OLD 1
+  (sideburn close-up: reviewer preferred the lighter sparse zone; noted the new edge still "somewhat crisp"). Kept sh8c.

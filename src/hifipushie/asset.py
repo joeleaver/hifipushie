@@ -1581,6 +1581,17 @@ def bake(parts: dict, size: int, ctx: dict, log: list, atlas: int | None, given:
             log.append(f"lip floor: {int(on.sum())} lower-lip texels, roughness mean {r_[on].mean():.3f} -> "
                        f"{rms[ys[sel][on], xs[sel][on], 0].mean():.3f} (floor {LIP_FLOOR_ROUGHNESS})" if on.any() else
                        "lip floor: no texel over half in the lower-lip zone")
+    sf = ctx.get("skin_fade")  # (sh8) the short hair's edge fade (hair_fade) baked into the head's base colour: any
+    # engine shows it with no extra maps or formula (the look lays the same map on in blender_cards.skin_fade)
+    if sf is not None and sf["part"] in names:
+        from . import hair_fade
+        sel = np.flatnonzero(part == names.index(sf["part"]))
+        if len(sel):
+            lin = lin.copy()
+            new_, a_ = hair_fade.bake_into(lin[ys[sel], xs[sel]], X[sel], sf["map"])
+            lin[ys[sel], xs[sel]] = new_
+            log.append(f"hair fade: baked into {sf['part']}'s base colour: {int((a_ > 0.05).sum())} texels "
+                       f"(alpha mean {float(a_[a_ > 0.05].mean()) if (a_ > 0.05).any() else 0:.2f}); roughness unchanged")
     put_given("basecolor", _srgb(lin))
     put_given("roughness", given["rms"][..., :1])
     put_given("metallic", given["rms"][..., 1:2])
@@ -3026,6 +3037,12 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
     given = scene_maps(name, parts, sizes, ctx, resolution, log)
     ek_ = (spec.get("base") or {}).get("eyes")
     ctx["ao_off"] = [ek_] if isinstance(ek_, str) else []
+    fo_ = ((spec.get("hair") or {}).get("export") or {}).get("fade")
+    if fo_:  # (sh8) hair.export.fade: the same map the hair export writes (hair_fade.build is deterministic per seed)
+        from . import hair as hairmod_, hair_fade
+        ctx["skin_fade"] = {"map": hair_fade.build(hairmod_.scalp(name, spec), fo_),
+                            "part": (spec.get("skin") or {}).get("part", "body")}
+        log.append(f"hair fade: {ctx['skin_fade']['map']['hairs']} cut hairs, baked into {ctx['skin_fade']['part']}")
     for ai, an in enumerate(names):
         stem = aname if len(names) == 1 else f"{aname}_{an}"
         if len(names) > 1:

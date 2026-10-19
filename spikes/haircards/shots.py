@@ -143,6 +143,8 @@ with resources.heavy(f"haircards shots {m}{TAG}", gb=8), tempfile.TemporaryDirec
             job["only_tris"] = json.loads(kw["only"])
         if kw.get("shadow") == "0":  # shadow=0: the cards cast no shadow (test pass)
             job["card_shadow"] = False
+        if kw.get("dbg"):  # dbg=<json>: blender_scene._glb_debug's isolation switches (offset, hide_hair, probe)
+            job.update(json.loads(kw["dbg"]))
         if kw.get("proxy") == "0":  # proxy=0: no shadow proxy (the cards cast their own shadow, as before round 19)
             job["shadow_proxy"] = False
     else:
@@ -153,6 +155,9 @@ with resources.heavy(f"haircards shots {m}{TAG}", gb=8), tempfile.TemporaryDirec
             job["groom_proxy"] = kw["gproxy"]  # strands), shadow-only; the strands cast none (round 22, "gSc")
     t0 = time.time()
     out = scene._blender(job, 3600)
+    for ln in str(out).splitlines():
+        if ln.startswith("@@probe"):
+            print(ln, flush=True)
     fr = [float(ln.split()[1]) for ln in str(out).splitlines() if ln.startswith("@@frame")]
     print(f"{m}{TAG}: {len(views)} views in {time.time() - t0:.0f} s wall; frames {fr} s", flush=True)
     json.dump({v: {k: f[k] for k in ("eye", "center", "fov", "dir", "up")} for v, f in zip(views, frames)},

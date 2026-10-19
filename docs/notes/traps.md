@@ -107,6 +107,16 @@ and constants against both parents; run both threads' tests.
 dozen sessions). Cause: a load-bearing default changed. Check first: after two failed fixes, restore the last good
 default and make the new behaviour opt-in.
 
+**map_coordinates with the axes reversed.** Symptom: a painted map silently blank in one region (sh7a: the nape fade
+gone, no error). Cause: scipy's map_coordinates takes coordinates in ARRAY-AXIS order (axis 0 first); the skull map's
+axis 0 is azimuth, the chart's is elevation, and passing (elevation, azimuth) read the wrong cells. Check first: a
+known-answer test (a field that varies along ONE axis only must read back that axis's value: tests/test_hair_fade.py).
+
+**Editing blender_scene.py rebuilds the shared head stage.** Symptom: a look-only change (a skin overlay) costs every
+agent a full stage rebuild (_g3_<model>), and the approved head's renders stop matching. Cause: blender_scene.py is in
+the stage's code hash. Check first: hook look-only material changes elsewhere (sh7: blender_cards.game_material ->
+skin_fade), and bake shipped colour in asset.py (sh8), never in blender_scene.py.
+
 ## Machine
 
 **OOM from undeclared memory.** Symptom: the desktop freezes or an export dies with exit 137. Cause: a job ran outside

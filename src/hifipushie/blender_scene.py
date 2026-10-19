@@ -1382,7 +1382,7 @@ def render(job):
     print(f"@@phase setup {time.time() - T0:.2f}", flush=True)
     _light_rig(scene, job.get("lighting") or {}, job, base)
     cam_data = bpy.data.cameras.new("hp_cam")
-    cam_data.clip_start, cam_data.clip_end = 0.01, 1000
+    cam_data.clip_start, cam_data.clip_end = float(job.get("clip_start", 0.01)), 1000
     cam = bpy.data.objects.new("hp_cam", cam_data)
     scene.collection.objects.link(cam)
     scene.camera = cam
@@ -2047,6 +2047,7 @@ def hair_glb_look(job):
             except (AttributeError, TypeError):
                 pass
             del tex
+    _glb_debug(job, [o for o in new if o.type == "MESH"])
     print("@@glb", json.dumps(info), flush=True)
     render({**job, "opened": True, "engine": job.get("look_engine", "eevee")})
     if job.get("id_views"):  # the cards' coverage as a mask (red where alpha passes the cutoff), everything else black
@@ -2076,6 +2077,103 @@ def hair_glb_look(job):
             if ob.type == "LIGHT" or ob.name.startswith("hp_cam"):
                 bpy.data.objects.remove(ob)
         render({**job, "views": job["id_views"], "opened": True, "flat": False, "samples": 1})
+
+
+def _glb_debug(job, hair_obs):
+    """Isolation switches for hair_glb_look (one per render, to find what a render fault IS before turning levers):
+    "offset": move the hair's vertices this many metres along their normals; "hide_hair": the hair and its shadow
+    proxy hidden (the skin alone); "probe": {view name: [[x, y], ...]} pixels ray-cast through that view's camera,
+    printed as @@probe lines: every surface along the ray (object, face, front / back, distance from the first hit,
+    the card texture's alpha at the hit, and the distance from a hit to the nearest non-hair surface)."""
+    from mathutils import Vector, interpolate
+    if job.get("offset"):
+        dz = float(job["offset"])
+        for ob in hair_obs:
+            me = ob.data
+            for v in me.vertices:
+                v.co = v.co + v.normal * dz
+            me.update()
+    if job.get("skin_flat"):  # everything but the hair an unlit flat colour (is a dark spot the skin's shading?)
+        fm = bpy.data.materials.new("hp_dbg_flat")
+        fm.use_nodes = True
+        fe = fm.node_tree.nodes.new("ShaderNodeEmission")
+        fe.inputs["Color"].default_value = (0.8, 0.55, 0.45, 1)
+        fm.node_tree.links.new(fe.outputs[0], next(n for n in fm.node_tree.nodes if n.type == "OUTPUT_MATERIAL").inputs["Surface"])
+        for ob in bpy.data.objects:
+            if ob.type == "MESH" and ob not in hair_obs and not ob.get("hp_shadow_proxy"):
+                for ms in ob.material_slots:
+                    ms.material = fm
+    if job.get("hide_hair"):
+        for ob in bpy.data.objects:
+            if ob in hair_obs or ob.get("hp_shadow_proxy"):
+                ob.hide_render = True
+    if not job.get("probe"):
+        return
+    bpy.context.view_layer.update()
+    dg = bpy.context.evaluated_depsgraph_get()
+    sc = bpy.context.scene
+    hair_names = {o.name for o in hair_obs}
+    others = [o for o in sc.objects if o.type == "MESH" and o.name not in hair_names and not o.get("hp_shadow_proxy")
+              and not o.hide_render]
+
+    def alpha_at(ob, fi, p):
+        poly = ob.data.polygons[fi]
+        co = [ob.matrix_world @ ob.data.vertices[i].co for i in poly.vertices]
+        w = interpolate.poly_3d_calc(co, p)
+        if not ob.data.uv_layers:
+            return None
+        uvl = ob.data.uv_layers[0].data
+        uv = sum((uvl[li].uv * wi for li, wi in zip(poly.loop_indices, w)), Vector((0, 0)))
+        m = ob.material_slots[poly.material_index].material if ob.material_slots else None
+        img = next((n.image for n in (m.node_tree.nodes if m and m.node_tree else []) if n.type == "TEX_IMAGE" and n.image
+                    and n.image.size[0] > 64), None)
+        if img is None:
+            return None
+        W_, H_ = img.size
+        x, y = int(uv.x % 1 * W_), int(uv.y % 1 * H_)
+        return round(img.pixels[(y * W_ + x) * 4 + 3], 3), [round(uv.x, 4), round(uv.y, 4)]
+
+    def nearest_other(p):
+        best = None
+        for o in others:
+            inv = o.matrix_world.inverted()
+            ok, q, nrm, fi = o.closest_point_on_mesh(inv @ p)
+            if ok:
+                d = ((o.matrix_world @ q) - p).length
+                if best is None or d < best[0]:
+                    best = (d, o.name, fi)
+        return best
+
+    for v in job["views"]:
+        pts = (job["probe"] or {}).get(v["name"])
+        if not pts:
+            continue
+        d = Vector(v["dir"]).normalized()
+        up = Vector(v["up"])
+        right = up.cross(d).normalized()
+        up = d.cross(right).normalized()
+        eye = Vector(v["eye"])
+        N = v.get("size", job.get("size", 512))
+        t = np.tan(np.radians(v["fov"]) / 2)
+        for x, y in pts:
+            u, w_ = ((x + 0.5) / N * 2 - 1) * t, (1 - (y + 0.5) / N * 2) * t
+            ray = (-d + right * u + up * w_).normalized()
+            o_, hits, first = eye.copy(), [], None
+            for _ in range(8):
+                ok, p, nrm, fi, ob, _m = sc.ray_cast(dg, o_, ray)
+                if not ok:
+                    break
+                first = p if first is None else first
+                h = {"ob": ob.name, "face": fi, "side": "front" if nrm.dot(ray) < 0 else "back",
+                     "at_mm": round((p - first).length * 1000, 2)}
+                if ob.name in hair_names:
+                    src = bpy.data.objects[ob.name]
+                    h["alpha_uv"] = alpha_at(src, fi, p)
+                    nb = nearest_other(p)
+                    h["skin_mm"] = None if nb is None else [round(nb[0] * 1000, 2), nb[1]]
+                hits.append(h)
+                o_ = p + ray * 1e-5
+            print("@@probe", json.dumps({"view": v["name"], "px": [x, y], "hits": hits}), flush=True)
 
 
 def hair_sync(job):

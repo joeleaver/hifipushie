@@ -1514,7 +1514,10 @@ def shadow_proxy(V, T, voxel: float | None = None, close: int | None = None, ins
     f = ndimage.gaussian_filter(g.astype(np.float32), float(o["smooth"]))
     if f.max() < 0.5:
         return {"verts": np.zeros((0, 3), np.float32), "tris": np.zeros((0, 3), np.int64), "voxel": h, "inset": o["inset"]}
-    vv, ff, _, _ = measure.marching_cubes(f, 0.5, step_size=int(o["step"]), allow_degenerate=False)
+    try:
+        vv, ff, _, _ = measure.marching_cubes(f, 0.5, step_size=int(o["step"]), allow_degenerate=False)
+    except RuntimeError:  # (sh6) a sliver over 0.5 that the coarse step skips: no surface (Garrett's far tier, cap only)
+        return {"verts": np.zeros((0, 3), np.float32), "tris": np.zeros((0, 3), np.int64), "voxel": h, "inset": o["inset"]}
     return {"verts": (vv * h + lo).astype(np.float32), "tris": ff.astype(np.int64), "voxel": h, "inset": float(o["inset"])}
 
 

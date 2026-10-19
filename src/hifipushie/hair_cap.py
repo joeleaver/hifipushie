@@ -301,6 +301,9 @@ EDGE_SHADE = 0.3  # (sh3) a strand's edges shaded by this share (the dark gap be
 BASE_EDGE = 0.0  # m: (sh2) the cap's opaque base fades out over this distance in from the hair's edge, so the hairline
 # and the nape edge are strands over skin (alpha-tested), not the base's dark rim (Garrett's front hairline drew a hard dark
 # line). 0 = the base runs to the edge (sh1)
+BASE_EDGE_DEPTH = None  # (sh5) the base's depth (shade) eases from BASE_DEPTH x .8 to this toward the hair's edge (over
+# BASE_EDGE): Garrett's nape fringe (black drops below the cap's edge, sh4T back 22 px pure black) was the base's dark depth
+# on the faded-base texels the dithered alpha still draws. None = off
 SHELL_WIDTH = 0.0008  # m: the shells' strands are drawn wider (their slots are half the chart's resolution)
 LAY_DEP0, LAY_DEP_T, LAY_DEP_S = 0.3, 0.4, 0.25  # a combed strand's depth (shade): base + along x t + standing x s
 SHELL_LIT = 0.08  # depth lift per shell outward (outer strands catch more light)
@@ -439,17 +442,21 @@ def combed(chart: dict, heights=SHELL_HEIGHTS, base: float = SHELL_BASE, seed: i
             out["value"] = vm
         if under is not None:  # the cap: the opaque base (the hair's dark inside) between the strands
             u_ = a < under
-            out["depth"] = np.where(u_, a * dep + (1 - a) * BASE_DEPTH * 0.8, dep).astype(np.float32)
+            bd_ = BASE_DEPTH * 0.8 if edge_fade is None else BASE_EDGE_DEPTH + (BASE_DEPTH * 0.8 - BASE_EDGE_DEPTH) * edge_fade
+            out["depth"] = np.where(u_, a * dep + (1 - a) * bd_, dep).astype(np.float32)
             out["id"] = np.where(u_, a * out["id"] + (1 - a) * 0.5, out["id"]).astype(np.float32)
             out["grey"] = (out["grey"] * np.where(u_, a, 1.0)).astype(np.float32)
             out["alpha"] = np.maximum(a, under).astype(np.float32)
         return out
     allsel = np.ones(len(kk), bool)
     under = np.asarray(chart["base"], np.float32)
+    edge_fade = None
     if BASE_EDGE > 0 and hair.any():  # the base fades in from the hair's edge (distance in metres: rows mv, columns mu)
         mu_h = float(np.median(np.broadcast_to(mu[:, None], hair.shape)[hair]))
         dist = ndimage.distance_transform_edt(hair, sampling=(mv, mu_h))
         under = (under * _ss(np.clip(dist / BASE_EDGE, 0, 1))).astype(np.float32)
+        if BASE_EDGE_DEPTH is not None:
+            edge_fade = _ss(np.clip(dist / BASE_EDGE, 0, 1)).astype(np.float32)
     cap = maps(*draw(allsel, WIDTH, tm + 0.5 * s[jj]), under=under)
     shells = []
     for j, hsh in enumerate(heights):

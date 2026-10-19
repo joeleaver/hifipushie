@@ -2250,6 +2250,40 @@ def coverage(sc: Scalp, AA, EE, P, reach: float = 0.004):
     return np.clip(gaussian_filter(grid.astype(float), sigma=r, mode=("wrap", "nearest")) * 1.6, 0, 1)
 
 
+SHELL_MIN_GAP = 0.0004  # (sh6) m: each shell stands at least this far over the layer below it, the hairline included
+# (eased to 0 there, cap and shells were the same triangles: coincident alpha-tested layers render as holes / z-fight)
+SHELL_HROW_DROP = None  # (sh6) {"fa": [a0, a1], "el_max": deg}: the shells style's hairline-row cards whose middle lies
+# a0..a1 deg from the front and under el_max deg over the scalp centre are dropped (Garrett's sideburn: dense cards drew
+# flat grey dabs with round ends at game distance; the cap's tapered strands are the sideburn there)
+
+
+def shell_gaps(dhs, gap=None) -> list:
+    """(sh6) The shells' offsets over the cap (one array per shell, inner first), each raised to at least `gap`
+    (SHELL_MIN_GAP) over the one below. Eased to 0 at the hairline, cap and shells were the SAME triangles there: two
+    alpha-tested layers on one surface render holes (Garrett's black specks along the nape and the sideburn top: shells
+    1 + 2 alone made them, each alone none) or z-fight in an engine."""
+    g = SHELL_MIN_GAP if gap is None else float(gap)
+    out, prev = [], None
+    for d in dhs:
+        d = np.asarray(d, float)
+        prev = np.maximum(d, (0.0 if prev is None else prev) + g)
+        out.append(prev)
+    return out
+
+
+def _hrow_dropped(sc, c_) -> bool:
+    """(sh7: SHELL_HROW_DROP may be a list of regions: the sideburn, and over the ear / the nape where the fade is paint)"""
+    if not c_.get("hrow") or not SHELL_HROW_DROP:
+        return False
+    a_, e_, _h = sc.coords(np.asarray(c_["P"], float).mean(0)[None])
+    fa_ = abs(((float(a_[0]) + 180) % 360) - 180)
+    for r_ in (SHELL_HROW_DROP if isinstance(SHELL_HROW_DROP, list) else [SHELL_HROW_DROP]):
+        lo_, hi_ = r_.get("fa", (0.0, 180.0))
+        if lo_ <= fa_ <= hi_ and float(e_[0]) < float(r_.get("el_max", 90.0)):
+            return True
+    return False
+
+
 SHELL_EDGE_LIFT = None  # (sh4) m: the shells cap's lift at the hairline (None = the full lift everywhere)
 SHELL_LIFT_EASE = 0.005  # (sh4) m in from the hairline over which the lift eases to SHELL_EDGE_LIFT
 CAP_RELAX_FLOOR = True  # (round 30) the relaxed cap keeps the floor cap_under_cards gave it (lift off the scalp)
@@ -2691,9 +2725,9 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
             if shell_n is not None:  # (sh1) hair.export.style "shells": the cap wears COMBED strands, shells over it
                 hts_ = tuple(float(x_) for x_ in (shell_o.get("heights") or hair_cap.SHELL_HEIGHTS))[:shell_n]
                 bs_ = float(shell_o.get("base", hair_cap.SHELL_BASE))
-                ck2 = ck + ("combed", hts_, bs_, float(shell_o.get("cover", hair_cap.LAY_COVER)), hair_cap.LAY_LEN,
+                ck2 = ck + ("combed", hts_, bs_, float(shell_o.get("cover", hair_cap.LAY_COVER)), hair_cap.LAY_LEN, hair_cap.LAY_MIN, hair_cap.LAY_MAX,
                             hair_cap.LAY_WOBBLE, hair_cap.SHELL_WIDTH, hair_cap.SHELL_LIT, hair_cap.LAY_DEP0, hair_cap.LAY_DEP_T, hair_cap.LAY_DEP_S, int(g.get("seed", 0)),
-                            hair_cap.GREY_SPREAD, hair_cap.GREY_REGION, json.dumps(hair_cap.GREY_MAP), json.dumps(hair_cap.SHADE_MAP), json.dumps(hair_cap.VALUE_MAP), hair_cap.EDGE_SHADE, hair_cap.BASE_EDGE, hair_cap.BASE_DEPTH)
+                            hair_cap.GREY_SPREAD, hair_cap.GREY_REGION, json.dumps(hair_cap.GREY_MAP), json.dumps(hair_cap.SHADE_MAP), json.dumps(hair_cap.VALUE_MAP), hair_cap.EDGE_SHADE, hair_cap.BASE_EDGE, hair_cap.BASE_DEPTH, hair_cap.BASE_EDGE_DEPTH)
                 if ck2 not in _CHARTS:
                     _CHARTS[ck2] = hair_cap.combed(chart, hts_, bs_, seed=int(g.get("seed", 0)),
                                                    cover=float(shell_o.get("cover", hair_cap.LAY_COVER)))
@@ -2702,6 +2736,17 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
                 chart = {**comb_["cap"], "lift": chart["lift"]}
                 shell_maps = comb_["shells"]
                 shell_key = f"_shells{hts_}_{bs_}_{hashlib.sha1(repr(ck2).encode()).hexdigest()[:12]}"
+                fade_o = ex_s.get("fade")
+                if fade_o and fade_o.get("trim"):  # (sh7) the mesh hair's edge moved up to meet the skin's painted fade
+                    from . import hair_fade
+                    Hc_, Wc_ = chart["alpha"].shape
+                    km_ = hair_fade.trim_mask(fade_o, float(np.median(sc.R)), 90.0 - (np.arange(Hc_) + 0.5) / Hc_ * (90.0 - e_chart), Wc_)
+                    chart = {**chart, "alpha": (chart["alpha"] * km_).astype(np.float32)}
+                    shell_maps = [{**m_, "alpha": (m_["alpha"] * (km_ if m_["alpha"].shape == km_.shape else hair_fade.trim_mask(
+                        fade_o, float(np.median(sc.R)), 90.0 - (np.arange(m_["alpha"].shape[0]) + 0.5) / m_["alpha"].shape[0] * (90.0 - e_chart),
+                        m_["alpha"].shape[1]))).astype(np.float32)} for m_ in shell_maps]
+                    shell_key += "_trim" + hashlib.sha1(json.dumps([fade_o["trim"], fade_o.get("trim_soft_mm"), fade_o.get("trim_breakup_mm"), fade_o.get("seed")]).encode()).hexdigest()[:8]
+                    print(f"hair fade: cap / shells trimmed below {fade_o['trim']}", flush=True)
         else:
             chart = hs.cap_chart(sc, g, hairline(sc, g), S, D, e_chart, int(S["atlas"]))
         akey_ = hs.key(sd) + (f"short{hair_cap.VERSION}_{hair_cap.BASE_IN}_{hair_cap.BASE_RAMP}_{hair_cap.KEEP_SOFT}_{hair_cap.THIN_SOFT}" if short or (short_len and EVEN_SHORT_CAP) else "")
@@ -2954,6 +2999,10 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
             return bool(np.degrees(np.arcsin(np.clip(u_[2], -1, 1))) > SHELL_FIN_EL and min(abs(u_[0]), abs(u_[1])) < fin_)
         nf_ = sum(1 for c_ in cards if not c_.get("hrow") and _fin(c_))
         cards = [c_ for c_ in cards if c_.get("hrow") or _fin(c_)]
+        if SHELL_HROW_DROP:  # (sh6) hairline-row cards dropped in a region (the cap's own tapered strands show there)
+            n0_ = len(cards)
+            cards = [c_ for c_ in cards if not _hrow_dropped(sc, c_)]
+            print(f"hair shells: {n0_ - len(cards)} hairline cards dropped in {SHELL_HROW_DROP}", flush=True)
         if SHELL_CARD_VALUE != 1.0 or _hcap_vm():  # (sh4) the kept cards toned to the cap (vertex colour factor):
             # the cap's own regional VALUE_MAP ("low" row: the hairline's) by the card's angle from the front, and on the
             # sides (> 40 deg from the front) x SHELL_CARD_VALUE (sh3d: temple cards 55.1 L* over a 49.6 cap in profile,
@@ -3032,8 +3081,8 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
         cu_ = np.clip((np.asarray(cap["uv"][:, 0], float) - 0.5) / 0.5, 0, 1)
         cv_ = np.asarray(cap["uv"][:, 1], float)
         parts_ = [cap]
-        for sm_ in shell_maps:
-            dh_ = hair_cap.shell_height(chart["lift"], di_, ca_, ce_, sm_["height"]) - h0_
+        dhs_ = shell_gaps([hair_cap.shell_height(chart["lift"], di_, ca_, ce_, sm_["height"]) - h0_ for sm_ in shell_maps])
+        for sm_, dh_ in zip(shell_maps, dhs_):
             parts_.append({**cap, "verts": (np.asarray(cap["verts"], float) + dh_[:, None] * _unit(np.asarray(cap["verts"], float) - sc.C)).astype(np.float32),
                            "layer": np.full(nc_, -1.0, np.float32)})
         cap = hc.join(*parts_)
@@ -4231,10 +4280,54 @@ def export_hair(name: str, out_dir, tiers=("main", "npc", "far"), groom: bool = 
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     spec = store.load(name) if spec is None else spec
+    with export_constants(hair_of(spec)):
+        return _export_hair(name, out_dir, tiers, groom, spec, check, sheet, textures)
+
+
+def export_constants(h: dict):
+    """(sh5) hair.export.constants = {"hair_cap.GREY_MAP": {...}, "hair.SHELL_EDGE_LIFT": 0.0, ...}: module constants the
+    export runs with (the shells style's look was tuned as constants: Garrett's sh4T), restored afterwards. Modules:
+    hair, hair_cap, hair_cards."""
+    import contextlib
+    import importlib
+
+    @contextlib.contextmanager
+    def cm():
+        old = []
+        for k, v in ((h.get("export") or {}).get("constants") or {}).items():
+            mod_, _, att = k.rpartition(".")
+            if mod_ not in ("hair", "hair_cap", "hair_cards"):
+                raise ValueError(f"hair.export.constants: {k}: module must be hair, hair_cap or hair_cards")
+            m = importlib.import_module(f"hifipushie.{mod_}")
+            if not hasattr(m, att):
+                raise ValueError(f"hair.export.constants: {k}: no such constant")
+            old.append((m, att, getattr(m, att)))
+            o = getattr(m, att)
+            setattr(m, att, type(o)(v) if isinstance(o, (int, float)) and not isinstance(o, bool) and isinstance(v, (int, float)) else v)
+        try:
+            yield
+        finally:
+            for m, att, o in reversed(old):
+                setattr(m, att, o)
+    return cm()
+
+
+def _export_hair(name, out_dir, tiers, groom, spec, check, sheet, textures) -> dict:
+    from . import asset, hair_cards as hc
+    import shutil
+    out_dir = Path(out_dir)
     h = hair_of(spec)
     lk = look_of(spec, h)
     rep = {"tiers": {}, "recipe": CARD_RECIPE}
     log: list = []
+    fade_note = None
+    if (h.get("export") or {}).get("fade"):  # (sh7) the short hair's edge fade, painted into the head's skin (hair_fade)
+        from . import hair_fade
+        out_dir.mkdir(parents=True, exist_ok=True)
+        fm_ = hair_fade.build(scalp(name, spec), h["export"]["fade"])
+        fade_note = hair_fade.write(fm_, str(out_dir / f"{name}_hair"))
+        (out_dir / f"{name}_hair_skin_fade.json").write_text(json.dumps(fade_note, indent=1))
+        log.append(f"hair fade: {fm_['hairs']} cut hairs painted into the skin ({fade_note['file']})")
     import shutil
     files0 = None
     for tier in tiers:
@@ -4259,6 +4352,8 @@ def export_hair(name: str, out_dir, tiers=("main", "npc", "far"), groom: bool = 
             hc_["shadow_proxy"] = {"file": spf.name, "triangles": int(len(sp_["tris"])), "inset": sp_["inset"],
                                    "use": "cast shadows only, hidden from camera; the cards cast none"}
         hc_["aux_texture"] = list(files).index("aux")
+        if fade_note:
+            hc_["skin_fade"] = fade_note
         # (engines: COLOR_0 multiplies the base colour (the root-to-tip ramp, a value per card). glTF says so, but
         # Godot's importer leaves BaseMaterial3D.vertex_color_use_as_albedo off: set it, or the hair is pale and flat)
         hc_["vertex_color"] = "multiplies base colour; Godot: set vertex_color_use_as_albedo = true"
@@ -4388,6 +4483,13 @@ def card_specular_tint(sheen_linear) -> list:
 
 
 def export_cards(name: str, out_dir: Path, spec: dict, log: list) -> tuple[dict, dict]:
+    """export_cards with hair.export.constants applied (export_constants): every export path (export_hair, export_part,
+    asset's hair LODs) runs with the spec's constants."""
+    with export_constants(hair_of(spec)):
+        return _export_cards(name, out_dir, spec, log)
+
+
+def _export_cards(name: str, out_dir: Path, spec: dict, log: list) -> tuple[dict, dict]:
     """The hair as cards for an engine: the card mesh + the cap (coarse) in one mesh on the strand atlas, within
     `hair.export.triangles`. Part keys as export_part's, plus "vcolor" (per vertex: COLOR_0) and "hair" (the
     material's facts: alpha cutoff, layers' triangle ranges, the recipe); maps basecolor (RGBA), orm, normal,

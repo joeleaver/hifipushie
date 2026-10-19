@@ -67,3 +67,45 @@ def test_base_edge_fades_the_base_at_the_hairline():
     e0_, e1_ = a0[edge - 2:edge + 1].mean(), a1[edge - 2:edge + 1].mean()  # (sparse strands: the base shows between)
     assert e0_ > 0.95 and e1_ < 0.8, (e0_, e1_)
     assert a1[deep].mean() > 0.95
+
+
+def test_shells_never_coincide_with_the_layer_below():
+    """(sh6) at the hairline the shells eased onto the cap's own triangles: coincident alpha-tested layers drew black holes."""
+    import numpy as np
+    from hifipushie import hair
+    d = hair.shell_gaps([np.array([0.0, 0.001, 0.003]), np.array([0.0, 0.0012, 0.006])], gap=0.0004)
+    assert np.allclose(d[0], [0.0004, 0.001, 0.003])
+    assert np.allclose(d[1], [0.0008, 0.0014, 0.006])
+    assert all(np.all(b - a >= 0.0004 - 1e-12) for a, b in zip([np.zeros(3)] + d[:-1], d))
+
+
+def test_hrow_drop_region():
+    """(sh6) SHELL_HROW_DROP drops only hairline-row cards inside its angle band and under its elevation."""
+    import numpy as np
+    from hifipushie import hair
+
+    class Sc:
+        C = np.zeros(3)
+
+        def coords(self, P):
+            q = np.asarray(P, float)
+            az = np.degrees(np.arctan2(q[:, 0], -q[:, 1]))
+            el = np.degrees(np.arcsin(q[:, 2] / np.linalg.norm(q, axis=1)))
+            return az, el, np.zeros(len(q))
+
+    def card(az, el, hrow=True):
+        a, e = np.radians(az), np.radians(el)
+        p = np.array([np.sin(a) * np.cos(e), -np.cos(a) * np.cos(e), np.sin(e)]) * 0.1
+        return {"P": np.array([p, p]), "hrow": hrow}
+    old = hair.SHELL_HROW_DROP
+    try:
+        hair.SHELL_HROW_DROP = {"fa": [65, 95], "el_max": -3.0}
+        assert hair._hrow_dropped(Sc(), card(80, -15))
+        assert hair._hrow_dropped(Sc(), card(-80, -15))   # both sides
+        assert not hair._hrow_dropped(Sc(), card(80, 5))  # over the ear: kept
+        assert not hair._hrow_dropped(Sc(), card(30, -15))  # temple: kept
+        assert not hair._hrow_dropped(Sc(), card(80, -15, hrow=False))
+        hair.SHELL_HROW_DROP = None
+        assert not hair._hrow_dropped(Sc(), card(80, -15))
+    finally:
+        hair.SHELL_HROW_DROP = old

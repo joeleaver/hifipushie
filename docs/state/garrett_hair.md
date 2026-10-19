@@ -1,49 +1,43 @@
-# STATE: Garrett hair, shells (hair-garrett agent, branch hair-heads2) -- rewritten 2026-10-19 (sh4 handover; sh5 in flight)
+# STATE: Garrett hair, shells: rewritten 2026-10-19 (sh8, the fade ships; nothing in flight)
 
-## Current best (coordinator decision 2026-10-19, NOT Joe-approved)
-- **sh4T**, style "shells", all four tiers in budget: $HG/cards/exp/sh4T/hg_G88a_hair_{hero,main,npc,far}.glb
-  (HG=/mnt/data/hifipushie/hair_garrett). hero 13,068 faces (cap + 2 shells 9,300 + 83 hairline cards 3,768; drawn 16,836),
-  main 7,392 / 8,496 drawn, npc 2,832 / 3,240, far 668 (cap only).
-- Exact build ($HG/shells/sh4/q2.sh -> sh3/tiers.sh -> cards/c7/hx7.py hg_G88a <out> tiers=hero,main,npc,far):
-  ex={"headroom": 2.0, "style": "shells"} hq.SHELL_WIDTH=0.0005 hq.SHELL_LIT=0 hq.GREY_SPREAD=1.0 hq.LAY_COVER=1.5
-  hq.BASE_EDGE=0.008 hq.GREY_REGION=1.0 hq.BASE_DEPTH=0.25 hq.EDGE_SHADE=0.5
-  hj.GREY_MAP={"top": .1, "fa": [0,60,100,140,180], "band": [.6,.75,.5,.3,.2], "low": [.5,.55,.35,.12,.08], "band_h": [.15,.35,.6,.8]}
-  hj.SHADE_MAP={"top": .6, "band": [1,1,1,1,1], "low": [1,1,1,1,1]}
-  hj.VALUE_MAP={"top": .5, "band": [.85,.7,.6,.55,.5], "low": [.8,.7,.6,.55,.5]}
-  look={"card_grey": .7, "grey": "#6c6966", "lit": "#524e4a", "gap": "#1e1b19"} hh.SHELL_EDGE_LIFT=0.0 hh.SHELL_CARD_VALUE=0.75.
-  These are module constants, not spec keys: the export sets them via assembly_garrett/s15/sh4t.py (Garrett v8 in flight).
-- Blind A/B: sh4T vs c11L (previously shipped cards) NEW 2 / OLD 0 / TIE 2; vs c14s (hero-only) NEW 1 / OLD 3.
-  Rule: future builds must beat sh4T AND, at hero, c14s.
-- Numbers (hero, segmented all-hair p50 / MID std; photo front 43.1 / 3.7, q34 42.0 / 4.1, side 37.9 / 3.6, back 34.5 / 2.8):
-  sh4T 43.5 / 5.0, 41.1 / 5.1, 42.3 / 4.9, 31.9 / 4.6.
-- sh5 in flight ($HG/shells/sh5/q1.sh): sh5n / sh5m (SHELL_LIFT_EASE 12 / 20 mm), sh5t (texture: EDGE_SHADE .3, LAY_DEP_T .3,
-  LAY_LEN 1.1, LAY_MIN 10 mm, LAY_WOBBLE .06), sh5a (all + silver sides + SHELL_CARD_VALUE .65). Unjudged.
+## BEST GARRETT HAIR FOR EXPORT: sh8c (coordinator rule; NOT Joe-approved)
+- **sh8c** = sh7T + fade $HG/shells/sh8/fade_f.json (HG=/mnt/data/hifipushie/hair_garrett). Hero GLB + fade map:
+  $HG/cards/exp/sh8c/. Shipped head + hair (asset.export, fade BAKED into the head's base colour):
+  $HG/shells/sh8/ship_f/ (ship.py: hg_G88a, the spec patched in process only).
+- Fade_f vs sh7T's fade_c: surface_mm (fade length measured on the skin), edge_breakup_mm 2.5, front_breakup_deg 3,
+  front_soft_deg 14, clump .35, darker paint (color #262220, shadow #3a3532 @ .85, grey #8a8580 x .3), density_gamma 1.8,
+  shadow_gamma 1.6, nape edge -53..-58 deg + fade 40-50 mm, trim ramp at fa 100-106 (was 118-126: the dark block).
+- Junction (sheet tiles, L* p50 / p90-p10; photo side 58.8|49.5, nape 27.8|24.3): see notes "sh8"; sideburn paint
+  59.5 -> 50.3 (mesh 51.5: no two-tone), nape paint 58.7 -> 42.9.
+- Black px g1left / g1back: 0/0. Card faces as sh7T (hero 12,628): the fade adds no geometry.
+- EXPORT SETTINGS: hg_G88a's spec hair.export = {"headroom": 2.0, "style": "shells", "fade": <fade_f.json>,
+  "constants": <ship.py CONST: sh6T's + SHELL_MIN_GAP 0.0004 + SHELL_HROW_DROP [{"fa": [65, 95], "el_max": -3.0},
+  {"fa": [90, 180], "el_max": 20.0}]>}, look {"card_grey": 0.7, "grey": "#6c6966", "lit": "#524e4a", "gap": "#1e1b19"}.
+  All names known on the merged branch. Write them into the workspace spec AFTER the branch lands (main lacks the code).
 
-## Open faults (by game visibility)
-1. 1-3 m: black jagged NAPE fringe (side + back; reviewer's MAJOR): the CAP's alpha-tested tips at the hanging nape edge, still
-   lifted inside the 5 mm ease (cards-only render clean). Lever: SHELL_LIFT_EASE 12 / 20 mm (sh5n / sh5m). Target black px g1back 0.
-2. 1 m: no silver sweep over the ear / sides (front mid band 42.7 vs photo 51.2); back too dark / brown (31.9 vs 34.5).
-3. 1 m: "wool" texture, no combing direction; MID std 4.6-5.1 vs photo 2.8-4.1 (EDGE_SHADE / BASE_DEPTH / combing).
-4. 1 m: light temple plates (hairline cards +5.8 L* over the cap in profile: SHELL_CARD_VALUE .75 -> ~.65).
-5. Back (export, v6 cards): crown ledge 6-7 mm step at el 60-75 deg (top layer standing off): cards issue, shells should remove it.
+## How the fade ships (sh8)
+- hair_fade.build: the map (scalp-chart coords) + skull radius; hair_fade.sample / bake_into: the same lookup as the look's
+  node tree (blender_cards.skin_fade), numpy. asset._export builds it from hair.export.fade (ctx["skin_fade"]) after
+  scene_maps; asset.bake mixes it into the skin part's LINEAR base colour per texel (exact surface point X). Roughness
+  unchanged. No extra maps: any engine shows it. blender_scene.py untouched (head-stage code hash).
+- Proof: GLB base-colour crops $HG/shells/sh8/glb_f_{nape,sideburn}.png (read from the GLB); re-imported judge run
+  sh8c_shipr_8f880a9b (export ship_fr, rigged); sheet $HG/shells/sh8/sheet_photo_ship8c_sh7T.png. Blind A/B sh8c vs sh7T 2-1.
 
-## Decisions in force
-- COORDINATOR: budget counts DRAWN triangles, back faces included.
-- COORDINATOR: top length / sweep must match G88a (a tight dark short crop), not a "carpet"; Joe on v4: "a totally different hairstyle".
-- Adopt by blind A/B only (bin/review-ab after 13:00 MT, else fresh blind subagent; label-check the reviewer's faults).
-- hair-heads2 commits are local only (never push). Hair judged in EEVEE.
+## Open faults
+1. Nape fade still shorter / less sparse-tailed than the photo; teeth a bit regular (comb-like) at 1 m.
+2. The shelf above / behind the ear (cap cut-out) not addressed (a-c first).
+3. From sh5: scraggly front hairline / temples; back streaks long / high-contrast.
 
-## Dead ends (don't retry)
-- Black rim as shadow or atlas alpha bleed (no-shadow render unchanged; transparent texels ~110). It was the cap's lifted underside.
-- SHELL_EDGE_LIFT 1 mm (rim stays): 0 it is.
-- SHADE_MAP for darkening (floors at .45): use VALUE_MAP. VALUE_MAP on the whole colour (killed the silver): base / dark strands only.
-- Fins (SHELL_FINS): off; pale scales. GREY_SPREAD: stretched lock noise (use GREY_REGION / GREY_MAP).
-- A coarser far cap: not needed (far cap 668 faces).
+## Dead levers (don't retry)
+Specks: SHELL_LIFT_EASE, BASE_DEPTH, BASE_EDGE_DEPTH, culling, shadows, AO, ray tracing, depth precision, whole-hair offset.
+Look: SHELL_CARD_VALUE .65; EDGE_SHADE .3 / LAY_DEP_T .3 / LAY_LEN 1.1; SHELL_EDGE_LIFT 1 mm, SHADE_MAP darkening, fins.
+Fade: clump as a plain multiplier (bald holes); sphere-mm fades below el -55 (streaks down the neck: use surface_mm).
 
-## Commands
-- All tiers + shots: `bash $HG/shells/sh3/tiers.sh <tag> [hx7 args]` (hx7 sets constants as hq./hj./hh. <CONST>=<json>).
-- Crops / measures: sh4/crop.py <out> <tags...> (hairline 3x), sh4/ctone.py (cards vs cap L*), m_*.txt from ns.sh.
-- A/B: `bash $HG/shells/sh4/ab.sh <tag>` (tiles + review-ab vs c11L / c14s). Tests: tests/test_hair_shells.
+## Tools ($HG/shells/sh8/)
+run.sh (this worktree's code), q1.sh <tag> <fade json> (hero look shots + black counts), ship.py <out> <fade json>
+(asset.export; run as CAP=28G run.sh 24 ship.py ...: the default 12G cap OOM-killed the bake), glbcrop.py <glb> <note|C>
+<prefix> (base-colour crops from the GLB), junc.py (junction L*), mkfade.py, ../sh7/sheet.py, ../sh7/fprev.py.
 
 ## History (grep only)
-docs/notes/hair.md "Garrett short-hair shells sh3" / "sh4" / "sh5" and their HANDOVERs; header "BEST GARRETT CARDS FOR EXPORT" (c6M cards).
+docs/notes/hair.md "Garrett short-hair shells sh8 (fade ships)" (+ sh7 / sh6 / sh5).
+NEXT: land the branch (coordinator), then write the export settings into hg_G88a's spec; longer sparse nape tail; shelf.

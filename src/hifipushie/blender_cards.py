@@ -38,12 +38,94 @@ def _mul_rgb(nt, a, b):
     return m.outputs["Result"]
 
 
+_FADE_DONE: list = []
+
+
+def skin_fade(note_file, strength=1.0):
+    """(sh7) hair_fade's map (<name>_hair_skin_fade.json beside the hair GLB) mixed into the base colour of every
+    non-hair mesh: albedo = mix(albedo, fade.rgb, fade.a x strength) where the surface lies on the skull's own skin
+    (|p - centre| < skull(u, v) + ear_clear: never on the ear standing off it). u = azimuth / 360 round the scalp
+    centre (0 = front -Y, 90 = +X), v = elevation over the map's span: what an engine does with the same two maps
+    (or bakes into the head's albedo). Hair objects (materials reading the GLB's own images) are left alone."""
+    import json
+    import math
+    import os
+    _FADE_DONE.append(note_file)
+    note = json.loads(open(note_file).read())
+    d = os.path.dirname(note_file)
+    img = bpy.data.images.load(os.path.join(d, note["file"]))
+    sk = bpy.data.images.load(os.path.join(d, note["skull"]))
+    sk.colorspace_settings.name = "Non-Color"
+    C = note["centre"]
+    el0, el1 = note["el"]
+    done = set()
+    for ob in bpy.data.objects:
+        if ob.type != "MESH" or ob.get("hp_shadow_proxy") or ob.get("hp_card"):
+            continue
+        mats = [ms.material for ms in ob.material_slots if ms.material is not None and ms.material.use_nodes]
+        if any(n.type == "TEX_IMAGE" and n.image and os.path.dirname(bpy.path.abspath(n.image.filepath)) == d
+               for m in mats for n in m.node_tree.nodes):
+            continue  # the hair itself
+        for m in mats:
+            if m.name in done:
+                continue
+            done.add(m.name)
+            nt = m.node_tree
+            bsdf = next((n for n in nt.nodes if n.type == "BSDF_PRINCIPLED"), None)
+            if bsdf is None:
+                continue
+            sock = bsdf.inputs["Base Color"]
+            src = sock.links[0].from_socket if sock.links else None
+            N = nt.nodes.new
+            geo = N("ShaderNodeNewGeometry")
+            q = N("ShaderNodeVectorMath"); q.operation = "SUBTRACT"
+            q.inputs[1].default_value = C
+            nt.links.new(geo.outputs["Position"], q.inputs[0])
+            sx = N("ShaderNodeSeparateXYZ"); nt.links.new(q.outputs[0], sx.inputs[0])
+
+            def M(op, a, b=None, c=None):
+                n_ = N("ShaderNodeMath"); n_.operation = op
+                for i_, v_ in enumerate((a, b, c)):
+                    if v_ is None:
+                        continue
+                    if isinstance(v_, (int, float)):
+                        n_.inputs[i_].default_value = float(v_)
+                    else:
+                        nt.links.new(v_, n_.inputs[i_])
+                return n_.outputs[0]
+            ny = M("MULTIPLY", sx.outputs["Y"], -1.0)
+            u = M("FRACT", M("MULTIPLY", M("ARCTAN2", sx.outputs["X"], ny), 1.0 / (2 * math.pi)))
+            ln = N("ShaderNodeVectorMath"); ln.operation = "LENGTH"; nt.links.new(q.outputs[0], ln.inputs[0])
+            r = ln.outputs["Value"]
+            el = M("ARCSINE", M("DIVIDE", sx.outputs["Z"], r))
+            v = M("MULTIPLY_ADD", el, 180.0 / math.pi / (el1 - el0), -el0 / (el1 - el0))
+            uv = N("ShaderNodeCombineXYZ"); nt.links.new(u, uv.inputs[0]); nt.links.new(v, uv.inputs[1])
+            ti = N("ShaderNodeTexImage"); ti.image = img; ti.extension = "CLIP"; ti.interpolation = "Linear"
+            nt.links.new(uv.outputs[0], ti.inputs[0])
+            ts = N("ShaderNodeTexImage"); ts.image = sk; ts.extension = "EXTEND"; ts.interpolation = "Linear"
+            nt.links.new(uv.outputs[0], ts.inputs[0])
+            skull = M("MULTIPLY_ADD", ts.outputs["Color"], 65535.0 / float(note["skull_scale"]), float(note["ear_clear"]))
+            on = M("LESS_THAN", r, skull)
+            fac = M("MULTIPLY", M("MULTIPLY", ti.outputs["Alpha"], on), float(strength))
+            mx = N("ShaderNodeMix"); mx.data_type = "RGBA"; mx.blend_type = "MIX"
+            nt.links.new(fac, mx.inputs["Factor"])
+            if src is not None:
+                nt.links.new(src, mx.inputs[6])
+            else:
+                mx.inputs[6].default_value = sock.default_value
+            nt.links.new(ti.outputs["Color"], mx.inputs[7])
+            nt.links.new(mx.outputs[2], sock)
+            print(f"@@skin_fade {ob.name} / {m.name}", flush=True)
+
+
 def game_material(name, base_img, aux_img=None, color_attr=None, cutoff=0.33, params=None):
     """A hair-card material from the notes' formula. params: {"specular": level, "roughness", "sheen": [r, g, b]
     linear (the specular tint), "backscatter": 0..1 (a warm translucent term weighted to thin hair, aux.b high),
     "back_tint": [r, g, b], "wrap": w (default 0.45, the notes'; 0 = plain Lambert), "shadow_leak": share of the sun's
     diffuse that ignores the shadow map (default SHADOW_LEAK, the notes' 0.45)}."""
     p = params or {}
+    if p.get("skin_fade") and not _FADE_DONE:  # (sh7) the hair export's edge fade laid on the head's skin, once per scene
+        skin_fade(p["skin_fade"], float(p.get("skin_fade_strength", 1.0)))
     mat = bpy.data.materials.new(name)
     mat.use_nodes = True
     nt = mat.node_tree
