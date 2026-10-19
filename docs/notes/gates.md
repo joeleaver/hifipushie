@@ -188,3 +188,8 @@ to judge." It never sees the author's caption or numbers.
   face, front or back, ray-cast from the pixel) and its cause isolated by one-switch renders (AO off, flat emission,
   culling on/off, one layer alone). Only then a fix. Turning look levers on an unlocated fault is how Garrett's nape
   specks survived three levers that changed nothing (sh5).
+- ONE VIEW PER REVIEWER TURN (Joe 2026-10-19): a reviewer (bin/review, review-ab, or a fallback subagent) sees one
+  reference | result crop of one region from one camera per turn, never a contact sheet. When the CLI is refused, run
+  `bin/review --dry` / `bin/review-ab --dry`: they gate the inputs (reviewgate: captions, sheet size, grid gutters)
+  and write the pair images + prompt.md; give the fallback subagent ONE image per message. Sheets are for Joe only.
+  Construction reviews pair the clay crop with the diagnostic crop (diag render) of the same view.

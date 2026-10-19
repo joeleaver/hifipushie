@@ -3,7 +3,7 @@
 Use it to decide whether a change is kept: one sitting, same reviewer, both versions on the same tiles, so the
 answer doesn't depend on which reviewer you got (separate one-result reviews of the same build varied 2 -> 5 MAJORs).
 
-  review-ab <out_dir> <item>=<reference.png>:<old.png>:<new.png> [...] [--context "what this is"]
+  review-ab <out_dir> <item>=<reference.png>:<old.png>:<new.png> [...] [--context "what this is"] [--dry]
             [--stage "<what this stage owns>"] [--not "<what other stages own>"]
 
 Per item the two candidates are placed as X / Y in a random order (key in <out_dir>/key.json, never shown to the
@@ -21,6 +21,8 @@ def opt(name):
         i = args.index(name); v = args[i + 1]; del args[i:i + 2]; return v
     return ""
 ctx, stage, other = opt("--context"), opt("--stage"), opt("--not")
+DRY = "--dry" in args
+if DRY: args.remove("--dry")
 out = os.path.abspath(args[0]); os.makedirs(out, exist_ok=True)
 # Input gate (hifipushie/reviewgate.py, codified 2026-10-19): captioned or sheet-sized images and numbers / claims in
 # the names or --context are refused, exit 5. The code lives in the repo (main checkout), tested there.
@@ -28,8 +30,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.realpath
 try:
     from hifipushie import reviewgate
 except ImportError as e:
-    reviewgate = None
-    print(f"WARNING: review input gate unavailable ({e}): inputs NOT checked", file=sys.stderr)
+    print(f"REFUSED: review input gate unavailable ({e})", file=sys.stderr); sys.exit(5)
 if reviewgate is not None:
     _it = [a.partition("=") for a in args[1:]]
     try:
@@ -74,6 +75,10 @@ reference in that region ("CLOSER: X", "CLOSER: Y" or "CLOSER: SAME") with one l
 Say if a crop is too small or blurry to judge.
 {scope}End with exactly one line per region in the form "REGION <name>: X|Y|SAME", then one final line
 "OVERALL: X", "OVERALL: Y" or "OVERALL: SAME" (X and Y may be in a different order per region; judge each region alone)."""
+if DRY:  # (Joe 2026-10-19) fallback when the CLI is refused: a fresh subagent gets ONE image per message
+    open(os.path.join(out, "prompt.md"), "w").write(prompt + "\n\nFALLBACK REVIEW: give the reviewer ONE trio image per "
+        "message, in the listed order; never a contact sheet. Collect its per-region lines, then the final line(s).\n")
+    print(f"DRY: {out}/prompt.md + {len(items)} images (one per reviewer turn)"); sys.exit(0)
 r = subprocess.run(["claude", "-p", prompt, "--allowedTools", "Read", "--tools", "Read", "--add-dir", out,
                     "--no-session-persistence", "--strict-mcp-config", "--setting-sources", "",
                     "--system-prompt", "You are a senior art director comparing renders against references. You have no "

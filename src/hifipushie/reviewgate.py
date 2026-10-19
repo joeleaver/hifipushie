@@ -75,6 +75,28 @@ def _text_line(g: list, need: int = 6, dy: float = 4.0) -> bool:
     return False
 
 
+def grid_gutters(img, min_frac: float = 0.15) -> str | None:
+    """Gutters of a multi-view grid: a full-length row or column of one flat colour inside the image (not within
+    min_frac of an edge), as a contact sheet's tile borders leave, of a value unlike the image's own background (the
+    border's commonest value) and with picture on both sides. A single view on a flat background has background
+    columns, but those match the border, so they don't count."""
+    import numpy as np
+    a = np.asarray(img.convert("L"), dtype=np.int16)
+    h, w = a.shape
+    border = np.concatenate([a[0], a[-1], a[:, 0], a[:, -1]])
+    counts = np.bincount(border.clip(0, 255))
+    bg = int(counts.argmax()) if counts.max() > 0.3 * border.size else -100  # no flat background: any gutter counts
+    for axis, n, name in ((0, w, "column"), (1, h, "row")):
+        lines_min, lines_max = a.min(axis=axis), a.max(axis=axis)
+        flat = (lines_max - lines_min <= 2) & (np.abs(lines_min - bg) > 10)
+        busy = lines_max - lines_min > 40
+        lo, hi = int(n * min_frac), int(n * (1 - min_frac))
+        for i in np.flatnonzero(flat[lo:hi]) + lo:
+            if busy[:i].sum() > 0.1 * n and busy[i + 1:].sum() > 0.1 * n:
+                return f"a flat gutter {name} at {i} of {n} px"
+    return None
+
+
 def refuse_inputs(images=(), names=(), context: str = "") -> None:
     """Raise InputRefused when a review input breaks the blind-review rules (all faults listed at once)."""
     from PIL import Image
@@ -84,6 +106,9 @@ def refuse_inputs(images=(), names=(), context: str = "") -> None:
         w, h = im.size
         if max(w, h) > MAX_SIDE or max(w / h, h / w) > MAX_ASPECT:
             faults.append(f"{p}: {w}x{h} is a sheet, not a crop (crop each region; max side {MAX_SIDE}, aspect {MAX_ASPECT})")
+        g = grid_gutters(im)
+        if g:
+            faults.append(f"{p}: {g} (a contact sheet: the reviewer sees ONE view per turn, Joe 2026-10-19)")
         band = caption_band(im)
         if band:
             faults.append(f"{p}: a caption in its {band} band (the reviewer sees no captions: crop it off)")

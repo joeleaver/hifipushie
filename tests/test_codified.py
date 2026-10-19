@@ -311,3 +311,23 @@ def test_mixed_view_transforms_are_refused():
         asset.game_light_view({**asset.GAME_LIGHT, "view": "Standard"}, "look")
     asset.game_light_view(asset.GAME_LIGHT)                 # the game rig under its own view
     asset.game_light_view({"lights": [{"dir": [0, 0, 1], "energy": 1.0}], "view": "AgX"})  # another rig: free
+
+
+def test_review_refuses_a_contact_sheet_grid():
+    """(Joe 2026-10-19) a reviewer sees ONE view per turn: a grid of views with flat gutters is refused, a single view
+    on a flat background is not."""
+    import numpy as np
+    from PIL import Image
+    from hifipushie import reviewgate
+    rng = np.random.default_rng(0)
+    view = lambda: (rng.random((200, 200)) * 200 + 30).astype(np.uint8)
+    one = np.full((300, 300), 90, np.uint8)
+    one[50:250, 50:250] = view()
+    assert reviewgate.grid_gutters(Image.fromarray(one)) is None
+    sheet = np.full((420, 420), 90, np.uint8)
+    for y in (0, 220):
+        for x in (0, 220):
+            sheet[y:y + 200, x:x + 200] = view()
+    sheet[200:220, :] = 20
+    sheet[:, 200:220] = 20
+    assert reviewgate.grid_gutters(Image.fromarray(sheet))
