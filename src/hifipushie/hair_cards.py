@@ -36,6 +36,8 @@ STRANDS = {
     "atlas": 1024,  # px across the strand atlas
     "baby": 1.0,  # baby hairs along the hairline: cards per cm x this (0 = none)
     "soft": 0.008,  # m: the hairline fades over this width (the cap's edge breaks up into strands)
+    "flow_top": None,  # clumps cut (hair_clumps.FLOW_TOP): true / {options}: a top layer of long cards along the flow (c9)
+    "hairline_row": None,  # clumps cut (hair_clumps.HAIRLINE_ROW): true / {options}: short cards along the temple band (c9)
     # --- strand grooms (hair_strands.py: Blender Hair Curves); the cards above are cut from the same groom
     "source": "groom",  # the cards' pictures: "groom" = this groom's own strands (Blender), "drawn" = made up here
     "count": 30000,  # strands in a look (the export's atlas bake and video renders may ask for more)
@@ -262,7 +264,7 @@ def atlas(S: dict, look: dict, lines: dict | None = None, cap: dict | None = Non
     `bake` (hair_clumps.bake: cards' own strands, a block as wide as the tiles + chart): stacked UNDER the tiles; the
     tiles' rows are then the top `rows` of `rows_total` (every tile / chart uv's v is remapped: remap_v)."""
     key = hashlib.sha1(json.dumps([{k: S.get(k) for k in ("clump", "frizz", "curl", "tips", "atlas", "short")},
-                                   {k: look.get(k) for k in ("gap", "lit", "vary", "band", "card_band", "card_gain", "card_sat", "grey", "grey_share", "card_grey", "grey_locks", "grey_amount", "sun", "highlights", "highlight_contrast", "variation")}, key, sorted(SHORT_TILE.items()), SHORT_DEPTH, EDGE_SOLID, GREY_LIFT, GREY_SPREAD, (bake or {}).get("key")], sort_keys=True).encode()).hexdigest()
+                                   {k: look.get(k) for k in ("gap", "lit", "vary", "band", "card_band", "card_gain", "card_sat", "tone_front", "tone_back", "grey", "grey_share", "card_grey", "grey_locks", "grey_amount", "sun", "highlights", "highlight_contrast", "variation")}, key, sorted(SHORT_TILE.items()), SHORT_DEPTH, EDGE_SOLID, GREY_LIFT, GREY_SPREAD, (bake or {}).get("key")], sort_keys=True).encode()).hexdigest()
     if key in _ATLAS:
         return _ATLAS[key]
     from scipy import ndimage

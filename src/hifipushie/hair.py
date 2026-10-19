@@ -2617,7 +2617,7 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
         D, e_chart = hs.strands_of_model(sd), sd["e0"]
         if short or (short_len and EVEN_SHORT_CAP):  # the cap's picture is BAKED from the strands: colour, depth, normal, flow, grey (hair_cap.py)
             from . import hair_cap
-            ck = (hs.key(sd), int(S["atlas"]), hair_cap.VERSION, lk.get("grey_locks"), lk.get("grey_amount"), lk.get("card_grey"), float(S["soft"]))
+            ck = (hs.key(sd), int(S["atlas"]), hair_cap.VERSION, hair_cap.BASE_IN, hair_cap.BASE_RAMP, hair_cap.KEEP_SOFT, hair_cap.THIN_SOFT, lk.get("grey_locks"), lk.get("grey_amount"), lk.get("card_grey"), float(S["soft"]))
             if ck not in _CHARTS:
                 _CHARTS.clear()
                 _CHARTS[ck] = hair_cap.chart(sc, g, hairline(sc, g), S, D, [k_ for k_ in locks if not _re.fullmatch(r"t\d*band", k_["name"])],
@@ -2625,7 +2625,7 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
             chart = _CHARTS[ck]
         else:
             chart = hs.cap_chart(sc, g, hairline(sc, g), S, D, e_chart, int(S["atlas"]))
-        akey_ = hs.key(sd) + (f"short{hair_cap.VERSION}" if short or (short_len and EVEN_SHORT_CAP) else "")
+        akey_ = hs.key(sd) + (f"short{hair_cap.VERSION}_{hair_cap.BASE_IN}_{hair_cap.BASE_RAMP}_{hair_cap.KEEP_SOFT}_{hair_cap.THIN_SOFT}" if short or (short_len and EVEN_SHORT_CAP) else "")
 
         def make_atlas(bake=None):
             return hc.atlas(S, lk, lines=hs.tile_lines(S), cap=chart, key=akey_, bake=bake)
@@ -2930,8 +2930,12 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
         fixed = (len(cap["tris"]) + len(mb["tris"]) + sum(len(b["tris"]) for b in band)
                  + (len(core["tris"]) if core is not None else 0))
         before_ = cards
-        cards, seg, info = hc.fit_budget(cards, S, max(int(budget) - fixed, 200))
-        info["asked"], info["fixed"] = int(budget), int(fixed)
+        # (c10, coordinator 2026-10-18: the budget counts DRAWN triangles, back faces included) with BACK_FACES every
+        # triangle but the cap's is exported twice (hair.back_faces): the cards get half of what the cap leaves
+        bf_ = 2 if BACK_FACES else 1
+        fixed_d = len(cap["tris"]) + bf_ * (fixed - len(cap["tris"]))
+        cards, seg, info = hc.fit_budget(cards, S, max((int(budget) - fixed_d) // bf_, 200))
+        info["asked"], info["fixed"], info["drawn_x"] = int(budget), int(fixed_d), bf_
         info["fixed_parts"] = {"cap": len(cap["tris"]), "core": len(core["tris"]) if core is not None else 0,
                                "baby": len(mb["tris"]), "tie": sum(len(b["tris"]) for b in band)}
         info["by_class"] = card_classes(before_, cards, S, seg, {k_["name"]: k_ for k_ in hair_locks})
@@ -4122,9 +4126,10 @@ def export_hair(name: str, out_dir, tiers=("main", "npc", "far"), groom: bool = 
         n_idx_ = len(part["corner_vert"]) // 3
         n_back_ = (sum(int(v[1]) for k, v in (hc_.get("layers") or {}).items() if k != "cap") // 2
                    if hc_.get("back_faces") else 0)
-        # (round 36) "triangles" = card faces, the budgets' unit (a doubleSided card rasterises both sides too);
-        # "index_triangles" counts the back faces BACK_FACES writes as their own triangles
-        rep["tiers"][tier] = {"glb": str(glb), "triangles": n_idx_ - n_back_, "index_triangles": n_idx_,
+        # "triangles" = DRAWN triangles, back faces included: the budgets' unit (c10, coordinator 2026-10-18; cards_job
+        # fits the cards to it). "card_faces" = the cards' faces without their BACK_FACES copies (round 36's count);
+        # "index_triangles" = "triangles" (kept for round 36's readers)
+        rep["tiers"][tier] = {"glb": str(glb), "triangles": n_idx_, "card_faces": n_idx_ - n_back_, "index_triangles": n_idx_,
                               "layers": hc_["layers"],
                               "atlas": "own" if own else "shared",
                               "budget": hc_["budget"], "bytes": glb.stat().st_size, "clearance": hc_.get("clearance")}

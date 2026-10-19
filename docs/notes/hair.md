@@ -8,6 +8,14 @@ BEST GARRETT CARDS FOR EXPORT (2026-10-18, hair-garrett c6): /mnt/data/hifipushi
   flaps at the crown, no silver sides (uniform grey), hairline / temples / sideburns stop short (cards' geometry), flat
   front top. Not shippable as a finished likeness: draft.
 
+BEST GARRETT CARDS FOR EXPORT (2026-10-18, hair-garrett c9; NOT approved yet: bin/approve is Joe's / the coordinator's): /mnt/data/hifipushie/hair_garrett/cards/exp/c9M = c6M's cut + spec hair.strands {"flow_top": {"cards": 30, "hw": 0.015}, "hairline_row": {"hw": 0.012, "az": [40, 100], "el": [-40, 25]}} (rows skip far: min_triangles 3000); index triangles hero 28892 / main 11516 / npc 5420 / far 1380 (far = c6M's), all inside budgets.json ranges; blind A/B vs c6M (c6o renders): slim NEW (side + back NEW, 3/4 OLD, front / 2 / 4 / 8 m TIE). To use: put those two keys in hg_G88a's spec hair.strands (code defaults stay off). Previous BEST (c6): /mnt/data/hifipushie/hair_garrett/cards/exp/c6M = c4L's cards (identical geometry / atlas: same verts and unique triangles) + hair.BACK_FACES 1 (each card's back its own triangles, outward normals, material doubleSided false: no viewer flips them, the crown shards stay gone in ANY engine); index triangles hero 26040 / main 10164 / npc 4704 / far 1380, verts 16115 / 6561 / 3228 / 915 (all inside budgets.json ranges). Preview with blender_cards ONE_NORMAL 1 + GLTF_SPEC 1. Previous line (c4/c5): unchanged GLBs, preview them with blender_cards.ONE_NORMAL 1 (c5 default), the old flip drew black crown shards): the branch hair-heads2 DEFAULTS at c4's commits (c3's EVEN_CAP_KEEP .6,
+  GREY_QUANTILE 1 + c4's WIND_TO_NORMAL 1, GREY_SPREAD 2) + hair.export {"card_gain": 2.1}, ALL FOUR tiers from one export_hair:
+  /mnt/data/hifipushie/hair_garrett/cards/exp/c4L/hg_G88a_hair_{hero,main,npc,far}.glb (14570 / 6130 / 2958 / 1024 tris,
+  shared atlas). LODs OK: STYLE yes (same cut at every tier, no pompadour), QUALITY no. Blind A/B c3 (c3q hero + c3a tiers)
+  vs c4L: hero front / 3/4 / side / back TIE, 2 / 4 / 8 m NEW (lighter, greyer) -> kept. Open MAJORs (both): black shard
+  flaps at the crown, no silver sides (uniform grey), hairline / temples / sideburns stop short (cards' geometry), flat
+  front top. Not shippable as a finished likeness: draft.
+
 Moved out of CLAUDE.md on 2026-10-09 so agents don't load every thread's history.
 
 - `hair.py` + `blender_hair.py` (2026-09-29; replaced the SDF groom on branch hair-sdf-wip: a mop with corduroy grooves,
@@ -6271,3 +6279,207 @@ lump, jagged dark V at the part from the front, a layered ridge in profile, crow
   light blocky patches on the crown (hero tier, < 2 m; geometry = f1's, so f1 had it too, only now seen: f1's sheet had
   no back row). LODs OK: y at the switch distances; OPEN: LOD0 back tail / crown patches (check against the groom's
   back at g1backl before calling the hero tier done).
+## Garrett cards c7 (2026-10-18, hair-garrett agent, fresh; order: side volume, front hairline, back carpet, all tiers + A/B)
+- (1) SIDE VOLUME, measured ($HG/cards/c7/: miss.py = outline miss maps + a 4x3 band table, crop.py = shaded crops grm | ours,
+  capdiag.py / capel.py / din.py / lie.py / objs.py = where roots, lying hair, cap and cards are; c7x.sh = hero trial with
+  c7/hx7.py, which adds hq.<CONST> = hair_cap constants). Baseline c6s (= c6M's hero geometry): hair-mask miss vs the groom
+  front 24.1 %, 3/4 25.5 %, side 12.1 %, back 6.8 %; the miss is the INNER edge at the temples and in front of the ear (the
+  groom's silver temple patch runs down to a sideburn at mid-ear; ours ends at the ear's top), plus a 2-3 px thin outer rim.
+  Look: out/c7_miss_c6s.png, c7_crop_base.png.
+  NOT the cause (measured): roots outside the hairline (0.0 % of roots / lying points < -4 mm in every azimuth band; din.py,
+  lie.py); short strands with no card at the temples (temple L 271 of 12416 roots no card; the 54k no-card strands are behind
+  the ears / back, len p50 11-14 mm); the cap buried in the head (field at cap vertices +2..+6 mm, 0 % under, capel.py); the
+  cap / cards not reaching low (per 10-deg band their lowest el is at or under the roots' p2, capel.py); a second groom object
+  (hair_under = 288k stubble strands 2 mm, lying 0.6 mm: not the patch; objs.py).
+  CAP ONLY renders (shots only=[[0,3100]], alpha game and alpha=off: out/c7_cap_only.png, c7_capop.png): even OPAQUE, the
+  cap's outline in front of the ear stops at the ear's top with one narrow spur (the line's sideburn notch at az ~70);
+  the groom's patch is a broad sheet from the temple down to mid-ear. The groom's temple hair is hair_even 21-85 mm long
+  standing 6-11 mm (p50 / p90) off the scalp: the patch is LONG temple strands lying down and back over the region, i.e.
+  CARDS' job, not the cap's.
+  LEVERS TRIED (all hero, each proven live on the atlas, none moves the read; defaults unchanged, levers kept):
+  c7a hair_cap.BASE_IN .3 / BASE_RAMP .6 (NEW levers; the cap's opaque base nearer the line): chart alpha 20.8k px changed,
+  render identical by eye. c7b + hair_cap.KEEP_SOFT .4 / THIN_SOFT .4 (NEW: the line's strand thinning): 92k px, the cap's
+  edge in front of the ear a touch fuller in profile (out/c7_b.png), nothing at the temple. c7c hair_clumps HL_SOFT .003 /
+  HL_ALPHA 1 / BASE_IN .004 (hairline cards opaque from the root): tiles 35.6k px, render identical by eye (out/c7_c.png).
+  STATE: committed (levers + cache keys: hair.py chart / atlas keys carry the four hair_cap levers). BEST unchanged = c6M.
+## HANDOVER (hair-garrett c7, 2026-10-18; stopped at the ~70 tool-call budget; nothing in flight)
+STATE: hair-heads2 local commits only. New levers (off at defaults): hair_cap.BASE_IN / BASE_RAMP / KEEP_SOFT / THIN_SOFT.
+BEST = exp/c6M (unchanged; no new build beat it, so no A/B was run this session).
+FINDING that redirects (1): the missing side mass is NOT short hair, the cap, the hairline or burial: it is the LONG temple
+strands (hair_even, carded: 98 % of temple roots have a card) that in the groom lie down and back over the temple to mid-ear.
+Their cards don't show there: in c6s only a few thin dark lines in front of the ear.
+NEXT, in order: (1) inspect the temple cards themselves (exp/hlp/cut.pkl has cards P / hw / strands / layer): for clumps
+rooted az 40-90, compare each card's centre line + width with its strands' points (do cards end early (TAIL / END share),
+run narrow (HW_PER_STRAND, EDGE_FADE), sit under the cap (CAP_UNDER / clearance moved 2674 verts), or get dropped by the
+hook / sideways rules?). Render only=layer ranges (exp json "layers") to see which layer should carry the patch. Fix that,
+prove it on the 3/4 + profile crops (c7/crop.py) and miss.py's 3/4 row 2-3 left bands (73.7 % / 100 % now).
+(2) front hairline (dark spiky), (3) back carpet: untouched. (4) review-ab CLI after 2026-10-19 13:00 MT for the A/B.
+## Garrett cards c8 (2026-10-18, hair-garrett agent, fresh; order: temple cards vs their strands, fix, then front hairline / back carpet, all tiers + A/B)
+- (1) TEMPLE CARDS vs STRANDS ($HG/cards/c8/: tc.py = cut.pkl cards rooted az 40-100 vs their strands; tglb.py = the hero GLB's
+  triangles by region x layer: atlas alpha, area, strip GLBs; tcomp.py = per card (connected triangles) alpha root -> tip by
+  aux.R; tuv.py = empty cards over the whole head + their UVs). Correction to c7: in the cut the temple strands are 19-24 mm
+  (p10-p99 at az 40-100, el -15..35), not 21-85 mm. The cut's temple cards are FINE geometrically (83 cards, per layer median):
+  length 18-20 mm vs strands 22, width 12-15 mm vs the strands' p90 spread 10-14, standoff 3-4 mm vs the strands' 5, facing
+  |N.radial| .88 (flat on the head), 67-72 % of strand points inside. In the GLB, card AREA exists down to el -35 (12.7 + 19.4
+  cm2 at el -35..-15 = the sideburn in front of the ear), but its atlas ALPHA there is 0.00 (el -15..-5: .38; above: .53-.68).
+  CAUSE: EMPTY TILES. 263 of the hero's 1501 cards (522 of 5040 cm2, 10 %; 55 in the temple region, all layer 1, root el p50
+  -7, az 78) wear a tile with nothing drawn (uv .097-.173 x .913-.968: a black slot in the atlas, out/c8_atlas_alpha.png).
+  bake_tiles bakes each cluster's medoid card from its OWN strands, filtered by bake's IN_SHARE (60 % of a strand's points
+  inside the card): a medoid whose strands leave it draws nothing (`if not segs: continue`), and the whole cluster is invisible.
+  FIX (general): NEW hair_clumps.TILE_REP_DRAWN .5 (default) / TILE_REP_TRY 24 + _drawn_share(): the rep is taken in order of
+  closeness to the medoid until one draws >= half its strands (else the best tried); bake_tiles logs medoid -> chosen drawn share.
+  STATE: c8a (hero, the fix) running. NEXT: tglb / tuv on c8a (empty cards -> 0?), crops vs G88a at 3/4 + profile.
+- (1b) c8a (TILE_REP_DRAWN .5): 3 of the 24 tiles were empty (medoid drawn share 0.00, 0.00, .39 -> chosen .70, .79, .87;
+  log line "tile reps' drawn share"); cards with an empty picture 263 -> 192. The other 192 (incl. all 55 at the temple /
+  sideburn, el -35..-15) are FLY cards (kind "fly", pooled halo / stray hairs, 2-4 mm wide, the strand-rows atlas's fly tile
+  at u .47-.49): sparse by design, not empty. So there are NO baked (clump) cards below el ~-15 in front of the ear: the cut's
+  temple cards end at el -15 at the lowest (tip el bins), and the cap's alpha there is .23 / .03. Groom points by object
+  (c8/under.py, scalp coords): the patch in front of the ear (az 60-80, el -30..-10) has only 40-217 roots per 10-deg band,
+  hair_even 12-17 mm long, the rest of its points are hair from above lying down.
+  LOOK (out/c8_crop_a.png, grm | c6s | c8a at front / 3/4 / profile): c8a = c6s by eye. STOP RULE (temples): (1)-(2) did not
+  visibly change the temples. The empty-tile fix is kept (correct and general: 71 cards visible again, no cost).
+  PROPOSAL (not built): temple / sideburn cards placed as hair artists do: a dedicated row of short cards along the
+  sideburn / temple hairline (rooted on the line, lying down-back along the groom's flow there, 12-20 mm, the hairline tile),
+  instead of hoping the clump cut makes cards from 12-17 mm strands (MIN_STATIONS 3 made cards for them in c6 and lost the A/B
+  at the back: apply it ONLY in the sideburn band, az 60-90 / el < -10, if this is tried).
+- (2) COORDINATOR: top LENGTH / SWEEP vs G88a (Garrett v5 beside his photos: a tight dark short crop, a "carpet"). Measured
+  (c8/tc.py <az0 az1 el0 el1> on cut.pkl, c8/top.py <tag> = top 45 % crops + hair px / outline top / orientation / lenmeas):
+  card GEOMETRY is NOT short: over the top (el 60-90) cards 50 mm vs their strands' L50 52 / L90 55; front top (az +-40, el
+  45-90) 32 vs 39 / 44 (-18 %); front band (el 25-45) 20 vs 23. Outline top: groom y 364 vs ours 369 (front), 365 / 368 (3/4)
+  = ~4 mm lower. Hair area (id px) ours / groom: front 58 %, 3/4 62 %, profile 79 % (the sides and the front hairline, not the
+  top). c8b = hk.HEAD_END .15 (cards run on to where 15 % of the strands still run): hair px +44 / +42 / +59: no change
+  (dead for length: the cards already reach the strands' tips). The atlas tiles hold long continuous strands
+  (out/c8_tiles_c8a.png). So the "short carpet" is not length: it is the card SURFACE: hundreds of 12-15 mm-wide flat cards
+  in three layers, each shaded by its own plane (strands.round .55 = the normal only half bent to the volume), read as
+  overlapping scales / a pile. Trial c8c: strands.round 1.0 (every card shades with the hair volume's normal).
+- (2b) c8c = strands.round 1.0 (c7/hx7.py NEW st=<json>: spec hair.strands overrides): hair px / outline / orientation equal to
+  c6s within 40 px; crops (out/c8_crop_c.png grm | c6s | c8c, front / 3/4 / profile / back): identical by eye. The carpet is
+  NOT the per-card normal either (caveat: not checked that the preview's ONE_NORMAL path uses the GLB's normals unchanged; a
+  quick flat-colour vs normal-only render would settle it). What the eye sees at 3/4 / profile: the surface is made of many
+  short visible card PIECES, each ending in a tip / edge in the middle of the mass (three layers of 20-50 mm cards, the next
+  card's end every ~10 mm), where the groom shows long continuous strands flowing from the whorl and swept to his right.
+## HANDOVER (hair-garrett c8, 2026-10-18; stopped at the ~70 tool-call budget; nothing in flight)
+STATE: hair-heads2 local commits only. NEW default hair_clumps.TILE_REP_DRAWN .5 (+ TILE_REP_TRY 24, _drawn_share): no tile is
+baked empty any more (c6M had 3 of 24 empty, 71 cards invisible); by eye no change on Garrett. RISK: a shared default; it only
+acts where a tile's medoid draws < half its strands (log line "tile reps' drawn share"); Tess not re-checked.
+BEST = exp/c6M (unchanged: c8a / c8b / c8c equal it by eye, so no A/B was run).
+Scratch $HG/cards/c8/: tc.py <az0 az1 el0 el1> (cut.pkl cards vs their strands per region), tglb.py / tcomp.py / tuv.py (GLB
+triangles: atlas alpha by region / layer / card, empty cards + their UVs, strip GLBs in exp/c8s), under.py (groom points by
+object per az / el band, groom_pts.npz), top.py <tag> (top crops + hair px / outline top / orientation + lenmeas).
+Renders: exp/c8a (fix), c8b (HEAD_END .15), c8c (round 1.0); out/c8_crop_a.png, c8_crop_c.png, c8_top_c6s.png,
+c8_tiles_c8a.png, c8_atlas_alpha.png.
+FINDINGS: (a) temples: the cut makes no clump cards below el ~-15 in front of the ear (only sparse fly cards there); the
+groom's patch there is 12-17 mm hair_even rooted az 60-80 / el -30..-10 plus hair from above lying down. (b) top: card
+length = strand length over the top (50 vs 52 mm; front top -18 %); HEAD_END and round are dead for the read. The
+deficits are AREA at the front / sides (58 % / 62 % of the groom's hair px) and the SURFACE (pieces, not flow).
+NEXT, in order (both are card PLACEMENT, as hair artists do it, not more cut levers):
+(1) top flow: a top layer of FEW LONG cards per part side that follow the groom's flow from the whorl / part to the front
+and sides (fit to the medoid of LONG strands: the 45-57 mm top strands), with every other card's end tucked under them
+(ends staggered under the layer above, not mid-surface). Measure: visible card ends per cm2 in an id pass (card id
+change along the flow) vs 0 for the groom; lenmeas at 2x render size (1080 renders give nan streaks: crops too small).
+(2) temples / sideburns: a dedicated row of short cards along the temple / sideburn hairline (az 60-90, el -35..0), rooted on
+the line, lying down-back along the groom's flow, 12-20 mm, the hairline tile; or MIN_STATIONS 3 ONLY in that band.
+(3) front hairline (dark, spiky) and back carpet: untouched. (4) review-ab after 2026-10-19 13:00 MT once a build beats c6M.
+## Garrett cards c9 (2026-10-18, hair-garrett agent, fresh; coordinator: card PLACEMENT as artists layer cards, a general tool: (A) flow top layer, (B) hairline / sideburn row)
+- (1) CODE (both opt-in, spec `hair.strands.flow_top` / `hair.strands.hairline_row`: true or {options}; defaults None = off;
+  hair_cards.STRANDS carries the keys): hair_clumps.FLOW_TOP + flow_row(): head strands rooted over `el` 30 deg, the longer
+  half (`len_pct` 50), grouped by their sweep (_sweep: the first PART_REACH's x share >= .35 -> -1 / 0 / +1, so no part is
+  needed: Garrett's G88a has none), k-means `cards` 8 per group at 20k triangles (sqrt-scaled per tier, >= 2), each fitted
+  on its MEDOID strand (fit medoid 1.0: the line follows the groom's flow), run to where `end` .15 of its strands still
+  run, half width <= `hw` 12 mm, laid ONTO the strands' `pct` 94 envelope less ENV_UNDER (the card and its edges, past
+  `seat` 15 mm from the root; root seated as ROOT_SEAT), top head layer, own tile group ("flow"). tuck_under(): every other
+  head card's stations under a flow card (within its half width across) pulled in to `tuck` 1.5 mm under it (only
+  lowered): their ends tucked under the layer above. HAIRLINE_ROW + hairline_row(): head strands rooted in |az| 50-100 /
+  el -40..5 (az 0 = front), k-means `cards` 24 per side, fit with min_stations 3 / min_len 6 mm (only there; the cut keeps
+  MIN_STATIONS 4), failed clumps split (depth 3), hw <= 8 mm, layer 1's offset, under the envelope. fit() takes
+  min_stations / min_len. Tests tests/test_hair_card_rows.py (off by default; flow cards long, on top of the others' stations
+  (< 5 % over); the row gives 10 mm temple hairs cards); test_hair_clumps green.
+  STATE: committed. NEXT: hero trials c9a (flow_top), c9b (hairline_row) on G88a, crops vs G88a + c6M.
+- (2) MEASURE: $HG/cards/c9/ends.py <exp tag> [frames=<render tag>]: VISIBLE CARD ENDS from the hero GLB (no render): samples
+  where atlas alpha > .5, z-buffered in shots' frames + a synthetic TOP view; a sample is an END in its card's last 20 %
+  (centre line from the strip pairs, root = the end nearer C). Prints hair px, END px share, ends / 10k hair px (cards
+  with >= 15 END px visible), cap px share; maps c9/ends_<tag>_<view>.png (red = ends). The groom has none (continuous strands).
+  c6M (front / 3/4 / top): END share .094 / .140 / .225, ends per 10k px 2.9 / 15.2 / 55.6, cap share .59 / .46 / .32.
+- (3) c9a = flow_top defaults (23 flow cards, 49 mm p50, sweep groups -1 12.4k / 0 8.6k / +1 12.2k strands: the early sweep
+  is NOT one-sided on G88a; 2752 stations of other cards tucked; hero 26640 index tris): ends .088 / .133 / .211, per 10k
+  3.3 / 18.2 / 53.7 (no real change). LOOK (c9/crop_c9a.png grm | c6s | c9a, front / 3/4 / profile / back): front and 3/4
+  = c6s; profile and BACK: a few dark flat patches on the crown (the flow cards read as separate darker flaps). Not better.
+  23 cards cover too little of the top to change the surface. Trial c9c: cards 30 per group (~90), hw 15 mm.
+- (4) c9b = hairline_row defaults (48 cards; hero 26552): miss.py profile ear row L 67.7 -> 62.9 %, centre 29.6 -> 26.8; ends
+  unchanged. LOOK (c9/crop_c9b_z.png): the row cards in front of the ear are sparse thin strips: they wore the HAIRLINE tile
+  (at_hairline -> edge: thin, HL_ALPHA-faded). NEW option `edge` (default False = the body tiles). c9d = edge off, hw 12 mm:
+  profile ear row L 61.1 %; by eye a small solid patch above / in front of the ear, still well short of the groom's broad
+  silver temple sheet down to mid-ear (c9/crop_c9d.png). Next: the band widened up (el -40..25, az 40-100) so the long
+  temple strands from above that lie down over the patch get row cards too.
+- (5) c9c = flow_top cards 30 / hw 15 mm (90 flow cards, 46 mm p50, 3091 stations tucked; hero 28320 index tris): ends
+  .096 / .137 / .219, per 10k 3.7 / 18.8 / 55.8 (the measure does not move: the flow cards cover a share of the top only, the
+  rest's ends still show between them). LOOK (c9/crop_c9c.png grm | c6s | c9a | c9c, 3/4 / profile / back): c9a's dark crown
+  flaps gone; from the BACK the crown now shows radial streaks converging on the whorl like the groom's (c6s: a uniform
+  curly carpet up to the top); profile top a little streakier; 3/4 = c6s. First change to touch the back carpet.
+  STATE: c9L = flow_top {cards 30, hw .015} + hairline_row {hw .012, az 40-100, el -40..25}, ALL four tiers (c9/c9L.sh)
+  running. NEXT: tiles vs c6s / c6o tiers, blind A/B vs c6M.
+- (6) c9L = flow_top {cards 30, hw .015} + hairline_row {hw .012, az 40-100, el -40..25} at ALL four tiers (c9/c9L.sh; flow
+  90 / 62 / ... cards, hairline row 50 / 34 ...). Index triangles hero 28892 (c6M 26040), main 11516 (10164), npc 5420
+  (4704), far 1716 (1380): FAR OVER the crowd range (300-1500). ends .097 / .141 / .210, per 10k 3.7 / 16.7 / 54.8 (c6M 2.9 /
+  15.2 / 55.6: the measure barely moves); miss 3/4 25.5 -> 24.4 %, profile 12.1 -> 11.6 %. LOOK (c9/crop_c9L.png grm | c6s |
+  c9L): back crown streaks toward the whorl (closer); profile: a DARK sideburn spur in front of the ear (the groom's is
+  silver); 3/4 / front = c6s.
+  BLIND A/B (review-ab exit 4 = claude -p not before 2026-10-19 13:00 MT; its trios review/ab_c9L/trio_*.png + key.json went
+  to a fresh blind subagent; old = c6o* (c4L = c6M's geometry, same shading script)): front TIE, 3/4 OLD ("crown a bit
+  more one mass, front outline less ragged"), side NEW ("temple hair comes further forward"), back NEW ("keeps the lighter
+  swept band on top of the crown; old is one uniform texture"), 2 / 4 / 8 m TIE -> NEW 2, OLD 1, TIE 4: a SLIM NEW.
+  Shared MAJORs (both): too dark / brown at distance, bald temple-to-ear gap, thin sides, spiky card tips on the outline.
+- (7) Rows skip tiers under `min_triangles` 3000 (the cut's triangles; far's ~1100 -> no rows: far = c6M's far; test
+  test_rows_skip_tiers_under_their_min_triangles). c9M = c9L's settings with it, all tiers (c9/c9M.sh) building.
+- (8) c9M (exp/c9M, c9/c9M.sh): hero / main / npc GLBs byte-identical to c9L's, far 1380 index triangles = c6M's far (no rows
+  under min_triangles). BEST line updated to c9M (not approved; code defaults off: the rows live in the spec).
+## HANDOVER (hair-garrett c9, 2026-10-18; stopped at the ~70 tool-call budget; nothing in flight)
+STATE: hair-heads2 local commits only (not pushed). NEW (opt-in, spec hair.strands): `flow_top` (hair_clumps.FLOW_TOP,
+flow_row, tuck_under) and `hairline_row` (HAIRLINE_ROW, hairline_row; `edge`, `min_triangles`), fit(min_stations, min_len),
+tile group "flow". Tests tests/test_hair_card_rows.py (4) + test_hair_clumps green. BEST = exp/c9M (slim blind NEW vs c6M).
+Scratch $HG/cards/c9/: ends.py (visible card ends: END px share + ends / 10k px, front / 3/4 / synthetic top), c9L.sh (all
+tiers with st=<json> + renders), c9M.sh, q1-q3.sh (hero trials via c7x.sh 'st=<json>'), crop_c9{a,b,c,d,L}.png, miss_*.png;
+review/ab_c9L (trios + key.json).
+LOOK (mine, first): c9M is c6M with two local gains: from the back the crown streaks into the whorl like the groom (c6M: a
+uniform carpet to the top), and the profile temple comes a little further forward. It is NOT the groom yet: front and 3/4
+look as c6M (flat dark-flecked front, spiky outline tips), the sideburn spur in front of the ear is DARK where the groom's
+is silver, the temple-to-ear region is still mostly bald, and at 2-8 m it reads too dark / brown (the reviewer's MAJOR at
+every distance).
+FINDINGS: (a) the visible-ends measure hardly moves (top 55.6 -> 54.8 per 10k): 90 flow cards over the top cover a share
+of it and tuck 3k stations, but the other cards' ends still show between them. To make the top read as long flow, the flow
+layer has to COVER the top (cards wide / many enough to close it, e.g. hw 20 mm, cards 60, and the tiles' long strands
+lit, not depth-shaded: the flow tiles were baked with the groom's depth shade though they lie on top). (b) G88a's early
+sweep is not one-sided (-x 12.4k / back 8.6k / +x 12.2k strands): "swept to his right" is not in the first 3 cm. (c) the
+hairline row is placement-limited: 50 cards from roots in the band; the groom's broad silver temple sheet is long hair
+from above lying down, which the row only partly takes (band widened to el 25); its cards come out dark (tile tone).
+NEXT, in order: (1) flow layer coverage + tone: hw .02 / cards 60, flow tiles baked without the depth shade (the top is
+lit); measure ends / 10k on top + back tile. (2) temple sheet: row cards from strands that PASS through the band (not only
+rooted there), lighter tone (WISP_LIFT-style lift for the row), the denser cap there (not built this session). (3) tone at
+distance (too dark at 2-8 m in both builds). (4) review-ab's CLI after 2026-10-19 13:00 MT.
+FOR TESS (how her cards could use (A)): her round-34/35 ARCH row is the same idea for a ponytail crown (cards on strands
+over the dome, raised to the envelope, the mass filled under it). flow_top is the general form: no part needed (groups by
+sweep), medoid-following lines, the card AND its edges laid on the `pct` envelope, and tuck_under() lowers every other
+head card's stations under a flow card by `tuck` (instead of ARCH_FILL raising the cap under the arch). On Tess: try
+`hair.strands.flow_top = {"el": 45, "len_pct": 60, "cards": 12, "pct": 94}` with ARCH 0; tuck_under should remove the
+daylight under the crown cover without the cap fill; check the part rule (flow groups do not split at the part: add the
+part side to the grouping if her groom shows one).
+## Garrett cards c10 (2026-10-18, hair-garrett agent, fresh; order: flow layer covering the top, temple sheet from passing strands, tone at distance, export settings in the spec + A/B vs c9M)
+- (1) CODE (opt-in): FLOW_TOP / HAIRLINE_ROW `lit` (a card key "lit" in bake: depth shade off, tone x (1 + lit); lit rows
+  get their own tile group "hrow"; c9's flow tiles had the groom's depth shade though they lie on top). HAIRLINE_ROW `pass`
+  (+ `pass_el` 60, `pass_back` 12 mm): also head strands rooted above the band (el up to pass_el) with a station IN it, their
+  card cut from pass_back before they enter (not root-seated): the groom's temple sheet is long hair from above lying down.
+  STATE: tests green (4); hero trials c10a (flow cards 60 / hw 20 mm / lit .3, c9's row), c10b (+ row pass / lit .4),
+  c10c (flow cards 90 / hw 25 mm / el 20) queued (c10/q1.sh). NEXT: ends.py / top.py / miss.py + crops vs c9M.
+- (2) c10a (flow cards 60 per group = 180 / hw 20 mm / lit .3; c9's row): ends per 10k front / 3/4 / top 4.5 / 19.5 / 57.9
+  (c9L 3.7 / 16.7 / 54.8: MORE ends: the flow cards' own ends count, 180 of them); top.py orient g1v0 -2.6 / g1v1 17.8 /
+  g1left 5.2 (groom 1.8 / 21.8 / -88.8) = c9L's; hero L* front 44.0 (c9L 43.3, groom 46.3), 3/4 41.9 (41.1 / 50.0).
+  31100 drawn triangles: OVER.
+- (3) TONE AT DISTANCE measured (c10/dtone.py <tags> [views]: hair px L* a* b* p50 vs grm): c9L main / npc / far at g2-g8
+  are L* 4-6 under the groom front-on and 11-12 under at 3/4 (g2v1 39.9 vs 50.7), b* 3.7 vs 3.0 (warmer = "brown"); the
+  back matches (g1back 37.2 vs 37.5). So the dark is the FRONT / SIDES (the missing silver temple sheet + TONE_FRONT .85,
+  a Tess number), not a global gain. CODE: look `tone_front` / `tone_back` override TONE_FRONT / TONE_BACK per model
+  (in the tile cache key).
+- (4) COORDINATOR DECISION (2026-10-18): the budget counts DRAWN triangles, back faces included (Garrett v6 hero 26148 of
+  25000). CODE: cards_job gives fit_budget (budget - cap - 2 x other fixed) / 2 when hair.BACK_FACES (segments lengthen
+  to 1.5x first, then cards go by prio); info["drawn_x"]. c10m = c9M's settings under it (hero) queued (c10/q2.sh);
+  c10b ran with the old count, c10c with the new.

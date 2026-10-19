@@ -27,6 +27,9 @@ SLOPE = 1.0
 BASE_DEPTH = 0.75  # the base's shade (depth): a scalp tint in the hair's own colour; at 0.22 a near-black band at the nape
 BASE_DENSE = (0.05, 0.2)  # the opaque base (the hair's dark inside) where the strands' coverage passes this ramp: at
 # (0.3, 0.35) a short sparse nape (8 mm) had none and showed as pale speckled skin (game: a scalp tint under hair)
+KEEP_SOFT, THIN_SOFT = 1.8, 1.5  # (c7 levers) strands rooted within KEEP_SOFT x soft of the line are drawn fewer, within THIN_SOFT x soft finer
+BASE_IN, BASE_RAMP = 1.0, 1.5  # (c7 levers) the opaque base starts BASE_IN x soft inside the hairline and is full BASE_RAMP x soft
+# further in (1.0 / 1.5 = full only 2.5 x soft = 37 mm in: Garrett's temple band (roots p50 29 mm in) stayed see-through)
 
 
 def _ss(x):
@@ -123,14 +126,14 @@ def chart(sc, g: dict, line, S: dict, D: dict, locks: list, e0: float, size: int
     soft_ = max(float(S.get("soft", 0.008)), 1e-4)
     first_ = np.r_[0, np.cumsum(cnt)[:-1]]
     root_in = d_in[first_]
-    keep = ((np.asarray(D["rand"], float) * 13.7 + 0.11) % 1.0) < (0.12 + 0.88 * _ss(root_in / (1.8 * soft_)))
+    keep = ((np.asarray(D["rand"], float) * 13.7 + 0.11) % 1.0) < (0.12 + 0.88 * _ss(root_in / (KEEP_SOFT * soft_)))
     ok &= keep[sid]
     i0 = np.nonzero(ok & ~last & np.r_[ok[1:], False])[0]
     i1 = i0 + 1
     # metres per (supersampled) texel: along u it shrinks with the elevation's cosine, along v it is the same everywhere
     m_u = 2 * np.pi * R[i0] * np.maximum(np.cos(np.radians(el[i0])), 0.03) / W2
     m_v = float(np.radians(90.0 - e0) * np.median(R)) / H2
-    thin = 0.5 + 0.5 * _ss(d_in[i0] / (1.5 * soft_))  # single fine hairs at the line
+    thin = 0.5 + 0.5 * _ss(d_in[i0] / (THIN_SOFT * soft_))  # single fine hairs at the line
     ru = np.clip(0.5 * wd * thin / m_u, 0.6, 30.0)
     rv = np.clip(0.5 * wd * thin / m_v, 0.6, 30.0)
     zbuf = np.full((H2, W2), -1.0, np.float32)
@@ -194,7 +197,7 @@ def chart(sc, g: dict, line, S: dict, D: dict, locks: list, e0: float, size: int
     din = inside(sc, line, AA, EE)
     soft = max(float(S.get("soft", 0.008)), 0.001)
     dens = blur(alpha, 0.003)
-    base = _ss((din - 1.0 * soft) / (1.5 * soft)) * _ss((dens - BASE_DENSE[0]) / BASE_DENSE[1])  # (the line itself is single strands)
+    base = _ss((din - BASE_IN * soft) / (BASE_RAMP * soft)) * _ss((dens - BASE_DENSE[0]) / BASE_DENSE[1])  # (the line itself is single strands)
     pw = float(g["parting"].get("width", 0.012))
     if str(g["parting"].get("side", "left")) != "none":
         base = base * (1 - 0.8 * np.clip(_part(sc, g, AA, EE, 0.25 * pw), 0, 1))

@@ -248,7 +248,8 @@ BEND_HW = 0.0  # (0.6 in b25 = the front-top "cat ears": narrowed layer-0 head c
 
 
 def fit(Q: np.ndarray, cen_of, end_share: float = 0.2, max_hw: float = 0.03, start_share: float = 0.04,
-        spread: float = 90.0, reference: bool = True, tip_taper=None, medoid: float = 0.0, per_strand: float = 0.0) -> dict | None:
+        spread: float = 90.0, reference: bool = True, tip_taper=None, medoid: float = 0.0, per_strand: float = 0.0,
+        min_stations: int | None = None, min_len: float | None = None) -> dict | None:
     """One card on a clump's strands Q (m, stations, 3, NaN past their ends), along its reference strand
     (along_reference): hair_cards._clump's centre line and frame, from where its first strands start to where only
     `end_share` of them still run (ragged ends are the picture's), its half width the strands' spread across it (90th
@@ -260,7 +261,8 @@ def fit(Q: np.ndarray, cen_of, end_share: float = 0.2, max_hw: float = 0.03, sta
     A = along_reference(Q) if (reference and len(Q) > 1) else Q[:, :int(np.isfinite(Q[..., 0]).sum(1).max())].astype(float)
     U = np.arange(A.shape[1]) * STEP
     c = _clump(A, U, cen_of, min_share=0.5, start_share=start_share, end_share=end_share, medoid=medoid,
-               twist=0.0 if reference else np.radians(TWIST_HANG), min_stations=MIN_STATIONS)
+               twist=0.0 if reference else np.radians(TWIST_HANG),
+               min_stations=MIN_STATIONS if min_stations is None else int(min_stations))
     if c is None:
         return None
     sl = slice(c["i0"], c["i0"] + len(c["P"]))
@@ -277,7 +279,7 @@ def fit(Q: np.ndarray, cen_of, end_share: float = 0.2, max_hw: float = 0.03, sta
     # blocky end)
     hw = hw * np.clip(gaussian_filter1d(np.asarray(c["share"], float), 2.0) / 0.5, 0.35, 1.0)
     s = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(c["P"], axis=0), axis=1))]
-    if s[-1] < FIT_MIN_LEN:
+    if s[-1] < (FIT_MIN_LEN if min_len is None else min_len):
         return None
     if per_strand > 0:  # (tail cards: HW_PER_STRAND) no wider than its running strands can fill (a few outer frizz strands as an 18 mm ribbon
         # wearing a dense tile: b24 review "wide separate ribbon strands flare off the ponytail")
@@ -1122,6 +1124,16 @@ def cut(D: dict, locks: list, C, S: dict, side_of=None, seed: int = 0, layers: d
         for c_ in arc:
             c_["lock"] = locks[c_["lock"]]["name"]
         out.extend(arc)
+    ft = S.get("flow_top")
+    ft = ft and {**FLOW_TOP, **(ft if isinstance(ft, dict) else {})}
+    if ft and triangles >= float(ft["min_triangles"]):  # (c9) a top layer of a few long cards along the groom's flow, the others' ends tucked under it
+        fl = flow_row(St, C, ft, len(layers["head"]) - 1, triangles, seed)
+        tuck_under(out, fl, C, float(ft["tuck"]))
+        out += fl
+    hr = S.get("hairline_row")
+    hr = hr and {**HAIRLINE_ROW, **(hr if isinstance(hr, dict) else {})}
+    if hr and triangles >= float(hr["min_triangles"]):  # (c9) a dedicated row of short cards along the temple / sideburn hairline band
+        out += hairline_row(St, C, hr, env, triangles, seed)
     # flyaways: single strands that break the outline, a card each (Epic: one card per flyaway strand)
     idx = np.nonzero(St["cls"] == "single")[0]
     if len(idx):
@@ -1162,6 +1174,208 @@ def cut(D: dict, locks: list, C, S: dict, side_of=None, seed: int = 0, layers: d
               f"{', '.join(f'L{a} {k}/{n}' for a, n, k in _HOOKS[:12])}", flush=True)
     if out:
         out[0]["_St"] = St
+    return out
+
+
+# (c9, Garrett; the coordinator: card PLACEMENT as hair artists layer cards, not more levers in the clump cut)
+# FLOW TOP LAYER (spec hair.strands.flow_top: true or {options}): a few long cards per sweep side over the top of the
+# head, each on a clump of the LONG head strands rooted over `el` (deg over the head's centre), its centre line the
+# clump's medoid strand (it follows the groom's flow from the whorl / part), run on to where `end` of its strands
+# still run, raised onto the strands' `pct` envelope (less ENV_UNDER) past `seat` m from the root, held under it.
+# Every other head card's stations under a flow card are pulled in to `tuck` m under it (their ends tucked under the
+# layer above: the surface shows long flowing cards, not many card ends). `cards` = clumps per sweep group at 20k
+# triangles (sqrt-scaled with the tier's triangles, at least 2).
+FLOW_TOP = {"cards": 8, "el": 30.0, "len_pct": 50.0, "hw": 0.012, "pct": 94.0, "seat": 0.015, "end": 0.15,
+            "tuck": 0.0015, "reach": 1.0, "sweep_x": 0.35, "min_triangles": 3000, "lit": 0.0}
+# (`lit` (c10): the flow cards' tiles baked out of the depth shade (they lie on top, in the light) and their tone x (1 +
+# this): c9's flow tiles took the groom's depth shade though they are the top layer (darker flaps, c9a))
+# (`min_triangles`: no row when the cut's triangles are fewer (the far / crowd tier: c9L's rows put far at 1716 index
+# triangles, over the crowd range 300-1500; its 8 m tile was a TIE))
+# HAIRLINE ROW (spec hair.strands.hairline_row): short cards on the head strands rooted in the temple / sideburn band
+# (|az| in `az`, el in `el`, deg from the head's centre; az 0 = the front), `cards` per side at 20k triangles, fitted
+# with `min_stations` / `min_len` (the clump cut's MIN_STATIONS 4 / FIT_MIN_LEN drop the 9-17 mm hairs there: no card
+# below el ~-15 in front of the ear), half width up to `hw`, laid at layer 1's offset, held under the envelope.
+HAIRLINE_ROW = {"cards": 24, "az": (50.0, 100.0), "el": (-40.0, 5.0), "min_stations": 3, "min_len": 0.006,
+                "hw": 0.008, "layer": 1, "edge": False, "min_triangles": 3000, "lit": 0.0, "pass": False, "pass_el": 60.0,
+                "pass_back": 0.012}
+# (c10) `pass`: also the head strands that PASS THROUGH the band (a station in it, rooted up to `pass_el`): Garrett's
+# silver temple sheet is long hair from above lying down over the band, few roots in it. Such a strand's card starts
+# `pass_back` m before it enters the band (cut there, not root-seated). `lit` as FLOW_TOP's (own tile group).
+# (`edge`: wear the hairline tile (thin, HL_ALPHA-faded roots); False = the body tiles: c9b with edge on drew sparse thin
+# strips in front of the ear, the groom's patch there is a solid sheet)
+
+
+def _azel(P, C):
+    v = np.asarray(P, float) - np.asarray(C, float)
+    r = np.maximum(np.linalg.norm(v, axis=-1), 1e-9)
+    return np.degrees(np.arctan2(v[..., 0], -v[..., 1])), np.degrees(np.arcsin(np.clip(v[..., 2] / r, -1, 1))), r
+
+
+def _sweep(St: dict, idx, sx: float) -> np.ndarray:
+    """-1 / 0 / +1: a strand's first PART_REACH runs to -x / back (or forward) / +x (|x share| >= sx)."""
+    Q = St["Q"][idx]
+    k = min(Q.shape[1] - 1, max(1, int(round(PART_REACH / STEP))))
+    n = np.isfinite(Q[..., 0]).sum(1)
+    kk = np.clip(np.minimum(k, n - 1), 0, None)
+    d = Q[np.arange(len(idx)), kk].astype(float) - Q[:, 0].astype(float)
+    xs = d[:, 0] / np.maximum(np.linalg.norm(d, axis=1), 1e-9)
+    return np.where(xs >= sx, 1.0, np.where(xs <= -sx, -1.0, 0.0))
+
+
+def _card(c, P, la, mem, St, lk, share, prio, **kw) -> dict:
+    u = (c["i0"] * STEP + c["s"]) / max(float(np.percentile(St["len"][mem], 95)), 0.02)
+    return {"P": P, "X": c["X"], "N": c["N"], "T": c["T"], "bend": c["bend"], "hw": c["hw"], "rad": np.asarray(c["rad"], float),
+            "u": u, "s": c["s"], "kind": "baked", "layer": la, "cls": "head", "prio": prio, "cval": 1.0, "value": 1.0,
+            "lock": lk["name"], "sn": c["sn"], "strands": mem, "draw": share, "s0": c["i0"] * STEP, "wisp": False,
+            "edge": bool(lk.get("at_hairline")), **kw}
+
+
+def _tier_n(n, triangles):
+    return max(2, int(round(float(n) * np.sqrt(max(triangles, 1) / 20000.0))))
+
+
+def flow_row(St: dict, C, o: dict, la: int, triangles: int, seed: int = 0, locks=None) -> list:
+    """FLOW_TOP's cards (see there)."""
+    C = np.asarray(C, float)
+    _, el, _ = _azel(St["root"], C)
+    idx = np.nonzero((St["cls"] == "head") & (el > float(o["el"])))[0]
+    if len(idx) < MIN_STRANDS:
+        return []
+    idx = idx[St["len"][idx] >= np.percentile(St["len"][idx], float(o["len_pct"]))]
+    grp = _sweep(St, idx, float(o["sweep_x"]))
+    env = envelope(St, C, pct=float(o["pct"]))
+    n = _tier_n(o["cards"], triangles)
+    out = []
+    for gv in np.unique(grp):
+        sel = idx[grp == gv]
+        if len(sel) < MIN_STRANDS:
+            continue
+        k_ = max(1, int(round(n * len(sel) / len(idx) * 3)))  # (n per group on an even three-way split)
+        lab = kmeans(features(St, sel), k_, seed + 101)
+        for g in np.unique(lab):
+            mem = sel[lab == g]
+            if len(mem) < MIN_STRANDS:
+                continue
+            c = fit(St["Q"][mem], _cen_of(C, None), end_share=float(o["end"]), max_hw=float(o["hw"]), spread=90.0,
+                    reference=True, medoid=1.0)
+            if c is None:
+                continue
+            P = np.asarray(c["P"], float)
+            X, hw = np.asarray(c["X"], float), np.asarray(c["hw"], float)
+            r = np.linalg.norm(P - C, axis=1)
+            tg = []
+            for E in (P, P - X * hw[:, None], P + X * hw[:, None]):  # (the card AND its edges on / under the surface)
+                e, rE = env(E)
+                tg.append(e - (rE - r))
+            from scipy.ndimage import gaussian_filter1d
+            with np.errstate(invalid="ignore"), __import__("warnings").catch_warnings():
+                __import__("warnings").simplefilter("ignore")
+                tgt = np.nanmin(np.stack(tg), axis=0) - ENV_UNDER
+            ok_ = np.isfinite(tgt)
+            if not ok_.any():
+                continue
+            tgt = gaussian_filter1d(np.interp(np.arange(len(r)), np.flatnonzero(ok_), tgt[ok_]), 1.5)
+            w = _ss(np.clip(np.asarray(c["s"]) / max(float(o["seat"]), 1e-6), 0.0, 1.0)) * float(o["reach"])
+            rn = r + w * (tgt - r)  # (onto the outer surface past the seat; the root stays seated)
+            P = C + (P - C) * (rn / np.maximum(r, 1e-9))[:, None]
+            cc_ = {"P": P}
+            P = _root_seat(cc_["P"], c["s"], St["root"][mem], C) if ROOT_SEAT > 0 else cc_["P"]
+            lk = {"name": f"flow{len(out)}"}
+            out.append(_card(c, P, la, mem, St, lk, 1.0, la + 0.9 + 0.05 * (len(out) % 2), flow=True,
+                             **({"lit": float(o["lit"])} if float(o["lit"]) > 0 else {})))
+    print(f"flow top: {len(out)} cards (groups {dict(zip(*np.unique(grp, return_counts=True)))}, strands {len(idx)}, "
+          f"length p50 {np.median([c['s'][-1] for c in out]) * 1000 if out else 0:.0f} mm)", flush=True)
+    return out
+
+
+def tuck_under(cards: list, flow: list, C, tuck: float) -> int:
+    """Head cards' stations lying under a flow card (within its half width across, nearer than its station along)
+    pulled in toward the head's centre to `tuck` m under it (only ever lowered). Returns stations moved."""
+    if not flow or not cards:
+        return 0
+    from scipy.spatial import cKDTree
+    C = np.asarray(C, float)
+    FP = np.concatenate([np.asarray(f["P"], float) for f in flow])
+    FH = np.concatenate([np.asarray(f["hw"], float) for f in flow])
+    FT = np.concatenate([np.gradient(np.asarray(f["P"], float), axis=0) for f in flow])
+    FT /= np.maximum(np.linalg.norm(FT, axis=1), 1e-12)[:, None]
+    FR = np.linalg.norm(FP - C, axis=1)
+    U = (FP - C) / FR[:, None]
+    tr = cKDTree(U)
+    moved = 0
+    for c in cards:
+        if c.get("cls") != "head" or c.get("fly"):
+            continue
+        P = np.asarray(c["P"], float)
+        r = np.linalg.norm(P - C, axis=1)
+        d, j = tr.query((P - C) / r[:, None])
+        # across distance on the flow card's surface: the angular offset at its radius, less the along part
+        off = (P - C) / r[:, None] * FR[j][:, None] - (FP[j] - C)
+        off -= (off * FT[j]).sum(1)[:, None] * FT[j]
+        under = (np.linalg.norm(off, axis=1) < FH[j]) & (r > FR[j] - tuck)
+        if under.any():
+            from scipy.ndimage import gaussian_filter1d
+            dr = gaussian_filter1d(np.where(under, r - (FR[j] - tuck), 0.0), 1.0)
+            dr = np.maximum(dr, 0.0)
+            c["P"] = C + (P - C) * ((r - dr) / r)[:, None]
+            moved += int(under.sum())
+    print(f"flow top: {moved} stations of the other head cards tucked under it", flush=True)
+    return moved
+
+
+def hairline_row(St: dict, C, o: dict, env, triangles: int, seed: int = 0) -> list:
+    """HAIRLINE_ROW's cards (see there)."""
+    C = np.asarray(C, float)
+    az, el, _ = _azel(St["root"], C)
+    a0, a1 = o["az"]
+    e0, e1 = o["el"]
+    out = []
+    n = _tier_n(o["cards"], triangles)
+    for sgn in (-1.0, 1.0):
+        idx = np.nonzero((St["cls"] == "head") & (sgn * az >= a0) & (sgn * az <= a1) & (el >= e0) & (el <= e1))[0]
+        start = {}
+        if o.get("pass"):  # (c10) strands that pass through the band: cut from just before they enter it
+            Q_ = St["Q"]
+            hd = np.nonzero((St["cls"] == "head") & (el > e1) & (el <= float(o["pass_el"])))[0]
+            qa, qe, _ = _azel(Q_[hd], C)
+            inb = np.isfinite(Q_[hd][..., 0]) & (sgn * qa >= a0) & (sgn * qa <= a1) & (qe >= e0) & (qe <= e1)
+            hit = inb.any(1)
+            first = np.argmax(inb, 1)
+            back = int(round(float(o["pass_back"]) / STEP))
+            for j, f in zip(hd[hit], first[hit]):
+                start[int(j)] = max(0, int(f) - back)
+            idx = np.r_[idx, hd[hit]]
+        if len(idx) < MIN_STRANDS:
+            continue
+        lab = kmeans(features(St, idx), min(n, max(1, len(idx) // MIN_STRANDS)), seed + 211)
+        todo = [(idx[lab == g], 0) for g in np.unique(lab)]
+        while todo:
+            mem, dep = todo.pop(0)
+            if len(mem) < MIN_STRANDS:
+                continue
+            Qm = St["Q"][mem]
+            sh = np.array([start.get(int(j), 0) for j in mem])
+            if sh.any():  # (passing strands: their stations from the cut on, the rest padded)
+                Qm = np.full_like(Qm, np.nan)
+                for i_, (j, k_) in enumerate(zip(mem, sh)):
+                    Qm[i_, :Qm.shape[1] - k_] = St["Q"][j][k_:]
+            c = fit(Qm, _cen_of(C, None), end_share=HEAD_END, max_hw=float(o["hw"]), spread=90.0,
+                    reference=True, min_stations=int(o["min_stations"]), min_len=float(o["min_len"]))
+            if c is None:  # (short hairs rooted in a row down their own run: split, as the cut's SPLIT_DEPTH)
+                if dep < 3 and len(mem) >= 2 * MIN_STRANDS:
+                    sub = kmeans(features(St, mem), 2, seed + 223 + dep)
+                    if 0 < int(sub.sum()) < len(sub):
+                        todo += [(mem[sub == 0], dep + 1), (mem[sub == 1], dep + 1)]
+                continue
+            la = int(o["layer"])
+            yo = layer_offset(c["sn"], la, "head")
+            P = c["P"] + c["N"] * yo[:, None]
+            cc_ = {"P": P, "X": c["X"], "hw": c["hw"]}
+            _under_envelope(cc_, env, C)
+            P = _root_seat(cc_["P"], c["s"], St["root"][mem], C) if (ROOT_SEAT > 0 and not sh.any()) else cc_["P"]
+            out.append(_card(c, P, la, mem, St, {"name": f"hrow{len(out)}", "at_hairline": bool(o["edge"])}, 1.0, la + 0.05,
+                             hrow=True, **({"lit": float(o["lit"])} if float(o["lit"]) > 0 else {})))
+    print(f"hairline row: {len(out)} cards", flush=True)
     return out
 
 
@@ -1463,6 +1677,9 @@ def bake(cards: list, St: dict, W: int, H: int, ss: int = 2, seed: int = 0, look
             # stiff strings in front of the ear, g2_b17 / g3_b18)
             dep = np.ones_like(dep)  # (dep is 1 - depth: 1 = on top, unshaded)
             tn2 = np.clip(tn2 * (1.0 + WISP_LIFT), 0, 1)
+        if c.get("lit"):  # (c10) a flow / hairline-row card on top, in the light: no depth shade, tone x (1 + lit)
+            dep = np.ones_like(dep)
+            tn2 = np.clip(tn2 * (1.0 + float(c["lit"])), 0, 1)
         if c.get("cls") == "tail" and TAIL_TONE != 1.0:  # (round 24) the tail cards' tone x this: against gSc (the groom
             # with its own shadow) the tail was +8.9 L* at the back (g1backl) and +3.0 at 3/4 front, the head cards ~+2 / 0
             tn2 = np.clip(tn2 * TAIL_TONE, 0, 1)
@@ -1507,7 +1724,7 @@ def bake(cards: list, St: dict, W: int, H: int, ss: int = 2, seed: int = 0, look
 def _tile_groups(cards: list) -> list:
     """Card groups that may share a picture: class (head / tail / face / fly), coverage vs upper layers."""
     def g(c):
-        cls = "fly" if c.get("fly") else str(c.get("cls"))
+        cls = "fly" if c.get("fly") else "flow" if c.get("flow") else "hrow" if (c.get("hrow") and c.get("lit")) else str(c.get("cls"))
         if c.get("cover"):  # (round 33) the part cover keeps its own pictures (their tips fade: COVER_FADE)
             return (cls, 2)
         return (cls, 0 if (int(c["layer"]) == 0 and cls in ("head", "tail")) else 1)
@@ -1529,6 +1746,30 @@ def card_grey(cards: list, St: dict, locks: list | None, look: dict) -> np.ndarr
     return np.clip(float(look.get("grey_amount", 0.0)) + float(look.get("grey_locks", 1.0)) * g, 0, 1)
 
 
+TILE_REP_DRAWN = 0.5  # (c8, Garrett) a tile's picture is its medoid card's own strands that pass bake's IN_SHARE / fly rule:
+# a medoid whose strands mostly leave its card (lying temple / sideburn hair crossing it) baked an EMPTY tile and every
+# card of the cluster was invisible (c6M: 263 of 1501 cards, 10 % of the card area, 55 at the temples = the bare
+# sideburn). The medoid is taken in order of closeness until one draws this share of its strands (the best of
+# TILE_REP_TRY otherwise). 0 = off (the plain medoid, before c8)
+TILE_REP_TRY = 24
+
+
+def _drawn_share(c: dict, St: dict) -> float:
+    """The share of a card's strands bake() draws on it (IN_SHARE of their points inside the card; fly cards: all)."""
+    mem = np.asarray(c["strands"], int)
+    if c.get("fly") or not len(mem):
+        return 1.0 if len(mem) else 0.0
+    hwm, L, n = float(np.max(c["hw"])), float(c["s"][-1]), 0
+    for j in mem:
+        q = St["Q"][j]
+        q = q[np.isfinite(q[:, 0])].astype(float)
+        if len(q) < 2:
+            continue
+        ax, al, _ = _card_coords(c, q, smooth=True)
+        n += ((np.abs(ax) <= hwm) & (al >= 0) & (al <= L)).mean() >= IN_SHARE
+    return n / len(mem)
+
+
 def bake_tiles(cards: list, St: dict, W: int, H: int, n: int = TILES, ss: int = 2, seed: int = 0,
                look: dict | None = None, C=None, locks: list | None = None) -> dict:
     """Shared card pictures, as studios do (Epic's Hair Card Generator: "Num Textures" far fewer than cards, a texture
@@ -1548,6 +1789,7 @@ def bake_tiles(cards: list, St: dict, W: int, H: int, n: int = TILES, ss: int = 
     raw = {k: np.sqrt(ga[k] / tot) for k in gk}
     kn = {k: max(1, int(round(n * raw[k] / sum(raw.values())))) for k in gk}
     reps, tile = [], np.zeros(len(cards), int)
+    drawn_log = []
     cg = card_grey(cards, St, locks, look or {})
     for k in gk:
         idx = np.array([i for i, x in enumerate(keys) if x == k])
@@ -1564,8 +1806,20 @@ def bake_tiles(cards: list, St: dict, W: int, H: int, n: int = TILES, ss: int = 
             ok = ns >= np.percentile(ns, 50)
             d = np.linalg.norm(f - np.median(f, 0), axis=1) + np.where(ok, 0.0, 1e3)
             r = int(mem[int(np.argmin(d))])
+            if TILE_REP_DRAWN > 0:  # (c8) the medoid's picture must DRAW: see TILE_REP_DRAWN
+                best, bd = r, -1.0
+                for i_ in mem[np.argsort(d)][:TILE_REP_TRY]:
+                    dr_ = _drawn_share(cards[int(i_)], St)
+                    if dr_ > bd:
+                        best, bd = int(i_), dr_
+                    if dr_ >= TILE_REP_DRAWN:
+                        break
+                drawn_log.append((_drawn_share(cards[r], St) if best != r else bd, bd, len(mem)))
+                r = best
             tile[mem] = len(reps)
             reps.append(r)
+    if drawn_log:
+        print("tile reps' drawn share (medoid -> chosen, cards): " + ", ".join(f"{a:.2f}->{b:.2f}/{n_}" for a, b, n_ in drawn_log), flush=True)
     R = []
     for r in reps:
         c = dict(cards[r])
@@ -1617,14 +1871,16 @@ def bake_tiles(cards: list, St: dict, W: int, H: int, n: int = TILES, ss: int = 
             w_ = _ss(np.clip((-r_[2] - NAPE_BAND[0]) / (NAPE_BAND[1] - NAPE_BAND[0]), 0, 1)) \
                 * _ss(np.clip((r_[1] - NAPE_Y[0]) / (NAPE_Y[1] - NAPE_Y[0]), 0, 1))
             tint[i] *= 1.0 + NAPE_LIFT * float(w_)
-    if (TONE_BACK != 1.0 or TONE_FRONT != 1.0) and C is not None:  # (round 26) the head's tone by place (front / back)
+    tf_, tb_ = float((look or {}).get("tone_front", TONE_FRONT)), float((look or {}).get("tone_back", TONE_BACK))
+    # (c10: look tone_front / tone_back override the constants per model: Tess's 0.85 front left Garrett's front -3 L*)
+    if (tb_ != 1.0 or tf_ != 1.0) and C is not None:  # (round 26) the head's tone by place (front / back)
         R0 = np.asarray(St["root"], float)
         for i, c in enumerate(cards):
             if c.get("cls") != "head" or c.get("fly") or not len(c["strands"]):
                 continue
             r_ = R0[np.asarray(c["strands"], int)].mean(0) - np.asarray(C, float)
             w_ = _ss(np.clip((r_[1] - TONE_POS_Y[0]) / (TONE_POS_Y[1] - TONE_POS_Y[0]), 0, 1))
-            tint[i] *= TONE_FRONT + (TONE_BACK - TONE_FRONT) * float(w_)
+            tint[i] *= tf_ + (tb_ - tf_) * float(w_)
     if GREY_TINT > 0 and locks:  # (c1) a card's tone by its locks' grey (the groom's grey by region: Garrett's sides .65,
         # top .22): the tiles are shared, so a grey region's cards came out the head's one dark tone (g1v1 -16 L* p50)
         gk = np.asarray([float((k.get("inputs") or {}).get("Grey", k.get("grey", 0.0)) or 0.0) for k in locks])
