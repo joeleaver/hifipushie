@@ -647,6 +647,90 @@ def test_placement_error_selftest():
     pf.placement_error.selftest()
 
 
+
+# ---------------------------------------------------------------- SETTLE: weight with real contact (fit round 1)
+
+def _bar_body(r=0.05, zc=1.0, half=0.3):
+    """A horizontal bar (axis along y) at height zc: an arm held out / a shoulder line, as a cloth.Body-like object."""
+    c = _cyl_body(r, -half, half)
+    return types.SimpleNamespace(V=np.c_[c.V[:, 0], c.V[:, 2], c.V[:, 1] + zc], T=c.T, at={})
+
+
+def _settled(M, X0, body, **kw):
+    was = pf.SETTLE
+    pf.SETTLE = True
+    try:
+        return pf.assemble({"mesh": M, "X0": X0}, body, attract=0.0, **kw)
+    finally:
+        pf.SETTLE = was
+
+
+def test_settle_tube_on_bar(verbose=True):
+    """A loose tube (radius ease 20 mm) round a horizontal bar, started concentric (gap 20 mm all round): its weight
+    pulls it down until it RESTS on the bar's top (top gap = the form offset, +-1.5 mm), the slack hangs below
+    (bottom gap >= 2 x ease - 5 mm: a round tube resting on the top already has 2 x ease below), nothing inside the
+    bar, lengths kept (stretch p99 <= 2 %)."""
+    r, ease, off, zc = 0.05, 0.02, 0.003, 1.0
+    W = 2 * math.pi * (r + ease)
+    P = [[0, 0], [W, 0], [W, 0.3], [0, 0.3]]
+    B = _B({"s": _piece(P, names={"a0": 0, "a1": 1, "a2": 2, "a3": 3})}, seams=[["s:a0>a3", "s:a1>a2"]])
+    M = cloth.mesh(B, 0.01)
+    body = _bar_body(r, zc)
+    th = M["uv"][:, 0] / W * 2 * math.pi
+    R0 = r + ease
+    X0 = np.c_[R0 * np.cos(th), M["uv"][:, 1] - 0.15, zc + R0 * np.sin(th)]
+    out = _settled(M, X0, body, iters=40, ease=off)
+    V = out["V"]
+    mid = np.abs(V[:, 1]) < 0.1
+    top = float(V[mid, 2].max()) - (zc + r)
+    bot = (zc - r) - float(V[mid, 2].min())
+    rr = np.hypot(V[:, 0], V[:, 2] - zc)
+    inside = int((rr < r + off - 0.0005).sum())
+    st = _stretch(V, M)
+    if verbose:
+        print(f"settle tube: top gap {top * 1000:.1f} mm (want {off * 1000:.0f}), bottom gap {bot * 1000:.1f} mm "
+              f"(>= {(2 * ease - 0.005) * 1000:.0f}), inside {inside}, stretch max {st * 100:.2f}% {out['info']['stretch_pct']}")
+    assert abs(top - off) <= 0.0015, top
+    assert bot >= 2 * ease - 0.005, bot
+    assert inside == 0, inside
+    assert out["info"]["stretch_pct"]["p99"] <= 2.0, out["info"]["stretch_pct"]
+
+
+def open_settle_cape_on_bar(verbose=True):  # OPEN (not collected): fails, see the docstring
+    """A cape (0.5 m long across the bar, 0.3 m wide) laid flat on a horizontal bar (a shoulder line): its weight
+    drapes it over the bar and its two halves hang STRAIGHT DOWN beside it. Inextensible answer: the upper half of the
+    bar wrapped (arc pi r'), the rest vertical at x = +-r' (r' = r + offset), the ends at zc - (L/2 - pi r'/2).
+    Hanging parts' x within 6 mm of +-r' (bending rounds the turn), ends within 15 mm, nothing inside, stretch p99 <= 2 %.
+    OPEN (fit round 1): FAILS. The local / global settle converges too slowly for a large rotation: 150 rounds leave a
+    tent (ends 108 mm high, hanging x 161 mm out); 600 rounds ends 27 mm high, x 51-74 mm out. Bending scale (0.005-1)
+    changes nothing; no friction (SETTLE_HOLD 0.005) lets it slide off. Stop-loss: a method change is needed (a swing
+    of each free flap about its contact line first, as _swing_front; or a Newton / L-BFGS static solve)."""
+    r, off, zc, L = 0.05, 0.003, 1.0, 0.5
+    P = [[0, 0], [L, 0], [L, 0.3], [0, 0.3]]
+    B = _B({"c": _piece(P)})
+    M = cloth.mesh(B, 0.01)
+    body = _bar_body(r, zc)
+    X0 = np.c_[M["uv"][:, 0] - L / 2, M["uv"][:, 1] - 0.15, np.full(len(M["uv"]), zc + r + off)]
+    out = _settled(M, X0, body, iters=40, ease=off)
+    V = out["V"]
+    rp = r + off
+    mid = np.abs(V[:, 1]) < 0.1
+    hang = mid & (V[:, 2] < zc - 0.03)
+    xerr = float(np.abs(np.abs(V[hang, 0]) - rp).max()) if hang.any() else 1.0
+    want_end = zc - (L / 2 - math.pi * rp / 2)
+    ends = mid & (np.abs(M["uv"][:, 0] - L / 2) > L / 2 - 0.006)
+    zerr = float(np.abs(V[ends, 2] - want_end).max())
+    inside = int((np.hypot(V[:, 0], V[:, 2] - zc) < rp - 0.0005).sum())
+    if verbose:
+        print(f"settle cape: hanging x err {xerr * 1000:.1f} mm, ends z err {zerr * 1000:.1f} mm (want "
+              f"{want_end:.3f}, got {V[ends, 2].min():.3f}..{V[ends, 2].max():.3f}), inside {inside}, "
+              f"stretch {out['info']['stretch_pct']}")
+    assert xerr <= 0.006, xerr
+    assert zerr <= 0.015, zerr
+    assert inside == 0, inside
+    assert out["info"]["stretch_pct"]["p99"] <= 2.0, out["info"]["stretch_pct"]
+
+
 if __name__ == "__main__":
     fails = 0
     for k, f in list(globals().items()):

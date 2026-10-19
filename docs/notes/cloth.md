@@ -7595,3 +7595,16 @@ lines across the upper back; opening at the chest judged within ~10 px. Collar /
   dark brown other side; 16 mm diagonal period on the flat pattern, mixed per pixel in the EEVEE shader from per-corner
   SC / SB / ST). Known answer: tests/test_diag_render.py case 1 (stripes + B's colour on the flap, no orange off it):
   16/16 PASS, /mnt/data/hifipushie/dress_garrett/fit_round1/diag_known/kp_panels_front.png.
+- Step 2, form gravity + real contact (pattern_form.SETTLE, opt-in, OFF): a settle phase after the let-go: gravity as a
+  per-area force in the local / global solve against a small proximal weight, hard contact by projection after each
+  round, contact vertices held (friction) with the solve refactored when the contact set changes, a 4 mm step clamp
+  and a 1 % strain limit. Faults met on the way, each isolated: (a) projection without the contact in the solve: the
+  rest of the cloth fell a step per round, only touching vertices were put back (tube 780 % stretch in 8 rounds) ->
+  refactor on contact change; (b) a free-fall step > the bar's size tunnelled (g 1.0: fell 37 m) -> step clamp;
+  (c) g strong enough to drape stretched cloth 10-25 % -> strain limit.
+  KATs: test_settle_tube_on_bar PASS (top gap 3.0 = offset, bottom 56.6 mm >= 35, stretch p99 1.2 %).
+  open_settle_cape_on_bar FAILS (stop-loss, not collected): a flat cape on a bar stays a TENT: 150 rounds ends 108 mm
+  high / hanging 161 mm out; 600 rounds 27 mm high / 51-74 mm out; bending x0.005-1 no change; no friction slides it
+  off. Slow convergence of local / global for a large rotation. Method change needed (swing free flaps about their
+  contact line first, as _swing_front; or a Newton / L-BFGS static solve). NOT used on the jacket; the validation
+  record's open rows (opening, shoulder, back) are NOT closed; form_validated() stays False.

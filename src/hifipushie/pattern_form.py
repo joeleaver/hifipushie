@@ -48,6 +48,25 @@ HANG = 0.0  # A/B (validation 2): weight as a constant downward pull on the prox
 # PRESS UNDER (same session): on_form assembles a garment over its under garment PRESSED as the sims press it
 # (cloth.pressed). OPT-IN until the gate reads it.
 PRESS_UNDER = False
+# SETTLE (fit round 1, 2026-10-19): the cloth's WEIGHT with REAL CONTACT, a deterministic static settle after the let-go
+# (no sim: no time, no velocity, no damping to tune). Each round: the global solve with gravity as a constant per-area
+# force on the right-hand side (vertex mass = its pattern area / the mean) against a SMALL proximal weight
+# (SETTLE_FREE: the cloth moves as far as its own lengths, seams, pins and bending allow), then every vertex inside
+# the offset body (or under-garment) PROJECTED back onto it (hard contact; the old HANG pulled through the arm because
+# contact was only the soft proximal push). Vertices in contact are held where they touch at the full proximal weight
+# (static friction: cloth resting on a shoulder doesn't slide off it), refactored every SETTLE_REFAC rounds.
+# SETTLE_G: the weight per vertex (x mean edge^2, so the stretch it causes does not depend on the mesh size).
+# Known answers: tests/test_pattern_form.py test_settle_tube_on_bar, test_settle_cape_on_bar. OPT-IN until validated.
+SETTLE = False
+SETTLE_ITERS = 150
+SETTLE_G = 0.1  # x the mean pattern edge^2 (the stretch it causes does not depend on the mesh size); tube KAT: p99 1.2 %
+SETTLE_FREE = 0.005
+SETTLE_REFAC = 0  # refactor when more than this many vertices joined the contact set
+SETTLE_HOLD = 10.0  # proximal weight of a vertex resting on the form (static friction), x a free one's 1.0
+SETTLE_STRAIN = 0.01  # strain limit after each round (Jacobi, SETTLE_SWEEPS): weight never stretches cloth past this
+SETTLE_SWEEPS = 4
+SETTLE_STEP = 0.004  # m: the most a vertex moves in one round
+SETTLE_BEND = 1.0  # the settle's bending x FIT_BEND (FIT_BEND keeps a tube round; cloth's own bending vs its weight is this)
 # TRACE (dress-garrett 2026-10-19 form sleeves): a callable (phase, X, M) called after each assembly phase (placement,
 # relax1, swing, band_init, turn_flaps, seat, let_go): bisect where a shape fault appears. None = off.
 TRACE = None
@@ -878,6 +897,8 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
     else:
         Kb, bend_rhs, kb = None, None, 0.0
 
+    bend_f = 1.0  # (the settle's bending scale, SETTLE_BEND)
+
     def system(wc, sw=sw):
         w = wE
         # each directed cell edge (i, j): w (x_i - x_j - t)^2 -> rows i and j
@@ -890,7 +911,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
         WS = 400.0 * PK
         A0 = Lp + WS * (S + So) + WS * (Fs + Fo) + diags(wc)
         if Kb is not None:
-            A0 = A0 + Kb
+            A0 = A0 + bend_f * Kb
         dp = np.zeros(n)
         for v, q, w_ in full:
             dp[v] += PK * w_
@@ -917,10 +938,32 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
     if FIT:
         wE = wE * FIT_STIFF
 
-    def relax(X, iters, attract=attract, sw_=None, loose=0.0):
+    if SETTLE:  # (vertex mass for the settle: lumped pattern area / its mean)
+        e1_, e2_ = uv[F[:, 1]] - uv[F[:, 0]], uv[F[:, 2]] - uv[F[:, 0]]
+        a_ = 0.5 * np.abs(e1_[:, 0] * e2_[:, 1] - e1_[:, 1] * e2_[:, 0])
+        mass = np.zeros(n)
+        for c_ in range(3):
+            np.add.at(mass, F[:, c_], a_ / 3)
+        mass /= max(float(mass.mean()), 1e-12)
+
+    def relax(X, iters, attract=attract, sw_=None, loose=0.0, grav=0.0):
+        nonlocal wc, bend_f
+        bend_keep = bend_f
+        if grav > 0:
+            bend_f = SETTLE_BEND
+        l0e = np.linalg.norm(uv[E[:, 0]] - uv[E[:, 1]], axis=1)
+        wc_keep = wc
+        held = np.zeros(n, bool)
+        if grav > 0:
+            wc = np.full(n, SETTLE_FREE)
         Ax, Ayz = system(wc) if sw_ is None else system(wc, sw_)
         fa = np.asarray(fast, int).reshape(-1, 2)
         for it in range(iters):
+            if grav > 0 and it and (held != (wc > SETTLE_FREE)).sum() > SETTLE_REFAC:  # (the contact set changed: the
+                # held vertices' weight; the solve must know the contact, else everything else falls a step per round
+                # and only the touching vertices are put back: the tube read 780 % stretch in 8 rounds)
+                wc = np.where(held, SETTLE_HOLD, SETTLE_FREE)
+                Ax, Ayz = system(wc) if sw_ is None else system(wc, sw_)
             # local: per-cell rotation (Kabsch of the rest one-ring onto the current)
             cur = X[src] - X[dst]  # (x_i - x_j) for cell i = src
             Cm = np.zeros((n, 3, 3))
@@ -949,7 +992,9 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                 d, nrm, _ = bsurf.signed(X)
                 lo = d < off
                 T[lo] += nrm[lo] * (off[lo] - d[lo])[:, None]
-                hi = (d > off + 0.002) & (d < 0.06) & ~flapv  # (a turned flap lies on its base, not on the body)
+                if grav > 0:  # (settle: no attraction; resting cloth is held where it touches)
+                    held = held | (d < off + 0.0015)
+                hi = (d > off + 0.002) & (d < 0.06) & ~flapv & (grav <= 0)  # (a turned flap lies on its base, not on the body)
                 aw_ = attract * (np.clip(nrm[hi, 2], 0.0, 1.0) if SEAT_GRAVITY else 1.0)
                 aw_ = aw_ * edge_free[hi]  # (worn open: the cloth near the open edge is not drawn onto the body)
                 T[hi] -= nrm[hi] * (aw_ * (d[hi] - off[hi]))[:, None]
@@ -982,8 +1027,10 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
             b += wc[:, None] * T
             if HANG > 0 and bsurf is not None:  # (A/B: the cloth's weight as a constant pull down, m per round)
                 b[:, 2] -= wc * HANG
+            if grav > 0:  # (settle: the weight as a force, per vertex mass, against the cloth's own stiffness)
+                b[:, 2] -= PK * grav * mass
             if bend_rhs is not None:
-                b += kb * bend_rhs(X)
+                b += bend_f * kb * bend_rhs(X)
             bp = b.copy()
             for v, q, w_ in full:
                 bp[v] += PK * w_ * q
@@ -993,7 +1040,39 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
             for v, x_, w_ in ox:
                 bx[v] += PK * w_ * x_
             Xn = np.c_[Ax.solve(bx), Ayz.solve(bp[:, 1]), Ayz.solve(bp[:, 2])]
+            if grav > 0:  # a step never moves a vertex more than SETTLE_STEP (contact can't be tunnelled; the
+                # equilibrium is unchanged: there the steps are 0)
+                dX = Xn - X
+                ln = np.linalg.norm(dX, axis=1, keepdims=True)
+                Xn = X + dX * np.minimum(1.0, SETTLE_STEP / np.maximum(ln, 1e-12))
+            if grav > 0:  # strain limit: the weight never stretches an edge past SETTLE_STRAIN (wovens barely give)
+                for _ in range(SETTLE_SWEEPS):
+                    dv = Xn[E[:, 1]] - Xn[E[:, 0]]
+                    ln = np.linalg.norm(dv, axis=1)
+                    ex = ln - (1 + SETTLE_STRAIN) * l0e
+                    m_ = ex > 0
+                    if not m_.any():
+                        break
+                    cor = np.zeros_like(Xn)
+                    cnt = np.zeros(n)
+                    dd = dv[m_] * (0.5 * ex[m_] / np.maximum(ln[m_], 1e-12))[:, None]
+                    np.add.at(cor, E[m_, 0], dd)
+                    np.add.at(cor, E[m_, 1], -dd)
+                    np.add.at(cnt, E[m_, 0], 1)
+                    np.add.at(cnt, E[m_, 1], 1)
+                    Xn += cor / np.maximum(cnt, 1)[:, None]
+            if grav > 0 and bsurf is not None:  # hard contact: nothing ends a round inside the form / the under layer
+                d, nrm, _ = bsurf.signed(Xn)
+                lo = d < off
+                Xn[lo] += nrm[lo] * (off[lo] - d[lo])[:, None]
+                held = held | lo
+                if usurf is not None:
+                    du, nu, dist = usurf.signed(Xn)
+                    near = (dist < 0.03) & (du < off + 0.001)
+                    Xn[near] += nu[near] * (off[near] + 0.001 - du[near])[:, None]
+                    held |= near
             X = Xn
+        wc, bend_f = wc_keep, bend_keep
         return X
 
     info = {}
@@ -1068,6 +1147,11 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
     info["turned_deg_mid"] = [round(fold_turned(M, X, g), 0) for fd, g, t in folds_]
     X = relax(X, iters, attract=0.0, loose=LOOSE_PRESS if LOOSE_ROUND else 0.0)
     tr("let_go", X, M)
+    if SETTLE:  # the cloth's weight with real contact (see SETTLE)
+        h_ = float(np.mean(np.linalg.norm(uv[E[:, 0]] - uv[E[:, 1]], axis=1)))
+        X = relax(X, SETTLE_ITERS, attract=0.0, grav=SETTLE_G * h_ ** 2)
+        tr("settle", X, M)
+        info["settled"] = {"iters": SETTLE_ITERS, "g": SETTLE_G}
     info["turned_deg"] = [round(fold_turned(M, X, g), 0) for fd, g, t in folds_]
     # report
     l0 = np.linalg.norm(uv[E[:, 0]] - uv[E[:, 1]], axis=1)
