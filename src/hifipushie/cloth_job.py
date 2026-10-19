@@ -98,6 +98,67 @@ def _paid(remote: str) -> bool:
     return Path(shlex.split(remote)[0]).name not in FREE_REMOTES + tuple(
         x for x in os.environ.get("HP_FREE_REMOTES", "").split(":") if x)
 
+
+# The pattern gate (cloth_check.pattern_gate; docs/notes/character_recipe.md "Pattern gate"): every sim of a drafted
+# garment, local or rented, needs a PASS record for exactly the pattern + body it was written from. cloth.build writes
+# their hashes beside the job (GATE_FILE: not part of input_hash, so cached results keep their keys); a job folder
+# without it (hand-built, or written by older code) is refused too. Free remotes (pulled results) are never gated.
+GATE_FILE = "pattern_gate.json"
+
+
+def write_gate_keys(job_dir: Path, gate: dict | None) -> None:
+    """Record which pattern + body this job was written from (cloth_check.pattern_hash / body_hash; pattern None =
+    a garment drafted from no pattern: nothing to gate)."""
+    if gate is not None:
+        (Path(job_dir) / GATE_FILE).write_text(json.dumps(gate))
+
+
+def require_pattern_gate(job_dir: Path, log=print) -> dict:
+    """Refuse (SimNotSubmitted) to run the job unless a PASS record exists for its pattern + body, naming the rows
+    that fail or are unmeasured. HIFIPUSHIE_SIM_WITHOUT_PATTERN_GATE="<reason>" overrides: the reason goes into the
+    record, the job folder (pattern_gate_override.log) and <gate dir>/overrides.jsonl. Returns {"ok", "why", ...}."""
+    from . import cloth_check as cc
+    job_dir = Path(job_dir)
+    try:
+        keys = json.loads((job_dir / GATE_FILE).read_text())
+    except Exception:
+        keys = None
+    if keys is not None and keys.get("pattern") is None and "pattern" in keys:
+        return {"ok": True, "why": "no pattern (a garment drafted from no pattern: nothing to gate)"}
+    rec = cc.read_record(keys["pattern"], keys["body"]) if keys else None
+    if cc.passed(rec):
+        log(f"pattern gate: {rec['status']} for {rec.get('model')}:{rec.get('garment')} "
+            f"({cc.record_path(keys['pattern'], keys['body'])})")
+        return {"ok": True, "why": rec["status"], "record": str(cc.record_path(keys["pattern"], keys["body"]))}
+    if keys is None:
+        why = f"the job folder has no {GATE_FILE} (not written by cloth.build: the pattern behind it is unknown)"
+    elif rec is None:
+        why = (f"no pattern-gate record for pattern {keys['pattern']} on body {keys['body']} ({keys.get('name')}): "
+               "run cloth_check.pattern_gate(model, garment) first (the pattern changed since a record was made, or "
+               "none was)")
+    else:
+        why = (f"the pattern gate is {rec.get('status')} for {rec.get('model')}:{rec.get('garment')}: "
+               + "; ".join(cc.blocking(rec)) + f" ({cc.record_path(keys['pattern'], keys['body'])})")
+    reason = os.environ.get(cc.GATE_ENV_OVERRIDE, "").strip()
+    if not reason:
+        raise SimNotSubmitted(f"cloth job {job_dir}: not run, {why}. Validate the pattern before simulating "
+                              f"(override, logged: {cc.GATE_ENV_OVERRIDE}=\"<reason>\")")
+    entry = {"time": time.strftime("%Y-%m-%d %H:%M:%S"), "reason": reason, "job": str(job_dir), "why": why,
+             "pattern": (keys or {}).get("pattern"), "body": (keys or {}).get("body"), "name": (keys or {}).get("name")}
+    with open(job_dir / "pattern_gate_override.log", "a") as f:
+        f.write(json.dumps(entry) + "\n")
+    d = cc.gate_dir()
+    d.mkdir(parents=True, exist_ok=True)
+    with open(d / "overrides.jsonl", "a") as f:
+        f.write(json.dumps(entry) + "\n")
+    if keys:
+        r = rec or {"version": cc.GATE_VERSION, "pattern": keys["pattern"], "body": keys["body"],
+                    "garment": keys.get("name"), "status": "NONE", "rows": []}
+        r.setdefault("overrides", []).append(entry)
+        cc.write_record(r)
+    log(f"pattern gate OVERRIDDEN ({cc.GATE_ENV_OVERRIDE}): {reason} -- {why}")
+    return {"ok": True, "why": "override", "override": entry}
+
 FORMAT = 1
 FPS = 24
 
@@ -417,6 +478,8 @@ def run_zozo(job_dir: Path, progress, log=print, timeout: float | None = None) -
             raise SimNotSubmitted(f"cloth job {job_dir}: not submitted to the rented solver ({Path(shlex.split(remote)[0]).name}):"
                                   " no opt-in at the call site (run it under cloth_job.submitting(), or HP_SUBMIT_SIMS=1;"
                                   " measuring / drafting never submits). The job folder is written.")
+        if _paid(remote):
+            require_pattern_gate(Path(job_dir), log)
         if _paid(remote) and os.environ.get("HP_SKIP_PREFLIGHT") != "1":
             # (dress-garrett 2026-10-15: j15 was paid for and failed at frame 0 on a start the strain check refuses)
             jd_ = Path(job_dir)
@@ -432,8 +495,9 @@ def run_zozo(job_dir: Path, progress, log=print, timeout: float | None = None) -
                                           f"{pf_['body_mm']:.2f} mm / {pf_['body_pairs']} pairs, self "
                                           f"{(pf_['self'] or {}).get('ok')}, strain {pf_['strain']}): fix the start "
                                           "(HP_SKIP_PREFLIGHT=1 overrides)")
-        return run_external(job_dir, "remote", progress, timeout, cmd=remote)
+        return run_external(job_dir, "remote", progress, timeout, cmd=remote, gated=_paid(remote))
     from . import resources
+    require_pattern_gate(Path(job_dir), log)
     cmd, env = zozo_command(job_dir)
     progress(f"zozo ({env['CARGO_TARGET_DIR'].rsplit('/', 1)[-1]}): waiting for the heavy-job slot")
     both = lambda m: (log(m), progress(m))  # noqa: E731  (the wait is shown where the sim reports)
@@ -456,7 +520,8 @@ def read_out(out: Path) -> tuple:
     return d, [ln if ln.startswith("cloth:") else "cloth: " + ln for ln in lines]
 
 
-def run_external(job_dir: Path, backend: str, progress, timeout: float = 7200, cmd: str | None = None) -> tuple:
+def run_external(job_dir: Path, backend: str, progress, timeout: float = 7200, cmd: str | None = None,
+                 gated: bool = False) -> tuple:
     """Hand the written job to another solver and read its out.npz. Returns (out.npz contents, log lines)."""
     out = job_dir / "out.npz"
     t = time.time()
@@ -465,6 +530,11 @@ def run_external(job_dir: Path, backend: str, progress, timeout: float = 7200, c
         if not cmd:
             raise RuntimeError('cloth backend "remote" needs $HIFIPUSHIE_CLOTH_REMOTE: a command run with the job folder '
                                "as its last argument that leaves out.npz in it (spikes/gpu_cloth/remote.sh)")
+        if _paid(cmd) and not gated:  # (run_zozo gated it already, before its preflight)
+            require_pattern_gate(Path(job_dir))
+    elif not out.exists() and not gated:  # "file": somebody runs it elsewhere (a result already there is only read)
+        require_pattern_gate(Path(job_dir))
+    if backend == "remote":
         progress(f"remote: {cmd} {job_dir}")
         _stream(shlex.split(cmd) + [str(job_dir)], progress, timeout, what="remote cloth job")
     else:  # "file": somebody else runs it

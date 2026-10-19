@@ -1300,6 +1300,7 @@ def apply(D: dict, ops: list) -> dict:
     for k, op in enumerate(ops or []):
         o = dict(op)
         kind = o.pop("op")
+        o.pop("source", None)  # (where a non-default value came from: documentation, cloth_check.option_sources)
         if kind == "unfold":
             unfold(D)
             continue

@@ -4643,7 +4643,7 @@ def _fabric_at(g: dict, h: float) -> dict:
 
 
 def _blender_job(job_dir: Path, cfg: dict, arrays: dict, name: str, log, progress, timeout: float = 3600,
-                 backend: str = "blender", names: list | None = None) -> tuple:
+                 backend: str = "blender", names: list | None = None, gate: dict | None = None) -> tuple:
     """Run blender_cloth.py on a job (under resources.heavy), streaming its "cloth:" lines to `progress`; or hand the
     same solver-neutral job folder (cloth_job) to another backend ("file", "remote").
     Returns (out.npz contents, the log lines without progress)."""
@@ -4658,10 +4658,13 @@ def _blender_job(job_dir: Path, cfg: dict, arrays: dict, name: str, log, progres
         raise RuntimeError(f"cloth sim {name}: only {free:.1f} GB free on the disk (need {need_}): not started")
     if backend != "blender":
         jd = cloth_job.write(job_dir / cfg.get("mode", "sim"), cfg, arrays, names)
+        cloth_job.write_gate_keys(jd, gate)  # (run_zozo / run_external refuse without a PASS record for them)
         if backend == "zozo":
             return cloth_job.run_zozo(jd, progress, log)
         return cloth_job.run_external(jd, backend, progress)
     cloth_job.write(job_dir, cfg, arrays, names)
+    cloth_job.write_gate_keys(job_dir, gate)
+    cloth_job.require_pattern_gate(job_dir, log)
     progress(f"waiting for the heavy-job slot ({cfg.get('mode', 'sim')})")
     both = lambda m: (log(m), progress(m))  # noqa: E731
     with resources.heavy(f"cloth {name}", log=both, kind="cloth_blender", model=name):
@@ -7179,6 +7182,11 @@ def _build(g: dict, body_src: dict, name: str = "garment", log=print, frames: in
     if copt_.get("collar") and copt_.get("sim_collar") is False and "collar" in Bp["pieces"]:
         Bp_full, Bp = Bp, cmade_.hold_out(Bp, ("collar",))
         log("   collar held out of the sim (construct sim_collar false): built on the drape from the full draft")
+    # the pattern gate's keys (cloth_check.pattern_gate): this full draft on this body; every sim below needs a PASS
+    # record for exactly them (cloth_job.require_pattern_gate). A garment drafted from no pattern has none to gate.
+    from . import cloth_check as ccheck_
+    gate_keys = ({"pattern": ccheck_.pattern_hash(Bp_full or Bp), "body": ccheck_.body_hash(body_src), "name": name}
+                 if g.get("pattern") else {"pattern": None, "body": None, "name": name})
     if meas_info:
         log(f"drafted over {under.get('name')}: {json.dumps(meas_info)}")
     h = float(g.get("resolution", 0.01))  # 2 cm made blobby, faceted folds
@@ -7374,7 +7382,7 @@ def _build(g: dict, body_src: dict, name: str = "garment", log=print, frames: in
     if isinstance(gs.get("pattern"), dict) and gs["pattern"].get("ops"):
         # (a facing op's "interfaced" changes only the interfacing array, keyed in `inputs`: keyed here too it re-keyed
         # dg_garrett j17b when its soft gorge facing was written down as "interfaced": false)
-        gs["pattern"] = dict(gs["pattern"], ops=[{k_: v_ for k_, v_ in o_.items() if not (o_.get("op") == "facing" and k_ == "interfaced")}
+        gs["pattern"] = dict(gs["pattern"], ops=[{k_: v_ for k_, v_ in o_.items() if not (o_.get("op") == "facing" and k_ == "interfaced") and k_ != "source"}
                                                  if isinstance(o_, dict) else o_ for o_ in gs["pattern"]["ops"]])
     gs_kind = None  # (the pattern as keyed before its "kind" left the key: a legacy cache entry under that key is used)
     if isinstance(gs.get("pattern"), dict) and "kind" in gs["pattern"]:
@@ -7412,7 +7420,8 @@ def _build(g: dict, body_src: dict, name: str = "garment", log=print, frames: in
            "rest": rest_shape(M, X0, interfacing(Bp, M), smooth, made_s if not (refine or construct) else None),
            "coarse_mesh": Ms if refine else None, "hung": hang, "hanger": hg, "hanger_meshes": hmesh}
     if place_only:
-        return dict(res, Xs=Xs, Xstart=Xstart, coarse=Ms, carry=carry, placed_on=body_p, rest_s=rest_s)
+        return dict(res, Xs=Xs, Xstart=Xstart, coarse=Ms, carry=carry, placed_on=body_p, rest_s=rest_s,
+                    gate_keys=gate_keys, pieces_full=Bp_full or Bp)
     def _assemble_job():
         # (the solver's job: job.json's config + in.npz's arrays, as cloth_job.write writes them)
             stiff_s = interfacing(Bp, Ms)
@@ -7542,7 +7551,8 @@ def _build(g: dict, body_src: dict, name: str = "garment", log=print, frames: in
         t = time.time()
         job_dir = out_dir or (_cache_dir() / f"job_{key}")
         cfg, arrays, pins_of = job_[:3] if job_ is not None else _assemble_job()
-        d, lines = _blender_job(job_dir, cfg, arrays, name, log, progress, backend=backend, names=Ms["names"])
+        d, lines = _blender_job(job_dir, cfg, arrays, name, log, progress, backend=backend, names=Ms["names"],
+                                gate=gate_keys)
         Vs = d["V"]
         Vc = None
         if construct:
@@ -7575,7 +7585,7 @@ def _build(g: dict, body_src: dict, name: str = "garment", log=print, frames: in
                                                           stitch=M["stitch"], stiff=interfacing(Bp, M),
                                                           bodyV=body.V, bodyT=body.T, piece=M["piece"], **harr),
                                             name, log,
-                                            progress, backend=backend, names=M["names"])
+                                            progress, backend=backend, names=M["names"], gate=gate_keys)
             Vs = d2["V"]
             d = d2
             lines = lines + lines2
@@ -7685,7 +7695,7 @@ def _build(g: dict, body_src: dict, name: str = "garment", log=print, frames: in
             progress(f"fine settle at {h * 100:.1f} cm: {len(plan['start'])} verts, {sum(fr)} frames, start stretch up to "
                      f"{need_ * 100:.0f}% (strain limit {zz['strain_limit'] * 100:.0f}%)")
             df, lines_f = _blender_job(out_dir or (_cache_dir() / f"job_{key}"), fcfg, farr, name, log, progress,
-                                       backend=backend, names=M["names"])
+                                       backend=backend, names=M["names"], gate=gate_keys)
             res["log"] = res.get("log", "") + "\n" + "\n".join(lines_f)
             log(f"cloth {name}: fine settle in {time.time() - t:.0f} s")
             np.savez_compressed(fcache, V=df["V"], **({"Vprev": df["Vprev"]} if df.get("Vprev") is not None else {}))

@@ -1826,7 +1826,12 @@ def options(g: dict) -> dict | None:
     c = g.get("construct", True)
     if c is False or c is None:
         return None
-    return dict(CONSTRUCT, **(c if isinstance(c, dict) else {}))
+    o = dict(CONSTRUCT, **(c if isinstance(c, dict) else {}))
+    o.pop("source", None)
+    for k in ("collar_options", "lapel_options", "hug"):  # (a "source" note is documentation: cloth_check.option_sources)
+        if isinstance(o.get(k), dict) and "source" in o[k]:
+            o[k] = {k_: v_ for k_, v_ in o[k].items() if k_ != "source"}
+    return o
 
 
 def mirror_pairs(M: dict, names_: tuple | None = None, tol: float = 2e-4) -> tuple:
