@@ -1336,11 +1336,11 @@ def test_face_light_check_flags_a_dark_lid_band():
         lid[290 - 40:290 - 19, x - 40:x + 40] = 120.0
     groove = base.copy()
     groove[60:125:8, 100:430] = 150.0   # forehead stripes
-    ok = asset.face_light_check(base, base)
+    ok = asset.face_light_check(base, base, views=("Khronos PBR Neutral",) * 2)
     assert not any(l.startswith("WARNING") for l in ok), ok
-    bad = asset.face_light_check(base, lid)
+    bad = asset.face_light_check(base, lid, views=("Khronos PBR Neutral",) * 2)
     assert bad[0].startswith("WARNING") and "lid-cheek" in bad[0], bad
-    gr = asset.face_light_check(base, groove)
+    gr = asset.face_light_check(base, groove, views=("Khronos PBR Neutral",) * 2)
     assert gr[2].startswith("WARNING") and "forehead" in gr[2], gr
 
 

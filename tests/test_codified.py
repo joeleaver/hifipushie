@@ -291,3 +291,23 @@ def test_export_gates_on_the_approved_head_and_fold_form():
         Path(d, "approved.json").write_text(json.dumps({"approved": {}}))
         with pytest.raises(ValueError):
             asset.approved_head({"base": {"head_approved": "head/nobody", "head": {}}}, [], Path(d, "approved.json"))
+
+
+def test_mixed_view_transforms_are_refused():
+    """Rule 5: a colour comparison or a game-light render that mixes view transforms (AgX vs Khronos PBR Neutral vs
+    Standard) refuses loudly; face_light_check must be told both renders' views."""
+    from hifipushie import asset
+    img = np.full((64, 64, 3), 128.0)
+    with pytest.raises(asset.MixedViewTransform):
+        asset.face_light_check(img, img, views=("AgX", "Khronos PBR Neutral"))
+    with pytest.raises(asset.MixedViewTransform):
+        asset.same_view({"lights": []}, asset.GAME_LIGHT)   # a look naming no view renders AgX
+    with pytest.raises(ValueError):
+        asset.face_light_check(img, img)                    # views undeclared
+    assert asset.same_view(asset.GAME_LIGHT, "Khronos PBR Neutral") == "Khronos PBR Neutral"
+    with pytest.raises(asset.MixedViewTransform):
+        asset.game_light_view({**asset.GAME_LIGHT, "view": "AgX"}, "look")
+    with pytest.raises(asset.MixedViewTransform):
+        asset.game_light_view({**asset.GAME_LIGHT, "view": "Standard"}, "look")
+    asset.game_light_view(asset.GAME_LIGHT)                 # the game rig under its own view
+    asset.game_light_view({"lights": [{"dir": [0, 0, 1], "energy": 1.0}], "view": "AgX"})  # another rig: free

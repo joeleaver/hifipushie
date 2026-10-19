@@ -17,11 +17,31 @@ from __future__ import annotations
 
 import numpy as np
 
-from . import pattern
+from . import pattern, validated
 
 KINDS = {"cap_shirt": (0.0, 0.03), "cap_coat": (0.03, 0.06), "band": (-0.01, 0.015), "plain": (-0.015, 0.015),
          "back_shoulder": (0.0, 0.04)}
 NOTCH_MM = 6.0
+
+
+def _panel(name, h, notch=None):
+    P = np.array([[0.0, 0.0], [0.0, h], [0.3, h], [0.3, 0.0]])
+    return {"name": name, "P": P, "names": {"bl": 0, "tl": 1, "tr": 2, "br": 3}, "wrap": {"to": "torso"},
+            "marks": {} if notch is None else {"notch_waist": [0.0, notch]}}
+
+
+def _selftest_seams():
+    """Known answers on two flat panels sewn along one side (a plain seam): 500 vs 500 mm = ease 0, ok; 500 vs 480 mm
+    = +4.2 %, outside +-1.5 %; a waist notch at 250 vs 270 mm along the seam = 20 mm off (> NOTCH_MM)."""
+    bp = lambda hb, na=None, nb=None: {"pieces": {"front": _panel("front", 0.5, na), "back": _panel("back", hb, nb)},
+                                       "seams": [("front:bl>tl", "back:bl>tl")]}
+    r = seams(bp(0.5))[0]
+    assert r["kind"] == "plain" and r["ok"] and r["ease"] == 0.0 and r["len_a_mm"] == 500.0, r
+    r = seams(bp(0.48))[0]
+    assert not r["ok"] and abs(r["ease"] - (0.5 / 0.48 - 1)) < 1e-4, r
+    r = seams(bp(0.5, 0.25, 0.27))[0]
+    assert r["notches_off"] and r["notches_off"][0][2] == 20.0, r
+    assert not seams(bp(0.5, 0.25, 0.252))[0]["notches_off"]
 
 
 def _side(pcs, side):
@@ -71,6 +91,7 @@ def _kind(Bp, A, B, garment_kind):
     return "plain"
 
 
+@validated.known_answer(_selftest_seams)
 def seams(Bp: dict, garment_kind: str = "") -> list:
     pcs = Bp["pieces"]
     rows = []

@@ -1187,6 +1187,8 @@ def look(name: str, views: list[str] | None = None, cameras: list[dict] | None =
         # 16 EEVEE samples look the same as the default 64 (mean 0.3/255 apart on cabin5) in half the time; glass
         # refracting the room behind it wants more
         glass = any((d or {}).get("transmission") or (d or {}).get("alpha", 1) < 1 for d in (spec.get("parts") or {}).values())
+        from . import asset as _asset  # (rule 5) the game light rig renders under the game's view transform only
+        _asset.game_light_view(lighting if lighting is not None else (spec.get("style") or {}).get("look"), f"look {name}")
         job = {"mode": "render", "blend": str(bp), "views": frames, "size": size, "hide": hide, "flat": flat,
                "hide_hair": hide_hair,
                "samples": 32 if glass else 16,

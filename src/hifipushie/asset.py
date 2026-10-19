@@ -2586,14 +2586,75 @@ def face_light(img, eyes=None) -> dict:
             "eyes": [list(map(int, e)) for e in eyes]}
 
 
-def face_light_check(stage, shipped, label: str = "") -> list[str]:
+class MixedViewTransform(ValueError):
+    """Two renders compared for colour / lightness were made under different view transforms (rule 5)."""
+
+
+def view_of(lighting, default: str = "AgX") -> str:
+    """The view transform a render was made under: a name as given, or a lighting dict's "view" (blender_scene's
+    default AgX when it names none; flat / clay renders are "Standard")."""
+    if isinstance(lighting, str):
+        return lighting
+    return str((lighting or {}).get("view") or default)
+
+
+def same_view(a, b, what: str = "colour comparison") -> str:
+    """(rule 5, codified) refuse a colour / lightness comparison between renders made under different view transforms
+    (AgX vs Khronos PBR Neutral vs Standard): the transform alone moved a lid band ~8 L* and the cheek's b* x2 (s12),
+    which reads as a texture fault. `a`, `b`: view names or lighting dicts. Returns the shared view."""
+    va, vb = view_of(a), view_of(b)
+    if va != vb:
+        raise MixedViewTransform(f"{what}: the renders mix view transforms ({va!r} vs {vb!r}); render both under one "
+                                 f"(game: GAME_LIGHT's {GAME_LIGHT['view']!r})")
+    return va
+
+
+def game_light_view(lighting, what: str = "render") -> None:
+    """(rule 5) a render lit by the GAME rig (GAME_LIGHT's lights) must use its view transform too: the game rig under
+    AgX / Standard is not the game's picture, and comparing it with the shipped GLB's game render mixes transforms."""
+    if isinstance(lighting, dict) and lighting.get("lights") == GAME_LIGHT["lights"]:
+        same_view(lighting, GAME_LIGHT, f"{what} under the game light rig")
+
+
+def _selftest_face_light_check():
+    """Known answers on a synthetic front eyes render (pupils 270 px apart): the same render passes; a lid band 80
+    grey levels darker is a lid-cheek WARNING; forehead stripes are a texture WARNING; mixed views are refused."""
+    base = np.full((520, 520, 3), 200.0)
+    for x in (130, 400):
+        base[280:300, x - 10:x + 10] = 20.0
+    lid = base.copy()
+    for x in (130, 400):
+        lid[250:271, x - 40:x + 40] = 120.0
+    groove = base.copy()
+    groove[60:125:8, 100:430] = 150.0
+    v = ("Khronos PBR Neutral",) * 2
+    ok = face_light_check(base, base, views=v)
+    assert not any(ln.startswith("WARNING") for ln in ok), ok
+    bad = face_light_check(base, lid, views=v)
+    assert bad[0].startswith("WARNING") and "lid-cheek" in bad[0] and not bad[1].startswith("WARNING"), bad
+    gr = face_light_check(base, groove, views=v)
+    assert gr[2].startswith("WARNING") and "forehead" in gr[2], gr
+    try:
+        face_light_check(base, base, views=("AgX", GAME_LIGHT))
+        raise AssertionError("AgX vs PBR Neutral must be refused")
+    except MixedViewTransform:
+        pass
+
+
+@validated.known_answer(_selftest_face_light_check)
+def face_light_check(stage, shipped, label: str = "", *, views=None) -> list[str]:
     """The shipped head's render against the APPROVED head's stage render through the same camera and light (e.g.
     eyes_v0 photo / game): lid band and under-eye vs cheek within FACE_LIGHT_TOL L*, forehead texture within
     FACE_LIGHT_TEX_RATIO. Lines to log; WARNING lines name the numbers. (Garrett v6 / v7: lid-cheek -33 vs the approved
     -16 under the photo light: the blink map's lid_fold crease + occlusion; forehead 2.1 vs 1.2 in the game rig: s21's
     wrinkles in the normal map.) Eyes are found on the stage render and used for both (same camera). The two renders
     must share the light rig AND the view transform (game: GAME_LIGHT): a different view transform alone moved the
-    lid band ~8 L* and the cheek's b* x2 (Garrett s12)."""
+    lid band ~8 L* and the cheek's b* x2 (Garrett s12). views = (stage's, shipped's) view transform names or lighting
+    dicts: REQUIRED, and different ones raise MixedViewTransform (rule 5)."""
+    if views is None or len(views) != 2:
+        raise ValueError("face_light_check: views=(stage view, shipped view) is required (rule 5: a comparison "
+                         "across view transforms is refused, so each render must declare its own)")
+    same_view(views[0], views[1], f"face light{(' ' + label) if label else ''}")
     a = face_light(stage)
     b = face_light(shipped, eyes=a["eyes"])
     out = []
@@ -3545,6 +3606,7 @@ def preview(glb: Path, views: list[str], size: int = 512, samples: int = 24, foc
             render.camera_frame(c, i) for i, c in enumerate(cameras or [])]  # perspective: {"eye", "target", "fov"}
         for f in frames:  # Blender's glTF importer converts back to Z up, so the look cameras apply as they are
             f["out"] = str(Path(tmp) / f"{f['name']}.png")
+        game_light_view(lighting, f"preview {glb.name}")  # (rule 5) the game rig only under the game's view
         if engine == "game":
             game(glb, frames=frames, size=size, hide=hide, poses=poses, timeout=600 + 60 * len(poses or []))
         else:
