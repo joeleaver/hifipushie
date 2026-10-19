@@ -1975,6 +1975,9 @@ def construct(V: np.ndarray, M: dict, bV: np.ndarray, bT: np.ndarray, g: dict, u
     return V, made
 
 
+MADE_THICKNESS = 0.002  # m: a made part's slab when neither it, its made result nor the fabric says
+
+
 def drawn(res: dict, V: np.ndarray | None = None) -> tuple:
     """What draws a result with constructed parts: (faces of the garment's own mesh to draw: `replaces` pieces left
     out, [(name, V, F) closed slabs of the constructed parts])."""
@@ -1987,5 +1990,8 @@ def drawn(res: dict, V: np.ndarray | None = None) -> tuple:
         for nm in pt.get("replaces") or []:
             if nm in M["names"]:
                 hide |= np.asarray(M["piece"]) == list(M["names"]).index(nm)
-        parts.append((pt["name"],) + solid(pt["V"], pt["F"], pt["thickness"]))
+        # (2026-10-18, Garrett's export) the shirt's made stand / collar carry no "thickness" (the jacket's collar does):
+        # the made result's, then the fabric's, then 2 mm, instead of a KeyError that stops the export
+        th = pt.get("thickness") or made.get("thickness") or (res.get("fabric") or {}).get("thickness") or MADE_THICKNESS
+        parts.append((pt["name"],) + solid(pt["V"], pt["F"], float(th)))
     return hide, parts

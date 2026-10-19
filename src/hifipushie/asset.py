@@ -1819,11 +1819,49 @@ TWIST_RECIPE = {
 }
 
 
-def _garment_stack(spec: dict, parts: dict) -> dict:
-    """{under garment part: the garment parts over it, transitively} (cloth "over" chains)."""
+_FROZEN_OVER: dict = {}  # {(path, mtime, size): the frozen garment's own "over"} (the pickles are big: read once)
+
+
+def garment_over(spec: dict, log=None) -> dict:
+    """{garment: the garment it is worn over} for the spec's garments. The spec's own "over" wins; a frozen garment
+    without one ({"frozen", "color"}: cloth.FROZEN_KEYS carry no "over") falls back to the "over" frozen with it, the
+    chain cloth's own layered cut uses (thaw). Garrett v6: his frozen garments wrote none, so _garment_stack was empty
+    and no garment push-under or under-garment cull ran at any LOD (white shirt shards through the jacket at LOD1-3),
+    silently. A fallback is logged; a cloth set with no chain at all is a WARNING."""
+    import pickle
     from . import cloth as clothmod_
+    out, fell = {}, []
+    for gn, g_ in (spec.get("cloth") or {}).items():
+        g_ = clothmod_.expanded(g_ or {})
+        o_ = g_.get("over")
+        if o_ is None and g_.get("frozen"):
+            path = Path(g_["frozen"]).expanduser()
+            if path.exists():
+                st = path.stat()
+                k0 = (str(path), st.st_mtime, st.st_size)
+                if k0 not in _FROZEN_OVER:
+                    th_ = clothmod_._THAWED.get(k0)
+                    if th_ is None:
+                        with open(path, "rb") as f:
+                            th_ = pickle.load(f)
+                    _FROZEN_OVER[k0] = (th_.get("g") or {}).get("over")
+                o_ = _FROZEN_OVER[k0]
+                if o_ is not None:
+                    fell.append(f"{gn} over {o_}")
+        out[gn] = o_
+    if log is not None:
+        if fell:
+            log(f"garment layers: the spec gives no \"over\"; using the frozen garments' own chain: {', '.join(fell)}")
+        if len(out) > 1 and all(v is None for v in out.values()):
+            log(f"WARNING garment layers: {len(out)} garments and no \"over\" chain (spec or frozen): no garment "
+                "push-under or under-garment cull runs at any LOD")
+    return out
+
+
+def _garment_stack(spec: dict, parts: dict, log=None) -> dict:
+    """{under garment part: the garment parts over it, transitively} (cloth "over" chains, garment_over)."""
     stack = {}
-    over_ = {gn: clothmod_.expanded(g_ or {}).get("over") for gn, g_ in (spec.get("cloth") or {}).items()}
+    over_ = garment_over(spec, log)
     for on_ in over_:  # every garment down on_'s chain of "over" lies under on_
         x_, seen_ = over_.get(on_), {on_}
         while x_ is not None and x_ not in seen_:
@@ -2160,6 +2198,54 @@ def export(name: str, out_dir: Path, *args, **kw) -> dict:
         return res
 
 
+CLOTH_BUDGET_ROUNDS = 4  # decimation rounds to bring the garments under cloth_triangles
+
+
+def decimate_cloth(cparts: list, cloth_triangles: int, log: list) -> list:
+    """The garments [(name, part, files)] decimated together to at most `cloth_triangles` (one ratio for all)."""
+    from . import lods as lodmod
+    n_c = sum(len(cp["corner_vert"]) // 3 for _, cp, _ in cparts)
+    ratio_c = cloth_triangles / n_c
+    got = n_c
+    msgs, dec = [], list(cparts)
+    for round_c in range(CLOTH_BUDGET_ROUNDS):  # parts' floors (made pieces, held borders) keep more than the
+        # ratio asks (Garrett v5: 27,032 of 25,000): the ratio is scaled by the overshoot until the sum fits
+        dec, msgs = [], []
+        for pn_c, cpart, cfiles in cparts:
+            q, _, r_ = lodmod.lod_part(cpart, None, ratio_c)
+            msgs.append(f"cloth {pn_c}: {r_['triangles0']} -> {r_['triangles']} triangles (cloth_triangles "
+                        f"{cloth_triangles} over {n_c}, ratio {ratio_c:.3f})")
+            dec.append((pn_c, q, cfiles))
+        got = sum(len(q["corner_vert"]) // 3 for _, q, _ in dec)
+        if got <= cloth_triangles:
+            break
+        ratio_c *= cloth_triangles / got * 0.99
+    log.extend(msgs)
+    if got > cloth_triangles:
+        log.append(f"WARNING cloth: {got} triangles after {CLOTH_BUDGET_ROUNDS} rounds, over cloth_triangles "
+                   f"{cloth_triangles}")
+    return dec
+
+
+ROLE_HAIR_TIER = {"hero": "hero", "main_npc": "main", "secondary_npc": "npc", "crowd": "far"}  # LOD0 card tier by role
+
+
+def hair_tier_default(spec: dict, role: str | None, log: list) -> dict:
+    """LOD0's card tier: the groom's hair.export.tier, else the role's (ROLE_HAIR_TIER). Unset, hair.EXPORT_CARDS cut
+    the cards to its 12000-triangle budget per lock (Garrett v3 / v4: 96 cards + cap, a helmet, while LOD1-3 got the
+    tiers). Only card / strand grooms have tiers; no role keeps the old cut and says so."""
+    h = spec.get("hair") or {}
+    if h.get("style") not in ("cards", "strands") or (h.get("export") or {}).get("tier"):
+        return spec
+    tier = ROLE_HAIR_TIER.get(role or "")
+    if tier is None:
+        log.append("WARNING hair: no hair.export.tier and no role: LOD0 cards cut to hair.EXPORT_CARDS' budget, not a "
+                   "card tier (pass role= or set hair.export.tier)")
+        return spec
+    log.append(f"hair: LOD0 card tier {tier!r} from role {role!r} (hair.export.tier unset)")
+    return {**spec, "hair": {**h, "export": {**(h.get("export") or {}), "tier": tier}}}
+
+
 def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int = 2048, resolution: int = 256,
             atlases: int = 1, texel_density: float | None = None, instancing: bool = True, rig: bool | dict = False,
             fbx: bool = False, face_shapes: bool | list | None = None, asset_name: str | None = None,
@@ -2463,6 +2549,7 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
     extra_ext = {}
     if (spec.get("hair") or {}).get("locks"):  # curve locks (hair.py): meshed and baked in Blender, their own atlas
         from . import hair as hairmod
+        spec = hair_tier_default(spec, role, log)
         hp = hairmod.export_part(name, out_dir, spec, texture=min(texture, 2048), log=log)
         if hp is not None:
             hpart, hfiles = hp
@@ -2503,13 +2590,7 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
         if cloth_triangles and n_c > cloth_triangles:  # the sim's 1 cm mesh (two-sided) is far over a game budget:
             # decimated like a LOD (patches with their borders held: seams, hems, the pattern's uv)
             from . import lods as lodmod
-            dec = []
-            for pn_c, cpart, cfiles in cparts:
-                q, _, r_ = lodmod.lod_part(cpart, None, cloth_triangles / n_c)
-                log.append(f"cloth {pn_c}: {r_['triangles0']} -> {r_['triangles']} triangles (cloth_triangles "
-                           f"{cloth_triangles} over {n_c})")
-                dec.append((pn_c, q, cfiles))
-            cparts = dec
+            cparts = decimate_cloth(cparts, cloth_triangles, log)
         for pn_c, cpart, cfiles in cparts:
             cpart["atlas"] = len(atlas_files)
             parts[pn_c] = cpart
@@ -2548,7 +2629,7 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
             # reach and rim) are dropped at LOD0, so every LOD inherits it: rc2's jeans / sweater kept every triangle under
             # the coat, which cost budget and poked through at LOD1+
             cnames = [pn_c for pn_c, _, _ in cparts]
-            over_ = {gn: clothmod.expanded(g_ or {}).get("over") for gn, g_ in (spec.get("cloth") or {}).items()}
+            over_ = garment_over(spec, log.append)
             for gn in over_:
                 un = f"cloth_{gn}"
                 ups = [f"cloth_{o_}" for o_ in over_ if gn in _over_chain(over_, o_)]
@@ -2598,6 +2679,7 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
              for pn in parts for d in [defs.get(origin[pn]) or {}] if any(k in d for k in ("transmission", "alpha"))}
     if (spec.get("hair") or {}).get("locks") and locals().get("hair_cards"):
         looks.setdefault(pn_h, {}).update(alpha_cutoff=hair_cards["alpha_cutoff"],
+                                          double_sided=not hair_cards.get("back_faces"),  # (c6: own back faces)
                                           extras={"hifipushie_hair": hair_cards})
     if skin_recipe:  # the skin part's own material: the film's second lobe and the sheen as ratified extensions, the
         sp = (spec.get("skin") or {}).get("part", "body")  # rest (scattering, tiling detail) in its extras
@@ -2735,7 +2817,7 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
     if spec.get("cloth") and LOD0_PUSH_UNDER:  # (r57) LOD0 too: rc2f's sweater poked 0.4-1 mm through both coat shells
         # beside her left chest pocket in the rest pose (an orange speck at 1 m); LOD1-3 start from this
         from . import lods as lodmod0_
-        st0_ = _garment_stack(spec, parts)
+        st0_ = _garment_stack(spec, parts, log.append)
         if st0_:
             pu0_ = lodmod0_.push_under_layers(parts, st0_, gap=LOD0_UNDER_GAP)
             log.append("LOD0: under garments put back under their covers (lods.push_under_layers): " + ", ".join(

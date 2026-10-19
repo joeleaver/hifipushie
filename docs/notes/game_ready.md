@@ -3308,3 +3308,610 @@ STATE: rc2m = best RC (beats rc2l 3/1/9, MAJORs 0 vs 1). NEXT: handover.
   (c) LOD3 buttons still faceted: try a fixed low-poly lens (e.g. 24-triangle disc fitted to the hull's PCA) if it matters
   at LOD3 distance (it is a close-up-only fault); (d) jeans fly stitching jagged at LOD3 (texture / decimated uv);
   (e) face likeness (head stages), crown card silhouette (cards thread).
+### Session 2 (assembly_garrett, 2026-10-18)
+- Per-character face fits: `faceshapes.character_fits(spec)` (export wraps the whole bake in it): base.head.face_fits =
+  {"smile": .npy, "jaw": .npy, "sculpt": .npz} (relative = model folder) replaces the env vars; keys left out are cleared;
+  no face_fits = env kept + one WARNING each. Also fixed: the session-1 warning called log() on the _Log list (would have
+  crashed any export with HP_SMILE_FIT set). Tests: test_per_character_face_fits_*. Garrett has no fits yet (generic shapes).
+- v1 FAILED at the bake: "Cycles ran out of shader stack on part:body". Per-pass compile (assembly_garrett/stack/svm.py,
+  8x8 frames, ~25 s): the BSDF, color, aoh and color_blink passes all overflow SVM; rms fits. Garrett's body: 61 expanded
+  layers, 20 with height (gp_h6c_s15's skin); Tess's ga_tess: 47 / 8. FIX (general, bake path): `asset.bake_needs_osl`
+  runs bake_maps with check_only (every pass compiled on the parts' materials, seconds) and, on an overflow, bakes with
+  OSL (`scene.cycles.shading_system`, CPU; no stack limit). Checked on the real scene (stack/cmp.py): OSL renders the body's
+  colour (SVM: background), and on shoes (fits SVM) OSL == SVM pixel for pixel. Test test_bake_falls_back_to_osl_*.
+  Not fixed: the LIVE scene / looks in Cycles still overflow on that skin (EEVEE is fine); the skin's layers untouched.
+- Body TORN at lm_lid_lower_in.L / lm_eye_outer.L/R (120 folded edges, 83 turned): SOURCE = gp_h6c_s15's base.head.lid_fold
+  (variant ag_v_nofold: 6 folded / 1 turned, no TORN cluster; ag_v_noshape (minus head.shape): unchanged 120). Owner: the
+  skin agent (lid_fold). teeth_lower 68 folded / 39 turned in all three: not the head edits; Tess's 26 / 3 came with her
+  teeth_lower max_triangles budget (Tess-only head key, gap (b)).
+STATE: v1 re-export running with the OSL fallback (logs/exp_v1b.log), lid_fold kept as specified. NEXT: game check.
+- v1 re-export (OSL bake ran: body color 183 s / rms 165 / aoh 165 / blink 191) FAILED later in cloth.export_part:
+  cloth_made.drawn KeyError 'thickness': the frozen SHIRT's made stand / collar carry none (the jacket's collar does).
+  FIX: drawn() falls back to made / fabric thickness / MADE_THICKNESS 2 mm; test test_drawn_made_parts_without_thickness.
+  Hair in v1's log: 3586 tris as cards = 96 cards + the cap 3100 (asked 12000: only 486 tris of locks; most of the
+  budget unused: G88a's strands give few cards). LOD0 budget hero: 52996 body / 25000 cloth / 103000 total.
+- v2 model ag_garrett2 (mk_ag_garrett.py dst=ag_garrett2 frozen=... dress_garrett/frozen_ae: jacket + shirt from dg_ae_j18,
+  trousers dg_t6). The shirt is the one drawn under the JACKET (garrett_shirt.pkl), not garrett_shirt_under_trousers.pkl:
+  one shirt drape only; check the tuck at the waist.
+### Handover (assembly_garrett session 2, tool-call budget)
+- IN FLIGHT: export exp/ag_garrett_v2 (logs/exp_v2.log, "EXPORT EXIT"; ~35 min with the OSL bake). Nobody collects it:
+  the next session starts there. v1 was never completed (superseded by v2: legs no longer bare).
+- NEXT: (1) read exp_v2.log (quality lines: lid TORN cluster expected from lid_fold; trousers crossings; budgets per LOD);
+  (2) bash rge.sh ag2 exp/ag_garrett_v2 shots_ag.json + bin/offload wait ag2; (3) look first, then tiles review (r46
+  tiles.py on the training front photo); trousers at 1 m: the pale spot below the fly (shirt through?) and the 35 vs 0
+  crossings mismatch from dress-garrett's report; (4) Joe sheet; (5) owners: skin agent for lid_fold's tear, teeth_lower
+  budget (Tess-only key) for the 68 folded edges.
+- NOT done: no renders, no game check, no review, no Joe sheet, no look-first verdict (no export has completed yet).
+### Session 3 (assembly_garrett, 2026-10-18)
+- v2 export (ag_garrett2) completed its bake (OSL, 830 s); quality lines as session 2 predicted (body TORN cluster at the lids from
+  lid_fold, teeth_lower 68 folded, shoes 20 folded / 38 turned). Budgets LOD0 hero: 52996 body / 25000 cloth / 103000 total.
+- Coordinator: the fly's pale spot = the trousers' own shirt tails through the crotch (10 tips); fixed by dress-garrett
+  (1b9ac8a2, push_under wide second pass) + trousers re-frozen (frozen_ae from dg_af_t6f). The cherry-pick conflicted (it
+  sits on 6 more dress-garrett commits: drawn collars, collar_options.widen): MERGED their branch
+  worktree-agent-a772e41978c43cfa6 instead (clean; cloth tests pass). Frozen set pinned in assembly_garrett/frozen_af/.
+- v3 = ag_garrett3 (frozen_af: jacket + garrett_shirt.pkl + the new trousers), export exp/ag_garrett_v3 (logs/exp_v3.log), queued
+  on the heavy slot behind v2.
+STATE: v2 finishing (LODs / GLB), v3 queued. NEXT: game check on v2 (look + review), then v3 for the fly.
+- v2 EXPORT EXIT 0 (exp/ag_garrett_v2/ag_garrett2*.glb). v3 EXPORT EXIT 0 (exp/ag_garrett_v3/ag_garrett3*.glb, merged code, ~29 min:
+  bake 608 s). v2 already loaded the re-frozen trousers (frozen_ae rewritten 13:23, read at ~13:32), so v2 / v3 cloth counts are
+  identical; the RC is v3. The game check batch ag2 (queued) carries v3's GLBs (swapped into its job folders before it started).
+- BUDGETS (hero): LOD0 73326 of 103000 (body 38790 -> head 22867 + body 7250 after cull, cloth 25434 of 25000 OVER, eyes / mouth /
+  lashes 9908 of 7996 OVER, hair 3586 of 25000). LOD1 34534 (0.47 of LOD0, asked 0.5), LOD2 25874 (0.35, asked 0.25), LOD3 22482
+  (0.31, asked 0.12): LOD2 / 3 miss their ratio: per-part floors (teeth_lower 1458, eyes 651, socks / soles / shoes ~2400, cloth
+  ~8100 at LOD3) and the hair is the cap only at LOD1+ (0 cards).
+- Rig audit, SEATED (hips / knees 90): body through trousers 157 verts (25.7 mm, crotch z 0.78), shirt through trousers 63 (9.9 mm,
+  waist z 0.96), trousers through jacket 32 (29.1 mm), trousers through shirt 30: BAD in v2 and v3 alike (rest is clean).
+STATE: game check ag2 (= v3) queued on NICO-TOP behind rs_r12. NEXT: look, tiles, blind review, Joe sheet.
+- GAME CHECK ag2 (= v3, NICO-TOP, ~3 min once it ran): offload/ag2/results/ag2/j0..3/x/out/ (j0 LOD0 all shots, j1-3 LODs).
+  LOOK FIRST (mine, before the review): the jacket is covered in BLACK TRIANGLES front and back (maps clean: geometry; likely the
+  two-sided shell's inner side through the outer after decimation 17572 -> 4780, unverified); hair is a near-black swept-up
+  pompadour where the photo / concept show short receding grey; suit reads black, not charcoal, no belt; smile closes the eyes;
+  jaw-open reads as a red "O". At 1 m: the fly's pale spot is NOT visible (shirt meets the waistband cleanly, the tuck is a flat
+  line, acceptable), the lid tear is NOT visible; hair = 96 cards + cap: a dark sculpted helmet with a fine streak texture and a
+  hard hairline (LOD1+ = the cap only). The face itself reads as a plausible middle-aged man; skin reads well at 3 m.
+- BLIND REVIEW (fresh subagent, images only; bin/review is out until 2026-10-19 13:00 MT): 17 pairs (feature tiles from r46
+  tiles.py on the training front photo for neutral / smile / jaw; concept | figure; 3/4 photo | 3/4 head): FAIL, 8 top MAJORs
+  (assembly_garrett/rv3/review.md): hair, jacket triangles + collar, smile shuts eyes, jaw "O" + teeth + red interior, brows
+  as blocks, stubble speckle with hard edges, under-eye ledge, upper-lip shading seam.
+- JOE SHEET: assembly_garrett/sheets/garrett_v3_joe.png (rows TURNAROUND / FACE / MOTION + GAME DISTANCE, reference photo
+  first in each row, every column captioned; joesheet.py). Not sent: renders go to NICO-TOP / the coordinator forwards.
+- RC_garrett.md gap list updated (rows A-I, top: jacket triangles, hair colour / style, suit colour, smile, jaw).
+### Handover (assembly_garrett session 3)
+- DONE: v2 + v3 exported (v3 = RC), dress-garrett merged (fly fix), budgets per LOD read, game check, look, blind review, Joe sheet.
+- Nothing in flight.
+- NEXT (by owner): (1) export / cloth: find the jacket's black triangles: count crossings between the jacket's outer and inner
+  (two-sided) shells in lowpoly vs high (exp/ag_garrett_v3/lowpoly*.npz); if decimation, decimate one side and offset the other
+  (general fix, test); (2) hair agent: G88a's colour in its own sheet vs the strand atlas, and the groom vs the photo (short, grey,
+  receding); (3) face shapes: per-character fits (base.head.face_fits) for Garrett's smile / jaw; (4) skin agent: brows, stubble
+  edges, under-eye ledge, upper-lip seam; (5) dress-garrett: charcoal, belt, seated crossings.
+STATE: session 3 done. NEXT: jacket triangles (1) first; it is the one fault this assembly owns.
+### Session 4 (assembly_garrett, 2026-10-18; coordinator's look at sheets/garrett_v3_joe.png: 5 blockers)
+- (1) JACKET BLACK BLOTCHES: CAUSE = the cloth decimation (asset: lods.lod_part at cloth_triangles / n) decimated the two-sided
+  garment's OUTER and INNER shells (0.8 mm apart, no shared vertices: separate patches) independently. Measured on v3's own
+  cloth parts (s4/jk_cross.py, inner vertices against the outer surface): jacket sim 0.5% outside (max 0.3 mm) -> decimated
+  13.8% outside, 110 > 1 mm, max 9.6 mm (shirt 12.1% / 8.5 mm, trousers 10.8% / 4.0 mm). The inner faces are wound inward
+  (culled from outside) but cast shadows and show at grazing angles: soft black blotches (the back crop in the v3 render is
+  blotches, not crisp triangles). Normals / uv / maps are not it: an orthographic z-buffer with backface culling (jk_vis.py)
+  finds <1% visible pixels with a normal facing away, the atlas is uniform (56,56,48). FIX (general): cloth.export_part
+  marks the part `shell` {"outer": n, "thickness"}; lods._lod_shell decimates the outer shell + the rest (made pieces,
+  buttons) and REBUILDS the inner from the decimated outer (offset along its normal, wound back, normal / sign negated,
+  uv / tangent / weights / shapes copied); the LOD keeps `shell`, so LOD1-3 do the same. Jacket after: 0.4% outside,
+  max 0.1 mm (shirt 4.6% / 3.2 mm: its made stand + collar slabs; trousers 0.1% / 0.6 mm). Test
+  test_two_sided_cloth_decimation_keeps_the_inner_shell_inside. Render proof: v4's game check.
+  Side note: the made collar slab (cloth_made.solid) rim faces carry the sheet's +-normal (230 jacket faces with every
+  corner normal against the winding): 2 mm rims, not the blotches; left as is.
+STATE: (1) fixed in code + test. NEXT: (2) hair colour.
+- (2) HAIR NEAR-BLACK: CAUSE = the card atlas of a `seen` look (G88a: look.seen = the photo's hair colour [.242 .232 .226]) at
+  card_gain 1.0: seen_look sets lit = seen and leaves the lift to the renderer; the EEVEE strands draw lit x eevee_gain 1.6,
+  the cards' atlas came out AS seen (v3 hair_basecolor opaque mean sRGB [0.242 0.232 0.227]). FIX (general, hair.full_look):
+  a seen look with no card_gain takes eevee_gain as card_gain (an explicit / measured card_gain wins; explicit-colour looks
+  such as Tess's unchanged). Test test_cards_from_a_seen_look_take_the_strands_lift. Proof: v4's game check.
+- (3) SUIT COLOUR: NOT the export. Spec jacket #3a3836 / trousers #2f2e2e; the GLB's atlases carry exactly that (median 58,56,54 /
+  47,46,46), roughness 0.85, no AO darkening. Albedo ratio jacket / shirt (linear) 0.082 vs the concept's rendered ratio 0.070:
+  the garment colours ARE charcoal relative to the shirt. The v3 render's ratio was 0.024 (3.4x darker than its albedo): the
+  lighting plus, likely, the crossing inner shell's shadows from (1). Re-measure on v4. Belt: none in dg_garrett (report only).
+- Coordinator relay (dress-garrett ah): merged worktree-agent-a772e41978c43cfa6 (3b870bd9: frozen made parts' "replaces" from
+  info.hides; conflict in cloth_made.drawn resolved keeping the thickness fallback chain, their MADE_THICKNESS 0.8 mm); jacket
+  re-frozen (collar ends faired) -> pinned frozen_ag/. Model ag_garrett4 (frozen_ag), export exp/ag_garrett_v4 RUNNING
+  (logs/exp_v4.log). Expression candidates (s4/expr_mixes.json: smiles s0 (= A2) .. s6, jaw j0 .. j5) rendering on v3's GLB:
+  offload/ex4 (NICO-TOP).
+STATE: (1)-(3) done in code; v4 exporting; expression batch ex4 running. NEXT: pick smile / jaw from ex4 tiles.
+- (4) SMILE / (5) JAW (parameter mixes only, on v3's GLB morph targets, NICO-TOP batch ex4, sheets s4/ex_smile.png, s4/ex_jaw.png;
+  no expression photos of Garrett exist: target = a natural warm smile with the eyes open). A2 (eyeSquint 0.5, cheekSquint 1.0)
+  shuts his eyes on the generic shapes. CHOSEN smile = s6: mouthSmile 0.85, cheekSquint 0.45, eyeSquint 0.1, mouthDimple 0.3,
+  mouthUpperUp 0.25, jawOpen 0.08 (eyes open, upper teeth show, cheeks lift a little). s2 (eyeSquint 0) keeps the eyes widest but
+  reads as a thin closed-lip grin. CHOSEN jaw = j3: jawOpen 0.6, mouthLowerDown 0.2, mouthStretch 0.2 (an open mouth with both
+  teeth rows, corners widened, not the jawOpen-1.0 "O"). Stored: shots_ag.json / shots_lod.json (smile*, jaw*; v3's kept as
+  shots_ag_v3.json) and s4/garrett_expr.json. No spec slot for mixes (base.head.face_fits holds fitted shape .npy files only).
+  What the parameters CAN'T do: the mouth interior is flat saturated red (the cavity's material / no darkening with depth),
+  upper teeth read as separate pegs, the neutral's own lids sit low (narrow eyes before any squint: head / skin, not a mix);
+  the smile's nasolabial fold barely deepens (generic shapes; a fitted smile would need Garrett smile photos).
+STATE: (4) / (5) chosen. NEXT: v4 export -> game check (rge.sh ag4) -> look, blind tiles, Joe sheet.
+- v4 = ag_garrett4 (frozen_ag: dress-garrett's re-frozen jacket + shirt + trousers; code = fixes (1) (2) + 3b870bd9), EXPORT EXIT 0:
+  exp/ag_garrett_v4/ag_garrett4.glb + _LOD1..3. Cloth 28956 / 17572 / 45276 -> 8086 / 4846 / 12356 (clothing 25288 of 25000 OVER;
+  eyes / mouth / lashes 9908 of 7996 OVER); hair atlas mean sRGB 0.242 -> 0.305 (= x1.6 linear). Same quality lines as v3 (lid
+  TORN from lid_fold, teeth_lower 68 folded). Game check ag4 (NICO-TOP, 4 jobs): offload/ag4/results/ag4/j*/x/out/.
+- LOOK FIRST (mine): (1) the jacket's blotches are GONE front and back (s4/v3_v4_jacket.png: v3 | v4 front, v3 | v4 back). A white
+  sliver on the left lapel near the top remains (v3 too; seen at 1 m and in the walk). (2) hair reads dark grey with lighter strands,
+  no longer black, but still darker than the photo and the wrong STYLE (tall swept-back mass vs short receding grey): hair thread.
+  (3) suit still reads black: v4 render ratio jacket / shirt 0.024 (albedo 0.082, concept 0.070); the material is the same as the
+  shirt's except the colour (normal maps flat, ORM equal), so the game light / view gives the dark cloth ~0.21 of its albedo
+  against ~0.78 for the shirt: unexplained, NOT the spec and NOT the export material. (4) smile s6: eyes open at the front, warm,
+  upper teeth row; at 3/4 still a slight squint. (5) jaw j3: an open mouth but still a red interior. Blink: fine.
+- BLIND REVIEW (fresh subagent, images only, 7 pairs): FAIL. Top MAJORs: hair colour / style (identity); face too long / soft vs
+  his broad square lower face; eyes sleepy / hooded with under-eye bags (also spoils the smile: the reviewer still saw a squint);
+  jaw-open lips flare into a ring + red interior; the white lapel sliver + a white speck on the upper back; dark strands hanging
+  onto the nape (cards); back hair a uniform cap. minors: no belt, shirt hem line flat, black not charcoal, stubble stipple.
+- JOE SHEET: sheets/garrett_v4_joe.png (TURNAROUND / FACE / 3/4 + GAME; reference first in each row, captioned).
+### Handover (assembly_garrett session 4)
+- DONE: (1) jacket blotches: cause + general fix (lods._lod_shell) + test, proven in v4; (2) hair cards' gain for seen looks + test
+  (lifted x1.6; colour still dark / style wrong: hair thread); (3) suit colour: spec and export are right (measured), the dark read
+  is the render light on dark cloth (open); (4) smile s6 / (5) jaw j3 in shots_ag.json / shots_lod.json / s4/garrett_expr.json;
+  dress-garrett merged (3b870bd9); v4 exported + game check + blind review + Joe sheet. Nothing in flight.
+- NEXT (owners): dress-garrett: the white lapel sliver (left lapel top, both v3 / v4) + the back speck; belt; if Joe wants the
+  suit lighter in game light, the garment colour (#3a3836 -> e.g. #4a4845) is theirs. Export / game check: why dark cloth renders
+  at ~0.21 of albedo vs the shirt ~0.78 under the game rig (one-material test: the jacket's material with the shirt's colour).
+  Hair thread: groom style vs the photo (short, receding, grey), nape strands. Head / skin: lids (sleepy, bags), long lower face.
+  Face shapes: jaw interior (cavity colour), a fitted smile needs Garrett smile photos (none exist).
+
+## r55 (2026-10-18, assembly agent, fresh session): pocket fans, buttons, LOD3 budget, worn-under rule
+Scratch /mnt/data/hifipushie/assembly/r55/ (p1-p7.py: probes on exp/rc2d_tess GLBs; NOTE glTF is Y-up: height = y,
+front = +z; my first pocket-box counts used Blender axes and were all 0).
+- POCKET FANS (coordinator: not fixed by r54): NOT made pieces and NOT the shell over them. rc2d LOD0's made group (the
+  triangles after the two shells) is the collar / lapels (1,320) + 4 buttons (174 each) + 8 thread bits (6): its bbox is
+  the chest; the hip pockets are drawn on the OUTER shell (one cloth layer there: 1 neighbour within 6 mm, p50). At LOD2,
+  144 of 270 pocket-box triangles (outer 72 + its rebuilt inner 72) are WOUND AGAINST their corners' normals: decimation
+  folded them over; rendered back-facing they shade dark = the radial fans. LOD0 / LOD1 there: 0. Not the seam weld (off:
+  still 26 folded there; a "don't weld along the same border" filter changed nothing: reverted). FIX (lods.lod_part,
+  LOD_REWIND): every decimated triangle wound against its transferred vertex normals is wound the other way (coat probe:
+  folded 69 / 29 at LOD2 / LOD3 -> 0).
+- BUTTONS as grey cones: they sat in the made group, decimated welded with the lapels. FIX (lods._small_pieces,
+  LOD_KEEP_PIECE 200): a made piece that is its own small connected piece is its own mesh, kept whole at ratio >= 0.1
+  (LOD1-2), LOD_KEEP_PIECE_FAR 0.15 below (LOD3).
+- LOD3 BUDGET: made floor now min(LOD_MADE_FLOOR 0.35, LOD_MADE_FLOOR_X 2 x ratio) (LOD2 stays ~0.27-0.35, LOD3 ~0.15);
+  buttons whole add ~600 at LOD2 (25.3k of 25,750 expected). LOD3 was still ~70 over, so: small parts (< MIN_PART, kept
+  whole) take max(ratio, LOD_SMALL_FAR 0.5) where their ratio < LOD_SMALL_FAR_RATIO 0.15 (LOD3 only), never the eyes
+  (LOD_SMALL_KEEP: the cornea). ~4.9k of LOD3 was small parts kept whole; expect ~-2k.
+- WORN-UNDER RULE: lods.under_at_lod0(share=True) gives the share of in-reach vertices that are UNDER a garment; asset
+  LOD_PUSH_WORN_SHARE 0.85. rc2d LOD0 (p7): socks 0.99, body 0.89, shoes 1.00 (collar under the jeans hem: 46 vertices,
+  those are under), vs badge 0.49, lanyard 0.48, clip 0.58, laces 0.67, badge_card 0.83 (thin margin).
+- Test test_lod_buttons_whole_folds_rewound_small_parts_far; test_lod_made_pieces_stay_over_their_shell's floor check
+  follows the X rule. (The rewind assert holds on the test sheet but I did not show the sheet folds without the fix.)
+- Dress-tess: no "FROZEN FOR EXPORT" in agent-ac06d0eb5553e576b's cloth.md: no coat freeze to take.
+STATE: fixes in code + tests pass. NEXT: re-export rc2e (cull_poses as rc2d), tris, game check + close-ups, look.
+- LEFT CALF BLOTCH (rc2d LOD2, p8.py): 22 SOCK vertices through the decimated jeans (x 0.17, 19 cm up, back); body / shoes
+  0. The r54 mask moved only vertices UNDER the jeans at LOD0, and these had no jeans within reach there (a loose leg). FIX
+  (asset LOD_PUSH_WORN_NOT_OVER): every vertex NOT OVER a garment at LOD0 may move (the shoe collar over the hem still
+  stays). Coat 74 / sweater 42 vertices "through the jeans" at LOD2 are the coat / sweater over them (expected).
+  (Process slip: killing my stale export with `kill -9` on a "hv.py" pattern may have killed another agent's hv.py job
+  around 17:41; a haircards hv.py job was running again at 17:42.)
+STATE: committed; rc2e export restarted with all r55 fixes (r55/chain.sh: export, tris, game check, close-ups z1-3).
+- rc2e EXPORTED (exp/rc2e_tess; all r55 fixes; cull_poses r54/poses). Triangles (export log): LOD0 89,342 / 103,000,
+  LOD1 42,608 / 51,500, LOD2 23,227 / 25,750, LOD3 10,033 / 12,360: ALL UNDER (LOD3 was 12,524). NOTE the small-part rule
+  also fired at LOD2 (the body-side ratio there is < 0.15: shoes 371, laces 288, clip 248 ...; tongue / eyes whole): fine
+  for the budget, but set LOD_SMALL_FAR_RATIO to ~0.1 if LOD2 props look coarse. Worn-push now: shoes (100%), socks (99%),
+  body (93%); badge / clip / lanyard / laces / badge_card out.
+- LOOK (r55/l2_rc2d_vs_rc2e.png: LOD2 at its switch distance, rc2d front | rc2e front | rc2d back | rc2e back): the grey
+  radial POCKET FANS are GONE (pocket outlines read as pockets), the LEFT CALF BLOTCH is GONE. Close-ups (r55/ge/z*),
+  buttons, lapel-edge sweater: renders were still running at handover (r55/ge_all.sh -> r55/GE_DONE).
+
+## Handover r55 (assembly agent, tool-call budget)
+- DONE (committed locally, never pushed): lods LOD_REWIND (folded decimated triangles wound to their normals: the pocket
+  fans), LOD_KEEP_PIECE (buttons whole at LOD1-2), made floor min(0.35, 2 x ratio), LOD_SMALL_FAR (small parts halve where
+  their ratio < 0.15), asset LOD_PUSH_WORN_SHARE 0.85 + LOD_PUSH_WORN_NOT_OVER (sock through the LOD2 jeans). Tests pass
+  (test_game_ready 30). rc2e exported; triangles all under; LOD2 look: fans and calf blotch gone.
+- NOT DONE: (a) the NEW COAT FREEZE from dress-tess s18 (coordinator, at handover):
+  /mnt/data/hifipushie/dress_tess/frozen/2026-10-18_s18/{coat,sweater,jeans}.pkl (cloth.freeze, dt_tess v112; coat left front
+  = mirror of the approved right, crush 0.56 mm; sweater / jeans unchanged). Put them into rc2_tess's cloth (find how
+  r50/mk_rc.py / r51/mk_rc2.py took the previous coat), then since the coat mesh changes: dump poses again from an export
+  WITHOUT the garment cull (r54 step 3: cull_poses maps by rest position within 2 mm), export with cull_poses, game check.
+  Check at 1 m front: the left front, the grey strip at the inner front edge, the smears. (b) LOOK at r55/ge/z{1,2,3}_*
+  (buttons, lapel-edge orange) when r55/GE_DONE. (c) blind A/B on the LOD backs, rc2 (r51/ge/l*_back) vs the new export.
+  (d) Joe's sheet: python3 r55/sheet.py <ge dir> workspace/human_renders/gr_r55_tess.png "<title>" (r55/sheet.py adds a
+  PHOTO LIGHT row from r54/pl beside the references, GAME RIG captions on the game row, LOD2 pocket / calf close-ups).
+  (e) RC_tess.md (/mnt/data/hifipushie/assembly/RC_tess.md): add the r55 numbers; blockers 5 (LOD fans / calves) -> fixed
+  on rc2e pending the close-up look.
+- Process slip: a `kill -9` on a "hv.py" pattern while stopping my stale export may have killed another agent's hv.py job
+  (~17:41).
+- r55 CLOSE-UP LOOK (r55/zoom4_rc2e.png = z2 calf back | z2 pocket | z2 lapel | z3 pocket; vs r54/zoom4_rc2d.png): calf
+  blotch GONE. LOD2 pockets: the dark grey fans are gone, but FAINT PALE FAN STREAKS remain (the folds are still there
+  geometrically, only wound right now: the next step is to prevent the fold, e.g. re-decimate the folded region at a
+  higher share or reject folding collapses). Buttons: round, no longer grey cones, slightly lumpy. Orange sweater at the
+  lapel edges: UNCHANGED (two small patches; not addressed). LOD3 pockets read as slits (fine at 12.9 m).
+
+## r56 (2026-10-18, assembly agent, fresh session): s18 coat freeze, pocket fans at the root, buttons, rc2f
+Scratch /mnt/data/hifipushie/assembly/r56/ (q1-q9.py probes on the rc2e coat GLB; mk_rc2f.py; chain1.sh).
+- (1) LOOK rc2e close-ups (r55/ge/z{1,2,3}_{lapel,pocket}_front): LOD1 buttons round grey discs, ORANGE SWEATER specks at
+  both lapel edges (notch, chest pocket corner) already at LOD1; LOD2 left hip pocket still shows the radial fan lines,
+  dark jeans triangles through the coat at the crotch opening (LOD2 / LOD3); LOD3 buttons cones (0.15, far: accepted),
+  the sweater neckband gone at LOD3 (skin + a grey rectangle at the lapel V).
+- (2) rc2_tess now wears dress-tess s18's freeze (r56/mk_rc2f.py: each garment = dt_tess's definition, so the look keys
+  FROZEN_KEYS take from the spec come with it: coat detail.woven.crush 0.00056 (rc2 had 0.0016), + frozen = the s18
+  pickle). Backup of the old spec: r56/rc2_tess_spec_before.json. Pass 1 (r56/chain1.sh): export rc2f0_tess WITHOUT the
+  garment cull / LODs / face shapes, then the 16 clip frames dumped to r56/poses (r54 step 3).
+- POCKET FANS, root cause (q5-q7): not folds. The patch pockets are their OWN small pieces of the coat's outer shell (106
+  triangles each, 62 of their vertices on the border, wound inward, the inner shell facing out), and the welded decimation
+  holds borders: at LOD2 each became a ~60-triangle fan from one vertex (no interior left), the long triangles shading as
+  pale streaks; LOD_REWIND only turned the wrongly wound ones. No dihedral > 120 deg anywhere at LOD0 / LOD2. A fold guard
+  (cut out the LOD0 triangles around folds, decimate them apart at 2x / 4x) did not help (still "folds" at 4x: the lookup,
+  not geometry): left in code OFF (LOD_FOLD_GUARD = ()). FIX lods.LOD_KEEP_OUTER_PIECES: small pieces (< LOD_KEEP_PIECE)
+  of the outer shell are kept whole at LOD1-2 like buttons (LOD_KEEP_PIECE_FAR at LOD3), inner shell rebuilt with them.
+  rc2e coat (q8): pocket-box slivers (min angle < 8 deg) LOD1 135 -> 50, LOD2 70 -> 20; coat +172 / +428 / +110 triangles
+  at LOD1 / 2 / 3 (rc2e LOD2 23,227 of 25,750: room).
+- BUTTONS LUMPY: _lift_made lifted made vertices one by one over the decimated shell (q9: 57 button vertices lifted, up to
+  7.7 mm: a lump). FIX LOD_LIFT_RIGID: a small made piece takes its largest lift along its mean lift direction, all
+  vertices (p50 1.1, p95 4.6 mm off LOD0 at LOD2; it hovers a few mm at LOD2 distance instead of bulging).
+- Test test_lod_small_outer_pieces_whole_and_made_pieces_lifted_rigidly.
+STATE: fixes + test in code; pass 1 (dump) running. NEXT: pass 2 = rc2f export with cull_poses r56/poses, game check,
+1 m front coat look, lapel sweater patches.
+### Session 5 (assembly_garrett, 2026-10-18; Joe on v4: "that's a totally different hairstyle")
+- MERGES: the Tess assembly branch (worktree-agent-ad0815704f43e0e00 at 26f63b47: r51-r56 export fixes: per-vertex bake cage,
+  LOD_WELD / LOD_BORDER_OVER / LOD_SEAM_WELD, garment-under-garment cull + cull_poses, per-LOD push-under, made floor / pieces /
+  rigid lift, LOD_REWIND, LOD_KEEP_OUTER_PIECES; conflicts asset / lods / test_game_ready resolved to the Tess side, Garrett's
+  test_drawn_made_parts_without_thickness kept), dress-garrett (worktree-agent-a772e41978c43cfa6: 8a56a9a9 collar v3 sim, cloth_over),
+  hair-heads2 (9b8f12c4: Garrett cards c4 defaults), projskin2 up to 1e277ea2 (gp_h6c_s21 promoted: notes only past what was in;
+  the later stubble / tear-line code is unjudged and NOT merged). Tests: game_ready, hair_lods, cloth, face_shapes, seams,
+  cloth_made, cloth_over: no failures.
+- v5 model ag_garrett5 (mk_ag_garrett.py dst=ag_garrett5 skin_from=gp_h6c_s21 card_gain=2.1 frozen=frozen_s5/...): skin s21 by
+  explicit id; hair hg_G88a + hair.export.card_gain 2.1 (= c4L); garments pinned in assembly_garrett/frozen_s5/ from
+  dress_garrett/frozen_ae (jacket = the v3 collar, 15:29; shirt / trousers = v4's, same md5).
+- Export in two passes (Tess r56's recipe, s5/chain.sh): v5p (no garment cull / LODs / face shapes) -> 16 clip frames dumped
+  (s5/poses) -> v5 = hero, lods, cull_under_cloth + cull_poses -> NICO-TOP game check ag5 (s5/shots_ag5.json = shots_ag + hair
+  front / 3/4 / side / back + LOD0 at 3.1 m; LOD1-3 at their switch distances 3.1 / 6.2 / 12.9 m front / 3/4 / back).
+STATE: chain running (pass 1 in the heavy slot queue). Suit-colour probe on v4 running (s5/suit: flat-grey / mask renders).
+NEXT: collect, look first, then the review.
+- (4b) DARK SUIT, measured (s5/suit: v4's GLB under the game rig, local ge.sh; three renders of the same shots (torso 1.6 m front /
+  3/4, g3_body 3 m): the cloth basecolors replaced by flat 50% grey, by a red / green / blue mask, and the original). Effective
+  albedo = orig / flat x 0.5 per garment (median px, linear): shirt 0.469 (albedo 0.491), jacket 0.021-0.032 (albedo 0.042),
+  trousers 0.012-0.023 (albedo 0.028). Irradiance is EQUAL (flat grey: jacket 0.41 / shirt 0.36 front): the light reaches the
+  jacket as well as the shirt; no shadowing, no inverted normals. Rendered jacket / shirt ratio 0.066-0.076 vs albedo 0.086 and
+  the concept's 0.070: session 4's "0.024, 3.4x darker" was a measurement fault (regions), not the render. The suit reads black
+  because #3a3836 IS that dark (sRGB 58 = linear 0.042), and the game render matches the concept's ratio. Lighter in game =
+  a garment colour change (dress-garrett's, Joe's call); the export / renderer are right. Small residual: the jacket renders at
+  ~0.73 of its albedo (trousers ~0.5) where the shirt is 0.95 (twill normal map + roughness; not chased).
+- (4a) WHITE SLIVER / SPECK, export side (s5/specks/specks_glb.py = dress-garrett's specks.py on an EXPORTED GLB's meshes, rest pose,
+  2 mm z-buffer, a speck = an under layer front-most where the jacket encloses it). v4 LOD0: front: shirt at mm [-214 24 1302]
+  (49 px, right underarm / chest side) and [54 57 1494] (7 px, left collar / lapel top = the sliver); back: shirt at
+  [-210 -62 1457] (30 px, right shoulder blade = the back speck); front3q_R: body at [-215 20 1301] (82 px). The frozen draw
+  has none of these (dress-garrett: back 0): the decimated LOD0 jacket lets the shirt / body through. Re-run on v5 (Tess's
+  push-under per LOD + garment-under-garment cull are in now).
+- HAIR TIER TRAP (general, export): asset.export's LOD0 hair is cut at hair.export.tier, default None = EXPORT_CARDS' 12000-triangle
+  budget, the OLD per-lock cut (pass 1: 96 cards + cap = 3586 tris, the v3 / v4 helmet); only LOD1-3 get lods.HAIR_TIERS
+  (main / npc / far). c4L's hero tier needs hair.export.tier "hero" in the spec: set on ag_garrett5 (s5/settier.py), pass 2
+  restarted: LOD0 hair now 14624 tris, 1502 cards (c4L hero 14570). So v3 / v4's "pompadour" at LOD0 was partly this: the export
+  never used the hair agent's tiers at LOD0. NEXT (code): default LOD0 to the role's tier ("hero" for hero) when unset.
+STATE: v5 pass 2 exporting (hero hair). NEXT: game check ag5, look, specks on v5, A/B.
+- Pass 1 done: exp/rc2f0_tess (no garment cull, no LODs / shapes; 646 s, LOD0 101,348 uncull'd); 16 frames in r56/poses
+  (walk 0-0.9, run 0-0.5, idle 0-3). Carry of the s18 jeans onto rc2_tess's body: max 3.58 mm. Pass 2 (r56/chain2.sh:
+  rc2f export with cull_poses r56/poses + all r56 lods fixes, tris, close-ups z0-z3 incl. coat 1 m front + coat back,
+  LOD switch shots, x_* game check) started on its own.
+- (Process: `setsid ... & echo $!` records setsid's parent, not the job: real PIDs in r56/PIDS.)
+STATE: rc2f exporting. NEXT: tris, look z0-z3 (1 m coat, lapel orange), blind A/B (r56/tiles.py), sheet (r56/sheet.py).
+- rc2f EXPORTED (1474 s). Triangles: LOD0 91,971 / 103,000, LOD1 47,349 / 51,500, LOD2 28,116 / 25,750 OVER, LOD3 10,620 /
+  12,360. Cause: LOD_KEEP_OUTER_PIECES also kept the SWEATER's outer-shell fragments left by the garment cull (1,557 of its
+  2,268 outer triangles in pieces < 200): 3,836 at LOD1 and LOD2. FIX LOD_PATCH_GAP 6 mm: a small outer piece is kept only if
+  its vertices' median distance to the REST of the outer shell's surface is under it (a patch pocket lies on the panel).
+  q12 on rc2f LOD0: coat 384 kept (pockets), sweater 0; sweater 4,536 -> 1,542 / 612 / 334 at 0.34 / 0.135 / 0.074.
+  (Nearest-VERTEX distance kept no pocket: the panel's vertices are ~25 mm apart; it has to be the surface.)
+- LOOK rc2f (r56/ge/z0-z3, LOD0 coat at 1 m front, coat back 1.6 m): LOD0 coat CLEAN at 1 m: no blotchy smears (crush 0.56),
+  pockets crisp, left / right fronts alike, no grey strip at the inner front edge (only a short thin line at her left front
+  edge). Back clean. LOD2: hip pockets now clean outlines (no fan); buttons round; her left CHEST pocket at LOD2 reads as a
+  crumpled patch (kept whole over a coarser panel; LOD_PATCH_GAP keeps it too). ORANGE at the lapel side: already at LOD0
+  (her left chest beside the chest pocket) and LOD1 (her right chest): the sweater through the coat in the rest pose, NOT
+  the LODs. r56/q10-q11 (under_depth, rc2e): ~20-50 chest sweater vertices with the coat inside them at every LOD, 2
+  visible from the front at LOD1 (q11). Not fixed.
+STATE: LOD_PATCH_GAP committed (LOD tests 11 pass); rc2g (= rc2f + it) export + z/l/x renders + sheet queued unattended:
+r56/chain3.sh (waits for chain2's GE_DONE; PIDs in r56/PIDS).
+
+## Handover r56 (assembly agent, tool-call budget)
+- RUNNING (unattended, my PIDs in /mnt/data/hifipushie/assembly/r56/PIDS: chain2 bash 3001151 (rc2f LOD / x renders ->
+  r56/GE_DONE), chain3 bash 3876188 (after GE_DONE: rc2g export -> r56/geg/{z0-3,l1-3,l0,x}_*, r56/tris_g.txt, then the sheet
+  workspace/human_renders/gr_r56_tess.png -> r56/SHEET_DONE). ~25 min export + ~30 min renders.
+- NEXT: (a) r56/tris_g.txt: LOD2 must be under 25,750 (expected ~24.9k); if over, LOD_KEEP_OUTER_PIECES=False costs only the
+  pocket fix. (b) LOOK geg/z2_pocket + z2_lapel (chest pocket crumple), then (c) blind A/B: python3 r56/tiles.py (edit its
+  r56/ge paths to r56/geg; pairs rc2 r51 LOD backs / fronts + rc2e r55 close-ups vs new; key blind/abkey.json) to a fresh
+  blind subagent (review-ab CLI only after 2026-10-19 13:00 MT). (d) Check the sheet (r56/sheet.py = r55's + COAT 1 m LOD0
+  tile), send to Joe. (e) LAPEL ORANGE is a LOD0 sweater-through-coat poke beside her left chest pocket (rest pose): look at
+  the garment cull / push-under at LOD0 (lods.push_under_layers runs per LOD; LOD0 has no push) or ask dress-tess.
+- Did NOT do this session: the A/B and the sheet (budget); LOD_SMALL_FAR_RATIO untouched (LOD2 props not judged coarse).
+- Process: `nohup setsid bash x.sh & echo $!` records setsid's parent, not the job: find the real PID with pgrep -f <script>.
+
+## r57 (2026-10-18, assembly agent, fresh session): the orange sweater at the lapels, rc2g check, A/B, sheet
+Scratch /mnt/data/hifipushie/assembly/r57/ (q13-q15.py probes on the rc2f GLBs; shellfind.py recovers a GLB part's
+outer-shell count: outer triangles, then the inner ones in the same order).
+- ORANGE AT THE LAPELS, two causes (q11 / q13-q14 on rc2f):
+  (a) LOD0 has no push-under at all: rc2f LOD0 sweater vertex [0.201, 1.249, 0.078] (her left chest, beside the chest
+      pocket) 0.4 / 1.0 mm outside the coat's two shells (the 1 m speck); 3 sweater vertices poking at LOD0 in all, and
+      ~5 mm on her upper back (z -0.07, y 1.24: hidden from the front, seen from behind).
+  (b) LOD1 right chest [-0.154, 1.27, 0.086]: three long sweater faces 3.5 mm OUTSIDE the coat while all their vertices
+      are 2.0 mm under it (push_under_layers had done its job per vertex; the coat bends between them).
+  FIX (general): lods.push_under_layers also tests each outward face's centroid along the face normal
+  (LOD_UNDER_FACES; lods.cover_depth = under_depth's ray test for any points); asset.export runs it at LOD0 too
+  (LOD0_PUSH_UNDER, gap LOD0_UNDER_GAP 1.5 mm = cloth.PUSH_UNDER_GAP; garment layers only: asset._garment_stack).
+  q15 on rc2f: LOD0 sweater poking 3 -> 0 (24 vertices moved, max 6.2 mm, the upper back); LOD1 chest faces uncovered
+  from the front 5 -> 0 (4 poking faces, max move 5.1 mm); with faces off LOD1 stays 5.
+  (Without the shell layout every inner-shell vertex reads as poking: 897, moves of 60 mm. The export's parts carry
+  p["shell"]; offline probes on GLBs need shellfind.)
+- Test test_lod_under_faces_pushed_where_the_cover_dips_between_vertices; LOD / under tests 12 pass (pytest: the file's
+  own __main__ sits mid-file and runs only the tests above it).
+STATE: fix + test committed; rc2g (r56 chain3, WITHOUT this fix) exporting. NEXT: rc2g tris + looks, then rc2h with the fix.
+- rc2g (r56 chain3, without the r57 push) triangles: LOD0 89,995 / 103,000, LOD1 43,273 / 51,500, LOD2 24,096 / 25,750,
+  LOD3 10,146 / 12,360: ALL UNDER (LOD_PATCH_GAP worked: sweater 280 at LOD2).
+- LOOK rc2g (r56/geg; montage r57/rc2g_lods.png): LOD0 coat at 1 m CLEAN (pockets crisp, no smears, buttons round).
+  LOD2 close-ups: her LEFT hip pocket a twisted vertical flap standing off the panel, her left chest pocket a crumpled
+  flap (both kept whole over a coarser panel that no longer matches them); a LARGE orange patch at her right chest and a
+  speck beside her left hip pocket (= the r57 face-poke cause; still visible as a speck at the 6.2 m switch distance,
+  front). LOD backs at switch distances clean; LOD2 back: a pale fleck on the jeans' left calf.
+STATE: rc2g under budget, LOD2 pockets / orange open. NEXT: rc2h (r57/chain4.sh: push-under at LOD0 + faces) looks.
+- BLIND A/B (fresh subagent, review-ab CLI not available before 2026-10-19 13:00; r57/tiles.py r56/geg r57/blind_g, key
+  r57/blind_g/abkey.json): rc2g vs rc2 (r51) LODs at switch distances front / back, vs rc2e (r55) LOD1-2 lapel / pocket
+  close-ups. rc2g better on ALL 10 tiles; MAJORs rc2g 1 vs old 20. rc2g's one MAJOR: LOD2 lapel close-up, a large orange
+  patch at her right chest / shoulder (the r57 face-poke). Old faults named: jeans through the coat back, orange
+  elbows, fanned pockets / lapels, lumpy buttons, a jeans flap at the hip.
+- SHEET workspace/human_renders/gr_r56_tess.png checked: reference first per pair; fixed misleading / clipped captions
+  (row 2 photo-light faces are rc2c renders from r54: now captioned "rc2c ..." and said in the title; "GAME RIG neutral"
+  overflowed into the next column; the rc2c smile tile is a mouth crop: "rc2c mouth"). r56/sheet_r56_orig.py = before.
+STATE: rc2g A/B won 10 / 10; sheet fixed. NEXT: rc2h looks (r57/geh) vs rc2g.
+- rc2h (exp/rc2h_tess = rc2g + the r57 push: LOD0 sweater 4 vertices / 1 face and jeans 2 / 1 poking -> 0; LOD1 / 2 / 3
+  sweater 10 / 6 / 2 -> 0): triangles identical to rc2g (positions only). LOOK r57/lapel_g_vs_h.png (rc2g top, rc2h
+  bottom, LOD0 / 1 / 2 lapel close-ups): the orange specks are UNCHANGED (LOD0 her left chest by the armhole, LOD1 her
+  right chest, LOD2 a large hexagonal patch at her right chest by the armhole + a speck under her left chest pocket).
+  So the r57 push fixed real pokes (q15) but NOT these specks. Ruled out: holes in the coat along +z (q16: a ray grid
+  behind both chest sides hits the coat everywhere, LOD0 and LOD2), orange in the coat's basecolor atlas (0 orange texels).
+  Suspects, unchecked: the sweater SLEEVE / armhole poking out at the coat's armscye seen at the close-up camera's angle
+  (q13 only tested +z rays, centroids, |x| 0.11-0.3), or the sweater's shading leaking through a coat face the renderer
+  culls (back-facing coat triangles: the coat is two-sided by shells, materials single-sided?).
+STATE: rc2h exported + rendered (r57/geh, sheet workspace/human_renders/gr_r57_tess.png); specks open.
+
+## Handover r57 (assembly agent, tool-call budget)
+- Nothing running (r57/chain4 finished; r56 chains finished).
+- Best RC: rc2h (exp/rc2h_tess; r57 push-under at LOD0 + per face, commits 378e0965 ...). Triangles LOD0 89,995 / 103,000,
+  LOD1 43,273 / 51,500, LOD2 24,096 / 25,750, LOD3 10,146 / 12,360: all under. Joe's sheet for rc2g:
+  workspace/human_renders/gr_r56_tess.png (captions fixed); rc2h: gr_r57_tess.png (same layout; checked; title shortened: the old one ran off the sheet and claimed "sweater kept under the coat", which the specks contradict).
+- Blind A/B rc2g vs rc2 / rc2e: rc2g 10 / 10, MAJORs 1 vs 20 (r57/blind_g). Not rerun for rc2h (same look).
+- NEXT: (a) THE ORANGE SPECKS: render an object-ID (flat colour per part) frame from r56/shots_zoom.json's lapel camera
+  at LOD0 and LOD2 to name the part and spot that shows orange (sweater body vs sleeve), then cast rays FROM THAT CAMERA
+  (not +z) through the speck pixel to see which layer is first. (b) LOD2 pockets: her left hip pocket stands off as a
+  twisted flap and her left chest pocket crumples at LOD2 (kept whole over a coarser panel): project kept pieces onto the
+  decimated panel + a lift, or drop LOD_KEEP_OUTER_PIECES at LOD2 only and accept fans (A/B them). (c) LOD2 back: pale
+  fleck on the jeans' left calf.
+
+## r58 (2026-10-18, assembly agent, fresh session): the orange specks named, LOD2 pockets, calf fleck, rc2i
+Scratch /mnt/data/hifipushie/assembly/r58/.
+- SPECKS NAMED: blender_game GE_FLATID=1 (debug: a flat emission colour per object, back faces at a third, legend printed
+  as @@flatid) on rc2h LOD0 / LOD2 from r56's lapel / pocket / calf cameras (r58/fid/): the LOD2 hexagonal patch at her
+  right armhole is the SWEATER's front faces (same colour as the sweater in the opening), not a coat hole or coat back
+  faces. The shot poses nothing (r58/lapel2_dump.npz: every mesh 0.0 mm from rest), so it is the GLB's own geometry.
+  r58/pick.py (Blender ray_cast through the pixel from the shot's camera): sweater f74 at (-0.182, -0.079, 1.272)
+  (Blender axes) 5 mm IN FRONT of the coat (f464 / its inner twin), the body 6 mm behind. The vertex test, the r57
+  centroid test and my +z / camera-ray probes of vertices and centroids (r58/q1.py, q1v.py) all said covered: the coat
+  bends between the sweater's sample points (LOD2 sweater 140 outer faces, a few cm each). r58/q2.py: a barycentric grid
+  (4 steps per edge) finds 16 poking faces at LOD2 where the centroids find 0 (LOD1 6 vs 0, LOD3 2 vs 0, LOD0 19 vs 2).
+- FIX (general, lods.push_under_layers): each outward face is tested at lods.face_grid(LOD_UNDER_FACE_GRID = 4): the
+  centroid + 12 grid points without the corners; a point more than LOD_UNDER_FACE_DEEP (8 mm) outside its cover is a face
+  running out from under the cover's edge (sweater cuffs past the coat sleeve: -20 mm), left alone. r58/q3.py on rc2h
+  LOD2: the pick ray's first layer sweater -> COAT at both speck pixels; 5 poking faces, 26 vertices moved, max 9.5 mm.
+  Test test_lod_under_face_grid_finds_pokes_away_from_vertices_and_centroids (a dent at an edge middle: centroids miss
+  it, the grid fixes it; the DEEP cap leaves a run-out alone); LOD / under tests 13 pass.
+STATE: specks fixed in code + test, committed. NEXT: LOD2 pockets, calf fleck, then export rc2i.
+- LOD2 POCKETS (general, lods._lod_shell): LOD_SEAT_PATCHES re-seats outer pieces kept whole (patch pockets) on the
+  DECIMATED panel: each piece vertex at its closest point on the decimated rest of the outer shell + its LOD0 signed offset
+  along that face's normal (_patch_offsets / _seat_patches, within LOD_SEAT_REACH 2 cm; report key patches_seated).
+  Test test_lod_patch_pockets_seated_on_the_decimated_panel (a pocket 2.6 mm over a bumpy two-sided panel ends 2.6 +- 0.3 mm
+  over the 10% panel; worse without). Offline probe from the GLB is not possible (the GLB's outer splits at uv seams into
+  small pieces): judged in the rc2i export.
+- CALF FLECK (LOD2 back) NAMED, not fixed: flat-ID = SOCKS (r58/fid/z2_calf_back.png, with dark back faces); r58/pickcalf.py:
+  sock faces at her left ankle back (Blender (0.153, -0.02, 0.17)) 4-8 mm outside the jeans hem. The decimated sock top
+  under the jeans is crumpled: its vertex normals point every way within 1 cm (r58/q6.py), so push-under (along each
+  vertex's own normal) pushes the wrong way / finds the far side (offline: still socks first at all 3 pixels).
+STATE: seat + test committed; rc2i (r58 grid push + seat) exporting via r58/chain5.sh. NEXT: looks, A/B vs rc2h, sheet.
+- rc2i (exp/rc2i_tess = rc2h + r58 face-grid push-under + seated patch pockets; r58/chain5.sh). Triangles LOD0 89,995 /
+  103,000, LOD1 43,273 / 51,500, LOD2 24,134 / 25,750, LOD3 10,150 / 12,360: ALL UNDER.
+- LOOK (mine, r58/h_vs_i.png, rc2h | rc2i): the LOD0 / LOD1 chest specks are GONE, and so is the LOD2 hexagonal patch at
+  her right armhole; LOD2 left chest pocket reads flatter. Still there: a small orange speck under her left chest pocket at
+  LOD2, her left hip pocket at LOD2 (flatter than rc2h's twisted flap but still a crumpled flap), the sock fleck on the
+  left calf (expected, not fixed), and the grey neck gap at LOD3 (sweater collar cut off: both builds).
+- BLIND A/B (fresh subagent, 9 tiles rc2h vs rc2i, r58/blind, key abkey.json): rc2i better on 6 tiles, rc2h on 1 (LOD2
+  hips: the reviewer says rc2i's left hip pocket is "crumpled with a folded flap" and names a skin-coloured patch in the jeans
+  fly), same on 2 (far LODs). MAJORs rc2i 4 vs rc2h 8. Faults both builds share: the LOD3 grey neckline gap, crumpled
+  LOD1/LOD2 pockets, the calf shard.
+- SHEET workspace/human_renders/gr_r58_tess.png: row 2 (photo-light faces) is now from the CURRENT build (rc2i,
+  r54/shots_pl.json -> r58/pl/rc2i_pl_pl_*), so the whole sheet is one build. Captions shortened ("photo neutral" etc.:
+  the long ones ran into the next column). Checked: reference first in each pair, nothing clipped.
+STATE: rc2i is the best RC, 6/1/2 vs rc2h. NEXT: see the Handover.
+
+## Handover r58 (assembly agent, tool-call budget)
+- Nothing running (r58/chain5 finished).
+- Best RC: rc2i (exp/rc2i_tess). Commits 5e8f95be (face-grid push-under, GE_FLATID), 7cd962d2 (seated pockets), + notes.
+- Debug tools: GE_FLATID=1 bash ge.sh ... (a flat colour per part, legend as @@flatid); r58/pick.py / pickcalf.py (Blender
+  ray_cast through a pixel from a shot's camera: every surface along the ray). Name the part before you theorise.
+- NEXT: (a) LOD2 left hip pocket still crumples: check the report's patches_seated for the coat at LOD2 (is that pocket in
+  small_o at all? LOD_PATCH_GAP 6 mm may leave it out, so it is decimated with the panel), flat-ID it, and pick-ray it.
+  (b) Calf / ankle sock shard: the decimated sock top under the jeans hem is crumpled (normals every way), so push along
+  the LOD0 normal of the nearest LOD0 vertex (under_at_lod0 masks have positions; add normals) or cull the sock's covered
+  top. (c) LOD3 grey neckline gap (the sweater collar cut off); (d) a skin-coloured patch in the jeans fly at LOD2 (named
+  by the reviewer; unchecked); (e) a small orange speck under her left chest pocket at LOD2.
+
+## r59 (2026-10-18, assembly agent, fresh session): the white crown, LOD2 pocket / sock / fly, LOD3 neckline, rc2j
+Scratch /mnt/data/hifipushie/assembly/r59/.
+- WHITE CROWN NAMED (r59/cr/crown_grid*.png, r59/pickc.py = a ray pick through any game shot's pixel, with the material):
+  GE_FLATID: the patch is the HAIR part (cards and some cap faces, material rc2_tess_hair_material_hair). Lights with
+  specular 0 (shot "lighting" = the game rig with "specular": 0): GONE; specular only: the patch alone. Without the hair
+  normal map: still there. Hair roughness 0.75 / 0.65: GONE. So it is the export's hair material: (1) the card ORM's
+  roughness is max(look 0.42, 0.5) x (1.25 - 0.4 aux.b) = 0.425 on the outer, lit hair (below its own 0.5 floor), and
+  (2) the combined character GLB (asset.py) gives the hair the default KHR_materials_specular (white, x2 = F0 0.04),
+  where hair.py's own hair GLB and blender_hair's card material use half, in the sheen's colour. An isotropic lobe at
+  0.42 on the crown's flat cards mirrors the key as one white plate. Garrett v5's GLB: the same ([2,2,2], roughness
+  0.42 min): a shared cause. Specular level alone (0.25 / 0.15 tinted) did NOT remove it; roughness did.
+- FIX (general, both characters): hair.CARD_ROUGH_MIN 0.6 (export ORM floor), asset.py's hair material
+  KHR_materials_specular factor hair.CARD_SPECULAR 0.5 x colour hair.card_specular_tint(sheen) (no texture: F0 0.02 x
+  tint), shading notes params specular_level 0.25 / specular_tint (+ a formula line), blender_game reads them (older notes:
+  0.3 white as before). Probe on a copy of rc2i with the floor-0.6 ORM + tinted 0.25 (r59/cr/f6_*): the plate is gone, a
+  faint warm sheen remains. Debug env added to blender_game: GE_HAIR_NONORMAL, GE_HAIR_ROUGH, GE_HAIR_SPEC=level[,r,g,b].
+  Note: 0.5 x (1.25 - 0.4 b) <= 0.625, so the floor flattens almost all the aux variation (mean 0.600).
+STATE: crown fixed in code (needs an export). NEXT: LOD2 pocket / sock / fly, LOD3 neckline, then export rc2j.
+- v5 EXPORTED (EXIT 0): exp/ag_garrett_v5/ag_garrett5.glb + _LOD1..3 (pass 2, 1858 s; OSL bake). Triangles LOD0 84,405 / 103,000
+  (head 22,873, body 7,250, hair cards 14,624 (c4L hero), clothing 27,032 of 25,000 OVER, eyes / mouth / lashes 7,994 of 7,996,
+  accessories 4,632); LOD1 39,577, LOD2 22,628, LOD3 8,540 (now under every share). Quality lines: teeth_lower 68 folded, shoes 21
+  folded; NEW: face shapes "closed lips' seam" eyeBlinkLeft 11.67 mm^2 (limit 0.05: unexplained, check). Game check ag5 (NICO-TOP)
+  offload/ag5/results/ag5/j0/out/. LOD1-3 renders came out MAGENTA: the Tess-branch export writes LOD GLBs with maps BY FILE NAME
+  beside them, rge.sh copied only the GLB (fixed in rge.sh: copies each GLB's image uris; LOD batch ag5l prepared in offload/ag5l/
+  but did NOT start: "no batch named ag5l": relaunch it, not collected).
+- LOOK FIRST (mine, s5/look_hair.png): the hair is now SHORT and the right family (no pompadour, close sides, nape tapered) but
+  NOT yet his cut: too dark (dark grey vs his light silver), top too short / tight with no sweep (photo: longer top swept to his
+  right, more volume, hair lower on the forehead), a black / glossy patch at the crown (coordinator: the hair material, below),
+  a lighter thin streak at the crown front. Expressions as v4 (smile s6 fine at front, jaw j3 red interior). Suit charcoal-black
+  as measured (4b). Turnaround / walk / run: no new artefacts seen at 4.6 m.
+- Specks on v5 (s5/specks/specks_glb.py): SAME as v4 (left collar / lapel top shirt [53 57 1494] mm, right shoulder-blade shirt
+  [-210 -63 1456], right underarm body [-215 23 1301], trousers at the right hip back): at LOD0 rest, so neither push-under nor
+  the garment cull reaches them: export-side, owner = this assembly (LOD0 cloth decimation of the jacket: 5,254 tris).
+- Coordinator: the white glossy crown patch = the export's hair material (roughness map 0.42 under its 0.5 floor, plain white
+  specular at double strength). Fix a7618d2d (Tess r59) CHERRY-PICKED here (hair roughness >= 0.6, specular halved + sheen-tinted;
+  game preview reads it). v5 does NOT have it: the next export will.
+- BLIND REVIEW (fresh subagent, 10 trios s5/ab/t*.png, key s5/ab_key.json, v4 vs v5): coordinator's summary: the short cut (v5)
+  won 8/10 trios; top faults: hair surface / crown, the face, the shirt collar slivers, jacket specks, nape drips.
+- JOE SHEET: sheets/garrett_v5_joe.png (HAIR front / 3/4 + side / back, FACE, TURN, MOTION, GAME 1 m / 3 m, LODs; reference first
+  in each row, every column captioned). Its LOD1-3 cells are MAGENTA (missing maps in the job, not the asset): rebuild that row
+  from offload/ag5l when it has run.
+### Handover (assembly_garrett session 5)
+- DONE: merges (Tess assembly r51-r56, dress-garrett 8a56a9a9, hair-heads2 c4, projskin2 to s21) + tests; v5 = c4L hero cards (tier
+  hero: the LOD0 tier trap found), skin gp_h6c_s21 by id, frozen_s5 (collar v3), two-pass cull_poses; dark suit explained (render
+  matches albedo / concept: a colour decision); specks located (export, LOD0); a7618d2d cherry-picked; Joe sheet; blind A/B.
+- NOT DONE / NEXT: (1) relaunch the LOD batch: cd offload/ag5l && BATCH=ag5l remote.sh ... jobs/j1 j2 j3 (as rge.sh), rebuild the
+  sheet's LOD row; (2) v6 export with a7618d2d (crown material) + hair default tier per role in code (asset: LOD0 tier = "hero"
+  for role hero when hair.export.tier is unset; test); (3) LOD0 jacket specks: raise the jacket's share at LOD0 or push the shirt
+  under the decimated jacket at LOD0 too (lods.push_under_layers runs per LOD: check it runs for LOD0); (4) clothing 27,032 of
+  25,000 OVER; (5) eyeBlinkLeft lip-seam warning; (6) owners: hair-cards (silver sides, longer swept top, hairline, nape drips),
+  head / skin (face), dress-garrett (shirt collar slivers, belt, suit colour if Joe wants lighter).
+- Nothing of mine in flight (tests3 = game_ready + hair_lods after the cherry-pick, writes s5/logs/tests3.log; not collected).
+- UPDATE: LOD batch ag5l DID finish (3 succeeded); renders offload/ag5l/results/ag5l/j*/out/, sheet sheets/garrett_v5_lods.png (not looked at).
+STATE: session 5 done. NEXT: look at garrett_v5_lods.png, then v6 with the crown fix.
+- LOD2 FLY NAMED (r59/fly.png: LOD0-3 crops; r59/pickc.py on the LOD2 pocket shot): the pick ray at the skin sliver hits
+  the BODY (crotch) and then the coat's inside, NO jeans: a slit opened in the LOD2 jeans at the fly. r59/bnd.py (boundary
+  edges, positions merged 0.2 mm): jeans LOD0 0 boundary edges in the crotch box, LOD2 12. Suspect: the LOD_BORDER_OVER
+  redecimation (border collapses) of the jeans' outer panel, whose border is shared with a made piece (the fly) decimated
+  apart. FIX (general, lods._welded_pieces): LOD_BORDER_SHARED skips that redecimation for a group whose border touches
+  another group of the part within LOD_SEAM_WELD. Same suspect for the LOD3 NECKLINE (r59/neck.png: at LOD3 the
+  sweater's top, collar band and upper chest, is gone down to a diagonal line, the culled body's edge shows): judged in
+  the export. Cost: groups that relied on border collapses keep more triangles: check budgets.
+- SOCK SHARD (general, lods.push_under_layers): LOD_UNDER_LOD0_NORMAL: after the rounds, a masked (worn, non-garment)
+  part's vertices that still poke or have no cover along their own normal move along their nearest LOD0 vertex's normal
+  (under_at_lod0(share=True) now also returns the LOD0 normals; asset passes them in the masks). LOD tests 12 pass.
+STATE: fly / neckline / sock fixes in code. NEXT: export rc2j (r59/chain.sh), look, A/B vs rc2i, sheet.
+- rc2j (exp/rc2j_tess = rc2i + r59 hair material + LOD_BORDER_SHARED on + LOD0-normal push; r59/chain.sh). Triangles LOD0
+  89,995 / 103,000, LOD1 43,273 / 51,500, LOD2 24,134 / 25,750 (every part's count IDENTICAL to rc2i), LOD3 11,440 / 12,360
+  (rc2i 10,150: jeans 346 -> 1,012, coat 976 -> 1,338): ALL UNDER. GLB hair: specularFactor 0.5, colour (1, 0.70, 0.49),
+  ORM roughness min 0.60. Push-under LOD2 remaining: socks 9 -> 8, body 7 -> 4 (the LOD0-normal pass helps little).
+- LOOK (mine, r59/crown_i_vs_j.png, r59/i_vs_j.png): the crown's white plate is GONE (a faint warm sheen left). Unchanged:
+  the LOD2 fly slit (skin + grey), the LOD2 left hip pocket's crumpled flap, the LOD2 shin / calf sock shard; the LOD3
+  neckline is NOT fixed (worse: see A/B).
+- BLIND A/B (fresh subagent, 6 tiles, r59/blind, key r59/abkey.json): rc2j better on crown front, crown 3/4, face 1 m,
+  calf (slight); same on LOD2 hips; rc2i better on LOD3 neck (rc2j: "a large grey wedge-shaped hole across the throat",
+  lapels more shattered: the LOD_BORDER_SHARED side effect). The reviewer still calls a duller crown patch MAJOR on rc2j
+  and stepped card edges on the crown silhouette (cards build).
+- LOD_BORDER_SHARED turned OFF (committed): the fly hypothesis was wrong (LOD2 untouched by it, slit unchanged) and it
+  made LOD3 worse + 1.3k triangles. The next export = rc2j's hair + LOD0-normal push without it (LOD3 back to ~10.15k).
+- SHEET workspace/human_renders/gr_r59_tess.png (rc2j, one build; unchecked by me).
+STATE: rc2j beats rc2i 4/1/1 on the hair; LOD3 regression is off in code. NEXT: Handover.
+
+## Handover r59 (assembly agent, tool-call budget)
+- Nothing running (r59/chain.sh finished, SHEET_DONE). Commits: a7618d2d (hair material), 9053d387 (LOD shared borders +
+  LOD0-normal push), + this (LOD_BORDER_SHARED off, notes).
+- Best RC: rc2j for the hair (the crown plate fixed), but its LOD3 carries the LOD_BORDER_SHARED regression: RE-EXPORT
+  (rc2k = current code) before giving it to Joe; expect LOD2 = rc2j, LOD3 = rc2i's geometry with the r59 push.
+- Debug tools: r59/pickc.py <glb> <focus bone> <lift> <dist> <dir> <W> px py ... (ray pick through any ge shot pixel,
+  with the material); r59/bnd.py (boundary edges of a part in a box); blender_game GE_HAIR_NONORMAL / GE_HAIR_ROUGH /
+  GE_HAIR_SPEC; shot "lighting" with per-light "specular": 0 / "diffuse": 0 splits diffuse from specular.
+- NEXT: (a) LOD2 FLY SLIT: no jeans along the pick ray at the crotch at LOD2 (12 boundary edges vs 0 at LOD0), NOT from
+  the border-collapse redecimation. Probe the jeans' _lod_shell offline (dump the LOD0 jeans part dict from the export, run
+  lods.lod_part at 0.25, boundary edges in the crotch box after each step: decimate / seat / _lift_made / push-under).
+  (b) Sock shard (LOD2 shin/calf): still there; the LOD0-normal pass moved few. Cull the sock's covered top at LOD2+ instead
+  (faces whose LOD0 points were all under the jeans). (c) LOD3 neckline: the sweater's top is gone at LOD3 (138 triangles):
+  check whether its collar band is a made piece dropped by LOD_KEEP_PIECE_FAR / the made floor. (d) LOD2 left hip pocket
+  flap: unchanged. (e) Crown: the card silhouette steps and a dull sheen remain: cards thread. Garrett v5 shares the
+  hair-material cause; his next export picks the fix up.
+
+## r60 (2026-10-18, assembly agent, fresh session): rc2k re-export, the LOD2 fly slit probed offline, sock / neckline / pocket
+Scratch /mnt/data/hifipushie/assembly/r60/. Hair: the cards thread's round 36 did NOT make f1 the default ("no round-36
+build beats f1"): nothing to take.
+- rc2k export started (r60/k.sh = rc2j's chain with the current code: LOD_BORDER_SHARED off) with a new debug dump:
+  asset.export HP_LOD_DUMP=<pkl> pickles the LOD inputs (parts minus cards / prefabs, rigged, layer_stack, under_masks,
+  ratios, above / below) so a part's LOD steps can be probed offline (r60/probe.py <pkl> <part> <k>: new boundary edges
+  > 1 cm from LOD0's, clustered, after lod_part and after push-under).
+STATE: rc2k exporting. NEXT: probe the jeans at LOD2 on the dump.
+
+## Garrett, session 6 (2026-10-18, assembly_garrett, fresh; scratch /mnt/data/hifipushie/assembly_garrett/s6/)
+- (1) LOD0 HAIR TIER (code, asset.hair_tier_default): a card / strand groom with no hair.export.tier now takes the role's
+  tier at LOD0 (ROLE_HAIR_TIER: hero -> hero, main_npc -> main, secondary_npc -> npc, crowd -> far; logged); no role keeps
+  EXPORT_CARDS' old per-lock cut with a WARNING (never silent). An explicit tier wins: Tess's ga_tess / rc2_tess specs set
+  tier "hero", so her export is unchanged. Test test_lod0_hair_tier_defaults_to_the_role.
+- (2) MERGED the Tess assembly branch to b582d3c9 (r56-r59: face-grid push-under at LOD0 (13 points per face), seated patch
+  pockets, cull_exposed_keep / cull_poses, LOD_BORDER_SHARED off, a7618d2d crown material). Notes conflict = union.
+  Specks re-checked on the v6 GLB (s6/logs/specks_v5.log vs specks_v6.log, s5/specks/specks_glb.py).
+- (3) CLOTHING BUDGET (code, asset.decimate_cloth): one shared ratio cloth_triangles / n overshot (made pieces, held borders
+  keep floors: v5 shirt 9,422 for a 7,885 share; 27,032 of 25,000). Now up to CLOTH_BUDGET_ROUNDS 4 rounds scale the ratio by
+  the overshoot until the sum fits (WARNING if not). Test test_cloth_decimated_under_its_budget_despite_floors. Cost: the
+  jacket loses ~8% of its LOD0 triangles too (watch the specks).
+- (4) eyeBlinkLeft LIP SEAM WARNING, CAUSE: faceshapes measured the blink on the PARTED rest (GNM parted neutral, r44) while
+  the "closed" check uses mouthClose; eyeBlinkLeft alone = the parted lips' gap (Garrett 11.67, Tess rc2 3.23 mm^2 too, with
+  mouthClose 0.000). Not a blink fault. Fix: the blink is measured with mouthClose added ("eyeBlinkLeft+mouthClose"), the
+  parted rest logged ungated beside it. Confirmation = v6 log line (expect ~0 for blink+close, ~11 for the rest).
+- (5) HAIR: c6M (hair.md BEST GARRETT CARDS) = c4L cards + hair.BACK_FACES 1: hair-heads2 merged at f82d9685 (c6 BEST, cut
+  defaults back to c4L), NOT c8's TILE_REP_DRAWN default (unjudged). The character GLB's hair material is single-sided when
+  the cards carry their own back faces (asset; hair-heads2 only did it for export_hair). Model ag_garrett6 = ag_garrett5's
+  spec (tier hero, card_gain 2.1, skin s21, frozen_s5).
+STATE: v6 chain running (s6/chain.sh: export -> specks v5 / v6 -> rge ag6 on NICO-TOP; PIDs s6/PIDS). NEXT: collect, LOOK, A/B, sheet.
+- v6 EXPORTED (exp/ag_garrett_v6, 2,100 s). Triangles LOD0 93,729 / 103,000 (clothing 24,832 / 25,000 UNDER now; hair_cards
+  26,148 / 25,000 OVER: c6M's back faces double the card triangles: hair-cards' call), LOD1 39,713, LOD2 19,366, LOD3 8,550.
+  LOD0 hair 26,148 = hero tier. SEAM: "mouthClose 0.000, eyeBlinkLeft+mouthClose 0.000 (parted rest, not gated: 11.670)":
+  the cause CONFIRMED (the parted rest, not the blink); no warning now.
+- SPECKS (s6/logs/specks_v5/v6.log): NOT fixed. The left collar / lapel-top shirt sliver [54 57 1494] 34 -> 33 px; front
+  speck px 6,512 -> 8,806, back 663 -> 1,842 (the jacket 5,254 -> 5,022 tris). CAUSE FOUND: Garrett's frozen garments carry
+  no "over" key (spec cloth.* = color / frozen only), so asset._garment_stack is EMPTY: no garment push-under ran at
+  LOD0-3 (the log has no "LOD0: under garments" line; LOD1-3 list only shoes / socks / body). The Tess fixes never applied
+  to him. The game check shows it plainly at LOD1-3: white shirt shards through the jacket fronts / sleeves, LOD3 a black
+  shirt front. v6b = ag_garrett6b (spec: jacket.over trousers, trousers.over shirt) exporting (s6/chain_b.sh: export + specks).
+- LOOK (mine, s6/look_v5_v6.png, game check offload/ag6): faces same; v6 crown sheen fainter than v5's white plate (front),
+  still a light patch; the back keeps a hard horizontal crown LEDGE (cap edge) in both; the white speck at the jacket's
+  upper back in both. BLIND A/B (fresh subagent, s6/ab, key s6/ab_key.json): v6 better 6, same 3, v5 0. Its MAJORs: hair
+  shingled / too dark vs the grey photo, crown ledge from the back (both), crown sheen (v6 milder, still there).
+- SHEET sheets/garrett_v6_joe.png (1990 x 1530, s6/sheet.py: reference first per row, captions, magenta check per cell).
+STATE: v6 = RC (best, 6/0/3 vs v5); v6b (garment over chain) exporting. NEXT: v6b specks vs v6; if fewer, game check ag6b.
+- v6b (over chain) at LOD0: "cloth_shirt poking 223 vertices / 220 faces -> 3 (672 moved)": the garment push-under now RUNS
+  (v6 had none). LODs / specks were still running at the handover.
+
+### Handover (assembly_garrett session 6, tool-call budget)
+- DONE: (1) LOD0 hair tier by role (asset.hair_tier_default, test; Tess unchanged: her specs set tier hero). (2) Tess branch
+  merged to b582d3c9 (r56-r59). (3) clothing under budget (asset.decimate_cloth rounds, test): 24,832 / 25,000. (4) blink seam
+  warning = measuring the blink on the PARTED rest; fixed the check (blink+mouthClose 0.000; rest 11.67 logged). (5) hair-heads2
+  merged at f82d9685 (c6M: back faces; single-sided hair material in the character GLB); v6 exported + game check ag6; blind A/B
+  v6 6 / v5 0 / same 3; sheet sheets/garrett_v6_joe.png. Specks cause: no "over" chain on Garrett's frozen garments.
+- RUNNING (unattended, PIDs s6/PIDS): s6/chain_b.sh = v6b export (exp/ag_garrett_v6b) then specks -> s6/logs/specks_v6b.log,
+  writes s6/CHAIN_B_DONE. No game check queued for it.
+- NEXT: (a) compare specks_v6b vs specks_v6 (the [54 57 1494] collar sliver, back px); if better: LODSHOTS=1 bash rge.sh ag6b
+  exp/ag_garrett_v6b s5/shots_ag5.json, look at LOD1-3 (v6's LOD1-3 had white shirt shards through the jacket, LOD3 a black
+  shirt front), A/B vs v6, rebuild the sheet (s6/sheet.py: change O to ag6b). (b) Code: _garment_stack could fall back to the
+  cull's own "cut under" pairs when no "over" is given (frozen garments lose it), so this can't silently happen again.
+  (c) Owners: hair-cards (hair_cards 26,148 / 25,000 with back faces; crown ledge from the back; crown sheen fainter but there;
+  hair too dark / shingled vs the grey photo), dress-garrett (frozen garments should keep "over"; shirt collar slivers).
+STATE: session 6 done; v6 = RC, v6b in flight. NEXT: (a) above.
+
+## Garrett, session 7 (2026-10-18, assembly_garrett, fresh; scratch /mnt/data/hifipushie/assembly_garrett/s7/)
+- (2) GUARD (code, asset.garment_over): the frozen pickles DO carry "over" (jacket over shirt, trousers over shirt: d["g"]),
+  but the export read the spec's raw {"frozen", "color"} dict, so _garment_stack and the r53 under-garment cull were empty.
+  Now a frozen garment without "over" in the spec falls back to the "over" frozen with it (the chain cloth's own layered cut
+  uses via thaw; memoised by path / mtime / size), logged ("garment layers: ... using the frozen garments' own chain");
+  2+ garments with no chain anywhere = WARNING. Spec "over" wins. On ag_garrett6: {cloth_shirt: [jacket, trousers]} (the
+  frozen chain has no jacket-over-trousers; v6b's spec chain jacket > trousers > shirt adds it). Test
+  test_frozen_garments_keep_their_over_chain_in_the_export.
+STATE: guard committed; v6b export at LOD2 (s6/chain_b.sh, not mine: collecting). NEXT: v6b specks, crown ledge.
+- (3) CROWN LEDGE from the back = THE CARDS (hair thread), not the export. Evidence (s7/standoff.py, s7/crown.py; GLB
+  geometry only): along the back (x = 0 / +-30 mm) the hair's outer radius (p98) minus the head's, by elevation about
+  (0, 0, 1.66): 3-4 mm up to ~60-66 deg, then 9-10 mm from ~66-72 deg to the top: a 6-7 mm STEP. c6M's own hero GLB
+  (hair_garrett/cards/exp/c6M/hg_G88a_hair_hero.glb) on the same head gives the SAME numbers to the mm, so the export
+  (cap / card seam, single-sided material) adds nothing. The z-buffer from the back shows the crown solidly covered by
+  cards (no scalp / cap showing there): the "plate" is the top class's cards standing 10 mm off, seen at a grazing angle,
+  their lower ends the jagged rim (game-check x_hair_back.png). c6o's own back render (out/s_hg_G88a_c6o_g1back.png, other
+  light / camera) hides it. Routed to hair-cards: the top layer needs to come down to the back's standoff (or the back
+  layer to grade up to it) across el ~60-75 deg.
+STATE: guard committed; ledge routed (cards). NEXT: v6b specks when s6/chain_b.sh ends (export at LOD3 + worn push-under).

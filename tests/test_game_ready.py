@@ -1069,3 +1069,78 @@ def test_lod_worn_part_push_is_capped():
     mv = np.linalg.norm(np.asarray(parts["skin"]["verts"], np.float64) - Vu, axis=1)
     assert mv.max() > 0.005, "the skin is pushed in"
     assert mv.max() <= lods.LOD_UNDER_WORN_MAX + 1e-6, mv.max()
+
+
+def test_drawn_made_parts_without_thickness():
+    """(Garrett export 2026-10-18) the frozen shirt's made stand / collar had no "thickness": drawn() fell over (KeyError)."""
+    from hifipushie import cloth_made
+    V = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0]], float)
+    F = np.array([[0, 1, 2], [1, 3, 2]])
+    res = {"mesh": {"F": F, "piece": [0, 0], "names": ["a"]}, "made": {"parts": [{"name": "stand", "V": V, "F": F}]}}
+    hide, parts = cloth_made.drawn(res)
+    assert parts[0][0] == "stand" and not hide.any()
+
+
+def test_lod0_hair_tier_defaults_to_the_role():
+    """LOD0's card tier comes from the role when hair.export.tier is unset (Garrett v3 / v4 got EXPORT_CARDS' old
+    per-lock cut, 96 cards + cap, while LOD1-3 had tiers); an explicit tier (Tess: "hero") is kept; no role warns."""
+    from hifipushie import asset
+    sp = {"hair": {"style": "strands", "export": {"card_gain": 2.1}}}
+    log = []
+    out = asset.hair_tier_default(sp, "hero", log)
+    assert out["hair"]["export"] == {"card_gain": 2.1, "tier": "hero"} and "tier" not in sp["hair"]["export"]
+    assert asset.hair_tier_default(sp, "secondary_npc", [])["hair"]["export"]["tier"] == "npc"
+    tess = {"hair": {"style": "strands", "export": {"tier": "hero"}}}
+    assert asset.hair_tier_default(tess, "crowd", []) is tess
+    locks = {"hair": {"locks": {}}}
+    assert asset.hair_tier_default(locks, "hero", []) is locks
+    log = []
+    assert asset.hair_tier_default(sp, None, log) is sp and any(l.startswith("WARNING hair") for l in log)
+
+
+def test_cloth_decimated_under_its_budget_despite_floors():
+    """Parts with floors (made pieces kept whole) overshoot one shared ratio (Garrett v5: clothing 27,032 of 25,000):
+    decimate_cloth scales the ratio by the overshoot until the garments fit."""
+    from hifipushie import asset, lods
+
+    def fake(p, w, ratio, **k):  # a part keeps its floor + ratio of the rest
+        n0 = len(p["corner_vert"]) // 3
+        n = min(n0, p["floor"] + int(ratio * (n0 - p["floor"])))
+        return {"corner_vert": np.zeros(3 * n, np.int64)}, None, {"triangles0": n0, "triangles": n}
+
+    parts = [(nm, {"corner_vert": np.zeros(3 * n, np.int64), "floor": f}, {}) for nm, n, f in
+             (("shirt", 29000, 7400), ("jacket", 17600, 0), ("trousers", 45300, 0))]
+    old, lods.lod_part = lods.lod_part, fake
+    try:
+        log = []
+        out = asset.decimate_cloth(parts, 25000, log)
+    finally:
+        lods.lod_part = old
+    tot = sum(len(q["corner_vert"]) // 3 for _, q, _ in out)
+    assert 24000 < tot <= 25000 and not any(l.startswith("WARNING") for l in log), (tot, log)
+
+
+def test_frozen_garments_keep_their_over_chain_in_the_export():
+    """Garrett v6: frozen garments in the spec ({"frozen", "color"}) carry no "over", so asset._garment_stack was empty
+    and no garment push-under ran at any LOD, silently. The export falls back to the chain frozen with each garment
+    (logged); the spec's own "over" wins; garments with no chain anywhere are a WARNING."""
+    from hifipushie import asset
+    b0 = cloth.Body(_grid_body())
+    res = {"V": b0.V[:10] * 1.05, "mesh": {"F": np.array([[0, 1, 2]])}, "body": b0, "key": "k", "pieces": {}}
+    with tempfile.TemporaryDirectory() as d:
+        paths = {}
+        for gn, over in (("shirt", None), ("jacket", "shirt"), ("trousers", "shirt")):
+            g = {"pattern": {"from": "simon"}, **({"over": over} if over else {})}
+            paths[gn] = cloth.freeze(res, g, Path(d) / f"{gn}.pkl", model="m", garment=gn)["path"]
+        spec = {"cloth": {gn: {"frozen": p_, "color": "#333333"} for gn, p_ in paths.items()}}
+        parts = {f"cloth_{gn}": {} for gn in paths}
+        log = []
+        st = asset._garment_stack(spec, parts, log.append)
+        assert sorted(st["cloth_shirt"]) == ["cloth_jacket", "cloth_trousers"] and len(st) == 1, st
+        assert any("frozen garments' own chain" in l and "jacket over shirt" in l for l in log), log
+        spec["cloth"]["jacket"]["over"] = "trousers"  # the spec wins
+        st = asset._garment_stack(spec, parts)
+        assert sorted(st["cloth_shirt"]) == ["cloth_jacket", "cloth_trousers"] and st["cloth_trousers"] == ["cloth_jacket"]
+    log = []
+    assert asset.garment_over({"cloth": {"a": {}, "b": {}}}, log.append) == {"a": None, "b": None}
+    assert any(l.startswith("WARNING garment layers") for l in log)

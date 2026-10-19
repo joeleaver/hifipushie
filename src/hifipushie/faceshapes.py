@@ -935,13 +935,20 @@ def apply(spec: dict, parts: dict, face_shapes, log: list) -> dict:
         if kind == "skin" and idx is not None and isinstance(face, GnmFace):  # the closed lips' seam, as seen
             # from the front (an orthographic mask along -out): no inner lip / sock face in front at neutral or blink
             sealed = "mouthClose" if face._gnm.get("parted") is not None else ""  # (r44) parted rest: mouthClose seals
-            got_ = {nm: face.seam_showing(Xn + (D[nm] if nm else 0.0), T, idx)
+            # (Garrett s6) the blink is measured on the CLOSED mouth: on a parted rest, eyeBlinkLeft alone is the
+            # parted lips (Garrett 11.67, Tess 3.23 mm^2 while mouthClose read 0.000), not a blink fault
+            seal = D[sealed] if sealed and sealed in D else 0.0
+            got_ = {nm: face.seam_showing(Xn + (D[nm] if nm else 0.0) + (seal if nm == "eyeBlinkLeft" else 0.0), T, idx)
                     for nm in (sealed, "eyeBlinkLeft") if not nm or nm in D}
+            if sealed and "eyeBlinkLeft" in got_:
+                got_["eyeBlinkLeft+mouthClose"] = got_.pop("eyeBlinkLeft")
+            rest_ = face.seam_showing(Xn, T, idx) if sealed else None  # the parted rest itself (info, not a gate)
             if any(v is not None for v in got_.values()):
                 bad = {nm: v for nm, v in got_.items() if v is not None and v > SEAM_SHOWING}
                 log.append(("WARNING " if bad else "") + f"face shapes: {pn} closed lips' seam (inner lip / mouth "
                            f"seen from the front, mm^2, limit {SEAM_SHOWING}): " + ", ".join(
-                               f"{nm or 'neutral'} {v:.3f}" for nm, v in got_.items() if v is not None))
+                               f"{nm or 'neutral'} {v:.3f}" for nm, v in got_.items() if v is not None)
+                           + (f" (parted rest, not gated: {rest_:.3f})" if rest_ is not None else ""))
                 p["seam_showing"] = {nm or "neutral": round(float(v), 4) for nm, v in got_.items() if v is not None}
         if kind == "skin":  # a shape whose move jumps from vertex to vertex shears whatever is painted there
             first, Tw, _ = weld(Xn, T)
