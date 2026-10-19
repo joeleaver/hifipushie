@@ -6938,3 +6938,137 @@ blind: m1 5 / v3 5 (strict reviewer), t012 3 / v3 2 (al-style reviewer). Remaini
 on the lapel (gorge position), not standoff. Sims: 2 x ~$0.02 (one more than briefed). White marks: not in the frozen
 draw (specks.py: back 0); export-side. NEXT: (a) specks test on the exported GLB (rest + walk frame); (b) the collar
 end's direction on the lapel (down-out along the gorge) for the back-view width; (c) shirt collar points + placket.
+
+### dress-tess session 17 (2026-10-18)
+Scripts $G/rr/s17/. Merged main 6ee2d455 (conflict in this file only: dress-garrett's "Handover z" block kept).
+- (2) SWEATER FOLDS UNDER THE COAT 2 -> 0 (rr/s17/uf.py: cloth.cached on the live spec, captures unfold_press's inputs,
+  read-only). The pressing folded 531 sweater faces; unfold_press (grow 1) left 2 at (-138, -82, 932) mm (dihedral 157 deg);
+  80 rounds: still 2; grow 2: 0 (1652 verts moved, p99 8.7 mm, max 41.9 mm = the pressing's own; clearance >= 2 mm kept).
+  FIX (5fb15354): unfold_press re-runs itself with grow + 1 (up to UNFOLD_GROW_MAX 3) while folds are left and keeps it
+  only if fewer are left; a result that unfolds at grow 1 is unchanged (dress-garrett's shirt: identical). under_V keys
+  nothing. Test test_seams.test_unfold_widens_when_one_ring_cant_open_a_fold.
+- (1) SEAM LINE on the coat: the concept's seams don't read as lines at 1 m (rr/s17/seam_refs.png: side / shoulder tiles,
+  no seam line visible on the white coat: target = under the crinkle's own contrast); main's pressed_open line 0.45 was
+  set for the suit's 24% CB line. Coat-only detail seam_line 0.1 (by garrett's lever proof 0 -> 4.6%, 0.3 -> 16%: ~8%).
+  Checked on the s17 render's tiles.
+- (4a) CRINKLE ALONG THE HANG, measured (rr/s17/aniso.py: Ex/Ey = gradient energy across / along vertical of the high-pass
+  luminance, Ly = vertical autocorrelation length): concept front panel 7.3 / 10 px, concept lower pocket 4.4 / 7 px;
+  s16 front panel tile 2.2 / 5 px; flat candidates (woven_surface, numpy Lambert, 1 mm/px): base 0.8 mm 1.95 / 3;
+  stretch 6 spread 15 5.5 / 5; stretch 8 spread 12 30-80 mm 6.6 / 6 (CV halves: crush up to 1.3 mm); stretch 6 spread 8
+  sharp 1.5 30-80 mm 8.2 / 7 (rr/s17/aniso_cmp2.png: softest, longest; the others draw straight criss-cross lines).
+  ADOPTED (dt_tess v111, detail only, hang untouched): woven crush 1.6 mm, crush_stretch 6, crush_spread 8, crush_sharp
+  1.5, crush_size [0.03, 0.08] (+ seam_line 0.1). Kept only if the s17 tiles show it.
+- (3) 1 m BOX: rr/s17/post.py puts the g1f front-panel box on panel below the pocket, inside the front edge and hem
+  (1000, 790, 1100, 940); the concept's inside its edge (570, 760, 660, 940) (its tile crop moved right 40 px: the
+  left strip was jeans). Rows: concept .0119/.0172/.0233; b02 .0132/.0265/.0488; s16 .0164/.0290/.0505: even the smooth
+  b02 reads at the concept's level: at 1 m the 3-12 mm band in any front box is the drape's folds, so this CV row can't
+  judge the texture. Use the fig 3 mm/px rows + the Ex/Ey / Ly rows on the tiles. (Slip: running post with TAG=s16
+  overwrote $G/s16_coat_sheet.png as ref | s16 | s16; the s16 frames are intact in rr/s16/results.)
+- RENDER dt-s17a (NICO-TOP): rr/s17/run.sh (spike gate first -> rr/s17/spike.log, then pack / submit / unpack), log
+  rr/s17/chain.log ends S17_DONE / S17_DONE ERROR. Post: `TAG=s17 bash $G/run.sh rr/s17/post.py`.
+STATE: (1) (2) (3) done locally, (4a) adopted pending the render. NEXT: collect dt-s17a, tiles, blind review.
+- (J) JOE REOPENED THE WEARER'S LEFT FRONT (image right; coordinator): "doesn't drape quite right". MEASURED
+  (rr/s17/fronts.py, fronts2.py, fronts3.py; cloth.cached on the live spec, read-only). The front edge (pattern CF edge,
+  6 rows from 5% to 60% up the piece), finished V (x, y, z mm):
+  | row | front.L (wearer's left) | front.R (wearer's right, approved look) |
+  | 5% (hem) | (-1, -110, 499) | (-27, -186, 473) |
+  | 27% | (13, -111, 730) | (-31, -194, 714) |
+  | 38% | (22, -119, 839) | (-31, -195, 824) |
+  | 49% | (26, -164, 950) | (-33, -200, 944) |
+  | 60% | (33, -184, 1055) | (-33, -197, 1054) |
+  front.R hangs straight (|x| 27-33 mm, y -186..-200 all the way: vertical, parallel to CF). front.L leaves it at the
+  sweater's hem (z ~0.95) and swings 75 mm BACK and in to CF (x -1 at the hem: against the jeans). Hem corner z 449 L vs
+  423 R. Start X0 is a mirror pair (+-113, -186, 478 ...): NOT the start. Pattern fronts mirror within 3.8 / 7.4 mm
+  (p50 / max); mesh counts 3004 / 2973 (mirror_mesh off), the chest pocket on the left only: both small.
+  CAUSE (fronts3.py): the left front's edge is CAUGHT UNDER THE SWEATER'S HEM. Edge verts within 80 mm of CF, signed
+  offset from the sweater (as pressed) along its normal: z 0.95: 7 of 18 near verts behind it (to -13 mm); z 0.90: 29 of
+  32 behind (to -28 mm); z 0.85: 4 of 4 (to -21 mm). The right front: no vertex within 30 mm of the sweater at any band.
+  The sweater ends at z 0.889: in the sim the left edge slid under its rim and stays trapped inside, pulling the lower
+  front back and in (the kinked, flared hem). V_drape = V_sim = V: it is the sim, not a finish.
+  FIX (NOT DONE, budget): at the source, one rented re-sim: the coat must not enter the sweater's hem. Candidates, cheapest
+  first: (a) the sweater as the coat's collider closed / padded at its hem rim (what layer_gap / under_cap give the rest of
+  it: check whether the hem's open boundary is in the collider and whether under_cap reaches it); (b) place the start's
+  lower fronts already out over the sweater hem (the start is clear of it: |x| > 80 mm, so the trap happens as the fronts
+  swing in during the hang); prove locally with cloth.start_through_under / a crossing count of front.L vs the sweater on
+  V_sim before paying for the sim. Keep everything else (the approved right front and hang): no other key changes.
+
+### Handover 2026-10-18 (dress-tess session 17)
+STATE: dt_tess v111 = v110 + coat detail: woven crush along the hang (1.6 mm, stretch 6, spread 8, sharp 1.5, 30-80 mm)
++ seam_line 0.1 (NOT_SIM: no re-sim). unfold_press grow escalation (5fb15354): sweater folds under the coat 2 -> 0; Tess
+spike gate PASS (rr/s17/spike.log); test_seams + test_cloth (33 ok, EXIT 0) green. Render dt-s17a (NICO-TOP) was packing /
+submitting at handover (rr/s17/chain.log ends S17_DONE / S17_DONE ERROR; it runs on its own). Blind review of the s16
+tiles launched as a subagent (result in the session report, not here if it didn't land). Joe reopened the wearer's left
+front: cause measured = its edge caught under the sweater's hem in the sim (item J above); NOT fixed.
+NEXT (in order): (1) item J: the left front at the source (sweater hem in the coat's collider / start), prove locally,
+ONE rented re-sim (OK'd, $5/day), keep the right front and the hang; tile concept | before | after, front at 1 m (g1f).
+(2) collect dt-s17a: `TAG=s17 bash $G/run.sh rr/s17/post.py`; tiles rr/s17/tiles_*.png (ref | s16 | s17); Ex/Ey + Ly rows
+on the s17 front-panel tile with rr/s17/aniso.py's meas() (target 4.4-7.3 / 7-10 px; s16 2.2 / 5); keep v111's crush only
+if the tile shows longer creases along the hang (else revert to v110's detail); check the seam line 0.1 on the shoulder /
+side tiles (should not read as a drawn line). (3) blind review of the s17 tiles (bin/review after 2026-10-19 13:00 MT, else
+a fresh subagent). (4) pocket / lapel rims, side-seam bead, 9 back crossings, smooth 10 mm faces (s16 handover).
+NOT ready for Joe as a whole outfit: the left front is a visible drape fault.
+
+### dress-tess session 18 (2026-10-18)
+Scripts $G/rr/s18/. Merged main. dt-s17a had landed (out/rv_s17_*.png, 12:35); its tiles were not re-made: the coat crush
+is now judged in the GAME render (item 2), which supersedes the stage tiles.
+- (J) LEFT FRONT UNDER THE SWEATER HEM, at the source. rr/s18/rims.py (cached coat, read-only): the sweater in the coat's
+  collider is an OPEN sheet; its hem rim at the front centre stands 11.5-16.4 mm off the jeans (17 rim verts within 80 mm
+  of CF), the gap the coat's front edge slid into. Other rims: neck 2.8-7.4 mm, cuffs 3.5-7 mm. FIX (cloth.seal_rims,
+  garment key "seal_under", opt-in so no cached sim re-keys): the under garment's rims (boundary edges that are not seam
+  pairs within SEAL_PAIR 2 mm) closed to the body in the collider by a strip going up-and-in (half the gap up the body,
+  SEAL_AIR 1.5 mm off it): it lies between the under garment and the body, where the over garment never is; carried
+  through the poses like the under garment. Validated (true or <= 0.06 m).
+STATE: seal_rims written; local proof running (rr/s18/sealck.py). NEXT: proof numbers, test, one rented re-sim.
+- (J) LOCAL PROOF SAYS THE TRAP IS NOT THE CAUSE (rr/s18/sealck.py, sealck2.py, prof.py -> rr/s18/prof.png): with the
+  seal at any direction (SEAL_RISE 0.5 / 0 / -1 / -2) the start is 11.8 mm clear of it and NO coat edge of the old sim
+  crosses it (0 of either front); only 7 of 104 front.L verts near CF sit closer to the body than the sweater there, at the
+  rim itself. The side profiles (y-z slabs |x| 0-30 / 30-70 / 70-120 mm) show the left front's edge leaving the right's
+  line at z 1.0 and slanting back to REST ON the sweater's belly at its hem (outside it), then hanging 60-75 mm behind the
+  right front: a different hang of the same mirrored start (chaotic hang; the left-only chest pocket is the only asymmetry),
+  not a catch. s17's "behind the sweater" counts used a normal sign that flips below the hem. So a re-sim with
+  seal_under would not be a proven fix: NOT spent (seal_under stays as an opt-in tool, test
+  test_cloth_layers.test_seal_under_closes_rims_not_seams; not set on the coat).
+  HAND FINISH instead (solve is the base, the agent finishes): rr/s18/mirfront.py = the coat's `sculpt` offset (keyed on
+  sim 59dd2d0143597d57): front.L's lower part laid as the MIRROR of the approved front.R (uv-matched, mirror within
+  3.1 / 6.9 mm p50 / max), faded out up the chest (target z 1.0 -> 1.12) and over 80 mm toward the side seam; 2004 verts
+  moved p50 26 / p99 85 mm; no front.L edge through the sweater or body after; edge per height now matches front.R
+  (z 0.5 (28, -188) ... z 0.95 (34, -200) mm vs R (-27, -186) ... (-33, -200)). Raw self-crossing verts 19 -> 247 BEFORE the
+  pockets re-seat: checked through the full cached pipeline (rr/s18/mirck.py).
+- (2) COAT SMEARS, set in the GAME render (rr/s18/bake_nm.py: the coat maps exactly as export_part writes them, c160 =
+  the export's normal map to 0.13 / 255 mean; rr/s18/gsw.sh: rc2c LOD0 in the assembly's game check with only
+  cloth_coat_normal.png swapped; sheet rr/s18/crush_game.png = 1.6 | 0.8 | 0.56 | 0.3 mm, front at 1 m + back at 2.2 m).
+  1.6 mm: criss-cross diamond streaks all over; 0.8: fainter but still lattice lines; 0.56: soft, a little life; 0.3: clean
+  but flat. BLIND REVIEW (fresh subagent, concept front-panel crop as reference, 0.56 / 1.6 / 0.8 as X / Y / Z):
+  "X > Z > Y, VERDICT: X" (0.56 mm); all three flatter than the concept's swirling folds. ADOPTED woven crush 0.00056.
+- (J) DONE by hand finish: wider side fade needed (rr/s18/mirfront2.py: fade 80 mm -> 55 back.L + 123 front.L crossing
+  verts at the hem corner; 160 mm -> 46 front.L; 240 mm -> 28 front.L, all against the unmoved hip pocket). Through the
+  full cached pipeline (rr/s18/mirck.py; pockets re-seat on the sculpt) with fade 240 mm: crossing verts 19 = the old 19
+  exactly (all on the RIGHT side, z 1.14-1.18: back.R 3, front.R 8, sleeve.R 8, pre-existing); front.L edge per height =
+  front.R's mirror to 0-2 mm. (Slip: a sculpt file rewritten under the same name is served from the in-process result
+  cache: the sculpt's file name is its identity; written anew as sculpt_J24.npz.) Tile rr/s18/J_tile.png = concept g1f |
+  before | after (numpy painter's Lambert, coat over sweater + body, lower coat at ~1 m framing): before, the image-right
+  front kinks in over CF; after, both front edges hang straight and parallel like the approved right front.
+- dt_tess v112 = v111 + coat woven crush 0.00056 + coat sculpt sculpt_J24 (keyed on sim 59dd2d0143597d57). NO re-sim:
+  $0 rented.
+- (3) GREY STRIP: in the game render (rr/s18/gr/orig_coat1m_front.png) the strip is the wearer's-left front's INSIDE,
+  turned toward the camera because that front swung back and in over CF (item J): its inner shell faces the opening and
+  gets ambient only. With J finished the front hangs flat and parallel, so the inside no longer faces the camera; the
+  remaining view of the inside is the 0.8 mm edge. NOT changed: the facing / lining colour or a rolled edge in
+  export_part (general, untested). Check it in the assembly's next game render from the s18 freeze.
+
+### Handover 2026-10-18 (dress-tess session 18)
+FROZEN FOR EXPORT: /mnt/data/hifipushie/dress_tess/frozen/2026-10-18_s18/{coat,sweater,jeans}.pkl (cloth.freeze, FULL
+results, from dt_tess v112): coat key 59dd2d0143597d57 (sculpt_J24 applied: front.L at z 0.5 (28, -188) = front.R's
+mirror; detail crush 0.00056), sweater ac35eb1dfaa337db, jeans 3e42fc7c870b3383 (unchanged). Props unchanged.
+STATE: v112. (J) left front finished by hand as the right front's mirror (the s17 "caught under the sweater hem" cause
+did NOT hold up: no coat edge crosses a sealed hem, the start is 11.8 mm clear; it rests on the sweater's belly OUTSIDE
+it): crossings = the pre-existing 19 (right side), tile rr/s18/J_tile.png. No rented sim spent ($0). (2) crush 1.6 ->
+0.56 mm, set in the game render (rr/s18/crush_game.png), blind review VERDICT 0.56 over 0.8 and 1.6 (all flatter than the
+concept). (3) the grey strip was mostly the left front's inside turned to camera by J; re-check in the next game render.
+seal_under (opt-in collider rim seal) + test committed, unused.
+NEXT: (a) assembly re-exports from the s18 freeze; look at the fronts / strip / smears in its game render (front 1 m).
+If an inner-edge strip remains: a facing that reads as the outer cloth at the opening (export_part inner shell's normal
+rolled at the front edge, or the facing region's inner shell shading as the outside), tested on the game render.
+(b) not done (budget): pocket / lapel rims, side-seam bead, the 9 back crossings, the s17 tiles / blind review of dt-s17a
+(superseded by the game-render crush A/B). (c) the coat surface is now clean but flatter than the concept's soft swirl:
+a lower-frequency, lower-contrast fold relief (not more crush) would be the next lever, judged in the game render.

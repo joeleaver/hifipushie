@@ -266,6 +266,32 @@ def test_worn_together_lays_under_every_garment_above():
     assert (np.linalg.norm(Jd[lowj & (J0[:, 2] < -0.05)], axis=1) < 0.109).all()  # under the coat's cloth
 
 
+def test_seal_under_closes_rims_not_seams():
+    """seal_under (dress-tess s18): an open tube 12 mm off a body cylinder, cut by a seam down its side: its two rims
+    are sealed to the body by strips that stay between the tube and the body; the seam's split edges are not."""
+    import numpy as np
+    from hifipushie import cloth
+    na, nz, R, r = 48, 10, 0.112, 0.1
+    th = np.linspace(0, 2 * np.pi, na + 1)  # (last column = the first, as a split seam: na + 1 columns)
+    z = np.linspace(0.8, 0.95, nz)
+    U = np.array([[R * np.cos(t), R * np.sin(t), zz] for zz in z for t in th])
+    F = []
+    for i in range(nz - 1):
+        for j in range(na):
+            a, b, c, d = i * (na + 1) + j, i * (na + 1) + j + 1, (i + 1) * (na + 1) + j, (i + 1) * (na + 1) + j + 1
+            F += [[a, b, d], [a, d, c]]
+    tb, zb = np.linspace(0, 2 * np.pi, 200, endpoint=False), np.linspace(0.6, 1.2, 120)
+    BV = np.array([[r * np.cos(t), r * np.sin(t), zz] for zz in zb for t in tb])
+    S, FS = cloth.seal_rims(U, np.array(F), BV, True)
+    assert len(S) == 2 * (na + 1), len(S)  # (both rims whole, the seam's two ends included: no hole at the seam)
+    rs = np.hypot(S[:, 0], S[:, 1])
+    assert np.all(rs < R - 0.005) and np.all(rs > r), (rs.min(), rs.max())  # between the tube and the body
+    assert np.all(S[:, 2] >= U[:, 2].min() - 1e-9) and np.all(S[:, 2] <= U[:, 2].max() + 0.01)
+    assert len(FS) == 2 * 2 * na, len(FS)  # (the seam's split edges: none)
+    S0, _ = cloth.seal_rims(U, np.array(F), BV, 0.005)  # a gap wider than the reach: nothing sealed
+    assert len(S0) == 0
+
+
 if __name__ == "__main__":
     for k, v in list(globals().items()):
         if k.startswith("test_"):

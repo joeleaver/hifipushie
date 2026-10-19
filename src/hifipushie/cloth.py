@@ -6568,6 +6568,7 @@ def _edge_folds(V: np.ndarray, F: np.ndarray):
     return a, b, np.degrees(np.arccos(np.clip((n[a] * n[b]).sum(1), -1, 1)))
 
 
+UNFOLD_GROW_MAX = 3  # rings: unfold_press widens its relaxed region up to this while folds are left
 UNFOLD_FLOOR = 0.002  # m: an unfolded vertex keeps at least min(this, its own pressed clearance) off the body
 
 
@@ -6623,6 +6624,13 @@ def unfold_press(V0: np.ndarray, V1: np.ndarray, F: np.ndarray, rounds: int = 30
                     lifted += int(up.sum())
         t = bad(D)
     rep.update(left=int(len(t)), moved=int(touched.sum()), lifted=lifted)
+    if len(t) and grow < UNFOLD_GROW_MAX:
+        # (dress-tess s17) a fold whose one-ring relax can't open it: Tess's sweater under the coat kept 2 faces at
+        # her right front hip (-138, -82, 932) mm with grow 1 (80 rounds no better); grow 2 opens all 531. Results
+        # that already unfold at `grow` are unchanged.
+        V2, r2 = unfold_press(V0, V1, F, rounds=rounds, grow=grow + 1, floor=floor, clear=clear)
+        if r2["left"] < rep["left"]:
+            return V2, dict(r2, grow=grow + 1)
     return V0 + D, rep
 
 
@@ -6799,7 +6807,61 @@ def _move_poses(body: "Body", move) -> list:
     return out
 
 
-def _collider(body: "Body", under: dict | None, smooth: bool, move=None) -> dict:
+SEAL_PAIR = 0.002  # m: a boundary vertex with another boundary vertex this close is on a seam, not a rim
+SEAL_AIR = 0.0015  # m: the seal's inner edge stands this far off the body
+SEAL_RISE = 0.5  # the seal's inner edge this share of the rim's gap up the body from the rim (< 0: down)
+
+
+def seal_rims(U: np.ndarray, FU: np.ndarray, BV: np.ndarray, reach: float = 0.03) -> tuple[np.ndarray, np.ndarray]:
+    """Garment key "seal_under" (on the garment worn OVER another; m, the widest gap sealed, True = 0.03): the under
+    garment's open rims (hem, cuffs, neck: boundary edges that are not seams) closed to the body in the collider, so
+    the over garment's cloth can't slide into the gap under a rim and stay trapped there (dress-tess s17: the coat's
+    left front edge went under the sweater's hem, 11-16 mm off the jeans, and pulled the front back and in). Each rim
+    vertex gets a seal vertex up-and-in from it (half its gap up the body, SEAL_AIR off it): the strip lies between
+    the under garment and the body, where the over garment's cloth never is. Returns (new vertices, new faces indexed
+    into U + new vertices)."""
+    reach = 0.03 if reach is True else float(reach)
+    FU = np.asarray(FU, np.int64)
+    e = np.sort(np.r_[FU[:, [0, 1]], FU[:, [1, 2]], FU[:, [2, 0]]], 1)
+    u, c = np.unique(e, axis=0, return_counts=True)
+    be = u[c == 1]
+    if not len(be):
+        return np.zeros((0, 3)), np.zeros((0, 3), np.int64)
+    bv = np.unique(be)
+    d2, j2 = cKDTree(U[bv]).query(U[bv], k=2)
+    pal = np.full(len(U), -1, np.int64)  # a boundary vertex's seam partner
+    pal[bv] = np.where(d2[:, 1] < SEAL_PAIR, bv[j2[:, 1]], -1)
+    bset = set(map(tuple, be.tolist()))
+    pa, pb = pal[be[:, 0]], pal[be[:, 1]]
+    seam = np.array([a_ >= 0 and b_ >= 0 and (min(a_, b_), max(a_, b_)) in bset for a_, b_ in zip(pa, pb)], bool)
+    be = be[~seam]  # (an edge is a seam's when its two ends' partners make a boundary edge too: a rim crossing a seam
+    # keeps the edges on both sides of it, so the seal has no hole there)
+    rim = np.unique(be)
+    bt = cKDTree(BV)
+    gap, _ = bt.query(U[rim])
+    rim = rim[gap < reach]
+    gap = gap[gap < reach]
+    if not len(rim):
+        return np.zeros((0, 3)), np.zeros((0, 3), np.int64)
+    up = np.array([0.0, 0.0, 1.0])
+    _, j = bt.query(U[rim] + up * (SEAL_RISE * gap)[:, None])
+    q = BV[j]
+    out = U[rim] - q
+    out /= np.linalg.norm(out, axis=1, keepdims=True) + 1e-12
+    S = q + SEAL_AIR * out
+    at = np.full(len(U), -1, np.int64)
+    at[rim] = len(U) + np.arange(len(rim))
+    ee = be[(at[be[:, 0]] >= 0) & (at[be[:, 1]] >= 0)]
+    a, b = ee[:, 0], ee[:, 1]
+    F = np.r_[np.c_[a, b, at[b]], np.c_[a, at[b], at[a]]]
+    P = np.r_[U, S]
+    e1, e2 = P[F[:, 1]] - P[F[:, 0]], P[F[:, 2]] - P[F[:, 0]]
+    a2 = np.linalg.norm(np.cross(e1, e2), axis=1)
+    lm = np.max([np.linalg.norm(e1, axis=1), np.linalg.norm(e2, axis=1), np.linalg.norm(e2 - e1, axis=1)], axis=0)
+    return S, F[(a2 > 1e-9) & (a2 > UNDER_SLIVER * lm ** 2)]  # (no sliver for the solver's builder; see _collider)
+
+
+def _collider(body: "Body", under: dict | None, smooth: bool, move=None, seal=None) -> dict:
     """The sim's collider arrays (cloth_job: bodyV / bodyT, and for a smooth placement bodyV0 + bodyPoses: straight
     arms bending back): the body, and with it the garment worn under this one, one mesh. The under garment rides the
     body through the poses by its nearest body vertices' moves (a collider only: at the last pose it is exactly its
@@ -6865,6 +6927,17 @@ def _collider(body: "Body", under: dict | None, smooth: bool, move=None) -> dict
         # 10 faces of 5e-11 m2 in a shirt with its placket in the mesh stopped every trousers job over it: om_03, om_06)
         keep &= (a2 > 1e-9) & (a2 > UNDER_SLIVER * lmax ** 2)
     FU = FU[keep]
+    if seal and under.get("res") is not None:  # garment key "seal_under": the under garment's rims closed to the body
+        S_, FS_ = seal_rims(U, FU, V, seal)
+        if len(S_):
+            nU_ = len(U)
+            U = np.r_[U, S_]
+            ds_, is_ = cKDTree(V).query(S_, k=4)
+            ws_ = 1.0 / np.maximum(ds_, 1e-4) ** 2
+            w, i = np.r_[w, ws_ / ws_.sum(1, keepdims=True)], np.r_[i, is_]
+            carry = lambda P: U + np.einsum("nk,nkd->nd", w, (P - V)[i])
+            FU = np.r_[FU, FS_]
+            assert FS_.max() < nU_ + len(S_)
     # (and no vertex left without a face: ZOZO's builder averages each collider vertex's parameters over its faces'
     # areas and asserts the sum > 0: a seam-welded vertex whose only faces were slivers stopped the job, om_06 / om_08)
     used = np.unique(FU)
@@ -7186,7 +7259,7 @@ def _build(g: dict, body_src: dict, name: str = "garment", log=print, frames: in
     if smooth and under is not None:
         # placed on the PADDED body; the sim's collider is the body + the under garment's own mesh, and where that
         # stands proud of the pad (a pressed sleeve's fold at the elbow) draped cloth started on it
-        c0_ = _collider(body_real, under, smooth, move=g.get("move"))
+        c0_ = _collider(body_real, under, smooth, move=g.get("move"), seal=g.get("seal_under"))
         free_ = ~np.isin(Ms["piece"], [Ms["names"].index(nm) for nm in made_pieces(Ms, interfacing(Bp, Ms)) if nm in Ms["names"]])
         free_[ends_] = True  # (a notched collar's draped ends are solved: cleared like the draped cloth)
         # cloth that starts THROUGH the under garment can't be cleared (the passes push it further in): refused here
@@ -7332,7 +7405,7 @@ def _build(g: dict, body_src: dict, name: str = "garment", log=print, frames: in
         legacy = hashlib.sha1(json.dumps([keyed[0], dict(gs, pattern=gs_kind)] + keyed[2:], sort_keys=True, default=str).encode()).hexdigest()[:16]
         if (_cache_dir() / f"{legacy}.npz").exists():
             key, cache = legacy, _cache_dir() / f"{legacy}.npz"
-    coll = _collider(body_real, under, smooth, move=g.get("move"))
+    coll = _collider(body_real, under, smooth, move=g.get("move"), seal=g.get("seal_under"))
     Bp.pop("_worn_body", None)  # (a Body: not part of the result)
     res = {"pieces": Bp, "mesh": M, "X0": X0, "body": body_real, "collider": body, "under": under,
            "fabric": fab, "key": key, "refined": refine,
@@ -9152,7 +9225,7 @@ GARMENT_KEYS = {"pattern", "pieces", "seams", "stitches", "drop", "alter", "fabr
                 "state", "resolution", "coarse", "quality", "frames", "self_collision", "self_collision_sew", "assemble",
                 "sew_force", "sew_frames", "worn_frames", "settle_frames", "hang_frames", "hang_sew_force", "hang_air", "refine_frames",
                 "refine_ease", "cleanup", "detail", "sculpt", "finish", "unfold_finish", "under", "under_sculpt", "under_collar", "note", "backend", "placement", "lower_arms", "lower_frames", "zozo", "_trace",
-                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin", "under_cap", "closures", "trims", "tie", "collide", "construct", "made_folds", "worn_top", "press_lay", "worn_envelope", "collar_spread", "open_gap", "open_lap", "mirror_mesh", "fine_relax", "under_fall", "collar_ends", "pad_over", "move", "pose_frames", "set_sleeves", "wrap", "uncrush", "straighten"}
+                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin", "under_cap", "closures", "trims", "tie", "collide", "construct", "made_folds", "worn_top", "press_lay", "worn_envelope", "collar_spread", "open_gap", "open_lap", "mirror_mesh", "fine_relax", "under_fall", "collar_ends", "pad_over", "move", "pose_frames", "set_sleeves", "wrap", "uncrush", "straighten", "seal_under"}
 WRAPS = ("torso", "arm.L", "arm.R", "leg.L", "leg.R", "neck", "head", "seam", "flat")
 
 
@@ -9285,6 +9358,8 @@ def validate(spec: dict) -> None:
                 and isinstance(g["uncrush"].get("to", 0.5), (int, float)) and 0.3 < g["uncrush"].get("to", 0.5) <= 1.0)):
             raise ClothError(f"{where}: uncrush is true | false | {{\"to\": x}} (open crushed edges round the start self check's "
                              "vertices; \"to\" = what they are opened to x their pattern length, 0.3 < x <= 1, default 0.5)")
+        if "seal_under" in g and not (g["seal_under"] in (True, False) or (isinstance(g["seal_under"], (int, float)) and 0 < g["seal_under"] <= 0.06)):
+            raise ClothError(f"{where}: seal_under closes the under garment's rims to the body in the collider: true or the widest gap in m (<= 0.06)")
         if "layer_gap" in g and not (isinstance(g["layer_gap"], (int, float)) and 0 <= g["layer_gap"] <= 0.03):
             raise ClothError(f"{where}: layer_gap is the air between the layers at the start in m (0..0.03)")
         if g.get("quality", "final") not in ("draft", "final"):

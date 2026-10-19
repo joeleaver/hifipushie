@@ -269,6 +269,26 @@ def test_unfold_keeps_the_body_floor():
     ok = np.ones(len(V0), bool); ok[k] = False
     assert (body.clearance(Vf)[ok] >= need[ok] - 2e-4).all()
 
+def test_unfold_widens_when_one_ring_cant_open_a_fold():
+    """(dress-tess s17) Tess's sweater pressed under the coat kept 2 folded faces at her right hip after unfold_press with
+    its one-ring relax (more rounds didn't help); widening the relaxed region to 2 rings opened all 531. A block of
+    vertices dragged together (a 3x3 patch 4 cm sideways) is that case in small: with one round the one-ring relax
+    leaves folds, the escalation opens them and reports the grow it used; a fold one ring opens is unchanged."""
+    V0, F = _grid(n=16)
+    V1 = V0.copy(); ii = [(6 + a) * 16 + 6 + b for a in range(3) for b in range(3)]; V1[ii] += [0.04, 0.002, 0.0]
+    keep = cloth.UNFOLD_GROW_MAX
+    try:
+        cloth.UNFOLD_GROW_MAX = 1
+        _, r1 = cloth.unfold_press(V0, V1, F, rounds=1)
+        cloth.UNFOLD_GROW_MAX = keep
+        V2, r2 = cloth.unfold_press(V0, V1, F, rounds=1)
+    finally:
+        cloth.UNFOLD_GROW_MAX = keep
+    assert r1["left"] > 0 and r2["left"] == 0 and r2["grow"] == 2 and len(cloth.spikes(V2, F, V_ref=V0)) == 0
+    V1 = V0.copy(); V1[6 * 16 + 6] += [0.025, 0.002, 0.0]
+    _, r3 = cloth.unfold_press(V0, V1, F)
+    assert r3["left"] == 0 and "grow" not in r3
+
 if __name__ == "__main__":
     for k, fn in list(globals().items()):
         if k.startswith("test_"):
