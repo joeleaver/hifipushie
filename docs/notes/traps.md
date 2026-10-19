@@ -150,3 +150,8 @@ Symptom: polygon-shaped blotches on a tried-on part at every LOD, still there un
 Cause: judge --swap keyed by the OBJECT name matched no mesh and was ignored; v8's jacket was drawn inside ours.
 Check first: a GE_FLATID render (each object its own colour) or the run's object list. Now refused (blender_game swap).
 Same family as a hair lever matching 0 cards (r46g): any selector that matches nothing must raise.
+
+## Export killed at the bake under bin/capped's default cap (2026-10-19, Garrett sh8)
+Symptom: a character export dies at the texture bake (exit 137), no Python error.
+Cause: bin/capped's default cgroup cap is 12G; resources.heavy declares 24 GB for human exports, but the declaration
+doesn't set the cap. Check first: run exports as `CAP=28G bin/capped ...`.
