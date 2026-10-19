@@ -21,6 +21,7 @@ F.setdefault("cu_eye", {"lm": list(range(42, 48)), "pairs": [], "lines": [], "st
 F.setdefault("cu_cheek", {"lm": [46, 47, 35, 13, 14, 54, 45], "pairs": [], "lines": [], "stages": (), "squint_mm": 2.0, "pad": 1.15})
 F.setdefault("cu_face", {"lm": list(range(0, 68)), "pairs": [], "lines": [], "stages": (), "squint_mm": 6.0, "pad": 1.25})
 F.setdefault("cu_eyes", {"lm": list(range(42, 48)) + [22, 23, 24, 25, 26], "pairs": [], "lines": [], "stages": (), "squint_mm": 2.0, "pad": 1.35})
+F.setdefault("cu_forehead", {"lm": list(range(17, 27)), "pairs": [], "lines": [], "stages": (), "squint_mm": 3.0, "pad": 1.1})   # brows to above the hairline
 F.setdefault("cu_eyesR", {"lm": list(range(36, 42)) + [17, 18, 19, 20, 21], "pairs": [], "lines": [], "stages": (), "squint_mm": 2.0, "pad": 1.35})
 VI = [int(x) for x in kw.get("views", "0,1").split(",")][: len(rj["views"])]
 meshes = bi._per_view(store.load(ref)["base"], rj, VI, lambda b: bi.presented_mesh(b, rj=rj))
@@ -42,6 +43,8 @@ for vi in VI:
     frames = []
     for f in ((("cheek",) if "only" not in kw else tuple(kw["only"].split(","))) if kw.get("rake") == "1" else tuple(kw.get("only", "mouth,eye,eyes").split(","))):
         b = [float(x) for x in bi._feature_box("cu_" + f, L2)]
+        if f == "forehead":   # the brows sit at the box's centre: lift it so the hairline is in (brows at ~3/4 down)
+            sh = 0.27 * (b[3] - b[1]); b = [b[0], b[1] - sh, b[2], b[3] - sh]
         frames.append(stage.fitted_frame(cam, b, f"{f}_v{vi}"))
         Image.open(rj["views"][vi]["image"]).convert("RGB").crop(tuple(int(round(x)) for x in b)).resize((T, T), Image.LANCZOS).save(f"{out}/{f}_v{vi}_ref{('_' + kw['tag']) if kw.get('tag') else ''}.png")
     lt = ((rep or {}).get("views") or {}).get(str(vi), {}).get("light")

@@ -34,7 +34,7 @@ EYE_VERSION = 1  # eye_image only. 1 (r27): the sclera's outward warm / pink dri
 # visible sclera baked (0.85, 0.79, 0.79) of skin.eyes.sclera (assembly/eyedecal.py, ga_tess v41)
 SIZE = 1024
 PERIOD = {"pores": 0.016, "lines": 0.016, "coarse": 0.024, "lips": 0.012, "stubble": 0.012, "freckles": 0.06,
-          "wrinkles": 0.05, "hairs": 0.02}  # m of skin across the swatch
+          "wrinkles": 0.05, "hairs": 0.02, "brow_lines": 0.05}  # m of skin across the swatch
 KINDS = tuple(PERIOD)
 _CACHE: dict = {}
 
@@ -178,7 +178,7 @@ def crease_image(path_mm, width_mm: float = 0.5, span=(40.0, 30.0), centre=(0.0,
 
 def brow_image(density: float = 0.8, thickness: float = 1.0, length_mm: float = 6.0, width_mm: float = 62.0,
                seed: int = 0, tail: float = 1.0, fall: float = 1.0, taper: float = 0.82, head: float = 0.0,
-               head_density: float = 0.05, clump: float = 0.0, feather: float = 0.0):
+               head_density: float = 0.05, clump: float = 0.0, feather: float = 0.0, strands: float = 0.0):
     """A left eyebrow as hairs (RGBA PNG in the image store; white hairs, coverage in alpha: the layer gives the
     colour), inner end at the left: hairs grow up and out at the inner end, lie along the brow in its body and
     turn out and down in the tail; the band is thick inside and tapers. Returns (path, [width, height] in mm)."""
@@ -187,7 +187,13 @@ def brow_image(density: float = 0.8, thickness: float = 1.0, length_mm: float = 
     key = f"{density:.3f}_{thickness:.3f}_{length_mm:.2f}_{width_mm:.1f}_{seed}_{tail:.2f}_{VERSION}" + \
         (f"_f{fall:.2f}" if fall != 1.0 else "") + (f"_t{taper:.2f}" if taper != 0.82 else "") + \
         (f"_h{head:.2f}_{head_density:.2f}" if head > 0 else "") + (f"_c{clump:.2f}" if clump > 0 else "") + \
-        (f"_fe{feather:.2f}" if feather > 0 else "")
+        (f"_fe{feather:.2f}" if feather > 0 else "") + (f"_s{strands:.2f}_3" if strands > 0 else "")
+    # (strands: 0..1, the hairs drawn as a photographed brow's (r19, both heads' "hard near-black block" / "flat grey band"
+    # after many rounds of settings): real brow hairs are ~.05-.09 mm at the root (ours were .11-.17: each one an opaque
+    # stroke, the band saturated (x 1.25 clip) into a fill with a cut top line); each hair has its own tone (light / dark,
+    # some see-through) and thins to a fine tip, so the band's UPPER edge is made of tips, soft and broken; the hairs pile
+    # up (cover = 1 - prod(1 - a)) instead of overwriting, and skin shows between them. More, finer hairs (count x 1 +
+    # 1.6 strands) keep the mean darkening; the roots sit a little below the spine so the tips make the top edge.)
     # (feather: mm over which the band's LOWER edge fades out. A photographed brow's darkening falls from 80 % to 20 % over
     # 1.1-1.4 mm below the band (skincheck brow_band "edge below", Tess / Garrett photos); our drawn hairs stopped in ~.7 mm,
     # a stencil-cut lower line (r12). Per column the band's lower edge is found in the drawn alpha, and the cover is ramped
@@ -235,15 +241,25 @@ def brow_image(density: float = 0.8, thickness: float = 1.0, length_mm: float = 
             return thickness * (0.03 + 0.14 * np.clip((t + 0.02) / 0.12, 0, 1) * (1 - taper * np.clip((t - 0.25) / 0.75, 0, 1) ** 0.9))
         if clump > 0:
             n = int(n / ((1 - clump) + 0.95 * clump))
-        for _ in range(n):
+        NL = 8 if strands > 0 else 1   # strands: hairs spread over NL layers that pile up (cover), not overwrite
+        if strands > 0:
+            n = int(n * (1 + 1.6 * strands))
+            ims = [Image.new("L", (W * S, H * S), 0) for _ in range(NL)]
+            drs = [ImageDraw.Draw(i) for i in ims]
+        for hi in range(n):
+            if strands > 0:
+                dr = drs[hi % NL]
             t = float(np.clip(rng.beta(1.25, 1.5) * (0.97 * tail) + 0.03, 0.02, 0.99))
             if head > 0 and rng.random() > keep(t):
                 continue
-            off = float(np.clip(rng.normal(0, 0.45), -1, 1))
+            off = float(np.clip(rng.normal(-0.18 * strands, 0.45), -1, 1))
             if clump > 0 and crng.random() > (1 - clump) + clump * 2 * patch(t, off) * 0.95:
                 continue
             x = (0.04 + 0.92 * t) * W
             y = (spine(t) + off * half(t)) * H
+            fringe = strands > 0 and feather > 0 and off < 0 and crng.random() < 0.35
+            if fringe:   # strands: the soft lower edge is sparse fine hairs rooted below the band, not a blurred smear
+                y += rng.exponential(0.5 * feather) * ppm
             # direction (0 = along +x, 90 = up): fans from ~80 deg at the inner end to ~12 in the body to -25 in the tail;
             # hairs under the spine lean up toward it, hairs over it lean down
             ang = 82 * (1 - np.clip(t / 0.22, 0, 1)) ** 1.3 + 14 * np.clip(t / 0.22, 0, 1) - 42 * np.clip((t - 0.55) / 0.45, 0, 1)
@@ -254,14 +270,28 @@ def brow_image(density: float = 0.8, thickness: float = 1.0, length_mm: float = 
             for k in range(8):
                 a2 = a + np.radians(curl - 9) * k / 8
                 pts.append((pts[-1][0] + np.cos(a2) * L / 8, pts[-1][1] - np.sin(a2) * L / 8))
+            if strands > 0:   # a fine hair of its own tone, thinning and fading to its tip
+                w0 = rng.uniform(0.11 - 0.055 * strands, 0.17 - 0.08 * strands) * ppm
+                tone = (0.75 + 0.25 * rng.random() - strands * 0.45 * rng.random()) * (0.6 if fringe else 1.0)
+                for k in range(8):
+                    wk = w0 * (1 - 0.85 * k / 8)
+                    dr.line([(pts[k][0] * S, pts[k][1] * S), (pts[k + 1][0] * S, pts[k + 1][1] * S)],
+                            fill=int(255 * tone * (1 - 0.6 * strands * k / 8)), width=max(int(round(wk * S)), 1))
+                continue
             w0 = rng.uniform(0.11, 0.17) * ppm  # root width, mm -> px
             for k in range(8):
                 wk = w0 * (1 - 0.8 * k / 8)
                 dr.line([(pts[k][0] * S, pts[k][1] * S), (pts[k + 1][0] * S, pts[k + 1][1] * S)],
                         fill=int(255 * (0.75 + 0.25 * rng.random())), width=max(int(round(wk * S)), 1))
-        a = np.asarray(im.resize((W, H), Image.LANCZOS), np.float32) / 255.0
-        a = np.clip(a * 1.25, 0, 1)
-        if feather > 0:   # below each column's centre the cover hands over to a copy blurred down the column (sigma = feather / 2)
+        if strands > 0:
+            keep_ = np.ones((H, W), np.float32)
+            for i in ims:
+                keep_ *= 1 - np.asarray(i.resize((W, H), Image.LANCZOS), np.float32) / 255.0
+            a = 1 - keep_
+        else:
+            a = np.asarray(im.resize((W, H), Image.LANCZOS), np.float32) / 255.0
+            a = np.clip(a * 1.25, 0, 1)
+        if feather > 0 and strands <= 0:   # below each column's centre the cover hands over to a copy blurred down the column (sigma = feather / 2)
             from scipy import ndimage
             yy = np.arange(H, dtype=np.float32)[:, None]
             cw = ndimage.gaussian_filter(a, (0, 0.6 * ppm))   # the band's cover, smoothed along it (~.6 mm)
@@ -452,6 +482,18 @@ def depth(kind: str) -> np.ndarray:
         fine = family(19, 2.6, 0.03, 12, 0.3, 0.3)
         swell = 0.5 + 0.5 * np.cos(2 * np.pi * 6 * (v + wob))  # the roll between two creases
         d = np.maximum(main, 0.7 * branch) + 0.14 * fine + 0.3 * (1 - swell) * (0.4 + 0.6 * _smooth_noise(rng, 3))
+    elif kind == "brow_lines":
+        # forehead lines (r17, Garrett's photo): long, soft, shallow creases ~8 mm apart running most of the forehead's
+        # width with a gentle wave, each thinning toward its ends; "wrinkles" (short, wavy, breaking) read as dark creases
+        u, v = P[:, 0], P[:, 1]
+        wob = 0.035 * (_smooth_noise(rng, 2) - 0.5) + 0.006 * (_smooth_noise(rng, 7) - 0.5)
+        ph = (v + wob) * 6
+        dist = np.abs(ph - np.round(ph)) / 6 * mm
+        amp = np.clip((_smooth_noise(rng, 3, 2) - 0.1) / 0.9, 0, 1)
+        amp = 0.3 + 0.7 * amp * amp * (3 - 2 * amp)
+        t = np.clip(1 - dist / (1.3 * (0.6 + 0.5 * amp)), 0, 1)
+        fine = np.clip(1 - np.abs(((v + 1.7 * wob + 0.04) * 17) % 1 - 0.5) * 2 / 0.12, 0, 1)
+        d = t * t * (3 - 2 * t) * amp + 0.08 * fine * _smooth_noise(rng, 9)
     elif kind == "hairs":
         n = SIZE
         img = np.zeros((n, n), np.float32)

@@ -27,7 +27,7 @@ HAIR (skin.hair; colours sRGB):
              brow), "lift": [inner, tail] m (each end up + / down -), "apart": m (both brows off the mid-line), "soft": 0..1 (a soft mass rather than hairs one by one), "feather": m (the band's lower edge fades over it: photos ~.0012-.0016), "shadow": x the skin-level shadow under the hairs (1; lower = gaps and a fading head show), "taper":
              0..1 (0.82: how much the band thins toward the tail; 0.95 = a clean thin tail on a thick brow), "tail":
              0..1 (1: how far along the hairs reach), "head": 0..0.6 (0: the share of the length over which the inner end fades
-             in, sparse single hairs; 0.65 matches the photos' ramp), "head_density": 0..1 (0.05: the share of hairs kept at the inner end)}: hairs as strokes, growing up at the inner end and out along the brow.
+             in, sparse single hairs; 0.65 matches the photos' ramp), "head_density": 0..1 (0.05: the share of hairs kept at the inner end), "strands": 0..1 (0: fine hairs of their own tone, tips making the top edge, piled up not clipped; 1 = a young fine brow, .5 = a coarser older one)}: hairs as strokes, growing up at the inner end and out along the brow.
   lashes     {"color", "amount": 0..1 (0.7), "width": 1 (x the lash line's width, with lash geometry)}: the lash lines
              darkened (upper more).
   stubble    {"amount", "color", "where", "size": 1 (the dots' size), "count": 1 (hairs per area x, .25-4: density saturates at 1), "shadow": 1 (the under-skin shadow's strength; "shadow_color",
@@ -59,7 +59,7 @@ import numpy as np
 from .spec import SpecError
 
 FEATURES = ("freckles", "moles", "age_spots", "blemishes", "veins", "flush", "sunburn", "tan")
-WRINKLES = ("amount", "forehead", "glabella", "crows_feet", "under_eye", "nasolabial", "marionette", "lip_lines", "neck", "crepe")
+WRINKLES = ("amount", "forehead", "glabella", "glabella_side", "crows_feet", "under_eye", "nasolabial", "marionette", "lip_lines", "neck", "crepe")
 HAIR = ("brows", "lashes", "stubble", "scalp", "body")
 SCARS = ("cut", "surgical", "keloid", "burn", "pockmarks")
 COMMON = {"amount", "where", "mask", "seed"}
@@ -596,11 +596,14 @@ def _eyes(spec, p, J, out, layer, T, ctx) -> None:
                                                     "weight": 0.85},
                                                    {"near": ["base"], "side": "both", "within": round(0.02 * r, 5),
                                                     "soft": round(0.09 * r, 5), "blend": "max"}]}
-        # the tear line: the strip of tear film standing where the lower lid meets the ball, a thin bright wet line
+        # the tear line: the strip of tear film standing where the lower lid meets the ball, a thin WET line: it reads by
+        # its gloss, not by a pale colour (r16: [.97 .86 .84] at .4 over ~.05 r drew a pale pink-grey strip along Tess's
+        # lower lid, "the eyeball reads as a fitted shell"; found by hiding objects / zeroing layers one at a time in the
+        # stage scene: only eyes.tear 0 removed it). Now ~.25 mm (the meniscus' height), the sclera's own neutral, faint.
         if float(e.get("tear", 1.0)) > 0:
-            out[f"skin:eye_tear{nm}"] = {"part": part, "color": [0.97, 0.86, 0.84], "opacity": round(0.4 * float(e.get("tear", 1.0)), 3),
+            out[f"skin:eye_tear{nm}"] = {"part": part, "color": [0.88, 0.86, 0.85], "opacity": round(0.15 * float(e.get("tear", 1.0)), 3),
                                          "roughness": 0.02, "specular": 1.0,
-                                         "mask": [{"near": ["base"], "side": "both", "within": round(0.015 * r, 5), "soft": round(0.035 * r, 5)},
+                                         "mask": [{"near": ["base"], "side": "both", "within": round(0.005 * r, 5), "soft": round(0.012 * r, 5)},
                                                   {"axis": {"dir": [0, 0, -1], "at": f"eye{sd}", "from": round(0.05 * r, 5), "to": round(0.2 * r, 5)}}]}
     # on the skin: the caruncle (the pink, wet corner by the nose) and the lower lid's waterline
     car = e.get("caruncle")
@@ -744,9 +747,35 @@ def _wrinkles(p, J, layer, T, ctx) -> None:
                               **({"blend": "max"} if stack else {})})
         return stack
 
+    # (r18: the frown lines were two straight tapered strokes, mirrored: "11" marks; Garrett's photo has a soft broad furrow
+    # rising from the brow's head and bowing toward the midline, one side much stronger than the other, of uneven depth)
+    def furrow(sd, k):
+        """One side's frown furrow: a broad soft core along a bowed path plus a wider shallow trough, faded at both ends."""
+        sx = 1 if sd == ".L" else -1
+        j = "lm_brow_inner" + sd
+        # (g2: on the brow heads it read as two smudges over the brows; the photo's lies medial of the brow head, ~60 %
+        # of the way to the midline, from the brows' lower edge up)
+        path = [(-0.07, -0.012, -0.1), (-0.095, -0.012, 0.0), (-0.09, -0.012, 0.1), (-0.065, -0.012, 0.19)]
+        P = [pt(j, [sx * q[0], q[1], q[2]]) for q in path]
+        core = {"spot": {"at": P, "radius": [round(r * io, 6) for r in (0.06, 0.075, 0.07, 0.05)], "soft": 1.0, "line": True}}
+        wide = {"spot": {"at": P, "radius": [round(r * io, 6) for r in (0.12, 0.15, 0.14, 0.1)], "soft": 1.0, "line": True},
+                "blend": "max", "weight": 0.45}
+        mid = pt(j, [sx * -0.085, -0.012, 0.04])
+        fade = {"spot": {"at": mid, "radius": [round(r * io, 6) for r in (0.2, 0.3, 0.2)], "soft": 1.0}, "blend": "multiply"}
+        crease = {"spot": {"at": P[:3], "radius": [round(r * io, 6) for r in (0.025, 0.035, 0.03)], "soft": 1.0, "line": True},
+                  "blend": "max", "weight": 0.7}   # (the furrow's floor: the photo's has a line in it, at one side)
+        return {"mask": [core, crease, wide, fade], "weight": k}   # (weight: the second side's share, blended by max)
+    gside = str(w.get("glabella_side", "R" if int(p.get("seed", 0) or 0) % 2 == 0 else "L")).upper()
+    lead, other = (".R", ".L") if gside == "R" else (".L", ".R")
+    glabella = [furrow(lead, 1.0), {**furrow(other, 0.35), "blend": "max"},
+                # uneven depth along the furrow and between the sides (a muscle's crease, not a ruled line)
+                {"noise": {"scale": round(0.12 * io, 5), "range": [0.25, 0.8]}, "blend": "multiply", "weight": 0.45}]
+
     # the lines of expression, each a tapered groove, in one layer: every group's strength scales its own mask
     groups = [
-        ("glabella", 1.0, rays([("lm_brow_inner.L", (-0.035, -0.01, 0.09), (-0.015, -0.01, -0.09))], 0.02)),
+        # (r17: the frown lines run from ~.2 io up between the brows down to the nasion, a soft furrow; were +-.09, half the photo's)
+        # (r18: 0.9 -> 3.2: the broad furrow spreads the same depth wider, faded at its ends, x noise: at .9 it vanished)
+        ("glabella", 3.2, glabella),
         ("crows_feet_rays", 0.7, rays([("lm_eye_outer.L", (0.06, 0.03, 0.01), (0.34, 0.22, 0.14)), ("lm_eye_outer.L", (0.07, 0.03, -0.02), (0.38, 0.25, -0.02)),
                                   ("lm_eye_outer.L", (0.06, 0.03, -0.05), (0.33, 0.22, -0.18)), ("lm_eye_outer.L", (0.05, 0.03, -0.09), (0.24, 0.16, -0.3))], 0.014)),
         ("under_eye_rays", 0.65, rays([("lm_lid_lower.L", (-0.22, 0.02, -0.07), (0.24, 0.06, -0.11)), ("lm_lid_lower.L", (-0.2, 0.02, -0.15), (0.28, 0.08, -0.2)),
@@ -773,8 +802,9 @@ def _wrinkles(p, J, layer, T, ctx) -> None:
     # fields of lines: a tiling swatch of wandering lines, laid across (forehead, neck) or turned (above the lip)
     a = amt["forehead"]
     if a > 0.02:
-        groove("forehead", a, 0.0011, [{"tile": {"swatch": "wrinkles", "size": 0.055, "range": [0.42 - 0.34 * min(a, 1), 1.0], "vary": False}},
-                                        {"vertex": True, "mask": _zones(["forehead"], 0.85)}], 0.08)
+        # (r17: long even lines in a band over the brows, "forehead_lines"; were the "forehead" colour zone's upper dome)
+        groove("forehead", a, 0.00035, [{"tile": {"swatch": "brow_lines", "size": 0.032, "range": [0.3 - 0.25 * min(a, 1), 1.0], "vary": False}},
+                                        {"vertex": True, "mask": _zones(["forehead_lines"], 1.0)}], 0.08)
     a = amt["lip_lines"]
     if a > 0.02:
         groove("lip_lines", a, 0.00022, [{"tile": {"swatch": "wrinkles", "size": 0.02, "rotate": True, "range": [0.55 - 0.45 * min(a, 1), 1.0], "vary": False}},
@@ -806,7 +836,7 @@ def _hair(p, J, layer, T, ctx) -> None:
         io = interocular(J)
         o = _opt(h.get("brows", 1.0), "hair.brows", ("color", "density", "thickness", "length", "grey", "drop", "soft", "arch",
                                                      "tilt", "fall", "lift", "apart", "taper", "tail", "shadow", "head",
-                                                     "head_density", "clump", "opacity", "feather"))
+                                                     "head_density", "clump", "opacity", "feather", "strands"))
         if o:
             col = _hex(o["color"]) if "color" in o else dflt
             g = float(o.get("grey", 0.0))
@@ -823,7 +853,8 @@ def _hair(p, J, layer, T, ctx) -> None:
                                                        tail=float(o.get("tail", 1.0)), head=float(o.get("head", 0.0)),
                                                        head_density=float(o.get("head_density", 0.05)),
                                                        clump=float(o.get("clump", 0.0)),
-                                                       feather=float(o.get("feather", 0.0)) * 1000)   # m -> mm: the lower edge's fade
+                                                       feather=float(o.get("feather", 0.0)) * 1000,   # m -> mm: the lower edge's fade
+                                                       strands=float(o.get("strands", 0.0)))   # fine hairs of their own tone, tips on top
             c = 0.5 * (a_ + b_)
             c[2] = (a_[2] + 2 * m_[2] + b_[2]) / 4 - 0.02 * io
             c[1] = m_[1]
@@ -858,7 +889,7 @@ def _hair(p, J, layer, T, ctx) -> None:
             # studio catchlight (Tess s14: brow L 58-62 vs the photo's 34-36 although its colour was #2a1c12)
             # opacity: the hairs' cover (.95 default); lower = see-through, the skin between and under the hairs reads (r10: "near-black block")
             layer("brow_hairs", color=col, opacity=round(float(o.get("opacity", 0.95)) * (1 - 0.45 * soft), 3), roughness=0.68, specular=0.22, height=0.00012, image=img)
-        o = _opt(h.get("lashes", 0.7 if ctx["eyes"] else None), "hair.lashes", ("color", "width"))
+        o = _opt(h.get("lashes", 0.7 if ctx["eyes"] else None), "hair.lashes", ("color", "width", "lower"))
         if o:
             col = _hex(o["color"]) if "color" in o else _shade(dflt, 0.45)
             op = 0.9 * min(o["amount"] * (1 + 0.45 * ctx.get("fem", 0.0)) + 0.2, 1)
@@ -876,7 +907,7 @@ def _hair(p, J, layer, T, ctx) -> None:
                 # width: x the line's radius (r4 measure: the RIM 0..1 mm outside the opening reads 3..27 L lighter than the
                 # photo's on every head; the waterline alone moved it ~1.5 L: the dark frame has to reach that band)
                 wd = float(o.get("width", 1.0))
-                for lid, rad, wgt in (("upper", 0.0008 * wd, 1.0), ("lower", 0.0005 * wd, LOWER_FRAME)):
+                for lid, rad, wgt in (("upper", 0.0008 * wd, 1.0), ("lower", 0.0005 * wd, LOWER_FRAME * float(o.get("lower", 1.0)))):
                     for c in cu[lid]:
                         c = np.asarray(c, float)
                         n = len(c)

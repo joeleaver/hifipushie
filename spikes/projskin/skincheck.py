@@ -344,6 +344,67 @@ def brow_band(im, box, skin_L, mm):
             "a": float(np.median(LAB[..., 1][hm])), "b": float(np.median(LAB[..., 2][hm]))}
 
 
+UPLID = {"brow_R": (33, 246, 161, 160, 159, 158, 157, 173, 133), "brow_L": (263, 466, 388, 387, 386, 385, 384, 398, 362)}
+
+
+def brow_path(im, P, k, box, skin_L, mm):
+    """the brow's PATH over the eye (2026-10-18 r15: Garrett's brow read "high and arched" vs the photo's low flat brow close to
+    the lid, and no row measured placement). The hair mask (L < skin - 12 on a 1-px blur, its biggest piece) in a tall window
+    over the reference brow box's columns, from 4 mm above the image's OWN upper lid line (its landmarks, so a brow that sits
+    higher on our head is still found) up to 30 mm; per column the band's lower edge and centre as height above the lid line
+    (mm). Returns lower edge / centre in 5 bins medial -> lateral, their means, arch = centre peak - mean of the two end bins,
+    peak = where along (0 medial .. 1 lateral) the centre is highest, and the mask (for the overlay)."""
+    from scipy import ndimage
+    lid = P[list(UPLID[k])]
+    x0, x1 = int(round(box[0] - 2 * mm)), int(round(box[2] + 2 * mm))
+    ytop = int(round(lid[:, 1].min() - 30 * mm)); ybot = int(round(lid[:, 1].max()))
+    x0, ytop = max(x0, 0), max(ytop, 0)
+    a = np.asarray(im, float)[ytop:ybot, x0:x1] / 255.0
+    L = sp.lab(sp._lin(a.reshape(-1, 3))).reshape(a.shape[:2] + (3,))[..., 0]
+    o = np.argsort(lid[:, 0]); lx, ly = lid[o, 0] - x0, lid[o, 1] - ytop
+    lidy = np.interp(np.arange(L.shape[1]), lx, ly)          # the upper lid line per column (flat past the canthi)
+    yy = np.arange(L.shape[0])[:, None]
+    # (a forehead-relative threshold took the whole shaded brow ridge, and a per-column half-depth run the lid fold's shade
+    # too: the hair is found as LOCAL darkening instead, a band-pass D = blur(L, 4 mm) - blur(L, .7 mm) that drops the broad
+    # shading of the ridge and the lid; per column the brow core is D's peak between lid + 4 mm and lid + 30 mm, the band the
+    # run of rows round it with D over half the peak)
+    Ls = ndimage.gaussian_filter(L, 4.0 * mm) - ndimage.gaussian_filter(L, 0.7 * mm)
+    win = (yy < lidy[None, :] - 4 * mm)
+    m = np.zeros_like(win)
+    cols = []
+    for j in range(L.shape[1]):
+        w = np.nonzero(win[:, j])[0]
+        if len(w) < 5:
+            continue
+        c = -Ls[w, j]; i0 = int(np.argmin(c))
+        if -c[i0] < 2.0:
+            continue
+        t = 0.5 * c[i0]
+        a_, b_ = i0, i0
+        while a_ > 0 and c[a_ - 1] < t:
+            a_ -= 1
+        while b_ < len(c) - 1 and c[b_ + 1] < t:
+            b_ += 1
+        m[w[a_:b_ + 1], j] = True; cols.append(j)
+    cols = np.array(cols)
+    if len(cols) < 10:
+        return None
+    # heights over the CANTHAL LINE (outer to inner corner), not the lid curve: the lid's own arch differs between the photo and
+    # ours and would read as brow shape
+    cl = lid[0, 1] - ytop + (np.arange(L.shape[1]) + x0 - lid[0, 0]) * (lid[-1, 1] - lid[0, 1]) / (lid[-1, 0] - lid[0, 0])
+    lo = np.array([(cl[j] - yy[m[:, j], 0].max()) / mm for j in cols])
+    ce = np.array([(cl[j] - yy[m[:, j], 0].mean()) / mm for j in cols])
+    medial_right = (k == "brow_R")    # brow_R is on the image's left: its medial end is at the larger x
+    if medial_right:
+        lo, ce = lo[::-1], ce[::-1]
+    nb = len(cols)
+    b5 = lambda v: [float(v[int(i * nb / 5): max(int((i + 1) * nb / 5), int(i * nb / 5) + 1)].mean()) for i in range(5)]
+    cs = ndimage.uniform_filter1d(ce, max(3, nb // 8))
+    return {"lo": b5(lo), "ce": b5(ce), "lo_mean": float(lo.mean()), "ce_mean": float(ce.mean()),
+            "arch": float(cs.max() - 0.5 * (cs[:max(nb // 10, 1)].mean() + cs[-max(nb // 10, 1):].mean())),
+            "peak": float(np.argmax(cs) / max(nb - 1, 1)), "mask": m, "off": (x0, ytop), "lid": lidy}
+
+
 def band_rms(im, box):   # age lines: log L band-pass (1 .. 4 px), rms
     from scipy import ndimage
     a = np.log(np.asarray(im.convert("L").crop(tuple(int(round(x)) for x in box)), float) + 1)
@@ -414,6 +475,22 @@ try:
             print(f"BAND {k} darkening ours " + " ".join(f"{v:.1f}" for v in bO["dprof"]))
             print(f"BAND {k} height ref  " + " ".join(f"{v:.2f}" for v in bR["prof"]))
             print(f"BAND {k} height ours " + " ".join(f"{v:.2f}" for v in bO["prof"]))
+        pR, pO = brow_path(R, PR, k, B[k], skinL_r, u), brow_path(O, PO, k, B[k], skinL_o, u)
+        if pR and pO:   # (r15) placement / shape: brow over the lid
+            add(f"{k} path lower edge over canthi (mm, mean)", pR["lo_mean"], pO["lo_mean"], 0.15, "ratio")
+            add(f"{k} path centre over canthi (mm, mean)", pR["ce_mean"], pO["ce_mean"], 0.12, "ratio")
+            add(f"{k} path arch (mm, peak - ends)", pR["arch"], pO["arch"], 1.5, "abs")
+            add(f"{k} path peak along (0 medial)", pR["peak"], pO["peak"], 0.15, "abs")
+            print(f"PATH {k} lower ref  " + " ".join(f"{v:.1f}" for v in pR["lo"]) + " | centre " + " ".join(f"{v:.1f}" for v in pR["ce"]))
+            print(f"PATH {k} lower ours " + " ".join(f"{v:.1f}" for v in pO["lo"]) + " | centre " + " ".join(f"{v:.1f}" for v in pO["ce"]))
+            for tag, im_, pp in (("ref", R, pR), ("ours", O, pO)):   # overlay: mask red, lid line green
+                ov = np.asarray(im_).copy(); x0_, y0_ = pp["off"]; mm_ = pp["mask"]
+                ys, xs = np.nonzero(mm_); ov[ys + y0_, xs + x0_] = (0.5 * ov[ys + y0_, xs + x0_] + [127, 0, 0]).astype(ov.dtype)
+                for j, ly_ in enumerate(pp["lid"]):
+                    yi = int(round(ly_)) + y0_
+                    if 0 <= yi < ov.shape[0] and j + x0_ < ov.shape[1]:
+                        ov[yi, j + x0_] = (0, 255, 0)
+                Image.fromarray(ov).save(os.path.join(d, f"browpath_{k}_{tag}.png"))
     jaw = {"jaw_R": bbox(PR, (172, 136, 150, 149)), "jaw_L": bbox(PR, (397, 365, 379, 378))}
     for k, box in (("chin", B["chin"]), ("jaw_R", jaw["jaw_R"]), ("cheek_R", B["cheek_R"])):
         dr, do = dots(R, box, u), dots(O, box, u)

@@ -28,7 +28,7 @@ import json
 
 import numpy as np
 
-VERSION = 22
+VERSION = 24
 SUB_DASH, SUB_GAP = 2.0, 0.4   # the under-skin shafts in the shadow channel: their gain, the shadow left between them
 MAX_PX = 8192
 
@@ -480,6 +480,22 @@ def beard_direction(J: dict, P: np.ndarray, Nrm: np.ndarray) -> np.ndarray:
     return g
 
 
+def hair_tones(fine: np.ndarray, white: np.ndarray, rng) -> tuple[np.ndarray, np.ndarray]:
+    """Each stubble hair's tone (0 dark .. 1 white: its cover splits between the dark and the white channel) and its
+    edge weight, from `fine` (0 at the beard's fading edge .. 1 where it is full) and whether it is a white hair.
+
+    Where a beard thins out, terminal hair gives way to vellus: fewer hairs, and each one finer, LIGHTER and fainter.
+    Before (r15, Garrett) the fade kept the dark hairs' full darkness and 35% of their cover, and the grey share fell
+    away from the chin, so the beard's top edge was a line of separate black specks over a pale patch, while the photo's
+    grey stubble is a fine light speckle that thins into the cheek. A greying beard's hairs also range from grey to white,
+    not two classes (0.75-1 white, 0-0.15 near-black read as chalk blobs and pepper)."""
+    n = len(fine)
+    dark = rng.uniform(0.0, 0.2, n) + 0.5 * (1 - fine)            # pigmented; vellus at the fade: a light grey, not a speck
+    tone = np.clip(np.where(white, rng.uniform(0.55, 1.0, n), dark), 0, 1)
+    ew = 0.12 + 0.88 * fine ** 2                                  # cover falls with the density (fine ** 2 ~ density / .6)
+    return tone, ew
+
+
 def stubble_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dict]:
     """The stubble map's file, the image dict's placement keys, and stats. o: the resolved options (length m, density,
     grey, patchy, trim, cheeks, cheek_line, neckline, size, seed)."""
@@ -522,9 +538,11 @@ def stubble_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dic
         from .skin import interocular
         io = interocular(J)
         chin = np.exp(-(((P - (np.asarray(J["lm_chin"], float) + [0.0, 0.0, 0.3 * io])) / (np.array([0.55, 0.6, 0.45]) * io)) ** 2).sum(1))
-        gz = 0.6 + 0.8 * chin
+        # (r16: 0.6 + 0.8 x chin left the moustache and the beard's top nearly all dark hairs, black pepper over a pale chin
+        # on Garrett, whose photo greys evenly: the chin comes first, but only a little)
+        gz = 0.85 + 0.3 * chin
         white = rng.random(n) < np.clip(float(o["grey"]) * gz / gz.mean(), 0, 1)   # (the share overall stays `grey`)
-        tone = np.where(white, rng.uniform(0.75, 1.0, n), rng.uniform(0.0, 0.15, n))  # 0 dark .. 1 white
+        tone, ew = hair_tones(fine, white, rng)
         reach = proj + wid + 2 * pxm
 
         def shape(i, s, t):
@@ -545,8 +563,8 @@ def stubble_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dic
             return np.maximum(cov, root) * min(1.0, (wid[i] / max(pxm[i], 1e-9)) ** 0.5 + 0.35)  # sub-pixel hairs read fainter
         # (cut flush, a fresh shave's stubs are barely there: their darkness grows with the length up to 0.3 mm)
         flush = np.clip(Lh / 0.0003, 0.15, 1.0)
-        draw(R, x0, A, reach, shape, (1 - tone) * 0.95 * (0.35 + 0.65 * fine) * flush)
-        draw(G, x0, A, reach, shape, tone * 0.95 * (0.35 + 0.65 * fine))
+        draw(R, x0, A, reach, shape, (1 - tone) * 0.95 * ew * flush)
+        draw(G, x0, A, reach, shape, tone * 0.95 * ew)
         # the shaft under the skin: a dark hair runs ~1 mm on at a slant below the surface before its follicle, seen
         # through the epidermis as a soft grey dash behind the exit point (what makes a 1-day shadow read as a field of
         # dashes at a distance, not a smooth wash: skin3 measured the beard's 1 mm-scale L contrast at 1/4-1/8 of
@@ -561,7 +579,7 @@ def stubble_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dic
             fade = np.clip(1 + a / ls[i], 0, 1) ** 0.7      # 1 at the exit, 0 where it's too deep to see
             return _ramp(np.abs(b), ws[i] + aa, max(ws[i] * 0.3, 0.0)) * _ramp(a, aa, -aa) * fade
         Sd = np.zeros((H, W), np.float32)
-        draw(Sd, x0, A, ls + ws + 2 * pxm, sub_shape, (1 - tone) * (0.4 + 0.6 * fine))
+        draw(Sd, x0, A, ls + ws + 2 * pxm, sub_shape, (1 - tone) * (0.25 + 0.75 * fine ** 2))
         # the shadow: the EXPECTED density of dark roots (hair in the skin), from a dense sample of the density field
         # (not the drawn roots' count: blurred enough to hide its Poisson noise, ~3 mm, it fell off 3 mm short of every
         # edge and left a pale band over the lip), each sample weighted by 1 / its pixel's area on the skin

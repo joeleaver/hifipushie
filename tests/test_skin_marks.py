@@ -132,6 +132,41 @@ def test_fade_band_never_darker_than_full():
 
 
 @_tmp
+def test_stubble_fade_is_fine_and_light():
+    """Where the beard thins out its hairs turn vellus: fainter and lighter, never a line of separate dark specks along
+    the beard's top (Garrett r15: black specks over the cheek while the photo's grey stubble thins into a light speckle);
+    a greying beard's white hairs range in tone instead of one chalk class. On the map: the dark channel, seen from a
+    step back (~1 mm), is far weaker in the fade band than where the beard is full."""
+    rng = np.random.default_rng(0)
+    n = 20000
+    for f in (0.2, 1.0):
+        tone, ew = mk.hair_tones(np.full(n, f), np.zeros(n, bool), rng)
+        if f == 0.2:
+            edge = float(np.mean((1 - tone) * ew))
+        else:
+            full = float(np.mean((1 - tone) * ew))
+    assert edge < 0.15 * full, (edge, full)
+    tone, _ = mk.hair_tones(np.ones(n), np.ones(n, bool), rng)
+    assert tone.min() >= 0.55 and tone.std() > 0.1
+    from scipy.ndimage import gaussian_filter
+    spec = head_spec(hair={"stubble": {"style": "short"}})
+    J = skin._joints(spec)
+    o = stubble_options({"amount": 1.0, "style": "short", "grey": 0.5})
+    path, place, _ = mk.stubble_map(spec, "body", J, o)
+    V, N, _ = mk.head_mesh(spec, "body", J)
+    V, N = V.astype(float), N.astype(float)
+    d = mk.beard_density(J, o, mk.curvature_at(spec, "body", J))(V, N)
+    fr = images.frame(spec, {"file": path, **place, "channel": "r"}, parts=["body"])
+    u, v, w = images.project(fr, V, N)
+    pix = np.array(images.pixels(pathlib.Path(path)), dtype=np.float32)
+    px = images.sample(gaussian_filter(pix[..., 0], 0.001 / 0.00006)[..., None].repeat(3, 2), u, v)
+    inside = (w > 0.9) & (u > 0.02) & (u < 0.98) & (v > 0.05) & (v < 0.98)
+    full, band = (d > 0.85) & inside, (d > 0.03) & (d < 0.3) & inside
+    assert full.sum() > 50 and band.sum() > 50
+    assert np.percentile(px[band, 0], 90) < 0.35 * np.median(px[full, 0]), (np.percentile(px[band, 0], 90), np.median(px[full, 0]))
+
+
+@_tmp
 def test_freckles_no_repeat_and_sun():
     """Freckles are unique: two windows of the map 6 cm apart (the old swatch's period) don't match; they gather on
     the nose and cheeks, not under the chin."""
@@ -210,7 +245,7 @@ def test_base_map_pores_by_zone_and_per_pixel():
 
 
 if __name__ == "__main__":
-    for t in (test_beard_zones_from_landmarks, test_stubble_map_deterministic_and_styles, test_fade_band_never_darker_than_full,
+    for t in (test_beard_zones_from_landmarks, test_stubble_map_deterministic_and_styles, test_fade_band_never_darker_than_full, test_stubble_fade_is_fine_and_light,
               test_freckles_no_repeat_and_sun, test_patchy_is_missing_hair_and_freckles_fade_out, test_base_map_pores_by_zone_and_per_pixel):
         t()
         print("ok", t.__name__)

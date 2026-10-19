@@ -190,6 +190,10 @@ def tone_rgb(tone: dict | None, melanin: float = 1.0, blood: float = 1.0, oxygen
 FACE = {
     "forehead": [("lm_nose_bridge", (0, 0.25, 0.85), (1.05, 0.9, 0.6)), ("lm_brow_outer.L", (0.0, 0.15, 0.55), (0.5, 0.6, 0.5)),
                  ("lm_brow_outer.R", (0.0, 0.15, 0.55), (0.5, 0.6, 0.5))],
+    # where forehead LINES lie (r17, Garrett's photo: 3-4 long lines in the band ~.2-.65 of the way from the brows to the
+    # hairline, the upper forehead smooth): a band over the brows, anchored on them, not the "forehead" colour zone
+    # (centred .85 io over the nasion: lines masked by it sat up on the dome, under the hair)
+    "forehead_lines": [("lm_brow_mid.L", (-0.15, 0.12, 0.31), (0.55, 0.7, 0.3)), ("lm_brow_mid.R", (0.15, 0.12, 0.31), (0.55, 0.7, 0.3))],
     "temple.L": [("lm_brow_outer.L", (0.22, 0.45, 0.15), (0.3, 0.45, 0.4))],
     "glabella": [("lm_nose_bridge", (0, -0.03, 0.2), (0.24, 0.3, 0.22))],
     "nose_bridge": [("lm_nose_bridge", (0, -0.12, -0.25), (0.2, 0.35, 0.35))],
@@ -1008,7 +1012,10 @@ def _build(spec: dict, J: dict) -> dict:
         # covered it: Tess's lips.melanin 12 changed nothing, her upper lip stayed the stack's, 7 L lighter than the photo;
         # r8 lever check 2026-10-16). Off by default: every stacked head's lips are the measured stack's today.
         if ((spec.get("skin") or {}).get("lips") or {}).get("over_stack"):
-            for nm in ("skin:lips_upper", "skin:lips_lower"):
+            # (r18: and the vermilion's own detail with it, in order: the lower lip's lighter body, the darker band toward
+            # the wet line, the wet seam. Under a stack they stayed "_pre" and were covered, so over_stack lips were one flat
+            # fill per lip with no parting line: Tess s25's "lipstick" read)
+            for nm in ("skin:lips_upper", "skin:lips_lower", "skin:lip_body", "skin:lip_inner", "skin:lip_seam"):
                 if nm in out:
                     ly = out.pop(nm); ly.pop("_pre", None); out[nm] = ly
     if p["only"] is not None:  # only some groups; without the shading nothing can be composited into the part's base
