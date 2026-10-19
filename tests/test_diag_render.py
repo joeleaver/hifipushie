@@ -128,10 +128,19 @@ def render_cases(out):
         box = ([-0.25, -0.25, -0.1], [0.25, 0.25, 0.4])
         im, lg = _render([{"name": "g", "V": V, "F": F, "mesh": M}], ["panels", "seams", "turned"], box, out, "kp_panels")
         cA, cB = dict(lg)["g:A"], dict(lg)["g:B"]
+        flap_pts = [(x, z) for x in np.linspace(0.108, 0.142, 6) for z in np.linspace(0.04, 0.26, 23)]
         rows += [("panel A colour", _close(_px(im, box, -0.1, 0.15), cA)),
                  ("panel B colour", _close(_px(im, box, 0.05, 0.15), cB)),
                  ("seam dark at x=0", _close(_px(im, box, 0.0, 0.15), dr.SEAM, 40)),
-                 ("turned flap orange", _close(_px(im, box, 0.125, 0.15), dr.TURNED)),
+                 # turned = orange STRIPES over the piece's own colour (B), never A's, and none off the flap
+                 ("turned flap has orange stripes", any(_close(_px(im, box, x, z), dr.TURNED) for x, z in flap_pts)),
+                 ("turned flap keeps its panel colour between stripes",
+                  any(_close(_px(im, box, x, z), cB) for x, z in flap_pts)),
+                 ("turned flap: only stripe or own panel colour",
+                  sum(_close(_px(im, box, x, z), dr.TURNED) or _close(_px(im, box, x, z), cB) for x, z in flap_pts)
+                  >= 0.6 * len(flap_pts)),  # (stripe edges are anti-aliased: ~6 px stripes here)
+                 ("no orange off the flap", not any(_close(_px(im, box, x, z), dr.TURNED)
+                                                    for x in np.linspace(-0.18, 0.08, 14) for z in (0.08, 0.15, 0.22))),
                  ("fold line yellow somewhere on x=0.15",
                   any(_close(_px(im, box, 0.15, z), dr.FOLD, 40) for z in np.linspace(0.02, 0.28, 60)))]
         # 2. 10 % stretched strip: red only there

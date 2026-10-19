@@ -7588,3 +7588,10 @@ is not pressed under the jacket there), the fronts hug the body and pull in at t
 Blind review ($PF/review_v2final, fresh agent, one image per turn): FAIL: shirt through both upper sleeves, shoulder /
 back stretch, the front clings and pulls in at the hem (sim hangs straight), boxy square shoulder corner, stray seam
 lines across the upper back; opening at the chest judged within ~10 px. Collar / shirt under OTHER STAGES.
+
+## fit round 1 (2026-10-19, Garrett jacket v2 collar check on the form; STATE docs/state/fit_round1.md; NO sims)
+- Step 1, diag "turned": a solid orange fill made the collar fall and the lapel (both turned flaps) one orange area, so
+  the notch boundary between them could not be seen. Now stripes over the piece's own panel colour (orange shown side,
+  dark brown other side; 16 mm diagonal period on the flat pattern, mixed per pixel in the EEVEE shader from per-corner
+  SC / SB / ST). Known answer: tests/test_diag_render.py case 1 (stripes + B's colour on the flap, no orange off it):
+  16/16 PASS, /mnt/data/hifipushie/dress_garrett/fit_round1/diag_known/kp_panels_front.png.

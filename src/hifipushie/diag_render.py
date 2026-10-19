@@ -18,9 +18,13 @@ Modes (combinable; a face's colour: strain > panels > layers > clay, then the ov
   colour first), legend colour -> "garment:piece".
 - seams: sewn seams as thick dark tubes on the surface (SEAM); fold lines (each fold's first row: a lapel's roll line,
   a collar's fold) as thick dashed bright tubes (FOLD).
-- turned: the faces of a folded / turned flap (every fold with a turn) TURNED orange on the side that shows once the
-  flap is turned over (the mesh back side), TURNED_UNDER (darker) on its other side: a flap left flat or turned the
-  wrong way shows dark.
+- turned: the faces of a folded / turned flap (every fold with a turn) STRIPED over the piece's own colour: TURNED
+  orange stripes on the side that shows once the flap is turned over (the mesh back side), TURNED_UNDER (dark brown)
+  stripes on its other side: a flap left flat or turned the wrong way shows dark stripes. Stripes, not a fill, so two
+  turned pieces that meet (a collar fall and a lapel at the notch) keep their own panel colours and the boundary
+  between them shows (2026-10-19: a solid orange hid the collar / lapel notch). Stripes run diagonally on the flat
+  pattern (period STRIPE_P), so they follow the cloth; the renderer mixes per pixel ("SC"/"SB" stripe colours, "ST"
+  the stripe coordinate per corner).
 - backfaces: back faces RED (inside-out pieces, seeing through to the underside).
 - strain: per-face stretch vs the flat pattern (the larger principal stretch of the face's map uv -> 3D, signed):
   blue compressed -> white 0 -> red stretched, +-STRAIN_SCALE full scale (printed by `strain_bar`).
@@ -45,6 +49,7 @@ LAYERS = ["#7fdbff", "#24408e", "#3d9970", "#b10dc9"]  # inner -> outer: shirt, 
 STRAIN_SCALE = 0.10  # full red / blue at +-10 %
 PIERCE_REACH = 0.015  # m (as garment_game.PIERCE_REACH)
 SEAM_R, FOLD_R, DASH = 0.0035, 0.003, (0.015, 0.010)  # m: tube radii, dash on / off
+STRIPE_P = 0.016  # m on the flat pattern: one stripe + one gap (turned flaps)
 
 
 def hex_rgb(h: str) -> np.ndarray:
@@ -292,19 +297,20 @@ def diag_shading(objects: list, diag, body=None, strain_scale: float = STRAIN_SC
         back = front.copy()
         if "backfaces" in modes:
             back[:] = hex_rgb(RED)
+        sfront, sback = front.copy(), back.copy()  # stripe colours (= base where nothing is striped)
         if "turned" in modes:
             # the side that shows once a flap is turned over is the side its base wears INWARD: base fronts out (the
             # usual winding) -> the flap's back side shows; a piece wound the other way swaps
             nfl = 0
             for fl, bt in flap_faces(M, per_fold=True):
                 out_front = outward_front(V, bt, body)
-                shown, other = (back, front) if out_front else (front, back)
+                shown, other = (sback, sfront) if out_front else (sfront, sback)
                 shown[fl], other[fl] = hex_rgb(TURNED), hex_rgb(TURNED_UNDER)
                 nfl += int(fl.sum())
             stats.setdefault(g["name"], {})["flap_faces"] = nfl
         if g["name"] in pierce:
             pm = pierce[g["name"]]
-            front[pm] = back[pm] = hex_rgb(MAGENTA)
+            front[pm] = back[pm] = sfront[pm] = sback[pm] = hex_rgb(MAGENTA)
             stats.setdefault(g["name"], {})["pierce_faces"] = int(pm.sum())
         if "seams" in modes:
             E = seam_edges(M)
@@ -315,7 +321,12 @@ def diag_shading(objects: list, diag, body=None, strain_scale: float = STRAIN_SC
                     a, b = _dashes(V[np.asarray(fd["rows"][0])], *DASH)
                     fol0.append(a)
                     fol1.append(b)
-        out.append({"name": g["name"], "V": V, "F": F, "CC": np.repeat(front, 3, 0), "CB": np.repeat(back, 3, 0)})
+        o = {"name": g["name"], "V": V, "F": F, "CC": np.repeat(front, 3, 0), "CB": np.repeat(back, 3, 0)}
+        if "turned" in modes:
+            uv = np.asarray(M["uv"], float)
+            o.update(SC=np.repeat(sfront, 3, 0), SB=np.repeat(sback, 3, 0),
+                     ST=((uv[:, 0] + uv[:, 1]) / (STRIPE_P * np.sqrt(2)))[F].reshape(-1).astype(np.float32))
+        out.append(o)
     if "seams" in modes:
         if seg0:
             tv, tf = tubes(np.concatenate(seg0), np.concatenate(seg1), SEAM_R)
@@ -327,7 +338,7 @@ def diag_shading(objects: list, diag, body=None, strain_scale: float = STRAIN_SC
                 out.append({"name": "diag_folds", "V": tv, "F": tf, "color": FOLD})
         legend += [("sewn seam", SEAM), ("fold line (dashed)", FOLD)]
     if "turned" in modes:
-        legend += [("turned flap, shown side", TURNED), ("turned flap, other side", TURNED_UNDER)]
+        legend += [("turned flap, shown side (stripes)", TURNED), ("turned flap, other side (stripes)", TURNED_UNDER)]
     if "backfaces" in modes:
         legend.append(("back face", RED))
     if "layers" in modes:

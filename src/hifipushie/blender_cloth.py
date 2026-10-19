@@ -578,8 +578,11 @@ def _render_diag(job, d):
         ob = bpy.data.objects.new(nm, me)
         sc.collection.objects.link(ob)
         nl = len(me.loops)
-        for an, key in (("col", "_CC"), ("colb", "_CB")):
+        striped = nm + "_ST" in d.files
+        for an, key in (("col", "_CC"), ("colb", "_CB"), ("cols", "_SC"), ("colsb", "_SB")):
             src = nm + key if nm + key in d.files else nm + "_CC" if nm + "_CC" in d.files else None
+            if key == "_SC" and not striped:
+                break
             if src:  # sRGB per corner -> linear
                 C = np.asarray(d[src], float).reshape(-1, 3)
                 lin = np.where(C <= 0.04045, C / 12.92, ((C + 0.055) / 1.055) ** 2.4)
@@ -599,8 +602,27 @@ def _render_diag(job, d):
         a1, a2 = nt.nodes.new("ShaderNodeAttribute"), nt.nodes.new("ShaderNodeAttribute")
         a1.attribute_name, a2.attribute_name = "col", "colb"
         mix.data_type = "RGBA"
-        nt.links.new(a1.outputs["Color"], mix.inputs["A"])
-        nt.links.new(a2.outputs["Color"], mix.inputs["B"])
+        if striped:  # (turned flaps: stripe colours where fract(stripe coordinate) > 0.5, else the base colours)
+            st = me.attributes.new("st", "FLOAT", "CORNER")
+            st.data.foreach_set("value", np.asarray(d[nm + "_ST"], np.float32).ravel())
+            a3, a4, a5 = (nt.nodes.new("ShaderNodeAttribute") for _ in range(3))
+            a3.attribute_name, a4.attribute_name, a5.attribute_name = "cols", "colsb", "st"
+            fr, gt = nt.nodes.new("ShaderNodeMath"), nt.nodes.new("ShaderNodeMath")
+            fr.operation, gt.operation = "FRACT", "GREATER_THAN"
+            gt.inputs[1].default_value = 0.5
+            nt.links.new(a5.outputs["Fac"], fr.inputs[0])
+            nt.links.new(fr.outputs[0], gt.inputs[0])
+            mf, mb = nt.nodes.new("ShaderNodeMix"), nt.nodes.new("ShaderNodeMix")
+            for m_, base, strp in ((mf, a1, a3), (mb, a2, a4)):
+                m_.data_type = "RGBA"
+                nt.links.new(gt.outputs[0], m_.inputs["Factor"])
+                nt.links.new(base.outputs["Color"], m_.inputs["A"])
+                nt.links.new(strp.outputs["Color"], m_.inputs["B"])
+            nt.links.new(mf.outputs["Result"], mix.inputs["A"])
+            nt.links.new(mb.outputs["Result"], mix.inputs["B"])
+        else:
+            nt.links.new(a1.outputs["Color"], mix.inputs["A"])
+            nt.links.new(a2.outputs["Color"], mix.inputs["B"])
         nt.links.new(geo.outputs["Backfacing"], mix.inputs["Factor"])
         nt.links.new(mix.outputs["Result"], em.inputs["Color"])
         em.inputs["Strength"].default_value = 1.0

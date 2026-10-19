@@ -11,12 +11,14 @@ bin/judge shots `--diag` (not done: judge renders GLBs in blender_game, it would
   out, modes, views)` (rows `(label, objs[, {"diag", "box"}])`, one panel colouring across rows); `pattern_sheet_diag`.
 - Single views: sheet keeps `<stem>_r<row>_<view>.png` + `<stem>_legend.png`; reviewers get ONE view per turn.
 - Garment objects carry `"mesh"` (pattern mesh dict) and `"layer"`; others (body) render flat BODY.
-- Modes: panels, seams (dark tubes; dashed yellow fold lines), turned (orange shown side / dark brown other side;
-  the shown side is read from the base's outward winding vs the body), backfaces (red), strain (+-10 %), layers
+- Modes: panels, seams (dark tubes; dashed yellow fold lines), turned (STRIPES over the piece's own colour: orange on
+  the shown side / dark brown on the other side, period STRIPE_P 16 mm diagonal on the flat pattern, mixed per pixel in
+  the shader from "SC"/"SB"/"ST"; the shown side is read from the base's outward winding vs the body; 2026-10-19 fit
+  round 1: a solid orange hid the collar fall / lapel notch boundary), backfaces (red), strain (+-10 %), layers
   (layer colours, inner-through-outer magenta via garment_game.crossing_faces + behind-ray test).
 
 ## Proof
-- tests/test_diag_render.py: measures (pure) + 13 pixel checks (two panels/seam/turned flap; 10 % strip red only;
+- tests/test_diag_render.py: measures (pure) + 16 pixel checks (two panels/seam/turned flap stripes over B's colour, none off it; 10 % strip red only;
   inside-out red; poke magenta). Renders: /mnt/data/hifipushie/diag_render/known/.
 - n8: /mnt/data/hifipushie/dress_garrett/pattern_stage/n8_diag_construction.png, n8_diag_strain_layers.png
   (script n8_diag.py there; read-only on form2/asm_n8_*.pkl).

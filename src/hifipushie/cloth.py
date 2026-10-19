@@ -11542,7 +11542,8 @@ def _render_job(objects: list, prefix: str, views=("front", "side", "back"), res
         data[o["name"] + "_F"] = np.asarray(o["F"])
         if o.get("C") is not None:
             data[o["name"] + "_C"] = np.asarray(o["C"], np.float32)
-        for k in ("CC", "CB"):  # (diag_render: per-corner sRGB front / back colours)
+        for k in ("CC", "CB", "SC", "SB", "ST"):  # (diag_render: per-corner sRGB front / back colours; stripe
+            # colours front / back + stripe coordinate)
             if o.get(k) is not None:
                 data[o["name"] + "_" + k] = np.asarray(o[k], np.float32)
         if o.get("uv") is not None:
