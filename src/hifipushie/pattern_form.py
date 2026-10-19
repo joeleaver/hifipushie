@@ -238,6 +238,32 @@ class _Surface:
         return np.sum((X - self.V[i]) * self.N[i], 1), self.N[i], d
 
 
+def padded_body(body, pad: dict | None):
+    """The body with a SHOULDER PAD on each shoulder (garment key "shoulder_pad": {"thickness" m, "reach" m, "toward_neck"
+    fraction}; fit round 1, 2026-10-19). A tailored jacket's pad is a layer between the body and the jacket: it squares
+    and lifts the shoulder line and carries the sleeve head. Modelled as the form's own surface pushed out along its
+    normal by a smooth dome, `thickness` at its centre (on the shoulder line, `toward_neck` of the way from the shoulder
+    point to the neck point), fading to 0 at `reach`, on the upper side only (normal z > -0.3: the pad lies on the top of
+    the shoulder and down the top of the arm). Returns body unchanged without a pad or landmarks."""
+    import types as _types
+    at = getattr(body, "at", None) or {}
+    if not pad or "shoulder.L" not in at or "hps.L" not in at:
+        return body
+    from .cloth_made import outward
+    V = np.asarray(body.V, float)
+    T = np.asarray(body.T)
+    N = _vnormals(V, outward(V, T))
+    t, R, f = float(pad.get("thickness", 0.010)), float(pad.get("reach", 0.075)), float(pad.get("toward_neck", 0.3))
+    lift = np.zeros(len(V))
+    for sx in (1.0, -1.0):
+        sp, hp = np.asarray(at["shoulder.L"], float) * [sx, 1, 1], np.asarray(at["hps.L"], float) * [sx, 1, 1]
+        c = sp + f * (hp - sp)
+        r = np.linalg.norm(V - c, axis=1) / R
+        lift = np.maximum(lift, t * np.clip(1 - r ** 2, 0, None) ** 2)
+    lift *= np.clip((N[:, 2] + 0.3) / 0.6, 0.0, 1.0)
+    return _types.SimpleNamespace(V=V + N * lift[:, None], T=T, at=at, pad_lift_max_mm=float(lift.max() * 1000))
+
+
 def _body_surface(body):
     from .cloth_made import outward
     V = np.asarray(body.V, float)
@@ -820,7 +846,7 @@ def _turn_flaps(M, X, folds_, bsurf):
 
 def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = EASE, fasten="default",
              iters: int = 120, X0: np.ndarray | None = None, attract: float = 0.5, log=None, pressed: bool = True,
-             worn_open: dict | None = None) -> dict:
+             worn_open: dict | None = None, shoulder_pad: dict | None = None) -> dict:
     """The garment assembled on the form (see the module docstring). pattern: a placed garment (cloth.build
     place_only result: "mesh", "X0", "pieces") or {"mesh": M, "X0": start, "pieces": B (optional)}. body: a
     cloth.Body (V, T, at) or None (a free sheet: the fold tests). under: {"V", "F"} of the garment under (the shirt
@@ -834,6 +860,8 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
     pid = np.asarray(M["piece"])
     n = len(X)
     names = list(M["names"])
+    if shoulder_pad and body is not None:  # (the pad is on the form, under this garment: see padded_body)
+        body = padded_body(body, shoulder_pad)
     bsurf = _body_surface(body) if body is not None else None
     usurf = _Surface(under["V"], under["F"], ref=bsurf) if under is not None and bsurf is not None else None
     # which face of each piece is its outside (CCW in the pattern = +z normal): from the start's placement
@@ -1234,7 +1262,7 @@ def on_form(model: str, garment: str, spec: dict | None = None, g: dict | None =
     under = {"V": und["A"], "F": und["mesh"]["F"]} if und is not None else None
     # garment key "worn_open" {point: offset m, "source": why}: the form rule for fronts worn open (worn_open_pins)
     out = assemble(res, res["body"], under=under, ease=EASE if under is not None else UNDER_EASE, log=log,
-                   worn_open=g.get("worn_open"))
+                   worn_open=g.get("worn_open"), shoulder_pad=g.get("shoulder_pad"))
     res["A"], res["A_info"], res["form_under"] = out["V"], out["info"], und
     return res
 

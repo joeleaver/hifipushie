@@ -248,3 +248,29 @@ def test_gate_form_switch_reads_the_validation_record(tmp_path, monkeypatch):
     assert cc.form_validated() is True
     monkeypatch.setattr(pf, "VALIDATED", False)
     assert cc.form_validated() is False
+
+
+def test_layer_clearance_rows():
+    """An outer sleeve (two pieces, biceps chord 0.20 + 0.18 = 0.38 m) over a one-piece under sleeve: FAIL when the
+    under one is 0.393 (Garrett's shirt vs jacket on the form), PASS when it is 0.35 (0.38 >= 0.35 + 2 pi 4 mm)."""
+    import types
+    from hifipushie import cloth_check as cc
+
+    def pc(P, names, to="arm.L"):
+        return {"P": np.asarray(P, float), "names": names, "wrap": {"to": to}, "marks": {}, "lines": {}}
+
+    top = pc([[0, 0], [0.20, 0], [0.20, 0.45], [0.10, 0.55], [0, 0.45]], {"tsF": 0, "tsB": 1, "tsHemB": 2})
+    top["names"] = {"tsHemF": 0, "tsHemB": 1, "tsB": 2, "capTop": 3, "tsF": 4}
+    und = pc([[0, 0], [0.18, 0], [0.18, 0.40], [0, 0.40]], {"usHemF": 0, "usHemB": 1, "usB": 2, "usF": 3})
+    outer = {"pieces": {"top.L": top, "under.L": und}}
+
+    def inner(w):
+        return {"pieces": {"sleeve.L": pc([[0, 0], [w, 0], [w, 0.4], [w / 2, 0.5], [0, 0.4]],
+                                          {"bicepsLeft": 4, "bicepsRight": 2})}}
+
+    body = types.SimpleNamespace(at={})
+    assert abs(cc.biceps_girth(outer) - 0.38) < 1e-6, cc.biceps_girth(outer)
+    r = cc.layer_clearance_rows(outer, inner(0.393), body, "shirt")
+    assert [x["id"] for x in r] == ["layer_clearance_biceps"] and r[0]["status"] == "FAIL", r
+    r = cc.layer_clearance_rows(outer, inner(0.35), body, "shirt")
+    assert r[0]["status"] == "PASS", r

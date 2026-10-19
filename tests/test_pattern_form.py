@@ -731,6 +731,24 @@ def open_settle_cape_on_bar(verbose=True):  # OPEN (not collected): fails, see t
     assert out["info"]["stretch_pct"]["p99"] <= 2.0, out["info"]["stretch_pct"]
 
 
+
+def test_shoulder_pad_lifts_the_form():
+    """padded_body: a 10 mm pad on a horizontal 'shoulder' bar lifts the bar's top by 10 mm at the pad centre (30 % of
+    the way from the shoulder point to the neck point), nothing at the neck point, nothing underneath."""
+    b = _bar_body(0.05, 1.0, 0.3)
+    # the bar runs along y here; put the shoulder / neck points on its top, 0.15 m apart along x would be off the bar,
+    # so use a bar along x: swap x / y
+    b = types.SimpleNamespace(V=b.V[:, [1, 0, 2]], T=b.T, at={"shoulder.L": [0.2, 0.0, 1.05], "hps.L": [0.05, 0.0, 1.05]})
+    p = pf.padded_body(b, {"thickness": 0.010, "reach": 0.075, "toward_neck": 0.3})
+    lift = np.linalg.norm(p.V - b.V, axis=1)
+    c = np.array([0.2 + 0.3 * (0.05 - 0.2), 0.0, 1.05])
+    top_c = np.argmin(np.linalg.norm(b.V - c, axis=1))
+    neck = np.argmin(np.linalg.norm(b.V - [0.05, 0, 1.05], axis=1))
+    under = b.V[:, 2] < 0.97
+    assert abs(lift[top_c] - 0.010) < 0.001, lift[top_c]
+    assert lift[neck] < 1e-4 and lift[under].max() < 1e-9, (lift[neck], lift[under].max())
+
+
 if __name__ == "__main__":
     fails = 0
     for k, f in list(globals().items()):

@@ -856,6 +856,11 @@ def pattern_gate(model: str, garment: str, spec: dict | None = None, refs=None, 
                      form_ok=form_ok, flat=flat_readings(res["pieces_full"]), drape=g.get("drape_readings"))
     rows.append(flat_pattern_row(model, garment, spec))
     rows += tailor_rows_for(res["pieces_full"], kind, g)
+    under_nm = g.get("over")  # (the garment worn under this one: an outer layer must clear it at every shared girth)
+    if isinstance(under_nm, str) and under_nm in spec["cloth"]:
+        from . import cloth_workflow
+        ub = cloth_workflow.Ctx(model, under_nm, spec).Bp
+        rows += layer_clearance_rows(res["pieces_full"], ub, res["body"], under_nm, g.get("layer_clearance"))
     rows.append({"id": "neckline_standoff", "stage": 3, "status": "INFO", "measure": "cloth_check.neckline_standoff_mm",
                  "ours": nk, "why": "no target yet: a checklist item adopts it with \"pattern_measure\""})
     fi = res.get("A_info") or {}
@@ -936,3 +941,102 @@ def pattern_sheet(res: dict, prefix, concept: str | None = None, views=("front",
     p = prefix.with_suffix(".png")
     out.save(p)
     return p
+
+
+# ---------------------------------------------------------------- layer clearance (flat; fit round 1, 2026-10-19)
+# An OUTER garment must be bigger than the one UNDER it at every girth they share, by the room the under layer takes
+# (its thickness + the gap the form keeps between layers), else the under garment comes through the outer one wherever
+# it is the bigger: Garrett's shirt sleeve read 393 mm round at the biceps on the form vs the jacket's 378, and the
+# diag render showed the shirt through both upper sleeves. Read FLAT (no form): chest / waist by cloth.sizing (seam to
+# seam), the biceps as the line between the sleeve's biceps landmarks (BICEPS_POINTS: where the sleeve's side
+# seams leave the cap), the neck as the collar stand's neck edge. Margin = 2 pi x LAYER_CLEARANCE (radial, m).
+LAYER_CLEARANCE = {"chest": 0.006, "waist": 0.006, "biceps": 0.004, "neck": 0.003}  # m: one cloth (1.5) + the form's
+# layer gap (pattern_form.EASE 4) at the torso; the arm and neck lie closer (pattern_form.UNDER_EASE 3, the collar)
+BICEPS_POINTS = (("bicepsLeft", "bicepsRight"), ("tsF", "tsB"), ("usF", "usB"))  # (shirt one-piece; jacket top / under)
+NECK_EDGES = ("cf>shoulderNotch>cb", "leftBottomCf>bottomMid")  # half the stand's neck edge (tailored stand; shirt band)
+
+
+def _chord(P: np.ndarray, y: float) -> float:
+    """Total length of a horizontal line at y inside the closed outline P (pattern plane)."""
+    xs = []
+    Q = np.r_[P, P[:1]]
+    for a, b in zip(Q[:-1], Q[1:]):
+        if (a[1] - y) * (b[1] - y) < 0:
+            xs.append(a[0] + (y - a[1]) * (b[0] - a[0]) / (b[1] - a[1]))
+    xs = sorted(xs)
+    return float(sum(xs[i + 1] - xs[i] for i in range(0, len(xs) - 1, 2)))
+
+
+def biceps_girth(Bp: dict, side: str = "L") -> float | None:
+    """The sleeve's girth at its biceps line (m): the sum over the arm pieces of the straight line between each piece's
+    BICEPS_POINTS pair (where its side seams leave the cap: a two-piece sleeve's front seam starts lower than its back
+    one, so the line is slanted; a level chord through the top sleeve cut the cap: 212 mm for a 391 mm sleeve)."""
+    tot, hit = 0.0, False
+    for nm, pc in Bp["pieces"].items():
+        if (pc.get("wrap") or {}).get("to") != f"arm.{side}":
+            continue
+        for a, b in BICEPS_POINTS:
+            if a in pc["names"] and b in pc["names"]:
+                P = np.asarray(pc["P"], float)
+                tot += float(np.linalg.norm(P[pc["names"][a]] - P[pc["names"][b]]))
+                hit = True
+                break
+    return tot if hit else None
+
+
+def neck_girth(Bp: dict) -> float | None:
+    """The collar stand's neck edge, whole (m): twice its half from the front end to CB (NECK_EDGES)."""
+    from . import pattern
+    pc = Bp["pieces"].get("stand")
+    if pc is None:
+        return None
+    for arc in NECK_EDGES:
+        try:
+            P = np.asarray(pc["P"], float)[pattern.arc_indices(pc, arc)]
+        except Exception:  # noqa: BLE001 (that edge's points aren't on this stand)
+            continue
+        return 2.0 * float(np.linalg.norm(np.diff(P, axis=0), axis=1).sum())
+    return None
+
+
+def layer_girths(Bp: dict, body) -> dict:
+    from . import cloth
+    sz = cloth.sizing({"pieces": Bp, "body": body})["rows"]
+    out = {k: float(sz[k]["garment_mm"]) / 1000 for k in ("chest", "waist") if k in sz}
+    b = biceps_girth(Bp)
+    if b:
+        out["biceps"] = b
+    n = neck_girth(Bp)
+    if n:
+        out["neck"] = n
+    return out
+
+
+def layer_clearance_rows(outer: dict, inner: dict, body, inner_name: str = "under",
+                         clearance: dict | None = None) -> list:
+    """One gate row per shared girth: outer >= inner + 2 pi x clearance (LAYER_CLEARANCE). outer / inner: flat pattern
+    dicts (Bp) of the garment and the one worn under it."""
+    cl = dict(LAYER_CLEARANCE, **(clearance or {}))
+    go, gi = layer_girths(outer, body), layer_girths(inner, body)
+    rows = []
+    for k in ("biceps", "chest", "waist", "neck"):
+        if k not in go or k not in gi:
+            continue
+        need = gi[k] + 2 * np.pi * cl[k]
+        rows.append({"id": f"layer_clearance_{k}", "stage": 2, "status": "PASS" if go[k] >= need - 1e-4 else "FAIL",
+                     "measure": "cloth_check.layer_clearance_rows (flat)", "read_on": "flat draft",
+                     "ours": round(go[k] * 1000, 1), "ref": round(need * 1000, 1),
+                     "why": f"over {inner_name} {gi[k] * 1000:.1f} mm + 2 pi x {cl[k] * 1000:.0f} mm clearance "
+                            f"(margin {(go[k] - need) * 1000:+.1f} mm)"})
+    return rows
+
+
+def _selftest_layer_clearance():
+    """Known answers: a rectangle's chord; a sleeve 10 mm wider passes only a clearance under 10 / 2 pi mm."""
+    P = np.array([[0, 0], [0.3, 0], [0.3, 0.5], [0, 0.5]], float)
+    assert abs(_chord(P, 0.25) - 0.3) < 1e-9
+    U = np.array([[0, 0], [0.2, 0], [0.25, 0.4], [-0.05, 0.4]], float)  # widening upward: 0.3 at y 0.4
+    assert abs(_chord(U, 0.2) - 0.25) < 1e-9
+
+
+_selftest_layer_clearance()

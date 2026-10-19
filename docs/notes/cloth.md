@@ -7608,3 +7608,17 @@ lines across the upper back; opening at the chest judged within ~10 px. Collar /
   off. Slow convergence of local / global for a large rotation. Method change needed (swing free flaps about their
   contact line first, as _swing_front; or a Newton / L-BFGS static solve). NOT used on the jacket; the validation
   record's open rows (opening, shoulder, back) are NOT closed; form_validated() stays False.
+- Step 3, layer clearance (flat gate rows, cloth_check.layer_clearance_rows, wired into pattern_gate for a garment with
+  "over": <under garment>): outer >= inner + 2 pi x LAYER_CLEARANCE (chest 6, waist 6, biceps 4, neck 3 mm radial);
+  biceps = the line between each arm piece's BICEPS_POINTS (a level chord cut the two-piece top sleeve's cap: 212 mm
+  for a 391 mm sleeve, fixed before use). Test: test_pattern_gate.py test_layer_clearance_rows (393 under 380 FAILs).
+  Garrett v2 flat: biceps 390 vs shirt 408 FAIL, chest 1048 vs 1067 FAIL, waist 936 vs 906 FAIL (-8), neck PASS.
+  Fix ($FR1 = /mnt/data/hifipushie/dress_garrett/fit_round1/fr1.py, sourced): jacket chest_ease 0.15, waist_ease 0.16,
+  biceps_ease 0.25; shirt bicepsEase 0.10 -> biceps 426 vs 392 (+9), chest 1105 vs 1067 (+1), waist 954 vs 906 (+10),
+  neck +20: all PASS; tailor rows still all PASS. OPEN (tooling): the shirt's chestEase / waistEase don't move its
+  measured chest / waist (1066.7 at 0.04 and at the default), so the chest was met by the jacket alone.
+- Step 4, shoulder pad: garment key "shoulder_pad" {thickness, reach, toward_neck, source}; pattern_form.padded_body
+  pushes the form's surface out by a dome on the top of each shoulder (on_form passes it to assemble): the jacket fits
+  over the pad, the shirt under it doesn't see it. Garrett: 10 mm (structured, concept's slightly built shoulder).
+  Test test_shoulder_pad_lifts_the_form (10.0 mm at the centre, 0 at the neck point and underneath). The DRAFT does not
+  yet add the pad's allowance (shoulder seam / cap height raised by the pad): open.
