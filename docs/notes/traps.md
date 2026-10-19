@@ -122,3 +122,15 @@ float pipelines differ by a pixel / 1e-16 between runs and GPUs. Check first: co
 
 **Wrong PID for a background job.** Symptom: "the job is alive" when it died, or a kill misses. Cause: `setsid ... & echo
 $!` records setsid's parent. Check first: pgrep -f <script> for the real PID; kill only PIDs you started.
+
+## A closed thin slab decimated as one mesh (2026-10-19, Garrett collars)
+Symptom: collars / lapels in the GLB show flat facets with their back face out; the frozen drape is clean.
+Cause: made pieces ship as closed ~1 mm slabs (front, back, rim); decimation error (mm) >> slab thickness, so the two
+sides cross. Check first: back-face pixels (clay, backs red) before vs after decimation. Fix: decimate one sheet and
+rebuild the back from it (cloth.EXPORT_MADE_SHEETS, lods.LOD_MADE_SHEETS).
+
+## A misread note became a pattern default (2026-10-19, Garrett jacket neckline)
+Symptom: many collar sessions tuning the drape; collar stands off the neck whatever the sim does.
+Cause: jacket neckline widen 0.018 / back 0.035 added from a misread "lie low and flat" note; every later session tuned
+on a wrong neckline. Check first: measure the pattern against the collar checklist (cloth_checklist.json) before any
+drape work; pattern parameters carry their source.
