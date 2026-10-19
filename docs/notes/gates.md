@@ -197,3 +197,8 @@ to judge." It never sees the author's caption or numbers.
   `bin/review --dry` / `bin/review-ab --dry`: they gate the inputs (reviewgate: captions, sheet size, grid gutters)
   and write the pair images + prompt.md; give the fallback subagent ONE image per message. Sheets are for Joe only.
   Construction reviews pair the clay crop with the diagnostic crop (diag render) of the same view.
+- ONE AGENT PER THREAD, SEQUENCED (2026-10-19, clothing): within a thread, one agent at a time; each step lands on
+  main before the next starts, so every agent starts from the same state and results stay comparable. Parallel only
+  across independent threads, never two agents editing the same module. One ordered plan per thread, each step with
+  its question stated up front. (Today ~10 stacked dress-form branches + 5 parallel cloth agents: flag-name
+  mismatches, ledger id collisions, a fit validated on the pattern being replaced, sheets nobody could compare.)
