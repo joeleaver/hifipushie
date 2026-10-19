@@ -10,6 +10,10 @@
 - IN FLIGHT: **v8** = ag_garrett11 (ag_garrett10 + sh4T hair SHELLS from hg_G88a, merged hair-heads2 3bab7bc7), s15/chain16.sh
   (PID s15/PIDS) -> exp/ag_garrett_v8 -> s15/glb_v8 -> specks_v8.log -> offload/ag11 local game jobs -> s15/CHAIN16_DONE. Unjudged.
   Hair constants are module constants, not spec keys: s15/sh4t.py sets them; export only through it.
+- COLLARS (2026-10-19, branch garrett-collar-diag 0f5cf7fa, NOT on main yet): **v8m** = v8 + made pieces decimated as sheets
+  (exp/ag_garrett_v8m). Collar back-face px 1505 -> 285 (freeze 64); blind A/B v8m vs v8 3-1-1 (clay 3/0, textured 3/4 lost:
+  the fix shows the FREEZE's own crumpled near shirt collar). Tiles: collar/garrett_collar_tiles.png. v8m unjudged on the
+  full sheet (face / hair identical code paths).
 - Export options: {"role": "hero", "lods": true, "cull_under_cloth": true, "cull_poses": "assembly_garrett/s5/poses/*.npz"}.
 
 ## Open faults (by game visibility)
@@ -22,6 +26,9 @@
    v8 shells are the test.
 4. 3 m: right underarm notch at LOD1-2 back. LOD_SKIN_CULL_FROM 1 (abff2b9d) kept 98% (pose test "uncovered in a clip frame"
    is too loose): needs "visible in that frame". Seated clips not in the game shots: holes there unchecked.
+5a. 1 m: collars: export fault FIXED in v8m (made slabs decimated as one mesh: front / back crossed). Left: jacket lapel EDGE
+   back-face line (thin, also in the freeze draw), and the freeze's own shirt collar (rumpled, stands inside the jacket vs the
+   concept's spread collar): dress-garrett, not export.
 5. 3 m: pale cuff flecks above both cuffs LOD1-2 (minor; export / dress-garrett). Left collar / lapel sliver (dress-garrett).
 Fixed: forehead shine (v7f), fly (clean at all LODs), clothing under budget, garment "over" chain fallback (s7), blink seam check.
 

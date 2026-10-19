@@ -5010,3 +5010,11 @@ frozen_ae, collar v3) reads fine in its clay draw; the GLBs (v6, v8) show the op
   decimated them as slabs. "Closer before" = the freeze clay draws, not an export.
 - NOT export: the freeze's own shirt collar is rumpled and stands inside the jacket vs the concept's collar spread
   over the lapels (concept crop in the tile sheet): dress-garrett (paused), not this fix.
+- Proof: full export v8m (= v8 command, collar/exp_v8m.sh) -> exp/ag_garrett_v8m (shirt 8116, jacket 4964 tris at LOD0;
+  budget unchanged). Collar back-face px v6 / v8 1505 -> v8m 285 (freeze 64). Tile sheet collar/garrett_collar_tiles.png
+  (concept | freeze | v6 | v8 | v8m clay | v6 | v8 | v8m textured; front / three / back).
+- Blind A/B (fresh subagent, before 13:00; collar/ab/trio_1-5 + key.json): v8m WINS 3-1-1 (clay front / three / back:
+  new; textured front: tie; textured three: OLD: the fixed near shirt collar now shows lit, and it is the freeze's own
+  crumpled collar). Kept.
+- STATE: fix on branch garrett-collar-diag; v8m not on the full Joe sheet yet. NEXT: coordinator lands 0f5cf7fa; the
+  freeze's shirt collar shape goes to dress-garrett when it resumes.
