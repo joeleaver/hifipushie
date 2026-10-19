@@ -1,6 +1,7 @@
 """mkE.py: copies th_E* of other human models WITH their hair (spec.json + human_refs.json only; the originals are
 never written), for the hairline's before / after. th_E9 = a template-base body with a default short groom."""
 import json
+import os
 import shutil
 
 from hifipushie import store
@@ -10,7 +11,8 @@ E = {"th_E1": "garrett_v20", "th_E2": "om_garrett", "th_E3": "hu_s_wavy", "th_E4
 
 if __name__ == "__main__":
     for dst, src in E.items():
-        assert not src.startswith(("lt19", "jw"))
+        # private heads never feed a spike: their tag prefixes live outside the repo (comma list)
+        assert not src.startswith(tuple(p for p in os.environ.get("HIFIPUSHIE_PRIVATE_PREFIXES", "").split(",") if p))
         d = store.HOME / dst
         d.mkdir(exist_ok=True)
         sp = json.loads((store.HOME / src / "spec.json").read_text())
