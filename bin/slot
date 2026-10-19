@@ -1,0 +1,23 @@
+#!/bin/bash
+# slot <cmd...>: run a LIGHT job (solver chain, benchmark, pytest; 1-3 GB) in one of a few machine-wide slots, so
+# several agents' sweeps queue instead of piling up (2026-10-12: three agents at load 35, swap full).
+#   HIFIPUSHIE_LIGHT_SLOTS (default 4) slots; one BLAS / OMP thread per job; memory-capped through `capped` (6 GB
+#   unless CAP is set). Waits for a free slot (FIFO is not guaranteed). Nested calls pass through.
+# Heavy jobs (renders, syncs, exports: 4 GB+) are NOT for this: they take resources.heavy and run through `capped`.
+if [ -n "${HIFIPUSHIE_SLOT:-}" ]; then exec "$@"; fi
+export HIFIPUSHIE_SLOT=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
+N=${HIFIPUSHIE_LIGHT_SLOTS:-4}
+d=${XDG_RUNTIME_DIR:-/tmp}/hifipushie/light
+mkdir -p "$d"
+t0=$SECONDS
+while :; do
+  for i in $(seq 1 "$N"); do
+    exec {fd}>"$d/$i.lock"
+    if flock -n "$fd"; then
+      [ $((SECONDS - t0)) -gt 5 ] && echo "slot: waited $((SECONDS - t0)) s for light slot $i" >&2
+      CAP=${CAP:-6G} exec "$(dirname "$0")/capped" nice -n 10 "$@"
+    fi
+    exec {fd}>&-
+  done
+  sleep 2
+done

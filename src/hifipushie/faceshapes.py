@@ -113,6 +113,31 @@ def playback(weights: dict) -> dict:
         if op == "min":
             out[name] = min(_weight_of(weights, a), _weight_of(weights, b))
     return out
+# Named expressions = mixes of the exported ARKit shapes (Joe 2026-10-18: "just use the expression parameters"; never
+# per-character sculpted deltas). smile_tess: the controls-only mix that read as a mild real smile and beat every
+# hand-made smile in a blind review (/mnt/data/hifipushie/happy/NOTES.md); limits accepted (teeth band 81% vs the
+# photo's 62%, weak exported squints) unless Joe reopens them.
+EXPRESSION_PRESETS = {
+    "smile_tess": {"mouthSmileLeft": 0.8, "mouthSmileRight": 0.8, "cheekSquintLeft": 1.0, "cheekSquintRight": 1.0,
+                   "eyeSquintLeft": 0.5, "eyeSquintRight": 0.5, "mouthDimpleLeft": 0.6, "mouthDimpleRight": 0.6,
+                   "mouthPressLeft": 0.2, "mouthPressRight": 0.2, "mouthUpperUpLeft": 0.108, "mouthUpperUpRight": 0.108},
+}
+
+
+def expression(mix) -> dict:
+    """An expression's ARKit weights: a preset name (EXPRESSION_PRESETS) or a {shape: weight} mix. Every key must be
+    an exported ARKit shape and every weight in [0, 1]: an expression is a parameter mix, nothing else."""
+    w = dict(EXPRESSION_PRESETS[mix]) if isinstance(mix, str) else dict(mix)
+    known = set(REQUIRED) | set(RECOMMENDED) | set(EXTRA)
+    bad = sorted(k for k in w if k not in known)
+    if bad:
+        raise ValueError(f"expression: {bad} are not ARKit shapes the export makes (an expression is a mix of them)")
+    out = [k for k, v in w.items() if not 0.0 <= float(v) <= 1.0]
+    if out:
+        raise ValueError(f"expression: weights outside [0, 1]: {out}")
+    return {k: float(v) for k, v in w.items()}
+
+
 # viseme-like combinations for review sheets (oxidegen's presets are its own)
 COMBOS = {"AA": {"jawOpen": 0.6, "mouthFunnel": 0.2}, "OO": {"mouthPucker": 0.8, "jawOpen": 0.2},
           "MBP": {"mouthPressLeft": 0.7, "mouthPressRight": 0.7, "mouthRollLower": 0.2, "mouthRollUpper": 0.2},
@@ -835,11 +860,35 @@ def names_of(face_shapes) -> list[str]:
 SHAPE_SCULPT = __import__("os").environ.get("HP_SHAPE_SCULPT", "")  # (r48) hand-sculpted shape deltas (npz)
 
 
+ALLOW_SCULPT_ENV = "HIFIPUSHIE_ALLOW_SHAPE_SCULPT"  # =1: the one explicit opt-out (logged as a WARNING), for research
+
+
+def refuse_sculpt(path: str, where: str = "HP_SHAPE_SCULPT", log: list | None = None):
+    """Expressions are parameter mixes only (Joe 2026-10-18; codified 2026-10-19): a hand-sculpted shape delta file
+    raises, wherever it comes from (environment or base.head.face_fits.sculpt). Search the ARKit / GNM mix instead
+    (EXPRESSION_PRESETS). Opt-out only with HIFIPUSHIE_ALLOW_SHAPE_SCULPT=1, and then it is a WARNING in the log."""
+    import os
+    if path and os.environ.get(ALLOW_SCULPT_ENV) == "1":
+        msg = (f"WARNING face shapes: {where}={path}: hand-sculpted expression deltas applied under "
+               f"{ALLOW_SCULPT_ENV}=1 (refused by default: expressions are parameter mixes)")
+        print(msg, flush=True)
+        if log is not None:
+            log.append(msg)
+        return
+    if path:
+        raise ValueError(f"face shapes: {where}={path}: hand-sculpted expression deltas are refused (an expression is "
+                         "a mix of the ARKit / GNM expression parameters, e.g. Tess's smile = mouthSmile .8 + cheekSquint 1 "
+                         "+ eyeSquint .5 + ...; search the mix, never sculpt per-character deltas)")
+
+
 def _sculpted(D: dict, part: str, n: int, log: list) -> dict:
     """(r48) Add hand-sculpted corrective deltas to a part's shapes: SHAPE_SCULPT is an npz of "<part>|<shape>" ->
     (verts, 3) offsets in the export's frame (Blender axes, m), sculpted against the reference on the posed export mesh
     (the solve is the base, the artist finishes). Only the shapes move; the neutral is untouched. Checked by vertex count:
-    a mesh that changed since the sculpt is skipped with a WARNING, never applied to the wrong vertices."""
+    a mesh that changed since the sculpt is skipped with a WARNING, never applied to the wrong vertices.
+    REFUSED since 2026-10-18 (Joe, after r35-r48: "stop hand tuning it and just use the expression parameters"): an
+    expression is a mix of the exported ARKit / GNM expression parameters, never per-character sculpted deltas."""
+    refuse_sculpt(SHAPE_SCULPT, log=log)
     z = np.load(SHAPE_SCULPT)
     out = dict(D)
     for k in z.files:
@@ -891,7 +940,8 @@ def apply(spec: dict, parts: dict, face_shapes, log: list) -> dict:
         idx = p.get("gnm_index") if kind == "skin" else None  # (one mesh, own quads: GNM's vertices by index)
         Xn = Xm + face.neutral(Xm, kind, idx)
         moved_rest = False
-        if SHAPE_SCULPT and kind == "teeth":  # (r48) a sculpted rest for the teeth (levelled incisal edges)
+        if SHAPE_SCULPT and kind == "teeth":
+            refuse_sculpt(SHAPE_SCULPT, log=log)  # (r48) a sculpted rest for the teeth (levelled incisal edges)
             z = np.load(SHAPE_SCULPT)
             if f"{base}|_neutral" in z.files and z[f"{base}|_neutral"].shape == Xn.shape:
                 Xn = Xn + np.asarray(z[f"{base}|_neutral"], np.float64); moved_rest = True
@@ -1195,6 +1245,7 @@ def character_fits(spec: dict, log=None, base_dir=None):
     say = log.append if log is not None else (lambda m: None)
     try:
         if ff is None:
+            refuse_sculpt(SHAPE_SCULPT, log=log)
             for k, v in env_fits().items():
                 say(f"WARNING: face shapes: {k}={v} (a per-character fit / sculpt from the environment, applied to THIS "
                     f"head; put it in base.head.face_fits instead)")
@@ -1206,6 +1257,8 @@ def character_fits(spec: dict, log=None, base_dir=None):
                 v = ff.get(k) or ""
                 if v and not os.path.isabs(v) and base_dir is not None:
                     v = str(Path(base_dir) / v)
+                if k == "sculpt":
+                    refuse_sculpt(v, "base.head.face_fits.sculpt", log)
                 if v and not os.path.exists(v):
                     raise FileNotFoundError(f"base.head.face_fits.{k}: {v} not found")
                 g[var] = v

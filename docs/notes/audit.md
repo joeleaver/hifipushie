@@ -95,3 +95,19 @@ Known truths (from the coordinator's own reading) and whether the grader surface
 STATE: bin/audit + bin/audit-summary working; 8 sessions audited (/mnt/data/hifipushie/audits, summary.md).
 NEXT: run audits on each finished session (the coordinator, after each handover); fix bin/review's claude
 flags; take the top rollup findings to the gates / RESTART owners.
+
+## codify checks 2026-10-19 (codify agent; STATE docs/state/codify_checks.md)
+Joe: "any durable learning that's not codified should be, now please". Each rule grepped first, then the smallest
+refusal + a test in tests/test_codified.py. Found: the approved-head gate, fold-form gate and GAME_LIGHT exist only on
+the export branches (not main): the test skips until the coordinator merges them. bin/review's docstring claimed
+"captioned sheets are refused" with no check behind it; exit 4 for a review that didn't run was real, but
+count_review.py still counted a REVIEW FAILED file as 0 MAJORs. The hair fit counted drawn triangles (c10) against the
+role default, against the coordinator's 2026-10-19 rule: now card faces (hair.BUDGET_UNIT), drawn <= range max at export.
+Added: faceshapes.refuse_sculpt + EXPRESSION_PRESETS smile_tess; asset.hair_budget / export_gb / write_glb back-face
+guard; resources.heavy refuses undeclared jobs, EXPORT_HUMAN_GB 24; reviewgate.py (caption detector checked on 150 real
+crops: 3 hits, all real captions); validated.py (known-answer self-tests for gate measures); bin/hooks/guard.py +
+bin/install-hooks (installed; scratch commits tested and reset); bin/ copies of review / review-ab / approve / capped /
+slot + bin/link-tools; golden mesh stats per BUILD_VERSION (tests/data/build_golden.json).
+Caption heuristic: an edge band >= 80% one colour holding a line of >= 6 alike glyphs (8-connected, contrast > 70);
+a first version without the line test flagged red debug scribbles and terrain texture. Private prefixes match only when
+followed by "_" or a digit, case-sensitive: a bare 2-letter prefix hit variable names in correctives / terrain_mesh.

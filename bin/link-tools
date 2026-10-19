@@ -1,0 +1,16 @@
+#!/bin/bash
+# The guard tools (review, review-ab, approve, capped, slot) are versioned here, in the repo's bin/. Agents call them
+# at /mnt/data/hifipushie/bin/<tool>; this points those paths at the MAIN checkout's copies (symlinks), so a change
+# lands with main. Run by the coordinator after merging; a tool the main checkout doesn't have yet is left alone.
+# Each replaced file is kept as <tool>.bak-<date>. Re-running is harmless.
+set -euo pipefail
+MAIN=${HIFIPUSHIE_MAIN:-/home/joe/dev/hifipushie}
+DST=${HIFIPUSHIE_TOOLS:-/mnt/data/hifipushie/bin}
+for t in review review-ab approve capped slot; do
+  src="$MAIN/bin/$t"
+  [ -x "$src" ] || { echo "link-tools: $src missing (not merged to main yet): $DST/$t unchanged" >&2; continue; }
+  if [ "$(readlink -f "$DST/$t" 2>/dev/null)" = "$(readlink -f "$src")" ]; then echo "$t: already linked"; continue; fi
+  [ -e "$DST/$t" ] && cp -p "$DST/$t" "$DST/$t.bak-$(date +%Y%m%d)"
+  ln -sfn "$src" "$DST/$t.new" && mv -T "$DST/$t.new" "$DST/$t"
+  echo "$t: $DST/$t -> $src"
+done

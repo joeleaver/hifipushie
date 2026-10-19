@@ -2930,12 +2930,15 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
         fixed = (len(cap["tris"]) + len(mb["tris"]) + sum(len(b["tris"]) for b in band)
                  + (len(core["tris"]) if core is not None else 0))
         before_ = cards
-        # (c10, coordinator 2026-10-18: the budget counts DRAWN triangles, back faces included) with BACK_FACES every
-        # triangle but the cap's is exported twice (hair.back_faces): the cards get half of what the cap leaves
+        # (hair-budget rule, coordinator 2026-10-19, reversing c10's drawn-triangle fit: counting back faces halved
+        # Tess's cards and lowered her crown, round 39) the budget (the role DEFAULT) counts CARD FACES, one side;
+        # DRAWN triangles (BACK_FACES exports every triangle but the cap's twice) are checked against the role's range
+        # MAX at export (asset.hair_budget). BUDGET_UNIT names the unit; "drawn" restores c10's fit.
         bf_ = 2 if BACK_FACES else 1
         fixed_d = len(cap["tris"]) + bf_ * (fixed - len(cap["tris"]))
-        cards, seg, info = hc.fit_budget(cards, S, max((int(budget) - fixed_d) // bf_, 200))
-        info["asked"], info["fixed"], info["drawn_x"] = int(budget), int(fixed_d), bf_
+        fit_x = bf_ if BUDGET_UNIT == "drawn" else 1
+        cards, seg, info = hc.fit_budget(cards, S, max((int(budget) - (fixed_d if fit_x > 1 else fixed)) // fit_x, 200))
+        info["asked"], info["fixed"], info["drawn_x"], info["unit"] = int(budget), int(fixed_d), bf_, BUDGET_UNIT
         info["fixed_parts"] = {"cap": len(cap["tris"]), "core": len(core["tris"]) if core is not None else 0,
                                "baby": len(mb["tris"]), "tie": sum(len(b["tris"]) for b in band)}
         info["by_class"] = card_classes(before_, cards, S, seg, {k_["name"]: k_ for k_ in hair_locks})
@@ -4056,6 +4059,8 @@ CARD_RECIPE = (
 
 
 BACK_FACES = 1  # (c6) export each card's back face as its own triangles (outward normals) + a single-sided material
+BUDGET_UNIT = "card_faces"  # (hair-budget rule 2026-10-19) a tier's budget counts card faces (one side);
+# drawn triangles (back faces included) must fit the role's range max (checked at export: asset.hair_budget)
 CARD_RECIPE_FACES = CARD_RECIPE.replace(
     "Draw two-sided with one normal for both faces (the mesh's normals are already bent toward the hair "
     "volume: do not flip them on back faces).",

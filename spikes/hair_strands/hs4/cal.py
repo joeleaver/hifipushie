@@ -47,7 +47,7 @@ def run(engine):
 
 for e in engines:
     if e == "cycles":
-        with resources.heavy(f"hair colour calibration {name}"):
+        with resources.heavy(f"hair colour calibration {name}", gb=6):
             run(e)
     else:
         run(e)

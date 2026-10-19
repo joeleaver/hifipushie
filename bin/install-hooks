@@ -1,0 +1,18 @@
+#!/bin/bash
+# Install the repo's git guards (bin/hooks/guard.py) into the SHARED hooks dir (all worktrees use it):
+# pre-commit (no workspace/, no file > 5 MB) and pre-push (only main; no workspace/, > 5 MB or private-model content).
+# The guard is copied (a snapshot), so worktrees on older branches are guarded too: re-run after changing guard.py.
+# Private-model prefixes: $HIFIPUSHIE_PRIVATE_PREFIXES or the untracked /mnt/data/hifipushie/private_prefixes.
+set -euo pipefail
+src="$(cd "$(dirname "$0")" && pwd)/hooks/guard.py"
+hooks="$(git rev-parse --path-format=absolute --git-common-dir)/hooks"
+mkdir -p "$hooks"
+cp "$src" "$hooks/hifipushie_guard.py"
+for h in pre-commit pre-push; do
+  if [ -e "$hooks/$h" ] && ! grep -q hifipushie_guard "$hooks/$h"; then
+    echo "install-hooks: $hooks/$h exists and is not ours: not replaced" >&2; exit 1
+  fi
+  printf '#!/bin/sh\n# hifipushie guard (bin/install-hooks)\nexec python3 "$(dirname "$0")/hifipushie_guard.py" %s "$@"\n' "$h" > "$hooks/$h"
+  chmod +x "$hooks/$h"
+done
+echo "installed pre-commit, pre-push -> $hooks/hifipushie_guard.py"

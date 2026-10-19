@@ -1,0 +1,13 @@
+#!/bin/bash
+# Run a command under a memory cap, inside the shared hifipushie slice.
+#   capped <cmd...>            12 GB for this command
+#   CAP=20G capped <cmd...>    a declared heavy job (tile / asset export pools)
+# The slice (all agents' jobs together) is capped too: a runaway job is killed
+# alone by the kernel (exit 137), the desktop survives. Nested calls pass through.
+if [ -n "${HIFIPUSHIE_CAPPED:-}" ]; then exec "$@"; fi
+export HIFIPUSHIE_CAPPED=1
+# One GPU render at a time (Blender render_pre/post flock; the desktop shares the iGPU): see /mnt/data/hifipushie/gpulock.
+export BLENDER_SYSTEM_SCRIPTS="${BLENDER_SYSTEM_SCRIPTS:-/mnt/data/hifipushie/gpulock/scripts}"
+systemctl --user set-property --runtime hifipushie.slice MemoryMax=34G MemorySwapMax=0 CPUWeight=20 CPUQuota=1000% 2>/dev/null
+exec systemd-run --user --scope --quiet --collect --slice=hifipushie.slice \
+  -p MemoryMax="${CAP:-12G}" -p MemorySwapMax=0 -p OOMPolicy=continue -- "$@"

@@ -9,7 +9,11 @@ def classify(s):
     for k, rx in R:
         if re.search(rx, first): return k, first
     return "shape", first
+bad = 0
 for f in sys.argv[1:]:
+    _t = open(f).read().strip()
+    if _t.startswith("REVIEW FAILED") or "VERDICT:" not in (_t.splitlines() or [""])[-1]:  # (codified 2026-10-19)
+        print(f, "REVIEW FAILED (did not run): no count, not 0 MAJORs"); bad += 1; continue
     other = False; c = {"shape": 0, "colour": 0, "direction": 0, "strand": 0, "skin": 0}; rows = []
     for ln in open(f):
         if ln.startswith("## "): other = "OTHER" in ln.upper()
@@ -19,3 +23,4 @@ for f in sys.argv[1:]:
     print(f, " ".join(f"{k} {v}" for k, v in c.items()), "| hair", sum(v for k, v in c.items() if k != "skin"))
     if "-v" in sys.argv[0:1] or len(sys.argv) == 2:
         for r in rows: print("   ", *r)
+sys.exit(4 if bad else 0)

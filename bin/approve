@@ -1,0 +1,50 @@
+#!/usr/bin/env python3
+"""approve: the record of approved pieces (docs/notes/gates.md, step 4). workspace/approved.json.
+  approve list [stage]                                  what's approved (the next stage consumes ONLY these)
+  approve add <stage> <piece> <model_or_file> <sheet> <by> [note...]
+                                                        by = joe | coordinator (coordinator only after a
+                                                        reference-beside-result look)
+  approve revoke <stage> <piece> <reason...>
+  approve get <stage> <piece>                           prints the approved model / file (exit 1 if none)
+Stages: references head skin hair garment assembly rig motion expressions engine."""
+import json, os, sys, time
+P = os.environ.get("HIFIPUSHIE_APPROVED", "/home/joe/dev/hifipushie/workspace/approved.json")
+STAGES = {"references", "head", "body", "skin", "hair", "garment", "assembly", "rig", "motion", "expressions", "engine"}
+
+def load():
+    try:
+        return json.load(open(P))
+    except FileNotFoundError:
+        return {"approved": {}, "log": []}
+
+def save(d):
+    tmp = P + ".tmp"
+    json.dump(d, open(tmp, "w"), indent=1)
+    os.replace(tmp, P)
+
+a = sys.argv[1:]
+if not a or a[0] in ("-h", "--help"):
+    print(__doc__); sys.exit(0)
+d = load(); now = time.strftime("%Y-%m-%d %H:%M")
+cmd = a[0]
+if cmd == "list":
+    for k, v in sorted(d["approved"].items()):
+        if len(a) < 2 or k.startswith(a[1] + "/"):
+            print(f"{k:32s} {v['model']:28s} by {v['by']:11s} {v['date']}  {v.get('note','')}")
+elif cmd == "add" and len(a) >= 6:
+    stage, piece, model, sheet, by = a[1:6]
+    if stage not in STAGES: sys.exit(f"unknown stage {stage}: {sorted(STAGES)}")
+    if by not in ("joe", "coordinator"): sys.exit("by must be joe or coordinator (agents don't approve their own work)")
+    k = f"{stage}/{piece}"
+    d["approved"][k] = {"model": model, "sheet": sheet, "by": by, "date": now, "note": " ".join(a[6:])}
+    d["log"].append({"t": now, "op": "add", "key": k, **d["approved"][k]}); save(d); print("approved", k, "=", model)
+elif cmd == "revoke" and len(a) >= 3:
+    k = f"{a[1]}/{a[2]}"
+    old = d["approved"].pop(k, None)
+    d["log"].append({"t": now, "op": "revoke", "key": k, "was": old, "reason": " ".join(a[3:])}); save(d); print("revoked", k)
+elif cmd == "get" and len(a) == 3:
+    v = d["approved"].get(f"{a[1]}/{a[2]}")
+    if not v: sys.exit(1)
+    print(v["model"])
+else:
+    print(__doc__); sys.exit(2)

@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from . import validated
+
 LIMITS = {
     "missing": 0.2,  # share of the strands' hair pixels a tier leaves bare (far: 0.35)
     "value": 0.12,  # |tier / strands - 1| of the hair pixels' mean HSV value
@@ -29,6 +31,53 @@ def _hsv(px):
     return mx, np.where(mx > 1e-6, (mx - mn) / np.maximum(mx, 1e-6), 0.0)
 
 
+def _scene(cut: float = 0.0):
+    """Known-answer images: a grey bald render and the same with a brown disc of hair (a share `cut` of the disc's
+    right side removed)."""
+    yy, xx = np.mgrid[:96, :96]
+    bald = np.full((96, 96, 3), 120, np.uint8)
+    disc = (yy - 48) ** 2 + (xx - 48) ** 2 < 30 ** 2
+    if cut:
+        disc &= xx < 18 + 60 * (1 - cut)
+    img = bald.copy()
+    img[disc] = (90, 60, 30)
+    return img, bald, disc
+
+
+def _selftest_colour():
+    img, bald, disc = _scene()
+    c = colour(img, disc)
+    assert abs(c["value"] - 90 / 255) < 0.005 and abs(c["sat"] - 60 / 90) < 0.005 and c["black"] == 0.0, c
+
+
+def _selftest_stamps():
+    m = np.zeros((120, 120), bool)
+    m[10:70, 10:70] = True  # the main mass
+    assert stamps(m)["stamps"] == 0
+    m[90:100, 90:100] = True  # a planted card stamp
+    m[80:82, 20:60] = True  # and a single long hair (not a stamp)
+    r = stamps(m)
+    assert r["blobs"] == 2 and r["stamps"] == 1, r
+
+
+def _selftest_straight():
+    yy, xx = np.mgrid[:96, :96]
+    sq = (abs(yy - 48) < 25) & (abs(xx - 48) < 25)
+    disc = (yy - 48) ** 2 + (xx - 48) ** 2 < 20 ** 2
+    a, b = straight_share(sq), straight_share(disc)
+    assert a > 0.7 and b < 0.2, (a, b)
+
+
+def _selftest_compare():
+    img, bald, _ = _scene()
+    same = compare(img, img, bald)  # the reference against itself
+    assert same["iou"] == 1.0 and same["missing"] == 0.0 and same["value"] == 1.0 and same["sat"] == 1.0, same
+    half, _, _ = _scene(cut=0.5)
+    r = compare(img, half, bald)  # a planted fault: half the hair gone
+    assert 0.35 < r["missing"] < 0.65 and r["value"] == 1.0, r
+
+
+@validated.known_answer(_selftest_colour)
 def colour(img, mask) -> dict:
     px = (np.asarray(img, float) / 255)[..., :3][mask]
     if not len(px):
@@ -38,6 +87,7 @@ def colour(img, mask) -> dict:
             "black": round(float((v < 0.06).mean()), 3)}
 
 
+@validated.known_answer(_selftest_stamps)
 def stamps(mask, min_px: int = 25, max_share: float = 0.03) -> dict:
     """Detached blobs of hair (not part of the main mass) and how rectangular they are: area / the area of the
     blob's own tightest rectangle (by its principal axes). A card showing as a stamp is 0.8+; a wisp of hairs 0.3."""
@@ -65,6 +115,7 @@ def stamps(mask, min_px: int = 25, max_share: float = 0.03) -> dict:
     return {"blobs": blobs, "stamps": out, "worst": round(worst, 2)}
 
 
+@validated.known_answer(_selftest_straight)
 def straight_share(mask, run_px: float = 14.0, tol: float = 0.75) -> float:
     """Share of the hair's outline that lies on straight runs of `run_px` or more (greedy chords, each point within
     `tol` px): plank ends and cut quads. Strand hair's outline is ragged at this scale."""
@@ -100,6 +151,7 @@ def straight_share(mask, run_px: float = 14.0, tol: float = 0.75) -> float:
     return round(straight / max(total, 1e-9), 3)
 
 
+@validated.known_answer(_selftest_compare)
 def compare(strands_img, tier_img, bald_img) -> dict:
     """One view: the tier against the strands. iou / missing of the hair masks, value and saturation ratios."""
     ms, mt = hair_mask(strands_img, bald_img), hair_mask(tier_img, bald_img)
