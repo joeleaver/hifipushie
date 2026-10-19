@@ -54,10 +54,64 @@ start), "sim" (after dress: the verdict plus the numeric targets: layer gaps, co
 waistband height, sleeves on a hanger, crest radius, strain; each judged at the quality it belongs to).
 images: the pattern sheet and the placed start as images (save=path writes them with _pattern/_place suffixes).
 
+### `alter_pattern`
+
+`alter_pattern(name, garment, ops, replace=False, note='')`
+
+A pattern maker's alteration on the FLAT pattern: ops appended to the garment key "alter" (replace=True replaces the
+list) and applied in order after the draft (pattern.apply). Ops: slash_spread, turn, move, scale, slit, trim
+({"length"} or {"match": [edges]}), and where this build has them (they land from the dress-garrett branches):
+"true" ({"piece", "at", "keep", "deg": 90, "blend": 0.04}: the edge leaving point `at` bent so the piece's corner
+there is `deg`, the kept seam unmoved: necklines / armholes meet the shoulder seam at ~90 deg) and "match"
+({"piece", "edge", "to": [edges], "line", "ease"}: WALK THE SEAM, the pieces lengthened across `line` until `edge`
+equals the summed `to` edges x (1 + ease): a collar's neck edge = its neckline). An op this build doesn't know is
+an error and nothing is saved (the alteration is drafted and placed before the save). Each op that changes a default
+carries "source" (where the number came from; the gate warns without one).
+Returns the flat pattern sheet and every seam walked (A | B lengths, ease, notches off; truing junctions where the
+build has them), then the next step: seams that don't walk -> "match" them; else pattern_check (the gate record is
+per pattern, so any alteration needs a new one).
+
+### `pattern_check`
+
+`pattern_check(name, garment, refs=None, waive=None, views=None, size=480, diag=None, save=None)`
+
+THE PATTERN GATE (codified C11): the garment drafted and placed on its body (no sim) and every cloth_checklist item
+of its kind measured there: seam lengths / ease / notches, lengths and widths, design choices, the neckline
+standoff; where this build has them, truing (junction angles), the collar draft and notch, flat tailor rows. Items
+with no pattern-stage measure or no reference reading are UNMEASURED and block; drape items are SIM (judged later);
+dress-form readings are INFO until the form is validated. The record (/mnt/data/hifipushie/pattern_gate/<key>.json,
+keyed by the pattern's content hash + the body's) is what every sim checks: `dress` and every cloth job refuse
+without a PASS for exactly this pattern + body.
+refs: the reference reading (cloth_reference.read's output or its saved path). waive: {item id: reason} accepts a
+FAIL / UNMEASURED row by name (recorded; PASS_WAIVED).
+Returns: the FLAT pattern sheet (pieces, grain, notches, seam list with lengths and ease), the DIAG views of the
+placed pattern (by default two rows: panels + seams + turned, then strain + layers; diag=False none, or your own
+modes / rows), and the per-item table FAIL / UNMEASURED first, then "next:": on a FAIL the rows to fix and "don't
+simulate"; on a PASS fit_garment. views (default front, three, side, back), size (px), save (PNG path prefix).
+Renders take the GPU lock.
+
+### `fit_garment`
+
+`fit_garment(name, garment, views=None, size=560, clay=True, diag=None, force=False, save=None)`
+
+The virtual dress form: the garment assembled from its pattern on the body with NO sim (pattern_form: landmarks
+pinned, seams closed, folds on their lines, relaxed against the flat pattern; a layered garment over its under one).
+On a build without the dress form it shows the placed rest and says so. Refuses until pattern_check has a PASS
+for this exact pattern (force=True looks anyway and the text says FORCED).
+Returns the clay strip, the diag sheet (default panels + seams + turned; strain + layers; diag=False none), the face
+strain vs the flat pattern (p99 and max; the gate is p99 <= 6 %, KES EMT for suiting), the layer pierce (faces of the
+under garment through this one), the folder of single-view PNGs for review_view, and "next:": a red strain or a
+pierce names the pattern fix; otherwise judge clay + diag beside the reference, one view per review_view call.
+A sim after this is optional, a wrinkle source only; never close or hand-finish after a sim (measured 2026-10-19:
+strain p99 4.7 % -> 66-74 %). views, size, clay, save.
+
 ### `dress`
 
 `dress(name, garment=None, spec=None, state=None, quality=None, replace=False, wait=50.0, note='', force=False)`
 
+REFUSES without a pattern_check PASS for this exact pattern + body (the text says what to run; `force` skips
+only the stage 1-3 checks, never the pattern gate: its override is the logged HIFIPUSHIE_SIM_WITHOUT_PATTERN_GATE).
+A sim is optional, a wrinkle source after the form fit is judged; never close or hand-finish after it.
 Put a garment on the model and simulate it: drafted to the body's measurements, sewn, settled by Blender's
 cloth, cleaned up (guide(topic="cloth") is the workflow). Garments live in spec["cloth"][garment].
 spec: the garment (merged into the stored one key by key, null deletes; replace=True replaces it), e.g.
@@ -92,7 +146,9 @@ chased what were construction faults: fix the pattern first.
 
 ### `look_cloth`
 
-`look_cloth(name, garments=None, views=None, strain=True, size=640, focus=None, zoom=0.4, textured=False, body=True, save=None, result=None, props=None)`
+`look_cloth(name, garments=None, views=None, strain=True, size=640, focus=None, zoom=0.4, textured=False, body=True, save=None, result=None, props=None, diag=None)`
+
+diag (DEFAULT on): the diagnostic sheet of the simulated garments together (diag_render: panels + seams + turned, then strain + layers; diag=False none, a mode list one row, a list of lists your rows), flat emission colour so a kink, a flap turned into the body or a shirt through a jacket is obvious where clay shows only shading; single views are kept for review_view. Not drawn for close-ups (focus) or a carried result. The text ends with the next step: judge beside the reference (or set one).
 
 Garments worn under another are drawn laid under EVERY garment above them (jeans under the sweater and the coat). props: the model's parts drawn with the body (default every non-shell part with its own elements: a lanyard, its badge, laces), each meshed in its own close-up box fine enough to show a 1.6 mm card; [] = none.
 

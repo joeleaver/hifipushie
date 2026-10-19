@@ -1,10 +1,16 @@
 # Clothes: read, design, draft, construct, then simulate
 
 Garments here are made the way garment makers make them: decided on a design sheet, drafted to the body's
-measurements, checked flat, constructed (folds, interfacing, closures), arranged round the body, then simulated
-coarse before fine, then FINISHED by hand on the drape (as game studios do after Marvelous Designer: the sim gives the
-base, the artist finishes). Nothing is sculpted as a shell and nothing is warped from one body onto another. A tablecloth or
-a blanket is the same machinery: one flat piece draped on a prop.
+measurements, checked FLAT (the pattern gate), assembled on the dress form and judged there, and only then, optionally,
+simulated as a wrinkle source. Nothing is sculpted as a shell and nothing is warped from one body onto another. A
+tablecloth or a blanket is the same machinery: one flat piece draped on a prop.
+
+**The order (2026-10-19; the tools enforce it and their texts end with the next step):**
+pattern (`design_garment`, `look_pattern`, `alter_pattern`) -> `pattern_check` (the flat gate: every sim refuses
+without its PASS) -> `fit_garment` (the pattern assembled on the form, no sim) -> judge clay + diag beside the
+reference, ONE view per `review_view` call -> optional sim (`dress`), a wrinkle source only -> game mesh
+(garment_game). Closing seams, building made pieces or hand-finishing AFTER a sim is not a step: measured on Garrett's
+jacket 2026-10-19 it pushed face strain p99 from 4.7 % to 66-74 %. A fault is fixed on the pattern and re-checked.
 
 **The two rules everything else follows:**
 1. **Describe the garment from the reference before choosing anything.** Kind, construction, fabric, measurements
@@ -14,15 +20,15 @@ a blanket is the same machinery: one flat piece draped on a prop.
 2. **Construction before solver.** A fault in the cloth is a pattern, sewing or made-piece fault until shown
    otherwise. Measure the DRAFT against the description before any simulation; never tune solver settings
    (stiffness, mesh size, contact) to hide a pattern fault. `dress` refuses to simulate while stages 1-3 fail.
-3. **Simulate for the big read, finish by hand.** The sim answers fit, silhouette, how it hangs and the main folds.
-   Once those pass, stop simulating: made pieces (collars, cuffs, bands, plackets, lapels) are built on the drape, and
-   local faults (a band standing up, a lapel's roll, a fold too many or too sharp) are finished on the draped mesh
-   (sculpt in the scene, then `pull`: kept as `cloth.<g>.sculpt` offsets on top of that sim). Re-simulate only when the drape
-   itself is wrong (length, ease, a box that should hang). Budget: about 3 draft and 2 final sims per garment; past
-   that, it is a finishing job or a pattern rethink, not another sim. Fine detail (rib, stitching, small creases)
-   goes in the normal map.
+3. **Validate the pattern before any sim; judge on the form.** `pattern_check` measures the flat pattern and writes
+   the record every sim needs; `fit_garment` shows the garment assembled from that pattern on the body (clay + diag:
+   panels, seams, turned flaps, strain, layer pierce) with its strain p99 (gate <= 6 %). Fit, silhouette and
+   construction are judged there, beside the reference. A sim is optional and only adds wrinkles; it never fixes a
+   pattern, and nothing is closed, rebuilt or sculpted on the drape afterwards (strain p99 4.7 % -> 66-74 % that way).
+   Fine detail (rib, stitching, small creases) goes in the normal map.
 
-Enable the tools with `enable_toolset("cloth")`. Sub-topics (guide(topic=...)): `cloth_reference` (reading a
+Enable the tools with `enable_toolset("cloth")`. Traps (symptom -> real cause): guide(topic="traps"); tailoring
+principles: guide(topic="tailoring"). Sub-topics (guide(topic=...)): `cloth_reference` (reading a
 reference item by item), `cloth_design` (design-sheet keys, tailoring numbers, knits, jeans, wear rules),
 `cloth_construction` (folds, interfacing, closures, layers, the start), `cloth_sim` (solvers, where sims run,
 reports, clean-up, detail maps, states, export), `cloth_faults` (what goes wrong and the fix), `cloth_blocks`
@@ -35,12 +41,12 @@ worked examples), `cloth_tools` (every cloth tool's parameters).
 |---|---|---|---|---|
 | 0 | Read | Describes the garment from the reference | `garment_from_reference` (or by hand) | The description below, written, with values |
 | 1 | Design sheet | Decides kind, fabric, fit and every detail before cutting | `design_garment` (`garment_reference` for choices) | Every choice traced to a description item; no hard failures |
-| 2 | Pattern | Drafts to the body, walks seams, measures against the body | `look_pattern` | Seams, ease and evidence pass; the draft's measurements match the description |
-| 3 | Construction | Plans sewing order, layers, folds, interfacing, made pieces | `check_garment(stages=["construction"])` | Passes |
-| 4 | Arrange | Pins the pieces round the body | `check_garment(stages=["place"])` | No crossings, start stretch under the limit, seam gaps small |
-| 5 | Draft sim | Blocks at 2 cm, judges fit and big shape only | `dress(quality="draft")`, `look_cloth` | Verdict "fits", draft targets pass, self-review has no MAJOR in shape |
-| 6 | Final sim | Refines and cleans up the drape | `dress(quality="final")`, `look_cloth` | Fit, hang and main folds pass the self-review |
-| 7 | Finish | Builds made pieces on the drape, finishes local faults by hand, details in maps | `sync(cloth_only=True)`, sculpt, `pull`; `look_cloth(textured=True)`, `export_asset` | Self-review passes at every region |
+| 2 | Pattern | Drafts to the body, walks seams, trues corners, measures against the body | `look_pattern`, `alter_pattern` | Seams walk, ease and evidence pass; the draft's measurements match the description |
+| 3 | Pattern gate (flat) | Checks the pattern against the checklist before cutting cloth | `pattern_check` | PASS (FAIL / UNMEASURED rows block every sim) |
+| 4 | Construction + arrange | Plans sewing order, layers, folds, interfacing; pins the pieces round the body | `check_garment(stages=["construction", "place"])` | Passes |
+| 5 | Fit on the form | Pins the muslin on the dress form and judges it | `fit_garment` | Strain p99 <= 6 %, no layer pierce; clay + diag judged beside the reference, one `review_view` per view, no MAJOR |
+| 6 | Optional sim | Only a wrinkle source over a fit already judged | `dress`, `look_cloth` (clay + diag by default) | Fit unchanged from the form; never closed, rebuilt or hand-finished after |
+| 7 | Game mesh | Remeshes in pattern space, bakes the detail | garment_game, `export_asset` | judge_asset self-checks pass; reviewed one view per call |
 
 `check_garment(name, garment)` with no stages runs 1-4 (and "sim" after a dress) in order, failures first. A model
 needs a `base` body first (the draft is measured off it); a drape over a prop needs none.
@@ -105,11 +111,11 @@ dress a garment whose draft misses its description.
 ## Craft rules (each once; the reasons and numbers are in the sub-topics)
 
 Pattern and construction
-- Fix FIT in the pattern (ease, length, a detail's options), never by sculpting, never by solver settings. Sculpting
-  is for finishing the drape (lay, roll, folds), never for changing fit.
-- Made pieces (collars, stands, cuffs, waistbands, plackets, lapels) are constructed, not simulated into shape; they
-  are laid at their CUT length and width, never on eased cloth. Buttons and trims are built on the finished drape:
-  never re-simulate to add one.
+- Fix FIT and construction in the pattern (ease, length, truing, a walked seam, a detail's options), never by
+  sculpting, never by solver settings, never by a pass on the drape after a sim.
+- Made pieces (collars, stands, cuffs, waistbands, plackets, lapels) are drafted and walked against the edge they're
+  sewn to (`alter_pattern` "match"), laid at their CUT length and width, and judged on the form (`fit_garment`, diag
+  "turned" shows a flap on the wrong side).
 - Different fabrics bend differently. One fabric on every garment reads generic; knits drape soft and rounded.
 - A garment worn over another is drafted over it (`over`): its neck and armhole follow the under garment.
 - A self-closed band (waistband, cuff, buttoned stand) must START closed; give it 2-3% ease.
@@ -134,10 +140,11 @@ Judging
 - A tucked under garment is never drawn without the garment over it.
 - A render made before a code or pattern change shows the old result: check both renders in a comparison are current.
 
-## Self-review loop (every round, stage 5 on)
+## Self-review loop (every round, from the form fit on)
 
-1. Render yours at the reference's framing (`look_cloth` views and `focus="garment:piece"` close-ups), and put it
-   BESIDE the reference crop, region by region: neckline / collar, shoulders and sleeve heads, armhole and underarm,
+1. Render yours at the reference's framing (`fit_garment`; after an optional sim `look_cloth` and
+   `focus="garment:piece"` close-ups), clay AND diag, and put each view BESIDE the reference crop, region by region
+   (one `review_view` call per view: no contact sheets): neckline / collar, shoulders and sleeve heads, armhole and underarm,
    chest and fronts, waist and hem, sleeves and cuffs, closures and plackets, back, folds, surface.
 2. For each region list what reads wrong against the reference, concretely (where, what, how far off). Mark each
    MAJOR (the wrong garment, wrong construction, wrong proportion or silhouette, a visible defect) or MINOR.

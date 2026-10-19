@@ -446,6 +446,38 @@ at it first, so a mesh fault isn't blamed on the weights. Rest pose = as modelle
 rows: the GLB as an engine draws it (its maps and normal map: judge faces and silhouettes there) over its bare
 mesh in clay (facets and folds); engine=False leaves the first out (faster).
 
+### `review_view`
+
+`review_view(region, reference, result, context='', stage='', not_stages='', dry=False, out_dir=None)`
+
+The LOOK gate (docs/notes/gates.md): an independent, blind art-director review of ONE view, one region: the reference
+crop beside the result crop, nothing else. The input gate (reviewgate) REFUSES a contact sheet (grid gutters), an
+image too big or too long to be a crop, a caption band, and numbers or claims in `region` or `context` (names and
+context are neutral words: "a game character's knit sweater"). A fresh reviewer with no context and no stake (bin/review:
+a headless Claude with only Read) lists every fault MAJOR / MINOR worst first with a "needs:" line and ends VERDICT
+PASS / FAIL. ~1 min. dry=True: no reviewer is run; you get the pair image and the prompt to hand to an independent
+agent (ONE image per message), never your own reading. stage / not_stages scope it (faults of other stages are listed
+apart and don't count). out_dir: where pair_0.png / review.md go (default under the workspace).
+One call = one view: every checklist region (and each camera of it) is its own call. Construction reviews give the
+diag view of a region (fit_garment / look_cloth single views) as its own call beside the clay one.
+The text ends with the next step: on FAIL fix every independent MAJOR (grouped by cause) and review again; no
+verdict = the review did not run (never 0 MAJORs).
+
+### `judge_asset`
+
+`judge_asset(glb, head=None, tag=None, against=None, only=None)`
+
+bin/judge as a tool (docs/notes/judge.md): ONE validated way to judge a game asset. The GLB re-imported in Blender
+and rendered at the standard shots under the game rig (and photo-lit face features with head=<model>, whose
+reference photos are cropped by their own landmarks), RGBA, feature crops (<= 512 px; native pixels for the 1 m / 3 m
+game-distance crops). Self-checks every run: uv orientation, triangles drawn == the GLB's, two-sided materials, the
+view transform / lights recorded; measures re-validated (the reference against itself ~0, a planted blot found). It
+REFUSES to report when a check fails. against: another GLB (the approved build) rendered at the same cameras and crop
+boxes: per crop L* p10 / p50 / p90, chroma, blotch, edge difference. only: crop name filters; tag: the run's name.
+Heavy: renders under bin/capped with the GPU lock (minutes; cached per GLB content). Numbers are measures, not a
+verdict: the text ends with the next step (review the crops one per review_view call; the blind A/B with controls
+is `bin/judge ab`).
+
 ### `call_tool`
 
 `call_tool(name, args=None)`

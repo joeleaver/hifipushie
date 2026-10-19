@@ -824,8 +824,10 @@ def tailor_rows_for(Bp: dict, kind, g: dict) -> list:
 
 
 def pattern_gate(model: str, garment: str, spec: dict | None = None, refs=None, waive: dict | None = None,
-                 sheet: bool = False, concept: str | None = None, log=print) -> dict:
+                 sheet: bool = False, concept: str | None = None, log=print, keep: dict | None = None) -> dict:
     """Measure the garment's pattern on its body WITHOUT a sim and write the gate record (see the section comment).
+    keep: a dict that receives the build on the dress form ("res": pattern_form.on_form's result) for the caller's
+    sheets (the MCP pattern_check tool).
     refs: the reference reading (cloth_reference.read's output or its saved path; targets[garment] are used); waive:
     {item id: reason} for FAIL / UNMEASURED rows accepted by name (recorded); sheet: also render the pre-sim clay sheet
     (`pattern_sheet`; run under bin/capped). Returns the record ("status", "rows", "warnings", "sheet")."""
@@ -836,6 +838,8 @@ def pattern_gate(model: str, garment: str, spec: dict | None = None, refs=None, 
     # folds turned on edge rows, over its under garment); the placed start alone put the neck point ~30 mm out
     res = pattern_form.on_form(model, garment, spec)
     keys = res["gate_keys"]
+    if keep is not None:
+        keep["res"] = res
     M = res["mesh"]
     light = {"V": np.asarray(res["A"], float), "F": M["F"], "piece": M["piece"], "names": list(M["names"])}
     ctx = cr.Ctx(model, spec, {garment: light}, body=res["body"])
@@ -876,6 +880,26 @@ def pattern_gate(model: str, garment: str, spec: dict | None = None, refs=None, 
         if r["status"] in ("FAIL", "UNMEASURED"):
             log(f"  {r['status']:<10} {r['id']}: {r.get('why') or ''}{r.get('ours', '')} {r.get('miss', '')}")
     return rec
+
+
+def gate_status(model: str, garment: str, spec: dict | None = None) -> dict:
+    """The gate record that a sim of this garment would be checked against, WITHOUT measuring: the pattern drafted
+    and placed (cloth.build place_only, ~1 s) for its keys, then the record read. {"keys", "record" (or None),
+    "passed", "why"}: why says what blocks (no record / FAIL rows). A garment drafted from no pattern passes."""
+    from . import cloth, store
+    spec = spec or store.load(model)
+    g = spec["cloth"][garment]
+    src = cloth.model_body(model, spec, g, simulate=False)
+    res = cloth.build(cloth._garment_for_sim(g), src, f"{model}:{garment}", log=lambda *_: None, place_only=True)
+    keys = res["gate_keys"]
+    if keys.get("pattern") is None:
+        return {"keys": keys, "record": None, "passed": True, "why": "no pattern: nothing to gate"}
+    rec = read_record(keys["pattern"], keys["body"])
+    if passed(rec):
+        return {"keys": keys, "record": rec, "passed": True, "why": rec["status"]}
+    why = ("no pattern-gate record for this exact pattern + body (never checked, or the pattern changed since)"
+           if rec is None else f"the pattern gate is {rec.get('status')}: " + "; ".join(blocking(rec)))
+    return {"keys": keys, "record": rec, "passed": False, "why": why}
 
 
 def pattern_sheet(res: dict, prefix, concept: str | None = None, views=("front", "three", "side", "back"),
