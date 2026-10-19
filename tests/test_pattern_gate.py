@@ -132,14 +132,14 @@ def test_unmeasured_items_reported_and_blocking():
 def test_live_checklist_items_all_classified():
     from hifipushie import cloth_reference as cr
     for it in cr.checklist()["items"]:  # (new items, e.g. the collar ones, land here without a code change)
-        assert cc.classify(it) in ("pattern", "placed", "sim", "unmeasured")
+        assert cc.classify(it) in ("pattern", "flat", "worn", "later", "placed", "sim", "unmeasured")
 
 
 def test_pattern_measure_rule():
     Bp = _bp()
     it = {"id": "neck_lie", "stage": 3, "pattern_measure": "neckline_standoff_mm", "target_mm": [0, 12], "tolerance": 3}
-    ok = cc.gate_rows(Bp, [it], extra={"neckline_standoff_mm": {"median_mm": 10.0}})[1]
-    bad = cc.gate_rows(Bp, [it], extra={"neckline_standoff_mm": {"median_mm": 40.0}})[1]
+    ok = cc.gate_rows(Bp, [it], extra={"neckline_standoff_mm": {"median_mm": 10.0}})[-1]  # (after seams, truing)
+    bad = cc.gate_rows(Bp, [it], extra={"neckline_standoff_mm": {"median_mm": 40.0}})[-1]
     assert ok["status"] == "PASS" and bad["status"] == "FAIL" and bad["miss"] == 28.0
 
 
@@ -170,3 +170,60 @@ def test_source_key_is_inert():
     finally:
         pd.OPS.pop("_probe")
     assert seen == {"a": 1}
+
+
+def test_gate_places_on_the_dress_form():
+    # (dress-garrett 2026-10-19) the gate measures the garment ASSEMBLED on the virtual dress form, not cloth.build's
+    # place_only start (its neck point ~30 mm out of the body's HPS)
+    import inspect
+    src = inspect.getsource(cc.pattern_gate)
+    assert "pattern_form.on_form" in src and "place_only" not in src
+    sh = inspect.getsource(cc.pattern_sheet)
+    assert 'res["A"]' in sh and "form_under" in sh
+
+
+def test_form_refine_recipes():
+    from hifipushie import pattern_form as pf
+    assert pf.form_refine({"design": {"ops": [{"op": "neckline"}, {"op": "lapel"}]}}) is pf.FORM_REFINE_LAPEL
+    assert pf.form_refine({"pattern": {"from": "simon"}}) is pf.FORM_REFINE_SHIRT
+    own = [{"piece": "x", "h": 0.004}]
+    assert pf.form_refine({"mesh_refine": own}) is own
+
+
+def test_form_items_are_info_while_form_not_validated():
+    """(dress-garrett 2026-10-19 muslin 1, codified C29) GATE ON WHAT'S PROVEN: while the dress form has not passed its
+    own validation (cc.FORM_VALIDATED False), a row read on the form (a placed item, a worn collar item) is INFO with its
+    form reading kept, neither blocking nor passing; the flat rows (seams, truing, flat readings) still block; a reading
+    from the last validated drape blocks in place of the form's."""
+    assert cc.FORM_VALIDATED is False  # (flip it only with the form's validation record, in the same commit)
+    Bp = _bp()
+
+    class Ctx:  # a placed rest stand-in (cloth_reference.measure fails on it: the row would be UNMEASURED)
+        pass
+    items = [{"id": "waist_suppression", "stage": 2, "measure": "waist_width", "target_mm": [380, 420]},
+             {"id": "collar_hug_side", "stage": 4, "measure": "missing: worn sections", "gate": "worn"},
+             {"id": "wear_age", "stage": 5, "measure": "missing: paint", "gate": "later"},
+             {"id": "collar_stand", "stage": 3, "measure": "missing: x", "flat_measure": "collar_stand_cb_mm",
+              "flat_target": [25, 30]}]
+    off = {r["id"]: r for r in cc.gate_rows(Bp, items, ctx=Ctx(), form_ok=False,
+                                             flat={"collar_stand_cb_mm": {"value": 29.0}})}
+    assert off["waist_suppression"]["status"] == "INFO" and "form_status" in off["waist_suppression"]
+    assert off["collar_hug_side"]["status"] == "INFO" and off["wear_age"]["status"] == "INFO"
+    assert off["collar_stand"]["status"] == "PASS" and off["collar_stand"]["read_on"] == "flat draft"
+    assert cc.verdict(list(off.values())) == "PASS"
+    on = {r["id"]: r for r in cc.gate_rows(Bp, items, ctx=Ctx(), form_ok=True, flat={})}
+    assert on["waist_suppression"]["status"] == "UNMEASURED" and on["collar_hug_side"]["status"] == "UNMEASURED"
+    assert on["collar_stand"]["status"] == "UNMEASURED"  # a flat item with no flat reading blocks
+    bad = cc.gate_rows(Bp, items[3:], form_ok=False, flat={"collar_stand_cb_mm": {"value": 11.0}})[-1]
+    assert bad["status"] == "FAIL"
+    dr = {"source": "validated drape x", "rows": {"waist_suppression": {"status": "FAIL", "ours": 368}}}
+    r = {x["id"]: x for x in cc.gate_rows(Bp, items[:1], ctx=Ctx(), form_ok=False, drape=dr)}
+    assert r["waist_suppression"]["status"] == "FAIL" and r["waist_suppression"]["read_on"] == "validated drape"
+
+
+def test_collar_draft_read_flat():
+    """cloth_check.collar_draft on a drafted tailored collar (stand 30 / fall 45): stand at CB as drafted, tapering
+    without a rise to ~0 where the roll line meets the neck edge."""
+    from test_collar import _notched
+    cd = cc.collar_draft(_notched())
+    assert cd and abs(cd["stand_cb_mm"] - 30.0) < 1.0 and cd["stand_end_mm"] < 1.0 and cd["tapers"], cd

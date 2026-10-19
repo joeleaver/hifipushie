@@ -593,7 +593,26 @@ def _width(c: Ctx, g: str, z: float, roles=None, not_roles=(), side=None, band=0
     return {"width_m": w, "z": z}
 
 
+SHOULDER_HEAD_BAND = 0.015  # m below the sleeve cap's top: the sleeve head's outline at the shoulder corner
+
+
 def m_shoulder_width(c, g):
+    """The shoulder's OUTLINE CORNER, as a reader marks it on a front view (where the shoulder line meets the sleeve
+    head): per side, the outermost sleeve cloth within SHOULDER_HEAD_BAND below the cap's top; the width between the two.
+    Without sleeves, the old reading: the cloth's x extent in a band at the shoulder. (dress-garrett 2026-10-19 block
+    proportions: the band read 526 mm on the o4 form where the concept's corner reads 467 +- 5 and the same band on the
+    concept image 493: the band takes in the sleeve sloping down the arm, pose-dependent; our BODY alone reads 501 in it.)"""
+    R = _need(c.results.get(g), g)
+    xs = []
+    for side in ("L", "R"):
+        v = _verts(R, roles=SLEEVE_ROLES, side=side)
+        if not len(v):
+            break
+        z = R["V"][v, 2]
+        top = v[z > z.max() - SHOULDER_HEAD_BAND]
+        xs.append(float(np.abs(R["V"][top, 0]).max()))
+    if len(xs) == 2:
+        return {"width_m": xs[0] + xs[1], "how": "sleeve-head outline corner (cap top - 15 mm)"}
     return _width(c, g, float(c.body.at["shoulder.L"][2]) - 0.02, band=0.02)
 
 

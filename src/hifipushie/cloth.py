@@ -485,6 +485,18 @@ def _fold_line(B: dict, nm: str, h: float) -> np.ndarray | None:
     return None
 
 
+def _graded(L: np.ndarray, h: float, nm: str, hz, least: int) -> np.ndarray:
+    """Samples along a free outline arc: every h (as before), or every local size hz(nm, points) when graded."""
+    if hz is None:
+        cnt = max(least, int(round(pattern.length(L) / h)))
+        return _resample(L, np.linspace(0, 1, cnt + 1))
+    uu = np.linspace(0, 1, max(32, int(pattern.length(L) / (0.2 * h))) + 1)
+    rho = pattern.length(L) / hz(nm, _resample(L, uu))
+    Nu = np.r_[0, np.cumsum(0.5 * (rho[1:] + rho[:-1]) * np.diff(uu))]
+    cnt = max(least, int(round(Nu[-1])))
+    return _resample(L, np.interp(np.linspace(0, Nu[-1], cnt + 1), Nu, uu))
+
+
 def mesh(B: dict, h: float = 0.02, fold_width: float = 0.0) -> dict:
     """One flat mesh of all pieces: {"uv" (n, 2) pattern coords, "piece" (n,) index, "names", "F" (m, 3),
     "sew" (k, 2) vertex pairs, "sew_seam" (k,) seam index, "stitch" (s, 2), "marks" {piece:mark: vertex},
@@ -514,6 +526,10 @@ def mesh(B: dict, h: float = 0.02, fold_width: float = 0.0) -> dict:
     ph = {nm: h for nm in names}
     from . import folds as foldmod
     fold_entries = foldmod.entries(B)
+    # garment key "mesh_refine" (OPT-IN, pattern_form.sizing): local triangle sizes (~5 mm at a lapel, gorge, notch,
+    # collar), seams / outline / fold rows sampled to it and the interior lattice graded; absent, the mesh is as before
+    from . import pattern_form as _pf
+    hz = _pf.sizing(B, h) if B.get("mesh_refine") else None
     seam_sides = []
     for A, Bs in B["seams"]:
         sides = []
@@ -540,10 +556,28 @@ def mesh(B: dict, h: float = 0.02, fold_width: float = 0.0) -> dict:
                     U.append(float(u))
             U = np.sort(np.asarray(U))
             G = [0.0]
-            for u0, u1 in zip(U[:-1], U[1:]):
-                c = max(1, int(round(n * (u1 - u0))))
-                G += list(np.linspace(u0, u1, c + 1)[1:])
-            G = np.asarray(G)
+            if hz is not None:  # graded: samples every local size (the finer of the two sides')
+                uu = np.linspace(0, 1, max(64, 6 * n) + 1)
+                hh = np.full(len(uu), hs)
+                for arcs, cum, _ in sides:
+                    for j, (nm, ix) in enumerate(arcs):
+                        sel_ = (uu >= cum[j] - 1e-9) & (uu <= cum[j + 1] + 1e-9)
+                        if sel_.any() and cum[j + 1] > cum[j]:
+                            q_ = _resample(pcs[nm]["P"][ix], np.clip((uu[sel_] - cum[j]) / (cum[j + 1] - cum[j]), 0, 1))
+                            hh[sel_] = np.minimum(hh[sel_], hz(nm, q_))
+                rho = Lmax / hh
+                Nu = np.r_[0, np.cumsum(0.5 * (rho[1:] + rho[:-1]) * np.diff(uu))]
+                for u0, u1 in zip(U[:-1], U[1:]):
+                    n0, n1 = np.interp([u0, u1], uu, Nu)
+                    c = max(1, int(round(n1 - n0)))
+                    G += list(np.interp(np.linspace(n0, n1, c + 1)[1:], Nu, uu))
+                G[-1] = 1.0
+                G = np.asarray(G)
+            else:
+                for u0, u1 in zip(U[:-1], U[1:]):
+                    c = max(1, int(round(n * (u1 - u0))))
+                    G += list(np.linspace(u0, u1, c + 1)[1:])
+                G = np.asarray(G)
             at = [[[] for _ in G] for _ in range(2)]  # per side, per global sample: its keys
             for k, (arcs, cum, _) in enumerate(sides):
                 for j, (nm, ix) in enumerate(arcs):
@@ -600,7 +634,7 @@ def mesh(B: dict, h: float = 0.02, fold_width: float = 0.0) -> dict:
         for f in fold_entries:
             nm = f["piece"]
             sewn = np.concatenate(list(fixed[nm].values())) if fixed[nm] else None
-            for Lr in foldmod.rows(pcs, f, ph[nm], sewn, fold_width)["lines"]:
+            for Lr in foldmod.rows(pcs, f, _pf.row_h(pcs, f, ph[nm], hz), sewn, fold_width)["lines"]:
                 todo += [(nm, Lr[0]), (nm, Lr[-1])]
         while todo:
             nm, q = todo.pop()
@@ -647,14 +681,12 @@ def mesh(B: dict, h: float = 0.02, fold_width: float = 0.0) -> dict:
             L = Pp[path]
             if len(path) < 2 or pattern.length(L) < 1e-9:
                 return
-            cnt = max(1, int(round(pattern.length(L) / h)))
-            for p in _resample(L, np.linspace(0, 1, cnt + 1))[:-1]:
+            for p in _graded(L, h, nm, hz, 1)[:-1]:
                 emit(p, None)
 
         if not arcs:
             L = np.r_[Pp, Pp[:1]]
-            cnt = max(3, int(round(pattern.length(L) / h)))
-            for p in _resample(L, np.linspace(0, 1, cnt + 1))[:-1]:
+            for p in _graded(L, h, nm, hz, 3)[:-1]:
                 emit(p, None)
         else:
             for a, (ix, pts) in enumerate(arcs):
@@ -688,9 +720,17 @@ def mesh(B: dict, h: float = 0.02, fold_width: float = 0.0) -> dict:
                 xs = np.arange(lo[0] + (h / 2 if r % 2 else 0), hi[0], h)
             rows.append(np.c_[xs, np.full(len(xs), y)])
         Q = np.concatenate(rows) if rows else np.zeros((0, 2))
+        hq = None
+        if hz is not None:
+            Q = _pf.graded_lattice(ring, h, lambda q: hz(nm, q), Q)
+            hq = hz(nm, Q)
         if len(Q):
-            Q = Q[_inside(ring, Q)]
-            Q = Q[_seg_dist(Q, ring) > 0.6 * h]
+            ok_ = _inside(ring, Q)
+            Q = Q[ok_]
+            hq = hq[ok_] if hq is not None else h
+            ok_ = _seg_dist(Q, ring) > 0.6 * hq
+            Q = Q[ok_]
+            hq = hq[ok_] if hz is not None else h
         # a piece placed folded (a turned-down collar) gets a row of vertices on its fold line, so edges run along
         # the crease: 1 cm edges across a 6 mm fold were shortened up to 52% in the rest shape and the band crimped
         fl = _fold_line(B, nm, h) if nm not in folded else None
@@ -702,9 +742,11 @@ def mesh(B: dict, h: float = 0.02, fold_width: float = 0.0) -> dict:
         # fold lines (folds.py): a row of vertices on each (rows over the arc for a roll), their ends on the outline
         FL, row_ids = np.zeros((0, 2)), []
         FL_of = []  # the fold entry each FL point belongs to
+        h_piece = h
         for f in fold_entries:
             if f["piece"] != nm:
                 continue
+            h = _pf.row_h(pcs, f, h_piece, hz)
             sewn = np.concatenate(list(fixed[nm].values())) if fixed[nm] else None
             fr = foldmod.rows(pcs, f, h, sewn, fold_width)
             for d_end in (fr["lines"][0][0], fr["lines"][0][-1]):
@@ -761,7 +803,8 @@ def mesh(B: dict, h: float = 0.02, fold_width: float = 0.0) -> dict:
             row_ids.append((f, fr, rec_rows))
             if len(Q):
                 for Lr in fr["lines"]:
-                    Q = Q[_seg_dist(Q, Lr, closed=False) > 0.45 * h]
+                    Q = Q[_seg_dist(Q, Lr, closed=False) > 0.45 * (hz(nm, Q) if hz is not None else h)]
+        h = h_piece
         nQ0 = len(Q)
         Q = np.r_[Q, FL] if len(FL) else Q
         mk = {k: np.asarray(v, float) for k, v in pc["marks"].items()}
@@ -797,6 +840,30 @@ def mesh(B: dict, h: float = 0.02, fold_width: float = 0.0) -> dict:
             Q = np.r_[Q[:nQ0][d > 0.5 * h], Q[nQ0:]]
             nQ0 = int((d > 0.5 * h).sum())
         Mk = np.array(list(mk.values())) if mk else np.zeros((0, 2))
+        if hz is not None and row_ids:
+            # graded mesh (mesh_refine): a fold row segment one flip can't recover loses the lattice points crowding it
+            # (every fold line a chain of edges, the dress form's folds hinge on the line, pattern_form)
+            for _ in range(4):
+                X = np.r_[ring, Q, Mk]
+                tri = Delaunay(X).simplices
+                tri = tri[_inside(ring, X[tri].mean(1))]
+                bad = []
+                for f, fr, rec_rows in row_ids:
+                    loc = [[i if kind == "ring" else len(ring) + nQ0 + i for kind, i in ids] for ids in rec_rows]
+                    for ids in loc:
+                        for a_, b_ in zip(ids[:-1], ids[1:]):
+                            if a_ != b_ and foldmod.force_edges(X, tri, [(a_, b_)])[1]:
+                                bad.append((X[a_], X[b_]))
+                if not bad:
+                    break
+                keep = np.ones(nQ0, bool)
+                for pa, pb in bad:
+                    d_ = _seg_dist(Q[:nQ0], np.array([pa, pb]), closed=False)
+                    keep &= d_ > 0.75 * np.linalg.norm(pb - pa)
+                if keep.all():
+                    break
+                Q = np.r_[Q[:nQ0][keep], Q[nQ0:]]
+                nQ0 = int(keep.sum())
         X = np.r_[ring, Q, Mk]
         tri = Delaunay(X).simplices
         cen = X[tri].mean(1)
@@ -813,7 +880,7 @@ def mesh(B: dict, h: float = 0.02, fold_width: float = 0.0) -> dict:
         for f, fr, rec_rows in row_ids:  # the rows' vertices joined by edges (the crease runs along mesh edges)
             loc = [[i if kind == "ring" else len(ring) + nQ0 + i for kind, i in ids] for ids in rec_rows]
             pairs = [(a_, b_) for ids in loc for a_, b_ in zip(ids[:-1], ids[1:]) if a_ != b_]
-            tri, miss = foldmod.force_edges(X, tri, pairs)
+            tri, miss = foldmod.force_edges(X, tri, pairs, multi=hz is not None)  # (several flips: graded meshes only; default meshes unchanged)
             fold_recs.append({"piece": nm, "name": f["name"], "kind": f["kind"], "strength": f["strength"],
                               "angle": f["angle"], "turn": fr["turn"], "sign": fr["sign"], "missing_edges": miss,
                               "in_wrap": bool(f.get("in_wrap")),
@@ -8527,7 +8594,7 @@ def place_keys(Bp: dict, g: dict) -> dict:
     # garment keys "press_lay" (m a pressed lapel lies off its forepart, PRESS_LAY) and "worn_envelope" (smoothing
     # rounds of the body a worn top is laid on, ENVELOPE_ROUNDS): over a bumpy under garment (an open shirt collar's
     # points on the chest under the lapels) a 3 mm lay crossed the forepart at Garrett's left roll line
-    for k_ in ("press_lay", "worn_envelope", "open_gap", "collar_spread", "open_lap", "mirror_mesh"):
+    for k_ in ("press_lay", "worn_envelope", "open_gap", "collar_spread", "open_lap", "mirror_mesh", "mesh_refine"):
         if g.get(k_) is not None:
             Bp[k_] = g[k_]
     return Bp
@@ -9190,7 +9257,9 @@ def sizing(res: dict) -> dict:
         # a curved hem that crosses this girth line (a front lengthened at centre front: the back and the front's
         # sides end above it): the garment doesn't go round there, so the width is a hem's tip, not a girth
         # (dress-tess s31 read "hips -60.6%" off a 25 mm short-row dip)
-        short = [nm for nm, v in per.items() if v <= 0.0]
+        # (a yoke ends above the chest by design: the back under it is the girth; dress-garrett 2026-10-19 muslin 1:
+        # Simon's yoke made every shirt girth read "not measured")
+        short = [nm for nm, v in per.items() if v <= 0.0 and garment_design.role_of(nm, pcs[nm]) != "yoke"]
         if short:
             rows[reg]["partial"] = short
     return {"options": opts, "rows": rows}
@@ -9235,7 +9304,7 @@ GARMENT_KEYS = {"pattern", "pieces", "seams", "stitches", "drop", "alter", "fabr
                 "state", "resolution", "coarse", "quality", "frames", "self_collision", "self_collision_sew", "assemble",
                 "sew_force", "sew_frames", "worn_frames", "settle_frames", "hang_frames", "hang_sew_force", "hang_air", "refine_frames",
                 "refine_ease", "cleanup", "detail", "sculpt", "finish", "unfold_finish", "under", "under_sculpt", "under_collar", "note", "backend", "placement", "lower_arms", "lower_frames", "zozo", "_trace",
-                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin", "under_cap", "closures", "trims", "tie", "collide", "construct", "made_folds", "worn_top", "press_lay", "worn_envelope", "collar_spread", "open_gap", "open_lap", "mirror_mesh", "fine_relax", "under_fall", "collar_ends", "pad_over", "move", "pose_frames", "set_sleeves", "wrap", "uncrush", "straighten", "seal_under"}
+                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin", "under_cap", "closures", "trims", "tie", "collide", "construct", "made_folds", "worn_top", "press_lay", "worn_envelope", "collar_spread", "open_gap", "open_lap", "mirror_mesh", "mesh_refine", "fine_relax", "under_fall", "collar_ends", "pad_over", "move", "pose_frames", "set_sleeves", "wrap", "uncrush", "straighten", "seal_under", "worn_open", "truing_corners"}
 WRAPS = ("torso", "arm.L", "arm.R", "leg.L", "leg.R", "neck", "head", "seam", "flat")
 
 

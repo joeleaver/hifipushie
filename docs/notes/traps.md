@@ -143,13 +143,20 @@ rebuild the back from it (cloth.EXPORT_MADE_SHEETS, lods.LOD_MADE_SHEETS).
 Symptom: many collar sessions tuning the drape; collar stands off the neck whatever the sim does.
 Cause: jacket neckline widen 0.018 / back 0.035 added from a misread "lie low and flat" note; every later session tuned
 on a wrong neckline. Check first: measure the pattern against the collar checklist (cloth_checklist.json) before any
-drape work; pattern parameters carry their source.
+drape work; pattern parameters carry their source. (Seam was 31 mm off the neck at the HPS; tailoring
+rule: widen <= 10 mm, CB ~5 mm.)
 
 ## A swapped / tried-on part that never replaced the old one (2026-10-19, garment-game proof)
 Symptom: polygon-shaped blotches on a tried-on part at every LOD, still there under flat emission; the proof lost 0-14.
 Cause: judge --swap keyed by the OBJECT name matched no mesh and was ignored; v8's jacket was drawn inside ours.
 Check first: a GE_FLATID render (each object its own colour) or the run's object list. Now refused (blender_game swap).
 Same family as a hair lever matching 0 cards (r46g): any selector that matches nothing must raise.
+
+## A fold line that is not mesh edges (2026-10-19, Garrett pre-sim assembly)
+Symptom: lapels / collars "totally scrambled" in a pre-sim assembly. Cause: a
+rigid fold about a line that runs across a 20 mm grid tears the crossing edges (known answer, seam_ao/foldka.py: line on
+a column 0% stretch; 10 mm off the columns 91%; a diagonal roll line 37%). Check first: fold lines are edge chains of
+the panel mesh (re-grid along them) before anything is folded or judged.
 
 ## Export killed at the bake under bin/capped's default cap (2026-10-19, Garrett sh8)
 Symptom: a character export dies at the texture bake (exit 137), no Python error.

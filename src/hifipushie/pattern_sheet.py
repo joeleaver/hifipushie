@@ -73,9 +73,31 @@ def _layout(pcs: dict, width_m: float, margin: float = 0.04):
     return off, W, y + row_h + margin + 0.03
 
 
+def offset_outline(P: np.ndarray, dist: float) -> np.ndarray:
+    """A closed outline moved `dist` outward (miter joins, clamped at 3x): the cutting line a seam allowance away
+    from the sewing line."""
+    P = np.asarray(P, float)
+    area = 0.5 * float(np.sum(P[:, 0] * np.roll(P[:, 1], -1) - np.roll(P[:, 0], -1) * P[:, 1]))
+    s = 1.0 if area > 0 else -1.0  # (counter-clockwise: outward is the edge direction turned clockwise)
+    e_in = P - np.roll(P, 1, axis=0)
+    e_out = np.roll(P, -1, axis=0) - P
+
+    def nrm(e):
+        n = np.c_[e[:, 1], -e[:, 0]] * s
+        return n / (np.linalg.norm(n, axis=1, keepdims=True) + 1e-12)
+    n = nrm(e_in) + nrm(e_out)
+    n /= np.linalg.norm(n, axis=1, keepdims=True) + 1e-12
+    c = np.clip(np.sum(n * nrm(e_out), axis=1), 1.0 / 3.0, 1.0)
+    return P + n * (dist / c)[:, None]
+
+
 def render(Bp: dict, title: str = "", px_per_m: float = 900.0, width_m: float = 1.9, seam_rows=None,
-           notes: list | None = None) -> Image.Image:
-    """The pattern sheet. seam_rows: cloth_check rows (ease, flags) to print in the seam list."""
+           notes: list | None = None, grid: bool = False, sa: float = 0.0, labels: dict | None = None,
+           points=()) -> Image.Image:
+    """The pattern sheet. seam_rows: cloth_check rows (ease, flags) to print in the seam list. grid: a 1 cm grid (10 cm
+    lines darker) under the pieces, true scale; sa: a seam allowance (m) drawn as the cutting line outside each piece's
+    sewing line (thin dashed); labels {piece: [text lines]} written on the piece (measurements); points [(piece, name,
+    label)]: named pattern points marked and labelled (break, lapel point, neck point...)."""
     pcs = Bp["pieces"]
     off, W, H = _layout(pcs, width_m)
     list_h = 22 * (len(Bp["seams"]) + 3 + len(notes or [])) + 40
@@ -84,6 +106,15 @@ def render(Bp: dict, title: str = "", px_per_m: float = 900.0, width_m: float = 
     d = ImageDraw.Draw(img, "RGBA")
     f_big, f_mid, f_small = _font(18), _font(14), _font(12)
     Hpx = int(H * S) + 40
+    if grid:  # true scale: 1 cm cells, every 10 cm darker, numbered
+        for i in range(int(W * 100) + 1):
+            x = i * S / 100.0
+            d.line([(x, 40), (x, Hpx)], fill=(200, 210, 230) if i % 10 == 0 else (236, 240, 248), width=1)
+            if i % 10 == 0:
+                d.text((x + 2, 42), f"{i}", fill=(150, 160, 190), font=f_small)
+        for j in range(int(H * 100) + 1):
+            y = Hpx - j * S / 100.0
+            d.line([(0, y), (W * S, y)], fill=(200, 210, 230) if j % 10 == 0 else (236, 240, 248), width=1)
 
     def tp(nm, q):  # pattern point of a piece -> image px (y flipped: pattern y up)
         dx, dy, sz = off[nm]
@@ -140,6 +171,9 @@ def render(Bp: dict, title: str = "", px_per_m: float = 900.0, width_m: float = 
         for k, L in (pc.get("lines") or {}).items():  # the draft's internal lines (chest, waist, placket folds...)
             _dashed(d, tp(nm, np.asarray(L)), fill=(170, 170, 170), width=1, dash=4, gap=4)
         d.line(poly + [poly[0]], fill=(30, 30, 30), width=2)
+        if sa > 0:  # the cutting line, a seam allowance outside the sewing line
+            C = tp(nm, offset_outline(pc["P"], sa))
+            _dashed(d, list(C) + [C[0]], fill=(90, 90, 90), width=1, dash=6, gap=4)
     # seams: each its colour, label at the middle of each side's edges
     for si, (A, B) in enumerate(Bp["seams"]):
         col = _seam_colour(si, len(Bp["seams"]))
@@ -213,7 +247,14 @@ def render(Bp: dict, title: str = "", px_per_m: float = 900.0, width_m: float = 
         txt = f"{nm}  [{role}]\n{sz[0]:.0f} x {sz[1]:.0f} mm\n-> {w.get('to', 'torso')}" + (
             f" {w.get('side')}" if w.get("side") else "") + (f" @{w['level']}" if w.get("level") else "") + (
             f" out {w['out'] * 1000:.0f}mm" if w.get("out") else "")
+        if (labels or {}).get(nm):
+            txt += "\n" + "\n".join(labels[nm])
         d.multiline_text(tuple(c + [8, 6]), txt, fill=(0, 0, 0), font=f_mid, spacing=2)
+    for nm, pn, lab in points:  # named pattern points (break, lapel point, neck point ...)
+        if nm in pcs and pn in pcs[nm]["names"]:
+            p = tp(nm, pcs[nm]["P"][pcs[nm]["names"][pn]])
+            d.ellipse([tuple(p - 5), tuple(p + 5)], fill=(200, 40, 140))
+            d.text(tuple(p + [7, -7]), lab, fill=(160, 20, 110), font=f_small)
     # scale bar
     y0 = Hpx - 18
     d.line([(20, y0), (20 + 0.1 * S, y0)], fill=(0, 0, 0), width=3)

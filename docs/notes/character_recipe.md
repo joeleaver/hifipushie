@@ -123,6 +123,11 @@ Defaults (in order, like a pattern maker):
 1. Pattern: draft from a block, measure the draft against the checklist; construction choices (collar, cuffs, closures,
    plackets, fabric with physical numbers). A garment over another is drafted over it (`over`). The draft gates pass
    before any sim. Faults are construction, never solver tuning.
+   Jackets / coats: draft by the tailor's rules (docs/notes/tailoring_principles.md R1-R26, `pattern_jacket.jacket_ops`);
+   the pattern gate adds their rows (back neck, suppression, dart, overlap, collar straightness, stand / fall, pockets).
+   Pattern stage: the garment ASSEMBLED on the virtual dress form (`pattern_form.assemble`, no sim: neck point on the
+   HPS, seams closed, layers eased, folds on their fold lines, collar on the neckline; garment key `mesh_refine`),
+   sheet beside the reference and every checklist item measured on it; the pattern passes there before the first sim.
 2. Sim for the big read only: ZOZO (`backend: "zozo"`) on the rented GPU via oxidegen ($5/day cloth budget, NICO-TOP
    fallback), ~3 draft + 2 final sims per garment, ONE sim per proven fix. `cloth_job.preflight` and
    `cloth.fine_start_check` refuse bad starts before money is spent.

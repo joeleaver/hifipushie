@@ -15,6 +15,8 @@ A side that is a chain with gaps (pleats/darts folded away) is measured on its s
 """
 from __future__ import annotations
 
+import math
+
 import numpy as np
 
 from . import pattern, validated
@@ -92,7 +94,11 @@ def _kind(Bp, A, B, garment_kind):
 
 
 @validated.known_answer(_selftest_seams)
-def seams(Bp: dict, garment_kind: str = "") -> list:
+def seams(Bp: dict, garment_kind: str = "", ease_bands: dict | None = None) -> list:
+    """Every seam's two side lengths and its ease against its kind's band. ease_bands (garment key "seam_ease"):
+    {edge label: {"band": [lo, hi], "source": why}}: a seam whose side names that edge is eased by design (a two-piece
+    sleeve's top sleeve eased onto the under sleeve at the elbow, 5-10 mm: dress-garrett 2026-10-19 order + seam
+    lengths, Garrett's hindarm +9.2 mm read FAIL against the plain +-1.5%); its kind reads "declared"."""
     pcs = Bp["pieces"]
     rows = []
     for A, B in Bp["seams"]:
@@ -101,6 +107,11 @@ def seams(Bp: dict, garment_kind: str = "") -> list:
         lb = sum(pattern.length(p) for *_, p in sb)
         kind = _kind(Bp, A, B, garment_kind)
         lo, hi = KINDS[kind]
+        names = [e for e in ([A] if isinstance(A, str) else A)] + [e for e in ([B] if isinstance(B, str) else B)]
+        decl = next((v for k, v in (ease_bands or {}).items() if k != "source" and k in names), None)
+        if decl is not None:
+            kind = "declared"
+            lo, hi = (decl["band"] if isinstance(decl, dict) else decl)
         ease = la / lb - 1 if lb > 0 else 0.0
         # the longer side is the eased one; for plain seams either direction counts
         e = ease if kind.startswith("cap") or kind == "back_shoulder" else ease
@@ -131,6 +142,130 @@ def seams(Bp: dict, garment_kind: str = "") -> list:
     return rows
 
 
+TRUE_DEG = 10.0  # max turn of a joined edge across a seam (pattern truing: necklines, armholes, hems, waists meet
+# their seams at matching angles so the sewn edge is one smooth line; Armstrong, Patternmaking for Fashion Design,
+# "truing": the neckline and armhole meet the shoulder seam at ~90 deg on front and back, blended across the joined seam)
+TRUE_REACH = 0.010  # m: the edges' directions are read this far along each from the seam end
+
+
+def _dir_at(P: np.ndarray, i: int, step: int, reach: float) -> np.ndarray:
+    """Unit direction from outline vertex i to the point `reach` along the closed outline P going by `step` (+-1)."""
+    n = len(P)
+    acc, j, prev = 0.0, i, P[i]
+    for _ in range(n - 1):
+        j = (j + step) % n
+        d = float(np.linalg.norm(P[j] - prev))
+        if acc + d >= reach:
+            q = prev + (P[j] - prev) * ((reach - acc) / max(d, 1e-12))
+            break
+        acc += d
+        prev = P[j]
+    else:
+        q = P[j]
+    v = q - P[i]
+    return v / max(float(np.linalg.norm(v)), 1e-12)
+
+
+def _interior_deg(P: np.ndarray, i: int, reach: float) -> float:
+    """The piece's interior angle at outline vertex i, read `reach` along each edge (deg, 0..360)."""
+    ccw = 0.5 * float(np.sum(P[:, 0] * np.roll(P[:, 1], -1) - np.roll(P[:, 0], -1) * P[:, 1])) > 0
+    a, b = _dir_at(P, i, +1, reach), _dir_at(P, i, -1, reach)
+    if not ccw:
+        a, b = b, a
+    return float(np.degrees(np.arctan2(a[0] * b[1] - a[1] * b[0], a @ b))) % 360.0
+
+
+def _seam_of_segments(Bp: dict) -> dict:
+    """{(piece, frozenset({i, j})): seam index} for every outline segment that a seam side covers."""
+    pcs = Bp["pieces"]
+    out = {}
+    for si, (A, B) in enumerate(Bp["seams"]):
+        for sd in (A, B):
+            for _, nm, ix, _ in _side(pcs, sd):
+                for a, b in zip(ix[:-1], ix[1:]):
+                    out[(nm, frozenset((int(a), int(b))))] = si
+    return out
+
+
+def junctions(Bp: dict, reach: float = TRUE_REACH, corners=()) -> list:
+    """PATTERN TRUING at every seam end: where two pieces are sewn, the edges that run on past the seam's end (a front
+    and back neckline at the shoulder seam, armhole at the side seam, hems, waists, collar edges) must continue as one
+    line. Per seam end: each piece's interior angle there (thA, thB) and the joined edge's turn |thA + thB - 180| (0 =
+    smooth; a front + back neckline meeting the shoulder at 90 + 90 is smooth, 75 + 85 turns 20 deg: the corner Joe
+    saw at Garrett's side neck, dress-garrett 2026-10-19). corners: seam-end labels that are corners by design (a
+    notched collar's notch) and are reported but not failed. Only a side's single edge ends count (a chained side's
+    inner junctions are other seams' ends).
+    Read only where the two edges running on ARE one line (dress-garrett 2026-10-19 order + seam lengths: the round-4
+    gate failed non-faults): both free (a hem, a collar's outer edge) or both in the same other seam (two necklines in
+    the collar seam). A seam whose side is a CLOSED loop (a set-in sleeve's cap all round its armhole: 'under:underarm
+    > ... > underarm') has no ends (it read 112 deg there); where the edges running on are in DIFFERENT seams (a
+    shirt cap's end at the underarm: the sleeve seam and the side seam cross there) the end is a seam CROSSING,
+    reported with "crossing" and never failed."""
+    pcs = Bp["pieces"]
+    cover = _seam_of_segments(Bp)
+    out = []
+    for A, B in Bp["seams"]:
+        sa, sb = _side(pcs, A), _side(pcs, B)
+        loop = lambda s_: s_[0][1] == s_[-1][1] and int(s_[0][2][0]) == int(s_[-1][2][-1])
+        if loop(sa) or loop(sb):
+            continue
+        for end in (0, -1):
+            ea, nma, ixa, _ = sa[end]
+            eb, nmb, ixb, _ = sb[end]
+            ia, ib = int(ixa[end]), int(ixb[end])
+            if nma == nmb and ia == ib:
+                continue
+            # the segment running on past the seam's end on each piece, and the seam it is in (None: a free edge)
+            on = []
+            for nm, ix in ((nma, ixa), (nmb, ixb)):
+                n = len(pcs[nm]["P"])
+                i0 = int(ix[end])
+                nxt = int(ix[1]) if len(ix) > 1 and end == 0 else int(ix[-2]) if len(ix) > 1 else (i0 + 1) % n
+                cand = [(i0 - 1) % n, (i0 + 1) % n]
+                j = cand[0] if cand[1] == nxt else cand[1]
+                on.append(cover.get((nm, frozenset((i0, j)))))
+            crossing = not (on[0] == on[1])
+            tha = _interior_deg(pcs[nma]["P"], ia, reach)
+            thb = _interior_deg(pcs[nmb]["P"], ib, reach)
+            lab = f"{nma}:{_pname(pcs[nma], ia)} | {nmb}:{_pname(pcs[nmb], ib)}"
+            turn = abs(tha + thb - 180.0)
+            turn = min(turn, abs(turn - 360.0))
+            corner = lab in corners or any(c in lab for c in corners)
+            out.append({"at": lab, "seam": [A, B], "deg_a": round(tha, 1), "deg_b": round(thb, 1),
+                        "turn_deg": round(turn, 1), "corner": corner, "crossing": crossing,
+                        "ok": bool(turn <= TRUE_DEG or corner or crossing)})
+    return out
+
+
+def _pname(pc, i):
+    nm = [k for k, v in pc["names"].items() if int(v) == int(i) and not k.startswith("_")]
+    return nm[0] if nm else f"#{i}"
+
+
+def _selftest_junctions():
+    """Known answers: two rectangles sewn side to side continue their top edges straight (0 deg); a front whose
+    neckline meets the shoulder at 70 deg joined to a back meeting it at 90 turns 20 deg there."""
+    def pc(P, names):
+        return {"P": np.asarray(P, float), "names": names, "marks": {}, "wrap": {}}
+    sq = {"pieces": {"a": pc([[0, 0], [1, 0], [1, 1], [0, 1]], {"bl": 0, "br": 1, "tr": 2, "tl": 3}),
+                     "b": pc([[1, 0], [2, 0], [2, 1], [1, 1]], {"bl": 0, "br": 1, "tr": 2, "tl": 3})},
+          "seams": [["a:br>tr", "b:bl>tl"]]}
+    r = junctions(sq, reach=0.1)
+    assert all(abs(x["turn_deg"]) < 1e-6 for x in r), r
+    # a shoulder seam along x from (0, 0) to (0.12, 0): back below (neck edge going -y at 90), front above, its neck
+    # edge leaving the seam at 70 deg (interior)
+    a70 = np.radians(70.0)
+    fr = pc([[0.12, 0.0], [0.0, 0.0], [0.1 * np.cos(np.pi - a70) * -1 * -1, 0.0], [0.0, 0.0]], {})
+    F = np.array([[0.0, 0.0], [0.12, 0.0], [0.12, 0.2], [0.0 + 0.2 * np.cos(a70), 0.2 * np.sin(a70)]])
+    Bk = np.array([[0.0, 0.0], [0.0, -0.2], [0.12, -0.2], [0.12, 0.0]])
+    sh = {"pieces": {"front": pc(F, {"hps": 0, "shoulder": 1}), "back": pc(Bk, {"hps": 0, "shoulder": 3})},
+          "seams": [["front:hps>shoulder", "back:hps>shoulder"]]}
+    r = junctions(sh, reach=0.05)
+    h = next(x for x in r if "hps" in x["at"])
+    assert abs(h["deg_a"] - 70.0) < 0.5 and abs(h["deg_b"] - 90.0) < 0.5 and abs(h["turn_deg"] - 20.0) < 0.5, h
+    del fr
+
+
 def report(Bp: dict, garment_kind: str = "") -> list:
     out = []
     for r in seams(Bp, garment_kind):
@@ -150,8 +285,8 @@ def report(Bp: dict, garment_kind: str = "") -> list:
 # a misread note while many collar sessions tuned the drape (traps.md "A misread note became a pattern default").
 #
 # `pattern_gate(model, garment)` measures, WITHOUT a sim, every cloth_checklist.json item of the garment's kind that can
-# be read from the pattern placed on the body (cloth.build(place_only=True): the start the sim would get, on the fine
-# mesh) plus the pattern's own rows (seam ease / notches). Each row comes back
+# be read from the pattern ASSEMBLED ON THE VIRTUAL DRESS FORM (pattern_form.on_form: placed, neck points on the body,
+# seams closed, folds turned, over its under garment; graded fine mesh) plus the pattern's own rows (seam ease / notches). Each row comes back
 #   PASS / FAIL   measured, with its numbers (against the reference reading `refs`, or the item's target_mm rule)
 #   UNMEASURED    no pattern-stage measure yet (a "missing: ..." measure, an unknown one, no reference reading): it
 #                 BLOCKS (never silently passes) unless waived by name with a reason (`waive`, recorded)
@@ -365,11 +500,139 @@ def option_sources(g: dict) -> list:
     return out
 
 
+# ---------------------------------------------------------------- flat first (2026-10-19 dress-garrett muslin 1)
+# GATE ON WHAT'S PROVEN (codified C29): the virtual dress form is a reader like any other and has not passed its own
+# validation, so nothing read on it blocks or passes a pattern yet. The gate blocks on the FLAT checks: seams (lengths,
+# ease, notches), truing, the flat pattern stage (ease vs the body by girth, design evidence), the collar draft's
+# stand / fall, the notch read flat. Form readings (placed items, worn items, form strain) are INFO with their reading
+# and "form_status" kept. Set FORM_VALIDATED True only with the form's validation record (a KAT on a real arm segment:
+# docs/state/dress_garrett.md) in the same commit.
+FORM_VALIDATED = False
+FORM_FAULTS = ("dress-garrett 2026-10-19 form sleeves: its first relax flattens a two-piece sleeve into a lens (biceps "
+               "142 x 156 -> 72 x 159 mm), and it over-reads strain (jacket p99 49 % on a block whose drape reads in band)")
+FLAT_MEASURES = ("collar_stand_cb_mm", "collar_fall_minus_stand_mm", "notch_flat")
+SPEC_READ = ("detail_choice", "has_belt", "over", "fabric", "colour")  # placed measures that read the spec, not the form
+
+
+def _arc_len_resample(L: np.ndarray, n: int) -> np.ndarray:
+    L = np.asarray(L, float)
+    s = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(L, axis=0), axis=1))]
+    t = np.linspace(0.0, s[-1], n)
+    return np.c_[np.interp(t, s, L[:, 0]), np.interp(t, s, L[:, 1])]
+
+
+def _side_arc(pcs: dict, side) -> np.ndarray:
+    parts = []
+    for e in ([side] if isinstance(side, str) else side):
+        nm, arc = e.split(":", 1)
+        parts.append(np.asarray(pcs[nm]["P"], float)[pattern.arc_indices(pcs[nm], arc)])
+    return np.concatenate(parts, 0)
+
+
+def collar_draft(Bp: dict) -> dict | None:
+    """A tailored (notched) collar's draft, flat: the stand (the roll line's distance from the neck edge) at CB and at
+    the roll line's last point (where it meets the neck edge: ~0, the collar all fall past it), whether it tapers
+    without a rise, the whole collar at CB (neck edge -> outer edge) and the fall (whole - stand). None: no such collar."""
+    c = (Bp.get("pieces") or {}).get("collar")
+    if c is None or "cbTop" not in c["names"] or not ((c.get("wrap") or {}).get("turn") or {}).get("line"):
+        return None
+    L = np.asarray(c["wrap"]["turn"]["line"], float)[:-1]  # (without the run-on into the front)
+    L = L[L[:, 0] >= -1e-9]
+    L = L[np.argsort(L[:, 0])]
+    E = _arc_len_resample(np.asarray(c["P"], float)[pattern.arc_indices(c, "cb>shoulderNotch>cf")], 400)
+    h = np.array([np.linalg.norm(E - q, axis=1).min() for q in L])
+    whole = float(np.linalg.norm(c["P"][c["names"]["cbTop"]] - c["P"][c["names"]["cb"]]))
+    return {"stand_cb_mm": round(h[0] * 1000, 1), "stand_end_mm": round(h[-1] * 1000, 1),
+            "tapers": bool(np.all(np.diff(h) < 0.0005)), "collar_cb_mm": round(whole * 1000, 1),
+            "fall_cb_mm": round((whole - h[0]) * 1000, 1), "fall_minus_stand_mm": round((whole - 2 * h[0]) * 1000, 1)}
+
+
+def notch_flat(Bp: dict, reach: float = 0.11) -> dict | None:
+    """The notch as DRAFTED (dress-garrett notch2d.py, without a mesh): the collar's end carried into the front's
+    pattern by its own neck seam (both sides sewn by fraction of their length; a rigid 2D fit over the seam within
+    `reach` of the collar's end, as the worn collar lies with the lapel past the roll line), then per side the gap
+    lapel point -> collar end (outer) and the angle between them at the front's neck end (cfNeck). The lapel and the
+    collar end turn together about the roll line, so these are the worn notch's."""
+    pcs = Bp.get("pieces") or {}
+    c = pcs.get("collar")
+    if c is None or "endOuter" not in c["names"]:
+        return None
+    out = {}
+    for A, B in Bp["seams"]:
+        if not (isinstance(A, str) and A.startswith("collar:")):
+            continue
+        sfx = ".m" if ".m" in A else ""
+        fr = next((e.split(":")[0] for e in ([B] if isinstance(B, str) else B) if e.startswith("front.")), None)
+        if fr is None or "lapelPoint" not in pcs[fr]["names"]:
+            continue
+        n = 600
+        Ca, Fb = _arc_len_resample(_side_arc(pcs, A), n), _arc_len_resample(_side_arc(pcs, B), n)
+        en = np.asarray(c["P"][c["names"]["endNeck" + sfx]], float)
+        use = np.linalg.norm(Ca - en, axis=1) < reach
+        if use.sum() < 5:
+            continue
+        a, b = Ca[use], Fb[use]
+        ca, cb_ = a.mean(0), b.mean(0)
+        U, _, Vt = np.linalg.svd((a - ca).T @ (b - cb_))
+        R = (U @ Vt).T
+        if np.linalg.det(R) < 0:
+            Vt[-1] *= -1
+            R = (U @ Vt).T
+
+        def T(q, ca=ca, cb_=cb_, R=R):
+            return (np.asarray(q, float) - ca) @ R.T + cb_
+        fit = float(np.linalg.norm(T(a) - b, axis=1).max())
+        fp = pcs[fr]
+        lp, cn = np.asarray(fp["P"][fp["names"]["lapelPoint"]], float), np.asarray(fp["P"][fp["names"]["cfNeck"]], float)
+        eo = T(c["P"][c["names"]["endOuter" + sfx]])
+        u, v = lp - cn, eo - cn
+        ang = math.degrees(math.acos(float(np.clip(u @ v / (np.linalg.norm(u) * np.linalg.norm(v) + 1e-12), -1, 1))))
+        out[fr] = {"gap_mm": round(float(np.linalg.norm(lp - eo)) * 1000, 1), "angle_deg": round(ang, 1),
+                   "fit_mm": round(fit * 1000, 1)}
+    return out or None
+
+
+def flat_readings(Bp: dict) -> dict:
+    """{FLAT_MEASURES name: reading} of a flat draft (missing: not applicable to this draft)."""
+    r = {}
+    cd = collar_draft(Bp)
+    if cd:
+        r["collar_stand_cb_mm"] = dict(cd, value=cd["stand_cb_mm"])
+        r["collar_fall_minus_stand_mm"] = dict(cd, value=cd["fall_minus_stand_mm"])
+    nf = notch_flat(Bp)
+    if nf:
+        r["notch_flat"] = nf
+    return r
+
+
+def flat_row(it: dict, rd) -> dict:
+    """A FLAT_MEASURES item's status: flat_target (else target_mm) [lo, hi] +- flat_tolerance on reading["value"], or
+    for the notch {"gap_mm": [..], "angle_deg": [..]} on every side. No reading: UNMEASURED (blocks)."""
+    if not rd:
+        return {"status": "UNMEASURED", "why": f"{it['flat_measure']}: not read on this draft"}
+    t, tol = it.get("flat_target") or it.get("target_mm"), float(it.get("flat_tolerance", 0) or 0)
+
+    def ok(v, rng):
+        return float(rng[0]) - tol <= float(v) <= float(rng[1]) + tol
+    if it["flat_measure"] == "notch_flat":
+        bad = [f"{sd} {k} {v[k]}" for sd, v in rd.items() for k in ("gap_mm", "angle_deg") if not ok(v[k], t[k])]
+    else:
+        bad = [] if ok(rd["value"], t) else [f"{rd['value']} mm"]
+    return {"status": "FAIL" if bad else "PASS", "ours": rd, "ref": t, "read_on": "flat draft",
+            **({"miss": "; ".join(bad)} if bad else {})}
+
+
 def classify(it: dict) -> str:
-    """How the gate treats a checklist item: "pattern" (a PATTERN_MEASURES measure), "placed" (a cloth_reference measure
-    read on the placed rest), "sim" (judged after the sim) or "unmeasured" (anything else: it blocks)."""
+    """How the gate treats a checklist item: "pattern" (a PATTERN_MEASURES measure), "flat" (a FLAT_MEASURES reading of
+    the flat draft), "worn" (read only on the garment assembled / worn: the dress form or the drape; INFO until the form
+    is validated), "later" (a later stage's item, e.g. wear: INFO), "placed" (a cloth_reference measure read on the
+    placed rest), "sim" (judged after the sim) or "unmeasured" (anything else: it blocks)."""
     if it.get("pattern_measure") in PATTERN_MEASURES:
         return "pattern"
+    if it.get("flat_measure") in FLAT_MEASURES:
+        return "flat"
+    if it.get("gate") in ("worn", "later"):
+        return it["gate"]
     m = str(it.get("measure", ""))
     if m.startswith("missing"):
         return "unmeasured"
@@ -391,23 +654,53 @@ def _rule(it: dict, v: float):
 
 
 def gate_rows(Bp: dict, items: list, ctx=None, gname: str = "", refs: dict | None = None, extra: dict | None = None,
-              garment_kind: str = "") -> list:
+              garment_kind: str = "", corners=(), ease_bands: dict | None = None, form_ok: bool = True,
+              flat: dict | None = None, drape: dict | None = None) -> list:
     """The gate's rows: the pattern's seam row, then one row per checklist item. ctx: a cloth_reference.Ctx holding the
     placed rest as gname's result (None: "placed" items are UNMEASURED); refs: the garment's reference targets {item id:
-    reading}; extra: {PATTERN_MEASURES name: its result dict} already read on this garment."""
+    reading}; extra: {PATTERN_MEASURES name: its result dict} already read on this garment. form_ok: the dress form
+    passed its own validation (FORM_VALIDATED); when False every row read on the form (placed items, worn items) is INFO
+    with its reading and "form_status" kept, never blocking and never a pass. flat: {FLAT_MEASURES name: reading}
+    (flat_readings). drape: a garment's "drape_readings" {"source", "rows": {item id: {status, ours, ref}}}: an item
+    read on the last VALIDATED drape of the same block, which blocks in place of the form's reading."""
     rows = []
-    sm = seams(Bp, garment_kind)
+    sm = seams(Bp, garment_kind, ease_bands)
+    # ease the DRAFT declared on a seam (Bp seam_notes: a two-piece sleeve's cap ease, a dart released into gathers),
+    # read as the flat pattern stage reads it (cloth_workflow.seam_rows): the gate and the stage must agree (muslin 1:
+    # the jacket cap read "+3.0% outside 0..3%" here and "in its declared +1.8..+4.2%" there)
+    for r in sm:
+        n_ = (Bp.get("seam_notes") or {}).get(_json.dumps([r["a"], r["b"]]))
+        if n_ and not (ease_bands and r.get("declared")):
+            lo, hi = n_["ease"]
+            r["band"] = (min(lo, -hi) if lo >= 0 and r["ease"] < 0 else lo, hi)
+            r["kind"], r["why"] = "declared", n_.get("why")
+            r["ok"] = lo - 1e-6 <= abs(r["ease"]) <= hi + 1e-6 or lo - 1e-6 <= r["ease"] <= hi + 1e-6
     bad = [r for r in sm if not r["ok"] or r["notches_off"]]
     rows.append({"id": "seams", "stage": 2, "status": "FAIL" if bad else "PASS", "measure": "cloth_check.seams",
                  "ours": f"{len(sm)} seams, {len(bad)} outside their ease band or with notches off",
                  "detail": [f"{r['a']} || {r['b']}: ease {100 * r['ease']:+.1f}% band {r['band']} notches {r['notches_off']}"
                             for r in bad][:12]})
+    # pattern truing: every seam end's joined edge turns <= TRUE_DEG (garment key "truing_corners": seam ends that are
+    # corners by design, e.g. a notched collar's notch, a band's extension past CF; reported, not failed)
+    jn = junctions(Bp, corners=tuple(corners or ()))
+    badj = [r for r in jn if not r["ok"]]
+    rows.append({"id": "truing", "stage": 2, "status": "FAIL" if badj else "PASS", "measure": "cloth_check.junctions",
+                 "ours": f"{len(jn)} seam ends, {len(badj)} turn > {TRUE_DEG:.0f} deg",
+                 "detail": [f"{r['at']}: {r['deg_a']} + {r['deg_b']} -> turn {r['turn_deg']}" for r in badj][:16]})
     extra, refs = extra or {}, refs or {}
     for it in items:
         cl = classify(it)
         row = {"id": it["id"], "stage": it["stage"], "measure": it.get("pattern_measure") or it.get("measure")}
         if cl == "sim":
             row.update(status="SIM", why="judged after the sim (drape, folds, closures, the worn tells)")
+        elif cl == "later":
+            row.update(status="INFO", why=f"a later stage's item (stage {it.get('stage')}): not a pattern check")
+        elif cl == "worn":
+            row.update(status="INFO" if not form_ok else "UNMEASURED", form_status="UNMEASURED",
+                       why=("read on the assembled / worn garment only (the dress form or the drape): INFO while the "
+                            "form is not validated: " + FORM_FAULTS) if not form_ok else f"no worn measure: {it.get('measure')}")
+        elif cl == "flat":
+            row.update(flat_row(it, (flat or {}).get(it["flat_measure"])))
         elif cl == "unmeasured":
             row.update(status="UNMEASURED", why=f"no pattern-stage measure: {it.get('measure')}")
         elif cl == "pattern":
@@ -418,6 +711,10 @@ def gate_rows(Bp: dict, items: list, ctx=None, gname: str = "", refs: dict | Non
                                                     "plain target_mm range", ours=v)
             else:
                 row.update(status=rr[0], ours=v, miss=rr[1], units="mm", ref=f"rule {it['target_mm']}")
+        elif drape and it["id"] in (drape.get("rows") or {}):  # placed, read on the last validated drape
+            d_ = drape["rows"][it["id"]]
+            row.update(status=d_["status"], ours=d_.get("ours"), ref=d_.get("ref"), read_on="validated drape",
+                       why=drape.get("source", ""))
         else:  # placed
             from . import cloth_reference as cr
             ref = refs.get(it["id"])
@@ -439,6 +736,10 @@ def gate_rows(Bp: dict, items: list, ctx=None, gname: str = "", refs: dict | Non
                     row.update(status="UNMEASURED", why=str(e))
                 except Exception as e:  # noqa: BLE001 (a measure that breaks on a placed rest is unmeasured, and says so)
                     row.update(status="UNMEASURED", why=f"{type(e).__name__}: {e}")
+            if not form_ok and ctx is not None and it.get("measure") not in SPEC_READ:
+                # read on the dress form, which is not validated: shown, not judged (design choices read the spec)
+                row.update(form_status=row["status"], status="INFO",
+                           why=f"read on the dress form (not validated: {FORM_FAULTS}) {row.get('why', '')}".strip())
         rows.append(row)
     return rows
 
@@ -452,20 +753,83 @@ def make_record(model: str, garment: str, kind, keys: dict, rows: list, waive: d
             "refs": bool(refs), "overrides": old.get("overrides", [])}
 
 
+FORM_STRAIN_P99 = 0.06
+FORM_STRAIN_SOURCE = ("a woven wool suiting worn with ease is near its rest length: its extension at 500 gf/cm (KES-FB1 "
+                      "EMT) is ~3-8 % (Kawabata & Niwa, the KES tailorability charts for men's suiting); a pattern with "
+                      "its ease, on the form, should not read more than the low end of that (dress-garrett 2026-10-19)")
+FORM_STRAIN_SKIP = ("collar", "collar_stand", "collar_fall")  # made pieces: their roll is the collar stage's own item
+
+
+def form_strain_rows(res: dict, roles: list, g: dict) -> list:
+    """Gate rows: the garment's face strain on the form (diag_render.face_strain, flat pattern -> assembled) p50 / p99
+    over its body pieces (made collar pieces left to the collar stage), FAIL over FORM_STRAIN_P99 (garment key
+    "form_strain_p99" + "form_strain_source" to state another); and the under garment's faces through it
+    (garment_game.pierce_faces), INFO."""
+    from . import diag_render, garment_game
+    M = res["mesh"]
+    F, piece = np.asarray(M["F"]), np.asarray(M["piece"])
+    s = diag_render.face_strain(np.asarray(res["A"], float), F, np.asarray(M["uv"], float))
+    keep = ~np.isin(piece[F[:, 0]], [k for k, ro in enumerate(roles) if ro in FORM_STRAIN_SKIP])
+    lim = float(g.get("form_strain_p99", FORM_STRAIN_P99))
+    p50, p99 = float(np.percentile(s[keep], 50)), float(np.percentile(s[keep], 99))
+    worst = {}
+    for k, nm in enumerate(M["names"]):
+        m = keep & (piece[F[:, 0]] == k)
+        if m.sum() > 10:
+            worst[nm] = round(float(np.percentile(s[m], 99)) * 100, 1)
+    rows = [{"id": "form_strain", "stage": 3, "status": "PASS" if p99 <= lim else "FAIL",
+             "measure": "diag_render.face_strain p99 (body pieces)", "ours": {"p50_pct": round(p50 * 100, 2),
+             "p99_pct": round(p99 * 100, 2), "per_piece_p99": worst}, "ref": f"<= {lim * 100:.0f}%",
+             "why": g.get("form_strain_source", FORM_STRAIN_SOURCE)}]
+    und = res.get("form_under")
+    if und is not None:
+        n = garment_game.pierce_faces(np.asarray(und["A"], float), np.asarray(und["mesh"]["F"]),
+                                      np.asarray(res["A"], float), F)
+        rows.append({"id": "under_pierce", "stage": 3, "status": "INFO", "measure": "garment_game.pierce_faces",
+                     "ours": n, "why": "under-garment faces crossing this one on the form"})
+    return rows
+
+
+def flat_pattern_row(model: str, garment: str, spec: dict) -> dict:
+    """The flat pattern stage (cloth_workflow.stage_pattern, no image) as one blocking row: ease vs the body by girth in
+    the kind's fit band (cloth.sizing, seam to seam), every piece sewn, the design's choices evidenced in the pieces,
+    the draft's own "!!" warnings. Its "fail" lines are the row's detail."""
+    from . import cloth_workflow
+    o = cloth_workflow.stage_pattern(cloth_workflow.Ctx(model, garment, spec), image=False)
+    ease = [ln for ln in o["info"] + o["fail"] if ln.startswith("ease at") or ln.startswith("dimensions")]
+    return {"id": "flat_pattern", "stage": 2, "status": "FAIL" if o["fail"] else "PASS",
+            "measure": "cloth_workflow.stage_pattern (flat: ease by girth, pieces sewn, design evidence)",
+            "ours": {"fail": o["fail"][:16], "warn": o["warn"][:8], "ease": ease[:8]}, "read_on": "flat draft"}
+
+
+def tailor_rows_for(Bp: dict, kind, g: dict) -> list:
+    """The tailor's-rule rows (pattern_jacket.tailor_rows: docs/notes/tailoring_principles.md R<n>) for a jacket / coat
+    drafted by us (its draft carries the tape); [] otherwise. Button size: the closure's "size" (m) or 20 mm."""
+    if (kind or "") not in ("jacket", "coat", "blazer"):
+        return []
+    tape = ((Bp.get("draft") or {}).get("measurements")) or {}
+    if not tape.get("neck"):
+        return []
+    from . import pattern_jacket
+    size = next((float(c["size"]) for c in (Bp.get("closures") or []) if c.get("size")), 0.020)
+    return pattern_jacket.tailor_rows(Bp, tape, g, button_mm=size * 1000)
+
+
 def pattern_gate(model: str, garment: str, spec: dict | None = None, refs=None, waive: dict | None = None,
                  sheet: bool = False, concept: str | None = None, log=print) -> dict:
     """Measure the garment's pattern on its body WITHOUT a sim and write the gate record (see the section comment).
     refs: the reference reading (cloth_reference.read's output or its saved path; targets[garment] are used); waive:
     {item id: reason} for FAIL / UNMEASURED rows accepted by name (recorded); sheet: also render the pre-sim clay sheet
     (`pattern_sheet`; run under bin/capped). Returns the record ("status", "rows", "warnings", "sheet")."""
-    from . import cloth, cloth_reference as cr, garment_design, store
+    from . import cloth_reference as cr, garment_design, pattern_form, store
     spec = spec or store.load(model)
     g = spec["cloth"][garment]
-    src = cloth.model_body(model, spec, g, simulate=False)
-    res = cloth.build(cloth._garment_for_sim(g), src, f"{model}:{garment}", log=lambda *_: None, place_only=True)
+    # placed AND assembled on the virtual dress form (pattern_form.on_form: neck points on the body's, seams closed,
+    # folds turned on edge rows, over its under garment); the placed start alone put the neck point ~30 mm out
+    res = pattern_form.on_form(model, garment, spec)
     keys = res["gate_keys"]
     M = res["mesh"]
-    light = {"V": np.asarray(res["X0"], float), "F": M["F"], "piece": M["piece"], "names": list(M["names"])}
+    light = {"V": np.asarray(res["A"], float), "F": M["F"], "piece": M["piece"], "names": list(M["names"])}
     ctx = cr.Ctx(model, spec, {garment: light}, body=res["body"])
     kind = ctx.kind(garment)
     if isinstance(refs, (str, _Path)):
@@ -474,10 +838,23 @@ def pattern_gate(model: str, garment: str, spec: dict | None = None, refs=None, 
     roles = [garment_design.role_of(n) for n in M["names"]]
     torso = np.isin(np.asarray(M["piece"]), [k for k, ro in enumerate(roles) if ro not in cr.NOT_TORSO])
     nk = neckline_standoff_mm(light["V"], M["F"], res["body"].V, ctx.L["neck_base"], keep=torso)
+    form_ok = FORM_VALIDATED
     rows = gate_rows(res["pieces_full"], cr.items_for(kind), ctx, garment, targets, {"neckline_standoff_mm": nk},
-                     garment_kind=kind or "")
+                     garment_kind=kind or "", corners=g.get("truing_corners") or (), ease_bands=g.get("seam_ease"),
+                     form_ok=form_ok, flat=flat_readings(res["pieces_full"]), drape=g.get("drape_readings"))
+    rows.append(flat_pattern_row(model, garment, spec))
+    rows += tailor_rows_for(res["pieces_full"], kind, g)
     rows.append({"id": "neckline_standoff", "stage": 3, "status": "INFO", "measure": "cloth_check.neckline_standoff_mm",
                  "ours": nk, "why": "no target yet: a checklist item adopts it with \"pattern_measure\""})
+    fi = res.get("A_info") or {}
+    rows.append({"id": "form_assembly", "stage": 3, "status": "INFO", "measure": "pattern_form.assemble",
+                 "ours": {k: fi.get(k) for k in ("neck_point_mm", "turned_deg", "stretch_pct", "sew_gap_mm",
+                                                 "inside_body", "through_under")},
+                 "why": "the dress form's own report (folds turned, stretch, neck point on the body's HPS)"})
+    for r_ in form_strain_rows(res, roles, g):
+        if not form_ok and r_["status"] in ("PASS", "FAIL"):
+            r_.update(form_status=r_["status"], status="INFO", why=f"read on the dress form (not validated: {FORM_FAULTS})")
+        rows.append(r_)
     warns = option_sources(g)
     rec = make_record(model, garment, kind, keys, rows, waive, warns, bool(targets))
     if sheet:
@@ -495,19 +872,23 @@ def pattern_gate(model: str, garment: str, spec: dict | None = None, refs=None, 
 
 def pattern_sheet(res: dict, prefix, concept: str | None = None, views=("front", "three", "side", "back"),
                   resolution: int = 700) -> _Path:
-    """The assembled pre-sim garment on the body (the placed rest a sim would start from), clay, front / 3/4 / side /
-    back framed ~1 m round the garment, the concept first when given -> <prefix>.png. Takes the GPU lock: run under
+    """The pre-sim garment ASSEMBLED ON THE VIRTUAL DRESS FORM (res["A"] from pattern_form.on_form; its under garment
+    drawn too), clay, front / 3/4 / side / back framed ~1 m round the garment, the concept first when given ->
+    <prefix>.png. A result without "A" falls back to the placed start X0. Takes the GPU lock: run under
     /mnt/data/hifipushie/bin/capped (refused otherwise)."""
     from PIL import Image
     from . import cloth, resources
     if not _os.environ.get("HIFIPUSHIE_CAPPED"):
         raise RuntimeError("pattern_sheet renders: run it under /mnt/data/hifipushie/bin/capped (GPU lock, memory cap)")
     M, B = res["mesh"], res["body"]
-    X = np.asarray(res["X0"], float)
+    X = np.asarray(res["A"] if res.get("A") is not None else res["X0"], float)
     lo, hi = X.min(0) - 0.08, X.max(0) + 0.08
     c, half = (lo + hi) / 2, np.maximum((hi - lo) / 2, 0.5)  # (about 1 m across at least)
-    objs = [{"name": "body", "V": B.V, "F": B.T, "color": "#c9b8a6"},
-            {"name": "garment", "V": X, "F": M["F"], "color": "#5b7fa6"}]
+    objs = [{"name": "body", "V": B.V, "F": B.T, "color": "#c9b8a6"}]
+    u = res.get("form_under")
+    if u is not None:  # the garment under, as assembled on the form
+        objs.append({"name": "under", "V": np.asarray(u["A"], float), "F": u["mesh"]["F"], "color": "#d8d4cc"})
+    objs.append({"name": "garment", "V": X, "F": M["F"], "color": "#5b7fa6"})
     prefix = _Path(prefix)
     with resources.heavy(f"pattern sheet {prefix.name}", gb=4, gpu=True):
         pngs = cloth.render(objs, str(prefix), views=views, resolution=resolution, box=(c - half, c + half))

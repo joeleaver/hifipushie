@@ -7073,6 +7073,245 @@ rolled at the front edge, or the facing region's inner shell shading as the outs
 (superseded by the game-render crush A/B). (c) the coat surface is now clean but flatter than the concept's soft swirl:
 a lower-frequency, lower-contrast fold relief (not more crush) would be the next lever, judged in the game render.
 
+## dress-garrett 2026-10-19 collar construction (an; scripts $G/seam_an/: cm.py + cmt.sh measure, over_an.py build|submit|apply, sub.sh, xc.sh, sheet.py, blind/ + blind_key.json)
+Joe on frozen_ae/collar_v3sim.png: "we're just not comprehending how collars work" (back: low flat band below / away from
+the neck, shirt far above, loose flap at the end; side: flat band, no stand / fall / roll, no hug).
+- (1) DESCRIBE, sourced (research subagent; Aldrich / Cabrera / Poulin not readable online): Mueller & Sohn lapel-collar
+  drafts (muellerundsohn.com posts 258, 1921, 2391): stand 2.5-3 cm CB, 2-2.5 at the shoulder; roll/break line through a
+  point 2 cm out along the shoulder from the neck point; jacket neckline lowered only 0-1 cm at the shoulder, ~0.5 cm at
+  CB; collar neck edge ~1 cm shorter than the neckline. Fall deeper than stand (TD&T 1981 p.36: +1/4 in). Undercollar:
+  bias melton, CB seam; top collar +3 mm turn of cloth (fashion-incubator). Shirt shows 1/2-3/4 in at the back
+  (articlesofstyle; Hall Madden 1/2 in); collar rests on the shirt collar "with neither pressure nor gaps" (Suitsupply).
+  Notch 60-90 deg (hespokestyle); gorge on the collarbone (Gentleman's Gazette). UNVERIFIED: CB fall 3.5-4.5 cm.
+  8 items added to cloth_checklist.json (c5f7ca95): jacket_neckline, collar_stand, collar_fall, collar_roll_line,
+  collar_hug_side, collar_show_sides, collar_end_lie, notch (measure "missing": cm.py sections); codified C11.
+- (2) MEASURE frozen_ae (cm.py, sections through the made collar grid at CB / 3-4 / HPS station), mm:
+  | item | target | CB | 3/4 | HPS | pass |
+  | neck seam off skin | 5-14 at HPS | 7.6 | 9.7 | 31.5 | FAIL +17 (side) |
+  | jacket HPS vs body HPS | ~0-10 out | | | x +31, z -8 | FAIL |
+  | stand rise / tilt | 25-30 CB, 20-25 side, <=20 deg | 22 / 4 | 25 / 4 | 20 / 13 | marginal |
+  | fall - stand; covers seam | 6-15; 3-12 | 13; 13 | 13; 10 | 15; 6.5 | pass |
+  | top off shirt collar (hug) | 0-6 | 9.8 | 10.8 | 17.3 | FAIL +4..+11 |
+  | top off neck skin | - | 16.4 | 18.5 | 26.7 | - |
+  | shirt show | 10-19 | 8.2 | -1.1 | 5.0 | FAIL |
+  | end off lapel | 0-6 | | | 26.4 | FAIL +20 (flap) |
+  | notch angle / gap | 60-90 / 20-40 | | | 109 / 36 | FAIL angle |
+  CAUSE (pattern): the jacket spec's op `neckline {widen 0.018, back 0.035}` (2026-10-10: a misread "lie LOW and flat"
+  note; the rule is widen <= 10, back ~5 mm) + construct collar_options widen 0.025: the neck seam sits out on the
+  shoulders, so whatever stand is drafted stands 17-27 mm off the neck. Also: the approved shirt collar is only 26 mm tall
+  above its band seam at CB (band 1539 -> 1565 mm z; real 35-45): stand + show can't exceed ~26 mm with the jacket seam
+  level with the shirt band seam. Drape faults: the end flap / notch (v3 end lie).
+- (3) CONSTRUCT without a jacket re-sim (the hang key 7aca63ae + sculpt / finish pins are approved): over_an.py builds
+  per station s0 (old seam, pinned) -> N (the correct seam on the shirt + 2.5 mm: the jacket's missing neck cloth as
+  pinned collar rows) -> T (stand top on the shirt collar at shirt top - show) -> fall folded over T, fold 4 mm out, to
+  cover s0 + 8 mm; ends blended to the v3 lie; flat draft; collider; preflight 0 / 0.
+  Rest tiles n1-n7 (no sim): n4 hugged but lumpy; pre_smooth along stations dragged CB down until the unbuilt half was
+  mirrored first (n6 -> n7). SIMS: n7 FAILED at solver setup ("Degenerate shell face": the faired frozen collar's end
+  faces are collinear; preflight doesn't check; $0.015); fix = raw seam_al/job_v3/out.npz + a face-quality refusal in
+  over_an. n8 ran (101 s, ~$0.02, settled 0.00 mm).
+  n8 vs ae (CB / 3-4 / HPS): hug 9.8/10.8/17.3 -> 8.9/6.0/7.6; top off skin 16.4/18.5/26.7 -> 16.6/14.7/16.0; show
+  8.2/-1.1/5.0 -> 6.6/9.5/n.a.; rise 22/25/20 -> 24/14/15 (side stand LOWER: the shirt collar limit); cover 13/10/6.5 ->
+  3.3/5.6/0.9; end off lapel 26 (unchanged); back max x 95.8 -> 83.2.
+- (4) LOOK (mine first, sheet_n8.png: concept | ae | n8): n8 is WORSE: a crumpled, bunched band at the back and a flat
+  ragged slab at the side; the hug gain doesn't read. Blind A/B (fresh subagent, key-shuffled, decoded): ae preferred in
+  4/4 views; n8 4 MAJOR, ae 0. NOT FROZEN. STOP-LOSS: 2 sims, the look did not improve.
+  Lesson: a neckline fault can't be patched with pinned "neck cloth" rows on the collar: the pinned, per-station
+  constructed stand carries its station noise into the drape. Fix the neckline in the pattern.
+## Handover 2026-10-19 an (dress-garrett collar construction)
+FROZEN: unchanged (frozen_ae). Candidate n8 rejected (blind 4/4 for ae). Sims 2 (~$0.035). NEXT (coordinator call: a
+jacket re-sim moves the approved hang key): jacket spec neckline widen 0.018 -> ~0.006, back 0.035 -> ~0.008,
+collar_options widen 0.025 -> 0, stand -> 0.025 (draft collar wider at CB for the 45% cap), then ONE jacket sim and the
+made collar on it; decide the shirt collar height (26 mm) first; then the ends (notch 109 -> 60-90 deg).
+## dress-garrett 2026-10-19 neckline re-draft (ao; scripts $G/seam_ao/: run.sh, place.py, assemble.py, presim.py, q3.sh, frontm.py, m.sh, shc.py, foldka.py)
+Brief: re-draft the jacket neckline + raise the shirt collar, one jacket sim. Mid-session COURSE CHANGE (coordinator, Joe:
+"the lapels and notch all land in the wrong place ... too much time on sim before we validate our patterns"): pattern
+first, NO sims until the pattern passes. Sims run: 0 ($0).
+- Shirt collar, no sim (cached jacket b0 vs s1, run.py `under_collar.stand=0.034`, was 0.022): shirt collar CB height
+  25.4 -> 37.1 mm (standard 35-45); shirt show CB / 3-4 / side 7.4 / 0.6 / 6.4 -> 10.8 / 10.4 / 17.3 (target 10-19: PASS);
+  jacket top-to-shirt 8.0 / 10.0 / 15.3 -> 7.8 / 8.6 / 15.0 (hug still FAILS at the side: the neckline). seam_ao/frz_s1.
+- Pre-sim assembly (Joe has never seen a garment from its pattern before sim): assemble.py = X0 (the sim's start,
+  panels placed by landmarks) + every sewn pair closed to its midpoint (gaps p50 25 / max 105 -> 0.03 mm), the rest of
+  each piece by a harmonic (graph Laplacian) spread, folds turned rigidly about their roll rows. Sheet:
+  $G/pattern_stage/current_presim.png (jacket alone | shirt alone; concept beside). Joe: "everything that's supposed to be
+  folded is totally scrambled". KNOWN ANSWER (foldka.py, 20 mm grid, 170 deg): fold line on a grid column exact (0%
+  stretch); 10 mm off the columns 91% stretch / hinge 10 mm off; diagonal roll line (the lapel's case) 37% / 7.7 mm;
+  curved sheet on a column exact. => THE TOOL, not the pattern: fold lines must be edge chains of the panel mesh
+  (re-grid along them; ~5 mm at lapel / collar). The jacket collar in X0 is not set on the neckline (a tab out the back).
+- Front landmarks from the concept (workspace/checklists/garrett_jacket_front.json, 1.125 mm/px by body height):
+  notch inner 70 below HPS / 130 from CF; lapel tip 126 from CF; notch->neck point 53 deg; lapel 70-85; roll line ~2 deg
+  off vertical; top button / break 395 below HPS.
+  | item | concept | ae drape | p0 X0 (current) | pn X0 (re-draft) |
+  | notch below HPS / from CF | 70 / 130 | 63 / 150 | 49 / 125 | 47 / 123 |
+  | lapel tip from CF | 126 | 160 | 126 | 126 |
+  | notch->neck angle | 53 | 44 | 67 | 59 |
+  | lapel width (flat) | 70-85 | 61 | 61 | 69 |
+  | roll line off vertical | 2 | 6.1 | 12.4 | 7.4 |
+  | top button below HPS | 395 | 405 | - | - |
+  | jacket neck point x out of body HPS | 0-10 | +31 | +45 | +33 |
+  X0 is NOT a validator of where landmarks land: the drape moved the notch 25 mm out and 14 down from X0 (the front
+  falls open), and the X0 neck point stays ~30 mm out of the body's for widen 18 / 6 / 0 (placement envelope).
+  The lever is live in the FLAT pattern: back neck half-width 117 -> 99 mm, CB depth 54 -> 31 mm (p0 -> pn).
+  Prediction for the drape (ae +31 with widen 18): widen 0 -> ~+13..19 mm (target 0-10: may need widen ~ -0.004).
+- ZOZO check for the coordinator's A/B (sewn-together collar vs made on the drape): cloth_zozo already sets a bending
+  rest from fold lines (folds.py `bend_rest`, set_bend_rest_vert; made pieces rest as placed), so arm A needs the collar
+  as a sewn, interfaced piece + its stand/fall fold as a fold line, the lapel roll as the front's fold line.
+## Handover 2026-10-19 ao (dress-garrett neckline re-draft)
+FROZEN: unchanged (frozen_ae). No sims. NEXT: (1) mesher: fold lines as explicit internal edge chains in the pattern
+(endpoints in pattern space, angle, which face out): lapel roll (break -> collar roll line), jacket collar stand/fall,
+shirt collar fold; re-grid each panel along them, ~5 mm at lapel / collar; fold known-answer test into tests/
+(foldka.py cases). (2) current_presim_v2.png. (3) a pre-sim validator that predicts the drape's landmarks (the front's
+open lie), then the front checklist + neckline fixes; (4) only then ONE jacket sim, A/B sewn vs made collar.
+
+
+## dress-garrett 2026-10-19 virtual dress form (ap)
+Why: Joe on the first pre-sim sheet: "everything that's supposed to be folded is totally scrambled"; ao proved the tool
+(rigid folds across a 20 mm grid; X0 neck point ~30 mm out; the collar a tab off the neckline).
+Built (branch garrett-dress-form): `pattern_form.py` + `tests/test_pattern_form.py` (6 known answers, all PASS):
+diagonal 170 deg fold 0.01% stretch, hinge 0.045 mm off the line; collar band fall 20.0 of 20 mm, 0%; lapel face-out
+(in front of its panel, far point back over it, 3.4% from the 1.5 mm layer lift); tube sleeve ease 11.98 of 12 mm;
+neck point 133 mm off at the start -> 1.84 mm; placement_error self-test (validated.GATE_MEASURES).
+- Mesher: garment key `mesh_refine` [{piece, h, near (points / marks / xy polyline), within, blend}] in cloth.mesh,
+  opt-in; without it the jacket / shirt meshes hash identical to before (no BUILD_VERSION bump). Refined: jacket 6.8k
+  verts, shirt 14.9k. Fold-row edges: ae jacket 0 missing, pn 2-3 (lapel), shirt open neck 1 each.
+- assemble lessons (each was a wrong sheet first): (1) attraction onto the body must be let go (a membrane can't resist
+  it: the tube read 5 mm of 12 mm ease); (2) a fold-row cell is the only cell whose rest folds (cells beside a row are
+  rigid: rotating them too stretched 64-96%); (3) a turned flap needs its own base as an obstacle, or the body pull drags
+  it through (lapels tucked UNDER the fronts); (4) cuffs' closures are not on the centre line (pinning them x=0 put the
+  shirt's cuffs at the elbows); (5) cloth.place already turns folds: turn by what is left (lapel start 24-37 deg -> 158-173);
+  (6) a pressed crease weighs 1 + PRESS x strength or the obstacles open it (lapel 30 deg -> 162).
+- Sheets (no sims): $G/pattern_stage/current_presim_v2.png (frozen_ae), new_presim_v2.png (pn: neckline widen 0,
+  back 0.008, lapel 0.072, under_collar.stand 0.034), + *_neck.png (flaps orange). Scripts $G/form/.
+- My look: lapels fold cleanly face-out with the break at the top button (pn reads as a lapel); shirt collar folds over
+  its stand with points. Jacket collar: a low crumpled band at the back neck, under the shirt collar; notch not clean;
+  lapel edges ragged; the shirt front stays closed at the neck (open-neck roll short).
+- Front checklist on the form (jacket over shirt), ae | pn (ref): notch below HPS 50 | 48 (70+-15) FAIL; notch from CF
+  98 | 105 (130+-20) FAIL; lapel tip 111 | 118 (126+-20) PASS; notch-neck angle 57 | 51 (53+-10) PASS; lapel width 64 |
+  72 (70-85) FAIL | PASS; roll line 11 | 11 deg (2+-4) FAIL; top button 415 | 415 (395+-25) PASS; break 402 | 400 PASS;
+  neck point out 4.4 | 4.4 (0-10) PASS; shirt collar CB 22 | 22 (35-45) FAIL; collar stand CB 8 | 11 (25-30) FAIL;
+  fall-stand 18 | 18 (6-15) FAIL; covers seam 18 | 18 (3-12) FAIL; collar show 30 | -10 (10-20) FAIL; hug 51 | 23 (0-6)
+  FAIL; seam off skin at HPS 4.4 | 4.4 (5-14) FAIL; notch gap 50 | 42 (20-40) FAIL; notch angle 123 | 94 (60-90) FAIL.
+  Folds turned (lapel L, R, collar): 162/159/133 | 163/154/134 (165/165/160). Stretch p99 34 | 30%.
+- Not separated yet: jacket collar stand / turn (tool: a curved collar's single press row vs obstacles; or the draft).
+- Not done: pattern_gate / pattern_sheet on assemble() (main 1509db0e), coordinator OK'd; NEXT 1.
+
+## dress-garrett 2026-10-19 collar on the form (aq; branch garrett-collar-form; scripts $G/form/: cf.py, gate_cf.py, run_wt.sh)
+No sims. Branched from garrett-dress-form, merged main (pattern gate 1509db0e, judge; traps.md / validated.py: both sides).
+- GATE WIRED: cloth_check.pattern_gate / pattern_sheet place with pattern_form.on_form (draft, form_refine mesh grading
+  = the place2.py recipe unless the garment names mesh_refine, cloth.build place_only, assemble; a layered garment over
+  its under garment assembled first, ease 3 mm innermost / 4 mm over). New INFO row form_assembly (neck point, folds
+  turned, stretch, sew gap, through_under). Sheet draws the under garment. Tests: test_gate_places_on_the_dress_form,
+  test_form_refine_recipes; gate + codified + form tests 40 PASS.
+- SHIRT COLLAR 22 vs 37.1: THE SPEC, not the form. `under_collar` is a JACKET key: a shirt collar MADE on the drape
+  (cloth.under_collar), so ao's stand 0.022 -> 0.034 never touched the shirt's pattern; pn even carried it on the jacket.
+  The shirt's own Simon collar: collarStandWidth 0.045 x neck 406.5 = 18.3 mm stand (flat stand CB 18.2, collar CB 33.9):
+  the form's 22 (stand + roll) is right. Fix: shirt pattern.options collarStandWidth / collarWidth (sourced, cf.py).
+- TOOL OR PATTERN (jacket collar): known answers tests/test_pattern_form.py test_straight_collar_on_neck /
+  test_curved_collar_on_neck (stand 27 + fall 40 drafted to a neckline on a 60 mm neck cylinder, flat or 30 mm dip,
+  closed bodice tube under it, collar starting as a tab out of the back). First run FAILED: turned 139 deg, bodice
+  dragged to 41-104 mm radius. Three tool faults, fixed: (1) the first relax kept the band's seams while the band was
+  still a tab out of the back: it dragged the neckline off the neck (now left out until the band is stood up); (2)
+  fold_turned summed normals over the whole row: round a neck they cancel and leave the lean (a 180 fold read 163);
+  now the section dihedral per row vertex (principal direction of each side past HINGE_BAND 6 mm, median); (3) a turned
+  flap was only pushed off its base, never held on it (FLAP_PULL). Now: straight 26.9 / 12.7 / 177 deg (27 / 13 / 180)
+  PASS; curved 26.3 / 11.9 / 174 (p99 16%: a crease on a curved pattern line can't fold flat unstretched; a tailor
+  spreads the fall) PASS at >= 170. And the draft: the jacket collar op had stand_height 11 / fall 28 mm: the form's
+  11 / 18 read the DRAFT. => both: the tool had faults (fixed), the stand was the pattern.
+- Missing fold edges: folds.force_edges single flip -> Lawson flip insertion (graded meshes only, default meshes
+  unchanged): pn lapel 2-3 and shirt open neck 1 -> 0 everywhere.
+- Re-drafts (each param sourced in cf.py): c1 shirt collarStandWidth 0.0836 / collarWidth 1.33; jacket neckline widen
+  0 / back 0.008, lapel 0.072 + gorge_drop 0.115, collar stand 0.027 / fall 0.037. c2: shirt 0.090 / 1.30, neckline
+  widen 0.004 / back 0.015, collar 0.029 / 0.043, point 0.030. c3 = c2 with point 0.015 (best).
+  | item (ref) | pn (old tool) | c1 | c2 | c3 |
+  | notch below HPS (70+-15) | 48 F | 62 P | 72 P | 67 P |
+  | notch from CF (130+-20) | 105 F | 100 F | 103 F | 101 F |
+  | roll line off vertical (2+-4) | 11 F | 11 F | 11 F | 11 F |
+  | shirt collar CB (35-45) | 22 F | 37.3 P | 39.6 P | 39.6 P |
+  | collar stand CB (25-30) | 11 F | 24.8 F | 23.4 F | 29.5 P |
+  | fall - stand (6-15) | 18 F | 5.3 F | 3.9 F | 9.6 P |
+  | covers seam (3-12) | 18 F | 5.3 P | 3.9 P | 9.6 P |
+  | shirt show CB (10-20) | -10 F | 1.7 F | 7.6 F | 3.1 F |
+  | hug CB (0-6) | 23 F | 12.4 F | 23.9 F | 7.2 F |
+  | seam off skin HPS (5-14) | 4.4 F | 4.2 F | 4.3 F | 4.2 F |
+  | notch gap (20-40) | 42 F | 44 F | 58 F | 62 F |
+  | notch angle (60-90) | 94 F | 96 F | 111 F | 162 F |
+  | folds turned L/R/collar | 163/154/134 | 167/143/165 | 168/147/158 | 167/148/178 |
+  | stretch p99 % | 30 | 34 | 39 | 33 |
+  lapel tip / notch-neck angle / lapel width / button / break / neck point out: PASS in all.
+- Reads: roll line 11 deg and notch from CF ~100 are the FASTENING, not the draft: the form fastens an open front's top
+  pair at the CF (fastened() "default"); the concept's jacket hangs OPEN (its break ~64 mm off CF, roll line hps -> break
+  near vertical). Decision for the coordinator: measure the open jacket unfastened (assemble fasten=[]) or re-read the
+  concept items for a buttoned front. Seam off skin at HPS stays 4.2-4.3 whatever widen (0 / 4 mm): the HPS pin puts it
+  on the body's HPS + ease (4 mm): the item's 5-14 can't pass on the form while the pin is ease 4 (tool rule vs item).
+  The notch got WORSE as the collar grew (gap 44 -> 62, angle 96 -> 162): the collar end (endOuter) no longer meets the
+  lapel point; next lever: collar height_front / point with the lapel notch, at stand 29.
+- Lapel-edge stretch p99 stays 33% (not cut): the ragged edge is on front.R's lapel (row stretch 19%, turned 148 vs L 167):
+  an asymmetry of the R lapel row, next to look at.
+- Sheets: $G/pattern_stage/collar_presim_c3.png, collar_presim_c3_neck.png (concept neck crop at the left of each row).
+  MY LOOK: FAIL. The lapels fold face-out on the roll, the right width, the break at the button. But at the front the
+  jacket collar climbs the neck like a funnel beside the jaw, so there is no readable notch. Both lapel edges are ragged
+  (the R one worst). At the back the collar is a band level with the shirt collar, so the shirt barely shows. The shirt
+  collar stands as a tall closed band (the shirt is fastened to the top: 9 closures), not open and spread like the concept.
+- BLIND REVIEW (bin/review hit its weekly limit, so a fresh blind subagent looked at reference | front, reference | 3/4
+  in $G/pattern_stage/rv_c3/): VERDICT FAIL on both. MAJOR: the collar stands up instead of rolling over and lying flat;
+  no notch on either side; the shirt collar is an upright band with no spread points; the lapel edges are sawtoothed.
+  MINOR: the facing shows at the lapel edge; the lapels stand slightly off the chest; the gorge is too high / too far back.
+  The numbers say stand 29.5 / turned 178 at CB, so the fault is at the FRONT ENDS (no item measures the collar at
+  the 3/4 or the end): add a measured item (collar end height / lie at the gorge) before the next re-draft (gates.md).
+- GATE (cloth_check.pattern_gate on the form, no waivers): shirt FAIL, jacket FAIL. Records in $GATE/0829f374... (shirt)
+  and 02f19496... (jacket). Each: seams FAIL (4 of 15 outside their ease band / notches off). Every reference item is
+  UNMEASURED: no saved cloth_reference reading for dg_garrett. The jacket's collar items (jacket_neckline, collar_stand,
+  collar_fall, collar_roll_line, notch, gorge_height) are UNMEASURED with "missing:" measures: fm.py's form sections
+  should become those measures. SIM rows are not blocking. INFO: neckline_standoff jacket 17.3 median / 52.8 max, shirt
+  5.8; form_assembly neck point 0.2-0.4 mm. WARN: shirt construct collar_options without a source.
+
+## dress-garrett 2026-10-19 notch and open neck (branch garrett-notch-openneck from garrett-collar-form; scripts $G/form2/: reasm.py, fm2.py, notch2d.py, diag.py, edge.py, endpos.py, run.sh, fmall.sh; NO sims)
+- Coordinator decisions applied: jacket worn OPEN (assemble fasten=[]); jacket neck pin on the layer below + ease.
+- Collar-end items added (coordinator): collar_end_off_lapel_plane_mm 0-6, collar_end_width_mm 30-40,
+  collar_end_to_gorge_deg 70-110, collar_end_top_above_notch_mm 15-45 (sources in fm2.py: Mueller & Sohn notch collar;
+  the end lies flat on the lapel; the concept is dark on dark at the notch: the last two INFERRED). Concept notch slots
+  read at px (503,410)-(521,417) L and (731,414)-(748,404) R: gorge ~20-30 deg rising outward.
+- FUNNEL CAUSE = THE FORM, not the draft. Draft: the stand tapers 30 -> 0 (29 at CB, 22 at 287 mm, 0 at the roll line's
+  meeting point; test_stand_tapers_to_the_gorge). The collar end carried flat into the front's pattern by the gorge
+  pairs (notch2d.py) reads gap 29 / angle 62 / end 30 mm, all in band; the form read 62 / 162. The gorge seam joins two
+  FLAPS (collar fall side, lapel side) and the form treated every seam as a free hinge; the fall's turn flung the end
+  up the neck. Fix: pattern_form._pressed_cells (cross-seam ARAP cells, the partner's pattern carried by a local 2D map
+  on the far side) + _lay_pressed (start: the smaller piece's flap laid in its partner's plane). Weight 1 vs 8 alone did
+  not converge (58 / 128, 56 / 148): the start matters. Commit 8b087245.
+- R LAPEL ASYMMETRY = MIRROR FAULT in the form: _fold_cells ignored the fold's "sign" (flap side), so the R lapel's
+  rest turned it into the body (148 vs 168, R row 11% long, sawtooth). Body symmetric (0.4 mm p50), placement X0
+  symmetric (row 1.02 / 1.03): the fault arose in assembly. Fixed (turn x face x sign); then the collar's sense flipped
+  (162 / 35% row) -> a wrap-turned fold now keeps the placement's sense (178). Neck pin on the layer below + THICK +
+  ease: seam off skin at HPS 8.8 (first try used the highest under vertex: 20.5, the shirt band). Commit 94f6fb7a.
+- Table (c3 -> n2 pressed -> n8 all): notch gap 62 -> 32 -> 32; angle 162 -> 68 -> 68; end off lapel plane 18.9 -> 4.0
+  -> 4.8; seam off skin 4.2 -> 4.2 -> 8.8; hug 7.2 -> 6.9 -> 4.4; notch from CF 101 -> 114 -> 114; show CB 3.1 -> 3.5
+  -> 4.7 (FAIL); roll line 11.0 -> 11.2 -> 11.8 (FAIL: an open jacket's fronts don't fall apart on a form with no
+  gravity; concept break 64 mm off CF); end to gorge 23 -> 112 -> 111 (FAIL by 1, inferred band); end top above notch
+  58 -> 46 -> 49 (FAIL, inferred).
+- Look (mine, n8 neck sheet): funnel gone, notch on both sides, lapels symmetric. Remaining: teeth along the lapel's
+  3-row roll band (grey base showing between rows: rows 0-2 turn 169/171/175), shirt still a closed tall band (open
+  neck NOT done), shirt barely shows at CB.
+- NOT DONE (budget): shirt open neck, seams 4/15 out of band, cloth_reference readings, blind review, pattern gate.
+
+## dress-garrett 2026-10-19 teeth, open neck, gate (branch garrett-teeth-openneck; scripts $G/form3/; NO sims)
+- TEETH along the lapel roll = the sheet's colour mask, not the cloth. teeth.py: rows 3 x 109, 3.35 mm apart, rung
+  dihedrals 0.7 deg, hinge 61 deg at row 1, no non-row vertices in the band; poke.py: no base through flap on L. closed.py
+  coloured faces with all vertices in folds._geom's flap, which leaves the row out: the strip from row 2 to the first
+  lattice vertices (2.7-8.3 mm) stayed grey, a ragged edge. folds.flap_faces (row counts as flap): teeth gone on the same
+  n8 geometry (form3/neck_n8_mask.png). Commit 94d73780 (+ the mirrored-lapel REST test, fails on 94f6fb7a^).
+- WORN OPEN (coordinator: a form rule): garment key worn_open; _swing_open turns each front in its plane about its neck
+  point (else the roll row's top) until the point sits at its offset, fading to none at the highest fastened vertex;
+  soft x pin 60. A bare pin dragged one point (70% stretch); a turn reads 50.1 of 50 mm, p99 1.4%. Side from the piece's
+  mean x (the jacket fronts start crossed: L break at x -15 mm). Commit 18910552 + aae2c5b9.
+- SIDE-NECK CORNER (Joe, n8 side views, jacket AND shirt): untrued necklines. cloth_check.junctions on the flat drafts:
+  jacket front 124.8 + back 99.6 = 44 deg turn at the HPS; shirt yoke 118.1 + front 92.6 = 31. Op "true" (40 mm blend)
+  on both (cf3.py, source Armstrong truing): 0.0 / 0.0. Gate row "truing" FAILs > 10 deg. Commit aae2c5b9.
+- o2 (trued + worn open) vs n8: roll line 11.8 -> 0.9 PASS; end to gorge 111 -> 91 PASS; hug all round 2.6-9.8 -> 0.5-5.7;
+  notch gap 32 -> 44, angle 68 -> 93, end off lapel plane 4.8 -> 31.5 (FAIL: regressed); show CB 4.7 -> 4.3 FAIL.
+  Look: jacket side-neck step gone; the shirt collar crumpled into pleats up the neck; the jacket collar ends flip off the
+  lapels. Likely cause: the swing turns the fronts after the bands are stood up, the sewn collar / stand lag.
+- Not run (budget): blind review, pattern gate, cloth_reference readings, seams 4/15. Sheets: pattern_stage/
+  collar_presim_o2_neck.png, collar_presim_o2_top.png (top view, new), form3/top_n8.png (n8 baseline top view).
+
 ## garment-game proof 2026-10-19
 
 Brief (coordinator, after Joe: "I still don't think we've arrived at a sane, repeatable method for making clothes"):
@@ -7177,3 +7416,97 @@ LOD3 145 / 156 (of 253 shirt faces). Isolation (diag_cross.py, diag_gap.py, diag
   LOD3 keeps 39 rest crossings at the jacket edges (bigger gap / more rings: 37 / 31, lever spent).
 Lesson: a cull that tests exposure with a one-sided ray is blind to the very fault it should hide; test both sides.
 Lesson: a lever that does nothing is a bug until shown otherwise (here: inward normals at the coarse LOD).
+
+## dress-garrett 2026-10-19 order + seam lengths (branch garrett-order-seams; scripts $G/form4/; NO sims)
+- A measured: truing lengthened the shirt neckline 435.6 -> 444.9 mm (stand 434.4: -2.36%, band FAIL); jacket half
+  257.4 -> 261.2 (collar -1.44%). Length-keeping truing tried and dropped (a straight edge bent at one end with its far
+  end fixed must lengthen; the solve folded back through the HPS). New op "match" carries it: o4 stand 443.6 / 444.9
+  (-0.29%, n8's ease), jacket collar 261.2 / 261.2. Pleats REMAIN in o4: not length. Not order either (o3/o4 order
+  fixed). diag_o4/shirt_band_three.png: the stand behind the side neck >+10% stretched, the fall twisted with wrong-side
+  patches at the front. Next isolation o5 = SHIRT_OPEN=none (not run; cf4.py fixed for it).
+- B: order fixed (pattern_form.SWING_FIRST, fronts swing before bands): off-plane 31.5 -> 18.5, notch gap 43.7 -> 32.6,
+  angle 92.6 -> 69.5 (o3). Adding the match (+3.8 mm/half at CB) in o4: off-plane 11.2 but gap 16.8 / angle 36.9 and
+  end-to-gorge 136.9. Two attempts, stop-loss. Coordinator: keep the end at o3's notch, put the length in the back half.
+- Seams: shirt cap -0.21% -> in band after sleeve truing (biceps / wrist ends to 90 deg); cuffs -2.31% (likely the
+  missing sleeve placket pieces; unverified); jacket hindarm +1.82% declared as elbow ease (seam_ease).
+- Truing reading fixed: closed loops have no ends (underarm 112 deg was a misread); crossings reported, not failed; design
+  corners sourced (shirt stand CF ends, collar ends; jacket notch). Ring 139 deg reading: not rechecked (o4 ring max 52.8).
+- cloth_reference readings saved: $G/refread/garrett_concept_refs.json (shirt 25 items, jacket 39; camera on head_top /
+  chin / floor, residuals <= 5 mm; arms hang ~55 mm lower than our A-pose so wrists were left out of the fit).
+- Gate (gate4.py on o4 drafts, no waivers): shirt FAIL (seams 2: cuffs; 9 UNMEASURED no reading / no measure; truing PASS).
+  Jacket FAIL: seams 2, body_length t 0.510 vs 0.567, shoulder_width 526 vs 467 mm, waist 363 vs 401, hem sweep 416 vs
+  478, sleeve width 62 vs 94, front_closure button_stand vs buttons, pockets none vs flap; 13 UNMEASURED (collar section
+  measures missing from the gate). Record files: /mnt/data/hifipushie/pattern_gate/d554d8b36d6a2b4967c9.json (shirt),
+  47b087c999b3d199fe8a.json (jacket); full log $G/form4/gate4.log.
+- STATE / NEXT: docs/state/dress_garrett.md.
+
+## dress-garrett 2026-10-19 block proportions (branch garrett-block-proportions; scripts $G/form5/; NO sims)
+- READER VALIDATED (form5/v1.py, v1b.py, v2.py; val/*.json). Our o4 form and the frozen_ae drape projected through the
+  concept camera, read by the same rules, vs 3D: waist img 360 / 3D 363 (form), 395 / 397 (drape); hem 417 / 416, 458 / 458;
+  sleeve 103-107 / 110 (drape). Concept auto (silhouette) vs hand marks: shoulder corner 467.9 / 466.8, waist 397.5 / 400.9,
+  hem 475.8-478.1 / 478.1, sleeve 105.6 (40-80 mm up, perpendicular) / 94.1 (hem diagonal). Readings: shoulder 467 +-5,
+  waist 401 +-4, hem 478 +-3, sleeve 94-106 (+-8), body length t 0.567 +-0.013. front_closure was a vocabulary misread
+  ("buttons" = the kb's shirt placket); the concept is the kb's "button_stand" -> refread/garrett_concept_refs_v2.json.
+- GATE MEASURE WRONG for shoulder: the band extent (526) is pose-dependent (our body alone reads 501 in it; the same band on
+  the concept 493). New m_shoulder_width = the sleeve-head outline corner: o4 465, drape 465 vs 467 +-5 (PASS).
+- FORM vs PATTERN: o4 and frozen_ae have the SAME block (draft logs identical but collar/neckline). The drape reads waist
+  397, hem 458, sleeve 110: the pattern is in tolerance there; the form read 363 / 416 / 62. Sections (x1.py): the form's
+  sleeve hem is a 66 x 139 mm lens of girth 328 = pattern 326 (placement X0 was round 114 x 115: the form flattens it).
+  Flat pattern vs body + ease: chest 1055 vs 968 (+9 %), shoulder point 241/half = shoulderToShoulder 482 (pads extend it),
+  biceps 364 vs 317 (+47 mm, 15 %), sleeve hem 326. Strain is NOT a pattern shortfall: jacket alone on the form p50 -1.7 %
+  (panels compressed), peaks at the hps pin and the underarm; over the shirt p99 54 %.
+- Form fixes (opt-in, KAT test_loose_sleeve_hangs_round): SEAT_GRAVITY (seat only on up-facing surfaces; KAT lens hull
+  83 % -> 100 %); o6: sleeve 62 -> 74, p99 54 -> 37, pierce 691 -> 858. PRESS_UNDER (shirt pressed as sims do) o7: sleeve
+  p99 top 7.8 / under 15.6, pierce 214. LOOSE_ROUND pressure: rounds only by stretching 10 % (dropped). The real sleeve
+  lens survives all three (o7 69 x 145): stop-loss; cause not found (two-piece sleeve / elbow bend?).
+- BLOCK: length_bonus 0.12 -> 0.15 (concept t 0.567 vs 0.510 = 31 mm): o7 t 0.570 PASS. Nothing else changed (in
+  tolerance on the drape). Hem sweep on the form 403 (o7, lower hem) - form shape again.
+- Pockets: flap not drafted (op_pocket: patch / kangaroo / in_seam only) -> later. Closure: button_stand already built.
+- o7 front.L y-stretch p99 33 % (o6 n/a): not isolated (length vs collar B). Collar B / A not measured this session.
+- Gate o7 (gate5.py, refs v2, no waivers): jacket FAIL (seams 2; waist 368, hem 403, sleeve 74 - form shape; pockets;
+  form_strain p99 48.8 %) PASS shoulder 455 / body_length 0.570 / front_closure; under_pierce 214. Shirt FAIL (seams 2,
+  form_strain 15.9 %, yoke 45.6). Records: pattern_gate/09497a2cc1e406f5def1.json (jacket), d554d8b36d6a2b4967c9.json.
+- STATE / NEXT: docs/state/dress_garrett.md.
+
+## dress-garrett 2026-10-19 form sleeves + collar (branch garrett-form-sleeves; scripts $G/form6/; NO sims; PAUSED by the coordinator)
+- pattern_form.TRACE (new, default None): a callable (phase, X, M) after placement, relax1, swing, band_init, turn_flaps,
+  seat, let_go. form6/b1.py logs the +x sleeve section (width front view x depth, hull girth) at the biceps (0.4
+  shoulder->elbow) and forearm (0.6 elbow->wrist) per phase (o7 env: SEAT_GRAVITY PRESS_UNDER BLOCK COLLAR_B).
+- BISECT RESULT: the jacket sleeve is round at the placement (biceps 142 x 156, forearm 119 x 120) and flattens in RELAX1
+  (72 x 159 / 85 x 137; jacket alone 64 x 161 / 86 x 133); swing, band_init and turn_flaps don't change it; seat and let_go
+  move it a few mm. Final 79 x 159 / 75 x 143. The shirt sleeve too (placement 97 x 153 -> relax1 73 x 149). The biceps
+  "arm" section is mixed with the torso flank (122 x 118, centre 43 mm off): read only the forearm arm (63 x 63).
+- Suspected cause, NOT tested: ARAP against the flat uv rest prefers planar one-rings, so each sleeve panel lies flat
+  between its seams (a lens) unless something holds it out; relax1's attraction may add to it. Next: a KAT on a real arm
+  segment (one- vs two-piece, seat on / off) to confirm, then a fix.
+- Not done (paused): the KAT and fix, coordinator items a-e, collar B measure, collar A, LOOK, the gate. STATE lists them.
+
+## dress-garrett 2026-10-19 muslin 1 (branch garrett-muslin1 from garrett-form-sleeves; scripts $G/muslin1/: patch.py, run.sh, probe.py, gate.py, flat.py, summ.py, compare.md; NO sims, $0)
+Brief: one muslin sim of the corrected patterns. COURSE CHANGE mid-session (Joe: "We're so close to being able to produce
+a jacket. We need to go back to the pattern."): no sim; gate on flat checks, flat pattern sheets, compare with a standard.
+- GATE CHANGE (codified C29, cloth_check.FORM_VALIDATED False + FORM_FAULTS): rows read on the dress form (placed widths /
+  lengths, form_strain, checklist items tagged "gate": "worn") are INFO with "form_status" kept; wear_age "gate": "later".
+  Blocking flat rows: seams, truing, flat_pattern (cloth_workflow.stage_pattern: ease by girth in the kind band, pieces
+  sewn, design evidence), collar_stand / collar_fall (cloth_check.collar_draft: roll line off the neck edge), notch
+  (cloth_check.notch_flat: collar end carried into the front by its own neck seam, no mesh), spec-read choices. A garment's
+  "drape_readings" (sourced) block in place of form readings. Test test_form_items_are_info_while_form_not_validated,
+  test_collar_draft_read_flat; test_pattern_measure_rule indexed truing as its item (fixed).
+- Reader disagreement fixed: the gate's seams row ignored the draft's declared seam ease (Bp seam_notes) that the flat
+  stage reads: jacket cap +3.0 % FAIL (band 0-3) vs PASS (declared 1.8-4.2); shirt cuffs -2.3 % likewise. Now one reading.
+- cloth.sizing: a yoke (ends above the chest by design) no longer marks every shirt girth "not measured".
+- Gate (refs v2, no waivers): shirt FAIL = pockets UNMEASURED (no reading) only; jacket FAIL = pockets (flap not drafted)
+  + vent UNMEASURED; collar 29 / fall-stand 14, notch flat 29.5 / 61.4, seams, truing, flat ease PASS.
+- pattern_sheet.render: grid (1 cm, true scale), sa (cutting line), labels (measurements per piece), points (break, lapel
+  point, neck points). Sheets sheet_jacket / sheet_shirt / sheet_jaeger.png.
+- Jaeger (FreeSewing 4.10.2) at Garrett's tape vs ours (compare.md): back neck width 103 vs 93, rise 36.9 vs 22.7 (our
+  op back 0.015 lowers CB 15; M&S ~5), waist 992 vs 947 (+45, no front dart: boxy), cap ease 3.0 vs 1.85 %, chest +8.2 vs
+  +4.6 %, shoulder 140 vs 146, CB 776 vs 767; front overlap 12 (rule ~20-25, from memory). These fail tailor rules the gate
+  doesn't measure: the checklist is incomplete (gates.md) -> STATE NEXT 1.
+
+## tailoring 2026-10-19 (jacket principles from FreeSewing Jaeger)
+Read Jaeger (+ Bent, Brian, library two-part sleeve) step by step; principles R1-R26 in tailoring_principles.md. Encoded
+in pattern_jacket.py (rules, jacket_neck, waist_suppression, collar_two_piece, jacket_pockets, tailor_rows). Garrett v2
+(muslin-1 spec + jacket_ops): flat gate seams / truing / 10 tailor rows PASS; sizing chest +8.2 waist +18.7 hips +4.4 %.
+Three bodies vs Jaeger (three.py): 18 measures within tolerance. Lessons: the waist take-ins under-deliver ~35 % (fade):
+a trial pass on a copy scales them; a fade past the hip line pulled hips to -0.4 % (now fades by 0.9 x waist->hips);
+a one-piece crescent shows its sagitta only across the whole unfolded edge, not per half. Files /mnt/data/hifipushie/tailoring.

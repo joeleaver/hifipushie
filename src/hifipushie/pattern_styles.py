@@ -665,7 +665,7 @@ def op_neckline(D: dict, widen: float = 0.0, front: float = 0.0, back: float = 0
         if widen >= np.linalg.norm(far - hps) - 0.02:
             raise DraftError("neckline: widened past the shoulder")
         H = hps + sdir * widen
-        C = pc["P"][ix[0]] + np.array([0.0, -abs(low)])
+        C = pc["P"][ix[0]] + np.array([0.0, -(low if o.get("signed") else abs(low))])  # signed: < 0 raises
         n = len(ix)
         if shp == "v":
             new = C + (H - C) * np.linspace(0, 1, n)[:, None]

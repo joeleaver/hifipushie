@@ -53,6 +53,24 @@ def test_roll_line_meets_the_lapels():
     assert "lay" not in D2["pieces"]["collar"]["wrap"]
 
 
+def test_stand_tapers_to_the_gorge():
+    """(dress-garrett 2026-10-19 notch and open neck) A tailor's notched collar: the STAND tapers toward the front,
+    the drafted stand_height at centre back falling without a rise to ~0 where the roll line meets the neck edge
+    (past it the collar is all fall, lying with the lapel to the gorge). Read as the roll line's distance from the
+    collar's neck edge in the draft."""
+    D = _notched()
+    c = D["pieces"]["collar"]
+    L = np.asarray(c["wrap"]["turn"]["line"])[:-1]  # (without the run-on into the front)
+    L = L[L[:, 0] >= -1e-9]
+    L = L[np.argsort(L[:, 0])]
+    E = pattern._resampled(c["P"][pattern.arc_indices(c, "cb>shoulderNotch>cf")], 0.001)
+    h = np.array([np.linalg.norm(E - q, axis=1).min() for q in L])
+    print("stand along the roll line (mm, CB -> gorge):", np.round(h[:: max(1, len(h) // 8)] * 1000, 1), round(h[-1] * 1000, 1))
+    assert abs(h[0] - 0.03) < 0.001, h[0]  # stand_height at CB
+    assert h[-1] < 0.001, h[-1]  # ~0 at the meeting point
+    assert np.all(np.diff(h) < 0.0005), np.diff(h).max()  # tapers, never rises toward the front
+
+
 FIXTURE = Path(__file__).parent / "data" / "ga_suit_collar.json"  # ga_suit's spec as this test was written (its
 # history 0006): the live workspace model is changed by design work (reading it, this test failed when its collar did)
 

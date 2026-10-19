@@ -15,6 +15,14 @@ const xy = (p) => (p ? [p.x, p.y] : null)
 const out = { parts: {}, cutlist: {}, logs: {} }
 const set = pattern.setStores[0]
 out.cutlist = set.get('cutlist') || {}
+// the draft's own derived numbers (armhole / cap lengths, reductions, collar lengths): what a tailor would note
+out.store = {}
+for (const k of ['sleevecapEase', 'sleevecapTarget', 'sleevecapLength', 'frontArmholeLength', 'backArmholeLength',
+  'backCollarLength', 'waistReduction', 'hipsReduction', 'chest', 'waist', 'hips', 'collarRoll', 'pocketWidth',
+  'pocketDepth', 'chestPocketWidth', 'chestPocketWeltHeight', 'shoulderSlope']) {
+  const v = set.get(k)
+  if (typeof v === 'number') out.store[k] = v
+}
 for (const k of ['error', 'warn', 'warning']) {
   const v = pattern.store.logs?.[k] ?? set.logs?.[k]
   if (v && v.length) out.logs[k] = v.map(String).slice(0, 40)

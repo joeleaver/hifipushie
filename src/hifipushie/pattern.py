@@ -14,6 +14,7 @@ a hem, a facing or a placket turned under), `scale` (lengthen/shorten along a li
 from __future__ import annotations
 
 import copy
+import math
 
 import numpy as np
 
@@ -550,9 +551,21 @@ def trim(piece: dict, edge: str, dist: float, name: str = "trim") -> dict:
 def apply(pieces: dict, ops: list) -> dict:
     """Apply alteration ops in order: {"op": "slash_spread" | "turn" | "move" | "scale" | "slit", "piece", ...}."""
     pieces = {k: copy.copy(v) for k, v in pieces.items()}
+
+    def elen(e):  # an edge "piece:a>b>c"'s length, as cloth_check.seams sums a seam side
+        nm_, spec_ = e.split(":", 1)
+        return length(pieces[nm_]["P"][arc_indices(pieces[nm_], spec_)])
+
     for op in ops or []:
         kind = op["op"]
         names = op["piece"] if isinstance(op["piece"], list) else [op["piece"]]
+        if kind == "match":
+            # WALK THE SEAM: lengthen (or shorten) the pieces parallel across `line` by what `edge` lacks against the
+            # summed `to` edges x (1 + ease), read once on the pattern as it now is (after a "true" bent the
+            # neckline): a collar's neck edge equals its neckline. The same amount goes to every named piece (a stand
+            # and the collar sewn to its top keep matching each other).
+            amount = sum(elen(e) for e in op["to"]) * (1.0 + float(op.get("ease", 0.0))) - elen(op["edge"])
+            m_amount = amount
         for nm in names:
             if nm not in pieces:
                 raise KeyError(f"alter {kind}: no piece {nm!r} (have {', '.join(pieces)})")
@@ -573,9 +586,83 @@ def apply(pieces: dict, ops: list) -> dict:
                     length(pieces[e.split(":")[0]]["P"][arc_indices(pieces[e.split(":")[0]], e.split(":", 1)[1])])
                     for e in op["match"])
                 pieces[nm] = trim(p, op["edge"], dist, op.get("name", "trim"))
+            elif kind == "match":
+                if abs(m_amount) > 1e-6:
+                    ln = op["line"][nm] if isinstance(op["line"], dict) else op["line"]
+                    pieces[nm] = slash_spread(p, _line(p, ln), m_amount, "none")
+            elif kind == "true":
+                pieces[nm] = true_corner(p, op["at"], op["keep"], float(op.get("deg", 90.0)), float(op.get("blend", 0.04)))
             else:
-                raise ValueError(f"unknown alteration op {kind!r} (slash_spread, turn, move, scale, slit)")
+                raise ValueError(f"unknown alteration op {kind!r} (slash_spread, turn, move, scale, slit, trim, true, match)")
     return pieces
+
+
+def _interior(P: np.ndarray, i: int, reach: float = 0.010) -> float:
+    """Interior angle (deg) of the closed outline P at vertex i, its edges read `reach` along (as cloth_check)."""
+    n = len(P)
+
+    def d(step):
+        acc, j, prev = 0.0, i, P[i]
+        for _ in range(n - 1):
+            j = (j + step) % n
+            s = float(np.linalg.norm(P[j] - prev))
+            if acc + s >= reach:
+                q = prev + (P[j] - prev) * ((reach - acc) / max(s, 1e-12))
+                v = q - P[i]
+                return v / max(float(np.linalg.norm(v)), 1e-12)
+            acc += s
+            prev = P[j]
+        v = P[j] - P[i]
+        return v / max(float(np.linalg.norm(v)), 1e-12)
+    ccw = 0.5 * float(np.sum(P[:, 0] * np.roll(P[:, 1], -1) - np.roll(P[:, 0], -1) * P[:, 1])) > 0
+    a, b = d(+1), d(-1)
+    if not ccw:
+        a, b = b, a
+    return float(np.degrees(np.arctan2(a[0] * b[1] - a[1] * b[0], a @ b))) % 360.0
+
+
+def true_corner(piece: dict, at: str, keep: str, deg: float = 90.0, blend: float = 0.04) -> dict:
+    """PATTERN TRUING (alteration op "true"): the edge leaving point `at` away from its neighbour edge toward `keep` (a
+    neckline leaving the shoulder seam at the HPS) is bent so the piece's interior angle at `at` is `deg`, the bend
+    fading smoothly to nothing `blend` m along the edge (each point turned about `at` by delta x (1 - s / blend)^2: the
+    end's tangent turns by delta, the curve beyond is untouched and joins with matching tangent). The kept edge
+    (the seam) does not move. Standard truing: front and back necklines / armholes meet the shoulder seam at ~90 deg
+    so the sewn edge is one smooth line (Armstrong, Patternmaking for Fashion Design, "truing"; dress-garrett
+    2026-10-19: Garrett's jacket front neckline met the shoulder at 125 deg, the sewn neckline turned 44 deg at the
+    side neck and both collars kinked there)."""
+    p = dict(piece)
+    P = np.asarray(piece["P"], float).copy()
+    n = len(P)
+    i, k = index_of(piece, at), index_of(piece, keep)
+    # the kept edge leaves i toward k: the bent edge leaves the other way
+    step = -1 if (k - i) % n < (i - k) % n else +1
+    ids, acc, prev = [], 0.0, P[i]
+    j = i
+    for _ in range(n - 1):
+        j = (j + step) % n
+        acc += float(np.linalg.norm(P[j] - prev))
+        prev = P[j]
+        if acc >= blend:
+            break
+        ids.append((j, acc))
+    if not ids:
+        return p
+    # the bend whose result READS `deg` the way cloth_check.junctions reads it (over 10 mm of each edge: the bend fades
+    # within that, so a bend of exactly deg - th0 reads short); 0.25 deg steps
+    best = None
+    for dd in np.arange(-120.0, 120.25, 0.25):
+        Q = P.copy()
+        dlt = math.radians(dd)
+        for j, s in ids:
+            w = (1 - s / blend) ** 2
+            c, s_ = math.cos(dlt * w), math.sin(dlt * w)
+            v = P[j] - P[i]
+            Q[j] = P[i] + [c * v[0] - s_ * v[1], s_ * v[0] + c * v[1]]
+        e = abs(_interior(Q, i) - deg)
+        if best is None or e < best[0]:
+            best = (e, Q)
+    p["P"] = best[1]
+    return p
 
 
 def _line(piece, spec):

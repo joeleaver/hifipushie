@@ -14,6 +14,10 @@ Garment key `folds` (a design table in cloth_designs.json may carry `folds` too)
            strength)),
    "flap": optional point/mark name on the side that turns (default: the side with less sewn edge, then the smaller),
    "name": label}
+The fold's direction (which face ends up outside) is its angle: below 180 the flap turns onto the outside face (a lapel,
+a collar's fall, a cuff turned back: face-out), above 180 under it (a hem, a facing). Fold lines must be mesh EDGES
+(cloth.mesh puts a row of vertices on each; garment key "mesh_refine" grades the mesh to ~5 mm along them and drops
+lattice points crowding a row); the virtual dress form (pattern_form.assemble) folds each about its row.
 
 What a fold is here:
 - mesh (cloth.mesh): a row of vertices on the line (rows over the arc for a roll), so mesh edges run along the crease,
@@ -170,14 +174,42 @@ def row_samples(lines: list, ring: np.ndarray, h: float) -> list:
     return out
 
 
-def force_edges(X: np.ndarray, tri: np.ndarray, pairs: list) -> tuple[np.ndarray, int]:
+def force_edges(X: np.ndarray, tri: np.ndarray, pairs: list, multi: bool = False) -> tuple[np.ndarray, int]:
     """Triangles with each pair (a, b) made an edge where one flip does it (the two triangles on the edge crossing
     a-b). Returns (triangles, pairs still missing)."""
     tri = tri.copy()
     missing = 0
+    cr = lambda p, q, r: (X[q, 0] - X[p, 0]) * (X[r, 1] - X[p, 1]) - (X[q, 1] - X[p, 1]) * (X[r, 0] - X[p, 0])
     for a, b in pairs:
         has = ((tri == a).any(1) & (tri == b).any(1)).any()
         if has:
+            continue
+        # (dress-garrett 2026-10-19) more than one triangle between a and b: flip the edge the segment a-b crosses
+        # next to a, while its quad is convex, until a-b is an edge (Lawson insertion; one flip left 1-3 per lapel row)
+        for _ in range(8 if multi else 0):
+            if ((tri == a).any(1) & (tri == b).any(1)).any():
+                break
+            flipped = False
+            for i in np.where((tri == a).any(1))[0]:
+                c, d = [v for v in tri[i] if v != a]
+                if not (cr(a, b, c) * cr(a, b, d) < 0 and cr(c, d, a) * cr(c, d, b) < 0):
+                    continue  # the segment a-b doesn't cross this triangle's far edge
+                j = [k for k in np.where((tri == c).any(1) & (tri == d).any(1))[0] if k != i]
+                if not j:
+                    break
+                e = [v for v in tri[j[0]] if v not in (c, d)][0]
+                if not (cr(a, e, c) * cr(a, e, d) < 0 and cr(c, d, a) * cr(c, d, e) < 0):
+                    break  # not a convex quad: no flip
+                t1, t2 = [a, c, e], [a, e, d]
+                for t in (t1, t2):
+                    if cr(t[0], t[1], t[2]) < 0:
+                        t[1], t[2] = t[2], t[1]
+                tri[i], tri[j[0]] = t1, t2
+                flipped = True
+                break
+            if not flipped:
+                break
+        if ((tri == a).any(1) & (tri == b).any(1)).any():
             continue
         ta = np.where((tri == a).any(1))[0]
         done = False
@@ -490,6 +522,30 @@ def bend_reference(M: dict, ref: np.ndarray, faces: dict | None = None, skip: se
         full = abs(fd["turn"]) * k
         out = turn_flap(out, M, fd, min(1.0, REST_TURN / max(full, 1e-9)), (faces or {}).get(fd["piece"], 1.0))
     return out
+
+
+def flap_faces(M: dict, F: np.ndarray | None = None) -> np.ndarray:
+    """Bool per face of F (default M["F"]): the face lies on a fold's turned flap, past its LAST row (the hinge row's
+    own vertices count as flap). For sheets that colour the turned side: `_geom`'s flap leaves the row vertices out, so
+    a mask of faces with all vertices in it drops the faces between the last row and the first lattice vertices (2.7-9
+    mm off the row on Garrett's lapel), and the colour edge runs along the lattice's ragged first column: a sawtooth
+    read as "teeth along the roll" while the geometry was a clean three-hinge roll (dress-garrett 2026-10-19 teeth)."""
+    F = np.asarray(M["F"] if F is None else F)
+    fl = np.zeros(len(M["uv"]), bool)
+    for fd in M.get("folds") or []:
+        if not len(fd["rows"]):
+            continue
+        g = _geom(M, fd)
+        fl[np.asarray(g["rows"][-1]["v"], np.int64)] = True
+        fl[np.asarray(g["rows"][-1]["row"], np.int64)] = True
+    m = fl[F].all(1)
+    # a face with all three vertices on the last row (a sliver at its end) is the hinge, not the flap
+    for fd in M.get("folds") or []:
+        if len(fd["rows"]):
+            onrow = np.zeros(len(M["uv"]), bool)
+            onrow[np.asarray(fd["rows"][-1], np.int64)] = True
+            m &= ~onrow[F].all(1)
+    return m
 
 
 def weights(M: dict) -> np.ndarray:

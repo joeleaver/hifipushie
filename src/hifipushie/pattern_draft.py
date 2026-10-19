@@ -1814,3 +1814,4 @@ def build(meas_mm: dict, pat: dict) -> dict:
 
 from . import pattern_tailor  # noqa: E402,F401  (registers contour, join, round_corner, fisheye)
 from . import pattern_styles  # noqa: E402,F401  (registers shawl, lapel, cut_away, darts_to_seam, raglan, kimono, hood, pleat...)
+from . import pattern_jacket  # noqa: E402,F401  (registers jacket_neck, waist_suppression, collar_two_piece, jacket_pockets)
