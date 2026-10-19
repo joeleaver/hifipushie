@@ -16,7 +16,7 @@ from __future__ import annotations
 import numpy as np
 from numba import njit
 
-VERSION = 11
+VERSION = 12  # (sh1) the chart also carries lay (signed flow), base, length, R
 WIDTH = 0.00055  # m: a strand's drawn width on the chart (a real hair is 0.08 mm: one screen pixel at bust distance
 # is ~0.6 mm, and the chart is read 1-2 mips down there; thinner lines average to a haze and sparkle when minified)
 LIFT = 0.7  # the cap stands at this share of the hair's height over the scalp
@@ -186,6 +186,11 @@ def chart(sc, g: dict, line, S: dict, D: dict, locks: list, e0: float, size: int
     nrm /= np.linalg.norm(nrm, axis=-1, keepdims=True)
     fl = np.hypot(fu, fv)
     fu, fv = fu / np.maximum(fl, 1e-9), fv / np.maximum(fl, 1e-9)
+    # (sh1) the LAY: the strands' signed direction (root -> tip, east / up) smoothed over a few mm: where the hair is
+    # combed to (the flow map below has no sign); the combed picture's strands are traced along it
+    lu_, lv_ = blur(fu, 0.003), blur(fv, 0.003)
+    ll_ = np.maximum(np.hypot(lu_, lv_), 1e-9)
+    lay = np.stack([lu_ / ll_, lv_ / ll_], -1).astype(np.float32)
     # (a direction has no sign: smoothed as its double angle)
     c2, s2 = blur(fu * fu - fv * fv, 0.0006), blur(2 * fu * fv, 0.0006)
     ang = 0.5 * np.arctan2(s2, c2)
@@ -224,10 +229,25 @@ def chart(sc, g: dict, line, S: dict, D: dict, locks: list, e0: float, size: int
             if len(seg) >= 12:
                 Hg[ks[b[j]]] = np.percentile(seg, 85)
     Hg = ndimage.gaussian_filter(Hg.reshape(ne, na), (1.0, 1.0), mode=("nearest", "wrap"))
+    # (sh1) how long the strands are, by where they are rooted (same coarse grid): the combed picture's lay length
+    seg_ = np.linalg.norm(np.diff(pts, axis=0), axis=1)
+    slen = np.add.reduceat(np.r_[seg_, 0.0] * ~last, first_)
+    rk = key[first_]
+    Lg = np.zeros(na * ne, np.float32)
+    for k_ in np.unique(rk):
+        sel_ = slen[rk == k_]
+        if len(sel_) >= 6:
+            Lg[k_] = np.median(sel_)
+    Lg = Lg.reshape(ne, na)
+    if (Lg > 0).any():  # (no roots in a cell: the nearest cell's length)
+        ix_ = ndimage.distance_transform_edt(Lg <= 0, return_distances=False, return_indices=True)
+        Lg = ndimage.gaussian_filter(Lg[ix_[0], ix_[1]], (1.0, 1.0), mode=("nearest", "wrap"))
     return {"alpha": a_out.astype(np.float32), "id": np.clip(idm, 0, 1).astype(np.float32),
             "depth": dep.astype(np.float32), "grey": np.clip(grey, 0, 1).astype(np.float32),
             "cover": alpha.astype(np.float32), "normal": nrm.astype(np.float32), "flow": flow,
-            "lift": {"az0": 0.0, "el0": float(e0), "step": step, "h": Hg.astype(np.float32)}}
+            "lift": {"az0": 0.0, "el0": float(e0), "step": step, "h": Hg.astype(np.float32)},
+            "length": {"az0": 0.0, "el0": float(e0), "step": step, "h": Lg.astype(np.float32)},
+            "lay": lay, "base": base.astype(np.float32), "R": float(np.median(R)), "e0": float(e0)}
 
 
 def lift_at(lift: dict, az, el) -> np.ndarray:
@@ -248,3 +268,195 @@ def cap_height(lift: dict, d_in, az, el) -> np.ndarray:
     fa = np.abs(((np.asarray(az, float) + 180) % 360) - 180)
     ease = EASE - (EASE - EASE_FRONT) * (1 - _ss((fa - 40.0) / 25.0))
     return np.minimum(LIFT * lift_at(lift, az, el), LIFT_MAX) * _ss(np.asarray(d_in, float) / ease)
+
+
+# ------------------------------------------------------------------------------- short hair as SHELLS (sh1, Garrett)
+# How games build short men's cuts (crew, taper, buzz): a scalp cap wearing a picture of COMBED strands lying in the
+# groom's own direction, 2-3 alpha-tested shell copies of it standing at the hair's measured heights (depth and a soft
+# outline), fins on the silhouette and cards only at the hairline / sideburns / nape (spec hair.export.style "shells").
+# The baked chart above draws the groom's strands seen from above at one depth: Garrett's short even groom read as a
+# nubbly mat with no lay (c14: "terrycloth"). `combed` traces strands along the chart's LAY instead.
+SHELL_HEIGHTS = (0.62, 0.85)  # the shells' heights: shares of the hair's height (lift) over the scalp
+SHELL_BASE = 0.4  # the cap's own height, same share (the shells stand between it and the hair's top)
+LAY_LEN = 0.75  # a traced strand's length: this share of the groom's strand length rooted there
+LAY_MIN, LAY_MAX = 0.006, 0.035  # m
+LAY_COVER = 5.0  # strands traced: this many times the hair's area / (width x length) (cover overlap)
+LAY_STEP = 0.0008  # m per tracing step
+LAY_WOBBLE = 0.12  # rad: a strand's own slow turn off the lay (combed hair is not parallel lines)
+GREY_SPREAD = 1.0  # (sh2) the combed strands' regional grey share stretched about its median over the hair (Garrett's
+# photo: sides / temples 61-68 % grey, back 12 %; the groom's regional shares are flatter). 1 = as charted
+GREY_REGION = 0.0  # (sh3) 0..1: the combed strands' grey share blended toward GREY_MAP (a regional target read from
+# Garrett's photo, segmented tone by view and band: top / crown dark, the side band over the ears and the temples silver,
+# the nape and the back darker, the sideburns light). At 1 the groom's lock-scale grey (6-texel blur, ~2 mm: what
+# GREY_SPREAD stretched: lock noise, not regions; the groom has no side-vs-back trend) is gone: grey hairs interleave
+# finely and the share follows the regions.
+GREY_MAP = {"top": 0.15, "fa": (0.0, 60.0, 100.0, 140.0, 180.0), "band": (0.55, 0.7, 0.65, 0.4, 0.3),
+            "low": (0.5, 0.55, 0.4, 0.15, 0.1), "band_h": (0.15, 0.35, 0.6, 0.8)}  # band_h: low->band, band->top ramps
+SHADE_MAP = None  # (sh3) a GREY_MAP-shaped dict of depth (shade) factors by region, e.g. {"top": .55, "band": (1,)*5,
+# "low": (1,)*5, ...}: sh3a's top read 47-53 L* (photo 33-38) at a .15 grey share: the top is LIT, not grey; None = off
+VALUE_MAP = None  # (sh4) a GREY_MAP-shaped dict of colour (value) factors by region, applied to the final colour of the
+# cap and shells (strands, grey hairs and base alike): SHADE_MAP only scales depth, and shade = .45 + .55 dep^.8 floors
+# it (sh3d's top stayed ~+10 L* over the photo at SHADE_MAP top .6). None = off
+EDGE_SHADE = 0.3  # (sh3) a strand's edges shaded by this share (the dark gap between hairs)
+BASE_EDGE = 0.0  # m: (sh2) the cap's opaque base fades out over this distance in from the hair's edge, so the hairline
+# and the nape edge are strands over skin (alpha-tested), not the base's dark rim (Garrett's front hairline drew a hard dark
+# line). 0 = the base runs to the edge (sh1)
+SHELL_WIDTH = 0.0008  # m: the shells' strands are drawn wider (their slots are half the chart's resolution)
+LAY_DEP0, LAY_DEP_T, LAY_DEP_S = 0.3, 0.4, 0.25  # a combed strand's depth (shade): base + along x t + standing x s
+SHELL_LIT = 0.08  # depth lift per shell outward (outer strands catch more light)
+
+
+def shell_height(lift: dict, d_in, az, el, share: float) -> np.ndarray:
+    """A surface at `share` of the hair's height over the scalp (m), easing to 0 at the hairline (cap_height's ease)."""
+    fa = np.abs(((np.asarray(az, float) + 180) % 360) - 180)
+    ease = EASE - (EASE - EASE_FRONT) * (1 - _ss((fa - 40.0) / 25.0))
+    return np.minimum(share * lift_at(lift, az, el), LIFT_MAX * share / LIFT) * _ss(np.asarray(d_in, float) / ease)
+
+
+def grey_map(hair: np.ndarray, rows_el: np.ndarray, m: dict | None = None) -> np.ndarray:
+    """GREY_MAP on the chart (rows = elevation 90 -> e0, columns = azimuth, 0 = the front): a grey share by the hair's
+    own height h (0 = its lowest row, 1 = the top) and fa = degrees from the front, smoothed ~1 cm."""
+    from scipy import ndimage
+    m = m or GREY_MAP
+    H, W = hair.shape
+    lo = float(rows_el[np.nonzero(hair.any(1))[0].max()])
+    h = np.clip((rows_el - lo) / max(90.0 - lo, 1e-3), 0, 1)[:, None] * np.ones((1, W))
+    fa = np.abs((((np.arange(W) + 0.5) / W * 360.0 + 180) % 360) - 180)[None] * np.ones((H, 1))
+    band, low = np.interp(fa, m["fa"], m["band"]), np.interp(fa, m["fa"], m["low"])
+    a0, a1, b0, b1 = m["band_h"]
+    g = low + (band - low) * _ss((h - a0) / max(a1 - a0, 1e-3))
+    g = g + (float(m["top"]) - g) * _ss((h - b0) / max(b1 - b0, 1e-3))
+    return ndimage.gaussian_filter(g, (H / 60.0, W / 120.0), mode=("nearest", "wrap"))
+
+
+def combed(chart: dict, heights=SHELL_HEIGHTS, base: float = SHELL_BASE, seed: int = 0, ss: int = 2,
+           cover: float | None = None) -> dict:
+    """The combed picture: {"cap": chart-like maps (alpha, id, depth, grey, cover, normal, flow) for the cap,
+    "shells": [the same per shell height]}. Strands are traced along chart["lay"] from blue-ish random roots over the
+    hair, each LAY_LEN x the groom's length there, and drawn into a z-buffer whose height rises root -> tip (each
+    strand's tip lies over the next one's root: the shingled lay of combed hair) plus how far the strand stands
+    (`s`). A shell at height share h shows only the strands' runs that stand above it: s x rise(t) >= (h - base) /
+    (1 - base), so the outer shells are sparse strand bits (alpha-tested), never a copy of the cap."""
+    from scipy import ndimage
+    H, W = chart["alpha"].shape
+    e0, R = float(chart["e0"]), float(chart["R"])
+    rng = np.random.default_rng(seed + 977)
+    rows_el = 90.0 - (np.arange(H) + 0.5) / H * (90.0 - e0)
+    mu = 2 * np.pi * R * np.maximum(np.cos(np.radians(rows_el)), 0.03) / W  # m per texel round the head, by row
+    mv = float(np.radians(90.0 - e0) * R) / H
+    dens = ndimage.gaussian_filter(np.maximum(chart["cover"], chart["base"]), 3.0)
+    hair = dens > 0.08
+    area = hair * np.clip(dens / 0.4, 0, 1) * mu[:, None] * mv  # (thinning toward the hairline, as the groom does)
+    AA, EE = np.meshgrid((np.arange(W) + 0.5) / W * 360.0, rows_el, indexing="xy")
+    Lmap = np.clip(LAY_LEN * lift_at(chart["length"], AA, EE), LAY_MIN, LAY_MAX)
+    n = int((cover or LAY_COVER) * float(area.sum()) / (WIDTH * float(np.mean(Lmap[hair])))) if hair.any() else 0
+    p = (area / max(float(area.sum()), 1e-12)).ravel()
+    cell = rng.choice(len(p), size=n, p=p)
+    y = (cell // W) + rng.uniform(0, 1, n)
+    x = (cell % W) + rng.uniform(0, 1, n)
+    L = Lmap[np.clip(y.astype(int), 0, H - 1), np.clip(x.astype(int), 0, W - 1)]
+    K = int(np.ceil(LAY_MAX / LAY_STEP))
+    s = rng.uniform(0, 1, n) ** 0.7  # how far each strand stands off the cap (0 = lies on it, 1 = the hair's top)
+    sid_r = rng.uniform(0, 1, n).astype(np.float32)
+    lay = chart["lay"]
+    # grey: each strand grey by the chart's regional share (its top strands' grey over its cover, ~6 mm)
+    gsh = ndimage.gaussian_filter(chart["grey"], 6.0) / np.maximum(ndimage.gaussian_filter(np.minimum(chart["cover"] * 4, 1.0), 6.0), 1e-3)
+    if GREY_SPREAD != 1.0 and hair.any():
+        md_ = float(np.median(gsh[hair]))
+        gsh = md_ + GREY_SPREAD * (gsh - md_)
+        print(f"combed grey: share p10/50/90 {np.round(np.percentile(np.clip(gsh[hair], 0, 1), [10, 50, 90]), 2)} (spread {GREY_SPREAD})", flush=True)
+    if GREY_REGION > 0 and hair.any():
+        gsh = (1 - GREY_REGION) * gsh + GREY_REGION * grey_map(hair, rows_el)
+        print(f"combed grey: regional share p10/50/90 {np.round(np.percentile(np.clip(gsh[hair], 0, 1), [10, 50, 90]), 2)} (region {GREY_REGION})", flush=True)
+    gsh = np.clip(gsh, 0, 1)
+    grey_s = rng.uniform(0, 1, n) < gsh[np.clip(y.astype(int), 0, H - 1), np.clip(x.astype(int), 0, W - 1)]
+    ang_w = rng.normal(0, LAY_WOBBLE, n)
+    turn = rng.normal(0, LAY_WOBBLE / 8, n)  # rad per step
+    P = np.zeros((K + 1, n, 2))
+    P[0, :, 0], P[0, :, 1] = x, y
+    for k in range(K):
+        iy = np.clip(P[k, :, 1].astype(int), 0, H - 1)
+        ix = P[k, :, 0].astype(int) % W
+        e_, u_ = lay[iy, ix, 0].astype(float), lay[iy, ix, 1].astype(float)
+        a_ = ang_w + turn * k
+        e2, u2 = e_ * np.cos(a_) - u_ * np.sin(a_), e_ * np.sin(a_) + u_ * np.cos(a_)
+        P[k + 1, :, 0] = (P[k, :, 0] + e2 * LAY_STEP / mu[iy]) % W
+        P[k + 1, :, 1] = P[k, :, 1] - u2 * LAY_STEP / mv
+    ks = np.minimum(np.ceil(L / LAY_STEP).astype(int), K)  # each strand's steps
+    kk, jj = np.nonzero(np.arange(K)[:, None] < ks[None])  # (step, strand) of every segment
+    t0, t1 = kk / ks[jj], (kk + 1) / ks[jj]
+    u0, v0 = P[kk, jj, 0] * ss, P[kk, jj, 1] * ss
+    u1, v1 = P[kk + 1, jj, 0] * ss, P[kk + 1, jj, 1] * ss
+    tm = 0.5 * (t0 + t1)
+    rise = _ss(tm / 0.35) * (1 - 0.2 * tm)  # out of the scalp, then lying (tips a little lower)
+    W2, H2 = W * ss, H * ss
+    mu2 = np.repeat(mu / ss, ss).astype(np.float64)
+    mv2 = mv / ss
+
+    def draw(sel, wd, hgt):
+        zb = np.full((H2, W2), -1.0, np.float32)
+        sb = np.full((H2, W2), -1, np.int32)
+        dub = np.zeros((H2, W2), np.float32)
+        dvb = np.zeros((H2, W2), np.float32)
+        iv_ = np.clip(v0[sel].astype(int), 0, H2 - 1)
+        ru = np.clip(0.5 * wd / mu2[iv_], 0.6, 30.0)
+        rv = np.clip(np.full(len(iv_), 0.5 * wd / mv2), 0.6, 30.0)
+        _raster(u0[sel], v0[sel], hgt[sel].astype(np.float64), u1[sel], v1[sel], hgt[sel].astype(np.float64), ru, rv,
+                np.nonzero(sel)[0].astype(np.int64), W2, H2, zb, sb, dub, dvb, mu2, mv2)
+        return zb, sb, dub, dvb
+
+    def maps(zb, sb, dub, dvb, under=None, lift_dep=0.0):
+        cov = sb >= 0
+        sg = np.maximum(sb, 0)
+
+        def down(a):
+            return a.reshape(H, ss, W, ss).mean((1, 3)).astype(np.float32)
+        a = down(cov.astype(np.float32))
+        ws = np.maximum(a, 1e-4)
+        idm = down(np.where(cov, sid_r[jj[sg]], 0.0)) / ws
+        tt = down(np.where(cov, tm[sg], 0.0)) / ws
+        st = down(np.where(cov, s[jj[sg]], 0.0)) / ws
+        gr = down(np.where(cov, grey_s[jj[sg]].astype(np.float32), 0.0)) / ws
+        fu, fv = down(np.where(cov, dub, 0.0)), down(np.where(cov, dvb, 0.0))
+        hm = down(np.where(cov, zb, 0.0)) / ws
+        # depth: roots deep, tips and standing strands lit; the edge of every strand shaded (the gap between hairs)
+        edge = ndimage.gaussian_filter(a, 0.8)
+        dep = np.clip(LAY_DEP0 + LAY_DEP_T * tt + LAY_DEP_S * st + lift_dep, 0.08, 1.0) * (1 - EDGE_SHADE + EDGE_SHADE * np.clip(edge, 0, 1))
+        if SHADE_MAP:
+            dep = dep * grey_map(hair, rows_el, {**GREY_MAP, **SHADE_MAP})
+        vm = grey_map(hair, rows_el, {**GREY_MAP, **VALUE_MAP}).astype(np.float32) if VALUE_MAP else None
+        hs = ndimage.gaussian_filter(hm * 0.0012, 0.7)
+        su = np.gradient(hs, axis=1) / mu[:, None]
+        sv = -np.gradient(hs, axis=0) / mv
+        su, sv = np.clip(RELIEF * su, -SLOPE, SLOPE), np.clip(RELIEF * sv, -SLOPE, SLOPE)
+        nrm = np.stack([-su, -sv, np.ones_like(su)], -1)
+        nrm /= np.linalg.norm(nrm, axis=-1, keepdims=True)
+        fl = np.maximum(np.hypot(fu, fv), 1e-9)
+        flow = np.stack([fu / fl, fv / fl, np.clip(a * 2, 0, 1)], -1).astype(np.float32)
+        out = {"alpha": a, "id": np.clip(idm, 0, 1), "depth": dep, "grey": np.clip(gr, 0, 1), "cover": a,
+               "normal": nrm.astype(np.float32), "flow": flow}
+        if vm is not None:
+            out["value"] = vm
+        if under is not None:  # the cap: the opaque base (the hair's dark inside) between the strands
+            u_ = a < under
+            out["depth"] = np.where(u_, a * dep + (1 - a) * BASE_DEPTH * 0.8, dep).astype(np.float32)
+            out["id"] = np.where(u_, a * out["id"] + (1 - a) * 0.5, out["id"]).astype(np.float32)
+            out["grey"] = (out["grey"] * np.where(u_, a, 1.0)).astype(np.float32)
+            out["alpha"] = np.maximum(a, under).astype(np.float32)
+        return out
+    allsel = np.ones(len(kk), bool)
+    under = np.asarray(chart["base"], np.float32)
+    if BASE_EDGE > 0 and hair.any():  # the base fades in from the hair's edge (distance in metres: rows mv, columns mu)
+        mu_h = float(np.median(np.broadcast_to(mu[:, None], hair.shape)[hair]))
+        dist = ndimage.distance_transform_edt(hair, sampling=(mv, mu_h))
+        under = (under * _ss(np.clip(dist / BASE_EDGE, 0, 1))).astype(np.float32)
+    cap = maps(*draw(allsel, WIDTH, tm + 0.5 * s[jj]), under=under)
+    shells = []
+    for j, hsh in enumerate(heights):
+        g = (float(hsh) - base) / max(1 - base, 1e-3)
+        sel = s[jj] * rise >= g
+        sh = maps(*draw(sel, SHELL_WIDTH, tm + 0.5 * s[jj]), lift_dep=SHELL_LIT * (j + 1))
+        sh["height"] = float(hsh)
+        shells.append(sh)
+    return {"cap": {**cap, "lift": chart["lift"]}, "shells": shells, "strands": int(n), "segments": int(len(kk)),
+            "base": float(base)}

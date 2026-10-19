@@ -477,6 +477,9 @@ class _Log(list):
 
 SEAM_LIMIT = 1.5  # seam_steps excess over which the export warns (texture space; ~1 = invisible)
 BAKE_SS = 2  # Cycles bakes BAKE_SS^2 points per texel, box-filtered (one point per texel aliased sharp paint)
+BAKE_PREFILTER = True  # (s14) paint images finer than the bake's sample spacing are box-downsampled first (a mip level):
+# Cycles point-samples image textures, so Garrett's 0.06 mm stubble hairs under 0.2 mm bake samples came out as sparse
+# texel-sized black / white specks (the stage's EEVEE mipmaps them into a soft shadow). False = the old point sampling.
 BAKE_SS_PX = 8192  # ... while the supersampled image's side stays within this
 BAKE_SAMPLES = 1  # emission bakes: one sample per texel (4 cost 4x and changed nothing measurable)
 FILL = 0.6  # the fraction of an atlas the packed islands fill: a first guess, corrected from the first unwrap
@@ -770,6 +773,26 @@ def under_cloth_keep(p: dict, cloth: list[dict]) -> np.ndarray:
     return ~covered[cv.reshape(-1, 3)].all(1)
 
 
+LOD_SKIN_CULL_FROM = 1  # (Garrett s14) from this LOD on the skin too drops its faces deep under the garments at LOD0
+# (lods.cull_covered), keeping every face a clip frame of cull_poses uncovers; None = the skin is never culled per LOD
+
+
+def skin_pose_exposed(p: dict, P0: np.ndarray, covers: list[dict], name: str, cover_names: list[str], poses) -> np.ndarray:
+    """(Garrett s14) per LOD0 point P0 (lods.under_at_lod0's, vertices of p): True where a triangle using that vertex is
+    uncovered (under_cloth_keep, its rim included) in any frame of the `poses` dumps; all False without poses."""
+    from scipy.spatial import cKDTree
+    out = np.zeros(len(P0), bool)
+    if not poses or not len(P0):
+        return out
+    nt = len(p["corner_vert"]) // 3
+    k, _ = cull_exposed_keep(p, covers, name, cover_names, poses, np.zeros(nt, bool))
+    if not k.any():
+        return out
+    vid = np.unique(np.asarray(p["corner_vert"], np.int64).reshape(-1, 3)[k])
+    d, nn = cKDTree(np.asarray(p["verts"], np.float64)[vid]).query(np.asarray(P0, np.float64))
+    return d < 1e-6
+
+
 CLOTH_UNDER_CULL = True  # (r53) asset.export's cull_under_cloth also drops an under garment's faces its covers hide
 
 
@@ -851,6 +874,50 @@ def cull_tris(p: dict, keep: np.ndarray) -> dict:
         n = int(p["shell"]["outer"])
         q["shell"] = dict(p["shell"], outer=int(keep[:n].sum()))
     return q
+
+
+def garment_cull_masks(parts: dict, layer_stack: dict, garments: list) -> dict:
+    """(Garrett s10) {under garment: (its LOD0 outward points, whether each is under its covers there, the covers)} for
+    cull_under_garments (lods.under_at_lod0 against the garments over it in layer_stack)."""
+    from . import lods as lodmod
+    out = {}
+    if not lodmod.LOD_UNDER_CULL_GARMENTS_FROM:
+        return out
+    for un_, ovs_ in (layer_stack or {}).items():
+        cov_ = [parts[o] for o in ovs_ if o in parts]
+        if un_ in garments and un_ in parts and cov_:
+            P0_, un0_ = lodmod.under_at_lod0(parts[un_], cov_)
+            if un0_.any():
+                out[un_] = (P0_, un0_, [o for o in ovs_ if o in parts])
+    return out
+
+
+def cull_under_garments(lp: dict, masks: dict, k: int, log: list, rep_l: dict) -> None:
+    """(Garrett s10) at LOD k >= lods.LOD_UNDER_CULL_GARMENTS_FROM, each under garment in `lp` (this LOD's parts) drops
+    the faces that were deep under its covers at LOD0 (lods.cull_covered: beyond LOD_UNDER_CULL_RIM from what showed).
+    v7's LOD1 right forearm: the decimated sleeve dips more than the push-under cap under the shirt, a white shard."""
+    from . import lods as lodmod
+    if not lodmod.LOD_UNDER_CULL_GARMENTS_FROM or k < lodmod.LOD_UNDER_CULL_GARMENTS_FROM:
+        return
+    for pn, (P0_, un0_, ovs_) in masks.items():
+        if pn not in lp:
+            continue
+        kc_ = lodmod.cull_covered(lp[pn], P0_, un0_)
+        if not kc_.all():  # only faces that touch the cover at this LOD (a corner less than LOD_UNDER_GAP under it, or
+            # through): the rest still sit under it, and a seated pose that lifts a cover (the jacket's skirt off the
+            # trousers) must not open a hole the LOD0 cull (posed) kept closed
+            covs_ = [lp[o] for o in ovs_ if o in lp]  # this LOD's (decimated) covers
+            vid_, _, _, t_ = lodmod.under_depth(lp[pn], covs_)
+            near_ = np.zeros(len(lp[pn]["verts"]), bool)
+            near_[vid_] = np.isfinite(t_) & (t_ < lodmod.LOD_UNDER_GAP)
+            T_ = np.asarray(lp[pn]["corner_vert"], np.int64).reshape(-1, 3)
+            kc_ |= ~near_[T_].any(1)
+        if not kc_.all():
+            lp[pn] = cull_tris(lp[pn], kc_)
+            rep_l.setdefault(pn, {})["covered_culled"] = int((~kc_).sum())
+            rep_l[pn]["triangles"] = len(lp[pn]["corner_vert"]) // 3
+            log.append(f"LOD{k}: {pn}: {int((~kc_).sum())} of {len(kc_)} triangles deep under its covers at LOD0 dropped "
+                       f"(lods.cull_covered, {lodmod.LOD_UNDER_CULL_RIM * 1000:.0f} mm rim)")
 
 
 def _deep_hidden(V: np.ndarray, hidden: np.ndarray, part: np.ndarray, rim: float = HIDDEN_RIM) -> np.ndarray:
@@ -1855,7 +1922,8 @@ def scene_maps(name: str, parts: dict, sizes: dict, ctx: dict, resolution: int, 
         t = time.time()
         bj = {"mode": "bake_maps", "blend": str(scene.blend_path(name)), "parts": jobs,
               "atlases": {str(ai): sz for ai, sz in sizes.items()}, "out": tmp, "samples": BAKE_SAMPLES,
-              "supersample": BAKE_SS, "max_px": BAKE_SS_PX, "detail": ctx.get("bake_detail", True)}
+              "supersample": BAKE_SS, "max_px": BAKE_SS_PX, "detail": ctx.get("bake_detail", True),
+              "texel_m": ctx.get("texel_m", 0.0) if BAKE_PREFILTER else 0.0}
         bj["osl"] = bake_needs_osl(bj, log)
         out = scene._blender(bj, 3 * 3600, progress=getattr(log, "note", None))
         bt = next((line[8:] for line in out.splitlines() if line.startswith("@@times")), "")
@@ -2467,6 +2535,79 @@ def approved_head(spec: dict, log: list, approved_path: Path | None = None) -> d
     return skin_layers.stack_on_head(out, log)
 
 
+# The GAME rig as blender_game.light_rig(None) builds it, in blender_scene's "lighting" format (world colour sRGB): a stage
+# render meant to be compared with the shipped GLB's game render must use THIS, view transform included. (Garrett s12:
+# the stage's "game" frames used AgX while blender_game renders Khronos PBR Neutral (since 2026-10-16): the GLB read
+# lighter and ~2x yellower (cheek b* 8.6 -> 15.0, forehead L* 68 -> 79) and its lid band ~10 L* darker, all of it the
+# view transform; with the same view the GLB matched the stage within ~1 L* / 1 b* (photo light: 80.7 vs 80.8).)
+GAME_LIGHT = {"lights": [{"dir": [-1.0, -1.2, 1.4], "energy": 3.0, "angle": 2.0, "color": [1.0, 1.0, 1.0]},
+                         {"dir": [1.4, -0.6, 0.6], "energy": 1.0, "angle": 10.0, "color": [1.0, 1.0, 1.0]},
+                         {"dir": [0.3, 1.5, 1.0], "energy": 1.5, "angle": 3.0, "color": [1.0, 1.0, 1.0]}],
+              "world": {"color": [0.584, 0.600, 0.631], "strength": 0.8}, "view": "Khronos PBR Neutral", "exposure": 0.0}
+FACE_LIGHT_TOL = {"lid-cheek": 5.0, "under-cheek": 3.0}  # L* (CIE) the shipped head may differ from the approved stage render
+FACE_LIGHT_TEX_RATIO = 1.4  # forehead fine-texture (high-pass L* std) the shipped head may have over the approved render
+
+
+def _lstar(a: np.ndarray) -> np.ndarray:
+    c = np.asarray(a, float)[..., :3] / 255.0
+    c = np.where(c > 0.04045, ((c + 0.055) / 1.055) ** 2.4, c / 12.92)
+    Y = c @ np.array([0.2126, 0.7152, 0.0722])
+    return np.where(Y > 0.008856, 116 * np.cbrt(Y) - 16, 903.3 * Y)
+
+
+def face_light(img, eyes=None) -> dict:
+    """(Garrett s10, coordinator) lightness of a FRONT eyes render (the eyes in the middle band, brows and cheeks in
+    frame): the upper-lid band and the under-eye band against the cheek (L* differences, both eyes averaged) and the
+    forehead's fine texture (std of L* minus its blur at 1/25 of the eye distance: grooves / wrinkles). Eyes are the
+    darkest blurred point in each half between 40 and 75% of the height (the pupils), or given (px). Regions are boxes
+    in eye-distance units d: lid -0.15..-0.07 d above the pupil, under +0.08..+0.2 d, cheek +0.3..+0.42 d (each
+    +-0.15 d wide), forehead -0.85..-0.6 d, +-0.4 d about the midpoint."""
+    from scipy import ndimage as nd
+    L = _lstar(np.asarray(Image.open(img).convert("RGB")) if isinstance(img, (str, Path)) else np.asarray(img))
+    h, w = L.shape
+    if eyes is None:
+        b = nd.gaussian_filter(L, w / 150)
+        eyes = []
+        for x0, x1 in ((0, w // 2), (w // 2, w)):
+            s_ = b[int(.4 * h):int(.75 * h), x0:x1]
+            y, x = np.unravel_index(np.argmin(s_), s_.shape)
+            eyes.append((x + x0, y + int(.4 * h)))
+    (x1, y1), (x2, y2) = eyes
+    d = float(np.hypot(x2 - x1, y2 - y1))
+
+    def box(A, cx, cy, a, b, c, e):
+        return A[max(0, int(cy + c * d)):int(cy + e * d), max(0, int(cx + a * d)):int(cx + b * d)]
+    m = {k: float(np.mean([box(L, x, y, a, b, c, e).mean() for x, y in eyes]))
+         for k, (a, b, c, e) in {"lid": (-.15, .15, -.15, -.07), "under": (-.15, .15, .08, .2),
+                                 "cheek": (-.15, .15, .3, .42)}.items()}
+    hp = L - nd.gaussian_filter(L, d / 25)
+    tex = float(box(hp, (x1 + x2) / 2, (y1 + y2) / 2, -.4, .4, -.85, -.6).std())
+    return {"lid-cheek": m["lid"] - m["cheek"], "under-cheek": m["under"] - m["cheek"], "forehead_tex": tex,
+            "eyes": [list(map(int, e)) for e in eyes]}
+
+
+def face_light_check(stage, shipped, label: str = "") -> list[str]:
+    """The shipped head's render against the APPROVED head's stage render through the same camera and light (e.g.
+    eyes_v0 photo / game): lid band and under-eye vs cheek within FACE_LIGHT_TOL L*, forehead texture within
+    FACE_LIGHT_TEX_RATIO. Lines to log; WARNING lines name the numbers. (Garrett v6 / v7: lid-cheek -33 vs the approved
+    -16 under the photo light: the blink map's lid_fold crease + occlusion; forehead 2.1 vs 1.2 in the game rig: s21's
+    wrinkles in the normal map.) Eyes are found on the stage render and used for both (same camera). The two renders
+    must share the light rig AND the view transform (game: GAME_LIGHT): a different view transform alone moved the
+    lid band ~8 L* and the cheek's b* x2 (Garrett s12)."""
+    a = face_light(stage)
+    b = face_light(shipped, eyes=a["eyes"])
+    out = []
+    for k, tol in FACE_LIGHT_TOL.items():
+        bad = abs(b[k] - a[k]) > tol
+        out.append(("WARNING " if bad else "") + f"face light{(' ' + label) if label else ''}: {k} {b[k]:.1f} L* vs the "
+                   f"approved render's {a[k]:.1f} (tolerance {tol})" + (": the shipped maps darken / lighten it" if bad else ""))
+    bad = b["forehead_tex"] > FACE_LIGHT_TEX_RATIO * max(a["forehead_tex"], 0.5)
+    out.append(("WARNING " if bad else "") + f"face light{(' ' + label) if label else ''}: forehead texture "
+               f"{b['forehead_tex']:.2f} vs the approved render's {a['forehead_tex']:.2f} (at most x{FACE_LIGHT_TEX_RATIO})"
+               + (": grooves / wrinkles the approved head doesn't have (normal map)" if bad else ""))
+    return out
+
+
 FOLD_FORM_MAX_MM = 1.0  # (coordinator, Garrett s8) skin.folds up to this much relief are SKIN detail (grooves, creases);
 # more (a roll / bag / cheek mass, a lid's overhang) changes the head's FORM: head geometry, Joe's approval
 
@@ -2599,7 +2740,9 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
                              f"({'; '.join(m for m in lg_ if m.startswith('skin stack'))}): write approved_head(spec)'s "
                              "skin.stack into the model first")
         log.append(f"head: = the approved head {spec['base']['head_approved']} (checked)")
-        log.extend(m for m in lg_ if "skin.folds" in m)
+        for m_ in lg_:  # (append: the export log prints on append, not extend)
+            if "skin.folds" in m_:
+                log.append(m_)
     aname = asset_name or name
     from .base import part_defs
     defs = part_defs(spec)  # (the base's implied parts too: a clear cornea's lens)
@@ -2816,6 +2959,9 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
     face_keep_paint(parts, topo, log)
     if spec.get("skin"):
         ctx["lip_floor"] = (spec, (spec.get("skin") or {}).get("part", "body"))
+    # (s14) the finest texel any part bakes at: the bake prefilters paint images finer than its sample spacing
+    ctx["texel_m"] = min((min([r["mm_per_texel"]] + list(r.get("focus_mm_per_texel") or [])) for r in report.values()
+                          if r.get("mm_per_texel")), default=0.0) / 1000.0
     given = scene_maps(name, parts, sizes, ctx, resolution, log)
     ek_ = (spec.get("base") or {}).get("eyes")
     ctx["ao_off"] = [ek_] if isinstance(ek_, str) else []
@@ -3133,6 +3279,7 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
             pu0_ = lodmod0_.push_under_layers(parts, st0_, gap=LOD0_UNDER_GAP)
             log.append("LOD0: under garments put back under their covers (lods.push_under_layers): " + ", ".join(
                 f"{pn} poking {v['poking0']} vertices / {v['faces_poking0']} faces -> {v['poking']} ({v['moved']} moved"
+                f"{', %d capped' % v['capped'] if v.get('capped') else ''}"
                 f"{', ' + str(v['flaps']) + ' in a flap through the cover' if v.get('flaps') else ''})"
                 for pn, v in pu0_.items()))
             for pn, v in pu0_.items():
@@ -3201,9 +3348,19 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
                     under_masks[pn] = (P0_, ~ov0_ if LOD_PUSH_WORN_NOT_OVER else un0_, sh_, N0_, un0_)  # (r55) every vertex NOT over a
                     # garment at LOD0 may move: rc2d's LOD2 left calf showed 22 sock vertices through the jeans whose LOD0
                     # vertices had no jeans within reach (a loose leg), so the 'under at LOD0' mask kept them still
+            sk_ = (spec.get("skin") or {}).get("part", "body")
+            if sk_ in under_masks and LOD_SKIN_CULL_FROM is not None:  # (Garrett s14) the skin's deep-covered faces drop at
+                # LOD >= LOD_SKIN_CULL_FROM too (its residue under the jacket's armhole poked through the decimated sleeve:
+                # the underarm notch), except where a dumped clip frame (cull_poses: the seated poses) uncovers it
+                P0_, a_, b_, c_, un0_ = under_masks[sk_]
+                exp_ = skin_pose_exposed(parts[sk_], P0_, [parts[g] for g in garm_], sk_, garm_, cull_poses)
+                under_masks[sk_] = (P0_, a_, b_, c_, un0_, un0_ & ~exp_)  # [5]: what the per-LOD cull may drop
+                log.append(f"LODs: {sk_}: {int(un0_.sum())} LOD0 points under the garments, {int((un0_ & exp_).sum())} of them "
+                           f"uncovered in a clip frame (kept at every LOD)")
             if under_masks:
                 log.append("LODs: parts worn under garments also put back under them: " + ", ".join(
                     f"{pn} ({int(m_[1].sum())} vertices free to move, {m_[2]:.0%} of those in reach under)" for pn, m_ in under_masks.items()))
+        garment_cull = garment_cull_masks(parts, layer_stack, garm_)  # (Garrett s10) under garments' LOD0 cover masks
         if os.environ.get("HP_LOD_DUMP"):  # (r60, debug: the LOD inputs, to probe a part's LOD steps offline)
             import pickle
             with open(os.environ["HP_LOD_DUMP"], "wb") as fh:
@@ -3232,21 +3389,22 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
                 pu_ = lodmod.push_under_layers(lp, layer_stack, masks=under_masks, face_deep=(
                     lodmod.LOD_UNDER_FACE_DEEP_FAR if rb_ < lodmod.LOD_SMALL_FAR_RATIO else None))
                 log.append(f"LOD{k}: under garments put back under their covers (lods.push_under_layers): " + ", ".join(
-                    f"{pn} poking {v['poking0']} -> {v['poking']} ({v['moved']} moved)" for pn, v in pu_.items()))
+                    f"{pn} poking {v['poking0']} -> {v['poking']} ({v['moved']} moved{', %d capped' % v['capped'] if v.get('capped') else ''})" for pn, v in pu_.items()))
                 for pn, v in pu_.items():
                     rep_l.setdefault(pn, {})["under"] = v
             skin_pn0_ = (spec.get("skin") or {}).get("part", "body")
-            if lodmod.LOD_UNDER_CULL_FROM and k >= lodmod.LOD_UNDER_CULL_FROM:  # (r60) the worn parts' covered rims (socks)
-                for pn, m_ in under_masks.items():
-                    if pn == skin_pn0_ or pn not in lp or len(m_) < 5:
+            for pn, m_ in under_masks.items():  # (r60) the worn parts' covered rims (socks); (s14) the skin's from its own LOD
+                    from_ = LOD_SKIN_CULL_FROM if pn == skin_pn0_ else lodmod.LOD_UNDER_CULL_FROM
+                    if not from_ or k < from_ or pn not in lp or len(m_) < 5:
                         continue
-                    kc_ = lodmod.cull_covered(lp[pn], m_[0], m_[4])
+                    kc_ = lodmod.cull_covered(lp[pn], m_[0], m_[5] if len(m_) > 5 else m_[4])
                     if not kc_.all():
                         lp[pn] = cull_tris(lp[pn], kc_)
                         rep_l.setdefault(pn, {})["covered_culled"] = int((~kc_).sum())
                         rep_l[pn]["triangles"] = len(lp[pn]["corner_vert"]) // 3
                         log.append(f"LOD{k}: {pn}: {int((~kc_).sum())} of {len(kc_)} triangles deep under the garments at LOD0 "
                                    f"dropped (lods.cull_covered, {lodmod.LOD_UNDER_CULL_RIM * 1000:.0f} mm rim)")
+            cull_under_garments(lp, garment_cull, k, log, rep_l)
             atl_k, ext_k = atlas_files, extra_ext
             if k in tier_parts:
                 tp_, w_, tier_, own_ = tier_parts[k]

@@ -1164,6 +1164,102 @@ def test_frozen_garments_keep_their_over_chain_in_the_export():
     assert any(l.startswith("WARNING garment layers") for l in log)
 
 
+def test_push_under_trusts_the_cover_for_outward():
+    """(Garrett s7) an under garment with reversed normals (Garrett's frozen shirt: ~half its outer normals point into the
+    forearm) poking 1 mm through its cover was pushed OUT along its own normal (v6b: a white shirt mass through the jacket
+    sleeve, up to 39 mm). push_under_layers orients the under part's normals by the cover's outward (lods.orient_to_covers)."""
+    from hifipushie import lods
+    xs = np.linspace(0, 0.1, 11)
+    X, Y = np.meshgrid(xs, xs, indexing="ij")
+    F = []
+    for i in range(10):
+        for j in range(10):
+            q = i * 11 + j
+            F += [(q, q + 11, q + 12), (q, q + 12, q + 1)]
+    F = np.array(F)
+
+    def sheet(z, nz):
+        V = np.c_[X.ravel(), Y.ravel(), np.full(X.size, z)]
+        cv = F.ravel()
+        return {"verts": V.astype(np.float32), "corner_vert": cv, "normal": np.tile([0, 0, nz], (len(cv), 1)).astype(float)}
+
+    for nz in (1.0, -1.0):  # under normals right (+z) and reversed (-z): both must end under the cover (z = 0)
+        parts = {"cover": sheet(0.0, 1.0), "under": sheet(0.001, nz)}
+        lods.push_under_layers(parts, {"under": ["cover"]}, masks=None)
+        z = np.asarray(parts["under"]["verts"])[:, 2]
+        assert z.max() < 0, (nz, z.max())
+    old = lods.LOD_UNDER_ORIENT
+    try:  # without the orientation the reversed sheet goes out through the cover (the v6b fault)
+        lods.LOD_UNDER_ORIENT = False
+        parts = {"cover": sheet(0.0, 1.0), "under": sheet(0.001, -1.0)}
+        lods.push_under_layers(parts, {"under": ["cover"]}, masks=None)
+        assert np.asarray(parts["under"]["verts"])[:, 2].min() > 0.001
+    finally:
+        lods.LOD_UNDER_ORIENT = old
+
+
+def test_push_under_move_is_capped():
+    """(Garrett s8) no push-under moves a vertex more than LOD_UNDER_MAX_MOVE (v6b: 39 mm out through the sleeve): an under
+    sheet 15 mm outside its cover (inside reach) moves at most 10 mm, reported as capped; a 1 mm poke still goes under."""
+    from hifipushie import lods
+    xs = np.linspace(0, 0.1, 6)
+    X, Y = np.meshgrid(xs, xs, indexing="ij")
+    F = np.array([(i * 6 + j, i * 6 + j + 6, i * 6 + j + 7) for i in range(5) for j in range(5)]
+                 + [(i * 6 + j, i * 6 + j + 7, i * 6 + j + 1) for i in range(5) for j in range(5)])
+
+    def sheet(z):
+        cv = F.ravel()
+        return {"verts": np.c_[X.ravel(), Y.ravel(), np.full(X.size, z)].astype(np.float32), "corner_vert": cv,
+                "normal": np.tile([0, 0, 1.0], (len(cv), 1))}
+    parts = {"cover": sheet(0.0), "under": sheet(0.015)}
+    rep = lods.push_under_layers(parts, {"under": ["cover"]}, masks=None)
+    z = np.asarray(parts["under"]["verts"])[:, 2]
+    assert z.min() >= 0.015 - lods.LOD_UNDER_MAX_MOVE - 1e-6, z.min()
+    assert rep["under"]["capped"] > 0
+    parts = {"cover": sheet(0.0), "under": sheet(0.001)}
+    rep = lods.push_under_layers(parts, {"under": ["cover"]}, masks=None)
+    assert np.asarray(parts["under"]["verts"])[:, 2].max() < 0 and rep["under"]["capped"] == 0
+
+
+def test_piece_facing_into_the_body_is_turned_alone():
+    """(Garrett s8) piece_flips: the seam vote left Garrett's shirt sleeve.R and cuff.L facing into the arm; a piece whose
+    near-body faces nearly all face the body is turned alone (two concentric half tubes, one wound in)."""
+    from hifipushie import cloth
+    th = np.linspace(0, np.pi, 13)
+    zs = np.linspace(0, 0.2, 5)
+    V, F, piece = [], [], []
+    for k, (t0, wind) in enumerate(((0.0, 1), (np.pi, -1))):  # piece 0 wound out, piece 1 (the other half) wound IN
+        base = len(V)
+        for z in zs:
+            for a in th + t0:
+                V.append((0.06 * np.cos(a), 0.06 * np.sin(a), z))
+                piece.append(k)
+        n = len(th)
+        for i in range(len(zs) - 1):
+            for j in range(n - 1):
+                q = base + i * n + j
+                f1, f2 = (q, q + 1, q + n + 1), (q, q + n + 1, q + n)
+                F += [f1, f2] if wind > 0 else [f1[::-1], f2[::-1]]
+    V = np.array(V)
+    M = {"F": np.array(F), "piece": np.array(piece), "names": ["a", "b"], "sew": np.zeros((0, 2), int)}
+
+    class B:
+        pass
+    body = B()
+    a = np.linspace(0, 2 * np.pi, 48, endpoint=False)
+    body.V = np.array([(0.05 * np.cos(x), 0.05 * np.sin(x), z) for z in zs for x in a])
+    Fo = cloth.oriented_faces(M, V, body=body)
+    fn = np.cross(V[Fo[:, 1]] - V[Fo[:, 0]], V[Fo[:, 2]] - V[Fo[:, 0]])
+    out = V[Fo].mean(1) * [1, 1, 0]
+    assert ((fn * out).sum(1) > 0).all()
+    old = cloth.PIECE_BODY_VOTE
+    try:
+        cloth.PIECE_BODY_VOTE = 0
+        Fo = cloth.oriented_faces(M, V, body=body)
+        fn = np.cross(V[Fo[:, 1]] - V[Fo[:, 0]], V[Fo[:, 2]] - V[Fo[:, 0]])
+        assert ((fn * out).sum(1) < 0).any()  # (no seams to vote with: without the body vote one half faces in)
+    finally:
+        cloth.PIECE_BODY_VOTE = old
 
 
 def test_skin_folds_over_a_millimetre_are_head_form():
@@ -1224,6 +1320,107 @@ def test_stack_lid_layers_follow_the_export_head():
         assert st["occlusion"] == "new" and st["occlusion_lid"] == "new" and "crease" not in st and "crease_strength" not in st
         assert st["head"] == lt.head_key(spec["base"]) and "DROPPED" in log[0]
         assert sl.stack_on_head(out, []) is out   # same head: untouched
+
+
+def test_face_light_check_flags_a_dark_lid_band():
+    """(Garrett s10, coordinator) the shipped head's eyes render vs the approved head's stage render: a lid band darker
+    than approved (the v6 / v7 blink map crease) and forehead grooves (s21 wrinkles in the normal map) are WARNINGs with
+    the numbers; the same render passes."""
+    from hifipushie import asset
+    h = w = 520
+    base = np.full((h, w, 3), 200.0)
+    for x in (130, 400):    # pupils
+        base[280:300, x - 10:x + 10] = 20.0
+    lid = base.copy()
+    for x in (130, 400):    # the upper lid band, 0.07-0.15 eye distances above the pupils (d = 270 px)
+        lid[290 - 40:290 - 19, x - 40:x + 40] = 120.0
+    groove = base.copy()
+    groove[60:125:8, 100:430] = 150.0   # forehead stripes
+    ok = asset.face_light_check(base, base)
+    assert not any(l.startswith("WARNING") for l in ok), ok
+    bad = asset.face_light_check(base, lid)
+    assert bad[0].startswith("WARNING") and "lid-cheek" in bad[0], bad
+    gr = asset.face_light_check(base, groove)
+    assert gr[2].startswith("WARNING") and "forehead" in gr[2], gr
+
+
+def test_lod_under_garment_drops_faces_deep_under_its_cover():
+    """(Garrett s10) from LOD1 an under GARMENT (the shirt) drops its faces deep under its covers at LOD0 (v7's LOD1
+    right forearm: a white shirt shard where the decimated sleeve dipped under it past the push-under cap); LOD0 and
+    the part in the open are untouched."""
+    from hifipushie import asset, lods
+    Vu, Fu = _grid_sheet(30, 30, 0.3, 0.3, lambda x, y: np.zeros_like(x))
+    Vc, Fc = _grid_sheet(8, 8, 0.15, 0.3, lambda x, y: np.full_like(x, 0.003))  # the sleeve over x < 0.15 only
+    mk = lambda V, F: {"verts": V.astype(np.float32), "corner_vert": F.ravel(), "uv": V[F.ravel(), :2],
+                       "normal": np.tile([0, 0, 1.0], (F.size, 1)), "tangent": np.tile([1.0, 0, 0], (F.size, 1)),
+                       "sign": np.ones(F.size)}
+    parts = {"cloth_shirt": mk(Vu, Fu), "cloth_jacket": mk(Vc, Fc)}
+    m = asset.garment_cull_masks(parts, {"cloth_shirt": ["cloth_jacket"]}, ["cloth_shirt", "cloth_jacket"])
+    assert set(m) == {"cloth_shirt"}
+    lp0, rep0 = dict(parts), {}
+    asset.cull_under_garments(lp0, m, 0, [], rep0)
+    assert lp0["cloth_shirt"] is parts["cloth_shirt"] and not rep0
+    lp, rep, log = dict(parts), {}, []
+    asset.cull_under_garments(lp, m, lods.LOD_UNDER_CULL_GARMENTS_FROM, log, rep)
+    assert not rep, "a shirt still under its sleeve (3 mm) keeps its faces (a lifted cover must not open a hole)"
+    Vc2 = Vc.copy(); Vc2[:, 2] = 0.001   # the decimated sleeve dips to 1 mm over the shirt (< LOD_UNDER_GAP)
+    lp["cloth_jacket"] = mk(Vc2, Fc)
+    asset.cull_under_garments(lp, m, lods.LOD_UNDER_CULL_GARMENTS_FROM, log, rep)
+    T = np.asarray(lp["cloth_shirt"]["corner_vert"]).reshape(-1, 3)
+    xc = Vu[T].mean(1)[:, 0]
+    assert rep["cloth_shirt"]["covered_culled"] > 0 and "deep under its covers" in log[0]
+    assert xc.min() > 0.15 - lods.LOD_UNDER_CULL_RIM - 0.011, "deep under the sleeve is dropped"
+    assert (xc > 0.15).sum() == (Vu[Fu.reshape(-1, 3)].mean(1)[:, 0] > 0.15).sum(), "the open part stays"
+
+
+def test_game_light_matches_blender_game_and_glb_basecolor_is_the_albedo():
+    """(Garrett s12) The GLB's basecolor at fixed texels decodes (sRGB, as glTF declares baseColorTexture) back to the
+    bake's linear albedo, with no colour factor or extension tinting it; and asset.GAME_LIGHT (what stage renders
+    compared with the GLB's game renders must use) is blender_game's own default rig, view transform included: a stage
+    "game" frame in AgX against the GLB's Khronos PBR Neutral read as a lighter, 2x yellower export."""
+    import json, re, struct, tempfile, io
+    from pathlib import Path
+    import numpy as np
+    from PIL import Image
+    from hifipushie import asset
+    src = (Path(asset.__file__).with_name("blender_game.py")).read_text()
+    assert re.search(r'job\.get\("view", "%s"\)' % re.escape(asset.GAME_LIGHT["view"]), src)
+    for L in asset.GAME_LIGHT["lights"]:
+        tup = "((%s), %s, %s)" % (", ".join(repr(float(c)) for c in L["dir"]), repr(float(L["energy"])), repr(float(L["angle"])))
+        assert tup in src, tup
+    lin_world = [round(c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4, 2) for c in asset.GAME_LIGHT["world"]["color"]]
+    assert "(%s, %s, %s, 1)" % tuple("%.2f" % c for c in lin_world) in src
+    assert "Strength\"].default_value = %s" % asset.GAME_LIGHT["world"]["strength"] in src
+    # basecolor: linear albedo (skin-like, dark, bright) -> the export's encoding and PNG -> GLB -> decoded
+    rng = np.random.default_rng(3)
+    lin = rng.uniform(0.0, 1.0, (16, 16, 3))
+    lin[0, 0], lin[0, 1], lin[0, 2] = (0.45, 0.30, 0.22), (0.02, 0.015, 0.01), (0.9, 0.85, 0.8)
+    d = Path(tempfile.mkdtemp())
+    asset._png(d / "b.png", asset._srgb(lin))
+    flat = d / "f.png"
+    Image.new("RGBA", (4, 4), (128, 128, 255, 255)).save(flat)
+    V = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]], float)
+    part = {"verts": V, "faces": np.array([[0, 1, 2]]), "corner_vert": np.array([0, 1, 2]),
+            "uv": np.array([[0, 0], [1, 0], [0, 1]], float), "normal": np.tile([0.0, 0.0, 1.0], (3, 1)),
+            "tangent": np.tile([1.0, 0.0, 0.0], (3, 1)), "sign": np.ones(3)}
+    glb = d / "t.glb"
+    asset.write_glb(glb, "t", {"body": part}, [("0", {"basecolor": d / "b.png", "orm": flat, "normal": flat, "specular": flat})])
+    raw = glb.read_bytes()
+    jl = struct.unpack("<I", raw[12:16])[0]
+    J = json.loads(raw[20:20 + jl])
+    binc = raw[20 + jl + 8:]
+    m = J["materials"][0]
+    pbr = m["pbrMetallicRoughness"]
+    assert pbr.get("baseColorFactor", [1, 1, 1, 1]) == [1, 1, 1, 1]
+    assert not set(m.get("extensions", {})) - {"KHR_materials_specular"}
+    img = J["images"][J["textures"][pbr["baseColorTexture"]["index"]]["source"]]
+    bv = J["bufferViews"][img["bufferView"]]
+    got = np.asarray(Image.open(io.BytesIO(binc[bv.get("byteOffset", 0):bv.get("byteOffset", 0) + bv["byteLength"]])).convert("RGB")) / 255.0
+    dec = np.where(got <= 0.04045, got / 12.92, ((got + 0.055) / 1.055) ** 2.4)
+    for y, x in ((0, 0), (0, 1), (0, 2), (5, 7), (15, 15)):
+        enc = asset._srgb(lin[y, x])
+        assert np.abs(got[y, x] - enc).max() <= 0.6 / 255, (y, x)  # 8-bit rounding of the sRGB value only
+        assert np.abs(dec[y, x] - lin[y, x]).max() < 0.01, (y, x, dec[y, x], lin[y, x])
 
 
 def test_push_under_takes_a_small_deep_flap_through_its_cover():
@@ -1301,37 +1498,90 @@ def test_push_under_takes_a_flap_with_sideways_normals_through_its_cover():
     assert len(lods.stray_flaps(under2, [half])[0]) == 0
 
 
-def test_push_under_never_moves_a_flipped_normal_out_through_its_cover():
-    """(r67) rc2s's coat speck was made BY the push: a sweater fold's vertex normals pointed into the body, so the coat
-    (outside it) read as behind it, a poke, and the vertex was moved 'in' along that normal = 5-22 mm out through the
-    coat's back. under_depth now orients outward normals by the nearest cover's facing, and a poking face moves only
-    corners within 60 deg of it. A layer entirely under its cover stays under it."""
-    import numpy as np
-    from hifipushie import lods
-    n = 11
-    x, y = np.meshgrid(np.linspace(0, 0.2, n), np.linspace(0, 0.2, n))
+def test_game_check_reads_the_exports_specular_map():
+    """(Garrett s13) blender_game (the game check) takes the skin's / standard materials' specular level from the export's
+    specular map (shading notes "specular": Blender IOR level, 0.5 = F0 0.04; the GLB's KHR_materials_specular), not a fixed
+    0.5: the skin's map is ~0.36. Hair cards keep their own factor."""
+    from pathlib import Path
+    src = (Path(__file__).parents[1] / "src/hifipushie/blender_game.py").read_text()
+    i = src.index('if "specular" in m["maps"]')
+    blk = src[i:i + 700]
+    assert 'hair_cards' in blk and 'pb.inputs["Specular IOR Level"]' in blk and 'tex(nt, m, "specular", "linear")' in blk
 
-    def sheet(z):
-        V = np.stack([x.ravel(), y.ravel(), np.full(x.size, z)], 1)
-        F = []
-        for i in range(n - 1):
-            for j in range(n - 1):
-                a = i * n + j
-                F += [[a, a + 1, a + n + 1], [a, a + n + 1, a + n]]
-        F = np.asarray(F)
-        N = np.zeros_like(V)
-        N[:, 2] = 1.0
-        return V, F, N
-    V, F, N = sheet(0.0)
-    fold = [5 * n + 5, 5 * n + 6]
-    V[fold, 2] = 0.007                   # 3 mm under the cover at z = 0.01
-    N[fold] = [0.0, 0.3, -0.95]          # normals into the body
-    under = {"verts": V, "corner_vert": F.ravel(), "normal": N[F.ravel()]}
-    Vc, Fc, Nc = sheet(0.01)
-    cover = {"verts": Vc, "corner_vert": Fc.ravel(), "normal": Nc[Fc.ravel()]}
-    parts = {"u": under, "c": cover}
-    lods.push_under_layers(parts, {"u": ["c"]}, gap=0.002)
-    assert np.asarray(parts["u"]["verts"])[:, 2].max() <= 0.008 + 1e-9
+
+def test_bake_prefilters_paint_images_finer_than_its_samples():
+    """(Garrett s14) Cycles point-samples image textures: the stubble map's 0.06 mm hairs under the bake's 0.2 mm samples
+    came out as sparse texel-sized black / white specks. The bake mips each tagged image (hp_px_m) to its sample spacing
+    first: a speckle image keeps its mean and loses its speck contrast; coarse images and untagged nodes are left alone."""
+    import shutil
+    import subprocess
+    if not shutil.which("blender"):
+        return
+    code = r'''
+import sys, numpy as np, bpy
+sys.path.insert(0, sys.argv[-1]); import blender_scene as bs
+assert abs(bs.image_px_m({"w": 0.1, "h": 0.2}, (1000, 1000)) - 0.0001) < 1e-12
+assert abs(bs.image_px_m({"w": None, "su": 2.0, "r0": 0.05, "sv": 1.0}, (1000, 500)) - 0.0001) < 1e-12
+rng = np.random.default_rng(0); W = 256
+a = np.ones((W, W, 4), np.float32); a[..., :3] = np.where(rng.random((W, W, 1)) < 0.1, 0.0, 1.0)
+im = bpy.data.images.new("speck", W, W, alpha=True); im.pixels.foreach_set(a.ravel())
+m = bpy.data.materials.new("t"); m.use_nodes = True
+n1 = m.node_tree.nodes.new("ShaderNodeTexImage"); n1.image = im; n1["hp_px_m"] = 0.00006
+n2 = m.node_tree.nodes.new("ShaderNodeTexImage"); n2.image = im; n2["hp_px_m"] = 0.001
+n3 = m.node_tree.nodes.new("ShaderNodeTexImage"); n3.image = im
+lines = bs.prefilter_images(0.0002)
+assert len(lines) == 1 and n1.image.name.startswith("speck@mip3"), (lines, n1.image.name)
+assert n2.image == im and n3.image == im
+b = np.empty(n1.image.size[0] * n1.image.size[1] * 4, np.float32); n1.image.pixels.foreach_get(b); b = b.reshape(-1, 4)
+assert abs(b[:, 0].mean() - a[..., 0].mean()) < 0.02 and b[:, 0].min() > 0.2 and a[..., 0].min() == 0.0
+print("PREFILTER OK")
+'''
+    with tempfile.TemporaryDirectory() as d:
+        f = Path(d) / "t.py"
+        f.write_text(code)
+        r = subprocess.run(["blender", "-b", "--factory-startup", "--python", str(f), "--",
+                            str(Path(__file__).parents[1] / "src/hifipushie")], capture_output=True, text=True, timeout=300)
+    assert "PREFILTER OK" in r.stdout, r.stdout[-2000:] + r.stderr[-2000:]
+
+
+def test_skin_lod_cull_keeps_what_a_pose_uncovers():
+    """(Garrett s14) the underarm notch: the skin's residue deep under the jacket poked through the decimated sleeve at
+    LOD1-2, the one worn part left out of the per-LOD cull. Now the skin is culled from asset.LOD_SKIN_CULL_FROM too, but a
+    point a dumped clip frame uncovers (asset.skin_pose_exposed: the seated poses) is never dropped."""
+    from hifipushie import asset, lods
+
+    def sheet(n, x0, x1, z, up=True):
+        xs = np.linspace(x0, x1, n)
+        V = np.array([(x, y, z) for y in np.linspace(0, 0.2, n) for x in xs], float)
+        T = []
+        for j in range(n - 1):
+            for i in range(n - 1):
+                a, b, c, d = j * n + i, j * n + i + 1, (j + 1) * n + i, (j + 1) * n + i + 1
+                T += [(a, b, d), (a, d, c)] if up else [(a, d, b), (a, c, d)]
+        cv = np.array(T).ravel()
+        return {"verts": V, "corner_vert": cv, "normal": np.tile([0, 0, 1.0 if up else -1.0], (len(cv), 1))}
+
+    body = sheet(41, 0.0, 0.4, 0.0)
+    cover = sheet(41, -0.01, 0.30, 0.01)          # covers x < 0.30 at rest
+    moved = {**cover, "verts": cover["verts"] + [0.12, 0, 0]}   # a frame: the cover slides off x < 0.11
+    with tempfile.TemporaryDirectory() as d:
+        f = Path(d) / "seated.npz"
+        np.savez(f, **{"body:rest": body["verts"], "body:posed": body["verts"],
+                       "cloth_jacket:rest": cover["verts"], "cloth_jacket:posed": moved["verts"]})
+        P0 = body["verts"]
+        exp_ = asset.skin_pose_exposed(body, P0, [cover], "body", ["cloth_jacket"], str(f))
+        assert not asset.skin_pose_exposed(body, P0, [cover], "body", ["cloth_jacket"], None).any()
+    x = P0[:, 0]
+    assert exp_[x < 0.1].all() and not exp_[(x > 0.16) & (x < 0.24)].any()
+    un0 = x < 0.30
+    keep_rest = lods.cull_covered(body, P0, un0)
+    keep_pose = lods.cull_covered(body, P0, un0 & ~exp_)
+    T = body["corner_vert"].reshape(-1, 3)
+    cx = P0[T].mean(1)[:, 0]
+    assert not keep_rest[(cx > 0.03) & (cx < 0.08)].any()      # at rest alone those faces would go
+    assert keep_pose[cx < 0.1].all()                           # the pose keeps them
+    assert not keep_pose[(cx > 0.17) & (cx < 0.25)].any()      # deep and never uncovered: dropped
+    assert asset.LOD_SKIN_CULL_FROM == 1
 
 
 def _bump_part():
@@ -1384,3 +1634,37 @@ def test_point_mesh_distance_is_exact_on_a_triangle():
     P = np.array([[0.2, 0.2, 0.5], [2, 0, 0], [-1, -1, 0], [0.5, 0.5, 1.0], [0.5, -1, 0]])
     d = scene.point_mesh_distance(P, V, F)
     assert np.allclose(d, [0.5, 1.0, np.sqrt(2), 1.0, 1.0]), d
+
+
+def test_push_under_never_moves_a_flipped_normal_out_through_its_cover():
+    """(r67) rc2s's coat speck was made BY the push: a sweater fold's vertex normals pointed into the body, so the coat
+    (outside it) read as behind it, a poke, and the vertex was moved 'in' along that normal = 5-22 mm out through the
+    coat's back. under_depth now orients outward normals by the nearest cover's facing, and a poking face moves only
+    corners within 60 deg of it. A layer entirely under its cover stays under it."""
+    import numpy as np
+    from hifipushie import lods
+    n = 11
+    x, y = np.meshgrid(np.linspace(0, 0.2, n), np.linspace(0, 0.2, n))
+
+    def sheet(z):
+        V = np.stack([x.ravel(), y.ravel(), np.full(x.size, z)], 1)
+        F = []
+        for i in range(n - 1):
+            for j in range(n - 1):
+                a = i * n + j
+                F += [[a, a + 1, a + n + 1], [a, a + n + 1, a + n]]
+        F = np.asarray(F)
+        N = np.zeros_like(V)
+        N[:, 2] = 1.0
+        return V, F, N
+    V, F, N = sheet(0.0)
+    fold = [5 * n + 5, 5 * n + 6]
+    V[fold, 2] = 0.007                   # 3 mm under the cover at z = 0.01
+    N[fold] = [0.0, 0.3, -0.95]          # normals into the body
+    under = {"verts": V, "corner_vert": F.ravel(), "normal": N[F.ravel()]}
+    Vc, Fc, Nc = sheet(0.01)
+    cover = {"verts": Vc, "corner_vert": Fc.ravel(), "normal": Nc[Fc.ravel()]}
+    parts = {"u": under, "c": cover}
+    lods.push_under_layers(parts, {"u": ["c"]}, gap=0.002)
+    assert np.asarray(parts["u"]["verts"])[:, 2].max() <= 0.008 + 1e-9
+

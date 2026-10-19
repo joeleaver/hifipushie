@@ -311,9 +311,22 @@ SPLIT_MIN = 6  # strands: the smallest clump that is split again
 ENV_FALLBACK = 1.0  # 1: envelope() falls back to uniform sphere cells where a 3-deg bin is thin (b25); 0 = off (A/B, round 18)
 
 
-def envelope(St: dict, C, deg: float = 3.0, pct: float = 97.0):
+GRADE_SLOPE = 0.0  # (c13, Garrett) m per deg: the head cards' envelope GRADED down the back: no bin's radius drops more
+# than this per degree of elevation below a higher bin's (a downward dilation over GRADE_BAND), and the head cards are
+# raised onto that graded surface where it stands over the plain one (_grade_fill). The long top hair's ends over the
+# short back made a 5-7 mm step in ONE 6 deg bin at elev 30-36 on the back midline (the strands' median; c12 ledge.py),
+# the cards copied it; Garrett's photo shows no ledge, the groom's own 98th-percentile tips grade it over ~20 deg
+# (0.3 mm / deg). 0 = off
+GRADE_BAND = 20.0  # deg of elevation the grade reaches down
+GRADE_AZ = 100.0  # deg: only where |azimuth| (0 = the face, 180 = the back) is over this (the back of the head)
+_GRADED = []  # (c13) per head card: its largest raise by the grade (m), printed after the cut
+GRADE_SEAT = 0.015  # m: the raise eases in over a card's first this-many m from its root (seated roots stay seated)
+
+
+def envelope(St: dict, C, deg: float = 3.0, pct: float = 97.0, grade: float = 0.0):
     """The head hair's outer surface seen from the head's centre: a function points -> the strands' `pct` radius in
-    their (azimuth, elevation) bin (NaN where too few strands)."""
+    their (azimuth, elevation) bin (NaN where too few strands). `grade` (m / deg, GRADE_SLOPE): behind GRADE_AZ each
+    bin is raised to max over the GRADE_BAND above it of (their radius - grade x the elevation between)."""
     C = np.asarray(C, float)
     Q = St["Q"][St["cls"] == "head"][:, ::2].reshape(-1, 3)
     Q = Q[np.isfinite(Q[:, 0])].astype(float)
@@ -328,6 +341,22 @@ def envelope(St: dict, C, deg: float = 3.0, pct: float = 97.0):
     o = np.argsort(kq)
     u, st, cnt = np.unique(kq[o], return_index=True, return_counts=True)
     env = {int(k): (float(np.percentile(rq[o][a:a + c], pct)) if c >= 20 else np.nan) for k, a, c in zip(u, st, cnt)}
+    if grade > 0:
+        g_ = dict(env)
+        for k, v in env.items():
+            ia, ie = k // 100000, k % 100000
+            if ie > 50000:  # (negative elevation bins: python floor division keeps ia, ie consistent; ie wraps)
+                ia, ie = ia + 1, ie - 100000
+            if abs((ia + 0.5) * deg) <= GRADE_AZ:
+                continue
+            best = v if np.isfinite(v) else -np.inf
+            for j in range(1, int(np.ceil(GRADE_BAND / deg)) + 1):
+                w_ = env.get(int(ia * 100000 + ie + j), np.nan)
+                if np.isfinite(w_):
+                    best = max(best, w_ - grade * j * deg)
+            if np.isfinite(best):
+                g_[k] = float(best)
+        env = g_
     # fallback where an (azimuth, elevation) bin is empty or thin: near the pole those bins shrink to slivers (under 20
     # strand points), the envelope was NaN there and a card crossing the crown was never held under it (b24's crown
     # "plate": layer-1 card 133 arched front -> back over the top, 37% of its vertices on NaN bins, 1.5 cm2 standing
@@ -428,13 +457,18 @@ def crown_loops(St: dict, C) -> np.ndarray:
     return out
 
 
+HEAD_LIFT = 0.0  # m (c12): every head layer moved out along its normal by this (still under the envelope, the root
+# seated by ROOT_SEAT). The head cards' outer surface sat 3-4 mm (p90) under the groom's in every region (c12 vol.py:
+# temple p90 5.9 vs 9.7 mm), and HEAD_SN_MAX was a dead lever there (clump spreads under its 3 mm cap: c12v1 = c11L)
+
+
 def layer_offset(sn, la: int, cls: str) -> np.ndarray:
     """A card's offset along its normal from its clump's centre line (m), per station: coverage under, mid at the
     clump, top over it (by the clump's spread `sn` along its normal; a head clump's spread capped at HEAD_SN_MAX)."""
     sn = np.asarray(sn, float)
     if cls == "tail":
         return sn * (-0.6, 0.4, 1.0)[min(la, 2)] + 0.0004 * la
-    return np.minimum(sn, HEAD_SN_MAX) * (-0.6 + 0.6 * la) + 0.0004 * la
+    return np.minimum(sn, HEAD_SN_MAX) * (-0.6 + 0.6 * la) + 0.0004 * la + (HEAD_LIFT if cls == "head" else 0.0)
 
 
 HEAD_END = 0.35  # a head card runs on to where this share of its clump's strands still run (c5, Garrett: the hairline
@@ -479,6 +513,26 @@ def _crown_fill(P, la: int, n_layers: int, env, C, s=None) -> np.ndarray:
     if CROWN_SEAT > 0 and s is not None and len(s) and P[0, 1] < float(np.asarray(C)[1]) + CROWN_SEAT_Y:
         w = w * _ss(np.clip(np.asarray(s, float) / CROWN_SEAT, 0.0, 1.0))
     tgt = np.nan_to_num(np.asarray(e, float), nan=0.0) - ENV_UNDER - CROWN_GAP * (n_layers - 1 - la)
+    from scipy.ndimage import gaussian_filter1d
+    up = gaussian_filter1d(np.maximum(0.0, tgt - r) * w, 1.5)
+    return np.asarray(C, float) + d * ((r + up) / np.maximum(r, 1e-9))[:, None]
+
+
+def _grade_fill(P, la: int, n_layers: int, env, env_g, C, s=None) -> np.ndarray:
+    """(c13) A head card raised (never lowered) onto the GRADED envelope (GRADE_SLOPE) where it stands over the plain
+    one, less ENV_UNDER and CROWN_GAP per layer under the top, eased in from the root over GRADE_SEAT."""
+    P = np.asarray(P, float)
+    d = P - np.asarray(C, float)
+    r = np.linalg.norm(d, axis=1)
+    e, _ = env(P)
+    eg, _ = env_g(P)
+    add = np.nan_to_num(np.asarray(eg, float) - np.asarray(e, float), nan=0.0)
+    if add.max() <= 5e-4:
+        return P
+    w = np.clip(add / 0.002, 0.0, 1.0)
+    if GRADE_SEAT > 0 and s is not None and len(s):
+        w = w * _ss(np.clip(np.asarray(s, float) / GRADE_SEAT, 0.0, 1.0))
+    tgt = np.nan_to_num(np.asarray(eg, float), nan=0.0) - ENV_UNDER - CROWN_GAP * (n_layers - 1 - la)
     from scipy.ndimage import gaussian_filter1d
     up = gaussian_filter1d(np.maximum(0.0, tgt - r) * w, 1.5)
     return np.asarray(C, float) + d * ((r + up) / np.maximum(r, 1e-9))[:, None]
@@ -963,6 +1017,8 @@ def cut(D: dict, locks: list, C, S: dict, side_of=None, seed: int = 0, layers: d
     _FILL_BACK.clear()
     env = envelope(St, C, pct=ENV_PCT)
     env_side = envelope(St, C, pct=SIDE_ENV_PCT) if SIDE_ENV_PCT != ENV_PCT else None
+    env_g = envelope(St, C, pct=ENV_PCT, grade=GRADE_SLOPE) if GRADE_SLOPE > 0 else None
+    _GRADED.clear()
     layers = layers or LAYERS
     rng = np.random.default_rng(seed + 31)
     out = []
@@ -1100,6 +1156,10 @@ def cut(D: dict, locks: list, C, S: dict, side_of=None, seed: int = 0, layers: d
                 if cls == "head" and CROWN_FILL > 0:  # (round 31) the head's layers raised toward the strands' envelope (after
                     # the root seat: seated roots were most of the shortfall over the crown)
                     P = _crown_fill(P, la, len(layers[cls]), env, C, c["s"])
+                if cls == "head" and env_g is not None:  # (c13) the back's step graded (GRADE_SLOPE)
+                    P_ = _grade_fill(P, la, len(layers[cls]), env, env_g, C, c["s"])
+                    _GRADED.append(float(np.max(np.linalg.norm(P_ - P, axis=1))) if len(P) else 0.0)
+                    P = P_
                 kind = "baked"
                 u = (c["i0"] * STEP + c["s"]) / max(float(np.percentile(St["len"][mem], 95)), 0.02)
                 out.append({"P": P, "X": c["X"], "N": c["N"], "T": c["T"], "bend": c["bend"], "hw": c["hw"],
@@ -1133,7 +1193,7 @@ def cut(D: dict, locks: list, C, S: dict, side_of=None, seed: int = 0, layers: d
     hr = S.get("hairline_row")
     hr = hr and {**HAIRLINE_ROW, **(hr if isinstance(hr, dict) else {})}
     if hr and triangles >= float(hr["min_triangles"]):  # (c9) a dedicated row of short cards along the temple / sideburn hairline band
-        out += hairline_row(St, C, hr, env, triangles, seed)
+        out += hairline_row(St, C, hr, env, triangles, seed, env_side=env_side)
     # flyaways: single strands that break the outline, a card each (Epic: one card per flyaway strand)
     idx = np.nonzero(St["cls"] == "single")[0]
     if len(idx):
@@ -1174,6 +1234,9 @@ def cut(D: dict, locks: list, C, S: dict, side_of=None, seed: int = 0, layers: d
               f"{', '.join(f'L{a} {k}/{n}' for a, n, k in _HOOKS[:12])}", flush=True)
     if out:
         out[0]["_St"] = St
+    if _GRADED:
+        g_ = np.asarray(_GRADED)
+        print(f"grade: {int((g_ > 5e-4).sum())} of {len(g_)} head cards raised onto the graded back (max {1000 * g_.max():.1f} mm)", flush=True)
     return out
 
 
@@ -1197,7 +1260,15 @@ FLOW_TOP = {"cards": 8, "el": 30.0, "len_pct": 50.0, "hw": 0.012, "pct": 94.0, "
 # below el ~-15 in front of the ear), half width up to `hw`, laid at layer 1's offset, held under the envelope.
 HAIRLINE_ROW = {"cards": 24, "az": (50.0, 100.0), "el": (-40.0, 5.0), "min_stations": 3, "min_len": 0.006,
                 "hw": 0.008, "layer": 1, "edge": False, "min_triangles": 3000, "lit": 0.0, "pass": False, "pass_el": 60.0,
-                "pass_back": 0.012}
+                "pass_back": 0.012, "low_el": None, "low_cards": None, "low_hw": None,
+                "rise": 0.0}
+# (c11) `rise`: a row card's stations (past its root seat) raised this share of the way out to the SIDE envelope
+# (SIDE_ENV_PCT, ENV_UNDER under it), and held under the side envelope instead of the top's ENV_PCT one: the groom's
+# temple-to-ear sheet stands off the head (c10L front width 168 px vs 182 at 1 m), the row lay on it
+# (c11) `low_el`: the band's strands whose entry (root, or a passing strand's first station in the band) lies under this
+# el are clustered on their own (`low_cards` per side at 20k triangles, default `cards`; half width up to `low_hw`,
+# default `hw`): c10's passing strands joined the band's 24 clusters a side and the clusters' cards followed the upper
+# strands, so the groom's sheet in front of the ear (el ~-30..-10) stayed bare
 # (c10) `pass`: also the head strands that PASS THROUGH the band (a station in it, rooted up to `pass_el`): Garrett's
 # silver temple sheet is long hair from above lying down over the band, few roots in it. Such a strand's card starts
 # `pass_back` m before it enters the band (cut there, not root-seated). `lit` as FLOW_TOP's (own tile group).
@@ -1323,7 +1394,7 @@ def tuck_under(cards: list, flow: list, C, tuck: float) -> int:
     return moved
 
 
-def hairline_row(St: dict, C, o: dict, env, triangles: int, seed: int = 0) -> list:
+def hairline_row(St: dict, C, o: dict, env, triangles: int, seed: int = 0, env_side=None) -> list:
     """HAIRLINE_ROW's cards (see there)."""
     C = np.asarray(C, float)
     az, el, _ = _azel(St["root"], C)
@@ -1333,7 +1404,7 @@ def hairline_row(St: dict, C, o: dict, env, triangles: int, seed: int = 0) -> li
     n = _tier_n(o["cards"], triangles)
     for sgn in (-1.0, 1.0):
         idx = np.nonzero((St["cls"] == "head") & (sgn * az >= a0) & (sgn * az <= a1) & (el >= e0) & (el <= e1))[0]
-        start = {}
+        start, enter = {}, {}
         if o.get("pass"):  # (c10) strands that pass through the band: cut from just before they enter it
             Q_ = St["Q"]
             hd = np.nonzero((St["cls"] == "head") & (el > e1) & (el <= float(o["pass_el"])))[0]
@@ -1344,13 +1415,25 @@ def hairline_row(St: dict, C, o: dict, env, triangles: int, seed: int = 0) -> li
             back = int(round(float(o["pass_back"]) / STEP))
             for j, f in zip(hd[hit], first[hit]):
                 start[int(j)] = max(0, int(f) - back)
+                enter[int(j)] = int(f)
             idx = np.r_[idx, hd[hit]]
         if len(idx) < MIN_STRANDS:
             continue
-        lab = kmeans(features(St, idx), min(n, max(1, len(idx) // MIN_STRANDS)), seed + 211)
-        todo = [(idx[lab == g], 0) for g in np.unique(lab)]
+        groups = [(idx, n, float(o["hw"]))]
+        if o.get("low_el") is not None:  # (c11) the low band clustered on its own
+            ent = np.array([el[j] if int(j) not in enter else float(_azel(St["Q"][j][enter[int(j)]], C)[1])
+                            for j in idx])
+            lo = ent < float(o["low_el"])
+            groups = [(idx[~lo], n, float(o["hw"])),
+                      (idx[lo], _tier_n(o.get("low_cards") or o["cards"], triangles), float(o.get("low_hw") or o["hw"]))]
+        todo = []
+        for gi_, (ix_, n_, hw_) in enumerate(groups):
+            if len(ix_) < MIN_STRANDS:
+                continue
+            lab = kmeans(features(St, ix_), min(n_, max(1, len(ix_) // MIN_STRANDS)), seed + 211 + 7 * gi_)
+            todo += [(ix_[lab == g], 0, hw_) for g in np.unique(lab)]
         while todo:
-            mem, dep = todo.pop(0)
+            mem, dep, hw_ = todo.pop(0)
             if len(mem) < MIN_STRANDS:
                 continue
             Qm = St["Q"][mem]
@@ -1359,19 +1442,25 @@ def hairline_row(St: dict, C, o: dict, env, triangles: int, seed: int = 0) -> li
                 Qm = np.full_like(Qm, np.nan)
                 for i_, (j, k_) in enumerate(zip(mem, sh)):
                     Qm[i_, :Qm.shape[1] - k_] = St["Q"][j][k_:]
-            c = fit(Qm, _cen_of(C, None), end_share=HEAD_END, max_hw=float(o["hw"]), spread=90.0,
+            c = fit(Qm, _cen_of(C, None), end_share=HEAD_END, max_hw=hw_, spread=90.0,
                     reference=True, min_stations=int(o["min_stations"]), min_len=float(o["min_len"]))
             if c is None:  # (short hairs rooted in a row down their own run: split, as the cut's SPLIT_DEPTH)
                 if dep < 3 and len(mem) >= 2 * MIN_STRANDS:
                     sub = kmeans(features(St, mem), 2, seed + 223 + dep)
                     if 0 < int(sub.sum()) < len(sub):
-                        todo += [(mem[sub == 0], dep + 1), (mem[sub == 1], dep + 1)]
+                        todo += [(mem[sub == 0], dep + 1, hw_), (mem[sub == 1], dep + 1, hw_)]
                 continue
             la = int(o["layer"])
             yo = layer_offset(c["sn"], la, "head")
             P = c["P"] + c["N"] * yo[:, None]
+            rs_ = float(o.get("rise") or 0.0)
+            if rs_ > 0 and env_side is not None:  # (c11) out toward the side envelope
+                es_, r_ = env_side(P)
+                up_ = np.clip(np.nan_to_num(es_ - ENV_UNDER - r_, nan=0.0), 0.0, None) * rs_
+                up_ *= np.clip(np.asarray(c["s"], float) / 0.01, 0.0, 1.0)  # (not at the root)
+                P = P + _unit(P - C) * up_[:, None]
             cc_ = {"P": P, "X": c["X"], "hw": c["hw"]}
-            _under_envelope(cc_, env, C)
+            _under_envelope(cc_, env, C, env_side if rs_ > 0 else None)
             P = _root_seat(cc_["P"], c["s"], St["root"][mem], C) if (ROOT_SEAT > 0 and not sh.any()) else cc_["P"]
             out.append(_card(c, P, la, mem, St, {"name": f"hrow{len(out)}", "at_hairline": bool(o["edge"])}, 1.0, la + 0.05,
                              hrow=True, **({"lit": float(o["lit"])} if float(o["lit"]) > 0 else {})))

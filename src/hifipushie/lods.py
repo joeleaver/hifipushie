@@ -932,6 +932,8 @@ def under_depth(p: dict, covers: list[dict], reach: float = LOD_UNDER_REACH):
         flip = ok & ((N * QN[np.where(ok, j, 0)]).sum(1) < 0)
         if flip.any():
             N = np.where(flip[:, None], -N, N)
+    if LOD_UNDER_ORIENT:
+        N = orient_to_covers(V[vid], N, covers, reach)
     return vid, N, fol, cover_depth(V[vid], N, covers, reach)
 
 
@@ -948,6 +950,33 @@ def _cover_samples(covers: list[dict]) -> tuple[np.ndarray, np.ndarray]:
         Q += [T.mean(1), T.reshape(-1, 3)]
         QN += [n, np.repeat(n, 3, 0)]
     return np.concatenate(Q), np.concatenate(QN)
+
+
+LOD_UNDER_MAX_MOVE = 0.010  # m: (Garrett s8) no push-under moves a garment vertex further (0 = no cap)
+# LOD_UNDER_ORIENT (above) also gates orient_to_covers: (Garrett s7) the under part's "outward" normals agree with the nearest cover's outward
+
+
+def orient_to_covers(P: np.ndarray, N: np.ndarray, covers: list[dict], reach: float = LOD_UNDER_REACH) -> np.ndarray:
+    """(Garrett s7) N flipped where it points against the outward normal of the nearest cover vertex within `reach`.
+    A garment's own winding can be mixed (Garrett's frozen shirt: about half its outer-shell normals point into the arm
+    at the forearms), and push_under_layers moves a vertex "in" along its normal: a flipped one was driven OUT through
+    the jacket sleeve (v6b: up to 39 mm, a white shirt mass over the right forearm at LOD0-2). The covers (the jacket's
+    outer shell) know which way is out."""
+    if not len(P) or not covers:
+        return N
+    cP, cN = [], []
+    for c in covers:
+        if "normal" not in c:  # (a cover without normals: nothing to orient by)
+            continue
+        cv_, cn_, _ = _vertex_out(c)
+        if len(cv_):
+            cP.append(np.asarray(c["verts"], np.float64)[cv_])
+            cN.append(cn_)
+    if not cP:
+        return N
+    d, i = cKDTree(np.concatenate(cP)).query(P)
+    flip = (d < reach) & ((N * np.concatenate(cN)[np.minimum(i, sum(len(x) for x in cP) - 1)]).sum(1) < 0)
+    return np.where(flip[:, None], -N, N)
 
 
 def cover_depth(P: np.ndarray, N: np.ndarray, covers: list[dict], reach: float = LOD_UNDER_REACH) -> np.ndarray:
@@ -1000,6 +1029,10 @@ LOD_UNDER_CULL_FROM = 2  # (r60) from this LOD on, a part worn under garments (n
 # keeps a 40 mm rim under every opening (close up, a hem rides up), and rc2j's LOD2 showed that rim (the socks' tops) as a
 # shard through the decimated jeans' calf, which pushing in along either normal did not cure (socks poking 42 -> 8)
 LOD_UNDER_CULL_RIM = 0.015  # m
+LOD_UNDER_CULL_GARMENTS_FROM = 1  # (Garrett s10) from this LOD on, an under GARMENT (the shirt) drops its faces that were
+# deep under its covers at LOD0 the same way (cull_covered, the same rim): v7's LOD1 back showed a long white shirt shard down
+# the right forearm sleeve where the decimated sleeve dips more than LOD_UNDER_MAX_MOVE under the LOD0 shirt (shirt poking
+# 86 -> 36, 192 capped); a bigger push sent the shirt out through the other side (v6b), so the hidden faces go instead
 
 
 def cull_covered(p: dict, P0: np.ndarray, under0: np.ndarray, rim: float = LOD_UNDER_CULL_RIM) -> np.ndarray:
@@ -1263,10 +1296,25 @@ def push_under_layers(parts: dict, stack: dict, gap: float = LOD_UNDER_GAP, reac
             ln_ = np.linalg.norm(dv_, axis=1)
             far_ = ln_ > LOD_UNDER_WORN_MAX
             V[far_] = np.asarray(parts[un]["verts"], np.float64)[far_] + dv_[far_] * (LOD_UNDER_WORN_MAX / ln_[far_])[:, None]
+        capped = 0
+        if LOD_UNDER_MAX_MOVE:  # (Garrett s8) a push-under is a few mm: a vertex sent further is a wrong normal or a
+            # wrong cover (v6b: the shirt 39 mm out through the jacket sleeve), so no vertex moves more than the cap
+            # (Tess r61 capped the skin at 10 mm the same way); what it leaves poking is reported
+            V0 = np.asarray(parts[un]["verts"], np.float64)
+            dv_ = V - V0
+            dn_ = np.linalg.norm(dv_, axis=1)
+            over_ = dn_ > LOD_UNDER_MAX_MOVE
+            capped = int(over_.sum())
+            if capped:
+                V = V0 + dv_ * np.minimum(1.0, LOD_UNDER_MAX_MOVE / np.maximum(dn_, 1e-12))[:, None]
+                p["verts"] = V
+                vid, _, _, t = under_depth(p, covers, reach)
+                if masks and un in masks and len(masks[un][0]):
+                    t = np.where(masks[un][1][cKDTree(masks[un][0]).query(V[vid])[1]], t, np.nan)
         p["verts"] = V.astype(np.float32)
         parts[un] = p
         rep[un] = {"poking0": int(poke0 or 0), "poking": int((np.isfinite(t) & (t < 0)).sum()), "moved": int(moved.sum()),
-                   "faces_poking0": pokef, "flaps": nflap}
+                   "faces_poking0": pokef, "capped": capped, "flaps": nflap}
     return rep
 
 

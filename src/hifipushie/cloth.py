@@ -11311,7 +11311,22 @@ def piece_flips(M: dict, V: np.ndarray, body=None, tol: float = 0.0006) -> np.nd
     face_out = np.sum(fn * outv, 1) * sgn[pf]
     if np.sum(np.sign(face_out) * 0.5 * np.linalg.norm(fn, axis=1)) < 0:
         sgn = -sgn
+        face_out = -face_out
+    if body is not None and len(getattr(body, "V", [])) and PIECE_BODY_VOTE:
+        # (Garrett s8) a piece the seam vote turned the wrong way faces INTO the body over nearly all of it: Garrett's
+        # frozen shirt had sleeve.R (98 % of its area) and cuff.L (100 %) facing in, so the export's normals there pointed
+        # into the arm and the LOD push-under drove the shirt OUT through the jacket sleeve (v6b / v6c). Such a piece is
+        # turned alone. A turned collar (its fall over its stand: a mixed vote, ~-0.5) stays as the seams say.
+        dn_ = np.linalg.norm(outv, axis=1)
+        a_ = 0.5 * np.linalg.norm(fn, axis=1) * (dn_ < PIECE_BODY_NEAR)
+        vote = np.bincount(pf, weights=np.sign(face_out) * a_, minlength=P) / np.maximum(np.bincount(pf, weights=a_, minlength=P), 1e-12)
+        near = np.bincount(pf, weights=a_, minlength=P) / np.maximum(area, 1e-12)
+        sgn = np.where((vote < -PIECE_BODY_VOTE) & (near > 0.5), -sgn, sgn)
     return sgn < 0
+
+
+PIECE_BODY_VOTE = 0.8  # (Garrett s8) piece_flips turns a piece alone when its faces within PIECE_BODY_NEAR of the body
+PIECE_BODY_NEAR = 0.03  # m  ... (over half its area) face into the body by more than this area-weighted vote (0 = off)
 
 
 def oriented_faces(M: dict, V: np.ndarray, F: np.ndarray | None = None, body=None) -> np.ndarray:

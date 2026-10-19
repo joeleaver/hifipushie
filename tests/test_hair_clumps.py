@@ -431,3 +431,41 @@ def test_card_grey_follows_its_locks():
     g = hk.card_grey(cards, St, locks, {"grey_locks": 1.0})
     assert np.allclose(g, [0.2, 0.7, 0.45])
     assert hk.card_grey(cards, St, [{"name": "a"}, {"name": "b"}], {}) is None
+
+
+def test_no_card_spans_the_part():
+    D, locks = _groom()
+    cards = hk.cut(D, locks, C, S, side_of=side_of, triangles=600)
+    St = cards[0]["_St"]
+    head = [c for c in cards if c["cls"] == "head"]
+    assert head
+    for c in head:
+        sides = np.sign(St["root"][c["strands"], 0])
+        assert len(set(sides.tolist())) == 1, "a card's strands come from both sides of the part"
+        assert abs(c["P"][0, 0]) >= hk.PART_GAP - 1e-6, "a card's root on the part line"
+
+
+def test_envelope_grade_spreads_a_back_step():
+    """(c13) GRADE_SLOPE: a 6 mm step in the strands' radius on the back (elev 30) is spread down over GRADE_BAND at the
+    slope; the front (|az| < GRADE_AZ) and everything above the step are untouched."""
+    import numpy as np
+    from hifipushie import hair_clumps as hk
+    C = np.zeros(3)
+    rng = np.random.default_rng(0)
+    pts = []
+    for az in (0.0, 180.0):
+        for el in np.arange(0.5, 60, 1.0):
+            r = 0.100 + (0.006 if el >= 30 else 0.0)
+            a, e = np.radians(az + rng.uniform(-1, 1, 400)), np.radians(el + rng.uniform(-0.4, 0.4, 400))
+            pts.append(np.stack([r * np.cos(e) * np.sin(a), -r * np.cos(e) * np.cos(a), r * np.sin(e)], 1))
+    Q = np.concatenate(pts)
+    St = {"Q": Q[:, None, :].repeat(2, 1), "cls": np.array(["head"] * len(Q))}
+    plain, graded = hk.envelope(St, C, pct=90), hk.envelope(St, C, pct=90, grade=0.0003)
+
+    def at(az, el):
+        a, e = np.radians(az), np.radians(el)
+        return np.array([[np.cos(e) * np.sin(a), -np.cos(e) * np.cos(a), np.sin(e)]]) * 0.1
+    for el, want in ((40, 0.0), (28.5, 0.006 - 0.0003 * 3), (19.5, 0.006 - 0.0003 * 12), (4.5, 0.0)):
+        d = float(graded(at(179, el))[0][0] - plain(at(179, el))[0][0])
+        assert abs(d - max(want, 0.0)) < 6e-4, (el, d, want)
+    assert abs(float(graded(at(1, 20))[0][0] - plain(at(1, 20))[0][0])) < 1e-9  # the front: no grade

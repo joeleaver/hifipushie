@@ -4504,3 +4504,460 @@ STATE: guard committed; v6b export at LOD2 (s6/chain_b.sh, not mine: collecting)
   light / camera) hides it. Routed to hair-cards: the top layer needs to come down to the back's standoff (or the back
   layer to grade up to it) across el ~60-75 deg.
 STATE: guard committed; ledge routed (cards). NEXT: v6b specks when s6/chain_b.sh ends (export at LOD3 + worn push-under).
+- (1) v6b COLLECTED (exp/ag_garrett_v6b, spec chain jacket > trousers > shirt; LOD0 93,6xx, clothing 24,282 / 25,000,
+  hair_cards 26,148 OVER, LOD1 39,583 / LOD2 19,330 / LOD3 8,460). Specks (s6/logs/specks_v6b.log vs v6): the left collar
+  sliver [54 57 1494] (33 px) GONE, the upper-back shirt specks (54 / 36 px at [-206 -56 1471]) GONE; NEW big shirt cluster
+  at the RIGHT WRIST [-367 -73 1060] (540 px back, 381 front, 147 3q). Game check ag6b (s7/c_front.png, s7/c_l0.png,
+  v6 | v6b): LOD1 / LOD2 chest + sleeve shards GONE, LOD3's black shirt front now the pale shirt (fixed); the lapel-top white
+  and the back speck gone at LOD0; BUT a white shirt mass breaks out through his right forearm sleeve at LOD0-2 (front and
+  back, readable at 3 m): v6b NOT shippable.
+- CAUSE (s7 probes): the jacket's outer sleeve normals are clean (0-4 % inward) but the frozen shirt's outer-shell normals
+  are ~half INWARD at the forearms (R 57 %, L 45 %; torso 39 %). push_under_layers moves a vertex "in" along its own normal,
+  so the reversed ones went OUT (323 right-forearm vertices moved, up to 38.8 mm). FIX (code, lods.orient_to_covers,
+  LOD_UNDER_ORIENT): under_depth flips an under vertex's normal where it opposes the nearest cover vertex's outward normal
+  (within reach); the cover knows which way is out. Test test_push_under_trusts_the_cover_for_outward (reversed sheet poking
+  1 mm ends under; off = the v6b fault). The shirt's mixed winding itself: dress-garrett / cloth (export_part orientation).
+STATE: orient fix committed. NEXT: v6c = ag_garrett6b spec + the fix (s7/chain_c.sh: export, specks, rge ag6c).
+- COORDINATOR (head drift, garrett_drift/out/garrett_drift_sheet.png): (1) RULE: the export's head geometry = the APPROVED
+  head (approved.json head/garrett = gp_h6c); ag_garrett6's base.head differs from gp_h6c's ONLY by s21's lid_fold and shape
+  (eye_bag, cheek_flat), never approved. CODE: asset.approved_head(spec, log) composes base.head_approved's model's
+  base.head (the build keeps only "attach"), logs what it replaced; asset.export GATES on it (a spec with head_approved whose
+  head differs raises: geometry is built from the stored model, so it is a check, not an in-memory swap). Test
+  test_export_head_is_the_approved_head. Model ag_garrett6d = ag_garrett6b's spec (over chain) + gp_h6c's head
+  (+ head_approved "head/garrett"): NOT exported yet. Note skin.folds are also field modifiers (geometry, "tissue"): check
+  whether they reach the export's head and whether the rule should strip them too (open).
+  (2) the export-only lid line / under-eye bags: NOT started (budget). See the handover.
+- v6c (exp/ag_garrett_v6c = ag_garrett6b spec + lods.orient_to_covers; game check offload/ag6c; s7/c6c.png v6 | v6c at
+  LOD0 front / back, LOD1-3): LOD0 shirt poking 105 -> 43 (464 moved; v6b 223 -> 3, 672 moved, with the reversed normals).
+  LOOK (mine): better than v6b, NOT fixed: smaller white shirt patches still break through the RIGHT forearm sleeve at LOD0
+  (front + back), white slabs at LOD1 / LOD2's right forearm; LOD3's black shirt front stays fixed (pale shirt); chest
+  shards at LOD1-2 mostly gone. Specks >= 30 px: right forearm [-386 .. -318, z 1.06-1.18] 170 / 107 / 86 px. Verdict: v6
+  stays RC (body); v6b / v6c are not shippable. No A/B run (no candidate better than v6 to judge; review-ab's CLI is
+  before its 2026-10-19 13:00 MT start), no new Joe sheet (s7/sheet.py ready for ag6c, would show the regression).
+
+### Handover (assembly_garrett session 7, tool-call budget)
+- DONE: (2) guard asset.garment_over (frozen garments' own "over", logged / WARNING; test). (3) crown ledge = cards'
+  standoff step 3 -> 10 mm at el ~66-72 deg, identical in c6M's own GLB: routed to hair-cards (evidence in (3) above).
+  (1) v6b collected: fixes the collar sliver, back speck, LOD1-2 chest shards, LOD3 black front, but pushes the shirt OUT
+  through the right forearm (shirt's outer-shell winding ~half reversed at the forearms). lods.orient_to_covers (test) helps
+  (v6c) but does not clear it. Coordinator's rule (1): asset.approved_head + export gate (test); model ag_garrett6d written.
+- NEXT, in order: (a) the forearm: the root cause is the frozen shirt's mixed winding (dress-garrett / cloth export_part):
+  either orient the shirt's outer shell consistently at freeze / thaw (main's a5cb607e "drawn_faces: welded, consistently
+  oriented" may be the tool), or in push_under cap the move (a vertex 39 mm out is never a 2 mm push-under) and skip
+  vertices whose normal disagrees with its neighbours'. Probe offline on exp/ag_garrett_v6/ag_garrett6.glb (s7/glbload.py
+  loads V / N / F; the shirt's outer shell = the first half of its faces). (b) export ag_garrett6d (approved head + over
+  chain + the forearm fix) with s7/chain_c.sh retargeted; the export log must say "head: = the approved head head/garrett
+  (checked)". (c) coordinator (2): the GLB's dark jagged line above the upper lids + dark under-eye bags (not in s21's stage
+  render): render the GLB vs the approved gp_h6c head at the same camera / light; test lashes vs lid_fold overhang (gone
+  with the approved head?), baked AO / normal at the lids (render without them), bake cage at the eye corners. Every Joe
+  sheet adds the APPROVED head's render beside the build (s7/sheet.py lacks it). (d) skin.folds are geometry ("tissue"):
+  decide with the coordinator whether the approved-head rule strips them. (e) A/B vs v6 with review-ab once a candidate
+  beats v6 on the look.
+STATE: session 7 done; RC = v6 (unchanged). Nothing of mine running (s7/PIDS chain finished).
+
+## Garrett, session 8 (2026-10-18, assembly_garrett, fresh; scratch /mnt/data/hifipushie/assembly_garrett/s8/)
+- (1) THE FOREARM, ROOT CAUSE (s8/flips.py: per piece, the seam-vote flip vs the piece's own vote against the body, faces
+  within 3 cm): the frozen shirt's sleeve.R (98 % of its area facing the arm, vote -0.96) and cuff.L (100 %, -1.00) were
+  turned the wrong way by piece_flips' seam vote (every other shirt / jacket / trousers piece +0.65 .. +1.00; the two
+  collars -0.46 / -0.48 = turned falls, made pieces ship instead). s7's "~half inward at the forearms" was that one sleeve.
+  FIX (code, cloth.piece_flips, PIECE_BODY_VOTE 0.8 / PIECE_BODY_NEAR 3 cm): a piece over half of whose area lies within
+  3 cm of the body and whose area-weighted vote there is < -0.8 is turned alone (export_part, oriented_faces, drawn_faces,
+  scene all go through it: freeze / thaw included). After: sleeve.R / cuff.R / cuff.L / sleeve.L all +0.96 .. +1.00.
+  Test test_piece_facing_into_the_body_is_turned_alone. AND the CAP (lods.LOD_UNDER_MAX_MOVE 10 mm, Tess r61's skin cap):
+  no push-under moves a vertex further (v6b moved the shirt 39 mm); the report / log say "N capped". Test
+  test_push_under_move_is_capped. lods.orient_to_covers (s7) stays as a second guard.
+- COORDINATOR RULE on skin.folds (code, asset.fold_form / fold_form_gate in approved_head; the export gate also compares
+  skin.folds): a fold's relief = amount x max(groove depth, roll height, platform); <= FOLD_FORM_MAX_MM 1.0 = skin detail,
+  ships; larger and not in the approved head's spec = clamped to 1 mm (roll / depth scaled) with a WARNING; the export
+  raises unless the model already carries the clamped value. Garrett: nasolabial 1.0 = 1.30 mm (its roll, the cheek pad)
+  -> clamped (roll x0.769) in ag_garrett7. Test test_skin_folds_over_a_millimetre_are_head_form.
+- (4) SKIN: skin.md (projskin2) CURRENT BEST for Garrett is still gp_h6c_s17 (head = lid_fold + shape: NOT approved geometry);
+  the approved-geometry skins gp_h6c_a1 / a2 are in the skin thread's chain20, not declared best. Kept s21's skin (as 6d).
+- HAIR: hair-heads2 merged at 9d19a3a7 (c10L = BEST; c11 has no new BEST). ag_garrett7.hair = hg_G88a's hair (flow_top,
+  hairline_row, export tone_front 1.0) + export.tier hero.
+- MODEL ag_garrett7 = ag_garrett6d (approved gp_h6c head, spec over chain jacket > trousers > shirt) + clamped nasolabial +
+  c10L hair. STATE: s8/chain7.sh running (export -> specks -> rge ag7; PID s8/PIDS). NEXT: collect, forearm LOD0-2 front /
+  back, the lid line / bags item.
+- (3) DRIFT, ATTRIBUTION on the v6 GLB (s8/maps_v6.png; s8/glb_r.py = garrett_drift's glb_render, eyes_v0 / face_v0 / g1,
+  hair off; blender_game debug env GE_NONORMAL=skin (new) and GE_NOBLINKMAP): the under-eye horizontal ridges ("bags")
+  and the forehead's deep wrinkle grooves are the SKIN NORMAL MAP (gone with it off; the socket's soft shading stays);
+  the red jagged patches at the upper lids' outer ends are the BLINK map (albedo x blink at eyes open; gone with it off);
+  a thin dark arc over each upper lid stays with both off = geometry (s21's lid_fold crease / lash line): expected gone
+  with the approved head (v7). The glTF has no AO in the game material (orm R unused), so "baked AO" is not a factor.
+  STATE: v7 exporting. NEXT: the same four renders on v7.
+- v7 LOD0 (s8/logs/exp_v7.log, 2601 s): "cloth_shirt poking 10 vertices / 23 faces -> 0 (126 moved, 14 capped)" (v6c: 105 -> 43,
+  464 moved; v6b 223 -> 3 with 672 moved, 39 mm out). The sleeve.R / cuff.L turn removed ~90 % of the pokes at the source.
+  "head: = the approved head head/garrett (checked)". LOD1-3, specks, rge ag7 still running at this line.
+- v7 EXPORTED (exp/ag_garrett_v7, EXIT 0, peak 18.1 GB). Triangles LOD0 91,886 / LOD1 41,424 / LOD2 20,923 (LOD3 in the json).
+  Push-under: LOD0 shirt 10 -> 0 (14 capped); LOD1 shirt 86 -> 36 (192 capped), LOD2 64 -> 8 (174), LOD3 67 -> 55 (180); body
+  LOD2 157 -> 88 (253 capped), LOD3 socks 52 -> 51 (108 capped). The cap leaves LOD1 / LOD3 pokes the old code "fixed" by
+  big moves: LOOK at the game check before calling it (a capped poke is a speck, an uncapped one was a 39 mm slab).
+- (3) on v7 (s8/eyes_v7.png: approved gp_h6c | v7 | v7 no skin normal | v7 no blink map; game rig top, photo light bottom):
+  the dark jagged arc over the upper lids is GONE (it was s21's lid_fold geometry: the approved head fixes it). LEFT, both
+  the EXPORT's: (a) orange-red smears along both upper lids = the BLINK multiply map (gone with GE_NOBLINKMAP): asset's
+  "blink" map (crease line + lid occlusion) is still drawn for a crease the approved head does not have; (b) horizontal
+  under-eye ridges + deep forehead grooves = the SKIN NORMAL MAP (much milder with it off; the approved render has neither):
+  skin.wrinkles (under_eye 0.9, forehead 0.8) baked at full strength. Also v7's skin is warmer / yellower than the approved
+  render (s21 skin vs gp_h6c's own).
+
+### Handover (assembly_garrett session 8, tool-call budget)
+- DONE: (1) root cause of the forearm = cloth.piece_flips left the shirt's sleeve.R / cuff.L facing into the arm; fixed by a
+  per-piece body vote (PIECE_BODY_VOTE; test) + push-under cap 10 mm (LOD_UNDER_MAX_MOVE; test). (folds) coordinator rule in
+  asset.fold_form_gate (1 mm; nasolabial 1.30 mm clamped in ag_garrett7; export gate; test). (2) v7 exported (approved head,
+  c10L hair merged from hair-heads2 9d19a3a7, s21 skin). (3) lid arc gone with the approved head; bags / smears attributed.
+  (4) skin: CURRENT BEST still gp_h6c_s17 (unapproved geometry); a1 / a2 in the skin thread's chain20: not switched.
+- RUNNING (unattended, s8/chain7.sh, PID in s8/PIDS): specks -> s8/logs/specks_v7.log, then LODSHOTS=1 rge.sh ag7 on
+  NICO-TOP (offload/ag7, client.log); writes s8/CHAIN7_DONE. Not collected.
+- NEXT, in order: (a) collect offload/ag7: LOOK at the right forearm at LOD0-2 front / back (s7/cmpc_c.py pattern, v6 | v7),
+  and the LOD1 / LOD3 shirt + LOD2-3 body capped pokes. (b) export fixes for (3): the blink map off (or built from the APPROVED
+  head's crease: none) and the skin normal map's wrinkle strength (skin.wrinkles under_eye / forehead) vs the approved render;
+  measure on s8/glb_r.py renders (eyes_v0 game + photo), approved | GLB. (c) review-ab v7 vs v6 (CLI works after 2026-10-19
+  13:00 MT) and the Joe sheet: s8/sheet.py is ready (adds the APPROVED gp_h6c | v7 GLB row, same camera / light from
+  s8/glb_v7/); run from $A after offload/ag7 exists. (d) RC_garrett.md: v7 is a candidate, not RC, until (a) passes.
+STATE: session 8 done; RC = v6 (unchanged); v7 = candidate (game check in flight).
+- v7 SPECKS (s8/logs/specks_v7.log, LOD0 rest): the right-forearm shirt clusters of v6c ([-386 .. -318], z 1.06-1.18: 170 / 107 /
+  86 px) are GONE; v6b's right-wrist cluster (540 px back) gone. Left >= 30 px: shirt at the right cuff [-431 7 1035] 38 / 54 px
+  (likely the cuff showing below the jacket sleeve: check on the game check), body at [-214 17 1300] 56 / 80 px (right upper
+  arm / underarm: body through the shirt?), shirt [-5 -111 956] 33 px (fly / shirt tail). Front total 8,794 px (v6 8,806).
+  The rge ag7 job is on NICO-TOP (offload/ag7/client.log; launched by chain7, s8/CHAIN7_DONE = OK).
+
+## Garrett, session 9 (2026-10-19, assembly_garrett, fresh; scratch /mnt/data/hifipushie/assembly_garrett/s9/)
+- MERGE origin/main dc4f3c21 (round-2 integration): main already carried this branch up to e00db3ce (6ac2c344) and the
+  hair-heads2 cards (newer than 9d19a3a7). Resolved by taking main's side of every conflicted file and replaying this
+  branch's own first-parent commits after e00db3ce (ae61b46d .. 138d0593: orient_to_covers, approved_head, piece_flips +
+  push-under cap, fold gate, GE_NONORMAL, notes) with git apply -3. One real conflict, lods.push_under_layers: main's r61
+  LOD_UNDER_WORN_MAX (worn parts, 10 mm) and our LOD_UNDER_MAX_MOVE (every part, 10 mm, re-measures what still pokes)
+  both kept, worn cap first. Tests: our 5 game_ready tests + test_no_card_spans_the_part appended to main's files.
+- (1) ag7 GAME CHECK (offload/ag7, 4 jobs OK; s9/cmp7.py v6 | v7, crops s9/fa_front.png, fa_back.png, z_back_l1/l2.png,
+  z_front_l1.png). LOD0 front / back: both forearms clean (as v6). LOD1 FRONT: v6's shards on both sleeves gone; one pale
+  sliver at the left inner elbow remains. LOD1 BACK: left forearm clean, RIGHT forearm still a long white shirt shard down
+  the sleeve + a star-shaped speck at the cuff (v6 had both forearms). LOD2 BACK: v6's long shards gone, small white specks
+  at both cuffs remain. VERDICT: v7 much better than v6 at LOD1-2, LOD0 clean, but LOD1 back right forearm is NOT clean
+  (where the 10 mm cap stopped the move: LOD1 shirt 86 -> 36 with 192 capped). Owner: export (LOD1 shirt under the sleeve:
+  decimated sleeve dips more than 10 mm under the LOD0 shirt; next lever = hide the under shirt's faces there at LOD1+
+  (cull_under_cloth on the decimated pair) rather than a bigger move).
+- Merge tests: test_game_ready + hair_clumps + seams + cloth_layers + skin_marks, 95 passed (12 min).
+- (2) FACE FAULTS, causes found in the spec (s9/mk8.py -> MODEL ag_garrett8 = ag_garrett7 + two changes):
+  (a) BLINK MAP: ag7's skin.stack was s21's, measured on gp_h6c_s17 (stack.head 47a29752e497, lid_fold head): its
+  "crease" layer (crease_strength 1.6, the lid_fold's slit line) and "occlusion_lid" are the "_blink" layers the export bakes
+  into the blink map. The approved gp_h6c has no lid_fold (skin_layers.crease_map on ag7's base = 0.0) and its own stack has
+  neither layer. FIX: occlusion / occlusion_lid re-baked by skin_layers.occlusion on ag7's base (= the approved head),
+  crease + crease_strength dropped. (b) NORMAL MAP: ag7 carried s21's skin.wrinkles {amount 0.6, forehead 0.8, under_eye
+  0.9, glabella 0.9, crows_feet 0.9, crepe 0.8, lip_lines 0.6}; the APPROVED gp_h6c has wrinkles {amount 0} (its render:
+  no bags, no grooves). The scene's bump and the bake use the same painted height, so "the strength the stage renders
+  show" for the approved head is zero: wrinkles = gp_h6c's. (Skin tone warmer than approved = s21 stack base, not touched.)
+  STATE: s9/chain8.sh running (export v7b -> s9/glb_v7b eyes/face renders -> specks -> rge ag8; PID s9/PIDS, done flag
+  s9/CHAIN8_DONE). NEXT: approved | v7 | v7b eyes, review-ab, Joe sheet.
+- (coordinator, mid-session) TESS HAS THE SAME EYE FAULT (assembly/r62/ah/face_vs_approved.png: hooded, dark band over the
+  upper lids): rc2_tess has base.head_approved head/tess (no lid_fold) but its skin.stack was measured on tp_k19_s28
+  (lid_fold head; stack.head 6249f59d9ca4 != 294e80bfe72e) and carries crease 1.0 + occlusion_lid. GENERAL FIX (code,
+  56f8e4a4): skin_layers.stack_on_head, called at the end of asset.approved_head: when stack.head != the export head's key,
+  occlusion / occlusion_lid are re-baked on the export's head and the crease is re-made by crease_map (no lid_fold = dropped);
+  logged "skin stack: measured on head X, exported on Y: ...". Test test_stack_lid_layers_follow_the_export_head (logic,
+  mocked bakes). NOT DONE: the coordinator's render test (exported lid-band / cheek lightness vs the stage render of the same
+  head); next agent: measure it on s8/glb_r.py renders (eyes_v0 game + photo), approved | GLB, lid band vs cheek L*.
+  TESS'S ASSEMBLY MUST RE-EXPORT with this code. (Garrett v7b = ag_garrett8 already has the equivalent done in the spec.)
+
+### Handover (assembly_garrett session 9, tool-call budget)
+- DONE: merge of origin/main dc4f3c21 (6930f113, 95 tests pass); ag7 game check looked (LOD0 clean; LOD1 back right forearm
+  still a long white shirt shard + cuff speck; LOD2 cuff specks; much better than v6); face-fault causes found and fixed in
+  ag_garrett8 (stack lid layers re-baked on the approved head, crease dropped, wrinkles = approved {amount 0}); the general
+  export fix for both characters (56f8e4a4).
+- RUNNING (unattended, s9/chain8.sh, PID in s9/PIDS): export v7b (exp/ag_garrett_v7b, log s9/logs/exp_v7b.log) ->
+  s9/glb_v7b/ (eyes_v0 / face_v0 game + photo) -> specks (s9/logs/specks_v7b.log) -> LODSHOTS=1 rge.sh ag8 on NICO-TOP
+  (offload/ag8; untar each j*/out.tar into j*/x) -> s9/CHAIN8_DONE.
+- NEXT: (a) python s9/eyes.py s9/eyes_v7b.png (approved | v6 | v7 | v7b) and LOOK: lid band / bags / grooves gone?
+  (b) review-ab (CLI works: /mnt/data/hifipushie/bin/review-ab <out> item=ref:old:new): face = ref photo
+  garrett_drift/out/ref_face_v0.png : glb_v6/face_v0__photo.png : s9/glb_v7b/face_v0__photo.png; eyes likewise; forearm
+  = LOD1 back v6 vs v8 crops (s9/cmp7.py, switch its B path to ag8). (c) OFF=ag8 python s9/sheet.py (writes
+  sheets/garrett_v7b_joe.png; run from $A) and look at it. (d) RC_garrett.md: v7b row; RC stays v6 until (a)-(c) pass;
+  the LOD1 right-forearm shard is open (owner export: hide the under shirt's faces under the decimated sleeve at LOD1+).
+STATE: session 9 done; RC = v6; v7 candidate (LOD1 forearm shard open); v7b exporting.
+
+## Garrett, session 10 (2026-10-19, assembly_garrett, fresh; scratch /mnt/data/hifipushie/assembly_garrett/s10/)
+- (2) FACE LIGHT CHECK (aca992d7): asset.face_light / face_light_check(stage_png, shipped_png): on a front eyes render
+  (pupils = darkest blurred point per half, 40-75% height; boxes in eye-distance units d) the upper-lid band (-0.15..-0.07 d)
+  and under-eye (+0.08..+0.2 d) L* minus the cheek (+0.3..+0.42 d), and the forehead's fine texture (high-pass L* std,
+  -0.85..-0.6 d). WARNING when lid / under differ from the APPROVED head's stage render by > 5 / 3 L* or the forehead
+  texture is > x1.4. Numbers (eyes_v0, same camera + light): approved gp_h6c lid-cheek photo -16.0 / game -17.2; v6 -32.7 /
+  -36.4 (WARNING); v7 -32.9 / -40.0 (WARNING); forehead game 1.20 approved vs v6 2.08 / v7 2.19 (WARNING); under-cheek
+  game -8.8 vs v7 -11.7 (within 3, the weakest row). Test test_face_light_check_flags_a_dark_lid_band. It is a check on
+  the post-export GLB renders (s8/glb_r.py: the export itself renders nothing): s10/fl_check.py <glb render dirs>.
+- (3) LOD1 FOREARM SHARD (602b62a5): asset.garment_cull_masks / cull_under_garments: from LOD1
+  (lods.LOD_UNDER_CULL_GARMENTS_FROM) an under GARMENT (the shirt under the jacket) drops faces that were deep under its
+  covers at LOD0 (lods.cull_covered, 15 mm rim) AND touch this LOD's decimated cover (a corner < LOD_UNDER_GAP under it or
+  through): only where a shard can be, so a seated pose lifting the jacket skirt can't open a hole the posed LOD0 cull kept.
+  Test test_lod_under_garment_drops_faces_deep_under_its_cover. STATE: s10/chain10.sh (PID s10/PIDS) queued behind
+  chain8's export (heavy slot): export ag_garrett8 -> exp/ag_garrett_v7c, s10/glb_v7c, s10/logs/face_light.txt (v7b + v7c),
+  specks, rge ag8c; flag s10/CHAIN10_DONE.
+
+- v7b EXPORT OOM-KILLED (EXIT 137 at the 20G cap, 2201 s, right after "parts worn under garments also put back"; s9/CHAIN8_DONE
+  = FAIL_EXPORT): no v7b GLB. v7c = the same model (ag_garrett8) + the LOD1+ cull, re-run with CAP 26G (s10/export_cap.sh,
+  XCAP) and HP_LOD_DUMP=s10/lod_dump_v7c.pkl (the LOD inputs, to probe the memory peak offline if it dies again).
+- (coordinator) skin thread's new best gp_h6c_a6 (lid band fixed: zones.lid_shade 1.8 -> 1.0; won 8/8 blind regions):
+  MODEL ag_garrett9 = ag_garrett8 + gp_h6c_a6's whole skin (s10/mk9.py; same head; its stack.head is still s17's
+  47a29752e497, so the export's stack_on_head re-bakes the lid layers and drops the crease). s10/chain11.sh (PID in s10/PIDS)
+  waits for v7c's export, then exports exp/ag_garrett_v7d, s10/glb_v7d, s10/logs/face_light_d.txt (v7c vs v7d), specks,
+  rge ag9 (after chain10's); flag s10/CHAIN11_DONE.
+- v7c EXPORTED (EXIT 0, peak 20.4G: the old 20G cap is why v7b died; use XCAP=26G). LOD1+ cull: LOD1 shirt 69 of 3818
+  triangles dropped (poking 22 -> 4, 58 capped; v7 was 86 -> 36, 192 capped), LOD2 23, LOD3 shirt 16 + trousers 3 (LOD3 shirt
+  still poking 85 -> 24, body 74 -> 65). Forearm not yet SEEN: rge ag8c running in chain10.
+- (1) EYES LOOK (s10/eyes_v7c.png, approved | v6 | v7 | v7c, look first): forehead grooves GONE, under-eye bags GONE, the
+  orange crease line on the lids GONE. But the upper lids now carry a broad dark smudge from brow to lash line (sunken /
+  hooded, heavier than approved). face_light_check agrees: lid-cheek photo -33.6 vs approved -16.0, game -40.5 vs -17.2
+  (WARNING); under-cheek and forehead within tolerance (forehead 0.93 vs 1.20). Cause per the skin thread: zones.lid_shade
+  1.8 in ag8's skin (a6 = 1.0). Face shape reads as the approved head's; skin warmer / yellower than approved (s21 stack).
+  VERDICT: v7c not RC on the face; v7d (a6 skin, chain11) is the next candidate.
+
+### Handover (assembly_garrett session 10, tool-call budget)
+- DONE: face_light_check (aca992d7, test); LOD1+ under-garment cull (602b62a5, test); v7b OOM found (cap), v7c exported
+  and its eyes judged (lid band FAIL, grooves / bags fixed); ag_garrett9 (a6 skin) made, its export queued.
+- RUNNING (PIDs in s10/PIDS): chain10 -> specks (s10/logs/specks_v7c.log), rge ag8c (offload/ag8c) -> s10/CHAIN10_DONE.
+  chain11 -> export v7d (ag_garrett9, s10/logs/exp_v7d.log) -> s10/glb_v7d -> s10/logs/face_light_d.txt -> specks ->
+  rge ag9 (after CHAIN10_DONE) -> s10/CHAIN11_DONE.
+- NEXT: (a) FIRST (coordinator): v7d's face: python s10/eyes.py with a v7d column (sed "v7c" -> "v7d" paths), face_light_d.txt
+  must pass lid-cheek within 5 L* of -16 / -17. (b) forearm: python s10/cmp.py s10/fa_l1.png "1:<lod1 back file>" (A = ag6,
+  B = ag8c; use ag9 when done): is the LOD1 right forearm shard gone? LOD3 shirt / body pokes. (c) review-ab v7d vs v6
+  (face / eyes items: ref garrett_drift/out/ref_face_v0.png : glb_v6/face_v0__photo.png : s10/glb_v7d/face_v0__photo.png),
+  not tried this session. (d) OFF=ag9 python s10/sheet.py (set V to s10/glb_v7d/) and look. (e) RC_garrett.md: RC stays v6.
+STATE: session 10 done; RC = v6; v7c face FAIL (lid band), v7d (a6 skin) exporting.
+
+## Garrett, session 11 (2026-10-19, assembly_garrett, fresh; scratch /mnt/data/hifipushie/assembly_garrett/s11/)
+- 02:25 START: chain10 at rge ag8c (4 jobs queued on NICO-TOP); chain11's v7d export (ag_garrett9) waiting in the memory
+  queue (needs 12 GB, 32 of 40 declared: rc2_tess export, projskin, hair-cards jobs). PIDs in s10/PIDS are stale (the
+  chains run as other PIDs; not touched). STATE: waiting on ag8c (forearm) and v7d (eyes). NEXT: ag8c forearm look.
+- (5, early, while waiting) SKIN TONE, measured (s11/tone.py: CIELAB on eyes_v0, cheek boxes from asset.face_light, same
+  camera): approved gp_h6c stage photo cheek L 73.2 a 12.1 b 15.3 (hue 52), game L 62.5 b 8.1 (hue 51). The s21 skin on the
+  stage (garrett_drift gp_h6c_s21): photo L 77.8 b 19.0 (hue 60), game L 64.6 b 9.4 (hue 59) = the SPEC part (s21's stack
+  base is yellower). The GLB adds more: v7c photo L 78.7 b 17.8 (hue 63), game L 68.9 b 14.9 (hue 62, b* +5.5 over s21's
+  stage); forehead L 79 in the game rig vs 68 (s21 stage) / 64 (approved) = the EXPORT path brightens and yellows,
+  most on the forehead (shine / roughness or a missing occlusion term: unverified). v6 the same as v7c. Stage render of
+  gp_h6c_a6 (v7d's skin) running (s11/drift_a6.log -> garrett_drift/out/gp_h6c_a6/) to split v7d the same way.
+  STATE: tone split into spec + export parts. NEXT: v7d eyes / tone once exported.
+- v7d EXPORT REFUSED (s10 chain11, EXIT 1 after 694 s queue): the folds gate (asset._export, s8) — gp_h6c_a6's skin carries
+  skin.folds {nasolabial: 1.0} (1.30 mm, form) while approved_head clamps it to 1.0 mm. FIX (s11/mk9b.py): ag_garrett9's
+  skin.folds = approved_head(spec)'s ({amount 1, roll 0.769, depth 1} = ag8's), nothing else. Re-run s11/chain12.sh (logs
+  s11/logs/, flag s11/CHAIN12_DONE; same steps as chain11, outputs s10/glb_v7d, exp/ag_garrett_v7d, offload/ag9).
+- a6 ON THE STAGE (garrett_drift/out/gp_h6c_a6): lid-cheek photo -20.2 / game -18.7 vs approved -16.0 / -17.2 (PASS, within 5).
+  Tone: a6 is lighter + yellower than approved too (photo cheek L 80.8 b 18.7 hue 62 vs 73.2 / 15.3 / 52; game L 66.8 hue 61
+  vs 62.5 / 51): the skin thread's a6 stack base carries the warm shift (spec part), before any export.
+  STATE: chain12 running (v7d export queued). NEXT: ag8c forearm, then v7d eyes.
+- (coordinator, from Tess r63) stack_on_head's output NEVER SHIPPED: the export gate ran approved_head and discarded it; the
+  maps came from the stored model. Checked on ag_garrett9: its stack was a6's (measured on s17's head 47a29752e497, crease
+  0.56 + occlusion_lid), approved_head's = re-baked on 13eceedf0abe, no crease: so the v7d export in flight would have
+  shipped s17's lid layers. KILLED my chain12 (21 min in, at the bakes), cherry-picked Tess's gate (538727f9: export refuses
+  a skin.stack that isn't approved_head's), wrote the re-baked stack into ag_garrett9 (s11/mk9c.py, store.save
+  checked=False: the frozen jacket's "over" key fails cloth.validate, as for every ag model), gate ok. chain12 RE-LAUNCHED.
+  (ag_garrett8 / v7c had its lid layers re-baked in the spec by s9, so v7c's band is lid_shade's, as found.)
+  Nostril rim smudge (Tess: in every export, no scene render; bake fault): to check on v7d's eyes / face renders.
+  STATE: chain12 re-running with the real re-baked stack. NEXT: ag8c forearm; v7d eyes + nostrils.
+- NOSTRILS (s11/nose_v7c.png: approved | v6 | v7c, face_v0 photo): no pink smudge on Garrett (Tess's fault not seen); the
+  GLBs draw a darker grey-brown outline round the alar rims and the nostril openings than the approved (soft pink-brown):
+  minor, same in v6 and v7c (shared bake / occlusion term). Re-check on v7d.
+- NICO-TOP is LOST on oxidegen (bundle_client machines: state "lost"); ag8c sat queued from 02:22. Game-check jobs run
+  LOCALLY instead (same runner: HP_DIR=$W CAP=6G capped .venv/bin/python spikes/offload/job_ge.py <job copy>; LOD1 ~3 min):
+  s11/local/ag8c_j1..3.
+- (2) LOD1 FOREARM (v7c, s11/fa_l1_back.png / _z.png, v7 | v7c at the LOD1 switch, back + 3/4): the long white shirt shard
+  down the right forearm is GONE, and so are v7's shoulder-blade shards and the 3/4 chest-pocket shard. Left at LOD1: a small
+  skin-coloured notch at the right underarm (body through the armhole) and pale flecks at both cuffs (button-sized; the
+  right one may be the cuff button). VERDICT: row J fixed at LOD1; the underarm notch is new-minor (owner export, body
+  under the decimated sleeve). LOD2 / LOD3 jobs running locally (s11/local/ag8c_j2/j3).
+- LOD2 / LOD3 (v7c, local jobs; s11/fa_l23.png v7 | v7c): LOD2 back as LOD1 (forearm clean, the right-underarm skin notch,
+  small cuff flecks). LOD3 front: v7's broken left trouser leg (a sheared sliver to the shoe) and white cuff shards GONE;
+  v7c LOD3 reads whole. Fly specks: not judged (specks_v7d.log written, unread).
+- (1) v7d EYES (s11/eyes_v7d.png, approved | v6 | v7c | v7d; look first): the brow-to-lash smudge is GONE in the photo
+  light, and the lids read close to the approved. In the game rig the lids are still a little darker under the brow. NEW: brows are
+  darker brown, heavier and more arched than the approved head's soft grey brows (a6's brow paint); faint fine lines under
+  the eyes and a glossy forehead in the game rig. fl_check (s11/logs/face_light_d.txt): photo lid-cheek -20.6 vs -16.0 PASS,
+  under / forehead PASS; GAME lid-cheek -28.4 vs -17.2 WARNING (a6 on the stage: -18.7, so the export / game path adds ~10 L*
+  of lid darkening: the blink / occlusion map or AO in the GLB, unverified).
+- (3) A/B v7d vs v6: review-ab CLI ran but claude -p hit the WEEKLY LIMIT ("REVIEW FAILED"); trios s11/ab_v7d_v6/ (key.json:
+  X = v6 everywhere) judged by a fresh blind subagent: v6 PREFERRED on face, eyes and face_game. v7d's MAJORs: plastic
+  skin (no pores / age texture: wrinkles amount 0 = the approved head's), brows dark / arched / drawn on, pale grey lid wash
+  + narrow almond. v6's MAJORs: coarse black stubble dots, a red line on each upper-lid crease, bags. VERDICT: v7d does NOT win; RC stays v6.
+- (5) TONE v7d: photo cheek L 80.7 b 18.0 hue 64, game L 70.7 b 15.0 hue 63 (approved 73.2 / 15.3 / 52 and 62.5 / 8.1 / 51):
+  as v7c. Spec part (a6 stage hue 61-62) + export part (game b* 8.6 -> 15.0, L +4; forehead L 68 -> 79).
+
+### Handover (assembly_garrett session 11, tool-call budget)
+- DONE: v7d exported (with Tess's stack gate cherry-picked 538727f9, ag_garrett9's stack re-baked + folds = approved clamp:
+  exp/ag_garrett_v7d, EXIT 0); v7d eyes look + fl_check (photo PASS, game WARNING -28 vs -17); v7c LOD1-3 game check run
+  LOCALLY (NICO-TOP lost): row J forearm FIXED at LOD1/2, LOD3 whole; blind A/B v7d vs v6: v6 wins 3/3; skin tone split
+  (spec + export) measured; nostrils no pink smudge (darker alar outline, minor).
+- RUNNING: offload/ag9 batch (rge ag9 on NICO-TOP) will sit queued while NICO-TOP is lost (client PID under chain12; harmless;
+  cancel with bundle_client.py cancel <batch> if not wanted). s11/CHAIN12_DONE is written once that batch is done.
+- NEXT: (a) Joe sheet: run v7d's game jobs LOCALLY (copy offload/ag9/jobs/j0..3 to s11/local/ag9_j*, job_ge.py as above,
+  ~3-10 min each), then make sheet.py read the local outputs (O = "s11/local/ag9_j%d/out/") and run python s11/sheet.py from $A
+  -> sheets/garrett_v7d_joe.png; look at it. (b) The v7d face MAJORs the reviewer named, by owner: brows (a6's brow paint vs the approved
+  grey brows: skin thread), the game-rig lid darkening (export: compare the blink / occlusion map's lid value with a6's stage; GLB vs
+  stage -28 vs -19), tone (export: game b* +6, forehead +11 L*: check roughness / specular and the base colour's colour
+  space in the GLB). (c) The reviewer still asks for age texture (forehead lines, crow's feet). The approved head has none: a
+  call for Joe / the coordinator, not this agent. (d) right-underarm skin notch at LOD1-2 (export).
+STATE: session 11 done; RC = v6; v7c = best body / LODs (forearm fixed); v7d = best lids but loses the A/B on brows / plastic skin.
+
+## Garrett, session 12 (2026-10-19, assembly_garrett, fresh; scratch /mnt/data/hifipushie/assembly_garrett/s12/)
+- (1) EXPORT COLOUR PATH: NOT an export fault: the COMPARISON's view transform. blender_game renders the GLB under Khronos
+  PBR Neutral (its default since 2026-10-16); garrett_drift's stage "game" frames (drift.py GAME) used AgX. Re-rendered v7d's
+  GLB with job view AgX (s12/glb_r.py, GLBVIEW=AgX -> s12/v7d_agx): game cheek L 67.5 b* 7.9 vs a6 stage 66.8 / 8.6 (was 70.7 /
+  15.0), forehead L 71.9 vs 68.4 (was 79.1), lid-cheek -20.4 vs approved -17.2 PASS (was -28.4 WARNING). Photo light (same view
+  both sides) already matched: cheek 80.7 vs 80.8. So the basecolor (sRGB encode, glTF sRGB decode), blink multiply and
+  material are right; residual: forehead +3.5 L* game / +6 photo (sheen / roughness on the forehead: minor, open). GE_NOAO and
+  GE_NOBLINKMAP change nothing measurable in the lid band (EEVEE's use_gtao is a no-op in Blender 5.1: hasattr false).
+  FIX (general): asset.GAME_LIGHT = blender_game's own default rig as a "lighting" dict, view transform included; every stage
+  render meant to be compared with a GLB game render uses it (face_light_check's doc says so). Test
+  test_game_light_matches_blender_game_and_glb_basecolor_is_the_albedo: GAME_LIGHT equals blender_game's source defaults
+  (view, suns, world), and the GLB's basecolor at fixed texels decodes (sRGB) to the bake's linear albedo (<= 0.6/255 encoded,
+  no colour factor / extension tint). Stage references re-rendered under GAME_LIGHT: s12/stage_pbr/{gp_h6c, gp_h6c_a6}.
+  The earlier "skin warmer / yellower than approved" (s11 tone) is then the SPEC part only (a6's stack base: photo hue 62 vs 52).
+  STATE: colour path explained + guarded. NEXT: age texture (s12/mkw.py: gp_h6c_a6w1 / w2 on the stage).
+- (1b) LIKE FOR LIKE (stage re-rendered under asset.GAME_LIGHT, s12/stage_pbr/): game cheek GLB v7d L 70.7 b* 15.0 vs a6 stage
+  69.5 / 16.1 (match; approved 62.2 / 13.1: the warm shift is a6's SPEC). Lid-cheek GLB -28.4 vs a6 stage -26.1 vs approved -22.4
+  (the export adds 2.3; a6 itself 3.7 darker than approved). RESIDUAL EXPORT FAULT: forehead L 79.1 GLB vs 72.5 stage (+6.6, cheek
+  matches): forehead-only shine (roughness / specular / coat on the forehead in the bake or blender_game), owner export, open.
+- (2) WHY "PLASTIC": forehead fine texture (face_light forehead_tex, PBR game) a6 STAGE 3.34, approved 1.98, v7d GLB 1.38. The
+  skin's micro detail (skin.py "skin:micro_*": cells, fine lid lines, pores, lip lines; layers "_detail") is left OUT of the
+  baked maps and shipped as tiling normal maps + a recipe (shading.json "detail_recipe": triplanar, whiteout blend, cavity
+  tint) for the engine; blender_game (our game check) never applies them, so every game render of every human is pore-less
+  and line-less. The real fix (owner export / game check): blender_game lays the detail maps per the recipe (or the export
+  bakes a hero's face micro detail into the unique normal map). NOT done this session (budget).
+- (2) AGE TEXTURE (coordinator: wrinkles / pores = skin detail, allowed): ag_garrett9 / a6 carried s21's wrinkles (amount .6,
+  forehead .8, under_eye .9, crepe .8: NOT 0 as s11 wrote). Stage candidates (s12/mkw.py, sheet s12/age_w.png: photo |
+  approved | a6 | w2 | w1, photo light): a6 = stacked horizontal hatching under the eyes (the "bags / grooves" read), forehead
+  lines high and faint; w1 = the skin thread's measured r15g4 line strengths (forehead 1.3, under_eye .5, crepe .5; its tear
+  trough / nasolabial are FORM, left out) = under-eye hatching gone, longer forehead lines across the mid forehead like the
+  photo's, crow's feet kept; w2 (forehead 1.0, under .6, crepe .6, crows .7) in between. PICK w1. Lid / under rows unchanged
+  (vs a6: lid-cheek equal, under-cheek within .1). MODEL ag_garrett10 = ag_garrett9 + w1 wrinkles (s12/mk10.py).
+  STATE: s12/chain13.sh running (export v7e -> s12/glb_v7e -> specks -> local game jobs offload/ag10, flag s12/CHAIN13_DONE).
+
+### Handover (assembly_garrett session 12, tool-call budget)
+- DONE: (1) colour path = the comparison's view transform (stage AgX vs blender_game PBR Neutral), not the export; asset.GAME_LIGHT +
+  test (6a91c65f); stage references under GAME_LIGHT in s12/stage_pbr/{gp_h6c, gp_h6c_a6}; residual forehead shine +6.6 L* (export,
+  open). (2) "plastic" cause found: the skin micro detail (pores, cells, lid / lip lines) ships as tiling maps + recipe and
+  blender_game never draws it (owner export / game check: lay them per the recipe in blender_game). Age lines: w1 picked on the
+  stage (s12/age_w.png); MODEL ag_garrett10 = ag_garrett9 + w1 wrinkles.
+- RUNNING (unattended, s12/chain13.sh, PID in s12/PIDS): export v7e (exp/ag_garrett_v7e, log s12/logs/exp_v7e.log, XCAP 26G) ->
+  s12/glb_v7e (eyes / face, game PBR + photo) -> specks (s12/logs/specks_v7e.log) -> LOCAL game jobs (s12/rge_local.sh: offload/ag10/
+  jobs/j0..3/out/, statuses offload/ag10/local.txt) -> s12/CHAIN13_DONE (OK | FAIL_*).
+- NEXT: (a) eyes: approved | v7d | v7e from s12/stage_pbr/gp_h6c + s10/glb_v7d + s12/glb_v7e (eyes_v0 / face_v0 __game, __photo);
+  face_light_check against s12/stage_pbr/gp_h6c (NOT garrett_drift/out/gp_h6c/*__game: AgX). (b) LOD1-2 underarm notch / cuff
+  flecks on offload/ag10/jobs/j1..2/out (s11/cmp.py), fly in specks_v7e.log. (c) review-ab v7e vs v6 (CLI after 13:00 MT, else a
+  fresh blind subagent; trios as s11/ab_v7d_v6). (d) cd $A; OFF=ag10 python s12/sheet.py -> sheets/garrett_v7e_joe.png, look.
+  (e) RC_garrett.md row. (f) skin thread: brows (a6's darker / heavier / arched brow paint vs approved soft grey) are theirs.
+STATE: session 12 stopped at budget; RC = v6; v7e (age lines) exporting; game-check micro detail + forehead shine open (export).
+
+## Garrett, session 13 (2026-10-19, assembly_garrett, fresh; scratch /mnt/data/hifipushie/assembly_garrett/s13/)
+- (1) v7e NEVER EXPORTED: EXPORT EXIT 137 at LOD3 (2,563 s). journalctl: the kernel OOM killer in the export's scope, 21.9 G peak,
+  while Tess's export (another hv.py, 11 G) ran in the same hifipushie.slice (MemoryMax 34G): the slice, not XCAP 26G, ran out.
+  hv.py declared 12 GB to resources.heavy for a ~22 GB job, so the slot let both in. s13/chain14.sh declares 24 (hv.py 24, CAP 28G).
+- (2) CHERRY-PICKED Tess r65 85f62545 (asset.BAKE_SKIN_DETAIL: skin micro detail baked into the part's own basecolor /
+  roughness / normal) and r66 a47fc7ee (lower-lip roughness floor LIP_FLOOR_ROUGHNESS .38 by the skin's lip_lower zone; missed
+  bake texels filled on the surface; lods.ringed_islands / stray_flaps) with their tests (conflicts: test file union; the LOD0
+  push log / report keep both "capped" and "flaps"). 8 + 1 targeted tests pass.
+  STATE: v7f (= ag_garrett10, age w1, + both) exporting: s13/chain14.sh (export -> s13/glb_v7f -> specks -> local game jobs
+  offload/ag10f, flag s13/CHAIN14_DONE). v7e is superseded by v7f (same model).
+- (3) FOREHEAD SHINE (+6.6 L* GLB vs stage, cheek matching): LEVER TESTS on v7d's GLB under GAME_LIGHT (s13/logs/tone_spec.txt).
+  (a) blender_game ignored the export's specular map (fixed IOR level 0.5; skin map ~0.36): now linked (41a49a9c, test,
+  GE_NOSPECMAP = old): forehead 79.1 -> 78.7, cheek 70.7 -> 70.4. Live but NOT the cause. (b) LOOK (s13/fh_cmp.png: approved |
+  a6 stage | v7d GLB, eyes_v0 game): the stage's forehead highlight is broken up by the micro detail (pores / cells / lines);
+  the GLB's is one smooth glossy sheet. So the shine is the SAME cause as "plastic": the missing micro detail. v7f (detail
+  baked into roughness / normal) is the test. v6 re-rendered with the current glb_r (spec map) for like-for-like: s13/glb_v6.
+  Underarm notch (LOD1-2, v7d log): "body poking 29 -> 3 (4 capped)" LOD1, "76 -> 10 (37 capped)" LOD2: the skin is the one
+  worn part left out of lods.cull_covered at LOD1+ (asset.py ~3236 `pn == skin_pn0_`), so its residue under the jacket's
+  armhole pokes. Candidate fix (NOT made: v7f was already exporting): cull the skin's deep-covered faces at LOD >= 1 too
+  (cull_poses-exposed faces must stay: check the seated clips), then v7g.
+- (4) v7f EXPORTED (exp/ag_garrett_v7f/ag_garrett10.glb, EXIT 0; "skin: micro detail baked into the part's maps"; lip floor:
+  2350 lower-lip texels, mean roughness 0.399 -> 0.400: Garrett's lip was already above .38, a no-op for him).
+  LIKE FOR LIKE (eyes_v0 game, GAME_LIGHT, all GLBs rendered by the current glb_r incl. the spec map; s13/eyes_v7f.png =
+  approved stage | v6 | v7d | v7f): forehead L 73.2 vs a6 stage 72.5 (+0.7; v7d +6.2, v6 +5.7): the FOREHEAD SHINE IS FIXED by the
+  baked micro detail. Cheek 69.2 vs 69.5. Forehead fine texture (high-pass std): approved 4.60, v7f 3.79, v6 3.35, v7d 2.61.
+  EYES (look-first): v7f's lids = v7d's (clean, no v6 orange lid-rim specks / lash-line streak), wrinkles w1 (longer
+  mid-forehead lines); still lighter / yellower than approved (a6's spec), brows darker / heavier than approved (skin thread).
+- (5) BLIND A/B v7f vs v6 (review-ab CLI not tried: before 13:00 MT; fresh blind subagent on s13/ab_v7f_v6/trio_0..2, ref =
+  approved stage under GAME_LIGHT, key.json): eyes_v0 -> v7f; face_v0 (3/4) -> v6; g1 bust -> v6. v6 2 / v7f 1: RC STAYS v6.
+  v7f's MAJORs: stubble far too strong (coarse black speckle + grey dusty cast around the mouth), dark hollow under-eyes,
+  brows dark / hard-edged; v6's: plastic / glossy skin, red specks at the lid line, wavy forehead lines, orange-tan tone.
+  Both: irises blue-grey vs the approved brown-hazel (MINOR; check the eye material / GNM iris vs approved).
+STATE: v7f exported + judged on the face; chain14 still running specks + local game jobs (offload/ag10f, flag s13/CHAIN14_DONE).
+
+### Handover (assembly_garrett session 13, tool-call budget)
+- DONE: v7e OOM-killed (slice shared with Tess's export; hv.py declared 12 GB for a 22 GB job -> chain14 declares 24). r65 + r66
+  cherry-picked (9328b2f2, 650330ea). blender_game reads the specular map (41a49a9c, test; small effect). v7f = ag_garrett10 +
+  baked micro detail: forehead shine fixed (+0.7 L*), texture up. Blind A/B: v6 2 / v7f 1 -> RC stays v6.
+- RUNNING (unattended, PIDs s13/PIDS): s13/chain14.sh -> specks (s13/logs/specks_v7f.log) -> LOCAL game jobs offload/ag10f/jobs/
+  j0..3/out (statuses offload/ag10f/local.txt) -> s13/CHAIN14_DONE.
+- NEXT: (a) STUBBLE on v7f (the A/B's top MAJOR, new with the baked detail? compare v7d's mouth tile: if the baked cavity tint
+  darkens the stubble dots, that is an export fix: keep stubble layers out of the detail bake / cap their cavity tint).
+  (b) Under-eye hollows (v7f) + brows (skin thread). (c) Underarm notch: cull the skin's deep-covered faces at LOD >= 1
+  (asset.py ~3236 excludes the skin; keep cull_poses' exposed faces), v7g. Cuff flecks / fly: on offload/ag10f/jobs/j1..2/out
+  (s11/cmp.py) + specks_v7f.log, not looked at. (d) Joe's sheet: cd $A; OFF=ag10f python s12/sheet.py (output name inside:
+  set sheets/garrett_v7f_joe.png) once the game jobs land; check it; RC_garrett.md row (RC v6; v7f = best eyes / forehead).
+
+## Garrett, session 14 (2026-10-19, assembly_garrett, fresh; scratch /mnt/data/hifipushie/assembly_garrett/s14/)
+- (1) v7f LOCAL GAME JOBS collected (offload/ag10f/jobs/j0..3, all EXIT 0). specks_v7f.log = v7d's = v7c's to the pixel
+  (8794 front px; cloth only: the speck tool sees no change from skin work). LOOK (s14/legs_l0.png v6 | v7f LOD0 | LOD1 | LOD2):
+  the FLY reads clean at every LOD. CUFFS (s14/cuffs.png, LOD1 / LOD2 back + LOD1 3/4): small pale flecks on both sleeves just
+  above the cuff (button-sized; the cuff buttons' made pieces through the decimated sleeve?) still there, minor at the switch
+  distance; the right UNDERARM NOTCH (skin through the armhole) visible at LOD1 and LOD2 back.
+  STATE: flecks unchanged / minor (owner export + dress-garrett), notch -> (3).
+- (2) STUBBLE (v7f's top A/B MAJOR). Measured: NOT the baked micro detail. The stubble dots in the albedo are identical in v7d
+  and v7f (s14/stubble_atlas.png; maps' high-pass equal); the detail bake darkens the WHOLE body albedo by ~5.5% (ratio
+  p1 / p50 0.91 / 0.94: the cells' cavity tint), the "grey cast" part. The stubble itself comes from the skin (a6 / ag10: hair.
+  stubble amount 2.2, size 3, count 2, grey .75; v6's s15 skin had size 5, shadow .15), and the approved a6 STAGE shows it as a
+  soft shadow while every export shows coarse black / white specks: Cycles' bake POINT-SAMPLES image textures (no mips): the
+  stubble map's 0.06 mm hairs under 0.2 mm bake samples (0.4 mm face texel / ss 2) land as sparse texel-sized specks, where
+  the stage's EEVEE mipmaps them. FIX (general, 3a7843e1): asset.BAKE_PREFILTER: the bake box-downsamples every placed paint
+  image finer than its sample spacing (blender_scene.prefilter_images; image nodes tagged hp_px_m at build; the finest
+  texel any part bakes at -> job "texel_m"); test (blender -b, speckle image keeps its mean, loses its specks).
+  STATE: in v7g; judge the mouth tile against the a6 stage.
+- (3) UNDERARM NOTCH (abff2b9d): asset.LOD_SKIN_CULL_FROM = 1: the skin joins lods.cull_covered at LOD >= 1; its LOD0 points
+  a dumped clip frame uncovers (asset.skin_pose_exposed over cull_poses = s5/poses: the seated / idle frames; the 40 mm
+  opening rim of under_cloth_keep counted in each frame) are never dropped. under_masks' 6th entry = the cull's mask (push_under
+  untouched). Test with a cover sliding off in a frame. NOTE: the skin's LOD0 cull itself never used the poses (only garment
+  under garment does). STATE: in v7g; check LOD1-2 back + the seated clips (wrists / neck) for holes.
+- (4) IRIS: export = the spec, faithfully (atlas 1 iris ring sRGB 94/95/86 = ag_garrett10's skin.eyes.iris #585c54 grey-green,
+  s14/iris_crop.png); it reads blue-grey under GAME_LIGHT. The APPROVED head gp_h6c has #61584f / inner #554f47 (brown-taupe).
+  The SKIN THREAD changed it: gp_h6c_s1 #61584f -> s2 #6a7568 (skin_from_reference) -> s4/s5 #6b6f66 -> s10..a6 #585c54; ag
+  takes a6's skin whole. Not an export fault: ROUTED to the skin thread (restore the approved iris or re-measure on the photo;
+  the photo's iris NOT checked here: no Garrett photo path found in docs/notes in budget). The a6 stage reads it browner only
+  under its warm photo light.
+- (5) CHERRY-PICKED Tess r68 3070f05b (scene.face_refine: the scene auto-refines over the kept approved face; kept-face gap
+  WARNING) as 5adc5d1d (+ test union fixes 5cdaabc0, r68 tests pass). v7g = ag_garrett10 + (2) + (3) + r68: s14/chain15.sh
+  (export exp/ag_garrett_v7g, hv.py 24 GB: QUEUED behind rc2_tess / exar43c / sh3c at 06:0x -> glb_v7g -> specks -> local
+  game jobs offload/ag10g; flag s14/CHAIN15_DONE; PID s14/PIDS).
+STATE: v7g exporting unattended; nothing of v7g judged. RC stays v6.
+
+### Handover (assembly_garrett session 14, tool-call budget)
+- DONE: v7f game jobs collected (fly clean; cuff flecks minor; underarm notch at LOD1-2). Stubble cause = bake point-sampling
+  sub-texel paint images (fixed generally, 3a7843e1). Underarm notch: skin per-LOD cull with pose exposure (abff2b9d). Iris =
+  skin thread's change from the approved #61584f (routed). r68 auto-refine cherry-picked.
+- RUNNING: s14/chain15.sh (PID s14/PIDS) -> s14/CHAIN15_DONE.
+- NEXT: (a) grep exp_v7g.log for "hp prefilter:" (the stubble map must be listed, /3 at 0.2 mm) and the "kept face" line (r68)
+  and "LODs: body: ... uncovered in a clip frame" + per-LOD "body: N ... dropped". (b) LOOK first: mouth / chin tile v7g vs
+  a6 stage vs v7f (stubble a soft shadow, not specks); LOD1-2 back underarm; seated clips for holes at wrists / neck.
+  (c) review-ab v7g vs v6 (CLI after 13:00 MT, else a blind subagent), (d) Joe's sheet: cd $A; OFF=ag10g python s12/sheet.py
+  (set the output name inside to sheets/garrett_v7g_joe.png), approved head beside, check it; RC_garrett.md row.
+
+## Garrett, session 15 (2026-10-19, assembly_garrett, fresh; scratch /mnt/data/hifipushie/assembly_garrett/s15/)
+- (1) v7g COLLECTED (chain15 OK: export EXIT 0, glb_v7g, specks, local game jobs offload/ag10g j0..3 EXIT 0).
+  LOG: kept face OK ("body: 9805 vertices of the approved face kept"); NO "hp prefilter:" line anywhere (the bake's Blender
+  stdout is not in exp_v7g.log, so the log can't show it). MEASURED instead: v7g's face atlas (ag_garrett10_1_basecolor) =
+  v7f's (mean abs diff 0.004 / 255, high-pass std 7.84 both, dark-speck fraction 0.0216 both): THE PREFILTER DID NOT ACT.
+  LOOK (s15/mouth_v7f_v7g.png): stubble specks unchanged. Suspects (unchecked, budget): the scene's paint materials came from
+  the scene cache built before the hp_px_m tag (tags only set at node build), or job["texel_m"] = 0. NEXT for the owner: print
+  the tagged nodes / texel_m in the bake job and route the bake's stdout into the export log.
+  LODs: "body: 1328 LOD0 points under the garments, 1296 of them uncovered in a clip frame (kept at every LOD)": the skin cull
+  keeps 98% (every point some clip frame uncovers), and no per-LOD body drops. LOOK (s15/underarm_lod.png, LOD1 / LOD2 back,
+  v7f | v7g): the right UNDERARM NOTCH is still there at LOD1 and LOD2. The pose test needs "visible in that frame", not
+  "uncovered". The game shots have no seated clip (32 shots: idle / walk / run / turn / face): seated holes not checked.
+  STATE: v7g = v7f in look (stubble, notch unchanged); no regression seen. NEXT: hair (2).
+- (2) HAIR = SHELLS sh4T. Merged hair-heads2 (3bab7bc7: hair.py = hair-heads2's verbatim (this branch's hunks were empty or
+  the same line without `shell_n`), tests / hair.md unioned; hair_* + game_ready tests 226 pass). Model ag_garrett11 =
+  ag_garrett10 (workspace dir copied) + hair.strands from hg_G88a (flow_top pct, hairline_row low cards / rise / lit .12) +
+  hair.export {style "shells", headroom 2, tier hero, hg_G88a's tier_look far} + hair.look {card_grey .7, grey #6c6966, lit
+  #524e4a, gap #1e1b19} (saved checked=False: the frozen jacket's "over" key fails today's cloth.validate; ag_garrett10 has it
+  too and exports). The module constants (hair_cap SHELL_WIDTH .0005, SHELL_LIT 0, LAY_COVER 1.5, BASE_EDGE .008, GREY_REGION 1,
+  BASE_DEPTH .25, EDGE_SHADE .5, GREY_MAP / SHADE_MAP / VALUE_MAP; hair SHELL_EDGE_LIFT 0, SHELL_CARD_VALUE .75) are NOT spec
+  keys: s15/sh4t.py sets them and runs the script (export or hx7). CHECK (hair only, hx7 tiers=hero on ag_garrett11):
+  13068 triangles, cap 9300 + layer1 3768 = sh4T's hero exactly; hair_basecolor vs sh4T's mean abs diff 0.0005 / 255.
+  v8 = s15/chain16.sh (PID s15/PIDS): export exp/ag_garrett_v8 (hv 24 GB, queued at 08:0x) -> glb_v8 -> specks -> local
+  game jobs offload/ag11 -> s15/CHAIN16_DONE. LOD1-3 hair = tiers main / npc / far (lods.HAIR_TIERS) under the same constants.
+  STATE: v8 exporting. NEXT: (3) look, (4) A/B + sheet.

@@ -29,6 +29,57 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import blender_hair  # noqa: E402
 
 
+
+def image_px_m(e: dict, size) -> float:
+    """A placed image's pixel at the surface (m): its world extent (planar w / h, or a wrap's angle x radius) over its
+    pixels, the finer axis; 0 when unknown."""
+    W, H = (int(size[0]), int(size[1])) if size else (0, 0)
+    if not W or not H:
+        return 0.0
+    eu = e.get("w") or (e.get("su") or 0.0) * (e.get("r0") or 0.0)
+    ev = e.get("h") or (e.get("sv") or 0.0) * (e.get("r0") or 0.0)
+    v = [x for x in ((eu or 0.0) / W, (ev or 0.0) / H) if x > 0]
+    return float(min(v)) if v else 0.0
+
+
+def box_down(a, k: int):
+    """(H, W, C) array averaged over k x k blocks (the edge rows / columns past a whole block dropped): one mip level."""
+    import numpy as np
+    H, W = (a.shape[0] // k) * k, (a.shape[1] // k) * k
+    return a[:H, :W].reshape(H // k, k, W // k, k, -1).mean((1, 3))
+
+
+def prefilter_images(spacing_m: float, min_ratio: float = 1.5) -> list:
+    """(s14) Every image node tagged hp_px_m whose pixel is finer than `spacing_m` / min_ratio gets a box-downsampled copy
+    (factor = spacing / pixel, rounded down): what a GPU's mipmaps do in the live look, which Cycles' bake doesn't."""
+    import numpy as np
+    done, lines = {}, []
+    for m in bpy.data.materials:
+        if not m.node_tree:
+            continue
+        for n in m.node_tree.nodes:
+            px = float(n.get("hp_px_m", 0.0)) if n.type == "TEX_IMAGE" else 0.0
+            if px <= 0 or n.image is None or spacing_m / px < min_ratio:
+                continue
+            k = int(spacing_m / px)
+            key = (n.image.name, k)
+            if key not in done:
+                im = n.image
+                W, H = im.size
+                a = np.empty(W * H * im.channels, np.float32)
+                im.pixels.foreach_get(a)
+                b = box_down(a.reshape(H, W, im.channels), k)
+                new = bpy.data.images.new(f"{im.name}@mip{k}", b.shape[1], b.shape[0], alpha=im.channels == 4,
+                                          float_buffer=im.is_float)
+                new.colorspace_settings.name = im.colorspace_settings.name
+                if b.shape[2] < 4:
+                    b = np.concatenate([b, np.ones(b.shape[:2] + (4 - b.shape[2],), np.float32)], 2)
+                new.pixels.foreach_set(b.astype(np.float32).ravel())
+                done[key] = new
+                lines.append(f"{im.name} {W}x{H} px {px * 1000:.3f} mm -> /{k} for {spacing_m * 1000:.3f} mm samples")
+            n.image = done[key]
+    return lines
+
 def _open(path, live=False):
     """Open the scene file (headless). In a live session (a person's running Blender, which has this file open)
     the scene is already the one in memory: nothing to open."""
@@ -529,6 +580,7 @@ class _Nodes:
             def tex(data):
                 n = self.node("ShaderNodeTexImage", interpolation="Cubic" if not data else "Linear", extension="CLIP")
                 n.image = self.image(e["path"], data)
+                n["hp_px_m"] = image_px_m(e, n.image.size)   # (s14) the bake prefilters images finer than its samples
                 self._in(n.inputs["Vector"], uv.outputs[0])
                 return n
             col = tex(False)
@@ -1483,6 +1535,10 @@ def bake_maps(job):
         # (Garrett's stacked skin: 61 layers, 20 with height) bakes instead of coming out black. CPU only, slower.
         scene.cycles.device = "CPU"
         scene.cycles.shading_system = True
+    if job.get("texel_m"):  # (s14) mip the paint images finer than the bake's sample spacing (Cycles point-samples them)
+        ssmax = max(1, min(int(job.get("supersample", 1)), int(job.get("max_px", 8192)) // max(job["atlases"].values())))
+        for line in prefilter_images(float(job["texel_m"]) / ssmax):
+            print("hp prefilter: " + line, flush=True)
     if job.get("detail") is False:  # tiling micro detail stays out of the unique maps
         for m in bpy.data.materials:
             n = m.node_tree.nodes.get("hp_detail") if m.node_tree else None
@@ -1941,7 +1997,11 @@ def hair_glb_look(job):
                 if key not in built:
                     built[key] = blender_cards.game_material(f"hp_game_{m.name}", img, aux, ca,
                                                              float(job.get("cutoff", 0.33)),
-                                                             {"cull": bool(m.use_backface_culling),
+                                                             {"cull": False,  # (round 40) never: Blender's glTF import DROPS a face with
+                                                              # the same corners as another (the cards' BACK_FACES copies: 24246 of
+                                                              # Tess's 44792 kept), so culling the doubleSided-false material hid
+                                                              # every card's back (crowntop 3/4 7.9 -> 12.9 px). Double-sided here
+                                                              # = what an engine draws from the GLB's own back faces
                                                               "gltf": {**gltf_, "uv": ob.data.uv_layers[0].name if len(ob.data.uv_layers) else None},
                                                               **(job.get("card_params") or {})})
                     bases[built[key].name] = img

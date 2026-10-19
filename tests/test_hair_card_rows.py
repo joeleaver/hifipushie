@@ -76,3 +76,31 @@ def test_rows_skip_tiers_under_their_min_triangles():
     D, locks = _groom()
     cards = hk.cut(D, locks, C, {**S, "flow_top": {"cards": 2, "min_triangles": 5000}}, None, 0, triangles=4000)
     assert not any(c.get("flow") for c in cards)
+
+
+def test_every_tier_fits_its_drawn_budget_back_faces_counted():
+    """(c13, coordinator 2026-10-19) a tier's budgets.json hair_cards DEFAULT (tier_triangles) counts CARD FACES (one
+    side); its DRAWN triangles (the cap once, every other triangle twice when cards export their back faces) stay within
+    the tier's role's RANGE maximum (hero 50k, main_npc 20k, secondary_npc 8k, crowd 1.5k). Both hold for the cards
+    fitted to card_allowance, and the binding one is met within a card's triangles when cards are plentiful."""
+    from hifipushie import hair, hair_cards as hc
+    assert {t: hair.tier_drawn_max(t) for t in hair.CARD_TIERS} == {"hero": 50000, "main": 20000, "npc": 8000, "far": 1500}
+    D, locks = _groom()
+    for tier in hair.CARD_TIERS:
+        budget, dmax = hair.tier_triangles(tier), hair.tier_drawn_max(tier)
+        S_ = {**hc.STRANDS, **S, **{k: v for k, v in hair.tier_settings(tier).items() if k not in ("triangles", "cap_step", "cap")}}
+        cards = hk.cut(D, locks, C, S_, None, 0, triangles=budget)
+        assert cards, tier
+        for bf in (True, False):
+            cap, other = budget // 10, 40
+            f, fixed, allow = hair.card_allowance(budget, cap, other, back_faces=bf, drawn_max=dmax)
+            assert f == (2 if bf else 1)
+            # the arithmetic: the allowance meets the tighter of the two limits exactly
+            assert allow == max(min(budget - cap - other, (dmax - cap - f * other) // f), 200), (tier, bf, allow)
+            keep, seg, info = hc.fit_budget(cards, S_, allow)
+            n = hc.triangles(keep, S_, seg)
+            faces, drawn = cap + other + n, cap + f * (other + n)
+            assert faces <= budget, (tier, bf, faces, budget)
+            assert drawn <= dmax, (tier, bf, drawn, dmax)
+    # legacy (drawn_max None): the budget itself counts drawn triangles (c10 / c11 callers)
+    assert hair.card_allowance(25000, 2000, 100, back_faces=True) == (2, 2200, 11400)

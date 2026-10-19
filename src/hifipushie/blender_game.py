@@ -232,12 +232,19 @@ def build(m):
         nt.links.new(o.outputs["Color"], sep.inputs["Color"])
         nt.links.new(sep.outputs["Green"], pb.inputs["Roughness"])
         nt.links.new(sep.outputs["Blue"], pb.inputs["Metallic"])
-    if "normal" in m["maps"] and not (m["model"] == "hair_cards" and os.environ.get("GE_HAIR_NONORMAL")):  # (debug)
+    if "normal" in m["maps"] and not (m["model"] == "hair_cards" and os.environ.get("GE_HAIR_NONORMAL")) \
+            and not (m["model"] in os.environ.get("GE_NONORMAL", "").split(",")):  # (debug: GE_NONORMAL=skin,... off)
         nm = tex(nt, m, "normal")
         nmap = nt.nodes.new("ShaderNodeNormalMap")
         nt.links.new(nm.outputs["Color"], nmap.inputs["Color"])
         nt.links.new(nmap.outputs["Normal"], pb.inputs["Normal"])
     pb.inputs["Specular IOR Level"].default_value = 0.5
+    if "specular" in m["maps"] and m["model"] != "hair_cards" and not os.environ.get("GE_NOSPECMAP"):
+        # (s13 Garrett) the export's specular map (Blender IOR level, 0.5 = F0 0.04; the GLB's KHR_materials_specular, which
+        # engines read): skin is ~0.36, so the fixed 0.5 put ~40% too much highlight on the glossy T-zone (forehead +6.6 L*
+        # over the stage under the same light, cheek matching). GE_NOSPECMAP: debug, the old fixed 0.5.
+        st_ = tex(nt, m, "specular", "linear")
+        nt.links.new(st_.outputs["Color"], pb.inputs["Specular IOR Level"])
     kind = m["model"]
     P = m.get("params") or {}
     if kind == "skin":

@@ -257,14 +257,17 @@ GREY_DEP0, GREY_DEPW = 0.32, 0.2  # (c3) shared tiles' grey hairs: only strands 
 
 
 def atlas(S: dict, look: dict, lines: dict | None = None, cap: dict | None = None, key: str = "",
-          bake: dict | None = None) -> dict:
+          bake: dict | None = None, shells: list | None = None) -> dict:
     """The strand atlas: {"color" (H, W, 4) sRGB floats, straight alpha; "normal" (H, W, 3); "aux" (H, W, 4): root
     gradient, strand id, depth, alpha; "tiles": [{"kind", "u0", "u1"}] (v runs the whole height: 0 = the root, at the
     top of the picture)}. Colour = the look's gap colour deep down to its lit colour on top, a value per strand.
     `bake` (hair_clumps.bake: cards' own strands, a block as wide as the tiles + chart): stacked UNDER the tiles; the
-    tiles' rows are then the top `rows` of `rows_total` (every tile / chart uv's v is remapped: remap_v)."""
+    tiles' rows are then the top `rows` of `rows_total` (every tile / chart uv's v is remapped: remap_v).
+    `shells` (hair_cap.combed's shell maps, sh1): a block under everything else, one slot (size / 2 square) a shell
+    side by side; out["shells"] = {"row0", "rows", "slot_w"} (texels) for their uv."""
     key = hashlib.sha1(json.dumps([{k: S.get(k) for k in ("clump", "frizz", "curl", "tips", "atlas", "short")},
-                                   {k: look.get(k) for k in ("gap", "lit", "vary", "band", "card_band", "card_gain", "card_sat", "tone_front", "tone_back", "grey", "grey_share", "card_grey", "grey_locks", "grey_amount", "sun", "highlights", "highlight_contrast", "variation")}, key, sorted(SHORT_TILE.items()), SHORT_DEPTH, EDGE_SOLID, GREY_LIFT, GREY_SPREAD, (bake or {}).get("key")], sort_keys=True).encode()).hexdigest()
+                                   {k: look.get(k) for k in ("gap", "lit", "vary", "band", "card_band", "card_gain", "card_sat", "tone_front", "tone_back", "grey", "grey_share", "card_grey", "grey_locks", "grey_amount", "sun", "highlights", "highlight_contrast", "variation", "headroom")}, key, sorted(SHORT_TILE.items()), SHORT_DEPTH, EDGE_SOLID, GREY_LIFT, GREY_SPREAD, (bake or {}).get("key"), [hashlib.sha1(np.ascontiguousarray(s_["alpha"]).tobytes()).hexdigest() for s_ in (shells or [])],
+                                   [hashlib.sha1(np.ascontiguousarray(m_["value"]).tobytes()).hexdigest() for m_ in [cap or {}] + list(shells or []) if m_.get("value") is not None]], sort_keys=True).encode()).hexdigest()
     if key in _ATLAS:
         return _ATLAS[key]
     from scipy import ndimage
@@ -272,6 +275,7 @@ def atlas(S: dict, look: dict, lines: dict | None = None, cap: dict | None = Non
     H = size
     rng = np.random.default_rng(11)
     cols, tiles, x = [], [], 0
+    cap_val = None
     for kind, w0 in TILES:
         w = int(round(w0 * size / 1024))
         cols.append(_tile(kind, w, H, S, rng, lines=(lines or {}).get(len(cols)), short=bool(S.get("short"))))
@@ -282,6 +286,8 @@ def atlas(S: dict, look: dict, lines: dict | None = None, cap: dict | None = Non
         rs = lambda m: np.asarray(Image.fromarray((np.clip(m, 0, 1) * 255).astype(np.uint8)).resize(  # noqa: E731
             (size, H), Image.BILINEAR), np.float32) / 255
         cols.append({k: rs(cap[k]) for k in ("alpha", "id", "depth")})
+        if cap.get("value") is not None:  # (sh4) the cap's regional value factor (hair_cap.VALUE_MAP)
+            cap_val = rs(np.clip(cap["value"], 0, 1))
         cap_x0 = sum(c["alpha"].shape[1] for c in cols[:-1])
         for t_ in tiles:
             t_["u0"], t_["u1"] = t_["u0"] / 2, t_["u1"] / 2
@@ -293,6 +299,20 @@ def atlas(S: dict, look: dict, lines: dict | None = None, cap: dict | None = Non
         if bake["alpha"].shape[1] != a.shape[1]:
             raise ValueError("hair atlas: the bake block must be as wide as the tiles")
         a, idm, dep = (np.concatenate([m, bake[k].astype(np.float32)], 0) for m, k in ((a, "alpha"), (idm, "id"), (dep, "depth")))
+    Hb_ = a.shape[0]  # (the tiles' and the bake block's rows: shells go under them)
+    sh_rows, sh_w = 0, 0
+    if shells:
+        from PIL import Image as _Im
+        sh_rows = sh_w = size // 2
+        if len(shells) * sh_w > a.shape[1]:
+            raise ValueError("hair atlas: at most %d shells" % (a.shape[1] // sh_w))
+        rsh = lambda m: np.asarray(_Im.fromarray((np.clip(m, 0, 1) * 255).astype(np.uint8)).resize(  # noqa: E731
+            (sh_w, sh_rows), _Im.BILINEAR), np.float32) / 255
+        blk = {k: np.zeros((sh_rows, a.shape[1]), np.float32) for k in ("alpha", "id", "depth", "grey")}
+        for j_, s_ in enumerate(shells):
+            for k in blk:
+                blk[k][:, j_ * sh_w:(j_ + 1) * sh_w] = rsh(s_[k])
+        a, idm, dep = (np.concatenate([m, blk[k]], 0) for m, k in ((a, "alpha"), (idm, "id"), (dep, "depth")))
     gap, lit = _lin(look.get("gap", "#221310")), _lin(look.get("lit", "#56352d"))
     shade = (0.45 + 0.55 * dep ** 0.8)[..., None]
     # a value per strand: what makes a card read as hairs, not a painted sheet (strands: +-vary and more)
@@ -308,7 +328,7 @@ def atlas(S: dict, look: dict, lines: dict | None = None, cap: dict | None = Non
                 hs_[:Ht, xk_:xk_ + w_] = 0.0
             xk_ += w_
         if bake is not None:  # (the baked strands carry their own ribbons in their tone)
-            hs_[Ht:] = 0.0
+            hs_[Ht:Hb_] = 0.0
         val = val * (1 + float(look.get("highlight_contrast", 0.6)) * hs_)[..., None]
     if bake is not None and bake.get("tone") is not None:  # the baked strands' own tone (hair_clumps.strand_tones,
         # / peak: the cards' vertex colours then carry only the root ramp)
@@ -318,12 +338,22 @@ def atlas(S: dict, look: dict, lines: dict | None = None, cap: dict | None = Non
         from .hair_clumps import TONE_HEAD
         tb_ = bake["tone"].astype(np.float32) * hcol.peak(look) * TONE_HEAD
         bake_k = float(np.mean(tb_[bake["alpha"] > 0.5])) if (bake["alpha"] > 0.5).any() else 1.0
-        val[Ht:] = (tb_ / max(bake_k, 1e-3))[..., None]
+        val[Ht:Hb_] = (tb_ / max(bake_k, 1e-3))[..., None]
     gain = float(look.get("card_gain", 1.0))  # measured against the strand look (hair.match_cards)
     if S.get("colour_model", True) and not S.get("short"):  # (the cards' vertex colours carry tone / peak: mesh())
         from . import hair_colour as hcol
         gain = gain * hcol.peak(look)
     base = gap[None, None] * (1 - shade) + lit[None, None] * shade
+    if cap_val is not None or (shells and shells[0].get("value") is not None):  # (sh4) regional value (VALUE_MAP) on the
+        # dark strands and the base only, before the grey hairs go in: on the whole colour (sh4v) the silver went with
+        # it (p90 48 vs the photo's 56, grey share 69 -> 21 %); the photo is dark hair + bright silver, a wide range
+        vr_ = np.ones(a.shape, np.float32)
+        if cap_val is not None:
+            vr_[:Ht, cap_x0:cap_x0 + size] = cap_val
+        if shells and shells[0].get("value") is not None:
+            for j_, s_ in enumerate(shells):
+                vr_[Hb_:, j_ * sh_w:(j_ + 1) * sh_w] = rsh(s_["value"])
+        base = base * vr_[..., None]
     gs = float(look.get("grey_share") or 0.0) * (float(look.get("card_grey", 0.5)) if S.get("short") else 1.0)  # grey hairs: that share of the strands (by their id) in the grey colour
     if gs > 0:  # (the strand look's own rule: look.grey_amount + the locks' grey x look.grey_locks; cards_job sets it)
         grey = np.clip(_lin(look.get("grey", "#9a948d")) * GREY_LIFT, 0.0, 1.0)
@@ -342,14 +372,16 @@ def atlas(S: dict, look: dict, lines: dict | None = None, cap: dict | None = Non
                 gsh_ = np.clip(md_ + GREY_SPREAD * (gsh_ - md_), 0.0, 1.0)
             if GREY_QUANTILE:  # (c3) the share drawn AS a share: the id threshold at that quantile of the tiles' strand
                 # pixels' ids (ids are not uniform over 0..1: a .74 share drew 26 % grey texels at Garrett's sides)
-                sm_ = (dep[Ht:] > GREY_DEP0 + GREY_DEPW) & np.isfinite(idm[Ht:])
+                sm_ = (dep[Ht:Hb_] > GREY_DEP0 + GREY_DEPW) & np.isfinite(idm[Ht:Hb_])
                 if sm_.sum() > 1000:
-                    qq_ = np.quantile(idm[Ht:][sm_], np.linspace(0, 1, 101))
+                    qq_ = np.quantile(idm[Ht:Hb_][sm_], np.linspace(0, 1, 101))
                     gsh_ = 1.0 - np.interp(1.0 - gsh_, np.linspace(0, 1, 101), qq_)
-            isg[Ht:] = (np.clip((idm[Ht:] - (1.0 - gsh_)) / 0.04, 0.0, 1.0)
-                        * np.clip((dep[Ht:] - GREY_DEP0) / GREY_DEPW, 0.0, 1.0))[..., None]
+            isg[Ht:Hb_] = (np.clip((idm[Ht:Hb_] - (1.0 - gsh_)) / 0.04, 0.0, 1.0)
+                        * np.clip((dep[Ht:Hb_] - GREY_DEP0) / GREY_DEPW, 0.0, 1.0))[..., None]
         if cap is not None and cap.get("grey") is not None:  # a baked chart knows which of its strands are grey
             isg[:Ht, cap_x0:cap_x0 + size, 0] = rs(cap["grey"])  # (per region: the locks' own shares)
+        if shells:  # (sh1) each shell's own grey strands
+            isg[Hb_:, :, 0] = blk["grey"]
         base = base * (1 - isg) + grey[None, None] * (0.6 + 0.4 * shade) * isg
     lin = base * val * gain
     cs = float(look.get("card_sat", 1.0))  # x the colour's saturation (cards measured against the strand look)
@@ -357,11 +389,24 @@ def atlas(S: dict, look: dict, lines: dict | None = None, cap: dict | None = Non
         yl = (lin @ np.array([0.2126, 0.7152, 0.0722]))[..., None]
         lin = yl + (lin - yl) * cs
     col = _srgb(np.clip(lin, 0, 1))
+    hr_ = float(look.get("headroom") or 1.0)
+    if bake is not None and hr_ > 1.0 and (bake["alpha"] > 0.5).any():  # (c14, Garrett) the baked cards' vertex colours
+        # carry tone_k (bake_k x tint) and clip at 1: a third of c11L's card vertices sat AT 1.0 and tone_back 1.0 put
+        # 71-83 % there, so every LIGHTENING lever (tone_back, the flow top's lit, card_gain) was eaten while the atlas
+        # used ~0.43 of its linear range. Move a factor H into the bake block (H <= headroom, its p99.9 texel <= .98)
+        # and divide bake_k by it (the cards' colours / H): the same picture where nothing clipped
+        lb_ = lin[Ht:Hb_][bake["alpha"] > 0.5]
+        H_ = float(np.clip(0.98 / max(float(np.percentile(lb_, 99.9)), 1e-4), 1.0, hr_))
+        lin = lin.copy()
+        lin[Ht:Hb_] = lin[Ht:Hb_] * H_
+        col = np.concatenate([col[:Ht], _srgb(np.clip(lin[Ht:Hb_], 0, 1)), col[Hb_:]], 0)
+        bake_k = bake_k / H_
+        print(f"atlas headroom: bake block x {H_:.2f} (cards' vertex colours / {H_:.2f})", flush=True)
     x = 0
     # the tie: under strands the hair gathered into it hides the band; cards run INTO it and the look's band colour
     # (a dark elastic) showed as a black hole (Tess, review c2). It wears the hair's own median colour unless the
     # look names `card_band`
-    hair_ = col[(a > 0.5)] if (a > 0.5).any() else None
+    hair_ = col[:Hb_][(a[:Hb_] > 0.5)] if (a[:Hb_] > 0.5).any() else None  # (not the shells' block: sh1)
     band_ = (np.array([int(look["card_band"].lstrip("#")[i:i + 2], 16) / 255 for i in (0, 2, 4)]) if look.get("card_band")
              else (np.median(hair_, 0) * 0.8 if hair_ is not None else
                    np.array([int(look.get("band", "#23252b").lstrip("#")[i:i + 2], 16) / 255 for i in (0, 2, 4)])))
@@ -387,14 +432,24 @@ def atlas(S: dict, look: dict, lines: dict | None = None, cap: dict | None = Non
     if bake is not None:  # the baked strands' own directions (across, along: down the picture = -up) and root-to-tip
         fb = bake["flow"]
         nb = np.maximum(np.linalg.norm(fb, axis=-1, keepdims=True), 1e-6)
-        flow[Ht:, :, 0], flow[Ht:, :, 1] = fb[..., 0] / nb[..., 0], -fb[..., 1] / nb[..., 0]
-        flow[Ht:, :, 2] = np.clip(nb[..., 0], 0, 1)
+        flow[Ht:Hb_, :, 0], flow[Ht:Hb_, :, 1] = fb[..., 0] / nb[..., 0], -fb[..., 1] / nb[..., 0]
+        flow[Ht:Hb_, :, 2] = np.clip(nb[..., 0], 0, 1)
         root = np.concatenate([root, bake["root"].astype(np.float32)], 0)
+    if shells:  # (sh1) the shells' flow / normal; root: their strands' own along-ness is in depth already
+        for j_, s_ in enumerate(shells):
+            sl_ = (slice(Hb_, Hb_ + sh_rows), slice(j_ * sh_w, (j_ + 1) * sh_w))
+            rs3_ = lambda m: np.stack([rsh(m[..., i] * 0.5 + 0.5) * 2 - 1 for i in range(m.shape[-1])], -1)  # noqa: E731
+            nrm[sl_] = _unit(rs3_(s_["normal"])) * 0.5 + 0.5
+            f_ = rs3_(s_["flow"][..., :2])
+            flow[sl_[0], sl_[1], :2] = _unit(np.concatenate([f_, np.zeros_like(f_[..., :1])], -1))[..., :2]
+            flow[sl_[0], sl_[1], 2] = rsh(s_["flow"][..., 2])
+        root = np.concatenate([root, np.full((sh_rows, root.shape[1]), 0.5, np.float32)], 0)
     out = {"color": np.concatenate([col, a[..., None]], -1).astype(np.float32), "normal": nrm.astype(np.float32),
            "aux": np.stack([root, idm, dep, a], -1).astype(np.float32), "tiles": tiles, "size": size,
            "flow": np.concatenate([flow[..., :2] * 0.5 + 0.5, flow[..., 2:]], -1).astype(np.float32),
            "coverage": {t["kind"]: round(float(c["alpha"].mean()), 2) for t, c in zip(tiles, cols)},
-           "source": "groom" if lines else "drawn", "rows": Ht, "rows_total": a.shape[0], "bake_k": bake_k}
+           "source": "groom" if lines else "drawn", "rows": Ht, "rows_total": a.shape[0], "bake_k": bake_k,
+           "shells": {"row0": Hb_, "rows": sh_rows, "slot_w": sh_w, "n": len(shells or [])}}
     if len(_ATLAS) > 6:
         _ATLAS.pop(next(iter(_ATLAS)))
     _ATLAS[key] = out

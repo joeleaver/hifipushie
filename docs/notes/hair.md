@@ -6483,3 +6483,663 @@ part side to the grouping if her groom shows one).
   25000). CODE: cards_job gives fit_budget (budget - cap - 2 x other fixed) / 2 when hair.BACK_FACES (segments lengthen
   to 1.5x first, then cards go by prio); info["drawn_x"]. c10m = c9M's settings under it (hero) queued (c10/q2.sh);
   c10b ran with the old count, c10c with the new.
+- (5) DRAWN BUDGET works: c10m (c9M's settings) hero 24224 drawn triangles (c9M 28892), segment 8 -> 10.2 mm, no card
+  dropped; c10c 24856 (segment 11.7 mm). LOOK (c10/crop_c10m.png grm | c9L | c10m | c10b | c10c): c10m = c9L by eye at
+  3/4, profile, back (the longer segments cost nothing visible at 1 m). ends per 10k front / 3/4 / top: c10m 2.5 / 10.6 /
+  55.0, c10c 2.1 / 11.8 / 64.0.
+- (6) c10b (c10a + row pass / lit .4): 3/4 L* 41.9 -> 43.3; the temple goes silver like the groom's sheet but as FLAT
+  SHINGLES (wide 12 mm lit plates); the bald gap in front of the ear stays (the pass strands join the same 24 clusters a
+  side: no new cards lower down). c10c (flow 90 per group / hw 25 mm / el 20 + row pass): front L* 45.6 (groom 46.3), 3/4
+  44.8 (c9L 41.1, groom 50.0): the lighter top / temple band of the groom; the top's flow layer reads as a smooth light
+  plate with the radial lines (groom-like from the back), top ends per 10k UP (64: the flow cards' own ends). Shingles at
+  the temple remain. CODE: hair.export carries tone_front / tone_back / card_sat (card-only, the groom's look untouched).
+  STATE: c10d = c10c's flow + row hw 8 mm / lit .25 + tone_front 1.0 (hero) running (c10/q3.sh). NEXT: pick, spec, all tiers, A/B.
+- (7) c10d (hero) = c10c's flow + row hw 8 mm / lit .25 + look tone_front 1.0: L* front 46.8 (groom 46.3), 3/4 45.7 (50.0),
+  side 43.2 (44.3), back 37.3 (37.5); the temple shingles smaller than c10c's, silver; the gap in front of the ear smaller
+  but there. Picked.
+- (8) SPEC: hg_G88a (store version 7; before = c10/spec_G88a_before.json): hair.strands.flow_top = {cards 90, hw .025,
+  lit .3, el 20}, hair.strands.hairline_row = {hw .008, az [40, 100], el [-40, 25], pass true, lit .25}, hair.export =
+  {card_gain 2.1, tone_front 1.0}. c10L = ALL four tiers from the spec with NO overrides (c10/c10L.sh; exp/c10L).
+  DRAWN triangles (back faces counted) vs budgets.py (role hero): hero 24856 / 25000, main 12312 / 12500, npc 6368 / 8250,
+  far 1380 / 2500 (c9M: 28892 / 11516 / 5420 / 1380: hero was over). Segments 11.7 / 14.3 / 25 / 50 mm, no card dropped.
+  Distance tone (dtone.py, 3/4): main g2v1 44.7 (c9M 39.9, groom 50.7), g4v1 45.7 (40.1 / 51.9), g8v1 46.2 (40.7 / 52.7);
+  npc ~1 under main; FAR still 37-39 (no rows at far, its own atlas: the far tier is the dark one now).
+  BLIND A/B vs c9M (review-ab exit 4 again: trios review/ab_c10L + key.json to a fresh blind subagent): front TIE, 3/4 NEW,
+  side NEW, back NEW (barely), 2 m NEW, 4 m NEW (slightly), 8 m TIE -> NEW 5, OLD 0, TIE 2.
+  Shared MAJORs: still too dark at 4-8 m ("dark-haired, not grey"), temple-to-front-of-ear coverage missing, flat thin top
+  silhouette vs the groom's swept volume, shingle / scale look on the sides + stray dark strand lines by the ears, jagged fringe.
+## HANDOVER (hair-garrett c10, 2026-10-18; nothing in flight)
+STATE: hair-heads2 local commits only. BEST = exp/c10L (blind NEW 5 / OLD 0 / TIE 2 vs c9M; NOT approved), built from
+hg_G88a's SPEC with no overrides: the assembly's export picks it up (hair.strands flow_top / hairline_row, hair.export
+card_gain 2.1 / tone_front 1.0). Every tier is under budgets.py in DRAWN triangles (coordinator rule: back faces count).
+CODE (c10): hair.cards_job fits cards to (budget - cap - 2 x other fixed) / 2 when BACK_FACES; FLOW_TOP / HAIRLINE_ROW `lit`;
+HAIRLINE_ROW `pass` / `pass_el` / `pass_back`; look / export tone_front, tone_back (card_sat via export too). Tests: rows +
+back faces green (no unit test of the drawn budget: checked on the c10L export).
+Scratch $HG/cards/c10/: q1-q3.sh (hero trials), c10L.sh (all tiers from the spec), dtone.py (hair L*a*b* p50 vs grm per
+view), crop_c10{a,b,m,d}.png, spec_G88a_before.json; review/ab_c10L.
+LOOK (mine, first): c10L is the first build whose top and temples carry the groom's lighter silver band (3/4 and side);
+front matches the groom's tone. Not the groom yet: the temple-to-ear sheet is still short (gap in front of the ear), the
+temple reads as shingles, the top is flat/low vs the groom's swept volume, and the FAR tier stays dark.
+NEXT: (1) far tier tone (its L* 37-39 vs 50: lift its atlas / tint, it has no rows; or rows at far with a triangle check).
+(2) the gap in front of the ear: more row clusters for the low band (pass strands join 24 clusters a side; give the
+el < -10 band its own clusters) + the denser cap there (not attempted). (3) shingles: the row cards' tile picture / width
+(8 mm lit plates still read as scales). (4) top volume (flow layer env pct / lift).
+## Garrett cards c11 (2026-10-18, hair-garrett agent, fresh; order: far-tier tone, the gap in front of the ear, temple shingles, top volume / profile sweep, drawn-budget unit test, all tiers + A/B vs c10L)
+- (0) LOOK at c10L before work (c11/crop_far0.png grm | main | far, g2 front / 3/4): beyond the tone, the cards' hair
+  AREA is ~58 % of the groom's at 2 m (dtone n: grm 2434 / main 1405 px front, 3179 / 1993 at 3/4): the groom's sides
+  stand off the head down to the ear, ours lie flat and stop at the temple; far is one flat dark tone (no silver).
+  dtone c10L 3/4: far L* 37.4 / 37.9 / 38.9 at g2 / g4 / g8 (groom 50.7 / 51.9 / 52.7, main 44.7 / 45.7 / 46.2); front far
+  41.8 / 42.4 / 44.4 (groom 46.8 / 47.2 / 49.9). b* 3.7-3.9 vs 3.0 (warm) at every tier.
+- (1) CODE: hair.export.tier_look {tier: {card_gain, card_sat, tone_front, tone_back, card_grey}} (cards_job: over
+  export card_gain / tone_*: the far tier's atlas is its own, so its tone is set without touching the others').
+  hair.card_allowance(budget, cap, other): the drawn-budget arithmetic (cap once, the rest x2 with BACK_FACES) as a
+  function; test_every_tier_fits_its_drawn_budget_back_faces_counted (tests/test_hair_card_rows.py, every CARD_TIER,
+  back faces on / off). HAIRLINE_ROW `low_el` / `low_cards` / `low_hw`: the band's strands entering under low_el (root,
+  or a passing strand's first station in the band) clustered on their own (c10: they joined 24 clusters a side and the
+  cards followed the upper strands). Tests 5 green.
+  Far trials (c11/far.sh, tier_look far): c11f1 card_gain 2.95 / card_sat .8 (target: main's L*, a x1.4 linear gain
+  read from the L* gap), c11f2 3.5 / .8. STATE: running (c11/q1.sh). NEXT: dtone vs grm / c10L far.
+- (2) FAR TONE c11f1 / f2 (dtone, front g2 / g4 / g8 | 3/4): f1 (gain 2.95) 49.3 / 49.9 / 51.2 | 45.2 / 45.6 / 46.7, f2 (3.5)
+  53.2 / 53.9 / 55.2 | 49.3 / 49.7 / 50.6 (groom 46.8 / 47.2 / 49.9 | 50.7 / 51.9 / 52.7). Lightness moves as computed, but
+  b* went 3.7 -> 6.2-6.6 (BROWN by eye, c11/crop_far1.png): card_sat .8 RAISED saturation (the look's card_sat is .35 =
+  eevee_sat; a tier_look card_sat replaces it). The front / 3/4 split (front over, 3/4 under) is the far tier's missing
+  silver sides; one gain sits between. c11f3 = gain 3.2 / sat .4, c11f4 = gain 3.2 / sat .25 (target b* 3.0) queued.
+  CODE: HAIRLINE_ROW `rise` (row cards raised toward the side envelope, held under it): hero trials c11a (low band
+  clusters), c11b (+ flow pct 98, row lit .12), c11c (+ rise .6) queued (c11/q2.sh, q3.sh).
+  Baselines c10L: miss.py front temple rows L / R 29.5 / 32.1 %, ear rows 40.6 / 35.3; 3/4 ear R 47.8; profile ear L
+  (front of the ear) 63.8 %; top.py front width 168 px (groom 182), profile orient 0.8 (groom -88.8).
+- (3) FAR TONE picked: c11f4 = tier_look far {card_gain 3.2, card_sat .25} (1380 triangles, unchanged): dtone front g2 /
+  g4 / g8 51.2 / 51.9 / 53.3, 3/4 47.1 / 47.5 / 48.6, b* 3.5 (groom 46.8 / 47.2 / 49.9 | 50.7 / 51.9 / 52.7, b* 3.0; c10L far
+  41.8 / 42.4 / 44.4 | 37.4 / 37.9 / 38.9). Errors +4 front / -4 at 3/4 (c10L -5 / -13): one gain sits between the front
+  and the silver sides the far tier has no rows for. c11f3 (sat .4) b* 4.3. Grey-brown by eye fixed (c11/crop_far1.png).
+- (4) HERO TRIALS (c11/crop_c11abc.png grm | c10L | c11b | c11c, front / 3/4 / profile): c11a (low band clusters: row 48
+  -> 83 cards) profile front-of-ear miss 63.8 -> 56.7 %, front / 3/4 unchanged; c11b (+ flow pct 98, row lit .12) top y
+  -1 px, miss total front 22.7 -> 22.2; c11c (+ rise .6) 55.5 %, width 169 px (groom 182, c10L 168). All 24708 drawn tris.
+  LOOK: c11a-c c10L by eye: the temple still reads as light flat plates (shingles), the sideburn sheet in front of the
+  ear is still a small patch + dark wire hairs, the top no higher. Small measured gains only; rise moved nothing visible
+  (the row cards are few and already at the envelope: the side mass is the head cards' layers, not the row).
+- (5) CROWN LEDGE (coordinator, assembly s7 evidence: back standoff 3-4 mm to el ~60-66 then 9-10 mm, a 6-7 mm step;
+  same in c6M). standoff.py on c10L hero: r98 by elev (6 deg bins) ... 104 / 107 / 114 / 115 ...: +7 mm in one bin at the
+  assembly frame's ~50 deg. Suspect: SIDE_EL (60, 80) (sides: top layer on the clump's outer strands, SIDE_OUT_PCT; top:
+  0.6 x spread capped at HEAD_SN_MAX, ENV_PCT 90 vs SIDE_ENV_PCT 99). Trials c11d1 SIDE_EL (40, 85), c11d2 (20, 85) on
+  c11c's settings queued (c11/q4.sh). NEXT: standoff curve + back crops.
+- (6) LEDGE trials: c11d1 SIDE_EL (40, 85) and c11d2 (20, 85) give the SAME standoff curve as c11c to the mm (r98 by 6 deg
+  ... 104 / 107 / 114 / 115 ...): SIDE_EL is a DEAD lever for this step (constant not reaching the even groom's clumps cut,
+  or the cut cached without it; not traced). c11/standl.py (r98 per export layer range on the back midline) found cards
+  (layer0-2) only from the assembly frame's elev ~48 up, the cap alone under it; its per-range numbers do not add up to
+  standoff.py's whole-mesh curve (glbload's face order vs the report's layer ranges: unverified), so the step's owner
+  (top cards starting over a cap-only back, vs the cap itself) is NOT settled.
+- (7) SPEC (before = c11/spec_G88a_before.json): hair.strands.flow_top + pct 98; hairline_row + lit .12, low_el -10 /
+  low_cards 24 / low_hw .012, rise .6; hair.export.tier_look {far: {card_gain 3.2, card_sat .25}}. c11L = all four tiers
+  from the spec, no overrides (c11/c11L.sh) building.
+- (8) c11L (exp/c11L, all four tiers from the spec, no overrides): DRAWN triangles hero 24708 / 25000, main 12412 / 12500,
+  npc 6560 / 8250, far 1380 / 2500. dtone 3/4: far g4 / g8 47.5 / 48.6 (c10L 37.9 / 38.9, groom 51.9 / 52.7), front far
+  51.9 / 53.3 (groom 47.2 / 49.9); main 3/4 46.4 / 46.3 (c10L 45.7 / 46.2).
+  BLIND A/B vs c10L (review-ab exit 4 again on 2026-10-19 before 13:00 MT; trios review/ab_c11L + key.json to a fresh blind
+  subagent): front TIE, 3/4 NEW, side NEW, back TIE, 2 m NEW, 4 m NEW, 8 m NEW, far 4 m front NEW -> NEW 6, OLD 0, TIE 2.
+  (the reviewer read the temple / front-of-ear patch as the main 1-2 m difference, and the far tone at 4-8 m.)
+  Shared MAJORs: volume (tight to the skull, no lift on top / puff at the sides; small silhouette, front views), thin side
+  coverage above / in front of the ears, jagged hairline with stray dark crossed strand lines by the ears, shingled
+  side texture to 2 m, a separate light top / crown cap with a tonal seam to the darker back / sides, a bluish cast at
+  the sideburn / temple.
+## HANDOVER (hair-garrett c11, 2026-10-19; nothing in flight)
+STATE: hair-heads2 local commits only (not pushed). BEST = exp/c11L (blind NEW 6 / OLD 0 / TIE 2 vs c10L; NOT approved),
+built from hg_G88a's SPEC with no overrides (spec before: $HG/cards/c11/spec_G88a_before.json). Every tier is under
+budgets.py in DRAWN triangles.
+CODE (c11): hair.export.tier_look {tier: {card_gain, card_sat, tone_front, tone_back, card_grey}} (per-tier card look; NB
+card_sat REPLACES the look's (.35 on G88a): .8 made far brown); hair.card_allowance + test_every_tier_fits_its_drawn_budget_
+back_faces_counted; HAIRLINE_ROW low_el / low_cards / low_hw (low band clustered on its own), rise (toward the side
+envelope). Tests tests/test_hair_card_rows.py 5 green.
+Scratch $HG/cards/c11/: far.sh (one tier + export overrides via hx7 ex=<json>), q1-q4.sh, c11L.sh, standl.py, crop_far0/1.png,
+crop_c11abc.png; review/ab_c11L (trios, key, args).
+LOOK (mine, first): c11L's real gain is the FAR tier: it was one dark flat tone at 4-8 m, now a mid grey near the groom's
+(neutral, b* 3.6). At 1 m it is c10L plus a little more hair in front of the ear (profile miss 63.8 -> 55.5 %); the temple
+still reads as light shingles, the sides lie tight (front width 169 px vs the groom's 182), and the top is no higher.
+FINDINGS: (a) far front / 3/4 cannot both match with one gain: front +4, 3/4 -4 L* (the silver sides the far tier has no
+rows for). (b) rise / pct 98 / SIDE_EL move almost nothing: the side and top volume is set by the head cards' layers /
+cap, not by the rows or the envelope caps. (c) CROWN LEDGE (coordinator, assembly s7): confirmed in c11c's GLB (+7 mm in
+one 6 deg bin on the back midline); SIDE_EL (40-85 / 20-85) is a DEAD lever (identical curve); owner not settled
+(c11/standl.py: cards only from that elevation up over a cap-only back, but its per-range sums did not reproduce
+standoff.py's curve: check glbload's face order first).
+NEXT, in order: (1) crown ledge: settle the owner (per-layer standoff with verified face ranges; is the groom's own strand
+envelope stepped there?), then grade the back's cap / layer0 up (or the top layers down) across the step. (2) side / top
+volume: the head cards' layer offsets on the sides (SIDE_OUT_PCT, HEAD_SN_MAX) vs the groom's 99th pct radius: measure
+the cards' radius vs the strands' by region before choosing a lever. (3) shingles: the row / temple cards' tile picture
+(fine strands, soft edges) rather than lit plates. (4) review-ab's CLI after 2026-10-19 13:00 MT.
+## Garrett cards c12 (2026-10-19, hair-garrett agent, fresh; order: crown ledge cause, side / top volume by region, temple shingles' texture, tonal seam / sideburn cast, A/B vs c11L)
+- (1) CROWN LEDGE, CAUSE: the GROOM. c12/ledge.py <exp>: back midline (|x| < 6 mm, behind C = c8/C.json [0, -.0511, 1.6914])
+  by elevation over C (6 deg bins), standoff = radius - the strand roots' radius in that bin; groom from exp/hlp/cut.pkl's St.
+  groom so50 by elev 18 / 24 / 30 / 36 / 42: 2 / 2 / 1 / 9 / 8 mm (an 8 mm step in ONE bin: the long top hair's ends over
+  the short back); groom so98 6 / 8 / 10 / 11 / 11 (graded over ~20 deg by the longest tips). c11L cards (all) so98 3 / 3 / 4 /
+  9 / 9: the cards copy the median's step, not the tips' grade (cap 4-6 everywhere; layer0-2 start at elev 36, 2-3 mm
+  under it). c11's standl.py "did not add up" because standoff.py centres a hair-only GLB on the hair's mean y (no head
+  mesh), not because of face order (layer ranges in the report are [start, COUNT]).
+  Lever: the head cards stop where 35 % of their strands still run (HEAD_END .35): the tips that grade the groom are
+  cut off. Trials c12e1 HEAD_END .15, c12e2 .05 (c12/q1.sh; hx.sh = hero only + ledge + vol). STATE: running.
+- (2) VOLUME BY REGION (c12/vol.py <exp>: standoff over the roots' radius in that direction, groom vs card surface samples;
+  coverage = 2-deg direction cells with groom > 2 mm that also hold cards > 2 mm; front half-width p99.5 at z over C):
+  c11L | region groom so p50/p90/p98 | cards p50/p90/p98 (mm)
+  top 6.7/11.4/15.4 | 4.5/8.6/10.9; crown-back-top 7.8/12.3/16.2 | 5.3/9.7/13.2; temple 3.6/9.7/12.5 | 2.6/5.9/7.4;
+  side over the ear 4.0/10.6/13.2 | 3.8/7.0/9.4; side top 8.1/13.2/17.0 | 5.0/9.9/13.3; back 3.5/5.8/13.1 | 2.4/4.7/6.2.
+  Coverage 0.99-1.00 everywhere. Half-width at z 0/30/60/90 mm: groom 92.4/87.3/72.0/20.8, cards 89.4/83.6/67.9/12.0.
+  => not coverage: the cards' outer surface sits 3-4 mm (p90) / 4-5 mm (p98) under the groom's in EVERY region, worst at
+  the temple (p90 61 %). Head layers are spread by min(sn, HEAD_SN_MAX 3 mm) x (-.6, 0, .6) and capped at the ENV_PCT 90
+  envelope - ENV_UNDER 1 mm. Trials c12v1 HEAD_SN_MAX .006, c12v2 ENV_PCT 95 + ENV_UNDER 0 (c12/q2.sh). STATE: queued.
+- (4, measured first) TONE BY REGION (c12/rtone.py, profile g1left: hair bbox top 22 % / back 35 % lower half; L* b* fine
+  blotch): groom top 42.9 / back 38.3; c11L top 50.6 (+7.7: the light top cap) / back 36.1. 3/4 (g1v1) side behind the
+  ear: groom 53.7, c11L 44.0 (-9.7: the silver sides). Fine strand texture (std L* - blur 1.5) top groom 5.1 vs 3.8.
+  Suspect the flow top layer's lit .3 (tone x 1.3, no depth shade) and the row's lit .12 (temple plates). Trials c12t1
+  flow lit 0, c12t2 + row lit 0 (c12/q3.sh, with hero renders + rtone). STATE: queued.
+- (5) LEDGE lever: c12e1 HEAD_END .15 = c11L's ledge curve to the mm (cards still start at elev 36; layer counts +40 / +100 /
+  +88 elsewhere): DEAD for the step (c12e2 .05 stopped). By eye (c12/ledge_look.png, back / profile, groom | c11L) the
+  step is not visible from behind in either; what reads is the light crown cap. VERDICT: the ledge is the frozen groom's
+  own (median standoff 1 -> 9 mm at the weight line); the cards copy it faithfully. Grading it would mean cards
+  departing from the approved groom (or a groom change): coordinator's call, not done.
+- (6) VOLUME levers: c12v1 HEAD_SN_MAX .006 = c11L to the decimal (DEAD: the head clumps' spreads are under the 3 mm cap).
+  c12v2 ENV_PCT 95 + ENV_UNDER 0 (alive): cards p90 top 8.6 -> 9.5, crown 9.7 -> 10.6, temple 5.9 -> 6.5, side over ear
+  7.0 -> 7.6 (groom 11.4 / 12.3 / 9.7 / 10.6); half-width 89.4/83.6/67.9/12.0 -> 90.2/84.4/69.4/17.7 (groom 92.4/87.3/72.0/20.8).
+  CODE: hair_clumps.HEAD_LIFT (m, default 0): every head layer out along its normal (still under the envelope, root
+  seated). Trials c12h1 HEAD_LIFT .0025, c12h2 + ENV_UNDER 0 (c12/q4.sh). STATE: queued behind the tone trials.
+- (7) TONE trials (rtone, profile top / 3/4 top | profile temple | 3/4 side behind the ear; groom 42.9 / 42.6 | 60.4 | 53.7):
+  c11L 50.6 / 49.4 | 61.4 | 44.0; c12t1 (flow_top lit 0) 47.2 / 45.7 | 63.4 | 44.5; c12t2 (+ row lit 0) 47.2 / 46.7 | 50.8 | 41.8.
+  LOOK (c12/crop_t.png grm | c11L | t1 | t2): t1 takes the pale crown cap away (the seam to the back softens; still +4
+  L* over the groom on top); t2 also darkens the temple plates, but the groom's temple IS silver (60.4): t2 loses it
+  (-10 L*), so the row keeps lit .12. Picked: flow_top lit 0. The plates' look is not their tone alone (their facing /
+  sameness): shingles NOT fixed. The 3/4 side behind the ear stays ~-9 L* (the groom's silver sides; card_grey per card
+  from the locks' grey: next lever, not tried).
+- (8) HEAD_LIFT trials: c12h1 HEAD_LIFT .0025: cards p50 +0.1-0.4 mm, p90 / p98 / width unchanged (the envelope pulls
+  the lifted cards back: the outer surface IS the ENV cap); c12h2 (+ ENV_UNDER 0) = c12v2. So the side / top volume lever
+  is the envelope (ENV_PCT / ENV_UNDER), not the layer offsets: HEAD_LIFT stays in the code at 0 (dead while the cap binds).
+  ENV_PCT 97 drew frizz arcs on Tess (b12): 95 / under 0 is the step taken.
+- (9) c12L = c11L's spec + overrides st flow_top lit 0, hk.ENV_PCT 95, hk.ENV_UNDER 0, all four tiers (c12/c12L.sh: build,
+  renders, vol, rtone, A/B tiles in review/ab_c12L). STATE: building. NB the ENV constants are module-wide (Tess too):
+  promote to a spec key (hair.export / strands) before making them defaults.
+- (10) c12L built (exp/c12L; DRAWN tris hero 24708 / main 12412 / npc 6560 / far 1380 = c11L's, all under budget). vol: cards
+  p90 top 9.5 / crown 10.6 / temple 6.5 / side over the ear 7.6, half-width 90.2/84.4/69.4/17.7. rtone top 47.1 / 45.9.
+  review-ab exit 4 again ("REVIEW FAILED", 2026-10-19 ~01:45, before the 13:00 MT fix); trios review/ab_c12L + key.json
+  to a fresh blind subagent: front TIE, 3/4 NEW (weak), side OLD, back OLD, 2 m OLD, 4 m npc NEW (weak), 8 m TIE,
+  far 4 m TIE -> NEW 2 / OLD 3 / TIE 3: c12L LOSES. The reviewer preferred c11L's LIGHTER top (reads the groom's top as
+  pale strands over a dark back in side / back views): my rtone "top" box (upper 22 % of the profile bbox, groom 42.9)
+  measured the wrong thing (dark top-front + light crown edge averaged); the flow lit 0 change went against the eye.
+  The ENV 95 volume gain (+1 mm p90) is too small to be seen (front TIE). BEST stays c11L.
+## HANDOVER (hair-garrett c12, 2026-10-19; nothing in flight)
+STATE: hair-heads2 local commits only (not pushed). BEST = exp/c11L (unchanged; c12L lost the blind A/B 2-3-3).
+Coordinator: main dc4f3c21 has hair-heads2 through c10; the report's "triangles" = DRAWN there. Next session: MERGE
+origin/main first (no rebase).
+FINDINGS: (a) CROWN LEDGE = the frozen groom's own: the strands' median standoff steps 1 -> 9 mm at elev 30-36 over C on the
+back midline (the long top hair ends over the short back); the cards copy it. Only the longest tips (so98) grade it.
+HEAD_END .15 does not move it. Not visible from behind at 1 m in either. Grading = departing from the approved groom:
+coordinator's call. (b) VOLUME: coverage is full; the cards' outer surface is 3-4 mm (p90) under the groom's in every
+region, worst at the temple. HEAD_SN_MAX (spreads under the cap) and HEAD_LIFT (envelope pulls it back) are dead; the
+ENV cap (ENV_PCT / ENV_UNDER) is the live lever but 95 / 0 gives only +1 mm. Next: ENV_PCT per region (sides / temple at
+97-99 like SIDE_ENV_PCT already is: check why SIDE_ENV_PCT 99 does not lift the temple: side_weight's C / elev, or the
+temple cards are capped by the top env) and a measured silhouette gate (front width at z 60 / 90: 69 / 18 vs 72 / 21 mm).
+(c) TONE: the flow top's lit .3 is what makes the top light; the eye (blind) prefers it (lighter crown = the groom's pale
+crown strands). The row's lit .12 gives the temple its silver (lit 0: -10 L*). Keep both. A region tone item must be
+cut per view by what the reviewer names (crown band in back view, top-front in profile), not a bbox fraction.
+(d) Shingles / sideburn bluish strip: untouched (the reviewer still names both); next = the temple cards' picture
+(tone_ratio / kid spread / EDGE_FADE on hrow cards) on one tile first.
+CODE (c12): hair_clumps.HEAD_LIFT (default 0, no effect). Scratch $HG/cards/c12/: ledge.py, vol.py, rtone.py, hx.sh (hero +
+ledge + vol), q1-q4.sh, c12L.sh, crop_t.png, ledge_look.png; review/ab_c12L (trios, key, blind verdict above).
+NEW BUDGET RULE (coordinator, 2026-10-19, arrived at the end of c12: NOT implemented, first job next session after the
+merge): a role's hair_cards DEFAULT (hero 25k ...) counts CARD FACES (one side); DRAWN triangles (back faces included)
+must stay under the role's RANGE maximum (hero 50k, main_npc 20k, secondary_npc 8k, crowd 1.5k), and the vertex count is
+reported as well. To do: hair.card_allowance (src/hifipushie/hair.py:2562, used at :2883) takes (faces default, drawn max)
+and returns the cards' allowance = min(default - fixed faces, (drawn max - cap - bf x other) / bf); the report adds
+"vertices"; tests/test_hair_card_rows.py::test_every_tier_fits_its_drawn_budget_back_faces_counted asserts both limits;
+then rebuild every tier of c11L's settings (Garrett gets back ~2x card faces: judge by the A/B whether the extra faces
+help the volume / temple, the c12 MAJORs).
+## Garrett cards c13 (2026-10-19, hair-garrett agent, fresh; order: the new budget rule, every tier rebuilt from c11L's settings, the crown ledge graded toward the photo, volume, temple texture, seam, sideburn strip, A/B vs c11L)
+- (0) MERGED origin/main (f2981bde, no rebase): main's squashed copy of c1-c10 + the Tess hair-cards rounds 26-37 and
+  game_ready r53-r60 (CAP_RELAX / CAP_RELAX_FLOOR, cap_fill_arch, CAP_TOP_EL, CARD_ROUGH_MIN, card_faces in the report,
+  asset's push-under layers). Resolved as a 3-way against c820679b (main's copy of c10); 167 hair tests green.
+  NB c13's builds therefore carry main's cap code (CAP_RELAX 60 ...) that c11L did not: a rebuild of c11L's settings is
+  not c11L to the triangle.
+- (1) BUDGET RULE (coordinator 2026-10-19): hair.card_allowance(budget, cap, other, back_faces, drawn_max): `budget`
+  (tier_triangles: the role's hair_cards default at the tier's LOD) counts CARD FACES, one side (cap + other + cards <=
+  budget); DRAWN triangles (cap once, the rest x2 with BACK_FACES) <= drawn_max = hair.tier_drawn_max(tier) = budgets.json
+  hair_cards range max of TIER_ROLE {hero: hero 50k, main: main_npc 20k, npc: secondary_npc 8k, far: crowd 1.5k}
+  (hair.export.tier_drawn_max {tier: n} overrides). drawn_max None = the old drawn rule (legacy callers). cards_job's
+  budget info carries drawn_max; export_hair's tier report adds "vertices" (GPU: distinct position / uv / normal
+  corners), "positions", "drawn_max". test_every_tier_fits_its_drawn_budget_back_faces_counted asserts both limits and
+  the role maxima. Expected binding limit: hero = faces (25000), main / npc / far = drawn (20000 / 8000 / 1500).
+  STATE: done, tests 5 green. NEXT: c13a = every tier from the spec under the new allowance.
+- (2) c13a (c13/c13a.sh) = c11L's settings (the spec, no overrides), all four tiers under the new allowance, renders,
+  vol, ledge, A/B tiles review/ab_c13a. STATE: building.
+- (3) CROWN GRADE (coordinator (b): the cards may depart from the unapproved groom toward the photo, which has no ledge):
+  hair_clumps.GRADE_SLOPE (m / deg, default 0 = off) / GRADE_BAND 20 deg / GRADE_AZ 100 / GRADE_SEAT 15 mm: envelope(...,
+  grade=) dilates the head strands' ENV_PCT envelope DOWN the back (each bin >= a higher bin within GRADE_BAND less
+  slope x the elevation between), and _grade_fill raises head cards (never lowers) onto it where it stands over the
+  plain envelope, eased in from the root. Slope 0.3 mm / deg = the groom's own so98 grade (6 / 8 / 10 / 11 mm at elev 18-36).
+  test_envelope_grade_spreads_a_back_step (tests/test_hair_clumps.py). Trials (c13/q1.sh, hero + ledge + vol + shots):
+  c13g1 GRADE_SLOPE .0003; c13g2 + volume CROWN_FILL .7 (round 31's raise toward the envelope) CROWN_EL -20 (temples
+  in), CROWN_SEAT .02, CROWN_END .01. STATE: queued behind c13a.
+- (4) c13a BUILT (exp/c13a, c11L's spec under the new allowance): hero drawn 33684 / card faces 18392 / vertices 20691
+  (allowance: faces 25000, drawn max 50000), main 14220 / 8158 / 9143 (12500 / 20000), npc 6804 / 4008 / 4740 (8250 / 8000),
+  far 1500 / 1084 / 1005 (2500 / 1500); c11L drawn 24708 / 12412 / 6560 / 1380. Only the far tier hits its limit: the
+  clumps cut aims at 0.8 x the budget and lands under it (hero 15.3k card faces for a 25k allowance), so the extra
+  allowance mostly went UNSPENT. CODE: hair.CARD_CUT_SHARE (default .8, unchanged) to size the cut (trial at 1.1 not run).
+  vol c13a = c11L to 0.5 mm (front half-width 89.5/83.5/68.5/11.2 vs groom 92.4/87.3/72.0/20.8).
+  BLIND A/B c13a vs c11L (review-ab exit 4 "REVIEW FAILED" again, 2026-10-19; trios to a fresh blind subagent): front /
+  3/4 / side / back / 2 m / 4 m / 8 m TIE, far 4 m front NEW -> NEW 1 / OLD 0 / TIE 7. More faces of the same cut change
+  nothing visible; the far tier's +120 drawn triangles read as wider temple / side mass at 4 m.
+  Shared MAJORs (reviewer): volume (skull-hugging), hairline high with angular temple insets, scale-like clumps with spiky
+  ends, grey wrong by region (pale flat temple patch, dark uniform back), stray strands at the ear, a smooth helmet edge
+  at 4-8 m.
+- (5) PHOTOS (coordinator; read only, never into this repo): /home/joe/dev/s0urc3/docs/img/garrett_ref_full/
+  garrett_head_back.png, garrett_head_profile_left_true90.png (+ front / three-quarter). LOOK (mine, c13/c13a_look
+  vs photo): the photo's back is ONE mid-light grey from crown to nape, smooth, longer and fuller than the groom; ours is
+  a dark bristly back under a pale flat crown cap with a hard seam. The seam reads far more than any ledge.
+- (6) GRADE trials: c13g1 (GRADE_SLOPE .0003, GRADE_SEAT 15 mm) = c11L's ledge curve to the mm; c13g2 (+ CROWN_FILL .7,
+  CROWN_EL -20, CROWN_SEAT .02, CROWN_END .01): 85 of 1309 head cards raised (max 7.7 mm) but the back midline so98 at elev
+  12-30 still 3-4 mm; vol +0.2-0.7 mm p90 (temple 5.9 -> 6.2, side over the ear 7.0 -> 7.7), half-width +0.4 / +1.1 mm.
+  Suspect the band's cards are ~1 cm long, so the 15 mm root ease held them down: c13g3 (GRADE_SEAT 3 mm) and c13t1
+  (+ hair.export tone_back 1.0: the back as light as the photo's) running (c13/q2.sh).
+- (7) c13g3 (GRADE_SEAT 3 mm): 129 of 1309 head cards raised (max 9.2 mm), yet the back midline so98 at elev 12-30 is still
+  3-4 mm (ledge.py) and the back view is c11L's by eye: the grade raises cards somewhere, not in the band the ledge item
+  measures (not traced: check the grade's C / elevation frame against c8/C.json's, and which classes own the band's
+  cards: if the cap or non-"head" cards own it, _grade_fill never sees them). c13t1 (+ hair.export tone_back 1.0):
+  back-view L* (c13/: hair id mask, bands from the hair's top) crown 0-15 % / 15-30 % / mid 35-70 % / nape:
+  c11L 55.9 / 39.9 / 36.6 / 34.5, c13g3 53.2 / 39.5 / 36.1 / 34.0, c13t1 56.3 / 39.9 / 36.6 / 34.0: tone_back is a DEAD
+  lever here (the back is not lighter at all; the tint path for the back's cards not traced). The seam is a ~16-19 L*
+  step from the pale crown cap (flow top) to the back in one band; the photo's back is one mid grey.
+## HANDOVER (hair-garrett c13, 2026-10-19; nothing in flight: q1 / q2 done, q3 (CARD_CUT_SHARE 1.1) killed unrun)
+STATE: hair-heads2 local commits only (not pushed). origin/main merged (f2981bde). BEST stays exp/c11L (the A/B was
+c13a NEW 1 / OLD 0 / TIE 7: c13a is the same hair with the new budget's extra far triangles). If the budget rule must be
+reflected in the shipped build, c13a = c11L's settings under it with no visible loss.
+BUDGETS c13a (drawn / card faces / GPU vertices; limit faces | drawn): hero 33684 / 18392 / 20691 (25000 | 50000), main
+14220 / 8158 / 9143 (12500 | 20000), npc 6804 / 4008 / 4740 (8250 | 8000), far 1500 / 1084 / 1005 (2500 | 1500).
+CODE (c13): hair.card_allowance(..., drawn_max) + tier_drawn_max + TIER_ROLE (the coordinator's rule; legacy drawn rule
+when drawn_max is None), export_hair tier report "vertices" (GPU) / "positions" / "drawn_max"; hair.CARD_CUT_SHARE (.8);
+hair_clumps.GRADE_SLOPE / GRADE_BAND / GRADE_AZ / GRADE_SEAT + envelope(grade=) + _grade_fill (off by default); tests
+test_every_tier_fits_its_drawn_budget_back_faces_counted, test_envelope_grade_spreads_a_back_step.
+Scratch $HG/cards/c13/: c13a.sh, hx.sh (hero + ledge + vol + 4 shots), q1-q3.sh, ledge_* / vol_*; review/ab_c13a (trios,
+key, blind verdict above). review-ab still exits 4 ("REVIEW FAILED"); NB its args file needs `eval "set -- $(tail -1 f)"`.
+FINDINGS: (a) the new allowance is unspent: the clumps cut makes ~0.6 x the budget's faces (hero 15.3k for 25k); more
+faces of the same cut are invisible anyway (A/B 7 ties). Spending them only pays where a measured fault needs cards
+(temple / side mass, hairline row), not as density. (b) Grade: the lever runs but does not reach the measured band.
+(c) The crown-to-back SEAM (pale flat flow-top cap vs dark bristly back) is the biggest back / profile fault vs the
+photo, far more than any ledge, and tone_back does not move the back.
+NEXT, in order: (1) trace why tone_back (and the grade) miss the back's cards: dump per-card cls / layer / root elevation
+for cards whose surface lies on the back midline at elev 0-30 (which class, which tint path); (2) the seam: grade the
+flow top layer's lit toward 0 down its last ~2 cm (a lit ramp along the card, not a global lit) and lift the back's tint
+to the photo's mid grey once the tint path is found; (3) volume: CROWN_FILL .7 from el -20 gave +0.3-0.7 mm p90 only;
+the cards' p90 is 3-4 mm under the groom at every region; next try the envelope target itself (ENV_PCT per region with
+CROWN_FILL), measured by vol.py + front half-width; (4) temple plates' texture and the pale bluish sideburn strip:
+untouched this session.
+## Garrett cards c14 (2026-10-19, hair-garrett agent, fresh; order: trace why tone_back / the grade miss the back, the seam, else a proposal)
+- (0) CULLING (coordinator): main 7bef3431 (single-sided card material) + Blender's glTF import dropping the BACK_FACES
+  copies as duplicates (c13t1: 18392 of 33684 drawn triangles imported) = card previews showed front sides only.
+  Cherry-picked b4430ada (blender_scene: the card game material never culls). WHICH ROUNDS: 7bef3431 entered hair-heads2
+  with c13's merge of origin/main (c11 / c12 commits lack it): c11L / c12 renders were two-sided, c13's (c13a / g / t1)
+  were not. Re-rendering c11L / c13t1 / c13g3 hero shots as tag _<t>F (c14/rs.sh).
+- (1) PLUMBING CAUSE (the plateau): the cards' VERTEX COLOURS CLIP AT 1.0. A baked card's colour = ramp x tone_k / peak
+  with tone_k = bake_k x tint (tint carries tone_front / tone_back, NAPE_LIFT, GREY_TINT, the flow top's lit), then
+  hair_cards.mesh clips it to [0, 1]. c14/clip.py (share of card vertices >= .995 per layer range of the hero GLB):
+  c11L layer0-2 33 / 36 / 33 %, c13t1 (tone_back 1.0) 82 / 71 / 83 %; cap 0 %. The trace (c14/glbcol.py, c13g3 vs
+  c13t1, same geometry): tone_back DID reach 53 % of the vertices (every head card rooted behind C - 2 cm), true ratio
+  1.18, but the clipped ratio is p50 1.013: the lift was eaten by the ceiling. Every LIGHTENING card lever (tone_back,
+  flow lit, card_gain) has been near-dead since the colour model divided the atlas by bake_k; darkening levers worked
+  (c12's flow lit 0 moved the top), which is why it looked like "settings don't reach the back". The atlas meanwhile
+  uses ~0.43 of its linear range (c11L bake texels sRGB p99 169, max 175 / 255). Not a cache key, not a class: every
+  card is cls head (layer ranges cap / L0 / L1 / L2), and the low back (z < 1.69 behind C) is 16 % cap + 11-18 % L0/L1.
+  FIX: hair.export.headroom (look key, default off = 1): hair_cards.atlas moves a factor H (<= headroom, the bake
+  block's p99.9 texel <= .98) into the bake block and divides bake_k by it, so the cards' vertex colours drop by H: the
+  same picture where nothing clipped (headroom is in the atlas cache key). tests/test_hair_headroom.py: the picture is
+  kept and a tone_back lift on a card at the ceiling now moves it by its own ratio (plain path < 1 %). Off by default
+  so Tess's builds are untouched; Garrett's trials pass ex={"headroom": 2}.
+  STATE: hero builds c14h (headroom 2) and c14t (+ tone_back 1.0) queued (c14/q1.sh, after the re-renders).
+- (2) RE-RENDERS under the culling fix (tag _<t>F): c11LF = c11L (mean |d| 0.03 / 255: c11L's GLB predates 7bef3431),
+  c13t1F / c13g3F within 1 L* of their culled renders on the back bands. The culling did not cause the plateau.
+- (3) THE PHOTO, MEASURED (c14/bands.py; photo: dark low-chroma largest blob, same bands from the hair's top): photo back
+  crown 0-15 % / 15-30 % / mid 35-70 % / nape = 34.5 / 31.7 / 36.1 / 32.0 L*, largest 5 %-band step 4.7, fine std 6.4.
+  c11LF 52.1 / 39.9 / 36.9 / 33.6, step 9.7 at 10 %, fine std 4.1. => the back's MID is already the photo's grey (36.9 vs
+  36.1); the fault is the PALE CROWN BAND (57 L* in the top 10 % vs 38) and the missing fine silver strand contrast.
+  tone_back (a back lift) is the wrong direction. NB the A/B tiles (tiles.py) used the GROOM render as the reference,
+  whose crown is pale: c12's reviewer preferring the pale crown matched the groom, not the photo. c14/tilesp.py makes
+  tiles with the PHOTO as the reference (same crop rule on both).
+- (4) HEADROOM WORKS AS PLUMBING: c14h clip share layer0-2 33 / 36 / 33 % -> 0 / 10 / 0 %; c14t (+ tone_back 1.0) vs
+  c14h: 64 % of vertices change, ratio p50 1.068 / p95 1.176, and c14/where.py shows the x 1.176 on the back cards at
+  EVERY height 1.62-1.76 m. Render: crown band 50.4 -> 54.2 L*, mid 36.8 -> 36.9, nape 33.5 -> 33.6: the back cards'
+  colour changes and the back's picture does not.
+- (5) THE REAL CAUSE: THE BACK YOU SEE IS THE CAP, NOT THE CARDS. c14/capblack.py writes the hero GLB with the cap's
+  vertex colours 0 and the cards' 1: back and profile render (c14/capblack.png, capblack2.png: c14t and c11L alike) are
+  BLACK over the whole back and sides; white shows only at the temples / front top and the crown edge. c14/under.py:
+  half the head cards' vertices lie UNDER the cap (card - cap radius p50 -1.6 / -1.0 / +0.1 mm for L0 / L1 / L2, p90
+  +3-5 mm = tips). Why: an even short groom wears the short cut's BAKED cap (EVEN_SHORT_CAP) lifted to the hair's mid
+  height (EVEN_SHORT_LIFT), and cap_under_cards may not push it under EVEN_CAP_KEEP .6 x that height (c3, against c2's
+  bare-scalp holes): the short back's cards lie lower than that, so the cap stands over them. Every card lever (tone_back,
+  GRADE, HEAD_LIFT, ENV_*) acted on hidden cards: c11 -> c13's plateau. The "dark bristly back" is the cap's baked picture.
+- (6) c14s (headroom + flow_top lit 0): crown 44.3 / 39.5 / 36.8 / 33.5, the crown seam gone (bands 46 43 39; largest
+  step now 5.6 at the nape edge), closer to the photo's crown (34.5). Trials c14k1 / c14k2 = headroom + tone_back 1.0 +
+  hh.EVEN_CAP_KEEP .3 / .15 (cards over the cap at the back; c14/q3.sh). STATE: running.
+- (7) BLIND A/B c14s vs c11L, PHOTO as the reference (review-ab exit 4 "REVIEW FAILED" again; its trios review/ab_c14s/out
+  + key.json to a fresh blind subagent): back NEW, profile OLD (c11L's lighter temples), 3/4 TIE, front NEW -> NEW 2 /
+  OLD 1 / TIE 1. Shared MAJORs: back / crown read as nubbly terrycloth (photo: fine combed strands lying flat), sides
+  flat scaly flakes, top low and flat, nape a ragged fringe (photo: a taper), stray cards at the ears.
+- (8) c14k1 (EVEN_CAP_KEEP .3): back cards out from under the cap (share under 0.64 -> 0.38), tone_back now moves the
+  mid / nape +0.7 L*; by eye (c14/k1_sheet.png: photo | c14s | c14k1) the back is the same nubbly mat and the sides
+  turn to flakes: NOT better. c14k2 (.15) killed unrun. Per the brief, tuning STOPS here: proposal below.
+## PROPOSAL (c14): short men's hair as a SHELL + strand-texture cap with fins, cards only at the edges
+WHY: on Garrett the visible back / sides / crown ARE the cap (c14 (5)); the ~1300 head cards lie under or inside it and
+only the temples / front top show cards (as flakes). Every card lever since c11 tuned hidden geometry. The cap's look is
+a picture baked from the groom's strands at one depth (hair_cap.py), seen face-on: a nubbly mat, no lay direction, no
+strand contrast (fine std 4.2 vs the photo's 6.4), and its edge is a hard seam where the flow-top cards start.
+HOW GAMES DO SHORT CUTS (crew / short taper / buzz, e.g. current UE MetaHuman / Frostbite / RE Engine practice): (a) a
+scalp-hugging HAIR CAP mesh with a tiling-plus-unique strand texture (combed lay painted in the flow direction, alpha
+dithered edge, root-to-tip gradient), often 2-4 thin SHELLS offset 1-3 mm (the outer ones alpha-tested strand layers =
+depth / parallax and a soft silhouette); (b) a few FIN rows (cards standing up along the outline: crown, top's edge,
+behind the ears) for the silhouette; (c) HAIRLINE cards (small, low, dense) at the front hairline, temples, sideburns
+and the nape taper; (d) anisotropic shading driven by the flow map. Cards over the whole head are kept for hair longer
+than ~4-5 cm (Tess).
+WHAT IT TAKES HERE: (1) hair_cap: bake the cap texture from the groom as a COMBED-LAY strand picture in the cap's UV
+(strands drawn as lines along the flow at the atlas texel, not a depth-shaded top view) + its flow / aux maps (most
+exists: hair_cap.cap_height, flow, grey per region). (2) shells: 2-3 copies of the cap at offsets from cap_height (the
+groom's standoff by region: c12 vol.py has it), alpha-tested strand layers; triangles ~ 3 x cap (3100 -> ~9k hero; far
+tier: the cap alone). (3) fins along the silhouette loops (crown edge, top's outline from the front / side) from the
+existing row tool (hrow) instead of the whole-head clumps cut. (4) keep the hairline row / sideburn cards (c9) and the
+nape taper as a row. (5) gates: back / profile tiles vs the PHOTO (c14/tilesp.py), bands.py (crown / mid / nape L*, the
+largest band step, fine std), vol.py (standoff by region), and the cap-black test (c14/capblack.py) to prove which
+surface each region shows. Estimate: 2-3 sessions (cap picture + shells 1, fins / rows + tiers 1, A/B + tuning 1).
+## HANDOVER (hair-garrett c14, 2026-10-19; nothing in flight: q1 / q2 done, q3's c14k2 killed)
+STATE: hair-heads2 local commits only (not pushed). Culling fix b4430ada cherry-picked (2d73367e).
+BEST: exp/c14s HERO ONLY (c11L's spec + ex headroom 2 + st flow_top lit 0): won the photo-referenced blind A/B over
+c11L 2-1-1 (crown band 44 vs 52 L*, photo 34.5; the crown seam gone). Other tiers not built: c11L stays the shipped set
+until c14s's settings are built at all four tiers (c12/c12L.sh with the overrides). NB c12L lost with flow lit 0 against
+the GROOM reference; against the photo it wins: the reference choice decided it.
+PLUMBING FOUND: (a) the cards' vertex colours clipped at 1 (fix: hair.export.headroom, opt-in, test); (b) the real
+plateau: the back / sides you see are the even short CAP standing over the cards (EVEN_CAP_KEEP .6), so card settings
+never showed there. (c) A/B tiles used the groom render as the reference (pale crown): use c14/tilesp.py (photo).
+CODE (c14): hair_cards.atlas look "headroom" (+ cache key), hair.export.headroom; tests/test_hair_headroom.py.
+Scratch $HG/cards/c14/: rs.sh, hx.sh, q1-q3.sh, glbcol.py, ranges.py, clip.py, where.py, under.py, capblack.py, bands.py,
+tilesp.py, capblack*.png, k1_sheet.png; review/ab_c14s (trios, key, verdict above). review-ab still exits 4.
+NEXT: the coordinator's call on the PROPOSAL above; if declined, build c14s at all tiers and A/B vs c11L on photo tiles.
+## Garrett short-hair shells sh1 (2026-10-19, hair-garrett agent, fresh; coordinator: YES to c14's proposal; this session (1) combed cap + (2) shells)
+- (0) DESCRIBE (photo back, c14 (3)): crown 0-15 % / mid 35-70 % / nape 70-100 % L* 34.5 / 36.1 / 32.0, largest 5 %-band
+  step 4.7, fine std 6.4; by eye: fine combed strands lying flat in one direction (down / back), a taper at the nape, no
+  nubbly mat. Items measured on ours: c14/bands.py (same), the cap-black test (which surface shows), photo tiles
+  (c14/tilesp.py) front / 3/4 / profile / back.
+- (1) CODE (opt-in, spec hair.export.style "shells" + hair.export.shells {heights, base, cover, tiers}; default cards):
+  hair_cap.chart now also returns lay (the strands' SIGNED direction smoothed 3 mm), base, length (median strand length by
+  root cell), R, e0 (VERSION 12). hair_cap.combed: ~LAY_COVER x area / (width x length) strands traced along the lay from
+  random roots (density thinning to the hairline), LAY_LEN 0.75 x the groom's length there (6-35 mm), a slow wobble /
+  turn each; z-buffer height = t + 0.5 s (tips over the next roots: shingled lay; s = how far a strand stands); depth =
+  roots deep, tips / standing strands lit, strand edges shaded; the cap keeps the chart's opaque base. Shell j at share h
+  of the hair's height shows only runs with s x rise(t) >= (h - base) / (1 - base) (sparse outward, alpha-tested).
+  hair_cards.atlas(shells=): a block under tiles / bake, one size/2 slot a shell (bake-only slices now [Ht:Hb_]).
+  cards_job: cap at SHELL_BASE .4 x the hair's height (hair_cap.shell_height), shells = cap copies at SHELL_HEIGHTS
+  (.62, .85), uv into their slots after the final atlas; head cards dropped except the hairline rows (hrow); SHELL_TIERS
+  hero 2 / main 2 / npc 1 / far 0. tests/test_hair_shells.py (shells thin outward, follow the lay; atlas block, tiles
+  untouched). STATE: hero sh1a building (ex headroom 2 + style shells). NEXT: tiles vs photo, bands, cap-black.
+- (2) sh1a (hero, ex headroom 2 + style shells): 13068 triangles (cap + 2 shells 9300, 83 of 1686 cards kept = the
+  hairline rows, 3768). 106k combed strands. Sheet $HG/shells/sheet_sh1a.png (photo | c14s | sh1a, tiles by c14/tilesp.py).
+  bands (back): crown 38.4 / 39.7 / mid 35.8 / nape 32.5, seam 5.9 at 95 %, fine std 5.1 (photo 34.5 / 31.7 / 36.1 / 32.0,
+  4.7, 6.4; c14s 44.3 / 39.5 / 36.8 / 33.5, 5.6, 4.2): the crown's pale band is gone and every band is within 4 L*.
+  shells/tex.py on the photo tiles (L*, chroma, fine std x - g1.5, MID std g1.5 - g6 = blotch): back photo 34.3 / 4.0 /
+  5.5 / 2.5, c14s 37.2 / 4.8 / 3.3 / 3.0, sh1a 35.4 / 5.2 / 3.9 / 4.3; front photo mid 3.1, sh1a 5.2; 3/4 3.8 vs 4.9.
+  LOOK (mine, first): the tone is right but it reads as a dark helmet with pale LEOPARD SPECKS (salt-and-pepper in
+  clumps 3-8 mm), no visible lay at 1 m; the top is low (no volume over the crown) and the temples / sides show the
+  hairline-row cards as pale flakes against the dark cap. Not yet better than c14s by eye except the back's even tone.
+  (fine std is not comparable photo vs render: the render's hair is ~250 px upscaled to the 600 px tile; MID std is.)
+  STATE: q2 queued: sh1b = cap only (shells tiers hero 0: is the speckle the shells'?), sh1c = SHELL_WIDTH .5 mm,
+  LAY_COVER 8, SHELL_LIT 0 (finer, more strands, outer shells not lit).
+- (3) q2 (tex.py back L* / chroma / mid std; photo 34.3 / 4.0 / 2.5): sh1b CAP ONLY (combed cap, no shells) 37.4 / 5.0 /
+  3.6, bands 40.7 / 41.6 / 37.4 / 34.2; sh1c (SHELL_WIDTH .5 mm, LAY_COVER 8 = 170k strands, SHELL_LIT 0) 34.9 / 5.1 /
+  4.0, bands 37.5 / 38.2 / 35.0 / 31.4, seam 3.8 (photo 4.7): the closest bands yet (every band within 3.5 L*). The shells
+  add ~0.4-0.7 of mid std (the speckle) but darken toward the photo. LOOK (shells/cmp_bc.png: photo | c14s | sh1b | sh1c,
+  3/4 + back): sh1c is the best of mine: finer speckle, the crown shows strands sweeping in the lay, no nubbly terrycloth,
+  no ragged nape fringe. Remaining: salt-and-pepper contrast (grey vs dark strands, the dark base) where the photo is a
+  smooth fine silver; the mass is a tight skullcap (photo: volume on top, fuller sides); temple row cards = pale flakes.
+  STATE: sh1d = sh1c + LAY_DEP0 / T / S .45 / .3 / .15 (depth range .3-.95 -> .45-.9: less strand contrast) building.
+- (4) sh1d (sh1c + LAY_DEP .45 / .3 / .15): DEAD LEVER: atlas cap block mean |d| 0.8 / 255, tex / bands identical to sh1c.
+  The combed depth is not what sets the contrast: the salt-and-pepper is GREY strands (look grey x GREY_LIFT) against the
+  brown lit / gap colours, at the grey share (cards' tiles .58-.78). Next lever = the grey strands' value / share in the
+  combed picture, proven on the atlas block (L* std of the cap block) BEFORE a build.
+- (5) BLIND A/B c14s (old) vs sh1c (new), PHOTO as the reference: review-ab exit 4 ("REVIEW FAILED") again; its trios
+  ($HG/shells/ab_sh1c/trio_*.png, key.json: X = new everywhere) to a fresh blind subagent: front OLD, 3/4 NEW, profile NEW,
+  back TIE -> NEW 2 / OLD 1 / TIE 1, overall "X (new), barely": new reads as ONE consistent hair mass (no flakes / scales,
+  no two materials front / back); old's tone is closer. NEW's MAJORs: too dark / brown where the photo is mid-grey silver,
+  a stippled "leopard" speckle with no fine strands or back-swept lay, a hard dark line along the front hairline, hard nape
+  edge; scruffy edge above the ear / at the sideburn (the hrow cards). NB the measures say the tone matches (back L* 34.9
+  vs 34.3) and the eye says too dark: the photo mask (L* < 60-62, low chroma) likely drops the photo's silver highlights:
+  re-measure the photo's hair with a real segmentation before tuning tone.
+## HANDOVER (hair-garrett sh1, 2026-10-19; nothing in flight)
+STATE: hair-heads2 local commits only (not pushed). Shell style built and opt-in: spec hair.export.style "shells"
+(+ hair.export.shells {heights, base, cover, tiers}); default cards untouched (tests: test_hair_shells, test_hair_headroom).
+BEST: exp/sh1c HERO ONLY = ex {"headroom": 2, "style": "shells"} + hq.SHELL_WIDTH=0.0005 hq.LAY_COVER=8 hq.SHELL_LIT=0
+(13068 triangles: cap + 2 shells 9300 + 83 hrow cards 3768). Beat c14s 2-1-1 blind on photo tiles; bands closest yet.
+Those three constants should become the defaults (or spec keys) once confirmed; not changed yet.
+CODE: hair_cap.chart (+ lay, base, length, R, e0; VERSION 12), hair_cap.combed / shell_height, constants SHELL_HEIGHTS,
+SHELL_BASE, LAY_*, SHELL_WIDTH, SHELL_LIT, LAY_DEP*; hair_cards.atlas(shells=) block under tiles / bake (bake slices
+[Ht:Hb_]); hair.cards_job wiring (SHELL_TIERS hero 2 / main 2 / npc 1 / far 0; cap at SHELL_BASE x height; cards = hrow only).
+SCRATCH $HG/shells/: sx.sh <tag> [hx7 args] (hero build + shots into cards/exp, cards/out), tiles.sh <old> <new> (photo
+tiles + sheet + bands), tex.py (L* / chroma / fine / MID std per tile; side photo's mask fails on its black border),
+sheet.py, cmp_bc.png, ab_sh1c/.
+NEXT (in order): (a) tone / speckle: the grey strands' share and value in the combed picture (lever proven on the atlas
+block first), re-measure the photo tone with a segmentation; (b) the front hairline's hard dark line (the cap base runs to
+the line: soften base at the front, or a hairline row there); (c) session 2 of the plan: fins along the silhouette (crown
+edge, top outline; hair_clumps row tool) for volume / outline (the mass is a tight skullcap), nape taper row, the hrow
+cards' pale flakes at the temples (tone them to the cap); (d) all four tiers (SHELL_TIERS) + budget report check, LODs;
+(e) A/B vs c14s / c11L on photo tiles (review-ab still exits 4: use a blind subagent on its trios).
+## Garrett short-hair shells sh2 (2026-10-19, hair-garrett agent, fresh; order: photo segmentation + tone, grey share / value, front hairline line, fins / nape / temple rows, tiers + A/B)
+- (1) PHOTO SEGMENTATION ($HG/shells/seg/: a uv venv with mediapipe; hseg.py <tiles dir> [overlay]): the photo's hair =
+  MediaPipe selfie_multiclass class 1 UNION hair_segmenter (the multiclass model alone drops the back photo's nape),
+  largest blob, eroded 3 px; renders by colour (the segmenter calls our dark render hair "skin": bg L* 86, skin C > 14).
+  Per tile and band (top / mid / low thirds of the mask): L* p10 / p50 / p90, chroma p50, grey share g (L* > 45 & C < 8),
+  MID std (g1.5 - g6). CORRECTED PHOTO NUMBERS (all-hair p10 / p50 / p90, C, g, mid):
+  front 29.7 / 43.1 / 56.6, C 4.5, g 35 %, mid 3.7 (mid band = temples / sides 40 / 51 / 62, g 68 %)
+  q34   27.5 / 42.0 / 57.5, C 2.9, g 35 %, mid 4.1 (mid band 37 / 49 / 61, g 61 %)
+  side  24.1 / 37.9 / 56.3, C 2.9, g 26 %, mid 3.6 (mid band 28 / 44 / 61)
+  back  24.1 / 34.5 / 46.6, C 3.5, g 12 %, mid 2.8
+  sh1c (ours): front 29.6 / 37.2 / 47.3 C 4.2 g 16 % mid 5.8; q34 25.5 / 33.8 / 44.4 C 4.3 g 9 % mid 5.4; side 29.0 / 37.2 /
+  48.1 C 4.7 g 18 % mid 4.9; back 25.8 / 34.1 / 45.4 C 5.0 g 11 % mid 4.4. c14s (old): front 45.2 median g 50 %.
+  FINDING: the old mask (L* < 60, C < 14) kept 91-100 % of the segmented hair (only 5-6 % of the photo's hair is over
+  L* 60): it was NOT dropping the silver. The back matches (34.5 vs 34.1); what is wrong is the FRONT / 3/4 / side: the
+  photo's sides and temples are silver (mid band p50 49-51, 61-68 % grey) where ours is 31-37 with 6-8 % grey, plus too
+  much chroma (+1-1.5) and blotch (mid std +1.5-2). The c14 / sh1 tone work measured the back only.
+  Atlas proxy (sh2/atl.py: cap block + shells block albedo L*, C, grey-ish share by thirds): sh1c cap 32.2 / 34.3 / 59.4,
+  C 2.2, grey-ish 29 %: bimodal (dark base / brown strands at ~33, grey strands at ~59) = the leopard.
+  STATE: sh2a (look card_grey 1.0 = the cap's grey share x2, grey #8a8784) building. NEXT: atlas proxy, then tiles.
+- (2) sh2a = sh1c + look card_grey 1.0 (cap grey share x2) + grey #8a8784: LIVE but OVERSHOT: atlas cap 32.6 / 49.4 / 77.5
+  grey-ish 51 % (sh1c 29 %); renders front 40.1 / 52.8 / 65.7 g 78 % (photo 29.7 / 43.1 / 56.6, 35 %), back 52.1 (photo 34.5).
+  LOOK: a salt-and-pepper speckle, worse than sh1c: the contrast is grey strands vs the dark brown lit (#3e3631, L* 23).
+  The photo is a SMOOTH fine silver: its strands are near one value; the dark is between / under them. sh2b (+ lit
+  #4c4540) killed unrun. CODE: hair_cap.GREY_SPREAD (combed regional grey share stretched about its median, default 1;
+  photo sides 61-68 % grey vs back 12 %); tests pass. STATE: q2 = sh2c (card_grey .7, grey #7c7976, BASE_EDGE 4 mm),
+  sh2d (+ GREY_SPREAD 2); q3 = sh2e (sh2d + lit #5a5551 / gap #2a2624: less strand contrast). NEXT: tones per view.
+- (3) trials (sh2/m.sh <tag>: bands, atlas proxy, segmented tone; all-hair p10 / p50 / p90, grey share g, MID std):
+  photo front 29.7 / 43.1 / 56.6 g 35 % mid 3.7 | q34 27.5 / 42.0 / 57.5 mid 4.1 | side 24.1 / 37.9 / 56.3 mid 3.6 | back 24.1 / 34.5 / 46.6 mid 2.8
+  sh2c (card_grey .7, grey #7c7976, BASE_EDGE 4 mm): front 33.6 / 44.0 / 56.7 g 46 % mid 6.2 | q34 41.0 p50 mid 5.7 | side
+  45.2 mid 5.6 | back 41.9 mid 5.5: the front views' value is ON (44 / 41 vs 43 / 42), back / side too light, speckle high.
+  sh2d (+ GREY_SPREAD 2; combed share p10 / 50 / 90 0 / .29 / .67): ~ sh2c (back 41.3): the charted grey regions are not
+  the photo's (the photo's back is darker than its sides: grey share or the photo's light; unresolved).
+  sh2e (sh2d + lit #5a5551 / gap #2a2624): MID std 3.2-4.4 = the photo's (the LEOPARD IS THE LIT / GREY CONTRAST: proven),
+  but everything +10-19 L* (front 54.4, back 53.5) and p10 45 vs 24-30 (no dark between strands).
+  STATE: sh2f = sh2e's contrast ~10 L* lower (lit #46423e, grey #6c6966, gap #1e1b19) building. NEXT: measure, A/B.
+- (4) sh2f (lit #46423e, grey #6c6966, gap #1e1b19, card_grey .7, BASE_EDGE 4 mm, GREY_SPREAD 2): front 36.2 / 44.3 / 54.4
+  g 46 % mid 5.2 | q34 33.5 / 41.1 / 51.2 mid 4.9 | side 37.0 / 45.2 / 55.1 mid 4.3 | back 34.1 / 42.1 / 52.4 mid 3.9; bands
+  crown 45.0 / 46.6 / mid 42.7 / nape 39.0, fine std 3.8. Front / 3/4 p50 ON the photo; MID std down 0.5-1.6 from sh1c
+  (still +1 over the photo); the range is compressed (p10 33-37 vs the photo's 24-30: no dark between strands); back /
+  side ~+7 L* too light (the photo's back is darker than its sides; our grey has no such region).
+  BLIND A/B sh2f vs sh1c (sh2/ab_sh2f, key.json; front / side X = new, q34 / back X = old): the reviewer answered "Y"
+  in every view (= old front / side, new 3/4 / back: 2-2), but its side text calls X "dark brown leopard", which is
+  sh1c's look, not X's: its labels are unreliable. MY LOOK (side trio): sh2f is clearly the greyer, closer silver;
+  both still read as camouflage speckle with no fine combed lay; the hairline is still a hard cut with a dark rim at
+  this scale (BASE_EDGE 4 mm not visible); same tight skullcap volume. Not a clear winner: re-run the A/B with a fresh
+  reviewer (or review-ab after 13:00 MT) before promoting anything.
+## HANDOVER (hair-garrett sh2, 2026-10-19; nothing in flight)
+STATE: hair-heads2 local commits only (not pushed). Steps (1) and (2) done, (3) a lever in place but not proven visible,
+(4) fins / nape row / temple toning NOT started, (5) tiers not built, A/B inconclusive.
+BEST: unchanged for export: exp/sh1c hero only (sh1's handover settings) until sh2f wins a clean A/B; sh2f = sh1c + hq.BASE_EDGE
+=0.004 hq.GREY_SPREAD=2.0 look {"card_grey": 0.7, "grey": "#6c6966", "lit": "#46423e", "gap": "#1e1b19"} is the tone
+candidate (front value on the photo, less speckle). BEST GARRETT HAIR FOR EXPORT: still c11L's shipped card set (all tiers).
+FINDINGS: (a) the photo mask was NOT dropping the silver (old mask kept 91-100 % of the segmented hair); the real miss was
+the front / 3/4 / side value (ours 34-37 vs 42-43) that the back-only tone work never measured. (b) the leopard speckle
+is the lit (brown) vs grey strand contrast, proven: sh2e (lit #5a5551) gave the photo's MID std; the grey share raises
+value but adds speckle (sh2a). (c) GREY_SPREAD 2 moved nothing regionally: the charted grey regions are not where the
+photo is silver (temples / sides 61-68 % grey, back 12 %).
+CODE (sh2): hair_cap.BASE_EDGE (default 0; test), hair_cap.GREY_SPREAD (default 1). SCRATCH $HG/shells/: seg/ (mediapipe
+venv, hseg.py: photo hair = multiclass class 1 U hair_segmenter; renders by colour), sh2/atl.py (atlas proxy), sh2/m.sh
+<tag> (tiles + bands + atlas + segmented tone), sh2/q1-q4.sh, ab_sh2f/.
+NEXT (in order): (a) tone: keep sh2f's low contrast but widen the range: a darker opaque base / root shade between strands
+(p10 24-30) with the strands' value kept; regional grey from the PHOTO (temples / sides silver, crown / back darker: a
+per-region grey share target, not the groom's); (b) hairline: check BASE_EDGE at a close-up (front tile crop), try 8 mm,
+and the hrow cards' crosshatch at the front; (c) fins + nape taper row + temple card toning (session 2 of the plan);
+(d) promote the winners to the shells style's defaults, all four tiers, clean A/B vs c14s / c11L on photo tiles.
+## Garrett short-hair shells sh3 (2026-10-19, hair-garrett agent, fresh; order: tone by region + dark base, hairline, fins / nape / temple rows, tiers + A/B)
+- (1) LOOK FIRST (sh2f tiles, back crop at native size): ours = grey BLOBS 1-3 mm long on a brown-grey, no readable lay,
+  lumpy edge; the photo = fine long grey strands combed down, a smooth darker layer between them, silver sides, dark
+  crown / nape. Segmented bands (top / mid / low thirds, p50): photo front 38.6 / 51.2 / 45.4, q34 38.4 / 49.3 / 29.8,
+  side 36.4 / 43.6 / 29.9, back 33.3 / 37.4 / 31.7; sh2f front 46.3 / 40.9 / 40.1, q34 42.3 / 39.1 / 40.6, side 46.3 /
+  45.4 / 39.1, back 44.9 / 41.9 / 38.3: OUR REGIONAL PATTERN IS INVERTED (light top, dark sides).
+  WHY GREY_SPREAD MOVED NOTHING REGIONALLY (traced): combed's gsh = the chart's grey blurred 6 texels (~2 mm at 2048):
+  lock-scale noise, no side-vs-back trend in the groom; the spread stretched that noise (p10/50/90 0 / .29 / .67) =
+  clumps of grey strands = more leopard. Dead by construction for regions.
+  CODE: hair_cap.GREY_REGION (0..1, default 0): gsh blended to hair_cap.grey_map (GREY_MAP: share by the hair's own
+  height h and degrees from the front: top .15; side band front / 60 / 100 / 140 / 180 deg .55 / .7 / .65 / .4 / .3;
+  low (sideburn -> nape) .5 / .55 / .4 / .15 / .1; ~1 cm smooth): at 1 the lock noise goes (fine interleave);
+  hair_cap.EDGE_SHADE (was the fixed .3 strand-edge shade); hair.py combed cache key now carries GREY_SPREAD / REGION /
+  MAP / EDGE_SHADE / BASE_EDGE / BASE_DEPTH (in-process only: tiers in one run would have shared a stale combed picture).
+  STATE: sh3/q1 building: sh3a = sh2f tone + GREY_REGION 1 + BASE_EDGE 8 mm (spread off); sh3b = + LAY_COVER 3 +
+  BASE_DEPTH .25 (the dark base shows between fewer, longer visible strands); sh3c = LAY_COVER 1.5 + EDGE_SHADE .5.
+  NEXT: m.sh per build (bands / p10 / MID std vs the photo), look.
+- (2) sh3/q1 (segmented p50 by band top / mid / low; photo front 38.6 / 51.2 / 45.4, side 36.4 / 43.6 / 29.9, back
+  33.3 / 37.4 / 31.7; all-hair p10 photo 24-30):
+  sh3a (GREY_REGION 1, share p10/50/90 .15 / .27 / .65): front 48.1 / 46.2 / 42.4 (mid +5 from sh2f, toward 51), side
+  53.1 / 50.1 / 34.8, back 47.1 / 43.9 / 34.2; p10 33-40; MID std 3.6-4.7 (sh2f 3.9-5.2). The lever is LIVE (mid band,
+  nape moved) and the lock clumps are gone, but the TOP stays the lightest band at a .15 grey share: the top is LIT
+  (faces the key light, shells' standing strands), not grey. LOOK: finer speckle, still a leopard at the back; the nape
+  now a dark hard band.
+  sh3b (+ LAY_COVER 3, BASE_DEPTH .25): ~1-2 L* darker everywhere, p10 31-38: fewer strands barely show the base.
+  CODE: hair_cap.SHADE_MAP (a GREY_MAP-shaped dict of depth factors by region, None = off): the regional VALUE lever
+  for the lit top; hx7 takes hj.<CONST>=<json>. STATE: sh3c (LAY_COVER 1.5, EDGE_SHADE .5) building.
+- (3) sh3c (LAY_COVER 1.5 = 32k strands, EDGE_SHADE .5, BASE_DEPTH .25): bands front 47.3 all p50, back top / mid / low
+  43.5 / 40.7 / 31.0, p10 26-34 (photo 24-30: the dark base between strands now shows); LOOK (back crops a / b / c):
+  the first with a readable downward LAY, strands over a darker base; grey strands still wide pale dashes; a black rim
+  at the nape edge.
+  sh3d (sh3c + GREY_MAP top .1 / band .6 .75 .5 .3 .2 / low .5 .55 .35 .12 .08, SHADE_MAP top .6, lit #524e4a): all-hair
+  p50 front 47.6 / q34 45.9 / side 49.2 / back 43.7 (photo 43.1 / 42.0 / 37.9 / 34.5), p10 36-41 (lit up undid the dark
+  base), MID std 4.6 / 4.7 / 3.9 / 3.0 (photo 3.7 / 4.1 / 3.6 / 2.8: closest yet), bands top 48.7 / 46.6 / 51.6 / 46.4 (photo
+  38.6 / 38.4 / 36.4 / 33.3): SHADE_MAP top .6 is too weak (shade = .45 + .55 dep^.8 floors it): the top is still the
+  lightest band, ~+10 L*. LOOK (small tiles, photo | sh3d, sh2f | sh3c): sh3d reads as fine combed strands with a lay, the
+  closest texture so far; too light overall by ~5 L* (back ~9).
+  HAIRLINE (front tile crop, 2x): a BLACK DASHED LINE exactly along the front hairline (and around the ear / nape in
+  profile), BASE_EDGE 8 mm does not touch it: it is not the texture's base. Hypothesis: the cap is lifted 2 mm +
+  sagitta everywhere (hair.py "lift = ... + 0.002") and eases only its HEIGHT to 0 at the line, so its edge floats over
+  the skin and the shadowed gap under it shows black. NEXT: ease that lift to 0 over the last ~5 mm in from the
+  hairline (or skirt the edge down into the skin) and re-crop; prove with the cap-black test (c14/capblack.py).
+  STATE: sh3e (= sh3d + hair.SHELL_FINS .3) and sh3T (sh3e's settings, all four tiers) queued.
+- (4) sh3e = sh3d + hair.SHELL_FINS .3 (flow-top / arch cards within .3 of the front / side outline, over 20 deg): 211
+  fins, hero 18048 triangles (budget 25000 faces). DOES NOT WIN: the fins' card tone is lighter than the cap (profile crown
+  band 58 vs sh3d 43, a pale flake patch on top in profile / back); volume gain small. Off by default (SHELL_FINS 0);
+  needs the cards toned to the cap (the temple-row toning, same cause) before it can help.
+- (5) BLIND A/B sh3d (new) vs c14s (old), PHOTO as reference (fresh general-purpose subagent on randomised trios
+  $HG/shells/sh3/ab/trio_*.png, key.json: front X = new, q34 / side / back Y = new). LABEL CHECK: the reviewer's
+  descriptions put the "black rim along the hairline" on the NEW side in every view = consistent with the key.
+  Result: front OLD (lighter silver, fuller top; new = darker, black hairline gap), q34 TIE, side NEW (narrowly: value and
+  texture closer; old too brown / dark at the back), back NEW (clearly: smooth combed direction, value) -> NEW 2 / OLD 1 /
+  TIE 1. Its faults for new: the black rim (hairline, nape, ear), no silver above the ear / darker crown, "scales" at the
+  temples (hrow cards). bin/review-ab not tried (before 13:00 MT).
+## HANDOVER (hair-garrett sh3, 2026-10-19; nothing in flight: sh3T (all tiers, sh3e settings) killed while queued for memory)
+STATE: hair-heads2 local commits only (not pushed). Tone: regional grey + sparse lay over a dark base built and live.
+BEST (hero, by numbers + blind A/B 2-1-1 over c14s): exp/sh3d = ex {"headroom": 2, "style": "shells"} + hq.SHELL_WIDTH=
+0.0005 hq.SHELL_LIT=0 hq.LAY_COVER=1.5 hq.BASE_EDGE=0.008 hq.GREY_REGION=1 hq.BASE_DEPTH=0.25 hq.EDGE_SHADE=0.5
+hj.GREY_MAP={"top": .1, "fa": [0, 60, 100, 140, 180], "band": [.6, .75, .5, .3, .2], "low": [.5, .55, .35, .12, .08],
+"band_h": [.15, .35, .6, .8]} hj.SHADE_MAP={"top": .6, ...1} look {"card_grey": .7, "grey": "#6c6966", "lit": "#524e4a",
+"gap": "#1e1b19"} (exact args: $HG/shells/sh3/q2.sh). Not promoted to defaults yet (one tier only, black rim unfixed).
+BEST GARRETT HAIR FOR EXPORT: still c11L's shipped card set (all tiers): the shells style has no tier set built yet.
+NUMBERS (segmented all-hair p50 / MID std; photo front 43.1 / 3.7, q34 42.0 / 4.1, side 37.9 / 3.6, back 34.5 / 2.8):
+sh3d 47.6 / 4.6, 45.9 / 4.7, 49.2 / 3.9, 43.7 / 3.0: texture (MID std) closest yet; value +4-11 too light, worst at the
+TOP band (+10: photo top 33-39) and the back.
+CODE (sh3): hair_cap.GREY_REGION / GREY_MAP / grey_map (regional grey share; GREY_SPREAD was stretching lock noise),
+hair_cap.SHADE_MAP (regional depth factor; .6 too weak: shade floors at .45), hair_cap.EDGE_SHADE, hair.SHELL_FINS /
+SHELL_FIN_EL / SHELL_FIN_TIERS (fins: off), combed cache key complete; hx7 hj.<CONST>=<json>. tests/test_hair_shells ok.
+SCRATCH $HG/shells/sh3/: q1-q3.sh, tiers.sh <tag> [args] (all four tiers + shots), m_sh3*.txt, ab/ (trios, key.json).
+NEXT (in order): (a) the BLACK RIM at hairline / nape / ear (every reviewer's top fault): ease hair.py's cap lift
+(+2 mm + sagitta) to 0 over the last ~5 mm to the hairline, crop-check the front hairline at 2x, cap-black test;
+(b) darker top / back: SHADE_MAP can't go dark enough (shade = .45 + .55 dep^.8): make it a colour factor on the lit
+colour by region (or lower top grey + gap), target top band 33-39, back p50 34.5; lit back to #46423e with the dark base;
+(c) the hrow / temple cards and fins toned to the cap (both read as pale flakes / scales), then retry fins for the top;
+(d) tiers.sh with the winner (npc 8000 / far 1500 drawn: far's cap alone is ~3100: needs a coarser cap or a tier
+cap) and promote to the style defaults; A/B again vs c14s / c11L (review-ab after 13:00 MT).
+## Garrett short-hair shells sh4 (2026-10-19, hair-garrett agent, fresh; order: black rim cause, darker top / back, temple cards + fins toned, coarser far cap, all tiers + A/B)
+Scratch $HG/shells/sh4/ (crop.py <out> <tags...>: front + profile hairline crops at 3x; q1.sh; ns.sh).
+- (1) BLACK RIM: NOT A SHADOW. sh3d's hero GLB re-rendered with no hair shadows (shots shadow=0 proxy=0, no game shadow
+  map): the rim is unchanged (front hairline, above the ear, nape). Its pixels are pure 0,0,0 and are NOT hair in the id
+  pass (black there = skin / background); the atlas's transparent texels are ~110 grey (no alpha-bleed black). So the
+  black is something seen THROUGH / UNDER the cap's edge, not the cap's texture. CODE: hair.SHELL_EDGE_LIFT (None = off) /
+  SHELL_LIFT_EASE (5 mm): the shells cap's lift (2 mm + sagitta) eased to SHELL_EDGE_LIFT at the hairline; hx7 hh. now
+  sets None-valued constants. hair_cap.VALUE_MAP (GREY_MAP-shaped colour factor by region, on the cap + shells' final
+  colour via a value channel in hair_cards.atlas; in the combed / atlas cache keys): step (2)'s lever.
+  STATE: q1 queued: sh3d cards-only render (is the rim the cap?), sh4a (edge lift 0), sh4b (1 mm), sh4v (sh4a + VALUE_MAP
+  top .55 / band .85 .7 .6 .6 .6 / low .85 .75 .65 .6 .6). NEXT: crops + m.sh.
+- (2) RIM CAUSE FOUND = the cap's edge lift. sh3d cards-only render (only= the cards' range): the skin at the hairline is
+  clean (no hidden faces, no dark paint): the black is the CAP. sh4a (SHELL_EDGE_LIFT 0, ease 5 mm): the rim is GONE at the
+  front hairline and over the ear (pure-black px < 30 sum: front 14 -> 0, profile 51 -> 4, back 80 -> 22; crops
+  $HG/shells/sh4 crop.py sh3d sh4a). The lifted edge's UNDERSIDE (the cap is single-sided; its back faces are not hair in
+  the id pass and shade black) showed through the 2-3 mm gap; shadows had nothing to do with it. A little remains at the
+  nape (back 22 px). STATE: sh4b (1 mm) / sh4v (+ VALUE_MAP) building. NEXT: sh4v numbers; SHELL_CARD_VALUE (hair.py, the
+  kept cards' colour factor) measured on the render for the temple rows.
+- (3) sh4b (edge lift 1 mm): the rim stays (black px front / profile / back 5 / 41 / 56): 0 it is. sh4v (sh4a + VALUE_MAP
+  top .55 / band .85 .7 .6 .6 .6 / low .85 .75 .65 .6 .6 on the WHOLE colour): all-hair p50 front 39.4 / q34 36.1 / side 37.0
+  / back 31.4 (photo 43.1 / 42.0 / 37.9 / 34.5; sh3d 47.6 / 45.9 / 49.2 / 43.7): the lever is live and overshoots 3-6, BUT
+  the silver went with it (p90 46-48 vs photo 47-58, segmented grey share front 69 -> 21 %, mid band front 38 vs 51): the
+  photo is dark hair + bright silver (wide range), so the value factor now applies to the dark strands + base only,
+  before the grey hairs mix in (hair_cards.atlas). Cards vs cap in profile (ctone.py): sh3d 55.1 / 49.6, sh4v 44.7 / 37.3
+  (the cards take VALUE_MAP's "low" row by their angle now): need x .67-.78 on the sides -> SHELL_CARD_VALUE .75.
+  STATE: q2 = sh4T, ALL FOUR tiers (sh3/tiers.sh) with sh3d + SHELL_EDGE_LIFT 0 + VALUE_MAP (base only) top .5 / band
+  .85 .7 .6 .55 .5 / low .8 .7 .6 .55 .5 + SHELL_CARD_VALUE .75; fins off. NEXT: numbers, far's cap count, A/B.
+- (4) sh4T first run FAILED at the far tier: a shells far tier keeps 0 cards (0 of 113: no hairline rows at far), and
+  hair_clumps.bake_tiles took percentiles of nothing. FIX: cards_job bakes only when a baked card is kept. Hero / main /
+  npc kept 83 / 62 / 51 hairline cards, shells 2 / 2 / 1 / 0. Hero cap + shells p50 32.4 / 33.8 L* (sh3d 43.7 / 44.5).
+  STATE: q2 rerun (sh4T, all four tiers) chained to sh4/ab.sh sh4T (tiles + review-ab vs c11L and vs c14s).
+- (5) sh4T BUILT, all four tiers (exp/sh4T): hero 13068 faces (cap+2 shells 9300, 83 hairline cards 3768; drawn 16836),
+  main 7392 (cap+2 shells 6288; drawn 8496 <= 20000), npc 2832 (cap+1 shell 2424; drawn 3240 <= 8000), far 668 (cap only,
+  0 cards; <= 1500): EVERY TIER IN BUDGET; the "far cap 3,100" worry was wrong (far's cap step 14 deg gives 668), no coarser
+  cap needed. NUMBERS (hero, segmented all-hair p50 / MID std; photo front 43.1 / 3.7, q34 42.0 / 4.1, side 37.9 / 3.6,
+  back 34.5 / 2.8): sh4T 43.5 / 5.0, 41.1 / 5.1, 42.3 / 4.9, 31.9 / 4.6 (sh3d 47.6 / 45.9 / 49.2 / 43.7): VALUE NOW ON THE
+  PHOTO (front / q34 within 1, side +4.4, back -2.6); p10 22-34 (photo 24-30); texture std went UP (4.6-5.1 vs photo
+  2.8-4.1: darker base, same strands = more contrast). Mid band front 42.7 vs photo 51.2 (the silver sides still short).
+  Cards vs cap in profile 48.9 / 43.1 (still +5.8: SHELL_CARD_VALUE .75 not enough; front equal 44.7 / 44.3).
+  A/B (bin/review-ab exit 4 before 13:00 MT; fresh blind general-purpose subagent on its trios, keys
+  sh4/ab_sh4T_vs_*/key.json; label check: its "black jagged nape" fault sits on the NEW side in every view = consistent):
+  vs c11L (shipped): front NEW, q34 NEW, side TIE, back TIE = NEW 2 / OLD 0 / TIE 2. vs c14s: front OLD, q34 NEW, side OLD,
+  back OLD = NEW 1 / OLD 3. Its faults for new: BLACK JAGGED NAPE FRINGE (MAJOR, side + back), too dark / brown at the back,
+  "wool" texture with no combing direction, light temple plates (q34). For the old ones: shard / plate cards at the temple
+  and crown, a light crown cap seam.
+  LOOK (mine, side trio, before the reviewer): new = one coherent dark mass, value right in front, but coarse fleck
+  texture, no silver sweep over the ear, a black dashed nape edge and a light temple patch (the hairline cards).
+## HANDOVER (hair-garrett sh4, 2026-10-19; nothing in flight)
+STATE: hair-heads2 local commits only (not pushed). Rim cause found and fixed at the front / ear; value on the photo.
+BEST GARRETT HAIR FOR EXPORT: still c11L's shipped card set (all tiers). sh4T beats c11L blind (2-0-2) but loses to c14s
+(1-3) and has a MAJOR black nape fringe: not promoted. Candidate set: exp/sh4T (all four tiers, in budget; exact args:
+$HG/shells/sh4/q2.sh = sh3d's + hh.SHELL_EDGE_LIFT=0.0 hh.SHELL_CARD_VALUE=0.75 hj.VALUE_MAP={"top": .5, "band": [.85, .7,
+.6, .55, .5], "low": [.8, .7, .6, .55, .5]}).
+RIM CAUSE: the shells cap is lifted 2 mm + sagitta everywhere; its single-sided edge's UNDERSIDE (not hair in the id
+pass, shades black) shows through the gap. Not shadows (no-shadow render unchanged), not texture (transparent texels ~110),
+not the skin (cards-only render clean). SHELL_EDGE_LIFT 0 (ease 5 mm) clears the front / ear (black px 14 / 51 -> 0 / 4);
+1 mm does not. The NAPE still shows it (back 80 -> 22 px; the reviewer's top fault).
+CODE (sh4): hair.SHELL_EDGE_LIFT / SHELL_LIFT_EASE; hair_cap.VALUE_MAP (regional factor on the dark strands + base, before
+the grey hairs mix in; in combed + atlas cache keys) -> hair_cards.atlas; hair.SHELL_CARD_VALUE + kept cards take
+VALUE_MAP's "low" row by angle (cval); cards_job skips the bake when no baked card is kept (shells far tier crashed);
+hx7 hh. sets None-valued constants. tests/test_hair_shells ok.
+SCRATCH $HG/shells/sh4/: crop.py (hairline crops 3x), ctone.py (cards vs cap L*), ns.sh, q1.sh, q2.sh, ab.sh <tag>
+(tiles + review-ab vs c11L / c14s), m_sh4v.txt, m_sh4T.txt, ab_sh4T_vs_*/ (trios, key.json).
+NEXT (in order): (a) the NAPE rim: crop the back at 3x; likely the nape edge needs a longer ease (SHELL_LIFT_EASE 10 mm
+there, or ease by the edge's slope: the nape edge hangs, so 5 mm in from the line is still lifted) or the dangling
+hairline cards there (reviewer: "black blobs dangling"); count black px in g1back -> 0. (b) silver sides: front mid band
+42.7 vs 51.2: raise GREY_MAP band front / 60 deg or VALUE_MAP band toward 1 there; back p50 31.9 -> 34.5 (VALUE_MAP back
+.5 -> .58). (c) temple cards still +5.8 L* over the cap in profile: SHELL_CARD_VALUE .75 -> ~.65. (d) texture std too high
+now (4.6-5.1 vs 2.8-4.1): EDGE_SHADE .5 -> .35 or BASE_DEPTH up. Then tiers + review-ab (after 13:00 MT) vs c14s / c11L.
+## Garrett short-hair shells sh5 (2026-10-19, hair-garrett agent, fresh; order: nape fringe, silver sides + back, temple cards, texture contrast / combing, tiers + A/B)
+Scratch $HG/shells/sh5/.
+BEST GARRETT HAIR FOR EXPORT (coordinator decision 2026-10-19, NOT Joe-approved): exp/sh4T, style "shells", ALL FOUR tiers in
+budget (hero 13068 faces / drawn 16836, main 7392 / 8496, npc 2832 / 3240, far 668). Beat the shipped c11L blind 2-0-2; the only
+complete all-tier shells set (c14s is hero-only, not shippable). Exact build ($HG/shells/sh4/q2.sh -> sh3/tiers.sh -> cards/c7/hx7.py
+hg_G88a <out> tiers=hero,main,npc,far): ex={"headroom": 2.0, "style": "shells"} hq.SHELL_WIDTH=0.0005 hq.SHELL_LIT=0
+hq.GREY_SPREAD=1.0 hq.LAY_COVER=1.5 hq.BASE_EDGE=0.008 hq.GREY_REGION=1.0 hq.BASE_DEPTH=0.25 hq.EDGE_SHADE=0.5
+hj.GREY_MAP={"top": 0.1, "fa": [0, 60, 100, 140, 180], "band": [0.6, 0.75, 0.5, 0.3, 0.2], "low": [0.5, 0.55, 0.35, 0.12, 0.08],
+"band_h": [0.15, 0.35, 0.6, 0.8]} hj.SHADE_MAP={"top": 0.6, "band": [1, 1, 1, 1, 1], "low": [1, 1, 1, 1, 1]}
+hj.VALUE_MAP={"top": 0.5, "band": [0.85, 0.7, 0.6, 0.55, 0.5], "low": [0.8, 0.7, 0.6, 0.55, 0.5]}
+look={"card_grey": 0.7, "grey": "#6c6966", "lit": "#524e4a", "gap": "#1e1b19"} hh.SHELL_EDGE_LIFT=0.0 hh.SHELL_CARD_VALUE=0.75.
+GLBs $HG/cards/exp/sh4T/hg_G88a_hair_{hero,main,npc,far}.glb. Future builds must beat sh4T AND, at hero, c14s.

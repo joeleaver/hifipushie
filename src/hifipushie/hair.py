@@ -2250,6 +2250,8 @@ def coverage(sc: Scalp, AA, EE, P, reach: float = 0.004):
     return np.clip(gaussian_filter(grid.astype(float), sigma=r, mode=("wrap", "nearest")) * 1.6, 0, 1)
 
 
+SHELL_EDGE_LIFT = None  # (sh4) m: the shells cap's lift at the hairline (None = the full lift everywhere)
+SHELL_LIFT_EASE = 0.005  # (sh4) m in from the hairline over which the lift eases to SHELL_EDGE_LIFT
 CAP_RELAX_FLOOR = True  # (round 30) the relaxed cap keeps the floor cap_under_cards gave it (lift off the scalp)
 CAP_RELAX = 60  # (round 26) iterations: the card cap's radius relaxed over its mesh, only lowered (0 = off)
 CAP_SMOOTH = 0.0  # deg: the mass cap's height smoothed over this (gaussian sigma, 0 = off; round 26)
@@ -2493,6 +2495,18 @@ def baby_locks(sc: Scalp, g: dict, S: dict, seed: int = 0) -> list:
 # group: how big a clump of strands one card stands for (hair_cards.clump_cards): a lower tier has FEWER, WIDER cards
 # from bigger clumps, never the same thin cards thinned out; "free" = only hair off the head gets cards, the cap
 # (the scalp chart) and the tail's core carry the rest.
+SHELL_FINS = 0.0  # (sh3) shells style: keep the flow-top / arch cards whose middle lies within this share of the head's
+# radius of the front or side OUTLINE (|unit dir . y| or |. x| under it) and above SHELL_FIN_EL: fins for the top's
+# volume / outline (0 = off: hairline rows only). hair.export.shells.fins overrides.
+SHELL_FIN_EL = 20.0  # deg over the head centre
+SHELL_FIN_TIERS = ("hero", "main")
+def _hcap_vm():
+    from . import hair_cap as hcap_
+    return hcap_.VALUE_MAP
+
+
+SHELL_CARD_VALUE = 1.0  # (sh4) shells style: the kept cards' (hairline rows, fins) colour x this, toned to the cap
+SHELL_TIERS = {"hero": 2, "main": 2, "npc": 1, "far": 0}  # (sh1) shells per tier (hair.export.shells.tiers overrides)
 _CHARTS: dict = {}  # the last short chart baked (every tier of an export wears the same one)
 MASS_MIN = 0.06  # m: loose hair shorter than this (mean lock length) gets no mass shell under its cards
 # A SHORT cut (loose hair under MASS_MIN) as game artists build it: the cap, wearing the scalp chart with EVERY strand
@@ -2571,6 +2585,38 @@ def tier_settings(tier: str, short: bool = False, even: bool = False) -> dict:
     return t
 
 
+# (c13, coordinator 2026-10-19) a tier's DRAWN triangles (back faces included) stay within its role's RANGE maximum in
+# budgets.json (hair_cards range[1]): the tiers are the roles' hair (hero 50k, main_npc 20k, secondary_npc 8k, crowd 1.5k)
+CARD_CUT_SHARE = 0.8  # the clumps cut aims at this share of the tier's budget (card faces; the budget fit trims the rest:
+# c13a's hero cut made 15.3k card faces for a 25k-face allowance, main / npc / far are bound by their drawn maxima)
+TIER_ROLE = {"hero": "hero", "main": "main_npc", "npc": "secondary_npc", "far": "crowd"}
+
+
+def tier_drawn_max(tier: str, own: dict | None = None) -> int:
+    """The most DRAWN triangles a card tier may export: hair.export.tier_drawn_max {tier: n}, else the range maximum of
+    budgets.json's hair_cards for the tier's role (TIER_ROLE)."""
+    from . import budgets
+    if own and tier in own:
+        return int(own[tier])
+    return int(budgets.role(TIER_ROLE[tier])["parts"]["hair_cards"]["range"][1])
+
+
+def card_allowance(budget: int, cap: int, other: int, back_faces: bool | None = None,
+                   drawn_max: int | None = None) -> tuple[int, int, int]:
+    """The cards' own (single-sided) triangles for a tier. (c13, coordinator 2026-10-19) `budget` (the role's hair_cards
+    DEFAULT at the tier's LOD, tier_triangles) counts CARD FACES, one side: cap + other + cards <= budget; and the DRAWN
+    triangles (with BACK_FACES every triangle but the cap's is exported twice: cards, baby hairs, tie, core) stay within
+    `drawn_max` (tier_drawn_max): cap + factor x (other + cards) <= drawn_max. drawn_max None: the c10/c11 rule (the
+    budget itself counts drawn triangles). Returns (drawn factor, the fixed parts' drawn triangles, the cards' allowance)."""
+    bf = 2 if (BACK_FACES if back_faces is None else back_faces) else 1
+    fixed = int(cap) + bf * int(other)
+    if drawn_max is None:
+        return bf, fixed, max((int(budget) - fixed) // bf, 200)
+    faces = int(budget) - int(cap) - int(other)
+    drawn = (int(drawn_max) - fixed) // bf
+    return bf, fixed, max(min(faces, drawn), 200)
+
+
 def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budget: int | None = None,
               cap_step: float = 1.0, col=None, clear_col=None) -> dict:
     """The hair as cards (hair_cards.py): the card mesh of every lock + baby hairs, the underlayer wearing the strand
@@ -2589,7 +2635,8 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
     if short and even:
         short = False
     tier_given = isinstance(budget, str)
-    tier_name = budget if isinstance(budget, str) else None
+    tier_name = budget if tier_given else None
+    drawn_max_ = None
     if isinstance(budget, str):  # a tier: its triangles, and how fine the cards are cut to spend them
         if budget not in CARD_TIERS:
             raise HairError(f"hair cards: tier is one of {', '.join(CARD_TIERS)} (or a triangle count)")
@@ -2597,6 +2644,7 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
         S = {**S, **{k: v for k, v in tier.items() if k not in ("triangles", "cap_step", "cap")}}
         ex_ = h.get("export") or {}
         budget = tier_triangles(budget, ex_.get("role", "hero"), ex_.get("tier_triangles"))
+        drawn_max_ = tier_drawn_max(tier_name, ex_.get("tier_drawn_max"))
     if short:
         S = {**S, "atlas": max(int(S["atlas"]), SHORT_ATLAS), "fly": int(S.get("fly", 0)) if tier_given else 0,
              "short": True}
@@ -2605,11 +2653,28 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
     lk = look_of(spec, h)
     if (h.get("export") or {}).get("card_gain") is not None:  # the cards' colour gain measured against the strand look
         lk["card_gain"] = float(h["export"]["card_gain"])  # (an export setting: the approved groom's look stays)
+    for k_ in ("tone_front", "tone_back", "card_sat", "headroom"):  # (c10) more card-only look settings carried by hair.export
+        # (c14: headroom = hair_cards.atlas moves up to that factor of the baked cards' tone into the atlas)
+        if (h.get("export") or {}).get(k_) is not None:
+            lk[k_] = float(h["export"][k_])
+    # (c11) per-tier card look: hair.export.tier_look {tier: {card_gain, card_sat, tone_front, tone_back}} over the
+    # above (a far tier has no rows / top layer and one coarse atlas: Garrett's far read L* 37-42 vs the groom's 47-53)
+    for k_, v_ in ((h.get("export") or {}).get("tier_look") or {}).get(tier_name or "", {}).items():
+        if k_ in ("card_gain", "card_sat", "tone_front", "tone_back", "card_grey"):
+            lk[k_] = float(v_)
     # grey hairs in the cards' pictures: the share the strand look draws (the look's own + the locks' mean grey)
     gl = [float((k_.get("inputs") or {}).get("Grey", k_.get("grey", 0.0)) or 0.0) for k_ in locks]
     lk["grey_share"] = round(float(np.clip(float(lk.get("grey_amount", 0.0))
                                            + float(lk.get("grey_locks", 1.0)) * (np.mean(gl) if gl else 0.0), 0, 1)), 3)
     D, e_chart = None, None
+    # (sh1) SHELLS: hair.export.style "shells" (a short cut only): {"shells": {"heights", "base", "cover", "tiers":
+    # {tier: n}}}: the cap + n alpha-tested shells carry the hair, cards only along the hairline (hrow)
+    ex_s = h.get("export") or {}
+    shell_o = dict(ex_s.get("shells") or {})
+    shell_n = None
+    if str(ex_s.get("style", "cards")) == "shells" and (short or (short_len and EVEN_SHORT_CAP)):
+        shell_n = int((shell_o.get("tiers") or {}).get(tier_name or "", SHELL_TIERS.get(tier_name or "hero", 2)))
+    shell_maps, shell_key = None, ""
     if S.get("source", "groom") == "groom":  # the pictures are the groom's own strands (hair_strands.py)
         from . import hair_strands as hs
         import re as _re
@@ -2623,12 +2688,26 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
                 _CHARTS[ck] = hair_cap.chart(sc, g, hairline(sc, g), S, D, [k_ for k_ in locks if not _re.fullmatch(r"t\d*band", k_["name"])],
                                              e_chart, int(S["atlas"]), lk)
             chart = _CHARTS[ck]
+            if shell_n is not None:  # (sh1) hair.export.style "shells": the cap wears COMBED strands, shells over it
+                hts_ = tuple(float(x_) for x_ in (shell_o.get("heights") or hair_cap.SHELL_HEIGHTS))[:shell_n]
+                bs_ = float(shell_o.get("base", hair_cap.SHELL_BASE))
+                ck2 = ck + ("combed", hts_, bs_, float(shell_o.get("cover", hair_cap.LAY_COVER)), hair_cap.LAY_LEN,
+                            hair_cap.LAY_WOBBLE, hair_cap.SHELL_WIDTH, hair_cap.SHELL_LIT, hair_cap.LAY_DEP0, hair_cap.LAY_DEP_T, hair_cap.LAY_DEP_S, int(g.get("seed", 0)),
+                            hair_cap.GREY_SPREAD, hair_cap.GREY_REGION, json.dumps(hair_cap.GREY_MAP), json.dumps(hair_cap.SHADE_MAP), json.dumps(hair_cap.VALUE_MAP), hair_cap.EDGE_SHADE, hair_cap.BASE_EDGE, hair_cap.BASE_DEPTH)
+                if ck2 not in _CHARTS:
+                    _CHARTS[ck2] = hair_cap.combed(chart, hts_, bs_, seed=int(g.get("seed", 0)),
+                                                   cover=float(shell_o.get("cover", hair_cap.LAY_COVER)))
+                    print(f"hair shells: combed {_CHARTS[ck2]['strands']} strands, shells at {hts_} (cap {bs_})", flush=True)
+                comb_ = _CHARTS[ck2]
+                chart = {**comb_["cap"], "lift": chart["lift"]}
+                shell_maps = comb_["shells"]
+                shell_key = f"_shells{hts_}_{bs_}_{hashlib.sha1(repr(ck2).encode()).hexdigest()[:12]}"
         else:
             chart = hs.cap_chart(sc, g, hairline(sc, g), S, D, e_chart, int(S["atlas"]))
         akey_ = hs.key(sd) + (f"short{hair_cap.VERSION}_{hair_cap.BASE_IN}_{hair_cap.BASE_RAMP}_{hair_cap.KEEP_SOFT}_{hair_cap.THIN_SOFT}" if short or (short_len and EVEN_SHORT_CAP) else "")
 
         def make_atlas(bake=None):
-            return hc.atlas(S, lk, lines=hs.tile_lines(S), cap=chart, key=akey_, bake=bake)
+            return hc.atlas(S, lk, lines=hs.tile_lines(S), cap=chart, key=akey_ + shell_key, bake=bake, shells=shell_maps or None)
         at = make_atlas()
     else:
         at = hc.atlas(S, lk)
@@ -2658,7 +2737,7 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
     if clumped:  # cards cut by visual clumps across locks and textured from their own strands (hair_clumps.py)
         from . import hair_clumps
         cards = hair_clumps.cut(D, hair_locks, sc.C, S, part_side_of(sc, g), int(g.get("seed", 0)),
-                                triangles=int(0.8 * int(budget)) if budget else 20000)
+                                triangles=int(CARD_CUT_SHARE * int(budget)) if budget else 20000)
         St_ = cards[0].pop("_St") if cards else None
     elif D is not None:  # cards cut from the groom's own strands, clustered as coarsely as the tier asks
         cards = hc.clump_cards(D, hair_locks, sc.C, S, lk, int(g.get("seed", 0)))
@@ -2863,12 +2942,36 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
                 core = hc.join(core, shell)
     else:
         cards = hc.cards_of(hair_locks, sc.C, S, lk)
+    if shell_n is not None:  # (sh1) the shells carry the head: only the hairline / sideburn rows stay cards
+        n_all_ = len(cards)
+        fin_ = float(shell_o.get("fins", SHELL_FINS)) if (tier_name or "hero") in SHELL_FIN_TIERS else 0.0
+
+        def _fin(c_):
+            if fin_ <= 0 or not (c_.get("flow") or c_.get("arch")):
+                return False
+            m_ = np.asarray(c_["P"], float).mean(0) - np.asarray(sc.C, float)
+            u_ = m_ / max(float(np.linalg.norm(m_)), 1e-9)
+            return bool(np.degrees(np.arcsin(np.clip(u_[2], -1, 1))) > SHELL_FIN_EL and min(abs(u_[0]), abs(u_[1])) < fin_)
+        nf_ = sum(1 for c_ in cards if not c_.get("hrow") and _fin(c_))
+        cards = [c_ for c_ in cards if c_.get("hrow") or _fin(c_)]
+        if SHELL_CARD_VALUE != 1.0 or _hcap_vm():  # (sh4) the kept cards toned to the cap (vertex colour factor):
+            # the cap's own regional VALUE_MAP ("low" row: the hairline's) by the card's angle from the front, and on the
+            # sides (> 40 deg from the front) x SHELL_CARD_VALUE (sh3d: temple cards 55.1 L* over a 49.6 cap in profile,
+            # the front's equal at 48)
+            from . import hair_cap as hcap_
+            vm_ = {**hcap_.GREY_MAP, **(hcap_.VALUE_MAP or {"low": [1.0] * 5})}
+            for c_ in cards:
+                a_, _e, _h = sc.coords(np.asarray(c_["P"], float).mean(0)[None])
+                fa_ = abs(((float(a_[0]) + 180) % 360) - 180)
+                k_ = float(np.interp(fa_, vm_["fa"], vm_["low"])) * (1 + (SHELL_CARD_VALUE - 1) * _ss((fa_ - 30.0) / 20.0))
+                c_["cval"] = float(c_.get("cval", 1.0)) * k_
+        print(f"hair shells: {len(cards)} of {n_all_} cards kept (hairline rows + {nf_} fins)", flush=True)
     # a coarse cap's flat faces cut under the round head between their corners (skin through the hair): it is
     # lifted by that sagitta
     Vc = np.asarray(V, float)
     lift = 0.1 * (1 - np.cos(np.radians(cap_step) / 2)) * 1.6 + 0.002  # (+ the scalp grid vs the skin mesh: ~1 mm)
     Vc = Vc + lift * _unit(Vc - sc.C)
-    even_lift = D is not None and not short and short_len and EVEN_SHORT_CAP and EVEN_SHORT_LIFT
+    even_lift = D is not None and not short and short_len and EVEN_SHORT_CAP and EVEN_SHORT_LIFT and shell_n is None
     if even_lift:  # (c2) an even short groom's cap stands at the hair's mid height (cap_height over the SCALP, not over
         # whatever the cap mesh had: on a mass cap the two added up) and then goes under its cards like any cap: added
         # AFTER cap_under_cards it stood over the cards wherever they were few (main / npc / far: +17-28 % outline height)
@@ -2878,7 +2981,15 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
     # (c3) and never sinks under EVEN_CAP_KEEP x that height going under the cards: at the floor (lift, ~2 mm) it lay
     # under the head's skin where cards were sparse (c2's hero: rows of bare-scalp holes at the back, behind the ear)
     cfloor = np.maximum(lift, EVEN_CAP_KEEP * hz_) if even_lift else lift
-    if D is not None and not short and cards:  # the cap is UNDER the cards: it is the scalp's tint between them, never
+    if shell_n is not None:  # (sh1) the cap at SHELL_BASE of the hair's height (no cards over it to go under)
+        ca_, ce_, ch_ = sc.coords(Vc)
+        di0_ = inside(sc, line, ca_, ce_)
+        lv_ = lift
+        if SHELL_EDGE_LIFT is not None:  # (sh4) the lift eases to SHELL_EDGE_LIFT over the last SHELL_LIFT_EASE in from the
+            # hairline: lifted whole, the cap's edge floated ~2-3 mm over the skin and its gap read as a black rim
+            lv_ = SHELL_EDGE_LIFT + (lift - SHELL_EDGE_LIFT) * _ss(np.maximum(di0_, 0.0) / SHELL_LIFT_EASE)
+        Vc = Vc + (lv_ + hair_cap.shell_height(chart["lift"], di0_, ca_, ce_, bs_) - ch_)[:, None] * _unit(Vc - sc.C)
+    elif D is not None and not short and cards:  # the cap is UNDER the cards: it is the scalp's tint between them, never
         # the surface. The groom's envelope stood 25 mm off the top of Tess's W18 where the coverage cards lie at 17:
         # a lighter, flatter helmet over the cards with a seam where they came out from under it (hair_r2)
         Vc = cap_under_cards(sc, Vc, [c_ for c_ in cards if c_["layer"] == 0 and c_["kind"] != "fly"], cfloor,
@@ -2907,11 +3018,26 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
             _a, _e, ch_ = sc.coords(Vc)
             Vc = Vc + np.maximum(cfloor - ch_, 0.0)[:, None] * _unit(Vc - sc.C)
         Vc = cap_fill_arch(sc, Vc, [c_ for c_ in cards if c_.get("arch")])
-    if D is not None and short:  # the cap is the hair's MASS: it stands at the hair's mid height, easing down to the
+    if D is not None and short and shell_n is None:  # the cap is the hair's MASS: it stands at the hair's mid height, easing down to the
         # skin at the hairline (on the scalp itself the head's profile was a bald dome under a fringe of cards)
         ca_, ce_, _ch = sc.coords(Vc)
         Vc = Vc + hair_cap.cap_height(chart["lift"], inside(sc, line, ca_, ce_), ca_, ce_)[:, None] * _unit(Vc - sc.C)
     cap = card_cap(sc, g, S, at["tiles"], Vc, F, e0=e_chart)
+    shell_raw = None
+    if shell_n and shell_maps:  # (sh1) the shells: copies of the cap at their heights, uv set once the atlas is final
+        nc_ = len(cap["verts"])
+        ca_, ce_, _h = sc.coords(cap["verts"])
+        di_ = inside(sc, line, ca_, ce_)
+        h0_ = hair_cap.shell_height(chart["lift"], di_, ca_, ce_, bs_)
+        cu_ = np.clip((np.asarray(cap["uv"][:, 0], float) - 0.5) / 0.5, 0, 1)
+        cv_ = np.asarray(cap["uv"][:, 1], float)
+        parts_ = [cap]
+        for sm_ in shell_maps:
+            dh_ = hair_cap.shell_height(chart["lift"], di_, ca_, ce_, sm_["height"]) - h0_
+            parts_.append({**cap, "verts": (np.asarray(cap["verts"], float) + dh_[:, None] * _unit(np.asarray(cap["verts"], float) - sc.C)).astype(np.float32),
+                           "layer": np.full(nc_, -1.0, np.float32)})
+        cap = hc.join(*parts_)
+        shell_raw = (nc_, cu_, cv_, len(shell_maps))
     baby = hc.cards_of(baby_locks(sc, g, S, int(g.get("seed", 0))), sc.C, S, lk)
     for c in baby:  # (the first to go under a budget, after single fly-aways)
         # (a short cut's soft line: on the hairline tile they were opaque stamps on the forehead; the baby tile
@@ -2930,19 +3056,23 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
         fixed = (len(cap["tris"]) + len(mb["tris"]) + sum(len(b["tris"]) for b in band)
                  + (len(core["tris"]) if core is not None else 0))
         before_ = cards
-        # (hair-budget rule, coordinator 2026-10-19, reversing c10's drawn-triangle fit: counting back faces halved
-        # Tess's cards and lowered her crown, round 39) the budget (the role DEFAULT) counts CARD FACES, one side;
-        # DRAWN triangles (BACK_FACES exports every triangle but the cap's twice) are checked against the role's range
-        # MAX at export (asset.hair_budget). BUDGET_UNIT names the unit; "drawn" restores c10's fit.
-        bf_ = 2 if BACK_FACES else 1
-        fixed_d = len(cap["tris"]) + bf_ * (fixed - len(cap["tris"]))
-        fit_x = bf_ if BUDGET_UNIT == "drawn" else 1
-        cards, seg, info = hc.fit_budget(cards, S, max((int(budget) - (fixed_d if fit_x > 1 else fixed)) // fit_x, 200))
+        # (hair-budget rule, coordinator 2026-10-19, reversing c10's drawn-triangle fit) the budget (the role DEFAULT)
+        # counts CARD FACES, one side; DRAWN triangles (BACK_FACES exports every triangle but the cap's twice) stay
+        # within the tier's drawn max when the tier names one (c13 card_allowance) and are checked against the role's
+        # range MAX at export (asset.hair_budget). BUDGET_UNIT names the unit; "drawn" restores c10's fit.
+        if BUDGET_UNIT == "drawn":
+            dmax_ = None
+        else:
+            dmax_ = drawn_max_ if drawn_max_ is not None else 10 ** 12  # no tier max: card faces alone
+        bf_, fixed_d, allow_ = card_allowance(int(budget), len(cap["tris"]), fixed - len(cap["tris"]), drawn_max=dmax_)
+        cards, seg, info = hc.fit_budget(cards, S, allow_)
         info["asked"], info["fixed"], info["drawn_x"], info["unit"] = int(budget), int(fixed_d), bf_, BUDGET_UNIT
+        info["drawn_max"] = drawn_max_  # (c13) "asked" = card faces (one side), drawn_max = drawn triangles
         info["fixed_parts"] = {"cap": len(cap["tris"]), "core": len(core["tris"]) if core is not None else 0,
                                "baby": len(mb["tris"]), "tie": sum(len(b["tris"]) for b in band)}
         info["by_class"] = card_classes(before_, cards, S, seg, {k_["name"]: k_ for k_ in hair_locks})
-    if clumped and St_ is not None:  # each kept clump card's picture baked from its own strands, under the tiles
+    if clumped and St_ is not None and any(c_["kind"] == "baked" for c_ in cards):  # each kept clump card's picture
+        # baked from its own strands, under the tiles (sh4: a shells far tier keeps no cards at all: nothing to bake)
         from . import hair_clumps
         bk = [c_ for c_ in cards if c_["kind"] == "baked"]
         Wt = int(at["color"].shape[1])
@@ -2972,10 +3102,21 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
         core = None if core is None else {**core, "col": np.asarray(core["col"], np.float32) / pk_}
         band = [{**b_, "col": np.asarray(b_["col"], np.float32) / pk_} for b_ in band]
     mc = hc.mesh(cards, S, lk, at["tiles"], segment=seg)
-    if clumped:  # everything else wears the tiles / chart, now the top rows of the atlas
-        mc = hc.remap_v(mc, at, mc["baked"])
+    if clumped or at.get("rows_total", at.get("rows")) != at.get("rows"):  # everything else wears the tiles / chart, now the top rows of the atlas
+        mc = hc.remap_v(mc, at, mc.get("baked"))
         cap, core, mb = hc.remap_v(cap, at), hc.remap_v(core, at), hc.remap_v(mb, at)
         band = [hc.remap_v(b_, at) for b_ in band]
+    if shell_raw is not None:  # (sh1) each shell's uv: its slot in the atlas's shell block (full-atlas coordinates)
+        nc_, cu_, cv_, ns_ = shell_raw
+        sb_ = at["shells"]
+        Wt_, Hall_ = float(at["color"].shape[1]), float(at["rows_total"])
+        uv_ = np.array(cap["uv"], np.float32)
+        for j_ in range(ns_):
+            sl_ = slice(nc_ * (j_ + 1), nc_ * (j_ + 2))
+            uv_[sl_, 0] = (j_ * sb_["slot_w"] + 0.5 + cu_ * (sb_["slot_w"] - 1.0)) / Wt_
+            uv_[sl_, 1] = 1.0 - (sb_["row0"] + 0.5 + (1.0 - cv_) * (sb_["rows"] - 1.0)) / Hall_
+        cap = {**cap, "uv": uv_}
+        info["shells"] = {"n": ns_, "triangles": int(len(cap["tris"]) - len(cap["tris"]) // (ns_ + 1)), "heights": [float(m_["height"]) for m_ in shell_maps]}
     # against the body's own signed distance (hair_loose.collider), not the scalp's rays: a ray from the head's centre
     # meets the EAR first, so cards lying on the head behind and over the ear read 5-6 cm "under the skin" and were
     # moved out to the ear's silhouette (Garrett: 936 hero vertices, the ragged dark patches behind the ear and at
@@ -4068,6 +4209,17 @@ CARD_RECIPE_FACES = CARD_RECIPE.replace(
     "back-face culling (the material is not doubleSided), so no engine flips a normal.")
 
 
+def _gpu_vertices(part: dict) -> int:
+    """(c13) vertices as an engine draws them: one per distinct (position, uv, normal) corner (a GLB splits shared
+    positions at uv / normal seams; back faces share their front's corners)."""
+    cv = np.asarray(part["corner_vert"])
+    cols = [cv[:, None].astype(np.float64)]
+    for k in ("uv", "normal"):
+        if part.get(k) is not None and len(part[k]) == len(cv):
+            cols.append(np.round(np.asarray(part[k], np.float64), 5))
+    return int(len(np.unique(np.concatenate(cols, 1), axis=0)))
+
+
 def export_hair(name: str, out_dir, tiers=("main", "npc", "far"), groom: bool = True, spec: dict | None = None,
                 check: bool = False, sheet: str | None = None, textures: str = "shared") -> dict:
     """The hair alone, game-ready, from a strand (or card) groom: one GLB a tier (`<name>_hair_<tier>.glb`: LODs that
@@ -4135,6 +4287,8 @@ def export_hair(name: str, out_dir, tiers=("main", "npc", "far"), groom: bool = 
         # fits the cards to it). "card_faces" = the cards' faces without their BACK_FACES copies (round 36's count);
         # "index_triangles" = "triangles" (kept for round 36's readers)
         rep["tiers"][tier] = {"glb": str(glb), "triangles": n_idx_, "card_faces": n_idx_ - n_back_, "index_triangles": n_idx_,
+                              "vertices": _gpu_vertices(part), "positions": int(len(part["verts"])),
+                              "drawn_max": (hc_.get("budget") or {}).get("drawn_max"),
                               "layers": hc_["layers"],
                               "atlas": "own" if own else "shared",
                               "budget": hc_["budget"], "bytes": glb.stat().st_size, "clearance": hc_.get("clearance")}
