@@ -8,6 +8,8 @@ silhouette errors), not mouse control. North star: tools that let an LLM work li
 - Working on a thread? Read ONLY its STATE page: `docs/state/<thread>.md` (rules in docs/state/README.md). History lives in
   `docs/notes/<thread>.md`: append-only, read by grep, never end to end.
 - Any stage: read `docs/notes/gates.md` first.
+- New character: follow `docs/notes/character_recipe.md` (stage order, defaults, gates) and check `docs/notes/traps.md`
+  before trusting a measure. Lesson ledger: `docs/notes/codified.md` (add a row for every new lesson).
 
 ## Hard rules
 - Gates every stage: DESCRIBE the reference as measurable items -> MEASURE each round -> LOOK (independent blind reviewer on
