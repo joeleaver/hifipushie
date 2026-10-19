@@ -246,6 +246,14 @@ def _tile(kind: str, w: int, H: int, S: dict, rng, ss: int = 3, lines: list | No
     return {"alpha": a, "id": idm, "depth": dep}
 
 
+GREY_QUANTILE = 1  # (c3) a tile's grey share is drawn as that share of its strand pixels (quantile of their ids)
+GREY_LIFT = 1.0  # (c5) the cards' grey hairs' colour x this (the strand look's grey #6a6764 x (0.6 + 0.4 shade) drew
+# mid-grey hairs; the groom's grey strands read silver under the hair BSDF's highlight: 3/4 sides 39.5 L* vs the groom's 50)
+GREY_SPREAD = 2.0  # (c4) shared tiles' grey shares x this about their median (1 = as baked, before c4)
+GREY_DEP0, GREY_DEPW = 0.32, 0.2  # (c3) shared tiles' grey hairs: only strands deeper than this (ramp width) may be grey
+# (the opaque base under the strands sits at ~0.3 depth: the shadow between hairs, never grey)
+
+
 def atlas(S: dict, look: dict, lines: dict | None = None, cap: dict | None = None, key: str = "",
           bake: dict | None = None) -> dict:
     """The strand atlas: {"color" (H, W, 4) sRGB floats, straight alpha; "normal" (H, W, 3); "aux" (H, W, 4): root
@@ -254,7 +262,7 @@ def atlas(S: dict, look: dict, lines: dict | None = None, cap: dict | None = Non
     `bake` (hair_clumps.bake: cards' own strands, a block as wide as the tiles + chart): stacked UNDER the tiles; the
     tiles' rows are then the top `rows` of `rows_total` (every tile / chart uv's v is remapped: remap_v)."""
     key = hashlib.sha1(json.dumps([{k: S.get(k) for k in ("clump", "frizz", "curl", "tips", "atlas", "short")},
-                                   {k: look.get(k) for k in ("gap", "lit", "vary", "band", "card_band", "card_gain", "card_sat", "grey", "grey_share", "card_grey", "grey_locks", "grey_amount", "sun", "highlights", "highlight_contrast", "variation")}, key, sorted(SHORT_TILE.items()), SHORT_DEPTH, EDGE_SOLID, (bake or {}).get("key")], sort_keys=True).encode()).hexdigest()
+                                   {k: look.get(k) for k in ("gap", "lit", "vary", "band", "card_band", "card_gain", "card_sat", "grey", "grey_share", "card_grey", "grey_locks", "grey_amount", "sun", "highlights", "highlight_contrast", "variation")}, key, sorted(SHORT_TILE.items()), SHORT_DEPTH, EDGE_SOLID, GREY_LIFT, GREY_SPREAD, (bake or {}).get("key")], sort_keys=True).encode()).hexdigest()
     if key in _ATLAS:
         return _ATLAS[key]
     from scipy import ndimage
@@ -316,12 +324,28 @@ def atlas(S: dict, look: dict, lines: dict | None = None, cap: dict | None = Non
     base = gap[None, None] * (1 - shade) + lit[None, None] * shade
     gs = float(look.get("grey_share") or 0.0) * (float(look.get("card_grey", 0.5)) if S.get("short") else 1.0)  # grey hairs: that share of the strands (by their id) in the grey colour
     if gs > 0:  # (the strand look's own rule: look.grey_amount + the locks' grey x look.grey_locks; cards_job sets it)
-        grey = _lin(look.get("grey", "#9a948d"))
+        grey = np.clip(_lin(look.get("grey", "#9a948d")) * GREY_LIFT, 0.0, 1.0)
         # (the strands with the highest ids: a threshold on the id stays a strand's own through the picture's
         # anti-aliasing, and the opaque base under the strands (id 0) stays dark; a hash of the id speckled every
         # blended pixel and turned the cap's bare base grey)
         isg = (np.clip((idm - (1.0 - gs)) / 0.04, 0.0, 1.0) * np.clip((dep - 0.32) / 0.2, 0.0, 1.0))[..., None]  # (the
         # base under the strands sits at depth 0.3: it is the shadow between hairs, never grey)
+        if bake is not None and bake.get("gshare") is not None:  # (c2) shared tiles: each draws ITS cards' grey share
+            gsh_ = np.nan_to_num(np.asarray(bake["gshare"], np.float32), nan=gs)
+            if GREY_SPREAD != 1.0:  # (c4) the tiles' shares stretched about their median: tiles average side and top
+                # cards (Garrett: tiles side .74 / top .41 = 1.8x where the locks' grey is .64 / .22 = 2.9x; the groom's
+                # silver sides read 50 L* at 3/4 vs the cards' 38.6)
+                fin_ = np.isfinite(np.asarray(bake["gshare"], np.float32))
+                md_ = float(np.median(gsh_[fin_])) if fin_.any() else gs
+                gsh_ = np.clip(md_ + GREY_SPREAD * (gsh_ - md_), 0.0, 1.0)
+            if GREY_QUANTILE:  # (c3) the share drawn AS a share: the id threshold at that quantile of the tiles' strand
+                # pixels' ids (ids are not uniform over 0..1: a .74 share drew 26 % grey texels at Garrett's sides)
+                sm_ = (dep[Ht:] > GREY_DEP0 + GREY_DEPW) & np.isfinite(idm[Ht:])
+                if sm_.sum() > 1000:
+                    qq_ = np.quantile(idm[Ht:][sm_], np.linspace(0, 1, 101))
+                    gsh_ = 1.0 - np.interp(1.0 - gsh_, np.linspace(0, 1, 101), qq_)
+            isg[Ht:] = (np.clip((idm[Ht:] - (1.0 - gsh_)) / 0.04, 0.0, 1.0)
+                        * np.clip((dep[Ht:] - GREY_DEP0) / GREY_DEPW, 0.0, 1.0))[..., None]
         if cap is not None and cap.get("grey") is not None:  # a baked chart knows which of its strands are grey
             isg[:Ht, cap_x0:cap_x0 + size, 0] = rs(cap["grey"])  # (per region: the locks' own shares)
         base = base * (1 - isg) + grey[None, None] * (0.6 + 0.4 * shade) * isg
@@ -549,6 +573,9 @@ def _resample(c: dict, m: int) -> dict:
     return o
 
 
+WIND_TO_NORMAL = 1  # (c4) every card triangle wound to face along its vertex normals (0 = as built, before c4)
+
+
 def mesh(cards: list, S: dict, look: dict, tiles: list, segment: float | None = None, seed: int = 0) -> dict:
     """Cards -> one triangle mesh: verts, tris, uv per vertex (Blender's way up: v = 1 at the root), normal (bent
     toward the volume's), tangent (along the hair), col (rgb multiplier: root to tip, a value per lock, lower layers
@@ -638,8 +665,15 @@ def mesh(cards: list, S: dict, look: dict, tiles: list, segment: float | None = 
         return {"verts": z, "tris": np.zeros((0, 3), np.int32), "uv": np.zeros((0, 2), np.float32), "normal": z,
                 "tangent": z, "col": z, "along": np.zeros(0, np.float32), "layer": np.zeros(0, np.float32),
                 "card": np.zeros(0, np.int32), "baked": np.zeros(0, bool)}
-    return {"verts": np.concatenate(V).astype(np.float32), "tris": np.concatenate(F).astype(np.int32),
-            "uv": np.concatenate(UV).astype(np.float32), "normal": np.concatenate(Nn).astype(np.float32),
+    Vv, Ff, Nv_ = np.concatenate(V).astype(np.float32), np.concatenate(F).astype(np.int32), np.concatenate(Nn).astype(np.float32)
+    if WIND_TO_NORMAL and len(Ff):  # (c4, Garrett) a triangle whose winding opposes its vertex normals shows its BACK
+        # from outside: a double-sided renderer shades a back face with the flipped normal, lit from inside = black
+        # (the c3 "dark card backs / shards" on the crown's outline: folds where a card turns over its root)
+        fn = np.cross(Vv[Ff[:, 1]] - Vv[Ff[:, 0]], Vv[Ff[:, 2]] - Vv[Ff[:, 0]])
+        bad = np.einsum("ij,ij->i", fn, Nv_[Ff].sum(1)) < 0
+        Ff[bad] = Ff[bad][:, [0, 2, 1]]
+    return {"verts": Vv, "tris": Ff,
+            "uv": np.concatenate(UV).astype(np.float32), "normal": Nv_,
             "tangent": np.concatenate(Tn).astype(np.float32), "col": np.concatenate(COL).astype(np.float32),
             "along": np.concatenate(AL).astype(np.float32), "layer": np.concatenate(LAY),
             "card": np.concatenate(CID), "baked": np.concatenate(BK)}
@@ -664,6 +698,14 @@ def cards_of(locks: list, C, S: dict, look: dict | None = None) -> list:
 
 GRID = 40  # stations along a lock at which its strands are compared
 FINE_SPARSE = 0.5  # a lock whose strands are drawn at least this fine (strands.fine: see-through) is cut on the sparse tile
+TAIL_ROOT_HW = 0.0  # (round 31; opt-in, try 0.008: r31a root corners past LOD0 fewer, but the spikes over the tie at 3/4 unchanged and the band showed more at g2backl) m: a tied tail's card half width at its root (the tie), eased to full over
+TAIL_ROOT_TAPER = 0.05  # m along it (0 = off)
+TAIL_SPLIT_CW = 0.0  # (round 32; opt-in) a hanging (free, not wisp) clump at a coarse tier (card_width > TAIL_SPLIT_MIN) is cut
+# into slices no wider than this many card widths ACROSS ITS OUTLINE (FREE_SPREAD sigmas: the split counted 1.7 sigma, so
+# a far-tier tail card came out 132-200 mm wide, and its flat corners stood off the round tail as the LOD1-3 spikes
+# over the tie, round 31 tiespk2); 0 = off
+TAIL_SPLIT_MIN = 0.05  # m: only tiers whose card width is over this (the far tier: main / npc tail cards are capped at ~73 mm
+# by FREE_CLIP already and the split only added cards standing off, t32/tw_s1.txt)
 FREE_SPREAD, FREE_CLIP = 3.2, 1.3  # hanging cards' half width in the clump's sigmas, and its cap in card widths
 FREE_END = 0.06  # hanging hair's cards run on until only this share of their strands is left (at 0.3 Tess's tail ended ~5 cm short)
 
@@ -762,7 +804,7 @@ PCA_MAX = 60.0  # deg (round 23; 90 = unlimited, round 22): the PCA turn is held
 
 
 def _clump(A, U, cen_of, min_share: float = 0.3, start_share: float = 0.04, end_share: float | None = None,
-           medoid: float = 0.0, twist: float = 0.0):
+           medoid: float = 0.0, twist: float = 0.0, min_stations: int = 4):
     """A set of strands (m, n, 3 with NaN) as one clump: its centre line, frame and spread, over the stations where
     at least `min_share` of its strands run (`end_share`: on to the last station where that share still runs: hanging
     hair's ragged ends). None if too short."""
@@ -770,7 +812,7 @@ def _clump(A, U, cen_of, min_share: float = 0.3, start_share: float = 0.04, end_
         cnt = np.isfinite(A[..., 0]).sum(0)
     ok = cnt >= max(1, int(np.ceil(min_share * len(A))))
     idx = np.nonzero(ok)[0]
-    if len(idx) < 4:
+    if len(idx) < min_stations:
         return None
     if end_share is not None:
         last = np.nonzero(cnt >= max(1, int(np.ceil(end_share * len(A)))))[0]
@@ -942,6 +984,9 @@ def clump_cards(D: dict, locks: list, C, S: dict, look: dict | None = None, seed
                 continue
             width = 2 * 1.7 * float(np.percentile(c0["sx"], 75))
             na = max(1, int(np.ceil(width / cw)))
+            if free and TAIL_SPLIT_CW > 0 and cw > TAIL_SPLIT_MIN and float(lk["inputs"]["Width"]) >= 0.016:
+                wo = 2 * FREE_SPREAD * float(np.percentile(c0["sx"], 75))  # (round 32) by its outline's width
+                na = max(na, min(int(np.ceil(wo / (TAIL_SPLIT_CW * cw))), max(1, len(Ag) // 4)))
             order = np.argsort(c0["mx"])
             for j in range(na):
                 part = Ag[order[j * len(order) // na:(j + 1) * len(order) // na]] if na > 1 else Ag
@@ -965,6 +1010,10 @@ def clump_cards(D: dict, locks: list, C, S: dict, look: dict | None = None, seed
                     # test at any distance fills it: a brown slat down the cheek)
                     hw_full = (np.clip(1.4 * c["sx"], 0.002, 0.005) if bundle else np.clip(1.4 * c["sx"], 0.0012, 0.0025)) \
                         * (1 - 0.5 * _ss((s / s[-1] - 0.5) / 0.5))
+                if free and not thin and TAIL_ROOT_HW > 0 and lk.get("tier") == "tie":  # (round 31) a tied tail's card
+                    # leaves the band narrow: at full width (20-30 mm half widths at LOD1-3) its flat root corners stood
+                    # 15-29 mm up off the round tie, thin spikes over it at 3/4 (LOD0's sub-clump cards are narrow there)
+                    hw_full = hw_full - (hw_full - np.minimum(hw_full, TAIL_ROOT_HW)) * (1 - _ss(s / TAIL_ROOT_TAPER))
                 if gather:  # into the tie a card runs out to nothing (its square end stood over the crown)
                     hw_full = hw_full * (1 - 0.5 * _ss((s / s[-1] - 0.8) / 0.2))  # (to nothing, 0.85, the tie's band
                     # showed between them: a black blob the strands hide)

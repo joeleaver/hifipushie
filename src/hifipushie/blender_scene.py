@@ -1905,6 +1905,27 @@ def hair_glb_look(job):
         import blender_cards
         aux = bpy.data.images.load(job["aux"]) if job.get("aux") else None
         built, bases = {}, {}
+        gltf_ = {}
+        if job.get("glb"):  # (c6) the GLB's own highlight for blender_cards (GLTF_SPEC): its first material's extensions
+            import struct as _st
+            from pathlib import Path as _P
+            with open(job["glb"], "rb") as fh_:
+                b_ = fh_.read()
+            J_ = json.loads(b_[20:20 + _st.unpack("<I", b_[12:16])[0]])
+            m_ = (J_.get("materials") or [{}])[0]
+            ex_ = m_.get("extensions") or {}
+            def _img(t_):
+                if not t_:
+                    return None
+                u_ = J_["images"][J_["textures"][t_["index"]]["source"]].get("uri")
+                return str(_P(job["glb"]).parent / u_) if u_ else None
+            sp_ = ex_.get("KHR_materials_specular") or {}
+            an_ = ex_.get("KHR_materials_anisotropy") or {}
+            pm_ = m_.get("pbrMetallicRoughness") or {}
+            gltf_ = {"spec": sp_.get("specularFactor", 1.0), "spec_color": sp_.get("specularColorFactor"),
+                     "orm": _img(pm_.get("metallicRoughnessTexture")), "rough": pm_.get("roughnessFactor", 1.0),
+                     "aniso": an_.get("anisotropyStrength", 0.0), "aniso_rot": an_.get("anisotropyRotation", 0.0),
+                     "flow": _img(an_.get("anisotropyTexture"))}
         for ob in new:
             if ob.type != "MESH":
                 continue
@@ -1919,7 +1940,10 @@ def hair_glb_look(job):
                 key = (m.name, ca)
                 if key not in built:
                     built[key] = blender_cards.game_material(f"hp_game_{m.name}", img, aux, ca,
-                                                             float(job.get("cutoff", 0.33)), job.get("card_params"))
+                                                             float(job.get("cutoff", 0.33)),
+                                                             {"cull": bool(m.use_backface_culling),
+                                                              "gltf": {**gltf_, "uv": ob.data.uv_layers[0].name if len(ob.data.uv_layers) else None},
+                                                              **(job.get("card_params") or {})})
                     bases[built[key].name] = img
                 ms.material = built[key]
     if mode == "game" and job.get("glb") and job.get("shadow_proxy", True) is not False:  # the export's shadow caster

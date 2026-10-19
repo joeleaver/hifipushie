@@ -1910,7 +1910,8 @@ def write_glb(path: Path, name: str, parts: dict, atlases: list[tuple[str, dict[
             if lk.get("transmission") or lk.get("alpha", 1.0) < 1.0 or lk.get("double_sided"):
                 m["doubleSided"] = True
             if lk.get("alpha_cutoff") is not None:  # alpha-tested, both sides drawn (hair cards)
-                m["alphaMode"], m["alphaCutoff"], m["doubleSided"] = "MASK", float(lk["alpha_cutoff"]), True
+                m["alphaMode"], m["alphaCutoff"] = "MASK", float(lk["alpha_cutoff"])
+                m["doubleSided"] = bool(lk.get("double_sided", True))  # (hair cards with their own back faces: False)
             for e, v in (lk.get("ext") or {}).items():  # further ratified extensions for this part's material
                 m["extensions"][e] = v
                 if e not in used:

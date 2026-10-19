@@ -11,6 +11,8 @@ shading notes in nodes (shading.py "hair_cards"), so judging a card export judge
 `game_material` is shared by blender_scene.hair_glb_look ("game" alpha) and can serve blender_game."""
 import bpy
 
+GLTF_SPEC = 1  # (c6) the preview reads the GLB's own highlight (specular, colour, ORM roughness, anisotropy); 0 = flat 0.25 isotropic, rough .5
+ONE_NORMAL = 1  # (c5) cards shaded with one normal for both faces (the shading notes); 0 = Blender's back-face flip (before c5)
 SHADE = {"root": 0.35, "depth": 0.35, "value": 0.12}  # the notes' aux shade terms (shading.py)
 
 
@@ -81,12 +83,88 @@ def game_material(name, base_img, aux_img=None, color_attr=None, cutoff=0.33, pa
     pb.inputs["Specular IOR Level"].default_value = float(p.get("specular", 0.25))
     if p.get("sheen"):
         pb.inputs["Specular Tint"].default_value = (*[float(c) for c in p["sheen"]], 1.0)
+    gl = p.get("gltf") if GLTF_SPEC and not p.get("plain_spec") else None
+    if gl:  # (c6) the GLB's own highlight, as an engine reads it: KHR_materials_specular (factor 1 = Blender's IOR level
+        # 0.5), its colour, the ORM roughness (G), KHR_materials_anisotropy (strength x flow.B along the flow's RG direction
+        # in tangent space; else rotated by anisotropyRotation from the uv tangent). Before c6 a flat 0.25 isotropic, rough .5
+        if "spec" in gl and "specular" not in p:
+            pb.inputs["Specular IOR Level"].default_value = 0.5 * float(gl["spec"])
+        if gl.get("spec_color") and not p.get("sheen"):
+            pb.inputs["Specular Tint"].default_value = (*[float(c) for c in gl["spec_color"]], 1.0)
+        if gl.get("orm") and "roughness" not in p:
+            ti = nt.nodes.new("ShaderNodeTexImage")
+            ti.image = bpy.data.images.load(gl["orm"], check_existing=True)
+            ti.image.colorspace_settings.name = "Non-Color"
+            sp_ = nt.nodes.new("ShaderNodeSeparateColor")
+            nt.links.new(ti.outputs["Color"], sp_.inputs["Color"])
+            nt.links.new(_math(nt, "MULTIPLY", sp_.outputs["Green"], float(gl.get("rough", 1.0))), pb.inputs["Roughness"])
+        if float(gl.get("aniso", 0)) > 0:
+            tg = nt.nodes.new("ShaderNodeTangent")
+            tg.direction_type = "UV_MAP"
+            if gl.get("uv"):
+                tg.uv_map = gl["uv"]
+            g2 = nt.nodes.new("ShaderNodeNewGeometry")
+            bt = nt.nodes.new("ShaderNodeVectorMath")
+            bt.operation = "CROSS_PRODUCT"
+            nt.links.new(g2.outputs["Normal"], bt.inputs[0])
+            nt.links.new(tg.outputs["Tangent"], bt.inputs[1])
+            if gl.get("flow"):
+                fi = nt.nodes.new("ShaderNodeTexImage")
+                fi.image = bpy.data.images.load(gl["flow"], check_existing=True)
+                fi.image.colorspace_settings.name = "Non-Color"
+                fs = nt.nodes.new("ShaderNodeSeparateColor")
+                nt.links.new(fi.outputs["Color"], fs.inputs["Color"])
+                a_ = _math(nt, "MULTIPLY_ADD", fs.outputs["Red"], 2.0, -1.0)
+                b_ = _math(nt, "MULTIPLY_ADD", fs.outputs["Green"], 2.0, -1.0)
+                strength = _math(nt, "MULTIPLY", fs.outputs["Blue"], float(gl["aniso"]))
+            else:
+                import math
+                r_ = float(gl.get("aniso_rot", 0.0))
+                a_, b_, strength = math.cos(r_), math.sin(r_), float(gl["aniso"])
+            v1 = nt.nodes.new("ShaderNodeVectorMath")
+            v1.operation = "SCALE"
+            nt.links.new(tg.outputs["Tangent"], v1.inputs[0])
+            v2 = nt.nodes.new("ShaderNodeVectorMath")
+            v2.operation = "SCALE"
+            nt.links.new(bt.outputs["Vector"], v2.inputs[0])
+            for v_, f_ in ((v1, a_), (v2, b_)):
+                if isinstance(f_, float):
+                    v_.inputs["Scale"].default_value = f_
+                else:
+                    nt.links.new(f_, v_.inputs["Scale"])
+            ad_ = nt.nodes.new("ShaderNodeVectorMath")
+            ad_.operation = "ADD"
+            nt.links.new(v1.outputs["Vector"], ad_.inputs[0])
+            nt.links.new(v2.outputs["Vector"], ad_.inputs[1])
+            nz = nt.nodes.new("ShaderNodeVectorMath")
+            nz.operation = "NORMALIZE"
+            nt.links.new(ad_.outputs["Vector"], nz.inputs[0])
+            nt.links.new(nz.outputs["Vector"], pb.inputs["Tangent"])
+            if isinstance(strength, float):
+                pb.inputs["Anisotropic"].default_value = strength
+            else:
+                nt.links.new(strength, pb.inputs["Anisotropic"])
+    one_n = None
+    if ONE_NORMAL and not p.get("flip_back"):  # (c5) the shading notes: "two-sided with ONE normal for both faces". Blender
+        # flips the shading normal on a face seen from behind: a card seen past its edge at the outline (the back crown's
+        # top cards, lying on the head and seen from below their plane) was shaded with a normal pointing INTO the head:
+        # unlit, the black crown "shards" (c4: not winding, proxy, shadows or the atlas; the flat pass had none)
+        g1 = nt.nodes.new("ShaderNodeNewGeometry")
+        sg = _math(nt, "MULTIPLY_ADD", g1.outputs["Backfacing"], -2.0, 1.0)
+        sc_ = nt.nodes.new("ShaderNodeVectorMath")
+        sc_.operation = "SCALE"
+        nt.links.new(g1.outputs["Normal"], sc_.inputs[0])
+        nt.links.new(sg, sc_.inputs["Scale"])
+        one_n = sc_.outputs["Vector"]
+        nt.links.new(one_n, pb.inputs["Normal"])
     surf = pb.outputs["BSDF"]
     bs = float(p.get("backscatter", 0.0))
     if bs > 0:  # light through thin hair: a translucent term in the hair's colour, warmer, weighted to the outer layers
         tr = nt.nodes.new("ShaderNodeBsdfTranslucent")
         tint = _mul_rgb(nt, albedo, _rgb(nt, p.get("back_tint", [1.25, 1.0, 0.8])))
         nt.links.new(tint, tr.inputs["Color"])
+        if one_n is not None:  # (light through the card from behind: the far side of the one normal)
+            nt.links.new(one_n, tr.inputs["Normal"])
         mix = nt.nodes.new("ShaderNodeMixShader")
         w = _math(nt, "MULTIPLY", shade_b, bs * 0.5) if shade_b is not None else None
         if w is None:
@@ -108,7 +186,7 @@ def game_material(name, base_img, aux_img=None, color_attr=None, cutoff=0.33, pa
             cn.outputs[0].default_value = (0.0, 0.0, 0.0, 1.0)
             dot = nt.nodes.new("ShaderNodeVectorMath")
             dot.operation = "DOT_PRODUCT"
-            nt.links.new(geo.outputs["Normal"], dot.inputs[0])
+            nt.links.new(one_n if one_n is not None else geo.outputs["Normal"], dot.inputs[0])
             nt.links.new(dn.outputs["Vector"], dot.inputs[1])
             d = dot.outputs["Value"]
             wv = _math(nt, "MAXIMUM", _math(nt, "MULTIPLY_ADD", d, 1.0 / (1.0 + wrap), wrap / (1.0 + wrap)), 0.0)
@@ -157,7 +235,9 @@ def game_material(name, base_img, aux_img=None, color_attr=None, cutoff=0.33, pa
     nt.links.new(tp.outputs["BSDF"], mx.inputs[1])
     nt.links.new(surf, mx.inputs[2])
     nt.links.new(mx.outputs["Shader"], out.inputs["Surface"])
-    mat.use_backface_culling = False
+    mat.use_backface_culling = bool(p.get("cull"))  # (c6) the GLB's doubleSided false: cards carry their own back faces
+    if hasattr(mat, "use_backface_culling_shadow"):  # (shadows from both faces as before)
+        mat.use_backface_culling_shadow = False
     if hasattr(mat, "surface_render_method"):
         mat.surface_render_method = "DITHERED"
     return mat

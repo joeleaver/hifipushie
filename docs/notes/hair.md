@@ -1,5 +1,13 @@
 # hifipushie notes: hair
 
+BEST GARRETT CARDS FOR EXPORT (2026-10-18, hair-garrett c6): /mnt/data/hifipushie/hair_garrett/cards/exp/c6M = c4L's cards (identical geometry / atlas: same verts and unique triangles) + hair.BACK_FACES 1 (each card's back its own triangles, outward normals, material doubleSided false: no viewer flips them, the crown shards stay gone in ANY engine); index triangles hero 26040 / main 10164 / npc 4704 / far 1380, verts 16115 / 6561 / 3228 / 915 (all inside budgets.json ranges). Preview with blender_cards ONE_NORMAL 1 + GLTF_SPEC 1. Previous line (c4/c5): unchanged GLBs, preview them with blender_cards.ONE_NORMAL 1 (c5 default), the old flip drew black crown shards): the branch hair-heads2 DEFAULTS at c4's commits (c3's EVEN_CAP_KEEP .6,
+  GREY_QUANTILE 1 + c4's WIND_TO_NORMAL 1, GREY_SPREAD 2) + hair.export {"card_gain": 2.1}, ALL FOUR tiers from one export_hair:
+  /mnt/data/hifipushie/hair_garrett/cards/exp/c4L/hg_G88a_hair_{hero,main,npc,far}.glb (14570 / 6130 / 2958 / 1024 tris,
+  shared atlas). LODs OK: STYLE yes (same cut at every tier, no pompadour), QUALITY no. Blind A/B c3 (c3q hero + c3a tiers)
+  vs c4L: hero front / 3/4 / side / back TIE, 2 / 4 / 8 m NEW (lighter, greyer) -> kept. Open MAJORs (both): black shard
+  flaps at the crown, no silver sides (uniform grey), hairline / temples / sideburns stop short (cards' geometry), flat
+  front top. Not shippable as a finished likeness: draft.
+
 Moved out of CLAUDE.md on 2026-10-09 so agents don't load every thread's history.
 
 - `hair.py` + `blender_hair.py` (2026-09-29; replaced the SDF groom on branch hair-sdf-wip: a mop with corduroy grooves,
@@ -5360,3 +5368,906 @@ NEXT, in order: (1) tail-card roots at the tie on LOD1-3 (tiespk2: tail-tile pie
 taper / seat their roots into the band like the hero's gather cards (hair_cards clump_cards `gather` hw taper), or start
 them under the band). (2) LOD0: tail holes / torn tail, dark gap behind the tie, ragged crown edge, temples (texture /
 card opacity, not coverage). bin/review usable after 2026-10-19 13:00 MT.
+## hair-cards round 31 (2026-10-18, fresh session; LOD0 the hero view; tail-card roots at the tie on LOD1-3)
+BEST CARDS FOR EXPORT: b37 (round 30) until a round-31 build beats it.
+LODs OK: y (b37).
+- merge origin/main (f01962ee = this branch to round 25, squashed): hair_cards / hair_clumps ours; lashes: main's
+  taper_out + our lower-lid segments 2 (VERSION 22); asset: our ribbon-fitted lash LODs (main's thin_strands on the lashes
+  NOT also applied: it would thin them twice).
+- (1) TAIL-CARD ROOTS AT THE TIE (t31/troot.py <tier> [flag=v]: captures clump_cards' cards in export_cards, the tied
+  tail's cards whose first 6 stations' edges stand past b37 LOD0's hair near the tie): the lower tiers' tail cards leave
+  the tie at FULL width (half widths 20-30 mm at the root: FREE_SPREAD 3.2 sigma of a clump whose strands fan round the
+  band), so the flat root corners stood 15-29 mm up off the round tie. FIX: hair_cards.TAIL_ROOT_HW 8 mm at the root,
+  eased to full over TAIL_ROOT_TAPER 50 mm (tier "tie" free locks only, not wisps). Root corners past LOD0 > 8 mm:
+  far 11 -> 6, npc 15 -> 9, main 18 -> 13; what remains stands 13-19 mm at only 4-5 mm from the root, hw 8 mm: LOD0's
+  own hair is recessed at the tie (its dark gap), so the probe overstates there. STATE: r31a running (t31/r31.sh 31a:
+  export -> lods -> shots -> t31/lods_31a.png). NEXT: LOD0 (2) while it runs.
+- (0) CROWN CHOPPED OFF (coordinator, after Joe on t28/s_v1.png: "lg2 looks like the hair is chopped off at the top"; item 0
+  ahead of the tail). MEASURE t31/crowntop.py <tags> (the figure's top outline per column vs gSc's over its upper 45%):
+  ls2 (= b35 = b37 LOD0) g1v0 deficit mean 21.3 px / p90 25 / area 4517, ragged 2.54 (gSc 1.32); g1v1 12.6 / 24 / 3675,
+  ragged 2.08 (gSc 0.89). GEOMETRY t31/crownr.py [mod.FLAG=v] (hair_clumps.cut's hero cards, export aborted after the
+  cut, vs the head strands' radius from C per 8-deg azimuth bin): cards' max radius short of the strands' p99 by 5.0 /
+  7.6 / 9.1 mm (worst 10 / 18 / 17) at el 30-50 / 50-65 / 65-80, even under the p90 at 50-80; no card over el 80.
+  Dead levers: SIDE_EL (88, 90), ENV_PCT 97 (nothing moved: the clump's own outer strands are near its mean over the
+  crown). CAUSE: ROOT_SEAT (every head card's first 3 cm eased to 3 mm over its roots) over the crown, where nearly every
+  card is rooted, plus each card at its own clump's mean. FIX: hair_clumps.CROWN_FILL (opt-in): after the root seat, a
+  head card is raised (never lowered) toward the strands' ENV_PCT envelope less ENV_UNDER less CROWN_GAP 2 mm per layer
+  under the top, ramped in over el 20-45 deg. crownr: short of p99 3.0 / 2.7 / 2.4 mm (worst 5.7 / 7.7 / 7.0), the top
+  layer at the p90. STATE: r31c1 running (t31/r31c.sh c1 hk.CROWN_FILL=1.0: export -> LOD0 shots g1v0/v1/v2/backl ->
+  crowntop t31/crown_c1.txt). NEXT: look at it vs gSc / ls2 at the s_v1 framing (hooks back at the front?).
+- (1) r31a RESULT (exp/exa31a = b37 + TAIL_ROOT_HW 8 mm; t31/lods_31a.png): the spikes over the tie at g4v1 (LOD1-3) and
+  g4backq (LOD1, LOD3) look the SAME as r30b, and the tie's dark band shows more at g2backl LOD1-2 (narrow roots). tiespk2
+  on 31a: what stands past LOD0 by the tie is (a) the tail-tile cards' far parts (worst points 8-10 cm back along the
+  tail at tie height, the very wide far-tier cards: 132-200 mm wide x 200-260 long, their CORNERS) and (b) two fly-tile
+  cards over the left ear (x 0.085, 35 mm). So the spikes are not the root corners. TAIL_ROOT_HW back to 0 (opt-in, kept
+  for the record). NEXT for (1): cap a tail card's width at the far tiers (FREE_CLIP x card_width = 91 mm at far) or
+  split wide tail cards in two; trace the g4v1 spike with a frame box first.
+- (0) r31c1 RESULT (CROWN_FILL 1.0; t31/crown_g1v0.png / crown_g1v1.png: gSc | ls2 | c1): crowntop deficit g1v0 21.3 ->
+  16.8 px mean (area 4517 -> 3555), g1v1 12.6 -> 9.7 (3675 -> 2823), ragged unchanged (2.68 / 2.02 vs gSc 1.32 / 0.89).
+  LOOK: the 3/4 crown is a little higher, but at the FRONT two flat flaps now stand out at the top corners (left and
+  right of the crown, "wings": raised card ends in the air): worse than ls2 at the front. NOT adopted. STATE: r31c2
+  running (CROWN_FILL 0.6, CROWN_EL 40: raise only over the top, less of it). NEXT: tile; if the flaps stay, the raise
+  must stop short of a card's free end (taper the raise to 0 over its last few cm).
+- (0) r31c2 (CROWN_FILL 0.6, CROWN_EL 40) / r31c3 (1.0 + CROWN_END 0.04): crowntop g1v0 20.2 / 16.8 px, g1v1 11.9 / 9.7
+  (c3 = c1 to the decimal: the raised free ends are below the ramp, so the flaps are NOT free ends: they are the ROOT
+  ends the fill lifts back up after ROOT_SEAT seated them, i.e. the round-27 hooked flaps). Tiles t31/crown4_g1v0.png /
+  crown4_g1v1.png (gSc | ls2 | c1 | c2 | c3). BLIND REVIEW (fresh subagent, t31/blind_g1v0.png / blind_g1v1.png, ref | A |
+  B, key t31/blind_key.json: A = c1, B = ls2): front B slight, 3/4 B clear, OVERALL B. A: dark slabs up at the top
+  corners + a flat chopped edge between them (MAJOR), a notch on the front crown at 3/4 (MAJOR). B: crown lower and
+  flatter than the ref (MAJOR), small flaps (MINOR). CROWN_FILL stays OFF (default 0): the measured 22% figure gain is
+  bought with flaps.
+
+## Handover 2026-10-18 (hair-cards agent, round 31; stopped at the 70-tool-call rule)
+BEST CARDS FOR EXPORT: b37 unchanged (exp/exa30b/hc_s2.glb + _LOD1-3; hair defaults at this commit = b37's: TAIL_ROOT_HW,
+CROWN_FILL, CROWN_END all default off). LODs OK: y (b37).
+Commits: merge of origin/main (lashes VERSION 22 = main's taper_out + our lower segments 2; asset keeps our ribbon-fitted
+lash LODs, main's thin_strands not also applied: check with the game_ready thread that nothing of theirs needs it);
+hair_cards.TAIL_ROOT_HW / TAIL_ROOT_TAPER (opt-in); hair_clumps.CROWN_FILL / CROWN_GAP / CROWN_EL / CROWN_END (opt-in).
+Scratch t31/: troot.py (tail cards' root edges vs LOD0 by the tie, per tier, no full export), crowntop.py (the figure's
+top outline vs gSc per column: deficit / ragged), crownr.py (hero cut aborted after the cut: cards' radius vs the strands'
+p90 / p99 per elevation band, flags as hcl.X=v), tile.py, r31.sh <tag> [flags] (the LOD chain, t31/lods_<tag>.png),
+r31c.sh <tag> [hk.X=v] (export -> LOD0 1 m shots g1v0/v1/v2/backl -> crowntop). Nothing in flight.
+VERDICT (look-first): no build beat b37 this round. The crown IS low and flat at the front (crowntop: 21 px short of gSc
+at g1v0, ragged 2.5 vs 1.3), and the cause is now known in numbers (ROOT_SEAT's seated roots + cards at their clumps'
+means: 5-9 mm under the strands' p99 over the crown, nothing over el 80 but the cap), but raising the cards brings the
+root flaps back. The LOD1-3 spikes over the tie are not root corners (r31a): they are the far tiers' very wide tail cards'
+corners and two fly cards over the left ear.
+NEXT, in order: (0) crown: raise the CAP (hair cap_under_cards / the mass cap over el 60+) and the layer-0 cards together
+with CROWN_FILL but keep each card's first ROOT_SEAT stretch seated (w x ss(s / ROOT_SEAT): its root stays under the layer
+above) and try CROWN_FILL on the top layer only; a card over el 80 (the whorl) so the dome's top is hair, not the cap's
+edge; judge on crown4-style tiles + blind A/B vs ls2. (1) LOD1-3 tie spikes: the far tiers' tail cards are up to 132-200
+mm wide: cap a tail card's width (FREE_CLIP x card_width) or split it; drop / shorten the two fly cards over the left ear
+(x 0.085). (2) LOD0 tail holes / ragged lower edge, the dark gap at the tie, temples, the part (not started).
+bin/review: its CLI works but is single reference | result (no A/B); use it after 2026-10-19 13:00 MT for per-result
+LOOK, fresh blind subagents for A/B.
+
+## hair-cards round 32 (2026-10-18, fresh session; Joe: the crown "chopped off at the top" first; then LOD1-3 tail spikes, LOD0)
+BEST CARDS FOR EXPORT: b37 (round 30) until a round-32 build beats it.
+LODs OK: y (b37).
+- (1) CROWN: hair_clumps.CROWN_SEAT (m, opt-in): CROWN_FILL's raise eases in over a card's first CROWN_SEAT from its root,
+  so the root ROOT_SEAT seated stays seated (r31: the fill lifted seated roots = the front-corner flaps);
+  CROWN_LAYERS (tuple, from the top: (0,) = top layer only). crownr (short of the strands' p99 at el 30-50 / 50-65 /
+  65-80; ls2 5.0 / 7.6 / 9.1, r31 c1 fill-all 3.0 / 2.7 / 2.4): FILL 1 + SEAT 0.03 3.9 / 5.6 / 6.6 (worst 7.8 / 18 /
+  16); + top layer only 4.2 / 6.3 / 8.4. The top layer over el 65-80 stays at 85.8 mm (p90 94.3) either way: over the
+  crown nearly every top card is within its first 3 cm (rooted there), so a seat of ROOT_SEAT's length keeps most of the
+  shortfall. No card over el 80 (the cap is the dome's top). STATE: d1 (FILL 1, SEAT 0.03) and d2 (FILL 1, SEAT 0.012)
+  running (t31/r31c.sh). NEXT: tiles vs gSc / ls2 / c1; meanwhile (2) the tail-card width at the far tiers.
+- (1) r32 d1 (FILL 1, SEAT 0.03) / d2 (FILL 1, SEAT 0.012): crowntop g1v0 deficit 21.3 (ls2) -> 19.5 / 18.3 px, g1v1
+  12.6 -> 11.8 / 11.0, ragged unchanged (2.7 / 2.0). Tiles t32/crownz_g1v0.png / crownz_g1v1.png (gSc | ls2 | c1 | d1 |
+  d2): LOOK: no corner flaps like c1, but the top is still the same flat, ragged lid as ls2 (d2 a touch fuller): the
+  seat keeps most of the shortfall (the crown's top cards are rooted there). STATE: e1 / e2 running = d2 with the seat
+  only for cards rooted in front of C (CROWN_SEAT_Y 0 / +0.03 m): crown-rooted cards raised from their root.
+- (2) TAIL WIDTH (t32/tailw.py <tier> [hc flags], t32/tw.sh: every station's edges of the tied tail's cards vs b37 LOD0,
+  tail cards' full width): base main 159 cards, width max 73 / p90 55 mm, edges past LOD0 > 8 mm 62, > 15 mm 29; npc 85,
+  73 / 56, 35 / 20; far 50, 120 / 107, 29 / 22. (r31's "132-200 mm" was the far tier before FREE_CLIP: today only far is
+  that wide.) hair_cards.TAIL_SPLIT_CW 1.0 (opt-in: a hanging clump at a coarse tier split by its OUTLINE width, FREE_SPREAD
+  sigmas, not 1.7 sigmas): far 72 cards, width 76 / 64, > 15 mm 22 -> 16; main / npc WORSE (more cards, > 8 mm 62 -> 83 /
+  35 -> 52), so TAIL_SPLIT_MIN 0.05 (far only). The worst points (27-44 mm) are the same cards (tt17/20/36, dense L0)
+  8-12 cm down the tail at every tier, split or not: the lower tiers' tail hangs OUT past LOD0's, not only corners.
+- (1) e1 (d2 + CROWN_SEAT_Y 0: seat only cards rooted in front of C) / e2 (SEAT_Y +0.03 = d2 to the decimal): crowntop
+  g1v0 17.5 / 18.3 px, g1v1 10.7 / 11.0. Tiles t32/crownz2_g1v*.png (gSc | ls2 | d2 | e1 | e2): all still the flat ragged
+  lid; e1 a little fuller, no c1 corner flaps. crownr with CROWN_LOOP 0: still no card over el 80 (not the loop filter).
+  FINDING: the very top of the front silhouette (el 80-90 over C) has NO card; the cap there takes the LOWEST nearby
+  layer-0 card less CAP_UNDER (the seated roots), a dip between the crown cards = the "chopped" lid. hair.CAP_TOP_EL
+  (opt-in, deg): over it a cap vertex with no card over it takes the HIGHEST nearby layer-0 card's height. STATE: f1 (e1
+  + CAP_TOP_EL 70) / f2 (55) running; blind A/B e1 vs ls2 (fresh subagent, t32/blind_g1v*.png, key t32/blind_key.json).
+- (2) FREE_CLIP 0.8 (LOD1-3 only: the hero is hair_clumps.cut): main / npc tail width 73 -> 45 mm, edges > 15 mm 29 -> 27
+  / 20 -> 17: width is NOT the cause. The same cards stand 27-44 mm past LOD0 at every tier and setting: the lower
+  tiers' tail hangs on another line than LOD0's (clump_cards' mean line + yo vs cut's TAIL_OUT layers). NEXT for (2):
+  overlay LOD0 and LOD1 tail centre lines (side view) before any width change.
+- LASHES vs main's thin_strands (r31 merge note): main's game_ready path thins the lashes per LOD by lods.thin_strands
+  (LASH_LODS 0.5 / 0.25 / 0.1, whole lashes); ours does the same job in lods.lod_parts(ribbons=) (ribbon_lod: whole
+  ribbons by the LOD ratio, widened) + ribbon_fit to the eyes_mouth_lashes cap at LOD0. Nothing else on main calls
+  thin_strands (git grep origin/main: asset.py only): no reliance; the ratios differ (ours = the LOD ratio), say so at
+  the merge.
+- (1) BLIND A/B (fresh subagent; t32/blind_g1v0.png / blind_g1v1.png = gSc | A | B, key t32/blind_key.json: A = ls2,
+  B = e1): front A slightly, 3/4 A clearly, OVERALL A (= OLD). e1: a more ragged top outline (small flaps and notches, a
+  jagged slab upper left), a hump toward the back at 3/4. Both: dome lower and flatter than the ref, one dark flap upper
+  right, pale temple streaks, the part a dark ragged smudge. e1 NOT adopted.
+- (1) f1 / f2 (e1 + CAP_TOP_EL 70 / 55): crowntop g1v0 17.0 / 16.9, g1v1 10.5 / 10.4 (e1 17.5 / 10.7); tiles
+  t32/crownz3_g1v*.png: no visible change. CAP_TOP_EL stays off.
+- (1) CONCLUSION: every lever that moves the existing cards (fill, seat, cap) buys 3-4 of the 21 px and adds a raggeder
+  top. What the eye reads as "chopped": the front outline's top is the part's cards seen END-ON (their straight-cut tops
+  as slabs and notches) over a low dip at the part, where the groom's strands rise off the part and arch over. NEXT (new
+  geometry, not a tweak): a top COVER row: cards laid along the part front-to-back on the strands' p90 envelope, each
+  side's cards leaving the part sideways UNDER it (the hairline row's tile: roots that come in one by one), so the
+  outline over el 60-90 is a card's long soft edge, not cut ends; measure crowntop + ragged, tiles, A/B vs ls2.
+
+## Handover 2026-10-18 (hair-cards agent, round 32; stopped near the 70-tool-call rule)
+BEST CARDS FOR EXPORT: b37 unchanged (exp/exa30b/hc_s2.glb + _LOD1-3). LODs OK: y (b37). All round-32 flags default OFF
+(hair defaults at this commit = b37's).
+New opt-in flags: hair_clumps.CROWN_SEAT / CROWN_SEAT_Y / CROWN_LAYERS (with r31's CROWN_FILL), hair.CAP_TOP_EL,
+hair_cards.TAIL_SPLIT_CW / TAIL_SPLIT_MIN. Scratch t32/: tailw.py + tw.sh <tag> [hc flags] (tail cards' edges vs b37
+LOD0, every station, per LOD tier, no export), blind.py <new> <old> (gSc | A | B sheets + key), crownz*/crownz2/3 tiles;
+exa26.py now takes tuple flags. Builds: exp/exad1, exad2, exae1, exae2, exaf1, exaf2 (+ lods*, shots out/s_hc_s2_<tag>_*).
+Nothing in flight.
+VERDICT (look-first): no build beat b37. The crown is still low and flat with a ragged top (crowntop g1v0 21 px short of
+gSc, best variant 17); the blind A/B kept ls2 over the best variant (e1). Moving the existing cards is exhausted: the
+next step is a top cover row (see the CONCLUSION above). Tail spikes on LOD1-3: width is not the cause (FREE_CLIP 0.8
+narrows main / npc tail cards 73 -> 45 mm and barely moves the stand-off); the same tail cards stand 27-44 mm past LOD0
+8-12 cm down the tail at every tier: compare the LOD0 / LOD1 tail lines first. LOD0 items (3) not started. Lashes: no
+reliance on main's thin_strands (see above).
+Coordinator rule noted: never git push; commits are local only.
+
+## hair-cards round 33 (2026-10-18, fresh session; Joe: the crown "chopped off at the top": a new top cover row; then the LOD1-3 tail line)
+BEST CARDS FOR EXPORT: b37 unchanged (exp/exa30b/hc_s2.glb + _LOD1-3; no round-33 build beat it).
+LODs OK: y (b37; every round-33 flag defaults OFF, so the defaults at this round's last commit = b37's).
+- (1) PART COVER ROW (hair_clumps.PART_COVER = cards per side, opt-in, 0 = off; part_cover()): per side of the part, the
+  head strands rooted within COVER_REACH 15 mm of it (over PART_EL) split front to back (root y quantiles) into
+  PART_COVER runs; each run one card (fit on its strands, cut to COVER_LEN 70 mm), led in from COVER_OVER 2 mm PAST the
+  part line (_part_root got a `gap`: the two sides' covers meet, no dip), raised from its root (COVER_SEAT 12 mm) to the
+  head strands' envelope less COVER_UNDER 1.5 mm (the strands rise off the part), width tapered over its last half
+  (COVER_TAPER) and its picture's alpha faded over the last 45% (COVER_FADE: soft tips on the side cards, its own tile
+  group). Top layer, prio top + 0.5, "cover": True. Test: tests/test_hair_clumps.py::test_part_cover_row_arches_over_
+  the_part_with_soft_tips (a dome groom with a centre part: rows both sides front to back, roots on the line, tapered
+  tips, the part's top 0 -> 80 mm (no head card within 4 mm of the part without it), under the strands). Commit
+  81c1de08. STATE: p6 / p10 (PART_COVER 6 / 10) exporting (t33/r33.sh = r31c.sh, crowntop vs ls2 -> t33/crown_<tag>.txt).
+- (2) TAIL LINES (t33/tailline.py <glb0> <glbk...> <png>: side + back views of each LOD's hair, the tail's median line per
+  1 cm band below the tie, nape excluded (> 125 mm from the head centre), and its back edge p5): b37 (exp/exa30b)
+  t33/tailline_b37.png: LOD1 / 2 / 3's median lines lie on LOD0's within about +-5 / +-8 / +-15 mm (LOD3 zigzags: few
+  cards) down the whole tail, side and back; the back edge (p5) of LOD1-3 sits 10-35 mm INSIDE LOD0's 21-26 cm below
+  the top (LOD0's fan reaches further back and down). FINDING: the lower tiers' tail does NOT hang on another line; r32's
+  27-44 mm stand-off (radial from a head centre, nearest-direction max) is single cards' edges / corners, mostly sideways,
+  not the tail's line. Nothing changed for (2). NEXT for (2): the standing cards one by one (standoff.py's pieces).
+- (1) p6 (PART_COVER 6: 12 cover cards, all kept: head/L2 73 cards) / q97 (8 per side, raised to the strands' p97,
+  COVER_PCT): crowntop g1v0 deficit 21.3 (ls2) -> 20.9 / 20.9 px, ragged 2.54 -> 1.67 / 1.67 (gSc 1.32); g1v1 12.6 ->
+  12.6. Tiles t33/cz1_g1v*.png (gSc | ls2 | p6): no visible change. The GLB's hair top near x = 0 rose 1.6472 -> 1.6556
+  m (+8.4 mm, b37 exa30b vs p6), the front render's top 0 px. FINDING (the real cause of "chopped"): a card lying
+  tangent at the top of the dome is seen EDGE-ON from the front; raising it adds nothing to the front outline. Whatever
+  the outline's top is there is a card that stands up (the part cards' ends), hence the slabs and notches. The groom's
+  round strands have no edge-on. NEXT: COVER_TILT (deg): the cover card's across direction turned toward the head's
+  outward radial (its width reads as height from the front, the upper edge its soft tapered / faded side;
+  COVER_SINK 0.5 x hw sin(tilt) moved in so the lower edge tucks into the mass). STATE: t60 (8 / side, tilt 60) / t80
+  (tilt 80, p97) queued after q99 (t33/q3.sh).
+- (1) q99 (8 / side, p99, COVER_UNDER 0) / t60 (8 / side, COVER_TILT 60): crowntop g1v0 20.9 / 20.9 px, ragged 1.67,
+  g1v1 12.6, g1v2 10.1: the SAME numbers as p6 / q97 to the decimal. Tiles t33/cz3_g1v*.png (gSc | ls2 | q97 | t60): no
+  change at the outline. Pixel diff q97 vs t60 g1v0: bbox (473, 358)-(639, 549), i.e. only BELOW the outline's top (365):
+  the covers change the front hairline / part area, never the crown's top line. FINDING: the front outline's top is not
+  over the part at all; it is the crown BEHIND the part (where the hair sweeps straight back to the tie, no part, cards
+  running front to back seen end-on from the front: their cut cross-sections are the lid's edge). The cover row (roots
+  within 15 mm of the strands' part, which only exists where top roots sweep sideways: the front of the head) cannot
+  reach it. r32's "the part's cards seen end-on" was the wrong place.
+- (1) (r33 p10 = PART_COVER 10 was killed by the assembly agent's `kill -9 hv.py` at 17:41 (coordinator's note); not
+  re-run: superseded by q97 / t60.) No A/B: no tile shows a visible change, nothing to put in front of a reviewer.
+- (2) see above: the tail lines agree; nothing changed. (3) not started.
+
+## Handover 2026-10-18 (hair-cards agent, round 33; stopped near the 70-tool-call rule)
+BEST CARDS FOR EXPORT: b37 unchanged (exp/exa30b/hc_s2.glb + _LOD1-3). LODs OK: y (b37). All round-33 flags default OFF.
+New opt-in code: hair_clumps.part_cover() + PART_COVER / COVER_REACH / COVER_LEN / COVER_HW / COVER_TAPER / COVER_FADE
+(own tile group, tip alpha fade) / COVER_OVER / COVER_SEAT / COVER_UNDER / COVER_DRAW / COVER_PCT / COVER_TILT /
+COVER_SINK; hair._part_root(gap=); hair.COVER_TIERS {tier: share} (the cover at main / npc / far on the tiles, fewer and
+wider: NOT yet run). Test test_part_cover_row_arches_over_the_part_with_soft_tips. Scratch t33/: r33.sh <tag> [flags]
+(r31c.sh -> t33/crown_<tag>.txt), tile.py <tags> <out> <views>, tailline.py (LOD tail lines). exa26.py takes dict
+flags for hh.*. Builds exp/exap6, exaq97, exaq99, exat60 (t80 was queued, then stopped: nothing in flight). 
+VERDICT (look-first): the crown is unchanged: still the low flat lid, 21 px short of gSc from the front. The cover row
+works as built (8 mm higher mesh at the part, ragged 2.5 -> 1.7 px from the front) but the part is not where the outline's
+top is. NEXT for the crown: measure WHICH cards form the front outline's top (ID-render or project each card's
+stations and take the topmost per column), expected = the crown cards behind the part running back to the tie, seen
+end-on. Then the same idea moved there: cards standing up (COVER_TILT-like, across direction toward the outward radial)
+along the crown's ridge from the part's back end to the tie, or a crown ridge cover generalised from part_cover (strands
+rooted along the top ridge line instead of the part). Tail LOD stand-off: single cards (standoff.py pieces), not the line.
+
+## hair-cards round 34 (2026-10-18, fresh session; Joe: the crown "chopped off at the top": measure which cards form the front outline's top, then layer like an artist)
+BEST CARDS FOR EXPORT: b37 unchanged until a round-34 build beats it. LODs OK: y (b37).
+- (1) CARD-ID PASS (scratch t34/cardid.py <glb> <frames tag> view= layers=<hc_s2_hair.json> out=: no render; every hair
+  triangle sampled 16x16 where baseColor alpha > 0.5, projected in shots' frame, z-buffered; per column of crowntop's
+  columns (groom top in its upper 45%) the card owning the outline's top pixel; per card layer, root (mm from C), root ->
+  tip direction, where along it (s, arc length on its centre line) the outline sits). b37 = exp/hx34b37 (hx.py hero,
+  23844 tris = b37's LOD0 hair to the triangle; ID top vs the ls2 render top: median 1 px). t34/id_b37.txt,
+  t34/id_b37_g1v0.png / g1v1.png (outline cards coloured, red = our top line, blue = gSc's).
+  FRONT g1v0 (212 cols): the CAP 25% (52 cols, the middle of the top: no card above it there), layer2 44%, layer0 22%,
+  layer1 5%, layer3 4%. The cards: crown cards rooted at el 60-64, 2-4 cm in front of C, x +-27..37 mm (190, 138, 139, 48,
+  125, 53, 126) running straight BACK and down to the tie (dir ~(+-0.1..0.46, +0.86, -0.48)), seen from the front at
+  s 0.1-0.3 = 20-60 mm from their ROOT; plus 137 / 4 (rooted el 48, 5 cm in front) at s 0.02-0.2. Outline columns by
+  place on their card: root end (s < 0.2) 45%, body 30%, the rest the cap. 3/4 g1v1: root end 21%, body 63%.
+  So from the front the top is the scalp cap plus the root ends of crown cards that START on the top of the dome (at
+  el 60-70) and leave it backwards: nothing arches over from in front. The groom's strands that cross the top are
+  rooted further forward and stand ~20 px (2 cm) higher there.
+  STATE: hair_clumps.ARCH (opt-in, cards; arch_row(): head strands whose path reaches ARCH_EL 70 deg with the root in
+  front of that top station, split by its x into ARCH runs; a card each from ARCH_START 3 cm past the roots (its start in
+  the mass, under the front layers) to ARCH_PAST 7 cm past its top, raised to the strands' p97 envelope (ARCH_PCT) less
+  1 mm over ARCH_SEAT 4 cm, tapered + faded tip ("cover": the cover row's tile group)). a10 (ARCH 10) exporting
+  (t34/r34.sh = r33.sh). NEXT: card-ID + crowntop + tiles of a10.
+- (2) a10 (ARCH 10, first selection: strands CROSSING el 70 with the root in front): "0 strands cross the top". The
+  groom's own outline top (t34/strtop.py: head strands projected in g1v0, topmost per column): strands ROOTED near the
+  centre line (root x -10..+10 mm, el 62-73, root y 2-3.5 cm in front of C), the outline at their stations 6-12 (24-48 mm
+  from the root), standing 17-22 mm above their root's radius; they rise off the scalp, then run back. Our cards leave
+  that strip empty (crown cards rooted at x +-27..37: PART_GAP) and seat their roots: the cap is the outline there.
+  ARCH reworked: head strands rooted over ARCH_EL 55 within ARCH_X 3 cm of the centre line, ARCH_ROWS 2 by root y, then
+  ARCH runs by root x; card from the root to ARCH_LEN 9 cm, raised to p97 over ARCH_SEAT 2 cm. Offline (t34/archq.py on
+  the strand dump): 8 cards, their front-view tops 354-367 px vs the groom's strands 353 (b37's cards 365).
+- (2) a4 (ARCH 4 = 8 cards, 192 tris): crowntop g1v0 20.9 / ragged 1.64, g1v1 12.6: the SAME as q97; render diff only
+  below y 382; card-ID: the outline cards unchanged. The 8 arch cards ARE in the GLB (z up to 95 mm over C, higher than
+  any other card) but their atlas tile is EMPTY (alpha 0: t34/atlas_a4_crop.png). Cause (bake): a strand is drawn on a
+  card only if IN_SHARE of ALL its points fall inside the card; a 9 cm card over 30 cm strands never passes. FIX: arch
+  cards count the share over the card's own length (al <= L), bake on the fitted line (P_fit, before the raise), runs
+  split by sweep side (+x / -x / back: a run mixing both sides left its strands 3-4 cm across the card). Offline bake:
+  tiles 0 -> 24% of a 512 atlas opaque. SUSPECT: r33's part cover (COVER_LEN 7 cm on long strands) had the same empty
+  tiles, so r33's "no visible change" may say nothing about the cover row's idea.
+  STATE: b4 (ARCH 4 with the fix, 17 cards) exporting. NEXT: card-ID + crowntop + tiles.
+- (2) b4 (ARCH 4 with the fix: 17 arch cards): crowntop g1v0 deficit 21.3 -> 11.9 px (area 4517 -> 2531), top 365 -> 353
+  (gSc 346), ragged 2.54 -> 1.83 (gSc 1.32); g1v1 12.6 -> 7.6; g1v2 10.0 -> 7.0. FIRST round to move the front outline.
+  Tiles t34/cz_b4_g1v0.png / g1v1 (gSc | ls2 | b4), cz_b4s_g1v2 (gSc | a4 (= b37 look) | b4). LOOK: the top is higher
+  but reads as a separate CREST on the dome: chunky ragged lumps with background showing through at the upper left
+  (front), and at 3/4 a raised hump / loop over the forehead with daylight under it: the arch at p97 stands off the
+  cards below it (they stay at <= p90), so from the side there is a gap. Not adoptable as is.
+  STATE: c1 (ARCH_PCT 90, ARCH_SEAT 3.5 cm, COVER_DRAW 1.0 (only the arch uses it: PART_COVER off), ARCH_HW 18 mm) and c2
+  (same, ARCH_PCT 94) queued (t34/q3.log). NEXT: crowntop + tiles; A/B the better vs ls2.
+- (2) c1 (ARCH_PCT 90, SEAT 3.5 cm, COVER_DRAW 1.0, ARCH_HW 18 mm) / c2 (same, PCT 94): crowntop g1v0 13.1 / 12.6 px
+  (ragged 2.64 / 2.71), g1v1 8.1 / 7.7, g1v2 7.4 / 7.1 (b4 11.9 / 7.6 / 7.0; b37 21.3 / 12.6 / 10.0). Tiles
+  t34/cz_c1_g1v*.png (gSc | ls2 | b4 | c1), cz_c2_*: c1 / c2 fuller and with fewer holes than b4 from the front; at 3/4
+  still a hump / flap over the forehead with background through it (the front row's arch cards rise steeply off their
+  roots, nothing under them from the side).
+- (3) COORDINATOR'S ONE_NORMAL CHECK (Garrett c5: black crown shards were the back-face normal flip): cherry-picked
+  blender_cards.ONE_NORMAL (75b2c6fb, commit here; default 1 = on) and re-shot b37 (n37), c1 (nc1), c2 (nc2) with it.
+  crowntop identical to the decimal (the outline is geometry + alpha, not shading). Dark (< 45) px in the head box: front
+  1592 -> 1548 (b37), 2343 -> 2048 (c1); 3/4 2515 -> 4131, back 2316 -> 2795 (MORE); tiles t34/on_g1v*.png (ls2 | n37 | c1 |
+  nc1): no visible change. On Tess the dark slabs / ragged crown edge are NOT the back-face flip.
+- (2) BLIND A/B (fresh subagent, t34/blind/sheet_front.png / sheet_34.png = gSc | A | B, key t34/blind_key.json: A = n37
+  (b37), B = nc2): front B "only just" (dome nearly as high, rounder; but a raised crest, a spiky lump upper left, a white
+  gap upper right); 3/4 A clearly (B: a bunched hump / flap at the front of the crown, ridged crest, background stripes);
+  OVERALL A (= OLD). ARCH not adopted.
+
+## Handover 2026-10-18 (hair-cards agent, round 34; stopped at the 70-tool-call rule)
+BEST CARDS FOR EXPORT: b37 unchanged (exp/exa30b/hc_s2.glb + _LOD1-3). LODs OK: y (b37). hair_clumps.ARCH defaults 0
+(off), so the defaults at this commit = b37's cards; blender_cards.ONE_NORMAL (cherry-picked) is on for renders.
+New: t34/cardid.py (card-ID pass of the outline: which cards, layer, root, direction, s along), t34/strtop.py (which groom
+strands make the outline), t34/archq.py / archbake.py (arch cards + their tiles offline, no export), t34/r34.sh (export +
+shots + crowntop), t34/shoot.sh <tag> <glb> (shots + crowntop only). Builds exp/exaa4 (empty tiles), exab4, exac1, exac2.
+Nothing in flight.
+FINDINGS: the front outline's top was the scalp CAP (middle 25%) and the ROOT ends of crown cards starting at el 60-70 off
+the centre strip; the groom's top is strands rooted in that strip standing 2 cm off the scalp. The arch row (cards on
+those strands, raised to their envelope) is the FIRST change to move the front outline (21 -> 12.6 px deficit) but it
+reads as a crest / hump with see-through gaps, and the blind A/B kept b37. Also a bake bug fixed for arch cards: a card
+shorter than its strands got an EMPTY tile (IN_SHARE over the whole strand); r33's part cover (7 cm on long strands)
+very likely had the same empty tiles, so its "no visible change" was not a test of the idea.
+LODs: ARCH is hero-only (LOD1-3 = b37's to the triangle; LOD0 +408 tris): adopting it needs the arch at the tiers too,
+or the crown drops at the LOD0 -> LOD1 switch.
+NEXT (what would fix it, no more tweaks of these knobs): the crest comes from a thin row of cards standing alone above
+cards that stay low. Lift the mass UNDER it with it: the crown cards' roots in the strip (PART_GAP lets them start at
+x +-27) and the cap raised to the same envelope over the strip, so the arch lies ON hair, not over air; and the arch's
+front row seated longer (its root under the hairline layer). Alternatively hand-placed hero cards along the crown
+(artist practice), which our tools can't author yet: a spec list of card paths over the dome would be the general tool.
+Re-test the part cover with the tile fix before discarding it.
+
+## hair-cards round 35 (2026-10-18, fresh session; coordinator: FILL THE MASS UNDER THE ARCH as one change, carried to LOD1-3; re-test the part cover)
+BEST CARDS FOR EXPORT: b37 unchanged until a round-35 build beats it. LODs OK: y (b37).
+- (1) CODE (all opt-in, defaults = b37): hair_clumps.FILL (needs ARCH): (a) a head card whose first PART_REACH runs
+  BACK (x share < PART_SIDEWAYS: no visible part behind the front) keeps its root: no PART_GAP cut, no part lead-in, so
+  crown cards root in the centre strip like the groom's top strands (diagnostic print "fill: N head cards keep ...");
+  (b) hair.cap_fill_arch: after the cap's relax, cap vertices under arch cards raised to the arch surface's height
+  (gaussian-weighted, CAP_REACH) less FILL_UNDER 4 mm, eased out to nothing at FILL_REACH 8 deg (only raised);
+  (c) the arch's front row (ARCH_ROWS row 0) rises over ARCH_SEAT_FRONT 5 cm (its root at its strands' own height,
+  under the hairline layer, longer). hair.ARCH_TIERS {tier: share}: arch_row at main / npc / far with fewer, wider
+  cards (COVER_TIERS-style), and the cap fill applies there too. Part cover: P_fit + bake share over its own length
+  (r34's arch tile fix, now for the cover). Tests pass (test_hair_clumps 16).
+  STATE: f1 (= r34 c2 + FILL + ARCH_TIERS {main 0.6, npc 0.4, far 0.25}) then pc6 (PART_COVER 6 alone) exporting
+  (t35/q1.sh -> t35/r35.sh = r34.sh, crowntop vs ls2 -> t35/crown_<tag>.txt). NEXT: crowntop, tiles, LOD tiles, A/B.
+- (2) f1 (exp/exaf1): "fill: 88 head cards keep their back-running roots (8 within 15 mm of the centre line)"; cap fill
+  raised 698 cap vertices (max 18.6 mm) at LOD0, 978 / 407 / ... at main / npc / far; arch cards at tiers 10 / 10 / 5.
+  Hair triangles LOD0 24246, LOD1 12478, LOD2 8248, LOD3 2498. crowntop g1v0 deficit 12.4 px (b37 21.3, c2 12.6), ragged
+  1.86 (b37 2.54, c2 2.71, gSc 1.32); g1v1 7.9 (b37 12.6, c2 7.7); g1v2 7.3 (c2 7.1). The outline is c2's; the change is
+  UNDER it. Tiles t35/cz_f1_g1v*.png (gSc | n37 = b37 | nc2 = c2 | f1), zoom t35/zz_f1_g1v1.png. LOOK: the 3/4 daylight
+  under the arch is gone (the crown reads as one rounded mass, higher than b37); from the front a fuller, higher dome.
+  Left: a small blocky ridged lump at the front of the crown at 3/4 (the front arch row's root ends seen end-on).
+  BLIND A/B (bin/review-ab ran, but its claude -p hit the weekly limit ("resets 1pm"); its trios t35/ab1/trio_*.png
+  went to a fresh blind subagent, key t35/ab1/key.json): front NEW (crown height / fullness much closer; old: low flat
+  crown, lumpy crests), 3/4 NEW ("crown height and fullness nearer the reference"; its MAJOR: a blocky lump at the
+  front of the crown), OVERALL NEW. STATE: LOD sheet of f1 (t35/lods.sh -> t35/lods_f1.png) and pc6 running; f2 (= f1 +
+  ARCH_START 25 mm: the arch's root ends start inside the mass, against the front lump) queued. NEXT: LODs, then adopt.
+- (3) LODs f1: t35/lods_f1.png (LOD0 | LOD1 | LOD2 | LOD3 at g2 / g4 / g8, 3/4 and front; t35/lods.sh): the crown keeps
+  its height and round top at every tier (ARCH_TIERS + cap fill), no drop at LOD0 -> LOD1; the same hairdo at each switch
+  distance. Minor: LOD2 at g2 3/4 shows a few light streaks over the crown (LOD2 is not shown at 2 m); LOD3 tail tips
+  as before. LODs OK: y.
+- (4) PART COVER RE-TEST with the tile fix (pc6 = PART_COVER 6 alone on b37's defaults, exp/exapc6, 12 cover cards):
+  crowntop g1v0 deficit 21.3 -> 14.4 px (top 365 -> 353), ragged 2.54 -> 2.04; g1v1 12.6 -> 8.5; g1v2 7.8. So r33's "no
+  change" WAS the empty-tile bug: the cover row does lift the outline once its tiles carry hair. LOOK (t35/cz_pc6_g1v*.png,
+  gSc | n37 | pc6 | f1): the covers stand as separate spiky flaps over the part with background between them, front and
+  3/4: worse than f1, no fill under them. Not adopted (no A/B: f1 is clearly better on the tile; a cover row would need
+  the same fill under it).
+- (5) f2 (= f1 + ARCH_START 25 mm, against the 3/4 front lump): the queued waiter never ran it, and the tag "f2" already
+  had another round's 17:26 shots in out/ (tag collision: check `ls out | grep _<tag>_` before naming). Re-run as h2
+  (exp/exah2, t35/q3.log). STATE: h2 exporting. NEXT: crowntop + tile vs f1; keep f1 unless h2's lump is gone on the tile.
+- (5) h2 (f1 + ARCH_START 25 mm): crowntop g1v0 14.4 px (f1 12.4), ragged 2.75, g1v1 8.8, g1v2 7.7; tile t35/cz_h2_g1v*.png:
+  the 3/4 front lump is smaller but the top is lower with a small see-through notch. Not better than f1.
+- (6) ADOPTING f1 AS DEFAULTS tried and backed out: with FILL = 1 by default, tests/test_hair_clumps.py::
+  test_no_card_spans_the_part fails (FILL (a) lets a back-running root keep its root on the test dome's part line, so a
+  card spans the part). Defaults left = b37 (all round-35 flags opt-in). Fix before adopting: apply FILL (a) only where
+  the strand part has no voters near the root (side_of distance inf, i.e. behind the part's back end), or only above
+  the part's back end in y; then re-run the test and f1.
+
+## Handover 2026-10-18 (hair-cards agent, round 35; stopped at the 70-tool-call rule)
+BEST CARDS FOR EXPORT: f1 = exp/exaf1/hc_s2.glb (+ _LOD1-3), flags: hk.ARCH=4 hk.ARCH_PCT=94 hk.ARCH_SEAT=0.035
+hk.COVER_DRAW=1.0 hk.ARCH_HW=0.018 hk.FILL=1 hh.ARCH_TIERS={"main":0.6,"npc":0.4,"far":0.25} (exa26.py, as t35/q1.sh).
+Blind A/B vs b37: NEW front + 3/4 + overall. LODs OK: y (t35/lods_f1.png). NOT yet approved (bin/approve: coordinator /
+Joe), and NOT the code defaults (defaults = b37: see (6)).
+Numbers (front / 3/4 / side crowntop deficit px; gSc = 0): b37 21.3 / 12.6 / 10.0, c2 12.6 / 7.7 / 7.1, f1 12.4 / 7.9 / 7.3,
+pc6 14.4 / 8.5 / 7.8, h2 14.4 / 8.8 / 7.7. Ragged front: b37 2.54, f1 1.86, gSc 1.32.
+VERDICT (look-first): f1 is the first crown that beats b37: one rounded, higher mass, no daylight under the arch; left:
+a small blocky ridged lump at the front of the crown at 3/4 (the front arch row's root ends end-on), and the outline is
+still ~12 px under gSc's from the front. Part cover with working tiles moves the outline too but stands as flaps.
+NEXT: (1) make FILL (a) part-safe (see (6)) and adopt f1 as defaults; (2) the front lump: the front arch row's first
+cm faded in alpha (COVER_FADE-like at the root) or its root tucked under the hairline layer by an offset, not ARCH_START
+(h2 lowered the top); (3) for the remaining 12 px, hand-placed hero cards over the dome (a spec list of card paths)
+remain the general tool. Nothing in flight. Scratch t35/: r35.sh, lods.sh, q1.sh, cz_*/zz_* tiles, ab1/ (trios + key).
+
+## hair-cards round 36 (2026-10-18, fresh session; coordinator: f1 part-safe + defaults, the 3/4 front lump, the white crown patch, engine-proof back faces)
+BEST CARDS FOR EXPORT: f1 (round 35) until r36d (= the new defaults) is checked against it. LODs OK: y (f1).
+- (1) FOUND: round 35's flag `hair_clumps.FILL = 0` was shadowed by the bake's `FILL = 0.82` (packing share) further
+  down the module, so FILL (a) (+ cap fill, front-row rise) was ON in every default build since round 35's commit, and
+  `hk.FILL=1` in f1 / h2 ALSO set the atlas packing share to 1.0. Renamed `ARCH_FILL`. The part test's failure was not
+  FILL (a) (it passes either way on the test dome) but the ARCH row: its runs grouped by sweep (+x / -x / back) took
+  strands from both sides of the part. PART-SAFE (round 36): `arch_row(side_of=)` (cut and hair.py's LOD tiers pass it):
+  strands whose root has a finite part distance (in front of the part's back end) group by their side, are dropped
+  within PART_GAP of the part or sweeping across it; behind the back end (distance inf) the centre strip is used as one,
+  as before; ARCH_FILL (a) keeps a root only where side_of's distance is inf. DEFAULTS = f1: ARCH 4, ARCH_PCT 94,
+  ARCH_SEAT 0.035, ARCH_HW 0.018, COVER_DRAW 1.0, ARCH_FILL 1, hair.ARCH_TIERS {main 0.6, npc 0.4, far 0.25} (packing
+  FILL stays 0.82). test_part_cover_row... sets ARCH 0 (arch cards are "cover" too). Hair tests: 155 passed.
+  STATE: r36d (defaults, no flags) exporting (t36/r36.sh). NEXT: crowntop + tile vs f1 (same read = adopt as best).
+- (2) r36d (defaults after (1), no flags; exp/exar36d): "arch row: 1032 strands in front of the part's back end (605 at or
+  across the part dropped)", 501 -> 15 cards (f1 1106 -> 17); cap fill 475 vertices (f1 698). On Tess the strand part's
+  voters reach along nearly the whole centre strip, so "behind the back end" is almost nothing. crowntop front / 3/4 /
+  side: 15.6 / 9.4 / 7.7 px (f1 12.4 / 7.9 / 7.3, b37 21.3 / 12.6 / 10.0). LOOK (t36/cz_r36d_g1v*.png, zz_r36d_g1v0.png:
+  gSc | f1 | r36d): 3/4 the blocky front lump is GONE (those were the centre strands), but from the front a V notch at
+  the part between two lumpy humps; the groom's part is a soft line with no notch in the outline. Worse than f1 front.
+  CHANGE: ARCH_PART_KEEP (default 0): in front of the back end strands by the part are KEPT (grouped by side, never
+  sweeping across), and each such card STARTS PART_GAP off the part (its first points cut, as the head cards are): no card
+  spans or roots on the part, the dome beside the part is kept. ARCH_ROOT_TAPER (step 2, default 0 until tested): the front
+  row's root end narrows to a point over it (TIP_FLOOR .. 1, smoothstep), against the end-on square root ends = the lump.
+  Tests pass. STATE: r36e (defaults) then r36f (+ ARCH_ROOT_TAPER 0.025) exporting (t36/q1.sh). NEXT: crowntop + tiles vs
+  f1, A/B.
+- (4 prep) hair-heads2 merged + r59's crown fix (a7618d2d) cherry-picked on a side branch `r36-merge` (worktree
+  /mnt/data/hifipushie/haircards/mergewt; not into this worktree yet: builds were running on its code). Conflicts: hair.py
+  cap (even-cap floor, then cap_fill_arch), blender_cards (GLTF_SPEC block), tests (both), notes (both). With BACK_FACES the
+  tier report's "triangles" counted the backs (test_export_tier_as_an_engine_gets_it: 10568 > npc 8250): now "triangles" =
+  card faces (the budgets' unit; doubleSided rasterised both sides too) and "index_triangles" = with the backs. All 161 hair
+  tests pass there (env -u PYTHONPATH: env.sh's PYTHONPATH points at THIS worktree's src).
+- (3) r36e (defaults: strands by the part kept, cards start PART_GAP 6 mm off it, runs by side): crowntop 16.8 / 9.9 / 8.3
+  px; r36f (+ ARCH_ROOT_TAPER 0.025): 17.4 / 10.4 / 8.5 (f1 12.4 / 7.9 / 7.3). LOOK (t36/zz_r36f.png: gSc | f1 | r36e |
+  r36f, front row, 3/4 row): both keep the V NOTCH at the part from the front (the side-grouped cards bend away from the
+  part: it is the grouping, not the 6 mm gap); at 3/4 the front lump is back in r36e, r36f's taper makes it a smaller,
+  softer nub (the taper works on the lump; keep it as a lever). Neither beats f1. CHANGE (default): in front of the back
+  end a run per side AND sweep (back-running strands by the part get their own run on each side) -> r36g exporting (t36/q2.sh).
+- (5) WHITE CROWN (step 3): named by the assembly r59 (game_ready.md "## r59"): the HAIR material, not the cap mesh: card ORM
+  roughness 0.425 under its own floor + the character GLB's default white specular. Its fix (hair.CARD_ROUGH_MIN 0.6,
+  CARD_SPECULAR 0.5 x the sheen tint, blender_game reads it) is cherry-picked onto `r36-merge` (8cd7815b), so Tess's cards
+  get it here too; no second fix needed. Not re-rendered under the game rig in this round (the assembly owns rc2j).
+
+## Handover 2026-10-18 (hair-cards agent, round 36; stopped at the 70-tool-call rule)
+BEST CARDS FOR EXPORT: f1 unchanged = exp/exaf1/hc_s2.glb (+ _LOD1-3), built with round 35's flags (exa26.py as t35/q1.sh).
+LODs OK: y (f1). NOTE f1's `hk.FILL=1` ALSO set the bake's packing share to 1.0 (the name collision, (1)), and f1's arch
+spans the part, which the code no longer does: f1 is reproducible only from round 35's commit 8e8ba6b4 with its flags.
+DEFAULTS at this commit: f1's values (ARCH 4, PCT 94, SEAT .035, HW .018, COVER_DRAW 1, ARCH_FILL 1, ARCH_TIERS) + the
+part-safe arch (test_no_card_spans_the_part passes; all hair tests green). They do NOT yet read as well as f1 from the front
+(V notch at the part: r36d / r36e / r36f). r36g (side + sweep runs) was exporting at handover: t36/crown_r36g.txt +
+`python3 t36/zz.py r36g gSc f1 r36e r36g` -> t36/zz_r36g.png. If r36g closes the notch: A/B vs f1 (bin/review-ab makes the
+trios; its claude -p works after 2026-10-19 13:00 MT, else a fresh blind subagent), then LOD sheet (t35/lods.sh).
+If not: the honest options are (a) a centre-line run that is allowed over the part only where the groom's own outline has
+no dip (measure the groom's top dip at the part, gSc shows a soft one), or (b) ask the coordinator whether the part test's
+rule should hold for the top cover row (f1 spanned the part and read better; the groom's part is a line under fuzz).
+MERGED at the end of round 36 (git merge r36-merge; the side worktree can go): branch `r36-merge` (worktree /mnt/data/hifipushie/haircards/mergewt) = round-36 step 1 +
+merge of hair-heads2 (BACK_FACES etc.) + r59's crown fix; 161 hair tests pass there. Bring it in with
+`git merge r36-merge` once no build runs here (conflicts: hair.md only, both appended), re-run tests, then
+`git worktree remove /mnt/data/hifipushie/haircards/mergewt`.
+r36g (runs per side and sweep, default now): 16.5 / 9.8 / 7.9 px; t36/zz_r36g.png: the notch a little smaller, one stray
+flick at the top right; still under f1 from the front. NOT A/B'd (none of r36d-g is a candidate over f1).
+VERDICT (look-first): no round-36 build beats f1. The part-safe rule costs the front read (V notch); the root taper softens
+the 3/4 lump (r36f) but does not remove it.
+
+## hair-cards round 37 (2026-10-18, fresh session; coordinator: the cover row may span the part where the SOURCE groom shows none)
+BEST CARDS FOR EXPORT: r37c (see the round-37 handover; = f1 at 98 % under the current code). LODs OK: not re-checked (f1: y).
+- (1) RULE (coordinator, r36's question: YES): cards are judged against their source; Tess's groom shows the part as a soft
+  line with no dip, so f1 was right to span it. test_no_card_spans_the_part REPLACED by
+  test_no_card_spans_a_part_the_groom_shows (the test groom's bare part line: a measured gap -> no card spans or roots on
+  it) + test_cover_row_may_span_a_part_the_groom_does_not_show (a lock combed straight back over the part: no dip -> an
+  arch card takes strands from both sides; with PART_VISIBLE 0, the round-36 rule, it doesn't). CODE: hair_clumps.
+  part_visible(St, C, side_of) = side_of with distance inf wherever the groom's OUTLINE seen along the part has no notch
+  there: one view (up = the mean radial direction of the part-line roots, across = x in that plane), the highest head
+  strand point per 2 mm band across (PART_DIP_R); shown = the outline at the part line PART_DIP 3 mm under its height
+  PART_DIP_W 12 mm either side, or an empty band over the part line with hair beside (a gap); unmeasurable counts as
+  shown. PART_VISIBLE 1 (default) passes it to the arch row (cut + hair.py's LOD tiers) and to ARCH_FILL (a)'s kept roots;
+  head cards' PART_GAP cut and side grouping keep the full part. With no shown part over the strip the arch row is round
+  35's code path exactly (one strip, runs by sweep -1/0/+1; the per-side start cut never fires) = f1. cut prints "part
+  visible: n of m roots on the part show a >= 3 mm notch". PART_DUMP (path) saves the head strands + part for probes.
+  MEASURED FIRST (t37/dipprobe.py on t37/tess_part.npz), and why it is the outline, not the surface: Tess's groom SURFACE
+  does dip at the part: p90-radius of strand points within 4 mm, vs 12 mm either side: p50 4.0 / p90 11 mm, by root y
+  front -> back 3.2 / 4.3 / 4.2 / 4.0 / 4.3 mm, = 0.5 of the hair's depth there (0.72 at the front). A 3 mm surface rule
+  (r37a, killed) flagged 640 of 1271 part roots, arch row 31 cards (f1 17). Her OUTLINE along the part: notch p50 -0.5 /
+  max 2.0 mm, none >= 3 mm (the crown behind the part stands higher): the coordinator's read (gSc: a soft line, no dip).
+  OPEN for the coordinator: the rule reads the outline; a surface trough of ~half the hair's depth along the front half
+  of the part is real in the groom (seen from above / 3/4 as a line). If that should count, the cover row must keep off
+  the front half of Tess's part (r36's V notch comes back).
+  r37a (this rule, first form): "part visible: 128 of 1302 roots", arch row 69 strands "in front", 19 cards (f1 17), fill
+  83 (f1 88): NOT f1. Cause: the notch was read at root - side x distance, but side_of's distance is half the gap between
+  the two sides' nearest roots, not a length to step: from arch roots 2-3 cm off the part it landed beside it. FIX: the
+  notch is computed once per part-line root (distance < PART_GAP) and a query takes its nearest part-line root's
+  (t37/notchprobe.py on the dump: 0 of 1129 part roots >= 3 mm, p50 1.2 / p90 2.6). r37a / r37b killed. All 162 hair
+  tests green (before the fix; clumps + lods 26 green after).
+  STATE: r37c = defaults + hk.FILL=1 (the packing share f1's flag also set), then r37d (+ ARCH_ROOT_TAPER 0.025),
+  exporting (t37/q1.sh). NEXT: r37c vs f1 (t37/glbcmp.py: unique verts / tris; crowntop), then review-ab f1 vs r37d.
+- (2) r37c (= the defaults at 2af333de + hk.FILL=1; exp/exar37c, exp/lodsr37c): "part visible: 133 of 1302 roots" (p90
+  4.7 mm: a few head part roots still read a notch), arch row 41 strands "in front", 18 cards (f1 17), fill 86 (f1 88).
+  glbcmp vs f1 LOD0 hair: unique verts 52622 shared of 53675 / 53699, unique tris 75383 of 77248 / 77270 (98 %; the
+  extra 20k index tris = BACK_FACES from the merge). crowntop front / 3/4 / side 12.4 / 7.7 / 7.0 px (f1 12.4 / 7.9 /
+  7.3). LOOK (t37/zz_r37c.png: gSc | f1 | r37c): r37c reads as f1: one rounded crown, the soft dip at the part like the
+  groom's, no V notch; a slightly lower step at the top left from the front; the 3/4 front lump is still there (both).
+  = f1 reproduced to 98 %, not bit-exact. STATE: r37d (+ ARCH_ROOT_TAPER 0.025) exporting at handover (t37/q1.sh).
+
+## Handover 2026-10-18 (hair-cards agent, round 37; stopped at the 70-tool-call rule)
+BEST CARDS FOR EXPORT: r37c = the hair defaults at commit 2af333de + hk.FILL=1 (exa26.py; t37/r37.sh r37c hk.FILL=1):
+exp/exar37c/hc_s2.glb (+ _LOD1-3). Reads as f1 (98 % same geometry, crowntop equal or better) and is built by the
+CURRENT code under the source rule, with the merge's BACK_FACES + crown roughness fix. EXPORT SETTINGS: hair defaults +
+hair_clumps.FILL = 1.0 (the bake's packing share; f1 had it through the old name collision; 0.82 default). LODs OK: NOT
+re-checked for r37c (run t35/lods.sh on it); f1's were y and r37c's tiers come from the same ARCH_TIERS. NOT approved.
+TEST: test_no_card_spans_the_part replaced by test_no_card_spans_a_part_the_groom_shows +
+test_cover_row_may_span_a_part_the_groom_does_not_show; 162 hair tests green at a0a999f4, clumps + lods green at 2af333de
+(run the full hair set once more).
+OPEN (coordinator): the rule reads the groom's OUTLINE along the part (no notch on Tess); her groom's SURFACE has a real
+trough at the front half of the part (~4 mm, half the hair's depth). If the surface should count, the front half
+goes back to r36's V notch.
+NEXT: (a) r37d (taper on r37c) finishes on its own: t37/crown_r37d.txt, out/s_hc_s2_r37d_*; tiles `python3 t37/zz.py r37d gSc
+r37c r37d`; A/B: `python3 t37/crops.py t37/ab r37c r37d gSc`, then `/mnt/data/hifipushie/bin/review-ab t37/ab1
+front=t37/ab/gSc_g1v0.png:t37/ab/r37c_g1v0.png:t37/ab/r37d_g1v0.png tq=..._g1v1 side=..._g1v2 --context "game hair cards
+vs their source strand groom" --stage "the crown cards' read vs the groom"` (CLI works after 2026-10-19 13:00 MT; else a
+fresh blind subagent). Lump A/B NOT done this round. (b) bit-exact f1: the ~130 part roots that still read a >= 3 mm notch
+in the run (the probe on the head-only dump reads none; the run's "up" or roots differ: compare f.view). (c) front deficit
+12 px only after (a).
+
+## Garrett cards c1 (2026-10-18, hair-garrett agent; coordinator: strand groom frozen at G88a, game hair = cards from it)
+- (1) MERGE: worktree-agent-a54a66de6d6970c0b (hair-cards rounds 6-28: hair_clumps, share_atlas, ribbon_lod, ROOT_SEAT)
+  into hair-heads2 (9cd3eb4f). Code auto-merged (hair.py, hair_strands.py, asset.py, lods.py ...); the ONLY conflict was
+  this file (both threads appended sections after the common base): both kept, garrett sections first. Tests after the
+  merge: test_hair_lods / clumps 17 passed, loose / strands / flow / lift / ear 103 passed.
+- (2) Ponytail-specific knobs, read: classify() gives "tail" only to free locks (free > 0.5): a loose groom has no tail
+  cards, so TAIL_TONE / TONE_CONTRAST_TAIL / TAIL_ROOT_LIFT / TIP_FADE_TAIL / TAIL_END / MEDOID_TAIL and PCA_FRAME
+  (hanging cards) don't act on Garrett. Tess-calibrated knobs that DO act on head cards: TONE_FRONT / TONE_BACK 0.85,
+  NAPE_LIFT 0.8 (nape head cards x 1.8 lighter: her nape under the tie), TINT_TOP; card_gain (hair.export.card_gain,
+  Tess 2.1) is measured per groom (colour.py k).
+- Scratch $HG/cards: run.sh (capped + heavy, haircards scripts), c1a.sh <tag> <gain> [hk.X=v]: hx.py hero cards, then
+  spikes/haircards/shots.py of the cards AND the groom at the same cameras / light (NEW shots.py ev=<stops>, 1.0 for
+  Garrett): g1v0, g1v1, g1left, g1back, g3v0.
+  STATE: c1a (gain 2.1, defaults) running. NEXT: colour rows (p10 / p50 / p90 L*) cards vs groom, gain from colour.py k.
+- (2b) c1a = defaults: 0 CARDS, the cap alone (3100 tris). Cause 1: G88a is a SHORT cut (mean lock < MASS_MIN 6 cm) ->
+  SHORT_TIERS' per-lock clump_cards, whose strand_grid reads only hair_guides* strands; G88a is an EVEN groom
+  (strands.even: hair_even 192k + hair_under 288k, every strand lock 0) -> none. FIX (hair.cards_job): an even groom
+  is not "short": it takes the hero tier's clumps cut (hair_clumps), as Tess. Cause 2 (c1b, hh.MASS_MIN=0): 100%
+  "hanging" cards: a loose groom's locks are ALL free (1.0, none tied) and every even strand carried lock 0 -> the
+  ponytail's tail class (TAIL_TONE .62, TONE_CONTRAST_TAIL 4.5, PCA_FRAME twist, TIP_FADE_TAIL). FIX: hair_clumps.strands
+  gives each hair_even* strand its nearest lock's id; hair.cards_job marks a short loose cut's scalp-rooted locks
+  "lies" (classify -> head; not face-framing; card_classes reports head). Test test_even_strands_take_the_nearest_
+  scalp_locks_class. c1c: 14590 tris (cap 3100, head L0 323 / L1 695 / L2 378 cards), all head.
+  STATE: groom renders out/s_hg_G88a_grm_* done; c1c card renders (ev 1.0) running. NEXT: colour rows (gcol.py), tiles.
+- (3/4) c1c LOOK (out/sh_c1c.png, groom | cards; NEW $HG/cards/sheet.py, gcol.py): BARE SCALP patches at the back and
+  behind the ear (the long-hair cap chart hs.cap_chart reads no hair_even strands: the cap is clear there), dark flap
+  cards along the top front, the groom's light-grey sides gone (cards one dark tone). COLOUR rows (gcol.py, common
+  mask, groom | c1c p10/50/90 L*): g1v0 19.6/36.9/55.2 | 18.5/34.0/44.0; g1v1 33.1/50.0/58.5 | 26.7/33.4/40.7 (dL50
+  -16.6); g1left 27.1/45.6/60.0 | 28.9/39.0/47.6; g1back 28.1/37.4/48.4 | 28.1/40.3/50.5; g3v0 31.9/42.3/53.5 |
+  30.8/35.7/43.2. Not black (gain 2.1), but the p90 (the grey) is 10-18 L short everywhere but the back.
+  c1a's cap ALONE (the short cut's baked hair_cap chart, every strand + grey by lock) covered fully and kept the grey
+  sides, but stood as a tall quiff (raised to the hair's mid height).
+  FIX tried: hair.EVEN_SHORT_CAP 1 (an even short groom wears the baked short cap under its clumps cards),
+  EVEN_SHORT_LIFT 0 / 1 (cap on the scalp / raised): c1d / c1e. STATE: c1de.sh running.
+- (3/4b) c1d / c1e (out/sh_c1de.png: groom | c1a cap only | c1d | c1e): c1d (baked cap ON the scalp) still bare at the
+  back / behind the ear (the cap at scalp height sits under the head's skin); c1e (EVEN_SHORT_LIFT 1: the baked cap at
+  the hair's mid height + clumps cards) COVERS like the groom, outline close at every view (no quiff: c1a's quiff was
+  the short path's own lift without cards over it... same lift here, but its look is now the cards'). Colour rows
+  c1e (groom | c1e p50, k): g1v0 37.4 | 39.8 (1.02), g1v1 49.6 | 35.3 (1.90), g1left 42.4 | 39.7 (1.28), g1back 37.4 |
+  36.7 (1.06), g3v0 42.8 | 39.1 (1.28). Front / back right; the groom's LIGHT GREY SIDES / TEMPLES (grey .65 by
+  lock) are missing: the clumps cut's cards share tiles, one tone for the head. NEW hair_clumps.GREY_TINT (default 0):
+  card tint x (1 + k x (its locks' grey - the median card's)). Locks' grey p5 / p50 / p95 .09 / .25 / .64.
+  c1f = c1e + GREY_TINT 1.5, c1g = 2.5. STATE: c1fg.sh running.
+- (3c) c1f / c1g (GREY_TINT 1.5 / 2.5): NO change (rows identical to c1e within 0.4 L): the knob sits in
+  hair_clumps.bake_tiles' tint, which these cards don't reach / show (not traced: budget). Left at 0 (off). The grey
+  sides stay the open colour fault: g1v1 p50 35.7 vs the groom's 49.6 (k 1.86), g1left -2.5, front / back / 3 m within
+  +3 / -1 / -3.3. NOT near-black: c1e's hair p50 35-40 L* vs the groom's 37-50 (the assembly's black export is their
+  colour bug or a missing card_gain: use gain 2.1).
+- DEFAULT now EVEN_SHORT_LIFT = 1 (c1e = the defaults at this commit). (4) c1L.sh: all four tiers (export_hair, shared
+  atlas) rendered at g2 / g4 / g8 beside the groom; blind review of c1e vs groom tiles ($HG/cards/review/<view>.png,
+  left = groom, right = cards) by a fresh subagent.
+- (4) LODs (c1L, out/sh_lods.png: groom | hero | main | npc | far at g2v1 / g4v0 / g8v0): hero 14590, main 2384 (cap 2096
+  + 288 card tris), npc 1212 / far 668 (cap only). main / npc / far = a TALL SWEPT-BACK POMPADOUR: the coordinator's
+  Garrett v4 fault (Joe: "a totally different hairstyle"; the export's default = cap + 96 cards). CAUSE, located: the
+  short cut's baked cap RAISED to the hair's mid height (hair_cap.cap_height(chart["lift"]), hair.py ~2813, the
+  "cap is the hair's MASS" step) is the pompadour whenever few cards sit over it: c1a (short path, 0 cards) showed
+  the same quiff at the hero tier; c1e's hero (same lift, 1396 clumps cards) does not. NOT yet explained why the
+  hero's cap reads lower (cap_step? cards hiding it? the lift taken from the cards' top?): trace the cap mesh height
+  per tier (hero vs main) over the crown vs the groom's strands' p90 height.
+- (4b) BLIND REVIEW (fresh subagent, $HG/cards/review/<view>.png, left = groom, right = c1e): g1back close; g1v0,
+  g1v1, g1left, g3v0 not close. MAJORs: colour (dark charcoal vs salt-and-pepper, silver sides / temples gone), front
+  hairline an M with a centre notch + dark strands on the forehead, dark spiky shards along the front hairline / temple
+  (3/4), top flatter / sides hug (10-15% less height), temple / sideburn bare in profile with loose strands across it,
+  ragged dark chunks at the crown edge, specks at the nape.
+## HANDOVER (hair-garrett c1, 2026-10-18; stopped at the ~70 tool-call budget)
+STATE: branch hair-heads2 = hair-cards merged (9cd3eb4f) + the even-groom fixes (cards_job: even groom not "short";
+hair_clumps.strands: even strands take the nearest lock; "lies": a short loose cut's locks are head cards; EVEN_SHORT_CAP /
+EVEN_SHORT_LIFT; GREY_TINT knob, off, no effect yet). Scratch $HG/cards: run.sh, c1a.sh <tag> <gain> [k=v] (export +
+cards / groom shots at g1v0 g1v1 g1left g1back g3v0, ev 1.0), c1L.sh (tiers at g2 / g4 / g8), sheet.py, gcol.py
+(colour rows), review/. Nothing in flight.
+VERDICT (look-first): c1e hero reproduces G88a's STYLE (outline, length, receding front, part side) far better than
+the default conversion, but is not close in colour and front hairline; the lower LODs are the pompadour.
+NEXT, in order: (1) the pompadour at main / npc / far (and any card-poor tier): the lifted cap; measure cap height vs
+the groom's strands per tier, then either lift the cap only as far as the cards over it reach (general) or not at all
+on card-poor tiers, judged on the c1L sheet. (2) The grey sides: GREY_TINT never reached the render: find where the
+clumps cards' per-card tint is applied (bake vs bake_tiles path) and whether the CAP (which carries the grey by
+lock) is hidden under dark L1 / L2 cards. (3) Front hairline notch + shards: the hairline cards (HL_*) / PART_GAP on
+a receding front. (4) Re-run the blind review (source = G88a) and update the BEST line.
+
+## Garrett cards c2 (2026-10-18, hair-garrett agent, fresh; Joe on v4: "that's a totally different hairstyle": style first at every tier)
+- (1) LOD POMPADOUR, measured (NEW $HG/cards/sil.py: hair outline vs the groom per view from the id passes: IoU, area,
+  top = p90 over columns of rows the cards' top stands over the groom's, % of the groom's hair height; ex / miss = % outside):
+  c1L at g2v0 / g4v0 / g8v0: hero top -1.3 / -2.8 / 0 %, ex 0 %; main +18.7 / +19.4 / +16.7 % (ex 33 / 20 / 7 %); npc
+  +20 / +19 / +17 %; far +28 / +26 / +22 % (ex 57 / 39 / 22 %, area 1.3). CAUSES: (a) below the hero tier an even groom
+  had NO cards (CARD_TIERS main / npc / far cut per lock with clump_cards, which reads only per-lock guide strands: main
+  57 cards / 288 tris, npc / far 0), so the cap was the hair; (b) the even cap's mass lift was ADDED after cap_under_cards
+  (over the cards wherever they were few) and on top of whatever height the cap mesh had (far's cap is already the mass:
+  doubled). FIX (general): hair.tier_settings(tier, short, even): an even groom is cut by clumps at EVERY tier
+  (EVEN_CLUMPS 1); the even cap is SET to the hair's mid height over the scalp (cap_height, not added) BEFORE
+  cap_under_cards, which then keeps it under its cards; no bare floor for it (bare_floor=False: c1d's bare patches).
+  Tests test_even_groom_is_cut_by_clumps_at_every_tier, test_cap_without_cards_keeps_its_height_when_asked.
+  STATE: c2a export (all tiers, GREY_TINT 2.5 with probes, $HG/cards/hxp.py) running. NEXT: sil.py rows per tier, sheet.
+- (2) GREY_TINT TRACED (probe $HG/cards/hxp.py on the c2a export, GREY_TINT 2.5): the knob DID reach the cards (bake_tiles
+  card grey p5/50/95 .18/.29/.63, tint .66/.93/1.78, tone_k .61/.85/1.63; the GLB's COLOR_0 at the sides .83 -> 1.00, top
+  .77 -> .67, $HG/cards/gx.py = COLOR_0 by region), but (a) COLOR_0 clips at 1 (60 % of side vertices at 1.0 in c1g:
+  a vertex colour can't brighten past the atlas) and (b) it is the WRONG lever: lighter dark hair is not salt-and-pepper.
+  The grey HAIRS were never per region on cards: strand_tones has no grey, and the atlas drew grey hairs by one share for
+  every tile (look.grey_share by strand id threshold); only the cap's chart knew the locks' grey. FIX: hair_clumps.
+  card_grey (each card's grey share by its strands' locks, the strand look's rule), bake_tiles clusters tiles on it too
+  (GREY_TILES 1) and returns B["gshare"] (per atlas pixel: its tile's share), hair_cards.atlas draws the baked rows' grey
+  hairs at that share. GREY_TINT stays 0. Test test_card_grey_follows_its_locks. COLOR_0 lever test queued (vc03 = c1e
+  with COLOR_0 forced to 0.3, g1v1).
+- (3) HAIRLINE measured (NEW $HG/cards/hl.py: front hairline row at 11 columns from the id passes, % of the groom's hair
+  height; notch = centre vs +-20 %): g1v0 groom notch -0.7, c1e +4.9 (the M), mean line -11.3 % (the cards' line sits
+  higher: a bare forehead band). CAUSE of the notch: G88a's parting is "none" but hair_clumps.cut read a part from the
+  strands (PART_FROM_STRANDS: a near-even vote 21.7k / 24.2k) at the centre front and trimmed cards PART_GAP off it.
+  FIX: no strand part when the groom has no parting (side_of None).
+  STATE: c2a renders queued (c2chain.sh); c2b = these defaults (grey tiles, no emergent part) export next.
+- (1b) c2a RESULT (out/sh_c2a_lods.png: groom | c1L main (pompadour) | c2a hero | main | npc | far at g2v0 / g2v1 / g4v0 /
+  g8v0; NEW $HG/cards/lsheet.py): every tier has real clumps cards now (hero 1396 cards / 14590 tris, main 677 / 6308, npc
+  405 / 3026, far 81 / 992) and the POMPADOUR IS GONE: sil.py top over the groom's at g2v0 / g4v0 / g8v0: main +18.7 /
+  +19.4 / +16.7 % -> -1.3 / -2.8 / 0; far +28 / +26 / +22 % -> -2.7 / -2.8 / -5.6; ex (outside the groom) 0 % at every
+  tier. Look: all four tiers read as the same short, swept-back, receding cut. Left: the lower tiers sit a little INSIDE
+  the groom (miss at g2v1: hero 16 %, main 22, npc 28, far 31 %: thinner over the back / behind the ear), colour (below).
+  COLOR_0 lever test (vc03, c1e with COLOR_0 = 0.3): g1v1 p50 35.3 -> 15.1 L*: the render honours COLOR_0 (so GREY_TINT's
+  null result was the clip at 1 and the lever being tone, not grey hairs).
+  Colour rows c2a (old atlas grey; GREY_TINT 2.5, dropped): groom | c2a p50 (p90): g1v0 36.2 | 36.6 (54.0 | 44.8), g1v1 49.6 |
+  37.0 (58.2 | 44.4), g1left 43.1 | 40.0, g1back 37.5 | 35.7, g3v0 42.0 | 37.8. Hairline (hl.py g1v0): notch c1e +4.9 ->
+  c2a +3.1 (groom -0.7), mean line -10.3 %.
+  STATE: c2b (defaults: grey tiles + no strand part) export / renders queued. NEXT: colour + hairline rows of c2b, review.
+- (2b/3b) c2b (defaults: grey tiles + no strand part; out/sh_c2b.png = groom | c1e | c2a | c2b, sh_c2b_lods.png): colour
+  UNCHANGED (g1v1 p50 36.5 vs c2a 37.0, groom 49.6; p90 43 vs 58): GREY_TILES is a DEAD LEVER as built (not traced: budget;
+  check that atlas()'s `gs > 0` branch runs for the clumps path, that isg on the baked rows survives `lin = base * val * gain`
+  / bake tone normalisation, and print the gshare plane's p5/50/95 in the export). Hairline notch c2b +2.8 (c1e +4.9,
+  groom -0.7): the strand part removal helped a little; the line is still ~10-14 % high (bare forehead band) and the far
+  temple column (-0.4) lost its hair in c2b (29.4 vs 65).
+  LOOK (mine, look-first): LODs: style right at every tier now (same short swept-back cut at g2 / g4 / g8). HERO c2a / c2b
+  WORSE than c1e: rows of bare-scalp holes at the back and behind the ear, black flaps at the crown, scaly sides. Not shippable.
+## HANDOVER (hair-garrett c2, 2026-10-18; stopped at the ~70 tool-call budget; nothing in flight)
+STATE: commits d8e29b86 (tier_settings: even groom cut by clumps at every tier; even cap SET to mid height then
+cap_under_cards with bare_floor False), 463bbef1 (card_grey / GREY_TILES / bake gshare; no strand part when parting none),
+notes. Scratch $HG/cards: sil.py (outline vs groom), hl.py (front hairline), gx.py (COLOR_0 by region), lsheet.py (tier
+sheet), hxp.py (export with GREY probes), c2chain.sh <tag> (lever test + tiers at g2/g4/g8 + hero at g1/g3).
+NEXT, in order: (1) the hero's holes: the c2 cap order (set mid height -> under cards) sinks the cap where cards are sparse;
+try keeping the floor at the c1e height where cards are sparse (cap_under_cards floor = max(floor, a few mm), or apply the
+under-cards clamp only on tiers whose card share is small) and judge hero (sh_c2b rows) AND tiers (sil.py top <= 0) together;
+if two tries fail, restore c1e's order for the hero tier only (keep the clumps cut at every tier: that alone may fix the
+pompadour since cards now cover the cap). (2) GREY_TILES dead: trace as above (prove the lever on one tile before a batch).
+(3) hairline high / temple: hl.py rows; the cards' front roots sit ~10 % of hair height behind the groom's line.
+(4) Blind review vs G88a NOT run this session (budget): run it (bin/review after 2026-10-19 13:00 MT, else a fresh blind
+subagent on reference | result pairs, no captions) once the hero has no holes.
+
+## Garrett cards c3 (2026-10-18, hair-garrett agent, fresh; order: hero holes, grey lever on one tile, hairline, A/B vs c1e)
+- (1) HERO HOLES, try 1: c2's even cap (SET to the hair's mid height, then cap_under_cards with the floor = `lift`, ~2 mm)
+  sank to the scalp wherever a sparse card passed over it: under the head's skin (c1d's fault again) = c2's rows of round
+  bare-scalp holes at the back / behind the ear (out/sh_c2b.png col 3-4). NEW hair.EVEN_CAP_KEEP (0.6): the even cap's
+  floor under its cards is 0.6 x its mid height (per vertex), held after CAP_RELAX too. Tests clumps 19 passed.
+  STATE: c3q.sh queued (c3a = defaults all tiers -> hero g1 views + tiers g2/g4/g8; c3g = hero + hk.GREY_TILES=4).
+- (2) GREY LEVER on the texture, measured (NEW $HG/cards/gu.py <exp> [tier]: per region of the GLB, the atlas texels
+  under its triangles (12 samples each): L* p50, grey-hair share = L* > 55, COLOR_0): c1e sides 18.0 % / top 17.1 / back
+  14.9 / front 16.6; c2b (GREY_TILES 1) sides 26.5 % / top 16.6 / back 12.4 / front 16.9. So GREY_TILES is ALIVE in the
+  texture (sides +8.5 pts, back -2.5) but far too weak: the groom's side locks carry grey .64 vs top .22 (3x), and the
+  render's side p50 is 36.5 vs the groom's 49.6. Suspect: 24 tiles per group cluster on length / width first, each tile
+  draws the MEAN of its cards' grey (side and top cards share tiles). Test c3g (GREY_TILES 4): gu.py sides share up?
+  Also the atlas's grey colour is look.grey #6a6764 (L* ~44) x shade x gain: grey hairs are mid grey, not silver.
+- (3) HAIRLINE lever queued (c3h: hero + hk.HL_SOFT=0): hairline cards fade their first 10 mm to HL_ALPHA .45 and the
+  thin hairs drop under the alpha cutoff, a likely part of the ~10 % high line. hl.py g1v0 decides.
+- (1b) c3a RESULT (EVEN_CAP_KEEP .6; out/sh_c3a.png = groom | c1e | c2b | c3a, zz_c3a_crown.png): the HERO HOLES ARE GONE
+  (back and behind the ear fully covered; the back reads fuller than c1e, no nape specks). Left: dark flap cards standing
+  at the crown's outline (top-left in the back view, top-right in the 3/4), present smaller in c1e: not the cap.
+  Colour unchanged (gcol c3a p50 g1v0 39.1 / g1v1 36.6 vs groom 50.0 / g1left 40.0 / g1back 36.7 / g3v0 39.5). Hairline
+  hl.py g1v0: notch +2.8, mean line -14.8 % (c1e -11.3): the right temple column (-0.4) 29.4 vs the groom's 98.6 = the far
+  temple's lost hair is in c3a too (c1e 62.9). Tiles grey (NEW log line in bake_tiles): cards p5/50/95 .31/.41/.75, tiles
+  .34/.42/.74: the tiles DO reach the side cards' share; the atlas draws far less (gu.py sides 26 %): the drawing is the limit
+  (isg = id threshold x the depth gate dep .32-.52: only the outer hairs may be grey).
+  STATE: c3g (GREY_TILES 4) + c3a tiers + c3h (HL_SOFT 0) renders running. NEXT: tiers sil.py, grey / hairline rows.
+- (1c) c3a TIERS (out/sh_c3a_lods.png = groom | c1e hero | c3a hero / main / npc / far at g2v0 / g2v1 / g4v0 / g8v0):
+  no pompadour at any tier (sil.py top hero -1.3 / -1.1 / -2.8 / 0 %, main same, npc / far -2.0..-2.8 %, ex 0.0 % at every
+  tier and view); same short swept-back cut at every tier. Thinner than the groom (miss at g2v1: hero 16 %, main 21, npc 25,
+  far 27 %; c2b the same): the groom's side volume over the ears. GREY_TILES 4 (c3g): NO change (gu.py sides 24 %, gcol
+  g1v1 p50 36.1): the tiles already split by grey; the DRAWING is the limit. Probes c3p1 (every tile's grey share forced
+  to 1) / c3p2 (+ no depth gate: NEW hair_cards.GREY_DEP0 / GREY_DEPW) running, texture-only (gu.py).
+- (3) HAIRLINE lever c3h (hero + hk.HL_SOFT=0): DEAD for the line: hl.py g1v0 identical to c3a to the decimal (notch +2.8,
+  mean line -14.8 %; columns 29.4 / 28.0 / 22.4 ...). Either the hairline cards' root fade isn't what sets the line, or the
+  tile bake is cached past HL_SOFT (not traced: budget). The line is set by where the front cards' roots sit, not their alpha.
+- (2b) GREY max-lever probes (texture only, gu.py): c3p1 (every tile's share forced to 1): sides tex L50 34.3 -> 51.3, grey
+  texels 26 -> 45 %, top 17 -> 45 %; c3p2 (+ no depth gate) sides 57.5 / 70 %. So the DRAWING works; the share is drawn
+  compressed: idm is not uniform over 0..1, a .74 share drew 26 % grey texels. FIX: NEW hair_cards.GREY_QUANTILE 1: a
+  tile's share is drawn as that quantile of the tiles' strand pixels' ids. c3q (defaults: cap keep + quantile) running.
+- (4) BLIND A/B, c1e (old) vs c3a (new), fresh subagent, trios ref | X | Y, key review/ab_c3a/key.json (decoded here):
+  front OLD, 3/4 OLD, side NEW, back NEW, main 2 m TIE, npc 4 m OLD, far 8 m OLD -> VERDICT TIE. Its MAJORs: c3a black
+  shards / dark card backs on the crown's top edge (every hero view), loose dark cards at the nape (back); c1e jagged shard
+  tufts at the front hairline, holey edge round the ear. BOTH: thin at the temples / over the ears, the light grey sides
+  missing (too dark, uniform). Tiers: it preferred the old (pompadour) tiers at 4 / 8 m as "overvolumed but outline near"
+  while c3a's read "receded and thin": the groom's side volume (sil.py miss 21-27 % at g2v1) is the tiers' fault now, not
+  the top. Outline changes between levels (consistency) flagged.
+- (2c) c3q (defaults: cap keep + GREY_QUANTILE; out/sh_c3q.png = groom | c1e | c3a | c3q): gu.py sides grey texels 26 ->
+  31.5 %, top 17 -> 21; gcol p50 vs groom: g1v0 40.3 | 35.6 (+4.8, was +3.5), g1v1 38.6 | 50.0 (-11.4, was -13.4), g1left
+  40.8 | 42.3, g1back 37.0 | 37.3, g3v0 41.1 | 41.9 (-0.8, was -2.4). Right way, small; the look barely changes (the silver
+  temple / sideburn band is still missing). Kept (default 1).
+## HANDOVER (hair-garrett c3, 2026-10-18; stopped at the ~70 tool-call budget; nothing in flight)
+STATE: commits on hair-heads2 (local, NOT pushed: coordinator rule, never push): EVEN_CAP_KEEP (hero holes fixed), bake_tiles
+grey-share log line, hair_cards GREY_DEP0 / GREY_DEPW / GREY_QUANTILE. Scratch $HG/cards NEW: gu.py (atlas grey texels +
+COLOR_0 per GLB region), atl.py, hxg.py (force tiles' grey share: GS=), tiles.py (A/B crops), c3q.sh / c3q2.sh / c3h.sh /
+c3p.sh, review/ab_c3a (trios, key.json). BEST line updated (top of this file).
+LOOK (mine, look-first): hero c3q = c1e's style with full coverage (no holes) but the same three faults the blind reviewer
+named: (a) black shards / dark card backs along the crown's top outline (c1e had them smaller), (b) too thin over the
+temples / ears (the groom's side volume), (c) the groom's silver sides / sideburns absent: reads as uniform dark charcoal.
+Front hairline still high (hl.py mean -14.8 %) and the right temple column bare (29 vs groom 99).
+NEXT, in order: (1) the crown shards: find the cards (id pass: dark pixels outside the groom's top outline -> card ids ->
+their layer / kind / normal vs view); likely layer-2 cards standing edge-on at the whorl, seen from the back face (dark).
+(2) grey sides: the share is drawn now (quantile), but the side tiles' share (~.5-.75) is still less silver than the
+strands read; measure the groom's side region's grey-strand share in its own render, then a calibrated gain on the tiles'
+share (target gcol g1v1 p50 50 +-3, front not over +3). (3) side volume over the ears at every tier (sil.py miss at g2v1:
+target <= 10 %): the cards' lift / the cap's mid height at the sides vs the groom's strands' height there. (4) hairline:
+HL_SOFT is dead for the line (c3h identical); the front cards' ROOT positions vs the groom's hairline (hl.py) and the far
+temple column. Then re-run the blind A/B (review-ab after 2026-10-19 13:00 MT) with c3q as OLD.
+
+## Garrett cards c4 (2026-10-18, hair-garrett agent, fresh; order: crown shards, grey calibration, side volume, hairline, all tiers + A/B)
+- Tess's PART COVER row (round 33, hair_clumps.PART_COVER, opt-in, not judged yet there): a row of cards rooted ON a part
+  line. G88a has parting "none" (c2 removed the emergent strand part): nothing to root it on. Not reused; if Tess's
+  build wins its A/B, a "crown cover" (the same row rooted on the whorl) is the analogue to try.
+- (1) CROWN SHARDS, probed (NEW $HG/cards/shard.py <exp tag>: per card standoff over the cards' own p85 envelope per 4-deg
+  bin, outline samples per view (back / side) with layer / normal / atlas lum, shadow proxy vs cards, WINDING): c3q has
+  NO card standing out at the back crown (cards > 3 mm out: 7.8 cm2 of 1087, all at the front top az 290-30, max 8 mm);
+  the outline samples' atlas colour is NOT dark (dark share 1 %), vertex normals all point out (n.radial p10 .83), the
+  shadow proxy sits 1-8 mm inside the cards. FOUND: 1-2 % of card triangles (layer0 2.0 %, L1 1.1, L2 1.0; cap 0) are
+  WOUND against their own vertex normals (folds where a card turns over), 134 cards: a double-sided renderer shows
+  such a face's BACK from outside and shades it with the flipped normal = lit from inside = black shard. FIX (general):
+  hair_cards.WIND_TO_NORMAL 1: mesh() winds every card triangle along its vertex normals. Lever test = c4a.
+- (2) GREY: the tiles' shares are drawn now (c3 quantile) but compressed: tiles side .74 / top .41 (1.8x) where the
+  locks carry .64 / .22 (2.9x). NEW hair_cards.GREY_SPREAD 2.0: shared tiles' shares x 2 about their median (sides -> ~1,
+  top ~.4). Target gcol g1v1 p50 50 +-3 (c3q 38.6), front g1v0 not over +3 of the groom's 40.3.
+  (4, read) HL_SOFT is applied only in the per-card `bake` (hair_clumps ~1007), not in shared tiles: dead for the clumps
+  path by construction, not a cache.
+  STATE: c4a (hero, defaults = WIND_TO_NORMAL 1 + GREY_SPREAD 2) exporting + g1 views (c4a.sh <tag> [hk./hc. k=v]).
+- (1b) c4a RESULT (out/sh_c4a.png = groom | c3q | c4a): winding fixed (shard.py: 0.0 % of card area wound against its
+  normals, was 1-2 %), but the CROWN SHARDS ARE STILL THERE (back view top-left, profile top-right): winding was not their
+  cause. Kept (correct anyway, harmless). Also ruled out: the shadow proxy (c4np = c4a rendered proxy=0: shards
+  identical, $HG/cards/c4/zz_np.png), standing cards (none > 3 mm out at the back crown), dark atlas texels on the
+  outline (1 %). Lead left (NEW shard2.py): COLOR_0 at the back-left crown (az 90-170, el 40-80) has a p5 of .48 vs the
+  cards' .77 median (per-card means all ~.73): a few dark VERTICES per card (roots / an end?) -> next: print which vertex
+  rows (along) carry col < .55 and whether they sit at the outline there; also try the cards' alpha < .5 fringe (the
+  probes counted only alpha > .5 samples: a dark semi-transparent tip fringe would be missed).
+- (2b) GREY_SPREAD 2 (c4a): texture sides grey texels 31.5 -> 38 %, tex L50 45 (gu.py); render g1v1 p50 38.6 -> 39.5 (groom
+  50.0), p90 45.8 -> 48.4 (58.1); front g1v0 +5.6 (was +4.8, limit +3: slightly over), g3v0 +0.1. Right way, too small:
+  the grey hairs' COLOUR is the limit now (look.grey * (0.6 + 0.4 shade) in hair_cards.atlas: mid grey, not the groom's
+  silver). Kept (default 2). NEXT: a grey-hair lightness lever (the strand look's grey vs the atlas's), measured on g1v1.
+- (3/4) SIDE VOLUME = HAIRLINE: NEW miss maps ($HG/cards/c4/miss_c3q.png, groom id mask minus cards'): the missing 12-25 %
+  is a band along the hair's INNER edge (front hairline, temples, sideburn in front of the ear, behind the ear), plus a
+  1-2 px outer rim. Not bulk volume over the ears. c4b (BASE_IN 3 mm, the opaque core nearer the root): hl.py and sil.py
+  IDENTICAL to the decimal (like HL_SOFT in c3h): the id pass's outline is the cards' GEOMETRY, so picture levers can't
+  move it. The cards' geometry stops short of the groom's hairline: the cut drops / the roots sit behind the edge
+  strands. NEXT: per hairline column, the groom's edge strands' roots vs the nearest card's root (hair_clumps.cut: which
+  edge strands get no card: MIN_STRANDS, IN_SHARE, fly rules) and the cap's own hairline cut.
+  STATE: c4L (all four tiers at the c4 defaults) exporting / rendering; A/B vs c3 (c3q hero, c3a tiers) next.
+- (5) c4L = all four tiers at the c4 defaults (exp/c4L, tris 14570 / 6130 / 2958 / 1024). bin/review-ab ran its tiles but its
+  reviewer hit the weekly limit (until 2026-10-19 13:00 MT): fallback fresh blind subagent on its trios (review/ab_c4L,
+  key.json): front / 3/4 / side / back TIE, main 2 m NEW, npc 4 m NEW, far 8 m NEW ("lighter, greyer") -> VERDICT NEW
+  (tiers), TIE (hero). BEST line updated. Its MAJORs, both builds: no silver sides; flat / low front top; black shard flaps
+  at the crown and back crown; stray dark strands at the temples / round the ears; temples / sideburns thin, the hair over
+  the ear stops high.
+## HANDOVER (hair-garrett c4, 2026-10-18; stopped at the ~70 tool-call budget; nothing in flight)
+STATE: commits on hair-heads2 (local, NOT pushed): hair_cards.WIND_TO_NORMAL 1, GREY_SPREAD 2; notes. Scratch $HG/cards NEW:
+shard.py (standoff / outline / atlas lum / proxy / winding per card), shard2.py (COLOR_0 at the back-left crown), c4a.sh
+<tag> [k=v] (hero + g1 views), c4L.sh (all tiers + views), c4/miss_c3q.png (miss maps), review/ab_c4L.
+LOOK (mine, look-first): c4L reads as c3q with slightly greyer sides; same faults. The crown shards are the most visible
+artefact and are NOT winding, proxy, standing cards or atlas colour: unexplained after 4 probes.
+NEXT, in order: (1) shards: shard2.py lead (dark COLOR_0 vertices .48 at the back-left crown: which rows; and the alpha
+< .5 fringe the probes skipped); if a render test is needed, delete card groups by layer from the GLB (layer0 / 1 / 2 at
+az 90-170) and render g1back to find the layer. (2) hairline / temples / sideburns = card GEOMETRY stops short (picture
+levers HL_SOFT, BASE_IN dead by construction): find the groom's edge strands that get no card in hair_clumps.cut and the
+cap's hairline cut. (3) silver: grey-hair COLOUR in hair_cards.atlas (look.grey x (0.6 + 0.4 shade)) vs the strand look;
+target gcol g1v1 p50 50 (c4a 39.5). (4) Re-run review-ab after 2026-10-19 13:00 MT.
+## Garrett cards c5 (2026-10-18, hair-garrett agent, fresh; order: crown shards, hairline, silver, all tiers + A/B)
+- (1) CROWN SHARDS = the preview's BACK-FACE NORMAL FLIP. Bisect ($HG/cards/strip.py <src> <dst> <tri ranges>: a GLB copy with
+  triangle ranges collapsed; bis.sh <glbs>: g1back + g1left): no hair / cap only: none; ANY single card layer alone (L0, L1, L2,
+  each with the cap) or any layer removed: the shards stay at the same place -> location, not a layer. shadow=0 (cards cast
+  none): still there. flat=1 (albedo unlit): GONE -> lighting, not the picture or the vertex colour (the dark COLOR_0 lead was
+  a red herring). The GLB's shading data is clean (sh3.py / sh4.py: unit normals and tangents, tangent = dP/du, handedness
+  consistent, N.radial p5 .83 in the region). Cause: Blender (like glTF's own doubleSided rule) REVERSES the shading normal on a
+  face seen from behind; a card at the back crown's outline, lying on the head, is seen from below its plane past its edge, so
+  it was shaded with a normal pointing INTO the head: unlit = black. The export's shading notes already say "two-sided with ONE
+  normal for both faces"; the preview material didn't. FIX (general, every card render): blender_cards.ONE_NORMAL 1:
+  game_material shades with Normal x (1 - 2 Backfacing) (Principled, translucent backscatter, the wrap term). c4L re-rendered
+  (out/s_hg_G88a_c5n_*): shards gone at back, profile and 3/4. NOTE for engines: a strict glTF viewer flips back-face normals
+  (spec) and WILL show the shards; the engine material must honour the notes (Unity HDRP double-sided normal mode "None",
+  Unreal: no flip for two-sided). Winding (c4) stays correct and harmless.
+  STATE: ONE_NORMAL committed. NEXT: silver (GREY_LIFT trials c5g1-3 running), then the hairline.
+- (3) SILVER: NEW hair_cards.GREY_LIFT (grey hairs' colour x this; default 1 = unchanged). gcol (dL50 vs the groom) with
+  ONE_NORMAL shading: c4a re-rendered (c5base) front g1v0 +7.2 / 3/4 g1v1 -10.1 / profile -0.7 / back -0.3 / g3 +0.5;
+  GREY_LIFT 1.6 (c5g1) +14.5 / -2.7 / +6.2 / +5.6; 2.2 (c5g2) +20.7 / +3.4 / +11.8 / +10.5 / +13.8. The lift moves every view by
+  the SAME ~7 L*: the 3/4 deficit is not the albedo. The groom itself is 50 at 3/4 vs 42 in profile and 37 at the back: a
+  VIEW-dependent highlight (the strands' BSDF sheen toward the key), which profile / back (already matched) don't see. Not
+  adopted (default 1). Lead: the preview's game_material ignores the GLB's own specular (KHR_materials_specular .5,
+  anisotropy .7; preview Principled specular .25, isotropic); the 3/4 silver is the anisotropic highlight. And the front's
+  +7 is CONTRAST (groom p10 18.8 vs ours 36.5: no dark gaps between the front's strands), not level.
+- (2) HAIRLINE probe (hlp.py <dir> [hk.k=v]: hero export with hair_clumps.cut's strands / cards dumped; hla.py: per
+  hairline-lock strand, points > 2.5 mm off every card ribbon by fifth of length): front 711 strands, 0.8 % in no card, off-card
+  by fifth .05 .06 .04 .13 .57; temples / sideburns L 2940 (8.6 % no card) .19 .11 .10 .21 .72, R 2732 (1.5 %) ... .77; BEHIND
+  THE EARS L 1653 / R 1720: 64 / 68 % in NO card (mean off 73 %). Hairline strands 9-20 mm long. Causes: (a) head cards end where
+  .35 of their strands still run (the tips = the band past the hairline), (b) fit() drops cards under 1 cm: the short
+  converging clumps behind the ears. NEW levers hair_clumps.HEAD_END (.35) and FIT_MIN_LEN (.01). Trial c5h1 = .12 / .005.
+- (2b) c5h1 (HEAD_END .12, FIT_MIN_LEN .005; c5h.sh <tag> [hk.k=v] = hlp dump + g1 views): DEAD LEVERS. No-card shares
+  identical (behind ears 63.6 / 68.0 %), tips' off-card share .57 -> .52 front only; id-pass miss vs the groom unchanged
+  (g1v0 44.3 -> 43.8 %, g1v1 40.3 -> 40.1, g1left 21.8, g1back 11.8). So the behind-ear strands are lost BEFORE fit's length
+  test: _clump returning None (min_share .5) or crown_loops (check which), and the tips are off the card ACROSS it (fan past
+  the p90 half width), not past its end. Levers left at their old defaults (.35 / .01: no change to the build).
+## HANDOVER (hair-garrett c5, 2026-10-18; stopped at the ~70 tool-call budget; nothing in flight)
+STATE: commits on hair-heads2 (local, NOT pushed): blender_cards.ONE_NORMAL 1 (DEFAULT: fixes the crown shards in every card
+render), hair_cards.GREY_LIFT 1 (lever, off), hair_clumps.HEAD_END .35 / FIT_MIN_LEN .01 (levers, defaults unchanged). The
+cards GEOMETRY / atlas are unchanged from c4L, so the BEST build is still c4L's GLBs; only the preview shading changed (re-render).
+Scratch $HG/cards NEW: strip.py + bis.sh (layer bisect), sh3.py / sh4.py (shading data), hlp.py + hla.py + c5h.sh (hairline
+probe), c5g.sh (grey trials), exp/bis, exp/c5g1-2, exp/c5h1, c4/miss_cap_g1left.png.
+LOOK (mine): c4L under ONE_NORMAL (out/s_hg_G88a_c5n_*) reads as a clean short grey crop at the back / profile / 3/4: the
+black flaps are gone. Still: thin temples / sideburns and bare behind the ears, the 3/4 sides not silver, a flat front.
+NEXT, in order: (1) behind the ears: in hair_clumps.cut print per hairline strand why it got no card (crown_loops vs
+_clump None (min_share) vs PART_GAP continue); fix that; then the tips ACROSS the card (spread 90 -> 97 for clumps holding
+hairline strands, or a hairline edge row). Measure with hla.py + the id-pass miss (hairline band). (2) silver at 3/4: the
+preview's game_material should read the GLB's specular / anisotropy (KHR_materials_specular .5, anisotropy .7) instead of its
+own .25 isotropic Principled; measure gcol g1v1 (c5base -10.1) with profile / back held. (3) front contrast (p10 18.8 vs
+36.5). (4) Re-export all four tiers, A/B vs c4L with bin/review-ab (CLI after 2026-10-19 13:00 MT). Note the A/B baseline:
+c4L must be re-rendered with ONE_NORMAL, or the A/B judges the shading fix, not the build.
+## Garrett cards c6 (2026-10-18, hair-garrett agent, fresh; order: export back faces, behind-ear cut, GLB highlight in the preview, front contrast, all tiers + A/B)
+- (1) EXPORT BACK FACES (coordinator: the shard fix must hold in ANY engine; a strict glTF viewer flips back-face normals of a
+  doubleSided material). NEW hair.BACK_FACES 1 (default) + hair.back_faces(): every card triangle is followed, inside its
+  layer's range, by its back = the same corners reversed (same vertices, the SAME outward normal, tangent, sign); the cap keeps
+  one face; the material is doubleSided FALSE (asset.write_glb looks "double_sided"); CARD_RECIPE_FACES says so (single-sided,
+  back-face culling). Preview honours it: blender_scene hair_glb_look passes the imported material's use_backface_culling into
+  blender_cards.game_material ("cull"; shadows still from both faces). Test tests/test_hair_back_faces.py.
+  COST: vertices UNCHANGED (hero 16115: the back shares them), index triangles x~1.8: hero 14570 -> 26040 (cards 11470 x 2 +
+  cap 3100). Budgets (budgets.json, MetaHuman counts VERTICES): hero 25k default / 15-50k range -> inside the range; a culled
+  back face costs a cull test, not shading (the real card cost is overdraw, unchanged).
+  CHECK (plain viewer = blender_cards flip_back 1, i.e. ONE_NORMAL off; $HG/cards/c6r.sh, glbck.py): c4L shows the black crown
+  shards again (back / profile / 3/4), c6a has none: out/c6_flip_ab.png (top c4L, bottom c6a). glbck: c6a doubleSided False,
+  88 % of triangles have their reversed twin, verts 16115 = c4L.
+  STATE: committed. NEXT: (2) the behind-ear strands with no card.
+- (2) BEHIND-EAR STRANDS, why ($HG/cards/why.py <dir> [hk.k=v]: cut instrumented, each strand's fate, stops after the cut): hairline
+  strands front 711 (705 card), temple L 2940 (253 clump_none), BEHIND EAR L 1653 (1051 clump_none), R 1720 (1169), temple R
+  2732 (20). ALL losses are hair_cards._clump returning None, and over the whole head 42,760 of 192,008 strands (22 %, all
+  head, length p50 11 mm) had no card. Cause: _clump needs >= 4 STEP (4 mm) stations where half the clump's strands run =
+  strands >= ~12 mm; Garrett's side / nape hairs are 9-11 mm. (First tried: split failed clumps in two (hair_clumps
+  SPLIT_DEPTH 4 / SPLIT_MIN 6, kept as default, harmless): behind ears 1051 -> 880, not the cause.) NEW lever
+  hair_clumps.MIN_STATIONS (passed to _clump's new min_stations): at 3 with FIT_MIN_LEN .006 every hairline strand has a card
+  (behind ears 0 % no card; hla.py mean off-card 73 % -> 15 %). c6b (hero, these two): 19280 unique triangles (c6a 14570),
+  verts 23143 (16115), with back faces 35460 index triangles. Look (out/c6_sheet_b.png groom | c6s | c6b): behind the ear a
+  little fuller in profile; small. The tips past the cards' sides: off-card share in the last fifth still .41-.76 (not done).
+- (3) GLB HIGHLIGHT IN THE PREVIEW: NEW blender_cards.GLTF_SPEC 1 (default): game_material reads the GLB's own
+  KHR_materials_specular (factor 1 = IOR level .5: the old .25 WAS the GLB's .5), its colour, the ORM roughness (G; p50 .51)
+  and KHR_materials_anisotropy (strength x flow.B along flow.RG in tangent space, uv tangent from the mesh's UV map);
+  blender_scene hair_glb_look parses the GLB and passes them. Applied (render diff +5 mean on the hair, bright p99), but the
+  3/4 silver does not move: gcol g1v1 dL50 c5base -10.1 -> c6s -9.7; spec doubled + white tint (c6s2) -9.0. With c5's albedo
+  lift (all views +7 alike) that rules out albedo AND the highlight. The cards cover 62 % of the groom's hair area at 3/4
+  (7241 / 11717 px): the silver is the side / top VOLUME the cards don't have (where the groom's sides catch the key), not
+  shading. Left there.
+- (4) FRONT CONTRAST: crop out/c6_front_crop.png (groom | c6s): the groom's front has dark gaps between strands (p10 18.8),
+  ours a flat mid grey (36.6) and a few dark stray strands over the centre front; the groom's front also stands taller.
+  The atlas already carries the depth shade (aux_shade in the preview would double it). Trial c6c = c6b + hc.SHORT_DEPTH .2
+  (the depth shade's floor for short-cut strands, .45).
+- (4b) c6c (c6b + hc.SHORT_DEPTH .2): gcol IDENTICAL to c6b to the decimal: dead lever for this cut (SHORT_DEPTH is the
+  short-tile path's). Front contrast NOT fixed this session.
+- (5) DEFAULTS now hair_clumps.MIN_STATIONS 3, FIT_MIN_LEN .006 (with BACK_FACES 1, GLTF_SPEC 1). RISK: a shared default:
+  other grooms' short clumps (Tess's) now make cards too; not checked on Tess. If her A/B or RC regresses, set MIN_STATIONS 4
+  / FIT_MIN_LEN .01 for her (back to known good). STATE: c6L = all four tiers + c4L re-rendered with the same shading
+  (tag c6o*), $HG/cards/c6L.sh.
+- (5b) A/B c6L (MIN_STATIONS 3 + FIT_MIN_LEN .006 + SPLIT_DEPTH 4 + back faces, all tiers) vs c4L RE-RENDERED with the same
+  shading (c6o*: ONE_NORMAL + GLTF_SPEC, so the A/B judges the build): review-ab's CLI is out until 2026-10-19 13:00 MT,
+  so a fresh blind subagent on hand-made X/Y trios (review/ab_c6L, key.json, tiles.py): front OLD, 3/4 TIE, side OLD
+  (old's sideburn runs lower), back OLD (new: a flap at the top-left crown, narrower), 2 m TIE, 4 m OLD, 8 m OLD ->
+  VERDICT OLD. My look-first read agreed on the back (a crown-edge bump in the new); behind the ear only a little fuller.
+  And the extra short cards cost: unique triangles npc 2958 -> 6062, far 1024 -> 2500 (over the crowd range).
+  REVERTED to the known good cut: MIN_STATIONS 4, FIT_MIN_LEN .01, SPLIT_DEPTH 0 (levers kept). The reviewer's MAJORs (both):
+  thin temples / above the ears (reads narrow), spiky dark front hairline, too dark / no silver at the sides, back texture a
+  uniform curly carpet (not swept-back direction), stray wisps round the ears.
+- (5c) c6M = all four tiers at the reverted defaults + BACK_FACES: geometry identical to c4L (glbck: same verts / unique tris);
+  index triangles hero 26040, main 10164, npc 4704, far 1380 = inside every role's budget range (hero 15-50k, main 6-20k,
+  npc 2-8k, crowd 300-1500); vertices unchanged. BEST line updated (c6M).
+## HANDOVER (hair-garrett c6, 2026-10-18; stopped at the ~70 tool-call budget; nothing in flight)
+STATE: commits on hair-heads2 (local, NOT pushed): hair.BACK_FACES 1 + back_faces() (test tests/test_hair_back_faces.py),
+asset write_glb looks "double_sided", preview honours the GLB's culling, blender_cards.GLTF_SPEC 1 (the GLB's specular /
+colour / ORM roughness / anisotropy in the preview), hair_clumps MIN_STATIONS / SPLIT_DEPTH levers (off), _clump min_stations.
+BEST = exp/c6M. Scratch $HG/cards NEW: glbck.py (doubleSided / verts / twins), why.py (each strand's fate in the cut), c6r.sh
+(render a GLB: default params = ONE_NORMAL off, a plain viewer), c6h.sh / c6x.sh (hero trial), c6L.sh (all tiers + c4L
+re-rendered as c6o*), out/c6_flip_ab.png, c6_sheet_b.png, c6_front_crop.png, review/ab_c6L.
+LOOK (mine): the export fix holds (a plain viewer shows c4L's shards, none on the back-faced GLB). Otherwise c6M looks as c4L.
+Still: thin temples / no hair above the ears, the 3/4 sides not silver, a flat dark-flecked front, a uniform back texture.
+FINDINGS that redirect: the 3/4 silver is NOT albedo (c5) and NOT the highlight (c6: GLB spec / aniso / doubled white spec
+moved g1v1 -10.1 -> -9.0): the cards cover only 62 % of the groom's hair area at 3/4: it is the missing side VOLUME. The
+behind-ear "no card" is short hairs (9-11 mm < 4 stations x 4 mm); giving them cards (MIN_STATIONS 3) made the back worse.
+NEXT, in order: (1) side volume above the ears / temples: the cards' outer envelope vs the groom's at the sides (sil.py
+miss maps, card_offset / _under_envelope / SIDE_ENV_PCT), not more short cards. (2) Short hairs as SHORT tiles on the cap
+(the cap's own picture) rather than cards, if the behind-ear patch matters. (3) Front: dark flecks = stray card edges /
+dark strands at the hairline; front gaps (groom p10 18.8 vs 36.6; SHORT_DEPTH is dead here). (4) review-ab CLI after
+2026-10-19 13:00 MT for the next A/B.
+
+## hair-cards round 38 (2026-10-18, fresh session)
+BEST CARDS FOR EXPORT: r38a (/mnt/data/hifipushie/haircards/exp/exar38a/hc_s2.glb + hc_s2_LOD1-3.glb; hair-only
+lodx copies in exp/lodsr38a/) = f1 EXACTLY (every unique vertex and triangle of LOD0-3, glbcmp) + the merge's BACK_FACES.
+EXPORT SETTINGS: the hair defaults at commit b5e5f064 (PART_DIP_WHOLE 1, PART_VISIBLE 1, ARCH 4 ...) + hair_clumps.FILL = 1.0
+(exa26.py hc_s2 <out> hk.FILL=1; role hero, lods=True). LODs OK: y (t38/lods_r38a.png, g2 / g4 / g8 x front / 3/4 / back).
+NOT approved yet (bin/approve: coordinator / Joe). Known faults (blind review, both r37c/r37d = this geometry): 3/4 front
+lump, jagged dark V at the part from the front, a layered ridge in profile, crown ~12 px low at its shoulders from the front.
+- (0) COORDINATOR DECISION on r37's open question: KEEP THE OUTLINE RULE. The part counts as shown only where the
+  groom's OUTLINE dips (part_visible); the surface trough along the front half of Tess's part does not count. Reason:
+  game readability is silhouette, and f1 (whose cover row spans her part) beat the alternatives in the blind review.
+- (2) WHY THE RUN READ ~130 NOTCHED PART ROOTS AND THE PROBE NONE: the probe was wrong, not the run. The PART_DUMP npz
+  stores St["Q"][:, ::2] and t37/notchprobe.py handed that to part_visible, which takes [:, ::2] again: the probe
+  saw every 4th strand point, the run every 2nd. With the run's sampling (t38/np2.py) the dump reads 114 of 1129 head
+  part roots >= 3 mm, p90 4.7 mm = the run's line (133 of 1302: + non-head roots). The real fault: per root the
+  notch is NOISE around the threshold. t38/np3.py (top per 2 mm band = max or a high quantile; points every 1st / 2nd
+  / 4th of the dump): >= 3 mm at 114 / 0 / 389 roots for the max, 342 / 304 / 493 for q .995, 348 / 243 / 0 for q
+  .98; the median stays 1.2-2.3 mm. The outline is ONE view along the part, so roots differ only by where the part
+  line sits across it (mm), which lands each on a slightly different band max. FIX: part_visible decides ONCE per
+  part (PART_DIP_WHOLE 1: the median notch over the part-line roots; Tess 1.8 mm at the run's sampling -> not shown
+  -> the arch row takes round 35's code path = f1). np2 after: 0 of 1129 at both samplings.
+  STATE: tests (full hair set) + r38a (= defaults + hk.FILL=1 at this commit) for the f1 comparison.
+- (1) TESTS: full hair set 162 passed (t38/tests.log, run at 45fc87ab = 2af333de + notes); clumps + lods 26 passed after
+  the PART_DIP_WHOLE fix (b5e5f064).
+- (3a) r37d (r37c + ARCH_ROOT_TAPER 0.025) crowntop front / 3/4 / side 12.4 / 7.7 / 7.0 px = r37c's to the tenth;
+  t37/zz_r37d.png (gSc | r37c | r37d): my look, near identical, the 3/4 front lump on both (r37d's a touch softer at most).
+  review-ab: "REVIEW FAILED" (its claude -p before 2026-10-19 13:00 MT) but it wrote the trios + key (t38/ab1:
+  front X=old r37c, tq X=new r37d, side X=old) -> a fresh blind subagent reviews the trios.
+  STATE: blind A/B running; r38a exporting (t38/q1.sh). NEXT: r38a vs f1 (glbcmp), LOD sheet (t38/lods.sh, + back).
+- (3b) BLIND A/B r37c vs r37d (fresh subagent on review-ab's trios t38/ab1, key applied): TIE in every view ("a pixel diff
+  found only scattered small changes"). The 3/4 front lump is a MAJOR on BOTH ("a card stands up as a raised shelf behind
+  the part"), plus on both: a jagged dark V at the part from the front (card ends splaying at the part line), a layered
+  ridge with flicked card ends in profile, no flyaways (the groom's fuzz raises and softens its outline). ARCH_ROOT_TAPER
+  stays 0 (no gain). The lump is NOT a root-taper fault.
+- (2b) r38a (= defaults at b5e5f064 + hk.FILL=1; exp/exar38a, exp/lodsr38a): "part visible: 0 of 1302 ... (1.8 mm)",
+  arch row 17 / 10 / 10 / 5 cards per tier, cap fill 698 / 978 / 407 / 126 = f1's log lines. glbcmp vs f1 LOD0 hair:
+  unique verts 53675 of 53675, unique tris 77248 of 77248: F1 REPRODUCED EXACTLY; the GLB's 20546 extra index tris are
+  BACK_FACES (the merge's), the same triangles wound the other way. So r37c's 2 % = the per-root notch noise. crowntop
+  front / 3/4 / side 12.5 / 7.9 / 7.3 px (f1 12.4 / 7.9 / 7.3).
+  STATE: LOD sheet for r38a running (t38/lods.sh r38a: g2 / g4 / g8 x front / 3/4 / back -> t38/lods_r38a.png).
+- (6) FRONT DEFICIT, measured first (t38/solidtop.py r38a: crowntop's deficit per third of the crown columns, groom mask
+  and ours opened by 0 / 3 / 5 / 7 px = flyaway fuzz removed): front 19.0 / 5.5 / 12.9 px raw, 19.7 / 5.2 / 11.7 opened
+  (left / centre / right third); 3/4 12.6 / 6.0 / 2.2; side 8.7 / 6.3 / 2.8. NOT fuzz: the groom's SOLID dome is wider at
+  its shoulders (the upper sides from the front), ours is lower there (the reviewer's "crown slightly narrower").
+  Levers queued after the LOD sheet (t38/q2.sh): r38b = r38a + ENV_PCT 94 (the top cap; 97 drew frizz arcs, b12),
+  r38c = r38a + SIDE_EL (45, 70) (the dome's shoulders under the side rule: outer strands, SIDE_ENV_PCT 99).
+- (4) LOD SHEET r38a (t38/lods_r38a.png: rows g2 / g4 / g8 x front, 3/4, back; LOD0-3 per row). LOD1-3 GLBs = f1's
+  exactly (glbcmp: 36816 / 23196 / 14382 unique tris all shared). LOOK at each LOD's switch distance (LOD1 @ g2, LOD2 @
+  g4, LOD3 @ g8): front holds one rounded crown at every tier; 3/4 LOD1 @ 2 m shows a few dark spiky flicks over the
+  tie (small at 4 m, gone at 8 m); LOD3 @ 2 m (not its distance) has loose flicks at the right temple. Back: LOD1-3 read
+  as one dome + tail. LOD0 from the BACK at 2 m reads differently from LOD1: the tail a pale striped split bulb and a few
+  light blocky patches on the crown (hero tier, < 2 m; geometry = f1's, so f1 had it too, only now seen: f1's sheet had
+  no back row). LODs OK: y at the switch distances; OPEN: LOD0 back tail / crown patches (check against the groom's
+  back at g1backl before calling the hero tier done).

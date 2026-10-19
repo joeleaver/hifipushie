@@ -71,6 +71,10 @@ HOOK_LAYER_MIN = 1  # HOOK_RISE only on head layers from this up (round 26: on l
 TONE_BACK = 0.85  # (round 26) head cards rooted behind the head's centre: tint x this (b33 back head p50 +8 L* over gSc)
 TONE_FRONT = 0.85  # (round 26) head cards rooted at the front top: tint x this (b33 front crown p50 23 vs gSc 32)
 TONE_POS_Y = (-0.02, 0.02)  # m from the head's centre along y (front -y .. back): TONE_FRONT -> TONE_BACK, smoothstep
+GREY_TILES = 1.0  # (c2, Garrett) tiles are clustered on their cards' grey share too (x this vs log length / width) and
+# each tile draws ITS cards' share of grey hairs (B["gshare"], per atlas pixel): the atlas drew one share everywhere
+# (look.grey_share by strand id), so G88a's silver sides / temples (locks' grey .65, top .22) came out the head's tone
+GREY_TINT = 0.0  # (c1, Garrett) head / tail cards: tint x (1 + this x (the card's locks' grey - the median card's)); 0 = off
 TAIL_TONE = 0.62  # (round 24; 1.0 before) tail (hanging) cards' tone x this: the tail alone was +9 L* (back) / +3 (3/4) over gSc, 0.75: +2.4 / -3.9, head cards unchanged
 TONE_CONTRAST = 2.2  # (round 25) head / tail card pictures: each hair's tone spread about its island's median x this (the
 # groom's light / dark strands: gSc hair boxes p10..p90 span ~25-30 L*, b32's ~13-16 at the same mean; t25/hl.py)
@@ -115,6 +119,8 @@ def classify(lk: dict) -> str:
         return "face"
     if int(lk.get("hairs") or 0) > 0:
         return "single"
+    if lk.get("lies"):  # a short loose cut's scalp-rooted lock (hair.cards_job): free (not tied) but lying on the head
+        return "head"
     return "tail" if float(lk.get("free", 0.0)) > 0.5 else "head"
 
 
@@ -135,6 +141,19 @@ def strands(D: dict, locks: list, stations: int = 160) -> dict:
         ok = S_ <= s[-1]
         Q[i, ok] = np.stack([np.interp(S_[ok], s, P[:, c]) for c in range(3)], 1)
     lock = np.asarray([int(D["lock"][j]) for j in keep], int)
+    # an EVEN groom's strands (hair_even*: one field over the scalp, not grown per lock; Garrett's G88a) all carry
+    # lock 0, so every one took lock 0's class (a free lock: 100% "tail", the ponytail's knobs on a short cut, c1b).
+    # They are scalp-rooted lying hair: each takes the nearest scalp-rooted lock's id (class, grey, hairline flags)
+    ev = np.asarray([names[int(D["obj"][j])].startswith("hair_even") for j in keep], bool)
+    if ev.any():
+        from scipy.spatial import cKDTree
+        cand = [li for li, k in enumerate(locks) if float(k.get("free", 0.0)) <= 0.5 and not int(k.get("hairs") or 0)
+                and len(k.get("pts") or [])] or [li for li, k in enumerate(locks) if not int(k.get("hairs") or 0)
+                                                 and len(k.get("pts") or [])]  # (a loose groom: every lock is free)
+        if cand:
+            R_ = np.asarray([np.asarray(locks[li]["pts"][0], float) for li in cand])
+            _, ki = cKDTree(R_).query(np.nan_to_num(Q[ev, 0].astype(float)))
+            lock[ev] = np.asarray(cand, int)[ki]
     return {"Q": Q, "len": ln, "lock": lock, "rand": np.asarray([float(D["rand"][j]) for j in keep]),
             "cls": np.asarray([classify(locks[li]) for li in lock]), "root": Q[:, 0].astype(float),
             "radius": np.asarray([float(D["radius"][j]) for j in keep]) if "radius" in D else np.full(len(keep), 4e-5)}
@@ -241,7 +260,7 @@ def fit(Q: np.ndarray, cen_of, end_share: float = 0.2, max_hw: float = 0.03, sta
     A = along_reference(Q) if (reference and len(Q) > 1) else Q[:, :int(np.isfinite(Q[..., 0]).sum(1).max())].astype(float)
     U = np.arange(A.shape[1]) * STEP
     c = _clump(A, U, cen_of, min_share=0.5, start_share=start_share, end_share=end_share, medoid=medoid,
-               twist=0.0 if reference else np.radians(TWIST_HANG))
+               twist=0.0 if reference else np.radians(TWIST_HANG), min_stations=MIN_STATIONS)
     if c is None:
         return None
     sl = slice(c["i0"], c["i0"] + len(c["P"]))
@@ -258,7 +277,7 @@ def fit(Q: np.ndarray, cen_of, end_share: float = 0.2, max_hw: float = 0.03, sta
     # blocky end)
     hw = hw * np.clip(gaussian_filter1d(np.asarray(c["share"], float), 2.0) / 0.5, 0.35, 1.0)
     s = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(c["P"], axis=0), axis=1))]
-    if s[-1] < 0.01:
+    if s[-1] < FIT_MIN_LEN:
         return None
     if per_strand > 0:  # (tail cards: HW_PER_STRAND) no wider than its running strands can fill (a few outer frizz strands as an 18 mm ribbon
         # wearing a dense tile: b24 review "wide separate ribbon strands flare off the ponytail")
@@ -283,6 +302,10 @@ def fit(Q: np.ndarray, cen_of, end_share: float = 0.2, max_hw: float = 0.03, sta
     return {**c, "hw": hw, "s": s}
 
 
+MIN_STATIONS = 4  # (c6 A/B: 3 lost, OLD 5-0) fewest STEP stations a clump's card may have (4 = 12 mm: Garrett's 9-11 mm side / nape hairs, 42.8k of
+# 192k strands, got no card; the c6 lever is 3 with FIT_MIN_LEN .006)
+SPLIT_DEPTH = 0  # (c6 lever, off: part of the build that lost the A/B; 4 = on) a clump that fit() can't make a card of is split in two, up to this many times (0 = off: dropped, before c6)
+SPLIT_MIN = 6  # strands: the smallest clump that is split again
 ENV_FALLBACK = 1.0  # 1: envelope() falls back to uniform sphere cells where a 3-deg bin is thin (b25); 0 = off (A/B, round 18)
 
 
@@ -412,10 +435,51 @@ def layer_offset(sn, la: int, cls: str) -> np.ndarray:
     return np.minimum(sn, HEAD_SN_MAX) * (-0.6 + 0.6 * la) + 0.0004 * la
 
 
+HEAD_END = 0.35  # a head card runs on to where this share of its clump's strands still run (c5, Garrett: the hairline
+# strands' last fifth lay off every card at the front / temples, 57-77 %: the cut at .35 left the edge band bare)
+FIT_MIN_LEN = 0.01  # (c6 lever: .006 with MIN_STATIONS 3; lost the A/B)  # m: a card shorter than this is dropped (c5, Garrett: 64-68 % of the hairline strands behind the ears
+# were in NO card, their short converging clumps' cards under 1 cm)
 ROOT_SEAT = 0.03  # (round 27; default from round 28: b35, blind review won front + 3/4, back tie) m along a head card from its root over which it is eased down (smoothstep) to ROOT_SEAT_GAP
 ROOT_SEAT_GAP = 0.003  # over its strands' roots' radius: top cards started 88-92 mm out over a ~76 mm cap at the front
 # crown (the layer offsets + lifted roots), each a straight-cut root edge 10-15 mm in the air: the two hooked flaps on
 # the front outline (round 27 hooktr.py, cards L0 48 / 53, L1 125 / 126, L2 190 / 192); 0 = off
+
+
+CROWN_FILL = 0.0  # (round 31) share of the way a head card is raised (only raised, never lowered) to the strands'
+# ENV_PCT envelope less ENV_UNDER, less CROWN_GAP per layer under the top: each card sat at its OWN clump's mean (+0.6 x
+# a spread capped at 3 mm), so over the crown the cards' shell was 5-9 mm (worst 17) under the groom's p99 radius and
+# 7-10 mm under its p90 (t31/crownr.py), Joe: "the hair is chopped off at the top"; 0 = off
+CROWN_GAP = 0.002  # m between the raised layers
+CROWN_EL = 20.0  # deg over the head's centre: the raise ramps in from here (smoothstep over CROWN_EL..CROWN_EL + 25)
+
+
+CROWN_END = 0.0  # m: the raise eases to nothing over a card's last this-many m (a raised free end stood as a flap); 0 = off
+CROWN_SEAT = 0.0  # (round 32) m: the raise eases in over a card's first this-many m from its root (smoothstep), so the
+# root ROOT_SEAT seated stays seated (r31: CROWN_FILL lifted the seated roots back up = the front-corner flaps); 0 = off
+CROWN_SEAT_Y = 9.0  # (round 32) m: CROWN_SEAT only for cards rooted in front of the head's centre + this along y (Blender
+# -y is the face): roots further back (the crown, behind the front outline) are raised from the root; 9 = everywhere
+CROWN_LAYERS = ()  # (round 32) layers the raise applies to, counted from the top (0 = the top layer); () = all
+
+
+def _crown_fill(P, la: int, n_layers: int, env, C, s=None) -> np.ndarray:
+    """A head card raised toward the strands' envelope over the top of the head (see CROWN_FILL)."""
+    P = np.asarray(P, float)
+    d = P - np.asarray(C, float)
+    r = np.linalg.norm(d, axis=1)
+    e, _ = env(P)
+    el = np.degrees(np.arcsin(np.clip(d[:, 2] / np.maximum(r, 1e-9), -1, 1)))
+    w = CROWN_FILL * _ss(np.clip((el - CROWN_EL) / 25.0, 0.0, 1.0))
+    if CROWN_LAYERS and (n_layers - 1 - la) not in CROWN_LAYERS:
+        return P
+    if CROWN_END > 0 and s is not None and len(s):
+        s = np.asarray(s, float)
+        w = w * _ss(np.clip((s[-1] - s) / CROWN_END, 0.0, 1.0))
+    if CROWN_SEAT > 0 and s is not None and len(s) and P[0, 1] < float(np.asarray(C)[1]) + CROWN_SEAT_Y:
+        w = w * _ss(np.clip(np.asarray(s, float) / CROWN_SEAT, 0.0, 1.0))
+    tgt = np.nan_to_num(np.asarray(e, float), nan=0.0) - ENV_UNDER - CROWN_GAP * (n_layers - 1 - la)
+    from scipy.ndimage import gaussian_filter1d
+    up = gaussian_filter1d(np.maximum(0.0, tgt - r) * w, 1.5)
+    return np.asarray(C, float) + d * ((r + up) / np.maximum(r, 1e-9))[:, None]
 
 
 def _root_seat(P, s, roots, C) -> np.ndarray:
@@ -457,14 +521,15 @@ PART_ROOT_REACH = 0.03  # m: a head card rooted within this of the part starts a
 # so the part read as no part: part dip 1.1 vs the groom's 3.5); 0 = off
 
 
-def _part_root(c: dict, side_of, C) -> None:
+def _part_root(c: dict, side_of, C, gap: float | None = None) -> None:
     """A head card whose root lies within PART_ROOT_REACH of the part gets a lead-in: from the part's edge (PART_GAP
     off the line, at the root's height over the head) out sideways (away from the part), curving into the card's own
     start (Hermite). The per-station keys are extended with the root station's values."""
     P = np.asarray(c["P"], float)
     sd, dp = side_of(P[:1])
     sd, dp = float(sd[0]), float(dp[0])
-    if sd == 0 or not np.isfinite(dp) or dp > PART_ROOT_REACH or dp < PART_GAP + 0.003:
+    gap = PART_GAP if gap is None else float(gap)
+    if sd == 0 or not np.isfinite(dp) or dp > PART_ROOT_REACH or dp < gap + 0.003:
         return
     C = np.asarray(C, float)
     r0 = P[0] - C
@@ -474,7 +539,7 @@ def _part_root(c: dict, side_of, C) -> None:
     if np.linalg.norm(e) < 0.2:
         return
     e /= np.linalg.norm(e)
-    R = P[0] - e * (dp - PART_GAP)
+    R = P[0] - e * (dp - gap)
     R = C + (R - C) / np.linalg.norm(R - C) * rad
     L = float(np.linalg.norm(P[0] - R))
     m = int(np.ceil(L / STEP))
@@ -504,6 +569,257 @@ def _part_root(c: dict, side_of, C) -> None:
     c["s"] = np.concatenate([[0.0], np.cumsum(seg)])
     c["i0"] = max(0, int(c["i0"]) - m)
     c["part_root"] = m
+
+
+PART_COVER = 0  # (round 33) cover cards per side of the part (0 = off). r32: from the front, the outline's top was the
+# part's cards seen end-on (straight-cut root ends as slabs and notches) over a dip at the part, where the groom's
+# strands rise off the part and arch over; moving the existing cards (fill, seat, cap) bought 3-4 of 21 px. A cover
+# row is what an artist lays last: cards rooted ON the part, front to back, each following the strands that leave the
+# part on its side, lifted to those strands' envelope (they rise off the part), tapering and fading to soft tips over
+# the side cards, which leave the part under them
+COVER_REACH = 0.015  # m: head strands rooted within this of the part feed the cover row
+COVER_LEN = 0.07  # m: a cover card's length from the part (it ends on the side cards)
+COVER_HW = 0.012  # m: its half width at most
+COVER_TAPER = 0.5  # share of its length over which its width tapers to TIP_FLOOR
+COVER_FADE = 0.45  # share of its picture at the tip over which the alpha fades out (hairs ending one by one)
+COVER_OVER = 0.002  # m: its root starts this far PAST the part line (the two sides' covers meet: no dip at the part)
+COVER_SEAT = 0.012  # m: from the root (on the scalp) it rises to the envelope over this (smoothstep)
+COVER_UNDER = 0.0015  # m under the head strands' envelope (ENV_PCT)
+COVER_DRAW = 1.0  # (0.6 before round 36: f1 adopted) share of its strands drawn on its picture
+COVER_TILT = 0.0  # deg: the cover card's plane turned about its own line toward standing up off the head (r33 q97: the
+# cover raised the mesh's top 7.6 mm and the front render's top 0 px: a card lying tangent at the top of the dome is seen
+# EDGE-ON from the front, so the outline's top is whatever stands up, not the cover). Its across direction tilts toward
+# the head's outward radial: from the front its width reads as height, the upper edge soft (tapered, faded)
+COVER_SINK = 0.5  # share of the tilt's rise (hw x sin tilt) the line is moved in, so the lower edge tucks into the mass
+COVER_PCT = 90.0  # percentile of the head strands' radius the cover is raised to (r33 p6 at ENV_PCT's 90: the cover sat
+# with the other cards, the front outline's top unmoved; the groom's outline is its outer strands)
+
+
+def part_cover(St: dict, C, side_of, env, idx, seed: int = 0) -> list:
+    """The part's cover row (see PART_COVER): per side, the head strands `idx` rooted within COVER_REACH of the part
+    (over PART_EL) split into PART_COVER runs along it (by root y, front to back); each run is one card fitted to its
+    strands, cut to COVER_LEN, led in from COVER_OVER past the part line (_part_root), raised from its root to the
+    strands' envelope less COVER_UNDER, tapered (COVER_TAPER). Cards are head cards of the top layer with "cover"."""
+    if not PART_COVER or side_of is None or not len(idx):
+        return []
+    from scipy.ndimage import gaussian_filter1d
+    C = np.asarray(C, float)
+    if COVER_PCT != ENV_PCT:
+        env = envelope(St, C, pct=COVER_PCT)
+    root = St["root"][idx]
+    sd, dp = side_of(root)
+    v = root - C
+    el = np.degrees(np.arcsin(np.clip(v[:, 2] / np.maximum(np.linalg.norm(v, axis=1), 1e-9), -1, 1)))
+    ok = (sd != 0) & np.isfinite(dp) & (dp < COVER_REACH) & (el > PART_EL)
+    top = len(LAYERS["head"]) - 1
+    rng = np.random.default_rng(seed + 53)
+    out = []
+    for s_ in (-1.0, 1.0):
+        mem_all = idx[ok & (sd == s_)]
+        if len(mem_all) < MIN_STRANDS * 2:
+            continue
+        n_ = max(1, min(int(PART_COVER), len(mem_all) // MIN_STRANDS))
+        y = St["root"][mem_all][:, 1]
+        q = np.quantile(y, np.linspace(0, 1, n_ + 1))
+        for b in range(n_):
+            mem = mem_all[(y >= q[b]) & ((y < q[b + 1]) if b < n_ - 1 else (y <= q[b + 1]))]
+            if len(mem) < MIN_STRANDS:
+                continue
+            c = fit(St["Q"][mem], _cen_of(C, None), end_share=0.35, max_hw=COVER_HW, spread=90.0, reference=True,
+                    tip_taper=0.0)
+            if c is None:
+                continue
+            n = len(c["P"])
+            k1 = int(np.searchsorted(np.asarray(c["s"], float), COVER_LEN)) + 1
+            if k1 < n:
+                for k_ in ("P", "T", "N", "X", "bend", "hw", "sn", "u", "share", "out", "rad", "s"):
+                    if np.ndim(c.get(k_)) and len(c[k_]) == n:
+                        c[k_] = np.asarray(c[k_])[:k1]
+            if len(c["P"]) < 4:
+                continue
+            _part_root(c, side_of, C, gap=-COVER_OVER)
+            P = np.asarray(c["P"], float)
+            P_fit = P  # (round 35) its picture baked on the fitted line, its share over its own length (r34's arch fix:
+            # a 7 cm card over 30 cm strands drew no strand, an EMPTY tile)
+            s = np.asarray(c["s"], float)
+            d = P - C
+            r = np.linalg.norm(d, axis=1)
+            e, _ = env(P)
+            tgt = np.nan_to_num(np.asarray(e, float), nan=0.0) - COVER_UNDER
+            w = _ss(np.clip(s / COVER_SEAT, 0.0, 1.0))
+            up = gaussian_filter1d(np.maximum(0.0, tgt - r), 1.5) * w
+            P = C + d * ((r + up) / np.maximum(r, 1e-9))[:, None]
+            X, N = np.asarray(c["X"], float), np.asarray(c["N"], float)
+            if COVER_TILT:  # (see COVER_TILT) the across direction turned toward the outward radial
+                Tn = np.asarray(c["T"], float)
+                Ru = P - C
+                Ru = Ru - (Ru * Tn).sum(1, keepdims=True) * Tn
+                Ru /= np.maximum(np.linalg.norm(Ru, axis=1, keepdims=True), 1e-12)
+                Xp = X - (X * Ru).sum(1, keepdims=True) * Ru
+                Xp /= np.maximum(np.linalg.norm(Xp, axis=1, keepdims=True), 1e-12)
+                ta = np.radians(COVER_TILT)
+                X = np.cos(ta) * Xp + np.sin(ta) * Ru
+                Nn = np.cross(Tn, X)
+                N = Nn * np.sign((Nn * N).sum(1, keepdims=True) + 1e-12)
+                P = P - Ru * (COVER_SINK * np.sin(ta) * np.asarray(c["hw"], float))[:, None]
+            L = max(float(s[-1]), 1e-6)
+            f = np.clip((s / L - (1.0 - COVER_TAPER)) / COVER_TAPER, 0.0, 1.0)
+            hw = np.asarray(c["hw"], float) * (1.0 - (1.0 - TIP_FLOOR) * _ss(f))
+            lk_ = int(np.bincount(St["lock"][mem]).argmax())
+            u = (c["i0"] * STEP + s) / max(float(np.percentile(St["len"][mem], 95)), 0.02)
+            out.append({"P": P, "X": X, "N": N, "T": c["T"], "bend": c["bend"], "hw": hw,
+                        "rad": np.asarray(c["rad"], float) + up, "u": u, "s": s, "kind": "baked", "layer": top,
+                        "cls": "head", "prio": top + 0.5 + 0.1 * rng.uniform(), "cval": 1.0, "value": 1.0,
+                        "lock": lk_, "sn": c["sn"], "strands": mem, "draw": COVER_DRAW, "s0": c["i0"] * STEP,
+                        "wisp": False, "edge": False, "cover": True, "P_fit": P_fit})
+    return out
+
+
+_FILL_BACK: list = []  # (round 35) root x (m from C) of head cards FILL let keep their root (diagnostics)
+ARCH = 4  # (round 34; default 4 from round 36 = f1, 0 = off) crown arch cards across the dome (0 = off). r34 card-ID pass (t34/cardid.py, b37 front g1v0): the
+# front outline's top is the scalp CAP (52 of 212 columns, the middle) and the ROOT ends (s 0.1-0.3) of crown cards
+# rooted at el 60-70 just in front of / over the head centre running back to the tie (outline columns at s < 0.2 on
+# their card: 45%). What an artist lays over the dome instead: long cards following the strands that cross the top,
+# from under the front layers (roots tucked), arching over at the strands' outer envelope (their BODIES make the
+# outline), tips tapered and faded behind the top (out of the front view)
+# r34 a10 (strands CROSSING el 70 with the root in front): none; the groom's own front-outline top (t34/strtop.py) is
+# strands ROOTED near the centre line (root x -10..+10 mm, el 62-73, 2-3.5 cm in front of C) standing 17-22 mm off the
+# scalp 24-48 mm from their roots, then running back. Our cards leave that strip empty (PART_GAP: crown cards rooted at
+# x +-27..37) and seat their roots (ROOT_SEAT): the cap is the outline there.
+ARCH_EL = 55.0  # deg: head strands rooted over this elevation (over the head centre C) ...
+ARCH_X = 0.03  # m: ... and within this of the centre line (|root x - C x|) feed the arch row
+ARCH_ROWS = 2  # the strip split by root y into this many rows (front to back), each into ARCH runs by root x
+ARCH_LEN = 0.09  # m: a card's length from its strands' roots (its tip tapered and faded behind the top)
+ARCH_START = 0.0  # m: its first ARCH_START from the roots dropped
+ARCH_SEAT = 0.035  # (0.02 before round 36) m: from its start it rises to the envelope over this (smoothstep; the strands stand 17-22 mm off
+# the scalp 24-48 mm from the root)
+ARCH_HW = 0.018  # (0.014 before round 36) m: its half width at most
+ARCH_PCT = 94.0  # (97 before round 36) percentile of the head strands' radius it is raised to
+ARCH_UNDER = 0.001  # m under that
+ARCH_FILL = 1  # (round 35; default on from round 36 = f1; needs ARCH; named FILL in round 35, which collided with the bake's FILL = 0.82
+# below, so it was on by default and hk.FILL=1 also set the packing share to 1.0) fill the mass UNDER the arch row (r34: the arch read as a crest over air: it
+# stood at the strands' p97 over cards that stay at <= p90, a cap at the scalp in the centre strip, and a front row
+# rising steeply off its roots). One change, three parts: (a) a head card whose root end runs BACK (x share of its
+# first PART_REACH under PART_SIDEWAYS: no visible part there) keeps its root (no PART_GAP cut, no part lead-in), so
+# crown cards root in the centre strip as the groom's top strands do (x +-10 mm); (b) the cap under the arch cards is
+# raised to their height less FILL_UNDER (hair.cap_fill_arch); (c) the arch's front row eases up over ARCH_SEAT_FRONT
+# (its root lies at its strands' own height, under the hairline layer, for longer).
+FILL_UNDER = 0.004  # m: the cap under the arch stands this far under the arch cards
+FILL_REACH = 8.0  # deg: cap vertices within this of an arch card's surface are raised (fully within hair.CAP_REACH)
+ARCH_SEAT_FRONT = 0.05  # m: the front row's rise (ARCH_FILL only)
+ARCH_PART_GAP = 0.0  # m (round 36): arch cards in front of the part's back end start this far off it (0 = PART_GAP)
+ARCH_ROOT_TAPER = 0.0  # m (round 36): the front arch row's root end narrows to a point over this (0 = off, square)
+ARCH_PART_KEEP = 0.0  # (round 36) in front of the part's back end, arch strands rooted within this x PART_GAP of the part
+# are dropped (1 = r36d: 605 of Tess's 1106 dropped, a V notch at the part); the cards still start PART_GAP off the part
+
+
+def arch_row(St: dict, C, idx, seed: int = 0, side_of=None) -> list:
+    """The crown arch row (see ARCH): head strands `idx` rooted over ARCH_EL within ARCH_X of the centre line, split by
+    root y into ARCH_ROWS rows and each by root x into ARCH runs; each run one card fitted to its strands, from
+    ARCH_START to ARCH_LEN from their roots, raised to the strands' ARCH_PCT envelope less
+    ARCH_UNDER (eased in over ARCH_SEAT), tapered (COVER_TAPER) and faded (COVER_FADE, "cover")."""
+    if not ARCH or not len(idx):
+        return []
+    from scipy.ndimage import gaussian_filter1d
+    C = np.asarray(C, float)
+    env = envelope(St, C, pct=ARCH_PCT)
+    R = St["root"][idx].astype(float) - C
+    el = np.degrees(np.arcsin(np.clip(R[:, 2] / np.maximum(np.linalg.norm(R, axis=1), 1e-9), -1, 1)))
+    ok = (el >= ARCH_EL) & (np.abs(R[:, 0]) <= ARCH_X)
+    mem_all = idx[ok]
+    if len(mem_all) < MIN_STRANDS * 2:
+        print(f"arch row: {len(mem_all)} strands in the strip: none", flush=True)
+        return []
+    yr, xr = R[ok, 1], R[ok, 0]
+    # (r34 a4: a run by root x mixed strands sweeping +x and -x off the part: the card followed one, its picture's
+    # strands lay 3-4 cm across it, an EMPTY tile) the way each strand leaves its root: +x, -x or back
+    Qm = St["Q"][mem_all].astype(float)
+    kk = min(Qm.shape[1] - 1, int(round(0.025 / STEP)))
+    dv = Qm[:, kk] - Qm[:, 0]
+    dv = np.where(np.isfinite(dv), dv, 0.0)
+    sx = dv[:, 0] / np.maximum(np.linalg.norm(dv, axis=1), 1e-9)
+    way = np.where(sx > 0.5, 1, np.where(sx < -0.5, -1, 0))
+    if side_of is not None:  # (round 36) part-safe: the centre strip is used as one only behind the part's back end
+        # (side_of's distance inf: no strand there shows a part); in front of it a run takes one side's strands, kept
+        # PART_GAP off the part and not sweeping across it (a run over the part line spanned it: test_no_card_spans_the_part)
+        sd_, dp_ = side_of(St["root"][mem_all])
+        fr_ = np.isfinite(dp_)
+        keep_ = ~fr_ | ((sd_ != 0) & (sx * sd_ > -0.5) & (dp_ >= ARCH_PART_KEEP * PART_GAP))
+        way = np.where(fr_, 3 * np.asarray(sd_, int) + way, way)  # a run per side AND sweep (back-running
+        # strands by the part get their own run on each side: r36e grouped by side alone and the cards bent away, a V notch)
+        print(f"arch row: {int(fr_.sum())} strands in front of the part's back end ({int((fr_ & ~keep_).sum())} at or "
+              f"across the part dropped)", flush=True)
+        mem_all, yr, xr, way = mem_all[keep_], yr[keep_], xr[keep_], way[keep_]
+        if len(mem_all) < MIN_STRANDS * 2:
+            return []
+    way_of = dict(zip(mem_all.tolist(), way.tolist()))
+    way_of = np.array([way_of.get(i, 0) for i in range(int(mem_all.max()) + 1)]) if len(mem_all) else np.zeros(1, int)
+    nr = max(1, int(ARCH_ROWS))
+    qy = np.quantile(yr, np.linspace(0, 1, nr + 1))
+    groups = []
+    for a_ in range(nr):
+        iy = (yr >= qy[a_]) & ((yr < qy[a_ + 1]) if a_ < nr - 1 else (yr <= qy[a_ + 1]))
+        for w_ in range(-4, 5):
+            iw = iy & (way == w_)
+            if iw.sum() < MIN_STRANDS * 2:
+                continue
+            n_ = max(1, min(int(ARCH), int(iw.sum()) // (MIN_STRANDS * 4)))
+            qx = np.quantile(xr[iw], np.linspace(0, 1, n_ + 1))
+            for b in range(n_):
+                groups.append((a_, mem_all[iw & (xr >= qx[b]) & ((xr < qx[b + 1]) if b < n_ - 1 else (xr <= qx[b + 1]))]))
+    top = len(LAYERS["head"]) - 1
+    rng = np.random.default_rng(seed + 59)
+    out = []
+    for row_, mem in groups:
+        if len(mem) < MIN_STRANDS:
+            continue
+        c = fit(St["Q"][mem], _cen_of(C, None), end_share=0.35, max_hw=ARCH_HW, spread=90.0, reference=True,
+                tip_taper=0.0)
+        if c is None:
+            continue
+        P = np.asarray(c["P"], float)
+        s = np.asarray(c["s"], float)
+        st0 = c["i0"] * STEP
+        k0 = int(np.searchsorted(s + st0, ARCH_START))
+        if side_of is not None and abs(int(np.median(way_of[mem]))) >= 2:  # (round 36) in front of the part's back
+            # end: the card starts PART_GAP off the part (its strands' roots by the part line are cut, as head cards')
+            _, dc_ = side_of(P)
+            ok_ = np.nonzero(dc_ >= (ARCH_PART_GAP if ARCH_PART_GAP > 0 else PART_GAP))[0]
+            k0 = max(k0, int(ok_[0]) if len(ok_) else len(P))
+        k1 = int(np.searchsorted(s + st0, ARCH_LEN)) + 1
+        if k1 - k0 < 6:
+            continue
+        n = len(P)
+        for k_ in ("P", "T", "N", "X", "bend", "hw", "sn", "u", "share", "out", "rad"):
+            if np.ndim(c.get(k_)) and len(c[k_]) == n:
+                c[k_] = np.asarray(c[k_])[k0:k1]
+        c["i0"] += k0
+        s = s[k0:k1] - s[k0]
+        P = np.asarray(c["P"], float)
+        d = P - C
+        r_ = np.linalg.norm(d, axis=1)
+        e, _ = env(P)
+        tgt = np.nan_to_num(np.asarray(e, float), nan=0.0) - ARCH_UNDER
+        seat_ = ARCH_SEAT_FRONT if (ARCH_FILL and row_ == 0) else ARCH_SEAT
+        w = _ss(np.clip(s / seat_, 0.0, 1.0))
+        up = gaussian_filter1d(np.maximum(0.0, tgt - r_), 1.5) * w
+        P_fit = P
+        P = C + d * ((r_ + up) / np.maximum(r_, 1e-9))[:, None]
+        L = max(float(s[-1]), 1e-6)
+        f = np.clip((s / L - (1.0 - COVER_TAPER)) / COVER_TAPER, 0.0, 1.0)
+        hw = np.asarray(c["hw"], float) * (1.0 - (1.0 - TIP_FLOOR) * _ss(f))
+        if ARCH_ROOT_TAPER > 0 and row_ == 0:  # (round 36) the front row's root end narrowed to a point over its first
+            # ARCH_ROOT_TAPER: its square root ends, seen end-on at 3/4, were a blocky ridged lump at the crown's front (f1)
+            hw = hw * (TIP_FLOOR + (1.0 - TIP_FLOOR) * _ss(np.clip(s / ARCH_ROOT_TAPER, 0.0, 1.0)))
+        lk_ = int(np.bincount(St["lock"][mem]).argmax())
+        u = (c["i0"] * STEP + s) / max(float(np.percentile(St["len"][mem], 95)), 0.02)
+        out.append({"P": P, "X": c["X"], "N": c["N"], "T": c["T"], "bend": c["bend"], "hw": hw,
+                    "rad": np.asarray(c["rad"], float) + up, "u": u, "s": s, "kind": "baked", "layer": top,
+                    "cls": "head", "prio": top + 0.6 + 0.1 * rng.uniform(), "cval": 1.0, "value": 1.0,
+                    "lock": lk_, "sn": c["sn"], "strands": mem, "draw": COVER_DRAW, "s0": c["i0"] * STEP,
+                    "wisp": False, "edge": False, "cover": True, "arch": True, "P_fit": P_fit, "row": row_})
+    print(f"arch row: {len(mem_all)} strands in the strip -> {len(out)} cards", flush=True)
+    return out
 
 
 def strand_part(St: dict, C):
@@ -543,6 +859,95 @@ def strand_part(St: dict, C):
     return f
 
 
+PART_VISIBLE = 1  # (round 37; coordinator: cards are judged against their source) the top cover rows (arch row, ARCH_FILL
+# (a)'s kept roots) may span the part wherever the SOURCE groom shows no part there; they keep off it only where the
+# groom's OUTLINE seen along the part has a notch at it (or a gap: no hair over it) (part_visible). 0 = every part
+# distance counts (round 36: r36d-g, the V notch at Tess's part, which her groom's outline doesn't have)
+PART_DIP = 0.003  # m: a shown part = the groom's outline across the part, seen along it, this far lower at the part line
+# than PART_DIP_W either side (the mean of both); no strand points in the band over the part line = a gap = shown.
+# (r37 dipprobe: Tess's groom SURFACE does dip at the part, 3-6 mm, 0.5 of the hair's depth there, more in front; 3 mm
+# on the surface flagged half her part, r37a: 31 arch cards vs f1's 17. The outline the judge sees has no notch: the
+# crown behind the part stands higher.)
+PART_DIP_W = 0.012  # m: across the part, either side
+PART_DIP_R = 0.002  # m: the outline's bands across the part (the highest head strand point in each)
+PART_DIP_REACH = 0.03  # m: points farther than this from the part are never "at a shown part"
+PART_DIP_WHOLE = 1  # (round 38) part_visible decides once per part (the median notch over its roots), not per root
+PART_DUMP = ""  # (diagnostics) a path: cut saves the head strands and the part at their roots there (npz)
+
+
+def part_visible(St: dict, C, side_of):
+    """`side_of` limited to where the groom SHOWS its part: points -> (side, distance), the distance inf where the
+    groom's outline seen ALONG the part (one view: up = the mean radial direction over the part-line roots, across = x
+    in that plane; the highest head strand point in each PART_DIP_R band across) has no notch PART_DIP at the part line
+    against PART_DIP_W either side. An empty band over the part line with hair either side is a gap: shown. Where
+    nothing can be measured the part counts. `f.dip(points)` -> the notch m at the part-line points nearest them (inf =
+    gap, NaN = off the part)."""
+    C = np.asarray(C, float)
+    Q = St["Q"][St["cls"] == "head"][:, ::2].reshape(-1, 3)
+    Q = Q[np.isfinite(Q[:, 0])].astype(float) - C
+    sd0, d0 = side_of(St["root"][St["cls"] == "head"])
+    R0 = St["root"][St["cls"] == "head"][np.isfinite(d0) & (np.asarray(d0) < PART_GAP)].astype(float) - C
+    up = R0.mean(0) if len(R0) else np.array([0.0, 0.0, 1.0])
+    up /= max(float(np.linalg.norm(up)), 1e-9)
+    xt = np.array([1.0, 0.0, 0.0]) - up[0] * up
+    xt /= max(float(np.linalg.norm(xt)), 1e-9)
+    a, h = Q @ xt, Q @ up
+    lo = float(a.min()) if len(a) else 0.0
+    nb = int((float(a.max()) - lo) / PART_DIP_R) + 1 if len(a) else 1
+    top = np.full(nb, -np.inf)
+    if len(a):
+        np.maximum.at(top, ((a - lo) / PART_DIP_R).astype(int), h)
+    top[~np.isfinite(top)] = np.nan
+
+    def outline(x):
+        k = np.floor((np.asarray(x, float) - lo) / PART_DIP_R).astype(int)
+        return np.where((k >= 0) & (k < nb), top[np.clip(k, 0, nb - 1)], np.nan)
+
+    def notch_at(ap):
+        hc, ha, hb = outline(ap), outline(ap + PART_DIP_W), outline(ap - PART_DIP_W)
+        hs = np.where(np.isfinite(ha) & np.isfinite(hb), 0.5 * (ha + hb), np.where(np.isfinite(ha), ha, hb))
+        return np.where(np.isfinite(hc), hs - hc, np.where(np.isfinite(hs), np.inf, np.nan))
+    tree, notch0 = None, None
+    if len(R0):
+        from scipy.spatial import cKDTree
+        on0 = np.isfinite(d0) & (np.asarray(d0) < PART_GAP)
+        notch0 = notch_at(R0 @ xt - np.asarray(sd0, float)[on0] * np.asarray(d0, float)[on0])
+        if PART_DIP_WHOLE and (~np.isnan(notch0)).any():
+            # (round 38) ONE notch for the whole part: the outline is a single view along it, so roots differ only by
+            # where the part line sits across it (a few mm), and per root the notch was noise around the threshold
+            # (Tess: p50 1-2 mm; >= 3 mm at 114 / 0 / 389 of 1129 roots for strand points every 2nd / 4th / 8th:
+            # t38/np3.py). The median over the part-line roots is stable (1.8 / 1.2 / 2.3 mm).
+            m_ = notch0[~np.isnan(notch0)]
+            notch0 = np.full(len(notch0), float(np.median(m_)))
+        tree = cKDTree(R0)
+
+    def dip(P, sd=None, dist=None):
+        P = np.asarray(P, float)
+        if sd is None:
+            sd, dist = side_of(P)
+        sd, dist = np.asarray(sd, float), np.asarray(dist, float)
+        out = np.full(len(P), np.nan)
+        fin = np.isfinite(dist) & (dist <= PART_DIP_REACH)
+        if not fin.any():
+            return out
+        if tree is not None:  # the notch at the nearest part-line root (side_of's distance is half a gap between
+            # roots, not a length to step across: stepped from roots 2-3 cm off, r37a read notches beside the part)
+            out[fin] = notch0[tree.query(P[fin] - C)[1]]
+        else:
+            out[fin] = notch_at((P[fin] - C) @ xt - sd[fin] * dist[fin])
+        return out
+
+    def f(P):
+        P = np.asarray(P, float)
+        sd, dist = side_of(P)
+        dp = dip(P, sd, dist)
+        shown = ~(np.isfinite(dp) & (dp < PART_DIP))  # unmeasured (bare both sides, off the reach) counts as shown
+        return sd, np.where(shown, dist, np.inf)
+    f.dip = dip
+    f.view = (up, xt)
+    return f
+
+
 _HOOKS: list = []
 
 
@@ -553,19 +958,39 @@ def cut(D: dict, locks: list, C, S: dict, side_of=None, seed: int = 0, layers: d
     module-level strands this cut used, kept on the first card as "_St") and "draw" (share of its strands drawn)."""
     St = strands(D, locks)
     _HOOKS.clear()
+    _FILL_BACK.clear()
     env = envelope(St, C, pct=ENV_PCT)
     env_side = envelope(St, C, pct=SIDE_ENV_PCT) if SIDE_ENV_PCT != ENV_PCT else None
     layers = layers or LAYERS
     rng = np.random.default_rng(seed + 31)
     out = []
     side = np.zeros(len(St["len"]))
-    if PART_FROM_STRANDS:  # the strands' own part first: the spec's default line (x = 3 cm) sat 3 cm off a tied
+    if PART_FROM_STRANDS and side_of is not None:  # (c2: never where the groom says "parting none": Garrett's G88a
+        # swept back with no part, the strands' near-even vote (21.7k / 24.2k) made one at the centre front, cards
+        # trimmed PART_GAP off it: the M-shaped notch in the hairline, hl.py notch +4.9 % vs the groom's -0.7)
+        # the strands' own part first: the spec's default line (x = 3 cm) sat 3 cm off a tied
         # groom's emergent centre part (b25 part dip at col 285, the groom's at 245; top roots sweep -x left of x = 0,
         # +x right of it, t18/partprobe.py)
         side_of = strand_part(St, C) or side_of
+    side_vis = side_of  # (round 37) the top cover rows' part: only where the groom shows one (PART_VISIBLE)
     if side_of is not None:
         sd, dist = side_of(St["root"])
         side = np.where(dist < PART_SPLIT, sd, 0.0)
+        if PART_DUMP:  # (round 37, diagnostics) the head strands + the part at their roots, for part_visible probes
+            hd_ = St["cls"] == "head"
+            np.savez_compressed(PART_DUMP, Q=St["Q"][hd_][:, ::2].astype(np.float32), root=St["root"][hd_],
+                                sd=sd[hd_], dist=dist[hd_], C=np.asarray(C, float))
+        if PART_VISIBLE:
+            side_vis = part_visible(St, C, side_of)
+            on_ = np.isfinite(dist) & (dist < PART_GAP)
+            if on_.any():
+                dp_ = side_vis.dip(St["root"][on_], sd[on_], dist[on_])
+                dp_ = dp_[np.isfinite(dp_)]
+                if len(dp_):
+                    print(f"part visible: {int((dp_ >= PART_DIP).sum())} of {len(dp_)} roots on the part show a >= "
+                          f"{PART_DIP * 1000:.0f} mm notch in the outline along it (p10 / p50 / p90 "
+                          f"{np.percentile(dp_, 10) * 1000:.1f} / {np.percentile(dp_, 50) * 1000:.1f} / "
+                          f"{np.percentile(dp_, 90) * 1000:.1f} mm)", flush=True)
     loop = crown_loops(St, C)
     for cls in ("head", "tail", "face"):
         idx = np.nonzero((St["cls"] == cls) & ~(loop & (cls == "head")))[0]
@@ -595,21 +1020,28 @@ def cut(D: dict, locks: list, C, S: dict, side_of=None, seed: int = 0, layers: d
                     sel = grp == gv
                     lab[sel] = kmeans(F[sel], max(1, int(round(k_all * sel.mean()))), seed + 7 * la) + off
                     off = int(lab[sel].max()) + 1
-            for g in np.unique(lab):
-                mem = idx[lab == g]
+            todo = [(idx[lab == g], 0) for g in np.unique(lab)]
+            while todo:
+                mem, dep = todo.pop(0)
                 lk = locks[int(np.bincount(St["lock"][mem]).argmax())]
                 # (hanging hair runs on to its longest strands' tips: ended where a quarter were left, Tess's tail
                 # ended in a straight cut 3 cm short)
                 # (and is its outline: a tail's outer strands spread past the 90th percentile; at it the cards' tail
                 # was 0.8 of the strands' width)
                 end_ = TAIL_END + (TAIL_END_JIT * rng.uniform() if cls == "tail" else 0.0)
-                c = fit(St["Q"][mem], _cen_of(C, lk.get("core")), end_share=(FACE_END if cls == "face" else end_) if cls != "head" else 0.35,
+                c = fit(St["Q"][mem], _cen_of(C, lk.get("core")), end_share=(FACE_END if cls == "face" else end_) if cls != "head" else HEAD_END,
                         max_hw=max_hw, spread=97.0 if cls == "tail" else 90.0, reference=cls == "head",
                         tip_taper=TIP_TAPER_TAIL if cls == "tail" else TIP_TAPER,
                         medoid=(MEDOID_TAIL_TOP if la == len(LAYERS["tail"]) - 1 else MEDOID_TAIL) if cls == "tail"
                         else MEDOID_FACE if cls == "face" else 0.0,
                         per_strand=HW_PER_STRAND if cls == "tail" else 0.0)
-                if c is None:
+                if c is None:  # (c6) no stretch where half its strands run: a clump spread ALONG the flow (behind the ears:
+                    # short strands rooted in a row down the hair's run, 64-68 % of those hairline strands had no card):
+                    # split it in two (k-means on the same features) and fit each half
+                    if dep < SPLIT_DEPTH and len(mem) >= SPLIT_MIN:
+                        sub = kmeans(features(St, mem), 2, seed + 17 * (dep + 1))
+                        if 0 < int(sub.sum()) < len(sub):
+                            todo += [(mem[sub == 0], dep + 1), (mem[sub == 1], dep + 1)]
                     continue
                 if cls == "head" and HOOK_RISE > 0 and la >= HOOK_LAYER_MIN:  # (round 26) a head card that comes down and turns back UP (the two
                     # hooked top-layer flaps at the front crown's outline, t25/crown_layers.png) ends where it turned
@@ -626,7 +1058,19 @@ def cut(D: dict, locks: list, C, S: dict, side_of=None, seed: int = 0, layers: d
                             if np.ndim(c.get(k_)) and len(c[k_]) == n_:
                                 c[k_] = np.asarray(c[k_])[:k1]
                         _HOOKS.append((la, n_, k1))
-                if cls == "head" and side_of is not None:  # its root stays PART_GAP off the part
+                back_ = False
+                if cls == "head" and ARCH_FILL and side_of is not None:  # (round 35, ARCH_FILL (a)) a root end running back:
+                    # no visible part there, the card keeps its root in the centre strip
+                    P_ = np.asarray(c["P"], float)
+                    kk_ = min(len(P_) - 1, max(1, int(round(PART_REACH / STEP))))
+                    dv_ = P_[kk_] - P_[0]
+                    back_ = abs(dv_[0]) / max(float(np.linalg.norm(dv_)), 1e-9) < PART_SIDEWAYS
+                    # (round 36) part-safe: only behind the part's back end (no voters near the root: distance inf)
+                    # (round 37) ... or where the groom shows no part there (PART_VISIBLE: side_vis)
+                    back_ = back_ and not bool(np.isfinite(side_vis(P_[:1])[1][0]))
+                    if back_:
+                        _FILL_BACK.append(float(P_[0, 0] - np.asarray(C, float)[0]))
+                if cls == "head" and side_of is not None and not back_:  # its root stays PART_GAP off the part
                     _, dpart = side_of(c["P"])
                     near = np.nonzero(dpart >= PART_GAP)[0]
                     k0 = int(near[0]) if len(near) else len(c["P"])
@@ -651,6 +1095,9 @@ def cut(D: dict, locks: list, C, S: dict, side_of=None, seed: int = 0, layers: d
                     P = cc_["P"]
                 if cls == "head" and ROOT_SEAT > 0:  # (round 27) the card's root end eased down onto the scalp
                     P = _root_seat(P, c["s"], St["root"][mem], C)
+                if cls == "head" and CROWN_FILL > 0:  # (round 31) the head's layers raised toward the strands' envelope (after
+                    # the root seat: seated roots were most of the shortfall over the crown)
+                    P = _crown_fill(P, la, len(layers[cls]), env, C, c["s"])
                 kind = "baked"
                 u = (c["i0"] * STEP + c["s"]) / max(float(np.percentile(St["len"][mem], 95)), 0.02)
                 out.append({"P": P, "X": c["X"], "N": c["N"], "T": c["T"], "bend": c["bend"], "hw": c["hw"],
@@ -660,6 +1107,21 @@ def cut(D: dict, locks: list, C, S: dict, side_of=None, seed: int = 0, layers: d
                             "cval": 1.0, "value": 1.0, "lock": lk["name"], "sn": c["sn"],
                             "strands": mem, "draw": share, "s0": c["i0"] * STEP, "wisp": cls == "face",
                             "edge": bool(lk.get("at_hairline")) or cls == "face"})
+    if PART_COVER and side_of is not None:  # (round 33) the part's cover row, over the side cards
+        cov = part_cover(St, C, side_of, env, np.nonzero((St["cls"] == "head") & ~loop)[0], seed)
+        for c_ in cov:
+            c_["lock"] = locks[c_["lock"]]["name"]
+        out.extend(cov)
+        print(f"part cover: {len(cov)} cards", flush=True)
+    if ARCH:  # (round 34) the crown arch row, over the dome
+        arc = arch_row(St, C, np.nonzero((St["cls"] == "head") & ~loop)[0], seed, side_of=side_vis)
+        if ARCH_FILL:
+            fb_ = np.abs(np.asarray(_FILL_BACK))
+            print(f"fill: {len(fb_)} head cards keep their back-running roots ({int((fb_ < 0.015).sum())} rooted within "
+                  f"15 mm of the centre line)", flush=True)
+        for c_ in arc:
+            c_["lock"] = locks[c_["lock"]]["name"]
+        out.extend(arc)
     # flyaways: single strands that break the outline, a card each (Epic: one card per flyaway strand)
     idx = np.nonzero(St["cls"] == "single")[0]
     if len(idx):
@@ -797,7 +1259,7 @@ def layout(cards: list, W: int, H: int, aniso: float | None = None) -> tuple[lis
 
 def _card_coords(c: dict, q: np.ndarray, smooth: bool = False):
     """Points q (k, 3) in a card's own frame: (across m, along m from the card's start, depth m over its plane)."""
-    P = np.asarray(c["P"], float)
+    P = np.asarray(c.get("P_fit", c["P"]), float)  # (the arch row's picture: its strands, not the raised line)
     from scipy.spatial import cKDTree
     i = cKDTree(P).query(q)[1]
     d = q - P[i]
@@ -914,7 +1376,13 @@ def bake(cards: list, St: dict, W: int, H: int, ss: int = 2, seed: int = 0, look
                 continue
             ax, al, dp = _card_coords(c, q, smooth=True)
             inside = (np.abs(ax) <= hwm) & (al >= 0) & (al <= L)
-            if not c.get("fly") and inside.mean() < IN_SHARE:
+            if c.get("arch") or c.get("cover"):  # (r34) the arch card covers its strands' first ARCH_LEN only: the share over that
+                # (round 35: the part cover's COVER_LEN too)
+                # (over the whole strand, IN_SHARE dropped every strand: an empty tile)
+                m_ = al <= L
+                if not m_.any() or inside[m_].mean() < IN_SHARE:
+                    continue
+            elif not c.get("fly") and inside.mean() < IN_SHARE:
                 continue
             frac = np.nonzero(ok)[0] * STEP / max(float(St["len"][j]), 1e-6)
             for k_ in range(int(c.get("kids", 1))):  # a groom strand stands for many real hairs: at a fine texel each
@@ -1009,6 +1477,8 @@ def bake(cards: list, St: dict, W: int, H: int, ss: int = 2, seed: int = 0, look
             tn2 = np.clip(tn2 * (1.0 + TAIL_ROOT_LIFT * rr_), 0, 1)
         if c.get("cls") == "tail" and TIP_FADE_TAIL > 0:  # the tail's hairs end one by one under the cutoff
             a = a * (1.0 - _ss(np.clip((yy - (1.0 - TIP_FADE_TAIL)) / TIP_FADE_TAIL, 0.0, 1.0)))
+        elif c.get("cover") and COVER_FADE > 0:  # (round 33) the part cover's tips end soft on the side cards
+            a = a * (1.0 - _ss(np.clip((yy - (1.0 - COVER_FADE)) / COVER_FADE, 0.0, 1.0)))
         if c["layer"] == 0 and c.get("cls") in ("head", "tail"):  # coverage: an opaque core under the strands where they are (no scalp between)
             # (not into the tips: an opaque core to the card's end was a straight cut with a dark band, Tess's tail)
             base = np.clip(ndimage.gaussian_filter(a, 1.5) * 2.2, 0, 1) * 0.92 * (1 - _ss((yy - 0.6) / 0.3)) \
@@ -1038,9 +1508,25 @@ def _tile_groups(cards: list) -> list:
     """Card groups that may share a picture: class (head / tail / face / fly), coverage vs upper layers."""
     def g(c):
         cls = "fly" if c.get("fly") else str(c.get("cls"))
+        if c.get("cover"):  # (round 33) the part cover keeps its own pictures (their tips fade: COVER_FADE)
+            return (cls, 2)
         return (cls, 0 if (int(c["layer"]) == 0 and cls in ("head", "tail")) else 1)
     keys = [g(c) for c in cards]
     return keys
+
+
+def card_grey(cards: list, St: dict, locks: list | None, look: dict) -> np.ndarray | None:
+    """Each card's share of grey hairs, the strand look's rule (hair_cap.strand_grey): look.grey_amount + look.grey_locks
+    x its strands' locks' grey (mean), or None when the locks carry no grey."""
+    if not locks:
+        return None
+    gk = np.asarray([float((k.get("inputs") or {}).get("Grey", k.get("grey", 0.0)) or 0.0) for k in locks])
+    if not (gk > 0).any():
+        return None
+    lk_ = np.asarray(St["lock"])
+    g = np.asarray([float(gk[lk_[np.asarray(c["strands"], int)]].mean()) if len(c["strands"]) else float(gk.mean())
+                    for c in cards])
+    return np.clip(float(look.get("grey_amount", 0.0)) + float(look.get("grey_locks", 1.0)) * g, 0, 1)
 
 
 def bake_tiles(cards: list, St: dict, W: int, H: int, n: int = TILES, ss: int = 2, seed: int = 0,
@@ -1062,10 +1548,13 @@ def bake_tiles(cards: list, St: dict, W: int, H: int, n: int = TILES, ss: int = 
     raw = {k: np.sqrt(ga[k] / tot) for k in gk}
     kn = {k: max(1, int(round(n * raw[k] / sum(raw.values())))) for k in gk}
     reps, tile = [], np.zeros(len(cards), int)
+    cg = card_grey(cards, St, locks, look or {})
     for k in gk:
         idx = np.array([i for i, x in enumerate(keys) if x == k])
         kk = min(kn[k], len(idx))
         F = np.stack([np.log(L[idx]) * 3.0, np.log(Wd[idx])], 1)
+        if cg is not None and GREY_TILES > 0:  # (grey shares 0..1: x 6 puts .2 apart about as far as 2x the length)
+            F = np.concatenate([F, (6.0 * GREY_TILES * cg[idx])[:, None]], 1)
         lab = kmeans(F, kk, seed=seed) if kk > 1 else np.zeros(len(idx), int)
         for q in np.unique(lab):
             mem = idx[lab == q]
@@ -1136,6 +1625,22 @@ def bake_tiles(cards: list, St: dict, W: int, H: int, n: int = TILES, ss: int = 
             r_ = R0[np.asarray(c["strands"], int)].mean(0) - np.asarray(C, float)
             w_ = _ss(np.clip((r_[1] - TONE_POS_Y[0]) / (TONE_POS_Y[1] - TONE_POS_Y[0]), 0, 1))
             tint[i] *= TONE_FRONT + (TONE_BACK - TONE_FRONT) * float(w_)
+    if GREY_TINT > 0 and locks:  # (c1) a card's tone by its locks' grey (the groom's grey by region: Garrett's sides .65,
+        # top .22): the tiles are shared, so a grey region's cards came out the head's one dark tone (g1v1 -16 L* p50)
+        gk = np.asarray([float((k.get("inputs") or {}).get("Grey", k.get("grey", 0.0)) or 0.0) for k in locks])
+        gc = np.asarray([float(gk[np.asarray(St["lock"])[np.asarray(c["strands"], int)]].mean()) if len(c["strands"])
+                         else np.nan for c in cards])
+        if np.isfinite(gc).any() and np.nanstd(gc) > 1e-3:
+            gm = float(np.nanmedian(gc))
+            tint = tint * np.clip(1.0 + GREY_TINT * np.nan_to_num(gc - gm), 0.6, 2.2)
+    if cg is not None and GREY_TILES > 0:  # each tile's grey-hair share: the mean of its cards' (by their strands)
+        G = np.full(B["alpha"].shape, np.nan, np.float32)
+        for q, (x_, y_, w_, h_) in enumerate(B["islands"]):
+            G[y_:y_ + h_, x_:x_ + w_] = float(np.mean(cg[tile == q]))
+        B["gshare"] = G
+        ts_ = np.array([float(np.mean(cg[tile == q])) for q in range(len(B["islands"]))])
+        print(f"tile grey share: cards p5/50/95 {np.percentile(cg, [5, 50, 95]).round(2)}, tiles {np.percentile(ts_, [5, 50, 95]).round(2)}"
+              f" ({len(ts_)} tiles)", flush=True)
     B["tile_islands"] = B["islands"]
     B["islands"] = [B["tile_islands"][t] for t in tile]
     B["tint"], B["tile"], B["reps"] = tint, tile, reps

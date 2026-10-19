@@ -2504,6 +2504,11 @@ SHORT_TIERS = {"hero": {"triangles": 16000, "cap_step": 6.0, "group": "pair", "l
                "main": {"triangles": 8000, "cap_step": 7.5, "group": "pair", "layers": 1, "baby": 0.0, "fly": 1},
                "npc": {"triangles": 4000, "cap_step": 10.0, "group": "lock", "layers": 1, "baby": 0.0, "fly": 0},
                "far": {"triangles": 1500, "group": "lock", "layers": 1, "baby": 0.0, "fly": 0}}
+EVEN_SHORT_CAP = 1  # (c1, 2026-10-18) an EVEN short groom (clumps-cut cards) still wears the short cut's baked cap
+# (hair_cap.chart: every strand drawn, grey by lock): hs.cap_chart reads no hair_even strands (G88a c1c: bare scalp patches)
+EVEN_CAP_KEEP = 0.6  # (c3) x the even cap's mid height: the least it keeps under its cards (0: the scalp floor, c2's hero holes)
+EVEN_CLUMPS = 1  # (c2) an even groom is cut by visual clumps at every tier (0: the hero tier only, before c2)
+EVEN_SHORT_LIFT = 1  # and that cap stands at the hair's mid height (the short cut's mass) when 1 (c1e: default); 0 = on the scalp (c1d: under the skin, bare patches)
 SHORT_TOP = 0.6  # x a clump's spread along its normal: a short cut's card stands at the top of its clump
 SHORT_TIP = 0.0015  # m: how far a short cut's card tips rise off the cap (x 0.2-1.6 per card)
 SWOOP_CARDS = 3  # a swoop's dedicated cards (one lock)
@@ -2513,6 +2518,11 @@ PRIO_FREE = -0.6  # hanging hair (free locks: a tail) before the second layer of
 PRIO_HALO = 0.35  # pooled single hairs (the halo as ~30 fly cards, ~400 triangles): kept just before a tail's second layer
 PRIO_FACE = -0.8  # face-framing hair (wisps, curls at the temples) before anything but the coverage layer's core
 FACE_IN, FACE_AZ = 0.02, 115.0  # m inside the hairline, deg from the front: where a free lock's root counts as face-framing
+ARCH_TIERS: dict = {"main": 0.6, "npc": 0.4, "far": 0.25}  # (round 35; default from round 36 = f1) tier -> share of hair_clumps.ARCH arch cards per run at that tier (e.g. {"main": 0.6,
+# "npc": 0.4, "far": 0.25}; {} = off): the crown arch (and with hair_clumps.ARCH_FILL its cap fill) carried to LOD1-3, fewer
+# and wider, so the crown doesn't drop at the LOD0 -> LOD1 switch
+COVER_TIERS: dict = {}  # (round 33) tier -> share of hair_clumps.PART_COVER cover cards per side at that tier (e.g.
+# {"main": 0.6, "npc": 0.4}; {} = off): the part cover row thinned with the tiers
 CUT_SHARE = 0.45  # the coverage layer of every lock must fit this share of a tier's triangles, else the cut coarsens
 SWOOP_WIDTH = 0.026  # m: their width
 SWOOP_BACK = 0.003  # m inside the hairline where they start
@@ -2551,6 +2561,16 @@ for _t in CARD_TIERS:
     CARD_TIERS[_t]["triangles"] = tier_triangles(_t)
 
 
+def tier_settings(tier: str, short: bool = False, even: bool = False) -> dict:
+    """A card tier's settings: CARD_TIERS, a short cut's SHORT_TIERS over them; an EVEN groom (strands.even) is cut by
+    visual clumps at every tier: it has no per-lock guide strands, so clump_cards found none (c2: Garrett's main 57
+    cards, npc / far 0, the lifted cap alone stood as a pompadour). hair_clumps.cut scales its cards with the triangles."""
+    t = {**CARD_TIERS[tier], **(SHORT_TIERS[tier] if short else {})}
+    if even and EVEN_CLUMPS:
+        t["cut"] = "clumps"
+    return t
+
+
 def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budget: int | None = None,
               cap_step: float = 1.0, col=None, clear_col=None) -> dict:
     """The hair as cards (hair_cards.py): the card mesh of every lock + baby hairs, the underlayer wearing the strand
@@ -2561,17 +2581,27 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
     lens_ = [float(np.linalg.norm(np.diff(np.asarray(k_["pts"], float), axis=0), axis=1).sum())
              for k_ in locks] if g.get("loose") else []
     short = bool(lens_) and float(np.mean(lens_)) < MASS_MIN
+    # an EVEN groom (strands.even: one field over the scalp, hair_even*, Garrett's G88a) has no per-lock guide strands:
+    # the short cut's per-lock cards (clump_cards) found none (c1a: the cap alone, 0 cards). It is cut by visual
+    # clumps (hair_clumps, the hero tier's cut) like any other groom
+    short_len = short
+    even = float((h.get("strands") or {}).get("even", 0.0) or 0.0) > 0
+    if short and even:
+        short = False
     tier_given = isinstance(budget, str)
+    tier_name = budget if isinstance(budget, str) else None
     if isinstance(budget, str):  # a tier: its triangles, and how fine the cards are cut to spend them
         if budget not in CARD_TIERS:
             raise HairError(f"hair cards: tier is one of {', '.join(CARD_TIERS)} (or a triangle count)")
-        tier = {**CARD_TIERS[budget], **(SHORT_TIERS[budget] if short else {})}
+        tier = tier_settings(budget, short, even)
         S = {**S, **{k: v for k, v in tier.items() if k not in ("triangles", "cap_step", "cap")}}
         ex_ = h.get("export") or {}
         budget = tier_triangles(budget, ex_.get("role", "hero"), ex_.get("tier_triangles"))
     if short:
         S = {**S, "atlas": max(int(S["atlas"]), SHORT_ATLAS), "fly": int(S.get("fly", 0)) if tier_given else 0,
              "short": True}
+    elif short_len and EVEN_SHORT_CAP:  # an even short groom (clumps cards): the short cut's BAKED cap all the same
+        S = {**S, "atlas": max(int(S["atlas"]), SHORT_ATLAS)}
     lk = look_of(spec, h)
     if (h.get("export") or {}).get("card_gain") is not None:  # the cards' colour gain measured against the strand look
         lk["card_gain"] = float(h["export"]["card_gain"])  # (an export setting: the approved groom's look stays)
@@ -2585,7 +2615,7 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
         import re as _re
         sd = hs.job(sc, g, spec, [k_ for k_ in locks if not _re.fullmatch(r"t\d*band", k_["name"])], tmp, col=col)
         D, e_chart = hs.strands_of_model(sd), sd["e0"]
-        if short:  # the cap's picture is BAKED from the strands: colour, depth, normal, flow, grey (hair_cap.py)
+        if short or (short_len and EVEN_SHORT_CAP):  # the cap's picture is BAKED from the strands: colour, depth, normal, flow, grey (hair_cap.py)
             from . import hair_cap
             ck = (hs.key(sd), int(S["atlas"]), hair_cap.VERSION, lk.get("grey_locks"), lk.get("grey_amount"), lk.get("card_grey"), float(S["soft"]))
             if ck not in _CHARTS:
@@ -2595,7 +2625,7 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
             chart = _CHARTS[ck]
         else:
             chart = hs.cap_chart(sc, g, hairline(sc, g), S, D, e_chart, int(S["atlas"]))
-        akey_ = hs.key(sd) + (f"short{hair_cap.VERSION}" if short else "")
+        akey_ = hs.key(sd) + (f"short{hair_cap.VERSION}" if short or (short_len and EVEN_SHORT_CAP) else "")
 
         def make_atlas(bake=None):
             return hc.atlas(S, lk, lines=hs.tile_lines(S), cap=chart, key=akey_, bake=bake)
@@ -2617,6 +2647,10 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
                           and inside(sc, line, a0, e0)[0] < FACE_IN
                           and abs(((float(a0[0]) + 180.0) % 360.0) - 180.0) < FACE_AZ)
         k_["off_head"] = bool(float(k_.get("free", 0.0)) > 0.5 and h0[0] > 0.02)  # (rooted in hanging hair: a tail's strays)
+        # a SHORT loose cut's locks are all "free" (none tied) but lie on the head: head cards, not a tail's hanging
+        # ones (G88a's clumps cut drew 100% hanging cards with the ponytail's tone / twist / tip knobs, c1)
+        k_["lies"] = bool(short_len and g.get("loose") and not g.get("tied") and h0[0] < 0.02)
+        k_["face"] = k_["face"] and not k_["lies"]  # (its hairline locks lie on the head too: no face-framing wisps)
     hair_locks = [k_ for k_ in locks if k_ not in bands]
     core = None
     clumped = D is not None and not short and S.get("cut") == "clumps"
@@ -2667,6 +2701,57 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
                 elif float(lk_.get("free", 0.0)) > 0.5:
                     p_ += PRIO_FREE
                 c_["prio"] = p_
+        if (not clumped and not short and COVER_TIERS and tier_name
+                and float(COVER_TIERS.get(tier_name, 0.0)) > 0):  # (round 33) the part's cover row at a coarser tier:
+            # hair_clumps.part_cover with fewer, wider cards (COVER_TIERS x PART_COVER per side) on the tiles
+            from . import hair_clumps as _hk
+            n_cov = int(round(float(COVER_TIERS[tier_name]) * max(_hk.PART_COVER, 1)))
+            if n_cov > 0:
+                St_c = _hk.strands(D, hair_locks)
+                so_c = (_hk.strand_part(St_c, sc.C) if _hk.PART_FROM_STRANDS else None) or part_side_of(sc, g)
+                if so_c is not None:
+                    env_c = _hk.envelope(St_c, sc.C, pct=_hk.ENV_PCT)
+                    pc_, hw_ = _hk.PART_COVER, _hk.COVER_HW
+                    _hk.PART_COVER, _hk.COVER_HW = n_cov, hw_ * max(1.0, float(_hk.PART_COVER) / n_cov) ** 0.5
+                    try:
+                        cov_ = _hk.part_cover(St_c, sc.C, so_c, env_c,
+                                              np.nonzero((St_c["cls"] == "head") & ~_hk.crown_loops(St_c, sc.C))[0],
+                                              int(g.get("seed", 0)))
+                    finally:
+                        _hk.PART_COVER, _hk.COVER_HW = pc_, hw_
+                    top_ = max([int(c_["layer"]) for c_ in cards if c_["kind"] != "fly"] or [0])
+                    for c_ in cov_:
+                        c_.update(kind="medium" if top_ == 0 else "sparse", layer=top_, prio=top_ + 0.5,
+                                  lock=hair_locks[int(c_["lock"])]["name"],
+                                  u=np.asarray(c_["s"], float) / max(float(np.asarray(c_["s"])[-1]), 1e-6))
+                        for k_ in ("strands", "draw", "cover"):
+                            c_.pop(k_, None)
+                    cards = cards + cov_
+                    print(f"hair cards: part cover {len(cov_)} cards at tier {tier_name!r}", flush=True)
+        if (not clumped and not short and ARCH_TIERS and tier_name
+                and float(ARCH_TIERS.get(tier_name, 0.0)) > 0):  # (round 35) the crown arch at a coarser tier
+            from . import hair_clumps as _hk
+            n_ar = max(1, int(round(float(ARCH_TIERS[tier_name]) * max(_hk.ARCH, 1))))
+            St_c = _hk.strands(D, hair_locks)
+            ar_, hw_ = _hk.ARCH, _hk.ARCH_HW
+            _hk.ARCH, _hk.ARCH_HW = n_ar, hw_ * max(1.0, float(max(_hk.ARCH, 1)) / n_ar) ** 0.5
+            try:
+                so_ = (_hk.strand_part(St_c, sc.C) if _hk.PART_FROM_STRANDS else None) or part_side_of(sc, g)
+                if so_ is not None and _hk.PART_VISIBLE:  # (round 37) only where the groom shows the part
+                    so_ = _hk.part_visible(St_c, sc.C, so_)
+                arc_ = _hk.arch_row(St_c, sc.C, np.nonzero((St_c["cls"] == "head") & ~_hk.crown_loops(St_c, sc.C))[0],
+                                    int(g.get("seed", 0)), side_of=so_)
+            finally:
+                _hk.ARCH, _hk.ARCH_HW = ar_, hw_
+            top_ = max([int(c_["layer"]) for c_ in cards if c_["kind"] != "fly"] or [0])
+            for c_ in arc_:
+                c_.update(kind="medium" if top_ == 0 else "sparse", layer=top_, prio=top_ + 0.5,
+                          lock=hair_locks[int(c_["lock"])]["name"],
+                          u=np.asarray(c_["s"], float) / max(float(np.asarray(c_["s"])[-1]), 1e-6))
+                for k_ in ("strands", "draw", "cover", "P_fit", "row"):
+                    c_.pop(k_, None)
+            cards = cards + arc_
+            print(f"hair cards: crown arch {len(arc_)} cards at tier {tier_name!r}", flush=True)
         if short:  # cards wherever the groom has length, lying just over the cap (which stands at the hair's mid
             # height), on the open tiles (a few thick strands, no opaque base). The budget thins them EVENLY: what
             # stands off the cap (the lifted front, the outline) and the hairline's cards stay longest, the rest go
@@ -2783,10 +2868,21 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
     Vc = np.asarray(V, float)
     lift = 0.1 * (1 - np.cos(np.radians(cap_step) / 2)) * 1.6 + 0.002  # (+ the scalp grid vs the skin mesh: ~1 mm)
     Vc = Vc + lift * _unit(Vc - sc.C)
+    even_lift = D is not None and not short and short_len and EVEN_SHORT_CAP and EVEN_SHORT_LIFT
+    if even_lift:  # (c2) an even short groom's cap stands at the hair's mid height (cap_height over the SCALP, not over
+        # whatever the cap mesh had: on a mass cap the two added up) and then goes under its cards like any cap: added
+        # AFTER cap_under_cards it stood over the cards wherever they were few (main / npc / far: +17-28 % outline height)
+        ca_, ce_, ch_ = sc.coords(Vc)
+        hz_ = lift + hair_cap.cap_height(chart["lift"], inside(sc, line, ca_, ce_), ca_, ce_)
+        Vc = Vc + (hz_ - ch_)[:, None] * _unit(Vc - sc.C)
+    # (c3) and never sinks under EVEN_CAP_KEEP x that height going under the cards: at the floor (lift, ~2 mm) it lay
+    # under the head's skin where cards were sparse (c2's hero: rows of bare-scalp holes at the back, behind the ear)
+    cfloor = np.maximum(lift, EVEN_CAP_KEEP * hz_) if even_lift else lift
     if D is not None and not short and cards:  # the cap is UNDER the cards: it is the scalp's tint between them, never
         # the surface. The groom's envelope stood 25 mm off the top of Tess's W18 where the coverage cards lie at 17:
         # a lighter, flatter helmet over the cards with a seam where they came out from under it (hair_r2)
-        Vc = cap_under_cards(sc, Vc, [c_ for c_ in cards if c_["layer"] == 0 and c_["kind"] != "fly"], lift)
+        Vc = cap_under_cards(sc, Vc, [c_ for c_ in cards if c_["layer"] == 0 and c_["kind"] != "fly"], cfloor,
+                             bare_floor=CAP_BARE_FLOOR and not even_lift)  # (an even cap keeps its mid height where no card is: c1d's bare patches)
         if CAP_RELAX > 0:  # (round 26) the cap's radius relaxed over its mesh and only ever lowered: its top under the
             # cards was a flat notched block that stood up at the front crown's outline (RC review "flat spike")
             Fq = np.asarray(F)
@@ -2807,7 +2903,11 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
                 vh_ = sc.coords(Vc)[2]
                 r_ = np.maximum(r_, r0 - np.maximum(vh_ - lift, 0.0))
             Vc = sc.C + d_ * (r_ / np.maximum(r0, 1e-9))[:, None]
-    if short and D is not None:  # the cap is the hair's MASS: it stands at the hair's mid height, easing down to the
+        if even_lift and EVEN_CAP_KEEP > 0:  # (the relaxation lowers too: the even cap's floor holds after it)
+            _a, _e, ch_ = sc.coords(Vc)
+            Vc = Vc + np.maximum(cfloor - ch_, 0.0)[:, None] * _unit(Vc - sc.C)
+        Vc = cap_fill_arch(sc, Vc, [c_ for c_ in cards if c_.get("arch")])
+    if D is not None and short:  # the cap is the hair's MASS: it stands at the hair's mid height, easing down to the
         # skin at the hairline (on the scalp itself the head's profile was a bald dome under a fringe of cards)
         ca_, ce_, _ch = sc.coords(Vc)
         Vc = Vc + hair_cap.cap_height(chart["lift"], inside(sc, line, ca_, ce_), ca_, ce_)[:, None] * _unit(Vc - sc.C)
@@ -2847,7 +2947,8 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
                                        locks=hair_locks)
         else:
             B = hair_clumps.bake(bk, St_, Wt, Hb, seed=int(g.get("seed", 0)), look=lk, C=sc.C, locks=hair_locks)
-        at = make_atlas({**B, "key": hashlib.sha1(B["alpha"].tobytes()).hexdigest()})
+        at = make_atlas({**B, "key": hashlib.sha1(B["alpha"].tobytes() + (np.nan_to_num(B["gshare"]).tobytes()
+                                                                         if B.get("gshare") is not None else b"")).hexdigest()})
         Ht, Hall = at["rows"], at["rows_total"]
         tint_ = B.get("tint", np.ones(len(bk)))
         for c_, (x_, y_, w_, h_), t_ in zip(bk, B["islands"], tint_):
@@ -2913,7 +3014,7 @@ def card_classes(before: list, after: list, S: dict, seg, locks: dict) -> dict:
             return "hanging"
         if int(lk.get("hairs") or 0) > 0 or c["kind"] == "fly":
             return "single"
-        return "hanging" if float(lk.get("free", 0.0)) > 0.5 else "head"
+        return "hanging" if float(lk.get("free", 0.0)) > 0.5 and not lk.get("lies") else "head"
     out: dict = {}
     for tag, cs in (("cut", before), ("kept", after)):
         for c in cs:
@@ -2927,10 +3028,13 @@ def card_classes(before: list, after: list, S: dict, seg, locks: dict) -> dict:
 CAP_BARE_FLOOR = True  # a cap vertex with no coverage card within CAP_FAR lies at the floor (False: its mass height, before round 18)
 CAP_UNDER = 0.0025  # m: the cap stays this far under the lowest coverage card over it
 CAP_FAR = 12.0  # deg: a cap vertex with no card within CAP_REACH takes the nearest cards' height within this
+CAP_TOP_EL = 0.0  # (round 32; opt-in) deg: over this elevation a cap vertex with no card within CAP_REACH takes the
+# HIGHEST of the nearest cards' heights within CAP_FAR (not the lowest less CAP_UNDER): no card passes over el 80, so the
+# top of the dome was the cap at the seated roots' height, a dip between the crown's cards (Joe: "chopped off"); 0 = off
 CAP_REACH = 4.0  # deg: the cards over a cap vertex are those within this angle of it (seen from the head's centre)
 
 
-def cap_under_cards(sc: Scalp, V, cards: list, floor: float = 0.0015):
+def cap_under_cards(sc: Scalp, V, cards: list, floor: float = 0.0015, bare_floor: bool | None = None):
     """Cap vertices pushed down (toward the head's centre) to CAP_UNDER under the lowest coverage card within
     CAP_REACH, never under `floor` off the scalp; where no card passes over a vertex it keeps its height."""
     from scipy.spatial import cKDTree
@@ -2953,15 +3057,54 @@ def cap_under_cards(sc: Scalp, V, cards: list, floor: float = 0.0015):
         dd, ii = tree.query(dv[far], k=8, distance_upper_bound=2 * np.sin(np.radians(CAP_FAR) / 2))
         ok = np.isfinite(dd)
         lo[far] = np.where(ok.any(1), np.where(ok, ph[np.minimum(ii, len(ph) - 1)], np.inf).min(1), np.inf)
+        if CAP_TOP_EL > 0:
+            top_ = far.copy()
+            top_[far] = (ve[far] > CAP_TOP_EL) & ok.any(1)
+            if top_.any():
+                hi_ = np.where(ok, ph[np.minimum(ii, len(ph) - 1)], -np.inf).max(1)
+                lo[top_] = hi_[top_[far]] + CAP_UNDER
     # no card over a vertex nor near it: a hole in the coverage (the part's gap, a narrowed card), so the cap lies on
     # the scalp there (CAP_BARE_FLOOR). Kept at its mass height, those vertices stood up through the hair as points
     # (b25's front-top "cat ears" where BEND_HW narrowed layer-0 cards; b26's knob at the strand part, round 18)
     h = np.where(np.isfinite(lo), np.minimum(vh, np.maximum(lo - CAP_UNDER, floor)),
-                 np.minimum(vh, floor) if CAP_BARE_FLOOR else vh)
+                 np.minimum(vh, floor) if (CAP_BARE_FLOOR if bare_floor is None else bare_floor) else vh)
     # and no vertex stands over its neighbours' mean (single vertices left at the envelope were spikes)
     vt = cKDTree(dv)
     nb = vt.query_ball_point(dv, 2 * np.sin(np.radians(CAP_REACH) / 2))
     h = np.minimum(h, np.array([h[n].mean() for n in nb]) + 0.001)
+    return V + (h - vh)[:, None] * _unit(V - sc.C)
+
+
+def cap_fill_arch(sc: Scalp, V, arch: list):
+    """(round 35, hair_clumps.ARCH_FILL (b)) cap vertices under the crown arch cards raised to their height less FILL_UNDER
+    (fully within CAP_REACH of an arch card's surface, eased out to nothing at FILL_REACH): the arch lies on a mass,
+    not over the scalp. Only ever raised; the height is a gaussian-weighted mean of the arch surface heights near."""
+    from scipy.spatial import cKDTree
+    from . import hair_clumps as _hk
+    V = np.asarray(V, float)
+    if not arch or not _hk.ARCH_FILL:
+        return V
+    P = np.concatenate([np.asarray(c["P"], float) + k_ * np.asarray(c["X"], float) * np.asarray(c["hw"], float)[:, None]
+                        for c in arch for k_ in (-0.7, 0.0, 0.7)])
+    pa, pe, ph = sc.coords(P)
+    va, ve, vh = sc.coords(V)
+    tree = cKDTree(dirs(pa, pe))
+    dv = dirs(va, ve)
+    ch = lambda deg: 2 * np.sin(np.radians(deg) / 2)
+    dd, ii = tree.query(dv, k=16, distance_upper_bound=ch(_hk.FILL_REACH))
+    ok = np.isfinite(dd)
+    if not ok.any():
+        return V
+    ang = np.degrees(2 * np.arcsin(np.clip(np.where(ok, dd, 0.0) / 2, 0, 1)))
+    wk = np.where(ok, np.exp(-(ang / max(CAP_REACH, 1e-3)) ** 2), 0.0)
+    hh_ = (wk * ph[np.minimum(ii, len(ph) - 1)]).sum(1) / np.maximum(wk.sum(1), 1e-12)
+    a0 = np.where(ok[:, 0], ang[:, 0], np.inf)
+    f = np.clip((_hk.FILL_REACH - a0) / max(_hk.FILL_REACH - CAP_REACH, 1e-3), 0.0, 1.0)
+    w = f * f * (3 - 2 * f)
+    tgt = hh_ - _hk.FILL_UNDER
+    h = np.where(ok[:, 0], np.maximum(vh, vh + w * (tgt - vh)), vh)
+    print(f"cap fill: {int((h > vh + 1e-4).sum())} cap vertices raised under {len(arch)} arch cards "
+          f"(max {1000 * float((h - vh).max()):.1f} mm)", flush=True)
     return V + (h - vh)[:, None] * _unit(V - sc.C)
 
 
@@ -3908,6 +4051,14 @@ CARD_RECIPE = (
     "LODs: drop the cards of `layer` 2, then 1 (extras.layers gives each layer's triangle range).")
 
 
+BACK_FACES = 1  # (c6) export each card's back face as its own triangles (outward normals) + a single-sided material
+CARD_RECIPE_FACES = CARD_RECIPE.replace(
+    "Draw two-sided with one normal for both faces (the mesh's normals are already bent toward the hair "
+    "volume: do not flip them on back faces).",
+    "Every card's back is its own triangles (reversed winding, the SAME outward normal): draw single-sided with "
+    "back-face culling (the material is not doubleSided), so no engine flips a normal.")
+
+
 def export_hair(name: str, out_dir, tiers=("main", "npc", "far"), groom: bool = True, spec: dict | None = None,
                 check: bool = False, sheet: str | None = None, textures: str = "shared") -> dict:
     """The hair alone, game-ready, from a strand (or card) groom: one GLB a tier (`<name>_hair_<tier>.glb`: LODs that
@@ -3960,14 +4111,21 @@ def export_hair(name: str, out_dir, tiers=("main", "npc", "far"), groom: bool = 
             hc_["flow_texture"] = list(files).index("flow")
         hc_["textures"] = textures
         asset.write_glb(glb, f"{name}_hair", {"hair": part}, [("hair", files)], external=textures == "shared",
-                        looks={"hair": {"alpha_cutoff": hc_["alpha_cutoff"], "extras": {"hifipushie_hair": hc_}}},
+                        looks={"hair": {"alpha_cutoff": hc_["alpha_cutoff"], "double_sided": not hc_.get("back_faces"),
+                                         "extras": {"hifipushie_hair": hc_}}},
                         extra_ext={0: {"KHR_materials_specular": {  # (a card is a sheet standing for many round
                             # hairs: at a dielectric's white F0 it mirrors a light as one pale plate; half of it, and
                             # in the hair's own colour, as light off and through hairs is)
                             "specularFactor": 0.5, "specularColorFactor": [round(float(c / max(max(sheen), 1e-6)), 3) for c in sheen]},
                                        "KHR_materials_anisotropy": ani,
                                        "KHR_materials_sheen": {"sheenColorFactor": sheen, "sheenRoughnessFactor": 0.35}}})
-        rep["tiers"][tier] = {"glb": str(glb), "triangles": len(part["corner_vert"]) // 3, "layers": hc_["layers"],
+        n_idx_ = len(part["corner_vert"]) // 3
+        n_back_ = (sum(int(v[1]) for k, v in (hc_.get("layers") or {}).items() if k != "cap") // 2
+                   if hc_.get("back_faces") else 0)
+        # (round 36) "triangles" = card faces, the budgets' unit (a doubleSided card rasterises both sides too);
+        # "index_triangles" counts the back faces BACK_FACES writes as their own triangles
+        rep["tiers"][tier] = {"glb": str(glb), "triangles": n_idx_ - n_back_, "index_triangles": n_idx_,
+                              "layers": hc_["layers"],
                               "atlas": "own" if own else "shared",
                               "budget": hc_["budget"], "bytes": glb.stat().st_size, "clearance": hc_.get("clearance")}
     rep["maps"] = {k: str(v) for k, v in files0.items()}
@@ -4034,6 +4192,21 @@ def share_atlas(part: dict, files: dict, files0: dict, tol: int = 2) -> bool:
     return True
 
 
+def back_faces(T, lay, corner: tuple) -> tuple:
+    """(c6) Each card triangle followed (within its layer's range) by its back: the same corners in reverse order, so the
+    same vertices, normals (outward), tangents and signs; layers < 0 (the cap) keep one face. T (n, 3) vertex indices,
+    lay (n,) layer per triangle, sorted; corner: per-corner arrays (3n, ...). Returns T', corner'."""
+    ci = np.arange(len(T) * 3).reshape(-1, 3)
+    keep = []
+    for k in np.unique(lay):
+        ix = np.nonzero(lay == k)[0]
+        keep.append(ci[ix].ravel())
+        if k >= 0:
+            keep.append(ci[ix][:, ::-1].ravel())
+    cr = np.concatenate(keep)
+    return np.asarray(T).ravel()[cr].reshape(-1, 3), tuple(a[cr] for a in corner)
+
+
 CARD_ROUGH_MIN = 0.6  # (r59) the cards' roughness floor in the export's ORM: the outer, lit hair (aux.b high) came out at
 # 0.425 (the 0.5 floor x 0.85), and an isotropic engine lobe at that mirrored the key light off the crown's flat cards as
 # one white plate (Tess rc2i's "white glossy crown"; 0.65 / 0.75 in the game preview took it away, 0.6 + the tinted half
@@ -4075,13 +4248,20 @@ def export_cards(name: str, out_dir: Path, spec: dict, log: list) -> tuple[dict,
     tt = tt - (tt * n).sum(1, keepdims=True) * n
     tt = np.where(np.linalg.norm(tt, axis=1, keepdims=True) > 1e-9, _unit(tt), _unit(np.cross(n, [0.0, 0.0, 1.0])))
     lay = M["layer"][T[:, 0]]
+    if BACK_FACES:  # (c6) each card's back as its own triangles, wound the other way, with the SAME (outward) normal,
+        # tangent and sign: a single-sided material then never flips a normal, in any viewer (glTF's doubleSided rule
+        # reverses a back face's normal: a card on the head seen from below its plane went black = the crown shards).
+        # Vertices are shared (same position / normal / uv), so only the index count grows; layers stay ranges.
+        T, (UV, n, tt, sg) = back_faces(T, lay, (UV, n, tt, sg))
+        lay = M["layer"][T[:, 0]]
     ranges = {("cap" if k < 0 else "tie" if k > 8 else f"layer{int(k)}"): [int(np.nonzero(lay == k)[0][0]), int((lay == k).sum())]
               for k in np.unique(lay)}
     lk = j["look"]
     part = {"verts": V.astype(np.float32), "corner_vert": T.ravel().astype(np.int64), "uv": UV.astype(np.float32),
             "normal": n.astype(np.float32), "tangent": tt.astype(np.float32), "sign": sg.astype(np.float32),
             "vcolor": M["col"].astype(np.float32),
-            "hair": {"alpha_cutoff": float(ex["alpha_cutoff"]), "layers": ranges, "recipe": CARD_RECIPE,
+            "hair": {"alpha_cutoff": float(ex["alpha_cutoff"]), "layers": ranges, "recipe": CARD_RECIPE if not BACK_FACES else CARD_RECIPE_FACES,
+                     "back_faces": bool(BACK_FACES),
                      "strands": hc.strands_of(spec), "budget": cd["budget"], "clearance": cd.get("clearance")}}
     if ex.get("shadow_proxy", True):  # the hair's shadow caster (opaque hull of the cards, shadow-only)
         sp_ = hc.shadow_proxy(M["verts"], M["tris"])

@@ -58,16 +58,62 @@ def test_kmeans_separates_two_blobs():
     assert len(set(lab[:50])) == 1 and len(set(lab[50:])) == 1 and lab[0] != lab[-1]
 
 
-def test_no_card_spans_the_part():
+def test_no_card_spans_a_part_the_groom_shows():
+    # (round 37: cards are judged against their source) the test groom's part line is bare (the two locks lie either
+    # side of x = 0): a visible part, so no card spans it or roots on it
     D, locks = _groom()
     cards = hk.cut(D, locks, C, S, side_of=side_of, triangles=600)
     St = cards[0]["_St"]
+    vis = hk.part_visible(St, C, side_of)
+    P0 = np.array([[0.0, y, 0.01] for y in (0.01, 0.0, -0.01)])
+    assert np.all(vis.dip(P0) >= hk.PART_DIP), vis.dip(P0)
     head = [c for c in cards if c["cls"] == "head"]
-    assert head
+    assert head and any(c.get("arch") for c in head)
     for c in head:
         sides = np.sign(St["root"][c["strands"], 0])
         assert len(set(sides.tolist())) == 1, "a card's strands come from both sides of the part"
         assert abs(c["P"][0, 0]) >= hk.PART_GAP - 1e-6, "a card's root on the part line"
+
+
+def _covered_groom():
+    """_groom plus a lock combed straight back over the part line (roots x -12..+12 mm, at the side locks' height):
+    the part has no dip in this groom's surface."""
+    D, locks = _groom()
+    rng = np.random.default_rng(5)
+    pts, n = [], 60
+    for k in range(n):
+        x, y0 = rng.uniform(-0.012, 0.012), rng.uniform(0.0, 0.03)
+        t = np.linspace(0.0, 0.15, 40)
+        pts.append(np.stack([np.full(40, x), y0 - t, 0.01 + 0.002 * rng.uniform(size=40)], 1))
+    D = dict(D)
+    D["pts"] = np.concatenate([D["pts"], np.concatenate(pts).astype(np.float32)])
+    D["counts"] = np.r_[D["counts"], np.full(n, 40, np.int32)].astype(np.int32)
+    D["lock"] = np.r_[D["lock"], np.full(n, 3, np.int32)].astype(np.int32)
+    D["sub"] = np.r_[D["sub"], np.arange(n) % 4].astype(np.float32)
+    D["rand"] = np.r_[D["rand"], rng.uniform(size=n)].astype(np.float32)
+    D["radius"] = np.r_[D["radius"], np.full(n, 4e-5)].astype(np.float32)
+    D["obj"] = np.r_[D["obj"], np.zeros(n, np.int32)].astype(np.int32)
+    return D, locks + [{"name": "tg0_3"}]
+
+
+def test_cover_row_may_span_a_part_the_groom_does_not_show(monkeypatch):
+    # where the source groom's surface shows no part (no dip, no gap) the top cover row may run over it (Tess: the
+    # groom's part is a soft line under fuzz; the part-safe arch of round 36 cut a V notch the groom doesn't have)
+    monkeypatch.setattr(hk, "ARCH", 1)
+    D, locks = _covered_groom()
+    cards = hk.cut(D, locks, C, S, side_of=side_of, triangles=600)
+    St = cards[0]["_St"]
+    vis = hk.part_visible(St, C, side_of)
+    P0 = np.array([[0.0, y, 0.01] for y in (0.01, 0.0, -0.01)])
+    assert np.all(vis.dip(P0) < hk.PART_DIP), vis.dip(P0)
+    arch = [c for c in cards if c.get("arch")]
+    assert any(len(set(np.sign(St["root"][c["strands"], 0]).tolist())) == 2 for c in arch)
+    # the round-36 rule (every part distance counts) keeps them to one side each
+    monkeypatch.setattr(hk, "PART_VISIBLE", 0)
+    cards = hk.cut(D, locks, C, S, side_of=side_of, triangles=600)
+    St = cards[0]["_St"]
+    for c in (c for c in cards if c.get("arch")):
+        assert len(set(np.sign(St["root"][c["strands"], 0]).tolist())) == 1
 
 
 def test_card_follows_its_clumps_wave_and_starts_at_its_first_roots():
@@ -274,3 +320,114 @@ def test_crown_loops_found_straight_hair_kept(monkeypatch=None):
         assert hk_.crown_loops(St, np.zeros(3)).tolist() == [True, False, False]
     finally:
         hk_.CROWN_LOOP = old
+
+
+def _dome_part_groom(n_per=90, seed=0):
+    """Strands rooted along a centre part (x = 0) over a dome (radius 0.08 about the origin), each leaving the part
+    sideways and rising 6 mm off the scalp over its first 2 cm, then lying on the dome down the side (a tied groom's
+    top)."""
+    rng = np.random.default_rng(seed)
+    R = 0.08
+    pts, counts, lock = [], [], []
+    for li, sx in enumerate((-1.0, 1.0)):
+        for k in range(n_per):
+            y0 = rng.uniform(-0.05, 0.05)
+            x0 = rng.uniform(0.001, 0.012)
+            t = np.linspace(0.0, 0.12, 40)
+            phi = np.arcsin(x0 / R) + t / R
+            h = 0.006 * hk._ss(np.clip(t / 0.02, 0, 1)) + 0.0005 * rng.uniform()
+            ry = np.sqrt(max(R * R - y0 * y0, 1e-6))
+            P = np.stack([sx * np.sin(phi) * (ry + h), np.full(40, y0), np.cos(phi) * (ry + h)], 1)
+            pts.append(P)
+            counts.append(40)
+            lock.append(li)
+    n = len(counts)
+    D = {"names": np.array(["hair_guides"]), "pts": np.concatenate(pts).astype(np.float32),
+         "counts": np.array(counts, np.int32), "lock": np.array(lock, np.int32), "sub": np.zeros(n, np.float32),
+         "rand": rng.uniform(size=n).astype(np.float32), "radius": np.full(n, 4e-5, np.float32),
+         "obj": np.zeros(n, np.int32)}
+    return D, [{"name": "tg0_1"}, {"name": "tg0_2"}]
+
+
+def test_part_cover_row_arches_over_the_part_with_soft_tips(monkeypatch):
+    D, locks = _dome_part_groom()
+    C0 = np.zeros(3)
+    monkeypatch.setattr(hk, "PART_FROM_STRANDS", 0.0)
+    monkeypatch.setattr(hk, "ARCH", 0)  # (round 36: the arch row is on by default; its cards are "cover" too)
+
+    def part_top(cards):
+        P = np.concatenate([c["P"] for c in cards if c["cls"] == "head"])
+        return float(P[np.abs(P[:, 0]) < 0.004, 2].max(initial=0.0))
+    plain = hk.cut(D, locks, C0, S, side_of=side_of, triangles=1500)
+    assert not any(c.get("cover") for c in plain)
+    monkeypatch.setattr(hk, "PART_COVER", 4)
+    cards = hk.cut(D, locks, C0, S, side_of=side_of, triangles=1500)
+    St = cards[0]["_St"]
+    cov = [c for c in cards if c.get("cover")]
+    for sx in (-1.0, 1.0):  # a row on each side, front to back
+        row = [c for c in cov if np.sign(St["root"][c["strands"], 0]).mean() * sx > 0.9]
+        assert len(row) >= 3, f"side {sx}: {len(row)} cover cards"
+        ys = sorted(float(np.mean(St["root"][c["strands"], 1])) for c in row)
+        assert ys[-1] - ys[0] > 0.04, "the row runs along the part, front to back"
+    for c in cov:
+        P = np.asarray(c["P"], float)
+        assert abs(P[0, 0]) < hk.COVER_OVER + 0.002, "a cover card starts on the part line"
+        assert c["layer"] == len(hk.LAYERS["head"]) - 1
+        hw = np.asarray(c["hw"], float)
+        assert hw[-1] < 0.3 * hw.max(), "its tip tapers (a soft end on the side cards, not a cut)"
+        assert float(np.asarray(c["s"])[-1]) < hk.COVER_LEN + 0.02
+    # over the part the outline is the cover's arch (the strands rise 6 mm off the scalp), not the side cards' seated
+    # roots
+    assert part_top(cards) > part_top(plain) + 0.002
+    r = np.linalg.norm(np.concatenate([c["P"] for c in cov]), axis=1)
+    assert r.max() < 0.08 + 0.0065, "the cover stays under the strands"
+
+
+def test_even_strands_take_the_nearest_scalp_locks_class():
+    """An even groom's strands (hair_even, lock 0 for all) must not inherit lock 0's class: Garrett's G88a came out
+    100% "tail" cards (lock 0 is a free stray) until each took its nearest scalp-rooted lock (c1, 2026-10-18)."""
+    locks = [{"name": "stray", "free": 1.0, "pts": [[0.0, 0.0, 0.1], [0.0, 0.0, 0.0]]},
+             {"name": "top", "pts": [[0.0, 0.0, 0.1], [0.0, 0.02, 0.1]]},
+             {"name": "side", "pts": [[0.08, 0.0, 0.0], [0.08, 0.0, -0.02]]}]
+    P = np.array([[0.001, 0.0, 0.1], [0.001, 0.02, 0.1], [0.079, 0.0, 0.0], [0.079, 0.0, -0.02]], float)
+    D = {"names": np.array(["hair_even"]), "pts": P, "counts": np.array([2, 2]), "lock": np.array([0, 0]),
+         "obj": np.array([0, 0]), "rand": np.array([0.1, 0.2]), "radius": np.array([4e-5, 4e-5])}
+    St = hk.strands(D, locks)
+    assert list(St["lock"]) == [1, 2]
+    assert list(St["cls"]) == ["head", "head"]
+
+
+def test_even_groom_is_cut_by_clumps_at_every_tier():
+    """An even groom (strands.even) has no per-lock guide strands: below the hero tier clump_cards found none and the
+    lifted cap alone stood as a pompadour (Garrett main / npc / far, c2 2026-10-18). Every tier cuts it by clumps."""
+    from hifipushie import hair
+    for t in hair.CARD_TIERS:
+        assert hair.tier_settings(t, short=False, even=True).get("cut") == "clumps"
+    assert hair.tier_settings("main").get("cut") != "clumps"  # a guide-strand groom keeps its per-lock cut
+
+
+def test_cap_without_cards_keeps_its_height_when_asked():
+    """cap_under_cards: a vertex with no card near lies at the floor (CAP_BARE_FLOOR), unless bare_floor=False (an even
+    groom's cap at the hair's mid height: on the floor it was bare scalp, c1d); under a card it never stands over it."""
+    from hifipushie import hair
+    sc = hair.Scalp.__new__(hair.Scalp)
+    sc.C = np.zeros(3)
+    sc.r = lambda az, el: np.full(np.shape(az), 0.1)
+    d = np.array([[0, 0, 1.0], [1.0, 0, 0]])
+    V = d * 0.115  # 15 mm over the scalp
+    card = {"P": np.array([[0, -0.01, 0.11], [0, 0.01, 0.11]]), "X": np.array([[1.0, 0, 0]] * 2), "hw": np.array([0.005, 0.005])}
+    h0 = np.linalg.norm(hair.cap_under_cards(sc, V, [card], 0.002, bare_floor=True), axis=1) - 0.1
+    h1 = np.linalg.norm(hair.cap_under_cards(sc, V, [card], 0.002, bare_floor=False), axis=1) - 0.1
+    assert h0[0] < 0.0085 and h1[0] < 0.0085  # under the card (its edges ~10.3 mm up, less CAP_UNDER)
+    assert h0[1] < 0.0025 and abs(h1[1] - 0.015) < 1e-4  # the side vertex: floor vs kept
+
+
+def test_card_grey_follows_its_locks():
+    """Cards' grey-hair share comes from their strands' locks (Garrett's silver sides, c2): tiles are clustered on it and
+    each draws its own share, not the head's one."""
+    locks = [{"name": "top", "inputs": {"Grey": 0.2}}, {"name": "side", "inputs": {"Grey": 0.7}}]
+    St = {"lock": np.array([0, 0, 1, 1])}
+    cards = [{"strands": [0, 1]}, {"strands": [2, 3]}, {"strands": [1, 2]}]
+    g = hk.card_grey(cards, St, locks, {"grey_locks": 1.0})
+    assert np.allclose(g, [0.2, 0.7, 0.45])
+    assert hk.card_grey(cards, St, [{"name": "a"}, {"name": "b"}], {}) is None

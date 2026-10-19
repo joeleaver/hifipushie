@@ -1,5 +1,5 @@
 """shots.py <model> [stage=<model whose head stage is used>] [size=768] [samples=8] [views=v0,v1,v2,backl] [tag=]
-[like=<model>] [glb=<hair GLB> params=<json> alpha=game cutoff=0.33 only=<json tri ranges> shadow=0]: hair renders for the
+[like=<model>] [ev=<stops>] [glb=<hair GLB> params=<json> alpha=game cutoff=0.33 only=<json tri ranges> shadow=0]: hair renders for the
 hair-cards gates, ALL views in ONE Blender start (per-view light rigs: blender_scene.render's view "lights"), each with
 the hair's id pass at the same frame (an exact hair mask): $TOUT/s_<model><tag>_<v>.png, id_<model><tag>_<v>.png.
 - views v0, v1, v2: the reference pictures' fitted cameras under the fitted photo light (spikes/tesshair7 shots7);
@@ -120,6 +120,8 @@ if kw.get("shadow", "").startswith("game"):  # shadow=game[:<texel mm>[:<filter>
             l["shadow_filter"] = float(g_[2]) if len(g_) > 2 else 2.0
 # (one rig shape for every view: the first view's, with a window on its key; views re-aim / re-weight its suns)
 base = copy.deepcopy(next((r for r in rigs if any(l.get("window") for l in r["lights"])), rigs[0]))
+if float(kw.get("ev", 0)):  # ev=<stops>: added to the exposure (Garrett's hair sheets: ev 1.0, hair-garrett successor 18)
+    base["exposure"] = float(base.get("exposure", 0.0)) + float(kw["ev"])
 
 with resources.heavy(f"haircards shots {m}{TAG}", gb=8), tempfile.TemporaryDirectory() as tmp:
     vf, idf = [], []
