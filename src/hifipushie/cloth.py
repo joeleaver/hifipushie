@@ -10978,6 +10978,12 @@ def pull_garments(spec: dict, name: str, got: dict, log: list) -> dict:
     return changes
 
 
+EXPORT_MADE_SHEETS = True  # (2026-10-19, Garrett collars) export_part lists the made slabs' fronts / backs / rims apart
+# (shell "made", "made_rim") so lods._lod_shell decimates each made piece as ONE sheet and rebuilds its back: decimated
+# as closed 1 mm slabs (front, back and rim together at the made floor 0.35) the two faces crossed, and the open shirt
+# collar shipped as flat facets with its back face showing through (v1-v8: every Garrett export since the made collars)
+
+
 def export_part(name: str, spec: dict, out_dir, texture: int = 1024, log=print) -> list:
     """The garments as export parts (as asset.lowpoly makes them: verts, corner_vert, uv, normal, tangent, sign) and
     their maps. Two-sided: the outer face and an inner one a cloth's thickness in (a coat open at the front shows
@@ -11036,6 +11042,7 @@ def export_part(name: str, spec: dict, out_dir, texture: int = 1024, log=print) 
         Fall = np.r_[F, F[:, [0, 2, 1]] + len(V)]
         UVall = np.r_[uv, uv]
         NV = [vn, -vn]
+        mfr, mbk, mrim = [], [], []  # (EXPORT_MADE_SHEETS: the made slabs' fronts, backs and rims, each run together)
         for pt in mparts:  # each a closed slab of its thickness, its pattern uv placed where its piece lies in the atlas
             from . import cloth_made
             Pv, Pf = np.asarray(pt["V"], np.float64), np.asarray(pt["F"], np.int64)
@@ -11060,12 +11067,22 @@ def export_part(name: str, spec: dict, out_dir, texture: int = 1024, log=print) 
                 puv = (puv + (uv[i0_] * side - np.asarray(M["uv"])[i0_])) / side  # (atlas_uv: a shift and one scale)
             else:  # (no pattern uv: one texel of the garment's colour)
                 puv = np.tile(uv[0], (len(Pv), 1))
-            Fall = np.r_[Fall, sF + len(Vall)]
+            nf_ = len(Pf)
+            if EXPORT_MADE_SHEETS:
+                mfr.append(sF[:nf_] + len(Vall)); mbk.append(sF[nf_:2 * nf_] + len(Vall)); mrim.append(sF[2 * nf_:] + len(Vall))
+            else:
+                Fall = np.r_[Fall, sF + len(Vall)]
             Vall = np.r_[Vall, sV]
             UVall = np.r_[UVall, puv, puv]
             NV += [pn_, -pn_]
             log(f"cloth {gname}: made {pt['name']} shipped ({len(sF)} triangles) instead of "
                 f"{', '.join(pt.get('replaces') or []) or 'nothing'}")
+        made_sh = {}
+        if mfr:  # [outer | inner | made fronts | made backs | made rims | buttons]: lods._lod_shell decimates the fronts
+            # and rebuilds backs from them (decimated as closed 1 mm slabs, front and back crossed: Garrett's collars)
+            Fall = np.r_[Fall, np.concatenate(mfr), np.concatenate(mbk), np.concatenate(mrim)]
+            made_sh = {"made": int(sum(map(len, mfr))), "made_rim": int(sum(map(len, mrim))),
+                       "made_thickness": max(float(pt.get("thickness", th)) for pt in mparts)}
         n_own = len(Vall)
         bt = res.get("buttons")
         if bt is not None:  # the closures' buttons: small geometry, coloured by the texel of the button drawn at
@@ -11086,7 +11103,8 @@ def export_part(name: str, spec: dict, out_dir, texture: int = 1024, log=print) 
         part = {"verts": Vall.astype(np.float32), "corner_vert": Fall.ravel().astype(np.int64),
                 "uv": UVc.astype(np.float32),
                 "normal": n.astype(np.float32), "tangent": tt.astype(np.float32), "sign": sg.astype(np.float32),
-                "shell": {"outer": len(F), "thickness": th}}  # (lods._lod_shell: decimate the outer, rebuild the inner)
+                "shell": {"outer": len(F), "thickness": th, **made_sh}}  # (lods._lod_shell: decimate the outer, rebuild
+        # the inner)
         files = {"orm": out_dir / f"cloth_{gname}_orm.png", "specular": out_dir / f"cloth_{gname}_specular_gltf.png"}
         if g.get("detail", {}) is not False:
             maps = write_maps(out_dir / f"cloth_{gname}", M, uv, side, dict(g, detail=dict(g.get("detail") or {},

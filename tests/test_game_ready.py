@@ -1668,3 +1668,56 @@ def test_push_under_never_moves_a_flipped_normal_out_through_its_cover():
     lods.push_under_layers(parts, {"u": ["c"]}, gap=0.002)
     assert np.asarray(parts["u"]["verts"])[:, 2].max() <= 0.008 + 1e-9
 
+
+
+def test_lod_made_slab_decimated_as_a_sheet():
+    """(2026-10-19, Garrett collars) cloth.export_part ships a made piece (a collar) as a closed slab: front, back a
+    millimetre behind, rim. Decimated as one mesh at the made floor, front and back crossed: v1-v8's open shirt collar
+    showed flat facets with its BACK face out (2086 back-face px in the collar crops vs 72 before decimation). With the
+    layout [outer | inner | made fronts | made backs | rims] (shell "made", "made_rim"), lods._lod_shell decimates the
+    fronts and rebuilds every back made_thickness behind its front."""
+    import numpy as np
+    from hifipushie import lods, cloth_made
+    Vo, Fo = _grid_sheet(40, 40, 0.3, 0.3, lambda x, y: 0.004 * np.sin(40 * x))
+    th, n = 0.0008, len(Fo)
+    # the collar: a rolled, rumpled band (a part tube with wrinkles), 3 cm over the panel
+    s, t = np.meshgrid(np.linspace(0, 1, 50), np.linspace(0, 1, 14))
+    ang = 1.6 * t
+    rr = 0.03 + 0.003 * np.sin(31 * s) * np.cos(9 * t)
+    Pv = np.c_[(0.05 + 0.2 * s).ravel(), (0.15 + rr * np.sin(ang)).ravel(), (0.03 + rr * np.cos(ang)).ravel()]
+    i, j = np.meshgrid(np.arange(13), np.arange(49), indexing="ij")
+    a = (i * 50 + j).ravel()
+    Pf = np.r_[np.c_[a, a + 1, a + 50], np.c_[a + 1, a + 51, a + 50]]
+    m_th = 0.001
+    sV, sF = cloth_made.solid(Pv, Pf, m_th)
+    m = len(Pf)
+
+    def vnormals(V, F):
+        N = np.zeros_like(V)
+        fn = np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]])
+        for k in range(3):
+            np.add.at(N, F[:, k], fn)
+        return N / np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-12)
+    nv = len(Vo)
+    V = np.r_[Vo, Vo - [0, 0, th], sV]
+    F = np.r_[Fo, Fo[:, [0, 2, 1]] + nv, sF + 2 * nv]  # (solid: front, back, rim = the export_part layout)
+    on, pn = vnormals(Vo, Fo), vnormals(Pv, Pf)
+    N = np.r_[on, -on, pn, -pn]
+    cv = F.ravel()
+    p = {"verts": V.astype(np.float32), "corner_vert": cv, "uv": V[cv, :2], "normal": N[cv],
+         "tangent": np.tile([1.0, 0, 0], (len(cv), 1)), "sign": np.ones(len(cv)),
+         "shell": {"outer": n, "thickness": th, "made": m, "made_rim": len(sF) - 2 * m, "made_thickness": m_th}}
+    q, _, r = lods._lod_shell(dict(p), None, 0.25)
+    no, mq = q["shell"]["outer"], q["shell"]["made"]
+    T = np.asarray(q["corner_vert"]).reshape(-1, 3)
+    Vq, nq = np.asarray(q["verts"], float), np.asarray(q["normal"], float).reshape(-1, 3, 3)
+    assert r["made_sheets"] == mq and 0.25 * m <= mq <= 0.6 * m, (mq, m)
+    assert len(T) == 2 * no + 2 * mq, (len(T), no, mq)
+    fr, bk = T[2 * no:2 * no + mq], T[2 * no + mq:]
+    # every back triangle mirrors its front: reversed winding, made_thickness behind along the front's normal
+    d = Vq[fr[:, [0, 2, 1]]] - Vq[bk]
+    assert np.allclose(np.einsum("fkc,fkc->fk", d, nq[2 * no:2 * no + mq][:, [0, 2, 1]]), m_th, atol=1e-4)
+    assert np.allclose(nq[2 * no + mq:], -nq[2 * no:2 * no + mq][:, [0, 2, 1]], atol=1e-5)
+    # and a LOD of the LOD keeps the layout
+    q2, _, _ = lods.lod_part(q, None, 0.5)
+    assert len(np.asarray(q2["corner_vert"])) // 3 == 2 * q2["shell"]["outer"] + 2 * q2["shell"]["made"]

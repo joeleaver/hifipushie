@@ -120,28 +120,36 @@ def _lod_shell(p: dict, weights: tuple | None, ratio: float, shapes: bool = True
     inner shell is rebuilt from the decimated outer: offset along its normal, wound the other way, normal and
     bitangent sign negated, uv / tangent / weights / shapes copied."""
     n, th = int(p["shell"]["outer"]), float(p["shell"]["thickness"])
+    m = int(p["shell"].get("made", 0)) if LOD_MADE_SHEETS else 0  # (cloth.EXPORT_MADE_SHEETS: made fronts, backs, rims)
+    m_rim = int(p["shell"].get("made_rim", 0)) if m else 0
+    th_m = float(p["shell"].get("made_thickness", th))
     nt = len(p["corner_vert"]) // 3
     tri_keep = np.ones(nt, bool)
     tri_keep[n:2 * n] = False
+    tri_keep[2 * n + m:2 * n + 2 * m + m_rim] = False  # (the made backs and rims: rebuilt from the decimated fronts)
     cm = np.repeat(tri_keep, 3)
     po = {k: v for k, v in p.items() if k != "shell"}
     po.update({k: np.asarray(p[k])[cm] for k in ("corner_vert", "uv", "normal", "tangent", "sign")})
     outer = np.zeros(int(tri_keep.sum()), bool)
     outer[:n] = True
-    small = _small_pieces(po["corner_vert"], ~outer, LOD_KEEP_PIECE) if LOD_KEEP_PIECE else np.zeros_like(outer)
+    made = np.zeros_like(outer)
+    made[n:n + m] = True
+    small = (_small_pieces(po["corner_vert"], ~outer & ~made, LOD_KEEP_PIECE) if LOD_KEEP_PIECE
+             else np.zeros_like(outer))
     small_o = (_patches(po, outer, _small_pieces(po["corner_vert"], outer, LOD_KEEP_PIECE))
                if LOD_KEEP_PIECE and LOD_KEEP_OUTER_PIECES else np.zeros_like(outer))
     hull_x = 1.0
     if LOD_KEEP_PIECE_HULL and small.any() and ratio < LOD_KEEP_PIECE_RATIO:
         ns_ = int(small.sum())
-        po, outer, small, small_o = _hull_pieces(po, outer, small, small_o)
+        po, outer, small, small_o, made = _hull_pieces(po, outer, small, small_o, made)
         hull_x = ns_ / max(int(small.sum()), 1)  # (the pieces keep their triangle count: the hull is fewer to start)
-    po["meshes"] = {"outer": outer & ~small_o, "rest": ~outer & ~small, "pieces": small, "outer_pieces": small_o}
+    po["meshes"] = {"outer": outer & ~small_o, "rest": ~outer & ~small & ~made, "pieces": small,
+                    "outer_pieces": small_o, "made": made}
     mr = None
     keep = 1.0 if ratio >= LOD_KEEP_PIECE_RATIO else max(ratio, LOD_KEEP_PIECE_FAR)
+    floor_ = max(ratio, min(LOD_MADE_FLOOR, LOD_MADE_FLOOR_X * ratio)) if LOD_MADE_FLOOR else ratio
     if LOD_MADE_FLOOR:
-        mr = {"outer": ratio, "rest": max(ratio, min(LOD_MADE_FLOOR, LOD_MADE_FLOOR_X * ratio)), "pieces": min(1.0, keep * hull_x),
-              "outer_pieces": keep}
+        mr = {"outer": ratio, "rest": floor_, "pieces": min(1.0, keep * hull_x), "outer_pieces": keep, "made": floor_}
     elif small_o.any():
         mr = {"outer_pieces": keep}
     seat0 = None
@@ -153,30 +161,35 @@ def _lod_shell(p: dict, weights: tuple | None, ratio: float, shapes: bool = True
     q, wq, r = lod_part(po, weights, ratio, shapes=shapes, mesh_ratios=mr)
     qm = q.pop("meshes")
     mo = np.asarray(qm["outer"], bool) | np.asarray(qm["outer_pieces"], bool)
+    mm = np.asarray(qm["made"], bool) & ~mo
     T = np.asarray(q["corner_vert"], np.int64).reshape(-1, 3)
-    co = np.repeat(mo, 3)
     V = np.asarray(q["verts"], np.float64)
     if seat0 is not None:
         V = V.copy()
         r = dict(r, patches_seated=_seat_patches(V, T, np.asarray(qm["outer"], bool), np.asarray(qm["outer_pieces"], bool),
                                                  np.asarray(q["normal"], np.float64), *seat0))
         q = dict(q, verts=V.astype(np.float32))
-    vu, inv = np.unique(T[mo], return_inverse=True)
+    ms = mo | mm  # (the outer shell and the made fronts: each gets its back rebuilt from it)
+    vu, inv = np.unique(T[ms], return_inverse=True)
     vn = np.zeros((len(vu), 3))
-    np.add.at(vn, inv.ravel(), np.asarray(q["normal"], np.float64)[co])
+    np.add.at(vn, inv.ravel(), np.asarray(q["normal"], np.float64)[np.repeat(ms, 3)])
     vn /= np.maximum(np.linalg.norm(vn, axis=1, keepdims=True), 1e-12)
+    vth = np.full(len(vu), th)
+    if mm.any():
+        vth[np.isin(vu, T[mm])] = th_m
     nv0 = len(V)
-    Ti = (inv.reshape(-1, 3) + nv0)[:, [0, 2, 1]]
-    ci = np.arange(len(T) * 3).reshape(-1, 3)[mo][:, [0, 2, 1]].ravel()  # outer corners, in the inner's order
+    Tin = np.full_like(T, -1)
+    Tin[ms] = (inv.reshape(-1, 3) + nv0)[:, [0, 2, 1]]
+    C = np.arange(len(T) * 3).reshape(-1, 3)
+    rest = ~ms
     out = dict(q)
-    out["verts"] = np.r_[V, V[vu] - vn * th].astype(np.float32)
-    Tr = T[~mo]
-    cr = np.arange(len(T) * 3).reshape(-1, 3)[~mo].ravel()
-    co_ = np.arange(len(T) * 3).reshape(-1, 3)[mo].ravel()
-    out["corner_vert"] = np.r_[T[mo].ravel(), Ti.ravel(), Tr.ravel()].astype(np.int64)
+    out["verts"] = np.r_[V, V[vu] - vn * vth[:, None]].astype(np.float32)
+    out["corner_vert"] = np.r_[T[mo].ravel(), Tin[mo].ravel(), T[mm].ravel(), Tin[mm].ravel(),
+                               T[rest].ravel()].astype(np.int64)
     for k, sg in (("uv", 1), ("normal", -1), ("tangent", 1), ("sign", -1)):
         a = np.asarray(q[k])
-        out[k] = np.concatenate([a[co_], sg * a[ci], a[cr]]).astype(np.float32)
+        out[k] = np.concatenate([a[C[mo].ravel()], sg * a[C[mo][:, [0, 2, 1]].ravel()], a[C[mm].ravel()],
+                                 sg * a[C[mm][:, [0, 2, 1]].ravel()], a[C[rest].ravel()]]).astype(np.float32)
     if q.get("vcolor") is not None:
         out["vcolor"] = np.r_[q["vcolor"], np.asarray(q["vcolor"])[vu]].astype(np.float32)
     if q.get("shapes"):
@@ -185,12 +198,17 @@ def _lod_shell(p: dict, weights: tuple | None, ratio: float, shapes: bool = True
     if wq is not None:
         wq = (np.r_[wq[0], np.asarray(wq[0])[vu]], np.r_[wq[1], np.asarray(wq[1])[vu]].astype(np.float32))
     out["shell"] = {"outer": int(mo.sum()), "thickness": th}
+    if mm.any():  # (the next LOD decimates the made sheets the same way)
+        out["shell"].update(made=int(mm.sum()), made_rim=0, made_thickness=th_m)
     if LOD_MADE_GAP and (~mo).any() and mo.any():
         r = dict(r, made_lifted=_lift_made(out, int(mo.sum())))
-    r = dict(r, triangles0=nt, triangles=len(out["corner_vert"]) // 3, shell=True)
+    r = dict(r, triangles0=nt, triangles=len(out["corner_vert"]) // 3, shell=True, made_sheets=int(mm.sum()))
     return out, wq, r
 
 
+LOD_MADE_SHEETS = True  # (2026-10-19) a shell's "made" triangles (cloth.EXPORT_MADE_SHEETS: made-piece fronts, then their
+# backs and rims) are decimated as sheets at the made floor and their backs rebuilt from them, like the garment's inner
+# shell: decimated as closed slabs the fronts and backs crossed (Garrett's open shirt collar: flat facets, back faces out)
 LOD_MADE_FLOOR = 0.35  # (r54) a two-sided garment's made pieces (pockets, collar, lapels, buttons: the triangles after its
 # shells) keep at least this share at every LOD: at the coat's LOD2 share (0.11) its 1,176 made-piece triangles went to
 # 134, the pockets became fans of a few long triangles and the decimated outer shell came through them (grey fans on the
@@ -248,7 +266,7 @@ LOD_KEEP_PIECE_HULL = True  # (r61) at the far LOD (ratio below LOD_KEEP_PIECE_R
 LOD_KEEP_PIECE_HULL_FLAT = 0.08  # ... not a piece flatter than this (thinnest / widest spread)
 
 
-def _hull_pieces(po: dict, outer: np.ndarray, small: np.ndarray, small_o: np.ndarray):
+def _hull_pieces(po: dict, outer: np.ndarray, small: np.ndarray, small_o: np.ndarray, made: np.ndarray | None = None):
     """po (corner arrays) with each connected piece among `small` replaced by its convex hull on its own vertices (each
     hull corner takes the attributes of the vertex's first corner in the piece, its normal turned to face the hull's
     outside); the hull triangles go last. Returns (po, outer, small, small_o) for the new triangle order."""
@@ -294,7 +312,7 @@ def _hull_pieces(po: dict, outer: np.ndarray, small: np.ndarray, small_o: np.nda
         newT.append(S)
         drop[tf] = True
     if not newT:
-        return po, outer, small, small_o
+        return (po, outer, small, small_o) if made is None else (po, outer, small, small_o, made)
     keepc = np.repeat(~drop, 3)
     out = dict(po)
     nT = np.concatenate(newT)
@@ -302,7 +320,8 @@ def _hull_pieces(po: dict, outer: np.ndarray, small: np.ndarray, small_o: np.nda
     for k in ckeys:
         out[k] = np.concatenate([np.asarray(po[k])[keepc], np.concatenate(newc[k]).astype(np.asarray(po[k]).dtype)])
     add = np.zeros(len(nT), bool)
-    return out, np.r_[outer[~drop], add], np.r_[small[~drop], ~add], np.r_[small_o[~drop], add]
+    res = (out, np.r_[outer[~drop], add], np.r_[small[~drop], ~add], np.r_[small_o[~drop], add])
+    return res if made is None else res + (np.r_[made[~drop], add],)
 
 
 def _small_pieces(corner_vert, among: np.ndarray, max_tris: int) -> np.ndarray:
