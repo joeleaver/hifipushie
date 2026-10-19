@@ -65,11 +65,17 @@ HL_ALPHA = 0.45  # from this share of its alpha (sparser: the thin hairs fall un
 HL_LIFT = 0.5  # (0.8 in b23 / b24: pale blotches at the left forehead, review gg9)  this much lighter in tone, without the depth shade (0.35 before b23: rim-inner +3.6 L* at 1 m vs the
 # groom's +19, hairline.py g1v1 on b22, after card_gain 2.10 darkened the roots)
 FACE_ALPHA = 0.55  # a face-framing card's picture is this opaque
-TAIL_TONE = 0.75  # (round 24; 1.0 before) tail (hanging) cards' tone x this: the tail alone was +9 L* (back) / +3 (3/4) over gSc, 0.75: +2.4 / -3.9, head cards unchanged
+HOOK_RISE = 0.0  # (round 26) m: a head card that comes down from its highest point and rises again by more than this ends at
+# its low point (0 = off)
+HOOK_LAYER_MIN = 1  # HOOK_RISE only on head layers from this up (round 26: on layer 0 it cut 70 nape cards rising to the tie)
+TONE_BACK = 0.85  # (round 26) head cards rooted behind the head's centre: tint x this (b33 back head p50 +8 L* over gSc)
+TONE_FRONT = 0.85  # (round 26) head cards rooted at the front top: tint x this (b33 front crown p50 23 vs gSc 32)
+TONE_POS_Y = (-0.02, 0.02)  # m from the head's centre along y (front -y .. back): TONE_FRONT -> TONE_BACK, smoothstep
+TAIL_TONE = 0.62  # (round 24; 1.0 before) tail (hanging) cards' tone x this: the tail alone was +9 L* (back) / +3 (3/4) over gSc, 0.75: +2.4 / -3.9, head cards unchanged
 TONE_CONTRAST = 2.2  # (round 25) head / tail card pictures: each hair's tone spread about its island's median x this (the
 # groom's light / dark strands: gSc hair boxes p10..p90 span ~25-30 L*, b32's ~13-16 at the same mean; t25/hl.py)
 TONE_CONTRAST_DARK = 1.3  # the stretch below the median (0 = the same k): c22's front crown p10 fell 12.3 -> 7.1 (gSc 19.9)
-TONE_CONTRAST_TAIL = 3.5  # the same for tail (hanging) cards (0 = TONE_CONTRAST)
+TONE_CONTRAST_TAIL = 4.5  # the same for tail (hanging) cards (0 = TONE_CONTRAST)
 TAIL_ROOT_LIFT = 0.6  # (round 25) tail cards' first TAIL_ROOT_LEN from the root (under the tie): tone x (1 + this), depth
 TAIL_ROOT_LEN = 0.04  # shade off there (b32 g1backl: dark angular shards under the tie where gSc's gathered locks are lit)
 WISP_LIFT = 0.5  # a face-framing card's tone x (1 + this), depth shade off (lit hair in the open)
@@ -406,6 +412,24 @@ def layer_offset(sn, la: int, cls: str) -> np.ndarray:
     return np.minimum(sn, HEAD_SN_MAX) * (-0.6 + 0.6 * la) + 0.0004 * la
 
 
+ROOT_SEAT = 0.03  # (round 27; default from round 28: b35, blind review won front + 3/4, back tie) m along a head card from its root over which it is eased down (smoothstep) to ROOT_SEAT_GAP
+ROOT_SEAT_GAP = 0.003  # over its strands' roots' radius: top cards started 88-92 mm out over a ~76 mm cap at the front
+# crown (the layer offsets + lifted roots), each a straight-cut root edge 10-15 mm in the air: the two hooked flaps on
+# the front outline (round 27 hooktr.py, cards L0 48 / 53, L1 125 / 126, L2 190 / 192); 0 = off
+
+
+def _root_seat(P, s, roots, C) -> np.ndarray:
+    """A head card's stations within ROOT_SEAT of its root moved in toward the head's centre, the root itself to
+    ROOT_SEAT_GAP over the median radius of its strands' roots (only ever lowered)."""
+    P = np.asarray(P, float).copy()
+    d = P - np.asarray(C, float)
+    r = np.linalg.norm(d, axis=1)
+    r0 = float(np.median(np.linalg.norm(np.asarray(roots, float) - np.asarray(C, float), axis=1))) + ROOT_SEAT_GAP
+    w = 1.0 - _ss(np.clip(np.asarray(s, float) / ROOT_SEAT, 0.0, 1.0))
+    rn = r - w * np.maximum(0.0, r - r0)
+    return np.asarray(C, float) + d * (rn / np.maximum(r, 1e-9))[:, None]
+
+
 def card_offset(c: dict, la: int, n_layers: int, cls: str, C) -> np.ndarray:
     """layer_offset, and on the head's sides (side_weight) the head's layers moved out TOGETHER until the top one lies
     on the clump's outer strands (c["out"]: the top layer alone moved out stood off the one under it, crownprobe: rays
@@ -519,12 +543,16 @@ def strand_part(St: dict, C):
     return f
 
 
+_HOOKS: list = []
+
+
 def cut(D: dict, locks: list, C, S: dict, side_of=None, seed: int = 0, layers: dict | None = None,
         triangles: int = 20000) -> list:
     """Cards cut by clumps, per class and layer (see LAYERS). `side_of(points) -> (side -1/0/+1, distance to the
     part m)` for strand roots, or None. Each card: hair_cards' card keys + "strands" (indices into `St` = the
     module-level strands this cut used, kept on the first card as "_St") and "draw" (share of its strands drawn)."""
     St = strands(D, locks)
+    _HOOKS.clear()
     env = envelope(St, C, pct=ENV_PCT)
     env_side = envelope(St, C, pct=SIDE_ENV_PCT) if SIDE_ENV_PCT != ENV_PCT else None
     layers = layers or LAYERS
@@ -583,6 +611,21 @@ def cut(D: dict, locks: list, C, S: dict, side_of=None, seed: int = 0, layers: d
                         per_strand=HW_PER_STRAND if cls == "tail" else 0.0)
                 if c is None:
                     continue
+                if cls == "head" and HOOK_RISE > 0 and la >= HOOK_LAYER_MIN:  # (round 26) a head card that comes down and turns back UP (the two
+                    # hooked top-layer flaps at the front crown's outline, t25/crown_layers.png) ends where it turned
+                    z_ = np.asarray(c["P"], float)[:, 2]
+                    ka = int(np.argmax(z_))
+                    rm = np.minimum.accumulate(z_[ka:])
+                    up = np.nonzero(z_[ka:] - rm > HOOK_RISE)[0]
+                    if len(up):
+                        k1 = ka + int(np.argmin(z_[ka:ka + int(up[0]) + 1])) + 1
+                        if k1 < 4:
+                            continue
+                        n_ = len(c["P"])
+                        for k_ in ("P", "T", "N", "X", "bend", "hw", "sn", "u", "share", "out", "rad", "s"):
+                            if np.ndim(c.get(k_)) and len(c[k_]) == n_:
+                                c[k_] = np.asarray(c[k_])[:k1]
+                        _HOOKS.append((la, n_, k1))
                 if cls == "head" and side_of is not None:  # its root stays PART_GAP off the part
                     _, dpart = side_of(c["P"])
                     near = np.nonzero(dpart >= PART_GAP)[0]
@@ -606,6 +649,8 @@ def cut(D: dict, locks: list, C, S: dict, side_of=None, seed: int = 0, layers: d
                     cc_ = {"P": P, "X": c["X"], "hw": c["hw"]}
                     _under_envelope(cc_, env, C, env_side if cls == "head" else None)
                     P = cc_["P"]
+                if cls == "head" and ROOT_SEAT > 0:  # (round 27) the card's root end eased down onto the scalp
+                    P = _root_seat(P, c["s"], St["root"][mem], C)
                 kind = "baked"
                 u = (c["i0"] * STEP + c["s"]) / max(float(np.percentile(St["len"][mem], 95)), 0.02)
                 out.append({"P": P, "X": c["X"], "N": c["N"], "T": c["T"], "bend": c["bend"], "hw": c["hw"],
@@ -650,6 +695,9 @@ def cut(D: dict, locks: list, C, S: dict, side_of=None, seed: int = 0, layers: d
                         "u": (c["i0"] * STEP + c["s"]) / max(float(St["len"][j]), 0.02), "s": c["s"], "kind": "baked", "layer": 3, "cls": "fly", "prio": 3.0,
                         "cval": 1.0, "value": 1.0, "lock": lk["name"], "sn": 0.0, "strands": np.array([j]),
                         "draw": 1.0, "s0": c["i0"] * STEP, "fly": True})
+    if _HOOKS:
+        print(f"hook cut: {len(_HOOKS)} head cards (layer, stations kept / of): "
+              f"{', '.join(f'L{a} {k}/{n}' for a, n, k in _HOOKS[:12])}", flush=True)
     if out:
         out[0]["_St"] = St
     return out
@@ -1080,6 +1128,14 @@ def bake_tiles(cards: list, St: dict, W: int, H: int, n: int = TILES, ss: int = 
             w_ = _ss(np.clip((-r_[2] - NAPE_BAND[0]) / (NAPE_BAND[1] - NAPE_BAND[0]), 0, 1)) \
                 * _ss(np.clip((r_[1] - NAPE_Y[0]) / (NAPE_Y[1] - NAPE_Y[0]), 0, 1))
             tint[i] *= 1.0 + NAPE_LIFT * float(w_)
+    if (TONE_BACK != 1.0 or TONE_FRONT != 1.0) and C is not None:  # (round 26) the head's tone by place (front / back)
+        R0 = np.asarray(St["root"], float)
+        for i, c in enumerate(cards):
+            if c.get("cls") != "head" or c.get("fly") or not len(c["strands"]):
+                continue
+            r_ = R0[np.asarray(c["strands"], int)].mean(0) - np.asarray(C, float)
+            w_ = _ss(np.clip((r_[1] - TONE_POS_Y[0]) / (TONE_POS_Y[1] - TONE_POS_Y[0]), 0, 1))
+            tint[i] *= TONE_FRONT + (TONE_BACK - TONE_FRONT) * float(w_)
     B["tile_islands"] = B["islands"]
     B["islands"] = [B["tile_islands"][t] for t in tile]
     B["tint"], B["tile"], B["reps"] = tint, tile, reps

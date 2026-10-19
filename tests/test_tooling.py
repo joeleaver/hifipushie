@@ -332,6 +332,27 @@ def test_mesh_quality():
     assert asset.defect_regions(q["spots"][:asset.DEFECT_CLUSTER - 1], spec) == []
 
 
+
+# The lid fold's crease is designed, not a tear (2026-10-18 r12): after the wrap clamp the slit's roll still undercuts
+# the slit (~50 / ~37 folded edges on Garrett / Tess, all on rings ring+1 / ring+2); mesh_quality must leave them out
+def test_lid_fold_slit_designed():
+    import numpy as np
+    from hifipushie import asset, gnm_fold
+    from hifipushie.base import _gnm_data
+    n = len(_gnm_data()["groups"]["skin_exterior"])
+    cfg = {"amount": 1.0}
+    ids = set(gnm_fold.slit_ids(cfg))
+    m = asset._slit_mask(cfg, n)
+    assert len(ids) > 20 and set(np.flatnonzero(m).tolist()) == ids, (len(ids), int(m.sum()))
+    t = gnm_fold.topo()
+    ka = 5
+    ch, ang = gnm_fold.chains_wrap(15.5, 12, gnm_fold.WRAP_MAX)
+    roll = ch[ang <= 90.0][:, [ka + 1, ka + 2]].reshape(-1)
+    assert m[roll].all() and m[t["mir"][roll]].all()   # the folding rings, both sides
+    assert not asset._slit_mask(None, n).any()
+    assert asset._designed_interior(None, np.zeros((3, 3)), lid_fold=cfg) is None
+
+
 # Hand-shaping hair in Blender (2026-09-30): edits, deletions and Shift+D copies come back, and a regrow keeps them
 def test_hair_pull_hand_locks():
     import numpy as np

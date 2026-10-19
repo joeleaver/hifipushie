@@ -2554,3 +2554,325 @@ STATE: r10 queued behind r9. NEXT: collect r9 (keep / revert), then r10, tile re
   - SUSPECT: Tess "crease height mid L" 5.4 -> 12.9 mm (LOSS) with no lid geometry change: the crease reader likely jumped to
     another edge once the lid got lighter. Check it on the eye tile before acting on it.
 STATE: r9 kept in full; r10 chain now running (it waited for R9 CHAIN DONE). NEXT: collect r10, tile reviews.
+- r10 COLLECTED (gate/r10_rows.txt vs r9). FAIL rows: Tess 47 -> 45, Garrett 42 -> 30, A 55 -> 55, B 58 -> 57.
+  - BROW HEAD: front / middle + head rise WIN on every head (Tess R .87 -> .36 / rise 1.5 -> 5.9 mm, L .58 -> .23 / 2.8 -> 5.4;
+    Garrett R 1.07 -> .77, rise 0 -> 3.1, L .82 -> .60, rise .7 -> 5.8; A R .52 -> .26, L .70 -> .25, rises ~6-7 mm; B L .68 ->
+    .01, B R rise 4.6 -> 3.7 LOSS). Darkness: Tess R 36.7 -> 42.2 (pass), L 40.3 -> 43.2 LOSS (tol 8); A R 32.7 -> 43.0, L 28.3
+    -> 32.8 LOSS (ref 23 / 21: A's density was already at the 1.6 clip, nothing compensated). KEEP Tess, Garrett, B;
+    REVERT A's brow change (head + density) next round, or keep the head and darken A's brow colour (the clip is the limit).
+  - SCLERA: level / iris rows WIN on Tess, Garrett, A R; B better (.465 -> .363, ref .30). Tess sclera / lid skin LOSS (1.01 ->
+    .78) and "visible white" 0.48 -> 0.00: that row counts the opening brighter than the LID, so it collapses once the white is
+    darker than a too-light lid: the lid (lash-line darkening) is the real fault, not the white. A L level LOSS (.561 -> .453,
+    ref .513): A L back toward x.85 next round. KEEP the rest.
+  - Tess crease height mid L back to 5.20 (r9's 12.9 was the reader jumping edges: confirmed artefact). Lip sheen Tess 5.0 ->
+    6.4 (photo 11.5): better, still short.
+- LOOK (r10 tiles, fresh blind subagent reviewers, images only, gates brief, no captions; gate/<head>/tiles_r10, review_r10.md;
+  `cut/mk_tiles.py <gate dir> <tag>` builds the tiles). MAJORs: Tess 6 (r8 tiles 8), Garrett 14 (14), A 20 (14: brows now
+  "grey-brown hatching" where the photo's are dense black = the uncompensated density, plus the mauve tone / neck seam), B 6
+  (10). Brows are still a MAJOR on all four but the words changed: Tess "near-black, block-dense, with stray hairs at the head";
+  Garrett "dark, solid, evenly filled, sharply shaped". My look (out/private/lev/r10_look.png): Tess's heads break into hairs
+  now, but the body is still a heavy, uniform, too-dark band; on Garrett the skin-level brow SHADOW (brow_shadow, the uniform
+  landmark zone) draws a blunt grey stencil under the hairs, so his head still reads blunt.
+
+## Handover 2026-10-18 evening (projskin2 successor 5; next agent start here, then docs/notes/gates.md)
+1. Models now: tp_k19_s23, gp_h6c_s17, privA_hd_g15, privB_hd_g14 (r10). bin/review's account resets 2026-10-19 13:00 MT; until
+   then use cut/mk_tiles.py + one fresh blind reviewer per head (prompt in this section's LOOK line) + cut/r7/gameclass.py.
+2. BROWS (still the top fault on all four): (a) the shadow under the hairs must fade with the head too: with brows.head set,
+   mask brow_shadow by the brow image (blurred) instead of the uniform landmark zone (skin_features, the `moved` branch already
+   does it); prove on Garrett (front / middle R .77 vs .57). (b) the body is too dark / dense / uniform on Tess and Garrett
+   ("near-black block"): reviewers want lighter and see-through; the rows say darkness passes: add a body row (L p10 inside the
+   mask, or inside spread already FAILs at ~half the photo's) and lever on soft / colour. (c) A: brow back (or head kept + a
+   darker colour). (d) B: brow colour light grey-khaki vs the photo.
+3. Lid darkening at the lash line (Tess lid L -3 vs -8.6; it also drives sclera / lid and "visible white").
+4. Lip sheen: lips.sheen / lips.specular alive (5 -> 6.4 / photo 11.5); try specular .9 / sheen .1 locally, watching wet plastic.
+5. Garrett stubble: salt-and-pepper white specks on the chin + no cheek beard shadow (both reviewers); no row yet for dot
+   contrast (add: share of dots lighter than the skin, dot L spread vs photo), then stubble colour / shadow up the cheek.
+6. A: mauve tone + neck seam (GAME x3); B: salmon tone, lips dusky mauve; Tess: lips too red / salmon, iris still brown vs
+   green-hazel (iris row passes on L / b*: add hue).
+STATE: r10 collected and reviewed, all committed. Nothing running. NEXT: item 2a.
+
+## r11 (2026-10-18, projskin2 successor 6): Tess + Garrett only (Joe: game-ready Tess and Garrett; A / B paused)
+- A / B PAUSED. A's r10 brow change reverted (head + density back to g14's) as privA_hd_g16; nothing else of A / B changes,
+  nothing of them is rendered in r11 batches.
+- WHY GARRETT'S BROW SHADOW STAYED A STENCIL: his brow has `drop` set, so `moved` was true and brow_shadow was already masked by
+  the hair image itself, not the landmark zone. The band's alpha saturates where hairs overlap (density 1.6 at the clip, and
+  brows.head redistributes the left-out head hairs into the body), so the shadow + hairs drew one solid grey shape.
+- CODE: (a) with `hair.brows.head` set, brow_shadow is masked by a BLURRED copy of the brow picture (`skin_swatch.blurred`,
+  ~1.5 mm): the shadow fades in with the head and thins where the hairs thin, on moved and unmoved brows alike.
+  (b) `hair.brows.clump` (0..1): a smooth random patch field thins / fills the body unevenly (count kept);
+  (c) `hair.brows.opacity` (default .95): the hairs' cover, lower = see-through.
+  2D check (out/private/lev/r11/brow2d.png, density 1.6 / clump 0 | 1.25 / .6 | 1.1 / .8, hairs | blurred shadow): the blurred
+  shadow fades at the head; clump .6 opens visible gaps in the body; the body still saturates at density > 1.1.
+- LEVER CHECK QUEUED (cut/r11_lev.sh, log out/private/lev/r11_lev.log; r11t0 / r11g0 = r10 models as they are, r11t1 / r11g1 =
+  after): Tess brows density 1.2 + clump .7 + opacity .78, iris greener (#4f5034, inner amber #5a4428), lips blood 2.0 / lower .45,
+  sheen .10 + specular .9, lid: makeup.eyeshadow matte #6e5244 .35 reach .5 (lash-line lid, rows "eye lid - cheek", "lid band lash
+  share"); Garrett brows density 1.15 + clump .7 + opacity .78 + shadow .4, stubble grey .75 -> .3 / grey_color #8f877d (no white
+  specks; beard chroma ours -4.1 vs .3), stubble shadow .15 -> .3 + cheeks zone .6 -> .9 (up the cheek), lips blood 4.5 -> 5.5 +
+  melanin 1.5 -> 2.2 (upper lip L 62.6 vs 51.3, a* 13.9 vs 17).
+STATE: code + lever check running. NEXT: read r11t*/r11g* rows + tiles, then one Tess + Garrett batch.
+- TESS LEVER CHECK r11t0 -> r11t1 (sheet out/private/lev/r11/t_face.png = photo | r10 | after): FAIL rows 40 -> 49. By eye the
+  brows went from a near-black band to a faint grey smudge, both wrong: the photo's brow is DARK but slimmer and textured.
+  Rows: brow darkness L R 42.1 -> 56.9, L 44.4 -> 58.5 (photo 35: ours was already LIGHTER on the mean; the "near-black" read
+  is the band's width and evenness, not its darkness), strand texture .135 -> .078, inside spread 30 -> 19 (photo 30): opacity
+  .78 flattened the hairs. front / middle .40 -> .49 (photo .49) and edge width better (the blurred shadow). VERDICT: opacity is
+  the wrong lever (keep .95); next: slimmer (thickness 1.25 -> 1.1) + clump .6 at density 1.4 (r11t2).
+  Iris (#4f5034 / inner #5a4428): lighter and yellower (L 29 -> 31, b* 14.8 -> 17.4 vs 10.9): LOSS; next darker, greyer #46483a.
+  Lips blood 2.0 / lower .45: lower lip lighter (L 62 -> 67 vs 61): LOSS (the salmon is low melanin, not high blood: the photo's
+  upper lip is darker (47.6 vs 50.8) and yellower (b* 20.1 vs 17.1)); next melanin 5 -> 6.5, lower .15 -> .35, blood kept.
+  Lip sheen .10 / specular .9: 7.1 -> 8.5 (photo 11.8) better, no wet-plastic read at 384 px: KEEP.
+  LID: makeup.eyeshadow (matte #6e5244 .35) is DEAD: every lid row bit-identical (makeup isn't reaching this head's stack;
+  not chased this round).
+- GARRETT LID_FOLD TEAR (coordinator: 120 folded edges at the inner corner of his left lower lid, 6 without lid_fold).
+  cut/foldcount.py <model> [variants]: folded edges (adjacent normals < -.5) on GNM's MEAN head + the model's lid_fold, new ones
+  located against the eye joint (GNM frame: x out to the side, y up, z forward). Mean head alone: 47 (mouth / socks). gp_h6c_s17's
+  fold (wrap 35.2 per side): +44 L / +45 R, spanning y -11.7 .. 9.3 mm (into the LOWER lid) and x -11.9 .. 19.3 (inner corner to
+  past the outer). By wrap: 0 -> +4 per side (upper lid only, y 2.5-5.8: the slit itself), 10 -> +15 (upper lid only), 20 -> +31
+  (down to y -5), 28 -> +43 (y -10). The wrap round the outer corner (design_wrap) is what folds the lower lid; overhang / thick
+  barely matter. Measured on the mean head, not his identity: confirm on his built head (asset mesh_quality folds).
+- TESS r11t2 (sheet out/private/lev/r11/t2_face.png): density 1.4 + clump .6 + thickness 1.1 (opacity default): FAIL 40 -> 44;
+  brows slimmer and more textured by eye (closer to the photo's shape), front / middle WIN both, but darkness 42 -> 49 / 44 -> 54
+  (photo 35) and coverage LOSS: fewer hairs = lighter. Iris #46483a / #4e3e2a: iris L dE 6.5 -> 3.9, a* 1.1 (greener) KEEP.
+  Lip sheen .10 / .9: 7.1 -> 9.2 (photo 11.8) WIN, KEEP. lips.melanin 6.5 / lower .35: no row moved (dead on Tess's stack).
+- GARRETT r11g1 (g_face.png): opacity .78 brows LOSS (as Tess); stubble grey .3 + shadow .3: no white specks, cheek coverage WIN,
+  but too dark / specky (beard L -17 -> -27, photo -15). lips blood / melanin: DEAD (his lips sit under the projected stack).
+  r11g2 (g2_face.png, gp_h6c_s17w = lid_fold wrap 10): lips.over_stack makes them alive but lipstick-red (upper WIN dE 13.7 -> .8,
+  lower LOSS L 65 -> 46): REJECTED; stubble grey .5 #a8a198 / shadow .2: chin coverage .34 -> .20 LOSS, jaw coverage WIN; lid rows
+  mixed with wrap 10 (lash share L WIN, lid - cheek L LOSS -9.6 -> -6.4); the eye reads the same at 384 px.
+STATE: r11 batch PREPARED, NOT launched (cut/mk_r11_run.py, cut/r11.txt, chain_r11.sh: Tess s24 + Garrett s18 only).
+
+## Handover 2026-10-18 r11 (projskin2 successor 6; next agent start here, then docs/notes/gates.md)
+CURRENT BEST SKIN FOR EXPORT: Tess tp_k19_s23, Garrett gp_h6c_s17 (r10; nothing of r11 is batch-proven). NOTE for the assembly:
+Garrett's lid_fold tears the lower lid (below): s17 / s15 carry wrap 35.2; gp_h6c_s17w is s17 with wrap 10 (skin unchanged).
+1. LAUNCH r11: `setsid nohup /mnt/data/hifipushie/projskin/chain_r11.sh > out/private/gate/chain_r11.log 2>&1 < /dev/null &`
+   (Tess + Garrett only; check the sed-made chain once: models tp_k19_s24 / gp_h6c_s18, gate dirs tess_s24 / garrett_g17).
+   Then tiles (cut/mk_tiles.py) + a fresh blind reviewer per head (bin/review from 2026-10-19 13:00 MT).
+2. LID_FOLD (coordinator, priority after brows): the wrap round the outer corner (gnm_fold.design_wrap) folds the lower lid:
+   cut/foldcount.py on GNM's mean head: wrap 35.2 -> +44 folded edges per side reaching 11.7 mm below the eye; 10 -> +15, upper lid
+   only; 0 -> +4 (the slit). Confirm on his BUILT head with asset.mesh_quality folds (the assembly's ~6 baseline), and look at the
+   r11 eye tiles for the hood at the outer corner. If wrap 10 still folds there, fix design_wrap (clamp the chains above the
+   lower lid's ring) rather than the number.
+3. BROWS: the rows and the reviewers disagree. Rows: ours is LIGHTER on the mean than the photo (Tess 42 vs 35, Garrett 48 vs 45);
+   reviewers: "near-black block". What reads "block" is the band's width + evenness. opacity (new) is the wrong lever (flattens the
+   strand texture, lighter everywhere); clump (new) + thickness move the look the right way but lose darkness / coverage with fewer
+   hairs. Next: a measured row for the band's evenness (darkening cv inside the mask, photo vs ours) and darker colour with clump.
+   The blurred brow_shadow (code, with brows.head) makes front / middle WIN; it's in s24 / s18 via the code, not the spec.
+4. Garrett stubble: no lever value yet that keeps chin coverage and loses the white specks (grey .5 #a8a198 in s18 is a guess:
+   judge it on the r11 mouth / cheek tiles). Garrett lips: blood / melanin dead (projected stack wins); over_stack too red; next:
+   over_stack with blood ~3 + strength .5.
+5. Lid at the lash line (Tess): makeup.eyeshadow is DEAD on her (rows bit-identical): find why makeup doesn't reach the stack.
+6. NODE-HEAVY LAYERS (for the export bake; the OSL fallback 9367787f covers the bake, live Cycles still overflows): the image
+   layers (brow_hairs + brow_shadow: two image textures each, mirrored), stubble (dots + shadow breakup noise + grey), skin
+   folds / wrinkles with height (20 height layers), lip_sheen pad, the projected "uv" stack. Height layers are the first to merge.
+A / B: paused (A's r10 brow change reverted as privA_hd_g16; not rendered).
+
+## r12 (2026-10-18, projskin2 successor 7): Garrett's lid tear fixed in code, the brow band row, the r11 batch
+- LID_FOLD ON THE BUILT HEADS (cut/r12/foldhis.py <model> [variants]: base.gnm_head run with gnm_fold.mesh_delta's input captured,
+  so the model's own identity / pose / expression; folded edges = neighbouring normals < -.5, counted only on EXTERIOR skin with the
+  assembly's designed mask (asset._designed_interior: lid insides, lips, sockets, ears, sock), so the baseline is the assembly's):
+  | head | no fold | wrap 35.2 (spec) | wrap 20 | wrap 10 | wrap 0 (legacy design()) |
+  | Garrett s17 | 0 | 109 (y -9.5 .. 10.7 mm: LOWER lid) | 82 (to y -3.3) | 50 (y >= 2.8: upper lid only) | 14 |
+  | Tess s23 | 0 | 105 (to y -14.4: lower lid) | - | 37 (y >= 1.1) | 13 |
+  At wrap 10 the left-side folds are rings (6,6) x13, (7,7) x7 = ka+1 / ka+2, the slit and the roll's lower edge: the hood's own
+  designed undercut along the crease, plus 6 edges at rings 0-1. Tess's lower lid tore the same way (nobody had counted hers).
+  Eye tile (out/private/lev/r11/g_lidfold_eyes.png, photo | wrap 35.2 | wrap 10, both eyes): the bright notch + kink at the outer
+  corner of his left eye is gone at 10; the hood still reads.
+- FIX (code, gnm_fold.WRAP_MAX = 10, `_wrap(c)`, and design_wrap clamps too): the wrap can't reach more than 10 deg below the
+  horizontal whatever the spec says. Round the outer canthus the upper and lower lids share their rings, so a chain based further
+  down sits on the lower lid's margin and re-sectioning it against its unmoved neighbours folds the lower lid. Both heads now build
+  as at wrap 10 (gp_h6c_s17 == gp_h6c_s17w; tp_k19_s23 changes at her outer corner too). Left: the slit's undercut still counts as
+  folds in asset.mesh_quality (~50 / ~37): designed, but not in _designed_interior's mask (it doesn't know the lid_fold); the
+  assembly should read those as the crease, or the mask should take gnm_fold.slit_ids.
+STATE: lid fix in code. NEXT: the brow band row.
+- BROW BAND ROW (code, spikes/projskin/skincheck.py `brow_band`, rows "brow_* band ..."): the hair mask as brow_edge; height =
+  vertical extent per column (mean + 5 bins medial -> lateral, "BAND ... height"), evenness = darkening cv inside the mask, skin
+  through = share of the band's 1.5 mm-blurred envelope under 40 % of its p90 darkening, edge above / below (20-80 % across the
+  outline, split at each column's centre), core L (p10) and median L, darkening per 5 bins along ("BAND ... darkening").
+  On the r10 renders (r11t0 = tp_k19_s23, r11g0 = gp_h6c_s17), photo | ours:
+  | row | Tess R | Tess L | Garrett R | Garrett L |
+  | band height mm | 6.12 / 5.39 | 6.60 / 5.81 | 6.65 / 5.62 | 6.37 / 5.16 FAIL |
+  | evenness cv | .36 / .36 | .42 / .42 | .36 / .24 FAIL | .34 / .29 |
+  | skin through | .22 / .17 | .27 / .23 | .16 / .05 FAIL | .17 / .11 |
+  | core L p10 | 23.7 / 27.5 | 21.4 / 23.4 | 31.4 / 37.2 FAIL | 30.8 / 35.9 FAIL |
+  | median L | 39.4 / 41.1 | 38.6 / 39.7 | 48.1 / 43.1 FAIL | 44.1 / 41.4 |
+  | darkening along | 30 44 51 43 29 / 42 49 51 40 24 | 25 49 54 43 27 / 23 39 53 53 39 | 21 25 40 35 25 / 35 36 38 38 31 | 23 37 40 30 30 / 28 38 40 38 38 |
+  READ: ours is NOT wider: both heads' bands are 10-20 % NARROWER than the photos'. Tess's band matches the photo on evenness, skin
+  through, core and median at the gate's resolution; only her height (low) and her left tail (bins 4-5 too dark: a dense, thin tail)
+  are off, so r11's "slimmer" (thickness 1.1, in s24) goes the WRONG way (r11t2: height R 4.98 FAIL). Garrett's band is the block:
+  flat along its length (35-38 in every bin; the photo peaks mid-brow at 40 and falls to 21-25 at the ends), too even inside (cv
+  .24) with almost no skin through (.05), its core too light and its median too dark = one uniform mid-dark grey.
+  Levers (lever check cut/r12/lev.sh, log out/private/lev/r12_lev.log): Tess r12t1 thickness 1.35 (height; n scales with it, so the
+  per-area density holds) + clump .6, density 1.6; Garrett r12g1 thickness 1.3, clump .6 (gaps), head .7 (lighter medial end),
+  colour #3e352e -> #332b25 (core p10 6 L darker), shadow .4.
+STATE: band row measured, lever check running. NEXT: read r12t1 / r12g1, fold into the batch (chain_r12.sh).
+- LEVER CHECK r12 (band rows, photo | before -> after):
+  TESS r12t1 (thickness 1.35 + clump .6): height R 5.39 -> 5.56, L 5.81 -> 5.97 (photo 6.12 / 6.60) WIN, but skin through R .17 -> .13
+  (photo .22) FAIL, darkness L 44.4 -> 45.1: MIXED. Her r10 band already passes evenness / skin through / core / median: NO brow
+  change for Tess in r12 (s24's thickness 1.1 dropped too: it narrowed the band). Her reviewers' "block" isn't in the band at the
+  gate's 384 px: judge it at game distance (game1m / game3m tiles) before another brow lever.
+  GARRETT r12g1 (thickness 1.3, clump .6, head .7, #332b25, shadow .4): darkness L 51.6 -> 48.1 (44.3) WIN, R 48.2 -> 47.6; core p10
+  R 37.2 -> 36.4, L 35.9 -> 35.0 (now PASS); height 5.62 -> 5.78 / 5.16 -> 5.25 (L now PASS); skin through R .05 -> .08 (PASS);
+  coverage .76 -> .80 / .74 -> .77; evenness R .24 -> .26 (still FAIL), median 43 -> 42 (slightly darker: LOSS); darkening along still
+  flat (head .7 didn't lighten bin 1: 35 -> 37). KEPT. Lid lash share L .37 -> .27 PASS (the wrap clamp, his eye unchanged otherwise).
+- r12 BATCH LAUNCHED (chain_r12.sh, log out/private/gate/chain_r12.log; cut/r12/mk_r12_run.py + brows.json, cut/r12/r12.txt):
+  tp_k19_s25 = s23 + iris #46483a / #4e3e2a + lip sheen .10 / specular .9 (r11t2 wins) + the lid clamp; gp_h6c_s19 = s17 + r12g1 brows
+  + stubble grey .5 #a8a198 / cheeks .9 / neck .6 (r11g2) + lips over_stack with blood 3, melanin 1.5, strength .7, lower .5 / .5
+  (r11g2's over_stack fixed the upper lip but made the lower 16 L too dark) + the lid clamp. Gate dirs tess_s25 / garrett_g18; tiles
+  tiles_r12 (bin/review is down until 2026-10-19 13:00 MT: blind sitting by a subagent instead); rows out/private/gate/r12_rows.txt.
+STATE: batch running. NEXT: collect rows, keep / revert per row, blind sitting photo | before | after.
+- r12 COLLECTED (remote 1838 s, both succeeded; rows out/private/gate/r12_rows.txt; sheets out/private/gate/r12_sit/<head>_ref_before_after.png
+  = photo | before | after for eyes / mouth / cheek; one look-first sitting by this agent: bin/review is down until 2026-10-19 13:00 MT,
+  so NO independent review yet):
+  TESS tp_k19_s25 vs s23: FAIL 45 -> 46 of 117. iris L dE 5.5 -> 2.3 (greener; reads closer by eye), lip sheen lower 6.4 -> 8.3 (11.5)
+  WIN; sclera / iris R 1.72 -> 1.82 (1.59) LOSS (the darker iris raises the ratio), crease height mid L 5.20 -> 4.75 (5.25, in tol).
+  Band rows all PASS except edge BELOW (R .66 vs 1.41 mm): KEEP s25.
+  GARRETT gp_h6c_s19 vs s17 (g16): FAIL 30 -> 39. lips upper dE 11.8 -> 3.4 WIN (over_stack), lower 6.1 -> 7.3 LOSS (L 55.5 vs 61.8,
+  a* 20 vs 18: by eye peach-orange, too saturated); brows coverage .76 -> .80, front / middle .77 -> .70 (.57), head rise better, band
+  evenness R .26 (.36) and skin through R .08 (.16) still FAIL; STUBBLE grey .5 #a8a198: chin coverage .45 -> .27 (.48), chin - forehead
+  -17 -> -20.6 (-14.4), dots chin 123 -> 58 (98): LOSS (by eye: white specks became black pepper; the photo is a fine grey-brown
+  haze; both wrong). Eye rows LOSS: lash share R .39 -> .58 (.20), L .06 -> .31 (.15), visible white L .58 -> .53 (.69), socket - cheek
+  R -7 -> -12.4 (-4.1): not isolated (the clamped hood at the outer corner, or the 1.3-thick brow reaching the socket box).
+  DECISION: stubble REVERTED to s17's; lower lip lighter (lower blood .35 / melanin .3) -> gp_h6c_s19r (NOT batched).
+- LOOK-FIRST VERDICT: Tess: the brow is still a black, hard-edged strip (by eye the worst skin fault left); the rows pass on darkness,
+  evenness and skin through, so the block read is (1) the hard LOWER edge (edge below .66 vs 1.41 mm, the one band row that fails on
+  both heads) and (2) the hue: neutral black strands vs the photo's warm mid-brown, which no row measures yet (add a brow a* / b* row).
+  Her lips are flat salmon-pink vs the photo's brown-mauve with a darker line. Garrett: brow the same uniform grey band; stubble
+  wrong in a new way; lips orange-peach. No tear at his lids at wrap 10.
+STATE: r12 collected. NEXT: see the Handover below.
+
+## Handover 2026-10-18 r12 (projskin2 successor 7; next agent start here, then docs/notes/gates.md)
+CURRENT BEST SKIN FOR EXPORT: Tess tp_k19_s25, Garrett gp_h6c_s17 (both built with the lid-fold clamp gnm_fold.WRAP_MAX = 10,
+which is now in code: s17 builds exactly as gp_h6c_s17w; s19 lost 30 -> 39 rows, so Garrett stays on s17). Candidate: gp_h6c_s19r.
+1. LID TEAR: fixed in code (f3cb4f2e). On the built heads (cut/r12/foldhis.py, the assembly's designed mask) the exterior folded
+   edges went Garrett 109 -> 50 and Tess 105 -> 37, all on the upper lid's slit / roll rings (ka+1 / ka+2), the hood's designed undercut.
+   For the assembly: either read those as the crease, or add gnm_fold.slit_ids to asset._designed_interior. Re-run mesh_quality on
+   the export to confirm (the coordinator's ~6 baseline was without lid_fold).
+2. BROWS: the band rows (skincheck brow_band) fail on edge BELOW for both heads (ours steps in .7 mm, the photo feathers 1.2-1.4 mm),
+   and on Garrett also evenness / skin through. Try brows.soft (Tess 0, Garrett .3) or a lower-edge feather in skin_swatch.brow_image
+   (alpha is clip(a x 1.25): the body saturates), and add a brow hue row (a* / b* of the band vs the photo). Lever check first.
+3. Batch gp_h6c_s19r (+ the next brow lever on both heads); judge Garrett's eye rows (lash share, socket) against s17 built WITH the
+   clamp to separate the clamp from the brow thickness.
+4. Garrett stubble: grey .3 and .5 both fail (specks / pepper); the photo is a fine short-hair HAZE: try smaller, denser, lower-contrast
+   dots (stubble count / size levers, docs above "## Stubble count lever"), measured on chin coverage + dots per cm^2 + chin - forehead L.
+5. Lips: Garrett lower lip (s19r: lower .35 / .3, untested); Tess salmon (melanin was dead under her over_stack in r11: find why).
+6. Tess lid at the lash line: makeup.eyeshadow dead (r11), not chased.
+7. Blind review: bin/review is back after 2026-10-19 13:00 MT; run it on out/private/gate/tess_s25 and garrett_g18 (rev.sh) before
+   anything goes to the coordinator.
+A / B: paused.
+
+## r13 (2026-10-18, projskin2 successor 8): brow lower edge + hue, the lid slit in mesh_quality
+- BROW HUE ROW (skincheck brow_band: "band hue a* / b* (darker half)": median a*, b* of the band pixels darker than its median
+  darkening; tol 2.5). On the r12 gate renders, photo | ours: Tess s25 R a* 4.3 / 4.6, b* 10.2 / 8.7, L 4.5 / 4.9, 9.2 / 9.6: PASS
+  (her brow is NOT measurably cooler than the photo's at the gate's resolution; the "neutral black" read is the hard outline).
+  Garrett g16 R b* 13.4 / 7.8, L 12.3 / 7.5 FAIL (a* 7.3 / 4.9): his brow is grey where the photo's is warm grey-brown
+  (grey .3 pulls #3e352e toward .55 grey). Look-first (brow crops photo | ours): both brows outlined all round, the lower edge a
+  crisp line; Garrett's a uniform painted grey band.
+- BROW FEATHER (code, skin_swatch.brow_image `feather` mm, spec hair.brows.feather in m): below each column's centre of the band
+  the cover hands over (linear over feather / 2) to a copy blurred down the column (sigma feather / 2): the lower edge widens
+  outward and in; the upper edge is untouched (it passes). (A first try ramped the cover down inside the edge: it cut the tail
+  and made the edge no wider: dropped.)
+- LID SLIT IN mesh_quality (code, asset._slit_mask + _designed_interior(lid_fold=), wired in _export from base.head.lid_fold;
+  test tests/test_tooling.py test_lid_fold_slit_designed): every gnm_fold.slit_ids key (the tapered ends too: same rings) is
+  designed. foldhis (cut/r13/foldhis.py, SLIT=1 adds the mask) on the built heads: Garrett s17 50 -> 16 exterior folded edges
+  (left: y 2.8..5.6 mm, above the slit: the roll's upper rings), Tess s25 37 -> 2. mesh_quality drops whole TRIANGLES touching a
+  designed vertex, so the export's count will be at or under these. FOR THE ASSEMBLY: re-run mesh_quality on the export; the
+  remaining ~16 on Garrett are the hood's upper roll (not a tear in the tile; widen the mask to ring+3 only if they cluster).
+STATE: hue row + feather lever + slit exclusion in code, lever check r13t1 / r13g1 running (cut/r13/lev.sh). NEXT: read it.
+- EDGE BELOW WAS A CROP ARTEFACT (skincheck brow_band, r13): r12's "edge below fails on both heads (.66 vs 1.41 mm)" and the nan
+  values came from the crop: the box was padded 2 mm, a band reaching its bottom had no outside below it (distance_transform
+  treats the border as inside), and at 384 px a .25 mm bin held < 4 pixels. Fixed: bins >= 1 px, crop 4 mm below with the band's
+  mask still cut at box + 2 mm. Now the lower profile runs into the socket's own shading: photo and ours both read 2.5-3.5 mm and
+  pass on every render (s25 gate R 2.18 / 1.01 -> 2.95 / 2.75). So the row can't see a crisp lower line; the LOOK still does.
+- LEVER CHECK r13t1 (Tess s25 + brows.feather .0016; tile out/private/lev/r13_tess_brow_feather.png photo | s25 | r13t1): skin
+  through R .13 -> .17 (r12t1 base; photo .20), hue unchanged (PASS), height R 5.56 -> 5.40 (in tol); by eye the lower edge
+  is softer, a little; the band is still a dense dark stripe with a crisp top. Mild WIN: feather KEPT for Tess.
+- LEVER CHECK r13g1 (Garrett s17 + r12g1's brows with colour #332b25 -> #3b2a1e, grey .3 -> .15, + feather .0016; vs r12g1; tile
+  out/private/lev/r13_garrett_brow.png photo | r12g1 | r13g1): hue a* R 4.6 -> 6.1 (7.2), b* R 8.1 -> 11.0 (13.4), L b* 7.8 -> 10.7
+  (12.4): FAIL -> PASS both sides; core p10 R 36.4 -> 35.1 PASS; skin through / height / evenness ~unchanged; median L darker
+  (R 42.2 -> 40.4, L 40.4 -> 38.5 vs photo 48 / 44: LOSS, the warmer colour is a darker one); lash share R .35 -> .32, L .27 -> .23.
+  By eye: warm brown now, lower edge a little softer, still a dense band darker than the photo's sparse grey-brown. KEPT
+  (hue + feather); next lever for Garrett: lighter (opacity .8 or colour L up), not in this batch (unproven).
+STATE: brow levers proven (Tess feather; Garrett hue + feather). Stubble haze (r13g2 / g3) and lips (r13t2 / g4) checks running.
+- STUBBLE AS A HAZE (code: hair.stubble.contrast, x the stubble hairs' cover; commit "hair.stubble.contrast"). Lever check on
+  Garrett s17 (r13g2 / r13g3: size 1.5, count 2.5, grey .6 #b4aa9c, shadow .5 #806a58, contrast .35 / .7; tile
+  out/private/lev/r13_garrett_stubble.png: photo | s17 | r13g2, full 384 and at 1 m = 234 px; rows photo | s17 | g2 | g3):
+  chin - forehead L -14.8 | -17.3 | -22.9 | -22.8, chroma .7 | -3.8 | -2.3 | -2.7, chin coverage .53 | .35 | .05 | .04, dots chin
+  56 | 21 | 4.4 | 4.4. LOSS: at size 1.5 the hairs are sub-pixel at 384 px and vanish, contrast .35 vs .7 moves nothing (the hairs
+  aren't seen: the lever is dead at this size), the shadow .5 makes a smooth grey-green wash 8 L too dark. By eye the PHOTO is
+  not a dark haze either: a fine LIGHT grey-white speckle (grey hairs, ~.2 mm^2 dots, 56 / cm^2 dark + 61 / cm^2 light) over skin
+  that stays warm (chroma +.7: ours goes cool / green in every variant: the cast). NOT batched (s17's stubble kept).
+  NEXT for stubble: size ~3 (hairs ~1 px at the gate), grey .85 with grey_color near #d0c8bc, contrast .6, shadow .1 and a WARM
+  shadow_color (chroma must go up 3-4): judge light dots + chroma + chin - forehead, and the 1 m tile.
+- LIPS lever checks: TESS r13t2 (blood 2.5 -> 2.0, melanin 5 -> 8, lower melanin .15 -> .35, blood .6 -> .5): upper dE 5.4 -> 4.2
+  (a* 22.0 -> 21.4, b* 17.1 -> 18.0; photo 19.0 / 20.1) WIN; lower 3.2 -> 2.8 but L 61.7 -> 63.7 (61.0). Small: melanin is not dead,
+  just weak (the lips' T() colour moves .60 -> .58 red from melanin 5 -> 6.5: r11's step was too small to see). Further: melanin
+  12+ or blood 1.5. GARRETT r13g4 (= s19r's lips on s17): upper dE 13.7 -> 4.7, lower 7.5 -> 4.7 (L 58.8 vs 61.9, b* 15.0 vs 11.6:
+  still a little orange) WIN both.
+- r13 BATCH LAUNCHED (chain_r13.sh, log out/private/gate/chain_r13.log; cut/r13/mk_r13_run.py, cut/r13/r13.txt): tp_k19_s26 = s25
+  + brows.feather .0016 + r13t2 lips; gp_h6c_s20 = s17 + r13g1 brows (hue + feather) + r13g4 lips, stubble s17's. Gate dirs
+  tess_s26 / garrett_g20, rows out/private/gate/r13_rows.txt (vs tess_s25 / garrett_g16, both re-checked with the r13 skincheck).
+STATE: batch running. NEXT: collect rows, keep / revert, blind sitting.
+
+## Handover 2026-10-18 r13 (projskin2 successor 8; next agent start here, then docs/notes/gates.md)
+CURRENT BEST SKIN FOR EXPORT: Tess tp_k19_s25, Garrett gp_h6c_s17 (unchanged until the r13 batch is collected and reviewed).
+Candidates in the batch: tp_k19_s26, gp_h6c_s20 (chain_r13.sh running on NICO-TOP at 15:04 MT; gate dirs out/private/gate/tess_s26,
+garrett_g20; rows r13_rows.txt; tiles tiles_r13; "R13 CHAIN DONE" in out/private/gate/chain_r13.log when finished).
+FOR THE ASSEMBLY SIDE: the lid fold's slit is now designed in asset.mesh_quality (asset._slit_mask, _designed_interior(lid_fold=),
+wired in _export from base.head.lid_fold; test test_lid_fold_slit_designed). On the built heads (cut/r13/foldhis.py SLIT=1) the
+exterior folded edges go Garrett 50 -> 16, Tess 37 -> 2; mesh_quality drops whole triangles touching the mask, so expect at or
+under that. Garrett's 16 sit just above the slit (the hood's upper roll, y 2.8-5.6 mm): re-run mesh_quality on the export; if they
+cluster as a "TORN" spot, widen _slit_mask to ring+3 (designed hood), don't touch WRAP_MAX.
+1. Collect r13: rows vs s25 / g16 (keep / revert per row: brows hue + feather, lips), then the blind sitting (bin/review is back after
+   2026-10-19 13:00 MT; rev.sh on tess_s26 / garrett_g20) or a fresh blind subagent on photo | before | after tiles.
+2. Brows: hue now measured (skincheck "band hue a* / b*"): Tess passes (her "black" read is the outline / density, not the hue);
+   Garrett fixed by #3b2a1e grey .15 (r13g1). Both brows still read as a dense band darker / crisper than the photos': next lever is
+   lighter (brows.opacity .8 or a lighter colour) for Garrett (median L 40 vs 48), and a softer TOP / sparser body for Tess. The
+   "edge below" row cannot see the lower line any more (it runs into the socket's shading, see the r13 note): judge the lower edge
+   by eye on brow tiles, or write a row on the first 1 mm below the band only.
+3. Stubble (Garrett): the photo is fine LIGHT grey speckle over warm skin, not a dark haze (r13g2 / g3 loss, tile
+   out/private/lev/r13_garrett_stubble.png). Try size ~3, grey .85 near-white-warm, contrast .6, shadow .1 with a warm shadow_color;
+   rows: light dots chin (61 / cm^2), chin - forehead L (-14.8), chroma (+.7), and the 1 m tile.
+4. Tess lips: s26 has the browner lips (weak lever: go to melanin 12 / blood 1.5 if the gate agrees). Tess lid at the lash line: not
+   started (makeup.eyeshadow was dead in r11).
+A / B: paused.
+- r13 COLLECTED (15:40 MT; rows out/private/gate/r13_rows.txt; tiles tiles_r13; NO blind review yet):
+  TESS s26 vs s25: FAIL 44 -> 45 of 121. Lips both still PASS (no row flip); LOSS eye rim - cheek L -16.6 -> -12.9 (-20.5) and
+  crease darkness mid L .19 -> .16 (.29): neither lever touches the eye, so check render variance / the feathered brow shadow
+  reaching the lid box before reading these as caused. Not promoted.
+  GARRETT g20 vs g16: FAIL 38 -> 39. WIN lips upper dE 11.8 -> 3.4, brow hue b* R 7.8 -> 11.5 / L 7.5 -> 11.0 (PASS), skin through,
+  band height L. LOSS brow median L 40 -> 37.5 (43.8: darker), hair / skin ratio, and the SAME eye losses as s19 (lash share L
+  .06 -> .34, socket - cheek R -7 -> -10.9, visible white L): they come with the r12g1 brow (thickness 1.3 / head .7 / shadow .4),
+  not the lid clamp (s17 builds with the clamp too). NEXT: g20 with thickness back to 1.1 to confirm, and a lighter brow.
+  CURRENT BEST stays Tess s25 / Garrett s17 until the blind sitting on photo | before | after.
+
+## r14 (2026-10-18, projskin2 successor 9): the RC's nostril smudges / lilac lids / waxy skin, Garrett brow + stubble
+- THE RC CARRIES A STALE SKIN. r50/mk_rc.py takes `skin_from` (default ga_tess_v54): rc_tess's spec["skin"] is v54's projskin stack,
+  NOT tp_k19_s25 (RC_tess.md says so: "skin thread's later r9 / r10 not swapped in"). Diff rc_tess vs s25 skin (cut/r14/rcskin.json):
+  stack.occlusion_strength 1.0 vs .35 (the baked occlusion multiplied into basecolor at full strength: nostrils, alar groove, lid),
+  zones.eyelids 2.48 vs 1.0 (orange-tan lids), eyes.sclera #e9e3dc vs #999187 (a bright neutral sclera goes lilac under the game's
+  blue-grey ambient: RC sclera pixels Lab ~62 / 1 / 1), no eyes.waterline / occlusion, canthus .8 vs .5, no shading.roughness .55,
+  no oil, detail .45 vs .6, older brows (no head / shadow / feather) and lips. Every review fault on the list has a matching stale key.
+- THE BAKE ADDS ITS OWN NOSTRIL FAULT. rc_tess_0_basecolor.png at the nose island (crop 1420..1760 x 1000..1300; tile
+  cut/r14/nose_maps.png: basecolor | ao | normal | roughness): the nostril opening is baked as dark pinwheel FANS (per-triangle
+  wedges: rays from the decimated low poly's shallow nostril hit the high poly's dark interior from several directions) and the
+  alar rim as a ragged dark LACE (ray-hit boundary between rim and interior). The stack images are smooth; these shapes come from
+  the bake. The ao map darkens the same spot again (game EEVEE ignores glTF occlusion; an engine that applies it would double it).
+  At 3 m these read as one dark smudge per nostril (r50/ge/x_neutral_front.png).
+- STACK vs BAKE, settled (lever check r14t0 = tp_k19_s25's head with the RC's whole skin, stage render, fitted light; tile
+  cut/r14/t0_tile.png photo | s25 | RC skin): at the STAGE the RC skin's nostrils are dark but clean (darker than s25's: occlusion 1.0)
+  and show no smudge, fan or lace. So the 3 m smudge is the BAKE, made darker by the stale stack:
+  asset.scene_maps sets ONE cage extrusion per part = 1.5 x the part's WORST stray from the field + 2 voxels ("body" holds the GNM head
+  AND the wrapped body, moved up to 3.9 mm: reach ~6+ mm). Inside a nostril (~5-8 mm across) a texel's ray starts past the opposite
+  wall and lands on the far wall / the outer ala: each of GNM's fan faces in the nostril gets a different wrong surface (the pinwheel)
+  and the rim a ragged lace. The head is GNM's own mesh (stray ~0), so it needs ~2 voxels, not 6 mm.
+  FIX (assembly code, not done here): a per-vertex cage (Blender bake cage object: the low poly pushed out by each vertex's OWN stray
+  x1.5 + 2 vx, floor 2 vx), or split the head from the body as its own bake job with its own extrusion. Then check the nostril island
+  on rc_*_0_basecolor (no wedges) and the 3 m game render. Same mechanism can hit the lid's inner corner and the mouth corners.
+- LILAC LIDS: the RC skin's sclera #e9e3dc is bright and near neutral (game render sclera Lab ~62 / 1 / 1); under the game rig's
+  blue-grey ambient it reads lilac, and zones.eyelids 2.48 makes the lid skin orange so the rim contrast reads pink. s25 has the
+  measured sclera #999187 (warm grey), waterline .5, eyelids 1.0: swapping the skin to s25 removes both causes (stage tile shows
+  the RC skin's white sclera; s25's matches the photo's tone).
+- WAXY: the RC skin at the stage (t0) is visibly blurrier than s25 (no pore grain: s25 has fine_strength 1, detail .6, oil .2,
+  shading.roughness .55; RC detail .45, no oil / shading). Stale skin again; the bake's 0.8 mm/texel body density can't hold 0.4 mm
+  pores in basecolor anyway, so the detail normals carry them (rc_tess_skin_*_normal.png are present).
+STATE: cause found for all three (stale skin_from=ga_tess_v54 + the bake's global cage extrusion). NEXT for ASSEMBLY: re-export with
+  skin_from=tp_k19_s25 (r50/mk_rc.py takes it) AND the per-vertex cage; then the 3 m game render. Garrett levers r14g1-3 running.

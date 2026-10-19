@@ -10852,7 +10852,8 @@ def export_part(name: str, spec: dict, out_dir, texture: int = 1024, log=print) 
         tt /= np.linalg.norm(tt, axis=1, keepdims=True) + 1e-12
         part = {"verts": Vall.astype(np.float32), "corner_vert": Fall.ravel().astype(np.int64),
                 "uv": UVc.astype(np.float32),
-                "normal": n.astype(np.float32), "tangent": tt.astype(np.float32), "sign": sg.astype(np.float32)}
+                "normal": n.astype(np.float32), "tangent": tt.astype(np.float32), "sign": sg.astype(np.float32),
+                "shell": {"outer": len(F), "thickness": th}}  # (lods._lod_shell: decimate the outer, rebuild the inner)
         files = {"orm": out_dir / f"cloth_{gname}_orm.png", "specular": out_dir / f"cloth_{gname}_specular_gltf.png"}
         if g.get("detail", {}) is not False:
             maps = write_maps(out_dir / f"cloth_{gname}", M, uv, side, dict(g, detail=dict(g.get("detail") or {},

@@ -53,6 +53,18 @@ def _blender(job: dict, timeout: float = 600):
 GAME_SCRIPT = Path(__file__).with_name("blender_game.py")
 
 
+EML_PARTS = ("eyes", "teeth", "teeth_lower", "tongue", "brows")
+
+
+def lash_cap(rb: dict, report: dict) -> int | None:
+    """Triangles the lashes may take under the role's eyes_mouth_lashes budget: the budget less what the eyes, teeth,
+    tongue and brows already take (report). None without that budget."""
+    b = (rb.get("parts") or {}).get("eyes_mouth_lashes")
+    if not b:
+        return None
+    return max(0, int(b["default"]) - sum(int(report[pn].get("triangles", 0)) for pn in EML_PARTS if pn in report))
+
+
 def budget_check(rb: dict, report: dict, spec: dict) -> dict:
     """LOD0 triangles by budget part (budgets.json's parts: head, body, clothing, hair_cards, eyes_mouth_lashes,
     accessories) against the role's defaults: {"parts": {part: [count, budget]}, "total": [count, budget], "lines"}."""
@@ -65,7 +77,7 @@ def budget_check(rb: dict, report: dict, spec: dict) -> dict:
             have["body"] = have.get("body", 0) + int(r["meshes"].get("body", {}).get("triangles", 0))
             continue
         k = ("body" if pn == skin_pn else "clothing" if r.get("cloth") else "hair_cards" if (r.get("curves") or r.get("cards"))
-             else "eyes_mouth_lashes" if (r.get("lashes") or pn in ("eyes", "teeth", "teeth_lower", "tongue", "brows")) else "accessories")
+             else "eyes_mouth_lashes" if (r.get("lashes") or pn in EML_PARTS) else "accessories")
         have[k] = have.get(k, 0) + n
     bp = rb["parts"]
     parts = {k: [have.get(k, 0), int(bp[k]["default"]) if k in bp else None] for k in sorted(set(have) | set(bp))}
@@ -630,6 +642,20 @@ UNDER_CLOTH_RIM = 0.04  # m: covered skin this close to uncovered skin stays (a 
 # lifting in a pose: what the opening shows)
 
 
+LOD_PUSH_WORN = True  # (r54) ... and the parts worn under them (socks, the body), where they were under at LOD0
+LOD_PUSH_WORN_MIN = 20  # LOD0 vertices under a garment for a part to count as worn under it
+LOD_PUSH_WORN_NOT_OVER = True  # (r55) see the mask in export
+LOD_PUSH_WORN_SHARE = 0.85  # (r55) ... and at least this share of its vertices with a garment in reach UNDER it (the
+# rest have the garment poking through them): worn under, not over. rc2d LOD0: socks 0.99, body 0.89, shoes 1.00 (the
+# collar under the jeans' hem: 46 vertices, those move); worn over: badge 0.49, lanyard 0.48, clip 0.58, laces 0.67,
+# badge_card 0.83 (the margin is thin there: a flat card's back faces see the coat)
+LOD_PUSH_WORN_SKIP = ("head", "eyes", "teeth", "teeth_lower", "tongue")  # (the head's meshes: its neck seam ring meets
+# the body's; the body's side of it is under the collar at most)
+LOD0_PUSH_UNDER = True  # (r57) the garments' under layers are put under their covers at LOD0 too
+LOD0_UNDER_GAP = 0.0015  # m: ... this far under (cloth.PUSH_UNDER_GAP); the LODs use lods.LOD_UNDER_GAP
+LOD_PUSH_UNDER = True  # (r53) each LOD puts the under garments back under their decimated covers (lods.push_under_layers)
+
+
 def under_cloth_keep(p: dict, cloth: list[dict]) -> np.ndarray:
     """Per triangle of an export part (the skin): False where all three corners are covered by a garment (one of
     `cloth`'s export parts lies within UNDER_CLOTH_REACH along the vertex normal, inside a UNDER_CLOTH_TUBE line) and
@@ -676,6 +702,89 @@ def under_cloth_keep(p: dict, cloth: list[dict]) -> np.ndarray:
         near = cKDTree(V[open_]).query(V[used], distance_upper_bound=UNDER_CLOTH_RIM)[0] < UNDER_CLOTH_RIM
         covered[used[near]] = False
     return ~covered[cv.reshape(-1, 3)].all(1)
+
+
+CLOTH_UNDER_CULL = True  # (r53) asset.export's cull_under_cloth also drops an under garment's faces its covers hide
+
+
+def _over_chain(over: dict, g: str) -> list:
+    """The garments under `g` by its chain of "over" (coat -> sweater -> jeans)."""
+    out, x = [], over.get(g)
+    while x is not None and x not in out and x != g:
+        out.append(x)
+        x = over.get(x)
+    return out
+
+
+def cloth_under_keep(p: dict, covers: list[dict]) -> np.ndarray:
+    """under_cloth_keep for a garment part under other garments. A two-sided garment (p["shell"]: outer triangles, then
+    their inner twins, then made pieces / buttons) is tested on its OUTER shell only (the inner shell's vertices face in:
+    as "uncovered" vertices they would have kept every rim); each inner triangle goes with its outer twin, the rest stay."""
+    nt = len(p["corner_vert"]) // 3
+    if not p.get("shell"):
+        return under_cloth_keep(p, covers)
+    n = int(p["shell"]["outer"])
+    po = {"verts": p["verts"], "corner_vert": np.asarray(p["corner_vert"])[:3 * n],
+          "normal": np.asarray(p["normal"])[:3 * n]}
+    ko = under_cloth_keep(po, covers)
+    return np.r_[ko, ko, np.ones(nt - 2 * n, bool)]
+
+
+def _posed(p: dict, rest: np.ndarray, posed: np.ndarray) -> dict:
+    """p with its vertices moved as a dump's mesh moved (each vertex takes its nearest rest vertex's posed position) and
+    per-corner normals from the posed triangles' winding."""
+    from scipy.spatial import cKDTree
+    V = np.asarray(p["verts"], np.float64)
+    d, nn = cKDTree(rest).query(V)
+    P = np.where((d < 0.002)[:, None], posed[nn], 1e3)  # (a vertex the dump lacks goes far away: never "covered")
+    cv = np.asarray(p["corner_vert"], np.int64)
+    T = cv.reshape(-1, 3)
+    fn = np.cross(P[T[:, 1]] - P[T[:, 0]], P[T[:, 2]] - P[T[:, 0]])
+    fn /= np.maximum(np.linalg.norm(fn, axis=1, keepdims=True), 1e-12)
+    q = {**p, "verts": P, "normal": np.repeat(fn, 3, axis=0)}
+    if p.get("shell"):  # (two-sided: the inner shell's corners keep the winding's own normal, unused by the test)
+        q["shell"] = p["shell"]
+    return q
+
+
+def cull_exposed_keep(p: dict, covers: list[dict], name: str, cover_names: list[str], poses, keep: np.ndarray):
+    """(r54) The garment-under-garment cull (cloth_under_keep at rest) checked over posed frames: `poses` = npz dumps
+    (blender_game shot "dump": "<mesh>:rest" / "<mesh>:posed" per mesh, the clip's frame with skinning, twist, shapes;
+    or a glob / list of them) of an export WITHOUT the garment cull. In every frame the under garment and its covers
+    are posed (nearest rest vertex) and tested again; a triangle uncovered in any frame is kept. Returns (keep, report)."""
+    import glob as glob_
+    files = sorted(glob_.glob(poses)) if isinstance(poses, str) else list(poses)
+    k = np.asarray(keep, bool).copy()
+    rep = {"frames": 0, "restored": 0, "worst": None}
+    worst = 0
+    for f in files:
+        z = np.load(f) if isinstance(f, (str, Path)) else f
+        if f"{name}:rest" not in z or not all(f"{c}:rest" in z for c in cover_names):
+            continue
+        pp = _posed(p, z[f"{name}:rest"], z[f"{name}:posed"])
+        cp = [_posed(c, z[f"{cn}:rest"], z[f"{cn}:posed"]) for c, cn in zip(covers, cover_names)]
+        kf = cloth_under_keep(pp, cp)
+        new = kf & ~k
+        rep["frames"] += 1
+        if new.sum() > worst:
+            worst, rep["worst"] = int(new.sum()), Path(str(f)).stem if isinstance(f, (str, Path)) else str(rep["frames"])
+        k |= kf
+    rep["restored"] = int(k.sum() - np.asarray(keep, bool).sum())
+    return k, rep
+
+
+def cull_tris(p: dict, keep: np.ndarray) -> dict:
+    """p without the triangles `keep` is False for (per-corner arrays cut; vertices, weights, shapes kept), its shell
+    layout (outer, inner twins) recounted."""
+    cm = np.repeat(keep, 3)
+    q = dict(p)
+    for k_ in ("corner_vert", "uv", "normal", "tangent", "sign"):
+        if q.get(k_) is not None:
+            q[k_] = np.asarray(q[k_])[cm]
+    if p.get("shell"):
+        n = int(p["shell"]["outer"])
+        q["shell"] = dict(p["shell"], outer=int(keep[:n].sum()))
+    return q
 
 
 def _deep_hidden(V: np.ndarray, hidden: np.ndarray, part: np.ndarray, rim: float = HIDDEN_RIM) -> np.ndarray:
@@ -1341,10 +1450,25 @@ def seam_steps(p: dict, img: np.ndarray, per_texel: int = 2) -> dict | None:
             "p95": round(float(np.percentile(across[busy] / beside[busy], 95)), 2) if busy.sum() > 20 else None}
 
 
-def _designed_interior(topo, verts, creases: bool = True) -> np.ndarray | None:
+def _slit_mask(lid_fold, n: int) -> np.ndarray:
+    """(n,) bool over GNM's vertices: the lid fold's slit and crease tail (gnm_fold.slit_ids). The fold re-sections the
+    upper lid's rings into platform, slit and roll: the roll's lower edge undercuts the slit by design (the hood), so its
+    edges fold against their neighbours (Garrett ~50 / Tess ~37 exterior folded edges after the wrap clamp WRAP_MAX,
+    2026-10-18 r12, all on rings ring+1 / ring+2). Those are the crease, not a tear."""
+    m = np.zeros(n, bool)
+    if lid_fold:
+        from . import gnm_fold
+        ids = np.array([v for v in gnm_fold.slit_ids(lid_fold) if 0 <= v < n], int)   # (every key: the tapered ends
+        # carry weight 0 for the cavity paint but are the same rings, and fold the same)
+        m[ids] = True
+    return m
+
+
+def _designed_interior(topo, verts, creases: bool = True, lid_fold=None) -> np.ndarray | None:
     """(one mesh, own quads) per low-poly vertex: GNM's own interior surfaces (the lids' insides, the inner lip
     rolls, nostrils' depths, the mouth sock): modelled to roll back under the skin, so they fold against the field
-    and stand off it by design. None when the part isn't that topology."""
+    and stand off it by design. None when the part isn't that topology. lid_fold (the head's base.head.lid_fold):
+    with creases, the fold's slit too (_slit_mask)."""
     if not topo:
         return None
     z = np.load(topo[0])
@@ -1361,6 +1485,7 @@ def _designed_interior(topo, verts, creases: bool = True) -> np.ndarray | None:
     ins = ~gr["skin_exterior"] | gr["mouth_sock"]
     if creases:
         ins = ins | gr["upper_lip"] | gr["lower_lip"] | gr["eye_sockets"] | gr["ears"]  # (ears: kept as GNM made them)
+        ins = ins | _slit_mask(lid_fold, len(ins))
     return (gid >= 0) & ins[np.maximum(gid, 0)]
 
 
@@ -1462,6 +1587,46 @@ def defect_regions(spots: np.ndarray, spec: dict) -> list[tuple[str, int]]:
     return [(str(a), int(b)) for b, a in sorted(zip(cnt, u), reverse=True) if b >= DEFECT_CLUSTER]
 
 
+def bake_needs_osl(job: dict, log) -> bool:
+    """(2026-10-18, Garrett's export) Compile every bake pass of the parts' scene materials first (blender_scene.bake_maps
+    check_only: seconds): a material too deep for Cycles' SVM stack (it would bake BLACK; a stacked skin of 61 layers, 20
+    with height) makes the bake run with OSL instead (no stack limit; CPU, slower). True when OSL is needed."""
+    from . import scene
+    try:
+        scene._blender({**job, "check_only": True}, 1800)
+        return False
+    except RuntimeError as e:
+        if "shader stack" not in str(e):
+            raise
+        which = str(e).split("material(s) ", 1)[-1].split("]", 1)[0] + "]"
+        log.append(f"WARNING bake: {which} too deep for Cycles' SVM shader stack: baking every map with OSL (CPU) instead")
+        return True
+
+
+BAKE_CAGE = True  # (r51) bake through a per-vertex cage (cage_verts) instead of one extrusion per part
+
+
+def cage_verts(p: dict, d: np.ndarray, vx: float) -> np.ndarray:
+    """The bake cage: each low-poly vertex pushed out along its (averaged) normal by its OWN faces' stray from the exact
+    surface (d: field at the face centres, then the 3 edge midpoints of every face, as scene_maps probes) x1.5 + 2 voxels.
+    One extrusion per part (the part's WORST stray) reached ~6 mm on Tess's body (GNM head + wrapped body in one part):
+    inside a 5-8 mm nostril a texel's ray started past the opposite wall and baked dark pinwheel fans and a ragged rim
+    (skin r14). The head is GNM's own mesh (stray ~0): its cage is ~2 voxels."""
+    V = np.asarray(p["verts"], np.float64)
+    C = np.asarray(p["corner_vert"], np.int64)
+    nt = len(C) // 3
+    dd = np.asarray(d, np.float64)
+    stray = np.maximum(-dd[:nt], 0.0)
+    stray = np.maximum(stray, np.maximum(-dd[nt:], 0.0).reshape(nt, 3).max(1))
+    out = np.zeros(len(V))
+    np.maximum.at(out, C, np.repeat(stray, 3))
+    out = out * 1.5 + 2 * vx
+    n = np.zeros_like(V)
+    np.add.at(n, C, np.asarray(p["normal"], np.float64))
+    n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
+    return V + n * out[:, None]
+
+
 def scene_maps(name: str, parts: dict, sizes: dict, ctx: dict, resolution: int, log: list) -> dict:
     """The paint and AO maps of every atlas, baked by Cycles from the model's Blender scene (synced first) onto
     the low poly: {atlas: {"color" (linear), "rms", "ao"}}. Each part's rays reach as far as its low poly strays
@@ -1481,16 +1646,21 @@ def scene_maps(name: str, parts: dict, sizes: dict, ctx: dict, resolution: int, 
             out_ = max(float(-np.min(d)), 0.0) * 1.5 + 2 * vx  # the exact surface outside the low poly
             in_ = max(float(np.max(d)), 0.0) * 1.5 + 2 * vx  # and inside it
             f = Path(tmp) / f"low{len(jobs)}.npz"
-            np.savez(f, verts=p["verts"], corner_vert=p["corner_vert"], uv=p["uv"], normal=p["normal"])
+            extra = {}
+            if BAKE_CAGE:
+                extra["cage"] = cage_verts(p, d, vx)
+                out_ = float(np.max(np.linalg.norm(extra["cage"] - np.asarray(p["verts"], np.float64), axis=1), initial=0.0))
+            np.savez(f, verts=p["verts"], corner_vert=p["corner_vert"], uv=p["uv"], normal=p["normal"], **extra)
             pf = next((q for q, dd in ctx["prefabs"].items() if pn in dd["parts"]), None)
             M = ctx["prefabs"][pf]["instances"][ctx["prefabs"][pf]["bake"]].tolist() if pf else None
             jobs.append({"key": pn, "scene_key": ctx.get("split", {}).get(pn, pn), "low": str(f), "atlas": p["atlas"],
                          "extrusion": out_, "ray": out_ + in_, "matrix": M})
         t = time.time()
-        out = scene._blender({"mode": "bake_maps", "blend": str(scene.blend_path(name)), "parts": jobs,
-                              "atlases": {str(ai): sz for ai, sz in sizes.items()}, "out": tmp, "samples": BAKE_SAMPLES,
-                              "supersample": BAKE_SS, "max_px": BAKE_SS_PX, "detail": ctx.get("bake_detail", True)},
-                             3 * 3600, progress=getattr(log, "note", None))
+        bj = {"mode": "bake_maps", "blend": str(scene.blend_path(name)), "parts": jobs,
+              "atlases": {str(ai): sz for ai, sz in sizes.items()}, "out": tmp, "samples": BAKE_SAMPLES,
+              "supersample": BAKE_SS, "max_px": BAKE_SS_PX, "detail": ctx.get("bake_detail", True)}
+        bj["osl"] = bake_needs_osl(bj, log)
+        out = scene._blender(bj, 3 * 3600, progress=getattr(log, "note", None))
         bt = next((line[8:] for line in out.splitlines() if line.startswith("@@times")), "")
         log.append(f"paint and AO maps baked by Cycles from the scene in {time.time() - t:.1f}s ({bt})")
         res = {}
@@ -1647,6 +1817,21 @@ TWIST_RECIPE = {
               "Control Rig's 'Twist Bones' node does a follow chain in one node. Keep the twist bones out of the IK "
               "Rig's retarget chains so retargeted animation leaves them to the post process.",
 }
+
+
+def _garment_stack(spec: dict, parts: dict) -> dict:
+    """{under garment part: the garment parts over it, transitively} (cloth "over" chains)."""
+    from . import cloth as clothmod_
+    stack = {}
+    over_ = {gn: clothmod_.expanded(g_ or {}).get("over") for gn, g_ in (spec.get("cloth") or {}).items()}
+    for on_ in over_:  # every garment down on_'s chain of "over" lies under on_
+        x_, seen_ = over_.get(on_), {on_}
+        while x_ is not None and x_ not in seen_:
+            seen_.add(x_)
+            if f"cloth_{x_}" in parts and f"cloth_{on_}" in parts:
+                stack.setdefault(f"cloth_{x_}", []).append(f"cloth_{on_}")
+            x_ = over_.get(x_)
+    return stack
 
 
 def write_glb(path: Path, name: str, parts: dict, atlases: list[tuple[str, dict[str, Path]]],
@@ -1978,7 +2163,8 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
             atlases: int = 1, texel_density: float | None = None, instancing: bool = True, rig: bool | dict = False,
             fbx: bool = False, face_shapes: bool | list | None = None, asset_name: str | None = None,
             lods: bool | list | None = None, cloth_triangles: int | None = None,
-            cull_under_cloth: bool = True, role: str | None = None, correctives: bool = True) -> dict:
+            cull_under_cloth: bool = True, role: str | None = None, correctives: bool = True,
+            cull_poses: list | str | None = None) -> dict:
     """Build, decimate + unwrap, bake every map, write PNGs, <name>.glb and <name>.json into out_dir.
     asset_name: what the files, nodes, meshes and materials are called (default: the model's name): an engine's
     importer and tools key on them (s0urc3's Garrett is model rg_garrett, asset "garrett": garrett_body, ...).
@@ -2174,7 +2360,7 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
             report[pn]["hidden_dropped"] = hid_tris[pn]
         if "focus_mm_per_texel" in tsz[pn]:
             report[pn]["focus_mm_per_texel"] = tsz[pn]["focus_mm_per_texel"]
-        des = _designed_interior(topo.get(pn), p["verts"])
+        des = _designed_interior(topo.get(pn), p["verts"], lid_fold=((spec.get("base") or {}).get("head") or {}).get("lid_fold"))
         if des is not None:  # (bake: the interior's texels keep the low poly's own surface)
             p["designed"] = _designed_interior(topo.get(pn), p["verts"], creases=False)
         q = mesh_quality(p["verts"], p["corner_vert"].reshape(-1, 3), ctx["streams"][pn], designed=des)
@@ -2300,6 +2486,11 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
             lk = hairmod.full_look(spec["hair"].get("look"))
             sheen = [round(float(c), 3) for c in hairmod.srgb_to_linear(lk["sheen"])]
             extra_ext[len(atlas_files) - 1] = {
+                # (r59) half the specular, in the sheen's colour (hair.card_specular_tint): the default white x 2 mirrored
+                # the key light off the crown's cards as a white plate (Tess rc2i, Garrett v5)
+                # (no specular texture: the hair's is a flat 0.5; F0 = 0.04 x factor x colour = 0.02 x tint)
+                "KHR_materials_specular": {"specularFactor": hairmod.CARD_SPECULAR,
+                                           "specularColorFactor": hairmod.card_specular_tint(sheen)},
                 "KHR_materials_anisotropy": {"anisotropyStrength": float(lk.get("anisotropic", 0.7)),
                                              "anisotropyRotation": 1.5708},
                 "KHR_materials_sheen": {"sheenColorFactor": sheen, "sheenRoughnessFactor": 0.35}}
@@ -2352,10 +2543,45 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
                 log.append(f"{pn}: {n0 - int(keep.sum())} of {n0} triangles under the garments dropped (covered "
                            f"within {UNDER_CLOTH_REACH * 1000:.0f} mm along the normal, {UNDER_CLOTH_RIM * 1000:.0f} mm "
                            "rim kept at every opening)")
+            # (r53, coordinator) garment under garment: the faces of an under garment its covers hide (the same test,
+            # reach and rim) are dropped at LOD0, so every LOD inherits it: rc2's jeans / sweater kept every triangle under
+            # the coat, which cost budget and poked through at LOD1+
+            cnames = [pn_c for pn_c, _, _ in cparts]
+            over_ = {gn: clothmod.expanded(g_ or {}).get("over") for gn, g_ in (spec.get("cloth") or {}).items()}
+            for gn in over_:
+                un = f"cloth_{gn}"
+                ups = [f"cloth_{o_}" for o_ in over_ if gn in _over_chain(over_, o_)]
+                cov = [cover_by[cnames.index(u_)] for u_ in ups if u_ in cnames]
+                if un not in parts or not cov or not CLOTH_UNDER_CULL:
+                    continue
+                n0 = len(parts[un]["corner_vert"]) // 3
+                keep = cloth_under_keep(parts[un], cov)
+                if keep.all():
+                    continue
+                if cull_poses:  # (r54) a face uncovered in ANY dumped clip frame is kept (cull_exposed_keep)
+                    ups_ = [u_ for u_ in ups if u_ in parts]
+                    keep, ex_ = cull_exposed_keep(parts[un], [parts[u_] for u_ in ups_], un, ups_, cull_poses, keep)
+                    log.append(f"{un}: {ex_['restored']} culled triangles restored, exposed in a clip frame "
+                               f"({ex_['frames']} frames; worst {ex_['worst']})")
+                    report[un]["cull_exposed"] = ex_
+                parts[un] = cull_tris(parts[un], keep)
+                report[un]["triangles"] = int(keep.sum())
+                report[un]["under_cloth_dropped"] = int(n0 - keep.sum())
+                ntri -= int(n0 - keep.sum())
+                log.append(f"{un}: {n0 - int(keep.sum())} of {n0} triangles under {', '.join(ups)} dropped (garment "
+                           f"under garment, {UNDER_CLOTH_RIM * 1000:.0f} mm rim kept at every opening)")
     from . import lashes as lashmod
     lash = lashmod.export_part(spec, out_dir, log=log.append)
     if lash:  # eyelash ribbons (lashes.py): their own mesh and tiny maps, two-sided; face shapes turn them with the lids
         pn_l, lpart, lfiles = lash
+        cap_ = lash_cap(rb, report) if rb else None
+        if cap_ is not None:  # the eyes / mouth / lashes budget: the lashes fit what eyes, teeth, tongue and brows leave
+            from .lods import ribbon_fit
+            lpart, linfo_ = ribbon_fit(lpart, cap_)
+            if linfo_["triangles"] < linfo_["triangles0"]:
+                log.append(f"lashes: {linfo_['triangles0']} -> {linfo_['triangles']} triangles ({linfo_['ribbons_kept']} of "
+                           f"{linfo_['ribbons']} lashes, widened x{linfo_['widen']:.2f}) to fit eyes_mouth_lashes "
+                           f"{int(rb['parts']['eyes_mouth_lashes']['default'])}")
         lpart["atlas"] = len(atlas_files)
         parts[pn_l] = lpart
         origin[pn_l] = pn_l
@@ -2505,6 +2731,17 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
     seam = head_body_meshes(spec, parts, topo, log)
     if seam:
         report[seam["part"]]["meshes"] = seam["report"]
+    if spec.get("cloth") and LOD0_PUSH_UNDER:  # (r57) LOD0 too: rc2f's sweater poked 0.4-1 mm through both coat shells
+        # beside her left chest pocket in the rest pose (an orange speck at 1 m); LOD1-3 start from this
+        from . import lods as lodmod0_
+        st0_ = _garment_stack(spec, parts)
+        if st0_:
+            pu0_ = lodmod0_.push_under_layers(parts, st0_, gap=LOD0_UNDER_GAP)
+            log.append("LOD0: under garments put back under their covers (lods.push_under_layers): " + ", ".join(
+                f"{pn} poking {v['poking0']} vertices / {v['faces_poking0']} faces -> {v['poking']} ({v['moved']} moved)"
+                for pn, v in pu0_.items()))
+            for pn, v in pu0_.items():
+                report.setdefault(pn, {})["under0"] = v
     write_glb(glb, aname, parts, atlas_files, ctx["prefabs"], looks, rigged, extra_ext)
     lod_info = []
     if lods:
@@ -2534,13 +2771,50 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
                     log.append(f"WARNING LOD{k}: hair tier {tier_} failed ({type(e).__name__}: {e}); LOD0's cards kept")
                     continue
                 tp_.pop("hair", None)
-                tp_["atlas"] = parts[pn_h]["atlas"]
+                own_ = None
+                if hairmod.share_atlas(tp_, _tf, dict(atlas_files[parts[pn_h]["atlas"]][1])):
+                    tp_["atlas"] = parts[pn_h]["atlas"]  # (its uv on LOD0's atlas: a tier's atlas lacks the baked rows)
+                else:  # its own maps beside the GLBs (a tier whose pictures differ from LOD0's)
+                    import shutil
+                    own_ = {}
+                    for mk_, f_ in _tf.items():
+                        own_[mk_] = out_dir / f"{pn_h}_lod{k}_{mk_}.png"
+                        shutil.copyfile(f_, own_[mk_])
+                    log.append(f"LOD{k}: hair tier {tier_}'s atlas differs from LOD0's: it carries its own maps")
                 nv_ = len(tp_["verts"])
                 Jh = np.zeros((nv_, 4), np.int64)
                 Jh[:, 0] = hb_
                 Wh = np.zeros((nv_, 4), np.float32)
                 Wh[:, 0] = 1.0
-                tier_parts[k] = (tp_, (Jh, Wh), tier_)
+                tier_parts[k] = (tp_, (Jh, Wh), tier_, own_)
+        layer_stack = {}  # (r53) {under garment part: the garment parts over it, transitively}: each LOD puts the under
+        # garments back under their decimated covers (lods.push_under_layers)
+        if spec.get("cloth") and LOD_PUSH_UNDER:
+            layer_stack = _garment_stack(spec, parts)
+        under_masks = {}  # (r54) parts worn under garments that are not garments (socks, the body): put back under the
+        # garments too, but only where they were under one at LOD0 (lods.under_at_lod0). rc2c's LOD2 showed the socks
+        # (kept whole) through the decimated jeans' calves (101 vertices poking, 1 at LOD0) and the body through the sweater.
+        garm_ = [pn for pn in parts if pn.startswith("cloth_") and pn not in pf_of]
+        if garm_ and LOD_PUSH_UNDER and LOD_PUSH_WORN:
+            for pn, p in parts.items():
+                if (pn in garm_ or pn in pf_of or pn in cards or pn in LOD_PUSH_WORN_SKIP or report.get(pn, {}).get("lashes")
+                        or p.get("shell")):
+                    continue
+                P0_, un0_, sh_, ov0_, N0_ = lodmod.under_at_lod0(p, [parts[g] for g in garm_], share=True)
+                if int(un0_.sum()) >= LOD_PUSH_WORN_MIN and sh_ >= LOD_PUSH_WORN_SHARE:
+                    layer_stack[pn] = list(garm_)
+                    under_masks[pn] = (P0_, ~ov0_ if LOD_PUSH_WORN_NOT_OVER else un0_, sh_, N0_, un0_)  # (r55) every vertex NOT over a
+                    # garment at LOD0 may move: rc2d's LOD2 left calf showed 22 sock vertices through the jeans whose LOD0
+                    # vertices had no jeans within reach (a loose leg), so the 'under at LOD0' mask kept them still
+            if under_masks:
+                log.append("LODs: parts worn under garments also put back under them: " + ", ".join(
+                    f"{pn} ({int(m_[1].sum())} vertices free to move, {m_[2]:.0%} of those in reach under)" for pn, m_ in under_masks.items()))
+        if os.environ.get("HP_LOD_DUMP"):  # (r60, debug: the LOD inputs, to probe a part's LOD steps offline)
+            import pickle
+            with open(os.environ["HP_LOD_DUMP"], "wb") as fh:
+                pickle.dump({"parts": {pn: p for pn, p in parts.items() if pn not in pf_of and pn not in cards},
+                             "rigged": rigged, "layer_stack": layer_stack, "under_masks": under_masks,
+                             "ratios": ratios, "above": locals().get("above"), "below": locals().get("below")}, fh)
         for k, r in enumerate(ratios, 1):
             tl = time.time()
             if ratio_of is not None:  # above the neck holds detail longer than below it (budgets.lod_ratios)
@@ -2548,7 +2822,7 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
                 skin_pn_ = (spec.get("skin") or {}).get("part", "body")
 
                 def r_part(pn, kk_=kk_):  # head parts (the skin's head mesh by mesh_ratios) above, the rest below
-                    if pn == skin_pn_ or pn in ("eyes", "teeth", "teeth_lower", "tongue"):
+                    if pn == skin_pn_ or pn in ("eyes", "teeth", "teeth_lower", "tongue") or report.get(pn, {}).get("lashes"):
                         return above[kk_]
                     return below[min(kk_, len(below) - 1)]
                 rr_, mesh_r = r_part, {"head": above[kk_], "body": below[min(kk_, len(below) - 1)]}
@@ -2556,19 +2830,44 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
                 rr_ = r
             lp, lr, rep_l = lodmod.lod_parts({pn: p for pn, p in parts.items() if pn not in pf_of}, rigged, rr_, skip=cards,
                                              cards={pn_h: hair_cards["layers"]} if locals().get("hair_cards") and k not in tier_parts else None,
-                                             mesh_ratios=mesh_r, shapes=(shape_lods is None or k in shape_lods))
-            if lash and lash[0] in lp:  # the lashes thinned by whole lashes (lods.LASH_LODS)
-                lp[lash[0]], rep_l[lash[0]] = lodmod.thin_strands(
-                    lp[lash[0]], lodmod.LASH_LODS[min(k, len(lodmod.LASH_LODS)) - 1])
+                                             mesh_ratios=mesh_r, shapes=(shape_lods is None or k in shape_lods),
+                                             ribbons=[pn for pn in cards if report[pn].get("lashes")])
+            if layer_stack:
+                rb_ = below[min(kk_, len(below) - 1)] if ratio_of is not None else r
+                pu_ = lodmod.push_under_layers(lp, layer_stack, masks=under_masks, face_deep=(
+                    lodmod.LOD_UNDER_FACE_DEEP_FAR if rb_ < lodmod.LOD_SMALL_FAR_RATIO else None))
+                log.append(f"LOD{k}: under garments put back under their covers (lods.push_under_layers): " + ", ".join(
+                    f"{pn} poking {v['poking0']} -> {v['poking']} ({v['moved']} moved)" for pn, v in pu_.items()))
+                for pn, v in pu_.items():
+                    rep_l.setdefault(pn, {})["under"] = v
+            skin_pn0_ = (spec.get("skin") or {}).get("part", "body")
+            if lodmod.LOD_UNDER_CULL_FROM and k >= lodmod.LOD_UNDER_CULL_FROM:  # (r60) the worn parts' covered rims (socks)
+                for pn, m_ in under_masks.items():
+                    if pn == skin_pn0_ or pn not in lp or len(m_) < 5:
+                        continue
+                    kc_ = lodmod.cull_covered(lp[pn], m_[0], m_[4])
+                    if not kc_.all():
+                        lp[pn] = cull_tris(lp[pn], kc_)
+                        rep_l.setdefault(pn, {})["covered_culled"] = int((~kc_).sum())
+                        rep_l[pn]["triangles"] = len(lp[pn]["corner_vert"]) // 3
+                        log.append(f"LOD{k}: {pn}: {int((~kc_).sum())} of {len(kc_)} triangles deep under the garments at LOD0 "
+                                   f"dropped (lods.cull_covered, {lodmod.LOD_UNDER_CULL_RIM * 1000:.0f} mm rim)")
+            atl_k, ext_k = atlas_files, extra_ext
             if k in tier_parts:
-                tp_, w_, tier_ = tier_parts[k]
+                tp_, w_, tier_, own_ = tier_parts[k]
+                if own_ is not None:  # (an atlas of its own, wearing the hair material's extensions)
+                    hi_ = parts[pn_h]["atlas"]
+                    tp_ = {**tp_, "atlas": len(atlas_files)}
+                    atl_k = atlas_files + [(f"{pn_h}_lod{k}", own_)]
+                    ext_k = {**extra_ext, **({len(atlas_files): extra_ext[hi_]} if hi_ in extra_ext else {})}
                 lp[pn_h] = tp_
                 if lr is not None:
                     lr["weights"][pn_h] = w_
                 rep_l[pn_h] = {"triangles0": len(parts[pn_h]["corner_vert"]) // 3,
-                               "triangles": len(tp_["corner_vert"]) // 3, "tier": tier_}
+                               "triangles": len(tp_["corner_vert"]) // 3, "tier": tier_,
+                               "atlas": "own" if own_ is not None else "LOD0's"}
             lg = out_dir / f"{aname}_LOD{k}.glb"
-            write_glb(lg, aname, lp, atlas_files, {}, looks, lr, extra_ext, external=True)
+            write_glb(lg, aname, lp, atl_k, {}, looks, lr, ext_k, external=True)
             tri_k = sum(v["triangles"] for v in rep_l.values())
             lod_info.append({"lod": k, "ratio": r, "glb": str(lg), "triangles": tri_k,
                              "parts": {pn: v["triangles"] for pn, v in rep_l.items()}})

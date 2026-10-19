@@ -178,7 +178,7 @@ def crease_image(path_mm, width_mm: float = 0.5, span=(40.0, 30.0), centre=(0.0,
 
 def brow_image(density: float = 0.8, thickness: float = 1.0, length_mm: float = 6.0, width_mm: float = 62.0,
                seed: int = 0, tail: float = 1.0, fall: float = 1.0, taper: float = 0.82, head: float = 0.0,
-               head_density: float = 0.05):
+               head_density: float = 0.05, clump: float = 0.0, feather: float = 0.0):
     """A left eyebrow as hairs (RGBA PNG in the image store; white hairs, coverage in alpha: the layer gives the
     colour), inner end at the left: hairs grow up and out at the inner end, lie along the brow in its body and
     turn out and down in the tail; the band is thick inside and tapers. Returns (path, [width, height] in mm)."""
@@ -186,7 +186,15 @@ def brow_image(density: float = 0.8, thickness: float = 1.0, length_mm: float = 
     from . import images
     key = f"{density:.3f}_{thickness:.3f}_{length_mm:.2f}_{width_mm:.1f}_{seed}_{tail:.2f}_{VERSION}" + \
         (f"_f{fall:.2f}" if fall != 1.0 else "") + (f"_t{taper:.2f}" if taper != 0.82 else "") + \
-        (f"_h{head:.2f}_{head_density:.2f}" if head > 0 else "")
+        (f"_h{head:.2f}_{head_density:.2f}" if head > 0 else "") + (f"_c{clump:.2f}" if clump > 0 else "") + \
+        (f"_fe{feather:.2f}" if feather > 0 else "")
+    # (feather: mm over which the band's LOWER edge fades out. A photographed brow's darkening falls from 80 % to 20 % over
+    # 1.1-1.4 mm below the band (skincheck brow_band "edge below", Tess / Garrett photos); our drawn hairs stopped in ~.7 mm,
+    # a stencil-cut lower line (r12). Per column the band's lower edge is found in the drawn alpha, and the cover is ramped
+    # down from feather x .7 above it to feather x .3 below it, after the cover's saturation (clip(a x 1.25)) so it shows)
+    # (clump: 0..1, how unevenly the hairs fill the body: a smooth random field over the brow (~3 patches along, 1-2 across)
+    # thins some patches and fills others, the count kept. A real brow is denser along the lower edge of the body and
+    # patchy; an even fill read as a "near-black block" / "solid fill" in the r10 reviews, 2026-10-18)
     # (head: the share of the brow's length over which its inner end fades in, as hairs left out: a real brow's head is
     # sparse single hairs growing up, its darkening rising from ~.3 of the body's at the inner end to the body's ~40-50 %
     # along (skincheck PROFILE on all four photos, 2026-10-18); ours reached the body by ~15 %: a blunt club.
@@ -210,6 +218,12 @@ def brow_image(density: float = 0.8, thickness: float = 1.0, length_mm: float = 
                 return 1.0
             u = np.clip(t / head, 0, 1)
             return head_density + (1 - head_density) * u * u * (3 - 2 * u)
+        crng = np.random.default_rng(1700 + seed)
+        ph = crng.uniform(0, 2 * np.pi, 6)
+        def patch(t, off):  # in 0..1, mean ~.5
+            f = (np.sin(2 * np.pi * 1.6 * t + ph[0]) + 0.7 * np.sin(2 * np.pi * 2.9 * t + 1.3 * off + ph[1])
+                 + 0.6 * np.sin(np.pi * 1.1 * off + 2 * np.pi * 0.8 * t + ph[2]) + 0.4 * np.sin(2 * np.pi * 5.3 * t - 2.1 * off + ph[3]))
+            return float(np.clip(0.5 + f / 5.4, 0, 1))
         if head > 0:  # the same number of hairs in all: the left-out share goes to the rest of the brow
             ts = np.clip(rng.beta(1.25, 1.5, 4000) * (0.97 * tail) + 0.03, 0.02, 0.99)
             n = int(n * len(ts) / max(sum(keep(float(v)) for v in ts), 1.0))
@@ -219,11 +233,15 @@ def brow_image(density: float = 0.8, thickness: float = 1.0, length_mm: float = 
             return 0.56 - 0.2 * np.sin(np.clip(t / 0.62, 0, 1) * np.pi / 2) + 0.3 * fall * np.clip((t - 0.62) / 0.38, 0, 1) ** 1.6
         def half(t):  # half thickness (share of H)
             return thickness * (0.03 + 0.14 * np.clip((t + 0.02) / 0.12, 0, 1) * (1 - taper * np.clip((t - 0.25) / 0.75, 0, 1) ** 0.9))
+        if clump > 0:
+            n = int(n / ((1 - clump) + 0.95 * clump))
         for _ in range(n):
             t = float(np.clip(rng.beta(1.25, 1.5) * (0.97 * tail) + 0.03, 0.02, 0.99))
             if head > 0 and rng.random() > keep(t):
                 continue
             off = float(np.clip(rng.normal(0, 0.45), -1, 1))
+            if clump > 0 and crng.random() > (1 - clump) + clump * 2 * patch(t, off) * 0.95:
+                continue
             x = (0.04 + 0.92 * t) * W
             y = (spine(t) + off * half(t)) * H
             # direction (0 = along +x, 90 = up): fans from ~80 deg at the inner end to ~12 in the body to -25 in the tail;
@@ -242,12 +260,39 @@ def brow_image(density: float = 0.8, thickness: float = 1.0, length_mm: float = 
                 dr.line([(pts[k][0] * S, pts[k][1] * S), (pts[k + 1][0] * S, pts[k + 1][1] * S)],
                         fill=int(255 * (0.75 + 0.25 * rng.random())), width=max(int(round(wk * S)), 1))
         a = np.asarray(im.resize((W, H), Image.LANCZOS), np.float32) / 255.0
-        rgba = np.dstack([np.ones((H, W, 3), np.float32), np.clip(a * 1.25, 0, 1)])
+        a = np.clip(a * 1.25, 0, 1)
+        if feather > 0:   # below each column's centre the cover hands over to a copy blurred down the column (sigma = feather / 2)
+            from scipy import ndimage
+            yy = np.arange(H, dtype=np.float32)[:, None]
+            cw = ndimage.gaussian_filter(a, (0, 0.6 * ppm))   # the band's cover, smoothed along it (~.6 mm)
+            cy = (cw * yy).sum(0) / np.maximum(cw.sum(0), 1e-6)   # each column's centre
+            cy = ndimage.gaussian_filter1d(cy, 1.5 * ppm)
+            bl = ndimage.gaussian_filter1d(a, 0.5 * feather * ppm, axis=0)
+            u = np.clip((yy - cy[None, :]) / (0.5 * feather * ppm), 0, 1)
+            a = a * (1 - u) + np.maximum(bl, 0) * u
+        rgba = np.dstack([np.ones((H, W, 3), np.float32), a])
         out.parent.mkdir(parents=True, exist_ok=True)
         tmp = out.with_suffix(".tmp.png")
         Image.fromarray(np.round(rgba * 255).astype(np.uint8), "RGBA").save(tmp)
         tmp.replace(out)
     return out, [width_mm, h_mm]
+
+
+def blurred(path, radius_px: float):
+    """A soft copy of an RGBA picture in the image store (its alpha Gaussian-blurred by radius_px of the picture's own pixels):
+    the skin-level shadow under drawn hairs follows the hairs' own density (fading with the brow's head) instead of a zone."""
+    from pathlib import Path
+    from PIL import Image, ImageFilter
+    from . import images
+    out = images.store_dir() / f"{Path(path).stem}_b{radius_px:.0f}.png"
+    if not out.exists():
+        im = Image.open(path)
+        a = im.getchannel("A").filter(ImageFilter.GaussianBlur(radius_px))
+        rgba = Image.merge("RGBA", (*im.convert("RGB").split(), a))
+        tmp = out.with_suffix(".tmp.png")
+        rgba.save(tmp)
+        tmp.replace(out)
+    return out
 
 
 def eye_image(iris, pupil: float = 0.36, veins: float = 0.4, sclera=(0.92, 0.89, 0.85), seed: int = 0, span: float = 2.1,

@@ -1479,6 +1479,10 @@ def bake_maps(job):
     scene.render.engine = "CYCLES"
     _device(scene, job.get("device", "CPU"))
     scene.cycles.samples = job.get("samples", 4)
+    if job.get("osl"):  # (2026-10-18) Open Shading Language: no 255-slot SVM stack, so a part material too deep for SVM
+        # (Garrett's stacked skin: 61 layers, 20 with height) bakes instead of coming out black. CPU only, slower.
+        scene.cycles.device = "CPU"
+        scene.cycles.shading_system = True
     if job.get("detail") is False:  # tiling micro detail stays out of the unique maps
         for m in bpy.data.materials:
             n = m.node_tree.nodes.get("hp_detail") if m.node_tree else None
@@ -1501,6 +1505,27 @@ def bake_maps(job):
     blink_nodes = [m.node_tree.nodes.get("hp_blink") for m in bpy.data.materials if m.node_tree and m.node_tree.nodes.get("hp_blink")]
     if blink_nodes:   # the blink-faded layers (crease line, lid occlusion): the base colour WITHOUT them, then a second
         WHAT = WHAT + ("color_blink",)   # colour pass WITH them: their own multiplier map (the engine fades it by 1 - eyeBlink)
+    if job.get("check_only"):  # (2026-10-18) compile each part's material in every bake pass (an 8 x 8 frame, 1 sample)
+        # and stop: Cycles prints "out of SVM stack space" for one too deep, which scene._blender turns into an error naming
+        # it, in seconds instead of after a whole bake. asset.scene_maps then bakes with OSL (job "osl").
+        scene.render.resolution_x = scene.render.resolution_y = 8
+        scene.cycles.samples = 1
+        if scene.camera is None:
+            cam = bpy.data.objects.new("hp_check_cam", bpy.data.cameras.new("hp_check_cam"))
+            scene.collection.objects.link(cam)
+            scene.camera = cam
+        mats = {s.material for ob in highs.values() for s in ob.material_slots if s.material and s.material.node_tree}
+        for ob in scene.objects:
+            ob.hide_render = ob not in highs.values() and ob.type != "CAMERA"
+        for what in WHAT:
+            for m in mats:
+                bn = m.node_tree.nodes.get("hp_blink")
+                if bn is not None:
+                    bn.outputs[0].default_value = 1.0 if what == "color_blink" else 0.0
+                _emit(m, "color" if what == "color_blink" else what)
+            bpy.ops.render.render(write_still=False)
+            print(f"@@checked {what}", flush=True)
+        return
     # Cycles bakes one point per texel (texel centres, no filtering): a sharp edge in the material lands on each
     # chart's own texel grid, a texel apart from one chart to the next. Bake ss x ss points per texel and average
     # them (a box filter). No margin: the texels past each island's edge are filled across its seam by
@@ -1535,6 +1560,19 @@ def bake_maps(job):
         out[..., 3] = cnt[..., 0] / (s * s)
         return out
     lows ={pt["key"]: _low("low_" + pt["key"], pt["low"]) for pt in job["parts"]}
+    cages = {}
+    for pt in job["parts"]:  # (r51) a per-vertex cage (asset.cage_verts), same topology as the low poly
+        z_ = np.load(pt["low"])
+        if "cage" in z_.files:
+            lo_ = lows[pt["key"]]
+            cg = lo_.copy()
+            cg.data = lo_.data.copy()
+            cg.name = "cage_" + pt["key"]
+            cg.data.vertices.foreach_set("co", z_["cage"].astype(np.float32).ravel())
+            cg.data.update()
+            bpy.context.scene.collection.objects.link(cg)
+            cg.hide_render = True
+            cages[pt["key"]] = cg
     bm = bpy.data.materials.new("hp_bake_target")
     bm.use_nodes = True
     tex = bm.node_tree.nodes.new("ShaderNodeTexImage")
@@ -1564,8 +1602,14 @@ def bake_maps(job):
             hi.select_set(True)
             lo.select_set(True)
             bpy.context.view_layer.objects.active = lo
+            cg = cages.get(pt["key"])
+            if cg is not None:
+                cg.hide_render = False
             bpy.ops.object.bake(type="EMIT", use_selected_to_active=True, cage_extrusion=pt["extrusion"],
-                                max_ray_distance=pt["ray"], margin=0, use_clear=False, target="IMAGE_TEXTURES")
+                                max_ray_distance=pt["ray"], margin=0, use_clear=False, target="IMAGE_TEXTURES",
+                                **({"use_cage": True, "cage_object": cg.name} if cg is not None else {}))
+            if cg is not None:
+                cg.hide_render = True
             print(f"@@progress {what} {i + 1}/{len(job['parts'])} {pt['key']} {time.time() - t1:.0f}s", flush=True)
         for ai, im in imgs.items():
             res[ai][what] = read(ai, im)

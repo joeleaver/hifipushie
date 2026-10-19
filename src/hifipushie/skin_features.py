@@ -24,7 +24,7 @@ HAIR (skin.hair; colours sRGB):
   brows      {"color", "density": 0..1 (0.8), "thickness": 1, "length": m (0.006), "grey": 0..1, "drop": m (0: the
              brow lower, onto the orbital rim), "arch": 1 (x the landmarks' slope: 0 = level), "tilt": deg (the whole
              brow turned, tail up +), "fall": 1 (x how far the tail drops past the arch: 0.3 = a straight, rising
-             brow), "lift": [inner, tail] m (each end up + / down -), "apart": m (both brows off the mid-line), "soft": 0..1 (a soft mass rather than hairs one by one), "shadow": x the skin-level shadow under the hairs (1; lower = gaps and a fading head show), "taper":
+             brow), "lift": [inner, tail] m (each end up + / down -), "apart": m (both brows off the mid-line), "soft": 0..1 (a soft mass rather than hairs one by one), "feather": m (the band's lower edge fades over it: photos ~.0012-.0016), "shadow": x the skin-level shadow under the hairs (1; lower = gaps and a fading head show), "taper":
              0..1 (0.82: how much the band thins toward the tail; 0.95 = a clean thin tail on a thick brow), "tail":
              0..1 (1: how far along the hairs reach), "head": 0..0.6 (0: the share of the length over which the inner end fades
              in, sparse single hairs; 0.65 matches the photos' ramp), "head_density": 0..1 (0.05: the share of hairs kept at the inner end)}: hairs as strokes, growing up at the inner end and out along the brow.
@@ -806,7 +806,7 @@ def _hair(p, J, layer, T, ctx) -> None:
         io = interocular(J)
         o = _opt(h.get("brows", 1.0), "hair.brows", ("color", "density", "thickness", "length", "grey", "drop", "soft", "arch",
                                                      "tilt", "fall", "lift", "apart", "taper", "tail", "shadow", "head",
-                                                     "head_density"))
+                                                     "head_density", "clump", "opacity", "feather"))
         if o:
             col = _hex(o["color"]) if "color" in o else dflt
             g = float(o.get("grey", 0.0))
@@ -821,7 +821,9 @@ def _hair(p, J, layer, T, ctx) -> None:
             path, (wmm, hmm) = skin_swatch.brow_image(dens, thick, float(o.get("length", 0.006)) * 1000, width * 1000, seed,
                                                        fall=float(o.get("fall", 1.0)), taper=float(o.get("taper", 0.82)),
                                                        tail=float(o.get("tail", 1.0)), head=float(o.get("head", 0.0)),
-                                                       head_density=float(o.get("head_density", 0.05)))
+                                                       head_density=float(o.get("head_density", 0.05)),
+                                                       clump=float(o.get("clump", 0.0)),
+                                                       feather=float(o.get("feather", 0.0)) * 1000)   # m -> mm: the lower edge's fade
             c = 0.5 * (a_ + b_)
             c[2] = (a_[2] + 2 * m_[2] + b_[2]) / 4 - 0.02 * io
             c[1] = m_[1]
@@ -848,10 +850,14 @@ def _hair(p, J, layer, T, ctx) -> None:
                   # gaps between hairs (flat inside) and the sparse head (a blunt front): r5 / r6 brows read as a "solid
                   # sticker", skincheck brow inside spread ~half the photo's, front / middle ~.9 vs ~.45 (2026-10-16)
                   opacity=min((0.3 * min(dens, 1) + 0.06 + 0.45 * soft) * float(o.get("shadow", 1.0)), 0.9),
-                  mask=[{"image": img}] if moved else _zones(["brow"], 0.9 * thick))
+                  # with a fading head (brows.head) the landmark zone's even shadow drew a blunt grey stencil under the sparse
+                  # inner hairs (Garrett r10): the shadow then follows the hairs' own density, blurred ~1.5 mm
+                  mask=[{"image": dict(img, file=str(skin_swatch.blurred(path, 1.5 * 1024 / (width * 1000))))}]
+                  if float(o.get("head", 0.0)) > 0 else [{"image": img}] if moved else _zones(["brow"], 0.9 * thick))
             # matte: a drawn picture of hairs shinier than the skin read as a grey, glossy bar with a hot highlight under a
             # studio catchlight (Tess s14: brow L 58-62 vs the photo's 34-36 although its colour was #2a1c12)
-            layer("brow_hairs", color=col, opacity=round(0.95 * (1 - 0.45 * soft), 3), roughness=0.68, specular=0.22, height=0.00012, image=img)
+            # opacity: the hairs' cover (.95 default); lower = see-through, the skin between and under the hairs reads (r10: "near-black block")
+            layer("brow_hairs", color=col, opacity=round(float(o.get("opacity", 0.95)) * (1 - 0.45 * soft), 3), roughness=0.68, specular=0.22, height=0.00012, image=img)
         o = _opt(h.get("lashes", 0.7 if ctx["eyes"] else None), "hair.lashes", ("color", "width"))
         if o:
             col = _hex(o["color"]) if "color" in o else _shade(dflt, 0.45)
@@ -896,7 +902,8 @@ def _hair(p, J, layer, T, ctx) -> None:
                 layer("lashes", color=col, opacity=op, roughness=0.4,
                       mask=_zones(["lash_upper"]) + [{"zone": "lash_lower", "blend": "max", "weight": 0.5}])
         o = _opt(h.get("stubble"), "hair.stubble", ("color", "length", "size", "shadow", "shadow_color", "shadow_breakup", "grey", "grey_color",
-                                                     "style", "density", "patchy", "trim", "cheeks", "cheek_line", "neckline", "engine", "zones", "count"))
+                                                     "style", "density", "patchy", "trim", "cheeks", "cheek_line", "neckline", "engine", "zones", "count",
+                                                     "contrast"))
         if o and o.get("engine", "map") == "map" and "lm_jaw_1.L" in J:
             _stubble_map(ctx["spec"], p, J, o, layer, T, ctx)
             o = None
@@ -1020,14 +1027,18 @@ def _stubble_map(spec, p, J, o, layer, T, ctx) -> None:
           mask=[im("b"), lips])
     hgt = round(float(np.clip(0.00003 + 0.012 * q["length"], 0.00003, 0.00012)), 7)   # a hair stands ~0.1 mm proud
     r = min(ctx["base_r"] + 0.1, 0.9)
-    layer("stubble", o.get("mask"), color=col, opacity=0.97, roughness=r, specular=0.35, height=hgt, mask=[im("r"), lips])
+    # contrast: x the hairs' cover (1). A few days' grey stubble seen from a metre is a fine grey-brown HAZE: single hairs are
+    # sub-texel, so each pixel is a low-contrast mix of skin and hair; opaque hairs read as white specks (grey) or black
+    # pepper (dark) (Garrett r12). The haze's tone is then the shadow (shadow_color, shadow) under many faint hairs (count)
+    k_ = float(np.clip(o.get("contrast", 1.0), 0.05, 1.0))
+    layer("stubble", o.get("mask"), color=col, opacity=round(0.97 * k_, 3), roughness=r, specular=0.35, height=hgt, mask=[im("r"), lips])
     if q["grey"] > 0:
         # (white hairs near-white and opaque: #aaa39a at 0.85 was ~+14 L over the skin, "salt & pepper has no white in
         # it" (5th blind read; ref_28's white hairs are the brightest thing on the jaw). The shadow under the dark ones
         # now carries the darkening (shafts under the skin), so near-white no longer reads as ash, skin3)
         # (then "uniform bright chalk scratches", skin3's 6th read: real grey hair is translucent and a little yellow,
         # #d9d4cb at .95 -> #c8c0b2 at .8)
-        layer("stubble_grey", o.get("mask"), color=_hex(o.get("grey_color", "#c8c0b2")), opacity=0.8, roughness=r, specular=0.4,
+        layer("stubble_grey", o.get("mask"), color=_hex(o.get("grey_color", "#c8c0b2")), opacity=round(0.8 * k_, 3), roughness=r, specular=0.4,
               height=hgt, mask=[im("g"), lips])
 
 

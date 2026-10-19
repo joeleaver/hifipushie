@@ -525,7 +525,7 @@ def slit_ids(cfg: dict) -> dict:
         if float(c.get("amount", 1.0)) <= 0:
             continue
         ka, kt = int(c.get("ring", 5)), int(c.get("last", 10))
-        ch, ang = chains_wrap(float(c.get("reach", 15.5)), kt + 2, float(c.get("wrap", WRAP_DEG)))
+        ch, ang = chains_wrap(float(c.get("reach", 15.5)), kt + 2, _wrap(c))
         keep = np.flatnonzero(ang <= 90.0)
         ids = ch if side == 1 else t["mir"][ch]
         a0, a1 = float(ang[keep].min()), float(ang[keep].max())
@@ -608,7 +608,7 @@ def mesh_delta(V0: np.ndarray, En: np.ndarray | None, cfg: dict) -> np.ndarray:
         ch = chains(reach)
         uu = T[ch[:, 0], 0] - Jl[0]
         ovs = ov(uu)
-        wrap = float(c.get("wrap", WRAP_DEG))
+        wrap = _wrap(c)
         if wrap > 0:   # the fold follows its ring round the outer corner (design_wrap); crease / overhang by the chain's
             # angle: the [inner, middle, outer] lists at -60 / 0 / 90 deg, the last held round the wrap
             def by_ang(x, dflt):
@@ -648,6 +648,18 @@ def mesh_delta(V0: np.ndarray, En: np.ndarray | None, cfg: dict) -> np.ndarray:
 WRAP_DEG = 25.0     # deg below the eye's horizontal the fold's chains reach round the OUTER corner (the hood wraps it). At
                     # 70 the crease turned straight down at the corner and ran back under the eye (a roll under the lower
                     # lid; the photos' creases run on 4-11 mm LATERALLY past the canthus and drop only 0-5 mm)
+
+
+WRAP_MAX = 10.0     # deg: the most the wrap may reach below the horizontal, whatever the spec asks. Round the outer canthus the
+                    # upper and lower lids share their rings, so a chain based past ~10 deg below the horizontal sits on the LOWER
+                    # lid's margin: re-sectioning it against its unmoved neighbours folded the lower lid (r12, folded exterior
+                    # edges on the built heads, assembly mask: Garrett 0 without the fold -> 109 at wrap 35.2 (down to 9.5 mm
+                    # below the eye centre), 50 at 10 (upper lid only, the slit's own undercut rings ka+1 / ka+2); Tess 0 -> 105
+                    # (to 14.4 mm below) / 37 at 10)
+
+
+def _wrap(c: dict) -> float:
+    return min(float(c.get("wrap", WRAP_DEG)), WRAP_MAX)
 
 
 CREASE_DEG = 2   # the crease's height along the lid: a polynomial of this degree in the chain angle (one maximum at most)
@@ -750,6 +762,7 @@ def design_wrap(V: np.ndarray, crease, overhang, thick: float = 0.9, standoff: f
     outer corner and down (a hood wrapping the corner, continuing toward the lower lid's fold). crease / overhang:
     functions of the chain's angle (deg from the upward vertical, + outer). The fold fades to nothing over the last
     fade_deg of the wrap and over the inner end (by the across distance)."""
+    wrap_deg = min(float(wrap_deg), WRAP_MAX)   # (never onto the lower lid: WRAP_MAX)
     t = topo()
     T = gc.gnm()["T"] * 1000.0
     ch, ang = chains_wrap(umax, kt + 2, wrap_deg)

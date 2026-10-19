@@ -905,6 +905,9 @@ def clump_cards(D: dict, locks: list, C, S: dict, look: dict | None = None, seed
             continue
         if int(li) in pool:
             continue
+        if int(lk.get("hairs") or 0) > 0 and not lk.get("face") and not halo_card_ok(lk, C):
+            continue  # (a few single hairs rooted in the mass over the crown (off_head): cut as wisps they stood 2-3 cm
+            # over it at LOD1-3, round 29; the hero gives them no card either)
         sel = G["lock"] == li
         A, sub = G["A"][sel], G["sub"][sel]
         core = lk.get("core")
@@ -1028,7 +1031,31 @@ def clump_cards(D: dict, locks: list, C, S: dict, look: dict | None = None, seed
                                 "cval": 1.0, "bend": oq, "T": Tq, "lock": lk["name"], "value": val})
     if pool:
         out += pooled_singles(G, locks, pool, C, L, rng)
+    if FLY_FAR_TIERS and out:
+        out = drop_far_fly(out, G, locks)
     return out
+
+
+FLY_FAR_TIERS = True  # (round 30) the hero's FLY_FAR at every tier: fly cards (pooled halo hairs, few-hair wisps) standing
+# further than hair_clumps.FLY_FAR off the rest of the hair get no card. Without it LOD1-3 had thin spikes standing
+# sideways off the tail by the tie, 35-80 mm past LOD0's hair (round 29's standoff / t30/tiespk.py)
+
+
+def drop_far_fly(cards: list, G: dict, locks: list) -> list:
+    """Fly cards (not face-framing) whose centre line stands further than hair_clumps.FLY_FAR off the strands of the
+    locks that aren't few single hairs (the hero's rule for its single hairs: hair_clumps FLY_FAR)."""
+    from scipy.spatial import cKDTree
+    from .hair_clumps import FLY_FAR
+    few = np.array([int(lk.get("hairs") or 0) > 0 and not lk.get("face") for lk in locks] + [False])
+    rest = ~few[np.clip(np.asarray(G["lock"]).astype(int), 0, len(few) - 1)]
+    Q = np.asarray(G["A"], float)[rest].reshape(-1, 3)
+    Q = Q[np.isfinite(Q[:, 0])]
+    if not len(Q):
+        return cards
+    tr = cKDTree(Q[:: max(1, len(Q) // 200000)])
+    face = {lk["name"] for lk in locks if lk.get("face")}
+    return [c for c in cards if c["kind"] != "fly" or c.get("lock") in face
+            or float(tr.query(np.asarray(c["P"], float))[0].max()) <= FLY_FAR]
 
 
 EDGE_ROUND = 0.0  # share of a card's across-curvature given to its edge normals (mesh; 0 = one normal across). b20 at
@@ -1043,11 +1070,26 @@ def is_single(lk: dict) -> bool:
     return int(lk.get("hairs") or 0) > 0 and not lk.get("face") and not lk.get("off_head")
 
 
+def halo_card_ok(lk: dict, C) -> bool:
+    """The hero's rules for which single hairs get a card (hair_clumps FLY_CROWN / FLY_CROWN_FREE / FLY_STRAIGHT), for
+    every tier: none rooted over the crown (a few single hairs there stood 1-3 cm over it as dark strokes on LOD1-3
+    only, round 29: the hero leaves them to the strands' look), none that loop (cards read them as stiff arcs)."""
+    from .hair_clumps import FLY_CROWN, FLY_CROWN_FREE, FLY_STRAIGHT
+    P = np.asarray(lk["pts"], float)
+    if len(P) < 2 or P[0, 2] > float(np.asarray(C)[2]) + (FLY_CROWN_FREE if lk.get("off_head") else FLY_CROWN):
+        return False
+    L = float(np.linalg.norm(np.diff(P, axis=0), axis=1).sum())
+    return L > 0 and float(np.linalg.norm(P[-1] - P[0])) >= FLY_STRAIGHT * L
+
+
 def pooled_singles(G: dict, locks: list, pool: list, C, L: int, rng) -> list:
     """Single-hair locks clustered by where they run (root, middle, end), SINGLES_PER_CARD a cluster, each cluster ONE
     fly card along its hairs' mean path: the halo as a few cards standing where the hairs stand."""
     from scipy.cluster.vq import kmeans2
     C = np.asarray(C, float)
+    pool = [li for li in pool if halo_card_ok(locks[li], C)]
+    if not pool:
+        return []
     feats = []
     for li in pool:
         P = np.asarray(locks[li]["pts"], float)

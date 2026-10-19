@@ -232,7 +232,7 @@ def build(m):
         nt.links.new(o.outputs["Color"], sep.inputs["Color"])
         nt.links.new(sep.outputs["Green"], pb.inputs["Roughness"])
         nt.links.new(sep.outputs["Blue"], pb.inputs["Metallic"])
-    if "normal" in m["maps"]:
+    if "normal" in m["maps"] and not (m["model"] == "hair_cards" and os.environ.get("GE_HAIR_NONORMAL")):  # (debug)
         nm = tex(nt, m, "normal")
         nmap = nt.nodes.new("ShaderNodeNormalMap")
         nt.links.new(nm.outputs["Color"], nmap.inputs["Color"])
@@ -308,7 +308,18 @@ def build(m):
                 nt.links.new(g.outputs[0], sh.inputs["B"])
                 albedo = sh.outputs["Result"]
             pb.inputs["Roughness"].default_value = 0.5
-            pb.inputs["Specular IOR Level"].default_value = 0.3
+            pb.inputs["Specular IOR Level"].default_value = float(P.get("specular_level", 0.3))  # (r59: 0.25 tinted)
+            if P.get("specular_tint"):
+                pb.inputs["Specular Tint"].default_value = (*[float(c) for c in P["specular_tint"]], 1.0)
+            if os.environ.get("GE_HAIR_SPEC"):  # (debug) "level,r,g,b": specular level and tint
+                v_ = [float(x) for x in os.environ["GE_HAIR_SPEC"].split(",")]
+                pb.inputs["Specular IOR Level"].default_value = v_[0]
+                if len(v_) == 4:
+                    pb.inputs["Specular Tint"].default_value = (*v_[1:], 1.0)
+            if os.environ.get("GE_HAIR_ROUGH"):  # (debug) a flat roughness instead of the ORM's
+                for l_ in [l_ for l_ in nt.links if l_.to_socket == pb.inputs["Roughness"]]:
+                    nt.links.remove(l_)
+                pb.inputs["Roughness"].default_value = float(os.environ["GE_HAIR_ROUGH"])
         cut = nt.nodes.new("ShaderNodeMath")  # alpha TEST at the cutoff (dithered by EEVEE's AA)
         cut.operation = "GREATER_THAN"
         cut.inputs[1].default_value = float(P.get("alpha_cutoff", 0.33 if kind == "hair_cards" else 0.5))
@@ -345,6 +356,27 @@ else:  # the importer's own, cards dithered, the blink map hooked in
             if m is not None and hasattr(m, "surface_render_method") and (
                     m.blend_method in ("CLIP", "HASHED") or "hair" in m.name or "lashes" in m.name):
                 m.surface_render_method = "DITHERED"
+
+if os.environ.get("GE_FLATID"):  # (debug) a flat colour per object, back faces at a third: which part shows where
+    import colorsys
+    for i, ob in enumerate(sorted(meshes, key=lambda o: o.name)):
+        rgb = colorsys.hsv_to_rgb((i * 0.618034) % 1.0, 0.85, 1.0)
+        mat = bpy.data.materials.new(f"flatid_{ob.name}")
+        mat.use_nodes, mat.use_backface_culling = True, False
+        nt = mat.node_tree
+        nt.nodes.clear()
+        out, em = nt.nodes.new("ShaderNodeOutputMaterial"), nt.nodes.new("ShaderNodeEmission")
+        geo, mix = nt.nodes.new("ShaderNodeNewGeometry"), nt.nodes.new("ShaderNodeMix")
+        mix.data_type = "RGBA"
+        mix.inputs["A"].default_value = (*rgb, 1)
+        mix.inputs["B"].default_value = (*(c / 3 for c in rgb), 1)
+        nt.links.new(geo.outputs["Backfacing"], mix.inputs["Factor"])
+        nt.links.new(mix.outputs["Result"], em.inputs["Color"])
+        nt.links.new(em.outputs[0], out.inputs["Surface"])
+        for ms in ob.material_slots:
+            ms.material = mat
+        print(f"@@flatid {ob.name} part={part_of(ob) if notes is not None else '?'} rgb={tuple(round(c * 255) for c in rgb)}", flush=True)
+    scene.view_settings.view_transform = _VIEW0 = "Standard"
 
 # ---- the clip source
 src_arm, src_objs = None, []
@@ -791,6 +823,26 @@ for pz in job.get("shots", []):
     cam_d.type = "ORTHO" if pz.get("ortho") else "PERSP"
     if pz.get("ortho"):
         cam_d.ortho_scale = float(pz["ortho"]) * max(1.0, scene.render.resolution_x / scene.render.resolution_y)
+    if pz.get("dump"):  # (r54) the posed meshes for asset.cull_exposed_keep: every mesh object's rest and posed world
+        # vertices (armature + shapes evaluated) to an npz: "<object>:rest", "<object>:posed"; views [] renders nothing
+        import numpy as np
+        dg = bpy.context.evaluated_depsgraph_get()
+        out_ = {}
+        for o in ours:
+            if o.type != "MESH":
+                continue
+            Mw = np.array(o.matrix_world)
+            R = np.array([v.co for v in o.data.vertices], float).reshape(-1, 3)
+            me = o.evaluated_get(dg).to_mesh()
+            P_ = np.array([v.co for v in me.vertices], float).reshape(-1, 3)
+            o.evaluated_get(dg).to_mesh_clear()
+            if len(P_) != len(R):
+                continue
+            nm_ = o.data.name or o.name
+            out_[f"{nm_}:rest"] = R @ Mw[:3, :3].T + Mw[:3, 3]
+            out_[f"{nm_}:posed"] = P_ @ Mw[:3, :3].T + Mw[:3, 3]
+        np.savez_compressed(pz["dump"], **out_)
+        print(f"wrote {pz['dump']} ({len(out_) // 2} meshes)", flush=True)
     light_rig(pz.get("lighting"), at)  # (r44) the shot's own rig, else the game rig
     for v in pz.get("views", ["front"]):
         d = Vector(DIRS[v]).normalized()

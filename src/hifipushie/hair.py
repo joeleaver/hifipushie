@@ -202,6 +202,12 @@ def full_look(look: dict | None) -> dict:
         # measured (check_tiers on Tess's W18 hero cards: card_sat 1.0 -> 1.8x the strands' saturation, 0.3 -> 0.7x):
         # the cards' atlas is not the strands' colour pipeline, so not the same factor: eevee_sat ** CARD_SAT_EXP
         lk["card_sat"] = round(float(lk["eevee_sat"]) ** CARD_SAT_EXP, 3)
+    if lk.get("seen") and "card_gain" not in lk:
+        # a look from a photo's colour (seen_look) sets lit = seen and leaves the lift to the renderer: the EEVEE strands
+        # draw lit x eevee_gain (1.6), so the cards' atlas, at card_gain 1.0, came out AS the photo's seen colour (G88a:
+        # atlas mean sRGB [0.242 0.232 0.227] == seen) and Garrett's 96 cards read near-black beside the grey strand
+        # look. The cards take the strands' lift (an explicit card_gain, measured by check_tiers, wins)
+        lk["card_gain"] = float(lk.get("eevee_gain", LOOK["eevee_gain"]))
     return {**LOOK, **lk}
 LOCK_KEYS = {"pts", "width", "thickness", "cup", "taper", "belly", "root", "twist", "flip", "grey", "radius", "tilt",
              "handles", "tier", "edge", "hand", "free", "space", "core", "strands", "swoop", "hairs"}
@@ -2244,6 +2250,11 @@ def coverage(sc: Scalp, AA, EE, P, reach: float = 0.004):
     return np.clip(gaussian_filter(grid.astype(float), sigma=r, mode=("wrap", "nearest")) * 1.6, 0, 1)
 
 
+CAP_RELAX_FLOOR = True  # (round 30) the relaxed cap keeps the floor cap_under_cards gave it (lift off the scalp)
+CAP_RELAX = 60  # (round 26) iterations: the card cap's radius relaxed over its mesh, only lowered (0 = off)
+CAP_SMOOTH = 0.0  # deg: the mass cap's height smoothed over this (gaussian sigma, 0 = off; round 26)
+
+
 def cap_mesh(sc: Scalp, g: dict, height: float, mass: bool = False, step: float = 1.0, sunk: bool = False,
              extra=None, ease: float = 0.0):
     """The scalp inside the hairline pushed out: the dark underlayer (height m) or, mass=True, the groom's whole
@@ -2269,6 +2280,11 @@ def cap_mesh(sc: Scalp, g: dict, height: float, mass: bool = False, step: float 
                 H = _silhouette_fill(sc, AA, EE, H, d_in, extra, cap=H0)  # underlayer rises to close the dent (only there)
         if ease > 0:  # the volume comes up from the hairline over `ease` m (a far tier's cap: at full height from
             H = H * (0.3 + 0.7 * _ss(d_in / ease))  # the line it was a thick brim over the forehead)
+        if CAP_SMOOTH > 0:  # (round 26) the sunk volume smoothed over the head: its top was a flat block with notches
+            # (cards' gaps between) that stood up at the front crown's outline (the RC review's "flat spike" at 1 / 3 m)
+            from scipy.ndimage import gaussian_filter
+            sg = CAP_SMOOTH / max(step, 1e-3)
+            H = np.where(d_in > 0, gaussian_filter(H, (sg, sg), mode=("wrap", "nearest")), H)
         H = np.maximum(H, 0.0015 * _ss(d_in / 0.004))
     else:
         d_in = inside(sc, line, AA, EE)
@@ -2771,6 +2787,26 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
         # the surface. The groom's envelope stood 25 mm off the top of Tess's W18 where the coverage cards lie at 17:
         # a lighter, flatter helmet over the cards with a seam where they came out from under it (hair_r2)
         Vc = cap_under_cards(sc, Vc, [c_ for c_ in cards if c_["layer"] == 0 and c_["kind"] != "fly"], lift)
+        if CAP_RELAX > 0:  # (round 26) the cap's radius relaxed over its mesh and only ever lowered: its top under the
+            # cards was a flat notched block that stood up at the front crown's outline (RC review "flat spike")
+            Fq = np.asarray(F)
+            Fq = Fq.reshape(len(Fq), -1)
+            e_ = np.concatenate([Fq[:, [k_, (k_ + 1) % Fq.shape[1]]] for k_ in range(Fq.shape[1])])
+            e_ = np.concatenate([e_, e_[:, ::-1]])
+            deg_ = np.bincount(e_[:, 0], minlength=len(Vc)).astype(float)
+            d_ = Vc - sc.C
+            r0 = np.linalg.norm(d_, axis=1)
+            r_ = r0.copy()
+            for _ in range(int(CAP_RELAX)):
+                nb = np.bincount(e_[:, 0], weights=r_[e_[:, 1]], minlength=len(Vc)) / np.maximum(deg_, 1)
+                r_ = 0.5 * r_ + 0.5 * np.where(deg_ > 0, nb, r_)
+            r_ = np.minimum(r_, r0)
+            if CAP_RELAX_FLOOR:  # (round 30) never under the floor it was given (lift: the sagitta + the scalp grid vs
+                # the skin): relaxed toward the hairline's dive rows, a coarse cap (the far tier, 14 deg) sank under the
+                # skin over the lower back of the head (LOD3's bare patch beside the tie)
+                vh_ = sc.coords(Vc)[2]
+                r_ = np.maximum(r_, r0 - np.maximum(vh_ - lift, 0.0))
+            Vc = sc.C + d_ * (r_ / np.maximum(r0, 1e-9))[:, None]
     if short and D is not None:  # the cap is the hair's MASS: it stands at the hair's mid height, easing down to the
         # skin at the hairline (on the scalp itself the head's profile was a bald dome under a fringe of cards)
         ca_, ce_, _ch = sc.coords(Vc)
@@ -3887,9 +3923,22 @@ def export_hair(name: str, out_dir, tiers=("main", "npc", "far"), groom: bool = 
     lk = look_of(spec, h)
     rep = {"tiers": {}, "recipe": CARD_RECIPE}
     log: list = []
+    import shutil
+    files0 = None
     for tier in tiers:
         sp = {**spec, "hair": {**h, "export": {**(h.get("export") or {}), "tier": tier}}}
-        part, files = export_cards(name, out_dir, sp, log)
+        if files0 is None:  # the first tier's maps are the shared atlas; the others' uv are put onto it (share_atlas)
+            part, files = export_cards(name, out_dir, sp, log)
+            files0, own = files, False
+        else:  # (each tier wrote its maps over the last: every GLB but the last tier's read the wrong atlas)
+            part, files = export_cards(name, out_dir / f"_{tier}", sp, log)
+            own = not share_atlas(part, files, files0)
+            if own:  # its own maps beside the GLBs
+                files = {k: Path(shutil.copyfile(f, out_dir / f"hair_{tier}_{k}.png")) for k, f in files.items()}
+                log.append(f"hair tier {tier}: its atlas differs from {tiers[0]}'s: own maps")
+            else:
+                files = files0
+            shutil.rmtree(out_dir / f"_{tier}", ignore_errors=True)
         hc_ = part.pop("hair")
         sp_ = part.pop("shadow_proxy", None)
         if sp_ is not None and len(sp_["tris"]):  # a shadow-only caster beside the GLB (shading.py hair_cards "shadows")
@@ -3919,8 +3968,9 @@ def export_hair(name: str, out_dir, tiers=("main", "npc", "far"), groom: bool = 
                                        "KHR_materials_anisotropy": ani,
                                        "KHR_materials_sheen": {"sheenColorFactor": sheen, "sheenRoughnessFactor": 0.35}}})
         rep["tiers"][tier] = {"glb": str(glb), "triangles": len(part["corner_vert"]) // 3, "layers": hc_["layers"],
+                              "atlas": "own" if own else "shared",
                               "budget": hc_["budget"], "bytes": glb.stat().st_size, "clearance": hc_.get("clearance")}
-    rep["maps"] = {k: str(v) for k, v in files.items()}
+    rep["maps"] = {k: str(v) for k, v in files0.items()}
     rep["log"] = log
     if groom and h.get("style") == "strands":
         from . import hair_strands as hs
@@ -3953,6 +4003,51 @@ def export_hair(name: str, out_dir, tiers=("main", "npc", "far"), groom: bool = 
             rep["sheet"] = str(sheet)
         (out_dir / f"{name}_hair.json").write_text(json.dumps(rep, indent=1, default=float))
     return rep
+
+
+def share_atlas(part: dict, files: dict, files0: dict, tol: int = 2) -> bool:
+    """Put a card tier's uv onto another tier's atlas (`files0`), in place: True when every map of `files` is the
+    same picture as `files0`'s, or the same as its TOP rows (hair_cards.atlas stacks a tier's baked clump tiles UNDER
+    the tiles + chart: the hero tier's atlas is 2048 x 2048 where main / npc / far, with no baked cards, are 2048 x
+    1024), its v then remapped onto those rows (hair_cards.remap_v). False: the pictures differ, the tier needs its
+    own maps (its uv untouched). Round 28: asset's LOD1-3 hair indexed LOD0's atlas with uv made for a half-height
+    one: a bald crown and a torn tail."""
+    from PIL import Image
+    from . import hair_cards as hc
+    keys = [k for k in files0 if k != "specular"]
+    if set(keys) != {k for k in files if k != "specular"}:
+        return False
+    rows = rows0 = None
+    for k in keys:
+        a = np.asarray(Image.open(files[k]))
+        b = np.asarray(Image.open(files0[k]))
+        if a.ndim != b.ndim or a.shape[1:] != b.shape[1:] or a.shape[0] > b.shape[0]:
+            return False
+        if (rows, rows0) not in ((None, None), (a.shape[0], b.shape[0])):
+            return False
+        rows, rows0 = a.shape[0], b.shape[0]
+        d = np.abs(a.astype(np.int16) - b[:rows].astype(np.int16)).reshape(rows, a.shape[1], -1).max(-1)
+        if (d > tol).mean() > 1e-3:  # (the normal map's last tile rows see the baked block under them: 0.005% of
+            return False  # texels differ there by up to 28 levels; a different picture differs nearly everywhere)
+    if rows != rows0:
+        part["uv"] = hc.remap_v({"uv": part["uv"]}, {"rows": rows, "rows_total": rows0})["uv"]
+    return True
+
+
+CARD_ROUGH_MIN = 0.6  # (r59) the cards' roughness floor in the export's ORM: the outer, lit hair (aux.b high) came out at
+# 0.425 (the 0.5 floor x 0.85), and an isotropic engine lobe at that mirrored the key light off the crown's flat cards as
+# one white plate (Tess rc2i's "white glossy crown"; 0.65 / 0.75 in the game preview took it away, 0.6 + the tinted half
+# specular below leaves a faint warm sheen). The baked-cap path already says it: "glossy, it was tin foil".
+CARD_SPECULAR = 0.5  # (r59) the combined character GLB's hair KHR_materials_specular factor (half a dielectric's) ...
+
+
+def card_specular_tint(sheen_linear) -> list:
+    """(r59) ... and its colour: the hair's sheen, normalised to max 1 (light off and through hairs takes their colour).
+    The character export (asset.py) writes specularFactor CARD_SPECULAR, specularColorFactor this, no specular texture,
+    i.e. F0 0.04 x 0.5 x tint = 0.02 x tint = Blender's IOR level 0.25 tinted,
+    as blender_hair's card material and the game preview (blender_game, notes params specular_level / specular_tint)."""
+    m = max(max(float(c) for c in sheen_linear), 1e-6)
+    return [round(float(c) / m, 3) for c in sheen_linear]
 
 
 def export_cards(name: str, out_dir: Path, spec: dict, log: list) -> tuple[dict, dict]:
@@ -4001,7 +4096,7 @@ def export_cards(name: str, out_dir: Path, spec: dict, log: list) -> tuple[dict,
     if cd.get("flow"):
         files["flow"] = out_dir / "hair_flow.png"
         Image.open(cd["flow"]).convert("RGB").save(files["flow"])
-    rough = np.clip(max(float(lk.get("roughness", 0.42)), 0.5) * (1.25 - 0.4 * aux[..., 2]), 0.05, 1.0)
+    rough = np.clip(max(float(lk.get("roughness", 0.42)), 0.5) * (1.25 - 0.4 * aux[..., 2]), CARD_ROUGH_MIN, 1.0)
     if cd.get("short"):  # a baked cap is a surface of many hairs' highlights already in its picture and normal map:
         rough = np.clip(max(float(lk.get("roughness", 0.42)), 0.85) * (1.12 - 0.15 * aux[..., 2]), 0.05, 1.0)  # glossy, it was tin foil
     occ = 0.55 + 0.45 * aux[..., 2]

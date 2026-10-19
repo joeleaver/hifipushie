@@ -275,6 +275,75 @@ def brow_edge(im, box, skin_L, mm, mid_x):
     return width, spread, float(front.mean() / max(middle.mean(), 1e-3)), rise, prof10
 
 
+def brow_band(im, box, skin_L, mm):
+    """the brow as a BAND (2026-10-18 r12: reviewers call ours a "near-black block" while its MEAN is lighter than the photo's):
+    the hair mask as brow_edge (L < skin - 12 on a 1-px blur, the two biggest pieces, box padded 2 mm). height = the band's
+    vertical extent per column (mm) in 5 bins medial -> lateral and its mean; cv = darkening std / mean inside the mask (even
+    = a block); show = fraction of the band's ENVELOPE (the 1.5 mm-blurred mask > .5, the band as seen from afar) whose
+    darkening is under 40 % of the band's p90 (skin between hairs); edge up / lo = mm between the 20 % and 80 % points of
+    the darkening profile across the outline, above / below each column's centre of the band (a stencil steps in < .5 mm)"""
+    from scipy import ndimage
+    p = 2 * mm
+    x0, y0, x1, y1 = (int(round(v)) for v in (box[0] - p, box[1] - p, box[2] + p, box[3] + 2 * p))   # (r13: 4 mm below: a band
+    # reaching the crop's bottom had no outside below it and "edge below" read nan)
+    x0, y0 = max(x0, 0), max(y0, 0)
+    a = np.asarray(im, float)[y0:y1, x0:x1] / 255.0
+    LAB = sp.lab(sp._lin(a.reshape(-1, 3))).reshape(a.shape[:2] + (3,))
+    L = LAB[..., 0]
+    m = ndimage.gaussian_filter(L, 1) < skin_L - 12.0
+    m[int(round(box[3] + p)) - y0:] = False   # (the band itself only inside the box + 2 mm, as before: the extra rows are outside)
+    if m.sum() < 20:
+        return None
+    lab, n = ndimage.label(m)
+    m = np.isin(lab, np.argsort(ndimage.sum(m, lab, range(1, n + 1)))[::-1][:2] + 1)
+    dk = np.clip(skin_L - L, 0, None)
+    cols = np.nonzero(m.any(0))[0]
+    if len(cols) < 10:
+        return None
+    hh = np.array([m[:, j].sum() for j in cols]) / mm
+    k = len(hh)
+    prof = [float(hh[int(i * k / 5): max(int((i + 1) * k / 5), int(i * k / 5) + 1)].mean()) for i in range(5)]
+    d_in = dk[m]
+    cv = float(d_in.std() / max(d_in.mean(), 1e-3))
+    env = ndimage.gaussian_filter(m.astype(float), 1.5 * mm) > 0.5
+    show = float((dk[env] < 0.4 * np.percentile(d_in, 90)).mean()) if env.any() else 0.0
+    yy = np.arange(m.shape[0])[:, None]
+    cy = np.full(m.shape[1], np.nan)
+    for j in cols:
+        cy[j] = yy[m[:, j], 0].mean()
+    cy = np.interp(np.arange(m.shape[1]), cols, cy[cols])
+    above = yy < cy[None, :]
+    sd = (ndimage.distance_transform_edt(~m) - ndimage.distance_transform_edt(m)) / mm
+    core = np.median(dk[sd < -0.5]) if (sd < -0.5).sum() > 10 else np.median(d_in)
+    span = (np.arange(m.shape[1]) >= cols.min()) & (np.arange(m.shape[1]) <= cols.max())
+    def ew(side):
+        st = max(0.25, 1.0 / mm)   # (r13: bins at least a pixel wide: at 384 px a .25 mm bin held < 4 pixels and the row read nan)
+        bins = np.arange(-1.5, 2.01, st)
+        sel = side & span[None, :]
+        pr = np.array([np.median(dk[sel & (sd >= b) & (sd < b + st)]) if (sel & (sd >= b) & (sd < b + st)).sum() > 3 else np.nan for b in bins])
+        c = bins + st / 2; ok = np.isfinite(pr)
+        if ok.sum() < 5 or core <= 1:
+            return float("nan")
+        pr, c = np.clip(pr[ok] / core, 0, 1.5), c[ok]
+        def cross(t):
+            for i in range(len(pr) - 1):
+                if pr[i] >= t > pr[i + 1]:
+                    return c[i] + (pr[i] - t) / (pr[i] - pr[i + 1]) * (c[i + 1] - c[i])
+            return c[0] if pr[0] < t else c[-1]
+        return float(cross(0.2) - cross(0.8))
+    Lm = L[m]   # (the core: the darkest tenth of the band, and the band's median L: a black core round a pale fringe has a
+    # light median and a near-black p10; the photo's brow is mid-dark through)
+    jj = np.nonzero(m)[1]
+    dprof = [float(np.median(dk[m][(jj >= cols.min() + i * (cols.max() - cols.min() + 1) / 5) & (jj < cols.min() + (i + 1) * (cols.max() - cols.min() + 1) / 5)]))
+             for i in range(5)]
+    # (r13) the band's HUE: a* / b* of its darker half (darkening over the band's median: the hairs, not the skin between).
+    # Tess r12 read as neutral black strands vs the photo's warm mid-brown, and no row measured it
+    hm = m & (dk >= np.median(d_in))
+    return {"h": float(hh.mean()), "prof": prof, "cv": cv, "show": show, "up": ew(above), "lo": ew(~above),
+            "p10": float(np.percentile(Lm, 10)), "p50": float(np.median(Lm)), "dprof": dprof,
+            "a": float(np.median(LAB[..., 1][hm])), "b": float(np.median(LAB[..., 2][hm]))}
+
+
 def band_rms(im, box):   # age lines: log L band-pass (1 .. 4 px), rms
     from scipy import ndimage
     a = np.log(np.asarray(im.convert("L").crop(tuple(int(round(x)) for x in box)), float) + 1)
@@ -330,6 +399,21 @@ try:
                 add(f"{k} head rise (mm, 20-80 % of middle mass)", er_[3], eo_[3], 0.4, "ratio")
                 print(f"PROFILE {k} ref  " + " ".join(f"{v:.2f}" for v in er_[4]))
                 print(f"PROFILE {k} ours " + " ".join(f"{v:.2f}" for v in eo_[4]))
+        bR, bO = brow_band(R, B[k], skinL_r, u), brow_band(O, B[k], skinL_o, u)
+        if bR and bO:   # (r12) the band row: width, evenness, skin through, edge softness above / below
+            add(f"{k} band height (mm, mean)", bR["h"], bO["h"], 0.2, "ratio")
+            add(f"{k} band evenness (darkening cv; low = block)", bR["cv"], bO["cv"], 0.25, "ratio")
+            add(f"{k} band skin through (frac of envelope)", bR["show"], bO["show"], 0.08, "abs")
+            add(f"{k} band edge above (mm)", bR["up"], bO["up"], 0.35, "ratio")
+            add(f"{k} band edge below (mm)", bR["lo"], bO["lo"], 0.35, "ratio")
+            add(f"{k} band core L (p10)", bR["p10"], bO["p10"], 5.0, "abs", "{:.1f}")
+            add(f"{k} band median L", bR["p50"], bO["p50"], 5.0, "abs", "{:.1f}")
+            add(f"{k} band hue a* (darker half)", bR["a"], bO["a"], 2.5, "abs", "{:.1f}")
+            add(f"{k} band hue b* (darker half)", bR["b"], bO["b"], 2.5, "abs", "{:.1f}")
+            print(f"BAND {k} darkening ref  " + " ".join(f"{v:.1f}" for v in bR["dprof"]))
+            print(f"BAND {k} darkening ours " + " ".join(f"{v:.1f}" for v in bO["dprof"]))
+            print(f"BAND {k} height ref  " + " ".join(f"{v:.2f}" for v in bR["prof"]))
+            print(f"BAND {k} height ours " + " ".join(f"{v:.2f}" for v in bO["prof"]))
     jaw = {"jaw_R": bbox(PR, (172, 136, 150, 149)), "jaw_L": bbox(PR, (397, 365, 379, 378))}
     for k, box in (("chin", B["chin"]), ("jaw_R", jaw["jaw_R"]), ("cheek_R", B["cheek_R"])):
         dr, do = dots(R, box, u), dots(O, box, u)

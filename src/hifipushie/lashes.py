@@ -32,12 +32,14 @@ import json
 
 import numpy as np
 
-VERSION = 21  # 21: taper_out; 5: a fully closed lid roots on its closed line, never a fold slit; 4: the lid line's piece scored by size and height (a fold's slit was taken); 3: a blink's slit joined, the largest piece taken (projskin); 2: seated on the filled front map (holes in the sampled skin threw points off)
+VERSION = 22  # 22: per-lid segments (the lower lid 2, round 29) + taper_out; 21: taper_out; 5: a fully closed lid roots on its closed line, never a fold slit; 4: the lid line's piece scored by size and height (a fold's slit was taken); 3: a blink's slit joined, the largest piece taken (projskin); 2: seated on the filled front map (holes in the sampled skin threw points off)
 DEFAULTS = {
     "upper": {"count": 230, "length": 9.0, "curl": 62.0, "lift": -12.0, "flare": 24.0, "thickness": 0.15,
               "clump": 0.6, "clump_size": [3, 6], "vary": 0.35, "rows": 0.25, "offset": 0.15, "start": 0.08, "end": 1.0, "taper_out": 0.25},
     "lower": {"count": 75, "length": 3.0, "curl": 10.0, "lift": 55.0, "flare": 16.0, "thickness": 0.04,
-              "clump": 0.5, "clump_size": [2, 4], "vary": 0.45, "rows": 0.15, "offset": 0.5, "start": 0.2, "end": 0.97, "taper_out": 0.25},
+              "clump": 0.5, "clump_size": [2, 4], "vary": 0.45, "rows": 0.15, "offset": 0.5, "start": 0.2, "end": 0.97, "taper_out": 0.25,
+              "segments": 2},  # (round 29: a 3 mm lash curling 10 deg is straight as 2 quads; 4 were 1,200 of Tess's
+    # 4,880 lash triangles for nothing a 1 m view or an eye close-up shows. A lid's own `segments` overrides the top level)
     "color": "#120e0c", "lower_color": "#3a302a", "roughness": 0.5, "seed": 0, "segments": 4,
 }
 _CACHE: dict = {}
@@ -311,6 +313,7 @@ def build(head: dict, cfg: dict, sides=(".L", ".R")) -> dict:
         c = L["centre"]
         for li, lid in enumerate(("upper", "lower")):
             p = cfg[lid]
+            seg = int(p.get("segments") or cfg.get("segments", 4))
             col = np.array(_hex(cfg["color"] if lid == "upper" else cfg.get("lower_color", cfg["color"])))
             if lid == "lower" and L.get("closed"):   # a closed eye: the lower lashes lie tucked under the upper lid's;
                 continue                             # both rows on one seam drew a hard black streak (Tess)
@@ -464,7 +467,7 @@ def triangles(spec: dict) -> int:
     cfg = wanted(spec)
     if cfg is None:
         return 0
-    return 2 * 2 * int(cfg["segments"]) * (int(cfg["upper"]["count"]) + int(cfg["lower"]["count"]))
+    return 2 * 2 * sum(int(cfg[lid].get("segments") or cfg["segments"]) * int(cfg[lid]["count"]) for lid in ("upper", "lower"))
 
 
 def export_part(spec: dict, out_dir, log=print):
@@ -508,8 +511,8 @@ def export_part(spec: dict, out_dir, log=print):
     Image.new("RGB", (16, 16), (128, 128, 255)).save(files["normal"])
     Image.new("RGB", (16, 16), (255, int(255 * float(cfg["roughness"])), 0)).save(files["orm"])
     Image.new("RGBA", (16, 16), (255, 255, 255, 128)).save(files["specular"])
-    per = 2 * (int(cfg["segments"]) + 1)
-    log(f"lashes: {len(T)} triangles ({int((m['lid'] == 0).sum() // per)} upper, {int((m['lid'] == 1).sum() // per)} "
+    per = [2 * (int(cfg[lid].get("segments") or cfg["segments"]) + 1) for lid in ("upper", "lower")]
+    log(f"lashes: {len(T)} triangles ({int((m['lid'] == 0).sum() // per[0])} upper, {int((m['lid'] == 1).sum() // per[1])} "
         "lower lashes), two-sided")
     return "lashes", part, files
 

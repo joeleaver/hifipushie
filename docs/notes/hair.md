@@ -5041,3 +5041,322 @@ line. (3) full export_asset with hair.export.tier "hero" (exa.py) to confirm LOD
 LOD at its game distance. (4) the nape comb marks behind the ear, holes in the tail. Test update: tests/test_* for the new
 knobs not added (defaults only).
 
+
+## hair-cards round 26 (2026-10-18, fresh session; Joe: only what's left for Tess / Garrett game-ready; RC review MAJORs: crown spike, hairline)
+BEST CARDS FOR EXPORT: b34 = hair_clumps / hair defaults at this round's commit (= r26 g2: TAIL_TONE 0.62, TONE_CONTRAST_TAIL
+  4.5, TONE_BACK = TONE_FRONT 0.85 (every head card x 0.85), hair.CAP_RELAX 60) + hc_s2's spec
+  (/mnt/data/hifipushie/haircards/exp/g2/hc_s2_hair_hero.glb). EXPORT SETTINGS: spec hair.export = {"tier": "hero"},
+  export_asset(role="hero", lods=True); alpha_cutoff 0.33, shadow_proxy on (exa26.py injects the tier; full run exp/exa34).
+- (0) LOOK at b33c front (t25/b33_front.png, crop of g1v0 top): the crown's top is a flat dark block with a hooked flap at
+  the right; the forehead top is a dark band with scalp between cards and no part; a pale sheet lies flat on the left
+  forehead; a broad dark lock beside the face on the right (the RC's minor). Still the weakest view.
+- NEW knobs (hair_clumps, defaults off): HOOK_RISE (m: a head card that comes down from its highest point and rises again
+  by more than this ends at its low point: the hooked top flaps), TONE_BACK / TONE_FRONT / TONE_POS_Y (head cards' tint by
+  their roots' y: back down for the +8 L* mean, front-top up for the dark front crown).
+  r26a: d1 TAIL_TONE 0.6 + BACK 0.8 + HOOK 4 mm; d2 TAIL 0.55 + BACK 0.75 + FRONT 1.25 + HOOK; d3 TAIL 0.65 + BACK 0.85 +
+  TONE_CONTRAST_DARK 1.8 + FRONT 1.25 + HOOK (views g1backl, g1v1, g1v0). exa26.py = exa.py with tier hero injected.
+  STATE: r26a running locally. NEXT: hl.py d1-d3 vs gSc / b33c, crown crop.
+- (1) r26a READ (hl.py; t26 tiles): TAIL_TONE 0.6 brings the tail mean down (back p50 36.3 -> 31.2, 3/4 37.7 -> 32.2; gSc
+  25.8 / 34.8) but the streak share with it (L*>50 4.2% -> 1.2%). TONE_BACK by ROOT place is the wrong key: the back of the
+  head is covered by cards rooted at the FRONT (strands run from the hairline over the top to the tie), so d2/d3 (FRONT 1.25)
+  made the back head LIGHTER (p50 41 -> 44, L*>50 11 -> 32%) and the front crown box did not move (p50 23 in all: the front's
+  dark is shading, not albedo). HOOK_RISE 4 mm cut 70 head cards, all L0 (strands rising to the tie at the nape), and left
+  the front hooks as they were: DEAD, stays off.
+  r26b: wisps w1 WISP_ALPHA 0.9 + WISP_KIDS_FACE 3, w2 + WISP_ALPHA 1.0 + WISP_LIFT 0.8 (wisps stop at the jaw: thin tips
+  under the cutoff?). r26c: e1 TAIL_TONE 0.62 + all head cards x 0.85 (TONE_BACK = TONE_FRONT); e2 + TONE_CONTRAST_TAIL 4.5;
+  e3 e1 + ENV_PCT 80 (front top outline). STATE: r26b / r26c chained locally.
+- (3) WISPS r26b (t26 tiles w_v1 / w_v0: gSc | b33c | w1 | w2): w2 (WISP_ALPHA 1.0, WISP_KIDS_FACE 3, WISP_LIFT 0.8) shows a
+  little more of the cheek / pre-ear locks, still grey-pink and thin, nowhere near gSc's golden locks to the collarbone.
+  Marginal: not a default yet.
+- (1) TONE r26c (hl.py): e1 (TAIL_TONE 0.62, every head card x 0.85) back head p50 41.0 -> 37.1 (gSc 33.0), tail 36.3 ->
+  31.6 (25.8), but L*>50 at the tail 4.2 -> 1.4%; e2 (+ TONE_CONTRAST_TAIL 4.5) tail 33.4 / 3/4 35.1 (gSc 34.8) with the
+  streaks back (3.0%, gap 5): KEPT as the tone base. e3 ENV_PCT 80: no change anywhere (cards sit under the 90th already).
+- (2) FRONT CROWN TRACED (flat g1v0 per range, b33c: t26/flat.png cap | L1 | L2 | L3): the "flat spike / block" on top of
+  the front outline is the CAP (the sunk mass: a flat-topped, notched block standing over the top); L1 and L2 each have one
+  hooked flap at the top right; L3 (flyaways) nothing there. NEW knob hair.CAP_SMOOTH (deg, gaussian over the mass cap's
+  height, 0 = off). r26d: f1 6 deg, f2 12 deg. hx.py / exa26.py take hh.<CONST>.
+- (2b) CAP_SMOOTH (r26d f1 6 / f2 12 deg): NO change (the card export's cap is reshaped after, by cap_under_cards). NEW knob
+  hair.CAP_RELAX (iterations: the card cap's radius relaxed over its mesh, only ever lowered, after cap_under_cards):
+  r26e g1 20 / g2 60 with the e2 tone. Flat cap g1v0 (t26/g_cap.png b33c | g2): the notched flat block is now a round dome;
+  lit front (t26/g_v0.png): the centre block on the outline is gone. Cost: at 3/4 (t26/g1_v1.png) a top-layer card's edge
+  shows as a ledge over the crown where the cap no longer backs it. KEPT (60).
+  HOOK_RISE again on layers >= 1 only (HOOK_LAYER_MIN, r26f h1 2 mm: cut 55 L1 cards): the two hooked flaps unchanged
+  (t26/h_v0.png): DEAD, off. The hooks are not "down then up" cards; they need their own trace (per-card id at the pixel).
+- SIDE-BY-SIDE BLIND REVIEW (one fresh subagent, review/r26_sbs/<view>.png = gSc | X | Y shuffled, key.txt): FRONT closer =
+  g2 (b33c "a flat rectangular block sticking up at the centre of the crown"; g2 "a hooked flap on its right"); 3/4 same
+  (g2: flaps / spikes forward at the front top; b33c: the block; b33c's tail tone slightly closer); BACK same. Both: MAJOR
+  torn / hooked top outline, tail texture "dark smeared slabs", no part + hard dark hairline; minor: stringy temple wisps
+  (not wet clumps), dark ticks behind the ear, chopped tail ends; "no broad dark lock beside the face" in either.
+  -> b34 = g2 (the RC's crown "flat spike" = the cap block: removed; the hooks remain).
+- (4) FULL EXPORT (exa26.py, b34 settings, tier hero injected; exp/exa34, out/exa34.log, 584 s on the local heavy slot):
+  hair LOD0..3 = 23844 / 12496 / 8246 / 2498 tris (budgets hero hair_cards 25000 / 12500 / 8250 / 2500: all inside);
+  LOD0 total 73857 of 100000; LOD1 38483, LOD2 26737, LOD3 18733. NB lashes stay 4880 at EVERY LOD (LOD3: a quarter of
+  its triangles are lashes): an asset.py LOD gap for the lashes part, not hair. The GLBs: hc_s2.glb 22 MB, LOD1-3 2.2 / 1.7 /
+  1.2 MB. NOT DONE: each LOD rendered at its game distance (no budget left this round).
+
+## Handover 2026-10-18 (hair-cards agent, round 26; stopped at the 70-tool-call rule)
+Commits: HOOK_RISE / HOOK_LAYER_MIN (off: dead), TONE_BACK / TONE_FRONT / TONE_POS_Y (both 0.85 = all head cards darker),
+hair.CAP_SMOOTH (off: no effect on the card cap), hair.CAP_RELAX 60 (the crown's flat cap block gone), TAIL_TONE 0.62,
+TONE_CONTRAST_TAIL 4.5 = b34. Scratch t26/ (tiles), r26a-f.sh, exa26.py (tier hero injected, hh./hk. constants), hx.py
+takes hh.<CONST>, review/r26_sbs. Nothing in flight.
+VERDICT (look-first): b34 fixes the RC's front "flat spike" (it was the cap's notched top, now a dome) and brings the back
+down ~4 L* (head back p50 41 -> 37, gSc 33; tail 36 -> 33, gSc 26; 3/4 tail = gSc) with the tail streaks kept. Asked 8-10
+L*: got ~4 at the head, ~3 at the tail; more costs the streaks (e1). The front is still the weakest view: torn top outline
+with two hooked flaps, no part, hard dark hairline, thin grey temple wisps; at 3/4 a top card's edge now shows as a ledge.
+The reviewer did not see a broad dark lock beside the face. Still reads as cards at 1 m.
+NEXT, in order: (1) the two hooked flaps: trace them per card (id pass at the outline pixel -> card index -> its
+strands), then pull those cards under the envelope or drop them. (2) the 3/4 crown ledge after CAP_RELAX: a softer top-card
+edge fade or CAP_RELAX ~30. (3) render LOD1-3 (exp/exa34) at their game distances. (4) the part / hairline (dead levers in
+round 23: CAP_BASE_IN, CAP_PART_CUT, HL_LIFT), wisps (w2: WISP_ALPHA 1.0, KIDS 3, LIFT 0.8 was marginal). (5) lashes LOD.
+
+## hair-cards round 27 (2026-10-18, fresh session; Joe: only what's left for Tess / Garrett game-ready; best = b34)
+BEST CARDS FOR EXPORT: b34 (unchanged so far; see round 26's header for the path and settings).
+- (1) HOOKS TRACED (new scratch hooktr.py <tag> <view> boxes: projects every card's alpha>0.5 samples with the shot's
+  camera (frames_*.json; NB `dir` there points from the target TO the eye), a z-buffer of card ids, saved
+  t27/cardid_<tag>_<view>.npy (IoU-checked against the id pass: outline rows match to 1-2 px); per card at the box: layer,
+  pixels, its centre polyline root -> tip, radius from the scalp centre, bends). g2 g1v0: right hook (px 560-576 x 357-372)
+  = the ROOT ends of six top cards (L0 48 / 53, L1 125 / 126, L2 190 / 192) rooted at (+33, -28, +78) mm from the scalp
+  centre, i.e. on top just left of the part, 2-3 cm behind the hairline; left hook (478-500 x 366-376) = the root ends of
+  L0 2 / L1 56 / 57 / L2 138 at (-41, 0, +80). They are NOT down-then-up cards (bends 1-10 deg past the root): the cards
+  START 88-92 mm out (L0 88, L1 90, L2 92) over a cap at ~75-78 mm there, first segments bending 10-22 deg (they leave
+  sideways, then turn back), and each card's root is a straight-cut edge (ROOT_FADE only 4 mm). Stacked root ends standing
+  10-15 mm over the cap = the hooked flaps on the outline. Same cause, likely, for the 3/4 "ledge" since CAP_RELAX lowered
+  the cap under those roots (the gap grew).
+  r27a (chained locally): LOD shots (exp/lods/hair[_LODn].glb = exa34's character GLBs reduced to the hair node by lodx.py)
+  at g2 / g4 / g8 (v0, v1); k1 ROOT_FADE 0.012, k2 ROOT_FADE 0.02, k3 CAP_RELAX 30 (g1v0, g1v1, g1backl).
+  STATE: r27a running. NEXT: tiles k1-k3 vs b34 at the hooks / ledge; if root fade doesn't remove the flaps, a root seat
+  (the first ~15 mm of a head card eased down to the cap).
+- NEW knob hair_clumps.ROOT_SEAT (m, default 0 = off) + ROOT_SEAT_GAP 3 mm: a head card's first ROOT_SEAT from its root is
+  eased down (smoothstep, only lowered) to its strands' roots' median radius + the gap: the root ends tuck under the
+  mass instead of standing as cut edges over the cap. r27c (after r27b): s1 0.015, s2 0.03, s3 0.03 + ROOT_FADE 0.012.
+  LOD shots: exa34's LOD GLBs import every mesh (the body's textures are external): lodx.py also strips the other
+  nodes' meshes; r27b re-renders LOD1-3 after r27a. LOD distances from budgets.lod_screen_size [1, .5, .25, .12] (a 1.75 m
+  sphere on a 1920-wide, 59 deg vertical frame: LOD1 from ~1.7 m, LOD2 ~3.5 m, LOD3 ~7 m): judged at g2 / g4 / g8, each
+  LOD beside LOD0 at the same distance (the pop at the switch).
+- (1b) r27a READ (t27/k_v0.png, k_v1.png: gSc | b34 (lg2) | k1 | k2 | k3): ROOT_FADE 0.012 / 0.02 moved 360 / 773 px of
+  the front frame (mean |dL| 0.02 / 0.03): the hooks unchanged, DEAD lever for them (the root ends are not what the
+  alpha fade reaches; the flap is the cards' geometry). CAP_RELAX 30 (k3): 83 px changed at the front, the 3/4 ledge
+  looks the same: no gain, b34 keeps 60. The geometric fix ROOT_SEAT (s1-s3, r27c) has RENDERED but is NOT judged yet.
+- (3) LODs AT GAME DISTANCE (t27/lods.png: LOD0 | LODk at g2 / g4 / g8, v1 + v0; t27/lod_atlas.png): MAJOR, export
+  fault. The exported LOD1-3 (exa34, asset.export_asset lods=True) do NOT read as the same hair: a bare skin patch over
+  the crown, floating bits over the head, a torn / tattered tail, at every distance. The SAME tiers exported by
+  hair.export_hair (hx.py tiers=hero,main,npc,far -> exp/tiers27) render whole and close to LOD0 (trmain at g2, trfar at
+  g8: same crown, same tail mass). Their caps sit 2-3 mm over the scalp in every tier (capchk.py), so not the cap. Cause
+  to confirm: asset.py (~line 2300) exports each LOD tier with its own hair.export_cards into out/_lod<k> and then sets
+  tp_["atlas"] = LOD0's atlas; the atlas is NOT tier-independent (md5 of hair_basecolor differs between a hero-only
+  export and a 4-tier export), so LOD UVs land on the wrong texels (transparent / wrong tiles): bald crown, torn tail.
+  (lodx.py's hair-only extraction is not it: LOD0 through the same path renders like the hero GLB.)
+  Fix direction: build all tiers in ONE hair.export_hair call (one atlas, as its docstring promises), and make the
+  atlas really shared (export_hair writes each tier's maps over the last: check that each tier's UVs index the final
+  atlas), then re-export and re-run this LOD sheet.
+- (1c) ROOT_SEAT READ (t27/s_v0.png: gSc | b34 | s1 0.015 | s2 0.03 | s3 0.03 + ROOT_FADE 0.012), front crown at 1 m:
+  the geometric fix WORKS on the lever: s1 removes most of the left spiky flap; s2 also flattens the right hook to a small
+  lump on the outline, which now reads as a rounder dome (nearer gSc); s3 = s2. Candidate b35 = b34 + ROOT_SEAT 0.03, NOT
+  yet a default: 3/4 + back views and a blind side-by-side review still owed (handover NEXT (2)).
+
+## Handover 2026-10-18 (hair-cards agent, round 27; stopped at the 70-tool-call rule)
+BEST CARDS FOR EXPORT: still b34 (round 26 header), BUT its LOD1-3 are broken in the character export (above): ship
+LOD0 only until the asset.py hair-LOD atlas fault is fixed.
+Commits: ROOT_SEAT / ROOT_SEAT_GAP (hair_clumps, opt-in, off). Scratch (copies in t27/): hooktr.py (card-id z-buffer at
+outline pixels, per-card polyline), lodx.py (character GLB -> hair-only GLB for shots.py), capchk.py (cap vs scalp per
+tier), t27tile.py; r27a/b/c.sh; exp/lods, exp/tiers27, exp/k1-k3, exp/s1-s3. Nothing in flight (r27c finished or
+finishing: check t27/r27c.done; no waits left).
+VERDICT (look-first): no visible improvement this round. The hooked flaps are traced (root ends of six top cards
+standing 10-15 mm over the cap at the front crown) but the alpha lever is dead; the geometric fix (ROOT_SEAT) is rendered,
+unjudged. The biggest finding is the LOD export: LOD1-3 read as a different, balding, torn hairdo at their switch
+distances, while the same tiers built by export_hair read as the same hair.
+NEXT, in order: (1) asset.py hair LODs: one export_hair for all tiers / a truly shared atlas; re-export (exa26.py) and
+re-run the LOD sheet (r27b.sh with lodx.py). (2) s2 (ROOT_SEAT 0.03) is the front winner by my look: tile it at 3/4 / back (t27tile.py g1v0 430,335,680,450 2 gSc lg2 ls1 ls2 ls3;
+g1v1 430,345,730,500 1.6) and re-trace with hooktr.py; keep ROOT_SEAT only if the flaps go without bare crown.
+(3) blind side-by-side review of the winner vs b34. (4) part / hairline, tail slabs (untouched this round). (5) lashes LOD.
+
+## hair-cards round 28 (2026-10-18, fresh session; Joe: game-ready Tess / Garrett; r27's broken hair LOD1-3 first)
+BEST CARDS FOR EXPORT: b35 = b34 + hair_clumps.ROOT_SEAT 0.03 (now the DEFAULT) = hair defaults at this round's commit +
+  hc_s2's spec; export as b34 (spec hair.export.tier "hero" (exa26.py injects it), export_asset(role="hero", lods=True)).
+  Path: /mnt/data/hifipushie/haircards/exp/exa28b/hc_s2.glb (+ _LOD1-3, maps beside them). LODs OK: y (same hair at every
+  switch distance, t28/lods.png; minor: a few stray strokes over the crown at LOD1-3 only, below).
+- (1) LOD CAUSE CONFIRMED (scratch atlasprobe.py hc_s2 t28/ap: export_cards per tier into its own dir): the hero tier's
+  atlas is 2048 x 2048 (tiles + scalp chart in the top 1024 rows, the baked clump tiles (hair_clumps.bake_tiles, cut
+  "clumps") stacked UNDER them), main / npc / far have no baked cards: 2048 x 1024, the same top rows (max diff 1/255).
+  asset.py pointed each tier's uv (v over a 1024-row atlas) at LOD0's 2048-row atlas: every card read texels twice as
+  far down, half of them in the bake block or across it = the bald crown, floating bits, torn tail. export_hair had the
+  same fault the other way: each tier wrote its maps over the last, so every GLB but the last tier's wore the wrong atlas
+  (r27's main / far looked right only because far was last and main = far's atlas).
+  FIX (general): hair.share_atlas(part, files, files0): a tier whose maps are LOD0's pictures, or their top rows, gets its
+  v remapped onto those rows (hair_cards.remap_v) and shares LOD0's atlas; a tier whose pictures differ carries its own
+  maps (asset: `<hair>_lod<k>_<map>.png` beside the GLBs, the hair material's extensions copied; export_hair:
+  `hair_<tier>_<map>.png`). asset's LOD report says "atlas": "LOD0's" | "own". export_hair's first tier is the shared one.
+  Test tests/test_hair_lods.py (test_share_atlas: fails on the r27 code: tier uv on LOD0's atlas samples other texels).
+  STATE: r28a running (exa26.py hc_s2 -> exp/exa28, lodx -> exp/lods28, glbuv.py -> t28/glbuv.txt, shots g2/g4/g8 _l28*).
+  NEXT: LOD sheet LOD0 | LODk at each switch distance.
+- (2) LASHES LOD: lods.ribbon_lod (lod_parts(ribbons=...)): the lash ribbons (each a strip of across-pairs, lashes.build)
+  thinned by whole ribbons, evenly along the lid, at the head's ratio (budgets lod_ratios head_and_hair: 1 / .5 / .25 / .1),
+  the kept ones widened by 1 / ratio (cap lods.RIBBON_WIDEN 3) to hold the dark frame's coverage; vertices kept (face
+  shapes and weights index them). 4880 -> ~2440 / 1220 / 488 expected. Test test_ribbon_lod.
+  RESULT (r28a, exp/exa28, b34): lashes 4880 -> 2440 / 1216 / 488 at LOD1-3 (LOD3 total 14341). Hair LOD1-3 took the
+  OWN-maps path: share_atlas refused on the normal map (0.005% of texels, the tiles' last rows next to the bake block,
+  differ by up to 28 levels); now a share of <= 0.1% differing texels still counts as the same picture. (r28a's renders
+  never ran: run.sh cds to the worktree, the relative glb paths missed; r28b uses absolute ones.)
+- (3) ROOT_SEAT 0.03 vs b34 (t28/s_v1.png 3/4, s_back.png back, s_v0.png front: gSc | lg2 | ls2): 3/4: the flat slab
+  standing off the crown top is gone, a rounder dome; back: the same (no bare crown added). BLIND review (fresh subagent,
+  t28/blind_*.png, ref | A | B, key t28/blind_key.json: A = ls2): front A slight, 3/4 A clear, back tie. ADOPTED:
+  ROOT_SEAT default 0.03 (b35). Reviewer's notes for both: bare scalp at the hairline / temples (ref covered), a ragged
+  crown edge and a dark gap behind the tie at the back, a torn, patchy ponytail with dark holes (ref dense, fibrous).
+  STATE: r28b running (exa26.py hc_s2 -> exp/exa28b with b35 + the shared-atlas tolerance; lods28b; t28/glbuv_b.txt;
+  shots g2/g4/g8 _l28b*). NEXT: LOD sheet; glbuv numbers (LOD1-3 on LOD0's atlas, v remapped).
+- (1c) r28b RESULT (exp/exa28b, b35, the fixed export): no "atlas differs" line: LOD1-3 hair on LOD0's 2048 x 2048
+  atlas, uv v 0-0.5 (the tiles' rows; glbuv.py, t28/glbuv_b.txt: mean alpha at card centroids LOD1 0.78 / LOD2 0.76 /
+  LOD3 0.58 vs r27's broken LOD1 0.57 with v over 0-1). Triangles LOD1-3: hair 12496 / 8246 / 2498, lashes 2440 / 1216 /
+  488, totals 36043 / 23073 / 14341. LOOK (t28/lods.png, t28/lodsheet.py: LOD0 | LOD1 | LOD2 | LOD3 at g2 / g4 / g8, 3/4
+  + front, head 99 / 51 / 28 px tall): every LOD now reads as the SAME hair: full crown, same mass and tone, tail whole;
+  no bald patch, no torn tail. LOD1-2 are even cleaner at the front crown than LOD0 (fewer hooks). Left: (a) a few thin
+  dark strokes 1-3 cm OVER the crown at LOD1-3 (absent at LOD0; at 51 / 28 px heads 1-2 px); t28/floatc.py finds no
+  piece > 8 mm from the rest at LOD1, 4 small ones at LOD3, so they are cards attached at a root that stand up (likely the
+  thin wisp / fly cards of the lower tiers' 'pair' / 'lock' / 'free' cuts); (b) LOD3's tail is spikier (far tier, 2.5k).
+  STATE: LODs fixed and shippable. NEXT: trace (a) with hooktr.py on out/s_hc_s2_l28b_LOD1_g2v0.png (card ids at the
+  strokes) and drop / tuck those cards in the lower tiers (general: a tier wider than the hero's should not carry fly
+  cards that stand off the mass).
+
+## Handover 2026-10-18 (hair-cards agent, round 28; stopped at the 70-tool-call rule)
+BEST CARDS FOR EXPORT: b35 = hair defaults at this commit (ROOT_SEAT 0.03 now default) + hc_s2's spec, exported with
+hair.export.tier "hero", export_asset(role="hero", lods=True) (exa26.py): exp/exa28b/hc_s2.glb + _LOD1-3. LODs OK: y.
+Commits: hair.share_atlas + asset / export_hair LOD atlas fix; lods.ribbon_lod (lashes per LOD); ROOT_SEAT default 0.03;
+tests/test_hair_lods.py. Scratch t28/: atlasprobe (ap/), blind.py + blind_*.png + blind_key.json, lodsheet.py, lods.png,
+floatc.py, glbuv_b.txt; glbuv.py; r28a.sh (b34, superseded), r28b.sh. Nothing in flight.
+VERDICT (look-first): the ship blocker is gone: LOD1-3 read as the same hairdo as LOD0 at their switch distances. b35's
+3/4 crown is a rounder dome (blind review: front slight, 3/4 clear win, back tie). Still weak at close range (reviewer,
+both builds): bare scalp at the hairline / temples, ragged crown edge and a dark gap behind the tie at the back, a torn,
+patchy ponytail with dark holes.
+NEXT, in order: (1) the stray strokes over the crown at LOD1-3 (above). (2) Garrett's export through the same path (not
+run this round: check his hair LODs share the atlas too). (3) part / hairline coverage (bare temples), (4) tail slabs /
+ponytail holes. Lashes' 5699 eyes_mouth_lashes at LOD0 is still over the 5000 hero budget (thin basis): a lash count
+call for Joe or the coordinator, not changed here.
+
+## hair-cards round 29 (2026-10-18, fresh session; Joe: game-ready Tess / Garrett; coordinator: fit eyes / mouth / lashes to 5,000)
+BEST CARDS FOR EXPORT: b36 = exp/exa29b/hc_s2.glb + _LOD1-3 (b35's hero hair; LOD1-3 without the crown strays; lashes fit
+the 5,000 eyes_mouth_lashes budget, 4,995). LODs OK: y for LOD1-2; LOD3 n from behind (bare patch by the tie, below).
+- (1) STRAYS OVER THE CROWN at LOD1-3 traced (scratch t29/standoff.py: per LOD, welded hair pieces standing past LOD0's
+  outermost hair in their direction from the head centre, top of the head): LOD0 none; LOD1 17 / LOD2 20 / LOD3 8 pieces
+  > 6 mm, the worst at the front crown (glTF y 1.655, z +0.08) 26-27 mm past LOD0, 6-8 vertices, uv u 0.438-0.468 (the
+  fly tile): POOLED HALO cards (hair_cards.pooled_singles, the lower tiers' halo, 8 single-hair locks a card). The hero
+  (hair_clumps) gives no card to a single hair rooted over the crown (FLY_CROWN / FLY_CROWN_FREE) or one that loops
+  (FLY_STRAIGHT); the lower tiers had no such rule. FIX (general): hair_cards.halo_card_ok, the hero's rules for every
+  tier, applied to the pool before clustering. Test test_halo_card_rules. Back of the head: tail pieces by the tie
+  13-47 mm past LOD0 at LOD1-3 (uv u 0.0-0.13), the LOD3 spiky tail; next after the re-export.
+  r29a RESULT (exp/exa29a): NOTHING moved (same vertex ids, LOD1 12496): the strays are not pooled. t29/lockat.py (locks
+  nearest a point): th59 / th18 / th48 / th15 / th7 / th62, 1-2 hairs, W 1-3 mm, free, rooted 8 cm over the scalp centre
+  IN THE MASS (off_head, so not is_single, so not pooled): the lower tiers cut them as thin wisps (2-3 'fly' cards each).
+  The hero drops them (FLY_CROWN_FREE). FIX 2: _lock_cards skips any few-hair lock (hairs > 0, not face) failing
+  halo_card_ok. STATE: r29b running (exa26.py -> exp/exa29b + t29/eyetile.py -> t29/ea_*; whether it has fix 2 depends
+  on when hair_cards was imported: standoff.py says).
+  r29b RESULT (exp/exa29b, has fix 2: LOD1 hair 12492): the front-crown strays (uv 0.438, 26-27 mm) are GONE at LOD1-3.
+  Left past LOD0 by > 6 mm: side cards over the ears 7-12 mm (lower tiers' wider cards: the outline, fine) and the
+  tail by the tie, behind the head (glTF y 1.49, z -0.10..-0.12), LOD1 14-23 mm, LOD2 16-36, LOD3 11-47 mm (8-vertex
+  cards, the far tier's 75 mm segments): the spiky LOD3 tail. STATE: r29c running (lodx + shots _l29b* incl. g4backl,
+  t29/lods.png). NEXT: look at the sheet; the far tier's tail.
+  LOOK (t29/lods.png, LOD0 | LOD1 | LOD2 | LOD3 at g2 / g4 / g8 front, g2 / g4 3/4, g4 back; shots _l29b*): front views:
+  the strokes over the crown are GONE at every LOD; LOD1-3 read as LOD0's hair. Left: (a) at the tie, thin spikes
+  standing out sideways at LOD1-3 (3/4 views, worst LOD3); (b) NEW TO THE SHEET (first back view of the LODs): LOD3 at 4 m
+  from behind shows a BARE SKIN PATCH right of the tie, ~1/4 of the back of the head (the far tier's mass cap / free cut
+  not covering there); LOD1-2 backs are fine. Not checked whether r28b had it (no back render then): likely, nothing
+  this round touches the far tier's coverage except few-hair locks over the crown.
+- (2) EYES / MOUTH / LASHES BUDGET (b35: 5,699 of 5,000 = lashes 4,880 + eyes 795 + teeth_lower 24; teeth / tongue
+  are hidden-face dropped). What reads least at 1 m: the LOWER lashes' segments (3 mm, 10 deg curl: 4 quads for a
+  straight line) and a few % of whole lashes. CHANGES (general): lashes per-lid `segments`, the lower lid 2 by default
+  (lashes.VERSION 21): 4,880 -> 4,280 for Tess; asset.lash_cap (the role's eyes_mouth_lashes budget less eyes / teeth /
+  tongue / brows) + lods.ribbon_fit (ribbon_lod at the largest share of whole lashes that fits, widened for coverage)
+  after the lash export: Tess's lashes 4,280 -> <= 4,181 (~2% of lashes). Test test_lash_budget_fit.
+  RESULT (r29b): log "lashes: 4280 -> 4172 triangles (595 of 610 lashes, widened x1.02) to fit eyes_mouth_lashes 5000";
+  budget line eyes_mouth_lashes 4995 of 5000 (was 5699 OVER); LOD1-3 lashes 2088 / 1040 / 420. TILES (t29/eyetile.py
+  <export dir> <prefix>: the export GLB re-imported via asset.game frames, face at 1 m (game pixels) + eyes front / 3/4
+  / side + mouth; t29/lash_ba.png top = b35, bottom = r29b): no difference I can see at 1 m or close. BLIND review
+  (fresh subagent, t29/blind_lash_A/B.png, key blind_lash_key.json: A = after): 1 m none, eyes front none, 3/4 about the
+  same, side none: "VERDICT: equivalent". ADOPTED (defaults). The review's SHARED faults (both builds, other
+  stages: to the coordinator): at the re-imported GLB the lid rims / inner corners show pink-lilac (the eye's wet /
+  caruncle geometry past the lids?), the upper lashes read as a stiff comb from the side (no curl visible), the lash line
+  is lost at 1 m. Also seen in the same re-import (not hair-cards' viewer): the hair is ash-grey with a WHITE patch at the
+  crown front: blender_game's importer materials, not lodx / game_material; check before anyone judges hair there.
+
+## Handover 2026-10-18 (hair-cards agent, round 29; stopped at the 70-tool-call rule)
+BEST CARDS FOR EXPORT: b36 = hair / lashes / asset defaults at this commit + hc_s2's spec, exported as before (exa26.py:
+hair.export.tier "hero", export_asset(role="hero", lods=True)): /mnt/data/hifipushie/haircards/exp/exa29b/hc_s2.glb +
+_LOD1-3 (LOD0 hair identical to b35; LOD1-3 without the crown strays; lashes fitted). LODs OK: y for LOD1-2; LOD3 n from
+behind (bare patch right of the tie at g4 back, t29/lods.png last row), fine from the front / 3/4.
+Commits: hair_cards.halo_card_ok (the hero's FLY_CROWN / _FREE / FLY_STRAIGHT rules) on pooled singles AND on few-hair
+locks cut as wisps at the lower tiers; lashes per-lid `segments` (lower 2, VERSION 21); asset.lash_cap + lods.ribbon_fit
+(lashes fit the role's eyes_mouth_lashes budget); tests in tests/test_hair_lods.py (test_lash_budget_fit,
+test_halo_card_rules). Budget: eyes_mouth_lashes 4995 of 5000 (was 5699); blind review of the lash tiles: equivalent.
+Scratch t29/: standoff.py (LODk pieces past LOD0's hair), lockat.py (locks nearest a point), eyetile.py (export GLB
+re-imported: 1 m + eye / mouth close-ups), lash_ba.png, blind_lash_*, lods.png; r29a/b/c.sh. Nothing in flight.
+VERDICT (look-first): the crown strays are fixed and the eye / mouth group fits its budget with no visible change.
+LOD3's back has a bald patch beside the tie (a ship fault for a far LOD seen from behind) and LOD1-3 have thin spikes
+sideways at the tie. LOD0's own faults (bare temples / part, ragged crown edge, dark gap behind the tie, patchy tail) are
+untouched this round. bin/review was not usable (CLI after 2026-10-19 13:00 MT): reviews were fresh blind subagents.
+For the coordinator (other stages): in the re-imported GLB (asset.game) the lid rims / inner corners show pink-lilac,
+the upper lashes read as a stiff comb in profile, and the hair renders ash-grey with a white patch at the crown front
+(the importer's materials: don't judge hair there).
+NEXT, in order: (1) LOD3 back: render exa28b LOD3 g4backl (was it there before?), then trace (standoff.py on the
+far tier against the head: the free cut / mass cap near the tie) and fix the coverage. (2) The spikes at the tie at
+LOD1-3 (standoff: tail cards by the tie 14-47 mm past LOD0, uv u 0-0.13). (3) Garrett's export through the same path.
+(4) Hero: bare temples / part, ragged crown edge, gap behind the tie, tail holes.
+
+## hair-cards round 30 (2026-10-18, fresh session; Joe: game-ready Tess / Garrett; LOD3 back, tie spikes, LOD0 faults)
+BEST CARDS FOR EXPORT: b37 = exp/exa30b/hc_s2.glb + _LOD1-3 (hair defaults at this round's commit: CAP_RELAX_FLOOR +
+FLY_FAR_TIERS; LOD0 identical to b36). LODs OK: y (LOD3 back covered; blind review: LOD0-2 equivalent to b36, LOD3 better).
+- (1) LOD3 BARE PATCH BEHIND (t30/bare.py <glb>...: rays from behind, glTF -z -> +z over the back of the head, '#' where
+  the body is hit before any hair): exa29b LOD0 45 bare rays (the nape below the hairline, char's right: legit), LOD2
+  51 (same), LOD3 198 (a block over the lower back of the head, x -0.09..0, y 1.44-1.57 = the patch right of the tie).
+  The far tier's job cap (hair.job budget far, t30/capfar.py) stands >= 5 mm over the skin there, so the loss is
+  later: cards_job lowers the cap under the cards (cap_under_cards, floor = lift = sagitta + 2 mm = 3.2 mm at 14 deg)
+  and THEN relaxes its radius (CAP_RELAX 60 iterations, only lowering): at the far tier's 14 deg grid 60 rounds
+  diffuse the hairline's dive rows (under the skin) over the whole lower back, so the cap sank under the skin
+  (rays met hair 1-18 mm BEHIND the skin there). FIX (general, every tier): hair.CAP_RELAX_FLOOR: the relaxed cap
+  never goes under the floor it was given. t30/far1.py (export_cards at a tier, flag off / on, rays vs exa29b's LOD3
+  body): far tier bare 198 -> 79 (what's left: the nape below the hairline as LOD0 / LOD2 have it, 3 small spots).
+  STATE: r30a running (r30a.sh: exa26 -> exp/exa30a, lodx, shots per LOD incl. g2backl / g4backl / g4backq / g4back /
+  g8back, t30/lods_30a.png, t30/bare_30a.txt). NEXT: the tie spikes (2) while it runs.
+- (2) TIE SPIKES at LOD1-3 (t30/tiespk.py <glb0> <glbk|npz>...: pieces behind the head by the tie standing > 8 mm past
+  LOD0's hair from a point at the tie): exa29b LOD1 47 / LOD2 44 / LOD3 39 pieces; two kinds. (a) FLY-tile cards (uv
+  0.44-0.47), thin, 130-160 mm long, 35-80 mm past LOD0: the lower tiers' pooled halo hairs / few-hair wisps on the
+  tail. The hero gives no card to a single hair standing > hair_clumps.FLY_FAR (20 mm) off the rest of the hair; the
+  lower tiers had no such rule. FIX (general): hair_cards.FLY_FAR_TIERS / drop_far_fly at the end of clump_cards
+  (face-framing locks exempt). Test test_far_fly_dropped. t30/far2.py (export_cards at a tier, flag off / on): main
+  the 80 / 49 / 47 mm fly spikes gone (47 -> 42 pieces), far likewise (39 -> 36). (b) TAIL-tile cards (uv 0-0.13), 200-260
+  mm long, 43-135 mm wide, 25-46 mm past LOD0 just under the tie on the tail's +x side: the lower tiers' wide tail
+  cards; NEXT.
+  r30a RESULT (exp/exa30a = b36 + CAP_RELAX_FLOOR; the fly fix NOT in it, tiespk unchanged): bare rays from behind
+  LOD0 46 / LOD1 54 / LOD2 47 / LOD3 79 (was 198; the rest = the nape below the hairline, as LOD0). LOOK
+  (t30/lods_30a.png, LOD0 | 1 | 2 | 3 at g4v0, g4v1, g2backl, g4backl, g4backq, g4back, g8back): the LOD3 bare patch is
+  GONE in every back view; LOD3 reads as one even mass. Still: thin spikes over / beside the tie at g4v1 and g4backq on
+  LOD1-3 (worst LOD3), a pale chip by LOD3's right temple at g4v0. STATE: r30b running (same chain, fly fix in:
+  exp/exa30b, t30/lods_30b.png). NEXT: tiespk on 30b; the tail-tile cards if the spikes remain.
+  r30b RESULT (exp/exa30b, both fixes): bare rays from behind LOD0 46 / LOD1 50 / LOD2 47 / LOD3 79; tiespk: the fly
+  spikes off the tail (80 / 49 / 47 mm) gone at LOD1-3 (47 -> 42, 44 -> 40, 39 -> 36 pieces). What tiespk still lists:
+  the tail-tile pieces' worst points are the tail's TIPS (y 1.35, below its region: a probe artefact, not spikes), two fly
+  cards over the left ear (x 0.085, 35 mm past LOD0's cards but within FLY_FAR of the groom's loose strands), and
+  tail-tile card ROOTS standing up off the top of the tie at LOD3 (29 mm, y 1.55-1.57): the spikes still seen at g4v1 /
+  g4backq on LOD1-3 above the tie. LOOK (t30/lods_30b.png): LOD3's back is covered in every view; the spikes over the
+  tie are thinner but still there at g4v1 (LOD1-3) and g4backq (LOD1, LOD3).
+  BLIND REVIEW (fresh subagent, t30/blind_A/B.png, rows g4v1 / g4backl / g4v0 x LOD0-3, key blind_key.json: A = b36, B =
+  r30b): LOD0-2 equivalent (pixel-near), LOD3 "B clearly better" (A: skin-coloured hole at the crown / tie + a long
+  shard right of the tail, both MAJOR; B: covered, a small loop of cards off the tie, MINOR). Shared: a shard right of the
+  tail below the tie at LOD1-2 (MINOR), ragged tail lower edge, thin temples. ADOPTED: b37.
+
+## Handover 2026-10-18 (hair-cards agent, round 30; stopped at the 70-tool-call rule)
+BEST CARDS FOR EXPORT: b37 = hair defaults at this commit + hc_s2's spec, exported as before (exa26.py: hair.export.tier
+"hero", export_asset(role="hero", lods=True)): /mnt/data/hifipushie/haircards/exp/exa30b/hc_s2.glb + _LOD1-3 (LOD0 hair =
+b36's; lashes as b36). LODs OK: y, all views incl. 5 back views (t30/lods_30b.png).
+Commits: hair.CAP_RELAX_FLOOR (the relaxed card cap keeps the floor cap_under_cards gave it: the far tier's 14 deg cap
+sank under the skin over the lower back = LOD3's bare patch); hair_cards.FLY_FAR_TIERS / drop_far_fly (the hero's FLY_FAR
+for fly cards at every tier; test test_far_fly_dropped). Scratch t30/: bare.py (rays from behind: skin before hair),
+bare_dir.py (top / front / left), capfar.py, far1.py / far2.py (export_cards at one tier, a flag off / on, no full export),
+tiespk.py / tiespk2.py (pieces by the tie past LOD0), blind.py; r30a.sh <tag> (export -> lodx -> shots incl. backs ->
+lodsheet -> bare). Nothing in flight.
+VERDICT (look-first): the LOD3 bald patch is fixed (LOD3 reads as one even mass from behind); the long fly shards off the
+tail are gone; small spikes still stand up off the top of the tie on LOD1-3 at 3/4 (tail-card roots). LOD0 untouched:
+its torn tail, dark tie area, ragged crown edge and thin temples are what the eye goes to now. (bare_dir.py on LOD0: no
+geometric bare scalp from the top or side: the 'bare temples' are see-through / pale cards, not missing coverage.)
+NEXT, in order: (1) tail-card roots at the tie on LOD1-3 (tiespk2: tail-tile pieces with their worst point at y 1.55-1.57;
+taper / seat their roots into the band like the hero's gather cards (hair_cards clump_cards `gather` hw taper), or start
+them under the band). (2) LOD0: tail holes / torn tail, dark gap behind the tie, ragged crown edge, temples (texture /
+card opacity, not coverage). bin/review usable after 2026-10-19 13:00 MT.
