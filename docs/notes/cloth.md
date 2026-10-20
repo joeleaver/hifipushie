@@ -8767,3 +8767,21 @@ docs/notes/cloth.md "dress-garrett 2026-10-19 muslin 1", "form sleeves", "block 
   practice the crease runs off into the gorge with the stand: past s_x nothing is folded. Fix = a method change (the
   fold's turn tapering to 0 past s_x through folds._geom / pattern_form._turn_flaps / folds.bend_reference), not done
   this round. R28 kept OPT-IN (STAND_RUN_OFF["on"] False): the default fit is r15e's.
+- fit round 18 step 2 (crossed fronts; FREE local ZOZO, $0). Sources: FreeSewing Brian base.mjs (Jaeger's root) drafts
+  front + back in one frame from hpsToWaistBack with one shoulderSlope: no front balance (our draft inherits it);
+  R5 says front 1-2 deg steeper in practice; the books' balance numbers (Aldrich / M&S) NOT verified (no copy).
+  Garrett's own tapes read front-minus-back to the seat -31 mm (base hps; FRONT_BACK_NORM -14): "auto" = 0. A/B with
+  the existing lever, block front_balance 0.02 (fr18.py FB=0.02; the front's neck point + shoulder raised 20, easing
+  to 0 at the chest line): closed fit r18fb20 (29 s), release job_fb20nu (no shirt collider, as r17nu; with the
+  shirt the start failed "contact starts overlapping" v820). Edge off CF 450/550/650: r17nu 0/0, 23/15, 62/46 ->
+  r18fb20nu 0/0, 20/20, 49/56; break x -9.0/+11.7 (r17nu -8.9/+11.5); hem sweep 364 -> 442. Front balance 20 mm does
+  NOT move the crossing. Diagnostic friction 0 (job_nuf0 = job_nu, fabric friction 0.5 -> 0; also the body's):
+  break -8.4/+11.1, 450 0/0: not friction holding the overlap (hem sweep 41: the fronts slid off). Not tested:
+  front-on-front contact off (ZOZO has no per-pair allowance in our runner; a runner change). Steeper front shoulder
+  not drafted (no lever). Stop-loss: two levers (balance, friction) moved nothing at the break.
+- fit round 18 step 3 (seams open after the release). cloth_release.seam_gaps (+ test: FAIL on r16, PASS on r15e,
+  planted): r15e max 0.03 PASS; r16 p50 1.17 / p99 5.5 / max 11.8, 458 / 579 pairs > 1 mm FAIL; r17nu p50 1.08.
+  stitch_gap 2 -> 0.5 mm (job_nusg): p50 1.09, max 9.1 (dead). contact_gap 1 -> 0.5 mm (job_nucg, diagnostic only):
+  p50 0.56, 54 pairs open, max 6.9. Cause: the seam's two sides are a CONTACT pair, held one contact gap apart; the
+  max spots (7-12 mm) are a second cause, unlocated. Fix (not done): weld sewn pairs after the sew phase / take
+  stitched pairs out of contact in cloth_zozo, not a smaller gap (solver tuning).

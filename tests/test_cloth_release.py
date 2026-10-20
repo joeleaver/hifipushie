@@ -195,3 +195,21 @@ def test_fit_points_worn_open_designs_to_the_release():
 def test_release_tool_is_registered():
     from hifipushie import server
     assert callable(getattr(server, "release_garment", None))
+
+
+def test_seam_gaps_fail_round16_and_pass_its_closed_fit():
+    """Fit round 18: seam_gaps reads an open seam as FAIL on the round 16 release (458 pairs over 1 mm) and PASS on the
+    closed fit it started from (r15e, max 0.03 mm); planted: a sew pair pulled 3 mm apart fails."""
+    import pickle
+    from pathlib import Path
+    from hifipushie import cloth_release as cr
+    M = {"sew": np.array([[0, 1], [2, 3]])}
+    X = np.array([[0, 0, 0], [0, 0, 0.0002], [1, 0, 0], [1, 0, 0.003]], float)
+    assert cr.seam_gaps(M, X)["status"] == "FAIL" and cr.seam_gaps(M, X[[0, 1, 2, 2]])["status"] == "PASS"
+    r16 = Path("/mnt/data/hifipushie/dress_garrett/fit_round16/asm_r16.pkl")
+    fit = Path("/mnt/data/hifipushie/dress_garrett/fit_round17/asm_r15e.pkl")
+    if not (r16.exists() and fit.exists()):
+        pytest.skip("round 16 data not on this machine")
+    a, b = pickle.load(open(r16, "rb")), pickle.load(open(fit, "rb"))
+    assert cr.seam_gaps(a["mesh"], a["A"])["status"] == "FAIL"
+    assert cr.seam_gaps(b["mesh"], b["A"])["status"] == "PASS"

@@ -1,10 +1,13 @@
 # STATE: dress_garrett_fit (Garrett jacket + shirt: closed form fit + ONE release sim) -- 2026-10-20, round 18
 
-STATE: round 18 step 1 done (notch: R28 stand run-off drafted, flat PASS, form WORSE -> opt-in); step 2 (front
-balance) in progress. Spend this round $0.
+STATE: HANDOVER end of round 18 (budget). Step 1 notch: R28 drafted (flat PASS), form WORSE -> opt-in. Step 2
+crossed fronts: front balance 20 mm + friction 0 moved nothing at the break (stop-loss). Step 3 seams: check landed
+(cloth_release.seam_gaps FAILs r16), cause = contact pairs, fix not done. Step 4 (table/renders/reviews) NOT done.
+No rented run (round spend $0). Nothing approved, nothing for Joe this round.
 NEXT: (a) notch METHOD: the fall's fold must run off with the stand (turn tapering to 0 past s_x in folds._geom /
-pattern_form._turn_flaps / folds.bend_reference), then R28 on, gorge_lie must pass; (b) front balance A/B (below);
-(c) seams opening after the release; (d) table + renders + reviews.
+pattern_form._turn_flaps / folds.bend_reference), then R28 on, gorge_lie must pass; (b) crossed fronts: front-on-front
+contact off at the break (runner change: the two fronts as separate contact groups) and the roll's bending rest flat;
+(c) seams: weld sewn pairs after the sew phase in cloth_zozo (seam_gaps must PASS); (d) step 4.
 
 ## Method (Joe 2026-10-20)
 Open jacket = the BUTTONED fit on the dress form (pattern_form.assemble, top button fastened), then ONE short release
@@ -27,7 +30,10 @@ sim (cloth_release, MCP release_garment; docs/state/cloth_release.md). No gravit
    end) fixes the flat (collar_stand_end 3 mm vs 15) but on the form r18a is WORSE (tip 12/14, across 19/54, plane
    58/73): band_init lies right (tip 2/4 mm), turn_flaps folds the end back over the lapel: the fall's crease
    still runs to the end.
-3. Seams open 1-4 mm after the release. 4. Width (waist 320 vs 401), boxy square shoulder.
+   r18: FB 20 mm (fr18.py FB=0.02, release job_fb20nu) 450/550/650 0/0, 20/20, 49/56, break -9/+12; friction 0
+   (job_nuf0) break -8/+11: neither. With the shirt collider the FB start fails (contact starts overlapping v820).
+3. Seams open after the release: seam_gaps r16 p50 1.17 max 11.8 (458/579 > 1 mm); p50 = ZOZO contact gap (0.5 mm
+   gap: p50 0.56); stitch_gap 0.5 mm dead. 4. Width (waist 320 vs 401), boxy square shoulder.
 5. Lapel edge no thickness contrast; pocket flaps sag 16-19 mm in the release; shirt-through 251 verts (r16).
 
 ## Switches (module default; candidate)
@@ -42,8 +48,9 @@ BASE_ACROSS_PRESSED False | PRESSED_W 1. cloth.PAD_DRAFT False. Release job: zoz
 - Notch: more press weight, the fall's base onto the lapel, carrying the fall at the press; R28 alone (fall still folded).
 
 ## Commands ($FR18)
-job.sh (fit), gorge.py <asm..> [--phases], runoff_flat.py (R28 flat rows), layers.py / tip.py, g17.py build <tag>
-[under=none hold= zozo=] + zrun.py <job>/sim (local, RUNNER=bin/capped) + mk17.py <job> <asm>, m10: $FR13/m10.py.
+job.sh (fit; FB= front balance via fr18.py), gorge.py <asm..> [--phases], runoff_flat.py (R28 flat rows), seams.py,
+g17.py build <tag> [placed= asm= under=none hold= zozo=] + zrun.py <job>/sim (HP_RUN_ZOZO=1 RUNNER=bin/capped) +
+mk17.py <job> <tag> <base asm>, m10: $FR13/m10.py concept <asm..>.
 
 ## History (grep only)
 docs/notes/cloth.md "fit round 18", "fit round 17", "fit rounds 1-16 STATE pages, archived", "cloth_release".

@@ -247,6 +247,23 @@ def run(job_dir: Path, progress=print, log=print) -> tuple:
     return cloth_job.run_zozo(Path(job_dir), progress, log)
 
 
+SEAM_OPEN_MM = 1.0  # a sewn pair further apart than this reads as an open seam (a white line in renders)
+
+
+def seam_gaps(M: dict, X: np.ndarray) -> dict:
+    """The sewn seams' gaps after a sim (mm): each sew pair's distance. FAIL when any pair is over SEAM_OPEN_MM.
+    Fit round 18: the closed fit r15e reads max 0.03 (PASS); the release r16 p50 1.17 / max 11.8, 458 of 579 pairs over
+    1 mm (FAIL). The median tracks ZOZO's contact gap (1 mm: p50 1.08; 0.5 mm: 0.56): the seam's two sides are held
+    apart as a contact pair; stitch_gap 0.5 mm changed nothing (max 9.1)."""
+    sw = np.asarray(M["sew"]).reshape(-1, 2)
+    d = np.linalg.norm(np.asarray(X)[sw[:, 0]] - np.asarray(X)[sw[:, 1]], axis=1) * 1000
+    if not len(d):
+        return {"pairs": 0, "status": "PASS"}
+    return {"pairs": int(len(d)), "p50": round(float(np.median(d)), 2), "p99": round(float(np.percentile(d, 99)), 2),
+            "max": round(float(d.max()), 2), "open": int((d > SEAM_OPEN_MM).sum()),
+            "status": "PASS" if d.max() <= SEAM_OPEN_MM else "FAIL"}
+
+
 def moved(M: dict, X0: np.ndarray, X1: np.ndarray) -> dict:
     """How far the release moved each piece from the fit: {piece: {"p50", "p90", "max"} mm}."""
     d = np.linalg.norm(np.asarray(X1, float) - np.asarray(X0, float), axis=1) * 1000

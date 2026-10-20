@@ -20,7 +20,7 @@ points to it when the garment has worn_open. Test tests/test_cloth_release.py (K
   limit on > 3 % of triangles needs zozo start_over (Garrett 5.2 %: start_over 0.06): a FIT fault, report it.
 
 ## Known faults of the method (NEXT)
-1. Seams open 1-4 mm after the sim (white lines in renders): the runner steps coincident seam ends apart (stitch_gap
+1. Seams open after the sim (cloth_release.seam_gaps; r16 p50 1.2, max 11.8 mm): round 18 found the median = the contact gap (sewn sides held apart as contact pairs; stitch_gap 0.5 mm dead): weld / uncontact sewn pairs. Old guess: the runner steps coincident seam ends apart (stitch_gap
    2 mm) and 4 frames don't close them. Try stitch_gap 0.0005 / sew_frames 12 locally first.
 2. Made flaps (pocket flaps) aren't held: they sag 16-19 mm.
 3. The KAT proves the mechanism (opens vs a buttoned control, chest stays, settles), not a magnitude: a coned front
