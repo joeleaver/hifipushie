@@ -151,7 +151,7 @@ TOOLSETS: dict[str, dict] = {
              "tools": ["groom_hair", "tie_hair", "look_hair", "hair_reference", "hair_from_reference", "export_hair"]},
     "cloth": {"about": "garments: design, pattern, the pattern gate, alterations, fit on the form, dress (sim), "
                        "references", "also": ["scene"],
-              "tools": ["design_garment", "look_pattern", "alter_pattern", "pattern_check", "fit_garment",
+              "tools": ["design_garment", "look_pattern", "alter_pattern", "pattern_check", "fit_garment", "release_garment",
                         "check_garment", "dress", "look_cloth", "garment_reference",
                         "garment_from_reference", "check_garment_reference", "garment_reference_brief"]},
     "terrain": {"about": "terrain and game levels (height fields in a level designer's words)",
@@ -2788,7 +2788,45 @@ def fit_garment(name: str, garment: str, views: list[str] | None = None, size: i
            f"  layer pierce: {'n/a (no under garment)' if pierce is None else f'{pierce} faces'}\n"
            f"  single views for review_view: {d}\n")
     return [_out(im, _save_suffix(save, tag)) for tag, im in ims] + [
-        txt + next_steps.after_fit(name, garment, p99, pierce, validated)]
+        txt + next_steps.after_fit(name, garment, p99, pierce, validated,
+                                   worn_open=bool(cloth.expanded(spec["cloth"][garment]).get("worn_open")))]
+
+
+@mcp.tool(structured_output=False)
+def release_garment(name: str, garment: str, release: list[str] | None = None, submit: bool = False):
+    """WORN OPEN = the closed fit + ONE release sim (Joe 2026-10-20): fits the garment CLOSED on the dress form, then
+    writes one short cloth job STARTED from that fit (rest = the flat pattern, the closure in `release` (default
+    ["front"]) not sewn, the under garment pressed under as a collider, neck pieces held, 2 s of gravity + 1 s settle)
+    and preflights it. submit=True runs it (rented when HIFIPUSHIE_GPU=bundle: counts against the $5/day; refused
+    without the pattern gate's PASS). Returns the start report, the preflight and, after a run, how far each piece
+    moved from the fit. Details: cloth_release's docstring; docs/state/cloth_release.md."""
+    from . import cloth_job, cloth_release, cloth_check as cc
+    spec = store.load(name)
+    if garment not in (spec.get("cloth") or {}):
+        raise ValueError(f"no garment {garment!r} (have {', '.join(spec.get('cloth') or {}) or 'none'})")
+    st = cc.gate_status(name, garment, spec)
+    if not st["passed"]:
+        return (f"{garment}: not released: {st['why']}\nnext: pattern_check(\"{name}\", \"{garment}\") first; the release "
+                "sim needs the pattern gate's PASS like every sim")
+    r = cloth_release.from_form(name, garment, spec, release=tuple(release or ("front",)))
+    jd = cloth_release.write(store.HOME / "_cache" / "release" / f"{name}_{garment}" / "sim", r["cfg"], r["arrays"],
+                             r["res"]["mesh"]["names"], r["gate"])
+    pre = cloth_release.preflight(jd)
+    lines = [f"{name}:{garment}: release job {jd}", f"  start: {json.dumps(r['info'], default=str)}",
+             f"  preflight ok {pre['ok']}: body {pre['body_mm']:.2f} mm / {pre['body_pairs']} pairs, strain "
+             f"{json.dumps({k: v for k, v in pre['strain'].items() if k != 'worst'}, default=str)}"]
+    if not pre["ok"]:
+        return "\n".join(lines + ["next: the start fails the preflight: fix the fit (strain over the limit = the "
+                                  "pattern too small there; pairs = layers through each other), not the solver"])
+    if not submit:
+        return "\n".join(lines + [f"next: release_garment(\"{name}\", \"{garment}\", submit=True) runs it (one sim)"])
+    with cloth_job.submitting():
+        d, log_ = cloth_release.run(jd, progress=lambda *_: None, log=lambda *_: None)
+    mv = cloth_release.moved(r["res"]["mesh"], r["arrays"]["X"], d["V"])
+    still = float(np.abs(d["V"] - d["Vprev"]).max() * 1000) if "Vprev" in d else None
+    lines += [f"  moved from the fit (mm per piece): {json.dumps(mv)}", f"  still moving (last 6 frames): {still} mm"]
+    return "\n".join(lines + ["next: judge the released result beside the reference (clay + diag, one view per "
+                              "review_view); a front that hangs crossed over is a DRAFT balance fault: fix the pattern"])
 
 
 @mcp.tool(structured_output=False)

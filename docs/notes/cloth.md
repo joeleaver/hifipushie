@@ -7869,3 +7869,20 @@ the pocket flaps.
   Final: chest cylinder over an OBLIQUE cone (front recedes 100 mm, back near plumb): released 21.4 mm off the button
   mate at the hem, control 1.0, chest vs control p90 0.75 mm, still 0.01 mm. A cut-in (coned) front can't hang plumb
   isometrically: the swing is limited by the pattern's own shaping, which is right.
+- Step 2 (Garrett r15e -> release): gate PASS_WAIVED for r15e's exact pattern (9b3ec97d / body d8b69735, vent waived,
+  record 51e12aabcedf45c7251a). Start clean-up took 10 local job builds (a..k): job a 3582 edge pairs < 2 mm (collar /
+  stand vs the shirt collar 1776: fold over fold) -> neck pieces held; cloth_over.clear_start's edge pass walked the
+  upper back 14 mm off a body it was 0.7 mm inside -> vertex-only body clear; the shirt pressed down to the body and
+  its unpartable faces dropped (244); preflight OK. The strain check had been SKIPPED for this job (it read only
+  placement smooth): fixed in cloth_job.start_strain_check; it then showed 5.2 % of triangles start over 5 % (fit
+  p99 9.7 %): zozo start_over 0.06 (a fit fault, reported). Local smoke (6 frames, free) then ONE rented run job_k:
+  $0.0355, 47 s GPU, 167 s wall, 76 frames.
+- Result: the fronts barely open. Break x -8 / +11 (concept 64), fronts overlap at 450, edge off CF at 650 22 / 37
+  (concept 94 / 85), V 151 (237). Chest moved p50 3 mm, hem 19-39 mm. Local checks (free): 6 s settle within 2 mm p90;
+  neck unheld: collar drops, V 127, no more opening. So the draft's free fronts hang CROSSED OVER: a front balance /
+  wrap fault for the tailoring agent, not a method one. Method faults the reviews found: seams opened (white lines),
+  flaps sag. Blind reviews wholefront / upper_front / upper_three: FAIL (not open, seams split, boxy shoulders,
+  lapels stand up, pinched waist).
+- Notch / gorge (coordinator for Joe): notch.py, twist deg / cm along the gorge seam: r15e lapel side p50 8 / 10, max
+  26 / 40 (L / R); collar tip off the lapel 12.6 / 3.5 mm; end 25 / 20 deg out of the lapel plane. r16 about the same
+  (collar held). Unvalidated measure (no known answer). Crops check/notch.{L,R}_{r15e,r16}.png.

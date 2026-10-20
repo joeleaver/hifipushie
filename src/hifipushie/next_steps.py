@@ -45,9 +45,14 @@ def after_pattern_check(rec: dict, model: str, garment: str) -> str:
 
 
 def after_fit(model: str, garment: str, strain_p99: float | None, pierce: int | None, validated: bool,
-              backfaces: int | None = None) -> str:
-    """fit_garment's next step from what it measured on the form."""
+              backfaces: int | None = None, worn_open: bool = False) -> str:
+    """fit_garment's next step from what it measured on the form. worn_open: the design says the closure is worn
+    open: the form judges it CLOSED and one release sim opens it (Joe 2026-10-20)."""
     out = []
+    if worn_open:
+        out.append(f"worn open: judge the CLOSED fit here (top button fastened), then release_garment(\"{model}\", "
+                   f"\"{garment}\"): ONE short sim from this fit that undoes the closure and lets the fronts hang under "
+                   "gravity (no holds on the form: five rounds of them failed)")
     bad = []
     if strain_p99 is not None and strain_p99 > STRAIN_P99_MAX:
         bad.append(f"strain p99 {strain_p99:.1f} % > {STRAIN_P99_MAX:g} %: the pattern is too small / mis-shaped "

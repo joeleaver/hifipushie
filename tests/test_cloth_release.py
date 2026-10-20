@@ -183,3 +183,15 @@ def test_released_front_swings_open_and_the_chest_stays(tmp_path):
     assert out["open"]["hem_gap"] >= 15.0 and out["open"]["hem_gap"] >= 10 * out["buttoned"]["hem_gap"], out
     assert out["open"]["still"] < 0.1, out  # settled in SETTLE_FRAMES + SELF_FRAMES
     assert out["chest_vs_control_p90"] < 2.0, out  # the chest stays
+
+
+def test_fit_points_worn_open_designs_to_the_release():
+    from hifipushie import next_steps
+    t = next_steps.after_fit("m", "jacket", 3.0, 0, True, worn_open=True)
+    assert 'release_garment("m", "jacket")' in t
+    assert "release_garment" not in next_steps.after_fit("m", "jacket", 3.0, 0, True)
+
+
+def test_release_tool_is_registered():
+    from hifipushie import server
+    assert callable(getattr(server, "release_garment", None))
