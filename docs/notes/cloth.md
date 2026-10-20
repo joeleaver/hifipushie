@@ -7802,3 +7802,13 @@ lines across the upper back; opening at the chest judged within ~10 px. Collar /
   fastened on the form (fastened(M, "worn_open") = []).
 - fit round 9 codify (C52): cloth_check.big_first: the gate's rows big to small, detail rows BLOCKED while a big read
   (stage 1-2) fails; front_state / buttons_done restaged 1. test_big_reads_before_details.
+- fit round 9 step 3 FIT (round 6 path, harness9 keyed on code + spec): r9old (R13 buttons only) = R6; r9a (break 0.425)
+  buttons 399 / 497, front still closed; r9e (+ WORN_EDGE) opens the roll line (79 at 150) but below the break stays
+  closed (11-23); r9h (+ worn_open cfHem 0.096 from the concept's hem-corner edge) passes every edge / roll / button row
+  but the side seams slide out: hem ~580 mm in the front view vs 478 (r9f: EDGE_FREE 0.2 changes nothing). OPEN_SPREAD
+  / layered_fit not tested: the front fix doesn't touch the collar layers.
+- fit round 9 step 4 LOOK: check/wholefront|front|three.png; blind reviews all FAIL. The wholefront reviewer read the
+  concept as fastened (as the brief did): disputed with c_break.png (empty buttonholes on the L front, shirt + belt
+  continuous). Real MAJORs: lapels a strip not a face (lapel_outer 88 vs 106 at 250), waist pinch + hem flare, no
+  cutaway, pockets; collar faults unchanged (not this round's stage).
+- fit round 9 codify: C52 row (big reads before details).
