@@ -1677,6 +1677,10 @@ def dress(name: str, garment: str | None = None, spec: dict | None = None, state
             st = cc_.gate_status(name, gn, spec_g)
             if not st["passed"]:
                 refused[gn] = st["why"]
+                continue
+            uf = cc_.under_fit_status(name, gn, spec_g)  # (C85: never an outer garment over an unfitted under one)
+            if not uf["passed"]:
+                refused[gn] = f"its under garment doesn't fit yet: {uf['why']} (fit_garment(\"{name}\", \"{uf['under']}\"))"
         if refused:
             return head + next_steps.after_dress_refused(refused, name)
     sts = cloth.dress(name, [garment] if garment else None, wait=float(wait))
@@ -2762,6 +2766,11 @@ def fit_garment(name: str, garment: str, views: list[str] | None = None, size: i
     if not st["passed"] and not force:
         return (f"{garment}: not fitted: {st['why']}\nnext: pattern_check(\"{name}\", \"{garment}\") and fix its rows "
                 "first; the form judges a pattern that passed flat (force=True only to look)")
+    uf = cc.under_fit_status(name, garment, spec)  # (C85: the under garment fits on its own first)
+    if not uf["passed"] and not force:
+        return (f"{garment}: not fitted: its under garment doesn't fit yet: {uf['why']}\nnext: fit_garment(\"{name}\", "
+                f"\"{uf['under']}\") and fix it until its own fit PASSes (tucked, its fullness soft against the body); "
+                "never fit an outer garment over an under garment that doesn't fit (force=True only to look)")
     from . import pattern_form
     res = pattern_form.on_form(name, garment, spec)
     X = res["A"]
@@ -2780,13 +2789,22 @@ def fit_garment(name: str, garment: str, views: list[str] | None = None, size: i
     if under is not None:
         from . import garment_game
         pierce = int(garment_game.pierce_faces(under[1], under[2]["F"], X, M["F"]))
+    fit_txt = ""
+    if under is None:  # (C85: a garment fitted alone writes its own fit record; an outer garment waits for it)
+        worn_under = any(cloth.expanded(g_).get("over") == garment for k_, g_ in (spec.get("cloth") or {}).items()
+                         if k_ != garment)
+        rows = cc.fit_rows(res, X, p99, worn_under)
+        cc.write_fit_record(name, garment, st["keys"], rows)
+        fit_txt = "  own fit (C85): " + "; ".join(f"{r['status']} {r['id']} {r.get('ours')}" for r in rows) + "\n"
+    elif not uf["passed"]:
+        fit_txt = f"  FORCED: the under garment's own fit has not passed ({uf['why']})\n"
     gs = ([under] if under else []) + [(garment, X, M)]
     ims, d = _garment_sheets(name, f"fit_{garment}", res["body"], gs, views, size, clay=clay, diag=diag)
     txt = (f"{name}:{garment}: {how}{'' if st['passed'] else ' -- FORCED: the pattern gate has not passed'}\n"
            f"  face strain vs the flat pattern: p99 {p99:.1f} %, max {float(s.max() * 100):.1f} % "
            f"(gate <= {next_steps.STRAIN_P99_MAX:g} %)\n"
            f"  layer pierce: {'n/a (no under garment)' if pierce is None else f'{pierce} faces'}\n"
-           f"  single views for review_view: {d}\n")
+           f"  single views for review_view: {d}\n" + fit_txt)
     return [_out(im, _save_suffix(save, tag)) for tag, im in ims] + [
         txt + next_steps.after_fit(name, garment, p99, pierce, validated,
                                    worn_open=bool(cloth.expanded(spec["cloth"][garment]).get("worn_open")))]

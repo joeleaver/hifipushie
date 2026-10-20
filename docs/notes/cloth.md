@@ -8895,3 +8895,28 @@ docs/notes/cloth.md "dress-garrett 2026-10-19 muslin 1", "form sleeves", "block 
   upper_front_r21c. My read: lapel.R r21c is cleaner than r19a (r19a's doubled, ragged edge along the roll line is
   gone); wholefront r21c: the lap reads right (front.L over), the shirt shows through at both pocket flaps, the sides
   pinch at the waist (hourglass) where the reference hangs straighter, the collar stands up the neck. Spend $0.
+- fit round 22 step 1 (the shirt under the jacket; $FR22 = /mnt/data/hifipushie/dress_garrett/fit_round22, this worktree's
+  code via $FR22/run.sh). New: pattern_form.lie_under + layered_fit mode "lie" (opt-in): the under garment fitted alone,
+  its loose cloth laid down to UNDER_LIE_CAP 8 mm off the body along the body normal (made pieces / roll rows kept, eased
+  over 3 cm; a lapped closure's over front moves as its under front: else 243 + 279 shirt front crossings), then the over
+  garment fitted over it. KAT tests/test_pattern_form.py test_under_layer_lies_down (tubes r+17 under r+19): base inner
+  16.9 / outer 21.2 (pushed past its ease) / gap 4.4 mm; lie inner 8.0 / outer 19.0 / gap 11.0: PASS. C84 gate row:
+  pattern_form.waist_layers ($FR22/gate84.py). Garrett at waist_z (girth over body | over shirt | front-view width,
+  concept 401): r21c base +119 | +11 FAIL | 320; r22a lie +87 | +30 | 318; r22b outer_first LAYER_ALLOW 8 mm +97 | +2 |
+  319; r20k arranged +143 | +33 | 317. The jacket's girth follows its floor (C86), its front-view waist never moves
+  (318-320: the pinch is the jacket's own: under-bust 371 -> waist 320 -> hip 397 mm wide). 401 at a ~900 mm closed
+  waist round a 201 mm deep body is near impossible (r21c: 320 at depth 258): the concept's width is the open fronts'
+  hang or a straighter, less suppressed cut (a draft / design call: Joe). The laid shirt (A) strains |p99| 58 % (sleeves
+  that blouse 2-5 cm compressed ~50 %); a gather limit (10 % of the standing edge) leaves the waist at 11-12 mm: the
+  geometric press is a poor model of tucked fullness.
+- fit round 22, coordinator (Joe): (1) FIT ORDER, C85: fit_garment / dress refuse an outer garment while its under
+  garment's own fit record isn't PASS (cloth_check.under_fit_status; rows fit_strain_p99, under_standoff_waist <= 10 mm).
+  Garrett's shirt fitted alone stands ~15 mm at the waist: it FAILS its own fit today, so the jacket is refused (force to
+  look). (2) A (press the covered shirt soft) vs B (cull early: the jacket over body + the shirt's stack allowance, only
+  the shirt's visible parts kept as geometry). Numbers: jacket waist over body A +87, B +97 (draft +110, standing shirt
+  +119); front view A 318 / B 319. Simplicity: A needs a press that compresses the shirt (strain p99 58 %, start strain
+  for the sim); B needs no shirt geometry under the jacket at all (the end state anyway: garment_game's covered cull),
+  and the release collider is the body + the allowance. PICK B (the jacket nearer its ease, no compressed shirt, the end
+  state reached earlier); NOT BUILT this round: the visible-region cull (collar, V, cuffs + a margin covering the
+  ARRANGED open front, or the cull after arrangement) and the allowance collider are next. Neither path gives the jacket
+  its +110 (C86): the form's seat attraction is the next lever, before the cull.

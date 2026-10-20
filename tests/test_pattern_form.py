@@ -1500,3 +1500,51 @@ def test_lapped_fronts_end_layered(verbose=True):
     assert p99 < 0.03, p99
     lg0 = res[False][0]
     assert lg0["crossing"] > 0 or lg0["gap_mm"]["p50"] < 0.5, lg0  # (the control: not layered)
+
+
+def under_lie_case(r=0.05, inner=0.017, outer=0.019, verbose=True):
+    """Two tubes on a cylinder, Garrett's waist in miniature (fit round 22): an inner tube with a lot of ease (r + 17 mm,
+    a shirt's +109 mm) under an outer one with a little more (r + 19 mm, a jacket's +119 mm), the outer covering the
+    inner. Fitted the old way (inner alone, the outer over it: "base") and with the inner's fullness laid down ("lie").
+    Returns {mode: measures}."""
+    body = _cyl_body(r, -0.1, 0.5)
+    Mi, Xi = _tube(r, inner, 0.10, 0.20)
+    Mo, Xo = _tube(r, outer, 0.08, 0.24)
+    ures, ores = {"mesh": Mi, "X0": Xi, "body": body}, {"mesh": Mo, "X0": Xo, "body": body}
+    out = {}
+    for mode in ("base", "lie"):
+        if mode == "base":
+            u = pf.assemble(ures, body, ease=pf.UNDER_EASE, iters=150)
+            o = pf.assemble(ores, body, under={"V": u["V"], "F": u["F"]}, ease=pf.EASE, iters=150)
+        else:
+            u, o = pf.layered_fit(ures, ores, "lie", iters=150)
+        ri = np.linalg.norm(u["V"][:, :2], axis=1) - r
+        ro = np.linalg.norm(o["V"][:, :2], axis=1) - r
+        mi = (u["V"][:, 2] > 0.14) & (u["V"][:, 2] < 0.26)
+        mo = (o["V"][:, 2] > 0.14) & (o["V"][:, 2] < 0.26)
+        du = pf._Surface(o["V"], o["F"]).signed(u["V"][mi])[0]
+        out[mode] = {"inner_med_mm": round(float(np.median(ri[mi]) * 1000), 1),
+                     "inner_max_mm": round(float(ri[mi].max() * 1000), 1),
+                     "outer_min_mm": round(float(ro[mo].min() * 1000), 1),
+                     "outer_med_mm": round(float(np.median(ro[mo]) * 1000), 1),
+                     "gap_med_mm": round(float(-np.median(du) * 1000), 1), "inner_outside_outer": int((du > 0).sum()),
+                     "outer_through_under": o["info"].get("through_under")}
+    if verbose:
+        print(f"under lie: {out}")
+    return out
+
+
+def test_under_layer_lies_down():
+    """KAT (fit round 22): an under layer's fullness lies down where a layer is worn over it. A too-full inner tube under
+    an outer one: laid down ("lie"), the inner lies within UNDER_LIE_CAP (+ 1 mm) of the body, nothing of it is outside
+    the outer, and the outer keeps its own ease over the BODY (19 mm +- 2) with at least 6 mm of room over the inner;
+    the old path ("base", the control) leaves the inner standing at its full ease, the outer within 5 mm over it and
+    pushed past its own ease (measured: inner 16.9, outer 21.2, gap 4.4 mm; laid down: inner 8.0, outer 19.0, gap 11.0)."""
+    res = under_lie_case()
+    b, l = res["base"], res["lie"]
+    assert b["inner_med_mm"] > 14.0 and b["gap_med_mm"] < 5.0 and b["outer_med_mm"] > 20.0, res  # (the fault: a standing
+    # tube the outer clings to, stretched out past its own ease)
+    assert l["inner_med_mm"] <= pf.UNDER_LIE_CAP * 1000 + 1.0, res
+    assert l["inner_outside_outer"] == 0 and not l["outer_through_under"], res
+    assert abs(l["outer_med_mm"] - 19.0) <= 2.0, res
+    assert l["gap_med_mm"] >= 6.0, res

@@ -2335,6 +2335,129 @@ def form_refine(g: dict) -> list:
     return FORM_REFINE_LAPEL if "lapel" in ops else FORM_REFINE_SHIRT
 
 
+# AN UNDER LAYER'S FULLNESS LIES DOWN (fit round 22, 2026-10-20; Joe on Garrett r20k: "really tight around his middle,
+# that's not how jackets work"). Fitted alone, a shirt keeps its whole ease as radius: Garrett's +109 mm waist stood as a
+# smooth tube 17 mm off the body, and the jacket over it (+119 mm over the body, the book's 14 %) lay 1-11 mm over the
+# shirt and clung. A shirt worn under a jacket is tucked in; its fullness lies soft against the body (it folds and
+# blouses, it doesn't stand off). layered_fit mode "lie": the under garment fitted alone, then its loose cloth laid down
+# to at most UNDER_LIE_CAP off the body along the body's normal (made pieces: collars, stands, cuffs, and the cloth rolled
+# back at an open neck as they stand; the cloth next to them eased over UNDER_LIE_EASE), then the over garment fitted
+# over THAT. The girth the press takes off is compression the form doesn't resolve (fine folds: a sim from this start
+# buckles it, its rest is the flat pattern). Known answer: tests/test_pattern_form.py test_under_layer_lies_down.
+UNDER_LIE_CAP = 0.008  # m off the body (cloth.UNDER_CAP, the sims' rule for a garment's loose cloth under another)
+UNDER_LIE_EASE = 0.03  # m: the cloth beside a made piece eases from as made to laid down over this
+UNDER_LIE_GATHER = 0.10  # the most of an edge's standing length the press may take up or add (see lie_under)
+UNDER_LIE_ITERS = 40
+UNDER_LIE_SMOOTH = 8  # passes evening the press between neighbours
+UNDER_LIE_LAP = 0.03  # m: an over front within this of its under front is laid down as far as the under one
+
+
+def lie_under(M: dict, X: np.ndarray, body, cap: float | None = None, pieces: dict | None = None) -> np.ndarray:
+    """The under garment's vertices X with its loose cloth laid down to at most `cap` (UNDER_LIE_CAP) off the body (see
+    UNDER_LIE_CAP). Made pieces (M["made"], else the wholly interfaced pieces of `pieces`) and the rows of roll / open-neck
+    folds stay as they are; moves are along the body's normal, eased, never closer than 2 mm to the body."""
+    from . import cloth as _cloth
+    from . import folds as _folds
+    cap = UNDER_LIE_CAP if cap is None else float(cap)
+    X = np.asarray(X, float)
+    bsurf = _body_surface(body)
+    d, nrm, _ = bsurf.signed(X)
+    names = list(M["names"])
+    pid = np.asarray(M["piece"])
+    if M.get("made") is not None:
+        made_nm = list(M["made"])
+    elif pieces is not None and pieces.get("interfaced"):
+        made_nm = _cloth.made_pieces(M, _cloth.interfacing(pieces, M))
+    else:
+        made_nm = []
+    made = np.isin(pid, [names.index(nm) for nm in made_nm if nm in names])
+    for fd in M.get("folds") or []:
+        if fd.get("kind") == "roll" or str(fd.get("name", "")).startswith("open neck"):
+            try:
+                made[np.asarray(_folds._geom(M, fd)["rows"][0]["v"], np.int64)] = True
+                for row in fd["rows"]:
+                    made[np.asarray(row, np.int64)] = True
+            except Exception:
+                pass
+    F = np.asarray(M["F"])
+    E = np.unique(np.sort(np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]], np.asarray(M.get("sew", []), int).reshape(-1, 2)], 1), axis=0)
+
+    def avg(f):
+        acc, wt = np.zeros(len(X)), np.zeros(len(X))
+        np.add.at(acc, E[:, 0], f[E[:, 1]]); np.add.at(wt, E[:, 0], 1.0)
+        np.add.at(acc, E[:, 1], f[E[:, 0]]); np.add.at(wt, E[:, 1], 1.0)
+        return acc / np.maximum(wt, 1)
+
+    keep = made.astype(float)
+    hm = float(np.median(np.linalg.norm(X[F[:, 0]] - X[F[:, 1]], axis=1)))
+    for _ in range(max(2, int(round(UNDER_LIE_EASE / max(hm, 1e-4))))):
+        keep = np.where(made, 1.0, avg(keep))
+    move = np.maximum(d - cap, 0.0) * (1.0 - keep)
+    # a lapped closure's two layers move alike (each laid down on its own, both fronts ended on the same offset and
+    # crossed: Garrett's shirt fronts 243 + 279 crossing vertices): the over piece near the under one moves as the under
+    # piece's nearest vertex does
+    pairs = []
+    for c in M.get("closures") or []:
+        o, u = c.get("over"), c.get("under")
+        if o and u and o != u and o in names and u in names:
+            fo, fu = np.where(pid == names.index(o))[0], np.where(pid == names.index(u))[0]
+            dist, j = cKDTree(X[fu]).query(X[fo])
+            pairs.append((fo, fu[j], np.clip(1.0 - dist / UNDER_LIE_LAP, 0.0, 1.0)))
+    for _ in range(UNDER_LIE_SMOOTH):
+        move = np.where(made, 0.0, 0.5 * move + 0.5 * avg(move))
+        for fo, ju, w in pairs:
+            move[fo] = w * move[ju] + (1.0 - w) * move[fo]
+    move = np.minimum(move, np.maximum(d - 0.002, 0.0))
+    # at most UNDER_LIE_GATHER of the cloth's own length taken up between neighbours (a woven gathers that much into soft
+    # folds under the layer over it; laid to the cap everywhere, a shirt sleeve that blouses 2-5 cm compressed ~50 %)
+    l_ = np.linalg.norm(X[E[:, 0]] - X[E[:, 1]], axis=1)
+    for _ in range(UNDER_LIE_ITERS):
+        Y = X - nrm * move[:, None]
+        c = 1.0 - np.linalg.norm(Y[E[:, 0]] - Y[E[:, 1]], axis=1) / np.maximum(l_, 1e-9)
+        bad = np.zeros(len(X), bool)
+        bad[E[np.abs(c) > UNDER_LIE_GATHER].ravel()] = True
+        if not bad.any():
+            break
+        move[bad] *= 0.85
+    return X - nrm * move[:, None]
+
+
+WAIST_OVER_BODY = 0.10  # C84: a fitted jacket's waist girth at least this over the body's (the book: 14 %, Aldrich ~10-12 cm)
+WAIST_OVER_UNDER = 2 * np.pi * EASE  # m: ... and at least the layer ease (EASE all round) over the garment under it
+
+
+def waist_layers(body_V, under_V, over_V, z: float, concept_w: float | None = None, half: float = 0.005,
+                 torso: float = 0.22) -> dict:
+    """C84's gate row at the height z (the body's waist): the convex-hull girth (a tape passes over hollows) and the
+    front-view width (x extent) of a 2 * half slice of the body, the under garment and the over one (|x| < torso: the arms
+    out); the over garment's ease over the body (ok_body: >= WAIST_OVER_BODY) and over the under one (ok_under: >=
+    WAIST_OVER_UNDER; under_V None = culled / not modelled: not judged), and its front-view width against the concept's
+    (reported, not gated: a worn-open concept's width is the arranged hang's)."""
+    from scipy.spatial import ConvexHull
+
+    def g(P):
+        if P is None:
+            return float("nan"), float("nan")
+        P = np.asarray(P, float)
+        s_ = P[(np.abs(P[:, 2] - z) < half) & (np.abs(P[:, 0]) < torso)][:, :2]
+        if len(s_) < 8:
+            return float("nan"), float("nan")
+        q = s_[ConvexHull(s_).vertices]
+        return float(np.linalg.norm(q - np.roll(q, 1, 0), axis=1).sum()), float(np.ptp(s_[:, 0]))
+
+    (gb, wb), (gu, wu), (go, wo) = g(body_V), g(under_V), g(over_V)
+    r = lambda v: None if not np.isfinite(v) else round(v * 1000)  # noqa: E731
+    out = {"girth_mm": {"body": r(gb), "under": r(gu), "over": r(go)},
+           "width_mm": {"body": r(wb), "under": r(wu), "over": r(wo)},
+           "over_body_pct": round(100 * (go / gb - 1), 1), "over_under_mm": r(go - gu)}
+    out["ok_body"] = bool(go / gb - 1 >= WAIST_OVER_BODY)
+    out["ok_under"] = bool(not np.isfinite(gu) or go - gu >= WAIST_OVER_UNDER)
+    if concept_w is not None:
+        out["width_vs_concept_mm"] = round(wo * 1000 - concept_w * 1000)
+    out["ok"] = out["ok_body"] and out["ok_under"]
+    return out
+
+
 LAYER_ALLOW = None  # m: outer_first's allowance for the under layer (None: UNDER_EASE + THICK, its least stand-off + its cloth)
 
 
@@ -2342,7 +2465,7 @@ def layered_fit(ures: dict, ores: dict, mode: str = "outer_first", ug: dict | No
                 log=None, iters: int = 120) -> tuple:
     """TWO LAYERS THAT TOUCH on the form (see COVER_LAT): (under result, over result) of assemble, for any under / over
     pair. ures / ores: placed garments (cloth.build place_only results, or {"mesh", "X0", "pieces"} with "body");
-    ug / og: their garment dicts (worn_open, shoulder_pad). mode "outer_first" | "joint" (LAYER_ROUNDS)."""
+    ug / og: their garment dicts (worn_open, shoulder_pad). mode "lie" (UNDER_LIE_CAP) | "outer_first" | "joint" (LAYER_ROUNDS)."""
     ug, og = ug or {}, og or {}
     allow = UNDER_EASE + THICK if LAYER_ALLOW is None else float(LAYER_ALLOW)
 
@@ -2354,7 +2477,11 @@ def layered_fit(ures: dict, ores: dict, mode: str = "outer_first", ug: dict | No
         return assemble(ores, ores.get("body"), under=under, ease=ease, worn_open=og.get("worn_open"), iters=iters,
                         shoulder_pad=og.get("shoulder_pad"), log=log)
 
-    if mode == "outer_first":
+    if mode == "lie":  # (UNDER_LIE_CAP: the under layer's fullness laid down, then the over layer fitted over it)
+        u = ua(None)
+        u = dict(u, V=lie_under(u["M"], u["V"], ures.get("body"), pieces=ures.get("pieces")), V_standing=u["V"])
+        o = oa({"V": u["V"], "F": u["F"]})
+    elif mode == "outer_first":
         o = oa(None, ease=EASE + allow)
         u = ua({"V": o["V"], "F": o["F"]})
     elif mode == "joint":

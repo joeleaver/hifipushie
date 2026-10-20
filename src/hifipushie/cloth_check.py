@@ -399,6 +399,79 @@ def passed(rec: dict | None) -> bool:
     return bool(rec) and rec.get("status") in ("PASS", "PASS_WAIVED")
 
 
+# FIT ORDER (C85, Joe 2026-10-20: "We definitely shouldn't be fitting the jacket over a shirt that doesn't fit right
+# yet"): an under garment passes its OWN fit on the form before any garment is fitted over it. fit_garment writes a fit
+# record per garment fitted alone (keyed like the pattern gate: exactly this pattern + body); a garment whose design
+# names an under garment ("over" key) is refused a fit until that record PASSes. Rows: strain p99 <= the form's gate,
+# and, for a garment worn under another, its loose cloth at the waist no further off the body than UNDER_STANDOFF (a
+# tucked shirt's fullness lies soft against the body; Garrett's stood 15 mm off as a stiff tube and the jacket clung).
+UNDER_STANDOFF = 0.010  # m: median off the body at the waist for a garment worn under another (cloth.UNDER_CAP 8 + 2)
+
+
+def fit_record_path(phash: str, bhash: str) -> _Path:
+    return gate_dir() / "fit" / f"{gate_key(phash, bhash)}.json"
+
+
+def fit_rows(res: dict, X, strain_p99: float | None, worn_under: bool) -> list:
+    """The fit gate's rows for a garment assembled ALONE on the form (res: on_form / cloth.build place_only, X its
+    vertices): strain p99, and when worn_under the median stand-off off the body in the waist band (+- 15 mm)."""
+    from . import next_steps, pattern_form
+    rows = [{"id": "fit_strain_p99", "ours": None if strain_p99 is None else round(strain_p99, 1),
+             "target": f"<= {next_steps.STRAIN_P99_MAX:g} %",
+             "status": "PASS" if strain_p99 is not None and strain_p99 <= next_steps.STRAIN_P99_MAX else "FAIL"}]
+    if worn_under:
+        body = res["body"]
+        at = getattr(body, "at", {}) or {}
+        z = at.get("waist_z")
+        if z is None:
+            rows.append({"id": "under_standoff_waist", "status": "UNMEASURED", "why": "no waist_z landmark"})
+        else:
+            z = float(np.asarray(z).reshape(-1)[-1])
+            X = np.asarray(X, float)
+            sel = (np.abs(X[:, 2] - z) < 0.015) & (np.abs(X[:, 0]) < 0.22)
+            d = pattern_form._body_surface(body).signed(X[sel])[0] if sel.any() else np.zeros(0)
+            med = float(np.median(d)) if len(d) else None
+            rows.append({"id": "under_standoff_waist", "ours": None if med is None else round(med * 1000, 1),
+                         "target": f"<= {UNDER_STANDOFF * 1000:g} mm (tucked, soft under the garment over it)",
+                         "status": "PASS" if med is not None and med <= UNDER_STANDOFF else "FAIL"})
+    return rows
+
+
+def write_fit_record(model: str, garment: str, keys: dict, rows: list) -> _Path | None:
+    if keys.get("pattern") is None:
+        return None
+    rec = {"model": model, "garment": garment, "pattern": keys["pattern"], "body": keys["body"], "rows": rows,
+           "status": "PASS" if all(r["status"] == "PASS" for r in rows) else "FAIL"}
+    p = fit_record_path(keys["pattern"], keys["body"])
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_suffix(f".tmp{_os.getpid()}")
+    tmp.write_text(_json.dumps(rec, indent=1, default=str))
+    tmp.replace(p)
+    return p
+
+
+def under_fit_status(model: str, garment: str, spec: dict | None = None) -> dict:
+    """C85: may `garment` be fitted over its under garment? {"under", "passed", "why"}. No under garment: passes."""
+    from . import cloth, store
+    spec = spec or store.load(model)
+    un = cloth.expanded(spec["cloth"][garment]).get("over")
+    if not un or un not in (spec.get("cloth") or {}):
+        return {"under": None, "passed": True, "why": "no under garment"}
+    keys = gate_status(model, un, spec)["keys"]
+    if keys.get("pattern") is None:
+        return {"under": un, "passed": True, "why": "under garment has no pattern"}
+    try:
+        rec = _json.loads(fit_record_path(keys["pattern"], keys["body"]).read_text())
+    except Exception:
+        rec = None
+    if passed(rec):
+        return {"under": un, "passed": True, "why": "PASS"}
+    why = (f"{un} has no fit record for this pattern + body (fit_garment it alone first)" if rec is None else
+           f"{un}'s own fit is {rec['status']}: " + "; ".join(f"{r['id']} {r.get('ours')} (target {r.get('target')})"
+                                                           for r in rec["rows"] if r["status"] != "PASS"))
+    return {"under": un, "passed": False, "why": why}
+
+
 def blocking(rec: dict | None) -> list:
     """"<status> <id>" of the rows that keep a record from passing (waived rows left out)."""
     if not rec:
