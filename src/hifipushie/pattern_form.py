@@ -929,15 +929,25 @@ def _turn_flaps(M, X, folds_, bsurf):
 # with that fit as its ceiling; "joint" alternates (over on under, under under over) LAYER_ROUNDS times.
 # Known answer: tests/test_pattern_form.py test_nested_tubes_inner_pressed_under.
 COVER_LAT = 0.006  # m: sideways reach of "covered" (about one mesh edge: past the over layer's edge = uncovered)
+COVER_FACING = 0.5  # cos: the over layer's normal against the body's at the point (the same stack)
 LAYER_GAP = THICK  # m: the under layer lies at least one cloth thickness inside the over layer where covered
 LAYER_ROUNDS = 2
+LAYER_STEP = 0.002  # m: the most the over layer pushes an under vertex in one round (the last round: all the way)
+LAYER_W = 20.0  # a vertex touching the over layer: its proximal weight (x a free one's 1.0; a neck pin is 200 x FIT_STIFF)
+LAYER_FROM = "seat"  # the ceiling acts from this phase on ("relax1": all relaxes; "seat": once made pieces are stood up)
 
 
-def covered(osurf, X):
-    """(covered mask, signed distance to the over layer (> 0 = outside it), its normals) for points X."""
+def covered(osurf, X, bsurf=None):
+    """(covered mask, signed distance to the over layer (> 0 = outside it), its normals) for points X. With the body
+    (bsurf), only where the over layer faces the way the body does at X (> COVER_FACING): the same stack of layers, not
+    a jacket sleeve's inside beside the shirt's side seam at the armpit."""
     d, nrm, dist = osurf.signed(X)
     lat = np.sqrt(np.maximum(dist ** 2 - d ** 2, 0.0))
-    return (lat < COVER_LAT) & (d < 0.03) & (d > -0.03), d, nrm
+    c = (lat < COVER_LAT) & (d < 0.03) & (d > -0.03)
+    if bsurf is not None:
+        _, nb, _ = bsurf.signed(X)
+        c &= np.sum(nb * nrm, 1) > COVER_FACING
+    return c, d, nrm
 
 
 def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = EASE, fasten="default",
@@ -961,6 +971,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
     bsurf = _body_surface(body) if body is not None else None
     usurf = _Surface(under["V"], under["F"], ref=bsurf) if under is not None and bsurf is not None else None
     osurf = _Surface(over["V"], over["F"], ref=bsurf) if over is not None and bsurf is not None else None
+    ceil_on = [LAYER_FROM == "relax1"]
     # which face of each piece is its outside (CCW in the pattern = +z normal): from the start's placement
     face_sign = {}
     Nf = np.cross(X[F[:, 1]] - X[F[:, 0]], X[F[:, 2]] - X[F[:, 0]])
@@ -1097,7 +1108,17 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
             wc = np.full(n, SETTLE_FREE)
         Ax, Ayz = system(wc) if sw_ is None else system(wc, sw_)
         fa = np.asarray(fast, int).reshape(-1, 2)
+        ccon = np.zeros(n, bool)
         for it in range(iters):
+            if osurf is not None and ceil_on[0] and grav <= 0 and it % 5 == 0:  # TWO LAYERS: the vertices the over
+                # layer touches weigh LAYER_W in the solve (contact the solve knows, as the settle's held set): a soft
+                # push lost to the lengths (the too-big inner tube stayed round) and a per-vertex projection tore the shirt
+                cv_, do_, _ = covered(osurf, X, bsurf)
+                c_ = cv_ & (do_ > -LAYER_GAP - 0.001)
+                if (c_ != ccon).any():
+                    ccon = c_
+                    wc = wc_keep + LAYER_W * ccon
+                    Ax, Ayz = system(wc) if sw_ is None else system(wc, sw_)
             if grav > 0 and it and (held != (wc > SETTLE_FREE)).sum() > SETTLE_REFAC:  # (the contact set changed: the
                 # held vertices' weight; the solve must know the contact, else everything else falls a step per round
                 # and only the touching vertices are put back: the tube read 780 % stretch in 8 rounds)
@@ -1163,8 +1184,8 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                     du, nu, dist = usurf.signed(T)
                     near = (dist < 0.03) & (du < off + 0.001)
                     T[near] += nu[near] * (off[near] + 0.001 - du[near])[:, None]
-                if osurf is not None:  # the layer over this one presses it down where it covers it (TWO LAYERS)
-                    cv_, do_, no_ = covered(osurf, T)
+                if osurf is not None and ceil_on[0]:  # the layer over this one presses it down where it covers it (TWO LAYERS)
+                    cv_, do_, no_ = covered(osurf, T, bsurf)
                     cv_ &= do_ > -LAYER_GAP
                     T[cv_] -= no_[cv_] * (do_[cv_] + LAYER_GAP)[:, None]
             b += wc[:, None] * T
@@ -1214,11 +1235,13 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                     near = (dist < 0.03) & (du < off + 0.001)
                     Xn[near] += nu[near] * (off[near] + 0.001 - du[near])[:, None]
                     held |= near
-            if osurf is not None:  # TWO LAYERS: hard contact under the over layer (a proximal target alone lost to the
+            if osurf is not None and ceil_on[0]:  # TWO LAYERS: hard contact under the over layer (a proximal target alone lost to the
                 # lengths: the too-big inner tube stayed round, 146 vertices outside the outer), then off the form
-                cv_, do_, no_ = covered(osurf, Xn)
+                cv_, do_, no_ = covered(osurf, Xn, bsurf)
                 cv_ &= do_ > -LAYER_GAP
-                Xn[cv_] -= no_[cv_] * (do_[cv_] + LAYER_GAP)[:, None]
+                # (at most LAYER_STEP per round: projected in one jump, single vertices left their neighbours and the
+                # shirt tore everywhere, 2000 edges past 30 % on Garrett)
+                Xn[cv_] -= no_[cv_] * np.minimum(do_[cv_] + LAYER_GAP, LAYER_STEP if it < iters - 1 else 1.0)[:, None]
                 if bsurf is not None:
                     d, nrm, _ = bsurf.signed(Xn)
                     lo = d < off
@@ -1253,6 +1276,11 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
     X = _turn_flaps(M, X, folds_, bsurf)
     tr("turn_flaps", X, M)
     X, sp_pins = open_collar_spread(B, M, body, X)
+    if sp_pins and osurf is not None:  # (TWO LAYERS: an open collar's held end under the over layer is held by it;
+        # held where the spread put it, outside the jacket, the pins and the jacket tore the shirt collar)
+        cv_, do_, _ = covered(osurf, np.array([q for _, q, _ in sp_pins]), bsurf)
+        info["open_spread_pins_covered"] = int((cv_ & (do_ > -LAYER_GAP)).sum())
+        sp_pins = [p_ for p_, c_ in zip(sp_pins, cv_ & (do_ > -LAYER_GAP)) if not c_]
     if sp_pins:
         full = full + sp_pins
         info["open_spread_pins"] = len(sp_pins)
@@ -1300,6 +1328,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
     info["pressed_cells"] = int(len(ps))
     # onto the form (drawn toward the body's offset), then let go: the pattern's lengths decide how far it stands off
     # (a membrane can't resist a pull onto a curved form: held there it shrinks; the ease would read short)
+    ceil_on[0] = True
     X = relax(X, iters // 2)
     tr("seat", X, M)
     info["turned_deg_mid"] = [round(fold_turned(M, X, g), 0) for fd, g, t in folds_]
@@ -1339,7 +1368,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
         du, _, dist = usurf.signed(X)
         info["through_under"] = int(((du < 0) & (dist < 0.01)).sum())
     if osurf is not None:
-        cv_, do_, _ = covered(osurf, X)
+        cv_, do_, _ = covered(osurf, X, bsurf)
         info["through_over"] = int((cv_ & (do_ > 0)).sum())
         info["covered"] = int(cv_.sum())
     if log:

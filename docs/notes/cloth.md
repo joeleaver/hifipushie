@@ -7769,3 +7769,21 @@ lines across the upper back; opening at the chest judged within ~10 px. Collar /
 - fit round 7 step 4: renders $FR7/check/{front,three}.png (ref | clay | diag), {side,back,top}.png with the spread on;
   blind review front FAIL, three FAIL (no notch, popped collar, shirt torn through the jacket collar, lapels half width).
   My read: worse than R6.
+
+## fit round 8 (2026-10-19, Garrett jacket v2 + shirt: two layers that touch; no sims). STATE: docs/state/fit_round8.md
+- fit round 8 step 1: assemble(over=) gives a garment a CEILING (the layer over it); layered_fit "outer_first" (over on
+  body + UNDER_EASE + THICK allowance, then under with the ceiling) and "joint" (alternate LAYER_ROUNDS = 2). KAT nested
+  tubes (inner r+20 too big, outer r+10): a soft proximal push lost to the lengths (146 through); hard projection passed.
+- fit round 8 step 2: on Garrett the hard projection tore the shirt everywhere (2000 edges > 30 %); stepped projection
+  (LAYER_STEP) broke the KAT (167 through); contact the solve knows (LAYER_W = 20, refactored on change, full projection
+  on the last round) passes the KAT again. Coverage needs the FACING test (outer normal vs body normal > 0.5): without it
+  the jacket sleeve's inside "covered" the shirt's side at the armpit. Open-collar spread pins whose target is covered
+  are dropped (the jacket holds them). Result table in the STATE page: outer_first neck gap 60 / 90 deg 18.4 / 28.0 ->
+  8.3 / 14.9 mm, but jacket-in-shirt 119 -> 252; joint 203 / 117 with 90 deg 35 mm and a failed KAT. Neither beats R6 on
+  through: both OPT-IN (C51); OPEN_SPREAD stays opt-in.
+- fit round 8 step 3: lapel width vs a z-buffered front silhouette (m8.py): visible 62 mm on the tip's row vs concept 71:
+  agrees with m7 (85 %), the "half" is the lapel not reading. Shirt spread 103 (146): the spread ends lie under our lapel
+  (roll row 33-66 mm off CF, concept ~75 at that height), so the jacket covers them: a draft / swing item, not layering.
+- fit round 8 step 4: renders $FR8/check (outer_first + spread); blind review front FAIL (shirt collar a crumpled ruffle,
+  lapels don't read, no notch, opening parallel), three FAIL (same + shirt shards over the jacket edge on one side).
+  My read: the jacket collar now sits closer to the neck, but the shirt collar is destroyed: worse to look at than R6.
