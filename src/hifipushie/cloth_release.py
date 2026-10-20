@@ -142,6 +142,63 @@ def clear_body(X: np.ndarray, body, gap: float = 0.0036, free: np.ndarray | None
     return X1, out
 
 
+def untangle_closure(X: np.ndarray, M: dict, release=("front",), body=None, gap: float = 0.002,
+                     reach: float = 0.03, rounds: int = 4, most: float = 0.012) -> tuple[np.ndarray, dict]:
+    """A released closure's over piece passing THROUGH its under piece in the start (fit round 20: Garrett's front.L
+    through front.R round the break, 61-75 vertices, in the closed fit r15e and every release after it: an
+    intersection-free solver keeps a crossing it starts with, so the fronts stay locked together and no arrangement
+    can part them). The over piece's vertices near the crossing (within `reach`) that lie behind the under piece's
+    surface (its outward side by the body) are moved out to `gap` in front of it, rounds until none cross. Over /
+    under: the closure's pairs (over vertex, under vertex). Returns (X, {closure: {"crossing_before", "after", "moved",
+    "max_mm"}})."""
+    from . import cloth
+    from .pattern_form import _Surface, _body_surface
+    X = np.array(X, float)
+    F, pid, names = np.asarray(M["F"]), np.asarray(M["piece"]), M["names"]
+    rel = set(release or ())
+    out = {}
+    for c in M.get("closures") or []:
+        if c.get("name") not in rel or not c.get("v"):
+            continue
+        ko, ku = int(pid[c["v"][0][0]]), int(pid[c["v"][0][1]])
+        if ko == ku:
+            continue
+        cr0 = np.asarray(cloth._pair_crossing_verts(X, F, pid, ko, ku), np.int64).reshape(-1)
+        rec = {"over": names[ko], "under": names[ku], "crossing_before": int(len(cr0)), "moved": 0, "max_mm": 0.0}
+        if not len(cr0):
+            out[c["name"]] = dict(rec, after=0)
+            continue
+        X0 = X.copy()
+        bsurf = _body_surface(body) if body is not None else None
+        best = (len(cr0), X0, "none")
+        # two ways to part them, the one leaving fewer crossings kept: the over piece's cloth just behind the under
+        # piece moved out in front of it, or the under piece's cloth just in front of the over piece moved behind it
+        for kmove, kref, sg, how in ((ko, ku, 1.0, "over out"), (ku, ko, -1.0, "under in")):
+            Y = X0.copy()
+            Fu = F[(pid[F] == kref).all(1)]
+            ui = np.unique(Fu)
+            Fl = np.searchsorted(ui, Fu)
+            cr_ = cr0
+            for _ in range(rounds):
+                if not len(cr_):
+                    break
+                S = _Surface(Y[ui], Fl, ref=bsurf)
+                cv = np.unique(np.r_[cr_, np.asarray(cloth._pair_crossing_verts(Y, F, pid, ku, ko), np.int64).reshape(-1)])
+                ov = np.where((pid == kmove) & (cKDTree(Y[cv]).query(Y)[0] < reach))[0]
+                d, n, dist = S.signed(Y[ov])
+                d = sg * d  # (distance on the side it should be on)
+                b = (d < gap) & (d > -most) & (dist < most)  # (only cloth lying just on the wrong side: not the far side)
+                Y[ov[b]] += sg * n[b] * (gap - d[b])[:, None]
+                cr_ = np.asarray(cloth._pair_crossing_verts(Y, F, pid, ko, ku), np.int64).reshape(-1)
+            if len(cr_) < best[0]:
+                best = (len(cr_), Y, how)
+        X = best[1]
+        mv = np.linalg.norm(X - X0, axis=1)
+        rec.update(after=int(best[0]), how=best[2], moved=int((mv > 0).sum()), max_mm=round(float(mv.max() * 1000), 1))
+        out[c["name"]] = rec
+    return X, out
+
+
 def neck_pieces(Bp: dict, M: dict, made: list) -> list:
     """The made pieces round the neck (stand, collar): wrapped to the neck, or sewn on a seam (wrap "seam") without
     lying on another piece (a pocket flap lies on its front and swings with it)."""
@@ -156,7 +213,7 @@ def neck_pieces(Bp: dict, M: dict, made: list) -> list:
 def job(res: dict, X: np.ndarray, g: dict | None = None, under: dict | None = None, body=None,
         release=("front",), hold=("neck",), frames: int = SETTLE_FRAMES, settle_frames: int = SELF_FRAMES,
         sew_frames: int = SEW_FRAMES, clear: float = CLEAR, zozo: dict | None = None,
-        name: str | None = None, pad_base=None, hold_ring: float = 0.0) -> tuple[dict, dict, dict]:
+        name: str | None = None, pad_base=None, hold_ring: float = 0.0, untangle: bool = False) -> tuple[dict, dict, dict]:
     """The release sim's (cfg, arrays, info). res: the placed pattern (cloth.build place_only: "mesh", "pieces",
     "fabric", "body", "gate_keys"); X: its fitted state on the form (pattern_form.assemble "V"); g: the garment dict
     (zozo options, strain limit); under: {"V", "F"} the under garment's form fit (or None); body: the collider body
@@ -187,11 +244,24 @@ def job(res: dict, X: np.ndarray, g: dict | None = None, under: dict | None = No
         # sewn to settles under gravity parts at the seam (Garrett r19: 7-12 mm at HPS). The band of the bodice within
         # `hold_ring` of the held pieces is held too, so the seam has both sides held and the give is inside one cloth
         ring = np.where(~np.isin(np.arange(len(X)), carry) & (cKDTree(X[carry]).query(X)[0] < hold_ring))[0]
-        carry = np.union1d(carry, ring)
-        info["held_ring"] = {"mm": round(hold_ring * 1000, 1), "vertices": int(len(ring)),
+        # (never a vertex of a triangle the fit left over the strain limit: pinned, it can't relax, and ZOZO's strain
+        # limiting fails at t = 0; Garrett ring 40 mm: 188 such triangles, up to 55 %, round 20)
+        Fm = np.asarray(M["F"])
+        Ed = np.r_[Fm[:, [0, 1]], Fm[:, [1, 2]], Fm[:, [2, 0]]]
+        se = (np.linalg.norm(X[Ed[:, 0]] - X[Ed[:, 1]], axis=1) / (np.linalg.norm(uv[Ed[:, 0]] - uv[Ed[:, 1]], axis=1)
+                                                                   + 1e-12) - 1).reshape(3, -1).max(0)
+        lim = cloth.strain_limit_of(g) if cloth.strain_limit_of(g) > 0.05 else 0.05
+        bad = np.zeros(len(X), bool)
+        bad[Fm[se > 0.8 * lim].ravel()] = True
+        info_bad = int(np.isin(ring, np.where(bad)[0]).sum())
+        ring = ring[~bad[ring]]
+        info["held_ring"] = {"mm": round(hold_ring * 1000, 1), "vertices": int(len(ring)), "left_free_strained": info_bad,
                              "pieces": sorted({M["names"][k] for k in pid[ring]})}
+    else:
+        ring = np.zeros(0, np.int64)
     free = np.ones(len(X), bool)
-    free[carry] = False
+    free[carry] = False  # (the ring is cleared off the body / shirt like free cloth first, then held where cleared)
+    carry = np.union1d(carry, ring).astype(np.int64)
     if pad_base is not None:
         import types as _types
         lift = np.linalg.norm(np.asarray(body.V, float) - np.asarray(pad_base.V, float), axis=1)
@@ -199,6 +269,8 @@ def job(res: dict, X: np.ndarray, g: dict | None = None, under: dict | None = No
         pinfo.pop("faces_keep")
         info["pad"] = dict(pinfo, lift_max_mm=round(float(lift.max() * 1000), 1))
         body = _types.SimpleNamespace(V=Vp, T=np.asarray(body.T), at=getattr(body, "at", {}))
+    if untangle:  # (a front through the other front, carried from the closed fit: parted before the sim)
+        X, info["untangle"] = untangle_closure(X, M, gone, body=body)
     X, info["body_clear"] = clear_body(X, body, free=free, M=M)
     if under is not None:
         U, uinfo = clear_under(X, M["F"], under["V"], np.asarray(under["F"]), body, clear, free=free)
