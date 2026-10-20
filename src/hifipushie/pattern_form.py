@@ -34,6 +34,12 @@ EASE = 0.004  # m: the least a garment lies off what is under it (body or the ga
 HINGE_BAND = 0.006  # m (pattern) either side of a fold row left out of fold_turned (the bend of a THICK hairpin)
 SECTION_W = 0.005  # m: fold_turned reads each row vertex's section from the points within this of its plane
 FLAP_PULL = 0.5  # a turned-over flap drawn onto its own base (one THICK out) per round, in both relax phases
+# ROLL_GAP (fit round 15, opt-in until A/B'd): a turned flap near its fold line lies off its base by the roll's own
+# diameter, not one THICK: a hinge of radius r (folds' rows are r x turn apart) turns 180 deg round a 2r gap. The gap
+# fades to THICK over one half-turn of arc (pi r) past the last row. Without it, FLAP_PULL pressed the rolled hinge into a
+# hairpin: the lapel's roll line rendered as a 2-3 mm crease where the concept's is 6-7 mm wide (edgeprof.py, front
+# view, rows 120-220 below HPS). Tailoring: a lapel's roll line is not pressed in (it is shaped and steamed, then rolled).
+ROLL_GAP = False
 # A fold whose own base side is narrower than BASE_NARROW (pattern, from its first row) lies on the piece(s) sewn to
 # that base as well (fit round 4: a two-piece collar's fall, 4 mm above its seam, lies on its stand). Off = the old rule.
 BASE_ACROSS_SEAM = True
@@ -1425,6 +1431,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
     rest = _rest_edges(M, src, dst, folds_)
     flapv = np.zeros(n, bool)  # vertices of folded-over flaps (one layer further out)
     over = []  # folds turned over onto their base: (flap vertices, base vertices, base triangles)
+    over_gap = []  # per over entry: each flap vertex's target gap off its base (THICK; ROLL_GAP: + the roll near the line)
     for fd, g, turn in folds_:
         if abs(turn) * len(g["rows"]) > math.radians(120):
             fv = np.asarray(g["rows"][-1]["v"])
@@ -1445,6 +1452,14 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                     bv = np.union1d(bv, ov)
                     bt_ = np.r_[bt_.reshape(-1, 3), F[np.isin(pid[F[:, 0]], oth)]]
             over.append((fv, bv, bt_))
+            gap = np.full(len(fv), THICK)
+            if ROLL_GAP and len(g["rows"]) > 1:  # (see ROLL_GAP: the roll's own radius, from the rows' spacing)
+                d0 = np.asarray(g["d0"])
+                dr_ = [float(np.median(d0[np.asarray(r_["row"])])) for r_ in g["rows"]]
+                rad = (dr_[-1] - dr_[0]) / max(len(dr_) - 1, 1) / max(abs(turn), 1e-6)
+                s_ = np.maximum(d0[fv] - dr_[-1], 0.0)
+                gap = THICK + 2 * rad * np.clip(1.0 - s_ / (math.pi * rad), 0.0, 1.0) ** 2
+            over_gap.append(gap)
     # off-the-body target per vertex
     off = ease + THICK * flapv
     # FIT: which cells stay ARAP (folds: rows + flaps; made pieces) and the sewn surface's bending
@@ -1611,7 +1626,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                     vn_ /= np.maximum(np.linalg.norm(vn_, axis=1, keepdims=True), 1e-12)
                     vn_ *= np.sign(np.sum(vn_ * nrm, 1) + 1e-12)[:, None]
                     T[hi] += vn_[hi] * loose
-                for fv, bv, bt in over:  # a flap stays one cloth thickness outside its own base (no fold through)
+                for (fv, bv, bt), gp in zip(over, over_gap):  # a flap stays one cloth thickness outside its base
                     if not len(bt):
                         continue
                     ix = -np.ones(n, int)
@@ -1619,12 +1634,12 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                     ok_ = (ix[bt] >= 0).all(1)
                     srf = _Surface(X[bv], ix[bt[ok_]], ref=bsurf)
                     dfl, nfl, dist = srf.signed(T[fv])
-                    near = (dist < 0.02) & (dfl < THICK)
-                    T[fv[near]] += nfl[near] * (THICK - dfl[near])[:, None]
+                    near = (dist < 0.02) & (dfl < gp)
+                    T[fv[near]] += nfl[near] * (gp[near] - dfl[near])[:, None]
                     # a pressed flap LIES on its base (as the iron left it), in both phases: unheld, a fall stood
                     # off its stand (curved-collar known answer 172 of 180 deg, the free ends flared 20 mm)
-                    far = (dist < 0.02) & (dfl > THICK + 0.0005) & (dfl < 0.03)
-                    T[fv[far]] -= nfl[far] * (FLAP_PULL * (dfl[far] - THICK))[:, None]
+                    far = (dist < 0.02) & (dfl > gp + 0.0005) & (dfl < 0.03)
+                    T[fv[far]] -= nfl[far] * (FLAP_PULL * (dfl[far] - gp[far]))[:, None]
                 if usurf is not None:
                     du, nu, dist = usurf.signed(T)
                     near = (dist < 0.03) & (du < off + 0.001)

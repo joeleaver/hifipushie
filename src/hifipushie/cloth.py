@@ -6493,6 +6493,26 @@ def waist_hung(g: dict) -> bool:
     return pt.get("block") in ("trouser", "skirt") or pt.get("from") == "skirt_block"
 
 
+PAD_DRAFT = False  # opt-in (fit round 15): a padded garment is drafted for the shoulder OVER its pad (pad_measures)
+
+
+def pad_measures(mm: dict, body: "Body", g: dict) -> tuple[dict, dict]:
+    """A garment with a `shoulder_pad` is drafted for the shoulder as it is over the pad: the pad raises the shoulder
+    point by its thickness and nothing at the neck point, so the chord slope (hps -> shoulder point; tailor
+    SHOULDER_SLOPE "chord") flattens by atan(thickness / run), run = the shoulder's horizontal run hps -> shoulder joint.
+    Pattern cutting raises the jacket's shoulder point by the pad's thickness (the standard pad allowance; Aldrich,
+    menswear blocks). Without it, a chord-sloped jacket sat on the pad 10 mm too low at the shoulder end and the shirt
+    came through the sleeve heads (fit round 15 r15c: 34 / 37 vs 10 / 9). PAD_DRAFT off: unchanged. (mm, info)."""
+    pad = g.get("shoulder_pad")
+    if not PAD_DRAFT or not pad or "shoulderSlope" not in mm or "hps.L" not in body.at or "shoulder.L" not in body.J:
+        return mm, {}
+    run = abs(float(body.J["shoulder.L"][0]) - float(body.at["hps.L"][0]))
+    d = float(np.degrees(np.arctan2(float(pad.get("thickness", 0.0)), max(run, 0.05))))
+    mm = dict(mm)
+    mm["shoulderSlope"] = mm["shoulderSlope"] - d
+    return mm, {"pad_slope_deg": round(-d, 2)}
+
+
 def over_measures(body: "Body", U: np.ndarray, res: dict | None = None, waist: float | None = None) -> tuple[dict, dict]:
     """The tailor's measures for a garment worn OVER another (garment key "over"), U = the under garment as it lies
     under it (pressed), res its result: a jacket is drafted to go round the shirt. `neck` = the under garment's own
@@ -6567,7 +6587,8 @@ def draft_measures(body_src: dict, g: dict, body: "Body | None" = None) -> tuple
         return dict(body.m["mm"]), ({"over_missing": body_src["under_missing"]} if body_src.get("under_missing") else {})
     U = pressed(under, body, float(g.get("under_cap", UNDER_CAP)), under_fall(g))
     mm, info = over_measures(body, U, under["res"], waist=float(g.get("layer_gap", 0.003)) if waist_hung(g) else None)
-    return mm, dict(info, over=under.get("name"))
+    mm, pi_ = pad_measures(mm, body, g)
+    return mm, dict(info, over=under.get("name"), **pi_)
 
 
 UNDER_CAP = 0.008  # m off the body: how far a garment's loose cloth stands under another worn over it
@@ -7240,6 +7261,8 @@ def _build(g: dict, body_src: dict, name: str = "garment", log=print, frames: in
     if g.get("pattern"):
         meas, meas_info = (over_measures(body_real, under["V"], under["res"], waist=float(g.get("layer_gap", 0.003)) if waist_hung(g) else None) if under is not None and under.get("res") is not None
                            else (body_real.m["mm"], {}))
+        meas, pi_ = pad_measures(meas, body_real, g)
+        meas_info = dict(meas_info, **pi_)
     Bp = pieces(g, meas if g.get("pattern") else {})
     # construct {"collar": true, "sim_collar": false}: the collar is a made piece built on the drape only; the sim
     # never sees it (a simulated collar crossed the fronts, dress-tess c14 / c15), construct meshes the full draft

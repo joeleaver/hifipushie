@@ -7831,3 +7831,28 @@ lines across the upper back; opening at the chest judged within ~10 px. Collar /
   Step 1: KAT energy ratio 1 % shear / 1 % stretch = 0.00550 on grain 90 / 45 / 0 (PASS); the brief's "20 deg shear < 5 % of a 2 % stretch" has no source (KES-F: 1.67 x), committed as xfail. Free sheet: WOVEN keeps 12 of 20 deg placed shear, FIT 0 (PASS). Lapel KAT (test_open_front_turns_its_lapel_not_its_chest) still FAILS with WOVEN: chest held (drift 0, stand 6 mm), break 49, but lapels 26 / 40 % through (66 / 90 without WOVEN; 68 / 90 with WOVEN_FLAPS off), turn 143 / 150 deg; kat_diag.py: the base strip along the roll line (uv x 6-43 mm, break to +148 mm) crumples in the WEFT +-30 % with the warp +3 / +13: compression / extension across the roll line between the pressed row cells and the held chest, which shear cannot absorb. WOVEN_SLACK (compression-free warp / weft, A/B) worse (grain p99 35 %). Existing tests WOVEN off 31 pass + 2 xfail; WOVEN on 3 fail, each on an EDGE strain measure (diagonal_fold_170 11.4 %, two_panel_sleeve p99 22.5 % with girth / aspect still passing, open_front_hangs 0.144).
   Step 3 (validation 2 with this code, val2.sh): WOVEN off 12 / 16 (collar CB now +5.5 FAIL, opening chest -8 PASS), WOVEN on 9 / 16: better shoulder (+3.2 -> -2.0), chest (-8 -> +1.5), back standoff (25 -> 15); worse waist (-2.8 -> -6.1), sleeve opening (-1.8 -> -5.5), sleeve hem edge (-5 -> +11.5), body length (-0.003 -> -0.031), hips (-20.5 -> -30.5). The raw sim barely shears (simshear.py: p50 / p90 / p99 0.0 / 0.7 / 4.6 deg) vs form off 0.6 / 3.0 / 11.2 and on 4.8 / 14.8 / 25.4: soft shear lets the seat's attraction wrap the cloth onto the body (a sheared cell has less area). Gate FAILS: WOVEN stays opt-in. Runtime: both fits 22 s off, 38 s on.
   Step 4 Garrett (no sims; WORN break 64 + the hem pin moved from cfHem to the new named point cutawayTop = the cutaway's top on the front edge, op_front_cutaway): r14a (r13b method + the pin) waist 335 -> 373, hem sweep 443 -> 494 (concept 401 / 478), edge 450-650 80 / 98 / 104 (concept 71 / 78 / 94), but the L corner curves back 82 (concept 29) and the crease sharp_mm 73 -> 181. r14b (ROLL_TURN + CHEST_HOLD + WOVEN): chest drift p90 23 (r13b 49-54), lapel through base 1-2 % (10-15), sleeves through 5 / 4 (23 / 31); BUT the break rides up to 276-281 (concept 386), the fronts meet at the sternum and flare below, front length 717, torn (grain p99 174 %, 842 front triangles > 10 %, shear p99 55 deg). r14c (no WOVEN) torn as round 12 (grain p99 161 %, lapels 32 % through). WOVEN halves neither: shear is not the missing freedom on Garrett either. Blind reviews of r14b wholefront / front / three: FAIL x3. WOVEN stays opt-in, the open-front method stays opt-in; candidate stays r13b.
+
+## fit round 15 (2026-10-20): Garrett closed at the top button, above the break
+Base r15z: closed fit (CLOSED=1, fastened default = the top pair). Named break 383 below HPS (concept 386); the visible
+lapel stops at 360. The roll line runs 33/8/0 off CF at 150/250/350, against the concept's 69/64/59. That is the break's
+83 mm swing (open break 64 off CF, ours -19), so above the button closed != open on this concept: the V is 160 vs 237.
+Lapel read (edgeprof.py, the front view at the concept's 0.88 px/mm). Face width at 120-220: ours 88-51 at LAPEL_W 0.095,
+concept 68-44. Round 10 set 0.095 from lapel_outer on the open fit, which carried the roll line's error. LAPEL_W 0.072 ->
+61-40; 0.081 (interpolated from the two measured rows) -> 67-39, within 5 mm. The outer edge has no contrast: step 0-4
+against the concept's 3-31, even with the clay render at the asset's thickness (0.8 mm, lapel 2.2 mm). pattern_form ignored
+the fold radius: FLAP_PULL pressed the 3-row hinge (rows 3.35 mm apart = r 3.5 mm x 0.96 rad) onto its base at one THICK, a
+hairpin. ROLL_GAP (opt-in) holds the flap 2r off its base at the line, fading to THICK over pi r. With ROLL_R 6 mm
+(op_lapel's default; the concept's roll reads 6-7 mm wide) the roll line moved out 10-14 mm. The front-view step stays
+2-3 mm because it is the silhouette on the shirt, so that measure can't see a roll.
+Shoulder: chord (r15c) gives rows 30/45/60 = 313/376/449 (concept 277/354/424; line 386/456/455), but sleeves through
+34/37 (line 10/9) and jacket_inside_body 39. cloth.PAD_DRAFT (opt-in: the padded garment's chord slope flattened by
+atan(pad t / run), the pattern-cutting pad allowance) -> r15d: 313/416/450, through 31/28. It recovers little: chord stays
+opt-in, nothing goes to Tess.
+Torso width above the break (350): 373 vs 396; sides 47 vs ~57 off the body. At 425 the closed girth is 921 against the
+~1050 a 400 mm-wide closed jacket needs: the concept's waist width is the OPEN hang, so the closed fit can't be compared
+there. The back bridges the hollow at 38 mm (sim 16-27, validation 2 cause 3) and that takes depth from the sides. Not a
+draft-balance fault above the break; no change.
+Blind reviews r15e: upper_front FAIL (boxy shoulder + straight vertical armhole seam; the lapel edge has no thickness or
+shadow, with a tube-like inner roll; notch / gorge ~100 px low; crumpled gorge), upper_three FAIL (lapels too narrow
+in 3/4, the fronts stand off as ridges, V narrow, no notch, square shoulders). Other stages: collar funnel, shirt through at
+the pocket flaps.
