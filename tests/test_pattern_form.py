@@ -527,6 +527,44 @@ def test_pressed_seam_between_flaps():
     assert {int(pid[s]) for s in ps} == {ka, kb}
 
 
+def test_unfolded_band_rides_with_the_flap_it_is_sewn_to():
+    """(fit round 5, C48) A piece with NO fold sewn to a flap (a two-piece collar's stand on the lapel's gorge) is
+    pressed onto it: a = a front whose UPPER half (y > 0.05) is a flap, b = a band sewn along a's edge x = 0.10, no fold
+    of its own, started folded over a. Pressed: only the pairs on a's flap half (cross cells touch a's flap vertices
+    only); laid: b's upper part goes back to its drafted continuation, its lower part (sewn to a's base) is NOT moved.
+    Two unfolded pieces sewn together get no pressed cells."""
+    a = _piece([[0, 0], [0.10, 0], [0.10, 0.10], [0, 0.10]], names={"s0": 1, "s1": 2})
+    b = _piece([[0.10, 0.0], [0.13, 0.0], [0.13, 0.10], [0.10, 0.10]], names={"t0": 0, "t1": 3})
+    B = _B({"a": a, "b": b}, seams=[["a:s0>s1", "b:t0>t1"]], refine=[{"piece": ["a", "b"], "h": 0.01}])
+    M = cloth.mesh(B, 0.02)
+    pid = np.asarray(M["piece"])
+    uv = np.asarray(M["uv"], float)
+    ka, kb = M["names"].index("a"), M["names"].index("b")
+    up = (pid == ka) & (uv[:, 1] > 0.05)
+    folds_ = [({"piece": "a"}, {"rows": [{"v": np.where(up)[0], "row": np.zeros(0, int)}]}, 1.0)]
+    ps, pd, pr = pf._pressed_cells(M, folds_, pf._edges(M["F"]))
+    assert len(ps), "no pressed cells: the band is not pressed onto the flap"
+    sa = np.r_[ps[pid[ps] == ka], pd[pid[pd] == ka]]
+    assert (uv[sa, 1] > 0.05 - 0.011).all(), "a pressed cell reaches a's base half"
+    rerr = np.abs(pr[:, :2] - (uv[pd] - uv[ps])).max()
+    assert rerr < 1e-6, rerr
+    flat = np.c_[uv, np.zeros(len(uv))]
+    X = flat.copy()
+    vb = pid == kb
+    X[vb, 0] = 0.20 - uv[vb, 0]  # b folded over a about the seam (x = 0.10)
+    X[vb, 2] = 0.0015
+    X1 = pf._lay_pressed(M, X, folds_, reach=0.2)
+    hi, lo_ = vb & (uv[:, 1] > 0.065), vb & (uv[:, 1] < 0.035)
+    err_hi = np.abs(X1[hi] - flat[hi]).max()
+    err_lo = np.abs(X1[lo_] - X[lo_]).max()
+    print(f"unfolded band: {len(ps)} cross cells; laid back {err_hi * 1000:.4f} mm (upper), lower moved "
+          f"{err_lo * 1000:.4f} mm")
+    assert err_hi < 1e-6 and err_lo < 1e-9, (err_hi, err_lo)
+    ps0, _, _ = pf._pressed_cells(M, [({"piece": "a"}, {"rows": [{"v": np.zeros(0, int), "row": np.zeros(0, int)}]},
+                                       1.0)], pf._edges(M["F"]))
+    assert len(ps0) == 0, "two unfolded sides were pressed"
+
+
 def test_flap_faces_mask_follows_the_last_row():
     """(dress-garrett 2026-10-19 teeth) The flap mask a sheet colours the turned side with (folds.flap_faces): every face
     between the last fold row and the flap's first lattice vertices is in it, so the mask's edge IS the row (mesh

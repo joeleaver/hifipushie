@@ -7710,3 +7710,29 @@ lines across the upper back; opening at the chest judged within ~10 px. Collar /
   side / back / top have no jacket reference (back photo = shirt only) -> not reviewed. review.sh: front FAIL (no
   notch, collar a tall fat tube, lapels rolled ridges, shirt collar asymmetric / one leaf flat over the lapel, shards at
   the L lapel edge), three FAIL (same + shirt collar over the jacket, clipping). My read agrees.
+
+## fit round 5 (2026-10-19, Garrett jacket v2 + shirt; no sims). STATE: docs/state/fit_round5.md
+- fit round 5 step 1 (notch): flat is fine (notch_flat 36.5 mm / 66.9 deg, flat.py). The pressed-seam rule
+  (_pressed_cells / _lay_pressed) read only flap <-> flap seams; the two-piece collar puts an unfolded STAND between the
+  lapel's gorge and the fall, so pressed_cells was 0 every round. C48: a folded piece's flap sewn to an unfolded piece
+  presses it (the unfolded one is laid, only where its nearest seam vertex is pressed); KAT
+  test_unfolded_band_rides_with_the_flap_it_is_sewn_to fails with PRESS_UNFOLDED off. On Garrett: 290 cells, but the
+  relax undoes the lay (stand cfTop y -58 laid -> -77 let_go) and every row moves < 2 mm: a dead lever here.
+- step 1, front-view ID raster (wedge.py): on L no collar shows below the shoulder line; the gorge, the stand end and
+  the collar end lie BEHIND the front's base. flapside.py: L lapel flap within 30 mm of cfNeck through its own base
+  66/67 at turn_flaps (med -6.9 mm), 56/67 at let_go; R 2/44 -> 11/67. Without the shirt (NOUNDER) L 10/67: the
+  shirt's L collar under the lapel crumples the gorge corner in relax1, before the turn. Notch still fails without the
+  shirt (L 0/0, R 4.6/1.5). The collar end also rotates off the lapel: angle at cfNeck 114 deg (flat 67), endOuter lies
+  inward of endLow (points at CF).
+- step 1, reviewer (front + three): the reference notch sits just below the collarbone; ours is at the neck side
+  (lapel point ~64 mm below HPS). Not a checklist item yet: DESCRIBE gap.
+- step 2 (fat roll, measured only): collar section +-90 deg turned 88 / 110; stand 25-35 mm off the neck at 60-120 deg;
+  ~25-35 mm silhouette ridge vs ~6 mm of stack.
+- step 3 (shirt through, through.py on rounds 1/3/4/5 pickles): 265 / 365 / 447 / 454 jacket vertices inside the
+  shirt; the growth is the collar fall above HPS-5 cm (88 / 208 / 245 / 252). r3: the fall's outer edge cut to its
+  on-body need (C44) wraps it tight; r4: BASE_ACROSS_SEAM draws it onto the stand (C46). The shirt collar sits outside
+  the jacket stand at the back in every round (ring_hug to_shirt -2.5 / -3.8): the fall goes through it (the white
+  scallops). Root: layer order at the neck. Not fixed.
+- step 4: renders check/{front,three}.png (ref | clay | diag), {side,back,top}.png (clay | diag); look = round 4.
+  review_front FAIL (no notch both sides, collar a tube to jaw height, shirt collar oversized / asymmetric, L lapel
+  shards), review_three FAIL (no lapel / notch read, jacket collar hidden by the shirt collar, holes). My read agrees.

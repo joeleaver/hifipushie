@@ -334,6 +334,45 @@ PRESSED_REACH = 0.012  # m (pattern): the seam pairs a pressed seam's local 2D m
 
 PRESSED_W = 1.0  # a pressed seam's cross cells vs a cell's own edges
 
+# FIT ROUND 5 (2026-10-19, C48): a piece with NO fold of its own sewn to a flap rides with it. The two-piece collar's
+# STAND is sewn to the neckline, and beyond the lapel's roll line that neckline is the lapel's gorge (turned). The rule
+# read only flap <-> flap seams, so with a stand between the gorge and the fall nothing was pressed (pressed_cells 0):
+# the stand's front end stood up in its wrap BEHIND the turned lapel, the collar's end lay under the front (front view:
+# no collar below the shoulder line; notch step L open 0.3 / depth 0). Tailoring: the collar's roll line runs into the
+# lapel's at the gorge; beyond it the collar's end (stand and fall) lies on the lapel, the gorge seam pressed open
+# (Cabrera & Flaherty, Classic Tailoring Techniques; Aldrich, split undercollar). A pair is pressed when one side is a
+# folded piece's flap vertex and the other a flap or an UNFOLDED piece's vertex; two unfolded pieces (stand <-> back
+# neck) never are, nor a flap <-> the base side of anything.
+PRESS_UNFOLDED = True
+
+
+def _press_flags(M, folds_, rows_ride: bool = False):
+    """({piece index: pressable per vertex}, {folded piece indices}). A folded piece: its flap vertices (rows' v; the
+    hinge row itself only if rows_ride); an unfolded piece (PRESS_UNFOLDED): every vertex (it rides with the flap it
+    is sewn to)."""
+    uv = np.asarray(M["uv"], float)
+    pid = np.asarray(M["piece"])
+    flap = {}
+    for fd, g, turn in folds_:
+        k = list(M["names"]).index(fd["piece"])
+        s_ = flap.setdefault(k, np.zeros(len(uv), bool))
+        for r_ in g["rows"]:
+            s_[np.asarray(r_["v"], int)] = True
+        if not rows_ride:
+            for r_ in g["rows"]:
+                s_[np.asarray(r_["row"], int)] = False  # (a row vertex is the hinge itself: its cell already turns)
+    folded = set(flap)
+    if PRESS_UNFOLDED and folded:
+        for k in set(np.unique(pid).tolist()) - folded:
+            flap[int(k)] = pid == k
+    return flap, folded
+
+
+def _pressed_pair(pid, flap, folded, a, b) -> bool:
+    """A sewn pair is pressed: different pieces, both pressable, at least one of them a FOLDED piece's flap vertex."""
+    return bool(pid[a] != pid[b] and pid[a] in flap and pid[b] in flap and flap[pid[a]][a] and flap[pid[b]][b]
+                and (pid[a] in folded or pid[b] in folded))
+
 
 def _pressed_cells(M, folds_, E):
     """A seam joining two FLAPS (each sewn vertex on the turned side of a fold in its own piece: a notched collar's
@@ -349,16 +388,8 @@ def _pressed_cells(M, folds_, E):
     sw = np.asarray(M["sew"]).reshape(-1, 2)
     if not len(sw) or not folds_:
         return np.zeros(0, int), np.zeros(0, int), np.zeros((0, 3))
-    flap = {}
-    for fd, g, turn in folds_:
-        k = list(M["names"]).index(fd["piece"])
-        s_ = flap.setdefault(k, np.zeros(len(uv), bool))
-        for r_ in g["rows"]:
-            s_[np.asarray(r_["v"], int)] = True
-        for r_ in g["rows"]:
-            s_[np.asarray(r_["row"], int)] = False  # (a row vertex is the hinge itself: its cell already turns)
-    ok = np.array([pid[a] != pid[b] and pid[a] in flap and pid[b] in flap and flap[pid[a]][a] and flap[pid[b]][b]
-                   for a, b in sw], bool)
+    flap, folded = _press_flags(M, folds_)
+    ok = np.array([_pressed_pair(pid, flap, folded, a, b) for a, b in sw], bool)
     P = sw[ok]
     if len(P) < 2:
         return np.zeros(0, int), np.zeros(0, int), np.zeros((0, 3))
@@ -413,17 +444,15 @@ def _lay_pressed(M, X, folds_, reach: float = 0.05):
     uv = np.asarray(M["uv"], float)
     pid = np.asarray(M["piece"])
     sw = np.asarray(M["sew"]).reshape(-1, 2)
-    flap = {}
-    for fd, g, turn in folds_:
-        k = list(M["names"]).index(fd["piece"])
-        s_ = flap.setdefault(k, np.zeros(len(uv), bool))
-        for r_ in g["rows"]:
-            s_[np.asarray(r_["v"], int)] = True
+    flap, folded = _press_flags(M, folds_, rows_ride=True)
     pairs = {}
     for a, b in sw:
-        if pid[a] != pid[b] and pid[a] in flap and pid[b] in flap and flap[pid[a]][a] and flap[pid[b]][b]:
-            # a on the smaller piece (the one carried)
-            if (pid == pid[a]).sum() > (pid == pid[b]).sum():
+        if _pressed_pair(pid, flap, folded, a, b):
+            # a on the piece carried: an unfolded piece (it rides with the flap), else the smaller one
+            if (pid[a] in folded) != (pid[b] in folded):
+                if pid[a] in folded:
+                    a, b = b, a
+            elif (pid == pid[a]).sum() > (pid == pid[b]).sum():
                 a, b = b, a
             pairs.setdefault((int(pid[a]), int(pid[b])), []).append((a, b))
     X = X.copy()
@@ -439,6 +468,12 @@ def _lay_pressed(M, X, folds_, reach: float = 0.05):
         da = cKDTree(A_).query(uv[va])[0]
         db = cKDTree(B_).query(uv[vb])[0]
         mov = va[(da < reach) & flap[ka][va]]
+        if ka not in folded:  # an unfolded piece rides only where its nearest seam vertex to kb is a pressed one
+            s0 = sw[(pid[sw[:, 0]] == ka) & (pid[sw[:, 1]] == kb), 0]
+            s1 = sw[(pid[sw[:, 1]] == ka) & (pid[sw[:, 0]] == kb), 1]
+            sv = np.unique(np.r_[s0, s1])
+            if len(sv) and len(mov):
+                mov = mov[np.isin(sv[cKDTree(uv[sv]).query(uv[mov])[1]], pr[:, 0])]
         own = vb[(db < reach) & flap[kb][vb]]
         best = None
         for flip in (1.0, -1.0):
@@ -1183,6 +1218,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
     ps, pd, pr = _pressed_cells(M, folds_, E) if pressed else (np.zeros(0, int),) * 2 + (np.zeros((0, 3)),)
     if len(ps):
         X = _lay_pressed(M, X, folds_)
+        tr("pressed", X, M)
         src, dst, rest = np.r_[src, ps], np.r_[dst, pd], np.r_[rest, pr]
         wE = np.r_[wE, np.full(len(ps), PRESSED_W)]
         arap_e = np.r_[arap_e, np.ones(len(ps), bool)]
