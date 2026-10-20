@@ -1,53 +1,57 @@
 # STATE: dress_garrett_fit (Garrett jacket + shirt: closed form fit + ONE release sim) -- 2026-10-20, round 19
 
-STATE: round 19 step 1 done: folds run_off (general; KAT) + R28 on -> r19a: gorge_lie across 11.9/9.5, tip 1.4/5.2,
-plane 3.8/13.5 PASS (the flat end no longer folds back); twist 14.2/20.1 still FAILS (the LAPEL's roll at the gorge,
-60-94 mm from cfNeck). R28 stays opt-in; r19a = candidate. Joe 2026-10-20: the concept's opening (edge off CF 71/78/94,
-break x 64) is reached by ARRANGING the jacket (soft pins + settle), never by fit levers or the pattern.
-NEXT: step 3 seam weld in cloth_release, then arrangement, then step 4 table / renders / blind reviews.
+STATE: round 19 done (budget). Step 1: folds run_off (general, KAT) + R28 -> r19a: gorge across/tip PASS (11.9/9.5,
+1.4/5.2), twist 14/20 FAILS (the LAPEL's roll at the gorge, 60-94 mm from cfNeck); R28 stays opt-in. Step 2 skipped
+(Joe: physics alone won't open it; arrangement instead). Step 3: weld_seams (545/581 welded; 36 real openings, all at
+the neck/HPS: held stand vs free bodice). Step 4: local release r19rel -> welded r19w; table, renders, 3 blind reviews
+(all FAIL: closed-looking fronts, collar standing up the neck, narrow lapels, shirt poke-through, boxy shoulders).
+Spend this round $0 (local ZOZO only). Nothing approved, nothing for Joe as a result.
+NEXT: (1) arrangement tool (arrange_garment: soft pins moved to the concept's edge rows 71/78/94 @ 450/550/650, break
+x 64, short settle with the shirt + gravity, pins released, springback reported) -- runner needs a pin move_to /
+unpin stage (cloth_zozo carryPoses already uses g.pin().move_to); (2) neck openings: the held neck pieces vs the
+settling bodice (release only the hold after the sew phase, or hold the bodice's neck ring with them); (3) the collar
+standing up the neck (all 3 reviews MAJOR) + lapel twist at the gorge; (4) shirt poke-through at waist sides /
+shoulder tips.
 
 ## Method (Joe 2026-10-20)
 Open jacket = the BUTTONED fit on the dress form (pattern_form.assemble, top button fastened), then ONE short release
 sim (cloth_release, MCP release_garment; docs/state/cloth_release.md). No gravity substitutes on the form.
+The concept's opening (edge off CF 71/78/94 at 450/550/650, break x 64, V width 237) stays the TARGET, reached by
+ARRANGING the jacket by hand (soft pins + settle, as a person settles a coat), never by fit levers or the pattern
+(Joe 2026-10-20; checklist rows opening_arranged, no_front_through_front, break_height, fronts_hang_no_lift).
 
 ## Current candidate (nothing approved)
-- Closed fit r15e: CLOSED=1 LAPEL_W=0.081 ROLL_R=0.006 $FR18/job.sh <tag> ROLL_GAP=true (gate PASS_WAIVED
-  51e12aabcedf45c7251a); $FR17/asm_r15e.pkl. Released r16 (job_k, rented $0.0355): $FR16/asm_r16.
-  $FRn = /mnt/data/hifipushie/dress_garrett/fit_round<n> ($FR18/run.sh runs THIS worktree's code; absolute paths only).
-- Target concept_v8_front_apose.png; checklist workspace/checklists/garrett_jacket.json (worn open: Joe's fact).
+- Fit r19a: CLOSED=1 LAPEL_W=0.081 ROLL_R=0.006 $FR19/job.sh r19a ROLL_GAP=true 'pj.STAND_RUN_OFF={"on": true,
+  "end": 0.003, "over": 0.03}' (placed_8ba6d38b12cd; NO pattern gate record for this pattern yet). Release: g17.py
+  build r19a + zrun.py (local) + mk17.py -> asm_r19rel; weld (tab19.py) -> $FR19/asm_r19w.pkl.
+  $FRn = /mnt/data/hifipushie/dress_garrett/fit_round<n> ($FR19/run.sh runs THIS worktree's code).
+
+## Table (concept | r15e fit | r16 release | r19w release+weld; L/R)
+edge off CF 450/550/650: 71/66, 78/72, 94/85 | 0/0, 0/0, 6/4 | 0/0, 6/19, 22/37 | 0/0, 17/18, 34/35
+break x / below HPS: 64 / 386 | -15,+15 / 326 | -8,+11 / 325 | -8,+11 / 328 ; V width 200: 237 | 149 | 151 | 149
+lapel outer 150: 127/134 | 110/100 | 108/102 | 107/101 ; waist 401 | 324 | 320 | 321 ; hem 478 | 431 | 447 | 457 P
+gorge twist/across/tip L;R: lim 10/15/6 | 10.7/13/9.8; 14.8/13/8.0 | 12.1/33/10.8; 13/24/7.8 | 10.8/12.5/5.3; 13.9/20/2.1
+seam_gaps max (open>1mm): r15e 0.03 (0) | r16 11.8 (458) | r19rel 12.0 (461) | r19w 12.0 (36). stretch p99 9.7|6.1|7.4 %.
+front.L|front.R crossing pair present in all four (the closed fit's overlap carried into every release).
 
 ## Open faults (game visibility first)
-1. Released fronts stay crossed: edge off CF 450/550/650 r16 0/6-19/22-37 vs 71/78/94; break x -8/+11 vs 64. Not the
-   shirt, neck hold or settle length (r17). Draft: front balance = back (same hps + shoulder), one shoulder slope,
-   20 mm wrap. History: 40 mm front balance (crest hps, j10-j13) made the open fronts SWING APART (+48 mm armhole
-   asymmetry); 20 mm (garment_kb) levelled the hem but bunched the sleeves. FreeSewing Brian/Jaeger: one frame, one
-   slope (no balance). R5: front 1-2 deg steeper in practice.
-2. Notch (Joe): r15e gorge_lie twist 10.7/14.8 deg/cm, across 13/13, tip 9.8/8.0 mm (limits 10/15/6) FAIL. Cause
-   (r17): the stand stood to the notch. R28 (stand runs off at s_x, the lapel roll's gorge crossing, ~100 mm before the
-   end) fixes the flat (collar_stand_end 3 mm vs 15) but on the form r18a is WORSE (tip 12/14, across 19/54, plane
-   58/73): band_init lies right (tip 2/4 mm), turn_flaps folds the end back over the lapel: the fall's crease
-   still runs to the end.
-   r18: FB 20 mm (fr18.py FB=0.02, release job_fb20nu) 450/550/650 0/0, 20/20, 49/56, break -9/+12; friction 0
-   (job_nuf0) break -8/+11: neither. With the shirt collider the FB start fails (contact starts overlapping v820).
-3. Seams open after the release: seam_gaps r16 p50 1.17 max 11.8 (458/579 > 1 mm); p50 = ZOZO contact gap (0.5 mm
-   gap: p50 0.56); stitch_gap 0.5 mm dead. 4. Width (waist 320 vs 401), boxy square shoulder.
-5. Lapel edge no thickness contrast; pocket flaps sag 16-19 mm in the release; shirt-through 251 verts (r16).
+1. Opening: to be ARRANGED (above). 2. Collar stands up the neck like a band (reviews: all MAJOR). 3. Lapels narrow,
+gorge twist (lapel roll). 4. Shirt poke-through (waist sides, shoulder tips). 5. Neck seam openings 5-12 mm at HPS.
+6. Waist 321 vs 401 / pinched waist + flared skirt; boxy square shoulder; thick front-edge ridge.
 
 ## Switches (module default; candidate)
-pattern_jacket.STAND_RUN_OFF on False (R28, opt-in) | pattern_form: ROLL_GAP False (r15e on) | ROLL_TURN False |
-CHEST_HOLD 0 | OPEN_HOLD False | HOLD_SLEEVES False | HOLD_NAMED True | OPEN_HANG True | WORN_EDGE False |
-EDGE_FIELD True | HANG_FREE True | SWING_UNPINNED True | WOVEN False | PRESS_CARRIES_LAYERS False |
-BASE_ACROSS_PRESSED False | PRESSED_W 1. cloth.PAD_DRAFT False. Release job: zozo start_over 0.06.
+pattern_jacket.STAND_RUN_OFF on False, over 0.03 (R28 + crease run-off; candidate on) | pattern_form: ROLL_GAP False
+(candidate on) | others as round 18 (ROLL_TURN False, CHEST_HOLD 0, OPEN_HOLD False, HOLD_NAMED True, OPEN_HANG True,
+EDGE_FIELD True, HANG_FREE True, SWING_UNPINNED True, WOVEN False, PRESSED_W 1). Release: zozo start_over 0.06.
 
 ## Dead ends (one line each)
-- Gravity substitutes on the form (WORN_EDGE, OPEN_HOLD above the break, ROLL_TURN + CHEST_HOLD tear).
-- Release: neck unheld / 6 s settle / no shirt collider: break unchanged.
-- Notch: more press weight, the fall's base onto the lapel, carrying the fall at the press; R28 alone (fall still folded).
+- Gravity substitutes on the form; release neck unheld / 6 s settle / no shirt / front balance 20 mm / friction 0.
+- Notch: more press weight, fall base onto lapel, R28 without the crease run-off, longer crease fade (0.06: dead).
 
-## Commands ($FR18)
-job.sh (fit; FB= front balance via fr18.py), gorge.py <asm..> [--phases], runoff_flat.py (R28 flat rows), seams.py,
-g17.py build <tag> [placed= asm= under=none hold= zozo=] + zrun.py <job>/sim (HP_RUN_ZOZO=1 RUNNER=bin/capped) +
-mk17.py <job> <tag> <base asm>, m10: $FR13/m10.py concept <asm..>.
+## Commands ($FR19)
+job.sh, gorge.py <asm> [--phases|--along], g17.py build <tag> placed= asm= zozo=, zrun.py <job>/sim (HP_RUN_ZOZO=1
+RUNNER=bin/capped), mk17.py <job> <tag> <base asm>, tab19.py (weld + rows), m10: $FR13/m10.py concept <asm..>,
+render17.py <asm> <tag> <views> (RUNNER=bin/capped), bin/review (reviews in check/rv_*).
 
 ## History (grep only)
-docs/notes/cloth.md "fit round 18", "fit round 17", "fit rounds 1-16 STATE pages, archived", "cloth_release".
+docs/notes/cloth.md "fit round 19", "fit round 18", "fit round 17", "cloth_release".

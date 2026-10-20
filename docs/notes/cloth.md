@@ -8802,3 +8802,20 @@ docs/notes/cloth.md "dress-garrett 2026-10-19 muslin 1", "form sleeves", "block 
   located (gorge.py --along) 60-94 mm from cfNeck, where the LAPEL's roll line meets the gorge (on-flap True -> False at
   94 mm), i.e. the lapel's fold, not the collar's. Lever 2 fade 0.06 (r19b): twist 13.6/20.2 (dead). Stop-loss. R28 stays
   opt-in (gorge_lie not PASS); r19a is the round's candidate. Next for twist: the lapel roll's own run into the gorge.
+- fit round 19 step 2: skipped on Joe's direction (2026-10-20, via the coordinator): a thin man's jacket would not open
+  as far as the concept by gravity; the concept's opening stays the target but is reached by ARRANGING (soft pins +
+  settle), never fit levers. Checklist garrett_jacket.json: rows opening_arranged, no_front_through_front,
+  break_height, fronts_hang_no_lift. The front.L|front.R crossing pair is present already in the closed fit r15e.
+- fit round 19 step 3: cloth_release.weld_seams (WELD_MM 3): after the sim each sewn pair within 3 mm is moved to its
+  midpoint (ZOZO holds the sides a contact gap apart); wider pairs reported, not welded. In-solver weld not done (merged
+  vertices would carry two pieces' uv: ZOZO's flat rest is per-vertex uv). r19rel: 545 / 581 welded, p50 1.16 -> 0.0;
+  36 open, max 12.0. The 7-12 mm spots located: stand|back.L/R (12.0 / 11.0 / 7.7 / 7.6), stand|front (7.2 / 5.6),
+  front|back shoulder at the neck (5.4-5.8), all at z 1.548 x +-0.07 (HPS): the neck pieces are HELD as fitted while the
+  bodice settles under gravity, so the held stand and the free shoulder part at HPS. Plus side|front.R at the waist 5.3.
+- fit round 19 step 4: local release of r19a (job_r19a, 76 frames 120 s, $0): no rented run (local = same solver; the
+  release levers didn't change). Table in the STATE page. Renders $FR19/check/ (wholefront, upper_front, upper_three:
+  ref | clay | diag; side, back: clay | diag; notch.L/R_r15e_vs_r19w.png). Blind reviews (context "worn open; how far
+  it opens is painterly"): wholefront FAIL (7 MAJOR: reads closed, collar stands up the neck, lapels narrow / notch
+  tiny, sleeve webbed to torso, pinched waist + flare, poke-through, square shoulders), upper_front FAIL (6 MAJOR + diag
+  3), upper_three FAIL (4 MAJOR + diag 2). My read: the notch's tab is gone (end lies flat) but the collar end reads as a
+  thin flat sliver; fronts still meet at CF; collar is a band up the neck; shirt pokes through at the waist sides.
