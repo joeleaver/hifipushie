@@ -7,6 +7,7 @@ import sys
 import types
 
 import numpy as np
+import pytest
 
 from hifipushie import cloth, pattern_form as pf
 
@@ -1138,17 +1139,12 @@ def test_open_front_edge_has_no_step_at_the_break():
     assert res[True][0] <= pf.BREAK_STEP_MM and res[True][1] < 0.005, res
 
 
-def test_open_hold_stops_at_the_break_not_the_roll_top():
-    """(fit round 11, Joe: "the tops of the lapels are embedded in the layer below") A worn-open front hangs from its
-    seams BELOW its break; above it the lapel turns and the front above follows the swing. open_seam_holds took its height
-    from every worn-open pin, the edge pins included, whose roll-line pins reach the neck: the shoulder / neck seams were
-    held CLOSED under the turned lapel (Garrett: the lapel top through its base, 40-120 mm below the neck point, L 129 / R
-    125 flap vertices; 45 / 45 unheld). Known answer, the open tube with lapels (break 0.2 of 0.4 m, roll to the neck
-    point): HOLD_NAMED holds only the side seams below the break (about half of them); without it every one is held."""
-    import math as _m
-    r, ease, H, hb = 0.1, 0.01, 0.4, 0.2
+def _open_tube_lapel_case(r=0.1, ease=0.01, H=0.4, hb=0.2):
+    """The open-front tube with LAPELS (fit round 11): each front's CF edge runs up from the hem to the break (hb), then
+    out to a lapel point and back to the neck point "hps" (0.03 off CF at the top); a pressed "lapel roll" fold from the
+    break to the neck point, its flap the lapel. Back + two fronts sewn at the side seams on a cylinder, placed closed."""
     R0 = r + ease
-    Wq, Wb = 0.5 * _m.pi * R0, _m.pi * R0
+    Wq, Wb = 0.5 * math.pi * R0, math.pi * R0
     pts = [[0, 0], [Wq, 0], [Wq, H], [0.03, H], [-0.05, H - 0.06], [0, hb]]
     nm = {"cfHem": 0, "sideHem": 1, "sideTop": 2, "hps": 3, "lapelPoint": 4, "break": 5}
     fl = _piece(pts, names=nm)
@@ -1160,9 +1156,19 @@ def test_open_hold_stops_at_the_break_not_the_roll_top():
            seams=[["front.L:sideHem>sideTop", "back:b0>b3"], ["front.R:sideHem>sideTop", "back:b1>b2"]], folds=folds)
     M = cloth.mesh(B, 0.012)
     pid = np.asarray(M["piece"]); uv = np.asarray(M["uv"], float)
-    th = np.where(pid == M["names"].index("back"), uv[:, 0] / R0, -0.5 * _m.pi + uv[:, 0] / R0)
+    th = np.where(pid == M["names"].index("back"), uv[:, 0] / R0, -0.5 * math.pi + uv[:, 0] / R0)
     X0 = np.c_[R0 * np.cos(th), R0 * np.sin(th), 0.05 + uv[:, 1]]
-    body = _cyl_body(r, -0.1, 0.6)
+    return M, X0, _cyl_body(r, -0.1, 0.6)
+
+
+def test_open_hold_stops_at_the_break_not_the_roll_top():
+    """(fit round 11, Joe: "the tops of the lapels are embedded in the layer below") A worn-open front hangs from its
+    seams BELOW its break; above it the lapel turns and the front above follows the swing. open_seam_holds took its height
+    from every worn-open pin, the edge pins included, whose roll-line pins reach the neck: the shoulder / neck seams were
+    held CLOSED under the turned lapel (Garrett: the lapel top through its base, 40-120 mm below the neck point, L 129 / R
+    125 flap vertices; 45 / 45 unheld). Known answer, the open tube with lapels (break 0.2 of 0.4 m, roll to the neck
+    point): HOLD_NAMED holds only the side seams below the break (about half of them); without it every one is held."""
+    M, X0, body = _open_tube_lapel_case()
     saved = (pf.WORN_EDGE, pf.OPEN_HOLD, pf.HOLD_NAMED)
     n = {}
     try:
@@ -1174,6 +1180,72 @@ def test_open_hold_stops_at_the_break_not_the_roll_top():
     finally:
         pf.WORN_EDGE, pf.OPEN_HOLD, pf.HOLD_NAMED = saved
     assert 0.35 < n[True] / n[False] < 0.65, n
+
+
+def lapel_turn_case(roll_turn: bool, off: float = 0.05, verbose: bool = True) -> dict:
+    """The worn-open front with a lapel on a cylinder, ROLL_TURN on / off (fit round 12): chest drift from the closed fit
+    (front vertices above the break, off the lapel, 40 mm+ from the roll line), the chest's stand-off from the body, the
+    lapel's turn, the free edge below the break, the step at the break."""
+    from scipy.spatial import cKDTree
+    M, X0, body = _open_tube_lapel_case()
+    pid = np.asarray(M["piece"]); uv = np.asarray(M["uv"], float); P = M["points"]
+    saved = (pf.WORN_EDGE, pf.OPEN_HOLD, pf.ROLL_TURN, pf.CHEST_HOLD)
+    res = {}
+    try:
+        pf.WORN_EDGE, pf.OPEN_HOLD = True, True
+        closed = pf.assemble({"mesh": M, "X0": X0}, body, iters=80)["V"]
+        pf.ROLL_TURN, pf.CHEST_HOLD = roll_turn, (1.0 if roll_turn else 0.0)
+        out = pf.assemble({"mesh": M, "X0": X0}, body, iters=80, worn_open={"break": off})
+    finally:
+        pf.WORN_EDGE, pf.OPEN_HOLD, pf.ROLL_TURN, pf.CHEST_HOLD = saved
+    V = out["V"]
+    from hifipushie import folds as foldmod
+    for s in "LR":
+        k = M["names"].index(f"front.{s}")
+        fd = [f for f in M["folds"] if f["piece"] == f"front.{s}"][0]
+        g = foldmod._geom(M, fd)
+        row = np.asarray(fd["rows"][0], int)
+        zb = float(closed[P[f"front.{s}:break"], 2])
+        dr = cKDTree(uv[row]).query(uv)[0]
+        chest = np.where((pid == k) & ~np.asarray(g["flap0"], bool) & (closed[:, 2] > zb + 0.02) & (dr > 0.04))[0]
+        drift = np.linalg.norm(V[chest] - closed[chest], axis=1) * 1000
+        stand = (np.hypot(V[chest, 0], V[chest, 1]) - 0.1) * 1000
+        border = np.asarray(M["border"], bool)
+        low = np.where((pid == k) & border & (np.abs(uv[:, 0]) < 1e-6) & (closed[:, 2] < zb - 0.02))[0]
+        res[s] = {"chest_drift_p90": round(float(np.percentile(drift, 90)), 1),
+                  "chest_stand_p90": round(float(np.percentile(stand, 90)), 1),
+                  "turn_deg": round(pf.fold_turned(M, V, g), 0),
+                  "edge_below_min": round(float(np.abs(V[low, 0]).min()) * 1000, 1),
+                  "break_x": round(abs(float(V[P[f"front.{s}:break"], 0])) * 1000, 1)}
+    eb = pf.edge_through_break(M, V)
+    for s in "LR":
+        res[s]["step_mm"] = eb[f"front.{s}"]["step_mm"]
+    res["through"] = pf.flap_through_base(M, V, body)
+    res["stretch"] = out["info"]["stretch_pct"]
+    if verbose:
+        print(f"lapel turn ROLL_TURN {roll_turn}: {res}")
+    return res
+
+
+@pytest.mark.xfail(strict=True, reason="fit round 12: an isometric (shear-stiff) front cannot open its break with its chest and "
+                   "side seams fixed: the lapels compress through their base; needs a woven shear energy in the fit")
+def test_open_front_turns_its_lapel_not_its_chest(off=0.05):
+    """(fit round 12, coordinator-approved method) Worn open, a jacket's chest stays on the body; only the lapel turns,
+    about its roll line, and the front below the break hangs from the break. Known answer, the open tube with lapels,
+    worn open at the break 50 mm: ROLL_TURN keeps the chest within 6 mm (p90) of the closed fit and within 8 mm of the
+    body, the lapel turned past 160 deg, the edge below the break hangs at least 45 mm off CF, the break met within 5 mm
+    and no step at the break (<= BREAK_STEP_MM); the old rigid swing of the whole upper front moved the chest further
+    (> 1.5 x): the fault that set every hold above the break fighting it. Also the lapel ON its base (flap_through_base
+    ok) and the cloth unstretched (p99 < 5 %). XFAIL (r12): ROLL_TURN + CHEST_HOLD keep the chest (drift 0, stand 6 mm)
+    but the lapels go 66 / 90 % through their base, stretch p99 13 %; the start field alone moves the chest 34 mm."""
+    new, old = lapel_turn_case(True, off), lapel_turn_case(False, off)
+    for s in "LR":
+        r = new[s]
+        assert r["chest_drift_p90"] <= 6.0 and r["chest_stand_p90"] <= 8.0, new
+        assert r["turn_deg"] >= 160 and r["edge_below_min"] >= (off - 0.005) * 1000, new
+        assert abs(r["break_x"] - off * 1000) <= 5.0 and r["step_mm"] <= pf.BREAK_STEP_MM, new
+        assert old[s]["chest_drift_p90"] > 1.5 * r["chest_drift_p90"], (old, new)
+    assert all(v["ok"] for v in new["through"].values()) and new["stretch"]["p99"] < 5.0, new
 
 
 def test_front_crease_and_flap_through_measures_find_planted_faults():

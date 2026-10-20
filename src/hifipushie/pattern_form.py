@@ -723,8 +723,75 @@ def _swing_open(M, X, ox, fast, bsurf):
             e = abs(q[0] - xt)
             if best is None or e < best[0]:
                 best = (e, th)
+        if ROLL_TURN:
+            w = w * roll_turn_weight(M, X, k)[sel]
         X[sel] = piv + _rodrigues(X[sel] - piv, np.tile(ax, (len(sel), 1)), w * best[1])
     return X
+
+
+# THE LAPEL TURNS, THE CHEST STAYS (fit round 12, coordinator-approved method change): a jacket worn open does not turn its
+# whole upper front about the neck point. The chest, held by the body at the shoulder, armhole and side seams, barely
+# moves; only the lapel turns, about its roll line (neck point -> break), and the front below the break hangs from it.
+# Turned whole (fit round 11, r11d), every seam hold above the break fought the swing: the sleeves held -> the lapel top
+# through its base (r11e 86 / 102 vertices); freed -> the shirt sleeve through the jacket (29 / 32); the front dart
+# folded to a fin (33 deg median). The swing's turn per vertex is now a FIELD: 1 on the roll line and on the lapel (the
+# flap past it), 0 on the piece's seams to the garment the body holds (shoulder, armhole, side:
+# every seam to a piece that is sewn to something else too; a patch sewn only to this piece, a pocket flap, rides on it,
+# and bands stood up on the neckline follow the lapel), linear in pattern distance between them (d_seam / (d_roll +
+# d_seam)). The break, on the roll line, still meets its worn-open offset; the cloth between the roll line and the held
+# seams takes up the turn the way a real front does: it eases off the chest along the roll (the soft roll), not by
+# sliding round the body. ROLL_TURN False: the old rigid turn (A/B only).
+# RESULT (fit round 12, stop-loss): OPT-IN. As a START the field changed little: the relax decides where the chest goes
+# (Garrett r12a chest drift p90 52 / 54 mm vs r11d 62 / 56, lapel through its base 9 / 23 % vs 13 / 12 %, break step
+# 0.7 / 0.5 mm vs 1.7 / 1.4, shirt sleeves through 23 / 31 vs 29 / 32). Held as well (CHEST_HOLD 1), the chest stays
+# (tube KAT drift 0) but the cloth has to give the opening somewhere: an isometric front cannot move its break 50 mm off
+# CF with its chest and side seams fixed (the arc from the break to the side is 52 mm shorter than the cloth: tube KAT),
+# so it compressed: lapels 66 / 90 % through their base (tube), Garrett r12d stretch p99 74 %, max 353 %. A real front
+# gives that width by SHEAR (woven cloth shears at a small fraction of its tensile stiffness; the fit's edge isometry is
+# shear-stiff): the lever is a woven (warp / weft / shear) cell energy; test_open_front_turns_its_lapel_not_its_chest
+# (xfail) is its known answer.
+ROLL_TURN = False
+ROLL_REACH = None  # m (pattern) the turn fades to none over, from the roll line (None: to the held seams)
+CHEST_HOLD = 0.0  # with OPEN_HOLD + ROLL_TURN: the chest above the break held at the closed fit, x OPEN_HOLD_W x (1 - turn)
+
+
+def roll_turn_weight(M: dict, X: np.ndarray, k: int) -> np.ndarray:
+    """The worn-open turn's weight per vertex of piece k (ROLL_TURN; 1 elsewhere): 1 on the first fold row (the roll
+    line) and its flap, 0 on the seams to pieces the body holds, linear in pattern distance
+    between. A piece with no fold row turns whole (1). Returns an (n,) array."""
+    from scipy.spatial import cKDTree
+    pid = np.asarray(M["piece"])
+    uv = np.asarray(M["uv"], float)
+    nm = M["names"][k]
+    out = np.ones(len(X))
+    fds = [fd for fd in M.get("folds") or [] if fd["piece"] == nm and len(fd["rows"])]
+    if not fds:
+        return out
+    from . import folds as _fm
+    row = np.asarray(fds[0]["rows"][0], int)
+    flap = np.asarray(_fm._geom(M, fds[0])["flap0"], bool)
+    sw = np.asarray(M.get("sew", []), int).reshape(-1, 2)
+    partners = {}
+    for a, b in sw:
+        partners.setdefault(int(pid[a]), set()).add(int(pid[b]))
+        partners.setdefault(int(pid[b]), set()).add(int(pid[a]))
+    held = np.zeros(len(X), bool)
+    for a, b in sw:
+        for p, q in ((a, b), (b, a)):
+            if pid[p] == k and pid[q] != k and (partners.get(int(pid[q]), set()) - {k}):
+                held[p] = True
+    sel = np.where(pid == k)[0]
+    if not held[sel].any():
+        return out
+    dr, _ = cKDTree(uv[row]).query(uv[sel])
+    ds, _ = cKDTree(uv[sel[held[sel]]]).query(uv[sel])
+    w = ds / np.maximum(dr + ds, 1e-9)
+    if ROLL_REACH is not None:
+        w = np.minimum(w, np.clip(1.0 - dr / ROLL_REACH, 0.0, 1.0))
+    w[flap[sel]] = 1.0
+    w[np.isin(sel, row)] = 1.0
+    out[sel] = w
+    return out
 
 
 WORN_EDGE_W = 20.0  # the swung front edge's pull to its swung x (a worn-open point's is WORN_OPEN_W)
@@ -1571,6 +1638,18 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
         # Garrett 40-120 mm below the neck point L 129 / R 125 flap vertices vs 45 / 45 unheld. Joe: "the tops of the
         # lapels are embedded in the layer below". HOLD_NAMED False: old.)
         holds = open_seam_holds(M, Xc, ox_named if HOLD_NAMED else ox, placed, fast)
+        if ROLL_TURN and CHEST_HOLD:
+            # THE CHEST STAYS (fit round 12): the turn field as a start alone did not keep it: the relax carried the
+            # chest with the roll line (Garrett r12a: chest drift p90 52 / 54 mm vs r11d 62 / 56). Every vertex of a
+            # worn-open front above its break, off its lapel, is held at its closed-fit position, weight (1 - turn) x
+            # OPEN_HOLD_W: full on the held seams, none at the roll line. The roll line and the lapel turn freely.
+            seen_ = {v for v, _, _ in holds}
+            for k in sorted({int(pid[v]) for v, _, _ in ox_named} - {int(pid[v]) for pr in fast for v in pr}):
+                wt = roll_turn_weight(M, Xc, k)
+                zb_ = max(float(Xc[v, 2]) for v, _, _ in ox_named if pid[v] == k)
+                for v in np.where((pid == k) & (Xc[:, 2] > zb_) & (wt < 1.0 - 1e-6))[0]:
+                    if int(v) not in seen_:
+                        holds.append((int(v), Xc[v].copy(), OPEN_HOLD_W * (1.0 - float(wt[v])) * CHEST_HOLD))
         full = full + holds
         info["open_hold_v"] = len(holds)
     info["turned_deg_start"] = [round(fold_turned(M, X, g), 0) for fd, g, t in folds_]
