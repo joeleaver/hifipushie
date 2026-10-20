@@ -8842,3 +8842,36 @@ docs/notes/cloth.md "dress-garrett 2026-10-19 muslin 1", "form sleeves", "block 
   tests/test_tooling: 2 failures that are on the committed base too (lid_fold FileNotFound, rented opt-in).
 - Disk: root filled to 12 GB free during step 1 from a cargo build in ~/dev/rinch-wt/fix-941 + mold core dumps (not
   ours); local ZOZO now runs with TMPDIR=/mnt/data/hifipushie/tmp ($FR20/run.sh).
+
+## fit round 21 (2026-10-20, Garrett jacket + shirt; $FR21 = /mnt/data/hifipushie/dress_garrett/fit_round21)
+- round 20's end (from its commits + $FR20/info_*.json): arrange_garment + KAT (kept light pins, pull 100 on Garrett);
+  r20a free pins (springback), r20k kept pins: fronts open below the button but still CROSS above it, hem crumples,
+  lower front lumpy. r20n hold_ring 40 mm (791 vertices, 215 strained left free): CCD fails at t = 0 (stop-loss).
+  r20b untangle_closure: front.L|front.R crossing 65 before, moved 0, after 65 (dead).
+- fit round 21 step 1: THE FRONTS PASS THROUGH EACH OTHER IN THE CLOSED FORM FIT. Convention checked: ".L" = wearer's
+  left (+X); the jacket closure is over front.L / under front.R, the shirt's too (left over right: men's; Aldrich,
+  Metric Pattern Cutting for Menswear, buttonholes on the left front; women's reversed by the closure's over/under key).
+  Measured ($FR21/phases.py, traced fit r21t = r19a's recipe, identical to r19a): placement 0 crossing (the over front
+  23 mm BEHIND the under one, barely lapping), relax1 136+132 crossing vertices (both fronts relaxed onto the same
+  offset, 12-20 mm off the body, woven through each other gap ~0 +- 4 mm), seat 158+163, let_go 75+72 = r19a's
+  (depth 315-568 below HPS, x -14..26). Shirt the same: 188+210 at 79-699 mm (placement already 48+36).
+  Fix (pattern_form LAP_LAYER, default on): lap_layers / lap_order / _lap_separate / lap_finish / lap_gaps. Levers in
+  order: (1) soft target (over pushed to LAP_GAP outside the under in the solve's targets): 216 (dead: lost to the
+  lengths and the seat's attraction); (2) raised body offset for the lapping over vertices: 216 (dead: the fronts stand
+  12-20 mm off the body, the offset never acts); (3) hard per-round separation (each side half, <= 1 mm a round) +
+  order at the start (over lifted outside the under within 60 mm) + reach 12 mm (6 mm missed the 10 mm triangles below
+  the lapel) + flaps left out (they lie on their own base) + a fastened button fades the parting over 25 mm (the button
+  joins the layers) + lap_finish (crossing vertices stepped apart <= 16 rounds): jacket 0, shirt 0. A last-round
+  all-the-way push tore (front.L p99 23 %, max 325 %): LAP_FINAL off.
+  r21c (= r19a + LAP_LAYER): jacket front|front crossing 147 -> 0, shirt 398 -> 0; lap gap p50 2.3 mm (jacket) / 1.5
+  (shirt). Cost: jacket stretch p99 8.4 -> 18.2 % (front.L 9.6 -> 12.6, front.R 8.7 -> 17.1): front.R's new stretch is
+  at its NECK (94 edges > 12 % at 0-100 mm below HPS, x -77, vs 15 in r19a) + 21 edges at the break's X point
+  (300-350 mm); the shirt unchanged (p99 8.1). LAP_STEP 0.4 mm (r21d): same. KAT tests/test_pattern_form.py
+  test_lapped_fronts_end_layered (over started inside, 40 mm lap on a cylinder): ON 0 crossing, gap p50 1.49 min 1.15,
+  p99 0.92 %; control OFF 148 crossing, p50 -0.05: PASS; test_pattern_form 34 passed 2 xfailed.
+- fit round 21 lapel check (Joe on r20k: the wearer's RIGHT lapel = camera left in the front view = front.R, falls below
+  the jacket under it). $FR21/lapel.py (flap_through_base's measure, mapped): it is front.R's lapel through ITS OWN base
+  at 50-100 mm below HPS, 21-28 mm from the roll line (the lapel's top by the gorge), not through front.L. Made in the
+  closed fit: r19a 19 of 290 (6.6 %, FAIL, deepest 4.1 mm); release r19w 31 (deepest 7.4 mm at 100-150); r20k 17;
+  front.L 0 / 20 / 5. Not the front crossing (that is 300-570 mm). r21c (layered): 9 (3.1 %, PASS) but still 4.5 mm deep
+  at 50-100: open, R only (the mirrored side's fold rest: see pattern_form line ~322).

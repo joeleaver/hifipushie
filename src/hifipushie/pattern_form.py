@@ -1438,6 +1438,181 @@ def _swing_front(M, X, ox, fast, bsurf):
     return Xn, edge
 
 
+# A LAPPED CLOSURE IS LAYERED (fit round 21, 2026-10-20). A closure's `over` piece runs past the closing line and LIES ON
+# its `under` piece (closures.py): one cloth thickness outside it wherever they overlap, joined only at the fastenings.
+# Which side laps is the closure's design key: men's garments lap the wearer's LEFT front (buttonholes, ".L" = +X) over
+# the right (buttons), women's the reverse (Aldrich, Metric Pattern Cutting for Menswear: the buttonholes on the left
+# front; the shirt placket strips in garments.py follow the same rule). Without it the form relaxed both fronts onto the
+# same offset of the body and they passed THROUGH each other across the overlap (Garrett jacket r19a: 75 + 72 crossing
+# vertices 315-568 mm below HPS, made in relax1 and kept by every release since; his shirt: 188 + 210, 79-699 mm). An
+# intersection-free sim keeps a crossing it starts with, so no release or arrangement could part them.
+LAP_LAYER = True
+LAP_GAP = THICK  # m: the over piece's least gap off the under piece where they lap (one cloth layer)
+LAP_REACH = 0.012  # m: an over vertex laps the under piece where it is within this of its nearest vertex ACROSS (tangentially: ~ the mesh edge; 6 mm missed the 10 mm triangles below the lapel)
+LAP_DEPTH = 0.008  # m: ... and at most this far behind or in front of it (further is another layer: 30 mm caught the lapel)
+
+
+def lap_layers(M: dict, X: np.ndarray, fast=(), skip=None) -> list:
+    """Per lapped closure (over and under different pieces): (the over piece's vertices, its triangles, the under
+    piece's vertices, its triangles). The vertices of the fastened pairs are left out: the button joins the layers."""
+    F, pid, names = np.asarray(M["F"]), np.asarray(M["piece"]), list(M["names"])
+    tied = {int(a) for a, _ in fast} | {int(b) for _, b in fast}
+    sk = np.zeros(len(pid), bool) if skip is None else np.asarray(skip, bool)
+    out = []
+    for c in M.get("closures") or []:
+        o, u = c.get("over"), c.get("under")
+        if not o or not u or o == u or o not in names or u not in names:
+            continue
+        ko, ku = names.index(o), names.index(u)
+        fo = np.array([v for v in np.where((pid == ko) & ~sk)[0] if int(v) not in tied], np.int64)
+        fu = np.array([v for v in np.where((pid == ku) & ~sk)[0] if int(v) not in tied], np.int64)
+        tv = np.array(sorted(v for v in tied if pid[v] in (ko, ku)), np.int64)
+        out.append((fo, F[pid[F[:, 0]] == ko], fu, F[pid[F[:, 0]] == ku], tv))
+    return out
+
+
+LAP_BUTTON = 0.025  # m: a fastening joins the two layers: the parting fades to nothing over this round it
+
+
+def _lap_w(X, Q, tv) -> np.ndarray:
+    """The parting's weight at Q: 0 at a fastened vertex, 1 from LAP_BUTTON away (the button holds the layers
+    together; parted to LAP_GAP right up to it, the cloth round the button stood in a 1.5 mm cone: shirt front p99 27 %)."""
+    if not len(tv):
+        return np.ones(len(Q))
+    d, _ = cKDTree(X[tv]).query(Q)
+    return np.clip(d / LAP_BUTTON, 0.0, 1.0)
+
+
+LAP_STEP = 0.001  # m: the most a lapped pair is parted per round (each side half)
+LAP_FINAL = False  # the last round all the way (r21a: single vertices jumped up to 9 mm, front.L stretch p99 23 %)
+
+
+def _lap_side(X, Q, tris, ref):
+    """Q's signed distance off the surface of `tris` (outward = away from the body), its normal there, and whether Q laps
+    it (within LAP_REACH across, LAP_DEPTH along the normal)."""
+    v_ = np.unique(tris)
+    ix = -np.ones(len(X), int)
+    ix[v_] = np.arange(len(v_))
+    S = _Surface(X[v_], ix[tris], ref=ref)
+    d, nrm, _ = S.signed(Q)
+    i = S.tree.query(Q)[1]
+    tang = np.linalg.norm((Q - S.V[i]) - d[:, None] * nrm, axis=1)
+    return d, nrm, (tang < LAP_REACH) & (np.abs(d) < LAP_DEPTH)
+
+
+def _lap_separate(X: np.ndarray, lap, ref, final: bool = False) -> np.ndarray:
+    """One round of LAP_LAYER: the over vertices that lap the under piece closer than LAP_GAP (or behind it) move out
+    along its outward normal, and the under vertices that lap the over piece closer than LAP_GAP inside it (or in
+    front of it) move in, each half the shortfall, at most LAP_STEP per round (the last round all the way: over out,
+    then under in, so the result is layered from both sides: a ripple of the under piece pokes through otherwise)."""
+    fo, to, fu, tu, tv = lap
+    X = X.copy()
+    d, nrm, m = _lap_side(X, X[fo], tu, ref)
+    m &= d < LAP_GAP
+    sh = (LAP_GAP - d[m]) * _lap_w(X, X[fo[m]], tv)
+    X[fo[m]] += nrm[m] * (sh if final else np.minimum(0.5 * sh, LAP_STEP))[:, None]
+    d, nrm, m = _lap_side(X, X[fu], to, ref)
+    m &= d > -LAP_GAP
+    sh = (d[m] + LAP_GAP) * _lap_w(X, X[fu[m]], tv)
+    X[fu[m]] -= nrm[m] * (sh if final else np.minimum(0.5 * sh, LAP_STEP))[:, None]
+    return X
+
+
+LAP_START = 0.06  # m: at the start, the over piece within this of the under piece is lifted outside it (lap_order)
+LAP_LIFT = 0.003  # m: ... to this much further off the body than the under piece's nearest vertex
+
+
+def lap_order(X: np.ndarray, laps: list, bsurf) -> tuple[np.ndarray, dict]:
+    """The start's layer order for each lapped closure: the over piece's vertices within LAP_START of the under piece
+    lifted along the body's normal to LAP_LIFT further off the body than the under piece's nearest vertex (fading to
+    nothing at LAP_START). The fronts SLIDE across each other into the lap as the form relaxes them: an over front that
+    arrives behind the under one is pushed through it by the layering and they weave (Garrett r21: placement over
+    23 mm behind, 42-114 crossing vertices left after a per-round separation alone). Returns (X, {lifted, max_mm})."""
+    X = X.copy()
+    rep = {"lifted": 0, "max_mm": 0.0}
+    if bsurf is None:
+        return X, rep
+    for fo, to, fu, tu, _tv in laps:
+        dist, j = cKDTree(X[fu]).query(X[fo])
+        near = dist < LAP_START
+        if not near.any():
+            continue
+        db_o, nb_o, _ = bsurf.signed(X[fo[near]])
+        db_u, _, _ = bsurf.signed(X[fu[j[near]]])
+        lift = np.maximum(db_u + LAP_LIFT - db_o, 0.0) * np.clip(1.0 - dist[near] / LAP_START, 0.0, 1.0)
+        X[fo[near]] += nb_o * lift[:, None]
+        rep["lifted"] += int((lift > 1e-4).sum())
+        rep["max_mm"] = max(rep["max_mm"], round(float(lift.max()) * 1000, 1))
+    return X, rep
+
+
+LAP_FINISH = 16  # rounds of lap_finish at most
+
+
+def lap_finish(M: dict, X: np.ndarray, laps: list, bsurf) -> tuple[np.ndarray, dict]:
+    """The lap's last step: where an edge of the over piece still passes through the under piece's triangles (the
+    layering reads vertex to vertex; a ripple of either between its vertices crosses), the crossing vertices of the over
+    piece move out along the body's normal and the under piece's in, LAP_STEP each a round, until nothing crosses
+    (at most LAP_FINISH rounds; the under piece never inside its EASE off the body). Returns (X, {before, after, rounds})."""
+    from . import cloth
+    F, pid, names = np.asarray(M["F"]), np.asarray(M["piece"]), list(M["names"])
+    X = X.copy()
+    rep = {}
+    for c in M.get("closures") or []:
+        o, u = c.get("over"), c.get("under")
+        if not o or not u or o == u or o not in names or u not in names:
+            continue
+        ko, ku = names.index(o), names.index(u)
+        n0 = None
+        for r in range(LAP_FINISH + 1):
+            vo = np.asarray(cloth._pair_crossing_verts(X, F, pid, ko, ku), np.int64).reshape(-1)
+            vu = np.asarray(cloth._pair_crossing_verts(X, F, pid, ku, ko), np.int64).reshape(-1)
+            n0 = len(vo) + len(vu) if n0 is None else n0
+            if (not len(vo) and not len(vu)) or r == LAP_FINISH or bsurf is None:
+                break
+            if len(vo):
+                _, nb, _ = bsurf.signed(X[vo])
+                X[vo] += nb * LAP_STEP
+            if len(vu):
+                d, nb, _ = bsurf.signed(X[vu])
+                X[vu] -= nb * np.clip(d - EASE, 0.0, LAP_STEP)[:, None]
+        rep[c.get("name", o)] = {"before": int(n0), "after": int(len(vo) + len(vu)), "rounds": r}
+    return X, rep
+
+
+def lap_gaps(M: dict, X: np.ndarray, body=None) -> dict:
+    """Per lapped closure: crossing vertices (cloth._pair_crossing_verts both ways) and the over piece's gap off the
+    under piece where it laps it (mm: p01 / p50 / min, n). The gate: crossings 0, min gap >= 0 (no_front_through_front)."""
+    from . import cloth
+    F, pid, names = np.asarray(M["F"]), np.asarray(M["piece"]), list(M["names"])
+    ref = _body_surface(body) if body is not None else None
+    out = {}
+    for c in M.get("closures") or []:
+        o, u = c.get("over"), c.get("under")
+        if not o or not u or o == u or o not in names or u not in names:
+            continue
+        ko, ku = names.index(o), names.index(u)
+        cr = len(np.asarray(cloth._pair_crossing_verts(X, F, pid, ko, ku)).reshape(-1)) + \
+            len(np.asarray(cloth._pair_crossing_verts(X, F, pid, ku, ko)).reshape(-1))
+        ut = F[pid[F[:, 0]] == ku]
+        uv_ = np.unique(ut)
+        ix = -np.ones(len(X), int)
+        ix[uv_] = np.arange(len(uv_))
+        S = _Surface(X[uv_], ix[ut], ref=ref)
+        Q = X[pid == ko]
+        d, nrm, _ = S.signed(Q)
+        i = S.tree.query(Q)[1]
+        tang = np.linalg.norm((Q - S.V[i]) - d[:, None] * nrm, axis=1)
+        m = (tang < LAP_REACH) & (np.abs(d) < LAP_DEPTH)
+        g = d[m] * 1000
+        out[c.get("name", o)] = {"over": o, "under": u, "crossing": int(cr), "lap_n": int(m.sum()),
+                                 "gap_mm": {"min": round(float(g.min()), 2) if len(g) else None,
+                                            "p01": round(float(np.percentile(g, 1)), 2) if len(g) else None,
+                                            "p50": round(float(np.median(g)), 2) if len(g) else None},
+                                 "ok": bool(cr == 0 and (not len(g) or g.min() >= -0.1))}
+    return out
+
+
 def fastened(M: dict, fasten="default") -> list:
     """Vertex pairs of the closures fastened on the form: "default" = every closure whose state is closed, and an open
     front's TOP pair (a jacket on the form at its top button; the break is there); "all"; or a list of
@@ -1703,6 +1878,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                 s_ = np.maximum(d0[fv] - dr_[-1], 0.0)
                 gap = THICK + 2 * rad * np.clip(1.0 - s_ / (math.pi * rad), 0.0, 1.0) ** 2
             over_gap.append(gap)
+    laps = lap_layers(M, X, fast, skip=flapv) if LAP_LAYER else []  # (a lapped closure's over piece outside its under piece; turned flaps lie on their own base)
     # off-the-body target per vertex
     off = ease + THICK * flapv
     on_flap = flapv.copy()  # (no seat attraction onto the body: turned flaps + what the press laid on them)
@@ -1939,6 +2115,8 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                     near = (dist < 0.03) & (du < off + 0.001)
                     Xn[near] += nu[near] * (off[near] + 0.001 - du[near])[:, None]
                     held |= near
+            for lp_ in laps:  # LAP_LAYER: hard, every round (a soft target lost to the lengths: the fronts stayed woven)
+                Xn = _lap_separate(Xn, lp_, bsurf, final=LAP_FINAL and it == iters - 1)
             if osurf is not None and ceil_on[0]:  # TWO LAYERS: hard contact under the over layer (a proximal target alone lost to the
                 # lengths: the too-big inner tube stayed round, 146 vertices outside the outer), then off the form
                 cv_, do_, no_ = covered(osurf, Xn, bsurf)
@@ -1956,6 +2134,8 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
 
     info = {}
     tr = TRACE or (lambda *a_: None)
+    if laps:  # (LAP_LAYER: the over piece starts outside the under one; see lap_order)
+        X, info["lap_order"] = lap_order(X, laps, bsurf)
     tr("placement", X, M)
     if B is not None and not all(placed.values()):
         # the bands' own vertices relax only after they are stood up: first the rest of the garment, WITHOUT the
@@ -2079,6 +2259,8 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
         X = relax(X, SETTLE_ITERS, attract=0.0, grav=SETTLE_G * h_ ** 2)
         tr("settle", X, M)
         info["settled"] = {"iters": SETTLE_ITERS, "g": SETTLE_G}
+    if laps:  # (LAP_LAYER: nothing of the over piece left through the under one)
+        X, info["lap_finish"] = lap_finish(M, X, laps, bsurf)
     info["turned_deg"] = [round(fold_turned(M, X, g), 0) for fd, g, t in folds_]
     # report
     l0 = np.linalg.norm(uv[E[:, 0]] - uv[E[:, 1]], axis=1)
@@ -2111,6 +2293,8 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
         hinge.append({"piece": fd["piece"], "fold": fd["name"], "deg": round(math.degrees(turn), 0),
                       "row_stretch_pct": round(float(np.abs(rs).max()) * 100, 2), "missing_edges": fd.get("missing_edges", 0)})
     info["folds"] = hinge
+    if laps:
+        info["laps"] = lap_gaps(M, X, body)
     if bsurf is not None:
         d, _, _ = bsurf.signed(X)
         info["inside_body"] = int((d < 0).sum())

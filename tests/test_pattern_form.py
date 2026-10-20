@@ -1449,3 +1449,54 @@ def test_gorge_lie_known_answers():
     found on its own side only, a seam bent along a cylinder (no twist) reads ~0, a 30 deg hinge reads across 30, a
     collar end lifted 12 mm reads tip 12 (round 16's notch.py counted the surface's own bend and the in-plane gap)."""
     pf._selftest_gorge_lie()
+
+
+def _lapped_case(r=0.10, lap=0.04, h=0.3, over_r=0.008, under_r=0.025):
+    """Two fronts round a cylinder (its CF at -Y), each from the back (+Y) round its own side to `lap` past CF: front.L
+    (+X) the closure's over piece, front.R the under one. The start puts the over piece INSIDE the under one (Garrett's
+    placement: the over front 23 mm behind), both off the cylinder."""
+    R = r + 0.004
+    half = math.pi * R + lap
+    P = [[0, 0], [half, 0], [half, h], [0, h]]
+    nmz = {"a0": 0, "a1": 1, "a2": 2, "a3": 3}
+    B = _B({"front.L": _piece(P, names=nmz), "front.R": _piece(P, names=nmz)})
+    M = cloth.mesh(B, 0.008)
+    M["closures"] = [{"name": "front", "kind": "buttons", "over": "front.L", "under": "front.R", "state": "open",
+                      "pairs": [], "v": []}]
+    pid = np.asarray(M["piece"])
+    X0 = np.zeros((len(pid), 3))
+    for nm, sg, rr in (("front.L", 1.0, r + over_r), ("front.R", -1.0, r + under_r)):
+        k = pid == M["names"].index(nm)
+        th = math.pi / 2 - sg * (M["uv"][k, 0] / R)  # (uv x 0 at the back, `half` at the lap's edge past CF)
+        X0[k] = np.c_[rr * np.cos(th), rr * np.sin(th), 0.1 + M["uv"][k, 1]]
+    return M, X0, _cyl_body(r, -0.1, 0.6)
+
+
+def test_lapped_fronts_end_layered(verbose=True):
+    """(fit round 21) A LAPPED CLOSURE IS LAYERED (pattern_form.LAP_LAYER): two fronts lapped 40 mm at CF on a cylinder,
+    the over one started INSIDE the under one, end with the over front outside the under one wherever they lap (gap
+    p50 >= 1 mm, nothing behind by more than 0.5 mm) and nothing crossing; the cloth unstretched (p99 < 3 %). Without
+    LAP_LAYER the over front stays inside / through the under one (the control)."""
+    M, X0, body = _lapped_case()
+    res = {}
+    for on in (True, False):
+        old = pf.LAP_LAYER
+        pf.LAP_LAYER = on
+        try:
+            out = pf.assemble({"mesh": M, "X0": X0}, body, iters=120)
+        finally:
+            pf.LAP_LAYER = old
+        V = out["V"]
+        lg = pf.lap_gaps(M, V, body)["front"]
+        E = pf._edges(M["F"])
+        l0 = np.linalg.norm(M["uv"][E[:, 0]] - M["uv"][E[:, 1]], axis=1)
+        sv = np.abs(np.linalg.norm(V[E[:, 0]] - V[E[:, 1]], axis=1) / l0 - 1)
+        res[on] = (lg, float(np.percentile(sv, 99)))
+        if verbose:
+            print(f"LAP_LAYER {on}: {lg}, stretch p99 {res[on][1] * 100:.2f} %, finish {out['info'].get('lap_finish')}")
+    lg, p99 = res[True]
+    assert lg["crossing"] == 0 and lg["lap_n"] > 50, lg
+    assert lg["gap_mm"]["p50"] >= 1.0 and lg["gap_mm"]["min"] >= -0.5, lg
+    assert p99 < 0.03, p99
+    lg0 = res[False][0]
+    assert lg0["crossing"] > 0 or lg0["gap_mm"]["p50"] < 0.5, lg0  # (the control: not layered)
