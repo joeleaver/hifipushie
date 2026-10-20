@@ -200,11 +200,35 @@ def op_jacket_neck(D: dict, width: float | None = None, rise: float | None = Non
                     f"rise {(_pt(pc, 'hps')[1] - _pt(pc, 'cbNeck')[1]) * 1000:.1f} mm (targets {width * 1000:.1f} / {rise * 1000:.1f})")
 
 
+SILHOUETTES = ("suit", "straight")  # R8's style: how much waist shaping beyond the body's own
+
+
+# R8 "straight" (fit round 12, read from Garrett's concept): the sides hang straight in the front view. The concept's
+# torso width over the BARE body is near uniform, 115 / 122 / 124 mm at 350 / 425 / 500 mm below HPS (the body itself is
+# straight in width, 281 / 278 / 305: its 18.5 % chest -> waist girth drop is in depth), where the suit default left 92 /
+# 79 / 91 (fit round 12 bodyrows.py): the hourglass is the draft's side take-ins, not the body. Straight keeps the CB and
+# dart take-ins of the suit (the same mm: they shape the back and the front over the body's depth) and takes nothing at
+# the side-back / side-front seams: the American sack's straight sides (Flusser, Dressing the Man: the sack "hangs
+# straight from the shoulders"; Cabrera & Flaherty: suppression is a style choice of the side seams).
+STRAIGHT_SIDES = ("side_back", "side_front")
+
+
 def op_waist_suppression(D: dict, waist_ease: float | None = None, share: dict | None = None, dart_x: float = 0.55,
-                         **o) -> None:
+                         silhouette: str = "suit", **o) -> None:
     """R8 / R10 (see _suppress): the shares are scaled so the waist lands on its target (the seam take-ins fade above
-    and below the waist, so a first pass on a copy measures what each mm of take-in really removes)."""
+    and below the waist, so a first pass on a copy measures what each mm of take-in really removes). silhouette (R8's
+    style, a design choice read from the reference's row profile): "suit" = the waist at R1's waist ease (11-20 % of the
+    chest taken in, shared CB / side-back / side-front / dart); "straight" = the suit's CB and dart take-ins only, the
+    sides straight (STRAIGHT_SIDES)."""
     import copy as _copy
+    if silhouette not in SILHOUETTES:
+        raise ValueError(f"waist_suppression silhouette {silhouette!r}: one of {SILHOUETTES}")
+    if silhouette == "straight":  # (the suit's CB / dart mm, no side take-ins: no gain, which would scale them up)
+        share = dict(SHARE, **(share or {}), **{k: 0.0 for k in STRAIGHT_SIDES})
+        _suppress(D, waist_ease, share, dart_x, gain=1.0)
+        D["meta"].pop("_supp_want", None)
+        D["log"].append("waist suppression R8 silhouette straight: no side-back / side-front take-ins")
+        return
     if o.get("_gain") is None:
         trial = _copy.deepcopy(D)
         _suppress(trial, waist_ease, share, dart_x, gain=1.0)
@@ -600,8 +624,15 @@ def tailor_rows(Bp: dict, tape: dict, g: dict | None = None, button_mm: float = 
     if "waist_y" in meta and "chest_y" in meta:
         ch, wa = torso_span(Bp, meta["chest_y"], half=False), torso_span(Bp, meta["waist_y"], half=False)
         sup = (ch - wa) / max(ch, 1e-9) * 100
-        row("waist_suppression", src(8), sup, "11-20 %", 0, ok=11.0 <= sup <= 20.0, units="% of chest",
-            why=f"chest {ch * 1000:.0f} / waist {wa * 1000:.0f} mm on the flat pattern (Jaeger reads 13-17 %)")
+        sil = next((op_.get("silhouette", "suit") for op_ in ((g.get("design") or {}).get("ops") or [])
+                    if op_.get("op") == "waist_suppression"), "suit")
+        if sil == "straight":  # (CB + dart only, at their R8 shares of the reduction, no gain: ~1-3 % of the chest)
+            row("waist_suppression", src(8), sup, "<= 9 % (straight)", 0, ok=sup <= 9.0, units="% of chest",
+                why=f"chest {ch * 1000:.0f} / waist {wa * 1000:.0f} mm on the flat pattern; silhouette straight: CB "
+                    f"and dart only (the sack's straight sides)")
+        else:
+            row("waist_suppression", src(8), sup, "11-20 %", 0, ok=11.0 <= sup <= 20.0, units="% of chest",
+                why=f"chest {ch * 1000:.0f} / waist {wa * 1000:.0f} mm on the flat pattern (Jaeger reads 13-17 %)")
     if "hips_y" in meta:
         hp = torso_span(Bp, meta["hips_y"], half=False) * 1000
         frh = _half(Bp, "front")

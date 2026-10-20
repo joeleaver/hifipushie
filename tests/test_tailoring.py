@@ -127,6 +127,32 @@ def test_gate_rows_catch_the_muslin1_faults():
     assert rows["waist_suppression"]["ours"] < 11.0
 
 
+def test_straight_silhouette_follows_the_body_at_every_size():
+    """(fit round 12) R8's style: "straight" keeps the suit's CB + dart take-ins and none at the side seams: at every
+    size its chest -> waist reduction is under 9 % of the chest and under the suit's, passes its gate row, and the
+    straight waist is wider than the suit's by more than the side take-ins' nominal 64 % share of the suit's reduction
+    (the suit's shares are scaled up to land on the target; straight's are not)."""
+    for name, tape in [("TAPE", TAPE)] + sorted(BODIES.items()):
+        out = {}
+        for sil in ("suit", "straight"):
+            ops = pj.jacket_ops(OPS, tape, 20.0)
+            for op in ops:
+                if op["op"] == "waist_suppression":
+                    op["silhouette"] = sil
+            D = pd.start("bodice", tape, BLOCK)
+            pd.apply(D, ops)
+            Bp = _bp(D)
+            r = _rows(Bp, tape, {"design": {"details": {"pockets": "flap"}, "ops": ops}})["waist_suppression"]
+            out[sil] = (r["ours"], r["status"], pj.torso_span(Bp, D["meta"]["waist_y"], half=False))
+        D0 = pd.start("bodice", tape, BLOCK)
+        pd.apply(D0, [op for op in pj.jacket_ops(OPS, tape, 20.0) if op["op"] != "waist_suppression"])
+        red = pj.torso_span(_bp(D0), D0["meta"]["waist_y"], half=False) - out["suit"][2]
+        gap = out["straight"][2] - out["suit"][2]
+        print(name, out, f"suit reduction {red * 1000:.0f} mm, straight wider by {gap * 1000:.0f}")
+        assert out["straight"][1] == "PASS" and out["straight"][0] < out["suit"][0], (name, out)
+        assert 0.64 <= gap / red < 1.0, (name, gap, red)
+
+
 def test_collar_fall_has_its_fold_line_and_the_gate_refuses_one_without():
     """R16 (fit round 2): the two-piece collar's fall carries a fold (roll) line across the whole fall (CB fold to both
     ends), parallel to its seam on the stand; the construction check (garment_design "fold" evidence, the gate's
