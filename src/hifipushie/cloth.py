@@ -9300,7 +9300,7 @@ class ClothError(ValueError):
     pass
 
 
-GARMENT_KEYS = {"pattern", "pieces", "seams", "stitches", "drop", "alter", "fabric", "interfaced", "color", "roughness", "sheen",
+GARMENT_KEYS = {"shoulder_pad", "layer_clearance", "pattern", "pieces", "seams", "stitches", "drop", "alter", "fabric", "interfaced", "color", "roughness", "sheen",
                 "state", "resolution", "coarse", "quality", "frames", "self_collision", "self_collision_sew", "assemble",
                 "sew_force", "sew_frames", "worn_frames", "settle_frames", "hang_frames", "hang_sew_force", "hang_air", "refine_frames",
                 "refine_ease", "cleanup", "detail", "sculpt", "finish", "unfold_finish", "under", "under_sculpt", "under_collar", "note", "backend", "placement", "lower_arms", "lower_frames", "zozo", "_trace",

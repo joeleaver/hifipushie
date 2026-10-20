@@ -7622,3 +7622,18 @@ lines across the upper back; opening at the chest judged within ~10 px. Collar /
   over the pad, the shirt under it doesn't see it. Garrett: 10 mm (structured, concept's slightly built shoulder).
   Test test_shoulder_pad_lifts_the_form (10.0 mm at the centre, 0 at the neck point and underneath). The DRAFT does not
   yet add the pad's allowance (shoulder seam / cap height raised by the pad): open.
+- Step 5, gated fit ($FR1/fit.py, in-memory fr1 spec, model dg_garrett, no store write; GARMENT_KEYS += shoulder_pad,
+  layer_clearance): pattern_gate shirt FAIL (7 UNMEASURED: no refs passed), jacket FAIL: UNMEASURED (no refs) AND a real
+  FAIL flat_pattern "collar notched_lapel: no fold line on collar_fall (collar)": the v2 two-piece collar's FALL has no
+  fold, so the form never turns it down over the stand (turned_deg lists only the two lapel rolls, 169 / 167). The
+  jacket was assembled on the form anyway (gate_status: fit_garment would refuse) for the collar check:
+  neck points 0.1 mm, stretch p50 1.1 / p99 15.4 / max 77 %, through_under 268, inside_body 43.
+- Step 6, collar check ($FR1/collar.py -> collar_measures.json, check/<view>_{ref,clay,diag}.png, 640 px, views front /
+  three / side / back / top; the concept has a front view only, the back ref is s0urc3's head-back photo, outside the repo):
+  stand at CB 23.5 mm (book ~25, R16), fall at CB 54 mm tall but its top 71 mm above HPS: it STANDS UP (no turn);
+  ring hug: stand 15-34 mm off the neck (CB -> side), 0-8 mm off the shirt; notch gap 57 mm, angle 74 deg (Jaeger 45);
+  collar end 15 mm off the gorge; shirt collar shows -11 mm at the back, -8 at the sides (it should show ~10-15 ABOVE
+  the jacket collar: it is covered). Look (mine): the back collar is a thick roll standing off the neck like a hood; the
+  shirt shows through the jacket's upper back; the lapels lie and the new stripes keep lapel / collar / front apart.
+  VERDICT: collar FAILS; cause #1 is the pattern (the fall has no fold line to turn on), then the stand off the neck.
+- Step 7 (blind review): NOT RUN (budget).

@@ -1,15 +1,22 @@
 # STATE: fit_round1 (Garrett jacket v2 + shirt on the virtual dress form, collar check) -- 2026-10-19. NO SIMS.
 
-STATE: 1 done, 2 PARKED (settle: tube KAT pass, cape KAT fail), 3 + 4 done. NEXT: step 5 fit v2 (fr1.py) on the form.
-Durable files: /mnt/data/hifipushie/dress_garrett/fit_round1/. History: docs/notes/cloth.md "fit round 1".
+STATE: 1, 3, 4 done; 2 PARKED; 5 run (gate FAILs, fit forced for the check); 6 done (collar FAILS); 7 not run.
+NEXT: give the v2 collar's fall its fold line (the gate's flat_pattern FAIL) and re-run $FR1/fit.py + collar.py, then
+the blind review (bin/review --dry, one image per turn). Pass refs (refread/garrett_concept_refs_v2.json) to the gate.
+Files: $FR1 = /mnt/data/hifipushie/dress_garrett/fit_round1/ (run.sh, fr1.py spec, fit.py, collar.py, check/, asm.pkl).
+History: docs/notes/cloth.md "fit round 1".
 
-## Plan (one agent, in order; commit after each)
-1. diag turned stripes (DONE: tests/test_diag_render.py 16/16 pixel checks; renders fit_round1/diag_known/).
-2. form gravity + real contact: PARKED. pattern_form.SETTLE (opt-in, off): tube KAT PASS, cape KAT FAIL (tent; local /
-   global too slow for big rotations; needs a method change). Validation record unchanged, form_validated() False.
-3. layer clearance: DONE (cloth_check.layer_clearance_rows; fr1.py jacket chest 0.15 / waist 0.16 / biceps 0.25 ease,
-   shirt bicepsEase 0.10: all 4 rows PASS; shirt chestEase not moving its chest = open tooling).
-4. shoulder pad: DONE (garment key shoulder_pad, pattern_form.padded_body; Garrett 10 mm; draft allowance open).
-5. fit jacket v2 + shirt via pattern_check -> fit_garment.
-6. collar check: 1 m neck close-ups front / 3/4 / side / back / top, clay + diag, beside the concept's neck; measured.
-7. blind single-view review.
+## Steps
+1. diag turned = stripes over the piece colour: DONE (tests/test_diag_render.py 16/16 pixel checks).
+2. form gravity + contact: PARKED. pattern_form.SETTLE opt-in OFF; tube KAT PASS, cape KAT FAIL (open_settle_cape_on_bar:
+   tent, local / global too slow for big rotations -> needs a method change). Validation record unchanged, form_validated False.
+3. layer clearance rows (cloth_check.layer_clearance_rows): DONE; fr1 ease (jacket chest 0.15 / waist 0.16 / biceps 0.25,
+   shirt bicepsEase 0.10): all 4 PASS. Open tooling: the shirt's chestEase / waistEase don't move its measured chest / waist.
+4. shoulder pad (garment key shoulder_pad, pattern_form.padded_body): DONE, 10 mm; draft allowance not added (open).
+5. gate: shirt FAIL (UNMEASURED: no refs), jacket FAIL (UNMEASURED + flat_pattern: no fold line on the collar fall).
+6. collar ($FR1/collar_measures.json): stand CB 23.5 (book 25); fall stands up, top 71 mm over HPS; stand 15-34 mm off the
+   neck; notch gap 57 mm / 74 deg (J 45); collar end 15 mm off the gorge; shirt collar shows -11 back / -8 sides (want
+   +10-15). Through-under 268 faces (shirt through the upper back).
+
+## Dead ends
+- HANG-style gravity without contact in the solve (780 % stretch); unclamped steps tunnel the form.
