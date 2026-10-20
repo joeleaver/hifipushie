@@ -1,35 +1,35 @@
-# STATE: fit_round10 (Garrett jacket: silhouette big to small, then sleeves, lapel face) -- 2026-10-19. NO SIMS.
+# STATE: fit_round10 (Garrett jacket: silhouette big to small, sleeves, lapel width) -- 2026-10-19. NO SIMS.
 
-STATE: step 1a DONE (open fronts without the side slide). Candidate r10c = r9h + OPEN_HOLD (opt-in) + the plumb hang:
-hem 492 (concept 478, r9h 574 F) P; side seams at the hem back to the closed fit's (x 210/221, r9h 288/293); every
-front-edge / roll-line / button row still passes. Waist 343 vs 401 F.
-NEXT: step 1b the waist: the form keeps lengths at the waist (horizontal edges 1.00), so the pinch is the DRAFT
-(waist ease R8 14 %, an hourglass) vs the concept's near-straight torso; then step 2 sleeves, 3 lapel face, 4 renders.
+STATE: HANDOVER. Candidate r10i = r9h + OPEN_HOLD (seams held at the closed fit + plumb hang, opt-in) + jacket sleeve
+room (biceps_ease 0.3435 -> 0.319 after the cap rule) + lapel width 0.095. Every front-edge / roll / V / lapel-outer /
+button row PASSES; the peplum is gone (side seams at the closed fit's x). Waist 343 F, hem 448 F (r10c 492 P), break
+row 361 F. Blind reviews FAIL wholefront / front / three. OPEN_HOLD NOT made the default (no closed-vs-open A/B review).
+NEXT: (1) the torso is ~35 mm narrow from the armpit to the waist vs the concept (396/395/405 at 350/400/450 vs ours
+361/341/349) and the hem lost 30 mm to r10g's sleeve change: decide chest / waist ease from the concept's row profile
+(draft lever waist_ease: 0.14 -> 0.34 moved the waist only +19 mm: girth goes to depth, CB stands 41-49 mm off);
+(2) lapels don't read as a turned face (reviewers: limp strips, no crisp edge, lumpy folds at the gorge): lapel turn /
+press on the chest, crisp edge; (3) queued: collar funnel + shirt collar, pockets / plackets / buttons as drafted parts.
 
-## Causes (step 1a)
-- r9h opened the fronts by the edge alone (WORN_EDGE): an isometric front can only do that by sliding round the body,
-  the side seams 70 mm out at the hem (a peplum). A real open front hangs from its seams: pivots at the break, falls.
-- Form rule (pattern_form.open_seam_holds, OPEN_HOLD): a worn-open piece's seams to OTHER pieces below its break are
-  held where the CLOSED fit puts them (a second assemble with worn_open=None); pieces with a fastened closure are
-  left alone (the shirt: held, it went into the body). worn_open_edge: below the lowest worn-open point the free edge
-  hangs plumb (x = that point's offset + the draft's own run-out: a cutaway), OPEN_HANG with OPEN_HOLD; not on
-  buttoned pieces (hung, the shirt opened to the belt).
-- Known answer test_open_front_hangs_without_moving_its_side_seams (open tube on a cylinder): hold -> side seams 0.0 mm,
-  edge below the break 50 mm off CF, y -161 (bridges forward); without: side 11 mm, edge back to CF.
+## Causes
+- Peplum (r9h): WORN_EDGE opened the fronts by the edge only; an isometric front then slides round the body. Fix
+  (C53): pattern_form.open_seam_holds + worn_open_edge's plumb hang (OPEN_HOLD / OPEN_HANG); not on buttoned pieces.
+  Known answer test_open_front_hangs_without_moving_its_side_seams.
+- Waist pinch: the form is faithful (horizontal edges at the waist 1.00); the draft's 14 % waist ease (R8 suit
+  default) makes an hourglass where the concept's torso is straight; but the whole upper torso is also narrow (not only
+  the waist), and girth added at the waist goes into depth. Not fixed: open (NEXT 1).
+- Shirt through the upper arms: the jacket sleeve was drafted from the bare arm (396 mm at the biceps) over a shirt
+  sleeve of 391: no room for a layer. Fix (C54): width >= under + 2 pi (EASE + THICK); pattern_form.sleeve_room
+  check + test_sleeve_over_a_sleeve_has_room; Garrett via fr10 SLEEVE_OVER (the spec: biceps_ease, sourced). Shirt
+  sleeve vertices outside the jacket 36/45 -> 12/12 (all at the armpit join, hidden by the arm).
+- Lapels narrow: op_lapel width 0.072 (checklist 70-85, M&S) vs the concept's front-view outer edge; lever check 0.085
+  -> 125/123, 93/91; 0.095 -> 131/130, 97/97 (P). Sourced from the concept rows (fr10 LAPEL_W).
 
-## Table (m10.py, front view; m9's hem_sweep was a bad read: now the torso's OUTER width, sleeves apart)
-| item | concept | r9h | r10b (hold) | r10c (hold+hang) | r10d (break only) |
-| edge_below_450/550/650 | 71/66, 78/72, 94/85 | 57, 74, 86 P | same P | 57/58, 75, 86 P | 64, 64, 64 (650 F) |
-| opening_half_150/250/350 | 69/70, 64/57, 59/43 | P | P | P | 250, 350 F |
-| v_width_200 | 237 | 209 F | 208 F | 208 F | 225 P |
-| lapel_outer_150 / 250 | 127/134, 112/100 | 124/119, 88/84 F | F | 120/116, 87/84 F | 125/121, 97/96 P |
-| waist / hem / length | 401 / 478 / 752 | 358 F / 574 F / 758 | 343 F / 458 P | 343 F / 492 P / 759 P | 323 F / 431 F |
-| side seam hem x (closed 217) | - | 288/293 | 210/221 | 210/221 | 209/208 |
+## Table: docs in /mnt/data/hifipushie/dress_garrett/fit_round10/checklist_r10.md (R10 column); logs m10_chain{2,3,4}.log
 
 ## Files
-$FR10 = /mnt/data/hifipushie/dress_garrett/fit_round10/ (run.sh = this worktree): harness10.py (fr9 spec; code+spec
-keyed cache, C49), m10.py (m9 + side seam rows + outer silhouette), thru.py (shirt through jacket), waist.py (slices:
-widths, stand-off by direction, horizontal edge ratio), chain1.sh / chain2.sh, asm_r10{a,b,c,d}.pkl, front_<tag>.png,
-cmp_front_r10a.png, cmp_front_r10bcd.png. r10c: WORN='{"break": 0.064, "cfHem": 0.096}' run.sh harness10.py r10c base
+$FR10 = /mnt/data/hifipushie/dress_garrett/fit_round10/ (run.sh = this worktree): fr10.py (WAIST_EASE, LAPEL_W,
+SLEEVE_OVER), harness10.py, m10.py, silrows.py (torso width by row vs concept), waist.py, thru.py, sleeve.py, sleevew.py,
+chain1-4.sh, asm_r10{a..i}.pkl, render10.py, review10.sh, check/{wholefront,front,three}.png (ref | clay | diag),
+check/{side,back}.png (clay | diag), review_*.log.
+r10i: WORN='{"break": 0.064, "cfHem": 0.096}' SLEEVE_OVER=391 LAPEL_W=0.095 run.sh harness10.py r10i base
 WORN_EDGE=true OPEN_HOLD=true
-Garrett's checklist (outside the repo): /mnt/data/hifipushie/dress_garrett/fit_round10/checklist_r10.md (R10 column).

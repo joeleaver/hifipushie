@@ -816,6 +816,31 @@ def open_seam_holds(M: dict, Xc: np.ndarray, ox: list, placed: dict | None = Non
     return out
 
 
+def sleeve_width(M: dict, side: str = ".L", prefixes=("sleeve", "top", "under")) -> float:
+    """A sleeve's flat width at its widest band (the biceps line, m): the sum over its pieces on `side` (a two-piece
+    sleeve: top + under) of each piece's widest 8 mm band in the pattern (uv)."""
+    uv, pid, names = np.asarray(M["uv"]), np.asarray(M["piece"]), list(M["names"])
+    tot = 0.0
+    for k, nm in enumerate(names):
+        if nm.split(".")[0] not in prefixes or not nm.endswith(side):
+            continue
+        q = uv[pid == k]
+        ys = np.linspace(q[:, 1].min(), q[:, 1].max(), 60)
+        tot += max((np.ptp(q[np.abs(q[:, 1] - y) < 0.004, 0]) if (np.abs(q[:, 1] - y) < 0.004).sum() > 1 else 0.0)
+                   for y in ys)
+    return float(tot)
+
+
+def sleeve_room(under_M: dict, over_M: dict, ease: float = EASE) -> dict:
+    """A SLEEVE OVER A SLEEVE (fit round 10): the over garment's sleeve must hold the under one plus one layer all round:
+    width >= under width + 2 pi (ease + THICK). Garrett: the jacket's sleeve was drafted from the bare arm (396 mm,
+    biceps ease 25 %) over a shirt sleeve of 391: the shirt showed through both upper arms. Returns {"under", "over",
+    "need" (mm), "ok"}."""
+    u, o = sleeve_width(under_M) * 1000, sleeve_width(over_M) * 1000
+    need = u + 2 * math.pi * (ease + THICK) * 1000
+    return {"under": round(u, 1), "over": round(o, 1), "need": round(need, 1), "ok": bool(o >= need - 1.0)}
+
+
 SWING_BELOW = False  # A/B: the whole front stays swung (False: only the lapel above the break; the edge pins open the rest)
 
 

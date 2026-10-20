@@ -1114,6 +1114,19 @@ def test_open_front_hangs_without_moving_its_side_seams(off=0.05):
     assert res[False][0] > 0.010, res[False]
 
 
+def test_sleeve_over_a_sleeve_has_room():
+    """(fit round 10) A sleeve worn over a sleeve holds it plus one layer: width >= under + 2 pi (EASE + THICK). Known
+    answer: a shirt sleeve 391 mm wide; a two-piece jacket sleeve (top 217 + under 179 = 396, Garrett's draft from the
+    bare arm) fails; widened to 430 it passes."""
+    shirt = cloth.mesh(_B({"sleeve.L": _piece([[0, 0], [0.391, 0], [0.391, 0.5], [0, 0.5]])}), 0.02)
+    for under_w, ok in ((0.179, False), (0.213, True)):
+        jk = cloth.mesh(_B({"top.L": _piece([[0, 0], [0.217, 0], [0.217, 0.5], [0, 0.5]]),
+                            "under.L": _piece([[0.3, 0], [0.3 + under_w, 0], [0.3 + under_w, 0.5], [0.3, 0.5]])}), 0.02)
+        r = pf.sleeve_room(shirt, jk)
+        print("sleeve room", r)
+        assert r["ok"] == ok and 370 < r["under"] <= 392, r  # (the mesher trims the drafted 391 a little)
+
+
 if __name__ == "__main__":
     fails = 0
     for k, f in list(globals().items()):
