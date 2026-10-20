@@ -9088,3 +9088,18 @@ Closed fits (MODE=outer LAYER_ALLOW 0.008, shirt culled; $FR24/sideline.py, sum2
   and a tailored-jacket outline"; old: flaps missing, A-line flare, shirt like a dress).
 - 11 clothing test files (tailoring, pattern_form, cloth_release, cloth_layers, cloth_check, pattern_draft,
   pattern_styles, pattern_tailor, pattern_gate, cloth_made, form_validation): 170 passed, 2 skipped, 3 xfailed, exit 0.
+
+## shirt round 1 (2026-10-20; $S = /mnt/data/hifipushie/dress_garrett/shirt_round1, this worktree's code via run.sh)
+Joe: "another pass on the shirt ... we started on the jacket first, which was probably wrong, and the color isn't
+right ... see if all the lessons we learned on the jacket will carry over". Round 1 is that test.
+Step 1 DESCRIBE (m1_ref.py; grid_neck.png, ref_placket_z.png, ref_cuffs_z.png): the fitted camera (871.87 px/m) puts
+CF at x 616.5 but the shirt's button line / placket centre is x 626 (11 mm off) and the projected HPS (y 384) sits on
+the collar: neck-relative heights are read from the image's own stand top at the side (y 342) and given both ways.
+Big reads: front closed, collar button undone, 2nd done; V bottom 109 mm below the stand top (60 below camera HPS);
+collar points 147 mm apart, 73 / 73 off CF (C50's "concept 146" agrees); colour LIT 173/169/167 (#ada9a7) on chest,
+upper and lower patches within 4; stripe unresolved (FFT: 3.6 mm at 0.8 %, 11.5 mm at 2.8 % = folds) -> INFERRED;
+cuffs 17-23 mm past the jacket sleeve; belt top 498 below camera HPS. Details: shows 11-23 mm above the jacket collar
+at the sides; box placket 29 mm, buttons 88 mm apart. Checklist: 10 items "Joe 2026-10-20 shirt pass" (backup
+$S/garrett_shirt.before.json).
+Tool gap 1: the pattern gate reads targets from garrett_refs.json (cloth_reference targets) and generic items_for(kind),
+never the piece checklist: none of the 10 shirt items (V, spread, cuff show, colour, placket) is a gate row.

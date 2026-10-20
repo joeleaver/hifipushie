@@ -65,6 +65,7 @@ OpenBLAS is capped at 4 threads in `__init__.py`.
 - Garrett hair (shells): docs/state/garrett_hair.md -> hair.md "Garrett short-hair shells sh<N>"
 - Skin: docs/state/skin.md -> skin.md "## r<N>"
 - Dress Garrett (jacket + shirt fit): docs/state/dress_garrett_fit.md -> cloth.md "fit round <N>"
+- Dress Garrett shirt (alone, then under the jacket): docs/state/dress_garrett_shirt.md -> cloth.md "shirt round <N>"
 - Dress Tess: docs/state/dress_tess.md -> cloth.md "dress-tess session <N>"
 - Tailoring (jacket rules): docs/state/tailoring.md -> cloth.md "tailoring <date>"
 - MCP rules (tools carry the gates): docs/state/mcp_rules.md -> mcp_audit.md "## History"
