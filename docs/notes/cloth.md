@@ -9008,3 +9008,18 @@ Closed fits (MODE=outer LAYER_ALLOW 0.008, shirt culled; $FR24/sideline.py, sum2
   ease all over (fronts stand off), see-through patches (chest specks + the crossing below the button), puffy thick
   hang, shoulders wide and square; side A/B r23c vs r24c: NEW (r24c "straight, plumb back and level hem").
 - Step 4 (release on the layered fit) not started: budget.
+
+## fit round 25 (2026-10-20; $FR25 = /mnt/data/hifipushie/dress_garrett/fit_round25, this worktree's code via run.sh)
+- Coordinator re-order (Joe: "that looks a lot better, not sure why you keep trying to button though"): the OPEN
+  jacket first (release + arrangement on r24c's straight cut); every render from here on open and arranged; then ease
+  measured on the open jacket, then the pocket flaps.
+- Release t = 0 CCD (C92), found in three layers on r24c (g25.py, t0.py, t0b.py): (a) r25a: the button pair front.L |
+  front.R 0.0 mm apart (the closed fit's LAP_BUTTON fade); a whole-lap parting (pattern_form LAP separation, button
+  fade off) made 47 crossings (dead: pushed out-of-order lapel / facing layers through); order-safe, button-local
+  part_released: pair 0.0 -> 2.24, 2.16 -> 2.70, 113 vertices <= 1.38 mm. (b) preflight body pairs 31: front.L / .R up to
+  6 mm INSIDE the chest under the lapels (r24c fit: 9 vertices, depth 110-190, x 40-80), clear_body capped 4 mm ->
+  BODY_CLEAR_MOST 8 mm (EDGE_CLEAR_MOST 4): preflight PASS. (c) still CCD at t = 0 (r25d): ZOZO's pair was a SHIRT
+  vertex 0.99 mm under a jacket face (squared sep 9.4e-7 = 0.97 mm; garment vertices all >= 2.29 mm): collider_clear
+  steps such under vertices back (2 moved); preflight's new collider_vertex_pairs row fails r25d, passes r25e. r25e
+  (release only, no pins): RUNS (local ZOZO, $0). Released fronts: edge off CF 7/3, 12/15, 25/28 mm at 450/550/650
+  (concept 71/78/94), still moving 16.8 mm at the end, stretch p99 13.4, neck seams open 5-10 mm at the stand (old).

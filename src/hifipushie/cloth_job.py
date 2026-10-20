@@ -749,5 +749,18 @@ def preflight(arrays: dict, cfg: dict | None = None) -> dict:
         body_mm, body_pairs = 1000 * float(dd.min()), int((dd < (0.001 if fine else 0.002)).sum())
     sc = None if fine else start_self_check(arrays, float((cfg.get("zozo") or {}).get("contact_gap", 1e-3)))
     st = start_strain_check(arrays, cfg) if all(k in arrays for k in ("uv", "piece")) else {"ok": True, "skipped": True}
-    return {"ok": body_pairs == 0 and (sc is None or sc["ok"]) and st["ok"], "body_mm": body_mm,
-            "body_pairs": body_pairs, "self": sc, "strain": st}
+    # the reverse pairs (fit round 25): a COLLIDER vertex near a free garment face (ZOZO "face-vertex (collision mesh,
+    # assembly)" overlap at t = 0: Garrett r25d, a shirt vertex 0.99 mm under front.L, every garment vertex >= 2.3 mm)
+    from .cloth_made import closest as _closest
+    fi = np.where(~ex[F].all(1))[0]
+    near_ = np.zeros(len(bV), bool)
+    if len(fi):
+        lo, hi = X[np.unique(F[fi])].min(0) - 0.01, X[np.unique(F[fi])].max(0) + 0.01
+        near_ = ((bV >= lo) & (bV <= hi)).all(1)
+    rev_mm, rev_pairs = float("inf"), 0
+    if near_.any():
+        dq = np.linalg.norm(bV[near_] - _closest(bV[near_], X, F[fi])[0], axis=1)
+        rev_mm, rev_pairs = 1000 * float(dq.min()), int((dq < (0.001 if fine else 0.002)).sum())
+    return {"ok": body_pairs == 0 and rev_pairs == 0 and (sc is None or sc["ok"]) and st["ok"], "body_mm": body_mm,
+            "body_pairs": body_pairs, "collider_vertex_mm": rev_mm, "collider_vertex_pairs": rev_pairs, "self": sc,
+            "strain": st}

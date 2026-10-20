@@ -305,3 +305,41 @@ def test_arranged_open_front_stays_open(tmp_path):
     assert max(p["springback_max"] for p in rep["pins"].values()) < 3, out
     assert out["stretch_p99_near"] < 1.0 and rep["status"] == "placed by hand", out
     assert out["still"] < 1.0, out
+
+
+def _two_fronts(n=9, h=0.01):
+    """Two flat fronts lapped in front of the KAT torso (over front.L 1.5 mm outside under front.R, the closed fit's
+    lap) with the fastened button pair COINCIDENT (pattern_form LAP_BUTTON fades the parting to 0 there)."""
+    xs = (np.arange(n) - n // 2) * h
+    zs = 1.22 + np.arange(n) * h
+    X, F, pid = [], [], []
+    for k, y in enumerate((-0.1815, -0.18)):  # over, under (the body is behind: +y)
+        b = len(X)
+        X += [(x, y, z) for z in zs for x in xs]
+        pid += [k] * (n * n)
+        for j in range(n - 1):
+            for i in range(n - 1):
+                a = b + j * n + i
+                F += [(a, a + 1, a + n + 1), (a, a + n + 1, a + n)]
+    X = np.asarray(X, float)
+    c = (n // 2) * n + n // 2
+    X[c] = X[n * n + c]  # the button: the over vertex on its under partner
+    M = {"F": np.asarray(F, np.int64), "piece": np.asarray(pid, np.int64), "names": ["front.L", "front.R"],
+         "closures": [{"name": "front", "state": "open", "over": "front.L", "under": "front.R", "v": [[c, n * n + c]]}]}
+    return M, X, _torso(), c
+
+
+def test_released_button_pair_parted_in_order():
+    """Fit round 25 (C92): a released closure's fastened pair starts 0.0 mm apart (two free sheets touching: ZOZO's CCD
+    fails the first Newton step, Garrett r21k / r25a). part_released parts it to RELEASE_PART, keeps the layer order
+    (over in front everywhere, nothing pushed through) and moves nothing far from the button."""
+    M, X, body, c = _two_fronts()
+    Y, info = cr.part_released(X, M, ("front",), body=body)
+    n = len(X) // 2
+    assert info["front"]["pairs_mm_before"] == [0.0]
+    assert info["front"]["pairs_mm_after"][0] >= 0.9 * cr.RELEASE_PART * 1000, info
+    assert (Y[:n, 1] <= Y[n:, 1] - 1e-4).all()  # the over front stays in front of the under one, every vertex
+    far = np.linalg.norm(X[:n] - X[c], axis=1) > 0.05
+    assert np.allclose(Y[:n][far], X[:n][far]) and info["front"]["max_mm"] < 2.5, info
+    Y2, info2 = cr.part_released(X, M, (), body=body)  # control: not released -> untouched
+    assert np.allclose(Y2, X) and info2 == {}

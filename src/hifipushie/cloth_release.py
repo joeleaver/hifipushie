@@ -41,7 +41,54 @@ SEW_FRAMES = 4
 SETTLE_FRAMES = 48
 SELF_FRAMES = 24
 CLEAR = 0.0035  # m: the least the under garment (a collider) lies under this one at the start (preflight wants >= 2 mm)
+# A RELEASED closure's two layers parted at the start (fit round 25): the closed fit joins them at the fastened button
+# (pattern_form LAP_BUTTON fades the lap's parting to 0 there: Garrett r24c's button pair front.L | front.R 0.0 mm apart,
+# 398 mm below HPS) and lays the rest of the lap LAP_GAP (1.5 mm) apart. Unbuttoned, the pair is two free sheets
+# touching: ZOZO's CCD fails the first Newton step (toi 0, r21k / r25a). Parted to RELEASE_PART (> the contact gap)
+# where they lap, each side half, the button's fade dropped (the button is gone).
+RELEASE_PART = 0.0022  # m
+EDGE_CLEAR = 0.0021  # m: garment edges this close to a collider edge stepped off at the start (preflight: 2 mm)
+EDGE_CLEAR_MOST = 0.002  # m: ... by at most this
+BODY_CLEAR_MOST = 0.004  # m: clear_body's most per vertex in job() (more is a fit fault: reported)
 
+
+def part_released(X: np.ndarray, M: dict, release=("front",), body=None, gap: float = RELEASE_PART,
+                  reach: float = 0.05, rounds: int = 8) -> tuple[np.ndarray, dict]:
+    """The released closures' layers parted round their (former) fastenings: within `reach` of the closure's vertex
+    pairs, an over vertex lapping the under piece IN ORDER (in front of it, closer than `gap`) moves out along the
+    under piece's normal and the under vertex lapping the over piece in order moves in, each half the shortfall, at
+    most pattern_form.LAP_STEP a round. Out-of-order vertices (another layer: the lapel's turn, a facing) are never
+    pushed through (round 25: a whole-lap parting without the order test made 47 crossings). Returns (X, {closure:
+    {"pairs_mm_before", "pairs_mm_after", "moved", "max_mm"}}) (the closure pairs' distances)."""
+    from . import pattern_form as pf
+    X0 = np.array(X, float)
+    X = X0.copy()
+    rel = set(release or ())
+    F, pid, names = np.asarray(M["F"]), np.asarray(M["piece"]), list(M["names"])
+    ref = pf._body_surface(body) if body is not None else None
+    out = {}
+    for c in M.get("closures") or []:
+        o, u = c.get("over"), c.get("under")
+        if c.get("name") not in rel or not c.get("v") or not o or not u or o == u or o not in names or u not in names:
+            continue
+        ko, ku = names.index(o), names.index(u)
+        tv = np.asarray(c["v"], np.int64).reshape(-1)
+        near = cKDTree(X[tv]).query(X)[0] < reach
+        fo, fu = np.where((pid == ko) & near)[0], np.where((pid == ku) & near)[0]
+        to, tu = F[pid[F[:, 0]] == ko], F[pid[F[:, 0]] == ku]
+        before = [round(float(np.linalg.norm(X[a_] - X[b_])) * 1000, 2) for a_, b_ in c["v"]]
+        for _ in range(rounds):
+            d, nrm, m = pf._lap_side(X, X[fo], tu, ref)
+            m &= (d > -5e-4) & (d < gap)  # (a coincident button pair reads either sign)
+            X[fo[m]] += nrm[m] * np.minimum(0.5 * (gap - d[m]), pf.LAP_STEP)[:, None]
+            d, nrm, m = pf._lap_side(X, X[fu], to, ref)
+            m &= (d < 5e-4) & (d > -gap)
+            X[fu[m]] -= nrm[m] * np.minimum(0.5 * (gap + d[m]), pf.LAP_STEP)[:, None]
+        mv = np.linalg.norm(X - X0, axis=1)
+        out[c["name"]] = {"pairs_mm_before": before,
+                          "pairs_mm_after": [round(float(np.linalg.norm(X[a_] - X[b_])) * 1000, 2) for a_, b_ in c["v"]],
+                          "moved": int((mv > 1e-5).sum()), "max_mm": round(float(mv.max()) * 1000, 2)}
+    return X, out
 
 def closure_stitches(M: dict, release=("front",)) -> tuple[np.ndarray, list]:
     """The closures that stay fastened as stitches (over vertex, under vertex): every closure whose state is closed
@@ -213,7 +260,8 @@ def neck_pieces(Bp: dict, M: dict, made: list) -> list:
 def job(res: dict, X: np.ndarray, g: dict | None = None, under: dict | None = None, body=None,
         release=("front",), hold=("neck",), frames: int = SETTLE_FRAMES, settle_frames: int = SELF_FRAMES,
         sew_frames: int = SEW_FRAMES, clear: float = CLEAR, zozo: dict | None = None,
-        name: str | None = None, pad_base=None, hold_ring: float = 0.0, untangle: bool = False) -> tuple[dict, dict, dict]:
+        name: str | None = None, pad_base=None, hold_ring: float = 0.0, untangle: bool = False,
+        part: float = RELEASE_PART) -> tuple[dict, dict, dict]:
     """The release sim's (cfg, arrays, info). res: the placed pattern (cloth.build place_only: "mesh", "pieces",
     "fabric", "body", "gate_keys"); X: its fitted state on the form (pattern_form.assemble "V"); g: the garment dict
     (zozo options, strain limit); under: {"V", "F"} the under garment's form fit (or None); body: the collider body
@@ -271,7 +319,9 @@ def job(res: dict, X: np.ndarray, g: dict | None = None, under: dict | None = No
         body = _types.SimpleNamespace(V=Vp, T=np.asarray(body.T), at=getattr(body, "at", {}))
     if untangle:  # (a front through the other front, carried from the closed fit: parted before the sim)
         X, info["untangle"] = untangle_closure(X, M, gone, body=body)
-    X, info["body_clear"] = clear_body(X, body, free=free, M=M)
+    if part and gone:  # (the released closure's layers parted: the button is gone, see RELEASE_PART)
+        X, info["part"] = part_released(X, M, gone, body=body, gap=part)
+    X, info["body_clear"] = clear_body(X, body, free=free, M=M, most=BODY_CLEAR_MOST)
     if under is not None:
         U, uinfo = clear_under(X, M["F"], under["V"], np.asarray(under["F"]), body, clear, free=free)
         keep = uinfo.pop("faces_keep")
@@ -283,14 +333,33 @@ def job(res: dict, X: np.ndarray, g: dict | None = None, under: dict | None = No
     # the pair's separation (cloth_over.clear_start's edge pass), at most 2 mm (it walked 14 mm where crossings were
     # left; with them gone it moves only the ends of the remaining pairs)
     from .cloth_over import clear_start
-    X1, _ = clear_start(X, (np.asarray(coll["bodyV"], float), np.asarray(coll["bodyT"])), free, 0.0021,
+    X1, _ = clear_start(X, (np.asarray(coll["bodyV"], float), np.asarray(coll["bodyT"])), free, EDGE_CLEAR,
                         rounds=2, F=np.asarray(M["F"]))
     mv = np.linalg.norm(X1 - X, axis=1)
-    cap = mv > 0.002
-    X1[cap] = X[cap] + (X1[cap] - X[cap]) * (0.002 / mv[cap])[:, None]
-    info["edge_clear"] = {"moved": int((mv > 0).sum()), "max_mm": round(float(min(mv.max(), 0.002) * 1000), 2),
+    cap = mv > EDGE_CLEAR_MOST
+    X1[cap] = X[cap] + (X1[cap] - X[cap]) * (EDGE_CLEAR_MOST / mv[cap])[:, None]
+    info["edge_clear"] = {"moved": int((mv > 0).sum()), "max_mm": round(float(min(mv.max(), EDGE_CLEAR_MOST) * 1000), 2),
                           "capped": int(cap.sum())}
     X = X1
+    # the reverse pairs (fit round 25): a COLLIDER vertex within EDGE_CLEAR of a free garment face (a shirt vertex at a
+    # crumple poking up under the jacket: Garrett r25d's shirt vertex 0.99 mm off front.L by the underarm, ZOZO "face-
+    # vertex (collision mesh, assembly)" overlap at t = 0, which no garment-vertex / edge clear sees). The under
+    # garment's vertex steps back from the face (a static collider: it may go into the body), at most
+    # EDGE_CLEAR_MOST + 1 mm; the body's own vertices are left (a body vertex there is a fit fault: reported)
+    bV_ = np.asarray(coll["bodyV"], float).copy()
+    nb = len(np.asarray(body.V))
+    fi = np.where(free[np.asarray(M["F"])].any(1))[0]
+    from .cloth_made import closest as _closest
+    Qc = _closest(bV_, X, np.asarray(M["F"])[fi])[0]
+    dv = bV_ - Qc
+    dd = np.linalg.norm(dv, axis=1)
+    rv = np.where(dd < EDGE_CLEAR)[0]
+    us = rv[rv >= nb]
+    step = np.minimum(EDGE_CLEAR - dd[us] + 1e-4, EDGE_CLEAR_MOST + 0.001)
+    bV_[us] += dv[us] / (dd[us, None] + 1e-12) * step[:, None]
+    coll = dict(coll, bodyV=bV_)
+    info["collider_clear"] = {"under_moved": int(len(us)), "body_left": int((rv < nb).sum()),
+                              "min_mm": round(float(dd.min()) * 1000, 2)}
     arrays = dict(X=X, uv=uv, F=np.asarray(M["F"], np.int64), sew=np.asarray(M["sew"], np.int64).reshape(-1, 2),
                   stitch=stitch, stiff=stiff, piece=np.asarray(M["piece"], np.int64), pins=np.zeros(0, np.int64),
                   bodyV=np.asarray(coll["bodyV"], float), bodyT=np.asarray(coll["bodyT"], np.int64))
