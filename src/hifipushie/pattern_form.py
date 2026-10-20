@@ -608,6 +608,42 @@ def _pins(M, X0, body, ease, bsurf, under_v=None):
     return full, cx
 
 
+# AN OPEN COLLAR LIES SPREAD (fit round 7, 2026-10-19): a collar worn open (its stand's closure undone) is laid spread
+# by the same rule the sim's placement uses (cloth._spread_open_collar: its front swung out from the neck's sides and
+# tipped onto the collarbones), after the flaps are turned (a collar's fall is made first), and its swung front ends are
+# HELD there (OPEN_SPREAD_W per vertex) through the seat and the let-go: the form has no gravity, so an unfastened collar
+# does not fall open (the worn-open fronts' rule). Without it the form re-stood the neck pieces as a ring from the
+# neckline (_band_init) and the turn folded the fall's ends to the centre front: Garrett's shirt collar points 48 mm
+# apart (concept 146), its stand 25-36 mm off the neck in front, and the jacket collar over it stood off with it (60 / 90
+# deg: 18 / 28 mm; no shirt: 5 / 12). Known answer: tests/test_pattern_form.py test_open_collar_lies_spread_on_the_form.
+# OPT-IN: on Garrett the shirt alone spreads (points 48 -> 101 mm apart, their height 77 -> 91 mm below HPS, concept 93),
+# but the jacket fitted over the spread shirt got WORSE (stand off the neck at 60 / 90 deg 18 / 28 -> 19 / 36 mm, jacket
+# vertices inside the shirt 119 -> 368, shirt torn through the jacket collar in the renders): nothing presses the
+# spread shirt collar under the jacket (cloth.pressed keeps made pieces as they lie). fit_round7 STATE.
+OPEN_SPREAD = False
+OPEN_SPREAD_W = 5.0
+OPEN_SPREAD_HOLD = 0.6  # the held ends: neck-piece vertices the spread moved at least this x the most it moved (per side)
+
+
+def open_collar_spread(B, M, body, X: np.ndarray):
+    """The open-collar spread on the form: (X with the neck pieces spread, [(vertex, target, weight)] pins holding the
+    swung ends) or (X, []) when no neck closure is open (cloth._spread_open_collar decides that)."""
+    if not OPEN_SPREAD or B is None or body is None or not len(getattr(body, "V", [])):
+        return X, []
+    from . import cloth
+    Xs = cloth._spread_open_collar(B, M, body, np.asarray(X, float).copy(), True)
+    mv = np.linalg.norm(Xs - X, axis=1)
+    if mv.max() < 1e-6:
+        return X, []
+    pins = []
+    for sg in (-1.0, 1.0):
+        side = (np.sign(Xs[:, 0]) == sg) & (mv > 1e-6)
+        if side.any():
+            for v in np.where(side & (mv >= OPEN_SPREAD_HOLD * mv[side].max()))[0]:
+                pins.append((int(v), Xs[v].copy(), OPEN_SPREAD_W))
+    return Xs, pins
+
+
 WORN_OPEN_W = 60.0  # a worn-open point's pull to its offset from the centre line (a centre-line pin is 100)
 
 
@@ -1182,6 +1218,11 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
         X, edge = _swing_front(M, X, ox, fast, bsurf)
     X = _turn_flaps(M, X, folds_, bsurf)
     tr("turn_flaps", X, M)
+    X, sp_pins = open_collar_spread(B, M, body, X)
+    if sp_pins:
+        full = full + sp_pins
+        info["open_spread_pins"] = len(sp_pins)
+        tr("spread", X, M)
     if ox and not SWING_FIRST:
         X = _swing_open(M, X, ox, fast, bsurf)
     if ox and WORN_EDGE:  # the swung front edge (lapel line) held open, not just its two named points

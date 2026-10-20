@@ -540,6 +540,58 @@ def test_nested_collars_keep_their_layer_order():
     assert sum(bad.values()) == 0, bad
 
 
+def _open_collar_ends(open_):
+    """The two-piece collar case with its pieces wrapped to the NECK and the stand's own closure undone (open_) or
+    done up; returns the fall's two front outer corners after the form's assembly, and where the open-collar rule
+    (cloth._spread_open_collar) put them."""
+    c = _two_piece_collar_case()
+    B, M = c["B"], c["M"]
+    for nm in ("stand", "fall"):
+        B["pieces"][nm]["wrap"]["to"] = "neck"
+    M["closures"] = [{"name": "collar", "over": "stand", "under": "stand", "closed": [not open_], "v": []}]
+    body = c["body"]
+    rr = 0.06
+    def push_out(P, clear):
+        P = np.array(P, float)
+        r = np.linalg.norm(P[:, :2], axis=1)
+        lo = r < rr + clear
+        P[lo, :2] *= ((rr + clear) / np.maximum(r[lo], 1e-9))[:, None]
+        return P
+    body.push_out = push_out
+    pid = np.asarray(M["piece"])
+    fv = np.where(pid == M["names"].index("fall"))[0]
+    uv = np.asarray(M["uv"])
+    top = fv[uv[fv, 1] > uv[fv, 1].max() - 1e-4]
+    ends = [int(top[np.argmin(uv[top, 0])]), int(top[np.argmax(uv[top, 0])])]
+    seen = {}
+    tr0, sp0 = pf.TRACE, pf.OPEN_SPREAD
+    pf.TRACE = lambda ph, X, M_: seen.__setitem__(ph, X[ends].copy())
+    pf.OPEN_SPREAD = True  # (opt-in: see pattern_form.OPEN_SPREAD)
+    try:
+        out = pf.assemble({"mesh": M, "X0": c["X0"], "pieces": B}, body, iters=120, ease=0.004)
+    finally:
+        pf.TRACE, pf.OPEN_SPREAD = tr0, sp0
+    return out["V"][ends], seen.get("spread"), seen.get("turn_flaps")
+
+
+def test_open_collar_lies_spread_on_the_form():
+    """(fit round 7) Garrett's shirt is worn with its collar OPEN (stand closure undone). The sim's placement spreads
+    such a collar (cloth._spread_open_collar); the form did not: it re-stood the neck pieces as a ring and the fall's
+    turn folded its ends to the centre front (collar points 48 mm apart, concept 146), and the jacket collar over the
+    shirt stood 18-28 mm off the neck with it. Known answer: on a neck cylinder the open collar's front ends end
+    further apart than the same collar done up (the spread's swing, held: the form has no gravity), and within 5 mm of
+    where the rule put them; done up, nothing is spread."""
+    V_open, at_spread, _ = _open_collar_ends(True)
+    V_shut, none_, turned = _open_collar_ends(False)
+    d_open = float(np.linalg.norm(V_open[0, :2] - V_open[1, :2])) * 1000
+    d_shut = float(np.linalg.norm(V_shut[0, :2] - V_shut[1, :2])) * 1000
+    held = float(np.linalg.norm(V_open - at_spread, axis=1).max()) * 1000
+    print(f"open collar: front corners {d_open:.0f} mm apart (done up {d_shut:.0f}); held within {held:.1f} mm of the spread")
+    assert none_ is None  # (done up: no spread phase)
+    assert d_open > d_shut + 15, (d_open, d_shut)
+    assert held < 5.0, held
+
+
 def test_notch_step_known_answer():
     """(fit round 4) cloth_check.notch_step: an open V notch (20 mm deep, 6 mm mouth) between two top layers over a
     backing 5 mm behind reads open ~6 / depth ~18-20 mm; the same layers closed read 0 / 0 (round 3's notch passed its

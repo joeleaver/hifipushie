@@ -7754,3 +7754,18 @@ lines across the upper back; opening at the chest judged within ~10 px. Collar /
   band high), review_three FAIL (no lapel / notch, funnel collar L, shirt collar a band, lapels half width). My read
   agrees. Next: the collar's front half 18-28 mm off the neck at 60-120 deg; notch target conflict; lapel width / shirt
   spread / collar height DESCRIBE items.
+
+## fit round 7 (2026-10-19, Garrett jacket v2 + shirt; no sims). STATE: docs/state/fit_round7.md
+- fit round 7 step 1: 8 DESCRIBE items measured on the concept (m7.py; lapel point 91 below HPS, notch inner 70, lapel
+  width 72 front view, notch mouth 31, shirt points 146 apart / 93 below HPS, collar top at the neck side +13 over HPS,
+  collar falling ahead of the neck side). All FAIL on R6. Notch targets settled: front view governs (mouth = notch_step
+  mouth_mm, open 2-10, depth 10-26); the 3D gap is INFO.
+- fit round 7 step 2: STAND trace per phase; PRESS_UNFOLDED off changes nothing; NOUNDER drops the stand gap at 60 / 90
+  deg from 18 / 28 to 5 / 12 mm: the shirt collar under it is the cause. Shirt alone (shirt7.py): the sim's open-collar
+  spread is lost on the form (band_init re-stands a ring, the turn folds the points to CF: 48 mm apart). Tool fix
+  pattern_form.OPEN_SPREAD (open_collar_spread, the sim's rule + held ends), KAT test_open_collar_lies_spread_on_the_form,
+  codified C50. On Garrett: shirt points 48 -> 101 apart, height passes; jacket over it WORSE (stand 19 / 36, through
+  119 -> 368). Left OPT-IN.
+- fit round 7 step 4: renders $FR7/check/{front,three}.png (ref | clay | diag), {side,back,top}.png with the spread on;
+  blind review front FAIL, three FAIL (no notch, popped collar, shirt torn through the jacket collar, lapels half width).
+  My read: worse than R6.
