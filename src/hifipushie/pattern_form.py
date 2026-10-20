@@ -32,7 +32,12 @@ from . import validated
 THICK = 0.0015  # m: one cloth layer (a folded flap lies this much further out than its base)
 EASE = 0.004  # m: the least a garment lies off what is under it (body or the garment under)
 HINGE_BAND = 0.006  # m (pattern) either side of a fold row left out of fold_turned (the bend of a THICK hairpin)
+SECTION_W = 0.005  # m: fold_turned reads each row vertex's section from the points within this of its plane
 FLAP_PULL = 0.5  # a turned-over flap drawn onto its own base (one THICK out) per round, in both relax phases
+# A fold whose own base side is narrower than BASE_NARROW (pattern, from its first row) lies on the piece(s) sewn to
+# that base as well (fit round 4: a two-piece collar's fall, 4 mm above its seam, lies on its stand). Off = the old rule.
+BASE_ACROSS_SEAM = True
+BASE_NARROW = 0.012
 # LOOSE cloth stands off EVENLY (dress-garrett 2026-10-19 block proportions): in the let-go phase, cloth more than 2 mm
 # off its offset is pushed out along its own normal this much per round (a dress form's ease reads as an even stand-off,
 # the pattern's lengths stop it). Without it the placement's cross-section stayed: the o4 jacket sleeve read 66 x 139 mm
@@ -903,7 +908,21 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
             fv = np.asarray(g["rows"][-1]["v"])
             flapv[fv] = True
             bv = np.setdiff1d(g["sel"], np.where(g["flap0"])[0])
-            over.append((fv, bv, np.asarray(g["base_tris"])))
+            bt_ = np.asarray(g["base_tris"])
+            if BASE_ACROSS_SEAM and len(bv) and float(np.asarray(g["d0"])[bv].max()) < BASE_NARROW:
+                # THE BASE CONTINUES ACROSS A SEAM (fit round 4): a fold close to a seam (a two-piece collar's fall
+                # turns 4 mm above its seam on the stand) has almost no base of its own; it lies on the piece sewn
+                # there. With the 4 mm strip as its only base, the fall had nothing to lie on or be drawn onto, and
+                # where the shoulder pushed it, it stood off (Garrett round 3: 88-112 deg at the neck sides).
+                ob = np.zeros(n, bool)
+                ob[bv] = True
+                oth = sorted({int(pid[b]) for a, b in sw if ob[a] and pid[b] != pid[a]}
+                             | {int(pid[a]) for a, b in sw if ob[b] and pid[a] != pid[b]})
+                if oth:
+                    ov = np.where(np.isin(pid, oth))[0]
+                    bv = np.union1d(bv, ov)
+                    bt_ = np.r_[bt_.reshape(-1, 3), F[np.isin(pid[F[:, 0]], oth)]]
+            over.append((fv, bv, bt_))
     # off-the-body target per vertex
     off = ease + THICK * flapv
     # FIT: which cells stay ARAP (folds: rows + flaps; made pieces) and the sewn surface's bending
@@ -1280,29 +1299,56 @@ def fold_turned(M: dict, X: np.ndarray, g: dict, reach: float = 0.03) -> float:
         ins[np.asarray(r_["row"])] = True
     near = (d < reach) & (d > HINGE_BAND)  # (past the hairpin at the row: a layer's thickness bends the cells beside it)
     bt, ft = T[near & ~fl & ~ins[T].all(1)], T[near & fl]
-    if not len(bt) or not len(ft):
+    if not len(ft):
         return float("nan")
+    # THE BASE ACROSS A SEAM (fit round 4): a fold line close to a seam (a two-piece collar's fall turns 4 mm above its
+    # seam on the stand) has no base cloth of its own past the hinge band: the base is the piece sewn there. Read then
+    # from that piece's vertices within HINGE_BAND..reach IN 3D (another piece's pattern frame isn't this one's). Left
+    # out, every two-piece collar read NaN on the form and its turn went unmeasured (Garrett round 3 [171, 167, nan]).
+    xb = None
+    if not len(bt):
+        k = int(np.asarray(M["piece"])[row[0]])
+        pid = np.asarray(M["piece"])
+        own_base = np.setdiff1d(np.asarray(g["sel"]), np.where(np.asarray(g["flap0"]))[0])
+        sw = np.asarray(M.get("sew") if M.get("sew") is not None else np.zeros((0, 2), int)).reshape(-1, 2)
+        ob = np.zeros(len(uv), bool)
+        ob[own_base] = True
+        oth = {int(pid[b]) for a, b in sw if ob[a] and pid[b] != k} | {int(pid[a]) for a, b in sw if ob[b] and pid[a] != k}
+        if not oth:
+            return float("nan")
+        xb = np.where(np.isin(pid, sorted(oth)))[0]
     # the DIHEDRAL IN SECTION at each row vertex (the base's and the flap's directions away from the row, square to
     # the row's own tangent, from their vertices within HINGE_BAND..reach of it), 180 - it, the median along the row.
     # A collar wraps the neck: normals summed over its whole row cancel round the neck and leave only the lean
     # (dress-garrett 2026-10-19: the curved-collar known answer, ~180 in its CB section, read 163 as one normal sum)
-    bvs, fvs = np.unique(bt), np.unique(ft)
-    tb, tf = cKDTree(uv[bvs]), cKDTree(uv[fvs])
+    fvs = np.unique(ft)
+    bvs = np.unique(bt) if xb is None else xb
+    tb = cKDTree(uv[bvs]) if xb is None else cKDTree(X[bvs])
+    tf = cKDTree(uv[fvs])
+    # a ROLL's rows are the hinge too: the flap side is read past its last row (+ the band), not inside the arc (fit
+    # round 4: the two-piece collar known answer, 174 deg in section, read 151 with the 10 mm arc's points in the flap)
+    arc = float(np.median(np.asarray(g["d0"])[np.asarray(g["rows"][-1]["row"])])) if len(g["rows"]) > 1 else 0.0
     out = []
     for j, rv in enumerate(row):
         t = X[row[min(j + 1, len(row) - 1)]] - X[row[max(j - 1, 0)]]
         t /= np.linalg.norm(t) + 1e-12
         dirs = []
-        for tr, vs in ((tb, bvs), (tf, fvs)):
-            ii = [i for i in tr.query_ball_point(uv[rv], reach) if np.linalg.norm(uv[vs[i]] - uv[rv]) > HINGE_BAND]
+        for tr, vs, Y, lo in ((tb, bvs, uv if xb is None else X, HINGE_BAND), (tf, fvs, uv, HINGE_BAND + arc)):
+            ii = [i for i in tr.query_ball_point(Y[rv], reach) if np.linalg.norm(Y[vs[i]] - Y[rv]) > lo]
             if not ii:
                 break
             D = X[vs[ii]] - X[rv]
+            # IN SECTION: the points within SECTION_W of the row vertex's plane (fit round 4: a 30 mm ball round a
+            # collar on a 64 mm neck takes points round the curve, their sagitta (~7 mm) tilts the read: the two-piece
+            # known answer, 174 deg in section, read 156)
+            sl_ = np.abs(D @ t) < SECTION_W
+            if sl_.sum() >= 3:
+                D = D[sl_]
             D -= np.outer(D @ t, t)
             m = D.mean(0)
             # the side's own direction (its points' principal axis in the section), not the chords from the row
             # vertex: a flap one THICK off its base read ~8 deg open from the chords alone
-            if len(ii) >= 3:
+            if len(D) >= 3:
                 a = np.linalg.svd(D - m, full_matrices=False)[2][0]
                 m = a if a @ m >= 0 else -a
             dirs.append(m / (np.linalg.norm(m) + 1e-12))

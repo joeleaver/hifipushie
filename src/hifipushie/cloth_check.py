@@ -707,6 +707,163 @@ def notch_flat(Bp: dict, reach: float = 0.11) -> dict | None:
     return out or None
 
 
+# NOTCH STEP (fit round 4, 2026-10-19). Round 3's notch passed notch_gap 26.5 mm / angle 61 deg (3D distances between
+# named points) while no reviewer could see a notch in any view: the points were apart, but seen from the front the
+# collar's fall lay over the lapel and the outline ran on without a step. What the eye reads is the WEDGE: in the front
+# view the collar end and the lapel point meet at an angle with something ELSE showing between them (the concept: a
+# dark V ~18 mm deep, ~3-4 mm open at its mouth, both sides). Measured on a front-view ID raster of the top layers.
+NOTCH_PX = 0.0005  # m per raster pixel
+NOTCH_REACH = 0.04  # m: how far the wedge is followed from the mouth (P -> C)
+NOTCH_STEP = 0.002  # m: a pixel is part of the gap only if what shows there lies this far behind the nearest top layer
+# (a step the eye reads as an edge with its shadow; the same cloth running on smoothly from the collar into the lapel,
+# round 3's fall roll, is no notch however the named points lie)
+
+
+def notch_step(V: np.ndarray, F: np.ndarray, top_a: np.ndarray, top_b: np.ndarray, P, C, G, view=(0.0, -1.0, 0.0),
+               px: float = NOTCH_PX, reach: float = NOTCH_REACH) -> dict:
+    """The notch as the front view shows it. V, F: every surface that can be seen there (garment, under garments, body);
+    top_a / top_b: bool per face, the two top layers that make the notch (the collar's fall, the lapel's turned flap);
+    P, C: the lapel point and the collar end (3D), the notch's mouth; G: the gorge end of the collar (the wedge's apex
+    side). An orthographic z-buffer of F from `view` (the camera looks along
+    -view... i.e. sits at +view: front = (0, -1, 0), the creature faces -Y) labels each pixel a / b / other.
+    A GAP pixel shows nothing, or a surface NOTCH_STEP or more behind the nearest top-layer pixel (an edge with depth).
+    Returns {"open_mm": the length of the mouth P -> C over gap pixels, "mouth_mm": its projected length, "depth_mm":
+    how far the gap pixels joined to the mouth reach in from P -> C toward the gorge G, square to it (the wedge),
+    "a_b_touch": mouth samples where a and b pixels meet directly}."""
+    V = np.asarray(V, float)
+    F = np.asarray(F)
+    d = np.asarray(view, float)
+    d /= np.linalg.norm(d)
+    up = np.array([0.0, 0.0, 1.0])
+    ex = np.cross(up, d)
+    ex /= np.linalg.norm(ex)
+    ey = np.cross(d, ex)
+    pr = lambda X: np.c_[np.asarray(X, float) @ ex, np.asarray(X, float) @ ey]
+    dep = V @ d  # (larger = nearer the camera at +d)
+    p2, c2 = pr(P[None])[0], pr(C[None])[0]
+    lo = np.minimum(p2, c2) - reach
+    hi = np.maximum(p2, c2) + reach
+    W, H = [int(math.ceil(v)) + 1 for v in (hi - lo) / px]
+    Q = (pr(V) - lo) / px
+    zb = np.full((H, W), -np.inf)
+    lab = np.zeros((H, W), np.int8)  # 0 nothing (background), 1 other, 2 a, 3 b
+    tl = np.where(np.asarray(top_a), 2, np.where(np.asarray(top_b), 3, 1)).astype(np.int8)
+    T = Q[F]
+    inside = (T.max(1) >= 0).all(1) & (T[:, :, 0].min(1) < W) & (T[:, :, 1].min(1) < H)
+    for f in np.where(inside)[0]:
+        t = T[f]
+        x0, y0 = np.floor(t.min(0)).astype(int)
+        x1, y1 = np.ceil(t.max(0)).astype(int)
+        x0, y0, x1, y1 = max(x0, 0), max(y0, 0), min(x1, W - 1), min(y1, H - 1)
+        if x1 < x0 or y1 < y0:
+            continue
+        gx, gy = np.meshgrid(np.arange(x0, x1 + 1) + 0.5, np.arange(y0, y1 + 1) + 0.5)
+        a, b, c = t
+        den = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1])
+        if abs(den) < 1e-12:
+            continue
+        l1 = ((b[1] - c[1]) * (gx - c[0]) + (c[0] - b[0]) * (gy - c[1])) / den
+        l2 = ((c[1] - a[1]) * (gx - c[0]) + (a[0] - c[0]) * (gy - c[1])) / den
+        l3 = 1 - l1 - l2
+        m = (l1 >= -1e-6) & (l2 >= -1e-6) & (l3 >= -1e-6)
+        if not m.any():
+            continue
+        z = l1 * dep[F[f, 0]] + l2 * dep[F[f, 1]] + l3 * dep[F[f, 2]]
+        sub = zb[y0:y1 + 1, x0:x1 + 1]
+        w = m & (z > sub)
+        sub[w] = z[w]
+        lab[y0:y1 + 1, x0:x1 + 1][w] = tl[f]
+    # a GAP pixel: nothing there, or a surface at least NOTCH_STEP behind the nearest top-layer pixel
+    from scipy import ndimage
+    top = lab >= 2
+    if top.any():
+        _, (iy, ix_) = ndimage.distance_transform_edt(~top, return_indices=True)
+        behind = zb[iy, ix_] - zb
+    else:
+        behind = np.full(zb.shape, np.inf)
+    gap = (lab == 0) | ((lab == 1) & (behind >= NOTCH_STEP))
+    # along the mouth P -> C
+    a2, c2_ = (p2 - lo) / px, (c2 - lo) / px
+    L = float(np.linalg.norm(c2_ - a2))
+    n = max(int(L * 2), 2)
+    S = a2[None] + np.linspace(0, 1, n)[:, None] * (c2_ - a2)[None]
+    ix = np.clip(S.astype(int), 0, [W - 1, H - 1])
+    ls = lab[ix[:, 1], ix[:, 0]]
+    step = L * px / max(n - 1, 1)
+    other = gap[ix[:, 1], ix[:, 0]]
+    out = {"open_mm": round(float(other.sum() * step) * 1000, 1), "mouth_mm": round(L * px * 1000, 1)}
+    # touching: a sample whose neighbour along the mouth is the other top layer (a ran straight into b)
+    tch = (ls[1:] >= 2) & (ls[:-1] >= 2) & (ls[1:] != ls[:-1])
+    out["a_b_touch"] = int(tch.sum())
+    # the wedge: OTHER pixels connected to the mouth's other samples, on the side of P -> C where the two layers are
+    # (away from the open background), within the mouth's span and `reach` of it
+    if out["open_mm"] < 1.0:  # (a closed mouth: no wedge reads, whatever lies behind)
+        out["depth_mm"] = 0.0
+        return out
+    cc, _ = ndimage.label(gap)
+    seeds = {int(cc[y, x]) for (x, y), o in zip(ix, other) if o}
+    seeds.discard(0)
+    if not seeds:
+        out["depth_mm"] = 0.0
+        return out
+    if L < 1.0:  # (the corners on one pixel: no mouth)
+        out["depth_mm"] = 0.0
+        return out
+    yy, xx = np.nonzero(np.isin(cc, list(seeds)))
+    R_ = np.c_[xx + 0.5, yy + 0.5] - a2
+    u = (c2_ - a2) / max(L, 1e-9)
+    along = R_ @ u
+    across = R_ @ np.array([-u[1], u[0]])
+    ok = (along >= 0) & (along <= L) & (np.abs(across) * px <= reach)
+    if not ok.any():
+        out["depth_mm"] = 0.0
+        return out
+    # the wedge's side: the gorge's (the apex)
+    g2 = (pr(np.asarray(G, float)[None])[0] - lo) / px
+    side = float(np.sign((g2 - a2) @ np.array([-u[1], u[0]]))) or 1.0
+    dep_ = across[ok] * side
+    out["depth_mm"] = round(float(max(dep_.max(), 0.0)) * px * 1000, 1)
+    return out
+
+
+def _selftest_notch_step():
+    """A known answer: two flat top layers in the plane y = 0 seen from the front, a (x < 0) and b (x > 0) meeting at
+    a V notch 20 mm deep, 6 mm open at its mouth (y = 0 plane, z up), over a backing sheet 5 mm behind: open ~6 mm,
+    depth ~20 mm. The same layers closed (b's edge on a's) read open 0, depth 0."""
+    def quad(x0, x1, z0, z1, y):
+        v = np.array([[x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1]], float)
+        return v, np.array([[0, 1, 2], [0, 2, 3]])
+    out = []
+    for gap in (0.006, 0.0):
+        Vs, Fs, la, lb = [], [], [], []
+        # the wedge: a and b are polygons fanned to a common apex 20 mm below the mouth; build them as triangles
+        apex = np.array([0.0, 0.0, -0.020])
+        A = np.array([[-0.05, 0, 0.0], [-gap / 2, 0, 0.0], apex, [-0.05, 0, -0.04], [0.0, 0, -0.04]])
+        Vs.append(A)
+        Fs.append(np.array([[0, 1, 2], [0, 2, 3], [3, 2, 4]]))
+        la += [True] * 3
+        lb += [False] * 3
+        B_ = np.array([[gap / 2, 0, 0.0], [0.05, 0, 0.0], [0.05, 0, -0.04], apex, [0.0, 0, -0.04]])
+        Vs.append(B_)
+        Fs.append(np.array([[0, 1, 2], [0, 2, 3], [3, 2, 4]]) + 5)
+        la += [False] * 3
+        lb += [True] * 3
+        bv, bf = quad(-0.06, 0.06, -0.06, 0.03, 0.005)
+        Vs.append(bv)
+        Fs.append(bf + 10)
+        la += [False] * 2
+        lb += [False] * 2
+        V = np.concatenate(Vs)
+        F = np.concatenate(Fs)
+        r = notch_step(V, F, np.array(la), np.array(lb), np.array([-gap / 2, 0, 0.0]), np.array([gap / 2, 0, 0.0]),
+                       np.array([0.0, 0, -0.03]))
+        out.append(r)
+    o, c = out
+    assert abs(o["open_mm"] - 6.0) < 1.5 and abs(o["depth_mm"] - 20.0) < 3.0, o  # (the apex is sub-pixel: ~18)
+    assert c["open_mm"] < 1.0 and c["depth_mm"] < 1.0, c
+    return out
+
+
 def flat_readings(Bp: dict) -> dict:
     """{FLAT_MEASURES name: reading} of a flat draft (missing: not applicable to this draft)."""
     r = {}

@@ -7687,3 +7687,26 @@ lines across the upper back; opening at the chest judged within ~10 px. Collar /
   notch rows pass (checklist incomplete: add a notch-step item), lapel edges jagged, collar a tall rolled band, shirt
   collar outside the jacket at the front. Side / back / top review refs were the front concept crop (front-only
   concept): a bad pairing. My read matches the reviewer's: not close to the reference.
+
+## fit round 4 (2026-10-19, Garrett jacket v2 + shirt; no sims). STATE: docs/state/fit_round4.md
+- fit round 4 step 1 (fold cause): the hinge report's collar "deg -34" is the rest turn PER ROW (5 rows, 170 total),
+  not the reached turn; turned_deg's NaN was the collar roll (fold_turned saw no base: the fall's own base side is
+  4 mm < HINGE_BAND). In section (probe5) round 3 read CB 161, sides 131-163, +-90 88-112. Trace: turn_flaps 154-169,
+  lost in seat + let_go. KAT two-piece collar (stand + fall, roll 4 mm above the seam, on a neck cylinder) passed
+  173-177 on the old code: the hinge rests are right. Cause: the over-list base (one THICK out + FLAP_PULL) = the
+  fold's own 4 mm base strip, so the fall had nothing to lie on. Fix BASE_ACROSS_SEAM (base < 12 mm: + the pieces sewn
+  to it). Garrett: seat 172-179 at -60..60, let_go edges 3-8 mm off the stand (15-25), but through_under 365 -> 447
+  and the stand stands further off at CB (6 -> 14 mm). fold_turned: across-seam base (3D), flap read past a roll's
+  arc, 5 mm section slab (KAT 174 true: NaN -> 151 -> 156 -> 161 -> 165 read).
+- fit round 4 step 2 (notch step, C47): cloth_check.notch_step = front-view z-buffer of the top layers (collar fall
+  flap, lapel flap); gap pixels show nothing or a surface >= 2 mm behind the nearest top layer; open = mouth P -> C over
+  gap, depth = gap pixels joined to the mouth toward the gorge. Concept (dark wedge, threshold median-20): depth L 18.5
+  / R 17.9 mm, open ~3-4 mm -> target open 2-10, depth 10-26 (set before reading round 4). Round 3: L 0.3 / 0, R
+  12.3 / 9.6 -> FAIL while notch_gap 26.5 / angle 61 passed. Round 4 L 0.3 / 0, R 9.8 / 7.6 -> FAIL.
+  (First draft counted any non-top pixel as gap: round 3 read open 8-20 / depth 24-40 because the stand / roll under
+  the collar end is the same cloth running on smoothly; the depth step fixed it.)
+- fit round 4 steps 3-4: collar.py measures (table in STATE) + check/{front,three,side,back,top}.png. Refs per view:
+  front concept crop scale-matched (u = 622.7 + 880.54 x, v = 1705 - 880.54 z + 56 px), three = desk portrait crop;
+  side / back / top have no jacket reference (back photo = shirt only) -> not reviewed. review.sh: front FAIL (no
+  notch, collar a tall fat tube, lapels rolled ridges, shirt collar asymmetric / one leaf flat over the lapel, shards at
+  the L lapel edge), three FAIL (same + shirt collar over the jacket, clipping). My read agrees.

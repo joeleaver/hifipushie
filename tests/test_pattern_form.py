@@ -374,6 +374,127 @@ def test_curved_collar_on_neck(dip=0.03):
     assert st["p99"] < (10 if dip == 0 else 20), st
 
 
+def _two_piece_collar_case(stand=0.028, fall=0.045, at=0.004, r=0.06, ease=0.004, gap_n=10, kind="roll",
+                           angle=10.0, radius=0.004, strength=0.6):
+    """(fit round 4) The smallest case with the jacket collar's structure: a neck cylinder, a bodice tube, a STAND band
+    sewn to the neckline and a FALL strip sewn on the stand's top edge, its roll line `at` into the fall (as
+    pattern_jacket.op_collar_two_piece: FALL_FOLD at 4 mm, roll, angle 10, radius 4 mm, strength 0.6), both wrapped to
+    the seam. The fall's outer edge is cut for its turned-down radius (R + 2 cloth + gap, a developable cone on a
+    straight neck). Known answer: the fall turned ~170 deg down over the stand at EVERY station, its edge below the
+    stand top by fall - 2 at."""
+    R = r + ease
+    z0 = 1.40
+    ths = np.linspace(-math.pi / 2, 3 * math.pi / 2, 161)
+    sl = slice(gap_n, 161 - gap_n)
+    u = (R * (ths - math.pi / 2))[sl]
+    ub = R * (ths - math.pi / 2)
+    nb, nc = len(ub), len(u)
+    k_cb = nc // 2
+
+    def band(uu_lo, uu_hi, lo, hi, nside=10):
+        bot = np.c_[uu_lo, np.full(len(uu_lo), lo)]
+        right = np.c_[np.linspace(uu_lo[-1], uu_hi[-1], nside + 1)[1:-1], np.linspace(lo, hi, nside + 1)[1:-1]]
+        top = np.c_[uu_hi[::-1], np.full(len(uu_hi), hi)]
+        left = np.c_[np.linspace(uu_hi[0], uu_lo[0], nside + 1)[1:-1], np.linspace(hi, lo, nside + 1)[1:-1]]
+        return np.r_[bot, right, top, left], len(bot) + len(right)
+    Ps, s_t = band(u, u, z0, z0 + stand)
+    wide = (R + 2 * pf.THICK + 0.002) / R  # (the turned fall's outer edge round a larger radius)
+    Pf, f_t = band(u, u * wide, z0 + stand, z0 + stand + fall)
+    Pb, s0 = band(ub, ub, z0 - 0.10, z0)
+    stand_p = _piece(Ps, names={"neck.m": 0, "neckCb": k_cb, "neck": nc - 1, "top": s_t, "topCb": s_t + nc - 1 - k_cb,
+                                "top.m": s_t + nc - 1}, wrap={"to": "seam"})
+    fall_p = _piece(Pf, names={"low.m": 0, "lowCb": k_cb, "low": nc - 1, "outCb": f_t + nc - 1 - k_cb},
+                    wrap={"to": "seam", "turn": {"at": at, "deg": 172, "gap": 0.004}})
+    top_at = lambda i: s0 + nb - 1 - i
+    bodice = _piece(Pb, names={"a0": 0, "a1": nb - 1, "a2": s0, "a3": s0 + nb - 1, "nl.l": top_at(gap_n),
+                               "nl.c": top_at(gap_n + k_cb), "nl.r": top_at(160 - gap_n)})
+    roll = np.c_[u, np.full(nc, z0 + stand + at)][::4].tolist()
+    fold = {"piece": "fall", "line": roll, "angle": angle, "kind": kind, "name": "collar roll", "flap": "outCb",
+            "strength": strength}
+    if kind == "roll":
+        fold["radius"] = radius
+    B = _B({"bodice": bodice, "stand": stand_p, "fall": fall_p},
+           seams=[["stand:neck.m>neckCb>neck", "bodice:nl.l>nl.c>nl.r"], ["fall:low.m>lowCb>low", "stand:top.m>topCb>top"],
+                  ["bodice:a0>a3", "bodice:a1>a2"]],
+           folds=[fold], refine=[{"piece": "fall", "h": 0.005}, {"piece": "stand", "h": 0.005}, {"piece": "bodice", "h": 0.008}])
+    M = cloth.mesh(B, 0.02)
+    pid = np.asarray(M["piece"])
+    th = M["uv"][:, 0] / R + math.pi / 2
+    X0 = np.c_[(R + 0.01) * np.cos(th), (R + 0.01) * np.sin(th), M["uv"][:, 1]]
+    for nm in ("stand", "fall"):  # (both start as flat tabs out of the back, as the placed jacket collar did)
+        cv = pid == M["names"].index(nm)
+        X0[cv] = np.c_[M["uv"][cv, 0], np.full(cv.sum(), 0.2), M["uv"][cv, 1] + 0.05]
+    return {"M": M, "B": B, "X0": X0, "body": _cyl_body(r, 1.0, 1.8), "R": R, "z0": z0}
+
+
+def _two_piece_read(M, V, z0, stand, fall, at):
+    """Per station round the neck: the fall's turn over the STAND (deg: the stand's direction up from the roll row vs
+    the fall's beyond the hinge, read in section), and the fall's outer edge height below the stand top (m)."""
+    from hifipushie import folds as foldmod
+    fd = M["folds"][0]
+    g = foldmod._geom(M, fd)
+    pid = np.asarray(M["piece"])
+    ks, kf = M["names"].index("stand"), M["names"].index("fall")
+    sv, fv = np.where(pid == ks)[0], np.where(pid == kf)[0]
+    out = []
+    for th in np.radians(np.arange(-150, 151, 30)):  # azimuth from CB (+y) round the neck
+        c = np.array([math.sin(th), math.cos(th)])
+        near = lambda ids: ids[(np.abs(np.arctan2(V[ids, 0], V[ids, 1]) - th) < 0.06)]
+        s_ = near(sv)
+        f_ = near(fv)
+        if len(s_) < 3 or len(f_) < 3:
+            continue
+        sec = lambda ids: np.c_[V[ids, :2] @ c, V[ids, 2]]  # (radial, z)
+        S = sec(s_)
+        top = S[np.argmax(M["uv"][s_, 1])]
+        up = top - S[np.argmin(M["uv"][s_, 1])]
+        Ff = sec(f_)
+        fu = M["uv"][f_, 1] - (z0 + stand)
+        out_e = Ff[fu > fall - 0.003].mean(0) if (fu > fall - 0.003).any() else Ff[np.argmax(fu)]
+        hinge = Ff[np.argmin(np.abs(fu - at))]
+        down = out_e - hinge
+        ang = math.degrees(math.acos(float(np.clip(up @ down / (np.linalg.norm(up) * np.linalg.norm(down)), -1, 1))))
+        out.append((round(math.degrees(th)), round(ang, 1), round(float(top[1] - out_e[1]) * 1000, 1),
+                    round(float(out_e[0] - top[0]) * 1000, 1)))
+    return out
+
+
+def test_two_piece_collar_turns_over_its_stand(kind="roll", verbose=True):
+    """(fit round 4) Garrett's jacket fall stood up off its stand on the form. Known answer: a fall strip sewn on a
+    stand band on a neck cylinder, its roll line 4 mm above the seam, turns ~170 deg down over the stand at every
+    station round the neck (>= 160), its outer edge below the stand top by about fall - 2 at - pi x radius (the fall
+    less what rises above the seam and what the roll's arc takes: the edge covers the stand), the roll read by
+    fold_turned (not NaN: the base is the stand, across the seam)."""
+    stand, fall, at = 0.028, 0.045, 0.004
+    c = _two_piece_collar_case(stand, fall, at, kind=kind)
+    M = c["M"]
+    out = pf.assemble({"mesh": M, "X0": c["X0"], "pieces": c["B"]}, c["body"], iters=120, ease=0.004)
+    V = out["V"]
+    rd = _two_piece_read(M, V, c["z0"], stand, fall, at)
+    from hifipushie import folds as foldmod
+    turned = pf.fold_turned(M, V, foldmod._geom(M, M["folds"][0]))
+    if verbose:
+        print(f"two-piece collar ({kind}): fold_turned {turned:.0f}, info {out['info']['turned_deg']}, "
+              f"stretch {out['info']['stretch_pct']}")
+        for az, ang, drop, offr in rd:
+            print(f"  az {az:5d}: turned {ang:6.1f} deg, edge {drop:5.1f} mm below the stand top "
+                  f"(fall - 2 at - roll arc: {1000 * (fall - 2 * at - math.pi * 0.004):.0f}), {offr:5.1f} mm out from it")
+    assert np.isfinite(turned) and turned >= 160, turned
+    assert min(a for _, a, _, _ in rd) >= 160, rd
+    want = 1000 * (fall - 2 * at - (math.pi * 0.004 if kind == "roll" else 0.0))
+    assert min(d for _, _, d, _ in rd) >= want - 3, (want, rd)
+    return rd
+
+
+def test_notch_step_known_answer():
+    """(fit round 4) cloth_check.notch_step: an open V notch (20 mm deep, 6 mm mouth) between two top layers over a
+    backing 5 mm behind reads open ~6 / depth ~18-20 mm; the same layers closed read 0 / 0 (round 3's notch passed its
+    3D gap / angle items with no notch visible: this item reads the wedge the eye sees)."""
+    from hifipushie import cloth_check as cc
+    o, c = cc._selftest_notch_step()
+    print(f"notch step: open {o}, closed {c}")
+
+
 def test_pressed_seam_between_flaps():
     """(dress-garrett 2026-10-19 notch and open neck) A seam joining two FLAPS (a notched collar's end on the lapel's
     gorge) is pressed flat: started FOLDED OVER its partner (as the fall's turn left the collar end, a funnel up the
