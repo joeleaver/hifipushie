@@ -44,6 +44,7 @@ ROLL_GAP = False
 # that base as well (fit round 4: a two-piece collar's fall, 4 mm above its seam, lies on its stand). Off = the old rule.
 BASE_ACROSS_SEAM = True
 BASE_NARROW = 0.012
+BASE_ACROSS_PRESSED = False  # opt-in, fit round 17: a fold's base across a seam continues onto the flap that piece is pressed on (r17c: no change: dead lever)
 # LOOSE cloth stands off EVENLY (dress-garrett 2026-10-19 block proportions): in the let-go phase, cloth more than 2 mm
 # off its offset is pushed out along its own normal this much per round (a dress form's ease reads as an even stand-off,
 # the pattern's lengths stop it). Without it the placement's cross-section stayed: the o4 jacket sleeve read 66 x 139 mm
@@ -468,8 +469,11 @@ def _lay_pressed(M, X, folds_, reach: float = 0.05):
     the seam laid in the other's plane, carried across the seam (the collar's end on the turned lapel, as a tailor
     bastes it): one 2D map over all the seam's pairs (continuation side, as _pressed_cells), then the bigger piece's
     local uv -> 3D affine map (its flap vertices within `reach` of the seam). Without it the ARAP relax kept the end
-    where the fall's turn had flung it (notch gap 58 of a drafted 29)."""
+    where the fall's turn had flung it (notch gap 58 of a drafted 29).
+    PRESS_CARRIES_LAYERS: the layers already turned onto a carried piece go with it (see there)."""
     uv = np.asarray(M["uv"], float)
+    X_in = np.asarray(X, float).copy()
+    carried = set()
     pid = np.asarray(M["piece"])
     sw = np.asarray(M["sew"]).reshape(-1, 2)
     flap, folded = _press_flags(M, folds_, rows_ride=True)
@@ -516,6 +520,45 @@ def _lay_pressed(M, X, folds_, reach: float = 0.05):
         q = best[1]
         Aff = np.linalg.lstsq(np.c_[uv[own], np.ones(len(own))], X[own], rcond=None)[0]
         X[mov] = np.c_[q, np.ones(len(q))] @ Aff
+        if len(mov):
+            carried.add((ka, kb))
+    if PRESS_CARRIES_LAYERS and carried:
+        X = _carry_layers(M, X_in, X, carried)
+    return X
+
+
+# PRESS CARRIES LAYERS (fit round 17, Joe's notch on r15e: the collar's end stood off the lapel like a square tab).
+# _lay_pressed moved the stand's end 16-30 mm onto the turned lapel's plane, but the collar's FALL, already turned onto
+# the stand by turn_flaps (fall-to-stand gap 4 mm), stayed where it was: the gap jumped to 12-20 mm and the relax only
+# took it back to 7-8 (max 14-15): the fall's end a tab 30 deg out of the lapel's plane, the gorge seam twisting
+# 30-50 deg / cm (gorge_lie). Two codes laid the two layers of one collar end in two planes. A tailor bastes the made
+# collar's end (fall on stand) onto the lapel as one: every vertex of a piece sewn to a carried piece (and not itself
+# the piece it is laid on) within LAYER_CARRY of the carried piece's start takes the move of its nearest carried-piece
+# vertex (0 where that piece didn't move: the carry fades with the laid zone). And what the press laid lies ON the
+# flap: the seat no longer draws it through the lapel onto the body (it had pulled the laid stand end back 25 mm).
+# Off = round 16's behaviour.
+PRESS_CARRIES_LAYERS = False  # opt-in: r17b pressed-phase fall-stand gap 20 -> 4 mm, final gorge_lie unchanged (tip 10 / 7.5)
+LAYER_CARRY = 0.02  # m: a layer this close to the piece under it rides with it (fall on stand: 4-12 mm with ROLL_GAP)
+
+
+def _carry_layers(M, X0, X1, carried):
+    """X1 with the layers on each carried piece moved with it (PRESS_CARRIES_LAYERS). carried: {(piece laid, piece
+    it was laid on)}; X0 the positions before the lay."""
+    pid = np.asarray(M["piece"])
+    sw = np.asarray(M["sew"]).reshape(-1, 2)
+    X = X1.copy()
+    D = X1 - X0
+    laid = {k for k, _ in carried}
+    for ka in sorted(laid):  # once per laid piece (a stand laid on both lapels: its move D already holds both ends)
+        on = set(pid[sw[pid[sw[:, 0]] == ka, 1]].tolist()) | set(pid[sw[pid[sw[:, 1]] == ka, 0]].tolist())
+        on -= laid | {kb for k, kb in carried if k == ka}
+        va = np.where(pid == ka)[0]
+        tree = cKDTree(X0[va])
+        for kl in on:
+            vl = np.where(pid == kl)[0]
+            dd, ii = tree.query(X0[vl])
+            m = dd < LAYER_CARRY
+            X[vl[m]] += D[va[ii[m]]]
     return X
 
 
@@ -1010,6 +1053,185 @@ def flap_through_base(M: dict, X: np.ndarray, body=None, hinge: float = 0.018) -
     return out
 
 
+# GORGE LIE (fit round 17, Joe on r15e: the collar's end stands off the lapel like a small square tab and the gorge
+# seam twists). Tailoring: the gorge seam is pressed open and the collar's end lies ON the lapel as one surface
+# across it (Cabrera & Flaherty, Classic Tailoring Techniques; the C48 pressed-seam rule above). Limits from the cloth
+# itself: across a pressed seam the two sides may differ by the seam allowances under them, two cloth thicknesses
+# (2 x 2 mm wool coating, cloth.FABRICS) over a 10 mm allowance: atan(4 / 10) = 22 deg is the most a seam can bend
+# by its allowances, so a twist of 10 deg / cm (half of it) and a plane change of 15 deg are the limits; the collar's
+# end may stand off the lapel's plane by its own layers (fall over stand: 2 thicknesses) + 1 thickness: 6 mm.
+GORGE_TWIST_DEG_CM = 10.0
+GORGE_ACROSS_DEG = 15.0
+GORGE_TIP_MM = 6.0
+GORGE_SOURCE = ("the gorge seam is pressed open; the collar's end lies on the lapel as one surface across it "
+                "(Cabrera & Flaherty, Classic Tailoring Techniques; C48). Limits: 2 x 2 mm cloth over a 10 mm seam "
+                "allowance (cloth.FABRICS wool_coating), Joe on r15e (round 17)")
+
+
+def _plane_fit(P):
+    c = P.mean(0)
+    return c, np.linalg.svd(P - c)[2][-1]
+
+
+def seam_lie(V: np.ndarray, F: np.ndarray, pid: np.ndarray, pairs, win: float = 0.01) -> dict:
+    """How two pieces lie across a sewn seam. pairs (a, b): the seam's vertex pairs IN ORDER along it, a on one side,
+    b on the other. Per side, the surface normal's rotation ABOUT THE SEAM'S TANGENT (twist; the normal's turn about
+    the binormal, the surface's own bend along the seam, is projected out) per cm, read between vertices >= `win` m
+    apart along the seam: {"twist_a": {p50, max}, "twist_b": ..}; "across" (deg): the angle between the two sides'
+    normals at each pair ({p50, max}; 0 = one surface, pressed open). Normals: each piece's own faces only."""
+    V = np.asarray(V, float); F = np.asarray(F); pid = np.asarray(pid)
+    pr = np.asarray(pairs, int)
+    out = {"n": int(len(pr))}
+    if len(pr) < 3:
+        return out
+    N = {}
+    for side, col in (("a", 0), ("b", 1)):
+        ks = np.unique(pid[pr[:, col]])
+        Fs = F[np.isin(pid[F], ks).all(1)]
+        N[side] = _vnormals(V, Fs)[pr[:, col]]
+    P = V[pr[:, 0]]
+    s = np.r_[0, np.cumsum(np.linalg.norm(np.diff(P, axis=0), axis=1))]
+    for side in ("a", "b"):
+        n_, rates = N[side], []
+        for i in range(len(pr)):
+            j = int(np.searchsorted(s, s[i] + win - 1e-9))
+            if j >= len(pr):
+                break
+            t = P[j] - P[i]
+            t /= np.linalg.norm(t) + 1e-12
+            u, w = n_[i] - (n_[i] @ t) * t, n_[j] - (n_[j] @ t) * t
+            c = np.clip(u @ w / (np.linalg.norm(u) * np.linalg.norm(w) + 1e-12), -1, 1)
+            rates.append(np.degrees(np.arccos(c)) / ((s[j] - s[i]) * 100))
+        out[f"twist_{side}"] = ({"p50": round(float(np.median(rates)), 1), "max": round(float(np.max(rates)), 1)}
+                                if rates else None)
+    ac = np.degrees(np.arccos(np.clip(np.abs(np.sum(N["a"] * N["b"], 1)), 0, 1)))
+    out["across"] = {"p50": round(float(np.median(ac)), 1), "max": round(float(np.max(ac)), 1)}
+    return out
+
+
+def _end_off_plane(X, lapel_v, end_v):
+    """The end's vertices off the plane fitted to `lapel_v` (mm): tip (max) and p50; the end's own plane vs it (deg)."""
+    c, n = _plane_fit(X[lapel_v])
+    d = np.abs((X[end_v] - c) @ n) * 1000
+    out = {"tip_mm": round(float(d.max()), 1), "p50_mm": round(float(np.median(d)), 1)}
+    if len(end_v) >= 3:
+        _, m = _plane_fit(X[end_v])
+        out["plane_deg"] = round(float(np.degrees(np.arccos(min(abs(float(n @ m)), 1.0)))), 1)
+    return out
+
+
+def _selftest_gorge_lie():
+    """Planted answers on two strips sewn along x (a: y < 0, b: y > 0, 2 mm spacing): flat (one surface) reads 0;
+    b turned about the seam linearly 0 -> 20 deg over 10 mm reads twist_b 20 deg / cm and twist_a 0; a pressed seam
+    bent along a 50 mm radius cylinder (both sides curve with it: no twist) reads ~0 twist / across; b hinged 30 deg
+    about the seam reads across 30 and twist 0; a collar end lifted 12 mm reads tip 12 off the lapel's plane."""
+    h = 0.002
+    xs = np.arange(0, 0.0201, h)
+    ys = np.arange(0, 0.0101, h)
+    nx, ny = len(xs), len(ys)
+
+    def strips(fb):
+        Va = np.array([fb("a", x, -y) for x in xs for y in ys])
+        Vb = np.array([fb("b", x, y) for x in xs for y in ys])
+        Fa = []
+        for i in range(nx - 1):
+            for j in range(ny - 1):
+                q = [i * ny + j, (i + 1) * ny + j, (i + 1) * ny + j + 1, i * ny + j + 1]
+                Fa += [[q[0], q[1], q[2]], [q[0], q[2], q[3]]]
+        Fa = np.array(Fa)
+        V = np.r_[Va, Vb]
+        F = np.r_[Fa, Fa[:, ::-1] + len(Va)]
+        pid = np.r_[np.zeros(len(Va), int), np.ones(len(Vb), int)]
+        return V, F, pid, [(i * ny, i * ny + len(Va)) for i in range(nx)]
+
+    def flat(side, x, y):
+        return np.array([x, y, 0.0])
+
+    def twisted(side, x, y):
+        th = 0.0 if side == "a" else np.radians(20.0) * min(x / 0.01, 1.0)
+        return np.array([x, y * np.cos(th), y * np.sin(th)])
+
+    def bent(side, x, y):
+        R = 0.05
+        return np.array([R * np.sin(x / R), y, R * (1 - np.cos(x / R))])
+
+    def hinged(side, x, y):
+        th = 0.0 if side == "a" else np.radians(30.0)
+        return np.array([x, y * np.cos(th), y * np.sin(th)])
+
+    r = seam_lie(*strips(flat))
+    assert r["twist_a"]["max"] < 0.5 and r["twist_b"]["max"] < 0.5 and r["across"]["max"] < 0.5, r
+    r = seam_lie(*strips(twisted))
+    assert abs(r["twist_b"]["max"] - 20.0) < 3.0 and r["twist_a"]["max"] < 0.5, r  # (vertex normals blend the ramp ends)
+    r = seam_lie(*strips(bent))
+    assert r["twist_a"]["max"] < 1.0 and r["twist_b"]["max"] < 1.0 and r["across"]["max"] < 1.0, r
+    r = seam_lie(*strips(hinged))
+    assert abs(r["across"]["p50"] - 30.0) < 1.0 and r["twist_b"]["max"] < 0.5, r
+    V, F, pid, pairs = strips(flat)
+    end = np.where((pid == 1) & (V[:, 0] < 0.006))[0]
+    V2 = V.copy()
+    V2[end, 2] += 0.012 * (V[end, 1] / 0.01)
+    assert abs(_end_off_plane(V2, np.where(pid == 0)[0], end)["tip_mm"] - 12.0) < 0.5
+    assert _end_off_plane(V, np.where(pid == 0)[0], end)["tip_mm"] < 0.1
+
+
+@validated.known_answer(_selftest_gorge_lie)
+def gorge_lie(M: dict, X: np.ndarray, end_r: float = 0.025, lapel_r: float = 0.03, win: float = 0.01,
+              hinge: float = 0.018) -> dict:
+    """Each front's gorge (fit round 17): the seam pairs between the front's TURNED lapel (its fold's flap) and the
+    collar / stand past `hinge` (pattern) of its fold rows (flap_through_base's hinge: the roll's own bend is left
+    out), ordered from the front's cfNeck (the notch end) inward: seam_lie (twist per side, across), and the
+    collar's end (collar + stand vertices within `end_r` m, 3D, of the notch-end seam vertex) off the
+    lapel's plane (fitted to the lapel's flap vertices within `lapel_r` m of cfNeck, pattern): tip_mm (max), p50_mm,
+    plane_deg. {front: {..., "ok"}} against GORGE_TWIST_DEG_CM / GORGE_ACROSS_DEG / GORGE_TIP_MM."""
+    from . import folds as _fm
+    X = np.asarray(X, float); F = np.asarray(M["F"]); pid = np.asarray(M["piece"]); uv = np.asarray(M["uv"], float)
+    names = list(M["names"]); P = M["points"]
+    sw = np.asarray(M["sew"]).reshape(-1, 2)
+    kc = [names.index(n) for n in ("collar", "stand") if n in names]
+    out = {}
+    for fd in M.get("folds") or []:
+        nm = fd["piece"]
+        if not nm.startswith("front.") or f"{nm}:cfNeck" not in P or not kc or not len(fd["rows"]):
+            continue
+        k = names.index(nm)
+        fl = np.zeros(len(uv), bool)
+        g = _fm._geom(M, fd)
+        fl[np.asarray(g["rows"][-1]["v"], int)] = True
+        fl[np.asarray(g["rows"][-1]["row"], int)] = True
+        cn = P[f"{nm}:cfNeck"]
+        # the lapel's FACE only: front vertices past `hinge` (pattern) of the fold rows; across the roll's own hinge the
+        # lapel turns ~160 deg in a few mm (its roll, not a twist), and the gorge seam crosses it there
+        rows_ = np.concatenate([np.asarray(r_, int) for r_ in fd["rows"]])
+        far = np.zeros(len(uv), bool)
+        dh, _ = cKDTree(uv[rows_]).query(uv[fl])
+        far[np.where(fl)[0][dh > hinge]] = True
+        fl &= far
+        pr = set()
+        for a, b in sw:
+            if pid[b] == k:
+                a, b = b, a
+            if pid[a] == k and pid[b] in kc and fl[a]:
+                pr.add((int(a), int(b)))
+        pr_, seen = [], set()
+        for a, b in sorted(pr, key=lambda t: float(np.linalg.norm(uv[t[0]] - uv[cn]))):
+            if a not in seen:  # one pair per front vertex
+                seen.add(a); pr_.append((a, b))
+        row = seam_lie(X, F, pid, pr_, win=win)
+        # the collar's end: every collar / stand vertex within end_r (3D) of the notch-end seam vertex (the fall is
+        # sewn to the stand, not the front: a pattern radius about the front seam would leave it out)
+        endv = np.where(np.isin(pid, kc) & (np.linalg.norm(X - X[pr_[0][1]], axis=1) < end_r))[0] if pr_ else []
+        lap = np.where(fl & (pid == k) & (np.linalg.norm(uv - uv[cn], axis=1) < lapel_r))[0]
+        if len(endv) and len(lap) >= 3:
+            row.update(_end_off_plane(X, lap, endv))
+        tw = max(((row.get(f"twist_{s}") or {}).get("max", 0.0) for s in ("a", "b")), default=0.0)
+        row["ok"] = bool(row.get("n", 0) >= 3 and tw <= GORGE_TWIST_DEG_CM
+                         and row.get("across", {}).get("max", 0.0) <= GORGE_ACROSS_DEG
+                         and row.get("tip_mm", 0.0) <= GORGE_TIP_MM)
+        out[nm] = row
+    return out
+
+
 def edge_through_break(M: dict, X: np.ndarray, span: float = 0.04, near: float = 0.012, plane=(0, 2)) -> dict:
     """The front edge through each piece's "break" point, read in the plane `plane` of X (fitted: the front view x, z;
     the flat: pass the pattern uv with plane (0, 1)): the border walked both ways from the break, a line fitted to each
@@ -1451,6 +1673,19 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                     ov = np.where(np.isin(pid, oth))[0]
                     bv = np.union1d(bv, ov)
                     bt_ = np.r_[bt_.reshape(-1, 3), F[np.isin(pid[F[:, 0]], oth)]]
+                if oth and BASE_ACROSS_PRESSED:
+                    # ... AND ACROSS A PRESSED SEAM (fit round 17, Joe's notch): where that piece is pressed onto
+                    # another fold's turned flap (the stand's end on the lapel's gorge), the flap is base too: the
+                    # fall's end runs past the stand's end onto the lapel and lies on it (with only the stand as
+                    # base it stood off at the stand's edge: a tab 8-15 mm off, 30 deg out of the lapel's plane)
+                    for fd2, g2, t2 in folds_:
+                        if fd2 is fd or abs(t2) * len(g2["rows"]) <= math.radians(120):
+                            continue
+                        f2 = np.zeros(n, bool)
+                        f2[np.asarray(g2["rows"][-1]["v"], int)] = True
+                        if any((f2[a] and pid[b] in oth) or (f2[b] and pid[a] in oth) for a, b in sw):
+                            bv = np.union1d(bv, np.where(f2)[0])
+                            bt_ = np.r_[bt_.reshape(-1, 3), F[f2[F].all(1)]]
             over.append((fv, bv, bt_))
             gap = np.full(len(fv), THICK)
             if ROLL_GAP and len(g["rows"]) > 1:  # (see ROLL_GAP: the roll's own radius, from the rows' spacing)
@@ -1462,6 +1697,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
             over_gap.append(gap)
     # off-the-body target per vertex
     off = ease + THICK * flapv
+    on_flap = flapv.copy()  # (no seat attraction onto the body: turned flaps + what the press laid on them)
     # FIT: which cells stay ARAP (folds: rows + flaps; made pieces) and the sewn surface's bending
     cellv = np.zeros(n, bool)
     for fd, g, turn in folds_:
@@ -1614,7 +1850,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                 T[lo] += nrm[lo] * (off[lo] - d[lo])[:, None]
                 if grav > 0:  # (settle: no attraction; resting cloth is held where it touches)
                     held = held | (d < off + 0.0015)
-                hi = (d > off + 0.002) & (d < 0.06) & ~flapv & (grav <= 0)  # (a turned flap lies on its base, not on the body)
+                hi = (d > off + 0.002) & (d < 0.06) & ~on_flap & (grav <= 0)  # (a turned flap lies on its base, not on the body)
                 aw_ = attract * (np.clip(nrm[hi, 2], 0.0, 1.0) if SEAT_GRAVITY else 1.0)
                 aw_ = aw_ * edge_free[hi]  # (worn open: the cloth near the open edge is not drawn onto the body)
                 T[hi] -= nrm[hi] * (aw_ * (d[hi] - off[hi]))[:, None]
@@ -1813,7 +2049,10 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
     # a seam between two flaps pressed flat (the collar's end on the lapel's gorge): cross-seam cells, from here on
     ps, pd, pr = _pressed_cells(M, folds_, E) if pressed else (np.zeros(0, int),) * 2 + (np.zeros((0, 3)),)
     if len(ps):
+        X_lp = X
         X = _lay_pressed(M, X, folds_)
+        if PRESS_CARRIES_LAYERS:  # what the press laid on a turned flap lies on it: not drawn through it onto the body
+            on_flap |= np.linalg.norm(X - X_lp, axis=1) > 1e-9
         tr("pressed", X, M)
         src, dst, rest = np.r_[src, ps], np.r_[dst, pd], np.r_[rest, pr]
         wE = np.r_[wE, np.full(len(ps), PRESSED_W)]

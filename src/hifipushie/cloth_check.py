@@ -1109,7 +1109,21 @@ def form_shape_rows(res: dict) -> list:
                                 f"{2 * pf.CREASE_DEG:.0f} deg <= {pf.CREASE_SHARP_MM:.0f} mm", "why": pf.CREASE_SOURCE},
             {"id": "lapel_on_base", "stage": 3, "status": "PASS" if all(r["ok"] for r in ft.values()) else "FAIL",
              "measure": "pattern_form.flap_through_base (turned flap vertices past the hinge through their own base)",
-             "ours": ft, "ref": f"share <= {pf.FLAP_THROUGH_MAX}", "why": pf.FLAP_THROUGH_SOURCE}]
+             "ours": ft, "ref": f"share <= {pf.FLAP_THROUGH_MAX}", "why": pf.FLAP_THROUGH_SOURCE}] + _gorge_rows(M, A)
+
+
+def _gorge_rows(M: dict, A: np.ndarray) -> list:
+    """(fit round 17, Joe's notch) gorge_lie: the collar's end flat on the lapel, the gorge seam not twisted. [] when
+    the garment has no notched collar (no turned front sewn to a collar / stand)."""
+    from . import pattern_form as pf
+    gl = pf.gorge_lie(M, A)
+    if not gl:
+        return []
+    return [{"id": "gorge_lie", "stage": 3, "status": "PASS" if all(r["ok"] for r in gl.values()) else "FAIL",
+             "measure": "pattern_form.gorge_lie (twist deg / cm about the gorge seam on the lapel's face, across deg, "
+                        "the collar end's tip off the lapel's plane mm)", "ours": gl,
+             "ref": f"twist <= {pf.GORGE_TWIST_DEG_CM} deg/cm, across <= {pf.GORGE_ACROSS_DEG} deg, "
+                    f"tip <= {pf.GORGE_TIP_MM} mm", "why": pf.GORGE_SOURCE}]
 
 
 def flat_pattern_row(model: str, garment: str, spec: dict) -> dict:

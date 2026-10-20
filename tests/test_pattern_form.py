@@ -1399,3 +1399,10 @@ if __name__ == "__main__":
                 traceback.print_exc()
                 print("FAIL", k, ex)
     sys.exit(1 if fails else 0)
+
+
+def test_gorge_lie_known_answers():
+    """(fit round 17, Joe's notch) pattern_form.gorge_lie / seam_lie on planted strips: flat 0, a 20 deg / cm twist
+    found on its own side only, a seam bent along a cylinder (no twist) reads ~0, a 30 deg hinge reads across 30, a
+    collar end lifted 12 mm reads tip 12 (round 16's notch.py counted the surface's own bend and the in-plane gap)."""
+    pf._selftest_gorge_lie()

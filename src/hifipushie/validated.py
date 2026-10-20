@@ -34,6 +34,7 @@ GATE_MEASURES = (
     "hifipushie.pattern_form.placement_error",  # the dress form's neck point on the body's HPS (pattern stage)
     "hifipushie.cloth_check.neckline_standoff_mm",  # the pattern gate's neckline row (cloth_check.pattern_gate)
     "hifipushie.garment_game.pierce_faces",    # game garment: under-layer faces crossing the cover, per LOD + pose
+    "hifipushie.pattern_form.gorge_lie",       # the form gate's gorge_lie row (collar end on the lapel, fit round 17)
 )
 
 

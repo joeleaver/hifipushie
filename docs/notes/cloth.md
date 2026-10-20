@@ -8710,3 +8710,28 @@ docs/notes/cloth.md "dress-garrett 2026-10-19 muslin 1", "form sleeves", "block 
 
 ## fit round 17 (2026-10-20, Garrett jacket + shirt; $FR17 = /mnt/data/hifipushie/dress_garrett/fit_round17)
 - fit round 17 step 0 (housekeeping): per-round STATE pages fit_round1..16 + dress_garrett.md archived verbatim above ("fit rounds 1-16 STATE pages, archived"), deleted; one thread page docs/state/dress_garrett_fit.md; CLAUDE.md thread line updated. test_codified PASS.
+- fit round 17 step 1 (Joe's notch / gorge, closed form fit r15e; $FR17 run.sh / job.sh / harness17.py (TRACE=1 keeps every
+  assembly phase), gorge.py, layers.py, tip.py, render17.py). MEASURE VALIDATED FIRST: pattern_form.gorge_lie / seam_lie
+  (twist = the normal's turn ABOUT the seam tangent, per cm over >= 10 mm; across = angle between the two sides' normals;
+  the collar end's vertices off the lapel's fitted plane), known answers on planted strips (_selftest_gorge_lie, test
+  test_gorge_lie_known_answers): flat 0, planted 20 deg/cm twist read 18-20 on its side and 0 on the other, a seam bent
+  on a 50 mm cylinder ~0, a 30 deg hinge across 30, a 12 mm lifted end tip 12. Round 16's notch.py was wrong on two counts:
+  its "twist" was the normal's whole turn (the surface's own bend counted) and its tip standoff a closest-point distance
+  (the notch's in-plane gap counted: 12.6 mm). The gorge seam also CROSSES the lapel's roll line: its 160 deg roll in a
+  few mm read as a 100-150 deg/cm twist; gorge_lie reads the lapel's face only (past 18 mm of the fold rows, as
+  flap_through_base). Corrected numbers r15e L / R: twist 10.7 / 14.8 deg/cm max, across 13 / 13, tip 9.8 / 8.0 mm,
+  end plane 30 / 30 deg; r16 (release): across p50 24 / 14 (the release sim twists the gorge further).
+- Cause trace (per phase): band_init lays the stand on the lapel (across 0.6, tip 2); turn_flaps turns the fall over the
+  stand (gap 4 mm); _lay_pressed then moved the stand's end 16-30 mm into the lapel's plane WITHOUT the fall (gap 4 ->
+  12-20): two codes laying one collar end's two layers in two planes (round 16's suspicion, confirmed). Fix written:
+  PRESS_CARRIES_LAYERS (the layers on a laid piece take its move; the laid vertices not drawn onto the body): gap stays
+  4 at the press, but the final fit is UNCHANGED (r17b tip 10.0 / 7.5, plane 30 / 23): the relax re-opens it. Lever
+  tests: BASE_ACROSS_PRESSED (the fall's base continues onto the lapel) r17c no change; PRESSED_W 4 r17w across 10 / 9
+  (from 12), tip unchanged. tip.py located the tab: the STAND itself rises 7-30 mm off the lapel's plane within 22 mm of
+  the notch end (L), the fall on it; the seam lies flat (across p50 4-6) but past the seam's first ring the stand stands
+  up as drafted (round the neck). A tailored collar's stand ends pressed flat under the collar's end at the gorge: the
+  fit has nothing that lays the stand END flat beyond the one-ring cross cells. Both switches left OPT-IN (False).
+  Stop-loss on the press levers (two dead). NEXT for the notch: a method change (the stand's end within the notch zone
+  held in the lapel's plane as one made piece, or the stand drafted tapering out at the gorge: tailoring agent), not
+  another weight. Gate row gorge_lie (cloth_check.form_shape_rows): r15e FAIL. Crop framing fixed (render17.py: the
+  concept framed at ITS notch, L (744, 410) px, R (516, 410); ours at the notch mouth): check/notch.{L,R}_r15e.png.
