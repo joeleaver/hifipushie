@@ -1086,6 +1086,22 @@ def form_strain_rows(res: dict, roles: list, g: dict) -> list:
     return rows
 
 
+def form_shape_rows(res: dict) -> list:
+    """Gate rows on the garment's SHAPE on the form (fit round 11, Joe's three faults on round 10): front_edge_break
+    (pattern_form.edge_through_break: the front edge ONE line through the break, flat and fitted; BREAK_STEP_SOURCE)."""
+    from . import pattern_form as pf
+    M = res["mesh"]
+    if not any(k.endswith(":break") for k in M["points"]):
+        return []
+    fit = pf.edge_through_break(M, np.asarray(res["A"], float))
+    flat = pf.edge_through_break(M, np.asarray(M["uv"], float), plane=(0, 1))
+    ok = all(r["ok"] for r in list(fit.values()) + list(flat.values()))
+    return [{"id": "front_edge_break", "stage": 3, "status": "PASS" if ok else "FAIL",
+             "measure": "pattern_form.edge_through_break (step mm off the edge's lines, turn deg), flat + on the form",
+             "ours": {"form": fit, "flat": flat}, "ref": f"step <= {pf.BREAK_STEP_MM} mm, turn <= {pf.BREAK_TURN_DEG} deg",
+             "why": pf.BREAK_STEP_SOURCE}]
+
+
 def flat_pattern_row(model: str, garment: str, spec: dict) -> dict:
     """The flat pattern stage (cloth_workflow.stage_pattern, no image) as one blocking row: ease vs the body by girth in
     the kind's fit band (cloth.sizing, seam to seam), every piece sewn, the design's choices evidenced in the pieces,
@@ -1156,7 +1172,7 @@ def pattern_gate(model: str, garment: str, spec: dict | None = None, refs=None, 
                  "ours": {k: fi.get(k) for k in ("neck_point_mm", "turned_deg", "stretch_pct", "sew_gap_mm",
                                                  "inside_body", "through_under")},
                  "why": "the dress form's own report (folds turned, stretch, neck point on the body's HPS)"})
-    for r_ in form_strain_rows(res, roles, g):
+    for r_ in form_strain_rows(res, roles, g) + form_shape_rows(res):
         if not form_ok and r_["status"] in ("PASS", "FAIL"):
             r_.update(form_status=r_["status"], status="INFO", why=f"read on the dress form (not validated: {FORM_FAULTS})")
         rows.append(r_)

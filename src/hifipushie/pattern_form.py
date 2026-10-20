@@ -729,6 +729,64 @@ def _swing_open(M, X, ox, fast, bsurf):
 
 WORN_EDGE_W = 20.0  # the swung front edge's pull to its swung x (a worn-open point's is WORN_OPEN_W)
 WORN_EDGE = False  # opt-in: validation 2 A/B opened the fronts (hips 72 vs the sim's 75) but slid the fronts sideways (hem sweep +23 %, waist +6 %)
+EDGE_FIELD = True  # fit round 11: the worn-open edge's targets carry the named points' corrections (worn_open_edge)
+BREAK_STEP_MM = 3.0  # the front edge through the break: no vertex further than this off the edge's lines either side
+BREAK_TURN_DEG = 60.0  # ... and the lines meet at less than this (the lapel's turned edge opens a V, never folds back)
+BREAK_STEP_SOURCE = ("a front edge is ONE line: the lapel's outer edge runs on into the front edge below the break, no "
+                     "notch or step (tailoring: the roll line starts AT the break on the edge; Joe 2026-10-19 on fit "
+                     "round 10: 'the notches cut in the bottom of the lapels'); 3 mm = two cloth thicknesses")
+
+
+def edge_through_break(M: dict, X: np.ndarray, span: float = 0.04, near: float = 0.012, plane=(0, 2)) -> dict:
+    """The front edge through each piece's "break" point, read in the plane `plane` of X (fitted: the front view x, z;
+    the flat: pass the pattern uv with plane (0, 1)): the border walked both ways from the break, a line fitted to each
+    arm between `near`/3 and `span` (m, along the edge), then step_mm = the furthest vertex within `near` of the break
+    from the nearer line, turn_deg = the angle between the arms' directions continuing through the break (0 straight on,
+    180 folded back). {piece: {"step_mm", "turn_deg", "ok"}} against BREAK_STEP_MM / BREAK_TURN_DEG."""
+    from collections import defaultdict
+    F = np.asarray(M["F"])
+    E = np.sort(np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]], axis=1)
+    e, c = np.unique(E, axis=0, return_counts=True)
+    adj = defaultdict(list)
+    for a, b in e[c == 1]:
+        adj[int(a)].append(int(b)); adj[int(b)].append(int(a))
+    Y = np.asarray(X, float)[:, list(plane)]
+    out = {}
+    for key, b in M["points"].items():
+        if not key.endswith(":break") or len(adj[b]) != 2:
+            continue
+        arms = []
+        for s in adj[b]:
+            seq, prev, cur, L = [], b, s, 0.0
+            while L < span and len(seq) < 500:
+                L += float(np.linalg.norm(Y[cur] - Y[seq[-1][0] if seq else b]))
+                seq.append((cur, L))
+                nx = [q for q in adj[cur] if q != prev]
+                if not nx:
+                    break
+                prev, cur = cur, nx[0]
+            arms.append(seq)
+        lines, nearv = [], [b]
+        for seq in arms:
+            far = np.array([Y[v] for v, L in seq if L >= near / 3])
+            nearv += [v for v, L in seq if L < near]
+            if len(far) < 2:
+                break
+            c0 = far.mean(0)
+            d = np.linalg.svd(far - c0)[2][0]
+            if d @ (far[-1] - far[0]) < 0:
+                d = -d
+            lines.append((c0, d))
+        if len(lines) < 2:
+            continue
+        dist = lambda p, ln: abs(float(ln[1][0] * (p - ln[0])[1] - ln[1][1] * (p - ln[0])[0]))
+        step = max(min(dist(Y[v], ln) for ln in lines) for v in nearv)
+        turn = math.degrees(math.acos(float(np.clip(-lines[0][1] @ lines[1][1], -1, 1))))
+        out[key.split(":")[0]] = {"step_mm": round(step * 1000, 1), "turn_deg": round(turn, 1),
+                                  "ok": bool(step * 1000 <= BREAK_STEP_MM and turn <= BREAK_TURN_DEG)}
+    return out
+
+
 EDGE_FREE = 0.08  # m (pattern): the seat's attraction fades to none toward a worn-open front edge (0: off)
 
 
@@ -763,6 +821,18 @@ def worn_open_edge(M: dict, X: np.ndarray, ox: list, band: float = 0.01, reach: 
                                       | (roll & (X[:, 2] > max(zs)))))[0]
         if not len(cand):
             continue
+        # THE EDGE FIELD (fit round 11, Joe: "the notches cut in the bottom of the lapels"): the rigid swing turns the
+        # front once per worn-open point, so it meets only the LAST one (Garrett: cfHem at 96 mm, the break left at ~50
+        # vs its 64). Held at their swung x, the edge vertices then fought the break's own pin: the break vertex alone
+        # was dragged 10 mm out of the edge, a spike (a 94 deg turn) where the lapel meets the front. A front edge is ONE
+        # line (tailoring: the lapel's edge runs on into the front edge at the break, no step): every edge vertex takes
+        # the named points' corrections (target - swung x), linear in height between them, the top one fading to none
+        # at the roll line's top (the lapel pivots about the neck), the bottom one held below. EDGE_FIELD False: old.
+        corr = sorted((float(X[v, 2]), side * xt_ - side * float(X[v, 0])) for v, xt_, _ in ox if pid[v] == k)
+        ztop = float(X[roll, 2].max()) if roll.any() else corr[-1][0]
+        zc = np.array([c[0] for c in corr] + ([ztop] if ztop > corr[-1][0] + 1e-6 else []))
+        cc = np.array([c[1] for c in corr] + ([0.0] if ztop > corr[-1][0] + 1e-6 else []))
+        cfun = (lambda z: float(np.interp(z, zc, cc))) if EDGE_FIELD else (lambda z: 0.0)
         sx = side * X[cand, 0]
         bz = np.floor(X[cand, 2] / band).astype(int)
         for b in np.unique(bz):
@@ -776,7 +846,8 @@ def worn_open_edge(M: dict, X: np.ndarray, ox: list, band: float = 0.01, reach: 
                     # edge wrapped back to CF (open tube: 0.6 mm off CF). The edge keeps its drafted line: a vertex
                     # its pattern puts further from that point across (a cutaway) hangs that much further out.
                     du = abs(float(M["uv"][v][0]) - float(M["uv"][lowest][0]))
-                    xt = side * (x_low + du) if (hang and X[v, 2] < min(zs) - 1e-6) else float(X[v, 0])
+                    xt = (side * (x_low + du) if (hang and X[v, 2] < min(zs) - 1e-6)
+                          else float(X[v, 0]) + side * cfun(float(X[v, 2])))
                     out.append((int(v), xt, WORN_EDGE_W))
     return out
 

@@ -1114,6 +1114,30 @@ def test_open_front_hangs_without_moving_its_side_seams(off=0.05):
     assert res[False][0] > 0.010, res[False]
 
 
+def test_open_front_edge_has_no_step_at_the_break():
+    """(fit round 11, Joe: "the notches cut in the bottom of the lapels") A front edge worn open is ONE line through the
+    break. Known answer, the open-front tube, worn open at TWO points (break 50 mm, cfHem 80 mm off CF): the rigid swing
+    meets only the last point, so with the edge held at its swung x (EDGE_FIELD False) the break's own pin dragged that
+    one vertex out of the edge (a step > BREAK_STEP_MM: the fault); with the edge field the edge carries the points'
+    corrections and the break sits on the edge's line (step <= BREAK_STEP_MM), both points still met within 5 mm."""
+    M, X0, body = _open_tube_case()
+    P = M["points"]
+    saved = (pf.WORN_EDGE, pf.OPEN_HOLD, pf.EDGE_FIELD)
+    res = {}
+    try:
+        for fld in (False, True):
+            pf.WORN_EDGE, pf.OPEN_HOLD, pf.EDGE_FIELD = True, True, fld
+            V = pf.assemble({"mesh": M, "X0": X0}, body, iters=80, worn_open={"break": 0.05, "cfHem": 0.08})["V"]
+            eb = pf.edge_through_break(M, V)
+            miss = max(abs(abs(V[P[f"front.{s}:{n}"], 0]) - o) for s in "LR" for n, o in (("break", 0.05), ("cfHem", 0.08)))
+            res[fld] = (max(r["step_mm"] for r in eb.values()), miss)
+            print(f"edge field {fld}: {eb}, worst point miss {miss * 1000:.1f} mm")
+    finally:
+        pf.WORN_EDGE, pf.OPEN_HOLD, pf.EDGE_FIELD = saved
+    assert res[False][0] > pf.BREAK_STEP_MM, res
+    assert res[True][0] <= pf.BREAK_STEP_MM and res[True][1] < 0.005, res
+
+
 def test_sleeve_over_a_sleeve_has_room():
     """(fit round 10) A sleeve worn over a sleeve holds it plus one layer: width >= under + 2 pi (EASE + THICK). Known
     answer: a shirt sleeve 391 mm wide; a two-piece jacket sleeve (top 217 + under 179 = 396, Garrett's draft from the
