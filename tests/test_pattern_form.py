@@ -1628,3 +1628,27 @@ def test_bridge_hourglass_tube():
     assert s["cup_back"] <= 0.65 * f["cup_back"], (s, f)
     assert s["under_seat_back"] >= f["under_seat_back"] + 15, (s, f)
     assert s["stretch_p99"] < 10 and f["stretch_p99"] < 10, (s, f)
+
+
+def test_pocket_flap_is_a_patch_on_its_front():
+    """(fit round 26, C95) pattern_form.patches: a piece stitched only to the INTERIOR of one other piece (a pocket flap
+    on its pocket line) is a patch of that piece; a piece sewn to another's border (a collar on a stand) is not, nor one
+    joined to two pieces."""
+    def grid(nx, ny, x0, y0, s, off):
+        V = [(x0 + i * s, y0 + j * s, 0.0) for j in range(ny) for i in range(nx)]
+        F = []
+        for j in range(ny - 1):
+            for i in range(nx - 1):
+                a = off + j * nx + i
+                F += [(a, a + 1, a + nx + 1), (a, a + nx + 1, a + nx)]
+        return V, F
+    _, F0 = grid(6, 6, 0, 0, 0.01, 0)          # 0 front: verts 0..35
+    _, F1 = grid(3, 2, 0.015, 0.03, 0.01, 36)  # 1 flap: verts 36..41 (its top row 39..41)
+    _, F2 = grid(6, 2, 0, 0.06, 0.01, 42)      # 2 collar: sewn to the front's top border (30..35)
+    M = {"names": ["front", "flap", "collar"], "piece": [0] * 36 + [1] * 6 + [2] * 12, "F": F0 + F1 + F2,
+         "sew": [[30 + i, 42 + i] for i in range(6)],
+         "stitch": [[39, 20], [40, 21], [41, 22]]}  # (front 20..22: interior)
+    got = [(M["names"][k], M["names"][b], len(v)) for k, b, v in pf.patches(M)]
+    assert got == [("flap", "front", 6)], got
+    M2 = dict(M, stitch=M["stitch"] + [[36, 43]])  # the flap also stitched to the collar: not a patch
+    assert pf.patches(M2) == [], pf.patches(M2)

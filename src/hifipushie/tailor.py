@@ -447,6 +447,13 @@ def measure(V: np.ndarray, faces, J: dict) -> dict:
                 if (L := torso(z)) is not None and L[:, 0].min() < -0.02 < 0.02 < L[:, 0].max()),
                key=lambda t: t[0])
     mm["seat"], at["seat_z"], loops["seat"] = best
+    # plumbGirth: what a garment hanging STRAIGHT from the chest must clear, the tape round the hull of the union of
+    # the torso sections seat .. chest (a tube can't follow the waist's hollow; the seat or the chest's depth governs).
+    # pattern_jacket's plumb silhouette sizes its girth below the chest from it (fit round 26, C94: the chest's full
+    # ease carried to the hem left Garrett's jacket +116 over this, ~+55 surplus after the shirt and a cloth layer)
+    U_ = [L_ for z in np.linspace(at["seat_z"], at["chest_z"], 18) if (L_ := torso(z)) is not None]
+    if U_:
+        mm["plumbGirth"] = girth(np.concatenate(U_), Z)
     # arms
     ad = el - sh
     ad /= np.linalg.norm(ad)

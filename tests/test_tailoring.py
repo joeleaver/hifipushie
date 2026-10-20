@@ -184,6 +184,36 @@ def test_plumb_silhouette_falls_straight_and_its_row_catches_a_pinch():
         assert res["pinched"][0] == "FAIL" and res["fitted"][2] < res["plumb"][2] - 20, (name, res)
 
 
+def test_plumb_cut_sized_to_the_tube():
+    """(fit round 26, C94) With the tape's plumbGirth (the tube a straight body hangs round), the plumb cut takes the
+    girth under the chest to plumbGirth + PLUMB_ALLOW and holds it to the hips (waist_plumb PASS inside its floor /
+    ceiling), the chest untouched; the same tape judging the old cut (the chest's ease carried down) FAILs the ceiling."""
+    for name, tape0 in [("TAPE", TAPE)] + sorted(BODIES.items()):
+        tape = dict(tape0, waist=round(0.815 * tape0["chest"]))
+        tape_t = dict(tape, plumbGirth=round(1.028 * tape0["chest"]))  # (Garrett: 995 / 968)
+        out = {}
+        for lab, t in (("old", tape), ("tube", tape_t)):
+            ops = [op for op in pj.jacket_ops(OPS, t, 20.0) if not (op["op"] == "contour" and op.get("edge") == "centre_back")]
+            for op in ops:
+                if op["op"] == "waist_suppression":
+                    op["silhouette"] = "plumb"
+            D = pd.start("bodice", t, dict(BLOCK, fitted=False, chest_ease=0.15, waist_ease=0.16))
+            pd.apply(D, ops)
+            Bp = _bp(D)
+            rows = _rows(Bp, tape_t, {"design": {"details": {"pockets": "flap"}, "ops": ops}})
+            m = D["meta"]
+            ys = np.linspace(m["chest_y"] - pj.PLUMB_RAMP, m["hips_y"], 15)
+            eff = [pj.torso_span(Bp, y, half=False) - pj._lap(Bp, y) for y in ys]
+            out[lab] = (rows["waist_plumb"]["status"], round(pj.torso_span(Bp, m["chest_y"], half=False) * 1000),
+                        round(min(eff) * 1000), round(max(eff) * 1000), rows["waist_suppression"]["status"])
+        tgt = pj.plumb_target(tape_t) * 1000
+        print(name, round(tgt), out)
+        assert out["tube"][0] == "PASS" and out["tube"][4] == "PASS", (name, out)
+        assert tgt - 10 <= out["tube"][2] and out["tube"][3] <= tgt + 25, (name, out)
+        assert abs(out["tube"][1] - out["old"][1]) <= 3, (name, out)  # (the chest keeps its ease)
+        assert out["old"][0] == "FAIL" and out["old"][3] > tgt + 25, (name, out)
+
+
 def test_collar_fall_has_its_fold_line_and_the_gate_refuses_one_without():
     """R16 (fit round 2): the two-piece collar's fall carries a fold (roll) line across the whole fall (CB fold to both
     ends), parallel to its seam on the stand; the construction check (garment_design "fold" evidence, the gate's

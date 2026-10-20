@@ -329,11 +329,23 @@ def op_style_line(D: dict, piece: str, **o) -> None:
         op_take_in(D, line=name, **(o["take_in"] if isinstance(o["take_in"], dict) else {"amount": o["take_in"]}))
 
 
+def take_in_weight(Ly: np.ndarray, y: float, length: float, below: bool = False) -> np.ndarray:
+    """op_take_in's profile along a seam: 1 at level y fading (smoothstep) to 0 `length` above and below it, or with
+    `below` 1 from y all the way down (a straight-hanging cut taken in under the chest: ramps in over `length` above y,
+    held to the hem)."""
+    if below:
+        w = np.clip((y + length - Ly) / length, 0, 1)
+    else:
+        w = np.clip(1 - np.abs(Ly - y) / length, 0, 1)
+    return w * w * (3 - 2 * w)
+
+
 def op_take_in(D: dict, line: str, amount: float, y: float | None = None, length: float = 0.22, share: float = 0.65,
-               **_) -> None:
+               below: bool = False, **_) -> None:
     """Contour a panel seam: `amount` taken out at level y (default: the waist), fading out over `length` above and
     below (a fish-eye dart moved into the seam). The SIDE panel's edge takes `share` of it and the centre panel's the
-    rest: the centre panel stays nearly straight on grain and the side panel carries the curve, as a tailor cuts it."""
+    rest: the centre panel stays nearly straight on grain and the side panel carries the curve, as a tailor cuts it.
+    `below`: the amount held from y down to the hem (take_in_weight), ramped in over `length` above y."""
     sa, sb = D["lines"][line]
     y = D["meta"].get("waist_y", 0.0) if y is None else float(y)
     cen = [float(np.abs(D["pieces"][x.split(":")[0]]["P"][:, 0]).min()) for x in (sa, sb)]
@@ -349,8 +361,7 @@ def op_take_in(D: dict, line: str, amount: float, y: float | None = None, length
         nrm /= np.linalg.norm(nrm, axis=1, keepdims=True) + 1e-12
         if np.mean(np.sum((pc["P"].mean(0) - L) * nrm, 1)) < 0:
             nrm = -nrm  # into the piece
-        w = np.clip(1 - np.abs(L[:, 1] - y) / length, 0, 1)
-        w = w * w * (3 - 2 * w)
+        w = take_in_weight(L[:, 1], y, length, below)
         mv = nrm * (amount * part * w)[:, None]
         # an end the shaping hasn't faded out at (a cropped hem inside the taper) slides along its own edge: level
         # (held, the points next to it moved and left a hook at the hem)

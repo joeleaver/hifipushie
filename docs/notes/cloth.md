@@ -9052,3 +9052,39 @@ Closed fits (MODE=outer LAYER_ALLOW 0.008, shirt culled; $FR24/sideline.py, sum2
   r24c): boxy / no waist shaping (design fact: disputed), too long (hem at the crotch vs just covering the seat),
   collar stands up the neck, pocket flap a jagged fragment (sunk), shoulders wide / square, lapels narrow, shirt
   untucked + bulky (other stage).
+
+## fit round 26 (2026-10-20; $FR26 = /mnt/data/hifipushie/dress_garrett/fit_round26, this worktree's code via run.sh)
+- Brief: Joe settled the jacket is worn OPEN (twice); every render open + arranged; reviews carry "the reference jacket
+  is worn open, unbuttoned" (both reviewers still read it as fastened: known misread, not a finding).
+- Step 1 EASE (C94): tailor.measure gains plumbGirth (hull of the union of the torso sections seat..chest; Garrett
+  996); pattern_jacket plumb now cuts the girth under the chest to plumbGirth + PLUMB_ALLOW (2 pi x (8 + 1.6) mm = 60)
+  from PLUMB_RAMP 100 mm under the chest line to the hem (op_take_in below=True; CB edge by take_in_weight); waist_plumb
+  row: floor target - 10 and CEILING target + 25 on the girth less the lap (_lap); waist_suppression's plumb cap = the
+  chest's surplus over the tube + 3 %. Flat (flat24.py): rows chest -> hem 1158 .. 1095 (lap incl.), tube 1055 PASS.
+  r26a shares cb .15 / side_back .45 / side_front .40: closed waist 1111 -> 1058, but the front view pinched (chest
+  416 / waist 382, side line in 16-25): the side stand-off IS the plumb hang. r26c (.45/.40/.15): 414 / 390. r26g
+  (.70/.30/0, KEPT): 413 / 398 / 406 / 409 / 410 (r24c 409 / 398 / 394 / 413 / 429), waist girth 1060 (+65 over the tube).
+  Test test_plumb_cut_sized_to_the_tube (4 sizes; the old cut FAILs the ceiling).
+- Step 2 LOWER FRONTS SWING OUT: release only (r25e) seat 428; arranged (r25f) 492: the arrangement adds the swing.
+  The edge pulled ~90 mm out along the body with fixed cloth compresses the front between edge and side seam; the
+  excess bulged round the sides (ease25: front stand-off at az -60 66-68 mm open vs 16-24 closed). The surplus (step 1)
+  took the open seat 492 -> 456 (r26d). Hang plumb in depth from the break (g25 hang=plumb, r26e): 464, worse, dead.
+  Side seams held as fitted (g25 side=1, pins front.X:sideF.a..sideF.b) r26f / r26h / r26j: 411 / 382 / 400 / 411 /
+  430 open, side line in <= 18 (mostly <= 12); the excess goes forward (front stand-off 64-80). C96.
+- Step 3 POCKET FLAPS (C95): pattern_form.patches + PATCH_ON_BASE: a piece sewn / stitched only to one other piece's
+  interior (Garrett: flap.X stitched to front.X, 5 pairs) joins the turned-flap list (over / over_gap THICK, flapv):
+  r26i flaps +1.0..1.5 mm off the front, 0 / 25 sunk (r24c -1.2 / -4.7, 20-25 sunk); after release + arrangement
+  r26j p50 +2.8 / +3.7, <= 1 sunk. Test test_pocket_flap_is_a_patch_on_its_front.
+- Step 4 LENGTH (measured, not changed; len26.py): r26j cfHem 758 / 758, side hem 759, lowest 766 below HPS; body
+  waist 433, seat 640, crotch ~688; round 13's concept front length 748 (+10). But the scale-matched wholefront sheet
+  puts our hem ~45-55 mm below the reference's (review: "about 60 px higher"): the 748 needs re-reading first.
+- Step 5 SHIRT: drawn below the waist r25g 3242 verts (1966 in front) -> r26j 2403 (1472). No trousers: recull.py
+  BELT=50 hides shirt triangles below the body waist - 50 mm (3987 more) for the renders: a stand-in, not a tuck rule.
+  The V fullness not changed.
+- Renders r26k ($FR26/check): wholefront_r26k, upper_front_r26k, upper_three_r26k (ref | clay | diag), side / back
+  _before_r25g_after_r26k. Reviews: rev_wf FAIL 11 MAJOR (collar funnel, shirt collar clipped, flaps "puffy rolls" ~50 px
+  low, baggy sleeves / square shoulders, hem corners crumpled + flare, "fastened" misread, side seam gaps under the arms
+  in diag, length now MINOR); rev_ab (r25g vs r26k, wholefront clay, both open): NEW ("keeps the flaps, a cleaner lapel
+  and a tailored-jacket outline"; old: flaps missing, A-line flare, shirt like a dress).
+- 11 clothing test files (tailoring, pattern_form, cloth_release, cloth_layers, cloth_check, pattern_draft,
+  pattern_styles, pattern_tailor, pattern_gate, cloth_made, form_validation): 170 passed, 2 skipped, 3 xfailed, exit 0.

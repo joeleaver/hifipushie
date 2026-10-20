@@ -1082,6 +1082,39 @@ def roll_turn_weight(M: dict, X: np.ndarray, k: int) -> np.ndarray:
     return out
 
 
+# PATCH_ON_BASE (fit round 26, C95): a PATCH, a piece sewn (or stitched) to one other piece only and along that piece's INTERIOR
+# (a pocket flap on its pocket line; not a collar on a stand's edge, not a sleeve), lies on its base one THICK out, drawn
+# there each relax round like a turned flap (FLAP_PULL), not at the body's ease: Garrett's flaps kept their old offset
+# off the BODY (20-24 mm) while the plumb cut + BRIDGE moved the fronts out (~26 mm) and sank 20-25 of 25 vertices behind
+# the front (r24c); a flap that starts behind its front stays there through the release (CCD keeps the order).
+PATCH_ON_BASE = True
+
+
+def patches(M: dict) -> list:
+    """[(piece k, base piece b, k's vertices)] for every patch (see PATCH_ON_BASE)."""
+    pid = np.asarray(M["piece"])
+    F = np.asarray(M["F"])
+    sw = np.r_[np.asarray(M.get("sew", []), int).reshape(-1, 2), np.asarray(M.get("stitch", []), int).reshape(-1, 2)]
+    E = np.sort(np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]], 1)
+    Eu, cnt = np.unique(E, axis=0, return_counts=True)
+    border = np.zeros(len(pid), bool)
+    border[Eu[cnt == 1].ravel()] = True
+    out = []
+    for k in range(len(M["names"])):
+        a = sw[(pid[sw[:, 0]] == k) & (pid[sw[:, 1]] != k)][:, 1]
+        a = np.r_[a, sw[(pid[sw[:, 1]] == k) & (pid[sw[:, 0]] != k)][:, 0]]
+        if not len(a):
+            continue
+        bs = set(pid[a].tolist())
+        if len(bs) != 1:
+            continue
+        b = bs.pop()
+        if border[a].mean() > 0.5:  # (sewn to the base's edge: a joined piece, not a patch)
+            continue
+        out.append((k, int(b), np.where(pid == k)[0]))
+    return out
+
+
 WORN_EDGE_W = 20.0  # the swung front edge's pull to its swung x (a worn-open point's is WORN_OPEN_W)
 WORN_EDGE = False  # opt-in: validation 2 A/B opened the fronts (hips 72 vs the sim's 75) but slid the fronts sideways (hem sweep +23 %, waist +6 %)
 EDGE_FIELD = True  # fit round 11: the worn-open edge's targets carry the named points' corrections (worn_open_edge)
@@ -2014,6 +2047,12 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                 s_ = np.maximum(d0[fv] - dr_[-1], 0.0)
                 gap = THICK + 2 * rad * np.clip(1.0 - s_ / (math.pi * rad), 0.0, 1.0) ** 2
             over_gap.append(gap)
+    if PATCH_ON_BASE:  # (C95: a patch sewn inside one piece, a pocket flap, lies on that piece, not off the body)
+        for k, b, pv in patches(M):
+            bt_ = F[pid[F[:, 0]] == b]
+            over.append((pv, np.where(pid == b)[0], bt_))
+            over_gap.append(np.full(len(pv), THICK))
+            flapv[pv] = True
     laps = lap_layers(M, X, fast, skip=flapv) if LAP_LAYER else []  # (a lapped closure's over piece outside its under piece; turned flaps lie on their own base)
     # off-the-body target per vertex
     off = ease + THICK * flapv

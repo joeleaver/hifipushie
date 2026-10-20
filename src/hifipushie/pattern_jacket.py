@@ -227,6 +227,76 @@ STRAIGHT_SIDES = ("side_back", "side_front")
 # hips no narrower than the waist. PLUMB_TOL 0.03 (~35 mm on Garrett's 1150 chest): the cloth's own drape over the
 # 15 % chest ease; the sack coat's straight body (Flusser: "hangs straight from the shoulders").
 PLUMB_TOL = 0.03
+# The plumb GIRTH below the chest (fit round 26, C94): a straight-hanging body needs the tube round the torso from the
+# chest to the seat (tape plumbGirth: the hull of the union of those sections; Garrett 995) + what goes under it and
+# its own layer, not the chest's full ease carried down (Garrett r24c: +116 over the tube, ~+55 surplus standing off at
+# the sides and back). PLUMB_ALLOW = the under garment's allowance (layered_fit outer_first LAYER_ALLOW 8 mm all round:
+# 2 pi x 8 = 50) + one cloth layer (2 pi x 1.6 = 10). The cut takes the surplus in at the side-back / side-front seams
+# and CB (PLUMB_SHARE, where it stood off) from PLUMB_RAMP under the chest line down to the hem, ramped in over the
+# PLUMB_RAMP above that: the sides still hang plumb below it. The gate row waist_plumb holds the girth (less the lap)
+# from there to the hips in [target - PLUMB_FLOOR_TOL, target + PLUMB_CEIL].
+PLUMB_ALLOW = 2 * math.pi * (0.008 + 0.0016)
+PLUMB_RAMP = 0.10
+PLUMB_SHARE = {"cb": 0.70, "side_back": 0.30, "side_front": 0.0}
+PLUMB_FLOOR_TOL, PLUMB_CEIL = 0.010, 0.025
+
+
+def plumb_target(m: dict) -> float | None:
+    """The plumb cut's girth under the chest (m: tape, mm), or None for a tape without plumbGirth (the chest's kept)."""
+    pg = (m or {}).get("plumbGirth")
+    return None if not pg else float(pg) / 1000 + PLUMB_ALLOW
+
+
+def _lap(D_or_Bp: dict, y: float) -> float:
+    """Girth the fronts add past CF at level y (the laps): each front piece's span on the far side of x = 0."""
+    s = 0.0
+    for pc in D_or_Bp["pieces"].values():
+        if pc.get("role") != "front":
+            continue
+        P = np.asarray(pc["P"], float)
+        sg = 1.0 if np.median(P[:, 0]) > 0 else -1.0
+        Q = P.copy()
+        Q[:, 0] = np.where(sg * Q[:, 0] < 0, Q[:, 0], 0.0)  # the outline clipped to the far side of CF
+        s += _span_at(Q, y)
+    half = not any("." in k for k in D_or_Bp["pieces"])
+    return s * (2 if half else 1)
+
+
+def _plumb_cut(D: dict) -> None:
+    """R8 plumb + C94: take the girth under the chest to plumb_target (see PLUMB_ALLOW)."""
+    import copy as _copy
+    target = plumb_target(D["meta"].get("measurements"))
+    if target is None:
+        D["log"].append("plumb girth: no plumbGirth on the tape; the chest's girth carried down")
+        return
+    yf = float(D["meta"]["chest_y"]) - PLUMB_RAMP
+    now = torso_span(D, yf) - _lap(D, yf)
+    red = (now - target) / 2  # per half
+    if red <= 0.002:
+        D["log"].append(f"plumb girth: {now * 1000:.0f} within the tube's {target * 1000:.0f} mm")
+        return
+
+    def cut(Dx, r):
+        pcb = Dx["pieces"]["back"]
+        arc = Dx["edges"]["centre_back"][0].split(":", 1)[1]
+        pd.densify_edge(pcb, arc)
+        ix = pattern.arc_indices(pcb, arc)
+        L = pcb["P"][ix]
+        sgn = 1.0 if pcb["P"][:, 0].mean() > L[:, 0].mean() else -1.0
+        pcb["P"][ix, 0] = L[:, 0] + sgn * r * PLUMB_SHARE["cb"] * pd.take_in_weight(L[:, 1], yf, PLUMB_RAMP, below=True)
+        for ln, k in (("sideB", "side_back"), ("sideF", "side_front")):
+            if ln in Dx["lines"]:
+                pd.op_take_in(Dx, ln, r * PLUMB_SHARE[k], y=yf, length=PLUMB_RAMP, below=True)
+
+    trial = _copy.deepcopy(D)
+    cut(trial, red)
+    got = now - (torso_span(trial, yf) - _lap(trial, yf))
+    gain = float(np.clip(2 * red / got, 0.8, 1.6)) if got > 1e-4 else 1.0
+    cut(D, red * gain)
+    D["log"].append(f"plumb girth (C94): under the chest {now * 1000:.0f} -> tube {target * 1000:.0f} mm (plumbGirth "
+                    f"{(target - PLUMB_ALLOW) * 1000:.0f} + {PLUMB_ALLOW * 1000:.0f}), {red * gain * 1000:.1f} per half "
+                    f"(gain {gain:.2f}) from {PLUMB_RAMP * 1000:.0f} mm under the chest to the hem; now "
+                    f"{(torso_span(D, yf) - _lap(D, yf)) * 1000:.0f}")
 
 
 def op_waist_suppression(D: dict, waist_ease: float | None = None, share: dict | None = None, dart_x: float = 0.55,
@@ -241,6 +311,7 @@ def op_waist_suppression(D: dict, waist_ease: float | None = None, share: dict |
         raise ValueError(f"waist_suppression silhouette {silhouette!r}: one of {SILHOUETTES}")
     if silhouette == "plumb":
         D["log"].append("waist suppression R8 silhouette plumb: none (CB, side panels and dart untouched; Joe 2026-10-20)")
+        _plumb_cut(D)
         return
     if silhouette == "straight":  # (the suit's CB / dart mm, no side take-ins: no gain, which would scale them up)
         share = dict(SHARE, **(share or {}), **{k: 0.0 for k in STRAIGHT_SIDES})
@@ -847,20 +918,37 @@ def tailor_rows(Bp: dict, tape: dict, g: dict | None = None, button_mm: float = 
             ys_ = np.linspace(float(meta["chest_y"]), hy_, 25)
             gs_ = [torso_span(Bp, y_, half=False) for y_ in ys_]
             wmin, hp_ = min(gs_), gs_[-1]
-            row("waist_plumb", src(8), wmin * 1000, f">= {ch * (1 - PLUMB_TOL) * 1000:.0f}", 0,
-                ok=wmin >= ch * (1 - PLUMB_TOL) and hp_ >= wmin - 0.005,
-                why=f"silhouette plumb (Joe 2026-10-20 'fall straight down'): the narrowest flat girth chest -> hips "
-                    f"{wmin * 1000:.0f} ({(ys_[int(np.argmin(gs_))] - ys_[0]) * 1000:+.0f} mm from the chest line) >= chest "
-                    f"{ch * 1000:.0f} x {1 - PLUMB_TOL:.2f}, hips {hp_ * 1000:.0f} >= waist; a pinch here is the block's "
-                    f"fitted side seam or a CB contour")
+            tgt = plumb_target(tape)
+            if tgt is not None:  # (C94: the tube's girth under the chest, floor AND ceiling; less the lap)
+                ys2 = np.linspace(float(meta["chest_y"]) - PLUMB_RAMP, hy_, 20)
+                es = [torso_span(Bp, y_, half=False) - _lap(Bp, y_) for y_ in ys2]
+                lo, hi = min(es), max(es)
+                row("waist_plumb", src(8), lo * 1000, f"{(tgt - PLUMB_FLOOR_TOL) * 1000:.0f} .. "
+                    f"{(tgt + PLUMB_CEIL) * 1000:.0f}", 0,
+                    ok=lo >= tgt - PLUMB_FLOOR_TOL and hi <= tgt + PLUMB_CEIL and hp_ >= wmin - 0.005,
+                    why=f"silhouette plumb (Joe 2026-10-20 'fall straight down') sized to the tube (C94): girth less "
+                        f"the lap from {PLUMB_RAMP * 1000:.0f} mm under the chest to the hips {lo * 1000:.0f} .. "
+                        f"{hi * 1000:.0f} vs plumbGirth + allowances {tgt * 1000:.0f} (floor -{PLUMB_FLOOR_TOL * 1000:.0f}: "
+                        f"a pinch; ceiling +{PLUMB_CEIL * 1000:.0f}: the chest's ease carried down stands off)")
+            else:
+                row("waist_plumb", src(8), wmin * 1000, f">= {ch * (1 - PLUMB_TOL) * 1000:.0f}", 0,
+                    ok=wmin >= ch * (1 - PLUMB_TOL) and hp_ >= wmin - 0.005,
+                    why=f"silhouette plumb (Joe 2026-10-20 'fall straight down'): the narrowest flat girth chest -> hips "
+                        f"{wmin * 1000:.0f} ({(ys_[int(np.argmin(gs_))] - ys_[0]) * 1000:+.0f} mm from the chest line) >= chest "
+                        f"{ch * 1000:.0f} x {1 - PLUMB_TOL:.2f}, hips {hp_ * 1000:.0f} >= waist; a pinch here is the block's "
+                        f"fitted side seam or a CB contour")
         if sil == "straight":  # (CB + dart only, at their R8 shares of the reduction, no gain: ~1-3 % of the chest)
             row("waist_suppression", src(8), sup, "<= 9 % (straight)", 0, ok=sup <= 9.0, units="% of chest",
                 why=f"chest {ch * 1000:.0f} / waist {wa * 1000:.0f} mm on the flat pattern; silhouette straight: CB "
                     f"and dart only (the sack's straight sides)")
         elif sil == "plumb":
-            row("waist_suppression", src(8), sup, f"<= {PLUMB_TOL * 100:.0f} % (plumb)", 0, ok=sup <= PLUMB_TOL * 100,
+            # (C94: a tube-sized plumb cut takes the chest's surplus over the tube in under the chest, then hangs
+            # straight: the allowed reduction is that surplus + PLUMB_TOL)
+            tgt_ = plumb_target(tape)
+            cap = PLUMB_TOL if tgt_ is None else max(PLUMB_TOL, (ch - _lap(Bp, meta["chest_y"]) - tgt_) / ch + PLUMB_TOL)
+            row("waist_suppression", src(8), sup, f"<= {cap * 100:.0f} % (plumb)", 0, ok=sup <= cap * 100,
                 units="% of chest", why=f"chest {ch * 1000:.0f} / waist {wa * 1000:.0f} mm on the flat pattern; "
-                                        f"silhouette plumb: nothing taken in")
+                                        f"silhouette plumb: only the chest's surplus over the tube taken in (C94)")
         else:
             row("waist_suppression", src(8), sup, "11-20 %", 0, ok=11.0 <= sup <= 20.0, units="% of chest",
                 why=f"chest {ch * 1000:.0f} / waist {wa * 1000:.0f} mm on the flat pattern (Jaeger reads 13-17 %)")
