@@ -1,4 +1,4 @@
-# Tailored jacket: drafting principles (R1-R26)
+# Tailored jacket: drafting principles (R1-R27)
 
 Our knowledge, in our words, for drafting a men's tailored jacket (and later coats) for any body. Learned 2026-10-19
 by reading FreeSewing's Jaeger design step by step (FreeSewing, MIT licence, Joost De Cock and contributors,
@@ -74,10 +74,17 @@ lengths along the body; "neck" = the neck girth taken where the jacket collar si
     straight across the back and rises only gently toward the front (sagitta / chord ~0.02-0.04); its top edge is
     then a little shorter, so it leans in to the neck. Why: a collar whose neck edge follows the neckline (sagitta
     ~0.2-0.3, a crescent) is a FLAT collar: it lies on the shoulders and cannot stand (muslin 1, 535 mm wide).
-18. **The fall is sprung** [G, spread J]. Its outer edge is longer than its seam on the stand: spread ~13 deg toward
-    the front ([J] collarSpread), plus ~5 % extra height for the turn of the cloth ([J] collarRoll). Why: the fall
-    lies at a bigger radius (out over the stand, down onto the shoulders) than its seam. Tailoring books spread
-    ~1-1.5 cm per half; Jaeger's own drafted fall reads only ~0-7 mm longer in all, ours ~40 mm (the open point).
+18. **The fall is sprung** [G, spread J; fixed fit rounds 2-3]. Its outer edge is as long as the line it LIES on: the
+    neckline offset into the body pieces by the edge's drop below the neck seam (fall - stand from the roll line at
+    CB, tapering u^2 to the fall's end) + pi x its stand-off there (fall stack / 2 + cloth / 2). The spread is solved
+    from that (Garrett 17 deg: outer 265 vs neck seam 246 per half), its height + the turn depth (pi/2 x the fall's
+    stack + the under-stack it wraps). The stand + shirt collar are under the ROLL LINE, never under the outer edge
+    (round 2 counted them there: spread 43 deg). Check: tailoring books spread ~1-1.5 cm per half over the neck seam
+    (Aldrich, Metric Pattern Cutting for Menswear; Cabrera & Flaherty) + our stand's lean-in. Replaces Jaeger's
+    fixed 13 deg / 5 %. The undercollar is a turn smaller at its outer edge (pi/2 x the fall stack, ~3 mm; books
+    trim 3 mm), on the bias. PRACTICE DIFFERS from our cut: books cut the UNDERcollar in two (stand + fall, bias) and
+    the TOP collar in one (straight grain, a turn bigger); our stand + fall are the undercollar's pieces and the fall
+    stands in for the top collar on the form (open: the one-piece top collar is not drafted).
 
 ## Sleeve
 19. **Two-piece sleeve** [G]. Box: eased biceps / 2 wide, shoulder-to-wrist long; cap height 45 % of the eased biceps
@@ -101,6 +108,11 @@ lengths along the body; "neck" = the neck girth taken where the jacket collar si
     button at ~2.5 deg, rounded. Ours: the concept's length (length_bonus 0.15).
 26. **Collar neck edge eased on** [G]. Walk the seam: neck edge = neckline, or ~1 cm shorter eased on (Mueller &
     Sohn) so the collar hugs; Jaeger and we sew 1:1 (option `ease`).
+27. **Lapel facing turn allowance** [G, fit round 3]. Above the break the lapel turns back with the facing outermost:
+    the facing is let out pi/2 x the lapel stack (cloth + canvas + facing, ~3 mm) at its lapel edge, nothing at the
+    break, full at the lapel point and the gorge, and eased on (Cabrera & Flaherty, Classic Tailoring Techniques:
+    facing 3-6 mm wider at the lapel, eased across the roll line) so the seam rolls under. op_lapel_turn; a cut-piece
+    record (the facing is fused to the front: the form / sim surface does not change).
 
 ## What the gate checks (pattern_jacket.tailor_rows, cloth_check.pattern_gate for a jacket)
 back_neck_width R3 (+-6 mm), back_neck_rise R4 (+-6 mm), waist_suppression R8 (11-20 % of chest), hips_clearance

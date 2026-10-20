@@ -382,7 +382,19 @@ def op_collar_two_piece(D: dict, stand_cb: float | None = None, fall_cb: float |
     pts = [("cbLow", F[0])] + [(None, q) for q in F[1:-1]] + [("endLow", F[-1])]
     pts += [("endOuter", O[-1])] + [(None, q) for q in O[-2:0:-1]] + [("cbOuter", O[0])]
     pf = pb.make_piece(name, pts, "collar_fall", dict(wrap, turn={"at": fat, "deg": 172, "gap": 0.004}), "fold")
-    for pc in (ps, pf):
+    # R18 / R27 (fit round 3): the undercollar a turn of cloth smaller at its outer edge (pi/2 x the fall's stack, the
+    # seam rolls under out of sight; books trim it ~3 mm), cut on the bias. FUSED to the fall: a cut piece of record,
+    # one cloth with the fall in the sim / form (as facings are)
+    tu_ = math.pi / 2 * ts["t_fall_mm"] / 1000
+    dv = O - F
+    Ou = F + dv * np.maximum(1 - tu_ / np.maximum(np.linalg.norm(dv, axis=1, keepdims=True), 1e-9), 0.0)
+    pts_u = [("cbLow", F[0])] + [(None, q) for q in F[1:-1]] + [("endLow", F[-1])]
+    pts_u += [("endOuter", Ou[-1])] + [(None, q) for q in Ou[-2:0:-1]] + [("cbOuter", Ou[0])]
+    under = f"under{name}"
+    pu = pb.make_piece(under, pts_u, "undercollar", {**wrap, "out": 0.002, "lies_on": name, "fused": name}, "fold")
+    pu["grain"] = 45.0
+    pu["traced"] = name
+    for pc in (ps, pf, pu):
         if pc["P"][:, 0].mean() < 0:
             pc["P"][:, 0] *= -1
     D["pieces"][stand], D["pieces"][name] = ps, pf
@@ -393,6 +405,14 @@ def op_collar_two_piece(D: dict, stand_cb: float | None = None, fall_cb: float |
         D["notes"][_json.dumps(D["seams"][-1])] = {"ease": [ease - 0.006, ease + 0.006],
                                                    "why": f"the stand's neck edge eased onto the neckline ({src(26)})"}
     D["seams"].append([f"{name}:cbLow>endLow", f"{stand}:cbTop>cfTop"])
+    D["pieces"][under] = pu
+    D["centre"][under] = "fold"
+    import json as _js
+    sm = [f"{under}:endOuter>cbOuter", f"{name}:endOuter>cbOuter"]
+    D["seams"].append(sm)
+    D["notes"][_js.dumps(sm)] = {"ease": [-0.01, 0.01], "turned": "under",
+                                 "why": f"the undercollar ({tu_ * 1000:.1f} mm a turn smaller) sewn to the fall's outer "
+                                        f"edge, the seam rolled under ({src(18)})"}
     D["interfaced"] += [stand, name]
     D.setdefault("folds", []).append({"piece": name, "line": {"edge": f"{name}:cbLow>endLow", "offset": fat},
                                       "angle": FALL_FOLD["angle"], "kind": "roll", "radius": FALL_FOLD["radius"],
@@ -409,8 +429,51 @@ def op_collar_two_piece(D: dict, stand_cb: float | None = None, fall_cb: float |
                     f"{pattern.length(O) * 1000:.0f} for a roll line of {pattern.length(F) * 1000:.0f} (half)")
 
 
+def op_lapel_turn(D: dict, piece: str = "front", facing: str | None = None, **o) -> None:
+    """R27 (fit round 3): the facing's turn allowance past the roll line. Above the break the lapel turns back over the
+    roll line with the facing outermost, so the facing needs pi/2 x the lapel's stack (front cloth + canvas + facing
+    cloth, turn_stack t_fall) more width across the fold, and the seam at the lapel edge rolls to the underside. Its
+    sewn edge (break -> lapel point -> gorge) is let out by that, nothing at the break (no fold there) growing to
+    full at the lapel point and along the gorge; the seam eased (Cabrera & Flaherty: the facing cut 3-6 mm wider at
+    the lapel, eased across the roll line). A cut-piece record: the facing is fused (one cloth with the front)."""
+    facing = facing or f"{piece}_facing"
+    fp = D["pieces"].get(facing)
+    if fp is None or "edge.a" not in fp["names"] or "edge.b" not in fp["names"]:
+        raise DraftError(f"lapel_turn: no facing {facing} with a sewn edge (edge.a > edge.b)")
+    ts = turn_stack(o.get("fabric"), o.get("canvas"))
+    tu = math.pi / 2 * ts["t_fall_mm"] / 1000
+    P = np.asarray(fp["P"], float).copy()
+    ia, ib = fp["names"]["edge.a"], fp["names"]["edge.b"]
+    idx = np.arange(ia, ib + 1) if ib >= ia else np.r_[np.arange(ia, len(P)), np.arange(0, ib + 1)]
+    E = P[idx]
+    lp = (fp.get("marks") or {}).get("lapelPoint")
+    s = np.r_[0, np.cumsum(np.linalg.norm(np.diff(E, axis=0), axis=1))]
+    k_lp = int(np.argmin(np.linalg.norm(E - np.asarray(lp), axis=1))) if lp is not None else len(E) - 1
+    w = np.clip(s / max(s[k_lp], 1e-9), 0, 1)
+    t = np.gradient(E, axis=0)
+    t /= np.linalg.norm(t, axis=1, keepdims=True) + 1e-12
+    nrm = np.c_[t[:, 1], -t[:, 0]]
+    if np.mean(np.sum((P.mean(0) - E) * nrm, 1)) > 0:  # outward: away from the facing's body
+        nrm = -nrm
+    L0 = pattern.length(E)
+    P[idx] = E + nrm * (tu * w)[:, None]
+    fp["P"] = P
+    if lp is not None:
+        fp["marks"]["lapelPoint"] = P[idx][k_lp]
+    grow = pattern.length(P[idx]) / L0 - 1
+    for sm in D["seams"]:
+        if isinstance(sm[0], str) and sm[0].startswith(f"{facing}:"):
+            import json as _js
+            key = _js.dumps(sm)
+            nt = D["notes"].setdefault(key, {})
+            nt["ease"] = [-0.004, max(0.004, grow + 0.004)]
+            nt["why"] = (nt.get("why", "") + f"; turn allowance {tu * 1000:.1f} mm past the roll line ({src(27)})").strip("; ")
+    D["log"].append(f"lapel turn ({src(27)}): {facing}'s lapel edge let out {tu * 1000:.1f} mm from the break to the lapel "
+                    f"point and gorge (edge {L0 * 1000:.0f} -> {pattern.length(P[idx]) * 1000:.0f} mm, eased)")
+
+
 pd.OPS.update({"jacket_neck": op_jacket_neck, "waist_suppression": op_waist_suppression,
-               "collar_two_piece": op_collar_two_piece})
+               "collar_two_piece": op_collar_two_piece, "lapel_turn": op_lapel_turn})
 
 
 # ---------------------------------------------------------------- a design's op list, rewritten by the rules
@@ -436,6 +499,8 @@ def jacket_ops(ops: list, tape: dict, button_mm: float = 20.0, pockets: str = "f
             out.append({"op": "collar_two_piece", "point": op.get("point", 0.0), "source": src(16, 17, 18)})
             continue
         out.append(op)
+        if k == "facing" and str(op.get("piece", "")).startswith("front"):
+            out.append({"op": "lapel_turn", "piece": op["piece"], "facing": op.get("name"), "source": src(27)})
     # waist suppression after the panel seams exist (after the last style line / join / contour on them)
     last = max(i for i, o_ in enumerate(out) if o_["op"] in ("style_line", "join", "contour"))
     out.insert(last + 1, {"op": "waist_suppression", "source": src(8, 10)})

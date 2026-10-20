@@ -1,7 +1,7 @@
 # STATE: fit_round3 (Garrett jacket v2 + shirt, round-2 collar on the dress form) -- 2026-10-19. NO SIMS.
 
-STATE: step 0 done (fall path measure fixed, C44).
-NEXT: step 1: undercollar a turn smaller (cloth_over.under_draft) + lapel / facing turn allowance at the roll line.
+STATE: steps 0-1 done (fall path measure fixed C44; undercollar + lapel turn C45).
+NEXT: step 2: $FR3/fit.py waive.json (gate with refs, must PASS / PASS_WAIVED), then the form fit (asm.pkl).
 Files: $FR3 = /mnt/data/hifipushie/dress_garrett/fit_round3/ (run.sh runs THIS worktree's code; fr2.py / fit.py /
 collar.py copied from round 2, OUT -> fit_round3; probe0.py = the step-0 hand check). History: cloth.md "fit round 3".
 
@@ -14,7 +14,10 @@ collar.py copied from round 2, OUT -> fit_round3; probe0.py = the step-0 hand ch
    -1.4 mm): now tapered u^2 like the heights (back mean 9.3, front 4.0). Need 277.4 -> 259.4, spread 43 -> 17 deg;
    outer edge 265 vs neck seam 246 per half (+20; books 10-15 + the stand's 4 mm lean-in). pattern_jacket.fall_need;
    gate row collar_fall_outer uses it; test_fall_outer_edge_is_the_books_spread_not_the_under_stack (3 sizes).
-1. Undercollar + lapel turn allowance: TODO.
+1. DONE. undercollar piece (fused to the fall, bias 45, outer edge pi/2 x 2.0 = 3.1 mm in); op_lapel_turn (R27): the
+   facing's lapel edge let out 3.1 mm (0 at the break), 366 -> 369 mm, eased. Both fused cut-piece records: the form
+   surface is unchanged. R18 rewritten: books cut the UNDERcollar in two + a one-piece top collar; our stand + fall
+   are the undercollar's pieces (open: the one-piece top collar is not drafted).
 2. Gate with refs + waive.json: TODO.
 3. Fit + re-measure round 1's table: TODO (first check: the shirt's own collar standing ~24 mm off the neck).
 4. Collar check PNGs ($FR3/check) + blind review: TODO.

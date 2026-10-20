@@ -186,6 +186,26 @@ def test_fall_outer_edge_is_the_books_spread_not_the_under_stack():
         assert mc["spread_deg"] < 25, (nm, mc["spread_deg"])
 
 
+def test_undercollar_a_turn_smaller_on_the_bias_and_the_facing_let_out():
+    """R18 / R27 (fit round 3, C45): the undercollar = the fall with its outer edge a turn in (pi/2 x the fall stack,
+    books ~3 mm), bias grain, fused to the fall; the lapel facing let out the same turn at the lapel point, nothing at
+    the break."""
+    tu = np.pi / 2 * pj.turn_stack()["t_fall_mm"]
+    D = ours(TAPE)
+    fa, un = D["pieces"]["collar"], D["pieces"]["undercollar"]
+    h = lambda p: float(np.linalg.norm(p["P"][p["names"]["cbOuter"]] - p["P"][p["names"]["cbLow"]])) * 1000
+    assert abs(h(fa) - h(un) - tu) < 0.2 and un["grain"] == 45.0 and un["wrap"]["fused"] == "collar"
+    D2 = {"pieces": {"front_facing": {"P": np.array([[0, -0.4], [0, -0.1], [0.05, -0.05], [0.08, -0.1], [0.08, -0.4]]),
+                                      "names": {"edge.a": 0, "edge.m": 1, "edge.b": 2},
+                                      "marks": {"lapelPoint": np.array([0, -0.1])}}},
+          "seams": [["front_facing:edge.a>edge.m>edge.b", "front:x"]], "notes": {}, "log": []}
+    P0 = D2["pieces"]["front_facing"]["P"].copy()
+    pj.op_lapel_turn(D2)
+    d = np.linalg.norm(D2["pieces"]["front_facing"]["P"] - P0, axis=1) * 1000
+    assert d[0] < 0.01 and abs(d[1] - tu) < 0.05 and abs(d[2] - tu) < 0.05 and d[3] == 0
+    assert D2["pieces"]["front_facing"]["P"][1, 0] < 0  # let out, away from the facing's body
+
+
 def test_sagitta_tells_a_band_from_a_crescent():
     t = np.linspace(0, 1, 50)
     band = np.c_[t * 0.24, 0.012 * t ** 2]

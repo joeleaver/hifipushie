@@ -7674,3 +7674,8 @@ lines across the upper back; opening at the chest judged within ~10 px. Collar /
   under the roll line only -> ring_outer = fall/2 + cloth/2 = 1.375 mm, 4.3 mm; (b) the 10 mm CB drop applied along the
   whole neckline; the fall's end drops -1.4 mm -> tapered u^2 (back 9.3, front 4.0 mean). Need 277.4 -> 259.4, spread
   43 -> 17 deg, outer 265 vs neck seam 246 (+20 per half: books 10-15 + the stand's lean-in 4). C44.
+- Step 1: undercollar piece (fall a turn smaller: pi/2 x 2.0 = 3.1 mm at the outer edge, grain 45, fused to the fall;
+  seam to the fall's outer edge eased, turned under) and op_lapel_turn R27 (facing's lapel edge let out 3.1 mm from 0 at
+  the break, 366 -> 369 mm, seam ease widened). Both fused: records, no change to the form surface. Rule fix (R18 text):
+  books cut the UNDERcollar in two (stand + fall, bias) and the TOP collar in one; ours read stand + fall as the
+  collar. Open: draft the one-piece top collar. C45.
