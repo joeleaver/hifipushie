@@ -920,9 +920,29 @@ def _turn_flaps(M, X, folds_, bsurf):
     return X
 
 
+# TWO LAYERS THAT TOUCH (fit round 8, 2026-10-19): real dressing presses the inner garment down where the outer one
+# covers it, and the inner shows where the outer doesn't. `assemble(..., over=)` gives a garment the layer OVER it as a
+# CEILING: a vertex COVERED by it (its nearest point on the over layer within COVER_LAT sideways, i.e. under its
+# surface, not beside its edge) is held at least LAYER_GAP inside it (toward the body); uncovered cloth (an open
+# collar's points in a jacket's V) is free. Two orders on the form (layered_fit): "outer_first" fits the over garment on
+# the body plus the under layer's allowance (LAYER_ALLOW: its least stand-off + one cloth), then the under garment
+# with that fit as its ceiling; "joint" alternates (over on under, under under over) LAYER_ROUNDS times.
+# Known answer: tests/test_pattern_form.py test_nested_tubes_inner_pressed_under.
+COVER_LAT = 0.006  # m: sideways reach of "covered" (about one mesh edge: past the over layer's edge = uncovered)
+LAYER_GAP = THICK  # m: the under layer lies at least one cloth thickness inside the over layer where covered
+LAYER_ROUNDS = 2
+
+
+def covered(osurf, X):
+    """(covered mask, signed distance to the over layer (> 0 = outside it), its normals) for points X."""
+    d, nrm, dist = osurf.signed(X)
+    lat = np.sqrt(np.maximum(dist ** 2 - d ** 2, 0.0))
+    return (lat < COVER_LAT) & (d < 0.03) & (d > -0.03), d, nrm
+
+
 def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = EASE, fasten="default",
              iters: int = 120, X0: np.ndarray | None = None, attract: float = 0.5, log=None, pressed: bool = True,
-             worn_open: dict | None = None, shoulder_pad: dict | None = None) -> dict:
+             worn_open: dict | None = None, shoulder_pad: dict | None = None, over: dict | None = None) -> dict:
     """The garment assembled on the form (see the module docstring). pattern: a placed garment (cloth.build
     place_only result: "mesh", "X0", "pieces") or {"mesh": M, "X0": start, "pieces": B (optional)}. body: a
     cloth.Body (V, T, at) or None (a free sheet: the fold tests). under: {"V", "F"} of the garment under (the shirt
@@ -940,6 +960,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
         body = padded_body(body, shoulder_pad)
     bsurf = _body_surface(body) if body is not None else None
     usurf = _Surface(under["V"], under["F"], ref=bsurf) if under is not None and bsurf is not None else None
+    osurf = _Surface(over["V"], over["F"], ref=bsurf) if over is not None and bsurf is not None else None
     # which face of each piece is its outside (CCW in the pattern = +z normal): from the start's placement
     face_sign = {}
     Nf = np.cross(X[F[:, 1]] - X[F[:, 0]], X[F[:, 2]] - X[F[:, 0]])
@@ -1142,6 +1163,10 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                     du, nu, dist = usurf.signed(T)
                     near = (dist < 0.03) & (du < off + 0.001)
                     T[near] += nu[near] * (off[near] + 0.001 - du[near])[:, None]
+                if osurf is not None:  # the layer over this one presses it down where it covers it (TWO LAYERS)
+                    cv_, do_, no_ = covered(osurf, T)
+                    cv_ &= do_ > -LAYER_GAP
+                    T[cv_] -= no_[cv_] * (do_[cv_] + LAYER_GAP)[:, None]
             b += wc[:, None] * T
             if HANG > 0 and bsurf is not None:  # (A/B: the cloth's weight as a constant pull down, m per round)
                 b[:, 2] -= wc * HANG
@@ -1189,6 +1214,15 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                     near = (dist < 0.03) & (du < off + 0.001)
                     Xn[near] += nu[near] * (off[near] + 0.001 - du[near])[:, None]
                     held |= near
+            if osurf is not None:  # TWO LAYERS: hard contact under the over layer (a proximal target alone lost to the
+                # lengths: the too-big inner tube stayed round, 146 vertices outside the outer), then off the form
+                cv_, do_, no_ = covered(osurf, Xn)
+                cv_ &= do_ > -LAYER_GAP
+                Xn[cv_] -= no_[cv_] * (do_[cv_] + LAYER_GAP)[:, None]
+                if bsurf is not None:
+                    d, nrm, _ = bsurf.signed(Xn)
+                    lo = d < off
+                    Xn[lo] += nrm[lo] * (off[lo] - d[lo])[:, None]
             X = Xn
         wc, bend_f = wc_keep, bend_keep
         return X
@@ -1304,6 +1338,10 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
     if usurf is not None:
         du, _, dist = usurf.signed(X)
         info["through_under"] = int(((du < 0) & (dist < 0.01)).sum())
+    if osurf is not None:
+        cv_, do_, _ = covered(osurf, X)
+        info["through_over"] = int((cv_ & (do_ > 0)).sum())
+        info["covered"] = int(cv_.sum())
     if log:
         log(f"assemble: {info}")
     return {"V": X, "F": F, "M": M, "info": info}
@@ -1330,6 +1368,39 @@ def form_refine(g: dict) -> list:
         return g["mesh_refine"]
     ops = [o.get("op") for o in ((g.get("design") or {}).get("ops") or []) if isinstance(o, dict)]
     return FORM_REFINE_LAPEL if "lapel" in ops else FORM_REFINE_SHIRT
+
+
+LAYER_ALLOW = None  # m: outer_first's allowance for the under layer (None: UNDER_EASE + THICK, its least stand-off + its cloth)
+
+
+def layered_fit(ures: dict, ores: dict, mode: str = "outer_first", ug: dict | None = None, og: dict | None = None,
+                log=None, iters: int = 120) -> tuple:
+    """TWO LAYERS THAT TOUCH on the form (see COVER_LAT): (under result, over result) of assemble, for any under / over
+    pair. ures / ores: placed garments (cloth.build place_only results, or {"mesh", "X0", "pieces"} with "body");
+    ug / og: their garment dicts (worn_open, shoulder_pad). mode "outer_first" | "joint" (LAYER_ROUNDS)."""
+    ug, og = ug or {}, og or {}
+    allow = UNDER_EASE + THICK if LAYER_ALLOW is None else float(LAYER_ALLOW)
+
+    def ua(over=None):
+        return assemble(ures, ures.get("body"), ease=UNDER_EASE, worn_open=ug.get("worn_open"), iters=iters,
+                        shoulder_pad=ug.get("shoulder_pad"), over=over, log=log)
+
+    def oa(under=None, ease=EASE):
+        return assemble(ores, ores.get("body"), under=under, ease=ease, worn_open=og.get("worn_open"), iters=iters,
+                        shoulder_pad=og.get("shoulder_pad"), log=log)
+
+    if mode == "outer_first":
+        o = oa(None, ease=EASE + allow)
+        u = ua({"V": o["V"], "F": o["F"]})
+    elif mode == "joint":
+        u = ua(None)
+        o = None
+        for _ in range(max(1, LAYER_ROUNDS)):
+            o = oa({"V": u["V"], "F": u["F"]})
+            u = ua({"V": o["V"], "F": o["F"]})
+    else:
+        raise ValueError(f"layered_fit mode {mode!r}")
+    return u, o
 
 
 def on_form(model: str, garment: str, spec: dict | None = None, g: dict | None = None, log=None) -> dict:

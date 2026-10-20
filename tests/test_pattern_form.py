@@ -1014,6 +1014,46 @@ def test_shoulder_pad_lifts_the_form():
     assert lift[neck] < 1e-4 and lift[under].max() < 1e-9, (lift[neck], lift[under].max())
 
 
+def _tube(r, ease, z0, length, h=0.008):
+    W = 2 * math.pi * (r + ease)
+    P = [[0, 0], [W, 0], [W, length], [0, length]]
+    B = _B({"s": _piece(P, names={"a0": 0, "a1": 1, "a2": 2, "a3": 3})}, seams=[["s:a0>a3", "s:a1>a2"]])
+    M = cloth.mesh(B, h)
+    th = M["uv"][:, 0] / W * 2 * math.pi
+    return M, np.c_[(r + ease) * np.cos(th), (r + ease) * np.sin(th), z0 + M["uv"][:, 1]]
+
+
+def nested_tubes_case(mode="outer_first", r=0.05, inner=0.020, outer=0.010, verbose=True):
+    """Two tubes on a cylinder, the INNER one deliberately too big (pattern radius r + 20 mm, the outer r + 10 mm, the
+    outer longer at both ends so it covers the inner everywhere), fitted as two layers that touch
+    (pattern_form.layered_fit). Returns the measures test_nested_tubes_inner_pressed_under asserts on."""
+    body = _cyl_body(r, -0.1, 0.5)
+    Mi, Xi = _tube(r, inner, 0.10, 0.20)
+    Mo, Xo = _tube(r, outer, 0.08, 0.24)
+    u, o = pf.layered_fit({"mesh": Mi, "X0": Xi, "body": body}, {"mesh": Mo, "X0": Xo, "body": body}, mode, iters=150)
+    ri = np.linalg.norm(u["V"][:, :2], axis=1) - r
+    ro = np.linalg.norm(o["V"][:, :2], axis=1) - r
+    mid = (o["V"][:, 2] > 0.12) & (o["V"][:, 2] < 0.28)
+    res = {"through_over": u["info"].get("through_over"), "inner_max_mm": round(float(ri.max() * 1000), 1),
+           "outer_min_mm": round(float(ro[mid].min() * 1000), 1), "outer_med_mm": round(float(np.median(ro[mid]) * 1000), 1),
+           "inner_inside_body": u["info"].get("inside_body"), "inner_stretch": u["info"]["stretch_pct"],
+           "outer_stretch": o["info"]["stretch_pct"]}
+    if verbose:
+        print(f"nested tubes [{mode}]: {res}")
+    return res
+
+
+def test_nested_tubes_inner_pressed_under(mode="outer_first"):
+    """KAT (fit round 8): two layers that touch end NESTED, the too-big inner pressed under: no covered inner vertex
+    outside the outer (through_over 0), the inner's outermost point inside the outer's innermost (+ 1 mm), nothing of
+    the inner inside the body, the outer within 2 mm of its own pattern ease + the inner's allowance."""
+    res = nested_tubes_case(mode)
+    assert res["through_over"] == 0, res
+    assert res["inner_max_mm"] <= res["outer_min_mm"] + 1.0, res
+    assert res["inner_inside_body"] == 0, res
+    assert abs(res["outer_med_mm"] - 10.0) <= 2.0, res
+
+
 if __name__ == "__main__":
     fails = 0
     for k, f in list(globals().items()):
