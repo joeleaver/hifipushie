@@ -676,7 +676,12 @@ def start_strain_check(arrays: dict, cfg: dict | None = None) -> dict:
     "worst": [(stretch, face, piece)]}. Non-smooth jobs (rest = the start) are always ok."""
     from . import cloth_zozo as cz
     cfg = cfg or {}
-    if cfg.get("placement") != "smooth" or cfg.get("rest", "flat") != "flat" or cfg.get("mode") == "fine_settle":
+    # the runner's rest: job "rest" (top level or the zozo dict, as cloth_zozo merges them), else flat for a smooth
+    # placement. (A release job, cloth_release, rests flat through its zozo dict with no placement: fit round 16 found
+    # its start check skipped)
+    cfg = dict(cfg, **(cfg.get("zozo") or {}))  # (the runner merges the zozo dict over job.json's keys: so does this)
+    rest_ = cfg.get("rest") or ("flat" if cfg.get("placement") == "smooth" else "placed")
+    if rest_ != "flat" or cfg.get("mode") == "fine_settle":
         return {"ok": True, "skipped": True}
     X, F, pid, uv = (np.asarray(arrays[k]) for k in ("X", "F", "piece", "uv"))
     X = X.astype(float)

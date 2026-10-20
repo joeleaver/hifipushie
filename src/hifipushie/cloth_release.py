@@ -32,8 +32,7 @@ from scipy.spatial import cKDTree
 SEW_FRAMES = 4
 SETTLE_FRAMES = 48
 SELF_FRAMES = 24
-CLEAR = 0.003  # m: the least the under garment (a collider) lies under this one at the start (preflight wants >= 2 mm)
-CLEAR_MAX = 0.02  # m: never press the under garment further than this (more is a fit fault: report it)
+CLEAR = 0.0035  # m: the least the under garment (a collider) lies under this one at the start (preflight wants >= 2 mm)
 
 
 def closure_stitches(M: dict, release=("front",)) -> tuple[np.ndarray, list]:
@@ -51,44 +50,111 @@ def closure_stitches(M: dict, release=("front",)) -> tuple[np.ndarray, list]:
     return np.asarray(keep, np.int64).reshape(-1, 2), gone
 
 
-def clear_under(X: np.ndarray, U: np.ndarray, FU: np.ndarray, body, gap: float = CLEAR,
-                most: float = CLEAR_MAX) -> tuple[np.ndarray, dict]:
+def clear_under(X: np.ndarray, F: np.ndarray, U: np.ndarray, FU: np.ndarray, body, gap: float = CLEAR,
+                most=None, edge_gap: float = 0.0023, rounds: int = 10,
+                free: np.ndarray | None = None) -> tuple[np.ndarray, dict]:
     """The under garment (a static collider in the release) pressed back toward the body wherever this garment's start
-    lies closer than `gap` above it (or through it): each under vertex moves along its outward normal (oriented away
-    from the body) by what it lacks, at most `most`. The under cloth is soft and lies under this one: this is the
-    same rule the sims' cloth.pressed applies, not a move of the garment being judged. Returns (U moved, info)."""
+    (X, F) lies closer than `gap` above it, or through it: each under vertex moves along its outward normal (oriented
+    away from the body) by what it lacks to the garment's SURFACE (closest point on its triangles), at most `most`;
+    then edge pairs closer than `edge_gap` (what the solver's edge-edge contact and cloth_job.preflight see between
+    vertices) push their under vertices further. The under cloth is soft and lies under this one (cloth.pressed's
+    rule), and the garment being judged is not moved. `most`: the furthest a vertex may go (m, scalar or per vertex);
+    None = down to the body under it (the fit left the shirt's upper sleeves 20+ mm outside the jacket's: validation
+    2's magenta, a fit fault reported by the press numbers). Returns (U moved, info)."""
+    from .cloth_over import closest, edge_pairs
     from .pattern_form import _Surface, _body_surface
     U = np.asarray(U, float).copy()
+    U0 = U.copy()
     X = np.asarray(X, float)
-    us = _Surface(U, FU, ref=_body_surface(body))
-    N = us.N
-    tx = cKDTree(X)
-    push = np.zeros(len(U))
-    for i, js in enumerate(tx.query_ball_point(U, 0.012)):
-        if not js:
-            continue
-        D = X[js] - U[i]
-        h = D @ N[i]
-        lat = np.linalg.norm(D - np.outer(h, N[i]), axis=1)
-        h = h[lat < 0.008]
-        if len(h):
-            push[i] = max(0.0, gap - float(h.min()))
-    over = push > most
-    push = np.minimum(push, most)
-    U -= N * push[:, None]
-    return U, {"pressed": int((push > 0).sum()), "press_p50_mm": round(float(np.median(push[push > 0]) * 1000), 2)
-               if (push > 0).any() else 0.0, "press_max_mm": round(float(push.max() * 1000), 2),
-               "over_most": int(over.sum())}
+    F = np.asarray(F)
+    FU = np.asarray(FU)
+    bs = _body_surface(body)
+    N = _Surface(U, FU, ref=bs).N
+    if most is None:  # pressed at most down onto the body (a cloth can't go into it; pressed there it IS the body)
+        most = np.maximum(bs.signed(U)[0] + 0.001, 0.0)
+    free = np.ones(len(X), bool) if free is None else np.asarray(free, bool)
+    Q = closest(U, X, F[free[F].any(1)])[0]  # (held pieces pass through the collider: nothing to press under them)
+    D = Q - U
+    near = np.linalg.norm(D, axis=1) < 0.015
+    h = np.sum(D * N, 1)
+    most = np.broadcast_to(np.asarray(most, float), (len(U),))
+    push = np.where(near, np.maximum(0.0, gap - h), 0.0)
+    U -= N * np.minimum(push, most)[:, None]
+    for _ in range(rounds):
+        _, bE, dd, _ = edge_pairs(X, F, (U, FU), free, edge_gap)
+        if not len(bE):
+            break
+        extra = np.zeros(len(U))
+        for (i, j), di in zip(bE, dd):
+            for v in (i, j):
+                extra[v] = max(extra[v], edge_gap - di + 3e-4)
+        U -= N * extra[:, None]
+    mv = np.linalg.norm(U - U0, axis=1)
+    over = mv > most + 1e-9
+    if over.any():  # (never further than `most` in all: more is a fit fault, reported)
+        U[over] = U0[over] + (U[over] - U0[over]) * (most[over] / mv[over])[:, None]
+    mv = np.linalg.norm(U - U0, axis=1)
+    # what no press parts (the under garment's own fins and seams standing through this one, at its armholes and
+    # neck: their normals point every way): those faces leave the collider, the body under them stays
+    _, bE, _, _ = edge_pairs(X, F, (U, FU), free, edge_gap)
+    bad = np.zeros(len(U), bool)
+    bad[np.asarray(bE, np.int64).reshape(-1)] = True
+    keep = ~bad[FU].any(1)
+    return U, {"faces_keep": keep, "dropped_faces": int((~keep).sum()), "pressed": int((mv > 0).sum()), "press_p50_mm": round(float(np.median(mv[mv > 0]) * 1000), 2)
+               if (mv > 0).any() else 0.0, "press_p99_mm": round(float(np.percentile(mv, 99) * 1000), 2),
+               "press_max_mm": round(float(mv.max() * 1000), 2), "at_most": int(over.sum())}
+
+
+def clear_body(X: np.ndarray, body, gap: float = 0.0036, free: np.ndarray | None = None, M: dict | None = None,
+               most: float = 0.004, rounds: int = 3) -> tuple[np.ndarray, dict]:
+    """The garment's free vertices that the fit left closer than `gap` to the BODY (pattern_form's contact is a
+    proximal push: a few end on or just inside it; the solver can't start there) moved out along the body's outward
+    normal at their closest point, at most `most` in all (more is a fit fault: reported, left). Vertices only: an edge
+    pass (cloth_over.clear_start's) walked the upper back 14 mm off a body it was 0.7 mm inside (fit round 16 job b)."""
+    from .pattern_form import _body_surface
+    X0 = np.asarray(X, float)
+    X1 = X0.copy()
+    fr = np.ones(len(X0), bool) if free is None else np.asarray(free, bool)
+    bs = _body_surface(body)
+    for _ in range(rounds):
+        d, n, _ = bs.signed(X1)
+        b = fr & (d < gap)
+        if not b.any():
+            break
+        X1[b] += n[b] * (gap - d[b] + 1e-4)[:, None]
+    mv = np.linalg.norm(X1 - X0, axis=1)
+    big = mv > most
+    X1[big] = X0[big] + (X1[big] - X0[big]) * (most / mv[big])[:, None]
+    mv = np.linalg.norm(X1 - X0, axis=1)
+    out = {"moved": int((mv > 0).sum()), "max_mm": round(float(mv.max() * 1000), 2), "at_most": int(big.sum())}
+    if M is not None and out["moved"]:
+        pid = np.asarray(M["piece"])
+        out["by_piece_max_mm"] = {nm: round(float(mv[pid == k].max() * 1000), 1) for k, nm in enumerate(M["names"])
+                                  if (mv[pid == k] > 1e-6).any()}
+    return X1, out
+
+
+def neck_pieces(Bp: dict, M: dict, made: list) -> list:
+    """The made pieces round the neck (stand, collar): wrapped to the neck, or sewn on a seam (wrap "seam") without
+    lying on another piece (a pocket flap lies on its front and swings with it)."""
+    out = []
+    for nm in made:
+        w = ((Bp.get("pieces") or {}).get(nm) or {}).get("wrap") or {}
+        if w.get("to") == "neck" or (w.get("to") == "seam" and not w.get("lies_on")):
+            out.append(nm)
+    return out
 
 
 def job(res: dict, X: np.ndarray, g: dict | None = None, under: dict | None = None, body=None,
-        release=("front",), frames: int = SETTLE_FRAMES, settle_frames: int = SELF_FRAMES,
+        release=("front",), hold=("neck",), frames: int = SETTLE_FRAMES, settle_frames: int = SELF_FRAMES,
         sew_frames: int = SEW_FRAMES, clear: float = CLEAR, zozo: dict | None = None,
-        name: str | None = None) -> tuple[dict, dict, dict]:
+        name: str | None = None, pad_base=None) -> tuple[dict, dict, dict]:
     """The release sim's (cfg, arrays, info). res: the placed pattern (cloth.build place_only: "mesh", "pieces",
     "fabric", "body", "gate_keys"); X: its fitted state on the form (pattern_form.assemble "V"); g: the garment dict
     (zozo options, strain limit); under: {"V", "F"} the under garment's form fit (or None); body: the collider body
-    (default res["body"]; a padded body when the fit used a shoulder pad: the pad is sewn into this garment)."""
+    (default res["body"]; a padded body when the fit used a shoulder pad: the pad is sewn into this garment);
+    pad_base: the body without the pad (then the pad, soft wadding, is pressed under the garment like the under
+    garment, never below the body: the fit's contact is a proximal push and left the back up to 14 mm into it)."""
     from . import cloth, folds as foldmod
     M = res["mesh"]
     Bp = res["pieces"]
@@ -101,15 +167,47 @@ def job(res: dict, X: np.ndarray, g: dict | None = None, under: dict | None = No
     cst, gone = closure_stitches(M, release)
     stitch = np.r_[np.asarray(M["stitch"], np.int64).reshape(-1, 2), cst]
     info = {"released": gone, "closure_stitches": int(len(cst)), "made": made}
+    # pieces held as fitted for the whole sim (cloth.build method "settle"'s carried made pieces): those that wrap
+    # `hold` (the neck: stand, collar). The neck doesn't move when a front is unbuttoned, and the shirt collar under a
+    # jacket's collar is a fold over a fold no normal press can part (1144 edge pairs within 2 mm, fit round 16 job a)
+    pid = np.asarray(M["piece"])
+    held_pcs = neck_pieces(Bp, M, made) if hold == ("neck",) else [nm for nm in (hold or ()) if nm in M["names"]]
+    carry = np.where(np.isin(pid, [M["names"].index(nm) for nm in held_pcs]))[0]
+    info["held"] = held_pcs
+    free = np.ones(len(X), bool)
+    free[carry] = False
+    if pad_base is not None:
+        import types as _types
+        lift = np.linalg.norm(np.asarray(body.V, float) - np.asarray(pad_base.V, float), axis=1)
+        Vp, pinfo = clear_under(X, M["F"], body.V, np.asarray(body.T), pad_base, clear, most=lift, free=free)
+        pinfo.pop("faces_keep")
+        info["pad"] = dict(pinfo, lift_max_mm=round(float(lift.max() * 1000), 1))
+        body = _types.SimpleNamespace(V=Vp, T=np.asarray(body.T), at=getattr(body, "at", {}))
+    X, info["body_clear"] = clear_body(X, body, free=free, M=M)
     if under is not None:
-        U, uinfo = clear_under(X, under["V"], np.asarray(under["F"]), body, clear)
+        U, uinfo = clear_under(X, M["F"], under["V"], np.asarray(under["F"]), body, clear, free=free)
+        keep = uinfo.pop("faces_keep")
         info["under"] = uinfo
-        coll = cloth._collider(body, {"V": U, "F": np.asarray(under["F"]), "res": True}, False)
+        coll = cloth._collider(body, {"V": U, "F": np.asarray(under["F"])[keep], "res": True}, False)
     else:
         coll = cloth._collider(body, None, False)
+    # the few edge pairs left (a collider edge between two of the garment's vertices): both free ends stepped off along
+    # the pair's separation (cloth_over.clear_start's edge pass), at most 2 mm (it walked 14 mm where crossings were
+    # left; with them gone it moves only the ends of the remaining pairs)
+    from .cloth_over import clear_start
+    X1, _ = clear_start(X, (np.asarray(coll["bodyV"], float), np.asarray(coll["bodyT"])), free, 0.0021,
+                        rounds=2, F=np.asarray(M["F"]))
+    mv = np.linalg.norm(X1 - X, axis=1)
+    cap = mv > 0.002
+    X1[cap] = X[cap] + (X1[cap] - X[cap]) * (0.002 / mv[cap])[:, None]
+    info["edge_clear"] = {"moved": int((mv > 0).sum()), "max_mm": round(float(min(mv.max(), 0.002) * 1000), 2),
+                          "capped": int(cap.sum())}
+    X = X1
     arrays = dict(X=X, uv=uv, F=np.asarray(M["F"], np.int64), sew=np.asarray(M["sew"], np.int64).reshape(-1, 2),
                   stitch=stitch, stiff=stiff, piece=np.asarray(M["piece"], np.int64), pins=np.zeros(0, np.int64),
                   bodyV=np.asarray(coll["bodyV"], float), bodyT=np.asarray(coll["bodyT"], np.int64))
+    if len(carry):  # (held: pinned where fitted, passing through the collider as cloth.build's hugIdx bands do)
+        arrays.update(carryIdx=carry.astype(np.int64), carryPoses=X[carry][None], hugIdx=carry.astype(np.int64))
     if M.get("folds"):
         arrays["fold"] = foldmod.weights(M)
         arrays["bend_rest"] = foldmod.bend_reference(M, np.c_[uv, np.zeros(len(uv))], Bp.get("faces"))
