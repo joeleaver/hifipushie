@@ -264,6 +264,34 @@ def seam_gaps(M: dict, X: np.ndarray) -> dict:
             "status": "PASS" if d.max() <= SEAM_OPEN_MM else "FAIL"}
 
 
+WELD_MM = 3.0  # a sewn pair this close after the sim is one seam held a contact gap apart: welded to its midpoint
+
+
+def weld_seams(M: dict, X: np.ndarray, reach_mm: float = WELD_MM) -> tuple[np.ndarray, dict]:
+    """The release's result with its sewn pairs WELDED (fit round 19): ZOZO holds a seam's two sides a contact gap
+    apart (they are a contact pair; stitch_gap does not close them), so every pair within reach_mm is moved to its
+    midpoint, as the sewn seam is one line. A pair further apart is a real opening, not welded: reported with its
+    pieces and position (the seam is located, never hidden). Returns (X welded, {"welded", "open": [...], gaps after})."""
+    X = np.array(X, float)
+    sw = np.asarray(M["sew"]).reshape(-1, 2)
+    d = np.linalg.norm(X[sw[:, 0]] - X[sw[:, 1]], axis=1) * 1000
+    ok = d <= reach_mm
+    # (a vertex in several pairs, a seam end: the mean of its pairs' midpoints)
+    acc = np.zeros_like(X)
+    cnt = np.zeros(len(X))
+    mid = 0.5 * (X[sw[ok, 0]] + X[sw[ok, 1]])
+    for c in (0, 1):
+        np.add.at(acc, sw[ok, c], mid)
+        np.add.at(cnt, sw[ok, c], 1)
+    hit = cnt > 0
+    X[hit] = acc[hit] / cnt[hit][:, None]
+    pid, names = np.asarray(M["piece"]), M["names"]
+    opn = [{"pieces": f"{names[pid[a]]}|{names[pid[b]]}", "gap_mm": round(float(g), 1),
+            "at": np.round(0.5 * (X[a] + X[b]), 3).tolist()} for (a, b), g in zip(sw[~ok], d[~ok])]
+    opn.sort(key=lambda r: -r["gap_mm"])
+    return X, {"welded": int(ok.sum()), "open": opn, "after": seam_gaps(M, X)}
+
+
 def moved(M: dict, X0: np.ndarray, X1: np.ndarray) -> dict:
     """How far the release moved each piece from the fit: {piece: {"p50", "p90", "max"} mm}."""
     d = np.linalg.norm(np.asarray(X1, float) - np.asarray(X0, float), axis=1) * 1000

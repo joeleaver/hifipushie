@@ -213,3 +213,15 @@ def test_seam_gaps_fail_round16_and_pass_its_closed_fit():
     a, b = pickle.load(open(r16, "rb")), pickle.load(open(fit, "rb"))
     assert cr.seam_gaps(a["mesh"], a["A"])["status"] == "FAIL"
     assert cr.seam_gaps(b["mesh"], b["A"])["status"] == "PASS"
+
+
+def test_weld_seams_closes_contact_gaps_and_locates_real_openings():
+    """Fit round 19: weld_seams moves sewn pairs within WELD_MM to one point (ZOZO holds them a contact gap apart) and
+    reports pairs further apart as located openings, never welded (planted: 0.8 mm welded, 6 mm reported)."""
+    from hifipushie import cloth_release as cr
+    M = {"sew": np.array([[0, 1], [2, 3]]), "piece": np.array([0, 1, 0, 1]), "names": ["a", "b"]}
+    X = np.array([[0, 0, 0], [0, 0, 0.0008], [1, 0, 0], [1, 0, 0.006]], float)
+    W, inf = cr.weld_seams(M, X)
+    assert np.linalg.norm(W[0] - W[1]) < 1e-12 and abs(W[0, 2] - 0.0004) < 1e-12
+    assert inf["welded"] == 1 and len(inf["open"]) == 1 and inf["open"][0]["pieces"] == "a|b"
+    assert abs(inf["open"][0]["gap_mm"] - 6.0) < 0.05 and inf["after"]["status"] == "FAIL"
