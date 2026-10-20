@@ -1,9 +1,21 @@
 # STATE: fit_round12 (Garrett jacket: lapel-turn method, then torso / hem corner / lapel read) -- 2026-10-20. NO SIMS.
 
-STATE: step 1 DONE as a stop-loss (method infeasible on an isometric fit); 2b / 2c next, then renders + reviews.
-Candidate stays r11d's settings (r12 code with ROLL_TURN / CHEST_HOLD off = r11d).
-NEXT: 2b torso (bare-body row profile vs concept minus ease; suppression as an R8 style param; shoulder width), 2c hem
-cutaway (draft rule), 3 lapel read, 4 renders + blind reviews. 2a (open vs closed A/B) is moot until the method lands.
+STATE: HANDOVER. Step 1 stop-loss (method infeasible on an isometric fit, below); 2b done (R8 silhouette style, a
+variant); 2c traced only; 3 not done; 4: R12 table + r12s renders + wholefront blind review FAIL. Candidate stays r11d.
+DESIGN QUESTION FOR JOE (blocks the open-front work): my own read AND the neutral blind reviewer read the concept as
+FASTENED at the waist button (fronts meet at the button ~400-525 below HPS, quarters curve apart below it): round 9
+disputed this as "open". If buttoned, worn_open / holds / ROLL_TURN chase a misread; the fix is a one-button closure +
+R25 cutaway.
+2b: the body is not the cause: bare body straight in width (281 / 278 / 305 at 350 / 425 / 500), concept - body
+115 / 122 / 124, ours 91 / 78 / 91 (r11d). R8 silhouette "straight" (no side take-ins, pattern_jacket STRAIGHT_SIDES,
+KAT test_straight_silhouette_follows_the_body_at_every_size): Garrett r12s waist 356 -> 363 (concept 401), chest row
+372 -> 358, lapel_on_base 13 -> 21 %, side-seam crease 25 -> 37 deg: worse rows, default stays suit. The deficit is a
+uniform ~35 mm of width at every row: the fit puts the ease into depth (back stand-off 33-38 mm), not width.
+Shoulder (shoulderw.py): outline width matches at 75-105 below HPS (480 / 492 vs 481 / 479) but ours is square: 479 at
+45 mm vs the concept's 354 (sloped shoulder / pad; queued).
+2c: R25 (tailoring_principles.md: CF hem dropped ~2 %, cut away from the lower button ~2.5 deg, rounded) is written
+but NOT drafted (no op in pattern_jacket; "Ours: the concept's length"). NEXT: op front_cutaway from R25.
+NEXT: Joe's call on buttoned vs open; then R25 cutaway op, lapel read (3), shoulder slope.
 NEXT ROUND (coordinator: its own round, opt-in, don't start here): WOVEN SHEAR ENERGY in pattern_form's fit.
 - Energy: per triangle, the deformation gradient in the pattern's grain frame (u = weft, v = warp, from M["uv"]):
   F = [f_u f_v] (3x2). Warp / weft stretch (|f_u| - 1, |f_v| - 1) at FIT_STIFF (stiff, as now); shear
@@ -32,4 +44,6 @@ Cause: an inextensible, shear-stiff front cannot open its break with chest + sid
 
 ## Files
 $FR12 = /mnt/data/hifipushie/dress_garrett/fit_round12/ (run.sh = this worktree; job.sh <tag> [overrides] = fit +
-chest + thru; harness10.py CLOSED=1 = no worn-open pins). kat/rollkat.py (lapel tube sweep). asm_r12{a,b,c,d}.pkl.
+chest + thru; harness10.py CLOSED=1 = no worn-open pins; fr10.py SILHOUETTE=straight). kat/rollkat.py (lapel tube sweep).
+asm_r12{a,b,c,d,s}.pkl; checklist_r12.md; check/ (r12s: wholefront / front / three / side / back, break / lapeltop / panel
+crops; R11 crops in fit_round11/check); review_wholefront.log.
