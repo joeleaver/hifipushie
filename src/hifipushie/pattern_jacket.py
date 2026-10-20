@@ -48,6 +48,13 @@ FALL_FOLD = {"at": 0.004, "angle": 10.0, "radius": 0.004, "strength": 0.6}
 # the roll line the fall wraps over the jacket's stand (same stack) and the shirt's collar (stand + its turned fall, each
 # 2 layers + interfacing: 6 shirting thicknesses).
 TURN = {"fabric": "wool_suiting", "canvas": "hair_canvas", "under": "cotton_shirting", "under_layers": 6}
+# R28 (fit round 18, Joe's notch tab): the STAND RUNS OFF toward the collar's end. The collar's roll line is the lapel's
+# roll line run on (R14: one line when worn), so the stand's height falls to (near) nothing where the lapel's roll line
+# crosses the gorge (pattern_draft._roll_meets_neck); past it the whole collar is fall, lying flat on the turned lapel.
+# Drafted with the one-piece collar's profile (op_collar: h = stand x (1 - (s / s_x)^p), p from the crossing angle),
+# floored at `end` m (a band of cloth, not a zero-width strip). Off = the stand drafted to stand_front at the notch
+# (fit rounds 2-17: the stand's end stood 7-30 mm off the lapel and carried the fall's end as a tab).
+STAND_RUN_OFF = {"on": False, "end": 0.003}  # OPT-IN: on the form the fall still turns 172 deg past s_x (fit round 18)
 
 
 def _thick_mm(name: str, default: float) -> float:
@@ -308,7 +315,8 @@ def _offset(E: np.ndarray, h: np.ndarray) -> np.ndarray:
 
 
 def collar_shapes(lb: float, lf: float, stand_cb: float, fall_cb: float, stand_front: float, fall_front: float,
-                  rise: float, spread_deg: float, roll: float, point: float = 0.0, n: int = 41) -> dict:
+                  rise: float, spread_deg: float, roll: float, point: float = 0.0, n: int = 41,
+                  run_off: tuple | None = None) -> dict:
     """The two collar pieces as halves, CB at x = 0 (pure geometry: the known-answer tests use it).
     STAND: its neck edge runs straight across the back neck (lb) and rises `rise` over the front part (lf), as a
     gentle quadratic: a band, not the neckline's curve (R17); its top edge is that line offset by the stand's height
@@ -329,6 +337,12 @@ def collar_shapes(lb: float, lf: float, stand_cb: float, fall_cb: float, stand_f
     E = E * k
     u = np.linspace(0, 1, n)
     hs = stand_cb + (stand_front - stand_cb) * u * u  # (square to the fold at CB: no kink in the roll line)
+    if run_off is not None:
+        # R28: the stand runs off to `end` at s_x (where the lapel's roll line crosses the gorge), `end` beyond it
+        sx, phi, h_end = float(run_off[0]), float(run_off[1]), float(run_off[2])
+        se = np.r_[0, np.cumsum(np.linalg.norm(np.diff(E, axis=0), axis=1))]
+        pw = float(np.clip(math.tan(phi) * sx / max(stand_cb, 1e-6), 1.5, 6.0))
+        hs = np.maximum(hs * np.clip(1 - (se / max(sx, 1e-6)) ** pw, 0, None), h_end)
     T = _offset(E, hs)
     # fall: lower edge = T, turned by an angle growing along it (outer edge on the outside of the turn)
     th = math.radians(spread_deg)
@@ -379,13 +393,20 @@ def op_collar_two_piece(D: dict, stand_cb: float | None = None, fall_cb: float |
     lb, lf = edge_length(D, nb), edge_length(D, nf)
     # R18: the outer edge as long as its path: the neckline offset by where the fall's edge lands (fall - stand from the
     # roll line, below the neck seam) + pi x the ring it stands out by (the under-stack and the fall's own cloth)
+    run_off = None
+    if STAND_RUN_OFF.get("on"):
+        met = pd._roll_meets_neck(D, list(nf), lb)
+        if met is not None and met[0] < lb + lf - 0.005:
+            # (the outer edge's path is unchanged: past s_x the collar lies in the lapel's plane beside a straight
+            # gorge, so its end adds no drop over the body; the spread is solved to that path with the new roll line)
+            run_off = (met[0] * (1 - ease), met[1], float(STAND_RUN_OFF["end"]))
     drop = (fall_cb - fat) - (stand_cb + fat)
     drop_end = (fall_front - fat) - (stand_front + fat)
     need, need_parts = fall_need(D["pieces"], list(nb) + list(nf), drop, drop_end, ts)
 
     def shapes(sp):
         return collar_shapes(lb * (1 - ease), lf * (1 - ease), stand_cb, fall_cb, stand_front, fall_front, rise, sp,
-                             roll, point)
+                             roll, point, run_off=run_off)
     if spread_deg is None:  # solved: the spread whose outer edge is the path's length (bisection; length grows with it)
         lo_, hi_ = -10.0, 45.0
         for _ in range(40):
@@ -446,7 +467,12 @@ def op_collar_two_piece(D: dict, stand_cb: float | None = None, fall_cb: float |
     D["edges"][f"{name}_outer"] = [f"{name}:endOuter>cbOuter"]
     D["meta"]["collar_two_piece"] = {"stand_cb": stand_cb, "fall_cb": fall_cb, "rise": rise, "spread_deg": spread_deg,
                                      "fold_at": fat, "turn": ts, "outer_need_mm": round(need * 1000, 1), "drop_mm": round(drop * 1000, 1),
-                                     "drop_end_mm": round(drop_end * 1000, 1), "need_parts": need_parts}
+                                     "drop_end_mm": round(drop_end * 1000, 1), "need_parts": need_parts,
+                                     "stand_run_off": None if run_off is None else {
+                                         "s_x_mm": round(run_off[0] * 1000, 1),
+                                         "before_end_mm": round(((lb + lf) * (1 - ease) - run_off[0]) * 1000, 1),
+                                         "angle_deg": round(math.degrees(run_off[1]), 1),
+                                         "end_mm": round(run_off[2] * 1000, 1), "source": src(14, 28)}}
     D["log"].append(f"collar two-piece ({src(16, 17, 18)}): stand {stand_cb * 1000:.0f} -> {stand_front * 1000:.0f} mm, "
                     f"neck edge {pattern.length(E) * 1000:.0f} (neckline {(lb + lf) * 1000:.0f}) rising "
                     f"{rise * 1000:.0f} at the front; fall {fall_cb * 1000:.0f} mm, spread {spread_deg:.0f} deg: outer "
@@ -830,6 +856,11 @@ def tailor_rows(Bp: dict, tape: dict, g: dict | None = None, button_mm: float = 
             why="a band-shaped stand (a flat collar's neck edge follows the neckline: ~0.2-0.3)")
         hs = float(np.linalg.norm(_pt(st, "cbTop") - _pt(st, "cb"))) * 1000
         row("collar_stand_cb", src(16), hs, R["collar_stand_cb"]["value"] * 1000, 0.012 * neck)
+        if "cfTop" in st["names"] and any("lapelPoint" in p["names"] for p in Bp["pieces"].values()):
+            he = float(np.linalg.norm(_pt(st, "cfTop") - _pt(st, "cf"))) * 1000
+            row("collar_stand_end", src(14, 28), he, STAND_RUN_OFF["end"] * 1000, 3.0,
+                why="the stand's height at the collar's end: it runs off where the lapel's roll line crosses the gorge, "
+                    "so the collar's end lies flat on the lapel (a stand standing to the notch carries the end as a tab)")
         if col is not None and "cbOuter" in col["names"]:
             hf = float(np.linalg.norm(_pt(col, "cbOuter") - _pt(col, "cbLow"))) * 1000
             fab = g.get("fabric") if isinstance(g.get("fabric"), str) else None

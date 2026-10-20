@@ -8749,3 +8749,21 @@ docs/notes/cloth.md "dress-garrett 2026-10-19 muslin 1", "form sleeves", "block 
   20 mm wrap): next session measures front-on-front contact pairs at the break in job_k's start and runs a local
   release with the roll line's bending rest flat (one switch each) before any draft change.
 - Steps 3 (seam gaps after release) and 4 (table, renders, blind reviews) NOT done this session (budget): handover.
+
+## fit round 18 (2026-10-20, Garrett jacket + shirt; $FR18 = /mnt/data/hifipushie/dress_garrett/fit_round18)
+- fit round 18 step 1 (Joe's notch tab, coordinator: a draft call). R28 drafted in pattern_jacket.collar_two_piece: the
+  stand's height runs off (op_collar's profile stand x (1 - (s/s_x)^p), floor 3 mm) to where the lapel's roll line
+  crosses the gorge (pattern_draft._roll_meets_neck, already used by the one-piece op_collar); outer edge length
+  unchanged (spread re-solved). Flat (test bodies small / medium / large): s_x 125 / 135 / 152 mm from CB, 102-106 mm
+  before the collar's end, 33-35 deg; stand end 3.0 mm PASS vs 12.8 / 14.5 / 15.6 FAIL drafted the old way. Gate row
+  collar_stand_end (tailor_rows) + KAT test_stand_runs_off_where_the_lapel_roll_crosses_the_gorge. Source: R14 + general
+  practice (the undercollar's crease line runs into the gorge at the roll line); the coordinator's Aldrich / Cabrera &
+  Flaherty cite NOT verified (no copy; one web search found nothing quotable).
+- Form fit (r15e settings + R28: CLOSED=1 LAPEL_W=0.081 ROLL_R=0.006 TRACE=1 job.sh r18a ROLL_GAP=true; 38 s):
+  gorge_lie r15e L/R twist max 10.7/14.8, across max 13/13, tip 9.8/8.0, plane 30/30 -> r18a 15.2/19.6, 19.3/54.4,
+  12.3/14.1, 58/73: WORSE. Per phase (gorge.py --phases): band_init tip 2.1/4.4 mm, across p50 0.4/1.8 (the collar's end
+  lies on the lapel), then turn_flaps twist max 99/155 deg/cm, tip 17 mm. Cause: the FALL's crease (fold 4 mm above its
+  seam, turned 172 deg) still runs to the collar's end, so past s_x the flat end is folded back over the lapel. In
+  practice the crease runs off into the gorge with the stand: past s_x nothing is folded. Fix = a method change (the
+  fold's turn tapering to 0 past s_x through folds._geom / pattern_form._turn_flaps / folds.bend_reference), not done
+  this round. R28 kept OPT-IN (STAND_RUN_OFF["on"] False): the default fit is r15e's.

@@ -200,16 +200,45 @@ def test_fall_outer_edge_is_the_books_spread_not_the_under_stack():
     edge) -> outer edge 10-15 mm over the neck seam; ours may add the stand's lean-in (neck edge - roll line, ~4 mm)."""
     t5, t6 = pj.turn_stack(under_layers=0), pj.turn_stack(under_layers=12)
     assert t5["length_mm"] == t6["length_mm"] and t5["depth_mm"] < t6["depth_mm"]
+    # (R28's stand run-off reshapes the roll line, never the outer edge: the lean-in is read on the stand drafted
+    # without it, and the outer edge must be the same length both ways)
     for nm, tape in BODIES.items():
         D = ours(tape)
         mc = D["meta"]["collar_two_piece"]
         st, fa = D["pieces"]["stand"], D["pieces"]["collar"]
         neck = pattern.length(st["P"][pattern.arc_indices(st, "cb>shoulderNotch>cf")]) * 1000
-        roll = pattern.length(fa["P"][pattern.arc_indices(fa, "cbLow>endLow")]) * 1000
         outer = pattern.length(fa["P"][pattern.arc_indices(fa, "endOuter>cbOuter")]) * 1000
+        pj.STAND_RUN_OFF["on"] = True
+        try:
+            fa0 = ours(tape)["pieces"]["collar"]
+        finally:
+            pj.STAND_RUN_OFF["on"] = False
+        roll = pattern.length(fa["P"][pattern.arc_indices(fa, "cbLow>endLow")]) * 1000
+        outer0 = pattern.length(fa0["P"][pattern.arc_indices(fa0, "endOuter>cbOuter")]) * 1000
+        assert abs(outer - outer0) < 0.5, (nm, outer, outer0)
         lean = neck - roll
         assert 10 - 3 <= outer - neck <= 15 + lean + 3, (nm, round(outer - neck, 1), round(lean, 1))
         assert mc["spread_deg"] < 25, (nm, mc["spread_deg"])
+
+
+def test_stand_runs_off_where_the_lapel_roll_crosses_the_gorge():
+    """R28 (fit round 18, Joe's notch tab): the stand's height falls to STAND_RUN_OFF["end"] where the lapel's roll
+    line crosses the gorge (R14: one line when worn) and stays there to the collar's end, so the end lies flat on the
+    lapel. The gate row collar_stand_end passes the R28 draft and fails the round 2-17 draft (stand_front at the end:
+    13-16 mm), at a small, a medium and a large man; full height is kept over the back."""
+    for nm, tape in BODIES.items():
+        pj.STAND_RUN_OFF["on"] = True
+        try:
+            D = ours(tape)
+        finally:
+            pj.STAND_RUN_OFF["on"] = False
+        ro = D["meta"]["collar_two_piece"]["stand_run_off"]
+        assert ro is not None and ro["before_end_mm"] > 50, (nm, ro)
+        st = D["pieces"]["stand"]
+        assert np.linalg.norm(_pt(st, "cbTop") - _pt(st, "cb")) * 1000 > 20
+        assert _rows(_bp(D), tape)["collar_stand_end"]["status"] == "PASS", nm
+        r0 = _rows(_bp(ours(tape)), tape)["collar_stand_end"]
+        assert r0["status"] == "FAIL" and r0["ours"] > 10, (nm, r0)
 
 
 def test_undercollar_a_turn_smaller_on_the_bias_and_the_facing_let_out():

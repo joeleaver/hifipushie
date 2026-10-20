@@ -113,6 +113,16 @@ lengths along the body; "neck" = the neck girth taken where the jacket collar si
     break, full at the lapel point and the gorge, and eased on (Cabrera & Flaherty, Classic Tailoring Techniques:
     facing 3-6 mm wider at the lapel, eased across the roll line) so the seam rolls under. op_lapel_turn; a cut-piece
     record (the facing is fused to the front: the form / sim surface does not change).
+28. **The stand runs off at the front** [G, fit round 18; OPT-IN]. The collar's roll line is the lapel's roll line run
+    on (R14), so it meets the gorge where the lapel's roll line crosses it (pattern_draft._roll_meets_neck; Garrett /
+    the test bodies: ~32 mm past the neck point, ~100 mm before the collar's end, at ~34 deg). The stand's height
+    falls to near nothing there (STAND_RUN_OFF end 3 mm, profile as op_collar: stand x (1 - (s / s_x)^p)) and the
+    collar's end past it is all fall, lying flat in the lapel's plane; the outer edge's length is unchanged. Source:
+    general tailoring practice for a notched collar (the undercollar's crease line runs off into the gorge line at the
+    roll line; Aldrich, Metric Pattern Cutting for Menswear and Cabrera & Flaherty describe the draft; page not checked
+    here: no copy at hand). Gate row collar_stand_end (<= 3 + 3 mm). OPT-IN because the fall's own crease (its fold
+    4 mm above the seam, turned 172 deg) still runs to the end: on the form it folds the flat end back over the lapel
+    (gorge_lie worse: tip 12 / 14 mm). NEXT: the fall's fold must run off at s_x with the stand.
 
 ## What the gate checks (pattern_jacket.tailor_rows, cloth_check.pattern_gate for a jacket)
 back_neck_width R3 (+-6 mm), back_neck_rise R4 (+-6 mm), waist_suppression R8 (11-20 % of chest), hips_clearance
