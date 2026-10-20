@@ -412,13 +412,24 @@ def fit_record_path(phash: str, bhash: str) -> _Path:
     return gate_dir() / "fit" / f"{gate_key(phash, bhash)}.json"
 
 
-def fit_rows(res: dict, X, strain_p99: float | None, worn_under: bool) -> list:
+def _form_read():
+    from . import garment_reads
+    return garment_reads.FORM_READ
+
+
+def fit_rows(res: dict, X, strain_p99: float | None, worn_under: bool, g: dict | None = None, model: str = "",
+             garment: str = "") -> list:
     """The fit gate's rows for a garment assembled ALONE on the form (res: on_form / cloth.build place_only, X its
-    vertices): strain p99, and when worn_under the median stand-off off the body in the waist band (+- 15 mm)."""
+    vertices): strain p99, and when worn_under the median stand-off off the body in the waist band (+- 15 mm).
+    With the garment's spec g (+ model, garment): its BIG READS on the fit (C97: garment_reads.big_reads) judged by the
+    piece checklist's items read "fit" (C98), and an UNMEASURED row per worn big read the garment kind asks for that no
+    checklist item reads; ordered big to small (C52: big_first)."""
     from . import next_steps, pattern_form
-    rows = [{"id": "fit_strain_p99", "ours": None if strain_p99 is None else round(strain_p99, 1),
+    rows = [{"id": "fit_strain_p99", "stage": 2, "ours": None if strain_p99 is None else round(strain_p99, 1),
              "target": f"<= {next_steps.STRAIN_P99_MAX:g} %",
              "status": "PASS" if strain_p99 is not None and strain_p99 <= next_steps.STRAIN_P99_MAX else "FAIL"}]
+    if g is not None:
+        rows += checklist_fit_rows(res, X, g, model, garment)
     if worn_under:
         body = res["body"]
         at = getattr(body, "at", {}) or {}
@@ -426,7 +437,29 @@ def fit_rows(res: dict, X, strain_p99: float | None, worn_under: bool) -> list:
         if z is None:
             rows.append({"id": "under_standoff_waist", "status": "UNMEASURED", "why": "no waist_z landmark"})
         else:
-            rows.append(standoff_row(body, X, float(np.asarray(z).reshape(-1)[-1])))
+            rows.append(dict(standoff_row(body, X, float(np.asarray(z).reshape(-1)[-1])), stage=2))
+    return big_first(rows) if g is not None else rows
+
+
+def checklist_fit_rows(res: dict, X, g: dict, model: str = "", garment: str = "") -> list:
+    """(C97 + C98) the piece checklist's "fit" items judged on the garment's big reads on the form."""
+    from . import cloth, cloth_reference as cr, garment_reads as gr
+    ge = cloth.expanded(g) if "pattern" in g else g
+    piece, items = gr.checklist_items(g, model, garment)
+    rd = gr.big_reads(res, X, ge)
+    rows = gr.checklist_rows(items, rd, "fit")
+    kind = ((ge.get("design") or {}).get("kind")) or ""
+    try:
+        kitems = cr.items_for(kind) if kind else []
+    except Exception:  # noqa: BLE001
+        kitems = []
+    for m in gr.uncovered_form_reads(kitems, items):
+        rows.append({"id": f"form_read:{m}", "stage": 1, "status": "UNMEASURED", "measure": m,
+                     "why": f"a worn big read ({m}) with no checklist item to judge it (C97 / C98): add one to "
+                            f"workspace/checklists/{piece or '<piece>'}.json with \"read\" + \"range\" / \"equals\""})
+    rows.append({"id": "big_reads", "stage": 9, "status": "INFO", "measure": "garment_reads.big_reads",
+                 "ours": {k: v for k, v in rd.items() if k not in ("front_gap_profile", "buttons")},
+                 "checklist": piece})
     return rows
 
 
@@ -1131,7 +1164,12 @@ def gate_rows(Bp: dict, items: list, ctx=None, gname: str = "", refs: dict | Non
     for it in items:
         cl = classify(it)
         row = {"id": it["id"], "stage": it["stage"], "measure": it.get("pattern_measure") or it.get("measure")}
-        if cl == "sim":
+        if cl == "sim" and it.get("measure") in _form_read():
+            # (C97) a big read of the worn state: read on the form fit (fit_rows, from the piece checklist's items),
+            # never deferred to a sim the form path doesn't run
+            row.update(status="FORM", why="a big read of the worn state: judged on the form fit (fit_garment's fit "
+                                          "record, the piece checklist's items: garment_reads)")
+        elif cl == "sim":
             row.update(status="SIM", why="judged after the sim (drape, folds, closures, the worn tells)")
         elif cl == "later":
             row.update(status="INFO", why=f"a later stage's item (stage {it.get('stage')}): not a pattern check")
@@ -1306,6 +1344,53 @@ def flat_pattern_row(model: str, garment: str, spec: dict) -> dict:
             "ours": {"fail": o["fail"][:16], "warn": o["warn"][:8], "ease": ease[:8]}, "read_on": "flat draft"}
 
 
+def collar_rule_rows(Bp: dict, g: dict) -> list:
+    """(C101) the collar rules for ANY collar with a stand and a fall (garment_reads.collar_draft_reads): the worn fall
+    covers the stand seam (turn of cloth from the fabrics, C43) by FALL_COVER_MM, and the fall's fold runs off exactly
+    when the stand does (C79 / R28). [] without such a collar."""
+    from . import garment_reads as gr
+    r = gr.collar_draft_reads(Bp, g)
+    if not r:
+        return []
+    lo, hi = gr.FALL_COVER_MM
+    cv = r["collar_fall_cover_mm"]
+    return [{"id": "collar_fall_cover", "stage": 3, "status": "PASS" if lo <= cv <= hi else "FAIL",
+             "measure": "garment_reads.collar_draft_reads (worn fall - worn stand, mm)", "ours": r,
+             "ref": f"{lo:g}..{hi:g} mm", "why": "the fall below the roll line, less the turn of cloth (C43), covers the "
+                                                "stand seam (Aldrich: shirt fall 10-15 mm over the stand)"},
+            {"id": "collar_fold_run", "stage": 3, "status": "PASS" if r["collar_fold_agrees"] else "FAIL",
+             "measure": "garment_reads.collar_draft_reads (stand ends vs the fall fold's run-off)",
+             "ours": {"stand_ends_mm": r["collar_stand_ends_mm"], "stand_runs_off": r["collar_stand_runs_off"],
+                      "fold_runs_off": r["collar_fold_runs_off"]},
+             "ref": "the fold runs off iff the stand does", "why": "C79 / R28: a fold past a stand that has run off "
+                                                                   "lifts an unsupported flap; a fold that runs off "
+                                                                   "where the stand still stands flips the points"}]
+
+
+def piece_checklist_rows(model: str, garment: str, g: dict, res: dict | None = None) -> list:
+    """(C98) the piece checklist's items with machine targets as gate rows: "flat" items judged on the draft here
+    (garment_reads.flat_reads); "fit" items shown with their reading on the gate's own form assembly (LATER: the fit
+    record judges them); plus the collar rules (C101)."""
+    from . import garment_reads as gr
+    Bp = res["pieces_full"] if res is not None else None
+    piece, items = gr.checklist_items(g, model, garment)
+    rows = collar_rule_rows(Bp, g) if Bp is not None else []
+    if not items:
+        return rows
+    rd = gr.flat_reads(Bp, g) if Bp is not None else {}
+    rows += gr.checklist_rows(items, rd, "flat")
+    if res is not None:
+        try:
+            from . import cloth
+            fr = gr.big_reads(res, None, cloth.expanded(g))
+            for r in rows:
+                if r["status"] == "LATER" and r.get("measure", "").endswith("(fit)"):
+                    r["ours"] = {k: gr._get(fr, k) for k in r["read"]}
+        except Exception:  # noqa: BLE001 (a reading for show only)
+            pass
+    return rows
+
+
 def tailor_rows_for(Bp: dict, kind, g: dict) -> list:
     """The tailor's-rule rows (pattern_jacket.tailor_rows: docs/notes/tailoring_principles.md R<n>) for a jacket / coat
     drafted by us (its draft carries the tape); [] otherwise. Button size: the closure's "size" (m) or 20 mm."""
@@ -1352,6 +1437,7 @@ def pattern_gate(model: str, garment: str, spec: dict | None = None, refs=None, 
                      form_ok=form_ok, flat=flat_readings(res["pieces_full"]), drape=g.get("drape_readings"))
     rows.append(flat_pattern_row(model, garment, spec))
     rows += tailor_rows_for(res["pieces_full"], kind, g)
+    rows += piece_checklist_rows(model, garment, g, res)
     under_nm = g.get("over")  # (the garment worn under this one: an outer layer must clear it at every shared girth)
     if isinstance(under_nm, str) and under_nm in spec["cloth"]:
         from . import cloth_workflow

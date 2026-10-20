@@ -67,7 +67,7 @@ def validate(sheet: dict, where: str = "design") -> None:
     K = kb()
     if not isinstance(sheet, dict):
         raise ClothError(f"{where}: design is an object {{kind, from, fit, fabric, details, pattern, notes}}")
-    bad = set(sheet) - SHEET_KEYS
+    bad = {k for k in set(sheet) - SHEET_KEYS if not k.endswith("_source")}  # (<key>_source: provenance notes)
     if bad:
         raise ClothError(f"{where}: design keys {sorted(bad)} unknown (have {sorted(SHEET_KEYS)})")
     kinds = [k for k in K["kinds"] if not k.startswith("_")]

@@ -2804,7 +2804,7 @@ def fit_garment(name: str, garment: str, views: list[str] | None = None, size: i
     if under is None:  # (C85: a garment fitted alone writes its own fit record; an outer garment waits for it)
         worn_under = any(cloth.expanded(g_).get("over") == garment for k_, g_ in (spec.get("cloth") or {}).items()
                          if k_ != garment)
-        rows = cc.fit_rows(res, X, p99, worn_under)
+        rows = cc.fit_rows(res, X, p99, worn_under, g=spec["cloth"][garment], model=name, garment=garment)
         cc.write_fit_record(name, garment, st["keys"], rows)
         fit_txt = "  own fit (C85): " + "; ".join(f"{r['status']} {r['id']} {r.get('ours')}" for r in rows) + "\n"
     elif not uf["passed"]:

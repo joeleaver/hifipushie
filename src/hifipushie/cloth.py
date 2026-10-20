@@ -9327,7 +9327,8 @@ GARMENT_KEYS = {"shoulder_pad", "layer_clearance", "pattern", "pieces", "seams",
                 "state", "resolution", "coarse", "quality", "frames", "self_collision", "self_collision_sew", "assemble",
                 "sew_force", "sew_frames", "worn_frames", "settle_frames", "hang_frames", "hang_sew_force", "hang_air", "refine_frames",
                 "refine_ease", "cleanup", "detail", "sculpt", "finish", "unfold_finish", "under", "under_sculpt", "under_collar", "note", "backend", "placement", "lower_arms", "lower_frames", "zozo", "_trace",
-                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin", "under_cap", "closures", "trims", "tie", "collide", "construct", "made_folds", "worn_top", "press_lay", "worn_envelope", "collar_spread", "open_gap", "open_lap", "mirror_mesh", "mesh_refine", "fine_relax", "under_fall", "collar_ends", "pad_over", "move", "pose_frames", "set_sleeves", "wrap", "uncrush", "straighten", "seal_under", "worn_open", "truing_corners"}
+                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin", "under_cap", "closures", "trims", "tie", "collide", "construct", "made_folds", "worn_top", "press_lay", "worn_envelope", "collar_spread", "open_gap", "open_lap", "mirror_mesh", "mesh_refine", "fine_relax", "under_fall", "collar_ends", "pad_over", "move", "pose_frames", "set_sleeves", "wrap", "uncrush", "straighten", "seal_under", "worn_open", "truing_corners", "truing_corners_source",
+                "checklist", "tucked", "stripe", "collar_canvas", "seam_ease", "drape_readings", "form_strain_p99"}  # (shirt round 2: checklist C98, tucked C97, stripe C100)
 WRAPS = ("torso", "arm.L", "arm.R", "leg.L", "leg.R", "neck", "head", "seam", "flat")
 
 
@@ -9355,7 +9356,7 @@ def validate(spec: dict) -> None:
             if not Path(g["frozen"]).expanduser().exists():
                 raise ClothError(f"{where}: frozen drape {g['frozen']} not found")
             continue
-        bad = set(g) - GARMENT_KEYS
+        bad = {k for k in set(g) - GARMENT_KEYS if not k.endswith("_source")}  # (<key>_source: provenance notes)
         if bad:
             raise ClothError(f"{where}: unknown keys {sorted(bad)} (have {', '.join(sorted(GARMENT_KEYS - {'_trace'}))})")
         if g.get("design") is not None:  # the staged workflow's design sheet: checked, then what it compiles into
@@ -9369,15 +9370,15 @@ def validate(spec: dict) -> None:
                              'or own "pieces" + "seams", or a "design" sheet (design_garment)')
         if pat is not None and isinstance(pat, dict) and pat.get("from") in garment_blocks.BLOCKS:
             okp = {"from", "options", "measurements"} | set(garment_blocks.WORDS[pat["from"]])
-            bad = set(pat) - okp
+            bad = {k for k in set(pat) - okp if k != "source" and not k.endswith("_source")}
             if bad:
                 raise ClothError(f"{where}: pattern keys {sorted(bad)} unknown for {pat['from']} (have {sorted(okp)})")
         elif pat is not None:
             if not isinstance(pat, dict) or pat.get("from") not in names:
                 raise ClothError(f'{where}: pattern is {{"from": one of {names + list(garment_blocks.BLOCKS)}, "ease": {{...}}, "length"...}}')
             words = designs()[pat["from"]].get("words", {})
-            okp = {"from", "ease", "options", "measurements", "alterations", "sa"} | set(words)
-            bad = set(pat) - okp
+            okp = {"from", "ease", "options", "measurements", "alterations", "sa", "source"} | set(words)  # (source: provenance)
+            bad = {k for k in set(pat) - okp if not k.endswith("_source")}
             if bad:
                 raise ClothError(f"{where}: pattern keys {sorted(bad)} unknown for {pat['from']} (have {sorted(okp)})")
             for k, v in (pat.get("ease") or {}).items():

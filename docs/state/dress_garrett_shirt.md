@@ -1,29 +1,25 @@
-# STATE: dress_garrett_shirt (Garrett's shirt on its own, then under the round-26 jacket) -- 2026-10-20, shirt round 1
+# STATE: dress_garrett_shirt (Garrett's shirt on its own, then under the round-26 jacket) -- 2026-10-20, shirt round 2
 
-QUESTION (Joe 2026-10-20): "another pass on the shirt ... the color isn't right ... will all the lessons we learned on
-the jacket carry over and it won't take 30 rounds?" Round 1 = that test. Jacket thread: docs/state/dress_garrett_fit.md
-(read-only here: the jacket is not changed by this thread).
-STATE: round 1 stopped at step 3. Flat gate PASS (g1a); fit alone FAILS: f1b (OPEN_SPREAD off, kept) strain p99
-11.3 (yoke 34.7), waist stand-off 12.6, collar points 53 mm apart vs 147, V closes ~70 below camera HPS vs 60; f1a
-(OPEN_SPREAD on) tore the collar (p99 149-182 %): DEAD. Blind review rev_f1b FAIL (13 MAJOR). Step 4 NOT run (C85).
-Colour: lit 158/160/157 vs concept 173/169/167 (cool, dark) under the clay rig; the old harness drew #c9ccd2.
-NEXT: (1) the collar: fall turned down on its fold + points out (cfNeck moved with the stand ends, or an arranged
-open collar C81) -- the biggest read; (2) placket lap twisted into an X under the V (diag); (3) yoke strain 34.7 %;
-(4) tuck as a design key (gap); (5) colour on a game-light render; then step 4 with r26k.
+QUESTION (Joe 2026-10-20): "will all the lessons we learned on the jacket carry over and it won't take 30 rounds?"
+Round 1: the process carried, the geometry didn't (jacket-only code). Round 2: lessons become GENERAL code first, then
+the shirt. Jacket thread: docs/state/dress_garrett_fit.md (read-only here: the jacket is not changed by this thread).
+STATE: steps 1-3 done (C103-C105, tests/test_garment_reads.py). Gate g2b FAILS on one flat row the new collar rule
+found: collar_cover 2.3 mm (fall 49 vs stand 36.6 + roll 4 + turn 2.1; 5-25). Form reads (LATER at the gate): V 74
+below HPS (45-75 ok), points 53 apart (127-167), first fastened button 124 (68-98), collar closed (spread).
+NEXT: step 3b collarWidth 1.3 -> ~1.5 (fall ~56, cover ~10); step 4 colour (own-colour game-light render, stripe);
+step 5 arranged open collar (arrange_garment); step 6 tucked / yoke / shoulders / placket / cuffs; step 7 renders.
 
-## Big reads (concept, m1_ref.py at 1.147 mm/px; anchors: image CF = button line x 626, neck = stand top at side)
-- Front: closed, top button undone, 2nd done (83 mm below camera HPS). V bottom 109 below the stand top at the side
-  (60 below camera HPS). Collar points 147 mm apart (73 / 73 off CF), 98-109 below the stand top.
-- Colour LIT (painted sRGB, 60-90th lum pct) 173/169/167 #ada9a7, shadow 158/154/152. Stripe NOT resolved at the
-  concept's scale (contrast < 1 %): INFERRED pitch 2-3 mm, contrast <= 4 %.
-- Cuff shows 17-23 mm past the jacket sleeve. Tuck: belt top 498 below camera HPS.
-- Details: shirt shows 11-23 mm above the jacket collar at the sides; box placket 29 mm, buttons 88 mm apart.
+## Big reads (concept, m1_ref.py at 1.147 mm/px; HPS = the body's hps.L)
+- Front: closed, top button undone, 2nd done (83 mm below camera HPS). V bottom 60 below camera HPS. Collar points
+  147 mm apart (73 / 73 off CF), 50-61 below the camera HPS. Tucked under a belt (belt top 498 below HPS).
+- Colour LIT 173/169/167 #ada9a7 (R-B 6), shadow 158/154/152. Stripe not resolved (INFERRED pitch 2-3 mm, <= 4 %).
+- Cuff 17-23 past the jacket sleeve; stand shows 11-23 above the jacket collar; placket 29 mm; buttons 88 apart.
 
-## Method (the loop that works, Joe 2026-10-20)
-describe -> flat gate (big first, C52) -> fit ALONE on the form worn as designed (OPEN_SPREAD C50, LAP_LAYER C82,
-tucked) with its own fit record (C85) -> ref | clay | diag + colour render, blind one-view reviews -> only then the
-r26k jacket over it (B cull) and the shirt judged where it shows.
+## How the gates read it now (general code: src/hifipushie/garment_reads.py)
+- workspace/checklists/garrett_shirt.json items with "read" + "range"/"equals"/"ref_rgb" + "on" = gate rows (C103).
+- pattern gate: flat items judged; fit items shown (LATER) with the gate's own form reading; collar rules (C105).
+- fit_garment's fit record: fit items judged on garment_reads.big_reads (C104); unread worn big reads UNMEASURED.
 
-## Commands ($S = /mnt/data/hifipushie/dress_garrett/shirt_round1; run.sh runs THIS worktree's code)
-$S/run.sh m1_ref.py (concept reads); gate1.py <tag> (MCP pattern_check); RUNNER=bin/capped ./run.sh fit3.py <tag>
-[K=V pf overrides; RECORD=0] -> asm_<tag>.pkl; render3.py <abs asm> <tag>; strain.py; colour.py; rev1.sh <tag>.
+## Commands ($S = /mnt/data/hifipushie/dress_garrett/shirt_round2; run.sh runs THIS worktree's code)
+RUNNER=/mnt/data/hifipushie/bin/capped ./run.sh gate2.py <tag> [save] [nojacket] -> gate_<tag>.json;
+upd_checklist2.py (checklist machine targets). Round 1 scripts: ../shirt_round1 (fit3.py, render3.py, rev1.sh).

@@ -9135,3 +9135,20 @@ V (diag), no buttons drawn, boxy / dropped shoulders, cuff flares off the wrist.
 STOP: the shirt fails its own fit (C85), so step 4 (the r26k jacket over it) is NOT run; no dressed render.
 Colour: the round-26 harness drew the shirt #c9ccd2 (cool blue-grey) in every jacket render, not the spec #bdb8b4;
 clay sheets (server._garment_sheets) use fixed colours. Under the clay rig #bdb8b4 reads green-neutral and 13 dark.
+
+## shirt round 2 (2026-10-20; $S = /mnt/data/hifipushie/dress_garrett/shirt_round2, this worktree's code via run.sh)
+Question: do the jacket's lessons carry over? Round 1: the process did, the geometry did not (jacket-only code). Round 2
+turns them into general code first (garment_reads.py), then uses them on the shirt.
+- Step 1-3 (C98 / C97 / C101 -> ledger C103-C105): garment_reads.py (big reads on the form; checklist rows; collar rules
+  for any stand + fall; lit-vs-lit colour patch). cloth_check: gate_rows FORM status for worn big reads, fit_rows(g=...)
+  judges the piece checklist on the fit (server.fit_garment passes the spec), pattern_gate adds piece_checklist_rows +
+  collar_rule_rows. cloth.validate: garment keys checklist / tucked / stripe / collar_canvas / seam_ease /
+  drape_readings / form_strain_p99 and any "<key>_source" note (the saved Garrett spec carried seam_ease,
+  closures_source, block_source, pattern "source" the validator refused: store.save raised). tests/test_garment_reads.py
+  9 KATs. Checklist garrett_shirt.json: 15 items with machine targets (upd_checklist2.py; before:
+  $S/garrett_shirt.checklist.before.json). Spec sh_garrett v2: "checklist": "garrett_shirt".
+- Gate g2b (gate2.py, refs garrett_refs.json): FAIL on ONE flat row: checklist:collar_cover 2.3 mm (fall 49.0, stand
+  36.6 + roll 4 + turn 2.06; target 5-25). The FORM reads on the gate's own form assembly (LATER): V bottom 74 below
+  HPS (45-75), points 53 apart (127-167), points 78 below HPS (35-76), first fastened button 124 (68-98), collar_state
+  closed (spread). The jacket (dg_garrett) reads no stand + fall pair by roles from its seam table: [] rows (unchanged).
+- Note: sh_garrett's jacket points at dg_garrett's pins (_pins missing in sh_garrett): read the jacket on dg_garrett.
