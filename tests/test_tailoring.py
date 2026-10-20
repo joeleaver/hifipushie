@@ -296,7 +296,9 @@ def test_tracks_jaeger_at_three_sizes():
         sj = np.linalg.norm(jp("collarStand", "collarstandCbTop") - jp("collarStand", "collarstandCbBottom"))
         fj = np.linalg.norm(jp("collar", "collarCbTopRoll") - jp("collar", "collarstandCbTop"))
         assert np.linalg.norm(_pt(st, "cbTop") - _pt(st, "cb")) == pytest.approx(sj, abs=0.005)
-        assert np.linalg.norm(_pt(fa, "cbOuter") - _pt(fa, "cbLow")) == pytest.approx(fj, abs=0.010)
+        # (the fall diverges from Jaeger on purpose since fit round 2: R16 from practice, fall = stand + 10 mm from the
+        # roll line, C42; Jaeger's fall is deeper. Ours stays shallower by 0-20 mm, never deeper)
+        assert 0.0 <= fj - np.linalg.norm(_pt(fa, "cbOuter") - _pt(fa, "cbLow")) <= 0.020, name
         # overlap (R12): ours from the button, Jaeger 1.5 % of chest: within 8 mm
         assert abs(_pt(D["pieces"]["front"], "break")[0]) == pytest.approx(ov_j, abs=0.008)
 
