@@ -7679,3 +7679,11 @@ lines across the upper back; opening at the chest judged within ~10 px. Collar /
   the break, 366 -> 369 mm, seam ease widened). Both fused: records, no change to the form surface. Rule fix (R18 text):
   books cut the UNDERcollar in two (stand + fall, bias) and the TOP collar in one; ours read stand + fall as the
   collar. Open: draft the one-piece top collar. C45.
+- Steps 2-4: gate with refs + waive.json: shirt + jacket PASS_WAIVED. Form fit: fall top 51.8 over HPS (r1 71), stand
+  6-38 mm off the neck, notch 26.5 / 61.4 deg, collar end 14.9 off the gorge, shirt collar shows +7.7 / +6.2 (want
+  +10-15), shirt through jacket 365 faces (r1 268). The collar roll fold stops at -34 deg (turned_deg NaN): the fall
+  never turns. Shirt stand to neck: 3.5-6 back / side, 21-27 front (the open V): not the cause of the side gap.
+  Blind review (bin/review, one view per run, ref | clay + ref | diag): FAIL on all 5; no notch reads although the
+  notch rows pass (checklist incomplete: add a notch-step item), lapel edges jagged, collar a tall rolled band, shirt
+  collar outside the jacket at the front. Side / back / top review refs were the front concept crop (front-only
+  concept): a bad pairing. My read matches the reviewer's: not close to the reference.
