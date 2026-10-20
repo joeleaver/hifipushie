@@ -29,10 +29,6 @@ opening (edge off CF 71/78/94 at 450/550/650, break x 64, V width 237) is reache
 Under garments fit on their own first (C85); layered pairs: the over garment over the body + the under's allowance, the
 under garment kept only where seen (B, coordinator 2026-10-20).
 
-## Candidates (nothing approved)
-- Fit r21c ($FR21/fitcheck.sh r21c) -> $FR21/asm_r21c.pkl. r22a (lie) / r22b (outer_first 8 mm): $FR22/asm_r22{a,b}.pkl,
-  comparisons only. r20k arranged ($FR20/asm_r20k.pkl).
-
 ## Table (concept | r20k arranged | r21c fit | r22a lie | r22b outer 8 mm)
 jacket waist over body: draft +110 | +143 | +119 | +87 | +97
 jacket waist over shirt (>= 25 mm): - | +33 | +11 | +30 | +2 (shirt culled under B)
@@ -61,6 +57,3 @@ cloth_check.UNDER_STANDOFF 10 mm (C85). pattern_jacket STAND_RUN_OFF / ROLL_GAP 
 $FR22: MODE=lie|outer ./fitcheck.sh <tag> [K=V]; gate84.py (C84 row), widths.py (chest / waist / hip widths), probe10.py
 (waist strain + stand-off), presssweep.py (lie_under on a saved standing shirt), probe8.py (where LAP_LAYER acts),
 probe9.py (front neck stretch per phase), render21.py <asm> <tag> [views]. $FR20: g20.py, zrun.py, tab20.py.
-
-## History (grep only)
-docs/notes/cloth.md "fit round 22", "fit round 21", "fit round 20".
