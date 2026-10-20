@@ -8875,3 +8875,23 @@ docs/notes/cloth.md "dress-garrett 2026-10-19 muslin 1", "form sleeves", "block 
   closed fit: r19a 19 of 290 (6.6 %, FAIL, deepest 4.1 mm); release r19w 31 (deepest 7.4 mm at 100-150); r20k 17;
   front.L 0 / 20 / 5. Not the front crossing (that is 300-570 mm). r21c (layered): 9 (3.1 %, PASS) but still 4.5 mm deep
   at 50-100: open, R only (the mirrored side's fold rest: see pattern_form line ~322).
+- fit round 21 waist (Joe on r20k: "really tight around his middle"), measured before changing anything ($FR21/waist.py:
+  convex-hull girth of a 10 mm slice at the body's waist_z, torso only): body 786 mm; the draft targets waist x 1.14 =
+  896 (pattern_jacket EASE["waist"] 0.14, R1 Jaeger / Bent; Aldrich's classic jacket waist ease ~10-12 cm is the same
+  range): (a) the draft's ease is the book's; (b) the FORM does not pull it in: fitted jacket r19a 896 (+110, 14.1 %),
+  r21c 905 (+119), r20k arranged 929 (+143); front-view width 317-321 (body 280; concept 401, worn open). (c) not
+  reached. THE SHIRT IS 895 mm at the waist (+109 over the body, 17 mm radial): the jacket lies 1-11 mm (girth) over a
+  shirt that holds its full ease as a smooth stiff tube, so it reads as clinging. A dress shirt under a jacket is tucked
+  in and its fullness lies soft against the body (blouses / folds down), it does not stand 17 mm off. NEXT: the shirt
+  pressed under the jacket at the waist (the form's TWO LAYERS: pattern_form.layered_fit "outer_first" / the jacket's
+  waist ease measured over the BODY with the shirt compressed), then a gate row (fitted jacket waist girth over the body
+  >= 10 % AND over the shirt >= the book's minimum); the waist suppression shape (pinched sides vs the reference's
+  straighter side) is a second, separate read.
+- fit round 21 release + arrangement on r21c (g21.py r21k start=asm_r21c arrange=1 keep=1 pull=100, local ZOZO): preflight
+  FAILS (self False, strain over 6.6 % of triangles vs r19a's 5.2 %) and ZOZO's CCD fails at t = 0 (toi 0). Likely the
+  lap gap (1.5 mm) is inside the sim's contact gap and/or the layering's extra start strain; not chased (budget).
+  So no r21 arranged result, no worn-open table column, no blind reviews (a closed fit against a worn-open reference
+  would judge the wrong thing). Renders: $FR21/check/lapel.{L,R}_{r19a,r21c}.png (ref | clay | diag), wholefront_r21c,
+  upper_front_r21c. My read: lapel.R r21c is cleaner than r19a (r19a's doubled, ragged edge along the roll line is
+  gone); wholefront r21c: the lap reads right (front.L over), the shirt shows through at both pocket flaps, the sides
+  pinch at the waist (hourglass) where the reference hangs straighter, the collar stands up the neck. Spend $0.

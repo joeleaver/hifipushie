@@ -6,10 +6,14 @@ wearer's left, men's left over right). Cost: jacket stretch p99 8.4 -> 18.2 % (f
 break's X point). Lapel check (Joe on r20k): the wearer's RIGHT lapel (front.R, camera left) goes through ITS OWN base at
 50-100 mm below HPS, 21-28 mm off the roll line, made in the closed fit (r19a 6.6 % FAIL, r19w 10.7 %, r20k 5.9 %);
 r21c 3.1 % PASS but still 4.5 mm deep there. Nothing approved.
-NEXT: (1) the WAIST (Joe: "really tight around his middle"): measure (a) draft waist girth vs Garrett's waist + the
-book's jacket waist ease, (b) fitted vs drafted waist girth (does the form pull it in?), (c) side panel / dart take-up;
-fix where it lives + gate row; re-check the pattern gate. (2) front.R's neck stretch on r21c (find why the layering
-moved it). (3) release + arrangement (round 20's r20k setup: g20.py arrange=1 keep=1 pull=100) on the layered + eased
+Waist measured: draft = book (786 x 1.14 = 896), the form keeps it (r21c 905), but the SHIRT is 895 at the waist
+(+109, a stiff 17 mm tube): the jacket lies 1-11 mm over it and clings. Release+arrange on r21c (r21k): CCD fails at
+t = 0 (preflight self False, strain 6.6 %): no arranged r21, no reviews. Spend $0.
+NEXT: (0) r21k's CCD fail at t = 0: the 1.5 mm lap gap vs ZOZO's contact gap (try LAP_GAP = the release's contact
+gap, 2-3 mm, on the KAT first) and the layering's start strain. (1) the WAIST: press the shirt's fullness under the
+jacket at the waist (layered_fit outer_first / TWO LAYERS), gate row: jacket waist over the body >= 10 % and over the
+shirt >= the book minimum; then the side pinch. (2) front.R's neck stretch on r21c (why the layering moved it).
+(3) release + arrangement (round 20's r20k setup: g20.py arrange=1 keep=1 pull=100) on the layered + eased
 fit: no_front_through_front PASS, lapels roll to the break, hem without crumpling. (4) neck openings: release the neck
 hold after the sew phase (hold_ring CCD-failed at t = 0). (5) table + renders + 3 blind reviews ("worn open").
 
@@ -30,7 +34,7 @@ lapel through own base share L/R: <= 2.5 % | - | 6.9/10.7 | 1.7/5.9 | 0.3/3.1 (r
 stretch p99 jacket: - | 9.7 | 7.4 | - | 18.2 (r19a 8.4)
 
 ## Open faults (game visibility first)
-1. Waist tight (Joe). 2. Opening: to be ARRANGED on the layered fit. 3. Collar stands up the neck like a band.
+1. Waist tight (Joe): the shirt stands 17 mm off at the waist under the jacket (C84); sides pinched. 2. Opening: to be ARRANGED on the layered fit. 3. Collar stands up the neck like a band.
 4. Lapels narrow, gorge twist; front.R lapel through its base at the gorge. 5. Shirt poke-through. 6. Neck seam
 openings 5-12 mm at HPS. 7. Pinched waist + flared skirt; boxy square shoulder; thick front-edge ridge.
 
