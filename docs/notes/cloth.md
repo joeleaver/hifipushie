@@ -7645,3 +7645,14 @@ lines across the upper back; opening at the chest judged within ~10 px. Collar /
   flat_pattern PASS (was FAIL "no fold line on collar_fall"), tailor rows 10/10 PASS, stand 24.5 / fall 57 x 1.05.
   The refusal was already in the gate (garment_design "fold" evidence for notched_lapel); known-answer test added
   (tests/test_tailoring.py, C41).
+- Step 2, first run (refs passed): shirt FAIL on UNMEASURED pockets, jacket FAIL on UNMEASURED vent / collar_stand /
+  collar_fall / notch. The three collar rows had no reader for a two-piece collar. That's a tool gap: cloth_check.collar_draft and
+  notch_flat knew only the one-piece collar. Added collar_draft_two_piece (stand / fall from the roll line =
+  stand piece + fold_at, fall piece - fold_at) and _notch_flat_two_piece (fall end -> stand -> front by two rigid
+  seam fits). They read fall - stand 27.5 (want 6-15) and notch gap 61 / 75 deg (want 20-40 / 60-90). The form had already
+  turned the fall (fold 'collar roll' 5 rows x 34 deg); through_under 352, inside_body 0.
+- R16 conflict (tailor row collar_fall_cb at 30/70 vs the checklist's fall = stand + 6..15), escalated to the coordinator,
+  agreed: R16 = practice. Stand from the roll line = neck/16 held to 25-30 mm, fall = stand + 10, total no longer 18 % of
+  neck. An 18 % / 38-62 split (the first idea) failed the large neck (stand 36). R15: fall end FALL_FRONT 0.5 x CB height
+  (sweep: 0.8 -> gap 53, 0.62 -> 44, 0.49 -> 37.5; POINT moved the angle only). Garrett flat: stand 28.3 (piece 24.3),
+  fall 40.5, f-s 12.1, notch 35.2 / 66.6 deg. tests/test_tailoring.py at necks 405 / 450 / 522 (C42).
