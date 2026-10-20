@@ -486,6 +486,60 @@ def test_two_piece_collar_turns_over_its_stand(kind="roll", verbose=True):
     return rd
 
 
+def nested_collars_case(verbose=True, **kw):
+    """(fit round 6, C49) Two two-piece collars on one neck cylinder, the outer (a jacket's: lower stand, cut for the
+    radius of the stack under it) assembled over the inner (a shirt's, on the form first) as on_form layers them.
+    Returns (outer vertices inside the inner surface within 1 cm, by piece; the inner fall's median gap to its own
+    stand, mm; the inner's fold_turned). kw: pattern_form overrides for the run (restored after)."""
+    from scipy.spatial import cKDTree
+    from hifipushie import folds as foldmod
+    old = {k: getattr(pf, k) for k in kw}
+    try:
+        for k, v in kw.items():
+            setattr(pf, k, v)
+        si, fi, ai = 0.034, 0.042, 0.004
+        ci = _two_piece_collar_case(si, fi, ai)
+        Mi = ci["M"]
+        inn = pf.assemble({"mesh": Mi, "X0": ci["X0"], "pieces": ci["B"]}, ci["body"], iters=120, ease=0.004)
+        Vi = inn["V"]
+        pid_i = np.asarray(Mi["piece"])
+        sv, fv = (np.where(pid_i == Mi["names"].index(n))[0] for n in ("stand", "fall"))
+        gap = float(np.median(cKDTree(Vi[sv]).query(Vi[fv])[0])) * 1000
+        turned = pf.fold_turned(Mi, Vi, foldmod._geom(Mi, Mi["folds"][0]))
+        # the outer collar: cut for the stack under it (the inner stand + its turned fall + ease), 6 mm lower
+        stack = 0.004 + 2 * pf.THICK + 0.004
+        so, fo, ao = 0.028, 0.040, 0.004
+        co = _two_piece_collar_case(so, fo, ao, ease=stack)
+        Mo = co["M"]
+        out = pf.assemble({"mesh": Mo, "X0": co["X0"], "pieces": co["B"]}, co["body"], iters=120, ease=0.004,
+                          under={"V": Vi, "F": np.asarray(Mi["F"])})
+        Vo = out["V"]
+        us = pf._Surface(Vi, np.asarray(Mi["F"]), ref=pf._body_surface(co["body"]))
+        du, _, dist = us.signed(Vo)
+        pid_o = np.asarray(Mo["piece"])
+        bad = {n: int(((du < -0.0005) & (dist < 0.01) & (pid_o == Mo["names"].index(n))).sum()) for n in Mo["names"]}
+        if verbose:
+            print(f"nested collars {kw or ''}: inner fall to its stand {gap:.1f} mm, inner turned {turned:.0f}, "
+                  f"outer inside inner {bad}, outer turned {out['info']['turned_deg']}")
+        return bad, gap, turned
+    finally:
+        for k, v in old.items():
+            setattr(pf, k, v)
+
+
+def test_nested_collars_keep_their_layer_order():
+    """(fit round 6, C49) Garrett's shirt collar sat OUTSIDE the jacket stand at the back and pulled the jacket fall
+    through it (454 jacket vertices inside the shirt). The cause was a stale shirt: round 4's cached form inputs held a
+    shirt assembled before C46, its fall standing 9-17 mm off its own stand; rebuilt with the current code it lies
+    3.4 mm off and the count drops to 119 (37 at the fall, 0.6 mm deep). Known answer: an outer two-piece collar
+    assembled over an inner one on a neck cylinder lies outside it everywhere (no vertex more than 0.5 mm inside),
+    and the inner's fall lies on its own stand (< 2 THICK + ease)."""
+    bad, gap, turned = nested_collars_case()
+    assert gap < (2 * pf.THICK + 0.004) * 1000, gap  # (mm: two cloths + ease)
+    assert turned >= 160, turned
+    assert sum(bad.values()) == 0, bad
+
+
 def test_notch_step_known_answer():
     """(fit round 4) cloth_check.notch_step: an open V notch (20 mm deep, 6 mm mouth) between two top layers over a
     backing 5 mm behind reads open ~6 / depth ~18-20 mm; the same layers closed read 0 / 0 (round 3's notch passed its

@@ -7736,3 +7736,15 @@ lines across the upper back; opening at the chest judged within ~10 px. Collar /
 - step 4: renders check/{front,three}.png (ref | clay | diag), {side,back,top}.png (clay | diag); look = round 4.
   review_front FAIL (no notch both sides, collar a tube to jaw height, shirt collar oversized / asymmetric, L lapel
   shards), review_three FAIL (no lapel / notch read, jacket collar hidden by the shirt collar, holes). My read agrees.
+
+## fit round 6 (2026-10-19, Garrett jacket v2 + shirt; no sims). STATE: docs/state/fit_round6.md
+- coordinator: PRESS_UNFOLDED stays ON by default (practice + KAT; no chain of faults).
+- fit round 6 step 1 (layer order at the neck): measured flat neck clearance (+19.6 mm PASS), the neck-point lift
+  (0.1 mm), the shirt alone (fall 3.3-4.1 mm off its stand at every angle). Cause: round 4's harness cache
+  (inputs.pkl) held a shirt from BEFORE C46: its fall 9-17 mm off its stand (reproduced with BASE_ACROSS_SEAM=false).
+  Rebuilt fresh: jacket inside shirt 454 -> 119 (collar fall 253 -> 38, 3.3 -> 0.6 mm deep), L gorge through its base
+  56/67 -> 0/67, collar turn at the sides 88/110 -> 155/158, stand to neck CB 13 -> 3 mm. C49 (cache keyed by the
+  code's source hash; KAT test_nested_collars_keep_their_layer_order). No pattern / tool change.
+- fit round 6 step 2: table in the STATE page. New faults now visible: shirt collar shows only 4.0 / 3.4 mm (10-15),
+  the notch closes in 3D (gap 14 mm, P-G-C 29 vs 67 flat; front-view notch_step opens 13.5 / 15.8, too wide).
+  Round 5's "collar end rotated 114 deg" was also the stale shirt.
