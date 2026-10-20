@@ -954,6 +954,7 @@ def worn_open_edge(M: dict, X: np.ndarray, ox: list, band: float = 0.01, reach: 
 
 OPEN_HOLD = False  # opt-in (fit round 10 A/B): a worn-open front's seams to the rest of the garment stay where the closed fit put them
 HANG_FREE = True  # fit round 11: a worn-open front below its break is not drawn onto the body (assemble, EDGE_FREE block)
+HOLD_SLEEVES = False  # opt-in, fit round 11 A/B (r11e: sleeves 29/32 -> 18/15 but the lapel top back through its base 40-120 mm L 86 / R 102: the rigid swing of the upper front fights any hold above the break). A worn-open front's seams to its sleeves are held at every height (the body holds the arm; freed with the shoulder, the shirt sleeve came through: 8/11 -> 22/27)
 HOLD_NAMED = True  # fit round 11: the hold's height from the named worn-open points (the break), not the edge pins
 OPEN_HOLD_W = 20.0  # the held seam vertex's pull to its closed-fit position (3D)
 OPEN_HANG = True  # with OPEN_HOLD: the free edge below the lowest worn-open point hangs plumb from it (worn_open_edge)
@@ -980,7 +981,7 @@ def open_seam_holds(M: dict, Xc: np.ndarray, ox: list, placed: dict | None = Non
             for p, q in ((a, b), (b, a)):
                 if pid[p] != k or pid[q] == k or (placed is not None and not placed.get(int(pid[q]), True)):
                     continue
-                if Xc[p, 2] >= zb:
+                if Xc[p, 2] >= zb and not (HOLD_SLEEVES and M["names"][int(pid[q])].split(".")[0] in ("sleeve", "top", "under")):
                     continue
                 for v in (int(p), int(q)):
                     if v not in seen:

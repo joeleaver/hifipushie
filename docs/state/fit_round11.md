@@ -1,9 +1,16 @@
 # STATE: fit_round11 (Garrett jacket: Joe's break notch, lapel tops, front crease; then round 10's questions) -- 2026-10-19. NO SIMS.
 
-STATE: steps 1, 1b, 1c done. Candidate r11d = r10i + EDGE_FIELD (C56) + HOLD_NAMED (C57) + HANG_FREE (C58).
-Gate rows: front_edge_break PASS; lapel_on_base FAIL (12 %, limit 5); front_crease FAIL (dart median 33/21, limit 20).
-NEXT: 4 renders + blind reviews of r11d; then 2a OPEN_HOLD A/B, 2b suppression style + body check + shoulders,
-3 lapel turn / press.
+STATE: HANDOVER. Steps 1 / 1b / 1c done + renders + blind reviews; 2a, 2b, 3 NOT done. Candidate r11d = r10i +
+EDGE_FIELD (C56) + HOLD_NAMED (C57) + HANG_FREE (C58). Gate rows: front_edge_break PASS (1.6/1.4 mm); lapel_on_base
+FAIL (13/12 %, limit 5); front_crease FAIL (dart median 33/21 deg, limit 20). Hem 498 P (448), waist 356 F (401).
+Regression: shirt sleeve through the jacket 8/11 -> 29/32 (HOLD_NAMED frees the armhole; HOLD_SLEEVES opt-in fixes the
+sleeves 18/15 but sends the lapel top back through its base: the rigid upper-front swing fights any hold above the break).
+Blind reviews wholefront / front / three FAIL (lapels read flat, no waist, squared quarters, collar stage).
+NEXT: (1) METHOD (stop-loss on holds): the worn-open swing turns the whole upper front about hps; in a jacket the front
+at the chest barely moves, the LAPEL turns about the roll line and the front below the break hangs. Swing only the flap
+(lapel) about its roll line + the edge below the break; then holds above the break stop fighting (sleeves, lapel top,
+dart). (2) 2a OPEN_HOLD A/B (blind, whole front, r11d vs closed) once (1) lands; (2b) suppression style from the concept
+row profile + bare-body check + shoulder width; (3) lapel press / crisp edge.
 
 ## Causes
 - Break notch (Joe): flat clean (step 0); on the form _swing_open meets only the LAST worn-open point (cfHem), the break
@@ -17,6 +24,9 @@ NEXT: 4 renders + blind reviews of r11d; then 2a OPEN_HOLD A/B, 2b suppression s
 - Front crease (Joe): the FRONT DART seam, dihedral median 73 deg (r6 closed 8): open edge + held side seams + the
   panel drawn onto the waist fold the slack at the dart. HANG_FREE (no seat attraction below the break on a worn-open
   piece): 33 / 21 deg; hem 449 -> 498 P. Residual: open (OPEN_HOLD A/B, 2a).
+
+- Hem 448 -> 498 (2c): the same cause as the dart fin: the open front drawn onto the hips; HANG_FREE.
+- Table: /mnt/data/hifipushie/dress_garrett/fit_round11/checklist_r11.md.
 
 ## Files
 $FR11 = /mnt/data/hifipushie/dress_garrett/fit_round11/ (run.sh = this worktree): fr10.py, harness10.py (OUT = fr11),
