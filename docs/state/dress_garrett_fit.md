@@ -12,6 +12,7 @@ r21c stays the candidate. Nothing approved. Spend $0.
 - A vs B (coordinator): A = press the covered shirt soft (lie_under: shirt |strain| p99 58 %, jacket +87); B = cull
   early (jacket over body + the shirt's stack allowance, shirt kept only where visible: jacket +97, no compressed
   shirt). PICK B; not built yet.
+RENDERS: $FR22/check/*_r22a.png (closed fit; reviews wholefront / upper_front / three all FAIL, notes).
 NEXT: (1) the form's seat attraction on an OVER garment (why its girth follows the floor: r22a/r22b let_go doesn't give
 the length back) -> the jacket at its draft +110 on body + allowance; (2) B: the shirt's visible-region cull (collar, V,
 cuffs + a margin covering the ARRANGED open front, or the cull after arrangement), the release collider = body +

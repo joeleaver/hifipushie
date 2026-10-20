@@ -8920,3 +8920,10 @@ docs/notes/cloth.md "dress-garrett 2026-10-19 muslin 1", "form sleeves", "block 
   state reached earlier); NOT BUILT this round: the visible-region cull (collar, V, cuffs + a margin covering the
   ARRANGED open front, or the cull after arrangement) and the allowance collider are next. Neither path gives the jacket
   its +110 (C86): the form's seat attraction is the next lever, before the cull.
+- fit round 22 renders + blind reviews (CLOSED fit r22a, step 3 not reached, so the reference's open front is a known
+  mismatch): $FR22/check/{wholefront,upper_front,upper_three,side,back,lapel.*,notch.*}_r22a.png, r22b wholefront /
+  upper_front / side. bin/review, one view each, "the reference jacket is worn open": wholefront FAIL (closed; collar
+  funnel; short lapels; puffy shoulders + sleeves, hip flare; pinched waist with dart grooves; white specks at the pocket
+  line), upper_front FAIL (closed, collar funnel, lapels, shirt collar upright, puffy shoulders), three FAIL (closed,
+  collar, shirt collar, lapels, pinched waist). My read: r22a and r22b look the same as r21c at the waist (hourglass +
+  peplum hip flare, C86); r22b has shirt poke-through at shoulders / sleeves / hem (outer_first's shirt not held under).
