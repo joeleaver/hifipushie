@@ -453,13 +453,25 @@ def cut(under: dict, outer: dict, keep: np.ndarray | None = None, rings: int = 3
                  "crossing_cut_vertices": nx, "cut_faces": int(hid.sum()), "faces": int(len(Fu))}
 
 
-def hidden(under: dict, outer: dict, margin: float = 0.03, reach: float = 0.06, edge_margin: dict | None = None) -> np.ndarray:
+PIERCE_CULL = 0.015  # m: fit round 24's `pierce` for the layered fit's B cull (see hidden)
+
+
+def hidden(under: dict, outer: dict, margin: float = 0.03, reach: float = 0.06, edge_margin: dict | None = None,
+           pierce: float = 0.002) -> np.ndarray:
     """Per triangle of the under garment: True where it can't be seen for the outer one. A vertex is covered when
     the outer garment lies over it (an outer surface point within `reach`, further from the body than the vertex) and
     it is more than `margin` inside the outer garment's openings (its free edges: neckline, front edges, hems, sleeve
     ends: what shows there stays, with a margin for movement). A triangle is hidden when all three corners are.
     edge_margin {piece name prefix: m}: a wider margin at those pieces' free edges (fit round 23: a jacket fitted CLOSED
-    and worn open: its fronts' edges get the arranged opening + movement, so the shirt's V stays)."""
+    and worn open: its fronts' edges get the arranged opening + movement, so the shirt's V stays). A value
+    [m, z_top] applies m only to that piece's free vertices below z_top (fit round 24: the opening is arranged BELOW
+    the break; 120 mm round the lapels' edges above it kept the shirt drawn up to the shoulders, where every vertex
+    within a cloth thickness of the jacket showed as a white patch).
+    pierce: under cloth up to this far OUTSIDE the outer garment (further off the body than the outer cloth right over
+    it, within 12 mm to the side) still counts as covered: it pokes THROUGH the outer surface, which is drawn there.
+    Default 2 mm (as before); the layered fit's cull uses PIERCE_CULL 15 mm (fit round 24: Garrett's shirt poked
+    1-14 mm through the jacket at the shoulders and under the lapels; with 2 mm every poke stayed drawn as a white
+    patch, since the cull hid only cloth lying under the jacket). Openings keep their margin either way."""
     Vu, Fu = under["V"], under["mesh"]["F"]
     Vo, Mo = outer["V"], outer["mesh"]
     body = outer["body"]
@@ -473,7 +485,7 @@ def hidden(under: dict, outer: dict, margin: float = 0.03, reach: float = 0.06, 
     off = P[i] - Vu
     along = (off * n).sum(1)
     side = np.linalg.norm(off - along[:, None] * n, axis=1)
-    over = (d < reach) & (co > cu - 0.002) & (side < 0.012)
+    over = (d < reach) & (co > cu - float(pierce)) & (side < 0.012)
     # the outer garment's openings: outline vertices no seam closes
     sewn = np.zeros(len(Vo), bool)
     if len(Mo["sew"]):
@@ -484,7 +496,14 @@ def hidden(under: dict, outer: dict, margin: float = 0.03, reach: float = 0.06, 
         if edge_margin:
             pid, nm = np.asarray(Mo["piece"]), list(Mo["names"])
             for pre, m in edge_margin.items():
-                mg[np.array([nm[pid[v]].startswith(pre) for v in free])] = float(m)
+                sel = np.array([nm[pid[v]].startswith(pre) for v in free])
+                if isinstance(m, (list, tuple)):  # [m, z_top(, m_above)]: m below z_top, m_above (or margin) above it
+                    lo = Vo[free, 2] < float(m[1])
+                    if len(m) > 2:
+                        mg[sel & ~lo] = float(m[2])
+                    sel &= lo
+                    m = m[0]
+                mg[sel] = float(m)
         for m in np.unique(mg):
             dopen, _ = cKDTree(Vo[free[mg == m]]).query(Vu)
             over &= dopen > m

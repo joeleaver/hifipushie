@@ -8990,3 +8990,21 @@ Step 3 probe (r23c, $FR24/shoulder.py, sideline.py): the shirt's poke-through is
   hides cloth the jacket lies OVER; a poking vertex is outside it, so it is drawn). It is geometric: the shirt pokes
   out 3-8 mm at the front by the neck (|x| 70-110: 52 verts, lead max 7.8) and 1-3 mm at the shoulder seam / cap
   (|x| 190-250: 22 verts), where the shirt stands 13-20 mm off and the jacket 20-27.
+Closed fits (MODE=outer LAYER_ALLOW 0.008, shirt culled; $FR24/sideline.py, sum23.py, rings.py):
+| | concept | r23c suit+bridge | r24a plumb | r24b plumb+BRIDGE | r24c = r24b recull |
+| front-view chest / waist / hip / seat / hem+30 | 397 / 401-414 / - / 413 / 482 | 414/319/398/433/425 | 407/360/345/382/408 | 409/398/394/413/429 | same |
+| side line in from plumb, max L / R mm | 0 | 49 / 49 | 31 / 55 | 14 / 22 (one row each; else <= 9) | same |
+| CB seat cup | - | 36 | 74 | 26 | 26 |
+| waist girth over body | - | +104 | +188 | +184 | |
+| stretch p99 | - | 15.6 | 14.8 | 16.0 | |
+| shirt drawn poke verts (body clearance, > 1 mm) | 0 | 157 | - | 125 (shoulder 71, chest 50) | 72 (50 / 18) |
+- With the girth there BRIDGE now helps (r24a without it: hips 345, cup 74, the cloth followed the hollows below the
+  waist). r24b chosen.
+- Poke lever 1, cloth_layers.tucked on the fit (the export's rule, $FR24/tuck24.py): shoulder 71 -> 22 but moved some
+  vertex 58 mm and the back's count rose: not kept. Lever 2, the CULL (C91): margin only below the break + pierce 15 mm
+  -> r24c. Remaining: two small chest specks, a ragged shirt edge by the right collar, lilac specks low on the front
+  (the fronts' crossing below the button, old fault 5 / dead-end list), pocket flaps sunk under the fronts (new).
+- Reviews: wholefront FAIL (rev_wf): MAJORs boxy / no waist shaping (= Joe's call, disputed: design fact), too much
+  ease all over (fronts stand off), see-through patches (chest specks + the crossing below the button), puffy thick
+  hang, shoulders wide and square; side A/B r23c vs r24c: NEW (r24c "straight, plumb back and level hem").
+- Step 4 (release on the layered fit) not started: budget.

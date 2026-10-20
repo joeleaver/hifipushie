@@ -438,7 +438,20 @@ def fit_rows(res: dict, X, strain_p99: float | None, worn_under: bool) -> list:
 # it under the jacket). What shows (collar, the V, the cuffs + margins) is still held to the row.
 VISIBLE_SCOPED = ("under_standoff_waist",)
 OPEN_FRONT_MARGIN = 0.12  # m: the fronts' free-edge cull margin for an outer garment worn open (fit round 23 harness)
+LAPEL_MARGIN = 0.085  # m: above the break (fit round 24: 30 / 60 mm left the shirt ragged by the lapel roll; 120 = patches)
 VISIBLE_MIN_SHARE = 0.10  # under this share of the band's vertices visible, the band counts as hidden (cull specks)
+
+
+def open_front_margin(outer: dict) -> dict:
+    """The B cull's edge margin for an outer garment fitted closed and worn open: OPEN_FRONT_MARGIN at the fronts'
+    free edges BELOW the break (where the opening is arranged); above it (the lapels, already rolled as worn) the
+    ordinary margin. No break point marked: the whole front edge (as round 23)."""
+    P = (outer.get("mesh") or {}).get("points") or {}
+    br = [P[k] for k in ("front.L:break", "front.R:break") if k in P]
+    if not br:
+        return {"front": OPEN_FRONT_MARGIN}
+    V = np.asarray(outer["V"], float)
+    return {"front": [OPEN_FRONT_MARGIN, float(max(V[int(i), 2] for i in br)), LAPEL_MARGIN]}
 
 
 def standoff_row(body, X, z: float, keep=None) -> dict:
@@ -475,7 +488,8 @@ def visible_fit_rows(body, under: dict, outer: dict, worn_open: bool = False, z:
     Fu = np.asarray(under["mesh"]["F"])
     hid = cloth_layers.hidden({"V": np.asarray(under["V"], float), "mesh": under["mesh"]},
                               {"V": np.asarray(outer["V"], float), "mesh": outer["mesh"], "body": body},
-                              margin=0.03, edge_margin={"front": OPEN_FRONT_MARGIN} if worn_open else None)
+                              margin=0.03, edge_margin=open_front_margin(outer) if worn_open else None,
+                              pierce=cloth_layers.PIERCE_CULL)
     # seen: a vertex none of whose triangles is culled (the cull's ragged rim and its specks are not "what shows")
     seen = np.zeros(len(under["V"]), bool)
     seen[Fu[~hid].ravel()] = True
