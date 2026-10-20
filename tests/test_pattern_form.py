@@ -1054,6 +1054,66 @@ def test_nested_tubes_inner_pressed_under(mode="outer_first"):
     assert abs(res["outer_med_mm"] - 10.0) <= 2.0, res
 
 
+def _open_tube_case(r=0.1, ease=0.01, H=0.4, hb=0.24):
+    """An open-front tube on a cylinder (fit round 10): a back (half the girth) and two fronts (a quarter each), sewn at
+    the side seams, the fronts' centre edges free; each front's neck point "hps" at its top CF corner, its "break" on the
+    CF edge hb above the hem. Placed closed (the fronts meet at CF, x = 0, y = -(r + ease)), cylinder axis z."""
+    R0 = r + ease
+    Wq, Wb = 0.5 * math.pi * R0, math.pi * R0
+    fl = _piece([[0, 0], [Wq, 0], [Wq, H], [0, H], [0, hb]],
+                names={"cfHem": 0, "sideHem": 1, "sideTop": 2, "hps": 3, "break": 4})
+    fr = _piece([[-Wq, 0], [0, 0], [0, hb], [0, H], [-Wq, H]],
+                names={"sideHem": 0, "cfHem": 1, "break": 2, "hps": 3, "sideTop": 4})
+    bk = _piece([[0, 0], [Wb, 0], [Wb, H], [0, H]], names={"b0": 0, "b1": 1, "b2": 2, "b3": 3})
+    B = _B({"front.L": fl, "front.R": fr, "back": bk},
+           seams=[["front.L:sideHem>sideTop", "back:b0>b3"], ["front.R:sideHem>sideTop", "back:b1>b2"]])
+    M = cloth.mesh(B, 0.012)
+    pid = np.asarray(M["piece"])
+    uv = np.asarray(M["uv"], float)
+    th = np.where(pid == M["names"].index("back"), uv[:, 0] / R0, -0.5 * math.pi + uv[:, 0] / R0)
+    X0 = np.c_[R0 * np.cos(th), R0 * np.sin(th), 0.05 + uv[:, 1]]
+    return M, X0, _cyl_body(r, -0.1, 0.6)
+
+
+def test_open_front_hangs_without_moving_its_side_seams(off=0.05):
+    """(fit round 10) A front worn open pivots about its break and hangs; its side seams and the back stay where the body
+    holds them. Opened by its edge alone (WORN_EDGE), an isometric front slid round the body instead (Garrett r9h: side
+    seams 70 mm out at the hem, a peplum flare). Known answer, the open-front tube on a cylinder, worn_open break 50 mm:
+    with OPEN_HOLD the side seams below the break stay within 3 mm of the closed fit's, the free edge below the break hangs at least
+    45 mm off CF on both sides (it does not wrap back to CF), the cloth unstretched (p99 < 3 %); without the hold the
+    side seams slide (> 10 mm): the fault the hold fixes."""
+    M, X0, body = _open_tube_case()
+    pid = np.asarray(M["piece"])
+    sw = np.asarray(M["sew"]).reshape(-1, 2)
+    side = np.unique(sw.ravel())
+    P = M["points"]
+    kb = M["names"].index("back")
+    closed = pf.assemble({"mesh": M, "X0": X0}, body, iters=80)["V"]
+    edge = np.where((np.abs(np.asarray(M["uv"])[:, 0]) < 1e-6) & (pid != kb))[0]
+    zb = float(closed[P["front.L:break"], 2])
+    low = edge[closed[edge, 2] < zb - 0.02]
+    side = side[closed[side, 2] < zb]  # (below the break: above it the lapel's turn carries the top of the side)
+    E = pf._edges(M["F"])
+    l0 = np.linalg.norm(M["uv"][E[:, 0]] - M["uv"][E[:, 1]], axis=1)
+    res = {}
+    saved = (pf.WORN_EDGE, pf.OPEN_HOLD)
+    try:
+        for hold in (False, True):
+            pf.WORN_EDGE, pf.OPEN_HOLD = True, hold
+            V = pf.assemble({"mesh": M, "X0": X0}, body, iters=80, worn_open={"break": off})["V"]
+            drift = float(np.linalg.norm(V[side] - closed[side], axis=1).max())
+            sv = np.abs(np.linalg.norm(V[E[:, 0]] - V[E[:, 1]], axis=1) / l0 - 1)
+            res[hold] = (drift, float(np.abs(V[low, 0]).min()), float(np.percentile(sv, 99)))
+            print(f"open tube hold {hold}: side seam drift {drift * 1000:.1f} mm, edge below the break |x| min "
+                  f"{np.abs(V[low, 0]).min() * 1000:.1f} / max {np.abs(V[low, 0]).max() * 1000:.1f} mm, "
+                  f"y {V[low, 1].mean() * 1000:.1f} mm, stretch p99 {np.percentile(sv, 99) * 100:.2f}%")
+    finally:
+        pf.WORN_EDGE, pf.OPEN_HOLD = saved
+    d1, e1, s1 = res[True]
+    assert d1 < 0.003 and e1 > off - 0.005 and s1 < 0.03, res[True]
+    assert res[False][0] > 0.010, res[False]
+
+
 if __name__ == "__main__":
     fails = 0
     for k, f in list(globals().items()):

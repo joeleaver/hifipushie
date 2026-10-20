@@ -732,7 +732,7 @@ WORN_EDGE = False  # opt-in: validation 2 A/B opened the fronts (hips 72 vs the 
 EDGE_FREE = 0.08  # m (pattern): the seat's attraction fades to none toward a worn-open front edge (0: off)
 
 
-def worn_open_edge(M: dict, X: np.ndarray, ox: list, band: float = 0.01, reach: float = 0.005) -> list:
+def worn_open_edge(M: dict, X: np.ndarray, ox: list, band: float = 0.01, reach: float = 0.005, fast: list | None = None) -> list:
     """The worn-open front EDGE held where the swing put it (validation 2, 2026-10-19): with only the named points
     pinned, the seat's attraction wrapped the free edge between them back round the body toward CF (Garrett, hips:
     swung 72 mm off CF, seated 43, let go 55; the sim of the same pattern 75). The edge = each worn-open piece's border
@@ -742,16 +742,24 @@ def worn_open_edge(M: dict, X: np.ndarray, ox: list, band: float = 0.01, reach: 
     under them. Returns [(vertex, x target, weight)] in the worn_open_pins form."""
     pid = np.asarray(M["piece"])
     border = np.asarray(M.get("border") if M.get("border") is not None else np.zeros(len(X), bool), bool)
+    sewn = np.zeros(len(X), bool)
+    sewn[np.asarray(M.get("sew", []), int).ravel()] = True
     out, have = [], {int(v) for v, _, _ in ox}
     for k in sorted({int(pid[v]) for v, _, _ in ox}):
         zs = [float(X[v, 2]) for v, _, _ in ox if pid[v] == k]
+        lowest = min((v for v, _, _ in ox if pid[v] == k), key=lambda v: X[v, 2])
+        x_low = [abs(xt) for v, xt, _ in ox if v == lowest][0]
         side = 1.0 if float(np.mean(X[pid == k, 0])) >= 0 else -1.0
         nm = M["names"][k]
         roll = np.zeros(len(X), bool)
         for fd in M.get("folds") or []:
             if fd["piece"] == nm and len(fd["rows"]):
                 roll[np.asarray(fd["rows"][0], int)] = True
+        # (below the lowest worn-open point the free edge hangs plumb, see below; not a piece its buttons hold: a shirt
+        # open at the neck stays buttoned below; hung, Garrett's shirt fronts opened to the belt)
+        hang = OPEN_HANG and OPEN_HOLD and k not in {int(pid[v]) for pr in (fast or []) for v in pr}
         cand = np.where((pid == k) & ((border & (X[:, 2] >= min(zs) - 1e-6) & (X[:, 2] <= max(zs) + 1e-6))
+                                      | (border & ~sewn & (X[:, 2] < min(zs) - 1e-6) & hang)
                                       | (roll & (X[:, 2] > max(zs)))))[0]
         if not len(cand):
             continue
@@ -762,7 +770,49 @@ def worn_open_edge(M: dict, X: np.ndarray, ox: list, band: float = 0.01, reach: 
             lo = sx[m].min()
             for v in cand[m][sx[m] <= lo + reach]:
                 if int(v) not in have:
-                    out.append((int(v), float(X[v, 0]), WORN_EDGE_W))
+                    # THE HANG (fit round 10): below the lowest worn-open point the free edge falls plumb from it (its
+                    # weight, which the form lacks): x held at that point's offset, not where the rigid swing carried
+                    # it (the swing kept the side seams on the front: they slid); with no point below the break the
+                    # edge wrapped back to CF (open tube: 0.6 mm off CF). The edge keeps its drafted line: a vertex
+                    # its pattern puts further from that point across (a cutaway) hangs that much further out.
+                    du = abs(float(M["uv"][v][0]) - float(M["uv"][lowest][0]))
+                    xt = side * (x_low + du) if (hang and X[v, 2] < min(zs) - 1e-6) else float(X[v, 0])
+                    out.append((int(v), xt, WORN_EDGE_W))
+    return out
+
+
+OPEN_HOLD = False  # opt-in (fit round 10 A/B): a worn-open front's seams to the rest of the garment stay where the closed fit put them
+OPEN_HOLD_W = 20.0  # the held seam vertex's pull to its closed-fit position (3D)
+OPEN_HANG = True  # with OPEN_HOLD: the free edge below the lowest worn-open point hangs plumb from it (worn_open_edge)
+
+
+def open_seam_holds(M: dict, Xc: np.ndarray, ox: list, placed: dict | None = None, fast: list | None = None) -> list:
+    """A worn-open front HANGS from its seams (fit round 10): in a real jacket worn open the front pivots about the roll
+    line / break and its edge falls by its weight, while the side seams, the back and the sleeves stay where the body
+    holds them. The form has no gravity: opened by its edge alone, an isometric front can only open by sliding the whole
+    panel round the body (Garrett r9h: the side seams out, hem 580 mm wide vs 478, a peplum flare). The stand-in: every
+    vertex of a worn-open piece sewn to ANOTHER piece (not its own darts, not a band stood up on it: collars / stands)
+    below the piece's highest worn-open point is held at its position in the CLOSED fit (Xc), together with its partner
+    across the seam. The edge pins then open the front only by what the panel can give between the held seam and the
+    edge: it bridges off the body (the hang) instead of sliding. A piece with a fastened closure (`fast`: a shirt open
+    at the neck, buttoned below) is held by its buttons and is left alone (held too, Garrett's shirt went into the
+    body: 72 vertices). Returns [(vertex, xyz target, weight)] (the `full` pin form)."""
+    pid = np.asarray(M["piece"])
+    sw = np.asarray(M["sew"]).reshape(-1, 2)
+    fk = {int(pid[v]) for pr in (fast or []) for v in pr}
+    out, seen = [], set()
+    for k in sorted({int(pid[v]) for v, _, _ in ox} - fk):
+        zb = max(float(Xc[v, 2]) for v, _, _ in ox if pid[v] == k)
+        for a, b in sw:
+            for p, q in ((a, b), (b, a)):
+                if pid[p] != k or pid[q] == k or (placed is not None and not placed.get(int(pid[q]), True)):
+                    continue
+                if Xc[p, 2] >= zb:
+                    continue
+                for v in (int(p), int(q)):
+                    if v not in seen:
+                        seen.add(v)
+                        out.append((v, Xc[v].copy(), OPEN_HOLD_W))
     return out
 
 
@@ -776,7 +826,7 @@ def _swing_front(M, X, ox, fast, bsurf):
     the side seams out at the hem (Garrett: hem sweep +25 %, waist +6.5 % vs the sim, whose fronts fall open at the
     edge only); below the break the edge pins open the front and the side stays. Returns (X, edge pins or None)."""
     Xs = _swing_open(M, X.copy(), ox, fast, bsurf)
-    edge = worn_open_edge(M, Xs, ox) if WORN_EDGE else None
+    edge = worn_open_edge(M, Xs, ox, fast=fast) if WORN_EDGE else None
     if SWING_BELOW or edge is None:  # (without the edge pins the whole front stays swung: nothing else opens it)
         return Xs, edge
     pid = np.asarray(M["piece"])
@@ -959,6 +1009,8 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
     under the jacket) or None. worn_open: {point name: offset m} (WORN_OPEN). Returns {"V", "F", "M", "info"}."""
     M = pattern["mesh"]
     B = pattern.get("pieces")
+    closed_args = dict(body=body, under=under, ease=ease, fasten=fasten, iters=iters, X0=X0, attract=attract,
+                       pressed=pressed, shoulder_pad=shoulder_pad, over=over)  # (OPEN_HOLD: the same garment closed)
     X = np.asarray(X0 if X0 is not None else pattern["X0"], float).copy()
     Xplaced = X.copy()  # (the placement: a fold its wrap turned keeps the sense the wrap gave it)
     F = np.asarray(M["F"])
@@ -1288,7 +1340,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
     if ox and not SWING_FIRST:
         X = _swing_open(M, X, ox, fast, bsurf)
     if ox and WORN_EDGE:  # the swung front edge (lapel line) held open, not just its two named points
-        ox = ox + (edge if edge is not None else worn_open_edge(M, X, ox))
+        ox = ox + (edge if edge is not None else worn_open_edge(M, X, ox, fast=fast))
         info["worn_edge_v"] = len(ox)
     if ox and WORN_EDGE and EDGE_FREE > 0:
         # an open front HANGS off the body near its edge (its own weight and stiffness: the sim's edge stands forward);
@@ -1300,6 +1352,14 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
             sel = np.where(pid == k)[0]
             dd, _ = cKDTree(uv[ev[pid[ev] == k]]).query(uv[sel])
             edge_free[sel] = np.clip(dd / EDGE_FREE, 0.0, 1.0)
+    holds = []
+    if ox and OPEN_HOLD and body is not None and ({int(pid[v]) for v, _, _ in ox}
+                                                   - {int(pid[v]) for pr in fast for v in pr}):
+        # the worn-open front's seams held where the closed fit puts them (open_seam_holds)
+        Xc = assemble(pattern, worn_open=None, **closed_args)["V"]
+        holds = open_seam_holds(M, Xc, ox, placed, fast)
+        full = full + holds
+        info["open_hold_v"] = len(holds)
     info["turned_deg_start"] = [round(fold_turned(M, X, g), 0) for fd, g, t in folds_]
     # each fold's rest turns the way its flap now lies (a proper rotation fits only one sense)
     for q, (fd, g, turn) in enumerate(folds_):
@@ -1349,6 +1409,9 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                                  "max": round(float(np.abs(st).max()) * 100, 1)},
                  "sew_gap_mm": round(float(np.linalg.norm(X[sw[:, 0]] - X[sw[:, 1]], axis=1).max()) * 1000, 2) if len(sw) else 0.0,
                  "fastened": len(fast)})
+    if holds:  # how far the held seams ended from the closed fit (mm): the hang's side effect
+        dh = np.array([np.linalg.norm(X[v] - q) for v, q, _ in holds]) * 1000
+        info["open_hold_drift_mm"] = {"p50": round(float(np.median(dh)), 1), "max": round(float(dh.max()), 1)}
     if ox:
         info["worn_open_mm"] = {k: round(abs(float(X[v, 0])) * 1000, 1) for k, v in M["points"].items()
                                 for v_, _, _ in ox if v_ == v}
