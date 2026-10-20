@@ -1,8 +1,14 @@
 # STATE: fit_round6 (Garrett jacket v2 + shirt: layer order at the neck) -- 2026-10-19. NO SIMS.
 
-STATE: step 1 + 2 done (cause found, re-fit, table); renders + blind review next (step 4).
-NEXT: render $FR6/check (collar.py under capped), sheet.py, review.sh front then three; then the notch's 3D closure
-(P-G-C 29 deg vs 67 flat, gap 13 mm: the collar end closes onto the lapel point at the "seat" phase).
+STATE: HANDOVER. Layer order at the neck FIXED (it was a stale harness cache, C49): back clean, through 454 -> 119.
+Blind review still FAIL front + three: collar front ends flare off the neck ("cape" / "funnel"), no notch / lapel read,
+lapels ~half the reference width, shirt collar a tall band not a spread collar, collar rides to the jaw (side).
+NEXT (one at a time, measure first): (a) the collar's FRONT half stands off the neck: stand gap 18 / 28 mm at 60-120 deg
+(target 2-5; CB now 3) -> find the phase (add a stand-gap-by-angle line to the harness TRACE); (b) notch targets
+disagree: 3D gap 20-40 vs front-view mouth 2-10 (ours 14 / 13.5-15.8): settle from the concept before tuning;
+(c) DESCRIBE gaps the review names: lapel width (ours ~half), shirt collar spread / points over the jacket, collar
+height on the neck (fall top 45 mm over HPS; shirt shows 4 / 3.4 mm, target 10-15). Queued (not started): notch
+height checklist item; draft every visible part.
 Coordinator decision (round 5's question): PRESS_UNFOLDED stays ON by default (tailoring practice, KAT proves it, no
 chain of faults).
 
@@ -41,6 +47,19 @@ Measured each suspect before changing anything:
 |   body (below HPS-5cm + back yoke) | 76 | 62 | 0 |
 | L gorge flap through its base (let_go) | 56/67 | 0/67 | 0 |
 | pressed_cells | 290 | (on) | >0 |
+
+## Step 3: the collar end's rotation (endrot.py on the harness NOTCH trace)
+Round 5's 114 deg (C inward of G) was the stale shirt too: fresh, P-G-C at let_go is 29 deg, C.x 126 > G.x 116 (the
+end points outward again). Phases: turn_flaps 133 -> seat 22 -> let_go 29: SEAT closes the end onto the lapel point
+(|PC| 24 -> 13 mm). Flat is 67. Not changed this round (the notch targets disagree, NEXT b).
+
+## Step 4: renders + blind review (check/, review_front.log, review_three.log)
+My read before the review: back is clean (no scallops, a thin even shirt line); the fall is turned and lies; but at the
+front the collar ends flare out toward the shoulders as thin wings, no notch, narrow lapels, shirt collar small and
+crumpled at its points, side view collar up to the jaw, a white shirt fleck through the R shoulder. FAIL, agrees with
+the reviewer. front FAIL: collar flares at both shoulders, no notch / lapel, gap jacket collar to shirt collar at the
+sides, shirt points crumpled, shirt band high and tight. three FAIL: no lapel, no notch, L collar a funnel, shirt collar
+a band, sides don't match, lapels half width (diag), holes lower left (OTHER STAGES: body through-count 62).
 
 ## Files
 $FR6 = /mnt/data/hifipushie/dress_garrett/fit_round6/ (run.sh = this worktree). harness.py <tag> (code-keyed cache),

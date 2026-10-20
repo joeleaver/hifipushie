@@ -7748,3 +7748,9 @@ lines across the upper back; opening at the chest judged within ~10 px. Collar /
 - fit round 6 step 2: table in the STATE page. New faults now visible: shirt collar shows only 4.0 / 3.4 mm (10-15),
   the notch closes in 3D (gap 14 mm, P-G-C 29 vs 67 flat; front-view notch_step opens 13.5 / 15.8, too wide).
   Round 5's "collar end rotated 114 deg" was also the stale shirt.
+- fit round 6 step 3: collar end P-G-C 29 deg at let_go (round 5: 114, stale shirt); SEAT closes it 133 -> 22.
+- fit round 6 step 4: renders $FR6/check/{front,three}.png (ref | clay | diag), {side,back,top}.png. Back clean (the
+  scallops are gone). review_front FAIL (collar flares at the shoulders, no notch / lapel, shirt points crumpled, shirt
+  band high), review_three FAIL (no lapel / notch, funnel collar L, shirt collar a band, lapels half width). My read
+  agrees. Next: the collar's front half 18-28 mm off the neck at 60-120 deg; notch target conflict; lapel width / shirt
+  spread / collar height DESCRIBE items.
