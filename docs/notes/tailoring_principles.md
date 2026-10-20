@@ -53,13 +53,23 @@ lengths along the body; "neck" = the neck girth taken where the jacket collar si
     the body; the two must be one line when worn.
 15. **Gorge and notch** [G, angles J]. The gorge runs from the neck point to the notch; the collar ends at the notch,
     the lapel's top edge goes on beyond it. Notch depth, angle (Jaeger 45 deg) and gorge height are STYLE, read from
-    the concept, not body rules.
+    the concept, not body rules. When the concept doesn't show it: the fall's end is drafted at half its CB height
+    (pattern_jacket.FALL_FRONT 0.5), which gives a notch gap of 32-38 mm at 64-69 deg (cloth_checklist notch: 20-40 mm,
+    60-90 deg). At 0.8, the gap was 53-61 mm (fit round 2).
 
 ## Collar
-16. **A tailored collar is two pieces: stand + fall** [G]. CB height in all ~18 % of the neck (Jaeger 2 x 9 %): stand
-    30 % (~5.4 % neck, ~25 mm), fall 70 % (~12.6 % neck, ~60 mm, covers the stand and the seam). Why: the stand holds
-    the collar up the neck; the fall turns down over it; a separate stand (or a well-shaped one-piece undercollar)
-    lets each part take its own shape.
+16. **A tailored collar is two pieces: stand + fall** [G]. Measured at CB from the ROLL LINE: the stand (neck seam to
+    roll line) is neck / 16, held to 25-30 mm; the fall (roll line to its edge) is the stand + 10 mm, so it covers the
+    stand and the seam by about 1 cm (Mueller & Sohn lapel-collar drafts: stand 2.5-3 cm; Theatre Design & Technology
+    1981: the fall a little deeper than the stand; cloth_checklist collar_stand 25-30 / collar_fall stand + 6..15).
+    The fall has its own FOLD (roll) line, 4 mm above its seam on the stand (FALL_FOLD), and it turns down about that
+    line. So the stand PIECE is 4 mm less than the stand read from the roll line (Garrett: piece 24.3, read 28.3; round
+    1's "stand ~25 at CB" was the piece). Why: the stand holds the collar up the neck; the fall turns down over it; a
+    separate stand (or a well-shaped one-piece undercollar) lets each part take its own shape.
+    CHANGED fit round 2 (2026-10-19). Before, it was Jaeger's 18 % of neck split 30 / 70, which gave stand 28.5 / fall
+    56 for Garrett. That fall is 27 mm deeper than the stand, so the checklist collar_fall FAILED. The split also grew
+    with the neck (a 522 neck: stand 36), while practice keeps the stand at 2.5-3 cm for every man. The form showed it:
+    with no fold line, the fall stood up like a hood.
 17. **The stand's neck edge is drafted near-straight** [G]. Its length = back neck + front neck to the notch; it runs
     straight across the back and rises only gently toward the front (sagitta / chord ~0.02-0.04); its top edge is
     then a little shorter, so it leans in to the neck. Why: a collar whose neck edge follows the neckline (sagitta
@@ -95,5 +105,7 @@ lengths along the body; "neck" = the neck girth taken where the jacket collar si
 ## What the gate checks (pattern_jacket.tailor_rows, cloth_check.pattern_gate for a jacket)
 back_neck_width R3 (+-6 mm), back_neck_rise R4 (+-6 mm), waist_suppression R8 (11-20 % of chest), hips_clearance
 R1 / R8 (>= hips + 4 %), front_dart R10 (present), front_overlap R12 (button +-4 mm), collar_neck_edge_straight R17
-(sagitta <= 0.08 across the whole edge), collar_stand_cb R16 (+-1.2 % neck), collar_fall_cb R16 / R18 (+-2 % neck),
+(sagitta <= 0.08 across the whole edge), collar_stand_cb R16 (+-1.2 % neck), collar_fall_cb R16 / R18 (+-2 % neck), the fall's fold line (flat_pattern: no fold line
+-> FAIL), the checklist's flat collar_stand / collar_fall / notch rows read on a two-piece collar (cloth_check
+collar_draft_two_piece, notch_flat),
 pockets R21 (present when the design asks). Known answers: tests/test_tailoring.py.

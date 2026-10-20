@@ -32,7 +32,13 @@ def src(*n) -> str:
 # ---------------------------------------------------------------- the rules as numbers
 EASE = {"chest": 0.08, "waist": 0.14, "hips": 0.12}  # R1 (a jacket over a shirt; Jaeger / Bent defaults)
 SHARE = {"cb": 0.16, "side_back": 0.32, "side_front": 0.32, "dart": 0.20}  # R8: of the half reduction
-COLLAR = {"total": 0.18, "stand": 0.30, "spread_deg": 13.0, "roll": 0.05, "rise": 0.035}  # R16-R18 (x neck girth)
+COLLAR = {"stand_frac": 0.0625, "stand_mm": (25.0, 30.0), "fall_over_mm": 10.0, "spread_deg": 13.0, "roll": 0.05,
+          "rise": 0.035}  # R16-R18
+# R16 (fit round 2): the collar at CB measured from the ROLL LINE: stand (neck seam -> roll line) = neck / 16 held to
+# 25-30 mm, fall (roll line -> edge) = stand + 10 mm (practice: Mueller & Sohn stand 2.5-3 cm; the fall 6-15 mm deeper
+# than the stand so it covers the seam; cloth_checklist collar_stand / collar_fall). Jaeger's 18 % of neck split 30 / 70
+# (our first R16) gave stand 28.5 / fall 56: 27 mm too deep, and it grew with the neck (a 522 neck: stand 36).
+FALL_FRONT = 0.5  # R15 (fit round 2): the fall's height at its end, x its CB height: the notch gap 20-40 mm (0.8: 53-61)
 # R16 (fit round 2): the fall's fold (roll) line, `at` m above its seam on the stand: the fall rises that little with
 # the stand, then turns down over it and hides the seam. Without the line the dress form left the fall standing up like a
 # hood (fit round 1: fall top 71 mm above the neck point; the gate's flat_pattern row refused it)
@@ -58,9 +64,10 @@ def rules(tape: dict, button_mm: float = 20.0) -> dict:
     put("dart_up", 0.0, 10)  # (set from the draft's armhole -> waist: 2/3 of it)
     put("dart_down", w2h / 1.5 / 1000, 10)
     put("overlap", button_mm / 1000, 12)
-    stand = COLLAR["total"] * COLLAR["stand"] * neck
-    put("collar_stand_cb", stand / 1000, 16)
-    put("collar_fall_cb", COLLAR["total"] * (1 - COLLAR["stand"]) * neck / 1000, 16)
+    roll_st = min(max(COLLAR["stand_frac"] * neck, COLLAR["stand_mm"][0]), COLLAR["stand_mm"][1])  # seam -> roll line
+    fat = FALL_FOLD["at"] * 1000  # (the fall rises this far with the stand before it turns)
+    put("collar_stand_cb", (roll_st - fat) / 1000, 16)  # the stand PIECE
+    put("collar_fall_cb", (roll_st + COLLAR["fall_over_mm"] + fat) / 1000, 16)  # the fall PIECE (before the roll's 5 %)
     put("collar_spread_deg", COLLAR["spread_deg"], 18)
     put("collar_rise", COLLAR["rise"] * neck / 1000, 17)
     put("roll_height", 0.06 * neck / 1000, 14)
@@ -268,7 +275,7 @@ def op_collar_two_piece(D: dict, stand_cb: float | None = None, fall_cb: float |
     stand_cb = R["collar_stand_cb"]["value"] if stand_cb is None else float(stand_cb)
     fall_cb = R["collar_fall_cb"]["value"] if fall_cb is None else float(fall_cb)
     stand_front = 0.6 * stand_cb if stand_front is None else float(stand_front)
-    fall_front = 0.8 * fall_cb if fall_front is None else float(fall_front)
+    fall_front = FALL_FRONT * fall_cb if fall_front is None else float(fall_front)
     rise = R["collar_rise"]["value"] if rise is None else float(rise)
     spread_deg = COLLAR["spread_deg"] if spread_deg is None else float(spread_deg)
     roll = COLLAR["roll"] if roll is None else float(roll)

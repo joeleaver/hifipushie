@@ -537,11 +537,48 @@ def _side_arc(pcs: dict, side) -> np.ndarray:
     return np.concatenate(parts, 0)
 
 
+def _fall_fold_at(Bp: dict) -> float:
+    """The two-piece collar fall's fold line, m above its seam on the stand (its fold entry's edge offset, else the
+    wrap turn's "at"; 0 without either)."""
+    for f in Bp.get("folds") or []:
+        ln = f.get("line")
+        if f.get("piece") == "collar" and isinstance(ln, dict) and "cbLow" in str(ln.get("edge", "")):
+            return float(ln.get("offset", 0.0))
+    c = (Bp.get("pieces") or {}).get("collar") or {}
+    return float(((c.get("wrap") or {}).get("turn") or {}).get("at", 0.0))
+
+
+def collar_draft_two_piece(Bp: dict) -> dict | None:
+    """collar_draft for a TWO-PIECE collar (pattern_jacket.op_collar_two_piece: a "stand" cb..cbTop sewn by its neck
+    edge, a fall "collar" cbLow..cbOuter sewn to the stand's top, turned about its fold line `fold_at` above that seam).
+    Worn, the roll line sits at stand + fold_at over the neck seam; the fall below the roll line is fall - fold_at.
+    (fit round 2: the readers knew only the one-piece collar, so the gate rows collar_stand / collar_fall read
+    UNMEASURED on the v2 draft.)"""
+    pcs = Bp.get("pieces") or {}
+    s, c = pcs.get("stand"), pcs.get("collar")
+    if s is None or c is None or not {"cb", "cbTop", "cf", "cfTop"} <= set(s["names"]) or \
+            not {"cbLow", "cbOuter"} <= set(c["names"]):
+        return None
+    P, Q = np.asarray(s["P"], float), np.asarray(c["P"], float)
+    fat = _fall_fold_at(Bp)
+    st = float(np.linalg.norm(P[s["names"]["cbTop"]] - P[s["names"]["cb"]]))
+    se = float(np.linalg.norm(P[s["names"]["cfTop"]] - P[s["names"]["cf"]]))
+    fa = float(np.linalg.norm(Q[c["names"]["cbOuter"]] - Q[c["names"]["cbLow"]]))
+    stand, fall = st + fat, fa - fat
+    return {"stand_cb_mm": round(stand * 1000, 1), "stand_end_mm": round((se + fat) * 1000, 1),
+            "tapers": bool(se < st), "collar_cb_mm": round((st + fa) * 1000, 1), "fall_cb_mm": round(fall * 1000, 1),
+            "fall_minus_stand_mm": round((fall - stand) * 1000, 1), "two_piece": True,
+            "fold_at_mm": round(fat * 1000, 1)}
+
+
 def collar_draft(Bp: dict) -> dict | None:
     """A tailored (notched) collar's draft, flat: the stand (the roll line's distance from the neck edge) at CB and at
     the roll line's last point (where it meets the neck edge: ~0, the collar all fall past it), whether it tapers
     without a rise, the whole collar at CB (neck edge -> outer edge) and the fall (whole - stand). None: no such collar."""
     c = (Bp.get("pieces") or {}).get("collar")
+    two = collar_draft_two_piece(Bp)
+    if two:
+        return two
     if c is None or "cbTop" not in c["names"] or not ((c.get("wrap") or {}).get("turn") or {}).get("line"):
         return None
     L = np.asarray(c["wrap"]["turn"]["line"], float)[:-1]  # (without the run-on into the front)
@@ -555,6 +592,68 @@ def collar_draft(Bp: dict) -> dict | None:
             "fall_cb_mm": round((whole - h[0]) * 1000, 1), "fall_minus_stand_mm": round((whole - 2 * h[0]) * 1000, 1)}
 
 
+def _rigid_onto(a: np.ndarray, b: np.ndarray):
+    """The 2D rigid map taking points a onto their partners b (least squares), and its worst residual."""
+    ca, cb_ = a.mean(0), b.mean(0)
+    U, _, Vt = np.linalg.svd((a - ca).T @ (b - cb_))
+    R = (U @ Vt).T
+    if np.linalg.det(R) < 0:
+        Vt[-1] *= -1
+        R = (U @ Vt).T
+
+    def T(q):
+        return (np.asarray(q, float) - ca) @ R.T + cb_
+    return T, float(np.linalg.norm(T(a) - b, axis=1).max())
+
+
+def _notch_flat_two_piece(Bp: dict, reach: float) -> dict | None:
+    """notch_flat for a two-piece collar: the fall's end carried onto the stand by their seam (fall low edge on the
+    stand's top), then the stand's end into the front by its neck seam, each a rigid fit within `reach` of the end."""
+    pcs = Bp["pieces"]
+    s, c = pcs["stand"], pcs["collar"]
+    n = 600
+    out = {}
+    for sfx in ("", ".m"):
+        if "cf" + sfx not in s["names"] or "endOuter" + sfx not in c["names"]:
+            continue
+        cf = np.asarray(s["P"][s["names"]["cf" + sfx]], float)
+        T1 = fr = None
+        for A, B in Bp["seams"]:
+            if not (isinstance(A, str) and A.startswith("stand:")) or A.split(">")[-1] != "cf" + sfx:
+                continue
+            fr = next((e.split(":")[0] for e in ([B] if isinstance(B, str) else B) if e.startswith("front.")), None)
+            if fr is None or "lapelPoint" not in pcs[fr]["names"]:
+                continue
+            Ca, Fb = _arc_len_resample(_side_arc(pcs, A), n), _arc_len_resample(_side_arc(pcs, B), n)
+            use = np.linalg.norm(Ca - cf, axis=1) < reach
+            if use.sum() >= 5:
+                T1, fit1 = _rigid_onto(Ca[use], Fb[use])
+                break
+        if T1 is None:
+            continue
+        ft = np.asarray(s["P"][s["names"]["cfTop" + sfx]], float)
+        T2 = None
+        for A, B in Bp["seams"]:
+            if not (isinstance(A, str) and A.startswith("collar:") and isinstance(B, str) and B.startswith("stand:")):
+                continue
+            Ca, Sb = _arc_len_resample(_side_arc(pcs, A), n), _arc_len_resample(_side_arc(pcs, B), n)
+            use = np.linalg.norm(Sb - ft, axis=1) < reach
+            if use.sum() >= 5 and np.linalg.norm(Sb[use][-1] - ft) < reach and \
+                    np.linalg.norm(Ca[use] - c["P"][c["names"]["endLow" + sfx]], axis=1).min() < reach:
+                T2, fit2 = _rigid_onto(Ca[use], Sb[use])
+                break
+        if T2 is None:
+            continue
+        fp = pcs[fr]
+        lp, cn = np.asarray(fp["P"][fp["names"]["lapelPoint"]], float), np.asarray(fp["P"][fp["names"]["cfNeck"]], float)
+        eo = T1(T2(c["P"][c["names"]["endOuter" + sfx]]))
+        u, v = lp - cn, eo - cn
+        ang = math.degrees(math.acos(float(np.clip(u @ v / (np.linalg.norm(u) * np.linalg.norm(v) + 1e-12), -1, 1))))
+        out[fr] = {"gap_mm": round(float(np.linalg.norm(lp - eo)) * 1000, 1), "angle_deg": round(ang, 1),
+                   "fit_mm": round(max(fit1, fit2) * 1000, 1), "two_piece": True}
+    return out or None
+
+
 def notch_flat(Bp: dict, reach: float = 0.11) -> dict | None:
     """The notch as DRAFTED (dress-garrett notch2d.py, without a mesh): the collar's end carried into the front's
     pattern by its own neck seam (both sides sewn by fraction of their length; a rigid 2D fit over the seam within
@@ -565,6 +664,8 @@ def notch_flat(Bp: dict, reach: float = 0.11) -> dict | None:
     c = pcs.get("collar")
     if c is None or "endOuter" not in c["names"]:
         return None
+    if "stand" in pcs and "endNeck" not in c["names"]:
+        return _notch_flat_two_piece(Bp, reach)
     out = {}
     for A, B in Bp["seams"]:
         if not (isinstance(A, str) and A.startswith("collar:")):

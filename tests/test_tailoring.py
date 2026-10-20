@@ -62,11 +62,14 @@ def _pt(pc, n):
 # ---------------------------------------------------------------- the rules are relations
 def test_rules_scale_with_the_body():
     a, b = pj.rules(BODIES["small"]), pj.rules(BODIES["large"])
-    for k in ("back_neck_rise", "collar_stand_cb", "collar_fall_cb"):  # proportional to the neck girth
+    for k in ("back_neck_rise",):  # proportional to the neck girth
         assert a[k]["value"] / b[k]["value"] == pytest.approx(BODIES["small"]["neck"] / BODIES["large"]["neck"], rel=1e-6)
     assert all(v["source"].startswith(pj.DOC) for v in a.values())
-    # stand : fall = 30 : 70 of the collar's CB height (R16)
-    assert a["collar_stand_cb"]["value"] / a["collar_fall_cb"]["value"] == pytest.approx(0.3 / 0.7)
+    # R16 (fit round 2): from the roll line, stand 25-30 mm at any neck, the fall 10 mm deeper (practice)
+    for r_ in (a, b):
+        st = r_["collar_stand_cb"]["value"] + pj.FALL_FOLD["at"]
+        assert 0.025 - 1e-9 <= st <= 0.030 + 1e-9
+        assert r_["collar_fall_cb"]["value"] - pj.FALL_FOLD["at"] - st == pytest.approx(0.010)
     # overlap follows the button, not the body (R12)
     assert pj.rules(BODIES["large"], 25.0)["overlap"]["value"] == pytest.approx(0.025)
 
@@ -146,6 +149,22 @@ def test_collar_fall_has_its_fold_line_and_the_gate_refuses_one_without():
         (pc.get("wrap") or {}).pop("fold", None)
     ok, why = gd._check({"fold": "collar_fall"}, Bp, gd.roles(Bp), {}, {}, None)
     assert not ok and "no fold line on collar_fall" in why
+
+
+def test_two_piece_collar_meets_the_checklist_at_every_size():
+    """R16 / R15 (fit round 2) against cloth_checklist.json's flat targets, read by the two-piece readers
+    (cloth_check.collar_draft_two_piece, notch_flat): stand from the roll line 25-30 mm, fall = stand + 6..15, notch gap
+    20-40 mm at 60-90 deg, at a small, a medium and a large man (necks 405 / 450 / 522 mm): the rules are relations."""
+    from hifipushie import cloth_check as cc
+    for nm, tape in BODIES.items():
+        D = ours(tape)
+        pd.unfold(D)
+        r = cc.flat_readings({"pieces": D["pieces"], "seams": D["seams"], "folds": D["folds"]})
+        cd = r["collar_stand_cb_mm"]
+        assert cd["two_piece"] and 25 - 4 <= cd["stand_cb_mm"] <= 30 + 4, (nm, cd)
+        assert 6 - 4 <= cd["fall_minus_stand_mm"] <= 15 + 4, (nm, cd)
+        for side, v in r["notch_flat"].items():
+            assert 20 - 15 <= v["gap_mm"] <= 40 + 15 and 60 - 15 <= v["angle_deg"] <= 90 + 15, (nm, side, v)
 
 
 def test_sagitta_tells_a_band_from_a_crescent():
