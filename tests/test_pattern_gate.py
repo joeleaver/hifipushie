@@ -274,3 +274,23 @@ def test_layer_clearance_rows():
     assert [x["id"] for x in r] == ["layer_clearance_biceps"] and r[0]["status"] == "FAIL", r
     r = cc.layer_clearance_rows(outer, inner(0.35), body, "shirt")
     assert r[0]["status"] == "PASS", r
+
+
+def test_big_reads_before_details():
+    """C52 (fit round 9): rows come big to small; while a big read (stage 1-2) fails, detail rows (stage 3+) are not
+    judged (BLOCKED, own reading kept); a waived big read does not block; a detail FAIL alone still fails the gate."""
+    rows = [{"id": "notch", "stage": 3, "status": "PASS"}, {"id": "lapel_width", "stage": 3, "status": "FAIL"},
+            {"id": "front_state", "stage": 1, "status": "FAIL"}, {"id": "note", "stage": 3, "status": "INFO"}]
+    out = cc.big_first([dict(r) for r in rows])
+    assert out[0]["id"] == "front_state", out
+    st = {r["id"]: r["status"] for r in out}
+    assert st == {"front_state": "FAIL", "notch": "BLOCKED", "lapel_width": "BLOCKED", "note": "INFO"}, st
+    assert {r["id"]: r.get("detail_status") for r in out}["lapel_width"] == "FAIL"
+    assert cc.verdict(out) == "FAIL"
+    st = {r["id"]: r["status"] for r in cc.big_first([dict(r) for r in rows], {"front_state": "accepted"})}
+    assert st["lapel_width"] == "FAIL" and st["notch"] == "PASS", st
+    ok = [dict(r, status="PASS") if r["id"] == "front_state" else dict(r) for r in rows]
+    assert cc.verdict(cc.big_first(ok)) == "FAIL"  # (the detail FAIL counts once the big reads pass)
+    from hifipushie import cloth_reference as cr
+    its = {it["id"]: it for it in cr.items_for("jacket")}
+    assert its["front_state"]["stage"] == 1 and its["buttons_done"]["stage"] == 1  # the front's state is a big read

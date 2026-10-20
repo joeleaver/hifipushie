@@ -495,6 +495,10 @@ def jacket_ops(ops: list, tape: dict, button_mm: float = 20.0, pockets: str = "f
             op["stand"] = R["overlap"]["value"]
             op["source"] = (op.get("source", "") + f"; stand (overlap) = the button's diameter {button_mm:.0f} mm: "
                             + src(12)).strip("; ")
+        if k == "buttons" and op.get("spacing") is None and op.get("spacing_frac") is None:
+            op["spacing_frac"] = 0.30  # R13 (fit round 9: the op's fixed 90 mm default had replaced the rule)
+            op["source"] = (op.get("source", "") + "; second button 30 % of break -> hem below the first: "
+                            + src(13)).strip("; ")
         if k == "collar":
             out.append({"op": "collar_two_piece", "point": op.get("point", 0.0), "source": src(16, 17, 18)})
             continue

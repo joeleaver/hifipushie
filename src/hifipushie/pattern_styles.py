@@ -612,9 +612,16 @@ def op_buttons(D: dict, piece: str, n: int = 1, top: float | None = None, spacin
     """n button marks down the line x (the centre front) from `top` (m below the neck point; default the break
     point). When the piece is a pair they become a CLOSURE at unfold (closures.py: left front over right, a fastening
     per mark): `state` "closed" (default) | "open" (worn unbuttoned: no stitches, the buttons stay on the under
-    front) | {"open_above": "button2"} (those above that mark undone); `size` the button's diameter (m)."""
+    front) | {"open_above": "button2"} (those above that mark undone); `size` the button's diameter (m).
+    `spacing_frac` (tailoring R13, fit round 9): the spacing as that share of the break -> the front edge's lowest point
+    (a jacket's second button ~30 % of break -> hem below the first) instead of the fixed `spacing`."""
     pc = D["pieces"][piece]
     y0 = -abs(float(top)) if top is not None else float(D["meta"].get("break", [0, -0.3])[1]) - 0.015
+    if o.get("spacing_frac") is not None:
+        yb = float(D["meta"].get("break", [0, y0])[1])
+        P = np.asarray(pc["P"], float)
+        low = float(P[pc["names"]["stand.b"], 1]) if "stand.b" in pc["names"] else float(P[:, 1].min())
+        spacing = float(o["spacing_frac"]) * (yb - low)
     marks = []
     for k in range(int(n)):
         nm = f"button{k + 1}"

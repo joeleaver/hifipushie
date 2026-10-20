@@ -1016,9 +1016,33 @@ def gate_rows(Bp: dict, items: list, ctx=None, gname: str = "", refs: dict | Non
     return rows
 
 
+BIG_STAGES = (1, 2)  # the checklist's big reads: silhouette, lengths, the front's state (1); fit and ease (2)
+
+
+def big_first(rows: list, waive: dict | None = None) -> list:
+    """BIG READS BEFORE DETAILS (C52, fit round 9): the rows ordered big to small (checklist stage, stable), and while
+    any big read (stage 1-2) FAILs or is UNMEASURED (and not waived), every detail row's verdict (stage 3+: collar,
+    lapel, notch, buttons, pockets ...) is withheld: status "BLOCKED", its own reading kept in "detail_status". Why:
+    Garrett's jacket spent eight fit rounds on the collar / notch while its front hung closed below the break and the
+    lapels' V was 60 mm narrow; no checklist item described the opening, so every round judged details on a wrong
+    whole. The gate still FAILs (the big read blocks); the report says what to fix first."""
+    waive = waive or {}
+    rows = sorted(rows, key=lambda r: r.get("stage", 3))
+    big = [r["id"] for r in rows if r.get("stage", 3) in BIG_STAGES and r["status"] in ("FAIL", "UNMEASURED")
+           and not waive.get(r["id"])]
+    if big:
+        for r in rows:
+            if r.get("stage", 3) not in BIG_STAGES and r["status"] in ("PASS", "FAIL"):
+                r["detail_status"], r["status"] = r["status"], "BLOCKED"
+                r["why"] = (f"big read(s) fail first: {', '.join(big)} (C52: fix the silhouette / opening / lengths "
+                            f"before details) {r.get('why', '')}").strip()
+    return rows
+
+
 def make_record(model: str, garment: str, kind, keys: dict, rows: list, waive: dict | None = None,
                 warnings: list | None = None, refs: bool = False) -> dict:
     old = read_record(keys["pattern"], keys["body"]) or {}
+    rows = big_first(rows, waive)
     return {"version": GATE_VERSION, "checklist_version": checklist_version(), "model": model, "garment": garment,
             "kind": kind, "pattern": keys["pattern"], "body": keys["body"], "time": _time.strftime("%Y-%m-%d %H:%M:%S"),
             "status": verdict(rows, waive), "rows": rows, "waived": dict(waive or {}), "warnings": list(warnings or []),
@@ -1145,9 +1169,12 @@ def pattern_gate(model: str, garment: str, spec: dict | None = None, refs=None, 
     log(f"pattern gate {model}:{garment}: {rec['status']} ({p})")
     for w in warns:
         log(f"  {w}")
-    for r in rows:
+    for r in rec["rows"]:  # (big to small: big_first)
         if r["status"] in ("FAIL", "UNMEASURED"):
             log(f"  {r['status']:<10} {r['id']}: {r.get('why') or ''}{r.get('ours', '')} {r.get('miss', '')}")
+    held = [r["id"] for r in rec["rows"] if r["status"] == "BLOCKED"]
+    if held:
+        log(f"  BLOCKED    {len(held)} detail rows not judged while a big read fails (C52): {', '.join(held)}")
     return rec
 
 

@@ -7787,3 +7787,18 @@ lines across the upper back; opening at the chest judged within ~10 px. Collar /
 - fit round 8 step 4: renders $FR8/check (outer_first + spread); blind review front FAIL (shirt collar a crumpled ruffle,
   lapels don't read, no notch, opening parallel), three FAIL (same + shirt shards over the jacket edge on one side).
   My read: the jacket collar now sits closer to the neck, but the shirt collar is destroyed: worse to look at than R6.
+
+## fit round 9 (2026-10-19, Garrett jacket FRONT, big to small; no sims). STATE: docs/state/fit_round9.md
+- fit round 9 step 1 DESCRIBE: the concept jacket is worn OPEN (buttons on the R front, empty holes on the L, shirt +
+  belt between; refread front_state open / buttons_done 0 agree): the coordinator's "fastened" brief disputed with
+  c_break.png. Front items measured in the front view (m9.py, concept 0.88054 px/mm, CF 630, HPS y 350): the front edge
+  below the break 66-94 mm off CF and diverging; the roll line (shirt band edge) 70 -> 51 mm from 150 to 350 below HPS;
+  the lapels' outer edges (V) 237 mm across at 200; break 386, buttons 399 / 518. All front-edge, roll, V and lapel-outer
+  rows FAIL on R6 and R8 (table in STATE); break PASS.
+- fit round 9 step 2 FLAT + cause: on the form only the break VERTEX is held open (worn_open 64 mm) and the neighbouring
+  roll line relaxes to 34 mm; below the break the front returns closed (18 mm off CF at 560-600). Pattern: break 27 mm
+  low (top button 426 vs 399), op_buttons' fixed 90 mm spacing had replaced R13 (30 % of break -> hem). Fixes: break_y
+  0.455 -> 0.425 (fr9, sourced), op_buttons spacing_frac + jacket_ops R13. Overlap R12 20 mm OK; closure open, nothing
+  fastened on the form (fastened(M, "worn_open") = []).
+- fit round 9 codify (C52): cloth_check.big_first: the gate's rows big to small, detail rows BLOCKED while a big read
+  (stage 1-2) fails; front_state / buttons_done restaged 1. test_big_reads_before_details.
