@@ -7656,3 +7656,13 @@ lines across the upper back; opening at the chest judged within ~10 px. Collar /
   neck. An 18 % / 38-62 split (the first idea) failed the large neck (stand 36). R15: fall end FALL_FRONT 0.5 x CB height
   (sweep: 0.8 -> gap 53, 0.62 -> 44, 0.49 -> 37.5; POINT moved the angle only). Garrett flat: stand 28.3 (piece 24.3),
   fall 40.5, f-s 12.1, notch 35.2 / 66.6 deg. tests/test_tailoring.py at necks 405 / 450 / 522 (C42).
+- Turn of cloth (coordinator, for Joe: "from the fabric, not fixed fudges"): pattern_jacket.turn_stack reads the KB
+  thicknesses (wool_suiting 0.75, NEW hair_canvas 0.4-0.6 INFERRED from 150-250 gsm, cotton_shirting 0.25): fall stack 2.0,
+  under-stack (stand + shirt collar stand + fall) 3.5, depth pi/2 x 2.0 + 3.5 = 6.6 mm (was 5 % of the fall = 2 mm), ring
+  5.5 -> outer edge +pi x 5.5 = 17.3 mm per half. Outer edge = fall_path (the neckline offset by the 10 mm drop into back /
+  front, run on to the outlines: 245.6 -> 264.8) + 17.3 = 282 mm; spread solved 43 deg (was a fixed 13). New tailor row
+  collar_fall_outer (R18, -3 / +15 mm) PASS 283.5 / 282.0; collar_fall_cb includes the depth; the checklist reader
+  subtracts it (fall seen 38.3, f-s 10.0, notch 32.6 / 62.1). Undercollar + lapel turn allowance: NOT done (handover).
+  43 deg is big against the books' 1-1.5 cm per half, so check the path on the form.
+- Step 2: shirt PASS_WAIVED (pockets: not visible in the front-only concept). Jacket gate + fit not re-run on the final
+  pattern (budget). HANDOVER: docs/state/fit_round2.md.

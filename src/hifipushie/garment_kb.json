@@ -467,6 +467,7 @@
   "linen": {"preset": "linen", "gsm": [150, 200], "thickness_mm": [0.35, 0.5], "stretch": "woven", "bending_length_mm": [14, 20], "uses": ["shirt", "flat", "dress", "trousers"]},
   "cotton_twill": {"preset": "denim", "overrides": {"mass": 0.35, "bending": 1.0, "limit": 0.03, "thickness": 0.0006}, "gsm": [200, 280], "thickness_mm": [0.5, 0.7], "stretch": "woven", "bending_length_mm": [16, 22], "uses": ["trousers", "shorts", "skirt"]},
   "denim": {"preset": "denim", "gsm": [340, 450], "thickness_mm": [0.8, 1.1], "stretch": "woven", "bending_length_mm": [22, 30], "uses": ["trousers", "skirt", "jacket"]},
+  "hair_canvas": {"preset": "wool_coating", "gsm": [150, 250], "thickness_mm": [0.4, 0.6], "stretch": "woven", "bending_length_mm": [25, 35], "uses": ["interlining"], "source": "fit round 2 (turn of cloth): tailoring hair canvas, a medium-weight interlining for fronts and collars; thickness INFERRED from its weight (150-250 gsm wool / hair woven ~0.4-0.6 mm), not measured"},
   "wool_suiting": {"preset": "wool_coating", "overrides": {"mass": 0.3, "bending": 0.8, "thickness": 0.0008}, "gsm": [230, 300], "thickness_mm": [0.6, 0.9], "stretch": "woven", "bending_length_mm": [14, 18], "uses": ["jacket", "trousers", "skirt"]},
   "wool_coating": {"preset": "wool_coating", "gsm": [450, 600], "thickness_mm": [1.5, 2.5], "stretch": "woven", "bending_length_mm": [16, 22], "uses": ["coat"]},
   "jersey": {"preset": "jersey", "gsm": [150, 200], "thickness_mm": [0.5, 0.7], "stretch": "knit", "bending_length_mm": [6, 10], "uses": ["tee", "dress"]},

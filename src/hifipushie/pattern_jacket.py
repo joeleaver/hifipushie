@@ -43,6 +43,51 @@ FALL_FRONT = 0.5  # R15 (fit round 2): the fall's height at its end, x its CB he
 # the stand, then turns down over it and hides the seam. Without the line the dress form left the fall standing up like a
 # hood (fit round 1: fall top 71 mm above the neck point; the gate's flat_pattern row refused it)
 FALL_FOLD = {"at": 0.004, "angle": 10.0, "radius": 0.004, "strength": 0.6}
+# R18 (fit round 2, Joe via coordinator: "account for the turn of cloth from the fabric, not fixed fudges"): the fall's
+# extra depth and outer-edge length come from what it wraps over. Layers: the collar = upper + under collar + canvas; at
+# the roll line the fall wraps over the jacket's stand (same stack) and the shirt's collar (stand + its turned fall, each
+# 2 layers + interfacing: 6 shirting thicknesses).
+TURN = {"fabric": "wool_suiting", "canvas": "hair_canvas", "under": "cotton_shirting", "under_layers": 6}
+
+
+def _thick_mm(name: str, default: float) -> float:
+    """A KB fabric's thickness (mm, the middle of its thickness_mm), `default` for a name the KB doesn't have."""
+    from . import garment_design
+    e = ((garment_design.kb().get("fabrics") or {}).get(name)) if isinstance(name, str) else None
+    t = (e or {}).get("thickness_mm")
+    return 0.5 * (float(t[0]) + float(t[1])) if t else float(default)
+
+
+def turn_stack(fabric: str | None = None, canvas: str | None = None, under: str | None = None,
+               under_layers: int | None = None) -> dict:
+    """The turn of cloth at the collar's roll line, from the fabrics (mm): t_fall (the fall's own stack: 2 cloth +
+    canvas), t_under (what it wraps over: the stand's stack + the shirt collar's), depth (the fall's height spent in
+    the turn: a hairpin of its own stack, pi/2 x t_fall, + the step out over the under-stack) and ring (how much further
+    out from the neck its outer edge lies than its seam: t_under + t_fall; the half collar's outer edge needs pi x ring
+    more length, half the circumference's growth)."""
+    t = _thick_mm(fabric or TURN["fabric"], 0.75)
+    tc = _thick_mm(canvas or TURN["canvas"], 0.5)
+    tu = _thick_mm(under or TURN["under"], 0.25)
+    n = TURN["under_layers"] if under_layers is None else int(under_layers)
+    t_fall = 2 * t + tc
+    t_under = (2 * t + tc) + n * tu
+    ring = t_under + t_fall
+    return {"cloth_mm": t, "canvas_mm": tc, "under_mm": tu, "t_fall_mm": round(t_fall, 3), "t_under_mm": round(t_under, 3),
+            "depth_mm": round(math.pi / 2 * t_fall + t_under, 2), "ring_mm": round(ring, 3),
+            "length_mm": round(math.pi * ring, 2),
+            "source": src(18) + " (fit round 2: turn of cloth from the fabrics' KB thickness; canvas inferred)"}
+
+
+def fall_path(pcs: dict, chain: list, drop: float, step: float = 0.003) -> float:
+    """The path the fall's outer edge lies on (m, one half: CB -> the collar's end): the neckline `chain` ("piece:a>b"
+    arcs the collar is sewn to) offset `drop` into the body pieces (where the turned fall's edge lands, below the neck
+    seam), each arc run on to its piece's outline."""
+    tot = 0.0
+    for e in chain:
+        nm = e.split(":")[0]
+        L = pattern.fold_line(pcs, {"piece": nm, "line": {"edge": e, "offset": float(drop)}}, step)
+        tot += pattern.length(L)
+    return tot
 
 
 def rules(tape: dict, button_mm: float = 20.0) -> dict:
@@ -277,11 +322,30 @@ def op_collar_two_piece(D: dict, stand_cb: float | None = None, fall_cb: float |
     stand_front = 0.6 * stand_cb if stand_front is None else float(stand_front)
     fall_front = FALL_FRONT * fall_cb if fall_front is None else float(fall_front)
     rise = R["collar_rise"]["value"] if rise is None else float(rise)
-    spread_deg = COLLAR["spread_deg"] if spread_deg is None else float(spread_deg)
-    roll = COLLAR["roll"] if roll is None else float(roll)
+    fat = FALL_FOLD["at"] if fold_at is None else float(fold_at)
+    ts = turn_stack(o.get("fabric"), o.get("canvas"), o.get("under"), o.get("under_layers"))
+    # R18 turn of cloth: the fall's height spent in the turn (ts depth) instead of a fixed 5 % roll
+    roll = ts["depth_mm"] / 1000 / fall_cb if roll is None else float(roll)
     lb, lf = edge_length(D, nb), edge_length(D, nf)
-    c = collar_shapes(lb * (1 - ease), lf * (1 - ease), stand_cb, fall_cb, stand_front, fall_front, rise, spread_deg,
-                      roll, point)
+    # R18: the outer edge as long as its path: the neckline offset by where the fall's edge lands (fall - stand from the
+    # roll line, below the neck seam) + pi x the ring it stands out by (the under-stack and the fall's own cloth)
+    drop = (fall_cb - fat) - (stand_cb + fat)
+    need = fall_path(D["pieces"], list(nb) + list(nf), max(drop, 0.0)) + ts["length_mm"] / 1000
+
+    def shapes(sp):
+        return collar_shapes(lb * (1 - ease), lf * (1 - ease), stand_cb, fall_cb, stand_front, fall_front, rise, sp,
+                             roll, point)
+    if spread_deg is None:  # solved: the spread whose outer edge is the path's length (bisection; length grows with it)
+        lo_, hi_ = -10.0, 45.0
+        for _ in range(40):
+            mid = 0.5 * (lo_ + hi_)
+            if pattern.length(shapes(mid)["fall_out"]) < need:
+                lo_ = mid
+            else:
+                hi_ = mid
+        spread_deg = 0.5 * (lo_ + hi_)
+    spread_deg = float(spread_deg)
+    c = shapes(spread_deg)
     E, T, F, O, ks = c["stand_neck"], c["stand_top"], c["fall_low"], c["fall_out"], c["k_shoulder"]
     n = len(E)
     pts = [("cb", E[0])] + [("shoulderNotch" if k == ks else None, E[k]) for k in range(1, n - 1)] + [("cf", E[-1])]
@@ -290,7 +354,6 @@ def op_collar_two_piece(D: dict, stand_cb: float | None = None, fall_cb: float |
     ps = pb.make_piece(stand, pts, "collar_stand", dict(wrap), "fold")
     pts = [("cbLow", F[0])] + [(None, q) for q in F[1:-1]] + [("endLow", F[-1])]
     pts += [("endOuter", O[-1])] + [(None, q) for q in O[-2:0:-1]] + [("cbOuter", O[0])]
-    fat = FALL_FOLD["at"] if fold_at is None else float(fold_at)
     pf = pb.make_piece(name, pts, "collar_fall", dict(wrap, turn={"at": fat, "deg": 172, "gap": 0.004}), "fold")
     for pc in (ps, pf):
         if pc["P"][:, 0].mean() < 0:
@@ -311,7 +374,7 @@ def op_collar_two_piece(D: dict, stand_cb: float | None = None, fall_cb: float |
     D["edges"][f"{stand}_neck"] = [f"{stand}:cb>shoulderNotch>cf"]
     D["edges"][f"{name}_outer"] = [f"{name}:endOuter>cbOuter"]
     D["meta"]["collar_two_piece"] = {"stand_cb": stand_cb, "fall_cb": fall_cb, "rise": rise, "spread_deg": spread_deg,
-                                     "fold_at": fat}
+                                     "fold_at": fat, "turn": ts, "outer_need_mm": round(need * 1000, 1), "drop_mm": round(drop * 1000, 1)}
     D["log"].append(f"collar two-piece ({src(16, 17, 18)}): stand {stand_cb * 1000:.0f} -> {stand_front * 1000:.0f} mm, "
                     f"neck edge {pattern.length(E) * 1000:.0f} (neckline {(lb + lf) * 1000:.0f}) rising "
                     f"{rise * 1000:.0f} at the front; fall {fall_cb * 1000:.0f} mm, spread {spread_deg:.0f} deg: outer "
@@ -467,7 +530,25 @@ def tailor_rows(Bp: dict, tape: dict, g: dict | None = None, button_mm: float = 
         row("collar_stand_cb", src(16), hs, R["collar_stand_cb"]["value"] * 1000, 0.012 * neck)
         if col is not None and "cbOuter" in col["names"]:
             hf = float(np.linalg.norm(_pt(col, "cbOuter") - _pt(col, "cbLow"))) * 1000
-            row("collar_fall_cb", src(16, 18), hf, R["collar_fall_cb"]["value"] * 1000 * (1 + COLLAR["roll"]), 0.02 * neck)
+            fab = g.get("fabric") if isinstance(g.get("fabric"), str) else None
+            ts = turn_stack(fab)
+            row("collar_fall_cb", src(16, 18), hf, R["collar_fall_cb"]["value"] * 1000 + ts["depth_mm"], 0.02 * neck,
+                why=f"fall piece = the rule's + the turn of cloth {ts['depth_mm']} mm ({ts['source']})")
+            # R18: the fall's outer edge (half) at least the path it lies on: the neckline it is sewn round, offset to
+            # where its edge lands, + pi x the ring it stands out by (turn_stack); at most 15 mm over (a frilled edge)
+            sn = next((s for s in Bp.get("seams") or [] if isinstance(s[0], str) and s[0].startswith("stand:")
+                       and not s[0].endswith(".m") and isinstance(s[1], list)), None)
+            if sn is not None and "endOuter" in col["names"]:
+                hs_ = float(np.linalg.norm(_pt(st, "cbTop") - _pt(st, "cb")))
+                fat = FALL_FOLD["at"]
+                drop = (hf / 1000 - ts["depth_mm"] / 1000 - fat) - (hs_ + fat)
+                need = (fall_path(Bp["pieces"], sn[1], max(drop, 0.0)) * 1000 + ts["length_mm"])
+                out = pattern.length(np.asarray(col["P"], float)[pattern.arc_indices(col, "endOuter>cbOuter")]) * 1000
+                row("collar_fall_outer", src(18), out, need, 15.0, ok=need - 3.0 <= out <= need + 15.0,
+                    why=f"half outer edge vs the neckline offset {drop * 1000:.1f} mm into the body pieces + pi x "
+                        f"{ts['ring_mm']} mm (under-stack {ts['t_under_mm']} + fall {ts['t_fall_mm']}); tol -3 / +15 mm")
+            else:
+                row("collar_fall_outer", src(18), None, None, 0, why="no stand neck seam / collar endOuter to read")
     elif col is not None:
         E = _neck_edge(col)
         sr = sagitta_ratio(E) if E is not None else None

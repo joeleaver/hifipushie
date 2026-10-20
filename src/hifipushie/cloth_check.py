@@ -564,7 +564,13 @@ def collar_draft_two_piece(Bp: dict) -> dict | None:
     st = float(np.linalg.norm(P[s["names"]["cbTop"]] - P[s["names"]["cb"]]))
     se = float(np.linalg.norm(P[s["names"]["cfTop"]] - P[s["names"]["cf"]]))
     fa = float(np.linalg.norm(Q[c["names"]["cbOuter"]] - Q[c["names"]["cbLow"]]))
-    stand, fall = st + fat, fa - fat
+    # the fall's height spent in the turn of cloth (pattern_jacket.turn_stack: the draft's own record, else the default
+    # fabrics) is not seen: the worn fall is the piece less the fold's rise and the turn
+    tm = (((Bp.get("draft") or {}).get("meta") or {}).get("collar_two_piece") or {}).get("turn")
+    if not tm:
+        from . import pattern_jacket
+        tm = pattern_jacket.turn_stack()
+    stand, fall = st + fat, fa - fat - float(tm["depth_mm"]) / 1000
     return {"stand_cb_mm": round(stand * 1000, 1), "stand_end_mm": round((se + fat) * 1000, 1),
             "tapers": bool(se < st), "collar_cb_mm": round((st + fa) * 1000, 1), "fall_cb_mm": round(fall * 1000, 1),
             "fall_minus_stand_mm": round((fall - stand) * 1000, 1), "two_piece": True,
