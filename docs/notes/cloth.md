@@ -7886,3 +7886,827 @@ the pocket flaps.
 - Notch / gorge (coordinator for Joe): notch.py, twist deg / cm along the gorge seam: r15e lapel side p50 8 / 10, max
   26 / 40 (L / R); collar tip off the lapel 12.6 / 3.5 mm; end 25 / 20 deg out of the lapel plane. r16 about the same
   (collar held). Unvalidated measure (no known answer). Crops check/notch.{L,R}_{r15e,r16}.png.
+
+## fit rounds 1-16 STATE pages, archived 2026-10-20 (round 17 housekeeping: one thread page docs/state/dress_garrett_fit.md)
+Each block below is the per-round STATE page verbatim as it stood at main 198b8844, under its fit round heading.
+
+### fit round 1 (archived STATE page fit_round1.md)
+
+# STATE: fit_round1 (Garrett jacket v2 + shirt on the virtual dress form, collar check) -- 2026-10-19. NO SIMS.
+
+STATE: 1, 3, 4 done; 2 PARKED; 5 run (gate FAILs, fit forced for the check); 6 done (collar FAILS); 7 not run.
+NEXT: give the v2 collar's fall its fold line (the gate's flat_pattern FAIL) and re-run $FR1/fit.py + collar.py, then
+the blind review (bin/review --dry, one image per turn). Pass refs (refread/garrett_concept_refs_v2.json) to the gate.
+Files: $FR1 = /mnt/data/hifipushie/dress_garrett/fit_round1/ (run.sh, fr1.py spec, fit.py, collar.py, check/, asm.pkl).
+History: docs/notes/cloth.md "fit round 1".
+
+## Steps
+1. diag turned = stripes over the piece colour: DONE (tests/test_diag_render.py 16/16 pixel checks).
+2. form gravity + contact: PARKED. pattern_form.SETTLE opt-in OFF; tube KAT PASS, cape KAT FAIL (open_settle_cape_on_bar:
+   tent, local / global too slow for big rotations -> needs a method change). Validation record unchanged, form_validated False.
+3. layer clearance rows (cloth_check.layer_clearance_rows): DONE; fr1 ease (jacket chest 0.15 / waist 0.16 / biceps 0.25,
+   shirt bicepsEase 0.10): all 4 PASS. Open tooling: the shirt's chestEase / waistEase don't move its measured chest / waist.
+4. shoulder pad (garment key shoulder_pad, pattern_form.padded_body): DONE, 10 mm; draft allowance not added (open).
+5. gate: shirt FAIL (UNMEASURED: no refs), jacket FAIL (UNMEASURED + flat_pattern: no fold line on the collar fall).
+6. collar ($FR1/collar_measures.json): stand CB 23.5 (book 25); fall stands up, top 71 mm over HPS; stand 15-34 mm off the
+   neck; notch gap 57 mm / 74 deg (J 45); collar end 15 mm off the gorge; shirt collar shows -11 back / -8 sides (want
+   +10-15). Through-under 268 faces (shirt through the upper back).
+
+## Dead ends
+- HANG-style gravity without contact in the solve (780 % stretch); unclamped steps tunnel the form.
+
+### fit round 2 (archived STATE page fit_round2.md)
+
+# STATE: fit_round2 (Garrett jacket v2 + shirt on the virtual dress form, collar fixes) -- 2026-10-19. NO SIMS.
+
+STATE: HANDOVER (budget). Steps 1, 1b, 1c done and committed. The coordinator added 1c (turn of cloth); its parts 3 / 4
+(undercollar, lapel turn allowance) are NOT done. Steps 2-4 (gate PASS -> fit -> collar check -> blind review) NOT done
+on the final pattern.
+NEXT: (a) undercollar: a fall-shaped undercollar drafted a turn smaller (cloth_over.under_draft(uv, turn=pi/2 x t_fall
+~3 mm), bias), sewn to the fall's outer edge, the seam rolling under. Prove it on the form's fold before relying on it.
+(b) lapel turn allowance: the facing ~ a turn (pi/2 x 2 cloth + canvas) smaller past the roll line (Bp folds "lapel
+roll"). (c) Then $FR2/fit.py waive.json (gate with refs) -> collar.py -> one cause at a time (ring hug, collar end to
+gorge, notch on the form, shirt collar show, shirt through the back) -> blind review (bin/review --dry, one image/turn).
+Files: $FR2 = /mnt/data/hifipushie/dress_garrett/fit_round2/ (run.sh runs THIS worktree's code; pass ABSOLUTE paths,
+it cds; fr2.py = fr1 spec + env overrides POINT / FALL_FRONT / STAND_FRONT / FOLD_AT; flat.py, sweep.py, path.py flat
+probes; fit.py <waive.json> gate + form -> asm.pkl, gate.json; collar.py check). History: cloth.md "fit round 2".
+
+## Steps
+1. Fall fold line: DONE. op_collar_two_piece adds fold "collar roll" (roll 10 deg, r 4 mm) 4 mm over the fall's seam
+   (FALL_FOLD). Gate refusal existed (flat_pattern FAIL); test added (C41).
+1b. Two-piece flat readers (cloth_check.collar_draft_two_piece, _notch_flat_two_piece; the rows read UNMEASURED before).
+   R16 now uses practice values (agreed with the coordinator): stand from the roll line = neck/16 held to 25-30, fall = stand + 10.
+   R15 fall end 0.5 x CB (notch gap). Round 1's "stand ~25 at CB" was the stand PIECE (now 24.3); from the roll line 28.3.
+   Tests at necks 405 / 450 / 522 (C42).
+1c. Turn of cloth (C43): pattern_jacket.turn_stack (wool 0.75 + hair canvas 0.5 INFERRED + 6 x shirting 0.25): t_fall
+   2.0, under-stack 3.5, depth 6.6 mm, ring 5.5 -> +17.3 mm outer per half. fall_path = neckline offset by the drop
+   (fall - stand, 10 mm) into back / front: 245.6 -> 264.8 (back +13.4, front +5.8). Spread SOLVED 43 deg (was a fixed
+   13): outer 277 / roll line 236 per half. Gate row collar_fall_outer PASS 283.5 vs 282.0. Garrett flat: stand 28.3, fall
+   38.3 (seen), f-s 10.0, notch 32.6 mm / 62.1 deg, tailor rows 11/11 PASS, flat_pattern PASS.
+2. Gate with refs + waive.json (shirt pockets, jacket vent: not in the front-only concept; no vent drafted): shirt
+   PASS_WAIVED. The jacket run in flight used the 1b pattern (before 1c), so it is superseded.
+3-4: not run on the final pattern. Round-1 numbers stand as the baseline (fit_round1.md).
+
+## Known open
+form_validated() False (settle parked) -> form rows INFO. Shirt chestEase / waistEase don't move its measured chest /
+waist. No back vent (R24 not drafted). Hair canvas thickness inferred, not measured. A spread of 43 deg is big against
+the books' 1-1.5 cm per half: the path measure (flat offset of the neckline + run-on to the outlines) is the suspect.
+Check it on the form (the fall edge's worn length vs its pattern length) before trusting it.
+
+### fit round 3 (archived STATE page fit_round3.md)
+
+# STATE: fit_round3 (Garrett jacket v2 + shirt, round-2 collar on the dress form) -- 2026-10-19. NO SIMS.
+
+STATE: HANDOVER. Steps 0-4 done; renders + blind review: FAIL on all 5 views (my own read agrees).
+NEXT (one cause at a time, re-measure after each): (a) the collar fall does not turn: form fold "collar roll" ends at
+-34 deg (turned_deg NaN for the collar; it needs ~170): find why the fold machinery stops (pattern_form fold rows,
+FALL_FOLD angle 10 / strength 0.6) before touching the draft. (b) No notch reads although notch_gap / angle pass: the
+checklist is incomplete. Add a measured "notch step" item (the outline's step where the collar end meets the lapel
+point, from the reference) before any change. (c) Lapel edges jagged / standing off the chest. (d) Shirt through the
+jacket (365 faces, worse than round 1's 268) and the shirt's front V too deep. Review refs: side / back / top reuse the
+FRONT concept crop (the concept is front-only): the reviewer compared a side view with a front photo. Get honest refs.
+Files: $FR3 = /mnt/data/hifipushie/dress_garrett/fit_round3/ (run.sh = this worktree; fit.py waive.json -> asm.pkl,
+gate.json; collar.py -> collar_measures.json + check/<view>_{ref,clay,diag}.png; sheet.py -> check/<view>.png;
+review.sh -> review_<view>/ + review_<view>.log). History: cloth.md "fit round 3".
+
+## Steps
+0. DONE (C44). Spread 43 deg came from pi x (under-stack + fall) at the outer edge + a constant 10 mm drop. The path
+   measure itself was right (hand: ~22 mm, fold_line 19.2). Now ring_outer = fall/2 + cloth/2, drop tapered u^2:
+   need 277 -> 259, spread 17 deg, outer 265 vs neck seam 246 per half.
+1. DONE (C45). undercollar (fused, bias, 3.1 mm in), op_lapel_turn R27 (facing +3.1 mm past the roll line). Records:
+   fused, so the form surface does not change. R18 rewritten: practice = two-piece UNDERcollar + one-piece top collar.
+2. DONE. Gate with refs + waive.json: shirt PASS_WAIVED, jacket PASS_WAIVED.
+3. DONE. Form fit + collar measures (collar_measures.json):
+   | item | round 1 | round 3 | target |
+   | fall top over HPS (CB) | 71 | 51.8 (stand top 43.8) | ~stand top (fall turned over it) |
+   | stand gap to neck | 15-34 | 6 / 10 / 24 / 38 (CB -> front) | hug over the shirt collar, ~2-5 |
+   | notch gap / angle | 57 / 74 | 26.5 / 61.4 | 20-40 / 60-90 (but no notch reads) |
+   | collar end to gorge | 15 | 14.9 | ~0 |
+   | shirt collar shows (back / side) | -11 / -8 | +7.7 / +6.2 | +10-15 |
+   | shirt faces through the jacket | 268 | 365 | 0 |
+   Shirt's own stand to the neck: 3.5 / 4.1 / 6.3 at back -> side, 21-27 at the front (90-180 deg). Round 2's
+   suspicion holds only at the front (the open shirt V), so it does not explain the jacket stand's gap at the side.
+4. DONE. check/{front,three,side,back,top}.png (ref | clay | diag). bin/review one view per run: FAIL x5. In-stage
+   MAJORs: no notch (all views), lapel edges jagged / fragmented, lapels stand off the chest, the collar is a thick
+   rolled / tall band (not turned), shirt collar leaves oversized and outside the jacket at the front, shirt through
+   the shoulder.
+
+## Known open
+form_validated() False -> form rows INFO. Hair canvas thickness inferred. No back vent (R24). One-piece top collar not
+drafted. The front's canvas is not in ring_outer (< 1 mm of length).
+
+### fit round 4 (archived STATE page fit_round4.md)
+
+# STATE: fit_round4 (Garrett jacket v2 + shirt: the collar fall's turn on the form) -- 2026-10-19. NO SIMS.
+
+STATE: HANDOVER. Steps 1-4 done. Fold cause found + tool fixed (C46); notch step item added (C47), fails round 3 and 4.
+Blind review FAIL (front, three); side / back / top have NO jacket reference, not reviewed. My read: still no notch,
+the collar is a thick roll up the neck, shirt collar oversized and asymmetric, shards at the L lapel edge.
+NEXT (one cause at a time, re-measure after each): (a) NO NOTCH: notch_step L open 0.3 / depth 0, R 9.8 / 7.6 (ref
+open 2-10, depth 10-26): the collar end lies against the lapel point in the front view; find why (pressed seam
+collar end <-> gorge, _lay_pressed / _pressed_cells) before the draft. (b) Stand off the neck 14-35 mm (worse at CB:
+6 -> 14 since the fall lies on it). (c) Shirt through the jacket 365 -> 447. (d) Collar section +-90 deg 86-107: read
+what is under it there before calling it a fault (the collar's front runs down the chest; the az read may be wrong).
+Files: $FR4 = /mnt/data/hifipushie/dress_garrett/fit_round4/ (run.sh = this worktree). harness.py = the jacket's form
+assembly alone from cached inputs.pkl (~3 min; = the gate's numbers): `harness.py <tag> [PF_CONST=json]` -> asm_<tag>.pkl
++ per-phase collar trace. probe5.py (collar section per station), notch.py (notch step), collar.py <asm> (measures +
+renders), refs.py, sheet.py, review.sh. asm_seam.pkl = round 4's result. History: cloth.md "fit round 4".
+
+## Step 1: the fold (cause)
+- "-34 deg" was never the turn: it is the hinge report's REST per row (5 roll rows x 34 = 170). The NaN in
+  turned_deg [171, 167, NaN] IS the collar roll: fold_turned read only the fold's own piece, and the fall's base side
+  is 4 mm (FALL_FOLD at) < HINGE_BAND 6 mm -> no base triangles -> NaN. The turn was never measured.
+- Measured in section (probe5), round 3: CB 161, +-30 151-163, +-60 131-149, +-90 88-112: turned at the back, open at
+  the sides. Trace per phase: turn_flaps 154-169 everywhere; SEAT and LET_GO lose it at the sides.
+- KAT (tests test_two_piece_collar_turns_over_its_stand: stand band + fall strip, roll 4 mm above the seam, neck
+  cylinder): passes 173-177 at every station with the old code -> the hinge is fine; nothing pushes there.
+- Cause: the flap's "lie on your base" (over list: one THICK outside, FLAP_PULL) used only the fold's OWN base (the
+  4 mm strip). The fall had nothing to lie on; where the shoulder / under-layer pushed it, it stood off. Fix
+  (general): BASE_ACROSS_SEAM: a fold whose own base is < BASE_NARROW 12 mm lies on the piece(s) sewn to it. Garrett
+  seat phase 172-179 at -60..60; let_go: fall edges 3-8 mm off the stand (were 15-25). fold_turned reads across the
+  seam (3D), past a roll's arc, in a 5 mm section slab (KAT 174 true -> 165 read; was NaN / 151).
+
+## Table (round 1 | round 3 | round 4 | target)
+| fall top over HPS (CB) | 71 | 51.8 (stand 43.8) | 40.1 (stand 33.3) | ~stand top |
+| collar turn in section CB / 30 / 60 / 90 | - | 161 / 151-163 / 131-149 / 88-112 | 161 / 162-163 / 142-158 / 86-107 | ~170 |
+| fall edge off the stand CB / 60 | - | 15 / 18-25 | 5 / 3-8 | ~2-5 |
+| fold_turned lapels / collar | | 171 / 167 / NaN | 171 / 166 / 142 | 165-180 |
+| notch step L open/depth, R | - | 0.3/0, 12.3/9.6 FAIL | 0.3/0, 9.8/7.6 FAIL | open 2-10, depth 10-26 |
+| notch gap / angle (3D) | 57 / 74 | 26.5 / 61.4 | 41.2 / 92.6 | 20-40 / 60-90 |
+| stand gap to neck CB -> front | 15-34 | 6/10/24/38 | 14/18/25/35 | 2-5 |
+| collar end to gorge | 15 | 14.9 | 14.1 | ~0 |
+| shirt collar shows back / side | -11/-8 | 7.7/6.2 | 19.4/15.8 | 10-15 |
+| shirt faces through jacket | 268 | 365 | 447 | 0 |
+
+## Known open
+form_validated() False. Refs: front = concept (scale-matched crop), three = desk portrait (painted, not scale-matched);
+side / back / top: none. BASE_ACROSS_SEAM is default ON (tests pass); revert = set False.
+
+### fit round 5 (archived STATE page fit_round5.md)
+
+# STATE: fit_round5 (Garrett jacket v2 + shirt: the notch) -- 2026-10-19. NO SIMS.
+
+STATE: HANDOVER. Step 1 found three causes, fixed one in the tool (C48, KAT), which moves nothing on Garrett.
+notch_step still FAILS (L 0/0, R 8.2/6.3). Blind review FAIL front + three (no notch, fat collar tube, shirt collar).
+NEXT (one at a time, re-measure each): (a) L lapel's gorge corner goes THROUGH its own base at relax1 / turn_flaps
+(flapside: 66/67 vertices within 30 mm of cfNeck, med -6.9 mm; R +14) and never recovers (let_go 56/67, -2.5): with no
+shirt under it 10/67 -> the shirt's L collar under the lapel crumples it before the turn. Fix where the shirt meets the
+jacket at the neck (layer order: the shirt collar must sit INSIDE the jacket stand; ring_hug to_shirt -2.5 / -3.8 at
+the back = the jacket stand is inside the shirt). (b) the collar end rotates off the lapel: angle at cfNeck P / C 114 deg
+on the form vs 67 flat (L); C (endOuter) lies INWARD of G (x 83 < 96): the fall's end points at CF, not at the shoulder.
+(c) DESCRIBE gap: the reference notch sits "just below the collarbone" (reviewer, both views); ours is at the neck side
+(lapelPoint 25 mm from cfNeck, ~65 mm below HPS in 3D). Measure notch height on the concept and add a checklist item.
+Files: $FR5 = /mnt/data/hifipushie/dress_garrett/fit_round5/ (run.sh = this worktree; inputs.pkl -> round 4's).
+harness.py <tag> (env NOUNDER=1: no shirt) -> asm_<tag>.pkl + TRACE / NOTCH / FLAP per phase. flat.py (notch_flat),
+wedge.py <asm> <tag> [margin] (front-view piece-ID raster around the notch -> wedge_<side>_<tag>.png), gorge.py,
+column.py, flapside.py, through.py (shirt-through by piece, any round's pickle), info.py, cmp.py (measure tables),
+collar.py (MEASURE_ONLY=1 skips renders), sheet.py, review.sh <view>. Round 5 result: asm_press2.pkl.
+
+## Step 1: the notch, causes in order checked
+- FLAT: fine. notch_flat L/R gap 36.5 mm, angle 66.9 deg (target 20-40 / 60-90). Not the pattern.
+- PRESSED SEAM: never applied: pressed_cells 0. The rule read flap <-> flap; the two-piece collar's STAND (no fold)
+  sits between the lapel's gorge and the fall. Fixed in general (C48, PRESS_UNFOLDED): 290 cells; the lay puts the
+  stand end on the lapel's continuation, the relax undoes it (cfTop y -58 laid -> -77 let_go). Every row within 2 mm.
+- SEATING: front view (wedge_L_r4wide.png): no collar visible below the shoulder line on L; the gorge, stand end and
+  collar end lie BEHIND the front's base (front.L base at uv (80,-112) 22 mm in front of G). Cause (a) above.
+
+## Step 2: the fat roll (measured, not changed)
+Collar section +-90 deg turned 88 / 110 (target ~170): at the neck sides the fall stands half open; stand gap to the
+neck 25 (60-90 deg) / 35 mm (90-120). The ridge is the stand + half-turned fall standing off the neck, ~25-35 mm deep in
+silhouette, vs a stack of ~4 layers x THICK 1.5 = ~6 mm. Same as round 4: no change this round.
+
+## Step 3: shirt through the jacket 265 -> 365 -> 447 (through.py: jacket vertices inside the shirt)
+Growth is all the collar FALL above HPS-5 cm: 88 (r1) -> 208 (r3: 144 + 64 flap) -> 245 (r4) -> 252 (r5). r1: fall
+unturned. r3: the fall's outer edge cut to its on-body need (spread 43 -> 17 deg, C44) pulls it tight round the neck.
+r4: BASE_ACROSS_SEAM draws the fall down onto the stand (C46). Under it at the back sits the shirt collar, OUTSIDE the
+jacket stand (ring_hug to_shirt -2.5 / -3.8 mm at 0-60 deg in every round): the fall is pulled through it = the white
+scallops. Cause is the layer order at the neck, not the fall; not fixed (same root as NEXT a).
+
+## Table (round 1 | round 3 | round 4 | round 5 | target)
+| fall top over HPS (CB) | 71 | 51.8 | 40.1 | 41.1 | ~stand top |
+| collar turn CB / 30 / 60 / 90 | - | 161/151-163/131-149/88-112 | 161/162-163/142-158/86-107 | 163/163-164/143-158/88-110 | ~170 |
+| fold_turned lapels / collar | | 171/167/NaN | 171/166/142 | 171/166/144 | 165-180 |
+| notch step L open/depth, R | - | 0.3/0, 12.3/9.6 | 0.3/0, 9.8/7.6 | 0/0, 8.2/6.3 FAIL | open 2-10, depth 10-26 |
+| notch gap / angle (3D) | 57/74 | 26.5/61.4 | 41.2/92.6 | 39.5/89.3 | 20-40 / 60-90 |
+| notch flat gap / angle | | | | 36.5/66.9 PASS | 20-40 / 60-90 |
+| stand gap to neck CB -> front | 15-34 | 6/10/24/38 | 14/18/25/35 | 13/17/25/35 | 2-5 |
+| collar end to gorge | 15 | 14.9 | 14.1 | 13.8 | ~0 |
+| shirt collar shows back / side | -11/-8 | 7.7/6.2 | 19.4/15.8 | 18.4/15.0 | 10-15 |
+| shirt through jacket (verts) | 265 | 365 | 447 | 454 | 0 |
+| pressed_cells | | | 0 | 290 | >0 |
+
+## Known open
+Renders: $FR5/check/{front,three}.png (ref | clay | diag), {side,back,top}.png (clay | diag; no reference). Review
+FAIL both (review_front.log, review_three.log): no notch, collar tube to jaw height, shirt collar oversized / asymmetric,
+shards at the L lapel edge. form_validated() False. PRESS_UNFOLDED default ON (revert: False).
+
+### fit round 6 (archived STATE page fit_round6.md)
+
+# STATE: fit_round6 (Garrett jacket v2 + shirt: layer order at the neck) -- 2026-10-19. NO SIMS.
+
+STATE: HANDOVER. Layer order at the neck FIXED (it was a stale harness cache, C49): back clean, through 454 -> 119.
+Blind review still FAIL front + three: collar front ends flare off the neck ("cape" / "funnel"), no notch / lapel read,
+lapels ~half the reference width, shirt collar a tall band not a spread collar, collar rides to the jaw (side).
+NEXT (one at a time, measure first): (a) the collar's FRONT half stands off the neck: stand gap 18 / 28 mm at 60-120 deg
+(target 2-5; CB now 3) -> find the phase (add a stand-gap-by-angle line to the harness TRACE); (b) notch targets
+disagree: 3D gap 20-40 vs front-view mouth 2-10 (ours 14 / 13.5-15.8): settle from the concept before tuning;
+(c) DESCRIBE gaps the review names: lapel width (ours ~half), shirt collar spread / points over the jacket, collar
+height on the neck (fall top 45 mm over HPS; shirt shows 4 / 3.4 mm, target 10-15). Queued (not started): notch
+height checklist item; draft every visible part.
+Coordinator decision (round 5's question): PRESS_UNFOLDED stays ON by default (tailoring practice, KAT proves it, no
+chain of faults).
+
+## Step 1: why the shirt collar sat outside the jacket stand -- A STALE CACHE (C49)
+Measured each suspect before changing anything:
+- flat layer clearance, neck row (cloth_check.layer_clearance_rows, clear.py): jacket stand neck edge 491.2 mm over the
+  shirt's 452.8 + 2 pi x 3 -> PASS, margin +19.6 mm. Not the cause.
+- the form's neck-point lift over the under layer (_pins): neck points 0.1-0.3 mm off target. Not the cause.
+- the shirt collar's own size / fit (shirt.py: the shirt alone on the form, current code): fall 3.3-4.1 mm off its own
+  stand at every angle, stand 2.8 / 3.6 / 5.9 mm off the neck at 0-90 deg. Sound at the back. (Its front ends stand
+  15-36 mm off the neck at 90-180 deg: the open neck, not the layering.)
+- THE CAUSE: the harness's inputs.pkl (made in round 4 at 20:21, before C46 BASE_ACROSS_SEAM landed) held a shirt
+  assembled by the old code: its fall 9-17 mm off its stand (shirt.py with BASE_ACROSS_SEAM=false reproduces round 5's
+  shirt numbers exactly: 3.5/4.1/6.3/21.4/23.7/26.7). Rounds 4-5 fitted and measured the jacket over that shirt. The
+  gate path (on_form) builds the shirt fresh, so it never had the fault.
+- Fix: fit_round6/harness.py keys its cache by a hash of pattern_form + cloth + folds source and the overrides
+  (inputs_<hash>.pkl). Known answer: tests/test_pattern_form.py test_nested_collars_keep_their_layer_order (an outer
+  two-piece collar over an inner on a neck cylinder: 0 outer vertices > 0.5 mm inside; inner fall 4.3 mm off its stand).
+  codified.md C49. No pattern or tool change was needed.
+
+## Step 2: table (round 5 = stale shirt | round 6 = fresh; asm_fresh.pkl)
+| item | R5 | R6 | target |
+| fall top over HPS (CB) | 41.1 | 44.9 | ~stand top |
+| collar turn CB / 30 / 60 / 90 | 163/163-164/143-158/88-110 | 176/172-176/169-170/155-158 | ~170 |
+| fold_turned lapels / collar | 171/166/144 | 167/166/152 | 165-180 |
+| notch step L open/depth, R | 0/0, 8.2/6.3 FAIL | 13.5/20.1, 15.8/12.6 (open too wide) | open 2-10, depth 10-26 |
+| notch gap / angle (3D) | 39.5/89.3 | 14.0/4.4 FAIL | 20-40 / 60-90 |
+| P-G-C at the gorge (let_go) | 114 | 29 | 67 (flat) |
+| stand gap to neck CB / 30 / 60 / 90 | 13/17/25/35 | 3.1/6.3/18.4/28.0 | 2-5 |
+| stand to shirt CB / 30 / 60 / 90 | -2.8/-3.7/2.8/10.2 | 0.1/1.1/7.6/13.5 | >= 0 |
+| collar end to gorge | 13.8 | 8.6 | ~0 |
+| shirt collar shows back / side | 18.4/15.0 | 4.0/3.4 FAIL | 10-15 |
+| jacket inside shirt: all | 454 | 119 | 0 |
+|   collar fall / stand | 253 / 62 (3.3 mm deep) | 38 / 14 (0.6 mm) | 0 |
+|   lapel + gorge (front above HPS-5cm) | 63 | 5 | 0 |
+|   body (below HPS-5cm + back yoke) | 76 | 62 | 0 |
+| L gorge flap through its base (let_go) | 56/67 | 0/67 | 0 |
+| pressed_cells | 290 | (on) | >0 |
+
+## Step 3: the collar end's rotation (endrot.py on the harness NOTCH trace)
+Round 5's 114 deg (C inward of G) was the stale shirt too: fresh, P-G-C at let_go is 29 deg, C.x 126 > G.x 116 (the
+end points outward again). Phases: turn_flaps 133 -> seat 22 -> let_go 29: SEAT closes the end onto the lapel point
+(|PC| 24 -> 13 mm). Flat is 67. Not changed this round (the notch targets disagree, NEXT b).
+
+## Step 4: renders + blind review (check/, review_front.log, review_three.log)
+My read before the review: back is clean (no scallops, a thin even shirt line); the fall is turned and lies; but at the
+front the collar ends flare out toward the shoulders as thin wings, no notch, narrow lapels, shirt collar small and
+crumpled at its points, side view collar up to the jaw, a white shirt fleck through the R shoulder. FAIL, agrees with
+the reviewer. front FAIL: collar flares at both shoulders, no notch / lapel, gap jacket collar to shirt collar at the
+sides, shirt points crumpled, shirt band high and tight. three FAIL: no lapel, no notch, L collar a funnel, shirt collar
+a band, sides don't match, lapels half width (diag), holes lower left (OTHER STAGES: body through-count 62).
+
+## Files
+$FR6 = /mnt/data/hifipushie/dress_garrett/fit_round6/ (run.sh = this worktree). harness.py <tag> (code-keyed cache),
+layers.py <asm|shirt pkl> (layer stack by angle x height), shirt.py <tag> [K=V] (the shirt alone), clear.py (flat
+clearance rows), endrot.py <harness log> (P-G-C per phase), collar.py (MEASURE_ONLY=1), cmp.py, through.py (round 5).
+
+### fit round 7 (archived STATE page fit_round7.md)
+
+# STATE: fit_round7 (Garrett jacket v2 + shirt: the collar's front, measured) -- 2026-10-19. NO SIMS.
+
+STATE: HANDOVER. Step 1 done (8 measured DESCRIBE items, all FAIL on R6 where the render fails). Step 2 done: the
+jacket collar's front stand-off is the SHIRT COLLAR under it (no shirt: 5 / 12 mm at 60 / 90 deg vs 18 / 28). Behind it:
+the form never spread the shirt's OPEN collar (points 48 mm apart, concept 146). Fixed in the tool (OPEN_SPREAD, C50,
+KAT) but OPT-IN: the jacket over the spread shirt got worse (19 / 36 mm, through 119 -> 368, torn shirt in the renders).
+Blind review R7 (spread on): front FAIL, three FAIL.
+NEXT: (a) make the jacket collar lie over a spread shirt collar: the shirt's made pieces under the jacket need pressing
+(cloth.pressed keeps them as they lie) or the jacket stand/fall must be fitted with the shirt collar as a soft layer;
+measure stand gap + through per phase with OPEN_SPREAD=true before changing anything. (b) the spread itself is
+asymmetric (points x +59 / -41): band_init stands the shirt collar asymmetrically (points x 69 / -115) before the turn.
+(c) then the worst draft item: lapel_point / notch_inner height and lapel width (not started; trace to the rule).
+Queued, not started: draft every visible part (plackets, flaps, welt lips, cuff plackets, buttons as marks).
+
+## Step 1: DESCRIBE items (m7.py; concept picks in $FR7/ref_notch_zoom.png, 1.125 mm/px, HPS (700,350)/(560,350))
+Notch targets settled: the FRONT VIEW governs (C47, the concept is a front view). notch_mouth_front = the projected
+lapel-point -> collar-end distance (= notch_step mouth_mm), concept 31 mm; notch_step open (gap pixels along the mouth)
+2-10 and depth 10-26 stay. The 3D gap (20-40) is the same tip distance unprojected (>= the mouth): INFO only.
+| item | concept | tol | R6 L/R | R7 (spread) L/R |
+| lapel_point_below_hps | 91 | 79-103 | 103.0/96.4 F | 73.6/93.2 F |
+| notch_inner_below_hps (cfNeck) | 70 | 55-85 | 86.4/78.4 F | 50.7/72.6 F |
+| lapel_width_front (tip to roll row) | 72 | 62-85 | 65.1/59.2 F | 60.6/56.2 F |
+| notch_mouth_front | 31 | 21-41 | 13.5/15.8 F | 32.9/23.7 P |
+| shirt_point_spread | 146 | 126-166 | 48 F | 101 F |
+| shirt_point_below_hps | 93 | 78-108 | 77.1/74.7 F | 90.8/88.7 P |
+| collar_top_side_over_hps | 13 | 3-23 | 31.3/31.5 F | 23.6/30.1 F |
+| collar_front_rise_over_hps | -20 | -60-0 | -15.1/+1.9 F | none/+4.4 F |
+Caveat: lapel width reads 80-90 % of the concept here, the reviewers say "half": the roll-row line may not be the
+visible fold; check with a front-view silhouette read before drafting from it.
+
+## Step 2: the phase (harness STAND trace, median stand gap to the body per 30 deg; 0 = CB)
+| run | band_init 60/90 | seat 60/90 | let_go 60/90 |
+| base (R6) | 7.9/15.6 | 11.3/21.3 | 18.4/28.0 |
+| PRESS_UNFOLDED=false | 8.1/15.8 | 12.6/19.7 | 18.1/26.4 (not it) |
+| NOUNDER (no shirt) | -0.5/7.3 | 1.3/7.3 | 4.9/11.9 (THE SHIRT) |
+| OPEN_SPREAD on | 3.8/14.0 | 6.2/14.0 | 19.4/36.3 |
+The stand rides the fronts' neckline (standlean.py: neck seam 16/20 mm off = stand neck edge). Shirt alone (shirt7.py):
+placement (sim rule spread) points 150 apart -> relax1 98 -> band_init re-stands a ring (194, above HPS) -> turn_flaps
+folds the ends to CF (46) -> let_go 48; its stand 25-36 mm off the neck at 120-180 deg.
+
+## R7 table (asm_sp = spread on | asm_base = R6 repeated, same cache key 5ec837f48cb4)
+| item | R6 | R7 sp | target |
+| fall top over HPS (CB) | 44.9 | 41.1 | ~stand top |
+| stand to neck CB/30/60/90/120 | 3.1/6.3/18.4/28.0 | 4.9/6.8/19.4/36.3/47.9 | 2-5 |
+| stand to shirt same | 0.1/1.1/7.6/13.5 | 0.6/-0.9/3.2/8.9/11.9 | >= 0 |
+| shirt collar shows back/side | 4.0/3.4 | 0.4/-1.2 | 10-15 |
+| fold_turned lapels/collar | 167/166/152 | 168/165/136 | 165-180 |
+| notch_step open/depth L, R | 13.5/20.1, 15.8/12.6 | 32.6/40, 22.4/40 | 2-10 / 10-26 |
+| jacket inside shirt | 122 | 368 | 0 |
+
+## Renders + blind review ($FR7/check, review_front.log, review_three.log): R7 = spread on
+My read first: WORSE than R6. Shirt collar torn through the jacket collar both sides, white flecks through the jacket,
+collar asymmetric, still no notch, lapels narrow, jacket collar still stands up the neck (three view). front FAIL (no
+notch, fragmented coil collar, shirt collar barely there, chest island); three FAIL (popped funnel collar to the jaw,
+no notch, lapels half width, shirt and jacket collars through each other, shirt opening a slot, points folded in).
+
+## Files
+$FR7 = /mnt/data/hifipushie/dress_garrett/fit_round7/ (run.sh = this worktree). harness.py <tag> [K=V] (code-keyed cache,
++ STAND trace; NOUNDER=1 env), m7.py <asm.pkl> (the new items), shirt7.py <tag> [K=V] (shirt alone, traced),
+standlean.py, strain.py, slices.py <asm> <png> (horizontal sections), collar.py (MEASURE_ONLY=1), sheet.py, review.sh.
+
+### fit round 8 (archived STATE page fit_round8.md)
+
+# STATE: fit_round8 (Garrett jacket v2 + shirt: two layers that touch) -- 2026-10-19. NO SIMS.
+
+STATE: HANDOVER. Two layer orders prototyped on the form (pattern_form.layered_fit, assemble(over=), C51, KAT
+test_nested_tubes_inner_pressed_under). outer_first WINS on numbers but NOT over round 6 on through-count: kept OPT-IN,
+OPEN_SPREAD stays opt-in. Blind review (outer_first + spread): front FAIL, three FAIL (shirt collar a crumpled ruffle).
+NEXT: (a) the shirt collar under the jacket gorge: it is an ARAP made piece pushed through the jacket's stacked gorge
+(fall + stand + lapel) -> 1084 collar / stand edges past 30 %; give made pieces under a ceiling a yield (their cells
+bend at the contact) or lay the shirt collar on the jacket's collar stand as its "base" (C46 rule across layers).
+(b) the shirt can't spread because the jacket's V is too narrow: concept shirt point 71 mm off CF lies inside the
+concept's V (roll line ~75 mm off CF there); ours is covered by the lapel (roll row x 33-66 mm), so the spread pins
+under the lapel are dropped and the points stay 103 apart. That is the draft / swing (roll line position), queued item.
+(c) then the draft values (notch / lapel-point height, lapel width) traced to their tailoring rules.
+
+## A vs B (harness8.py, OPEN_SPREAD on except R6; through both ways by region in m8_<tag>.json)
+| run | neck gap CB/30/60/90 | jacket in shirt (collar/fronts) | shirt out of jacket (collar) | shirt pts | shows b/s | roll turn | s |
+| R6 base, no spread | 3.1/6.3/18.4/28.0 | 119 (52/23) | 147 (76) | 48 | 4.0/3.4 | 152 | 24 |
+| R7 base, spread | 4.9/6.8/19.4/36.3 | 368 (139/178) | 442 (334) | 101 | 0.4/-1.2 | 136 | 24 |
+| B outer_first | 2.9/5.3/8.3/14.9 | 252 (90/132) | 139 (101) | 103 | 5.6/3.8 | 141 | 39 |
+| A joint (2 rounds) | 3.5/5.5/9.7/35.3 | 203 (66/85) | 117 (69) | 102 | n/a | 132 | 99 |
+KAT (two tubes, inner r+20 under outer r+10): outer_first through 0, inner max 8.7 < outer 9.9, outer kept 10.0 mm;
+joint through 0 but the outer inflated to 20.1 mm (stretch p99 17.5 %): FAILS. Shirt torn in both on Garrett (p99 57 / 51 %).
+
+## Checklist (m7.py, R8 = outer_first + spread)
+| item | concept | tol | R6 L/R | R7 L/R | R8 L/R |
+| lapel_point_below_hps | 91 | 79-103 | 103.0/96.4 F | 73.6/93.2 F | 106.1/103.1 F |
+| notch_inner_below_hps | 70 | 55-85 | 86.4/78.4 F | 50.7/72.6 F | 87.7/84.5 F |
+| lapel_width_front | 72 | 62-85 | 65.1/59.2 F | 60.6/56.2 F | 67.3/61.8 F |
+| notch_mouth_front | 31 | 21-41 | 13.5/15.8 F | 32.9/23.7 P | 15.0/17.1 F |
+| shirt_point_spread | 146 | 126-166 | 48 F | 101 F | 103 F |
+| shirt_point_below_hps | 93 | 78-108 | 77.1/74.7 F | 90.8/88.7 P | 90.2/87.4 P |
+| collar_top_side_over_hps | 13 | 3-23 | 31.3/31.5 F | 23.6/30.1 F | 27.5/27.0 F |
+| collar_front_rise_over_hps | -20 | -60-0 | -15.1/+1.9 F | none/+4.4 F | -37.7/-44.2 P |
+Lapel width vs the front silhouette (m8.py: z-buffered front view, the L lapel's turned faces, visible width on the
+row of the tip): R6 62, R7 63, R8 62 mm vs the concept's 71 (tip to roll line, horizontal). AGREES with m7 (~85 %): the
+lapel is not half width in plan; the reviewers' "half / missing" is the lapel not READING (no crisp turned edge, a wedge
+that narrows to nothing above the tip, sil_<tag>.png), plus the opening's parallel edges (no V).
+
+## Files
+$FR8 = /mnt/data/hifipushie/dress_garrett/fit_round8/ (run.sh = this worktree): harness8.py <tag> base|joint|outer
+[K=V] (placed inputs cached by code, C49), m8.py (through by region + silhouette), st8.py (shirt strain by piece),
+m7.py, collar.py (renders), sheet.py, review.sh, chain1.sh / chain2.sh, kat2.log. check/{front,three}.png ref | clay |
+diag; {side,back,top}.png clay | diag; review_front.log, review_three.log.
+
+### fit round 9 (archived STATE page fit_round9.md)
+
+# STATE: fit_round9 (Garrett jacket FRONT: opening, roll line, V, buttons) -- 2026-10-19. NO SIMS.
+
+STATE: HANDOVER. Candidate r9h = break_y 0.425 + R13 buttons + worn_open {break 0.064, cfHem 0.096} + WORN_EDGE: every
+front-edge / roll-line / button row PASSES (were all FAIL), but the open edge slid the side seams out: hem 580 mm wide
+in the front view (concept 478, closed R6 437): a NEW silhouette fault. Not made the model default (WORN_EDGE opt-in).
+Blind reviews FAIL wholefront / front / three.
+NEXT: (1) open the fronts WITHOUT the side slide: the front must hang forward off the hips (y), not wrap and slide (x).
+EDGE_FREE 0.08 -> 0.2 changed nothing (r9f); the cause is isometry + seat pull; try holding the side seams (side.*
+x pinned at their closed-fit x) or a stand-off target for the edge (y). (2) The lapel face is a narrow strip: lapel
+outer at 250 mm 86 vs 106, V at 200 209 vs 237; reviewers: "no turned lapel face on the chest" -> draft lapel width at
+the break end / roll. (3) The waist pinch (341-358 vs 401): silhouette, block / suppression. (4) Pockets (queued).
+
+## The concept's front is OPEN (re-read; the brief and the blind reviewer said fastened: DISPUTED)
+Zoom c_break.png: buttons on the wearer's R front (569 / 552 px), the empty buttonholes on the L front edge ~130 mm
+across, shirt + belt continuous between them. refread front_state open / buttons_done 0 (high). The V the eye reads is
+the LAPELS' OUTER EDGES converging to the break; below it the fronts hang open and diverge to the cutaway. If Joe wants
+it fastened, that is a design change (closures state + worn_open removed).
+
+## What was wrong (m9.py, front view)
+- FORM: only ONE vertex (front.L:break) held open (worn_open 64 mm): the roll line beside it relaxed to 34 mm off CF,
+  below the break the free front returned closed (edge 18 mm off CF at 560-600 vs the concept's 74-90).
+- PATTERN: break 27 mm low (flat 0.455 -> top button 426 below HPS vs 399); op_buttons' fixed 90 mm spacing had
+  replaced R13. Overlap R12 20 mm OK; closure open, nothing fastened on the form (fastened(M,"worn_open") = []).
+
+## Checklist (m9.py; tol edges 15, roll 12, V 25, lapel outer 15, break / buttons 15, waist 16, hem 24)
+| item | concept L/R | R6 | R8 | r9old | r9e (WORN_EDGE) | R9 = r9h |
+| edge_below_450/550/650 | 71/66, 78/72, 94/85 | 33,19,17 F | 30,12,9 F | 33,19,17 F | 23,15,11 F | 57/58, 74/75, 86/86 P |
+| opening_half_150/250/350 | 69/70, 64/57, 59/43 | 53,39,34 F | 52,38,33 F | 53,39,34 F | 79 P, 71 F, 66 F | 72/68, 59/57, 51/50 P |
+| v_width_200 | 237 | 179 F | 178 F | 175 F | 225 P | 209 F |
+| lapel_outer_150 / 250 | 127/134, 112/100 | 108, 71 F | 107, 71 F | 108, 71 F | 130 P, 95 F | 124/119 F, 88/84 F |
+| break_below_hps (lapel's lowest) | 386 | 381 P | 388 P | 381 P | 356 F | 362/353 F |
+| button1 / button2 | 399 / 518 | 426 F / 506 F | 429 F / 505 P | 426 F / 519 P | 390 P / 495 F | 404 P / 514 P |
+| waist / hem sweep / length | 401 / 478 / 752 | 341 F / 437 F / 754 P | 344 F / 421 F | 341 F / 437 F | 341 F / (bad read) | 358 F / ~580 F / 758 P |
+(m9's hem_sweep reads 41 on open fronts: the jacket back shows through the opening at CF; rowruns.py: -285..293.)
+Round 8's items on r9h (m7): lapel_point 95/93 P, notch_inner 81/76 P (were F), lapel_width 61/57 F, notch_mouth
+12/6 F, shirt_point_spread 62 F, shirt_point_below 76/75 F, collar_top_side 33/34 F, collar_front_rise +3 F.
+
+## LOOK (check/, blind, one view each): all FAIL
+wholefront: MAJOR "doesn't close / no buttons" (disputed, above), lapels not a turned face on the chest, waist pinch +
+hem flare (peplum), no cutaway quarters, pockets missing; MINOR a jag in both edges at the break. front / three: the
+jacket collar a funnel, no notch, lapels thin strips, shirt collar a band (collar stage: untouched this round).
+
+## Code (this round)
+op_buttons spacing_frac (R13), jacket_ops sets 0.30; cloth_check.big_first (C52) + front_state / buttons_done stage 1;
+test_big_reads_before_details.
+
+## Files
+$FR9 = /mnt/data/hifipushie/dress_garrett/fit_round9/ (run.sh = this worktree): m9.py, fr9.py (BREAK_Y, WORN env),
+harness9.py (code + SPEC keyed cache; flat table first), chain1.sh, asm_{r9old,r9a,r9e,r9h,r9f}.pkl, front_<tag>.png
+label views, cmp_front_r9.png, render9.py, review9.sh, check/{wholefront,front,three}.png (ref | clay | diag),
+review_{wholefront,front,three}.log, c_*.png concept crops with grids.
+r9h: WORN='{"break": 0.064, "cfHem": 0.096}' run.sh harness9.py r9h base WORN_EDGE=true
+
+### fit round 10 (archived STATE page fit_round10.md)
+
+# STATE: fit_round10 (Garrett jacket: silhouette big to small, sleeves, lapel width) -- 2026-10-19. NO SIMS.
+
+STATE: HANDOVER. Candidate r10i = r9h + OPEN_HOLD (seams held at the closed fit + plumb hang, opt-in) + jacket sleeve
+room (biceps_ease 0.3435 -> 0.319 after the cap rule) + lapel width 0.095. Every front-edge / roll / V / lapel-outer /
+button row PASSES; the peplum is gone (side seams at the closed fit's x). Waist 343 F, hem 448 F (r10c 492 P), break
+row 361 F. Blind reviews FAIL wholefront / front / three. OPEN_HOLD NOT made the default (no closed-vs-open A/B review).
+NEXT: (1) the torso is ~35 mm narrow from the armpit to the waist vs the concept (396/395/405 at 350/400/450 vs ours
+361/341/349) and the hem lost 30 mm to r10g's sleeve change: decide chest / waist ease from the concept's row profile
+(draft lever waist_ease: 0.14 -> 0.34 moved the waist only +19 mm: girth goes to depth, CB stands 41-49 mm off);
+(2) lapels don't read as a turned face (reviewers: limp strips, no crisp edge, lumpy folds at the gorge): lapel turn /
+press on the chest, crisp edge; (3) queued: collar funnel + shirt collar, pockets / plackets / buttons as drafted parts.
+
+## Causes
+- Peplum (r9h): WORN_EDGE opened the fronts by the edge only; an isometric front then slides round the body. Fix
+  (C53): pattern_form.open_seam_holds + worn_open_edge's plumb hang (OPEN_HOLD / OPEN_HANG); not on buttoned pieces.
+  Known answer test_open_front_hangs_without_moving_its_side_seams.
+- Waist pinch: the form is faithful (horizontal edges at the waist 1.00); the draft's 14 % waist ease (R8 suit
+  default) makes an hourglass where the concept's torso is straight; but the whole upper torso is also narrow (not only
+  the waist), and girth added at the waist goes into depth. Not fixed: open (NEXT 1).
+- Shirt through the upper arms: the jacket sleeve was drafted from the bare arm (396 mm at the biceps) over a shirt
+  sleeve of 391: no room for a layer. Fix (C54): width >= under + 2 pi (EASE + THICK); pattern_form.sleeve_room
+  check + test_sleeve_over_a_sleeve_has_room; Garrett via fr10 SLEEVE_OVER (the spec: biceps_ease, sourced). Shirt
+  sleeve vertices outside the jacket 36/45 -> 12/12 (all at the armpit join, hidden by the arm).
+- Lapels narrow: op_lapel width 0.072 (checklist 70-85, M&S) vs the concept's front-view outer edge; lever check 0.085
+  -> 125/123, 93/91; 0.095 -> 131/130, 97/97 (P). Sourced from the concept rows (fr10 LAPEL_W).
+
+## Table: docs in /mnt/data/hifipushie/dress_garrett/fit_round10/checklist_r10.md (R10 column); logs m10_chain{2,3,4}.log
+
+## Files
+$FR10 = /mnt/data/hifipushie/dress_garrett/fit_round10/ (run.sh = this worktree): fr10.py (WAIST_EASE, LAPEL_W,
+SLEEVE_OVER), harness10.py, m10.py, silrows.py (torso width by row vs concept), waist.py, thru.py, sleeve.py, sleevew.py,
+chain1-4.sh, asm_r10{a..i}.pkl, render10.py, review10.sh, check/{wholefront,front,three}.png (ref | clay | diag),
+check/{side,back}.png (clay | diag), review_*.log.
+r10i: WORN='{"break": 0.064, "cfHem": 0.096}' SLEEVE_OVER=391 LAPEL_W=0.095 run.sh harness10.py r10i base
+WORN_EDGE=true OPEN_HOLD=true
+
+### fit round 11 (archived STATE page fit_round11.md)
+
+# STATE: fit_round11 (Garrett jacket: Joe's break notch, lapel tops, front crease; then round 10's questions) -- 2026-10-19. NO SIMS.
+
+STATE: HANDOVER. Steps 1 / 1b / 1c done + renders + blind reviews; 2a, 2b, 3 NOT done. Candidate r11d = r10i +
+EDGE_FIELD (C56) + HOLD_NAMED (C57) + HANG_FREE (C58). Gate rows: front_edge_break PASS (1.6/1.4 mm); lapel_on_base
+FAIL (13/12 %, limit 5); front_crease FAIL (dart median 33/21 deg, limit 20). Hem 498 P (448), waist 356 F (401).
+Regression: shirt sleeve through the jacket 8/11 -> 29/32 (HOLD_NAMED frees the armhole; HOLD_SLEEVES opt-in fixes the
+sleeves 18/15 but sends the lapel top back through its base: the rigid upper-front swing fights any hold above the break).
+Blind reviews wholefront / front / three FAIL (lapels read flat, no waist, squared quarters, collar stage).
+NEXT: (1) METHOD (stop-loss on holds): the worn-open swing turns the whole upper front about hps; in a jacket the front
+at the chest barely moves, the LAPEL turns about the roll line and the front below the break hangs. Swing only the flap
+(lapel) about its roll line + the edge below the break; then holds above the break stop fighting (sleeves, lapel top,
+dart). (2) 2a OPEN_HOLD A/B (blind, whole front, r11d vs closed) once (1) lands; (2b) suppression style from the concept
+row profile + bare-body check + shoulder width; (3) lapel press / crisp edge.
+
+## Causes
+- Break notch (Joe): flat clean (step 0); on the form _swing_open meets only the LAST worn-open point (cfHem), the break
+  landed ~50 vs 64; worn_open_edge held the edge at its swung x while the break's pin dragged one vertex 7-9 mm out.
+  Fix: pattern_form.EDGE_FIELD (edge targets carry the points' corrections). Known answer
+  test_open_front_edge_has_no_step_at_the_break. r11a: step 1.6/1.4 mm (r10i 6.9/8.4), break 64.0 both.
+
+- Lapel tops (Joe): the hold's height came from the edge pins (roll line to the neck): shoulder / neck seams held CLOSED
+  under the turned lapel. HOLD_NAMED: through-base 40-120 mm L 129 -> 42, R 125 -> 44 (r11c). KAT
+  test_open_hold_stops_at_the_break_not_the_roll_top. Residual 8-12 % past the hinge: open.
+- Front crease (Joe): the FRONT DART seam, dihedral median 73 deg (r6 closed 8): open edge + held side seams + the
+  panel drawn onto the waist fold the slack at the dart. HANG_FREE (no seat attraction below the break on a worn-open
+  piece): 33 / 21 deg; hem 449 -> 498 P. Residual: open (OPEN_HOLD A/B, 2a).
+
+- Hem 448 -> 498 (2c): the same cause as the dart fin: the open front drawn onto the hips; HANG_FREE.
+- Table: /mnt/data/hifipushie/dress_garrett/fit_round11/checklist_r11.md.
+
+## Files
+$FR11 = /mnt/data/hifipushie/dress_garrett/fit_round11/ (run.sh = this worktree): fr10.py, harness10.py (OUT = fr11),
+brk.py (edge plot), brkm.py (edge_through_break flat + fitted), crops.py (break / lapeltop / panel ref | clay | diag), lapelemb.py, lapelab.py, crease.py, seamcrease.py, creasemap.py,
+render10.py, review10.sh, m10.py, silrows.py. r11a: WORN='{"break": 0.064, "cfHem": 0.096}' SLEEVE_OVER=391
+LAPEL_W=0.095 RUNNER=bin/capped run.sh harness10.py r11a base WORN_EDGE=true OPEN_HOLD=true
+
+### fit round 12 (archived STATE page fit_round12.md)
+
+# STATE: fit_round12 (Garrett jacket: lapel-turn method, then torso / hem corner / lapel read) -- 2026-10-20. NO SIMS.
+
+STATE: HANDOVER. Step 1 stop-loss (method infeasible on an isometric fit, below); 2b done (R8 silhouette style, a
+variant); 2c traced only; 3 not done; 4: R12 table + r12s renders + wholefront blind review FAIL. Candidate stays r11d.
+DESIGN QUESTION FOR JOE (blocks the open-front work): my own read AND the neutral blind reviewer read the concept as
+FASTENED at the waist button (fronts meet at the button ~400-525 below HPS, quarters curve apart below it): round 9
+disputed this as "open". If buttoned, worn_open / holds / ROLL_TURN chase a misread; the fix is a one-button closure +
+R25 cutaway.
+2b: the body is not the cause: bare body straight in width (281 / 278 / 305 at 350 / 425 / 500), concept - body
+115 / 122 / 124, ours 91 / 78 / 91 (r11d). R8 silhouette "straight" (no side take-ins, pattern_jacket STRAIGHT_SIDES,
+KAT test_straight_silhouette_follows_the_body_at_every_size): Garrett r12s waist 356 -> 363 (concept 401), chest row
+372 -> 358, lapel_on_base 13 -> 21 %, side-seam crease 25 -> 37 deg: worse rows, default stays suit. The deficit is a
+uniform ~35 mm of width at every row: the fit puts the ease into depth (back stand-off 33-38 mm), not width.
+Shoulder (shoulderw.py): outline width matches at 75-105 below HPS (480 / 492 vs 481 / 479) but ours is square: 479 at
+45 mm vs the concept's 354 (sloped shoulder / pad; queued).
+2c: R25 (tailoring_principles.md: CF hem dropped ~2 %, cut away from the lower button ~2.5 deg, rounded) is written
+but NOT drafted (no op in pattern_jacket; "Ours: the concept's length"). NEXT: op front_cutaway from R25.
+NEXT: Joe's call on buttoned vs open; then R25 cutaway op, lapel read (3), shoulder slope.
+NEXT ROUND (coordinator: its own round, opt-in, don't start here): WOVEN SHEAR ENERGY in pattern_form's fit.
+- Energy: per triangle, the deformation gradient in the pattern's grain frame (u = weft, v = warp, from M["uv"]):
+  F = [f_u f_v] (3x2). Warp / weft stretch (|f_u| - 1, |f_v| - 1) at FIT_STIFF (stiff, as now); shear
+  gamma = f_u . f_v / (|f_u||f_v|) at SHEAR_STIFF = a small fraction (woven wool: shear rigidity G ~ 0.5-1 gf/cm/deg
+  (Kawabata KES-F) vs tensile, i.e. ~1-5 %); bending unchanged (Bergou).
+- Where it plugs in: assemble's local-global relax. Today the local step fits a rotation per one-ring cell (ARAP on
+  folds / made pieces) or an edge at its rest length along its current direction (FIT isometry, every triangle edge:
+  shear-stiff). New local step for FIT cells: per triangle, project F to the nearest (R x [[1, g], [0, 1]]-family)
+  target with g clamped / penalised by SHEAR_STIFF (ARAP-style "as-rigid-as-possible up to shear"), global step
+  unchanged (the same sparse system, triangle-gradient rows instead of edge rows). Flag WOVEN (opt-in), FIT unchanged.
+- Tests: (1) known answer test_open_front_turns_its_lapel_not_its_chest (xfail now): the lapel tube, chest held
+  (ROLL_TURN + CHEST_HOLD), break 50 mm out by shear, no bulge (chest stand <= 8 mm), lapel on its base, p99 < 5 %;
+  (2) a pure-shear sheet: a square sheared 20 deg costs < 5 % of a 2 % stretch; (3) the two-panel sleeve and every
+  pattern_form KAT unchanged; (4) re-run validation 2 ($PF/v2/val2.py vs frozen_ae V_sim, 16 rows) before any default.
+
+## Step 1 (method), measured (chest.py: chest = front above the break, off the flap, >= 40 mm from the roll line)
+| run | chest drift p90 L/R mm | lapel through base L/R | break step mm | shirt sleeves out L/R | stretch p99 |
+| r12c closed default | 0 / 0 (stand 28/36 p50/p90) | 0 / 0 | 1.7 / 1.7 | 10 / 13 | 9.7 |
+| r11d (R11 candidate) | 62 / 56 | 13 / 12 % | 1.7 / 1.4 | 29 / 32 | 13.7 |
+| r12a ROLL_TURN start | 52 / 54 | 9 / 23 % | 0.7 / 0.5 | 23 / 31 | 10.6 |
+| r12b + HOLD_SLEEVES | 52 / 54 | 22 / 27 % | 0.8 / 0.6 | 18 / 19 | 10.3 |
+| r12d + CHEST_HOLD | (torn) | | | | 73.9 (max 353) |
+Tube KAT: start field alone drift 34 mm (rigid 35); + CHEST_HOLD drift 0, stand 6 mm, lapels 66/90 % through, p99 13 %.
+Cause: an inextensible, shear-stiff front cannot open its break with chest + side held (tube: the arc break -> side
+52 mm shorter than the cloth). C59. Holds NOT retired (nothing replaces them yet).
+
+## Files
+$FR12 = /mnt/data/hifipushie/dress_garrett/fit_round12/ (run.sh = this worktree; job.sh <tag> [overrides] = fit +
+chest + thru; harness10.py CLOSED=1 = no worn-open pins; fr10.py SILHOUETTE=straight). kat/rollkat.py (lapel tube sweep).
+asm_r12{a,b,c,d,s}.pkl; checklist_r12.md; check/ (r12s: wholefront / front / three / side / back, break / lapeltop / panel
+crops; R11 crops in fit_round11/check); review_wholefront.log.
+
+### fit round 13 (archived STATE page fit_round13.md)
+
+# STATE: fit_round13 (Garrett jacket: R25 hem corner, shoulders, torso width) -- 2026-10-20. NO SIMS.
+
+DESIGN FACT (Joe 2026-10-20, settled, do not re-litigate): the concept jacket is NOT buttoned; it is WORN OPEN
+(front_state open, buttons done 0). Recorded in workspace/checklists/garrett_jacket.json (front_state / buttons_done
+"source", reference_facts) and fr13.spec (closures_source). Blind reviews carry "the reference jacket is worn open" in the
+context; the wholefront reviewer STILL read it as fastened (dispute with Joe's fact, never "fix").
+
+STATE: HANDOVER. Steps 1-4 done; candidate r13b (default code: cutaway on, shoulder line). Reviews FAIL x3.
+NEXT: (1) WOVEN-SHEAR CELL ENERGY round (plan: docs/state/fit_round12.md NEXT ROUND). Then, from this round:
+(a) the worn-open cfHem pin on a named corner-top point (C62: the cutaway moved it to the curve; waist 356 -> 335, hem
+sweep 498 -> 443); (b) SHOULDER_SLOPE chord + the jacket's girth / pad allowance over the shirt, then make it default after
+a Tess check (shared tape); (c) torso width split (sides 20-45 off the body vs ~60); lapel read; collar + shirt collar.
+
+## Results (front view; concept | r13a old corner | r13b R25 cutaway | r13c + chord shoulder)
+| item | concept | r13a | r13b | r13c |
+| edge_below 450 / 550 / 650 | 71/66, 78/72, 94/85 | 71, 85, 91 | 66, 73, 77 | 66, 73, 78 |
+| hem corner top / curve-back mm (hemours) | 704/670, 29/35 | 690, 48/36 | 690/680, 30/33 | 730, 39/44 |
+| flat cutaway rows (start / angle / round) | - | FAIL | PASS (-14, 2.5, 100) | PASS |
+| shoulder width 30 / 45 / 60 below HPS | 277/354/424 | 442/478/479 | 442/478/479 | 310/402/464 |
+| shirt off body at the shoulder (x 160-220) | 0 | 13-23 | 10-21 | 3-5 |
+| torso width 350 / 425 / 500 | 396/400/429 | 373/357/396 (r11d) | 364/336/359 | 392/337/375 |
+| waist width / hem sweep | 401 / 478 | 356 / 498 | 335 / 443 | 336 / 447 |
+| shirt outside the jacket (thru) | 0 | 310 | 293 | 503 |
+| break / button1 / button2 | 386 / 399 / 518 | 357 / 394 / 498 | 360 / 397 / 502 | 359 / 395 / 499 |
+Causes: shoulders = tape shoulderSlope line fit (10.9) vs FreeSewing's chord (22.5) [C61]; corner = R25 undrafted [C60];
+torso = girth present (+280 over body), split wrong (sides), not fixed.
+
+## Files
+$FR13 = /mnt/data/hifipushie/dress_garrett/fit_round13/ (run.sh = this worktree; job.sh <tag> [pf / tailor.X overrides];
+harness10.py (key: code incl. tailor, pattern_tailor, pattern_draft + tailor overrides); fr13.py (CUTAWAY=0 = old corner);
+hemtrace.py, hemours.py, shoulderprof.py, shoulderrows.py, girthsplit.py, draftfront.py, flatedge.py; renders.sh,
+review13.sh; asm_r13{a,b,c}.pkl; check/ (r13b views + crops, r13c shoulder / hemcorner crops); review_*.log).
+
+### fit round 14 (archived STATE page fit_round14.md)
+
+# STATE: fit_round14 (WOVEN shear energy in pattern_form's fit; Garrett open front) -- 2026-10-20. NO SIMS.
+
+DESIGN FACT (Joe, settled): Garrett's jacket is WORN OPEN. Reviews carry "the reference jacket is worn open".
+
+STATE: HANDOVER. Steps 1-4 done. WOVEN stays OPT-IN (fails KAT (c) and validation 2); the open-front method
+(ROLL_TURN + CHEST_HOLD + WOVEN, r14b) is TORN on Garrett and fails all three blind reviews: NOT default. Candidate stays r13b.
+NEXT: (1) coordinator: take or drop the hem pin on cutawayTop (r14a: waist 335 -> 373, hem sweep 443 -> 494, but the L
+corner curves back 82 vs the concept's 29 and the front crease sharp_mm 73 -> 181); (2) the open-front fault is NOT shear:
+the front between the held chest and the moved roll line needs WEFT length change (KAT: +-30 % weft across the roll line);
+the next lever is the turn field / hold geometry (where the roll line goes), not the cloth energy; (3) queued items from round 13.
+
+## The energy (pattern_form.WOVEN, opt-in; FIT unchanged when off)
+Per FIT triangle (off fold rows; made pieces stay ARAP; WOVEN_FLAPS: lapel flaps too) F = [f_u f_v] in the piece's GRAIN
+frame (piece["grain"], 90 = warp along y; undercollar 45 = bias). Local step (projective dynamics): target
+(P_s + s P_r) / (1 + s), P_s = unit warp / weft at any angle (stretch-free, sheared), P_r = nearest rotation. Each edge's
+target = mean of its triangles' T e; global step = the same sparse system. Bending unchanged.
+s = SHEAR_STIFF = 0.0111 from KES-F suiting: G 0.75 gf/cm/deg (0.6-0.9), EMT 6.4 % at Fm 500 gf/cm -> G/E 0.0055,
+s/(1+s) = 2G/E. Info rows grain_stretch_pct (stretch ALONG the grain) + shear_deg. WOVEN_SLACK (compression-free) A/B only.
+
+## Step 1 tests (tests/test_pattern_form.py)
+(a) KAT test_woven_shear_costs_its_sourced_share_of_a_stretch PASS (1 %: shear/stretch 0.00550 = G/E on grain 90/45/0;
+    warp/weft 2 % = (1+s) eps^2; a bias piece's frame turns with its grain). The brief's "20 deg < 5 % of 2 %" is xfail:
+    KES-F gives 1.67 x (no source for 5 %).
+(b) test_woven_fit_shears_a_held_sheet_instead_of_stretching PASS (free sheet placed 20 deg sheared: FIT 0.0, WOVEN 12.2 deg).
+(c) test_open_front_turns_its_lapel_not_its_chest STILL XFAIL with WOVEN: chest 0 drift / 6 mm stand OK, break 49, but
+    lapels 26 / 40 % through base (66 / 90 off), turn 143 / 150 (needs 160), grain stretch p99 12.6 %. Cause (kat_diag.py):
+    the base strip along the roll line crumples in the WEFT (+-30 %), between the pressed row and the held chest; not shear.
+(d) WOVEN off: 31 pass, 2 xfail (unchanged). WOVEN on: 3 fail, all on EDGE strain (shear changes diagonal edge lengths):
+    diagonal_fold_170 (edge 11.4 % vs 0.5), two_panel_sleeve (girth/aspect pass, edge p99 22.5 % vs 6), open_front_hangs
+    (side-seam test's stretch 0.144 vs 0.03).
+
+## Step 3 validation 2 (val2.sh, current code; tol in val2.py)
+| row | sim | WOVEN off | WOVEN on |
+| passes | | 12/16 | 9/16 |
+| shoulder / waist / hem sweep | 465/400/460 | +3.2 F/-2.8/+0.5 | -2.0/-6.1 F/-2.8 |
+| sleeve opening / hem edge mm | 108.5/242 | -1.8/-5.1 | -5.5 F/+11.5 F |
+| body length t | 0.428 | -0.003 | -0.031 F |
+| open chest / hips mm | 65/75 | -8/-20.5 F | +1.5/-30.5 F |
+| back standoff / collar CB | 23.1/22.4 | +25 F/+5.5 F | +15 F/+5.4 F |
+| bias shear p50/p90/p99 deg (simshear.py) | 0.0/0.7/4.6 | 0.6/3.0/11.2 | 4.8/14.8/25.4 |
+| fit time (shirt + jacket) | | 22 s | 38 s |
+Gate: WOVEN moves the form FURTHER from the sim -> not default. The sim barely shears; WOVEN lets the seat's attraction
+wrap the cloth by shear (waist / length / sleeve opening shrink).
+
+## Files ($FR14 = /mnt/data/hifipushie/dress_garrett/fit_round14)
+run.sh / job.sh / harness14.py (code-keyed, C49) / fr14.py (worn-open hem pin on cutawayTop); runs1.sh; val2.sh;
+kat_diag.py; simshear.py; pf_tests.py (pytest with WOVEN 0/1); tests_{off,on}.log; val2_r14{off,on}.log.
+
+## Step 4 Garrett ($FR14 meas_r14.log; r14z closed ref; WORN break 64 + cutawayTop 96 for r14*; r13b pinned cfHem 96)
+| item | concept | r13b | r14a hem pin | r14b ROLL+CHEST+WOVEN | r14c ROLL+CHEST |
+| chest drift p90 L/R mm | - | 49 / 54 | 61 / 63 | 23 / 23 | 4 / 4 |
+| lapel through base L/R | 0 | 0.15 / 0.10 | 0.15 / 0.13 | 0.01 / 0.02 | 0.32 / 0.32 |
+| front crease interior max / sharp mm | smooth | 49 / 73 | 73 / 181 | 88 / 498 | 172 / 528 |
+| break below HPS | 386 | 361 | 358 | 276 / 281 | 299 / 297 |
+| sleeves shirt-through L/R | 0 | 23 / 31 | 25 / 30 | 5 / 4 | 13 / 16 |
+| edge stretch p99 / max % | - | 13.5 / 68 | 13.8 / 78 | 82 / 388 | 72 / 351 |
+| grain stretch p99 / max %; tris > 10 % on fronts | - | | 17 / 77; 197 | 174 / 479; 842 | 161 / 361; 1108 |
+| bias shear p50/p90/p99 deg | | | 0.8/3.6/13.6 | 4.6/25.4/55.3 | 1.1/5.5/35.3 |
+| edge below 450 / 550 / 650 | 71/78/94 | 66/73/77 | 80/98/104 | 93/101/122 | 63/96/103 (L) |
+| opening half 350 | - | 64 | 65 | 6 | 11 |
+| corner top / curve-back L | 704 / 29 | 690 / 30 | 680 / 82 | 650 / 47 | 700 / 83 |
+| waist width / hem sweep | 401 / 478 | 335 / 443 | 373 / 494 | 312 / 479 | 317 / 423 |
+| torso width 600 / 700 | 455 / 476 | 453 / 443 | 474 / 483 | 447 / 458 | 421 / 425 |
+| front length | 748 | 748 | 739 | 717 | 748 |
+| fit time (jacket + shirt) | | 37 s | 40 s | 56 s | 34 s |
+r14b: the break rides up 85 mm, the fronts meet at the sternum and flare below (peplum), the fronts tear (grain p99 174 %).
+Renders check/ (r14b): wholefront / front / three / side / back (ref | clay | diag), crops break / lapeltop / panel /
+hemcorner / shoulder per side. Blind reviews (review14.sh, "the reference jacket is worn open"): wholefront FAIL (opening
+meets at the sternum + inverted V, no lapels / break, peplum flare, ragged hem, crumpled edges), front FAIL, three FAIL
+(funnel collar, no lapel / notch, shirt collar a band).
+
+### fit round 15 (archived STATE page fit_round15.md)
+
+# STATE: fit_round15 (Garrett jacket CLOSED at the top button; judged ABOVE the break) -- 2026-10-20. NO SIMS.
+
+DIRECTION (coordinator): closed fit as the base (top button fastened; WOVEN / ROLL_TURN / CHEST_HOLD / OPEN_HOLD /
+WORN_EDGE off). The open hang below the break waits on Joe.
+
+STATE: HANDOVER. Candidate r15e = closed + ROLL_GAP + roll_radius 6 mm + LAPEL_W 0.081. Blind reviews upper_front FAIL,
+upper_three FAIL. New switches pattern_form.ROLL_GAP and cloth.PAD_DRAFT: both opt-in, neither A/B'd on Tess.
+NEXT: (1) coordinator / Joe: closed vs open is NOT the same above the button on this concept. The concept's break sits
+64 mm off CF, ours closed sits -19, so the roll line pivots and the V differs by construction (v_width 200: 237 vs 149).
+Decide whether the upper front is judged against a closed target or waits for the open method. (2) The lapel's outer edge
+has no contrast (edge step 1-4 vs the concept's 3-30): it needs a made lapel (facing + canvas) whose edge carries
+thickness. The render-only 2.2 mm Solidify doesn't read. (3) Gorge / notch ~100 px too low, plus the collar funnel. Both
+are collar work (queued). (4) Shoulder: chord + PAD_DRAFT doesn't pay. Reviewers call the shoulder boxy, with a straight
+vertical armhole seam on the front.
+
+## Files ($FR15 = /mnt/data/hifipushie/dress_garrett/fit_round15)
+run.sh, job.sh (CLOSED=1), harness15.py (code-keyed C49; `cloth.X=` overrides join the key), fr15.py (ROLL_R env),
+meas.sh, edgeprof.py (front-view lapel rows: roll / outer-edge step x, 10-90 width, contrast, face width; ours resampled
+to the concept's 0.88 px/mm), render15.py (upper_front / upper_three / lapel / lapeltop / shoulder per side / side / back;
+RTHICK=1 renders the cloth with thickness), look.sh, review15.sh, meas_*.log, review_upper_{front,three}_r15e.log.
+
+## Table (concept | r13b open | r15z closed | r15e closed candidate)
+| item | concept | r13b | r15z | r15e |
+| named break below HPS | 386 | 386 | 383 | (same draft) |
+| visible lapel bottom below HPS | 386 | 361 | 360 | 326 |
+| opening half 150 / 250 / 350 | 69/64/59 | 75/67/64 | 33/8/0 | 49/18/0 (closed: by construction) |
+| v_width 200 | 237 | 243 | 160 | 149 |
+| lapel face width 120/160/200/220 L (edgeprof) | 68/58/49/44 | - | 88/75/59/51 | 67/58/47/39 |
+| roll step 10-90 width mm (front view) | 3-10 | - | 2-3 | 2-3 (silhouette on the shirt: this measure can't see a roll) |
+| outer edge contrast 120-220 | 3-11 (29-31 at 260-300) | - | 0-3 | 0-4 |
+| chest stand-off p50/p90 | - | 37/56 | 28/36 | ~same |
+| shoulder rows 30/45/60 (r15b; r15c chord; r15d chord+pad) | 277/354/424 | 442/478/479 | 379/456/455 | 386/456/455; 313/376/449; 313/416/450 |
+| sleeves shirt-through L/R (r15b; r15c; r15d) | 0 | 23/31 | 10/11 | 12/10 (r15b 10/9; r15c 34/37; r15d 31/28) |
+| torso width 350 / 425 (front view) | 396 / 400 | 364 / 336 | 374 / 325 | 373 / 325 |
+| side stand-off off the body 350 / 425 | ~57 / 61 | 43 / 20-38 | 47 / 24 | 47 / 24 |
+| back stand-off 425 (sim 16-27) | - | 35 | 38 | 38 |
+
+### fit round 16 (archived STATE page fit_round16.md)
+
+# STATE: fit_round16 (Garrett jacket worn open = closed fit + ONE release sim) -- 2026-10-20
+
+DIRECTION (Joe 2026-10-20): open jacket = the BUTTONED fit on the dress form, then ONE short rented sim from that fit
+that undoes the button and lets the fronts / lapels swing open under gravity. No more gravity substitutes on the form.
+
+STATE: HANDOVER. Path built (cloth_release + MCP release_garment + fit_garment's next step), KAT PASS, ONE rented run
+done (job_k, $0.0355, 47 s GPU, 167 s wall). RESULT: the released fronts barely open: break still ON CF (x -8 / +11,
+concept 64), fronts still overlap at 450, edge off CF at 650 22 / 37 (concept 94 / 85). Chest stays (p50 3 mm). The
+same with the neck unheld (local r16n) and with a 6 s settle (local r16L, <= 2 mm from r16). Blind reviews FAIL x3.
+NEXT: (1) DRAFT: the fronts hang CROSSED OVER when free = a front balance / wrap fault (tailoring agent): too much
+front across CF (lap + the cutaway's cfHem) and / or front too long for the back. Not solver tuning. (2) RELEASE
+METHOD: the sim opens the seams (white lines along armholes / side seams in every review: the runner steps the fit's
+coincident seam ends 1 mm apart, seam gaps mean 1.7 / p95 4.2 mm after 4 sew frames): try zozo stitch_gap 0.0005 or
+sew_frames 12 on a LOCAL run (free, ~2 min) before the next rented one. (3) Pocket flaps sag 16-19 mm and gape (made
+pieces released). (4) Notch / gorge (coordinator, Joe): measured, not fixed (collar stage next): r15e twist on the
+lapel side p50 8-10 / max 26-40 deg/cm, collar tip 12.6 (L) / 3.5 (R) mm off the lapel, end 20-25 deg out of the
+lapel's plane; r16 the same (collar held). Likely cause: the made collar end and the lapel meet at the gorge with
+different planes (the collar end is laid by the made-collar code, the lapel by the fold relax): the seam carries the
+whole turn between them in ~1 cm. Measure unvalidated (no known answer yet).
+
+## Table (concept | r15e form, closed | r16 form + release sim); m10 front view, L/R
+| item | concept | r15e | r16 |
+| break below HPS (visible lapel) | 386 | 326/322 | 325/323 |
+| break point x off CF (named) | 64 | -15/+15 | -8/+11 |
+| opening half 150 / 250 / 350 | 69/64/59 | 49/18/0 | 44/17/0 |
+| v_width 200 | 237 | 149 | 151 |
+| lapel outer 150 / 250 | 127/112 | 110/47 | 108/47 |
+| front edge off CF 450 / 550 / 650 | 71/78/94 | 0/0/6 | 0/6-19/22-37 |
+| waist width / hem sweep | 401 / 478 | 324 / 431 | 320 / 447 |
+| torso width 350 / 425 | 396 / 400 | 374 / 325 | 371 / 321 |
+| side off body 350 / 425 | ~57 / 61 | 47 / 24 | 45 / 22 |
+| sideseam hem x / y | - | 209 / -68 | 228 / -73 |
+| shirt-through (shirt outside jacket, verts) | 0 | 289 | 251 |
+| chest stand-off p50/p90 L | - | 29.5/38 | 27.1/34.6 |
+| stretch p99 (fit) / start over 5 % | - | 9.7 % / 5.2 % of tris | (local strain limit, start_over 0.06) |
+| moved by the sim, front chest 100-300 p50/p90 | - | - | 2.9/6.2 (L), 3.0/4.4 (R) |
+| moved, front hem 650+ p50/p90 | - | - | 19/27 (L), 39/61 (R) |
+| moved, back p50 / sides p50 / flaps p50 | - | - | 6.4 / 10 / 16-19 |
+Lapel face width (edgeprof) not re-read: the opening above the break didn't change (rows 150-250 within 5 mm).
+
+## Files ($FR16 = /mnt/data/hifipushie/dress_garrett/fit_round16)
+g16.py (build|gate; hold=none, zozo=json), submit.py (the rented run), zrun.py (local by hand), pre.py, prediag.py
+(start pairs by piece), mk16.py (asm_<tag> from a job + region moves), still.py, cmp.py, meas16.sh (+ meas_r16.log),
+notch.py, render16.py, review16.sh, katread.py. Jobs: job_k (THE rented run), job_kl (local, 6 s settle), job_n (local,
+neck unheld). asm_r15e / r16 / r16L / r16n. Gate: PASS_WAIVED 51e12aabcedf45c7251a (r15e's pattern, vent waived).
+check/: wholefront, upper_front, upper_three, side, back, lapel / lapeltop / break / hemcorner / notch .L/.R
+(<name>_<tag>.png = ref | clay | diag; side / back clay | diag), tags r15e, r16. Reviews: review_{wholefront,
+upper_front,upper_three}_r16.log.
+
+### dress-garrett (archived STATE page dress_garrett.md, muslin 1, 2026-10-19)
+
+# STATE: dress-garrett -- rewritten 2026-10-19 after "muslin 1" (branch garrett-muslin1). NO SIMS (course change).
+
+## Current best (frozen for export) -- unchanged
+- **/mnt/data/hifipushie/dress_garrett/frozen_ae/** (old pattern; Joe rejected its v8m drape: "completely unacceptable").
+  Nothing approved. Target: workspace/garrett_v20/concept_v8_front_apose.png; readings refread/garrett_concept_refs_v2.json.
+
+## Coordinator rules in force
+- Joe 2026-10-19: "we need to go back to the pattern". NO sim, NO dress-form iteration until the flat pattern is right.
+- Gate on what's proven (codified C29): the dress form is unvalidated, so its readings are INFO; the gate blocks on flat checks.
+- One view per reviewer turn; reference beside every result; walk the seam after every change.
+
+## The corrected pattern (one place)
+- $G/muslin1/patch.py `spec()`: every cf5.py patch with its source (neckline widen 4 / back 15, trued necklines,
+  collar stand 29 / fall 43 / point 15, match (collar = neckline), collar B, shirt collarStandWidth 0.090 /
+  collarWidth 1.30, shirt worn open 30, length_bonus 0.15, lapel 72 / gorge_drop 0.115, sleeve truing, seam_ease).
+- Run: $G/muslin1/run.sh <slot|heavy> <script> <log>. probe.py (flat stage), gate.py (gate), flat.py (sheets + Jaeger).
+
+## Gate (flat first), records pattern_gate/d554d8b36d6a2b4967c9.json (shirt), 09497a2cc1e406f5def1.json (jacket)
+- Shirt FAIL only on `pockets` UNMEASURED (no concept reading for shirt pockets). Seams, truing, flat_pattern PASS.
+- Jacket FAIL on `pockets` (concept flap, op_pocket has no flap) + `vent` UNMEASURED (no reading). PASS: seams, truing,
+  flat_pattern (ease by girth), collar_stand 29 (25-30), collar_fall 14 (6-15), notch flat 29.5 mm / 61.4 deg, and
+  shoulder / waist / sleeve from the validated frozen_ae drape (drape_readings, same block widths).
+- Form items INFO: hem sweep 423 (form FAIL), form_strain p99 36.9 % (form FAIL), worn collar items.
+
+## Flat review vs FreeSewing Jaeger + tailor's rules ($G/muslin1/compare.md; sheets sheet_jacket/shirt/jaeger.png)
+- Jacket FAILs the GATE DOES NOT MEASURE YET (checklist incomplete, gates.md): back neck width 103 (Jaeger 93, rule
+  91-96); back neck rise 36.9 (Jaeger 22.7; the op's back 0.015 vs M&S ~5); waist +25.8 % = boxy (Jaeger +20.1 %),
+  no front dart, suppression 56 vs 66; front edge overlap 12 (rule ~20-25); no flap pockets. MINOR: collar sewn 1:1
+  (M&S eases ~10 mm), front shoulder slope = back (Jaeger 1.5 deg steeper).
+- Shirt: all pass; band 36.6 (brief 38-40: -1.4); cuff -2.3 % declared (placket strips not cut as pieces).
+- Rules marked M are from memory (no book checked); D = a source in cloth.md; B = the brief.
+
+## NEXT (after the coordinator / Joe read the sheets)
+1. Add the flat tailor checks as gate rows (back neck width / rise vs tape, waist suppression, front overlap), then
+   re-draft: neckline back 0.015 -> ~0.005, neck width toward Jaeger's 93, a front (fish-eye) dart, overlap ~22.
+2. Flap pockets (op_pocket flap), a vent reading or a sourced default, shirt pocket reading.
+3. Only then a muslin sim (cloth_job, rented ZOZO; brief: sewn interfaced collar with fold rest, lapel roll rest,
+   jacket open, shirt top button undone). The form KAT (two-piece sleeve lens) stays open before FORM_VALIDATED.
+
+## Dead ends (don't retry)
+- LOOSE_ROUND pressure; length-keeping truing; rigid folds about a non-edge row; changing the block to make the FORM read
+  the concept; pinned "neck cloth" rows on the collar (an n8).
+
+## History (grep only)
+docs/notes/cloth.md "dress-garrett 2026-10-19 muslin 1", "form sleeves", "block proportions", "order + seam lengths".
+
+
+## fit round 17 (2026-10-20, Garrett jacket + shirt; $FR17 = /mnt/data/hifipushie/dress_garrett/fit_round17)
+- fit round 17 step 0 (housekeeping): per-round STATE pages fit_round1..16 + dress_garrett.md archived verbatim above ("fit rounds 1-16 STATE pages, archived"), deleted; one thread page docs/state/dress_garrett_fit.md; CLAUDE.md thread line updated. test_codified PASS.

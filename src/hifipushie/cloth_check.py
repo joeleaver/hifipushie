@@ -506,7 +506,7 @@ def option_sources(g: dict) -> list:
 # ease, notches), truing, the flat pattern stage (ease vs the body by girth, design evidence), the collar draft's
 # stand / fall, the notch read flat. Form readings (placed items, worn items, form strain) are INFO with their reading
 # and "form_status" kept. Set FORM_VALIDATED True only with the form's validation record (a KAT on a real arm segment:
-# docs/state/dress_garrett.md) in the same commit.
+# docs/state/dress_garrett_fit.md) in the same commit.
 FORM_VALIDATED = False  # (a manual override only; the gate reads form_validated(): this OR pattern_form's record)
 
 
