@@ -43,9 +43,14 @@ def _ring(z, r, th):
 
 
 def _torso(n=64):
-    zs = np.r_[np.linspace(0.85, Z_HEM, 6)[:-1], np.linspace(Z_HEM, Z_CHEST, 16)[:-1], np.linspace(Z_CHEST, Z_CAP, 4)]
+    # (the cap's edge rounded over 10 mm: at a sharp 90 deg edge the body's signed distance (pattern_form._Surface)
+    # read the disc and band as 13 mm INSIDE, so cloth_release.clear_body pushed them 4 mm and the start stretched
+    # 18 %: the solver's CCD failed at t = 0 from fit round 16 step 2 on, found in round 20)
+    zs = np.r_[np.linspace(0.85, Z_HEM, 6)[:-1], np.linspace(Z_HEM, Z_CHEST, 16)[:-1],
+               np.linspace(Z_CHEST, Z_CAP - 0.01, 4)[:-1], Z_CAP - 0.01 + 0.01 * np.sin(np.linspace(0, np.pi / 2, 5))]
+    rr = np.r_[np.full(len(zs) - 5, R_CHEST), R_CHEST - 0.01 + 0.01 * np.cos(np.linspace(0, np.pi / 2, 5))]
     th = np.linspace(0, 2 * np.pi, n, endpoint=False)
-    V = [_ring(z, R_CHEST, th) for z in zs]
+    V = [_ring(z, r_, th) for z, r_ in zip(zs, rr)]
     m = len(zs)
     V = np.concatenate(V + [np.array([[0, Y_HEM, zs[0]], [0, 0, Z_CAP]])])
     T = []
@@ -139,7 +144,9 @@ def _case(state="open"):
          "names": ["top", "band", "cone"], "made": [], "sew": np.asarray(sew, np.int64),
          "stitch": np.asarray(stitch, np.int64), "folds": [],
          "closures": [{"name": "front", "state": state, "v": [p for j in btn for p in pairs(vw, j)]}],
-         "nc": nc, "hem_over": vw(0, nc - 1), "hem_mate": vw(0, 2 * ov)}
+         "nc": nc, "hem_over": vw(0, nc - 1), "hem_mate": vw(0, 2 * ov),
+         "points": {"cone:overTop": vw(NW - 1, nc - 1), "cone:overHem": vw(0, nc - 1),
+                    "cone:underTop": vw(NW - 1, 0), "cone:underHem": vw(0, 0)}}
     res = {"mesh": M, "pieces": {"interfaced": [], "pieces": {}}, "fabric": {"name": "wool_coating"},
            "body": _torso(), "gate_keys": {"pattern": None, "body": None, "name": "kat:open_front"}}
     return res, np.asarray(X, float), btn
@@ -225,3 +232,73 @@ def test_weld_seams_closes_contact_gaps_and_locates_real_openings():
     assert np.linalg.norm(W[0] - W[1]) < 1e-12 and abs(W[0, 2] - 0.0004) < 1e-12
     assert inf["welded"] == 1 and len(inf["open"]) == 1 and inf["open"][0]["pieces"] == "a|b"
     assert abs(inf["open"][0]["gap_mm"] - 6.0) < 0.05 and inf["after"]["status"] == "FAIL"
+
+
+def _open_targets(M, X, side, mm):
+    """Arrangement targets for one front edge of the KAT (top -> hem): each vertex turned round the cone's axis at its
+    height, away from CF, by a share of `mm` along the surface that rises smoothly from 0 at the chest (sewn) to 1 at
+    the hem; its standoff from the body kept."""
+    v = cr.pin_vertices(M, f"cone:{side}Top..{side}Hem")
+    P = X[v]
+    s = np.clip((Z_CHEST - P[:, 2]) / (Z_CHEST - Z_HEM), 0, 1)
+    s = s * s * (3 - 2 * s)
+    c = APEX[:2] * (1 - _scale(P[:, 2]))[:, None]  # the cone's axis at each height (the chest centre is the origin)
+    d = P[:, :2] - c
+    r = np.linalg.norm(d, axis=1)
+    a = np.arctan2(d[:, 1], d[:, 0]) + (-1 if side == "over" else 1) * s * (mm / 1000) / r
+    T = P.copy()
+    T[:, :2] = c + r[:, None] * np.c_[np.cos(a), np.sin(a)]
+    return v, T
+
+
+def _opened(M, X0, Y):
+    """How far the two hem corners moved apart round the cone, along its surface (mm, + = away from CF each): the
+    opening the arrangement made (each corner's turn about the cone's axis at its height x its radius, summed)."""
+    out = 0.0
+    for side, sg in (("over", -1), ("under", 1)):
+        v = M["points"][f"cone:{side}Hem"]
+        a = []
+        for P in (X0[v], Y[v]):
+            c = APEX[:2] * (1 - _scale(P[2]))
+            a.append((np.arctan2(P[1] - c[1], P[0] - c[0]), np.linalg.norm(P[:2] - c)))
+        out += sg * (a[1][0] - a[0][0]) * 0.5 * (a[0][1] + a[1][1]) * 1000
+    return float(out)
+
+
+def test_arrange_pins_name_points_and_edges():
+    res, X, _ = _case("closed")
+    M = res["mesh"]
+    v = cr.pin_vertices(M, "cone:overTop..overHem")
+    assert v[0] == M["points"]["cone:overTop"] and v[-1] == M["points"]["cone:overHem"] and len(v) == NW
+    _, T = _open_targets(M, X, "over", 25)
+    cfg, arr, info = cr.arrange_job(res, X, [{"at": "cone:overTop..overHem", "targets": T},
+                                             {"at": "cone:overHem", "by": [0, 0, 1]}], release=("front",))
+    assert len(arr["arrIdx"]) == NW and info["arrange"]["vertices"] == [NW, 0]  # (the hem vertex kept by the first)
+    assert cfg["arrange"]["keep"] is False and cfg["frames"] == cr.ARRANGE_PLACE + cr.ARRANGE_HOLD
+    assert abs(np.linalg.norm(T[-1] - X[v[-1]]) - 0.025) < 0.002 and np.linalg.norm(T[0] - X[v[0]]) < 1e-9
+
+
+@pytest.mark.skipif(os.environ.get("HP_RUN_ZOZO") != "1", reason="runs the ZOZO solver locally (HP_RUN_ZOZO=1)")
+def test_arranged_open_front_stays_open(tmp_path):
+    """KAT (fit round 20): the released open-front tube on the oblique cone, its two front edges placed 25 mm each
+    away from CF at the hem (50 mm apart along the surface) by soft pins over a gravity settle, then let go: the hem
+    opening (over edge to its buttoned mate) near 50 as the pins let go, kept after the free settle (friction on the
+    body holds it), no stretch spike near the pins, settled. Thresholds: see the notes "fit round 20 step 1"."""
+    res, X, _ = _case("open")
+    M = res["mesh"]
+    pins = []
+    for side in ("over", "under"):
+        _, T = _open_targets(M, X, side, 25)
+        pins.append({"name": side, "at": f"cone:{side}Top..{side}Hem", "targets": T})
+    cfg, arr, info = cr.arrange_job(res, X, pins, release=("front",))
+    jd = cr.write(tmp_path / "arr" / "sim", cfg, arr, M["names"], res["gate_keys"])
+    d, _ = cr.run(jd, progress=lambda *_: None, log=lambda *_: None)
+    gap = lambda Y: float(np.linalg.norm(Y[M["hem_over"]] - Y[M["hem_mate"]]) * 1000)  # noqa: E731
+    rep = cr.arranged(M, arr, d, X_ref=arr["X"])
+    out = {"held_gap": gap(d["Vheld"]), "end_gap": gap(d["V"]), "still": float(np.abs(d["V"] - d["Vprev"]).max() * 1000),
+           **rep}
+    print(out)
+    assert abs(out["held_gap"] - 50) < 10, out
+    assert out["end_gap"] >= 40, out
+    assert out["stretch_p99_near"] < 5.0, out
+    assert out["still"] < 0.2, out

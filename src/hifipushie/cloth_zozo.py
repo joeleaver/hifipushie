@@ -99,6 +99,7 @@ class _Pruner(threading.Thread):
         super().__init__(daemon=True)
         self.out_dir, self.snap, self.stop_flag, self.low = out_dir, snap, threading.Event(), None
         self.total, self.last, self.t0, self.said = total, 0, time.time(), 0.0
+        self.keep = set()  # frames kept whatever their age
 
     def prune(self):
         frames = []
@@ -111,7 +112,7 @@ class _Pruner(threading.Thread):
         last = max(k for k, _ in frames)
         self.last = last
         for k, f in frames:
-            if k == 0 or k > last - KEEP_LAST or (self.snap and k % self.snap == 0):
+            if k == 0 or k > last - KEEP_LAST or (self.snap and k % self.snap == 0) or k in self.keep:
                 continue
             f.unlink(missing_ok=True)
 
@@ -592,6 +593,24 @@ def main():
                 cp.unpin(times[pose_st[-1]["name"]][1])
         log(f"zozo: {len(ci)} vertices of made pieces held as constructed and carried with the body"
             + (f"; {int(rel.sum())} of them (flaps) released after the press" if rel.any() else ""))
+    if "arrIdx" in d and len(d["arrIdx"]) and job.get("arrange"):
+        # arranged by hand (cloth_release.arrange): soft pins (pull springs, never hard: contact and the cloth's own
+        # stretch keep acting) on named points / edges, moved from where they start to arrTarget over the first
+        # `place_frames` of the settle, held there to its end, then let go (keep: never, "placed by hand") for the
+        # free settle, whose end gives the springback
+        ar = job["arrange"]
+        ai = np.asarray(d["arrIdx"], np.int64)
+        at = np.asarray(d["arrTarget"], float)
+        t0, t1 = times[ar.get("stage", "settle")]
+        tp = min(t1, t0 + float(ar.get("place_frames", 24)) / fps)
+        apn = g.pin(list(map(int, ai)))
+        if float(ar.get("pull", 0.0)) > 0:
+            apn.pull(float(ar["pull"]))
+        apn.interp("smooth").move_to(at, t0, tp)
+        if not ar.get("keep"):
+            apn.unpin(t1)
+        log(f"zozo: arranged: {len(ai)} vertices pinned (pull {ar.get('pull', 0)}), placed over {tp - t0:.2f} s, "
+            + ("kept" if ar.get("keep") else f"let go at {t1:.2f} s"))
     hang = next((s for s in stages if s.get("hang") or s.get("hanger")), None)
     pins = np.asarray(job.get("pins") or [], np.int64)
     if hang is not None and len(pins):
@@ -744,6 +763,8 @@ def main():
         f"{sew_end:.2f} s, mode {job.get('mode', 'sim')}")
     tt = time.time()
     pruner = _Pruner(app_root / "session" / "output", a.snap, total)
+    if job.get("arrange"):  # (the frame the arrangement's pins let go: Vheld)
+        pruner.keep = {int(round(times[job["arrange"].get("stage", "settle")][1] * fps))}
     pruner.start()
     try:
         sess.start(blocking=True)
@@ -794,6 +815,11 @@ def main():
         if got_f is not None:
             Vf = np.asarray(got_f[0], float)[rows]
             snaps[f"S{f}"] = Vf
+    if job.get("arrange"):  # the arranged state as the pins let go (the springback is measured from it)
+        fh = int(round(times[job["arrange"].get("stage", "settle")][1] * fps))
+        got_h = sess.get.vertex(min(fh, frame))
+        if got_h is not None:
+            snaps["Vheld"] = np.asarray(got_h[0], float)[rows]
     got_p = sess.get.vertex(max(0, frame - 6)) if frame > 6 else None  # cloth.PREV_APART: the "still moving" measure
     if got_p is not None:
         snaps["Vprev"] = np.asarray(got_p[0], float)[rows]

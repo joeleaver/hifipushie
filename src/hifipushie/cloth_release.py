@@ -11,6 +11,14 @@ not make an unbuttoned front swing open and hang: that is gravity with contact, 
    fitted), the seams and the non-closure stitches sewn, the closure(s) named in `release` NOT sewn, the under garment
    (its form fit, pressed back under this one where it comes within `clear` of it) and the body one static collider,
    gravity on, a short settle. Nothing else: no pins, no holds, no solver tuning.
+3. ARRANGE (fit round 20, Joe 2026-10-20: "as a man settles his coat after sitting"): a pose or openness physics alone
+   won't give (a concept's wide-open front) is reached by hand, never by the pattern or the fit. `arrange_job`: the
+   release's job plus SOFT pins (pull springs) on named points / border edges (`pin_vertices`), moved from where they
+   start to their targets over ARRANGE_PLACE frames of the gravity settle, held to its end, then let go for
+   ARRANGE_FREE frames (the free settle). `arranged` reports per pin how near its target it got (held), how far it
+   sprang back once let go, and the stretch near the pins vs the rest. Springback over SPRING_MM: the pins are kept
+   (keep=True) and the result is recorded "placed by hand" (the shape is baked into the asset; no pin ships).
+   MCP arrange_garment.
 
 Schedule (24 fps): SEW_FRAMES with gravity 0 (the fit's seams start closed: the runner steps their ends apart, a few
 frames draw them shut), then SETTLE_FRAMES of gravity (2 s: a jacket front is a ~0.35-0.45 m pendulum, period
@@ -148,7 +156,7 @@ def neck_pieces(Bp: dict, M: dict, made: list) -> list:
 def job(res: dict, X: np.ndarray, g: dict | None = None, under: dict | None = None, body=None,
         release=("front",), hold=("neck",), frames: int = SETTLE_FRAMES, settle_frames: int = SELF_FRAMES,
         sew_frames: int = SEW_FRAMES, clear: float = CLEAR, zozo: dict | None = None,
-        name: str | None = None, pad_base=None) -> tuple[dict, dict, dict]:
+        name: str | None = None, pad_base=None, hold_ring: float = 0.0) -> tuple[dict, dict, dict]:
     """The release sim's (cfg, arrays, info). res: the placed pattern (cloth.build place_only: "mesh", "pieces",
     "fabric", "body", "gate_keys"); X: its fitted state on the form (pattern_form.assemble "V"); g: the garment dict
     (zozo options, strain limit); under: {"V", "F"} the under garment's form fit (or None); body: the collider body
@@ -174,6 +182,14 @@ def job(res: dict, X: np.ndarray, g: dict | None = None, under: dict | None = No
     held_pcs = neck_pieces(Bp, M, made) if hold == ("neck",) else [nm for nm in (hold or ()) if nm in M["names"]]
     carry = np.where(np.isin(pid, [M["names"].index(nm) for nm in held_pcs]))[0]
     info["held"] = held_pcs
+    if hold_ring > 0 and len(carry):
+        # the held pieces' NEIGHBOURS held with them (fit round 20): a stand held as fitted while the shoulder it is
+        # sewn to settles under gravity parts at the seam (Garrett r19: 7-12 mm at HPS). The band of the bodice within
+        # `hold_ring` of the held pieces is held too, so the seam has both sides held and the give is inside one cloth
+        ring = np.where(~np.isin(np.arange(len(X)), carry) & (cKDTree(X[carry]).query(X)[0] < hold_ring))[0]
+        carry = np.union1d(carry, ring)
+        info["held_ring"] = {"mm": round(hold_ring * 1000, 1), "vertices": int(len(ring)),
+                             "pieces": sorted({M["names"][k] for k in pid[ring]})}
     free = np.ones(len(X), bool)
     free[carry] = False
     if pad_base is not None:
@@ -305,8 +321,10 @@ def moved(M: dict, X0: np.ndarray, X1: np.ndarray) -> dict:
     return out
 
 
-def from_form(model: str, garment: str, spec: dict | None = None, release=("front",), log=None) -> dict:
-    """A model's garment fitted CLOSED on the form (pattern_form.on_form, worn_open off) and its release job.
+def from_form(model: str, garment: str, spec: dict | None = None, release=("front",), log=None,
+              pins: list | None = None, arrange: dict | None = None, hold_ring: float = 0.0) -> dict:
+    """A model's garment fitted CLOSED on the form (pattern_form.on_form, worn_open off) and its release job (with
+    `pins`: released and arranged in one sim, arrange_job; `arrange`: its frames / pull / keep).
     Returns {"res" (on_form's result), "cfg", "arrays", "info", "gate"}."""
     import json as _json
     from . import pattern_form, store
@@ -317,5 +335,151 @@ def from_form(model: str, garment: str, spec: dict | None = None, release=("fron
     und = res.get("form_under")
     under = {"V": und["A"], "F": und["mesh"]["F"]} if und is not None else None
     body = pattern_form.padded_body(res["body"], g.get("shoulder_pad")) if g.get("shoulder_pad") else res["body"]
-    cfg, arrays, info = job(res, res["A"], g, under=under, body=body, release=release, name=f"{model}:{garment}")
+    pad_base = res["body"] if g.get("shoulder_pad") else None
+    if pins:  # released and arranged in one sim (arrange_job)
+        cfg, arrays, info = arrange_job(res, res["A"], pins, g, under=under, body=body, release=release,
+                                        name=f"{model}:{garment}", pad_base=pad_base, hold_ring=hold_ring,
+                                        **(arrange or {}))
+    else:
+        cfg, arrays, info = job(res, res["A"], g, under=under, body=body, release=release, name=f"{model}:{garment}",
+                                pad_base=pad_base, hold_ring=hold_ring)
     return {"res": res, "cfg": cfg, "arrays": arrays, "info": info, "gate": res.get("gate_keys")}
+
+
+ARRANGE_PLACE = 24  # frames (1 s) the pins take to their targets, with gravity on
+ARRANGE_HOLD = 24  # frames held there (the cloth and the shirt settle round the placed points; friction takes hold)
+ARRANGE_FREE = 24  # frames after the pins let go: the springback
+ARRANGE_PULL = 1.0  # the soft pins' pull strength (ZOZO pin pull: a spring to the moving target, contact still acts)
+SPRING_MM = 10.0  # a pin that springs back further than this once let go: kept, the result "placed by hand"
+
+
+def pin_vertices(M: dict, ref: str) -> np.ndarray:
+    """The vertices a pin names: "piece:point" (M["points"]) -> that vertex; "piece:a..b" -> the piece's BORDER from
+    point a to point b along its boundary edges, the shorter way round (a front edge from the break to the hem)."""
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import dijkstra
+    P = M.get("points") or {}
+    if ".." not in ref:
+        if ref not in P:
+            raise KeyError(f"no point {ref!r} (points like {', '.join(list(P)[:6])} ...)")
+        return np.array([int(P[ref])], np.int64)
+    pc, ab = ref.split(":", 1)
+    a, b = (f"{pc}:{s}" for s in ab.split(".."))
+    for q in (a, b):
+        if q not in P:
+            raise KeyError(f"no point {q!r}")
+    F = np.asarray(M["F"])
+    pid = np.asarray(M["piece"])
+    k = M["names"].index(pc)
+    Fk = F[(pid[F] == k).all(1)]
+    E = np.sort(np.r_[Fk[:, [0, 1]], Fk[:, [1, 2]], Fk[:, [2, 0]]], axis=1)
+    u, c = np.unique(E, axis=0, return_counts=True)
+    B = u[c == 1]  # the piece's boundary edges
+    uv = np.asarray(M["uv"], float)
+    w = np.linalg.norm(uv[B[:, 0]] - uv[B[:, 1]], axis=1) + 1e-9
+    n = len(uv)
+    G = coo_matrix((np.r_[w, w], (np.r_[B[:, 0], B[:, 1]], np.r_[B[:, 1], B[:, 0]])), shape=(n, n)).tocsr()
+    ia, ib = int(P[a]), int(P[b])
+    dist, pred = dijkstra(G, indices=ia, return_predecessors=True)
+    if not np.isfinite(dist[ib]):
+        raise ValueError(f"{a} and {b} are not joined by {pc}'s border")
+    path = [ib]
+    while path[-1] != ia:
+        path.append(int(pred[path[-1]]))
+    return np.asarray(path[::-1], np.int64)
+
+
+def arrange_targets(M: dict, X: np.ndarray, pins: list) -> tuple[np.ndarray, np.ndarray, np.ndarray, list]:
+    """(idx, target, group, names) from pin specs: {"name"?, "at": "piece:point" | "piece:a..b", and one of "to":
+    [x, y, z] (a point; an edge: where its first vertex goes, the rest moved with it) | "by": [dx, dy, dz] (every
+    vertex; with "by_end" an edge's shift blends from "by" at a to "by_end" at b) | "targets": [[x, y, z] ...] (one
+    per vertex)}. A vertex named by two pins keeps the first."""
+    X = np.asarray(X, float)
+    idx, tgt, grp, names, seen = [], [], [], [], set()
+    for k, p in enumerate(pins):
+        v = pin_vertices(M, p["at"])
+        if "targets" in p:
+            T = np.asarray(p["targets"], float).reshape(-1, 3)
+            if len(T) != len(v):
+                raise ValueError(f"pin {p['at']}: {len(T)} targets for {len(v)} vertices")
+        elif "to" in p:
+            T = X[v] + (np.asarray(p["to"], float) - X[v[0]])
+        else:
+            d0 = np.asarray(p.get("by", (0, 0, 0)), float)
+            d1 = np.asarray(p.get("by_end", d0), float)
+            s = np.linspace(0, 1, len(v))[:, None] if len(v) > 1 else np.zeros((1, 1))
+            T = X[v] + d0 + (d1 - d0) * s
+        new = np.array([int(i) not in seen for i in v])
+        seen.update(map(int, v))
+        idx.append(v[new])
+        tgt.append(T[new])
+        grp.append(np.full(int(new.sum()), k))
+        names.append(p.get("name") or p["at"])
+    return np.concatenate(idx), np.concatenate(tgt), np.concatenate(grp), names
+
+
+def arrange_job(res: dict, X: np.ndarray, pins: list, g: dict | None = None, under: dict | None = None, body=None,
+                release=("front",), hold=("neck",), place_frames: int = ARRANGE_PLACE, hold_frames: int = ARRANGE_HOLD,
+                free_frames: int = ARRANGE_FREE, pull: float = ARRANGE_PULL, keep: bool = False,
+                zozo: dict | None = None, name: str | None = None, pad_base=None, hold_ring: float = 0.0,
+                sew_frames: int = SEW_FRAMES) -> tuple[dict, dict, dict]:
+    """The release job (`job`; X the closed fit: released and arranged in one sim, or an earlier release's result)
+    with soft pins placing `pins` (arrange_targets' specs) during the gravity settle: place_frames to the targets,
+    held to the settle's end (+ hold_frames), let go (unless keep) for free_frames. Held neck pieces are never pinned
+    (they are held already)."""
+    cfg, arrays, info = job(res, X, g, under=under, body=body, release=release, hold=hold,
+                            frames=place_frames + hold_frames, settle_frames=free_frames, sew_frames=sew_frames,
+                            zozo=zozo, name=name, pad_base=pad_base, hold_ring=hold_ring)
+    idx, tgt, grp, names = arrange_targets(res["mesh"], arrays["X"], pins)
+    if "carryIdx" in arrays:
+        ok = ~np.isin(idx, arrays["carryIdx"])
+        idx, tgt, grp = idx[ok], tgt[ok], grp[ok]
+    arrays.update(arrIdx=idx.astype(np.int64), arrTarget=tgt, arrGroup=grp.astype(np.int64))
+    cfg["arrange"] = {"stage": "settle", "place_frames": int(place_frames), "pull": float(pull), "keep": bool(keep),
+                      "pins": names}
+    info["arrange"] = {"pins": names, "vertices": [int((grp == k).sum()) for k in range(len(names))],
+                       "move_mm": [round(float(np.linalg.norm(tgt[grp == k] - arrays["X"][idx[grp == k]], axis=1).max()
+                                               * 1000), 1) if (grp == k).any() else 0.0 for k in range(len(names))],
+                       "keep": bool(keep), "pull": float(pull)}
+    return cfg, arrays, info
+
+
+def _stretch(M: dict, X: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """(edges, per-edge strain against the flat pattern's uv)."""
+    F = np.asarray(M["F"])
+    E = np.unique(np.sort(np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]], axis=1), axis=0)
+    uv = np.asarray(M["uv"], float)
+    L0 = np.linalg.norm(uv[E[:, 0]] - uv[E[:, 1]], axis=1)
+    return E, np.abs(np.linalg.norm(X[E[:, 0]] - X[E[:, 1]], axis=1) / (L0 + 1e-12) - 1)
+
+
+def arranged(M: dict, arrays: dict, out: dict, keep: bool = False, X_ref: np.ndarray | None = None,
+             near: float = 0.03) -> dict:
+    """The arrangement's report: per pin (mm) "held_max" = target to where it stood as the pins let go (Vheld: a
+    pull is a spring, contact and the cloth resist), "springback" = Vheld to the end (0 when kept), "off_max" =
+    target to the end; stretch p99 / max (%) of edges within `near` of a pinned vertex vs the rest (a pin spike reads
+    near >> rest), and X_ref's p99 (the start); "status": "held by friction" | "springs back" (over SPRING_MM: rerun
+    with keep=True) | "placed by hand" (kept)."""
+    V = np.asarray(out["V"], float)
+    H = np.asarray(out.get("Vheld", V), float)
+    idx, tgt, grp = np.asarray(arrays["arrIdx"]), np.asarray(arrays["arrTarget"], float), np.asarray(arrays["arrGroup"])
+    pins = {}
+    for k in np.unique(grp):
+        s = grp == k
+        held = np.linalg.norm(H[idx[s]] - tgt[s], axis=1) * 1000
+        sb = np.linalg.norm(V[idx[s]] - H[idx[s]], axis=1) * 1000
+        off = np.linalg.norm(V[idx[s]] - tgt[s], axis=1) * 1000
+        pins[int(k)] = {"n": int(s.sum()), "held_max": round(float(held.max()), 1),
+                        "springback_p50": round(float(np.median(sb)), 1), "springback_max": round(float(sb.max()), 1),
+                        "off_max": round(float(off.max()), 1)}
+    E, st = _stretch(M, V)
+    nearv = cKDTree(V[idx]).query(V)[0] < near
+    ne = nearv[E].any(1)
+    rep = {"pins": pins, "stretch_p99_near": round(float(np.percentile(st[ne], 99) * 100), 2) if ne.any() else None,
+           "stretch_max_near": round(float(st[ne].max() * 100), 2) if ne.any() else None,
+           "stretch_p99_rest": round(float(np.percentile(st[~ne], 99) * 100), 2)}
+    if X_ref is not None:
+        rep["stretch_p99_start"] = round(float(np.percentile(_stretch(M, np.asarray(X_ref, float))[1], 99) * 100), 2)
+    worst = max((p["springback_max"] for p in pins.values()), default=0.0)
+    rep["status"] = "placed by hand" if keep else ("springs back" if worst > SPRING_MM else "held by friction")
+    return rep
