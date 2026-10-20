@@ -304,6 +304,140 @@ def _body_surface(body):
     return _Surface(V, outward(V, np.asarray(body.T)))
 
 
+# BRIDGE (fit round 23, 2026-10-20; Joe on r22: "that jacket looks really tight around his middle, that's not how jackets
+# work"). A hung outer garment of stiff cloth BRIDGES the body's concavities: it hangs from the convex points (chest,
+# shoulder blades, seat) and runs straight across the hollows (small of the back, waist sides) and plumb below the seat,
+# within its own ease. The form drew every vertex onto an offset of the BODY, so the jacket followed the hollows: Garrett
+# r22a / r22b, side seam 31-46 mm and back (45 deg) 24-31 mm INSIDE the column's straight edge at the waist while 9-30 mm
+# off the body (fit_round23/columns.py). The seat attraction's target is now the body's offset with its concavities
+# filled along the hanging direction, by `bridge` of the way: per azimuth column round the torso (BRIDGE_AZ bins x
+# BRIDGE_DZ), the column's upper concave hull in z (a straight edge laid from convex point to convex point) and plumb
+# below its lowest support (the seat), between the garment's hem and the armpit. Only the attraction: the body stays the
+# hard obstacle and nothing pushes the cloth out past what its lengths allow (the ease decides how far it bridges).
+# `bridge` from the fabric's bending length (Peirce cantilever, the KB's bending_length_mm): 0 at or below
+# BRIDGE_SOFT_MM (the KB's "soft" drape level, cloth_reference.m_drape_level: shirting 10-14 mm follows the body), 1 at
+# BRIDGE_CRISP_MM ("crisp": a coating, a canvassed front), linear between (wool suiting 14-18: 0.67). KAT:
+# tests/test_pattern_form.py test_bridge_hourglass_tube.
+BRIDGE = False  # OPT-IN (fit round 23: r23c vs r22a blind side A/B chose OLD: the seat swelled 413 -> 433 wide, the hem still curls)
+BRIDGE_SOFT_MM = 12.0
+BRIDGE_CRISP_MM = 18.0
+BRIDGE_AZ = 72
+BRIDGE_DZ = 0.01
+BRIDGE_HANG = True  # (fit round 23 lever 2): on the torso band the pull-in onto the filled surface x (1 - bridge) (r23b vs r23a: waist width 305 -> 319, girth +99 -> +104 of the draft +110)
+BRIDGE_SOURCE = ("a hung outer garment bridges the body's hollows (tailoring: a coat hangs from the shoulders, chest, "
+                 "blades and seat; its stiffness, the fabric's bending length (Peirce 1930, BS 3356 cantilever), decides "
+                 "how far it spans); drape levels from the KB (soft < 12 mm, crisp > 18 mm bending length)")
+
+
+def bridge_fraction(g: dict | None) -> float:
+    """How far a garment's cloth bridges the body's hollows on the form (0 follows, 1 the full straight edge): from its
+    KB fabric's bending length (BRIDGE_SOFT_MM .. BRIDGE_CRISP_MM). 0 without fabric data."""
+    if not g or not BRIDGE:
+        return 0.0
+    try:
+        from . import cloth, cloth_reference
+        fab = cloth.fabric(g)
+        e = cloth_reference._fabric_entry(fab.get("kb") or fab.get("name"))
+        b = float(np.mean(e["bending_length_mm"]))
+    except Exception:
+        return 0.0
+    return float(np.clip((b - BRIDGE_SOFT_MM) / (BRIDGE_CRISP_MM - BRIDGE_SOFT_MM), 0.0, 1.0))
+
+
+class _Bridged:
+    """The body's torso with its hollows filled along z (BRIDGE): signed(X) -> (d, n) of the filled surface, d = +inf off
+    the torso band [z_lo, z_hi]. Polar grid round the vertical axis through c."""
+
+    def __init__(self, V, frac, z_lo, z_hi, torso_x, c=None):
+        V = np.asarray(V, float)
+        m = (V[:, 2] > z_lo - 0.05) & (V[:, 2] < z_hi + 0.01) & (np.abs(V[:, 0]) < torso_x)
+        P = V[m]
+        if c is None:
+            zm = 0.5 * (z_lo + z_hi)
+            s = P[np.abs(P[:, 2] - zm) < 0.02]
+            c = 0.5 * (s[:, :2].min(0) + s[:, :2].max(0)) if len(s) else P[:, :2].mean(0)
+        self.c = np.asarray(c, float)
+        self.z_lo, self.z_hi = float(z_lo), float(z_hi)
+        self.zg = np.arange(z_lo - 0.03, z_hi + 0.0001, BRIDGE_DZ)
+        na, nz = BRIDGE_AZ, len(self.zg)
+        d = P[:, :2] - self.c
+        r = np.linalg.norm(d, axis=1)
+        ia = (np.floor((np.arctan2(d[:, 1], d[:, 0]) + np.pi) / (2 * np.pi) * na).astype(int)) % na
+        iz = np.clip(np.round((P[:, 2] - self.zg[0]) / BRIDGE_DZ).astype(int), -1, nz)
+        ok = (iz >= 0) & (iz < nz)
+        R = np.full((na, nz), -1.0)
+        np.maximum.at(R, (ia[ok], iz[ok]), r[ok])
+        for a in range(na):  # empty bins: interpolated along z
+            k = R[a] > 0
+            if k.sum() >= 2:
+                R[a] = np.interp(self.zg, self.zg[k], R[a, k])
+        for j in range(nz):  # columns with nothing: from the azimuth neighbours (periodic)
+            k = R[:, j] > 0
+            if 2 <= k.sum() < na:
+                ax = np.arange(na)
+                R[:, j] = np.interp(ax, ax[k], R[k, j], period=na)
+        E = R.copy()
+        for a in range(na):
+            E[a] = self._hull(self.zg, R[a])
+        self.R, self.E = R, R + float(frac) * (E - R)
+        self.dEdz = np.gradient(self.E, BRIDGE_DZ, axis=1)
+        self.frac = float(frac)
+
+    @staticmethod
+    def _hull(z, r):
+        """upper concave hull of r(z), plumb below its lowest support (the hull vertex above the bottom end)."""
+        H = []
+        for p in zip(z, r):
+            while len(H) >= 2 and ((H[-1][0] - H[-2][0]) * (p[1] - H[-2][1]) - (H[-1][1] - H[-2][1]) * (p[0] - H[-2][0])) >= 0:
+                H.pop()
+            H.append(p)
+        hz, hr = np.array(H).T
+        out = np.interp(z, hz, hr)
+        if len(H) >= 2 and hr[1] >= hr[0]:  # plumb below the lowest support: the cloth hangs from it, not along a
+            # line in to the hem (the hull's first vertex is the bottom end; the next one up is the support)
+            out = np.where(z < hz[1], np.maximum(out, hr[1]), out)
+        return np.maximum(out, r)
+
+    def signed(self, X):
+        X = np.asarray(X, float)
+        d = X[:, :2] - self.c
+        r = np.linalg.norm(d, axis=1)
+        th = np.arctan2(d[:, 1], d[:, 0])
+        fa = (th + np.pi) / (2 * np.pi) * BRIDGE_AZ - 0.5
+        a0 = np.floor(fa).astype(int)
+        wa = fa - a0
+        fz = np.clip((X[:, 2] - self.zg[0]) / BRIDGE_DZ, 0, len(self.zg) - 1.0001)
+        z0 = np.floor(fz).astype(int)
+        wz = fz - z0
+        a0m, a1m = a0 % BRIDGE_AZ, (a0 + 1) % BRIDGE_AZ
+
+        def bil(G):
+            return ((1 - wa) * ((1 - wz) * G[a0m, z0] + wz * G[a0m, z0 + 1]) +
+                    wa * ((1 - wz) * G[a1m, z0] + wz * G[a1m, z0 + 1]))
+
+        e, g = bil(self.E), bil(self.dEdz)
+        er = np.c_[d / np.maximum(r, 1e-9)[:, None], np.zeros(len(X))]
+        n = er - g[:, None] * np.array([0.0, 0.0, 1.0])
+        ln = np.linalg.norm(n, axis=1)
+        n /= ln[:, None]
+        out = (r - e) / ln
+        band = (X[:, 2] >= self.z_lo) & (X[:, 2] <= self.z_hi) & (r > 1e-3)
+        return np.where(band, out, np.inf), n
+
+
+def bridged_surface(body, frac: float, z_lo: float):
+    """_Bridged for a body (cloth.Body with at["armpit_z"], at["shoulder.L"]) from z_lo (the garment's hem) to the
+    armpit; None when frac is 0 or the landmarks are missing."""
+    at = getattr(body, "at", None) or {}
+    if frac <= 0 or "armpit_z" not in at:
+        return None
+    zh = float(np.asarray(at["armpit_z"]).reshape(-1)[-1])
+    tx = abs(float(np.asarray(at["shoulder.L"]).reshape(-1)[0])) if "shoulder.L" in at else 0.2
+    if zh <= z_lo + 0.05:
+        return None
+    return _Bridged(np.asarray(body.V, float), frac, z_lo, zh, tx)
+
+
 # ------------------------------------------------------------------ fold rests
 
 def _fold_cells(M: dict, face_sign: dict):
@@ -1777,7 +1911,8 @@ def covered(osurf, X, bsurf=None):
 
 def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = EASE, fasten="default",
              iters: int = 120, X0: np.ndarray | None = None, attract: float = 0.5, log=None, pressed: bool = True,
-             worn_open: dict | None = None, shoulder_pad: dict | None = None, over: dict | None = None) -> dict:
+             worn_open: dict | None = None, shoulder_pad: dict | None = None, over: dict | None = None,
+             bridge: float = 0.0) -> dict:
     """The garment assembled on the form (see the module docstring). pattern: a placed garment (cloth.build
     place_only result: "mesh", "X0", "pieces") or {"mesh": M, "X0": start, "pieces": B (optional)}. body: a
     cloth.Body (V, T, at) or None (a free sheet: the fold tests). under: {"V", "F"} of the garment under (the shirt
@@ -1785,7 +1920,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
     M = pattern["mesh"]
     B = pattern.get("pieces")
     closed_args = dict(body=body, under=under, ease=ease, fasten=fasten, iters=iters, X0=X0, attract=attract,
-                       pressed=pressed, shoulder_pad=shoulder_pad, over=over)  # (OPEN_HOLD: the same garment closed)
+                       pressed=pressed, shoulder_pad=shoulder_pad, over=over, bridge=bridge)  # (OPEN_HOLD: the same garment closed)
     X = np.asarray(X0 if X0 is not None else pattern["X0"], float).copy()
     Xplaced = X.copy()  # (the placement: a fold its wrap turned keeps the sense the wrap gave it)
     F = np.asarray(M["F"])
@@ -1796,6 +1931,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
     if shoulder_pad and body is not None:  # (the pad is on the form, under this garment: see padded_body)
         body = padded_body(body, shoulder_pad)
     bsurf = _body_surface(body) if body is not None else None
+    fsurf = bridged_surface(body, float(bridge), float(X[:, 2].min()) - 0.02) if body is not None and bridge > 0 else None
     usurf = _Surface(under["V"], under["F"], ref=bsurf) if under is not None and bsurf is not None else None
     osurf = _Surface(over["V"], over["F"], ref=bsurf) if over is not None and bsurf is not None else None
     ceil_on = [LAYER_FROM == "relax1"]
@@ -2034,10 +2170,19 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                 T[lo] += nrm[lo] * (off[lo] - d[lo])[:, None]
                 if grav > 0:  # (settle: no attraction; resting cloth is held where it touches)
                     held = held | (d < off + 0.0015)
-                hi = (d > off + 0.002) & (d < 0.06) & ~on_flap & (grav <= 0)  # (a turned flap lies on its base, not on the body)
-                aw_ = attract * (np.clip(nrm[hi, 2], 0.0, 1.0) if SEAT_GRAVITY else 1.0)
+                da, na_ = d, nrm
+                if fsurf is not None and attract > 0:  # BRIDGE: drawn onto the body's offset with its hollows filled
+                    # (the union of the body and the filled torso: the nearer surface outside, the filled one inside it)
+                    de_, ne_ = fsurf.signed(X)
+                    fb_ = de_ < d
+                    da, na_ = np.where(fb_, de_, d), np.where(fb_[:, None], ne_, nrm)
+                hi = (np.abs(da - off) > 0.002) & (da < 0.06) & (d >= off) & ~on_flap & (grav <= 0)  # (a turned flap lies on its base, not on the body)
+                aw_ = attract * (np.clip(na_[hi, 2], 0.0, 1.0) if SEAT_GRAVITY else 1.0)
                 aw_ = aw_ * edge_free[hi]  # (worn open: the cloth near the open edge is not drawn onto the body)
-                T[hi] -= nrm[hi] * (aw_ * (d[hi] - off[hi]))[:, None]
+                if fsurf is not None and BRIDGE_HANG and attract > 0:  # (BRIDGE_HANG: on the torso band, cloth standing OUT of the filled
+                    # surface is drawn in only (1 - bridge) as hard: a stiff garment hangs where its lengths put it)
+                    aw_ = aw_ * np.where(np.isfinite(de_[hi]) & (da[hi] > off[hi]), 1.0 - float(bridge), 1.0)
+                T[hi] -= na_[hi] * (aw_ * (da[hi] - off[hi]))[:, None]
                 if loose > 0:  # loose cloth pushed out along its own normal (oriented off the body): ease stands off evenly
                     fn_ = np.cross(X[F[:, 1]] - X[F[:, 0]], X[F[:, 2]] - X[F[:, 0]])
                     vn_ = np.zeros_like(X)
@@ -2471,11 +2616,13 @@ def layered_fit(ures: dict, ores: dict, mode: str = "outer_first", ug: dict | No
 
     def ua(over=None):
         return assemble(ures, ures.get("body"), ease=UNDER_EASE, worn_open=ug.get("worn_open"), iters=iters,
-                        shoulder_pad=ug.get("shoulder_pad"), over=over, log=log)
+                        shoulder_pad=ug.get("shoulder_pad"), over=over, log=log,
+                        bridge=bridge_fraction(ug))
 
     def oa(under=None, ease=EASE):
         return assemble(ores, ores.get("body"), under=under, ease=ease, worn_open=og.get("worn_open"), iters=iters,
-                        shoulder_pad=og.get("shoulder_pad"), log=log)
+                        shoulder_pad=og.get("shoulder_pad"), log=log,
+                        bridge=bridge_fraction(og))
 
     if mode == "lie":  # (UNDER_LIE_CAP: the under layer's fullness laid down, then the over layer fitted over it)
         u = ua(None)
@@ -2521,7 +2668,7 @@ def on_form(model: str, garment: str, spec: dict | None = None, g: dict | None =
     under = {"V": und["A"], "F": und["mesh"]["F"]} if und is not None else None
     # garment key "worn_open" {point: offset m, "source": why}: the form rule for fronts worn open (worn_open_pins)
     out = assemble(res, res["body"], under=under, ease=EASE if under is not None else UNDER_EASE, log=log,
-                   worn_open=g.get("worn_open"), shoulder_pad=g.get("shoulder_pad"))
+                   worn_open=g.get("worn_open"), shoulder_pad=g.get("shoulder_pad"), bridge=bridge_fraction(g))
     res["A"], res["A_info"], res["form_under"] = out["V"], out["info"], und
     return res
 

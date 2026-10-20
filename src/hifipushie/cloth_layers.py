@@ -453,11 +453,13 @@ def cut(under: dict, outer: dict, keep: np.ndarray | None = None, rings: int = 3
                  "crossing_cut_vertices": nx, "cut_faces": int(hid.sum()), "faces": int(len(Fu))}
 
 
-def hidden(under: dict, outer: dict, margin: float = 0.03, reach: float = 0.06) -> np.ndarray:
+def hidden(under: dict, outer: dict, margin: float = 0.03, reach: float = 0.06, edge_margin: dict | None = None) -> np.ndarray:
     """Per triangle of the under garment: True where it can't be seen for the outer one. A vertex is covered when
     the outer garment lies over it (an outer surface point within `reach`, further from the body than the vertex) and
     it is more than `margin` inside the outer garment's openings (its free edges: neckline, front edges, hems, sleeve
-    ends: what shows there stays, with a margin for movement). A triangle is hidden when all three corners are."""
+    ends: what shows there stays, with a margin for movement). A triangle is hidden when all three corners are.
+    edge_margin {piece name prefix: m}: a wider margin at those pieces' free edges (fit round 23: a jacket fitted CLOSED
+    and worn open: its fronts' edges get the arranged opening + movement, so the shirt's V stays)."""
     Vu, Fu = under["V"], under["mesh"]["F"]
     Vo, Mo = outer["V"], outer["mesh"]
     body = outer["body"]
@@ -478,6 +480,12 @@ def hidden(under: dict, outer: dict, margin: float = 0.03, reach: float = 0.06) 
         sewn[Mo["sew"].ravel()] = True
     free = np.where(Mo["border"] & ~sewn)[0]
     if len(free):
-        dopen, _ = cKDTree(Vo[free]).query(Vu)
-        over &= dopen > margin
+        mg = np.full(len(free), float(margin))
+        if edge_margin:
+            pid, nm = np.asarray(Mo["piece"]), list(Mo["names"])
+            for pre, m in edge_margin.items():
+                mg[np.array([nm[pid[v]].startswith(pre) for v in free])] = float(m)
+        for m in np.unique(mg):
+            dopen, _ = cKDTree(Vo[free[mg == m]]).query(Vu)
+            over &= dopen > m
     return over[Fu].all(1)

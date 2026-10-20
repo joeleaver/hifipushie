@@ -8927,3 +8927,41 @@ docs/notes/cloth.md "dress-garrett 2026-10-19 muslin 1", "form sleeves", "block 
   line), upper_front FAIL (closed, collar funnel, lapels, shirt collar upright, puffy shoulders), three FAIL (closed,
   collar, shirt collar, lapels, pinched waist). My read: r22a and r22b look the same as r21c at the waist (hourglass +
   peplum hip flare, C86); r22b has shirt poke-through at shoulders / sleeves / hem (outer_first's shirt not held under).
+
+## fit round 23 (2026-10-20; $FR23 = /mnt/data/hifipushie/dress_garrett/fit_round23, this worktree's code via run.sh)
+- step 1 MEASURE (columns.py: the jacket's gap to the body along vertical lines vs the column's concave majorant, a
+  straight edge laid from convex point to convex point; girths.py, sum23.py). r22a / r22b: at the waist the jacket is
+  9-20 mm off the body at the side seam and 15-18 at 45 deg back, i.e. 29-46 / 24-31 mm INSIDE the column's straight
+  edge: it follows the hollows. CB already bridges (+41-44 at the waist). Under the seat it cups: CB seat radius -
+  hem+30 radius +80-82 mm, back 45 deg +10-13. BUT the waist girth on the form is +94-99 over the body (draft +110):
+  the body's bridged envelope at the waist is +283-308 mm of girth over the body's own polar section, so a jacket of
+  this draft CANNOT bridge the waist; the form only distributes its +99. The waist pinch (front-view 318-320 vs 401) is
+  the DRAFT's suppression; the form's share is the distribution (+-15 mm of width) and the seat cup (the draft's skirt
+  is near straight below the hip: flat rows 1018 / 1029 / 1041 mm hip -> seat -> 50 mm below, draftgirth.py, rows
+  sampled sparsely).
+- step 2 BRIDGE (pattern_form.BRIDGE, _Bridged, bridge_fraction, BRIDGE_HANG): the seat attraction's target on the
+  torso band (hem .. armpit) is the body with its hollows filled along z by `bridge` of the way (per azimuth column
+  the upper concave hull, plumb below its lowest support), bridge from the KB fabric's bending length (12 mm soft -> 0,
+  18 crisp -> 1; wool_suiting 16 -> 0.67, shirting 12 -> 0). Body stays the hard obstacle. Lever 1 (target only, r23a):
+  CB cup 80 -> 39, back cup 10 -> 4, seat width 413 -> 432, waist width 319 -> 305 (worse: girth to the back), girth
+  +99. Lever 2 BRIDGE_HANG (r23b: the pull-in of cloth standing OUT of the filled surface x (1 - bridge)): waist width
+  319, girth +104, CB cup 36, back cup 4, hip 398, seat 433, hem 425. Kept both (default on). Stretch p99 15.6 (r22b
+  14.9). KAT test_bridge_hourglass_tube (tailored tube, straight below the seat): stiff cup 17 vs soft 29 mm, under-seat
+  back 69 vs 49: mechanism only (a free tube drifts back). The waist: no lever of the form can make 401; a straighter
+  cut is a design question (Joe).
+- step 3 (r23c = r23b + the shirt's visible-region cull, harness23 + cloth_layers.hidden edge_margin {"front": 0.12}:
+  the fronts' free edges keep 120 mm of shirt (arranged opening 71-94 mm + movement), other openings 30 mm): 16456 /
+  29309 shirt triangles hidden. C84 row (gate84): over body +12.3 % ok; the shirt's waist is culled, so ok_under is
+  moot (the uncut shirt reads 883 = the jacket's 883: pressed up under it); front-view waist 307 (C84 slice) / 319
+  (sum23) vs 401. C85 (fit order) not re-wired: the shirt's own record still fails (15 mm stand-off) although its waist
+  is hidden under B: NEXT, judge its rows on the visible region only.
+- renders $FR23/check/{wholefront,side,back,upper_front}_r23c.png (+ _ref/_clay/_diag), side_before_r22a_after_r23c.png,
+  back_before_r22a_after_r23c.png. Blind review wholefront clay (rev_wf_clay): FAIL, 6 MAJOR in stage: hourglass
+  chest / waist / hip ("reads as a women's fitted jacket"; needs a near-straight side line), inflated ease / thick
+  edges, padded domed shoulders, ballooning sleeves, funnel collar, shirt poke-through at the shoulders. Side A/B vs
+  r22a with the concept front as the only reference (rev_side_ab): OLD (r22a) closer: both bulge over the seat and curl
+  in at the hem; r23c's seat bulge reads bigger. So BRIDGE went OPT-IN (BRIDGE False; KAT keeps the mechanism).
+- my read: the form's bridging moved numbers (CB cup 80 -> 36) but not the look; the hourglass is the draft. The waist
+  can't reach the concept's front view without a straighter cut: the jacket's waist girth is +99-104 over the body (draft
+  +110, ~14 %); the reviewer's "near-straight side line" needs the side seams' suppression taken out (design call: Joe).
+  Spend $0 (local only). Steps 4 (release / t = 0 CCD) not reached.

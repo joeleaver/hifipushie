@@ -1549,3 +1549,82 @@ def test_under_layer_lies_down():
     assert l["inner_outside_outer"] == 0 and not l["outer_through_under"], res
     assert abs(l["outer_med_mm"] - 19.0) <= 2.0, res
     assert l["gap_med_mm"] >= 6.0, res
+
+
+def _hourglass_body(m=96):
+    """A torso-like solid of revolution: chest r 150 mm at z 1.30, waist 120 at 1.10 (a 30 mm hollow), hip 140 at 0.95
+    with a SEAT bulge on the back (+y) to 165, under the seat back to 130 at 0.80."""
+    th = np.linspace(0, 2 * np.pi, m + 1)[:-1]
+    zs = np.linspace(0.70, 1.40, 71)
+
+    def r(z, t):
+        base = np.interp(z, [0.70, 0.80, 0.95, 1.10, 1.30, 1.40], [0.130, 0.130, 0.140, 0.120, 0.150, 0.150])
+        seat = 0.025 * np.exp(-((z - 0.93) / 0.06) ** 2) * np.maximum(np.sin(t), 0.0) ** 2
+        return base + seat
+    V = np.array([[r(z, t) * math.cos(t), r(z, t) * math.sin(t), z] for z in zs for t in th])
+    T = []
+    for i in range(len(zs) - 1):
+        for j in range(m):
+            a, b = i * m + j, i * m + (j + 1) % m
+            T += [[a, b, a + m], [b, b + m, a + m]]
+    return types.SimpleNamespace(V=V, T=np.asarray(T), at={"armpit_z": [1.36], "shoulder.L": [0.3, 0.0, 1.4]}), r
+
+
+def bridge_case(bridge, verbose=True, hang=True):
+    """A tailored tube over the hourglass: its girth the body's + 2 pi 10 mm down to the seat (z 0.93), then STRAIGHT
+    (the seat's girth) to the hem at 0.76, as a jacket's skirt; started ON an offset of the body (as a fit's placement
+    follows it). Returns radius - body (mm) at the back / side at the waist, the seat, under the seat (0.80), and the
+    back's CUP = seat back radius - under-seat back radius (0: plumb)."""
+    body, r = _hourglass_body()
+    th_ = np.linspace(0, 2 * np.pi, 721)[:-1]
+
+    def girth(z):
+        q = np.c_[r(z, th_) * np.cos(th_), r(z, th_) * np.sin(th_)]
+        return float(np.linalg.norm(q - np.roll(q, 1, 0), axis=1).sum()) + 2 * math.pi * 0.010
+    ys = np.linspace(0.0, 0.58, 30)
+    G = np.array([girth(max(0.76 + y, 0.93)) for y in ys])
+    P = [[-G[0] / 2, 0.0]] + [[g / 2, y] for g, y in zip(G, ys)] + [[-g / 2, y] for g, y in zip(G[::-1], ys[::-1])][:-1]
+    n = len(ys)
+    names = {"a0": 0, "a1": 1, "a2": n, "a3": n + 1}
+    B = _B({"s": _piece(P, names=names)}, seams=[["s:a0>a3", "s:a1>a2"]])
+    M = cloth.mesh(B, 0.015)
+    z = 0.76 + M["uv"][:, 1]
+    Gz = np.interp(M["uv"][:, 1], ys, G)
+    th = (0.5 - M["uv"][:, 0] / Gz) * 2 * np.pi + np.pi / 2  # (the seam at the front, -y)
+    R0 = r(z, th) + 0.006
+    X0 = np.c_[R0 * np.cos(th), R0 * np.sin(th), z]
+    keep = pf.BRIDGE_HANG
+    pf.BRIDGE_HANG = hang
+    try:
+        out = pf.assemble({"mesh": M, "X0": X0}, body, iters=120, ease=0.004, bridge=bridge)
+    finally:
+        pf.BRIDGE_HANG = keep
+    V = out["V"]
+    a = np.arctan2(V[:, 1], V[:, 0])
+    rr = np.linalg.norm(V[:, :2], axis=1)
+
+    def rad(z0, az):
+        k = (np.abs(V[:, 2] - z0) < 0.012) & (np.abs((a - az + np.pi) % (2 * np.pi) - np.pi) < 0.12)
+        return 1000 * float(np.median(rr[k]))
+
+    def at(z0, az):
+        return rad(z0, az) - 1000 * float(r(z0, az))
+    res = {"waist_back": at(1.10, math.pi / 2), "waist_side": at(1.10, 0.0), "seat_back": at(0.93, math.pi / 2),
+           "under_seat_back": at(0.80, math.pi / 2), "cup_back": rad(0.93, math.pi / 2) - rad(0.80, math.pi / 2),
+           "stretch_p99": out["info"]["stretch_pct"]["p99"]}
+    if verbose:
+        print("bridge", bridge, "hang", hang, {k: round(v, 1) for k, v in res.items()})
+    return res
+
+
+def test_bridge_hourglass_tube():
+    """BRIDGE (fit round 23): under the seat, stiff cloth (bridge 1) hangs nearer plumb from the seat than soft cloth
+    (bridge 0, the old form: drawn in after the body): the back's cup <= 0.65 x the soft one's, the under-seat back
+    >= 15 mm further off the body; the girth is the pattern's either way (stretch p99 < 10 %: the polygon tube's rows).
+    A MECHANISM known answer, not a magnitude: the free tube (no pins) drifts back, so neither reads exactly plumb
+    (measured 17 vs 29 mm cup, 69 vs 49 mm under the seat). At the waist a tailored tube has no girth to bridge
+    with: there the draft decides, not the form (waist gap 6-12 mm either way)."""
+    s, f = bridge_case(1.0), bridge_case(0.0)
+    assert s["cup_back"] <= 0.65 * f["cup_back"], (s, f)
+    assert s["under_seat_back"] >= f["under_seat_back"] + 15, (s, f)
+    assert s["stretch_p99"] < 10 and f["stretch_p99"] < 10, (s, f)
