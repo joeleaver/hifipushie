@@ -7856,3 +7856,16 @@ Blind reviews r15e: upper_front FAIL (boxy shoulder + straight vertical armhole 
 shadow, with a tube-like inner roll; notch / gorge ~100 px low; crumpled gorge), upper_three FAIL (lapels too narrow
 in 3/4, the fronts stand off as ridges, V narrow, no notch, square shoulders). Other stages: collar funnel, shirt through at
 the pocket flaps.
+
+## fit round 16 (2026-10-20): worn open = the closed fit + ONE release sim (Joe's decision)
+- Step 1: cloth_release.py: a release job from a placed pattern + its CLOSED form fit. Start = the fit; membrane rest =
+  the flat pattern (zozo rest "flat"); bending rest flat except fold lines (folds.bend_reference) and made pieces (rest as
+  fitted); every seam + non-closure stitch sewn, the released closure(s) not; the under garment's form fit pressed back
+  under this one to >= 3 mm (clear_under, at most 20 mm) and joined to the body as one static collider (cloth._collider);
+  schedule sew 4 frames (gravity 0: the runner steps the fit's coincident seam ends apart, these frames close them), settle
+  48 (2 s: a front is a 0.35-0.45 m pendulum, period 1.2-1.3 s), self_settle 24 (1 s; Vprev = still-moving read).
+- KAT tests/test_cloth_release.py (HP_RUN_ZOZO=1, local ROCm, 37 s for both runs). First tries were wrong KATs, not
+  solver faults: a plain cylinder opened 10 mm (nothing to open it: no overhang), a symmetric cone 15 mm still moving.
+  Final: chest cylinder over an OBLIQUE cone (front recedes 100 mm, back near plumb): released 21.4 mm off the button
+  mate at the hem, control 1.0, chest vs control p90 0.75 mm, still 0.01 mm. A cut-in (coned) front can't hang plumb
+  isometrically: the swing is limited by the pattern's own shaping, which is right.
