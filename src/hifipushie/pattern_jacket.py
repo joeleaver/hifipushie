@@ -496,8 +496,109 @@ def op_lapel_turn(D: dict, piece: str = "front", facing: str | None = None, **o)
                     f"point and gorge (edge {L0 * 1000:.0f} -> {pattern.length(P[idx]) * 1000:.0f} mm, eased)")
 
 
+# R25 (fit round 13): the front's cutaway hem, Jaeger's construction (frontCutawayAngle 2.5 deg, frontCutawayStart 30 %,
+# frontCutawayEnd 40 %, hemRadius 100 %, buttonLength 30 %; @freesewing/jaeger front.mjs "Round the hem"): from the lower
+# button the front edge is cut away 2.5 deg toward the side; it turns into the hem on a curve that starts 30 % of the way
+# from that button to the hem and ends on the hem 40 % of the hem's width (CF -> the side panel's back seam) out from CF.
+# A sack / square-cornered design leaves it out (op not in the list).
+CUTAWAY = {"angle_deg": 2.5, "start": 0.30, "end": 0.40, "radius": 1.0, "button_frac": 0.30, "top_below_break": 0.015}
+
+
+def _cubic(p0, c1, c2, p1, n):
+    t = np.linspace(0, 1, n)[:, None]
+    return (1 - t) ** 3 * p0 + 3 * (1 - t) ** 2 * t * c1 + 3 * (1 - t) * t ** 2 * c2 + t ** 3 * p1
+
+
+def cutaway_geometry(K, up, side, y_button, hem_width, cf_x, **c):
+    """R25's points for a front whose edge corner (the front edge meets the hem) is K, `up` the unit vector up the front
+    edge, `side` the unit vector along the hem toward the side seam, the lower button at height y_button, the hem width
+    hem_width (m, CF -> the side panel's back seam) and CF at x cf_x: {"C" lower button on the edge, "S" the curve's
+    start (rotated `angle_deg` toward the side), "V" where the cut line meets the hem line, "E" the curve's end}."""
+    c = {**CUTAWAY, **c}
+    K, up, side = (np.asarray(v, float) for v in (K, up, side))
+    C = K + up * ((y_button - K[1]) / up[1])
+    a = math.radians(c["angle_deg"])
+    d = (K - C) * c["start"]
+    S = C + d * math.cos(a) + side * np.linalg.norm(d) * math.sin(a)
+    u = (S - C) / np.linalg.norm(S - C)
+    # V: the cut line C + u s meets the hem line K + side t
+    A_ = np.c_[u, -side]
+    s_, _t = np.linalg.solve(A_, K - C)
+    V = C + u * s_
+    E = K + side * (abs(cf_x - K[0]) / abs(side[0]) + c["end"] * hem_width)
+    return {"C": C, "S": S, "V": V, "E": E}
+
+
+def op_front_cutaway(D: dict, piece: str = "front", corner: str = "stand.b", button_frac: float | None = None,
+                     **o) -> None:
+    """R25: the front edge cut away from the lower button and rounded into the hem (CUTAWAY; Jaeger's construction).
+    The lower button's height is R13's (the top one 15 mm under the break, the second `button_frac` of break -> the
+    corner below it), recorded as meta "front_low" so op_buttons spaces them from the same corner. The curve's end is
+    kept 10 mm short of the first dart / seam point on the hem."""
+    from .pattern_tailor import op_round_corner
+    c = {**CUTAWAY, **{k: o[k] for k in CUTAWAY if k in o}}
+    if button_frac is not None:
+        c["button_frac"] = float(button_frac)
+    pc = D["pieces"][piece]
+    if corner not in pc["names"]:
+        raise DraftError(f"front_cutaway: {piece} has no point {corner!r}")
+    P = np.asarray(pc["P"], float)
+    n, i = len(P), pc["names"][corner]
+    K = P[i].copy()
+    nb = [P[(i - 1) % n], P[(i + 1) % n]]
+    vert = [abs((q - K)[1]) / (np.linalg.norm(q - K) + 1e-12) for q in nb]
+    ie = int(np.argmax(vert))  # the neighbour up the front edge (0: before the corner, 1: after)
+    up = (nb[ie] - K) / np.linalg.norm(nb[ie] - K)
+    side = (nb[1 - ie] - K) / np.linalg.norm(nb[1 - ie] - K)
+    yb = float(D["meta"].get("break", [0, K[1] + 0.3])[1])
+    y_btn = yb - c["top_below_break"] - c["button_frac"] * (yb - K[1])
+    cf_x = 0.0
+    # the hem's width CF -> the side panel's back seam (Jaeger's hemDropEnd): every torso piece's hem row but the back
+    hem_x = []
+    for nm_, q in D["pieces"].items():
+        if nm_.split(".")[0] not in (piece.split(".")[0], "side", "side_front"):
+            continue
+        Q = np.asarray(q["P"], float)
+        if abs(Q[:, 1].min() - K[1]) < 0.03:
+            hem_x.append(Q[Q[:, 1] < Q[:, 1].min() + 0.015][:, 0])
+    xs = np.concatenate(hem_x) if hem_x else np.array([K[0]])
+    hem_w = float(np.max(np.abs(xs - cf_x)))
+    g = cutaway_geometry(K, up, side, y_btn, hem_w, cf_x, **c)
+    # the end kept 10 mm short of the next named point along the hem (a dart leg, a seam end)
+    j, acc, lim = i, 0.0, None
+    for _ in range(n):
+        k = (j + (1 if ie == 0 else -1)) % n
+        acc += float(np.linalg.norm(P[k] - P[j]))
+        if any(v == k and not nm.startswith(("cf", corner)) for nm, v in pc["names"].items()):  # (not CF's own mark)
+            lim = acc - 0.010
+            break
+        j = k
+    along_hem = float(np.linalg.norm(g["E"] - K))
+    if lim is not None and along_hem > lim:
+        along_hem = lim
+        g["E"] = K + side * lim
+    along_edge = float(np.linalg.norm(g["C"] - K))
+    C_, S_, V_, E_ = g["C"], g["S"], g["V"], g["E"]
+    cpd = abs(C_[1] - S_[1]) / 3
+    u = (S_ - V_) / np.linalg.norm(S_ - V_)
+
+    def shape(A, Cc, B):  # A on the edge before the corner, B after: E -> S -> C or C -> S -> E
+        lo = _cubic(E_, V_ + (E_ - V_) * (1 - c["radius"]), V_ + (S_ - V_) * (1 - c["radius"]), S_, 14)
+        hi = _cubic(S_, S_ + u * cpd, C_ - up * cpd, C_, 10)  # (Jaeger: C's control straight down the edge)
+        pts = np.r_[lo[1:], hi[1:-1]]
+        return pts if np.linalg.norm(A - E_) < np.linalg.norm(A - C_) else pts[::-1]
+
+    along = [along_hem, along_edge] if ie == 1 else [along_edge, along_hem]
+    op_round_corner(D, piece, corner, along=along, shape=shape)
+    D["meta"]["front_low"] = float(K[1])
+    D["meta"]["cutaway"] = {k: (v * 1000).round(1).tolist() for k, v in g.items()}
+    D["log"].append(f"front cutaway ({src(25)}, Jaeger's construction): from the lower button {(yb - y_btn) * 1000:.0f} mm "
+                    f"below the break, {c['angle_deg']} deg toward the side; the curve from {(K[1] - S_[1]) * -1000:.0f} mm "
+                    f"above the corner to {along_hem * 1000:.0f} mm along the hem (hem width {hem_w * 1000:.0f} mm)")
+
+
 pd.OPS.update({"jacket_neck": op_jacket_neck, "waist_suppression": op_waist_suppression,
-               "collar_two_piece": op_collar_two_piece, "lapel_turn": op_lapel_turn})
+               "collar_two_piece": op_collar_two_piece, "lapel_turn": op_lapel_turn, "front_cutaway": op_front_cutaway})
 
 
 # ---------------------------------------------------------------- a design's op list, rewritten by the rules
@@ -513,6 +614,10 @@ def jacket_ops(ops: list, tape: dict, button_mm: float = 20.0, pockets: str = "f
             continue
         if k == "take_in":
             continue  # (replaced by waist_suppression)
+        if k == "round_corner" and str(op.get("piece", "")).startswith("front") and op.get("corner") == "stand.b":
+            # the rounded front hem drafted by R25 (cut away from the lower button), not a free corner radius
+            out.append({"op": "front_cutaway", "piece": op["piece"], "corner": "stand.b", "source": src(25, 13)})
+            continue
         if k == "contour" and op.get("edge") == "centre_back":
             op["at"] = [[lv, (0.0 if lv == "waist" else v)] for lv, v in op["at"]]  # the waist share: R8
         if k == "lapel":
@@ -598,6 +703,69 @@ def _neck_edge(pc: dict):
     return E
 
 
+def front_edge_profile(pc: dict, step: float = 0.002) -> np.ndarray:
+    """The flat front's front edge from the break down to the hem: rows (y, x) in m, x the outline crossing furthest out
+    past CF on each row (the edge's side is the break's)."""
+    P = np.asarray(pc["P"], float)
+    xb, yb = _pt(pc, "break")
+    s = 1.0 if xb >= 0 else -1.0
+    Q = np.r_[P, P[:1]]
+    out = []
+    for y in np.arange(yb - step, P[:, 1].min(), -step):
+        a, b = Q[:-1], Q[1:]
+        m = (a[:, 1] - y) * (b[:, 1] - y) < 0
+        if not m.any():
+            continue
+        t = (y - a[m, 1]) / (b[m, 1] - a[m, 1])
+        xs = a[m, 0] + t * (b[m, 0] - a[m, 0])
+        out.append((y, xs[np.argmax(s * xs)]))
+    return np.asarray(out)
+
+
+def cutaway_rows(pc: dict) -> list:
+    """R25 gate rows read on the FLAT front's outline (a cutaway front): where the edge leaves its straight line (the
+    lower button, +-15 mm), the cut's angle over its first 30 % to the hem (2.5 +- 1 deg), and how far the hem corner
+    curves back from the edge line at the hem (>= 25 % of the front's hem width CF -> its side seam: a rounded cutaway,
+    not a square corner rounded by a few cm)."""
+    rows = []
+    E = front_edge_profile(pc)
+    if len(E) < 10 or "button2" not in (pc.get("marks") or {}):
+        return [{"id": "front_cutaway", "stage": 2, "status": "UNMEASURED", "rule": src(25),
+                 "why": "no front edge / lower button mark to read"}]
+    xb = float(_pt(pc, "break")[0])
+    s = 1.0 if xb >= 0 else -1.0
+    back = s * (xb - E[:, 1])  # how far the edge has moved back toward the side (m)
+    k0 = int(np.argmax(back > 0.001)) if (back > 0.001).any() else len(E) - 1
+    yb2 = float(np.asarray(pc["marks"]["button2"])[1])
+    y_lo = float(np.asarray(pc["P"])[:, 1].min())
+    y30 = yb2 - 0.3 * (yb2 - y_lo)
+    b30 = float(np.interp(-y30, -E[:, 0], back))
+    # the cut's start: its line (from where it is 1 mm back to its 30 % point) run up to the straight edge
+    y1, b1 = float(E[k0, 0]), float(back[k0])
+    y_st = y1 + b1 * (y1 - y30) / (b30 - b1) if b30 - b1 > 1e-4 and y1 > y30 else y1
+    st = (y_st - yb2) * 1000
+    rows.append({"id": "front_cutaway_start", "stage": 2, "rule": src(25, 13), "ours": round(st, 1), "ref": -15.0, "tol": 10.0,
+                 "units": "mm above the lower button", "status": "PASS" if abs(st + 15.0) <= 10.0 else "FAIL",
+                 "measure": "pattern_jacket.cutaway_rows",
+                 "why": "the cut line (1 mm back -> its 30 % point) meets the straight front edge at the lower button; "
+                        "Jaeger leaves the button tangent (its C control straight down): this measure reads -16 mm on "
+                        "Jaeger's own front at three sizes (test_cutaway_reads_the_same_on_jaegers_front)"})
+    ang = math.degrees(math.atan2(b30, yb2 - y30))
+    rows.append({"id": "front_cutaway_angle", "stage": 2, "rule": src(25), "ours": round(ang, 2), "ref": 2.5, "tol": 1.0,
+                 "units": "deg", "status": "PASS" if abs(ang - 2.5) <= 1.0 else "FAIL", "measure": "pattern_jacket.cutaway_rows",
+                 "why": "the edge's lean toward the side from the lower button over 30 % of the way to the hem"})
+    P = np.asarray(pc["P"], float)
+    hem = P[P[:, 1] < y_lo + 0.0005]
+    hem_w = float(np.max(s * (xb - hem[:, 0]))) if len(hem) else 0.0  # (edge line -> the hem's far end)
+    reach = float(np.min(s * (xb - hem[:, 0]))) if len(hem) else 0.0  # where the straight hem starts
+    rows.append({"id": "front_hem_round", "stage": 2, "rule": src(25), "ours": round(reach * 1000, 1),
+                 "ref": f">= {0.25 * hem_w * 1000:.0f}", "tol": 0, "units": "mm back from the edge line at the hem",
+                 "status": "PASS" if reach >= 0.25 * hem_w else "FAIL", "measure": "pattern_jacket.cutaway_rows",
+                 "why": f"the hem corner's curve ends {reach * 1000:.0f} mm in from the front edge line (front hem "
+                        f"{hem_w * 1000:.0f} mm): a cutaway, not a square corner"})
+    return rows
+
+
 def tailor_rows(Bp: dict, tape: dict, g: dict | None = None, button_mm: float = 20.0) -> list:
     """The tailor-rule rows for a jacket's flat pattern (each with its rule number and tolerance)."""
     g = g or {}
@@ -647,6 +815,9 @@ def tailor_rows(Bp: dict, tape: dict, g: dict | None = None, button_mm: float = 
         if "break" in fr["names"]:
             ov = abs(_pt(fr, "break")[0]) * 1000
             row("front_overlap", src(12), ov, button_mm, 4.0, why="front edge past CF at the break vs the button diameter")
+        cut = any(op_.get("op") == "front_cutaway" for op_ in ((g.get("design") or {}).get("ops") or []))
+        if cut:
+            rows.extend(cutaway_rows(fr))
     st = next((p for n, p in Bp["pieces"].items() if p.get("role") == "collar_stand" and n.split(".")[0] != "shirt"), None)
     col = next((p for p in Bp["pieces"].values() if p.get("role") == "collar_fall"), None)
     neck = float(tape["neck"])

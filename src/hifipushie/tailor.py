@@ -200,6 +200,13 @@ def _side_neck(V, T, L) -> tuple:
     return (w, None) if best is None else (best, zc)
 
 
+# shoulderSlope's definition (fit round 13, opt-in): "line" (default since 2026-10-06: a fit through the top of the
+# shoulder in the joint's plane, from 2 cm outside hps to the shoulder point) | "chord" (FreeSewing's measurement: hps ->
+# the shoulder point, the drop every draft that places the neck point at hps needs). On Garrett the line reads 10.9 deg,
+# the chord 22.5, the front-view top of the shoulder ~17 (x 100 -> 220 mm off CF): the drafts (Simon's shirt, the jacket
+# block) put the shoulder point 28-32 mm below hps where the body's is 65, and both garments stood 15-45 mm off the
+# shoulder line (fit round 13 shoulderprof.py)
+SHOULDER_SLOPE = "line"
 NECK_BASE_TILT = 32.0  # deg: the base-of-neck tape falls this much toward the front (ANSUR II: cervicale ~79 mm (men) /
 # 66 (women) above suprasternale over a ~110-120 mm deep neck base)
 NECK_BASE_GIRTH = 1.06  # the base ring is the lowest tilted section within this much of the narrowest one
@@ -380,7 +387,9 @@ def measure(V: np.ndarray, faces, J: dict) -> dict:
         xs_ = np.array([t_[0] for _, t_ in ins] + [top[0]])
         zs_ = np.array([t_[2] for _, t_ in ins] + [top[2]])
         at["shoulder_slope_chord"] = mm["shoulderSlope"]
-        mm["shoulderSlope"] = float(np.degrees(np.arctan(-np.polyfit(xs_, zs_, 1)[0])))
+        at["shoulder_slope_line"] = float(np.degrees(np.arctan(-np.polyfit(xs_, zs_, 1)[0])))
+        if SHOULDER_SLOPE == "line":
+            mm["shoulderSlope"] = at["shoulder_slope_line"]
     # shoulder to shoulder: a taut tape across the back between the shoulder points. It lies in a plane through both
     # that dips toward the back (over the shoulder blades), the shortest of the tilts tried; the level section at the
     # shoulders' height runs far back round the base of the neck (21% longer than the chord here)

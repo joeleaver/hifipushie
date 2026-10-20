@@ -299,3 +299,52 @@ def test_tracks_jaeger_at_three_sizes():
         assert np.linalg.norm(_pt(fa, "cbOuter") - _pt(fa, "cbLow")) == pytest.approx(fj, abs=0.010)
         # overlap (R12): ours from the button, Jaeger 1.5 % of chest: within 8 mm
         assert abs(_pt(D["pieces"]["front"], "break")[0]) == pytest.approx(ov_j, abs=0.008)
+
+
+# ---------------------------------------------------------------- R25: the cutaway front (fit round 13)
+def _cut_ops(tape, cutaway=True):
+    ops = copy.deepcopy(OPS)
+    i = next(i for i, o in enumerate(ops) if o["op"] == "lapel")
+    ops.insert(i + 1, {"op": "round_corner", "piece": "front", "corner": "stand.b", "along": [0.09, 0.06]})
+    ops = pj.jacket_ops(ops, tape, 20.0)
+    if not cutaway:  # the old free corner radius (the planted fault)
+        ops = [({"op": "round_corner", "piece": "front", "corner": "stand.b", "along": [0.09, 0.06]}
+                if o["op"] == "front_cutaway" else o) for o in ops]
+    D = pd.start("bodice", tape, BLOCK)
+    pd.apply(D, ops)
+    return D
+
+
+def _status(rows):
+    return {r["id"]: r["status"] for r in rows}
+
+
+def test_cutaway_rows_pass_the_r25_draft_and_catch_a_square_corner():
+    """R25 drafted (op_front_cutaway, from the free round_corner by jacket_ops) passes its three flat rows at every size;
+    the old free corner (90 / 60 mm) fails the cut start and angle (the planted fault the gate must catch)."""
+    for name, tape in BODIES.items():
+        fe = _cut_ops(tape)["pieces"]["front"]
+        st = _status(pj.cutaway_rows(fe))
+        assert set(st.values()) == {"PASS"}, (name, pj.cutaway_rows(fe))
+        old = _status(pj.cutaway_rows(_cut_ops(tape, cutaway=False)["pieces"]["front"]))
+        assert old["front_cutaway_angle"] == "FAIL" and old["front_cutaway_start"] == "FAIL", (name, old)
+
+
+@pytest.mark.skipif(not _jaeger_ok(), reason="needs Node and the freesewing pack")
+def test_cutaway_reads_the_same_on_jaegers_front():
+    """Known answer: the same rows read on Jaeger's own front outline (its cutawayPoint as the lower button) pass, and
+    our cut angle agrees with Jaeger's within 1 deg."""
+    from hifipushie import cloth, freesewing
+    for name, tape in BODIES.items():
+        d = freesewing.draft("jaeger", cloth.length_level(dict(tape), {}), {}, 10.0)
+        P = {k.split(".")[1]: v for k, v in d["parts"].items()}
+        fr = P["front"]
+        O = _outline(fr["paths"]["seam"]["ops"]) / 1000 * [1, -1]
+        jp = lambda n: np.asarray(fr["points"][n], float) / 1000 * [1, -1]  # noqa: E731
+        pc = {"P": np.r_[O, [jp("lapelBreakPoint")]], "names": {"break": len(O)}, "marks": {"button2": jp("cutawayPoint")}}
+        rj = {r["id"]: r for r in pj.cutaway_rows(pc)}
+        ro = {r["id"]: r for r in pj.cutaway_rows(_cut_ops(tape)["pieces"]["front"])}
+        print(name, {k: (rj[k]["ours"], ro[k]["ours"]) for k in rj})
+        assert rj["front_cutaway_angle"]["status"] == "PASS", (name, rj)
+        assert rj["front_hem_round"]["status"] == "PASS" and rj["front_cutaway_start"]["status"] == "PASS", (name, rj)
+        assert abs(rj["front_cutaway_angle"]["ours"] - ro["front_cutaway_angle"]["ours"]) <= 1.0

@@ -621,6 +621,8 @@ def op_buttons(D: dict, piece: str, n: int = 1, top: float | None = None, spacin
         yb = float(D["meta"].get("break", [0, y0])[1])
         P = np.asarray(pc["P"], float)
         low = float(P[pc["names"]["stand.b"], 1]) if "stand.b" in pc["names"] else float(P[:, 1].min())
+        if D["meta"].get("front_low") is not None:  # (a cutaway front, R25: spaced from the corner it was cut from)
+            low = float(D["meta"]["front_low"])
         spacing = float(o["spacing_frac"]) * (yb - low)
     marks = []
     for k in range(int(n)):

@@ -192,7 +192,10 @@ def op_join(D: dict, a: str, b: str, name: str | None = None, **o) -> None:
 def op_round_corner(D: dict, piece: str, corner: str, radius: float = 0.06, **o) -> None:
     """A corner of the outline rounded: the outline leaves each edge `radius` from the corner (or "along": [m on the
     edge before it, m on the edge after]) on a curve. The corner's name stays on the curve's middle, so edges named
-    to the corner still run. Do it BEFORE facings and bands are traced from those edges."""
+    to the corner still run. Do it BEFORE facings and bands are traced from those edges.
+    `shape` (code only, fit round 13): a function (A, C, B) -> the curve's inner points from A (on the edge before) to
+    B (on the edge after), C the old corner (default: a quadratic through C); with a shape, named points on the part
+    cut off move to the NEAREST curve point (a cutaway's long curve: the ends can be 100+ mm apart)."""
     pc = D["pieces"][piece]
     if corner not in pc["names"]:
         raise DraftError(f"{piece}: no point {corner!r}")
@@ -222,8 +225,12 @@ def op_round_corner(D: dict, piece: str, corner: str, radius: float = 0.06, **o)
     while k != i1:
         drop.append(k)
         k = (k + 1) % n
-    t = np.linspace(0, 1, 13)[1:-1, None]
-    arc = (1 - t) ** 2 * A + 2 * (1 - t) * t * C + t ** 2 * B
+    shape = o.get("shape")
+    if shape is not None:
+        arc = np.asarray(shape(A, C, B), float).reshape(-1, 2)
+    else:
+        t = np.linspace(0, 1, 13)[1:-1, None]
+        arc = (1 - t) ** 2 * A + 2 * (1 - t) * t * C + t ** 2 * B
     keep = [k for k in range(n) if k not in drop]
     at = keep.index(i0)
     P = np.r_[pc["P"][keep[:at + 1]], arc, pc["P"][keep[at + 1:]]]
@@ -236,6 +243,8 @@ def op_round_corner(D: dict, piece: str, corner: str, radius: float = 0.06, **o)
             names[k_] = pos[v]
         elif v == ic:
             names[k_] = at + 1 + len(arc) // 2
+        elif shape is not None:  # a point on the part cut off: to the nearest curve point
+            names[k_] = at + 1 + int(np.argmin(np.linalg.norm(arc - pc["P"][v], axis=1)))
         else:  # a point on the part cut off: to the nearer end of the curve
             names[k_] = pos[i0] if np.linalg.norm(pc["P"][v] - A) <= np.linalg.norm(pc["P"][v] - B) else pos[i1]
     names[f"{corner}.r0"], names[f"{corner}.r1"] = pos[i0], pos[i1]
