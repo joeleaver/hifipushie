@@ -737,6 +737,106 @@ BREAK_STEP_SOURCE = ("a front edge is ONE line: the lapel's outer edge runs on i
                      "round 10: 'the notches cut in the bottom of the lapels'); 3 mm = two cloth thicknesses")
 
 
+CREASE_DEG = 20.0  # below the break, a front's faces meet at under this (p90 interior; median along each seam)
+CREASE_SHARP_MM = 30.0  # ... and its interior edges over 2 x CREASE_DEG add up to under this (a crease LINE, not faceting)
+CREASE_SOURCE = ("an open front below the break hangs smooth (the concept: a soft open hang, a flap pocket; a front dart "
+                 "is pressed, never a ridge); Joe on fit round 10: 'hopefully there's not a sharp fold here'. 20 deg "
+                 "between ~25 mm faces = a bend radius of ~70 mm, the body's own at the side")
+FLAP_THROUGH_MAX = 0.05  # share of a turned flap's vertices (past the hinge) through its own base
+FLAP_THROUGH_SOURCE = ("a turned lapel lies one cloth thickness ON its base (pressed); Joe on fit round 10: 'the tops of "
+                       "the lapels are embedded in the layer below'; round 6's clean fit had 0/67 at the gorge")
+
+
+def front_creases(M: dict, X: np.ndarray) -> dict:
+    """Creases on each piece with a "break" point, BELOW the break (fit round 11): the dihedral between neighbouring
+    faces with the mesh welded at its sew pairs (a dart or seam ridge is no interior edge), fold rows left out.
+    {piece: {"interior_p90", "interior_max", "seams": {other piece or "self": [median, max]}, "ok"}} (deg)."""
+    F = np.asarray(M["F"]); n = len(X); pid = np.asarray(M["piece"]); names = list(M["names"])
+    par = np.arange(n)
+
+    def find(a):
+        while par[a] != a:
+            par[a] = par[par[a]]; a = par[a]
+        return a
+    for a, b in np.asarray(M.get("sew", []), int).reshape(-1, 2):
+        ra, rb = find(int(a)), find(int(b))
+        if ra != rb:
+            par[max(ra, rb)] = min(ra, rb)
+    rep = np.array([find(i) for i in range(n)])
+    N = np.cross(X[F[:, 1]] - X[F[:, 0]], X[F[:, 2]] - X[F[:, 0]])
+    N /= np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-12)
+    fold = np.zeros(n, bool)
+    for fd in M.get("folds") or []:
+        for r in fd["rows"]:
+            fold[np.asarray(r, int)] = True
+    ed = {}
+    for j, f in enumerate(rep[F]):
+        for a, b in ((f[0], f[1]), (f[1], f[2]), (f[2], f[0])):
+            ed.setdefault((min(a, b), max(a, b)), []).append(j)
+    out = {}
+    for key, bvx in M["points"].items():
+        if not key.endswith(":break"):
+            continue
+        k = names.index(key.split(":")[0])
+        zb = float(X[bvx, 2]) - 0.01
+        inner, seams, sharp = [], {}, 0.0
+        for (a, b), js in ed.items():
+            if len(js) != 2 or (fold[a] and fold[b]) or (X[a, 2] + X[b, 2]) / 2 > zb:
+                continue
+            f0, f1 = F[js[0]], F[js[1]]
+            k0, k1 = int(pid[f0[0]]), int(pid[f1[0]])
+            if k not in (k0, k1):
+                continue
+            ang = math.degrees(math.acos(float(np.clip(N[js[0]] @ N[js[1]], -1, 1))))
+            if len(set(f0.tolist()) & set(f1.tolist())) >= 2:
+                inner.append(ang)
+                if ang > 2 * CREASE_DEG:
+                    sharp += float(np.linalg.norm(X[a] - X[b]))
+            else:
+                seams.setdefault("self" if k0 == k1 else names[k1 if k0 == k else k0], []).append(ang)
+        if not inner:
+            continue
+        sm = {s: [round(float(np.median(v)), 1), round(max(v), 1)] for s, v in seams.items()}
+        p90 = float(np.percentile(inner, 90))
+        out[key.split(":")[0]] = {"interior_p90": round(p90, 1), "interior_max": round(max(inner), 1), "seams": sm,
+                                  "sharp_mm": round(sharp * 1000, 0),
+                                  "ok": bool(p90 <= CREASE_DEG and sharp * 1000 <= CREASE_SHARP_MM
+                                              and all(m <= CREASE_DEG for m, _ in sm.values()))}
+    return out
+
+
+def flap_through_base(M: dict, X: np.ndarray, body=None, hinge: float = 0.018) -> dict:
+    """Each folded piece's turned flap vertices (folds.flap_faces; past `hinge` m of its fold rows in the pattern: the
+    roll's own bend) THROUGH its own base surface (signed distance < 0, within 20 mm of it): {piece: {"through", "n",
+    "share", "ok"}} against FLAP_THROUGH_MAX (fit round 11). The base's outside is read off the body (`body`, the form's
+    body: its surface orients the base's normals; without it the sense is arbitrary)."""
+    from . import folds as _fm
+    F = np.asarray(M["F"]); pid = np.asarray(M["piece"]); names = list(M["names"]); uv = np.asarray(M["uv"])
+    fl = _fm.flap_faces(M, F)
+    bs = _body_surface(body) if body is not None else None
+    out = {}
+    for nm in sorted({fd["piece"] for fd in M.get("folds") or []}):
+        k = names.index(nm)
+        fpc = pid[F[:, 0]] == k
+        if not (fl & fpc).any() or not (~fl & fpc).any():
+            continue
+        bv = np.unique(F[fpc & ~fl])
+        fv = np.setdiff1d(np.unique(F[fpc & fl]), bv)
+        rows = [np.asarray(r, int) for fd in M["folds"] if fd["piece"] == nm for r in fd["rows"]]
+        if rows and len(fv):
+            dd, _ = cKDTree(uv[np.concatenate(rows)]).query(uv[fv])
+            fv = fv[dd > hinge]
+        if not len(fv):
+            continue
+        ix = -np.ones(len(X), int); ix[bv] = np.arange(len(bv))
+        d, _, dist = _Surface(X[bv], ix[F[fpc & ~fl]], ref=bs).signed(X[fv])
+        m = dist < 0.02
+        t = int((d[m] < 0).sum())
+        out[nm] = {"through": t, "n": int(m.sum()), "share": round(t / max(int(m.sum()), 1), 3),
+                   "ok": bool(t <= FLAP_THROUGH_MAX * max(int(m.sum()), 1))}
+    return out
+
+
 def edge_through_break(M: dict, X: np.ndarray, span: float = 0.04, near: float = 0.012, plane=(0, 2)) -> dict:
     """The front edge through each piece's "break" point, read in the plane `plane` of X (fitted: the front view x, z;
     the flat: pass the pattern uv with plane (0, 1)): the border walked both ways from the break, a line fitted to each
@@ -853,6 +953,8 @@ def worn_open_edge(M: dict, X: np.ndarray, ox: list, band: float = 0.01, reach: 
 
 
 OPEN_HOLD = False  # opt-in (fit round 10 A/B): a worn-open front's seams to the rest of the garment stay where the closed fit put them
+HANG_FREE = True  # fit round 11: a worn-open front below its break is not drawn onto the body (assemble, EDGE_FREE block)
+HOLD_NAMED = True  # fit round 11: the hold's height from the named worn-open points (the break), not the edge pins
 OPEN_HOLD_W = 20.0  # the held seam vertex's pull to its closed-fit position (3D)
 OPEN_HANG = True  # with OPEN_HOLD: the free edge below the lowest worn-open point hangs plumb from it (worn_open_edge)
 
@@ -1139,6 +1241,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                for v in (c.get("v") or []) if tuple(int(x) for x in v) in set(fast)]
     full, cx = _pins(M, X, body, ease, bsurf, under_v=under["V"] if under is not None else None)
     ox = worn_open_pins(M, X, worn_open)
+    ox_named = list(ox)  # (the named worn-open points alone: ox gains the edge pins below)
     # 1. collars / stands stood up from their seams; 2. flaps turned
     placed = {k: True for k in range(len(names))}
     if B is not None:
@@ -1448,12 +1551,25 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
             sel = np.where(pid == k)[0]
             dd, _ = cKDTree(uv[ev[pid[ev] == k]]).query(uv[sel])
             edge_free[sel] = np.clip(dd / EDGE_FREE, 0.0, 1.0)
+            if HANG_FREE and OPEN_HOLD and OPEN_HANG:
+                # (fit round 11, Joe: "hopefully there's not a sharp fold here"): a front worn open HANGS from the chest
+                # below its break: the body holds it at the shoulders and the chest, not round the waist. Drawn onto the
+                # body there while its edge is held open and its seams held closed, the 84 mm the edge moved had nowhere
+                # to go but a fin at the front dart (Garrett r11c: the dart seam 73 deg median, max 107; r6 closed 8).
+                # Below the break the whole worn-open piece is free of the seat's attraction (still pushed out of the body).
+                zb_ = max(float(X[v, 2]) for v, _, _ in ox_named if pid[v] == k) if any(pid[v] == k for v, _, _ in ox_named) else None
+                if zb_ is not None:
+                    edge_free[sel[X[sel, 2] < zb_]] = 0.0
     holds = []
     if ox and OPEN_HOLD and body is not None and ({int(pid[v]) for v, _, _ in ox}
                                                    - {int(pid[v]) for pr in fast for v in pr}):
         # the worn-open front's seams held where the closed fit puts them (open_seam_holds)
         Xc = assemble(pattern, worn_open=None, **closed_args)["V"]
-        holds = open_seam_holds(M, Xc, ox, placed, fast)
+        # (from the NAMED points only, fit round 11: given ox with the edge pins, the roll line's top set the hold's
+        # height, so the shoulder / neck seams were held CLOSED under a turned lapel: the lapel top through its base,
+        # Garrett 40-120 mm below the neck point L 129 / R 125 flap vertices vs 45 / 45 unheld. Joe: "the tops of the
+        # lapels are embedded in the layer below". HOLD_NAMED False: old.)
+        holds = open_seam_holds(M, Xc, ox_named if HOLD_NAMED else ox, placed, fast)
         full = full + holds
         info["open_hold_v"] = len(holds)
     info["turned_deg_start"] = [round(fold_turned(M, X, g), 0) for fd, g, t in folds_]

@@ -1138,6 +1138,79 @@ def test_open_front_edge_has_no_step_at_the_break():
     assert res[True][0] <= pf.BREAK_STEP_MM and res[True][1] < 0.005, res
 
 
+def test_open_hold_stops_at_the_break_not_the_roll_top():
+    """(fit round 11, Joe: "the tops of the lapels are embedded in the layer below") A worn-open front hangs from its
+    seams BELOW its break; above it the lapel turns and the front above follows the swing. open_seam_holds took its height
+    from every worn-open pin, the edge pins included, whose roll-line pins reach the neck: the shoulder / neck seams were
+    held CLOSED under the turned lapel (Garrett: the lapel top through its base, 40-120 mm below the neck point, L 129 / R
+    125 flap vertices; 45 / 45 unheld). Known answer, the open tube with lapels (break 0.2 of 0.4 m, roll to the neck
+    point): HOLD_NAMED holds only the side seams below the break (about half of them); without it every one is held."""
+    import math as _m
+    r, ease, H, hb = 0.1, 0.01, 0.4, 0.2
+    R0 = r + ease
+    Wq, Wb = 0.5 * _m.pi * R0, _m.pi * R0
+    pts = [[0, 0], [Wq, 0], [Wq, H], [0.03, H], [-0.05, H - 0.06], [0, hb]]
+    nm = {"cfHem": 0, "sideHem": 1, "sideTop": 2, "hps": 3, "lapelPoint": 4, "break": 5}
+    fl = _piece(pts, names=nm)
+    fr = _piece([[-x, y] for x, y in pts][::-1], names={k: 5 - v for k, v in nm.items()})
+    bk = _piece([[0, 0], [Wb, 0], [Wb, H], [0, H]], names={"b0": 0, "b1": 1, "b2": 2, "b3": 3})
+    folds = [{"piece": f"front.{s}", "line": [[0, hb], [g * 0.03, H]], "angle": 5, "kind": "press", "name": "lapel roll",
+              "flap": "lapelPoint"} for s, g in (("L", 1), ("R", -1))]
+    B = _B({"front.L": fl, "front.R": fr, "back": bk},
+           seams=[["front.L:sideHem>sideTop", "back:b0>b3"], ["front.R:sideHem>sideTop", "back:b1>b2"]], folds=folds)
+    M = cloth.mesh(B, 0.012)
+    pid = np.asarray(M["piece"]); uv = np.asarray(M["uv"], float)
+    th = np.where(pid == M["names"].index("back"), uv[:, 0] / R0, -0.5 * _m.pi + uv[:, 0] / R0)
+    X0 = np.c_[R0 * np.cos(th), R0 * np.sin(th), 0.05 + uv[:, 1]]
+    body = _cyl_body(r, -0.1, 0.6)
+    saved = (pf.WORN_EDGE, pf.OPEN_HOLD, pf.HOLD_NAMED)
+    n = {}
+    try:
+        for hn in (False, True):
+            pf.WORN_EDGE, pf.OPEN_HOLD, pf.HOLD_NAMED = True, True, hn
+            out = pf.assemble({"mesh": M, "X0": X0}, body, iters=80, worn_open={"break": 0.05})
+            n[hn] = out["info"]["open_hold_v"]
+            print(f"HOLD_NAMED {hn}: held seam vertices {n[hn]}")
+    finally:
+        pf.WORN_EDGE, pf.OPEN_HOLD, pf.HOLD_NAMED = saved
+    assert 0.35 < n[True] / n[False] < 0.65, n
+
+
+def test_front_crease_and_flap_through_measures_find_planted_faults():
+    """(fit round 11, Joe: "hopefully there's not a sharp fold here", "the tops of the lapels are embedded") The two form
+    measures behind gate rows front_crease / lapel_on_base, validated on known answers. front_creases: the open tube's
+    closed fit (a smooth cylinder) passes; the same with front.L below the break kinked 60 deg about a vertical line
+    fails with an interior max >= 50. flap_through_base: the mirrored lapels assembled lie on their bases (share 0);
+    the flaps pushed 5 mm into the chest side, through their bases, read share > 0.5."""
+    M, X0, body = _open_tube_case()
+    V = pf.assemble({"mesh": M, "X0": X0}, body, iters=80)["V"]
+    ok = pf.front_creases(M, V)
+    print("smooth tube", ok)
+    assert ok and all(r["ok"] for r in ok.values()), ok
+    pid = np.asarray(M["piece"]); k = M["names"].index("front.L"); uv = np.asarray(M["uv"])
+    Vk = V.copy()
+    zb = V[M["points"]["front.L:break"], 2]
+    m = (pid == k) & (uv[:, 0] < 0.05) & (V[:, 2] < zb - 0.02)
+    piv = V[(pid == k) & (np.abs(uv[:, 0] - 0.05) < 0.007)].mean(0)
+    Vk[m] = piv + pf._rodrigues(V[m] - piv, np.tile([0.0, 0.0, 1.0], (int(m.sum()), 1)), np.full(int(m.sum()), np.radians(60)))
+    bad = pf.front_creases(M, Vk)
+    print("kinked tube", bad)
+    assert not bad["front.L"]["ok"] and bad["front.L"]["interior_max"] >= 50, bad
+    from hifipushie import folds as foldmod
+    L = _mirrored_lapels("press")
+    X0 = np.c_[L["uv"][:, 0], np.full(len(L["uv"]), -0.006), 1.0 + L["uv"][:, 1]]
+    W = pf.assemble({"mesh": L, "X0": X0}, _plane_body(0.0), iters=80, attract=0.0)["V"]
+    good = pf.flap_through_base(L, W, _plane_body(0.0))
+    F = np.asarray(L["F"])
+    flm = foldmod.flap_faces(L, F)
+    fl, base = np.unique(F[flm]), np.unique(F[~flm])
+    Wb = W.copy()
+    Wb[np.setdiff1d(fl, base), 1] += 0.005  # (+y: toward the chest, behind the base)
+    thr = pf.flap_through_base(L, Wb, _plane_body(0.0))
+    print("lapels", good, "pushed", thr)
+    assert all(r["share"] == 0 for r in good.values()) and all(r["share"] > 0.5 for r in thr.values()), (good, thr)
+
+
 def test_sleeve_over_a_sleeve_has_room():
     """(fit round 10) A sleeve worn over a sleeve holds it plus one layer: width >= under + 2 pi (EASE + THICK). Known
     answer: a shirt sleeve 391 mm wide; a two-piece jacket sleeve (top 217 + under 179 = 396, Garrett's draft from the

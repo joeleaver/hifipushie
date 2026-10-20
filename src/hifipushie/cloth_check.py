@@ -1096,10 +1096,20 @@ def form_shape_rows(res: dict) -> list:
     fit = pf.edge_through_break(M, np.asarray(res["A"], float))
     flat = pf.edge_through_break(M, np.asarray(M["uv"], float), plane=(0, 1))
     ok = all(r["ok"] for r in list(fit.values()) + list(flat.values()))
+    A = np.asarray(res["A"], float)
+    cr = pf.front_creases(M, A)
+    ft = pf.flap_through_base(M, A, res.get("body"))
     return [{"id": "front_edge_break", "stage": 3, "status": "PASS" if ok else "FAIL",
              "measure": "pattern_form.edge_through_break (step mm off the edge's lines, turn deg), flat + on the form",
              "ours": {"form": fit, "flat": flat}, "ref": f"step <= {pf.BREAK_STEP_MM} mm, turn <= {pf.BREAK_TURN_DEG} deg",
-             "why": pf.BREAK_STEP_SOURCE}]
+             "why": pf.BREAK_STEP_SOURCE},
+            {"id": "front_crease", "stage": 3, "status": "PASS" if all(r["ok"] for r in cr.values()) else "FAIL",
+             "measure": "pattern_form.front_creases (below the break, welded at seams, fold rows out; deg / mm)",
+             "ours": cr, "ref": f"interior p90 and each seam's median <= {pf.CREASE_DEG} deg; edges over "
+                                f"{2 * pf.CREASE_DEG:.0f} deg <= {pf.CREASE_SHARP_MM:.0f} mm", "why": pf.CREASE_SOURCE},
+            {"id": "lapel_on_base", "stage": 3, "status": "PASS" if all(r["ok"] for r in ft.values()) else "FAIL",
+             "measure": "pattern_form.flap_through_base (turned flap vertices past the hinge through their own base)",
+             "ours": ft, "ref": f"share <= {pf.FLAP_THROUGH_MAX}", "why": pf.FLAP_THROUGH_SOURCE}]
 
 
 def flat_pattern_row(model: str, garment: str, spec: dict) -> dict:
