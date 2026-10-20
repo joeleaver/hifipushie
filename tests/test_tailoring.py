@@ -167,6 +167,25 @@ def test_two_piece_collar_meets_the_checklist_at_every_size():
             assert 20 - 15 <= v["gap_mm"] <= 40 + 15 and 60 - 15 <= v["angle_deg"] <= 90 + 15, (nm, side, v)
 
 
+def test_fall_outer_edge_is_the_books_spread_not_the_under_stack():
+    """R18 (fit round 3, C44): the fall's outer edge lies on the jacket body, so only its own stand-off there counts
+    (half the fall's stack + half the cloth), never the stand + shirt collar it wraps at the roll line; the drop tapers
+    to the fall's end. Books (Aldrich / Cabrera: the undercollar slashed and spread ~1-1.5 cm per half at the outer
+    edge) -> outer edge 10-15 mm over the neck seam; ours may add the stand's lean-in (neck edge - roll line, ~4 mm)."""
+    t5, t6 = pj.turn_stack(under_layers=0), pj.turn_stack(under_layers=12)
+    assert t5["length_mm"] == t6["length_mm"] and t5["depth_mm"] < t6["depth_mm"]
+    for nm, tape in BODIES.items():
+        D = ours(tape)
+        mc = D["meta"]["collar_two_piece"]
+        st, fa = D["pieces"]["stand"], D["pieces"]["collar"]
+        neck = pattern.length(st["P"][pattern.arc_indices(st, "cb>shoulderNotch>cf")]) * 1000
+        roll = pattern.length(fa["P"][pattern.arc_indices(fa, "cbLow>endLow")]) * 1000
+        outer = pattern.length(fa["P"][pattern.arc_indices(fa, "endOuter>cbOuter")]) * 1000
+        lean = neck - roll
+        assert 10 - 3 <= outer - neck <= 15 + lean + 3, (nm, round(outer - neck, 1), round(lean, 1))
+        assert mc["spread_deg"] < 25, (nm, mc["spread_deg"])
+
+
 def test_sagitta_tells_a_band_from_a_crescent():
     t = np.linspace(0, 1, 50)
     band = np.c_[t * 0.24, 0.012 * t ** 2]

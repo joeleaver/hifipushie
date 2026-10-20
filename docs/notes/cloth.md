@@ -7666,3 +7666,11 @@ lines across the upper back; opening at the chest judged within ~10 px. Collar /
   43 deg is big against the books' 1-1.5 cm per half, so check the path on the form.
 - Step 2: shirt PASS_WAIVED (pockets: not visible in the front-only concept). Jacket gate + fit not re-run on the final
   pattern (budget). HANDOVER: docs/state/fit_round2.md.
+
+## fit round 3 (2026-10-19, Garrett jacket v2 + shirt; no sims). STATE: docs/state/fit_round3.md
+- Step 0 (spread 43 deg sanity, $FR3/probe0.py): the path measure was right (back neckline turns 90.7 deg, front 34.9:
+  10 mm offset = ~22 by hand, fold_line 19.2 with run-on). Two faults in what was added to it: (a) pi x ring with ring =
+  under-stack + fall (5.5 mm, 17.3 mm per half): the outer edge lies on the jacket body, the stand + shirt collar are
+  under the roll line only -> ring_outer = fall/2 + cloth/2 = 1.375 mm, 4.3 mm; (b) the 10 mm CB drop applied along the
+  whole neckline; the fall's end drops -1.4 mm -> tapered u^2 (back 9.3, front 4.0 mean). Need 277.4 -> 259.4, spread
+  43 -> 17 deg, outer 265 vs neck seam 246 (+20 per half: books 10-15 + the stand's lean-in 4). C44.
