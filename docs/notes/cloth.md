@@ -8735,3 +8735,17 @@ docs/notes/cloth.md "dress-garrett 2026-10-19 muslin 1", "form sleeves", "block 
   held in the lapel's plane as one made piece, or the stand drafted tapering out at the gorge: tailoring agent), not
   another weight. Gate row gorge_lie (cloth_check.form_shape_rows): r15e FAIL. Crop framing fixed (render17.py: the
   concept framed at ITS notch, L (744, 410) px, R (516, 410); ours at the notch mouth): check/notch.{L,R}_r15e.png.
+- fit round 17 step 2 (crossed released fronts; FREE local ZOZO only, $0 spent this round). Flat (asm_r15e mesh uv):
+  front and back are drafted in one frame with the SAME hps (93, 1.2) and shoulder (240.8, -27.3): front balance = back
+  (no front-over-back length at the neck point, no steeper front shoulder: Jaeger 1.5 deg; muslin 1's MINOR); front edge
+  20 mm past CF from the break (425 below hps) straight to cutawayTop (552), then to CF + 3 at the hem (a 23 mm
+  cutaway); concept open edge 64 -> 94 mm off CF from break to 650. Sim: job_nu (g17.py under=none: the shirt collider
+  OUT, neck held, start_over 0.06, local 2 min) -> asm_r17nu (mk17.py). Edge off CF 450 / 550 / 650: r16 0/0, 6/19,
+  22/37; r17nu 0/0, 23/15, 62/46; break x -8.9 / +11.5 (r16 -8.3 / +11.0); hem sweep 447 -> 364 (fronts wrap in
+  without the shirt). So the SHIRT is not what holds the break crossed (nor the held neck, r16n, nor the settle length,
+  r16L): the upper front (chest p50 2-5 mm) and the break stay exactly where the closed fit put them. Suspects left,
+  unmeasured: the two fronts' 19-20 mm overlap at the break locking L over R (front-on-front contact), the lapel roll's
+  folded bending rest holding the roll line (and so the break) at its fitted place, and the draft (front balance = back,
+  20 mm wrap): next session measures front-on-front contact pairs at the break in job_k's start and runs a local
+  release with the roll line's bending rest flat (one switch each) before any draft change.
+- Steps 3 (seam gaps after release) and 4 (table, renders, blind reviews) NOT done this session (budget): handover.
