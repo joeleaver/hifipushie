@@ -9103,3 +9103,17 @@ at the sides; box placket 29 mm, buttons 88 mm apart. Checklist: 10 items "Joe 2
 $S/garrett_shirt.before.json).
 Tool gap 1: the pattern gate reads targets from garrett_refs.json (cloth_reference targets) and generic items_for(kind),
 never the piece checklist: none of the 10 shirt items (V, spread, cuff show, colour, placket) is a gate row.
+Step 2 FLAT GATE (gate1.py g1a; model sh_garrett = fr24's spec, the shirt as round 26 wore it, every lesson key kept:
+truing C21, seam walk C22, design corners C24, worn_open cfNeck 30 mm C20; MCP server.pattern_check): PASS. Seams 15 / 0
+off, truing 28 ends / 0 > 10 deg, flat ease chest +10.2 / waist +14.9 / hips +2.8 % (bands), collar / closure / cuff
+barrel / pockets none / fabric match; sleeve_end t 1.029 vs 0.991 (INFO: form not validated, C29); form strain p99
+12 % (yoke 34.7 %) INFO; neckline stand-off median 11.4 mm INFO. Pieces: back, yoke, front.L/R (placket = fold lines
+in the fronts), sleeve.L/R, cuff.L/R, stand, collar.
+Gaps found (no row exists, each = code): (g2) front_state, collar_state, buttons_done, placket, tucked are "SIM:
+judged after the sim" on a path with no sim (M1): C52's big-reads-first can't gate them, the shirt's biggest reads
+are unread by the gate; (g3) the shirt collar has no draft rows: C42 / C43 / C79 / C76 exist for the jacket's
+two-piece collar only (pattern_jacket.turn_stack, collar_draft_two_piece), the shirt's stand + fall get no turn of
+cloth and no stand / fall height check; (g4) the box placket is a closure finish map + fold lines, no sized flat row;
+(g5) the "colour" row compares the design hex #bdb8b4 to the lit read #aca8a6 with no light model and PASSes;
+(g6) tooling trap: wrapping server.pattern_check in resources.heavy deadlocked (the tool's own GPU grant waited on the
+outer one in the same process; g1a killed, rerun without the wrapper).

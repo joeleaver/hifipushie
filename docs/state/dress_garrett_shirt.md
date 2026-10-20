@@ -3,8 +3,10 @@
 QUESTION (Joe 2026-10-20): "another pass on the shirt ... the color isn't right ... will all the lessons we learned on
 the jacket carry over and it won't take 30 rounds?" Round 1 = that test. Jacket thread: docs/state/dress_garrett_fit.md
 (read-only here: the jacket is not changed by this thread).
-STATE: step 1 DESCRIBE done (checklist workspace/checklists/garrett_shirt.json: 10 items "Joe 2026-10-20 shirt pass").
-NEXT: step 2 flat pattern gate on model sh_garrett (fr24's shirt), big reads first.
+STATE: step 1 DESCRIBE done (checklist: 10 items "Joe 2026-10-20 shirt pass"); step 2 flat gate PASS on model
+sh_garrett (fr24's shirt; g1a): seams / truing / ease / collar / cuff pass, but the shirt's big reads (front_state,
+collar_state, tucked, placket) are SIM rows the gate never reads (gap g2), no shirt-collar draft rows (g3).
+NEXT: step 3 fit alone (fit3.py f1a: OPEN_SPREAD on, LAP_LAYER) -> render3.py ref | clay | diag | colour.
 
 ## Big reads (concept, m1_ref.py at 1.147 mm/px; anchors: image CF = button line x 626, neck = stand top at side)
 - Front: closed, top button undone, 2nd done (83 mm below camera HPS). V bottom 109 below the stand top at the side
