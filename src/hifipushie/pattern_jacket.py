@@ -33,6 +33,10 @@ def src(*n) -> str:
 EASE = {"chest": 0.08, "waist": 0.14, "hips": 0.12}  # R1 (a jacket over a shirt; Jaeger / Bent defaults)
 SHARE = {"cb": 0.16, "side_back": 0.32, "side_front": 0.32, "dart": 0.20}  # R8: of the half reduction
 COLLAR = {"total": 0.18, "stand": 0.30, "spread_deg": 13.0, "roll": 0.05, "rise": 0.035}  # R16-R18 (x neck girth)
+# R16 (fit round 2): the fall's fold (roll) line, `at` m above its seam on the stand: the fall rises that little with
+# the stand, then turns down over it and hides the seam. Without the line the dress form left the fall standing up like a
+# hood (fit round 1: fall top 71 mm above the neck point; the gate's flat_pattern row refused it)
+FALL_FOLD = {"at": 0.004, "angle": 10.0, "radius": 0.004, "strength": 0.6}
 
 
 def rules(tape: dict, button_mm: float = 20.0) -> dict:
@@ -248,11 +252,13 @@ def collar_shapes(lb: float, lf: float, stand_cb: float, fall_cb: float, stand_f
 def op_collar_two_piece(D: dict, stand_cb: float | None = None, fall_cb: float | None = None,
                         stand_front: float | None = None, fall_front: float | None = None, rise: float | None = None,
                         spread_deg: float | None = None, roll: float | None = None, point: float = 0.0,
-                        ease: float = 0.0, stand: str = "stand", name: str = "collar", **o) -> None:
+                        ease: float = 0.0, stand: str = "stand", name: str = "collar", fold_at: float | None = None,
+                        **o) -> None:
     """A tailored jacket's collar in two pieces (R16-R18, R26): a near-straight STAND (the neckline's length, back neck
     + the gorge up to the notch) and a sprung FALL sewn to the stand's top edge (the roll line). Defaults from the
     neck girth (rules). `ease` (fraction, R26): the stand's neck edge cut that much shorter than the neckline and
-    eased on (0: sewn 1:1). Point names: stand cb, shoulderNotch, cf, cfTop, cbTop; fall cbLow, endLow, endOuter,
+    eased on (0: sewn 1:1). `fold_at` (m, R16; default FALL_FOLD): the fall's fold line, parallel to its seam on the
+    stand that far into the fall, about which it turns down over the stand (folds.py). Point names: stand cb, shoulderNotch, cf, cfTop, cbTop; fall cbLow, endLow, endOuter,
     cbOuter. Both cut on the fold at CB."""
     nb, nf = D["edges"].get("neck_back"), D["edges"].get("neck_front")
     if not nb or not nf:
@@ -277,7 +283,8 @@ def op_collar_two_piece(D: dict, stand_cb: float | None = None, fall_cb: float |
     ps = pb.make_piece(stand, pts, "collar_stand", dict(wrap), "fold")
     pts = [("cbLow", F[0])] + [(None, q) for q in F[1:-1]] + [("endLow", F[-1])]
     pts += [("endOuter", O[-1])] + [(None, q) for q in O[-2:0:-1]] + [("cbOuter", O[0])]
-    pf = pb.make_piece(name, pts, "collar_fall", dict(wrap, turn={"at": 0.0, "deg": 172, "gap": 0.004}), "fold")
+    fat = FALL_FOLD["at"] if fold_at is None else float(fold_at)
+    pf = pb.make_piece(name, pts, "collar_fall", dict(wrap, turn={"at": fat, "deg": 172, "gap": 0.004}), "fold")
     for pc in (ps, pf):
         if pc["P"][:, 0].mean() < 0:
             pc["P"][:, 0] *= -1
@@ -290,9 +297,14 @@ def op_collar_two_piece(D: dict, stand_cb: float | None = None, fall_cb: float |
                                                    "why": f"the stand's neck edge eased onto the neckline ({src(26)})"}
     D["seams"].append([f"{name}:cbLow>endLow", f"{stand}:cbTop>cfTop"])
     D["interfaced"] += [stand, name]
+    D.setdefault("folds", []).append({"piece": name, "line": {"edge": f"{name}:cbLow>endLow", "offset": fat},
+                                      "angle": FALL_FOLD["angle"], "kind": "roll", "radius": FALL_FOLD["radius"],
+                                      "strength": FALL_FOLD["strength"], "flap": "cbOuter", "name": "collar roll",
+                                      "source": src(16)})
     D["edges"][f"{stand}_neck"] = [f"{stand}:cb>shoulderNotch>cf"]
     D["edges"][f"{name}_outer"] = [f"{name}:endOuter>cbOuter"]
-    D["meta"]["collar_two_piece"] = {"stand_cb": stand_cb, "fall_cb": fall_cb, "rise": rise, "spread_deg": spread_deg}
+    D["meta"]["collar_two_piece"] = {"stand_cb": stand_cb, "fall_cb": fall_cb, "rise": rise, "spread_deg": spread_deg,
+                                     "fold_at": fat}
     D["log"].append(f"collar two-piece ({src(16, 17, 18)}): stand {stand_cb * 1000:.0f} -> {stand_front * 1000:.0f} mm, "
                     f"neck edge {pattern.length(E) * 1000:.0f} (neckline {(lb + lf) * 1000:.0f}) rising "
                     f"{rise * 1000:.0f} at the front; fall {fall_cb * 1000:.0f} mm, spread {spread_deg:.0f} deg: outer "

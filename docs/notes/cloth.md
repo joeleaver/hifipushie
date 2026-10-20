@@ -7637,3 +7637,11 @@ lines across the upper back; opening at the chest judged within ~10 px. Collar /
   shirt shows through the jacket's upper back; the lapels lie and the new stripes keep lapel / collar / front apart.
   VERDICT: collar FAILS; cause #1 is the pattern (the fall has no fold line to turn on), then the stand off the neck.
 - Step 7 (blind review): NOT RUN (budget).
+
+## fit round 2 (2026-10-19, Garrett jacket v2 collar fixes on the form; STATE docs/state/fit_round2.md; NO sims)
+- Step 1: the two-piece collar's fall gets its fold (roll) line (R16): pattern_jacket.FALL_FOLD = 4 mm above the fall's
+  seam on the stand, roll 10 deg, radius 4 mm, strength 0.6, flap cbOuter; unfold runs it across both halves
+  ("collar:endLow.m>cbLow>endLow"). The wrap turn's "at" follows it (placement and fold on one line). Flat pattern:
+  flat_pattern PASS (was FAIL "no fold line on collar_fall"), tailor rows 10/10 PASS, stand 24.5 / fall 57 x 1.05.
+  The refusal was already in the gate (garment_design "fold" evidence for notched_lapel); known-answer test added
+  (tests/test_tailoring.py, C41).

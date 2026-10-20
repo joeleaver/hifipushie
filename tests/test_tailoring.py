@@ -124,6 +124,30 @@ def test_gate_rows_catch_the_muslin1_faults():
     assert rows["waist_suppression"]["ours"] < 11.0
 
 
+def test_collar_fall_has_its_fold_line_and_the_gate_refuses_one_without():
+    """R16 (fit round 2): the two-piece collar's fall carries a fold (roll) line across the whole fall (CB fold to both
+    ends), parallel to its seam on the stand; the construction check (garment_design "fold" evidence, the gate's
+    flat_pattern row for a notched lapel) refuses the fall without it (fit round 1: the form left it standing, a hood)."""
+    from hifipushie import garment_design as gd
+    D = ours(TAPE)
+    pd.unfold(D)
+    fl = [f for f in D["folds"] if f["piece"] == "collar"]
+    assert len(fl) == 1 and fl[0]["kind"] == "roll" and fl[0]["angle"] < 30
+    L = pattern.fold_line(D["pieces"], fl[0])
+    fa = D["pieces"]["collar"]
+    lo = fa["P"][pattern.arc_indices(fa, "endLow.m>cbLow>endLow")]
+    assert pattern.length(L) == pytest.approx(pattern.length(lo), rel=0.08)  # runs end to end, both halves
+    assert np.ptp(L[:, 0]) > 0.9 * np.ptp(lo[:, 0])
+    Bp = {"pieces": D["pieces"], "folds": D["folds"], "interfaced": D["interfaced"]}
+    ok, why = gd._check({"fold": "collar_fall"}, Bp, gd.roles(Bp), {}, {}, None)
+    assert ok, why
+    Bp["folds"] = [f for f in D["folds"] if f["piece"] != "collar"]
+    for pc in D["pieces"].values():
+        (pc.get("wrap") or {}).pop("fold", None)
+    ok, why = gd._check({"fold": "collar_fall"}, Bp, gd.roles(Bp), {}, {}, None)
+    assert not ok and "no fold line on collar_fall" in why
+
+
 def test_sagitta_tells_a_band_from_a_crescent():
     t = np.linspace(0, 1, 50)
     band = np.c_[t * 0.24, 0.012 * t ** 2]
