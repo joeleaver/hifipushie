@@ -9023,3 +9023,32 @@ Closed fits (MODE=outer LAYER_ALLOW 0.008, shirt culled; $FR24/sideline.py, sum2
   steps such under vertices back (2 moved); preflight's new collider_vertex_pairs row fails r25d, passes r25e. r25e
   (release only, no pins): RUNS (local ZOZO, $0). Released fronts: edge off CF 7/3, 12/15, 25/28 mm at 450/550/650
   (concept 71/78/94), still moving 16.8 mm at the end, stretch p99 13.4, neck seams open 5-10 mm at the stand (old).
+- Arrangement r25f (arr.sh: g25 arrange=1 keep=1 pull=100 = the r20k setup, kept light pins on break..cfHem to the
+  concept rows; local ZOZO, $0): edge off CF 67/66, 78/71, 95/87 at 450/550/650 (concept 71/78/94); break x 60 (64), V
+  width 157 at 200; springback <= 1.0 mm, still 1.8 mm, stretch near pins p99 1.55 % (rest 12.4); status "placed by
+  hand". Front-view width chest / waist / hip / seat / hem+30 412 / 427 / 464 / 492 / 511 (concept 397 / 401 / - / 413
+  / 482): the lower fronts swing out round the sides. Neck seams still open 5-10 mm at the stand (fault 8).
+  Recull + renders r25g ($FR25/check: wholefront_r25g, upper_front_r25g = ref | clay | diag;
+  side_before_r24c_after_r25g, back_before_r24c_after_r25g = clay before | after | diag before | after).
+- Ease measured (ease25.py, exact plane sections, convex-hull girth; sum23's slab-of-vertices girth under-read the
+  jacket by ~140 mm): closed r24c chest / under-bust / waist / hip / seat / hem+30 jacket 1168 / 1108 / 1111 / 1112 /
+  1113 / 1114 vs body 968 / 867 / 789 / 909 / 960; the PLUMB MINIMUM (hull of the union of the torso sections seat ..
+  chest: what a tube hanging straight must clear) is 995 (width 359, the seat governs). So below the chest the jacket is
+  +116 over the plumb minimum everywhere (shirt allowance 2 pi x 8 mm ~ 50 + a layer ~10 leaves ~+55 of surplus), and
+  at the chest +200 over the body (book +110 + ~60 allowance = ~170: ~+30 surplus). Stand-off r24c at the waist CF /
+  front / side / back / CB 27 / 26 / 71 / 62 / 55 mm: the excess sits at the SIDES and back (the plumb hang from a chest
+  girth that is itself the full draft ease), not piled at CF. Fix lives in the draft (pattern_jacket plumb keeps the
+  chest's girth to the hem): size the plumb girth to max(plumb minimum + allowances, chest need), not the chest's.
+  NOT changed this round (the open-jacket re-order took the budget).
+- Pocket flaps (flaps25.py, signed distance off their own front): r23c flap p50 +10 mm in front of the front; r24c
+  -1.2 (L) / -4.7 (R) mm BEHIND it (20 / 25 of 25 vertices sunk); r25f -1.2 / -3.8. The flaps stay at their old body
+  offset (20-24 mm) while BRIDGE + the plumb cut moved the fronts out (front stand-off ~26 mm at depth 500): the flap
+  is placed off the BODY, not off its base front (pattern_form: on_flap excluded from the bridge attraction, line
+  ~2178). Fix: place / draw the flaps onto their base piece's surface (+ THICK). Not done (budget).
+- Reviews (blind): rev_wf (wholefront open r25g, clay + diag) FAIL; rev_front_ab (r24c closed vs r25g open) chose OLD
+  (r24c). BOTH reviewers, unprompted, read the reference as FASTENED: "a two-button jacket fastened at the waist ...
+  the V ends at that button, rounded cutaway below". My own look at the reference agrees (overlap at the waist button,
+  fronts part only below it). That contradicts the "worn open" brief: a Joe call, escalated. Other MAJORs (shared by
+  r24c): boxy / no waist shaping (design fact: disputed), too long (hem at the crotch vs just covering the seat),
+  collar stands up the neck, pocket flap a jagged fragment (sunk), shoulders wide / square, lapels narrow, shirt
+  untucked + bulky (other stage).

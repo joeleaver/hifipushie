@@ -14,6 +14,10 @@ points to it when the garment has worn_open. Test tests/test_cloth_release.py (K
   never below the body (pad_base); the garment's vertices off the body (vertex-only, <= 4 mm); the under garment
   pressed under to 3.5 mm along its normal, at most down onto the body; its faces no press parts dropped from the
   collider (Garrett: 244 at armholes / neck); last edge pairs stepped off <= 2 mm.
+- start clears for a LAYERED closed fit (round 25, C92): the released closure's button pair parted in layer order
+  (part_released, RELEASE_PART 2.2 mm); clear_body most BODY_CLEAR_MOST; under-garment vertices within EDGE_CLEAR of a
+  free garment face stepped back (collider_clear); preflight checks collider vertices vs garment faces too. Garrett
+  r25e / r25f (r24c start) run through locally.
 - schedule 24 fps: sew 4 (gravity 0) + settle 48 (2 s) + self_settle 24 (1 s). Garrett: 2 s is within 2 mm (p90) of
   a 6 s settle; one spot (front.R waist) still moving 9 mm / 6 frames at 3 s.
 - preflight: cloth_job.preflight (now reads rest / start_over from the zozo dict). A start whose strain is over the
