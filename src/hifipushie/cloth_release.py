@@ -349,7 +349,7 @@ def from_form(model: str, garment: str, spec: dict | None = None, release=("fron
 ARRANGE_PLACE = 24  # frames (1 s) the pins take to their targets, with gravity on
 ARRANGE_HOLD = 24  # frames held there (the cloth and the shirt settle round the placed points; friction takes hold)
 ARRANGE_FREE = 24  # frames after the pins let go: the springback
-ARRANGE_PULL = 1.0  # the soft pins' pull strength (ZOZO pin pull: a spring to the moving target, contact still acts)
+ARRANGE_PULL = 10.0  # the soft pins' pull (ZOZO pin pull: a spring to the moving target, contact acts; KAT: 1 stops 12 mm short, 10 within 7)
 SPRING_MM = 10.0  # a pin that springs back further than this once let go: kept, the result "placed by hand"
 
 

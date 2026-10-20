@@ -151,7 +151,7 @@ TOOLSETS: dict[str, dict] = {
              "tools": ["groom_hair", "tie_hair", "look_hair", "hair_reference", "hair_from_reference", "export_hair"]},
     "cloth": {"about": "garments: design, pattern, the pattern gate, alterations, fit on the form, dress (sim), "
                        "references", "also": ["scene"],
-              "tools": ["design_garment", "look_pattern", "alter_pattern", "pattern_check", "fit_garment", "release_garment",
+              "tools": ["design_garment", "look_pattern", "alter_pattern", "pattern_check", "fit_garment", "release_garment", "arrange_garment",
                         "check_garment", "dress", "look_cloth", "garment_reference",
                         "garment_from_reference", "check_garment_reference", "garment_reference_brief"]},
     "terrain": {"about": "terrain and game levels (height fields in a level designer's words)",
@@ -2827,6 +2827,55 @@ def release_garment(name: str, garment: str, release: list[str] | None = None, s
     lines += [f"  moved from the fit (mm per piece): {json.dumps(mv)}", f"  still moving (last 6 frames): {still} mm"]
     return "\n".join(lines + ["next: judge the released result beside the reference (clay + diag, one view per "
                               "review_view); a front that hangs crossed over is a DRAFT balance fault: fix the pattern"])
+
+
+@mcp.tool(structured_output=False)
+def arrange_garment(name: str, garment: str, pins: list[dict], keep: bool = False, pull: float | None = None,
+                    release: list[str] | None = None, hold_ring_mm: float = 0.0, submit: bool = False):
+    """ARRANGE a worn garment BY HAND (Joe 2026-10-20: as a man settles his coat after sitting): an openness or pose
+    physics alone won't give is placed, never drafted or fitted in. The release job (release_garment) plus SOFT pins:
+    each pin {"at": "piece:point" | "piece:a..b" (the piece's border between two named points), and "to": [x, y, z]
+    | "by": [dx, dy, dz] (+ "by_end" for an edge: blended along it) | "targets": [[x, y, z] per vertex], "name"?}
+    pulled to its target over 1 s of gravity (the under garment, real friction), held 1 s, then let go for a 1 s
+    settle. Reports per pin how near it got, the SPRINGBACK once let go and the stretch near the pins vs the rest.
+    Springback over 10 mm: rerun with keep=True (light pins kept: the result is recorded "placed by hand").
+    pull: the pins' spring (default cloth_release.ARRANGE_PULL); hold_ring_mm: also hold the bodice that close to
+    the held neck pieces (their seam can't part). submit=True runs it (rented when HIFIPUSHIE_GPU=bundle).
+    Details: cloth_release's docstring ("ARRANGE"); docs/state/cloth_release.md."""
+    from . import cloth_job, cloth_release, cloth_check as cc
+    spec = store.load(name)
+    if garment not in (spec.get("cloth") or {}):
+        raise ValueError(f"no garment {garment!r} (have {', '.join(spec.get('cloth') or {}) or 'none'})")
+    if not pins:
+        raise ValueError("pins: at least one {\"at\": ..., \"to\" | \"by\" | \"targets\": ...}")
+    st = cc.gate_status(name, garment, spec)
+    if not st["passed"]:
+        return (f"{garment}: not arranged: {st['why']}\nnext: pattern_check(\"{name}\", \"{garment}\") first; the "
+                "arrangement is a sim and needs the pattern gate's PASS like every sim")
+    arr_opt = {"keep": bool(keep), **({"pull": float(pull)} if pull is not None else {})}
+    r = cloth_release.from_form(name, garment, spec, release=tuple(release or ("front",)), pins=pins,
+                                arrange=arr_opt, hold_ring=float(hold_ring_mm) / 1000)
+    jd = cloth_release.write(store.HOME / "_cache" / "arrange" / f"{name}_{garment}" / "sim", r["cfg"], r["arrays"],
+                             r["res"]["mesh"]["names"], r["gate"])
+    pre = cloth_release.preflight(jd)
+    lines = [f"{name}:{garment}: arrangement job {jd}", f"  pins: {json.dumps(r['info']['arrange'])}",
+             f"  preflight ok {pre['ok']}: body {pre['body_mm']:.2f} mm / {pre['body_pairs']} pairs"]
+    if not pre["ok"]:
+        return "\n".join(lines + ["next: the start fails the preflight: fix the fit, not the solver"])
+    if not submit:
+        return "\n".join(lines + [f"next: arrange_garment(..., submit=True) runs it (one sim)"])
+    with cloth_job.submitting():
+        d, _ = cloth_release.run(jd, progress=lambda *_: None, log=lambda *_: None)
+    M = r["res"]["mesh"]
+    rep = cloth_release.arranged(M, r["arrays"], d, keep=bool(keep), X_ref=r["arrays"]["X"])
+    W, wi = cloth_release.weld_seams(M, d["V"])
+    np.savez(jd.parent / "arranged.npz", V=W, Vsim=d["V"], Vheld=d.get("Vheld", d["V"]))
+    lines += [f"  arranged: {json.dumps(rep)}", f"  seams after the weld: {json.dumps(wi['after'])}; open: "
+              f"{json.dumps(wi['open'][:6])}", f"  result: {jd.parent / 'arranged.npz'} (V welded)"]
+    nxt = ("the pins spring back: arrange_garment(..., keep=True) keeps light pins (\"placed by hand\")"
+           if rep["status"] == "springs back" else "judge the arranged result beside the reference (clay + diag, one "
+           "view per review); check no front through front, no lift, the lapel rolling to its break")
+    return "\n".join(lines + [f"next: {nxt}"])
 
 
 @mcp.tool(structured_output=False)

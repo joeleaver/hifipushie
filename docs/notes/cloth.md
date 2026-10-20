@@ -8819,3 +8819,26 @@ docs/notes/cloth.md "dress-garrett 2026-10-19 muslin 1", "form sleeves", "block 
   tiny, sleeve webbed to torso, pinched waist + flare, poke-through, square shoulders), upper_front FAIL (6 MAJOR + diag
   3), upper_three FAIL (4 MAJOR + diag 2). My read: the notch's tab is gone (end lies flat) but the collar end reads as a
   thin flat sliver; fronts still meet at CF; collar is a band up the neck; shirt pokes through at the waist sides.
+
+## fit round 20 (2026-10-20, Garrett jacket + shirt; $FR20 = /mnt/data/hifipushie/dress_garrett/fit_round20)
+- fit round 20 step 1: the ARRANGEMENT tool. Runner (cloth_zozo): job "arrange" + in.npz arrIdx / arrTarget / arrGroup:
+  one ZOZO pin holder with pull (a soft spring), interp smooth, move_to the targets over place_frames of the settle,
+  unpinned at the settle's end unless keep; the let-go frame kept from the pruner and saved as Vheld. cloth_release:
+  pin_vertices ("piece:point" | "piece:a..b" = the piece's border between two points, shorter way, by uv length),
+  arrange_targets (to / by / by_end / targets), arrange_job (release job + pins, held neck pieces never pinned),
+  arranged (per pin held / springback / off, stretch p99 near the pins vs rest vs start, status), job(hold_ring=...)
+  (the bodice near the held neck pieces held with them), from_form(pins=...) (release + arrangement in one sim). MCP
+  arrange_garment (cloth toolset).
+- Found: the round 16 release KAT had FAILED since 2529c140 (clear_body): the KAT torso's sharp 90 deg cap edge gave
+  the disc / band a signed distance of -13 mm (pseudo-normal at the edge), clear_body pushed them 4 mm, the start
+  stretched 18 % and CCD failed at t = 0. Cap rounded over 10 mm in the test: release KAT PASS again (hem 22.5 mm,
+  control 1.0, chest p90 0.99).
+- KAT (open-front cone, both edges turned 25 mm each away from CF at the hem, ramped from 0 at the chest; measure
+  `_opened`, the hem corners' arc apart): hard pins let go: 50.0 placed -> 24.7 at the end (springback 15-33 mm, still
+  1.2 mm): the KAT front hangs 6 mm off the body, nothing under it, no friction to hold it. Pull 1: stopped 12 mm short
+  (dead). Pull 10 kept ("placed by hand"): 48.1 at let-go time, 49.0 at the end, springback 0.8, stretch p99 near the
+  pins 0.10 % (rest 0.21, start 3.25), still 0.56. ARRANGE_PULL 10. KAT test_arranged_open_front_stays_open (kept pins):
+  open within 6 of 50, springback < 3, near-pin p99 < 1 %, still < 1 mm: PASS. tests/test_cloth_release: 8 passed.
+  tests/test_tooling: 2 failures that are on the committed base too (lid_fold FileNotFound, rented opt-in).
+- Disk: root filled to 12 GB free during step 1 from a cargo build in ~/dev/rinch-wt/fix-941 + mold core dumps (not
+  ours); local ZOZO now runs with TMPDIR=/mnt/data/hifipushie/tmp ($FR20/run.sh).
