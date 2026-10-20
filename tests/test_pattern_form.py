@@ -1182,22 +1182,22 @@ def test_open_hold_stops_at_the_break_not_the_roll_top():
     assert 0.35 < n[True] / n[False] < 0.65, n
 
 
-def lapel_turn_case(roll_turn: bool, off: float = 0.05, verbose: bool = True) -> dict:
+def lapel_turn_case(roll_turn: bool, off: float = 0.05, verbose: bool = True, woven: bool = False) -> dict:
     """The worn-open front with a lapel on a cylinder, ROLL_TURN on / off (fit round 12): chest drift from the closed fit
     (front vertices above the break, off the lapel, 40 mm+ from the roll line), the chest's stand-off from the body, the
     lapel's turn, the free edge below the break, the step at the break."""
     from scipy.spatial import cKDTree
     M, X0, body = _open_tube_lapel_case()
     pid = np.asarray(M["piece"]); uv = np.asarray(M["uv"], float); P = M["points"]
-    saved = (pf.WORN_EDGE, pf.OPEN_HOLD, pf.ROLL_TURN, pf.CHEST_HOLD)
+    saved = (pf.WORN_EDGE, pf.OPEN_HOLD, pf.ROLL_TURN, pf.CHEST_HOLD, pf.WOVEN)
     res = {}
     try:
-        pf.WORN_EDGE, pf.OPEN_HOLD = True, True
+        pf.WORN_EDGE, pf.OPEN_HOLD, pf.WOVEN = True, True, woven
         closed = pf.assemble({"mesh": M, "X0": X0}, body, iters=80)["V"]
         pf.ROLL_TURN, pf.CHEST_HOLD = roll_turn, (1.0 if roll_turn else 0.0)
         out = pf.assemble({"mesh": M, "X0": X0}, body, iters=80, worn_open={"break": off})
     finally:
-        pf.WORN_EDGE, pf.OPEN_HOLD, pf.ROLL_TURN, pf.CHEST_HOLD = saved
+        pf.WORN_EDGE, pf.OPEN_HOLD, pf.ROLL_TURN, pf.CHEST_HOLD, pf.WOVEN = saved
     V = out["V"]
     from hifipushie import folds as foldmod
     for s in "LR":
@@ -1222,13 +1222,20 @@ def lapel_turn_case(roll_turn: bool, off: float = 0.05, verbose: bool = True) ->
         res[s]["step_mm"] = eb[f"front.{s}"]["step_mm"]
     res["through"] = pf.flap_through_base(M, V, body)
     res["stretch"] = out["info"]["stretch_pct"]
+    if woven:
+        W = pf._woven_setup(M, None, np.asarray(M["F"]), pf._edges(np.asarray(M["F"])), np.zeros(len(uv), bool))
+        sh = pf.woven_shear_deg(W, V)
+        res["shear_deg"] = {"p50": round(float(np.median(sh)), 1), "p99": round(float(np.percentile(sh, 99)), 1)}
+        res["grain_stretch"] = out["info"].get("grain_stretch_pct")
     if verbose:
-        print(f"lapel turn ROLL_TURN {roll_turn}: {res}")
+        print(f"lapel turn ROLL_TURN {roll_turn} WOVEN {woven}: {res}")
     return res
 
 
 @pytest.mark.xfail(strict=True, reason="fit round 12: an isometric (shear-stiff) front cannot open its break with its chest and "
-                   "side seams fixed: the lapels compress through their base; needs a woven shear energy in the fit")
+                   "side seams fixed: the lapels compress through their base. Fit round 14: WOVEN (KES-F shear) does not "
+                   "fix it: lapels 26 / 40 % through (66 / 90 off), turn 143 / 150 deg, the base strip along the roll line "
+                   "crumples in the WEFT (+-30 %, not shear) between the pressed row and the held chest")
 def test_open_front_turns_its_lapel_not_its_chest(off=0.05):
     """(fit round 12, coordinator-approved method) Worn open, a jacket's chest stays on the body; only the lapel turns,
     about its roll line, and the front below the break hangs from the break. Known answer, the open tube with lapels,
@@ -1238,14 +1245,97 @@ def test_open_front_turns_its_lapel_not_its_chest(off=0.05):
     (> 1.5 x): the fault that set every hold above the break fighting it. Also the lapel ON its base (flap_through_base
     ok) and the cloth unstretched (p99 < 5 %). XFAIL (r12): ROLL_TURN + CHEST_HOLD keep the chest (drift 0, stand 6 mm)
     but the lapels go 66 / 90 % through their base, stretch p99 13 %; the start field alone moves the chest 34 mm."""
-    new, old = lapel_turn_case(True, off), lapel_turn_case(False, off)
+    new, old = lapel_turn_case(True, off, woven=True), lapel_turn_case(False, off)
     for s in "LR":
         r = new[s]
         assert r["chest_drift_p90"] <= 6.0 and r["chest_stand_p90"] <= 8.0, new
         assert r["turn_deg"] >= 160 and r["edge_below_min"] >= (off - 0.005) * 1000, new
         assert abs(r["break_x"] - off * 1000) <= 5.0 and r["step_mm"] <= pf.BREAK_STEP_MM, new
         assert old[s]["chest_drift_p90"] > 1.5 * r["chest_drift_p90"], (old, new)
-    assert all(v["ok"] for v in new["through"].values()) and new["stretch"]["p99"] < 5.0, new
+    assert all(v["ok"] for v in new["through"].values()) and new["grain_stretch"]["p99"] < 5.0, new
+
+
+def _woven_square(grain=90.0, h=0.01):
+    B = _B({"sq": _piece([[0, 0], [0.2, 0], [0.2, 0.2], [0, 0.2]])})
+    B["pieces"]["sq"]["grain"] = grain
+    M = cloth.mesh(B, h)
+    F = np.asarray(M["F"])
+    W = pf._woven_setup(M, B, F, pf._edges(F), np.zeros(len(M["uv"]), bool))
+    return M, W
+
+
+def _grain_map(M, grain, A):
+    """X = R A R^T uv: the 2x2 map A applied in the grain frame (weft, warp) of a piece cut at `grain` deg."""
+    g = math.radians(grain)
+    R = np.array([[math.sin(g), math.cos(g)], [-math.cos(g), math.sin(g)]])  # columns weft, warp
+    uv = np.asarray(M["uv"], float)
+    return np.c_[uv @ (R @ A @ R.T).T, np.zeros(len(uv))]
+
+
+def _shear_A(deg):
+    """Pure shear: warp and weft keep their length, the angle between them closes by deg (split both ways)."""
+    h = math.radians(deg) / 2
+    return np.array([[math.cos(h), math.sin(h)], [math.sin(h), math.cos(h)]])
+
+
+def test_woven_shear_costs_its_sourced_share_of_a_stretch():
+    """(fit round 14) WOVEN's energy per unit strain^2: a shear gamma costs G / E of a stretch eps = gamma (KES-F suiting:
+    G 0.75 gf/cm/deg, E = 500 gf/cm / EMT 6.4 %), on any grain (a bias-cut piece too: the frame turns with the grain).
+    Known answer at 1 %: shear / stretch = 0.0055 +- 10 %; and a 2 % stretch along the warp or the weft costs
+    (1 + SHEAR_STIFF) eps^2 per area (as stiff as the isometry: the same sources, the same weight)."""
+    G_E = pf.KES_G * 180 / math.pi / (pf.KES_FM / pf.KES_EMT)
+    for grain in (90.0, 45.0, 0.0):
+        M, W = _woven_square(grain)
+        g = 0.01
+        sh = pf.woven_energy(W, _grain_map(M, grain, _shear_A(math.degrees(g))))
+        st = pf.woven_energy(W, _grain_map(M, grain, np.diag([1.0, 1.0 + g])))
+        r = sh["total"] / st["total"]
+        print(f"grain {grain}: shear 1 % / stretch 1 % = {r:.5f} (G/E {G_E:.5f})", sh, st)
+        assert abs(r / G_E - 1) < 0.1, (r, G_E)
+        for A in (np.diag([1.0, 1.02]), np.diag([1.02, 1.0])):
+            e = pf.woven_energy(W, _grain_map(M, grain, A))
+            assert abs(e["total"] / (e["area"] * (1 + pf.SHEAR_STIFF) * 0.02 ** 2) - 1) < 0.05, e
+        # the frame follows the grain: a bias piece sheared in ITS frame is cheap; read on the straight grain the same
+        # map is warp / weft stretch (the undercollar, cut on the bias, must shear round the neck, not stretch)
+        if grain == 45.0:
+            X = _grain_map(M, 45.0, _shear_A(10.0))
+            e45, e90 = pf.woven_energy(W, X), pf.woven_energy(_woven_square(90.0)[1], X)
+            print("bias sheared 10 deg: own grain", e45, "straight grain", e90)
+            assert e45["total"] < 0.05 * e90["total"], (e45, e90)
+
+
+@pytest.mark.xfail(strict=True, reason="fit round 14: the brief's '20 deg shear < 5 % of a 2 % stretch' has no source; "
+                   "KES-F suiting (G/E 0.0055) puts a 20 deg shear at ~1.5 x a 2 % stretch (shear is soft PER UNIT STRAIN, "
+                   "and 20 deg is 17 x the strain of 2 %)")
+def test_woven_square_sheared_20_costs_under_5pct_of_a_2pct_stretch():
+    M, W = _woven_square()
+    sh = pf.woven_energy(W, _grain_map(M, 90.0, _shear_A(20.0)))
+    st = pf.woven_energy(W, _grain_map(M, 90.0, np.diag([1.0, 1.02])))
+    print("20 deg shear / 2 % stretch", sh["total"] / st["total"])
+    assert sh["total"] < 0.05 * st["total"], (sh, st)
+
+
+def test_woven_fit_shears_a_held_sheet_instead_of_stretching():
+    """(fit round 14) The fit, not just the energy: a free sheet placed sheared 20 deg relaxes back under FIT (all edges
+    isometric) but under WOVEN keeps most of its shear (only SHEAR_STIFF pulls it back; warp / weft at length), while a
+    sheet placed stretched 3 % along the warp relaxes to its length under both."""
+    M, W = _woven_square(90.0, 0.02)
+    out = {}
+    for woven in (False, True):
+        saved = pf.WOVEN
+        try:
+            pf.WOVEN = woven
+            for nm, A in (("shear", _shear_A(20.0)), ("stretch", np.diag([1.0, 1.03]))):
+                X0 = _grain_map(M, 90.0, A)
+                V = pf.assemble({"mesh": M, "X0": X0}, None, iters=30, attract=0.0)["V"]
+                Fg = pf._woven_grad(W, V)[0]
+                out[(woven, nm)] = (round(float(np.median(pf.woven_shear_deg(W, V))), 1),
+                                    round(float(np.median(np.linalg.norm(Fg[:, :, 1], axis=1)) - 1) * 100, 2))
+        finally:
+            pf.WOVEN = saved
+    print("held sheet", out)
+    assert out[(False, "shear")][0] < 5.0 and out[(True, "shear")][0] > 10.0, out
+    assert abs(out[(True, "stretch")][1]) < 0.5 and abs(out[(False, "stretch")][1]) < 0.5, out
 
 
 def test_front_crease_and_flap_through_measures_find_planted_faults():

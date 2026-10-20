@@ -590,6 +590,9 @@ def op_front_cutaway(D: dict, piece: str = "front", corner: str = "stand.b", but
 
     along = [along_hem, along_edge] if ie == 1 else [along_edge, along_hem]
     op_round_corner(D, piece, corner, along=along, shape=shape)
+    # the cutaway's top on the front edge (where the edge leaves its line): a named point a worn-open hem pin can sit on
+    # (fit round 14: the cfHem pin, sourced at the concept's corner top, sat on the cut curve near the hem, C62)
+    pc["names"]["cutawayTop"] = pc["names"][f"{corner}.r1" if ie == 1 else f"{corner}.r0"]
     D["meta"]["front_low"] = float(K[1])
     D["meta"]["cutaway"] = {k: (v * 1000).round(1).tolist() for k, v in g.items()}
     D["log"].append(f"front cutaway ({src(25)}, Jaeger's construction): from the lower button {(yb - y_btn) * 1000:.0f} mm "

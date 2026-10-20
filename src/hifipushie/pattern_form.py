@@ -97,6 +97,28 @@ FIT_BEND = 1.0  # bending weight (x h^2 of the mesh: the edge terms' scale)
 FIT_BEND_REST = "flat"
 FIT_SMOOTH = 2
 FIT_STIFF = 12.0  # an isometry edge's weight (x an ARAP cell edge's): the lengths hold against the obstacles' pushes
+# WOVEN (fit round 14, opt-in): a woven cloth barely stretches along its warp / weft but SHEARS easily (on the bias).
+# FIT's isometry holds all three edges of every triangle: shear-stiff, so a front held at the chest could open its break
+# only by stretching or tearing (Garrett r12d: p99 74 %). WOVEN replaces the FIT edges' targets (not the cells: folds,
+# flaps, made pieces stay ARAP) by per-triangle targets from the deformation gradient in the piece's GRAIN frame
+# (u = weft, v = warp; piece["grain"] deg, 90 = warp along the pattern's y): F = [f_u f_v] (3 x 2). The local step
+# projects F onto two sets (projective dynamics): P_s = [f_u/|f_u|, f_v/|f_v|] (warp and weft at their length, ANY angle:
+# stretch-free, sheared) at weight 1 and P_r = the nearest rotation (no shear either) at weight SHEAR_STIFF; the target
+# is (P_s + SHEAR_STIFF P_r) / (1 + SHEAR_STIFF). Global step unchanged (the same sparse system: the edge rows, each
+# edge's target the mean of its triangles' T e). Bending unchanged (Bergou).
+# SHEAR_STIFF from KES-F (Kawabata) for suiting: shear rigidity G 0.6-0.9 gf/cm/deg (KES-FB1, suiting typical; a plain
+# weave suiting sheet G 0.64-0.70), tensile EMT 6.1-6.7 % at Fm 500 gf/cm (WT 9.7-10.7, LT 0.65-0.67): secant tensile
+# stiffness E = Fm / EMT ~ 7800 gf/cm per unit strain, G = 0.75 x 57.3 = 43 gf/cm per rad: G / E = 0.0055. Energy per
+# area: E eps^2 / 2 (stretch) vs G gamma^2 / 2 (shear); the projections cost (1 + s) eps^2 and s gamma^2 / 2 (small
+# strain), so s / (1 + s) = 2 G / E.
+WOVEN = False
+KES_G = 0.75  # gf/cm/deg: shear rigidity of a suiting wool (KES-FB1 G, 0.6-0.9)
+KES_EMT = 0.064  # strain at KES_FM (KES-FB1 EMT, 6.1-6.7 %)
+KES_FM = 500.0  # gf/cm: KES-FB1's maximum tensile load for wovens
+_r = 2.0 * KES_G * 180.0 / math.pi / (KES_FM / KES_EMT)
+SHEAR_STIFF = _r / (1.0 - _r)  # ~0.011 (see WOVEN)
+WOVEN_SLACK = False  # A/B only: warp / weft free in compression (a woven buckles rather than shortens; |f| < 1 kept)
+WOVEN_FLAPS = True  # WOVEN on a turned flap's own triangles too (a lapel is the same cloth; its fold rows stay ARAP)
 # FORM VALIDATED (2026-10-19 virtual fit): True once frozen_ae's pattern assembled on the form matches the simulated
 # drape of the same pattern (waist / hem / sleeve girth +-3 %, sleeve aspect +-15 %, shoulder, length, collar stand;
 # tests/test_form_validation.py, record /mnt/data/hifipushie/pattern_form/validation.json). The pattern gate reads its
@@ -568,6 +590,84 @@ def _fit_bending(M, F, uv, n, sw, skip):
 
 
 # ------------------------------------------------------------------ the assembly
+
+
+def _woven_setup(M: dict, B: dict | None, F: np.ndarray, E: np.ndarray, cellv: np.ndarray, skip=None):
+    """WOVEN: the FIT triangles (no cell vertex), their grain-frame rest inverses, and each one's three undirected edges
+    (index into E, sign: +1 when the triangle edge (a, b) is E's (a, b))."""
+    uv = np.asarray(M["uv"], float)
+    pid = np.asarray(M["piece"])
+    names = list(M["names"])
+    g_ = np.array([float(((B or {}).get("pieces", {}).get(nm) or {}).get("grain", 90.0)) for nm in names])
+    t = np.where(~cellv[F].any(1))[0]
+    Ft = F[t]
+    Ft = Ft[np.isin(pid[Ft[:, 0]], np.asarray(list(range(len(names))) if skip is None else
+                                              [k for k in range(len(names)) if k not in skip], int))]
+    ga = np.radians(g_[pid[Ft[:, 0]]])
+    warp = np.c_[np.cos(ga), np.sin(ga)]
+    weft = np.c_[np.sin(ga), -np.cos(ga)]
+    q = np.stack([np.stack([np.einsum("tk,tk->t", uv[Ft[:, c]], weft),
+                            np.einsum("tk,tk->t", uv[Ft[:, c]], warp)], -1) for c in range(3)], 1)  # (t, 3, 2)
+    Dm = np.stack([q[:, 1] - q[:, 0], q[:, 2] - q[:, 0]], -1)  # (t, 2, 2) columns = edge vectors
+    ok = np.abs(np.linalg.det(Dm)) > 1e-14
+    Ft, q, Dm = Ft[ok], q[ok], Dm[ok]
+    Dinv = np.linalg.inv(Dm)
+    key = {(int(a), int(b)): i for i, (a, b) in enumerate(E)}
+    te = np.zeros((len(Ft), 3), int)
+    ts = np.zeros((len(Ft), 3))
+    for c, (i, j) in enumerate(((0, 1), (1, 2), (2, 0))):
+        for r_, (a, b) in enumerate(zip(Ft[:, i].tolist(), Ft[:, j].tolist())):
+            te[r_, c], ts[r_, c] = (key[(a, b)], 1.0) if a < b else (key[(b, a)], -1.0)
+    cnt = np.zeros(len(E))
+    np.add.at(cnt, te.ravel(), 1.0)
+    return {"F": Ft, "q": q, "Dinv": Dinv, "te": te, "ts": ts, "cnt": cnt}
+
+
+def _woven_grad(W: dict, X: np.ndarray):
+    Ft = W["F"]
+    Ds = np.stack([X[Ft[:, 1]] - X[Ft[:, 0]], X[Ft[:, 2]] - X[Ft[:, 0]]], -1)  # (t, 3, 2)
+    Fg = Ds @ W["Dinv"]  # columns f_u (weft), f_v (warp)
+    Ps = Fg / np.maximum(np.linalg.norm(Fg, axis=1, keepdims=True), 1e-12)
+    U, _, Vt = np.linalg.svd(Fg, full_matrices=False)
+    return Fg, Ps, U @ Vt
+
+
+def woven_targets(W: dict, X: np.ndarray, nE: int, shear: float | None = None):
+    """WOVEN local step: per undirected edge of E (mean over its FIT triangles) the target of x_E0 - x_E1, and the mask
+    of the edges that have one. (See WOVEN.)"""
+    s = SHEAR_STIFF if shear is None else shear
+    Fg, Ps, Pr = _woven_grad(W, X)
+    if WOVEN_SLACK:
+        Ps = Ps * np.minimum(np.linalg.norm(Fg, axis=1, keepdims=True), 1.0)
+    T = (Ps + s * Pr) / (1.0 + s)
+    q = W["q"]
+    tgt = np.zeros((nE, 3))
+    for c, (i, j) in enumerate(((0, 1), (1, 2), (2, 0))):
+        e = np.einsum("tij,tj->ti", T, q[:, i] - q[:, j])  # target of x_i - x_j
+        np.add.at(tgt, W["te"][:, c], W["ts"][:, c, None] * e)
+    has = W["cnt"] > 0
+    tgt[has] /= W["cnt"][has, None]
+    return tgt, has
+
+
+def woven_energy(W: dict, X: np.ndarray, shear: float | None = None) -> dict:
+    """The WOVEN energy of a configuration, integrated over rest area: stretch (distance^2 of F to warp / weft at their
+    length) and shear (SHEAR_STIFF x distance^2 to the nearest rotation), as the local step weighs them."""
+    s = SHEAR_STIFF if shear is None else shear
+    Fg, Ps, Pr = _woven_grad(W, X)
+    a = 0.5 / np.abs(np.linalg.det(W["Dinv"]))
+    es = float(np.sum(a * ((Fg - Ps) ** 2).sum((1, 2))))
+    eg = float(np.sum(a * s * ((Fg - Pr) ** 2).sum((1, 2))))
+    return {"stretch": es, "shear": eg, "total": es + eg, "area": float(a.sum())}
+
+
+def woven_shear_deg(W: dict, X: np.ndarray) -> np.ndarray:
+    """Per FIT triangle: the warp / weft angle's departure from 90 deg (the bias shear the fit put in)."""
+    Fg, _, _ = _woven_grad(W, X)
+    c = np.einsum("ti,ti->t", Fg[:, :, 0], Fg[:, :, 1]) / np.maximum(
+        np.linalg.norm(Fg[:, :, 0], axis=1) * np.linalg.norm(Fg[:, :, 1], axis=1), 1e-12)
+    return np.degrees(np.arcsin(np.clip(np.abs(c), 0, 1)))
+
 
 def _pins(M, X0, body, ease, bsurf, under_v=None):
     """Landmark pins: ([vertex], [target xyz], [weight]) full pins and ([vertex], [weight]) centre-line (x = 0) pins.
@@ -1365,6 +1465,26 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
         Kb = kb * Kb
     else:
         Kb, bend_rhs, kb = None, None, 0.0
+    Wv = None
+    if FIT and WOVEN:  # (WOVEN: the grain-frame triangles: off the fold rows; made pieces stay ARAP)
+        wcell = np.zeros(n, bool)
+        for fd, g, turn in folds_:
+            for r_ in g["rows"]:
+                wcell[np.asarray(r_["row"], int)] = True
+                if not WOVEN_FLAPS:
+                    wcell[np.asarray(r_["v"], int)] = True
+        Wv = _woven_setup(M, B, F, E, wcell, skip={k for k in range(len(names)) if not placed[k]})
+    nE0 = len(E)
+    n_src0 = len(src)
+    flapv0 = np.zeros(n_src0, bool)  # (WOVEN_FLAPS: a directed edge whose cell is a flap vertex off the rows)
+    if FIT and WOVEN:
+        rowv_ = np.zeros(n, bool)
+        flv_ = np.zeros(n, bool)
+        for fd, g, turn in folds_:
+            for r_ in g["rows"]:
+                rowv_[np.asarray(r_["row"], int)] = True
+                flv_[np.asarray(r_["v"], int)] = True
+        flapv0 = (flv_ & ~rowv_)[src]
 
     bend_f = 1.0  # (the settle's bending scale, SETTLE_BEND)
 
@@ -1461,6 +1581,12 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                 ne = ~arap_e
                 ln = np.linalg.norm(cur[ne], axis=1, keepdims=True)
                 Re[ne] = cur[ne] / np.maximum(ln, 1e-12) * np.linalg.norm(rest[ne], axis=1, keepdims=True)
+                if Wv is not None:  # WOVEN: warp / weft held, shear soft (the triangles' targets; see WOVEN)
+                    tg_, has_ = woven_targets(Wv, X, nE0)
+                    m2 = np.zeros(len(src), bool)
+                    m2[:2 * nE0] = np.r_[has_, has_]
+                    m2 &= ~arap_e | (np.r_[flapv0, np.zeros(max(len(src) - n_src0, 0), bool)] if WOVEN_FLAPS else False)
+                    Re[m2] = np.r_[tg_, -tg_][m2[:2 * nE0]]
             Re = wE[:, None] * Re
             b = np.zeros((n, 3))
             np.add.at(b, src, Re)
@@ -1701,6 +1827,15 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                                  "max": round(float(np.abs(st).max()) * 100, 1)},
                  "sew_gap_mm": round(float(np.linalg.norm(X[sw[:, 0]] - X[sw[:, 1]], axis=1).max()) * 1000, 2) if len(sw) else 0.0,
                  "fastened": len(fast)})
+    if Wv is not None:  # WOVEN: stretch along the grain (an edge across the bias changes length when the cloth shears)
+        Fg_ = _woven_grad(Wv, X)[0]
+        gs_ = np.abs(np.linalg.norm(Fg_, axis=1) - 1).ravel()
+        sh_ = woven_shear_deg(Wv, X)
+        info["grain_stretch_pct"] = {"p50": round(float(np.median(gs_)) * 100, 2),
+                                     "p99": round(float(np.percentile(gs_, 99)) * 100, 1),
+                                     "max": round(float(gs_.max()) * 100, 1)}
+        info["shear_deg"] = {"p50": round(float(np.median(sh_)), 1), "p99": round(float(np.percentile(sh_, 99)), 1),
+                             "max": round(float(sh_.max()), 1)}
     if holds:  # how far the held seams ended from the closed fit (mm): the hang's side effect
         dh = np.array([np.linalg.norm(X[v] - q) for v, q, _ in holds]) * 1000
         info["open_hold_drift_mm"] = {"p50": round(float(np.median(dh)), 1), "max": round(float(dh.max()), 1)}
