@@ -30,7 +30,11 @@ What a fold is here:
   flat pattern (ZOZO's ordinary cloth) gets the hinge rest angles from `bend_reference` (the flat pattern folded at
   its lines) and the row's bending stiffness from `weights`.
 A fold must run from outline to outline (a crease that ends inside a piece is a cone, which a flat rest can't hold):
-pleats that die out stay seam gaps.
+pleats that die out stay seam gaps. It may RUN OFF before an end (key "run_off": {"ends": "both" | "start" | "end",
+"off": m before that end of the line where the turn is 0, "over": m over which it fades from the full turn, default
+0.03}): the turn fades smoothly to nothing (`fade`), and past the run-off the cloth is not flap at all (it lies with
+the base, unfolded): a two-piece collar's fall crease running off into the gorge with the stand (R28, fit round 19).
+Every consumer of a fold (placement, the form's turn and rest edges, the bending rest, the crease weights) reads it.
 """
 from __future__ import annotations
 
@@ -87,6 +91,22 @@ def side_dist(L: np.ndarray, Q: np.ndarray) -> tuple:
         si[s:s + 2000] = j
         u[s:s + 2000] = cum[j] + t[r, j] * ln[j]
     return sd, u, si.astype(np.int64), fr
+
+
+def fade(M: dict, fd: dict, idx) -> np.ndarray:
+    """Per vertex of idx, 0..1: the share of the fold's turn it gets. 1 unless the fold runs off (fd "run_off"): then
+    smoothstep of (distance from the run-off end along the line - off) / over, 0 within `off` of that end."""
+    idx = np.asarray(idx, np.int64)
+    ro = fd.get("run_off")
+    if not ro or not len(fd.get("rows") or []) or len(fd["rows"][0]) < 2 or not len(idx):
+        return np.ones(len(idx))
+    L = np.asarray(M["uv"], float)[np.asarray(fd["rows"][0], np.int64)]
+    tot = float(np.linalg.norm(np.diff(L, axis=0), axis=1).sum())
+    _, u, _, _ = side_dist(L, np.asarray(M["uv"], float)[idx])
+    ends = ro.get("ends", "both")
+    d = np.minimum(u, tot - u) if ends == "both" else (u if ends == "start" else tot - u)
+    x = np.clip((d - float(ro.get("off", 0.0))) / max(float(ro.get("over", 0.03)), 1e-6), 0.0, 1.0)
+    return x * x * (3 - 2 * x)
 
 
 def rows(pcs: dict, f: dict, h: float, sewn: np.ndarray | None = None, min_width: float = 0.0) -> dict:
@@ -264,7 +284,11 @@ def _geom(M: dict, fd: dict) -> dict:
         beside = side & ((Q_ - L[0]) @ d0_ > -0.004) & ((Q_ - L[-1]) @ d1_ < 0.004)
         flap = _reached(M, sel, side, beside, L)
         seg = np.linalg.norm(np.diff(L, axis=0), axis=1)
-        out.append({"row": np.asarray(row), "v": sel[flap], "si": si[flap], "fr": fr[flap], "u": u[flap],
+        # a fold that runs off: past the run-off the cloth is not flap (it lies with the base); between, a share
+        w = fade(M, fd, sel[flap])
+        keep = w > 1e-3
+        fi = np.where(flap)[0][keep]
+        out.append({"row": np.asarray(row), "v": sel[fi], "si": si[fi], "fr": fr[fi], "u": u[fi], "w": w[keep],
                     "len": float(seg.sum())})
     F = M["F"]
     Fp = F[M["piece"][F[:, 0]] == k]
@@ -334,7 +358,7 @@ def turn_flap(X: np.ndarray, M: dict, fd: dict, t, face: float = 1.0) -> np.ndar
         W /= np.maximum(np.linalg.norm(W, axis=1, keepdims=True), 1e-12)
         # the flap lies on side `sign` of the row's direction: turning it toward the outside (the pattern face's normal
         # x face) is a rotation about sign x face x the row's direction
-        X[v] = Q + _rodrigues(X[v] - Q, fd["sign"] * face * W, fd["turn"] * tv[v])
+        X[v] = Q + _rodrigues(X[v] - Q, fd["sign"] * face * W, fd["turn"] * tv[v] * r.get("w", 1.0))
     return X
 
 
@@ -409,6 +433,18 @@ def pressed_flap(X: np.ndarray, M: dict, fd: dict, face: float = 1.0, lay: float
         W /= np.maximum(np.linalg.norm(W, axis=1, keepdims=True), 1e-12)
         Xt = Q + _rodrigues(X[v] - Q, fd["sign"] * face * W, np.full(len(v), np.sign(fd["turn"]) * full))
         Pn = (1 - wv)[:, None] * Pn + wv[:, None] * Xt
+    wf = fade(M, fd, v)
+    if (wf < 1 - 1e-6).any():
+        # a fold that runs off: where its turn fades, the flap is turned rigidly about the first row by its share
+        Pr = X[rm["row"]]
+        T = np.gradient(Pr, axis=0)
+        T /= np.maximum(np.linalg.norm(T, axis=1, keepdims=True), 1e-12)
+        Q = Pr[si] * (1 - fr[:, None]) + Pr[si + 1] * fr[:, None]
+        W = T[si] * (1 - fr[:, None]) + T[si + 1] * fr[:, None]
+        W /= np.maximum(np.linalg.norm(W, axis=1, keepdims=True), 1e-12)
+        full = min(abs(fd["turn"]) * len(g["rows"]), PLACE_TURN)
+        Xp = Q + _rodrigues(X[v] - Q, fd["sign"] * face * W, np.sign(fd["turn"]) * full * wf)
+        Pn = np.where((wf >= 1 - 1e-6)[:, None], Pn, Xp)
     X = X.copy()
     X[v] = Pn
     return X
@@ -553,7 +589,7 @@ def weights(M: dict) -> np.ndarray:
     w = np.zeros(len(M["uv"]))
     for fd in M.get("folds") or []:
         for row in fd["rows"]:
-            w[row] = np.maximum(w[row], fd["strength"])
+            w[row] = np.maximum(w[row], fd["strength"] * fade(M, fd, row))
     return w
 
 

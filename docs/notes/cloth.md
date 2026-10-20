@@ -8785,3 +8785,20 @@ docs/notes/cloth.md "dress-garrett 2026-10-19 muslin 1", "form sleeves", "block 
   p50 0.56, 54 pairs open, max 6.9. Cause: the seam's two sides are a CONTACT pair, held one contact gap apart; the
   max spots (7-12 mm) are a second cause, unlocated. Fix (not done): weld sewn pairs after the sew phase / take
   stitched pairs out of contact in cloth_zozo, not a smaller gap (solver tuning).
+
+## fit round 19 (2026-10-20, Garrett jacket + shirt; $FR19 = /mnt/data/hifipushie/dress_garrett/fit_round19)
+- fit round 19 step 1 (notch, Joe's spot). General method: a fold may RUN OFF before an end (folds "run_off": {ends,
+  off, over}; folds.fade = smoothstep share of the turn). Read by folds._geom (past the run-off nothing is flap: it lies
+  with the base; flap rows carry "w"), turn_flap, pressed_flap (partial rigid turn in the fade), weights, bend_reference,
+  pattern_form._turn_flaps / _rest_edges and the FLAP_PULL "over" list (only fully turned flap lies on its base); cloth.mesh
+  carries the key. R28 (pattern_jacket.STAND_RUN_OFF on) gives the fall's roll a run_off ending where the stand runs off
+  (s_x, scaled to the fall's seam), fading over STAND_RUN_OFF["over"] (0.03). KAT test_pattern_form
+  test_fold_running_off_mid_length_lies_flat_past_it: strip 300 x 120, fold 40 mm up, runs off 100 mm before the end:
+  dihedral before 16-24 deg (turned), past 149-162 (unfolded; the 3 cm fade is a cone the flat end bends to carry), p98
+  stretch 1.4 %; rest + weights exactly flat past it. tests/test_pattern_form + test_folds: 46 passed.
+- Garrett (r15e settings + R28 + run-off; job.sh r19a, 27 s): gorge_lie L/R r15e -> r18a -> r19a: twist max 10.7/14.8 ->
+  15.2/19.6 -> 14.2/20.1; across max 13/13 -> 19/54 -> 11.9/9.5 PASS; tip 9.8/8.0 -> 12.3/14.1 -> 1.4/5.2 PASS; plane 30/30
+  -> 58/73 -> 3.8/13.5. The flat end no longer folds back (Joe's spot fixed by tip / across / plane). Twist still FAILS:
+  located (gorge.py --along) 60-94 mm from cfNeck, where the LAPEL's roll line meets the gorge (on-flap True -> False at
+  94 mm), i.e. the lapel's fold, not the collar's. Lever 2 fade 0.06 (r19b): twist 13.6/20.2 (dead). Stop-loss. R28 stays
+  opt-in (gorge_lie not PASS); r19a is the round's candidate. Next for twist: the lapel roll's own run into the gorge.

@@ -1,13 +1,10 @@
-# STATE: dress_garrett_fit (Garrett jacket + shirt: closed form fit + ONE release sim) -- 2026-10-20, round 18
+# STATE: dress_garrett_fit (Garrett jacket + shirt: closed form fit + ONE release sim) -- 2026-10-20, round 19
 
-STATE: HANDOVER end of round 18 (budget). Step 1 notch: R28 drafted (flat PASS), form WORSE -> opt-in. Step 2
-crossed fronts: front balance 20 mm + friction 0 moved nothing at the break (stop-loss). Step 3 seams: check landed
-(cloth_release.seam_gaps FAILs r16), cause = contact pairs, fix not done. Step 4 (table/renders/reviews) NOT done.
-No rented run (round spend $0). Nothing approved, nothing for Joe this round.
-NEXT: (a) notch METHOD: the fall's fold must run off with the stand (turn tapering to 0 past s_x in folds._geom /
-pattern_form._turn_flaps / folds.bend_reference), then R28 on, gorge_lie must pass; (b) crossed fronts: front-on-front
-contact off at the break (runner change: the two fronts as separate contact groups) and the roll's bending rest flat;
-(c) seams: weld sewn pairs after the sew phase in cloth_zozo (seam_gaps must PASS); (d) step 4.
+STATE: round 19 step 1 done: folds run_off (general; KAT) + R28 on -> r19a: gorge_lie across 11.9/9.5, tip 1.4/5.2,
+plane 3.8/13.5 PASS (the flat end no longer folds back); twist 14.2/20.1 still FAILS (the LAPEL's roll at the gorge,
+60-94 mm from cfNeck). R28 stays opt-in; r19a = candidate. Joe 2026-10-20: the concept's opening (edge off CF 71/78/94,
+break x 64) is reached by ARRANGING the jacket (soft pins + settle), never by fit levers or the pattern.
+NEXT: step 3 seam weld in cloth_release, then arrangement, then step 4 table / renders / blind reviews.
 
 ## Method (Joe 2026-10-20)
 Open jacket = the BUTTONED fit on the dress form (pattern_form.assemble, top button fastened), then ONE short release

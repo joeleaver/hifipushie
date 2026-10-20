@@ -54,7 +54,7 @@ TURN = {"fabric": "wool_suiting", "canvas": "hair_canvas", "under": "cotton_shir
 # Drafted with the one-piece collar's profile (op_collar: h = stand x (1 - (s / s_x)^p), p from the crossing angle),
 # floored at `end` m (a band of cloth, not a zero-width strip). Off = the stand drafted to stand_front at the notch
 # (fit rounds 2-17: the stand's end stood 7-30 mm off the lapel and carried the fall's end as a tab).
-STAND_RUN_OFF = {"on": False, "end": 0.003}  # OPT-IN: on the form the fall still turns 172 deg past s_x (fit round 18)
+STAND_RUN_OFF = {"on": False, "end": 0.003, "over": 0.03}  # OPT-IN: on the form the fall still turns 172 deg past s_x (fit round 18)
 
 
 def _thick_mm(name: str, default: float) -> float:
@@ -463,6 +463,12 @@ def op_collar_two_piece(D: dict, stand_cb: float | None = None, fall_cb: float |
                                       "angle": FALL_FOLD["angle"], "kind": "roll", "radius": FALL_FOLD["radius"],
                                       "strength": FALL_FOLD["strength"], "flap": "cbOuter", "name": "collar roll",
                                       "source": src(16)})
+    if run_off is not None:
+        # R28 (fit round 19): the fall's crease runs off with the stand: no turn past s_x (the collar's end lies flat
+        # on the lapel), fading over STAND_RUN_OFF["over"] before it (folds.fade). Measured along the fall's seam
+        Ln = (lb + lf) * (1 - ease)
+        D["folds"][-1]["run_off"] = {"ends": "both", "off": round((1 - run_off[0] / Ln) * pattern.length(F), 4),
+                                     "over": float(STAND_RUN_OFF.get("over", 0.03))}
     D["edges"][f"{stand}_neck"] = [f"{stand}:cb>shoulderNotch>cf"]
     D["edges"][f"{name}_outer"] = [f"{name}:endOuter>cbOuter"]
     D["meta"]["collar_two_piece"] = {"stand_cb": stand_cb, "fall_cb": fall_cb, "rise": rise, "spread_deg": spread_deg,

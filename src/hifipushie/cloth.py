@@ -883,7 +883,7 @@ def mesh(B: dict, h: float = 0.02, fold_width: float = 0.0) -> dict:
             tri, miss = foldmod.force_edges(X, tri, pairs, multi=hz is not None)  # (several flips: graded meshes only; default meshes unchanged)
             fold_recs.append({"piece": nm, "name": f["name"], "kind": f["kind"], "strength": f["strength"],
                               "angle": f["angle"], "turn": fr["turn"], "sign": fr["sign"], "missing_edges": miss,
-                              "in_wrap": bool(f.get("in_wrap")),
+                              "in_wrap": bool(f.get("in_wrap")), **({"run_off": f["run_off"]} if f.get("run_off") else {}),
                               "rows": [[len(uv) + i for i in ids] for ids in loc]})
         # orient counter-clockwise in the pattern (normals out of the pattern's face)
         a, b, c = X[tri[:, 0]], X[tri[:, 1]], X[tri[:, 2]]

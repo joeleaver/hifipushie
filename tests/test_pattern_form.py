@@ -79,6 +79,49 @@ def test_diagonal_fold_170():
     assert abs(_line_dist(V[[far]], a3, b3)[0] - d_uv) < 0.001
 
 
+def test_fold_running_off_mid_length_lies_flat_past_it():
+    """(fit round 19, R28's crease) A strip whose fold RUNS OFF 100 mm before its end (folds "run_off"): before the
+    run-off the flap is turned over onto its base, past it the strip lies flat and unfolded (on the form, in the bending
+    rest and with no crease weight), the turn fading over `over`."""
+    from hifipushie import folds as foldmod
+    P = [[0, 0], [0.3, 0], [0.3, 0.12], [0, 0.12]]
+    fd0 = {"piece": "r", "line": [[0.0, 0.04], [0.3, 0.04]], "angle": 10, "kind": "press", "name": "runoff",
+           "flap": "top", "run_off": {"ends": "end", "off": 0.10, "over": 0.03}}
+    B = _B({"r": _piece(P, marks={"top": [0.15, 0.1]})}, folds=[fd0], refine=[{"piece": "r", "h": 0.006}])
+    M = cloth.mesh(B, 0.012)
+    fd = M["folds"][0]
+    uv = M["uv"]
+    w = foldmod.fade(M, fd, np.arange(len(uv)))
+    assert w[uv[:, 0] < 0.16].min() > 0.999 and w[uv[:, 0] > 0.2 + 1e-6].max() < 1e-6, "fade"
+    flap = _flap(M)
+    assert (uv[flap, 0] < 0.2 + 1e-6).all(), "past the run-off nothing is flap"
+    wt = foldmod.weights(M)
+    assert wt[np.asarray(fd["rows"][0])][uv[fd["rows"][0], 0] > 0.21].max() == 0.0
+    ref = foldmod.bend_reference(M, _flat(M))
+    past = (uv[:, 0] > 0.21) & (uv[:, 1] > 0.05)
+    before = (uv[:, 0] < 0.14) & (uv[:, 1] > 0.05)
+    assert np.abs(ref[past, 2]).max() < 1e-9 and ref[before, 1].max() < 0.04 and ref[before, 2].min() > 0, "bending rest"
+    out = pf.assemble({"mesh": M, "X0": _flat(M)}, None, iters=240)
+    V = out["V"]
+
+    def dihedral(x):  # the local fold angle at station x: base (y 0.02) and flap (y 0.07) about the row (y 0.04)
+        o, b, f = (int(np.argmin(np.linalg.norm(uv - [x, y], axis=1))) for y in (0.04, 0.02, 0.07))
+        r0, r1 = (int(np.argmin(np.linalg.norm(uv - [x + dx, 0.04], axis=1))) for dx in (-0.012, 0.012))
+        t_ = V[r1] - V[r0]
+        t_ /= np.linalg.norm(t_)
+        pb, pf_ = (V[q] - V[o] - t_ * ((V[q] - V[o]) @ t_) for q in (b, f))
+        return math.degrees(math.acos(np.clip(pb @ pf_ / np.linalg.norm(pb) / np.linalg.norm(pf_), -1, 1)))
+    before_d = [dihedral(x) for x in (0.03, 0.08, 0.13)]
+    past_d = [dihedral(x) for x in (0.23, 0.26, 0.285)]
+    keep = (uv[:, 0] < 0.15) | (uv[:, 0] > 0.22)
+    Ek = pf._edges(M["F"])
+    Ek = Ek[keep[Ek].all(1)]
+    st = np.abs(np.linalg.norm(V[Ek[:, 0]] - V[Ek[:, 1]], axis=1) / np.linalg.norm(uv[Ek[:, 0]] - uv[Ek[:, 1]], axis=1) - 1)
+    print(f"run-off: dihedral before {np.round(before_d, 1).tolist()} (10 = turned 170), past "
+          f"{np.round(past_d, 1).tolist()} (180 = flat); stretch outside the fade p98 {np.percentile(st, 98) * 100:.1f}%")
+    assert max(before_d) < 25, "before the run-off: turned over onto the base"
+    # (unfolded, not plane: the fade is a cone a flat sheet bends to carry; 3 cm of fade leaves the end 20-30 deg off)
+    assert min(past_d) > 145 and np.percentile(st, 98) < 0.03, "past the run-off: unfolded"
 def test_collar_band_stand_fall():
     """A collar band (40 x 4.5 cm) with its roll line 25 mm up: the fall turns down over the stand, no stretch."""
     P = [[-0.2, 0], [0.2, 0], [0.2, 0.045], [-0.2, 0.045]]

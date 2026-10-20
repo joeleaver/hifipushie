@@ -325,6 +325,11 @@ def _fold_cells(M: dict, face_sign: dict):
     return out
 
 
+def _fold_fade(M, fd, idx):
+    from . import folds as _fm
+    return _fm.fade(M, fd, idx)
+
+
 def _rest_edges(M, src, dst, folds_):
     """Directed rest edge vectors (3D, the pattern plane z = 0) for cell src: e = uv[dst] - uv[src], folded where the
     cell is a fold row vertex and dst lies on the flap side of that row."""
@@ -355,7 +360,7 @@ def _rest_edges(M, src, dst, folds_):
                 j = np.argmin(d, 1)
                 tan = ab[j] / np.sqrt(ln2[j])[:, None]
                 u = np.c_[tan, np.zeros(len(tan))]
-                e[s_] = _rodrigues(e[s_], u, np.full(int(s_.sum()), sg * turn))
+                e[s_] = _rodrigues(e[s_], u, np.full(int(s_.sum()), sg * turn) * _fold_fade(M, fd, src[s_]))
     return e
 
 
@@ -1541,6 +1546,7 @@ def _turn_flaps(M, X, folds_, bsurf):
         dist = dd[np.arange(len(j)), j]
         Dn = D / (np.linalg.norm(D, axis=1, keepdims=True) + 1e-12)
         flat = H + dist[:, None] * Dn
+        wa = _fold_fade(M, fd, allv)  # (a fold that runs off turns by its share)
         # the start may already carry the flap partly turned (cloth.place turns folds): turn it by what is left,
         # the candidate whose fold reads closest to the asked turn, then the one further outside
         tot = abs(turn) * len(g["rows"])
@@ -1549,7 +1555,7 @@ def _turn_flaps(M, X, folds_, bsurf):
         best = None
         for s in (1.0, -1.0):
             for th in {tot, abs(tot - phi0), tot + phi0} if phi0 > 0.05 else {tot}:
-                W = H + _rodrigues(flat - H, T3, np.full(len(allv), s * th))
+                W = H + _rodrigues(flat - H, T3, np.full(len(allv), s * th) * wa)
                 Xt = X.copy()
                 Xt[allv] = W
                 miss = abs(math.radians(np.nan_to_num(fold_turned(M, Xt, g), nan=0.0)) - tot)
@@ -1658,6 +1664,8 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
         if abs(turn) * len(g["rows"]) > math.radians(120):
             fv = np.asarray(g["rows"][-1]["v"])
             flapv[fv] = True
+            # (a fold that runs off: only the fully turned flap lies on its base; in the fade it is partly turned)
+            fv = fv[np.asarray(g["rows"][-1].get("w", np.ones(len(fv)))) > 0.98]
             bv = np.setdiff1d(g["sel"], np.where(g["flap0"])[0])
             bt_ = np.asarray(g["base_tris"])
             if BASE_ACROSS_SEAM and len(bv) and float(np.asarray(g["d0"])[bv].max()) < BASE_NARROW:
