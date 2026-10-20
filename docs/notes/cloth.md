@@ -9117,3 +9117,21 @@ cloth and no stand / fall height check; (g4) the box placket is a closure finish
 (g5) the "colour" row compares the design hex #bdb8b4 to the lit read #aca8a6 with no light model and PASSes;
 (g6) tooling trap: wrapping server.pattern_check in resources.heavy deadlocked (the tool's own GPU grant waited on the
 outer one in the same process; g1a killed, rerun without the wrapper).
+Step 3 FIT ALONE (fit3.py: on_form + fit_rows + write_fit_record as server.fit_garment, vertices kept; render3.py ref |
+clay | diag | colour; strain.py per piece). Two runs, one lever (OPEN_SPREAD, C50):
+| row | concept | f1a OPEN_SPREAD on | f1b off (module default) |
+| collar points apart (front view) | 147 mm | tips 82 (lowest 103), folded IN past the stand ends | 53 |
+| points below camera HPS | 50-61 | 87-90 | 78 |
+| V: fronts meet, below camera HPS | 60 | 80-100 | 60-80 (13 mm apart at 60) |
+| fit strain p99 (gate <= 6 %) | - | 54.2 FAIL (stand 182 / collar 149, max 515 %: torn at the CF ends) | 11.3 FAIL (yoke 34.7) |
+| waist stand-off (<= 10 mm) | - | 13.5 FAIL | 12.6 FAIL |
+| sleeve end t | 0.991 +-0.05 | 1.033 | 1.030 |
+| front buttons | 88 apart, first done 83 below camera HPS | 82 apart, first at 115 | same |
+| colour lit (wholefront patch) | 173/169/167, R-B 6 | 158/160/157, R-B 1 (cool, -13) | same material |
+OPEN_SPREAD is DEAD on the shirt alone (tears the stand / collar, points still folded to CF); f1b kept as the fit.
+Blind review rev_f1b (4 regions, bin/review): FAIL, 13 MAJOR: collar reads as one tall band (no fall down, no points),
+V too narrow / shallow, a loose flap at the wearer's right collar end, the lapped placket twisted into an X under the
+V (diag), no buttons drawn, boxy / dropped shoulders, cuff flares off the wrist. OTHER STAGES: the untucked tail.
+STOP: the shirt fails its own fit (C85), so step 4 (the r26k jacket over it) is NOT run; no dressed render.
+Colour: the round-26 harness drew the shirt #c9ccd2 (cool blue-grey) in every jacket render, not the spec #bdb8b4;
+clay sheets (server._garment_sheets) use fixed colours. Under the clay rig #bdb8b4 reads green-neutral and 13 dark.
