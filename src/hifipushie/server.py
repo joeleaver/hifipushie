@@ -2767,7 +2767,7 @@ def fit_garment(name: str, garment: str, views: list[str] | None = None, size: i
         return (f"{garment}: not fitted: {st['why']}\nnext: pattern_check(\"{name}\", \"{garment}\") and fix its rows "
                 "first; the form judges a pattern that passed flat (force=True only to look)")
     uf = cc.under_fit_status(name, garment, spec)  # (C85: the under garment fits on its own first)
-    if not uf["passed"] and not force:
+    if not uf["passed"] and not force and not uf.get("provisional"):
         return (f"{garment}: not fitted: its under garment doesn't fit yet: {uf['why']}\nnext: fit_garment(\"{name}\", "
                 f"\"{uf['under']}\") and fix it until its own fit PASSes (tucked, its fullness soft against the body); "
                 "never fit an outer garment over an under garment that doesn't fit (force=True only to look)")
@@ -2782,6 +2782,17 @@ def fit_garment(name: str, garment: str, views: list[str] | None = None, size: i
         # the garment key "over"
         u = res["form_under"]
         under = (cloth.expanded(spec["cloth"][garment]).get("over") or "under", u["A"], u["mesh"])
+    vis_txt = ""
+    if not uf["passed"] and uf.get("provisional") and res.get("form_under") is not None:
+        # (C85, fit round 24) the under garment failed only rows about cloth that may be hidden: judged on what shows
+        vr = cc.rejudge_under_visible(name, garment, spec, res)
+        if not vr["passed"] and not force:
+            return (f"{garment}: not fitted: its under garment doesn't fit where it SHOWS under {garment}: {vr['why']}\n"
+                    f"next: fit_garment(\"{name}\", \"{uf['under']}\") and fix it until those rows PASS (force=True only "
+                    "to look)")
+        vis_txt = f"  under garment judged on what shows (C85 visible scope): {vr['why']}\n"
+        if vr["passed"]:
+            uf = dict(uf, passed=True)
     M = res["mesh"]
     s = diag_render.face_strain(X, M["F"], M["uv"])
     p99 = float(np.percentile(s, 99) * 100) if len(s) else None
@@ -2804,7 +2815,7 @@ def fit_garment(name: str, garment: str, views: list[str] | None = None, size: i
            f"  face strain vs the flat pattern: p99 {p99:.1f} %, max {float(s.max() * 100):.1f} % "
            f"(gate <= {next_steps.STRAIN_P99_MAX:g} %)\n"
            f"  layer pierce: {'n/a (no under garment)' if pierce is None else f'{pierce} faces'}\n"
-           f"  single views for review_view: {d}\n" + fit_txt)
+           f"  single views for review_view: {d}\n" + fit_txt + vis_txt)
     return [_out(im, _save_suffix(save, tag)) for tag, im in ims] + [
         txt + next_steps.after_fit(name, garment, p99, pierce, validated,
                                    worn_open=bool(cloth.expanded(spec["cloth"][garment]).get("worn_open")))]

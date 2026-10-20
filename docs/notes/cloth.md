@@ -8965,3 +8965,28 @@ docs/notes/cloth.md "dress-garrett 2026-10-19 muslin 1", "form sleeves", "block 
   can't reach the concept's front view without a straighter cut: the jacket's waist girth is +99-104 over the body (draft
   +110, ~14 %); the reviewer's "near-straight side line" needs the side seams' suppression taken out (design call: Joe).
   Spend $0 (local only). Steps 4 (release / t = 0 CCD) not reached.
+
+## fit round 24 (2026-10-20; $FR24 = /mnt/data/hifipushie/dress_garrett/fit_round24, this worktree's code via run.sh)
+JOE'S DESIGN CALL (2026-10-20): the jacket "should basically just fall straight down". Recorded in
+workspace/checklists/garrett_jacket.json (reference_facts; description; new item side_line_plumb; backup
+$FR24/garrett_jacket.pre_r24.json).
+Step 1, flat ($FR24/flat24.py, pieces24.py; spec wrapper fr24.py = fr18 + the straight cut, CUT=suit = control):
+- Three things pinched the waist on the flat pattern (girth CF to CF incl. the 2 x 23 mm lap): the suit silhouette
+  (chest 1150 -> min 890, 18.3 %), and under "straight" still the CB + dart take-ins (min 1048) AND the block's own
+  fitted side seam (pattern_blocks: fitted takes min(0.4 x supp, 25 mm) a quarter; 20 mm here).
+- New R8 silhouette "plumb" (pattern_jacket: no CB / side / dart take-in) + block fitted False + the CB contour dropped:
+  chest 1158 (book chest ease kept: 1112 without the lap = +14.9 % on the 968 tape), narrowest chest->hips 1143,
+  hips 1143; per piece the torso stays 1150-1158 to the hips; below the hips only the front's CF edge moves (cutaway),
+  no side taper.
+- Gate rows: waist_plumb (narrowest flat girth chest -> hips >= chest x (1 - PLUMB_TOL 0.03), hips >= it),
+  waist_suppression <= 3 % (plumb), front_dart must be ABSENT (plumb). plumb + fitted block: FAIL 1112 < 1116 (the
+  row catches the block's side seam). Test test_plumb_silhouette_falls_straight_and_its_row_catches_a_pinch (4 sizes).
+Step 2 (C85 visible scope): cloth_check.VISIBLE_SCOPED (under_standoff_waist), standoff_row(keep=), visible_fit_rows,
+  rejudge_under_visible; under_fit_status gives "provisional" when only visible-scoped rows fail; fit_garment then
+  assembles the outer, re-judges the under garment's row on its VISIBLE vertices (vertices with no culled triangle;
+  < 10 % of the band visible = hidden) and rewrites the under's fit record (scope "visible under <outer>"), refusing
+  only if it still fails. Test test_under_fit_rows_judged_on_what_shows (spheres).
+Step 3 probe (r23c, $FR24/shoulder.py, sideline.py): the shirt's poke-through is NOT the cull margin (the cull only
+  hides cloth the jacket lies OVER; a poking vertex is outside it, so it is drawn). It is geometric: the shirt pokes
+  out 3-8 mm at the front by the neck (|x| 70-110: 52 verts, lead max 7.8) and 1-3 mm at the shoulder seam / cap
+  (|x| 190-250: 22 verts), where the shirt stands 13-20 mm off and the jacket 20-27.

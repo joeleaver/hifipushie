@@ -292,6 +292,25 @@ def test_seal_under_closes_rims_not_seams():
     assert len(S0) == 0
 
 
+def test_under_fit_rows_judged_on_what_shows():
+    """C85 visible scope (fit round 24): an under garment standing 20 mm off the body at the waist FAILs its own
+    under_standoff_waist; under an outer garment that covers the waist band the band is culled and the re-judged row
+    PASSes (nothing of it is drawn); with the outer garment open over the band it still FAILs, on the visible cloth."""
+    from hifipushie import cloth_check as cc
+    V, F = _sphere()
+    body = cloth.Body({"V": V, "F": [list(f) for f in F], "J": {}})
+    under = _shell(V, F, 0.120)
+    alone = cc.standoff_row(body, under["V"], 0.0)
+    assert alone["status"] == "FAIL" and alone["ours"] > 15, alone
+    covered = dict(_shell(V, F, 0.128, zmax=0.06))
+    rows, hid = cc.visible_fit_rows(body, under, covered, z=0.0)
+    assert rows[0]["status"] == "PASS" and rows[0]["n"] == 0 and hid.any(), rows
+    low = dict(_shell(V, F, 0.128, zmax=-0.06))  # the outer garment ends below the waist band: the band shows
+    rows, _ = cc.visible_fit_rows(body, under, low, z=0.0)
+    assert rows[0]["status"] == "FAIL" and rows[0]["n"] > 20 and rows[0]["ours"] > 15, rows
+    assert "under_standoff_waist" in cc.VISIBLE_SCOPED
+
+
 if __name__ == "__main__":
     for k, v in list(globals().items()):
         if k.startswith("test_"):

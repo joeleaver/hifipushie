@@ -426,15 +426,65 @@ def fit_rows(res: dict, X, strain_p99: float | None, worn_under: bool) -> list:
         if z is None:
             rows.append({"id": "under_standoff_waist", "status": "UNMEASURED", "why": "no waist_z landmark"})
         else:
-            z = float(np.asarray(z).reshape(-1)[-1])
-            X = np.asarray(X, float)
-            sel = (np.abs(X[:, 2] - z) < 0.015) & (np.abs(X[:, 0]) < 0.22)
-            d = pattern_form._body_surface(body).signed(X[sel])[0] if sel.any() else np.zeros(0)
-            med = float(np.median(d)) if len(d) else None
-            rows.append({"id": "under_standoff_waist", "ours": None if med is None else round(med * 1000, 1),
-                         "target": f"<= {UNDER_STANDOFF * 1000:g} mm (tucked, soft under the garment over it)",
-                         "status": "PASS" if med is not None and med <= UNDER_STANDOFF else "FAIL"})
+            rows.append(standoff_row(body, X, float(np.asarray(z).reshape(-1)[-1])))
     return rows
+
+
+# C85 with a culled under garment (fit round 24): a layered pair draws the under garment only where it shows
+# (cloth_layers.hidden: the B cull; a jacket fitted closed and worn open keeps OPEN_FRONT_MARGIN at its fronts' edges for
+# the arranged V). A fit row about cloth that is never drawn can't make the outer garment wrong, so the rows listed in
+# VISIBLE_SCOPED are re-judged on the under garment's VISIBLE vertices once the outer garment is on the form: a shirt
+# standing off at the waist inside a jacket refused the jacket (Garrett r23: under_standoff_waist 15 mm, nearly all of
+# it under the jacket). What shows (collar, the V, the cuffs + margins) is still held to the row.
+VISIBLE_SCOPED = ("under_standoff_waist",)
+OPEN_FRONT_MARGIN = 0.12  # m: the fronts' free-edge cull margin for an outer garment worn open (fit round 23 harness)
+VISIBLE_MIN_SHARE = 0.10  # under this share of the band's vertices visible, the band counts as hidden (cull specks)
+
+
+def standoff_row(body, X, z: float, keep=None) -> dict:
+    """under_standoff_waist: the median signed distance off the body of X's vertices in the waist band (z +- 15 mm,
+    |x| < 0.22), only those in `keep` (a vertex mask) when given; none left (all culled) = PASS: nothing of it shows."""
+    from . import pattern_form
+    X = np.asarray(X, float)
+    sel = (np.abs(X[:, 2] - z) < 0.015) & (np.abs(X[:, 0]) < 0.22)
+    scoped = keep is not None
+    if scoped:
+        band = int(sel.sum())
+        sel &= np.asarray(keep, bool)
+        if sel.sum() < VISIBLE_MIN_SHARE * max(band, 1):  # (specks the cull left are not a visible band)
+            sel[:] = False
+    d = pattern_form._body_surface(body).signed(X[sel])[0] if sel.any() else np.zeros(0)
+    med = float(np.median(d)) if len(d) else None
+    tgt = f"<= {UNDER_STANDOFF * 1000:g} mm (tucked, soft under the garment over it)"
+    if scoped and med is None:
+        return {"id": "under_standoff_waist", "ours": None, "target": tgt, "status": "PASS", "scope": "visible", "n": 0,
+                "why": "the waist band is hidden under the outer garment everywhere (nothing of it is drawn)"}
+    row = {"id": "under_standoff_waist", "ours": None if med is None else round(med * 1000, 1), "target": tgt,
+           "status": "PASS" if med is not None and med <= UNDER_STANDOFF else "FAIL"}
+    if scoped:
+        row.update(scope="visible", n=int(sel.sum()))
+    return row
+
+
+def visible_fit_rows(body, under: dict, outer: dict, worn_open: bool = False, z: float | None = None) -> tuple:
+    """C85 on what shows: the VISIBLE_SCOPED rows of the under garment re-judged on its vertices the outer garment
+    leaves visible (cloth_layers.hidden with the outer's openings + OPEN_FRONT_MARGIN at its fronts when worn open).
+    under / outer: {"V", "mesh"} (the outer's mesh carries F, sew, border, piece, names); z: the waist (default the
+    body's waist_z). -> (rows, hidden triangles of the under garment)."""
+    from . import cloth_layers
+    Fu = np.asarray(under["mesh"]["F"])
+    hid = cloth_layers.hidden({"V": np.asarray(under["V"], float), "mesh": under["mesh"]},
+                              {"V": np.asarray(outer["V"], float), "mesh": outer["mesh"], "body": body},
+                              margin=0.03, edge_margin={"front": OPEN_FRONT_MARGIN} if worn_open else None)
+    # seen: a vertex none of whose triangles is culled (the cull's ragged rim and its specks are not "what shows")
+    seen = np.zeros(len(under["V"]), bool)
+    seen[Fu[~hid].ravel()] = True
+    seen[Fu[hid].ravel()] = False
+    if z is None:
+        z = (getattr(body, "at", {}) or {}).get("waist_z")
+    if z is None:
+        return [{"id": "under_standoff_waist", "status": "UNMEASURED", "why": "no waist_z landmark"}], hid
+    return [standoff_row(body, under["V"], float(np.asarray(z).reshape(-1)[-1]), keep=seen)], hid
 
 
 def write_fit_record(model: str, garment: str, keys: dict, rows: list) -> _Path | None:
@@ -466,10 +516,41 @@ def under_fit_status(model: str, garment: str, spec: dict | None = None) -> dict
         rec = None
     if passed(rec):
         return {"under": un, "passed": True, "why": "PASS"}
-    why = (f"{un} has no fit record for this pattern + body (fit_garment it alone first)" if rec is None else
+    bad = [r["id"] for r in rec["rows"] if r["status"] != "PASS"] if rec else []
+    # (fit round 24) failing only on rows about cloth the outer garment may hide: PROVISIONAL, re-judged on what shows
+    # once the outer garment is assembled (visible_fit_rows); the caller refuses when those still fail
+    prov = bool(bad) and all(b in VISIBLE_SCOPED for b in bad)
+    why =(f"{un} has no fit record for this pattern + body (fit_garment it alone first)" if rec is None else
            f"{un}'s own fit is {rec['status']}: " + "; ".join(f"{r['id']} {r.get('ours')} (target {r.get('target')})"
                                                            for r in rec["rows"] if r["status"] != "PASS"))
-    return {"under": un, "passed": False, "why": why}
+    return {"under": un, "passed": False, "why": why, "provisional": prov}
+
+
+def rejudge_under_visible(model: str, garment: str, spec: dict, res: dict) -> dict:
+    """C85 provisional (fit round 24): `garment` (the outer) is assembled on the form (res: on_form's result with its
+    form_under); its under garment's own fit failed only on VISIBLE_SCOPED rows. Re-judge those on the under garment's
+    visible vertices and rewrite the under garment's fit record with them (scope "visible under <garment>"), so a
+    later sim of the pair reads the same verdict. {"passed", "rows", "hidden", "why"}."""
+    from . import cloth
+    un = cloth.expanded(spec["cloth"][garment]).get("over")
+    u = res.get("form_under")
+    if not un or u is None:
+        return {"passed": False, "rows": [], "hidden": None, "why": "no under garment on the form"}
+    worn_open = bool(cloth.expanded(spec["cloth"][garment]).get("worn_open"))
+    vrows, hid = visible_fit_rows(res["body"], {"V": u["A"], "mesh": u["mesh"]},
+                                  {"V": res["A"], "mesh": res["mesh"]}, worn_open=worn_open)
+    keys = gate_status(model, un, spec)["keys"]
+    try:
+        rec = _json.loads(fit_record_path(keys["pattern"], keys["body"]).read_text())
+    except Exception:
+        rec = None
+    ok = all(r["status"] == "PASS" for r in vrows)
+    if rec is not None and keys.get("pattern") is not None:
+        vid = {r["id"]: dict(r, scope=f"visible under {garment}") for r in vrows}
+        rows = [vid.get(r["id"], r) if r["id"] in VISIBLE_SCOPED else r for r in rec["rows"]]
+        write_fit_record(model, un, keys, rows)
+    why = "; ".join(f"{r['status']} {r['id']} {r.get('ours')} on {r.get('n', 0)} visible vertices" for r in vrows)
+    return {"passed": ok, "rows": vrows, "hidden": hid, "why": why}
 
 
 def blocking(rec: dict | None) -> list:

@@ -207,7 +207,7 @@ def op_jacket_neck(D: dict, width: float | None = None, rise: float | None = Non
                     f"rise {(_pt(pc, 'hps')[1] - _pt(pc, 'cbNeck')[1]) * 1000:.1f} mm (targets {width * 1000:.1f} / {rise * 1000:.1f})")
 
 
-SILHOUETTES = ("suit", "straight")  # R8's style: how much waist shaping beyond the body's own
+SILHOUETTES = ("suit", "straight", "plumb")  # R8's style: how much waist shaping beyond the body's own
 
 
 # R8 "straight" (fit round 12, read from Garrett's concept): the sides hang straight in the front view. The concept's
@@ -218,6 +218,15 @@ SILHOUETTES = ("suit", "straight")  # R8's style: how much waist shaping beyond 
 # the side-back / side-front seams: the American sack's straight sides (Flusser, Dressing the Man: the sack "hangs
 # straight from the shoulders"; Cabrera & Flaherty: suppression is a style choice of the side seams).
 STRAIGHT_SIDES = ("side_back", "side_front")
+# R8 "plumb" (fit round 24, Joe 2026-10-20 for Garrett: the jacket "should basically just fall straight down"): NO waist
+# take-in anywhere (CB, side-back, side-front, front dart), so the cloth hangs from the chest and the shoulder blades and
+# bridges the waist. "straight" still pinched the hollow: its CB + dart take-ins and the block's own fitted side seam
+# (pattern_blocks: fitted takes up to 25 mm a quarter) left the flat waist 45-85 mm under the chest, and on the form the
+# waist followed the body's hollow (C88). A plumb draft also wants block_options fitted False and no CB contour; the
+# gate row waist_plumb checks the outcome on the flat pattern: waist girth >= chest girth x (1 - PLUMB_TOL), and the
+# hips no narrower than the waist. PLUMB_TOL 0.03 (~35 mm on Garrett's 1150 chest): the cloth's own drape over the
+# 15 % chest ease; the sack coat's straight body (Flusser: "hangs straight from the shoulders").
+PLUMB_TOL = 0.03
 
 
 def op_waist_suppression(D: dict, waist_ease: float | None = None, share: dict | None = None, dart_x: float = 0.55,
@@ -230,6 +239,9 @@ def op_waist_suppression(D: dict, waist_ease: float | None = None, share: dict |
     import copy as _copy
     if silhouette not in SILHOUETTES:
         raise ValueError(f"waist_suppression silhouette {silhouette!r}: one of {SILHOUETTES}")
+    if silhouette == "plumb":
+        D["log"].append("waist suppression R8 silhouette plumb: none (CB, side panels and dart untouched; Joe 2026-10-20)")
+        return
     if silhouette == "straight":  # (the suit's CB / dart mm, no side take-ins: no gain, which would scale them up)
         share = dict(SHARE, **(share or {}), **{k: 0.0 for k in STRAIGHT_SIDES})
         _suppress(D, waist_ease, share, dart_x, gain=1.0)
@@ -829,10 +841,26 @@ def tailor_rows(Bp: dict, tape: dict, g: dict | None = None, button_mm: float = 
         sup = (ch - wa) / max(ch, 1e-9) * 100
         sil = next((op_.get("silhouette", "suit") for op_ in ((g.get("design") or {}).get("ops") or [])
                     if op_.get("op") == "waist_suppression"), "suit")
+        if sil == "plumb":  # (fit round 24: nothing taken in; the waist >= the chest less the drape, hips >= waist)
+            hy_ = float(meta.get("hips_y", meta["waist_y"]))
+            # the narrowest row from the chest line to the hip line (the pinch is not always at the waist line)
+            ys_ = np.linspace(float(meta["chest_y"]), hy_, 25)
+            gs_ = [torso_span(Bp, y_, half=False) for y_ in ys_]
+            wmin, hp_ = min(gs_), gs_[-1]
+            row("waist_plumb", src(8), wmin * 1000, f">= {ch * (1 - PLUMB_TOL) * 1000:.0f}", 0,
+                ok=wmin >= ch * (1 - PLUMB_TOL) and hp_ >= wmin - 0.005,
+                why=f"silhouette plumb (Joe 2026-10-20 'fall straight down'): the narrowest flat girth chest -> hips "
+                    f"{wmin * 1000:.0f} ({(ys_[int(np.argmin(gs_))] - ys_[0]) * 1000:+.0f} mm from the chest line) >= chest "
+                    f"{ch * 1000:.0f} x {1 - PLUMB_TOL:.2f}, hips {hp_ * 1000:.0f} >= waist; a pinch here is the block's "
+                    f"fitted side seam or a CB contour")
         if sil == "straight":  # (CB + dart only, at their R8 shares of the reduction, no gain: ~1-3 % of the chest)
             row("waist_suppression", src(8), sup, "<= 9 % (straight)", 0, ok=sup <= 9.0, units="% of chest",
                 why=f"chest {ch * 1000:.0f} / waist {wa * 1000:.0f} mm on the flat pattern; silhouette straight: CB "
                     f"and dart only (the sack's straight sides)")
+        elif sil == "plumb":
+            row("waist_suppression", src(8), sup, f"<= {PLUMB_TOL * 100:.0f} % (plumb)", 0, ok=sup <= PLUMB_TOL * 100,
+                units="% of chest", why=f"chest {ch * 1000:.0f} / waist {wa * 1000:.0f} mm on the flat pattern; "
+                                        f"silhouette plumb: nothing taken in")
         else:
             row("waist_suppression", src(8), sup, "11-20 %", 0, ok=11.0 <= sup <= 20.0, units="% of chest",
                 why=f"chest {ch * 1000:.0f} / waist {wa * 1000:.0f} mm on the flat pattern (Jaeger reads 13-17 %)")
@@ -846,7 +874,13 @@ def tailor_rows(Bp: dict, tape: dict, g: dict | None = None, button_mm: float = 
     fr = _half(Bp, "front")
     if fr is not None:
         has = bool(fr.get("fisheyes")) or any(k.startswith("frontDart") or k.startswith("waistDart") for k in fr["names"])
-        row("front_dart", src(10), 1.0 if has else 0.0, 1.0, 0, ok=has, units="present")
+        plumb = any(op_.get("op") == "waist_suppression" and op_.get("silhouette") == "plumb"
+                    for op_ in ((g.get("design") or {}).get("ops") or []))
+        if plumb:  # (a straight-cut front has no fish-eye: a dart there would pinch the waist)
+            row("front_dart", src(10), 1.0 if has else 0.0, 0.0, 0, ok=not has, units="present",
+                why="silhouette plumb: no waist dart (Joe 2026-10-20)")
+        else:
+            row("front_dart", src(10), 1.0 if has else 0.0, 1.0, 0, ok=has, units="present")
         if "break" in fr["names"]:
             ov = abs(_pt(fr, "break")[0]) * 1000
             row("front_overlap", src(12), ov, button_mm, 4.0, why="front edge past CF at the break vs the button diameter")

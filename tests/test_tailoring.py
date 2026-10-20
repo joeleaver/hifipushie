@@ -153,6 +153,37 @@ def test_straight_silhouette_follows_the_body_at_every_size():
         assert 0.64 <= gap / red < 1.0, (name, gap, red)
 
 
+def test_plumb_silhouette_falls_straight_and_its_row_catches_a_pinch():
+    """(fit round 24, Joe 2026-10-20: the jacket "should basically just fall straight down") R8 "plumb": nothing taken
+    in (CB, side panels, dart). With the block unfitted and no CB contour, at every size the narrowest flat girth from
+    the chest to the hips is within PLUMB_TOL of the chest, waist_plumb + waist_suppression + front_dart (none) PASS;
+    a pattern with the suit's take-ins (the "suit" silhouette drafted, judged as plumb) FAILs waist_plumb; the block's own
+    fitted side seam narrows it (>= 20 mm)."""
+    for name, tape0 in [("TAPE", TAPE)] + sorted(BODIES.items()):
+        tape = dict(tape0, waist=round(0.815 * tape0["chest"]))  # (Garrett: 789 / 968)
+        res = {}
+        for lab, fitted, cb in (("plumb", False, False), ("fitted", True, False), ("pinched", False, False)):
+            ops = [op for op in pj.jacket_ops(OPS, tape, 20.0)
+                   if cb or not (op["op"] == "contour" and op.get("edge") == "centre_back")]
+            for op in ops:
+                if op["op"] == "waist_suppression":
+                    op["silhouette"] = "suit" if lab == "pinched" else "plumb"
+            D = pd.start("bodice", tape, dict(BLOCK, fitted=fitted, chest_ease=0.15, waist_ease=0.16))  # (Garrett's block)
+            pd.apply(D, ops)
+            Bp = _bp(D)
+            judged = [dict(op, silhouette="plumb") if op["op"] == "waist_suppression" else op for op in ops]
+            rows = _rows(Bp, tape, {"design": {"details": {"pockets": "flap"}, "ops": judged}})
+            m = D["meta"]
+            ch = pj.torso_span(Bp, m["chest_y"], half=False)
+            mn = min(pj.torso_span(Bp, y, half=False) for y in np.linspace(m["chest_y"], m["hips_y"], 25))
+            res[lab] = (rows["waist_plumb"]["status"], round(ch * 1000), round(mn * 1000), rows["front_dart"]["status"],
+                        rows["waist_suppression"]["status"])
+        print(name, res)
+        assert res["plumb"][0] == "PASS" and res["plumb"][2] >= res["plumb"][1] * (1 - pj.PLUMB_TOL), (name, res)
+        assert res["plumb"][3] == "PASS" and res["plumb"][4] == "PASS", (name, res)
+        assert res["pinched"][0] == "FAIL" and res["fitted"][2] < res["plumb"][2] - 20, (name, res)
+
+
 def test_collar_fall_has_its_fold_line_and_the_gate_refuses_one_without():
     """R16 (fit round 2): the two-piece collar's fall carries a fold (roll) line across the whole fall (CB fold to both
     ends), parallel to its seam on the stand; the construction check (garment_design "fold" evidence, the gate's
