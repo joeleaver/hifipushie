@@ -44,6 +44,17 @@ ROLL_GAP = False
 # that base as well (fit round 4: a two-piece collar's fall, 4 mm above its seam, lies on its stand). Off = the old rule.
 BASE_ACROSS_SEAM = True
 BASE_NARROW = 0.012
+# A TURNED FLAP LIES ON WHAT IS UNDER IT (shirt round 10, C124): past its own base's edge a turned flap (a collar's
+# fall past its stand's neck seam, a lapel past its forepart, a cuff) lies on the rest of the garment under it (the
+# yoke, the fronts, the shoulders), one THICK out, drawn there as onto its base (FLAP_PULL). Without it the fall was
+# held only where it stood within 2 cm of its stand, along the STAND's normal (horizontal): past the neck seam it hung
+# as the rigid turn left it, a vertical tube, its sprung outer edge rippling (Garrett k9a: 9 mm out at the sides, gaps
+# 6-15 mm; shoulder KAT: the fall a tube 12 mm inside the bodice). A flap vertex lies on the garment's other cloth (not
+# any turned fold's flap) where that cloth is nearer than its own base and the vertex stands over it (sideways within
+# FLAP_LAY_REACH x the mesh edge). Known answer: tests/test_pattern_form.py test_sprung_fall_lies_on_the_shoulders.
+FLAP_LAY = True
+FLAP_LAY_REACH = 1.0
+FLAP_LAY_FAR = 0.04  # m: the farthest a flap vertex is drawn down onto the cloth under it in one round's target
 BASE_ACROSS_PRESSED = False  # opt-in, fit round 17: a fold's base across a seam continues onto the flap that piece is pressed on (r17c: no change: dead lever)
 # LOOSE cloth stands off EVENLY (dress-garrett 2026-10-19 block proportions): in the let-go phase, cloth more than 2 mm
 # off its offset is pushed out along its own normal this much per round (a dress form's ease reads as an even stand-off,
@@ -1292,6 +1303,9 @@ def front_creases(M: dict, X: np.ndarray) -> dict:
     return out
 
 
+FLAP_THROUGH_REACH = 0.008  # m: a flap vertex is read against its base only where it stands over it (C124)
+
+
 def flap_through_base(M: dict, X: np.ndarray, body=None, hinge: float = 0.018) -> dict:
     """Each folded piece's turned flap vertices (folds.flap_faces; past `hinge` m of its fold rows in the pattern: the
     roll's own bend) THROUGH its own base surface (signed distance < 0, within 20 mm of it): {piece: {"through", "n",
@@ -1338,7 +1352,11 @@ def flap_through_base(M: dict, X: np.ndarray, body=None, hinge: float = 0.018) -
                 bF = np.r_[bF, oF]
         ix = -np.ones(len(X), int); ix[bv] = np.arange(len(bv))
         d, _, dist = _Surface(X[bv], ix[bF], ref=bs).signed(X[fv])
-        m = dist < 0.02
+        # (C124, shirt round 10: only where the flap stands OVER its base, sideways within FLAP_THROUGH_REACH of the
+        # nearest base vertex: past the base's outline its plane says nothing. Jacket r26 collar: 21 of 25 'through'
+        # were past the stand's neck edge, the fall lying on the body below it; over the stand 4, 0.1 mm deep)
+        tang = np.sqrt(np.maximum(dist ** 2 - d ** 2, 0.0))
+        m = (dist < 0.02) & (tang < FLAP_THROUGH_REACH)
         t = int((d[m] < 0).sum())
         out[nm] = {"through": t, "n": int(m.sum()), "share": round(t / max(int(m.sum()), 1), 3),
                    "ok": bool(t <= FLAP_THROUGH_MAX * max(int(m.sum()), 1))}
@@ -2123,6 +2141,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
     rest = _rest_edges(M, src, dst, folds_)
     flapv = np.zeros(n, bool)  # vertices of folded-over flaps (one layer further out)
     over = []  # folds turned over onto their base: (flap vertices, base vertices, base triangles)
+    over_lay = []  # per fold over entry: it lies on the garment under it past its base (FLAP_LAY)
     over_gap = []  # per over entry: each flap vertex's target gap off its base (THICK; ROLL_GAP: + the roll near the line)
     for fd, g, turn in folds_:
         if abs(turn) * len(g["rows"]) > math.radians(120):
@@ -2159,6 +2178,8 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                             bv = np.union1d(bv, np.where(f2)[0])
                             bt_ = np.r_[bt_.reshape(-1, 3), F[f2[F].all(1)]]
             over.append((fv, bv, bt_))
+            # (FLAP_LAY: folds turned onto the OUTSIDE only; their own flap is not cloth under them)
+            over_lay.append(np.asarray(g["flap0"], bool) if float(fd.get("angle", 180.0)) < 180.0 else None)
             gap = np.full(len(fv), THICK)
             if ROLL_GAP and len(g["rows"]) > 1:  # (see ROLL_GAP: the roll's own radius, from the rows' spacing)
                 d0 = np.asarray(g["d0"])
@@ -2173,6 +2194,20 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
             over.append((pv, np.where(pid == b)[0], bt_))
             over_gap.append(np.full(len(pv), THICK))
             flapv[pv] = True
+    lay = [None] * len(over)  # FLAP_LAY: per fold entry, the garment's cloth its flap may lie on past its own base
+    if FLAP_LAY:
+        lay_h = FLAP_LAY_REACH * float(np.median(np.linalg.norm(uv[E[:, 0]] - uv[E[:, 1]], axis=1)))
+        for oi, own in enumerate(over_lay):
+            if own is None:
+                continue
+            own = own.copy()
+            own[over[oi][0]] = True
+            lv = np.where(~own)[0]  # (every other cloth, other folds' flaps too: a collar's end lies ON the lapel)
+            lix = -np.ones(n, int)
+            lix[lv] = np.arange(len(lv))
+            lt = lix[F[(lix[F] >= 0).all(1)]]
+            if len(lt):
+                lay[oi] = (lv, lt)
     laps = lap_layers(M, X, fast, skip=flapv) if LAP_LAYER else []  # (a lapped closure's over piece outside its under piece; turned flaps lie on their own base)
     # off-the-body target per vertex
     off = ease + THICK * flapv
@@ -2350,7 +2385,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                     vn_ /= np.maximum(np.linalg.norm(vn_, axis=1, keepdims=True), 1e-12)
                     vn_ *= np.sign(np.sum(vn_ * nrm, 1) + 1e-12)[:, None]
                     T[hi] += vn_[hi] * loose
-                for (fv, bv, bt), gp in zip(over, over_gap):  # a flap stays one cloth thickness outside its base
+                for oi, ((fv, bv, bt), gp) in enumerate(zip(over, over_gap)):  # a flap stays one THICK outside its base
                     if not len(bt):
                         continue
                     ix = -np.ones(n, int)
@@ -2358,6 +2393,12 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                     ok_ = (ix[bt] >= 0).all(1)
                     srf = _Surface(X[bv], ix[bt[ok_]], ref=bsurf)
                     dfl, nfl, dist = srf.signed(T[fv])
+                    if lay[oi] is not None:  # FLAP_LAY: past its base's edge the flap lies on the garment under it
+                        dl, nl_, distl = _Surface(X[lay[oi][0]], lay[oi][1], ref=bsurf).signed(T[fv])
+                        tang = np.sqrt(np.maximum(distl ** 2 - dl ** 2, 0.0))
+                        use = (distl < dist - 1e-4) & (tang < lay_h) & (dl < FLAP_LAY_FAR)
+                        if use.any():
+                            dfl, nfl, dist = np.where(use, dl, dfl), np.where(use[:, None], nl_, nfl), np.where(use, np.minimum(distl, 0.019), dist)
                     near = (dist < 0.02) & (dfl < gp)
                     T[fv[near]] += nfl[near] * (gp[near] - dfl[near])[:, None]
                     # a pressed flap LIES on its base (as the iron left it), in both phases: unheld, a fall stood

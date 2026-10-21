@@ -1690,3 +1690,180 @@ def test_pocket_flap_is_a_patch_on_its_front():
     assert got == [("flap", "front", 6)], got
     M2 = dict(M, stitch=M["stitch"] + [[36, 43]])  # the flap also stitched to the collar: not a patch
     assert pf.patches(M2) == [], pf.patches(M2)
+
+
+# ---------------------------------------------------------------- shirt round 10 (C124): a sprung fall LIES on the shoulders
+_SH_BETA = math.radians(22.0)
+
+
+def _shoulder_body(r, z0, m=96):
+    th = np.linspace(0, 2 * np.pi, m + 1)[:-1]
+    zs = np.r_[np.linspace(z0 - 0.05, z0, 11)[:-1], np.linspace(z0, z0 + 0.25, 31)]
+    rad = lambda z: r + max(z0 - z, 0.0) / math.tan(_SH_BETA)
+    V = np.array([[rad(z) * math.cos(t), rad(z) * math.sin(t), z] for z in zs for t in th])
+    T = []
+    for i in range(len(zs) - 1):
+        for j in range(m):
+            a, b = i * m + j, i * m + (j + 1) % m
+            T += [[a, b, a + m], [b, b + m, a + m]]
+    return types.SimpleNamespace(V=V, T=np.asarray(T), at={})
+
+
+def _shoulder_collar_case(stand=0.028, fall=0.065, at=0.004, r=0.06, ease=0.004, gap_n=10, spring=True):
+    R = r + ease
+    z0 = 1.40
+    ths = np.linspace(-math.pi / 2, 3 * math.pi / 2, 161)
+    sl = slice(gap_n, 161 - gap_n)
+    u = (R * (ths - math.pi / 2))[sl]
+    nc = len(u)
+    k_cb = nc // 2
+    ns = 10
+    # stand: a straight band (as the test case)
+    bot = np.c_[u, np.full(nc, z0)]
+    rgt = np.c_[np.full(ns - 1, u[-1]), np.linspace(z0, z0 + stand, ns + 1)[1:-1]]
+    top = np.c_[u[::-1], np.full(nc, z0 + stand)]
+    lft = np.c_[np.full(ns - 1, u[0]), np.linspace(z0 + stand, z0, ns + 1)[1:-1]]
+    Ps = np.r_[bot, rgt, top, lft]
+    s_t = nc + ns - 1
+    # fall: an annular sector (sprung: the outer edge cut for the shoulders it lands on)
+    below = fall - stand - 2 * at - math.pi * 0.004
+    R_out = R + 2 * pf.THICK + 0.002 + (max(below, 0.0) * math.cos(_SH_BETA) if spring else 0.0)
+    rho = fall * R / (R_out - R)
+    cy = z0 + stand - rho
+    arc = lambda rr, uu: np.c_[rr * np.sin(uu / rho), cy + rr * np.cos(uu / rho)]
+    fb = arc(rho, u)
+    frg = np.array([arc(rho + f, u[-1:])[0] for f in np.linspace(0, fall, ns + 1)[1:-1]])
+    ftp = arc(rho + fall, u * 1.0)[::-1]
+    flf = np.array([arc(rho + f, u[:1])[0] for f in np.linspace(fall, 0, ns + 1)[1:-1]])
+    Pf = np.r_[fb, frg, ftp, flf]
+    f_t = nc + ns - 1
+    # bodice: a developable cone (slope _SH_BETA) from the neckline (radius R) down 0.08 of slant
+    ub = R * (ths - math.pi / 2)
+    s1 = R / math.cos(_SH_BETA)
+    s2 = s1 + 0.08
+    z_ap = z0 + R * math.tan(_SH_BETA)
+    cb_ = math.cos(_SH_BETA)
+    flat = lambda s, tt: np.c_[s * np.sin(cb_ * (tt - math.pi / 2)), z_ap - s * np.cos(cb_ * (tt - math.pi / 2))]
+    nb = len(ths)
+    bb = flat(s2, ths)
+    br = np.array([flat(s, ths[-1:])[0] for s in np.linspace(s2, s1, 12)[1:-1]])
+    bt = flat(s1, ths)[::-1]
+    bl = np.array([flat(s, ths[:1])[0] for s in np.linspace(s1, s2, 12)[1:-1]])
+    Pb = np.r_[bb, br, bt, bl]
+    s0 = nb + len(br)
+    top_at = lambda i: s0 + nb - 1 - i
+    stand_p = _piece(Ps, marks=None, names={"neck.m": 0, "neckCb": k_cb, "neck": nc - 1, "top": s_t, "topCb": s_t + nc - 1 - k_cb,
+                                "top.m": s_t + nc - 1}, wrap={"to": "seam"})
+    fall_p = _piece(Pf, marks=None, names={"low.m": 0, "lowCb": k_cb, "low": nc - 1, "outCb": f_t + nc - 1 - k_cb},
+                    wrap={"to": "seam", "turn": {"at": at, "deg": 172, "gap": 0.004}})
+    bodice = _piece(Pb, marks=None, names={"a0": 0, "a1": nb - 1, "a2": s0, "a3": s0 + nb - 1, "nl.l": top_at(gap_n),
+                               "nl.c": top_at(gap_n + k_cb), "nl.r": top_at(160 - gap_n)})
+    roll = arc(rho + at, u)[::4].tolist()
+    fold = {"piece": "fall", "line": roll, "angle": 10.0, "kind": "roll", "radius": 0.004, "name": "collar roll",
+            "flap": "outCb", "strength": 0.6}
+    B = {"pieces": {"bodice": bodice, "stand": stand_p, "fall": fall_p}, "stitches": [], "folds": [fold],
+         "seams": [["stand:neck.m>neckCb>neck", "bodice:nl.l>nl.c>nl.r"], ["fall:low.m>lowCb>low", "stand:top.m>topCb>top"],
+                   ["bodice:a0>a3", "bodice:a1>a2"]],
+         "mesh_refine": [{"piece": "fall", "h": 0.005}, {"piece": "stand", "h": 0.005}, {"piece": "bodice", "h": 0.008}]}
+    M = cloth.mesh(B, 0.02)
+    pid = np.asarray(M["piece"])
+    uv = np.asarray(M["uv"], float)
+    X0 = np.zeros((len(uv), 3))
+    kb = pid == M["names"].index("bodice")
+    d = uv[kb] - np.array([0.0, z_ap])
+    s = np.linalg.norm(d, axis=1)
+    tt = np.arctan2(d[:, 0], -d[:, 1]) / cb_ + math.pi / 2
+    rr = s * cb_ + 0.003
+    X0[kb] = np.c_[rr * np.cos(tt), rr * np.sin(tt), z_ap - s * math.sin(_SH_BETA)]
+    for nm in ("stand", "fall"):  # (flat tabs out of the back, as the placed collar)
+        cv = pid == M["names"].index(nm)
+        X0[cv] = np.c_[uv[cv, 0], np.full(cv.sum(), 0.2), uv[cv, 1] + 0.05]
+    info = {"rho": rho, "cy": cy, "fall": fall, "R": R, "R_out": R_out, "z0": z0, "stand": stand, "at": at}
+    return {"M": M, "B": B, "X0": X0, "body": _shoulder_body(r, z0), "info": info}
+
+
+def _shoulder_collar_read(c, V, verbose=True, lab=""):
+    from hifipushie import folds as foldmod
+    M, I = c["M"], c["info"]
+    pid = np.asarray(M["piece"])
+    uv = np.asarray(M["uv"], float)
+    names = list(M["names"])
+    fv = np.where(pid == names.index("fall"))[0]
+    sv = np.where(pid == names.index("stand"))[0]
+    bv = np.where(pid == names.index("bodice"))[0]
+    rf = np.linalg.norm(uv[fv] - np.array([0.0, I["cy"]]), axis=1) - I["rho"]  # distance from the sewn edge (pattern)
+    edge = fv[rf > I["fall"] - 0.0012]
+    F = np.asarray(M["F"])
+    Fb = F[np.isin(F, bv).all(1)]
+    ix = -np.ones(len(V), int)
+    ix[bv] = np.arange(len(bv))
+    bs = pf._Surface(V[bv], ix[Fb], ref=pf._body_surface(c["body"]))
+    gap, nb_, _ = bs.signed(V[edge])
+    Ff = F[np.isin(F, fv).all(1)]
+    Nv = pf._vnormals(V, Ff)
+    ne = Nv[edge] * np.sign(np.sum(Nv[edge] * nb_, 1))[:, None]
+    tilt = np.degrees(np.arccos(np.clip(np.sum(ne * nb_, 1), -1, 1)))
+    az = np.degrees(np.arctan2(V[edge, 0], V[edge, 1]))
+    o = np.argsort(az)
+    e, a_, n_ = edge[o], az[o], ne[o]
+    # ripple: normal turn between edge samples ~10 mm apart, less the cone's own (the bodice normal's turn there)
+    P = V[e]
+    arcl = np.r_[0, np.cumsum(np.linalg.norm(np.diff(P, axis=0), axis=1))]
+    j = np.searchsorted(arcl, arcl + 0.010)
+    ok = j < len(e)
+    i0, i1 = np.where(ok)[0], j[ok]
+    rip = np.degrees(np.arccos(np.clip(np.sum(n_[i0] * n_[i1], 1), -1, 1)))
+    nbo = nb_[o]
+    rip0 = np.degrees(np.arccos(np.clip(np.sum(nbo[i0] * nbo[i1], 1), -1, 1)))
+    ripple = rip - rip0
+    g = foldmod._geom(M, M["folds"][0])
+    turned = pf.fold_turned(M, V, g)
+    # per station: the fall's turn over the stand in section (stand up vs the fall 4..20 mm past the roll)
+    st = []
+    for th in np.radians(np.arange(-150, 151, 30)):
+        cdir = np.array([math.sin(th), math.cos(th)])
+        near = lambda ids: ids[np.abs(((np.arctan2(V[ids, 0], V[ids, 1]) - th + np.pi) % (2 * np.pi)) - np.pi) < 0.06]
+        s_, f_ = near(sv), near(fv)
+        if len(s_) < 3 or len(f_) < 3:
+            continue
+        sec = lambda ids: np.c_[V[ids, :2] @ cdir, V[ids, 2]]
+        S = sec(s_)
+        up = S[np.argmax(uv[s_, 1])] - S[np.argmin(uv[s_, 1])]
+        rr = np.linalg.norm(uv[f_] - np.array([0.0, I["cy"]]), axis=1) - I["rho"] - I["at"]
+        Ff_ = sec(f_)
+        h = Ff_[np.argmin(np.abs(rr - 0.006))]
+        d2 = Ff_[np.argmin(np.abs(rr - 0.020))]
+        dn = d2 - h
+        ang = math.degrees(math.acos(float(np.clip(up @ dn / (np.linalg.norm(up) * np.linalg.norm(dn) + 1e-12), -1, 1))))
+        m = np.abs(((az - math.degrees(th) + 180) % 360) - 180) < 8
+        st.append((int(round(math.degrees(th))), round(ang, 1), round(float(np.median(gap[m])) * 1000, 1) if m.any() else None,
+                   round(float(np.median(tilt[m])), 1) if m.any() else None))
+    res = {"turned": round(float(turned), 1), "turn_min": min(s[1] for s in st), "gap_p50": round(float(np.median(gap)) * 1000, 1),
+           "gap_p90": round(float(np.percentile(gap, 90)) * 1000, 1), "gap_max": round(float(gap.max()) * 1000, 1),
+           "tilt_p90": round(float(np.percentile(tilt, 90)), 1), "ripple_max": round(float(ripple.max()), 1),
+           "ripple_p90": round(float(np.percentile(ripple, 90)), 1), "edge_n": int(len(edge))}
+    if verbose:
+        print(lab, res)
+        for s in st:
+            print(f"   az {s[0]:5d}: turn {s[1]:6.1f}  edge gap {s[2]} mm  tilt {s[3]} deg")
+    return res
+
+
+
+
+def test_sprung_fall_lies_on_the_shoulders(verbose=True):
+    """(shirt round 10, C124) Garrett's sprung shirt fall (C122) still hung as a tube on the form: folds.apply turns the
+    flap rigidly about the roll and the relax drew it only onto its STAND (within 2 cm, along the stand's horizontal
+    normal), so past the neck seam it hung as turned, its longer outer edge rippling. Known answer: a stand + SPRUNG fall
+    (an annular sector cut for the shoulders it lands on) on a neck cylinder with a 22 deg shoulder cone, the bodice a
+    developable cone piece sewn to the stand: the fall turned >= 170 over its stand (fold_turned, in section), its outer
+    edge ON the bodice (signed gap <= 3 mm everywhere), no ripple (normal turn between edge samples 10 mm apart, less the
+    cone's own, < 15 deg). Measured without FLAP_LAY (the planted fault): the fall a vertical tube 12 mm INSIDE the
+    bodice (gap -13..-7 mm, tilt p90 52 deg, ripple 25 deg; fold_on_base read 0 through: its base is the stand only).
+    With it: turned 171.5, gap -0.2..0.9 mm, tilt p90 8, ripple max 2.2."""
+    c = _shoulder_collar_case()
+    out = pf.assemble({"mesh": c["M"], "X0": c["X0"], "pieces": c["B"]}, c["body"], iters=120, ease=0.004)
+    r = _shoulder_collar_read(c, out["V"], verbose=verbose, lab="sprung fall on shoulders")
+    assert r["turned"] >= 170, r
+    assert r["gap_max"] <= 3.0 and r["gap_p50"] >= -1.0, r
+    assert r["ripple_max"] < 15, r

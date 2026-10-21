@@ -9376,3 +9376,28 @@ Step 2 (draft spring, C122) and Joe's torn corners (C123):
   Cause: single-vertex pins on the right (band ends by 35 mm, the point pin). Fix not run (budget).
 - Not run this round (budget spent on measure + the two reads that were wrong): arrangement, renders, reviews,
   jacket refit. Tests: 22 files (tests_r9.log).
+
+## shirt round 10 (2026-10-21; $S = /mnt/data/hifipushie/dress_garrett/shirt_round10)
+Step 1, THE FORM'S TURN (C124). Cause, read in the code: the relax drew a turned flap only onto its own base (base
+vertices within 2 cm, along the BASE's normal; a collar's base = the stand). Past the stand's neck seam nothing under
+the fall held it: it hung as the rigid turn left it (folds.apply / _turn_flaps), a vertical tube; the body's attraction
+skips flaps (on_flap). Fix: pattern_form.FLAP_LAY (default on): per fold turned onto the outside, the garment's other
+cloth (every piece, other folds' flaps too; not its own flap) is a second surface; a flap vertex nearer to it than to
+its base and standing over it (sideways < 1 mesh edge) is drawn onto it one THICK out (FLAP_PULL) / pushed out of it.
+- KAT kat.py (stand + annular-sector sprung fall on a neck + 22 deg shoulder cone, a cone bodice): off = the fall a
+  tube 12 mm INSIDE the bodice (gap -13..-7, tilt p90 52, ripple 25 deg; fold_on_base read 0: its base is the stand),
+  on = fold_turned 171.5 (stations 169.9-178), gap -0.2..0.9 mm, tilt p90 7.9, ripple max 2.2, stretch p99 11.5 -> 7.1.
+  Test: test_pattern_form.py test_sprung_fall_lies_on_the_shoulders.
+- Garrett closed form (fit10.py; k9a -> k10a, the first FLAP_LAY): the fall's edge gap under p50 / p90 6.7 / 14.0 ->
+  2.5 / 3.8 mm (edge10.py, round 9's q5b read); free-edge read (jrows10.py) within 3 mm 25 % -> 84 %; fold rows
+  turn 166.4 -> 164.7 PASS, on_base 0.018 -> 0.026 PASS. Collar points 16.6 / 18.4 % strain on k9a already (the
+  sprung draft: k8b was <= 6.7): not FLAP_LAY's.
+- Jacket (harness10.py = fit_round26 harness24 with OUT here; r26g overrides), A/B on THIS code (the placed key moved
+  since r26g): r10j0 (FLAP_LAY off) -> r10j2 (on): collar free edge gap p50 / p90 25.3 / 29.5 -> 9.8 / 18.4 mm, within
+  3 mm 16 -> 23 %; collar turn 169.3 -> 170.6; twist p90 6.9 -> 15.2 (FAIL by 0.2: the jacket's fall is unsprung,
+  C122's op skips collar_two_piece, drawn down it twists); stretch p99 15.9 -> 14.0, max 255 -> 139; lapels unchanged.
+- READ FIX (validate the measure): the jacket collar's fold_on_base rose 0.28 -> 0.43 with FLAP_LAY; thru.py split the
+  'through' vertices: 21 of 25 (off) / 41 of 45 (on) were PAST the stand's edge (the fall lying on the body below the
+  neck seam, the stand's plane extrapolated), over the stand 4 both (0.1-0.5 mm). flap_through_base now counts a flap
+  vertex only where it stands over its base (FLAP_THROUGH_REACH 8 mm): jacket collar 4 / 7 both; KAT / C121 known
+  answers (test_fold_checks) unchanged and green.
