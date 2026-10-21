@@ -1,43 +1,50 @@
-# STATE: dress_garrett_shirt (Garrett's shirt on its own, then under the round-26 jacket) -- 2026-10-21, shirt round 11
+# STATE: dress_garrett_shirt (Garrett's shirt on its own, then under the round-26 jacket) -- 2026-10-21, shirt round 12
 
 QUESTION (Joe 2026-10-20): "will all the lessons we learned on the jacket carry over and it won't take 30 rounds?"
 Rounds 1-7: process carried, geometry didn't (C103-C117). Round 8: gate PASS, first button + V pass; spread stuck (C120).
-Round 9: fold reads (C121), fall sprung (C122), torn corners measured (C123). Round 10: a turned flap lies on what is
-under it (C124). Jacket thread: docs/state/dress_garrett_fit.md (read-only here). Notes: cloth.md "shirt round 11".
-ROUND 11:
-- C125 landing path: the fall's landing line is the neckline at the CB cover all round (was tapered to the points'
-  height): spring 127 -> 81 mm, gate g11a PASS. On the form the edge did NOT move (CB 10 / sides 22 mm below the seam,
-  k10b = k11a): the cape is the fall's DEPTH. Worn fall 51.8 at CB (concept ~35-45), ends 85 from the roll (concept read
-  45-49 projected). Forced by the 36.6 mm stand + cover rule. Flat option (NOT applied: changes the stand):
-  collarStandWidth 0.07 / collarWidth 1.79 / collarBend 0.015 -> stand 28.5, fall ~44 worn, ends 66, cover 9.5.
-- C127 sawtooth: the edge is smooth; the yoke / fronts show through the fall's 0-5 mm band (8.5 %, depth p50 0.75 mm),
-  edge row bent (dihedral p90 8). FLAP_LAY_SMOOTH lever DEAD (opt-in, 0). Open: resolution (yoke 10 mm vs fall 5 mm).
-- C126 ZOZO start scan: the 4 pairs were the collar | stand SEAM (held made pieces, stitches dropped, sides 0.3 um
-  apart; float32 scan vs float64 build check). part_stitches clears held ends 0.1 mm apart. a11a RAN (local).
-- a11a (patch pins, SEPARATE=0): spread / height / V / button all PASS; corners 13.5 % FAIL; collar roll turn 143 FAIL;
-  the collar | stand seam opens to 14.5 mm (dropped held stitches: nothing sews it). Reviews: collar FAIL (stand to the
-  jaw, fall standing as wings, overlapping layers), wholefront FAIL. Jacket refit not run.
-NEXT: (a) decide the collar proportions (stand 36.6 -> ~28.5 with a shallower fall; coordinator / Joe: the stand was set
-at 0.09 on purpose, see the spec's source); re-run k + a with it; (b) the held collar | stand seam must stay sewn in the
-arrangement (stitch held ends, or weld made pieces) before the next sim; (c) fall turned only 143 arranged: the patch
-pins pull it up; (d) sawtooth: resolution A/B; (e) jacket refit when the collar review is close.
+Rounds 9-11: fold reads (C121), fall sprung (C122), corners measured (C123), flap lies on what is under it (C124),
+landing line (C125), held seam ends parted (C126), sawtooth = show-through (C127). Jacket thread:
+docs/state/dress_garrett_fit.md (read-only here). Notes: cloth.md "shirt round 12".
+ROUND 12 (cut short by the coordinator: a general "drape band" pattern op, Joe-approved, comes next and replaces the flat
+collar draft and much of the arrangement; jacket refit skipped, no new levers on the fall's turn or the sawtooth):
+- C129 proportions: the coordinator's flat option (stand 0.07 = 28.5 mm) FAILED checklist:collar_band [30, 38] (Joe's
+  concept_v8 pass). Stored the nearest in band, same fall: collarStandWidth 0.075 (30.5 mm), collarWidth 1.68,
+  collarBend 0.015 -> fall 52.3 flat at CB, points 66.6, spring 73.6, cover 7.8. Gate g12b PASS (spec v10, source names
+  both). Coordinator: confirm 0.075 or waive the band.
+- C128 seam: part_stitches dropped every stitch between two "held" ends, and made (solved) pieces counted as held. Now only
+  PRESCRIBED ends (carryIdx) drop a stitch. KAT test_arranged_made_pieces_keep_their_seam: control 33.0 mm open, fixed sim
+  gap 1.73 / welded 0.27. Garrett a12a: collar | stand sim gap max 1.27 mm (contact gap; r11 14.5 mm opened). PASS.
+- k12a closed form: collar turn 164.5, corners 11.2 % (one corner), V 67.1, first button 79.2.
+- a12a arranged (same pins as a11a, SEPARATE=0, start_over 0.06, start over 5.18 %): spread 130.1 / points 64.3 / V 74.0
+  / button 77.6 / state spread: PASS. Turn 154 (r11 143; >= 165 not met), fold_on_base 21 % FAIL, twist 18.2 FAIL,
+  corners 15.1 % FAIL (stand ends 12.9-15.1), weld max 3.6 (yoke|back, sleeve|yoke contact; no collar seam opening).
+- Fall un-turning (step 2), MEASURED ONLY from a12a's report: pins 0/2 = collar points (7-vertex 12 mm patches on the
+  fall's outer edge), held 27.5 / 47.1 mm off the start, pin 2 springback 4.2-5.4; pins 1/3 = cfNeck by 20 mm. The point
+  pins drag the fall's outer edge sideways and lift it; nothing holds the turn (made rest only). Not fixed.
+- Render a12a + blind collar review: FAIL (collar stands up round the neck, points knotted, V closed to under the chin,
+  no buttons, colour). Own read: the stand is lower and the seam closed, but it still reads as a wing collar stood up
+  round the neck, the fall not lying on the shoulders; ends lumpy. Not near the concept. Wholefront review not run.
 
-## Big reads (concept | r10 k10b closed | r11 a11a arranged)
-- V bottom below HPS: 60 (45-75) | 62.1 closed | 74.3 PASS
-- Collar points apart: 147 +-20 | closed | 138.2 PASS
-- Collar points below HPS 50-61: | 81.3 closed | 56.7 PASS
-- First fastened button: 83 | 79.4 | 77.1 PASS
-- Collar turn (section): 180 +- 35 | 164.7 | form 165.7, arranged 143 FAIL
-- Fall spring (flat): a few cm | 127 mm | 81 mm (gate PASS)
-- Fall worn depth at CB: ~35-45 | 51.8 | 51.8 (unchanged)
-- Corners strain max: <= 10 % | 18.4 FAIL | 13.5 FAIL
-- Edge band show-through (0-5 mm): 0 | 7.0 % | 8.5 %
-- Reviews: PASS | collar FAIL, wholefront FAIL | collar FAIL, wholefront FAIL
+## Big reads (concept | r11 a11a arranged | r12 a12a arranged)
+- V bottom below HPS: 60 (45-75) | 74.3 | 74.0 PASS
+- Collar points apart: 147 +-20 | 138.2 | 130.1 PASS
+- Collar points below HPS 50-61 (gate band): | 56.7 | 64.3 PASS (row)
+- First fastened button: 83 | 77.1 | 77.6 PASS
+- Collar turn (section): 180 +- 35, want >= 165 | 143 | 154 (closed k12a 164.5)
+- Collar | stand seam gap (sim): <= contact | 14.5 open | 1.27 PASS
+- Stand at CB (flat): 30-38 | 36.6 | 30.5 PASS
+- Corners strain max: <= 10 % | 13.5 | 15.1 FAIL
+- fold_on_base (arranged): <= 5 % | 6.6 | 21 FAIL
+- Reviews: PASS | collar FAIL, wholefront FAIL | collar FAIL (wholefront not run)
 
-## Tests: round 11: 28 cloth / pattern files under bin/capped: 331 passed, 7 skipped, 4 xfailed, exit 0 ($S/tests_r11.log).
+## Tests: round 12: the 22 named files under bin/capped: 327 passed, 3 skipped, 4 xfailed, exit 0 ($S/tests_r12.log).
 
-## Commands ($S = /mnt/data/hifipushie/dress_garrett/shirt_round11; run.sh runs THIS worktree's code; RUNNER=bin/capped
-for heavy). flat11.py [opt.X=v | key=json] (flat collar + spring reads); gate11.py <tag>; fit11.py <tag> (form);
-edge11.py <pkl> <lab> (edge vs neck seam + corners); zig.py / thru11.py <pkl> (sawtooth reads); xscan.py <seen pkl>
-[faces] (our start scan); FORM=<pkl> SEPARATE=0 seen11.py <tag> submit (arrangement); reads11.py <tag>; corners11.py
-<tag>; FORM=<pkl> render11.py <seen> <tag>.
+NEXT: (a) hand the collar to the drape band op (worn cross-section swept along the neck, flattened): it should own the
+stand height, the fall's turn and its lie; (b) if arrangement survives it: pins on the stand ends / fronts' neckline, the
+fall carried by FLAP_LAY rather than pinned on its points (a12a: point pins held 27-47 mm off the start); (c) corners
+(stand ends 13-15 % arranged); (d) sawtooth resolution A/B (yoke 10 mm vs fall 5 mm), untouched; (e) jacket refit.
+
+## Commands ($S = /mnt/data/hifipushie/dress_garrett/shirt_round12; run.sh runs THIS worktree's code; RUNNER=bin/capped
+for heavy). apply12.py SW CW CB [source] (stores the collar options); flat12.py opt.X=v; gate12.py <tag>; fit12.py <tag>
+(form); FORM=<pkl> SEPARATE=0 seen12.py <tag> submit (arrangement); reads12.py <tag>; seam12.py <tag> [Vsim|V]
+(collar|stand seam gap); FORM=<pkl> render12.py <seen> <tag>; rev12.sh <view> <tag> (blind review).

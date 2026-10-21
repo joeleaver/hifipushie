@@ -9447,3 +9447,22 @@ Step 2-4. Closed form k10b (per-fold lay surface): fold rows turn 164.7 / on_bas
   as wings not turned over the stand, layers overlapping, jagged gaps at the band ends); wholefront FAIL (popped wing
   collar, no V read, boxy front, hem zigzag). Step 5 (jacket refit) not run: the collar is not close.
 - Tests: 28 cloth / pattern files under bin/capped: 331 passed, 7 skipped, 4 xfailed, exit 0 (tests_r11.log).
+
+## shirt round 12 (2026-10-21; scratch /mnt/data/hifipushie/dress_garrett/shirt_round12, run.sh = this worktree)
+- Step 0, proportions (C129): the coordinator's flat option (collarStandWidth 0.07, collarWidth 1.79, collarBend 0.015;
+  spec v9) failed the gate: checklist:collar_band 28.5 outside [30, 38] (Joe 2026-10-20, concept_v8). flat12.py: stand
+  0.075 + width 1.68 + bend 0.015 keeps the fall (52.3 flat CB, points 66.6, spring 73.6, cover 7.8) with a 30.5 mm stand;
+  stored as spec v10 (apply12.py), gate g12b PASS.
+- Step 1, the collar | stand seam (C128): part_stitches dropped coincident stitches between two held ends, and the runner
+  passed made pieces as held, though they are solved. `fixed` (prescribed, carryIdx) now decides the drop. KAT
+  test_arranged_made_pieces_keep_their_seam (release KAT, disc + band made, seam coincident, disc pinned 15 mm): control
+  (old rule) 33.0 mm open; fixed: sim gap max 1.73, welded 0.27.
+- Form k12a (fit12.py): turn 164.5, corners 11.2 (collar:156), V 67.1, button 79.2, spread closed (32.9).
+- Arrangement a12a (seen12.py, SEPARATE=0, a11a's pins; start over 5.18 %): spread 130.1, points 64.3, V 74.0, button
+  77.6, state spread; turn 154 (r11 143), fold_on_base 21 % FAIL, twist 18.2 FAIL, corners 15.1 FAIL (stand ends); the
+  collar | stand sim gap max 1.27 mm (seam12.py; r11 14.5). Weld max 3.6 at yoke|back and sleeve|yoke.
+- Step 2 measured from a12a only (no lever, coordinator): the point pins (7-vertex patches on the fall's outer edge) were
+  held 27.5 / 47.1 mm off their start and the left one sprang back 4.2-5.4 mm. The fall is pulled by its points, sideways and up;
+  nothing holds its turn but its made rest.
+- Step 4: render12.py a12a (check/*_a12a.png); blind review of the collar: FAIL (stands up round the neck, knotted ends, V
+  closed under the chin, no buttons, colour). Wholefront review not run; jacket refit skipped (the drape band op is next).
