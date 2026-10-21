@@ -1,25 +1,29 @@
 # STATE: dress_garrett_shirt (Garrett's shirt on its own, then under the round-26 jacket) -- 2026-10-20, shirt round 2
 
 QUESTION (Joe 2026-10-20): "will all the lessons we learned on the jacket carry over and it won't take 30 rounds?"
-Round 1: the process carried, the geometry didn't (jacket-only code). Round 2: lessons become GENERAL code first, then
-the shirt. Jacket thread: docs/state/dress_garrett_fit.md (read-only here: the jacket is not changed by this thread).
-STATE: steps 1-3 done (C103-C105, tests/test_garment_reads.py). Gate g2b FAILS on one flat row the new collar rule
-found: collar_cover 2.3 mm (fall 49 vs stand 36.6 + roll 4 + turn 2.1; 5-25). Form reads (LATER at the gate): V 74
-below HPS (45-75 ok), points 53 apart (127-167), first fastened button 124 (68-98), collar closed (spread).
-NEXT: step 3b collarWidth 1.3 -> ~1.5 (fall ~56, cover ~10); step 4 colour (own-colour game-light render, stripe);
-step 5 arranged open collar (arrange_garment); step 6 tucked / yoke / shoulders / placket / cuffs; step 7 renders.
+Round 1: the process carried, the geometry didn't (jacket-only code). Round 2 made the lessons GENERAL code (C103-C108)
+then used them. Jacket thread: docs/state/dress_garrett_fit.md (read-only here).
+STATE: round 2 stopped at the fit. Gate g2c PASS (collarWidth 1.5: cover 9.9). Fit f2b FAILS its own fit (C85):
+collar points 57 apart (127-167), 84.5 below HPS (35-76), collar closed (spread), first fastened button 123 (68-98),
+strain p99 17.2 drawn (yoke 34, back 29). PASS: front closed, V 74, tuck 6.0, collar button open, colour lit
++4.6/+4.7/+3.9 vs the concept (R-B 6.7). Arrangement a1 refused at preflight (the tucked start over-strained).
+Blind review rev_f2b FAIL 6 MAJOR (round 1: 13). Jacket over the shirt NOT run (C85).
+NEXT: (1) yoke / back strain first (the arrangement can't start over it): yoke 34 % was there untucked (round 1);
+measure the yoke vs the shoulder slope before any lever; (2) tuck blend: the 30 mm fade reads as a peplum ring -> pull
+only below the line + hide, or a longer fade; (3) then arrange the collar (arr2.py; neck pieces unheld); (4) Simon
+button placement (first button 123 vs 83: its placket button options); (5) render4 diag column bug (mesh dropped when
+the tuck culls faces) + the colour box on a shirt-only concept patch; (6) set the shirt's "stripe" and judge it.
 
-## Big reads (concept, m1_ref.py at 1.147 mm/px; HPS = the body's hps.L)
-- Front: closed, top button undone, 2nd done (83 mm below camera HPS). V bottom 60 below camera HPS. Collar points
-  147 mm apart (73 / 73 off CF), 50-61 below the camera HPS. Tucked under a belt (belt top 498 below HPS).
-- Colour LIT 173/169/167 #ada9a7 (R-B 6), shadow 158/154/152. Stripe not resolved (INFERRED pitch 2-3 mm, <= 4 %).
-- Cuff 17-23 past the jacket sleeve; stand shows 11-23 above the jacket collar; placket 29 mm; buttons 88 apart.
+## Big reads (concept | r1 f1b | r2 f2b)
+- V bottom below HPS: 60 cam | ~70-80 | 74 PASS. Front: closed | closed | closed PASS. Collar button: open | open | open.
+- Collar points apart: 147 | 53 | 57 FAIL; below HPS: 50-61 cam | 78 | 84.5 FAIL; state spread | closed | closed.
+- First fastened button: 83 | 124 | 123 FAIL. Tuck stand-off: tucked | 12.6 (waist) | 6.0 PASS.
+- Colour lit: 173/169/167 | 158/160/157 (clay rig) | 178/174/171 own colour, game light PASS. Strain p99: | 11.3 | 17.2.
 
-## How the gates read it now (general code: src/hifipushie/garment_reads.py)
-- workspace/checklists/garrett_shirt.json items with "read" + "range"/"equals"/"ref_rgb" + "on" = gate rows (C103).
-- pattern gate: flat items judged; fit items shown (LATER) with the gate's own form reading; collar rules (C105).
-- fit_garment's fit record: fit items judged on garment_reads.big_reads (C104); unread worn big reads UNMEASURED.
+## Gates now (general code)
+- workspace/checklists/garrett_shirt.json items with "read" + "range"/"equals"/"ref_rgb" + "on" = gate rows (C103);
+  garment key "checklist" binds them. Worn big reads on the form fit (C104). Fold family (C106) on every declared fold.
 
 ## Commands ($S = /mnt/data/hifipushie/dress_garrett/shirt_round2; run.sh runs THIS worktree's code)
-RUNNER=/mnt/data/hifipushie/bin/capped ./run.sh gate2.py <tag> [save] [nojacket] -> gate_<tag>.json;
-upd_checklist2.py (checklist machine targets). Round 1 scripts: ../shirt_round1 (fit3.py, render3.py, rev1.sh).
+RUNNER=bin/capped ./run.sh gate2.py <tag> [nojacket]; fit4.py <tag> (SHIRT_PATCH=json SAVE=1 RECORD=0) ->
+asm_<tag>.pkl; arr2.py <tag> [pins k=v] (local ZOZO; do not wrap); render4.py <asm> <tag>; rev2.sh <tag>.

@@ -9152,3 +9152,28 @@ turns them into general code first (garment_reads.py), then uses them on the shi
   HPS (45-75), points 53 apart (127-167), points 78 below HPS (35-76), first fastened button 124 (68-98), collar_state
   closed (spread). The jacket (dg_garrett) reads no stand + fall pair by roles from its seam table: [] rows (unchanged).
 - Note: sh_garrett's jacket points at dg_garrett's pins (_pins missing in sh_garrett): read the jacket on dg_garrett.
+- Coordinator (Joe): step 3 widened to ONE fold family keyed on the declared folds (C106, fold_checks.py,
+  tests/test_fold_checks.py 8 KATs incl. the table test). Gating on checklist-bound garments, INFO elsewhere (the
+  jacket's gate unchanged); lapel_on_base / gorge_lie tagged instance_of fold_on_base / fold_twist. NOT done:
+  collar_stand_end / front_edge_break / roll rows re-expressed through the family.
+- Step 3b: collarWidth 1.3 -> 1.5 (sh_garrett v3, with "tucked"): gate g2c PASS (collar cover 9.9 mm, fall 56.5).
+- Step 4 (C107): own-colour strip in every MCP garment sheet (EEVEE, game suns), woven stripe option (spec key
+  "stripe"; NOT set on the shirt yet: its look is unjudged). f2b own colour lit 177.6/173.7/170.9 R-B 6.7 vs the
+  checklist's concept read 173/169/167 R-B 6: +4.6/+4.7/+3.9, PASS within +-8 (round 1 under the clay rig: 158/160/157).
+  render4's auto ref patch hit the jacket lapel (ref shadow 50): the box needs the shirt-only concept patch (m1_ref).
+- Step 6a (C108): tucked: tuck standoff p90 6.0 mm (target <= 10): PASS. The tuck pull reads 50 % strain on the hidden
+  back hem; strain now judged on drawn faces (17.2 p99: back 28.8, yoke 34.0, front.L 14.6; was 11.3 untucked, all).
+- Fit f2b (recorded): FAIL. Big reads: front closed PASS, V 74 (45-75) PASS, tuck PASS, collar button open PASS;
+  collar points 57 apart (127-167) FAIL, 84.5 below HPS (35-76) FAIL, collar_state closed FAIL, first fastened button
+  123 (68-98) FAIL (the draft's top front button sits ~40 mm low: Simon's button placement, lever not tried), strain
+  p99 17.2 FAIL.
+- Step 5 arrangement a1 (arr2.py: release the collar button, neck pieces NOT held, pins on the collar tips to 73 off
+  CF / 60 below HPS, stand ends + cfNeck out 25 mm, keep=1 pull 10): REFUSED at preflight (strain over on 10 % of edges,
+  worst back / front.R): the start is the tucked fit, which fails its own strain. No sim run; C85: fix the fit first.
+- Renders check/*_f2b.png (ref | clay | diag | own colour). The diag column is BLANK (render4 drops the mesh when the
+  tuck culls faces: harness bug). Blind review rev_f2b (wholefront + collar clay): FAIL 6 MAJOR (round 1: 13): peplum
+  flare at the tuck line, boxy torso, dropped shoulders / big sleeves; collar stands as a band (no fall read), points
+  flick at the neck base, V narrow. Step 7b (jacket over) NOT run (C85: the shirt fails its own fit).
+- 15 clothing test files (tailoring, pattern_form, cloth_release, cloth_layers, cloth_check, pattern_draft,
+  pattern_styles, pattern_tailor, pattern_gate, cloth_made, form_validation, cloth_reference, cloth_workflow,
+  garment_reads, fold_checks): 219 passed, 4 skipped, 3 xfailed, exit 0.
