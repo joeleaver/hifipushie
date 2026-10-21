@@ -263,7 +263,12 @@ def test_coincident_stitches_are_parted_not_dropped():
     assert np.allclose(X3[15:20], X[15:20]) and len(sew3) == 5
     assert np.linalg.norm(X3[sew3[:, 0]] - X3[sew3[:, 1]], axis=1).min() > 0.0008
     held[20:25] = True
-    assert len(part_stitches(X, F, sew, held)[1]) == 0
+    X3b, sew3b, info3b = part_stitches(X, F, sew, held)
+    assert len(sew3b) == 0 and info3b["cleared"] == 5
+    # (C126) both held: dropped, but their ends start HELD_CLEAR apart, each in its own cloth (ZOZO's f32 start scan)
+    dd = X3b[15:20] - X3b[20:25]
+    dn = np.linalg.norm(dd, axis=1)
+    assert (dn > 6e-5).all() and (dn <= 1.01e-4).all() and (X3b[15:20, 0] < 0).all() and (X3b[20:25, 0] > 0).all(), dd
     # two layers on each other (a facing on its front): they part along the normal
     X4, sew4, info4 = part_stitches(np.r_[A, A], F, np.c_[np.arange(20), 20 + np.arange(20)])
     d4 = np.linalg.norm(X4[sew4[:, 0]] - X4[sew4[:, 1]], axis=1)

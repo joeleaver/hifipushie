@@ -321,6 +321,15 @@ def collar_draft_reads(Bp: dict, g: dict | None = None) -> dict:
             "collar_fold_agrees": bool(runs_off == fold_runs_off), "collar_pieces": [sn, fn]}
 
 
+FALL_PATH_TAPER = False  # (C125) True = round 9's path: the drop tapers u^2 from the CB cover to the points' height
+FALL_PATH_SOURCE = ("shirt round 11 (C125): a shirt collar's fall lands close round the neck, its outer edge parallel to "
+                    "the stand seam at the CB cover (10-15 mm, Aldrich) all the way to the front; the points are the "
+                    "fall's own corners lying on the fronts, not a deeper landing line. Round 9's path tapered the drop "
+                    "u^2 to the points' height (42.7 mm at the ends: the front necklines offset 27 mm, +42 / +48 mm "
+                    "each) and sprang the fall 127 mm past its sewn edge: on the form it spread over the shoulders as "
+                    "a cape. Shirt drafting: the fall's outer edge ~ the neckline + a few cm of spring (Aldrich, "
+                    "Metric Pattern Cutting for Menswear, two-piece shirt collar: the collar drafted on a near-rectangle "
+                    "with a small front lift)")
 SPRING_TOL_MM = (-6.0, 30.0)  # the fall's whole outer edge vs its landing path (R18's -3 / +15 per half, both halves)
 SPRING_SOURCE = ("R18 / C43 generalised to any stand + fall collar (shirt round 9): turned down over its stand, the "
                  "fall's outer edge lies on the body where it lands (the neckline offset by the edge's drop below the "
@@ -384,9 +393,9 @@ def collar_pieces(Bp: dict) -> dict | None:
 def fall_spring_reads(Bp: dict, g: dict | None = None) -> dict:
     """SPRING_SOURCE: a stand + fall collar's whole outer edge (mm) vs the path it lies on turned fully down over the
     stand: the neckline (the stand seam's body arcs) offset into the body pieces by the edge's drop below the seam
-    (at CB the worn fall's cover of the stand seam, collar_draft_reads; at the ends the fall's end height less the
-    roll and turn of cloth, less the stand's end; u^2 between, as pattern_jacket.fall_need), + pi x its stand-off on
-    each half (turn_stack). {} without such a collar."""
+    (the worn fall's cover of the stand seam at CB, collar_draft_reads, held along the whole neckline: FALL_PATH_SOURCE;
+    FALL_PATH_TAPER = True tapers it u^2 to the fall's end height less the roll, turn and stand end, as
+    pattern_jacket.fall_need), + pi x its stand-off on each half (turn_stack). {} without such a collar."""
     from . import pattern, pattern_jacket
     cp = collar_pieces(Bp)
     rd = collar_draft_reads(Bp, g)
@@ -412,7 +421,8 @@ def fall_spring_reads(Bp: dict, g: dict | None = None) -> dict:
     path, parts = 0.0, {}
     for i, e in enumerate(cp["body"]):
         u = np.abs(np.linspace(c[i], c[i + 1], 41) - 0.5) * 2  # (0 at CB, the chain's middle; 1 at its ends)
-        dr = float(np.mean(np.maximum(drop_cb + (drop_e - drop_cb) * u * u, 0.0)))
+        de_ = drop_e if FALL_PATH_TAPER else drop_cb  # (C125: the edge runs parallel to the seam at the CB cover)
+        dr = float(np.mean(np.maximum(drop_cb + (de_ - drop_cb) * u * u, 0.0)))
         L = pattern_jacket.fall_path(pcs, [e], dr)
         path += L
         parts[e] = {"arc_mm": round(Ls[i] * 1000, 1), "drop_mm": round(dr * 1000, 1), "path_mm": round(L * 1000, 1)}

@@ -9421,3 +9421,29 @@ Step 2-4. Closed form k10b (per-fold lay surface): fold rows turn 164.7 / on_bas
   neckline); wholefront FAIL (6 MAJOR: collar type, inflated / boxy, hem loose not tucked, buttons, smooth, colour).
   Not close: the jacket refit (step 5) not run.
 - Tests: 22 files under bin/capped: 326 passed, 2 skipped, 4 xfailed, exit 0 (tests_r10.log).
+
+## shirt round 11 (2026-10-21; scratch /mnt/data/hifipushie/dress_garrett/shirt_round11, run.sh = this worktree)
+- Step 1, landing path (C125): flat11.py on the draft: spring 127 mm (outer 568.9 vs sewn 441.9), the path's front arcs
+  offset 27 mm (drop tapered u^2 from the CB cover 9.6 to the points' 42.7). fall_spring_reads now holds the CB cover all
+  round (FALL_PATH_TAPER False): need 521, spring 81, gate g11a PASS. Form k11a: edge CB 9.9 / sides 22 / points 37-38 mm
+  below the seam, 0-10 mm out (k10b the same): the length was not what put the edge on the shoulders; the fall's depth is.
+  Concept (concept_v8, 1.147 mm/px): point edge roll -> tip 49 / 45 mm projected (left / right); CB not visible (Joe ~35-45).
+  Ours: worn fall 51.8 at CB, ends 85 visible from the roll. Forced by stand 36.6 (+ roll 6) and the cover rule. Flat
+  option (not applied, a draft decision on the stand): collarStandWidth 0.07, collarWidth 1.79, collarBend 0.015 -> stand
+  28.5, fall worn ~44 at CB, ends 66, cover 9.5, spring 81. KAT test_shallow_fall_lands_close_round_the_neck (55 mm fall on a
+  28 mm stand): edge 7.2 below the seam (want 6.4), 9.6 out, dihedral p90 3.6.
+- Step 2, sawtooth (C127): zig.py: the edge is smooth (out-of-cloth p50 0.13-0.18 mm); thru11.py: the yoke / fronts show
+  through the fall's 0-5 mm edge band (k10b 114 / 1638 samples, k11a 127 / 1498; depth p50 0.4-0.75, max 7.5 mm); edge-row
+  dihedral p90 8-10.6. Lever FLAP_LAY_SMOOTH=2 (k11b): dead (8.22 deg, 3.7 %); left opt-in at 0. Not fixed.
+- Step 3, ZOZO start scan (C126): the scan runs on prev = curr (fresh scene) in float32; the build check exempts what it
+  finds in float64. xscan.py: the 4 failing faces were the collar | stand SEAM row: held made pieces, stitches dropped,
+  sides 0.3 um apart (face 15815 x stand edge 7926-7927). SEPARATE moved collar vertices off the stand but not the seam.
+  part_stitches clears held coincident ends 0.1 mm apart. a11a (SEPARATE=0, patch pins, start_over 0.06): the start
+  PASSED, the run finished locally. Arranged reads: points apart 138.2 (147 +-20) PASS, below HPS 56.7 (50-61) PASS, V 74.3
+  (45-75) PASS, first button 77.1 PASS, collar_state spread; collar roll turn 143 FAIL, fold_on_base 6.6 % FAIL; strain p99
+  11.0; corners max 13.5 % FAIL (4 of 8; r8 31 %); weld FAIL: the collar | stand seam opened up to 14.5 mm at the right
+  front (the dropped held stitches: nothing sews it in the sim).
+- Step 4, renders (render11.py a11a; check/*_a11a.png) + blind reviews: collar FAIL (stand up to the jaw, fall stood up
+  as wings not turned over the stand, layers overlapping, jagged gaps at the band ends); wholefront FAIL (popped wing
+  collar, no V read, boxy front, hem zigzag). Step 5 (jacket refit) not run: the collar is not close.
+- Tests: 28 cloth / pattern files under bin/capped: 331 passed, 7 skipped, 4 xfailed, exit 0 (tests_r11.log).

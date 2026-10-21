@@ -144,6 +144,9 @@ def test_fall_spring_read_and_op_on_a_straight_band():
     assert gr.SPRING_TOL_MM[0] <= -now["fall_short_mm"] <= gr.SPRING_TOL_MM[1], now
     assert [r for r in cc.collar_rule_rows(B, {"fabric": "shirting"}) if r["id"] == "collar_fall_spring"][0]["status"] == "PASS"
     assert cloth.spring_fall(B["pieces"], B["seams"], B["folds"], {"fabric": "shirting"}) == {}
+    # (C125) the landing line is the neckline at the CB cover all the way round (a shirt fall lands close round the
+    # neck), not tapered to the points' height: every neckline part offset by the same drop (Garrett: 127 -> 81 mm)
+    assert all(abs(p["drop_mm"] - now["drop_cb_mm"]) < 0.05 for p in now["parts"].values()), now
 
 
 def test_two_piece_collar_rows_on_their_known_answer():

@@ -55,6 +55,13 @@ BASE_NARROW = 0.012
 FLAP_LAY = True
 FLAP_LAY_REACH = 1.0
 FLAP_LAY_FAR = 0.04  # m: the farthest a flap vertex is drawn down onto the cloth under it in one round's target
+# A LAID FLAP MOVES AS CLOTH, NOT VERTEX BY VERTEX (shirt round 11, C127): each flap vertex picked its own surface to
+# lie on (its base or the cloth under it) and was drawn there alone, so neighbours along the outer edge got different
+# targets: the edge row bent against the next one (boundary dihedral p90 10.6 deg, max 23) and the cloth under it
+# showed through between the vertices (7 % of the fall's 0-5 mm edge band, Garrett k10b): the render's sawtooth.
+# FLAP_LAY_SMOOTH passes of neighbour averaging (the vertex half, its flap neighbours half) on the flap's correction;
+# what keeps it one THICK outside is then re-applied where the smoothed move falls short.
+FLAP_LAY_SMOOTH = 0  # (opt-in: DEAD LEVER on Garrett k11b: dihedral p90 7.96 -> 8.22, through 3.7 % both)
 BASE_ACROSS_PRESSED = False  # opt-in, fit round 17: a fold's base across a seam continues onto the flap that piece is pressed on (r17c: no change: dead lever)
 # LOOSE cloth stands off EVENLY (dress-garrett 2026-10-19 block proportions): in the let-go phase, cloth more than 2 mm
 # off its offset is pushed out along its own normal this much per round (a dress form's ease reads as an even stand-off,
@@ -2208,6 +2215,14 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
             lt = lix[F[(lix[F] >= 0).all(1)]]
             if len(lt):
                 lay[oi] = (lv, lt)
+    if FLAP_LAY and FLAP_LAY_SMOOTH and any(l_ is not None for l_ in lay):  # (C127: the flaps' neighbour matrix)
+        import scipy.sparse as _sp
+        _e = np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]]
+        _e = np.r_[_e, _e[:, ::-1]]
+        lay_adj = _sp.csr_matrix((np.ones(len(_e)), (_e[:, 0], _e[:, 1])), shape=(n, n))
+        lay_adj.data[:] = 1.0
+    else:
+        lay_adj = None
     laps = lap_layers(M, X, fast, skip=flapv) if LAP_LAYER else []  # (a lapped closure's over piece outside its under piece; turned flaps lie on their own base)
     # off-the-body target per vertex
     off = ease + THICK * flapv
@@ -2400,11 +2415,25 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                         if use.any():
                             dfl, nfl, dist = np.where(use, dl, dfl), np.where(use[:, None], nl_, nfl), np.where(use, np.minimum(distl, 0.019), dist)
                     near = (dist < 0.02) & (dfl < gp)
-                    T[fv[near]] += nfl[near] * (gp[near] - dfl[near])[:, None]
                     # a pressed flap LIES on its base (as the iron left it), in both phases: unheld, a fall stood
                     # off its stand (curved-collar known answer 172 of 180 deg, the free ends flared 20 mm)
                     far = (dist < 0.02) & (dfl > gp + 0.0005) & (dfl < 0.03)
-                    T[fv[far]] -= nfl[far] * (FLAP_PULL * (dfl[far] - gp[far]))[:, None]
+                    cor = np.zeros((len(fv), 3))
+                    cor[near] += nfl[near] * (gp[near] - dfl[near])[:, None]
+                    cor[far] -= nfl[far] * (FLAP_PULL * (dfl[far] - gp[far]))[:, None]
+                    if lay_adj is not None and lay[oi] is not None:  # (C127: the flap moves as cloth)
+                        msk = np.zeros(n)
+                        msk[fv] = 1.0
+                        cnt = (lay_adj @ msk)[fv]
+                        for _ in range(int(FLAP_LAY_SMOOTH)):
+                            fl_ = np.zeros((n, 3))
+                            fl_[fv] = cor
+                            nb = (lay_adj @ fl_)[fv]
+                            cor = np.where(cnt[:, None] > 0, 0.5 * cor + 0.5 * nb / np.maximum(cnt, 1)[:, None], cor)
+                        short = (gp - dfl) - np.sum(cor * nfl, 1)  # (still one THICK out: what the smoothing undid)
+                        fix = near & (short > 0)
+                        cor[fix] += nfl[fix] * short[fix, None]
+                    T[fv] += cor
                 if usurf is not None:
                     du, nu, dist = usurf.signed(T)
                     near = (dist < 0.03) & (du < off + 0.001)

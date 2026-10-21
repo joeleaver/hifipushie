@@ -192,18 +192,24 @@ def _start_stretch(R: np.ndarray, X: np.ndarray, F: np.ndarray) -> np.ndarray:
 BEND_SCALE = 1.28e-5  # ZOZO's shell_bend_stiffness.kernel.cpp: hinge k = BEND_SCALE * bend * |e|^2 / area * areal density
 
 
+HELD_CLEAR = 1e-4  # m: two held ends of a dropped stitch start this far apart (C126)
+
+
 def part_stitches(X: np.ndarray, F: np.ndarray, sew: np.ndarray, held: np.ndarray | None = None, gap: float = 0.002,
-                  near: float = 5e-4) -> tuple[np.ndarray, np.ndarray, dict]:
+                  near: float = 5e-4, clear: float = HELD_CLEAR) -> tuple[np.ndarray, np.ndarray, dict]:
     """Stitches whose two ends start together (closer than `near`) give ZOZO no direction: the force is NaN, and
     dropped (as the runner did) nothing sews the seam at all (a jacket's centre back seam, two panels drafted edge to
     edge, stood open). A general rule instead of per-garment starts: each such end steps `gap` / 2 back into its own
     cloth (toward the mean of its triangle neighbours), so the ends start `gap` apart and the stitch draws them
     together; two layers lying on each other (both step the same way) part along the surface normal instead. `held`
     vertices (pinned, or resting as placed) stay; a stitch between two held ends that coincide is dropped (the pins
-    hold it), as is a stitch from a vertex to itself. Returns (X moved, stitches kept, counts)."""
+    hold it), as is a stitch from a vertex to itself; its two ends are stepped `clear` / 2 each into their own cloth
+    (C126, shirt round 11: a made collar sewn to its made stand, both held, sides 0.3 um apart: ZOZO's start scan, in
+    float32, read 4 face x edge pairs at that seam crossing that the float64 build check had passed, and refused the
+    run; moving the collar off the stand left the seam itself where it was). Returns (X moved, stitches kept, counts)."""
     X = np.array(X, float)
     sew = np.asarray(sew, np.int64).reshape(-1, 2)
-    info = {"coincident": 0, "moved": 0, "by_normal": 0, "dropped": 0}
+    info = {"coincident": 0, "moved": 0, "by_normal": 0, "dropped": 0, "cleared": 0}
     if not len(sew):
         return X, sew, info
     held = np.zeros(len(X), bool) if held is None else np.asarray(held, bool)
@@ -214,6 +220,23 @@ def part_stitches(X: np.ndarray, F: np.ndarray, sew: np.ndarray, held: np.ndarra
     both = close & held[sew[:, 0]] & held[sew[:, 1]]
     keep &= ~both
     info["dropped"] = int((~keep).sum())
+    if clear > 0 and both.any():  # (C126: held ends that coincide start `clear` apart, each into its own cloth)
+        acc_, cnt_ = np.zeros_like(X), np.zeros(len(X))
+        for k in range(3):
+            for j in (1, 2):
+                np.add.at(acc_, F[:, k], X[F[:, (k + j) % 3]])
+                np.add.at(cnt_, F[:, k], 1.0)
+        X0_ = X.copy()
+        for i, j in sew[both]:
+            if np.linalg.norm(X0_[i] - X0_[j]) >= clear:
+                continue
+            for v in (i, j):
+                if cnt_[v] > 0:
+                    u_ = acc_[v] / cnt_[v] - X0_[v]
+                    ln_ = np.linalg.norm(u_)
+                    if ln_ > 1e-9:
+                        X[v] = X0_[v] + u_ / ln_ * 0.5 * clear
+            info["cleared"] += 1
     todo = close & ~both
     if gap <= 0:  # the old behaviour: drop them
         info["dropped"] = int((~keep | todo).sum())
@@ -374,7 +397,8 @@ def main():
     X, sew, sinfo = part_stitches(X, F, sew, held, float(job.get("stitch_gap", 0.002)))
     if sinfo["coincident"]:
         log(f"zozo: {sinfo['coincident']} stitches started with their ends together: {sinfo['moved']} ends stepped "
-            f"apart into their own cloth ({sinfo['by_normal']} pairs along the normal), {sinfo['dropped']} dropped")
+            f"apart into their own cloth ({sinfo['by_normal']} pairs along the normal), {sinfo['dropped']} dropped, "
+            f"{sinfo['cleared']} held pairs cleared {HELD_CLEAR * 1000:g} mm apart")
     stages = job["stages"]
     t = 0.0
     times = {}

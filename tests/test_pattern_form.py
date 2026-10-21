@@ -1867,3 +1867,49 @@ def test_sprung_fall_lies_on_the_shoulders(verbose=True):
     assert r["turned"] >= 170, r
     assert r["gap_max"] <= 3.0 and r["gap_p50"] >= -1.0, r
     assert r["ripple_max"] < 15, r
+
+
+def test_shallow_fall_lands_close_round_the_neck(verbose=True):
+    """(shirt round 11, C125) a dress shirt's fall is shallow and lands just below its stand, close round the neck
+    (Garrett's concept: fall ~35-45 mm at CB, points ~50 mm), its outer edge ~ the neckline + a few cm of spring. Round
+    9's landing path tapered the drop to the points' height and sprang Garrett's fall 127 mm: on the form a cape over
+    the shoulders. Known answer: the shoulder case with a SHALLOW fall (55 mm on a 28 mm stand, roll 4 mm above the
+    seam, a 4 mm roll), sprung for its own landing line (R + 2 THICK + 2 mm + its drop below the seam x cos 22 deg): the
+    outer edge lands within 6 mm of that line below the neck seam (55 - 8 - 28 - pi x 4 ~ 6 mm) and within 6 mm
+    of the stand's radius + the turn (no cape: never out on the shoulders), on the cloth under it, no ripple, and its
+    edge row not bent against the next (C127: boundary dihedral p90 < 8 deg)."""
+    c = _shoulder_collar_case(fall=0.055)
+    out = pf.assemble({"mesh": c["M"], "X0": c["X0"], "pieces": c["B"]}, c["body"], iters=120, ease=0.004)
+    V = out["V"]
+    r = _shoulder_collar_read(c, V, verbose=verbose, lab="shallow fall")
+    I, M = c["info"], c["M"]
+    pid, uv = np.asarray(M["pieces"] if "pieces" in M else M["piece"]), np.asarray(M["uv"], float)
+    fv = np.where(pid == list(M["names"]).index("fall"))[0]
+    rf = np.linalg.norm(uv[fv] - np.array([0.0, I["cy"]]), axis=1) - I["rho"]
+    edge = fv[rf > I["fall"] - 0.0012]
+    sv = np.where(pid == list(M["names"]).index("stand"))[0]
+    sb = sv[uv[sv, 1] < I["z0"] + 0.0012]  # (the stand's neck seam, where it sits after the fit)
+    drop = (float(np.median(V[sb, 2])) - V[edge, 2]) * 1000  # (below the neck seam)
+    out_r = (np.hypot(V[edge, 0], V[edge, 1]) - float(np.median(np.hypot(V[sb, 0], V[sb, 1])))) * 1000  # (out from it)
+    want_drop = (I["fall"] - 2 * I["at"] - I["stand"] - math.pi * 0.004) * 1000  # (the case's own landing line)
+    if verbose:
+        print("shallow fall edge: below seam p10/p50/p90", np.round(np.percentile(drop, [10, 50, 90]), 1), "want",
+              round(want_drop, 1), "| out from the stand p50/p90", np.round(np.percentile(out_r, [50, 90]), 1))
+    assert r["turned"] >= 165, r
+    assert abs(float(np.median(drop)) - want_drop) <= 6.0 and np.percentile(drop, 90) <= want_drop + 8, (drop, want_drop)
+    assert np.percentile(out_r, 90) <= 6.0 + 1000 * (2 * pf.THICK + 0.002) + want_drop, out_r
+    assert r["gap_max"] <= 3.0 and r["ripple_max"] < 15, r
+    F = np.asarray(M["F"])
+    Ff = F[np.isin(F, fv).all(1)]
+    fn = np.cross(V[Ff[:, 1]] - V[Ff[:, 0]], V[Ff[:, 2]] - V[Ff[:, 0]])
+    fn /= np.linalg.norm(fn, axis=1, keepdims=True) + 1e-15
+    es = set(edge.tolist())
+    adj = {}
+    for a, f in enumerate(Ff):
+        for e in ((f[0], f[1]), (f[1], f[2]), (f[2], f[0])):
+            adj.setdefault(tuple(sorted(e)), []).append(a)
+    dh = [np.degrees(np.arccos(np.clip(fn[a] @ fn[b], -1, 1))) for e, fs in adj.items() if len(fs) == 2
+          for a, b in [fs] if sum(v in es for v in Ff[a]) >= 2 or sum(v in es for v in Ff[b]) >= 2]
+    if verbose:
+        print("edge-row dihedral p50/p90/max", np.round(np.percentile(dh, [50, 90, 100]), 1))
+    assert np.percentile(dh, 90) < 8.0, np.percentile(dh, [50, 90, 100])
