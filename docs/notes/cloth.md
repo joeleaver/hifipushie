@@ -9621,3 +9621,4 @@ refit skipped (collar not close). Spend local only, $0.
 Coordinator decision (end of round 5): drape the collar CLOSED (how it is cut: round 2's closed drape looked right);
 the open look comes from the rolled-back fronts (C134) plus an arrangement if needed (C81); the open sweep stays a
 reach check (INFO), not the draft source.
+Tests (end of round 5): 28 cloth / pattern files under bin/capped: 345 passed, 3 skipped, 4 xfailed, exit 0 ($S/tests_d5.log); test_closures' no-tie roll assert moved to the C134 rule (angle <= 15). tests/test_collar.py passes alone (21 with test_closures, exit 0) but fails 4 in one session with test_cloth_precache (its fake cloth.build leaks: KeyError 'n'): pre-existing pollution, not this round's.

@@ -75,7 +75,9 @@ def test_a_shirt_without_a_tie_is_worn_open_at_the_neck():
     assert 0 < {c["name"]: c.get("gap") for c in garment_design.wear(g)}["collar"] <= 0.035  # (the stand hugs: the spread opens it)
     assert cloth.worn_top(g)  # a shirt's fronts start on the body, their neck seam at the stand
     fl = garment_design.wear(g, "folds")
-    assert {f["piece"] for f in fl} == {"front.L", "front.R"} and all(60 < f["angle"] < 180 for f in fl)
+    # (drape band round 5, C134: the fronts above button 1 turn back FLAT on the chest, angle 10 = turned 170; the old
+    # soft 95 left them standing 9-10 mm off their base)
+    assert {f["piece"] for f in fl} == {"front.L", "front.R"} and all(0 < f["angle"] <= 15 for f in fl)
     assert garment_design.wear(dict(g, tie=True), "folds") == []
     # the UNDER front's roll ends above the first closed fastening (under the over front there): rolled out to the
     # button both flaps met there and the under one turned out through the over one (29 crossings at su_garrett's start)
