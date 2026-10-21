@@ -2,7 +2,7 @@
 
 GOAL (Joe): a quick loop (seconds to a minute per look) that puts a folded shirt collar on a body from the PATTERN's
 own band + collar pieces, closed and worn open, so that it matches the concept's open collar (Joe's trace:
-/tmp/claude-1000/-home-joe-dev-hifipushie/8abf1c05-bdfa-497a-8337-5980e7190374/images/4.png, the concept is
+/mnt/data/hifipushie/collar_spike/joe_trace.png, the concept is
 workspace/garrett_v20/concept_v8_front_apose.png: open neck V ~60 mm below HPS, the collar's leaves stand either side
 of the neck, long points ~147 mm apart, 50-61 mm below HPS). Primitive form only (Joe: Garrett isn't needed).
 Spike only: no garment rounds, no agents grinding for an hour.
