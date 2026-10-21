@@ -16,11 +16,11 @@ the band turning with it; band ends lean apart; leaves stand off the neck). Joe:
 - CLOSED: repo defaults (landed, BUILD_VERSION 17) + the concept's button spacing = v1 (= e3): clean closed collar, band
   ends sewn flush with the placket tops, one rounded roll (176 deg), collar + band mirror p95 1.4-1.9 mm, strain p99 9 %.
   `spikes/shirt_spike/run.sh base_fit.py v1 '{"closures":[{"name":"front","spacing":{"first":0.034,"from":"cfNeck"}}]}'`
-- CURRENT BEST h110 (Joe: "the collar should mostly hug the neck on the back and sides; the flare is all toward the
-  front"): b0's recipe ("up":0) + `"hug":110` (band + collar within 110 deg of CB held where the RELAXED closed fit has
-  them, from the start; holding the unrelaxed fit kept its 7 % strain): side fall edge 71 mm from the neck centre (b0 82,
-  closed 68), front flares (105); points 144 / 76 below HPS; p99 6.1 %; crumple = b0's. b0 alone: leaves hang down the
-  chest (Joe: "almost perfect from that angle") but the collar flared all round.
+- CURRENT BEST q40: `{"swing":40,"steps":6,"nopush":1,"hug":110,"swing_patch":0.015,"pulls":[P0],"smooth":{...}}`,
+  P0 = points side 1 / out 0.3 / up 0, patch 0.025, turn. The band END swings as an AREA (15 mm from its end edge): 3
+  pinned corner vertices pinched a lobe at the top corner (Joe's arrow; stand TopCf 21 % -> 3 %). No corner pull (it
+  clashed with the held band end: 280 %). Points 137 / 76 below HPS, side hug 70 mm (closed 68), p99 5.9 %. hug: band
+  + collar within 110 deg of CB held where the RELAXED closed fit has them (C144). Bottom band corners 20-35 % (V taut).
 - SMOOTH (C143, sm1): `"smooth":{"pieces":["collar","stand"]}` after the pulls halves the crumple for +0.3 pt.
 - OPEN (u25 = t15's pulls with "patch":0.025,"turn":1: each step drags the point alone, then fits the
   patch's unstretched start shape rigidly (Kabsch) onto that and solves again: tips clean (crumple p95 0.06-0.10 mm =

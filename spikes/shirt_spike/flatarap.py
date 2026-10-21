@@ -167,6 +167,15 @@ if A.get("swing"):
         e0 = hb + rodr((W0[ends[2]] - hb)[None], ht - hb, q * np.radians(A["swing"]))[0]
         qd = max((1, -1), key=lambda q_: np.linalg.norm((hb + rodr((e0 - hb)[None], tang, q_ * 0.2))[0][:2]))
         rad = tang
+        # the band END as an area, not its 3 corner vertices (those pinned alone pinched a lobe at the top corner:
+        # stand TopCf stretch 20 % vs 3 % closed; Joe's arrow): every band vertex within swing_patch (pattern) of the
+        # end edge (BottomEdge..TopCf line) turns with it, rigidly about the hinge
+        if A.get("swing_patch"):
+            k_s = nm.index("stand"); sv = np.where(pid == k_s)[0]
+            ea, eb = uv[P[f"stand:{s}BottomEdge"]], uv[P[f"stand:{s}TopCf"]]
+            ab_ = eb - ea; tt = np.clip(((uv[sv] - ea) @ ab_) / (ab_ @ ab_), 0, 1)
+            dline = np.linalg.norm(uv[sv] - (ea + tt[:, None] * ab_), axis=1)
+            ends = list(np.unique(inv[sv[dline <= A["swing_patch"]]]))
         for v in ends:
             bnd[v] = [W0[v].copy(), (hb, ht - hb, q * np.radians(A["swing"])), (rad, qd * np.radians(A.get("lay", 0.0)))]
 # ROLL: each front's corner above a roll line (from the neckline at arc `from` m from cfNeck, down to the first
