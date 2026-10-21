@@ -234,23 +234,38 @@ _oko = (_l0o > 1e-5) & (pid[_Eo[:, 0]] == pid[_Eo[:, 1]]) & np.isin(pid[_Eo[:, 0
 def stretch(Yw):
     Xw = Yw[inv]; return np.percentile(np.abs(np.linalg.norm(Xw[_Eo[_oko, 0]] - Xw[_Eo[_oko, 1]], axis=1) / _l0o[_oko] - 1), 99)
 pull_info = {}
-if A.get("pull"):
-    PL = A["pull"]; hold = hW | np.isin(np.arange(n), list(bnd))
+# PULLS: a sequence; each drags its handles ("points": the collar points; "corners": the collar's sewn ends = the band's
+# top corners at CF; or ["piece:point", ...]) along its direction until the cloth would stretch (or `max` m). Handles
+# pulled earlier are HELD where they ended (Joe: move these apart a little, then push the points a little more).
+seq = A.get("pulls") or ([A["pull"]] if A.get("pull") else [])
+done_h = {}
+def handle_set(h):
+    if h == "points": return {s_: inv[P[f"collar:{s_}TopEdge"]] for s_ in ("left", "right")}
+    if h == "corners": return {s_: inv[P[f"collar:{s_}BottomEdge"]] for s_ in ("left", "right")}
+    return {nmk: inv[P[nmk]] for nmk in h}
+for k_, PL in enumerate(seq):
+    H = handle_set(PL.get("handles", "points"))
+    hold = hW | np.isin(np.arange(n), list(bnd) + list(done_h.values()))
     s0 = stretch(Y); dirs = {}
-    for s_, v in pts.items():
-        _, jj = bt.query(Y[v]); sg = np.sign(W0[inv[P[f"collar:{s_}TopHinge"]], 0])
-        d_ = PL.get("side", 1.0) * np.r_[sg, 0, 0] + PL.get("out", 0.5) * vn[jj] + PL.get("up", 0.0) * np.r_[0, 0, 1]
-        dirs[s_] = d_ / np.linalg.norm(d_)
-    pos = {s_: Y[v].copy() for s_, v in pts.items()}; moved = 0.0; good_Y = Y.copy()
-    while moved < PL.get("max", 0.08):
+    for key, v in H.items():
+        _, jj = bt.query(Y[v])
+        side_lm = P.get(f"collar:{key}TopHinge") if key in ("left", "right") else None
+        sg = np.sign(W0[inv[side_lm], 0]) if side_lm is not None else np.sign(W0[v, 0])
+        d_ = PL.get("side", 1.0) * np.r_[sg, 0, 0] + PL.get("out", 0.0) * vn[jj] + PL.get("up", 0.0) * np.r_[0, 0, 1]
+        dirs[key] = d_ / np.linalg.norm(d_)
+    pos = {key: Y[v].copy() for key, v in H.items()}; moved = 0.0; good_Y = Y.copy()
+    while moved < PL.get("max", 0.08) - 1e-9:
         moved += PL.get("step", 0.003); T = good_Y.copy(); fx = hold.copy()
-        for s_, v in pts.items(): T[v] = pos[s_] + moved * dirs[s_]; fx[v] = True
+        for key, v in H.items(): T[v] = pos[key] + moved * dirs[key]; fx[v] = True
+        for key, v in done_h.items(): fx[v] = True
         Yt = solve(T, fx, PL.get("iters", 12)); st_ = stretch(Yt)
         if st_ > s0 + PL.get("tol", 0.01): moved -= PL.get("step", 0.003); break
         good_Y = Yt
-    Y = good_Y; pull_info = {"moved_mm": round(moved * 1000, 1), "stretch_p99_start": round(s0 * 100, 2), "stretch_p99_end": round(stretch(Y) * 100, 2)}
-    print("pull:", pull_info)
-Y = solve(Y, hW | np.isin(np.arange(n), list(pts.values()) + list(bnd)), 10)
+    Y = good_Y
+    for key, v in H.items(): done_h[f"{k_}:{key}"] = v
+    pull_info[k_] = {"handles": PL.get("handles", "points"), "moved_mm": round(moved * 1000, 1), "stretch_p99": [round(s0 * 100, 2), round(stretch(Y) * 100, 2)]}
+    print("pull", k_, pull_info[k_])
+Y = solve(Y, hW | np.isin(np.arange(n), list(pts.values()) + list(bnd) + list(done_h.values())), 10)
 for v, (a0, (hb, ax, th), _dr) in bnd.items():
     print("band handle", np.round(a0*1000).astype(int), "->", np.round((hb + rodr((a0 - hb)[None], ax, th)[0])*1000).astype(int), "got", np.round(Y[v]*1000).astype(int))
 X = Y[inv]

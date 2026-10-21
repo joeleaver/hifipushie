@@ -16,11 +16,12 @@ the band turning with it; band ends lean apart; leaves stand off the neck). Joe:
 - CLOSED: repo defaults (landed, BUILD_VERSION 17) + the concept's button spacing = v1 (= e3): clean closed collar, band
   ends sewn flush with the placket tops, one rounded roll (176 deg), collar + band mirror p95 1.4-1.9 mm, strain p99 9 %.
   `spikes/shirt_spike/run.sh base_fit.py v1 '{"closures":[{"name":"front","spacing":{"first":0.034,"from":"cfNeck"}}]}'`
-- OPEN (current best y3, Joe's "pull until it would stretch", C142): `run.sh flatarap.py e3 y3 '{"swing":30,"steps":6,
-  "nopush":1,"pull":{"side":1,"out":0.3,"up":0.3}}'`: band ends swung 30 deg about Simon's hinges, then each collar point
-  DRAGGED out / side / up in 3 mm steps until the cloth would stretch (+1 % p99): it went 45 mm; points 147 apart,
-  59-63 below HPS, V 63 below HPS (concept 147 / 50-61 / ~60), p99 4.8 % vs the pattern, smooth leaves (rough.py collar
-  p95 0.28 mm; closed 0.14). No bending (every bending variant roughened it), no push-out (it dented the band).
+- OPEN (current best c1 / c2: Joe's pull sequence, C142): `run.sh flatarap.py e3 c1 '{"swing":30,"steps":6,"nopush":1,
+  "pulls":[P,{"handles":"corners","side":1,"max":0.006},P]}'` with P = {"handles":"points","side":1,"out":0.3,"up":0.3}:
+  points pulled until they'd stretch (51 mm), held; the collar's inner corners (= band top corners at CF) moved apart
+  6 mm (c2: 12); points pulled again (+15 / +21 mm). c1: band ends upright (lean 9 / 5 deg), points 158 apart / 56-60
+  below HPS, V 63, p99 5.0 %, crumple p95 0.29 mm. c2: the widest throat, closest look to the photo, points 174 apart.
+  (y3 = one pull: 147 / 59-63; no bending (it roughened every variant), no push-out (it dented the band).)
 
 ## Open faults (ranked by what shows at 1-3 m)
 1. y3: a small stretched patch at the V's corner (the fronts' cfNeck, welded to the band corners, have 34 mm of cloth
