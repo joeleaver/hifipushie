@@ -1,5 +1,13 @@
 # STATE: dress_garrett_shirt (Garrett's shirt on its own, then under the round-26 jacket) -- 2026-10-21, shirt round 12
 
+LANDED FROM THE SHIRT SPIKE (2026-10-21, docs/state/collar_spike.md, ledger C137-C140; BUILD_VERSION 17: cached builds
+redo). Shared defaults changed under this thread: Simon's band sewn EDGE TO EDGE onto the placket tops + its drafted ends
+kept (cloth_designs simon band_ends false); the KB no_tie open-neck rolls REMOVED (they turned the neckline the band is
+sewn to: band ends tipped ~45 deg, collar fronts ran in over them); collar + stand meshed at 2 mm on the form (a 5 mm mesh
+turned the 3 mm roll as two kinks + a shelf); pattern_form._turn_flaps no longer flips a fall inside its stand on a
+near-tie. sh_garrett still declares its own "open neck.R" fold (R only: mirror C138) + worn_open: re-check both before
+the next Garrett round; the open state that works is staged flat-pattern ARAP from the closed fit (spikes/shirt_spike).
+
 QUESTION (Joe 2026-10-20): "will all the lessons we learned on the jacket carry over and it won't take 30 rounds?"
 Rounds 1-7: process carried, geometry didn't (C103-C117). Round 8: gate PASS, first button + V pass; spread stuck (C120).
 Rounds 9-11: fold reads (C121), fall sprung (C122), corners measured (C123), flap lies on what is under it (C124),

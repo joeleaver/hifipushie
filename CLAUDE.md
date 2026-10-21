@@ -67,7 +67,8 @@ OpenBLAS is capped at 4 threads in `__init__.py`.
 - Skin: docs/state/skin.md -> skin.md "## r<N>"
 - Dress Garrett (jacket + shirt fit): docs/state/dress_garrett_fit.md -> cloth.md "fit round <N>"
 - Dress Garrett shirt (alone, then under the jacket): docs/state/dress_garrett_shirt.md -> cloth.md "shirt round <N>"
-- Collar spike (pattern's own collar on a primitive form, Blender cloth): docs/state/collar_spike.md
+- Shirt spike (Simon's collar + shirt on the average male, closed + open, no sim; was the collar spike):
+  docs/state/collar_spike.md -> cloth.md "shirt spike 2026-10-21"
 - Dress Tess: docs/state/dress_tess.md -> cloth.md "dress-tess session <N>"
 - Tailoring (jacket rules): docs/state/tailoring.md -> cloth.md "tailoring <date>"
 - MCP rules (tools carry the gates): docs/state/mcp_rules.md -> mcp_audit.md "## History"

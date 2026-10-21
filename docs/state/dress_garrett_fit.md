@@ -1,5 +1,9 @@
 # STATE: dress_garrett_fit (Garrett jacket + shirt: closed form fit + ONE release sim + arrangement) -- 2026-10-20, round 26
 
+NOTE (2026-10-21): the shirt under the jacket changes with the shirt spike's landed defaults (Simon's band sewn edge to
+edge, KB no_tie open-neck rolls removed, collar + stand 2 mm on the form, BUILD_VERSION 17): refit the shirt before the
+jacket over it. docs/state/collar_spike.md, ledger C137-C140.
+
 DESIGN FACTS (Joe, settled): the jacket is worn OPEN, unbuttoned ("no, it's not buttoned"); it "should basically just
 fall straight down" (no waist suppression, side line plumb). Reviewers keep reading the reference as fastened: put
 "the reference jacket is worn open, unbuttoned" in every review's context; a "fastened" reading is a known misread,

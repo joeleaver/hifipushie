@@ -359,7 +359,8 @@ def pieces(g: dict, meas_mm: dict) -> dict:
         for nm in g.get("drop", []):
             out.pop(nm, None)
         out = pattern.apply(out, [op for op in tbl.get("alter", []) if op["piece"] in out])
-        if tbl.get("collar_rule") and pat.get("band_ends", True):  # (a shirt's band ends under its collar points)
+        if tbl.get("collar_rule") and pat.get("band_ends", tbl.get("band_ends", True)):  # (a shirt's band ends under its
+            # collar points; the design table can keep the draft's own ends: simon, C139)
             be_ = band_ends(out)
         else:
             be_ = {}

@@ -3,6 +3,8 @@
  "simon": {
   "kind": "shirt",
   "collar_rule": "simon",
+  "band_ends": false,
+  "_doc_band": "C139 (shirt spike 2026-10-21): Simon's band runs past CF as far as each front's placket (9.3 mm button side = front.R's 9; 14.8 buttonhole side = front.L's box placket 12-15), so the band's end continues the front's edge (Joe's open-shirt photos: one line from the placket up through the band end). The band is sewn EDGE TO EDGE (its extensions onto the placket tops; the seam stopped at CF before, both extensions and placket tops loose: the band ends tipped ~45 deg out at the throat) and keeps its drafted ends (band_ends false: cloth.band_ends cut them to 7.5 / 9 mm and rounded them).",
   "pieces": {
    "back": {"part": "simon.back", "fold": "x0", "wrap": {"to": "torso", "side": "back"}},
    "yoke": {"part": "simon.yoke", "wrap": {"to": "torso", "side": "back", "out": 0.004}},
@@ -33,7 +35,7 @@
    ["sleeve.R:bicepsLeft>wristLeft", "sleeve.R:bicepsRight>wristRight"],
    [["sleeve.L:placketCut.b>cuffMid", "sleeve.L:cuffPleat1Edge>cuffRightCusp", "sleeve.L:cuffPleat2Edge>wristRight", "sleeve.L:wristLeft>placketCut.a"], "cuff.L:bottomLeft>bottomRight"],
    [["sleeve.R:placketCut.b>cuffMid", "sleeve.R:cuffPleat1Edge>cuffRightCusp", "sleeve.R:cuffPleat2Edge>wristRight", "sleeve.R:wristLeft>placketCut.a"], "cuff.R:bottomLeft>bottomRight"],
-   ["stand:leftBottomCf>bottomMid>rightBottomCf", ["front.R:cfNeck>neck", "yoke:neck.m>cbNeck>neck", "front.L:neck>cfNeck"]],
+   ["stand:leftBottomEdge>leftBottomCf>bottomMid>rightBottomCf>rightBottomEdge", ["front.R:placketTopOut>cfNeck>neck", "yoke:neck.m>cbNeck>neck", "front.L:neck>cfNeck>placketTopFold1"]],
    ["collar:leftBottomEdge>bottomMid>rightBottomEdge", "stand:leftTopCf>topMid>rightTopCf"]
   ],
   "seam_notes": [

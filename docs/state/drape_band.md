@@ -1,5 +1,9 @@
 # STATE: drape_band (wrapped folds drafted by draping) -- 2026-10-21, after round 6
 
+NOTE (2026-10-21, shirt spike, docs/state/collar_spike.md): Joe in the collar spike: the pattern already has the right
+collar shape, the drape op is PARKED for the shirt collar. Simon's own band + collar now place cleanly CLOSED on the form
+(band sewn edge to edge, 2 mm collar mesh, C137-C140); the open state is built by staged flat-pattern ARAP from it.
+
 DECISION (Joe 2026-10-21): collars, lapel rolls, cuffs, waistbands, turtlenecks, curved hems are DRAPED: describe the
 worn shape, build it in 3D on what is under it, flatten it into the pattern piece. The flat piece stays the source of
 truth (generated FROM the worn spec; the gate refuses a stale one). DRAPE ON THE FORM IT IS PLACED INTO (r4).

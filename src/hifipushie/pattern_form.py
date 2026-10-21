@@ -2706,7 +2706,9 @@ FORM_REFINE_LAPEL = [
      "blend": 0.04},
     {"piece": ["collar", "under_collar"], "h": 0.005}]
 FORM_REFINE_SHIRT = [
-    {"piece": ["collar", "stand"], "h": 0.005},
+    # (C137, shirt spike 2026-10-21: the collar roll's radius is 3 mm; at h 5 mm its half turn spanned 2 triangles and
+    # turned as two 90 deg kinks with a flat 9 mm shelf on top; at 2 mm one rounded roll, sections 172 / 169 / 176 deg)
+    {"piece": ["collar", "stand"], "h": 0.002},
     {"piece": ["front.L", "front.R"], "h": 0.006, "near": ["cfNeck", "neck", "hps"], "within": 0.04, "blend": 0.04},
     {"piece": "yoke", "h": 0.006, "near": ["neck", "cbNeck", "neck.m"], "within": 0.02}]
 UNDER_EASE = 0.003  # m: the innermost layer on the form (the shirt on the skin; form.py's setting); a layer over it EASE
