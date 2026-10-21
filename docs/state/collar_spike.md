@@ -126,12 +126,18 @@ sym.py <tag>: mirror symmetry per piece, noise floor = mesh spacing, 1-8 mm).
   below HPS; concept ~60), fronts don't roll back (taut at the V). Two more mirror bugs found on the way (my own
   in-plane turn sign; a side taken from x at CF where the band ends cross): take the side from a landmark well off CF.
 
+- e3 = closed fit with the first fastened button at the concept's 83 below HPS (closures spacing first 0.034 from
+  cfNeck: wf_simon's cfNeck is 49 below HPS). g1-g4 (flatarap from e3, points 147 / 55 + stand_off 0-30 mm, swing
+  30-50): p99 4.5-5.9 % vs the pattern; reads as an open collar, but the leaves crumple / ripple and sit low (no
+  bending: interfacing behaves like tissue). Bending try (hinge springs across interior edges, fold rows excluded;
+  `kb`, `kb_pieces`, rest flat or "made" = e3's own curvature): DIVERGES on collar / stand (one solve step, no
+  handles: p99 70-75 %; back alone 5 %; the hinge rest is exactly met at the start) - bug not found.
+
 ## NEXT
 (1) Joe's calls (repo changes): simon seam edge to edge + band_ends off (C139); remove the KB no_tie open-neck rolls;
 FORM_REFINE_SHIRT collar + stand h 2 mm; (pattern_form FLAP_OUT_FIRST already in, C140).
-(2) Open state on flatarap: first fastened button for THIS body at the concept's 83 below HPS (closure spacing, not
-Garrett's 47 from cfNeck); collar points' targets standing off the chest (stand_off) so the leaves stand beside the
-neck; the fronts' soft roll (a fold row from the band's end down to the button, or a handle on the front edge);
+(2) Open state on flatarap (e3 has the concept's button): bending stiffness for collar + stand that doesn't diverge
+(fix the hinge term, or a dihedral term, or alternate with the fitter's own made-piece bending); the fronts' soft roll (a fold row from the band's end down to the button, or a handle on the front edge);
 fix openm.py's V read (reads 196). Then a blind review vs the photo / trace.
 Rules: renders under /mnt/data/hifipushie/bin/capped (GPU lock); files on /mnt/data/hifipushie/; stage git by path,
 never `git add -A`; only the coordinator pushes main.
