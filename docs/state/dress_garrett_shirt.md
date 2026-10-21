@@ -15,7 +15,7 @@ Chord: seam 171.7 / 65.7, columns +2-3 %. Start over-limit: whole 6.50 -> 5.87 %
 Left over (chord form): back band 400-500 mm below hps 33-44 % (sig p90 1.23, the tuck line, mostly below the seen cut
 z 1.116); yoke neck corner (hps pin 2 cm up the neck, 33 % on the last segment at |x| 65) + lower outer (|x| ~138);
 front.L just under the neck (|x| 11-24); in the seen job the yoke reads 435 over (form 303): the arrange pins / seen cut add.
-Jacket (kind keeps the line; only the shirt under it changed): jfit7.sh j7line vs j7chord -> see "Jacket" below.
+Jacket (kind keeps the line; only the shirt under changed): rows identical, shirt poke 114 -> 85 verts (below).
 NEXT: (1) locate the seen job's extra yoke strain (seen 435 vs form 303: arrange pins or the cut?) and the yoke neck
 corner (hps pin height: the tape's hps is 2 cm up the neck); (2) the back's tuck band only matters if it is in the
 seen part; (3) under 3 % -> arrange the collar (seen7.py, FORM=form_k7a.pkl), render, blind review; (4) refit the
@@ -32,10 +32,13 @@ jacket over THIS shirt before any dressed render. The new draft needs a pattern_
 - Cuff past jacket sleeve (17-23): r5 13.1 p50 FAIL. Collar above jacket collar (11-23): CB 7.3, side 8.1 FAIL.
 
 ## Jacket (r26g rows, shirt under on line vs chord; the jacket's own slope unchanged)
-- pending: shirt_round7/jrows_j7line.log vs jrows_j7chord.log.
+- j7line -> j7chord: jacket rows IDENTICAL (stretch p99 15.8 / max 80.1, widths 413 / 398 / 406 / 409, gorge_lie,
+  lapel_on_base collar 25 through); shirt stretch p99 19.8 -> 12.9; shirt poke-through 114 verts max 23.4 mm -> 85 max
+  10.5 (shoulder 45 -> 60, chest 66 -> 22). No jacket regression. (jharness's cache key ignores garment_kb.json: the chord
+  run needs a dummy tailor.K override to re-key, else it reuses the line placement.)
 
 ## Spec sh_garrett v6 (spacing off). Code: cloth.slope_measures + garment_kb kinds.shirt.shoulder_slope "chord";
-cloth_check.shoulder_seam_row. Tests: see the last commit (21 clothing files).
+cloth_check.shoulder_seam_row. Tests (21 clothing files, bin/capped): 275 passed, 4 skipped, 3 xfailed, exit 0.
 
 ## Commands ($S = /mnt/data/hifipushie/dress_garrett/shirt_round7; run.sh runs THIS worktree's code)
 RUNNER=bin/capped ./run.sh fit7.py <tag> (SLOPE=line|chord tape override; the kind rule applies anyway) -> form_<tag>.pkl;

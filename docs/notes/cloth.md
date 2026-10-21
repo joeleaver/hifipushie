@@ -9291,3 +9291,9 @@ seen7.py (round 5's seen5.py on a given FORM), probe_pre7.py, jfit7.sh (the park
 - Still over 3 %: no arrangement, no renders. What is left (chord form): the back's band 400-500 mm below hps (33-44 %,
   sig p90 1.23: the tuck line; below the seen cut z 1.116), the yoke's neck corner (the hps pin 2 cm up the neck) and
   its lower outer part (50-100 below hps, |x| ~138), the front.L just below the neck (|x| ~11-24).
+- Jacket regression (jfit7.sh, r26g recipe; the jacket kind keeps the line, only the shirt under it changes): j7line ->
+  j7chord jacket rows identical (stretch p99 15.8 / max 80.1, widths 413 / 398 / 406 / 409, gorge_lie, lapel_on_base);
+  shirt stretch p99 19.8 -> 12.9, poke-through 114 verts / max 23.4 mm -> 85 / 10.5 (shoulder 45 -> 60, chest 66 -> 22).
+  Trap: jharness's placed-input key hashes the code + spec but not garment_kb.json; the first chord run reused the line
+  placement (identical numbers): re-keyed with a dummy tailor override.
+- Tests (21 clothing files, bin/capped): 275 passed, 4 skipped, 3 xfailed, exit 0 (shirt_round7/tests_r7.log).
