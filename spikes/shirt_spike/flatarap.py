@@ -250,21 +250,27 @@ def handle_set(h, patch=0.0):
             out[s_] = np.unique(inv[vv])
         return out
     if h == "corners": return {s_: inv[P[f"collar:{s_}BottomEdge"]] for s_ in ("left", "right")}
-    return {nmk: inv[P[nmk]] for nmk in h}
+    out = {}
+    for nmk in h:  # explicit "piece:point" handles, grabbed with their patch (within `patch` on that piece's pattern)
+        o = P[nmk]; k = pid[o]
+        vv = np.where((pid == k) & (np.linalg.norm(uv - uv[o], axis=1) <= patch))[0] if patch > 0 else np.array([o])
+        out[nmk] = np.unique(inv[vv])
+    return out
 for k_, PL in enumerate(seq):
     H = handle_set(PL.get("handles", "points"), PL.get("patch", 0.0))
     H = {key: np.atleast_1d(v) for key, v in H.items()}
-    hold = hW | np.isin(np.arange(n), list(bnd) + list(done_h.values()))
+    hold = hW | np.isin(np.arange(n), ([] if PL.get("release_band") else list(bnd)) + list(done_h.values()))
     s0 = stretch(Y); dirs = {}
     for key, v in H.items():
         _, jj = bt.query(Y[v].mean(0))
         side_lm = P.get(f"collar:{key}TopHinge") if key in ("left", "right") else None
-        sg = np.sign(W0[inv[side_lm], 0]) if side_lm is not None else np.sign(W0[v, 0].mean())
+        if side_lm is not None: sg = np.sign(W0[inv[side_lm], 0])
+        else: sg = 1.0 if key.split(":")[0].endswith(".L") else -1.0 if key.split(":")[0].endswith(".R") else np.sign(W0[v, 0].mean())
         d_ = PL.get("side", 1.0) * np.r_[sg, 0, 0] + PL.get("out", 0.0) * vn[jj] + PL.get("up", 0.0) * np.r_[0, 0, 1]
         dirs[key] = d_ / np.linalg.norm(d_)
     pos = {key: Y[v].copy() for key, v in H.items()}; moved = 0.0; good_Y = Y.copy()
     # the grabbed point itself (a patch's lead vertex: the collar point), for the turning patch below
-    lead = {key: (inv[P[f"collar:{key}TopEdge"]] if key in ("left", "right") else v[0]) for key, v in H.items()}
+    lead = {key: (inv[P[f"collar:{key}TopEdge"]] if key in ("left", "right") else inv[P[key]] if key in P else v[0]) for key, v in H.items()}
     def kabsch(A_, B_):  # proper rotation R and t with R A_ + t ~ B_
         a0, b0 = A_.mean(0), B_.mean(0); Hm = (A_ - a0).T @ (B_ - b0); Uk, _, Vk = np.linalg.svd(Hm)
         dk = np.sign(np.linalg.det(Vk.T @ Uk.T)); R_ = Vk.T @ np.diag([1, 1, dk]) @ Uk.T; return R_, b0 - R_ @ a0
