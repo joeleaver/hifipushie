@@ -9513,3 +9513,21 @@ before the fix). Garrett: re-draped closed d3c (v13, numbers = d2c), the closed 
 51.0 below HPS. Gate FAIL rows (were there in r2 too): seams (collar sewn edge 426.3 vs stand top 448.3: -4.9 %),
 checklist:collar_cover 1.7 (5-25). Also: drape_state (entry "worn": open / closed, default closed; "state" read the
 same) and gate row drape_band_reach (INFO). Ledger C132.
+Step 2-3, DRAPED OPEN (coordinator: the design state). d3o (r2 rows on k12a, open): stand leaned in 40 deg at CF (no
+neck in reach: the open seam stands 15-18 mm off, inf at CF): stand p99 1.03, collar 2.85 FAIL, points 45 apart.
+Lever 1 (kept, general): neck_stand(under, open_off): worn open, past OPEN_OFF 10 mm of seam stand-off the stand
+carries on its under cloth (tangent across the seam) instead of leaning in (blended open_off..2x): d3o2 stand 0.40,
+collar 2.13, points 45.2 apart, 51.8 below HPS. Lever 2 (collar "point", tip set back along the curve): -0.03/land
+.03: 119 / 63.6 / 3.63 %; -0.04: 107 / 42.7 / 1.93 % (outer edge 364 vs stand top 460: a cut-back front edge);
+-0.04/land .04: 102 / 60 / 2.58 %; -0.07: 143 / 30.3 / 2.27 %. Non-monotonic: stop-loss. Saved -0.04 as v14 (d3o,
+only flat PASS). Gate FAIL: seams -4.7 % (collar sewn edge 437 vs stand top 458 = the 2 x 12 mm end_in: the seam is
+defined to the stand's CF, not the collar's sewn ends: a seam-definition item, not the drape), collar_cover 4.0 (5-25).
+Reach to closed (INFO): stand 2.29, collar 9.16 %. Open form fit (worn_open, 301 s): places (X0 = drape), fit p99 12.4
+FAIL, points 113.3 apart (FAIL vs ~147), 37.4 below HPS, collar_state spread, button open PASS, V 52.1 below HPS;
+fitted vs drape p50 7.5 / 4.6, max 17 / 19 mm; collar_corners stand:34 14 % FAIL. Renders check/{collar, point_L,
+point_R, wholefront}_d3o.png. Blind reviews: collar FAIL (stand + fall rise to jaw height and flare; points stubby
+tabs, high and out at the shoulder, float; V closed at the neck; jagged edge at the point), wholefront FAIL (stand
+collar "clerical", no buttons read, boxy, puffed sleeves, plastic). Jacket refit skipped (collar not close). Own read:
+the open drape is a stand-up band with cut-back tabs; the concept's collar lies DOWN on the rolled fronts with long
+points on the chest: the fall must land on the open fronts (lie far down and out at the ends), not on its own stand.
+Tests: 28 cloth files 335 passed, 8 skipped, 4 xfailed, exit 0.

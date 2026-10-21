@@ -285,11 +285,14 @@ def _ray_hits(O, D, V, F, N, facing: float = 0.0):
 NECK_FACING = 0.3  # the skin a top's ray counts must face it (D . N < -0.3): the jaw's underside, grazed by a ray in
 # toward the axis, is not the neck (Garrett d1's flare); the nape's hollow (normals back and down) still is
 NECK_BACK = 0.012  # m: the ray starts this far outside the top, so a top inside the skin reads negative
+OPEN_OFF = 0.010  # m: worn OPEN, past this seam stand-off from the neck the stand carries on its under cloth (round 3;
+# Garrett's closed seam stands 5-9 mm off the neck, the open one 15-18 mm at the front, no neck in reach at CF)
 NECK_SMOOTH = 15  # samples (of 61 along the half): the lean's moving average (r2: 5 -> 15: stand p99 0.47 -> 0.17 %, collar 2.46 -> 2.23; an interfaced band does not follow every bump of the neck)
 
 
 def neck_stand(C, sC, s_cf, ss, H, body: "Surf", gap=None, band: float = 0.0015, cb_x: float = 0.0,
-               lean_lo: float = -0.35, lean_hi: float = 0.7, smooth: int | None = None) -> dict:
+               lean_lo: float = -0.35, lean_hi: float = 0.7, smooth: int | None = None,
+               under: "Surf | None" = None, open_off: float | None = None) -> dict:
     """The stand's lean in toward the neck per seam sample (ss: arc from CB, H: height there): the top at H along the
     neck axis (made perpendicular to the seam), leaned in by lambda so its inner face is `gap` off the NECK, measured by a
     ray in toward the axis against neck faces only. gap None: the seam's own stand-off (a band parallel to the neck).
@@ -328,6 +331,18 @@ def neck_stand(C, sC, s_cf, ss, H, body: "Surf", gap=None, band: float = 0.0015,
         lo, hi = np.where(far, m, lo), np.where(far, hi, m)
     lam = 0.5 * (lo + hi)
     nohit = ~np.isfinite(clear(lam)) | np.isnan(want)
+    if open_off is not None and under is not None:
+        # an OPEN neckline (round 3): where the seam stands off the neck past `open_off` the band is not wrapped round
+        # the neck (unbuttoned, the fronts rolled back): it does not lean in to it, it carries on the cloth it is
+        # sewn to (the under cloth's tangent across the seam, in the stand's plane); blended over open_off .. 2 open_off
+        _, Nu = under.project(P - 0.004 * A)
+        Dc = A - np.sum(A * Nu, 1)[:, None] * Nu
+        lam_c = np.clip(np.arctan2(-np.sum(Dc * Oh, 1), np.sum(Dc * A, 1)), lean_lo, lean_hi)
+        so = np.where(np.isfinite(seam_off), seam_off, np.inf)
+        w = np.clip(so / float(open_off) - 1.0, 0.0, 1.0)
+        w = w * w * (3 - 2 * w)
+        lam = np.where(nohit, lam_c, (1 - w) * lam + w * lam_c)
+        nohit = np.zeros(len(ss), bool)
     if nohit.all():
         lam[:] = 0.0
     elif nohit.any():
@@ -407,8 +422,9 @@ def _sections(entry, base, turn):
                 "top_body_mm": np.full(len(ss_), np.nan), "n_faces": 0,
                 "tilt_deg": round(float(np.degrees(np.arctan2(-a_[1], a_[2]))), 1)}
     elif st and stand_mode == "neck" and np.max(H_) > 0:
+        oo_ = st.get("open_off", OPEN_OFF if drape_state(entry) == "open" else None)
         neck = neck_stand(C, sC, s_cf, ss_, H_, body, gap=st.get("gap"), band=float(turn.get("band_mm", turn["w"] * 1000)) / 1000,
-                          cb_x=float(base.get("cb_x", 0.0)))
+                          cb_x=float(base.get("cb_x", 0.0)), under=base.get("under"), open_off=oo_)
     if neck is not None:
         lam_ = neck["lean"]
         a_ax = neck["axis"]

@@ -26,12 +26,19 @@ reach row, never a gate. Notes: docs/notes/cloth.md "drape band round 1/2/3" (gr
 - Gate FAIL rows on v13 (r2 had them too): seams (collar sewn edge 426.3 vs stand top 448.3 flat: -4.9 %, band
   -1.0..+1.5), checklist:collar_cover 1.7 mm (5-25).
 
-## Garrett shirt collar (spec sh_garrett v13: drape d3c closed; v12 d2c; v11 d1; v10 Simon's)
-- Worn spec $S/worn_d3c.json = r2's d2 rows (gap 2 mm). d3o = the same rows draped OPEN on k12a.
-- Targets (concept, open): points ~147 apart, 50-61 mm below HPS, fall ~44 at CB, V 60.
+## Garrett shirt collar (spec sh_garrett v14: drape d3o OPEN, point -0.04; v13 d3c closed; v12 d2c)
+- r3 open lean (C132 row): worn open, past OPEN_OFF 10 mm seam stand-off the stand carries on its under cloth.
+- d3o: stand p99 0.40, collar 1.93 (flat PASS); points 107 apart / 42.7 below HPS in the drape, 113.3 / 37.4 fitted
+  (concept ~147 / 50-61); V 52.1 (60); fall 51.9 CB (~44). Reach closed INFO: 2.29 / 9.16 %. Point lever
+  non-monotonic (-0.03..-0.07: 102-143 apart, 30-64 below, 1.9-3.6 %): stop-loss.
+- Gate FAIL: seams -4.7 % (collar sewn edge vs stand top TO CF: the 2 x 12 mm end_in; seam definition item),
+  collar_cover 4.0 (5-25). Open fit places, p99 12.4 FAIL, collar_corners stand:34 14 % FAIL.
+- Reviews FAIL: collar (stands to the jaw and flares, stubby tabs high at the shoulder, V closed), wholefront.
+  PNGs $S/check/{collar,point_L,point_R,wholefront}_d3o.png. Jacket refit skipped (collar not close).
 
-NEXT: step 2: drape d3o OPEN (k12a base) -> flat p99 -> pattern gate (seams: the fall's sewn edge vs the stand top)
--> open form fit (worn_open; arrange to the drape's open shape) -> fold rows + collar_corners + self-check ->
-renders (collar, points, wholefront) -> blind reviews -> jacket if close.
-## Commands ($S = /mnt/data/hifipushie/drape_band3; run.sh = this worktree): drape_d3.py <worn.json> [save];
-fit_d3.py <tag> <closed|open> (capped); probe1-6.py (placement probes).
+NEXT: the fall must LIE on the open fronts: land far down and out at the ends (the concept's points on the chest),
+not hug its own stand; describe that as the worn rows (land at the end ~40-50 mm below the seam ON the rolled front,
+point 0) and rerun; fix the stand|collar seam definition to the collar's sewn ends; then fit, renders, reviews, jacket.
+## Commands ($S = /mnt/data/hifipushie/drape_band3; run.sh = this worktree): drape_d3.py <worn.json> [save|no]
+[piece.key=json ...]; fit_d3.py <tag> <closed|open> (capped); render_d3.py - <tag> <views> (FORM=, capped);
+rev_d.sh <tag>; probe1-6.py (placement probes).
