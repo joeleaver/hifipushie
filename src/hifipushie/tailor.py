@@ -17,8 +17,8 @@ Definitions (FreeSewing's measurement names; https://freesewing.dev/reference/me
   section from 12 cm under that to it.
 - highHip / waistToHighHip: the girth at the iliac crest (ANSUR II iliocristale height) and the waist's height over it;
   the crest is ILIAC_CREST_OVER_CROTCH x stature above the crotch (FreeSewing's hips / waistToHips, via measure_defs).
-- highBust: the narrowest torso section in the 4 cm under the armpit (FreeSewing: just under the arms,
-  above the bust; it was = chest).
+- highBustUnder: the narrowest torso section in the 4 cm under the armpit (FreeSewing's highBust: just under the
+  arms, above the bust). highBust stays = chest (legacy; measure_defs hands consumers highBustUnder).
 - biceps: the fullest upper-arm section square to the arm (25-60% of shoulder -> elbow); wrist: square to the forearm.
 - hpsToWaistBack, hpsToBust: over the surface; shoulderToElbow, shoulderToWrist: shoulder point -> elbow -> wrist.
 - waistToArmpit/Hips/Seat/Floor/Knee, crotch: vertical distances.
@@ -556,7 +556,8 @@ def measure(V: np.ndarray, faces, J: dict) -> dict:
     # The pit itself bridges onto the arm (a hull over the arm's inner side: the section AT the armpit's level read 983
     # on Garrett against his 968 chest), so it is the narrowest torso section in the 4 cm under the armpit
     hb_ = [girth(L_, Z) for z in np.arange(arm_z, arm_z - 0.0401, -0.005) if (L_ := torso(z)) is not None]
-    mm["highBust"] = min(hb_) if hb_ else mm["chest"]
+    mm["highBustUnder"] = min(hb_) if hb_ else mm["chest"]
+    mm["highBust"] = mm["chest"]  # (legacy: what every draft so far was cut from; measure_defs adapts to highBustUnder)
     # front and back lengths from hps down to the seat over the surface, a hand's width from centre: a belly makes
     # the front longer than the back (patterns draft them equal: the large-abdomen alteration adds the difference)
     zs_ = at["seat_z"]

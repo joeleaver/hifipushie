@@ -91,8 +91,11 @@ def test_girths_are_the_sections_they_are_defined_on(tape):
 def test_high_bust_is_the_armpit_level_not_the_chest(tape):
     """FreeSewing highBust: round the chest just under the arms, above the bust (it was = chest: no bust dart ever)."""
     mm = tape["mm"]
-    assert abs(mm["highBust"] - 1000 * ellipse_perimeter(*UPPER)) < 8
-    assert mm["chest"] - mm["highBust"] > 40
+    assert abs(mm["highBustUnder"] - 1000 * ellipse_perimeter(*UPPER)) < 8
+    assert mm["chest"] - mm["highBustUnder"] > 40
+    assert mm["highBust"] == mm["chest"]  # (the tape's legacy key)
+    for c in ("block:bodice", "freesewing:simon"):
+        assert md.for_consumer(c, mm, tape["at"])[0]["highBust"] == mm["highBustUnder"]
 
 
 def test_iliac_crest_level_and_girth(tape):
@@ -127,7 +130,7 @@ def test_each_consumer_receives_its_definition(tape):
         m2, info = md.for_consumer(c, mm, at)
         assert m2["shoulderSlope"] == pytest.approx(at["shoulder_slope_chord"]), c
         assert m2["hips"] == pytest.approx(mm["highHip"]) and m2["waistToHips"] == pytest.approx(mm["waistToHighHip"]), c
-        assert set(info["definitions"]) >= {"shoulderSlope", "hips", "waistToHips"}
+        assert set(info["definitions"]) >= {"shoulderSlope", "hips", "waistToHips", "highBust"}
     # the trouser block reads (hips, waistToHips) only as a pair: the tape's own, unchanged
     m2, info = md.for_consumer("block:trouser", mm, at)
     assert m2["hips"] == mm["hips"] and not info
@@ -157,7 +160,7 @@ def test_simon_draft_gets_the_chord_through_the_garment_path():
     mm, info = cloth.slope_measures(dict(tape_mm), B(), {"pattern": {"from": "simon"}})
     assert mm["shoulderSlope"] == pytest.approx(22.51) and info["consumer"] == "freesewing:simon"
     # a Simon garment is the shirt kind, which holds hips (Garrett's shirt in flight): unchanged until refitted
-    assert mm["hips"] == 942.8 and set(info["held"]) == {"hips", "waistToHips"}
+    assert mm["hips"] == 942.8 and set(info["held"]) == {"hips", "waistToHips"}  # (no highBust in this tape)
     # the shirt kind (Garrett's shirt in flight) holds hips: unchanged until refitted
     kkb = cloth._kb()["kinds"]["shirt"]
     assert set(md.holds_for({}, kkb)) >= {"hips", "waistToHips"}
