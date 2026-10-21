@@ -12,6 +12,15 @@ reference, ONE view per `review_view` call -> optional sim (`dress`), a wrinkle 
 (garment_game). Closing seams, building made pieces or hand-finishing AFTER a sim is not a step: measured on Garrett's
 jacket 2026-10-19 it pushed face strain p99 from 4.7 % to 66-74 %. A fault is fixed on the pattern and re-checked.
 
+**Measure first (Joe 2026-10-20: "we need to be better at measuring up front"):** before any draft, every body
+measurement the draft consumes must arrive in THAT draft's definition (measure_defs; the gate row
+`measure_definitions` FAILs a draft with an undeclared measurement; table and sources: docs/notes/measurements.md).
+Read the drafted pattern against the body flat before fitting: shoulder seam vs the body's neck point -> shoulder
+point (length and drop), neckline vs the neck base + ease, hip line height, plumb girth. Most lost rounds on Garrett's
+jacket and shirt were definition mismatches (shoulder slope, hip level, neck point) found late by fitting.
+Under garments are fitted first and judged where they show; an open front or open collar is a worn state reached by
+release + arrangement (`release_garment`, `arrange_garment`).
+
 **The two rules everything else follows:**
 1. **Describe the garment from the reference before choosing anything.** Kind, construction, fabric, measurements
    against the body, how it is worn. Every template, kind and default you pick must be justified by that

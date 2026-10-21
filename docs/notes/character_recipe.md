@@ -116,26 +116,30 @@ Traps: half-sided preview; judging cards against the photo; photo mask errors; t
 
 ## Stage 5: clothes
 
-Inputs: the approved body; per garment a DESCRIBE checklist (type and construction, fabric, key lengths / ease / band
-widths read from the reference, how it's worn, the folds the reference shows). Guide: `guide(topic="cloth")`,
-cloth_construction, cloth_faults. Tools: `design_garment`, `look_pattern`, `check_garment`, `dress`, `look_cloth`.
-Defaults (in order, like a pattern maker):
-1. Pattern: draft from a block, measure the draft against the checklist; construction choices (collar, cuffs, closures,
-   plackets, fabric with physical numbers). A garment over another is drafted over it (`over`). The draft gates pass
-   before any sim. Faults are construction, never solver tuning.
-   Jackets / coats: draft by the tailor's rules (docs/notes/tailoring_principles.md R1-R26, `pattern_jacket.jacket_ops`);
-   the pattern gate adds their rows (back neck, suppression, dart, overlap, collar straightness, stand / fall, pockets).
-   Pattern stage: the garment ASSEMBLED on the virtual dress form (`pattern_form.assemble`, no sim: neck point on the
-   HPS, seams closed, layers eased, folds on their fold lines, collar on the neckline; garment key `mesh_refine`),
-   sheet beside the reference and every checklist item measured on it; the pattern passes there before the first sim.
-2. Sim for the big read only: ZOZO (`backend: "zozo"`) on the rented GPU via oxidegen ($5/day cloth budget, NICO-TOP
-   fallback), ~3 draft + 2 final sims per garment, ONE sim per proven fix. `cloth_job.preflight` and
-   `cloth.fine_start_check` refuse bad starts before money is spent.
-3. Made pieces (collars, cuffs, bands, lapels, pockets) CONSTRUCTED on the drape, not simulated.
-4. Hand finish on the draped mesh (recorded sculpt edits keyed on the sim; write each edit under a new file name: the
-   name is the cache identity). Spike gate passes before sheets. Fine detail in maps.
-5. Freeze (`cloth.freeze`): the export consumes the frozen pickles.
-Order: pattern -> PATTERN GATE -> sim -> made pieces -> finish.
+Joe 2026-10-20: "we need to be better at measuring up front." 34 garment rounds were mostly lost to things a flat
+check would have caught (ledger C61 / C113 / C117 / M9-M11, docs/notes/measurements.md). Order, like a pattern maker:
+0. MEASURE THE BODY FOR THE DRAFTS, before any draft: every measurement a draft consumes comes from the tape in THAT
+   draft's definition (measure_defs: per-draft definitions with sources, adapters at the boundary; a draft refuses a
+   measurement with no declared definition; gate row `measure_definitions`). A new garment kind or draft declares its
+   measurements and their definitions first, with a synthetic-body known answer (tests/test_measure_defs.py). Read the
+   values against the body: shoulder seam vs the body's neck point -> shoulder point (length + drop), neckline vs the
+   neck base + the book's ease, hip line height, plumb girth. A fix left opt-in for one garment is checked against
+   every garment that consumes the same measurement.
+1. DESCRIBE big to small from the reference (checklist items with value + tolerance become gate rows, C103): opening /
+   closure state, silhouette, length, collar state, then details. Physics vs art intent: a pose a real garment
+   wouldn't take is reached by ARRANGING (C81), never by bending the pattern. Ask Joe only what his rules don't settle.
+2. UNDER GARMENTS FIRST (C85): a garment worn under another passes its own fit before anything is fitted over it.
+   What a cover hides is culled (cloth_layers.hidden); judge the under garment where it SHOWS (C90, C115).
+3. FLAT PATTERN gate (below): every visible part a cut piece or a sized mark (plackets, flaps, buttons); folds,
+   presses and pleats checked by the generic fold family (C106) flat; tailoring rules with sources.
+4. DRESS FORM fit (pattern_form, no sim) in the CLOSED state; worn big reads measured on the fit (C104); fold family
+   on the form; whole-front view judged first, then crops of what Joe flags (C52, garment-loop memory).
+5. WORN STATE: an open front = closed fit -> ONE short release sim (cloth_release) -> arrangement (arrange_garment);
+   an open collar = arranged. Renders for Joe show the design state, never an internal stage.
+6. Layered pairs: the over garment fits over the body + the under garment's allowance; the under garment kept where seen.
+7. Freeze (`cloth.freeze`): the export consumes the frozen pickles. Hand finish only for small faults on the result.
+Tools: `pattern_check`, `fit_garment`, `release_garment`, `arrange_garment`, `review_view`, `judge_asset`.
+Guide: `guide(topic="cloth")`. Threads: docs/state/dress_garrett_fit.md, dress_garrett_shirt.md.
 
 ### Pattern gate (ENFORCED, 2026-10-19)
 Joe: "we're spending too much time on sim before we validate our patterns." Before ANY sim of a drafted garment:
@@ -155,9 +159,11 @@ Joe: "we're spending too much time on sim before we validate our patterns." Befo
 - Pattern ops and construct option dicts that change a default carry `"source": "<where the number came from>"`;
   the gate WARNS without one (traps.md "A misread note became a pattern default").
 
-Gate: pattern gates on the draft; sim judged for fit, silhouette, hang and main folds; finish judged in the game render
-at 1 m / 3 m. Re-freeze only when a blind review prefers the candidate. Joe approves each garment ("garment").
-Stop-loss: a review fault a sculptor would fix in minutes is a finishing job, never another sim.
+Gate: measurement definitions and the pattern gate on the draft; the dress-form fit judged for fit, silhouette and big
+reads; the worn state judged in the game render at 1 m / 3 m. Re-freeze only when a blind review prefers the candidate.
+Joe approves each garment ("garment").
+Stop-loss: two failed levers on one fault -> measure it FLAT (lengths vs the body's surface paths, the measurement's
+definition) before another form or sim lever (shirt rounds 1-6: neck levers on a shoulder-slope bug).
 Traps: a shared landmark changed (HPS) sets off a chain: back to known good.
 
 ## Stage 6: expressions
