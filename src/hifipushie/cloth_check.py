@@ -412,6 +412,19 @@ def fit_record_path(phash: str, bhash: str) -> _Path:
     return gate_dir() / "fit" / f"{gate_key(phash, bhash)}.json"
 
 
+def drawn_faces(res: dict) -> np.ndarray:
+    """Faces of a garment on the form that are drawn: a TUCKED garment's faces wholly below its tuck line (A_info
+    "tucked" "hidden": covered by the garment it is tucked into, where a real shirt gathers into folds) are not, and
+    the fit's strain is judged on the drawn ones (shirt round 2 f2a: the tuck's pull read the hidden back hem at 50 %)."""
+    F = np.asarray(res["mesh"]["F"])
+    hid = ((res.get("A_info") or {}).get("tucked") or {}).get("hidden")
+    if not hid:
+        return np.ones(len(F), bool)
+    h = np.zeros(int(F.max()) + 1, bool)
+    h[np.asarray(hid, int)] = True
+    return ~h[F].all(1)
+
+
 def _form_read():
     from . import garment_reads
     return garment_reads.FORM_READ
@@ -448,6 +461,12 @@ def checklist_fit_rows(res: dict, X, g: dict, model: str = "", garment: str = ""
     piece, items = gr.checklist_items(g, model, garment)
     rd = gr.big_reads(res, X, ge)
     rows = gr.checklist_rows(items, rd, "fit")
+    from . import fold_checks
+    try:
+        rows += fold_family_rows(fold_checks.form_rows(res["mesh"], X, res.get("body")), gated=bool(piece))
+    except Exception as e:  # noqa: BLE001 (a reader that breaks is unmeasured and says so)
+        rows.append({"id": "fold_form", "family": "fold", "stage": 3, "status": "UNMEASURED",
+                     "why": f"{type(e).__name__}: {e}"})
     kind = ((ge.get("design") or {}).get("kind")) or ""
     try:
         kitems = cr.items_for(kind) if kind else []
@@ -1313,7 +1332,8 @@ def form_shape_rows(res: dict) -> list:
              "measure": "pattern_form.front_creases (below the break, welded at seams, fold rows out; deg / mm)",
              "ours": cr, "ref": f"interior p90 and each seam's median <= {pf.CREASE_DEG} deg; edges over "
                                 f"{2 * pf.CREASE_DEG:.0f} deg <= {pf.CREASE_SHARP_MM:.0f} mm", "why": pf.CREASE_SOURCE},
-            {"id": "lapel_on_base", "stage": 3, "status": "PASS" if all(r["ok"] for r in ft.values()) else "FAIL",
+            {"id": "lapel_on_base", "stage": 3, "family": "fold", "instance_of": "fold_on_base",
+             "status": "PASS" if all(r["ok"] for r in ft.values()) else "FAIL",
              "measure": "pattern_form.flap_through_base (turned flap vertices past the hinge through their own base)",
              "ours": ft, "ref": f"share <= {pf.FLAP_THROUGH_MAX}", "why": pf.FLAP_THROUGH_SOURCE}] + _gorge_rows(M, A)
 
@@ -1325,7 +1345,8 @@ def _gorge_rows(M: dict, A: np.ndarray) -> list:
     gl = pf.gorge_lie(M, A)
     if not gl:
         return []
-    return [{"id": "gorge_lie", "stage": 3, "status": "PASS" if all(r["ok"] for r in gl.values()) else "FAIL",
+    return [{"id": "gorge_lie", "stage": 3, "family": "fold", "instance_of": "fold_twist",
+             "status": "PASS" if all(r["ok"] for r in gl.values()) else "FAIL",
              "measure": "pattern_form.gorge_lie (twist deg / cm about the gorge seam on the lapel's face, across deg, "
                         "the collar end's tip off the lapel's plane mm)", "ours": gl,
              "ref": f"twist <= {pf.GORGE_TWIST_DEG_CM} deg/cm, across <= {pf.GORGE_ACROSS_DEG} deg, "
@@ -1342,6 +1363,20 @@ def flat_pattern_row(model: str, garment: str, spec: dict) -> dict:
     return {"id": "flat_pattern", "stage": 2, "status": "FAIL" if o["fail"] else "PASS",
             "measure": "cloth_workflow.stage_pattern (flat: ease by girth, pieces sewn, design evidence)",
             "ours": {"fail": o["fail"][:16], "warn": o["warn"][:8], "ease": ease[:8]}, "read_on": "flat draft"}
+
+
+def fold_flat(Bp: dict, g: dict) -> list:
+    from . import fold_checks
+    return fold_checks.flat_rows(Bp, g)
+
+
+def fold_family_rows(rows: list, gated: bool) -> list:
+    """The fold family's rows (fold_checks: every declared fold, flat or on the form). They gate a garment bound to its
+    piece checklist (the garment key "checklist"); on other garments (the parked jacket thread) they are reported INFO
+    with their reading's status in "fold_status", so no parked garment's gate flips without its own round."""
+    if gated:
+        return rows
+    return [dict(r, fold_status=r["status"], status="INFO") if r["status"] in ("PASS", "FAIL") else r for r in rows]
 
 
 def collar_rule_rows(Bp: dict, g: dict) -> list:
@@ -1375,6 +1410,8 @@ def piece_checklist_rows(model: str, garment: str, g: dict, res: dict | None = N
     Bp = res["pieces_full"] if res is not None else None
     piece, items = gr.checklist_items(g, model, garment)
     rows = collar_rule_rows(Bp, g) if Bp is not None else []
+    if Bp is not None:
+        rows += fold_family_rows(fold_flat(Bp, g), gated=bool(piece))
     if not items:
         return rows
     rd = gr.flat_reads(Bp, g) if Bp is not None else {}

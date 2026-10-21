@@ -2709,7 +2709,41 @@ def on_form(model: str, garment: str, spec: dict | None = None, g: dict | None =
     out = assemble(res, res["body"], under=under, ease=EASE if under is not None else UNDER_EASE, log=log,
                    worn_open=g.get("worn_open"), shoulder_pad=g.get("shoulder_pad"), bridge=bridge_fraction(g))
     res["A"], res["A_info"], res["form_under"] = out["V"], out["info"], und
+    if cloth.expanded(g).get("tucked"):
+        res["A"], res["A_info"]["tucked"] = tuck(res, res["A"], cloth.expanded(g))
     return res
+
+
+TUCK_CAP = 0.006  # m: tucked cloth below the line lies at most this off the body (a waistband over it: one cloth + ease)
+TUCK_BLEND = 0.03  # m: above the line the pull fades to 0 over this (the blouse over the waistband)
+TUCK_SOURCE = ("a shirt tucked into trousers is held to the body by the waistband and lies flat under the trousers' "
+               "seat and fronts; its fullness below the line is hidden (Garrett concept v8: the shirt runs into the "
+               "trousers under the belt). Shirt round 1: no tuck key, the hem flared 15-25 mm off the hips")
+
+
+def tuck(res: dict, X, g: dict, cap: float = TUCK_CAP, blend: float = TUCK_BLEND) -> tuple:
+    """TUCKED (design key "tucked": true | {"line": landmark z name | z m, "drop": m, "cap": m}; any garment worn into
+    another): the torso cloth below the tuck line (garment_reads.tuck_line_z: default the body's waist_z) is pulled
+    along the body's normal to at most `cap` off it, faded in over `blend` above the line (the blouse over the
+    waistband); sleeves, cuffs and collars untouched. Returns (X, info) with info["hidden"] = the vertices below the
+    line (covered by the garment over it)."""
+    from . import garment_reads
+    X = np.asarray(X, float).copy()
+    t = g.get("tucked") if isinstance(g.get("tucked"), dict) else {}
+    cap = float(t.get("cap", cap))
+    lz = garment_reads.tuck_line_z(res["body"], g)
+    if lz is None:
+        return X, {"line_z": None}
+    M = res["mesh"]
+    torso = ~garment_reads._mask(M, ("sleeve", "cuff", "collar_stand", "collar_fall"))
+    w = np.clip((lz + blend - X[:, 2]) / blend, 0.0, 1.0) * torso
+    sel = w > 0
+    d, N, _ = _body_surface(res["body"]).signed(X[sel])
+    pull = np.maximum(d - cap, 0.0) * w[sel]
+    X[np.where(sel)[0]] -= N * pull[:, None]
+    return X, {"line_z": round(lz, 4), "cap_mm": cap * 1000, "moved": int((pull > 1e-4).sum()),
+               "max_mm": round(float(pull.max()) * 1000, 1) if len(pull) else 0.0,
+               "hidden": np.where(torso & (X[:, 2] < lz))[0].tolist(), "source": TUCK_SOURCE}
 
 
 def fold_turned(M: dict, X: np.ndarray, g: dict, reach: float = 0.03) -> float:

@@ -2699,7 +2699,38 @@ def _garment_sheets(name: str, tag: str, body, garments: list, views, size: int,
             p = diag_render.sheet([(" + ".join(r), objs, {"diag": r}) for r in rows], d / f"{tag}_diag.png", None,
                                   views=views, resolution=size, box=box, aspect=0.62)
             out.append(("diag", PILImage.open(p).convert("RGB")))
+        if clay:  # (C100) each garment in its OWN colour (+ woven stripe) under the game light: the colour is judged
+            # here, never on the clay strip's fixed identification colours
+            pngs = cloth.render(own_colour_objects(name, objs), str(d / f"{tag}_own"), views=views, resolution=size,
+                                box=box, textured=True)
+            out.append(("own colour", _hstack(pngs)))
     return out, d
+
+
+def own_colour_objects(name: str, objs: list) -> list:
+    """(C100) render objects with each garment's SPEC colour, roughness, sheen and stripe (garment keys color /
+    roughness / sheen / stripe {pitch_mm, contrast, duty, dir}) and its pattern uv (the stripe runs on it); the body
+    keeps its own. A garment without a spec colour keeps the object's."""
+    from . import cloth
+    try:
+        gs = store.load(name).get("cloth") or {}
+    except Exception:  # noqa: BLE001 (no spec: the objects as given)
+        gs = {}
+    out = []
+    for o in objs:
+        g = cloth.expanded(gs[o["name"]]) if isinstance(gs.get(o["name"]), dict) else None
+        o = dict(o)
+        if g:
+            o["color"] = g.get("color", o.get("color"))
+            for k in ("roughness", "sheen"):
+                if g.get(k) is not None:
+                    o[k] = float(g[k])
+            if isinstance(g.get("stripe"), dict):
+                o["stripe"] = dict(g["stripe"])
+            if o.get("mesh") is not None and o["mesh"].get("uv") is not None:
+                o["uv"] = np.asarray(o["mesh"]["uv"], float)
+        out.append(o)
+    return out
 
 
 def _has_reference(name: str, spec: dict) -> bool:
@@ -2795,6 +2826,7 @@ def fit_garment(name: str, garment: str, views: list[str] | None = None, size: i
             uf = dict(uf, passed=True)
     M = res["mesh"]
     s = diag_render.face_strain(X, M["F"], M["uv"])
+    s = s[cc.drawn_faces(res)]  # (a tucked garment: the cloth under the trousers line is not judged)
     p99 = float(np.percentile(s, 99) * 100) if len(s) else None
     pierce = None
     if under is not None:

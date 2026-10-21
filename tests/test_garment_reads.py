@@ -180,3 +180,53 @@ def test_colour_row_compares_lit_with_lit(tmp_path):
     b[:, :20] = (158, 160, 157)  # (round 1 under the clay rig: cool, dark)
     Image.fromarray(b).save(tmp_path / "b.png")
     assert gr.colour_row(it, gr.colour_patch(tmp_path / "b.png", (0, 0, 1, 1)))["status"] == "FAIL"
+
+
+# ----------------------------------------------------------------------------------------------- tucked (design key)
+def _cylinder(r, z0, z1, n=48, m=30):
+    t = np.linspace(0, 2 * np.pi, n, endpoint=False)
+    zs = np.linspace(z0, z1, m)
+    V = np.array([(r * np.cos(a), r * np.sin(a), z) for z in zs for a in t])
+    F = []
+    for j in range(m - 1):
+        for i in range(n):
+            a, b, c, d = j * n + i, j * n + (i + 1) % n, (j + 1) * n + i, (j + 1) * n + (i + 1) % n
+            F += [(a, b, d), (a, d, c)]
+    return V, np.asarray(F)
+
+
+def test_tucked_pulls_the_cloth_below_the_line_to_the_body_and_reads_it():
+    import types
+    from hifipushie import pattern_form as pf
+    BV, BT = _cylinder(0.15, 0.6, 1.4)
+    body = types.SimpleNamespace(V=BV, T=BT, at={"waist_z": np.array([1.0]), "hps.L": np.array([0.08, 0, 1.5])})
+    t = np.linspace(0, 2 * np.pi, 48, endpoint=False)
+    zs = np.arange(0.75, 1.2, 0.01)  # (a shirt body flaring 30 mm off below the waist, 5 mm above)
+    X = np.array([((0.15 + (0.03 if z < 1.0 else 0.005)) * np.cos(a), (0.15 + (0.03 if z < 1.0 else 0.005)) * np.sin(a), z)
+                  for z in zs for a in t])
+    M = {"names": ["front.L"], "piece": np.zeros(len(X), int)}
+    res = {"body": body, "mesh": M}
+    g = {"tucked": True}
+    before = gr.tuck_reads(X, body, gr.tuck_line_z(body, g))
+    assert before["tuck_standoff_p90_mm"] > 25, before
+    X2, info = pf.tuck(res, X, g)
+    after = gr.tuck_reads(X2, body, gr.tuck_line_z(body, g))
+    assert after["tuck_standoff_p90_mm"] <= pf.TUCK_CAP * 1000 + 0.5, after
+    assert info["moved"] > 0 and len(info["hidden"]) == int((X[:, 2] < 1.0).sum())
+    above = X[:, 2] > 1.0 + pf.TUCK_BLEND
+    assert np.allclose(X2[above], X[above])  # (above the blend: untouched)
+    assert gr.tuck_line_z(body, {}) is None
+
+
+# ----------------------------------------------------------------------------------------------- C100: own colour
+def test_own_colour_objects_take_the_spec_colour_and_stripe(monkeypatch):
+    from hifipushie import server, store
+    spec = {"cloth": {"shirt": {"color": "#bdb8b4", "stripe": {"pitch_mm": 2.5, "contrast": 0.03}, "roughness": 0.8}}}
+    monkeypatch.setattr(store, "load", lambda name: spec)
+    objs = [{"name": "body", "V": np.zeros((3, 3)), "F": np.zeros((1, 3), int), "color": "#c9b8a6"},
+            {"name": "shirt", "V": np.zeros((3, 3)), "F": np.zeros((1, 3), int), "color": "#5b7fa6",
+             "mesh": {"uv": np.zeros((3, 2))}}]
+    out = server.own_colour_objects("m", objs)
+    assert out[0]["color"] == "#c9b8a6"  # (the body keeps its own)
+    assert out[1]["color"] == "#bdb8b4" and out[1]["stripe"]["pitch_mm"] == 2.5 and out[1]["roughness"] == 0.8
+    assert out[1]["uv"].shape == (3, 2) and objs[1]["color"] == "#5b7fa6"  # (the clay objects unchanged)

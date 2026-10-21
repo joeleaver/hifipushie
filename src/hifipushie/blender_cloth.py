@@ -667,7 +667,7 @@ def base_source(maps) -> str | None:
     return "basecolor" if maps.get("basecolor") else "shade" if maps.get("shade") else None
 
 
-def _material(name, color, roughness=0.85, maps=None, sheen=0.3):
+def _material(name, color, roughness=0.85, maps=None, sheen=0.3, stripe=None):
     """A Principled cloth material: base colour (or its basecolor map on the "pattern" uv), its normal map, sheen."""
     mat = bpy.data.materials.new(name)
     mat.use_nodes = True
@@ -699,6 +699,35 @@ def _material(name, color, roughness=0.85, maps=None, sheen=0.3):
         nt.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
     else:
         nt.links.new(rgb.outputs[0], bsdf.inputs["Base Color"])
+    if stripe and src_ is None:
+        # a WOVEN STRIPE (shirt round 2, C100; any garment): bands across the pattern uv's u (m, the flat pattern:
+        # "dir" "warp" = stripes along the grain, the shirting default; "weft" = across), `pitch_mm` repeat, the
+        # stripe yarn `contrast` (fraction darker; < 0 lighter), `duty` its share of the repeat
+        uvn = nt.nodes.new("ShaderNodeUVMap")
+        uvn.uv_map = "pattern"
+        sep = nt.nodes.new("ShaderNodeSeparateXYZ")
+        nt.links.new(uvn.outputs["UV"], sep.inputs[0])
+        sc_ = nt.nodes.new("ShaderNodeMath")
+        sc_.operation = "MULTIPLY"
+        sc_.inputs[1].default_value = 1000.0 / max(float(stripe.get("pitch_mm", 2.5)), 0.1)
+        nt.links.new(sep.outputs[0 if stripe.get("dir", "warp") == "warp" else 1], sc_.inputs[0])
+        fr = nt.nodes.new("ShaderNodeMath")
+        fr.operation = "FRACT"
+        nt.links.new(sc_.outputs[0], fr.inputs[0])
+        lt = nt.nodes.new("ShaderNodeMath")
+        lt.operation = "LESS_THAN"
+        lt.inputs[1].default_value = float(stripe.get("duty", 0.3))
+        nt.links.new(fr.outputs[0], lt.inputs[0])
+        k = 1.0 - float(stripe.get("contrast", 0.03))
+        c2 = nt.nodes.new("ShaderNodeRGB")
+        c2.outputs[0].default_value = (*[min(1.0, v * k) for v in _rgb(color)], 1.0)
+        mx = nt.nodes.new("ShaderNodeMix")
+        mx.data_type = "RGBA"
+        nt.links.new(lt.outputs[0], mx.inputs["Factor"])
+        nt.links.new(rgb.outputs[0], mx.inputs[6])
+        nt.links.new(c2.outputs[0], mx.inputs[7])
+        nt.links.new(mx.outputs[2], bsdf.inputs["Base Color"])
+        mat["hp_stripe"] = [float(stripe.get("pitch_mm", 2.5)), float(stripe.get("contrast", 0.03))]
     mat["hp_set"] = [*_rgb(color), float(roughness)]
     # the sheen in the fibres' own colour: a dyed fibre's fuzz scatters its dye, not white (dress-tess review: a
     # mustard knit under the default white sheen read as "satin / poly-knit" streaks on the shoulders and pale rib
@@ -762,7 +791,8 @@ def _render_textured(job, d):
             m.thickness = float(o["thickness"])
             m.offset = 1.0
         ob.data.materials.append(_material(f"m_{nm}", o.get("color", "#cccccc"), float(o.get("roughness", 0.85 if o.get("maps") else 0.6)),
-                                           o.get("maps"), sheen=float(o.get("sheen", 0.3 if o.get("maps") else 0.0))))
+                                           o.get("maps"), sheen=float(o.get("sheen", 0.3 if o.get("maps") else 0.0)),
+                                           stripe=o.get("stripe")))
     lo = np.min([np.min(d[o["name"] + "_V"], 0) for o in job["objects"]], 0)
     hi = np.max([np.max(d[o["name"] + "_V"], 0) for o in job["objects"]], 0)
     if job.get("box"):
@@ -900,7 +930,7 @@ def show(entries: list) -> list:
         sol.offset = 1.0
         ob["hp_npz"] = e["npz"]
         mat = _material(f"cloth:{e['name']}", e.get("color", "#8fb3d9"), float(e.get("roughness", 0.85)),
-                        e.get("maps"), sheen=float(e.get("sheen", 0.3)))
+                        e.get("maps"), sheen=float(e.get("sheen", 0.3)), stripe=e.get("stripe"))
         me.materials.append(mat)
         made.append(e["name"])
         oldb = bpy.data.objects.get(e["name"] + ".buttons")

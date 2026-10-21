@@ -10998,7 +10998,8 @@ def scene_job(name: str, spec: dict, log: list | None = None) -> list:
                  uv=uv.astype(np.float32), base=(res["V"] - _sculpt_offset(res)).astype(np.float32))
         e = {"name": f"cloth:{gname}", "garment": gname, "key": res["key"] + _detail_key(g, res), "npz": str(path),
              "color": g.get("color", "#8fb3d9"), "thickness": fabric(g).get("thickness", 0.0008),
-             "roughness": float(g.get("roughness", 0.85)), **({"sheen": float(g["sheen"])} if g.get("sheen") is not None else {})}
+             "roughness": float(g.get("roughness", 0.85)), **({"sheen": float(g["sheen"])} if g.get("sheen") is not None else {}),
+             **({"stripe": dict(g["stripe"])} if isinstance(g.get("stripe"), dict) else {})}  # (C100: a woven stripe)
         if g.get("detail", {}) is not False:
             maps = write_maps(store._dir(name) / f"cloth_{gname}", res["mesh"], uv, side, g,
                               extra=fine_folds(res, g, uv, side))
@@ -11575,7 +11576,8 @@ def _render_job(objects: list, prefix: str, views=("front", "side", "back"), res
         if o.get("uv_corner") is not None:  # (per corner: welded faces whose seam vertices are shared keep each
             # side's own uv)
             data[o["name"] + "_UVC"] = np.asarray(o["uv_corner"], np.float32)
-        objs.append({k: v for k, v in o.items() if k in ("name", "color", "thickness", "offset", "maps", "roughness", "subdiv")})
+        objs.append({k: v for k, v in o.items() if k in ("name", "color", "thickness", "offset", "maps", "roughness", "subdiv",
+                                                         "stripe", "sheen")})
     tag = Path(prefix).name
     np.savez(d / f"_{tag}_render.npz", **data)
     job = {"mode": "render", "data": f"_{tag}_render.npz", "objects": objs, "out_prefix": prefix,
