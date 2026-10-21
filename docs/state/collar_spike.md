@@ -34,15 +34,23 @@ Spike only: no garment rounds, no agents grinding for an hour.
   pair constraints crumple a curved piece. Collar strain p99 ~22 %.
 - spike.py (same folder) = the drape op on the same primitive (c1-c5, o1-o2, v1-v2): parked.
 
-## NEXT (agreed with Joe)
-Stop hand-writing the settle: use Blender's cloth sim (bending stiffness per piece, sewing springs, pins, no or little
-gravity), which already does stiff interfaced pieces:
-1. Simon's band + collar loaded flat, sewn together (collar sewn edge to the band's top, between their notches).
-2. Both stiff (interfaced): high bending stiffness; the fold happens at the seam.
-3. The band's neck edge sewn / pinned to the neckline on the primitive neck (cylinder + shoulder cone; add simple
-   upper fronts later if the open state needs them).
-4. Collar folded over at the seam; settle with little or no gravity: its stiffness holds it up.
-5. Then OPEN: the top button undone, the band's front ends free / spread (the fronts rolled back), and judge it
-   against Joe's trace. Seconds to a minute per look; send Joe each look as a file (front / 3/4 / side).
+- 2026-10-21 Blender cloth try (bsim.py + bl_cloth.py, same folder; `bsim.py '{"tag":..,"frames":..,"bend":..,"tension":..,"sew":..}'`,
+  Blender 5.1 headless, ~10-50 s): flat pieces as the rest shape key, a wrapped start, the band's neck edge pinned,
+  sewing springs collar -> band top, self collision, little gravity. Faults found: wrap.py's start was stretched 60 %
+  p99 with sliver edges (remeshed: outline at 5 mm + hex fill); the shoulder cone cut through the band at CF (moved
+  below the band: pieces then hold still, 0.1 %). With the seam springs on, every run crumpled (b7-b10: strain 22-170 %,
+  b10 the collar balled up). Joe: "not sure simulation is the right path"; two tries then regroup -> STOPPED.
+- s1 (no sim, frames 1): each flat piece wrapped ISOMETRICALLY onto the surface it makes: the band (nearly straight,
+  its neck edge an arc of radius 2.1 m) on a cylinder r 70 mm; the collar's sewn edge is an arc (radius 369 mm, fit
+  err 0.7 mm), so the collar is an annular sector and wraps onto its own cone (half-angle 11.6 deg), turned down
+  outside the band. 0.0 % strain, reads as a clean closed turned-down collar standing off the neck. Faults: seam gap
+  up to 34 mm at CF (the band's top dips toward CF; the collar's sewn edge is 426 mm vs the band's top 445 mm), not open.
+
+## NEXT: regroup with Joe (sim parked)
+Proposal on the table: place the pieces geometrically, not dynamically: each piece as the developable surface its own
+flat shape makes (cylinder / cone as in s1), then a small static fit (keep every edge length, close the seam, keep off
+the body, bend only at the fold) for the seam gap; OPEN = the band's front ends turned down the neckline V and the
+collar's cone following its band. Waiting for Joe's call.
+
 Rules: renders under /mnt/data/hifipushie/bin/capped (GPU lock); files on /mnt/data/hifipushie/collar_spike/; stage
 git by path, never `git add -A`; only the coordinator pushes main.
