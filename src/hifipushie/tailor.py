@@ -552,7 +552,7 @@ def measure(V: np.ndarray, faces, J: dict) -> dict:
     tape = np.r_[down(bust[2], hps[0], bust[0], -1), bust[None]]
     mm["hpsToBust"] = length(tape)
     loops["hpsToBust"] = tape
-    # highBust (FreeSewing: round the chest just under the arms, above the bust), just under the armpit. It was = chest, so a bodice's bust dart (chest - highBust) was never drafted (measure audit, M3)
+    # highBust (FreeSewing: round the chest just under the arms, above the bust), just under the armpit. It was = chest, so a bodice's bust dart (chest - highBust) was never drafted (measure audit, M11)
     # The pit itself bridges onto the arm (a hull over the arm's inner side: the section AT the armpit's level read 983
     # on Garrett against his 968 chest), so it is the narrowest torso section in the 4 cm under the armpit
     hb_ = [girth(L_, Z) for z in np.arange(arm_z, arm_z - 0.0401, -0.005) if (L_ := torso(z)) is not None]

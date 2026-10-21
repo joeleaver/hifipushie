@@ -6,10 +6,10 @@ ITS author's definition. Where the two differ, an ADAPTER here converts the tape
 draft never reads a measurement that has no declared definition for it (`for_consumer` raises DefinitionError).
 The reference table, with sources and Garrett's / Tess's values: docs/notes/measurements.md.
 
-Why (measure audit 2026-10-20, M1): two of the costliest garment faults in 34 rounds were definition mismatches at
+Why (measure audit 2026-10-20, M9): two of the costliest garment faults in 34 rounds were definition mismatches at
 this boundary: shoulderSlope (the tape's line fit 10.9 deg vs the hps -> shoulder point chord every draft places its
 shoulder point with, 22.5: C61, C117) and the neck point / neck split (C113); FreeSewing's "hips" is the top of the
-hip bone (iliac crest), ours was the hip joint's level, 106-125 mm lower (M2).
+hip bone (iliac crest), ours was the hip joint's level, 106-125 mm lower (M10).
 
   CONSUMERS   {consumer: {measurement: (status, adapter or None, their definition + source)}}
               status: "match" | "adapter" (differs; converted here) | "ambiguous" (their source doesn't pin it; ours
