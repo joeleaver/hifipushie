@@ -9531,3 +9531,25 @@ collar "clerical", no buttons read, boxy, puffed sleeves, plastic). Jacket refit
 the open drape is a stand-up band with cut-back tabs; the concept's collar lies DOWN on the rolled fronts with long
 points on the chest: the fall must land on the open fronts (lie far down and out at the ends), not on its own stand.
 Tests: 28 cloth files 335 passed, 8 skipped, 4 xfailed, exit 0.
+
+## drape band round 4 (2026-10-21)
+$S = /mnt/data/hifipushie/drape_band4 (run.sh = this worktree; sweep.py <worn> '<overrides>' = k12a lever sweep; probe_a-e).
+Steps 1-3. DESCRIBE (concept_v8 measured, 1.147 mm/px, CF x 626, HPS y 384, stand top side y 342; grid crop
+$S/check/concept_collar_grid.png): points 73-75 off CF (151 apart read, 147 checklist), 55 below HPS, each 18 px OUT of
+and 35 px below its collar-end notch (swept back); the notch (collar end on the stand top) ~15 below HPS, 54 off CF;
+the stand at the collar's end ~30 up / ~20 out of its seam = leaning OUT ~35 deg (lies back with the open front), its
+CF end at the V (60 below HPS); the fall's edge at the side 80 off CF (19 out of HPS). Worn spec written as measured
+stations ({"at": [[u, v]]}: drape._field), source "concept_v8 measured, drape round 4": $S/worn_d4o.json.
+M12 measured flat on k12a (probe_a/e): the open form's front neckline at the collar's end stands 35-50 mm PROUD of the
+chest (seam y -126..-135 vs skin -75..-92) and its edge is curled (faces point down): a cloth walk from the seam slid
+down the curl to CF (points 8-11 apart). Fix: _land_over_body (walk the body, lift onto the cloth facing the body's
+way), eased in over LAND_EASE_DEG of land_dir, landing line smoothed (LAND_SMOOTH 15 of 121): jitter cost 0.5 % p99.
+Levers (stop-loss after two): land_dir 70-100 + land 60-70 at the ends: 123-144 apart but 2.4-5.5 % p99 and points UP
+(27-36 below HPS: the walk climbs the shoulder); smoothing 31: no gain. The point lever (swept back, as the concept):
+-0.03/-0.045/-0.06: 101/117/136 apart at 1.77/1.69/1.71 %. Chosen d4o: rise 8, land 14/16/28/55, land_dir 0..55,
+point -0.06, stand lean neck -> -35 at CF, height 32/31/26.
+d4o (v15): stand 0.38 %, collar 1.71 % p99 (flat PASS); points 135.8 apart, 43.6 below HPS (drape); fall CB 62.3
+(cover via the worn spec: rise 6 -> 8, land 8 -> 14 at CB); seam: the stand carries leftTopJoin / rightTopJoin
+(build knots the top row where the fall's sewn ends join) and cloth.pieces sews the fall between them
+(drape.joined_seams): fall 434.8 vs stand top join-to-join 429.7 = +1.2 % (band -1.0..+1.5; CF to CF it was -4.7).
+Reach closed INFO 10.0 / 14.0 %. KAT test_open_fall_lands_out_on_the_fronts_and_sews_between_its_join_notches (C133).

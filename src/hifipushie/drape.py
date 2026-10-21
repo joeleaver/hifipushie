@@ -24,6 +24,11 @@ Interface (garment key "drape": a list of bands; `draft` fills each entry's "out
         # along the curve from the sewn end (+ toward CF)
    "source": "why these numbers"}
   A cuff: one "fall" layer on a "stand" of height 0 (a turn-back) or a "stand" alone (a band cuff / waistband: height).
+  Round 4 (C133, an OPEN collar): any value may be measured stations {"at": [[u, v], ...]} (u: 0 CB .. 1 end, linear
+  between); stand "lean": {"at": [[u, "neck" | deg]]} (+ in / - out; "neck" = the neck solve), an open collar's stand
+  lies back at CF; fall "land_dir": deg out of straight down (the fall's ends land out on the open fronts: walked over
+  the body, lifted onto the cloth). The stand's top carries leftTopJoin / rightTopJoin where the fall's sewn ends
+  join it; the stand|fall seam is sewn between them (joined_seams), not CF to CF.
 
 `draft(entry, base)` builds the band ON what is under it: base = {"curve": (n, 3) CB -> end, "body": Surf (the neck /
 wrist / waist skin), "under": Surf (the garment's own cloth, the fall lies on it), "s_cf": the curve's arc at CF}; the
@@ -93,8 +98,10 @@ class Surf:
         self.cen = cen
         self.tree = cKDTree(cen)
 
-    def project(self, P, k: int = 10):
-        """-> (closest points, outward normals of their faces)."""
+    def project(self, P, k: int = 10, facing=None, thr: float = 0.3):
+        """-> (closest points, outward normals of their faces). `facing` (n, 3): only faces whose normal agrees with
+        it (N . facing > thr) count where any of the k nearest does (round 4: a walker over the cloth must not step
+        onto a curled edge: the open form's neckline is rolled, its faces point down)."""
         P = np.atleast_2d(np.asarray(P, float))
         k = min(k, len(self.F))
         _, idx = self.tree.query(P, k=k)
@@ -102,6 +109,9 @@ class Surf:
         A, B, C = (self.V[self.F[idx, i]] for i in range(3))
         Q = _closest_on_tri(P[:, None, :], A, B, C)
         d = np.linalg.norm(Q - P[:, None, :], axis=2)
+        if facing is not None:
+            ok = np.einsum("nkd,nd->nk", self.N[idx], np.atleast_2d(facing)) > thr
+            d = np.where(ok | ~ok.any(1, keepdims=True), d, np.inf)
         j = np.argmin(d, 1)
         r = np.arange(len(P))
         return Q[r, j], self.N[idx[r, j]]
@@ -147,7 +157,12 @@ def _closest_on_tri(P, A, B, C):
 
 # ---------------------------------------------------------------- the worn spec
 def _field(v, u):
-    """A value along the half: a number, or {"cb": a, "end": b} eased (smoothstep) from CB (u = 0) to the end (1)."""
+    """A value along the half: a number, {"cb": a, "end": b} eased (smoothstep) from CB (u = 0) to the end (1), or
+    {"at": [[u, v], ...]} measured stations (round 4: a worn cross-section read at CB, the side and the points),
+    piecewise linear in u, held past the first / last station."""
+    if isinstance(v, dict) and "at" in v:
+        st = sorted((float(a), float(b)) for a, b in v["at"])
+        return np.interp(np.clip(np.asarray(u, float), 0, 1), [a for a, _ in st], [b for _, b in st])
     if isinstance(v, dict):
         a, b = float(v.get("cb", v.get("end", 0.0))), float(v.get("end", v.get("cb", 0.0)))
         t = np.clip(u, 0, 1)
@@ -360,9 +375,34 @@ def neck_stand(C, sC, s_cf, ss, H, body: "Surf", gap=None, band: float = 0.0015,
             "tilt_deg": round(float(np.degrees(np.arctan2(-a[1], a[2]))), 1)}
 
 
-def _lay(start, dir0, length, under: Surf, off: float, step: float = LAY_STEP, n_out: int = 2):
+def stand_lean(spec, u, solved):
+    """The stand's lean (rad, + in toward the neck, - out) from the worn spec's measured stations (round 4):
+    {"at": [[u, deg | "neck"], ...]}: "neck" = the neck solve there (neck_stand: a gap off the neck), a number = the
+    lean read from the reference (an OPEN collar's stand lies back with the rolled fronts at CF: concept_v8's stand top
+    at the collar's end sits ~20 mm out and ~30 mm up of its seam, ~35 deg out); linear in u between stations, so a
+    station next to a "neck" one eases from the solve to the read. A plain number / {"cb","end"}: degrees everywhere."""
+    u = np.asarray(u, float)
+    solved = np.asarray(solved, float)
+    if not (isinstance(spec, dict) and "at" in spec):
+        return np.radians(_field(spec, u))
+    st = sorted((float(a), b) for a, b in spec["at"])
+    us = np.array([a for a, _ in st])
+    val = lambda k: np.interp(u, u, solved) if st[k][1] == "neck" else np.full(len(u), math.radians(float(st[k][1])))
+    out = val(0).copy()
+    out[u >= us[-1]] = val(len(st) - 1)[u >= us[-1]]
+    for k in range(len(st) - 1):
+        m = (u >= us[k]) & (u < us[k + 1])
+        if m.any():
+            t = (u[m] - us[k]) / max(us[k + 1] - us[k], 1e-9)
+            out[m] = (1 - t) * val(k)[m] + t * val(k + 1)[m]
+    return out
+
+
+def _lay(start, dir0, length, under: Surf, off: float, step: float = LAY_STEP, n_out: int = 2,
+         ref: "Surf | None" = None):
     """March `length` over the under surface (at `off` out of it) from `start`, heading `dir0` and keeping the
-    heading in the surface's tangent plane (a geodesic-ish lie): -> (k, 3) points (start excluded)."""
+    heading in the surface's tangent plane (a geodesic-ish lie): -> (k, 3) points (start excluded). `ref` (the body):
+    step only onto cloth facing out the way the body under it does (not onto a curled edge)."""
     pts = []
     p = np.asarray(start, float)
     d = np.asarray(dir0, float)
@@ -370,7 +410,10 @@ def _lay(start, dir0, length, under: Surf, off: float, step: float = LAY_STEP, n
     while left > 1e-6:
         h = min(step, left)
         q = p + h * d
-        Q, N = under.project(q)
+        if ref is not None:
+            Q, N = under.project(q, k=60, facing=ref.project(q)[1])
+        else:
+            Q, N = under.project(q)
         q = Q[0] + N[0] * off
         stepv = q - p
         L = np.linalg.norm(stepv)
@@ -385,6 +428,23 @@ def _lay(start, dir0, length, under: Surf, off: float, step: float = LAY_STEP, n
         p = q
         left -= h
     return np.asarray(pts).reshape(-1, 3)
+
+
+LAND_SMOOTH = 15  # samples (of 121 along the half): the landing line's moving average when land_dir is given (round 4)
+LAND_EASE_DEG = 30.0  # deg of land_dir over which the landing moves from the cloth walk to the body walk (round 4)
+
+
+def _land_over_body(P, G, length, body: Surf, under: Surf, off: float, reach: float = 0.03) -> np.ndarray:
+    """Where a fall laid `length` from the seam point P heading G lands on the cloth under it (round 4, land_dir): the
+    walk runs over the BODY (one smooth surface), then out along its normal onto the cloth (the nearest cloth facing
+    the same way, `off` out of it). Walking the cloth itself from an open neckline's seam slid down its rolled edge
+    to CF (Garrett k12a: the curl's faces point down; the points landed 8-11 mm apart)."""
+    Pb, _ = body.project(P)
+    ly = _lay(Pb[0], G, length, body, 0.0)
+    q = ly[-1] if len(ly) else Pb[0]
+    _, nb = body.project(q)
+    Q, N = under.project(q + reach * nb[0], k=60, facing=nb)
+    return Q[0] + N[0] * off
 
 
 def _poly_at(S, a):
@@ -425,6 +485,9 @@ def _sections(entry, base, turn):
         oo_ = st.get("open_off", OPEN_OFF if drape_state(entry) == "open" else None)
         neck = neck_stand(C, sC, s_cf, ss_, H_, body, gap=st.get("gap"), band=float(turn.get("band_mm", turn["w"] * 1000)) / 1000,
                           cb_x=float(base.get("cb_x", 0.0)), under=base.get("under"), open_off=oo_)
+        if st.get("lean") is not None:  # (round 4: the worn spec's measured lean where it gives one)
+            neck["lean_solved"] = neck["lean"]
+            neck["lean"] = stand_lean(st["lean"], ss_ / max(s_cf, 1e-9), neck["lean"])
     if neck is not None:
         lam_ = neck["lean"]
         a_ax = neck["axis"]
@@ -482,19 +545,57 @@ def _sections(entry, base, turn):
         k = 12
         return [(P[i][None] + np.linspace(0, H[i], k)[:, None] * D[i][None], None) for i in range(len(s))]
 
+    def landing(L, s):
+        """The fall's landing points at seam arcs s (the line its outer edge lies on)."""
+        P, T, D, O, H = stand_geom(s)
+        u = np.clip(s / s_cf, 0, 1)
+        land = _field(L.get("land", 0.01), u)
+        lay = turn["lay"]
+        # where it lands (round 4): "land_dir" (deg) turns the landing march from straight down the neck axis
+        # toward out of the neck (+): an OPEN collar's fall lies on the rolled-back fronts, its points out on
+        # the chest (concept_v8: the point 40-50 mm from its seam, mostly outward); absent: down the stand (-D)
+        G = -D
+        th = np.zeros(len(s))
+        if L.get("land_dir") is not None and neck is not None:
+            A_, Oh = _neck_frame(P, T, a_ax, neck["c0"])
+            th = np.radians(_field(L["land_dir"], u))
+            G = -np.cos(th)[:, None] * A_ + np.sin(th)[:, None] * Oh
+        out = np.zeros((len(s), 3))
+        for i in range(len(s)):
+            # `land` over the cloth under it from the neck seam, one lay out of it
+            ly = _lay(P[i], G[i], land[i], under, lay)
+            out[i] = ly[-1] if len(ly) else P[i] + turn["w"] * O[i]
+            if th[i] > 1e-3:
+                # (turned out of straight down: over the body, eased in over the first LAND_EASE_DEG; at CB the
+                # cloth walk stays: the body walk from the nape cost the CB crease 2.1 -> 2.7 % p99)
+                wb = min(float(th[i]) / math.radians(LAND_EASE_DEG), 1.0)
+                wb = wb * wb * (3 - 2 * wb)
+                out[i] = (1 - wb) * out[i] + wb * _land_over_body(P[i], G[i], land[i], body, under, lay)
+        return out
+
     def fall_sec(L):
+        line = None
+        if L.get("land_dir") is not None:
+            # (round 4: the landing LINE solved once on a fine arc grid and smoothed along it: a walk over a proud,
+            # rolled neckline jitters section to section, and a jittered edge is no flat piece)
+            sg = np.linspace(0, s_cf, 121)
+            lp = landing(L, sg)
+            h = LAND_SMOOTH // 2
+            pad = np.r_[lp[1:h + 1][::-1], lp, np.repeat(lp[-1:], h, 0)]
+            lp = np.stack([np.convolve(pad[:, d], np.ones(LAND_SMOOTH) / LAND_SMOOTH, mode="valid") for d in range(3)], 1)
+            line = (sg, lp)
+
         def f(s):
             P, T, D, O, H = stand_geom(s)
             u = np.clip(s / s_cf, 0, 1)
             rise = _field(L.get("rise", 0.0), u)
-            land = _field(L.get("land", 0.01), u)
-            w, lay = turn["w"], turn["lay"]
+            w = turn["w"]
+            LP = landing(L, s) if line is None else \
+                np.stack([np.interp(s, line[0], line[1][:, d]) for d in range(3)], 1)
             out = []
             for i in range(len(s)):
                 top = P[i] + H[i] * D[i]
-                # where the edge lands: `land` down the cloth under it from the neck seam, one lay out of it
-                ly = _lay(P[i], -D[i], land[i], under, lay)
-                land_pt = ly[-1] if len(ly) else P[i] + w * O[i]
+                land_pt = LP[i]
                 # the fall is a ruled surface from its roll line straight to its landing line (a cone where the body
                 # is round), and the collar's band above the stand is its MIRROR across the roll (a curved fold of one
                 # flat piece: both sides meet the crease at the same geodesic curvature, so the band flares out as
@@ -549,11 +650,26 @@ def build(entry: dict, base: dict, fabric: str | None = None, grid=GRID, rows: d
     for L in entry["layers"]:
         s_bot, s_top = _layer_domain(L, s_cf, sC[-1])
         uu = np.linspace(0, 1, nu)
-        if L.get("kind") == "stand" and s_bot > s_cf + 1e-6:  # a node at CF on the bottom edge (the notch)
-            uc = s_cf / s_bot
-            k = int(np.argmin(np.abs(uu - uc)))
-            k = min(max(k, 1), nu - 2)
-            uu = np.r_[np.linspace(0, uc, k + 1), np.linspace(uc, 1, nu - k)[1:]]
+        uj = None
+        if L.get("kind") == "stand":
+            # knots: a node at CF on the bottom edge (the notch), and (round 4) one on the top edge where the fall's
+            # sewn ends join it (end_in short of CF): the stand|fall seam runs between those notches
+            kn = []
+            if s_bot > s_cf + 1e-6:
+                kn.append(s_cf / s_bot)
+            ei = max((float(F_.get("end_in", 0.0)) for F_ in entry["layers"] if F_.get("kind") == "fall"), default=0.0)
+            if ei > 1e-6:
+                uj = 1.0 - ei / s_cf  # (top row: s = u s_cf)
+                kn.append(uj)
+            kn = sorted(k_ for k_ in kn if 1e-3 < k_ < 1 - 1e-3)
+            if kn:
+                b_ = [0.0] + kn + [1.0]
+                n_ = np.maximum(1, np.round(np.diff(b_) * (nu - 1)).astype(int))
+                while n_.sum() > nu - 1:
+                    n_[np.argmax(n_)] -= 1
+                while n_.sum() < nu - 1:
+                    n_[np.argmax(np.diff(b_) / n_)] += 1
+                uu = np.concatenate([np.linspace(b_[i], b_[i + 1], n_[i] + 1)[(1 if i else 0):] for i in range(len(n_))])
         f = secs[L["piece"]]
         # rows: a fall's are knotted at its crease (the roll): a row ON the crease, the band's rows below it
         probe = f(np.array([0.0, s_bot]))
@@ -582,7 +698,8 @@ def build(entry: dict, base: dict, fabric: str | None = None, grid=GRID, rows: d
                 Pq, _ = _poly_at(pp, a_)
                 X[i, j] = Pq[0]
                 A[i, j] = a_
-        out[L["piece"]] = {"X": X, "s": S, "a": A, "kind": L.get("kind"), "s_cf": s_cf, "u": uu, "v": vv, "crease_row": kc}
+        out[L["piece"]] = {"X": X, "s": S, "a": A, "kind": L.get("kind"), "s_cf": s_cf, "u": uu, "v": vv, "crease_row": kc,
+                           "join_col": None if uj is None else int(np.argmin(np.abs(uu - uj)))}
     return {"layers": out, "turn": turn, "s_cf": s_cf, "curve_len": float(sC[-1]), "neck": secs.get("_neck")}
 
 
@@ -763,6 +880,9 @@ def to_piece(name: str, lay: dict, U: np.ndarray, like: dict | None = None) -> d
         kcf = int(np.argmin(np.abs(uu * lay["s"][0, -1] - s_cf)))
         idx.update(rightBottomCf=kcf, rightBottomEdge=i_end_bot, rightTopCf=i_end_top, topMid=i_top_mid,
                    leftTopCf=i_l_end_top, leftBottomEdge=i_l_end_bot, leftBottomCf=len(P) - kcf)
+        jc = lay.get("join_col")
+        if jc is not None and 0 < jc < nu - 1:  # (round 4: where the fall's sewn ends join the top: JOIN_NAMES)
+            idx.update(rightTopJoin=i_end_top + (nu - 1 - jc), leftTopJoin=i_top_mid + jc)
     else:
         idx.update(rightBottomEdge=i_end_bot, rightTopEdge=i_end_top, topMid=i_top_mid, leftTopEdge=i_l_end_top,
                    leftBottomEdge=i_l_end_bot)
@@ -939,6 +1059,12 @@ def draft(entry: dict, base: dict, fabric: str | None = None, like: dict | None 
             if kcf < len(Pp) // 2 else None
     if st_ and fa_:
         tr["stand_top_flat_mm"] = rep["layers"][st_]["flat_top_mm"]
+        nm_ = pieces[st_]["names"]
+        if "leftTopJoin" in nm_:  # (round 4: the stand top between the notches the fall's sewn ends join)
+            from . import pattern
+            ij = pattern.arc_indices(pieces[st_], "leftTopJoin>topMid>rightTopJoin")
+            Pp = np.asarray(pieces[st_]["P"])[ij]
+            tr["stand_top_join_flat_mm"] = round(float(np.sum(np.linalg.norm(np.diff(Pp, axis=0), axis=1))) * 1000, 1)
         tr["fall_sewn_flat_mm"] = rep["layers"][fa_]["flat_bottom_mm"]
     rep["truing"] = tr
     if b.get("neck"):
@@ -1219,6 +1345,33 @@ def replace_pieces(out: dict, g: dict) -> tuple[dict, list]:
             out[nm] = pc
         folds += [dict(f) for f in e["out"].get("folds") or []]
     return out, folds
+
+
+def joined_seams(seams: list, g: dict, pieces: dict) -> list:
+    """The seams a drape entry's layers sew, measured between the notches that actually join (round 4): a fall whose
+    sewn ends stop `end_in` short of its stand's CF is sewn to the stand top between the stand's TopJoin notches,
+    not CF to CF (the design table's stand|collar seam ran the stand top to CF: -4.7 % ease on Garrett d3o was the
+    2 x 12 mm the collar never covers, not a drafting fault). A seam side "<stand>:leftTopCf>...>rightTopCf" paired
+    with the fall's sewn edge becomes "<stand>:leftTopJoin>...>rightTopJoin" when the stand piece has those names."""
+    out = []
+    for e in g.get("drape") or []:
+        st = next((L["piece"] for L in e.get("layers") or [] if L.get("kind") == "stand"), None)
+        fa = [L["piece"] for L in e.get("layers") or [] if L.get("kind") == "fall"]
+        nm = (pieces.get(st) or {}).get("names") or {}
+        if st and fa and "leftTopJoin" in nm and "rightTopJoin" in nm:
+            out.append((st, set(fa)))
+    if not out:
+        return seams
+    res = []
+    for s in seams:
+        s = list(s)
+        for st, fa in out:
+            for i in (0, 1):
+                a, b = s[i], s[1 - i]
+                if isinstance(a, str) and isinstance(b, str) and a.startswith(st + ":") and b.split(":")[0] in fa:
+                    s[i] = a.replace("leftTopCf", "leftTopJoin").replace("rightTopCf", "rightTopJoin")
+        res.append(s)
+    return res
 
 
 def draped_start(B: dict, M: dict) -> dict | None:

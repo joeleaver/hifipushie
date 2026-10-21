@@ -260,3 +260,42 @@ def test_pieces_place_on_their_own_drape():
         for k, w in want.items():
             got = drape.place_on_drape(P[[pc["names"][k]]], m)[0]
             assert np.linalg.norm(got - w) < 1e-3, (nm, k, got, w)
+
+
+def test_open_fall_lands_out_on_the_fronts_and_sews_between_its_join_notches():
+    """Round 4 (C133): an OPEN shirt collar (concept_v8) - the stand lies back at CF (a measured lean OUT), the fall's
+    ends land out on the fronts (land_dir), the collar is sewn to the stand top between the notches its sewn ends
+    actually join (end_in short of CF), not CF to CF: Garrett d3o's -4.7 % seam was the 2 x 12 mm the collar never
+    covers. Measured stations ({"at": [[u, v], ...]}) drive height / land / lean along the curve."""
+    body, under = _neck_body()
+    C = _neckline(straighten=0.5, drop=0.03)
+    base = {"curve": C, "body": body, "under": under, "s_cf": drape._arc(C)[-1]}
+    lay_st = {"piece": "stand", "kind": "stand", "height": {"at": [[0, 0.032], [1, 0.026]]}, "ext": 0.009, "gap": 0.002}
+    fall = {"piece": "collar", "kind": "fall", "rise": 0.008, "land": {"at": [[0, 0.012], [0.5, 0.015], [1, 0.04]]},
+            "end_in": 0.012, "point": 0.0}
+    e0 = {"name": "kat open", "worn": "open", "turn": TURN, "layers": [lay_st, fall]}
+    e1 = {"name": "kat open", "worn": "open", "turn": TURN, "layers": [
+        dict(lay_st, lean={"at": [[0, "neck"], [0.5, "neck"], [1, -30]]}),
+        dict(fall, land_dir={"at": [[0, 0], [0.5, 0], [1, 60]]})]}
+    d0, d1 = drape.draft(e0, base), drape.draft(e1, base)
+    # the measured lean is taken at the end, the neck solve kept at CB
+    n0, n1 = d0["report"]["stand_neck"], d1["report"]["stand_neck"]
+    assert abs(n1["lean_deg"]["100%"] + 30) < 0.5 and abs(n1["lean_deg"]["0%"] - n0["lean_deg"]["0%"]) < 0.5, (n0, n1)
+    # the points land further out (off the axis) when the landing turns out
+    tip = lambda d: d["build"]["layers"]["collar"]["X"][-1, -1]
+    assert np.hypot(*tip(d1)[:2]) > np.hypot(*tip(d0)[:2]) + 0.005, (tip(d0), tip(d1))
+    for d in (d0, d1):
+        assert max(v["strain_p99_pct"] for v in d["report"]["layers"].values()) < 3.0, d["report"]["layers"]
+    # the stand carries join notches; the stand|collar seam runs between them and its lengths agree (seam band)
+    st = d1["pieces"]["stand"]
+    assert {"leftTopJoin", "rightTopJoin"} <= set(st["names"]), st["names"]
+    tr = d1["report"]["truing"]
+    # (this sharply opened KAT neck: +1.9 %; Garrett d4o +1.2 %, inside the seams gate band -1.0..+1.5; CF to CF it was -4.7)
+    assert abs(tr["fall_sewn_flat_mm"] / tr["stand_top_join_flat_mm"] - 1) < 0.025, tr
+    assert tr["stand_top_flat_mm"] - tr["stand_top_join_flat_mm"] > 15, tr  # (CF to CF is 2 x ~12 mm longer)
+    g = {"drape": [e1]}
+    seams = [["collar:leftBottomEdge>bottomMid>rightBottomEdge", "stand:leftTopCf>topMid>rightTopCf"],
+             ["front.L:neck>cfNeck", "stand:leftBottomEdge>leftBottomCf"]]
+    out = drape.joined_seams(seams, g, d1["pieces"])
+    assert out[0] == ["collar:leftBottomEdge>bottomMid>rightBottomEdge", "stand:leftTopJoin>topMid>rightTopJoin"], out
+    assert out[1] == seams[1], out

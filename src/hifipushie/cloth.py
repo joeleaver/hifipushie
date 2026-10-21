@@ -436,6 +436,7 @@ def pieces(g: dict, meas_mm: dict) -> dict:
     keep = set(out)
     side_ok = lambda s: all(e.split(":")[0] in keep for e in ([s] if isinstance(s, str) else s))
     seams = [s for s in seams if side_ok(s[0]) and side_ok(s[1])]
+    seams = drape_mod.joined_seams(seams, g, out)  # (a draped fall sews to its stand between the join notches)
     stitches = [s for s in stitches if side_ok(s[0]) and side_ok(s[1])]
     # fold lines (cloth_guide "Fold lines"): the design table's own, then the garment's
     folds = [dict(f) for f in folds_tbl]
