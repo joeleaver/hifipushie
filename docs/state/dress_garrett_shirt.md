@@ -1,33 +1,35 @@
-# STATE: dress_garrett_shirt (Garrett's shirt on its own, then under the round-26 jacket) -- 2026-10-20, shirt round 4
+# STATE: dress_garrett_shirt (Garrett's shirt on its own, then under the round-26 jacket) -- 2026-10-20, shirt round 5
 
 QUESTION (Joe 2026-10-20): "will all the lessons we learned on the jacket carry over and it won't take 30 rounds?"
 Round 1: process carried, geometry didn't. Round 2: lessons made general (C103-C108). Round 3: base fit STUCK (C110).
-Round 4: neck split (C113, opt-in), first-button rule (C114), colour PASS. Start strain still 7.2 % (3 % allowed).
+Round 4: neck split (C113, opt-in), first-button rule (C114, off in v6). Round 5: CULL FIRST (C115), approach change.
 Jacket thread: docs/state/dress_garrett_fit.md (read-only here).
-STATE: the base fit is still the blocker. C113 (garment key neck_split: the neck pins split the neck as the shirt's own
-neckline does) moved the neck point 9.6 mm back: untucked start over-limit 1988 -> 1696, tucked 8.1 % -> 7.2 %; the yoke
-stays 31 % over (p99 28). On the parked jacket the same rule regressed the front-view hip 406 -> 360 (so: opt-in, off
-by default; jacket unchanged = r26g). Arrangement NOT run (refused at preflight). Shirt alone r4b: blind review FAIL
-(wf 6 MAJOR, collar 5 MAJOR: standing ring collar, no V, boxy torso, square shoulders, flared hem).
-NEXT: (1) the yoke strain is not the neck pin: 11 pin / slope levers move it 0-20 % (C110, C113). Next suspect: the
-stand ring pulling the yoke's neck edge up the neck (stand placed strained, relaxed in relax1 by stretching the yoke)
-and the HPS landmark itself (tailor "widest", 2 cm up the neck; HP_HPS research is parked: a coordinator call);
-(2) the under front's open-neck roll drafted from the V so a high first button can coexist with it (C114 CONFLICT),
-then put Garrett's spacing back (first 28 mm read 64 below HPS on the form: re-target from the form, ~47 mm);
-(3) arrange the collar once the start is < 3 %; (4) dress under the jacket and read the cuffs (C85) after that.
+STATE: step 1 BUILT (general, KAT, C115): cloth_release.from_form(cover=<over garment as worn>, res=) arranges only the
+SEEN part (cloth_layers.seen_part: visibility rule = the end state's cut + 30 mm, or the round-24 margin rule; made
+pieces whole when in view; below the tuck line dropped; cut edge PINNED, job "cutIdx"). Step 2 REFUSED at the
+unloosened preflight: kept-start over-limit 5.85 % (margin) / 5.76 % (visibility) vs 3 % (whole shirt 6.6 %). The
+over cloth is the yoke + front tops 0-20 mm below HPS, |x| 55-140, AT the visible neckline: culling can't remove it.
+Stop-loss hit (2 levers). Steps 3 not run (no spread). Step 4: dressed renders of the UNARRANGED v6 shirt under r26k:
+NOT forwardable: large shirt patches poke through the jacket chest / shoulders (r26k was fitted over an older shirt;
+the v6 shirt stands proud of it there, > PIERCE_CULL 15 mm), collar standing closed. Blind reviews not run on them.
+NEXT: (1) the neck/shoulder start strain is the fit's (C110 relax1 yoke; C113): the remaining fault, not culling;
+coordinator call on HPS landmark research (parked) vs a seen-part relax on the form (cut edge pinned) as the fix;
+(2) refit the jacket over THIS shirt (or a layer-order pass) before any dressed render: the poke patches;
+(3) then arrange (seen5.py, pins below), re-read first button (step 3), dress + review.
 
-## Big reads (concept | r1 f1b | r2 f2b | r3 f3a | r4 r4b)
-- V bottom below HPS: 60 | ~70-80 | 74 | 74 | 62.4 PASS. Front closed x5 PASS. Collar button: open PASS.
-- Collar points apart: 147 | 53 | 57 | 57 | 45 FAIL; below HPS 50-61 | 78 | 84.5 | 84.5 | 82 FAIL; spread | closed x4.
-- First fastened button: 83 | 124 | 123 | 123 | 64 FAIL (rule 28 mm below cfNeck flat; now off, see NEXT 2).
-- Tuck stand-off: tucked | 12.6 | 6.0 | 6.0 | 6.0 PASS.
-- Colour lit: 177/174/171 | - | 178/174/171 (lapel box) | 192/188/185 | 177.5/174.3/171.2 PASS (#bdb8b4 -> #aeaaa6).
-- Strain p99 drawn: - | 11.3 | 17.2 | 13.3 | 13.4 FAIL (yoke 27.8). Start over-limit: - | - | 10.1 % | 8.1 % | 7.2 %.
+## Big reads (concept | r1 f1b | r2 f2b | r3 f3a | r4 r4b | r5 d5 (v6 fit, unarranged))
+- V bottom below HPS: 60 | ~70-80 | 74 | 74 | 62.4 PASS | not re-read (v6 = r4b's neck).
+- Collar points apart: 147 | 53 | 57 | 57 | 45 | ~45 FAIL (not arranged); below HPS 50-61 | 78 | 84.5 | 84.5 | 82 | ~82.
+- First fastened button: 83 | 124 | 123 | 123 | 64 | v6 rule off (Simon even split, ~123) FAIL.
+- Start over-limit (preflight 3 %): - | - | 10.1 % | 8.1 % | 7.2 % | seen part 5.85 / 5.76 % FAIL.
+- Cuff past jacket sleeve (17-23): - | - | - | - | - | 13.1 p50 (5.5-25) FAIL, both arms.
+- Collar above jacket collar (11-23): CB 7.3, side 8.1 FAIL (unarranged).
 
-## Spec sh_garrett: v4 spacing, v5 neck_split + colour, v6 spacing off (r4b = v5). Tests: 20 clothing files 265 passed, 2 skipped, 3 xfailed, exit 0.
+## Spec sh_garrett v6 (spacing off; v5 no longer builds: "fold open neck.R ... 32 mm inside", round 4's roll revert).
+Tests: 21 clothing files 301 passed, 2 skipped, 3 xfailed, exit 0.
 
-## Commands ($S = /mnt/data/hifipushie/dress_garrett/shirt_round4; run.sh runs THIS worktree's code)
-where.py <tag> [untuck=1] (prints the C114 gate rows); trace.py / trace_pins.py (HPSW SHW HPS_BACK_MM HPS_DOWN_MM
-MOD_OVR) bisect; seams.py / neck.py / buttons.py read where_<tag>.pkl; probe_split.py <pkl> [mesh key];
-fit4.py <tag>; RUNNER=bin/capped ./run.sh render5.py <asm> <tag> [crops]; rev4.sh <tag> (one view per review).
-Jacket regression: jfit.sh <tag> [K=V] (r26g recipe -> asm_<tag>.pkl), jcmp.sh <tags> (sideline + gorge + lapel).
+## Commands ($S = /mnt/data/hifipushie/dress_garrett/shirt_round5; run.sh runs THIS worktree's code)
+VERSION=6 [HOLD=pieces] RUNNER=bin/capped ./run.sh seen5.py <tag> [submit] (fit cached form_v6.pkl -> seen part ->
+pins: collar points 147 apart 55 below HPS, band ends + cfNeck out 20 mm -> job + preflight; submit runs local ZOZO);
+probe_pre.py <tag> (over faces per piece, self pairs); RULE=margin|visibility ./run.sh dress5.py <tag> (asm + cuff /
+collar measures); RUNNER=bin/capped ./run.sh render_d5.py $S/asm_<tag>.pkl <tag> wholefront,upper_front,collar,cuff.

@@ -9222,3 +9222,14 @@ turns them into general code first (garment_reads.py), then uses them on the shi
   177.2/173.8/170.8 PASS. Step 5: shirt alone r4b check/{wholefront,collar,placket,cuff}_r4b.png. Reviews one view each
   (rev4.sh): wf FAIL 6 MAJOR (collar type, no V, collar off the neck, boxy torso, square shoulders, flared hem); collar
   FAIL 5 MAJOR (closed neck, standing ring, points, spread, too high).
+
+## shirt round 5 (2026-10-20; $S = /mnt/data/hifipushie/dress_garrett/shirt_round5) -- cull first (C115)
+- Approach (coordinator, Joe rule "triangles removed where invisible anyway"): arrange only the shirt seen under the open r26k jacket.
+- Built: cloth_layers.subset_mesh / seen_part; cloth_release.seen_res, from_form(cover=, res=), job(held) -> cutIdx; cloth_zozo pins cutIdx. KAT test_seen_part_cuts_the_hidden_cloth_and_its_strain_out_of_the_start.
+- Carrying the cut edge (carryIdx) was wrong: carried corners rest as placed, half-carried triangles read up to 26x over (1185 faces, s5a). Pinned instead.
+- `hidden` read both cuffs as covered (jacket sleeve hem is a turned edge, no free border; cuff 13 mm past): made pieces now kept whole when >= 5 % in view of the game ring (cuffs 0.87).
+- Cuffs + sleeve stubs held (HOLD) for the arrangement: self pairs in the cuff laps (0.002 mm) otherwise.
+- Preflight (unchanged): margin rule kept 12044 / 29665 faces, over 704 = 5.85 %; visibility rule kept 19672, over 1133 = 5.76 % (s5c). Over: yoke 503 (0-61 mm below HPS), fronts ~310 (5-20 mm below HPS, |x| 55-140), back 316 (visibility keeps it from above). Stand self pair 0.02 mm remains. Arrangement refused; stop-loss.
+- v5 spec no longer builds on main (open-neck roll 32 mm inside the edge after round 4 restored the roll lines): used v6.
+- Dressed (unarranged v6 under r26k): cuff past sleeve p50 13.1 both arms (17-23 FAIL); collar above jacket collar CB 7.3 / side 8.1 (11-23 FAIL). Renders check/*_d5a (visibility) and *_d5b (margin): large shirt patches through the jacket chest and shoulders in both (the jacket was fitted over an older shirt): not forwarded, no blind review.
+- Tests: 21 files 301 passed, 2 skipped, 3 xfailed, exit 0 (tests_r5.log).
