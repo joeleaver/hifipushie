@@ -47,7 +47,6 @@ the band turning with it; band ends lean apart; leaves stand off the neck). Joe:
 - Mirror rule (every bug of the day): take a SIDE from a landmark well off CF (hinge, neck point), never from a point at
   CF, where the band's ends cross; check every new rotation's sign on one vertex before a run.
 - Every look: sym.py (mirror per piece), faults.py, csec.py / cbprof.py for the collar; reference beside the result.
-
 ## Dead ends (one line each)
 - wrap.py home-made settle (crumples); Blender cloth b1-b10 (crumples once the seam springs pull).
 - Rigid turns of the band fronts (geo.py: 46-80 % stretch); vertex ARAP with a closed-fit rest (can't open the ring).
