@@ -46,7 +46,17 @@ Spike only: no garment rounds, no agents grinding for an hour.
   outside the band. 0.0 % strain, reads as a clean closed turned-down collar standing off the neck. Faults: seam gap
   up to 34 mm at CF (the band's top dips toward CF; the collar's sewn edge is 426 mm vs the band's top 445 mm), not open.
 
-## NEXT: regroup with Joe (sim parked)
+- geo.py (no sim, `geo.py '{"tag":..,"spread":deg,"drop":deg,"ramp":m}'`, ~15 s with render): bsim's isometric wrap
+  (remesh now keeps every outline point: band top 441 = collar sewn 441 mm) + the collar shifted onto the band's top +
+  OPEN = each front turned about Simon's own hinge marks (~65 mm back from CF). g1 closed: band 0.0 % / collar 2.8 %,
+  seam 7.8 mm p99: clean turned-down collar. spread alone (g2, about the band's ruling) keeps the band at 1.2 % but the
+  collar at 23 % (its cone's rulings don't line up with the band's hinge); drop (g3-g5) stretches 46-80 %. g3
+  (spread 40, drop 30): points 120 apart (147), 63 below HPS (50-61), V 35 (~60); reads open-ish, twists, lies low.
+  Lesson: moving stiff pieces by hand without stretch is the hard part (Joe's question); our strain counts SHEAR as
+  stretch, but woven cloth shears freely on the bias (tailors shape collars with the iron) -> measure warp / weft
+  strain, not edge strain.
+
+## NEXT: regroup with Joe (sim parked; Joe asked how real artists solve the no-stretch move)
 Proposal on the table: place the pieces geometrically, not dynamically: each piece as the developable surface its own
 flat shape makes (cylinder / cone as in s1), then a small static fit (keep every edge length, close the seam, keep off
 the body, bend only at the fold) for the seam gap; OPEN = the band's front ends turned down the neckline V and the
