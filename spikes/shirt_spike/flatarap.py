@@ -239,18 +239,27 @@ pull_info = {}
 # pulled earlier are HELD where they ended (Joe: move these apart a little, then push the points a little more).
 seq = A.get("pulls") or ([A["pull"]] if A.get("pull") else [])
 done_h = {}
-def handle_set(h):
-    if h == "points": return {s_: inv[P[f"collar:{s_}TopEdge"]] for s_ in ("left", "right")}
+def handle_set(h, patch=0.0):
+    """handles -> {key: welded vertex ids}. patch (m, pattern distance): grab the collar point WITH the cloth within
+    `patch` of it as one rigid piece (a hand grabs an area; one vertex dragged pinches the tip)."""
+    if h == "points":
+        out = {}
+        for s_ in ("left", "right"):
+            o = P[f"collar:{s_}TopEdge"]; k = pid[o]
+            vv = np.where((pid == k) & (np.linalg.norm(uv - uv[o], axis=1) <= patch))[0] if patch > 0 else np.array([o])
+            out[s_] = np.unique(inv[vv])
+        return out
     if h == "corners": return {s_: inv[P[f"collar:{s_}BottomEdge"]] for s_ in ("left", "right")}
     return {nmk: inv[P[nmk]] for nmk in h}
 for k_, PL in enumerate(seq):
-    H = handle_set(PL.get("handles", "points"))
+    H = handle_set(PL.get("handles", "points"), PL.get("patch", 0.0))
+    H = {key: np.atleast_1d(v) for key, v in H.items()}
     hold = hW | np.isin(np.arange(n), list(bnd) + list(done_h.values()))
     s0 = stretch(Y); dirs = {}
     for key, v in H.items():
-        _, jj = bt.query(Y[v])
+        _, jj = bt.query(Y[v].mean(0))
         side_lm = P.get(f"collar:{key}TopHinge") if key in ("left", "right") else None
-        sg = np.sign(W0[inv[side_lm], 0]) if side_lm is not None else np.sign(W0[v, 0])
+        sg = np.sign(W0[inv[side_lm], 0]) if side_lm is not None else np.sign(W0[v, 0].mean())
         d_ = PL.get("side", 1.0) * np.r_[sg, 0, 0] + PL.get("out", 0.0) * vn[jj] + PL.get("up", 0.0) * np.r_[0, 0, 1]
         dirs[key] = d_ / np.linalg.norm(d_)
     pos = {key: Y[v].copy() for key, v in H.items()}; moved = 0.0; good_Y = Y.copy()
@@ -262,7 +271,8 @@ for k_, PL in enumerate(seq):
         if st_ > s0 + PL.get("tol", 0.01): moved -= PL.get("step", 0.003); break
         good_Y = Yt
     Y = good_Y
-    for key, v in H.items(): done_h[f"{k_}:{key}"] = v
+    for key, v in H.items():
+        for i_, vv in enumerate(np.atleast_1d(v)): done_h[f"{k_}:{key}:{i_}"] = vv
     pull_info[k_] = {"handles": PL.get("handles", "points"), "moved_mm": round(moved * 1000, 1), "stretch_p99": [round(s0 * 100, 2), round(stretch(Y) * 100, 2)]}
     print("pull", k_, pull_info[k_])
 Y = solve(Y, hW | np.isin(np.arange(n), list(pts.values()) + list(bnd) + list(done_h.values())), 10)
