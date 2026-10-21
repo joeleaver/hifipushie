@@ -9479,3 +9479,15 @@ along the skin's offset onto the chest); reach to k12a's open sweep 10.8 / 27.7 
 (front.L 0.28 m triangle). Drape rendered on c0: check/collar_d1.png; blind review FAIL (mandarin funnel, no fall,
 closed, CF spikes). Stop-loss reached on the stand; next: measure the neckline's stand-off flat (M12), build the stand
 on a neck section. $S = /mnt/data/hifipushie/drape_band1.
+
+## drape band round 2 (2026-10-21)
+Steps 1-2. M12 measured flat ($S = /mnt/data/hifipushie/drape_band2, m1-m5.py): closed c0's +X half is the over front,
+its neck edge held +5.6 % (133.0 vs 125.9 flat) -> the 4 % closed/open gap (231.6 vs 222.1); the under front keeps its
+length (-1 %). r1's flare: the stand top's nearest skin at the front was the jaw's underside (n_z -0.5..-0.97). Neck axis
+= the neckline plane's normal, 25.3 deg fwd; neck girth perpendicular to it 383-406 mm; chin underside ~6 mm above the
+CF stand top. Neckline corners on the form: CB V ~50 deg, yoke|front 36 deg. Built: stand on the neck (neck_stand, gap
+off the neck at the top), trued neckline (true_curve), curve_side, develop pull/rounds made module-read (were bound
+at def time: a sweep moved nothing). Levers: lean smoothing 5/15/31/61 (stand 0.47 -> 0.17, collar ~flat: weak);
+develop rounds 0/4/12 (4.49/3.33/3.24 pre-truing); truing (collar 3.33 -> 2.46, max 12.4 -> 5.3: the big one); pull
+0.05/0.02/0.005 (2.23/2.15/2.04); gap 5/3/2 mm (top +3.6 / -1.8 / -7.0 vs neck edge). d2c (v12): stand 0.16 %, collar
+1.98 % PASS, top 448.8 < 455.8; reach open stand 2.6 ok / collar 11.7 FAIL. KAT neck+chest+chin passes (fall 2.4 %).

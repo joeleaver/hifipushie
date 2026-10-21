@@ -57,7 +57,8 @@ JACKET_DEFAULTS = {  # tailoring_principles R16-R18: stand ~ 2.5-3 cm, fall 1 cm
     "source": "tailoring_principles R16-R18 (stand 25-30 mm, fall = stand + ~10 mm + turn of cloth, outer edge on "
               "the landing path)"}
 STAND_TOP_SHORT = 0.004  # m, whole band: its top edge shorter than its neck edge (FreeSewing Simon's band, Garrett r12)
-LEAN_SOLVE = False  # DEAD LEVER (drape band r1, Garrett d2): one lean solved to the top length + a skin floor: stand p99 2.6 -> 13 %, top still 507 vs 475
+STAND_MODE = "neck"  # round 2: the stand on the NECK (neck_stand). "skin": r1's (flares); "lean": r1 lever 2 (DEAD:
+# one lean solved to the top length + a skin floor: stand p99 2.6 -> 13 %, top still 507 vs 475)
 REACH_LIMIT = 0.04  # edge strain p99 the same flat piece may take to reach another worn state (a woven shirting's
 # working stretch with interfacing: the fit gate's strain limit band, cloth.strain_limit_of ~3-5 %)
 GRID = (36, 24)  # (along the half, across) grid nodes per layer
@@ -156,6 +157,7 @@ def _field(v, u):
 def worn_key(entry: dict) -> str:
     """The worn spec's key: what the flat pieces were generated from (the gate compares it)."""
     k = {kk: entry.get(kk) for kk in ("along", "state", "layers", "turn", "base")}
+    k["stand_mode"] = entry.get("stand_mode") or STAND_MODE  # (round 2: the stand's build changed: r1 pieces are stale)
     return hashlib.sha1(json.dumps(k, sort_keys=True, default=str).encode()).hexdigest()[:16]
 
 
@@ -218,6 +220,117 @@ def _stand_dirs(P, T, U, H, body: Surf, floor: float = 0.002):
     return D, O
 
 
+def neck_axis(C, cb_x: float = 0.0):
+    """The neck's axis at its base: the normal of the full neckline loop's best-fit plane (the half mirrored about CB),
+    pointing up; -> (axis, centroid). Garrett c0: 25.3 deg forward, the same as the throat / nape profile's lean."""
+    C = np.asarray(C, float)
+    full = np.r_[C, (C * [-1, 1, 1] + [2 * cb_x, 0, 0])[::-1]]
+    c0 = full.mean(0)
+    _, _, Vt = np.linalg.svd(full - c0)
+    a = Vt[2] * (np.sign(Vt[2][2]) or 1.0)
+    return a, c0
+
+
+def _neck_frame(P, T, a, c0):
+    """At seam points P (tangent T): the neck axis made perpendicular to the seam (A) and the outward direction off the
+    axis in the stand's plane (Oh)."""
+    A = a[None] - np.sum(T * a[None], 1)[:, None] * T
+    A /= np.linalg.norm(A, axis=1, keepdims=True) + 1e-15
+    Oh = np.cross(T, A)
+    rel = P - c0[None]
+    rel -= (rel @ a)[:, None] * a[None]
+    Oh *= np.sign(np.sum(Oh * rel, 1) + 1e-15)[:, None]
+    return A, Oh
+
+
+def _ray_hits(O, D, V, F, N, facing: float = 0.0):
+    """Distance along each ray (O + t D, t > 0) to the first triangle FACING it (D . N < -facing); inf when none."""
+    A, B, C = V[F[:, 0]], V[F[:, 1]], V[F[:, 2]]
+    e1, e2 = B - A, C - A
+    out = np.full(len(O), np.inf)
+    for i in range(len(O)):
+        d = D[i]
+        front = (N @ d) < -facing
+        if not front.any():
+            continue
+        p = np.cross(d[None], e2[front])
+        det = np.sum(e1[front] * p, 1)
+        ok = np.abs(det) > 1e-14
+        inv = np.where(ok, 1 / np.where(ok, det, 1), 0)
+        tv = O[i][None] - A[front]
+        u = np.sum(tv * p, 1) * inv
+        q = np.cross(tv, e1[front])
+        v = (q @ d) * inv
+        t = np.sum(e2[front] * q, 1) * inv
+        hit = ok & (u >= 0) & (v >= 0) & (u + v <= 1) & (t > 0)
+        if hit.any():
+            out[i] = float(t[hit].min())
+    return out
+
+
+NECK_FACING = 0.3  # the skin a top's ray counts must face it (D . N < -0.3): the jaw's underside, grazed by a ray in
+# toward the axis, is not the neck (Garrett d1's flare); the nape's hollow (normals back and down) still is
+NECK_BACK = 0.012  # m: the ray starts this far outside the top, so a top inside the skin reads negative
+NECK_SMOOTH = 15  # samples (of 61 along the half): the lean's moving average (r2: 5 -> 15: stand p99 0.47 -> 0.17 %, collar 2.46 -> 2.23; an interfaced band does not follow every bump of the neck)
+
+
+def neck_stand(C, sC, s_cf, ss, H, body: "Surf", gap=None, band: float = 0.0015, cb_x: float = 0.0,
+               lean_lo: float = -0.35, lean_hi: float = 0.7, smooth: int | None = None) -> dict:
+    """The stand's lean in toward the neck per seam sample (ss: arc from CB, H: height there): the top at H along the
+    neck axis (made perpendicular to the seam), leaned in by lambda so its inner face is `gap` off the NECK, measured by a
+    ray in toward the axis against neck faces only. gap None: the seam's own stand-off (a band parallel to the neck).
+    -> {"axis", "c0", "lean" (rad, smoothed), "clear_mm" (achieved top clearance), "seam_off_mm", "top_body_mm"}."""
+    a, c0 = neck_axis(C, cb_x)
+    P = _curve_at(C, sC, ss)
+    T = _curve_at(C, sC, ss + 0.004) - _curve_at(C, sC, ss - 0.004)
+    T /= np.linalg.norm(T, axis=1, keepdims=True) + 1e-15
+    A, Oh = _neck_frame(P, T, a, c0)
+    hmax = float(np.max(H)) + 0.02
+    ax_h = (body.cen - c0) @ a
+    rel = body.cen - c0 - ax_h[:, None] * a
+    pick = (ax_h > float(((P - c0) @ a).min()) - 0.02) & \
+           (ax_h < float(((P - c0) @ a).max()) + hmax) & (np.linalg.norm(rel, axis=1) < 0.15)
+    Fn, Nn = body.F[pick], body.N[pick]
+    # the seam's own stand-off from the neck (same ray, from the seam)
+    seam_off = _ray_hits(P + NECK_BACK * Oh, -Oh, body.V, Fn, Nn, NECK_FACING) - NECK_BACK
+    want = np.where(np.isfinite(seam_off), seam_off, np.nan) if gap is None else \
+        np.full(len(ss), 0.0) + _field(gap, ss / max(s_cf, 1e-9)) + 0.5 * band
+
+    def clear(lam):
+        # (signed: the ray starts NECK_BACK outside the top; no hit = inside the skin (-1) or no neck in reach (inf))
+        D = np.cos(lam)[:, None] * A - np.sin(lam)[:, None] * Oh
+        top = P + H[:, None] * D
+        c = _ray_hits(top + NECK_BACK * Oh, -Oh, body.V, Fn, Nn, NECK_FACING) - NECK_BACK
+        miss = ~np.isfinite(c)
+        if miss.any():
+            sd, _, _ = body.signed(top[miss])
+            c[miss] = np.where(sd < 0, -1.0, np.inf)
+        return c
+    lo, hi = np.full(len(ss), lean_lo), np.full(len(ss), lean_hi)
+    for _ in range(22):
+        m = 0.5 * (lo + hi)
+        c = clear(m)
+        far = c > np.nan_to_num(want, nan=-1.0)  # (no neck in reach, or still too far: lean further in)
+        lo, hi = np.where(far, m, lo), np.where(far, hi, m)
+    lam = 0.5 * (lo + hi)
+    nohit = ~np.isfinite(clear(lam)) | np.isnan(want)
+    if nohit.all():
+        lam[:] = 0.0
+    elif nohit.any():
+        lam[nohit] = np.interp(ss[nohit], ss[~nohit], lam[~nohit])
+    smooth = NECK_SMOOTH if smooth is None else smooth
+    if smooth > 1:
+        k = np.ones(smooth) / smooth
+        h = smooth // 2  # (CB: mirrored, the band is cut on the fold, so its lean is even about CB; CF: held)
+        lam = np.convolve(np.r_[lam[1:h + 1][::-1], lam, np.full(h, lam[-1])], k, mode="valid")
+    D = np.cos(lam)[:, None] * A - np.sin(lam)[:, None] * Oh
+    top = P + H[:, None] * D
+    sd, _, _ = body.signed(top)
+    return {"axis": a, "c0": c0, "lean": lam, "clear_mm": np.round(clear(lam) * 1000, 1), "seam_off_mm":
+            np.round(seam_off * 1000, 1), "top_body_mm": np.round(sd * 1000, 1), "n_faces": int(pick.sum()),
+            "tilt_deg": round(float(np.degrees(np.arctan2(-a[1], a[2]))), 1)}
+
+
 def _lay(start, dir0, length, under: Surf, off: float, step: float = LAY_STEP, n_out: int = 2):
     """March `length` over the under surface (at `off` out of it) from `start`, heading `dir0` and keeping the
     heading in the surface's tangent plane (a geodesic-ish lie): -> (k, 3) points (start excluded)."""
@@ -261,39 +374,68 @@ def _sections(entry, base, turn):
     layers = entry["layers"]
     st = next((L for L in layers if L.get("kind") == "stand"), None)
 
-    # the stand's lean: one angle in from upright (toward the neck), solved so its top edge is `top_short` shorter
-    # than its neck edge (a band's top is cut shorter: it closes on the narrower neck above; Simon r12: 444.9 -> 441.2).
-    # Following the nearest skin it flared onto the chest at the front (Garrett d1: top 531 vs neck 474)
-    ss_ = np.linspace(0, s_cf, 60)
-    P_, T_, U_ = _frames(C, sC, ss_, body)
-    O_ = np.cross(T_, U_)
-    _, Nb_ = body.project(P_ + 0.01 * U_)
-    O_ *= np.sign(np.sum(O_ * Nb_, 1) + 1e-15)[:, None]
-    H_ = _field(st.get("height", 0.0), ss_ / s_cf) if st else np.zeros(len(ss_))
+    # THE STAND ON THE NECK (drape band round 2, C131): a stand is a near-vertical band LEANING IN toward the neck: it
+    # rises from the seam along the neck's axis (the neckline plane's normal: the neck base) and its top sits `gap` off
+    # the NECK (the band's inner face; ray in toward the axis, neck faces only), so its top edge comes out shorter than
+    # its neck edge wherever the seam stands further off. Following the nearest skin it flared: at Garrett's front the
+    # nearest skin to the top was the jaw's underside (normals pointing down), not the neck (d1: top 531 vs neck 474).
+    stand_mode = str(entry.get("stand_mode") or STAND_MODE)
+    ss_ = np.linspace(0, s_cf, 61)
+    H_ = _field(st.get("height", 0.0), ss_ / max(s_cf, 1e-9)) if st else np.zeros(len(ss_))
+    neck = None
+    if st and stand_mode == "neck" and np.max(H_) > 0 and base.get("lean") is not None:
+        # (another worn state of the same band, e.g. open: the closed drape's lean, not a new gap solve: an open
+        # neckline's fronts swing off the neck and the band goes with them)
+        a_, c0_ = neck_axis(C, float(base.get("cb_x", 0.0)))
+        lq = np.asarray(base["lean"], float)
+        neck = {"axis": a_, "c0": c0_, "lean": np.interp(ss_ / max(s_cf, 1e-9), np.linspace(0, 1, len(lq)), lq),
+                "clear_mm": np.full(len(ss_), np.nan), "seam_off_mm": np.full(len(ss_), np.nan),
+                "top_body_mm": np.full(len(ss_), np.nan), "n_faces": 0,
+                "tilt_deg": round(float(np.degrees(np.arctan2(-a_[1], a_[2]))), 1)}
+    elif st and stand_mode == "neck" and np.max(H_) > 0:
+        neck = neck_stand(C, sC, s_cf, ss_, H_, body, gap=st.get("gap"), band=float(turn.get("band_mm", turn["w"] * 1000)) / 1000,
+                          cb_x=float(base.get("cb_x", 0.0)))
+    if neck is not None:
+        lam_ = neck["lean"]
+        a_ax = neck["axis"]
+    # (the old modes: "skin" = the seam's stand-off along the nearest skin (r1, flares); "lean" = one lean solved to a
+    # top length (r1 lever 2, dead: p99 13 %))
     want = (1.0 - float((st or {}).get("top_short", STAND_TOP_SHORT)) / max(2 * s_cf, 1e-9))
+    lean = 0.0
+    if stand_mode == "lean" and st and np.max(H_) > 0:
+        P_, T_, U_ = _frames(C, sC, ss_, body)
+        O_ = np.cross(T_, U_)
+        _, Nb_ = body.project(P_ + 0.01 * U_)
+        O_ *= np.sign(np.sum(O_ * Nb_, 1) + 1e-15)[:, None]
 
-    def top_ratio(lean):
-        D_ = np.cos(lean) * U_ - np.sin(lean) * O_
-        top = P_ + H_[:, None] * D_
-        return float(np.sum(np.linalg.norm(np.diff(top, axis=0), axis=1)) / max(s_cf, 1e-9))
-    lo, hi = -0.6, 0.6
-    for _ in range(40):
-        m_ = 0.5 * (lo + hi)
-        lo, hi = (m_, hi) if top_ratio(m_) > want else (lo, m_)
-    lean = 0.5 * (lo + hi) if st and np.max(H_) > 0 else 0.0
+        def top_ratio(lean):
+            D_ = np.cos(lean) * U_ - np.sin(lean) * O_
+            top = P_ + H_[:, None] * D_
+            return float(np.sum(np.linalg.norm(np.diff(top, axis=0), axis=1)) / max(s_cf, 1e-9))
+        lo, hi = -0.6, 0.6
+        for _ in range(40):
+            m_ = 0.5 * (lo + hi)
+            lo, hi = (m_, hi) if top_ratio(m_) > want else (lo, m_)
+        lean = 0.5 * (lo + hi)
 
     def stand_geom(s):
         u = np.clip(s / s_cf, 0, 1)
         H = _field(st.get("height", 0.0), u) if st else np.zeros(len(s))
         P, T, U = _frames(C, sC, s, body)
-        if not LEAN_SOLVE:  # (default: the stand at the seam's own stand-off along the skin)
+        if neck is not None:
+            A_, Oh = _neck_frame(P, T, a_ax, neck["c0"])
+            lam = np.interp(s, ss_, lam_)  # (constant past either end: the band's extension past CF)
+            D = np.cos(lam)[:, None] * A_ - np.sin(lam)[:, None] * Oh
+            O = np.cross(T, D)
+            O *= np.sign(np.sum(O * Oh, 1) + 1e-15)[:, None]
+            return P, T, D, O, H
+        if stand_mode != "lean":  # ("skin": the stand at the seam's own stand-off along the skin)
             D, O = _stand_dirs(P, T, U, H, body)
             return P, T, D, O, H
         O = np.cross(T, U)
         _, Nb = body.project(P + 0.01 * U)
         O *= np.sign(np.sum(O * Nb, 1) + 1e-15)[:, None]
         D = np.cos(lean) * U - np.sin(lean) * O
-        # (never into the skin: the top held a floor off it)
         top = P + H[:, None] * D
         sd, Q, N = body.signed(top)
         low = sd < 0.002
@@ -346,7 +488,17 @@ def _sections(entry, base, turn):
             return out
         return f
 
-    return {L["piece"]: (stand_sec if L.get("kind") == "stand" else fall_sec(L)) for L in layers}, sC, s_cf
+    secs = {L["piece"]: (stand_sec if L.get("kind") == "stand" else fall_sec(L)) for L in layers}
+    if neck is not None:
+        secs["_neck"] = {"tilt_deg": neck["tilt_deg"], "n_faces": neck["n_faces"],
+                         "lean_deg": {f"{int(100 * u)}%": round(float(np.degrees(np.interp(u * s_cf, ss_, neck["lean"]))), 1)
+                                      for u in (0, 0.25, 0.5, 0.75, 1.0)},
+                         "seam_off_mm": {f"{int(100 * u)}%": float(np.interp(u * s_cf, ss_, neck["seam_off_mm"]))
+                                         for u in (0, 0.25, 0.5, 0.75, 1.0)},
+                         "top_clear_mm": {f"{int(100 * u)}%": float(np.interp(u * s_cf, ss_, neck["clear_mm"]))
+                                          for u in (0, 0.25, 0.5, 0.75, 1.0)},
+                         "top_body_min_mm": float(np.min(neck["top_body_mm"])), "lean": neck["lean"].tolist()}
+    return secs, sC, s_cf
 
 
 def _layer_domain(L, s_cf, s_end):
@@ -401,7 +553,7 @@ def build(entry: dict, base: dict, fabric: str | None = None, grid=GRID, rows: d
                 X[i, j] = Pq[0]
                 A[i, j] = a_
         out[L["piece"]] = {"X": X, "s": S, "a": A, "kind": L.get("kind"), "s_cf": s_cf, "u": uu, "v": vv, "crease_row": kc}
-    return {"layers": out, "turn": turn, "s_cf": s_cf, "curve_len": float(sC[-1])}
+    return {"layers": out, "turn": turn, "s_cf": s_cf, "curve_len": float(sC[-1]), "neck": secs.get("_neck")}
 
 
 # ---------------------------------------------------------------- flattening
@@ -599,12 +751,12 @@ def to_piece(name: str, lay: dict, U: np.ndarray, like: dict | None = None) -> d
     return pc
 
 
-DEVELOP_ROUNDS = 4  # flatten <-> lift rounds: the worn spec made developable (the cloth's own shape near it)
-DEVELOP_PULL = 0.05  # per relax step: the pull back to the worn spec's surface
+DEVELOP_ROUNDS = 12  # (r2: 4 -> 12) flatten <-> lift rounds: the worn spec made developable (the cloth's own shape near it)
+DEVELOP_PULL = 0.005  # per relax step: the pull back to the worn spec's surface (r2: 0.05 -> 0.005 + 12 rounds: Garrett collar p99 2.23 -> ~2.0 %)
 DEVELOP_STEPS = 150
 
 
-def develop(lay: dict, under: "Surf | None", lay_off: float, rounds: int = DEVELOP_ROUNDS) -> dict:
+def develop(lay: dict, under: "Surf | None", lay_off: float, rounds: int | None = None) -> dict:
     """The worn spec's surface made a flat piece's: a ruled fall from its roll to its landing line is developable only
     where the body is round; over a shoulder's saddle no flat piece takes that exact shape (Garrett d1: 7.7 % strain
     p99). As a pattern maker's muslin does, the cloth takes the nearest shape it CAN: alternate flattening (ARAP) and
@@ -619,7 +771,7 @@ def develop(lay: dict, under: "Surf | None", lay_off: float, rounds: int = DEVEL
     held[:nu] = True  # (the sewn row)
     kc = lay.get("crease_row") or 0
     free_lay = _lying(X0, under, lay_off, (kc + 2) * nu)
-    for _ in range(rounds):
+    for _ in range(DEVELOP_ROUNDS if rounds is None else rounds):
         U = _flatten_grid(X, nv, nu, F)
         X = _lift(X, X0, U, E, held, under, free_lay, lay_off)
     dev = np.linalg.norm(X - X0, axis=1) * 1000
@@ -636,9 +788,11 @@ def develop(lay: dict, under: "Surf | None", lay_off: float, rounds: int = DEVEL
     return out
 
 
-def _lift(X, X0, U, E, held, under, free_lay, lay_off, steps: int = DEVELOP_STEPS, pull: float = DEVELOP_PULL):
+def _lift(X, X0, U, E, held, under, free_lay, lay_off, steps: int | None = None, pull: float | None = None):
     """The flat piece's edge lengths put on a worn surface X0 (from X): Jacobi length projection, the held rows on
     X0, a light pull to X0, never inside the cloth under it."""
+    steps = DEVELOP_STEPS if steps is None else steps  # (read at call time: a sweep can move them)
+    pull = DEVELOP_PULL if pull is None else pull
     L0 = np.linalg.norm(U[E[:, 0]] - U[E[:, 1]], axis=1)
     X = X.copy()
     floor = np.minimum(under.signed(X0[free_lay])[0], lay_off) if under is not None and free_lay.any() else None  # (never nearer the cloth under it than the spec was)
@@ -754,12 +908,16 @@ def draft(entry: dict, base: dict, fabric: str | None = None, like: dict | None 
         tr["stand_top_flat_mm"] = rep["layers"][st_]["flat_top_mm"]
         tr["fall_sewn_flat_mm"] = rep["layers"][fa_]["flat_bottom_mm"]
     rep["truing"] = tr
+    if b.get("neck"):
+        rep["stand_neck"] = {k: v for k, v in b["neck"].items() if k != "lean"}
     return {"pieces": pieces, "folds": folds, "mesh": mesh, "report": rep, "build": b}
 
 
 def reach(drafted: dict, entry: dict, base_other: dict, fabric: str | None = None, limit: float = REACH_LIMIT) -> dict:
     """The same flat pieces put on another worn state's sweep (same section, the other base: a collar open): edge strain
     of the flat piece against that state's 3D; above `limit` (p99) the state is out of the piece's reach."""
+    if (drafted["build"].get("neck") or {}).get("lean") is not None and base_other.get("lean") is None:
+        base_other = dict(base_other, lean=drafted["build"]["neck"]["lean"])
     b2 = build(entry, base_other, fabric, rows={nm: lay.get("crease_row") for nm, lay in drafted["build"]["layers"].items()})
     out = {"limit_pct": round(limit * 100, 1), "layers": {}}
     ok = True
@@ -816,10 +974,13 @@ def edge_points(res: dict, X: np.ndarray, edge: str, tol: float = 6e-4) -> np.nd
 
 
 def base_from_form(res: dict, X: np.ndarray, along: list, under_pieces: list, cb: str, side: float = 1.0,
-                   step: float = 0.002) -> dict:
+                   step: float = 0.002, curve_side: float | None = None, true_sigma: float | None = None) -> dict:
     """A drape base from a dress-form result: the curve = the `along` edges (CB in the middle, at the named point
     `cb` "piece:point"), its half on the `side` (+1: +X, the creature's left) from CB to the end, resampled; the body
-    (skin) and the garment's own cloth under the band (`under_pieces`), outward."""
+    (skin) and the garment's own cloth under the band (`under_pieces`), outward. `curve_side`: take the neckline half
+    from that side instead (mirrored onto `side`): Garrett c0's left (over) front's neck edge is held 5.6 % over its
+    flat length on the closed form (133.0 vs 125.9 mm), the right (under) one's within 1 % (124.7): the band is cut
+    to the pattern's neckline, so it is draped on the half that keeps it (drape band r2, M12)."""
     from . import pattern
     C = np.concatenate([edge_points(res, X, e) for e in along])
     keep = np.r_[True, np.linalg.norm(np.diff(C, axis=0), axis=1) > 2e-4]
@@ -834,11 +995,19 @@ def base_from_form(res: dict, X: np.ndarray, along: list, under_pieces: list, cb
     pcb = np.asarray(X, float)[icb]
     i0 = int(np.argmin(np.linalg.norm(C - pcb, axis=1)))
     halves = [C[i0::-1], C[i0:]]
-    H = max(halves, key=lambda h: side * (h[:, 0].mean() - pcb[0]))
+    cs = side if curve_side is None else curve_side
+    H = max(halves, key=lambda h: cs * (h[:, 0].mean() - pcb[0]))
     H = np.r_[pcb[None], H[1:]] if np.linalg.norm(H[0] - pcb) > 1e-6 else H
+    if cs * side < 0:  # (the other half's neckline, mirrored about CB: e.g. the under front's, which keeps its length)
+        H = H * [-1, 1, 1] + [2 * pcb[0], 0, 0]
     s = _arc(H)
     ss = np.linspace(0, s[-1], max(int(s[-1] / step), 8) + 1)
     Hs = np.stack([np.interp(ss, s, H[:, d]) for d in range(3)], 1)
+    trued = None
+    true_sigma = TRUE_SIGMA if true_sigma is None else true_sigma
+    if true_sigma > 0:
+        Hs, trued = true_curve(Hs, float(pcb[0]), true_sigma)
+        ss = _arc(Hs)
     body = res["body"]
     vn, tree = body.normals()
 
@@ -851,7 +1020,44 @@ def base_from_form(res: dict, X: np.ndarray, along: list, under_pieces: list, cb
     ks = [list(M["names"]).index(n) for n in under_pieces if n in M["names"]]
     Fu = F[np.isin(pid[F[:, 0]], ks)]
     us = Surf(np.asarray(X, float), Fu, out=outward)
-    return {"curve": Hs, "s_cf": float(ss[-1]), "body": bs, "under": us, "cb_x": float(pcb[0])}
+    return {"curve": Hs, "s_cf": float(ss[-1]), "body": bs, "under": us, "cb_x": float(pcb[0]), "trued": trued}
+
+
+TRUE_SIGMA = 0.008  # m: the neckline trued before a band is draped on it (Gaussian over arc, the whole loop)
+
+
+def true_curve(H, cb_x: float, sigma: float = TRUE_SIGMA):
+    """The neckline TRUED as a pattern maker trues it across its seams before the band is drafted: the form's sewn
+    neck edge has corners (Garrett c0: a 50 deg V at CB, 36 deg at the yoke | front seam, 30-38 deg wiggles near CF;
+    drape band r2 M12) and a band ruled on a corner is no flat piece (strain hot exactly there). The half is mirrored
+    into the whole loop (square at CB and CF), smoothed (Gaussian, sigma over arc), and scaled off the loop's axis so
+    its length is kept (the band is cut to the pattern's neckline). -> (trued half, {"max_dev_mm", "len_mm"})."""
+    H = np.asarray(H, float)
+    n = len(H)
+    M = H * [-1, 1, 1] + [2 * cb_x, 0, 0]
+    # the other half mirrored about CB (square there), then this half; past either CF end the curve is point-reflected
+    # (its line carried on: an open neckline's fronts don't meet, so the loop is never closed across CF)
+    full = np.r_[M[::-1][:-1], H]
+    step = _arc(full)[-1] / (len(full) - 1)
+    k = max(int(round(3 * sigma / step)), 1)
+    k = min(k, n - 2)
+    w = np.exp(-0.5 * (np.arange(-k, k + 1) * step / sigma) ** 2)
+    w /= w.sum()
+    ext = np.r_[2 * full[0] - full[k:0:-1], full, 2 * full[-1] - full[-2:-k - 2:-1]]
+    sm = np.stack([np.convolve(ext[:, d], w, mode="valid") for d in range(3)], 1)
+    Ht = sm[n - 1:].copy()
+    Ht[:, 0] = np.where(np.arange(n) == 0, cb_x, Ht[:, 0])  # (CB on the CB plane)
+    Ht[-1, 0] = cb_x if abs(H[-1, 0] - cb_x) < 1e-3 else Ht[-1, 0]
+    a, c0 = neck_axis(Ht, cb_x)
+    L0 = _arc(H)[-1]
+    for _ in range(3):  # (length kept: scale off the axis)
+        f = L0 / max(_arc(Ht)[-1], 1e-9)
+        rel = Ht - c0
+        ax = (rel @ a)[:, None] * a
+        Ht = c0 + ax + (rel - ax) * f
+    dev = np.linalg.norm(Ht - H, axis=1)
+    return Ht, {"max_dev_mm": round(float(dev.max()) * 1000, 2), "p90_dev_mm": round(float(np.percentile(dev, 90)) * 1000, 2),
+                "len_mm": round(float(_arc(Ht)[-1]) * 1000, 1), "sigma_mm": round(sigma * 1000, 1)}
 
 
 # ---------------------------------------------------------------- the drape as the form's placement

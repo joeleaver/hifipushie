@@ -180,3 +180,61 @@ def test_gate_refuses_a_piece_whose_worn_spec_changed(tmp_path, monkeypatch):
     assert rows[0]["status"] == "FAIL"
     pcs, folds = drape.replace_pieces({"stand": {"wrap": {"to": "neck"}}}, g)
     assert pcs["stand"]["wrap"] == {"to": "neck"} and "drape" in pcs["stand"] and folds[0]["piece"] == "collar"
+
+
+def _sphere(c, r, n=40):
+    th = np.linspace(0, np.pi, n // 2)
+    prof = [(r * math.sin(t), -r * math.cos(t)) for t in th]
+    V, F = _rev(prof, n)
+    return V + np.asarray(c), F
+
+
+def test_stand_on_the_neck_leans_in_past_a_chest_bulge_and_a_chin():
+    """Round 2 (C131): the case that broke Garrett d1. The neckline stands 2 mm off the neck at CB, 12 mm at CF; a
+    chest bulge in front below the seam and a chin overhanging the front of the stand's top. The stand is built ON THE
+    NECK: it leans in so its inner face is `gap` off the neck all round, its top edge comes out shorter than its neck
+    edge, it never enters the chin. The r1 build (nearest skin) snaps the front top onto the chin and flares."""
+    body0, under = _neck_body()
+    spheres = (((0, -0.115, -0.07), 0.07), ((0, -0.09, 0.062), 0.032))
+    Vs, Fs = _sphere(*spheres[0])
+    Vc, Fc = _sphere(*spheres[1])
+    V = np.r_[body0.V, Vs, Vc]
+    F = np.r_[body0.F, Fs + len(body0.V), Fc + len(body0.V) + len(Vs)]
+
+    def out(P):
+        o = _axis_out(P)
+        for c, r in spheres:
+            m = np.abs(np.linalg.norm(P - np.asarray(c), axis=1) - r) < 0.004
+            o[m] = (P - np.asarray(c))[m]
+        return o
+    body = drape.Surf(V, F, out=out)
+    th = np.linspace(0, math.pi, 121)
+    u = th / math.pi
+    r = R_NECK + 0.002 + 0.010 * u * u * (3 - 2 * u)
+    C = np.c_[r * np.sin(th), r * np.cos(th), np.zeros_like(th)]
+    base = {"curve": C, "body": body, "under": under, "s_cf": drape._arc(C)[-1]}
+    gap = 0.002
+    e = {"name": "kat neck", "turn": TURN, "layers": [
+        {"piece": "stand", "kind": "stand", "height": {"cb": 0.032, "end": 0.029}, "ext": 0.0, "gap": gap},
+        {"piece": "collar", "kind": "fall", "rise": 0.006, "land": 0.010, "end_in": 0.0, "point": 0.0}]}
+    d = drape.draft(e, base)
+    rep = d["report"]
+    st = rep["layers"]["stand"]
+    nk = rep["stand_neck"]
+    # the top sits gap (+ half the band) off the neck all round, never in the chin
+    want = (gap + 0.5 * TURN["w"]) * 1000
+    assert all(abs(v - want) < 0.8 for v in nk["top_clear_mm"].values()), nk
+    assert nk["top_body_min_mm"] > 0.5, nk
+    # it leans in, most at the front where the seam stands furthest off
+    assert nk["lean_deg"]["100%"] > nk["lean_deg"]["0%"] + 5 and nk["lean_deg"]["100%"] > 10, nk
+    # the top edge shorter than the neck edge: no flare
+    assert st["worn_top_mm"] < st["worn_bottom_mm"] - 15, st
+    assert st["flat_top_mm"] < st["flat_bottom_mm"] - 15, st
+    assert st["strain_p99_pct"] < 2.0, rep["layers"]
+    # (the fall over a stand leaning 18 deg in at CF, 1 deg at CB: 2.4 % p99 here, over the 2 % gate; Garrett d2c's
+    # milder lean flattens at 1.98 %. Open: the fall's band above a varying lean; this bound only catches a regression)
+    assert rep["layers"]["collar"]["strain_p99_pct"] < 3.0, rep["layers"]
+    # the r1 build on the same body: the front top snaps onto the chin and flares
+    d_old = drape.draft(dict(e, stand_mode="skin"), base)
+    so = d_old["report"]["layers"]["stand"]
+    assert so["worn_top_mm"] > st["worn_top_mm"] + 15, (so, st)
