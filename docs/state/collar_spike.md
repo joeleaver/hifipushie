@@ -88,8 +88,18 @@ sym.py <tag>: mirror symmetry per piece, noise floor = mesh spacing, 1-8 mm).
 - s1 (Garrett's worn_open cfNeck 30 mm + his closures / folds copied): collar stands up round the neck like a wing, V
   crumpled, chest shows through: the same fault as Garrett shirt round 12.
 
+- Collar (Joe: "specifically on the collar, we don't have that done yet"): s2's CB section had the 180 deg turn split
+  into two 90 deg kinks 9 mm apart (a flat shelf on top; cover 2 mm). Cause: collar + stand meshed at 5 mm, the roll's
+  radius 3 mm (2 triangles per half turn); radius / strength dead levers (s3 = s4). m2 (collar + stand h 2 mm via
+  mesh_refine): one rounded roll, sections 172 / 169 / 176 deg, cover 5 mm at CB, fit 27 s: a believable collar with
+  the collar button undone (KB no_tie). Ledger C137 (mesh vs roll), C138 (mirrored declarations).
+  Tools: faults.py (per-piece strain / inside / off / open seams), crops.py (REG=collar: 5 collar views clay | strain),
+  csec.py (sections round the neck: band, fall edge, cover), cbprof.py (the CB section's vertex walk).
+  Other faults seen, not worked (Joe: collar first): sleeve ends crushed (99 % max, ~40 verts inside each arm), yoke
+  at the side neck 13 % p99.
+
 ## NEXT
-(1) Joe's call: change the KB's open neck.L line to match .R (repo change, the asymmetry was deliberate for ZOZO).
+(1) Joe's calls: the KB's open neck.L line to match .R; FORM_REFINE_SHIRT collar + stand h 5 -> 2 mm (repo changes).
 (2) The OPEN state on s2 as STAGED moves from the closed fit (stand ends part, fronts roll to the V, leaves settle),
 each stage starting from the last, folds only where the pattern declares them; measure vs concept (V 60, points 147
 apart / 50-61 below HPS). The existing worn_open path (s1) is the known-bad one.
