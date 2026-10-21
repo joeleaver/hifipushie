@@ -55,14 +55,21 @@ def _iliac_crest(mm: dict, at: dict) -> dict:
     return out
 
 
-ADAPTERS = {"chord": _chord, "iliac_crest": _iliac_crest}
+def _under_arm(mm: dict, at: dict) -> dict:
+    """FreeSewing's highBust (round the chest just under the arms, above the bust): the tape's highBustUnder. The
+    tape's highBust is = chest (legacy), so a bodice's bust dart (chest - highBust) / 2 was never drafted."""
+    return {"highBust": float(mm["highBustUnder"])} if "highBustUnder" in mm else {}
+
+
+HELPERS = ("highBustUnder", "highHip", "waistToHighHip")  # tape keys only adapters read
+ADAPTERS = {"chord": _chord, "iliac_crest": _iliac_crest, "under_arm": _under_arm}
 
 # ---------------------------------------------------------------- the consumers' definitions
 M, A, AMB = "match", "adapter", "ambiguous"
 _BRIAN = {
     "biceps": (M, None, f"round the fullest part of the upper arm ({FSDOC}biceps)"),
     "chest": (M, None, f"round the fullest part of the chest, horizontal ({FSDOC}chest)"),
-    "highBust": (M, None, f"round the chest just under the arms, above the bust; may tilt ({FSDOC}highbust); read only "
+    "highBust": (A, "under_arm", f"round the chest just under the arms, above the bust; may tilt ({FSDOC}highbust); read only "
                           "with option draftForHighBust (plugin-bust), off in every table"),
     "hpsToBust": (AMB, None, f"HPS straight down to the bust line ({FSDOC}hpstobust): surface or vertical not stated"),
     "hpsToWaistBack": (A, None, f"HPS straight down the back to the waist ({FSDOC}hpstowaistback); cloth.length_level "
@@ -106,7 +113,7 @@ _BLOCK_UPPER = dict(
 )
 _BLOCK_UPPER["neck"] = (AMB, None, _BRIAN["neck"][2] + "; a garment worn over another reads it round the under "
                                    "garment's collar (cloth.over_measures)")
-_BLOCK_UPPER["highBust"] = (M, None, "bust dart = (chest - highBust) / 2 when > 8 mm (pattern_blocks.bodice), "
+_BLOCK_UPPER["highBust"] = (A, "under_arm", "bust dart = (chest - highBust) / 2 when > 8 mm (pattern_blocks.bodice), "
                                      + _BRIAN["highBust"][2].split(";")[0])
 
 CONSUMERS: dict[str, dict] = {
@@ -184,6 +191,8 @@ def for_consumer(consumer: str | None, mm: dict, at: dict | None = None, holds: 
         if new is not None and abs(float(new) - float(mm[k])) > 1e-9:
             info[k] = [ad, round(float(mm[k]), 2), round(float(new), 2)]
             out[k] = float(new)
+    for k in HELPERS:  # (the adapters' sources: a draft never reads them, and its measurement dict (its cache key)
+        out.pop(k, None)  # stays what it was before the audit while every adapter is held)
     return out, dict(({"definitions": info} if info else {}), **({"held": held} if held else {}))
 
 

@@ -41,6 +41,7 @@ Test subjects: examples/troll.json (reference), workspace/goblin, fox.
 - `judge.py` + bin/judge: THE way to judge a GLB (standard shots, feature crops, self-checked measures, blind A/B with
   controls; docs/notes/judge.md).
 - `measure.py`, `compare.py`, `fit.py` (LM silhouette fit); `render.py` + `blender_render.py` (docs/notes/render.md).
+- `tailor.py` the tape; `measure_defs.py` each draft's measurement definitions + adapters (docs/notes/measurements.md: the table).
 - `store.py` spec + history + build cache; `scene.py` + `blender_scene.py` live Blender scene (docs/notes/blender_scene.md).
 - Humans: `base.py` (docs/notes/base.md), `blockin.py` default for heads from pictures, GNM-native heads, `gnm_controls.py`
   (docs/notes/gnm_atlas.md), `faceshapes.py` (docs/notes/faceshapes.md), headbody (docs/notes/headbody.md).
