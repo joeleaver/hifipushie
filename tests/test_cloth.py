@@ -269,6 +269,15 @@ def test_coincident_stitches_are_parted_not_dropped():
     dd = X3b[15:20] - X3b[20:25]
     dn = np.linalg.norm(dd, axis=1)
     assert (dn > 6e-5).all() and (dn <= 1.01e-4).all() and (X3b[15:20, 0] < 0).all() and (X3b[20:25, 0] > 0).all(), dd
+    # (C128) both held as MADE but solved (not prescribed: `fixed` none): the stitches stay, their ends parted the same
+    X3c, sew3c, info3c = part_stitches(X, F, sew, held, fixed=np.zeros(len(X), bool))
+    assert len(sew3c) == 5 and info3c["kept_held"] == 5 and info3c["cleared"] == 5 and np.allclose(X3c, X3b)
+    # one end prescribed, the other made: kept; both prescribed: dropped
+    fx = np.zeros(len(X), bool)
+    fx[15:20] = True
+    assert len(part_stitches(X, F, sew, held, fixed=fx)[1]) == 5
+    fx[20:25] = True
+    assert len(part_stitches(X, F, sew, held, fixed=fx)[1]) == 0
     # two layers on each other (a facing on its front): they part along the normal
     X4, sew4, info4 = part_stitches(np.r_[A, A], F, np.c_[np.arange(20), 20 + np.arange(20)])
     d4 = np.linalg.norm(X4[sew4[:, 0]] - X4[sew4[:, 1]], axis=1)

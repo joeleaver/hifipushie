@@ -307,6 +307,40 @@ def test_arranged_open_front_stays_open(tmp_path):
     assert out["still"] < 1.0, out
 
 
+@pytest.mark.skipif(os.environ.get("HP_RUN_ZOZO") != "1", reason="runs the ZOZO solver locally (HP_RUN_ZOZO=1)")
+def test_arranged_made_pieces_keep_their_seam(tmp_path):
+    """KAT (shirt round 12, C128): two MADE pieces sewn on one seam (the KAT's disc and band, as a shirt's collar on its
+    stand: both rest as made, their seam's ends start on each other) arranged by a soft pin that moves the disc 15 mm
+    sideways. Round 11 dropped every stitch between two held ends, so nothing sewed the made collar to its made stand
+    and the pins opened that seam (Garrett a11a: 14.5 mm). The two made ends are solved, not prescribed: their
+    stitches stay. Threshold: the disc | band seam gap <= 1 mm after the arrangement (the pin moved the disc)."""
+    res, X, _ = _case("closed")
+    M = res["mesh"]
+    M["made"] = ["top", "band"]
+    ctr = len(X) - 1  # the disc's centre vertex
+    M["points"]["top:centre"] = ctr
+    sew, pid = np.asarray(M["sew"]), np.asarray(M["piece"])
+    seam = sew[(pid[sew[:, 0]] == 1) & (pid[sew[:, 1]] == 0)]  # band top | disc rim
+    X = X.copy()
+    X[seam[:, 0]] = X[seam[:, 1]]  # the made seam's ends start on each other (the collar on its stand)
+    pins = [{"name": "disc", "at": "top:centre", "by": [0.015, 0.0, 0.0], "patch": 0.06}]
+    cfg, arr, info = cr.arrange_job(res, X, pins, release=(), hold=(), keep=True)
+    jd = cr.write(tmp_path / "arr" / "sim", cfg, arr, M["names"], res["gate_keys"])
+    d, _ = cr.run(jd, progress=lambda *_: None, log=lambda *_: None)
+    Y = np.asarray(d["V"], float)
+    gap = np.linalg.norm(Y[seam[:, 0]] - Y[seam[:, 1]], axis=1) * 1000
+    W, _ = cr.weld_seams(M, Y)  # (ZOZO holds a sewn pair a contact gap apart: the weld makes it one line)
+    wgap = np.linalg.norm(W[seam[:, 0]] - W[seam[:, 1]], axis=1) * 1000
+    moved = float(np.linalg.norm(Y[ctr] - X[ctr]) * 1000)
+    out = {"sim_gap_max_mm": round(float(gap.max()), 2), "sim_gap_p50_mm": round(float(np.median(gap)), 2),
+           "seam_gap_max_mm": round(float(wgap.max()), 2), "disc_moved_mm": round(moved, 1), "pairs": int(len(seam))}
+    print(out)
+    # measured 2026-10-21 (local ZOZO): kept sewn: sim gap max 1.73 / p50 1.1 (the contact gap), welded 0.27, the disc
+    # moved 8.3 mm (the band follows); control (round 11's rule, the stitches dropped): gap 33.0 / p50 22.6, disc 15.0
+    assert len(seam) > 20 and moved > 5.0, out
+    assert out["sim_gap_max_mm"] < cr.WELD_MM and out["seam_gap_max_mm"] <= 1.0, out
+
+
 def _two_fronts(n=9, h=0.01):
     """Two flat fronts lapped in front of the KAT torso (over front.L 1.5 mm outside under front.R, the closed fit's
     lap) with the fastened button pair COINCIDENT (pattern_form LAP_BUTTON fades the parting to 0 there)."""
