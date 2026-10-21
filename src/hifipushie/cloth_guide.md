@@ -54,6 +54,7 @@ worked examples), `cloth_tools` (every cloth tool's parameters).
 | 3 | Pattern gate (flat) | Checks the pattern against the checklist before cutting cloth | `pattern_check` | PASS (FAIL / UNMEASURED rows block every sim) |
 | 4 | Construction + arrange | Plans sewing order, layers, folds, interfacing; pins the pieces round the body | `check_garment(stages=["construction", "place"])` | Passes |
 | 5 | Fit on the form | Pins the muslin on the dress form and judges it | `fit_garment` | Strain p99 <= 6 %, no layer pierce; clay + diag judged beside the reference, one `review_view` per view, no MAJOR |
+| 5b | Set it as worn | Pulls a collar open, a shirt down, a cuff up, as far as the cloth goes without stretching (never pins at a guessed spot) | `pull_garment` | Stopped by stretch (not max_mm); crumple barely above the fit's; judged like the fit |
 | 6 | Optional sim | Only a wrinkle source over a fit already judged | `dress`, `look_cloth` (clay + diag by default) | Fit unchanged from the form; never closed, rebuilt or hand-finished after |
 | 7 | Game mesh | Remeshes in pattern space, bakes the detail | garment_game, `export_asset` | judge_asset self-checks pass; reviewed one view per call |
 

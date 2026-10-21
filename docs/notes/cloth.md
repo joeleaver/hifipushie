@@ -9781,3 +9781,20 @@ sym.py <tag>: mirror symmetry per piece, noise floor = mesh spacing, 1-8 mm).
 - pattern_form: FORM_REFINE_SHIRT collar + stand h 0.002 (C137); _turn_flaps FLAP_OUT_FIRST / TURN_TOL (C140).
 - Proof: wf_simon from the repo defaults + the concept's button spacing (v1) = the spike's e3 to 0.0 mm (band ends
   sewn flush 0.0 / 0.1 mm, fall outside, sections 176 deg, collar + band mirror p95 1.4 / 1.9 mm).
+
+### pull until it would stretch: the general tool (2026-10-21, C142)
+- Joe: "Think of men pulling their shirts down along the G-line, popping cuffs, women pulling down skirts. It's not a
+  gravity simulation, it's a flatten-this-along-interesting-geometry without stretching it much thing, and it's how
+  humans put on clothes."
+- src/hifipushie/garment_pull.py: `pull` (handles = points, borders piece:a..b, lists; dir = vector | side | out | up
+  | down | a mix; side from a landmark off CF, refused at CF), `turn` (a grip turned about a line, staged: band end
+  swung, cuff popped), `hold_mask` (free pieces + hold_below closure / point), `crumple`. MCP `pull_garment` (cloth
+  toolset; gate: pattern_check PASS or force), guide section in cloth_tools.md.
+- Porting found three things the spike's numbers hid: (1) a pull first takes up SLACK (stretch falls), so the stop is
+  read against the least so far, not the start; (2) every solve run to convergence crumpled the collar (p95 0.26 ->
+  0.33) and stopped at 39 mm / 131 apart: few rounds per step are the regulariser (the cloth moves as little as it
+  must); (3) few rounds read false stretch on a big move (a slack strip stopped at 75 of 100 mm): a step over tol is
+  CONFIRMED by a converged read (decision only; the few-rounds state is kept). Tol 0.5 % over the least.
+- tests/test_garment_pull.py: strip (along the chord + straight up) within one step of the pattern length; wf_simon
+  v1 fit, band ends turned 30 deg, collar points {"side": 1, "out": 0.3, "up": 0.3}: 147 apart, 63 / 59 below HPS,
+  collar crumple p95 0.28 (y3: 147, 63 / 59, 0.28); moved 51 mm.

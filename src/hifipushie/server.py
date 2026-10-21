@@ -151,7 +151,7 @@ TOOLSETS: dict[str, dict] = {
              "tools": ["groom_hair", "tie_hair", "look_hair", "hair_reference", "hair_from_reference", "export_hair"]},
     "cloth": {"about": "garments: design, pattern, the pattern gate, alterations, fit on the form, dress (sim), "
                        "references", "also": ["scene"],
-              "tools": ["design_garment", "look_pattern", "alter_pattern", "pattern_check", "fit_garment", "release_garment", "arrange_garment",
+              "tools": ["design_garment", "look_pattern", "alter_pattern", "pattern_check", "fit_garment", "pull_garment", "release_garment", "arrange_garment",
                         "check_garment", "dress", "look_cloth", "garment_reference",
                         "garment_from_reference", "check_garment_reference", "garment_reference_brief"]},
     "terrain": {"about": "terrain and game levels (height fields in a level designer's words)",
@@ -2937,6 +2937,68 @@ def arrange_garment(name: str, garment: str, pins: list[dict], keep: bool = Fals
            if rep["status"] == "springs back" else "judge the arranged result beside the reference (clay + diag, one "
            "view per review); check no front through front, no lift, the lapel rolling to its break")
     return "\n".join(lines + [f"next: {nxt}"])
+
+
+@mcp.tool(structured_output=False)
+def pull_garment(name: str, garment: str, handles: list[dict], free: list[str] | None = None,
+                 hold_below: str | None = None, turns: list[dict] | None = None, step_mm: float = 3.0,
+                 tol_pct: float = 0.5, max_mm: float = 80.0, views: list[str] | None = None, size: int = 560,
+                 clay: bool = True, diag: list | bool | None = None, force: bool = False, save: str | None = None):
+    """PULL UNTIL IT WOULD STRETCH (C142): how people set clothes (collar points out and to the side, a shirt pulled
+    down, a cuff popped). Fits the garment on the form (no sim), then DRAGS each handle in small steps, solved against
+    the flat pattern, until the cloth would stretch. handles: [{"at": "piece:point" | "piece:a..b" | [...], "dir":
+    [x,y,z] | side | out | up | down | {"side": 1, "up": 0.3}, "side_from"?}]. free (default: the handles' pieces),
+    hold_below ("closure:front"), turns (staged first). Reports mm moved, stretch, crumple. Details:
+    guide(topic="pull_garment")."""
+    from . import cloth_check as cc, garment_pull as gpl, pattern_form
+    spec = store.load(name)
+    if garment not in (spec.get("cloth") or {}):
+        raise ValueError(f"no garment {garment!r} (have {', '.join(spec.get('cloth') or {}) or 'none'})")
+    if not handles:
+        raise ValueError('handles: at least one {"at": "piece:point", "dir": ...}')
+    st = cc.gate_status(name, garment, spec)
+    if not st["passed"] and not force:
+        return (f"{garment}: not pulled: {st['why']}\nnext: pattern_check(\"{name}\", \"{garment}\") and fix its rows "
+                "first; a pull starts from the form fit of a pattern that passed flat (force=True only to look)")
+    res = pattern_form.on_form(name, garment, spec)
+    X, M, body = np.asarray(res["A"], float), res["mesh"], res["body"]
+    if free is None:
+        free = sorted({M["names"][int(np.asarray(M["piece"])[v])] for h in handles for v in gpl.vertices(M, h["at"])})
+    held = gpl.hold_mask(M, X, free, hold_below)
+    bvf = (np.asarray(body.V, float), np.asarray(body.T, int))
+    lines = [f"{name}:{garment}: pulled on the form{'' if st['passed'] else ' -- FORCED: the pattern gate has not passed'}",
+             f"  free: {', '.join(free)}; held below {hold_below or '-'} ({int(held.sum())} of {len(X)} vertices held)"]
+    if turns:
+        X, ti = gpl.turn(M, X, held, turns, body=bvf)
+        for t in turns:
+            held[gpl.vertices(M, t["at"])] = True  # (a turned grip stays where the hand put it)
+        lines.append(f"  turns: {json.dumps(ti['turns'])}; stretch p99 {ti['stretch_p99_start']} -> "
+                     f"{ti['stretch_p99_end']} %")
+    Xn, info = gpl.pull(M, X, held, handles, body=bvf, step=step_mm / 1000, tol=tol_pct / 100, max_move=max_mm / 1000)
+    X_fit = np.asarray(res["A"], float)
+    crum = {p: [round(float(np.percentile(gpl.crumple(M, X_fit, p), 95)), 3),
+                round(float(np.percentile(c, 95)), 3)] for p in info["pieces"] if len(c := gpl.crumple(M, Xn, p))}
+    out_dir = store.HOME / "_cache" / "pull" / f"{name}_{garment}"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    np.savez(out_dir / "pulled.npz", V=Xn, V_fit=X_fit)
+    lines += [f"  moved (mm): {json.dumps(info['moved_mm'])} in {info['steps']} steps of {info['step_mm']:g} mm; "
+              f"stopped by {info['stopped']}",
+              f"  stretch p99 vs the pattern ({', '.join(info['pieces'])}): start {info['stretch_p99_start']} %, least "
+              f"{info['stretch_p99_least']} %, end {info['stretch_p99_end']} % (tol {info['tol_pct']:g} % over the least)",
+              f"  crumple p95, fit -> pulled (mm; the change is the pull's; layered flaps read ~2 in the fit): "
+              f"{json.dumps(crum)}",
+              f"  directions: {json.dumps(info['dirs'])}", f"  result: {out_dir / 'pulled.npz'} (V; V_fit = the form fit)"]
+    ims, d = _garment_sheets(name, f"pull_{garment}", body, [(garment, Xn, M)], views, size, clay=clay, diag=diag)
+    lines.append(f"  single views for review_view: {d}")
+    if info["stopped"] == "max_move":
+        nxt = (f"nothing stopped the pull within {max_mm:g} mm: something it should pull against is free (hold more: "
+               "free / hold_below / turns), or raise max_mm")
+    elif info["steps"] == 0:
+        nxt = "it stretched on the first step: that way is taut; pull another way or free more cloth"
+    else:
+        nxt = ("judge clay + diag beside the reference, one view per review_view; too far or not far enough = change "
+               "the direction or what is held, never pin the handle at a coordinate")
+    return [_out(im, _save_suffix(save, tag)) for tag, im in ims] + ["\n".join(lines) + f"\nnext: {nxt}"]
 
 
 @mcp.tool(structured_output=False)
