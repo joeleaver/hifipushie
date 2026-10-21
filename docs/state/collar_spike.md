@@ -104,10 +104,19 @@ sym.py <tag>: mirror symmetry per piece, noise floor = mesh spacing, 1-8 mm).
   folded back. n0 (rolls removed, collar + stand h 2 mm): clean closed collar, stand ends upright 8 mm apart, points
   meet at CF, mirror p95 1.4 mm, strain p99 9 %. Ledger C139. n0 = the best closed collar so far.
 
+- Joe's photos (open shirt, button-down): the placket edge runs straight up into the band's end; the front rolls back
+  SOFTLY, the band turning with it; band ends lean apart; leaves stand off the neck. Simon already has it (C139): band
+  extensions 9.3 / 14.8 mm = the plackets 9 / 12-15; ours left them unsewn (seam table CF..CF) and cut them
+  (band_ends). e0 (Simon's seam edge to edge, band_ends off) flipped the fall INSIDE the band: _turn_flaps ranked a
+  near-tie on the unsigned angle first (C140, fixed in pattern_form: FLAP_OUT_FIRST). e1: band ends flush with the
+  placket tops, clean closed collar, mirror 1.3-1.7 mm p95 = the best closed collar. Softer rolls alone (r90-r150)
+  don't open the neck (band ends stay 7-11 apart). o-runs (worn_open + Garrett closures) refused: the roll line's end
+  falls 13 mm inside the front with Garrett's button spacing.
+
 ## NEXT
-(1) Joe's calls (repo changes): FORM_REFINE_SHIRT collar + stand h 5 -> 2 mm; the KB no_tie open-neck rolls (remove, or
+(1) Joe's calls (repo changes): the simon seam edge to edge + band_ends off (C139); FORM_REFINE_SHIRT collar + stand h 5 -> 2 mm; the KB no_tie open-neck rolls (remove, or
 start the roll line below the neckline seam; C139 supersedes the L/R mismatch fix C138).
-(2) The OPEN state from n0 as STAGED moves from the closed fit (stand ends part, fronts roll to the V, leaves settle),
+(2) The OPEN state from e1 as STAGED moves (fronts part above the first fastened button, a SOFT roll carrying the band) from the closed fit (stand ends part, fronts roll to the V, leaves settle),
 each stage starting from the last, folds only where the pattern declares them; measure vs concept (V 60, points 147
 apart / 50-61 below HPS). The existing worn_open path (s1) is the known-bad one.
 Rules: renders under /mnt/data/hifipushie/bin/capped (GPU lock); files on /mnt/data/hifipushie/; stage git by path,

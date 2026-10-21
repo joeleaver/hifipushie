@@ -2004,6 +2004,10 @@ def _band_init(M, B, X, placed):
     return X, done
 
 
+FLAP_OUT_FIRST = True  # _turn_flaps: of the senses that reach the asked turn, the one further outside (False: the old rank)
+TURN_TOL = math.radians(20.0)  # how near the asked turn a sense must come to qualify
+
+
 def _turn_flaps(M, X, folds_, bsurf):
     """Each fold's flap turned about its first row, vertex by vertex in the row's local frame (foot on the row, its
     pattern distance kept): the start the ARAP relax refines. The side that turns toward the outside is tried both
@@ -2050,7 +2054,15 @@ def _turn_flaps(M, X, folds_, bsurf):
                     out_ = float(np.mean(bsurf.signed(W)[0]))
                 else:
                     out_ = float(np.mean(W[:, 2])) * np.sign(turn)
-                sc = (-round(miss, 1), out_)
+                # (shirt spike 2026-10-21: both senses reach the asked turn about equally (the dihedral is unsigned), so
+                # ranking by the miss first let a mesh change flip a collar's fall INSIDE its stand (e0: the roll +82
+                # vs -82 deg). Any sense within TURN_TOL of the asked turn qualifies; of those the one further out wins.)
+                if not FLAP_OUT_FIRST:
+                    sc = (-round(miss, 1), out_)
+                elif miss <= TURN_TOL:
+                    sc = (0, out_)
+                else:
+                    sc = (-1, -miss)
                 if best is None or sc > best[0]:
                     best = (sc, W)
         X[allv] = best[1]
