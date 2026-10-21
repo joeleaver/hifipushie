@@ -9200,3 +9200,25 @@ turns them into general code first (garment_reads.py), then uses them on the shi
   Blind review rev_f3a FAIL 10 MAJOR (wholefront 5: collar stands, no V, boxy torso, puffed shoulders, placket lumps;
   collar 4: too tall, no fall, collar off the neckline on one side, no V). Hem edge now a hard line (MINOR "high").
 - Tests (20 clothing files, bin/capped): 295 passed, 2 skipped, 3 xfailed, exit 0.
+
+## shirt round 4 (2026-10-20; $S = /mnt/data/hifipushie/dress_garrett/shirt_round4, this worktree's code via run.sh)
+- Step 1 (coordinator (a)): the shirt's neck pins vs its neckline split. probe_pts.py: Simon's yoke seam IS the
+  shoulder seam (yoke:hps = front:hps, no forward shift); the garment's back share 0.447 (101 / 125 flat; 0.436 on the
+  mesh) vs Garrett's neck loop at hps 0.483 (98 / 105). C113 neck_split: 9.6 mm back; untucked trace 1988 -> 1696
+  (yoke 496 -> 433, back 629 -> 510); tucked where r4a 7.2 % (r3 8.1 %). Levers (trace_pins, untucked final): back 8 +
+  down 10 1480, back 8 + down 20 1494, + soft pins (HPSW 20, SHW 0) 1708; shoulder slope chord 1958 (yoke 489), chord +
+  back/down 1755. None reaches 3 %.
+- Jacket regression (r26g recipe, jfit.sh): r4j0 (code at 3ef3802b) = r26g exactly (stretch j p99 15.8 max 80.1,
+  shirt 13.0). r4j1 neck_split on (neck point 19.6 mm back): stretch p99 12.6 / max 35.2, shirt 11.5, lapel_on_base
+  collar 25 -> 18 through, gorge similar, BUT front-view waist 398 -> 373, hip 406 -> 360, seat 409 -> 395, shirt poke
+  101 -> 156 verts: REGRESSION -> neck_split is a garment key, module default off; the jacket path is unchanged.
+  (r4j2 with a 10 mm clamp ran identical: the clamp was bound at def time; fixed, not re-run.)
+- Step 2 (coordinator (b)): closures "spacing" (C114), sourced: Proper Cloth's top button 2 7/8 in below the collar
+  band (propercloth.com/reference/top-button-placement), spacings 3 1/8 - 3 1/2 in; a uniform spec (Ohio OAC 311-1-03.4)
+  3 1/4 in neck -> first, then 3 1/2. Garrett first 28 mm below cfNeck: gate rows PASS (28.0; pitch 91), but on the form
+  64 below HPS (the V spreads cfNeck 30 mm off CF) and the fit needed the open-neck roll ends moved (+5 mm), which
+  breaks test_closures' under-roll lesson (>= 30 mm above button1): reverted; spacing off on the spec (v6).
+- Step 3 arrangement: refused (start 7.2 % > 3 %). Step 4 colour: #bdb8b4 -> #aeaaa6, lit 177.5/174.3/171.2 vs ref
+  177.2/173.8/170.8 PASS. Step 5: shirt alone r4b check/{wholefront,collar,placket,cuff}_r4b.png. Reviews one view each
+  (rev4.sh): wf FAIL 6 MAJOR (collar type, no V, collar off the neck, boxy torso, square shoulders, flared hem); collar
+  FAIL 5 MAJOR (closed neck, standing ring, points, spread, too high).
