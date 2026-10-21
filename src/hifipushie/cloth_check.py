@@ -1464,6 +1464,15 @@ SHOULDER_SEAM_LEN_TOL = 3.0   # mm
 SHOULDER_SEAM_DROP_TOL = 10.0  # mm (~3.5 deg over a 160 mm shoulder)
 
 
+def measure_definitions_row(body, g: dict, kind: str = "") -> dict:
+    """Every measurement the garment's draft consumes has a matching definition (measure_defs.gate_row; the measure
+    audit, M1): FAIL when its consumer declares none, INFO "HELD" for declared holds, PASS otherwise."""
+    from . import cloth, measure_defs
+    c = measure_defs.consumer_of(g)
+    mm = (getattr(body, "m", None) or {}).get("mm", {}) if body is not None else {}
+    return measure_defs.gate_row(c, mm, measure_defs.holds_for(g, cloth._kb()["kinds"].get(kind or "", {})))
+
+
 def shoulder_seam_row(M: dict, body, g: dict, kind: str = "") -> dict:
     """The shoulder seam's flat length / drop per piece vs the body's hps -> shoulder point (see above)."""
     at = getattr(body, "at", {}) if body is not None else {}
@@ -1483,7 +1492,8 @@ def shoulder_seam_row(M: dict, body, g: dict, kind: str = "") -> dict:
     if not per:
         return {"id": "shoulder_seam_flat", "stage": 1, "status": "INFO", "ours": ours, "why": "no hps -> shoulder seam"}
     from . import cloth
-    want = g.get("shoulder_slope") or cloth._kb()["kinds"].get(kind or "", {}).get("shoulder_slope")
+    from . import measure_defs
+    want = measure_defs.slope_definition(g, cloth._kb()["kinds"].get(kind or "", {}))
     bad = [f"{pc} len {r['len_mm']} < {blen - SHOULDER_SEAM_LEN_TOL:.1f}" for pc, r in per.items()
            if r["len_mm"] < blen - SHOULDER_SEAM_LEN_TOL]
     bad += [f"{pc} drop {r['drop_mm']} vs {bdrop:.1f}" for pc, r in per.items()
@@ -1529,6 +1539,7 @@ def pattern_gate(model: str, garment: str, spec: dict | None = None, refs=None, 
                      form_ok=form_ok, flat=flat_readings(res["pieces_full"]), drape=g.get("drape_readings"))
     rows.append(flat_pattern_row(model, garment, spec))
     rows.append(shoulder_seam_row(M, res["body"], g, kind or ""))
+    rows.append(measure_definitions_row(res["body"], g, kind or ""))
     rows += tailor_rows_for(res["pieces_full"], kind, g)
     rows += piece_checklist_rows(model, garment, g, res)
     under_nm = g.get("over")  # (the garment worn under this one: an outer layer must clear it at every shared girth)

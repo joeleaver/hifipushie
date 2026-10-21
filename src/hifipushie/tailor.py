@@ -11,8 +11,14 @@ Definitions (FreeSewing's measurement names; https://freesewing.dev/reference/me
   the shoulder joint. shoulderSlope: the hps -> shoulder point line below horizontal (degrees).
 - shoulderToShoulder: shoulder point to shoulder point over the back (the back half of the section at their height).
 - armpit: the highest torso section the arm has left. chest: the fullest torso section 2-12 cm under the armpit.
-- waist: 70% of the way from the pelvis joint to the chest joint (skeletal: the natural waist). hips: at the hip joints' height + 2 cm (FreeSewing's
-  hips are where trousers sit, ~13 cm under the waist). seat: the fullest section from 12 cm under that to it.
+- waist: 70% of the way from the pelvis joint to the chest joint (skeletal: near the natural waist; FreeSewing's is the
+  narrowest section: Garrett's 15 mm, Tess's 50 mm above ours). hips: at the hip joints' height + 2 cm (OUR level: the
+  greater trochanter's; NOT FreeSewing's hips, which is the top of the hip bone: measure_defs adapts). seat: the fullest
+  section from 12 cm under that to it.
+- highHip / waistToHighHip: the girth at the iliac crest (ANSUR II iliocristale height) and the waist's height over it;
+  the crest is ILIAC_CREST_OVER_CROTCH x stature above the crotch (FreeSewing's hips / waistToHips, via measure_defs).
+- highBust: the narrowest torso section in the 4 cm under the armpit (FreeSewing: just under the arms,
+  above the bust; it was = chest).
 - biceps: the fullest upper-arm section square to the arm (25-60% of shoulder -> elbow); wrist: square to the forearm.
 - hpsToWaistBack, hpsToBust: over the surface; shoulderToElbow, shoulderToWrist: shoulder point -> elbow -> wrist.
 - waistToArmpit/Hips/Seat/Floor/Knee, crotch: vertical distances.
@@ -207,6 +213,10 @@ def _side_neck(V, T, L) -> tuple:
 # block) put the shoulder point 28-32 mm below hps where the body's is 65, and both garments stood 15-45 mm off the
 # shoulder line (fit round 13 shoulderprof.py)
 SHOULDER_SLOPE = "line"
+# the iliac crest's height over the crotch, x stature: ANSUR II medians (crotch height 0.4813 / 0.4802, iliocristale
+# height 0.6038 / 0.6110 of stature: men 18-40 0.1225, women 18-30 0.1308; measure audit ansur_levels.py). One number for
+# both (the tape doesn't know the body's sex): +-0.004 x stature = +-7 mm
+ILIAC_CREST_OVER_CROTCH = 0.125
 NECK_BASE_TILT = 32.0  # deg: the base-of-neck tape falls this much toward the front (ANSUR II: cervicale ~79 mm (men) /
 # 66 (women) above suprasternale over a ~110-120 mm deep neck base)
 NECK_BASE_GIRTH = 1.06  # the base ring is the lowest tilted section within this much of the narrowest one
@@ -542,7 +552,11 @@ def measure(V: np.ndarray, faces, J: dict) -> dict:
     tape = np.r_[down(bust[2], hps[0], bust[0], -1), bust[None]]
     mm["hpsToBust"] = length(tape)
     loops["hpsToBust"] = tape
-    mm["highBust"] = mm["chest"]
+    # highBust (FreeSewing: round the chest just under the arms, above the bust), just under the armpit. It was = chest, so a bodice's bust dart (chest - highBust) was never drafted (measure audit, M3)
+    # The pit itself bridges onto the arm (a hull over the arm's inner side: the section AT the armpit's level read 983
+    # on Garrett against his 968 chest), so it is the narrowest torso section in the 4 cm under the armpit
+    hb_ = [girth(L_, Z) for z in np.arange(arm_z, arm_z - 0.0401, -0.005) if (L_ := torso(z)) is not None]
+    mm["highBust"] = min(hb_) if hb_ else mm["chest"]
     # front and back lengths from hps down to the seat over the surface, a hand's width from centre: a belly makes
     # the front longer than the back (patterns draft them equal: the large-abdomen alteration adds the difference)
     zs_ = at["seat_z"]
@@ -576,6 +590,13 @@ def measure(V: np.ndarray, faces, J: dict) -> dict:
             at["crotch_z"] = zc
             mm["waistToUpperLeg"] = W - zc
             mm["inseam"] = zc - zmin
+            # the iliac crest (ANSUR II iliocristale height) from the crotch: no bone to palpate on a mesh; the crotch
+            # is the mesh's own robust level. Clamped under the waist (a crest above the tape's waist reads 0)
+            zi = min(zc + ILIAC_CREST_OVER_CROTCH * float(np.ptp(V[:, 2])), W)
+            L_ = torso(zi)
+            if L_ is not None:
+                at["high_hip_z"] = float(zi)
+                mm["highHip"], mm["waistToHighHip"] = girth(L_, Z), W - zi
     except Exception:  # a body the scan can't read keeps the estimate (pattern_blocks.trouser)
         pass
     try:
