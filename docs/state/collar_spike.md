@@ -16,7 +16,9 @@ the band turning with it; band ends lean apart; leaves stand off the neck). Joe:
 - CLOSED: repo defaults (landed, BUILD_VERSION 17) + the concept's button spacing = v1 (= e3): clean closed collar, band
   ends sewn flush with the placket tops, one rounded roll (176 deg), collar + band mirror p95 1.4-1.9 mm, strain p99 9 %.
   `spikes/shirt_spike/run.sh base_fit.py v1 '{"closures":[{"name":"front","spacing":{"first":0.034,"from":"cfNeck"}}]}'`
-- OPEN (current best u25 = t15's pulls with "patch":0.025,"turn":1: each step drags the point alone, then fits the
+- OPEN + SMOOTH (sm1 = u25 + `"smooth":{"pieces":["collar","stand"]}`, C143): roughness halved (collar p95 0.28,
+  band 0.16 mm), stretch +0.3 pt; a little ripple left near the neck. Joe: pull + smooth = the two styling operations.
+- OPEN (u25 = t15's pulls with "patch":0.025,"turn":1: each step drags the point alone, then fits the
   patch's unstretched start shape rigidly (Kabsch) onto that and solves again: tips clean (crumple p95 0.06-0.10 mm =
   closed; flips.py: 1 folded face per side at the patch edge, was 18 / 28 with a rigid patch), points 156 / 64-65.)
 - OPEN (was best: t15: Joe's pull sequence, C142): `run.sh flatarap.py e3 t15 '{"swing":30,"steps":6,"nopush":1,
