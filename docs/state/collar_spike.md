@@ -66,6 +66,13 @@ Spike only: no garment rounds, no agents grinding for an hour.
   Open faults: the band ends' move is a guess (turn about the hinge); no shirt fronts, so the V can't be measured;
   ARAP has no bending term (correctives.py: kinks held tubes).
 
+- Delamination (Joe: "is it coming delaminated?"): yes. ARAP holds only the seam, so the fold is a free hinge and the
+  fall swings off the band: share of band verts with the collar >10 mm away: g1 0 %, a1 5 %, a2 24 %, a6 12 % (a6 also
+  11 % collar inside the band, 22 % of the upper band uncovered). Fix tried (`lay`, default on): collar verts within
+  the band's height of the sewn edge (flat) pushed radially onto the band + 2 x 1.5 mm, held, re-solved x4 (snapping to
+  the nearest band vertex collapsed neighbours: 100-190 %). a1L: 0 % off / 0 % inside / 0 % uncovered, but collar
+  strain 11 -> 19 % and dents + a rippled outer edge where the held region ends (hard holds crease ARAP).
+
 ## NEXT: Joe's call on a1 / a2 (ARAP handles route; sim parked)
 Proposal on the table: place the pieces geometrically, not dynamically: each piece as the developable surface its own
 flat shape makes (cylinder / cone as in s1), then a small static fit (keep every edge length, close the seam, keep off
