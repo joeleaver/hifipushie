@@ -9622,3 +9622,17 @@ Coordinator decision (end of round 5): drape the collar CLOSED (how it is cut: r
 the open look comes from the rolled-back fronts (C134) plus an arrangement if needed (C81); the open sweep stays a
 reach check (INFO), not the draft source.
 Tests (end of round 5): 28 cloth / pattern files under bin/capped: 345 passed, 3 skipped, 4 xfailed, exit 0 ($S/tests_d5.log); test_closures' no-tie roll assert moved to the C134 rule (angle <= 15). tests/test_collar.py passes alone (21 with test_closures, exit 0) but fails 4 in one session with test_cloth_precache (its fake cloth.build leaks: KeyError 'n'): pre-existing pollution, not this round's.
+
+## drape band round 6 (2026-10-21; $S = /mnt/data/hifipushie/drape_band6, run.sh = this worktree)
+Coordinator: drape CLOSED (C135). Step 1 (d6c, sh_garrett v19): closed drape on c0 (under-front half mirrored).
+Sweep (sweep6.py) from d2c's numbers: land 13-16 + point -0.02: flat 1.77 %, cover 8.6, but spring SHORT 76 (outer 440
+vs need 517); land_dir 30 / 60 (out over the body): shorter still (outer 434-440, short 123-134): two levers dead ->
+MEASURED FLAT (M12): m1.py: the shirt cloth round the closed neck offsets like its flat pattern (d 0/5/10/15 mm: 3D
+451/467/490/513 vs flat 442/470/499/527); m2.py: the drape's fall outer edge lies where asked (flat drop 12-16 mm,
+1.1 mm off the cloth). So the drape is right about where it lies; the shortfall is that a fall landing 13-16 mm all
+round sits on a ~450 line while the spring row counts the whole loop CF to CF at the CB cover + 2 turn rings. A point
+collar is deeper at its points than at CB: land 13 CB / 16 side / 30 at the point -> outer 525 (flat 524.6 | worn
+524.8), need 503, spring +24.6 PASS, cover 5.7 PASS (the gate reads the roll 7.2 above the seam: land 11 gave 4.0
+FAIL), fall CB 54.1, flat p99 1.89 % (stand 0.16), seams PASS; GATE PASS. Points: the concept's open point transferred
+as point -0.02 made the flat outer 518 vs worn 464 (corner finder took the point edges): point 0 kept. Closed: points
+46 apart, 65 below HPS. Reach (open sweep, INFO): stand 14 %, collar 30.7 % p99.
