@@ -263,11 +263,30 @@ for k_, PL in enumerate(seq):
         d_ = PL.get("side", 1.0) * np.r_[sg, 0, 0] + PL.get("out", 0.0) * vn[jj] + PL.get("up", 0.0) * np.r_[0, 0, 1]
         dirs[key] = d_ / np.linalg.norm(d_)
     pos = {key: Y[v].copy() for key, v in H.items()}; moved = 0.0; good_Y = Y.copy()
+    # the grabbed point itself (a patch's lead vertex: the collar point), for the turning patch below
+    lead = {key: (inv[P[f"collar:{key}TopEdge"]] if key in ("left", "right") else v[0]) for key, v in H.items()}
+    def kabsch(A_, B_):  # proper rotation R and t with R A_ + t ~ B_
+        a0, b0 = A_.mean(0), B_.mean(0); Hm = (A_ - a0).T @ (B_ - b0); Uk, _, Vk = np.linalg.svd(Hm)
+        dk = np.sign(np.linalg.det(Vk.T @ Uk.T)); R_ = Vk.T @ np.diag([1, 1, dk]) @ Uk.T; return R_, b0 - R_ @ a0
     while moved < PL.get("max", 0.08) - 1e-9:
         moved += PL.get("step", 0.003); T = good_Y.copy(); fx = hold.copy()
-        for key, v in H.items(): T[v] = pos[key] + moved * dirs[key]; fx[v] = True
         for key, v in done_h.items(): fx[v] = True
-        Yt = solve(T, fx, PL.get("iters", 12)); st_ = stretch(Yt)
+        if PL.get("turn") and any(len(v) > 1 for v in H.values()):
+            # TURNING PATCH: drag the lead vertex alone, then fit each patch's unstretched start shape rigidly
+            # (rotation + translation, Kabsch) onto that solution, pin it with the lead on its target, solve again
+            for key, v in H.items(): T[lead[key]] = pos[key][list(v).index(lead[key])] + moved * dirs[key]; fx[lead[key]] = True
+            Yt = solve(T, fx, PL.get("iters", 12))
+            for _r in range(PL.get("turn_rounds", 2)):
+                T2 = Yt.copy(); fx2 = fx.copy()
+                for key, v in H.items():
+                    R_, t_ = kabsch(pos[key], Yt[v]); Pn = pos[key] @ R_.T + t_
+                    li = list(v).index(lead[key]); Pn += (pos[key][li] + moved * dirs[key]) - Pn[li]
+                    T2[v] = Pn; fx2[v] = True
+                Yt = solve(T2, fx2, PL.get("iters", 12))
+        else:
+            for key, v in H.items(): T[v] = pos[key] + moved * dirs[key]; fx[v] = True
+            Yt = solve(T, fx, PL.get("iters", 12))
+        st_ = stretch(Yt)
         if st_ > s0 + PL.get("tol", 0.01): moved -= PL.get("step", 0.003); break
         good_Y = Yt
     Y = good_Y

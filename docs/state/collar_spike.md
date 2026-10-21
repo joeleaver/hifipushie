@@ -16,14 +16,17 @@ the band turning with it; band ends lean apart; leaves stand off the neck). Joe:
 - CLOSED: repo defaults (landed, BUILD_VERSION 17) + the concept's button spacing = v1 (= e3): clean closed collar, band
   ends sewn flush with the placket tops, one rounded roll (176 deg), collar + band mirror p95 1.4-1.9 mm, strain p99 9 %.
   `spikes/shirt_spike/run.sh base_fit.py v1 '{"closures":[{"name":"front","spacing":{"first":0.034,"from":"cfNeck"}}]}'`
-- OPEN (current best t15: Joe's pull sequence, C142): `run.sh flatarap.py e3 t15 '{"swing":30,"steps":6,"nopush":1,
+- OPEN (current best u25 = t15's pulls with "patch":0.025,"turn":1: each step drags the point alone, then fits the
+  patch's unstretched start shape rigidly (Kabsch) onto that and solves again: tips clean (crumple p95 0.06-0.10 mm =
+  closed; flips.py: 1 folded face per side at the patch edge, was 18 / 28 with a rigid patch), points 156 / 64-65.)
+- OPEN (was best: t15: Joe's pull sequence, C142): `run.sh flatarap.py e3 t15 '{"swing":30,"steps":6,"nopush":1,
   "pulls":[P,{"handles":"corners","side":1,"max":0.006},P]}'`, P = {"handles":"points","side":1,"out":0.3,"up":0.3,
   "patch":0.015}: each pull drags until the cloth would stretch; points grabbed WITH a 15 mm patch (one vertex pinched
   and twisted the tips: c1 tip stretch 15-18 %, twist 60-80 deg; t15 2-3 %, 15-28 deg = the closed collar's). t15:
   points 133 apart / 66 below HPS (concept 147 / 50-61), V 63, band ends upright. tip.py reads the tips.
 
 ## Open faults (ranked by what shows at 1-3 m)
-1. t15: points short of the concept (133 / 66) and the tip curls under a little; a stretched patch at the V's corner (the fronts' cfNeck, welded to the band corners, have 34 mm of cloth
+1. u25: points 64-65 below HPS (concept 50-61); 1 folded face per side at the patch edge; a stretched patch at the V's corner (the fronts' cfNeck, welded to the band corners, have 34 mm of cloth
    above the first fastened button). Try the same pull on the band ends instead of a fixed swing; refine the fronts
    near the V (6-20 mm there).
 2. y3 not yet judged blind against the photo / trace (bin/review), nor checked for cloth inside the body (push-out off:
