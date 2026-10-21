@@ -9177,3 +9177,26 @@ turns them into general code first (garment_reads.py), then uses them on the shi
 - 15 clothing test files (tailoring, pattern_form, cloth_release, cloth_layers, cloth_check, pattern_draft,
   pattern_styles, pattern_tailor, pattern_gate, cloth_made, form_validation, cloth_reference, cloth_workflow,
   garment_reads, fold_checks): 219 passed, 4 skipped, 3 xfailed, exit 0.
+
+## shirt round 3 (2026-10-20; $S = /mnt/data/hifipushie/dress_garrett/shirt_round3, this worktree's code via run.sh)
+- Step 1 WHERE (where.py: the arrangement preflight's own measure, cloth_zozo._start_stretch vs flat, limit 5 %): tucked
+  3010 / 29665 faces over (10.2 %): hidden 902, the 30 mm fade 367, above 1741. Untucked 1988 (6.7 %): back 629, yoke 496
+  (35 % of the yoke), stand 279, fronts 406, collar 119. So two causes: the TUCK (1022 faces) and the BASE FIT.
+- The tuck (C109): pulled along normals with its length held, faded in ABOVE the line. Changed: nothing above the line
+  moves, 12 mm fade below, hidden cloth slides (_tuck_slide, 1500 Jacobi iterations; over-relaxed 1.8 oscillated).
+  w5 (60 it) 2856, w6 (400) 2486, w7 (every hidden vertex movable) 3277 WORSE -> reverted, w8 (1500) 2407. Fit f3a:
+  drawn p99 17.2 -> 13.3, back 28.8 -> 8.2, z 1.12-1.30 band 603 -> 297 (untucked 271). Yoke 34 unchanged.
+- The base fit (C110): trace.py bisect over pattern_form.TRACE: yoke HPS column p90 6 % at placement -> 29 % in relax1;
+  back 36 -> 874 in relax1; stand 864 at placement -> 12 relax1 -> 1150 band_init -> 279 let_go. Dead levers (untucked
+  over-count, base 1988): worn_open off 2046; yoke truing off 1922 (yoke 551); collarEase .12 2380; HPS pin w 2 1530 (yoke
+  427); HPS +8 mm back 1647; shoulder pin off 1827; shoulderEase 4 % 1958. seams.py: shoulder seam 161.6 flat = front
+  161.6, 3D 173 (+7 %); yoke back neck 202 -> 226 (+12 %), stand front neck -1.5 %. STUCK -> coordinator.
+- Step 2 arrangement NOT run: start 8.1 % over vs the 3 % local-limit share (preflight would refuse; gate unchanged).
+- Step 3 (C111): Simon addButtons even spacing from cfNeck (7 over 98 % cfNeck -> cfHips, ~80 mm): first button one
+  spacing below cfNeck (55 below HPS on the form) -> 123. Draft rule, not the fit; not changed (needs a sourced rule).
+- Step 4: tuck line (above) + render5.py fixes (C112): diag column now drawn; colour box from the body: ref patch now
+  reads the shirt (shadow 169, was 50 = the lapel): ours lit 192 / 188 / 185 vs 177 / 174 / 171: FAIL by ~15 (too bright).
+- Step 5 cuffs: not dressed (C85): LATER. Step 6: shirt alone renders check/{wholefront,collar,placket,cuff}_f3a.png.
+  Blind review rev_f3a FAIL 10 MAJOR (wholefront 5: collar stands, no V, boxy torso, puffed shoulders, placket lumps;
+  collar 4: too tall, no fall, collar off the neckline on one side, no V). Hem edge now a hard line (MINOR "high").
+- Tests (20 clothing files, bin/capped): 295 passed, 2 skipped, 3 xfailed, exit 0.

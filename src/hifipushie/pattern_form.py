@@ -2715,18 +2715,59 @@ def on_form(model: str, garment: str, spec: dict | None = None, g: dict | None =
 
 
 TUCK_CAP = 0.006  # m: tucked cloth below the line lies at most this off the body (a waistband over it: one cloth + ease)
-TUCK_BLEND = 0.03  # m: above the line the pull fades to 0 over this (the blouse over the waistband)
+TUCK_BLEND = 0.012  # m: BELOW the line the pull fades in over this (hidden); above the line nothing moves
+TUCK_SLIDE_ITERS = 1500  # the hidden cloth's stretched edges given back their length (it slides into the trousers)
+TUCK_SLIDE_OVER = 1.0  # (1.8 oscillated on the hollow KAT: max 15.7 %)
 TUCK_SOURCE = ("a shirt tucked into trousers is held to the body by the waistband and lies flat under the trousers' "
                "seat and fronts; its fullness below the line is hidden (Garrett concept v8: the shirt runs into the "
                "trousers under the belt). Shirt round 1: no tuck key, the hem flared 15-25 mm off the hips")
+# A TUCK LINE IS A LINE, AND TUCKED CLOTH SLIDES (shirt round 3, C109). Round 2's tuck faded the pull in over 30 mm ABOVE
+# the line: the visible cloth stepped in by up to 34 mm over 30 mm (a sheared ring that read as a peplum), and the pull
+# along the body's normals drew the hidden back into the lumbar hollow with its length held, stretching it vertically:
+# 1022 of the 3010 faces over the 5 % start limit (back p99 50 %, max 224 %) were the tuck's, and the arrangement was
+# refused at preflight. Real cloth tucked under a waistband is not nailed where it hung: it slides down into the trousers
+# (its hem is free). So: nothing moves above the line (the visible fit is the fit; the waistband's top edge makes the
+# line), the pull fades in over TUCK_BLEND below it, and the hidden vertices then give their stretched edges back their
+# pattern length (Jacobi, the visible ones fixed), held between EASE / 2 and the cap off the body.
+
+
+def _tuck_slide(X, F, uv, movable, surf, lo: float, cap: float, iters: int | None = None):
+    """Hidden cloth given its length back: each edge with a movable end that is longer than its pattern length is
+    shortened to it (the movable ends move, Jacobi-averaged), then the movable vertices are held between `lo` and `cap`
+    off the body. Compression is left alone (tucked cloth gathers). Returns X."""
+    F = np.asarray(F)
+    E = np.unique(np.sort(np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]], 1), axis=0)
+    E = E[movable[E[:, 0]] | movable[E[:, 1]]]
+    if not len(E):
+        return X
+    L0 = np.linalg.norm(uv[E[:, 0]] - uv[E[:, 1]], axis=1)
+    ma, mb = movable[E[:, 0]].astype(float), movable[E[:, 1]].astype(float)
+    share = ma + mb
+    idx = np.where(movable)[0]
+    for _ in range(int(TUCK_SLIDE_ITERS if iters is None else iters)):
+        D = X[E[:, 1]] - X[E[:, 0]]
+        L = np.linalg.norm(D, axis=1)
+        ex = np.where(L > L0, (L - L0) / np.maximum(L, 1e-12), 0.0)
+        step = D * (ex / np.maximum(share, 1.0))[:, None]
+        acc = np.zeros_like(X)
+        cnt = np.zeros(len(X))
+        np.add.at(acc, E[:, 0], step * ma[:, None])
+        np.add.at(acc, E[:, 1], -step * mb[:, None])
+        np.add.at(cnt, E[:, 0], ma * (ex > 0))
+        np.add.at(cnt, E[:, 1], mb * (ex > 0))
+        X = X + TUCK_SLIDE_OVER * acc / np.maximum(cnt, 1.0)[:, None]
+        d, N, _ = surf.signed(X[idx])
+        X[idx] -= N * (d - np.clip(d, lo, cap))[:, None]
+    return X
 
 
 def tuck(res: dict, X, g: dict, cap: float = TUCK_CAP, blend: float = TUCK_BLEND) -> tuple:
     """TUCKED (design key "tucked": true | {"line": landmark z name | z m, "drop": m, "cap": m}; any garment worn into
     another): the torso cloth below the tuck line (garment_reads.tuck_line_z: default the body's waist_z) is pulled
-    along the body's normal to at most `cap` off it, faded in over `blend` above the line (the blouse over the
-    waistband); sleeves, cuffs and collars untouched. Returns (X, info) with info["hidden"] = the vertices below the
-    line (covered by the garment over it)."""
+    along the body's normal to at most `cap` off it, faded in over `blend` BELOW the line (above it nothing moves: the
+    line stays a line, C109), then the hidden cloth slides (_tuck_slide: its stretched edges back to their pattern
+    length, when the mesh carries F + uv); sleeves, cuffs and collars untouched. Returns (X, info) with info["hidden"] =
+    the vertices below the line (covered by the garment over it)."""
     from . import garment_reads
     X = np.asarray(X, float).copy()
     t = g.get("tucked") if isinstance(g.get("tucked"), dict) else {}
@@ -2736,14 +2777,21 @@ def tuck(res: dict, X, g: dict, cap: float = TUCK_CAP, blend: float = TUCK_BLEND
         return X, {"line_z": None}
     M = res["mesh"]
     torso = ~garment_reads._mask(M, ("sleeve", "cuff", "collar_stand", "collar_fall"))
-    w = np.clip((lz + blend - X[:, 2]) / blend, 0.0, 1.0) * torso
+    w = np.clip((lz - X[:, 2]) / max(blend, 1e-6), 0.0, 1.0) * torso
     sel = w > 0
-    d, N, _ = _body_surface(res["body"]).signed(X[sel])
+    surf = _body_surface(res["body"])
+    d, N, _ = surf.signed(X[sel])
     pull = np.maximum(d - cap, 0.0) * w[sel]
     X[np.where(sel)[0]] -= N * pull[:, None]
+    hidden = torso & (X[:, 2] < lz)
+    slid = None
+    if M.get("F") is not None and M.get("uv") is not None and hidden.any():
+        X0 = X.copy()
+        X = _tuck_slide(X, M["F"], np.asarray(M["uv"], float), hidden & (w >= 1.0), surf, EASE / 2, cap)
+        slid = round(float(np.linalg.norm(X - X0, axis=1).max()) * 1000, 1)
     return X, {"line_z": round(lz, 4), "cap_mm": cap * 1000, "moved": int((pull > 1e-4).sum()),
-               "max_mm": round(float(pull.max()) * 1000, 1) if len(pull) else 0.0,
-               "hidden": np.where(torso & (X[:, 2] < lz))[0].tolist(), "source": TUCK_SOURCE}
+               "max_mm": round(float(pull.max()) * 1000, 1) if len(pull) else 0.0, "slide_max_mm": slid,
+               "hidden": np.where(hidden)[0].tolist(), "source": TUCK_SOURCE}
 
 
 def fold_turned(M: dict, X: np.ndarray, g: dict, reach: float = 0.03) -> float:

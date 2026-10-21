@@ -213,9 +213,49 @@ def test_tucked_pulls_the_cloth_below_the_line_to_the_body_and_reads_it():
     after = gr.tuck_reads(X2, body, gr.tuck_line_z(body, g))
     assert after["tuck_standoff_p90_mm"] <= pf.TUCK_CAP * 1000 + 0.5, after
     assert info["moved"] > 0 and len(info["hidden"]) == int((X[:, 2] < 1.0).sum())
-    above = X[:, 2] > 1.0 + pf.TUCK_BLEND
-    assert np.allclose(X2[above], X[above])  # (above the blend: untouched)
+    above = X[:, 2] >= 1.0
+    assert np.allclose(X2[above], X[above])  # (C109: above the LINE nothing moves: no faded ring over the waistband)
     assert gr.tuck_line_z(body, {}) is None
+
+
+def test_tucked_cloth_slides_into_the_trousers_instead_of_stretching():
+    """C109: a tube hanging straight past a hollow (the small of the back) is pulled into the hollow below the line;
+    held where it hung, its vertical edges stretch (the round-2 tuck: back p99 50 %); the slide gives the hidden edges
+    their pattern length back while the cloth above the line stays put."""
+    import types
+    from hifipushie import pattern_form as pf
+    t = np.linspace(0, 2 * np.pi, 48, endpoint=False)
+    zs = np.arange(0.70, 1.2, 0.01)
+    rb = lambda z: 0.15 - 0.03 * np.exp(-((z - 0.9) / 0.06) ** 2)  # (a 30 mm hollow 100 mm below the line)
+    BV = np.array([(rb(z) * np.cos(a), rb(z) * np.sin(a), z) for z in np.arange(0.6, 1.3, 0.01) for a in t])
+    _, BT = _cylinder(0.15, 0.6, 1.3, n=48, m=len(np.arange(0.6, 1.3, 0.01)))
+    body = types.SimpleNamespace(V=BV, T=BT, at={"waist_z": np.array([1.0]), "hps.L": np.array([0.08, 0, 1.5])})
+    X = np.array([(0.16 * np.cos(a), 0.16 * np.sin(a), z) for z in zs for a in t])
+    _, F = _cylinder(0.16, 0.7, 1.19, n=48, m=len(zs))
+    ang = np.arange(len(X)) % 48 * (2 * np.pi * 0.16 / 48)
+    uv = np.c_[ang, X[:, 2]]  # (the tube unrolled: its pattern; the seam column's wrap is ignored below)
+    M = {"names": ["back"], "piece": np.zeros(len(X), int), "F": F, "uv": uv}
+    res = {"body": body, "mesh": M}
+    E = np.unique(np.sort(np.r_[F[:, [0, 1]], F[:, [1, 2]]], 1), axis=0)
+    vert = E[np.abs(E[:, 1] - E[:, 0]) == 48]  # (the vertical edges)
+    lo = vert[X[vert[:, 0], 2] < 0.98]
+
+    def stretch(Y):
+        return np.linalg.norm(Y[lo[:, 0]] - Y[lo[:, 1]], axis=1) / np.linalg.norm(uv[lo[:, 0]] - uv[lo[:, 1]], axis=1) - 1
+
+    held = pf.TUCK_SLIDE_ITERS
+    try:
+        pf.TUCK_SLIDE_ITERS = 0
+        X0, _ = pf.tuck(res, X, {"tucked": True})
+    finally:
+        pf.TUCK_SLIDE_ITERS = held
+    X2, info = pf.tuck(res, X, {"tucked": True})
+    assert stretch(X0).max() > 0.08, stretch(X0).max()  # (held where it hung: the hollow stretches it)
+    s2 = stretch(X2)
+    assert s2.max() < 0.03, (s2.max(), X[lo[np.argsort(-s2)[:5], 0], 2])  # (slid: its length back)
+    assert np.allclose(X2[X[:, 2] >= 1.0], X[X[:, 2] >= 1.0]) and info["slide_max_mm"] > 0
+    d = pf._body_surface(body).signed(X2[X[:, 2] < 0.98])[0]
+    assert d.max() <= pf.TUCK_CAP + 1e-6  # (and still under the cap)
 
 
 # ----------------------------------------------------------------------------------------------- C100: own colour
