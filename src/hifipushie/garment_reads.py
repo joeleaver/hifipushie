@@ -248,7 +248,11 @@ def _depths(pc, arc) -> tuple:
         tg = E[i + 1] - E[i]
         tg = tg / (np.linalg.norm(tg) + 1e-12)
         n = np.array([-tg[1], tg[0]])
-        if (c - q) @ n < 0:
+        # (into the piece: the side a step off the edge lands inside the outline; the centroid decided before, and a
+        # sprung fall bent round its centre has its centroid behind its own sewn edge's middle: shirt round 9)
+        from . import pattern as _pt
+        inn = _pt._poly_inside(P, np.array([q + 0.0015 * n, q - 0.0015 * n]))
+        if inn[1] and not inn[0] or (inn[0] == inn[1] and (c - q) @ n < 0):
             n = -n
         if f != 0.5:  # (the ends: step in 2 mm so the normal line does not run along the piece's end)
             q = q + tg * (0.002 if f == 0.0 else -0.002)
@@ -386,8 +390,8 @@ def fall_spring_reads(Bp: dict, g: dict | None = None) -> dict:
     from . import pattern, pattern_jacket
     cp = collar_pieces(Bp)
     rd = collar_draft_reads(Bp, g)
-    if not cp or not rd:
-        return {}
+    if not cp or not rd or any(e.split(":")[0] not in Bp["pieces"] for e in cp["body"]):
+        return {}  # (no collar, or the neckline's pieces aren't in this pattern: no path to read)
     pcs = Bp["pieces"]
     fc_ = pcs[cp["fall"]]
     P = np.asarray(fc_["P"], float)
@@ -420,6 +424,75 @@ def fall_spring_reads(Bp: dict, g: dict | None = None) -> dict:
             "spring_mm": round(outer * 1000 - sewn, 1), "drop_cb_mm": round(drop_cb * 1000, 1),
             "drop_end_mm": round(drop_e * 1000, 1), "parts": parts, "ring_mm": ts["length_mm"],
             "pieces": [cp["stand"], cp["fall"]]}
+
+
+CORNER_STRAIN_MAX = 10.0  # % at a collar / band corner (the made pieces start within 7 % p99 on the form; shirting
+# yields ~3-5 % before it puckers: above 10 % the corner reads torn)
+CORNER_FOLDED_MAX = 2
+CORNER_SOURCE = ("Joe on shirt round 8's collar crop: 'the front corners of the collar are torn': at the right band end "
+                 "strain 31 % (stand) / 22 % (the fall's sewn end) after the arrangement's single-vertex pins pulled the "
+                 "band ends 35 mm; a shirting corner pulled past ~10 % reads frayed. Crumpled = a cell whose normal "
+                 "opposes its 6 mm neighbours' mean, outside the fold's hinge band (the roll's own turn is not a crumple)")
+
+
+def collar_corner_reads(M: dict, X, Bp: dict, reach: float = 0.02) -> dict:
+    """The corners of a stand + fall collar (the fall's free-outline corners: its points; its sewn edge's ends; the
+    stand's ends): per corner, the faces within `reach` (pattern) of it: strain max / p99 (%), crumpled cells (normal
+    against its neighbours' mean, outside every fold's hinge band: the roll's rows + 4 mm), the cells' pattern edge
+    (mm), the corner's pattern angle. -> {"<piece>:<index>": {..., "ok"}} ({} without such a collar)."""
+    from scipy.spatial import cKDTree
+    from . import diag_render, folds as fm
+    cp = collar_pieces(Bp) if Bp else None
+    if not cp or M is None:
+        return {}
+    X = np.asarray(X, float)
+    F = np.asarray(M["F"]); uv = np.asarray(M["uv"], float); pid = np.asarray(M["piece"]); names = list(M["names"])
+    s = diag_render.face_strain(X, F, uv) * 100
+    N = np.cross(X[F[:, 1]] - X[F[:, 0]], X[F[:, 2]] - X[F[:, 0]])
+    N /= np.linalg.norm(N, axis=1, keepdims=True) + 1e-15
+    C = X[F].mean(1)
+    hinge = np.zeros(len(F), bool)
+    for fd in M.get("folds") or []:
+        if fd["piece"] in (cp["stand"], cp["fall"]) and len(fd["rows"]):
+            g = fm._geom(M, fd)
+            rv = np.concatenate([np.asarray(r["row"]) for r in g["rows"]])
+            kf = names.index(fd["piece"])
+            d = cKDTree(uv[rv]).query(uv[F].mean(1))[0]
+            hinge |= (pid[F[:, 0]] == kf) & (d < 0.004)
+    pcs = Bp["pieces"]
+    corners = []
+    fP = np.asarray(pcs[cp["fall"]]["P"], float)
+    for i in (cp["outer"][0], cp["outer"][-1], cp["sewn"][0], cp["sewn"][-1]):
+        corners.append((cp["fall"], i, fP))
+    sP = np.asarray(pcs[cp["stand"]]["P"], float)
+    from . import pattern
+    ne = pattern.arc_indices(pcs[cp["stand"]], cp["neck_e"])
+    te = pattern.arc_indices(pcs[cp["stand"]], cp["top_e"])
+    for i in (ne[0], ne[-1], te[0], te[-1]):
+        corners.append((cp["stand"], i, sP))
+    Cu = uv[F].mean(1)  # (neighbours in the PATTERN: in 3D a turned flap lies 1-2 mm over its base, opposite)
+    tr = cKDTree(Cu)
+    out = {}
+    for pn, i, P in corners:
+        k = names.index(pn)
+        q = P[i]
+        a, b = P[i - 1] - q, P[(i + 1) % len(P)] - q
+        ang = math.degrees(math.acos(float(np.clip(a @ b / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-15), -1, 1))))
+        idx = np.where((pid[F[:, 0]] == k) & (np.linalg.norm(uv[F].mean(1) - q, axis=1) < reach))[0]
+        if not len(idx):
+            continue
+        crum = 0
+        for f in idx[~hinge[idx]]:
+            nb = [j for j in tr.query_ball_point(Cu[f], 0.006) if pid[F[j, 0]] == k and j != f and not hinge[j]]
+            if nb and N[f] @ N[nb].mean(0) < 0:
+                crum += 1
+        el = np.linalg.norm(uv[F[idx]] - uv[F[idx]][:, [1, 2, 0]], axis=2)
+        smax = float(np.abs(s[idx]).max())
+        out[f"{pn}:{i}"] = {"strain_max": round(smax, 1), "strain_p99": round(float(np.percentile(np.abs(s[idx]), 99)), 1),
+                            "crumpled": crum, "faces": int(len(idx)), "edge_mm": round(float(np.median(el)) * 1000, 1),
+                            "corner_deg": round(ang, 1),
+                            "ok": bool(smax <= CORNER_STRAIN_MAX and crum <= CORNER_FOLDED_MAX)}
+    return out
 
 
 def flat_closure_reads(Bp: dict, closure: str = "front") -> dict:

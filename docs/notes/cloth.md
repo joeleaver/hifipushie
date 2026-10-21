@@ -9361,3 +9361,18 @@ Step 1, MEASURE FIRST (M12) on round 8's results (form_k8b closed, seen_s8c star
   offset by the edge's drop (CB 10 mm = the fall's cover of the stand seam; ends 42 mm: the points onto the chest) +
   pi x its stand-off = 568.9 mm. 115 mm SHORT (25 %): it can only stand round the neck. (The jacket's fall is drafted
   to its path by op_collar_two_piece's spread solve, R18 row collar_fall_outer.)
+Step 2 (draft spring, C122) and Joe's torn corners (C123):
+- cloth.spring_fall: the fall bent round a centre behind its sewn edge's middle (radius 277 mm, sewn edge kept 441.9),
+  outer 453.8 -> 568.9 vs need 567.5; gate g9b collar_fall_spring PASS, cover 9.3 PASS. The gate's
+  fold_turn_allowance then read 4.0 mm on the curved roll (chord-normal depth): fixed to the distance from the line
+  itself (folds.side_dist).
+- Form k9a (sprung, closed, 225 s): p99 11.4; the fall's edge 2.7 / 6.1 / 9.0 mm out from the neck seam (CB / 45 /
+  sides; r8 5.9 / 4.0 / 4.5), gap under 3-15 mm: still a tube. The form turns the flap rigidly about the roll line
+  (folds.apply) and relaxes; the extra length ripples instead of lying on the shoulders. Draft right, form not:
+  next lever is the form's turn (lay the turned fall onto what is under it).
+- Torn corners (q8.py, q9.py; garment_reads.collar_corner_reads): a8c FAIL (right band end stand 31 %, the fall's
+  right sewn end 22 %, right point 10.2 %), the seen start 10.1 % at the right point, form k8b PASS (<= 6.7 %, 0
+  crumpled; crumple read by PATTERN neighbours: by 3D ones the turned flap over its base read as 4 crumpled cells).
+  Cause: single-vertex pins on the right (band ends by 35 mm, the point pin). Fix not run (budget).
+- Not run this round (budget spent on measure + the two reads that were wrong): arrangement, renders, reviews,
+  jacket refit. Tests: 22 files (tests_r9.log).

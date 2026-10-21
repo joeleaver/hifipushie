@@ -479,6 +479,13 @@ def checklist_fit_rows(res: dict, X, g: dict, model: str = "", garment: str = ""
     rows.append({"id": "big_reads", "stage": 9, "status": "INFO", "measure": "garment_reads.big_reads",
                  "ours": {k: v for k, v in rd.items() if k not in ("front_gap_profile", "buttons")},
                  "checklist": piece})
+    cc_ = gr.collar_corner_reads(res.get("mesh"), X, res.get("pieces_full")) if res.get("pieces_full") else {}
+    if cc_:
+        bad = {k: v for k, v in cc_.items() if not v["ok"]}
+        rows.append({"id": "collar_corners", "stage": 3, "status": "FAIL" if bad else "PASS",
+                     "measure": "garment_reads.collar_corner_reads", "ours": bad or {k: v["strain_max"] for k, v in cc_.items()},
+                     "ref": f"each collar / band corner: strain <= {gr.CORNER_STRAIN_MAX:g} %, <= {gr.CORNER_FOLDED_MAX} "
+                            "crumpled cells", "why": gr.CORNER_SOURCE})
     return rows
 
 
@@ -1389,7 +1396,20 @@ def collar_rule_rows(Bp: dict, g: dict) -> list:
         return []
     lo, hi = gr.FALL_COVER_MM
     cv = r["collar_fall_cover_mm"]
-    return [{"id": "collar_fall_cover", "stage": 3, "status": "PASS" if lo <= cv <= hi else "FAIL",
+    sp = gr.fall_spring_reads(Bp, g)
+    own = (((Bp.get("draft") or {}).get("meta") or {}).get("collar_two_piece"))
+    if sp:
+        d_ = -sp["fall_short_mm"]
+        ok = gr.SPRING_TOL_MM[0] <= d_ <= gr.SPRING_TOL_MM[1]
+        spring = [{"id": "collar_fall_spring", "stage": 3,
+                   "status": "INFO" if own else ("PASS" if ok else "FAIL"), "fold_status": "PASS" if ok else "FAIL",
+                   "measure": "garment_reads.fall_spring_reads (the fall's whole outer edge vs the path it lands on)",
+                   "ours": sp, "ref": f"outer - need in {gr.SPRING_TOL_MM[0]:g}..{gr.SPRING_TOL_MM[1]:g} mm",
+                   "why": gr.SPRING_SOURCE + ("; INFO: the draft solves its own (collar_two_piece, R18 row "
+                                              "collar_fall_outer)" if own else "")}]
+    else:
+        spring = []
+    return spring + [{"id": "collar_fall_cover", "stage": 3, "status": "PASS" if lo <= cv <= hi else "FAIL",
              "measure": "garment_reads.collar_draft_reads (worn fall - worn stand, mm)", "ours": r,
              "ref": f"{lo:g}..{hi:g} mm", "why": "the fall below the roll line, less the turn of cloth (C43), covers the "
                                                 "stand seam (Aldrich: shirt fall 10-15 mm over the stand)"},

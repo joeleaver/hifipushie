@@ -104,6 +104,48 @@ def test_every_fold_kind_runs_through_the_same_rows(kind, angle, extra):
     assert form["fold_turn"] == "PASS", form
 
 
+def _collar_flat_case(fall_h=0.055, stand_h=0.035, r0=0.10, span=2.2):
+    """A body piece whose neckline is an arc (radius r0: the flattened shoulders round the neck), a straight stand band
+    and a straight FALL band (outer edge = its sewn edge: no spring) sewn as a shirt's: stand to the neckline, fall to
+    the stand's top, the fall's roll 6 mm above its seam (angle 0)."""
+    th = np.linspace(-span / 2, span / 2, 41)
+    L = r0 * span
+    neck = np.c_[r0 * np.sin(th), -r0 * np.cos(th)]
+    outer = np.c_[0.25 * np.sin(th), -0.25 * np.cos(th)][::-1]
+    body = _piece(np.r_[neck, outer], names={"nl.l": 0, "nl.c": 20, "nl.r": 40})
+    xs = np.linspace(-L / 2, L / 2, 41)
+
+    def band(h, nm):
+        P = np.r_[np.c_[xs, np.zeros(41)], np.c_[xs[::-1], np.full(41, h)]]
+        return _piece(P, names={f"{nm}L": 0, f"{nm}M": 20, f"{nm}R": 40, f"{nm}TR": 41, f"{nm}TM": 61, f"{nm}TL": 81})
+    B = _B({"bodice": body, "stand": band(stand_h, "s"), "collar": band(fall_h, "c")},
+           seams=[["stand:sL>sM>sR", ["bodice:nl.l>nl.c>nl.r"]], ["collar:cL>cM>cR", "stand:sTL>sTM>sTR"]],
+           folds=[{"name": "collar roll", "piece": "collar", "line": {"edge": "cL>cM>cR", "offset": 0.006}, "angle": 0,
+                   "kind": "roll", "radius": 0.0015, "strength": 0.6}])
+    return B
+
+
+def test_fall_spring_read_and_op_on_a_straight_band():
+    """(shirt round 9, the funnel) KNOWN ANSWER, flat: a straight fall band on a curved neckline is short of its landing
+    path (the neckline offset by the fall's cover below the seam, here 55 - 6 - turn - (35 + 6) ~ 6 mm at CB, more at
+    the ends, + pi x its stand-off): collar_fall_spring FAILs; cloth.spring_fall bends it so its outer edge is the path
+    (within the tolerance) with its sewn edge unchanged (+-0.5 mm: it still matches the stand); a fall already sprung
+    is left alone."""
+    from hifipushie import garment_reads as gr, cloth_check as cc
+    B = _collar_flat_case()
+    rd = gr.fall_spring_reads(B, {"fabric": "shirting"})
+    assert rd and rd["fall_short_mm"] > 6, rd
+    row = [r for r in cc.collar_rule_rows(B, {"fabric": "shirting"}) if r["id"] == "collar_fall_spring"][0]
+    assert row["status"] == "FAIL", row
+    rec = cloth.spring_fall(B["pieces"], B["seams"], B["folds"], {"fabric": "shirting"})
+    assert rec, rec
+    now = gr.fall_spring_reads(B, {"fabric": "shirting"})
+    assert abs(now["fall_sewn_mm"] - rd["fall_sewn_mm"]) < 0.5, (rd, now)
+    assert gr.SPRING_TOL_MM[0] <= -now["fall_short_mm"] <= gr.SPRING_TOL_MM[1], now
+    assert [r for r in cc.collar_rule_rows(B, {"fabric": "shirting"}) if r["id"] == "collar_fall_spring"][0]["status"] == "PASS"
+    assert cloth.spring_fall(B["pieces"], B["seams"], B["folds"], {"fabric": "shirting"}) == {}
+
+
 def test_two_piece_collar_rows_on_their_known_answer():
     """(shirt round 9, C119 + the turn convention) the two-piece collar known answer (tests/test_pattern_form.py: a fall
     on its stand on a neck cylinder, assembled, ~165-175 deg in section, angle 10 declared: a 170 deg turn): fold_turn

@@ -60,11 +60,10 @@ def _line(Bp, f):
 
 def _flap_depth(P: np.ndarray, L: np.ndarray, flap_side: float) -> float:
     """m: how far the piece's outline reaches past fold line L on its flap side (sign of the line's left normal)."""
-    t = L[-1] - L[0]
-    t = t / (np.linalg.norm(t) + 1e-12)
-    n = np.array([-t[1], t[0]])
-    s = (P - L[0]) @ n
-    s = s * flap_side
+    # (signed distance to the LINE itself, folds.side_dist: across its chord a curved line, a sprung collar's roll,
+    # read 4.0 mm on a 6 mm strip: shirt round 9)
+    from . import folds as fm
+    s = fm.side_dist(L, P)[0] * flap_side
     return float(max(s.max(), 0.0))
 
 
@@ -76,7 +75,8 @@ def _flap_side(pc, L, f) -> float:
     fl = f.get("flap")
     if isinstance(fl, str) and fl in pc.get("names", {}):
         return float(np.sign((P[pc["names"][fl]] - L[0]) @ n) or 1.0)
-    s = (P - L[0]) @ n
+    from . import folds as fm
+    s = fm.side_dist(L, P)[0]
     return 1.0 if s.clip(0).sum() <= (-s).clip(0).sum() else -1.0
 
 

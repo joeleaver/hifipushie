@@ -159,6 +159,81 @@ def collar_options(tbl: dict, opts: dict, m: dict) -> dict:
             "collarBend": round(0.5 * (lo + hi), 4)}
 
 
+def _bend(P: np.ndarray, c0: np.ndarray, t: np.ndarray, n: np.ndarray, k: float, sx: float) -> np.ndarray:
+    """Points bent round a centre 1/k behind c0 (along -n): the line through c0 along t becomes a circle of radius 1/k,
+    a line h further along n one of radius 1/k + h (so it grows by (1 + k h)); along t scaled by sx first."""
+    rel = P - c0
+    x, y = (rel @ t) * sx, rel @ n
+    if k < 1e-9:
+        return c0 + np.outer(x, t) + np.outer(y, n)
+    R = 1.0 / k
+    a = x / R
+    return c0 - R * n + (R + y)[:, None] * (np.sin(a)[:, None] * t + np.cos(a)[:, None] * n)
+
+
+def spring_fall(out: dict, seams: list, folds: list, g: dict, draft_info: dict | None = None) -> dict:
+    """SPRING A STAND + FALL COLLAR'S FALL TO ITS LANDING PATH (shirt round 9; garment_reads.SPRING_SOURCE): a fall cut
+    as a straight band (outer edge ~ its sewn edge) can't turn down over its stand onto the shoulders; it stands round
+    the neck as a tube (the funnel). The pattern maker's fix, for ANY stand + fall collar: slash the fall from the
+    outer edge to the sewn edge and spread, the sewn edge kept its length (it matches the stand): here as a bend of the
+    whole piece round a centre behind the sewn edge's middle, so every line parallel to the sewn edge grows with its
+    height above it, solved so the outer edge is as long as the path it lands on (fall_spring_reads: fall_need).
+    Only lengthens; a draft that solves its own spring (pattern_jacket.op_collar_two_piece: meta collar_two_piece,
+    R18) or a fall already within SPRING_TOL_MM is left as drafted. Garment key "fall_spring": false turns it off.
+    -> {"was_mm", "now_mm", "need_mm", "radius_mm"} (or {})."""
+    from . import garment_reads as gr
+    if g.get("fall_spring") is False or ((draft_info or {}).get("meta") or {}).get("collar_two_piece"):
+        return {}
+    Bp_ = {"pieces": out, "seams": seams, "folds": folds, "draft": draft_info or {}}
+    rd = gr.fall_spring_reads(Bp_, g)
+    if not rd or rd["fall_short_mm"] <= -gr.SPRING_TOL_MM[0]:
+        return {}
+    cp = gr.collar_pieces(Bp_)
+    pc = out[cp["fall"]]
+    P = np.asarray(pc["P"], float)
+    se = cp["sewn"]
+    parts = cp["fall_e"].split(">")
+    mid = pattern.index_of(pc, parts[len(parts) // 2]) if len(parts) >= 3 else se[len(se) // 2]
+    j = se.index(mid) if mid in se else len(se) // 2
+    c0 = P[se[j]]
+    t = P[se[min(j + 1, len(se) - 1)]] - P[se[max(j - 1, 0)]]
+    t /= np.linalg.norm(t) + 1e-12
+    n = np.array([-t[1], t[0]])
+    if (P[cp["outer"]] - c0).mean(0) @ n < 0:
+        n = -n
+    L_sewn = pattern.length(P[se])
+    need = rd["fall_need_mm"] / 1000
+
+    def fit_sx(k):
+        lo, hi = 0.8, 1.5
+        for _ in range(40):
+            m = 0.5 * (lo + hi)
+            lo, hi = (m, hi) if pattern.length(_bend(P[se], c0, t, n, k, m)) < L_sewn else (lo, m)
+        return 0.5 * (lo + hi)
+
+    def outer_at(k):
+        return pattern.length(_bend(P[cp["outer"]], c0, t, n, k, fit_sx(k)))
+    lo, hi = 0.0, 1.0 / 0.08  # (k: 1 / the bend's radius; no tighter than 80 mm)
+    if outer_at(hi) < need:
+        k = hi
+    else:
+        for _ in range(40):
+            m = 0.5 * (lo + hi)
+            lo, hi = (m, hi) if outer_at(m) < need else (lo, m)
+        k = 0.5 * (lo + hi)
+    sx = fit_sx(k)
+    pc["P"] = _bend(P, c0, t, n, k, sx).tolist() if isinstance(pc["P"], list) else _bend(P, c0, t, n, k, sx)
+    if pc.get("marks"):
+        pc["marks"] = {m_: _bend(np.asarray(v, float)[None], c0, t, n, k, sx)[0].tolist() for m_, v in pc["marks"].items()}
+    try:
+        now = gr.fall_spring_reads(Bp_, g)
+    except ValueError as e:  # (a read that can't be taken on the sprung piece is reported, not fatal)
+        now = {"error": str(e)}
+    return {"was_mm": rd["fall_outer_mm"], "sx": round(sx, 4), "error": now.get("error"), "now_mm": now.get("fall_outer_mm"), "need_mm": now.get("fall_need_mm"),
+            "sewn_mm": now.get("fall_sewn_mm"), "radius_mm": round(1000 / k, 1) if k > 0 else None,
+            "source": gr.SPRING_SOURCE}
+
+
 BAND_BUTTON = 0.011  # m: a shirt button's diameter (closures' default size)
 BAND_MARGIN = 0.002  # m of band past a button's rim / a buttonhole's end
 
@@ -366,6 +441,10 @@ def pieces(g: dict, meas_mm: dict) -> dict:
     for f in g.get("folds") or []:  # the garment's folds; one named like a table's replaces it ("off": drops it)
         folds = [o for o in folds if not (f.get("name") and o.get("name") == f["name"])] + [dict(f)]
     folds = [f for f in folds if f.get("piece") in keep and not f.get("off")]
+    # a stand + fall collar's fall sprung to the path it lands on turned down (shirt round 9: a straight band funnels)
+    sp_ = spring_fall(out, seams, folds, g, draft_info)
+    if sp_:
+        draft_info = dict(draft_info or {}, fall_spring=sp_)
     # made or draped per piece (made = constructed finished and kept so: garment_design.made_or_draped): the design
     # table's and the garment's "made" ({piece or role: "made" | "draped"}, or a list of made pieces) over the rule
     # (wholly interfaced = made). A coat's fronts are interfaced whole and still draped: frozen as placed, their
