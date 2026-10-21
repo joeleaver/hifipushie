@@ -10,26 +10,28 @@ Notes: docs/notes/cloth.md "drape band round 1/2/3/4" (grep only).
 - garment key "drape": [{name, along, worn, layers: [{piece, kind: stand|fall, ...}], source}]; gate rows
   drape_band_current + drape_band_flat (p99 <= 2 %) + drape_band_reach (INFO).
 - r2 stand ON THE NECK (neck_stand) on a trued neckline; r3 ONE FRAME (flat_frame, MESH_FRAME 2).
-- r4 (C133): measured stations: any value {"at": [[u, v], ...]} (_field); stand "lean" {"at": [[u, "neck" | deg]]}
-  (stand_lean: deg + in / - out, "neck" = the solve); fall "land_dir" (deg out of straight down: the landing walked
-  over the BODY and lifted onto the cloth, _land_over_body, eased over LAND_EASE_DEG, line smoothed LAND_SMOOTH);
-  stand top knotted where the fall's sewn ends join (leftTopJoin / rightTopJoin) and cloth.pieces sews the fall
-  between them (drape.joined_seams). Surf.project(facing=) for walkers.
+- r4 (C133): measured stations {"at": [[u, v], ...]} for any value; stand "lean" {"at": [[u, "neck" | deg]]};
+  fall "land_dir" (ends walked over the BODY, lifted onto the cloth: _land_over_body, LAND_EASE_DEG, LAND_SMOOTH);
+  stand top notches leftTopJoin / rightTopJoin, the fall sewn between them (joined_seams in cloth.pieces).
 - KATs tests/test_drape.py 7 (+ test_open_fall_lands_out_on_the_fronts_and_sews_between_its_join_notches).
 
 ## Garrett shirt collar (sh_garrett v15: drape d4o OPEN; v14 d3o; v13 d3c closed)
-- Worn spec = concept_v8 measured ($S/worn_d4o.json "source"): points 73-75 off CF, 50-61 below HPS, swept back
-  (18 px out, 35 px below the collar-end notch); notch ~15 below HPS / 54 off CF; stand leans OUT ~35 deg at the
-  collar's end (lies back), 26 high at CF; side: fall edge 80 off CF; CB (rule): stand 32, cover 5-25.
-- d4o: stand 0.38 / collar 1.71 % p99 (flat PASS); drape points 135.8 apart, 43.6 below HPS; fall CB 62.3; seam
-  fall 434.8 vs stand join-to-join 429.7 = +1.2 % (was -4.7 CF to CF). Reach closed INFO 10 / 14 %.
-- M12 (measured, k12a): the open form's front neckline at the collar's end stands 35-50 mm PROUD of the chest and
-  its edge is curled; land_dir 70-100 / deeper land gave 123-144 apart but 2.4-5.5 % p99 (stop-loss): the spread
-  comes from the swept-back point (-0.06), as the concept draws it.
-- r3 numbers: d3o 107 apart / 42.7 below (drape), 113 / 37 fitted; fit vs drape p50 7.5 / 4.6 mm.
+- Worn spec = concept_v8 measured ($S/worn_d4o.json "source"): points 73-75 off CF, 50-61 below HPS, swept back;
+  stand leans OUT ~35 deg at the collar end, 26 high at CF; side: fall edge 80 off CF; CB (rule) stand 32.
+- concept | d3o | d4o: spread 147 | 113 | 151 (fitted); points below HPS 50-61 | 37 | 38; V 60 | 52 | 52; flat
+  p99 collar <=2 | 1.93 | 1.71; seam stand|collar band -1..+1.5 | -4.7 | +1.2; cover 5-25 | 4.0 | 10.9.
+- Gate FAIL on one row: collar_fall_spring (outer 310 vs need 527: the swept-back point -0.06 buys the spread with a
+  tight fall). Fit p99 12.1 FAIL, collar_corners stand:34 12.9 % FAIL (as r3).
+- Fit vs drape p50 7.0 / 6.5 mm: the BASE moved (fit neckline vs k12a p50 4 / max 11 mm, 4.7 mm back): drape on the
+  form it is placed into, not another round's.
+- Reviews FAIL: collar (stands up, points stick out sideways at jaw height, jagged leaf edge), wholefront (popped
+  collar, no neck opening, baggy). PNGs $S/check/*_d4o.png. Jacket refit skipped.
+- M12 ROOT: k12a is not open: fronts meet at the throat, neck edge 35-50 mm proud of the chest; landing the ends out
+  on it costs 2.4-5.5 % p99. The concept's fronts roll back to a 60 mm V on the chest.
 
-NEXT: step 4 running: pattern_check + open form fit (f_d4o.log), fold rows, collar_corners, fit-vs-drape self-check;
-renders (collar, points, wholefront) + blind reviews; jacket refit only if the collar review is close.
+NEXT: the OPEN FORM first (coordinator call: the fronts' roll back to the concept V, lying on the chest, measured
+flat), then re-drape d4o's worn spec ON that form (point back to 0, land_dir out) so the spring row passes, fit,
+renders, reviews; then the jacket.
 ## Commands ($S = /mnt/data/hifipushie/drape_band4; run.sh = this worktree): drape_d3.py <worn.json> [save|no]
 [piece.key=json ...]; sweep.py <worn> '<[overrides]>'; fit_d3.py <tag> <closed|open> (RUNNER=bin/capped);
-render_d3.py - <tag> <views> (FORM=, capped); rev_d.sh <tag>; probe_a-e.py (open-form reads).
+render_d3.py - <tag> <views> (FORM=, capped); rev_d.sh <tag>; rev_w.sh <tag> [clay|diag]; drift.py <form pkl>.

@@ -9553,3 +9553,22 @@ d4o (v15): stand 0.38 %, collar 1.71 % p99 (flat PASS); points 135.8 apart, 43.6
 (build knots the top row where the fall's sewn ends join) and cloth.pieces sews the fall between them
 (drape.joined_seams): fall 434.8 vs stand top join-to-join 429.7 = +1.2 % (band -1.0..+1.5; CF to CF it was -4.7).
 Reach closed INFO 10.0 / 14.0 %. KAT test_open_fall_lands_out_on_the_fronts_and_sews_between_its_join_notches (C133).
+Step 4 (f_d4o.log, gate_d4o.json, rows_d4o.json): pattern_check FAIL on ONE row: collar_fall_spring (outer edge 309.6
+vs need 527.4, spring -124: the swept-back point -0.06 cuts 60 mm a side off the outer edge; even scaled to the
+shortened span (~376) the outer edge is short = the point lever buys spread with a tight, stand-like fall). seams PASS
+(0 outside band), collar_cover 10.9 PASS (was 4.0), collar_band 32 PASS, drape flat PASS. Open form fit places and
+completes (225 s): spread 151.2 PASS (concept 147; d3o 113), points 37.8 below HPS (gate 35-76; concept 50-61), V
+52.1 (60), fit p99 12.1 FAIL, collar_corners stand:34 12.9 % FAIL (unchanged from r3), fold rows PASS / BLOCKED.
+Fit vs drape p50 7.0 / 6.5 mm (stand / collar; r3 7.5 / 4.6), placed X0 0.0. WHY it drifts (drift.py): largest at the
+sewn edge (stand v-quartile 8.9 mm) and toward the front (|u| quartiles 4.4 -> 9.2); the fit's own neckline moved
+from k12a's (the drape's base) by p50 4.0 / p90 7.2 / max 11 mm, mean shift 4.7 mm back + 2.7 out: the fit relaxes
+k12a's proud front neckline toward the chest and the band follows its seam. The drift is the BASE, not the band:
+drape on the form it is placed into (re-drape on form_d4o, refit: a fixed point), not on another round's fit.
+Renders $S/check/{collar,point_L,point_R,wholefront}_d4o.png. Own read: spread now right but the points stick out
+sideways at jaw height like wings; the stand still rises up the neck at the sides, the V closed at the throat; not
+the concept's collar lying down on open fronts. Blind reviews: collar FAIL (stands up, points stick out horizontally /
+hang in air, jagged faceted leaf edge, blunt lobe point), wholefront FAIL (popped collar, neck opening missing, baggy
+untucked hem, no buttons, no wrinkling). Jacket refit skipped (collar not close).
+Root (M12): the open form k12a is not open: its fronts meet at the throat and their neck edge stands 35-50 mm proud;
+the concept's fronts roll back to a 60 mm V and lie on the chest. A collar draped on k12a cannot lie on fronts that
+are not there: the open FORM (worn_open / the fronts' roll) is the next lever, before the collar.
