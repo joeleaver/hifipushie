@@ -16,14 +16,20 @@ the band turning with it; band ends lean apart; leaves stand off the neck). Joe:
 - CLOSED: repo defaults (landed, BUILD_VERSION 17) + the concept's button spacing = v1 (= e3): clean closed collar, band
   ends sewn flush with the placket tops, one rounded roll (176 deg), collar + band mirror p95 1.4-1.9 mm, strain p99 9 %.
   `spikes/shirt_spike/run.sh base_fit.py v1 '{"closures":[{"name":"front","spacing":{"first":0.034,"from":"cfNeck"}}]}'`
-- OPEN (current best y3, Joe's "pull until it would stretch", C142): `run.sh flatarap.py e3 y3 '{"swing":30,"steps":6,
-  "nopush":1,"pull":{"side":1,"out":0.3,"up":0.3}}'`: band ends swung 30 deg about Simon's hinges, then each collar point
-  DRAGGED out / side / up in 3 mm steps until the cloth would stretch (+1 % p99): it went 45 mm; points 147 apart,
-  59-63 below HPS, V 63 below HPS (concept 147 / 50-61 / ~60), p99 4.8 % vs the pattern, smooth leaves (rough.py collar
-  p95 0.28 mm; closed 0.14). No bending (every bending variant roughened it), no push-out (it dented the band).
+- b0 (Joe: "needs to go that-a-way", arrows down-and-in below the points): sm1 with the main pull's up 0 (points
+  136 apart / 78 below HPS): leaves hang down the chest, closest to the photo so far (concept 50-61 says higher).
+  Pulling the fronts' cfNeck corners down the V moves only 3 mm (no spare cloth above the first fastened button).
+- OPEN + SMOOTH (sm1 = u25 + `"smooth":{"pieces":["collar","stand"]}`, C143): roughness halved (collar p95 0.28,
+  band 0.16 mm), stretch +0.3 pt; a little ripple left near the neck. Joe: pull + smooth = the two styling operations.
+- OPEN (u25 = t15's pulls with "patch":0.025,"turn":1: each step drags the point alone, then fits the
+  patch's unstretched start shape rigidly (Kabsch) onto that and solves again: tips clean (crumple p95 0.06-0.10 mm =
+  closed; flips.py: 1 folded face per side at the patch edge, was 18 / 28 with a rigid patch), points 156 / 64-65.)
+- Recipe pieces: P = {"handles":"points","side":1,"out":0.3,"up":0.3,"patch":0.025,"turn":1} (b0: "up":0); the
+  sequence [P, {"handles":"corners","side":1,"max":0.006}, P] after "swing":30,"steps":6,"nopush":1 from e3. tip.py,
+  flips.py, rough.py read tips / fold-overs / crumple (history of t15 / u25 in cloth.md via the ledger C142).
 
 ## Open faults (ranked by what shows at 1-3 m)
-1. y3: a small stretched patch at the V's corner (the fronts' cfNeck, welded to the band corners, have 34 mm of cloth
+1. u25: points 64-65 below HPS (concept 50-61); 1 folded face per side at the patch edge; a stretched patch at the V's corner (the fronts' cfNeck, welded to the band corners, have 34 mm of cloth
    above the first fastened button). Try the same pull on the band ends instead of a fixed swing; refine the fronts
    near the V (6-20 mm there).
 2. y3 not yet judged blind against the photo / trace (bin/review), nor checked for cloth inside the body (push-out off:

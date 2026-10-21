@@ -234,23 +234,140 @@ _oko = (_l0o > 1e-5) & (pid[_Eo[:, 0]] == pid[_Eo[:, 1]]) & np.isin(pid[_Eo[:, 0
 def stretch(Yw):
     Xw = Yw[inv]; return np.percentile(np.abs(np.linalg.norm(Xw[_Eo[_oko, 0]] - Xw[_Eo[_oko, 1]], axis=1) / _l0o[_oko] - 1), 99)
 pull_info = {}
-if A.get("pull"):
-    PL = A["pull"]; hold = hW | np.isin(np.arange(n), list(bnd))
+# PULLS: a sequence; each drags its handles ("points": the collar points; "corners": the collar's sewn ends = the band's
+# top corners at CF; or ["piece:point", ...]) along its direction until the cloth would stretch (or `max` m). Handles
+# pulled earlier are HELD where they ended (Joe: move these apart a little, then push the points a little more).
+seq = A.get("pulls") or ([A["pull"]] if A.get("pull") else [])
+done_h = {}
+def handle_set(h, patch=0.0):
+    """handles -> {key: welded vertex ids}. patch (m, pattern distance): grab the collar point WITH the cloth within
+    `patch` of it as one rigid piece (a hand grabs an area; one vertex dragged pinches the tip)."""
+    if h == "points":
+        out = {}
+        for s_ in ("left", "right"):
+            o = P[f"collar:{s_}TopEdge"]; k = pid[o]
+            vv = np.where((pid == k) & (np.linalg.norm(uv - uv[o], axis=1) <= patch))[0] if patch > 0 else np.array([o])
+            out[s_] = np.unique(inv[vv])
+        return out
+    if h == "corners": return {s_: inv[P[f"collar:{s_}BottomEdge"]] for s_ in ("left", "right")}
+    out = {}
+    for nmk in h:  # explicit "piece:point" handles, grabbed with their patch (within `patch` on that piece's pattern)
+        o = P[nmk]; k = pid[o]
+        vv = np.where((pid == k) & (np.linalg.norm(uv - uv[o], axis=1) <= patch))[0] if patch > 0 else np.array([o])
+        out[nmk] = np.unique(inv[vv])
+    return out
+for k_, PL in enumerate(seq):
+    H = handle_set(PL.get("handles", "points"), PL.get("patch", 0.0))
+    H = {key: np.atleast_1d(v) for key, v in H.items()}
+    hold = hW | np.isin(np.arange(n), ([] if PL.get("release_band") else list(bnd)) + list(done_h.values()))
     s0 = stretch(Y); dirs = {}
-    for s_, v in pts.items():
-        _, jj = bt.query(Y[v]); sg = np.sign(W0[inv[P[f"collar:{s_}TopHinge"]], 0])
-        d_ = PL.get("side", 1.0) * np.r_[sg, 0, 0] + PL.get("out", 0.5) * vn[jj] + PL.get("up", 0.0) * np.r_[0, 0, 1]
-        dirs[s_] = d_ / np.linalg.norm(d_)
-    pos = {s_: Y[v].copy() for s_, v in pts.items()}; moved = 0.0; good_Y = Y.copy()
-    while moved < PL.get("max", 0.08):
+    for key, v in H.items():
+        _, jj = bt.query(Y[v].mean(0))
+        side_lm = P.get(f"collar:{key}TopHinge") if key in ("left", "right") else None
+        if side_lm is not None: sg = np.sign(W0[inv[side_lm], 0])
+        else: sg = 1.0 if key.split(":")[0].endswith(".L") else -1.0 if key.split(":")[0].endswith(".R") else np.sign(W0[v, 0].mean())
+        d_ = PL.get("side", 1.0) * np.r_[sg, 0, 0] + PL.get("out", 0.0) * vn[jj] + PL.get("up", 0.0) * np.r_[0, 0, 1]
+        dirs[key] = d_ / np.linalg.norm(d_)
+    pos = {key: Y[v].copy() for key, v in H.items()}; moved = 0.0; good_Y = Y.copy()
+    # the grabbed point itself (a patch's lead vertex: the collar point), for the turning patch below
+    lead = {key: (inv[P[f"collar:{key}TopEdge"]] if key in ("left", "right") else inv[P[key]] if key in P else v[0]) for key, v in H.items()}
+    def kabsch(A_, B_):  # proper rotation R and t with R A_ + t ~ B_
+        a0, b0 = A_.mean(0), B_.mean(0); Hm = (A_ - a0).T @ (B_ - b0); Uk, _, Vk = np.linalg.svd(Hm)
+        dk = np.sign(np.linalg.det(Vk.T @ Uk.T)); R_ = Vk.T @ np.diag([1, 1, dk]) @ Uk.T; return R_, b0 - R_ @ a0
+    def plane_dir(Yc, key):
+        """'pull outward along the plane of the collar' (Joe): at the point, the direction AWAY from the cloth (minus
+        the mean direction to its near neighbours on the pattern, within 12 mm), projected onto the leaf's tangent
+        plane there (normal: the mean face normal of those vertices). Follows the leaf as it turns."""
+        o = P[f"collar:{key}TopEdge"]; k = pid[o]
+        nb = np.where((pid == k) & (np.linalg.norm(uv - uv[o], axis=1) < 0.012))[0]
+        w_ = inv[nb]; c_ = Yc[w_].mean(0); out = Yc[inv[o]] - c_
+        fmask = np.isin(F[:, 0], nb) & np.isin(F[:, 1], nb) & np.isin(F[:, 2], nb)
+        nn_ = np.cross(Yc[inv[F[fmask, 1]]] - Yc[inv[F[fmask, 0]]], Yc[inv[F[fmask, 2]]] - Yc[inv[F[fmask, 0]]]).sum(0)
+        nn_ /= np.linalg.norm(nn_) + 1e-12
+        out -= (out @ nn_) * nn_; return out / (np.linalg.norm(out) + 1e-12)
+    PLANE = PL.get("dir") in ("plane", "easy") and PL.get("handles", "points") == "points"
+    path = {key: pos[key].copy() for key in H}   # (the plane pull walks: each step from where the last one ended)
+    while moved < PL.get("max", 0.08) - 1e-9:
         moved += PL.get("step", 0.003); T = good_Y.copy(); fx = hold.copy()
-        for s_, v in pts.items(): T[v] = pos[s_] + moved * dirs[s_]; fx[v] = True
-        Yt = solve(T, fx, PL.get("iters", 12)); st_ = stretch(Yt)
+        if PLANE and PL.get("dir") == "plane":
+            for key in H:
+                dirs[key] = plane_dir(good_Y, key)
+        if PL.get("dir") == "easy":
+            # "let the cloth choose": candidates = side tilted toward +-normal / +-up by 0 / 35 / 70 deg; each probed with
+            # a short solve (both sides together, mirrored), the least-stretch one taken for this step
+            best = None
+            for ax_ in ("n", "u"):
+                for ang in (0, 35, -35, 70, -70):
+                    if ax_ == "u" and ang == 0: continue
+                    cand = {}
+                    for key, v in H.items():
+                        _, jj = bt.query(good_Y[lead[key]]); sgn = np.sign(W0[inv[P[f"collar:{key}TopHinge"]], 0])
+                        sd = np.r_[sgn, 0, 0]; other = vn[jj] if ax_ == "n" else np.r_[0, 0, 1.0]
+                        other = other - (other @ sd) * sd; other /= np.linalg.norm(other) + 1e-12
+                        cand[key] = np.cos(np.radians(ang)) * sd + np.sin(np.radians(ang)) * other
+                    Tp = good_Y.copy(); fxp = hold.copy()
+                    for key2, v2 in done_h.items(): fxp[v2] = True
+                    for key, v in H.items(): Tp[lead[key]] = good_Y[lead[key]] + PL.get("step", 0.003) * cand[key]; fxp[lead[key]] = True
+                    stp_ = stretch(solve(Tp, fxp, PL.get("probe_iters", 4)))
+                    if best is None or stp_ < best[0]: best = (stp_, cand)
+            dirs = best[1]
+        for key, v in done_h.items(): fx[v] = True
+        if PL.get("turn") and any(len(v) > 1 for v in H.values()):
+            # TURNING PATCH: drag the lead vertex alone, then fit each patch's unstretched start shape rigidly
+            # (rotation + translation, Kabsch) onto that solution, pin it with the lead on its target, solve again
+            tgt_lead = {key: (good_Y[lead[key]] + PL.get("step", 0.003) * dirs[key]) if PLANE else
+                        (pos[key][list(v).index(lead[key])] + moved * dirs[key]) for key, v in H.items()}
+            for key, v in H.items(): T[lead[key]] = tgt_lead[key]; fx[lead[key]] = True
+            Yt = solve(T, fx, PL.get("iters", 12))
+            for _r in range(PL.get("turn_rounds", 2)):
+                T2 = Yt.copy(); fx2 = fx.copy()
+                for key, v in H.items():
+                    R_, t_ = kabsch(pos[key], Yt[v]); Pn = pos[key] @ R_.T + t_
+                    li = list(v).index(lead[key]); Pn += tgt_lead[key] - Pn[li]
+                    T2[v] = Pn; fx2[v] = True
+                Yt = solve(T2, fx2, PL.get("iters", 12))
+        else:
+            for key, v in H.items(): T[v] = pos[key] + moved * dirs[key]; fx[v] = True
+            Yt = solve(T, fx, PL.get("iters", 12))
+        st_ = stretch(Yt)
         if st_ > s0 + PL.get("tol", 0.01): moved -= PL.get("step", 0.003); break
         good_Y = Yt
-    Y = good_Y; pull_info = {"moved_mm": round(moved * 1000, 1), "stretch_p99_start": round(s0 * 100, 2), "stretch_p99_end": round(stretch(Y) * 100, 2)}
-    print("pull:", pull_info)
-Y = solve(Y, hW | np.isin(np.arange(n), list(pts.values()) + list(bnd)), 10)
+    Y = good_Y
+    for key, v in H.items():
+        for i_, vv in enumerate(np.atleast_1d(v)): done_h[f"{k_}:{key}:{i_}"] = vv
+    pull_info[k_] = {"handles": PL.get("handles", "points"), "moved_mm": round(moved * 1000, 1), "stretch_p99": [round(s0 * 100, 2), round(stretch(Y) * 100, 2)]}
+    print("pull", k_, pull_info[k_])
+Y = solve(Y, hW | np.isin(np.arange(n), list(pts.values()) + list(bnd) + list(done_h.values())), 10)
+# SMOOTH (Joe: "a 'smooth' operation ... in conjunction with the 'pull'; those are the two main operations to styling the
+# clothing one is wearing"): within the brushed pieces, alternate (a) fair: each vertex moved `lam` of the way toward its
+# one-ring centroid ALONG ITS NORMAL only (a hand flattening a ripple), (b) restore: the flat-pattern solve with
+# everything outside the brush (and the pulled handles) held. Stop when the stretch would exceed the start's + tol, or the
+# roughness stops dropping. Same rule as the pull: as far as it goes without stretching.
+smooth_info = {}
+if A.get("smooth"):
+    SM = A["smooth"]; brush = np.zeros(n, bool)
+    brush[inv[np.isin(pid, [nm.index(p) for p in SM.get("pieces", ["collar", "stand"])])]] = True
+    keep = ~brush | hW | np.isin(np.arange(n), list(done_h.values()) + list(bnd))
+    Ew = np.unique(np.sort(np.r_[WF[:, [0, 1]], WF[:, [1, 2]], WF[:, [2, 0]]], 1), axis=0)
+    cnt = np.zeros(n); np.add.at(cnt, Ew[:, 0], 1); np.add.at(cnt, Ew[:, 1], 1)
+    def vnorm(Yc):
+        fn_ = np.cross(Yc[WF[:, 1]] - Yc[WF[:, 0]], Yc[WF[:, 2]] - Yc[WF[:, 0]]); vv = np.zeros_like(Yc)
+        for k in range(3): np.add.at(vv, WF[:, k], fn_)
+        return vv / (np.linalg.norm(vv, axis=1)[:, None] + 1e-12)
+    def rough_(Yc):
+        Sx = np.zeros_like(Yc); np.add.at(Sx, Ew[:, 0], Yc[Ew[:, 1]]); np.add.at(Sx, Ew[:, 1], Yc[Ew[:, 0]])
+        d_ = Sx / np.maximum(cnt, 1)[:, None] - Yc; return d_, np.abs((d_ * vnorm(Yc)).sum(1))
+    s0 = stretch(Y); r0 = np.percentile(rough_(Y)[1][brush & ~keep], 95); rr = r0; k_ = 0
+    for k_ in range(1, SM.get("rounds", 20) + 1):
+        d_, _ = rough_(Y); nv_ = vnorm(Y); T = Y.copy()
+        mv = (d_ * nv_).sum(1)[:, None] * nv_ * SM.get("lam", 0.5)
+        T[~keep] += mv[~keep]
+        Yt = solve(T, keep.copy(), SM.get("iters", 6))
+        rt = np.percentile(rough_(Yt)[1][brush & ~keep], 95)
+        if stretch(Yt) > s0 + SM.get("tol", 0.005) or rt > rr * 0.995: break
+        Y, rr = Yt, rt
+    smooth_info = {"rounds": k_, "rough_p95_mm": [round(r0 * 1000, 3), round(rr * 1000, 3)], "stretch_p99": [round(s0 * 100, 2), round(stretch(Y) * 100, 2)]}
+    print("smooth:", smooth_info)
 for v, (a0, (hb, ax, th), _dr) in bnd.items():
     print("band handle", np.round(a0*1000).astype(int), "->", np.round((hb + rodr((a0 - hb)[None], ax, th)[0])*1000).astype(int), "got", np.round(Y[v]*1000).astype(int))
 X = Y[inv]
