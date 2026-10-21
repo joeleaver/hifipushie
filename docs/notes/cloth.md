@@ -9496,3 +9496,20 @@ front is the one whose neckline the drape came from). dbg_place.py: 14 front.R v
 _place_folds, scattered (z 1450-1579) by place()'s start relax loop; uncrush off changes nothing. Drape rendered on c0
 (check/*_d2c.png, diag now colours the drape pieces). Review FAIL: closed band collar vs open spread reference, CF knot,
 jagged placket (c0), no point. Tests: 23 files 330 passed, 5 skipped, 4 xfailed, exit 0. Ledger C131.
+
+## drape band round 3 (2026-10-21)
+Step 1, THE PLACEMENT BUG (r1 front.L, r2 front.R "0.29 m triangle"): probe1 (every relax sub-step instrumented):
+_place_folds fine (20 mm max tri), _pin_seams creeps the CF neck corner up 5-12 mm a call, then the first
+_clear_of_body flings v6613 by 140-200 mm. probe2/3: the corner's verts (open neck.R roll rows, held) sit at z 1553
+inside the jaw (chin underside 1536-1541); _clear_of_body's gap grows +22 mm a round with no cap (a face whose other
+verts are held never clears). probe5 (seam pairs at the start): front.R|stand 54 mm p50 / 68 max, yoke|stand 28 / 49:
+the made stand was laid ~60 mm up the neck, its neck edge horizontal at z 1562-1567. probe6: the stand's mesh uv =
+the drape mesh's flat uv with v NEGATED (collar agreed). Cause: drape.draft normalised the mesh's flat coords by the
+top CF corner (Ur[-1, 1] < 0), to_piece by the top CB point; a stand whose neck edge rises 34 mm toward CF in the
+flat passes one test and not the other. Fix: drape.flat_frame used by both; MESH_FRAME 2 in worn_key. KAT
+test_pieces_place_on_their_own_drape (neckline dropping 40 mm to CF: stand topMid landed at z -32 instead of +32
+before the fix). Garrett: re-draped closed d3c (v13, numbers = d2c), the closed form fit now PLACES and completes
+(264 s): X0 vs drape 0.0 mm, fitted vs drape p50 6.0 / 4.2 mm (stand / collar), fit p99 12.3 FAIL, points 20.9 apart,
+51.0 below HPS. Gate FAIL rows (were there in r2 too): seams (collar sewn edge 426.3 vs stand top 448.3: -4.9 %),
+checklist:collar_cover 1.7 (5-25). Also: drape_state (entry "worn": open / closed, default closed; "state" read the
+same) and gate row drape_band_reach (INFO). Ledger C132.

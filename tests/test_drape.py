@@ -238,3 +238,25 @@ def test_stand_on_the_neck_leans_in_past_a_chest_bulge_and_a_chin():
     d_old = drape.draft(dict(e, stand_mode="skin"), base)
     so = d_old["report"]["layers"]["stand"]
     assert so["worn_top_mm"] > st["worn_top_mm"] + 15, (so, st)
+
+
+def test_pieces_place_on_their_own_drape():
+    """Round 3 (the placement bug): the emitted pattern piece's coords ARE the drape mesh's flat coords. Garrett v12's
+    stand had its v mirrored (to_piece and draft normalised the flat half by different corners: a neck edge that
+    rises toward CF flipped one and not the other), so cloth.place put the stand ~60 mm up the neck, flat, and the
+    fronts' neck seams were pinned up into the jaw (a 0.29 m triangle at the CF neck corner). A neckline dropping
+    40 mm to CF, the stand's flat neck edge curved: every named point of every piece lands on its own worn point."""
+    body, under = _neck_body()
+    C = _neckline(drop=0.040)
+    base = {"curve": C, "body": body, "under": under, "s_cf": drape._arc(C)[-1]}
+    e = dict(_entry(), turn=TURN)
+    d = drape.draft(e, base)
+    for nm, pc in d["pieces"].items():
+        m = d["mesh"][nm]
+        Xg = d["build"]["layers"][nm]["X"]
+        P = np.asarray(pc["P"], float)
+        want = {"bottomMid": Xg[0, 0], "topMid": Xg[-1, 0], "rightBottomEdge": Xg[0, -1]}
+        want["rightTopCf" if "rightTopCf" in pc["names"] else "rightTopEdge"] = Xg[-1, -1]
+        for k, w in want.items():
+            got = drape.place_on_drape(P[[pc["names"][k]]], m)[0]
+            assert np.linalg.norm(got - w) < 1e-3, (nm, k, got, w)

@@ -1,49 +1,37 @@
-# STATE: drape_band (wrapped folds drafted by draping) -- 2026-10-21, round 2
+# STATE: drape_band (wrapped folds drafted by draping) -- 2026-10-21, round 3
 
 DECISION (Joe 2026-10-21): collars, lapel rolls, cuffs, waistbands, turtlenecks, curved hems are DRAPED: describe the
 worn shape, build it in 3D on what is under it, flatten it into the pattern piece. The flat piece stays the source of
-truth (generated FROM the worn spec; the gate refuses a stale one). Draped in ONE state (closed); the other state's
-sweep is the arrangement target, with a reach check. Notes: docs/notes/cloth.md "drape band round 1/2" (grep only).
+truth (generated FROM the worn spec; the gate refuses a stale one). DRAPED IN THE DESIGN'S STATE (coordinator r3:
+entry "worn": "open" | "closed", default closed; Garrett's shirt is worn OPEN); the other state's sweep is an INFO
+reach row, never a gate. Notes: docs/notes/cloth.md "drape band round 1/2/3" (grep only).
 
-## The op (src/hifipushie/drape.py, docstring = spec; ledger C130, C131)
-- garment key "drape": [{name, along, state, layers: [{piece, kind: stand|fall, height / ext / gap | rise / land /
-  end_in / point}], source}]; draft / record / gate rows drape_band_current + drape_band_flat (p99 <= 2 %); reach.
-- r2 STAND ON THE NECK (STAND_MODE "neck", neck_stand): rises along the neck axis (the neckline plane's normal;
-  Garrett 25.5 deg forward), leans in so its inner face is `gap` off the neck at its top (ray in toward the axis,
-  skin facing the ray only). r1's "skin" mode kept opt-in (stand_mode). worn_key includes the mode (r1 pieces stale).
-- r2 TRUED NECKLINE (true_curve, base_from_form true_sigma 8 mm): the form's neck edge has corners (CB V 50 deg,
-  yoke|front 36 deg); trued as a whole loop, length kept. curve_side: drape on the half that keeps its flat length.
-- r2 develop: pull 0.05 -> 0.005, rounds 4 -> 12 (module-read; the old defaults were bound at def time: dead plumbing).
-- KATs tests/test_drape.py 5: + neck cylinder with chest bulge + chin (leans in, top 27 mm shorter, never in the
-  chin; r1 mode flares on the same body). Its fall flattens at 2.4 % (bound 3 %: open item).
+## The op (src/hifipushie/drape.py, docstring = spec; ledger C130, C131, C132)
+- garment key "drape": [{name, along, worn, layers: [{piece, kind: stand|fall, height / ext / gap | rise / land /
+  end_in / point}], source}]; draft / record / gate rows drape_band_current + drape_band_flat (p99 <= 2 %) +
+  drape_band_reach (INFO); reach. drape_state(entry) reads "worn" (or the older "state").
+- r2 STAND ON THE NECK (neck_stand) on a TRUED NECKLINE (true_curve); curve_side; develop pull 0.005 / rounds 12.
+- r3 ONE FRAME (C132): drape.flat_frame normalises the flattened half for BOTH the emitted piece (to_piece) and the
+  drape mesh (placement: place_on_drape). MESH_FRAME 2 in worn_key: frame-1 drapes (v11, v12) are stale.
+- KATs tests/test_drape.py 6 (+ test_pieces_place_on_their_own_drape: neckline dropping 40 mm to CF).
 
-## M12 measured flat (round 2 step 1; $S/m1.json, m2-m5)
-- Closed vs open half 231.6 vs 222.1: the closed form's +X half is the OVER front (front.L), its neck edge held 133.0
-  vs flat 125.9 (+5.6 %), yoke 98.6 vs 95.0; the under front 124.7 (-1 %); open k12a within 1 % of flat (125.3 / 96.9).
-  Flat half = 220.9. => drape on c0's under-front half mirrored (219.0) vs open 221.7: 1.2 % apart (was 4 %).
-- Stand-off of the seam from the skin (closed): CB 5, side 4-10, CF 12.5 mm. Neck: axis 25.3 deg fwd; girth
-  perpendicular to it 383-406 mm (neck base -> +25 mm); above that the jaw cuts in. Chin underside at z ~1535,
-  CF seam z 1501: the stand's CF top (z 1529) sits ~6 mm under the chin.
-- r1's flare cause: the stand top's nearest skin at the front was the JAW'S UNDERSIDE (normals n_z -0.5..-0.97), not
-  the chest.
+## The placement bug (r1 + r2 "front 0.29 m triangle"): FIXED, round 3 step 1
+- Cause: the stand's mesh uv was the drape's flat uv with v negated (draft normalised by the top CF corner, to_piece
+  by the top CB point). cloth.place laid the stand ~60 mm up the neck, flat (front.R|stand seam pairs 54 mm apart
+  at the start); _pin_seams dragged the fronts' CF neck corners into the jaw; _clear_of_body's uncapped gap growth
+  (+22 mm a round for a face held by fold rows) flung them 0.2 m. Uncrush was never the lever.
+- Open side-issue (not fixed, not needed now): _clear_of_body's per-round gap growth has no cap when grow=None.
+- Garrett closed d3c (v13 = d2c numbers, frame 2): form fit PLACES and completes (264 s); X0 vs drape 0.0 mm;
+  fitted vs drape p50 6.0 / 4.2 mm (stand / collar); fit p99 12.3 FAIL; points 20.9 apart, 51.0 below HPS.
+- Gate FAIL rows on v13 (r2 had them too): seams (collar sewn edge 426.3 vs stand top 448.3 flat: -4.9 %, band
+  -1.0..+1.5), checklist:collar_cover 1.7 mm (5-25).
 
-## Garrett shirt collar (spec sh_garrett v12: drape d2c; v11 = d1; v10 = Simon's)
-- Worn spec $S/worn_d2.json: d1's rows + gap 2 mm (collar size = neck + 1/2 in -> 2 mm radial; Aldrich band top
-  ~1 cm shorter). Gap 5 -> top 3.6 mm LONGER than the neck edge; 3 -> 1.8 shorter; 2 -> 7.0 shorter.
-- d2c: stand p99 0.16 % (d1 2.6), top 448.8 vs neck edge 455.8 (leans in; d1 531 vs 474). Collar p99 1.98 % (d1 4.2):
-  drape_band_flat PASS. Reach to open k12a: stand 2.6 % ok, collar 11.7 % FAIL (d1 27.7). Lean CB -20 / side +10 /
-  CF +6 deg off the axis (CB: the nape is upright, the axis tilted). Fall CB 49.7, points 35.9 apart closed.
+## Garrett shirt collar (spec sh_garrett v13: drape d3c closed; v12 d2c; v11 d1; v10 Simon's)
+- Worn spec $S/worn_d3c.json = r2's d2 rows (gap 2 mm). d3o = the same rows draped OPEN on k12a.
+- Targets (concept, open): points ~147 apart, 50-61 mm below HPS, fall ~44 at CB, V 60.
 
-- Step 3: the closed form fit (inside pattern_gate) is STILL REFUSED at placement: front.R triangle 0.29 m (r1:
-  front.L). The broken piece is the front whose neckline the drape was taken from (r1 L, r2 R mirrored). 14 verts at
-  front.R's CF neck corner (uv ~ cfNeck +-9 mm) are fine after _place_folds and scattered by the start's relax loop
-  (cloth.place ~4204-4266). Uncrush off: no change (lever 1 dead). Stop-loss: no fit, no fold rows / collar_corners.
-- Rendered the drape on c0 (diag now shows the draped pieces: render_d2.py gives them a mesh): check/collar_d2c.png,
-  point_L/R_d2c.png, wholefront_d2c.png. No funnel; band hugs the neck, fall turned flat over it, closed. Blind
-  review FAIL (wrong type: closed band vs open spread collar; placket jagged / CF knot = c0's closed form; no point).
-
-NEXT: (a) placement: dump Xp after each step of place()'s relax loop for front.R's CF neck corner (_relax_stretch /
-_relax_strain / _clear_of_body / _clear_of_worn, made_v): find the step that flings it; (b) then fit closed + rows;
-(c) reach collar 11.7 %: the open sweep needs the fronts' roll-back in the base, not k12a's curve alone; (d) jacket.
-## Commands ($S = /mnt/data/hifipushie/drape_band2; run.sh = this worktree): m1..m5.py (measure); drape_d2.py
-<worn.json> [save]; sweep_*.py (levers); dbg_hot.py <pkl> (hot edges).
+NEXT: step 2: drape d3o OPEN (k12a base) -> flat p99 -> pattern gate (seams: the fall's sewn edge vs the stand top)
+-> open form fit (worn_open; arrange to the drape's open shape) -> fold rows + collar_corners + self-check ->
+renders (collar, points, wholefront) -> blind reviews -> jacket if close.
+## Commands ($S = /mnt/data/hifipushie/drape_band3; run.sh = this worktree): drape_d3.py <worn.json> [save];
+fit_d3.py <tag> <closed|open> (capped); probe1-6.py (placement probes).

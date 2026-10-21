@@ -12,7 +12,9 @@ Interface (garment key "drape": a list of bands; `draft` fills each entry's "out
   {"name": "shirt collar",
    "along": ["front.R:cfNeck>neck", "yoke:neck.m>cbNeck>neck", "front.L:neck>cfNeck"],  # the body curve: the garment
         # edges it is sewn to, CB in the middle (the band is draped on the +X half and mirrored: cut on the fold)
-   "state": "closed",            # the ONE worn state it is draped in; "target": the other state's sweep (below)
+   "worn": "closed",             # the ONE worn state it is draped in: the DESIGN's state ("open" | "closed",
+        # default closed; the older "state" key is read the same: drape_state); "target": the other state's sweep,
+        # its reach reported as an INFO gate row (drape_band_reach), never a gate. Garrett's shirt is worn open
    "layers": [                   # the worn cross-section, inside out; every value {"cb": v, "end": v} or a number (m)
      {"piece": "stand", "kind": "stand", "height": 0.032, "ext": 0.009},      # up the neck from the seam; ext: past CF
      {"piece": "collar", "kind": "fall", "rise": 0.006, "land": {"cb": 0.008, "end": 0.012},
@@ -154,10 +156,22 @@ def _field(v, u):
     return np.full_like(np.asarray(u, float), float(v))
 
 
+def drape_state(entry: dict) -> str:
+    """The worn state the band is draped in: the DESIGN's state (entry "worn": "open" | "closed"; the older "state"
+    key read the same), default "closed". Garrett's shirt is worn open (the concept), so its collar is draped open and
+    the closed state is the secondary reach check (drape band round 3, coordinator 2026-10-21)."""
+    return str(entry.get("worn") or entry.get("state") or "closed")
+
+
+MESH_FRAME = 2  # the drape mesh's flat coords = the piece's (flat_frame, round 3); frame-1 drapes are stale
+
+
 def worn_key(entry: dict) -> str:
     """The worn spec's key: what the flat pieces were generated from (the gate compares it)."""
-    k = {kk: entry.get(kk) for kk in ("along", "state", "layers", "turn", "base")}
+    k = {kk: entry.get(kk) for kk in ("along", "layers", "turn", "base")}
+    k["state"] = drape_state(entry)
     k["stand_mode"] = entry.get("stand_mode") or STAND_MODE  # (round 2: the stand's build changed: r1 pieces are stale)
+    k["mesh_frame"] = MESH_FRAME  # (round 3: a frame-1 stand placed mirrored: its drape mesh is stale)
     return hashlib.sha1(json.dumps(k, sort_keys=True, default=str).encode()).hexdigest()[:16]
 
 
@@ -689,20 +703,30 @@ def _half_outline(nv, nu):
     return list(I[0, :]), list(I[:, -1]), list(I[-1, ::-1])
 
 
+def flat_frame(U: np.ndarray, nv: int, nu: int) -> np.ndarray:
+    """The flattened half in the PIECE's frame (bottomMid at the origin, the end at +x, the section running +y at CB):
+    the one frame both the emitted pattern piece (to_piece) and the drape mesh's flat coords (draft: placement,
+    place_on_drape) use. (Round 3: draft normalised its mesh by the top CF corner, to_piece by the top CB point; a
+    stand whose neck edge rises toward CF came out mirrored in v between the two, and cloth.place put Garrett's stand
+    ~60 mm up the neck: the fronts pinned to it were dragged into the jaw.)"""
+    U = np.asarray(U, float).reshape(nv * nu, 2)
+    bot, end, top = _half_outline(nv, nu)
+    U = U - U[bot[0]]
+    if U[bot[-1], 0] < 0:
+        U[:, 0] *= -1
+    if U[top[-1], 1] < U[bot[0], 1]:
+        U[:, 1] *= -1
+    return U
+
+
 def to_piece(name: str, lay: dict, U: np.ndarray, like: dict | None = None) -> dict:
     """A full pattern piece (the flattened half mirrored about CB: cut on the fold) with the design table's names:
     stand: bottomMid, right/leftBottomCf, right/leftBottomEdge, right/leftTopCf, topMid; fall: bottomMid,
     right/leftBottomEdge (the sewn ends), right/leftTopEdge (the points), topMid. Notches at those points and at CB;
     `like`: the piece it replaces (its button / buttonhole marks are carried relative to CF)."""
     nv, nu = lay["X"].shape[:2]
-    U = np.asarray(U, float).reshape(nv, nu, 2).reshape(-1, 2)
+    U = flat_frame(U, nv, nu)
     bot, end, top = _half_outline(nv, nu)
-    U = U - U[bot[0]] * [1, 1]  # bottomMid at the origin
-    # right half (x > 0): orient the piece so the end lies at +x and the section runs +y
-    if U[bot[-1], 0] < 0:
-        U[:, 0] *= -1
-    if U[top[-1], 1] < U[bot[0], 1]:
-        U[:, 1] *= -1
     R = U
     Lf = U * [-1, 1]
     # outline: bottom R (mid -> end), end R (-> top), top R (-> mid), top L (mid -> end), end L (-> bottom), bottom L
@@ -866,14 +890,7 @@ def draft(entry: dict, base: dict, fabric: str | None = None, like: dict | None 
         nv, nu = lay["X"].shape[:2]
         # the full drape (both halves) for placement: the left half mirrored in X about the CB plane
         Xr = lay["X"].reshape(-1, 3)
-        Ur = U - U[0]
-        if Ur[nu - 1, 0] < 0:
-            Ur[:, 0] *= -1
-        if Ur[-1, 1] < 0:
-            Ur[:, 1] *= -1
-        flip = 1.0
-        if like is not None and nm in like:  # (to_piece may have reversed the outline; uv x / y kept as emitted)
-            pass
+        Ur = flat_frame(U, nv, nu)  # (exactly the piece's coords: to_piece's frame)
         Xl = Xr * [-1, 1, 1] + [2 * float(base.get("cb_x", 0.0)), 0, 0]
         mesh[nm] = {"uv": np.r_[Ur, Ur * [-1, 1]], "X": np.r_[Xr, Xl], "F": np.r_[F, F[:, ::-1] + len(Xr)]}
         bot, end, top = _half_outline(nv, nu)
@@ -1157,6 +1174,13 @@ def gate_rows(g: dict) -> list:
                          "status": "PASS" if worst <= FLAT_P99_LIMIT * 100 else "FAIL", "measure": "drape.flatten",
                          "ours": {nm: v["strain_p99_pct"] for nm, v in lay.items()},
                          "target": f"edge strain p99 <= {FLAT_P99_LIMIT * 100:.1f} %"})
+        rc = o.get("reach") or {}
+        if rc:  # (the other state's reach: reported, not a gate; the design's own state is the one draped)
+            rows.append({"id": f"drape_band_reach:{e.get('name', '')}", "stage": 2, "status": "INFO",
+                         "measure": "drape.reach",
+                         "ours": {"draped": drape_state(e), "other": rc.get("state"), "ok": rc.get("ok"),
+                                  "p99_pct": {nm: v.get("strain_p99_pct") for nm, v in (rc.get("layers") or {}).items()}},
+                         "target": f"info only: the secondary state within {rc.get('limit_pct')} % p99"})
     return rows
 
 
