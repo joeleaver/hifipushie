@@ -575,11 +575,18 @@ def arrange_targets(M: dict, X: np.ndarray, pins: list) -> tuple[np.ndarray, np.
     """(idx, target, group, names) from pin specs: {"name"?, "at": "piece:point" | "piece:a..b", and one of "to":
     [x, y, z] (a point; an edge: where its first vertex goes, the rest moved with it) | "by": [dx, dy, dz] (every
     vertex; with "by_end" an edge's shift blends from "by" at a to "by_end" at b) | "targets": [[x, y, z] ...] (one
-    per vertex)}. A vertex named by two pins keeps the first."""
+    per vertex)}. A vertex named by two pins keeps the first. "patch": r (m, pattern) on a point pin spreads it over
+    the piece's vertices within r of the point (the point first), moved as one ("to" / "by": the patch translated
+    rigidly): a single-vertex pin tore the cloth round it (C123, Garrett a8c: 31 % at a band end, 10 % at a point)."""
     X = np.asarray(X, float)
     idx, tgt, grp, names, seen = [], [], [], [], set()
     for k, p in enumerate(pins):
         v = pin_vertices(M, p["at"])
+        if p.get("patch") and len(v) == 1:
+            uv = np.asarray(M["uv"], float)
+            pid = np.asarray(M["piece"])
+            near = np.where((pid == pid[v[0]]) & (np.linalg.norm(uv - uv[v[0]], axis=1) <= float(p["patch"])))[0]
+            v = np.r_[v, near[near != v[0]]].astype(np.int64)
         if "targets" in p:
             T = np.asarray(p["targets"], float).reshape(-1, 3)
             if len(T) != len(v):

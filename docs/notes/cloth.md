@@ -9401,3 +9401,23 @@ its base and standing over it (sideways < 1 mesh edge) is drawn onto it one THIC
   neck seam, the stand's plane extrapolated), over the stand 4 both (0.1-0.5 mm). flap_through_base now counts a flap
   vertex only where it stands over its base (FLAP_THROUGH_REACH 8 mm): jacket collar 4 / 7 both; KAT / C121 known
   answers (test_fold_checks) unchanged and green.
+Step 2-4. Closed form k10b (per-fold lay surface): fold rows turn 164.7 / on_base 0.017 / twist 9.9 / crisp 7.5 all
+  PASS; edge gap under p50 / p90 2.5 / 3.8 mm (sides 2.4 / 2.7), free edge within 3 mm 84 %. V 62.1, first button 80.5
+  PASS; points 36 apart / 83 below (closed). Collar points strain 17.3 / 18.4 % on the closed form (k9a the same: the
+  sprung draft's points, not FLAP_LAY): collar_corners FAIL before any arrangement.
+- Gate (gate10.py g10a): PASS (fold_turn_allowance collar 6.4 vs 5.6 with the curved-line fix; g9b had FAILed it, which
+  also blocked the sims: require_pattern_gate).
+- Arrangement (seen10.py: cloth_release pins "patch": r, the collar points + the fronts' cfNeck spread over 12 mm patches,
+  no band-end pins, kept): NOT RUN. ZOZO refused the start twice: 4 pairs "at the edge of crossing" (collar faces 15829 /
+  15815 vs the stand, stand 14292 vs the collar: the laid fall one THICK on its stand), outside the build check's 700
+  exempted pairs. Lever 2 (SEPARATE: collar vertices over the stand moved out to 1.5 mm, 410 moved, max 5.4) left the
+  SAME faces failing: the scan reads something else than arrays["X"] (the made pieces' rest / previous positions?).
+  Stop-loss: two levers. Next: find which array the solver's "previous positions" are, or raise the form's flap gap
+  for ZOZO starts; then the arrangement.
+- Renders (render10.py "-" = the closed form; tuck mask; diag mesh = the masked faces): check/{wholefront,collar,point_L,
+  point_R}_k10b.png. My read: the fall now LIES on the shoulders (no tube), but it reads big: a cape over the shoulder
+  tops, and the outer edge sawtoothed in clay. Blind reviews (bin/review, one view each): collar FAIL (6 MAJOR: leaves
+  too big "cape", closed not open, jagged edges, stand high with a gap, points blunt / missing, slivers inside the left
+  neckline); wholefront FAIL (6 MAJOR: collar type, inflated / boxy, hem loose not tucked, buttons, smooth, colour).
+  Not close: the jacket refit (step 5) not run.
+- Tests: 22 files under bin/capped: 326 passed, 2 skipped, 4 xfailed, exit 0 (tests_r10.log).
