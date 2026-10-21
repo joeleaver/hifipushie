@@ -28,9 +28,10 @@ the draft source. Notes: docs/notes/cloth.md "drape band round 1..6" (grep only)
   on the 2 points only, ZOZO local): held 20 / 36 mm short, springback 1 mm; 94 apart (147), 56 below HPS (PASS), V 71,
   roll 122, twist 28, right open-neck roll undone (85). The stand DOES open at the throat (61 / 119 mm): the fall
   stands up with it as a funnel. Reviews: collar FAIL, wholefront FAIL. Jacket skipped. Ledger C136.
-- Renders $S/check/{collar,wholefront,point_L,point_R}_d6.png; reviews $S/rev_collar_d6.log, rev_whole_clay_d6.log.
+- Renders: open arranged $S/check/{collar,wholefront,point_L,point_R}_d6.png; closed fit {collar,wholefront}_d6c.png
+  (reads as a real closed collar); reviews $S/rev_collar_d6.log, rev_whole_clay_d6.log.
 
-NEXT (needs a coordinator call): the closed piece passes every flat row; the open state is the blocker. Point pins
+NEXT (coordinator stopped sims this round; needs a call): the closed piece passes every flat row; the open state is the blocker. Point pins
 can't turn a fall down. Candidates: (a) arrangement pins spread along the fall's whole outer edge (patch per station
 on the yoke / rolled fronts, landing line read from the concept), (b) the open neck turning the fall with it (the
 fall's ends tied to the rolled fronts' turn), (c) check the concept's 147 is reachable at all (C81: ask first).

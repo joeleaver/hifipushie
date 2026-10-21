@@ -9649,3 +9649,8 @@ open (the seen cut, yoke|back). m3.py: the stand opens at the throat (bottom 61 
 above HPS: the fall stands up WITH it (a funnel) instead of turning down. Renders $S/check/{collar,wholefront,
 point_L,point_R}_d6.png; reviews collar FAIL (stands up to the jaw, crumpled points, limp, stray sliver), wholefront
 clay FAIL (funnel collar; hem / boxy / buttons are other stages). Jacket refit skipped (collar not close). Ledger C136.
+Coordinator stop (end of round 6): no more arrangement / sim runs this round (Joe questions the sim path); no reviews.
+Closed fit rendered: $S/check/{collar,wholefront}_d6c.png: my read: a real turned-down shirt collar, closed at the
+throat, the fall lies smooth round the neck and covers the stand; points short and close at CF; a small bunch at the
+top of the placket. Tests (end of round 6): the 23 listed files under bin/capped: 336 passed, 3 skipped, 4 xfailed,
+pytest exit 0 ($S/tests_d6.log). Spend local only, $0.
