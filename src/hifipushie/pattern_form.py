@@ -1315,8 +1315,29 @@ def flap_through_base(M: dict, X: np.ndarray, body=None, hinge: float = 0.018) -
             fv = fv[dd > hinge]
         if not len(fv):
             continue
+        bF = F[fpc & ~fl]
+        # THE BASE ACROSS A SEAM (C119, shirt round 9; C46's rule): a fold whose own base side is narrow (a two-piece
+        # collar's fall, its roll 4-6 mm above the seam) lies on the piece sewn there (the stand). Read against its
+        # 6 mm strip alone, the fall read 0.8 'through' on every start, the known-good closed one too: no signal
+        narrow = False
+        for fd in M["folds"]:
+            if fd["piece"] != nm:
+                continue
+            g_ = _fm._geom(M, fd)
+            ob_ = np.setdiff1d(np.asarray(g_["sel"]), np.where(np.asarray(g_["flap0"]))[0])
+            narrow |= bool(len(ob_)) and float(np.asarray(g_["d0"])[ob_].max()) < BASE_NARROW
+        sw = np.asarray(M.get("sew") if M.get("sew") is not None else np.zeros((0, 2), int)).reshape(-1, 2)
+        if BASE_ACROSS_SEAM and narrow and len(sw):
+            ob = np.zeros(len(X), bool)
+            ob[bv] = True
+            oth = sorted({int(pid[b]) for a, b in sw if ob[a] and pid[b] != k} |
+                         {int(pid[a]) for a, b in sw if ob[b] and pid[a] != k})
+            if oth:
+                oF = F[np.isin(pid[F[:, 0]], oth)]
+                bv = np.union1d(bv, np.unique(oF))
+                bF = np.r_[bF, oF]
         ix = -np.ones(len(X), int); ix[bv] = np.arange(len(bv))
-        d, _, dist = _Surface(X[bv], ix[F[fpc & ~fl]], ref=bs).signed(X[fv])
+        d, _, dist = _Surface(X[bv], ix[bF], ref=bs).signed(X[fv])
         m = dist < 0.02
         t = int((d[m] < 0).sum())
         out[nm] = {"through": t, "n": int(m.sum()), "share": round(t / max(int(m.sum()), 1), 3),

@@ -14,7 +14,13 @@ FLAT (the draft, per fold entry; `flat_rows(Bp, g)`):
 - pleat_depth          a pleat's two lines lie 2 x its depth apart (+-2 mm) and it declares its press side.
 
 FORM (assembled vertices X on the form, per fold record; `form_rows(M, X, body)`):
-- fold_turn            the turn achieved (base vs flap mean normals near the row) vs the declared turn (C46), +-35 deg.
+- fold_turn            the turn achieved vs the declared turn (C46), +-35 deg. The declared TURN is |180 - angle| (folds.py:
+                       angle is the outside dihedral, 180 flat, 0 folded right over: a collar's fall over its stand is a
+                       180 deg turn; shirt round 9: the row compared the turn to the angle and read angle 0 as "unset",
+                       so the full-fold collar roll was never judged). Read in SECTION by pattern_form.fold_turned (the
+                       validated read; mean normals cancel round a wrapped fold: jacket collar 13 vs 175 in section),
+                       its base across a seam where the fold's own base is narrow (< BASE_NARROW: a two-piece collar's
+                       fall, roll 4-6 mm above its seam, lies on the STAND).
 - fold_on_base         the flap lies on its own base, outside it (no flap vertex through the base: the lapel_on_base
                        row is this row on a lapel; pattern_form.flap_through_base) = the layer order kept (C82).
 - fold_twist           the turn along the fold line changes by at most TWIST_DEG_CM per cm (gorge_lie's twist measure
@@ -22,7 +28,7 @@ FORM (assembled vertices X on the form, per fold record; `form_rows(M, X, body)`
 - fold_crisp           a pressed fold turns within PRESS_WIDTH_MM across its line; a soft roll spreads over at least
                        its declared radius (the dihedral profile across the fold).
 Rows carry "family": "fold" and "fold": "<piece>:<name>"; status PASS / FAIL, or INFO with "why" where the
-declaration gives nothing to judge (a roll declared at angle 0: no target turn).
+declaration gives nothing to judge (no angle declared).
 """
 from __future__ import annotations
 
@@ -241,6 +247,33 @@ def _width(prof) -> float:
     return float(hi - lo)
 
 
+def declared_turn(fd: dict):
+    """The turn a fold record declares (deg: 0 flat .. 180 folded right over or right under), None without an angle."""
+    a = fd.get("angle")
+    return None if a is None else abs(180.0 - float(a))
+
+
+def narrow_base(M: dict, fd: dict) -> bool:
+    """The fold's own base side is narrower than pattern_form.BASE_NARROW (C46): it lies on the piece sewn there."""
+    from . import folds as fm, pattern_form as pf
+    g = fm._geom(M, fd)
+    bv = np.setdiff1d(np.asarray(g["sel"]), np.where(np.asarray(g["flap0"]))[0])
+    return bool(len(bv)) and float(np.asarray(g["d0"])[bv].max()) < pf.BASE_NARROW
+
+
+def turn_achieved(M: dict, X, fd: dict, prof=None) -> float:
+    """deg turned on the form: pattern_form.fold_turned (the dihedral IN SECTION along the row, base across a seam: the
+    validated read, C46), the base vs flap mean normals beside the row (_turn) only where it reads nothing. Mean
+    normals sum round a curved / wrapped fold and cancel (shirt round 9: the jacket r26g collar roll read 13 deg by
+    normals, 175 in section; Garrett's shirt collar 123 vs 162)."""
+    from . import folds as fm, pattern_form as pf
+    t = float(pf.fold_turned(M, np.asarray(X, float), fm._geom(M, fd)))
+    if np.isfinite(t):
+        return t
+    prof = _profile(M, X, fd) if prof is None else prof
+    return _turn(prof) if prof is not None else float("nan")
+
+
 def form_rows(M: dict, X, body=None) -> list:
     from . import pattern_form as pf
     X = np.asarray(X, float)
@@ -249,20 +282,26 @@ def form_rows(M: dict, X, body=None) -> list:
     for fd in M.get("folds") or []:
         tag = f"{fd['piece']}:{fd.get('name', '')}"
         prof = _profile(M, X, fd)
-        want = fd.get("angle")  # (declared, deg; the record's "turn" is the mesher's own radians)
-        if prof is None:
+        want = declared_turn(fd)  # (deg turned, from the declared dihedral; the record's "turn" is the mesher's radians)
+        nb = narrow_base(M, fd)
+        if prof is None and not nb:
             rows.append({"id": "fold_turn", "family": "fold", "fold": tag, "stage": 3, "status": "UNMEASURED",
                          "why": "no base / flap faces beside the fold's row"})
             continue
-        got = _turn(prof)
-        if not want or not np.isfinite(got):
-            rows.append({"id": "fold_turn", "family": "fold", "fold": tag, "stage": 3, "status": "INFO",
-                         "ours": {"turn_deg": round(got, 1)}, "why": "no declared turn to judge (angle 0 / unset)"})
+        got = turn_achieved(M, X, fd, prof)
+        if want is None or not np.isfinite(got):
+            rows.append({"id": "fold_turn", "family": "fold", "fold": tag, "stage": 3,
+                         "status": "INFO" if want is None else "UNMEASURED",
+                         "ours": {"turn_deg": round(got, 1)} if np.isfinite(got) else {},
+                         "why": "no declared turn to judge (no angle)" if want is None else "turn unread"})
         else:
             rows.append({"id": "fold_turn", "family": "fold", "fold": tag, "stage": 3,
                          "status": "PASS" if abs(got - float(want)) <= TURN_TOL_DEG else "FAIL",
-                         "ours": {"turn_deg": round(got, 1)}, "ref": f"{float(want):g} +- {TURN_TOL_DEG:g} deg",
-                         "why": "C46"})
+                         "ours": {"turn_deg": round(got, 1), "read": "in section" + (", base across the seam" if nb
+                                                                                      else "")},
+                         "ref": f"{float(want):g} +- {TURN_TOL_DEG:g} deg (angle {float(fd['angle']):g})", "why": "C46"})
+        if prof is None:
+            continue
         fb = ftb.get(fd["piece"])
         if fb is not None:
             rows.append({"id": "fold_on_base", "family": "fold", "fold": tag, "stage": 3,

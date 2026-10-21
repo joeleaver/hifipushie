@@ -9338,3 +9338,26 @@ seen7.py (round 5's seen5.py on a given FORM), probe_pre7.py, jfit7.sh (the park
   shows the tucked cloth with no trousers: render fault, the seen part drops it; collar funnel; neckline reads closed
   at this scale; boxy, no waist shaping). Step 4 (jacket refit over this shirt, dressed renders) NOT run: the collar is
   not close.
+
+
+## shirt round 9 (2026-10-21; $S = /mnt/data/hifipushie/dress_garrett/shirt_round9)
+Step 1, MEASURE FIRST (M12) on round 8's results (form_k8b closed, seen_s8c start / arranged).
+- The fold family's turn row was broken twice (q4.py, q6.py): fold_turn compared the achieved turn with the declared
+  ANGLE (folds.py: 180 flat, 0 folded right over) and read angle 0 as "no declared turn" (the shirt collar roll is
+  angle 0: INFO, never judged; the jacket r26g collar roll 13.4 PASSED "10 +- 35"; the shirt's flat front bands FAILED
+  "180"). And it read the turn by mean normals, which cancel round a wrapped fold: in section (pattern_form.fold_turned,
+  the validated read) the shirt collar is turned 166 (closed form) / 167 (seen start) / 162 (arranged), not 110 / 123;
+  the jacket collar 175 (normals 13), lapels 158-163 (normals 112-128). Round 8's "fall turned 123 of 180" was the
+  read. Fixed: declared turn = |180 - angle|, read in section (normals only if it reads nothing). C121.
+- C119 closed: fold_on_base against the fall's own 6 mm strip read 0.78-0.82 through; with the stand as base (pieces
+  sewn to a narrow base, C46's rule) the KAT reads 0 (planted sunk 6 mm: 1.0), Garrett r8 closed 0.002, start 0.0,
+  arranged 0.043 (all PASS).
+- So the funnel is not the turn: the fall lies turned on its stand and hangs straight down as a TUBE (q5.py): the outer
+  edge sits 10.8 mm below the neck seam at CB, 21 at the sides, 30-32 at the front, but only 4-6 mm OUT from the seam
+  line (the stand + 2 cloths): it never reaches the shoulders; gap to what is under it 5.6 mm at the sides, 13-14 at
+  the front quarter.
+- The cause, flat (q3.py, garment_reads.fall_spring_reads): the fall's outer edge is 453.8 mm, its sewn edge 441.9:
+  a straight band (spring 11.9 mm). Turned fully down over the stand its edge lands on the body: the neckline (441.7)
+  offset by the edge's drop (CB 10 mm = the fall's cover of the stand seam; ends 42 mm: the points onto the chest) +
+  pi x its stand-off = 568.9 mm. 115 mm SHORT (25 %): it can only stand round the neck. (The jacket's fall is drafted
+  to its path by op_collar_two_piece's spread solve, R18 row collar_fall_outer.)

@@ -57,7 +57,7 @@ def test_flat_turn_allowance_run_off_pleat():
 
 
 def test_form_turn_achieved_vs_declared():
-    B, _ = _strip(angle=180)
+    B, _ = _strip(angle=0)  # (folds.py: angle 0 = folded right over, a 180 deg turn; round 9: the row read angle as turn)
     M = cloth.mesh(B, 0.012)
     good = {r["id"]: r for r in fc.form_rows(M, _turned(M, 175))}
     assert good["fold_turn"]["status"] == "PASS", good["fold_turn"]
@@ -96,7 +96,35 @@ def test_every_fold_kind_runs_through_the_same_rows(kind, angle, extra):
     flat = {r["id"] for r in fc.flat_rows(B, {})}
     assert {"fold_turn_allowance", "fold_run_off"} <= flat
     M = cloth.mesh(B, 0.012)
-    form = {r["id"]: r["status"] for r in fc.form_rows(M, _turned(M, angle))}
-    assert {"fold_turn", "fold_twist", "fold_crisp"} <= set(form), form
+    # (planted as declared: the turn is 180 - angle, folds.py)
+    form = {r["id"]: r["status"] for r in fc.form_rows(M, _turned(M, 180 - angle))}
+    # (a fold declared flat, angle 180, turns nothing: no crispness to judge)
+    assert {"fold_turn", "fold_twist"} | ({"fold_crisp"} if angle != 180 else set()) <= set(form), form
     assert all(s in ("PASS", "FAIL", "INFO", "UNMEASURED") for s in form.values())
     assert form["fold_turn"] == "PASS", form
+
+
+def test_two_piece_collar_rows_on_their_known_answer():
+    """(shirt round 9, C119 + the turn convention) the two-piece collar known answer (tests/test_pattern_form.py: a fall
+    on its stand on a neck cylinder, assembled, ~165-175 deg in section, angle 10 declared: a 170 deg turn): fold_turn
+    PASS read in section with the base across the seam, fold_on_base PASS (0 through, the STAND as base, not the fall's
+    4 mm strip); planted: the fall opened 90 deg -> fold_turn FAIL; the fall sunk 6 mm into its stand -> fold_on_base
+    FAIL."""
+    from hifipushie import folds as fm, pattern_form as pf
+    from test_pattern_form import _two_piece_collar_case
+    c = _two_piece_collar_case(0.028, 0.045, 0.004)
+    M = c["M"]
+    V = pf.assemble({"mesh": M, "X0": c["X0"], "pieces": c["B"]}, c["body"], iters=120, ease=0.004)["V"]
+    rows = lambda X: {r["id"]: r for r in fc.form_rows(M, X, c["body"])}
+    good = rows(V)
+    assert good["fold_turn"]["status"] == "PASS" and "across" in good["fold_turn"]["ours"]["read"], good["fold_turn"]
+    assert good["fold_on_base"]["status"] == "PASS" and good["fold_on_base"]["ours"]["share"] < 0.02, good["fold_on_base"]
+    fd = M["folds"][0]
+    g = fm._geom(M, fd)
+    opened = fm.turn_flap(V, M, fd, -math.radians(90) / (len(g["rows"]) * fd["turn"]))
+    op = rows(opened)["fold_turn"]
+    assert op["status"] == "FAIL" and op["ours"]["turn_deg"] < 120, op
+    sunk = V.copy()
+    fl = np.asarray(g["rows"][-1]["v"])
+    sunk[fl, :2] -= 0.006 * sunk[fl, :2] / np.linalg.norm(sunk[fl, :2], axis=1, keepdims=True)
+    assert rows(sunk)["fold_on_base"]["status"] == "FAIL"

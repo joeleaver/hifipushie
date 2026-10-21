@@ -317,6 +317,111 @@ def collar_draft_reads(Bp: dict, g: dict | None = None) -> dict:
             "collar_fold_agrees": bool(runs_off == fold_runs_off), "collar_pieces": [sn, fn]}
 
 
+SPRING_TOL_MM = (-6.0, 30.0)  # the fall's whole outer edge vs its landing path (R18's -3 / +15 per half, both halves)
+SPRING_SOURCE = ("R18 / C43 generalised to any stand + fall collar (shirt round 9): turned down over its stand, the "
+                 "fall's outer edge lies on the body where it lands (the neckline offset by the edge's drop below the "
+                 "seam, + pi x its stand-off); cut as long as the stand (a straight band) it can only stand round the "
+                 "neck as a tube: the funnel (Garrett r8: edge 5 mm out from the seam 10-21 mm below it, 59 mm/half "
+                 "short). Pattern makers spring it: slash the fall from the outer edge and spread (Aldrich, Metric "
+                 "Pattern Cutting for Menswear, shirt collars; Cabrera & Flaherty, collar spring)")
+
+
+def _corners(P: np.ndarray, idx: list, deg: float = 45.0) -> list:
+    """Positions in `idx` (an outline run) where the outline turns by more than `deg` (its ends excluded)."""
+    out = []
+    for j in range(1, len(idx) - 1):
+        a, b, c = P[idx[j - 1]], P[idx[j]], P[idx[j + 1]]
+        u, v = b - a, c - b
+        if np.linalg.norm(u) < 1e-9 or np.linalg.norm(v) < 1e-9:
+            continue
+        t = math.degrees(math.acos(float(np.clip(u @ v / (np.linalg.norm(u) * np.linalg.norm(v)), -1, 1))))
+        if t > deg:
+            out.append(j)
+    return out
+
+
+def collar_pieces(Bp: dict) -> dict | None:
+    """A stand + fall collar's pieces and edges from the seam table: {stand, fall, neck_e (the stand's edge sewn to the
+    neckline), body (that seam's body arcs), top_e (the stand edge the fall is sewn to), fall_e (the fall's sewn edge),
+    outer (outline indices of the fall's free outer edge: between the free outline's first and last corners)}."""
+    from . import garment_design, pattern
+    pcs = Bp.get("pieces") or {}
+    stn = [n for n, p in pcs.items() if garment_design.role_of(n, p) == "collar_stand" and not n.endswith(".m")]
+    fan = [n for n, p in pcs.items() if garment_design.role_of(n, p) == "collar_fall" and not n.endswith(".m")]
+    if not stn or not fan:
+        return None
+    sn, fn = stn[0], fan[0]
+    r = {"stand": sn, "fall": fn}
+    for a, b in Bp.get("seams") or []:
+        for x, y in ((a, b), (b, a)):
+            if isinstance(x, str) and x.startswith(sn + ":"):
+                ys = [y] if isinstance(y, str) else list(y)
+                if any(s.startswith(fn + ":") for s in ys):
+                    r["top_e"] = x.split(":", 1)[1]
+                    r["fall_e"] = next(s for s in ys if s.startswith(fn + ":")).split(":", 1)[1]
+                elif all(not s.startswith(fn + ":") for s in ys):
+                    r["neck_e"], r["body"] = x.split(":", 1)[1], ys
+    if "fall_e" not in r or "neck_e" not in r:
+        return None
+    pc = pcs[fn]
+    n = len(pc["P"])
+    se = pattern.arc_indices(pc, r["fall_e"])
+    a, b = se[-1], se[0]  # (the free outline: from the sewn edge's end round to its start, the other way)
+    fwd = [(a + k) % n for k in range((b - a) % n + 1)]
+    bwd = [(a - k) % n for k in range((a - b) % n + 1)]
+    free = fwd if not (set(fwd[1:-1]) & set(se)) else bwd
+    P = np.asarray(pc["P"], float)
+    cj = _corners(P, free)
+    r["outer"] = free[cj[0]:cj[-1] + 1] if len(cj) >= 2 else free
+    r["sewn"] = se
+    return r
+
+
+def fall_spring_reads(Bp: dict, g: dict | None = None) -> dict:
+    """SPRING_SOURCE: a stand + fall collar's whole outer edge (mm) vs the path it lies on turned fully down over the
+    stand: the neckline (the stand seam's body arcs) offset into the body pieces by the edge's drop below the seam
+    (at CB the worn fall's cover of the stand seam, collar_draft_reads; at the ends the fall's end height less the
+    roll and turn of cloth, less the stand's end; u^2 between, as pattern_jacket.fall_need), + pi x its stand-off on
+    each half (turn_stack). {} without such a collar."""
+    from . import pattern, pattern_jacket
+    cp = collar_pieces(Bp)
+    rd = collar_draft_reads(Bp, g)
+    if not cp or not rd:
+        return {}
+    pcs = Bp["pieces"]
+    fc_ = pcs[cp["fall"]]
+    P = np.asarray(fc_["P"], float)
+    outer = pattern.length(P[cp["outer"]])
+    E = P[cp["sewn"]]
+    Ed = np.concatenate([E[i] + np.linspace(0, 1, 20, endpoint=False)[:, None] * (E[i + 1] - E[i]) for i in range(len(E) - 1)])
+    he_f = float(np.mean([np.linalg.norm(Ed - P[cp["outer"][j]], axis=1).min() for j in (0, -1)]))
+    fat = rd["collar_roll_above_seam_mm"] / 1000
+    dep = rd["collar_turn_mm"] / 1000
+    he_s = float(np.mean(rd["collar_stand_ends_mm"])) / 1000
+    drop_cb = rd["collar_fall_cover_mm"] / 1000
+    drop_e = (he_f - fat - dep) - (he_s + fat)
+    Ls = []
+    for e in cp["body"]:
+        nm = e.split(":")[0]
+        Ls.append(pattern.length(np.asarray(pcs[nm]["P"], float)[pattern.arc_indices(pcs[nm], e.split(":", 1)[1])]))
+    c = np.r_[0.0, np.cumsum(Ls)] / max(sum(Ls), 1e-9)
+    path, parts = 0.0, {}
+    for i, e in enumerate(cp["body"]):
+        u = np.abs(np.linspace(c[i], c[i + 1], 41) - 0.5) * 2  # (0 at CB, the chain's middle; 1 at its ends)
+        dr = float(np.mean(np.maximum(drop_cb + (drop_e - drop_cb) * u * u, 0.0)))
+        L = pattern_jacket.fall_path(pcs, [e], dr)
+        path += L
+        parts[e] = {"arc_mm": round(Ls[i] * 1000, 1), "drop_mm": round(dr * 1000, 1), "path_mm": round(L * 1000, 1)}
+    ts = pattern_jacket.turn_stack(g.get("fabric") if isinstance((g or {}).get("fabric"), str) else None)
+    need = path * 1000 + 2 * float(ts["length_mm"])
+    sewn = pattern.length(E) * 1000
+    return {"fall_outer_mm": round(outer * 1000, 1), "fall_need_mm": round(need, 1),
+            "fall_short_mm": round(need - outer * 1000, 1), "fall_sewn_mm": round(sewn, 1),
+            "spring_mm": round(outer * 1000 - sewn, 1), "drop_cb_mm": round(drop_cb * 1000, 1),
+            "drop_end_mm": round(drop_e * 1000, 1), "parts": parts, "ring_mm": ts["length_mm"],
+            "pieces": [cp["stand"], cp["fall"]]}
+
+
 def flat_closure_reads(Bp: dict, closure: str = "front") -> dict:
     """The front band's width (each front's band / placket fold offset) and the front closure's button spacing on the
     flat pattern (the over piece's marks named by its pairs), mm."""
