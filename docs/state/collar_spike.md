@@ -113,11 +113,25 @@ sym.py <tag>: mirror symmetry per piece, noise floor = mesh spacing, 1-8 mm).
   don't open the neck (band ends stay 7-11 apart). o-runs (worn_open + Garrett closures) refused: the roll line's end
   falls 13 mm inside the front with Garrett's button spacing.
 
+- OPEN state (Joe: "let's look at open state, we're doing well"). The fitter's worn_open (oA-oD: cfNeck 30 / 45 mm,
+  Garrett's closures) parts the band's BOTTOM corners (60) while its tops stay knotted (11): every lever tried was dead
+  (collar_spread, OPEN_SPREAD already off, no closure / centre-line pin holds them). Own staged ARAP with the CLOSED fit
+  as rest (openarap.py: oa*, ob*, or*) can't open the ring either (rest curvature) and tore (in-plane edge handles
+  crush the band). flatarap.py (NEW, the working one): per-face ARAP against the FLAT PATTERN (each triangle its uv,
+  Liu 2008 local / global), sewn pairs welded, bending free, staged from the closed fit e2 (e1 + Garrett's closures).
+  Handles: held back / yoke / sleeves / fronts below the first fastened button; collar points to the concept (147
+  apart, 55 below HPS); each band end swung like a door about Simon's own hinge ruling (swing deg). fe3 (swing 50):
+  strain vs the pattern p50 0.3 / p99 4.4 %, band ends 73 / 53 apart, an open V, band ends upright with the placket
+  edges. vs Joe's photo + trace: leaves splay out flat (his stand up beside the neck), V too deep (to button 1, ~98
+  below HPS; concept ~60), fronts don't roll back (taut at the V). Two more mirror bugs found on the way (my own
+  in-plane turn sign; a side taken from x at CF where the band ends cross): take the side from a landmark well off CF.
+
 ## NEXT
-(1) Joe's calls (repo changes): the simon seam edge to edge + band_ends off (C139); FORM_REFINE_SHIRT collar + stand h 5 -> 2 mm; the KB no_tie open-neck rolls (remove, or
-start the roll line below the neckline seam; C139 supersedes the L/R mismatch fix C138).
-(2) The OPEN state from e1 as STAGED moves (fronts part above the first fastened button, a SOFT roll carrying the band) from the closed fit (stand ends part, fronts roll to the V, leaves settle),
-each stage starting from the last, folds only where the pattern declares them; measure vs concept (V 60, points 147
-apart / 50-61 below HPS). The existing worn_open path (s1) is the known-bad one.
+(1) Joe's calls (repo changes): simon seam edge to edge + band_ends off (C139); remove the KB no_tie open-neck rolls;
+FORM_REFINE_SHIRT collar + stand h 2 mm; (pattern_form FLAP_OUT_FIRST already in, C140).
+(2) Open state on flatarap: first fastened button for THIS body at the concept's 83 below HPS (closure spacing, not
+Garrett's 47 from cfNeck); collar points' targets standing off the chest (stand_off) so the leaves stand beside the
+neck; the fronts' soft roll (a fold row from the band's end down to the button, or a handle on the front edge);
+fix openm.py's V read (reads 196). Then a blind review vs the photo / trace.
 Rules: renders under /mnt/data/hifipushie/bin/capped (GPU lock); files on /mnt/data/hifipushie/; stage git by path,
 never `git add -A`; only the coordinator pushes main.
