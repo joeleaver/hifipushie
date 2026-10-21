@@ -98,9 +98,16 @@ sym.py <tag>: mirror symmetry per piece, noise floor = mesh spacing, 1-8 mm).
   Other faults seen, not worked (Joe: collar first): sleeve ends crushed (99 % max, ~40 verts inside each arm), yoke
   at the side neck 13 % p99.
 
+- Throat (Joe's arrows: the band ends at CF; "maybe it's in the pattern?"): m2's stand ends tipped ~45 deg out, collar
+  front edges ran in over them. NOT the collar_spread rule (p0 spread off: same). Cause: the KB no_tie open-neck roll
+  (neck -> button1 + 60, flap cfNeck, turned 170) puts the whole front neckline, where the stand is sewn, on a flap
+  folded back. n0 (rolls removed, collar + stand h 2 mm): clean closed collar, stand ends upright 8 mm apart, points
+  meet at CF, mirror p95 1.4 mm, strain p99 9 %. Ledger C139. n0 = the best closed collar so far.
+
 ## NEXT
-(1) Joe's calls: the KB's open neck.L line to match .R; FORM_REFINE_SHIRT collar + stand h 5 -> 2 mm (repo changes).
-(2) The OPEN state on s2 as STAGED moves from the closed fit (stand ends part, fronts roll to the V, leaves settle),
+(1) Joe's calls (repo changes): FORM_REFINE_SHIRT collar + stand h 5 -> 2 mm; the KB no_tie open-neck rolls (remove, or
+start the roll line below the neckline seam; C139 supersedes the L/R mismatch fix C138).
+(2) The OPEN state from n0 as STAGED moves from the closed fit (stand ends part, fronts roll to the V, leaves settle),
 each stage starting from the last, folds only where the pattern declares them; measure vs concept (V 60, points 147
 apart / 50-61 below HPS). The existing worn_open path (s1) is the known-bad one.
 Rules: renders under /mnt/data/hifipushie/bin/capped (GPU lock); files on /mnt/data/hifipushie/; stage git by path,
