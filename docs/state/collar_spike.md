@@ -22,13 +22,17 @@ the band turning with it; band ends lean apart; leaves stand off the neck). Joe:
   collar (V, band ends upright with the plackets, leaves either side).
 
 ## Open faults (ranked by what shows at 1-3 m)
-1. Open leaves crumple / ripple and sit low (flatarap has NO bending: interfacing behaves like tissue). The hinge-spring
-   bending term (`kb`, `kb_pieces`) DIVERGES on collar / stand even with no handles (p99 70-75 % after one step; the back
-   alone is fine; the rest is met exactly at the start): bug not found. Next: find it, or a dihedral term, or alternate
-   with pattern_form's own made-piece bending.
-2. The fronts don't roll back (taut at the V): add the soft roll (a fold row from the band end down to the first
-   fastened button, or a front-edge handle), staged.
-3. openm.py's V read is broken (reads 172-196); the V can't be scored until fixed.
+1. Open collar: bending FIXED (C141: per-hinge Kabsch frames; `"kb":1,"kb_pieces":{"collar":1,"stand":1},
+   "bend_rest":"flat"`): p3 leaves smoother and standing a little (p99 5.9 % vs pattern), still lean out more than the
+   trace and ripple along the roll. Free points don't spread (73-80 apart: nothing in a static solve pushes them;
+   "made" rest holds them closed); pinned to the concept (147 / 55) they pull the collar ends -> band corners ->
+   the fronts' CF corners (faults.py: front corner max 22-34 % at swing 20, 74-152 % with a roll).
+2. The V is taut: each front's cfNeck (welded to the band corner) has only 34 mm of cloth above the first fastened
+   button, so the band ends can't sit wider than ~+-34 mm without stretch; swing 50 asks +-37. The roll handle
+   (`"roll":{"from":m,"deg":d}`, a front corner turned about neckline -> button) moves only 15-22 vertices (fronts
+   meshed 6-20 mm there) and made it worse. Next: measure the band ends' and V's positions on the photo / concept
+   instead of guessing; refine the fronts near the V; a roll line that runs the length of the V.
+3. V read FIXED in openm.py (the fronts' edges parted): closed none, g2 / p3 74, s30 66 below HPS (concept ~60).
 4. Not worked (collar first): sleeve ends crushed (99 % max, ~40 vertices inside each arm); yoke at the side neck 13 %.
 5. Garrett (sh_garrett) is NOT refitted on the landed changes: his spec still declares its own "open neck.R" fold and
    worn_open (both the faults found here); see docs/state/dress_garrett_shirt.md.

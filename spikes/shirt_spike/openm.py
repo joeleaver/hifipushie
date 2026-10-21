@@ -9,15 +9,18 @@ for t in sys.argv[1:]:
     g = lambda k: X[P[k]] * 1000
     hps = np.asarray(d['at']['hps.L']).reshape(-1)[-3:] * 1000
     pid = np.asarray(M['piece']); nm = list(M['names'])
-    # V: front edges = front vertices nearest CF per height band; the V bottom = lowest band where L and R front edges are apart
-    fl, fr = X[pid == nm.index('front.L')] * 1000, X[pid == nm.index('front.R')] * 1000
-    zs = np.arange(hps[2] - 200, hps[2] - 20, 4); vb = None
-    for z in zs:
-        a = fl[np.abs(fl[:, 2] - z) < 3]; b = fr[np.abs(fr[:, 2] - z) < 3]
-        a = a[a[:, 1] < -60]; b = b[b[:, 1] < -60]
-        if len(a) and len(b):
-            gap = a[:, 0].min() - b[:, 0].max()   # L front's innermost x minus R front's outermost x (fronts overlap: < 0)
-            if gap > 6 and vb is None: vb = z
+    # V: each front's EDGE (front.L: its fold edge, pattern x < placketTopFold1 + 3 mm; front.R: x > placketTopOut - 3 mm).
+    # Closed, the edges overlap (L's edge lies on the -x side of R's). The V bottom = the lowest height above which the
+    # L edge stays on the +x side of the R edge (the fronts parted), scanning down from the neck in 3 mm bands.
+    uv_ = np.asarray(M['uv']); Xm_ = X * 1000
+    eL = (pid == nm.index('front.L')) & (uv_[:, 0] < uv_[P['front.L:placketTopFold1'], 0] + 0.003)
+    eR = (pid == nm.index('front.R')) & (uv_[:, 0] > uv_[P['front.R:placketTopOut'], 0] - 0.003)
+    top = max(Xm_[P['front.L:cfNeck'], 2], Xm_[P['front.R:cfNeck'], 2]); vb = None
+    for z in np.arange(top, hps[2] - 250, -3.0):
+        a = Xm_[eL & (np.abs(Xm_[:, 2] - z) < 3)]; b = Xm_[eR & (np.abs(Xm_[:, 2] - z) < 3)]
+        if not len(a) or not len(b): continue
+        if a[:, 0].min() - b[:, 0].max() > 2.0: vb = z
+        else: break
     lean = lambda a, b: np.degrees(np.arctan2(abs((g(a) - g(b))[0]), (g(a) - g(b))[2]))
     Xm = X * [-1, 1, 1]; dist, _ = cKDTree(X).query(Xm); cs = np.isin(pid, [nm.index('collar'), nm.index('stand')])
     print(f"{t:5s} roll {[f['deg'] for f in I['folds'] if 'open' in f['fold']]} band apart bottom {np.linalg.norm(g('stand:leftBottomCf')-g('stand:rightBottomCf')):3.0f} top {np.linalg.norm(g('stand:leftTopCf')-g('stand:rightTopCf')):3.0f}"
