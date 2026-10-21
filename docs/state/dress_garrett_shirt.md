@@ -24,7 +24,7 @@ then put Garrett's spacing back (first 28 mm read 64 below HPS on the form: re-t
 - Colour lit: 177/174/171 | - | 178/174/171 (lapel box) | 192/188/185 | 177.5/174.3/171.2 PASS (#bdb8b4 -> #aeaaa6).
 - Strain p99 drawn: - | 11.3 | 17.2 | 13.3 | 13.4 FAIL (yoke 27.8). Start over-limit: - | - | 10.1 % | 8.1 % | 7.2 %.
 
-## Spec sh_garrett: v4 spacing, v5 neck_split + colour, v6 spacing off (r4b = v5).
+## Spec sh_garrett: v4 spacing, v5 neck_split + colour, v6 spacing off (r4b = v5). Tests: 20 clothing files 265 passed, 2 skipped, 3 xfailed, exit 0.
 
 ## Commands ($S = /mnt/data/hifipushie/dress_garrett/shirt_round4; run.sh runs THIS worktree's code)
 where.py <tag> [untuck=1] (prints the C114 gate rows); trace.py / trace_pins.py (HPSW SHW HPS_BACK_MM HPS_DOWN_MM
