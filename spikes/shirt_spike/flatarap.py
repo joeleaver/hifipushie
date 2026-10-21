@@ -220,11 +220,36 @@ for k in range(1, STEPS + 1):
         p1 = hb + rodr((a0 - hb)[None], ax, f * th)[0]
         T[v] = hb + rodr((p1 - hb)[None], rad, f * dth)[0]; fixed[v] = True
     Y = solve(T, fixed, A.get("iters", 20))
-    for _ in range(3):
+    for _ in range(0 if A.get("nopush") else 3):
         Yp, bad = push(Y, fixed)
         if not bad.any(): break
         Y = solve(Yp, fixed | bad, 6)
     print(f"step {k}: inside (free) {int(push(Y, fixed)[1].sum())}")
+# PULL (Joe: "pull the point out and to the side, and let it go as far as it could without stretching"): after the
+# staged moves, each collar point is dragged in small steps along (side x out-from-sideways + out x body normal), the
+# rest solved each step; it stops at the last step where the cloth's stretch stayed within `tol` of the start's.
+_Eo = np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]]
+_l0o = np.linalg.norm(uv[_Eo[:, 0]] - uv[_Eo[:, 1]], axis=1)
+_oko = (_l0o > 1e-5) & (pid[_Eo[:, 0]] == pid[_Eo[:, 1]]) & np.isin(pid[_Eo[:, 0]], [nm.index(p) for p in ("collar", "stand", "front.L", "front.R")])
+def stretch(Yw):
+    Xw = Yw[inv]; return np.percentile(np.abs(np.linalg.norm(Xw[_Eo[_oko, 0]] - Xw[_Eo[_oko, 1]], axis=1) / _l0o[_oko] - 1), 99)
+pull_info = {}
+if A.get("pull"):
+    PL = A["pull"]; hold = hW | np.isin(np.arange(n), list(bnd))
+    s0 = stretch(Y); dirs = {}
+    for s_, v in pts.items():
+        _, jj = bt.query(Y[v]); sg = np.sign(W0[inv[P[f"collar:{s_}TopHinge"]], 0])
+        d_ = PL.get("side", 1.0) * np.r_[sg, 0, 0] + PL.get("out", 0.5) * vn[jj] + PL.get("up", 0.0) * np.r_[0, 0, 1]
+        dirs[s_] = d_ / np.linalg.norm(d_)
+    pos = {s_: Y[v].copy() for s_, v in pts.items()}; moved = 0.0; good_Y = Y.copy()
+    while moved < PL.get("max", 0.08):
+        moved += PL.get("step", 0.003); T = good_Y.copy(); fx = hold.copy()
+        for s_, v in pts.items(): T[v] = pos[s_] + moved * dirs[s_]; fx[v] = True
+        Yt = solve(T, fx, PL.get("iters", 12)); st_ = stretch(Yt)
+        if st_ > s0 + PL.get("tol", 0.01): moved -= PL.get("step", 0.003); break
+        good_Y = Yt
+    Y = good_Y; pull_info = {"moved_mm": round(moved * 1000, 1), "stretch_p99_start": round(s0 * 100, 2), "stretch_p99_end": round(stretch(Y) * 100, 2)}
+    print("pull:", pull_info)
 Y = solve(Y, hW | np.isin(np.arange(n), list(pts.values()) + list(bnd)), 10)
 for v, (a0, (hb, ax, th), _dr) in bnd.items():
     print("band handle", np.round(a0*1000).astype(int), "->", np.round((hb + rodr((a0 - hb)[None], ax, th)[0])*1000).astype(int), "got", np.round(Y[v]*1000).astype(int))
