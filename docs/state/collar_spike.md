@@ -21,8 +21,7 @@ the band turning with it; band ends lean apart; leaves stand off the neck). Joe:
   them, from the start; holding the unrelaxed fit kept its 7 % strain): side fall edge 71 mm from the neck centre (b0 82,
   closed 68), front flares (105); points 144 / 76 below HPS; p99 6.1 %; crumple = b0's. b0 alone: leaves hang down the
   chest (Joe: "almost perfect from that angle") but the collar flared all round.
-- OPEN + SMOOTH (sm1 = u25 + `"smooth":{"pieces":["collar","stand"]}`, C143): roughness halved (collar p95 0.28,
-  band 0.16 mm), stretch +0.3 pt; a little ripple left near the neck. Joe: pull + smooth = the two styling operations.
+- SMOOTH (C143, sm1): `"smooth":{"pieces":["collar","stand"]}` after the pulls halves the crumple for +0.3 pt.
 - OPEN (u25 = t15's pulls with "patch":0.025,"turn":1: each step drags the point alone, then fits the
   patch's unstretched start shape rigidly (Kabsch) onto that and solves again: tips clean (crumple p95 0.06-0.10 mm =
   closed; flips.py: 1 folded face per side at the patch edge, was 18 / 28 with a rigid patch), points 156 / 64-65.)
