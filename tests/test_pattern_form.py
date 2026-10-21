@@ -330,6 +330,44 @@ def test_neck_point_on_hps():
     assert start > 25 and e < 2.0, (start, e)
 
 
+def test_neck_point_splits_the_neck_as_the_garments_neckline_does():
+    """(C113) A yoke-forward shoulder seam on a cylinder neck (r 60 mm, half loop 188.5 mm): the yoke's neck edge
+    cbNeck -> hps is 60 % of the half neckline, the front's hps -> cfNeck 40 %. The body's hps landmark sits at the
+    side (50 / 50). With NECK_SPLIT the neck pins land where the neck edges keep their lengths (arc from CB = 60 % of
+    the body's half loop, within 1.5 mm); with it off they sit on the landmark, 18.8 mm behind."""
+    r, z = 0.06, 1.506  # (a neck section between vertex rows, above the torso)
+    body = _neck_body()
+    body.at = {"hps.L": np.array([r, 0.0, z]), "cb_neck": np.array([0.0, r, z]), "cf_neck": np.array([0.0, -r, z])}
+    half = math.pi * r
+    Lb, Lf = 0.6 * half, 0.4 * half  # the garment's own neckline split (pattern lengths)
+    yoke = _piece([[0, 0], [Lb, 0], [Lb, -0.08], [0, -0.08]], names={"cbNeck": 0, "hps": 1})
+    front = _piece([[0, 0], [Lf, 0], [Lf, -0.1], [0, -0.1]], names={"hps": 0, "cfNeck": 1})
+    M = cloth.mesh(_B({"yoke": yoke, "front.L": front}), 0.01)
+    share = pf.neckline_share(M)  # (read off the meshed outline: the 10 mm grid moves the corners a few mm)
+    assert abs(share - 0.6) < 0.02, share
+    X0 = np.c_[np.full(len(M["uv"]), 0.1), np.zeros(len(M["uv"])), np.full(len(M["uv"]), z)]  # (all on the left side)
+    bsurf = pf._body_surface(body)
+
+    def arc_from_cb(q):  # the neck circle's arc from CB (+y) round the left side (+x) to q
+        return r * math.acos(np.clip(q[1] / math.hypot(q[0], q[1]), -1, 1))
+
+    for on, want in ((True, share * half), (False, 0.5 * half)):
+        old = pf.NECK_SPLIT
+        pf.NECK_SPLIT = on
+        try:
+            full, _ = pf._pins(M, X0, body, 0.0, bsurf)
+        finally:
+            pf.NECK_SPLIT = old
+        hv = {M["points"]["yoke:hps"], M["points"]["front.L:hps"]}
+        qs = [q for v, q, w in full if v in hv]
+        assert len(qs) == 2
+        for q in qs:
+            a = arc_from_cb(q)
+            print(f"NECK_SPLIT {on}: neck pin {a * 1000:.1f} mm round from CB (want {want * 1000:.1f}); "
+                  f"front {(half - a) * 1000:.1f} vs the front's neck edge {Lf * 1000:.1f}")
+            assert abs(a - want) < 0.0015, (on, a, want)
+
+
 def _curved_collar_case(stand=0.027, fall=0.040, dip=0.03, r=0.06, ease=0.004, gap_n=10):
     """A neck cylinder (radius r) with a curved neckline (z0 at the back, `dip` lower at the front), a closed bodice
     tube sewn under it and a collar drafted to that curve: its neck edge IS the neckline unrolled (u = R theta, v = z),

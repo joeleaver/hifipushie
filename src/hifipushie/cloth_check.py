@@ -1402,6 +1402,15 @@ def collar_rule_rows(Bp: dict, g: dict) -> list:
                                                                    "where the stand still stands flips the points"}]
 
 
+def button_spacing_rows(Bp: dict) -> list:
+    """(C114) FLAT rows for every closure with a "spacing" rule (closures.space_marks), read back off the marks: the
+    first fastening's drop below its `from` point (+-2 mm of the rule) and the pitch in closures.PITCH_RANGE."""
+    from . import closures as cm
+    return [{"id": r["name"], "stage": 3, "status": "PASS" if r["pass"] else "FAIL", "measure": "closures.spacing_rows",
+             "ours": r["ours"], "ref": r["ref"], "why": r["how"]}
+            for r in cm.spacing_rows(Bp.get("closures"), Bp.get("pieces") or {})]
+
+
 def piece_checklist_rows(model: str, garment: str, g: dict, res: dict | None = None) -> list:
     """(C98) the piece checklist's items with machine targets as gate rows: "flat" items judged on the draft here
     (garment_reads.flat_reads); "fit" items shown with their reading on the gate's own form assembly (LATER: the fit
@@ -1412,6 +1421,7 @@ def piece_checklist_rows(model: str, garment: str, g: dict, res: dict | None = N
     rows = collar_rule_rows(Bp, g) if Bp is not None else []
     if Bp is not None:
         rows += fold_family_rows(fold_flat(Bp, g), gated=bool(piece))
+        rows += button_spacing_rows(Bp)
     if not items:
         return rows
     rd = gr.flat_reads(Bp, g) if Bp is not None else {}

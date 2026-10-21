@@ -24,6 +24,34 @@ def test_one_entry_makes_stitches_and_band_rows():
     assert not seams and out[0]["pairs"][0] == ("buttonhole1", "button1") and out[0]["closed"] == [True] * 3
 
 
+def test_buttons_are_spaced_from_the_neck_by_the_rule_not_evenly():
+    """(C114) the first fastening `first` below the `from` point on BOTH pieces, the lowest kept as drafted, the rest
+    even between; the flat gate rows read it back off the marks (first +-2 mm, pitch 75-95 mm)."""
+    pcs = _pieces()
+    for pc in pcs.values():
+        pc["names"]["cfNeck"] = 0  # the top corner on each piece (y 0)
+        for n in (1, 2, 3, 4):
+            pc["marks"][f"{'buttonhole' if pc is pcs['front.L'] else 'button'}{n}"] = np.array([0.0, -0.1 * n])
+    sp = {"first": 0.03, "from": "cfNeck", "source": "concept"}
+    _, _, _, out = closures.expand([dict(ENTRY, spacing=sp)], pcs)
+    for pn, mk in (("front.L", "buttonhole"), ("front.R", "button")):
+        ys = [float(pcs[pn]["marks"][f"{mk}{n}"][1]) for n in (1, 2, 3, 4)]
+        assert np.allclose(ys, [-0.03, -0.03 - 0.37 / 3, -0.03 - 0.74 / 3, -0.4], atol=1e-9)  # lowest kept at 0.40
+    rows = {r["name"]: r for r in closures.spacing_rows(out, pcs)}
+    assert rows["front_first_button"]["pass"] and rows["front_first_button"]["ours"] == 30.0
+    assert not rows["front_button_pitch"]["pass"]  # 123 mm apart: past a shirt's 75-95
+    pcs = _pieces()
+    for pc in pcs.values():
+        pc["names"]["cfNeck"] = 0
+    _, _, _, out = closures.expand([dict(ENTRY, spacing=dict(sp, pitch=0.085))], pcs)
+    rows = {r["name"]: r for r in closures.spacing_rows(out, pcs)}
+    assert rows["front_first_button"]["pass"] and rows["front_button_pitch"]["pass"]
+    assert np.isclose(pcs["front.R"]["marks"]["button3"][1], -0.03 - 0.17)
+    # the planted fault: a mark moved after the rule fails its row (the row reads the marks, not the rule)
+    pcs["front.L"]["marks"]["buttonhole1"] = np.array([0.0, -0.05])
+    assert not {r["name"]: r for r in closures.spacing_rows(out, pcs)}["front_first_button"]["pass"]
+
+
 def test_states():
     st, _, _, out = closures.expand([dict(ENTRY, state="open")], _pieces())
     assert not st and out[0]["closed"] == [False] * 3  # open: nothing sewn, the buttons still exist

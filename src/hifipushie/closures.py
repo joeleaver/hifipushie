@@ -15,7 +15,10 @@ A closure is a lap held by fastenings, not a seam: the `over` piece runs `band` 
    "size": m (button diameter, default 0.011), "lift": m (default 0.0008),
    "gap": m (a piece closed on itself worn OPEN: how far its ends stand apart, a collar's stand at the throat),
    "state": "closed" | "open" | {"open_above": mark of `over`} | {"open_top": n} (the n highest fastenings undone:
-            a shirt worn without a tie has its top front button open, whatever its marks are called)}
+            a shirt worn without a tie has its top front button open, whatever its marks are called),
+   "spacing": {"first": m, "from": point (default "cfNeck"), "pitch": m (optional), "source": why}
+            the fastenings RE-PLACED down the closing line (`space_marks`): the first one `first` below `from` on
+            each piece, the rest `pitch` apart (default: the lowest kept where drafted, the rest even between)}
 
 `expand` turns the entries into stitches (one per fastening that is closed), fold-line rows for the bands and seams
 for closed zips; `cloth.mesh` records each closure's vertex pairs (`M["closures"]`); after the sim `measure` says per
@@ -29,7 +32,7 @@ import math
 import numpy as np
 
 KINDS = ("buttons", "zip", "hooks", "tie")
-KEYS = {"name", "kind", "over", "under", "holes", "buttons", "at", "edge", "band", "seam", "from", "to", "size", "lift",
+KEYS = {"name", "kind", "spacing", "over", "under", "holes", "buttons", "at", "edge", "band", "seam", "from", "to", "size", "lift",
         "state", "gap", "finish", "topstitch", "hole", "button"}
 FINISHES = ("box", "french", "facing", "plain")
 # how a band is made (what the outside shows; detail maps): "box" = a box placket (the edge folded out and back so a
@@ -109,6 +112,7 @@ def expand(entries: list, pcs: dict) -> tuple[list, list, list, list]:
             while _has(pcs[over], f"{ho}{n}") and _has(pcs[under], f"{bu}{n}"):
                 pairs.append((f"{ho}{n}", f"{bu}{n}"))
                 n += 1
+        spaced = space_marks(c, pcs, pairs) if c.get("spacing") and pairs and kind != "zip" else None
         for a, b in pairs:
             if not _has(pcs[over], a) or not _has(pcs[under], b):
                 raise ClosureError(f"closure {c['name']!r}: no mark {over}:{a} / {under}:{b}")
@@ -139,8 +143,75 @@ def expand(entries: list, pcs: dict) -> tuple[list, list, list, list]:
                     "edge": edge, "band": band, **({"seam": list(c["seam"])} if c.get("seam") else {}), "size": float(c.get("size", 0.011)), "lift": float(c.get("lift", 0.0008)),
                     "state": state, **({"gap": float(c["gap"])} if c.get("gap") is not None else {}),
                     "finish": _finish(c), "topstitch": float(c.get("topstitch", 0.003)), "hole": c.get("hole", "auto"),
-                    "button": dict(BUTTON, **(c.get("button") or {}))})
+                    "button": dict(BUTTON, **(c.get("button") or {})), **({"spacing": spaced} if spaced else {})})
     return stitches, folds, seams, out
+
+
+# BUTTON SPACING IS A RULE FROM THE NECK, NOT AN EVEN SPLIT (shirt round 4, C114). FreeSewing Simon's addButtons spaces
+# the front buttons evenly from cfNeck to 98 % of cfNeck -> cfHips, so its first front button is one full spacing
+# (~80 mm) below the neckline wherever the reference has it. Shirtmakers place the first front button from the collar
+# band (Proper Cloth's default: its centre 2 7/8 in = 73 mm below the band's bottom, "a shade below the industry
+# average"; their spacings 3 1/8 - 3 1/2 in = 79-89 mm; a uniform spec: neck button -> first 3 1/4 in, then 3 1/2 in),
+# and a garment worn to a reference takes the reference's first fastened button (garment closure key "spacing").
+SPACING_FROM = "cfNeck"
+SPACING_FIRST = 0.073  # m: the sourced default (Proper Cloth 2 7/8 in below the band's bottom)
+PITCH_RANGE = (0.075, 0.095)  # m: 3 - 3 3/4 in between front buttons (Proper Cloth 79-89 mm; uniform specs 83-95 mm)
+
+
+def space_marks(c: dict, pcs: dict, pairs: list) -> dict:
+    """Re-place a closure's fastening marks by its "spacing" rule, in place on both pieces' marks (x kept): pair k
+    (top first, by the over piece's mark height) at `first` + k x pitch below the `from` point of each piece; pitch
+    given, or the lowest pair kept where drafted and the rest even between. Returns the read for the flat gate row
+    {"first": m below from, "pitch": m, "n", "from", "source"}."""
+    sp = c["spacing"] if isinstance(c["spacing"], dict) else {}
+    first = float(sp.get("first", SPACING_FIRST))
+    frm = sp.get("from", SPACING_FROM)
+    over, under = c["over"], c.get("under", c["over"])
+    order = sorted(pairs, key=lambda p_: -_y(pcs[over], p_[0]))
+    for piece in {over, under}:
+        if not _has(pcs[piece], frm):
+            raise ClosureError(f"closure {c['name']!r}: spacing from {frm!r}, but {piece} has no such point / mark")
+    y_from = {pn: _y(pcs[pn], frm) for pn in {over, under}}
+    if sp.get("pitch") is not None:
+        pitch = float(sp["pitch"])
+    elif len(order) > 1:
+        low = y_from[over] - _y(pcs[over], order[-1][0])  # the lowest fastening's drop below `from`, as drafted
+        pitch = (low - first) / (len(order) - 1)
+    else:
+        pitch = 0.0
+    for k, (a, b) in enumerate(order):
+        for pn, mk in ((over, a), (under, b)):
+            marks = pcs[pn].setdefault("marks", {})
+            if mk not in marks:
+                raise ClosureError(f"closure {c['name']!r}: spacing moves marks, but {pn}:{mk} is an outline point")
+            xy = np.array(marks[mk], float)
+            xy[1] = y_from[pn] - first - k * pitch
+            marks[mk] = xy
+    return {"first": first, "pitch": float(pitch), "n": len(order), "from": frm, "source": sp.get("source", "")}
+
+
+def spacing_rows(closures_out: list, pcs: dict) -> list:
+    """FLAT gate rows for every closure with a spacing rule, read back off the marks (not the rule): the first
+    fastening's drop below `from` vs the rule's first (+-2 mm), and the pitch between fastenings in PITCH_RANGE."""
+    rows = []
+    for c in closures_out or []:
+        sp = c.get("spacing")
+        if not sp or not c.get("pairs"):
+            continue
+        pc = pcs[c["over"]]
+        ys = sorted((_y(pc, a) for a, _ in c["pairs"]), reverse=True)
+        f = _y(pc, sp["from"]) - ys[0]
+        rows.append({"name": f"{c['name']}_first_button", "on": "flat", "ref": round(sp["first"] * 1000, 1),
+                     "ours": round(f * 1000, 1), "pass": abs(f - sp["first"]) <= 0.002,
+                     "how": f"the first fastening's mark below {sp['from']} on {c['over']} (mm); rule: {sp.get('source') or 'default'}"})
+        if len(ys) > 1:
+            d = -np.diff(ys)
+            rows.append({"name": f"{c['name']}_button_pitch", "on": "flat",
+                         "ref": [PITCH_RANGE[0] * 1000, PITCH_RANGE[1] * 1000],
+                         "ours": [round(float(d.min()) * 1000, 1), round(float(d.max()) * 1000, 1)],
+                         "pass": bool(d.min() >= PITCH_RANGE[0] - 1e-6 and d.max() <= PITCH_RANGE[1] + 1e-6),
+                         "how": "spacing between fastenings (mm), min / max; dress shirts 3 - 3 3/4 in (Proper Cloth, uniform specs)"})
+    return rows
 
 
 def _finish(c: dict) -> dict:

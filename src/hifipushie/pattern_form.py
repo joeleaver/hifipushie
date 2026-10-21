@@ -857,7 +857,100 @@ def woven_shear_deg(W: dict, X: np.ndarray) -> np.ndarray:
     return np.degrees(np.arcsin(np.clip(np.abs(c), 0, 1)))
 
 
-def _pins(M, X0, body, ease, bsurf, under_v=None):
+# THE NECK POINT SPLITS THE NECK AS THE GARMENT'S NECKLINE DOES (shirt round 4, C113). The neck pins put every piece
+# point "hps" on the body's hps landmark (the widest point of the neck loop 2 cm up the neck, tailor "widest"). Where
+# the garment's own neckline divides back : front differently from the body's loop at that landmark, the pin forces the
+# shorter side to stretch: Garrett's shirt (Simon) has a back neck share of 0.447 (yoke cbNeck -> hps 101 mm, front
+# hps -> cfNeck 125) where his neck loop splits 0.483 at hps (98 / 105): the yoke's back neck went +12 % in relax1, the
+# stand's front -1.5 %, and the yoke tented over the trapezius (its HPS column +10 % front-to-back). A pattern maker pins
+# the shoulder seam where the back neck reaches round the form, so NECK_SPLIT places the neck point on the body's neck
+# loop at the arc share of the garment's own neckline (back / (back + front), read off the pattern from each "hps" to
+# its piece's centre-line neck point cbNeck / cfNeck), moved at most NECK_SPLIT_MAX along the loop. A garment with no
+# such points keeps the landmark.
+NECK_SPLIT = False  # module default OFF: garment key "neck_split": true (the parked jacket regressed with it, C113)
+NECK_SPLIT_MAX = 0.02  # m along the loop
+
+
+def _boundary_path_len(M, a: int, b: int) -> float | None:
+    """The pattern length (uv) of the shortest path from vertex a to b along the outline of a's piece (None: none)."""
+    from scipy.sparse.csgraph import dijkstra
+    F = np.asarray(M["F"]); uv = np.asarray(M["uv"], float); pid = np.asarray(M["piece"])
+    Fp = F[pid[F[:, 0]] == pid[a]]
+    E = np.sort(np.r_[Fp[:, [0, 1]], Fp[:, [1, 2]], Fp[:, [2, 0]]], 1)
+    u, cnt = np.unique(E, axis=0, return_counts=True)
+    be = u[cnt == 1]
+    if not len(be):
+        return None
+    w = np.linalg.norm(uv[be[:, 0]] - uv[be[:, 1]], axis=1)
+    n = len(uv)
+    G = coo_matrix((np.r_[w, w], (np.r_[be[:, 0], be[:, 1]], np.r_[be[:, 1], be[:, 0]])), shape=(n, n)).tocsr()
+    d = dijkstra(G, indices=int(a))[int(b)]
+    return float(d) if np.isfinite(d) else None
+
+
+def neckline_share(M: dict) -> float | None:
+    """The garment's back neck share: (mean back length cbNeck -> hps) / (back + mean front hps -> cfNeck), read
+    along each piece's outline in the pattern; None when the pattern has no hps with both neck ends."""
+    P = M["points"]
+    back, front = [], []
+    for k, v in P.items():
+        nm, pt = k.split(":", 1)
+        if pt not in ("hps", "hps.m"):
+            continue
+        for end, acc in (("cbNeck", back), ("cfNeck", front)):
+            if f"{nm}:{end}" in P:
+                L = _boundary_path_len(M, int(v), int(P[f"{nm}:{end}"]))
+                if L:
+                    acc.append(L)
+    if not back or not front:
+        return None
+    b, f = float(np.mean(back)), float(np.mean(front))
+    return b / (b + f)
+
+
+def neck_split_point(body, share: float, max_move: float | None = None):
+    """The point on the body's neck loop (the plane through its cb_neck, cf_neck and hps.L landmarks) whose arc from
+    the centre back is `share` of the left half loop (cb -> cf), moved at most `max_move` along the loop from hps.L;
+    None without those landmarks or a loop."""
+    at = getattr(body, "at", {}) or {}
+    if not all(k in at for k in ("cb_neck", "cf_neck", "hps.L")) or not hasattr(body, "V"):
+        return None
+    from . import tailor
+    cb, cf, h = (np.asarray(at[k], float).reshape(-1)[:3] for k in ("cb_neck", "cf_neck", "hps.L"))
+    n = np.cross(cf - cb, h - cb)
+    if np.linalg.norm(n) < 1e-9:
+        return None
+    n /= np.linalg.norm(n)
+    T = getattr(body, "T", None)
+    if T is None:
+        return None
+    L = tailor.section(np.asarray(body.V, float), np.asarray(T), h, n, h)
+    if L is None or len(L) < 8:
+        return None
+    L = np.asarray(L, float)
+    ib, i_f = int(np.argmin(np.linalg.norm(L - cb, axis=1))), int(np.argmin(np.linalg.norm(L - cf, axis=1)))
+    # the left half: walk from cb toward cf the way that passes x > 0
+    m = len(L)
+    for s in (1, -1):
+        idx = [ib]
+        while idx[-1] != i_f and len(idx) <= m:
+            idx.append((idx[-1] + s) % m)
+        half = L[idx]
+        if np.mean(half[:, 0]) > 0:
+            break
+    seg = np.linalg.norm(np.diff(half, axis=0), axis=1)
+    cum = np.r_[0.0, np.cumsum(seg)]
+    if cum[-1] < 1e-6:
+        return None
+    ih = int(np.argmin(np.linalg.norm(half - h, axis=1)))
+    mv = NECK_SPLIT_MAX if max_move is None else float(max_move)
+    t = float(np.clip(share * cum[-1], cum[ih] - mv, cum[ih] + mv))
+    j = int(np.clip(np.searchsorted(cum, t) - 1, 0, len(half) - 2))
+    f = (t - cum[j]) / max(seg[j], 1e-12)
+    return half[j] + f * (half[j + 1] - half[j])
+
+
+def _pins(M, X0, body, ease, bsurf, under_v=None, neck_split: bool | None = None):
     """Landmark pins: ([vertex], [target xyz], [weight]) full pins and ([vertex], [weight]) centre-line (x = 0) pins.
     A layer over another (under_v: the under garment's vertices) has its neck point ON THE LAYER BELOW plus ease, not
     on the skin: the under layer's height off the skin there (its collar band at the neck point) + THICK + ease
@@ -865,11 +958,17 @@ def _pins(M, X0, body, ease, bsurf, under_v=None):
     full, cx = [], []
     at = getattr(body, "at", {}) if body is not None else {}
     ut = cKDTree(np.asarray(under_v, float)) if under_v is not None and len(under_v) else None
+    hps_at = np.asarray(at["hps.L"], float).reshape(-1)[:3] if "hps.L" in at else None
+    if (NECK_SPLIT if neck_split is None else neck_split) and hps_at is not None:
+        sh_ = neckline_share(M)
+        q_ = neck_split_point(body, sh_) if sh_ is not None else None
+        if q_ is not None:
+            hps_at = q_
     for k, v in M["points"].items():
         nm, pt = k.split(":", 1)
         side = 1.0 if X0[v, 0] >= 0 else -1.0
-        if pt in ("hps", "hps.m") and "hps.L" in at:
-            q = np.asarray(at["hps.L"], float) * [side, 1, 1]
+        if pt in ("hps", "hps.m") and hps_at is not None:
+            q = hps_at * [side, 1, 1]
             if bsurf is not None:
                 _, n, _ = bsurf.signed(q[None])
                 lift = ease
@@ -1945,7 +2044,7 @@ def covered(osurf, X, bsurf=None):
 def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = EASE, fasten="default",
              iters: int = 120, X0: np.ndarray | None = None, attract: float = 0.5, log=None, pressed: bool = True,
              worn_open: dict | None = None, shoulder_pad: dict | None = None, over: dict | None = None,
-             bridge: float = 0.0) -> dict:
+             bridge: float = 0.0, neck_split: bool | None = None) -> dict:
     """The garment assembled on the form (see the module docstring). pattern: a placed garment (cloth.build
     place_only result: "mesh", "X0", "pieces") or {"mesh": M, "X0": start, "pieces": B (optional)}. body: a
     cloth.Body (V, T, at) or None (a free sheet: the fold tests). under: {"V", "F"} of the garment under (the shirt
@@ -1985,7 +2084,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
     # buttons on the centre line: a front's closure (cuffs, plackets close where they are)
     cf_fast = [tuple(int(x) for x in v) for c in M.get("closures") or [] if c.get("name") == "front"
                for v in (c.get("v") or []) if tuple(int(x) for x in v) in set(fast)]
-    full, cx = _pins(M, X, body, ease, bsurf, under_v=under["V"] if under is not None else None)
+    full, cx = _pins(M, X, body, ease, bsurf, under_v=under["V"] if under is not None else None, neck_split=neck_split)
     ox = worn_open_pins(M, X, worn_open)
     ox_named = list(ox)  # (the named worn-open points alone: ox gains the edge pins below)
     # 1. collars / stands stood up from their seams; 2. flaps turned
@@ -2707,7 +2806,7 @@ def on_form(model: str, garment: str, spec: dict | None = None, g: dict | None =
     under = {"V": und["A"], "F": und["mesh"]["F"]} if und is not None else None
     # garment key "worn_open" {point: offset m, "source": why}: the form rule for fronts worn open (worn_open_pins)
     out = assemble(res, res["body"], under=under, ease=EASE if under is not None else UNDER_EASE, log=log,
-                   worn_open=g.get("worn_open"), shoulder_pad=g.get("shoulder_pad"), bridge=bridge_fraction(g))
+                   worn_open=g.get("worn_open"), shoulder_pad=g.get("shoulder_pad"), bridge=bridge_fraction(g), neck_split=g.get("neck_split"))
     res["A"], res["A_info"], res["form_under"] = out["V"], out["info"], und
     if cloth.expanded(g).get("tucked"):
         res["A"], res["A_info"]["tucked"] = tuck(res, res["A"], cloth.expanded(g))
