@@ -1,48 +1,40 @@
-# STATE: dress_garrett_shirt (Garrett's shirt on its own, then under the round-26 jacket) -- 2026-10-20, shirt round 7
+# STATE: dress_garrett_shirt (Garrett's shirt on its own, then under the round-26 jacket) -- 2026-10-21, shirt round 8
 
 QUESTION (Joe 2026-10-20): "will all the lessons we learned on the jacket carry over and it won't take 30 rounds?"
-Round 1: process carried, geometry didn't. Round 2: lessons made general (C103-C108). Round 3: base fit STUCK (C110).
-Round 4: neck split (C113, opt-in), first-button rule (C114, off in v6). Round 5: CULL FIRST (C115), refused at preflight.
-Round 6: NECKLINE FLAT CHECK (C116): the neckline is long, not short; the strain is the yoke over the shoulder.
-Round 7: SHOULDER FLAT CHECK (C117): the slope DEFINITION (C61). Shirt kind now drafted on the chord.
+Rounds 1-7: process carried, geometry didn't; C103-C117 (seen part first C115, neckline flat C116, chord slope C117).
+Round 8: gate PASS on the chord draft (C118: collar roll 6 mm), start_over 0.06 (coordinator; jacket's rule), the
+ARRANGEMENT RAN; first button + V now pass (roll drafted from the V); the collar SPREAD is stuck (C120), reviews FAIL.
 Jacket thread: docs/state/dress_garrett_fit.md (read-only here).
-STATE (round 7, numbers in cloth.md "shirt round 7"): Simon got the tape's LINE slope 10.92 deg (FreeSewing reads the
-chord hps -> shoulder point: 22.51). Line draft: seam 161.6 mm / drop 30.6 vs body 169.6 / 64.5 -> pulled +7 % on the
-form, yoke columns +3-9 %, back top +4-5 %. Over-the-shoulder flat length is LONG on both drafts (+17-60 mm over the
-body's arc, back and front sides): yoke depth / front drop NOT short; seam 15-17 mm forward of the crest (fine for a yoke).
-Chord: seam 171.7 / 65.7, columns +2-3 %. Start over-limit: whole 6.50 -> 5.87 % (kind rule, k7a); seen part 5.76 ->
-5.03 % (c7a). Still over the 3 % preflight: NO arrangement, no renders, no review this round.
-Left over (chord form): back band 400-500 mm below hps 33-44 % (sig p90 1.23, the tuck line, mostly below the seen cut
-z 1.116); yoke neck corner (hps pin 2 cm up the neck, 33 % on the last segment at |x| 65) + lower outer (|x| ~138);
-front.L just under the neck (|x| 11-24); in the seen job the yoke reads 435 over (form 303): the arrange pins / seen cut add.
-Jacket (kind keeps the line; only the shirt under changed): rows identical, shirt poke 114 -> 85 verts (below).
-NEXT: (1) locate the seen job's extra yoke strain (seen 435 vs form 303: arrange pins or the cut?) and the yoke neck
-corner (hps pin height: the tape's hps is 2 cm up the neck); (2) the back's tuck band only matters if it is in the
-seen part; (3) under 3 % -> arrange the collar (seen7.py, FORM=form_k7a.pkl), render, blind review; (4) refit the
-jacket over THIS shirt before any dressed render. The new draft needs a pattern_check PASS before any sim (C2).
+STATE (round 8, numbers in cloth.md "shirt round 8"): sh_garrett v8 (v7 collar roll 6 mm + collarWidth 1.61; v8
+first button 0.047 below cfNeck, under front's open-neck roll button1 + 30). Gate PASS (no waivers). Form fit p99 11.4.
+Seen job s8c: start over-limit 5.20 % (yoke 433, front.L 233, back 168, front.R 135 faces) with zozo start_over 0.06
+(job_settings.json carries the reason); the seen job's extra over the form (969 vs 754) is the START CLEAN-UP (moves
+<= 5 mm), not pins or cut. Arranged keep=True ("placed by hand", springback <= 2 mm). Local ZOZO only: $0.
+Collar: the made fall rests as placed, turned 123 of 180 deg on the form: it flares up like a funnel; pins stop 24-34
+mm short; band-end pins 20 -> 35 mm moved the points 86.4 -> 87.5 (dead). fold_on_base unvalidated on a two-piece
+collar (C119: reads 0.8 "through" on the known-good closed start too).
+Reviews (a8c, shirt alone): collar FAIL (stands straight up, points tiny, wide shallow V, puffy fronts); wholefront FAIL
+(collar funnel; boxy; the composite drew the tucked cloth: render fault). Step 4 (jacket refit + dressed) NOT run.
+NEXT: (1) the open made collar from the CONSTRUCTION: the form builds stand + fall open and turned (fall on the stand,
+fold_turn ~180, points out), then the arrangement only settles it (C120); (2) fix fold_on_base for a flap on another
+piece (C119) and validate it on the closed start first; (3) render composites without the cloth below the tuck line;
+(4) then jacket refit over this shirt (B) and the dressed renders + cuff / collar-above measures.
 
-## Big reads (concept | r3 f3a | r4 r4b | r5 d5 (v6 fit, unarranged) | r7 (chord, unarranged))
-- V bottom below HPS: 60 | 74 | 62.4 PASS | not re-read | not re-read.
-- Collar points apart: 147 | 57 | 45 | ~45 FAIL (not arranged); below HPS 50-61 | 84.5 | 82 | ~82 | not arranged.
-- First fastened button: 83 | 123 | 64 | v6 rule off (~123) FAIL | unchanged.
-- Start over-limit (preflight 3 %): - | 8.1 % | 7.2 % | seen 5.85 / 5.76 % | seen 5.03 %, whole 5.87 % FAIL.
-- Shoulder seam flat (r7, gate row shoulder_seam_flat): line 161.6 / 30.6 FAIL -> chord 171.7 / 65.7 PASS (body 169.6 / 64.5).
-- Over-the-shoulder flat vs body arc (r7, |x| 65 / 90 / 125): chord +99 / +89 / +70 mm: PASS (both sides).
-- Neckline flat (r6): 444.2 vs bare neck 406.5 + 10-15 (book) / base ring 430.8 + ease: LONG, PASS.
-- Cuff past jacket sleeve (17-23): r5 13.1 p50 FAIL. Collar above jacket collar (11-23): CB 7.3, side 8.1 FAIL.
+## Big reads (concept | r4 r4b | r7 (chord, unarranged) | r8 s8c (arranged, keep))
+- V bottom below HPS: 60 | 62.4 | 62.1 (form) | 74.1 PASS (band 45-75).
+- Collar points apart: 147 | 45 | 47.8 | 87.5 FAIL. Below HPS 50-61: 82 | not arranged | 65.8 PASS (band 35-76).
+- First fastened button: 83 | 64 | 111 | 77.3 PASS (band 68-98).
+- Start over-limit: - | 7.2 % | seen 5.03 % | seen 5.20 % (start_over 0.06, local limit, past 0).
+- Fall cover over the stand (flat): 10-15 Aldrich | - | 9.9 | 10.0 PASS; fold_turn_allowance collar 4.2 -> 6.3 PASS.
+- Fold family on the arranged collar: twist 6.1 PASS; turn 122.8 (declared fold-over 180) ; on_base unvalidated.
+- Cuff past jacket sleeve (17-23) / collar above jacket collar (11-23): not re-measured (step 4 not run; r5 13.1 / 7-8).
 
-## Jacket (r26g rows, shirt under on line vs chord; the jacket's own slope unchanged)
-- j7line -> j7chord: jacket rows IDENTICAL (stretch p99 15.8 / max 80.1, widths 413 / 398 / 406 / 409, gorge_lie,
-  lapel_on_base collar 25 through); shirt stretch p99 19.8 -> 12.9; shirt poke-through 114 verts max 23.4 mm -> 85 max
-  10.5 (shoulder 45 -> 60, chest 66 -> 22). No jacket regression. (jharness's cache key ignores garment_kb.json: the chord
-  run needs a dummy tailor.K override to re-key, else it reuses the line placement.)
+## Spec sh_garrett v8. Code this round: cloth_designs.json simon collar roll offset 0.006 (C118). Main merged (measure
+audit: definition_holds keep the shirt's old values; none lifted). Tests (21 files + test_measure_defs, bin/capped): 321 passed, 4 skipped, 4 xfailed, exit 0.
 
-## Spec sh_garrett v6 (spacing off). Code: cloth.slope_measures + garment_kb kinds.shirt.shoulder_slope "chord";
-cloth_check.shoulder_seam_row. Tests (21 clothing files, bin/capped): 275 passed, 4 skipped, 3 xfailed, exit 0.
-
-## Commands ($S = /mnt/data/hifipushie/dress_garrett/shirt_round7; run.sh runs THIS worktree's code)
-RUNNER=bin/capped ./run.sh fit7.py <tag> (SLOPE=line|chord tape override; the kind rule applies anyway) -> form_<tag>.pkl;
-./run.sh over7.py | col7.py | dir7.py | back7.py <form pkl> (flat over the shoulder / columns / over faces / by height);
-VERSION=6 SLOPE=.. FORM=<pkl> RUNNER=bin/capped ./run.sh seen7.py <tag> [submit] (round 5's seen5: seen part + collar
-pins + preflight); ./run.sh probe_pre7.py <tag>; SHIRT_SLOPE=line|chord ./jfit7.sh <tag> (jacket r26g + rows).
-Round 5 dress / render: shirt_round5/dress5.py, render_d5.py.
+## Commands ($S = /mnt/data/hifipushie/dress_garrett/shirt_round8; run.sh runs THIS worktree's code)
+./run.sh gate8.py <tag> -> gate_<tag>.json (rows.py prints it); RUNNER=bin/capped ./run.sh fit8.py <tag> -> form_<tag>.pkl
++ the fit record; FORM=<pkl> BAND_OUT=.. KEEP=1 RUNNER=bin/capped ./run.sh seen8.py <tag> [submit] (seen part + pins +
+start_over 0.06 + over-limit by region; submit: local ZOZO -> arranged_<tag>.npz); FORM=<pkl> ./run.sh reads8.py <tag>
+(big reads + fold rows); RUNNER=bin/capped ./run.sh render8.py <seen tag> <tag> [views] (JACKET=<asm pkl> dressed).
+Renders: $S/check/{wholefront,collar,placket}_a8c.png (ref | clay | diag | own); reviews rev_collar_a8c, rev_whole_a8c.
