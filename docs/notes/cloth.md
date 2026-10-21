@@ -9636,3 +9636,16 @@ collar is deeper at its points than at CB: land 13 CB / 16 side / 30 at the poin
 FAIL), fall CB 54.1, flat p99 1.89 % (stand 0.16), seams PASS; GATE PASS. Points: the concept's open point transferred
 as point -0.02 made the flat outer 518 vs worn 464 (corner finder took the point edges): point 0 kept. Closed: points
 46 apart, 65 below HPS. Reach (open sweep, INFO): stand 14 %, collar 30.7 % p99.
+Step 1 checks (fit6.py): closed fit d6c: GATE PASS, fit vs drape (self-check) stand 3.0 / collar 5.2 mm p50 (p90 6.9 /
+9.9, max 26 / 29); collar roll turn 150 PASS; points 16 apart, 58 below HPS; fit p99 13.0; collar_corners FAIL (collar
+11.4 % at one point). Step 2: open fit d6o (C134 rolls, top button undone): rolls turned 146 / 171, V 57, collar
+STANDING (roll 130, on_base 11.6 % through, twist 20.5), points 64 apart / 66 below HPS, fit vs drape 15 mm p50 (the
+open state is not the drape state, expected). Arrangement (arr6.py, ZOZO local start_over 0.06; pins on the two collar
+points only, patch 12 mm, targets ON the fitted cloth, OVER 3 mm): a6b CCD failed (SEPARATE=0); a6c (SEP 1 mm, only
+collar verts within 0.3 mm of the stand moved: 194, max 1.3 mm) ran: pins held 20.5 / 36.1 mm off target, springback
+1.0 / 0.8 mm p50; points 94 apart (147), 56 below HPS (50-61 PASS), V 71 (60); collar_state part; roll turn 122,
+twist 28, on_base 11.9 % FAIL; right open-neck roll undone (85 deg; left 177); corners max 51 % (stand end); weld 11
+open (the seen cut, yoke|back). m3.py: the stand opens at the throat (bottom 61 -> 66, top 119 -> 124 mm), its top 47-51
+above HPS: the fall stands up WITH it (a funnel) instead of turning down. Renders $S/check/{collar,wholefront,
+point_L,point_R}_d6.png; reviews collar FAIL (stands up to the jaw, crumpled points, limp, stray sliver), wholefront
+clay FAIL (funnel collar; hem / boxy / buttons are other stages). Jacket refit skipped (collar not close). Ledger C136.

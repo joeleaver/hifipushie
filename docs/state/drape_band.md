@@ -1,4 +1,4 @@
-# STATE: drape_band (wrapped folds drafted by draping) -- 2026-10-21, round 6 in progress
+# STATE: drape_band (wrapped folds drafted by draping) -- 2026-10-21, after round 6
 
 DECISION (Joe 2026-10-21): collars, lapel rolls, cuffs, waistbands, turtlenecks, curved hems are DRAPED: describe the
 worn shape, build it in 3D on what is under it, flatten it into the pattern piece. The flat piece stays the source of
@@ -23,8 +23,17 @@ the draft source. Notes: docs/notes/cloth.md "drape band round 1..6" (grep only)
 - concept | d2c | d4o | d5o | d6c: spread 147 | 36 (closed) | 151 | 100 | 46 (closed drape); collar flat p99
   <=2 | 1.98 | 1.71 | 2.88 | 1.89; spring - | - | short | short 129 | PASS +24.6.
 
-NEXT: (running) closed fit d6c (fit vs drape self-check) + open fit d6o (C134 rolls, top button undone) -> arrange
-if the collar stays closed (C81 patch pins on the fall's points / ends, start_over 0.06) -> renders -> reviews -> jacket.
-## Commands ($S = /mnt/data/hifipushie/drape_band6; run.sh = this worktree): sweep6.py <worn> '<overrides>' (closed c0,
+- Closed fit d6c: fit vs drape 3.0 / 5.2 mm p50 (stand / collar), roll turn 150 PASS, corners FAIL (11.4 %).
+- OPEN (d6o, C134 rolls 146 / 171, V 57): the collar STANDS (roll 130), 64 apart / 66 below HPS. Arranged a6c (pins
+  on the 2 points only, ZOZO local): held 20 / 36 mm short, springback 1 mm; 94 apart (147), 56 below HPS (PASS), V 71,
+  roll 122, twist 28, right open-neck roll undone (85). The stand DOES open at the throat (61 / 119 mm): the fall
+  stands up with it as a funnel. Reviews: collar FAIL, wholefront FAIL. Jacket skipped. Ledger C136.
+- Renders $S/check/{collar,wholefront,point_L,point_R}_d6.png; reviews $S/rev_collar_d6.log, rev_whole_clay_d6.log.
+
+NEXT (needs a coordinator call): the closed piece passes every flat row; the open state is the blocker. Point pins
+can't turn a fall down. Candidates: (a) arrangement pins spread along the fall's whole outer edge (patch per station
+on the yoke / rolled fronts, landing line read from the concept), (b) the open neck turning the fall with it (the
+fall's ends tied to the rolled fronts' turn), (c) check the concept's 147 is reachable at all (C81: ask first).
+## Commands ($S = /mnt/data/hifipushie/drape_band6; run.sh = this worktree): arr6.py <tag> [submit] (SEP, LOW); reads6.py <tag>; render6.py <seen> <tag> <views> (FORM=); m3.py; sweep6.py <worn> '<overrides>' (closed c0,
 spring + cover reads); m1.py / m2.py (measure flat: cloth offset loop, fall landing drop); drape_d6.py <worn> save;
 gate6.py <tag>; fit6.py <tag> closed|open (RUNNER=bin/capped).
