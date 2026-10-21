@@ -73,11 +73,25 @@ Spike only: no garment rounds, no agents grinding for an hour.
   the nearest band vertex collapsed neighbours: 100-190 %). a1L: 0 % off / 0 % inside / 0 % uncovered, but collar
   strain 11 -> 19 % and dents + a rippled outer edge where the held region ends (hard holds crease ARAP).
 
-## NEXT: Joe's call on a1 / a2 (ARAP handles route; sim parked)
-Proposal on the table: place the pieces geometrically, not dynamically: each piece as the developable surface its own
-flat shape makes (cylinder / cone as in s1), then a small static fit (keep every edge length, close the seam, keep off
-the body, bend only at the fold) for the seam gap; OPEN = the band's front ends turned down the neckline V and the
-collar's cone following its band. Waiting for Joe's call.
+## 2026-10-21 later: the SHIRT on an average body (Joe: "swap the simple form for an average human, start building
+the shirt on these principles"). Files: /mnt/data/hifipushie/shirt_spike/ (run.sh <script> [args] = this worktree's code
+under bin/capped; base_fit.py <tag> [json overrides] = pattern_form.on_form, the existing no-sim fitter, on workspace
+wf_simon: MakeHuman 35 y / 1.78 m / weight + muscle 0.5, its Simon shirt; ~15 s fit + renders; sheet.py <tag>;
+sym.py <tag>: mirror symmetry per piece, noise floor = mesh spacing, 1-8 mm).
+- s0 closed (KB default "no_tie": collar button undone): reads as a shirt (Joe: "we almost one-shotted this"), strain
+  2.5 / 11 % p50 / p99; the collar's FRONTS mangled + lopsided: collar mirror mismatch p95 34.6 / max 47 mm.
+- Cause (Joe suspected mirrored rotations): not a sign error. garment_kb.json kinds.shirt.wear.no_tie.folds declares the
+  two open-neck rolls ASYMMETRICALLY: open neck.L to buttonhole1+20 mm, .R to button1+60 mm (a ZOZO-era note: the over
+  front's roll shortened so it doesn't cross the band's inner row). L fold row stretch 21 % vs R 2 %.
+- s2 (both to +60 mm, overridden in memory, KB file NOT changed): collar mismatch p95 6.4 / max 13.6 mm, L row 7.4 %;
+  clean, symmetric turned-down collar; still stands high round the neck, points close at CF (not the concept's V).
+- s1 (Garrett's worn_open cfNeck 30 mm + his closures / folds copied): collar stands up round the neck like a wing, V
+  crumpled, chest shows through: the same fault as Garrett shirt round 12.
 
-Rules: renders under /mnt/data/hifipushie/bin/capped (GPU lock); files on /mnt/data/hifipushie/collar_spike/; stage
-git by path, never `git add -A`; only the coordinator pushes main.
+## NEXT
+(1) Joe's call: change the KB's open neck.L line to match .R (repo change, the asymmetry was deliberate for ZOZO).
+(2) The OPEN state on s2 as STAGED moves from the closed fit (stand ends part, fronts roll to the V, leaves settle),
+each stage starting from the last, folds only where the pattern declares them; measure vs concept (V 60, points 147
+apart / 50-61 below HPS). The existing worn_open path (s1) is the known-bad one.
+Rules: renders under /mnt/data/hifipushie/bin/capped (GPU lock); files on /mnt/data/hifipushie/; stage git by path,
+never `git add -A`; only the coordinator pushes main.
