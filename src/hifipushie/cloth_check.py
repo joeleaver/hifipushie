@@ -1558,6 +1558,8 @@ def pattern_gate(model: str, garment: str, spec: dict | None = None, refs=None, 
                      garment_kind=kind or "", corners=g.get("truing_corners") or (), ease_bands=g.get("seam_ease"),
                      form_ok=form_ok, flat=flat_readings(res["pieces_full"]), drape=g.get("drape_readings"))
     rows.append(flat_pattern_row(model, garment, spec))
+    from . import drape as drape_mod
+    rows += drape_mod.gate_rows(g)  # (draped bands: generated from the CURRENT worn spec, flattened within the limit)
     rows.append(shoulder_seam_row(M, res["body"], g, kind or ""))
     rows.append(measure_definitions_row(res["body"], g, kind or ""))
     rows += tailor_rows_for(res["pieces_full"], kind, g)

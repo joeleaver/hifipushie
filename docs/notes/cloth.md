@@ -9466,3 +9466,16 @@ Step 2-4. Closed form k10b (per-fold lay surface): fold rows turn 164.7 / on_bas
   nothing holds its turn but its made rest.
 - Step 4: render12.py a12a (check/*_a12a.png); blind review of the collar: FAIL (stands up round the neck, knotted ends, V
   closed under the chin, no buttons, colour). Wholefront review not run; jacket refit skipped (the drape band op is next).
+
+## drape band round 1 (2026-10-21)
+Joe's decision: wrapped folds are DRAPED (worn spec -> 3D on what is under it -> flattened). New module drape.py (op,
+flattener, reach, gate rows, placement from the drape), garment key "drape", cloth.pieces / place / pattern_gate hooks.
+KATs (tests/test_drape.py, 4 pass): lessons in C130 (ruled fall + mirrored band = curved fold; hairpin as crease +
+(pi/2 - 1) w; LSCM start, ARAP alone crawled: 6 % after 40 iters, 0.86 % after 400; develop() alternates flatten /
+lift, the lift never nearer the cloth under it than the spec (a fixed lay floor pushed a turn-back cuff 19 mm)).
+Garrett (closed form c0, spec v11): stand p99 2.6 %, collar 4.2 % (gate FAIL); stand top 530.7 vs neck 473.9 (flares
+along the skin's offset onto the chest); reach to k12a's open sweep 10.8 / 27.7 % (the forms' neckline halves differ:
+231.6 closed vs 222.1 open); LEAN_SOLVE lever dead (p99 13 %). Form fit with the draped pieces refused at placement
+(front.L 0.28 m triangle). Drape rendered on c0: check/collar_d1.png; blind review FAIL (mandarin funnel, no fall,
+closed, CF spikes). Stop-loss reached on the stand; next: measure the neckline's stand-off flat (M12), build the stand
+on a neck section. $S = /mnt/data/hifipushie/drape_band1.

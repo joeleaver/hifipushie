@@ -39,7 +39,10 @@ collar draft and much of the arrangement; jacket refit skipped, no new levers on
 
 ## Tests: round 12: the 22 named files under bin/capped: 327 passed, 3 skipped, 4 xfailed, exit 0 ($S/tests_r12.log).
 
-NEXT: (a) hand the collar to the drape band op (worn cross-section swept along the neck, flattened): it should own the
+HANDED OVER (2026-10-21): the collar (stand + fall: proportions, turn, lie, spread) now belongs to the DRAPE BAND
+thread: docs/state/drape_band.md. sh_garrett v11 carries a drape entry (round 1, not passing: stand flares, gate row
+drape_band_flat FAIL); revert to v10 for anything that needs Simon's collar.
+NEXT (shirt, non-collar): (a) [done: handed to] the drape band op (worn cross-section swept along the neck, flattened): it should own the
 stand height, the fall's turn and its lie; (b) if arrangement survives it: pins on the stand ends / fronts' neckline, the
 fall carried by FLAP_LAY rather than pinned on its points (a12a: point pins held 27-47 mm off the start); (c) corners
 (stand ends 13-15 % arranged); (d) sawtooth resolution A/B (yoke 10 mm vs fall 5 mm), untouched; (e) jacket refit.

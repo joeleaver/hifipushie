@@ -120,6 +120,15 @@ dress a garment whose draft misses its description.
 ## Craft rules (each once; the reasons and numbers are in the sub-topics)
 
 Pattern and construction
+- WRAPPED FOLDS ARE DRAPED (Joe 2026-10-21, C130): a collar (stand + fall), cuff, waistband, turtleneck or curved hem is
+  described WORN in the garment key "drape": [{"name", "along": [the edges it is sewn to, CB in the middle], "state":
+  "closed", "layers": [{"piece": "stand", "kind": "stand", "height": m or {"cb", "end"}, "ext": m past CF},
+  {"piece": "collar", "kind": "fall", "rise": m above the stand, "land": m below the neck seam on the layer under it,
+  "end_in": m short of CF, "point": m}], "source"}]; drape.draft builds it on the dress form's cloth, flattens it and
+  writes "out" (the pieces replace the design's, same names). Never hand-edit "out": change the worn spec and draft
+  again (gate row drape_band_current refuses a stale piece; drape_band_flat: flattening strain p99 <= 2 %). Drape ONE
+  state (closed); the other (open) is the arrangement target, checked with drape.reach. Round 1: the op and KATs work;
+  Garrett's stand still flares (docs/state/drape_band.md), so the drafted pieces are not yet a passing collar.
 - Fix FIT and construction in the pattern (ease, length, truing, a walked seam, a detail's options), never by
   sculpting, never by solver settings, never by a pass on the drape after a sim.
 - Made pieces (collars, stands, cuffs, waistbands, plackets, lapels) are drafted and walked against the edge they're

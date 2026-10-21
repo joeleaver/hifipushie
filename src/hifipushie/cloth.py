@@ -189,6 +189,8 @@ def spring_fall(out: dict, seams: list, folds: list, g: dict, draft_info: dict |
     if not rd or rd["fall_short_mm"] <= -gr.SPRING_TOL_MM[0]:
         return {}
     cp = gr.collar_pieces(Bp_)
+    if out[cp["fall"]].get("draped"):  # (a draped fall is cut to where it lands: drape.py owns its spring)
+        return {}
     pc = out[cp["fall"]]
     P = np.asarray(pc["P"], float)
     se = cp["sewn"]
@@ -299,6 +301,8 @@ def pieces(g: dict, meas_mm: dict) -> dict:
     pat = g.get("pattern")
     gen, folds_tbl, seam_notes = [], [], {}
     closures_in = []
+    from . import drape as drape_mod
+    drape_folds = []
     from . import garment_blocks
     if pat and pat.get("from") in garment_blocks.BLOCKS:  # our own drafts (a skirt block): pieces + seams
         m = dict(meas_mm)
@@ -307,6 +311,7 @@ def pieces(g: dict, meas_mm: dict) -> dict:
         blk = garment_blocks.draft(pat["from"], m, bo)
         out, seams, stitches, interfaced = dict(blk["pieces"]), list(blk["seams"]), list(blk["stitches"]), list(blk["interfaced"])
         draft_info = blk["draft"]
+        out, drape_folds = drape_mod.replace_pieces(out, g)
         gen = list(blk.get("generate") or [])
         folds_tbl += blk.get("folds") or []
         closures_in += [dict(c) for c in blk.get("closures") or []]
@@ -348,6 +353,9 @@ def pieces(g: dict, meas_mm: dict) -> dict:
             if pd.get("role"):
                 pc["role"] = pd["role"]
             out[nm] = pc
+        # pieces a drape band generated (drape.py: draped from the worn shape, flattened) replace the draft's own,
+        # before the table's alterations and band ends (they keep the table's names, wrap and seams)
+        out, drape_folds = drape_mod.replace_pieces(out, g)
         for nm in g.get("drop", []):
             out.pop(nm, None)
         out = pattern.apply(out, [op for op in tbl.get("alter", []) if op["piece"] in out])
@@ -438,6 +446,8 @@ def pieces(g: dict, meas_mm: dict) -> dict:
                                                            or q.partition("+")[0] in (pc_.get("marks") or {}))
                                    for q in ([f["line"]] if isinstance(f["line"], str) else f["line"])):
             folds = [o for o in folds if o.get("name") != f.get("name")] + [dict(f)]
+    for f in drape_folds:  # a draped band's own roll line replaces the table's fold of the same name
+        folds = [o for o in folds if not (f.get("name") and o.get("name") == f["name"])] + [dict(f)]
     for f in g.get("folds") or []:  # the garment's folds; one named like a table's replaces it ("off": drops it)
         folds = [o for o in folds if not (f.get("name") and o.get("name") == f["name"])] + [dict(f)]
     folds = [f for f in folds if f.get("piece") in keep and not f.get("off")]
@@ -4061,6 +4071,12 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
     # ("_made_as": the made pieces' construction given from outside (build: the fine mesh's, sampled here), unpushed
     # "U" and final "X": they replace what this mesh's own placement made of them, see _place_folds)
     ma_ = B.get("_made_as")
+    if ma_ is None:  # draped pieces (drape.py) start where the drape put them: the worn shape they were flattened from
+        from . import drape as drape_mod
+        ds_ = drape_mod.draped_start(B, M)
+        if ds_ is not None:
+            U_ = np.where(np.isnan(ds_["X"]), X, ds_["X"])
+            ma_ = {"pieces": ds_["pieces"], "U": U_, "X": U_}
     ma_v = np.isin(pid, [names.index(nm) for nm in ma_["pieces"] if nm in names]) if ma_ else None
     B["start_unpushed"] = _lay_on(B, M, _place_folds(B, M, body, X, smooth,
                                                      made=(ma_v, ma_["U"]) if ma_ and ma_.get("U") is not None else None), faces_)
@@ -9436,7 +9452,7 @@ GARMENT_KEYS = {"shoulder_pad", "layer_clearance", "pattern", "pieces", "seams",
                 "sew_force", "sew_frames", "worn_frames", "settle_frames", "hang_frames", "hang_sew_force", "hang_air", "refine_frames",
                 "refine_ease", "cleanup", "detail", "sculpt", "finish", "unfold_finish", "under", "under_sculpt", "under_collar", "note", "backend", "placement", "lower_arms", "lower_frames", "zozo", "_trace",
                 "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin", "under_cap", "closures", "trims", "tie", "collide", "construct", "made_folds", "worn_top", "press_lay", "worn_envelope", "collar_spread", "open_gap", "open_lap", "mirror_mesh", "mesh_refine", "fine_relax", "under_fall", "collar_ends", "pad_over", "move", "pose_frames", "set_sleeves", "wrap", "uncrush", "straighten", "seal_under", "worn_open", "truing_corners", "truing_corners_source", "neck_split", "color_source",
-                "checklist", "tucked", "stripe", "collar_canvas", "seam_ease", "drape_readings", "form_strain_p99"}  # (shirt round 2: checklist C98, tucked C97, stripe C100)
+                "checklist", "tucked", "stripe", "collar_canvas", "seam_ease", "drape_readings", "form_strain_p99", "drape"}  # (shirt round 2: checklist C98, tucked C97, stripe C100; drape: drape.py bands)
 WRAPS = ("torso", "arm.L", "arm.R", "leg.L", "leg.R", "neck", "head", "seam", "flat")
 
 
