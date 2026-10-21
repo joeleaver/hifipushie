@@ -58,7 +58,7 @@
   "options": {"collarGap": 0, "collarWidth": 2.0, "collarEase": 0.115, "collarStandWidth": 0.055, "extraTopButton": false},
   "tacks": [{"piece": "collar", "point": "leftTopEdge"}, {"piece": "collar", "point": "rightTopEdge"}],
   "folds": [
-   {"name": "collar roll", "piece": "collar", "line": {"edge": "leftBottomEdge>bottomMid>rightBottomEdge", "offset": 0.004}, "angle": 0, "kind": "roll", "radius": 0.0015, "strength": 0.6}
+   {"name": "collar roll", "piece": "collar", "line": {"edge": "leftBottomEdge>bottomMid>rightBottomEdge", "offset": 0.006}, "angle": 0, "kind": "roll", "radius": 0.0015, "strength": 0.6}
   ],
   "interfaced": ["stand", "collar", "cuff.L", "cuff.R", {"piece": "front.L", "near": "frontCenter", "within": 0.02}, {"piece": "front.R", "near": "frontCenter", "within": 0.016}],
   "fit_alterations": {

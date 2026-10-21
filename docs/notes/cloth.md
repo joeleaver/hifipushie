@@ -9297,3 +9297,14 @@ seen7.py (round 5's seen5.py on a given FORM), probe_pre7.py, jfit7.sh (the park
   Trap: jharness's placed-input key hashes the code + spec but not garment_kb.json; the first chord run reused the line
   placement (identical numbers): re-keyed with a dummy tailor override.
 - Tests (21 clothing files, bin/capped): 275 passed, 4 skipped, 3 xfailed, exit 0 (shirt_round7/tests_r7.log).
+
+## shirt round 8 (2026-10-20): chord draft gated, start_over 0.06, arrange the open spread collar
+- Scratch: /mnt/data/hifipushie/dress_garrett/shirt_round8 (run.sh runs this worktree; gate8.py, rows.py, v7.py).
+- Step 1a, pattern gate on the chord draft (sh_garrett v6, refs garrett_refs.json): FAIL on ONE row, fold_turn_allowance
+  collar:collar roll: flap 4.2 mm vs >= 5.6 (turn 2.6 + 3, C43). The shirt collar's roll line was drafted 4 mm above
+  the stand seam (cloth_designs.json simon "collar roll" offset 0.004; garment_kb shirt_collar has its own copy, not
+  used by the simon design: editing it moved nothing, reverted). Offset 0.006 -> flap 6.3 PASS, but the fall cover fell
+  9.9 -> 5.9 mm (band 5-25; Aldrich 10-15): collarWidth 1.5 -> 1.61 (fall 56.5 -> 60.7) -> cover 10.0 (v7). Gate PASS,
+  no waivers (record pattern 14c3c3de896b9c87ef3f, 23:38). Flat collar reads (closed, LATER rows): points apart 47.8,
+  below HPS 70.2, V 62.1, first button 111.1. Trap: the gate record's pattern hash did not change with the fold offset
+  alone (6a119481 both): folds are not in the pattern key.
