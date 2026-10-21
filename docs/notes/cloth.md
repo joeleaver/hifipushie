@@ -9259,3 +9259,35 @@ on. Measured on the cached v6 form (shirt_round5/form_v6.pkl), probes $S/neck6.p
   (front-to-back), 39 mm off the neckline: a shoulder fault (yoke depth / shoulder seam position / shoulder slope vs the
   body over the trapezius: the parked HPS research), not neck girth. Not fixed (out of this round's hypothesis); the start
   over-limit unchanged (seen part 5.85 / 5.76 %, whole 6.50 %). No arrangement, no renders.
+
+## shirt round 7 (2026-10-20; $S = /mnt/data/hifipushie/dress_garrett/shirt_round7) -- the shoulder, flat first (C117)
+Probes (run.sh: this worktree's code): over7.py (flat length over the shoulder per column vs the body's sagittal arc,
+back / front split, the seam vs the crest), col7.py (each piece's column flat vs worn, strain along the yoke's depth),
+dir7.py (over faces per piece + stretch direction), back7.py (over faces by height), fit7.py (form fit, SLOPE=line|chord),
+seen7.py (round 5's seen5.py on a given FORM), probe_pre7.py, jfit7.sh (the parked jacket's r26g fit + rows).
+- Slope Simon got: the tape's LINE fit 10.92 deg (the C61 bug: FreeSewing reads hps -> shoulder point, Garrett's chord
+  22.51). Flat seam 161.6 mm, drop 30.6; body hps -> shoulder point 169.6 straight, drop 64.5. On the form the seam was
+  pulled to 172.8 (+7 %) and stood 13-25 mm above the body's crest along the drafted 10.9 deg line.
+- Flat over the shoulder (armhole line back -> yoke -> front -> armhole line; column whose worn seam crosses |x|):
+  line: 571.0 / 562.7 / 550.2 mm at |x| 65 / 90 / 125 vs the body's arc 520.8 / 507.6 / 490.3 (+50 / +55 / +60);
+  split back side (back+yoke) +17.5 / +27.5 / +25.9, front +32.7 / +27.6 / +34.0. Chord: 569.6 / 550.1 / 522.2 vs
+  470.6 / 461.5 / 452.4 (the armhole line seats lower), back side +45.8 / +45.1 / +24.3, front +53.1 / +43.6 / +45.5.
+  => LONG everywhere on both drafts: the yoke depth / front drop are NOT short. The seam sits 15-17 mm (arc) forward of
+  the crest on both (straight hps -> shoulder point line; the trapezius ridge lies behind it): the yoke's job, not a fault.
+  Ease: the cloth lies 9-20 mm off the body, so its path is the body's + d x the turn (~pi): +30-60 mm: the +45 is that.
+- Strain along the columns (col7): line yoke +9.4 / +6.1 / +3.1 %, back (armhole line -> yoke seam) +4.1 / +5.4 / +4.6;
+  chord yoke +3.3 / +2.9 / +2.2, back +2.5 / +3.7 / +4.0; front ~0 both. Only the neck corner at |x| 65 stays (33 % on
+  the last segment: the hps pin 2 cm up the neck).
+- Start over-limit (form A, as the preflight): line 1928 = 6.50 % (yoke 440 = 31 %, back 872, fronts 309 / 269);
+  chord 1729 = 5.89 % (yoke 303 = 20 %, back 706, fronts 241 / 321, sleeves 83 / 75); yoke top 50 mm 41 -> 16 % over
+  (sig p90 1.160 -> 1.063); back 100-200 mm below hps 23 / 12 -> 3 / 0 %. Seen part (seen7, round 5's pins): s5c line
+  1133 = 5.76 % -> c7a chord 935 = 5.03 % (yoke 503 -> 435, back 316 -> 172). Kind rule (k7a, tape default line): 5.87 %.
+- Cause: the shoulder slope's DEFINITION (C61), not the yoke depth or seam seat: the seam too short and too flat for
+  the body's hps -> shoulder point; the form pulled it down to the shoulder and stretched the yoke + back top lengthwise.
+- Fix (C117): cloth.slope_measures (garment key / kind "shoulder_slope"; garment_kb kinds.shirt = "chord"), applied in
+  draft_measures and the build's draft; flat row cloth_check.shoulder_seam_row (shoulder_seam_flat, pattern gate):
+  seam length >= body - 3 mm and drop within 10 mm, judged on chord kinds (INFO for the jacket / padded). KAT
+  tests/test_pattern_gate.py test_shoulder_seam_follows_the_chord_slope_for_a_shirt. The jacket kind keeps the line.
+- Still over 3 %: no arrangement, no renders. What is left (chord form): the back's band 400-500 mm below hps (33-44 %,
+  sig p90 1.23: the tuck line; below the seen cut z 1.116), the yoke's neck corner (the hps pin 2 cm up the neck) and
+  its lower outer part (50-100 below hps, |x| ~138), the front.L just below the neck (|x| ~11-24).

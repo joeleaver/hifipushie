@@ -294,3 +294,35 @@ def test_big_reads_before_details():
     from hifipushie import cloth_reference as cr
     its = {it["id"]: it for it in cr.items_for("jacket")}
     assert its["front_state"]["stage"] == 1 and its["buttons_done"]["stage"] == 1  # the front's state is a big read
+
+
+def test_shoulder_seam_follows_the_chord_slope_for_a_shirt():
+    """C117 (shirt round 7): a shirt's draft reads shoulderSlope as FreeSewing defines it (hps -> shoulder point, the
+    chord), not the tape's line fit, and the flat gate checks its shoulder seam against the body's hps -> shoulder
+    point. Garrett's numbers: body hps -> shoulder point 169.6 mm with a 64.5 mm drop; drafted on the line (10.9 deg)
+    the seam was 161.6 mm / 30.6 mm drop (FAIL), on the chord (22.5 deg) 171.7 / 65.7 (PASS)."""
+    from types import SimpleNamespace
+    from hifipushie import cloth
+    hps, shp = np.array([0.0612, -0.0365, 1.5489]), np.array([0.217, -0.0182, 1.4844])
+    body = SimpleNamespace(at={"hps.L": hps, "shoulder.L": shp},
+                           m={"mm": {"shoulderSlope": 10.92}, "at": {"shoulder_slope_line": 10.92, "shoulder_slope_chord": 22.51}})
+    # the slope the draft reads: chord for the shirt kind, unchanged for a garment whose kind sets none (the jacket)
+    mm, info = cloth.slope_measures({"shoulderSlope": 10.92}, body, {"shoulder_slope": "chord"})
+    assert abs(mm["shoulderSlope"] - 22.51) < 1e-6 and info["shoulder_slope"][0] == "chord"
+    assert cloth._kb()["kinds"]["shirt"]["shoulder_slope"] == "chord"
+    assert cloth.slope_measures({"shoulderSlope": 10.92}, body, {})[0]["shoulderSlope"] == 10.92
+    assert cloth.slope_measures({"shoulderSlope": 10.92}, body, {"shoulder_slope": "line"})[0]["shoulderSlope"] == 10.92
+
+    def mesh(deg):
+        run = 0.1586
+        uv = np.array([[0.087, 0.0], [0.087 + run, -run * np.tan(np.radians(deg))]])
+        return {"points": {"yoke:hps": 0, "yoke:shoulder": 1, "front.L:hps": 0, "front.L:shoulder": 1}, "uv": uv}
+    line = cc.shoulder_seam_row(mesh(10.92), body, {}, "shirt")
+    chord = cc.shoulder_seam_row(mesh(22.51), body, {}, "shirt")
+    assert line["status"] == "FAIL" and "yoke len" in line["miss"] and "drop" in line["miss"], line
+    assert chord["status"] == "PASS", chord
+    assert abs(chord["ours"]["body"]["len_mm"] - 169.6) < 0.5 and abs(chord["ours"]["body"]["drop_mm"] - 64.5) < 0.1
+    # the jacket keeps the line (its rows judge it): INFO, never a block; a padded garment too
+    assert cc.shoulder_seam_row(mesh(10.92), body, {}, "jacket")["status"] == "INFO"
+    pad = {"shoulder_slope": "chord", "shoulder_pad": {"thickness": 0.01}}
+    assert cc.shoulder_seam_row(mesh(10.92), body, pad, "")["status"] == "INFO"

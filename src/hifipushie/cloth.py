@@ -6577,6 +6577,28 @@ def over_measures(body: "Body", U: np.ndarray, res: dict | None = None, waist: f
     return mm, info
 
 
+def slope_measures(mm: dict, body: "Body", g: dict) -> tuple[dict, dict]:
+    """The shoulder slope a garment's draft reads (C61 definition, C117): garment key `shoulder_slope` ("chord" |
+    "line"), else its kind's (garment_kb.json kinds.<kind>.shoulder_slope), else the tape's (tailor.SHOULDER_SLOPE).
+    FreeSewing drafts define shoulderSlope as hps -> shoulder point (the chord); the tape's default is a line fit over
+    the top of the shoulder (10.9 deg on Garrett vs the chord's 22.5). Shirt round 7: drafted on the line, Simon's
+    shoulder seam came out 161.6 mm with a 30.6 mm drop where the body's hps -> shoulder point is 169.6 with a 64.5 mm
+    drop; the form pulled the seam to 172.8 (+7 %) and stretched the yoke and the back's top front-to-back (yoke
+    columns +3-9 %, the start's over faces there 41 % of the yoke's top 50 mm); on the chord the seam is 171.7 (worn
+    +2 %), the columns +2-3 % and the start over-limit 6.50 -> 5.89 % (seen part 5.76 -> 5.03 %). The jacket kind keeps
+    the line until its own rows improve on the chord (C61: its shirt poked through; jacket room, fit round 13)."""
+    want = g.get("shoulder_slope") or _kb()["kinds"].get(garment_kind(g) or "", {}).get("shoulder_slope")
+    if want not in ("chord", "line") or "shoulderSlope" not in mm:
+        return mm, {}
+    at = getattr(body, "m", {}).get("at", {}) if body is not None else {}
+    v = at.get(f"shoulder_slope_{want}")
+    if v is None or abs(float(v) - float(mm["shoulderSlope"])) < 1e-9:
+        return mm, {}
+    mm = dict(mm)
+    mm["shoulderSlope"] = float(v)
+    return mm, {"shoulder_slope": [want, round(float(v), 2)]}
+
+
 def draft_measures(body_src: dict, g: dict, body: "Body | None" = None) -> tuple[dict, dict]:
     """The measures a garment's pattern is drafted from: the body's tape, or over the garment under it (`over`,
     over_measures) when that garment is finished. (mm, info); info["over"] names the under garment, or
@@ -6584,11 +6606,13 @@ def draft_measures(body_src: dict, g: dict, body: "Body | None" = None) -> tuple
     body = body or Body(body_src)
     under = body_src.get("under")
     if under is None or under.get("res") is None:
-        return dict(body.m["mm"]), ({"over_missing": body_src["under_missing"]} if body_src.get("under_missing") else {})
+        mm, si_ = slope_measures(dict(body.m["mm"]), body, g)
+        return mm, dict(({"over_missing": body_src["under_missing"]} if body_src.get("under_missing") else {}), **si_)
     U = pressed(under, body, float(g.get("under_cap", UNDER_CAP)), under_fall(g))
     mm, info = over_measures(body, U, under["res"], waist=float(g.get("layer_gap", 0.003)) if waist_hung(g) else None)
+    mm, si_ = slope_measures(mm, body, g)
     mm, pi_ = pad_measures(mm, body, g)
-    return mm, dict(info, over=under.get("name"), **pi_)
+    return mm, dict(info, over=under.get("name"), **si_, **pi_)
 
 
 UNDER_CAP = 0.008  # m off the body: how far a garment's loose cloth stands under another worn over it
@@ -7261,8 +7285,9 @@ def _build(g: dict, body_src: dict, name: str = "garment", log=print, frames: in
     if g.get("pattern"):
         meas, meas_info = (over_measures(body_real, under["V"], under["res"], waist=float(g.get("layer_gap", 0.003)) if waist_hung(g) else None) if under is not None and under.get("res") is not None
                            else (body_real.m["mm"], {}))
+        meas, si_ = slope_measures(meas, body_real, g)
         meas, pi_ = pad_measures(meas, body_real, g)
-        meas_info = dict(meas_info, **pi_)
+        meas_info = dict(meas_info, **si_, **pi_)
     Bp = pieces(g, meas if g.get("pattern") else {})
     # construct {"collar": true, "sim_collar": false}: the collar is a made piece built on the drape only; the sim
     # never sees it (a simulated collar crossed the fronts, dress-tess c14 / c15), construct meshes the full draft
@@ -7278,7 +7303,7 @@ def _build(g: dict, body_src: dict, name: str = "garment", log=print, frames: in
     gate_keys = ({"pattern": ccheck_.pattern_hash(Bp_full or Bp), "body": ccheck_.body_hash(body_src), "name": name}
                  if g.get("pattern") else {"pattern": None, "body": None, "name": name})
     if meas_info:
-        log(f"drafted over {under.get('name')}: {json.dumps(meas_info)}")
+        log(f"drafted {'over ' + str(under.get('name')) if under is not None else 'on the body'}: {json.dumps(meas_info)}")
     h = float(g.get("resolution", 0.01))  # 2 cm made blobby, faceted folds
     quality = g.get("quality", "final")
     hc = float(g.get("coarse", 0.02))

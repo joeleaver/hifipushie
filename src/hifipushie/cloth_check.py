@@ -1451,6 +1451,51 @@ def tailor_rows_for(Bp: dict, kind, g: dict) -> list:
     return pattern_jacket.tailor_rows(Bp, tape, g, button_mm=size * 1000)
 
 
+# THE SHOULDER SEAM FLAT (shirt round 7, C117): a draft's shoulder seam (piece points "hps" -> "shoulder") against the
+# body's hps -> shoulder point. FreeSewing drafts read shoulderSlope as that chord (C61); drafted on the tape's line fit
+# (10.9 deg on Garrett) Simon's seam was 161.6 mm long with a 30.6 mm drop where the body's is 169.6 / 64.5: the form
+# pulled the seam to +7 % and stretched the yoke front-to-back over the shoulder (yoke columns +3-9 %). The flat check:
+# seam length >= the body's straight hps -> shoulder point distance - SHOULDER_SEAM_LEN_TOL (the surface path is
+# longer still: no garment's shoulder seam is shorter than the shoulder it lies on), and its drop within
+# SHOULDER_SEAM_DROP_TOL of the body's. Judged (PASS / FAIL) for a kind drafted on the chord (cloth.slope_measures:
+# garment key / kind "shoulder_slope" == "chord"); INFO otherwise (the jacket keeps the line until its rows improve; a
+# padded garment's seam is flattened on purpose, cloth.pad_measures).
+SHOULDER_SEAM_LEN_TOL = 3.0   # mm
+SHOULDER_SEAM_DROP_TOL = 10.0  # mm (~3.5 deg over a 160 mm shoulder)
+
+
+def shoulder_seam_row(M: dict, body, g: dict, kind: str = "") -> dict:
+    """The shoulder seam's flat length / drop per piece vs the body's hps -> shoulder point (see above)."""
+    at = getattr(body, "at", {}) if body is not None else {}
+    if "hps.L" not in at or "shoulder.L" not in at:
+        return {"id": "shoulder_seam_flat", "stage": 1, "status": "UNMEASURED", "why": "no hps / shoulder landmark"}
+    h = np.asarray(at["hps.L"], float).reshape(-1)[-3:]
+    sp = np.asarray(at["shoulder.L"], float).reshape(-1)[-3:]
+    blen, bdrop = 1000 * float(np.linalg.norm(sp - h)), 1000 * float(h[2] - sp[2])
+    P, uv = M["points"], np.asarray(M["uv"], float)
+    per = {}
+    for k, v in P.items():
+        pc, pt = k.split(":", 1)
+        if pt == "hps" and f"{pc}:shoulder" in P:
+            d = uv[P[f"{pc}:shoulder"]] - uv[v]
+            per[pc] = {"len_mm": round(1000 * float(np.linalg.norm(d)), 1), "drop_mm": round(-1000 * float(d[1]), 1)}
+    ours = {"body": {"len_mm": round(blen, 1), "drop_mm": round(bdrop, 1)}, "pieces": per}
+    if not per:
+        return {"id": "shoulder_seam_flat", "stage": 1, "status": "INFO", "ours": ours, "why": "no hps -> shoulder seam"}
+    from . import cloth
+    want = g.get("shoulder_slope") or cloth._kb()["kinds"].get(kind or "", {}).get("shoulder_slope")
+    bad = [f"{pc} len {r['len_mm']} < {blen - SHOULDER_SEAM_LEN_TOL:.1f}" for pc, r in per.items()
+           if r["len_mm"] < blen - SHOULDER_SEAM_LEN_TOL]
+    bad += [f"{pc} drop {r['drop_mm']} vs {bdrop:.1f}" for pc, r in per.items()
+            if abs(r["drop_mm"] - bdrop) > SHOULDER_SEAM_DROP_TOL]
+    row = {"id": "shoulder_seam_flat", "stage": 1, "measure": "cloth_check.shoulder_seam_row", "ours": ours,
+           "ref": {"len_mm": f">= body - {SHOULDER_SEAM_LEN_TOL}", "drop_mm": f"body +- {SHOULDER_SEAM_DROP_TOL}"}}
+    if want != "chord" or g.get("shoulder_pad"):
+        return dict(row, status="INFO", why="judged for drafts on the chord slope (cloth.slope_measures)",
+                    **({"miss": "; ".join(bad)} if bad else {}))
+    return dict(row, status="FAIL" if bad else "PASS", **({"miss": "; ".join(bad)} if bad else {}))
+
+
 def pattern_gate(model: str, garment: str, spec: dict | None = None, refs=None, waive: dict | None = None,
                  sheet: bool = False, concept: str | None = None, log=print, keep: dict | None = None) -> dict:
     """Measure the garment's pattern on its body WITHOUT a sim and write the gate record (see the section comment).
@@ -1483,6 +1528,7 @@ def pattern_gate(model: str, garment: str, spec: dict | None = None, refs=None, 
                      garment_kind=kind or "", corners=g.get("truing_corners") or (), ease_bands=g.get("seam_ease"),
                      form_ok=form_ok, flat=flat_readings(res["pieces_full"]), drape=g.get("drape_readings"))
     rows.append(flat_pattern_row(model, garment, spec))
+    rows.append(shoulder_seam_row(M, res["body"], g, kind or ""))
     rows += tailor_rows_for(res["pieces_full"], kind, g)
     rows += piece_checklist_rows(model, garment, g, res)
     under_nm = g.get("over")  # (the garment worn under this one: an outer layer must clear it at every shared girth)
