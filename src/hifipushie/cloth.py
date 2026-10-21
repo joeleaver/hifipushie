@@ -6578,25 +6578,29 @@ def over_measures(body: "Body", U: np.ndarray, res: dict | None = None, waist: f
 
 
 def slope_measures(mm: dict, body: "Body", g: dict) -> tuple[dict, dict]:
-    """The shoulder slope a garment's draft reads (C61 definition, C117): garment key `shoulder_slope` ("chord" |
-    "line"), else its kind's (garment_kb.json kinds.<kind>.shoulder_slope), else the tape's (tailor.SHOULDER_SLOPE).
-    FreeSewing drafts define shoulderSlope as hps -> shoulder point (the chord); the tape's default is a line fit over
-    the top of the shoulder (10.9 deg on Garrett vs the chord's 22.5). Shirt round 7: drafted on the line, Simon's
-    shoulder seam came out 161.6 mm with a 30.6 mm drop where the body's hps -> shoulder point is 169.6 with a 64.5 mm
-    drop; the form pulled the seam to 172.8 (+7 %) and stretched the yoke and the back's top front-to-back (yoke
-    columns +3-9 %, the start's over faces there 41 % of the yoke's top 50 mm); on the chord the seam is 171.7 (worn
-    +2 %), the columns +2-3 % and the start over-limit 6.50 -> 5.89 % (seen part 5.76 -> 5.03 %). The jacket kind keeps
-    the line until its own rows improve on the chord (C61: its shirt poked through; jacket room, fit round 13)."""
-    want = g.get("shoulder_slope") or _kb()["kinds"].get(garment_kind(g) or "", {}).get("shoulder_slope")
-    if want not in ("chord", "line") or "shoulderSlope" not in mm:
-        return mm, {}
+    """The tape in the definitions of the draft that consumes it (measure_defs: shoulderSlope as the hps -> shoulder
+    point chord, hips at the iliac crest for FreeSewing and the Brian-rule blocks, ...), less the measurements the
+    garment or its kind holds on the tape's legacy value (garment_kb kinds.<kind>.definition_holds; garment key
+    `definition_holds`, or C117's `shoulder_slope` "line"). The name is C117's (the slope was the first such
+    definition, shirt round 7: Simon drafted on the tape's line fit (10.9 deg) made a 161.6 mm seam with a 30.6 mm drop
+    where Garrett's hps -> shoulder point is 169.6 / 64.5). A garment with no tape consumer (no pattern) keeps the C117
+    keys: `shoulder_slope` "chord" puts the chord in. (mm, info)."""
+    from . import measure_defs as md
+    kkb = _kb()["kinds"].get(garment_kind(g) or "", {})
     at = getattr(body, "m", {}).get("at", {}) if body is not None else {}
-    v = at.get(f"shoulder_slope_{want}")
-    if v is None or abs(float(v) - float(mm["shoulderSlope"])) < 1e-9:
-        return mm, {}
-    mm = dict(mm)
-    mm["shoulderSlope"] = float(v)
-    return mm, {"shoulder_slope": [want, round(float(v), 2)]}
+    c = md.consumer_of(g)
+    if c is None:
+        if (g.get("shoulder_slope") or kkb.get("shoulder_slope")) != "chord" or "shoulderSlope" not in mm:
+            return mm, {}
+        v = at.get("shoulder_slope_chord")
+        if v is None or abs(float(v) - float(mm["shoulderSlope"])) < 1e-9:
+            return mm, {}
+        return dict(mm, shoulderSlope=float(v)), {"shoulder_slope": ["chord", round(float(v), 2)]}
+    mm2, info = md.for_consumer(c, mm, at, md.holds_for(g, kkb))
+    info = dict(info, consumer=c)
+    if "shoulderSlope" in info.get("definitions", {}):
+        info["shoulder_slope"] = ["chord", round(float(mm2["shoulderSlope"]), 2)]
+    return mm2, info
 
 
 def draft_measures(body_src: dict, g: dict, body: "Body | None" = None) -> tuple[dict, dict]:
