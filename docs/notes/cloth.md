@@ -9595,3 +9595,29 @@ sternum bridged; k12a's neck edge 35-50). Render check/collar_k5a.png: the front
 V; the d4o collar (draped on k12a) no longer sits on them (stand ends stood up, tangled at CF): the re-drape is next.
 Not changed: flap_through_base's 18 mm hinge leaves a 17-28 mm turned part unread (the per-piece row mixes the placket
 band); tried a narrow-hinge fallback, it did not trigger on Garrett (per-piece mix), reverted.
+Step 2, RE-DRAPE ON k5a (drape_d3.py base -> form_k5a; sweep5.py adds the collar_fall_spring read on k5a's
+pieces_full with the drape's pieces swapped in). d4o's worn spec, point 0 (worn_d5o.json):
+| variant | collar flat p99 | apart | below HPS | outer flat / need | short |
+| d5o point 0 | 2.88 | 137 | 56 | 401.6 / 530.8 | 129 |
+| point -0.015 / -0.03 / -0.06 | 2.55 / 2.41 / 2.36 | 124 / 118 / 150 | 58 / 59 / 51 | 388 / 382 / 328 | 143-202 |
+| land 14/22/40/60 | 2.96 | 143 | 55 | 406 / 534 | 128 |
+| + land_dir 0/20@.3/70 | 3.98 | 157 | 54 | 419 / 535 | 115 |
+| land 20/30/50/70 + land_dir 0/25@.3/80 | 4.79 | 154 | 30 | 567 / 563 | -3.9 PASS |
+Stop-loss (two spring levers: land depth, land_dir). MEASURED FLAT: the open drape's worn outer edge is ~400-420 mm
+against a sewn edge of 445: a NEGATIVE spring. The concept's open collar (points 147 apart, 55 below HPS) sits on the
+same ~405 mm worn line, so the open state itself implies a fall whose outer edge is SHORTER than its neck edge: no
+shirt collar is cut that way; the spring row's need (530, the fall turned down round the closed neckline) is how the
+collar is cut. Closed reach of d5o: collar 62 % p99 (it cannot be buttoned). The only spring PASS distorts 4.8 % flat
+and lifts the points to 30 below HPS. Draping the OPEN state is the wrong draft source for a collar (C135).
+Step 3 (v17 = d5o saved, gate FAIL: drape_band_flat 2.88, collar_fall_spring short 129; fit run anyway for the look,
+fit5.py d5o, f_d5o.log): open neck turned L 172 / R 167, on its base 2.2 / 2.3 mm (C134 holds); V 57.1, button 74.3;
+spread 100.4 FAIL (d4o 151), points 37.5 below HPS, collar_state part FAIL, fit p99 14.0 FAIL, collar_corners FAIL
+(collar:35/58/151 10-14.5 %); fit vs drape stand p50 9.3 / collar 15.3 mm (max 97): the form crumpled the open-draped
+fall. Renders $S/check/{collar,point_L,point_R,wholefront}_d5o.png. Own read: worse than d4o; the fronts now turn back
+to a V, but the collar is a ruffled funnel up to the jaw, the right point curled into a tube, strips hanging at the
+V. Blind reviews: collar FAIL (collapsed, no points, too tall, dangling strips, faceted edge), wholefront FAIL (funnel
+collar closed at the throat, cropped hem in the render, boxy, puffed shoulders, placket ridge with no buttons). Jacket
+refit skipped (collar not close). Spend local only, $0.
+Coordinator decision (end of round 5): drape the collar CLOSED (how it is cut: round 2's closed drape looked right);
+the open look comes from the rolled-back fronts (C134) plus an arrangement if needed (C81); the open sweep stays a
+reach check (INFO), not the draft source.
