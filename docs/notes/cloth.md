@@ -9308,3 +9308,33 @@ seen7.py (round 5's seen5.py on a given FORM), probe_pre7.py, jfit7.sh (the park
   no waivers (record pattern 14c3c3de896b9c87ef3f, 23:38). Flat collar reads (closed, LATER rows): points apart 47.8,
   below HPS 70.2, V 62.1, first button 111.1. Trap: the gate record's pattern hash did not change with the fold offset
   alone (6a119481 both): folds are not in the pattern key.
+- Step 1b-d (v7 fit form_k8a, seen s8a/s8b): fit p99 10.9; seen part 18683 faces. JOB SETTING zozo start_over 0.06
+  (coordinator: the jacket's release rule, fit round 16; written to the job dir as job_settings.json with the reason).
+  Start over-limit 5.05 % (944 faces; local limit on, past 0). By region (job / form start): yoke 429 / 292 (0-60 below
+  HPS 339, |x| p50 111: the shoulder), front.L 221 / 220 (|x| 18: under the neck, 20-150 below), back 168 / 88 (60-150
+  below, |x| 112: the shoulder blade), front.R 126 / 129. Whole seen start 944 vs the same faces as fitted 729 (3.9 %):
+  the seen job's extra is the START CLEAN-UP (vertex-only body clear / press, moves p99 2.5 mm, max 4.9; yoke max 3.0),
+  NOT the pins (they act from frame 0 on) or the cut (same faces both counts). It only mattered against 3 %.
+- s8a (pins let go): springs back (collar points 22.7 / 29.5 mm, band ends 8-12); s8b keep=True ("placed by hand"):
+  springback <= 1.1 mm, but points 28-31 mm short of their targets. Reads: points apart 86.4 (147), below HPS 62.2 PASS,
+  V 89.7 FAIL (the cfNeck pins opened the fronts down to button 1 at 111), first button 111.2 FAIL.
+- Step 2 (v8): first button by the rule again, 0.047 below cfNeck (round 4's 0.028 read 64 worn: +19), and the UNDER
+  front's open-neck roll drafted FROM THE V: button1 + 30 mm (the kb's own minimum, C114's crossings) instead of + 60
+  (which ran past cfNeck). Gate PASS (pattern 311a0a19, no waivers); flat reads first button 75.5, V 52.1.
+- s8c (v8 fit form_k8b p99 11.4, BAND_OUT 0.035, keep): start 5.20 % (969; yoke 433 / 297) -> ran. Arranged reads:
+  first button 77.3 PASS (concept 83), V 74.1 PASS (60; band 45-75), points below HPS 65.8 PASS (50-61 concept),
+  points apart 87.5 FAIL (147), collar_state "part". BAND_OUT 20 -> 35 mm moved the points 86.4 -> 87.5: DEAD lever
+  (band-end pins stop 24-34 mm short). Two collar-spread levers spent (keep, band out): stop-loss, parked.
+- Fold family on the arranged collar (C106): fold_twist PASS 6.1 deg/cm; fold_turn INFO 122.8 deg (declared angle 0 =
+  folded right over: the fall is 57 deg short of lying on the stand); fold_on_base FAIL 0.775 through, BUT it reads
+  0.83 on the closed form start too: the measure fails its known-good. It takes the base as the collar piece's own
+  rows past the roll: a 6 mm strip; the fall lies on ANOTHER piece (the stand). Unvalidated for a two-piece collar.
+- LOCATED (not fixed): the collar is a MADE piece (rests as placed) and the form builds its fall turned 123 of 180 deg,
+  so the fall flares up and out round the neck; pins on 4 points can't turn it down. Next method: the open spread made
+  collar built by the form (made pieces constructed open), not pins.
+- Renders a8c (shirt alone, the arranged seen part put back into the form fit): check/{wholefront,collar,placket}_a8c.png.
+  Blind review collar: FAIL (collar stands straight up like a funnel, sits high, points tiny / frayed, thick shell, wide
+  shallow V, no buttons, puffy fronts). Wholefront: FAIL (hem past the tuck line closes between the legs: the render
+  shows the tucked cloth with no trousers: render fault, the seen part drops it; collar funnel; neckline reads closed
+  at this scale; boxy, no waist shaping). Step 4 (jacket refit over this shirt, dressed renders) NOT run: the collar is
+  not close.
