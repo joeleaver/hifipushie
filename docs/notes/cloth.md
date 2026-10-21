@@ -9572,3 +9572,26 @@ untucked hem, no buttons, no wrinkling). Jacket refit skipped (collar not close)
 Root (M12): the open form k12a is not open: its fronts meet at the throat and their neck edge stands 35-50 mm proud;
 the concept's fronts roll back to a 60 mm V and lie on the chest. A collar draped on k12a cannot lie on fronts that
 are not there: the open FORM (worn_open / the fronts' roll) is the next lever, before the collar.
+
+
+## drape band round 5 (2026-10-21; $S = /mnt/data/hifipushie/drape_band5, run.sh = this worktree)
+Step 1, THE OPEN NECK (coordinator: fix the open form first). M12 flat (p2.py on form_d4o / k12a): the "open neck"
+rolls are drafted from the neck point to the CF edge (L: buttonhole1 + 20, R: button1 + 30), but the chord crosses the
+neck hole, so each roll starts ON the neckline (L 28 / R 18 mm off CF): length L 70.6 / R 42.4 mm; the turned part is
+only the cfNeck corner, 28.5 / 17.6 mm wide at most; turned flat, cfNeck lands 16.8 / 11.2 mm off the line (L: 26 off
+CF, 103 below the neck point flat: the worn_open cfNeck 0.03 is about its turned landing). Declared angle 95 (85 deg of
+roll, the kb's no-tie rule written for sims): on k12a the rolls turned L 55-76 / R 110 deg, the turned part 9-10 mm off
+its base (p50), 28-45 mm off the skin. KAT (kat.py; tests/test_pattern_form.py
+test_open_neck_rolls_back_to_its_v_and_lies_on_the_chest + control test_open_neck_known_answer_fails_a_soft_roll): two
+fronts + back on a cylinder chest, sewn at CF below the V, roll V -> neckline 30 mm off CF: angle 10 -> turned 168-169,
+gap to its base p90 2.7 mm, stand-off 10.7 vs base 8.0, V on CF at 105.2 (105), cfNeck lands 3 mm from its
+reflection, twist 2.1, stretch p99 1.0; angle 95 (control) -> turned 79, gap 14.2, landing 24. Roll radius 2 vs 8 mm:
+no change on the form (the form folds about the row). So the form CAN build it: the declaration was the fault.
+Built ON THE FORM (the fold family, not a release): kb no_tie folds angle 95 -> 10 (both fronts, garment_kb _doc_roll),
+Garrett's open neck.R override angle 10 (spec v16). Fit k5a (fit5.py, open, d4o collar still placed from its k12a
+drape): turned L 162 / R 142 (was 55-76 / 110), turned part on its base p50 3.1 / 2.7 mm (was 10 / 9), V bottom 57.1
+below HPS (concept 60), first button 76.8 (83), fit p99 11.4; the front's skin stand-off at the V 23-30 mm (the
+sternum bridged; k12a's neck edge 35-50). Render check/collar_k5a.png: the fronts now turn back as two small lapels to a
+V; the d4o collar (draped on k12a) no longer sits on them (stand ends stood up, tangled at CF): the re-drape is next.
+Not changed: flap_through_base's 18 mm hinge leaves a 17-28 mm turned part unread (the per-piece row mixes the placket
+band); tried a narrow-hinge fallback, it did not trigger on Garrett (per-piece mix), reverted.

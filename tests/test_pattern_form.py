@@ -1913,3 +1913,110 @@ def test_shallow_fall_lands_close_round_the_neck(verbose=True):
     if verbose:
         print("edge-row dihedral p50/p90/max", np.round(np.percentile(dh, [50, 90, 100]), 1))
     assert np.percentile(dh, 90) < 8.0, np.percentile(dh, [50, 90, 100])
+
+
+def _open_neck_case(r=0.1, ease=0.006, H=0.35, nk=(0.087, 0.082), v_at=0.105, roll_top_x=0.03, angle=10.0,
+                    kind="roll", strength=0.5, radius=0.002):
+    """(drape band round 5) A shirt's OPEN NECK on a cylinder chest: two fronts (a quarter girth each, a front neckline
+    from the neck point "hps" (nk[0] off CF at the top) curving down to "cfNeck" nk[1] below it) and a back, sewn at the
+    side seams and at CF from the V point down (the fastened buttons). Above the first fastened button each front turns
+    back along its ROLL LINE, from the V point "vee" (v_at below the top, on the CF edge) to the neckline where it is
+    roll_top_x off CF, face-out (angle 10: turned 170 deg), the flap the cfNeck corner."""
+    R0 = r + ease
+    Wq, Wb = 0.5 * math.pi * R0, math.pi * R0
+    ts = np.radians(np.linspace(0, 90, 9))
+    neck = [[nk[0] * math.cos(t), H - nk[1] * math.sin(t)] for t in ts]  # hps .. cfNeck
+    pts = [[0, 0], [Wq, 0], [Wq, H]] + neck + [[0, H - v_at]]
+    n = len(pts)
+    nm = {"cfHem": 0, "sideHem": 1, "sideTop": 2, "hps": 3, "cfNeck": n - 2, "vee": n - 1}
+    fl = _piece(pts, names=nm)
+    fr = _piece([[-x, y] for x, y in pts][::-1], names={k: n - 1 - v for k, v in nm.items()})
+    bk = _piece([[0, 0], [Wb, 0], [Wb, H], [0, H]], names={"b0": 0, "b1": 1, "b2": 2, "b3": 3})
+    tt = math.asin(min(1.0, math.sqrt(max(0.0, 1 - (roll_top_x / nk[0]) ** 2))))
+    top = [roll_top_x, H - nk[1] * math.sin(tt)]
+    folds = [{"piece": f"front.{s}", "line": [[0, H - v_at], [g * top[0], top[1]]], "angle": angle, "kind": kind,
+              "radius": radius, "strength": strength, "name": f"open neck.{s}", "flap": "cfNeck"}
+             for s, g in (("L", 1), ("R", -1))]
+    line = [[0, H - v_at], top]
+    B = _B({"front.L": fl, "front.R": fr, "back": bk},
+           seams=[["front.L:sideHem>sideTop", "back:b0>b3"], ["front.R:sideHem>sideTop", "back:b1>b2"],
+                  ["front.L:vee>cfHem", "front.R:vee>cfHem"]], folds=folds,
+           refine=[{"piece": f"front.{s}", "h": 0.004, "near": [[g * x, y] for x, y in line], "within": 0.04}
+                   for s, g in (("L", 1), ("R", -1))])
+    M = cloth.mesh(B, 0.012)
+    pid = np.asarray(M["piece"])
+    uv = np.asarray(M["uv"], float)
+    th = np.where(pid == M["names"].index("back"), uv[:, 0] / R0, -0.5 * math.pi + uv[:, 0] / R0)
+    X0 = np.c_[R0 * np.cos(th), R0 * np.sin(th), 0.05 + uv[:, 1]]
+    return M, X0, _cyl_body(r, -0.1, 0.6), {"R0": R0, "H": H, "line": line, "z_top": 0.05 + H}
+
+
+def open_neck_read(M, V, body, I, verbose=True) -> dict:
+    """The open neck's reads per front: turn (deg), the turned part ON the front below it (flap_through_base; its gap
+    off the base p90; its stand-off off the chest p90 vs the closed cloth's), the V point's height below the top and its
+    distance off CF, the turned cfNeck's landing vs the roll-line reflection of its pattern position (3D, on the base),
+    the twist along the line (fold_checks)."""
+    from scipy.spatial import cKDTree
+    from hifipushie import folds as foldmod, fold_checks as fc
+    uv = np.asarray(M["uv"], float); pid = np.asarray(M["piece"]); P = M["points"]
+    thr = pf.flap_through_base(M, V, body, hinge=0.006)  # (the turned part is 17-28 mm wide: past 6 mm of the row)
+    out = {}
+    for s in "LR":
+        k = M["names"].index(f"front.{s}")
+        fd = [f for f in M["folds"] if f["piece"] == f"front.{s}"][0]
+        g = foldmod._geom(M, fd)
+        flap = np.where(np.asarray(g["flap0"], bool) & (pid == k))[0]
+        base = np.where((pid == k) & ~np.asarray(g["flap0"], bool))[0]
+        rows = np.concatenate([np.asarray(r_["v"] if isinstance(r_, dict) else r_, int) for r_ in fd["rows"]])
+        far = flap[cKDTree(uv[rows]).query(uv[flap])[0] > 0.006]
+        gap = cKDTree(V[base]).query(V[far])[0] * 1000
+        rad = (np.hypot(V[:, 0], V[:, 1]) - 0.1) * 1000
+        sgn = 1 if s == "L" else -1
+        a, b = np.array([sgn * I["line"][0][0], I["line"][0][1]]), np.array([sgn * I["line"][1][0], I["line"][1][1]])
+        d = (b - a) / np.linalg.norm(b - a); nrm = np.array([-d[1], d[0]])
+        q = uv[P[f"front.{s}:cfNeck"]]
+        refl = a + ((q - a) @ d) * d - ((q - a) @ nrm) * nrm
+        land = V[base[np.argmin(np.linalg.norm(uv[base] - refl, axis=1))]]
+        cfw = V[P[f"front.{s}:cfNeck"]]
+        prof = fc._profile(M, V, fd)
+        out[s] = {"turn": round(pf.fold_turned(M, V, g), 1), "through": thr[f"front.{s}"],
+                  "gap_p90": round(float(np.percentile(gap, 90)), 1),
+                  "standoff_p90": round(float(np.percentile(rad[far], 90)), 1),
+                  "base_standoff_p90": round(float(np.percentile(rad[base], 90)), 1),
+                  "vee_below_top": round((I["z_top"] - float(V[P[f"front.{s}:vee"], 2])) * 1000, 1),
+                  "vee_off_cf": round(abs(float(V[P[f"front.{s}:vee"], 0])) * 1000, 1),
+                  "landing_mm": round(float(np.linalg.norm(cfw - land)) * 1000, 1),
+                  "twist": round(float(fc._twist(M, V, fd, prof)), 1)}
+    if verbose:
+        print("open neck:", out)
+    return out
+
+
+def test_open_neck_rolls_back_to_its_v_and_lies_on_the_chest(verbose=True):
+    """(drape band round 5, coordinator: fix the open form first) Worn open, a shirt's fronts above the first fastened
+    button turn back along their roll line (from the V on the CF edge to the neckline) and LIE ON THE CHEST, one cloth
+    thickness over the front below: no curl, no proud edge (Garrett k12a: the open neck stood 35-50 mm proud, turned
+    55-110 deg of a declared 85). Known answer on a cylinder chest: turned >= 165 deg, the turned part on its base
+    (flap_through_base ok, gap p90 <= 2 x THICK + 2 mm, its stand-off off the chest <= the base's + 2 x THICK + 2 mm), the
+    V where it was drafted (on CF within 3 mm, its height within 5 mm), the turned cfNeck within 8 mm of its roll-line
+    reflection, twist <= fold_checks.TWIST_DEG_CM, cloth unstretched (< 5 %)."""
+    from hifipushie import fold_checks as fc
+    M, X0, body, I = _open_neck_case()
+    out = pf.assemble({"mesh": M, "X0": X0}, body, iters=80)
+    r = open_neck_read(M, out["V"], body, I, verbose)
+    for s in "LR":
+        x = r[s]
+        assert x["turn"] >= 165 and x["through"]["ok"], r
+        assert x["gap_p90"] <= 1000 * 2 * pf.THICK + 2.0, r
+        assert x["standoff_p90"] <= x["base_standoff_p90"] + 1000 * 2 * pf.THICK + 2.0, r
+        assert x["vee_off_cf"] <= 3.0 and abs(x["vee_below_top"] - 105.0) <= 5.0, r
+        assert x["landing_mm"] <= 8.0 and x["twist"] <= fc.TWIST_DEG_CM, r
+    assert out["info"]["stretch_pct"]["p99"] < 5.0, out["info"]["stretch_pct"]
+
+
+def test_open_neck_known_answer_fails_a_soft_roll():
+    """The control: the old no-tie declaration (angle 95, 85 deg of roll) leaves the turned part standing off the chest
+    (measured: turned 79 deg, 14 mm off its base, landing 24 mm from the reflection): the KAT's reads catch it."""
+    M, X0, body, I = _open_neck_case(angle=95.0, radius=0.008)
+    r = open_neck_read(M, pf.assemble({"mesh": M, "X0": X0}, body, iters=80)["V"], body, I, False)
+    assert all(r[s]["turn"] < 120 and r[s]["gap_p90"] > 8.0 for s in "LR"), r
