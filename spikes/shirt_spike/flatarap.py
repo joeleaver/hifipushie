@@ -210,6 +210,16 @@ stp(W0, "start")
 for it_ in (1, 2, 5, 10, 20) if A.get("trace") else ():
     stp(solve(W0, hW.copy(), it_), f"relax {it_} it")
 Y = solve(Y, hW.copy(), A.get("iters", 20))
+# HUG (Joe: the collar "should mostly hug the neck on the back and sides; the flare is all toward the front"): band +
+# collar vertices within `hug` deg of CB round the neck (angle from the closed fit, about the band's centre) are held
+# where the closed fit has them through the pulls, the smooth and the final solve.
+if A.get("hug"):
+    cs_ = np.isin(pid, [nm.index("collar"), nm.index("stand")])
+    ctr_ = X0[pid == nm.index("stand")][:, :2].mean(0)
+    ang_ = np.degrees(np.arctan2(X0[:, 0] - ctr_[0], X0[:, 1] - ctr_[1]))
+    hugv = np.unique(inv[cs_ & (np.abs(ang_) < A["hug"])])
+    hW[hugv] = True; W0h = Y.copy()  # (held where the RELAXED closed fit has them)
+    print(f"hug: {len(hugv)} band / collar vertices held within {A['hug']} deg of CB")
 for k in range(1, STEPS + 1):
     f = k / STEPS; T = Y.copy(); fixed = hW.copy()
     for s in tgt:

@@ -16,9 +16,11 @@ the band turning with it; band ends lean apart; leaves stand off the neck). Joe:
 - CLOSED: repo defaults (landed, BUILD_VERSION 17) + the concept's button spacing = v1 (= e3): clean closed collar, band
   ends sewn flush with the placket tops, one rounded roll (176 deg), collar + band mirror p95 1.4-1.9 mm, strain p99 9 %.
   `spikes/shirt_spike/run.sh base_fit.py v1 '{"closures":[{"name":"front","spacing":{"first":0.034,"from":"cfNeck"}}]}'`
-- b0 (Joe: "needs to go that-a-way", arrows down-and-in below the points): sm1 with the main pull's up 0 (points
-  136 apart / 78 below HPS): leaves hang down the chest, closest to the photo so far (concept 50-61 says higher).
-  Pulling the fronts' cfNeck corners down the V moves only 3 mm (no spare cloth above the first fastened button).
+- CURRENT BEST h110 (Joe: "the collar should mostly hug the neck on the back and sides; the flare is all toward the
+  front"): b0's recipe ("up":0) + `"hug":110` (band + collar within 110 deg of CB held where the RELAXED closed fit has
+  them, from the start; holding the unrelaxed fit kept its 7 % strain): side fall edge 71 mm from the neck centre (b0 82,
+  closed 68), front flares (105); points 144 / 76 below HPS; p99 6.1 %; crumple = b0's. b0 alone: leaves hang down the
+  chest (Joe: "almost perfect from that angle") but the collar flared all round.
 - OPEN + SMOOTH (sm1 = u25 + `"smooth":{"pieces":["collar","stand"]}`, C143): roughness halved (collar p95 0.28,
   band 0.16 mm), stretch +0.3 pt; a little ripple left near the neck. Joe: pull + smooth = the two styling operations.
 - OPEN (u25 = t15's pulls with "patch":0.025,"turn":1: each step drags the point alone, then fits the
