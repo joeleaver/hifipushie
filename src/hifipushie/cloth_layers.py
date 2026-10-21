@@ -454,6 +454,130 @@ def cut(under: dict, outer: dict, keep: np.ndarray | None = None, rings: int = 3
 
 
 PIERCE_CULL = 0.015  # m: fit round 24's `pierce` for the layered fit's B cull (see hidden)
+SEEN_WHOLE_MARGIN = 0.03  # m: cloth this close to a piece kept whole (a cuff) stays with it (the sleeve end past the cover)
+WHOLE_SEEN_SHARE = 0.05  # a made piece with this share of its vertices in view of the game ring is kept whole
+
+
+def subset_mesh(M: dict, keep_faces: np.ndarray) -> tuple[dict, np.ndarray, np.ndarray]:
+    """A cloth mesh cut down to `keep_faces` (bool per face of M["F"]): vertices of no kept face dropped and every
+    per-vertex / index field remapped (uv, piece, border, F, sew + sew_seam, stitch, points, marks, closures' vertex
+    pairs, folds' rows; a fold whose row is left with < 2 vertices is dropped, cached fold geometry cleared).
+    Returns (M2, old: the kept vertices' old indices, cut: NEW indices of the cut edge = kept vertices that lay on a
+    dropped face: where the kept cloth joined cloth that was cut away)."""
+    F = np.asarray(M["F"])
+    keep_faces = np.asarray(keep_faces, bool)
+    n = len(M["uv"])
+    old = np.unique(F[keep_faces].ravel())
+    new = np.full(n, -1, np.int64)
+    new[old] = np.arange(len(old))
+    inK = new >= 0
+    onDrop = np.zeros(n, bool)
+    onDrop[F[~keep_faces].ravel()] = True
+    cut = new[np.where(inK & onDrop)[0]]
+    M2 = {k: v for k, v in M.items()}
+    for k in ("uv", "piece", "border"):
+        if k in M:
+            M2[k] = np.asarray(M[k])[old]
+    M2["F"] = new[F[keep_faces]]
+    for k, side in (("sew", "sew_seam"), ("stitch", None)):
+        if k in M and len(np.asarray(M[k])):
+            P = np.asarray(M[k], np.int64).reshape(-1, 2)
+            ok = inK[P].all(1)
+            M2[k] = new[P[ok]]
+            if side and side in M:
+                M2[side] = np.asarray(M[side])[ok]
+    for k in ("points", "marks"):
+        if isinstance(M.get(k), dict):
+            M2[k] = {nm: int(new[int(i)]) for nm, i in M[k].items()
+                     if np.ndim(i) == 0 and 0 <= int(i) < n and inK[int(i)]}
+    if M.get("closures"):
+        cl = []
+        for c in M["closures"]:
+            c2 = dict(c)
+            if c.get("v") is not None:
+                vs = [list(map(int, p)) for p in c["v"]]
+                ok = [all(inK[q] for q in p) for p in vs]
+                c2["v"] = [[int(new[q]) for q in p] for p, o in zip(vs, ok) if o]
+                for kk in ("pairs", "closed"):
+                    if isinstance(c.get(kk), list) and len(c[kk]) == len(vs):
+                        c2[kk] = [x for x, o in zip(c[kk], ok) if o]
+            cl.append(c2)
+        M2["closures"] = cl
+    if M.get("folds"):
+        fo = []
+        for fd in M["folds"]:
+            rows = [new[np.asarray(r, np.int64)][inK[np.asarray(r, np.int64)]] for r in fd["rows"]]
+            if all(len(r) >= 2 for r in rows):
+                fo.append({k: v for k, v in fd.items() if k != "_g"} | {"rows": rows})
+        M2["folds"] = fo
+    if M.get("made") is not None:
+        pid2 = np.asarray(M2["piece"])
+        M2["made"] = [nm for nm in M["made"] if (pid2 == list(M["names"]).index(nm)).any()]
+    return M2, old, cut
+
+
+def seen_part(under: dict, outer: dict | None = None, hid: np.ndarray | None = None, whole: tuple | None = None,
+              below_z: float | None = None, margin: float = 0.03, edge_margin: dict | None = None,
+              pierce: float = PIERCE_CULL, whole_margin: float = SEEN_WHOLE_MARGIN,
+              rule: str = "visibility") -> tuple[dict, np.ndarray, dict]:
+    """The UNDER garment as it is SEEN under `outer` (shirt round 5, Joe: "the end state of the shirt is its triangles
+    removed where invisible anyway; if it makes sense to do that earlier we can"): its hidden triangles (`hidden`
+    with the over garment's openings + margins, or `hid` given) and those wholly below `below_z` (a tuck line: the cloth
+    is inside the garment it's tucked into) dropped BEFORE an arrangement / sim, so the sim and its preflight see only
+    cloth that shows. `whole`: pieces kept whole when any of their triangles shows (default the made pieces: collar,
+    stand, cuffs: a fold or a made shape needs all of it), and cloth within `whole_margin` of them (the sleeve end
+    past the jacket sleeve). rule "visibility" (default: the end state's `cut`, + `margin` for movement) or "margin"
+    (`hidden`: distance from the outer's openings with edge_margin / pierce; on Garrett's shirt under the open jacket
+    its 85 mm lapel margin kept the yoke under the jacket collar: 5.9 % of the kept start over the strain limit).
+    under: {"V", "mesh"}; outer: {"V", "mesh", "body"}. -> (M2, V2, info: "old" (kept
+    vertices' old indices), "cut" (new indices of the cut edge: hold it where it joined the hidden cloth), counts)."""
+    M, V = under["mesh"], np.asarray(under["V"], float)
+    F = np.asarray(M["F"])
+    if hid is None and rule == "visibility":
+        # the END STATE's rule (`cut`: what no game-ring view can see past the outer garment and the body), with a
+        # movement margin: hidden cloth within `margin` of a visible vertex stays (an arrangement moves the V)
+        hc, _ = cut({"V": V, "mesh": M}, outer)
+        vis = np.unique(F[~hc])
+        d = cKDTree(V[vis]).query(V)[0] if len(vis) else np.full(len(V), np.inf)
+        hid = (d > margin)[F].all(1)
+    elif hid is None:
+        hid = hidden({"V": V, "mesh": M}, outer, margin=margin, edge_margin=edge_margin, pierce=pierce)
+    hid = np.asarray(hid, bool).copy()
+    if below_z is not None:
+        hid |= (V[F, 2] < float(below_z)).all(1)
+    names = list(M["names"])
+    whole = tuple(M.get("made") or ()) if whole is None else tuple(whole)
+    pid = np.asarray(M["piece"])
+    fp = pid[F[:, 0]]
+    keep = ~hid
+    wk = np.zeros(len(F), bool)
+    seen_by = {}
+    for nm in whole:
+        if nm in names:
+            s = fp == names.index(nm)
+            if (s & keep).any():
+                wk |= s
+                seen_by[nm] = "margin"
+            elif outer is not None:
+                # (shirt round 5: the cuffs, 10-20 mm past the jacket's sleeve ends, read hidden: the sleeve hem is a
+                # turned edge, not a free border, so `hidden` sees no opening there.) A made piece shows when a share of
+                # it is in front of the outer garment from the game camera's ring (elevations -25 / 0 / 25)
+                vs = np.unique(F[s])
+                occ = occluded(V[vs], np.asarray(outer["V"], float), np.asarray(outer["mesh"]["F"]),
+                               view_dirs(12, (-25.0, 0.0, 25.0)))
+                share = float((~occ).any(0).mean())
+                if share >= WHOLE_SEEN_SHARE:
+                    wk |= s
+                    seen_by[nm] = f"in view {share:.2f}"
+    if wk.any() and whole_margin > 0:
+        near = cKDTree(V[np.unique(F[wk])]).query(V)[0] < whole_margin
+        wk |= near[F].all(1)
+    keep |= wk
+    M2, old, edge = subset_mesh(M, keep)
+    info = {"faces": int(len(F)), "kept": int(keep.sum()), "hidden": int(hid.sum()), "whole": seen_by,
+            "cut_vertices": int(len(edge)),
+            "kept_by_piece": {nm: int((keep & (fp == k)).sum()) for k, nm in enumerate(names)}, "old": old, "cut": edge}
+    return M2, V[old], info
 
 
 def hidden(under: dict, outer: dict, margin: float = 0.03, reach: float = 0.06, edge_margin: dict | None = None,

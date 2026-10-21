@@ -593,6 +593,11 @@ def main():
                 cp.unpin(times[pose_st[-1]["name"]][1])
         log(f"zozo: {len(ci)} vertices of made pieces held as constructed and carried with the body"
             + (f"; {int(rel.sum())} of them (flaps) released after the press" if rel.any() else ""))
+    if "cutIdx" in d and len(d["cutIdx"]):
+        # a SEEN part's cut edge (cloth_release.seen_res): where the kept cloth joined cloth cut away as hidden, pinned
+        # where it starts for the whole sim (the hidden cloth would have held it there); its rest stays the flat pattern
+        g.pin(list(map(int, np.asarray(d["cutIdx"], np.int64))))
+        log(f"zozo: {len(d['cutIdx'])} cut-edge vertices pinned (the seen part's edge to its hidden cloth)")
     if "arrIdx" in d and len(d["arrIdx"]) and job.get("arrange"):
         # arranged by hand (cloth_release.arrange): soft pins (pull springs, never hard: contact and the cloth's own
         # stretch keep acting) on named points / edges, moved from where they start to arrTarget over the first

@@ -311,6 +311,71 @@ def test_under_fit_rows_judged_on_what_shows():
     assert "under_standoff_waist" in cc.VISIBLE_SCOPED
 
 
+def _grid_garment(nx=12, ny=8, h=0.01):
+    """Two pieces side by side (a: x < 0, b: x > 0), each a grid, sewn along x = 0 (duplicate seam vertices)."""
+    uvs, F, piece = [], [], []
+    for k, x0 in enumerate((-nx * h, 0.0)):
+        base = len(uvs)
+        for j in range(ny + 1):
+            for i in range(nx + 1):
+                uvs.append((x0 + i * h, j * h))
+                piece.append(k)
+        for j in range(ny):
+            for i in range(nx):
+                a = base + j * (nx + 1) + i
+                F += [(a, a + 1, a + nx + 2), (a, a + nx + 2, a + nx + 1)]
+    uv = np.array(uvs)
+    piece = np.array(piece)
+    sa = [j * (nx + 1) + nx for j in range(ny + 1)]  # a's right edge
+    sb = [(ny + 1) * (nx + 1) + j * (nx + 1) for j in range(ny + 1)]  # b's left edge
+    M = {"uv": uv, "piece": piece, "names": ["a", "b"], "F": np.array(F), "sew": np.array(list(zip(sa, sb))),
+         "sew_seam": np.zeros(len(sa), int), "stitch": np.zeros((0, 2), int), "border": np.zeros(len(uv), bool),
+         "points": {"a:corner": 0, "b:far": int(len(uv) - 1)}, "marks": {}, "closures": [],
+         "folds": [{"piece": "b", "name": "crease", "rows": [np.array(sb)], "_g": {}}], "made": ["b"]}
+    return M
+
+
+def test_seen_part_cuts_the_hidden_cloth_and_its_strain_out_of_the_start():
+    """KAT (shirt round 5, C115): the seen part of an under garment (seen_part / subset_mesh) keeps only the cloth that
+    shows, every index field remapped (seams, points, folds), its cut edge returned (to be pinned); a strain planted
+    in the HIDDEN cloth leaves the start check, one planted in the SEEN cloth stays (the preflight isn't loosened)."""
+    from hifipushie import cloth_job
+    M = _grid_garment()
+    X = np.c_[M["uv"], np.zeros(len(M["uv"]))]
+    F = M["F"]
+    fa = M["piece"][F[:, 0]] == 0
+    hid = fa & (X[F, 0].mean(1) < -0.06)  # piece a's far half is hidden (under an outer garment)
+    X2 = X.copy()
+    far = X[:, 0] < -0.085
+    X2[far, 0] = -0.085 + (X[far, 0] + 0.085) * 1.4  # hidden cloth stretched 40 % (a yoke strained by the fit)
+    M2, V2, info = cloth_layers.seen_part({"V": X2, "mesh": M}, hid=hid, whole=())
+    assert info["kept"] == int((~hid).sum()) and len(V2) == len(M2["uv"]) == len(info["old"])
+    # seams, points, folds remapped onto the same positions
+    assert len(M2["sew"]) == len(M["sew"]) and np.allclose(V2[M2["sew"][:, 0]], X2[M["sew"][:, 0]])
+    assert "a:corner" not in M2["points"] and np.allclose(V2[M2["points"]["b:far"]], X2[M["points"]["b:far"]])
+    assert len(M2["folds"]) == 1 and "_g" not in M2["folds"][0] and len(M2["folds"][0]["rows"][0]) == 9
+    # the cut edge: the kept vertices on a dropped triangle, all at the cut line x = -0.06
+    assert info["cut_vertices"] == 9 and np.allclose(V2[info["cut"], 0], -0.06)
+
+    def start(Xs, Ms):
+        arr = {"X": Xs, "F": Ms["F"], "piece": Ms["piece"], "uv": Ms["uv"]}
+        return cloth_job.start_strain_check(arr, {"rest": "flat", "pieces": Ms["names"]})
+    whole = start(X2, M)
+    seen = start(V2, M2)
+    assert whole["over"] > 0 and not whole["ok"], whole
+    assert seen["over"] == 0 and seen["ok"], seen
+    X3 = X2.copy()  # the same stretch planted in SEEN cloth (piece b) is still counted
+    nb = X[:, 0] > 0.08
+    X3[nb, 0] = 0.08 + (X[nb, 0] - 0.08) * 1.4
+    M3, V3, _ = cloth_layers.seen_part({"V": X3, "mesh": M}, hid=hid, whole=())
+    s3 = start(V3, M3)
+    assert s3["over"] > 0 and not s3["ok"], s3
+    # a made piece kept whole once any of it shows, and the cloth within the margin of it
+    hid_b = ~fa & (X[F, 0].mean(1) > 0.02)
+    _, _, ib = cloth_layers.seen_part({"V": X, "mesh": M}, hid=hid_b, whole=("b",), whole_margin=0.015)
+    assert ib["kept_by_piece"]["b"] == int((~fa).sum()) and ib["kept"] == len(F), ib["kept_by_piece"]
+
+
 if __name__ == "__main__":
     for k, v in list(globals().items()):
         if k.startswith("test_"):

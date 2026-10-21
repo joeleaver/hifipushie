@@ -261,8 +261,8 @@ def job(res: dict, X: np.ndarray, g: dict | None = None, under: dict | None = No
         release=("front",), hold=("neck",), frames: int = SETTLE_FRAMES, settle_frames: int = SELF_FRAMES,
         sew_frames: int = SEW_FRAMES, clear: float = CLEAR, zozo: dict | None = None,
         name: str | None = None, pad_base=None, hold_ring: float = 0.0, untangle: bool = False,
-        part: float = RELEASE_PART) -> tuple[dict, dict, dict]:
-    """The release sim's (cfg, arrays, info). res: the placed pattern (cloth.build place_only: "mesh", "pieces",
+        part: float = RELEASE_PART, held: np.ndarray | None = None) -> tuple[dict, dict, dict]:
+    """The release sim's (cfg, arrays, info). held: more vertices held as fitted (a seen part's cut edge, seen_job). res: the placed pattern (cloth.build place_only: "mesh", "pieces",
     "fabric", "body", "gate_keys"); X: its fitted state on the form (pattern_form.assemble "V"); g: the garment dict
     (zozo options, strain limit); under: {"V", "F"} the under garment's form fit (or None); body: the collider body
     (default res["body"]; a padded body when the fit used a shoulder pad: the pad is sewn into this garment);
@@ -310,6 +310,10 @@ def job(res: dict, X: np.ndarray, g: dict | None = None, under: dict | None = No
     free = np.ones(len(X), bool)
     free[carry] = False  # (the ring is cleared off the body / shirt like free cloth first, then held where cleared)
     carry = np.union1d(carry, ring).astype(np.int64)
+    # (a seen part's cut edge, `held`: pinned where it joined the hidden cloth, "cutIdx", after it is cleared like free
+    # cloth. NOT carried: a carried vertex rests as placed, and a triangle with one carried corner rests half flat, half
+    # placed: 1185 such starts over the limit, up to 26x, on the shirt's cut sleeves, shirt round 5)
+    held = np.zeros(0, np.int64) if held is None else np.setdiff1d(np.asarray(held, np.int64), carry)
     if pad_base is not None:
         import types as _types
         lift = np.linalg.norm(np.asarray(body.V, float) - np.asarray(pad_base.V, float), axis=1)
@@ -363,6 +367,9 @@ def job(res: dict, X: np.ndarray, g: dict | None = None, under: dict | None = No
     arrays = dict(X=X, uv=uv, F=np.asarray(M["F"], np.int64), sew=np.asarray(M["sew"], np.int64).reshape(-1, 2),
                   stitch=stitch, stiff=stiff, piece=np.asarray(M["piece"], np.int64), pins=np.zeros(0, np.int64),
                   bodyV=np.asarray(coll["bodyV"], float), bodyT=np.asarray(coll["bodyT"], np.int64))
+    if len(held):
+        arrays["cutIdx"] = held.astype(np.int64)
+        info["held_cut"] = int(len(held))
     if len(carry):  # (held: pinned where fitted, passing through the collider as cloth.build's hugIdx bands do)
         arrays.update(carryIdx=carry.astype(np.int64), carryPoses=X[carry][None], hugIdx=carry.astype(np.int64))
     if M.get("folds"):
@@ -463,16 +470,24 @@ def moved(M: dict, X0: np.ndarray, X1: np.ndarray) -> dict:
 
 
 def from_form(model: str, garment: str, spec: dict | None = None, release=("front",), log=None,
-              pins: list | None = None, arrange: dict | None = None, hold_ring: float = 0.0) -> dict:
+              pins: list | None = None, arrange: dict | None = None, hold_ring: float = 0.0,
+              cover: dict | None = None, res: dict | None = None) -> dict:
     """A model's garment fitted CLOSED on the form (pattern_form.on_form, worn_open off) and its release job (with
     `pins`: released and arranged in one sim, arrange_job; `arrange`: its frames / pull / keep).
-    Returns {"res" (on_form's result), "cfg", "arrays", "info", "gate"}."""
+    cover: the garment worn OVER this one, as it is worn ({"V", "mesh"}: an open jacket's arranged state): the job is
+    built on the SEEN part only (`seen_res`: hidden cloth and cloth below a tuck line cut away, the made pieces whole,
+    the cut edge held where it joined the hidden cloth), so the sim and its preflight judge only cloth that shows.
+    res: on_form's result when already made. Returns {"res" (on_form's result, or its seen part), "cfg", "arrays",
+    "info", "gate"} (+ "seen": seen_res's info)."""
     import json as _json
     from . import pattern_form, store
     spec = spec or store.load(model)
     g = _json.loads(_json.dumps(spec["cloth"][garment]))
     g.pop("worn_open", None)  # (the closed fit: the top button fastened, pattern_form.fastened "default")
-    res = pattern_form.on_form(model, garment, spec, g=g, log=log)
+    res = res if res is not None else pattern_form.on_form(model, garment, spec, g=g, log=log)
+    seen = None
+    if cover is not None:
+        res, seen = seen_res(res, cover, g)
     und = res.get("form_under")
     under = {"V": und["A"], "F": und["mesh"]["F"]} if und is not None else None
     body = pattern_form.padded_body(res["body"], g.get("shoulder_pad")) if g.get("shoulder_pad") else res["body"]
@@ -480,11 +495,37 @@ def from_form(model: str, garment: str, spec: dict | None = None, release=("fron
     if pins:  # released and arranged in one sim (arrange_job)
         cfg, arrays, info = arrange_job(res, res["A"], pins, g, under=under, body=body, release=release,
                                         name=f"{model}:{garment}", pad_base=pad_base, hold_ring=hold_ring,
-                                        **(arrange or {}))
+                                        held=seen["cut"] if seen else None, **(arrange or {}))
     else:
         cfg, arrays, info = job(res, res["A"], g, under=under, body=body, release=release, name=f"{model}:{garment}",
-                                pad_base=pad_base, hold_ring=hold_ring)
-    return {"res": res, "cfg": cfg, "arrays": arrays, "info": info, "gate": res.get("gate_keys")}
+                                pad_base=pad_base, hold_ring=hold_ring, held=seen["cut"] if seen else None)
+    out = {"res": res, "cfg": cfg, "arrays": arrays, "info": info, "gate": res.get("gate_keys")}
+    if seen:
+        info["seen"] = {k: v for k, v in seen.items() if k not in ("old", "cut")}
+        out["seen"] = seen
+    return out
+
+
+def seen_res(res: dict, cover: dict, g: dict | None = None) -> tuple[dict, dict]:
+    """on_form's result cut down to the part `cover` (the over garment as worn) leaves SEEN (cloth_layers.seen_part:
+    the round-24 margins at the cover's openings, open_front_margin at an open front, PIERCE_CULL, the made pieces
+    whole; below the garment's tuck line dropped when it is tucked). -> (res with "mesh" / "A" (and "V") of the seen
+    part, info with "old" / "cut")."""
+    from . import cloth_check, cloth_layers
+    g = g or {}
+    body = res["body"]
+    outer = {"V": np.asarray(cover["V"], float), "mesh": cover["mesh"], "body": body}
+    below = None
+    if g.get("tucked"):  # (C108: what lies below the tuck line is inside the garment it's tucked into)
+        from . import garment_reads
+        below = garment_reads.tuck_line_z(body, g)
+    M2, A2, info = cloth_layers.seen_part({"V": res["A"], "mesh": res["mesh"]}, outer,
+                                          edge_margin=cloth_check.open_front_margin(outer), below_z=below)
+    r2 = dict(res, mesh=M2, A=A2)
+    if "V" in res and len(np.asarray(res["V"])) == len(res["A"]):
+        r2["V"] = np.asarray(res["V"])[info["old"]]
+    info["below_z"] = below
+    return r2, info
 
 
 ARRANGE_PLACE = 24  # frames (1 s) the pins take to their targets, with gravity on
@@ -563,14 +604,14 @@ def arrange_job(res: dict, X: np.ndarray, pins: list, g: dict | None = None, und
                 release=("front",), hold=("neck",), place_frames: int = ARRANGE_PLACE, hold_frames: int = ARRANGE_HOLD,
                 free_frames: int = ARRANGE_FREE, pull: float = ARRANGE_PULL, keep: bool = False,
                 zozo: dict | None = None, name: str | None = None, pad_base=None, hold_ring: float = 0.0,
-                sew_frames: int = SEW_FRAMES) -> tuple[dict, dict, dict]:
+                sew_frames: int = SEW_FRAMES, held: np.ndarray | None = None) -> tuple[dict, dict, dict]:
     """The release job (`job`; X the closed fit: released and arranged in one sim, or an earlier release's result)
     with soft pins placing `pins` (arrange_targets' specs) during the gravity settle: place_frames to the targets,
     held to the settle's end (+ hold_frames), let go (unless keep) for free_frames. Held neck pieces are never pinned
     (they are held already)."""
     cfg, arrays, info = job(res, X, g, under=under, body=body, release=release, hold=hold,
                             frames=place_frames + hold_frames, settle_frames=free_frames, sew_frames=sew_frames,
-                            zozo=zozo, name=name, pad_base=pad_base, hold_ring=hold_ring)
+                            zozo=zozo, name=name, pad_base=pad_base, hold_ring=hold_ring, held=held)
     idx, tgt, grp, names = arrange_targets(res["mesh"], arrays["X"], pins)
     if "carryIdx" in arrays:
         ok = ~np.isin(idx, arrays["carryIdx"])
