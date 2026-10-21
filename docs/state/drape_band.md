@@ -34,7 +34,16 @@ sweep is the arrangement target, with a reach check. Notes: docs/notes/cloth.md 
   drape_band_flat PASS. Reach to open k12a: stand 2.6 % ok, collar 11.7 % FAIL (d1 27.7). Lean CB -20 / side +10 /
   CF +6 deg off the axis (CB: the nape is upright, the axis tilted). Fall CB 49.7, points 35.9 apart closed.
 
-NEXT: step 3: pattern_check v12 -> fit_garment closed (fold rows, collar_corners, reproduced) -> placement refusal
-(front.L triangle 0.28 m) -> render collar (ref | clay | diag | own) + points -> blind review.
+- Step 3: the closed form fit (inside pattern_gate) is STILL REFUSED at placement: front.R triangle 0.29 m (r1:
+  front.L). The broken piece is the front whose neckline the drape was taken from (r1 L, r2 R mirrored). 14 verts at
+  front.R's CF neck corner (uv ~ cfNeck +-9 mm) are fine after _place_folds and scattered by the start's relax loop
+  (cloth.place ~4204-4266). Uncrush off: no change (lever 1 dead). Stop-loss: no fit, no fold rows / collar_corners.
+- Rendered the drape on c0 (diag now shows the draped pieces: render_d2.py gives them a mesh): check/collar_d2c.png,
+  point_L/R_d2c.png, wholefront_d2c.png. No funnel; band hugs the neck, fall turned flat over it, closed. Blind
+  review FAIL (wrong type: closed band vs open spread collar; placket jagged / CF knot = c0's closed form; no point).
+
+NEXT: (a) placement: dump Xp after each step of place()'s relax loop for front.R's CF neck corner (_relax_stretch /
+_relax_strain / _clear_of_body / _clear_of_worn, made_v): find the step that flings it; (b) then fit closed + rows;
+(c) reach collar 11.7 %: the open sweep needs the fronts' roll-back in the base, not k12a's curve alone; (d) jacket.
 ## Commands ($S = /mnt/data/hifipushie/drape_band2; run.sh = this worktree): m1..m5.py (measure); drape_d2.py
 <worn.json> [save]; sweep_*.py (levers); dbg_hot.py <pkl> (hot edges).

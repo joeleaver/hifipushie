@@ -9491,3 +9491,8 @@ at def time: a sweep moved nothing). Levers: lean smoothing 5/15/31/61 (stand 0.
 develop rounds 0/4/12 (4.49/3.33/3.24 pre-truing); truing (collar 3.33 -> 2.46, max 12.4 -> 5.3: the big one); pull
 0.05/0.02/0.005 (2.23/2.15/2.04); gap 5/3/2 mm (top +3.6 / -1.8 / -7.0 vs neck edge). d2c (v12): stand 0.16 %, collar
 1.98 % PASS, top 448.8 < 455.8; reach open stand 2.6 ok / collar 11.7 FAIL. KAT neck+chest+chin passes (fall 2.4 %).
+Step 3 (round 2): closed form fit on v12 refused at placement again: front.R triangle 0.29 m (r1 front.L: the broken
+front is the one whose neckline the drape came from). dbg_place.py: 14 front.R verts at its CF neck corner fine after
+_place_folds, scattered (z 1450-1579) by place()'s start relax loop; uncrush off changes nothing. Drape rendered on c0
+(check/*_d2c.png, diag now colours the drape pieces). Review FAIL: closed band collar vs open spread reference, CF knot,
+jagged placket (c0), no point. Tests: 23 files 330 passed, 5 skipped, 4 xfailed, exit 0. Ledger C131.
