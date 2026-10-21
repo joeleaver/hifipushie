@@ -56,7 +56,17 @@ Spike only: no garment rounds, no agents grinding for an hour.
   stretch, but woven cloth shears freely on the bias (tailors shape collars with the iron) -> measure warp / weft
   strain, not edge strain.
 
-## NEXT: regroup with Joe (sim parked; Joe asked how real artists solve the no-stretch move)
+- arap.py (no sim, `arap.py '{"tag":..,"spread":deg,"drop":deg,"pt":[apart,below_hps,standoff]}'`, ~15 s): geo.py's
+  closed pose, then hifipushie.correctives.arap (existing, cotangent ARAP against the flat pattern) with handles only:
+  band = back neck edge (CB..hinge) held + each CF end edge turned out / down; collar = sewn edge on the solved band's
+  top (by arc fraction: snapping two sewn vertices to one band vertex read as 100 % strain) + optional point handles.
+  a1 (40 / 30, collar free): band 12.8 % / collar 11.4 % (g3 rigid: 46-59 %), reads open, leaves fold in toward CF,
+  points 92 apart. a2 (+ points pinned 147 apart / 55 below HPS): front silhouette closest to the trace, collar 53 %.
+  a3-a6 (spread 70-100): strain 5-10 %, points 115-132 apart, but past ~70 the band front swings edge-on (inside shows).
+  Open faults: the band ends' move is a guess (turn about the hinge); no shirt fronts, so the V can't be measured;
+  ARAP has no bending term (correctives.py: kinks held tubes).
+
+## NEXT: Joe's call on a1 / a2 (ARAP handles route; sim parked)
 Proposal on the table: place the pieces geometrically, not dynamically: each piece as the developable surface its own
 flat shape makes (cylinder / cone as in s1), then a small static fit (keep every edge length, close the seam, keep off
 the body, bend only at the fold) for the seam gap; OPEN = the band's front ends turned down the neckline V and the
