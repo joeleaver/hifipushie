@@ -9233,3 +9233,29 @@ turns them into general code first (garment_reads.py), then uses them on the shi
 - v5 spec no longer builds on main (open-neck roll 32 mm inside the edge after round 4 restored the roll lines): used v6.
 - Dressed (unarranged v6 under r26k): cuff past sleeve p50 13.1 both arms (17-23 FAIL); collar above jacket collar CB 7.3 / side 8.1 (11-23 FAIL). Renders check/*_d5a (visibility) and *_d5b (margin): large shirt patches through the jacket chest and shoulders in both (the jacket was fitted over an older shirt): not forwarded, no blind review.
 - Tests: 21 files 301 passed, 2 skipped, 3 xfailed, exit 0 (tests_r5.log).
+
+## shirt round 6 (2026-10-20; $S = /mnt/data/hifipushie/dress_garrett/shirt_round6) -- is the neckline short? NO (C116)
+Hypothesis (coordinator): the start strain at the visible neck is a flat fault, a neckline too short for the neck it sits
+on. Measured on the cached v6 form (shirt_round5/form_v6.pkl), probes $S/neck6.py, $S/over6.py. No code changed.
+- Draft input: Simon got the tape's "neck" = 406.5 mm, square to the neck 2 cm up the neck joint, BARE (the shirt is
+  drafted on the body; the jacket's 453 mm was a tape over the shirt). FreeSewing's "neck" is the base of the neck where
+  a collar sits. Simon neckline = neck x (1 + collarEase 0.07; Simon's default 0.035) = 435, truing -> 444.
+- FLAT: neckline front.R 125.4 + yoke 193.5 + front.L 125.3 = 444.2 mm; stand neck edge 443.6 (matched, -0.1 %).
+- Book: collar size = neck + 10-15 mm (Proper Cloth's fit guide; dress-shirt convention one finger) -> 417-422 on the
+  bare neck. Ours is +37.7 mm (+9.3 %) over the bare neck: ~22-27 mm LONGER than the book.
+- Body: ANSUR base-of-neck ring (tailor._neck_base_level, read only) 430.8 mm (CF z 1.4709, CB 1.5698): ours +13.4 (+3.1 %)
+  = the book's ease at the base. Girth of the body on the plane of the form's worn neckline (A): 384.4 mm (tilt 12.3 deg
+  from square; the front worn open 62 mm at cfNeck by design).
+- Form edge strain along the neck seam (A = the start): front.R +1.41 %, yoke +4.27 % (segment p50 -0.28, max 41 % at
+  a few segments), front.L -1.36 %; total 452.6 worn vs 444.2 (+1.9 %). Seat: shoulder-seam neck points 1.6 mm above the
+  tape's hps, CB 13.4 above hps = 7.5 mm under the base ring's CB (on the base at the back). Body path under the yoke's
+  neck 195.8 vs yoke flat 193.5 (the back share C113, opt-in neck_split), the yoke 7 mm off the body.
+- Where the over-limit faces are (whole shirt, 1928 = 6.50 %): within 15 mm (flat) of the neck seam only 176 (9 %).
+  Yoke 440 of its 1405 faces over (31 %), median 39 mm off the neck seam, |x| 62-124 mm, 4-52 mm below hps, sig p50 1.088
+  / p90 1.204, stretched along the yoke's pattern v (|v| 0.93: the yoke's depth front-to-back over the shoulder), worn
+  direction y / z. Back 872 lie 114-547 mm below hps (culled by the seen part); fronts' over faces are spread down the body.
+- VERDICT: hypothesis WRONG. The neckline is long, not short (vs the bare neck by 38 mm, vs the base ring by the book's
+  ease); its seam is stretched ~1-4 % only. The start strain is the YOKE stretched across its depth over the shoulder
+  (front-to-back), 39 mm off the neckline: a shoulder fault (yoke depth / shoulder seam position / shoulder slope vs the
+  body over the trapezius: the parked HPS research), not neck girth. Not fixed (out of this round's hypothesis); the start
+  over-limit unchanged (seen part 5.85 / 5.76 %, whole 6.50 %). No arrangement, no renders.
