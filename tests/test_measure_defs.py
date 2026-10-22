@@ -53,7 +53,7 @@ def _capsule(P, a, b, r):
 
 
 @pytest.fixture(scope="module")
-def tape():
+def mannequin():
     xs, ys, zs = np.arange(-0.46, 0.46, VOX), np.arange(-0.17, 0.17, VOX), np.arange(-0.01, 1.84, VOX)
     X, Y, Z = np.meshgrid(xs, ys, zs, indexing="ij")
     P = np.stack([X, Y, Z], -1)
@@ -76,7 +76,12 @@ def tape():
         f = np.minimum(f, np.maximum(np.hypot(X - s * 0.09, Y) - 0.075, np.maximum(-Z, Z - Z_CROTCH - 0.01)))
     V, F, _, _ = skm.marching_cubes(f, 0.0, spacing=(VOX,) * 3)
     V = V + [xs[0], ys[0], zs[0]]
-    return tailor.measure(V, F[:, ::-1], {k: np.asarray(v, float) for k, v in J.items()})
+    return V, F[:, ::-1], {k: np.asarray(v, float) for k, v in J.items()}
+
+
+@pytest.fixture(scope="module")
+def tape(mannequin):
+    return tailor.measure(*mannequin)
 
 
 def test_girths_are_the_sections_they_are_defined_on(tape):
@@ -206,3 +211,31 @@ def test_every_block_read_is_declared():
 def test_freesewing_waist_is_the_narrowest_section(tape):
     m2, _ = md.for_consumer("freesewing:simon", tape["mm"], tape["at"])
     assert md.CONSUMERS["freesewing:simon"]["waist"][0] == md.M
+
+
+def test_hps_corner_is_where_the_neck_meets_the_shoulder(mannequin, tape):
+    """FreeSewing's hps ("where your neck meets your shoulder"), tailor "corner": on a round neck standing on a sloped
+    shoulder slab the loop 2 cm up the neck ("widest", 1.50) is 30 mm above the corner; "corner" is the slab's top just
+    outside the neck (garrett collar r3, C156: Garrett's shirt pinned 2 cm up his near-vertical neck bridged it)."""
+    w = np.asarray(tape["at"]["hps.L"])
+    assert abs(w[2] - 1.50) < 0.004  # the default is still the legacy loop point
+    c = np.asarray(tailor.measure(*mannequin, hps="corner")["at"]["hps.L"])
+    x = NECK_R + tailor.NECK_CORNER_OUT
+    assert abs(c[0] - x) < 0.002 and abs(c[1]) < 0.01
+    assert abs(c[2] - z_top(x)) < 0.004, c  # on the slab's top at the neck (1.469), not on the neck's own wall
+
+
+def test_hps_definition_is_the_consumers_unless_held():
+    """A FreeSewing / Brian-rule draft is measured with FS's hps (corner) unless its garment or kind holds "hps" (every
+    kind drafted before r3: shirt until Joe approves Garrett's refit, jacket / coat / sweater frozen)."""
+    from hifipushie import cloth
+    kinds = cloth._kb()["kinds"]
+    g = {"pattern": {"from": "simon"}}
+    assert md.hps_definition(g, {}) == "corner"
+    assert md.hps_definition({"pattern": {"from": "draft", "block": "bodice"}}, {}) == "corner"
+    for k in ("shirt", "jacket", "coat", "sweater"):
+        assert "hps" in md.holds_for({}, kinds[k]), k
+    assert md.hps_definition(g, kinds["shirt"]) is None
+    assert md.hps_definition({"pattern": {"from": "draft", "block": "trouser"}}, {}) is None  # no hps read
+    assert md.hps_definition({}, {}) is None
+    assert "hps" in md.gate_row("freesewing:simon", {}, {"hps": "refit pending"})["held"]

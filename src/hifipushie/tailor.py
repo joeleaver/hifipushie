@@ -206,6 +206,32 @@ def _side_neck(V, T, L) -> tuple:
     return (w, None) if best is None else (best, zc)
 
 
+NECK_CORNER_OUT = 0.0025  # m outside the neck loop's widest x where the corner's crest is read (probe: HP_HPS_OUT)
+
+
+def _neck_corner(V, T, L, sh) -> np.ndarray:
+    """The side neck point where the neck MEETS THE SHOULDER (FreeSewing's hps: "where your neck meets your shoulder"):
+    the top of the shoulder's crest just outside the neck (NECK_CORNER_OUT past the neck loop's widest x: a plane AT
+    that x is tangent to a round neck and reads the neck's own wall), never above the loop. The crest is read as the
+    shoulder point's (`measure` top_at: a section across the body, its top near the shoulder joint's y). Where the
+    neck slopes into its shoulders the loop 2 cm up it nearly sits on the crest (wf_simon 5 mm lower); where the neck
+    stands above the shoulder (Garrett: near-vertical, on a flat trapezius shelf) it drops onto the crest (23 mm, 24 mm
+    back). Pinned 2 cm up such a neck, the shoulder seam bridged the corner (C154 lump, C156)."""
+    L = np.asarray(L, float)
+    w = L[np.argmax(L[:, 0])]
+    x = float(w[0]) + float(os.environ.get("HP_HPS_OUT", NECK_CORNER_OUT))
+    try:
+        S = section(V, T, [x, sh[1], sh[2]], [1.0, 0, 0], [x, sh[1], sh[2] + 0.06])
+    except Exception:
+        S = None
+    if S is None:
+        return w
+    S = S[(S[:, 2] <= w[2]) & (np.abs(S[:, 1] - sh[1]) < 0.12)]
+    if not len(S):
+        return w
+    return S[np.argmax(S[:, 2] - 4 * np.abs(S[:, 1] - sh[1]))]
+
+
 # shoulderSlope's definition (fit round 13, opt-in): "line" (default since 2026-10-06: a fit through the top of the
 # shoulder in the joint's plane, from 2 cm outside hps to the shoulder point) | "chord" (FreeSewing's measurement: hps ->
 # the shoulder point, the drop every draft that places the neck point at hps needs). On Garrett the line reads 10.9 deg,
@@ -285,7 +311,9 @@ def _neck_base_level(V, T, neck_j, nd, neck_girth, stature, drop=None):
     return (R_, n_) if R_ is not None else (rows[int(np.argmin(np.abs(ds - want)))][2], rows[int(np.argmin(np.abs(ds - want)))][3])
 
 
-def measure(V: np.ndarray, faces, J: dict) -> dict:
+def measure(V: np.ndarray, faces, J: dict, hps: str | None = None) -> dict:
+    """The tape. `hps`: the side neck point's definition ("widest" | "corner" | "base" | "crest"; None: env HP_HPS,
+    else "widest"); a draft's own is measure_defs.hps_definition (cloth.model_body puts it on the body)."""
     V = np.asarray(V, float)
     T = triangles(faces) if not isinstance(faces, np.ndarray) or faces.shape[1] != 3 else faces
     Z = np.array([0, 0, 1.0])
@@ -341,7 +369,7 @@ def measure(V: np.ndarray, faces, J: dict) -> dict:
     # fault (length, balance, armhole, neckline, start strain past ZOZO's limiter). HP_HPS=base (the ANSUR definition,
     # with the ring neckline "ring", the tilt solve NECK_BASE_DROP) and HP_HPS=crest are OPT-IN RESEARCH, parked with
     # open questions in docs/notes/cloth.md "## HPS research (parked)".
-    hmode = os.environ.get("HP_HPS", "widest")
+    hmode = hps or os.environ.get("HP_HPS", "widest")
     zc_ = None
     base_, bn_ = _neck_base_level(V, T, neck_j, nd, mm["neck"], float(np.ptp(V[:, 2]))) if hmode == "base" else (None, None)
     if base_ is not None:
@@ -355,6 +383,8 @@ def measure(V: np.ndarray, faces, J: dict) -> dict:
         at["cf_neck_base"] = base_[np.argmin(base_[:, 1])]
     elif hmode == "widest":
         at["hps.L"] = L[np.argmax(L[:, 0])]
+    elif hmode == "corner":
+        at["hps.L"] = _neck_corner(V, T, L, np.asarray(J["shoulder.L"], float))
     else:
         at["hps.L"], zc_ = _side_neck(V, T, L)
     if zc_ is not None:

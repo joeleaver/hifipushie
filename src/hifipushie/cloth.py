@@ -1089,6 +1089,9 @@ class Body:
         self._faces = b["F"]
         self._m = None
         self._hull = {}
+        # the side neck point's definition for the garment drafted on this body (measure_defs.hps_definition, set by
+        # model_body; None: the tape's default)
+        self.hps = b.get("hps")
         # things worn under / round the cloth that it rests on but that aren't the body (garment key "collide": the
         # model's shoes under a trouser hem): {"V", "F" (triangles), "key"}; colliders only, never measured
         self.worn = b.get("worn")
@@ -1099,7 +1102,7 @@ class Body:
         nothing: {"mm": {}, "at": {}} (pieces wrapped on a torso, an arm or the neck need a body)."""
         if self._m is None:
             try:
-                self._m = tailor.measure(self.V, self._faces, self.J)
+                self._m = tailor.measure(self.V, self._faces, self.J, hps=self.hps)
             except Exception:  # no pelvis/neck/limb joints, sections that miss: not a body
                 self._m = {"mm": {}, "at": {}, "body": False}
             if self.worn is not None and self._m.get("mm") and "ankle.L" in self.J:
@@ -9665,6 +9668,10 @@ def model_body(name: str, spec: dict, g: dict, simulate: bool = True) -> dict:
     over = st["drape"].get("over", "model") if isinstance(st, dict) and "drape" in st else "body"
     if over == "body" and spec.get("base"):
         src = body_mesh(spec=spec)
+        from . import measure_defs as md
+        hd = md.hps_definition(g, _kb()["kinds"].get(garment_kind(g) or "", {}))
+        if hd:  # the side neck point as the garment's draft defines it (measured so: the draft's tapes and the form's pins)
+            src = dict(src, hps=hd)
         ug = expanded(g).get("over")
         if ug:  # layered: the garment under this one, finished, joins the body as a frozen collider
             if ug not in (spec.get("cloth") or {}):

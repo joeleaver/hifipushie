@@ -61,8 +61,19 @@ def _under_arm(mm: dict, at: dict) -> dict:
     return {"highBust": float(mm["highBustUnder"])} if "highBustUnder" in mm else {}
 
 
+def _neck_corner(mm: dict, at: dict) -> dict:
+    """The side neck point (hps) where the neck MEETS THE SHOULDER (FreeSewing's hps), not the widest point of the loop
+    2 cm up the neck (the tape's legacy "widest"). A landmark, not a measurement: the body a garment is drafted and
+    fitted on is MEASURED with it (hps_definition -> cloth.model_body -> tailor.measure hps="corner"), so every tape
+    from the hps (the chord slope, hps lengths) and the form's neck pins move together. Equal to "widest" where the
+    loop sits on the shoulder's crest (wf_simon); on a neck standing above the shoulder (Garrett) 19 mm lower: pinned
+    2 cm up it, the shoulder seam bridged the corner (C154 / C156)."""
+    return {}
+
+
 HELPERS = ("highBustUnder", "highHip", "waistToHighHip")  # tape keys only adapters read
-ADAPTERS = {"chord": _chord, "iliac_crest": _iliac_crest, "under_arm": _under_arm}
+ADAPTERS = {"chord": _chord, "iliac_crest": _iliac_crest, "under_arm": _under_arm, "neck_corner": _neck_corner}
+LANDMARKS = {"hps": {"neck_corner": "corner"}}  # landmark definitions: {landmark: {adapter: tailor.measure mode}}
 
 # ---------------------------------------------------------------- the consumers' definitions
 M, A, AMB = "match", "adapter", "ambiguous"
@@ -72,6 +83,9 @@ _BRIAN = {
     "highBust": (A, "under_arm", f"round the chest just under the arms, above the bust; may tilt ({FSDOC}highbust); read only "
                           "with option draftForHighBust (plugin-bust), off in every table"),
     "hpsToBust": (AMB, None, f"HPS straight down to the bust line ({FSDOC}hpstobust): surface or vertical not stated"),
+    "hps": (A, "neck_corner", f"the side neck point, where the neck meets the shoulder (FS docs, every hps* tape: "
+                              f"\"HPS ... where your neck meets your shoulder\"); ours: the neck loop 2 cm up the neck's "
+                              "widest point (legacy 'widest') -> tailor 'corner': dropped onto the shoulder's crest"),
     "hpsToWaistBack": (A, None, f"HPS straight down the back to the waist ({FSDOC}hpstowaistback); cloth.length_level "
                                 "re-bases it on the nape (napeToWaistBack + 0.05 neck) so the length is not the hps's"),
     "neck": (AMB, None, f"round the neck where a shirt collar sits ({FSDOC}neck): height not pinned"),
@@ -169,6 +183,16 @@ def slope_definition(g: dict, kind_kb: dict | None = None) -> str:
     if c is None:
         return (g or {}).get("shoulder_slope") or (kind_kb or {}).get("shoulder_slope") or "line"
     return "line" if ad != "chord" or "shoulderSlope" in holds_for(g, kind_kb) else "chord"
+
+
+def hps_definition(g: dict, kind_kb: dict | None = None) -> str | None:
+    """The tape mode (tailor.measure hps=) of the side neck point the garment's draft defines: its consumer's declared
+    "hps" adapter (LANDMARKS), unless the garment or its kind holds "hps" (then None: the tape's default)."""
+    c = consumer_of(g) if g else None
+    st = CONSUMERS.get(c or "", {}).get("hps")
+    if st is None or st[1] is None or "hps" in holds_for(g, kind_kb):
+        return None
+    return LANDMARKS["hps"].get(st[1])
 
 
 def for_consumer(consumer: str | None, mm: dict, at: dict | None = None, holds: dict | None = None) -> tuple[dict, dict]:
