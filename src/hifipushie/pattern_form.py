@@ -21,6 +21,7 @@ What a pattern maker does on a dress form, as geometry and constraints (no physi
 from __future__ import annotations
 
 import math
+import os
 
 import numpy as np
 from scipy.sparse import coo_matrix, diags
@@ -887,6 +888,7 @@ def woven_shear_deg(W: dict, X: np.ndarray) -> np.ndarray:
 # such points keeps the landmark.
 NECK_SPLIT = False  # module default OFF: garment key "neck_split": true (the parked jacket regressed with it, C113)
 NECK_SPLIT_MAX = 0.02  # m along the loop
+NECK_PIN_W = 200.0  # the neck points' pin weight (the shoulder point's is 2: soft); probe override HP_NECK_PIN_W
 
 
 def _boundary_path_len(M, a: int, b: int) -> float | None:
@@ -1001,7 +1003,7 @@ def _pins(M, X0, body, ease, bsurf, under_v=None, neck_split: bool | None = None
                         if len(hh):
                             lift = float(hh.min()) + THICK + ease  # (the layer itself, not its band standing beside)
                 q = q + lift * n[0]
-            full.append((v, q, 200.0))
+            full.append((v, q, float(os.environ.get("HP_NECK_PIN_W", NECK_PIN_W))))
         elif pt in ("shoulder", "shoulder.m") and "shoulder.L" in at:
             q = np.asarray(at["shoulder.L"], float) * [side, 1, 1]
             if bsurf is not None:

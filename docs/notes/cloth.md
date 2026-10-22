@@ -10098,3 +10098,15 @@ Joe's call: fix the lump by correcting where the shirt's HPS sits, as a measurin
   Ledger C156. NEXT (Joe's call): (a) keep gc1; or (b) a round on the corner: the front neck depth from the body's
   drop (length kept) and the fall's shoulder buckle, judged beside gc1.
 - Garment suite (14 files incl. test_measure_defs) under capped: 236 passed, 4 xfailed, pytest exit 0 (r3/tests_r3.log).
+
+## garrett collar round 3b (2026-10-22): "I'd just straighten my collar" (Joe)
+- Styling held yoke / back / sleeves 100 % and the fronts 79 % (hold_mask: every piece no op names): the lump's cloth
+  could never move in styling, so round 2's "styling moves it < 1 mm: locked by the cut" read the freeze, not the cloth.
+- Freed (yoke + fronts within 60 / 100 mm of the neck points; straighten.py st60 / st100 / st100s): moved 3-6 mm,
+  lump unchanged (crest 61-68, bump 14.6-15.6). Gestures on gc1 as worn (gesture.py: press the lump into the body,
+  settle the neck points down, both; then push + smooth): pulls stopped at 0-3 mm, "stretch" from the first step.
+- WHY: gc1's yoke within 30 mm of the neck point is STRETCHED p50 8.7 %, p95 26.7 %, max 61 % (wf_simon p50 1.6, p95 9),
+  the front beside it compressed p50 -5.7 %. Shirting can't stretch 27 %: the hard neck pin (pattern_form._pins weight
+  200; the shoulder point's is 2) drags the yoke's corner onto the landmark and the front piles up beside it = the
+  lump. On a person the cloth can't stretch, so the shirt sits where the yoke reaches: the seam slides, nobody
+  measures. Probe: pattern_form.NECK_PIN_W (default 200, unchanged), env HP_NECK_PIN_W; fits sp2 / sp20 running.
