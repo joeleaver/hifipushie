@@ -16,11 +16,13 @@ the band turning with it; band ends lean apart; leaves stand off the neck). Joe:
 - CLOSED: repo defaults (landed, BUILD_VERSION 17) + the concept's button spacing = v1 (= e3): clean closed collar, band
   ends sewn flush with the placket tops, one rounded roll (176 deg), collar + band mirror p95 1.4-1.9 mm, strain p99 9 %.
   `spikes/shirt_spike/run.sh base_fit.py v1 '{"closures":[{"name":"front","spacing":{"first":0.034,"from":"cfNeck"}}]}'`
-- CURRENT BEST q40: `{"swing":40,"steps":6,"nopush":1,"hug":110,"swing_patch":0.015,"pulls":[P0],"smooth":{...}}`,
-  P0 = points side 1 / out 0.3 / up 0, patch 0.025, turn. The band END swings as an AREA (15 mm from its end edge): 3
-  pinned corner vertices pinched a lobe at the top corner (Joe's arrow; stand TopCf 21 % -> 3 %). No corner pull (it
-  clashed with the held band end: 280 %). Points 137 / 76 below HPS, side hug 70 mm (closed 68), p99 5.9 %. hug: band
-  + collar within 110 deg of CB held where the RELAXED closed fit has them (C144). Bottom band corners 20-35 % (V taut).
+- CURRENT BEST f2: `{"swing":40,"steps":6,"nopush":1,"hug":70,"feather":[70,130],"swing_patch":0.015,"pulls":[P0],
+  "smooth":{"pieces":["collar","stand"]}}`, P0 = points side 1 / out 0.3 / up 0, patch 0.025, turn. Band end swings as
+  an AREA (3 pinned corners pinched a lobe: TopCf 21 -> 3 %). Hug FEATHERED (Joe: "one continuous swoop instead of three
+  different angles"): held to 70 deg from CB, drawn back by a fading share to 130 (a hard hug edge kinked the profile:
+  q40 29 deg; profile.py 18 deg now), side 73 mm from the neck centre (closed 68). Points 137 / 76, p99 6.3 %.
+- Crease on the roll (Joe): the fold turns in TWO bends 4 mm apart (seam + roll line). Roll at the seam (offset 1 mm,
+  radius 4 / 6 mm: r0a / r0b) softens the ridge; r0b stands the collar up + breaks the points; not adopted.
 - SMOOTH (C143, sm1): `"smooth":{"pieces":["collar","stand"]}` after the pulls halves the crumple for +0.3 pt.
 - OPEN (u25 = t15's pulls with "patch":0.025,"turn":1: each step drags the point alone, then fits the
   patch's unstretched start shape rigidly (Kabsch) onto that and solves again: tips clean (crumple p95 0.06-0.10 mm =
