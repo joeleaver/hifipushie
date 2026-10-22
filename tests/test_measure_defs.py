@@ -231,11 +231,13 @@ def test_hps_definition_is_the_consumers_unless_held():
     from hifipushie import cloth
     kinds = cloth._kb()["kinds"]
     g = {"pattern": {"from": "simon"}}
-    assert md.hps_definition(g, {}) == "corner"
-    assert md.hps_definition({"pattern": {"from": "draft", "block": "bodice"}}, {}) == "corner"
+    assert md.hps_definition(g, {}) is None and not md.HPS_CORNER  # parked: opt-in only (C156)
+    gc = dict(g, hps="corner")
+    assert md.hps_definition(gc, {}) == "corner"
+    assert md.hps_definition({"pattern": {"from": "draft", "block": "bodice"}, "hps": "corner"}, {}) == "corner"
     for k in ("shirt", "jacket", "coat", "sweater"):
         assert "hps" in md.holds_for({}, kinds[k]), k
-    assert md.hps_definition(g, kinds["shirt"]) is None
-    assert md.hps_definition({"pattern": {"from": "draft", "block": "trouser"}}, {}) is None  # no hps read
+    assert md.hps_definition(gc, kinds["shirt"]) == "corner"  # the garment's opt-in lifts its kind's hold
+    assert md.hps_definition({"pattern": {"from": "draft", "block": "trouser"}, "hps": "corner"}, {}) is None  # no hps
     assert md.hps_definition({}, {}) is None
     assert "hps" in md.gate_row("freesewing:simon", {}, {"hps": "refit pending"})["held"]

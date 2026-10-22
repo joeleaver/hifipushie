@@ -66,14 +66,19 @@ def _neck_corner(mm: dict, at: dict) -> dict:
     2 cm up the neck (the tape's legacy "widest"). A landmark, not a measurement: the body a garment is drafted and
     fitted on is MEASURED with it (hps_definition -> cloth.model_body -> tailor.measure hps="corner"), so every tape
     from the hps (the chord slope, hps lengths) and the form's neck pins move together. Equal to "widest" where the
-    loop sits on the shoulder's crest (wf_simon); on a neck standing above the shoulder (Garrett) 19 mm lower: pinned
-    2 cm up it, the shoulder seam bridged the corner (C154 / C156)."""
+    loop sits on the shoulder's crest (wf_simon 5 mm lower); on a neck standing above the shoulder (Garrett) 23 mm lower:
+    pinned 2 cm up it, the shoulder seam bridged the corner (C154 / C156). The tapes hung from it are rebased by the
+    drop (tailor "corner"). PARKED: opt-in by garment key hps "corner" (HPS_CORNER)."""
     return {}
 
 
 HELPERS = ("highBustUnder", "highHip", "waistToHighHip")  # tape keys only adapters read
 ADAPTERS = {"chord": _chord, "iliac_crest": _iliac_crest, "under_arm": _under_arm, "neck_corner": _neck_corner}
 LANDMARKS = {"hps": {"neck_corner": "corner"}}  # landmark definitions: {landmark: {adapter: tailor.measure mode}}
+# PARKED (garrett collar r3, C156): the corner hps took Garrett's ridge 61 -> 5-13 deg but left a front pillow (bump
+# 9.4-10.8 mm vs <= 8) and buckled the styled fall at the shoulder seam; until a refit passes, every garment holds "hps"
+# unless it opts in with the garment key hps: "corner" (probes, the next round)
+HPS_CORNER = False
 
 # ---------------------------------------------------------------- the consumers' definitions
 M, A, AMB = "match", "adapter", "ambiguous"
@@ -164,11 +169,16 @@ def consumer_of(g: dict) -> str | None:
 def holds_for(g: dict, kind_kb: dict | None = None) -> dict:
     """{measurement: reason} kept on the tape's legacy value (a declared mismatch, until the garment is refitted on
     its consumer's definition): the garment's "definition_holds" over its kind's. The C117 garment key
-    shoulder_slope "line" is a hold of shoulderSlope."""
+    shoulder_slope "line" is a hold of shoulderSlope; "hps" is held (parked, HPS_CORNER) unless the garment key hps is
+    "corner", which also lifts its kind's hold."""
     h = dict((kind_kb or {}).get("definition_holds") or {})
     for src_, d_ in (("kind", kind_kb or {}), ("garment", g or {})):
         if src_ == "garment":
             h.update(d_.get("definition_holds") or {})
+        if src_ == "garment" and d_.get("hps") == "corner":
+            h.pop("hps", None)
+        elif src_ == "garment" and not HPS_CORNER:
+            h.setdefault("hps", "parked: the corner hps (C156) is opt-in (garment key hps: 'corner') until a refit passes")
         if d_.get("shoulder_slope") == "line":
             h["shoulderSlope"] = f"{src_} key shoulder_slope 'line'"
         elif d_.get("shoulder_slope") == "chord":

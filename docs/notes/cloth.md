@@ -10083,3 +10083,17 @@ Joe's call: fix the lump by correcting where the shirt's HPS sits, as a measurin
   rule (hpsToWaistBack = nape + 0.05 neck) is a fixed length FROM the hps: the hem 19-23 mm lower, the armhole 15 up.
   FIX (tailor "corner"): tapes from the loop point, less the drop dz (hps tapes) and length_level less mm "hpsDrop":
   every line hung from the hps keeps its body level; only the neck moves. Refits hd / wsd running.
+- hd (rebased tapes, split on): crest 13 / 23 PASS, bump 10.1 / 10.8 FAIL (unchanged by the rebase: not the lines),
+  crumple .299 PASS; throat in gc1's frame (+23): button 87.5 (85.9), V 45 (47), points 76 (73-75), apart 142 (154).
+  wsd (Simon, same code): 16 deg / 4.5 mm / crumple .13 (ws0 21 / 5.3 / .14): better.
+- hdn (+ neck_split false): crest 5 / 6, bump 9.4 / 10.1, crumple .318. hfd (+ fronts' cfNeck moved up 15 mm, a probe
+  of the front-neck-depth cause): bump 8.4 / 9.7, but the throat rose 11 mm (button 74.5, V 34, apart 129). The front
+  pillow is the front neck's depth: drafted from the neck girth (pattern 77.8 mm), on the body the hps -> throat drop
+  fell 45 -> 22 mm because the band (sized to the neck) holds the throat where it was. A real fix redrafts the front
+  neck from the body's hps -> band-front drop with the neckline length kept (wider, shallower): not tried.
+- LOOK (r3/gc1_vs_hd_sheet.png, side_crop_gc1_hd.png): hd is NOT better than gc1. The dome under the fall is gone, but
+  the styled fall buckles into a hard twist where it crosses the shoulder seam (more visible than the dome), the collar
+  sits 11-15 mm lower round the back / side, and the front leaves read shorter and flatter than gc1's long points.
+- PARKED: measure_defs.HPS_CORNER False (garment key hps "corner" opts in; probes no longer need env HP_HPS). gc1 stays.
+  Ledger C156. NEXT (Joe's call): (a) keep gc1; or (b) a round on the corner: the front neck depth from the body's
+  drop (length kept) and the fall's shoulder buckle, judged beside gc1.

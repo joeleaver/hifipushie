@@ -1,4 +1,15 @@
-# STATE: dress_garrett_shirt (Garrett's shirt, open collar) -- 2026-10-22, garrett collar round 2 (in progress)
+# STATE: dress_garrett_shirt (Garrett's shirt, open collar) -- 2026-10-22, garrett collar round 3 (done, PARKED)
+
+ROUND 3 (files $G/r3; notes cloth.md "garrett collar round 3"; ledger C156): the lump as a MEASURING fault. The tape's
+hps (loop 2 cm up the neck) sits on Simon's crest but 19 mm above Garrett's. New tape mode "corner" (FS: where the neck
+meets the shoulder: the crest just outside the neck; Garrett 23 down / 24 back, Simon 5 down), hps tapes rebased by
+the drop so only the neck moves. Garrett hd: ridge 61 -> 13 PASS, bump 14.8 -> 10.1 FAIL (<= 8), crumple .299, throat in
+gc1's frame kept; Simon better (21 -> 16 deg, 5.3 -> 4.5). LOOK: NOT better than gc1 (fall buckles at the shoulder seam,
+collar 11-15 mm lower round the back, leaves shorter). Left: a front pillow = front neck depth from the neck girth vs
+the body's drop (band holds the throat); -15 mm depth: bump 8.4 but throat up 11 mm.
+CODE: PARKED opt-in (measure_defs.HPS_CORNER False; garment key hps "corner"); gc1 / gc_garrett unchanged.
+NEXT: Joe's call: keep gc1 (lump stays), or a round on the corner (front neck redrafted from the body's drop with the
+neckline length kept + the fall's shoulder buckle). Sheets: $G/r3/gc1_vs_hd_sheet.png, side_crop_gc1_hd.png.
 
 ROUND 2 (branch claude/garrett-collar-lump, files $G/r2): Joe approved gc1's throat / V / points / button; the one fault
 is the LUMP under the fall's outer edge (side view). MEASURED: the shoulder seam (front | yoke) within 50 mm of the neck
@@ -30,15 +41,6 @@ with a *_source key: closures front first 0.043 from cfNeck (concept 83 below HP
   (garment_pull.style_ops). Docs: cloth_tools.md. Tests: test_worn_style_holds_the_fastened_buttons (control opens the
   pair > 3 mm), test_a_garment_edits_its_wear_style_by_op_kind.
 
-## Measured (round 1)
-- Crumple root = Garrett's own collar options (C129-era collarWidth 1.68 / Bend 0.015): outer edge 515 over a sewn 441
-  (spring 74; wf_simon 45), the closed fall lay WAVY (radius bumps at CB and +-75 deg, edge turn 85 deg / 40 mm, left
-  tip folded 2 faces, tip crumple .68) before any styling. Simon's defaults: spring 46, fall 47 / stand 30.5, tips .09.
-- The leaf is SLACK, not over-pulled: collar p99 3.9-4.0 % to 60 mm of pull, rising only from 66. The pull's stop can't
-  bound a slack flap (bending is free in the solve); it runs to max_move 45 on Garrett.
-- The KB's fixed 65 deg band-end turn stretches the free fronts' tops: Garrett p99 23 / 13 % (wf_simon 15 / 16 %). At
-  the concept's button it tears them (p99 39 %). Until it would stretch: Garrett 20 deg, wf_simon 53-61.
-
 ## Big reads (concept | probe s1 | gc1)  -- wf_simon: probe w0 | w2 (identical)
 - V below HPS (big_reads): 60 | 122 | 47           -- 212.6 | 212.6 (big_reads V on wf is the gap rule's, suspect)
 - Points apart: 147 +-20 | 176 | 154               -- 179 | 179
@@ -48,13 +50,6 @@ with a *_source key: closures front first 0.043 from cfNeck (concept 83 below HP
 - Collar crumple p95 <= .30: | .37 | .23; tips .68 -> .066; folded 2 -> 0 -- .25 | .25
 - Open rows FAIL on gc1: corners .20 (.4-.75), V depth below tips -.15, leaf front edge 51 (25-48), edge turn 59 (32).
 
-## Next fault (ranked)
-1. Throat closed / leaves splayed on Garrett. Leads: the band ring hold (70 deg + feather 130) and the pull's direction
-   (side + 0.3 out) set where the slack leaf lands; nothing measures "stand beside the neck". Try a pull stop on the
-   leaf's front-edge angle or the tips' height (50-61) instead of max_move, and a softer front roll that carries the
-   band end without moving the fall (r2 dragged the fall down). Prove on gc1's closed pkl (style.py, 70 s per look).
-
-## Commands ($G; run.sh = this worktree's code under capped)
-cfit.py <model> <tag> [garment json] [option edits json] (closed fit, 5-7 min Garrett); style.py <res pkl> <tag>
-<model> [ops.json] (style + big reads + rows, ~70 s); render.py <tag> styled (ZOOM=1 close-up); mkops.py (edit KB ops).
-History: docs/notes/cloth.md "garrett collar round 1"; earlier rounds: cloth.md "shirt round 12" and the probe.
+## Commands ($G/r3; run.sh = this worktree's code under capped)
+fit.sh <tag> [ENV=..] (closed fit of gc_garrett, MODEL=wf_simon, G_EDIT='{garment edits}', e.g. {"hps": "corner"});
+style.py <res pkl> <tag> <model> [ops.json] (style + big reads + open rows + lump rows); render.py <tag> styled (ZOOM=1).

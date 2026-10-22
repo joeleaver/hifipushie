@@ -8,6 +8,7 @@ Spec `spec["cloth"][name]`:
    "pieces": {name: piece spec (pattern.from_spec) + "wrap"}, "seams": [[a, b], ...], "stitches": [[a, b]...]
              (own pieces, or added to a design's), "drop": [pieces of the design left out],
    "alter": [pattern ops], "fabric": preset name or {...}, "interfaced": [pieces], "color": "#rrggbb",
+   "hps": "corner" (opt in to the side neck point where the neck meets the shoulder, measure_defs C156; parked),
    "state": "worn" | "hung" (on a hanger: hanger.py) | {"hang": {"hanger": {...}, "rail": {...}}} | "draped",
    "resolution": m (triangle size, default 0.02)}
 
@@ -9452,7 +9453,7 @@ class ClothError(ValueError):
     pass
 
 
-GARMENT_KEYS = {"shoulder_pad", "layer_clearance", "pattern", "pieces", "seams", "stitches", "drop", "alter", "fabric", "interfaced", "color", "roughness", "sheen",
+GARMENT_KEYS = {"hps", "shoulder_pad", "layer_clearance", "pattern", "pieces", "seams", "stitches", "drop", "alter", "fabric", "interfaced", "color", "roughness", "sheen",
                 "state", "resolution", "coarse", "quality", "frames", "self_collision", "self_collision_sew", "assemble",
                 "sew_force", "sew_frames", "worn_frames", "settle_frames", "hang_frames", "hang_sew_force", "hang_air", "refine_frames",
                 "refine_ease", "cleanup", "detail", "sculpt", "finish", "unfold_finish", "under", "under_sculpt", "under_collar", "note", "backend", "placement", "lower_arms", "lower_frames", "zozo", "_trace",
