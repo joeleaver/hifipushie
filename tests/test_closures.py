@@ -74,17 +74,12 @@ def test_a_shirt_without_a_tie_is_worn_open_at_the_neck():
     # (no wider than the fronts can follow with button 1 closed: at 0.10 it ended 19 mm open, pk_29)
     assert 0 < {c["name"]: c.get("gap") for c in garment_design.wear(g)}["collar"] <= 0.035  # (the stand hugs: the spread opens it)
     assert cloth.worn_top(g)  # a shirt's fronts start on the body, their neck seam at the stand
-    fl = garment_design.wear(g, "folds")
-    # (drape band round 5, C134: the fronts above button 1 turn back FLAT on the chest, angle 10 = turned 170; the old
-    # soft 95 left them standing 9-10 mm off their base)
-    assert {f["piece"] for f in fl} == {"front.L", "front.R"} and all(0 < f["angle"] <= 15 for f in fl)
+    # (shirt spike 2026-10-21, C139 supersedes C134 / C138: the no-tie wear declares NO open-neck fold. Its rolls turned
+    # the front neckline the band is sewn to flat back (170 deg): the band ends tipped ~45 deg and the collar fronts ran in
+    # over them, and the L / R rolls were declared unalike. Joe's photos: the fronts roll back SOFTLY with the band; that
+    # open state is STYLED from the clean closed fit (pull / turn / smooth until it would stretch, C142-C145), not a fold.)
+    assert garment_design.wear(g, "folds") == []
     assert garment_design.wear(dict(g, tie=True), "folds") == []
-    # the UNDER front's roll ends above the first closed fastening (under the over front there): rolled out to the
-    # button both flaps met there and the under one turned out through the over one (29 crossings at su_garrett's start)
-    from hifipushie import pattern
-    under = next(f for f in fl if f["piece"] == "front.R")
-    end = under["line"][-1]
-    assert "+" in end and pattern.eval_vec(end.partition("+")[2])[1] >= 0.03, end
     assert "tie" in garment_design.SHEET_KEYS
     # an unbuttoned stand is laid by the girth it would close at (its fastening's points), not by its length
     M = {"names": ["stand"], "piece": np.zeros(3, int), "uv": np.array([[0.02, 0.0], [0.40, 0.0], [0.2, 0.01]]),

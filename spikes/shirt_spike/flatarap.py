@@ -491,10 +491,16 @@ if A.get("edge_smooth"):
 # everything outside the brush (and the pulled handles) held. Stop when the stretch would exceed the start's + tol, or the
 # roughness stops dropping. Same rule as the pull: as far as it goes without stretching.
 smooth_info = {}
-if A.get("smooth"):
-    SM = A["smooth"]; brush = np.zeros(n, bool)
+for SM in [A.get(k_) for k_ in ("smooth", "smooth2") if A.get(k_)]:
+   if True:
+    SM = SM; brush = np.zeros(n, bool)
     brush[inv[np.isin(pid, [nm.index(p) for p in SM.get("pieces", ["collar", "stand"])])]] = True
-    keep = ~brush | hW | np.isin(np.arange(n), list(done_h.values()) + list(bnd))
+    if SM.get("near_points"):  # (a local brush: the collar within near_points (pattern) of its points; the stop reads it alone)
+        nb_ = np.zeros(len(X0), bool)
+        for s_ in ("left", "right"):
+            o = P[f"collar:{s_}TopEdge"]; nb_ |= (pid == pid[o]) & (np.linalg.norm(uv - uv[o], axis=1) <= SM["near_points"])
+        b2 = np.zeros(n, bool); b2[inv[nb_]] = True; brush &= b2
+    keep = ~brush | hW | np.isin(np.arange(n), (list(pts.values()) if SM.get("near_points") else list(done_h.values())) + list(bnd))
     Ew = np.unique(np.sort(np.r_[WF[:, [0, 1]], WF[:, [1, 2]], WF[:, [2, 0]]], 1), axis=0)
     cnt = np.zeros(n); np.add.at(cnt, Ew[:, 0], 1); np.add.at(cnt, Ew[:, 1], 1)
     def vnorm(Yc):
