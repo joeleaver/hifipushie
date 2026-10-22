@@ -1,6 +1,14 @@
-# STATE: dress_garrett_shirt (Garrett's shirt, open collar) -- 2026-10-22, garrett collar round 1
+# STATE: dress_garrett_shirt (Garrett's shirt, open collar) -- 2026-10-22, garrett collar round 2 (in progress)
 
-STATE: crumple FIXED on Garrett (collar crumple .37 -> .23, tips clean, 0 folded), button 1 held, concept's first
+ROUND 2 (branch claude/garrett-collar-lump, files $G/r2): Joe approved gc1's throat / V / points / button; the one fault
+is the LUMP under the fall's outer edge (side view). MEASURED: the shoulder seam (front | yoke) within 50 mm of the neck
+point bridges Garrett's neck-shoulder corner (seam 28 mm off the body at 26 mm out; bump 12-15 mm vs wf_simon 4-5;
+crest 41-70 deg vs 18-24); the yoke there is sheared +7 / -5.5 %. In the CLOSED fit already (styling changes it < 1 mm).
+Not the truing ops, not fixable by smooth / relax / lay on the styled fit. NEXT: closed-fit tests of the shoulder
+slope (ss30 / ss11), then the fix + a lump row. History: cloth.md "garrett collar round 2".
+
+
+ROUND 1 STATE: crumple FIXED on Garrett (collar crumple .37 -> .23, tips clean, 0 folded), button 1 held, concept's first
 button (85.9 vs 83). NOT fixed: the throat stays closed (band corners 0.20 x neck vs concept 0.69) and the leaves
 splay (front edge 51 deg vs 27-34, points 73-75 below HPS vs 50-61). wf_simon unchanged (every open-collar row PASS).
 NEXT: open Garrett's throat without stretch (see "Next fault"); then a blind review of gc1 vs the concept / trace.
@@ -27,10 +35,6 @@ with a *_source key: closures front first 0.043 from cfNeck (concept 83 below HP
   bound a slack flap (bending is free in the solve); it runs to max_move 45 on Garrett.
 - The KB's fixed 65 deg band-end turn stretches the free fronts' tops: Garrett p99 23 / 13 % (wf_simon 15 / 16 %). At
   the concept's button it tears them (p99 39 %). Until it would stretch: Garrett 20 deg, wf_simon 53-61.
-- First button: cfNeck sits 40 (Garrett) / 42 (wf_simon) mm below HPS, so the KB's 90 mm lands 130 / 132 on both: a
-  STYLE difference (photo vs concept), not a body one. KB default kept (photo); Garrett's spec carries the concept's.
-- Front roll about button -> neck point (r1 / r2 in $G): opens the corners (.33 / .5+) but the leaves droop (points
-  78-87 below HPS) and the V angle goes 121-142: not adopted.
 
 ## Big reads (concept | probe s1 | gc1)  -- wf_simon: probe w0 | w2 (identical)
 - V below HPS (big_reads): 60 | 122 | 47           -- 212.6 | 212.6 (big_reads V on wf is the gap rule's, suspect)
@@ -49,9 +53,6 @@ w2_styled_sheet.png, w2_styled_z_sheet.png; before: /mnt/data/hifipushie/probe_g
    (side + 0.3 out) set where the slack leaf lands; nothing measures "stand beside the neck". Try a pull stop on the
    leaf's front-edge angle or the tips' height (50-61) instead of max_move, and a softer front roll that carries the
    band end without moving the fall (r2 dragged the fall down). Prove on gc1's closed pkl (style.py, 70 s per look).
-2. Pull on a slack leaf has no stretch limit (bending free): Joe's rule needs a second stop for flaps.
-3. big_reads v_bottom_below_hps on wf_simon = 212 while button 1 is done at 132: check the front-gap rule.
-4. Points 81 mm long with Simon's default collar on Garrett (C129 had 66.6): read the concept's point length.
 
 ## Commands ($G; run.sh = this worktree's code under capped)
 cfit.py <model> <tag> [garment json] [option edits json] (closed fit, 5-7 min Garrett); style.py <res pkl> <tag>

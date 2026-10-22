@@ -9934,3 +9934,27 @@ draft.py = a 15 s draft without placement, mk_tc.py builds model tc_tess = pt_te
 - Checks: wf_simon and sh_garrett closed shirt fits (on_form, repo defaults) main vs this branch: max 0.000 mm
   (tess_coat_collar/ab.log). Garment tests (pattern_form, cloth, seams, cloth_made, collar, pattern_gate, closures,
   codified, shirt_spike_rules, tailoring, cloth_layers) under capped: 207 passed, 3 xfailed, pytest exit 0.
+
+## garrett collar round 2 (2026-10-22): the lump under the fall (Joe on gc1: "the only real issue is the lumpy part here")
+Scripts + files: /mnt/data/hifipushie/garrett_collar/r2/ (run.sh = this worktree's code under capped).
+- Step 1, WHAT IT IS (measured, no fix yet). Joe's spot (side view, under the fall's outer edge, neck -> shoulder) is the
+  shirt's SHOULDER SEAM (front | yoke) within ~50 mm of the neck point, standing off the body as a ridge with a pillow in
+  front of it. Reads (lump.py: off-body distance sd by nearest body normal; bump = sd minus its mean over 30 mm;
+  seam.py: sd along front:neck..shoulder; crest.py: turn between front and yoke normals across the seam, oriented
+  off the body; slice.py: true mesh sections, slice_before.png / slice_closed.png):
+  - Garrett gc1 closed: bump 12.5-15 mm (front / yoke, both sides) at ~24 mm out from HPS, 10-19 mm behind, 3-8 below;
+    seam sd 3 -> 16 -> 28 (26 mm out) -> 15 -> 2 mm from 84 mm on (tight on the outer shoulder); crest 41-70 deg in the
+    first 35 mm. Horizontal section 10 mm below HPS: front + yoke meet in a FIN sticking ~25 mm out.
+  - gc1 STYLED: the same to 0.5 mm (the yoke is held by the style, the fronts move < 2 mm there): STYLING DID NOT MAKE IT.
+  - wf_simon w2 closed: bump 4-5 mm, seam sd an even 10-17 plateau, crest 18-24 deg: a smooth dome. Garrett-only.
+  - Strain round the lump (princ.py): Garrett's yoke SHEARED, s_max +7 / s_min -5.5 % (p5 -13.6), 95 % of its faces
+    compressed > 2 %; wf_simon +3 / -3 %. Yoke back neck cbNeck..hps +5.9 % (wf 1.4); shoulder seam +1.8-2.2 % (wf 1).
+  - Body: Garrett's neck point (tape "widest", 2 cm up the neck) sits on a near-vertical neck column with a flat
+    shoulder 40 mm below it at 25 mm out (coronal slice); his shoulder slope chord 22.5 deg vs the line 10.9 (wf_simon
+    27.8 / 20.5). The draft's shoulder seam is the chord, so the seam BRIDGES that corner; the sheared yoke buckles
+    into the fin.
+- Ruled out: the neck truing ops (yoke / fronts "true" at the neck): Garrett without them nt1: seam sd identical
+  (28 mm peak), bump 13-15; wf_simon with them wt1: bump 4-5 (no lump). Styling ops on the styled fit (yoke + fronts
+  freed, band / collar held): smooth near the neck points (sm1: 4 rounds, nothing; sa / sb lam 0.9: crest WORSE
+  73-86 deg), lay (pressing the cloth to the body until it would stretch, lay1: 2 rounds then stretch), relax 40 (rx1:
+  nothing): the shape is locked by the neckline + the yoke's cut, not slack a hand could smooth.
