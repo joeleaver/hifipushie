@@ -9967,3 +9967,16 @@ Scripts + files: /mnt/data/hifipushie/garrett_collar/r2/ (run.sh = this worktree
 - Fit levers tried for the cause: shoulderSlope 10.9 (the line, ss11: seam +6.5 %, bump 12.5, no better); 30 deg
   (ss30) breaks the draft (front.L has no placketTopFold1). Running: neck_split off (nsf), HP_HPS=base (hb, diagnosis
   only: it would move the approved throat).
+- Cause PROVED, fix NOT landed. neck_split off (nsf): worse (crest 74, bump 14.9, yoke back neck +13 %, as C113 said).
+  HP_HPS=base (hb: the neck point on the base-of-neck ring, the parked ANSUR definition; DIAGNOSTIC): closed crest 61 ->
+  26, bump 14.8 -> 8.8, shoulder seam 0.0 % (was +1.8): the neck point 2 cm up Garrett's near-vertical neck IS the
+  cause. But hb redrafts the approved throat: styled with gc1's ops, first done button 85.9 -> 55.6 below HPS, V 47 ->
+  24, points below HPS 73 / 75 -> 46 / 44, collar crumple .23 -> .39, edge turn 57; styled lump crest 37 / bump 9.4;
+  the side crop (r2/lump_side_gc1_vs_hb.png) loses the pillow but the collar sits low and the fall rucks at the yoke
+  point. Not adoptable without Joe (approved throat) and the parked HPS research (tailor.py HP_HPS, cloth.md "## HPS
+  research (parked)").
+- No styling op removes it (smooth / relax / lay / truing-off all measured). Every lever that moves the lump moves the
+  neck point, so it is a decision for Joe: keep gc1 (lump visible, now FAILS neck_lump_rows) or reopen the neck point
+  (a base-of-neck HPS for shirts on bodies whose neck rises sharply), which reopens the throat.
+- Suite (capped): the 13 listed files 218 passed, 5 skipped (wf_simon KATs without HIFIPUSHIE_HOME), 3 xfailed, exit 0
+  (r2/tests_r2.log); test_garment_pull with HIFIPUSHIE_HOME: 16 passed, exit 0 (r2/tests_r2_home.log).

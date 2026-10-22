@@ -2,11 +2,13 @@
 
 ROUND 2 (branch claude/garrett-collar-lump, files $G/r2): Joe approved gc1's throat / V / points / button; the one fault
 is the LUMP under the fall's outer edge (side view). MEASURED: the shoulder seam (front | yoke) within 50 mm of the neck
-point bridges Garrett's neck-shoulder corner (seam 28 mm off the body at 26 mm out; bump 12-15 mm vs wf_simon 4-5;
-crest 41-70 deg vs 18-24); the yoke there is sheared +7 / -5.5 %. In the CLOSED fit already (styling changes it < 1 mm).
-Not the truing ops, not fixable by smooth / relax / lay on the styled fit. NEXT: closed-fit tests of the shoulder
-slope (ss30 / ss11), then the fix + a lump row. History: cloth.md "garrett collar round 2".
-
+point bridges Garrett's neck-shoulder corner (seam 28 mm off the body; crest 61 deg, bump 14.8 mm vs wf_simon 21 / 5.3);
+yoke sheared +7 / -5.5 %. In the CLOSED fit (styling moves it < 1 mm). CAUSE: the neck point (tape "widest", 2 cm up a
+near-vertical neck): HP_HPS=base (hb, diagnostic) takes crest 61 -> 26, bump 14.8 -> 8.8, but redrafts the approved throat
+(button 85.9 -> 55.6, V 47 -> 24). Ruled out: truing ops, shoulder slope (line), neck_split off, every styling op.
+LANDED: garment_pull.neck_lump_rows (crest <= 32 deg, bump <= 8 mm), printed by fit_garment, KAT, C154. gc1 FAILS them.
+NEXT: Joe's call: keep gc1 (lump stays) or reopen the neck point for shirts (base of neck; reopens the throat and the
+parked HPS research). Sheets: $G/r2/lump_side_gc1_vs_hb.png, hb_styled_sheet.png, hb_styled_z_sheet.png.
 
 ROUND 1 STATE: crumple FIXED on Garrett (collar crumple .37 -> .23, tips clean, 0 folded), button 1 held, concept's first
 button (85.9 vs 83). NOT fixed: the throat stays closed (band corners 0.20 x neck vs concept 0.69) and the leaves
@@ -44,9 +46,6 @@ with a *_source key: closures front first 0.043 from cfNeck (concept 83 below HP
 - Strain p99 drawn: | 14.2 % | 7.8 % (collar+stand+fronts 6.2) -- 9.6 | 9.6
 - Collar crumple p95 <= .30: | .37 | .23; tips .68 -> .066; folded 2 -> 0 -- .25 | .25
 - Open rows FAIL on gc1: corners .20 (.4-.75), V depth below tips -.15, leaf front edge 51 (25-48), edge turn 59 (32).
-
-## Sheets ($G): gc1_styled_sheet.png, gc1_styled_z_sheet.png (collar close), gc1_styled_wf_sheet.png; wf_simon
-w2_styled_sheet.png, w2_styled_z_sheet.png; before: /mnt/data/hifipushie/probe_garrett/s1_styled_sheet.png.
 
 ## Next fault (ranked)
 1. Throat closed / leaves splayed on Garrett. Leads: the band ring hold (70 deg + feather 130) and the pull's direction
