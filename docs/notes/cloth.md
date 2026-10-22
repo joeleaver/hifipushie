@@ -9890,3 +9890,8 @@ tips.py / collardims.py (reads), render.py (probe's, ZOOM=1 for collar close-ups
   the leaves are clean and read as a shirt collar (the crumple is gone), but the throat is closed (band ends meet at
   CF, no V of skin) and the leaves splay wide over the collarbones instead of standing beside the neck: not the concept.
 - wf_simon w2 (KB, all of this round's shared code): identical to w1 / the probe's w0 numbers, every row PASS.
+- Suite run 1 (13 files): 1 failed (test_shirt_collar_hugs_the_neck_at_the_back_and_sides: points 120.6 apart, want
+  130-150) / 219 passed / 3 xfailed, exit 1: the free-only stretch read as the pull / smooth default moved sp10's recipe.
+  Reverted for pull / smooth / relax (turn tol keeps it). test_garment_pull 15 passed; gc1b (gc1 re-styled) identical to
+  gc1 (crumple .24, edge 56), w4 (wf_simon) every row PASS.
+- Suite run 2 (13 files): 220 passed, 3 xfailed, 53 warnings in 706.74s (0:11:46); pytest exit 0.

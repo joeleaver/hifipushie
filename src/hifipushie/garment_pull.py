@@ -183,7 +183,9 @@ def edge_stretch(M: dict, X: np.ndarray, pieces=None, free=None) -> np.ndarray:
     """|3D length / pattern length - 1| of every same-piece edge (on `pieces`, names or indices, when given; with
     `free`, a mask (n,), only the edges with a free vertex: held cloth can't be stretched by the move, and its own strain
     masked the read: Garrett's shirt fronts below the first button, held, carry 21-24 % p99 at the tuck and side seams,
-    so the pull's read sat at 15.5 % whatever the collar did and the points ran to max_move (2026-10-22, C147))."""
+    so the pull's read sat at 15.5 % whatever the collar did (2026-10-22, C147). Used by the turn's "tol" stop only: as
+    the pull / smooth default it moved a known answer (the sp10 recipe's points 138 -> 121 apart) and changed nothing on
+    Garrett (his leaf is slack: the pull runs to max_move either way), so pull / smooth / relax keep the whole-piece read)."""
     F = np.asarray(M["F"], int)
     uv = np.asarray(M["uv"], float)
     pid = np.asarray(M["piece"])
@@ -436,7 +438,7 @@ def pull(M: dict, X: np.ndarray, held, handles: list[dict], body=None, step: flo
     if pieces is None:  # the pieces the pull can change: any with a free vertex
         pieces = sorted(set(np.asarray(M["piece"])[~held & ~gripped].tolist()))
     names = [list(M["names"])[p] if isinstance(p, (int, np.integer)) else p for p in pieces]
-    st = lambda W: stretch_p99(M, A.unweld(W), pieces, ~held)
+    st = lambda W: stretch_p99(M, A.unweld(W), pieces)
     fx_all = fixed.copy()
     for g in groups:
         fx_all[g] = True
@@ -517,7 +519,7 @@ def pull(M: dict, X: np.ndarray, held, handles: list[dict], body=None, step: flo
                          for h, w, p0, i in zip(handles, leads, P0, li)},
             "path_mm": round(path * 1000, 1),
             "stretch_p99_start": round(s0 * 100, 2), "stretch_p99_least": round(least * 100, 2),
-            "stretch_p99_end": round(stretch_p99(M, Xn, pieces, ~held) * 100, 2), "steps": steps,
+            "stretch_p99_end": round(stretch_p99(M, Xn, pieces) * 100, 2), "steps": steps,
             "step_mm": step * 1000, "tol_pct": tol * 100, "stopped": stopped,
             "gripped": {str(h["at"]): int(len(vs)) for h, (vs, _) in zip(handles, grips)},
             "dirs": {str(h["at"]): np.round(d, 3).tolist() for h, d in zip(handles, dirs)}, "pieces": names}
@@ -573,7 +575,7 @@ def smooth(M: dict, X: np.ndarray, held, pieces, lam: float = 0.5, iters: int = 
     sp = stretch_pieces  # (default: the pull's read, every piece with free cloth: one rule for both operations)
     if sp is None:
         sp = sorted(set(np.asarray(M["piece"])[~held].tolist()))
-    st = lambda W: stretch_p99(M, A.unweld(W), sp, ~held)
+    st = lambda W: stretch_p99(M, A.unweld(W), sp)
     free = ~keep
     s0 = least = st(Y)
     r0 = rr = float(np.percentile(normal_offset(Y)[1][free], 95))
@@ -636,7 +638,7 @@ def smooth_border(M: dict, X: np.ndarray, held, border: str, spline: int = 10, l
     sp = stretch_pieces
     if sp is None:
         sp = sorted(set(np.asarray(M["piece"])[~held].tolist()))
-    st = lambda W: stretch_p99(M, A.unweld(W), sp, ~held)
+    st = lambda W: stretch_p99(M, A.unweld(W), sp)
     s0 = least = st(Y)
     k0 = kk = _kink3d(Y[chw], win)
     r = 0
@@ -773,10 +775,10 @@ def relax(M: dict, X: np.ndarray, held, iters: int = HOLD_ITERS):
     held = _mask(held, len(X))
     A = FlatARAP(M, X)
     sp = sorted(set(np.asarray(M["piece"])[~held].tolist()))
-    s0 = stretch_p99(M, X, sp, ~held)
+    s0 = stretch_p99(M, X, sp)
     Xn = A.unweld(A.solve(A.weld(X), A.welded_mask(held), iters))
     Xn[held] = X[held]
-    return Xn, {"stretch_p99": [round(s0 * 100, 2), round(stretch_p99(M, Xn, sp, ~held) * 100, 2)]}
+    return Xn, {"stretch_p99": [round(s0 * 100, 2), round(stretch_p99(M, Xn, sp) * 100, 2)]}
 
 
 def _ring_angle(M: dict, X: np.ndarray, pieces, of: str = "back", center=None) -> np.ndarray:

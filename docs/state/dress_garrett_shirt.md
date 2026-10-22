@@ -12,8 +12,8 @@ with a *_source key: closures front first 0.043 from cfNeck (concept 83 below HP
 
 ## What changed (code, shared; ledger C147)
 - hold_mask("closure:front") holds every fastened pair + 8 mm of cloth round it (s1 pulled button 1 8.7 mm open).
-- Stretch reads (pull / smooth / relax / turn) count only edges with a free vertex: Garrett's HELD fronts (21-24 % at
-  the tuck / side seams) pinned the pull's read at 15.5 % and it could never stop. wf_simon result identical.
+- The turn's stretch read counts only edges with a free vertex (Garrett's HELD fronts, 21-24 %, pinned the read at
+  15.5 %). Tried for pull / smooth too: it broke the sp10 KAT (points 138 -> 121) and changed nothing on Garrett: reverted.
 - turn "tol": until it would stretch (off by default: on wf_simon it fails 4 photo rows, see below).
 - "piece:@closure" point names (the top fastened pair's vertex: a front's roll line); garment "style" edits by op kind
   (garment_pull.style_ops). Docs: cloth_tools.md. Tests: test_worn_style_holds_the_fastened_buttons (control opens the
