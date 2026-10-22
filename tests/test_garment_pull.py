@@ -386,3 +386,17 @@ def test_a_garment_edits_its_wear_style_by_op_kind():
     assert gp.style_ops(dict(g, style=False)) == []
     with pytest.raises(ValueError):
         gp.style_ops(dict(g, style={"twirl": {}}))
+
+
+def test_neck_lump_reads_tell_garretts_lump_from_a_smooth_shoulder():
+    """garrett collar r2 (Joe on gc1: "the only real issue is the lumpy part here"): the shoulder seam bridging the
+    neck-shoulder corner as a fin with a pillow (gc1, closed and styled) fails both NECK_LUMP_TARGETS rows; wf_simon's
+    smooth dome (closed and styled) passes (fixtures: round 1's saved fits, skipped where the data disk isn't there)."""
+    import pickle
+    D = Path("/mnt/data/hifipushie/garrett_collar")
+    if not (D / "gc1_closed.pkl").exists():
+        pytest.skip("needs garrett collar round 1's fits on the data disk")
+    for t, want in (("gc1_closed", "FAIL"), ("gc1_styled", "FAIL"), ("w2_closed", "PASS"), ("w2_styled", "PASS")):
+        d = pickle.load(open(D / f"{t}.pkl", "rb"))
+        rows = gp.neck_lump_rows(d["mesh"], np.asarray(d["A"], float), (d["bodyV"], d["bodyF"]))
+        assert len(rows) == 2 and all(r["status"] == want for r in rows), (t, rows)

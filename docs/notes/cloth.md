@@ -9958,3 +9958,12 @@ Scripts + files: /mnt/data/hifipushie/garrett_collar/r2/ (run.sh = this worktree
   freed, band / collar held): smooth near the neck points (sm1: 4 rounds, nothing; sa / sb lam 0.9: crest WORSE
   73-86 deg), lay (pressing the cloth to the body until it would stretch, lay1: 2 rounds then stretch), relax 40 (rx1:
   nothing): the shape is locked by the neckline + the yoke's cut, not slack a hand could smooth.
+- Step 3 (the measure, landed before the fix so the lump is caught without Joe's eye): garment_pull.neck_lump_reads /
+  neck_lump_rows (NECK_LUMP_TARGETS): the shoulder seam's CREST (turn between the cloth normals either side of each
+  piece:hps..shoulder seam, oriented off the body, collar / stand faces left out, median 5-35 mm) <= 32 deg and the body
+  cloth BUMP (off-body distance minus its 30 mm mean, max within 60 mm of the neck point) <= 8 mm. gc1 closed 61 / 14.8,
+  styled 62 / 14.7 (FAIL); wf_simon closed 21 / 5.3, styled 7 / 5.7 (PASS); ss11 50 / 12.5; nt1 70 / 15.3. fit_garment
+  prints the rows (server). Test test_neck_lump_reads_tell_garretts_lump_from_a_smooth_shoulder. Ledger C154.
+- Fit levers tried for the cause: shoulderSlope 10.9 (the line, ss11: seam +6.5 %, bump 12.5, no better); 30 deg
+  (ss30) breaks the draft (front.L has no placketTopFold1). Running: neck_split off (nsf), HP_HPS=base (hb, diagnosis
+  only: it would move the approved throat).

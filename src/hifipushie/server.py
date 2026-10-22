@@ -2824,6 +2824,15 @@ def fit_garment(name: str, garment: str, views: list[str] | None = None, size: i
                         f"    {r['status']} {r['id']} | {r['target']} | {r['ours']}\n" for r in gpl.open_collar_rows(res["mesh"], X))
                 except (KeyError, ValueError) as e:
                     style_txt += f"  open collar reads: n/a ({e})\n"
+    try:  # THE NECK-SHOULDER LUMP (garrett collar r2): the shoulder seam's crest and the body cloth's bump by the neck point
+        from . import garment_pull as gpl
+        bvf = (np.asarray(res["body"].V, float), np.asarray(res["body"].T, int))
+        nl = gpl.neck_lump_rows(res["mesh"], np.asarray(X, float), bvf)
+        if nl:
+            style_txt += "  neck-shoulder lump reads (item | target | ours):\n" + "".join(
+                f"    {r['status']} {r['id']} | {r['target']} | {r['ours']}\n" for r in nl)
+    except (KeyError, ValueError, AttributeError) as e:
+        style_txt += f"  neck-shoulder lump reads: n/a ({e})\n"
     validated = cc.form_validated()  # the gate's one form switch (override or pattern_form's passing record)
     how = "assembled on the dress form (pattern_form)"
     under = None

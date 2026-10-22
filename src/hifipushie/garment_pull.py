@@ -1238,6 +1238,88 @@ def open_collar_reads(M: dict, X: np.ndarray) -> dict:
             "collar + band mirror p95 (mm)": round(float(np.percentile(mir, 95) * 1000), 1)}
 
 
+# THE NECK-SHOULDER LUMP (garrett collar round 2, 2026-10-22; Joe on gc1: "the only real issue is the lumpy part here",
+# the side view under the fall's outer edge). What it was: the shoulder seam (front | yoke) within ~50 mm of the neck
+# point standing off the body as a ridge (a fin in a horizontal section) with a pillow of front in front of it: the seam
+# bridged Garrett's neck-shoulder corner (neck point 2 cm up a near-vertical neck, the shoulder 40 mm below it 25 mm
+# out) and the yoke there was sheared +7 / -5.5 %. Already in the CLOSED fit; the style changed it < 1 mm. Two reads:
+# the CREST (the turn between the cloth's normals either side of a neck point's shoulder seam, both oriented off the
+# body, median over 5-35 mm from the neck point: a flat seam ~0, a fin 60+) and the BUMP (the body cloth's distance off
+# the body minus its mean over 30 mm, the max within 60 mm of the neck point: a smooth stand-off cancels, a lump stays).
+NECK_LUMP_TARGETS = {
+    "neck-shoulder seam crest (deg)": (0.0, 32.0, "wf_simon closed 21, styled 7; gc1 61 / 62"),
+    "body cloth bump at the neck point (mm)": (0.0, 8.0, "wf_simon 5.3 / 5.7; gc1 14.8 / 14.7"),
+}
+
+
+def neck_lump_reads(M: dict, X: np.ndarray, body) -> dict:
+    """{item: value} for NECK_LUMP_TARGETS: every piece point "hps" / "hps.m" with a "shoulder" / "shoulder.m" on the
+    same piece is a neck point with its shoulder seam (piece:hps..shoulder); crest and bump read round each, the worst
+    kept. {} when the garment has no such points or no body."""
+    BV, BF = _body_vf(body) if body is not None else (None, None)
+    if BV is None:
+        return {}
+    X = np.asarray(X, float)
+    F = np.asarray(M["F"], int)
+    pid = np.asarray(M["piece"])
+    nm = list(M["names"])
+    P = M["points"]
+    fn = np.cross(BV[BF[:, 1]] - BV[BF[:, 0]], BV[BF[:, 2]] - BV[BF[:, 0]])
+    vn = np.zeros_like(BV)
+    for k in range(3):
+        np.add.at(vn, BF[:, k], fn)
+    vn /= np.linalg.norm(vn, axis=1)[:, None] + 1e-12
+    bt = cKDTree(BV)
+    _, j = bt.query(X)
+    sd = ((X - BV[j]) * vn[j]).sum(1)
+    cn = np.cross(X[F[:, 1]] - X[F[:, 0]], X[F[:, 2]] - X[F[:, 0]])
+    fc = X[F].mean(1)
+    _, jf = bt.query(fc)
+    cn *= np.sign((cn * (fc - BV[jf])).sum(1))[:, None]  # (oriented off the body: winding-free)
+    fp = pid[F[:, 0]]
+    ft = cKDTree(fc)
+    made = [i for i, n_ in enumerate(nm) if n_.startswith(("collar", "stand"))]
+    crest, bump = [], []
+    for k, v in P.items():
+        piece, pt = k.split(":", 1)
+        if pt not in ("hps", "hps.m") or f"{piece}:{pt.replace('hps', 'shoulder')}" not in P:
+            continue
+        ch = border_chain(M, f"{piece}:{pt}..{pt.replace('hps', 'shoulder')}")
+        Q = X[ch]
+        L = np.r_[0, np.cumsum(np.linalg.norm(np.diff(Q, axis=0), axis=1))]
+        turns = []
+        for d_ in np.arange(0.005, 0.0351, 0.005):
+            ii = np.asarray(ft.query_ball_point(Q[int(np.argmin(np.abs(L - d_)))], 0.012), int)
+            ii = ii[~np.isin(fp[ii], made)]  # (the collar's fall lying over the seam is not the seam)
+            ps, cnt = np.unique(fp[ii], return_counts=True)
+            if len(ps) < 2:
+                continue
+            a, b = (cn[ii[fp[ii] == q]].sum(0) for q in ps[np.argsort(-cnt)][:2])
+            turns.append(np.degrees(np.arccos(np.clip(a @ b / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-12), -1, 1))))
+        if turns:
+            crest.append(float(np.median(turns)))
+        sewn = set(fp[np.asarray(ft.query_ball_point(X[v], 0.03), int)].tolist())
+        reg = np.where(np.isin(pid, list(sewn)) & (np.linalg.norm(X - X[v], axis=1) < 0.06))[0]
+        reg = reg[~np.isin(pid[reg], made)]
+        if len(reg) > 10:
+            nb = cKDTree(X[reg]).query_ball_point(X[reg], 0.03)
+            bump.append(float(max(sd[i] - sd[reg[n]].mean() for i, n in zip(reg, nb))))
+    out = {}
+    if crest:
+        out["neck-shoulder seam crest (deg)"] = round(max(crest), 0)
+    if bump:
+        out["body cloth bump at the neck point (mm)"] = round(max(bump) * 1000, 1)
+    return out
+
+
+def neck_lump_rows(M: dict, X: np.ndarray, body) -> list:
+    """item | target | ours | PASS / FAIL rows for NECK_LUMP_TARGETS (fit_garment prints them for the closed fit and
+    the worn one)."""
+    r = neck_lump_reads(M, X, body)
+    return [{"id": k, "ours": r[k], "target": f"{lo:g}-{hi:g} ({src})", "status": "PASS" if lo <= r[k] <= hi else "FAIL"}
+            for k, (lo, hi, src) in NECK_LUMP_TARGETS.items() if k in r]
+
+
 def open_collar_rows(M: dict, X: np.ndarray) -> list:
     """item | target | ours | PASS / FAIL rows for OPEN_COLLAR_TARGETS (fit_garment prints them for a shirt worn open)."""
     r = open_collar_reads(M, X)
