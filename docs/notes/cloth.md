@@ -9886,3 +9886,6 @@ draft.py = a 15 s draft without placement, mk_tc.py builds model tc_tess = pt_te
   Sheets: tess_coat_collar/sheet_c1_clay.png, sheet_c1_diag.png, c1_neckzoom.png. Next: the torn fold rows.
 - Joe's ruling (via coordinator, 2026-10-22): under-layer show-through is not a composing fault (C151): fit_garment's
   next step no longer lists a pierce as a pattern fix (next_steps.after_fit: INFO line); sheets render the coat alone.
+- Checks: wf_simon and sh_garrett closed shirt fits (on_form, repo defaults) main vs this branch: max 0.000 mm
+  (tess_coat_collar/ab.log). Garment tests (pattern_form, cloth, seams, cloth_made, collar, pattern_gate, closures,
+  codified, shirt_spike_rules, tailoring, cloth_layers) under capped: 207 passed, 3 xfailed, pytest exit 0.
