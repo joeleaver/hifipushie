@@ -5,14 +5,15 @@ line plumb). Put "the reference jacket is worn open, unbuttoned" in every review
 Renders show the OPEN, ARRANGED jacket only; the closed fit is internal. Show-through of a COVERED under-layer is not a
 fault (C153), but SEEN under-layer cloth renders exactly as approved (C158). The shirt is gc1 (workspace gc_garrett,
 /mnt/data/hifipushie/garrett_collar/gc1_styled.pkl), used AS IS; its bumpy placket is gc1's own (not a jacket fault).
-STATE: round 28 in progress. Step 1 DONE: the cull (cloth_layers.hidden) is by VISIBILITY in every judged view (C158);
-r27sc's "thrashed shirt" was the cull: now the shirt collar renders as CULL=0. Step 2 (Joe's belly crumple) measured,
-cause found (the release, not the closed fit), NOT solved; r28h (plumb hang) kept: crumple p95 14.5 -> 12.4 mm.
-Step 3 (collar at the neck, lapel / gorge) in progress on r28hc. Nothing approved. $0 spent.
-NEXT: (1) collar at the neck on r28hc with the fixed cull (funnel? the shirt collar pokes through the jacket collar:
-467 verts > 1 mm outside); (2) crumple: a pattern lever (less lap / width below the break for an always-open front) or
-a design call; (3) cloth._worn_levels stray start vertex on graded meshes (fix27.py); garment_pull layer floor (C157).
-
+STATE: round 28 done (handover). Step 1 DONE: the cull (cloth_layers.hidden) is by VISIBILITY in every judged view
+(C158); r27sc's "thrashed shirt" was the cull: the shirt collar now renders as CULL=0. Step 2 (Joe's belly crumple):
+measured, cause found (the release's 60-80 mm width excess, C159), NOT solved; r28h (plumb hang) kept: p95 14.5 -> 12.4.
+Step 3: the collar still stands up the neck (tube / funnel, worst in 3/4), lapels / V narrow: measured, not changed.
+Suite (14 files + new KATs, capped): exit 0, 249 passed, 5 skipped, 3 xfailed. Nothing approved. $0 spent.
+NEXT: (1) the collar at the neck: lower / roll the jacket collar (CB top 47 above HPS, shirt shows 5 mm; tell 10-20) and
+widen lapel / gorge (lapel_outer_150 110 / 111 vs 127 / 134; V at 200 168 vs 237): pattern -> closed fit -> release;
+(2) crumple: a pattern lever (less lap / front width below the break for an always-open front) or Joe's call;
+(3) cloth._worn_levels stray start vertex on graded meshes (fix27.py); garment_pull layer floor (C157).
 ## Method
 Closed fit: r27a0 (round 27: pattern_form.assemble over gc1, top button fastened, FORM_REFINE_LAPEL, no extra refine).
 Release + arrange (round 28 base r28h): g25.py arrange=1 keep=1 pull=100 side=1 hang=plumb (local ZOZO). Cull:
@@ -40,6 +41,9 @@ Release: BASE=$FR27/asm_r27a0.pkl ./arr.sh <tag> arrange=1 keep=1 pull=100 side=
 placed=/mnt/data/hifipushie/dress_garrett/fit_round15/placed_5beb81fe9475.pkl [edge=ends|xz] [side=top] [facing=m].
 Cull: BELT=50 ./run.sh recull28.py <asm> <out>. Render: ROUT=$FR28 RUNNER=bin/capped ./run.sh render23.py <asm> <tag>
 <views>. Reads: crumple28.py, where28.py, excess28.py, ontop28.py, sideline.py, flaps25.py, belly.py (crop).
+
+## Collar (collar28.py; neck pieces held through the release: r27a0 = r28h)
+CB / az45 / side: jacket top 47 / 40 / 23 mm above HPS, shirt 52 / 47 / 34 (shows 5 / 7 / 11), jacket r 70 / 70 / 77.
 
 ## Dead ends (one line each)
 - Gravity substitutes; release neck unheld / 6 s settle / friction 0; fronts' crossing fixes (see cloth.md r20-r25).

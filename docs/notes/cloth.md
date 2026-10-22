@@ -10044,3 +10044,12 @@ held above the waist only: 12.0 / 10.7, 36 / 37: no gain. r28f r28h + a fused fa
 "a tailored facing runs to the hem"; the pattern's facing stops at the break): 12.4 / 11.5: no gain. Not solved:
 the opened front's width excess is geometric; what's left to try is the pattern (less lap / front width below the
 break for an always-open jacket, a cutaway) or letting the side seams swing (r26: bulged round the sides, seat 492).
+Step 3, the collar at the neck, judged with the fixed cull (r28hc; check/upper_front_r28hc, upper_three_r28hc,
+lapeltop.{L,R}_r28hc). With the cull fixed the jacket collar no longer looks torn, but it still STANDS UP THE NECK as a
+funnel (worst in the three-quarter view, far side). Read (collar28.py; the neck pieces are held through the release, so
+r27a0 = r27s = r28h): jacket collar top above HPS CB 47 / az45 40 / side 23 mm, the shirt's 52 / 47 / 34: the shirt
+collar shows 5 / 7 / 11 mm (tell 10-20); jacket collar radius at its top 70 / 70 / 77 vs 67 / 67 / 71 at HPS (it hugs
+the shirt collar, no flare: a tube, not a funnel in plan). Lapel / gorge vs the concept (m10 LAPEL_PICKS, mm off CF at
+mm below HPS): concept tip 148 at 93, 127 at 148, 110 at 261; ours lapel_outer_150 110 / 111 (-17 / -23), V width at
+200 168 (concept 237). Not changed this round: it is the closed fit's pattern (collar stand height / roll, gorge line,
+lapel width): a pattern + closed fit + release cycle; next session.
