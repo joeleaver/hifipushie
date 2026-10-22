@@ -47,7 +47,7 @@ Test subjects: examples/troll.json (reference), workspace/goblin, fox.
   (docs/notes/gnm_atlas.md), `faceshapes.py` (docs/notes/faceshapes.md), headbody (docs/notes/headbody.md).
 - Skin: `skin_read.py`, `skin_folds.py`, `skin_project.py` (docs/notes/skin.md). Hair: `hair.py`, `hair_flow.py`,
   `hair_cards.py`, `hair_cap.py` (docs/notes/hair.md). Cloth: `cloth.py`, `pattern.py`, `tailor.py`, `freesewing.py`
-  (docs/notes/cloth.md); `garment_pull.py` sets a fitted garment by pulling until it would stretch (C142).
+  (docs/notes/cloth.md); `garment_pull.py` styles a fitted garment by pull / smooth until it would stretch (C142-3).
 - Export: `asset.py` + `blender_asset.py` (docs/notes/asset.md, game_ready.md), `rig.py` (docs/notes/rig.md),
   `retopo.py` (docs/notes/retopo.md), `budgets.py` + budgets.json (docs/notes/budgets.md).
 - `resources.py` (docs/notes/resources.md); `server.py` MCP tools (mcp 2.x MCPServer; every tool wrapped by

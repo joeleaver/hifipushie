@@ -1,25 +1,36 @@
-"""PULL UNTIL IT WOULD STRETCH (C142; Joe 2026-10-21): how people put clothes on and set them, as a tool. "If I were
+"""PULL AND SMOOTH UNTIL IT WOULD STRETCH (C142 / C143; Joe 2026-10-21): how people put clothes on and set them, as
+tools. "If I were
 hand-editing, I'd try to just pull the point out and to the side, and let it go as far as it could without
 stretching"; "Think of men pulling their shirts down along the G-line, popping cuffs, women pulling down skirts. It's
 not a gravity simulation, it's a flatten-this-along-interesting-geometry without stretching it much thing, and it's how
-humans put on clothes." A fitted garment is posed by DRAGGING handles, never by pinning them at guessed coordinates or
-by tuning stiffness.
+humans put on clothes." "There's likely a 'smooth' operation ... those are the two main operations to styling the
+clothing one is wearing." A fitted garment is posed by DRAGGING handles and smoothing, never by pinning handles at
+guessed coordinates or by tuning stiffness. `style(M, X, held, ops)` runs a SEQUENCE of pull / turn / smooth ops
+(earlier grips held where they ended; gripping one again picks it up).
 
 `pull(M, X, held, handles, body=None, ...)` -> (X_new, info):
   - M: the fitted garment's mesh (pattern_form.on_form's "mesh": F, uv (each piece's flat pattern, m), piece, names,
     sew (pairs of vertices sewn together), points ({"piece:point": vertex})); X: its vertex positions (n, 3);
   - held: vertices that don't move (a mask (n,) or indices): what the other hand / the body holds still (the back,
     the sleeves, the fronts below the first fastened button, a tucked waist ...);
-  - handles: [{"at": ..., "dir": ..., "side_from": vertex | "piece:point" (optional)}], dragged TOGETHER (one
-    distance for all: a symmetric pull keeps the mirror). "at" = what the hand grips, moved as one: a vertex,
-    "piece:point", "piece:a..b" (the piece's border from a to b: a hem, a cuff's edge, a front edge) or a list of
-    those. "dir" is a vector [x, y, z], a name, or a weighted mix {"side": 1, "out": 0.3, "up": 0.3} (each named
-    unit vector x its weight, the sum normalised):
+  - handles: [{"at": ..., "dir": ..., "side_from"?, "patch"?, "turn"?}], dragged TOGETHER (one distance for all:
+    a symmetric pull keeps the mirror). "at" = what the hand grips (`grip`): a vertex or "piece:point" grabs an AREA,
+    the cloth within `patch` (PATCH, 25 mm on its pattern), and the patch TURNS with the cloth (each step the point is
+    dragged alone, the patch's start shape fitted rigidly (Kabsch) onto that solution and pinned, solved again: one
+    vertex dragged pinched and twisted the collar's tip, 15-18 % / 60-80 deg; a rigid patch folded the cloth over at
+    its edge, 18 / 28 faces); "piece:a..b" (the piece's border from a to b: a hem, a cuff's edge, a front edge) or a
+    list moves as one. "dir" is a vector [x, y, z], a name, or a weighted mix {"side": 1, "out": 0.3, "up": 0.3}
+    (each named unit vector x its weight, the sum normalised):
       "side": away from centre front / back (x = 0), the side taken from `side_from` (a landmark well off CF: a
               hinge, a neck point), else from the handle (a group's centroid); refused when that is within SIDE_MIN of
               x = 0 (where a band's two ends cross, the side of a point AT CF flips: the shirt spike's mirror bugs);
       "out": the body's outward normal at the nearest body vertex (needs `body` = (V, F) or an object with V and F/T);
-      "up" / "down": +z / -z.
+      "up" / "down": +z / -z;
+      "easy" or {"easy": base}: the cloth chooses: each step probes 9 directions round the base (default "side"),
+              tilted toward the body normal / up by 0 / 35 / 70 deg, and takes the least stretch (~9x the time; on the
+              shirt's points it went 81 mm with stretch falling). A tangent "along the plane" pulls the leaf taut (the
+              shirt's point went 12 mm): a held leaf moves by swinging ACROSS its plane. Don't bake in out / up weights:
+              up 0.3 put the shirt's points too high (Joe).
   - body: only for "out" (the solve itself ignores the body: no push-out; it dented the shirt's band).
 
 The solve: per-face as-rigid-as-possible against the FLAT PATTERN (Liu et al. 2008 local / global: each triangle keeps
@@ -42,13 +53,15 @@ Stretch = p99 over same-piece edges of |3D length / pattern length - 1|, on `pie
 that is neither held nor a handle: held pieces don't move and would dilute the read).
 
 info: {"moved_mm": {handle: mm}, "stretch_p99_start" / "_least" / "_end" (%), "steps", "stopped" ("stretch" |
-"max_move"), "dirs" (unit vectors), "pieces"}. `turn` (below) turns grips about a line first (a band end swung open,
-a cuff popped); `hold_mask` builds `held`; `crumple` reads smoothness; `vertices` resolves what a handle grips.
+"max_move"), "path_mm", "gripped", "dirs" (unit vectors, the last step's), "pieces"}. `turn` turns grips about a line
+(a band end swung open, a cuff popped); `smooth` flattens ripples; `hold_mask` builds `held`; reads: `crumple`,
+`tip_read` (a point's tip: crumple, stretch max, twist), `folded` (folded-over faces near a point).
 
 Known answers (tests/test_garment_pull.py): a slack strip pinned at one end, its free end pulled, stops within one
-step of where its pattern length runs out; wf_simon's Simon shirt, closed fit, collar points pulled out / side / up,
-after its band ends turned 30 deg about Simon's hinges, gives the shirt spike's y3 reads (points 147 apart, 63 / 59
-below HPS, collar crumple p95 0.28 mm; y3: 147, 63 / 59, 0.28).
+step of where its pattern length runs out (and two pulls in a sequence go as far as one); a rippled sheet smooths
+without stretching; wf_simon's Simon shirt, closed fit: band ends turned 30 deg about Simon's hinges, collar points
+pulled out / side / up (25 mm turning patches), collar + stand smoothed: points 142 apart, 64 / 60 below HPS, collar
+crumple p95 0.28 mm, tips as clean as the closed collar's (spike y3: 147, 63 / 59, 0.28).
 """
 from __future__ import annotations
 
@@ -64,6 +77,9 @@ ITERS = 12  # local / global rounds per step, from where the cloth was (few on p
 RELAX_ITERS = 20  # before a pull / turn: the free cloth relaxed against the pattern
 SETTLE_ITERS = 10  # after the pull: the cloth settled with the handles held where they stopped
 CONFIRM_ITERS = 120  # a step that reads over tol is re-solved up to this many more rounds before the pull stops there
+TURN_ROUNDS = 2  # a turning grip: fit-and-pin rounds per step
+PATCH = 0.025  # m (pattern): the cloth a point handle grabs round the point (u25)
+PROBE_ITERS = 4  # dir "easy": rounds per probed direction
 CONVERGED = 1e-5  # m: the confirm stops early once no vertex moves more than this in a round
 SIDE_MIN = 0.015  # m: a "side" is taken only from a point at least this far off x = 0
 _HE = ((0, 1, 2), (1, 2, 0), (2, 0, 1))
@@ -254,75 +270,334 @@ def direction(d, p: np.ndarray, side_x: float | None = None, body=None) -> np.nd
     return v / nv
 
 
-def pull(M: dict, X: np.ndarray, held, handles: list[dict], body=None, step: float = STEP, tol: float = TOL,
-         max_move: float = MAX_MOVE, iters: int = ITERS, relax_iters: int = RELAX_ITERS,
-         settle_iters: int = SETTLE_ITERS, confirm: int = CONFIRM_ITERS, pieces=None, log=None):
-    """Drag `handles` until the cloth would stretch (module docstring). Returns (X_new, info)."""
-    X = np.asarray(X, float)
-    n0 = len(X)
+def _mask(held, n0):
     held = np.asarray(held)
     if held.dtype != bool:
         hm = np.zeros(n0, bool)
         hm[held.astype(int)] = True
         held = hm
+    return held.copy()
+
+
+def grip(M: dict, h: dict, held=None) -> tuple[np.ndarray, int]:
+    """(vertices, lead) a handle grips. A single point grabs the cloth within `patch` of it on its piece's pattern
+    (default PATCH: a hand grabs an AREA; one vertex dragged pinched and twisted the collar's tip, C142); a border or a
+    list grips those vertices (patch 0 unless given). The lead = the point itself, or the gripped vertex nearest the
+    grip's middle on the pattern. Held cloth inside a patch is left out (the lead must be free). A point's patch TURNS
+    with the cloth each step (handle "turn", default on for a point); a border / list moves as one (the hand holds its
+    line: a turning border tilted the strip's end in-plane and stopped it 7 mm short)."""
+    vs = vertices(M, h["at"])
+    uv = np.asarray(M["uv"], float)
+    pid = np.asarray(M["piece"])
+    patch = float(h.get("patch", PATCH if len(vs) == 1 else 0.0))
+    if len(vs) == 1:
+        lead = int(vs[0])
+    else:
+        c = uv[vs].mean(0)
+        lead = int(vs[np.argmin(np.linalg.norm(uv[vs] - c, axis=1))])
+    if patch > 0:
+        near = np.zeros(len(uv), bool)
+        for v in vs:
+            near |= (pid == pid[v]) & (np.linalg.norm(uv - uv[v], axis=1) <= patch)
+        vs = np.where(near)[0]
+    if held is not None:
+        if held[lead]:
+            raise ValueError(f"handle {h['at']!r} grips held cloth (free its piece, or hold less)")
+        vs = vs[~held[vs]]
+    return np.unique(vs), lead
+
+
+def _kabsch(P0: np.ndarray, Q: np.ndarray):
+    """Proper rotation R and t with R P0 + t ~ Q (det +1: it can't mirror)."""
+    a0, b0 = P0.mean(0), Q.mean(0)
+    U, _, Vt = np.linalg.svd((P0 - a0).T @ (Q - b0))
+    d = np.sign(np.linalg.det(Vt.T @ U.T))
+    R = Vt.T @ np.diag([1.0, 1.0, d]) @ U.T
+    return R, b0 - R @ a0
+
+
+def _easy_dir(A, Y, fixed, leads, base, body, step, st, probe_iters):
+    """'Let the cloth choose' (shirt spike w25): candidates = each handle's base direction tilted toward the body
+    normal (+-0 / 35 / 70 deg) or up (+-35 / 70 deg), every handle the same tilt (a symmetric pull stays mirrored);
+    each probed with a short solve, the least-stretch one taken for this step."""
+    best = None
+    for ax in ("n", "u"):
+        for ang in (0, 35, -35, 70, -70):
+            if (ax == "u" and ang == 0) or (ax == "n" and body is None and ang):
+                continue
+            cand, T, fx = [], Y.copy(), fixed.copy()
+            for w, b in zip(leads, base):
+                o = body_normal_at(body, Y[w]) if ax == "n" and body is not None else np.array([0.0, 0.0, 1.0])
+                o = o - (o @ b) * b
+                o /= np.linalg.norm(o) + 1e-12
+                d = np.cos(np.radians(ang)) * b + np.sin(np.radians(ang)) * o
+                cand.append(d)
+                T[w] = Y[w] + step * d
+                fx[w] = True
+            s = st(A.solve(T, fx, probe_iters))
+            if best is None or s < best[0]:
+                best = (s, cand)
+    return best[1]
+
+
+def pull(M: dict, X: np.ndarray, held, handles: list[dict], body=None, step: float = STEP, tol: float = TOL,
+         max_move: float = MAX_MOVE, iters: int = ITERS, relax_iters: int = RELAX_ITERS,
+         settle_iters: int = SETTLE_ITERS, confirm: int = CONFIRM_ITERS, turn_rounds: int = TURN_ROUNDS,
+         probe_iters: int = PROBE_ITERS, pieces=None, log=None):
+    """Drag `handles` until the cloth would stretch (module docstring). Returns (X_new, info)."""
+    X = np.asarray(X, float)
+    held = _mask(held, len(X))
     if not handles:
         raise ValueError("handles: at least one {\"at\": ..., \"dir\": ...}")
     A = FlatARAP(M, X)
     Y = A.weld(X)
-    groups = [np.unique(A.inv[vertices(M, h["at"])]) for h in handles]  # welded vertices each handle grips
-    hv = np.concatenate([vertices(M, h["at"]) for h in handles])
-    bad = [str(h["at"]) for h in handles if held[vertices(M, h["at"])].any()]
-    if bad:
-        raise ValueError("a handle grips held cloth: " + ", ".join(bad))
+    grips = [grip(M, h, held) for h in handles]
+    groups = [np.unique(A.inv[vs]) for vs, _ in grips]  # welded vertices each handle grips
+    leads = [int(A.inv[ld]) for _, ld in grips]
+    li = [int(np.where(g == w)[0][0]) for g, w in zip(groups, leads)]
+    turning = [bool(h.get("turn", len(vertices(M, h["at"])) == 1)) and len(g) > 1 for h, g in zip(handles, groups)]
+    gripped = np.zeros(len(X), bool)
+    for vs, _ in grips:
+        gripped[vs] = True
     fixed = A.welded_mask(held)
-    for g in groups:
-        fixed[g] = True
     if pieces is None:  # the pieces the pull can change: any with a free vertex
-        free = ~held
-        free[hv] = False
-        pieces = sorted(set(np.asarray(M["piece"])[free].tolist()))
+        pieces = sorted(set(np.asarray(M["piece"])[~held & ~gripped].tolist()))
     names = [list(M["names"])[p] if isinstance(p, (int, np.integer)) else p for p in pieces]
     st = lambda W: stretch_p99(M, A.unweld(W), pieces)
-    Y = A.solve(Y, fixed, relax_iters)
+    fx_all = fixed.copy()
+    for g in groups:
+        fx_all[g] = True
+    Y = A.solve(Y, fx_all, relax_iters)
     s0 = st(Y)
-    dirs = []
-    for h, g in zip(handles, groups):
-        sx = None
-        if h.get("side_from") is not None:
-            sx = float(X[vertex(M, h["side_from"])][0])
-        elif len(g) > 1:
-            sx = float(Y[g, 0].mean())
-        dirs.append(direction(h.get("dir", "side"), Y[g].mean(0), sx, body))
-    pos = [Y[g].copy() for g in groups]
-    moved, good, steps, stopped, least = 0.0, Y, 0, "max_move", s0
-    while moved + step <= max_move + 1e-9:
-        T = good.copy()
-        for g, p, d in zip(groups, pos, dirs):
-            T[g] = p + (moved + step) * d  # (a handle moves as one: the hand grips it)
-        Yt = A.solve(T, fixed, iters)
+    easy, base = [], []
+    for h, g, w in zip(handles, groups, leads):
+        d = h.get("dir", "side")
+        easy.append(d == "easy" or (isinstance(d, dict) and "easy" in d))
+        if easy[-1]:
+            d = "side" if d == "easy" else d["easy"]
+        sx = float(X[vertex(M, h["side_from"])][0]) if h.get("side_from") is not None else \
+            float(Y[g, 0].mean()) if len(g) > 1 else None
+        base.append(direction(d, Y[w], sx, body))
+    if any(easy) and not all(easy):
+        raise ValueError("'easy' is for every handle of a pull or none (they move together)")
+    P0 = [Y[g].copy() for g in groups]  # each grip's shape at the start: fitted back on (turned) every step
+    tgt = [Y[w].copy() for w in leads]
+    dirs = list(base)
+    good, steps, stopped, least, path = Y, 0, "max_move", s0, 0.0
+    while path + step <= max_move + 1e-9:
+        if all(easy) and easy:
+            dirs = _easy_dir(A, good, fixed, leads, base, body, step, st, probe_iters)
+        tg = [t + step * d for t, d in zip(tgt, dirs)]
+        T, fx = good.copy(), fixed.copy()
+        for g, p0, i, w, t, tu in zip(groups, P0, li, leads, tg, turning):
+            if tu:
+                T[w] = t
+                fx[w] = True
+            else:  # (a border / list grip moves as one: the hand holds its line)
+                T[g] = good[g] + (t - good[w])
+                fx[g] = True
+        Yt = A.solve(T, fx, iters)
+        # TURNING GRIP (C142): the lead dragged alone, then each grip's start shape fitted rigidly onto that solution
+        # (it turns with the cloth: a rigid translated patch folded the cloth over at its edge), the lead on its
+        # target, the grip pinned, solved again
+        fx2 = fx.copy()
+        for _ in range(turn_rounds if any(turning) else 0):
+            T2 = Yt.copy()
+            for g, p0, i, t, tu in zip(groups, P0, li, tg, turning):
+                if not tu:
+                    continue
+                R, tr = _kabsch(p0, Yt[g])
+                Pn = p0 @ R.T + tr
+                T2[g] = Pn + (t - Pn[i])
+                fx2[g] = True
+            Yt = A.solve(T2, fx2, iters)
         s = st(Yt)
         if log:
-            log(f"pull step {steps + 1}: {(moved + step) * 1000:.0f} mm, stretch p99 {s * 100:.2f} %")
+            log(f"pull step {steps + 1}: {path * 1000 + step * 1000:.0f} mm, stretch p99 {s * 100:.2f} %")
         confirmed = s > least + tol and confirm
         if confirmed:  # (an unconverged solve on a big move reads stretch the cloth doesn't need: the converged read
             # decides; the few-rounds state is kept, so the cloth still moves as little as it must)
-            s = st(A.solve(Yt, fixed, confirm, eps=CONVERGED))
+            s = st(A.solve(Yt, fx2, confirm, eps=CONVERGED))
         if s > least + tol:
             stopped = "stretch"
             break
-        moved, good, steps = moved + step, Yt, steps + 1
+        good, steps, tgt, path = Yt, steps + 1, tg, path + step
         if not confirmed:  # (the least is read the same way every step: a converged read is lower)
             least = min(least, s)
-    Y = A.solve(good, fixed, settle_iters)
+    fx_end = fixed.copy()
+    for g in groups:
+        fx_end[g] = True
+    Y = A.solve(good, fx_end, settle_iters)
     Xn = A.unweld(Y)
     Xn[held] = X[held]  # (held vertices exactly where they were: welding averages a held vertex with its free twin)
-    info = {"moved_mm": {str(h["at"]): round(float(np.linalg.norm(Y[g] - p, axis=1).mean()) * 1000, 1)
-                         for h, g, p in zip(handles, groups, pos)},
+    info = {"moved_mm": {str(h["at"]): round(float(np.linalg.norm(Y[w] - p0[i])) * 1000, 1)
+                         for h, w, p0, i in zip(handles, leads, P0, li)},
+            "path_mm": round(path * 1000, 1),
             "stretch_p99_start": round(s0 * 100, 2), "stretch_p99_least": round(least * 100, 2),
             "stretch_p99_end": round(stretch_p99(M, Xn, pieces) * 100, 2), "steps": steps,
             "step_mm": step * 1000, "tol_pct": tol * 100, "stopped": stopped,
+            "gripped": {str(h["at"]): int(len(vs)) for h, (vs, _) in zip(handles, grips)},
             "dirs": {str(h["at"]): np.round(d, 3).tolist() for h, d in zip(handles, dirs)}, "pieces": names}
     return Xn, info
+
+
+def smooth(M: dict, X: np.ndarray, held, pieces, lam: float = 0.5, iters: int = 6, rounds: int = 20,
+           tol: float = TOL, stretch_pieces=None):
+    """SMOOTH (C143; Joe: "a 'smooth' operation ... in conjunction with the 'pull' operation ... those are the two
+    main operations to styling the clothing one is wearing"): a hand flattening ripples. In the brushed `pieces`
+    (minus `held`) alternate (a) fair: each vertex `lam` of the way toward its one-ring centroid ALONG ITS NORMAL only,
+    (b) restore: the flat-pattern solve (`iters` rounds) with everything outside the brush held. Stops when the stretch
+    (on `stretch_pieces`; default the pull's read, every piece with free cloth) would exceed the least so far + `tol`
+    (the pull's rule) or the roughness (p95 of the fair's normal distance, the
+    crumple read) stops dropping. Shirt spike sm1: collar + stand roughness p95 0.67 -> 0.32 mm, stretch +0.3 pt.
+    Returns (X_new, info: rounds, rough p95 start / end (mm), stretch p99 start / end (%))."""
+    X = np.asarray(X, float)
+    held = _mask(held, len(X))
+    A = FlatARAP(M, X)
+    Y = A.weld(X)
+    brush = A.welded_mask(np.isin(np.asarray(M["piece"]), _piece_ids(M, pieces)))
+    keep = ~brush | A.welded_mask(held)
+    WF = A.WF
+    Ew = np.unique(np.sort(np.r_[WF[:, [0, 1]], WF[:, [1, 2]], WF[:, [2, 0]]], 1), axis=0)
+    cnt = np.zeros(A.n)
+    np.add.at(cnt, Ew[:, 0], 1)
+    np.add.at(cnt, Ew[:, 1], 1)
+
+    def normal_offset(Yc):
+        fn = np.cross(Yc[WF[:, 1]] - Yc[WF[:, 0]], Yc[WF[:, 2]] - Yc[WF[:, 0]])
+        vn = np.zeros_like(Yc)
+        for k in range(3):
+            np.add.at(vn, WF[:, k], fn)
+        vn /= np.linalg.norm(vn, axis=1)[:, None] + 1e-12
+        S = np.zeros_like(Yc)
+        np.add.at(S, Ew[:, 0], Yc[Ew[:, 1]])
+        np.add.at(S, Ew[:, 1], Yc[Ew[:, 0]])
+        o = ((S / np.maximum(cnt, 1)[:, None] - Yc) * vn).sum(1)
+        return o[:, None] * vn, np.abs(o)
+
+    sp = stretch_pieces  # (default: the pull's read, every piece with free cloth: one rule for both operations)
+    if sp is None:
+        sp = sorted(set(np.asarray(M["piece"])[~held].tolist()))
+    st = lambda W: stretch_p99(M, A.unweld(W), sp)
+    free = ~keep
+    s0 = least = st(Y)
+    r0 = rr = float(np.percentile(normal_offset(Y)[1][free], 95))
+    k = 0
+    for k in range(1, rounds + 1):
+        mv, _ = normal_offset(Y)
+        T = Y.copy()
+        T[free] += lam * mv[free]
+        Yt = A.solve(T, keep, iters)
+        rt = float(np.percentile(normal_offset(Yt)[1][free], 95))
+        s = st(Yt)
+        if s > least + tol or rt > rr * 0.995:
+            k -= 1
+            break
+        Y, rr, least = Yt, rt, min(least, s)
+    Xn = A.unweld(Y)
+    Xn[held] = X[held]
+    return Xn, {"rounds": k, "rough_p95_mm": [round(r0 * 1000, 3), round(rr * 1000, 3)],
+                "stretch_p99": [round(s0 * 100, 2), round(st(Y) * 100, 2)], "pieces": list(pieces)}
+
+
+def style(M: dict, X: np.ndarray, held, ops: list[dict], body=None, log=None):
+    """Styling as a SEQUENCE of hand moves (C142 / C143): ops [{"pull": {"handles": [...], step / tol / max_move ...}}
+    | {"turn": {"turns": [...], steps ...}} | {"smooth": {"pieces": [...], lam / rounds / tol ...}}], each from where
+    the last left the cloth; what a pull or turn gripped is HELD where it ended for every later op (Joe: move these
+    apart a little, then push the points a little more); a pull that grips them again picks them up. Returns
+    (X_new, [info per op])."""
+    X = np.asarray(X, float)
+    base = _mask(held, len(X))
+    placed = np.zeros(len(X), bool)  # what earlier ops gripped: held where they left it
+    infos = []
+    for op in ops:
+        (kind, a), = op.items()
+        a = dict(a)
+        if kind == "pull":
+            hs = a.pop("handles")
+            mine = np.zeros(len(X), bool)
+            for h in hs:  # (picking a point up again releases it)
+                mine[grip(M, h, base)[0]] = True
+            X, inf = pull(M, X, base | (placed & ~mine), hs, body=body, log=log, **a)
+            placed |= mine
+        elif kind == "turn":
+            ts = a.pop("turns")
+            mine = np.zeros(len(X), bool)
+            for t in ts:
+                mine[vertices(M, t["at"])] = True
+            X, inf = turn(M, X, base | (placed & ~mine), ts, body=body, **a)
+            placed |= mine
+        elif kind == "smooth":
+            X, inf = smooth(M, X, base | placed, a.pop("pieces"), **a)
+        else:
+            raise ValueError(f"no styling op {kind!r} (pull, turn, smooth)")
+        infos.append({kind: inf})
+    return X, infos
+
+
+def tip_read(M: dict, X: np.ndarray, point, near: float = 0.015, mid: float = 0.04) -> dict:
+    """A point's tip (shirt spike tip.py): within `near` (pattern) of the point on its piece, crumple p95 (mm) and edge
+    stretch max (%), and the twist (deg) between the cloth's mean normal there and at `mid` from the point (the
+    leaf's middle). A point dragged by one vertex: 15-18 % / 60-80 deg; the closed collar 2-3 % / 15-28 deg."""
+    F = np.asarray(M["F"], int)
+    pid = np.asarray(M["piece"])
+    uv = np.asarray(M["uv"], float)
+    o = vertex(M, point)
+    nrm = np.cross(X[F[:, 1]] - X[F[:, 0]], X[F[:, 2]] - X[F[:, 0]])
+    vn = np.zeros_like(X)
+    for j in range(3):
+        np.add.at(vn, F[:, j], nrm)
+    vn /= np.linalg.norm(vn, axis=1)[:, None] + 1e-12
+    E = np.unique(np.sort(np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]], 1), axis=0)
+    E = E[pid[E[:, 0]] == pid[E[:, 1]]]
+    S, c = np.zeros_like(X), np.zeros(len(X))
+    np.add.at(S, E[:, 0], X[E[:, 1]])
+    np.add.at(S, E[:, 1], X[E[:, 0]])
+    np.add.at(c, E[:, 0], 1)
+    np.add.at(c, E[:, 1], 1)
+    lap = np.abs(((S / np.maximum(c, 1)[:, None] - X) * vn).sum(1)) * 1000
+    d = np.linalg.norm(uv - uv[o], axis=1)
+    on = pid == pid[o]
+    nr = on & (d < near) & (c >= 3)
+    en = nr[E[:, 0]] & nr[E[:, 1]]
+    l0 = np.maximum(np.linalg.norm(uv[E[:, 0]] - uv[E[:, 1]], axis=1), 1e-9)
+    stv = np.abs(np.linalg.norm(X[E[:, 0]] - X[E[:, 1]], axis=1) / l0 - 1) * 100
+    md = on & (np.abs(d - mid) < 0.005)
+    a, b = vn[nr].mean(0), vn[md].mean(0)
+    tw = np.degrees(np.arccos(np.clip(abs(a @ b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-12), -1, 1)))
+    return {"crumple_p95_mm": round(float(np.percentile(lap[nr], 95)), 3),
+            "stretch_max_pct": round(float(stv[en].max()), 1), "twist_deg": round(float(tw), 1)}
+
+
+def folded(M: dict, X: np.ndarray, point, radius: float = 0.025, deg: float = 120.0) -> int:
+    """Folded-over faces near a point (shirt spike flips.py): faces of the point's piece within `radius` (pattern) whose
+    dihedral with an edge neighbour exceeds `deg`, fold rows left out. The closed collar: 0; a rigid patch: 18 / 28."""
+    F = np.asarray(M["F"], int)
+    pid = np.asarray(M["piece"])
+    uv = np.asarray(M["uv"], float)
+    o = vertex(M, point)
+    fold = np.zeros(len(X), bool)
+    for fd in M.get("folds") or []:
+        for r in fd["rows"]:
+            fold[np.asarray(r, int)] = True
+    fn = np.cross(X[F[:, 1]] - X[F[:, 0]], X[F[:, 2]] - X[F[:, 0]])
+    fn /= np.linalg.norm(fn, axis=1)[:, None] + 1e-15
+    E = np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]]
+    fi = np.tile(np.arange(len(F)), 3)
+    key = np.sort(E, 1)
+    order = np.lexsort((key[:, 1], key[:, 0]))
+    ks, fs = key[order], fi[order]
+    same = (ks[1:] == ks[:-1]).all(1)
+    a, b = fs[:-1][same], fs[1:][same]
+    e = ks[:-1][same]
+    ok = ~(fold[e[:, 0]] & fold[e[:, 1]])
+    a, b = a[ok], b[ok]
+    ang = np.degrees(np.arccos(np.clip((fn[a] * fn[b]).sum(1), -1, 1)))
+    worst = np.zeros(len(F))
+    np.maximum.at(worst, a, ang)
+    np.maximum.at(worst, b, ang)
+    m = (pid[F[:, 0]] == pid[o]) & (np.linalg.norm(uv[F].mean(1) - uv[o], axis=1) < radius)
+    return int((m & (worst > deg)).sum())
 
 
 def crumple(M: dict, X: np.ndarray, piece, ring_min: int = 5) -> np.ndarray:

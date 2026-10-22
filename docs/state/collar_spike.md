@@ -34,8 +34,7 @@ the band turning with it; band ends lean apart; leaves stand off the neck). Joe:
    near the V (6-20 mm there).
 2. y3 not yet judged blind against the photo / trace (bin/review), nor checked for cloth inside the body (push-out off:
    count it; a soft floor if it matters).
-3. DONE 2026-10-21: "pull until it would stretch" is a general tool: garment_pull.py (pull / turn) + MCP pull_garment;
-   tests/test_garment_pull.py reproduces y3 from the closed fit (C142 ENFORCED).
+3. DONE: pull / turn / smooth are a general tool (garment_pull.py, MCP style_garment; C142 / C143 ENFORCED).
 4. Not worked: sleeve ends crushed (99 % max, ~40 vertices inside each arm); yoke at the side neck 13 %.
 5. Garrett (sh_garrett) not refitted on the landed defaults (own "open neck.R" fold + worn_open); see
    docs/state/dress_garrett_shirt.md.
@@ -54,8 +53,7 @@ the band turning with it; band ends lean apart; leaves stand off the neck). Joe:
 - pattern_form worn_open for the open state: the band tops stay knotted at CF; collar_spread / OPEN_SPREAD dead levers.
 
 ## Commands
-General tool for every pull / turn: src/hifipushie/garment_pull.py, MCP pull_garment (guide topic pull_garment).
-spikes/shirt_spike/README.md (every script); spikes/collar_spike/README.md (primitive-neck scripts). run.sh runs the
+General tool: garment_pull.py / MCP style_garment. spikes/shirt_spike/README.md (every script); spikes/collar_spike/README.md (primitive-neck scripts). run.sh runs the
 modest-napier worktree's code under bin/capped: edit its cd for another checkout. Renders take the GPU lock (capped).
 
 ## History

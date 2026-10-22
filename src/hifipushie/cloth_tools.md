@@ -105,39 +105,58 @@ pierce names the pattern fix; otherwise judge clay + diag beside the reference, 
 A sim after this is optional, a wrinkle source only; never close or hand-finish after a sim (measured 2026-10-19:
 strain p99 4.7 % -> 66-74 %). views, size, clay, save.
 
-### `pull_garment`
+### `style_garment`
 
-`pull_garment(name, garment, handles, free=None, hold_below=None, turns=None, step_mm=3.0, tol_pct=0.5, max_mm=80.0,
-views=None, size=560, clay=True, diag=None, force=False, save=None)`
+`style_garment(name, garment, ops, free=None, hold_below=None, views=None, size=560, clay=True, diag=None, force=False,
+save=None)`
 
-PULL UNTIL IT WOULD STRETCH (C142, Joe 2026-10-21): how people put on and set clothes, as a tool. A man pulls his
-shirt down along the G-line, pops his cuffs, opens his collar points out and to the side; a woman pulls her skirt
-down. That isn't gravity: it's flattening the cloth along interesting geometry without stretching it. The garment is
-fitted on the form (fit_garment's fit, no sim). Then each handle is DRAGGED along its direction in `step_mm` steps,
-with the cloth solved against its flat pattern each step (per-face ARAP, sewn pairs welded, bending free). The pull
-stops at the last step whose stretch p99 stays within `tol_pct` of the least the pull has reached. It never pins a
-handle at a guessed coordinate (pins dragged the shirt's corners to 22-152 %) and never tunes stiffness.
-- handles: [{"at", "dir", "side_from"?}], all pulled the same distance (a symmetric pull keeps the mirror). "at" is
-  what the hand grips, moved as one: "piece:point", "piece:a..b" (the piece's border between two points: a hem, a
-  cuff's edge, a front edge) or a list of those. "dir" is a vector [x, y, z]; "side" (away from CF), "out" (the body
-  normal), "up" or "down"; or a weighted mix such as {"side": 1, "out": 0.3, "up": 0.3}. Take "side" from a landmark
-  well off CF ("side_from": a hinge, a neck point). It is refused within 15 mm of x = 0, where a band's two ends cross
-  and the side flips.
-- free: the pieces that may move (default: the handles' own pieces). Everything else is held. hold_below:
-  "closure:front" (that closure's top fastened button) or "piece:point" also holds the free cloth below it.
-- turns: staged turns BEFORE the pull, each {"at": grip, "about": [point a, point b], "deg", "toward": a direction
-  that picks the sense, "side_from"?}: a band end swung open about its hinge, a cuff turned up about its fold. A
-  turned grip stays held during the pull.
-- Returns clay + diag, how far each handle went (mm, and the number of steps), what stopped it ("stretch" or
-  "max_move": something it should pull against is free), the stretch p99 (start / least / end), the crumple p95 per
-  free piece, fit -> pulled (the change is the pull's: layered flaps read ~2 mm in the fit already), the result npz and the folder for review_view.
-- Known answer (tests/test_garment_pull.py): Simon's shirt on wf_simon, closed fit.
-  `free=["collar", "stand", "front.L", "front.R"], hold_below="closure:front"`, the band ends turned 30 deg about
-  stand:<s>BottomHinge..TopHinge toward "side", then the collar points `collar:<s>TopEdge` pulled
-  {"side": 1, "out": 0.3, "up": 0.3} from `collar:<s>TopHinge`. Result: points ~147 mm apart, 59-63 mm below HPS
-  (the concept), crumple p95 <= 0.3 mm.
+STYLING BY HAND, as far as the cloth goes without stretching (C142 / C143, Joe 2026-10-21). A man pulls his shirt
+down along the G-line, pops his cuffs and opens his collar points out and to the side; a woman pulls her skirt down.
+That isn't gravity: it's "flatten this along interesting geometry without stretching it much", and it's how people
+put clothes on. Pull and smooth are the two styling operations. The garment is fitted on the form (fit_garment's fit,
+no sim), then `ops` run in order, each from where the last left the cloth:
+- `{"pull": {"handles": [...], "step"?, "tol"?, "max_move"?}}`: every handle is dragged the same distance, in 3 mm
+  steps, with the cloth solved against its flat pattern each step (per-face ARAP, sewn pairs welded, no bending). The
+  pull stops at the last step whose stretch p99 is within `tol` (0.5 %) of the least the pull has reached. Slack is
+  taken up first, then the knee. Never pin a handle at a guessed coordinate: pins dragged the shirt's corners to
+  22-152 %. Never tune stiffness either.
+  A handle is {"at", "dir", "side_from"?, "patch"?, "turn"?}:
+  - "at" is what the hand grips: "piece:point", "piece:a..b" (the piece's border between two points: a hem, a cuff's
+    edge, a front edge) or a list.
+  - A POINT grabs the cloth within `patch` (25 mm on its pattern) and the patch TURNS with the cloth each step. One
+    vertex dragged pinched and twisted the collar's tip (15-18 %, 60-80 deg). A rigid patch folded the cloth over at
+    its edge (18 / 28 faces).
+  - A border moves as one (the hand holds its line).
+  - "dir" is a vector [x, y, z], "side" (away from CF), "out" (the body normal), "up", "down", a weighted mix like
+    {"side": 1, "out": 0.3, "up": 0.3}, or "easy" / {"easy": base}. With "easy" the cloth chooses: each step probes 9
+    directions round the base and takes the least stretch (about 9x the time). Don't bake in out / up weights: the
+    shirt's points came out too high with up 0.3.
+  - Take "side" from a landmark well off CF ("side_from": a hinge, a neck point). It is refused within 15 mm of x = 0,
+    where a band's two ends cross and the side flips.
+- `{"turn": {"turns": [{"at", "about": [point a, point b], "deg", "toward"?, "side_from"?}], "steps"?}}`: a grip
+  turned about a line in stages. Examples: a band end swung open about its hinge, a cuff turned up about its fold.
+  "toward" is a direction that picks the sense.
+- `{"smooth": {"pieces": [...], "lam"?, "rounds"?, "tol"?}}`: a hand flattening ripples. In the brushed pieces it
+  alternates two moves: each vertex moved toward its one-ring centroid along its normal, then the pattern solve with
+  everything outside held. It stops at the pull's stretch rule, or when the roughness stops dropping.
+- What a pull or turn gripped stays where it ended for the later ops. A pull that grips it again picks it up ("pull
+  the points, move the collar's inner corners apart 6 mm, pull the points again").
+- free: the pieces that may move (default: the gripped and brushed pieces). hold_below: "closure:front" (that
+  closure's top fastened button) or "piece:point" also holds the free cloth below it.
+- Returns:
+  - clay + diag;
+  - per op: how far each handle went (mm, steps), what stopped it ("stretch", or "max_move": something it should
+    pull against is free), the stretch p99 (start / least / end) and the smooth's roughness and stretch;
+  - crumple p95 per free piece, fit -> styled (layered flaps read ~2 mm in the fit already);
+  - each pulled point's tip (crumple, stretch max, twist, folded faces near it) beside the fit's;
+  - the result npz and the folder for review_view.
+- Known answer (tests/test_garment_pull.py): Simon's shirt on wf_simon, closed fit,
+  `free=["collar", "stand", "front.L", "front.R"], hold_below="closure:front"`. Ops: band ends turned 30 deg about
+  stand:<s>BottomHinge..TopHinge toward "side"; collar points `collar:<s>TopEdge` pulled {"side": 1, "out": 0.3,
+  "up": 0.3} from `collar:<s>TopHinge`; collar + stand smoothed. Result: points 142 apart, 64 / 60 below HPS, collar
+  crumple p95 0.28 mm, tips as clean as the closed collar's.
 - Judge it like a fit: clay + diag beside the reference, one view per review_view. Too far or not far enough: change
-  the direction or what is held, never the solver.
+  the direction, the sequence or what is held, never the solver.
 
 ### `dress`
 

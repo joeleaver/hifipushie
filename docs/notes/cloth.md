@@ -9789,7 +9789,7 @@ sym.py <tag>: mirror symmetry per piece, noise floor = mesh spacing, 1-8 mm).
 - src/hifipushie/garment_pull.py: `pull` (handles = points, borders piece:a..b, lists; dir = vector | side | out | up
   | down | a mix; side from a landmark off CF, refused at CF), `turn` (a grip turned about a line, staged: band end
   swung, cuff popped), `hold_mask` (free pieces + hold_below closure / point), `crumple`. MCP `pull_garment` (cloth
-  toolset; gate: pattern_check PASS or force), guide section in cloth_tools.md.
+  toolset; gate: pattern_check PASS or force), guide section in cloth_tools.md (later renamed style_garment, below).
 - Porting found three things the spike's numbers hid: (1) a pull first takes up SLACK (stretch falls), so the stop is
   read against the least so far, not the start; (2) every solve run to convergence crumpled the collar (p95 0.26 ->
   0.33) and stopped at 39 mm / 131 apart: few rounds per step are the regulariser (the cloth moves as little as it
@@ -9798,3 +9798,18 @@ sym.py <tag>: mirror symmetry per piece, noise floor = mesh spacing, 1-8 mm).
 - tests/test_garment_pull.py: strip (along the chord + straight up) within one step of the pattern length; wf_simon
   v1 fit, band ends turned 30 deg, collar points {"side": 1, "out": 0.3, "up": 0.3}: 147 apart, 63 / 59 below HPS,
   collar crumple p95 0.28 (y3: 147, 63 / 59, 0.28); moved 51 mm.
+
+### pull + smooth as one styling tool: the spike's handle lessons ported (2026-10-21, C142 / C143)
+- From the shirt-spike session (its commits 650491c1-575d7810): a handle grabs an AREA (25 mm patch round a point)
+  that TURNS (drag the point alone, Kabsch-fit the patch's start shape on, pin, re-solve); pulls compose as a
+  SEQUENCE (earlier grips held); "easy" lets the cloth choose the direction; SMOOTH is the second styling op.
+- garment_pull: `grip` (points -> turning patches; borders / lists move as one: a turning border tilted the strip's
+  end in-plane and stopped it 7 mm short), `pull` (walks the lead along per-step directions, "easy" probes 9),
+  `smooth` (stretch read = the pull's: every piece with free cloth; read on the brushed pieces alone the same smooth
+  showed +1.3 pt), `style` (ops pull / turn / smooth; re-gripping picks a held grip up), reads `tip_read`, `folded`.
+- MCP `pull_garment` -> `style_garment(ops)` (one tool for the two operations); renders skipped when clay and diag
+  are off (no GPU lock).
+- Shirt (test): turn + patch pull + smooth: 142 apart, 64 / 60 below HPS, collar crumple 0.28, tips at the closed
+  collar's crumple / stretch, 0 folded faces. Sequence [points, corners 6 mm, points] + smooth: 152 / 61 / 58, 0.30.
+  OPEN: the right tip twists 55-66 deg (closed 35; the spike's u25 42, sm1 47); the two pull directions differ a
+  little (up 0.38 right vs 0.32 left: the body normals aren't mirrored).
