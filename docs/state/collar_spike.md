@@ -16,6 +16,8 @@ the band turning with it; band ends lean apart; leaves stand off the neck). Joe:
 - CLOSED: repo defaults (landed, BUILD_VERSION 17) + the concept's button spacing = v1 (= e3): clean closed collar, band
   ends sewn flush with the placket tops, one rounded roll (176 deg), collar + band mirror p95 1.4-1.9 mm, strain p99 9 %.
   `spikes/shirt_spike/run.sh base_fit.py v1 '{"closures":[{"name":"front","spacing":{"first":0.034,"from":"cfNeck"}}]}'`
+- JOE (2026-10-21): "f2 and pt2 read the best to me so far" (pt2 = f2's recipe on the pull tool, via_tool.py:
+  turn 40, P up 0, hold band + collar within 70 deg of CB; its faults: band corners 22-33 %, side 82 mm, kink 31 deg).
 - CURRENT BEST f2: `{"swing":40,"steps":6,"nopush":1,"hug":70,"feather":[70,130],"swing_patch":0.015,"pulls":[P0],
   "smooth":{"pieces":["collar","stand"]}}`, P0 = points side 1 / out 0.3 / up 0, patch 0.025, turn. Band end swings as
   an AREA (3 pinned corners pinched a lobe: TopCf 21 -> 3 %). Hug FEATHERED (Joe: "one continuous swoop instead of three
@@ -27,7 +29,6 @@ the band turning with it; band ends lean apart; leaves stand off the neck). Joe:
 - OPEN (u25 = t15's pulls with "patch":0.025,"turn":1: each step drags the point alone, then fits the
   patch's unstretched start shape rigidly (Kabsch) onto that and solves again: tips clean (crumple p95 0.06-0.10 mm =
   closed; flips.py: 1 folded face per side at the patch edge, was 18 / 28 with a rigid patch), points 156 / 64-65.)
-- Reads: tip.py / flips.py / rough.py / profile.py / csec.py / layers.py (history: cloth.md, ledger C142-C144).
 
 ## Open faults (ranked by what shows at 1-3 m)
 1. u25: points 64-65 below HPS (concept 50-61); 1 folded face per side at the patch edge; a stretched patch at the V's corner (the fronts' cfNeck, welded to the band corners, have 34 mm of cloth
