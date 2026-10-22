@@ -142,12 +142,19 @@ no sim), then `ops` run in order, each from where the last left the cloth:
 - `{"smooth": {"pieces": [...], "lam"?, "rounds"?, "tol"?}}`: a hand flattening ripples. In the brushed pieces it
   alternates two moves: each vertex moved toward its one-ring centroid along its normal, then the pattern solve with
   everything outside held. It stops at the pull's stretch rule, or when the roughness stops dropping.
+- `{"smooth": {"border": "piece:a..b..c", "spline"?, "lam"?, "release"?}}`: a BORDER smoothed into one swoop (C145;
+  Joe: "one continuous swoop instead of three different angles"). The border is walked along the boundary, e.g.
+  `collar:leftTopEdge..topMid..rightTopEdge` (point -> CB -> point). Each round it is drawn toward ONE least-squares
+  spline (10 knots) and the rest re-solved, until it would stretch or its kink stops dropping. The 25 mm at each end
+  stays put. Local neighbour averaging stalled after 2 rounds and roughened the collar. "release": pieces freed from
+  the region holds for this op (the collar's fall from its hug; grips stay held). The collar's side-view kinks went
+  21 / 27 -> 10 / 20 deg (the spike's sp10: 12 / 12).
 - `{"relax": {"iters"?}}`: the free cloth relaxed against its pattern (nothing gripped).
 - `{"hold": {"pieces", "within_deg"?, "feather_to"?, "of"?: "back" | "front", "center"?, "at"?}}`: keep a region
   where it is NOW for every later op. With `feather_to` (deg), the band beyond `within_deg` is FEATHERED: after every
-  later pull / turn it is drawn back toward where the hold found it, by a share fading 1 -> 0, then pinned and
-  re-solved (3 rounds). A hard border kinked the collar's edge (29 deg at the border); held to 70 deg and feathered
-  to 130 the kink fell to about 20 deg. Example: the collar + band within 70 deg of CB round the band's centre,
+  later pull it is drawn back toward where the hold found it, by a share fading 1 -> 0, then pinned and re-solved
+  (3 rounds). A hard border kinked the collar's edge (29 deg at the border); held to 70 deg and feathered to 130 the
+  kink fell to about 20 deg. Example: the collar + band within 70 deg of CB round the band's centre,
   feathered to 130, so the collar hugs the neck at the back and sides and only the front flares (C144). Relax first:
   holding the unrelaxed closed collar locked in its strain (p99 7.5 vs 6.1 %). Unheld, the opened front's slack
   spread round the whole ring: the fall stood 8 / 14 mm further off the neck at CB / the side.
@@ -170,8 +177,9 @@ no sim), then `ops` run in order, each from where the last left the cloth:
   "up": 0.3} from `collar:<s>TopHinge`; collar + stand smoothed. Result: points 142 apart, 64 / 60 below HPS, collar
   crumple p95 0.28 mm, tips as clean as the closed collar's. The hug (the spike's f2, the best read so far): relax,
   hold stand + collar within 70 deg of CB feathered to 130, band ends turned 40 deg as `stand:<s>BottomEdge..<s>TopCf`
-  areas, points pulled {"side": 1, "out": 0.3}, smoothed. Result: points 138 apart, 73 / 74 mm below HPS, the fall
-  73 mm off the neck axis at CB / the sides (closed 67-68), band corner 1.5-2.5 %, edge kinks 21 / 27 deg.
+  areas, points pulled {"side": 1, "out": 0.3}, the outer edge smoothed as a border (fall released), smoothed.
+  Result: points 144 apart, 73 / 73 mm below HPS, the fall 72-73 mm off the neck axis at CB / the sides (closed
+  67-68), band corner 1.5-2.5 %, edge kinks 10 / 20 deg.
 - Judge it like a fit: clay + diag beside the reference, one view per review_view. Too far or not far enough: change
   the direction, the sequence or what is held, never the solver.
 

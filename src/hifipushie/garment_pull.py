@@ -54,7 +54,9 @@ that is neither held nor a handle: held pieces don't move and would dilute the r
 
 info: {"moved_mm": {handle: mm}, "stretch_p99_start" / "_least" / "_end" (%), "steps", "stopped" ("stretch" |
 "max_move"), "path_mm", "gripped", "dirs" (unit vectors, the last step's), "pieces"}. `turn` turns grips about a line
-(a band end swung open, a cuff popped); `smooth` flattens ripples; `hold_mask` builds `held`; reads: `crumple`,
+(a band end swung open, a cuff popped); `smooth` flattens ripples; `smooth_border` draws a border toward one fitted
+curve (one swoop, C145); `hold_region` / `feather` hold a region, its edge feathered (C144); `hold_mask` builds
+`held`; reads: `crumple`, `edge_turns` (a free edge's side-view swoop),
 `tip_read` (a point's tip: crumple, stretch max, twist), `folded` (folded-over faces near a point).
 
 Known answers (tests/test_garment_pull.py): a slack strip pinned at one end, its free end pulled, stops within one
@@ -82,6 +84,7 @@ PATCH = 0.025  # m (pattern): the cloth a point handle grabs round the point (u2
 TURN_PATCH = 0.015  # m (pattern): a turn grips the cloth this near what it names (q40: the band end as an area)
 HOLD_ITERS = 20  # a "relax" op's rounds
 PROBE_ITERS = 4  # dir "easy": rounds per probed direction
+FEATHER_AFTER = ("pull",)  # ops after which a feathered band is drawn back
 MIRROR_REACH = 0.03  # m: a handle's mirror partner is the one whose lead is this near its mirror image
 CONVERGED = 1e-5  # m: the confirm stops early once no vertex moves more than this in a round
 SIDE_MIN = 0.015  # m: a "side" is taken only from a point at least this far off x = 0
@@ -215,6 +218,8 @@ def vertices(M: dict, at) -> np.ndarray:
     shorter way round: a hem, a cuff's edge, a front edge), or a list of those."""
     if isinstance(at, (list, tuple, np.ndarray)) and not isinstance(at, str):
         return np.unique(np.concatenate([vertices(M, a) for a in at]))
+    if isinstance(at, str) and at.count("..") > 1:
+        return np.unique(border_chain(M, at))
     if isinstance(at, str) and ".." in at:
         from .cloth_release import pin_vertices
         try:
@@ -222,6 +227,25 @@ def vertices(M: dict, at) -> np.ndarray:
         except KeyError as e:
             raise ValueError(str(e).strip("'\"")) from None
     return np.array([vertex(M, at)], int)
+
+
+def border_chain(M: dict, at: str) -> np.ndarray:
+    """The ORDERED vertices of a piece's border walk: "piece:a..b" (the shorter way round between two points) or
+    "piece:a..b..c" (a to b, then b to c: the collar's outer edge point -> CB -> point). Walked along the boundary,
+    never sorted by pattern x (that mixed in the front edges: a fake 172 deg kink, C145)."""
+    from .cloth_release import pin_vertices
+    pc, rest = at.split(":", 1)
+    names = rest.split("..")
+    if len(names) < 2:
+        raise ValueError(f"a border is 'piece:a..b' or 'piece:a..b..c', not {at!r}")
+    out = []
+    for a, b in zip(names[:-1], names[1:]):
+        try:
+            seg = [int(v) for v in pin_vertices(M, f"{pc}:{a}..{b}")]
+        except KeyError as e:
+            raise ValueError(str(e).strip("'\"")) from None
+        out += seg if not out else seg[1:]
+    return np.asarray(out, int)
 
 
 def _body_vf(body):
@@ -523,12 +547,77 @@ def smooth(M: dict, X: np.ndarray, held, pieces, lam: float = 0.5, iters: int = 
                 "stretch_p99": [round(s0 * 100, 2), round(st(Y) * 100, 2)], "pieces": list(pieces)}
 
 
+def _kink3d(P: np.ndarray, win: float) -> float:
+    """The largest turn (deg) of a polyline's direction over `win` (m of arc)."""
+    s = np.r_[0, np.cumsum(np.linalg.norm(np.diff(P, axis=0), axis=1))]
+    mx = 0.0
+    for i in range(len(P)):
+        a = np.searchsorted(s, s[i] - win / 2)
+        b = np.searchsorted(s, s[i] + win / 2) - 1
+        if a >= i or b <= i:
+            continue
+        d1, d2 = P[i] - P[a], P[b] - P[i]
+        mx = max(mx, float(np.degrees(np.arccos(np.clip(d1 @ d2 / (np.linalg.norm(d1) * np.linalg.norm(d2) + 1e-12),
+                                                        -1, 1)))))
+    return mx
+
+
+def smooth_border(M: dict, X: np.ndarray, held, border: str, spline: int = 10, lam: float = 0.4, ends: float = 0.025,
+                  win: float = 0.03, rounds: int = 30, iters: int = 8, tol: float = 0.015, stretch_pieces=None):
+    """SMOOTH A BORDER INTO ONE SWOOP (C145; Joe: "if this profile read as one continuous swoop instead of three
+    different angles, it would be a lot closer to done"): a long-scale shape, so the border is drawn toward ONE fitted
+    curve, not its neighbours (local averaging over 10-50 mm stalled after 2 rounds and roughened the collar). Each
+    round: a least-squares cubic spline with `spline` interior knots per coordinate over arc length through the border
+    walk (`border_chain`), every border vertex further than `ends` (pattern) from the walk's two ends moved `lam` of the
+    way onto it and pinned, the rest re-solved (`iters`); stops when the stretch would exceed the least + `tol`, or the
+    border's 3D kink over `win` stops dropping. Spike sp10 (spline 10, lam 0.4, win 30 mm, tol 1.5 %): the collar's
+    side-view kinks 18 / 34 -> 12 / 12 deg. Returns (X_new, info: rounds, kink deg start / end, stretch p99 start /
+    end (%))."""
+    from scipy.interpolate import LSQUnivariateSpline
+    X = np.asarray(X, float)
+    held = _mask(held, len(X))
+    ch = border_chain(M, border)
+    uv = np.asarray(M["uv"], float)
+    dist = np.minimum(np.linalg.norm(uv[ch] - uv[ch[0]], axis=1), np.linalg.norm(uv[ch] - uv[ch[-1]], axis=1))
+    mov = (dist > ends) & ~held[ch]
+    A = FlatARAP(M, X)
+    Y = A.weld(X)
+    chw = A.inv[ch]
+    fixed = A.welded_mask(held)
+    sp = stretch_pieces
+    if sp is None:
+        sp = sorted(set(np.asarray(M["piece"])[~held].tolist()))
+    st = lambda W: stretch_p99(M, A.unweld(W), sp)
+    s0 = least = st(Y)
+    k0 = kk = _kink3d(Y[chw], win)
+    r = 0
+    for r in range(1, rounds + 1):
+        p = Y[chw]
+        s = np.r_[0, np.cumsum(np.linalg.norm(np.diff(p, axis=0), axis=1))]
+        kn = np.linspace(s[0], s[-1], spline + 2)[1:-1]
+        fit = np.column_stack([LSQUnivariateSpline(s, p[:, c], kn, k=3)(s) for c in range(3)])
+        T, fx = Y.copy(), fixed.copy()
+        T[chw[mov]] = p[mov] + lam * (fit[mov] - p[mov])
+        fx[chw[mov]] = True
+        Yt = A.solve(T, fx, iters)
+        kt, sn = _kink3d(Yt[chw], win), st(Yt)
+        if sn > least + tol or kt > kk - 0.2:
+            r -= 1
+            break
+        Y, kk, least = Yt, kt, min(least, sn)
+    Xn = A.unweld(Y)
+    Xn[held] = X[held]
+    return Xn, {"rounds": r, "kink_deg": [round(k0, 1), round(kk, 1)],
+                "stretch_p99": [round(s0 * 100, 2), round(st(Y) * 100, 2)], "border": border}
+
+
 def style(M: dict, X: np.ndarray, held, ops: list[dict], body=None, log=None):
     """Styling as a SEQUENCE of hand moves (C142-C144): ops [{"pull": {"handles": [...], step / tol / max_move ...}}
-    | {"turn": {"turns": [...], steps ...}} | {"smooth": {"pieces": [...], lam / rounds / tol ...}} | {"relax":
+    | {"turn": {"turns": [...], steps ...}} | {"smooth": {"pieces": [...], lam / rounds / tol ...} or {"border":
+    "piece:a..b..c", spline / lam / ...} (smooth_border), "release"?: pieces freed from region holds} | {"relax":
     {iters}} (the free cloth against its pattern) | {"hold": {...}} (hold_region: kept where it is NOW for every later
     op; relax first: holding the unrelaxed closed collar locked in its strain, p99 7.5 vs 6.1 %; "feather_to": the
-    band beyond the hold drawn back after every later pull / turn)], each from where
+    band beyond the hold drawn back after every later pull)], each from where
     the last left the cloth; what a pull or turn gripped is HELD where it ended for every later op (Joe: move these
     apart a little, then push the points a little more); a pull that grips them again picks them up. Returns
     (X_new, [info per op])."""
@@ -536,6 +625,7 @@ def style(M: dict, X: np.ndarray, held, ops: list[dict], body=None, log=None):
     base = _mask(held, len(X))
     placed = np.zeros(len(X), bool)  # what earlier ops gripped: held where they left it
     feathers = []  # (vertices, share, positions at the hold) of each feathered hold
+    regions = np.zeros(len(X), bool)  # what hold ops hold (a smooth may "release" pieces of it)
     infos = []
     for op in ops:
         (kind, a), = op.items()
@@ -555,12 +645,20 @@ def style(M: dict, X: np.ndarray, held, ops: list[dict], body=None, log=None):
             X, inf = turn(M, X, base | (placed & ~mine), ts, body=body, **a)
             placed |= mine
         elif kind == "smooth":
-            X, inf = smooth(M, X, base | placed, a.pop("pieces"), **a)
+            rel = np.zeros(len(X), bool)  # ("release": pieces freed from earlier REGION holds for this op; grips stay)
+            if a.get("release"):
+                rel = regions & np.isin(np.asarray(M["piece"]), _piece_ids(M, a.pop("release")))
+            hold_now = base | (placed & ~rel)
+            if "border" in a:
+                X, inf = smooth_border(M, X, hold_now, a.pop("border"), **a)
+            else:
+                X, inf = smooth(M, X, hold_now, a.pop("pieces"), **a)
         elif kind == "relax":
             X, inf = relax(M, X, base | placed, **a)
         elif kind == "hold":
             mine = hold_region(M, X, **a)
             placed |= mine
+            regions |= mine
             inf = {"held": int(mine.sum())}
             if a.get("feather_to") is not None:
                 fv, fw = feather_weights(M, X, a["pieces"], a["within_deg"], a["feather_to"], a.get("of", "back"),
@@ -570,7 +668,7 @@ def style(M: dict, X: np.ndarray, held, ops: list[dict], body=None, log=None):
                 inf["feathered"] = int(len(fv))
         else:
             raise ValueError(f"no styling op {kind!r} (pull, turn, smooth, relax, hold)")
-        if kind in ("pull", "turn") and feathers:  # (the feathered band drawn back after each move)
+        if kind in FEATHER_AFTER and feathers:  # (the feathered band drawn back after each move)
             for fv, fw, ref in feathers:
                 keep = ~placed[fv]
                 X = feather(M, X, base | placed, fv[keep], fw[keep], ref)
@@ -647,7 +745,7 @@ def hold_region(M: dict, X: np.ndarray, pieces=None, within_deg: float | None = 
     as it is now. Shirt spike h110 / q40: band + collar within 110 deg of CB held, the side hug 70 mm vs 68 closed
     (unheld: the opened front's slack spread round the ring, the fall 8 / 14 mm further off the neck at CB / side).
     `feather_to` (deg; used by style()): the band from within_deg to feather_to is not held but FEATHERED back after
-    each pull / turn (`feather`): a hard border kinked the collar's edge 29 deg (q40); held to 70, feathered to 130:
+    each pull (`feather`; FEATHER_AFTER): a hard border kinked the collar's edge 29 deg (q40); held to 70, feathered to 130:
     18 deg (f2)."""
     X = np.asarray(X, float)
     pid = np.asarray(M["piece"])

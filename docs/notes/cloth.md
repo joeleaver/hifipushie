@@ -9840,3 +9840,13 @@ sym.py <tag>: mirror symmetry per piece, noise floor = mesh spacing, 1-8 mm).
   same way (collar + band + fronts) q40 and the tool's tq40 are both 7.4 %. The spike's swing also takes the free cloth
   to 6.5-7.2 % going into the pull. tq40 (2eaf7d65 via the spike's via_tool.py) = q40 on every read but the points
   (150 / 71-73 vs 137 / 76: the tool's stop rule).
+
+### border smooth into one swoop (2026-10-21, C145, from the spike's sp10)
+- garment_pull.smooth_border + border_chain ("piece:a..b..c" walked along the boundary); style op {"smooth":
+  {"border": ..., "release": [...]}} (region holds released for the op, grips kept). The feather now runs after
+  pulls only (FEATHER_AFTER; after the turn too it left the right side kinkier: 21 vs 20, left 14 vs 10).
+- A sharp fold's border can't be rounded alone without stretch (the spline cuts the corner: shorter); the known answer
+  is a wobbling border (kink 39 -> 22 deg, stretch falls).
+- sp10's recipe through the tool: 144 apart, 73 / 73 below, fall 73 / 72 / 72, corner 1.5 / 2.5 %, kinks 10 / 20 deg
+  (sp10 12 / 12), twist 22 / 27, crumple 0.265, 0 folded, p99 6.37. The feather leaves the free cloth at 12-14 %
+  p99 for a moment (pinned share targets); the border + area smooths bring it to 6.4. tests 9 passed (215 s).
