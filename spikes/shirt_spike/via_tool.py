@@ -7,18 +7,13 @@ spec = importlib.util.spec_from_file_location("hifipushie.garment_pull", os.envi
 D = "/mnt/data/hifipushie/shirt_spike/"; tag = sys.argv[1]; A = json.loads(sys.argv[2])
 d = pickle.load(open(D + "e3.pkl", "rb")); X = np.asarray(d["A"], float); M = d["mesh"]; body = (d["bodyV"], d["bodyF"])
 held = gp.hold_mask(M, X, ["collar", "stand", "front.L", "front.R"], below="closure:front")
-if A.get("hug"):
-    pid = np.asarray(M["piece"]); nm = list(M["names"]); cs = np.isin(pid, [nm.index("collar"), nm.index("stand")])
-    ctr = X[pid == nm.index("stand")][:, :2].mean(0); ang = np.degrees(np.arctan2(X[:, 0] - ctr[0], X[:, 1] - ctr[1]))
-    held |= cs & (np.abs(ang) < A["hug"])
 turns = [{"at": f"stand:{s}BottomEdge..{s}TopCf", "about": [f"stand:{s}BottomHinge", f"stand:{s}TopHinge"],
           "deg": A.get("swing", 30), "toward": "side", "side_from": f"stand:{s}BottomHinge"} for s in ("left", "right")]
-P = {"pull": {"handles": [{"at": f"collar:{s}TopEdge", "dir": {"side": 1, "out": 0.3, "up": A.get("up", 0.3)},
+P = {"pull": {"handles": [{"at": f"collar:{s}TopEdge", "dir": {"side": 1, "out": 0.3, "up": A.get("up", 0.0)},
                            "side_from": f"collar:{s}TopHinge"} for s in ("left", "right")]}}
-ops = [{"turn": {"turns": turns}}, P]
-if A.get("corners", 1):
-    ops += [{"pull": {"handles": [{"at": f"collar:{s}BottomEdge", "dir": "side", "patch": 0, "side_from": f"collar:{s}TopHinge"} for s in ("left", "right")], "max_move": 0.006}}, P]
-ops += [{"smooth": {"pieces": ["collar", "stand"]}}]
+ops = [{"relax": {}}]
+if A.get("hug"): ops.append({"hold": {"pieces": ["stand", "collar"], "within_deg": A["hug"], "of": "back", "center": "stand"}})
+ops += [{"turn": {"turns": turns}}, P, {"smooth": {"pieces": ["collar", "stand"]}}]
 Xn, infos = gp.style(M, X, held, ops, body=body)
 for i in infos: print(json.dumps(i, default=str)[:220])
 out = dict(d); out["A"] = Xn; out["A_info"] = dict(d["A_info"], via_tool=A); pickle.dump(out, open(D + tag + ".pkl", "wb")); print("saved", tag)

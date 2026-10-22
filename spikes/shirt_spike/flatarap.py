@@ -411,6 +411,76 @@ if A.get("feather") and A.get("hug") is not None:
         T[fv] = Y[fv] + wv[:, None] * (W0h[fv] - Y[fv]); fx[fv] = True
         Y = solve(T, fx, 8)
     print(f"feather: {len(fv)} vertices between {a0_} and {a1_} deg")
+# EDGE SMOOTH (Joe: "none of these are yet producing 'one smooth swoop'"): the collar's OUTER EDGE as one curve, point
+# to point round the back. Each round every edge vertex (not within `tip` of a point) moves `lam` toward the mean of the
+# edge vertices `k` steps either side (~10 mm: kinks, not mesh noise), pinned there, the rest re-solved; the fall is
+# released from the hug for this (the band stays held). Stop when stretch exceeds start + tol or the kink read (max turn
+# over 15 mm windows along the edge, 3D) stops dropping.
+def outer_edge_chain():
+    """the collar's outer edge as a walk along its BOUNDARY: left point -> topMid -> right point (sorting by pattern x
+    mixed in the front edges near the points: a 172 deg 'kink')."""
+    from collections import Counter, defaultdict, deque
+    k_ = nm.index("collar")
+    cntE = Counter(map(tuple, np.sort(np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]], 1).tolist()))
+    adj = defaultdict(list)
+    for (a, b), c_ in cntE.items():
+        if c_ == 1 and pid[a] == k_ and pid[b] == k_: adj[a].append(b); adj[b].append(a)
+    swv = set(np.asarray(M["sew"]).ravel().tolist())
+    def path(a, b):
+        prev = {a: None}; q = deque([a])
+        while q:
+            x = q.popleft()
+            if x == b: break
+            for y in adj[x]:
+                if y not in prev and (y not in swv or y == b): prev[y] = x; q.append(y)
+        out = [b]
+        while prev[out[-1]] is not None: out.append(prev[out[-1]])
+        return out[::-1]
+    lp, mid, rp = P["collar:leftTopEdge"], P["collar:topMid"], P["collar:rightTopEdge"]
+    ch = path(lp, mid) + path(mid, rp)[1:]
+    return np.array(ch)
+def kink3d(Yc, ch, win=0.015):
+    p = Yc[ch]; s_ = np.r_[0, np.cumsum(np.linalg.norm(np.diff(p, axis=0), axis=1))]; mx = 0.0
+    for i in range(len(ch)):
+        a = np.searchsorted(s_, s_[i] - win / 2); b = np.searchsorted(s_, s_[i] + win / 2) - 1
+        if a >= i or b <= i: continue
+        d1, d2 = p[i] - p[a], p[b] - p[i]
+        mx = max(mx, np.degrees(np.arccos(np.clip(d1 @ d2 / (np.linalg.norm(d1) * np.linalg.norm(d2) + 1e-12), -1, 1))))
+    return mx
+edge_info = {}
+if A.get("edge_smooth"):
+    ES = A["edge_smooth"]; chain = outer_edge_chain(); chw = inv[chain]
+    tipd = np.minimum(np.linalg.norm(uv[chain] - uv[P["collar:leftTopEdge"]], axis=1), np.linalg.norm(uv[chain] - uv[P["collar:rightTopEdge"]], axis=1))
+    mov = tipd > ES.get("tip", 0.025)
+    hold_e = hW.copy()
+    collw = np.unique(inv[pid == nm.index("collar")]); hold_e[collw] = False   # (release the fall from the hug)
+    hold_e |= np.isin(np.arange(n), list(pts.values()) + list(bnd) + list(done_h.values()))
+    # the tips' patches stay where the pulls put them
+    for s_ in ("left", "right"):
+        o = P[f"collar:{s_}TopEdge"]; hold_e[np.unique(inv[(pid == pid[o]) & (np.linalg.norm(uv - uv[o], axis=1) <= ES.get("tip", 0.025))])] = True
+    s0 = stretch(Y); WIN = ES.get("win", 0.015); kk0 = kink3d(Y, chw, WIN); kk = kk0; K = ES.get("k", 5)
+    for r_ in range(1, ES.get("rounds", 30) + 1):
+        T = Y.copy(); fx = hold_e.copy(); p = Y[chw]
+        if ES.get("spline"):
+            # ONE smooth curve (Joe's blue line): a least-squares spline with few knots through the edge, per coordinate
+            # over arc length, the whole chain (point to point); each edge vertex moved lam of the way onto it
+            from scipy.interpolate import LSQUnivariateSpline
+            s_ = np.r_[0, np.cumsum(np.linalg.norm(np.diff(p, axis=0), axis=1))]
+            kn = np.linspace(s_[0], s_[-1], ES["spline"] + 2)[1:-1]
+            fit = np.column_stack([LSQUnivariateSpline(s_, p[:, c], kn, k=3)(s_) for c in range(3)])
+            for i in np.where(mov)[0]: T[chw[i]] = p[i] + ES.get("lam", 0.5) * (fit[i] - p[i])
+        else:
+          for i in np.where(mov)[0]:
+            a, b = max(0, i - K), min(len(chw) - 1, i + K)
+            if a == i or b == i: continue
+            T[chw[i]] = p[i] + ES.get("lam", 0.5) * (0.5 * (p[a] + p[b]) - p[i])
+        fx[chw[mov]] = True
+        Yt = solve(T, fx, ES.get("iters", 8))
+        kt = kink3d(Yt, chw, WIN)
+        if stretch(Yt) > s0 + ES.get("tol", 0.01) or kt > kk - 0.2: break
+        Y, kk = Yt, kt
+    edge_info = {"rounds": r_, "kink_deg": [round(kk0, 1), round(kk, 1)], "stretch_p99": [round(s0 * 100, 2), round(stretch(Y) * 100, 2)]}
+    print("edge smooth:", edge_info)
 # SMOOTH (Joe: "a 'smooth' operation ... in conjunction with the 'pull'; those are the two main operations to styling the
 # clothing one is wearing"): within the brushed pieces, alternate (a) fair: each vertex moved `lam` of the way toward its
 # one-ring centroid ALONG ITS NORMAL only (a hand flattening a ripple), (b) restore: the flat-pattern solve with
