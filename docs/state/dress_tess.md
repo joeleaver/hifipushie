@@ -40,3 +40,14 @@ Fixed: left front kink over CF (hand finish J), coat diamond / lattice smears (c
 
 ## History (grep only)
 docs/notes/cloth.md "### dress-tess session 17" / "session 18" and their Handovers; "FROZEN FOR EXPORT" lines.
+
+## PROBE 2026-10-22 (no-sim path on Tess's coat; branch claude/probe-tess; files /mnt/data/hifipushie/probe_tess/)
+- Model pt_tess = dt_tess v112 with jeans + sweater worn FROZEN (s18 pkls). pattern_check coat: FAIL (truing, waist_suppression,
+  front_dart, front_overlap 10/18, collar_neck_edge_straight 0.23, layer clearance -8 / -32 mm). Fit forced (on_form), styled by
+  probe.py (pull fronts' break + cfHem "side", smooth). Reads p1 vs concept / s18: gap at break 162 / ~150 / 68; hem gap 226 /
+  ~260 / 53; break below HPS 182 / ~240 / 169-179. Sheets sheet_p1_clay.png, sheet_p1_diag.png (concept | probe | s18).
+- Faults: the coat's collar is NOT on the form (construct collar: true = a made piece after the drape), so C137/C139/C140/
+  C142-146 can't reach it; pulls stop at max_move (78 mm), never the stretch knee; pockets fall to the floor when free;
+  the sweater pierces the opened fronts (pull ignores the under layer); lapel mesh h 5 mm vs roll r 3 mm (C137: <= 2.4).
+STATE: probe done, nothing in flight. NEXT: put the coat's collar + under_collar in the pattern mesh on the form (as the shirt's
+collar is), then garment_pull with the under garment as a floor and applied pieces carried with their base.
