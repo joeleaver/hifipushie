@@ -636,6 +636,20 @@ def true_corner(piece: dict, at: str, keep: str, deg: float = 90.0, blend: float
     i, k = index_of(piece, at), index_of(piece, keep)
     # the kept edge leaves i toward k: the bent edge leaves the other way
     step = -1 if (k - i) % n < (i - k) % n else +1
+    j1 = (i + step) % n
+    if float(np.linalg.norm(P[j1] - P[i])) >= blend:
+        # a straight edge with no point within `blend` (a tapered sleeve's two-point hem, dress-tess s19: it could not
+        # bend and the wrist stayed 101 + 101 deg): points put on it, blend / 5 apart, so the bend has cloth to turn
+        m = int(blend / (blend / 5))
+        new = [P[i] + (P[j1] - P[i]) * (q * blend / 5) / float(np.linalg.norm(P[j1] - P[i])) for q in range(1, m + 1)]
+        if step < 0:
+            new = new[::-1]
+        pos = max(i, j1) if abs(i - j1) == 1 else n  # between the two (a wrap pair: at the end)
+        P = np.r_[P[:pos], np.asarray(new), P[pos:]]
+        p["names"] = {nm_: (ix + len(new) if ix >= pos else ix) for nm_, ix in piece["names"].items()}
+        piece = p
+        n = len(P)
+        i = p["names"][at]
     ids, acc, prev = [], 0.0, P[i]
     j = i
     for _ in range(n - 1):

@@ -9850,3 +9850,29 @@ sym.py <tag>: mirror symmetry per piece, noise floor = mesh spacing, 1-8 mm).
 - sp10's recipe through the tool: 144 apart, 73 / 73 below, fall 73 / 72 / 72, corner 1.5 / 2.5 %, kinks 10 / 20 deg
   (sp10 12 / 12), twist 22 / 27, crumple 0.265, 0 folded, p99 6.37. The feather leaves the free cloth at 12-14 %
   p99 for a moment (pinned share targets); the border + area smooths bring it to 6.4. tests 9 passed (215 s).
+
+### dress-tess session 19 (2026-10-22): the coat's collar + lapel on the form (no-sim path)
+Branch claude/tess-coat-collar (from claude/probe-tess a91e82a8). Files /mnt/data/hifipushie/tess_coat_collar/ (run.sh,
+draft.py = a 15 s draft without placement, mk_tc.py builds model tc_tess = pt_tess + the changes below, pc.py, fit.py, sheet.py).
+- Step 1, the collar on the form. The coat's collar was one "tailored" piece with construct {"collar": true,
+  "sim_collar": false}: cloth.build hold_out() takes it out of the SIM, and on_form goes through the same build
+  (place_only), so the form never had a collar. Fixed twice: (a) pattern_form.on_form fits the whole draft (sim_collar
+  false only applies to a sim; only Tess's coat models use it, so no shirt / jacket changes); (b) tc_tess's coat drafts
+  the collar as Garrett's jacket does: collar_two_piece (stand + fall "collar" + undercollar fused to the fall, a turn
+  smaller), the stand sewn to the back neck + the gorge (the facing is fused to the front, so the collar seam is the
+  facing's too), folds declared: "collar roll" on the fall (r 4 mm, R16) and the "lapel roll" on each front (r 3 mm).
+- Step 2, C137: the coat's own mesh_refine: the lapel roll's rows at h 2.2 mm (0.95 pi r / 4, within 8 mm of the
+  roll line, blend 20 mm), collar + stand 2.5 mm (fall roll r 4: <= 3.1), the old lapel recipe (5 mm near the break /
+  point / neck) kept. Data, not FORM_REFINE_LAPEL (Garrett's jacket uses that).
+- Step 3, pattern_check sorted (c0 = collar only, c1 = all fixes): REAL, fixed: front overlap 10 -> 18 mm = the button
+  (R12; c19 cut it for the sim's hang, the no-sim path styles the opening instead); layer clearance chest -8.1 -> +8.1
+  (chest_ease 0.22 -> 0.24), waist -31.7 -> +31.4 (front side seam 35 -> 12 mm in at the waist); collar neck edge
+  straight 0.23 -> 0.03 (a straight stand); truing (neck 133.5 + 138.4 at HPS, armholes 93 + 102.6, sleeve wrists
+  101 + 101: "true" ops, then "match" walks the stand onto the trued neckline); collar_stand_end 12.6 -> 3.0 (new op
+  option collar_two_piece "run_off": true, R14 / R28). MEASURE FAULTS, fixed in code: tailor rows read chest / waist /
+  hips 0 mm (pattern_jacket._span_at's strict crossing missed a contour vertex ON the level: half-open now);
+  junctions read "turn 178.5" at an unfolded collar's CB (two mirrored seams meeting: a seam going on, skipped now);
+  "true" could not bend a two-point sleeve hem (points put on a bare edge first); collar_fold_run read the unfolded
+  stand's CB height (21 mm) as an end (garment_reads: the cb end of an unfolded stand is its middle). NOT FOR A LAB
+  COAT (waived by name, rule proposed): waist_suppression 11-20 % and front_dart are suit rules; a boxy coat
+  (block_options fitted false) should read silhouette "straight" (<= 9 %, no dart). Ours 0.4 %.

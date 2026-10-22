@@ -2896,6 +2896,11 @@ def on_form(model: str, garment: str, spec: dict | None = None, g: dict | None =
     spec = spec or store.load(model)
     g = _json.loads(_json.dumps(g if g is not None else spec["cloth"][garment]))
     g["mesh_refine"] = form_refine(g)
+    # EVERY VISIBLE PIECE IS ON THE FORM (dress-tess s19; Joe "complete pattern, every piece"): construct
+    # "sim_collar": false holds the collar out of a SIM (built on the drape after it); the form is not a sim, so it
+    # fits the whole draft. Held out here, Tess's coat came onto the form with no collar at all (probe 2026-10-22).
+    if isinstance(g.get("construct"), dict) and g["construct"].get("sim_collar") is False:
+        g["construct"] = dict(g["construct"], sim_collar=True)
     ug = cloth.expanded(g).get("over")
     und = on_form(model, ug, spec, log=log) if ug and ug in (spec.get("cloth") or {}) else None
     res = cloth.build(cloth._garment_for_sim(g), cloth.model_body(model, spec, g, simulate=False), f"{model}:{garment}",
