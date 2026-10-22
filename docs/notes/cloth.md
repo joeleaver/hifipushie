@@ -10009,3 +10009,21 @@ Scripts + files: /mnt/data/hifipushie/garrett_collar/r2/ (run.sh = this worktree
 - Look r27sc vs r26k: about level, slightly better: cleaner hem corners, shirt collar now reads in the V, flaps lie
   flatter (5 mm off the front); worse side line (32 / 21 in); collar top ragged with the shirt's points through it; hem
   12 mm shorter than the concept; lapels / gorge still narrow. Step 3 not started.
+
+## fit round 28 (2026-10-22; $FR28 = /mnt/data/hifipushie/dress_garrett/fit_round28; branch claude/garrett-jacket-r28)
+Joe on r27sc: "It's almost good. I don't know why it thrashed the shirt though". Coordinator: the shirt under the jacket
+is gc1 to 0.0 mm; shirt_ab/ab3.png: culled = ragged collar, CULL=0 = clean. Later (Joe): "the front of the jacket is
+crumpled, near the belly".
+Step 1, the cull (C158). cloth_layers.hidden was a DISTANCE rule (outer within reach, side < 12 mm, under up to `pierce`
+15 mm outside, margins only at the outer's FREE edges). The jacket's collar fall is a turned edge: no margin there, so
+the shirt collar lying over it in view counted as poking through and was cut: r27sc stand 1468 / 5228, collar 4177 / 9995
+cut. New default rule "visibility": hidden only where the jacket or body lies > 1.5 mm in front in all 72 judged
+directions (front, 3/4 at 37 / 45, sides, back, +-10 deg az / el), seen set grown 2 rings, made pieces whole when any
+triangle shows, hidden holes / seen islands < 200 triangles merged (seen never removed). occluded's z-buffer
+vectorised (_zbuffer; KAT equals the old per-face loop): 72 views on shirt 40k / jacket 14k / body 41k in 13-21 s.
+rule="margin" keeps the old reads for a CLOSED fit worn open (cloth_check.visible_fit_rows, seen_part margin, the
+export's opt-in "margin"). recull28.py on r27sc (BELT=50): 21968 -> 14244 hidden of 40342 (stand / collar / yoke /
+cuffs 0; back 6477, fronts 1998 / 1867, sleeves 1933 / 1969). Round 27's BELT also hid the cuffs (223 / 223: everything
+below the belt line); now torso pieces only. Render r28c0 (check/*_r28c0): the shirt collar reads as CULL=0
+(check/collar_cull_before_after.png: r27sc | r28c0); cuffs back; a few white specks at the side view's shoulder =
+shirt poking through the jacket (seen cloth now drawn; C153 show-through).

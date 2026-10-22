@@ -9,8 +9,10 @@ body's poses). Here: what is read off the two results afterwards.
 - `tells(outer, under)`: the tailoring tells as numbers against garment_kb.json's targets (how much shirt collar
   shows above the jacket's at centre back, how much cuff past the sleeve, lapels lying on the chest, the outer collar
   hugging the under one, crossings between the layers).
-- `hidden(under, outer)`: the under garment's faces nobody can see (covered by the outer one, further than `margin`
-  from its openings): the export drops them (a shirt under a jacket becomes collar + front V + cuffs).
+- `hidden(under, outer)`: the under garment's faces no JUDGED view can see (the outer garment or the body in front of
+  them from front, three-quarter, side and back, +-10 deg; made pieces kept whole; no stranded islands or holes): what
+  looks and renders leave out (a shirt under a jacket becomes collar + front V + cuffs). rule "margin": the old
+  distance rule (it removed seen cloth, fit round 28), kept only for a closed fit worn open.
 - `cut(under, outer)`: the merge-and-cut rule the export uses: the under garment's faces cut where the outer one
   hides them from every view direction, and where they cross it away from what shows.
 - `tucked(under, outer)`: the under garment's finished surface with only its covered cloth laid under the outer
@@ -91,34 +93,56 @@ def occluded(P: np.ndarray, Vo: np.ndarray, Fo: np.ndarray, dirs: np.ndarray, px
             facing = fn_ @ d < 0
         else:
             facing = np.ones(len(Fo), bool)
-        bx0 = np.floor(T[..., 0].min(1)).astype(int)
-        bx1 = np.ceil(T[..., 0].max(1)).astype(int)
-        by0 = np.floor(T[..., 1].min(1)).astype(int)
-        by1 = np.ceil(T[..., 1].max(1)).astype(int)
-        for f in np.where(facing)[0]:
-            xs, ys = np.arange(bx0[f], bx1[f] + 1), np.arange(by0[f], by1[f] + 1)
-            if not len(xs) or not len(ys):
-                continue
-            gx, gy = np.meshgrid(xs + 0.5, ys + 0.5, indexing="ij")
-            (x0, y0), (x1, y1), (x2, y2) = T[f]
-            den = (y1 - y2) * (x0 - x2) + (x2 - x1) * (y0 - y2)
-            if abs(den) < 1e-12:
-                continue
-            l0 = ((y1 - y2) * (gx - x2) + (x2 - x1) * (gy - y2)) / den
-            l1 = ((y2 - y0) * (gx - x2) + (x0 - x2) * (gy - y2)) / den
-            l2 = 1 - l0 - l1
-            inside = (l0 >= -0.02) & (l1 >= -0.02) & (l2 >= -0.02)
-            if not inside.any():
-                continue
-            z = l0 * Dz[f, 0] + l1 * Dz[f, 1] + l2 * Dz[f, 2]
-            sub = Z[bx0[f]:bx1[f] + 1, by0[f]:by1[f] + 1]
-            np.minimum(sub, np.where(inside, z, np.inf), out=sub)
+        _zbuffer(Z, T, Dz, facing)
         q = (np.c_[P @ a, P @ b] / px - lo).astype(int)
         ok = (q[:, 0] >= 0) & (q[:, 0] < W) & (q[:, 1] >= 0) & (q[:, 1] < H)
         zq = np.full(len(P), np.inf)
         zq[ok] = Z[q[ok, 0], q[ok, 1]]
         out[k] = (zq - (P @ d)) if gaps else (zq < (P @ d) - tol)
     return out
+
+
+def _zbuffer(Z: np.ndarray, T: np.ndarray, Dz: np.ndarray, facing: np.ndarray, chunk: int = 2_000_000) -> None:
+    """Rasterise triangles T [nf, 3, 2] (pixel coords) with depths Dz [nf, 3] into Z (min depth), in place: every pixel
+    centre of a face's inclusive bounding box with barycentrics >= -0.02 (vectorised; the per-face loop it replaced
+    took ~1 min a view on a jacket + body)."""
+    f_all = np.where(facing)[0]
+    if not len(f_all):
+        return
+    bx0 = np.floor(T[f_all, :, 0].min(1)).astype(np.int64)
+    bx1 = np.ceil(T[f_all, :, 0].max(1)).astype(np.int64)
+    by0 = np.floor(T[f_all, :, 1].min(1)).astype(np.int64)
+    by1 = np.ceil(T[f_all, :, 1].max(1)).astype(np.int64)
+    nx, ny = bx1 - bx0 + 1, by1 - by0 + 1
+    cnt = nx * ny
+    W, H = Z.shape
+    Zf = Z.reshape(-1)
+    start = 0
+    while start < len(f_all):
+        cs = np.cumsum(cnt[start:])
+        stop = start + max(1, int(np.searchsorted(cs, chunk, side="right")))
+        sl = slice(start, stop)
+        c = cnt[sl]
+        fi = np.repeat(np.arange(stop - start), c)
+        k = np.arange(int(c.sum())) - np.repeat(np.cumsum(c) - c, c)
+        nyr = ny[sl][fi]
+        px_ = bx0[sl][fi] + k // nyr
+        py_ = by0[sl][fi] + k % nyr
+        gx, gy = px_ + 0.5, py_ + 0.5
+        f = f_all[sl][fi]
+        x0, y0 = T[f, 0, 0], T[f, 0, 1]
+        x1, y1 = T[f, 1, 0], T[f, 1, 1]
+        x2, y2 = T[f, 2, 0], T[f, 2, 1]
+        den = (y1 - y2) * (x0 - x2) + (x2 - x1) * (y0 - y2)
+        okd = np.abs(den) >= 1e-12
+        den = np.where(okd, den, 1.0)
+        l0 = ((y1 - y2) * (gx - x2) + (x2 - x1) * (gy - y2)) / den
+        l1 = ((y2 - y0) * (gx - x2) + (x0 - x2) * (gy - y2)) / den
+        l2 = 1 - l0 - l1
+        ins = okd & (l0 >= -0.02) & (l1 >= -0.02) & (l2 >= -0.02) & (px_ >= 0) & (px_ < W) & (py_ >= 0) & (py_ < H)
+        z = l0 * Dz[f, 0] + l1 * Dz[f, 1] + l2 * Dz[f, 2]
+        np.minimum.at(Zf, (px_ * H + py_)[ins], z[ins])
+        start = stop
 
 
 def _pieces_of(res: dict, roles: tuple, wrap: str | None = None) -> np.ndarray:
@@ -541,7 +565,7 @@ def seen_part(under: dict, outer: dict | None = None, hid: np.ndarray | None = N
         d = cKDTree(V[vis]).query(V)[0] if len(vis) else np.full(len(V), np.inf)
         hid = (d > margin)[F].all(1)
     elif hid is None:
-        hid = hidden({"V": V, "mesh": M}, outer, margin=margin, edge_margin=edge_margin, pierce=pierce)
+        hid = hidden({"V": V, "mesh": M}, outer, margin=margin, edge_margin=edge_margin, pierce=pierce, rule="margin")
     hid = np.asarray(hid, bool).copy()
     if below_z is not None:
         hid |= (V[F, 2] < float(below_z)).all(1)
@@ -580,9 +604,128 @@ def seen_part(under: dict, outer: dict | None = None, hid: np.ndarray | None = N
     return M2, V[old], info
 
 
+JUDGED_AZ = (0.0, 37.0, -37.0, 45.0, -45.0, 90.0, -90.0, 180.0)  # deg: front, three-quarter (render23's upper_three
+# camera is 37 deg off front; 45 the usual), sides, back
+JUDGED_MARGIN_DEG = 10.0  # each judged view also at +-this azimuth and elevation (a camera a little off, a figure turning)
+HIDE_TOL = 0.0015  # m: under cloth must lie this far BEHIND the outer surface in a view to count as covered there
+HIDE_RINGS = 2  # rings of hidden cloth kept round what shows (the z-buffer's pixel, a seen edge never at a cut)
+ISLAND_FACES = 200  # connected hidden / visible regions smaller than this are merged into what surrounds them (below)
+
+
+def judged_dirs(az=JUDGED_AZ, margin_deg: float = JUDGED_MARGIN_DEG) -> np.ndarray:
+    """Unit view directions (eye -> model, view_dirs' convention: az 0 = the front camera at -Y, 90 = from -X) of the
+    judged views, each at azimuth / elevation 0 and +-margin_deg: 9 directions per view."""
+    out = []
+    m = float(margin_deg)
+    offs = (-m, 0.0, m) if m > 0 else (0.0,)
+    for a0 in az:
+        for da in offs:
+            for el in offs:
+                a, e = np.radians(a0 + da), np.radians(el)
+                out.append([np.cos(e) * np.sin(a), np.cos(e) * np.cos(a), -np.sin(e)])
+    return np.unique(np.round(np.array(out), 9), axis=0)
+
+
+def _face_components(F: np.ndarray, sel: np.ndarray) -> np.ndarray:
+    """Connected components (sharing an edge) of the faces F[sel]: -> label per face (-1 off sel)."""
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+    idx = np.where(sel)[0]
+    lab = np.full(len(F), -1, np.int64)
+    if not len(idx):
+        return lab
+    Fs = F[idx]
+    e = np.sort(np.r_[Fs[:, [0, 1]], Fs[:, [1, 2]], Fs[:, [2, 0]]], 1)
+    fi = np.tile(np.arange(len(idx)), 3)
+    key = e[:, 0] * (int(F.max()) + 1) + e[:, 1]
+    o = np.argsort(key, kind="stable")
+    ks, fs = key[o], fi[o]
+    same = ks[1:] == ks[:-1]
+    a, b = fs[:-1][same], fs[1:][same]
+    g = coo_matrix((np.ones(len(a)), (a, b)), shape=(len(idx), len(idx)))
+    _, l = connected_components(g, directed=False)
+    lab[idx] = l
+    return lab
+
+
 def hidden(under: dict, outer: dict, margin: float = 0.03, reach: float = 0.06, edge_margin: dict | None = None,
-           pierce: float = 0.002) -> np.ndarray:
-    """Per triangle of the under garment: True where it can't be seen for the outer one. A vertex is covered when
+           pierce: float = 0.002, rule: str = "visibility", dirs: np.ndarray | None = None,
+           tol: float = HIDE_TOL, rings: int = HIDE_RINGS, island_faces: int = ISLAND_FACES, px: float = 0.002,
+           info: dict | None = None) -> np.ndarray:
+    """Per triangle of the under garment: True where NO judged view can see it for the outer garment (the B cull:
+    renders and looks draw only the rest). rule "visibility" (default, fit round 28):
+    - a vertex is hidden when the outer garment (its triangles, both sides: the facings show through an open front) or
+      the body lies more than `tol` in FRONT of it in EVERY direction of `dirs` (default judged_dirs(): front,
+      three-quarter L / R, side L / R, back, each +-10 deg in azimuth and elevation; orthographic z-buffers, `px`);
+    - the visible set is grown `rings` rings (a seen edge never sits at the cut); a triangle is hidden when all three
+      corners are;
+    - a made piece (the mesh's "made": collar, stand, cuffs) with ANY triangle seen is kept whole;
+    - connectivity: a hidden region of fewer than `island_faces` triangles inside seen cloth is kept (no holes),
+      and a seen region of fewer than `island_faces` triangles inside hidden cloth is grown `rings` more rings
+      (it is SEEN, so it is never removed; the grow keeps its rim off the cut).
+    Why (fit round 28, Joe on r27sc: "it thrashed the shirt ... that shouldn't even be possible"): the old rule (by
+    distance from the outer's openings, with a 15 mm `pierce` allowance) removed the shirt collar standing in view
+    above the jacket collar and left ragged fragments of it; rendered with CULL=0 the same geometry was clean.
+    Distance can't tell "under the jacket" from "beside it in view"; only a view can.
+    rule "margin": the old rule (`_hidden_margin`: margin / reach / edge_margin / pierce), kept for a CLOSED fit worn
+    open (cloth_check.visible_fit_rows predicts the opened V by edge margins: no view of the closed fit shows it).
+    info: filled with counts (hidden vertices, islands merged, made pieces kept)."""
+    if rule == "margin":
+        return _hidden_margin(under, outer, margin=margin, reach=reach, edge_margin=edge_margin, pierce=pierce)
+    Vu, Fu = np.asarray(under["V"], float), np.asarray(under["mesh"]["F"])
+    Vo = np.asarray(outer["V"], float)
+    Fo = np.asarray(outer.get("F", outer["mesh"]["F"]))
+    oV, oF = [Vo], [Fo]
+    body = outer.get("body")
+    if body is not None and len(getattr(body, "V", [])) and len(getattr(body, "T", [])):
+        oV.append(np.asarray(body.V, float))
+        oF.append(np.asarray(body.T) + len(Vo))
+    occ_V, occ_F = np.concatenate(oV), np.concatenate(oF)
+    dirs = judged_dirs() if dirs is None else np.asarray(dirs, float)
+    hidden_v = occluded(Vu, occ_V, occ_F, dirs, px=px, tol=tol).all(0)
+    E = np.unique(np.sort(np.r_[Fu[:, [0, 1]], Fu[:, [1, 2]], Fu[:, [2, 0]]], 1), axis=0)
+    vis = _grow(~hidden_v, E, rings)
+    hid = (~vis)[Fu].all(1)
+    kept_made = []
+    Mu = under["mesh"]
+    if Mu.get("made") and "piece" in Mu:
+        fp = np.asarray(Mu["piece"])[Fu[:, 0]]
+        names = list(Mu["names"])
+        for nm in Mu["made"]:
+            if nm in names:
+                s_ = fp == names.index(nm)
+                if (s_ & ~hid).any() and (s_ & hid).any():
+                    hid[s_] = False
+                    kept_made.append(nm)
+    n_hole = n_isl = 0
+    if island_faces > 0:
+        lab = _face_components(Fu, hid)
+        if (lab >= 0).any():
+            cnt = np.bincount(lab[lab >= 0])
+            small = np.where(cnt < island_faces)[0]
+            if len(small) and len(small) < len(cnt):  # (never unhide everything: the biggest region stays)
+                drop = np.isin(lab, small)
+                n_hole = int(len(small))
+                hid[drop] = False
+        lab = _face_components(Fu, ~hid)
+        if (lab >= 0).any():
+            cnt = np.bincount(lab[lab >= 0])
+            small = np.where(cnt < island_faces)[0]
+            if len(small) and len(small) < len(cnt):
+                isl = np.zeros(len(Vu), bool)
+                isl[Fu[np.isin(lab, small)].ravel()] = True
+                isl = _grow(isl, E, rings)
+                n_isl = int(len(small))
+                hid &= ~isl[Fu].any(1)
+    if info is not None:
+        info.update(hidden_vertices=int(hidden_v.sum()), directions=int(len(dirs)), hidden_faces=int(hid.sum()),
+                    faces=int(len(Fu)), holes_kept=n_hole, islands_grown=n_isl, made_kept_whole=kept_made)
+    return hid
+
+
+def _hidden_margin(under: dict, outer: dict, margin: float = 0.03, reach: float = 0.06,
+                   edge_margin: dict | None = None, pierce: float = 0.002) -> np.ndarray:
+    """hidden(rule="margin"), the OLD rule (by distance; it removed SEEN cloth: fit round 28). Per triangle of the under garment: True where it can't be seen for the outer one. A vertex is covered when
     the outer garment lies over it (an outer surface point within `reach`, further from the body than the vertex) and
     it is more than `margin` inside the outer garment's openings (its free edges: neckline, front edges, hems, sleeve
     ends: what shows there stays, with a margin for movement). A triangle is hidden when all three corners are.

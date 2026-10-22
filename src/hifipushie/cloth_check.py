@@ -553,7 +553,7 @@ def visible_fit_rows(body, under: dict, outer: dict, worn_open: bool = False, z:
     hid = cloth_layers.hidden({"V": np.asarray(under["V"], float), "mesh": under["mesh"]},
                               {"V": np.asarray(outer["V"], float), "mesh": outer["mesh"], "body": body},
                               margin=0.03, edge_margin=open_front_margin(outer) if worn_open else None,
-                              pierce=cloth_layers.PIERCE_CULL)
+                              pierce=cloth_layers.PIERCE_CULL, rule="margin")  # (a closed fit: no view shows the V)
     # seen: a vertex none of whose triangles is culled (the cull's ragged rim and its specks are not "what shows")
     seen = np.zeros(len(under["V"]), bool)
     seen[Fu[~hid].ravel()] = True

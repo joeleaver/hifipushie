@@ -11237,7 +11237,7 @@ def export_part(name: str, spec: dict, out_dir, texture: int = 1024, log=print) 
             for on, og, ores in built:
                 if expanded(og).get("over") == gname:
                     if og.get("hidden_rule", "visible") == "margin":  # (the old rule: by distance from the openings)
-                        hide |= cloth_layers.hidden(res, ores, float(og.get("hidden_margin", 0.03)))
+                        hide |= cloth_layers.hidden(res, ores, float(og.get("hidden_margin", 0.03)), rule="margin")
                         continue
                     # merge-and-cut (cloth_layers.cut): what the outer garment hides from every view, and under cloth
                     # crossing it away from what shows; the under garment's made pieces (collar, stand) never cut

@@ -53,7 +53,7 @@ def test_hidden_faces_keep_a_margin_at_the_openings():
     body = cloth.Body({"V": V, "F": [list(f) for f in F], "J": {}})
     under = _shell(V, F, 0.103)
     outer = dict(_shell(V, F, 0.108, zmax=0.05), body=body)  # open above z = 0.05
-    h = cloth_layers.hidden(under, outer, margin=0.02)
+    h = cloth_layers.hidden(under, outer, margin=0.02, rule="margin")
     z = under["V"][under["mesh"]["F"]].mean(1)[:, 2]
     assert h[z < 0.0].mean() > 0.97 and not h[z > 0.06].any(), (h[z < 0].mean(), h[z > 0.06].sum())
     assert not h[(z > 0.04)].any()  # the margin inside the opening stays
@@ -374,6 +374,99 @@ def test_seen_part_cuts_the_hidden_cloth_and_its_strain_out_of_the_start():
     hid_b = ~fa & (X[F, 0].mean(1) > 0.02)
     _, _, ib = cloth_layers.seen_part({"V": X, "mesh": M}, hid=hid_b, whole=("b",), whole_margin=0.015)
     assert ib["kept_by_piece"]["b"] == int((~fa).sum()) and ib["kept"] == len(F), ib["kept_by_piece"]
+
+
+
+
+def _collar_scene():
+    """A body (sphere), an outer shell open above z = 0.05 (a jacket at its neck), an under shell (a shirt) open above
+    z = 0.09 whose top band is a made piece "collar" standing in view above the outer's opening and lying 2-4 mm OVER
+    the outer's rim (as a shirt collar lies on a jacket collar)."""
+    V, F = _sphere()
+    body = cloth.Body({"V": V, "F": [list(f) for f in F], "J": {}})
+    Vu, Fu = _sphere(seed=2)
+    u = Vu / np.linalg.norm(Vu, axis=1, keepdims=True)
+    r = np.full(len(u), 0.103)
+    zc = u[:, 2] * 0.103
+    ramp = np.clip((zc - 0.035) / 0.012, 0, 1)
+    r = r + ramp * 0.0085  # 0.103 -> 0.1115: 3.5 mm outside the outer shell (0.108) from z ~0.047 up
+    Vu = u * r[:, None]
+    Fu = Fu[(Vu[Fu][:, :, 2] < 0.09).all(1)]
+    collar = Vu[Fu].mean(1)[:, 2] > 0.035
+    piece = np.zeros(len(Vu), np.int64)
+    piece[np.unique(Fu[collar])] = 1
+    collar = (piece[Fu] == 1).all(1)
+    under = {"V": Vu, "mesh": {"F": Fu, "sew": np.zeros((0, 2), np.int64), "border": np.zeros(len(Vu), bool),
+                               "piece": piece, "names": ["body", "collar"], "made": ["collar"]}}
+    outer = dict(_shell(V, F, 0.108, zmax=0.05), body=body)
+    return under, outer, collar
+
+
+def test_cull_keeps_a_seen_collar_whole_and_culls_a_covered_back():
+    """Fit round 28 (Joe on r27sc: the cull "thrashed the shirt"): a shirt collar standing in view above a jacket collar
+    stays WHOLE; a back panel under the jacket is culled; the old distance + pierce rule removed seen collar."""
+    under, outer, collar = _collar_scene()
+    info = {}
+    h = cloth_layers.hidden(under, outer, info=info)
+    c = under["V"][under["mesh"]["F"]].mean(1)
+    back = (c[:, 1] > 0.05) & (c[:, 2] < 0.0)
+    assert not h[collar].any(), int(h[collar].sum())
+    assert h[back].mean() > 0.9, h[back].mean()
+    # the old rule, with the outer's rim a TURNED edge (a jacket collar's fall: no free border, so no opening margin):
+    # it cut seen collar cloth lying over the rim (the 15 mm pierce allowance) and left the rest as fragments
+    turned = dict(outer, mesh=dict(outer["mesh"], border=np.zeros(len(outer["V"]), bool)))
+    old = cloth_layers.hidden(under, turned, margin=0.03, pierce=cloth_layers.PIERCE_CULL, rule="margin")
+    assert old[collar].any() and not old[collar].all()
+    assert not cloth_layers.hidden(under, turned)[collar].any()
+    # no stranded islands: every seen region is big (no fragment of < ISLAND_FACES triangles in hidden cloth)
+    lab = cloth_layers._face_components(np.asarray(under["mesh"]["F"]), ~h)
+    assert np.bincount(lab[lab >= 0]).min() >= cloth_layers.ISLAND_FACES or len(np.unique(lab[lab >= 0])) == 1
+    assert info["hidden_faces"] == int(h.sum()) and info["directions"] >= 7 * 9 - 9
+
+
+def test_cull_never_hides_cloth_a_judged_view_sees():
+    """Every under triangle with a corner seen in a judged view (the outer and body not in front of it) is kept."""
+    under, outer, _ = _collar_scene()
+    h = cloth_layers.hidden(under, outer)
+    Vo, Fo = outer["V"], np.asarray(outer["mesh"]["F"])
+    b = outer["body"]
+    occ = cloth_layers.occluded(under["V"], np.r_[Vo, b.V], np.r_[Fo, np.asarray(b.T) + len(Vo)],
+                                cloth_layers.judged_dirs(), tol=cloth_layers.HIDE_TOL)
+    seen_v = ~occ.all(0)
+    assert not h[seen_v[np.asarray(under["mesh"]["F"])].any(1)].any()
+
+
+def test_zbuffer_matches_the_per_face_loop():
+    V, F = _sphere()
+    P = np.random.default_rng(3).normal(size=(300, 3)) * 0.06
+    dirs = cloth_layers.view_dirs(6, (0.0, 30.0))
+    g = cloth_layers.occluded(P, V, F, dirs, gaps=True)
+    # reference: the per-face loop it replaced, on one direction
+    d = dirs[1] / np.linalg.norm(dirs[1])
+    a = np.cross(d, [0.0, 0.0, 1.0]); a /= np.linalg.norm(a); b = np.cross(d, a)
+    uv = np.c_[V @ a, V @ b] / 0.002
+    lo = np.floor(uv.min(0)).astype(int) - 1
+    W, H = (np.ceil(uv.max(0)).astype(int) - lo + 2)
+    Z = np.full((W, H), np.inf)
+    T, Dz = uv[F] - lo, (V @ d)[F]
+    for f in range(len(F)):
+        xs = np.arange(int(np.floor(T[f, :, 0].min())), int(np.ceil(T[f, :, 0].max())) + 1)
+        ys = np.arange(int(np.floor(T[f, :, 1].min())), int(np.ceil(T[f, :, 1].max())) + 1)
+        gx, gy = np.meshgrid(xs + 0.5, ys + 0.5, indexing="ij")
+        (x0, y0), (x1, y1), (x2, y2) = T[f]
+        den = (y1 - y2) * (x0 - x2) + (x2 - x1) * (y0 - y2)
+        l0 = ((y1 - y2) * (gx - x2) + (x2 - x1) * (gy - y2)) / den
+        l1 = ((y2 - y0) * (gx - x2) + (x0 - x2) * (gy - y2)) / den
+        ins = (l0 >= -0.02) & (l1 >= -0.02) & (1 - l0 - l1 >= -0.02)
+        z = l0 * Dz[f, 0] + l1 * Dz[f, 1] + (1 - l0 - l1) * Dz[f, 2]
+        sub = Z[xs[0]:xs[-1] + 1, ys[0]:ys[-1] + 1]
+        np.minimum(sub, np.where(ins, z, np.inf), out=sub)
+    q = (np.c_[P @ a, P @ b] / 0.002 - lo).astype(int)
+    ok = (q[:, 0] >= 0) & (q[:, 0] < W) & (q[:, 1] >= 0) & (q[:, 1] < H)
+    ref = np.full(len(P), np.inf)
+    ref[ok] = Z[q[ok, 0], q[ok, 1]] - (P @ d)[ok]
+    fin = np.isfinite(ref)
+    assert np.array_equal(fin, np.isfinite(g[1])) and np.allclose(ref[fin], g[1][fin])
 
 
 if __name__ == "__main__":
