@@ -10110,3 +10110,17 @@ Joe's call: fix the lump by correcting where the shirt's HPS sits, as a measurin
   200; the shoulder point's is 2) drags the yoke's corner onto the landmark and the front piles up beside it = the
   lump. On a person the cloth can't stretch, so the shirt sits where the yoke reaches: the seam slides, nobody
   measures. Probe: pattern_form.NECK_PIN_W (default 200, unchanged), env HP_NECK_PIN_W; fits sp2 / sp20 running.
+- Soft neck pin (sp2, HP_NECK_PIN_W 2, closed fit 733 s): the neck point moved 2 mm (gc1's already sits 11 mm off the
+  landmark), yoke corner p95 22.5 %, lump unchanged (crest 53 / 56, bump 15.2 / 14.9), throat = gc1's. The pin is not
+  what holds it.
+- Unbutton-and-settle on gc1's closed fit (settle.py; band + collar + yoke / back / fronts within 120 mm free, push as
+  floor, then gc1's styling): A relax: yoke corner stretch p95 27 -> 3.2 %, the neck point slides 9 mm back onto the
+  crest at the SAME height (1551), lump unchanged (66 deg / 14.9 mm); look (r3/side_crop_gc1_seA.png) WORSE: a pinch at
+  the seam's neck end and the body showing through the yoke (212 vertices left inside: push can't clear a relaxed
+  piece). B + the band dragged 30 mm down: neckline 1522, 921 vertices inside the body, throat moved (V 74, points
+  103 below), lump 42 deg / 13.7 mm.
+- CONCLUSION: the lump is the shirt's RELAXED shape with its neckline where the closed band holds it, 2 cm up a
+  near-vertical neck: straightening (freeing, pressing, settling, a soft pin, unbuttoning) can't remove it in our model,
+  and moving the band down needs gravity / a body floor our styling doesn't have (push leaves hundreds inside). The
+  real-life fix is the cut (the neckline / shoulder for his build), round 3's direction. Side finding: gc1's yoke corner
+  is stretched p95 27 % (Simon 9 %), relaxed away only by freeing the band.
