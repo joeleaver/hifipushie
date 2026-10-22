@@ -167,6 +167,15 @@ if A.get("swing"):
         e0 = hb + rodr((W0[ends[2]] - hb)[None], ht - hb, q * np.radians(A["swing"]))[0]
         qd = max((1, -1), key=lambda q_: np.linalg.norm((hb + rodr((e0 - hb)[None], tang, q_ * 0.2))[0][:2]))
         rad = tang
+        # the band END as an area, not its 3 corner vertices (those pinned alone pinched a lobe at the top corner:
+        # stand TopCf stretch 20 % vs 3 % closed; Joe's arrow): every band vertex within swing_patch (pattern) of the
+        # end edge (BottomEdge..TopCf line) turns with it, rigidly about the hinge
+        if A.get("swing_patch"):
+            k_s = nm.index("stand"); sv = np.where(pid == k_s)[0]
+            ea, eb = uv[P[f"stand:{s}BottomEdge"]], uv[P[f"stand:{s}TopCf"]]
+            ab_ = eb - ea; tt = np.clip(((uv[sv] - ea) @ ab_) / (ab_ @ ab_), 0, 1)
+            dline = np.linalg.norm(uv[sv] - (ea + tt[:, None] * ab_), axis=1)
+            ends = list(np.unique(inv[sv[dline <= A["swing_patch"]]]))
         for v in ends:
             bnd[v] = [W0[v].copy(), (hb, ht - hb, q * np.radians(A["swing"])), (rad, qd * np.radians(A.get("lay", 0.0)))]
 # ROLL: each front's corner above a roll line (from the neckline at arc `from` m from cfNeck, down to the first
@@ -210,6 +219,16 @@ stp(W0, "start")
 for it_ in (1, 2, 5, 10, 20) if A.get("trace") else ():
     stp(solve(W0, hW.copy(), it_), f"relax {it_} it")
 Y = solve(Y, hW.copy(), A.get("iters", 20))
+# HUG (Joe: the collar "should mostly hug the neck on the back and sides; the flare is all toward the front"): band +
+# collar vertices within `hug` deg of CB round the neck (angle from the closed fit, about the band's centre) are held
+# where the closed fit has them through the pulls, the smooth and the final solve.
+if A.get("hug"):
+    cs_ = np.isin(pid, [nm.index("collar"), nm.index("stand")])
+    ctr_ = X0[pid == nm.index("stand")][:, :2].mean(0)
+    ang_ = np.degrees(np.arctan2(X0[:, 0] - ctr_[0], X0[:, 1] - ctr_[1]))
+    hugv = np.unique(inv[cs_ & (np.abs(ang_) < A["hug"])])
+    hW[hugv] = True; W0h = Y.copy()  # (held where the RELAXED closed fit has them)
+    print(f"hug: {len(hugv)} band / collar vertices held within {A['hug']} deg of CB")
 for k in range(1, STEPS + 1):
     f = k / STEPS; T = Y.copy(); fixed = hW.copy()
     for s in tgt:
@@ -338,6 +357,43 @@ for k_, PL in enumerate(seq):
     pull_info[k_] = {"handles": PL.get("handles", "points"), "moved_mm": round(moved * 1000, 1), "stretch_p99": [round(s0 * 100, 2), round(stretch(Y) * 100, 2)]}
     print("pull", k_, pull_info[k_])
 Y = solve(Y, hW | np.isin(np.arange(n), list(pts.values()) + list(bnd) + list(done_h.values())), 10)
+# LAYER CONTACT (Joe: "most of the collar is intersecting the layer behind it"): the collar's fall lies OUTSIDE what it
+# is turned over (band, fronts, yoke) by at least one cloth thickness. Each round: collar vertices within `reach` of
+# that layer and less than `gap` outside it (its outward normals: away from the body) are pushed out to `gap` and held
+# (over the hug), the rest re-solved. Measured by layers.py (both directions).
+if A.get("layer"):
+    LY = A["layer"]
+    # (not near the fold: the collar within `roll` of its sewn edge is joined to the band there, and the band within
+    # `band_top` of its top edge is inside the roll; pushing those apart tore the cloth: 393 -> 695 pushed, p99 33 %)
+    def near_edge(piece, a, b, dist):
+        k = nm.index(piece); vv = np.where(pid == k)[0]
+        ed = np.asarray([i for i in vv if i in set(edge_idx(piece, a, b))])
+        return vv[cKDTree(uv[ed]).query(uv[vv])[0] < dist]
+    def edge_idx(piece, a, b):
+        k = nm.index(piece); vv = np.where(pid == k)[0]; ua, ub = uv[P[f"{piece}:{a}"]], uv[P[f"{piece}:{b}"]]
+        # the sewn / top edge: the piece's boundary vertices sewn to the other piece
+        sw_ = np.asarray(M["sew"]).reshape(-1, 2); other = nm.index("stand" if piece == "collar" else "collar")
+        return np.unique([x for a_, b_ in sw_ for x, y in ((a_, b_), (b_, a_)) if pid[x] == k and pid[y] == other])
+    cnear = near_edge("collar", "leftBottomEdge", "rightBottomEdge", LY.get("roll", 0.010))
+    bnear = near_edge("stand", "leftTopCf", "rightTopCf", LY.get("band_top", 0.006))
+    coll = np.setdiff1d(np.unique(inv[pid == nm.index("collar")]), inv[cnear])
+    undw = np.setdiff1d(np.unique(inv[np.isin(pid, [nm.index(p) for p in ("stand", "front.L", "front.R", "yoke")])]), inv[bnear])
+    undw = np.setdiff1d(undw, coll)   # (welded seam vertices belong to both: not a layer to clear)
+    def wnorm(Yc):
+        fn_ = np.cross(Yc[WF[:, 1]] - Yc[WF[:, 0]], Yc[WF[:, 2]] - Yc[WF[:, 0]]); vv = np.zeros_like(Yc)
+        for k in range(3): np.add.at(vv, WF[:, k], fn_)
+        vv /= np.linalg.norm(vv, axis=1)[:, None] + 1e-12
+        _, bj_ = bt.query(Yc); vv[((Yc - BV[bj_]) * vv).sum(1) < 0] *= -1; return vv
+    hold_all = hW | np.isin(np.arange(n), list(pts.values()) + list(bnd) + list(done_h.values()))
+    for r_ in range(LY.get("rounds", 5)):
+        nv_ = wnorm(Y); ut_ = cKDTree(Y[undw]); dd_, j_ = ut_.query(Y[coll]); u_ = undw[j_]
+        sd_ = ((Y[coll] - Y[u_]) * nv_[u_]).sum(1)
+        bad_ = (dd_ < LY.get("reach", 0.010)) & (sd_ < LY.get("gap", 0.0012))
+        if not bad_.any(): break
+        T = Y.copy(); fx = hold_all.copy(); fx[coll] = fx[coll] & ~bad_ | False
+        bv_ = coll[bad_]; T[bv_] = Y[bv_] + (LY.get("gap", 0.0012) - sd_[bad_])[:, None] * nv_[u_[bad_]]; fx[bv_] = True
+        Y = solve(T, fx, LY.get("iters", 8))
+        print(f"layer round {r_}: pushed {int(bad_.sum())} collar vertices out")
 # SMOOTH (Joe: "a 'smooth' operation ... in conjunction with the 'pull'; those are the two main operations to styling the
 # clothing one is wearing"): within the brushed pieces, alternate (a) fair: each vertex moved `lam` of the way toward its
 # one-ring centroid ALONG ITS NORMAL only (a hand flattening a ripple), (b) restore: the flat-pattern solve with
