@@ -9991,3 +9991,21 @@ Scripts + files: /mnt/data/hifipushie/garrett_collar/r2/ (run.sh = this worktree
   first done button 85.9 -> 80.5, collar crumple .23 -> .39 (the bent neck corner shifted the neckline the collar sits
   on); the side crop shows the fall rumpled. Not adopted. Crop: r2/lump_side_gc1_a_b.png (gc1 | (b) clay, gc1 | (b) diag).
   Suite after the tailor test: 218 passed, 5 skipped, 3 xfailed, exit 0 (r2/tests_r2b.log).
+
+## fit round 27 (2026-10-22; $FR27 = /mnt/data/hifipushie/dress_garrett/fit_round27; branch claude/garrett-jacket-r27)
+- Brief: Joe "keep gc1 and move on to the jacket". The jacket over gc1 (gc1_styled.pkl used as is; harness mode gc1).
+  Bodies: gc_garrett vs dg_garrett differ in 15 shoulder-tip vertices (<= 4.9 mm); dg_garrett's body used.
+- Step 1 C137: rows read (rowmesh.py): lapel 5 rows 3.76 mm across (roll_radius 6 mm via ROLL_R), along 3.64; collar
+  2.52 / 4.02. fr27.py ROWS_H 2.2 mm on the roll lines: placement broke ("the start is broken", side.L/R): one side
+  start vertex at uv (311.3, -246.3), 2.6 mm under the armpit, left by _worn_levels' ramp 6 cm out on the arm while its
+  row-neighbours were laid in; fix27.py (round-local) moves a laid vertex > 40 mm from its neighbours' mean to it (3 moved).
+  r27a (graded) vs r27a0 (form recipe): lapel.L turn 79 FAIL vs 161, collar twist 33 vs 10, front.L p99 24.8 vs 12.6:
+  graded NOT adopted (C156). r27a0: 25 s fit, front|front crossings 0, jacket p99 11.0 %.
+- Step 2 A/B: (a) r27s/r27sc local ZOZO release + arrangement (EXIT 0, preflight ok, springback <= 5 mm, stretch p99
+  9.5); (b) style27.py: r27p (edge points pulled separately: ragged crumpled lower fronts, dead), r27q (abs edge read:
+  under-pulled 45 mm), r27q2 (signed read: whole edge 87 mm + hem 30 mm, smooth, relax: clean hem, but lapels through
+  their fronts 0.27 / ~0.6, flaps sunk 8 / 4, fronts in the shirt). Verdict: sim stays (C157).
+- Table and sheets: docs/state/dress_garrett_fit.md; check/{wholefront,upper_front,upper_three,side}_{r27sc,r27q2c}.png.
+- Look r27sc vs r26k: about level, slightly better: cleaner hem corners, shirt collar now reads in the V, flaps lie
+  flatter (5 mm off the front); worse side line (32 / 21 in); collar top ragged with the shirt's points through it; hem
+  12 mm shorter than the concept; lapels / gorge still narrow. Step 3 not started.
