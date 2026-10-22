@@ -9781,3 +9781,72 @@ sym.py <tag>: mirror symmetry per piece, noise floor = mesh spacing, 1-8 mm).
 - pattern_form: FORM_REFINE_SHIRT collar + stand h 0.002 (C137); _turn_flaps FLAP_OUT_FIRST / TURN_TOL (C140).
 - Proof: wf_simon from the repo defaults + the concept's button spacing (v1) = the spike's e3 to 0.0 mm (band ends
   sewn flush 0.0 / 0.1 mm, fall outside, sections 176 deg, collar + band mirror p95 1.4 / 1.9 mm).
+
+### pull until it would stretch: the general tool (2026-10-21, C142)
+- Joe: "Think of men pulling their shirts down along the G-line, popping cuffs, women pulling down skirts. It's not a
+  gravity simulation, it's a flatten-this-along-interesting-geometry without stretching it much thing, and it's how
+  humans put on clothes."
+- src/hifipushie/garment_pull.py: `pull` (handles = points, borders piece:a..b, lists; dir = vector | side | out | up
+  | down | a mix; side from a landmark off CF, refused at CF), `turn` (a grip turned about a line, staged: band end
+  swung, cuff popped), `hold_mask` (free pieces + hold_below closure / point), `crumple`. MCP `pull_garment` (cloth
+  toolset; gate: pattern_check PASS or force), guide section in cloth_tools.md (later renamed style_garment, below).
+- Porting found three things the spike's numbers hid: (1) a pull first takes up SLACK (stretch falls), so the stop is
+  read against the least so far, not the start; (2) every solve run to convergence crumpled the collar (p95 0.26 ->
+  0.33) and stopped at 39 mm / 131 apart: few rounds per step are the regulariser (the cloth moves as little as it
+  must); (3) few rounds read false stretch on a big move (a slack strip stopped at 75 of 100 mm): a step over tol is
+  CONFIRMED by a converged read (decision only; the few-rounds state is kept). Tol 0.5 % over the least.
+- tests/test_garment_pull.py: strip (along the chord + straight up) within one step of the pattern length; wf_simon
+  v1 fit, band ends turned 30 deg, collar points {"side": 1, "out": 0.3, "up": 0.3}: 147 apart, 63 / 59 below HPS,
+  collar crumple p95 0.28 (y3: 147, 63 / 59, 0.28); moved 51 mm.
+
+### pull + smooth as one styling tool: the spike's handle lessons ported (2026-10-21, C142 / C143)
+- From the shirt-spike session (its commits 650491c1-575d7810): a handle grabs an AREA (25 mm patch round a point)
+  that TURNS (drag the point alone, Kabsch-fit the patch's start shape on, pin, re-solve); pulls compose as a
+  SEQUENCE (earlier grips held); "easy" lets the cloth choose the direction; SMOOTH is the second styling op.
+- garment_pull: `grip` (points -> turning patches; borders / lists move as one: a turning border tilted the strip's
+  end in-plane and stopped it 7 mm short), `pull` (walks the lead along per-step directions, "easy" probes 9),
+  `smooth` (stretch read = the pull's: every piece with free cloth; read on the brushed pieces alone the same smooth
+  showed +1.3 pt), `style` (ops pull / turn / smooth; re-gripping picks a held grip up), reads `tip_read`, `folded`.
+- MCP `pull_garment` -> `style_garment(ops)` (one tool for the two operations); renders skipped when clay and diag
+  are off (no GPU lock).
+- Shirt (test): turn + patch pull + smooth: 142 apart, 64 / 60 below HPS, collar crumple 0.28, tips at the closed
+  collar's crumple / stretch, 0 folded faces. Sequence [points, corners 6 mm, points] + smooth: 152 / 61 / 58, 0.30.
+  OPEN: the right tip twists 55-66 deg (closed 35; the spike's u25 42, sm1 47); the two pull directions differ a
+  little (up 0.38 right vs 0.32 left: the body normals aren't mirrored).
+
+### hold region + area turns (2026-10-21, C142 / C144, from the spike's h110 / q40)
+- style ops `relax` (free cloth against the pattern) and `hold` (hold_region: pieces within N deg of CB / CF round a
+  piece's centre, or named arcs; kept where they are NOW): the collar hugs the neck at the back and sides. A turn
+  grips the cloth within 15 mm (TURN_PATCH) of what it names; style() holds that whole area afterwards (holding only
+  the named vertices let the pull tear the band corner: 29-35 %). A grip overlapping held cloth is refused.
+- q40 through the tool: fall edge 73 / 70 / 70 mm at CB / sides (q40 73 / 70 / 70; closed 67 / 68 / 67), band corner
+  1.5 / 2.5 % (q40 2.7), collar crumple 0.245 (q40 0.244), tips 31 / 33 deg twist, 0 folded; points 150 apart, 73 / 71
+  below HPS (q40 137 / 76: the tool's pull went further; its stop is read against the least stretch), stretch p99 7.4 %
+  (q40 reports 5.9). tests/test_garment_pull.py 8 passed under capped (174 s).
+
+### feathered hold + mirrored pulls + edge_turns (2026-10-21, C144, from the spike's f2)
+- hold `feather_to`: the band beyond the hold drawn back after every later pull / turn (cosine share 1 -> 0, 3 rounds,
+  garment_pull.feather). edge_turns = the spike's profile.py (side-view turn of a free edge), the 15 deg round CB left
+  out (the closed collar turns 19 / 31 deg there, where the halves meet).
+- The relax itself kinks the collar's edge: closed 14 / 12 deg -> 29 / 20 after relax (before any hold); the feather
+  moves the kink out to ~120 deg. Right side's extra kink came in the pull: the two "out" directions weren't mirrored
+  (up 0.07 vs 0.14; the closed fit's own mirror p95 is 9 mm, closed tip twist 18 / 35); a symmetrised body normal
+  changed nothing, mirror-PAIRED handle directions (pull `mirror`, default on) did: below HPS 74 / 72 -> 73 / 74,
+  right kink 33 -> 27, twist 33 -> 31.
+- f2 through the tool: 138 apart, 73 / 74 below, fall 73 / 73 / 72 mm (f2 73), corner 1.5 / 2.5 %, kinks 21 / 27
+  (f2 18 / 16), twist 19 / 31 (f2 21 / 25), crumple 0.27, 0 folded, p99 6.65 %. tests/test_garment_pull.py 8 passed
+  under capped (236 s). Open: the right side's edge kink / twist vs f2.
+- Correction (the spike session, 2026-10-21): q40's "p99 5.9 %" was over ALL pieces including held ones; read the
+  same way (collar + band + fronts) q40 and the tool's tq40 are both 7.4 %. The spike's swing also takes the free cloth
+  to 6.5-7.2 % going into the pull. tq40 (2eaf7d65 via the spike's via_tool.py) = q40 on every read but the points
+  (150 / 71-73 vs 137 / 76: the tool's stop rule).
+
+### border smooth into one swoop (2026-10-21, C145, from the spike's sp10)
+- garment_pull.smooth_border + border_chain ("piece:a..b..c" walked along the boundary); style op {"smooth":
+  {"border": ..., "release": [...]}} (region holds released for the op, grips kept). The feather now runs after
+  pulls only (FEATHER_AFTER; after the turn too it left the right side kinkier: 21 vs 20, left 14 vs 10).
+- A sharp fold's border can't be rounded alone without stretch (the spline cuts the corner: shorter); the known answer
+  is a wobbling border (kink 39 -> 22 deg, stretch falls).
+- sp10's recipe through the tool: 144 apart, 73 / 73 below, fall 73 / 72 / 72, corner 1.5 / 2.5 %, kinks 10 / 20 deg
+  (sp10 12 / 12), twist 22 / 27, crumple 0.265, 0 folded, p99 6.37. The feather leaves the free cloth at 12-14 %
+  p99 for a moment (pinned share targets); the border + area smooths bring it to 6.4. tests 9 passed (215 s).

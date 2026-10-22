@@ -151,7 +151,7 @@ TOOLSETS: dict[str, dict] = {
              "tools": ["groom_hair", "tie_hair", "look_hair", "hair_reference", "hair_from_reference", "export_hair"]},
     "cloth": {"about": "garments: design, pattern, the pattern gate, alterations, fit on the form, dress (sim), "
                        "references", "also": ["scene"],
-              "tools": ["design_garment", "look_pattern", "alter_pattern", "pattern_check", "fit_garment", "release_garment", "arrange_garment",
+              "tools": ["design_garment", "look_pattern", "alter_pattern", "pattern_check", "fit_garment", "style_garment", "release_garment", "arrange_garment",
                         "check_garment", "dress", "look_cloth", "garment_reference",
                         "garment_from_reference", "check_garment_reference", "garment_reference_brief"]},
     "terrain": {"about": "terrain and game levels (height fields in a level designer's words)",
@@ -2937,6 +2937,91 @@ def arrange_garment(name: str, garment: str, pins: list[dict], keep: bool = Fals
            if rep["status"] == "springs back" else "judge the arranged result beside the reference (clay + diag, one "
            "view per review); check no front through front, no lift, the lapel rolling to its break")
     return "\n".join(lines + [f"next: {nxt}"])
+
+
+@mcp.tool(structured_output=False)
+def style_garment(name: str, garment: str, ops: list[dict], free: list[str] | None = None,
+                  hold_below: str | None = None, views: list[str] | None = None, size: int = 560, clay: bool = True,
+                  diag: list | bool | None = None, force: bool = False, save: str | None = None):
+    """STYLE a worn garment by hand, as people do (C142 / C143): the garment fitted on the form (no sim), then a
+    SEQUENCE of ops, each as far as the cloth goes without stretching: {"pull": {"handles": [{"at": "piece:point" |
+    "piece:a..b" | [...], "dir": [x,y,z] | side | out | up | down | easy | {"side": 1, "up": 0.3}, "side_from"?,
+    "patch"?}]}}, {"turn": {"turns": [{"at", "about": [a, b], "deg", "toward"?}]}}, {"smooth": {"pieces": [...]}},
+    {"relax": {}}, {"hold": {"pieces", "within_deg", "of"}}. Earlier grips / holds stay. free (default: the gripped pieces), hold_below ("closure:front").
+    Details: guide(topic="style_garment")."""
+    from . import cloth_check as cc, garment_pull as gpl, pattern_form
+    spec = store.load(name)
+    if garment not in (spec.get("cloth") or {}):
+        raise ValueError(f"no garment {garment!r} (have {', '.join(spec.get('cloth') or {}) or 'none'})")
+    ops = _spec_arg(ops)
+    if not ops or not all(isinstance(o, dict) and len(o) == 1 and next(iter(o)) in
+                          ("pull", "turn", "smooth", "relax", "hold") for o in ops):
+        raise ValueError('ops: a list of {"pull": {"handles": [...]}} | {"turn": {"turns": [...]}} | '
+                         '{"smooth": {"pieces": [...]}} | {"relax": {}} | {"hold": {"pieces": [...], "within_deg"?}}')
+    st = cc.gate_status(name, garment, spec)
+    if not st["passed"] and not force:
+        return (f"{garment}: not styled: {st['why']}\nnext: pattern_check(\"{name}\", \"{garment}\") and fix its rows "
+                "first; styling starts from the form fit of a pattern that passed flat (force=True only to look)")
+    res = pattern_form.on_form(name, garment, spec)
+    X_fit, M, body = np.asarray(res["A"], float), res["mesh"], res["body"]
+    pid = np.asarray(M["piece"])
+    if free is None:
+        at = [h["at"] for o in ops for h in (o.get("pull") or {}).get("handles", [])] + \
+             [t["at"] for o in ops for t in (o.get("turn") or {}).get("turns", [])]
+        free = sorted({M["names"][int(pid[v])] for a in at for v in gpl.vertices(M, a)} |
+                      {p for o in ops for p in (o.get("smooth") or {}).get("pieces", [])} |
+                      {p for o in ops for p in (o.get("hold") or {}).get("pieces", [])})
+    held = gpl.hold_mask(M, X_fit, free, hold_below)
+    bvf = (np.asarray(body.V, float), np.asarray(body.T, int))
+    Xn, infos = gpl.style(M, X_fit, held, ops, body=bvf)
+    lines = [f"{name}:{garment}: styled on the form{'' if st['passed'] else ' -- FORCED: the pattern gate has not passed'}",
+             f"  free: {', '.join(free)}; held below {hold_below or '-'} ({int(held.sum())} of {len(X_fit)} vertices held)"]
+    stops = []
+    for k, op in enumerate(infos):
+        (kind, inf), = op.items()
+        if kind == "pull":
+            stops.append(inf["stopped"])
+            lines.append(f"  {k + 1} pull: moved (mm) {json.dumps(inf['moved_mm'])} in {inf['steps']} steps of "
+                         f"{inf['step_mm']:g} mm, stopped by {inf['stopped']}; stretch p99 start {inf['stretch_p99_start']} "
+                         f"/ least {inf['stretch_p99_least']} / end {inf['stretch_p99_end']} % (tol {inf['tol_pct']:g} % "
+                         f"over the least); gripped {json.dumps(inf['gripped'])}")
+        elif kind == "turn":
+            lines.append(f"  {k + 1} turn: {json.dumps(inf['turns'])}; stretch p99 {inf['stretch_p99_start']} -> "
+                         f"{inf['stretch_p99_end']} %")
+        elif kind == "relax":
+            lines.append(f"  {k + 1} relax: stretch p99 {inf['stretch_p99'][0]} -> {inf['stretch_p99'][1]} %")
+        elif kind == "hold":
+            lines.append(f"  {k + 1} hold: {inf['held']} vertices kept where they are for the later ops")
+        else:
+            lines.append(f"  {k + 1} smooth {', '.join(inf['pieces'])}: {inf['rounds']} rounds, roughness p95 "
+                         f"{inf['rough_p95_mm'][0]} -> {inf['rough_p95_mm'][1]} mm, stretch p99 {inf['stretch_p99'][0]} "
+                         f"-> {inf['stretch_p99'][1]} %")
+    crum = {p: [round(float(np.percentile(gpl.crumple(M, X_fit, p), 95)), 3),
+                round(float(np.percentile(c, 95)), 3)] for p in free if len(c := gpl.crumple(M, Xn, p))}
+    pts = sorted({h["at"] for o in ops for h in (o.get("pull") or {}).get("handles", [])
+                  if isinstance(h["at"], str) and ".." not in h["at"]})
+    tips = {p: {"fit": gpl.tip_read(M, X_fit, p), "styled": gpl.tip_read(M, Xn, p), "folded": gpl.folded(M, Xn, p)}
+            for p in pts}
+    out_dir = store.HOME / "_cache" / "style" / f"{name}_{garment}"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    np.savez(out_dir / "styled.npz", V=Xn, V_fit=X_fit)
+    lines += [f"  crumple p95, fit -> styled (mm; layered flaps read ~2 in the fit): {json.dumps(crum)}",
+              f"  pulled points' tips (crumple / stretch max / twist; folded faces near): {json.dumps(tips)}",
+              f"  result: {out_dir / 'styled.npz'} (V; V_fit = the form fit)"]
+    if clay or diag is not False:
+        ims, d = _garment_sheets(name, f"style_{garment}", body, [(garment, Xn, M)], views, size, clay=clay, diag=diag)
+        lines.append(f"  single views for review_view: {d}")
+    else:  # (no renders asked: no GPU lock)
+        ims = []
+    if "max_move" in stops:
+        nxt = ("a pull ran to max_move: something it should pull against is free (hold more: free / hold_below / a "
+               "turn first), or raise its max_move")
+    elif any(t["folded"] > 1 for t in tips.values()):
+        nxt = "cloth folds over near a pulled point: grab a bigger patch (handle \"patch\") or pull another way"
+    else:
+        nxt = ("judge clay + diag beside the reference, one view per review_view; too far or not far enough = change "
+               "the direction or what is held, never pin a handle at a coordinate; ripples left = a smooth op")
+    return [_out(im, _save_suffix(save, tag)) for tag, im in ims] + ["\n".join(lines) + f"\nnext: {nxt}"]
 
 
 @mcp.tool(structured_output=False)
