@@ -262,6 +262,7 @@ pull_info = {}
 # pulled earlier are HELD where they ended (Joe: move these apart a little, then push the points a little more).
 seq = A.get("pulls") or ([A["pull"]] if A.get("pull") else [])
 done_h = {}
+lead_outer, side_outer = {}, {}
 def handle_set(h, patch=0.0):
     """handles -> {key: welded vertex ids}. patch (m, pattern distance): grab the collar point WITH the cloth within
     `patch` of it as one rigid piece (a hand grabs an area; one vertex dragged pinches the tip)."""
@@ -273,6 +274,19 @@ def handle_set(h, patch=0.0):
             out[s_] = np.unique(inv[vv])
         return out
     if h == "corners": return {s_: inv[P[f"collar:{s_}BottomEdge"]] for s_ in ("left", "right")}
+    if isinstance(h, str) and h.startswith("outer@"):
+        # the collar's outer-edge vertex at +-deg round the neck from CB (each side), with its patch
+        degv = float(h.split("@")[1]); from collections import Counter as _C
+        kc = nm.index("collar"); cntE = _C(map(tuple, np.sort(np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]], 1).tolist()))
+        swv = set(np.asarray(M["sew"]).ravel().tolist())
+        ov = np.array(sorted({v for (a, b), c_ in cntE.items() if c_ == 1 and pid[a] == kc and pid[b] == kc for v in (a, b) if v not in swv}))
+        ctr_ = X0[pid == nm.index("stand")][:, :2].mean(0); an = np.degrees(np.arctan2(X0[ov, 0] - ctr_[0], X0[ov, 1] - ctr_[1]))
+        out = {}
+        for key, sg in (("left", -1), ("right", 1)):
+            o = ov[np.argmin(np.abs(an - sg * degv))]
+            vv = np.where((pid == kc) & (np.linalg.norm(uv - uv[o], axis=1) <= patch))[0] if patch > 0 else np.array([o])
+            out[f"outer:{key}"] = np.unique(inv[vv]); lead_outer[f"outer:{key}"] = inv[o]; side_outer[f"outer:{key}"] = float(sg)
+        return out
     out = {}
     for nmk in h:  # explicit "piece:point" handles, grabbed with their patch (within `patch` on that piece's pattern)
         o = P[nmk]; k = pid[o]
@@ -287,13 +301,14 @@ for k_, PL in enumerate(seq):
     for key, v in H.items():
         _, jj = bt.query(Y[v].mean(0))
         side_lm = P.get(f"collar:{key}TopHinge") if key in ("left", "right") else None
-        if side_lm is not None: sg = np.sign(W0[inv[side_lm], 0])
+        if key in side_outer: sg = side_outer[key]
+        elif side_lm is not None: sg = np.sign(W0[inv[side_lm], 0])
         else: sg = 1.0 if key.split(":")[0].endswith(".L") else -1.0 if key.split(":")[0].endswith(".R") else np.sign(W0[v, 0].mean())
         d_ = PL.get("side", 1.0) * np.r_[sg, 0, 0] + PL.get("out", 0.0) * vn[jj] + PL.get("up", 0.0) * np.r_[0, 0, 1]
         dirs[key] = d_ / np.linalg.norm(d_)
     pos = {key: Y[v].copy() for key, v in H.items()}; moved = 0.0; good_Y = Y.copy()
     # the grabbed point itself (a patch's lead vertex: the collar point), for the turning patch below
-    lead = {key: (inv[P[f"collar:{key}TopEdge"]] if key in ("left", "right") else inv[P[key]] if key in P else v[0]) for key, v in H.items()}
+    lead = {key: (inv[P[f"collar:{key}TopEdge"]] if key in ("left", "right") else lead_outer[key] if key in lead_outer else inv[P[key]] if key in P else v[0]) for key, v in H.items()}
     def kabsch(A_, B_):  # proper rotation R and t with R A_ + t ~ B_
         a0, b0 = A_.mean(0), B_.mean(0); Hm = (A_ - a0).T @ (B_ - b0); Uk, _, Vk = np.linalg.svd(Hm)
         dk = np.sign(np.linalg.det(Vk.T @ Uk.T)); R_ = Vk.T @ np.diag([1, 1, dk]) @ Uk.T; return R_, b0 - R_ @ a0
@@ -458,6 +473,10 @@ if A.get("edge_smooth"):
     mov = tipd > ES.get("tip", 0.025)
     hold_e = hW.copy()
     collw = np.unique(inv[pid == nm.index("collar")]); hold_e[collw] = False   # (release the fall from the hug)
+    if ES.get("release_band"):   # (the band too, beyond release_band deg from CB: the leaf's turn runs into the band there)
+        cs3 = pid == nm.index("stand"); ctr3 = X0[cs3][:, :2].mean(0)
+        a3 = np.abs(np.degrees(np.arctan2(X0[:, 0] - ctr3[0], X0[:, 1] - ctr3[1])))
+        hold_e[np.unique(inv[cs3 & (a3 > ES["release_band"])])] = False
     hold_e |= np.isin(np.arange(n), list(pts.values()) + list(bnd) + list(done_h.values()))
     # the tips' patches stay where the pulls put them
     for s_ in ("left", "right"):
@@ -481,8 +500,12 @@ if A.get("edge_smooth"):
         fx[chw[mov]] = True
         Yt = solve(T, fx, ES.get("iters", 8))
         kt = kink3d(Yt, chw, WIN)
-        if stretch(Yt) > s0 + ES.get("tol", 0.01) or kt > kk - 0.2: break
-        Y, kk = Yt, kt
+        if stretch(Yt) > s0 + ES.get("tol", 0.01): break
+        if kt > kk - 0.2:
+            bad_r = locals().get("bad_r", 0) + 1
+            if bad_r > ES.get("patience", 0): break
+            Y = Yt; continue
+        bad_r = 0; Y, kk = Yt, kt
     edge_info = {"rounds": r_, "kink_deg": [round(kk0, 1), round(kk, 1)], "stretch_p99": [round(s0 * 100, 2), round(stretch(Y) * 100, 2)]}
     print("edge smooth:", edge_info)
 # SMOOTH (Joe: "a 'smooth' operation ... in conjunction with the 'pull'; those are the two main operations to styling the
