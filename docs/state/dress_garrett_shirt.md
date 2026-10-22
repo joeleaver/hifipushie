@@ -2,7 +2,9 @@
 
 PROBE 2026-10-22 (spike defaults on Garrett, branch claude/probe-garrett from 8bc8413f; $P=/mnt/data/hifipushie/probe_garrett):
 workspace pg_garrett = sh_garrett v19 minus its "open neck.R" fold, worn_open, front closures, drape (Simon collar, repo
-defaults, C146 style). CLOSED carried: band flush, one roll, mirror 3.6. STYLED s1 (KB button 90 below cfNeck): opens, but
+defaults, C146 style). CLOSED (meas.py; control wf_simon w0): fall turned 174-178 (171-177), cover 8-13 (5-7), visible
+42 CB / 55 side (33 / 43), but the points sit AT CF, 12 apart, 47-59 below the band corners (w0: crossed, 27 apart):
+no spread on either -> reads as one band. STYLED s1 (KB button 90 below cfNeck): opens, but
 V 122 below HPS (60), points 176 apart (147+-20), 59/66 below HPS, button 1 (130) pulled 8.7 mm open -> first done 203
 (83); rows FAIL edge turn 74, crumple .37, 3 folded, mirror 6.4; leaves splayed flat + crumpled tips. s2 (first 0.047):
 collar barely opens (tips .59 neck, 117 apart), V 97, button 1 pulled open again, strain p99 28 %. Jacket NOT fitted (C85).
@@ -43,8 +45,6 @@ collar draft and much of the arrangement; jacket refit skipped, no new levers on
 - Corners strain max: <= 10 % | 13.5 | 15.1 FAIL
 - fold_on_base (arranged): <= 5 % | 6.6 | 21 FAIL
 - Reviews: PASS | collar FAIL, wholefront FAIL | collar FAIL (wholefront not run)
-
-## Tests: round 12: the 22 named files under bin/capped: 327 passed, 3 skipped, 4 xfailed, exit 0 ($S/tests_r12.log).
 
 HANDED OVER (2026-10-21): the collar (stand + fall: proportions, turn, lie, spread) now belongs to the DRAPE BAND
 thread: docs/state/drape_band.md. sh_garrett v11 carries a drape entry (round 1, not passing: stand flares, gate row
