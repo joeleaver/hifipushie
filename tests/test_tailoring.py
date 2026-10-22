@@ -443,7 +443,7 @@ def test_cutaway_reads_the_same_on_jaegers_front():
 
 
 def test_span_counts_a_vertex_on_the_level():
-    """C148 (dress-tess s19): a contour op puts an outline vertex exactly on the waist level; the strict sign test read
+    """C150 (dress-tess s19): a contour op puts an outline vertex exactly on the waist level; the strict sign test read
     the span 0 there (Tess's coat: chest / waist / hips 0 mm)."""
     import numpy as np
     from hifipushie import pattern_jacket as pj
@@ -454,7 +454,7 @@ def test_span_counts_a_vertex_on_the_level():
 
 
 def test_true_corner_bends_a_bare_straight_edge():
-    """C149 (dress-tess s19): a two-point sleeve hem had no point within the blend and could not be trued."""
+    """C151 (dress-tess s19): a two-point sleeve hem had no point within the blend and could not be trued."""
     import numpy as np
     from hifipushie import pattern
     P = np.array([[0.15, -0.3], [-0.15, -0.3], [-0.2, 0.0], [0.2, 0.0]])  # hem wristF -> wristB, seams taper in

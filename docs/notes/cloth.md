@@ -9876,7 +9876,7 @@ draft.py = a 15 s draft without placement, mk_tc.py builds model tc_tess = pt_te
   stand's CB height (21 mm) as an end (garment_reads: the cb end of an unfolded stand is its middle). NOT FOR A LAB
   COAT (waived by name, rule proposed): waist_suppression 11-20 % and front_dart are suit rules; a boxy coat
   (block_options fitted false) should read silhouette "straight" (<= 9 %, no dart). Ours 0.4 %.
-- Step 4, the look (c1 = tc_tess on the form, styled with the probe's p1 ops; coat only, Joe's ruling C151): reads
+- Step 4, the look (c1 = tc_tess on the form, styled with the probe's p1 ops; coat only, Joe's ruling C153): reads
   break below HPS 168 / 166 (concept ~240, s18 179 / 169, probe 182), gap at break 172 (concept ~150, s18 68), hem gap
   250, stretch p99 14.2 % / face 17.2 (probe 5.7 / 7.0, s18 29.8 / 24.4). Form report: folds lapel roll L / R row
   stretch 58 / 50 %, collar roll 74 %, turned 166 / 161 / 119 deg; stretch p99 18.1 % max 181 %; through_under 444
@@ -9884,7 +9884,7 @@ draft.py = a 15 s draft without placement, mk_tc.py builds model tc_tess = pt_te
   band, brown tabs at the neck sides); the lapels are thin ragged strips with no notch; front.L has a hole at the
   upper chest (cloth inside the body); pockets on the floor. Worse than s18 at the collar and lapel. Not for Joe.
   Sheets: tess_coat_collar/sheet_c1_clay.png, sheet_c1_diag.png, c1_neckzoom.png. Next: the torn fold rows.
-- Joe's ruling (via coordinator, 2026-10-22): under-layer show-through is not a composing fault (C151): fit_garment's
+- Joe's ruling (via coordinator, 2026-10-22): under-layer show-through is not a composing fault (C153): fit_garment's
   next step no longer lists a pierce as a pattern fix (next_steps.after_fit: INFO line); sheets render the coat alone.
 - Checks: wf_simon and sh_garrett closed shirt fits (on_form, repo defaults) main vs this branch: max 0.000 mm
   (tess_coat_collar/ab.log). Garment tests (pattern_form, cloth, seams, cloth_made, collar, pattern_gate, closures,

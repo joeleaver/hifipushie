@@ -44,9 +44,9 @@ docs/notes/cloth.md "### dress-tess session 17" / "session 18" and their Handove
 ## SESSION 19 2026-10-22: the coat's collar + lapel on the form (branch claude/tess-coat-collar; /mnt/data/hifipushie/tess_coat_collar/)
 - Model tc_tess (= pt_tess + mk_tc.py): collar_two_piece (stand + fall + fused undercollar, run_off), lapel overlap 18,
   chest_ease 0.24, waist contour 12 mm, truing + match ops, coat mesh_refine (lapel roll rows 2.2 mm, collar 2.5).
-  pattern_form.on_form now fits held-out made pieces (C147). Gate c1: only collar_fold_run FAILed (a reader fault on
+  pattern_form.on_form now fits held-out made pieces (C149). Gate c1: only collar_fold_run FAILed (a reader fault on
   the unfolded stand, fixed after c1: re-run pc.py to get the record); waist_suppression / front_dart WAIVED by name
-  (C150 PROPOSED: boxy coat = straight). Joe 2026-10-22: under-layer show-through is not a fault (C151): look coat-only.
+  (C152 PROPOSED: boxy coat = straight). Joe 2026-10-22: under-layer show-through is not a fault (C153): look coat-only.
 - Reads (fit.py; c1 styled with the probe's p1 ops) vs concept / s18 / probe p1: break below HPS 168 / ~240 / 169-179 /
   182; gap at break 172 / ~150 / 68 / 162; stretch p99 14.2 % (p1 5.7, s18 29.8); collar on the form 3809 vertices.
   Fold rows TORN on the form: lapel roll row stretch 58 / 50 %, collar roll 74 %, fall turned 119 deg (want ~172).
