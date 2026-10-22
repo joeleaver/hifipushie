@@ -10,8 +10,9 @@
    y3 / sm1 (points 142 apart (y3 147), 64 / 60 below HPS (y3 63 / 59), collar crumple p95 0.28 mm), the tips as
    clean as the closed collar's (crumple, stretch max; at most 1 folded face). NOT asserted: the right tip's twist
    (closed 35 deg, this 63, the spike's sm1 47): an open fault.
-3. The same shirt styled as the spike's q40 (C144): back + sides held where the relaxed fit has them, band ends turned
-   as areas, points pulled, smoothed: the collar hugs the neck at CB / sides, the band corner keeps its stretch.
+3. The same shirt styled as the spike's f2 (C144): back + sides held where the relaxed fit has them, feathered, band
+   ends turned as areas, points pulled (mirrored), smoothed: the collar hugs the neck at CB / sides, the band corner
+   keeps its stretch, no hard-border kink.
 2 and 3 need the workspace model (HIFIPUSHIE_HOME with wf_simon, HIFIPUSHIE_ASSETS); ~4 min:
    HIFIPUSHIE_HOME=/home/joe/dev/hifipushie/workspace HIFIPUSHIE_ASSETS=/home/joe/dev/hifipushie/workspace/_templates \
      /mnt/data/hifipushie/bin/capped uv run pytest tests/test_garment_pull.py
@@ -173,10 +174,11 @@ def test_shirt_collar_points_pulled_open_give_the_spike_reads():
 
 @pytest.mark.skipif(not _wf_simon_home(), reason="needs HIFIPUSHIE_HOME with the wf_simon workspace model")
 def test_shirt_collar_hugs_the_neck_at_the_back_and_sides():
-    """C144 + every grip an area (the shirt spike's q40): relax, HOLD band + collar within 110 deg of CB where the
-    relaxed fit has them, turn each band end 40 deg as a 15 mm area, pull the points side / out, smooth. The fall hugs
-    the neck at CB and the sides as the closed collar does (q40: 73 / 70 / 70 mm vs closed 67 / 68 / 67); the band's
-    top corner keeps its closed stretch (3 corner vertices turned alone: 14-22 %); clean tips."""
+    """C144 + every grip an area (the shirt spike's f2, which Joe said reads best with pt2): relax, HOLD band + collar
+    within 70 deg of CB where the relaxed fit has them, FEATHERED to 130 deg, turn each band end 40 deg as a 15 mm
+    area, pull the points side / out (mirrored), smooth. The fall hugs the neck at CB and the sides as the closed collar
+    does (73 mm vs 67-68; f2 73); the band's top corner keeps its closed stretch (3 corner vertices turned alone:
+    14-22 %); clean tips; no hard-border kink in the edge's side profile (q40's hard 110 deg border: 29 deg)."""
     res = _shirt_v1()
     X, M, body = np.asarray(res["A"], float), res["mesh"], res["body"]
     P = M["points"]
@@ -190,7 +192,9 @@ def test_shirt_collar_hugs_the_neck_at_the_back_and_sides():
               "deg": 40, "toward": "side", "side_from": f"stand:{s}BottomHinge"} for s in sides]
     handles = [{"at": f"collar:{s}TopEdge", "dir": {"side": 1, "out": 0.3}, "side_from": f"collar:{s}TopHinge"}
                for s in sides]
-    ops = [{"relax": {}}, {"hold": {"pieces": ["stand", "collar"], "within_deg": 110, "of": "back", "center": "stand"}},
+    ops = [{"relax": {}},
+           {"hold": {"pieces": ["stand", "collar"], "within_deg": 70, "feather_to": 130, "of": "back",
+                     "center": "stand"}},
            {"turn": {"turns": turns}}, {"pull": {"handles": handles}}, {"smooth": {"pieces": ["collar", "stand"]}}]
     Xn, infos = gp.style(M, X, held, ops, body=(np.asarray(body.V, float), np.asarray(body.T, int)))
     r = _fall_edge_r(M, Xn)
@@ -198,16 +202,19 @@ def test_shirt_collar_hugs_the_neck_at_the_back_and_sides():
     l, rr = Xn[P["collar:leftTopEdge"]], Xn[P["collar:rightTopEdge"]]
     apart, below = abs(l[0] - rr[0]) * 1000, [(hps[2] - p[2]) * 1000 for p in (l, rr)]
     tips = {s: gp.tip_read(M, Xn, f"collar:{s}TopEdge") for s in sides}
-    print(infos, r0, r, corner0, corner, apart, below, tips)
+    kinks = [gp.edge_turns(M, Xn, "collar", "collar:topMid", f"collar:{s}TopEdge", center="stand") for s in sides]
+    print(infos, r0, r, corner0, corner, apart, below, tips, kinks)
     assert infos[3]["pull"]["stopped"] == "stretch"
-    assert all(b - a <= 7 for a, b in zip(r0, r)), (r0, r)  # hugs (q40 +3-6 mm; unheld: the fall +8 / +14 mm off)
+    assert all(b - a <= 7 for a, b in zip(r0, r)), (r0, r)  # hugs (this +5-6 mm; unheld: the fall +8 / +14 mm off)
     assert all(c <= c0 + 2.0 for c, c0 in zip(corner, corner0)), (corner0, corner)  # (this 1.5 / 2.5, closed 2.7)
-    assert 135 <= apart <= 155 and all(66 <= b <= 80 for b in below), (apart, below)  # this 150 / 73-71; q40 137 / 76
+    assert 130 <= apart <= 150 and all(66 <= b <= 80 for b in below), (apart, below)  # this 138 / 73-74; f2 ~ 137 / 76
+    assert abs(below[0] - below[1]) <= 3, below  # mirrored pulls (unmirrored: 74 / 72)
+    assert all(k["max_turn_deg"] <= 28 for k in kinks), kinks  # this 21 / 27 (f2 18 / 16: the right side is open)
     assert float(np.percentile(gp.crumple(M, Xn, "collar"), 95)) <= 0.30
     for s in sides:
         assert tips[s]["crumple_p95_mm"] <= tips0[s]["crumple_p95_mm"] + 0.06, (s, tips[s], tips0[s])
         assert tips[s]["stretch_max_pct"] <= tips0[s]["stretch_max_pct"] + 1.0, (s, tips[s], tips0[s])
-        assert tips[s]["twist_deg"] <= tips0[s]["twist_deg"] + 15, (s, tips[s], tips0[s])  # this 31 / 33 vs 18 / 35
+        assert tips[s]["twist_deg"] <= tips0[s]["twist_deg"] + 15, (s, tips[s], tips0[s])  # this 19 / 31 vs 18 / 35
         assert gp.folded(M, Xn, f"collar:{s}TopEdge") <= 1
 
 

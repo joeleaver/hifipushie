@@ -9823,3 +9823,16 @@ sym.py <tag>: mirror symmetry per piece, noise floor = mesh spacing, 1-8 mm).
   1.5 / 2.5 % (q40 2.7), collar crumple 0.245 (q40 0.244), tips 31 / 33 deg twist, 0 folded; points 150 apart, 73 / 71
   below HPS (q40 137 / 76: the tool's pull went further; its stop is read against the least stretch), stretch p99 7.4 %
   (q40 reports 5.9). tests/test_garment_pull.py 8 passed under capped (174 s).
+
+### feathered hold + mirrored pulls + edge_turns (2026-10-21, C144, from the spike's f2)
+- hold `feather_to`: the band beyond the hold drawn back after every later pull / turn (cosine share 1 -> 0, 3 rounds,
+  garment_pull.feather). edge_turns = the spike's profile.py (side-view turn of a free edge), the 15 deg round CB left
+  out (the closed collar turns 19 / 31 deg there, where the halves meet).
+- The relax itself kinks the collar's edge: closed 14 / 12 deg -> 29 / 20 after relax (before any hold); the feather
+  moves the kink out to ~120 deg. Right side's extra kink came in the pull: the two "out" directions weren't mirrored
+  (up 0.07 vs 0.14; the closed fit's own mirror p95 is 9 mm, closed tip twist 18 / 35); a symmetrised body normal
+  changed nothing, mirror-PAIRED handle directions (pull `mirror`, default on) did: below HPS 74 / 72 -> 73 / 74,
+  right kink 33 -> 27, twist 33 -> 31.
+- f2 through the tool: 138 apart, 73 / 74 below, fall 73 / 73 / 72 mm (f2 73), corner 1.5 / 2.5 %, kinks 21 / 27
+  (f2 18 / 16), twist 19 / 31 (f2 21 / 25), crumple 0.27, 0 folded, p99 6.65 %. tests/test_garment_pull.py 8 passed
+  under capped (236 s). Open: the right side's edge kink / twist vs f2.

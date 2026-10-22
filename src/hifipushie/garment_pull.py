@@ -82,6 +82,7 @@ PATCH = 0.025  # m (pattern): the cloth a point handle grabs round the point (u2
 TURN_PATCH = 0.015  # m (pattern): a turn grips the cloth this near what it names (q40: the band end as an area)
 HOLD_ITERS = 20  # a "relax" op's rounds
 PROBE_ITERS = 4  # dir "easy": rounds per probed direction
+MIRROR_REACH = 0.03  # m: a handle's mirror partner is the one whose lead is this near its mirror image
 CONVERGED = 1e-5  # m: the confirm stops early once no vertex moves more than this in a round
 SIDE_MIN = 0.015  # m: a "side" is taken only from a point at least this far off x = 0
 _HE = ((0, 1, 2), (1, 2, 0), (2, 0, 1))
@@ -231,15 +232,22 @@ def _body_vf(body):
     return np.asarray(body.V, float), np.asarray(body.T if hasattr(body, "T") else body.F, int)
 
 
-def body_normal_at(body, p: np.ndarray) -> np.ndarray:
-    """The body's outward vertex normal nearest to p (area-weighted face normals)."""
+def body_normal_at(body, p: np.ndarray, mirrored: bool = True) -> np.ndarray:
+    """The body's outward vertex normal nearest to p (area-weighted face normals). mirrored: averaged with the mirror
+    image of the normal at p mirrored across x = 0, so mirrored handles get mirrored directions (the shirt's two "out"
+    pulls differed, up 0.38 vs 0.32, and the right collar tip twisted 55-66 deg vs the left's 22)."""
     V, F = _body_vf(body)
     nn = np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]])
     vn = np.zeros_like(V)
     for k in range(3):
         np.add.at(vn, F[:, k], nn)
-    _, j = cKDTree(V).query(p)
-    return vn[j] / (np.linalg.norm(vn[j]) + 1e-12)
+    vn /= np.linalg.norm(vn, axis=1)[:, None] + 1e-12
+    tr = cKDTree(V)
+    n = vn[tr.query(p)[1]]
+    if mirrored:
+        flip = np.array([-1.0, 1.0, 1.0])
+        n = n + vn[tr.query(p * flip)[1]] * flip
+    return n / (np.linalg.norm(n) + 1e-12)
 
 
 def direction(d, p: np.ndarray, side_x: float | None = None, body=None) -> np.ndarray:
@@ -348,7 +356,7 @@ def _easy_dir(A, Y, fixed, leads, base, body, step, st, probe_iters):
 def pull(M: dict, X: np.ndarray, held, handles: list[dict], body=None, step: float = STEP, tol: float = TOL,
          max_move: float = MAX_MOVE, iters: int = ITERS, relax_iters: int = RELAX_ITERS,
          settle_iters: int = SETTLE_ITERS, confirm: int = CONFIRM_ITERS, turn_rounds: int = TURN_ROUNDS,
-         probe_iters: int = PROBE_ITERS, pieces=None, log=None):
+         probe_iters: int = PROBE_ITERS, mirror: bool = True, pieces=None, log=None):
     """Drag `handles` until the cloth would stretch (module docstring). Returns (X_new, info)."""
     X = np.asarray(X, float)
     held = _mask(held, len(X))
@@ -383,6 +391,16 @@ def pull(M: dict, X: np.ndarray, held, handles: list[dict], body=None, step: flo
         sx = float(X[vertex(M, h["side_from"])][0]) if h.get("side_from") is not None else \
             float(Y[g, 0].mean()) if len(g) > 1 else None
         base.append(direction(d, Y[w], sx, body))
+    if mirror:  # (mirrored handles pulled the same way: the fit's own asymmetry tilted the two "out"s apart)
+        flip = np.array([-1.0, 1.0, 1.0])
+        L = np.array([Y[w] for w in leads])
+        b0 = [d.copy() for d in base]
+        for i in range(len(leads)):
+            dj = np.linalg.norm(L - L[i] * flip, axis=1)
+            j = int(np.argmin(dj))
+            if j != i and dj[j] < MIRROR_REACH:
+                v = b0[i] + b0[j] * flip
+                base[i] = v / (np.linalg.norm(v) + 1e-12)
     if any(easy) and not all(easy):
         raise ValueError("'easy' is for every handle of a pull or none (they move together)")
     P0 = [Y[g].copy() for g in groups]  # each grip's shape at the start: fitted back on (turned) every step
@@ -509,13 +527,15 @@ def style(M: dict, X: np.ndarray, held, ops: list[dict], body=None, log=None):
     """Styling as a SEQUENCE of hand moves (C142-C144): ops [{"pull": {"handles": [...], step / tol / max_move ...}}
     | {"turn": {"turns": [...], steps ...}} | {"smooth": {"pieces": [...], lam / rounds / tol ...}} | {"relax":
     {iters}} (the free cloth against its pattern) | {"hold": {...}} (hold_region: kept where it is NOW for every later
-    op; relax first: holding the unrelaxed closed collar locked in its strain, p99 7.5 vs 6.1 %)], each from where
+    op; relax first: holding the unrelaxed closed collar locked in its strain, p99 7.5 vs 6.1 %; "feather_to": the
+    band beyond the hold drawn back after every later pull / turn)], each from where
     the last left the cloth; what a pull or turn gripped is HELD where it ended for every later op (Joe: move these
     apart a little, then push the points a little more); a pull that grips them again picks them up. Returns
     (X_new, [info per op])."""
     X = np.asarray(X, float)
     base = _mask(held, len(X))
     placed = np.zeros(len(X), bool)  # what earlier ops gripped: held where they left it
+    feathers = []  # (vertices, share, positions at the hold) of each feathered hold
     infos = []
     for op in ops:
         (kind, a), = op.items()
@@ -542,8 +562,18 @@ def style(M: dict, X: np.ndarray, held, ops: list[dict], body=None, log=None):
             mine = hold_region(M, X, **a)
             placed |= mine
             inf = {"held": int(mine.sum())}
+            if a.get("feather_to") is not None:
+                fv, fw = feather_weights(M, X, a["pieces"], a["within_deg"], a["feather_to"], a.get("of", "back"),
+                                         a.get("center"))
+                fv, fw = fv[~(base | placed)[fv]], fw[~(base | placed)[fv]]
+                feathers.append((fv, fw, X.copy()))
+                inf["feathered"] = int(len(fv))
         else:
             raise ValueError(f"no styling op {kind!r} (pull, turn, smooth, relax, hold)")
+        if kind in ("pull", "turn") and feathers:  # (the feathered band drawn back after each move)
+            for fv, fw, ref in feathers:
+                keep = ~placed[fv]
+                X = feather(M, X, base | placed, fv[keep], fw[keep], ref)
         infos.append({kind: inf})
     return X, infos
 
@@ -561,14 +591,64 @@ def relax(M: dict, X: np.ndarray, held, iters: int = HOLD_ITERS):
     return Xn, {"stretch_p99": [round(s0 * 100, 2), round(stretch_p99(M, Xn, sp) * 100, 2)]}
 
 
+def _ring_angle(M: dict, X: np.ndarray, pieces, of: str = "back", center=None) -> np.ndarray:
+    """|angle| (deg) of every vertex round a vertical axis through `center`'s x-y centroid (a piece; default the first
+    of `pieces`), 0 at CB ("of": "back", +y: the creature faces -y) or CF ("front")."""
+    pid = np.asarray(M["piece"])
+    c = X[pid == _piece_ids(M, [center or pieces[0]])[0]][:, :2].mean(0)
+    ref = {"back": 1.0, "front": -1.0}[of]
+    return np.abs(np.degrees(np.arctan2(X[:, 0] - c[0], ref * (X[:, 1] - c[1]))))
+
+
+def feather_weights(M: dict, X: np.ndarray, pieces, from_deg: float, to_deg: float, of: str = "back",
+                    center=None) -> tuple[np.ndarray, np.ndarray]:
+    """(vertices, share): `pieces`' vertices between `from_deg` and `to_deg` round the ring, each with a share fading
+    1 -> 0 on a cosine ramp across that band (a hand pressing firm at the back, lighter toward the front)."""
+    ang = _ring_angle(M, X, pieces, of, center)
+    on = np.isin(np.asarray(M["piece"]), _piece_ids(M, pieces))
+    v = np.where(on & (ang >= from_deg) & (ang < to_deg))[0]
+    t = 1 - (ang[v] - from_deg) / (to_deg - from_deg)
+    return v, 0.5 - 0.5 * np.cos(np.pi * t)
+
+
+def feather(M: dict, X: np.ndarray, held, verts: np.ndarray, share: np.ndarray, ref: np.ndarray, rounds: int = 3,
+            iters: int = 8) -> np.ndarray:
+    """FEATHERED HOLD (C144, the spike's f2): `rounds` times, each of `verts` drawn its `share` of the way back to `ref`
+    (its held position), pinned, the rest re-solved against the pattern. A hard hold border kinked the collar's edge
+    (29 deg at the border); feathered from 70 to 130 deg: 18 deg, the sides still hugging."""
+    X = np.asarray(X, float)
+    held = _mask(held, len(X))
+    A = FlatARAP(M, X)
+    Y = A.weld(X)
+    w = A.welded_mask(held)
+    vw = A.inv[verts]
+    for _ in range(rounds):
+        T = Y.copy()
+        cur = A.unweld(Y)[verts]
+        tgt = cur + share[:, None] * (ref[verts] - cur)
+        acc, cnt = np.zeros((A.n, 3)), np.zeros(A.n)
+        np.add.at(acc, vw, tgt)
+        np.add.at(cnt, vw, 1)
+        m = cnt > 0
+        T[m] = acc[m] / cnt[m, None]
+        fx = w | m
+        Y = A.solve(T, fx, iters)
+    Xn = A.unweld(Y)
+    Xn[held] = X[held]
+    return Xn
+
+
 def hold_region(M: dict, X: np.ndarray, pieces=None, within_deg: float | None = None, of: str = "back",
-                center=None, at=None) -> np.ndarray:
+                center=None, at=None, feather_to: float | None = None) -> np.ndarray:
     """A region the hand / body keeps still (C144; Joe: the collar "should mostly hug the neck on the back and sides;
     the flare is all toward the front"): the vertices of `pieces` within `within_deg` of CB ("of": "back", +y: the
     creature faces -y) or CF ("front") round a vertical axis through `center` (a piece name: its x-y centroid; default
     the first piece's), plus whatever `at` names (vertex / "piece:point" / "piece:a..b" / a list). Angles read on X
     as it is now. Shirt spike h110 / q40: band + collar within 110 deg of CB held, the side hug 70 mm vs 68 closed
-    (unheld: the opened front's slack spread round the ring, the fall 8 / 14 mm further off the neck at CB / side)."""
+    (unheld: the opened front's slack spread round the ring, the fall 8 / 14 mm further off the neck at CB / side).
+    `feather_to` (deg; used by style()): the band from within_deg to feather_to is not held but FEATHERED back after
+    each pull / turn (`feather`): a hard border kinked the collar's edge 29 deg (q40); held to 70, feathered to 130:
+    18 deg (f2)."""
     X = np.asarray(X, float)
     pid = np.asarray(M["piece"])
     out = np.zeros(len(X), bool)
@@ -577,11 +657,7 @@ def hold_region(M: dict, X: np.ndarray, pieces=None, within_deg: float | None = 
         if within_deg is None:
             out |= on
         else:
-            cp = _piece_ids(M, [center or pieces[0]])[0]
-            c = X[pid == cp][:, :2].mean(0)
-            ref = {"back": 1.0, "front": -1.0}[of]
-            ang = np.degrees(np.arctan2(X[:, 0] - c[0], ref * (X[:, 1] - c[1])))
-            out |= on & (np.abs(ang) < within_deg)
+            out |= on & (_ring_angle(M, X, pieces, of, center) < within_deg)
     if at is not None:
         out[vertices(M, at)] = True
     return out
@@ -753,3 +829,46 @@ def hold_mask(M: dict, X: np.ndarray, free, below=None, margin: float = 0.005) -
             zb = float(X[vertex(M, below)][2])
         held |= X[:, 2] < zb - margin
     return held
+
+
+def edge_turns(M: dict, X: np.ndarray, piece: str, mid: str, end: str, center=None, window: float = 0.015,
+               skip_deg: float = 12.0, min_deg: float = 15.0) -> dict:
+    """The side-view swoop of a piece's free outer edge (shirt spike profile.py; Joe: "one continuous swoop instead of
+    three different angles"): the piece's border vertices that aren't sewn, on `end`'s side of `mid` (pattern x),
+    ordered from mid; the turn (deg) of the edge's direction in the side plane (y, z) over `window` (m, 3D arc); the
+    largest and where it is (deg round the ring from CB about `center`'s centroid), the point's own corner (the last
+    `skip_deg`) and the `min_deg` round CB (the two halves meet there: the closed collar turns 19 / 31 deg at CB) left
+    out. A hard hold border: 29 deg at 79 deg from CB (q40); feathered: 18 (f2)."""
+    F = np.asarray(M["F"], int)
+    pid = np.asarray(M["piece"])
+    uv = np.asarray(M["uv"], float)
+    k = _piece_ids(M, [piece])[0]
+    Ek = np.sort(np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]], 1)
+    Ek = Ek[(pid[Ek[:, 0]] == k) & (pid[Ek[:, 1]] == k)]
+    u, c = np.unique(Ek, axis=0, return_counts=True)
+    bv = np.unique(u[c == 1])
+    sew = set(np.asarray(M.get("sew") if M.get("sew") is not None else [], int).ravel().tolist())
+    outer = np.array([i for i in bv if i not in sew])
+    m0, e0 = vertex(M, mid), vertex(M, end)
+    o = outer[np.sign(uv[outer, 0] - uv[m0, 0]) == np.sign(uv[e0, 0] - uv[m0, 0])]
+    o = o[np.argsort(np.abs(uv[o, 0] - uv[m0, 0]))]
+    yz = X[o][:, [1, 2]]
+    arc = np.r_[0, np.cumsum(np.linalg.norm(np.diff(X[o], axis=0), axis=1))]
+    ang = np.degrees(np.arctan2(X[o, 0] - 0, X[o, 1] - 0))
+    if center is not None:
+        cc = X[pid == _piece_ids(M, [center])[0]][:, :2].mean(0)
+        ang = np.degrees(np.arctan2(X[o, 0] - cc[0], X[o, 1] - cc[1]))
+    turns = []
+    for i in range(len(o)):
+        a = np.searchsorted(arc, arc[i] - window / 2)
+        b = np.searchsorted(arc, arc[i] + window / 2) - 1
+        if a >= i or b <= i:
+            continue
+        d1, d2 = yz[i] - yz[a], yz[b] - yz[i]
+        t = np.degrees(np.arccos(np.clip(d1 @ d2 / (np.linalg.norm(d1) * np.linalg.norm(d2) + 1e-12), -1, 1)))
+        turns.append((t, ang[i]))
+    turns = np.array(turns)
+    turns = turns[(np.abs(turns[:, 1]) < np.abs(ang[-1]) - skip_deg) & (np.abs(turns[:, 1]) >= min_deg)]
+    j = int(np.argmax(turns[:, 0]))
+    return {"max_turn_deg": round(float(turns[j, 0]), 1), "at_deg": round(float(turns[j, 1]), 1),
+            "p50_deg": round(float(np.median(turns[:, 0])), 1)}

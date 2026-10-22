@@ -131,6 +131,8 @@ no sim), then `ops` run in order, each from where the last left the cloth:
     {"side": 1, "out": 0.3, "up": 0.3}, or "easy" / {"easy": base}. With "easy" the cloth chooses: each step probes 9
     directions round the base and takes the least stretch (about 9x the time). Don't bake in out / up weights: the
     shirt's points came out too high with up 0.3.
+  - Mirrored handles (each lead near the other's mirror image) are pulled in mirrored directions. Without that, the
+    fit's own asymmetry tilted the two "out" directions apart and one collar point rode 2 mm higher.
   - Take "side" from a landmark well off CF ("side_from": a hinge, a neck point). It is refused within 15 mm of x = 0,
     where a band's two ends cross and the side flips.
 - `{"turn": {"turns": [{"at", "about": [point a, point b], "deg", "toward"?, "side_from"?}], "steps"?}}`: a grip
@@ -141,31 +143,35 @@ no sim), then `ops` run in order, each from where the last left the cloth:
   alternates two moves: each vertex moved toward its one-ring centroid along its normal, then the pattern solve with
   everything outside held. It stops at the pull's stretch rule, or when the roughness stops dropping.
 - `{"relax": {"iters"?}}`: the free cloth relaxed against its pattern (nothing gripped).
-- `{"hold": {"pieces", "within_deg"?, "of"?: "back" | "front", "center"?, "at"?}}`: keep a region where it is NOW for
-  every later op. Examples: the collar + band within 110 deg of CB round the band's centre, so the collar hugs the
-  neck at the back and sides and only the front flares (C144). Relax first: holding the unrelaxed closed collar locked
-  in its strain (p99 7.5 vs 6.1 %). Unheld, the opened front's slack spread round the whole ring: the fall stood
-  8 / 14 mm further off the neck at CB / the side.
+- `{"hold": {"pieces", "within_deg"?, "feather_to"?, "of"?: "back" | "front", "center"?, "at"?}}`: keep a region
+  where it is NOW for every later op. With `feather_to` (deg), the band beyond `within_deg` is FEATHERED: after every
+  later pull / turn it is drawn back toward where the hold found it, by a share fading 1 -> 0, then pinned and
+  re-solved (3 rounds). A hard border kinked the collar's edge (29 deg at the border); held to 70 deg and feathered
+  to 130 the kink fell to about 20 deg. Example: the collar + band within 70 deg of CB round the band's centre,
+  feathered to 130, so the collar hugs the neck at the back and sides and only the front flares (C144). Relax first:
+  holding the unrelaxed closed collar locked in its strain (p99 7.5 vs 6.1 %). Unheld, the opened front's slack
+  spread round the whole ring: the fall stood 8 / 14 mm further off the neck at CB / the side.
 - What a pull or turn gripped stays where it ended for the later ops. A pull that grips it again picks it up ("pull
   the points, move the collar's inner corners apart 6 mm, pull the points again").
 - A grip overlapping held cloth is refused (the two fight: 280 % in the shirt spike).
-- free: the pieces that may move (default: the gripped, brushed and region-held pieces). hold_below: "closure:front" (that
-  closure's top fastened button) or "piece:point" also holds the free cloth below it.
+- free: the pieces that may move (default: the gripped, brushed and region-held pieces). hold_below:
+  "closure:front" (that closure's top fastened button) or "piece:point" also holds the free cloth below it.
 - Returns:
   - clay + diag;
   - per op: how far each handle went (mm, steps), what stopped it ("stretch", or "max_move": something it should
     pull against is free), the stretch p99 (start / least / end) and the smooth's roughness and stretch;
   - crumple p95 per free piece, fit -> styled (layered flaps read ~2 mm in the fit already);
-  - each pulled point's tip (crumple, stretch max, twist, folded faces near it) beside the fit's;
+  - each pulled point's tip (crumple, stretch max, twist, folded faces near it) beside the fit's (the library also
+    reads an edge's side-view swoop: garment_pull.edge_turns);
   - the result npz and the folder for review_view.
 - Known answer (tests/test_garment_pull.py): Simon's shirt on wf_simon, closed fit,
   `free=["collar", "stand", "front.L", "front.R"], hold_below="closure:front"`. Ops: band ends turned 30 deg about
   stand:<s>BottomHinge..TopHinge toward "side"; collar points `collar:<s>TopEdge` pulled {"side": 1, "out": 0.3,
   "up": 0.3} from `collar:<s>TopHinge`; collar + stand smoothed. Result: points 142 apart, 64 / 60 below HPS, collar
-  crumple p95 0.28 mm, tips as clean as the closed collar's. The hug (the spike's q40): relax, hold stand + collar
-  within 110 deg of CB, band ends turned 40 deg as `stand:<s>BottomEdge..<s>TopCf` areas, points pulled
-  {"side": 1, "out": 0.3}, smoothed. The fall stays 70-73 mm off the neck axis at CB / the sides (closed 67-68), the
-  band corner keeps 1.5-2.5 %.
+  crumple p95 0.28 mm, tips as clean as the closed collar's. The hug (the spike's f2, the best read so far): relax,
+  hold stand + collar within 70 deg of CB feathered to 130, band ends turned 40 deg as `stand:<s>BottomEdge..<s>TopCf`
+  areas, points pulled {"side": 1, "out": 0.3}, smoothed. Result: points 138 apart, 73 / 74 mm below HPS, the fall
+  73 mm off the neck axis at CB / the sides (closed 67-68), band corner 1.5-2.5 %, edge kinks 21 / 27 deg.
 - Judge it like a fit: clay + diag beside the reference, one view per review_view. Too far or not far enough: change
   the direction, the sequence or what is held, never the solver.
 
