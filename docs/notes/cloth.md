@@ -10027,3 +10027,20 @@ cuffs 0; back 6477, fronts 1998 / 1867, sleeves 1933 / 1969). Round 27's BELT al
 below the belt line); now torso pieces only. Render r28c0 (check/*_r28c0): the shirt collar reads as CULL=0
 (check/collar_cull_before_after.png: r27sc | r28c0); cuffs back; a few white specks at the side view's shoulder =
 shirt poking through the jacket (seen cloth now drawn; C153 show-through).
+Step 2, the belly crumple (Joe, via coordinator: "the front of the jacket is crumpled, near the belly"). Read
+(crumple28.py): on each front, band flap top -> break, |normal offset| from the surface smoothed 10 Laplacian passes
+(~2-4 cm creases), p95 mm / tilt p95 deg. Closed fits: r27a0 3.5 / 3.9 mm, 10 / 5 deg; r26i 2.9 / 2.8. Released:
+r27s(c) 14.5 / 12.8 mm, 40 / 34 deg; r26k 11.1 / 10.6. THE RELEASE MAKES IT, not the closed fit. Where (where28.py):
+one ridge ~12 mm high parallel to the edge, uv x 20-60 mm (valley at the lap, uv -20), 50-57 mm OFF the shirt (shirt
+rumple under it 1.2-1.5 mm = as elsewhere: not the placket / shirt bumps). Why (excess28.py): opened, the edge travels
+from the lap (x ~ -25 .. +6) to the concept's 63-91 mm while the side seam is held: the chord edge -> side seam drops
+~210-220 -> 135-155 mm; 60-80 mm of front per side has nowhere to go but a fold. The canvas halo (interfaced near
+break>lapelPoint within 100 mm) ends at uv x 30-75 in the band: the ridge sits on that stiff -> soft edge.
+Variants from r27a0 (all local ZOZO, $0; p95 L / R, tilt): r28e edge=ends (break + cfHem only): 11.7 / 10.7, 41 / 41,
+edges fell in (42 / 50 at 450), hem lift 30: dead. r28h hang=plumb + side=1 (pull 100): 12.4 / 11.4, 24 / 33, edges
+67 / 63, 77 / 69, 91 / 83, hem lift 9-10, side line max 20 / 21 (r27s 32 / 21), flaps p50 3.2 / 4.4 (1 / 1 sunk):
+KEPT as the round's base. r28p same with pull 10: 10.2 / 10.6 but edges in (46 / 43 at 450): dead. r28t side seams
+held above the waist only: 12.0 / 10.7, 36 / 37: no gain. r28f r28h + a fused facing band break>cfHem 70 mm (probe of
+"a tailored facing runs to the hem"; the pattern's facing stops at the break): 12.4 / 11.5: no gain. Not solved:
+the opened front's width excess is geometric; what's left to try is the pattern (less lap / front width below the
+break for an always-open jacket, a cutaway) or letting the side seams swing (r26: bulged round the sides, seat 492).
