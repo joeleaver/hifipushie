@@ -9850,3 +9850,23 @@ sym.py <tag>: mirror symmetry per piece, noise floor = mesh spacing, 1-8 mm).
 - sp10's recipe through the tool: 144 apart, 73 / 73 below, fall 73 / 72 / 72, corner 1.5 / 2.5 %, kinks 10 / 20 deg
   (sp10 12 / 12), twist 22 / 27, crumple 0.265, 0 folded, p99 6.37. The feather leaves the free cloth at 12-14 %
   p99 for a moment (pinned share targets); the border + area smooths bring it to 6.4. tests 9 passed (215 s).
+
+
+## garrett collar round 1 (2026-10-22, branch claude/garrett-collar from claude/probe-garrett; $G=/mnt/data/hifipushie/garrett_collar)
+Brief: the open collar on Garrett without the crumple (probe s1: leaves crumpled, lie flat, V 122 vs 60, button 1 pulled
+open 8.7 mm, strain p99 12-28 %). Scripts in $G: style.py <res pkl> <tag> <model> [ops.json] (worn_style from a saved
+closed fit, big reads + open collar rows), cfit.py (closed fit), pulltrace.py / prefree.py / pieces.py / crmap.py /
+tips.py / collardims.py (reads), render.py (probe's, ZOOM=1 for collar close-ups), mkops.py (edit the KB op list).
+- Step 1 (C147a): button 1 held: g1 (s1's closed fit, KB style) button 1 gap 0.0 (s1 8.7); wf_simon w1 0.0 too.
+- Pull trace (pulltrace.py, from the pre-pull state): the pull's read on Garrett sat at 15.5 % from step 1 to 78 mm
+  (fronts 21-24 % p99: held cloth at the tuck / side seams), the collar alone 3.9-4.0 % until 60 mm, rising from 66
+  (4.2, 4.5, 5.5 at 78). wf_simon: read 6.0-6.2 % then 6.9 at 36 mm, stopped at 42 (collar 4.8 -> 6.3). So the leaf is
+  NOT over-stretched on Garrett at 45 mm; it is slack (moves without stretch). Read fixed to free edges only (C147b):
+  Garrett's read is then 12.5 %, still flat: the free fronts' TOPS carry it (prefree.py: front.L p99 23 %, p95 15 %
+  after the turn + push; closed 12 / 6). The 65 deg band-end turn stretches them.
+- Turn until it would stretch (C147c, op "tol"): g3 (tol 0.005, 16 steps): Garrett's turn stops at 37 deg, wf_simon's
+  (w3) at 53. g3: strain p99 all 14.2 -> 8.1 %, V 122 -> 87, points 176 -> 134 apart, tips clean (crumple .15 / .06,
+  0 folded; s1 left tip folded 2), collar crumple .35, edge turn 71 (the closed fit's own edge kinks 85 deg at +-72 deg
+  from CB), mirror 6.8. w3 broke wf_simon's rows (corners .36, V angle 47, tip crumple .225): not landed as a default.
+- Garrett's collar (sh_garrett C129 options) vs wf_simon's: outer edge 515 vs 459 mm over a sewn 441 vs 414 (spring
+  74 vs 45 mm), fall at CB 52.7 vs 40.3. Crumple (g3) sits at 120-150 deg from CB, mid-fall (crmap.py).

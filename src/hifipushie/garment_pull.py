@@ -87,6 +87,8 @@ PROBE_ITERS = 4  # dir "easy": rounds per probed direction
 FEATHER_AFTER = ("pull",)  # ops after which a feathered band is drawn back
 MIRROR_REACH = 0.03  # m: a handle's mirror partner is the one whose lead is this near its mirror image
 CONVERGED = 1e-5  # m: the confirm stops early once no vertex moves more than this in a round
+FASTENED = 0.008  # m: a closure pair this near on the fit is done up (garment_reads.BUTTON_DONE_MM)
+BUTTON_HOLD = 0.008  # m (pattern): a fastened button holds its cloth this near both of its vertices (hold_mask)
 SIDE_MIN = 0.015  # m: a "side" is taken only from a point at least this far off x = 0
 _HE = ((0, 1, 2), (1, 2, 0), (2, 0, 1))
 
@@ -177,8 +179,11 @@ class FlatARAP:
         return Y
 
 
-def edge_stretch(M: dict, X: np.ndarray, pieces=None) -> np.ndarray:
-    """|3D length / pattern length - 1| of every same-piece edge (on `pieces`, names or indices, when given)."""
+def edge_stretch(M: dict, X: np.ndarray, pieces=None, free=None) -> np.ndarray:
+    """|3D length / pattern length - 1| of every same-piece edge (on `pieces`, names or indices, when given; with
+    `free`, a mask (n,), only the edges with a free vertex: held cloth can't be stretched by the move, and its own strain
+    masked the read: Garrett's shirt fronts below the first button, held, carry 21-24 % p99 at the tuck and side seams,
+    so the pull's read sat at 15.5 % whatever the collar did and the points ran to max_move (2026-10-22, C147))."""
     F = np.asarray(M["F"], int)
     uv = np.asarray(M["uv"], float)
     pid = np.asarray(M["piece"])
@@ -187,12 +192,15 @@ def edge_stretch(M: dict, X: np.ndarray, pieces=None) -> np.ndarray:
     ok = (l0 > 1e-5) & (pid[E[:, 0]] == pid[E[:, 1]])
     if pieces is not None:
         ok &= np.isin(pid[E[:, 0]], _piece_ids(M, pieces))
+    if free is not None:
+        free = np.asarray(free, bool)
+        ok &= free[E[:, 0]] | free[E[:, 1]]
     E, l0 = E[ok], l0[ok]
     return np.abs(np.linalg.norm(X[E[:, 0]] - X[E[:, 1]], axis=1) / l0 - 1)
 
 
-def stretch_p99(M: dict, X: np.ndarray, pieces=None) -> float:
-    s = edge_stretch(M, X, pieces)
+def stretch_p99(M: dict, X: np.ndarray, pieces=None, free=None) -> float:
+    s = edge_stretch(M, X, pieces, free)
     return float(np.percentile(s, 99)) if len(s) else 0.0
 
 
@@ -400,7 +408,7 @@ def pull(M: dict, X: np.ndarray, held, handles: list[dict], body=None, step: flo
     if pieces is None:  # the pieces the pull can change: any with a free vertex
         pieces = sorted(set(np.asarray(M["piece"])[~held & ~gripped].tolist()))
     names = [list(M["names"])[p] if isinstance(p, (int, np.integer)) else p for p in pieces]
-    st = lambda W: stretch_p99(M, A.unweld(W), pieces)
+    st = lambda W: stretch_p99(M, A.unweld(W), pieces, ~held)
     fx_all = fixed.copy()
     for g in groups:
         fx_all[g] = True
@@ -481,7 +489,7 @@ def pull(M: dict, X: np.ndarray, held, handles: list[dict], body=None, step: flo
                          for h, w, p0, i in zip(handles, leads, P0, li)},
             "path_mm": round(path * 1000, 1),
             "stretch_p99_start": round(s0 * 100, 2), "stretch_p99_least": round(least * 100, 2),
-            "stretch_p99_end": round(stretch_p99(M, Xn, pieces) * 100, 2), "steps": steps,
+            "stretch_p99_end": round(stretch_p99(M, Xn, pieces, ~held) * 100, 2), "steps": steps,
             "step_mm": step * 1000, "tol_pct": tol * 100, "stopped": stopped,
             "gripped": {str(h["at"]): int(len(vs)) for h, (vs, _) in zip(handles, grips)},
             "dirs": {str(h["at"]): np.round(d, 3).tolist() for h, d in zip(handles, dirs)}, "pieces": names}
@@ -537,7 +545,7 @@ def smooth(M: dict, X: np.ndarray, held, pieces, lam: float = 0.5, iters: int = 
     sp = stretch_pieces  # (default: the pull's read, every piece with free cloth: one rule for both operations)
     if sp is None:
         sp = sorted(set(np.asarray(M["piece"])[~held].tolist()))
-    st = lambda W: stretch_p99(M, A.unweld(W), sp)
+    st = lambda W: stretch_p99(M, A.unweld(W), sp, ~held)
     free = ~keep
     s0 = least = st(Y)
     r0 = rr = float(np.percentile(normal_offset(Y)[1][free], 95))
@@ -600,7 +608,7 @@ def smooth_border(M: dict, X: np.ndarray, held, border: str, spline: int = 10, l
     sp = stretch_pieces
     if sp is None:
         sp = sorted(set(np.asarray(M["piece"])[~held].tolist()))
-    st = lambda W: stretch_p99(M, A.unweld(W), sp)
+    st = lambda W: stretch_p99(M, A.unweld(W), sp, ~held)
     s0 = least = st(Y)
     k0 = kk = _kink3d(Y[chw], win)
     r = 0
@@ -655,7 +663,7 @@ def style(M: dict, X: np.ndarray, held, ops: list[dict], body=None, log=None):
             mine = np.zeros(len(X), bool)
             for t in ts:  # (the whole gripped area stays where the turn left it, not just the named vertices)
                 mine[grip(M, t, None, TURN_PATCH)[0]] = True
-            X, inf = turn(M, X, base | (placed & ~mine), ts, body=body, **a)
+            X, inf = turn(M, X, base | (placed & ~mine), ts, body=body, log=log, **a)
             placed |= mine
         elif kind == "smooth":
             rel = np.zeros(len(X), bool)  # ("release": pieces freed from earlier REGION holds for this op; grips stay)
@@ -736,10 +744,10 @@ def relax(M: dict, X: np.ndarray, held, iters: int = HOLD_ITERS):
     held = _mask(held, len(X))
     A = FlatARAP(M, X)
     sp = sorted(set(np.asarray(M["piece"])[~held].tolist()))
-    s0 = stretch_p99(M, X, sp)
+    s0 = stretch_p99(M, X, sp, ~held)
     Xn = A.unweld(A.solve(A.weld(X), A.welded_mask(held), iters))
     Xn[held] = X[held]
-    return Xn, {"stretch_p99": [round(s0 * 100, 2), round(stretch_p99(M, Xn, sp) * 100, 2)]}
+    return Xn, {"stretch_p99": [round(s0 * 100, 2), round(stretch_p99(M, Xn, sp, ~held) * 100, 2)]}
 
 
 def _ring_angle(M: dict, X: np.ndarray, pieces, of: str = "back", center=None) -> np.ndarray:
@@ -913,7 +921,8 @@ def _rodrigues(p: np.ndarray, axis: np.ndarray, th: float) -> np.ndarray:
 
 
 def turn(M: dict, X: np.ndarray, held, turns: list[dict], body=None, steps: int = 6, iters: int = 20,
-         relax_iters: int = RELAX_ITERS, pieces=None):
+         relax_iters: int = RELAX_ITERS, pieces=None, tol: float | None = None, confirm: int = CONFIRM_ITERS,
+         log=None):
     """TURN what a hand grips about a line, staged (a band end swung open about its hinge, a cuff popped up about its
     fold): each turn {"at": grip (as a pull handle's "at"; it grips the cloth within "patch" (TURN_PATCH, 15 mm on the
     pattern) of what it names: the band end's 3 corner vertices turned alone pinched a lobe at its top corner, 21 %
@@ -922,7 +931,11 @@ def turn(M: dict, X: np.ndarray, held, turns: list[dict], body=None, steps: int 
     along (picks the sense), "side_from"?}. The free cloth relaxes against the pattern first, then `steps` steps each
     turn a further deg / steps (grips rigid, held still) and re-solve (`iters`). Returns (X_new, info: start / end
     stretch p99 (%), per turn the sense and how far the grip's centroid went (mm)). Keep the turned grips HELD in a
-    following pull (they stay where the hand put them)."""
+    following pull (they stay where the hand put them).
+    `tol` (C147): turn UNTIL IT WOULD STRETCH, the pull's rule: stop at the last step whose stretch (the free cloth's,
+    the pull's read, converged by `confirm` rounds when over) stays within `tol` of the least reached; "deg" is then the
+    most it turns. None: the full "deg" whatever it costs (before 2026-10-22: Garrett's band ends turned 65 deg took
+    the free fronts' tops to p99 23 / 13 %, wf_simon's to 15 / 16 %)."""
     X = np.asarray(X, float)
     held = np.asarray(held)
     if held.dtype != bool:
@@ -946,25 +959,47 @@ def turn(M: dict, X: np.ndarray, held, turns: list[dict], body=None, steps: int 
         free = ~A.unweld(fixed)
         pieces = sorted(set(np.asarray(M["piece"])[free].tolist()))
     Y = A.solve(Y, fixed, relax_iters)
-    s0 = stretch_p99(M, A.unweld(Y), pieces)
+    st = lambda W: stretch_p99(M, A.unweld(W), pieces, ~held)
+    s0 = least = st(Y)
+    done, stopped = 0, "deg"
     for k in range(1, steps + 1):
         T = Y.copy()
         for g, a, ax, th, p0, _s in plan:
             T[g] = a + _rodrigues(p0 - a, ax, th * k / steps)
-        Y = A.solve(T, fixed, iters)
+        Yk = A.solve(T, fixed, iters)
+        if tol is not None:
+            s = st(Yk)
+            if log:
+                log(f"turn step {k}: {abs(np.degrees(plan[0][3])) * k / steps:.0f} deg, stretch p99 {s * 100:.2f} %")
+            confirmed = s > least + tol and confirm
+            if confirmed:
+                s = st(A.solve(Yk, fixed, confirm, eps=CONVERGED))
+            if s > least + tol:
+                stopped = "stretch"
+                break
+            if not confirmed:
+                least = min(least, s)
+        Y, done = Yk, k
     Xn = A.unweld(Y)
     Xn[held] = X[held]
-    info = {"stretch_p99_start": round(s0 * 100, 2), "stretch_p99_end": round(stretch_p99(M, Xn, pieces) * 100, 2),
+    info = {"stretch_p99_start": round(s0 * 100, 2), "stretch_p99_end": round(st(A.weld(Xn)) * 100, 2),
+            "deg_turned": [round(float(abs(np.degrees(th))) * done / steps, 1) for _g, _a, _x, th, _p, _s in plan],
+            "stopped": stopped,
             "turns": {str(t["at"]): {"sense": s, "moved_mm": round(float(np.linalg.norm(Y[g].mean(0) - p0.mean(0)))
                                                                     * 1000, 1)}
                       for t, (g, _a, _x, _t, p0, s) in zip(turns, plan)}}
     return Xn, info
 
 
-def hold_mask(M: dict, X: np.ndarray, free, below=None, margin: float = 0.005) -> np.ndarray:
+def hold_mask(M: dict, X: np.ndarray, free, below=None, margin: float = 0.005,
+              button_hold: float = BUTTON_HOLD) -> np.ndarray:
     """What stays still: every piece not in `free`, and on the free pieces whatever lies more than `margin` below
     `below` (z): a garment point "piece:point", or "closure:<name>" = that closure's top fastened button (the shirt's
-    fronts below the first button stay closed)."""
+    fronts below the first button stay closed). With a closure, every FASTENED pair of it is held too, with the cloth
+    within `button_hold` (m, on its pattern) round each of its two vertices: a button sewn through an area, done up.
+    Holding only what lay `margin` below the top button left the button itself free: Garrett's styled shirt (probe s1 /
+    s2, 2026-10-22) pulled its first fastened button 8.7 / 19.4 mm open, so the first DONE button dropped to the
+    second (203 mm below HPS vs the concept's 83)."""
     pid = np.asarray(M["piece"])
     held = ~np.isin(pid, _piece_ids(M, free))
     if below:
@@ -976,6 +1011,16 @@ def hold_mask(M: dict, X: np.ndarray, free, below=None, margin: float = 0.005) -
                 have = sorted({c.get("name") for c in M.get("closures") or []})
                 raise ValueError(f"no fastened closure {cn!r} (closures: {', '.join(map(str, have)) or 'none'})")
             zb = max(zs)
+            uv = np.asarray(M["uv"], float)
+            for c in M.get("closures") or []:
+                if c.get("name") != cn:
+                    continue
+                for v in c.get("v") or []:
+                    v = np.asarray(v, int).ravel()
+                    if np.linalg.norm(X[v[0]] - X[v[-1]]) > FASTENED:  # (an undone pair is not held)
+                        continue
+                    for i in v:
+                        held |= (pid == pid[i]) & (np.linalg.norm(uv - uv[i], axis=1) <= button_hold)
         else:
             zb = float(X[vertex(M, below)][2])
         held |= X[:, 2] < zb - margin

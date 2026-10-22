@@ -327,3 +327,46 @@ def test_a_shirt_without_a_tie_is_styled_open_by_default():
     print(rows)
     assert all(r["status"] == "PASS" for r in rows), [r for r in rows if r["status"] != "PASS"]
     assert gp.stretch_p99(M, X, ["collar", "stand", "front.L", "front.R"]) <= 0.07
+
+
+def _two_fronts(n=21, w=0.1, h=0.2):
+    """Two flat 'fronts' in the x-z plane meeting at x = 0 (separate pieces), fastened by a closure 'front' at z 0.05
+    and 0.12 (pairs of coincident vertices on the meeting edges)."""
+    F, uv, pid, X = [], [], [], []
+    for k, x0 in enumerate((-w, 0.0)):
+        o = len(uv)
+        for i in range(n):
+            for j in range(n):
+                u, v = x0 + w * i / (n - 1), h * j / (n - 1)
+                uv.append((u, v))
+                X.append((u, 0.0, v))
+                pid.append(k)
+        ix = lambda i, j: o + i * n + j
+        F += [f for i in range(n - 1) for j in range(n - 1)
+              for f in ((ix(i, j), ix(i + 1, j), ix(i + 1, j + 1)), (ix(i, j), ix(i + 1, j + 1), ix(i, j + 1)))]
+    uv, X = np.array(uv), np.array(X)
+    at = lambda k, x, z: int(np.argmin(np.linalg.norm(X - [x, 0, z], axis=1) + 1e3 * (np.array(pid) != k)))
+    pairs = [(at(0, 0.0, z), at(1, 0.0, z)) for z in (0.05, 0.12)]
+    M = {"F": np.array(F), "uv": uv, "piece": np.array(pid), "names": ["front.L", "front.R"], "sew": [],
+         "points": {"front.L:top": at(0, 0.0, h), "front.R:top": at(1, 0.0, h)},
+         "closures": [{"name": "front", "state": "closed", "v": [list(p) for p in pairs]}]}
+    return M, X, pairs
+
+
+def test_worn_style_holds_the_fastened_buttons():
+    """2026-10-22 (garrett collar round 1): styling holds every FASTENED pair of the front closure with the cloth round
+    it, not only the cloth below the top button: Garrett's styled shirt pulled its first fastened button 8.7 / 19.4 mm
+    open (probe s1 / s2), so the first done button read 203 mm below HPS (concept 83). Control: the old mask (below the
+    top button less 5 mm only) lets the same pull open the top pair."""
+    M, X, pairs = _two_fronts()
+    hs = [{"at": "front.L:top", "dir": [-1, 0, 0], "turn": False}, {"at": "front.R:top", "dir": [1, 0, 0], "turn": False}]
+    old = X[:, 2] < 0.12 - 0.005
+    Xo, _ = gp.pull(M, X, old, hs, step=0.003, max_move=0.03, tol=1.0)
+    a, b = pairs[1]
+    assert np.linalg.norm(Xo[a] - Xo[b]) > 0.003, "control: the old mask should let the top pair open"
+    held = gp.hold_mask(M, X, ["front.L", "front.R"], "closure:front")
+    assert held[a] and held[b]
+    Xn, _ = gp.pull(M, X, held, hs, step=0.003, max_move=0.03, tol=1.0)
+    for a, b in pairs:
+        assert np.linalg.norm(Xn[a] - Xn[b]) < 1e-6
+    assert np.linalg.norm(Xn[M["points"]["front.L:top"]] - X[M["points"]["front.L:top"]]) > 0.02  # the tops still part
