@@ -10053,3 +10053,33 @@ the shirt collar, no flare: a tube, not a funnel in plan). Lapel / gorge vs the 
 mm below HPS): concept tip 148 at 93, 127 at 148, 110 at 261; ours lapel_outer_150 110 / 111 (-17 / -23), V width at
 200 168 (concept 237). Not changed this round: it is the closed fit's pattern (collar stand height / roll, gorge line,
 lapel width): a pattern + closed fit + release cycle; next session.
+
+## garrett collar round 3 (2026-10-22): the neck point measured where the neck meets the shoulder
+Joe's call: fix the lump by correcting where the shirt's HPS sits, as a measuring fault. Files $G/r3 (run.sh, fit.sh <tag>
+[env], style.py, corner.py / crest.py (body profiles), tape.py / btape.py (tapes), lumpr.py, bulge.py / atbump.py, pstr.py).
+- Bodies (crest.py, the shoulder's top in the joint's plane walked in from the shoulder point): Garrett's loop point
+  ("widest", [61, -36, 1549]) sits 19 mm ABOVE his crest at the same x (crest at x+0 19 below, +10 31, +20 39, then a flat
+  shelf 30-37 below to +100); it is also 23 mm in front of the crest (y -36 vs -13). wf_simon's loop point sits ON his
+  crest (0 below at x+0, then a smooth ~27 deg slope). Base ring hps (hb): Garrett 30 below, Simon 17 below.
+- Rule (tailor "corner", FreeSewing's hps "where your neck meets your shoulder"): the crest's top just outside the neck
+  (2.5 mm past the loop's widest x: a plane AT that x is tangent to a round neck and reads its wall: the KAT mannequin
+  returned the loop point), never above the loop. Garrett [64, -12, 1526] (23 down, 24 back), Simon [63, -16, 1542]
+  (5 down). Plumbed per draft: measure_defs CONSUMERS["hps"] (FS / Brian blocks, adapter neck_corner) ->
+  hps_definition(g, kind) -> cloth.model_body puts "hps" on the body -> Body -> tailor.measure(hps=). Held on shirt
+  (until Joe approves), jacket, coat, sweater (garment_kb definition_holds). Probes use env HP_HPS=corner.
+- hc0 (crest at the loop's x, 19 down; tapes FROM the corner): crest 16 deg PASS (gc1 61), bump 10.2 / 11.5 FAIL (gc1
+  14.8). Throat in gc1's frame (+19): button 86.5 (gc1 85.9), points below 75 (73-75), apart 143 (154), V 43 (47):
+  the throat stays put; the collar sits 11-15 mm lower round the back / side (stand top CB 1601 -> 1590). Styled crumple
+  .34 (FAIL): the fall pinches into a V where it crosses the shoulder seam (side crop r3/side_crop_gc1_hc0.png).
+  Styling variants v1-v4 (hold 100 / feather 150, pull 30 mm, + collar smooth): crumple .32-.41, bump 11.2-11.5: the
+  bump is the fit's (C154), the pinch the style's.
+- hc25 (2.5 mm out, 23 down): bump 11.2, crest 22, crumple .42. Simon (ws25 vs ws0): crest 21 -> 16, bump 5.3 -> 4.5.
+- The bump is real cloth, not a body hollow (atbump.py: body flat +-1 mm under it, cloth bulges +3 / +4.5 mm at R 20 /
+  30 mm; gc1 +4.5 / +7.4, Simon +1.5 / +3): kept C154 as it is. It moved from the yoke (gc1) to the FRONT, 19 mm out
+  and forward of the pin, compressed 3-5 % (p10 -9 %) mostly vertically (pstr.py).
+- CAUSE of the vertical excess: the draft hangs its lines from the hps (Brian: chest / armhole / waist as depths below
+  it) and the tapes FROM the corner changed by other amounts than its drop (Garrett back 515 -> 481, bust 249 -> 268
+  for a 19 mm drop: the loop point's tapes start with a trip over the top of the shoulder), and length_level's nape
+  rule (hpsToWaistBack = nape + 0.05 neck) is a fixed length FROM the hps: the hem 19-23 mm lower, the armhole 15 up.
+  FIX (tailor "corner"): tapes from the loop point, less the drop dz (hps tapes) and length_level less mm "hpsDrop":
+  every line hung from the hps keeps its body level; only the neck moves. Refits hd / wsd running.

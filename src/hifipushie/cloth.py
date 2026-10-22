@@ -9651,8 +9651,11 @@ def length_level(m: dict, given: dict | None = None) -> dict:
     the back neck's depth (0.05 neck, as the bodice block) and waistToArmpit by the same amount, so the armhole stays
     where the hps tape puts it and only the waist / hem move. Measurements the garment gives itself win."""
     given = dict(given or {})
+    # the side neck point "corner" (tailor) lies hpsDrop under the loop point the nape rule was set on: the length,
+    # hung from the hps, is shorter by it so the waist / hem keep their body level (garrett collar r3, C156)
+    drop = float(m.pop("hpsDrop", 0.0))
     if "napeToWaistBack" in m and "hpsToWaistBack" in m and "neck" in m and "hpsToWaistBack" not in given:
-        d_ = 0.05 * float(m["neck"]) + float(m["napeToWaistBack"]) - float(m["hpsToWaistBack"])
+        d_ = 0.05 * float(m["neck"]) + float(m["napeToWaistBack"]) - drop - float(m["hpsToWaistBack"])
         m["hpsToWaistBackRaw"] = float(m["hpsToWaistBack"])  # the bodice's neckline "ring" reads the tape as measured
         m["hpsToWaistBack"] = float(m["hpsToWaistBack"]) + d_
         if "waistToArmpit" in m and "waistToArmpit" not in given:

@@ -370,7 +370,7 @@ def measure(V: np.ndarray, faces, J: dict, hps: str | None = None) -> dict:
     # with the ring neckline "ring", the tilt solve NECK_BASE_DROP) and HP_HPS=crest are OPT-IN RESEARCH, parked with
     # open questions in docs/notes/cloth.md "## HPS research (parked)".
     hmode = hps or os.environ.get("HP_HPS", "widest")
-    zc_ = None
+    zc_ = corner_ = None
     base_, bn_ = _neck_base_level(V, T, neck_j, nd, mm["neck"], float(np.ptp(V[:, 2]))) if hmode == "base" else (None, None)
     if base_ is not None:
         loops["neck_base"] = base_
@@ -384,7 +384,9 @@ def measure(V: np.ndarray, faces, J: dict, hps: str | None = None) -> dict:
     elif hmode == "widest":
         at["hps.L"] = L[np.argmax(L[:, 0])]
     elif hmode == "corner":
-        at["hps.L"] = _neck_corner(V, T, L, np.asarray(J["shoulder.L"], float))
+        # the tapes are taken from the loop's widest point and rebased by the corner's drop at the end (below)
+        at["hps.L"] = L[np.argmax(L[:, 0])]
+        corner_ = _neck_corner(V, T, L, np.asarray(J["shoulder.L"], float))
     else:
         at["hps.L"], zc_ = _side_neck(V, T, L)
     if zc_ is not None:
@@ -635,6 +637,23 @@ def measure(V: np.ndarray, faces, J: dict, hps: str | None = None) -> dict:
     except Exception:  # (a body without legs the scan can read: trouser drafts fall back to their proportions)
         pass
     mm["height"] = float(V[:, 2].max() - zmin)
+    if corner_ is not None:
+        # "corner": the neck point moves DOWN onto the crest, and every line a draft hangs from it (Brian: the chest,
+        # armhole, waist as depths below the hps) moves up by the same drop in the pattern, so those lines keep their
+        # body levels and only the neck changes. Taped from the corner itself, the tapes changed by other amounts than
+        # its drop (Garrett: back 515 -> 481, bust 249 -> 268 for a 19 mm drop: the widest point's tapes start with a
+        # trip over the top of the shoulder, the crest's don't), so the armhole rose 15 mm and the hem fell 19 (r3 hc0)
+        w_ = np.asarray(at["hps.L"], float)
+        dz = float(w_[2] - corner_[2])
+        for k in ("hpsToWaistBack", "hpsToBust", "hpsToArmpitBack", "hpsToSeatFront", "hpsToSeatBack", "hpsToWaistFront"):
+            if k in mm:
+                mm[k] = float(mm[k]) - dz
+        mm["hpsDrop"] = dz  # (cloth.length_level: the nape-based length hangs from the hps too)
+        at["hps_widest.L"], at["hps.L"] = w_, corner_
+        ch_ = float(np.degrees(np.arctan2(corner_[2] - top[2], top[0] - corner_[0])))
+        if abs(mm["shoulderSlope"] - at.get("shoulder_slope_chord", mm["shoulderSlope"])) < 1e-9:
+            mm["shoulderSlope"] = ch_
+        at["shoulder_slope_chord"] = ch_
     out = {k: (round(v * 1000.0, 1) if k != "shoulderSlope" else round(v, 2)) for k, v in mm.items()}
     return {"mm": out, "at": {k: (np.asarray(v).tolist() if not np.isscalar(v) else float(v)) for k, v in at.items()},
             "loops": loops}
