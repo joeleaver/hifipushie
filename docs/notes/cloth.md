@@ -10097,3 +10097,4 @@ Joe's call: fix the lump by correcting where the shirt's HPS sits, as a measurin
 - PARKED: measure_defs.HPS_CORNER False (garment key hps "corner" opts in; probes no longer need env HP_HPS). gc1 stays.
   Ledger C156. NEXT (Joe's call): (a) keep gc1; or (b) a round on the corner: the front neck depth from the body's
   drop (length kept) and the fall's shoulder buckle, judged beside gc1.
+- Garment suite (14 files incl. test_measure_defs) under capped: 236 passed, 4 xfailed, pytest exit 0 (r3/tests_r3.log).
