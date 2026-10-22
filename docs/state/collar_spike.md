@@ -16,26 +16,21 @@ the band turning with it; band ends lean apart; leaves stand off the neck). Joe:
 - CLOSED: repo defaults (landed, BUILD_VERSION 17) + the concept's button spacing = v1 (= e3): clean closed collar, band
   ends sewn flush with the placket tops, one rounded roll (176 deg), collar + band mirror p95 1.4-1.9 mm, strain p99 9 %.
   `spikes/shirt_spike/run.sh base_fit.py v1 '{"closures":[{"name":"front","spacing":{"first":0.034,"from":"cfNeck"}}]}'`
-- The pull tool (claude/fervent-bouman-58c488 523f48e7) reproduces q40 (tq40) and f2 (tf2b: side 73, points 138 / 73-74,
-  kink 21 vs 18); missing: the border smooth toward one curve (sp10). via_tool.py drives it. JOE (2026-10-21): "f2 and pt2 read the best to me so far" (pt2 = f2's recipe on the pull tool, via_tool.py:
-  turn 40, P up 0, hold band + collar within 70 deg of CB; its faults: band corners 22-33 %, side 82 mm, kink 31 deg).
+- Pull tool (fervent-bouman 523f48e7) reproduces q40 / f2 (via_tool.py); lacks the border smooth. Joe: f2, pt2 best.
 - sp10 (Joe: "none of these are yet producing one smooth swoop"): f2 + `"edge_smooth":{"spline":10,"lam":0.4,"win":0.03,
   "rounds":30,"tol":0.015}`: the collar's outer edge (boundary walk point -> CB -> point) drawn toward ONE smooth curve
   (LSQ spline, 10 knots) until it would stretch; side-view kinks 12 / 12 deg (f2 18 / 34). Neighbour averaging stalled.
 - f2: `{"swing":40,"steps":6,"nopush":1,"hug":70,"feather":[70,130],"swing_patch":0.015,"pulls":[P0],"smooth":
   {"pieces":["collar","stand"]}}`, P0 = points side 1 / out 0.3 / up 0, patch 0.025, turn (C142-C144).
 - Crease on the roll: two bends 4 mm apart (seam + roll line); roll at the seam (r0a / r0b) not adopted.
-- OPEN (u25 = t15's pulls with "patch":0.025,"turn":1: each step drags the point alone, then fits the
-  patch's unstretched start shape rigidly (Kabsch) onto that and solves again: tips clean (crumple p95 0.06-0.10 mm =
-  closed; flips.py: 1 folded face per side at the patch edge, was 18 / 28 with a rigid patch), points 156 / 64-65.)
 
 ## Open faults (ranked by what shows at 1-3 m)
-1. u25: points 64-65 below HPS (concept 50-61); 1 folded face per side at the patch edge; a stretched patch at the V's corner (the fronts' cfNeck, welded to the band corners, have 34 mm of cloth
-   above the first fastened button). Try the same pull on the band ends instead of a fixed swing; refine the fronts
-   near the V (6-20 mm there).
-2. y3 not yet judged blind against the photo / trace (bin/review), nor checked for cloth inside the body (push-out off:
-   count it; a soft floor if it matters).
-3. Make "pull until it would stretch" a general tool (pattern_form / MCP) for any garment handle (C142).
+0. ANGLES vs the references (angles.py, front view; photo / trace landmarks by eye): sp10's leaves match (outer edge 4-6 deg
+   from vertical: trace 2, photo 14-19; tips apart 0.92 neck: photo 0.72, trace 1.01), but the THROAT is too narrow:
+   inner corners apart 0.24 neck (photo 0.50, trace 0.69), V 46 deg (photo 69, trace 95), V bottom ABOVE the tips
+   (photo 0.19 neck below them, trace at their level), so the leaves' front edges slant 45 deg (photo 29-35, trace 27-34).
+1. The V's corner stretched (fronts' cfNeck have 34 mm of cloth above the first fastened button): tied to fault 0.
+2. No blind review vs the photo / trace yet; cloth inside the body not counted (push-out off).
 4. Not worked: sleeve ends crushed (99 % max, ~40 vertices inside each arm); yoke at the side neck 13 %.
 5. Garrett (sh_garrett) not refitted on the landed defaults (own "open neck.R" fold + worn_open); see
    docs/state/dress_garrett_shirt.md.
