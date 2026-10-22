@@ -394,6 +394,23 @@ if A.get("layer"):
         bv_ = coll[bad_]; T[bv_] = Y[bv_] + (LY.get("gap", 0.0012) - sd_[bad_])[:, None] * nv_[u_[bad_]]; fx[bv_] = True
         Y = solve(T, fx, LY.get("iters", 8))
         print(f"layer round {r_}: pushed {int(bad_.sum())} collar vertices out")
+# FEATHERED HUG (Joe: "one continuous swoop instead of three different angles", and still hugging at the back and
+# sides): band + collar between feather[0] and feather[1] deg from CB drawn back toward the RELAXED closed fit by a share
+# fading from 1 to 0 over that range (a hand pressing firm at the back, lighter toward the front), held; the rest
+# re-solved. A hard hug border left a kink at its edge (q40: 29 deg at 79 deg from CB); no hug flared the sides.
+if A.get("feather") and A.get("hug") is not None:
+    a0_, a1_ = A["feather"]
+    cs2 = np.isin(pid, [nm.index("collar"), nm.index("stand")]); ctr2 = X0[pid == nm.index("stand")][:, :2].mean(0)
+    angw = np.zeros(n); cnt2 = np.zeros(n)
+    np.add.at(angw, inv[cs2], np.abs(np.degrees(np.arctan2(X0[cs2, 0] - ctr2[0], X0[cs2, 1] - ctr2[1]))))
+    np.add.at(cnt2, inv[cs2], 1); band_ = cnt2 > 0; angw[band_] /= cnt2[band_]
+    fv = np.where(band_ & (angw >= a0_) & (angw < a1_))[0]
+    wv = 1 - (angw[fv] - a0_) / (a1_ - a0_); wv = 0.5 - 0.5 * np.cos(np.pi * wv)   # (smooth ramp)
+    for r_ in range(A.get("feather_rounds", 3)):
+        T = Y.copy(); fx = hW | np.isin(np.arange(n), list(pts.values()) + list(bnd) + list(done_h.values()))
+        T[fv] = Y[fv] + wv[:, None] * (W0h[fv] - Y[fv]); fx[fv] = True
+        Y = solve(T, fx, 8)
+    print(f"feather: {len(fv)} vertices between {a0_} and {a1_} deg")
 # SMOOTH (Joe: "a 'smooth' operation ... in conjunction with the 'pull'; those are the two main operations to styling the
 # clothing one is wearing"): within the brushed pieces, alternate (a) fair: each vertex moved `lam` of the way toward its
 # one-ring centroid ALONG ITS NORMAL only (a hand flattening a ripple), (b) restore: the flat-pattern solve with
