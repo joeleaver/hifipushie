@@ -25,15 +25,13 @@ the band turning with it; band ends lean apart; leaves stand off the neck). Joe:
 - Crease on the roll: two bends 4 mm apart (seam + roll line); roll at the seam (r0a / r0b) not adopted.
 
 ## Open faults (ranked by what shows at 1-3 m)
-0. CURRENT BEST x5 = x1 + `"smooth2":{"pieces":["collar"],"near_points":0.04,"lam":0.5,"rounds":40,"tol":0.005}`
-   (local smooth round each point after the main one: the swing had buckled the free tips, crumple 0.23 -> 0.06-0.08 mm).
-   x1 = w5d with the point pull capped ("max":0.025, moved 27): e5 (first button 132 below HPS) +
-   `{"swing":65,"steps":8,"nopush":1,"push_pieces":["front.L","front.R"],"hug":70,"feather":[70,130],"swing_patch":0.015,
-   "pulls":[P0 + "max":0.025],"edge_smooth":{spline 10},"smooth":{"pieces":["collar","stand","front.L","front.R"],
-   "rounds":30}}`. angles.py vs photo / trace: front edges 33-34 deg (29-35 / 27-34), tips 1.01 neck (0.72 / 1.01),
-   corners 0.54 (0.50 / 0.69), V 62 deg (69 / 95), V bottom 0.09 neck below the points (0.19 / 0.04); p99 5.3 %.
-   x2 (max 0.015): tips 0.86, edges 23-25. x4 (+ up 0.3): 65 below HPS.
-1. The V's corner stretched (fronts' cfNeck have 34 mm of cloth above the first fastened button): tied to fault 0.
+0. CURRENT BEST c1 (Joe: "do your best to get a clean single curve"): x5's recipe with "pulls":[P0 + "max":0.045] and
+   `"feather_pieces":["stand"]` (the side hold keeps the BAND only: holding the fall too made an S in the front view: in at
+   z 1525, out at 1505, back in to the tip; edgeplot.py). Front view: one arc CB -> tips. Side fall 91 mm from the neck
+   centre (x5 72, closed 68): hugs less. p99 6.4 %, collar crumple p95 0.24, tips clean, tips 0.96 neck apart, V 62.
+   x5 = x1 + "smooth2" (local smooth within 40 mm of each point: un-buckles the tips); x1 = e5 (first button 132 below
+   HPS) + swing 65, push_pieces fronts, hug 70 / feather 70-130, swing_patch, pulls P0 max 0.025, edge_smooth spline 10,
+   smooth collar + stand + fronts: angles all within / near the photo + trace (front edges 33-34, tips 1.01, corners 0.54).
 2. No blind review vs the photo / trace yet; cloth inside the body not counted (push-out off).
 4. Not worked: sleeve ends crushed (99 % max, ~40 vertices inside each arm); yoke at the side neck 13 %.
 5. Garrett (sh_garrett) not refitted on the landed defaults (own "open neck.R" fold + worn_open); see

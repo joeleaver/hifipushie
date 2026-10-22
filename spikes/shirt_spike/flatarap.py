@@ -419,7 +419,7 @@ if A.get("layer"):
 # re-solved. A hard hug border left a kink at its edge (q40: 29 deg at 79 deg from CB); no hug flared the sides.
 if A.get("feather") and A.get("hug") is not None:
     a0_, a1_ = A["feather"]
-    cs2 = np.isin(pid, [nm.index("collar"), nm.index("stand")]); ctr2 = X0[pid == nm.index("stand")][:, :2].mean(0)
+    cs2 = np.isin(pid, [nm.index(p_) for p_ in A.get("feather_pieces", ["collar", "stand"])]); ctr2 = X0[pid == nm.index("stand")][:, :2].mean(0)
     angw = np.zeros(n); cnt2 = np.zeros(n)
     np.add.at(angw, inv[cs2], np.abs(np.degrees(np.arctan2(X0[cs2, 0] - ctr2[0], X0[cs2, 1] - ctr2[1]))))
     np.add.at(cnt2, inv[cs2], 1); band_ = cnt2 > 0; angw[band_] /= cnt2[band_]
