@@ -9980,3 +9980,14 @@ Scripts + files: /mnt/data/hifipushie/garrett_collar/r2/ (run.sh = this worktree
   (a base-of-neck HPS for shirts on bodies whose neck rises sharply), which reopens the throat.
 - Suite (capped): the 13 listed files 218 passed, 5 skipped (wf_simon KATs without HIFIPUSHIE_HOME), 3 xfailed, exit 0
   (r2/tests_r2.log); test_garment_pull with HIFIPUSHIE_HOME: 16 passed, exit 0 (r2/tests_r2_home.log).
+- Coordinator's tailor test (sloping-shoulder alteration, neck point kept). Garrett's body line from the pin over the
+  first 50 mm: 34.4 / 33.4 deg (bslope.py) vs the fitted seam chord 20.3 (wf_simon: 45-49 over 20-30 mm vs 25.7).
+  (a) shoulderSlope 33.9 (sa34): the Simon draft FAILS before any fit, as at 30 (ss30): front.L loses its point
+  placketTopFold1 (cloth.spring_fall -> garment_reads.fall_spring_reads; a "_tmp4" point appears): no fit possible.
+  (b) the shoulder seam's first 50 mm bent 13.6 deg down on yoke + fronts ("true" at the neck, keep the neckline side,
+  deg 79.0 / 104.5, blend 0.05, before the neckline truing) (sb34): closed crest 62 / bump 15.0, styled 57 / 15.4 (gc1
+  61-62 / 14.7-14.8): NO CHANGE (seam sd 3 -> 28 mm at 27 mm out, as gc1: the bend's dip is ~2-3 mm, a rotation keeps the
+  seam's length, so it still bridges). It moved the approved throat: points apart 153.7 -> 194, V below HPS 47 -> 72,
+  first done button 85.9 -> 80.5, collar crumple .23 -> .39 (the bent neck corner shifted the neckline the collar sits
+  on); the side crop shows the fall rumpled. Not adopted. Crop: r2/lump_side_gc1_a_b.png (gc1 | (b) clay, gc1 | (b) diag).
+  Suite after the tailor test: 218 passed, 5 skipped, 3 xfailed, exit 0 (r2/tests_r2b.log).

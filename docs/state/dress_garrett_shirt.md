@@ -5,7 +5,8 @@ is the LUMP under the fall's outer edge (side view). MEASURED: the shoulder seam
 point bridges Garrett's neck-shoulder corner (seam 28 mm off the body; crest 61 deg, bump 14.8 mm vs wf_simon 21 / 5.3);
 yoke sheared +7 / -5.5 %. In the CLOSED fit (styling moves it < 1 mm). CAUSE: the neck point (tape "widest", 2 cm up a
 near-vertical neck): HP_HPS=base (hb, diagnostic) takes crest 61 -> 26, bump 14.8 -> 8.8, but redrafts the approved throat
-(button 85.9 -> 55.6, V 47 -> 24). Ruled out: truing ops, shoulder slope (line), neck_split off, every styling op.
+(button 85.9 -> 55.6, V 47 -> 24). Ruled out: truing ops, shoulder slope (line; 33.9 can't be drafted), the seam's
+neck end bent 13.6 deg down (sb34: lump unchanged, throat moved, C155), neck_split off, every styling op.
 LANDED: garment_pull.neck_lump_rows (crest <= 32 deg, bump <= 8 mm), printed by fit_garment, KAT, C154. gc1 FAILS them.
 NEXT: Joe's call: keep gc1 (lump stays) or reopen the neck point for shirts (base of neck; reopens the throat and the
 parked HPS research). Sheets: $G/r2/lump_side_gc1_vs_hb.png, hb_styled_sheet.png, hb_styled_z_sheet.png.
