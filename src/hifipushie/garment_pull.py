@@ -489,7 +489,7 @@ def pull(M: dict, X: np.ndarray, held, handles: list[dict], body=None, step: flo
 
 
 def smooth(M: dict, X: np.ndarray, held, pieces, lam: float = 0.5, iters: int = 6, rounds: int = 20,
-           tol: float = TOL, stretch_pieces=None):
+           tol: float = TOL, stretch_pieces=None, near=None, radius: float = 0.04):
     """SMOOTH (C143; Joe: "a 'smooth' operation ... in conjunction with the 'pull' operation ... those are the two
     main operations to styling the clothing one is wearing"): a hand flattening ripples. In the brushed `pieces`
     (minus `held`) alternate (a) fair: each vertex `lam` of the way toward its one-ring centroid ALONG ITS NORMAL only,
@@ -497,12 +497,24 @@ def smooth(M: dict, X: np.ndarray, held, pieces, lam: float = 0.5, iters: int = 
     (on `stretch_pieces`; default the pull's read, every piece with free cloth) would exceed the least so far + `tol`
     (the pull's rule) or the roughness (p95 of the fair's normal distance, the
     crumple read) stops dropping. Shirt spike sm1: collar + stand roughness p95 0.67 -> 0.32 mm, stretch +0.3 pt.
+    `near` (points "piece:point" / vertices) + `radius` (m, pattern): a LOCAL brush, the pieces' cloth within radius of
+    each point, its stop read there alone (shirt spike x5: the band ends' turn buckled the free collar tips, crumple
+    p95 0.23 mm; a whole-collar smooth didn't see them, a 40 mm brush round each point took them to 0.06-0.08 = closed).
     Returns (X_new, info: rounds, rough p95 start / end (mm), stretch p99 start / end (%))."""
     X = np.asarray(X, float)
     held = _mask(held, len(X))
     A = FlatARAP(M, X)
     Y = A.weld(X)
-    brush = A.welded_mask(np.isin(np.asarray(M["piece"]), _piece_ids(M, pieces)))
+    on = np.isin(np.asarray(M["piece"]), _piece_ids(M, pieces))
+    if near is not None:
+        uv_ = np.asarray(M["uv"], float)
+        pid_ = np.asarray(M["piece"])
+        loc = np.zeros(len(X), bool)
+        for q in (near if isinstance(near, (list, tuple)) else [near]):
+            o = vertex(M, q)
+            loc |= (pid_ == pid_[o]) & (np.linalg.norm(uv_ - uv_[o], axis=1) <= radius)
+        on &= loc
+    brush = A.welded_mask(on)
     keep = ~brush | A.welded_mask(held)
     WF = A.WF
     Ew = np.unique(np.sort(np.r_[WF[:, [0, 1]], WF[:, [1, 2]], WF[:, [2, 0]]], 1), axis=0)
@@ -544,7 +556,8 @@ def smooth(M: dict, X: np.ndarray, held, pieces, lam: float = 0.5, iters: int = 
     Xn = A.unweld(Y)
     Xn[held] = X[held]
     return Xn, {"rounds": k, "rough_p95_mm": [round(r0 * 1000, 3), round(rr * 1000, 3)],
-                "stretch_p99": [round(s0 * 100, 2), round(st(Y) * 100, 2)], "pieces": list(pieces)}
+                "stretch_p99": [round(s0 * 100, 2), round(st(Y) * 100, 2)], "pieces": list(pieces),
+                **({"near": list(near) if isinstance(near, (list, tuple)) else [near], "radius": radius} if near is not None else {})}
 
 
 def _kink3d(P: np.ndarray, win: float) -> float:
@@ -655,25 +668,65 @@ def style(M: dict, X: np.ndarray, held, ops: list[dict], body=None, log=None):
                 X, inf = smooth(M, X, hold_now, a.pop("pieces"), **a)
         elif kind == "relax":
             X, inf = relax(M, X, base | placed, **a)
+        elif kind == "push":
+            X, inf = push(M, X, base | placed, a.pop("pieces"), body, **a)
         elif kind == "hold":
             mine = hold_region(M, X, **a)
             placed |= mine
             regions |= mine
             inf = {"held": int(mine.sum())}
             if a.get("feather_to") is not None:
-                fv, fw = feather_weights(M, X, a["pieces"], a["within_deg"], a["feather_to"], a.get("of", "back"),
-                                         a.get("center"))
+                # ("feather_pieces": only these are feathered back, e.g. the band but not the collar's fall: holding the
+                # fall at the sides too made an S in the front view (in, out, back in to the tip); c1: one arc)
+                fv, fw = feather_weights(M, X, a.get("feather_pieces") or a["pieces"], a["within_deg"], a["feather_to"],
+                                         a.get("of", "back"), a.get("center") or a["pieces"][0])
                 fv, fw = fv[~(base | placed)[fv]], fw[~(base | placed)[fv]]
                 feathers.append((fv, fw, X.copy()))
                 inf["feathered"] = int(len(fv))
         else:
-            raise ValueError(f"no styling op {kind!r} (pull, turn, smooth, relax, hold)")
+            raise ValueError(f"no styling op {kind!r} (pull, turn, smooth, relax, hold, push)")
         if kind in FEATHER_AFTER and feathers:  # (the feathered band drawn back after each move)
             for fv, fw, ref in feathers:
                 keep = ~placed[fv]
                 X = feather(M, X, base | placed, fv[keep], fw[keep], ref)
         infos.append({kind: inf})
     return X, infos
+
+
+def push(M: dict, X: np.ndarray, held, pieces, body, gap: float = 0.002, rounds: int = 4, iters: int = 8):
+    """The body as a floor for `pieces` only (shirt spike w5d: the fronts, once the throat opened, sank into the chest;
+    pushed off the body after the moves they lie open with soft folds; on the band a push-out dented it, so it is never
+    applied to every piece): `rounds` times, every free vertex of `pieces` less than `gap` outside the body (signed along
+    the nearest body vertex's normal) moved out to `gap` and pinned, the rest re-solved. Returns (X_new, info: inside
+    before / after)."""
+    from scipy.spatial import cKDTree
+    X = np.asarray(X, float)
+    held = _mask(held, len(X))
+    BV, BF = _body_vf(body)
+    fn = np.cross(BV[BF[:, 1]] - BV[BF[:, 0]], BV[BF[:, 2]] - BV[BF[:, 0]])
+    vn = np.zeros_like(BV)
+    for k in range(3):
+        np.add.at(vn, BF[:, k], fn)
+    vn /= np.linalg.norm(vn, axis=1)[:, None] + 1e-12
+    bt = cKDTree(BV)
+    mine = np.isin(np.asarray(M["piece"]), _piece_ids(M, pieces)) & ~held
+    A = FlatARAP(M, X)
+
+    def under(Xc):
+        _, j = bt.query(Xc)
+        sd = ((Xc - BV[j]) * vn[j]).sum(1)
+        return mine & (sd < gap), sd, j
+
+    n0 = int(under(X)[0].sum())
+    for _ in range(rounds):
+        bad, sd, j = under(X)
+        if not bad.any():
+            break
+        T = X.copy()
+        T[bad] += (gap - sd[bad])[:, None] * vn[j[bad]]
+        Y = A.solve(A.weld(T), A.welded_mask(held | bad), iters)
+        X = A.unweld(Y)
+    return X, {"inside": [n0, int(under(X)[0].sum())], "pieces": list(pieces)}
 
 
 def relax(M: dict, X: np.ndarray, held, iters: int = HOLD_ITERS):
@@ -737,7 +790,7 @@ def feather(M: dict, X: np.ndarray, held, verts: np.ndarray, share: np.ndarray, 
 
 
 def hold_region(M: dict, X: np.ndarray, pieces=None, within_deg: float | None = None, of: str = "back",
-                center=None, at=None, feather_to: float | None = None) -> np.ndarray:
+                center=None, at=None, feather_to: float | None = None, feather_pieces=None) -> np.ndarray:
     """A region the hand / body keeps still (C144; Joe: the collar "should mostly hug the neck on the back and sides;
     the flare is all toward the front"): the vertices of `pieces` within `within_deg` of CB ("of": "back", +y: the
     creature faces -y) or CF ("front") round a vertical axis through `center` (a piece name: its x-y centroid; default
@@ -970,3 +1023,130 @@ def edge_turns(M: dict, X: np.ndarray, piece: str, mid: str, end: str, center=No
     j = int(np.argmax(turns[:, 0]))
     return {"max_turn_deg": round(float(turns[j, 0]), 1), "at_deg": round(float(turns[j, 1]), 1),
             "p50_deg": round(float(np.median(turns[:, 0])), 1)}
+
+
+def ops_pieces(M: dict, ops: list[dict]) -> list:
+    """The pieces a styling op list moves: what its pulls / turns grip and its smooths / holds / pushes name."""
+    pid = np.asarray(M["piece"])
+    at = [h["at"] for o in ops for h in (o.get("pull") or {}).get("handles", [])] + \
+         [t["at"] for o in ops for t in (o.get("turn") or {}).get("turns", [])]
+    out = {M["names"][int(pid[v])] for a in at for v in vertices(M, a)}
+    for o in ops:
+        (kind, a), = o.items()
+        if kind in ("smooth", "hold", "push"):
+            out |= set(a.get("pieces") or [])
+            if "border" in a:
+                out.add(a["border"].split(":")[0])
+    return sorted(p for p in out if p in M["names"])
+
+
+def worn_style(M: dict, X: np.ndarray, body, g: dict, log=None):
+    """HOW THE KIND IS WORN, set by hand (C146): the wear's "style" ops (garment_kb kinds.<kind>.wear.<tie|no_tie>.style,
+    via garment_design.wear(g, "style")) run on the closed form fit: the pieces they move are free, the rest held, and
+    on those pieces whatever lies below the top fastened front button stays closed. A shirt without a tie gets its
+    collar opened as Joe's references show (the shirt spike's c1). Returns (X_new, infos) or (X, None) when the kind has
+    no style for how it is worn."""
+    from . import garment_design
+    ops = garment_design.wear(g, "style")
+    if not ops:
+        return np.asarray(X, float), None
+    ops = [{k: dict(v) for k, v in o.items()} for o in ops]
+    free = ops_pieces(M, ops)
+    below = "closure:front" if any(c.get("name") == "front" for c in M.get("closures") or []) else None
+    held = hold_mask(M, X, free, below)
+    return style(M, X, held, ops, body=body, log=log)
+
+
+# THE OPEN COLLAR'S READS (C146): what the shirt spike measured every look, beside Joe's references. Front view =
+# (x, z); landmarks on the 3D fit: the collar points (tips), the collar's sewn ends (inner corners, = the band's top
+# corners at CF), the collar's outer edge at +-85 deg round the neck from CB (the leaf's turn at the side of the neck),
+# the V's bottom (the lowest height above which the fronts' edges are parted). Ratios over the neck width there (outer
+# edge to outer edge). Targets: Joe's open-shirt photo / the concept trace, read by eye (spikes/shirt_spike/angles.py).
+OPEN_COLLAR_TARGETS = {
+    "corners apart / neck": (0.40, 0.75, "photo 0.50, trace 0.69"),
+    "tips apart / neck": (0.70, 1.15, "photo 0.72, trace 1.01"),
+    "V angle (deg)": (50.0, 100.0, "photo 69, trace 95"),
+    "V depth below tips / neck": (0.0, 0.25, "photo 0.19, trace 0.04"),
+    "leaf front edge (deg from down)": (25.0, 48.0, "photo 29-35, trace 27-34"),
+    "edge max turn per 40 mm (deg)": (0.0, 32.0, "one arc: c1 30; x5's S 46-50"),
+    "collar crumple p95 (mm)": (0.0, 0.30, "closed 0.14; c1 0.24"),
+    "tip crumple p95 (mm)": (0.0, 0.22, "closed 0.03-0.07"),
+    "folded faces near the points": (0, 0, "closed 0"),
+    "collar + band mirror p95 (mm)": (0.0, 6.0, "mesh floor 1-2"),
+}
+
+
+def open_collar_reads(M: dict, X: np.ndarray) -> dict:
+    """{item: value} for OPEN_COLLAR_TARGETS on a shirt with Simon's piece / point names (collar, stand, front.L / .R)."""
+    from scipy.spatial import cKDTree
+    X = np.asarray(X, float)
+    pid = np.asarray(M["piece"])
+    nm = list(M["names"])
+    uv = np.asarray(M["uv"], float)
+    P = M["points"]
+    tipL, tipR = X[P["collar:leftTopEdge"]], X[P["collar:rightTopEdge"]]
+    if tipL[0] > tipR[0]:
+        tipL, tipR = tipR, tipL
+    cL, cR = X[P["collar:leftBottomEdge"]], X[P["collar:rightBottomEdge"]]
+    if cL[0] > cR[0]:
+        cL, cR = cR, cL
+    out_ch = border_chain(M, "collar:leftTopEdge..topMid..rightTopEdge")
+    c = X[pid == nm.index("stand")][:, :2].mean(0)
+    ang = np.degrees(np.arctan2(X[out_ch, 0] - c[0], X[out_ch, 1] - c[1]))
+    oL, oR = X[out_ch[np.argmin(np.abs(ang + 85))]], X[out_ch[np.argmin(np.abs(ang - 85))]]
+    if oL[0] > oR[0]:
+        oL, oR = oR, oL
+    neck = abs(oR[0] - oL[0])
+    eL = (pid == nm.index("front.L")) & (uv[:, 0] < uv[P["front.L:placketTopFold1"], 0] + 0.003)
+    eR = (pid == nm.index("front.R")) & (uv[:, 0] > uv[P["front.R:placketTopOut"], 0] - 0.003)
+    top = max(X[P["front.L:cfNeck"], 2], X[P["front.R:cfNeck"], 2])
+    vz, vx = top, 0.0
+    for z in np.arange(top, top - 0.3, -0.003):  # (spikes/shirt_spike/openm.py: front.L's edge on the +x side once parted)
+        a = X[eL & (np.abs(X[:, 2] - z) < 0.003)]
+        b = X[eR & (np.abs(X[:, 2] - z) < 0.003)]
+        if not len(a) or not len(b):
+            continue
+        if a[:, 0].min() - b[:, 0].max() > 0.002:
+            vz, vx = z, 0.5 * (a[:, 0].min() + b[:, 0].max())
+        else:
+            break
+    fz = lambda p: np.array([p[0], p[2]])
+    V = np.array([vx, vz])
+    l1, l2 = fz(cL) - V, fz(cR) - V
+    deg = lambda u, w: float(np.degrees(np.arccos(np.clip(u @ w / (np.linalg.norm(u) * np.linalg.norm(w)), -1, 1))))
+    down = np.array([0.0, -1.0])
+    fe = [deg(fz(tipL) - fz(cL), down), deg(fz(tipR) - fz(cR), down)]
+    # the outer edge's turn per 40 mm of arc in 3D (edgeplot.py), the middle 80 % (not the points' own corners), off CB
+    p3 = X[out_ch]
+    s = np.r_[0, np.cumsum(np.linalg.norm(np.diff(p3, axis=0), axis=1))]
+    turns = []
+    for i in range(len(p3)):
+        if s[i] < 0.1 * s[-1] or s[i] > 0.9 * s[-1] or abs(ang[i]) < 15:
+            continue
+        a_ = np.searchsorted(s, s[i] - 0.02)
+        b_ = np.searchsorted(s, s[i] + 0.02) - 1
+        if a_ < i < b_:
+            turns.append(deg(p3[i] - p3[a_], p3[b_] - p3[i]))
+    tips = [tip_read(M, X, q) for q in ("collar:leftTopEdge", "collar:rightTopEdge")]
+    cs = np.isin(pid, [nm.index("collar"), nm.index("stand")])
+    mir, _ = cKDTree(X).query(X[cs] * [-1, 1, 1])
+    return {"corners apart / neck": round(float(np.linalg.norm(fz(cR) - fz(cL)) / neck), 2),
+            "tips apart / neck": round(float(np.linalg.norm(fz(tipR) - fz(tipL)) / neck), 2),
+            "V angle (deg)": round(deg(l1, l2), 0),
+            "V depth below tips / neck": round(float((0.5 * (tipL[2] + tipR[2]) - vz) / neck), 2),
+            "leaf front edge (deg from down)": round(max(fe), 0),
+            "edge max turn per 40 mm (deg)": round(max(turns) if turns else 0.0, 0),
+            "collar crumple p95 (mm)": round(float(np.percentile(crumple(M, X, "collar"), 95)), 3),
+            "tip crumple p95 (mm)": round(max(t["crumple_p95_mm"] for t in tips), 3),
+            "folded faces near the points": int(sum(folded(M, X, q) for q in ("collar:leftTopEdge", "collar:rightTopEdge"))),
+            "collar + band mirror p95 (mm)": round(float(np.percentile(mir, 95) * 1000), 1)}
+
+
+def open_collar_rows(M: dict, X: np.ndarray) -> list:
+    """item | target | ours | PASS / FAIL rows for OPEN_COLLAR_TARGETS (fit_garment prints them for a shirt worn open)."""
+    r = open_collar_reads(M, X)
+    rows = []
+    for k, (lo, hi, src) in OPEN_COLLAR_TARGETS.items():
+        v = r[k]
+        rows.append({"id": k, "ours": v, "target": f"{lo:g}-{hi:g} ({src})", "status": "PASS" if lo <= v <= hi else "FAIL"})
+    return rows

@@ -2784,10 +2784,11 @@ def pattern_check(name: str, garment: str, refs: str | dict | None = None, waive
 
 @mcp.tool(structured_output=False)
 def fit_garment(name: str, garment: str, views: list[str] | None = None, size: int = 560, clay: bool = True,
-                diag: list | bool | None = None, force: bool = False, save: str | None = None):
+                diag: list | bool | None = None, force: bool = False, save: str | None = None, styled: bool = True):
     """The garment assembled from its pattern on the body (the dress form), NO sim: clay + diag (default
     panels+seams+turned; strain+layers), strain p99 and layer pierce, and the next step. Refuses until pattern_check
-    PASSes (force=True looks anyway, said in the text). views, size, clay, diag, save. Details:
+    PASSes (force=True looks anyway, said in the text). Then styled as its kind is worn (C146; styled=False: closed).
+    views, size, clay, diag, save. Details:
     guide(topic="fit_garment")."""
     from . import cloth, cloth_check as cc, diag_render, next_steps
     spec = store.load(name)
@@ -2805,6 +2806,24 @@ def fit_garment(name: str, garment: str, views: list[str] | None = None, size: i
     from . import pattern_form
     res = pattern_form.on_form(name, garment, spec)
     X = res["A"]
+    # HOW IT IS WORN, set by hand (C146): the wear's style ops (garment_kb kinds.<kind>.wear.<tie|no_tie>.style) run on
+    # the closed fit; a garment that declares its own worn_open (the old fold / pin route) or "style": false skips it
+    style_txt = ""
+    gx = cloth.expanded(spec["cloth"][garment])
+    if styled and not gx.get("worn_open") and gx.get("style", True) is not False and res.get("form_under") is None:
+        from . import garment_pull as gpl
+        Xs, sinfo = gpl.worn_style(res["mesh"], np.asarray(X, float), (np.asarray(res["body"].V, float),
+                                   np.asarray(res["body"].T, int)), gx)
+        if sinfo is not None:
+            X = res["A"] = Xs
+            style_txt = "  worn (C146: the wear's style ops on the closed fit): " + "; ".join(
+                f"{next(iter(o))} {json.dumps(next(iter(o.values())), default=str)[:90]}" for o in sinfo) + "\n"
+            if "collar" in res["mesh"]["names"] and "collar:leftTopEdge" in res["mesh"]["points"]:
+                try:
+                    style_txt += "  open collar reads (item | target | ours):\n" + "".join(
+                        f"    {r['status']} {r['id']} | {r['target']} | {r['ours']}\n" for r in gpl.open_collar_rows(res["mesh"], X))
+                except (KeyError, ValueError) as e:
+                    style_txt += f"  open collar reads: n/a ({e})\n"
     validated = cc.form_validated()  # the gate's one form switch (override or pattern_form's passing record)
     how = "assembled on the dress form (pattern_form)"
     under = None
@@ -2847,7 +2866,7 @@ def fit_garment(name: str, garment: str, views: list[str] | None = None, size: i
            f"  face strain vs the flat pattern: p99 {p99:.1f} %, max {float(s.max() * 100):.1f} % "
            f"(gate <= {next_steps.STRAIN_P99_MAX:g} %)\n"
            f"  layer pierce: {'n/a (no under garment)' if pierce is None else f'{pierce} faces'}\n"
-           f"  single views for review_view: {d}\n" + fit_txt + vis_txt)
+           f"  single views for review_view: {d}\n" + style_txt + fit_txt + vis_txt)
     return [_out(im, _save_suffix(save, tag)) for tag, im in ims] + [
         txt + next_steps.after_fit(name, garment, p99, pierce, validated,
                                    worn_open=bool(cloth.expanded(spec["cloth"][garment]).get("worn_open")))]
@@ -2955,7 +2974,7 @@ def style_garment(name: str, garment: str, ops: list[dict], free: list[str] | No
         raise ValueError(f"no garment {garment!r} (have {', '.join(spec.get('cloth') or {}) or 'none'})")
     ops = _spec_arg(ops)
     if not ops or not all(isinstance(o, dict) and len(o) == 1 and next(iter(o)) in
-                          ("pull", "turn", "smooth", "relax", "hold") for o in ops):
+                          ("pull", "turn", "smooth", "relax", "hold", "push") for o in ops):
         raise ValueError('ops: a list of {"pull": {"handles": [...]}} | {"turn": {"turns": [...]}} | '
                          '{"smooth": {"pieces": [...]}} | {"relax": {}} | {"hold": {"pieces": [...], "within_deg"?}}')
     st = cc.gate_status(name, garment, spec)

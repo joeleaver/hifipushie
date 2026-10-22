@@ -16,13 +16,14 @@ the band turning with it; band ends lean apart; leaves stand off the neck). Joe:
 - CLOSED: repo defaults (landed, BUILD_VERSION 17) + the concept's button spacing = v1 (= e3): clean closed collar, band
   ends sewn flush with the placket tops, one rounded roll (176 deg), collar + band mirror p95 1.4-1.9 mm, strain p99 9 %.
   `spikes/shirt_spike/run.sh base_fit.py v1 '{"closures":[{"name":"front","spacing":{"first":0.034,"from":"cfNeck"}}]}'`
-- Pull tool (fervent-bouman 0016774f) reproduces q40 / f2 / sp10 (via_tool.py; tsp10 kinks 10 / 20 vs 12 / 12). Joe: f2, pt2 best.
-- sp10 (Joe: "none of these are yet producing one smooth swoop"): f2 + `"edge_smooth":{"spline":10,"lam":0.4,"win":0.03,
-  "rounds":30,"tol":0.015}`: the collar's outer edge (boundary walk point -> CB -> point) drawn toward ONE smooth curve
-  (LSQ spline, 10 knots) until it would stretch; side-view kinks 12 / 12 deg (f2 18 / 34). Neighbour averaging stalled.
-- f2: `{"swing":40,"steps":6,"nopush":1,"hug":70,"feather":[70,130],"swing_patch":0.015,"pulls":[P0],"smooth":
-  {"pieces":["collar","stand"]}}`, P0 = points side 1 / out 0.3 / up 0, patch 0.025, turn (C142-C144).
+- History of the recipe (sp10 / f2 / q40 / x5 / c1): cloth.md "shirt spike 2026-10-21", ledger C142-C146.
 - Crease on the roll: two bends 4 mm apart (seam + roll line); roll at the seam (r0a / r0b) not adopted.
+
+## CODIFIED (2026-10-22, C146): the open collar is a DEFAULT. fit_garment on any Simon shirt without a tie runs the
+wear's style ops (garment_kb kinds.shirt.wear.no_tie.style = c1 as data) on the closed fit and prints the open collar
+reads vs Joe's photo / trace (garment_pull.OPEN_COLLAR_TARGETS). wf_simon from the repo defaults: every row PASS, 59 s.
+Tool: garment_pull (pull / turn / smooth / smooth near points / border smooth / relax / hold + feather_pieces / push),
+MCP style_garment for any other op list. Spike scripts (flatarap.py ...) are history now; work on the library.
 
 ## Open faults (ranked by what shows at 1-3 m)
 0. CURRENT BEST c1 (Joe: "do your best to get a clean single curve"): x5's recipe with "pulls":[P0 + "max":0.045] and

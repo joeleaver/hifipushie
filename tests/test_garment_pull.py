@@ -248,3 +248,82 @@ def test_a_grip_overlapping_a_hold_is_refused():
     M, X, held = _strip()
     with pytest.raises(ValueError, match="held vertices"):
         gp.pull(M, X, held, [{"at": "strip:tipA..tipB", "dir": [1, 0, 0], "patch": 0.5}])
+
+
+def _sheet(n=31, size=0.2):
+    uv = np.array([(x, y) for x in np.linspace(0, size, n) for y in np.linspace(0, size, n)])
+    ix = lambda i, j: i * n + j
+    F = [f for i in range(n - 1) for j in range(n - 1)
+         for f in ((ix(i, j), ix(i + 1, j), ix(i + 1, j + 1)), (ix(i, j), ix(i + 1, j + 1), ix(i, j + 1)))]
+    return {"F": np.array(F), "uv": uv, "piece": np.zeros(len(uv), int), "names": ["sheet"], "sew": [], "points": {}}
+
+
+def test_push_lifts_only_the_named_pieces_off_the_body():
+    """C146 push: a sheet lying 3 mm INSIDE a flat body (z = 0 plane, normal +z) is lifted to the gap; with the piece
+    not named nothing moves (a push on every piece dented the shirt's band)."""
+    M = _sheet()
+    X = np.c_[M["uv"], np.full(len(M["uv"]), -0.003)]
+    g = np.linspace(-0.1, 0.3, 21)
+    BV = np.array([(x, y, 0.0) for x in g for y in g])
+    ix = lambda i, j: i * 21 + j
+    BF = np.array([f for i in range(20) for j in range(20)
+                   for f in ((ix(i, j), ix(i + 1, j), ix(i + 1, j + 1)), (ix(i, j), ix(i + 1, j + 1), ix(i, j + 1)))])
+    Xn, info = gp.push(M, X, np.zeros(len(X), bool), ["sheet"], (BV, BF), gap=0.002)
+    assert info["inside"][0] == len(X) and info["inside"][1] == 0, info
+    assert np.allclose(Xn[:, 2], 0.002, atol=2e-4)
+    M2 = dict(M, names=["sheet", "other"])
+    Xo, info2 = gp.push(M2, X, np.zeros(len(X), bool), ["other"], (BV, BF))
+    assert np.allclose(Xo, X) and info2["inside"] == [0, 0]
+
+
+def test_smooth_near_points_brushes_only_round_them():
+    """C146 local smooth: ripples everywhere; smoothing `near` one point (radius 40 mm) flattens there and leaves the
+    cloth further away as it was (the shirt's tips: a whole-collar smooth missed them)."""
+    M = _sheet(41)
+    uv = M["uv"]
+    rng = np.random.default_rng(2)
+    X = np.c_[uv, 0.0005 * rng.standard_normal(len(uv))]
+    edge = (uv.min(1) < 1e-9) | (uv.max(1) > 0.2 - 1e-9)
+    X[edge, 2] = 0.0
+    centre = int(np.argmin(np.linalg.norm(uv - [0.1, 0.1], axis=1)))
+    M["points"] = {"sheet:mid": centre}
+    Xn, info = gp.smooth(M, X, edge, ["sheet"], near=["sheet:mid"], radius=0.04)
+    d = np.linalg.norm(uv - uv[centre], axis=1)
+    assert info["rounds"] > 0 and info["rough_p95_mm"][1] < 0.6 * info["rough_p95_mm"][0], info
+    assert np.allclose(Xn[d > 0.041], X[d > 0.041])
+
+
+def test_open_collar_reads_tell_an_s_edge_from_one_arc():
+    """C146 gate: the closed collar fails the open rows; a collar edge with an S (x5) fails the one-arc row; c1 passes
+    (fixtures: the shirt spike's saved fits, skipped where the data disk isn't there)."""
+    import pickle
+    D = Path("/mnt/data/hifipushie/shirt_spike")
+    if not (D / "c1.pkl").exists():
+        pytest.skip("needs the shirt spike's fits on the data disk")
+    st = {}
+    for t in ("e5", "x5", "c1"):
+        d = pickle.load(open(D / f"{t}.pkl", "rb"))
+        st[t] = {r["id"]: r["status"] for r in gp.open_collar_rows(d["mesh"], np.asarray(d["A"], float))}
+    assert st["e5"]["corners apart / neck"] == "FAIL" and st["e5"]["tips apart / neck"] == "FAIL"
+    assert st["x5"]["edge max turn per 40 mm (deg)"] == "FAIL"
+    assert all(v == "PASS" for v in st["c1"].values()), st["c1"]
+
+
+@pytest.mark.skipif(not _wf_simon_home(), reason="needs HIFIPUSHIE_HOME with the wf_simon workspace model")
+def test_a_shirt_without_a_tie_is_styled_open_by_default():
+    """C146 KAT: wf_simon's Simon shirt from the REPO DEFAULTS alone (no overrides): the closed form fit, then the
+    no-tie wear's style ops (garment_kb kinds.shirt.wear.no_tie.style: the shirt spike's c1 as data) give an open
+    collar whose every OPEN_COLLAR_TARGETS row passes (Joe's photo / trace: corners, tips, V, one-arc edge, clean tips)."""
+    from hifipushie import cloth, pattern_form, resources, store
+    spec = store.load("wf_simon")
+    g = cloth.expanded(spec["cloth"]["shirt"])
+    assert not g.get("worn_open")
+    with resources.heavy("test_garment_pull default style", gb=6.0):
+        res = pattern_form.on_form("wf_simon", "shirt", spec, g=g)
+    M, body = res["mesh"], res["body"]
+    X, infos = gp.worn_style(M, np.asarray(res["A"], float), (np.asarray(body.V, float), np.asarray(body.T, int)), g)
+    assert infos is not None and len(infos) == 9
+    rows = gp.open_collar_rows(M, X)
+    print(rows)
+    assert all(r["status"] == "PASS" for r in rows), [r for r in rows if r["status"] != "PASS"]
+    assert gp.stretch_p99(M, X, ["collar", "stand", "front.L", "front.R"]) <= 0.07

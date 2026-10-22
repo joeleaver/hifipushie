@@ -92,7 +92,7 @@ Renders take the GPU lock.
 
 ### `fit_garment`
 
-`fit_garment(name, garment, views=None, size=560, clay=True, diag=None, force=False, save=None)`
+`fit_garment(name, garment, views=None, size=560, clay=True, diag=None, force=False, save=None, styled=True)`
 
 The virtual dress form: the garment assembled from its pattern on the body with NO sim (pattern_form: landmarks
 pinned, seams closed, folds on their lines, relaxed against the flat pattern; a layered garment over its under one).
@@ -104,6 +104,15 @@ under garment through this one), the folder of single-view PNGs for review_view,
 pierce names the pattern fix; otherwise judge clay + diag beside the reference, one view per review_view call.
 A sim after this is optional, a wrinkle source only; never close or hand-finish after a sim (measured 2026-10-19:
 strain p99 4.7 % -> 66-74 %). views, size, clay, save.
+WORN AS ITS KIND SAYS (C146): after the closed fit, the wear's style ops (garment_kb kinds.<kind>.wear.<tie|no_tie>
+.style; the same op list as style_garment) set it as it is worn. A shirt without a tie (the default) gets its collar
+opened as Joe's references show (the shirt spike's c1): its first fastened button ~90 mm below the band's CF corner
+(the wear's closure spacing), the band ends turned open about Simon's hinge marks, the points pulled out, the collar's
+outer edge smoothed into one curve, the tips un-buckled. The text then prints the OPEN COLLAR READS, item | target |
+ours | PASS / FAIL against Joe's photo / trace (garment_pull.OPEN_COLLAR_TARGETS: inner corners and points apart over
+the neck width, V angle and depth, leaf front edge, the outer edge one arc, collar / tip crumple, folded faces, mirror).
+styled=False shows the closed fit; a garment with its own worn_open (the old fold / pin route) or "style": false is
+not styled.
 
 ### `style_garment`
 
@@ -149,8 +158,15 @@ no sim), then `ops` run in order, each from where the last left the cloth:
   stays put. Local neighbour averaging stalled after 2 rounds and roughened the collar. "release": pieces freed from
   the region holds for this op (the collar's fall from its hug; grips stay held). The collar's side-view kinks went
   21 / 27 -> 10 / 20 deg (the spike's sp10: 12 / 12).
+- `{"smooth": {"pieces": [...], "near": ["piece:point", ...], "radius"?}}`: a LOCAL smooth within `radius` (40 mm)
+  of each point, its stop read there alone. A band-end turn buckles the free collar tips (crumple p95 0.23 mm) and a
+  whole-collar smooth doesn't see them; round each point they come back to the closed collar's 0.06-0.08 (C146).
+- `{"push": {"pieces": [...], "gap"?}}`: the body as a floor for these pieces ONLY: the fronts, once the throat is
+  opened, sink into the chest; pushed off they lie open with soft folds. Never every piece: a push dented the band.
 - `{"relax": {"iters"?}}`: the free cloth relaxed against its pattern (nothing gripped).
-- `{"hold": {"pieces", "within_deg"?, "feather_to"?, "of"?: "back" | "front", "center"?, "at"?}}`: keep a region
+- `{"hold": {"pieces", "within_deg"?, "feather_to"?, "feather_pieces"?, "of"?: "back" | "front", "center"?, "at"?}}`:
+  "feather_pieces" feathers only those (the BAND, not the collar's fall: feathering the fall too made an S of the
+  collar's edge, in-out-in to the tip; band only gives one arc, C146). Keep a region
   where it is NOW for every later op. With `feather_to` (deg), the band beyond `within_deg` is FEATHERED: after every
   later pull it is drawn back toward where the hold found it, by a share fading 1 -> 0, then pinned and re-solved
   (3 rounds). A hard border kinked the collar's edge (29 deg at the border); held to 70 deg and feathered to 130 the
