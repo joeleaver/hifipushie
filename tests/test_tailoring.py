@@ -440,3 +440,27 @@ def test_cutaway_reads_the_same_on_jaegers_front():
         assert rj["front_cutaway_angle"]["status"] == "PASS", (name, rj)
         assert rj["front_hem_round"]["status"] == "PASS" and rj["front_cutaway_start"]["status"] == "PASS", (name, rj)
         assert abs(rj["front_cutaway_angle"]["ours"] - ro["front_cutaway_angle"]["ours"]) <= 1.0
+
+
+def test_span_counts_a_vertex_on_the_level():
+    """C150 (dress-tess s19): a contour op puts an outline vertex exactly on the waist level; the strict sign test read
+    the span 0 there (Tess's coat: chest / waist / hips 0 mm)."""
+    import numpy as np
+    from hifipushie import pattern_jacket as pj
+    sq = np.array([[0.0, 0.0], [0.2, 0.0], [0.2, -0.5], [0.0, -0.5]])
+    on = np.array([[0.0, 0.0], [0.2, 0.0], [0.19, -0.25], [0.2, -0.5], [0.0, -0.5]])
+    assert abs(pj._span_at(sq, -0.25) - 0.2) < 1e-9
+    assert abs(pj._span_at(on, -0.25) - 0.19) < 1e-9
+
+
+def test_true_corner_bends_a_bare_straight_edge():
+    """C151 (dress-tess s19): a two-point sleeve hem had no point within the blend and could not be trued."""
+    import numpy as np
+    from hifipushie import pattern
+    P = np.array([[0.15, -0.3], [-0.15, -0.3], [-0.2, 0.0], [0.2, 0.0]])  # hem wristF -> wristB, seams taper in
+    pc = {"name": "sleeve", "P": P, "names": {"wristF": 0, "wristB": 1, "underarmB": 2, "underarmF": 3}}
+    before = pattern._interior(P, 0)
+    out = pattern.true_corner(pc, "wristF", "underarmF", 90.0, 0.04)
+    after = pattern._interior(np.asarray(out["P"]), out["names"]["wristF"])
+    assert abs(before - 90) > 5 and abs(after - 90) < 1.0
+    assert len(out["P"]) > len(P) and np.allclose(out["P"][out["names"]["underarmF"]], P[3])

@@ -161,12 +161,14 @@ def rules(tape: dict, button_mm: float = 20.0) -> dict:
 
 # ---------------------------------------------------------------- helpers
 def _span_at(P: np.ndarray, y: float) -> float:
-    """Total width of a closed outline inside the line y = const (darts cut out of the outline are not counted)."""
+    """Total width of a closed outline inside the line y = const (darts cut out of the outline are not counted).
+    Half-open crossings ((a > y) != (b > y)): a vertex ON the line (a contour op puts one at the waist / hips level)
+    counts once. The strict product test missed it: Tess's coat read chest / waist / hips 0 mm (dress-tess s19)."""
     xs = []
     n = len(P)
     for i in range(n):
         a, b = P[i], P[(i + 1) % n]
-        if (a[1] - y) * (b[1] - y) < 0:
+        if (a[1] > y) != (b[1] > y):
             xs.append(a[0] + (b[0] - a[0]) * (y - a[1]) / (b[1] - a[1]))
     xs.sort()
     return float(sum(xs[k + 1] - xs[k] for k in range(0, len(xs) - 1, 2)))
@@ -477,7 +479,7 @@ def op_collar_two_piece(D: dict, stand_cb: float | None = None, fall_cb: float |
     # R18: the outer edge as long as its path: the neckline offset by where the fall's edge lands (fall - stand from the
     # roll line, below the neck seam) + pi x the ring it stands out by (the under-stack and the fall's own cloth)
     run_off = None
-    if STAND_RUN_OFF.get("on"):
+    if o.get("run_off", STAND_RUN_OFF.get("on")):  # (op option "run_off": true turns it on for one design)
         met = pd._roll_meets_neck(D, list(nf), lb)
         if met is not None and met[0] < lb + lf - 0.005:
             # (the outer edge's path is unchanged: past s_x the collar lies in the lapel's plane beside a straight

@@ -225,6 +225,11 @@ def junctions(Bp: dict, reach: float = TRUE_REACH, corners=()) -> list:
                 j = cand[0] if cand[1] == nxt else cand[1]
                 on.append(cover.get((nm, frozenset((i0, j)))))
             crossing = not (on[0] == on[1])
+            # the SAME two pieces sewn on past this point (a piece cut on the fold and unfolded: a collar's fall on its
+            # stand at CB is two mirrored seams meeting there): the seam goes on, this is no seam end (dress-tess s19:
+            # Tess's coat collar read "turn 178.5" at cbLow, two straight 180 deg edges)
+            if on[0] is not None and on[0] == on[1] and {_side(pcs, e)[0][1] for e in Bp["seams"][on[0]]} == {nma, nmb}:
+                continue
             tha = _interior_deg(pcs[nma]["P"], ia, reach)
             thb = _interior_deg(pcs[nmb]["P"], ib, reach)
             lab = f"{nma}:{_pname(pcs[nma], ia)} | {nmb}:{_pname(pcs[nmb], ib)}"

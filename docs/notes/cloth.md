@@ -9895,3 +9895,42 @@ tips.py / collardims.py (reads), render.py (probe's, ZOOM=1 for collar close-ups
   Reverted for pull / smooth / relax (turn tol keeps it). test_garment_pull 15 passed; gc1b (gc1 re-styled) identical to
   gc1 (crumple .24, edge 56), w4 (wf_simon) every row PASS.
 - Suite run 2 (13 files): 220 passed, 3 xfailed, 53 warnings in 706.74s (0:11:46); pytest exit 0.
+
+### dress-tess session 19 (2026-10-22): the coat's collar + lapel on the form (no-sim path)
+Branch claude/tess-coat-collar (from claude/probe-tess a91e82a8). Files /mnt/data/hifipushie/tess_coat_collar/ (run.sh,
+draft.py = a 15 s draft without placement, mk_tc.py builds model tc_tess = pt_tess + the changes below, pc.py, fit.py, sheet.py).
+- Step 1, the collar on the form. The coat's collar was one "tailored" piece with construct {"collar": true,
+  "sim_collar": false}: cloth.build hold_out() takes it out of the SIM, and on_form goes through the same build
+  (place_only), so the form never had a collar. Fixed twice: (a) pattern_form.on_form fits the whole draft (sim_collar
+  false only applies to a sim; only Tess's coat models use it, so no shirt / jacket changes); (b) tc_tess's coat drafts
+  the collar as Garrett's jacket does: collar_two_piece (stand + fall "collar" + undercollar fused to the fall, a turn
+  smaller), the stand sewn to the back neck + the gorge (the facing is fused to the front, so the collar seam is the
+  facing's too), folds declared: "collar roll" on the fall (r 4 mm, R16) and the "lapel roll" on each front (r 3 mm).
+- Step 2, C137: the coat's own mesh_refine: the lapel roll's rows at h 2.2 mm (0.95 pi r / 4, within 8 mm of the
+  roll line, blend 20 mm), collar + stand 2.5 mm (fall roll r 4: <= 3.1), the old lapel recipe (5 mm near the break /
+  point / neck) kept. Data, not FORM_REFINE_LAPEL (Garrett's jacket uses that).
+- Step 3, pattern_check sorted (c0 = collar only, c1 = all fixes): REAL, fixed: front overlap 10 -> 18 mm = the button
+  (R12; c19 cut it for the sim's hang, the no-sim path styles the opening instead); layer clearance chest -8.1 -> +8.1
+  (chest_ease 0.22 -> 0.24), waist -31.7 -> +31.4 (front side seam 35 -> 12 mm in at the waist); collar neck edge
+  straight 0.23 -> 0.03 (a straight stand); truing (neck 133.5 + 138.4 at HPS, armholes 93 + 102.6, sleeve wrists
+  101 + 101: "true" ops, then "match" walks the stand onto the trued neckline); collar_stand_end 12.6 -> 3.0 (new op
+  option collar_two_piece "run_off": true, R14 / R28). MEASURE FAULTS, fixed in code: tailor rows read chest / waist /
+  hips 0 mm (pattern_jacket._span_at's strict crossing missed a contour vertex ON the level: half-open now);
+  junctions read "turn 178.5" at an unfolded collar's CB (two mirrored seams meeting: a seam going on, skipped now);
+  "true" could not bend a two-point sleeve hem (points put on a bare edge first); collar_fold_run read the unfolded
+  stand's CB height (21 mm) as an end (garment_reads: the cb end of an unfolded stand is its middle). NOT FOR A LAB
+  COAT (waived by name, rule proposed): waist_suppression 11-20 % and front_dart are suit rules; a boxy coat
+  (block_options fitted false) should read silhouette "straight" (<= 9 %, no dart). Ours 0.4 %.
+- Step 4, the look (c1 = tc_tess on the form, styled with the probe's p1 ops; coat only, Joe's ruling C153): reads
+  break below HPS 168 / 166 (concept ~240, s18 179 / 169, probe 182), gap at break 172 (concept ~150, s18 68), hem gap
+  250, stretch p99 14.2 % / face 17.2 (probe 5.7 / 7.0, s18 29.8 / 24.4). Form report: folds lapel roll L / R row
+  stretch 58 / 50 %, collar roll 74 %, turned 166 / 161 / 119 deg; stretch p99 18.1 % max 181 %; through_under 444
+  (INFO now). Verdict (mine, blunt): the collar is on the form but does not read as a collar from the front (a low
+  band, brown tabs at the neck sides); the lapels are thin ragged strips with no notch; front.L has a hole at the
+  upper chest (cloth inside the body); pockets on the floor. Worse than s18 at the collar and lapel. Not for Joe.
+  Sheets: tess_coat_collar/sheet_c1_clay.png, sheet_c1_diag.png, c1_neckzoom.png. Next: the torn fold rows.
+- Joe's ruling (via coordinator, 2026-10-22): under-layer show-through is not a composing fault (C153): fit_garment's
+  next step no longer lists a pierce as a pattern fix (next_steps.after_fit: INFO line); sheets render the coat alone.
+- Checks: wf_simon and sh_garrett closed shirt fits (on_form, repo defaults) main vs this branch: max 0.000 mm
+  (tess_coat_collar/ab.log). Garment tests (pattern_form, cloth, seams, cloth_made, collar, pattern_gate, closures,
+  codified, shirt_spike_rules, tailoring, cloth_layers) under capped: 207 passed, 3 xfailed, pytest exit 0.

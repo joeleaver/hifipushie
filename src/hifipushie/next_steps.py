@@ -58,8 +58,10 @@ def after_fit(model: str, garment: str, strain_p99: float | None, pierce: int | 
         bad.append(f"strain p99 {strain_p99:.1f} % > {STRAIN_P99_MAX:g} %: the pattern is too small / mis-shaped "
                    "where the strain map is red: fix the PATTERN there (not the solver, not a hand pass)")
     if pierce:
-        bad.append(f"{pierce} faces of the under garment pierce this one (magenta in the layers view): draft this "
-                   "garment over the under one (garment key \"over\") or ease it, before anything else")
+        # NOT a composing fault (Joe 2026-10-22, C153): the under garment's covered triangles are culled later, so its
+        # show-through is reported, never a fix; judge the outer garment's own shape (the under one hidden)
+        out.append(f"layer pierce {pierce} faces of the under garment (magenta): INFO only, the covered under-layer is "
+                   "culled later (C153); judge this garment's own shape with the under one hidden")
     if backfaces:
         bad.append(f"{backfaces} faces seen from behind (red in the backfaces view): a piece inside out or a flap "
                    "turned the wrong way")

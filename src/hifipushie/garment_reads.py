@@ -310,6 +310,11 @@ def collar_draft_reads(Bp: dict, g: dict | None = None) -> dict:
     stand_w = st_cb * 1000 + fat * 1000
     fall_w = fa_cb * 1000 - fat * 1000 - float(ts["depth_mm"])
     ends = [st_a * 1000, st_b * 1000]
+    # an UNFOLDED stand (cut on the fold, its .m half sewn on past CB): the half's "cb" end is the stand's middle, not
+    # an end (dress-tess s19: Tess's coat read ends [21.0, 3.0], the 21 its CB height, and "the stand doesn't run off")
+    ne_ = neck_e.split(">")
+    if any(k.endswith(".m") for k in pcs[sn]["names"]) and "cb" in (ne_[0], ne_[-1]) and ne_[0] != ne_[-1]:
+        ends = [ends[1]] if ne_[0] == "cb" else [ends[0]]
     runs_off = max(ends) < STAND_RUNS_OFF_MM
     fold_runs_off = bool((roll or {}).get("run_off"))
     return {"collar_stand_cb_mm": round(st_cb * 1000, 1), "collar_stand_ends_mm": [round(e, 1) for e in ends],
