@@ -9836,3 +9836,7 @@ sym.py <tag>: mirror symmetry per piece, noise floor = mesh spacing, 1-8 mm).
 - f2 through the tool: 138 apart, 73 / 74 below, fall 73 / 73 / 72 mm (f2 73), corner 1.5 / 2.5 %, kinks 21 / 27
   (f2 18 / 16), twist 19 / 31 (f2 21 / 25), crumple 0.27, 0 folded, p99 6.65 %. tests/test_garment_pull.py 8 passed
   under capped (236 s). Open: the right side's edge kink / twist vs f2.
+- Correction (the spike session, 2026-10-21): q40's "p99 5.9 %" was over ALL pieces including held ones; read the
+  same way (collar + band + fronts) q40 and the tool's tq40 are both 7.4 %. The spike's swing also takes the free cloth
+  to 6.5-7.2 % going into the pull. tq40 (2eaf7d65 via the spike's via_tool.py) = q40 on every read but the points
+  (150 / 71-73 vs 137 / 76: the tool's stop rule).
