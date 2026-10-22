@@ -22,11 +22,8 @@ the band turning with it; band ends lean apart; leaves stand off the neck). Joe:
 - sp10 (Joe: "none of these are yet producing one smooth swoop"): f2 + `"edge_smooth":{"spline":10,"lam":0.4,"win":0.03,
   "rounds":30,"tol":0.015}`: the collar's outer edge (boundary walk point -> CB -> point) drawn toward ONE smooth curve
   (LSQ spline, 10 knots) until it would stretch; side-view kinks 12 / 12 deg (f2 18 / 34). Neighbour averaging stalled.
-- f2: `{"swing":40,"steps":6,"nopush":1,"hug":70,"feather":[70,130],"swing_patch":0.015,"pulls":[P0],
-  "smooth":{"pieces":["collar","stand"]}}`, P0 = points side 1 / out 0.3 / up 0, patch 0.025, turn. Band end swings as
-  an AREA (3 pinned corners pinched a lobe: TopCf 21 -> 3 %). Hug FEATHERED (Joe: "one continuous swoop instead of three
-  different angles"): held to 70 deg from CB, drawn back by a fading share to 130 (a hard hug edge kinked the profile:
-  q40 29 deg; profile.py 18 deg now), side 73 mm from the neck centre (closed 68). Points 137 / 76, p99 6.3 %.
+- f2: `{"swing":40,"steps":6,"nopush":1,"hug":70,"feather":[70,130],"swing_patch":0.015,"pulls":[P0],"smooth":
+  {"pieces":["collar","stand"]}}`, P0 = points side 1 / out 0.3 / up 0, patch 0.025, turn (C142-C144).
 - Crease on the roll: two bends 4 mm apart (seam + roll line); roll at the seam (r0a / r0b) not adopted.
 - OPEN (u25 = t15's pulls with "patch":0.025,"turn":1: each step drags the point alone, then fits the
   patch's unstretched start shape rigidly (Kabsch) onto that and solves again: tips clean (crumple p95 0.06-0.10 mm =
