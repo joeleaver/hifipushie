@@ -9870,3 +9870,23 @@ tips.py / collardims.py (reads), render.py (probe's, ZOOM=1 for collar close-ups
   from CB), mirror 6.8. w3 broke wf_simon's rows (corners .36, V angle 47, tip crumple .225): not landed as a default.
 - Garrett's collar (sh_garrett C129 options) vs wf_simon's: outer edge 515 vs 459 mm over a sewn 441 vs 414 (spring
   74 vs 45 mm), fall at CB 52.7 vs 40.3. Crumple (g3) sits at 120-150 deg from CB, mid-fall (crmap.py).
+- Step 3 (first button): cfNeck is 40 (Garrett) / 42 (wf_simon) mm below HPS on the closed fits, so the KB's 90 mm
+  lands at 130 / 132 on both: the gap to the concept's 83 is the reference (concept vs Joe's photo), not the body. KB
+  default kept; gc_garrett carries first 0.043 from cfNeck (button 1 at 85.9). At 43 mm the KB's full 65 deg turn tore
+  the fronts (g43: p99 39 %, pull stopped at 6 mm); w43 (wf_simon at 43 mm) 31.6 %.
+- Turn tol sweep on the KB's 90 mm wf_simon (t1 0.5 % / t3 1 % / t2 2 %): turns 53 / 57 / 61 deg, but corners .36-.39,
+  V angle 44-47, tip crumple .225-.233, edge 35-43: FAIL where the full 65 deg (fronts p99 15-16 %) passes. Turn tol
+  NOT made the KB default (step 4 rule); it is a garment edit for Garrett.
+- Front roll (turn about "front.X:@front" -> "front.X:neck", tol): r1 alone (g43r) corners .36, V 57, points 123 apart,
+  74 below HPS; with the band end in the same grip (r2) corners open (pass) but points droop 80-96 below HPS, V angle
+  122-142, tips crumple .33-.75. Pull after r2 at 0 / 15 / 45 mm: points 76 / 99 / 156 apart, all 83-87 below HPS.
+- Crumple root (collardims.py / edgeprof.py): pg_garrett's collar (collarWidth 1.68, collarBend 0.015) runs its outer
+  edge 515 mm over a sewn 441 (wf_simon 459 / 414); its CLOSED fall is wavy (outer edge radius 83 at CB, 75 at 15 deg,
+  79-81 at 75 deg, 72 at 90; wf_simon 67-72 smooth), edge turn 85 deg / 40 mm, left tip folded (2 faces, crumple .68).
+  Simon's defaults (gd43): spring 46, fall 47 at CB over the 30.5 stand, tips .09 / .12, 0 folded; styled crumple .23.
+- gc1 (gc_garrett from the spec, KB + {"turn": {"tol": .005, "steps": 16}}): turn 20 deg, pull 45 (max_move), V 47
+  below HPS, points 154 apart / 73-75 below, button 1 85.9 (gap 0), p99 7.8 %, collar crumple .233, tips .066, 0
+  folded, mirror 4.3. Rows FAIL: corners .20, V depth -.15, leaf front edge 51, edge turn 59. OWN LOOK (gc1 z sheet):
+  the leaves are clean and read as a shirt collar (the crumple is gone), but the throat is closed (band ends meet at
+  CF, no V of skin) and the leaves splay wide over the collarbones instead of standing beside the neck: not the concept.
+- wf_simon w2 (KB, all of this round's shared code): identical to w1 / the probe's w0 numbers, every row PASS.

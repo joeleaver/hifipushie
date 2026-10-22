@@ -370,3 +370,19 @@ def test_worn_style_holds_the_fastened_buttons():
     for a, b in pairs:
         assert np.linalg.norm(Xn[a] - Xn[b]) < 1e-6
     assert np.linalg.norm(Xn[M["points"]["front.L:top"]] - X[M["points"]["front.L:top"]]) > 0.02  # the tops still part
+
+
+def test_a_garment_edits_its_wear_style_by_op_kind():
+    """garrett collar round 1: a garment's own "style" dict sets params on every op of a kind in the wear's list (the
+    rest as the KB has it); a list replaces the list; false none; an unknown kind is refused."""
+    g = {"design": {"kind": "shirt"}}
+    base = gp.style_ops(g)
+    assert any("turn" in o for o in base) and all("tol" not in o["turn"] for o in base if "turn" in o)
+    ed = gp.style_ops(dict(g, style={"turn": {"tol": 0.005, "steps": 16}}))
+    assert [list(o) for o in ed] == [list(o) for o in base]
+    t = next(o["turn"] for o in ed if "turn" in o)
+    assert t["tol"] == 0.005 and t["steps"] == 16 and t["turns"] == next(o["turn"] for o in base if "turn" in o)["turns"]
+    assert gp.style_ops(dict(g, style=[{"relax": {}}])) == [{"relax": {}}]
+    assert gp.style_ops(dict(g, style=False)) == []
+    with pytest.raises(ValueError):
+        gp.style_ops(dict(g, style={"twirl": {}}))

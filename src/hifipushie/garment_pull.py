@@ -210,15 +210,43 @@ def _piece_ids(M, pieces):
 
 
 def vertex(M: dict, at) -> int:
-    """A vertex index, or "piece:point" (M["points"])."""
+    """A vertex index, or "piece:point" (M["points"]), or "piece:@closure" = that piece's vertex of the closure's TOP
+    FASTENED pair (the first done button: a front's roll line runs from it to the neck point)."""
     if isinstance(at, (int, np.integer)):
         return int(at)
+    if isinstance(at, str) and ":@" in at:
+        return _top_fastened(M, *at.split(":@", 1))
     P = M.get("points") or {}
     if at not in P:
         pre = at.split(":")[0] + ":"
         have = sorted(k for k in P if k.startswith(pre))
         raise ValueError(f"no garment point {at!r} (points on that piece: {', '.join(have) or 'none'})")
     return int(np.asarray(P[at]).reshape(-1)[0])
+
+
+def _top_fastened(M: dict, piece: str, closure: str, X=None) -> int:
+    """The vertex on `piece` of `closure`'s highest pair that is fastened (pairs within FASTENED on the fit; M["X"] or
+    `X` gives the fit, else every pair counts and the highest by the pattern's order is the first listed)."""
+    pid = np.asarray(M["piece"])
+    k = _piece_ids(M, [piece])[0]
+    X = M.get("_X") if X is None else X
+    best = None
+    for c in M.get("closures") or []:
+        if c.get("name") != closure:
+            continue
+        for v in c.get("v") or []:
+            v = [int(i) for i in np.asarray(v).ravel()]
+            if X is not None and np.linalg.norm(X[v[0]] - X[v[-1]]) > FASTENED:
+                continue
+            mine = [i for i in v if pid[i] == k]
+            if not mine:
+                continue
+            z = X[mine[0], 2] if X is not None else -len(best or [])
+            if best is None or z > best[0]:
+                best = (z, mine[0])
+    if best is None:
+        raise ValueError(f"no fastened pair of closure {closure!r} on {piece!r}")
+    return best[1]
 
 
 def vertices(M: dict, at) -> np.ndarray:
@@ -644,6 +672,7 @@ def style(M: dict, X: np.ndarray, held, ops: list[dict], body=None, log=None):
     (X_new, [info per op])."""
     X = np.asarray(X, float)
     base = _mask(held, len(X))
+    M = dict(M, _X=X.copy())  # ("piece:@closure" names read which pairs are done up on the fit styled)
     placed = np.zeros(len(X), bool)  # what earlier ops gripped: held where they left it
     feathers = []  # (vertices, share, positions at the hold) of each feathered hold
     regions = np.zeros(len(X), bool)  # what hold ops hold (a smooth may "release" pieces of it)
@@ -1085,17 +1114,37 @@ def ops_pieces(M: dict, ops: list[dict]) -> list:
     return sorted(p for p in out if p in M["names"])
 
 
+def style_ops(g: dict) -> list:
+    """The styling op list a garment is worn with: the wear's (garment_kb kinds.<kind>.wear.<tie|no_tie>.style), or the
+    garment's own "style": a list replaces it, a dict {op kind: {param: value}} sets those params on every op of that
+    kind (Garrett's shirt: {"turn": {"tol": 0.005, "steps": 16}}: its concept's first button 83 below HPS leaves the
+    fronts too little cloth for the wear's full 65 deg band-end turn, p99 39 %; turned until it would stretch: 20 deg,
+    7.8 %), false none."""
+    from . import garment_design
+    own = g.get("style")
+    if own is False:
+        return []
+    ops = own if isinstance(own, list) else garment_design.wear(g, "style")
+    ops = [{k: dict(v) for k, v in o.items()} for o in ops or []]
+    if isinstance(own, dict):
+        bad = sorted(set(own) - {"pull", "turn", "smooth", "relax", "hold", "push"})
+        if bad:
+            raise ValueError(f"style edits name no op kind {bad} (pull, turn, smooth, relax, hold, push)")
+        for o in ops:
+            (kind, a), = o.items()
+            a.update(own.get(kind) or {})
+    return ops
+
+
 def worn_style(M: dict, X: np.ndarray, body, g: dict, log=None):
     """HOW THE KIND IS WORN, set by hand (C146): the wear's "style" ops (garment_kb kinds.<kind>.wear.<tie|no_tie>.style,
     via garment_design.wear(g, "style")) run on the closed form fit: the pieces they move are free, the rest held, and
     on those pieces whatever lies below the top fastened front button stays closed. A shirt without a tie gets its
     collar opened as Joe's references show (the shirt spike's c1). Returns (X_new, infos) or (X, None) when the kind has
     no style for how it is worn."""
-    from . import garment_design
-    ops = garment_design.wear(g, "style")
+    ops = style_ops(g)
     if not ops:
         return np.asarray(X, float), None
-    ops = [{k: dict(v) for k, v in o.items()} for o in ops]
     free = ops_pieces(M, ops)
     below = "closure:front" if any(c.get("name") == "front" for c in M.get("closures") or []) else None
     held = hold_mask(M, X, free, below)

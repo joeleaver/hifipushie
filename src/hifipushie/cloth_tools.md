@@ -112,7 +112,10 @@ outer edge smoothed into one curve, the tips un-buckled. The text then prints th
 ours | PASS / FAIL against Joe's photo / trace (garment_pull.OPEN_COLLAR_TARGETS: inner corners and points apart over
 the neck width, V angle and depth, leaf front edge, the outer edge one arc, collar / tip crumple, folded faces, mirror).
 styled=False shows the closed fit; a garment with its own worn_open (the old fold / pin route) or "style": false is
-not styled.
+not styled. A garment's own "style" may be a list (replaces the wear's) or edits by op kind, e.g. {"turn": {"tol":
+0.005, "steps": 16}} (Garrett: his concept's first button 83 below HPS leaves the fronts too little cloth for the full
+65 deg band-end turn, so it turns until it would stretch). The fastened buttons are held with the cloth round them
+(C147: Garrett's first button was pulled 8.7 mm open before).
 
 ### `style_garment`
 
@@ -147,7 +150,10 @@ no sim), then `ops` run in order, each from where the last left the cloth:
 - `{"turn": {"turns": [{"at", "about": [point a, point b], "deg", "toward"?, "side_from"?}], "steps"?}}`: a grip
   turned about a line in stages. Examples: a band end swung open about its hinge, a cuff turned up about its fold.
   "toward" is a direction that picks the sense. A turn grips the cloth within "patch" (15 mm) of what it names: the
-  band end's 3 corner vertices turned alone pinched a lobe at its top corner (14-22 % vs 3 % closed).
+  band end's 3 corner vertices turned alone pinched a lobe at its top corner (14-22 % vs 3 % closed). "tol" (C147):
+  turn UNTIL IT WOULD STRETCH (the pull's rule; "deg" is then the most): without it the turn goes the full "deg"
+  whatever it costs. A point "piece:@closure" names that piece's vertex of the closure's top fastened pair (a front's
+  roll line runs from it to the neck point: {"about": ["front.L:@front", "front.L:neck"]}).
 - `{"smooth": {"pieces": [...], "lam"?, "rounds"?, "tol"?}}`: a hand flattening ripples. In the brushed pieces it
   alternates two moves: each vertex moved toward its one-ring centroid along its normal, then the pattern solve with
   everything outside held. It stops at the pull's stretch rule, or when the roughness stops dropping.
