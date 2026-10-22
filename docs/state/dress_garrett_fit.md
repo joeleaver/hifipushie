@@ -7,6 +7,7 @@ The shirt is gc1 (workspace gc_garrett, styled open, Joe approved its throat; /m
 gc1_styled.pkl), used AS IS (never refitted; its side lump is another thread's). C85: the jacket over the styled shirt.
 STATE: round 27 done: r27sc = closed fit r27a0 over gc1 -> ONE local ZOZO release + arrangement (side seams held) ->
 recull (BELT=50). A/B sim vs no-sim styling (r27q2c): the SIM stays the method (C157). Nothing approved. $0 spent.
+Suite (14 garment test files, capped): exit 0, 251 passed, 3 xfailed. No shared code changed this round.
 NEXT: (1) step 3 not started: pocket flaps (now p50 5 mm off the front, 0-1 sunk; still read "puffy"? look), hem
 corners, length (cfHem 736 vs concept 748 on r27sc: re-read the 748 first), collar standing up the neck / ragged at the
 neck top (shirt collar points pierce it), lapels / gorge narrow. (2) garment_pull needs a layer floor (C157) before
