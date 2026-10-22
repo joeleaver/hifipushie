@@ -79,6 +79,8 @@ SETTLE_ITERS = 10  # after the pull: the cloth settled with the handles held whe
 CONFIRM_ITERS = 120  # a step that reads over tol is re-solved up to this many more rounds before the pull stops there
 TURN_ROUNDS = 2  # a turning grip: fit-and-pin rounds per step
 PATCH = 0.025  # m (pattern): the cloth a point handle grabs round the point (u25)
+TURN_PATCH = 0.015  # m (pattern): a turn grips the cloth this near what it names (q40: the band end as an area)
+HOLD_ITERS = 20  # a "relax" op's rounds
 PROBE_ITERS = 4  # dir "easy": rounds per probed direction
 CONVERGED = 1e-5  # m: the confirm stops early once no vertex moves more than this in a round
 SIDE_MIN = 0.015  # m: a "side" is taken only from a point at least this far off x = 0
@@ -279,17 +281,20 @@ def _mask(held, n0):
     return held.copy()
 
 
-def grip(M: dict, h: dict, held=None) -> tuple[np.ndarray, int]:
+def grip(M: dict, h: dict, held=None, patch_default: float | None = None) -> tuple[np.ndarray, int]:
     """(vertices, lead) a handle grips. A single point grabs the cloth within `patch` of it on its piece's pattern
     (default PATCH: a hand grabs an AREA; one vertex dragged pinched and twisted the collar's tip, C142); a border or a
     list grips those vertices (patch 0 unless given). The lead = the point itself, or the gripped vertex nearest the
-    grip's middle on the pattern. Held cloth inside a patch is left out (the lead must be free). A point's patch TURNS
+    grip's middle on the pattern. A grip overlapping held cloth is REFUSED (the two fight: a corner pull sharing
+    vertices with the held band end stretched 280 %, shirt spike). A point's patch TURNS
     with the cloth each step (handle "turn", default on for a point); a border / list moves as one (the hand holds its
     line: a turning border tilted the strip's end in-plane and stopped it 7 mm short)."""
     vs = vertices(M, h["at"])
     uv = np.asarray(M["uv"], float)
     pid = np.asarray(M["piece"])
-    patch = float(h.get("patch", PATCH if len(vs) == 1 else 0.0))
+    if patch_default is None:
+        patch_default = PATCH if len(vs) == 1 else 0.0
+    patch = float(h.get("patch", patch_default))
     if len(vs) == 1:
         lead = int(vs[0])
     else:
@@ -300,10 +305,10 @@ def grip(M: dict, h: dict, held=None) -> tuple[np.ndarray, int]:
         for v in vs:
             near |= (pid == pid[v]) & (np.linalg.norm(uv - uv[v], axis=1) <= patch)
         vs = np.where(near)[0]
-    if held is not None:
-        if held[lead]:
-            raise ValueError(f"handle {h['at']!r} grips held cloth (free its piece, or hold less)")
-        vs = vs[~held[vs]]
+    if held is not None and held[vs].any():  # (a grip and a hold on the same cloth fight: 280 % in the shirt spike)
+        raise ValueError(f"handle {h['at']!r} grips {int(held[vs].sum())} held vertices (patch {patch * 1000:.0f} mm): "
+                         "a grip overlapping a hold tears the cloth between them; shrink its patch, grip elsewhere or "
+                         "hold less")
     return np.unique(vs), lead
 
 
@@ -501,8 +506,10 @@ def smooth(M: dict, X: np.ndarray, held, pieces, lam: float = 0.5, iters: int = 
 
 
 def style(M: dict, X: np.ndarray, held, ops: list[dict], body=None, log=None):
-    """Styling as a SEQUENCE of hand moves (C142 / C143): ops [{"pull": {"handles": [...], step / tol / max_move ...}}
-    | {"turn": {"turns": [...], steps ...}} | {"smooth": {"pieces": [...], lam / rounds / tol ...}}], each from where
+    """Styling as a SEQUENCE of hand moves (C142-C144): ops [{"pull": {"handles": [...], step / tol / max_move ...}}
+    | {"turn": {"turns": [...], steps ...}} | {"smooth": {"pieces": [...], lam / rounds / tol ...}} | {"relax":
+    {iters}} (the free cloth against its pattern) | {"hold": {...}} (hold_region: kept where it is NOW for every later
+    op; relax first: holding the unrelaxed closed collar locked in its strain, p99 7.5 vs 6.1 %)], each from where
     the last left the cloth; what a pull or turn gripped is HELD where it ended for every later op (Joe: move these
     apart a little, then push the points a little more); a pull that grips them again picks them up. Returns
     (X_new, [info per op])."""
@@ -523,16 +530,61 @@ def style(M: dict, X: np.ndarray, held, ops: list[dict], body=None, log=None):
         elif kind == "turn":
             ts = a.pop("turns")
             mine = np.zeros(len(X), bool)
-            for t in ts:
-                mine[vertices(M, t["at"])] = True
+            for t in ts:  # (the whole gripped area stays where the turn left it, not just the named vertices)
+                mine[grip(M, t, None, TURN_PATCH)[0]] = True
             X, inf = turn(M, X, base | (placed & ~mine), ts, body=body, **a)
             placed |= mine
         elif kind == "smooth":
             X, inf = smooth(M, X, base | placed, a.pop("pieces"), **a)
+        elif kind == "relax":
+            X, inf = relax(M, X, base | placed, **a)
+        elif kind == "hold":
+            mine = hold_region(M, X, **a)
+            placed |= mine
+            inf = {"held": int(mine.sum())}
         else:
-            raise ValueError(f"no styling op {kind!r} (pull, turn, smooth)")
+            raise ValueError(f"no styling op {kind!r} (pull, turn, smooth, relax, hold)")
         infos.append({kind: inf})
     return X, infos
+
+
+def relax(M: dict, X: np.ndarray, held, iters: int = HOLD_ITERS):
+    """The free (not held) cloth relaxed against its flat pattern (`iters` rounds), nothing gripped. Returns (X_new,
+    info: stretch p99 start / end (%), on the pieces with free cloth)."""
+    X = np.asarray(X, float)
+    held = _mask(held, len(X))
+    A = FlatARAP(M, X)
+    sp = sorted(set(np.asarray(M["piece"])[~held].tolist()))
+    s0 = stretch_p99(M, X, sp)
+    Xn = A.unweld(A.solve(A.weld(X), A.welded_mask(held), iters))
+    Xn[held] = X[held]
+    return Xn, {"stretch_p99": [round(s0 * 100, 2), round(stretch_p99(M, Xn, sp) * 100, 2)]}
+
+
+def hold_region(M: dict, X: np.ndarray, pieces=None, within_deg: float | None = None, of: str = "back",
+                center=None, at=None) -> np.ndarray:
+    """A region the hand / body keeps still (C144; Joe: the collar "should mostly hug the neck on the back and sides;
+    the flare is all toward the front"): the vertices of `pieces` within `within_deg` of CB ("of": "back", +y: the
+    creature faces -y) or CF ("front") round a vertical axis through `center` (a piece name: its x-y centroid; default
+    the first piece's), plus whatever `at` names (vertex / "piece:point" / "piece:a..b" / a list). Angles read on X
+    as it is now. Shirt spike h110 / q40: band + collar within 110 deg of CB held, the side hug 70 mm vs 68 closed
+    (unheld: the opened front's slack spread round the ring, the fall 8 / 14 mm further off the neck at CB / side)."""
+    X = np.asarray(X, float)
+    pid = np.asarray(M["piece"])
+    out = np.zeros(len(X), bool)
+    if pieces:
+        on = np.isin(pid, _piece_ids(M, pieces))
+        if within_deg is None:
+            out |= on
+        else:
+            cp = _piece_ids(M, [center or pieces[0]])[0]
+            c = X[pid == cp][:, :2].mean(0)
+            ref = {"back": 1.0, "front": -1.0}[of]
+            ang = np.degrees(np.arctan2(X[:, 0] - c[0], ref * (X[:, 1] - c[1])))
+            out |= on & (np.abs(ang) < within_deg)
+    if at is not None:
+        out[vertices(M, at)] = True
+    return out
 
 
 def tip_read(M: dict, X: np.ndarray, point, near: float = 0.015, mid: float = 0.04) -> dict:
@@ -636,7 +688,9 @@ def _rodrigues(p: np.ndarray, axis: np.ndarray, th: float) -> np.ndarray:
 def turn(M: dict, X: np.ndarray, held, turns: list[dict], body=None, steps: int = 6, iters: int = 20,
          relax_iters: int = RELAX_ITERS, pieces=None):
     """TURN what a hand grips about a line, staged (a band end swung open about its hinge, a cuff popped up about its
-    fold): each turn {"at": grip (as a pull handle's "at"), "about": [point a, point b] (vertices / "piece:point"),
+    fold): each turn {"at": grip (as a pull handle's "at"; it grips the cloth within "patch" (TURN_PATCH, 15 mm on the
+    pattern) of what it names: the band end's 3 corner vertices turned alone pinched a lobe at its top corner, 21 %
+    vs 3 % closed, Joe's arrow), "about": [point a, point b] (vertices / "piece:point"),
     "deg": angle, "toward": direction (as a pull's "dir"; default "side") the grip's centroid should start moving
     along (picks the sense), "side_from"?}. The free cloth relaxes against the pattern first, then `steps` steps each
     turn a further deg / steps (grips rigid, held still) and re-solve (`iters`). Returns (X_new, info: start / end
@@ -653,7 +707,7 @@ def turn(M: dict, X: np.ndarray, held, turns: list[dict], body=None, steps: int 
     fixed = A.welded_mask(held)
     plan = []
     for t in turns:
-        g = np.unique(A.inv[vertices(M, t["at"])])
+        g = np.unique(A.inv[grip(M, t, held, TURN_PATCH)[0]])
         a, b = (Y[A.inv[vertex(M, q)]] for q in t["about"])
         c = Y[g].mean(0)
         sx = float(X[vertex(M, t["side_from"])][0]) if t.get("side_from") is not None else float(a[0] + b[0]) / 2

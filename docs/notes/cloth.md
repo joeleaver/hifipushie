@@ -9813,3 +9813,13 @@ sym.py <tag>: mirror symmetry per piece, noise floor = mesh spacing, 1-8 mm).
   collar's crumple / stretch, 0 folded faces. Sequence [points, corners 6 mm, points] + smooth: 152 / 61 / 58, 0.30.
   OPEN: the right tip twists 55-66 deg (closed 35; the spike's u25 42, sm1 47); the two pull directions differ a
   little (up 0.38 right vs 0.32 left: the body normals aren't mirrored).
+
+### hold region + area turns (2026-10-21, C142 / C144, from the spike's h110 / q40)
+- style ops `relax` (free cloth against the pattern) and `hold` (hold_region: pieces within N deg of CB / CF round a
+  piece's centre, or named arcs; kept where they are NOW): the collar hugs the neck at the back and sides. A turn
+  grips the cloth within 15 mm (TURN_PATCH) of what it names; style() holds that whole area afterwards (holding only
+  the named vertices let the pull tear the band corner: 29-35 %). A grip overlapping held cloth is refused.
+- q40 through the tool: fall edge 73 / 70 / 70 mm at CB / sides (q40 73 / 70 / 70; closed 67 / 68 / 67), band corner
+  1.5 / 2.5 % (q40 2.7), collar crumple 0.245 (q40 0.244), tips 31 / 33 deg twist, 0 folded; points 150 apart, 73 / 71
+  below HPS (q40 137 / 76: the tool's pull went further; its stop is read against the least stretch), stretch p99 7.4 %
+  (q40 reports 5.9). tests/test_garment_pull.py 8 passed under capped (174 s).

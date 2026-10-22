@@ -2946,18 +2946,18 @@ def style_garment(name: str, garment: str, ops: list[dict], free: list[str] | No
     """STYLE a worn garment by hand, as people do (C142 / C143): the garment fitted on the form (no sim), then a
     SEQUENCE of ops, each as far as the cloth goes without stretching: {"pull": {"handles": [{"at": "piece:point" |
     "piece:a..b" | [...], "dir": [x,y,z] | side | out | up | down | easy | {"side": 1, "up": 0.3}, "side_from"?,
-    "patch"?}]}}, {"turn": {"turns": [{"at", "about": [a, b], "deg", "toward"?}]}}, {"smooth": {"pieces": [...]}}.
-    Earlier grips stay where they ended. free (default: the gripped pieces), hold_below ("closure:front").
+    "patch"?}]}}, {"turn": {"turns": [{"at", "about": [a, b], "deg", "toward"?}]}}, {"smooth": {"pieces": [...]}},
+    {"relax": {}}, {"hold": {"pieces", "within_deg", "of"}}. Earlier grips / holds stay. free (default: the gripped pieces), hold_below ("closure:front").
     Details: guide(topic="style_garment")."""
     from . import cloth_check as cc, garment_pull as gpl, pattern_form
     spec = store.load(name)
     if garment not in (spec.get("cloth") or {}):
         raise ValueError(f"no garment {garment!r} (have {', '.join(spec.get('cloth') or {}) or 'none'})")
     ops = _spec_arg(ops)
-    if not ops or not all(isinstance(o, dict) and len(o) == 1 and next(iter(o)) in ("pull", "turn", "smooth")
-                          for o in ops):
+    if not ops or not all(isinstance(o, dict) and len(o) == 1 and next(iter(o)) in
+                          ("pull", "turn", "smooth", "relax", "hold") for o in ops):
         raise ValueError('ops: a list of {"pull": {"handles": [...]}} | {"turn": {"turns": [...]}} | '
-                         '{"smooth": {"pieces": [...]}}')
+                         '{"smooth": {"pieces": [...]}} | {"relax": {}} | {"hold": {"pieces": [...], "within_deg"?}}')
     st = cc.gate_status(name, garment, spec)
     if not st["passed"] and not force:
         return (f"{garment}: not styled: {st['why']}\nnext: pattern_check(\"{name}\", \"{garment}\") and fix its rows "
@@ -2969,7 +2969,8 @@ def style_garment(name: str, garment: str, ops: list[dict], free: list[str] | No
         at = [h["at"] for o in ops for h in (o.get("pull") or {}).get("handles", [])] + \
              [t["at"] for o in ops for t in (o.get("turn") or {}).get("turns", [])]
         free = sorted({M["names"][int(pid[v])] for a in at for v in gpl.vertices(M, a)} |
-                      {p for o in ops for p in (o.get("smooth") or {}).get("pieces", [])})
+                      {p for o in ops for p in (o.get("smooth") or {}).get("pieces", [])} |
+                      {p for o in ops for p in (o.get("hold") or {}).get("pieces", [])})
     held = gpl.hold_mask(M, X_fit, free, hold_below)
     bvf = (np.asarray(body.V, float), np.asarray(body.T, int))
     Xn, infos = gpl.style(M, X_fit, held, ops, body=bvf)
@@ -2987,6 +2988,10 @@ def style_garment(name: str, garment: str, ops: list[dict], free: list[str] | No
         elif kind == "turn":
             lines.append(f"  {k + 1} turn: {json.dumps(inf['turns'])}; stretch p99 {inf['stretch_p99_start']} -> "
                          f"{inf['stretch_p99_end']} %")
+        elif kind == "relax":
+            lines.append(f"  {k + 1} relax: stretch p99 {inf['stretch_p99'][0]} -> {inf['stretch_p99'][1]} %")
+        elif kind == "hold":
+            lines.append(f"  {k + 1} hold: {inf['held']} vertices kept where they are for the later ops")
         else:
             lines.append(f"  {k + 1} smooth {', '.join(inf['pieces'])}: {inf['rounds']} rounds, roughness p95 "
                          f"{inf['rough_p95_mm'][0]} -> {inf['rough_p95_mm'][1]} mm, stretch p99 {inf['stretch_p99'][0]} "

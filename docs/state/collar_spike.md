@@ -35,7 +35,7 @@ the band turning with it; band ends lean apart; leaves stand off the neck). Joe:
    near the V (6-20 mm there).
 2. y3 not yet judged blind against the photo / trace (bin/review), nor checked for cloth inside the body (push-out off:
    count it; a soft floor if it matters).
-3. DONE: pull / turn / smooth are a general tool (garment_pull.py, MCP style_garment; C142 / C143 ENFORCED).
+3. DONE: pull / turn / smooth / hold are a general tool (garment_pull.py, MCP style_garment; C142-C144 ENFORCED).
 4. Not worked: sleeve ends crushed (99 % max, ~40 vertices inside each arm); yoke at the side neck 13 %.
 5. Garrett (sh_garrett) not refitted on the landed defaults (own "open neck.R" fold + worn_open); see
    docs/state/dress_garrett_shirt.md.

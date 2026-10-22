@@ -135,13 +135,21 @@ no sim), then `ops` run in order, each from where the last left the cloth:
     where a band's two ends cross and the side flips.
 - `{"turn": {"turns": [{"at", "about": [point a, point b], "deg", "toward"?, "side_from"?}], "steps"?}}`: a grip
   turned about a line in stages. Examples: a band end swung open about its hinge, a cuff turned up about its fold.
-  "toward" is a direction that picks the sense.
+  "toward" is a direction that picks the sense. A turn grips the cloth within "patch" (15 mm) of what it names: the
+  band end's 3 corner vertices turned alone pinched a lobe at its top corner (14-22 % vs 3 % closed).
 - `{"smooth": {"pieces": [...], "lam"?, "rounds"?, "tol"?}}`: a hand flattening ripples. In the brushed pieces it
   alternates two moves: each vertex moved toward its one-ring centroid along its normal, then the pattern solve with
   everything outside held. It stops at the pull's stretch rule, or when the roughness stops dropping.
+- `{"relax": {"iters"?}}`: the free cloth relaxed against its pattern (nothing gripped).
+- `{"hold": {"pieces", "within_deg"?, "of"?: "back" | "front", "center"?, "at"?}}`: keep a region where it is NOW for
+  every later op. Examples: the collar + band within 110 deg of CB round the band's centre, so the collar hugs the
+  neck at the back and sides and only the front flares (C144). Relax first: holding the unrelaxed closed collar locked
+  in its strain (p99 7.5 vs 6.1 %). Unheld, the opened front's slack spread round the whole ring: the fall stood
+  8 / 14 mm further off the neck at CB / the side.
 - What a pull or turn gripped stays where it ended for the later ops. A pull that grips it again picks it up ("pull
   the points, move the collar's inner corners apart 6 mm, pull the points again").
-- free: the pieces that may move (default: the gripped and brushed pieces). hold_below: "closure:front" (that
+- A grip overlapping held cloth is refused (the two fight: 280 % in the shirt spike).
+- free: the pieces that may move (default: the gripped, brushed and region-held pieces). hold_below: "closure:front" (that
   closure's top fastened button) or "piece:point" also holds the free cloth below it.
 - Returns:
   - clay + diag;
@@ -154,7 +162,10 @@ no sim), then `ops` run in order, each from where the last left the cloth:
   `free=["collar", "stand", "front.L", "front.R"], hold_below="closure:front"`. Ops: band ends turned 30 deg about
   stand:<s>BottomHinge..TopHinge toward "side"; collar points `collar:<s>TopEdge` pulled {"side": 1, "out": 0.3,
   "up": 0.3} from `collar:<s>TopHinge`; collar + stand smoothed. Result: points 142 apart, 64 / 60 below HPS, collar
-  crumple p95 0.28 mm, tips as clean as the closed collar's.
+  crumple p95 0.28 mm, tips as clean as the closed collar's. The hug (the spike's q40): relax, hold stand + collar
+  within 110 deg of CB, band ends turned 40 deg as `stand:<s>BottomEdge..<s>TopCf` areas, points pulled
+  {"side": 1, "out": 0.3}, smoothed. The fall stays 70-73 mm off the neck axis at CB / the sides (closed 67-68), the
+  band corner keeps 1.5-2.5 %.
 - Judge it like a fit: clay + diag beside the reference, one view per review_view. Too far or not far enough: change
   the direction, the sequence or what is held, never the solver.
 
