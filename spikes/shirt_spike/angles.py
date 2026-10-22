@@ -5,7 +5,7 @@ import sys, pickle, json
 import numpy as np
 from PIL import Image, ImageDraw
 from hifipushie import cloth, resources
-D = "/mnt/data/hifipushie/shirt_spike/"; t = sys.argv[1]
+D = "/mnt/data/hifipushie/shirt_spike/"; t = sys.argv[1]; A_OFF = float(sys.argv[2]) if len(sys.argv) > 2 else 0.006
 d = pickle.load(open(f"{D}{t}.pkl", "rb")); X = np.asarray(d["A"], float); M = d["mesh"]; P = M["points"]
 pid = np.asarray(M["piece"]); nm = list(M["names"]); uv = np.asarray(M["uv"]); F = np.asarray(M["F"])
 hps = np.asarray(d["at"]["hps.L"]).reshape(-1)[-3:]
@@ -41,21 +41,24 @@ def cube(c, h=0.0035):
 cols = {"tipL": "#ff0000", "tipR": "#ff0000", "cornerL": "#00c000", "cornerR": "#00c000", "outerL": "#0000ff", "outerR": "#0000ff", "V": "#ff00ff"}
 objs = [{"name": "body", "V": d["bodyV"], "F": d["bodyF"], "color": "#c4bcb4"}, {"name": "shirt", "V": X, "F": F, "color": "#c9ccd2", "thickness": 0.0004, "offset": 0.0}]
 for k, c in L.items():
-    V_, F_ = cube(c + np.r_[0, -0.006, 0]); objs.append({"name": "m_" + k, "V": V_, "F": F_, "color": cols[k]})
-box = [[-0.14, -0.2, 1.38], [0.14, 0.1, 1.6]]
+    V_, F_ = cube(c + np.r_[0, -A_OFF, 0]); objs.append({"name": "m_" + k, "V": V_, "F": F_, "color": cols[k]})
+box = [[-0.19, -0.25, 1.33], [0.19, 0.1, 1.62]]
 with resources.heavy(f"angles {t}", gb=4.0, gpu=True):
     pth = cloth.render(objs, f"{D}{t}_ang", views=[{"name": "front", "dir": [0, -1, 0]}], resolution=700, box=box)[0]
-im = Image.open(pth).convert("RGB"); A_ = np.asarray(im).astype(int)
-def find(rgb, side):
-    r, g, b = rgb; m = (np.abs(A_[..., 0] - r) < 70) & (np.abs(A_[..., 1] - g) < 70) & (np.abs(A_[..., 2] - b) < 70)
-    m &= (A_.max(-1) - A_.min(-1)) > 90
-    ys, xs = np.nonzero(m)
-    if not len(xs): return None
-    mid = im.size[0] / 2; s = xs < mid if side == "L" else xs >= mid
-    if side is None: s = np.ones_like(xs, bool)
-    return (float(xs[s].mean()), float(ys[s].mean())) if s.any() else None
-pix = {"tipL": find((255, 0, 0), "L"), "tipR": find((255, 0, 0), "R"), "cornerL": find((0, 192, 0), "L"), "cornerR": find((0, 192, 0), "R"),
-       "outerL": find((0, 0, 255), "L"), "outerR": find((0, 0, 255), "R"), "V": find((255, 0, 255), None)}
+im = Image.open(pth).convert("RGB")
+# landmarks projected straight from 3D (orthographic front view): calibrate the image <- (x, z) map from the two
+# marker colours that are always visible (red tips, magenta V), then project every landmark (hidden ones too)
+A_ = np.asarray(im).astype(int)
+def blob(rgb, side=None):
+    m = (np.abs(A_ - np.array(rgb)).max(-1) < 70) & ((A_.max(-1) - A_.min(-1)) > 90); ys, xs = np.nonzero(m)
+    if side is not None:
+        s_ = xs < im.size[0] / 2 if side == "L" else xs >= im.size[0] / 2; xs, ys = xs[s_], ys[s_]
+    return np.array([xs.mean(), ys.mean()])
+qa, qb, qc = blob((255, 0, 0), "L"), blob((255, 0, 0), "R"), blob((255, 0, 255))
+pa, pb, pc = L["tipL"][[0, 2]], L["tipR"][[0, 2]], L["V"][[0, 2]]
+sx = (qb[0] - qa[0]) / (pb[0] - pa[0]); x0 = qa[0] - sx * pa[0]
+sz = (qc[1] - 0.5 * (qa[1] + qb[1])) / (pc[1] - 0.5 * (pa[1] + pb[1])); z0 = qc[1] - sz * pc[1]
+pix = {k: (float(x0 + sx * v[0]), float(z0 + sz * v[2])) for k, v in L.items()}
 # --- references (pixels, marked by eye on 2x grids)
 REF = {"photo": ({"tipL": (150, 245), "tipR": (367, 242), "cornerL": (190, 187), "cornerR": (340, 194), "outerL": (100, 100),
                   "outerR": (402, 105), "V": (260, 300)}, "/tmp/claude-1000/-home-joe-dev-hifipushie--claude-worktrees-modest-napier-7b031c/482a48dc-c5a4-432d-b9c3-343ebc9d7803/images/3.png"),

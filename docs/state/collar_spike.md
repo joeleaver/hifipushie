@@ -25,10 +25,12 @@ the band turning with it; band ends lean apart; leaves stand off the neck). Joe:
 - Crease on the roll: two bends 4 mm apart (seam + roll line); roll at the seam (r0a / r0b) not adopted.
 
 ## Open faults (ranked by what shows at 1-3 m)
-0. ANGLES vs the references (angles.py, front view; photo / trace landmarks by eye): sp10's leaves match (outer edge 4-6 deg
-   from vertical: trace 2, photo 14-19; tips apart 0.92 neck: photo 0.72, trace 1.01), but the THROAT is too narrow:
-   inner corners apart 0.24 neck (photo 0.50, trace 0.69), V 46 deg (photo 69, trace 95), V bottom ABOVE the tips
-   (photo 0.19 neck below them, trace at their level), so the leaves' front edges slant 45 deg (photo 29-35, trace 27-34).
+0. w5d (CURRENT BEST, throat widened): e5 = closed fit with the first button 132 mm below HPS (closures spacing first
+   0.09 from cfNeck) + `{"swing":65,"steps":8,"nopush":1,"push_pieces":["front.L","front.R"],"hug":70,"feather":[70,130],
+   "swing_patch":0.015,"pulls":[P0],"edge_smooth":{spline 10},"smooth":{"pieces":["collar","stand","front.L","front.R"],
+   "rounds":30}}`. angles.py vs photo / trace: inner corners 0.53 neck (0.50 / 0.69; sp10 0.24), V 62 deg (69 / 95),
+   V bottom 0.09 neck below the points (0.19 / 0.04). Still off: leaf front edges 40 deg (27-35), points 1.12 neck apart
+   (0.72 / 1.01), 72 below HPS. p99 5.5 %, side kink 13 deg, fronts pushed off the body (36 inside left).
 1. The V's corner stretched (fronts' cfNeck have 34 mm of cloth above the first fastened button): tied to fault 0.
 2. No blind review vs the photo / trace yet; cloth inside the body not counted (push-out off).
 4. Not worked: sleeve ends crushed (99 % max, ~40 vertices inside each arm); yoke at the side neck 13 %.

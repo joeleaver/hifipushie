@@ -130,8 +130,12 @@ BV, BF = d["bodyV"], d["bodyF"]
 nn = np.cross(BV[BF[:, 1]] - BV[BF[:, 0]], BV[BF[:, 2]] - BV[BF[:, 0]]); vn = np.zeros_like(BV)
 for k in range(3): np.add.at(vn, BF[:, k], nn)
 vn /= np.linalg.norm(vn, axis=1)[:, None] + 1e-12; bt = cKDTree(BV)
+PUSHW = None
+if A.get("push_pieces"):  # (push-out from the body only on these pieces: the fronts; it dented the band)
+    PUSHW = np.zeros(n, bool); PUSHW[inv[np.isin(pid, [nm.index(p) for p in A["push_pieces"]])]] = True
 def push(Y, keep, gap=0.002):
     _, j = bt.query(Y); s = ((Y - BV[j]) * vn[j]).sum(1); bad = (s < gap) & ~keep
+    if PUSHW is not None: bad &= PUSHW
     Y = Y.copy(); Y[bad] += (gap - s[bad])[:, None] * vn[j[bad]]; return Y, bad
 fz = [X0[np.asarray(v)].mean(0)[2] for c in M.get("closures") or [] if c.get("name") == "front" for v in (c.get("v") or [])]
 zb = max(fz)
@@ -239,7 +243,7 @@ for k in range(1, STEPS + 1):
         p1 = hb + rodr((a0 - hb)[None], ax, f * th)[0]
         T[v] = hb + rodr((p1 - hb)[None], rad, f * dth)[0]; fixed[v] = True
     Y = solve(T, fixed, A.get("iters", 20))
-    for _ in range(0 if A.get("nopush") else 3):
+    for _ in range(0 if (A.get("nopush") and not A.get("push_pieces")) else 3):
         Yp, bad = push(Y, fixed)
         if not bad.any(): break
         Y = solve(Yp, fixed | bad, 6)
@@ -511,6 +515,13 @@ if A.get("smooth"):
         Y, rr = Yt, rt
     smooth_info = {"rounds": k_, "rough_p95_mm": [round(r0 * 1000, 3), round(rr * 1000, 3)], "stretch_p99": [round(s0 * 100, 2), round(stretch(Y) * 100, 2)]}
     print("smooth:", smooth_info)
+if PUSHW is not None:
+    for _r in range(4):
+        fxp = hW | np.isin(np.arange(n), list(pts.values()) + list(bnd) + list(done_h.values()))
+        Yp, bad = push(Y, fxp)
+        if not bad.any(): break
+        Y = solve(Yp, fxp | bad, 8)
+    print("final push: inside (push pieces)", int(push(Y, fxp)[1].sum()))
 for v, (a0, (hb, ax, th), _dr) in bnd.items():
     print("band handle", np.round(a0*1000).astype(int), "->", np.round((hb + rodr((a0 - hb)[None], ax, th)[0])*1000).astype(int), "got", np.round(Y[v]*1000).astype(int))
 X = Y[inv]
