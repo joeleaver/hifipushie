@@ -16,7 +16,9 @@ if A.get("hug"):
     hd = {"pieces": ["stand", "collar"], "within_deg": A["hug"], "of": "back", "center": "stand"}
     if A.get("feather_to"): hd["feather_to"] = A["feather_to"]
     ops.append({"hold": hd})
-ops += [{"turn": {"turns": turns}}, P, {"smooth": {"pieces": ["collar", "stand"]}}]
+ops += [{"turn": {"turns": turns}}, P]
+if A.get("border"): ops.append({"smooth": {"border": "collar:leftTopEdge..topMid..rightTopEdge", "spline": A["border"], "release": ["collar"]}})
+ops += [{"smooth": {"pieces": ["collar", "stand"]}}]
 Xn, infos = gp.style(M, X, held, ops, body=body)
 for i in infos: print(json.dumps(i, default=str)[:220])
 out = dict(d); out["A"] = Xn; out["A_info"] = dict(d["A_info"], via_tool=A); pickle.dump(out, open(D + tag + ".pkl", "wb")); print("saved", tag)

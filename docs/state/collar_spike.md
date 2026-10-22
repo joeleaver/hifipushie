@@ -16,7 +16,7 @@ the band turning with it; band ends lean apart; leaves stand off the neck). Joe:
 - CLOSED: repo defaults (landed, BUILD_VERSION 17) + the concept's button spacing = v1 (= e3): clean closed collar, band
   ends sewn flush with the placket tops, one rounded roll (176 deg), collar + band mirror p95 1.4-1.9 mm, strain p99 9 %.
   `spikes/shirt_spike/run.sh base_fit.py v1 '{"closures":[{"name":"front","spacing":{"first":0.034,"from":"cfNeck"}}]}'`
-- Pull tool (fervent-bouman 523f48e7) reproduces q40 / f2 (via_tool.py); lacks the border smooth. Joe: f2, pt2 best.
+- Pull tool (fervent-bouman 0016774f) reproduces q40 / f2 / sp10 (via_tool.py; tsp10 kinks 10 / 20 vs 12 / 12). Joe: f2, pt2 best.
 - sp10 (Joe: "none of these are yet producing one smooth swoop"): f2 + `"edge_smooth":{"spline":10,"lam":0.4,"win":0.03,
   "rounds":30,"tol":0.015}`: the collar's outer edge (boundary walk point -> CB -> point) drawn toward ONE smooth curve
   (LSQ spline, 10 knots) until it would stretch; side-view kinks 12 / 12 deg (f2 18 / 34). Neighbour averaging stalled.
