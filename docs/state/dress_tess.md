@@ -41,13 +41,19 @@ Fixed: left front kink over CF (hand finish J), coat diamond / lattice smears (c
 ## History (grep only)
 docs/notes/cloth.md "### dress-tess session 17" / "session 18" and their Handovers; "FROZEN FOR EXPORT" lines.
 
-## PROBE 2026-10-22 (no-sim path on Tess's coat; branch claude/probe-tess; files /mnt/data/hifipushie/probe_tess/)
-- Model pt_tess = dt_tess v112 with jeans + sweater worn FROZEN (s18 pkls). pattern_check coat: FAIL (truing, waist_suppression,
-  front_dart, front_overlap 10/18, collar_neck_edge_straight 0.23, layer clearance -8 / -32 mm). Fit forced (on_form), styled by
-  probe.py (pull fronts' break + cfHem "side", smooth). Reads p1 vs concept / s18: gap at break 162 / ~150 / 68; hem gap 226 /
-  ~260 / 53; break below HPS 182 / ~240 / 169-179. Sheets sheet_p1_clay.png, sheet_p1_diag.png (concept | probe | s18).
-- Faults: the coat's collar is NOT on the form (construct collar: true = a made piece after the drape), so C137/C139/C140/
-  C142-146 can't reach it; pulls stop at max_move (78 mm), never the stretch knee; pockets fall to the floor when free;
-  the sweater pierces the opened fronts (pull ignores the under layer); lapel mesh h 5 mm vs roll r 3 mm (C137: <= 2.4).
-STATE: probe done, nothing in flight. NEXT: put the coat's collar + under_collar in the pattern mesh on the form (as the shirt's
-collar is), then garment_pull with the under garment as a floor and applied pieces carried with their base.
+## SESSION 19 2026-10-22: the coat's collar + lapel on the form (branch claude/tess-coat-collar; /mnt/data/hifipushie/tess_coat_collar/)
+- Model tc_tess (= pt_tess + mk_tc.py): collar_two_piece (stand + fall + fused undercollar, run_off), lapel overlap 18,
+  chest_ease 0.24, waist contour 12 mm, truing + match ops, coat mesh_refine (lapel roll rows 2.2 mm, collar 2.5).
+  pattern_form.on_form now fits held-out made pieces (C147). Gate c1: only collar_fold_run FAILed (a reader fault on
+  the unfolded stand, fixed after c1: re-run pc.py to get the record); waist_suppression / front_dart WAIVED by name
+  (C150 PROPOSED: boxy coat = straight). Joe 2026-10-22: under-layer show-through is not a fault (C151): look coat-only.
+- Reads (fit.py; c1 styled with the probe's p1 ops) vs concept / s18 / probe p1: break below HPS 168 / ~240 / 169-179 /
+  182; gap at break 172 / ~150 / 68 / 162; stretch p99 14.2 % (p1 5.7, s18 29.8); collar on the form 3809 vertices.
+  Fold rows TORN on the form: lapel roll row stretch 58 / 50 %, collar roll 74 %, fall turned 119 deg (want ~172).
+- LOOK c1 (sheet_c1_clay.png, sheet_c1_diag.png): collar present but reads as nothing from the front (low stand,
+  brown tabs at the neck sides); lapels thin ragged strips, no notch read; a hole in front.L's upper chest (cloth
+  inside the body); pockets on the floor (garment_pull). Worse than s18 at the collar; not for Joe.
+STATE: c1 looked, nothing in flight. NEXT: why the fold rows tear on the form (58-74 % row stretch: graded 2.2 mm
+rows / blend slivers? the run_off fade? try c2 without run_off and with collar 2.5 mm only), then the break (168 vs
+240: the flat break is 240; what lifts it on the form), then garment_pull needs (floor, applied pieces) once Garrett's
+agent lands its edit.
