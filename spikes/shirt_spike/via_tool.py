@@ -12,7 +12,10 @@ turns = [{"at": f"stand:{s}BottomEdge..{s}TopCf", "about": [f"stand:{s}BottomHin
 P = {"pull": {"handles": [{"at": f"collar:{s}TopEdge", "dir": {"side": 1, "out": 0.3, "up": A.get("up", 0.0)},
                            "side_from": f"collar:{s}TopHinge"} for s in ("left", "right")]}}
 ops = [{"relax": {}}]
-if A.get("hug"): ops.append({"hold": {"pieces": ["stand", "collar"], "within_deg": A["hug"], "of": "back", "center": "stand"}})
+if A.get("hug"):
+    hd = {"pieces": ["stand", "collar"], "within_deg": A["hug"], "of": "back", "center": "stand"}
+    if A.get("feather_to"): hd["feather_to"] = A["feather_to"]
+    ops.append({"hold": hd})
 ops += [{"turn": {"turns": turns}}, P, {"smooth": {"pieces": ["collar", "stand"]}}]
 Xn, infos = gp.style(M, X, held, ops, body=body)
 for i in infos: print(json.dumps(i, default=str)[:220])

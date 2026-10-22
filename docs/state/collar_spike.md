@@ -16,8 +16,8 @@ the band turning with it; band ends lean apart; leaves stand off the neck). Joe:
 - CLOSED: repo defaults (landed, BUILD_VERSION 17) + the concept's button spacing = v1 (= e3): clean closed collar, band
   ends sewn flush with the placket tops, one rounded roll (176 deg), collar + band mirror p95 1.4-1.9 mm, strain p99 9 %.
   `spikes/shirt_spike/run.sh base_fit.py v1 '{"closures":[{"name":"front","spacing":{"first":0.034,"from":"cfNeck"}}]}'`
-- The pull tool (claude/fervent-bouman-58c488 2eaf7d65) reproduces q40 (tq40: every read matches); feather not in yet
-  (tf2 side 82 vs f2 73). via_tool.py drives it. JOE (2026-10-21): "f2 and pt2 read the best to me so far" (pt2 = f2's recipe on the pull tool, via_tool.py:
+- The pull tool (claude/fervent-bouman-58c488 523f48e7) reproduces q40 (tq40) and f2 (tf2b: side 73, points 138 / 73-74,
+  kink 21 vs 18); missing: the border smooth toward one curve (sp10). via_tool.py drives it. JOE (2026-10-21): "f2 and pt2 read the best to me so far" (pt2 = f2's recipe on the pull tool, via_tool.py:
   turn 40, P up 0, hold band + collar within 70 deg of CB; its faults: band corners 22-33 %, side 82 mm, kink 31 deg).
 - sp10 (Joe: "none of these are yet producing one smooth swoop"): f2 + `"edge_smooth":{"spline":10,"lam":0.4,"win":0.03,
   "rounds":30,"tol":0.015}`: the collar's outer edge (boundary walk point -> CB -> point) drawn toward ONE smooth curve
