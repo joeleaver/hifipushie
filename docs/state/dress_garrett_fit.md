@@ -1,4 +1,4 @@
-# STATE: dress_garrett_fit (Garrett jacket over the muslin shirt: muslin form fit + styling, NO sim) -- 2026-10-23, round 39
+# STATE: dress_garrett_fit (Garrett jacket over the muslin shirt: muslin form fit + styling, NO sim) -- 2026-10-23, round 39 (closed, waiting on the hold redesign)
 
 DESIGN FACTS (Joe, settled): the jacket is worn OPEN, unbuttoned; it falls straight down (no waist suppression, side
 line plumb). Put "the reference jacket is worn open, unbuttoned" in every review's context. Renders show the OPEN jacket
@@ -19,17 +19,15 @@ and plumb from the break to the cut-away's top, then the cut-away; the sides fal
 edge is plumb (64) where the concept leans out a little (71 at 450); hem+30 38 narrow; shard specks at the sleeve heads.
 ROUND 39 (in progress, $FR39 = /mnt/data/hifipushie/dress_garrett/fit_round39): step 1 done: sleeve-head specks = shirt touching
 the jacket (-3..+3 mm), culled by C187 (cloth_layers touch band + triangle-sampled cover); seen 208 -> 17.
-SEAM (coordinator, Joe on r38's front|side seam, TOP): measured: seam at 91-93 deg (on the silhouette; r34 without the hold
-66-79), fold across it 34-110 deg in the fit (r34 0-26): PLUMB_HOLD pins the seam LINE, the panels crease along it.
-plumb hold "band" (C188 candidate, default OFF; KAT test_plumb_hold_band_moves_the_panels_with_their_seam): b40 flattens
-the side|back seam (fold 2-15 vs 21-60) but NOT front|side (40-103 in the fit): its fold has another source (the front
-panel's own hang vs a side panel held plumb). b80: side|back flat, front|side fit still 32-85 (styled 4-64): the band alone does not fix it.
-NEXT (precise): 1) op-by-op on g1's FIT (not styling) to find what
-folds the front|side seam: try plumb_hold seams [["side","back"]] only (front|side free) + band, and the front panel's
-side edge held with the side panel (band on the front piece only). Render Joe's crop (crop clay wholefront (10,280,190,880))
-+ side for g1 / best; seam angle target: just behind the silhouette (>= ~100 deg) or flat at 90. 2) Then r39 steps 2
-(650 = 101 vs 94: the swing's plumb stop is met, cutawayTop 63 vs break 64; the overshoot is the cutaway below it opening
-26 mm over 100 vs the concept's 16: the curve / swing axis, not the stop), 3 (hem 444), 4 (450 lean), LOOK review, suite.
+SEAM (Joe on r38's front|side seam) DONE as a finding (C188, C189), NO default changed: the cord = PLUMB_HOLD pinning
+the front|side seam LINE at 91-93 deg (the front view's silhouette), fold across it 34-110 deg. Freed (sb: side|back
+hold only; nh: no hold) it lies flat (fit 0-33) at 78 / 83 / 62 deg (waist / hips / hem+30), but the fronts close:
+edge 450/550/650 sb 24-19/15-13/10, nh 25-15/12-7/7-3 (k3 60-64/74-77/101). sb = nh: the side|back hold does nothing.
+band (C188, opt-in OFF) flattens side|back only. Sheets: $FR39/check/joeseam_k3_sb_nh.png, side_k3_vs_sb.png.
+HOLD REDESIGN (coordinator / Joe: "holding things that shouldn't be held"): a dedicated thread; this thread adds no
+hold options. Skipped for it: the 650 overshoot, hem 444, the LOOK review.
+NEXT: wait for the hold-redesign thread; then redo r39 steps 2-4 (650 overshoot, hem, 450 lean) + the LOOK review on
+its default. Fit = g1 (PLUMB_HOLD) + kb style k3 stays the default until then.
 ## Method ($FR38 = /mnt/data/hifipushie/dress_garrett/fit_round38; run.sh: this worktree; fit_g1.pkl read-only)
 sw38.sh <tag> <params json> (mkv38 variant of the kb style on g1 + reads, no render); tab38.sh <tags>; sty38.sh g1 <tag> (default
 kb + reads + sheets); op38.py (op by op); flare38.py (per-piece hem moves); crop38.py (Joe's spot crop); diag38.py (forced shares).

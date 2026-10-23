@@ -10745,3 +10745,12 @@ Base: r38's k3 (asm_k3.pkl copied; fit_g1.pkl a read-only copy, not a symlink). 
   waist 365-379, hem+30 430-448. Free, the seam slides forward at the hem (61 deg) and the girth becomes lap.
   Next: hold front|side on a vertical through where it HANGS lower down ("drop": the vertical through the hung seam
   point `drop` below its top, a straight line from the top to it): d150, d200, d200b (+ band 0.04).
+- Coordinator (Joe: "a lot of the styling issues ... are due to holding things that shouldn't be held, we may need a
+  new holding strategy"; a hold-redesign thread follows): add NO hold options; test only removing holds. The per-seam
+  anchor options ("own", "drop") were reverted (never landed; d150 / d200 / d200b fits killed). Control nh = plumb_hold
+  false: fit fold front|side 0-33, side|back 1-11; styled seam 78 / 83 / 62 deg (waist / hips / hem+30), side|back 108 /
+  119 / 108; fronts close: edge 450/550/650 25-15 / 12-7 / 7-3, waist 367, hem+30 424. sb = nh within a few mm/deg:
+  the side|back hold alone does nothing measurable. Styling re-folds front|side to 26-48 at 350-450 (fit 14-22).
+  LOOK (check/joeseam_k3_sb_nh.png: k3 | sb | nh, Joe's framing; check/side_k3_vs_sb.png): freed, the cord leaves the
+  outline and becomes a soft line inside the front, but the fronts meet / lap below the waist and the hem goes boxy and
+  narrow: worse overall than k3. Nothing made default (C189). Overshoot / hem / review skipped (the redesign changes them).

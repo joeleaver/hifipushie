@@ -1764,14 +1764,7 @@ def plumb_seam_pins(M: dict, X: np.ndarray, hold: dict | None) -> list:
     side = [nm.split(".", 1)[1] if "." in nm else "" for nm in names]
     sw = np.asarray(M["sew"]).reshape(-1, 2)
     out = []
-    for seam in hold.get("seams") or []:
-        ka, kb = seam[0], seam[1]
-        # (fit round 39) a seam's own anchor (a third item) over the hold's: "own" = each seam vertex held at its OWN
-        # hung (x, y), not on the vertical through the seam's top
-        anc = seam[2] if len(seam) > 2 else hold.get("anchor", "hung")
-        opt = anc if isinstance(anc, dict) else {}
-        anc = opt.get("anchor", hold.get("anchor", "hung")) if opt else anc
-        drop = float(opt.get("drop", hold.get("drop", 0.0)) or 0.0)
+    for ka, kb in hold.get("seams") or []:
         for sd in sorted({s for s in side if s}):
             ia = [k for k, nm in enumerate(names) if kind[k] == ka and side[k] == sd]
             ib = [k for k, nm in enumerate(names) if kind[k] == kb and side[k] == sd]
@@ -1783,24 +1776,12 @@ def plumb_seam_pins(M: dict, X: np.ndarray, hold: dict | None) -> list:
                 v = np.unique(sw[m & (ss == sid)].ravel())
                 tv = int(v[np.argmax(X[v, 2])])
                 ramp = max(float(hold.get("ramp", 0.05)), 1e-6)
-                live = anc == "live"
-                own = anc == "own"
-                # "drop" (m, hung only): the vertical goes through where the seam HANGS `drop` below its top (the waist,
-                # say), not through the top; above that point the target runs straight from the top to it
-                dv = int(v[np.argmin(np.abs(X[v, 2] - (X[tv, 2] - drop)))]) if drop > 0 else tv
-
-                def _tgt(k):
-                    if own:
-                        return float(X[k, 0]), float(X[k, 1])
-                    if dv == tv or X[k, 2] <= X[dv, 2]:
-                        return float(X[dv, 0]), float(X[dv, 1])
-                    f_ = float(np.clip((X[tv, 2] - X[k, 2]) / max(X[tv, 2] - X[dv, 2], 1e-6), 0.0, 1.0))
-                    return tuple(float(X[tv, q] + f_ * (X[dv, q] - X[tv, q])) for q in (0, 1))
+                live = hold.get("anchor", "hung") == "live"
                 for k in v:
                     r = float(np.clip((X[tv, 2] - X[k, 2]) / ramp, 0.0, 1.0))
                     if r > 0:
                         out.append((int(k), tv, float(hold.get("w", 2.0)) * r, hold.get("axes", "y"),
-                                    None if live else _tgt(k)))
+                                    None if live else (float(X[tv, 0]), float(X[tv, 1]))))
                 band = float(hold.get("band", 0.0) or 0.0)
                 if band > 0 and not live:  # (fit round 39: the panels either side move WITH their seam, feathered to 0
                     # at `band`: a hold on the seam line alone pinned a crease along it, the panels folding 35-110 deg
@@ -1816,7 +1797,7 @@ def plumb_seam_pins(M: dict, X: np.ndarray, hold: dict | None) -> list:
                                 k = sv[jq]
                                 r = float(np.clip((X[tv, 2] - X[k, 2]) / ramp, 0.0, 1.0)) * (1.0 - dq / band)
                                 if r > 0:
-                                    dy = _tgt(k)[1] - float(X[k, 1])
+                                    dy = float(X[tv, 1] - X[k, 1])
                                     out.append((int(q), tv, float(hold.get("w", 2.0)) * r, "y",
                                                 (float(X[q, 0]), float(X[q, 1]) + dy)))
     return out
