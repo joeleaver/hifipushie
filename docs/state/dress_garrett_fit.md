@@ -1,6 +1,8 @@
 # STATE: dress_garrett_fit (Garrett jacket over the muslin shirt: muslin form fit + styling, NO sim) -- 2026-10-23, round 39 (closed, waiting on the hold redesign)
 
-DESIGN FACTS (Joe, settled): the jacket is worn OPEN, unbuttoned; it falls straight down (no waist suppression, side
+DESIGN FACTS (Joe, settled): SLIM-CUT, MODERN (2026-10-23: "the concept is a slim-cut jacket; the pattern looks like an
+older style with a lot more material": slimmed in the pattern by the canvas thread, gc_garrett v6, docs/state/canvas.md);
+the jacket is worn OPEN, unbuttoned; it falls straight down (no waist suppression, side
 line plumb). Put "the reference jacket is worn open, unbuttoned" in every review's context. Renders show the OPEN jacket
 only. Covered show-through is not a fault (C153); the shirt patches at the shoulders are culled later, don't chase them.
 PROCESS: muslin fit (worn open, C171), styling by the kind's wear as data (C174 / C178), remeasurement; no sim; judged

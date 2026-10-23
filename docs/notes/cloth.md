@@ -10846,3 +10846,33 @@ stretch); any hold left is soft, feathered, and names its support. STATE: docs/s
   seating (HANG_SUPPORT: attraction only where the body faces up) + the settle's friction / contact, not the load.
   H2_h2 styled collapsed (edge 0, hem+30 274, threads 57 %). The fit hang is rejected as built.
 - Suite (17 garment files, capped, -rs): 302 passed, 4 xfailed, PYTEST_EXIT 0 ($SU/suite.log).
+
+## canvas stiffness (2026-10-23; $CV = /mnt/data/hifipushie/canvas; branch claude/canvas)
+Joe chose (after supports, C190-C192): add canvas / interfacing BENDING stiffness to the fit and styling, retry the
+jacket with fewer holds. Coordinator relay of Joe: "the concept is a slim-cut jacket; the pattern looks like an older
+style with a lot more material" -> step 0 slims the pattern first.
+STEP 0, ease (ease.py: cloth.pieces on the r39 tape; layers.py: cloth_check.layer_girths jacket vs shirt):
+| | before (v5) | after (v6) | slim-cut practice | concept / limit |
+| chest | 1113 (+15.0 %) | 1104 (+14.1 %) | +7.5-10.5 cm = 1043-1073 (RJCC 2015) | shirt 1067 + 2 pi 6 = 1104 floor |
+| waist (fall) | 1131 (+43 %) | 1103 | plumb: = chest (falls straight) | front view 414 |
+| hips / seat | 1196 / 1225 | 1103 / 1103 | seat + 8 % = 1037 (Jett hips 8 %) | |
+| hem+30 | 1270 (+32 % seat) | 1103 (+15 %) | straight: = chest | front view 482 |
+| biceps | ~417 chord | ~404-409 | +15 % = 365 (FreeSewing Jett) | shirt 371 + 2 pi 4 = 396; armhole-bound |
+| sleeve hem | 319 | 284 | 270-290 (13.5-14.5 cm flat) | |
+| shoulders | 482 (= tape) | 482 | | |
+Round 34's derived let-out (hem -26.8 mm on 6 edges, from the concept's front-view hem 482 on the muslin's depth) was the
+overshoot: +157 mm at the hem. The chest can't reach slim-cut practice over THIS shirt (its flat chest 1067 = +10.2 %:
+a regular dress shirt); slimming the jacket chest further needs a slimmer shirt (not tuned here: the shirt is as worn).
+Biceps: the two-piece sleeve's width follows its cap / armhole (biceps_ease 0.3433 -> 0.2 moved it 417 -> 404 only).
+Gate (gate_slim.py s1, in-memory, then stored v6 by store_slim.py): PASS_WAIVED 2e1b8483 / e31aac35, same waivers as r35
+(vent, front_cutaway_angle, collar_stand*, notch); waist_plumb 1104 >= 1071, falls_straight PASS, layer_clearance_chest
+1104.7 >= 1104.4. KB: jacket fit "slim" band added (garment_kb kinds.jacket.fit.slim). The stored shirt carries a stale
+key "source_probe" (probe_garrett 2026-10-22) that cloth.validate refuses: v6 was saved after validating a copy without it.
+BENDING MODEL (bending.py): first try = the fit's own vertex-Laplacian term (Bergou, |L x|^2 / A) with per-vertex weights:
+a 280 mm canvassed strip clamped at one end fell as plain cloth even at 500 x (proof1.py: tip drop 259 vs 266 mm):
+|L x| only sees mean curvature; a strip bent along and curled across (a saddle) costs nothing. Now EDGE HINGES (4-point
+stencil null to every planar placement, scaled to |e| x fold angle), signed rest along the hinge normal (unsigned, the
+rolled collar turned over its stand for free: edge 24 -> -22 mm), plain cloth rests flat, interfaced at its made shape.
+KATs (tests/test_bending.py, STYLE_BEND_W 5, PLAIN 0.2): 120 mm strip clamped 12 mm: plain 100 / fusible 12 / canvas
+4.8 mm tip drop; rolled 12 mm collar held on its stand: fusible r 11.9, edge 23.8 mm (24); plain edge -1.9; 150 deg fold
+150.2.

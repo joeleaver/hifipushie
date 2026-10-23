@@ -111,10 +111,11 @@ SETTLE_BEND = 1.0  # the settle's bending x FIT_BEND (FIT_BEND keeps a tube roun
 # Known answers: tests/test_pattern_form.py test_hang_sheet_falls_plumb, test_hang_sleeve_tube.
 HANG_FIELD = False
 # CANVAS / INTERFACING STIFFNESS (canvas thread, 2026-10-23; bending.py): the fit's bending (FIT_BEND, Bergou) weighed
-# every vertex alike; FIT_BEND_KEYED weighs each by its fabric x interfacing kind (bending.weights: canvas 20, fusible
-# 8, plain 1 x the fabric's Peirce c^3 relative to suiting). Garment key "bend_keyed": true / false (None: the flag).
+# every vertex alike; FIT_BEND_KEYED adds the interfaced cloth's extra stiffness (bending.weights - 1: canvas 19, fusible
+# 7) as edge hinges with a flat rest, x FIT_HINGE_W x FIT_BEND (plain cloth's term unchanged). Garment key "bend_keyed": true / false (None: the flag).
 # The mesh carries the weights as M["bend_w"] for the styling (garment_pull.STYLE_BEND).
 FIT_BEND_KEYED = __import__("os").environ.get("PF_BEND_KEYED", "0") == "1"
+FIT_HINGE_W = float(__import__("os").environ.get("PF_HINGE_W", "1.0"))  # x FIT_BEND per unit weight over plain
 HANG_G = 0.1  # the weight per vertex x mean pattern edge^2 (as SETTLE_G)
 HANG_ITERS = 600  # (the towel KAT: 150 rounds left it half way, 26 mm; 600: 9-10 mm, hems +3 / +0.4)
 HANG_STRAIN = 0.01  # the most the weight stretches a thread (warp / weft): the muslin's "until it would stretch"
@@ -2468,8 +2469,14 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
         hbar = float(np.mean(np.linalg.norm(uv[E[:, 0]] - uv[E[:, 1]], axis=1)))
         kb = FIT_BEND * hbar ** 2
         sw_b = sw[~(cellv[sw[:, 0]] | cellv[sw[:, 1]])] if len(sw) else sw  # (made pieces: not welded)
-        Kb, bend_rhs = _fit_bending(M, F, uv, n, sw_b, cellv, w=bend_w)
+        Kb, bend_rhs = _fit_bending(M, F, uv, n, sw_b, cellv)
         Kb = kb * Kb
+        if bend_w is not None and np.max(bend_w) > 1.0 + 1e-9:  # (FIT_BEND_KEYED: the interfaced cloth's extra
+            # stiffness as edge hinges (bending.Bending: saddles cost, unlike the vertex term), flat rest, its weight
+            # over plain (w - 1) x FIT_HINGE_W; fold rows / flaps / made pieces (ARAP cells) left out: they keep their rests)
+            from . import bending as _bd
+            Kb = (Kb + _bd.Bending(F, uv, n, np.maximum(np.asarray(bend_w, float) - 1.0, 0.0), FIT_BEND * FIT_HINGE_W,
+                                   skip=cellv).K).tocsr()
     else:
         Kb, bend_rhs, kb = None, None, 0.0
     Wv = None

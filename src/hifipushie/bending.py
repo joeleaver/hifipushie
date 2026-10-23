@@ -64,9 +64,10 @@ def fabric_factor(g: dict | None) -> float:
         return 1.0
 
 
-def interfacing_kinds(Bp: dict, M: dict) -> np.ndarray:
-    """Per vertex: the interfacing weight factor (BEND_KIND of its entry's "kind", feathered by cloth.interfacing's
-    share; the strongest entry wins); 1.0 (plain) where nothing is interfaced."""
+def interfacing_kinds(Bp: dict, M: dict, kinds: dict | None = None) -> np.ndarray:
+    """Per vertex: the interfacing weight factor (BEND_KIND of its entry's "kind", else `kinds` by the piece's name or
+    its base name before the "." (the garment key "interfacing_kind": {"front": "canvas", "stand": "canvas"}), else
+    BEND_DEFAULT_KIND; feathered by cloth.interfacing's share; the strongest entry wins); 1.0 (plain) elsewhere."""
     from . import cloth
     n = len(M["uv"])
     out = np.ones(n)
@@ -78,7 +79,9 @@ def interfacing_kinds(Bp: dict, M: dict) -> np.ndarray:
             s = cloth.interfacing(dict(Bp, interfaced=[e]), M)
         except (KeyError, ValueError, IndexError):  # (an entry naming a piece this mesh doesn't have)
             continue
-        kind = (e.get("kind") if isinstance(e, dict) else None) or BEND_DEFAULT_KIND
+        nm = e if isinstance(e, str) else e.get("piece", "")
+        kind = ((e.get("kind") if isinstance(e, dict) else None) or (kinds or {}).get(nm)
+                or (kinds or {}).get(nm.split(".")[0]) or BEND_DEFAULT_KIND)
         k = BEND_KIND.get(kind, BEND_KIND[BEND_DEFAULT_KIND])
         out = np.maximum(out, 1.0 + s * (k - 1.0))
     return out
@@ -86,7 +89,7 @@ def interfacing_kinds(Bp: dict, M: dict) -> np.ndarray:
 
 def weights(Bp: dict | None, M: dict, g: dict | None = None) -> np.ndarray:
     """Per vertex bending weight (x the garment's plain cloth): interfacing_kinds, x fabric_factor(g) with BEND_FABRIC."""
-    return (fabric_factor(g) if BEND_FABRIC else 1.0) * interfacing_kinds(Bp or {}, M)
+    return (fabric_factor(g) if BEND_FABRIC else 1.0) * interfacing_kinds(Bp or {}, M, (g or {}).get("interfacing_kind"))
 
 
 def cot_laplacian(F: np.ndarray, U: np.ndarray, n: int):
