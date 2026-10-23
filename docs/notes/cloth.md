@@ -10587,3 +10587,17 @@ Muslin fit, styling, no sim; judged beside the concept only. Fault in: r34's sid
   the side view is a sack (front panel stands well off the belly), shirt show-through patches at the armholes / chest sides
   (509 vs r34 475 verts; covered, culled later). Flaps lie on the fronts (sunk 0/25) but ride 49-51 mm off the body.
 - Suite (17 files, capped, -rs, HIFIPUSHIE_HOME=workspace + ASSETS): 293 passed, 4 xfailed, 0 skipped, PYTEST_EXIT 0 ($FR35/suite.log, 13.3 min).
+
+## fit round 36 (2026-10-23; $FR36 = /mnt/data/hifipushie/dress_garrett/fit_round36; branch claude/garrett-jacket-r36)
+Muslin fit, styling, no sim; judged beside the concept only (concept edge off CF 450/550/650 71/78/94).
+- Step 1, the kb recipe op by op on r35's g1 fit (op36.py: edge33 + fwd36 side-view reads per op; edgeprof36.py the edge
+  profile). Edge 450/550/650 L | ahead of the body (side view) at waist +100/w/-100/-200/-300, L:
+  fit 25/28/44 | 29/36/26/25/9;  relax same;  turn (48 deg, stopped on stretch) 54/92/127 | 29/51/76/85/64;
+  lay-back pull 56/83/118 | 29/44/52/61/47 (27 mm, stretch);  smooths ~0;  hem down (9 mm) 55/83/118, corner 729 -> 736.
+  The break sits at 373 below HPS, 64 off CF; the fit's edge laps in to 22 at the cutawayTop (498) and out to 79 at cfHem.
+  So the swing alone makes the 650 overshoot (127) AND the side-view sack (+25..+55 mm ahead of the fit's 25-36).
+- Code (C182): garment_pull.turn per-turn "plumb": [upper, lower]: the turn stops where `lower` lies on the vertical
+  through `upper` in the front view (interpolated, re-solved); kb jacket.wear.open turns carry plumb [break, cutawayTop].
+  KAT test_garment_pull::test_turn_stops_where_the_line_hangs_plumb (+ the kb test asserts the plumb pair).
+  p1 (plumb stop) on g1: turned 41 / 39 deg (was 48), final 52/76/108 (R 55/78/108), corner flare 12, ahead
+  29/38/47/55/42. Gripping the edge from the break (p2 patch 40, p3 patch 20): jams at 0 deg (shear / stretch at the start).

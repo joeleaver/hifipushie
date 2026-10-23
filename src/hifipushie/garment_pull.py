@@ -1318,7 +1318,13 @@ def turn(M: dict, X: np.ndarray, held, turns: list[dict], body=None, steps: int 
     `tol` (C147): turn UNTIL IT WOULD STRETCH, the pull's rule: stop at the last step whose stretch (the free cloth's,
     the pull's read, converged by `confirm` rounds when over) stays within `tol` of the least reached; "deg" is then the
     most it turns. None: the full "deg" whatever it costs (before 2026-10-22: Garrett's band ends turned 65 deg took
-    the free fronts' tops to p99 23 / 13 %, wf_simon's to 15 / 16 %)."""
+    the free fronts' tops to p99 23 / 13 %, wf_simon's to 15 / 16 %).
+    A turn's "plumb": [upper, lower] (C182, fit round 36): turn UNTIL THE LINE HANGS PLUMB, the way the cloth would hang:
+    that turn stops at the angle where `lower` comes onto the vertical through `upper` in the front view (its x off
+    `upper`'s, measured out from the centre line, i.e. away from x = 0 on `upper`'s side, reaches 0; interpolated
+    between steps and re-solved), whatever "deg" allows; the stretch / shear stop still applies first. An open jacket's
+    lower front swings until its edge below the break hangs plumb (break -> cutawayTop), not by a fixed angle tuned on
+    one body (r33-r35: 48 deg, set when the side seam sat further forward, threw the hem corners out like coat tails)."""
     X = np.asarray(X, float)
     held = np.asarray(held)
     if held.dtype != bool:
@@ -1328,7 +1334,7 @@ def turn(M: dict, X: np.ndarray, held, turns: list[dict], body=None, steps: int 
     A = FlatARAP(M, X)
     Y = A.weld(X)
     fixed = A.welded_mask(held)
-    plan = []
+    plan, pl = [], []
     for t in turns:
         g = np.unique(A.inv[grip(M, t, held, TURN_PATCH)[0]])
         a, b = (Y[A.inv[vertex(M, q)]] for q in t["about"])
@@ -1337,6 +1343,9 @@ def turn(M: dict, X: np.ndarray, held, turns: list[dict], body=None, steps: int 
         d = direction(t.get("toward", "side"), c, sx, body)
         sense = max((1, -1), key=lambda q: float(((a + _rodrigues((c - a)[None], b - a, q * 0.05))[0] - c) @ d))
         plan.append((g, a, b - a, sense * np.radians(t["deg"]), Y[g].copy(), sense))
+        if t.get("plumb"):
+            u, lo = (A.inv[vertex(M, q)] for q in t["plumb"])
+            pl.append((len(plan) - 1, u, lo, 1.0 if Y[u][0] >= 0 else -1.0))
         fixed[g] = True
     if pieces is None:
         free = ~A.unweld(fixed)
@@ -1347,11 +1356,34 @@ def turn(M: dict, X: np.ndarray, held, turns: list[dict], body=None, steps: int 
     s0, sh0 = st(Y)
     least, lock = s0, _shear_lock(sh0)
     done, stopped = 0, "deg"
-    for k in range(1, steps + 1):
+    share = np.zeros(len(plan))  # (each turn's share of its deg reached)
+    stop_at = {}  # (plumb turns: the share where the line hung plumb)
+    plumb_off = lambda W, u, lo, sg: sg * float(W[lo][0] - W[u][0])
+    off_prev = {i: plumb_off(Y, u, lo, sg) for i, u, lo, sg in pl}
+
+    def place(sh):
         T = Y.copy()
-        for g, a, ax, th, p0, _s in plan:
-            T[g] = a + _rodrigues(p0 - a, ax, th * k / steps)
-        Yk = A.solve(T, fixed, iters)
+        for (g, a, ax, th, p0, _s), q in zip(plan, sh):
+            T[g] = a + _rodrigues(p0 - a, ax, th * q)
+        return T
+
+    for k in range(1, steps + 1):
+        nxt = np.array([stop_at.get(i, k / steps) for i in range(len(plan))])
+        Yk = A.solve(place(nxt), fixed, iters)
+        crossed = False
+        for i, u, lo, sg in pl:
+            if i in stop_at:
+                continue
+            o = plumb_off(Yk, u, lo, sg)
+            if o >= 0:
+                o0 = off_prev[i]
+                f = o0 / (o0 - o) if o0 < 0 else 0.0
+                stop_at[i] = share[i] + (nxt[i] - share[i]) * f
+                crossed = True
+            off_prev[i] = o
+        if crossed:
+            nxt = np.array([stop_at.get(i, k / steps) for i in range(len(plan))])
+            Yk = A.solve(place(nxt), fixed, iters)
         if tol is not None:
             s, sh = st(Yk)
             if log:
@@ -1365,14 +1397,19 @@ def turn(M: dict, X: np.ndarray, held, turns: list[dict], body=None, steps: int 
                 break
             if not confirmed:
                 least = min(least, s)
-        Y, done = Yk, k
+        Y, done, share = Yk, k, nxt
+        if pl and len(stop_at) == len(plan):
+            stopped = "plumb"
+            break
     Xn = A.unweld(Y)
     Xn[held] = X[held]
     s1, sh1 = st(A.weld(Xn))
     info = {"stretch_p99_start": round(s0 * 100, 2), "stretch_p99_end": round(s1 * 100, 2),
             "shear_p99_deg": [_shmax(sh0), _shmax(sh1)],
-            "deg_turned": [round(float(abs(np.degrees(th))) * done / steps, 1) for _g, _a, _x, th, _p, _s in plan],
-            "stopped": stopped,
+            "deg_turned": [round(float(abs(np.degrees(th))) * float(q), 1) for (_g, _a, _x, th, _p, _s), q in zip(plan, share)],
+            "stopped": stopped, "plumb": {str(turns[i]["at"]): {"hung": bool(i in stop_at and share[i] >= stop_at[i] - 1e-9),
+                                                                 "off_mm": round(plumb_off(Y, u, lo, sg) * 1000, 1)}
+                                          for i, u, lo, sg in pl} or None,
             "turns": {str(t["at"]): {"sense": s, "moved_mm": round(float(np.linalg.norm(Y[g].mean(0) - p0.mean(0)))
                                                                     * 1000, 1)}
                       for t, (g, _a, _x, _t, p0, s) in zip(turns, plan)}}

@@ -629,6 +629,8 @@ def test_open_jacket_is_styled_by_its_wear_as_data():
     # (down + in), then each edge smoothed into one long curve; no point grips part-way down the edge (zigzag / flare)
     tu = ops[kinds.index("turn")]["turn"]["turns"]
     assert [t["about"] for t in tu] == [["front.L:break", "front.L:sideF.b"], ["front.R:break", "front.R:sideF.b"]], tu
+    # (C182, fit round 36) ... until the edge below the break hangs plumb (break -> cutawayTop), not by a fixed angle
+    assert [t.get("plumb") for t in tu] == [["front.L:break", "front.L:cutawayTop"], ["front.R:break", "front.R:cutawayTop"]], tu
     lay = ops[kinds.index("turn") + 1]["pull"]["handles"]
     assert [h["at"] for h in lay] == [t["at"] for t in tu] and all(h["dir"]["out"] < 0 < h["dir"]["down"] for h in lay), lay
     assert not any("@" in h["at"] for o in ops if "pull" in o for h in o["pull"]["handles"]), ops
@@ -676,3 +678,32 @@ def test_plumb_lays_a_slid_seam_back_on_the_vertical():
                                       {"relax": {"iters": 10}}])
     assert np.abs(Xs[low, 1]).max() < 0.003 and list(infos[0]) == ["plumb"]
     assert gp.ops_pieces(M, [{"plumb": {"borders": ["sheet:tr..br"]}}]) == ["sheet"]
+
+
+def test_turn_stops_where_the_line_hangs_plumb():
+    """C182 (garrett jacket fit round 36): an open jacket's lower front swings until its edge below the break hangs
+    plumb in the front view, not by a fixed angle (r35's 48 deg, tuned on Garrett when the side seam sat further
+    forward, threw the hem corners out 30 mm past the concept). A sheet (100 x 300 mm, on the +x side) whose left edge
+    leans in toward the centre line by 30 mm at the hem (lapped, as the closed fit leaves the front), the top row held:
+    its lower-left corner turned about the diagonal top-left -> bottom-right. With "plumb": [top-left, bottom-left] the
+    turn stops where the bottom-left lies on the vertical through the top-left (within 2 mm), before the deg allows;
+    without it the full deg throws the corner past the vertical."""
+    nx, ny = 11, 31
+    uv = np.array([(x, y) for x in np.linspace(0, 0.1, nx) for y in np.linspace(0, 0.3, ny)])
+    ix = lambda i, j: i * ny + j
+    F = [f for i in range(nx - 1) for j in range(ny - 1)
+         for f in ((ix(i, j), ix(i + 1, j), ix(i + 1, j + 1)), (ix(i, j), ix(i + 1, j + 1), ix(i, j + 1)))]
+    X = np.c_[uv[:, 0] + 0.05 - 0.03 * (0.3 - uv[:, 1]) / 0.3, np.zeros(len(uv)), uv[:, 1]]
+    M = {"F": np.array(F), "uv": uv, "piece": np.zeros(len(uv), int), "names": ["s"], "sew": [],
+         "points": {"s:tl": ix(0, ny - 1), "s:bl": ix(0, 0), "s:br": ix(nx - 1, 0)}}
+    held = uv[:, 1] > 0.3 - 1e-9
+    t = {"at": "s:bl", "patch": 0.03, "about": ["s:tl", "s:br"], "deg": 60, "toward": "side"}
+    Xa, ia = gp.turn(M, X, held, [t], steps=12, tol=None)
+    Xp, ip = gp.turn(M, X, held, [dict(t, plumb=["s:tl", "s:bl"])], steps=12, tol=None)
+    tl, bl = ix(0, ny - 1), ix(0, 0)
+    assert X[bl, 0] < X[tl, 0] - 0.025  # (leans in 30 mm)
+    assert Xa[bl, 0] > Xa[tl, 0] + 0.01, (Xa[bl], Xa[tl])  # (the fixed angle throws it past the vertical)
+    assert ip["stopped"] == "plumb" and ip["deg_turned"][0] < 60, ip
+    assert abs(Xp[bl, 0] - Xp[tl, 0]) < 0.002, (Xp[bl, 0], Xp[tl, 0])
+    assert next(iter(ip["plumb"].values()))["hung"], ip["plumb"]
+    assert np.allclose(Xp[held], X[held])
