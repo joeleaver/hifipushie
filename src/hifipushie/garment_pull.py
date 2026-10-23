@@ -89,6 +89,17 @@ HANG_STRAIN = 0.01  # the most the weight stretches a thread
 HANG_ITERS = 1500  # (the sheet KAT: 400 rounds left the hem 44 mm back; 1500: 9 mm)
 HANG_SWEEPS = 4  # Jacobi sweeps of the thread cap a round
 
+# CANVAS / INTERFACING STIFFNESS IN STYLING (canvas thread, 2026-10-23; bending.py): the styling solve was bending-free
+# (C142: every bending variant then roughened the shirt's collar), so a canvassed chest, a lapel, a collar and stand kept
+# their shape only while HELD. STYLE_BEND adds bending.Bending to FlatARAP's global step: per vertex weights from the
+# mesh's "bend_w" (bending.weights: fabric x interfacing kind), rest = the cloth's shape when the solve was built (the
+# fit: a canvas is moulded and steamed to it, a collar made to its roll; a fold present at the start stays a fold),
+# overall STYLE_BEND_W x the cot weights' scale. Plain cloth (weight 1) keeps STYLE_BEND_PLAIN of it, resting FLAT
+# (cloth's own rest; only interfaced cloth is made to a shape).
+STYLE_BEND = __import__("os").environ.get("GP_STYLE_BEND", "0") == "1"
+STYLE_BEND_W = float(__import__("os").environ.get("GP_STYLE_BEND_W", "5.0"))
+STYLE_BEND_PLAIN = float(__import__("os").environ.get("GP_STYLE_BEND_PLAIN", "0.2"))  # (x a plain vertex's weight 1)
+
 STEP = 0.003  # m: a handle's move per step
 TOL = 0.005  # stretch p99 allowed above the least the pull has reached (0.5 %: the shirt's knee, module docstring)
 MAX_MOVE = 0.08  # m: the farthest a pull goes
@@ -314,6 +325,17 @@ class FlatARAP:
         w = self.Wt.ravel()
         Lw = coo_matrix((np.r_[w, w], (np.r_[I, J], np.r_[J, I])), shape=(self.n, self.n)).tocsr()
         self.L = (diags(np.asarray(Lw.sum(1)).ravel()) - Lw).tocsr()
+        self.bend = None
+        bw = M.get("bend_w")
+        if STYLE_BEND and bw is not None and STYLE_BEND_W > 0:  # (CANVAS STIFFNESS: bending.Bending, rest = the start)
+            from . import bending as bd_
+            bw = np.asarray(bw, float)
+            bw = np.where(bw > 1.0 + 1e-9, bw, bw * STYLE_BEND_PLAIN)  # (plain cloth: STYLE_BEND_PLAIN of its weight)
+            wv = np.zeros(self.n)
+            np.maximum.at(wv, self.inv, bw)
+            self.bend = bd_.Bending(self.WF, self.U, self.n, wv, STYLE_BEND_W, rest=self.weld(np.asarray(
+                M["_bend_rest"] if M.get("_bend_rest") is not None else X, float)), flat_below=STYLE_BEND_PLAIN)
+            self.L = (self.L + self.bend.K).tocsr()
         self._lu = {}
         self.floor, self.floor_pushed = _bind_floor(M.get("_floor"), self.inv), 0  # (style(floor=...): C170)
         self.shear = self.shear_free = None
@@ -380,6 +402,8 @@ class FlatARAP:
                 v = Wt[:, k, None] * np.einsum("mij,mj->mi", R, U[:, a] - U[:, b])
                 np.add.at(rhs, WF[:, a], v)
                 np.add.at(rhs, WF[:, b], -v)
+            if self.bend is not None:  # (the rest curvature along the current direction: bending.Bending.rhs)
+                rhs = rhs + self.bend.rhs(Y)
             r = rhs[fi] - Lfc @ Y[ci]
             if hang:  # (HANG: the proximal weight and the weight; a round moves a vertex at most HANG_STEP)
                 r = r + HANG_PROX * Y[fi]
@@ -1060,6 +1084,8 @@ def style(M: dict, X: np.ndarray, held, ops: list[dict], body=None, log=None, fl
     X = np.asarray(X, float)
     base = _mask(held, len(X))
     M = dict(M, _X=X.copy())  # ("piece:@closure" names read which pairs are done up on the fit styled)
+    if M.get("_bend_rest") is None:  # (STYLE_BEND: every op's stiffness rests on the shape the styling started from)
+        M["_bend_rest"] = X.copy()
     if floor:  # (C170: layer_floor's floors, read by every op's solve)
         M["_floor"] = floor
     placed = np.zeros(len(X), bool)  # what earlier ops gripped: held where they left it

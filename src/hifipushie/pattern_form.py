@@ -110,6 +110,11 @@ SETTLE_BEND = 1.0  # the settle's bending x FIT_BEND (FIT_BEND keeps a tube roun
 # Not a sim: no time, velocity or collisions beyond the floors. Garment key "hang": true / false (None: HANG_FIELD).
 # Known answers: tests/test_pattern_form.py test_hang_sheet_falls_plumb, test_hang_sleeve_tube.
 HANG_FIELD = False
+# CANVAS / INTERFACING STIFFNESS (canvas thread, 2026-10-23; bending.py): the fit's bending (FIT_BEND, Bergou) weighed
+# every vertex alike; FIT_BEND_KEYED weighs each by its fabric x interfacing kind (bending.weights: canvas 20, fusible
+# 8, plain 1 x the fabric's Peirce c^3 relative to suiting). Garment key "bend_keyed": true / false (None: the flag).
+# The mesh carries the weights as M["bend_w"] for the styling (garment_pull.STYLE_BEND).
+FIT_BEND_KEYED = __import__("os").environ.get("PF_BEND_KEYED", "0") == "1"
 HANG_G = 0.1  # the weight per vertex x mean pattern edge^2 (as SETTLE_G)
 HANG_ITERS = 600  # (the towel KAT: 150 rounds left it half way, 26 mm; 600: 9-10 mm, hems +3 / +0.4)
 HANG_STRAIN = 0.01  # the most the weight stretches a thread (warp / weft): the muslin's "until it would stretch"
@@ -816,7 +821,7 @@ def _fit_residual(src, rest, cur, n):
     return float(np.sum((np.einsum("nij,nj->ni", R[src], r) - cur) ** 2))
 
 
-def _fit_bending(M, F, uv, n, sw, skip):
+def _fit_bending(M, F, uv, n, sw, skip, w=None):
     """The sewn surface's bending (FIT): returns (K (n, n) sparse, rhs(X) -> (n, 3) or None). Seams welded (sew pairs ->
     one vertex, averaged), cot Laplacian from the flat pattern (exact for isometric maps), lumped areas, rows kept at
     interior vertices not in `skip` (folds, made pieces). K = P^T L^T D L P (Bergou et al. 2006)."""
@@ -861,7 +866,11 @@ def _fit_bending(M, F, uv, n, sw, skip):
     sk = np.zeros(nw, bool)
     np.logical_or.at(sk, wid, skip)
     keep &= ~sk
-    D = diags(keep / np.maximum(area, 1e-12))
+    wv = np.ones(nw)
+    if w is not None:  # (FIT_BEND_KEYED: bending.weights per vertex; a welded vertex takes its stiffest member's)
+        wv = np.zeros(nw)
+        np.maximum.at(wv, wid, np.asarray(w, float))
+    D = diags(keep * wv / np.maximum(area, 1e-12))
     LP = (L @ P).tocsr()
     K = (LP.T @ D @ LP).tocsr()
     if FIT_BEND_REST != "smooth":
@@ -2299,13 +2308,14 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
              iters: int = 120, X0: np.ndarray | None = None, attract: float = 0.5, log=None, pressed: bool = True,
              worn_open: dict | None = None, shoulder_pad: dict | None = None, over: dict | None = None,
              bridge: float = 0.0, neck_split: bool | None = None, fit_model: str | None = None,
-             plumb_hold: dict | None = None, hang: bool | None = None) -> dict:
+             plumb_hold: dict | None = None, hang: bool | None = None, bend_w: np.ndarray | None = None) -> dict:
     """The garment assembled on the form (see the module docstring). pattern: a placed garment (cloth.build
     place_only result: "mesh", "X0", "pieces") or {"mesh": M, "X0": start, "pieces": B (optional)}. body: a
     cloth.Body (V, T, at) or None (a free sheet: the fold tests). under: {"V", "F"} of the garment under (the shirt
     under the jacket) or None. worn_open: {point name: offset m} (WORN_OPEN). fit_model: "woven" | "isometric" | None
     (the module default WOVEN / NECK_PIN_W; fit_model_for). plumb_hold: PLUMB_HOLD's form (plumb_hold_for) or None.
-    hang: the HANG (supports, not holds; None: HANG_FIELD). Returns {"V", "F", "M", "info"}."""
+    hang: the HANG (supports, not holds; None: HANG_FIELD). bend_w: per vertex bending weight (FIT_BEND_KEYED,
+    bending.weights; None: every vertex 1). Returns {"V", "F", "M", "info"}."""
     hang_ = HANG_FIELD if hang is None else bool(hang)
     woven_ = WOVEN if fit_model is None else fit_model == "woven"
     neck_w_ = LEGACY_NECK_PIN_W if fit_model == "isometric" else NECK_PIN_W
@@ -2458,7 +2468,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
         hbar = float(np.mean(np.linalg.norm(uv[E[:, 0]] - uv[E[:, 1]], axis=1)))
         kb = FIT_BEND * hbar ** 2
         sw_b = sw[~(cellv[sw[:, 0]] | cellv[sw[:, 1]])] if len(sw) else sw  # (made pieces: not welded)
-        Kb, bend_rhs = _fit_bending(M, F, uv, n, sw_b, cellv)
+        Kb, bend_rhs = _fit_bending(M, F, uv, n, sw_b, cellv, w=bend_w)
         Kb = kb * Kb
     else:
         Kb, bend_rhs, kb = None, None, 0.0
@@ -3183,11 +3193,16 @@ def on_form(model: str, garment: str, spec: dict | None = None, g: dict | None =
                                         float(g.get("under_cap", cloth.UNDER_CAP)), cloth.under_fall(g)),
                    A_unpressed=und["A"])
     under = {"V": und["A"], "F": und["mesh"]["F"]} if und is not None else None
+    from . import bending as _bd
+    bw = _bd.weights(res.get("pieces"), res["mesh"], g)  # (the mesh carries them for the styling: STYLE_BEND)
+    res["mesh"]["bend_w"] = bw
+    keyed = g.get("bend_keyed")
+    bw = bw if (FIT_BEND_KEYED if keyed is None else bool(keyed)) else None
     # garment key "worn_open" {point: offset m, "source": why}: the form rule for fronts worn open (worn_open_pins)
     out = assemble(res, res["body"], under=under, ease=EASE if under is not None else UNDER_EASE, log=log,
                    worn_open=g.get("worn_open"), shoulder_pad=g.get("shoulder_pad"), bridge=bridge_fraction(g), neck_split=g.get("neck_split"),
                    fit_model=fit_model_for(model, garment, g), plumb_hold=plumb_hold_for(g),
-                   hang=hang_for(g))
+                   hang=hang_for(g), bend_w=bw)
     res["A"], res["A_info"], res["form_under"] = out["V"], out["info"], und
     res["A_info"]["fit_model"] = fit_model_for(model, garment, g) or ("woven" if WOVEN else "isometric")
     if cloth.expanded(g).get("tucked"):
