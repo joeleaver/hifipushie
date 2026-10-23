@@ -21,9 +21,15 @@ ROUND 39 (in progress, $FR39 = /mnt/data/hifipushie/dress_garrett/fit_round39): 
 the jacket (-3..+3 mm), culled by C187 (cloth_layers touch band + triangle-sampled cover); seen 208 -> 17.
 SEAM (coordinator, Joe on r38's front|side seam, TOP): measured: seam at 91-93 deg (on the silhouette; r34 without the hold
 66-79), fold across it 34-110 deg in the fit (r34 0-26): PLUMB_HOLD pins the seam LINE, the panels crease along it.
-Trying pattern_form plumb hold "band" (panels move with the seam; default off): fits b40 / b80 via $FR39/fits39.sh.
-NEXT: judge b40 / b80 (seamn39 fold, seam39 angle, Joe crop + side) -> default if it flattens the seam with edges /
-upper half / hems kept; then step 2 (650), 3 (hem 444), 4 (450 lean), LOOK review.
+plumb hold "band" (C188 candidate, default OFF; KAT test_plumb_hold_band_moves_the_panels_with_their_seam): b40 flattens
+the side|back seam (fold 2-15 vs 21-60) but NOT front|side (40-103 in the fit): its fold has another source (the front
+panel's own hang vs a side panel held plumb). b80 was running at handover (f_b80 / s_b80s / seam_b80 logs in $FR39).
+NEXT (precise): 1) read seam_b80.log; if front|side is still folded, op-by-op on g1's FIT (not styling) to find what
+folds the front|side seam: try plumb_hold seams [["side","back"]] only (front|side free) + band, and the front panel's
+side edge held with the side panel (band on the front piece only). Render Joe's crop (crop clay wholefront (10,280,190,880))
++ side for g1 / best; seam angle target: just behind the silhouette (>= ~100 deg) or flat at 90. 2) Then r39 steps 2
+(650 = 101 vs 94: the swing's plumb stop is met, cutawayTop 63 vs break 64; the overshoot is the cutaway below it opening
+26 mm over 100 vs the concept's 16: the curve / swing axis, not the stop), 3 (hem 444), 4 (450 lean), LOOK review, suite.
 ## Method ($FR38 = /mnt/data/hifipushie/dress_garrett/fit_round38; run.sh: this worktree; fit_g1.pkl read-only)
 sw38.sh <tag> <params json> (mkv38 variant of the kb style on g1 + reads, no render); tab38.sh <tags>; sty38.sh g1 <tag> (default
 kb + reads + sheets); op38.py (op by op); flare38.py (per-piece hem moves); crop38.py (Joe's spot crop); diag38.py (forced shares).

@@ -10722,3 +10722,11 @@ Base: r38's k3 (asm_k3.pkl copied; fit_g1.pkl a read-only copy, not a symlink). 
   Fix tried (C188, pattern_form.plumb_seam_pins "band"): the panels within `band` of a held seam vertex are held to their
   own position moved by that vertex's correction (feathered to 0 at band): the panels move with the seam. Fits b40 / b80
   ($FR39 fits39.sh, fit39.py) running.
+  b40 (band 40 mm) read (seamn39 fold deg by depth 250..700; g1 in brackets): side|back flattened: L 15/13/5/6/9/8/6/5/2/3
+  (21/57/60/58/45/22/17/13/14/10); front|side NOT: L 10/40/63/19/35/62/73/83/90/103 (45/38/52/44/50/78/110/51/34/22),
+  R 15-95. Styled b40s front|side 9-65 (k3 4-143). Seam angles unchanged (sideF 89-99, sideB 105-119). The fit's
+  shear p99 31.9 deg (g1 22.9); plumb_off max 16.7 mm. So the band takes the crease out of the side|back seam but the
+  front|side fold has another source: the front panel itself (worn open, its lower part hung forward) meeting a side
+  panel held plumb. b80 was still running at handover ($FR39/f_b80.log, s_b80s.log, seam_b80.log). No renders yet.
+  Handover at ~100 tool calls; steps 2-4 and the LOOK review not started; the 17-file suite not run on this branch
+  (cloth_layers 24 passed; pattern_form plumb_hold tests 2 passed).
