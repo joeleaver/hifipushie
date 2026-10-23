@@ -10175,3 +10175,37 @@ Today's fit (FIT: isometric edges, shear-stiff; neck pin 200 x an edge, seams 40
   (e) wf_simon's open-collar reads moved by its refit: points apart 157 vs <= 154 / <= 150 (two tests), leaf front edge
       49 vs 25-48 (test_a_shirt_without_a_tie_is_styled_open_by_default).
 STATE: the flip (5aed0492, branch claude/cool-chaum-8e917e) was NOT landed: main keeps the isometric default; the opt-in corner hps, NECK_PIN_W and the muslin-test notes are landed (C160-C162). NEXT: fix (a)-(e), then flip the default.
+
+## muslin default landed (2026-10-22, branch claude/muslin-default; files /mnt/data/hifipushie/muslin_default)
+Joe's brief change mid-session: "checking against the current clothes makes no sense, the current ones are pretty
+bad": NO holds (garment_kb fit_holds empty; mechanism kept + tested), no "bit-identical / no worse than gc1" pass
+conditions; looks judged beside the REFERENCE only (C165).
+- (b) REAL DEFECT, fixed in the fit (C166): WOVEN's shear weight (SHEAR_STIFF 0.011) takes a shear back by s / (1 + s)
+  = 1.1 % a round, so a transient's shear outlived the rounds. Two terms: SHEAR_FREE (1.0) on FIT triangles with no
+  DRIVEN vertex (touching the form: d < offset + FREE_REACH 3 mm; a pin; the garment under / over; a flap's base; the
+  body ATTRACTION is not an obstacle) and free flaps keep their ARAP cells; SHEAR_RAMP: each relax eases the driven
+  weight geometrically SHEAR_FREE -> SHEAR_STIFF over its first half (driven shear rebuilds in a few rounds: P_s keeps
+  any angle; undriven decays). Evidence: free diagonal fold edge stretch 11.4 % -> 0.006 %; run-off fold 27.7 -> 23.9
+  deg (iso 23.5; free flaps woven alone opened it 18 -> 24 deg all along); shoulder-collar KAT's developable bodice
+  shear p99 31.8 deg at 120 rounds vs 4.0 at 480 (unconverged) -> 7.7 at 120 with the ramp.
+- Honesty kept on Garrett (corner.py; faces <= 30 mm of the hps points vs the sleeves as control): threads p95 6.0 %
+  (max 55 %, 11 % of faces > 3 %) vs control 1.6 %; the probe (kn_g, no restoring) 4.7 % vs 1.4. Shear at the corner
+  max 69 deg in both; the probe's sleeves read shear p95 20 deg (artefact), now 7. misfit.py m1: standing > 20 mm off
+  4.1 % (probe 0.1 %: the probe's shear shrink-wrapped the ease), side seam gaps max 14.4 mm (probe 18.6): the hips
+  misfit still shows.
+- (a) principal / edge strain read as stretch: rewritten to THREAD strain (info grain_stretch_pct) + shear apart
+  (info shear_deg <= pf.SHEAR_LOCK_DEG 35, a woven's jamming angle): two-panel sleeve (now passes either way: principal
+  2.9 %, threads 1.2 %, shear p99 2.6), open front (edge 3.8 % = bias; threads 1.8), bridge tube (edge 13.9; threads
+  2.8, shear p99 19 at the hourglass waist). Diagonal fold: was (b), passes with the fix (0.006 %).
+- Bridge cup ratio rewritten to the mechanism (stiff cup >= 5 mm less than soft; >= 15 mm further off under the
+  seat): woven soft tube can't trellis into the hollow as the iso one was drawn (cup 26 vs iso 29); stiff 17.6 / soft
+  26.1, under-seat +22 mm. (The 0.65 ratio was the iso fit's 17 : 29.)
+- (c) test_neck_point_on_hps rewritten (C167): the lone panel started 129 mm off (not 30: placement_error), round the
+  shoulder edge; the old hard pin landed it (0.5 mm) by stretching threads p99 58 %, max 151 %; the soft pin stops
+  31 mm short at 19 %. New KAT: a reachable panel slid 30 mm round the neck lands within 0.25 mm (threads 1.5 %); the
+  lone panel: hard pin there only by stretch, soft pin > 10 mm short at < half the thread strain.
+- test_woven_fit_shears_a_held_sheet_instead_of_stretching rewritten: driven (SHEAR_FREE = SHEAR_STIFF) keeps 12.2
+  deg of a placed 20 deg shear; FREE relaxes square (0.0) as the iso fit does.
+- (d) collar KATs: the muslin fit was WRONG (unconverged transient shear in the bodice cone), fixed by SHEAR_RAMP:
+  sprung fall turned 170.0 (>= 170; iso 171.5; 480 rounds 168.8: tight), shallow fall drop 7.2 (want 6.4), out 14.1
+  (<= 17.4). Unchanged tests.
