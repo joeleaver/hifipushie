@@ -10084,3 +10084,20 @@ break doesn't swing open with the release (closed fit roll 33 / 8 / 0 at 150 / 2
 as on a buttoned jacket. Round 15 matched the lapel's face width to the concept (67-39 vs 68-44 at 120-220): widening
 the pattern lapel would make the face too wide. Lever tried: lapel=1 in g29.py (soft pins on the lapel's outer edge
 break -> lapelPoint carried out to the concept's front-view edge on the chest's surface) vs r29a (r28h's recipe).
+Step 3, the releases (local ZOZO, $0). r29p1 (roll 20) failed twice before the sim: (a) preflight self False: 4
+crushed pairs at the lapel's foot (front.L 272-285 below HPS, x 21-27, inside the 1 mm gap of its own sheet): g29.py
+selfclear=1 moves such a vertex to 1.5 mm off that triangle's plane (4 moved, preflight ok); (b) ZOZO panicked on
+four ZERO-AREA collar triangles (the mesher fanned a point lying on the collar end's boundary segment, R side only;
+roll 25 and 21 mesh clean; chip filed: mesher + a preflight check). Pattern r29p2 = COLLAR_ROLL 21 + the same cutaway:
+closed fit p99 14.6 %, collar CB 41 / az45 32 / side 17 (shirt shows 11 / 14 / 16: PASS); gate PASS_WAIVED 13633401
+(waive29.json: front_cutaway_angle, collar_stand, collar_stand_cb, notch, vent).
+r29a = r28h's recipe on r29p2 (arrange, keep, pull 100, side held, hang plumb): crumple p95 10.4 / 10.2 (r28h 12.4 /
+11.4), tilt 34 / 40; edges off CF 450 / 550 / 650 48 / 61 / 85 L, 48 / 63 / 88 R (r28h 67 / 77 / 91, 63 / 69 / 83: in
+at 450 by 15-19); lapel outer 150 107 / 106, V 200 155 (worse than r28h's 168); side line max 20 / 20; flaps p50 3.2 /
+4.6 (sunk 2 / 0); hem sweep 394. The cutaway alone took ~2 mm off the crumple; the lapel stayed narrow.
+r29b = r29a + lapel=1 (lapel edge pinned out to the concept's front-view edge): lapel outer 100 / 150 / 200 / 250 / 300
+143 / 125 / 116 / 106 / 98 L, 142 / 131 / 116 / 98 / 85 R (concept 148 at 93, 127 / 134 at 148, 110 at 261, 87 at
+341), V 200 232 (concept 237), break 61-66 off CF: the lapel / V fault is closed by opening the roll line, not by a
+wider lapel. Costs: R side: edge 44 / 54 / 73 (L 64 / 71 / 97), side line R 40 at -475 (FAIL), lapel.R through its base
+share 0.18 (FAIL; L 0.03); crumple 11.5 / 10.5 (tilt 50 / 47); the lapel pins end 67-79 mm off their targets (soft
+pull: they set the direction, not the place). Collar unchanged (held). stretch p99 14.6 both.
