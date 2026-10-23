@@ -474,3 +474,21 @@ if __name__ == "__main__":
         if k.startswith("test_"):
             v()
             print("ok", k)
+
+
+def test_form_fit_under_layer_needs_no_sim(monkeypatch):
+    """The muslin fit's layered path (C168): model_body given the under garment's FORM fit (pattern_form.on_form's
+    under_as_worn result) layers on it as given: no sim built or looked up, no pinned result, no "under_missing"
+    (before: on_form refused gc_garrett's jacket until the shirt was simulated)."""
+    def no_sim(*a, **k):
+        raise AssertionError("an under garment's sim was built / looked up for a form fit")
+    monkeypatch.setattr(cloth, "build", no_sim)
+    monkeypatch.setattr(cloth, "under_pinned", no_sim)
+    monkeypatch.setattr(cloth, "body_mesh", lambda spec=None: {"V": np.zeros((3, 3)), "F": [[0, 1, 2]], "J": {}, "key": "b"})
+    spec = {"base": {"kind": "test"}, "cloth": {"shirt": {}, "jacket": {"over": "shirt", "under": {"pin": "pin:x"}}}}
+    form = {"V": np.ones((3, 3)), "mesh": {"F": np.array([[0, 1, 2]])}, "key": "form:shirt:abc"}
+    src = cloth.model_body("m", spec, spec["cloth"]["jacket"], simulate=False, under=form)
+    assert "under_missing" not in src and src["under"]["res"] is form and src["under"]["key"] == "form:shirt:abc"
+    assert np.allclose(src["under"]["V"], form["V"]) and src["under"]["name"] == "shirt"
+    with __import__("pytest").raises(AssertionError, match="sim was built"):  # (without it, the sim path as before)
+        cloth.model_body("m", spec, spec["cloth"]["jacket"], simulate=False)

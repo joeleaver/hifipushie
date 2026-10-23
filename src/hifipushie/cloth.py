@@ -8,6 +8,7 @@ Spec `spec["cloth"][name]`:
    "pieces": {name: piece spec (pattern.from_spec) + "wrap"}, "seams": [[a, b], ...], "stitches": [[a, b]...]
              (own pieces, or added to a design's), "drop": [pieces of the design left out],
    "alter": [pattern ops], "fabric": preset name or {...}, "interfaced": [pieces], "color": "#rrggbb",
+   "fit_model": "woven" | "isometric" (the form fit; default the muslin fit, pattern_form.fit_model_for / C162),
    "hps": "corner" (opt in to the side neck point where the neck meets the shoulder, measure_defs C160; parked),
    "state": "worn" | "hung" (on a hanger: hanger.py) | {"hang": {"hanger": {...}, "rail": {...}}} | "draped",
    "resolution": m (triangle size, default 0.02)}
@@ -4781,7 +4782,7 @@ def interfacing(Bp: dict, M: dict) -> np.ndarray:
     return stiff
 
 
-NOT_SIM = ("color", "roughness", "sheen", "cleanup", "detail", "sculpt", "finish", "unfold_finish", "under", "under_sculpt", "under_collar", "note", "design", "_design", "trims", "construct")  # never change the sim
+NOT_SIM = ("fit_model", "color", "roughness", "sheen", "cleanup", "detail", "sculpt", "finish", "unfold_finish", "under", "under_sculpt", "under_collar", "note", "design", "_design", "trims", "construct")  # never change the sim
 # (a design sheet changes the sim only through the keys it compiles into)
 
 
@@ -9453,7 +9454,7 @@ class ClothError(ValueError):
     pass
 
 
-GARMENT_KEYS = {"hps", "shoulder_pad", "layer_clearance", "pattern", "pieces", "seams", "stitches", "drop", "alter", "fabric", "interfaced", "color", "roughness", "sheen",
+GARMENT_KEYS = {"hps", "fit_model", "shoulder_pad", "layer_clearance", "pattern", "pieces", "seams", "stitches", "drop", "alter", "fabric", "interfaced", "color", "roughness", "sheen",
                 "state", "resolution", "coarse", "quality", "frames", "self_collision", "self_collision_sew", "assemble",
                 "sew_force", "sew_frames", "worn_frames", "settle_frames", "hang_frames", "hang_sew_force", "hang_air", "refine_frames",
                 "refine_ease", "cleanup", "detail", "sculpt", "finish", "unfold_finish", "under", "under_sculpt", "under_collar", "note", "backend", "placement", "lower_arms", "lower_frames", "zozo", "_trace",
@@ -9665,9 +9666,12 @@ def length_level(m: dict, given: dict | None = None) -> dict:
     return m
 
 
-def model_body(name: str, spec: dict, g: dict, simulate: bool = True) -> dict:
+def model_body(name: str, spec: dict, g: dict, simulate: bool = True, under: dict | None = None) -> dict:
     """The collider a garment settles on: the model's base body (worn, hung: dressed on it first), or for a drape
-    over the "model" the model's whole built surface (a table under a tablecloth, a bed under a blanket)."""
+    over the "model" the model's whole built surface (a table under a tablecloth, a bed under a blanket).
+    under: a layered garment's under garment AS GIVEN (a result with "V" as it lies, "mesh", "pieces", "key"): the
+    form fit's own (pattern_form.on_form: the under garment's muslin fit, styled as worn), used instead of its pinned
+    or simulated result; nothing is simulated or looked up for it."""
     st = _state(g)
     over = st["drape"].get("over", "model") if isinstance(st, dict) and "drape" in st else "body"
     if over == "body" and spec.get("base"):
@@ -9681,10 +9685,10 @@ def model_body(name: str, spec: dict, g: dict, simulate: bool = True) -> dict:
             if ug not in (spec.get("cloth") or {}):
                 raise ClothError(f"over: no garment {ug!r} in this model's cloth (have {', '.join(spec.get('cloth') or {})})")
             u = spec["cloth"][ug]
-            pin_ = (expanded(g).get("under") or {}).get("pin")
+            pin_ = None if under is not None else (expanded(g).get("under") or {}).get("pin")
             # (garment key under = {"pin": <pickled finished result>}: the garment under this one IS that result (its
             # own key "pin_..." goes into this one's sim key), not a build of the spec's own garment)
-            ures = under_pinned(pin_, name) if pin_ else thaw(spec, u)[1] if u.get("frozen") else build(
+            ures = under if under is not None else under_pinned(pin_, name) if pin_ else thaw(spec, u)[1] if u.get("frozen") else build(
                 _garment_for_sim(u), model_body(name, spec, u, simulate), f"{name}:{ug}",
                 log=lambda *_: None, cached_only=not simulate)
             src = dict(src, under=None if ures is None else {"V": collider_verts(ures), "F": ures["mesh"]["F"], "key": ures["key"],

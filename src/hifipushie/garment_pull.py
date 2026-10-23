@@ -49,11 +49,16 @@ meets the knee where it starts to stretch (few-rounds reads 4.51 % at 45 mm, 4.8
 confirmed, 48 and 51 pass and 54 stops it: 51 mm, y3's place). Or at `max_move`
 (reported: nothing stopped it). Last a `settle_iters` solve with the handles held where they stopped.
 
-Stretch = p99 over same-piece edges of |3D length / pattern length - 1|, on `pieces` (default: every piece with a vertex
-that is neither held nor a handle: held pieces don't move and would dilute the read).
+Stretch = THREAD strain (C169): p99 over the faces of |warp / weft length - 1| (each face's deformation gradient in the
+piece's thread frame, pattern x / y on grain), on `pieces` (default: every piece with a vertex that is neither held nor
+a handle: held pieces don't move and would dilute the read). Shear is read apart (the threads' angle off 90, p99) and
+LOCKS at pattern_form.SHEAR_LOCK_DEG (35, a woven's jamming angle; or where the cloth started if past it): the styling
+solve is the fit's woven model (WOVEN_STYLE), so a bias edge lengthens as the cloth shears and an edge read counted
+that as stretch (the wobble smooth stopped, the spike's smooth ran 0 rounds). Every stop (pull, turn tol, smooth,
+smooth_border) reads the same: until a thread would stretch, or the weave would jam.
 
-info: {"moved_mm": {handle: mm}, "stretch_p99_start" / "_least" / "_end" (%), "steps", "stopped" ("stretch" |
-"max_move"), "path_mm", "gripped", "dirs" (unit vectors, the last step's), "pieces"}. `turn` turns grips about a line
+info: {"moved_mm": {handle: mm}, "stretch_p99_start" / "_least" / "_end" (%: threads), "shear_p99_deg" [start, end],
+"shear_lock_deg", "steps", "stopped" ("stretch" | "shear" | "max_move"), "path_mm", "gripped", "dirs" (unit vectors, the last step's), "pieces"}. `turn` turns grips about a line
 (a band end swung open, a cuff popped); `smooth` flattens ripples; `smooth_border` draws a border toward one fitted
 curve (one swoop, C145); `hold_region` / `feather` hold a region, its edge feathered (C144); `hold_mask` builds
 `held`; reads: `crumple`, `edge_turns` (a free edge's side-view swoop),
@@ -89,16 +94,31 @@ MIRROR_REACH = 0.03  # m: a handle's mirror partner is the one whose lead is thi
 CONVERGED = 1e-5  # m: the confirm stops early once no vertex moves more than this in a round
 FASTENED = 0.008  # m: a closure pair this near on the fit is done up (garment_reads.BUTTON_DONE_MM)
 BUTTON_HOLD = 0.008  # m (pattern): a fastened button holds its cloth this near both of its vertices (hold_mask)
+WOVEN_STYLE = __import__("os").environ.get("GP_WOVEN_STYLE", "1") == "1"  # DEFAULT (C168 / C169): see FlatARAP
+# WOVEN_STYLE's undriven faces (no fixed vertex: nothing holds, grips or pins them) take the fit's SHEAR_FREE (C166:
+# where nothing drives the cloth it does not shear); env GP_STYLE_SHEAR_FREE=<w> | "off" for the A/B (C169)
+_SF = __import__("os").environ.get("GP_STYLE_SHEAR_FREE", "fit")
+SHEAR_LOCK_NOISE = 1.0  # deg: a piece already past the jamming angle is jammed once its shear p99 rises this much more
 SIDE_MIN = 0.015  # m: a "side" is taken only from a point at least this far off x = 0
 _HE = ((0, 1, 2), (1, 2, 0), (2, 0, 1))
 
 
 class FlatARAP:
-    """Per-face ARAP against the flat pattern on the WELDED mesh (sewn pairs one vertex). W = welded positions."""
+    """Per-face ARAP against the flat pattern on the WELDED mesh (sewn pairs one vertex). W = welded positions.
+    WOVEN_STYLE (DEFAULT since C169; env GP_WOVEN_STYLE=0 for the isometric A/B): the local step as the muslin fit's (pattern_form.WOVEN:
+    (P_s + SHEAR_STIFF R) / (1 + SHEAR_STIFF), pattern x / y as the threads). WHY: the styling solve is isometric
+    (shear-stiff) on a woven fit, so its rounds take the fit's shear back as length: wf_simon's closed muslin collar
+    (right tip warp p5 -4.4 %, the fall's roll side -3 to -8 %), band ends turned, read tip crumple 0.146 vs closed
+    0.086 (the iso fit 0.101; with the turn run to convergence BOTH crumple, 0.27 / 0.28: the early stop hid it). With
+    it: tips 0.039 / 0.084 (= closed), points 147 apart (concept ~147); but the edge-stretch reads (pull / smooth
+    stops, tip stretch) counted the shear it allows: 4 test_garment_pull reds (the wobble smooth, the spike reads'
+    smooth stopping at 0 rounds, the open-by-default stretch). So every stop reads THREADS (thread_p99, C169), with
+    a shear lock at pattern_form.SHEAR_LOCK_DEG: "until it would stretch" is until a thread would stretch or the
+    weave would jam."""
 
     def __init__(self, M: dict, X: np.ndarray):
         F = np.asarray(M["F"], int)
-        uv = np.asarray(M["uv"], float)
+        uv = _thread_frames(M)  # (the pattern in its thread frame: ARAP doesn't care, WOVEN_STYLE's threads do)
         n0 = len(uv)
         par = np.arange(n0)
 
@@ -134,6 +154,13 @@ class FlatARAP:
         Lw = coo_matrix((np.r_[w, w], (np.r_[I, J], np.r_[J, I])), shape=(self.n, self.n)).tocsr()
         self.L = (diags(np.asarray(Lw.sum(1)).ravel()) - Lw).tocsr()
         self._lu = {}
+        self.shear = self.shear_free = None
+        if WOVEN_STYLE:
+            from . import pattern_form as pf_
+            if pf_.WOVEN:
+                Dm = np.stack([self.U[:, 1] - self.U[:, 0], self.U[:, 2] - self.U[:, 0]], -1)
+                self.Dinv, self.shear = np.linalg.inv(Dm), pf_.SHEAR_STIFF
+                self.shear_free = None if _SF == "off" else pf_.SHEAR_FREE if _SF == "fit" else float(_SF)
 
     def weld(self, X: np.ndarray) -> np.ndarray:
         W = np.zeros((self.n, 3))
@@ -165,6 +192,13 @@ class FlatARAP:
                 S += Wt[:, k, None, None] * (Y[WF[:, a]] - Y[WF[:, b]])[:, :, None] * (U[:, a] - U[:, b])[:, None, :]
             Uu, _, Vt = np.linalg.svd(S, full_matrices=False)
             R = Uu @ Vt  # (m, 3, 2): each face's closest orthonormal map from its pattern to its current edges
+            if self.shear is not None:  # WOVEN (the fit's cloth): warp / weft at their length, shear at its weight
+                Fg = np.stack([Y[WF[:, 1]] - Y[WF[:, 0]], Y[WF[:, 2]] - Y[WF[:, 0]]], -1) @ self.Dinv
+                Ps = Fg / np.maximum(np.linalg.norm(Fg, axis=1, keepdims=True), 1e-12)
+                sh = self.shear
+                if self.shear_free is not None:  # (undriven faces, no fixed vertex: the fit's SHEAR_FREE, C166)
+                    sh = np.where(fixed[WF].any(1), self.shear, self.shear_free)[:, None, None]
+                R = (Ps + sh * R) / (1.0 + sh)
             rhs = np.zeros((self.n, 3))
             for k, (a, b, _c) in enumerate(_HE):
                 v = Wt[:, k, None] * np.einsum("mij,mj->mi", R, U[:, a] - U[:, b])
@@ -183,9 +217,9 @@ def edge_stretch(M: dict, X: np.ndarray, pieces=None, free=None) -> np.ndarray:
     """|3D length / pattern length - 1| of every same-piece edge (on `pieces`, names or indices, when given; with
     `free`, a mask (n,), only the edges with a free vertex: held cloth can't be stretched by the move, and its own strain
     masked the read: Garrett's shirt fronts below the first button, held, carry 21-24 % p99 at the tuck and side seams,
-    so the pull's read sat at 15.5 % whatever the collar did (2026-10-22, C147). Used by the turn's "tol" stop only: as
-    the pull / smooth default it moved a known answer (the sp10 recipe's points 138 -> 121 apart) and changed nothing on
-    Garrett (his leaf is slack: the pull runs to max_move either way), so pull / smooth / relax keep the whole-piece read)."""
+    so the pull's read sat at 15.5 % whatever the collar did (2026-10-22, C147). NOT a stop any more (C169): an edge
+    across the bias lengthens when a woven shears, so the stops read thread_p99 (threads + shear apart); the turn keeps
+    the free-cloth mask (thread_faces free=), pull / smooth / relax the whole-piece read."""
     F = np.asarray(M["F"], int)
     uv = np.asarray(M["uv"], float)
     pid = np.asarray(M["piece"])
@@ -204,6 +238,84 @@ def edge_stretch(M: dict, X: np.ndarray, pieces=None, free=None) -> np.ndarray:
 def stretch_p99(M: dict, X: np.ndarray, pieces=None, free=None) -> float:
     s = edge_stretch(M, X, pieces, free)
     return float(np.percentile(s, 99)) if len(s) else 0.0
+
+
+def _thread_frames(M: dict):
+    """Per vertex-piece rest coordinates in the thread frame (weft, warp): the pattern rotated so the warp lies along
+    piece grain (M["grain"]: {piece name: deg}, default 90 = warp along the pattern's y, as pattern_form._woven_setup)."""
+    uv = np.asarray(M["uv"], float)
+    g = M.get("grain") or {}
+    if not g:
+        return uv
+    pid = np.asarray(M["piece"])
+    ga = np.radians(np.array([float(g.get(nm, 90.0)) for nm in M["names"]]))[pid]
+    warp = np.c_[np.cos(ga), np.sin(ga)]
+    weft = np.c_[np.sin(ga), -np.cos(ga)]
+    return np.c_[(uv * weft).sum(1), (uv * warp).sum(1)]
+
+
+def thread_faces(M: dict, pieces=None, free=None):
+    """The faces a thread read covers (all three vertices on one piece; on `pieces` when given; with `free`, a mask
+    (n,), only faces with a free vertex) and their rest inverses in the thread frame: (F, Dinv)."""
+    F = np.asarray(M["F"], int)
+    pid = np.asarray(M["piece"])
+    q = _thread_frames(M)
+    ok = (pid[F[:, 0]] == pid[F[:, 1]]) & (pid[F[:, 1]] == pid[F[:, 2]])
+    if pieces is not None:
+        ok &= np.isin(pid[F[:, 0]], _piece_ids(M, pieces))
+    if free is not None:
+        ok &= np.asarray(free, bool)[F].any(1)
+    F = F[ok]
+    Dm = np.stack([q[F[:, 1]] - q[F[:, 0]], q[F[:, 2]] - q[F[:, 0]]], -1)
+    good = np.abs(np.linalg.det(Dm)) > 1e-14
+    return F[good], np.linalg.inv(Dm[good])
+
+
+def thread_strain(M: dict, X: np.ndarray, pieces=None, free=None, faces=None):
+    """THREADS AND SHEAR APART (C166 / C169): per face its warp / weft strain |len - 1| (t, 2) and its shear (deg: the
+    threads' angle off 90). A woven's edge across the bias lengthens when the cloth shears without any thread
+    stretching; the threads are what stretch, the shear is limited by jamming (pattern_form.SHEAR_LOCK_DEG)."""
+    F, Dinv = thread_faces(M, pieces, free) if faces is None else faces
+    if not len(F):
+        return np.zeros((0, 2)), np.zeros(0)
+    Fg = np.stack([X[F[:, 1]] - X[F[:, 0]], X[F[:, 2]] - X[F[:, 0]]], -1) @ Dinv
+    ln = np.linalg.norm(Fg, axis=1)
+    c = np.abs((Fg[:, :, 0] * Fg[:, :, 1]).sum(1)) / np.maximum(ln[:, 0] * ln[:, 1], 1e-12)
+    return np.abs(ln - 1), np.degrees(np.arcsin(np.clip(c, 0, 1)))
+
+
+def thread_p99(M: dict, X: np.ndarray, pieces=None, free=None, faces=None):
+    """(thread strain p99 (fraction, pooled), shear p99 (deg) PER PIECE (an array, in piece order)): what every styling
+    stop reads (C169). Shear per piece because a pooled p99 hides a small piece jamming: wf_simon's points pulled open
+    took front.L's free neck cloth to shear p99 39.7 deg (and threads 15.9 %) while the pooled read (collar + stand 12k
+    faces, the fronts' free cloth 1.2k) said 20 deg."""
+    F = (thread_faces(M, pieces, free) if faces is None else faces)
+    t, sh = thread_strain(M, X, faces=F)
+    if not len(sh):
+        return 0.0, np.zeros(0)
+    pid = np.asarray(M["piece"])[F[0][:, 0]]
+    return float(np.percentile(t, 99)), np.array([float(np.percentile(sh[pid == p], 99)) for p in np.unique(pid)])
+
+
+def _stop_key(read, lock) -> float:
+    """One number to rank candidate moves by (dir "easy"): thread p99, a move past the shear lock last."""
+    return read[0] + (1.0 if _jammed(read[1], lock) else 0.0)
+
+
+def _shear_lock(sh0):
+    """The shear each piece may reach: the jamming angle; a piece already past it (a band-end turn with no tol jams the
+    fronts' free tops, 39-43 deg) may not shear further than SHEAR_LOCK_NOISE more."""
+    from . import pattern_form as pf_
+    sh0 = np.asarray(sh0, float)
+    return np.where(sh0 < pf_.SHEAR_LOCK_DEG, pf_.SHEAR_LOCK_DEG, sh0 + SHEAR_LOCK_NOISE)
+
+
+def _jammed(sh, lock) -> bool:
+    return bool(np.any(np.asarray(sh) > lock))
+
+
+def _shmax(sh) -> float:
+    return round(float(np.max(sh)), 1) if len(sh) else 0.0
 
 
 def _piece_ids(M, pieces):
@@ -438,12 +550,14 @@ def pull(M: dict, X: np.ndarray, held, handles: list[dict], body=None, step: flo
     if pieces is None:  # the pieces the pull can change: any with a free vertex
         pieces = sorted(set(np.asarray(M["piece"])[~held & ~gripped].tolist()))
     names = [list(M["names"])[p] if isinstance(p, (int, np.integer)) else p for p in pieces]
-    st = lambda W: stretch_p99(M, A.unweld(W), pieces)
+    tf = thread_faces(M, pieces)
+    st = lambda W: thread_p99(M, A.unweld(W), faces=tf)  # (threads, shear: C169)
     fx_all = fixed.copy()
     for g in groups:
         fx_all[g] = True
     Y = A.solve(Y, fx_all, relax_iters)
-    s0 = st(Y)
+    s0, sh0 = st(Y)
+    lock = _shear_lock(sh0)
     easy, base = [], []
     for h, g, w in zip(handles, groups, leads):
         d = h.get("dir", "side")
@@ -471,7 +585,7 @@ def pull(M: dict, X: np.ndarray, held, handles: list[dict], body=None, step: flo
     good, steps, stopped, least, path = Y, 0, "max_move", s0, 0.0
     while path + step <= max_move + 1e-9:
         if all(easy) and easy:
-            dirs = _easy_dir(A, good, fixed, leads, base, body, step, st, probe_iters)
+            dirs = _easy_dir(A, good, fixed, leads, base, body, step, lambda W: _stop_key(st(W), lock), probe_iters)
         tg = [t + step * d for t, d in zip(tgt, dirs)]
         T, fx = good.copy(), fixed.copy()
         for g, p0, i, w, t, tu in zip(groups, P0, li, leads, tg, turning):
@@ -496,15 +610,16 @@ def pull(M: dict, X: np.ndarray, held, handles: list[dict], body=None, step: flo
                 T2[g] = Pn + (t - Pn[i])
                 fx2[g] = True
             Yt = A.solve(T2, fx2, iters)
-        s = st(Yt)
+        s, sh = st(Yt)
         if log:
-            log(f"pull step {steps + 1}: {path * 1000 + step * 1000:.0f} mm, stretch p99 {s * 100:.2f} %")
-        confirmed = s > least + tol and confirm
+            log(f"pull step {steps + 1}: {path * 1000 + step * 1000:.0f} mm, threads p99 {s * 100:.2f} %, "
+                f"shear p99 {_shmax(sh)} deg")
+        confirmed = (s > least + tol or _jammed(sh, lock)) and confirm
         if confirmed:  # (an unconverged solve on a big move reads stretch the cloth doesn't need: the converged read
             # decides; the few-rounds state is kept, so the cloth still moves as little as it must)
-            s = st(A.solve(Yt, fx2, confirm, eps=CONVERGED))
-        if s > least + tol:
-            stopped = "stretch"
+            s, sh = st(A.solve(Yt, fx2, confirm, eps=CONVERGED))
+        if s > least + tol or _jammed(sh, lock):
+            stopped = "stretch" if s > least + tol else "shear"
             break
         good, steps, tgt, path = Yt, steps + 1, tg, path + step
         if not confirmed:  # (the least is read the same way every step: a converged read is lower)
@@ -519,7 +634,8 @@ def pull(M: dict, X: np.ndarray, held, handles: list[dict], body=None, step: flo
                          for h, w, p0, i in zip(handles, leads, P0, li)},
             "path_mm": round(path * 1000, 1),
             "stretch_p99_start": round(s0 * 100, 2), "stretch_p99_least": round(least * 100, 2),
-            "stretch_p99_end": round(stretch_p99(M, Xn, pieces) * 100, 2), "steps": steps,
+            "stretch_p99_end": round(thread_p99(M, Xn, faces=tf)[0] * 100, 2), "steps": steps,
+            "shear_p99_deg": [_shmax(sh0), _shmax(thread_p99(M, Xn, faces=tf)[1])], "shear_lock_deg": _shmax(lock),
             "step_mm": step * 1000, "tol_pct": tol * 100, "stopped": stopped,
             "gripped": {str(h["at"]): int(len(vs)) for h, (vs, _) in zip(handles, grips)},
             "dirs": {str(h["at"]): np.round(d, 3).tolist() for h, d in zip(handles, dirs)}, "pieces": names}
@@ -575,9 +691,11 @@ def smooth(M: dict, X: np.ndarray, held, pieces, lam: float = 0.5, iters: int = 
     sp = stretch_pieces  # (default: the pull's read, every piece with free cloth: one rule for both operations)
     if sp is None:
         sp = sorted(set(np.asarray(M["piece"])[~held].tolist()))
-    st = lambda W: stretch_p99(M, A.unweld(W), sp)
+    tf = thread_faces(M, sp)
+    st = lambda W: thread_p99(M, A.unweld(W), faces=tf)  # (threads, shear: C169)
     free = ~keep
-    s0 = least = st(Y)
+    s0, sh0 = st(Y)
+    least, lock = s0, _shear_lock(sh0)
     r0 = rr = float(np.percentile(normal_offset(Y)[1][free], 95))
     k = 0
     for k in range(1, rounds + 1):
@@ -586,15 +704,16 @@ def smooth(M: dict, X: np.ndarray, held, pieces, lam: float = 0.5, iters: int = 
         T[free] += lam * mv[free]
         Yt = A.solve(T, keep, iters)
         rt = float(np.percentile(normal_offset(Yt)[1][free], 95))
-        s = st(Yt)
-        if s > least + tol or rt > rr * 0.995:
+        s, sh = st(Yt)
+        if s > least + tol or _jammed(sh, lock) or rt > rr * 0.995:
             k -= 1
             break
         Y, rr, least = Yt, rt, min(least, s)
     Xn = A.unweld(Y)
     Xn[held] = X[held]
     return Xn, {"rounds": k, "rough_p95_mm": [round(r0 * 1000, 3), round(rr * 1000, 3)],
-                "stretch_p99": [round(s0 * 100, 2), round(st(Y) * 100, 2)], "pieces": list(pieces),
+                "stretch_p99": [round(s0 * 100, 2), round(st(Y)[0] * 100, 2)],
+                "shear_p99_deg": [_shmax(sh0), _shmax(st(Y)[1])], "pieces": list(pieces),
                 **({"near": list(near) if isinstance(near, (list, tuple)) else [near], "radius": radius} if near is not None else {})}
 
 
@@ -638,8 +757,10 @@ def smooth_border(M: dict, X: np.ndarray, held, border: str, spline: int = 10, l
     sp = stretch_pieces
     if sp is None:
         sp = sorted(set(np.asarray(M["piece"])[~held].tolist()))
-    st = lambda W: stretch_p99(M, A.unweld(W), sp)
-    s0 = least = st(Y)
+    tf = thread_faces(M, sp)
+    st = lambda W: thread_p99(M, A.unweld(W), faces=tf)  # (threads, shear: C169)
+    s0, sh0 = st(Y)
+    least, lock = s0, _shear_lock(sh0)
     k0 = kk = _kink3d(Y[chw], win)
     r = 0
     for r in range(1, rounds + 1):
@@ -651,15 +772,16 @@ def smooth_border(M: dict, X: np.ndarray, held, border: str, spline: int = 10, l
         T[chw[mov]] = p[mov] + lam * (fit[mov] - p[mov])
         fx[chw[mov]] = True
         Yt = A.solve(T, fx, iters)
-        kt, sn = _kink3d(Yt[chw], win), st(Yt)
-        if sn > least + tol or kt > kk - 0.2:
+        kt, (sn, sh) = _kink3d(Yt[chw], win), st(Yt)
+        if sn > least + tol or _jammed(sh, lock) or kt > kk - 0.2:
             r -= 1
             break
         Y, kk, least = Yt, kt, min(least, sn)
     Xn = A.unweld(Y)
     Xn[held] = X[held]
     return Xn, {"rounds": r, "kink_deg": [round(k0, 1), round(kk, 1)],
-                "stretch_p99": [round(s0 * 100, 2), round(st(Y) * 100, 2)], "border": border}
+                "stretch_p99": [round(s0 * 100, 2), round(st(Y)[0] * 100, 2)],
+                "shear_p99_deg": [_shmax(sh0), _shmax(st(Y)[1])], "border": border}
 
 
 def style(M: dict, X: np.ndarray, held, ops: list[dict], body=None, log=None):
@@ -775,10 +897,12 @@ def relax(M: dict, X: np.ndarray, held, iters: int = HOLD_ITERS):
     held = _mask(held, len(X))
     A = FlatARAP(M, X)
     sp = sorted(set(np.asarray(M["piece"])[~held].tolist()))
-    s0 = stretch_p99(M, X, sp)
+    tf = thread_faces(M, sp)
+    (s0, sh0) = thread_p99(M, X, faces=tf)
     Xn = A.unweld(A.solve(A.weld(X), A.welded_mask(held), iters))
     Xn[held] = X[held]
-    return Xn, {"stretch_p99": [round(s0 * 100, 2), round(stretch_p99(M, Xn, sp) * 100, 2)]}
+    s1, sh1 = thread_p99(M, Xn, faces=tf)
+    return Xn, {"stretch_p99": [round(s0 * 100, 2), round(s1 * 100, 2)], "shear_p99_deg": [_shmax(sh0), _shmax(sh1)]}
 
 
 def _ring_angle(M: dict, X: np.ndarray, pieces, of: str = "back", center=None) -> np.ndarray:
@@ -883,8 +1007,18 @@ def tip_read(M: dict, X: np.ndarray, point, near: float = 0.015, mid: float = 0.
     md = on & (np.abs(d - mid) < 0.005)
     a, b = vn[nr].mean(0), vn[md].mean(0)
     tw = np.degrees(np.arccos(np.clip(abs(a @ b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-12), -1, 1)))
+    # THREADS AND SHEAR APART (C166 / C168): on the woven fit an edge on the bias lengthens when the cloth shears; the
+    # threads (pattern x / y: the grain of a piece cut on it) are what stretch
+    Fn = F[nr[F].all(1)]
+    Dm = np.stack([uv[Fn[:, 1]] - uv[Fn[:, 0]], uv[Fn[:, 2]] - uv[Fn[:, 0]]], -1)
+    okf = np.abs(np.linalg.det(Dm)) > 1e-14
+    Fg = np.stack([X[Fn[okf, 1]] - X[Fn[okf, 0]], X[Fn[okf, 2]] - X[Fn[okf, 0]]], -1) @ np.linalg.inv(Dm[okf])
+    ln = np.linalg.norm(Fg, axis=1)
+    sh = np.degrees(np.arcsin(np.clip(np.abs((Fg[:, :, 0] * Fg[:, :, 1]).sum(1)) / np.maximum(ln[:, 0] * ln[:, 1], 1e-12), 0, 1)))
     return {"crumple_p95_mm": round(float(np.percentile(lap[nr], 95)), 3),
-            "stretch_max_pct": round(float(stv[en].max()), 1), "twist_deg": round(float(tw), 1)}
+            "stretch_max_pct": round(float(stv[en].max()), 1), "twist_deg": round(float(tw), 1),
+            "thread_max_pct": round(float(np.abs(ln - 1).max() * 100), 1) if len(ln) else 0.0,
+            "shear_max_deg": round(float(sh.max()), 1) if len(sh) else 0.0}
 
 
 def folded(M: dict, X: np.ndarray, point, radius: float = 0.025, deg: float = 120.0) -> int:
@@ -990,8 +1124,10 @@ def turn(M: dict, X: np.ndarray, held, turns: list[dict], body=None, steps: int 
         free = ~A.unweld(fixed)
         pieces = sorted(set(np.asarray(M["piece"])[free].tolist()))
     Y = A.solve(Y, fixed, relax_iters)
-    st = lambda W: stretch_p99(M, A.unweld(W), pieces, ~held)
-    s0 = least = st(Y)
+    tf = thread_faces(M, pieces, ~held)
+    st = lambda W: thread_p99(M, A.unweld(W), faces=tf)  # (threads, shear: C169)
+    s0, sh0 = st(Y)
+    least, lock = s0, _shear_lock(sh0)
     done, stopped = 0, "deg"
     for k in range(1, steps + 1):
         T = Y.copy()
@@ -999,21 +1135,24 @@ def turn(M: dict, X: np.ndarray, held, turns: list[dict], body=None, steps: int 
             T[g] = a + _rodrigues(p0 - a, ax, th * k / steps)
         Yk = A.solve(T, fixed, iters)
         if tol is not None:
-            s = st(Yk)
+            s, sh = st(Yk)
             if log:
-                log(f"turn step {k}: {abs(np.degrees(plan[0][3])) * k / steps:.0f} deg, stretch p99 {s * 100:.2f} %")
-            confirmed = s > least + tol and confirm
+                log(f"turn step {k}: {abs(np.degrees(plan[0][3])) * k / steps:.0f} deg, threads p99 {s * 100:.2f} %, "
+                    f"shear p99 {_shmax(sh)} deg")
+            confirmed = (s > least + tol or _jammed(sh, lock)) and confirm
             if confirmed:
-                s = st(A.solve(Yk, fixed, confirm, eps=CONVERGED))
-            if s > least + tol:
-                stopped = "stretch"
+                s, sh = st(A.solve(Yk, fixed, confirm, eps=CONVERGED))
+            if s > least + tol or _jammed(sh, lock):
+                stopped = "stretch" if s > least + tol else "shear"
                 break
             if not confirmed:
                 least = min(least, s)
         Y, done = Yk, k
     Xn = A.unweld(Y)
     Xn[held] = X[held]
-    info = {"stretch_p99_start": round(s0 * 100, 2), "stretch_p99_end": round(st(A.weld(Xn)) * 100, 2),
+    s1, sh1 = st(A.weld(Xn))
+    info = {"stretch_p99_start": round(s0 * 100, 2), "stretch_p99_end": round(s1 * 100, 2),
+            "shear_p99_deg": [_shmax(sh0), _shmax(sh1)],
             "deg_turned": [round(float(abs(np.degrees(th))) * done / steps, 1) for _g, _a, _x, th, _p, _s in plan],
             "stopped": stopped,
             "turns": {str(t["at"]): {"sense": s, "moved_mm": round(float(np.linalg.norm(Y[g].mean(0) - p0.mean(0)))
@@ -1085,20 +1224,29 @@ def edge_turns(M: dict, X: np.ndarray, piece: str, mid: str, end: str, center=No
     if center is not None:
         cc = X[pid == _piece_ids(M, [center])[0]][:, :2].mean(0)
         ang = np.degrees(np.arctan2(X[o, 0] - cc[0], X[o, 1] - cc[1]))
+    def turn_at(i, w):
+        a = np.searchsorted(arc, arc[i] - w / 2)
+        b = np.searchsorted(arc, arc[i] + w / 2) - 1
+        if a >= i or b <= i:
+            return None
+        d1, d2 = yz[i] - yz[a], yz[b] - yz[i]
+        return float(np.degrees(np.arccos(np.clip(d1 @ d2 / (np.linalg.norm(d1) * np.linalg.norm(d2) + 1e-12), -1, 1))))
+    # KINK = THE TURN NOT EXPLAINED BY THE EDGE'S OWN BEND (muslin default, C168): an arc turns twice as much over twice
+    # the window, a crease turns as much; so the kink at a vertex is its turn over `window` less half its turn over
+    # 2 x `window` (an arc: 0; a crease of c deg: c / 2). A collar edge bending down to its point turns 20-23 deg per
+    # 15 mm there and is one swoop; a hard hold border creases it
     turns = []
     for i in range(len(o)):
-        a = np.searchsorted(arc, arc[i] - window / 2)
-        b = np.searchsorted(arc, arc[i] + window / 2) - 1
-        if a >= i or b <= i:
+        t, t2 = turn_at(i, window), turn_at(i, 2 * window)
+        if t is None or t2 is None:
             continue
-        d1, d2 = yz[i] - yz[a], yz[b] - yz[i]
-        t = np.degrees(np.arccos(np.clip(d1 @ d2 / (np.linalg.norm(d1) * np.linalg.norm(d2) + 1e-12), -1, 1)))
-        turns.append((t, ang[i]))
+        turns.append((t, ang[i], t - t2 / 2))
     turns = np.array(turns)
     turns = turns[(np.abs(turns[:, 1]) < np.abs(ang[-1]) - skip_deg) & (np.abs(turns[:, 1]) >= min_deg)]
-    j = int(np.argmax(turns[:, 0]))
+    j, k_ = int(np.argmax(turns[:, 0])), int(np.argmax(turns[:, 2]))
     return {"max_turn_deg": round(float(turns[j, 0]), 1), "at_deg": round(float(turns[j, 1]), 1),
-            "p50_deg": round(float(np.median(turns[:, 0])), 1)}
+            "p50_deg": round(float(np.median(turns[:, 0])), 1),
+            "kink_deg": round(float(turns[k_, 2]), 1), "kink_at_deg": round(float(turns[k_, 1]), 1)}
 
 
 def ops_pieces(M: dict, ops: list[dict]) -> list:

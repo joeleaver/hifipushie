@@ -10228,3 +10228,117 @@ it all round (the tube is gone). r29b is WORSE than r28h overall: the lapels are
 size, but their turned edges are wavy and ridged, a rope-like fold runs down each front edge through the belly band
 (belly_r28hc_r29bc.png: r28h's fronts are smoother), the hem corners curl / look ragged, and the R front is pulled in.
 Not kept. r29a (no lapel pins) is the candidate base; not rendered this round. Handover at ~95 tool calls.
+
+## muslin default landed (2026-10-22, branch claude/muslin-default; files /mnt/data/hifipushie/muslin_default)
+Joe's brief change mid-session: "checking against the current clothes makes no sense, the current ones are pretty
+bad": NO holds (garment_kb fit_holds empty; mechanism kept + tested), no "bit-identical / no worse than gc1" pass
+conditions; looks judged beside the REFERENCE only (C165).
+- (b) REAL DEFECT, fixed in the fit (C166): WOVEN's shear weight (SHEAR_STIFF 0.011) takes a shear back by s / (1 + s)
+  = 1.1 % a round, so a transient's shear outlived the rounds. Two terms: SHEAR_FREE (1.0) on FIT triangles with no
+  DRIVEN vertex (touching the form: d < offset + FREE_REACH 3 mm; a pin; the garment under / over; a flap's base; the
+  body ATTRACTION is not an obstacle) and free flaps keep their ARAP cells; SHEAR_RAMP: each relax eases the driven
+  weight geometrically SHEAR_FREE -> SHEAR_STIFF over its first half (driven shear rebuilds in a few rounds: P_s keeps
+  any angle; undriven decays). Evidence: free diagonal fold edge stretch 11.4 % -> 0.006 %; run-off fold 27.7 -> 23.9
+  deg (iso 23.5; free flaps woven alone opened it 18 -> 24 deg all along); shoulder-collar KAT's developable bodice
+  shear p99 31.8 deg at 120 rounds vs 4.0 at 480 (unconverged) -> 7.7 at 120 with the ramp.
+- Honesty kept on Garrett (corner.py; faces <= 30 mm of the hps points vs the sleeves as control): threads p95 6.0 %
+  (max 55 %, 11 % of faces > 3 %) vs control 1.6 %; the probe (kn_g, no restoring) 4.7 % vs 1.4. Shear at the corner
+  max 69 deg in both; the probe's sleeves read shear p95 20 deg (artefact), now 7. misfit.py m1: standing > 20 mm off
+  4.1 % (probe 0.1 %: the probe's shear shrink-wrapped the ease), side seam gaps max 14.4 mm (probe 18.6): the hips
+  misfit still shows.
+- (a) principal / edge strain read as stretch: rewritten to THREAD strain (info grain_stretch_pct) + shear apart
+  (info shear_deg <= pf.SHEAR_LOCK_DEG 35, a woven's jamming angle): two-panel sleeve (now passes either way: principal
+  2.9 %, threads 1.2 %, shear p99 2.6), open front (edge 3.8 % = bias; threads 1.8), bridge tube (edge 13.9; threads
+  2.8, shear p99 19 at the hourglass waist). Diagonal fold: was (b), passes with the fix (0.006 %).
+- Bridge cup ratio rewritten to the mechanism (stiff cup >= 5 mm less than soft; >= 15 mm further off under the
+  seat): woven soft tube can't trellis into the hollow as the iso one was drawn (cup 26 vs iso 29); stiff 17.6 / soft
+  26.1, under-seat +22 mm. (The 0.65 ratio was the iso fit's 17 : 29.)
+- (c) test_neck_point_on_hps rewritten (C167): the lone panel started 129 mm off (not 30: placement_error), round the
+  shoulder edge; the old hard pin landed it (0.5 mm) by stretching threads p99 58 %, max 151 %; the soft pin stops
+  31 mm short at 19 %. New KAT: a reachable panel slid 30 mm round the neck lands within 0.25 mm (threads 1.5 %); the
+  lone panel: hard pin there only by stretch, soft pin > 10 mm short at < half the thread strain.
+- test_woven_fit_shears_a_held_sheet_instead_of_stretching rewritten: driven (SHEAR_FREE = SHEAR_STIFF) keeps 12.2
+  deg of a placed 20 deg shear; FREE relaxes square (0.0) as the iso fit does.
+- (d) collar KATs: the muslin fit was WRONG (unconverged transient shear in the bodice cone), fixed by SHEAR_RAMP:
+  sprung fall turned 170.0 (>= 170; iso 171.5; 480 rounds 168.8: tight), shallow fall drop 7.2 (want 6.4), out 14.1
+  (<= 17.4). Unchanged tests.
+- Suite (17 files, slot/capped, -rs): 2 failed, 277 passed, 4 xfailed, pytest exit 1 (full1.log). Left, both
+  test_garment_pull on the spike v1 fit of wf_simon (old style variants y3 / sp10, not the photo / trace KAT, which
+  PASSES every row: leaf front edge 47 in 25-48, points apart no longer fail): (1) points_pulled_open: RIGHT tip
+  crumple 0.146 vs closed 0.086 + 0.05 (twist 69 vs 34): a real rule (styling must not crumple a tip) -> find whether
+  the pull's stretch stop (edge strain, counts shear) or the fit's tip shear causes it; (2) hugs_the_neck: edge kink
+  max 23.2 vs <= 22 (left 19.4; f2 20, planted fault 29): an old-result margin; rewrite to a rule that still catches
+  the 29 deg hard border, or restyle. Not loosened.
+- Corner hps (Garrett shirt, muslin fit, greads.py): crest 66 -> 14 deg PASS, bump 15.7 -> 9.3 mm (closed) / 10.6
+  (styled) still FAIL (<= 8: the front pillow), throat closes (V bottom 48 -> 18 mm below its hps, corners 0.36 ->
+  0.23 / neck), points 51 below hps (concept 50-61) and 140 apart (147 +-20). NOT flipped (measure_defs.HPS_CORNER
+  stays False): the pillow persists on the muslin fit. Which hps the concept's reads hang from is open.
+- Looks ($M = /mnt/data/hifipushie/muslin_default): simon_closed_sheet.png, simon_styled_sheet.png (photo | trace |
+  clay | diag): open, points spread, but the leaves lie flatter / wider than the photo's and the V is shallow (fronts
+  overlap; photo's V runs to the 2nd button); the render frame is cropped narrow (box needs widening in cloth.render).
+  jacket_m1_sheet.png INVALID as a look: rendered the shirt UNPRESSED under a jacket fitted over the pressed shirt (shirt
+  pokes through everywhere); jfit.py must save the pressed under. on_form can't fit gc_garrett's jacket (model_body
+  needs the shirt's SIM: under_missing; the form fit shouldn't); jfit.py places it without.
+
+## muslin default, the last reds + the jacket's form under layer (2026-10-22, branch claude/muslin-default; files /mnt/data/hifipushie/muslin_default/p1)
+- (b) EDGE KINK restated (C168): edge_turns kink_deg = turn over 15 mm less half the turn over 30 mm (arc 0, crease c -> c / 2).
+  kink.py / kink2.py on the woven fit (iso in brackets): closed 3.6 / 4.0 (5.1 / 4.4); test 3 6.4 / 6.3 (2.9 / 5.2) where the
+  max turn is 19.4 / 23.2 (the leaf bending down to its point, ~120 deg from CB, there with or without the border smooth);
+  q40's hard 110 deg border, rebuilt on this fit, is NOT a clean fault any more (max turn 26.8 / 14.4; iso 14.1 / 16.2:
+  under the old 22 on iso); planted creases (plant_crease: the collar past +-90 deg turned in the side plane) 10 / 15 /
+  20 / 29 deg -> kink 7.4-10.3 / 11.2-15.2 / 14.9-19.9 / 21.3-27.5. Limit 8; the test plants a 20 deg crease each side
+  and asserts it fails.
+- (a) RIGHT TIP CRUMPLE, cause found, NOT fixed (C168 (4)). tips.py / tips2.py / relax.py / turnit.py: the crumple is
+  put in by the band-end TURN (closed 0.086 -> 0.146; the pull's turning grip then carries the patch rigidly, the
+  smooth can't reach it: held), not the relax (0.090), not the grip size (area turn 0.146), not the ramp (SHEAR_RAMP 0:
+  0.156). The closed woven tip's warp is COMPRESSED (p5 -4.4 %; iso -3.2; SHEAR_FREE off -2.1); the collar's roll side
+  -3..-8 % on every fit. Turn rounds: 6 x 20 -> 0.146, 6 x 80 -> 0.234, 6 x 300 -> 0.276 (iso 0.101 / 0.203 / 0.271):
+  the isometric styling solve gives the fit's shear / eased length back as buckles; the iso fit passed by early stop.
+  Tried: renormalised woven targets (no change: shear ~2 deg there), SHEAR_FREE 0.1 / 0.3 (PASS 0.112 / FAIL 0.132:
+  noise-level), SHEAR_YIELD 0.001-0.01 (PASS 0.109-0.112; 0.02 FAIL) but test_pattern_form + garment_pull: 5 reds
+  (points 156 apart, run-off fold, break step 2.6 mm, open-collar reads; pfy.log); a smooth that brushes pulled patches
+  (worse: 0.217 / 0.326, threads 9 %; reverted); garment_pull.WOVEN_STYLE (the fit's local step in the styling solve):
+  tips 0.039 / 0.084 = closed, points 147.5 apart, 62.6 / 58.5 below hps, but 4 reds (the wobble smooth, test 2's
+  smooth stops at 0 rounds, mirrored below 3.8 mm, open-by-default stretch: the stops read EDGE stretch, which counts
+  the shear it allows; gp2.log). Both opt-in, back to known good. NEXT: the pull / turn / smooth stops read as THREADS
+  (C166), then WOVEN_STYLE on.
+- tip_read now gives thread_max_pct + shear_max_deg; the tests' tip / band-corner "stretch" asserts read threads (C166).
+- JACKET LOOK PATH (C168): on_form's layered branch styles the under garment's form fit as worn (under_as_worn: the
+  wear's style ops, as fit_garment), passes it to cloth.model_body(under=) (placed on the body padded by it, drafted
+  over it, its worn body without neck pieces), then presses it for the assemble: no sim, no pin, no under_missing.
+  gc_garrett jacket CLOSED (jon.py, 494 s): woven, threads p50 0.58 / p99 8.9 %, shear p99 27.7, sew gap 0.04 mm;
+  the shirt's style ran 9 ops. Sheet $M/jacket_jon1_sheet.png (concept | clay | diag, front / 3/4 / side).
+  VERDICT (blunt): reads as a jacket over a shirt that now lies under it (show-through at the shoulder points / elbow
+  is the hidden under layer, C153), but NOT the concept: a long straight boxy coat. The fronts lap straight to the hem
+  (concept: cut away below the button, quarters open), the V closes high (mid-chest; concept's button at the waist,
+  long open V), lapels narrow with no clear notch (concept: wide notched lapels), no waist suppression, soft sloping
+  shoulders (concept: square, built), the collar stands up the neck in the side view instead of lying on it.
+
+## muslin default, styling stops read threads (2026-10-22, branch claude/muslin-default; files /mnt/data/hifipushie/muslin_default/p3)
+- Every styling stop now reads THREADS (C169): garment_pull.thread_p99 = pooled p99 of warp / weft |len - 1| (each face's
+  gradient in its thread frame: pattern x / y on grain, M["grain"] honoured if given, as tip_read / the fit's
+  grain_stretch_pct) + shear p99 PER PIECE, locked at pattern_form.SHEAR_LOCK_DEG 35 (a piece already past it: +1 deg,
+  SHEAR_LOCK_NOISE). pull / turn tol / smooth / smooth_border stop on either ("stretch" | "shear"); relax and dir "easy"
+  read the same; MCP style text says threads + shear. edge_stretch / stretch_p99 kept as reads, not stops.
+- Probes (t3.py on the test v1 fit; wobble.py): all-faces SHEAR_STIFF woven styling (the old WOVEN_STYLE) trellises free
+  cloth: wobble smooth kink 38.7 -> 29.1 (stalls; end-zone wobble kept), test 2 points 158 apart (concept 147 +- 7),
+  test 3 159, collar shear p99 22 deg; tips clean (0.039 / 0.084). Free-face reads (C147's turn mask) for pull / smooth:
+  test 2 158 / test 3 136. Per-piece THREAD read: the band-end turn (no tol, the old recipes) leaves front.L's free top
+  at threads p99 16-41 %, the pull then never stops by threads (66 mm). Pooled threads + per-piece shear, with a
+  start-relative lock and no noise margin: test 3 pull 0 mm (39.5 -> 39.7 read noise).
+- KEPT: WOVEN_STYLE on, with the fit's SHEAR_FREE on undriven faces (no fixed vertex), i.e. the fit's own local step
+  (C166; env GP_STYLE_SHEAR_FREE=off for the A/B): wobble 38.7 -> 14.1 (iso 13.2); test 2 151.2 apart, below 61 / 58,
+  tips 0.053 / 0.131 (closed 0.038 / 0.086, limit +0.05), collar shear p99 4.2; test 3 153.5, below 74.0 / 71.4, tips
+  0.066 / 0.146 (limit +0.06: at it), kink 7.8 / 6.5 (<= 8).
+- Rewritten (encoded the edge read / one old result): open-by-default edge p99 <= 7 % -> threads p99 <= 7 % and every
+  piece's shear under the lock (planted: the collar grown 10 % fails); buttons "tops part > 20 mm at tol 1.0" -> the free
+  corner dragged in-plane jams at 15 mm (shear p99 36.5; isometric ran 30 mm): stopped by shear / max_move, > 10 mm;
+  test 3 points apart 130-150 (sp10 / f2's 137) -> the concept band 140-154 as test 2 (turned-only collar 66.8 fails).
+- Suite (17 files, capped, -rs): 280 passed, 4 xfailed, 0 skipped, pytest exit 0 (p3/s1.log, 20 min). C162 ENFORCED.
+- LOOK p3/simon_styled_sheet.png (photo | trace | clay | diag; repo-default muslin fit s_m1, worn_style): open-collar rows
+  all PASS (corners 0.47, tips 1.05, V 55 deg, V depth 0.19, leaf edge 48 = the range's top, tip crumple 0.187 vs closed
+  0.03-0.07). VERDICT (blunt): NOT the photo. Points spread and the leaves turn out, but the fronts still overlap up to
+  the throat: no open V of skin (photo / trace: a deep V to the 2nd button); the leaves are small and lie flat / wide
+  where the photo's stand tall round the neck; a dent at the left stand. The sheet isn't scale-matched (references are
+  tight neck crops, the clay shows the torso): crop the render to the neck next time.
+- NEXT: coordinator lands; then the V depth (the fronts' top opening) on the muslin fit.

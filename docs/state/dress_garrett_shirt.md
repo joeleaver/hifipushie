@@ -15,8 +15,11 @@ MUSLIN TEST (C161; notes cloth.md "stiff-thread muslin test"): refitted with thr
 red is the fit's own; REAL misfits on Garrett: the yoke corner at the neck point (threads p95 8 %, shear 47 deg) and
 the hips (side seams 4-19 mm open). Straightening (r3b) can't fix the lump: it is the relaxed shape. NEXT (Joe): a
 muslin gate, then the two misfits as pattern alterations; maps $G/r3/mapn_garrett_sheet.png, mapn_simon_sheet.png.
-MUSLIN DEFAULT (C162, Joe's direction): tried as THE fit (5aed0492, branch claude/cool-chaum-8e917e, NOT on main):
-gc1 held bit-identical; 11 garment tests fail, causes (a)-(e) in cloth.md. NEXT: fix (a)-(e), then flip the default.
+MUSLIN DEFAULT (C162 ENFORCED; branch claude/muslin-default, NOT landed: coordinator lands; C165-C169): no holds; styling
+solve = the fit's woven cloth (WOVEN_STYLE on, SHEAR_FREE undriven); stops read threads + per-piece shear lock 35 (C169).
+17 files exit 0: 280 passed, 4 xfailed ($M/p3/s1.log). Look $M/p3/simon_styled_sheet.png: rows pass, but the V is
+shallow (fronts overlap to the throat; photo's V to the 2nd button), leaves small / flat. NEXT: land; then V depth. Jacket
+on the muslin fit ($M/jacket_jon1_sheet.png): boxy, fronts lap to hem, high V, narrow lapels: NOT the concept.
 
 ROUND 2 (branch claude/garrett-collar-lump, files $G/r2): Joe approved gc1's throat / V / points / button; the one fault
 is the LUMP under the fall's outer edge (side view). MEASURED: the shoulder seam (front | yoke) within 50 mm of the neck
@@ -32,7 +35,6 @@ parked HPS research). Sheets: $G/r2/lump_side_gc1_vs_hb.png, hb_styled_sheet.png
 ROUND 1 STATE: crumple FIXED on Garrett (collar crumple .37 -> .23, tips clean, 0 folded), button 1 held, concept's first
 button (85.9 vs 83). NOT fixed: the throat stays closed (band corners 0.20 x neck vs concept 0.69) and the leaves
 splay (front edge 51 deg vs 27-34, points 73-75 below HPS vs 50-61). wf_simon unchanged (every open-collar row PASS).
-NEXT: open Garrett's throat without stretch (see "Next fault"); then a blind review of gc1 vs the concept / trace.
 
 Branch claude/garrett-collar (from claude/probe-garrett). $G = /mnt/data/hifipushie/garrett_collar (scripts + sheets).
 Workspace model gc_garrett = pg_garrett (probe: sh_garrett v19 minus its open-neck fold) + three garment edits, each
@@ -52,8 +54,6 @@ with a *_source key: closures front first 0.043 from cfNeck (concept 83 below HP
 - V below HPS (big_reads): 60 | 122 | 47           -- 212.6 | 212.6 (big_reads V on wf is the gap rule's, suspect)
 - Points apart: 147 +-20 | 176 | 154               -- 179 | 179
 - Points below HPS 50-61: | 59 / 66 | 73 / 75      -- 68 / 67 | 68 / 67
-- First done button: 83 | 203 (b1 8.7 open) | 85.9 -- 131.8 | 131.8 (gap 0)
-- Open rows FAIL on gc1: corners .20 (.4-.75), V depth below tips -.15, leaf front edge 51 (25-48), edge turn 59 (32).
 
 ## Commands ($G/r3; run.sh = this worktree's code under capped)
 fit.sh <tag> [ENV=..] (closed fit of gc_garrett, MODEL=wf_simon, G_EDIT='{garment edits}', e.g. {"hps": "corner"});
