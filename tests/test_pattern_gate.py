@@ -329,7 +329,7 @@ def test_shoulder_seam_follows_the_chord_slope_for_a_shirt():
 
 
 def test_release_job_refuses_another_patterns_gate_keys(monkeypatch, tmp_path):
-    """C161 (garrett jacket fit round 29): a release job carries ITS pattern's gate keys. Rounds 25-28 wrote round
+    """C164 (garrett jacket fit round 29): a release job carries ITS pattern's gate keys. Rounds 25-28 wrote round
     19's keys into every job, so run_zozo checked an older pattern's PASS record."""
     import pytest
     from hifipushie import cloth_job, cloth_release

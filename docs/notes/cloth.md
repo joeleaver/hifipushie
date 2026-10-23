@@ -10067,15 +10067,15 @@ a 36 mm shirt collar, not the neckline. Lever: R16's roll line at CB (stand = ro
 COLLAR_ROLL 20 (r29c20): jacket top 38 / 32 / 19, shirt shows 14 / 14 / 14 (tell 10-20, all three PASS), jacket p99
 11.0 -> 14.3 %. COLLAR_ROLL 16 (r29c16): CB top stays 38 (the fall wraps the shirt collar's top), side fall 1-11 (no
 longer covers the stand's seam at the side): worse. KEPT roll 20 mm. R16's 25-30 mm is a jacket over a ~45 mm shirt
-collar; gc1's is 36: waived by name in the gate (waive29.json), ledger row C160.
+collar; gc1's is 36: waived by name in the gate (waive29.json), ledger row C163.
 Step 2, the pattern + gate. Combined pattern r29p1 = COLLAR_ROLL 20 + CUTAWAY {"angle_deg": 10, "start": 0.2,
 "end": 0.55} (flatcut29.py, edge cut back from its line at mm below the neck point: Jaeger's default 2.5 deg: 600 1 /
 650 4 / 700 7 / 750 12 / 790 27; r29p1: 7 / 16 / 26 / 39 / 62, the concept's ~65 at the hem). Closed fit r29p1: jacket
 p99 15.7 % (base 11.0); collar CB 39 / az45 30 / side 5 (the side lay lower than r29c20's 19: the fit isn't stable at
 the side). Gate (gate29.py: needs job29's env LAPEL_W / ROLL_R / SLEEVE_OVER and pj.STAND_RUN_OFF, else another
 pattern hash): r29base PASS_WAIVED (daaf6c1a); r29p1 PASS_WAIVED abfa0f45 (= the placed keys) with named waivers
-front_cutaway_angle (10 vs Jaeger 2.5), collar_stand / collar_stand_cb (C160), notch (angle 57.9 vs 60-90, came with
-the 20 mm roll; base passes). C161: rounds 25-28's releases carried round 19's gate keys (g25.py): fixed in
+front_cutaway_angle (10 vs Jaeger 2.5), collar_stand / collar_stand_cb (C163), notch (angle 57.9 vs 60-90, came with
+the 20 mm roll; base passes). C164: rounds 25-28's releases carried round 19's gate keys (g25.py): fixed in
 cloth_release.write (refuses another pattern's keys) + g29.py uses the placed pattern's keys.
 Lapel / V read (lapel29.py, m10 rows 100-300): the narrow V is NOT the lapel's width. Released r28h: outer 137 / 126 /
 110 / 82 / 58 / 43 at 100 / 120 / 150 / 200 / 250 / 300 vs the concept 148 at 93, 127 at 148, 110 at 261, 87 at 341;
@@ -10101,3 +10101,8 @@ r29b = r29a + lapel=1 (lapel edge pinned out to the concept's front-view edge): 
 wider lapel. Costs: R side: edge 44 / 54 / 73 (L 64 / 71 / 97), side line R 40 at -475 (FAIL), lapel.R through its base
 share 0.18 (FAIL; L 0.03); crumple 11.5 / 10.5 (tilt 50 / 47); the lapel pins end 67-79 mm off their targets (soft
 pull: they set the direction, not the place). Collar unchanged (held). stretch p99 14.6 both.
+Look (my own, ref | clay | diag, r29bc vs r28hc): the collar now sits on the shirt collar with the shirt showing above
+it all round (the tube is gone). r29b is WORSE than r28h overall: the lapels are wider and read like the concept's in
+size, but their turned edges are wavy and ridged, a rope-like fold runs down each front edge through the belly band
+(belly_r28hc_r29bc.png: r28h's fronts are smoother), the hem corners curl / look ragged, and the R front is pulled in.
+Not kept. r29a (no lapel pins) is the candidate base; not rendered this round. Handover at ~95 tool calls.
