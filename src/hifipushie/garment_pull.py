@@ -116,7 +116,8 @@ def layer_floor(M: dict, X: np.ndarray, body=None, under=None, gap: float | None
     is stitched to. Pass the list as style(..., floor=...): after every solve round, a free vertex that went nearer a
     floor than min(gap, its start distance) is put back on it along the floor's normal (oriented off the body).
     Returns [{"v", "level", "surf" | ("bv", "bF"), "reach", "ref", "name"}]: floors with no body are oriented by their
-    own centroid. A vertex not over a floor at the start gets the gap (it may slide over it)."""
+    own centroid. A vertex not over the body / under garment at the start gets the gap (it may slide over it); a flap
+    or patch vertex not over its base at the start has no floor (it is sewn to that base and doesn't slide)."""
     from . import pattern_form as pf_, folds as fm_
     from .cloth_made import outward
     X = np.asarray(X, float)
@@ -131,10 +132,13 @@ def layer_floor(M: dict, X: np.ndarray, body=None, under=None, gap: float | None
         e = np.linalg.norm(V[Fs[:, 0]] - V[Fs[:, 1]], axis=1)
         return FLOOR_REACH * float(np.median(e)) if len(e) else 0.0
 
-    def level(d, dist, tang, rch):
+    def level(d, dist, tang, rch, slides=True):
         # (a vertex over its floor at the start keeps min(gap, how far off it stood): one that started through is never
-        # pushed out; one not over it yet (it may slide over it: the strip KAT) gets the gap)
-        lev = np.full(len(d), gap)
+        # pushed out. One not over it yet gets the gap where the cloth SLIDES over its floor (the body, the garment
+        # under: the strip KAT) and no floor where it doesn't: a flap is sewn to its base and stays over the same
+        # cloth; given the gap, Garrett's collar fall, hanging past the stand's edge, was pushed off it (collar + stand
+        # shear p99 10 -> 20 deg in one relax, fit round 30))
+        lev = np.full(len(d), gap if slides else -np.inf)
         over = (tang < rch) & (dist < 0.03)
         lev[over] = np.minimum(gap, d[over])
         return lev
@@ -160,6 +164,25 @@ def layer_floor(M: dict, X: np.ndarray, body=None, under=None, gap: float | None
             bF = F[fpc & ~fl]
             bv = np.unique(bF)
             fv = np.setdiff1d(np.unique(F[fpc & fl]), bv)
+            # THE BASE ACROSS A SEAM (C119, pattern_form.flap_through_base's rule): a fold whose own base side is narrow
+            # (a two-piece collar's fall, its roll a few mm above the seam) lies on the piece sewn there (the stand).
+            # Against its 6 mm strip alone the floor pushed the fall off the strip's edge: Garrett's collar + stand
+            # shear p99 10 -> 24 deg in one relax (fit round 30)
+            narrow = False
+            for fd in M["folds"]:
+                if fd["piece"] == nm and len(fd["rows"]):
+                    g_ = fm_._geom(M, fd)
+                    ob_ = np.setdiff1d(np.asarray(g_["sel"]), np.where(np.asarray(g_["flap0"]))[0])
+                    narrow |= bool(len(ob_)) and float(np.asarray(g_["d0"])[ob_].max()) < pf_.BASE_NARROW
+            sw = np.asarray(M.get("sew") if M.get("sew") is not None else np.zeros((0, 2), int), int).reshape(-1, 2)
+            if pf_.BASE_ACROSS_SEAM and narrow and len(sw):
+                ob = np.zeros(len(X), bool)
+                ob[bv] = True
+                oth = sorted({int(pid[b]) for a, b in sw if ob[a] and pid[b] != k} |
+                             {int(pid[a]) for a, b in sw if ob[b] and pid[a] != k})
+                if oth:
+                    bF = np.r_[bF, F[np.isin(pid[F[:, 0]], oth)]]
+                    bv = np.unique(bF)
             if len(fv):
                 out.append(_dyn_floor(f"flap:{nm}", X, fv, bv, bF, ref, gap, reach(X, bF), level))
         st = np.asarray(M.get("stitch") if M.get("stitch") is not None else [], int).reshape(-1, 2)
@@ -181,7 +204,7 @@ def _dyn_floor(name, X, fv, bv, bF, ref, gap, rch, level):
     ix[bv] = np.arange(len(bv))
     d, _, dist = pf_._Surface(X[bv], ix[bF], ref=ref).signed(X[fv])
     tang = np.sqrt(np.maximum(dist ** 2 - d ** 2, 0.0))
-    return {"name": name, "v": fv, "level": level(d, dist, tang, rch), "surf": None, "bv": bv, "bF": ix[bF],
+    return {"name": name, "v": fv, "level": level(d, dist, tang, rch, slides=False), "surf": None, "bv": bv, "bF": ix[bF],
             "reach": rch, "ref": ref}
 
 
@@ -976,6 +999,15 @@ def style(M: dict, X: np.ndarray, held, ops: list[dict], body=None, log=None, fl
             for fv, fw, ref in feathers:
                 keep = ~placed[fv]
                 X = feather(M, X, base | placed, fv[keep], fw[keep], ref)
+        if floor:  # (C170: a smooth / feather moves cloth outside the solve: the floor once more after every op;
+            # without it the brushed pocket flaps sank 13 of 25 vertices into their fronts, fit round 30)
+            A_ = FlatARAP(M, X)
+            hm = base | placed
+            Xf = A_.unweld(A_._floor(A_.weld(X), A_.welded_mask(hm)))
+            Xf[hm] = X[hm]
+            if isinstance(inf, dict):
+                inf["floor_pushed"] = A_.floor_pushed
+            X = Xf
         infos.append({kind: inf})
     return X, infos
 

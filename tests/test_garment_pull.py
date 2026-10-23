@@ -474,36 +474,58 @@ def _box(lo, hi, n=25):
     return V, F
 
 
-@pytest.mark.parametrize("as_layer", ["body", "patch"])
-def test_layer_floor_keeps_a_pulled_cloth_on_its_side(as_layer):
-    """C170 layer floor: the slack strip (test 1) hanging as an arc under a block (its middle 5 mm below the block's
-    underside), its free end pulled along the chord. With no floor the flat-pattern solve straightens the strip
-    THROUGH the block (C157: lapels through their fronts, flaps sunk, fronts into the shirt). With layer_floor the
-    strip stays on its side of the block (within one cloth thickness of its start gap: the level is min(gap, start)),
-    whether the block is the body or a held piece the strip is stitched to (a pocket flap over its front)."""
+def test_layer_floor_keeps_a_pulled_cloth_on_the_body():
+    """C170 layer floor, the body (or the garment under): the slack strip (test 1) hanging as an arc under a block (its
+    middle 5 mm below the block's underside), its free end pulled along the chord. With no floor the flat-pattern
+    solve straightens the strip THROUGH the block (C157: lapels through their fronts, flaps sunk, fronts into the
+    shirt). With layer_floor the strip stays on its side, within one cloth (the level is min(gap, start distance)),
+    cloth sliding in under the block included."""
     M, X, pin = _strip()
     zmid = float(X[:, 2].min())
     BV, BF = _box([0.08, -0.05, zmid + 0.005], [0.12, 0.07, 0.05])
-    body = (BV, BF)
-    held = pin.copy()
-    if as_layer == "patch":  # the block as a held piece of the same mesh, the strip stitched to it at its pinned end
-        n0 = len(X)
-        Mb = {"F": np.r_[M["F"], BF + n0], "uv": np.r_[M["uv"], BV[:, :2] * 0 + np.c_[np.arange(len(BV)) * 1e-3, np.zeros(len(BV))]],
-              "piece": np.r_[np.zeros(n0, int), np.ones(len(BV), int)], "names": ["strip", "block"], "sew": [],
-              "points": M["points"]}
-        k = int(np.argmin(np.linalg.norm(BV - X[np.where(pin)[0][0]], axis=1)))
-        Mb["stitch"] = [[int(np.where(pin)[0][0]), n0 + k]]
-        M, X, held, body = Mb, np.r_[X, BV], np.r_[held, np.ones(len(BV), bool)], (np.array([[9.0, 9, 9], [9.1, 9, 9], [9, 9.1, 9]]) + 0, np.array([[0, 1, 2]]))
     h = [{"at": "strip:tipA..tipB", "dir": [1, 0, 0]}]
 
-    def under_block(Y):  # the deepest the strip's vertices over the block's footprint go above its underside (m)
-        s = np.arange(len(_strip()[1]))
-        over = (Y[s, 0] > 0.085) & (Y[s, 0] < 0.115)
-        return float((Y[s][over, 2] - (zmid + 0.005)).max())
-    X0, _ = gp.style(M, X, held, [{"pull": {"handles": h, "max_move": 0.08}}])
-    floor = gp.layer_floor(M, X, body=body if as_layer == "body" else None,
-                           flaps=as_layer == "patch")
-    assert [f["name"] for f in floor] == (["body"] if as_layer == "body" else ["patch:strip"]), [f["name"] for f in floor]
-    X1, inf = gp.style(M, X, held, [{"pull": {"handles": h, "max_move": 0.08}}], floor=floor)
-    assert under_block(X0) > 0.01, under_block(X0)  # (no floor: through the block by more than 10 mm)
-    assert under_block(X1) < 0.0015 + 1e-4, under_block(X1)  # (the floor: never above its underside past one cloth)
+    def into(Y):  # the deepest the strip goes above the block's underside, over its footprint (m)
+        over = (Y[:, 0] > 0.085) & (Y[:, 0] < 0.115)
+        return float((Y[over, 2] - (zmid + 0.005)).max())
+    X0, _ = gp.style(M, X, pin, [{"pull": {"handles": h, "max_move": 0.08}}])
+    floor = gp.layer_floor(M, X, body=(BV, BF), flaps=False)
+    assert [f["name"] for f in floor] == ["body"]
+    X1, _ = gp.style(M, X, pin, [{"pull": {"handles": h, "max_move": 0.08}}], floor=floor)
+    assert into(X0) > 0.01, into(X0)  # (no floor: through the block by more than 10 mm)
+    assert into(X1) < 0.0015 + 1e-4, into(X1)
+
+
+def test_layer_floor_keeps_a_patch_on_its_piece():
+    """C170 layer floor, a stitched patch over its piece (a pocket flap on its front): a strip hanging flat 5 mm under
+    a held plate (a piece of the same mesh), stitched to it at one end, its free end (past the plate) lifted. With no
+    floor the strip swings up through the plate; with layer_floor (patch:strip) it stays under it within one cloth,
+    bending at the plate's edge."""
+    nx, ny = 41, 5
+    uv = np.array([(x, y) for x in np.linspace(0, 0.2, nx) for y in np.linspace(0, 0.02, ny)])
+    ix = lambda i, j: i * ny + j
+    F = np.array([f for i in range(nx - 1) for j in range(ny - 1)
+                  for f in ((ix(i, j), ix(i + 1, j), ix(i + 1, j + 1)), (ix(i, j), ix(i + 1, j + 1), ix(i, j + 1)))])
+    X = np.c_[uv[:, 0], uv[:, 1], np.full(len(uv), -0.005)]
+    BV, BF = _box([-0.01, -0.03, 0.0], [0.15, 0.05, 0.02])
+    n0 = len(X)
+    M = {"F": np.r_[F, BF + n0], "uv": np.r_[uv, np.c_[np.arange(len(BV)) * 1e-3, np.zeros(len(BV))]],
+         "piece": np.r_[np.zeros(n0, int), np.ones(len(BV), int)], "names": ["strip", "plate"], "sew": [],
+         "points": {"strip:tipA": ix(nx - 1, 0), "strip:tipB": ix(nx - 1, ny - 1)}}
+    end = uv[:, 0] < 1e-9
+    k = [int(np.argmin(np.linalg.norm(BV - X[v], axis=1))) for v in np.where(end)[0]]
+    M["stitch"] = [[int(v), n0 + kk] for v, kk in zip(np.where(end)[0], k)]
+    Ms = dict(M, sew=np.r_[np.zeros((0, 2), int), np.asarray(M["stitch"])])  # (style welds stitch pairs as sew)
+    Xa = np.r_[X, BV]
+    held = np.r_[end, np.ones(len(BV), bool)]
+    h = [{"at": "strip:tipA..tipB", "dir": "up"}]
+
+    def into(Y):  # the highest the strip goes above the plate's underside, over its footprint (m)
+        over = (Y[:n0, 0] > 0.01) & (Y[:n0, 0] < 0.14)
+        return float(Y[:n0][over, 2].max())
+    X0, _ = gp.style(Ms, Xa, held, [{"pull": {"handles": h, "max_move": 0.06}}])
+    floor = gp.layer_floor(Ms, Xa, flaps=True)
+    assert [f["name"] for f in floor] == ["patch:strip"], [f["name"] for f in floor]
+    X1, _ = gp.style(Ms, Xa, held, [{"pull": {"handles": h, "max_move": 0.06}}], floor=floor)
+    assert into(X0) > 0.01, into(X0)  # (no floor: through the plate)
+    assert into(X1) < 0.0015 + 1e-4, into(X1)

@@ -10371,3 +10371,29 @@ columns, C165). Shirt = gc_garrett's shirt on the muslin fit, styled as worn (on
 - Collar vs the new shirt: shirt shows 5 / 4 / 5 mm at CB / 45 / side (tell 10-20; round 29's 11 / 14 / 16 was over
   gc1): the muslin shirt's collar sits lower (top 49 above HPS at CB); the jacket collar now covers it. Open.
 - Flaps: c1 pocket flaps stand 22-27 mm off their fronts (w1 0.8-2.0): the closed fit holds the flaps off. Open.
+- Step 3, open by styling, no sim (style30.py: top button released, fronts / pocket flaps free, collar / stand held as
+  fitted; fronts pulled side + 0.25 out as one border until threads / shear stop, hem points, smooth, relax). C157 STILL
+  HAPPENS without a floor: s1 (from the closed c1) lapels through their fronts 0.50-0.61, collar 0.57, flaps sunk 7 / 9
+  of 25, the fronts swung 141 mm (edge 119-136 vs 71-94, break 146 off CF). LAYER FLOOR added (C170: garment_pull.
+  layer_floor + style(floor=)): body + under garment (slides: a vertex not over it at the start gets the gap), each
+  fold flap over its base (the collar's narrow base across the seam to the stand, C119), each stitched patch over its
+  piece (start-only: sewn, doesn't slide), applied after every solve round and once after every op. floorab.py (each
+  floor alone, w1): the UNDER (shirt) floor stops the opening (moved 15 mm, threads 7.5 -> 12.1 % already at the relax):
+  the jacket was fitted within EASE of a pressed shirt with show-through; C153 says covered show-through isn't a fault,
+  so the looks style with body + flaps only (FLOOR_UNDER=0). Flap floor fixes the lapel (front.L through 0.072 -> 0).
+  NOT fixed: pocket flaps still sink 9-13 of 25 (patchdbg.py: a flap vertex leaves its base's reach, 7.6 mm, in one move
+  and the vertex-normal floor loses it: needs a face-nearest floor or the stitch held).
+- Step 4, hps A/B (both worn-open fit + the same styling, read in the LEGACY hps frame, legacyat.py: the corner hps is
+  22 mm lower and 24 mm further back on Garrett): s4f legacy | s5f corner | concept: lapel 150 127/125 | 133/134 |
+  127/134; V 200 222 | 244 | 237; edge 450/550/650 62/59/68 | 82/76/84 | 71/78/94; roll 150/250/350 73/75/91 | 77/81/104 |
+  69/64/59 (the styled break swings to 105 / 126 off CF: past the concept's 64); shirt collar shows CB/45/side 5/5/6 |
+  13/15/25 | 10-20; side line max 25/34 | 29/26 | <=20; hem sweep 410 | 426 | 482; hem below HPS 750 | 754 | 748; belly
+  crumple p95 11.3/10.9 | 13.9/12.3 (concept smooth); threads p99 9.1 | 7.4 %, shear p99 29.1 | 24.7; flaps sunk 9/10 |
+  13/13; the corner's stand warp p99 28 % (legacy 8). RECOMMEND the corner hps for the jacket (lapel, V, edge, collar
+  show and threads all nearer the concept); its stand stretch is the next misfit to read.
+- LOOK (my own; $FR30/check/{wholefront,upper_front,upper_three,side}_s5fc.png and _s4fc, concept | clay | diag).
+  VERDICT (blunt): the best upper half this thread has had: wide notched lapels, a long open V to the waist, the roll
+  where the concept has it, collar sitting under the shirt collar. NOT the concept yet: grey shirt patches punch
+  through the jacket at both shoulders / upper chest (the shirt under the pressed layer pokes out; the visibility cull
+  keeps them because they're seen); the front edges curl inward at the waist into a rope fold (belly crumple 12-14
+  mm); the pocket flaps are dents; the hem is narrow (426 vs 482) and the body boxy; the shirt placket is lumpy.
