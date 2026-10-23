@@ -10342,3 +10342,32 @@ conditions; looks judged beside the REFERENCE only (C165).
   where the photo's stand tall round the neck; a dent at the left stand. The sheet isn't scale-matched (references are
   tight neck crops, the clay shows the torso): crop the render to the neck next time.
 - NEXT: coordinator lands; then the V depth (the fronts' top opening) on the muslin fit.
+
+## fit round 30 (2026-10-23; $FR30 = /mnt/data/hifipushie/dress_garrett/fit_round30; branch claude/garrett-jacket-r30)
+NEW PROCESS (Joe): the muslin fit, styling, the remeasurement; NO sim, judged beside the concept only (no r28 / r29
+columns, C165). Shirt = gc_garrett's shirt on the muslin fit, styled as worn (on_form's under_as_worn), not tuned.
+- Spec check: round 29's model edits were NOT in the workspace spec: gc_garrett's jacket design was the pre-round-10
+  one (lapel width 0.072, roll radius 3 mm, no collar stand_cb / fall_cb, no cutaway angle, no biceps ease for the 391
+  shirt sleeve). applyspec.py wrote fr29's r29p2 design (COLLAR_ROLL 21, CUTAWAY 10 deg, LAPEL_W 0.081, ROLL_R 6 mm,
+  SLEEVE_OVER 391) into the store (checked=False: the shirt carries a probe's key `source_probe` the validator refuses;
+  the shirt untouched); specdiff.py now shows no jacket difference. Round 29's harness switches (ROLL_GAP,
+  STAND_RUN_OFF, BRIDGE, LAYER_ALLOW) are module opt-ins, not spec: NOT used (the real on_form path).
+- Step 1, closed fit c1 (fit30.py: on_form, worn_open popped = the top button fastened; 617 s): woven, threads p50 0.59 /
+  p99 9.8 %, shear p99 28.8, sew gap 0.05. MUSLIN READ (misfit30.py, signed warp / weft per piece and region; 1655 of
+  14117 faces over 5 % or 25 deg): (a) the NECK: stand warp p1 -19.4 %, collar -16.8 / +9.2 %, twisted round the neck
+  (R side +warp above HPS, L side -warp): the collar / stand neck edge doesn't match the neckline it is sewn to on this
+  form; (b) the fronts at the shoulder / neck corner (0-100 below HPS, side): weft -8 %, front.L warp -14 % (the corner
+  bridging, C154 / C160 family); (c) front.L at 250-350 front (-warp): the lap pulled across by the fastened top
+  button. Backs threads p99 11-12 %, shear 29-30 (across the blades). Sleeves clean (3-4 %).
+- Step 2, why the roll is closed: THE TOP BUTTON. c1's roll line (roll30.py, the lapel fold's middle row) 52 / 30 / - L,
+  40 / 9 / - R at 150 / 250 / 350, its break at +4 / -19 mm off CF (the lap). The roll runs from the break to the neck,
+  so a buttoned break can't give the concept's 69 / 64 / 59. The same pattern fitted WORN OPEN (w1: on_form with the
+  spec's own worn_open form rule, break 64 off CF from the concept; fasten "worn_open" = no top pair): roll 70 / 58 /
+  63 L, 68 / 53 / - R, break 64 at 379 / 364 below HPS (concept 386): the roll line IS the concept's once the break is
+  open in the fit. Nothing else pinned (the roll, lapel, edge below are free). Lapel outer 150 122 / 118 (127 / 134),
+  V 200 201 (237). Below the break the fronts still hang closed (edge off CF 450 / 550 / 650: 16 / 12 / 21; concept 71 /
+  78 / 94): that is styling's job (step 3). The muslin jacket scripts (jon.py, jfit.py) popped worn_open, which is
+  why the muslin default's jacket look (jon1) closed high.
+- Collar vs the new shirt: shirt shows 5 / 4 / 5 mm at CB / 45 / side (tell 10-20; round 29's 11 / 14 / 16 was over
+  gc1): the muslin shirt's collar sits lower (top 49 above HPS at CB); the jacket collar now covers it. Open.
+- Flaps: c1 pocket flaps stand 22-27 mm off their fronts (w1 0.8-2.0): the closed fit holds the flaps off. Open.
