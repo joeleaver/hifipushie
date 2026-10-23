@@ -10918,3 +10918,21 @@ turned, points pulled) were tuned on bending-free cloth; the stand's rest is the
   c2_none L 19/10/44/42/38/8/21/12/8/13/6, R 2/15/52/49/16/23/3/6/9/12/12; c0_none (lapped) L 5/40/37/28/14/9/3/6/6/11/14.
   Joe's framing (check/joeseam_s1k3_c2k3_c2none_c0none.png): the cord in s1_k3 and c0_none, gone in c2_k3 / c2_none.
 - Session 1 handover: STATE NEXT (FIT_HINGE_W sweep to reach edge 450 >= 60 with threads <= 8.5, then defaults).
+
+## canvas stiffness session 2 (2026-10-23; $S2 = /mnt/data/hifipushie/canvas/s2; branch claude/canvas2)
+- Canvas region: session 1's canvas was a 100 mm band along the front EDGE break..lapelPoint (the lapel and a strip
+  inside it) + stand / collar; a real half canvas covers the forepart from shoulder and armhole to about the pocket
+  line, the lapel, with a bridle on the roll line. New interfacing entry "region" (cloth.interfacing / region_share:
+  polygon of points / marks; its outline fully interfaced; feathered outside; KAT). First version ramped across the
+  outline, so the piece's own edges (front edge, shoulder) were half stiff: fixed before the run.
+- d1 (half canvas region, keyed fit W1, no plumb hold, no threads first) styled with no hold: edge 450/550/650
+  41-45 / 40-42 / 36 (c2_none 52-58 / 67-72 / 82-86), hem+30 391, V 226, threads 11.17 (fronts' canvas 15.6 by thr.py):
+  worse. More stiff area, more shape bought with stretch.
+- Joe (via the coordinator): "It shouldn't really be a choice between stiffness and stretch." THREADS FIRST (C195):
+  styling with bending: bending-free ARAP rounds each round + to convergence at the end, per-face warp / weft bounds
+  max(styling-start, 1 +/- 1 %) both ways (compression counts: thread_strain is |len - 1|; the canvassed walked strip
+  was 5.8 % SHORT, a stiff strip cutting the chord). A Jacobi cap alone left 12.4 % (end-to-end strain doesn't move
+  with local projections), 2 restore rounds 5.7 %, 10 rounds 2.3 %, + compression bound and final rounds 1.1 %.
+  Fit: the interfaced triangles' threads capped at 2 % each round (_thread_limit) while keyed bending acts.
+- Like-for-like jacket threads (thr.py / hem30): c0_none (no keyed, no holds) 11.48 vs c2_none (keyed) 9.62: the
+  keyed FIT lowered threads; the "7.42 -> 9.6" was against k3, whose holds supplied the shape.

@@ -1,32 +1,29 @@
-# STATE: canvas (canvas / interfacing BENDING STIFFNESS in the fit + styling; the jacket with fewer holds) -- 2026-10-23
+# STATE: canvas (canvas / interfacing BENDING STIFFNESS in the fit + styling; the jacket with no workaround holds) -- 2026-10-23
 
 GOAL (Joe, after C190-C192): canvassed / interfaced pieces keep their shape by STIFFNESS so the workaround holds go.
-Not a sim; no rented GPU. Joe (relay): the concept is SLIM-CUT, modern -> step 0 slimmed the pattern first.
-STEP 0 DONE (C193): gc_garrett v6 (stored; gate PASS_WAIVED 2e1b8483 / e31aac35, r35 waivers). Flat before -> after:
-chest 1113 -> 1104 (+14.1 %: floor = shirt 1067 + 2 pi 6; slim practice +7.5-10.5 cm needs a slimmer shirt), waist 1131
--> 1103, hem+30 1270 -> 1103 (r34 let-out removed), sleeve hem 319 -> 284, biceps ~417 -> ~405 (armhole-bound). KB jacket
-fit "slim"; design fact on dress_garrett_fit.md. Stored shirt has a stale key "source_probe" (validate refuses it).
-MODEL (C194, bending.py): edge HINGES (4-point stencil), weights canvas 20 / fusible 8 / plain 1 (entry "kind" or garment
-key interfacing_kind; gc_garrett: front / stand / collar canvas); rest carried in the hinge frame (signed; hairpins
-along the stencil). Vertex-Laplacian bending FAILED (saddles free). KATs tests/test_bending.py (4).
-FIT: pattern_form.FIT_BEND_KEYED (OFF; env PF_BEND_KEYED=1 / garment key bend_keyed): + hinge term (w - 1) x FIT_HINGE_W 1
-x FIT_BEND, flat rest, fold rows / flaps / made pieces skipped. on_form stores M["bend_w"].
-STYLING: garment_pull.STYLE_BEND (OFF; GP_STYLE_BEND=1), W 5, plain 0 (a flat-rest plain term fought the floors: 15 %).
-JACKET ($CV/tab38.sh; concept 71/78/94, waist 414, hem 482, V 237; r39 k3 60-64/74-77/101, hem 444, V 232, thr 7.42):
-s1_k3 slim + PLUMB_HOLD + kb: 59-64/72-74/95-97, hem 443, V 233, thr 8.78 (the cord as before).
-c0 slim, no plumb, no keyed: k3 41-48/44-46/53-55, none 25-32/71-78/30-33: the fronts lap (C189 again).
-c2 slim + KEYED fit, no plumb: k3 54-61/67-76/84-88 hem 426 thr 9.71 (chest show-through); nab 53-60/68-76/84-90;
-nhem 55-62/67-75/84-87 hem 473; NONE (no workaround hold) 52-58/67-72/82-86, waist 429, hem 472, V 240, lapel 136/140,
-ahead 20-35, thr 9.62, front|side fold 3-21 deg below 500 (s1_k3 5-36, 43-61 above; cord gone in Joe's framing).
-c1 keyed + plumb: 67-71/67-69/81-127, V 210, lapel 114/137: worse. Styling bend on the jacket (c2b_*): thr 15 %, worse.
-SHIRT (shdiag.py on shirt_s0): full ops + STYLE_BEND: 2 rows fail; SIMPLER ops v3 (relax, hold, turn band ends, push x2:
-no point pulls, no smooths) ALL rows pass at W 1-5, threads 12.5 (no bend: v3 fails 3; full ops 6.47).
-SHEETS ($CV/check): cmp_wholefront|upper_front|side_s1k3_c2k3_c2none.png, joeseam_s1k3_c2k3_c2none_c0none.png.
-VERDICT so far: the canvas FIT stiffness is what keeps the fronts open without PLUMB_HOLD (c0 vs c2); with it the
-jacket styles with NO workaround hold, hem / V / seam better than k3, edge 450 / 550 5-8 mm short of k3, threads +2.2.
-Not default yet. Suite (17 garment files + test_bending): 306 passed, 4 xfailed, PYTEST_EXIT 0 ($CV/suite.log).
-NEXT (session 2): (1) FIT_HINGE_W 2 / 3 sweeps on c2_none (fitc.py tag '{"plumb_hold": false}' with PF_HINGE_W; then
-sty2.sh <fit> <tag> ops_none.json): aim edge 450 >= 60, threads <= 8.5; (2) the c2 thread rise: where (diagH.py);
-(3) pocket flaps ragged + L hem corner flip on c2_none; (4) if a variant matches k3 on edge and threads: defaults =
-FIT_BEND_KEYED on + gc_garrett plumb_hold off + kb jacket.wear.open without the two holds, KAT (strip / jacket), ledger;
-(5) shirt: decide v3 + STYLE_BEND (rows pass, threads 12.5) vs today's ops (6.47) with the coordinator.
+Not a sim; no rented GPU. Concept SLIM-CUT (gc_garrett v6, C193). Session 1 = main 78507629 (history: cloth.md
+"canvas stiffness"); session 2 = branch claude/canvas2 (cloth.md "canvas stiffness session 2"), files $S2 =
+/mnt/data/hifipushie/canvas/s2 (run.sh = this worktree's code; fitc.py / sty2.sh / tab38.sh / thr.py as session 1).
+JOE (s2, via coordinator): "It shouldn't really be a choice between stiffness and stretch." -> C195 THREADS FIRST:
+- styling (garment_pull.STYLE_THREAD_FIRST, on with STYLE_BEND): bending-free rounds after each round (2) and to
+  convergence at the end (<= 60), each face's warp / weft within max(styling-start length, 1 +/- STYLE_THREAD_CAP 1 %).
+- fit (pattern_form.FIT_THREAD_FIRST, on with keyed bending): interfaced triangles' threads capped (2 %) each round.
+- KAT test_stiffness_never_buys_shape_with_stretch: walked strip canvas 12.4 -> 1.1 %, on the arc; plain 0.15 %.
+- Like-for-like (no holds) the keyed fit had NOT raised jacket threads: c0_none 11.48 vs c2_none 9.62; k3's 7.42
+  had holds supplying the shape. The shirt / jacket STYLING bend did raise them (12.5 / 15 %): retest under C195.
+CANVAS REGION (C196): cloth.interfacing "region" (polygon of piece points / marks; outline full; feathered out).
+Session 1's canvas = a 100 mm band along the front edge break..lapelPoint (lapel + strip) + stand / collar.
+Real half canvas = forepart shoulder + armhole to the pocket line + lapel (+ bridle on the roll line): drafted as
+$S2/region_half.json. d1 (half canvas, keyed fit W1, NO threads first): edge 41-45/40-42/36, hem 393, threads 11.17:
+worse (more stiff area, bought with stretch). Not adopted; retry under threads first (NEXT).
+RUNS ($S2; concept 71/78/94, hem+30 482, V 237; k3 60-64/74-77/101, thr 7.42; c2_none 52-58/67-72/82-86, 472, 9.62):
+| d1_none | half canvas, W1, no TF | 41-45 / 40-42 / 36 | hem 393 | V 226 | thr 11.17 |
+| h2_none | band, W2, no TF | (chainA) |
+| t1_none / t2_none / t1f_none | band, TF, W1 / W2 / W1 + flap mesh refine | (chainC) |
+SHIRT under TF ($S2/chain_sh.sh: sh_none_full, sh_tf5_full, sh_tf5_v3, sh_tf1_v3): (running)
+FAULTS on c2_none: pocket flaps ragged = coarse flap (25 vertices, 37 mm apart) over a coarser front: the front pokes
+through between flap vertices (s1_k3 has it too) -> t1f refines flap + front under it (mesh_refine data).
+DEFAULTS: not flipped (FIT_BEND_KEYED off, plumb hold on, kb holds in).
+NEXT: read chainA / chainC / shirt tables (tab38.sh <tag>; thr.py; grep FAILS sh_*.log); pick the best TF variant;
+if edge 450 >= 60 & threads <= 8.5 or reads >= k3 -> flip defaults (step 3 of the brief), else report the honest
+reach; renders: post38.sh <tag> then the LOOK review (gates.md).
