@@ -6,8 +6,8 @@ only. Covered show-through is not a fault (C153); Joe 2026-10-23: the shirt patc
 don't chase them. PROCESS: muslin fit (worn open: the spec's worn_open, C171), styling by the kind's wear as data,
 remeasurement; no sim; judged beside the concept only (C165). Shirt = gc_garrett's shirt as worn, not tuned here.
 Jacket hps = "corner" in gc_garrett (coordinator's call from round 30's A/B; store version 2).
-STATE: round 32 IN PROGRESS: op_lapel belly (R29, test_tailoring belly test); flat lapel read flat32.py; first pattern
-variant a1 (gorge_drop 0.135, belly 10 mm @0.4) gated + fitted + styled ($FR32 = /mnt/data/hifipushie/dress_garrett/fit_round32, gj.sh).
+STATE: round 32 IN PROGRESS: lapel widened in the PATTERN (gorge_drop 0.135 + belly R29): a1 V 221, lapel 150 133/130;
+lower fronts styled worse (zigzag L edge, R hem corner). a2 (belly 14 @0.35) running. cloth.md "fit round 32".
 Round 31 result: Suite (17 files, capped -rs): pytest exit 0, 286 passed, 4 xfailed, 0 skipped ($FR31/suite.log, 17 min). Look k2 = w1h fit (r30, corner, worn open) styled by garment_kb kinds.jacket.wear.open.style
 (C174: front above the break held; edge grips @0.33 / @0.6 / hem drawn side + 0.5 down until a thread would stretch;
 smooth; hem pulled down; relax) with body + flap floors (local reach, C173).

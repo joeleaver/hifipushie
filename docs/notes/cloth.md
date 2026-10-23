@@ -10432,3 +10432,23 @@ jacket garment key hps = "corner" (sethps.py, store version 2). Base fit = r30's
   held fit's lapel, where r30's swing widened it by moving the break. The lower fronts flare out at the hem corners;
   body boxy; shirt patches at the shoulders (dropped: culled later).
 - Suite (17 files, capped, -rs, HIFIPUSHIE_HOME=workspace + ASSETS): 286 passed, 4 xfailed, 0 skipped, pytest exit 0 ($FR31/suite.log, 16.6 min).
+
+## fit round 32 (2026-10-23; $FR32 = /mnt/data/hifipushie/dress_garrett/fit_round32; branch claude/garrett-jacket-r32)
+Muslin fit, styling, no sim; judged beside the concept only. Fault 1 (narrow lapel / V above the break) fixed in the
+PATTERN, not by moving the break.
+- Flat read first (flat32.py: front.L drafted flat, widths off the roll line at fractions f of break -> HPS): the stored
+  lapel (width 81, gorge_drop 115, break 426) is a straight triangle, tip f 0.69 w 81, w 56.5 / 71.8 at f 0.48 / 0.61:
+  WIDER flat than the concept's worn proportions (51.5 / 61.5 / tip 78 at f 0.76). The loss is in the wear: worn (k2) the
+  tip sits 73 below HPS (concept 93) and the edge sags 7 / 14 / 22 mm inside the tip -> break line at 150 / 200 / 250
+  (the concept's edge is straight). So: lower the point (gorge_drop) and give the edge a belly (R29, op_lapel belly /
+  belly_at, densified edge, test_tailoring belly test); width unchanged (the worn tip x already 147 vs 148).
+- Baseline b0 (the unchanged spec through gate32.py = pattern_gate + its own on_form, then stylekb): reproduces k2's
+  reads exactly (deterministic). Gate FAIL on collar_stand_end 10.2 vs 3 (R28 run-off is OPT-IN; round 29 forced it on):
+  pre-existing, waived by name in waive32.json.
+- a1 (gorge_drop 0.135, belly 10 mm @ 0.4): flat tip f 0.64; gate: same rows as b0, notch 61.6 deg / gap 29.7 (in band).
+  Styled (kb recipe): lapel 150 133 / 130 | 127 / 134; V 200 221 | 237 (k2 190); tip 151 / 148 off CF at 92 / 87 below
+  HPS | 148 @ 93; roll 150 / 250 75 / 57 | 69 / 64; edge 450 45 / 59 | 71; hem sweep 422 | 482 (k2 451); threads p99
+  8.3 %. LOOK (check/*_a1sc.png): lapels read as the concept's broad lapels, notch lower; the lower fronts are WORSE than
+  k2 (a zigzag kink in the L edge at the waist, R hem corner flared with a dent): the same styling recipe lands
+  differently on the changed front (styling is sensitive, not the pattern below the break: unstyled a1 / w1h hem 398 / 400).
+- e1 (a1 + a grip at break..cfHem@0.15 first): edge 450 49 / 68, 550 87 / 94 (over), hem 401: worse; dropped.
