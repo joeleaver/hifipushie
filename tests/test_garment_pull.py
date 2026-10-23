@@ -625,8 +625,14 @@ def test_open_jacket_is_styled_by_its_wear_as_data():
     kinds = [next(iter(o)) for o in ops]
     assert kinds[0] == "hold" and ops[0]["hold"]["above"] == ["front.L:break", "front.R:break"], ops[0]
     assert kinds[-3:] == ["smooth", "pull", "relax"] and ops[-2]["pull"]["handles"][0]["dir"] == "down", kinds
-    assert any("@" in h["at"] for o in ops if "pull" in o for h in o["pull"]["handles"]), ops
-    assert all(next(iter(h["dir"])) == "side" and h["dir"].get("down") for o in ops[2:-3] for h in o["pull"]["handles"]), ops
+    # (C178, fit round 33) the lower front swung as one panel about break -> side seam at the hem, laid back on the body
+    # (down + in), then each edge smoothed into one long curve; no point grips part-way down the edge (zigzag / flare)
+    tu = ops[kinds.index("turn")]["turn"]["turns"]
+    assert [t["about"] for t in tu] == [["front.L:break", "front.L:sideF.b"], ["front.R:break", "front.R:sideF.b"]], tu
+    lay = ops[kinds.index("turn") + 1]["pull"]["handles"]
+    assert [h["at"] for h in lay] == [t["at"] for t in tu] and all(h["dir"]["out"] < 0 < h["dir"]["down"] for h in lay), lay
+    assert not any("@" in h["at"] for o in ops if "pull" in o for h in o["pull"]["handles"]), ops
+    assert {o["smooth"]["border"] for o in ops if "smooth" in o and "border" in o["smooth"]} == {"front.L:break..cfHem", "front.R:break..cfHem"}
     assert gd.wear({"design": {"kind": "jacket"}}, "style") == []
     nx, ny = 11, 5
     uv = np.array([(x, y) for x in np.linspace(0, 0.1, nx) for y in np.linspace(0, 0.04, ny)])

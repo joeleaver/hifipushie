@@ -10495,3 +10495,14 @@ Muslin fit, styling, no sim; judged beside the concept only.
 - smooth_border's 0-2 rounds (C177): its stop read the kink max at the break (fixed, inside `ends`), and the default scale
   (10 knots, 30 mm) can't see a 250 mm zigzag on a 20 mm-spaced edge. Fixed (either read dropping; knots capped); at
   spline 2 / win 80 mm on a1s: kink 77 -> 31 (L), 55 -> 26 (R), threads 9.8 -> 9.4 / 8.0 %.
+- Step 1b, recipe variants op by op (ops_<t>.json, op_<t>.log; final reads L | R: edge 450/550/650, wiggle, flare, crumple low;
+  fwd33.py = front ahead of the body at waist / -100 / -200 / -300 mm):
+  t1/t2 swing (turn cutawayTop..cfHem, patch 40, about break -> sideF.b, tol 0.5 %): 45/56/71 | 44/58/71, w 3.5, fl 3: clean but shut.
+  t3 patch 80: 15 deg only. t6 hinge on the side seam (sideF.a -> sideF.b): 9 deg (dead). t7 + the kb hem-point pull: corner
+  dragged 150 mm (dead). t5 swing tol 1 %: 48 deg (shear stop): 53/65/82 | 51/68/83, w 3-4, fl 2.3-2.5, BUT the side view
+  juts: front 97-110 mm ahead of the body at -100/-200 (a1s 59-80, fit 26-31): a swing about the diagonal axis lifts the
+  panel forward (t5 sheets: a pot belly under the flaps). Lay-back pulls at the end (t10/t11) can't move it: the turned grip
+  stays held. t12 = t5 + the same grip pulled down + in (out -1) right after the turn: 43/49/66 | 39/50/66, w 3.6 / 2.1,
+  fl 3.0 / 3.7, crumple low 11.0 / 11.1, ahead 40/40/54/41 | 43/35/53/43: plumb. kb + long-scale edge smooth (kbsb): the
+  zigzag stays (42/65/96, w 6.2). Line grips of the whole lower edge (kb3 / kb5 tol 1 % / kb6 patch 40): plumb, clean,
+  34-46/44-55/52-59: more shut than t12. CHOSEN: t12 -> garment_kb (C178); stylekb through the kb (k33) = t12 exactly.
