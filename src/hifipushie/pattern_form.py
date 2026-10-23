@@ -152,13 +152,21 @@ WOVEN_SLACK = False  # A/B only: warp / weft free in compression (a woven buckle
 # SHEAR WHERE NOTHING DRIVES IT (muslin default, C166): WOVEN's shear weight (SHEAR_STIFF ~0.011, the KES G / E ratio)
 # is the cloth's shear rigidity UNDER LOAD; a woven also has shear hysteresis (KES 2HG, ~1-3 gf/cm for shirting and
 # suiting, of the order of G x 2-4 deg): a force under it does not shear the cloth at all. With only 0.011 holding it, a
-# FREE sheet (no body, pin or layer anywhere near) kept the shear the fold's transient put in (a diagonal fold 13 deg,
-# a run-off fold 28 deg turned past it). Triangles with no driven vertex (body / filled torso within FREE_REACH, a pin,
-# the garment under or over, a flap's base) take SHEAR_FREE instead: a loose sheet stays square; where the form
+# FREE sheet (no body, pin or layer touching it) kept the shear the fold's transient put in (a diagonal fold 13 deg,
+# a run-off fold 28 deg turned past it). Triangles with no driven vertex (touching the form: within FREE_REACH of its
+# offset; a pin; the garment under or over; a flap's base) take SHEAR_FREE instead. The body ATTRACTION is not an
+# obstacle (a stand-in for the drape): it drove loose ease to shear onto the body (cloth hanging under a seat cupped in): a loose sheet stays square; where the form
 # acts the cloth shears as before (the misfit the muslin reveals stays: Garrett's yoke corner, notes "muslin default").
 # A turned flap's cells (WOVEN_FLAPS) are woven only where driven too: free, they stay ARAP (its pattern shape).
 SHEAR_FREE = 1.0
-FREE_REACH = 0.06  # m: the body attraction's own reach (assemble: hi = da < 0.06)
+SHEAR_LOCK_DEG = 35.0  # a woven's shear jamming angle (shirting / suiting ~30-40 deg): past it the cloth can't shear
+# SHEAR_RAMP (C166): the local / global step takes a shear back by only s / (1 + s) a round (1.1 % at SHEAR_STIFF), so
+# a transient's shear (a collar stood up, a placement on a cone) outlived the rounds: the shoulder-collar KAT's
+# developable bodice read shear p99 31.8 deg at 120 rounds, 4.0 at 480. Driven shear builds in a few rounds (P_s
+# keeps any angle), undriven shear decays at the weight: so each relax starts at SHEAR_FREE and eases (geometrically)
+# to SHEAR_STIFF over its first SHEAR_RAMP of rounds; the rest are the muslin's own.
+SHEAR_RAMP = float(os.environ.get("PF_SHEAR_RAMP", 0.5))
+FREE_REACH = float(os.environ.get("PF_FREE_REACH", 0.003))  # m: in contact = within this of the form's offset
 WOVEN_FLAPS = True  # WOVEN on a turned flap's own triangles too (a lapel is the same cloth; its fold rows stay ARAP)
 # FORM VALIDATED (2026-10-19 virtual fit): True once frozen_ae's pattern assembled on the form matches the simulated
 # drape of the same pattern (waist / hem / sleeve girth +-3 %, sleeve aspect +-15 %, shoulder, length, collar stand;
@@ -2388,6 +2396,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
         for v_, _ in cx:
             drv_[v_] = True
         drv_pin = drv_.copy()
+        ramp_n = max(int(SHEAR_RAMP * iters), 1)
         for it in range(iters):
             if osurf is not None and ceil_on[0] and grav <= 0 and it % 5 == 0:  # TWO LAYERS: the vertices the over
                 # layer touches weigh LAYER_W in the solve (contact the solve knows, as the settle's held set): a soft
@@ -2422,7 +2431,9 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                 ln = np.linalg.norm(cur[ne], axis=1, keepdims=True)
                 Re[ne] = cur[ne] / np.maximum(ln, 1e-12) * np.linalg.norm(rest[ne], axis=1, keepdims=True)
                 if Wv is not None:  # WOVEN: warp / weft held, shear soft (the triangles' targets; see WOVEN)
-                    sh_t = np.where(drv_[Wv["F"]].any(1), SHEAR_STIFF, SHEAR_FREE)  # (SHEAR_FREE: nothing drives it)
+                    s_it = SHEAR_STIFF if it >= ramp_n else math.exp(math.log(SHEAR_FREE) + (it / ramp_n) * (
+                        math.log(SHEAR_STIFF) - math.log(SHEAR_FREE)))  # (SHEAR_RAMP: a transient's shear decays first)
+                    sh_t = np.where(drv_[Wv["F"]].any(1), s_it, SHEAR_FREE)  # (SHEAR_FREE: nothing drives it)
                     tg_, has_ = woven_targets(Wv, X, nE0, shear=sh_t)
                     m2 = np.zeros(len(src), bool)
                     m2[:2 * nE0] = np.r_[has_, has_]
@@ -2464,6 +2475,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                     vn_ /= np.maximum(np.linalg.norm(vn_, axis=1, keepdims=True), 1e-12)
                     vn_ *= np.sign(np.sum(vn_ * nrm, 1) + 1e-12)[:, None]
                     T[hi] += vn_[hi] * loose
+                T_att = T.copy()  # (SHEAR_FREE: the targets before the layers / flap bases act; attraction is no obstacle)
                 for oi, ((fv, bv, bt), gp) in enumerate(zip(over, over_gap)):  # a flap stays one THICK outside its base
                     if not len(bt):
                         continue
@@ -2507,7 +2519,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                     cv_ &= do_ > -LAYER_GAP
                     T[cv_] -= no_[cv_] * (do_[cv_] + LAYER_GAP)[:, None]
             if bsurf is not None:  # (SHEAR_FREE: what drives the cloth this round, for the next round's local step)
-                drv_ = drv_pin | (np.minimum(d, da) < off + FREE_REACH) | (np.abs(T - X).max(1) > 1e-9)
+                drv_ = drv_pin | (d < off + FREE_REACH) | (np.abs(T - T_att).max(1) > 1e-9)
             b += wc[:, None] * T
             if HANG > 0 and bsurf is not None:  # (A/B: the cloth's weight as a constant pull down, m per round)
                 b[:, 2] -= wc * HANG

@@ -311,23 +311,45 @@ def _neck_body():
 
 
 def test_neck_point_on_hps():
-    """A panel whose neck point starts ~30 mm off (as the landmark placement X0 had it) lands within 2 mm of the
-    body's neck point (on the layer's ease)."""
-    P = [[0, 0], [0.14, 0], [0.14, 0.2], [0.03, 0.2], [0.0, 0.17]]
-    B = _B({"front.L": _piece(P, names={"hps": 3})})
-    M = cloth.mesh(B, 0.01)
+    """(rewritten for the muslin fit, C162 / C167) The neck point is pinned SOFTLY (pf.NECK_PIN_W, as the shoulder
+    point): it lands on the body's neck point when the cloth can get there, and it never drags the cloth there by
+    stretching. (1) A panel round a cylinder neck, its neck point slid 30 mm round from the body's (a stretch-free move):
+    on the form within 2 mm of it (+ ease), threads p99 < 3 %. (2) The case the old hard pin hid: a lone panel round the
+    torso whose neck point is 129 mm off, over the shoulder's edge (its top edge would have to shorten to reach the
+    neck): the old pin (LEGACY_NECK_PIN_W, isometric) landed it within 2 mm only by stretching the threads (p99 > 30 %,
+    max > 100 %); the soft pin stops short (> 10 mm) at under half that thread strain: the misfit shows as a miss."""
     body = _neck_body()
     hps = body.at["hps.L"]
+    _, nrm, _ = pf._body_surface(body).signed(hps[None])
+    tgt = hps + 0.003 * nrm[0]
+    R = 0.063
+    M = cloth.mesh(_B({"front.L": _piece([[0, 0], [0.1, 0], [0.1, 0.08], [0, 0.08]], names={"hps": 0})}), 0.01)
+    v = M["points"]["front.L:hps"]
+    th = -0.9 + (M["uv"][:, 0] + 0.03) / R
+    X0 = np.c_[R * np.cos(th), R * np.sin(th), 1.455 + M["uv"][:, 1]]
+    out = pf.assemble({"mesh": M, "X0": X0}, body, iters=120, ease=0.003)
+    e1, g1 = float(np.linalg.norm(out["V"][v] - tgt)), out["info"]["grain_stretch_pct"]["p99"]
+    print(f"neck point, reachable: start {np.linalg.norm(X0[v] - tgt) * 1000:.0f} mm off, on the form {e1 * 1000:.2f} mm, "
+          f"threads p99 {g1} %")
+    assert np.linalg.norm(X0[v] - tgt) > 0.025 and e1 < 0.002 and g1 < 3.0, (e1, g1)
+    P = [[0, 0], [0.14, 0], [0.14, 0.2], [0.03, 0.2], [0.0, 0.17]]
+    M = cloth.mesh(_B({"front.L": _piece(P, names={"hps": 3})}), 0.01)
+    v = M["points"]["front.L:hps"]
     th = -0.9 - 0.25 + (M["uv"][:, 0] - 0.03) / 0.19
     X0 = np.c_[0.19 * np.cos(th), 0.19 * np.sin(th), 1.25 + M["uv"][:, 1]]
-    v = M["points"]["front.L:hps"]
-    start = pf.placement_error(X0[v], hps)
-    out = pf.assemble({"mesh": M, "X0": X0}, body, iters=120, ease=0.003)
-    V = out["V"]
-    _, nrm, _ = pf._body_surface(body).signed(hps[None])
-    e = pf.placement_error(V[v], hps + 0.003 * nrm[0])
-    print(f"neck point: start {start:.0f} mm off; on the form {e:.2f} mm from the body's (+ ease)")
-    assert start > 25 and e < 2.0, (start, e)
+    W = pf._woven_setup(M, None, np.asarray(M["F"]), pf._edges(M["F"]), np.zeros(len(X0), bool))
+
+    def threads(V):
+        gs = np.abs(np.linalg.norm(pf._woven_grad(W, V)[0], axis=1) - 1).ravel()
+        return float(np.percentile(gs, 99)) * 100, float(gs.max()) * 100
+    soft = pf.assemble({"mesh": M, "X0": X0}, body, iters=120, ease=0.003)["V"]
+    hard = pf.assemble({"mesh": M, "X0": X0}, body, iters=120, ease=0.003, fit_model="isometric")["V"]
+    es, eh = (float(np.linalg.norm(V[v] - tgt)) for V in (soft, hard))
+    ts, th_ = threads(soft), threads(hard)
+    print(f"neck point, lone panel: start {np.linalg.norm(X0[v] - tgt) * 1000:.0f} mm off; soft pin {es * 1000:.1f} mm "
+          f"(threads p99 {ts[0]:.1f} %), hard pin {eh * 1000:.1f} mm (threads p99 {th_[0]:.1f} %, max {th_[1]:.0f} %)")
+    assert eh < 0.002 and th_[0] > 30 and th_[1] > 100, (eh, th_)  # the old pin: there by stretching
+    assert es > 0.010 and ts[0] < 0.5 * th_[0], (es, ts, th_)
 
 
 def test_neck_point_splits_the_neck_as_the_garments_neckline_does():
@@ -986,7 +1008,13 @@ def test_two_panel_sleeve_on_real_arm(two_piece=True, verbose=True, **kw):
     for r in rows:
         assert 1 / 1.3 <= r["aspect_ratio"] <= 1.3, rows
         assert r["girth_pct"] >= 97, rows
-    assert p99 <= 0.06, p99
+    # (muslin fit, C162 / C166: "the cloth doesn't stretch" is THREAD strain (warp / weft), shear read apart: a
+    # principal / edge strain counts bias shear as stretch)
+    g_, sh_ = out["info"]["grain_stretch_pct"], out["info"]["shear_deg"]
+    if verbose:
+        print(f"   threads {g_}, shear {sh_} (face principal p99 {p99 * 100:.1f} %)")
+    assert g_["p99"] <= 6.0, g_
+    assert sh_["p99"] <= pf.SHEAR_LOCK_DEG, sh_
     return rows, p99
 
 
@@ -1182,17 +1210,21 @@ def test_open_front_hangs_without_moving_its_side_seams(off=0.05):
     try:
         for hold in (False, True):
             pf.WORN_EDGE, pf.OPEN_HOLD = True, hold
-            V = pf.assemble({"mesh": M, "X0": X0}, body, iters=80, worn_open={"break": off})["V"]
+            o_ = pf.assemble({"mesh": M, "X0": X0}, body, iters=80, worn_open={"break": off})
+            V = o_["V"]
             drift = float(np.linalg.norm(V[side] - closed[side], axis=1).max())
             sv = np.abs(np.linalg.norm(V[E[:, 0]] - V[E[:, 1]], axis=1) / l0 - 1)
-            res[hold] = (drift, float(np.abs(V[low, 0]).min()), float(np.percentile(sv, 99)))
+            # (muslin fit, C166: unstretched = THREAD strain, shear apart; the edge read counts bias shear as stretch)
+            res[hold] = (drift, float(np.abs(V[low, 0]).min()), o_["info"]["grain_stretch_pct"]["p99"] / 100,
+                         o_["info"]["shear_deg"]["p99"])
             print(f"open tube hold {hold}: side seam drift {drift * 1000:.1f} mm, edge below the break |x| min "
                   f"{np.abs(V[low, 0]).min() * 1000:.1f} / max {np.abs(V[low, 0]).max() * 1000:.1f} mm, "
-                  f"y {V[low, 1].mean() * 1000:.1f} mm, stretch p99 {np.percentile(sv, 99) * 100:.2f}%")
+                  f"y {V[low, 1].mean() * 1000:.1f} mm, edge p99 {np.percentile(sv, 99) * 100:.2f}%, threads p99 "
+                  f"{res[hold][2] * 100:.2f}%, shear p99 {res[hold][3]:.1f} deg")
     finally:
         pf.WORN_EDGE, pf.OPEN_HOLD = saved
-    d1, e1, s1 = res[True]
-    assert d1 < 0.003 and e1 > off - 0.005 and s1 < 0.03, res[True]
+    d1, e1, s1, g1 = res[True]
+    assert d1 < 0.003 and e1 > off - 0.005 and s1 < 0.03 and g1 <= pf.SHEAR_LOCK_DEG, res[True]
     assert res[False][0] > 0.010, res[False]
 
 
@@ -1397,26 +1429,30 @@ def test_woven_square_sheared_20_costs_under_5pct_of_a_2pct_stretch():
 
 
 def test_woven_fit_shears_a_held_sheet_instead_of_stretching():
-    """(fit round 14) The fit, not just the energy: a free sheet placed sheared 20 deg relaxes back under FIT (all edges
-    isometric) but under WOVEN keeps most of its shear (only SHEAR_STIFF pulls it back; warp / weft at length), while a
-    sheet placed stretched 3 % along the warp relaxes to its length under both."""
+    """(fit round 14; rewritten for the muslin fit, C166) A sheet placed sheared 20 deg: where something DRIVES the
+    cloth (the solve's SHEAR_STIFF weight: as if the form or a pin held it) WOVEN keeps most of the shear (warp / weft at
+    length, only the shear rigidity pulls it back) while FIT (all edges isometric) pulls it square; FREE (nothing drives
+    it, SHEAR_FREE: the shear hysteresis) it relaxes square under both. A sheet placed stretched 3 % along the warp
+    relaxes to its length every way."""
     M, W = _woven_square(90.0, 0.02)
     out = {}
-    for woven in (False, True):
-        saved = pf.WOVEN
-        try:
+    saved = (pf.WOVEN, pf.SHEAR_FREE)
+    try:
+        for woven, held in ((False, False), (True, False), (True, True)):
             pf.WOVEN = woven
+            pf.SHEAR_FREE = pf.SHEAR_STIFF if held else saved[1]
             for nm, A in (("shear", _shear_A(20.0)), ("stretch", np.diag([1.0, 1.03]))):
                 X0 = _grain_map(M, 90.0, A)
                 V = pf.assemble({"mesh": M, "X0": X0}, None, iters=30, attract=0.0)["V"]
                 Fg = pf._woven_grad(W, V)[0]
-                out[(woven, nm)] = (round(float(np.median(pf.woven_shear_deg(W, V))), 1),
-                                    round(float(np.median(np.linalg.norm(Fg[:, :, 1], axis=1)) - 1) * 100, 2))
-        finally:
-            pf.WOVEN = saved
-    print("held sheet", out)
-    assert out[(False, "shear")][0] < 5.0 and out[(True, "shear")][0] > 10.0, out
-    assert abs(out[(True, "stretch")][1]) < 0.5 and abs(out[(False, "stretch")][1]) < 0.5, out
+                out[(woven, held, nm)] = (round(float(np.median(pf.woven_shear_deg(W, V))), 1),
+                                          round(float(np.median(np.linalg.norm(Fg[:, :, 1], axis=1)) - 1) * 100, 2))
+    finally:
+        pf.WOVEN, pf.SHEAR_FREE = saved
+    print("held / free sheet", out)
+    assert out[(False, False, "shear")][0] < 5.0 and out[(True, True, "shear")][0] > 10.0, out
+    assert out[(True, False, "shear")][0] < 5.0, out  # (free: nothing drives the shear)
+    assert all(abs(out[(w, h, "stretch")][1]) < 0.5 for w, h in ((False, False), (True, False), (True, True))), out
 
 
 def test_front_crease_and_flap_through_measures_find_planted_faults():
@@ -1649,7 +1685,7 @@ def bridge_case(bridge, verbose=True, hang=True):
         return rad(z0, az) - 1000 * float(r(z0, az))
     res = {"waist_back": at(1.10, math.pi / 2), "waist_side": at(1.10, 0.0), "seat_back": at(0.93, math.pi / 2),
            "under_seat_back": at(0.80, math.pi / 2), "cup_back": rad(0.93, math.pi / 2) - rad(0.80, math.pi / 2),
-           "stretch_p99": out["info"]["stretch_pct"]["p99"]}
+           "stretch_p99": out["info"]["grain_stretch_pct"]["p99"], "shear_p99": out["info"]["shear_deg"]["p99"]}
     if verbose:
         print("bridge", bridge, "hang", hang, {k: round(v, 1) for k, v in res.items()})
     return res
@@ -1663,9 +1699,14 @@ def test_bridge_hourglass_tube():
     (measured 17 vs 29 mm cup, 69 vs 49 mm under the seat). At the waist a tailored tube has no girth to bridge
     with: there the draft decides, not the form (waist gap 6-12 mm either way)."""
     s, f = bridge_case(1.0), bridge_case(0.0)
-    assert s["cup_back"] <= 0.65 * f["cup_back"], (s, f)
+    # (muslin fit, C166: the soft woven tube can't trellis into the hollow as the isometric one was drawn (cup 26 vs
+    # 29 mm), so the stiff : soft cup ratio is no longer the iso fit's 17 : 29; the rule kept is the MECHANISM: the
+    # stiff tube clearly nearer plumb (cup >= 5 mm less) and standing off the hollow (>= 15 mm further under the seat).
+    # "stretch" = THREAD strain (the polygon tube's rows), shear apart: the edge read counted the waist's bias shear)
+    assert s["cup_back"] <= f["cup_back"] - 5.0, (s, f)
     assert s["under_seat_back"] >= f["under_seat_back"] + 15, (s, f)
     assert s["stretch_p99"] < 10 and f["stretch_p99"] < 10, (s, f)
+    assert s["shear_p99"] <= pf.SHEAR_LOCK_DEG and f["shear_p99"] <= pf.SHEAR_LOCK_DEG, (s, f)
 
 
 def test_pocket_flap_is_a_patch_on_its_front():
