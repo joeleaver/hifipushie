@@ -10562,3 +10562,4 @@ Muslin fit, styling, no sim; judged beside the concept only. Design: falls strai
 - LOOK (mine): check/wholefront_p2sc.png: the fronts meet at CF below the waist -- reads as a CLOSED jacket, worse than
   r33; sides straight; side_p2sc.png: the back now falls plumb from the blades (right); upper_three: lapels / collar as
   r33. sp2sc: hem width right but flared side corners, fronts still nearly shut.
+- Suite (17 files, capped, -rs, HIFIPUSHIE_HOME=workspace + ASSETS): 291 passed, 4 xfailed, 0 skipped, PYTEST_EXIT 0 ($FR34/suite.log, 11.7 min).
