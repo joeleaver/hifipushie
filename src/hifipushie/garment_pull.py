@@ -103,6 +103,105 @@ SIDE_MIN = 0.015  # m: a "side" is taken only from a point at least this far off
 _HE = ((0, 1, 2), (1, 2, 0), (2, 0, 1))
 
 
+FLOOR_GAP = None  # m: the least a layer lies off its floor (None: pattern_form.THICK, one cloth)
+FLOOR_REACH = 1.5  # x the floor's median edge: a vertex is held off a floor only where it stands over it (C124's rule)
+
+
+def layer_floor(M: dict, X: np.ndarray, body=None, under=None, gap: float | None = None, flaps: bool = True) -> list:
+    """THE FIT'S LAYER ORDER AS A FLOOR FOR STYLING (C157 / C170): the styling solve is a flat-pattern ARAP with no
+    contact, so a pull let the lapels go through their own fronts, the pocket flaps sink into theirs and the fronts into
+    the shirt (Garrett jacket round 27). The layers, as the fit stacked them: the garment over the BODY and over the
+    garment UNDER it (under = (V, F), e.g. the shirt as pressed under a jacket), every fold's turned FLAP over its own
+    base (folds._geom: the lapel over its front), every STITCHED patch (M["stitch"]: a pocket flap) over the piece it
+    is stitched to. Pass the list as style(..., floor=...): after every solve round, a free vertex that went nearer a
+    floor than min(gap, its start distance) is put back on it along the floor's normal (oriented off the body).
+    Returns [{"v", "level", "surf" | ("bv", "bF"), "reach", "ref", "name"}]: floors with no body are oriented by their
+    own centroid. A vertex not over a floor at the start gets the gap (it may slide over it)."""
+    from . import pattern_form as pf_, folds as fm_
+    from .cloth_made import outward
+    X = np.asarray(X, float)
+    gap = (pf_.THICK if FLOOR_GAP is None else FLOOR_GAP) if gap is None else gap
+    bvf = _body_vf(body)
+    ref = pf_._Surface(bvf[0], outward(*bvf)) if bvf is not None else None
+    F = np.asarray(M["F"], int)
+    pid = np.asarray(M["piece"])
+    names = list(M["names"])
+
+    def reach(V, Fs):
+        e = np.linalg.norm(V[Fs[:, 0]] - V[Fs[:, 1]], axis=1)
+        return FLOOR_REACH * float(np.median(e)) if len(e) else 0.0
+
+    def level(d, dist, tang, rch):
+        # (a vertex over its floor at the start keeps min(gap, how far off it stood): one that started through is never
+        # pushed out; one not over it yet (it may slide over it: the strip KAT) gets the gap)
+        lev = np.full(len(d), gap)
+        over = (tang < rch) & (dist < 0.03)
+        lev[over] = np.minimum(gap, d[over])
+        return lev
+
+    out = []
+    allv = np.arange(len(X))
+    stat = [("body", bvf[0], outward(*bvf))] if bvf is not None else []
+    if under is not None:
+        stat.append(("under", np.asarray(under[0], float), np.asarray(under[1], int)))
+    for nm, V, Fs in stat:
+        sf = pf_._Surface(V, Fs, ref=ref if nm != "body" else None) if nm != "body" else ref
+        d, _, dist = sf.signed(X)
+        rch = reach(V, Fs)
+        tang = np.sqrt(np.maximum(dist ** 2 - d ** 2, 0.0))
+        out.append({"name": nm, "v": allv, "level": level(d, dist, tang, rch), "surf": sf, "reach": rch, "ref": ref})
+    if flaps:
+        fl = fm_.flap_faces(M, F)
+        for nm in sorted({fd["piece"] for fd in M.get("folds") or []}):
+            k = names.index(nm)
+            fpc = pid[F[:, 0]] == k
+            if not (fl & fpc).any() or not (~fl & fpc).any():
+                continue
+            bF = F[fpc & ~fl]
+            bv = np.unique(bF)
+            fv = np.setdiff1d(np.unique(F[fpc & fl]), bv)
+            if len(fv):
+                out.append(_dyn_floor(f"flap:{nm}", X, fv, bv, bF, ref, gap, reach(X, bF), level))
+        st = np.asarray(M.get("stitch") if M.get("stitch") is not None else [], int).reshape(-1, 2)
+        for pa in sorted({int(p) for p in pid[st.ravel()]}) if len(st) else []:
+            other = {int(pid[b]) if pid[a] == pa else int(pid[a]) for a, b in st if pa in (pid[a], pid[b])} - {pa}
+            if not other or (pid == pa).sum() >= min((pid == o).sum() for o in other):
+                continue  # (the patch is the smaller piece of a stitched pair)
+            bF = F[np.isin(pid[F[:, 0]], sorted(other))]
+            bv = np.unique(bF)
+            fv = np.setdiff1d(np.where(pid == pa)[0], np.unique(st.ravel()))
+            if len(fv):
+                out.append(_dyn_floor(f"patch:{names[pa]}", X, fv, bv, bF, ref, gap, reach(X, bF), level))
+    return out
+
+
+def _dyn_floor(name, X, fv, bv, bF, ref, gap, rch, level):
+    from . import pattern_form as pf_
+    ix = -np.ones(len(X), int)
+    ix[bv] = np.arange(len(bv))
+    d, _, dist = pf_._Surface(X[bv], ix[bF], ref=ref).signed(X[fv])
+    tang = np.sqrt(np.maximum(dist ** 2 - d ** 2, 0.0))
+    return {"name": name, "v": fv, "level": level(d, dist, tang, rch), "surf": None, "bv": bv, "bF": ix[bF],
+            "reach": rch, "ref": ref}
+
+
+def _bind_floor(floor, inv):
+    """layer_floor's floors on a welded mesh (FlatARAP.inv): vertex ids -> welded ids, the vertices with no floor
+    (level -inf) dropped."""
+    if not floor:
+        return []
+    out = []
+    for fl in floor:
+        keep = np.isfinite(fl["level"])
+        if not keep.any():
+            continue
+        b = dict(fl, w=inv[np.asarray(fl["v"])[keep]], level=np.asarray(fl["level"])[keep])
+        if fl.get("surf") is None:
+            b["bw"] = inv[np.asarray(fl["bv"])]
+        out.append(b)
+    return out
+
+
 class FlatARAP:
     """Per-face ARAP against the flat pattern on the WELDED mesh (sewn pairs one vertex). W = welded positions.
     WOVEN_STYLE (DEFAULT since C169; env GP_WOVEN_STYLE=0 for the isometric A/B): the local step as the muslin fit's (pattern_form.WOVEN:
@@ -154,6 +253,7 @@ class FlatARAP:
         Lw = coo_matrix((np.r_[w, w], (np.r_[I, J], np.r_[J, I])), shape=(self.n, self.n)).tocsr()
         self.L = (diags(np.asarray(Lw.sum(1)).ravel()) - Lw).tocsr()
         self._lu = {}
+        self.floor, self.floor_pushed = _bind_floor(M.get("_floor"), self.inv), 0  # (style(floor=...): C170)
         self.shear = self.shear_free = None
         if WOVEN_STYLE:
             from . import pattern_form as pf_
@@ -208,8 +308,32 @@ class FlatARAP:
             Yf = np.column_stack([lu.solve(r[:, k]) for k in range(3)])
             dmax = float(np.abs(Yf - Y[fi]).max()) if len(fi) else 0.0
             Y[fi] = Yf
+            if self.floor:  # THE LAYER FLOOR (C170): what went under its floor this round is put back on it
+                Y = self._floor(Y, fixed)
             if eps is not None and dmax < eps:
                 break
+        return Y
+
+    def _floor(self, Y: np.ndarray, fixed: np.ndarray) -> np.ndarray:
+        """Each floor (layer_floor) on the welded positions: a free vertex nearer its floor than its LEVEL (min(gap, how
+        far it stood off it at the start): a layer that started through is never pushed out, only kept from going
+        deeper) is moved out along the floor's normal to it; only where it stands OVER the floor (sideways within the
+        floor's reach of its nearest floor vertex)."""
+        from . import pattern_form as pf_
+        for fl in self.floor:
+            w = fl["w"]
+            free = ~fixed[w]
+            if not free.any():
+                continue
+            w, lev = w[free], fl["level"][free]
+            surf = fl["surf"] if fl["surf"] is not None else \
+                pf_._Surface(Y[fl["bw"]], fl["bF"], ref=fl["ref"])
+            d, n, dist = surf.signed(Y[w])
+            tang = np.sqrt(np.maximum(dist ** 2 - d ** 2, 0.0))
+            m = (d < lev) & (tang < fl["reach"])
+            if m.any():
+                Y[w[m]] += (lev[m] - d[m])[:, None] * n[m]
+                self.floor_pushed += int(m.sum())
         return Y
 
 
@@ -784,7 +908,7 @@ def smooth_border(M: dict, X: np.ndarray, held, border: str, spline: int = 10, l
                 "shear_p99_deg": [_shmax(sh0), _shmax(st(Y)[1])], "border": border}
 
 
-def style(M: dict, X: np.ndarray, held, ops: list[dict], body=None, log=None):
+def style(M: dict, X: np.ndarray, held, ops: list[dict], body=None, log=None, floor=None):
     """Styling as a SEQUENCE of hand moves (C142-C144): ops [{"pull": {"handles": [...], step / tol / max_move ...}}
     | {"turn": {"turns": [...], steps ...}} | {"smooth": {"pieces": [...], lam / rounds / tol ...} or {"border":
     "piece:a..b..c", spline / lam / ...} (smooth_border), "release"?: pieces freed from region holds} | {"relax":
@@ -797,6 +921,8 @@ def style(M: dict, X: np.ndarray, held, ops: list[dict], body=None, log=None):
     X = np.asarray(X, float)
     base = _mask(held, len(X))
     M = dict(M, _X=X.copy())  # ("piece:@closure" names read which pairs are done up on the fit styled)
+    if floor:  # (C170: layer_floor's floors, read by every op's solve)
+        M["_floor"] = floor
     placed = np.zeros(len(X), bool)  # what earlier ops gripped: held where they left it
     feathers = []  # (vertices, share, positions at the hold) of each feathered hold
     regions = np.zeros(len(X), bool)  # what hold ops hold (a smooth may "release" pieces of it)

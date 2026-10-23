@@ -448,3 +448,62 @@ def test_neck_lump_reads_tell_garretts_lump_from_a_smooth_shoulder():
         d = pickle.load(open(D / f"{t}.pkl", "rb"))
         rows = gp.neck_lump_rows(d["mesh"], np.asarray(d["A"], float), (d["bodyV"], d["bodyF"]))
         assert len(rows) == 2 and all(r["status"] == want for r in rows), (t, rows)
+
+
+def _box(lo, hi, n=25):
+    """A closed box mesh (each face an n x n grid), wound outward."""
+    lo, hi = np.asarray(lo, float), np.asarray(hi, float)
+    V, F = [], []
+    for ax in range(3):
+        for s in (0, 1):
+            a, b = [k for k in range(3) if k != ax]
+            g = np.linspace(0, 1, n)
+            base = len(V)
+            for i in g:
+                for j in g:
+                    p = np.zeros(3)
+                    p[ax] = (lo if s == 0 else hi)[ax]
+                    p[a], p[b] = lo[a] + i * (hi[a] - lo[a]), lo[b] + j * (hi[b] - lo[b])
+                    V.append(p)
+            ix = lambda i, j: base + i * n + j
+            F += [f for i in range(n - 1) for j in range(n - 1)
+                  for f in ((ix(i, j), ix(i + 1, j), ix(i + 1, j + 1)), (ix(i, j), ix(i + 1, j + 1), ix(i, j + 1)))]
+    V, F = np.array(V), np.array(F)
+    c, nrm = V[F].mean(1), np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]])
+    F[((c - (lo + hi) / 2) * nrm).sum(1) < 0] = F[((c - (lo + hi) / 2) * nrm).sum(1) < 0][:, ::-1]  # (each face out)
+    return V, F
+
+
+@pytest.mark.parametrize("as_layer", ["body", "patch"])
+def test_layer_floor_keeps_a_pulled_cloth_on_its_side(as_layer):
+    """C170 layer floor: the slack strip (test 1) hanging as an arc under a block (its middle 5 mm below the block's
+    underside), its free end pulled along the chord. With no floor the flat-pattern solve straightens the strip
+    THROUGH the block (C157: lapels through their fronts, flaps sunk, fronts into the shirt). With layer_floor the
+    strip stays on its side of the block (within one cloth thickness of its start gap: the level is min(gap, start)),
+    whether the block is the body or a held piece the strip is stitched to (a pocket flap over its front)."""
+    M, X, pin = _strip()
+    zmid = float(X[:, 2].min())
+    BV, BF = _box([0.08, -0.05, zmid + 0.005], [0.12, 0.07, 0.05])
+    body = (BV, BF)
+    held = pin.copy()
+    if as_layer == "patch":  # the block as a held piece of the same mesh, the strip stitched to it at its pinned end
+        n0 = len(X)
+        Mb = {"F": np.r_[M["F"], BF + n0], "uv": np.r_[M["uv"], BV[:, :2] * 0 + np.c_[np.arange(len(BV)) * 1e-3, np.zeros(len(BV))]],
+              "piece": np.r_[np.zeros(n0, int), np.ones(len(BV), int)], "names": ["strip", "block"], "sew": [],
+              "points": M["points"]}
+        k = int(np.argmin(np.linalg.norm(BV - X[np.where(pin)[0][0]], axis=1)))
+        Mb["stitch"] = [[int(np.where(pin)[0][0]), n0 + k]]
+        M, X, held, body = Mb, np.r_[X, BV], np.r_[held, np.ones(len(BV), bool)], (np.array([[9.0, 9, 9], [9.1, 9, 9], [9, 9.1, 9]]) + 0, np.array([[0, 1, 2]]))
+    h = [{"at": "strip:tipA..tipB", "dir": [1, 0, 0]}]
+
+    def under_block(Y):  # the deepest the strip's vertices over the block's footprint go above its underside (m)
+        s = np.arange(len(_strip()[1]))
+        over = (Y[s, 0] > 0.085) & (Y[s, 0] < 0.115)
+        return float((Y[s][over, 2] - (zmid + 0.005)).max())
+    X0, _ = gp.style(M, X, held, [{"pull": {"handles": h, "max_move": 0.08}}])
+    floor = gp.layer_floor(M, X, body=body if as_layer == "body" else None,
+                           flaps=as_layer == "patch")
+    assert [f["name"] for f in floor] == (["body"] if as_layer == "body" else ["patch:strip"]), [f["name"] for f in floor]
+    X1, inf = gp.style(M, X, held, [{"pull": {"handles": h, "max_move": 0.08}}], floor=floor)
+    assert under_block(X0) > 0.01, under_block(X0)  # (no floor: through the block by more than 10 mm)
+    assert under_block(X1) < 0.0015 + 1e-4, under_block(X1)  # (the floor: never above its underside past one cloth)
