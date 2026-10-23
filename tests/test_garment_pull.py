@@ -631,6 +631,12 @@ def test_open_jacket_is_styled_by_its_wear_as_data():
     assert [t["about"] for t in tu] == [["front.L:break", "front.L:sideF.b"], ["front.R:break", "front.R:sideF.b"]], tu
     # (C182, fit round 36) ... until the edge below the break hangs plumb (break -> cutawayTop), not by a fixed angle
     assert [t.get("plumb") for t in tu] == [["front.L:break", "front.L:cutawayTop"], ["front.R:break", "front.R:cutawayTop"]], tu
+    # (C184, fit round 37) ... after the lapped cloth has first slid back round the body (un-lap), the side and back
+    # panels following, its lap set by the hang (the edge from the break to the cut-away's top on the vertical)
+    su = ops[kinds.index("turn") - 1]["slide"]["slides"]
+    assert [q["at"] for q in su] == ["front.L:break..cfHem", "front.R:break..cfHem"], su
+    assert [q["by"] for q in su] == [{"plumb": t["plumb"], "ramp": True} for t in tu], su
+    assert [q["with"] for q in su] == [["side.L", "back.L"], ["side.R", "back.R"]], su
     lay = ops[kinds.index("turn") + 1]["pull"]["handles"]
     assert [h["at"] for h in lay] == [t["at"] for t in tu] and all(h["dir"]["out"] < 0 < h["dir"]["down"] for h in lay), lay
     assert not any("@" in h["at"] for o in ops if "pull" in o for h in o["pull"]["handles"]), ops

@@ -10622,3 +10622,31 @@ Muslin fit, styling, no sim; judged beside the concept only (concept edge off CF
   test_cloth_layers::test_hidden_removes_under_cloth_poking_out_through_the_outer. Garrett h1s: 768 pokes, +656 faces
   hidden (12352 -> 13008); the armhole patches gone, small shards left at the sleeve heads (check/pierce_ab_wholefront.png).
 - Suite (17 files, capped, -rs, HIFIPUSHIE_HOME=workspace + ASSETS): 295 passed, 4 xfailed, PYTEST_EXIT 0 ($FR36/suite.log, 12.9 min).
+
+## fit round 37 (2026-10-23; $FR37 = /mnt/data/hifipushie/dress_garrett/fit_round37; branch claude/garrett-jacket-r37)
+Muslin fit, styling, no sim; judged beside the concept only. Same fit as r36 (asm_g1, PLUMB_HOLD).
+- Step 1, the coordinator's UN-LAP idea as an op (garment_pull.slide, style op "slide"): the edge band slid ALONG the body
+  surface, horizontally round it toward the side, keeping its fitted offset (_march: k=8 averaged body normals, 2 mm
+  steps); lap "by" plumb [break, cutawayTop] (per vertex onto the vertical through the break) or with "ramp" (linear in z
+  from the break to cutawayTop, the same arc below); "follow" falloff; "with" pieces (side / back) follow by the angle
+  round to CB. KAT test_garment_pull::test_slide_unlaps_along_the_body_keeping_its_offset (cylinder).
+- diag37.py (slide forced to share 0.33 / 0.66 / 1, tol None; front threads p99, fit 6.9-7.4 %):
+  u1 band 40 mm, per-vertex plumb: 17.6 / 34.2 / 48.8 %; u3 band 12 mm: 16.7 / 32 / 31; u4 + side/back: 15.9 / 24.6 / 25.
+  The top-3 % strained faces sit at 373-400 below HPS, x 40-70: the BREAK CORNER (per-vertex plumb asks 39 mm of arc
+  within 77 mm under the held break). u5 ramp + band 12 + side/back: 7.1 / 11.0 / 17.1 % (without the corner 5.4 / 7.1 /
+  13.1); stand-off stays the fit's (ahead w/-100/-200/-300 35/26/22/18 at 0.33). u6 ramp + band 40: 8.6 / 14 / 21.
+  The rest of the panel is near isometric; the corner and (at full lap) the side panel take the strain.
+- Step 2, A/B on the same fit (op37.py op by op; reads37 + fwd33; L | R):
+  swing alone (r36 h1s): edge 54-57/79-82/111; ahead 38/47/55/42 | 27/38/50/38; hem+30 454; length 727 (corner 739);
+    threads p99 7.36 (fronts 8.24), shear 26.1.
+  un-lap alone (u5f): stops on stretch at share 0.5 (break corner): edge 39-47/51-55/67-69; ahead 35/32/32/21 |
+    26/33/33/24; hem+30 520; threads 7.06 (7.82), shear 25.7. On the body, but opens half: loses on the edge.
+  un-lap THEN the plumb swing + lay-back (v1 = k1, now default): the swing turns 28 deg (r36 41) and the lay-back pull now
+    lays it back (50/54/46 -> 28/31/35): edge 41-50/74-77/101; ahead 35/28/31/35 | 20/26/32/32; hem+30 486; hem sweep
+    516; front length 741 (corner 748 / 743: the hem pull-down now reaches 15 mm); threads 7.73 (8.79), shear 27.6.
+  v2 (fronts only, no side/back follow): the swing then barely turns (start 10.7 %): 38/51/69. v3 (side only): ahead
+    35/30/35/39 | 22/26/35/35, edge 38/72/96.
+  Cost of v1: 450 dips more (41-50 vs 54-57; concept 71) and the side panels flare at the hem (side line out 53-62 vs
+  29-37; concept widens ~42 / side; hem+30 486 vs 482). Upper half unchanged: V 232, lapel 137/136, roll 76/62.
+- Code (C184): kb jacket.wear.open.style gets the slide before the swing (ramp, band 12 mm, follow 0.001, with side + back);
+  the kb test asserts it. Default styling on g1 (sty37.sh g1 k1) = v1 exactly. Sheets check/*_k1c.png.
