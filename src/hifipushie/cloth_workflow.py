@@ -50,6 +50,20 @@ def waist_band_for_body(waist_band, chest_band, sz: dict) -> list | None:
         return None
     return [float(waist_band[0]), round(top, 4)]
 
+# A garment declared to FALL STRAIGHT (a jacket's waist_suppression silhouette "plumb" without the tube cut, C179): below
+# the chest its girth is the chest's carried down plus the flare the reference shows (Garrett: front-view hem 482 vs
+# chest 397), not a fit choice, so the kind's ease band there keeps its BOTTOM (never too small) and drops its top:
+# the shape is gated by pattern_jacket's falls_straight row and the reference's widths. (fit round 34: the derived
+# flare read seat +22.8 % against the relaxed band's +18 % top.)
+FALL_BAND_REGIONS = ("waist", "hips", "seat")
+
+
+def falls_straight_design(g: dict) -> bool:
+    """True when the garment's design declares the plumb fall (C179): waist_suppression silhouette plumb, no tube cut."""
+    return any(o.get("op") == "waist_suppression" and o.get("silhouette") == "plumb" and not o.get("tube")
+               for o in (((g or {}).get("design") or {}).get("ops") or []))
+
+
 def _out(stage: str) -> dict:
     return {"stage": stage, "fail": [], "warn": [], "info": [], "images": []}
 
@@ -237,6 +251,9 @@ def stage_pattern(c: Ctx, image: bool = True) -> dict:
             line = f"ease at {reg}: {ease * 100:+.1f}% ({how}; body {v['body_mm']:.0f} mm)"
             if reg == "waist" and wb is not None:
                 line += " [band from this body: hangs straight from the chest]"
+            if band and reg in FALL_BAND_REGIONS and falls_straight_design(c.g):
+                band = [float(band[0]), float("inf")]
+                line += " [falls straight (C179): no top; the fall is gated by falls_straight + the reference's widths]"
             if band:
                 line += f", {c.res['fit'] if c.res else 'kind'} band {band[0] * 100:+.0f}..{band[1] * 100:+.0f}%"
                 if not band[0] - 0.005 <= ease <= band[1] + 0.005:

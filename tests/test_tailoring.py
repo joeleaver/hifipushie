@@ -250,6 +250,17 @@ def test_plumb_falls_straight():
         assert ff["hem"] - fs["hem"] > 0.12 and ff["seams"]["sideF"]["hem"] > 0.06, (name, ff["hem"], fs["hem"])
 
 
+def test_falls_straight_design_drops_the_band_top_below_the_chest():
+    """(fit round 34, C179) A plumb jacket's ease below the chest is the fall's (chest carried down + the reference's
+    flare): the kind's band keeps its bottom there and drops its top; the tube cut and suits keep the band as written."""
+    from hifipushie import cloth_workflow as cw
+    ws = lambda **k: {"design": {"ops": [dict({"op": "waist_suppression"}, **k)]}}
+    assert cw.falls_straight_design(ws(silhouette="plumb"))
+    assert not cw.falls_straight_design(ws(silhouette="plumb", tube=True))
+    assert not cw.falls_straight_design(ws(silhouette="suit")) and not cw.falls_straight_design({})
+    assert set(cw.FALL_BAND_REGIONS) == {"waist", "hips", "seat"}
+
+
 def test_collar_fall_has_its_fold_line_and_the_gate_refuses_one_without():
     """R16 (fit round 2): the two-piece collar's fall carries a fold (roll) line across the whole fall (CB fold to both
     ends), parallel to its seam on the stand; the construction check (garment_design "fold" evidence, the gate's

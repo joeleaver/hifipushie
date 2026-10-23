@@ -10529,3 +10529,20 @@ Muslin fit, styling, no sim; judged beside the concept only. Design: falls strai
   round-33 pattern (tube): fall girth 1112 -> 1055 from ~100 mm under the chest; FAIL falls_straight 4.8 %, cb 37 mm at
   121, sideB 16 at 359 (its old rows: waist_plumb PASS; waist_suppression read 8.6 % with the laps in);
   plain plumb: 1113 chest -> hem flat, PASS all (with the laps the old suppression read 3.9 %: front-edge style, not fall).
+- Step 2, the PATTERN (girths DERIVED, derive34.py on $FR32/asm_a1, the r33 muslin): the concept's front-view widths
+  (waist 414, hem 482) applied to the worn section (x stretched to the width about its centre): waist G* 1162 (depth
+  held) .. 1182 (plumb depth) vs worn 1094; hem G* 1173 (depth held 194) / 1341 (back plumb from the seat + front from the
+  belly, depth 299) / ~1240 (depth = the seat level's own cloth depth 253: chosen; r33's guess 1230). Flat target = r33
+  flat (fall girth 1055) + (worn target - r33 worn): waist 1131, hem 1274. Plain plumb gives 1113 flat chest -> hem; the
+  rest is let out at the side seams by the draft's own contour op (chest 0, waist, hem; smoothstep between).
+  p1 = contour on sideF + sideB (8 edges, waist -2.25 / hem -20 mm): flat 1113 / 1131 / 1272. Gate: falls_straight PASS
+  but flat_pattern FAIL "ease at seat +22.8 %, relaxed band +6..+18 %": the generic fit band below the chest fights the
+  declared fall (as the waist band did: waist_band_for_body). Fixed (C179 cont.): cloth_workflow.falls_straight_design ->
+  waist / hips / seat keep the band's bottom, no top (the shape is gated by falls_straight + the reference widths).
+  p1 muslin (fitread33: threads at pattern length, weft p50 -0.4..0) put the girth into DEPTH and the fronts' LAP:
+  worn waist 1155 (+61) / hem 1116 (+95) but widths waist 385 / hem 428 (+10 / +13); the fronts overlap past CF by
+  11-26 mm at 450-650 (r33 fit: +5..+13 off CF). The kb styling (op_kp1.log) then turns 40 deg (stretch stop) and reads
+  edge 450/550/650 33-21/19-16/15-13 (r33 39-45/51-53/68): worse. Look (check/*_p1sc.png): fronts nearly closed at the hem,
+  a jog in the edge at the waist. Cause: the flare in the FRONT panel's side edge wraps the front further round.
+  p2 = the flare on the side + back panels only (contour edge ["sideB", "side:sideF.a>sideF.b"], 6 edges, waist -3 /
+  hem -26.8 mm): flat 1113 / 1131 / 1273, the front panel = r33's.
