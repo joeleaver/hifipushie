@@ -298,7 +298,9 @@ def wear(g: dict, what: str = "closures") -> list:
     kind = d.get("kind") or ((kb().get("designs") or {}).get((g.get("pattern") or {}).get("from") or "") or {}).get("kind")
     w = ((kb().get("kinds") or {}).get(kind) or {}).get("wear") or {}
     tie = g.get("tie", d.get("tie", False))
-    return [dict(c) for c in (w.get("tie" if tie else "no_tie") or {}).get(what) or []]
+    # (C174: a garment worn open (garment key worn_open) is worn by its kind's "open" entry, none when the kind has none)
+    key = "open" if (g.get("worn_open") or d.get("worn_open")) else ("tie" if tie else "no_tie")
+    return [dict(c) for c in (w.get(key) or {}).get(what) or []]
 
 
 def expand(g: dict) -> dict:

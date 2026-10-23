@@ -2810,7 +2810,8 @@ def fit_garment(name: str, garment: str, views: list[str] | None = None, size: i
     # the closed fit; a garment that declares its own worn_open (the old fold / pin route) or "style": false skips it
     style_txt = ""
     gx = cloth.expanded(spec["cloth"][garment])
-    if styled and not gx.get("worn_open") and gx.get("style", True) is not False and res.get("form_under") is None:
+    # (C174: a garment worn open is fitted open (C171) and styled by its kind's "open" wear: the fronts below the break)
+    if styled and gx.get("style", True) is not False and (res.get("form_under") is None or gx.get("worn_open")):
         from . import garment_pull as gpl
         Xs, sinfo = gpl.worn_style(res["mesh"], np.asarray(X, float), (np.asarray(res["body"].V, float),
                                    np.asarray(res["body"].T, int)), gx)

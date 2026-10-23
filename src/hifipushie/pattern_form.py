@@ -2142,8 +2142,11 @@ LAYER_W = 20.0  # a vertex touching the over layer: its proximal weight (x a fre
 # it any more than it can stretch: the misfit must show as strain (the muslin read), not hide in the shirt. So, as the
 # ceiling's mirror: the vertices on the under layer (covered(): stacked over it) weigh LAYER_W in the solve and are put
 # back at least LAYER_GAP outside it after every round from the seat on (LAYER_STEP a round, the last all the way).
-# Known answer: tests/test_pattern_form.py test_tight_outer_tube_lies_over_the_under_one. False: the old soft push.
-UNDER_FLOOR = True
+# Known answer: tests/test_pattern_form.py test_tight_outer_tube_lies_over_the_under_one. OPT-IN (False: the old soft
+# push): on Garrett's worn-open jacket (f1) it cut the jacket through the shirt 131 -> 18 and the shirt poking out 442 ->
+# 118, but moved the roll off the concept (150 / 250: 58 / 47 vs w1h 70 / 58, concept 69 / 64; break 337 vs 379 below
+# HPS), opened a sew gap 4.6 mm and grain max 98 %; Joe: covered show-through is culled anyway (C153), so not pursued.
+UNDER_FLOOR = False
 LAYER_FROM = "seat"  # the ceiling acts from this phase on ("relax1": all relaxes; "seat": once made pieces are stood up)
 
 

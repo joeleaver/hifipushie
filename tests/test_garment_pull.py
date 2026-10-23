@@ -584,3 +584,30 @@ def test_layer_floor_reach_is_local_to_a_coarse_base():
         gp.FLOOR_REACH_CAP = old
     assert res[old][0] == int((~end).sum()) and res[old][1] > -1e-4, res  # (on or above the plate, as the C170 KAT)
     assert res[1.0][0] == 0 and res[1.0][1] < -0.002, res  # (the control: no floor, through the plate)
+
+
+def test_open_jacket_is_styled_by_its_wear_as_data():
+    """C174 (garrett jacket fit round 31; Joe: "I'd smooth it out, pull it down"): a jacket worn open is styled by its
+    kind's "open" wear (garment_kb kinds.jacket.wear.open.style): the fronts above the break held as fitted, the edge
+    below gripped part-way down (border points "piece:a..b@t") and drawn side and down, then the artist's finish:
+    smooth, the hem pulled down, relax. A jacket worn closed has no wear style; a border point is the chain's vertex
+    at that share of its length, and a hold "above" holds that piece from the point's height up."""
+    from hifipushie import garment_design as gd
+    ops = gd.wear({"design": {"kind": "jacket"}, "worn_open": {"front.L:break": 0.064}}, "style")
+    kinds = [next(iter(o)) for o in ops]
+    assert kinds[0] == "hold" and ops[0]["hold"]["above"] == ["front.L:break", "front.R:break"], ops[0]
+    assert kinds[-3:] == ["smooth", "pull", "relax"] and ops[-2]["pull"]["handles"][0]["dir"] == "down", kinds
+    assert any("@" in h["at"] for o in ops if "pull" in o for h in o["pull"]["handles"]), ops
+    assert all(next(iter(h["dir"])) == "side" and h["dir"].get("down") for o in ops[2:-3] for h in o["pull"]["handles"]), ops
+    assert gd.wear({"design": {"kind": "jacket"}}, "style") == []
+    nx, ny = 11, 5
+    uv = np.array([(x, y) for x in np.linspace(0, 0.1, nx) for y in np.linspace(0, 0.04, ny)])
+    ix = lambda i, j: i * ny + j
+    F = np.array([f for i in range(nx - 1) for j in range(ny - 1)
+                  for f in ((ix(i, j), ix(i + 1, j), ix(i + 1, j + 1)), (ix(i, j), ix(i + 1, j + 1), ix(i, j + 1)))])
+    X = np.c_[uv[:, 0], np.zeros(len(uv)), uv[:, 1]]
+    M = {"F": F, "uv": uv, "piece": np.zeros(len(uv), int), "names": ["s"], "sew": [],
+         "points": {"s:a": ix(0, 0), "s:b": ix(nx - 1, 0), "s:c": ix(0, 2)}}
+    assert gp.vertex(M, "s:a..b@0.5") == ix(5, 0) and gp.vertex(M, "s:a..b@0") == ix(0, 0)
+    h = gp.hold_region(M, X, above="s:c")
+    assert h.sum() == nx * 3 and h[ix(3, 2)] and not h[ix(3, 1)], int(h.sum())

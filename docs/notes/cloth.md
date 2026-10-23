@@ -10398,3 +10398,36 @@ columns, C165). Shirt = gc_garrett's shirt on the muslin fit, styled as worn (on
   keeps them because they're seen); the front edges curl inward at the waist into a rope fold (belly crumple 12-14
   mm); the pocket flaps are dents; the hem is narrow (426 vs 482) and the body boxy; the shirt placket is lumpy.
 - Suite (17 files, capped, -rs, HIFIPUSHIE_HOME=workspace + ASSETS): 283 passed, 4 xfailed, 0 skipped, pytest exit 0 ($FR30/suite.log, 16 min).
+## fit round 31 (2026-10-23; $FR31 = /mnt/data/hifipushie/dress_garrett/fit_round31; branch claude/garrett-jacket-r31)
+Muslin fit, styling, no sim; judged beside the concept only. Coordinator's call (from r30's hps A/B, s5f): gc_garrett's
+jacket garment key hps = "corner" (sethps.py, store version 2). Base fit = r30's w1h (corner, worn open; symlinked).
+- Fault 1, why the shirt floor blocks the opening (underdbg.py / underfloor.py / pokewhere.py): NOT the floor's
+  thickness, NOT the edge region: the FIT is already inside the shirt. w1h before styling: 131 jacket vertices through
+  the pressed shirt (fronts 79 in the top 300 mm, to 13 mm), 442 shirt vertices > 1 mm outside the jacket (yoke at the
+  shoulders 91, shirt fronts on the upper chest 78, the spread collar under the lapels 187). assemble's under push is
+  a soft target. The styling floor then pushes the rim of that region out every round (20-round relax: 45 vertices,
+  up to 175 mm summed each; threads 7.5 -> 12 %): the "stop". Tried pattern_form.UNDER_FLOOR (hard contact, the
+  ceiling's mirror; KAT on tubes): f1 fit (723 s) through 131 -> 18, poke 442 -> 118, but roll 58 / 47 (w1h 70 / 58,
+  concept 69 / 64), break 337 below HPS (379), sew gap 4.6 mm, grain max 98 %. Joe then dropped fault 1 (the cull
+  will remove those triangles): UNDER_FLOOR left OPT-IN (C172). Looks style with body + flap floors (FLOOR_UNDER off).
+- Fault 3, flap dents (flapdbg.py): the patch floor's reach was 1.5 x the front's MEDIAN edge (7.6 mm); the front is
+  coarse under the flap (10-12 mm), so 3-19 of each flap's 20 free vertices had no floor at all. Local reach (1.5 x
+  the nearest base vertex's longest edge, capped 3 x median; C173): flaps sunk 1 / 0 of 25 (was 13 / 13).
+- Fault 2, the waist rope fold (style31.py RECIPE=edge, then as data: stylekb.py). Joe: "smooth it out, pull it down".
+  Break held (front above it held as fitted): t3b hem point side + out: 150 mm, nothing stopped it, hem lifted 40
+  (edge 50 / 88 / 151). t3c side + 0.5 down: 63 mm, stretch stop (27-30 / 36-45 / 58). t5a edge grips (450, 550) side
+  + out: 78 / 99 / 147 mm, over-open (88 / 150 / 175), lumps 12.7. t5b edge grips side + 0.5 down + finish (smooth,
+  hem pulled down): edge 48-53 / 70-71 / 97-103 (concept 71 / 78 / 94), crumple 9.9 / 11.1, lump 9.0-9.2, hem 451. t5c
+  three grips: over-opens below (106 / 152). Finish A/B (t5b0 no finish -> t5b): crumple 10.5 -> 9.9, lump p95 10.2 ->
+  9.2, divots 60 / 52 -> 56 / 39, hem 432 -> 451, length 728 -> 739. As DATA (C174): garment_kb kinds.jacket.wear.open
+  .style (hold above the break; grips "front.X:break..cfHem@0.33" / "@0.6" / cfHem, side + 0.5 down; smooth; hem down;
+  relax), garment_design.wear -> "open" for worn_open, worn_style welds + frees stitched patches and floors body +
+  flaps, fit_garment styles worn-open garments. k2 (= t5b exactly) is the look.
+- READS k2 | concept: lapel 150 118 / 116 | 127 / 134; V 200 190 | 237; edge 450 / 550 / 650 48-53 / 70-71 / 97-103 |
+  71 / 78 / 94; roll 150 / 250 69 / 55 | 69 / 64; shirt collar shows CB / 45 / side 12 / 15 / 20 | 10-20; side line max
+  L 60 (one row at the flap, -350) / R 32 | <= 20; hem 451 | 482; length 739 | 748; crumple p95 9.9 / 11.1 | smooth;
+  threads p99 8.8 %, shear 29.8. (r30 s5f: 133 / 244 / 82 / 76 / 84, crumple 13.9 / 12.3, hem 426.)
+- LOOK ($FR31/check/*_k2c.png; my own): the flaps read as flaps now and the waist edge hangs straighter (the rope is
+  mostly gone, a soft fold remains beside the L edge at 450). WORSE than r30 above: lapels narrower, V 190 vs 237: the
+  held fit's lapel, where r30's swing widened it by moving the break. The lower fronts flare out at the hem corners;
+  body boxy; shirt patches at the shoulders (dropped: culled later).

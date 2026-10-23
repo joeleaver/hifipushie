@@ -504,6 +504,9 @@ def vertex(M: dict, at) -> int:
         return int(at)
     if isinstance(at, str) and ":@" in at:
         return _top_fastened(M, *at.split(":@", 1))
+    if isinstance(at, str) and ".." in at and "@" in at:  # "piece:a..b@t": the border's point at t of its length (C174)
+        ch, t = at.rsplit("@", 1)
+        return border_at(M, ch, float(t))
     P = M.get("points") or {}
     if at not in P:
         pre = at.split(":")[0] + ":"
@@ -542,6 +545,8 @@ def vertices(M: dict, at) -> np.ndarray:
     shorter way round: a hem, a cuff's edge, a front edge), or a list of those."""
     if isinstance(at, (list, tuple, np.ndarray)) and not isinstance(at, str):
         return np.unique(np.concatenate([vertices(M, a) for a in at]))
+    if isinstance(at, str) and ".." in at and "@" in at:
+        return np.array([vertex(M, at)], int)
     if isinstance(at, str) and at.count("..") > 1:
         return np.unique(border_chain(M, at))
     if isinstance(at, str) and ".." in at:
@@ -551,6 +556,15 @@ def vertices(M: dict, at) -> np.ndarray:
         except KeyError as e:
             raise ValueError(str(e).strip("'\"")) from None
     return np.array([vertex(M, at)], int)
+
+
+def border_at(M: dict, at: str, t: float) -> int:
+    """The vertex of border walk `at` ("piece:a..b") nearest t (0..1) of its length on the pattern: a hand gripping
+    a front edge part-way down (C174: the jacket's edge below the break opened top-down, grips at 0.2 / 0.45)."""
+    ch = border_chain(M, at)
+    uv = np.asarray(M["uv"], float)[ch]
+    s_ = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(uv, axis=0), axis=1))]
+    return int(ch[int(np.argmin(np.abs(s_ - float(t) * s_[-1])))])
 
 
 def border_chain(M: dict, at: str) -> np.ndarray:
@@ -1138,7 +1152,7 @@ def feather(M: dict, X: np.ndarray, held, verts: np.ndarray, share: np.ndarray, 
 
 
 def hold_region(M: dict, X: np.ndarray, pieces=None, within_deg: float | None = None, of: str = "back",
-                center=None, at=None, feather_to: float | None = None, feather_pieces=None) -> np.ndarray:
+                center=None, at=None, feather_to: float | None = None, feather_pieces=None, above=None) -> np.ndarray:
     """A region the hand / body keeps still (C144; Joe: the collar "should mostly hug the neck on the back and sides;
     the flare is all toward the front"): the vertices of `pieces` within `within_deg` of CB ("of": "back", +y: the
     creature faces -y) or CF ("front") round a vertical axis through `center` (a piece name: its x-y centroid; default
@@ -1147,10 +1161,14 @@ def hold_region(M: dict, X: np.ndarray, pieces=None, within_deg: float | None = 
     (unheld: the opened front's slack spread round the ring, the fall 8 / 14 mm further off the neck at CB / side).
     `feather_to` (deg; used by style()): the band from within_deg to feather_to is not held but FEATHERED back after
     each pull (`feather`; FEATHER_AFTER): a hard border kinked the collar's edge 29 deg (q40); held to 70, feathered to 130:
-    18 deg (f2)."""
+    18 deg (f2). `above` ("piece:point" or a list): that piece's vertices at or above the point's height, as they lie
+    (C174: a worn-open front above its break held as the fit set it: the roll line is the fit's, C171)."""
     X = np.asarray(X, float)
     pid = np.asarray(M["piece"])
     out = np.zeros(len(X), bool)
+    for pt in ([above] if isinstance(above, str) else above or []):
+        v = vertex(M, pt)
+        out |= (pid == pid[v]) & (X[:, 2] >= X[v, 2])
     if pieces:
         on = np.isin(pid, _piece_ids(M, pieces))
         if within_deg is None:
@@ -1481,6 +1499,16 @@ def worn_style(M: dict, X: np.ndarray, body, g: dict, log=None):
     if not ops:
         return np.asarray(X, float), None
     free = ops_pieces(M, ops)
+    if g.get("worn_open"):  # (C174: a garment worn OPEN: fitted open, no button done; its stitched patches sewn as the
+        # fit has them (welded like seams) and the fit's layer order kept as a floor (body, flaps, patches; C170 / C173))
+        st_ = np.asarray(M.get("stitch") if M.get("stitch") is not None else [], int).reshape(-1, 2)
+        Ms = dict(M, sew=np.r_[np.asarray(M["sew"], int).reshape(-1, 2), st_])
+        pid_, nm_ = np.asarray(M["piece"]), list(M["names"])
+        for pa, pb in pid_[st_] if len(st_) else []:  # (a patch stitched to a moved piece moves with it: held, the
+            # pocket flaps sank 14-19 of 25 vertices into the opened fronts, r31 k1)
+            if nm_[pa] in free or nm_[pb] in free:
+                free = sorted(set(free) | {nm_[pa], nm_[pb]})
+        return style(Ms, X, hold_mask(Ms, X, free), ops, body=body, log=log, floor=layer_floor(Ms, X, body=body))
     below = "closure:front" if any(c.get("name") == "front" for c in M.get("closures") or []) else None
     held = hold_mask(M, X, free, below)
     return style(M, X, held, ops, body=body, log=log)
