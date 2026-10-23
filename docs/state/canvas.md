@@ -24,7 +24,7 @@ no point pulls, no smooths) ALL rows pass at W 1-5, threads 12.5 (no bend: v3 fa
 SHEETS ($CV/check): cmp_wholefront|upper_front|side_s1k3_c2k3_c2none.png, joeseam_s1k3_c2k3_c2none_c0none.png.
 VERDICT so far: the canvas FIT stiffness is what keeps the fronts open without PLUMB_HOLD (c0 vs c2); with it the
 jacket styles with NO workaround hold, hem / V / seam better than k3, edge 450 / 550 5-8 mm short of k3, threads +2.2.
-Not default yet. Suite: $CV/suite.log (running at handover; read its PYTEST_EXIT).
+Not default yet. Suite (17 garment files + test_bending): 306 passed, 4 xfailed, PYTEST_EXIT 0 ($CV/suite.log).
 NEXT (session 2): (1) FIT_HINGE_W 2 / 3 sweeps on c2_none (fitc.py tag '{"plumb_hold": false}' with PF_HINGE_W; then
 sty2.sh <fit> <tag> ops_none.json): aim edge 450 >= 60, threads <= 8.5; (2) the c2 thread rise: where (diagH.py);
 (3) pocket flaps ragged + L hem corner flip on c2_none; (4) if a variant matches k3 on edge and threads: defaults =
