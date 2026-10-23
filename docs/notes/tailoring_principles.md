@@ -123,6 +123,12 @@ lengths along the body; "neck" = the neck girth taken where the jacket collar si
     here: no copy at hand). Gate row collar_stand_end (<= 3 + 3 mm). OPT-IN because the fall's own crease (its fold
     4 mm above the seam, turned 172 deg) still runs to the end: on the form it folds the flat end back over the lapel
     (gorge_lie worse: tip 12 / 14 mm). NEXT: the fall's fold must run off at s_x with the stand.
+29. **The lapel edge has a belly** [G, garrett jacket fit round 32]. The lapel edge from the break to the lapel point
+    is drawn with a slight convex curve, not a straight line: rolled over a curved chest a straight edge reads hollow
+    (round 31 worn: 7 / 14 / 22 mm inside the break -> point line at 150 / 200 / 250 mm below the HPS, where the concept's
+    edge is straight). op_lapel `belly` (m) at `belly_at` (fraction from the break); Garrett: 10 mm at 0.4. Sources:
+    tailoring drafts draw the lapel edge "with a slight curve" from the break to the point (the lapel's belly / crown);
+    the amount is style, read from the reference's worn edge.
 
 ## What the gate checks (pattern_jacket.tailor_rows, cloth_check.pattern_gate for a jacket)
 back_neck_width R3 (+-6 mm), back_neck_rise R4 (+-6 mm), waist_suppression R8 (11-20 % of chest), hips_clearance

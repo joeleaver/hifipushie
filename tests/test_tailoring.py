@@ -464,3 +464,39 @@ def test_true_corner_bends_a_bare_straight_edge():
     after = pattern._interior(np.asarray(out["P"]), out["names"]["wristF"])
     assert abs(before - 90) > 5 and abs(after - 90) < 1.0
     assert len(out["P"]) > len(P) and np.allclose(out["P"][out["names"]["underarmF"]], P[3])
+
+
+def test_lapel_belly_bows_the_edge_out_and_keeps_its_ends():
+    """R29 (garrett jacket fit round 32): op_lapel's `belly` bows the break -> lapel point edge OUT (away from the roll
+    line) by `belly` at `belly_at` of the edge, 0 at both ends; the break, the lapel point, the roll fold and the gorge
+    stay where the straight draft puts them, at a small, a medium and a large man. belly 0 is the straight edge."""
+    def lapel(D):
+        pc = D["pieces"]["front.L"] if "front.L" in D["pieces"] else D["pieces"]["front"]
+        f = next(f for f in D["folds"] if f.get("name") == "lapel roll")
+        R0, R1 = np.asarray(f["line"][0]), np.asarray(f["line"][1])
+        u = (R1 - R0) / np.linalg.norm(R1 - R0)
+        n = np.array([-u[1], u[0]])
+        if n @ (_pt(pc, "lapelPoint") - R0) < 0:
+            n = -n
+        E = pc["P"][pattern.arc_indices(pc, "break>lapelPoint")]
+        return pc, u, n, E
+    for nm, tape in BODIES.items():
+        ops = pj.jacket_ops(OPS, tape, 20.0)
+        D0 = pd.start("bodice", tape, BLOCK)
+        pd.apply(D0, copy.deepcopy(ops))
+        for o in ops:
+            if o["op"] == "lapel":
+                o.update(belly=0.01, belly_at=0.4)
+        D1 = pd.start("bodice", tape, BLOCK)
+        pd.apply(D1, ops)
+        p0, u, n, E0 = lapel(D0)
+        p1, _, _, E1 = lapel(D1)
+        for k in ("break", "lapelPoint", "hps", "cfNeck"):
+            assert np.allclose(_pt(p0, k), _pt(p1, k), atol=1e-9), (nm, k)
+        assert len(E0) == 2 and len(E1) >= 9, (nm, len(E0), len(E1))
+        B, Pt = E1[0], E1[-1]
+        off = (E1 - B) @ n - ((E1 - B) @ (Pt - B)) / ((Pt - B) @ (Pt - B)) * ((Pt - B) @ n)  # off the straight edge
+        assert off.min() > -1e-9 and abs(off[0]) < 1e-9 and abs(off[-1]) < 1e-9, nm
+        assert abs(off.max() - 0.01) < 0.0015, (nm, off.max())  # the peak is the belly (sampled points)
+        s = np.r_[0, np.cumsum(np.linalg.norm(np.diff(E1, axis=0), axis=1))]
+        assert abs(s[int(np.argmax(off))] / s[-1] - 0.4) < 0.1, nm  # ... where it's asked

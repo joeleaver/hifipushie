@@ -168,13 +168,33 @@ def op_shawl(D: dict, piece: str = "front", break_y: float | None = None, stand:
                     f"fall), front edge extended {stand * 1000:.0f} mm")
 
 
+LAPEL_BELLY_STEP = 0.03  # m: the bellied lapel edge is densified to segments no longer than this
+
+
+def _lapel_belly(pc: dict, n, belly: float, at: float = 0.5) -> None:
+    """The lapel edge (break -> lapel point) bowed OUT (along `n`, away from the garment) from the straight line by
+    `belly` (m) at `at` (fraction of the edge from the break), 0 at both ends: two parabolic arcs meeting at the peak.
+    The edge is densified first (pattern_draft.densify_edge). tailoring_principles.md R29: a straight drafted lapel edge
+    reads hollow once rolled on the chest; tailors give it a slight convex curve ("belly")."""
+    pd.densify_edge(pc, "break>lapelPoint", LAPEL_BELLY_STEP)
+    ix = pattern.arc_indices(pc, "break>lapelPoint")
+    B, Pt = pc["P"][ix[0]].copy(), pc["P"][ix[-1]].copy()
+    seg = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(pc["P"][ix], axis=0), axis=1))]
+    a = float(np.clip(at, 0.1, 0.9))
+    nn = np.asarray(n, float)
+    for i, s in zip(ix, seg / seg[-1]):
+        h = 1.0 - ((a - s) / a) ** 2 if s <= a else 1.0 - ((s - a) / (1.0 - a)) ** 2
+        pc["P"][i] = B + (Pt - B) * s + nn * belly * max(h, 0.0)
+
+
 def op_lapel(D: dict, piece: str = "front", break_y: float | None = None, stand: float = 0.02, width: float = 0.08,
              rise: float = 0.02, roll_stand: float = 0.02, **o) -> None:
     """A notched lapel on the front: the centre front extended by `stand`, the lapel's point (the top corner of the
     extension) pushed out to `width` from the roll line and up by `rise`, a roll line from the break point to
     `roll_stand` inside the neck point. Then {"op": "collar", "type": "roll", "stop": gorge} drafts the collar.
     `roll_radius` (m, 0.006) and `roll_strength` (0.5) are the roll line's fold: the lapel lies about two radii off
-    the forepart at the line (a pressed, canvassed lapel: a smaller radius and more strength)."""
+    the forepart at the line (a pressed, canvassed lapel: a smaller radius and more strength). `belly` (m, 0) bows the
+    lapel edge out from the straight break -> point line, peaking at `belly_at` (0.5) of it (R29, _lapel_belly)."""
     pc = D["pieces"][piece]
     low = "cfHem" if "cfHem" in pc["names"] else "cfWaist"
     pd.op_extend(D, piece, f"cfNeck>{low}", stand, name="stand")
@@ -227,6 +247,8 @@ def op_lapel(D: dict, piece: str = "front", break_y: float | None = None, stand:
         ixn = _avoiding(pc, "hps", "cfNeck", "shoulder")
         for k, i in enumerate(ixn):
             pc["P"][i] = hps + (C - hps) * k / (len(ixn) - 1)
+    if float(o.get("belly", 0.0)) > 0.0:
+        _lapel_belly(pc, n, float(o["belly"]), float(o.get("belly_at", 0.5)))
     D["edges"]["lapel_edge"] = [f"{piece}:break>lapelPoint"]
     D["edges"]["gorge"] = [f"{piece}:lapelPoint>cfNeck"]
     D["centre"][piece] = "open"
