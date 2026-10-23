@@ -1,36 +1,36 @@
-# STATE: dress_garrett_fit (Garrett jacket over the muslin shirt: muslin form fit + styling, NO sim) -- 2026-10-23, round 31
+# STATE: dress_garrett_fit (Garrett jacket over the muslin shirt: muslin form fit + styling, NO sim) -- 2026-10-23, round 32
 
 DESIGN FACTS (Joe, settled): the jacket is worn OPEN, unbuttoned; it falls straight down (no waist suppression, side
 line plumb). Put "the reference jacket is worn open, unbuttoned" in every review's context. Renders show the OPEN jacket
 only. Covered show-through is not a fault (C153); Joe 2026-10-23: the shirt patches at the shoulders are culled later,
-don't chase them. PROCESS: muslin fit (worn open: the spec's worn_open, C171), styling by the kind's wear as data,
-remeasurement; no sim; judged beside the concept only (C165). Shirt = gc_garrett's shirt as worn, not tuned here.
-Jacket hps = "corner" in gc_garrett (coordinator's call from round 30's A/B; store version 2).
-STATE: round 32 IN PROGRESS: lapel widened in the PATTERN (gorge_drop 0.135 + belly R29): a1 V 221, lapel 150 133/130;
-lower fronts styled worse (zigzag L edge, R hem corner). a2 (belly 14 @0.35) running. cloth.md "fit round 32".
-Round 31 result: Suite (17 files, capped -rs): pytest exit 0, 286 passed, 4 xfailed, 0 skipped ($FR31/suite.log, 17 min). Look k2 = w1h fit (r30, corner, worn open) styled by garment_kb kinds.jacket.wear.open.style
-(C174: front above the break held; edge grips @0.33 / @0.6 / hem drawn side + 0.5 down until a thread would stretch;
-smooth; hem pulled down; relax) with body + flap floors (local reach, C173).
-READS k2 | concept: lapel 150 118/116 | 127/134; V 200 190 | 237; edge 450/550/650 48-53/70-71/97-103 | 71/78/94;
-roll 150/250 69/55 | 69/64; shirt collar shows 12/15/20 | 10-20; side line L 60 (one row at the flap) R 32 | <=20;
-hem 451 | 482; length 739 | 748; crumple p95 9.9/11.1 | smooth; flaps sunk 1/0 of 25; threads p99 8.8 %, shear 29.8.
-LOOK: rope fold mostly gone, flaps read as flaps; upper half WEAKER than r30 s5f (narrow lapels, V 190 vs 237: the held
-fit's lapel; r30's break swing had widened it); hem corners flare out; body boxy. Nothing approved. $0.
-Fault 1 finding (C172): the shirt floor "blocked" opening because the FIT is already inside the shirt (131 through,
-442 shirt vertices out); pattern_form.UNDER_FLOOR (hard contact) fixes that but moved the roll / opened a sew gap: OPT-IN.
-NEXT: (1) the lapel / V: lapel 150 118 vs 127-134, V 190 vs 237 with the break held: read the fit's lapel (the roll
-row vs the lapel edge) and widen in the PATTERN (lapel width / notch), not by swinging the break; (2) the edge at 450
-48-53 vs 71 (the panel just below the break still wraps in): a grip nearer the break or less down there; (3) hem
-corners flaring out + side line (one-row spike at the flap, -350: check the read); (4) hem 451 vs 482; (5) the cull
-(C158) could hide under-layer faces piercing out where the jacket covers (coordinator's optional ask; not done).
-## Method ($FR31 = /mnt/data/hifipushie/dress_garrett/fit_round31; env.sh, run.sh: this worktree)
-Fit: WORN=1 job30.sh <tag> (fit30.py, on_form) -> asm_<tag>.pkl. Style as data: capped stylekb.py asm_<src>.pkl <tag>
-(garment_pull.worn_style with the spec's jacket); experiments: sty.sh <src> <out> (style31.py; HOLD_BREAK=1, RECIPE=edge,
-EDGE_AT, EDGE_DIR, FINISH, FLOOR=1 FLOOR_UNDER=0). Reads: reads30.sh <asm> > r_<tag>.log; lump31.py (front panel lumps
-below the break); flapdbg.py; underdbg.py / underfloor.py (jacket vs shirt). Render: post30.sh <tag>. Suite: suite.sh.
-## Sheets ($FR31/check): {wholefront,upper_front,upper_three,side}_k2c.png (concept | clay | diag).
+don't chase them. PROCESS: muslin fit (worn open: the spec's worn_open, C171), styling by the kind's wear as data
+(C174: ends smooth + pull down), remeasurement; no sim; judged beside the concept only (C165). Shirt = gc_garrett's
+shirt as worn, not tuned here. Jacket hps = "corner" (store v2).
+STATE: round 32 done. PATTERN: lapel widened by its point + belly (C175, R29): gc_garrett store v3 lapel gorge_drop
+0.135, belly 0.01 @ 0.4; gate PASS_WAIVED 5701667c (waive32.json adds collar_stand_end: R28 opt-in, pre-existing).
+Look a1s = that pattern's worn-open fit styled by the kb recipe (unchanged).
+READS a1s | concept (k2 r31): lapel 150 133/130 | 127/134 (118/116); V 200 221 | 237 (190); point 151 @ 92 | 148 @ 93
+(147 @ 73); roll 150/250 75/57 | 69/64; edge 450/550/650 45-59/71-80/95-97 | 71/78/94; side line L 33 R 58 | <=20;
+hem 422 | 482 (451); length 738 | 748; crumple p95 12.5 | smooth (9.9/11.1); threads p99 8.3 %; flaps sunk 0/0.
+LOOK: upper half the closest yet (broad lapels, notch at the concept's height); lower half WORSE than k2 (L edge zigzag
+at the waist, R hem corner flared + dented, hem narrow, waist pinched 376 vs 414). Nothing approved. $0.
+Suite: see the last commit (17 files, capped -rs).
+NEXT: (1) the lower fronts: the kb styling recipe lands differently on the new front (a1 unstyled hem 398 = w1h's 400;
+styled 422 vs k2 451): read the zigzag (which grip makes it: style one op at a time on asm_a1.pkl, reads per op) and
+fix the recipe as DATA (garment_kb kinds.jacket.wear.open.style), both sides; smooth_border on front.X:break..cfHem is a
+dead lever here (0 rounds: find why its stop fires at once); (2) edge 450 45-59 vs 71; (3) waist pinch 376 vs 414 + hem
+422 vs 482 (the fit wraps the side panels in at the waist: a fit read, not styling); (4) V 221 vs 237 (belly 14 fails
+waist_suppression: the row reads lapel width at the chest line; a larger belly needs that read to skip the lapel).
+## Method ($FR32 = /mnt/data/hifipushie/dress_garrett/fit_round32; run.sh: this worktree)
+Flat lapel: flat32.py '<lapel json>'... Gate + fit: [WAIVE32=1] gj.sh <tag> '<lapel json>' (gate32.py = pattern_gate +
+its own on_form -> asm_<tag>.pkl, then stylekb.py -> asm_<tag>s.pkl, reads30.sh -> r_<tag>s.log). Styling variants:
+stj.sh <src> <out> ops_<x>.json (stylekb with g["style"] = the list; ops_kb.json = the kb recipe). Render: post30.sh <tag>.
+Store edit: setlapel.py. Suite: suite.sh.
+## Sheets ($FR32/check): {wholefront,upper_front,upper_three,side}_a1sc.png (concept | clay | diag).
 ## Dead ends (one line each)
 - Gravity substitutes; release sims (cloth.md r20-r29); lapel pins in a release (r29b); roll rows graded (C156).
 - Closed (buttoned) fit as the base for the lapel: the roll can't open (C171).
-- Opening pulls with no down (side + out): a free front swings up and open, nothing stops it (r31 t3b / t5a).
+- Opening pulls with no down (side + out): a free front swings up and open (r31 t3b / t5a).
 - UNDER_FLOOR on by default (r31 f1): roll off the concept, sew gap 4.6 mm (C172).
+- Widening the lapel by swinging the break out (r30): the rope fold; widen in the pattern (C175).
+- belly 14 @ 0.35 (r32 a2): +5 mm V, gate waist_suppression FAIL. Grip at break..cfHem@0.15 (r32 e1): edge over-opens below.

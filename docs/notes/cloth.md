@@ -10452,3 +10452,18 @@ PATTERN, not by moving the break.
   k2 (a zigzag kink in the L edge at the waist, R hem corner flared with a dent): the same styling recipe lands
   differently on the changed front (styling is sensitive, not the pattern below the break: unstyled a1 / w1h hem 398 / 400).
 - e1 (a1 + a grip at break..cfHem@0.15 first): edge 450 49 / 68, 550 87 / 94 (over), hem 401: worse; dropped.
+- a2 (belly 14 @ 0.35): V 226, lapel 150 134 / 132, but the gate's waist_suppression FAILs (8.27 % > 8: the belly adds
+  flat width at the chest line); dropped. a1 kept: gate a1p PASS_WAIVED 5701667c (waive32.json: collar_stand_end named)
+  and written to gc_garrett (store v3, setlapel.py): lapel op gorge_drop 0.135, belly 0.01, belly_at 0.4. C175.
+- Lower fronts (faults 2-4), styling on a1: e2 / e3 = the kb recipe + smooth {"border": "front.X:break..cfHem"} before
+  the finish: a DEAD LEVER here: smooth_border ran 0 / 2 rounds and moved nothing (reads = a1s exactly; e3 tol 0.03, lam
+  0.6, ends 0.04). Not looked into (why its stop fires at once on this front).
+- READS a1s | k2 | concept: lapel 150 133 / 130 | 118 / 116 | 127 / 134; V 200 221 | 190 | 237; lapel point 151 @ 92 |
+  147 @ 73 | 148 @ 93; roll 150 / 250 75 / 57 | 69 / 55 | 69 / 64; edge 450 / 550 / 650 45-59 / 71-80 / 95-97 | 48-53 /
+  70-71 / 97-103 | 71 / 78 / 94; side line max L 33 / R 58 (R spikes at the hem rows) | 60 / 32 | <= 20; hem 422 | 451 |
+  482; length 738 | 739 | 748; crumple p95 12.5 / 12.5 | 9.9 / 11.1 | smooth; threads p99 8.3 % | 8.8; flaps sunk 0 / 0.
+- LOOK (mine; check/{wholefront,upper_front,upper_three,side}_a1sc.png, concept | clay | diag): upper half closer to the
+  concept than any round: broad lapels with the point and notch at the concept's height, V open to the waist button
+  line. Still short: the V (221 vs 237), the lapel face reads as a thin rolled band in 3/4, collar stands stiff at the
+  back neck. Lower half worse than k2: the L front edge zigzags at the waist, the R hem corner flares out with a dent,
+  hem narrower (422), body pinched at the waist (376 vs 414) and boxy. Nothing approved.
