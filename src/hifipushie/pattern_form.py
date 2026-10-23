@@ -1729,9 +1729,13 @@ OPEN_HANG = True  # with OPEN_HOLD: the free edge below the lowest worn-open poi
 # vs 74-81 in round 33, y 63 -> 107 mm forward) and the extra girth became front LAP: the open fronts met at CF (C180).
 # PLUMB_HOLD: each seam between the named piece kinds (front|side, side|back on a three-panel jacket; front|back where
 # there is no side panel), its vertices below the seam's top held SOFTLY (weight PLUMB_W per vertex, ramped in over
-# "ramp" m below the top, as the neck pin: soft) on the vertical through the top: y (front / back) both ways; x only
-# outward (the cloth may stand out past the line where the body is wider, never be drawn in to it).
-PLUMB_HOLD = {"seams": [["front", "side"], ["side", "back"]], "w": 2.0, "ramp": 0.05, "axes": "xy"}
+# "ramp" m below the top, as the neck pin: soft) on the vertical through the top AS IT LIES each round (the line hangs
+# from the underarm point wherever the fit puts it): axes "y" (front / back) by default; "xy" also holds x, outward only.
+# A/B on Garrett (fit_round35): "xy" from the seat-time top boxed the jacket (the armhole's bottom stands 238 mm out:
+# chest 477 / waist 522 / hem 571 vs the concept's 397 / 414 / 482); a FIXED anchor read before the seat took the seam
+# 36 mm behind where the settled underarm hangs (-27 vs -63); as a styling op (garment_pull.plumb) the seams stop at
+# half the way (the threads would stretch) and the fronts stay lapped.
+PLUMB_HOLD = {"seams": [["front", "side"], ["side", "back"]], "w": 2.0, "ramp": 0.05, "axes": "y"}
 
 
 def plumb_hold_for(g: dict | None) -> dict | None:
@@ -1747,8 +1751,8 @@ def plumb_hold_for(g: dict | None) -> dict | None:
 
 
 def plumb_seam_pins(M: dict, X: np.ndarray, hold: dict | None) -> list:
-    """[(vertex, x target, y target, weight, axes)] for PLUMB_HOLD on the fit X: per seam (each side), its sewn vertices
-    on both pieces, the target the (x, y) of the seam's top vertex."""
+    """[(vertex, top vertex, weight, axes)] for PLUMB_HOLD on the fit X: per seam (each side), its sewn vertices on
+    both pieces below its top (weight ramped in), the target the (x, y) of the seam's top vertex as it lies."""
     if not hold:
         return []
     pid = np.asarray(M["piece"])
@@ -1764,13 +1768,15 @@ def plumb_seam_pins(M: dict, X: np.ndarray, hold: dict | None) -> list:
             m = (np.isin(pid[sw[:, 0]], ia) & np.isin(pid[sw[:, 1]], ib)) | (np.isin(pid[sw[:, 0]], ib) & np.isin(pid[sw[:, 1]], ia))
             if not m.any():
                 continue
-            v = np.unique(sw[m].ravel())
-            top = X[v[np.argmax(X[v, 2])]]
-            ramp = max(float(hold.get("ramp", 0.05)), 1e-6)
-            for k in v:
-                r = float(np.clip((top[2] - X[k, 2]) / ramp, 0.0, 1.0))
-                if r > 0:
-                    out.append((int(k), float(top[0]), float(top[1]), float(hold.get("w", 2.0)) * r, hold.get("axes", "xy")))
+            ss = np.asarray(M.get("sew_seam") if M.get("sew_seam") is not None else np.zeros(len(sw)), int).reshape(-1)
+            for sid in np.unique(ss[m]):  # (each seam on its own vertical: a tube's two seams are two lines)
+                v = np.unique(sw[m & (ss == sid)].ravel())
+                tv = int(v[np.argmax(X[v, 2])])
+                ramp = max(float(hold.get("ramp", 0.05)), 1e-6)
+                for k in v:
+                    r = float(np.clip((X[tv, 2] - X[k, 2]) / ramp, 0.0, 1.0))
+                    if r > 0:
+                        out.append((int(k), tv, float(hold.get("w", 2.0)) * r, hold.get("axes", "y")))
     return out
 
 
@@ -2429,7 +2435,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
             dx[a] += PK * 100.0
             dx[b] += PK * 100.0
         dy = np.zeros(n)
-        for v, _x, _y, w_, ax_ in py:
+        for v, _t, w_, ax_ in py:
             if "x" in ax_:
                 dx[v] += PK * w_
             if "y" in ax_:
@@ -2633,11 +2639,12 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
             for v, x_, w_ in ox:
                 bx[v] += PK * w_ * x_
             by = bp[:, 1].copy()
-            for v, x_, y_, w_, ax_ in py:  # PLUMB_HOLD: x only outward (the cloth's x when it already stands past the line)
+            for v, t_, w_, ax_ in py:  # PLUMB_HOLD: the top as it lies; x only outward
                 if "x" in ax_:
+                    x_ = float(X[t_, 0])
                     bx[v] += PK * w_ * (math.copysign(max(abs(float(X[v, 0])), abs(x_)), x_))
                 if "y" in ax_:
-                    by[v] += PK * w_ * y_
+                    by[v] += PK * w_ * float(X[t_, 1])
             Xn = np.c_[Ax.solve(bx), Ay.solve(by), Ayz.solve(bp[:, 2])]
             if grav > 0:  # a step never moves a vertex more than SETTLE_STEP (contact can't be tunnelled; the
                 # equilibrium is unchanged: there the steps are 0)
@@ -2844,8 +2851,9 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
         info["shear_deg"] = {"p50": round(float(np.median(sh_)), 1), "p99": round(float(np.percentile(sh_, 99)), 1),
                              "max": round(float(sh_.max()), 1)}
     if py:  # (C181) how far the plumb-held seam vertices ended off their vertical (mm, horizontal)
-        dpl = np.array([np.hypot(X[v, 0] - (math.copysign(max(abs(float(X[v, 0])), abs(x_)), x_) if "x" in ax_ else X[v, 0]),
-                                 (X[v, 1] - y_) if "y" in ax_ else 0.0) for v, x_, y_, w_, ax_ in py if w_ > 0]) * 1000
+        dpl = np.array([np.hypot(X[v, 0] - (math.copysign(max(abs(float(X[v, 0])), abs(float(X[t_, 0]))), float(X[t_, 0]))
+                                            if "x" in ax_ else X[v, 0]), (X[v, 1] - X[t_, 1]) if "y" in ax_ else 0.0)
+                        for v, t_, w_, ax_ in py if w_ > 0]) * 1000
         info["plumb_off_mm"] = {"p50": round(float(np.median(dpl)), 1), "max": round(float(dpl.max()), 1)}
     if holds:  # how far the held seams ended from the closed fit (mm): the hang's side effect
         dh = np.array([np.linalg.norm(X[v] - q) for v, q, _ in holds]) * 1000
