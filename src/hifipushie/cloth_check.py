@@ -1603,15 +1603,23 @@ def pattern_gate(model: str, garment: str, spec: dict | None = None, refs=None, 
     return rec
 
 
-def gate_status(model: str, garment: str, spec: dict | None = None) -> dict:
+def gate_status(model: str, garment: str, spec: dict | None = None, res: dict | None = None) -> dict:
     """The gate record that a sim of this garment would be checked against, WITHOUT measuring: the pattern drafted
     and placed (cloth.build place_only, ~1 s) for its keys, then the record read. {"keys", "record" (or None),
-    "passed", "why"}: why says what blocks (no record / FAIL rows). A garment drafted from no pattern passes."""
+    "passed", "why"}: why says what blocks (no record / FAIL rows). A garment drafted from no pattern passes.
+    A LAYERED garment (key "over") is placed as the pattern gate placed it: over its under garment's form fit as worn
+    (pattern_form.form_source; fit round 33: the sim path's body looked a dead pin / an unsimulated shirt up and the
+    jacket's record never matched). res: an on_form result already in hand (its gate_keys are used)."""
     from . import cloth, store
     spec = spec or store.load(model)
     g = spec["cloth"][garment]
-    src = cloth.model_body(model, spec, g, simulate=False)
-    res = cloth.build(cloth._garment_for_sim(g), src, f"{model}:{garment}", log=lambda *_: None, place_only=True)
+    if res is None:
+        if cloth.expanded(g).get("over"):
+            from . import pattern_form
+            src, _ = pattern_form.form_source(model, garment, spec)
+        else:
+            src = cloth.model_body(model, spec, g, simulate=False)
+        res = cloth.build(cloth._garment_for_sim(g), src, f"{model}:{garment}", log=lambda *_: None, place_only=True)
     keys = res["gate_keys"]
     if keys.get("pattern") is None:
         return {"keys": keys, "record": None, "passed": True, "why": "no pattern: nothing to gate"}

@@ -10468,3 +10468,30 @@ PATTERN, not by moving the break.
   back neck. Lower half worse than k2: the L front edge zigzags at the waist, the R hem corner flares out with a dent,
   hem narrower (422), body pinched at the waist (376 vs 414) and boxy. Nothing approved.
 - Suite (17 files, capped, -rs, HIFIPUSHIE_HOME=workspace + ASSETS): 287 passed, 4 xfailed, 0 skipped, pytest exit 0 ($FR32/suite.log, 13.3 min).
+
+## fit round 33 (2026-10-23; $FR33 = /mnt/data/hifipushie/dress_garrett/fit_round33; branch claude/garrett-jacket-r33)
+Muslin fit, styling, no sim; judged beside the concept only.
+- Step 0 (housekeeping, hk0.py / hk1.py): gc_garrett's jacket carried under {pin:5aa957c3c35d9848}, sculpt
+  {pin:55843201904bc9d4}, under_sculpt {pin:ce0accd5c4d28393}, finish {pin:1f5273b62c9d6346}: no _pins dir exists.
+  gate_status on the stored spec RAISED (no such pin); with them dropped it raised "shirt isn't dressed yet": it used the
+  sim path's body, so fit_garment could never match the gate's record. Fixed (C176): gate_status places a layered garment
+  with pattern_form.form_source (on_form's body); fit_garment checks its own fit's keys. Keys dropped via store.save (v4).
+  pattern_gate on the stored spec: PASS_WAIVED, pattern 5701667c, body e31aac35 (= round 32's record; blocking rows all
+  waived by name: front_cutaway_angle, collar_stand_cb, collar_stand_end, vent, collar_stand); gate_status MATCH True.
+- Step 1a, the kb recipe one op at a time on $FR32/asm_a1.pkl (op33.py: each op function's input captured; edge33.py
+  reads: front edge break..cfHem in the front view: bow / wiggle (off one smooth curve) / kink over 60 mm; hem corner flare
+  (off the edge's own line over the 150 mm above), dent; crumple p95 belly + lower front). op_k.log:
+  op | edge 450/550/650 L, R | wiggle L/R | kink L/R | flare L/R | crumple low L/R
+  fit     8/5/13, 12/9/16    4.3/3.8   68/110  8.6/8.9   5.9/5.8
+  relax   9/5/14, 14/10/17   3.3/3.3   49/94   8.5/8.7   5.9/6.3
+  grip@.33 42/29/34, 56/31/34 11.1/11.5 92/81  9.0/9.3   9.7/10.9   <- THE ZIGZAG: the edge pulled out at ~490 below HPS
+           only; above it (to the held break, 64) and below it lags: 450 42 > 550 29
+  grip@.6 42/67/68, 58/71/68 13.4/13.1 153/129 20.8/22.0 11.3/11.8  <- THE FLARE: the second point bows the edge (bow 27)
+           and throws the cutaway corner out 21-22 mm
+  hem pt  42/66/97, 57/75/93 6.5/7.1   70/65   5.6/16.6  14.0/13.2  (L corner recovers, R keeps 16.6)
+  smooth  40/65/96, 56/75/93 7.0/7.2   70/61   6.7/16.3  12.8/11.8  (2 rounds)
+  down    42/65/95, 56/74/92 6.8/7.0   66/58   9.6/18.4  13.4/12.2  (the hem pull re-flares the R corner +2)
+  relax = a1s exactly. So: point grips make the edge a chain of points; each lags between them.
+- smooth_border's 0-2 rounds (C177): its stop read the kink max at the break (fixed, inside `ends`), and the default scale
+  (10 knots, 30 mm) can't see a 250 mm zigzag on a 20 mm-spaced edge. Fixed (either read dropping; knots capped); at
+  spline 2 / win 80 mm on a1s: kink 77 -> 31 (L), 55 -> 26 (R), threads 9.8 -> 9.4 / 8.0 %.

@@ -2794,7 +2794,11 @@ def fit_garment(name: str, garment: str, views: list[str] | None = None, size: i
     spec = store.load(name)
     if garment not in (spec.get("cloth") or {}):
         raise ValueError(f"no garment {garment!r} (have {', '.join(spec.get('cloth') or {}) or 'none'})")
-    st = cc.gate_status(name, garment, spec)
+    from . import pattern_form
+    # (fit round 33) the fit IS the gate's placement: its own keys are checked (a layered garment's body is its under
+    # garment's form fit, which the sim path's lookup never matched)
+    res = pattern_form.on_form(name, garment, spec)
+    st = cc.gate_status(name, garment, spec, res=res)
     if not st["passed"] and not force:
         return (f"{garment}: not fitted: {st['why']}\nnext: pattern_check(\"{name}\", \"{garment}\") and fix its rows "
                 "first; the form judges a pattern that passed flat (force=True only to look)")
@@ -2803,8 +2807,6 @@ def fit_garment(name: str, garment: str, views: list[str] | None = None, size: i
         return (f"{garment}: not fitted: its under garment doesn't fit yet: {uf['why']}\nnext: fit_garment(\"{name}\", "
                 f"\"{uf['under']}\") and fix it until its own fit PASSes (tucked, its fullness soft against the body); "
                 "never fit an outer garment over an under garment that doesn't fit (force=True only to look)")
-    from . import pattern_form
-    res = pattern_form.on_form(name, garment, spec)
     X = res["A"]
     # HOW IT IS WORN, set by hand (C146): the wear's style ops (garment_kb kinds.<kind>.wear.<tie|no_tie>.style) run on
     # the closed fit; a garment that declares its own worn_open (the old fold / pin route) or "style": false skips it

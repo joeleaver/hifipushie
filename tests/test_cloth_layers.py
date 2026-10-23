@@ -492,3 +492,26 @@ def test_form_fit_under_layer_needs_no_sim(monkeypatch):
     assert np.allclose(src["under"]["V"], form["V"]) and src["under"]["name"] == "shirt"
     with __import__("pytest").raises(AssertionError, match="sim was built"):  # (without it, the sim path as before)
         cloth.model_body("m", spec, spec["cloth"]["jacket"], simulate=False)
+
+
+def test_gate_status_keys_a_layered_garment_on_its_form_under(monkeypatch):
+    """(fit round 33) gate_status for a LAYERED garment places it as the pattern gate did: over its under garment's form
+    fit (pattern_form.form_source), never the sim path's lookup (gc_garrett's jacket: a dead under pin / an unsimulated
+    shirt raised, so fit_garment could never match the gate's PASS record); an on_form result in hand is keyed as is."""
+    from hifipushie import cloth, cloth_check as cc, pattern_form
+    calls = []
+
+    def no_sim(*a, **k):
+        raise AssertionError("the sim path's body was used for a layered garment's gate keys")
+    monkeypatch.setattr(cloth, "model_body", no_sim)
+    monkeypatch.setattr(cloth, "_garment_for_sim", lambda g: g)
+    monkeypatch.setattr(pattern_form, "form_source", lambda m, gn, spec, g=None, log=None: (calls.append(gn) or {"src": "form"}, None))
+    monkeypatch.setattr(cloth, "build", lambda g, src, nm, log=None, place_only=False: {
+        "gate_keys": {"pattern": "p", "body": src["src"]}})
+    monkeypatch.setattr(cc, "read_record", lambda p, b: {"status": "PASS"} if (p, b) == ("p", "form") else None)
+    spec = {"cloth": {"shirt": {}, "jacket": {"over": "shirt", "under": {"pin": "pin:gone"}}}}
+    st = cc.gate_status("m", "jacket", spec)
+    assert st["passed"] and st["keys"]["body"] == "form" and calls == ["jacket"]
+    st = cc.gate_status("m", "jacket", spec, res={"gate_keys": {"pattern": "p", "body": "form"}})
+    assert st["passed"] and calls == ["jacket"]  # (the result in hand: nothing placed again)
+    assert not cc.gate_status("m", "jacket", spec, res={"gate_keys": {"pattern": "p", "body": "sim"}})["passed"]

@@ -3005,17 +3005,8 @@ def on_form(model: str, garment: str, spec: dict | None = None, g: dict | None =
     # fits the whole draft. Held out here, Tess's coat came onto the form with no collar at all (probe 2026-10-22).
     if isinstance(g.get("construct"), dict) and g["construct"].get("sim_collar") is False:
         g["construct"] = dict(g["construct"], sim_collar=True)
-    ug = cloth.expanded(g).get("over")
-    und = on_form(model, ug, spec, log=log) if ug and ug in (spec.get("cloth") or {}) else None
-    if und is not None:
-        und = under_as_worn(und, spec["cloth"][ug], log=log)
-    # THE UNDER LAYER IS THE UNDER GARMENT'S FORM FIT, AS WORN (muslin default, C168): the over garment is placed on the
-    # body padded by it, drafted from the tape taken over it, laid on its body without its neck pieces: the sim path's
-    # steps, given the form fit instead of the under garment's sim (none needed; before, model_body looked the sim up and
-    # refused the jacket "under_missing" until the shirt was simulated, and a pinned sim stood in for the form's shirt)
-    ures = None if und is None else dict(und, V=np.asarray(und["A"], float), key=f"form:{ug}:{cloth._arr_hash(np.asarray(und['A'], float))}")
-    res = cloth.build(cloth._garment_for_sim(g), cloth.model_body(model, spec, g, simulate=False, under=ures),
-                      f"{model}:{garment}", log=lambda *_: None, place_only=True)
+    src, und = form_source(model, garment, spec, g, log=log)
+    res = cloth.build(cloth._garment_for_sim(g), src, f"{model}:{garment}", log=lambda *_: None, place_only=True)
     if und is not None and PRESS_UNDER:
         # the under garment as it lies under this one (cloth.pressed, the sims' own rule: loose cloth pressed to at most
         # the garment's under_cap off the body, made pieces as they are). Unpressed, the shirt's own ease held the
@@ -3034,6 +3025,25 @@ def on_form(model: str, garment: str, spec: dict | None = None, g: dict | None =
     if cloth.expanded(g).get("tucked"):
         res["A"], res["A_info"]["tucked"] = tuck(res, res["A"], cloth.expanded(g))
     return res
+
+
+def form_source(model: str, garment: str, spec: dict, g: dict | None = None, log=None) -> tuple:
+    """(body source, under garment's worn form fit or None): the body a garment is placed on in the form path, the one
+    on_form and the pattern gate key the garment's record on (cloth_check.gate_status for a layered garment, fit round
+    33: the sim path's model_body looked the under garment's sim / pin up and refused the jacket, so fit_garment never
+    matched the gate's record).
+    THE UNDER LAYER IS THE UNDER GARMENT'S FORM FIT, AS WORN (muslin default, C168): the over garment is placed on the
+    body padded by it, drafted from the tape taken over it, laid on its body without its neck pieces: the sim path's
+    steps, given the form fit instead of the under garment's sim (none needed; before, model_body looked the sim up and
+    refused the jacket "under_missing" until the shirt was simulated, and a pinned sim stood in for the form's shirt)."""
+    from . import cloth
+    g = g if g is not None else spec["cloth"][garment]
+    ug = cloth.expanded(g).get("over")
+    und = on_form(model, ug, spec, log=log) if ug and ug in (spec.get("cloth") or {}) else None
+    if und is not None:
+        und = under_as_worn(und, spec["cloth"][ug], log=log)
+    ures = None if und is None else dict(und, V=np.asarray(und["A"], float), key=f"form:{ug}:{cloth._arr_hash(np.asarray(und['A'], float))}")
+    return cloth.model_body(model, spec, g, simulate=False, under=ures), und
 
 
 def under_as_worn(und: dict, gu: dict, log=None) -> dict:

@@ -905,11 +905,14 @@ def smooth(M: dict, X: np.ndarray, held, pieces, lam: float = 0.5, iters: int = 
                 **({"near": list(near) if isinstance(near, (list, tuple)) else [near], "radius": radius} if near is not None else {})}
 
 
-def _kink3d(P: np.ndarray, win: float) -> float:
-    """The largest turn (deg) of a polyline's direction over `win` (m of arc)."""
+def _kink3d(P: np.ndarray, win: float, on=None) -> float:
+    """The largest turn (deg) of a polyline's direction over `win` (m of arc); `on` (bool per vertex): only turns
+    centred on those vertices."""
     s = np.r_[0, np.cumsum(np.linalg.norm(np.diff(P, axis=0), axis=1))]
     mx = 0.0
     for i in range(len(P)):
+        if on is not None and not on[i]:
+            continue
         a = np.searchsorted(s, s[i] - win / 2)
         b = np.searchsorted(s, s[i] + win / 2) - 1
         if a >= i or b <= i:
@@ -949,25 +952,31 @@ def smooth_border(M: dict, X: np.ndarray, held, border: str, spline: int = 10, l
     st = lambda W: thread_p99(M, A.unweld(W), faces=tf)  # (threads, shear: C169)
     s0, sh0 = st(Y)
     least, lock = s0, _shear_lock(sh0)
+    # (fit round 33) the kink is ALSO read where the smooth can move the border: a fixed corner at an end (the jacket's
+    # break, where the edge meets the held lapel: 15 deg at 3 mm of a 396 mm edge) was the max every round, so the stop
+    # fired at 0-2 rounds whatever the middle did; it goes on while either read drops
     k0 = kk = _kink3d(Y[chw], win)
+    m0 = mm_ = _kink3d(Y[chw], win, mov)
+    nk = int(min(spline, max(1, len(ch) // 3 - 1)))  # (a coarse border: fewer knots than its vertices allow fail fpchec)
     r = 0
     for r in range(1, rounds + 1):
         p = Y[chw]
         s = np.r_[0, np.cumsum(np.linalg.norm(np.diff(p, axis=0), axis=1))]
-        kn = np.linspace(s[0], s[-1], spline + 2)[1:-1]
+        kn = np.linspace(s[0], s[-1], nk + 2)[1:-1]
         fit = np.column_stack([LSQUnivariateSpline(s, p[:, c], kn, k=3)(s) for c in range(3)])
         T, fx = Y.copy(), fixed.copy()
         T[chw[mov]] = p[mov] + lam * (fit[mov] - p[mov])
         fx[chw[mov]] = True
         Yt = A.solve(T, fx, iters)
-        kt, (sn, sh) = _kink3d(Yt[chw], win), st(Yt)
-        if sn > least + tol or _jammed(sh, lock) or kt > kk - 0.2:
+        kt, mt, (sn, sh) = _kink3d(Yt[chw], win), _kink3d(Yt[chw], win, mov), st(Yt)
+        if sn > least + tol or _jammed(sh, lock) or (kt > kk - 0.2 and mt > mm_ - 0.2):
             r -= 1
             break
-        Y, kk, least = Yt, kt, min(least, sn)
+        Y, kk, mm_, least = Yt, min(kk, kt), min(mm_, mt), min(least, sn)
     Xn = A.unweld(Y)
     Xn[held] = X[held]
-    return Xn, {"rounds": r, "kink_deg": [round(k0, 1), round(kk, 1)],
+    return Xn, {"rounds": r, "kink_deg": [round(k0, 1), round(_kink3d(Y[chw], win), 1)],
+                "kink_moving_deg": [round(m0, 1), round(_kink3d(Y[chw], win, mov), 1)],
                 "stretch_p99": [round(s0 * 100, 2), round(st(Y)[0] * 100, 2)],
                 "shear_p99_deg": [_shmax(sh0), _shmax(st(Y)[1])], "border": border}
 

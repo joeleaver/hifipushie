@@ -119,6 +119,34 @@ def test_smooth_border_takes_a_wobble_out_without_stretching():
     assert list(gp.border_chain(M, "sheet:tl..tr")) == [ix(i, ny - 1) for i in range(nx)]  # walked, in order
 
 
+def test_smooth_border_reads_its_kink_where_it_can_move():
+    """(fit round 33) the same wobbling border with a sharp fixed corner at its start (the jacket's front edge meets the
+    held lapel at the break: 15 deg at 3 mm, the max of the whole border): the stop reads the kink only where the
+    smooth can move the border (beyond `ends`), so it still runs and takes the wobble out; before, the end's corner was
+    the max every round and it stopped at 0 rounds. A coarse border (fewer vertices than knots allow) still fits."""
+    nx, ny = 81, 21
+    uv = np.array([(x, y) for x in np.linspace(0, 0.2, nx) for y in np.linspace(0, 0.05, ny)])
+    ix = lambda i, j: i * ny + j
+    F = [f for i in range(nx - 1) for j in range(ny - 1)
+         for f in ((ix(i, j), ix(i + 1, j), ix(i + 1, j + 1)), (ix(i, j), ix(i + 1, j + 1), ix(i, j + 1)))]
+    X = np.c_[uv, np.zeros(len(uv))]
+    top = uv[:, 1] > 0.05 - 1e-9
+    X[top, 2] = 0.001 * np.sign(np.sin(uv[top, 0] / 0.2 * 2 * np.pi * 6) + 1e-9)
+    corner = uv[:, 0] < 0.0101  # (the first 10 mm turned up 45 deg: a corner the smooth may not move)
+    X[corner, 2] += (0.0101 - uv[corner, 0])
+    M = {"F": np.array(F), "uv": uv, "piece": np.zeros(len(uv), int), "names": ["sheet"], "sew": [],
+         "points": {"sheet:tl": ix(0, ny - 1), "sheet:tr": ix(nx - 1, ny - 1)}}
+    held = (uv[:, 1] < 1e-9) | corner
+    ch = gp.border_chain(M, "sheet:tl..tr")
+    assert gp._kink3d(X[ch], 0.03) > 35  # (the corner is the border's max)
+    Xn, info = gp.smooth_border(M, X, held, "sheet:tl..tr", ends=0.02)
+    k0, k1 = info["kink_moving_deg"]
+    assert info["rounds"] > 0 and k1 < 0.8 * k0, info
+    assert np.allclose(Xn[held], X[held])
+    _, info2 = gp.smooth_border(M, X, held, "sheet:tl..tr", ends=0.02, spline=60)  # (60 knots on 81 vertices)
+    assert info2["rounds"] >= 0
+
+
 def _wf_simon_home():
     h = os.environ.get("HIFIPUSHIE_HOME")
     return h and (Path(h) / "wf_simon" / "spec.json").exists()
