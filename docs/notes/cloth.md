@@ -10124,3 +10124,28 @@ Joe's call: fix the lump by correcting where the shirt's HPS sits, as a measurin
   and moving the band down needs gravity / a body floor our styling doesn't have (push leaves hundreds inside). The
   real-life fix is the cut (the neckline / shoulder for his build), round 3's direction. Side finding: gc1's yoke corner
   is stretched p95 27 % (Simon 9 %), relaxed away only by freeing the band.
+
+## stiff-thread muslin test (2026-10-22, Joe: "are we hurting ourselves by allowing any cloth to stretch?")
+Files $G/r3: cfit_stiff.py (probe switches from env: PF_WOVEN, PF_SLACK, PF_FIT_STIFF, HP_NECK_PIN_W; repo defaults
+untouched), misfit.py (THREAD strain in the grain frame, by region: neck <= 60 mm of an hps point, shoulder point, pieces;
+landmark reach, seam gaps, inside / > 20 mm off the body), mapr.py (closed fits coloured by thread strain, +-6 %).
+Today's fit (FIT: isometric edges, shear-stiff; neck pin 200 x an edge, seams 400 x, the body push 1) vs the muslin
+(pattern_form.WOVEN: warp / weft held, shear free; neck pin 2; WOVEN_SLACK off). Base = same code, defaults (= gc1's reads).
+| region (threads > 3 %, shear p95) | Garrett today | Garrett muslin | Simon today | Simon muslin |
+| neck <= 60 mm                      | 17.6 %, 9 deg | 14.2 %, 47 deg | 6.0 %, 4     | 5.3 %, 21     |
+| shoulder point                     | 37.5 %, 5     | 6.3 %, 15      | 49.5 %, 8    | 9.6 %, 16     |
+| back                               | 19.6 %, 6     | 8.9 %, 16      | 0.9 %, 2     | 0.5 %, 12     |
+| sleeves                            | 2.5 %, 2      | 0.6 %, 21      | 16.5 %, 4    | 3.9 %, 28     |
+| side seam gaps (max)               | 13.3 mm       | 18.6 mm        | 0.4          | 0.5           |
+- Most of today's red was the fit's own (shear-stiff edges): Garrett's shoulder point 37.5 -> 6.3 %, back 19.6 -> 8.9,
+  Simon's shoulder point 49.5 -> 9.6, sleeves 16 -> 4. Maps: r3/mapn_garrett_sheet.png, mapn_simon_sheet.png.
+- REAL misfits on Garrett (they survive the muslin): (1) the yoke corner at the neck point: threads p95 8 %, max 43 %
+  AND shear p95 47 deg (past a shirting's ~30-40 deg locking): the lump's root, now a number; (2) the hips: the side
+  seams can't close (back | front pairs 4-19 mm apart at z 1000-1100) and the lower back stays red. Simon: fits (a
+  red / blue cross at the first button).
+- WOVEN_SLACK on (threads free in compression) is NOT a muslin: the body attraction shrink-wraps the shirt, all ease
+  squashed (slack p05 -16 to -27 %, nothing stands off; maps r3/map_*_sheet.png). Off: Simon's ease stands off (8.5 %
+  > 20 mm), slack -1 to -3 %. A 5 x thread weight (FIT_STIFF 60, slack on) read like slack on.
+- Caveats: Simon's coarser mesh shows a per-triangle red / blue checkerboard (stiff threads on triangles: locking);
+  read regions, not single faces. Garrett's TUCKED half reads squashed in both fits: the tuck rule (TUCK_CAP) presses
+  it onto the hips, a squash source of its own. Grain is the pattern's y everywhere (the solver's default).

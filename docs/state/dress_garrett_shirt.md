@@ -11,6 +11,11 @@ CODE: PARKED opt-in (measure_defs.HPS_CORNER False; garment key hps "corner"); g
 NEXT: Joe's call: keep gc1 (lump stays), or a round on the corner (front neck redrafted from the body's drop with the
 neckline length kept + the fall's shoulder buckle). Sheets: $G/r3/gc1_vs_hd_sheet.png, side_crop_gc1_hd.png.
 
+MUSLIN TEST (C157; notes cloth.md "stiff-thread muslin test"): refitted with threads held / shear free, most of today's
+red is the fit's own; REAL misfits on Garrett: the yoke corner at the neck point (threads p95 8 %, shear 47 deg) and
+the hips (side seams 4-19 mm open). Straightening (r3b) can't fix the lump: it is the relaxed shape. NEXT (Joe): a
+muslin gate, then the two misfits as pattern alterations; maps $G/r3/mapn_garrett_sheet.png, mapn_simon_sheet.png.
+
 ROUND 2 (branch claude/garrett-collar-lump, files $G/r2): Joe approved gc1's throat / V / points / button; the one fault
 is the LUMP under the fall's outer edge (side view). MEASURED: the shoulder seam (front | yoke) within 50 mm of the neck
 point bridges Garrett's neck-shoulder corner (seam 28 mm off the body; crest 61 deg, bump 14.8 mm vs wf_simon 21 / 5.3);
