@@ -326,3 +326,20 @@ def test_shoulder_seam_follows_the_chord_slope_for_a_shirt():
     assert cc.shoulder_seam_row(mesh(10.92), body, {}, "jacket")["status"] == "INFO"
     pad = {"shoulder_slope": "chord", "shoulder_pad": {"thickness": 0.01}}
     assert cc.shoulder_seam_row(mesh(10.92), body, pad, "")["status"] == "INFO"
+
+
+def test_release_job_refuses_another_patterns_gate_keys(monkeypatch, tmp_path):
+    """C164 (garrett jacket fit round 29): a release job carries ITS pattern's gate keys. Rounds 25-28 wrote round
+    19's keys into every job, so run_zozo checked an older pattern's PASS record."""
+    import pytest
+    from hifipushie import cloth_job, cloth_release
+    seen = {}
+    monkeypatch.setattr(cloth_job, "write", lambda jd, cfg, arrays, names: seen.update(cfg=cfg) or jd)
+    monkeypatch.setattr(cloth_job, "write_gate_keys", lambda jd, gate: seen.update(gate=gate))
+    own = {"pattern": "aaaa", "body": "bbbb", "name": "m:jacket"}
+    cfg = {"name": "m:jacket", "_gate_keys": own}
+    with pytest.raises(cloth_release.GateKeyMismatch):
+        cloth_release.write(tmp_path, cfg, {}, [], {"pattern": "old0", "body": "bbbb", "name": "m:jacket"})
+    cloth_release.write(tmp_path, cfg, {}, [], dict(own))
+    assert "_gate_keys" not in seen["cfg"] and seen["gate"]["pattern"] == "aaaa"
+    assert cfg["_gate_keys"] == own  # (the caller's cfg is left as it was)

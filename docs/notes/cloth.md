@@ -10175,3 +10175,56 @@ Today's fit (FIT: isometric edges, shear-stiff; neck pin 200 x an edge, seams 40
   (e) wf_simon's open-collar reads moved by its refit: points apart 157 vs <= 154 / <= 150 (two tests), leaf front edge
       49 vs 25-48 (test_a_shirt_without_a_tie_is_styled_open_by_default).
 STATE: the flip (5aed0492, branch claude/cool-chaum-8e917e) was NOT landed: main keeps the isometric default; the opt-in corner hps, NECK_PIN_W and the muslin-test notes are landed (C160-C162). NEXT: fix (a)-(e), then flip the default.
+
+## fit round 29 (2026-10-22; $FR29 = /mnt/data/hifipushie/dress_garrett/fit_round29; branch claude/garrett-jacket-r29)
+Brief: a PATTERN pass on round 28's three faults (collar tube, narrow lapels / V, belly crumple), then closed fit, then
+the release. Harness: fr29.py (fr27 at the form recipe, ROWS_H 0, + env levers COLLAR_ROLL / GORGE_DROP / BREAK_Y /
+CUTAWAY), job29.sh (closed fit over gc1 + neck29 / lapel29 reads), gate29.py (+ waive29.json), g29.py (g25 + THIS
+pattern's gate keys: rounds 25-28 wrote r19a's keys into every job; + lapel=1 pins), arr.sh / tab29.py.
+Step 0: r29base (fr29, no levers) reproduces r27a0 to 1 mm (collar 14-39 / 47 at CB, lapel point 131 off CF at 103).
+Step 1, the collar. Read (neck29.py, mm above HPS at CB / az45 / side): jacket stand 15-38 / 27-30 / 0-16, its fall top
+47 / 38 / 22; the shirt (gc1) stand from 16 / 6 / -8, collar top 52 / 46 / 33. The jacket's neck seam sits level with
+the shirt's (15 vs 16 at CB): the fault is the jacket collar's HEIGHT (roll 25 mm per R16 + the fall 9 mm over it) over
+a 36 mm shirt collar, not the neckline. Lever: R16's roll line at CB (stand = roll - 4, fall = roll + 14 kept).
+COLLAR_ROLL 20 (r29c20): jacket top 38 / 32 / 19, shirt shows 14 / 14 / 14 (tell 10-20, all three PASS), jacket p99
+11.0 -> 14.3 %. COLLAR_ROLL 16 (r29c16): CB top stays 38 (the fall wraps the shirt collar's top), side fall 1-11 (no
+longer covers the stand's seam at the side): worse. KEPT roll 20 mm. R16's 25-30 mm is a jacket over a ~45 mm shirt
+collar; gc1's is 36: waived by name in the gate (waive29.json), ledger row C163.
+Step 2, the pattern + gate. Combined pattern r29p1 = COLLAR_ROLL 20 + CUTAWAY {"angle_deg": 10, "start": 0.2,
+"end": 0.55} (flatcut29.py, edge cut back from its line at mm below the neck point: Jaeger's default 2.5 deg: 600 1 /
+650 4 / 700 7 / 750 12 / 790 27; r29p1: 7 / 16 / 26 / 39 / 62, the concept's ~65 at the hem). Closed fit r29p1: jacket
+p99 15.7 % (base 11.0); collar CB 39 / az45 30 / side 5 (the side lay lower than r29c20's 19: the fit isn't stable at
+the side). Gate (gate29.py: needs job29's env LAPEL_W / ROLL_R / SLEEVE_OVER and pj.STAND_RUN_OFF, else another
+pattern hash): r29base PASS_WAIVED (daaf6c1a); r29p1 PASS_WAIVED abfa0f45 (= the placed keys) with named waivers
+front_cutaway_angle (10 vs Jaeger 2.5), collar_stand / collar_stand_cb (C163), notch (angle 57.9 vs 60-90, came with
+the 20 mm roll; base passes). C164: rounds 25-28's releases carried round 19's gate keys (g25.py): fixed in
+cloth_release.write (refuses another pattern's keys) + g29.py uses the placed pattern's keys.
+Lapel / V read (lapel29.py, m10 rows 100-300): the narrow V is NOT the lapel's width. Released r28h: outer 137 / 126 /
+110 / 82 / 58 / 43 at 100 / 120 / 150 / 200 / 250 / 300 vs the concept 148 at 93, 127 at 148, 110 at 261, 87 at 341;
+the break point opens to 61 off CF but the turned face at 250-300 stays INSIDE it (58 / 43): the roll line above the
+break doesn't swing open with the release (closed fit roll 33 / 8 / 0 at 150 / 250 / 350, round 15), so the lapel lies
+as on a buttoned jacket. Round 15 matched the lapel's face width to the concept (67-39 vs 68-44 at 120-220): widening
+the pattern lapel would make the face too wide. Lever tried: lapel=1 in g29.py (soft pins on the lapel's outer edge
+break -> lapelPoint carried out to the concept's front-view edge on the chest's surface) vs r29a (r28h's recipe).
+Step 3, the releases (local ZOZO, $0). r29p1 (roll 20) failed twice before the sim: (a) preflight self False: 4
+crushed pairs at the lapel's foot (front.L 272-285 below HPS, x 21-27, inside the 1 mm gap of its own sheet): g29.py
+selfclear=1 moves such a vertex to 1.5 mm off that triangle's plane (4 moved, preflight ok); (b) ZOZO panicked on
+four ZERO-AREA collar triangles (the mesher fanned a point lying on the collar end's boundary segment, R side only;
+roll 25 and 21 mesh clean; chip filed: mesher + a preflight check). Pattern r29p2 = COLLAR_ROLL 21 + the same cutaway:
+closed fit p99 14.6 %, collar CB 41 / az45 32 / side 17 (shirt shows 11 / 14 / 16: PASS); gate PASS_WAIVED 13633401
+(waive29.json: front_cutaway_angle, collar_stand, collar_stand_cb, notch, vent).
+r29a = r28h's recipe on r29p2 (arrange, keep, pull 100, side held, hang plumb): crumple p95 10.4 / 10.2 (r28h 12.4 /
+11.4), tilt 34 / 40; edges off CF 450 / 550 / 650 48 / 61 / 85 L, 48 / 63 / 88 R (r28h 67 / 77 / 91, 63 / 69 / 83: in
+at 450 by 15-19); lapel outer 150 107 / 106, V 200 155 (worse than r28h's 168); side line max 20 / 20; flaps p50 3.2 /
+4.6 (sunk 2 / 0); hem sweep 394. The cutaway alone took ~2 mm off the crumple; the lapel stayed narrow.
+r29b = r29a + lapel=1 (lapel edge pinned out to the concept's front-view edge): lapel outer 100 / 150 / 200 / 250 / 300
+143 / 125 / 116 / 106 / 98 L, 142 / 131 / 116 / 98 / 85 R (concept 148 at 93, 127 / 134 at 148, 110 at 261, 87 at
+341), V 200 232 (concept 237), break 61-66 off CF: the lapel / V fault is closed by opening the roll line, not by a
+wider lapel. Costs: R side: edge 44 / 54 / 73 (L 64 / 71 / 97), side line R 40 at -475 (FAIL), lapel.R through its base
+share 0.18 (FAIL; L 0.03); crumple 11.5 / 10.5 (tilt 50 / 47); the lapel pins end 67-79 mm off their targets (soft
+pull: they set the direction, not the place). Collar unchanged (held). stretch p99 14.6 both.
+Look (my own, ref | clay | diag, r29bc vs r28hc): the collar now sits on the shirt collar with the shirt showing above
+it all round (the tube is gone). r29b is WORSE than r28h overall: the lapels are wider and read like the concept's in
+size, but their turned edges are wavy and ridged, a rope-like fold runs down each front edge through the belly band
+(belly_r28hc_r29bc.png: r28h's fronts are smoother), the hem corners curl / look ragged, and the R front is pulled in.
+Not kept. r29a (no lapel pins) is the candidate base; not rendered this round. Handover at ~95 tool calls.
