@@ -10754,3 +10754,4 @@ Base: r38's k3 (asm_k3.pkl copied; fit_g1.pkl a read-only copy, not a symlink). 
   LOOK (check/joeseam_k3_sb_nh.png: k3 | sb | nh, Joe's framing; check/side_k3_vs_sb.png): freed, the cord leaves the
   outline and becomes a soft line inside the front, but the fronts meet / lap below the waist and the hem goes boxy and
   narrow: worse overall than k3. Nothing made default (C189). Overshoot / hem / review skipped (the redesign changes them).
+- Suite (17 garment files, capped, -rs): 299 passed, 4 xfailed, PYTEST_EXIT 0 ($FR39/suite.log).
