@@ -104,7 +104,34 @@ _HE = ((0, 1, 2), (1, 2, 0), (2, 0, 1))
 
 
 FLOOR_GAP = None  # m: the least a layer lies off its floor (None: pattern_form.THICK, one cloth)
-FLOOR_REACH = 1.5  # x the floor's median edge: a vertex is held off a floor only where it stands over it (C124's rule)
+FLOOR_REACH = 1.5  # x the floor's LOCAL edge (its nearest vertex's longest edge, C173): a vertex is held off a floor only
+# where it stands over it (C124's rule). Was x the floor's MEDIAN edge: a front meshed fine at its lapel rows and coarse
+# under its pocket flap (median 5 mm, 10-12 mm between vertices there) left 3-19 of each flap's 20 free vertices with no
+# floor from the start, and they sank 6-25 mm through the front (Garrett jacket fit round 30 / 31)
+
+
+FLOOR_REACH_CAP = 3.0
+
+
+def _local_reach(V, Fs):
+    """FLOOR_REACH x each vertex's longest edge (0 for a vertex in no face), at most FLOOR_REACH_CAP x the median edge
+    (a sliver's long edge read 50 mm on Garrett's front)."""
+    V, Fs = np.asarray(V, float), np.asarray(Fs, int).reshape(-1, 3)
+    r = np.zeros(len(V))
+    es = []
+    for a, b in ((0, 1), (1, 2), (2, 0)):
+        e = np.linalg.norm(V[Fs[:, a]] - V[Fs[:, b]], axis=1)
+        np.maximum.at(r, Fs[:, a], e)
+        np.maximum.at(r, Fs[:, b], e)
+        es.append(e)
+    cap = FLOOR_REACH_CAP * float(np.median(np.concatenate(es))) if len(Fs) else 0.0
+    return FLOOR_REACH * np.minimum(r, cap)
+
+
+def _signed_i(surf, P):
+    """pattern_form._Surface.signed with the nearest surface vertex: (d, normal, dist, index)."""
+    dist, i = surf.tree.query(P)
+    return np.sum((P - surf.V[i]) * surf.N[i], 1), surf.N[i], dist, i
 
 
 def layer_floor(M: dict, X: np.ndarray, body=None, under=None, gap: float | None = None, flaps: bool = True) -> list:
@@ -128,9 +155,8 @@ def layer_floor(M: dict, X: np.ndarray, body=None, under=None, gap: float | None
     pid = np.asarray(M["piece"])
     names = list(M["names"])
 
-    def reach(V, Fs):
-        e = np.linalg.norm(V[Fs[:, 0]] - V[Fs[:, 1]], axis=1)
-        return FLOOR_REACH * float(np.median(e)) if len(e) else 0.0
+    def reach(V, Fs):  # (per floor vertex, C173)
+        return _local_reach(V, Fs)
 
     def level(d, dist, tang, rch, slides=True):
         # (a vertex over its floor at the start keeps min(gap, how far off it stood): one that started through is never
@@ -150,10 +176,10 @@ def layer_floor(M: dict, X: np.ndarray, body=None, under=None, gap: float | None
         stat.append(("under", np.asarray(under[0], float), np.asarray(under[1], int)))
     for nm, V, Fs in stat:
         sf = pf_._Surface(V, Fs, ref=ref if nm != "body" else None) if nm != "body" else ref
-        d, _, dist = sf.signed(X)
-        rch = reach(V, Fs)
+        d, _, dist, ni = _signed_i(sf, X)
+        rch = reach(sf.V, Fs)
         tang = np.sqrt(np.maximum(dist ** 2 - d ** 2, 0.0))
-        out.append({"name": nm, "v": allv, "level": level(d, dist, tang, rch), "surf": sf, "reach": rch, "ref": ref})
+        out.append({"name": nm, "v": allv, "level": level(d, dist, tang, rch[ni]), "surf": sf, "reach": rch, "ref": ref})
     if flaps:
         fl = fm_.flap_faces(M, F)
         for nm in sorted({fd["piece"] for fd in M.get("folds") or []}):
@@ -184,7 +210,7 @@ def layer_floor(M: dict, X: np.ndarray, body=None, under=None, gap: float | None
                     bF = np.r_[bF, F[np.isin(pid[F[:, 0]], oth)]]
                     bv = np.unique(bF)
             if len(fv):
-                out.append(_dyn_floor(f"flap:{nm}", X, fv, bv, bF, ref, gap, reach(X, bF), level))
+                out.append(_dyn_floor(f"flap:{nm}", X, fv, bv, bF, ref, gap, None, level))
         st = np.asarray(M.get("stitch") if M.get("stitch") is not None else [], int).reshape(-1, 2)
         for pa in sorted({int(p) for p in pid[st.ravel()]}) if len(st) else []:
             other = {int(pid[b]) if pid[a] == pa else int(pid[a]) for a, b in st if pa in (pid[a], pid[b])} - {pa}
@@ -194,7 +220,7 @@ def layer_floor(M: dict, X: np.ndarray, body=None, under=None, gap: float | None
             bv = np.unique(bF)
             fv = np.setdiff1d(np.where(pid == pa)[0], np.unique(st.ravel()))
             if len(fv):
-                out.append(_dyn_floor(f"patch:{names[pa]}", X, fv, bv, bF, ref, gap, reach(X, bF), level))
+                out.append(_dyn_floor(f"patch:{names[pa]}", X, fv, bv, bF, ref, gap, None, level))
     return out
 
 
@@ -202,9 +228,10 @@ def _dyn_floor(name, X, fv, bv, bF, ref, gap, rch, level):
     from . import pattern_form as pf_
     ix = -np.ones(len(X), int)
     ix[bv] = np.arange(len(bv))
-    d, _, dist = pf_._Surface(X[bv], ix[bF], ref=ref).signed(X[fv])
+    d, _, dist, ni = _signed_i(pf_._Surface(X[bv], ix[bF], ref=ref), X[fv])
     tang = np.sqrt(np.maximum(dist ** 2 - d ** 2, 0.0))
-    return {"name": name, "v": fv, "level": level(d, dist, tang, rch, slides=False), "surf": None, "bv": bv, "bF": ix[bF],
+    rch = _local_reach(X[bv], ix[bF])  # (per base vertex, C173)
+    return {"name": name, "v": fv, "level": level(d, dist, tang, rch[ni], slides=False), "surf": None, "bv": bv, "bF": ix[bF],
             "reach": rch, "ref": ref}
 
 
@@ -351,9 +378,9 @@ class FlatARAP:
             w, lev = w[free], fl["level"][free]
             surf = fl["surf"] if fl["surf"] is not None else \
                 pf_._Surface(Y[fl["bw"]], fl["bF"], ref=fl["ref"])
-            d, n, dist = surf.signed(Y[w])
+            d, n, dist, ni = _signed_i(surf, Y[w])
             tang = np.sqrt(np.maximum(dist ** 2 - d ** 2, 0.0))
-            m = (d < lev) & (tang < fl["reach"])
+            m = (d < lev) & (tang < np.asarray(fl["reach"])[ni])
             if m.any():
                 Y[w[m]] += (lev[m] - d[m])[:, None] * n[m]
                 self.floor_pushed += int(m.sum())

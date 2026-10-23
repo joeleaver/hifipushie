@@ -2133,6 +2133,17 @@ LAYER_GAP = THICK  # m: the under layer lies at least one cloth thickness inside
 LAYER_ROUNDS = 2
 LAYER_STEP = 0.002  # m: the most the over layer pushes an under vertex in one round (the last round: all the way)
 LAYER_W = 20.0  # a vertex touching the over layer: its proximal weight (x a free one's 1.0; a neck pin is 200 x FIT_STIFF)
+# THE UNDER LAYER IS A FLOOR, NOT A SUGGESTION (C172, garrett jacket fit round 31): the over garment's push off the
+# garment under it was a proximal target only (the local step's T), and the lengths won: Garrett's worn-open jacket fit
+# ended with 131 vertices through the pressed shirt (fronts 0-300 mm below the top, up to 13 mm; backs / stand / collar at
+# the neck), the shirt drawn OUT through the jacket at the shoulders / upper chest (442 shirt vertices > 1 mm outside), and
+# styling's shirt floor then fought the solve round after round at the edge of that region (pushes summing to 175 mm a
+# vertex in a 20-round relax; threads 7.5 -> 12 %): it "stopped the opening". A muslin can't pass through what is under
+# it any more than it can stretch: the misfit must show as strain (the muslin read), not hide in the shirt. So, as the
+# ceiling's mirror: the vertices on the under layer (covered(): stacked over it) weigh LAYER_W in the solve and are put
+# back at least LAYER_GAP outside it after every round from the seat on (LAYER_STEP a round, the last all the way).
+# Known answer: tests/test_pattern_form.py test_tight_outer_tube_lies_over_the_under_one. False: the old soft push.
+UNDER_FLOOR = True
 LAYER_FROM = "seat"  # the ceiling acts from this phase on ("relax1": all relaxes; "seat": once made pieces are stood up)
 
 
@@ -2395,6 +2406,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
         Ax, Ayz = system(wc) if sw_ is None else system(wc, sw_)
         fa = np.asarray(fast, int).reshape(-1, 2)
         ccon = np.zeros(n, bool)
+        ucon = np.zeros(n, bool)  # (UNDER_FLOOR: the vertices on the under layer)
         drv_ = np.zeros(n, bool)  # (SHEAR_FREE: the vertices something drives: pins, the body in reach, the layers)
         for v_, _, _ in full:
             drv_[v_] = True
@@ -2412,7 +2424,15 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                 c_ = cv_ & (do_ > -LAYER_GAP - 0.001)
                 if (c_ != ccon).any():
                     ccon = c_
-                    wc = wc_keep + LAYER_W * ccon
+                    wc = wc_keep + LAYER_W * (ccon | ucon)
+                    Ax, Ayz = system(wc) if sw_ is None else system(wc, sw_)
+            if UNDER_FLOOR and usurf is not None and ceil_on[0] and grav <= 0 and it % 5 == 0:  # (C172: the vertices
+                # on the under layer weigh LAYER_W in the solve, as the ceiling's: contact the solve knows)
+                cv_, du_, _ = covered(usurf, X, bsurf)
+                c_ = cv_ & (du_ < LAYER_GAP + 0.001)
+                if (c_ != ucon).any():
+                    ucon = c_
+                    wc = wc_keep + LAYER_W * (ccon | ucon)
                     Ax, Ayz = system(wc) if sw_ is None else system(wc, sw_)
             if grav > 0 and it and (held != (wc > SETTLE_FREE)).sum() > SETTLE_REFAC:  # (the contact set changed: the
                 # held vertices' weight; the solve must know the contact, else everything else falls a step per round
@@ -2590,6 +2610,11 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                     d, nrm, _ = bsurf.signed(Xn)
                     lo = d < off
                     Xn[lo] += nrm[lo] * (off[lo] - d[lo])[:, None]
+            if UNDER_FLOOR and usurf is not None and ceil_on[0] and grav <= 0:  # THE UNDER LAYER IS A FLOOR (C172): hard
+                # contact over the garment under it, the ceiling's mirror (see UNDER_FLOOR)
+                cv_, du_, nu_ = covered(usurf, Xn, bsurf)
+                cv_ &= du_ < LAYER_GAP
+                Xn[cv_] += nu_[cv_] * np.minimum(LAYER_GAP - du_[cv_], LAYER_STEP if it < iters - 1 else 1.0)[:, None]
             X = Xn
         wc, bend_f = wc_keep, bend_keep
         return X

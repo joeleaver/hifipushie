@@ -2079,3 +2079,42 @@ def test_the_muslin_fit_is_the_default_for_every_garment(monkeypatch):
     assert pf.fit_model_for("x_model", "coat", {"fit_model": "woven"}) == "woven"  # a refit lifts the hold
     with pytest.raises(ValueError):
         pf.fit_model_for("wf_simon", "shirt", {"fit_model": "stretchy"})
+
+
+def tight_over_case(r=0.05, inner=0.010, outer=0.003, verbose=True):
+    """An outer tube cut SMALLER than the inner one it is worn over (r + 3 mm over r + 10 mm: Garrett's jacket at the
+    neck-shoulder corner over the pressed shirt in miniature, fit round 31). Fitted with the under layer as a floor
+    (UNDER_FLOOR) and the old soft push. Returns {on: measures}."""
+    body = _cyl_body(r, -0.1, 0.5)
+    Mi, Xi = _tube(r, inner, 0.10, 0.20)
+    Mo, Xo = _tube(r, outer, 0.12, 0.16)
+    u = pf.assemble({"mesh": Mi, "X0": Xi, "body": body}, body, ease=pf.UNDER_EASE, iters=120)
+    out = {}
+    old = pf.UNDER_FLOOR
+    try:
+        for on in (True, False):
+            pf.UNDER_FLOOR = on
+            o = pf.assemble({"mesh": Mo, "X0": Xo, "body": body}, body, under={"V": u["V"], "F": u["F"]}, ease=pf.EASE, iters=120)
+            us = pf._Surface(u["V"], u["F"], ref=pf._body_surface(body))
+            d, _, _ = us.signed(o["V"])
+            mo = (o["V"][:, 2] > 0.14) & (o["V"][:, 2] < 0.26)
+            out[on] = {"through": int((d[mo] < 0).sum()), "min_mm": round(float(d[mo].min()) * 1000, 2),
+                       "info_through_under": o["info"].get("through_under"), "grain_p99": o["info"]["grain_stretch_pct"]["p99"]}
+    finally:
+        pf.UNDER_FLOOR = old
+    if verbose:
+        print(f"tight over: {out}")
+    return out
+
+
+def test_tight_outer_tube_lies_over_the_under_one():
+    """KAT (C172, garrett jacket fit round 31): a garment fitted over another never ends inside it; where its pattern
+    can't reach round the layer under it, the misfit shows as strain (the muslin read), not as cloth hidden in the under
+    layer. A tube cut 1 mm smaller in radius than the tube it is worn over: with the under layer as a floor nothing of it
+    is inside the inner tube and its grain strain shows the misfit (> 1 %); the control (the old soft push) leaves it
+    through (measured: on 0 through, min +1.5 mm, grain p99 ...; off ... through)."""
+    res = tight_over_case(verbose=False)
+    on, off = res[True], res[False]
+    assert on["through"] == 0 and on["min_mm"] >= pf.LAYER_GAP * 1000 - 0.3 and not on["info_through_under"], res
+    assert on["grain_p99"] > off["grain_p99"], res  # (the misfit shows as strain)
+    assert off["through"] > 0, res  # (the control: the soft push loses to the lengths)

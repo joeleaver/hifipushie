@@ -529,3 +529,58 @@ def test_layer_floor_keeps_a_patch_on_its_piece():
     X1, _ = gp.style(Ms, Xa, held, [{"pull": {"handles": h, "max_move": 0.06}}], floor=floor)
     assert into(X0) > 0.01, into(X0)  # (no floor: through the plate)
     assert into(X1) < 0.0015 + 1e-4, into(X1)
+
+
+def _grid(x0, x1, y0, y1, h):
+    xs, ys = np.arange(x0, x1 + 1e-9, h), np.arange(y0, y1 + 1e-9, h)
+    V = np.array([(x, y, 0.0) for x in xs for y in ys])
+    ix = lambda i, j: i * len(ys) + j
+    F = np.array([f for i in range(len(xs) - 1) for j in range(len(ys) - 1)
+                  for f in ((ix(i, j), ix(i + 1, j), ix(i + 1, j + 1)), (ix(i, j), ix(i + 1, j + 1), ix(i, j + 1)))])
+    return V, F
+
+
+def test_layer_floor_reach_is_local_to_a_coarse_base():
+    """C173 (garrett jacket fit round 31): a patch over the COARSE part of a piece meshed fine elsewhere (a pocket flap on
+    a front meshed fine at its lapel rows) has a floor at every vertex. The plate: a fine part (2 mm) beside a coarse part
+    (8 mm) under a strip stitched at one end, its vertices mid-cell (5.7 mm off the nearest plate vertex: past 1.5 x the
+    2 mm median edge), pulled down through the plate. The floor's reach is the nearest plate vertex's own edge (capped):
+    every strip vertex has a floor and nothing of the strip goes through the plate (measured: 45 of 45, lowest 0.0 mm); with the median-edge reach (the old rule, here
+    FLOOR_REACH_CAP 1: at most the median) none had one and it went 6 mm through."""
+    Vf, Ff = _grid(0.0, 0.058, -0.024, 0.032, 0.002)
+    Vc, Fc = _grid(0.06, 0.204, -0.024, 0.032, 0.008)
+    PV, PF = np.r_[Vf, Vc], np.r_[Ff, Fc + len(Vf)]
+    su = np.array([(u, v) for u in np.arange(0.0, 0.12 + 1e-9, 0.008) for v in np.arange(0.0, 0.016 + 1e-9, 0.008)])
+    ny = 3
+    nx = len(su) // ny
+    ix = lambda i, j: i * ny + j
+    SF = np.array([f for i in range(nx - 1) for j in range(ny - 1)
+                   for f in ((ix(i, j), ix(i + 1, j), ix(i + 1, j + 1)), (ix(i, j), ix(i + 1, j + 1), ix(i, j + 1)))])
+    SX = np.c_[0.068 + su[:, 0], -0.004 + su[:, 1], np.full(len(su), 0.003)]
+    BV, BF = _box([-0.05, -0.08, -0.12], [0.30, 0.10, -0.08])  # (a body below: orients the plate's normals up)
+    n0 = len(SX)
+    M = {"F": np.r_[SF, PF + n0], "uv": np.r_[su, PV[:, :2]], "piece": np.r_[np.zeros(n0, int), np.ones(len(PV), int)],
+         "names": ["strip", "plate"], "sew": [], "points": {"strip:tipA": ix(nx - 1, 0), "strip:tipB": ix(nx - 1, ny - 1)}}
+    end = su[:, 0] < 1e-9
+    k = [int(np.argmin(np.linalg.norm(PV - SX[v], axis=1))) for v in np.where(end)[0]]
+    M["stitch"] = [[int(v), n0 + kk] for v, kk in zip(np.where(end)[0], k)]
+    Ms = dict(M, sew=np.asarray(M["stitch"]))
+    Xa = np.r_[SX, PV]
+    held = np.r_[end, np.ones(len(PV), bool)]
+    ops = [{"pull": {"handles": [{"at": "strip:tipA..tipB", "dir": "down"}], "max_move": 0.03}}]
+
+    def low(Y):  # the lowest the strip goes over the plate (m; the plate at 0)
+        return float(Y[:n0][~end, 2].min())
+    res = {}
+    old = gp.FLOOR_REACH_CAP
+    try:
+        for cap in (old, 1.0):
+            gp.FLOOR_REACH_CAP = cap
+            fl = [f for f in gp.layer_floor(Ms, Xa, body=(BV, BF)) if f["name"] == "patch:strip"]
+            assert fl, "no patch floor"
+            X1, _ = gp.style(Ms, Xa, held, ops, floor=fl)
+            res[cap] = (int(np.isfinite(fl[0]["level"]).sum()), low(X1))
+    finally:
+        gp.FLOOR_REACH_CAP = old
+    assert res[old][0] == int((~end).sum()) and res[old][1] > -1e-4, res  # (on or above the plate, as the C170 KAT)
+    assert res[1.0][0] == 0 and res[1.0][1] < -0.002, res  # (the control: no floor, through the plate)
