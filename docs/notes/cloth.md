@@ -10546,3 +10546,19 @@ Muslin fit, styling, no sim; judged beside the concept only. Design: falls strai
   a jog in the edge at the waist. Cause: the flare in the FRONT panel's side edge wraps the front further round.
   p2 = the flare on the side + back panels only (contour edge ["sideB", "side:sideF.a>sideF.b"], 6 edges, waist -3 /
   hem -26.8 mm): flat 1113 / 1131 / 1273, the front panel = r33's.
+- p2 gate (gate34.py, in-memory spec): PASS_WAIVED 17b169ab / e31aac35 (falls_straight PASS, flat_pattern PASS; waived as
+  r33: front_cutaway_angle, collar_stand*, vent, notch). Stored through store34.py (version note "fit round 34"), gate
+  re-run on the stored spec + gate_status (store34.log).
+- READS (reads34.sh; L/R) r33 k33 | p2 muslin | p2s (kb, the default) | sp2s (side hem out + kb) | concept:
+  lapel 150 133/130 | 135/131 | 135/131 | 135/131 | 127/134; V 200 221 | 221 | 221 | 221 | 237; roll 150/250 75/57 |
+  77/60 | 77/60 | 77/60 | 69/64; edge 450 45/39 | 0/0 | 24/15 | 21/15 | 71; 550 51/53 | 0/0 | 11/7 | 18/14 | 78;
+  650 68 | 0/0 | 6/2 | 22/19 | 94; waist 375 | 384 | 384 | 383 | 414; hem 415 | 426 | 425 | 489 | 482; length 753 | 745 |
+  757 | 752 | 748; threads p99 7.6 | 7.4 | 7.7 | 7.8 %. Upper half unchanged (lapel / V / roll within 2-3 mm).
+- Step 3 (C180, seam34.py): the extra girth went to depth (back 38 mm off at the hem, plumb in the side view) and to the
+  fronts' LAP: the front panel's side seam slid forward round the body (hem 60 deg from CF vs r33 74-81; waist 80 vs
+  85), the same front panel laps 11-26 mm past CF in the muslin, the swing stops at 36-40 deg. The narrow hem was NOT
+  what capped the opening. sp1 / sp2 (pull the side panel's hem out before the swing): hem width 474 / 489, edge ~20-30,
+  but the side hem corners kick out (peplum) with local warp p90 16-22 %: not adopted.
+- LOOK (mine): check/wholefront_p2sc.png: the fronts meet at CF below the waist -- reads as a CLOSED jacket, worse than
+  r33; sides straight; side_p2sc.png: the back now falls plumb from the blades (right); upper_three: lapels / collar as
+  r33. sp2sc: hem width right but flared side corners, fronts still nearly shut.
