@@ -707,3 +707,49 @@ def test_turn_stops_where_the_line_hangs_plumb():
     assert abs(Xp[bl, 0] - Xp[tl, 0]) < 0.002, (Xp[bl, 0], Xp[tl, 0])
     assert next(iter(ip["plumb"].values()))["hung"], ip["plumb"]
     assert np.allclose(Xp[held], X[held])
+
+
+def test_slide_unlaps_along_the_body_keeping_its_offset():
+    """C184 (garrett jacket fit round 37): an unbuttoned front's lapped cloth slides back ROUND the body, it doesn't swing
+    out like a door. A sheet lying 10 mm off a cylinder (the body, r 150 mm, axis z), its edge 20 mm round from the
+    front (-y), 300 mm tall, lapped: the edge runs 25 mm of arc nearer the front at the bottom than at the top (held,
+    as a front above its break). slide "by" plumb [top, bottom] with "ramp": the edge's bottom slides round until it
+    lies on the vertical through its top (front view x within 4 mm), the cloth keeps its offset off the body (2 mm),
+    and with the whole sheet following (follow beyond its width) the threads stretch < 1 %."""
+    ns, zs = 96, np.linspace(-0.25, 0.55, 33)  # (a closed cylinder: rings + two capped ends)
+    th = 2 * np.pi * np.arange(ns) / ns
+    BV = [(0.15 * np.cos(t), 0.15 * np.sin(t), z) for z in zs for t in th] + [(0, 0, zs[0]), (0, 0, zs[-1])]
+    rv = lambda r, k: r * ns + k % ns
+    BF = [f for r in range(len(zs) - 1) for k in range(ns)
+          for f in ((rv(r, k), rv(r, k + 1), rv(r + 1, k + 1)), (rv(r, k), rv(r + 1, k + 1), rv(r + 1, k)))]
+    c0, c1 = len(zs) * ns, len(zs) * ns + 1
+    BF += [(c0, rv(0, k + 1), rv(0, k)) for k in range(ns)] + [(c1, rv(len(zs) - 1, k), rv(len(zs) - 1, k + 1)) for k in range(ns)]
+    body = (np.array(BV, float), np.array(BF, int))
+    na, nz, R = 13, 16, 0.16
+    phi0 = np.radians(8.0)
+    arc = np.linspace(0.0, 0.12, na)
+    zz = np.linspace(0.0, 0.3, nz)
+    uv = np.array([(a, z) for a in arc for z in zz])
+    ix = lambda i, j: i * nz + j
+    F = np.array([f for i in range(na - 1) for j in range(nz - 1)
+                  for f in ((ix(i, j), ix(i + 1, j), ix(i + 1, j + 1)), (ix(i, j), ix(i + 1, j + 1), ix(i, j + 1)))])
+    # (lapped: the edge's lower rows sit nearer the front than its top: phi grows 0 -> 25 mm of arc up the edge)
+    ph = lambda a, z: phi0 + (a + 0.025 * z / 0.3) / R
+    X = np.array([(R * np.sin(ph(a, z)), -R * np.cos(ph(a, z)), z) for a, z in uv])
+    M = {"F": F, "uv": uv, "piece": np.zeros(len(uv), int), "names": ["s"], "sew": [],
+         "points": {"s:top": ix(0, nz - 1), "s:bot": ix(0, 0)}}
+    held = np.zeros(len(X), bool)
+    held[[ix(i, nz - 1) for i in range(na)]] = True  # (the top row held: above the break)
+    sl = {"at": "s:top..bot", "patch": 0.012, "follow": 1.0, "by": {"plumb": ["s:top", "s:bot"], "ramp": True}}
+    Y, info = gp.slide(M, X, held, [sl], body=body, steps=8, tol=None)
+    top, bot = Y[ix(0, nz - 1)], Y[ix(0, 0)]
+    assert abs(bot[0] - top[0]) < 0.004, (bot, top, info)
+    r = np.hypot(Y[:, 0], Y[:, 1])
+    assert np.abs(r - R).max() < 0.002, np.abs(r - R).max()
+    t0, _ = gp.thread_p99(M, X)
+    t1, sh1 = gp.thread_p99(M, Y)
+    assert t1 < 0.01 and t1 < t0 + 0.01, (t0, t1, sh1)
+    # ... and the op runs as a styling op; its "with" pieces that the garment hasn't are skipped
+    Z, infos = gp.style(M, X, held, [{"slide": {"slides": [dict(sl, **{"with": ["side.L"]})], "steps": 8, "tol": None}}],
+                        body=body)
+    assert np.allclose(Z, Y, atol=1e-6) and "slide" in infos[0]

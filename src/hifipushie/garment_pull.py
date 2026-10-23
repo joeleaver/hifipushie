@@ -1032,6 +1032,21 @@ def style(M: dict, X: np.ndarray, held, ops: list[dict], body=None, log=None, fl
                 mine[border_chain(M, b)] = True
             X, inf = plumb(M, X, base | (placed & ~mine), a.pop("borders"), log=log, **a)
             placed |= mine
+        elif kind == "slide":  # (fit round 37: lapped cloth slid round the body; what it grips stays where it put it)
+            ss = a.pop("slides")
+            mine = np.zeros(len(X), bool)
+            for sl in ss:
+                ch = border_chain(M, sl["at"])
+                uv_, pid_ = np.asarray(M["uv"], float), np.asarray(M["piece"])
+                on_ = np.where((pid_ == pid_[ch[0]]) & ~base)[0]
+                mine[on_[cKDTree(uv_[ch]).query(uv_[on_])[0] <= float(sl.get("patch", 0.04))]] = True
+            X, inf = slide(M, X, base | (placed & ~mine), ss, body=body, log=log, **a)
+            placed |= mine
+            for sl in ss:  # (a slide's "with" pieces above the edge's top stay as they lie for later ops)
+                wp = [q for q in sl.get("with") or [] if q in M["names"]]
+                if wp:
+                    top = float(X[border_chain(M, sl["at"])[0], 2])
+                    placed |= np.isin(np.asarray(M["piece"]), _piece_ids(M, wp)) & (X[:, 2] >= top) & ~base
         elif kind == "relax":
             X, inf = relax(M, X, base | placed, **a)
         elif kind == "push":
@@ -1050,7 +1065,7 @@ def style(M: dict, X: np.ndarray, held, ops: list[dict], body=None, log=None, fl
                 feathers.append((fv, fw, X.copy()))
                 inf["feathered"] = int(len(fv))
         else:
-            raise ValueError(f"no styling op {kind!r} (pull, turn, smooth, relax, hold, push, plumb)")
+            raise ValueError(f"no styling op {kind!r} (pull, turn, slide, smooth, relax, hold, push, plumb)")
         if kind in FEATHER_AFTER and feathers:  # (the feathered band drawn back after each move)
             for fv, fw, ref in feathers:
                 keep = ~placed[fv]
@@ -1416,6 +1431,175 @@ def turn(M: dict, X: np.ndarray, held, turns: list[dict], body=None, steps: int 
     return Xn, info
 
 
+SLIDE_DS = 0.002  # m: a slide's march step along the under surface
+SLIDE_NORMAL_K = 8  # under-surface vertices averaged for the march's normal (one vertex's normal zigzags the path)
+
+
+def _march(surf, P: np.ndarray, sgn: np.ndarray, arc: np.ndarray, ds: float = SLIDE_DS) -> np.ndarray:
+    """Each point of P moved ALONG the surface, horizontally round it, away from x = 0 on its side (sgn +-1), by `arc` (m),
+    keeping its offset off the surface: the positions at every 1 / n of the way, (n + 1, len(P), 3)."""
+    k = min(SLIDE_NORMAL_K, len(surf.V))
+
+    def nrm(Q):
+        _d, i = surf.tree.query(Q, k=k)
+        n = surf.N[i.reshape(len(Q), -1)].mean(1)
+        return n / (np.linalg.norm(n, axis=1, keepdims=True) + 1e-12)
+
+    def off(Q):
+        return surf.signed(Q)[0]
+    P = np.asarray(P, float)
+    h0 = off(P)
+    nsub = max(1, int(np.ceil(float(np.max(arc, initial=0.0)) / ds)))
+    cur, out = P.copy(), [P.copy()]
+    for _ in range(nsub):
+        n = nrm(cur)
+        t = np.cross(n, np.array([0.0, 0.0, 1.0]))
+        t /= np.linalg.norm(t, axis=1, keepdims=True) + 1e-12
+        t *= np.where(t[:, 0] * sgn >= 0, 1.0, -1.0)[:, None]
+        cur = cur + t * (np.asarray(arc, float) / nsub)[:, None]
+        for _r in range(2):
+            cur = cur + (h0 - off(cur))[:, None] * nrm(cur)
+        out.append(cur.copy())
+    return np.stack(out)
+
+
+def slide(M: dict, X: np.ndarray, held, slides: list[dict], body=None, steps: int = 10, iters: int = 20,
+          relax_iters: int = RELAX_ITERS, pieces=None, tol: float | None = 0.01, confirm: int = CONFIRM_ITERS,
+          log=None):
+    """SLIDE cloth ALONG what it lies on (fit round 37): an unbuttoned front doesn't swing out like a door, its lapped
+    cloth slides back round the body. Each slide {"at": a border "piece:a..b" (an edge), "patch": m on the pattern
+    (default 0.04: the hand's band along the edge), "by": metres of arc, or {"plumb": [upper, lower]}: the lap set by
+    the hang: every edge vertex from `upper` to `lower` slides until it lies on the vertical through `upper` in the
+    front view, the edge below `lower` by `lower`'s arc (the cut-away keeps its shape), "follow": m (pattern distance
+    beyond the band over which the rest of the piece follows, falling off to 0; default 0.12)}. The band moves along the
+    body surface, horizontally round it, toward the side, keeping its fitted offset off the body; the free cloth starts
+    where it would follow and is solved. Staged, until it would stretch (`tol`, as turn). What it grips stays held
+    for later ops. Returns (X_new, info)."""
+    from . import pattern_form as pf_
+    from .cloth_made import outward
+    X = np.asarray(X, float)
+    held = _mask(held, len(X))
+    bvf = _body_vf(body)
+    if bvf is None:
+        raise ValueError("slide needs the body (it slides along it)")
+    surf = pf_._Surface(bvf[0], outward(*bvf))
+    uv = np.asarray(M["uv"], float)
+    pid = np.asarray(M["piece"])
+    A = FlatARAP(M, X)
+    Y = A.weld(X)
+    fixed = A.welded_mask(held)
+    jobs, info_s = [], {}
+    for sl in slides:
+        ch = border_chain(M, sl["at"])
+        pc = int(pid[ch[0]])
+        sgn = 1.0 if float(np.median(X[ch, 0])) >= 0 else -1.0
+        by = sl.get("by", {"plumb": None})
+        if isinstance(by, dict):
+            pl = by.get("plumb") or [int(ch[0]), int(ch[-1])]
+            up, lo = vertex(M, pl[0]), vertex(M, pl[1])
+            xu = sgn * float(X[up][0])
+            i_up, i_lo = int(np.where(ch == up)[0][0]), int(np.where(ch == lo)[0][0])
+            reach = 0.25
+            tr = _march(surf, X[ch], np.full(len(ch), sgn), np.full(len(ch), reach))
+            fr = np.linspace(0.0, reach, len(tr))
+            arc_ch = np.zeros(len(ch))
+            for j in range(i_up, len(ch)):
+                xs = sgn * tr[:, j, 0]
+                hit = np.where(xs >= xu)[0]
+                if j <= i_lo:
+                    if not len(hit) or hit[0] == 0:
+                        arc_ch[j] = 0.0 if len(hit) else reach
+                    else:
+                        h = hit[0]
+                        f = (xu - xs[h - 1]) / max(xs[h] - xs[h - 1], 1e-9)
+                        arc_ch[j] = fr[h - 1] + f * (fr[h] - fr[h - 1])
+                else:
+                    arc_ch[j] = arc_ch[i_lo]
+            if by.get("ramp"):  # (the lap taken up linearly from `upper` to `lower`: the edge between them one straight line)
+                zc = X[ch, 2]
+                r = np.clip((zc[i_up] - zc) / max(zc[i_up] - zc[i_lo], 1e-6), 0.0, 1.0)
+                arc_ch = np.where(np.arange(len(ch)) <= i_lo, arc_ch[i_lo] * r, arc_ch)
+                arc_ch[:i_up] = 0.0
+        else:
+            arc_ch = np.full(len(ch), float(by))
+        arc_ch = arc_ch * float(sl.get("scale", 1.0))
+        patch, follow = float(sl.get("patch", 0.04)), float(sl.get("follow", 0.12))
+        on = np.where((pid == pc) & ~held)[0]
+        d_e, j_e = cKDTree(uv[ch]).query(uv[on])
+        w = np.clip(1.0 - (d_e - patch) / max(follow, 1e-6), 0.0, 1.0)
+        arc_v = arc_ch[j_e] * w
+        grip_v = on[d_e <= patch]
+        withp = [q for q in sl.get("with") or [] if q in M["names"]]  # (a jacket with no side panel: just the back)
+        if withp:  # the pieces round the body behind it follow too, by the angle round from the edge to CB
+            zt = float(X[ch[0], 2])
+            wv = np.where(np.isin(pid, _piece_ids(M, withp)) & ~held)[0]
+            above = wv[X[wv, 2] >= zt]
+            held = held.copy()
+            held[above] = True
+            fixed[A.inv[above]] = True
+            on = np.r_[on, wv[X[wv, 2] < zt]]
+            Bv = bvf[0]
+
+            def phi(P):
+                yc = np.empty(len(P))
+                for i, z in enumerate(P[:, 2]):
+                    b = Bv[np.abs(Bv[:, 2] - z) < 0.02]
+                    yc[i] = 0.5 * (b[:, 1].min() + b[:, 1].max()) if len(b) else 0.0
+                return np.arctan2(np.abs(P[:, 0]), -(P[:, 1] - yc))
+            oz = np.argsort(X[ch, 2])
+            arc_z = lambda z: np.interp(z, X[ch, 2][oz], arc_ch[oz], right=0.0)
+            phe = phi(X[ch])
+            phe_z = lambda z: np.interp(z, X[ch, 2][oz], phe[oz])
+            Pn = X[on]
+            ww = np.clip((np.pi - phi(Pn)) / np.maximum(np.pi - phe_z(Pn[:, 2]), 1e-3), 0.0, 1.0)
+            isg = np.isin(on, grip_v)
+            arc_v = np.where(isg, np.r_[arc_v, np.zeros(len(on) - len(arc_v))], arc_z(Pn[:, 2]) * ww)
+        tr = _march(surf, X[on], np.full(len(on), sgn), arc_v)
+        jobs.append((on, tr, A.inv[grip_v]))
+        fixed[A.inv[grip_v]] = True
+        info_s[str(sl["at"])] = {"arc_mm": [round(float(arc_ch.min()) * 1000, 1), round(float(arc_ch.max()) * 1000, 1)],
+                                 "gripped": int(len(grip_v))}
+    if pieces is None:
+        pieces = sorted(set(pid[~A.unweld(fixed)].tolist()))
+    Y = A.solve(Y, fixed, relax_iters)
+    tf = thread_faces(M, pieces, ~held)
+    st = lambda W: thread_p99(M, A.unweld(W), faces=tf)
+    s0, sh0 = st(Y)
+    least, lock = s0, _shear_lock(sh0)
+    done, stopped = 0, "done"
+
+    def place(f):
+        T = Y.copy()
+        for on, tr, gw in jobs:
+            q = f * (len(tr) - 1)
+            i0 = int(np.floor(q))
+            i1 = min(i0 + 1, len(tr) - 1)
+            T[A.inv[on]] = tr[i0] + (q - i0) * (tr[i1] - tr[i0])
+        return T
+
+    for k in range(1, steps + 1):
+        Yk = A.solve(place(k / steps), fixed, iters)
+        if tol is not None:
+            s, sh = st(Yk)
+            if log:
+                log(f"slide step {k}: threads p99 {s * 100:.2f} %, shear p99 {_shmax(sh)} deg")
+            confirmed = (s > least + tol or _jammed(sh, lock)) and confirm
+            if confirmed:
+                s, sh = st(A.solve(Yk, fixed, confirm, eps=CONVERGED))
+            if s > least + tol or _jammed(sh, lock):
+                stopped = "stretch" if s > least + tol else "shear"
+                break
+            if not confirmed:
+                least = min(least, s)
+        Y, done = Yk, k
+    Xn = A.unweld(Y)
+    Xn[held] = X[held]
+    s1, sh1 = st(A.weld(Xn))
+    return Xn, {"stretch_p99_start": round(s0 * 100, 2), "stretch_p99_end": round(s1 * 100, 2),
+                "shear_p99_deg": [_shmax(sh0), _shmax(sh1)], "share_done": round(done / steps, 2), "stopped": stopped,
+                "slides": info_s}
+
+
 def plumb(M: dict, X: np.ndarray, held, borders: list, ramp: float = 0.05, axes: str = "xy", steps: int = 10,
           iters: int = 20, relax_iters: int = RELAX_ITERS, tol: float | None = 0.01, confirm: int = CONFIRM_ITERS,
           pieces=None, log=None):
@@ -1584,6 +1768,9 @@ def ops_pieces(M: dict, ops: list[dict]) -> list:
                 out.add(a["border"].split(":")[0])
         if kind == "plumb":
             out |= {b.split(":")[0] for b in a.get("borders") or []}
+        if kind == "slide":
+            out |= {sl["at"].split(":")[0] for sl in a.get("slides") or []}
+            out |= {p for sl in a.get("slides") or [] for p in sl.get("with") or []}
     return sorted(p for p in out if p in M["names"])
 
 
