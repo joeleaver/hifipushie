@@ -10701,3 +10701,24 @@ Base: r38's k3 (asm_k3.pkl copied; fit_g1.pkl a read-only copy, not a symlink). 
   never seen with clear air / with the outer's inside behind it) kept 113 of 142 specks (grazing views, 2 mm pixels on
   the silhouette): dropped. Final (te = default): seen-in-region 208 -> 17, hidden faces 15401 -> 16439, collar / V kept.
   Test: test_cloth_layers::test_hidden_removes_under_cloth_touching_or_poking_through_a_coarse_outer (before: mid 0.016).
+- Step 1b (coordinator, Joe on r38: the front|side seam "standing proud like a cord ... why is it there?"; his crop
+  $FR39/joe_seam_r38.png, ours check/joeseam_before_k3.png). Measured (seam39.py slices, seamn39.py along the seams):
+  WHERE: front|side (sideF) 91-93 deg round from CF at chest / waist / hem+30 in the fit (g1) and styled (k3); side|back
+  (sideB) 107-112. The side panel shows only 15-20 deg (flat 100 mm at the waist, 155 at the hem). Round 34 (no hold):
+  sideF 79 (waist) / 66 (hem), sideB 108. So PLUMB_HOLD put the seam exactly on the side silhouette (~90 deg), where
+  the front view sees it edge-on as the outline. Jaeger (freesewing frontbase.mjs): the front|side seam from the front
+  armhole's split, at sideFrontPlacement 85 % of the front waist width (~75-80 deg round, AHEAD of the side); the
+  side|back seam from the back armhole hollow (~120-135). So the draft's panel placement is Jaeger's; the seam is not
+  too far forward because of the widths: the hold moved it BACK 12-25 deg onto the silhouette.
+  WHY IT LOOKS LIKE THAT: the fold across the seam (angle between the two panels' normals at each sew pair, every 50 mm
+  from 250 to 750 below HPS): g1 34-110 deg (L 45/38/52/44/50/78/110/51/34/22/28), k3 4-143; round 34 without the hold
+  0-26. The gate's own front_crease row already read seams side.L 83-160 deg (ok false, waived). Stand-off vs the
+  panels 15 mm either side: +3..+13 mm at several depths. Not the render (no bead; 0.8 mm solidify) and not the
+  styling (it is in the fit): the hold pins the seam LINE in y while the panels either side hang forward of it, so the
+  cloth folds along the line: a crease-ridge, the "cord".
+  WHY IT'S THERE: a three-piece jacket has the seam (no side seam); it should be flat (pressed), and sit just behind the
+  side so the front view doesn't read it (Joe's own: well round behind). On the vertical through its top is right for a
+  plumb jacket; held as a LINE it creases.
+  Fix tried (C188, pattern_form.plumb_seam_pins "band"): the panels within `band` of a held seam vertex are held to their
+  own position moved by that vertex's correction (feathered to 0 at band): the panels move with the seam. Fits b40 / b80
+  ($FR39 fits39.sh, fit39.py) running.

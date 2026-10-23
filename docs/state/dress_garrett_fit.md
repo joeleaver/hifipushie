@@ -19,7 +19,11 @@ and plumb from the break to the cut-away's top, then the cut-away; the sides fal
 edge is plumb (64) where the concept leans out a little (71 at 450); hem+30 38 narrow; shard specks at the sleeve heads.
 ROUND 39 (in progress, $FR39 = /mnt/data/hifipushie/dress_garrett/fit_round39): step 1 done: sleeve-head specks = shirt touching
 the jacket (-3..+3 mm), culled by C187 (cloth_layers touch band + triangle-sampled cover); seen 208 -> 17.
-NEXT: step 2 (650 overshoot: swing stop vs the straight edge), 3 (hem 444 vs 482: fit or hold), 4 (450 lean), then LOOK review.
+SEAM (coordinator, Joe on r38's front|side seam, TOP): measured: seam at 91-93 deg (on the silhouette; r34 without the hold
+66-79), fold across it 34-110 deg in the fit (r34 0-26): PLUMB_HOLD pins the seam LINE, the panels crease along it.
+Trying pattern_form plumb hold "band" (panels move with the seam; default off): fits b40 / b80 via $FR39/fits39.sh.
+NEXT: judge b40 / b80 (seamn39 fold, seam39 angle, Joe crop + side) -> default if it flattens the seam with edges /
+upper half / hems kept; then step 2 (650), 3 (hem 444), 4 (450 lean), LOOK review.
 ## Method ($FR38 = /mnt/data/hifipushie/dress_garrett/fit_round38; run.sh: this worktree; fit_g1.pkl read-only)
 sw38.sh <tag> <params json> (mkv38 variant of the kb style on g1 + reads, no render); tab38.sh <tags>; sty38.sh g1 <tag> (default
 kb + reads + sheets); op38.py (op by op); flare38.py (per-piece hem moves); crop38.py (Joe's spot crop); diag38.py (forced shares).

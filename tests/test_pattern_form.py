@@ -2162,3 +2162,34 @@ def test_plumb_hold_hangs_the_side_seams_on_the_vertical():
     live = pf.assemble({"mesh": M, "X0": X0, "body": body}, body, ease=pf.UNDER_EASE, iters=120,
                        plumb_hold=dict(pf.PLUMB_HOLD, anchor="live"))
     assert live["info"]["plumb_off_mm"]["max"] <= 3.0 and fwd(live["V"]) <= 3.0, (live["info"], fwd(live["V"]))
+
+
+def test_plumb_hold_band_moves_the_panels_with_their_seam():
+    """C188 (garrett jacket fit round 39; Joe on r38: 'What's up with this seam? ... standing proud like a cord'): PLUMB_HOLD
+    held only the seam LINE on the vertical, so where the panels hung forward of it the cloth folded along the seam
+    (Garrett's front|side seam: 35-110 deg across it in the fit, 2-26 without the hold). hold "band": the panels' vertices
+    within `band` of a held seam vertex are held too, to their own position moved by that seam vertex's correction
+    (feathered to 0 at `band`): the panels move WITH the seam. Pins: seam pins unchanged, band pins lighter, none for a
+    live anchor; the leaning tube: the seams still within 5 mm of the vertical and the fold across them no sharper."""
+    M, X0, body = _leaning_two_panel_case()
+    base = pf.plumb_seam_pins(M, X0, pf.PLUMB_HOLD)
+    banded = pf.plumb_seam_pins(M, X0, dict(pf.PLUMB_HOLD, band=0.04))
+    assert all(b in banded for b in base) and len(banded) > len(base)
+    extra = [b for b in banded if b not in base]
+    assert max(w for _v, _t, w, _a, _n in extra) < pf.PLUMB_HOLD["w"] and all(a == "y" for _v, _t, _w, a, _n in extra)
+    assert {v for v, *_ in extra}.isdisjoint({v for v, *_ in base})
+    assert len(pf.plumb_seam_pins(M, X0, dict(pf.PLUMB_HOLD, band=0.04, anchor="live"))) == len(base)
+
+    def fold(V):  # the sharpest bend between neighbouring faces of DIFFERENT panels (deg)
+        F = np.asarray(M["F"]); pid = np.asarray(M["piece"])[F[:, 0]]
+        n = np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]]); n /= np.linalg.norm(n, axis=1, keepdims=True)
+        c = V[F].mean(1); from scipy.spatial import cKDTree
+        pr = np.array(sorted(cKDTree(c).query_pairs(0.02)))
+        pr = pr[pid[pr[:, 0]] != pid[pr[:, 1]]]
+        return float(np.degrees(np.arccos(np.clip((n[pr[:, 0]] * n[pr[:, 1]]).sum(1), -1, 1))).max()) if len(pr) else 0.0
+    on = pf.assemble({"mesh": M, "X0": X0, "body": body}, body, ease=pf.UNDER_EASE, iters=120, plumb_hold=pf.PLUMB_HOLD)
+    bd = pf.assemble({"mesh": M, "X0": X0, "body": body}, body, ease=pf.UNDER_EASE, iters=120,
+                     plumb_hold=dict(pf.PLUMB_HOLD, band=0.04))
+    off = max(abs(bd["V"][v, 1] - bd["V"][t, 1]) for v, t, w, _a, _n in base if w >= pf.PLUMB_HOLD["w"]) * 1000
+    assert off <= 5.0, off
+    assert fold(bd["V"]) <= fold(on["V"]) + 1.0, (fold(bd["V"]), fold(on["V"]))

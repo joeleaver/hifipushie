@@ -1776,11 +1776,30 @@ def plumb_seam_pins(M: dict, X: np.ndarray, hold: dict | None) -> list:
                 v = np.unique(sw[m & (ss == sid)].ravel())
                 tv = int(v[np.argmax(X[v, 2])])
                 ramp = max(float(hold.get("ramp", 0.05)), 1e-6)
+                live = hold.get("anchor", "hung") == "live"
                 for k in v:
                     r = float(np.clip((X[tv, 2] - X[k, 2]) / ramp, 0.0, 1.0))
                     if r > 0:
                         out.append((int(k), tv, float(hold.get("w", 2.0)) * r, hold.get("axes", "y"),
-                                    None if hold.get("anchor", "hung") == "live" else (float(X[tv, 0]), float(X[tv, 1]))))
+                                    None if live else (float(X[tv, 0]), float(X[tv, 1]))))
+                band = float(hold.get("band", 0.0) or 0.0)
+                if band > 0 and not live:  # (fit round 39: the panels either side move WITH their seam, feathered to 0
+                    # at `band`: a hold on the seam line alone pinned a crease along it, the panels folding 35-110 deg
+                    # across the front|side seam where they hung forward of it: a proud cord down Garrett's sides)
+                    from scipy.spatial import cKDTree as _T
+                    sv = np.asarray([k for k in v if X[tv, 2] - X[k, 2] > 0], int)
+                    if len(sv):
+                        cand = np.where(np.isin(pid, ia + ib))[0]
+                        cand = cand[~np.isin(cand, v) & (X[cand, 2] < X[tv, 2])]
+                        d, j = _T(X[sv]).query(X[cand])
+                        for q, dq, jq in zip(cand, d, j):
+                            if dq < band:
+                                k = sv[jq]
+                                r = float(np.clip((X[tv, 2] - X[k, 2]) / ramp, 0.0, 1.0)) * (1.0 - dq / band)
+                                if r > 0:
+                                    dy = float(X[tv, 1] - X[k, 1])
+                                    out.append((int(q), tv, float(hold.get("w", 2.0)) * r, "y",
+                                                (float(X[q, 0]), float(X[q, 1]) + dy)))
     return out
 
 
