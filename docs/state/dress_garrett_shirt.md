@@ -15,11 +15,14 @@ MUSLIN TEST (C161; notes cloth.md "stiff-thread muslin test"): refitted with thr
 red is the fit's own; REAL misfits on Garrett: the yoke corner at the neck point (threads p95 8 %, shear 47 deg) and
 the hips (side seams 4-19 mm open). Straightening (r3b) can't fix the lump: it is the relaxed shape. NEXT (Joe): a
 muslin gate, then the two misfits as pattern alterations; maps $G/r3/mapn_garrett_sheet.png, mapn_simon_sheet.png.
-MUSLIN DEFAULT (C162; branch claude/muslin-default, NOT landed): holds DROPPED (Joe: current clothes are no baseline,
-C165); SHEAR_FREE / SHEAR_RAMP fix the free / transient shear (C166); KATs rewritten to thread strain + shear, soft
-neck pin (C167). Suite 2 failed / 277 passed (garment_pull spike variants: right tip crumple, edge kink 23.2 vs 22).
-Corner hps NOT flipped (bump 9.3-10.6 > 8 on the muslin fit). NEXT: fix the 2 garment_pull reds by cause; jfit.py
-saving the pressed under, then re-look the jacket beside the concept; files /mnt/data/hifipushie/muslin_default.
+MUSLIN DEFAULT (C162; branch claude/muslin-default, NOT landed): holds DROPPED (C165); SHEAR_FREE / SHEAR_RAMP (C166);
+soft neck pin (C167); edge kink restated as kink_deg <= 8 (planted 20 deg crease fails; C168); jacket's under layer =
+shirt's worn form fit, no sim (on_form -> model_body(under=); C168). Suite (full2.log) 2 failed / 278 passed / 4 xfailed,
+exit 1: BOTH reds are the collar tip crumple (test 2 right 0.146 vs 0.136, test 3 right 0.163 vs 0.146). CAUSE (C168 (4)):
+the styling solve is isometric on a woven fit; garment_pull.WOVEN_STYLE fixes the tips (= closed) but the stops read
+edge stretch (4 reds). NEXT: pull / turn / smooth stops read as threads (C166), then WOVEN_STYLE on; re-run suite; then
+C162 ENFORCED. Jacket closed on the muslin fit ($M/jacket_jon1_sheet.png): boxy straight coat, fronts lap to the hem,
+high V, narrow lapels, soft shoulders, collar up the neck: NOT the concept (cloth.md "the last reds").
 
 ROUND 2 (branch claude/garrett-collar-lump, files $G/r2): Joe approved gc1's throat / V / points / button; the one fault
 is the LUMP under the fall's outer edge (side view). MEASURED: the shoulder seam (front | yoke) within 50 mm of the neck

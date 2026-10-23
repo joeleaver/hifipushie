@@ -10226,3 +10226,37 @@ conditions; looks judged beside the REFERENCE only (C165).
   jacket_m1_sheet.png INVALID as a look: rendered the shirt UNPRESSED under a jacket fitted over the pressed shirt (shirt
   pokes through everywhere); jfit.py must save the pressed under. on_form can't fit gc_garrett's jacket (model_body
   needs the shirt's SIM: under_missing; the form fit shouldn't); jfit.py places it without.
+
+## muslin default, the last reds + the jacket's form under layer (2026-10-22, branch claude/muslin-default; files /mnt/data/hifipushie/muslin_default/p1)
+- (b) EDGE KINK restated (C168): edge_turns kink_deg = turn over 15 mm less half the turn over 30 mm (arc 0, crease c -> c / 2).
+  kink.py / kink2.py on the woven fit (iso in brackets): closed 3.6 / 4.0 (5.1 / 4.4); test 3 6.4 / 6.3 (2.9 / 5.2) where the
+  max turn is 19.4 / 23.2 (the leaf bending down to its point, ~120 deg from CB, there with or without the border smooth);
+  q40's hard 110 deg border, rebuilt on this fit, is NOT a clean fault any more (max turn 26.8 / 14.4; iso 14.1 / 16.2:
+  under the old 22 on iso); planted creases (plant_crease: the collar past +-90 deg turned in the side plane) 10 / 15 /
+  20 / 29 deg -> kink 7.4-10.3 / 11.2-15.2 / 14.9-19.9 / 21.3-27.5. Limit 8; the test plants a 20 deg crease each side
+  and asserts it fails.
+- (a) RIGHT TIP CRUMPLE, cause found, NOT fixed (C168 (4)). tips.py / tips2.py / relax.py / turnit.py: the crumple is
+  put in by the band-end TURN (closed 0.086 -> 0.146; the pull's turning grip then carries the patch rigidly, the
+  smooth can't reach it: held), not the relax (0.090), not the grip size (area turn 0.146), not the ramp (SHEAR_RAMP 0:
+  0.156). The closed woven tip's warp is COMPRESSED (p5 -4.4 %; iso -3.2; SHEAR_FREE off -2.1); the collar's roll side
+  -3..-8 % on every fit. Turn rounds: 6 x 20 -> 0.146, 6 x 80 -> 0.234, 6 x 300 -> 0.276 (iso 0.101 / 0.203 / 0.271):
+  the isometric styling solve gives the fit's shear / eased length back as buckles; the iso fit passed by early stop.
+  Tried: renormalised woven targets (no change: shear ~2 deg there), SHEAR_FREE 0.1 / 0.3 (PASS 0.112 / FAIL 0.132:
+  noise-level), SHEAR_YIELD 0.001-0.01 (PASS 0.109-0.112; 0.02 FAIL) but test_pattern_form + garment_pull: 5 reds
+  (points 156 apart, run-off fold, break step 2.6 mm, open-collar reads; pfy.log); a smooth that brushes pulled patches
+  (worse: 0.217 / 0.326, threads 9 %; reverted); garment_pull.WOVEN_STYLE (the fit's local step in the styling solve):
+  tips 0.039 / 0.084 = closed, points 147.5 apart, 62.6 / 58.5 below hps, but 4 reds (the wobble smooth, test 2's
+  smooth stops at 0 rounds, mirrored below 3.8 mm, open-by-default stretch: the stops read EDGE stretch, which counts
+  the shear it allows; gp2.log). Both opt-in, back to known good. NEXT: the pull / turn / smooth stops read as THREADS
+  (C166), then WOVEN_STYLE on.
+- tip_read now gives thread_max_pct + shear_max_deg; the tests' tip / band-corner "stretch" asserts read threads (C166).
+- JACKET LOOK PATH (C168): on_form's layered branch styles the under garment's form fit as worn (under_as_worn: the
+  wear's style ops, as fit_garment), passes it to cloth.model_body(under=) (placed on the body padded by it, drafted
+  over it, its worn body without neck pieces), then presses it for the assemble: no sim, no pin, no under_missing.
+  gc_garrett jacket CLOSED (jon.py, 494 s): woven, threads p50 0.58 / p99 8.9 %, shear p99 27.7, sew gap 0.04 mm;
+  the shirt's style ran 9 ops. Sheet $M/jacket_jon1_sheet.png (concept | clay | diag, front / 3/4 / side).
+  VERDICT (blunt): reads as a jacket over a shirt that now lies under it (show-through at the shoulder points / elbow
+  is the hidden under layer, C153), but NOT the concept: a long straight boxy coat. The fronts lap straight to the hem
+  (concept: cut away below the button, quarters open), the V closes high (mid-chest; concept's button at the waist,
+  long open V), lapels narrow with no clear notch (concept: wide notched lapels), no waist suppression, soft sloping
+  shoulders (concept: square, built), the collar stands up the neck in the side view instead of lying on it.
