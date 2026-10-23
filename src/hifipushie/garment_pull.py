@@ -98,7 +98,7 @@ HANG_SWEEPS = 4  # Jacobi sweeps of the thread cap a round
 # (cloth's own rest; only interfaced cloth is made to a shape).
 STYLE_BEND = __import__("os").environ.get("GP_STYLE_BEND", "0") == "1"
 STYLE_BEND_W = float(__import__("os").environ.get("GP_STYLE_BEND_W", "5.0"))
-STYLE_BEND_PLAIN = float(__import__("os").environ.get("GP_STYLE_BEND_PLAIN", "0.2"))  # (x a plain vertex's weight 1)
+STYLE_BEND_PLAIN = float(__import__("os").environ.get("GP_STYLE_BEND_PLAIN", "0.0"))  # (x a plain vertex's weight 1)
 
 STEP = 0.003  # m: a handle's move per step
 TOL = 0.005  # stretch p99 allowed above the least the pull has reached (0.5 %: the shirt's knee, module docstring)

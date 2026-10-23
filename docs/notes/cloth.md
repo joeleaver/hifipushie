@@ -10876,3 +10876,14 @@ rolled collar turned over its stand for free: edge 24 -> -22 mm), plain cloth re
 KATs (tests/test_bending.py, STYLE_BEND_W 5, PLAIN 0.2): 120 mm strip clamped 12 mm: plain 100 / fusible 12 / canvas
 4.8 mm tip drop; rolled 12 mm collar held on its stand: fusible r 11.9, edge 23.8 mm (24); plain edge -1.9; 150 deg fold
 150.2.
+Jacket runs ($CV; reads = tab38.sh; concept edge 450/550/650 71/78/94, waist 414, hem+30 482, V 237, lapel 127/134):
+- s1_k3 (slim fit = the gate's, PLUMB_HOLD; kb style, no bending): edge 59-64 / 72-74 / 95-97, waist 422, hem+30 443,
+  V 233, lapel 137/136, roll = k3, ahead 16-31, threads p99 8.78 (r39 k3 7.42). The slim pattern keeps the k3 reads.
+- s1b_k3 (+ STYLE_BEND, plain 0.2 resting flat): threads 15.2 %: plain cloth's flat rest fights the body floors. So in
+  styling plain cloth stays bending-free (STYLE_BEND_PLAIN 0, C142's evidence); KATs unchanged (plain drop 115 mm).
+- s1b0_k3 (+ STYLE_BEND, plain 0): edge 53-64 / 79-86 / 85-86, waist 396, hem+30 435, ahead -4..30, threads 11.35:
+  the canvas below the break resists the slide / swing (the ops were tuned on floppy cloth) and the threads strain.
+- c1 fit (PF_BEND_KEYED, FIT_HINGE_W 1, PLUMB_HOLD): 662 s, threads p99 8.4 (s1 7.2), inside_body 39.
+Shirt (shirt.py, wf_simon open collar, Joe's photo / trace rows): s0 (no bend) ALL PASS, threads 6.47; b0 (STYLE_BEND,
+W 5): 4 rows FAIL (corners 0.37, V 47 deg, V depth 0.28, leaf edge 73 deg), threads 18.7: the collar ops (band ends
+turned, points pulled) were tuned on bending-free cloth; the stand's rest is the CLOSED fit, so opening it costs.
