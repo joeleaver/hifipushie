@@ -77,6 +77,18 @@ from scipy.sparse import coo_matrix, diags
 from scipy.sparse.linalg import splu
 from scipy.spatial import cKDTree
 
+# THE HANG IN STYLING (supports thread, 2026-10-23; pattern_form.HANG_FIELD's twin): a "relax" op with hang (or every
+# relax with STYLE_HANG) lets the free cloth settle under a weak downward field onto what supports it (the held pieces,
+# the floors), each round's move clamped to HANG_STEP, the threads capped at HANG_STRAIN (the muslin's stop). Known
+# answer: tests/test_garment_pull.py test_hang_sheet_from_its_top_edge.
+STYLE_HANG = False
+HANG_G = 0.004  # m: the free move a round the weight would make (force = HANG_G x HANG_PROX x rest area / mean)
+HANG_PROX = 0.0025  # the hang's proximal weight (x a cot weight): small, so the free modes (a panel's swing) move
+HANG_STEP = 0.004  # m: the most a vertex moves in one hang round
+HANG_STRAIN = 0.01  # the most the weight stretches a thread
+HANG_ITERS = 1500  # (the sheet KAT: 400 rounds left the hem 44 mm back; 1500: 9 mm)
+HANG_SWEEPS = 4  # Jacobi sweeps of the thread cap a round
+
 STEP = 0.003  # m: a handle's move per step
 TOL = 0.005  # stretch p99 allowed above the least the pull has reached (0.5 %: the shirt's knee, module docstring)
 MAX_MOVE = 0.08  # m: the farthest a pull goes
@@ -325,15 +337,29 @@ class FlatARAP:
         out[self.inv[np.asarray(mask, bool)]] = True
         return out
 
-    def solve(self, Y: np.ndarray, fixed: np.ndarray, iters: int = ITERS, eps: float | None = None) -> np.ndarray:
+    def solve(self, Y: np.ndarray, fixed: np.ndarray, iters: int = ITERS, eps: float | None = None,
+              hang: bool = False) -> np.ndarray:
         """Up to `iters` local / global rounds from Y, stopping once no vertex moves more than `eps` in one; vertices
-        `fixed` (welded mask) stay where Y has them."""
-        key = np.packbits(fixed).tobytes()
+        `fixed` (welded mask) stay where Y has them. hang: the free cloth's WEIGHT (HANG: a weak downward force per
+        rest area against a small proximal weight, each round's move clamped to HANG_STEP, the threads capped at
+        HANG_STRAIN; the floors as ever)."""
+        key = np.packbits(fixed).tobytes() + (b"h" if hang else b"")
         fi, ci = np.where(~fixed)[0], np.where(fixed)[0]
         if key not in self._lu:
             Lf = self.L[fi]
-            self._lu = {key: (splu(Lf[:, fi].tocsc()), Lf[:, ci].tocsr())}  # (one fixed set at a time: the pull's)
+            Aff = Lf[:, fi] + (diags(np.full(len(fi), HANG_PROX)) if hang else 0)
+            self._lu = {key: (splu(Aff.tocsc()), Lf[:, ci].tocsr())}  # (one fixed set at a time: the pull's)
         lu, Lfc = self._lu[key]
+        if hang:
+            if getattr(self, "mass", None) is None:
+                a_ = 0.5 * np.abs((self.U[:, 1, 0] - self.U[:, 0, 0]) * (self.U[:, 2, 1] - self.U[:, 0, 1])
+                                  - (self.U[:, 1, 1] - self.U[:, 0, 1]) * (self.U[:, 2, 0] - self.U[:, 0, 0]))
+                m_ = np.zeros(self.n)
+                for c in range(3):
+                    np.add.at(m_, self.WF[:, c], a_ / 3)
+                self.mass = m_ / max(float(m_.mean()), 1e-12)
+                self.Dinv0 = np.linalg.inv(np.stack([self.U[:, 1] - self.U[:, 0], self.U[:, 2] - self.U[:, 0]], -1))
+            fall = HANG_G * HANG_PROX * self.mass[fi]
         U, WF, Wt = self.U, self.WF, self.Wt
         Y = Y.copy()
         for _ in range(iters):
@@ -355,13 +381,45 @@ class FlatARAP:
                 np.add.at(rhs, WF[:, a], v)
                 np.add.at(rhs, WF[:, b], -v)
             r = rhs[fi] - Lfc @ Y[ci]
+            if hang:  # (HANG: the proximal weight and the weight; a round moves a vertex at most HANG_STEP)
+                r = r + HANG_PROX * Y[fi]
+                r[:, 2] -= fall
             Yf = np.column_stack([lu.solve(r[:, k]) for k in range(3)])
+            if hang:
+                dY = Yf - Y[fi]
+                ln = np.linalg.norm(dY, axis=1, keepdims=True)
+                Yf = Y[fi] + dY * np.minimum(1.0, HANG_STEP / np.maximum(ln, 1e-12))
             dmax = float(np.abs(Yf - Y[fi]).max()) if len(fi) else 0.0
             Y[fi] = Yf
+            if hang:  # (the threads capped: the weight never stretches a thread past HANG_STRAIN)
+                Y = self._thread_cap(Y, fixed)
             if self.floor:  # THE LAYER FLOOR (C170): what went under its floor this round is put back on it
                 Y = self._floor(Y, fixed)
             if eps is not None and dmax < eps:
                 break
+        return Y
+
+    def _thread_cap(self, Y: np.ndarray, fixed: np.ndarray, sweeps: int | None = None) -> np.ndarray:
+        """Jacobi thread-strain limit (pattern_form._thread_limit on the welded faces): a face whose warp or weft is
+        longer than 1 + HANG_STRAIN mapped back to it about its centroid; fixed vertices stay."""
+        U, WF = self.U, self.WF
+        for _ in range(HANG_SWEEPS if sweeps is None else sweeps):
+            Fg = np.stack([Y[WF[:, 1]] - Y[WF[:, 0]], Y[WF[:, 2]] - Y[WF[:, 0]]], -1) @ self.Dinv0
+            ln = np.linalg.norm(Fg, axis=1)
+            sc = np.clip(ln, 1.0 - HANG_STRAIN, 1.0 + HANG_STRAIN) / np.maximum(ln, 1e-12)  # (nor shorter: a woven buckles)
+            bad = (np.abs(sc - 1.0) > 1e-9).any(1)
+            if not bad.any():
+                break
+            Fb = Fg[bad] * sc[bad][:, None, :]
+            ub, fb = U[bad], WF[bad]
+            tgt = Y[fb].mean(1)[:, None, :] + np.einsum("bij,bcj->bci", Fb, ub - ub.mean(1)[:, None, :])
+            cor = np.zeros_like(Y)
+            cnt = np.zeros(len(Y))
+            for c in range(3):
+                np.add.at(cor, fb[:, c], tgt[:, c] - Y[fb[:, c]])
+                np.add.at(cnt, fb[:, c], 1.0)
+            cor[fixed] = 0.0
+            Y = Y + cor / np.maximum(cnt, 1.0)[:, None]
         return Y
 
     def _floor(self, Y: np.ndarray, fixed: np.ndarray) -> np.ndarray:
@@ -1131,16 +1189,20 @@ def push(M: dict, X: np.ndarray, held, pieces, body, gap: float = 0.002, rounds:
     return X, {"inside": [n0, int(under(X)[0].sum())], "pieces": list(pieces)}
 
 
-def relax(M: dict, X: np.ndarray, held, iters: int = HOLD_ITERS):
-    """The free (not held) cloth relaxed against its flat pattern (`iters` rounds), nothing gripped. Returns (X_new,
-    info: stretch p99 start / end (%), on the pieces with free cloth)."""
+def relax(M: dict, X: np.ndarray, held, iters: int = HOLD_ITERS, hang: bool | None = None, hang_iters: int | None = None):
+    """The free (not held) cloth relaxed against its flat pattern (`iters` rounds), nothing gripped. hang (None:
+    STYLE_HANG): then the free cloth HANGS under its weight for `hang_iters` (HANG_ITERS) more rounds (FlatARAP.solve
+    hang: supports, not holds). Returns (X_new, info: stretch p99 start / end (%), on the pieces with free cloth)."""
     X = np.asarray(X, float)
     held = _mask(held, len(X))
     A = FlatARAP(M, X)
     sp = sorted(set(np.asarray(M["piece"])[~held].tolist()))
     tf = thread_faces(M, sp)
     (s0, sh0) = thread_p99(M, X, faces=tf)
-    Xn = A.unweld(A.solve(A.weld(X), A.welded_mask(held), iters))
+    Y = A.solve(A.weld(X), A.welded_mask(held), iters)
+    if STYLE_HANG if hang is None else hang:
+        Y = A.solve(Y, A.welded_mask(held), int(hang_iters or HANG_ITERS), hang=True)
+    Xn = A.unweld(Y)
     Xn[held] = X[held]
     s1, sh1 = thread_p99(M, Xn, faces=tf)
     return Xn, {"stretch_p99": [round(s0 * 100, 2), round(s1 * 100, 2)], "shear_p99_deg": [_shmax(sh0), _shmax(sh1)]}

@@ -2193,3 +2193,94 @@ def test_plumb_hold_band_moves_the_panels_with_their_seam():
     off = max(abs(bd["V"][v, 1] - bd["V"][t, 1]) for v, t, w, _a, _n in base if w >= pf.PLUMB_HOLD["w"]) * 1000
     assert off <= 5.0, off
     assert fold(bd["V"]) <= fold(on["V"]) + 1.0, (fold(bd["V"]), fold(on["V"]))
+
+
+def _xbar_body(r=0.05, zc=1.0, half=0.4):
+    """A horizontal bar along x at height zc (a coat hook rail / a shoulder line seen from the side)."""
+    c = _cyl_body(r, -half, half)
+    return types.SimpleNamespace(V=np.c_[c.V[:, 2], c.V[:, 0], c.V[:, 1] + zc], T=c.T, at={})
+
+
+def _hung(M, X0, body, hang=True, **kw):
+    return pf.assemble({"mesh": M, "X0": X0}, body, attract=0.0, hang=hang, **kw)
+
+
+def test_hang_sheet_falls_plumb(verbose=True):
+    """SUPPORTS, NOT HOLDS (supports thread, 2026-10-23): a plain woven sheet (300 x 500 mm) hung over a bar like a towel
+    on a rail (its middle on the bar's top, no pin: the bar's contact is the only support), both halves started TILTED
+    30 deg off plumb (front forward, back backward): the hang (pattern_form.HANG_FIELD) lets each half fall plumb under
+    its own weight and stop at its thread length: from 10 mm under the bar to 60 mm above the hem each half's front /
+    back spread (y) <= 12 mm, both hems within 2 % of where their pattern length puts them (plumb off the bar's sides),
+    threads (warp / weft) p99 <= 1.5 %, nothing inside the bar. Without the hang the same fit stays tilted (spread 31 mm
+    vs 9-10 hung, its hems 28 mm high): the form has no gravity, the tilt is held. (600 settle rounds: 150 left it
+    half way, 26 mm.)"""
+    r, zc, W, H = 0.03, 1.0, 0.3, 0.5
+    P = [[0, 0], [W, 0], [W, H], [0, H]]
+    B = _B({"s": _piece(P, names={"b0": 0, "b1": 1})})
+    M = cloth.mesh(B, 0.015)
+    body = _xbar_body(r, zc)
+    R = r + 0.003
+    t = math.radians(30.0)
+    s_ = M["uv"][:, 1] - H / 2  # (signed distance from the middle, which lies on the bar's top; + toward the front)
+    ph = s_ / R
+    on = np.abs(ph) < math.pi / 2
+    sw = np.abs(s_) - R * math.pi / 2
+    sg = np.sign(s_)
+    X0 = np.c_[M["uv"][:, 0] - W / 2,
+               np.where(on, -R * np.sin(ph), -sg * (R + sw * math.sin(t))),
+               np.where(on, zc + R * np.cos(ph), zc - sw * math.cos(t))]
+    want = zc - (H / 2 - R * math.pi / 2)  # (each hem, plumb off the bar's side at its pattern length)
+    reads = {}
+    for hang in (False, True):
+        out = _hung(M, X0, body, hang=hang, iters=60)
+        V = out["V"]
+        sp_, dh_ = [], []
+        for side in (-1.0, 1.0):
+            h_ = (np.sign(M["uv"][:, 1] - H / 2) == side)
+            hem = float(V[h_, 2].min())
+            band = h_ & (V[:, 2] < zc - r - 0.01) & (V[:, 2] > hem + 0.06)
+            sp_.append(float(V[band, 1].max() - V[band, 1].min()))
+            dh_.append(hem - want)
+        rr = np.hypot(V[:, 1], V[:, 2] - zc)
+        inside = int(((rr < r + 0.0025) & (np.abs(V[:, 0]) < 0.4)).sum())
+        reads[hang] = (max(sp_), max(dh_, key=abs), inside, out["info"].get("grain_stretch_pct"))
+        if verbose:
+            print(f"hang {hang}: y spread back / front {sp_[0] * 1000:.1f} / {sp_[1] * 1000:.1f} mm, hems "
+                  f"{dh_[0] * 1000:+.1f} / {dh_[1] * 1000:+.1f} mm off plumb length, inside {inside}, threads "
+                  f"{out['info'].get('grain_stretch_pct')}")
+    sp, dh, ins, gs = reads[True]
+    assert sp <= 0.012, sp
+    assert abs(dh) <= 0.02 * H, dh
+    assert gs["p99"] <= 1.5, gs
+    assert ins == 0, ins
+    assert reads[False][0] > 2 * sp, reads[False]
+
+
+def test_hang_sleeve_tube(verbose=True):
+    """A loose woven tube (ease 20 mm) round a horizontal bar (a sleeve on an arm held out), started concentric: the
+    hang lets its weight bring it down to REST on the bar's top (top gap = the form offset +- 1.5 mm), the slack below
+    (bottom gap >= 2 x ease - 5 mm), nothing inside, threads p99 <= 1.5 % (test_settle_tube_on_bar's answers, the threads
+    capped instead of the edges)."""
+    r, ease, off, zc = 0.05, 0.02, 0.003, 1.0
+    W = 2 * math.pi * (r + ease)
+    P = [[0, 0], [W, 0], [W, 0.3], [0, 0.3]]
+    B = _B({"s": _piece(P, names={"a0": 0, "a1": 1, "a2": 2, "a3": 3})}, seams=[["s:a0>a3", "s:a1>a2"]])
+    M = cloth.mesh(B, 0.01)
+    body = _bar_body(r, zc)
+    th = M["uv"][:, 0] / W * 2 * math.pi
+    R0 = r + ease
+    X0 = np.c_[R0 * np.cos(th), M["uv"][:, 1] - 0.15, zc + R0 * np.sin(th)]
+    out = _hung(M, X0, body, iters=40, ease=off)
+    V = out["V"]
+    mid = np.abs(V[:, 1]) < 0.1
+    top = float(V[mid, 2].max()) - (zc + r)
+    bot = (zc - r) - float(V[mid, 2].min())
+    rr = np.hypot(V[:, 0], V[:, 2] - zc)
+    inside = int((rr < r + off - 0.0005).sum())
+    gs = out["info"].get("grain_stretch_pct")
+    if verbose:
+        print(f"hang tube: top gap {top * 1000:.1f} mm, bottom gap {bot * 1000:.1f} mm, inside {inside}, threads {gs}")
+    assert abs(top - off) <= 0.0015, top
+    assert bot >= 2 * ease - 0.005, bot
+    assert inside == 0, inside
+    assert gs["p99"] <= 1.5, gs

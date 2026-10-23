@@ -807,3 +807,43 @@ def test_open_edge_is_drawn_straight_after_the_slide_lets_go():
     assert i_go[1]["smooth"]["rounds"] > i_keep[1]["smooth"]["rounds"], (i_keep[1], i_go[1])
     # (C186) a hold "at" a border of a piece the garment hasn't (a jacket with no side panel) is skipped
     assert gp.hold_region(M, X, at=["side.L:sideF.b..sideB.b", "s:mid..bot"]).sum() == len(gp.border_chain(M, "s:mid..bot"))
+
+
+def _hung_sheet(W=0.3, H=0.4, n=(21, 28), tilt=30.0):
+    """A woven rectangle (pattern W x H, grain along its height) whose top edge (uv y = H) is held, the rest started
+    TILTED `tilt` deg off plumb toward -y: what a hand holding a cloth up by its top edge would let fall."""
+    nx, ny = n
+    uv = np.array([(x, y) for y in np.linspace(0, H, ny) for x in np.linspace(0, W, nx)])
+    ix = lambda i, j: j * nx + i
+    F = [f for j in range(ny - 1) for i in range(nx - 1)
+         for f in ((ix(i, j), ix(i + 1, j), ix(i + 1, j + 1)), (ix(i, j), ix(i + 1, j + 1), ix(i, j + 1)))]
+    t = np.radians(tilt)
+    s = H - uv[:, 1]
+    X = np.c_[uv[:, 0] - W / 2, -s * np.sin(t), 1.0 - s * np.cos(t)]
+    M = {"F": np.array(F), "uv": uv, "piece": np.zeros(len(uv), int), "names": ["sheet"], "sew": [], "points": {}}
+    return M, X, uv[:, 1] > H - 1e-9
+
+
+def test_hang_sheet_from_its_top_edge(verbose=True):
+    """SUPPORTS, NOT HOLDS (supports thread, 2026-10-23; garment_pull.HANG / STYLE_HANG): a plain woven rectangle (300 x
+    400 mm) held by its top edge only, started tilted 30 deg: a styling relax WITH the hang lets it fall plumb and stop
+    at its thread length (its spread off the top edge's plane (y) <= 12 mm, the hem within 1.5 % of 400 mm below the
+    top, threads p99 <= 2.5 %: the weight's own strain, under the jacket fit's 7-8 %; the Jacobi thread cap leaves ~2 %
+    on the rows under the held edge); the same relax without the hang leaves it tilted (y spread > 150 mm: no weight, nothing
+    moves it)."""
+    M, X, top = _hung_sheet()
+    reads = {}
+    for hang in (False, True):
+        Xn, inf = gp.relax(M, X, top, hang=hang)
+        sp = float(Xn[:, 1].max() - Xn[:, 1].min())
+        drop = 1.0 - float(Xn[:, 2].min())
+        th = gp.thread_p99(M, Xn)[0]
+        reads[hang] = (sp, drop, th)
+        if verbose:
+            print(f"style hang {hang}: y spread {sp * 1000:.1f} mm, drop {drop * 1000:.1f} mm (400), threads p99 "
+                  f"{th * 100:.2f} %, {inf}")
+    sp, drop, th = reads[True]
+    assert sp <= 0.012, sp
+    assert abs(drop - 0.4) <= 0.015 * 0.4, drop
+    assert th <= 0.025, th
+    assert reads[False][0] > 0.15, reads[False]

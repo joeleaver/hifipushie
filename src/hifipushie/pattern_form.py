@@ -98,6 +98,57 @@ SETTLE_STRAIN = 0.01  # strain limit after each round (Jacobi, SETTLE_SWEEPS): w
 SETTLE_SWEEPS = 4
 SETTLE_STEP = 0.004  # m: the most a vertex moves in one round
 SETTLE_BEND = 1.0  # the settle's bending x FIT_BEND (FIT_BEND keeps a tube round; cloth's own bending vs its weight is this)
+# THE HANG: SUPPORTS, NOT HOLDS (supports thread, 2026-10-23; Joe: "a lot of the styling issues we're having are due to
+# holding things that shouldn't be held"). A garment is SUPPORTED by body contact (shoulders, neck, the layer under it),
+# sewn seams and fastened closures; everything else is free and HANGS. The fit had no gravity, so holds stood in for it
+# (PLUMB_HOLD, the seat's all-round attraction onto the body, the styling's rigid holds). HANG_FIELD: after the let-go,
+# the SETTLE phase (gravity as a weak per-area force in the local / global solve, hard contact with the body and the
+# layer under it, cloth resting on the form held where it touches: static friction) with the muslin's stop: the weight
+# never stretches a THREAD (warp / weft) past HANG_STRAIN (a per-triangle projection in the thread frame, so the bias
+# still shears: SETTLE's edge cap jammed shear); and in the seat, the cloth is drawn onto the form only where the form
+# holds it from below (HANG_SUPPORT: x the up-component of the body normal, SEAT_GRAVITY's rule), not wrapped round it.
+# Not a sim: no time, velocity or collisions beyond the floors. Garment key "hang": true / false (None: HANG_FIELD).
+# Known answers: tests/test_pattern_form.py test_hang_sheet_falls_plumb, test_hang_sleeve_tube.
+HANG_FIELD = False
+HANG_G = 0.1  # the weight per vertex x mean pattern edge^2 (as SETTLE_G)
+HANG_ITERS = 600  # (the towel KAT: 150 rounds left it half way, 26 mm; 600: 9-10 mm, hems +3 / +0.4)
+HANG_STRAIN = 0.01  # the most the weight stretches a thread (warp / weft): the muslin's "until it would stretch"
+HANG_SUPPORT = True
+
+
+def hang_for(g: dict | None) -> bool:
+    """Whether garment g is fitted with the hang (garment key "hang", else HANG_FIELD)."""
+    own = (g or {}).get("hang")
+    return HANG_FIELD if own is None else bool(own)
+
+
+def _thread_limit(W: dict, X: np.ndarray, cap: float, sweeps: int = 4) -> np.ndarray:
+    """Jacobi strain limit in the THREAD frame: every FIT triangle whose warp or weft is longer than 1 + cap is mapped
+    back to it, or shorter than 1 - cap (its deformation gradient's thread columns scaled, about its centroid); vertices take the mean of their
+    triangles' corrections. Shear is untouched (the bias shears freely, as the woven fit)."""
+    Ft, q = W["F"], W["q"]
+    X = X.copy()
+    for _ in range(sweeps):
+        Fg = _woven_grad(W, X)[0]
+        ln = np.linalg.norm(Fg, axis=1)  # (t, 2)
+        sc = np.clip(ln, 1.0 - cap, 1.0 + cap) / np.maximum(ln, 1e-12)  # (nor shorter: a woven buckles, it does not shrink)
+        bad = (np.abs(sc - 1.0) > 1e-9).any(1)
+        if not bad.any():
+            break
+        Fb = Fg[bad] * sc[bad][:, None, :]
+        qb, fb = q[bad], Ft[bad]
+        qc = qb.mean(1)
+        xc = X[fb].mean(1)
+        tgt = xc[:, None, :] + np.einsum("bij,bcj->bci", Fb, qb - qc[:, None, :])
+        cor = np.zeros_like(X)
+        cnt = np.zeros(len(X))
+        for c in range(3):
+            np.add.at(cor, fb[:, c], tgt[:, c] - X[fb[:, c]])
+            np.add.at(cnt, fb[:, c], 1.0)
+        X += cor / np.maximum(cnt, 1.0)[:, None]
+    return X
+
+
 # TRACE (dress-garrett 2026-10-19 form sleeves): a callable (phase, X, M) called after each assembly phase (placement,
 # relax1, swing, band_init, turn_flaps, seat, let_go): bisect where a shape fault appears. None = off.
 TRACE = None
@@ -2248,13 +2299,14 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
              iters: int = 120, X0: np.ndarray | None = None, attract: float = 0.5, log=None, pressed: bool = True,
              worn_open: dict | None = None, shoulder_pad: dict | None = None, over: dict | None = None,
              bridge: float = 0.0, neck_split: bool | None = None, fit_model: str | None = None,
-             plumb_hold: dict | None = None) -> dict:
+             plumb_hold: dict | None = None, hang: bool | None = None) -> dict:
     """The garment assembled on the form (see the module docstring). pattern: a placed garment (cloth.build
     place_only result: "mesh", "X0", "pieces") or {"mesh": M, "X0": start, "pieces": B (optional)}. body: a
     cloth.Body (V, T, at) or None (a free sheet: the fold tests). under: {"V", "F"} of the garment under (the shirt
     under the jacket) or None. worn_open: {point name: offset m} (WORN_OPEN). fit_model: "woven" | "isometric" | None
     (the module default WOVEN / NECK_PIN_W; fit_model_for). plumb_hold: PLUMB_HOLD's form (plumb_hold_for) or None.
-    Returns {"V", "F", "M", "info"}."""
+    hang: the HANG (supports, not holds; None: HANG_FIELD). Returns {"V", "F", "M", "info"}."""
+    hang_ = HANG_FIELD if hang is None else bool(hang)
     woven_ = WOVEN if fit_model is None else fit_model == "woven"
     neck_w_ = LEGACY_NECK_PIN_W if fit_model == "isometric" else NECK_PIN_W
     M = pattern["mesh"]
@@ -2479,7 +2531,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
     if FIT:
         wE = wE * FIT_STIFF
 
-    if SETTLE:  # (vertex mass for the settle: lumped pattern area / its mean)
+    if SETTLE or hang_:  # (vertex mass for the settle: lumped pattern area / its mean)
         e1_, e2_ = uv[F[:, 1]] - uv[F[:, 0]], uv[F[:, 2]] - uv[F[:, 0]]
         a_ = 0.5 * np.abs(e1_[:, 0] * e2_[:, 1] - e1_[:, 1] * e2_[:, 0])
         mass = np.zeros(n)
@@ -2587,7 +2639,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                     fb_ = de_ < d
                     da, na_ = np.where(fb_, de_, d), np.where(fb_[:, None], ne_, nrm)
                 hi = (np.abs(da - off) > 0.002) & (da < 0.06) & (d >= off) & ~on_flap & (grav <= 0)  # (a turned flap lies on its base, not on the body)
-                aw_ = attract * (np.clip(na_[hi, 2], 0.0, 1.0) if SEAT_GRAVITY else 1.0)
+                aw_ = attract * (np.clip(na_[hi, 2], 0.0, 1.0) if (SEAT_GRAVITY or (hang_ and HANG_SUPPORT)) else 1.0)
                 aw_ = aw_ * edge_free[hi]  # (worn open: the cloth near the open edge is not drawn onto the body)
                 if fsurf is not None and BRIDGE_HANG and attract > 0:  # (BRIDGE_HANG: on the torso band, cloth standing OUT of the filled
                     # surface is drawn in only (1 - bridge) as hard: a stiff garment hangs where its lengths put it)
@@ -2674,12 +2726,16 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                 dX = Xn - X
                 ln = np.linalg.norm(dX, axis=1, keepdims=True)
                 Xn = X + dX * np.minimum(1.0, SETTLE_STEP / np.maximum(ln, 1e-12))
+            if grav > 0 and hang_ and Wv is not None:  # HANG: the THREADS capped (the bias still shears)
+                Xn = _thread_limit(Wv, Xn, HANG_STRAIN, SETTLE_SWEEPS)
             if grav > 0:  # strain limit: the weight never stretches an edge past SETTLE_STRAIN (wovens barely give)
                 for _ in range(SETTLE_SWEEPS):
                     dv = Xn[E[:, 1]] - Xn[E[:, 0]]
                     ln = np.linalg.norm(dv, axis=1)
-                    ex = ln - (1 + SETTLE_STRAIN) * l0e
+                    ex = ln - (1 + (HANG_STRAIN if hang_ else SETTLE_STRAIN)) * l0e
                     m_ = ex > 0
+                    if hang_ and Wv is not None:  # (HANG: only the edges no woven triangle limits: fold rows, made pieces)
+                        m_ &= Wv["cnt"] == 0
                     if not m_.any():
                         break
                     cor = np.zeros_like(Xn)
@@ -2847,11 +2903,12 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
     info["turned_deg_mid"] = [round(fold_turned(M, X, g), 0) for fd, g, t in folds_]
     X = relax(X, iters, attract=0.0, loose=LOOSE_PRESS if LOOSE_ROUND else 0.0)
     tr("let_go", X, M)
-    if SETTLE:  # the cloth's weight with real contact (see SETTLE)
+    if SETTLE or hang_:  # the cloth's weight with real contact (see SETTLE; HANG_FIELD: the threads capped)
         h_ = float(np.mean(np.linalg.norm(uv[E[:, 0]] - uv[E[:, 1]], axis=1)))
-        X = relax(X, SETTLE_ITERS, attract=0.0, grav=SETTLE_G * h_ ** 2)
+        g_, it_ = (HANG_G, HANG_ITERS) if hang_ else (SETTLE_G, SETTLE_ITERS)
+        X = relax(X, it_, attract=0.0, grav=g_ * h_ ** 2)
         tr("settle", X, M)
-        info["settled"] = {"iters": SETTLE_ITERS, "g": SETTLE_G}
+        info["settled"] = {"iters": it_, "g": g_, "hang": bool(hang_)}
     if laps:  # (LAP_LAYER: nothing of the over piece left through the under one)
         X, info["lap_finish"] = lap_finish(M, X, laps, bsurf)
     info["turned_deg"] = [round(fold_turned(M, X, g), 0) for fd, g, t in folds_]
@@ -3129,7 +3186,8 @@ def on_form(model: str, garment: str, spec: dict | None = None, g: dict | None =
     # garment key "worn_open" {point: offset m, "source": why}: the form rule for fronts worn open (worn_open_pins)
     out = assemble(res, res["body"], under=under, ease=EASE if under is not None else UNDER_EASE, log=log,
                    worn_open=g.get("worn_open"), shoulder_pad=g.get("shoulder_pad"), bridge=bridge_fraction(g), neck_split=g.get("neck_split"),
-                   fit_model=fit_model_for(model, garment, g), plumb_hold=plumb_hold_for(g))
+                   fit_model=fit_model_for(model, garment, g), plumb_hold=plumb_hold_for(g),
+                   hang=hang_for(g))
     res["A"], res["A_info"], res["form_under"] = out["V"], out["info"], und
     res["A_info"]["fit_model"] = fit_model_for(model, garment, g) or ("woven" if WOVEN else "isometric")
     if cloth.expanded(g).get("tucked"):

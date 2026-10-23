@@ -10755,3 +10755,48 @@ Base: r38's k3 (asm_k3.pkl copied; fit_g1.pkl a read-only copy, not a symlink). 
   outline and becomes a soft line inside the front, but the fronts meet / lap below the waist and the hem goes boxy and
   narrow: worse overall than k3. Nothing made default (C189). Overshoot / hem / review skipped (the redesign changes them).
 - Suite (17 garment files, capped, -rs): 299 passed, 4 xfailed, PYTEST_EXIT 0 ($FR39/suite.log).
+
+## supports, not holds (2026-10-23; $SU = /mnt/data/hifipushie/supports; branch claude/supports)
+Joe (art director): "a lot of the styling issues we're having are due to holding things that shouldn't be held, we may
+need a new holding strategy". Principle: a garment is SUPPORTED (body contact: shoulders, neck, the layer under it; sewn
+seams; fastened closures); everything else is free and HANGS (a weak downward field, stopping where a thread would
+stretch); any hold left is soft, feathered, and names its support. STATE: docs/state/supports.md.
+### Audit: every hold in the fit (pattern_form) and styling (garment_pull + garment_kb) paths
+| hold | what / how hard | border | real support | fixed | caused |
+|---|---|---|---|---|---|
+| neck pins (NECK_PIN_W 2, x PK) | each hps point on the neck (+ layer lift); soft | point | YES: the neck carries it | garment on the body | (none; C167 soft) |
+| shoulder pin (2, +8 mm) | shoulder point over the shoulder; soft | point | YES: shoulder contact | sleeve head height | - |
+| centre-line pins cx (100) | cb* / topMid / bottomMid on x = 0, x only | point | YES-ish: the CB seam / symmetry | drift | - |
+| fastened closures (400 weld, cf_fast 100 on x = 0) | button on hole | pair | YES: a done button | closed fronts | - (worn open: none) |
+| sew welds (400) | seam pairs | pair | YES: sewn | - | - |
+| seat attraction (attract 0.5, every vertex within 60 mm) | draws ALL cloth onto the body offset in the seat | none (all) | PARTLY: only where the body holds cloth from below (shoulders, chest top) | stand-off / ease | wraps girth round the body: lap at the open fronts (C180) |
+| proximal weight wc 1 | every vertex to where it was last round | - | none: a damper (no effect at equilibrium) | stability | slow convergence |
+| worn-open pins (WORN_OPEN_W 60) | the named break at 64 mm off CF, x only | point | YES (decided): the lapel's roll is set by the canvas + the roll line, C171; the break is where the roll stops | open V / roll | - |
+| swing (_swing_front) | rigid rotation of each front at start | - | none (a start, not a hold) | open start | - |
+| PLUMB_HOLD (w 2, ramp 50 mm, y) | front|side and side|back seams below their tops on the hung vertical | 50 mm ramp | NONE: gravity's stand-in | fronts lapping (C180/C181) | the front|side CORD (C188/C189), seam on the outline |
+| OPEN_HOLD / CHEST_HOLD / HOLD_SLEEVES / OPEN_SPREAD / WORN_EDGE / UNDER_FLOOR | off by default | - | - | - | (dead levers) |
+| LAYER_W 20 + ceiling | under cloth the over layer touches | contact | YES: the layer over presses it | under through over | - |
+| lap layers / flap on base / pressed cells | separation, pressed flaps | contact | YES: cloth can't pass through; pressed | - | - |
+| SETTLE_HOLD 10 (off by default) | cloth resting on the form, static friction | contact | YES: friction where it rests | - | - |
+| styling hold_mask | every piece no op names (collar, sleeves, flaps not stitched) RIGID | piece edge | YES-ish: the shoulders / neck carry them (collar, sleeves on the arms) | - | seams to held pieces read as borders |
+| styling hold_mask below the top button | shirt fronts below the first fastened button | button area | YES: the fastened closure | - | - |
+| kb jacket "hold" side / back hem borders (C186) | hem border vertices RIGID for every later op | hard | NONE | the slide's flare | narrow hem (444 vs 482) |
+| kb jacket "hold above break" (C174) | everything of each front above the break RIGID | hard (a level line) | PARTLY: chest / shoulder contact + the canvas; not a level line | roll line kept | a border at the break height (the pinch, C185) |
+| styling grips ("placed") | whatever a pull / turn / slide gripped stays RIGID for every later op | hard (patch edge) | NONE: the hand lets go | sequence of moves | creases at the grip borders (C185's break pinch) |
+| slide "with" pieces above the edge top | side / back above the top held | hard level | none | - | - |
+| shirt hold stand + collar within 70 deg of CB, feathered to 130 | back of the neck | feathered | YES: the neck at the back | collar hugs the neck | (soft already) |
+| push / layer floor (C170) | body / flaps / patches as floors | contact | YES | sinking | - |
+### The HANG (code, off by default)
+- pattern_form.HANG_FIELD (garment key "hang"; hang_for): after the let-go the SETTLE phase (weight as a weak force,
+  hard contact with body + under layer, friction-held contact) with the THREADS capped (warp / weft within HANG_STRAIN
+  1 %, longer or shorter; _thread_limit, per triangle in the thread frame, so the bias still shears: SETTLE's 1 % EDGE
+  cap jammed shear), HANG_ITERS 600; and in the seat the attraction only where the body holds cloth from below
+  (HANG_SUPPORT: x the up-component of its normal). Towel KAT (300 x 500 over a 30 mm bar, both halves tilted 30 deg):
+  spread 31 mm unhung -> 9 / 10 hung, hems +3.0 / +0.4 mm off plumb length, threads p99 1.4 %; 150 rounds stopped half
+  way (26 mm). Sleeve tube on a bar: top gap 3.0 (= offset), bottom 62, threads 0.8 %. Sheet on 2 pinned corners:
+  the corners stretched 31 %: two points carry nothing well (the test hangs it on a bar, its real support).
+- garment_pull.STYLE_HANG / relax op {"hang": true}: FlatARAP.solve(hang=True): force HANG_G x HANG_PROX per rest
+  area against a small proximal weight (HANG_PROX 0.0025), 4 mm step clamp, thread cap (HANG_STRAIN, Jacobi 4 sweeps),
+  floors as ever; HANG_ITERS 1500. Sheet held by its top edge, tilted 30 deg: spread 200 -> 9 mm, drop 403 (400),
+  threads 1.87 % (the cap's Jacobi leaves ~2 % under the held row; stronger force: 3.8 %). Local / global moves a big
+  rotation slowly (400 rounds: 44 mm back): the rounds are the price.
