@@ -10053,3 +10053,18 @@ the shirt collar, no flare: a tube, not a funnel in plan). Lapel / gorge vs the 
 mm below HPS): concept tip 148 at 93, 127 at 148, 110 at 261; ours lapel_outer_150 110 / 111 (-17 / -23), V width at
 200 168 (concept 237). Not changed this round: it is the closed fit's pattern (collar stand height / roll, gorge line,
 lapel width): a pattern + closed fit + release cycle; next session.
+
+## fit round 29 (2026-10-22; $FR29 = /mnt/data/hifipushie/dress_garrett/fit_round29; branch claude/garrett-jacket-r29)
+Brief: a PATTERN pass on round 28's three faults (collar tube, narrow lapels / V, belly crumple), then closed fit, then
+the release. Harness: fr29.py (fr27 at the form recipe, ROWS_H 0, + env levers COLLAR_ROLL / GORGE_DROP / BREAK_Y /
+CUTAWAY), job29.sh (closed fit over gc1 + neck29 / lapel29 reads), gate29.py (+ waive29.json), g29.py (g25 + THIS
+pattern's gate keys: rounds 25-28 wrote r19a's keys into every job; + lapel=1 pins), arr.sh / tab29.py.
+Step 0: r29base (fr29, no levers) reproduces r27a0 to 1 mm (collar 14-39 / 47 at CB, lapel point 131 off CF at 103).
+Step 1, the collar. Read (neck29.py, mm above HPS at CB / az45 / side): jacket stand 15-38 / 27-30 / 0-16, its fall top
+47 / 38 / 22; the shirt (gc1) stand from 16 / 6 / -8, collar top 52 / 46 / 33. The jacket's neck seam sits level with
+the shirt's (15 vs 16 at CB): the fault is the jacket collar's HEIGHT (roll 25 mm per R16 + the fall 9 mm over it) over
+a 36 mm shirt collar, not the neckline. Lever: R16's roll line at CB (stand = roll - 4, fall = roll + 14 kept).
+COLLAR_ROLL 20 (r29c20): jacket top 38 / 32 / 19, shirt shows 14 / 14 / 14 (tell 10-20, all three PASS), jacket p99
+11.0 -> 14.3 %. COLLAR_ROLL 16 (r29c16): CB top stays 38 (the fall wraps the shirt collar's top), side fall 1-11 (no
+longer covers the stand's seam at the side): worse. KEPT roll 20 mm. R16's 25-30 mm is a jacket over a ~45 mm shirt
+collar; gc1's is 36: waived by name in the gate (waive29.json), ledger row C160.
