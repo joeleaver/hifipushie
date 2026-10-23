@@ -10823,3 +10823,21 @@ stretch); any hold left is soft, feathered, and names its support. STATE: docs/s
   (asymmetric), waist 439, hem+30 440, length 798 (+43), threads 26.8; H_k (kb style + holds): edge 53/54/52 L
   39/43/36 R, stands 100-137 mm ahead of the body, threads 31. FAILS the muslin rule: rejected. (diagH.py: per piece.)
   Queued: H2 (HANG_G 0.02); styling variants on the shirt floor + the canvas hold kept (ops_hang2: H_h2, nh_h2, H_n2).
+- Styling on the shirt floor (worn_style(under=)) with the CANVAS hold kept ("hold above break": the forepart above the
+  break is canvassed and rests on the chest; decided a real support, kept rigid for now) and the hem-border hold
+  dropped (ops_hang2; stylekb2.py / sty2.sh). nh_h2 (r39 nh fit, no PLUMB_HOLD; every relax hung): edge 450/550/650
+  L/R 30/41, 39/38, 55/50 (concept 71/78/94; k3 60-64/74-77/101; nh with the old holds 25-15/12-7/7-3); waist 407 (414),
+  hem+30 460 (482; k3 444); V 221 (237; k3 232); lapel 135/131 (127/134); roll 77/60 (69/64, = k3); threads p99 8.76
+  (k3 7.42); side view ahead of the body 52-91 mm (k3 26-34); front|side fold L 5-73 R 5-54 deg (k3 4-143), side|back
+  25-122 (worse at the top). H_h2 / H_n2 (on fit H): threads 31 / 40 %: fit H is unusable.
+  LOOK (check/cmp_concept_k3_nhh2.png: concept | k3 | nh_h2 clay | diag | side; check/joeseam_k3_nhn_nhh_nhh2.png):
+  the upper half as k3 (the canvas hold + the shirt floor kept the chest and lapels); below the waist the fronts are
+  open but run IN toward CF and the hem is fuller and stands forward: the concept's straight open fall is not there.
+  Worse than k3 at the edge (the measure that matters most), better at waist / hem width; the cord is softer but the
+  seam still folds 50-73 deg at 600-700.
+- VERDICT: the hang does not win. Defaults unchanged (HANG_FIELD / STYLE_HANG off, PLUMB_HOLD + kb k3 style stay).
+  What fell short, measured: (1) local / global moves a big swing slowly and its weight stretches threads where a
+  Jacobi cap can't reach (styling sheet 1.9 %; the fit's neck 53-62 % at HANG_G 0.1); (2) the made pieces (collar,
+  stand, canvassed chest) are supported by their own STIFFNESS, which the model lacks, so hung they fall (shirt rows,
+  jacket chest); (3) gravity does not stop the lap: the lap comes from the seat wrapping the girth round the body,
+  and the hang (no plumb hold) still leaves the edge 30-55 mm off CF vs the concept's 71-94.
