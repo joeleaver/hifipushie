@@ -10506,3 +10506,16 @@ Muslin fit, styling, no sim; judged beside the concept only.
   fl 3.0 / 3.7, crumple low 11.0 / 11.1, ahead 40/40/54/41 | 43/35/53/43: plumb. kb + long-scale edge smooth (kbsb): the
   zigzag stays (42/65/96, w 6.2). Line grips of the whole lower edge (kb3 / kb5 tol 1 % / kb6 patch 40): plumb, clean,
   34-46/44-55/52-59: more shut than t12. CHOSEN: t12 -> garment_kb (C178); stylekb through the kb (k33) = t12 exactly.
+- Upper half: t12s vs r32 a1s, every vertex 10 mm above the break: moved 0.0 mm (same33.py); lapel / V / roll rows identical.
+- Fault 2 (edge 450: 39-45 vs 71): the cloth between the held break and the cutaway top. Adding a grip at
+  break..cfHem@0.2 / @0.25 to the swing (t14 / t15) STIFFENS it: the turn stops at 24 / 32 deg and every row closes
+  (450 27-36, 650 34-46). No styling lever found that opens 450 without the r32 zigzag; the stop is the stretch of the
+  waist cloth, and the pattern tapers in exactly there (fault 3): next test after the pattern change.
+- Fault 3 (fitread33.py / girth33.py on the unstyled muslin a1): threads at the pattern's lengths at the waist (weft p50
+  -0.4..-0.0 %, warp +-0.7) and the hem (weft -0.5..+0.2 %), shear p95 <= 3.8 deg: the fit does not squeeze. Torso girth
+  (hull of the section) chest 1167 / waist 1094 / hip 1069 / seat 1057 / hem+30 1021 mm; body seat 935, hem level 961: the
+  hem lies 13-17 mm off the body, the backs tilt in 16 deg toward the seat. Front-view width / girth 0.34-0.39. So the
+  concept's waist 414 needs girth ~1210 (now 1094; chest 1167: suppression 7.75 % -> none), its hem 482 needs ~1230 (now
+  1021: +210), i.e. side and back seams run straight or flare from the underarm to the hem. The gate's waist_suppression
+  (<= 8 %) passes a taper Joe's "falls straight down" rules out: the row should read plumb for this design.
+- Sheets: check/{wholefront,upper_front,upper_three,side}_t12sc.png (= the kb recipe k33; t5sc = the swing alone).
