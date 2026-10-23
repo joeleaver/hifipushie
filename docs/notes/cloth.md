@@ -10601,3 +10601,23 @@ Muslin fit, styling, no sim; judged beside the concept only (concept edge off CF
   KAT test_garment_pull::test_turn_stops_where_the_line_hangs_plumb (+ the kb test asserts the plumb pair).
   p1 (plumb stop) on g1: turned 41 / 39 deg (was 48), final 52/76/108 (R 55/78/108), corner flare 12, ahead
   29/38/47/55/42. Gripping the edge from the break (p2 patch 40, p3 patch 20): jams at 0 deg (shear / stretch at the start).
+- Step 2, the side-view sack (fwd36 / prof36: on the line x 50-90 mm off CF, body | jacket min y, mm): body chest -146
+  (250 below HPS), belly -138 (500), -110 (650); the fit's jacket -170 at the chest, plumb to 450, then in to -137 at 650
+  (stand-off 24-33 at chest..belly: shirt + ease; the plumb design's girth: waist +394 mm over the body). The swing
+  throws the lower front FORWARD of that chest line: 48 deg -188 at 500-600 (r35), plumb stop -181 (h1s), i.e. ~25 ->
+  ~11 mm proud of plumb-from-the-chest; ahead of the body at waist/-100/-200/-300: fit 36/26/25/9, r35 44/52/61/47, h1s
+  38/47/55/42. Cause = the rigid swing about break -> sideF.b (a hinge behind the edge moves it forward as it opens) +
+  the lapped width: opened, the panel spans a shorter chord to the held side seam and bows out. The lay-back pull stops
+  on stretch whatever its direction: body normal 27 mm, back + down vector (q2) 18, with the hem too (q3) 21; freeing
+  the side panels (r1) moves the seam < 10 mm and the stand-off not at all. Not the plumb hold (the fit is plumb from the
+  chest), not the flaps (they lie on the front: off front p50 1.5-3.3, sunk 0/25; their 49-51 mm off the body is the
+  front's stand-off at x 181 / 475 below HPS, i.e. the girth of the straight fall).
+- Step 3, length: the front's hem corner sits 728 / 723 below HPS on the FIT (before any styling); styled 739 / 735;
+  front_length 727 unchanged: the 21 mm is the fit / pattern, not the swing.
+- Step 4 (C183): cloth_layers.hidden pierce_out (default 0.5 mm): under cloth poking OUT through the outer where the
+  outer covers it (pierced_out: nearest outer vertex within 30 mm, 25 mm to the side; outer cloth all round that vertex
+  within 30 mm, no gap > 120 deg: hems, front edges, lapel folds excluded), with its rim under the outer by < HIDE_TOL,
+  hidden LAST (the visible grow + island rule put the patches back: +2 faces when fed in before), never a made piece.
+  A mesh-border test missed the lapel edge (a sewn seam) -> replaced by the all-round test. KAT
+  test_cloth_layers::test_hidden_removes_under_cloth_poking_out_through_the_outer. Garrett h1s: 768 pokes, +656 faces
+  hidden (12352 -> 13008); the armhole patches gone, small shards left at the sleeve heads (check/pierce_ab_wholefront.png).

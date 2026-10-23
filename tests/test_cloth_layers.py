@@ -425,7 +425,8 @@ def test_cull_keeps_a_seen_collar_whole_and_culls_a_covered_back():
 
 
 def test_cull_never_hides_cloth_a_judged_view_sees():
-    """Every under triangle with a corner seen in a judged view (the outer and body not in front of it) is kept."""
+    """Every under triangle with a corner seen in a judged view (the outer and body not in front of it) is kept (the
+    one exception, C183: plain cloth poking out THROUGH the outer where it covers; made pieces never)."""
     under, outer, _ = _collar_scene()
     h = cloth_layers.hidden(under, outer)
     Vo, Fo = outer["V"], np.asarray(outer["mesh"]["F"])
@@ -515,3 +516,45 @@ def test_gate_status_keys_a_layered_garment_on_its_form_under(monkeypatch):
     st = cc.gate_status("m", "jacket", spec, res={"gate_keys": {"pattern": "p", "body": "form"}})
     assert st["passed"] and calls == ["jacket"]  # (the result in hand: nothing placed again)
     assert not cc.gate_status("m", "jacket", spec, res={"gate_keys": {"pattern": "p", "body": "sim"}})["passed"]
+
+
+def test_hidden_removes_under_cloth_poking_out_through_the_outer():
+    """C183 (garrett jacket fit round 36; Joe: the shirt's covered triangles are removed anyway): the visibility cull
+    kept shirt cloth that pokes OUT through the jacket where the jacket covers it (seen only because it went through:
+    white patches at Garrett's armholes, r35). Tubes round z: body r 120, shirt r 140 with a bump to r 160 at mid
+    height, jacket r 150 (open at its ends): the bump is hidden with the default pierce_out and kept with None; the
+    shirt beyond the jacket's open ends (z above the jacket) stays drawn."""
+    from hifipushie import cloth, cloth_layers as cl
+
+    def tube(r, z0, z1, nz=21, na=48, bump=None):
+        th = np.linspace(0, 2 * np.pi, na, endpoint=False)
+        zs = np.linspace(z0, z1, nz)
+        V = []
+        for z in zs:
+            for t in th:
+                rr = r
+                if bump is not None and abs(z - 0.2) < 0.03 and abs(np.angle(np.exp(1j * (t + np.pi / 2)))) < 0.2:
+                    rr = bump
+                V.append((rr * np.cos(t), rr * np.sin(t), z))
+        F = []
+        for i in range(nz - 1):
+            for k in range(na):
+                a, b, c, d = i * na + k, i * na + (k + 1) % na, (i + 1) * na + k, (i + 1) * na + (k + 1) % na
+                F += [(a, b, d), (a, d, c)]
+        return np.array(V), np.array(F)
+
+    Vb, Fb = tube(0.12, -0.05, 0.45)
+    Vs, Fs = tube(0.14, 0.0, 0.40, bump=0.16)
+    Vj, Fj = tube(0.15, 0.0, 0.30)
+    body = cloth.Body({"V": Vb, "F": [list(f) for f in Fb], "J": {}})
+    under = {"V": Vs, "mesh": {"F": Fs}}
+    outer = {"V": Vj, "F": Fj, "mesh": {"F": Fj}, "body": body}
+    bump = (np.hypot(Vs[:, 0], Vs[:, 1]) > 0.155)[Fs].all(1)
+    top = (Vs[:, 2] > 0.33)[Fs].all(1)
+    assert bump.sum() > 4
+    info = {}
+    h1 = cl.hidden(under, outer, info=info)
+    h0 = cl.hidden(under, outer, pierce_out=None)
+    assert not h0[bump].all()  # (seen through the jacket: kept by the view rule alone)
+    assert h1[bump].all() and info["pierced_out"] > 0, info
+    assert not h1[top].any()  # (beyond the jacket's open end: drawn)

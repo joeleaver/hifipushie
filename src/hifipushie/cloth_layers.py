@@ -648,10 +648,17 @@ def _face_components(F: np.ndarray, sel: np.ndarray) -> np.ndarray:
     return lab
 
 
+PIERCE_OUT = 0.0005  # m: under cloth further than this outside the outer cloth over it pokes through (C183)
+PIERCE_REACH = 0.03  # m: the outer cloth "over" an under vertex: its nearest outer vertex within this
+PIERCE_SIDE = 0.025  # m: ... and no further than this to the side of that vertex's normal (jacket edges ~20 mm)
+PIERCE_EDGE = 0.03  # m: an outer vertex covers when its own cloth lies all round it within this (no edge / fold / opening)
+GAP_COVER = np.radians(120.0)  # ... "all round": no angular gap wider than this in its tangent plane
+
+
 def hidden(under: dict, outer: dict, margin: float = 0.03, reach: float = 0.06, edge_margin: dict | None = None,
            pierce: float = 0.002, rule: str = "visibility", dirs: np.ndarray | None = None,
            tol: float = HIDE_TOL, rings: int = HIDE_RINGS, island_faces: int = ISLAND_FACES, px: float = 0.002,
-           info: dict | None = None) -> np.ndarray:
+           info: dict | None = None, pierce_out: float | None = PIERCE_OUT) -> np.ndarray:
     """Per triangle of the under garment: True where NO judged view can see it for the outer garment (the B cull:
     renders and looks draw only the rest). rule "visibility" (default, fit round 28):
     - a vertex is hidden when the outer garment (its triangles, both sides: the facings show through an open front) or
@@ -667,6 +674,13 @@ def hidden(under: dict, outer: dict, margin: float = 0.03, reach: float = 0.06, 
     distance from the outer's openings, with a 15 mm `pierce` allowance) removed the shirt collar standing in view
     above the jacket collar and left ragged fragments of it; rendered with CULL=0 the same geometry was clean.
     Distance can't tell "under the jacket" from "beside it in view"; only a view can.
+    pierce_out (C183, fit round 36; Joe: the shirt's covered triangles are removed anyway): an under vertex that pokes OUT
+    through the outer garment where the outer covers it (pierced_out: more than `pierce_out` outside the outer cloth
+    right over it, away from the outer's open edges) counts as hidden too: the view saw it only because it went
+    through. Garrett's shirt showed as white patches at the jacket's armholes / chest sides (509 vertices, r35). The
+    cloth round a poke, under the outer by less than `tol` (a view can't call it covered), goes with it: counted alone
+    (369 pokes) the visible grow and the island rule put every patch back (+2 faces hidden), so they are hidden last,
+    after the connectivity rules; made pieces (collar, cuffs) never. None: off.
     rule "margin": the old rule (`_hidden_margin`: margin / reach / edge_margin / pierce), kept for a CLOSED fit worn
     open (cloth_check.visible_fit_rows predicts the opened V by edge margins: no view of the closed fit shows it).
     info: filled with counts (hidden vertices, islands merged, made pieces kept)."""
@@ -683,6 +697,10 @@ def hidden(under: dict, outer: dict, margin: float = 0.03, reach: float = 0.06, 
     occ_V, occ_F = np.concatenate(oV), np.concatenate(oF)
     dirs = judged_dirs() if dirs is None else np.asarray(dirs, float)
     hidden_v = occluded(Vu, occ_V, occ_F, dirs, px=px, tol=tol).all(0)
+    n_pierce = 0
+    if pierce_out is not None and body is not None and len(getattr(body, "V", [])):
+        po = pierced_out(Vu, Vo, Fo, np.asarray(body.V, float), outer.get("mesh"), tol=pierce_out - tol)
+        n_pierce = int((po & ~hidden_v).sum())
     E = np.unique(np.sort(np.r_[Fu[:, [0, 1]], Fu[:, [1, 2]], Fu[:, [2, 0]]], 1), axis=0)
     vis = _grow(~hidden_v, E, rings)
     hid = (~vis)[Fu].all(1)
@@ -717,10 +735,53 @@ def hidden(under: dict, outer: dict, margin: float = 0.03, reach: float = 0.06, 
                 isl = _grow(isl, E, rings)
                 n_isl = int(len(small))
                 hid &= ~isl[Fu].any(1)
+    if n_pierce:  # (last: the visible grow and the island rule would put the patches back; never a made piece:
+        # a shirt collar stands round the jacket's and is kept whole when seen)
+        pf = (po | hidden_v)[Fu].all(1) & po[Fu].any(1)  # (a poke's rim: its other corners under the outer)
+        if Mu.get("made") and "piece" in Mu:
+            pf &= ~np.isin(np.asarray(Mu["piece"])[Fu[:, 0]], [k for k, nm in enumerate(Mu["names"]) if nm in Mu["made"]])
+        hid |= pf
     if info is not None:
         info.update(hidden_vertices=int(hidden_v.sum()), directions=int(len(dirs)), hidden_faces=int(hid.sum()),
-                    faces=int(len(Fu)), holes_kept=n_hole, islands_grown=n_isl, made_kept_whole=kept_made)
+                    faces=int(len(Fu)), holes_kept=n_hole, islands_grown=n_isl, made_kept_whole=kept_made,
+                    pierced_out=n_pierce)
     return hid
+
+
+def pierced_out(Vu, Vo, Fo, body_V, mesh=None, tol: float = PIERCE_OUT, reach: float = PIERCE_REACH,
+                side: float = PIERCE_SIDE, edge: float = PIERCE_EDGE) -> np.ndarray:
+    """Per under vertex: True where it pokes OUT through the outer garment where the outer covers it (C183): its nearest
+    outer vertex lies within `reach` and within `side` of the line along that vertex's normal (oriented away from the
+    body), the under vertex lies more than `tol` outside it along that normal, and the outer cloth lies all round that
+    vertex within `edge` (its tangent plane, no gap over GAP_COVER: an open edge, a hem or a lapel's fold edge, where
+    the under cloth shows legitimately, has its cloth on one side only; a mesh "border" missed the lapel's edge, a
+    sewn front | facing seam, and cut a hole in the shirt's open V). `mesh` is unused (kept for callers)."""
+    Vu, Vo, Fo = np.asarray(Vu, float), np.asarray(Vo, float), np.asarray(Fo)
+    n = np.zeros_like(Vo)
+    fn = np.cross(Vo[Fo[:, 1]] - Vo[Fo[:, 0]], Vo[Fo[:, 2]] - Vo[Fo[:, 0]])
+    for k in range(3):
+        np.add.at(n, Fo[:, k], fn)
+    n /= np.linalg.norm(n, axis=1, keepdims=True) + 1e-12
+    _d, bi = cKDTree(np.asarray(body_V, float)).query(Vo)
+    n *= np.where(((Vo - np.asarray(body_V, float)[bi]) * n).sum(1) < 0, -1.0, 1.0)[:, None]
+    dist, j = cKDTree(Vo).query(Vu)
+    rel = Vu - Vo[j]
+    out = (rel * n[j]).sum(1)
+    lat = np.linalg.norm(rel - out[:, None] * n[j], axis=1)
+    cand = (dist < reach) & (lat < side) & (out > tol)
+    tree = cKDTree(Vo)
+    covers = {}
+    for jj in np.unique(j[cand]):  # (the outer cloth lies ALL ROUND it: no free edge, fold or opening within `edge`)
+        nb = np.asarray(tree.query_ball_point(Vo[jj], edge))
+        d = Vo[nb] - Vo[jj]
+        d -= (d @ n[jj])[:, None] * n[jj]
+        e1 = np.cross(n[jj], [0.0, 0.0, 1.0] if abs(n[jj][2]) < 0.9 else [1.0, 0.0, 0.0])
+        e1 /= np.linalg.norm(e1) + 1e-12
+        e2 = np.cross(n[jj], e1)
+        far = np.linalg.norm(d, axis=1) > edge * 0.3
+        ang = np.sort(np.arctan2(d[far] @ e2, d[far] @ e1))
+        covers[jj] = len(ang) >= 4 and float(np.diff(np.r_[ang, ang[0] + 2 * np.pi]).max()) < GAP_COVER
+    return cand & np.array([covers.get(int(q), False) for q in j])
 
 
 def _hidden_margin(under: dict, outer: dict, margin: float = 0.03, reach: float = 0.06,
