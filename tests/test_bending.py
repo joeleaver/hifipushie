@@ -123,3 +123,20 @@ def test_bending_keeps_a_declared_fold(bend_on, verbose=True):
     if verbose:
         print(f"fold {ang:.1f} deg (made 150)")
     assert abs(ang - 150) <= 10, ang
+
+
+def test_drafted_canvas_region_covers_its_area():
+    """An interfacing AREA (cloth.interfacing "region": a jacket forepart's half canvas, canvas s2): share 1 inside the
+    drafted polygon and on its outline (the piece's own edges stay fully interfaced), ramping to 0 over "feather" outside;
+    the bending weight follows (canvas 20)."""
+    from hifipushie import cloth
+    M = _strip(L=0.12, W=0.04, nx=49, ny=9)
+    pc = {"name": "strip", "P": [[0, 0], [0.12, 0], [0.12, 0.04], [0, 0.04]], "names": {"a": 0, "b": 1, "c": 2, "d": 3}, "marks": {"m": [0.06, 0.0]}}
+    Bp = {"pieces": {"strip": pc}, "interfaced": [{"piece": "strip", "region": ["a", "m", [0.06, 0.04], "d"],
+                                                   "feather": 0.02, "kind": "canvas"}]}
+    s = cloth.interfacing(Bp, M)
+    u = M["uv"][:, 0]
+    assert np.all(s[u < 0.06 + 1e-9] == 1.0) and np.all(s[u > 0.08 + 1e-9] == 0.0)
+    assert np.allclose(s[np.abs(u - 0.07) < 1e-9], 0.5)
+    w = bd.weights(Bp, M)
+    assert np.isclose(w[u < 0.04].min(), bd.BEND_KIND["canvas"]) and np.isclose(w[u > 0.08].max(), 1.0)

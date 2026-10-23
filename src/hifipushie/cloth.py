@@ -4749,11 +4749,24 @@ def _assembly(Bp: dict, M: dict, body: Body, set_sleeves=None) -> dict | None:
     return {"fixed": np.where(~torso)[0].tolist(), "hold": np.where(np.isin(M["piece"], hold))[0].tolist()}
 
 
+def region_share(Q: np.ndarray, R: np.ndarray, feather: float) -> np.ndarray:
+    """(n,) 0..1 for flat points Q against the polygon R (k, 2): 1 inside and ON the outline (a region drawn along the
+    piece's own outline keeps that edge fully interfaced), ramping to 0 over `feather` outside it."""
+    a, b = R, np.roll(R, -1, 0)
+    ab = b - a
+    t = np.clip(np.einsum("qkd,kd->qk", Q[:, None] - a[None], ab) / np.maximum((ab * ab).sum(1), 1e-12), 0, 1)
+    d = np.linalg.norm(Q[:, None] - (a[None] + t[..., None] * ab[None]), axis=2).min(1)
+    cross = ((a[None, :, 1] > Q[:, None, 1]) != (b[None, :, 1] > Q[:, None, 1])) & (
+        Q[:, None, 0] < a[None, :, 0] + (Q[:, None, 1] - a[None, :, 1]) * ab[None, :, 0] / np.where(np.abs(ab[None, :, 1]) < 1e-12, 1e-12, ab[None, :, 1]))
+    return np.where(cross.sum(1) % 2 == 1, 1.0, np.clip(1.0 - np.maximum(d - 1e-9, 0.0) / max(feather, 1e-9), 0.0, 1.0))
+
+
 def interfacing(Bp: dict, M: dict) -> np.ndarray:
     """Per vertex 0..1: how interfaced (stiffer in bending, shear and stretch). An entry is a whole piece by name, or
     a band {"piece", "near": a line / point / mark of it, "within": m} (a cut-on placket: the strip along the centre
     front) or {"piece", "edge": an outline arc "a>b", "within"} (a fused facing, cloth.fused_interfacing), feathered
-    over its last third."""
+    over its last third, or an AREA {"piece", "region": [points / marks / [x, y]], "feather": m} (a jacket forepart's
+    canvas: shoulder and armhole to below the break, the lapel)."""
     stiff = np.zeros(len(M["uv"]))
     for e in Bp["interfaced"]:
         nm = e if isinstance(e, str) else e["piece"]
@@ -4763,6 +4776,12 @@ def interfacing(Bp: dict, M: dict) -> np.ndarray:
             continue
         pc = Bp["pieces"][nm]
         ref = e.get("near")
+        if "region" in e:  # a drafted AREA (canvas thread s2: a jacket forepart's half canvas): a polygon of the piece's
+            # points / marks / [x, y]; share 1 inside and on its outline, ramped to 0 over "feather" m outside (default 0.03)
+            R = np.asarray([pc["P"][pattern.index_of(pc, q)] if isinstance(q, str) and q in pc["names"]
+                            else (pc["marks"][q] if isinstance(q, str) else q) for q in e["region"]], float)
+            stiff[sel] = np.maximum(stiff[sel], region_share(M["uv"][sel], R, float(e.get("feather", 0.03))))
+            continue
         if "edge" in e:  # an outline arc "a>b" (a fused facing's band: the edge it was traced from)
             L = np.asarray(pc["P"], float)[pattern.arc_indices(pc, e["edge"])]
         elif isinstance(ref, str) and ref not in (pc.get("lines") or {}):  # a point or mark
