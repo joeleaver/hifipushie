@@ -104,6 +104,7 @@ STYLE_BEND_W = float(__import__("os").environ.get("GP_STYLE_BEND_W", "5.0"))
 # stretches further. Env GP_THREAD_FIRST=0 for the A/B.
 STYLE_THREAD_FIRST = __import__("os").environ.get("GP_THREAD_FIRST", "1") == "1"
 STYLE_THREAD_CAP = float(__import__("os").environ.get("GP_THREAD_CAP", "0.01"))
+STYLE_THREAD_FIRST_ALL = __import__("os").environ.get("GP_THREAD_FIRST_ALL", "0") == "1"  # (A/B: every styling solve, bending or not)
 STYLE_THREAD_FINAL = 60  # bending-free rounds at most at the end of a solve, until every face is within its bound
 STYLE_THREAD_TOL = 0.002  # (a thread this far past its bound counts as within it)
 STYLE_THREAD_ROUNDS = int(__import__("os").environ.get("GP_THREAD_ROUNDS", "2"))  # bending-free rounds a round
@@ -346,14 +347,16 @@ class FlatARAP:
                 M["_bend_rest"] if M.get("_bend_rest") is not None else X, float)), flat_below=STYLE_BEND_PLAIN)
             self.L0 = self.L
             self.L = (self.L + self.bend.K).tocsr()
-            if STYLE_THREAD_FIRST:  # THREADS FIRST: each face's warp / weft kept within max(its start, 1 + cap)
-                self.Dinv0 = np.linalg.inv(np.stack([self.U[:, 1] - self.U[:, 0], self.U[:, 2] - self.U[:, 0]], -1))
-                W0 = self.weld(np.asarray(M["_bend_rest"] if M.get("_bend_rest") is not None else X, float))  # (the
-                # styling's start, as the bending's rest: a per-op start would ratchet the bound up op by op)
-                ln0 = np.linalg.norm(np.stack([W0[self.WF[:, 1]] - W0[self.WF[:, 0]], W0[self.WF[:, 2]] - W0[self.WF[:, 0]]], -1)
-                                     @ self.Dinv0, axis=1)
-                self.thread_hi = np.maximum(ln0, 1.0 + STYLE_THREAD_CAP)
-                self.thread_lo = np.minimum(ln0, 1.0 - STYLE_THREAD_CAP)  # (nor shorter: a woven buckles, it doesn't shrink)
+        if (STYLE_THREAD_FIRST and self.bend is not None) or STYLE_THREAD_FIRST_ALL:  # THREADS FIRST: each face's
+            # warp / weft kept within max(its styling-start length, 1 +/- cap)
+            self.L0 = getattr(self, "L0", None) if self.bend is not None else self.L
+            self.Dinv0 = np.linalg.inv(np.stack([self.U[:, 1] - self.U[:, 0], self.U[:, 2] - self.U[:, 0]], -1))
+            W0 = self.weld(np.asarray(M["_bend_rest"] if M.get("_bend_rest") is not None else X, float))  # (the
+            # styling's start, as the bending's rest: a per-op start would ratchet the bound up op by op)
+            ln0 = np.linalg.norm(np.stack([W0[self.WF[:, 1]] - W0[self.WF[:, 0]], W0[self.WF[:, 2]] - W0[self.WF[:, 0]]], -1)
+                                 @ self.Dinv0, axis=1)
+            self.thread_hi = np.maximum(ln0, 1.0 + STYLE_THREAD_CAP)
+            self.thread_lo = np.minimum(ln0, 1.0 - STYLE_THREAD_CAP)  # (nor shorter: a woven buckles, it doesn't shrink)
         self._lu, self._lu0 = {}, {}
         self.floor, self.floor_pushed = _bind_floor(M.get("_floor"), self.inv), 0  # (style(floor=...): C170)
         self.shear = self.shear_free = None
