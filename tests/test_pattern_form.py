@@ -2022,15 +2022,19 @@ def test_open_neck_known_answer_fails_a_soft_roll():
     assert all(r[s]["turn"] < 120 and r[s]["gap_p90"] > 8.0 for s in "LR"), r
 
 
-def test_the_muslin_fit_is_the_default_and_approved_garments_are_held():
-    """C162 (Joe 2026-10-22: the muslin fit, always): the form fit holds warp / weft (WOVEN), pins the neck softly and
-    never squashes threads; garments approved on the old isometric fit are held on it until refitted (garment_kb
-    fit_holds), and the garment key fit_model overrides both ways."""
+def test_the_muslin_fit_is_the_default_for_every_garment(monkeypatch):
+    """C162 / C165 (Joe 2026-10-22: the muslin fit, always; no garment held on the old fit): the form fit holds warp /
+    weft (WOVEN), pins the neck softly and never squashes threads; fit_holds is empty (current garments are not a
+    baseline); the garment key fit_model and a hold (mechanism kept) override."""
     assert pf.WOVEN and pf.NECK_PIN_W == 2.0 and not pf.WOVEN_SLACK and pf.LEGACY_NECK_PIN_W == 200.0
-    assert pf.fit_model_for("gc_garrett", "shirt", {}) == "isometric"  # gc1, approved
-    assert pf.fit_model_for("dt_tess", "coat", {}) == "isometric" and pf.fit_model_for("dt_tess", "jeans", {}) == "isometric"
-    assert pf.fit_model_for("wf_simon", "shirt", {}) is None  # the default: the muslin fit
-    assert pf.fit_model_for("gc_garrett", "shirt", {"fit_model": "woven"}) == "woven"  # a refit lifts the hold
+    holds = {k: v for k, v in (cloth._kb().get("fit_holds") or {}).items() if not k.startswith("_")}
+    assert holds == {}, holds
+    for m, g in (("gc_garrett", "shirt"), ("gc_garrett", "jacket"), ("dt_tess", "coat"), ("wf_simon", "shirt")):
+        assert pf.fit_model_for(m, g, {}) is None, (m, g)  # the default: the muslin fit
     assert pf.fit_model_for("wf_simon", "shirt", {"fit_model": "isometric"}) == "isometric"
+    kb = dict(cloth._kb(), fit_holds={"x_model:*": "a test hold"})
+    monkeypatch.setattr(cloth, "_kb", lambda: kb)
+    assert pf.fit_model_for("x_model", "coat", {}) == "isometric"
+    assert pf.fit_model_for("x_model", "coat", {"fit_model": "woven"}) == "woven"  # a refit lifts the hold
     with pytest.raises(ValueError):
         pf.fit_model_for("wf_simon", "shirt", {"fit_model": "stretchy"})

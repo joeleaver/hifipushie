@@ -149,6 +149,16 @@ KES_FM = 500.0  # gf/cm: KES-FB1's maximum tensile load for wovens
 _r = 2.0 * KES_G * 180.0 / math.pi / (KES_FM / KES_EMT)
 SHEAR_STIFF = _r / (1.0 - _r)  # ~0.011 (see WOVEN)
 WOVEN_SLACK = False  # A/B only: warp / weft free in compression (a woven buckles rather than shortens; |f| < 1 kept)
+# SHEAR WHERE NOTHING DRIVES IT (muslin default, C166): WOVEN's shear weight (SHEAR_STIFF ~0.011, the KES G / E ratio)
+# is the cloth's shear rigidity UNDER LOAD; a woven also has shear hysteresis (KES 2HG, ~1-3 gf/cm for shirting and
+# suiting, of the order of G x 2-4 deg): a force under it does not shear the cloth at all. With only 0.011 holding it, a
+# FREE sheet (no body, pin or layer anywhere near) kept the shear the fold's transient put in (a diagonal fold 13 deg,
+# a run-off fold 28 deg turned past it). Triangles with no driven vertex (body / filled torso within FREE_REACH, a pin,
+# the garment under or over, a flap's base) take SHEAR_FREE instead: a loose sheet stays square; where the form
+# acts the cloth shears as before (the misfit the muslin reveals stays: Garrett's yoke corner, notes "muslin default").
+# A turned flap's cells (WOVEN_FLAPS) are woven only where driven too: free, they stay ARAP (its pattern shape).
+SHEAR_FREE = 1.0
+FREE_REACH = 0.06  # m: the body attraction's own reach (assemble: hi = da < 0.06)
 WOVEN_FLAPS = True  # WOVEN on a turned flap's own triangles too (a lapel is the same cloth; its fold rows stay ARAP)
 # FORM VALIDATED (2026-10-19 virtual fit): True once frozen_ae's pattern assembled on the form matches the simulated
 # drape of the same pattern (waist / hem / sleeve girth +-3 %, sleeve aspect +-15 %, shoulder, length, collar stand;
@@ -848,6 +858,8 @@ def woven_targets(W: dict, X: np.ndarray, nE: int, shear: float | None = None):
     """WOVEN local step: per undirected edge of E (mean over its FIT triangles) the target of x_E0 - x_E1, and the mask
     of the edges that have one. (See WOVEN.)"""
     s = SHEAR_STIFF if shear is None else shear
+    if np.ndim(s):  # (per FIT triangle: SHEAR_FREE where nothing drives the cloth)
+        s = np.asarray(s, float)[:, None, None]
     Fg, Ps, Pr = _woven_grad(W, X)
     if WOVEN_SLACK:
         Ps = Ps * np.minimum(np.linalg.norm(Fg, axis=1, keepdims=True), 1.0)
@@ -2368,6 +2380,14 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
         Ax, Ayz = system(wc) if sw_ is None else system(wc, sw_)
         fa = np.asarray(fast, int).reshape(-1, 2)
         ccon = np.zeros(n, bool)
+        drv_ = np.zeros(n, bool)  # (SHEAR_FREE: the vertices something drives: pins, the body in reach, the layers)
+        for v_, _, _ in full:
+            drv_[v_] = True
+        for v_, _, _ in ox:
+            drv_[v_] = True
+        for v_, _ in cx:
+            drv_[v_] = True
+        drv_pin = drv_.copy()
         for it in range(iters):
             if osurf is not None and ceil_on[0] and grav <= 0 and it % 5 == 0:  # TWO LAYERS: the vertices the over
                 # layer touches weigh LAYER_W in the solve (contact the solve knows, as the settle's held set): a soft
@@ -2402,10 +2422,14 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                 ln = np.linalg.norm(cur[ne], axis=1, keepdims=True)
                 Re[ne] = cur[ne] / np.maximum(ln, 1e-12) * np.linalg.norm(rest[ne], axis=1, keepdims=True)
                 if Wv is not None:  # WOVEN: warp / weft held, shear soft (the triangles' targets; see WOVEN)
-                    tg_, has_ = woven_targets(Wv, X, nE0)
+                    sh_t = np.where(drv_[Wv["F"]].any(1), SHEAR_STIFF, SHEAR_FREE)  # (SHEAR_FREE: nothing drives it)
+                    tg_, has_ = woven_targets(Wv, X, nE0, shear=sh_t)
                     m2 = np.zeros(len(src), bool)
                     m2[:2 * nE0] = np.r_[has_, has_]
-                    m2 &= ~arap_e | (np.r_[flapv0, np.zeros(max(len(src) - n_src0, 0), bool)] if WOVEN_FLAPS else False)
+                    # (a flap's own cells woven only where something drives them: a free flap keeps its ARAP cells,
+                    # as on the isometric fit; woven, a free sheet's pressed flap opened 18 -> 24 deg, C166)
+                    fl_drv = np.r_[flapv0 & drv_[src[:n_src0]], np.zeros(max(len(src) - n_src0, 0), bool)]
+                    m2 &= ~arap_e | (fl_drv if WOVEN_FLAPS else False)
                     Re[m2] = np.r_[tg_, -tg_][m2[:2 * nE0]]
             Re = wE[:, None] * Re
             b = np.zeros((n, 3))
@@ -2482,6 +2506,8 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                     cv_, do_, no_ = covered(osurf, T, bsurf)
                     cv_ &= do_ > -LAYER_GAP
                     T[cv_] -= no_[cv_] * (do_[cv_] + LAYER_GAP)[:, None]
+            if bsurf is not None:  # (SHEAR_FREE: what drives the cloth this round, for the next round's local step)
+                drv_ = drv_pin | (np.minimum(d, da) < off + FREE_REACH) | (np.abs(T - X).max(1) > 1e-9)
             b += wc[:, None] * T
             if HANG > 0 and bsurf is not None:  # (A/B: the cloth's weight as a constant pull down, m per round)
                 b[:, 2] -= wc * HANG
