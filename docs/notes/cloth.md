@@ -10901,3 +10901,13 @@ turned, points pulled) were tuned on bending-free cloth; the stand's rest is the
   hem+30 426 (482; k3 444), V 225, lapel 136/146, ahead 31-53, threads 9.71: the fronts stay open without the cord.
   c2b_k3 (+ styling bend): slide starts at threads 31 % (the canvas round the break resists the un-lap): edge 47-54 /
   50-74 / 35-96, threads 13.7: the kb ops (tuned on floppy cloth) fight the canvas.
+- HOLD REMOVAL on c2 (slim + keyed fit, PLUMB_HOLD off; kb style ops, NO styling bend) | concept 71/78/94, waist 414,
+  hem+30 482, V 237, lapel 127/134 | k3 (r39) 60-64/74-77/101, hem 444, V 232, threads 7.42:
+  | c2_k3 (both style holds) | 54-61 / 67-76 / 84-88 | waist 416 | hem+30 426 | V 225 | lapel 136/146 | ahead 31-53 | threads 9.71 |
+  | c2_nab (no hold above break) | 53-60 / 68-76 / 84-90 | 418 | 427 | 237 | 135/140 | 21-43 | 10.80 |
+  | c2_nhem (no side / back hem hold) | 55-62 / 67-75 / 84-87 | 421 | 473 | 225 | 136/146 | 21-46 | 9.70 |
+  | c2_none (no workaround hold at all) | 52-58 / 67-72 / 82-86 | 429 | 472 | 240 | 136/140 | 20-35 | 9.62 |
+  With the styling bend (c2b_nab / c2b_none): threads 15 %, edge 650 37-59: worse everywhere (the kb ops fight it).
+  LOOK c2_k3: shirt patches show through the jacket's chest below the lapels; c2_none: no show-through, no cord (the
+  side panels are off the front-view outline), fronts open; hem fuller than the concept with a corner flip (L), pocket
+  flaps ragged, the edge under the break runs in a little before the cut-away.
