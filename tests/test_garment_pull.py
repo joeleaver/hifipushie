@@ -624,7 +624,12 @@ def test_open_jacket_is_styled_by_its_wear_as_data():
     ops = gd.wear({"design": {"kind": "jacket"}, "worn_open": {"front.L:break": 0.064}}, "style")
     kinds = [next(iter(o)) for o in ops]
     assert kinds[0] == "hold" and ops[0]["hold"]["above"] == ["front.L:break", "front.R:break"], ops[0]
-    assert kinds[-3:] == ["smooth", "pull", "relax"] and ops[-2]["pull"]["handles"][0]["dir"] == "down", kinds
+    assert kinds[-5:-2] == ["smooth", "pull", "relax"] and ops[-4]["pull"]["handles"][0]["dir"] == "down", kinds
+    # (C185, fit round 38) ... and last each edge from the break to the cut-away's top drawn straight (the front-view
+    # chord), the slide having let go of its grip above cutawayTop (it had pinched the edge in under the break)
+    assert [o["smooth"]["border"] for o in ops[-2:]] == ["front.L:break..cutawayTop", "front.R:break..cutawayTop"], ops[-2:]
+    assert all(o["smooth"]["spline"] == 0 for o in ops[-2:]), ops[-2:]
+    assert [q.get("let_go_above") for q in ops[kinds.index("slide")]["slide"]["slides"]] == ["front.L:cutawayTop", "front.R:cutawayTop"]
     # (C178, fit round 33) the lower front swung as one panel about break -> side seam at the hem, laid back on the body
     # (down + in), then each edge smoothed into one long curve; no point grips part-way down the edge (zigzag / flare)
     tu = ops[kinds.index("turn")]["turn"]["turns"]
@@ -640,7 +645,8 @@ def test_open_jacket_is_styled_by_its_wear_as_data():
     lay = ops[kinds.index("turn") + 1]["pull"]["handles"]
     assert [h["at"] for h in lay] == [t["at"] for t in tu] and all(h["dir"]["out"] < 0 < h["dir"]["down"] for h in lay), lay
     assert not any("@" in h["at"] for o in ops if "pull" in o for h in o["pull"]["handles"]), ops
-    assert {o["smooth"]["border"] for o in ops if "smooth" in o and "border" in o["smooth"]} == {"front.L:break..cfHem", "front.R:break..cfHem"}
+    assert {o["smooth"]["border"] for o in ops if "smooth" in o and "border" in o["smooth"]} == {
+        "front.L:break..cfHem", "front.R:break..cfHem", "front.L:break..cutawayTop", "front.R:break..cutawayTop"}
     assert gd.wear({"design": {"kind": "jacket"}}, "style") == []
     nx, ny = 11, 5
     uv = np.array([(x, y) for x in np.linspace(0, 0.1, nx) for y in np.linspace(0, 0.04, ny)])
@@ -759,3 +765,40 @@ def test_slide_unlaps_along_the_body_keeping_its_offset():
     Z, infos = gp.style(M, X, held, [{"slide": {"slides": [dict(sl, **{"with": ["side.L"]})], "steps": 8, "tol": None}}],
                         body=body)
     assert np.allclose(Z, Y, atol=1e-6) and "slide" in infos[0]
+
+
+def test_open_edge_is_drawn_straight_after_the_slide_lets_go():
+    """C185 (garrett jacket fit round 38; Joe's red arrows on r37: the fronts pinch in under the break): (1) smooth_border
+    "spline" 0 draws a border toward its CHORD in the front view (x, z), its depth y left as it lies: a sheet's edge bowed
+    20 mm in between two held ends comes out within 1.5 mm of the straight line, the threads within tol. (2) a slide's
+    "let_go_above" lets go of its grip above that point after the slide, so a later op can move that cloth; without it the
+    slide's grip stays held and the chord smooth can't move the edge."""
+    nx, nz = 9, 25
+    uv = np.array([(a, z) for a in np.linspace(0.0, 0.08, nx) for z in np.linspace(0.0, 0.24, nz)])
+    ix = lambda i, j: i * nz + j
+    F = np.array([f for i in range(nx - 1) for j in range(nz - 1)
+                  for f in ((ix(i, j), ix(i + 1, j), ix(i + 1, j + 1)), (ix(i, j), ix(i + 1, j + 1), ix(i, j + 1)))])
+    bow = lambda z: 0.02 * np.sin(np.pi * z / 0.24)  # (the edge bowed in toward x = 0... here toward -x)
+    X = np.c_[uv[:, 0] + 0.05 - bow(uv[:, 1]) * np.clip(1 - uv[:, 0] / 0.04, 0, 1), 0.01 * uv[:, 0], uv[:, 1]]
+    M = {"F": F, "uv": uv, "piece": np.zeros(len(uv), int), "names": ["s"], "sew": [],
+         "points": {"s:top": ix(0, nz - 1), "s:mid": ix(0, nz // 2), "s:bot": ix(0, 0)}}
+    held = (uv[:, 1] > 0.24 - 1e-9) | (uv[:, 1] < 1e-9) | (uv[:, 0] > 0.08 - 1e-9)
+    ch = gp.border_chain(M, "s:top..bot")
+    Y, info = gp.smooth_border(M, X, held, "s:top..bot", spline=0, ends=0.005, tol=0.03, rounds=60)
+    assert info["rounds"] > 0, info
+    chord = lambda P: np.abs(P[:, 0] - (P[0, 0] + (P[-1, 0] - P[0, 0]) * (P[:, 2] - P[0, 2]) / (P[-1, 2] - P[0, 2]))).max()
+    assert chord(X[ch]) > 0.018 and chord(Y[ch]) < 0.0015, (chord(X[ch]), chord(Y[ch]), info)
+    assert np.allclose(Y[held], X[held])
+    # (2) a slide's grip is held for later ops unless it lets go above a point
+    BV = [(0.0, 0.0, 0.0)]  # (slide needs a body; a large flat slab behind the sheet, y > 0)
+    gx, gz = np.meshgrid(np.linspace(-0.2, 0.3, 11), np.linspace(-0.1, 0.35, 10))
+    BV = np.c_[gx.ravel(), np.full(gx.size, 0.02), gz.ravel()]
+    r = lambda i, j: i * 10 + j
+    BF = np.array([f for i in range(10) for j in range(9) for f in ((r(i, j), r(i + 1, j), r(i + 1, j + 1)), (r(i, j), r(i + 1, j + 1), r(i, j + 1)))])
+    sl = {"at": "s:mid..bot", "patch": 0.012, "follow": 0.001, "by": 0.0}
+    ops = lambda extra: [{"slide": {"slides": [dict(sl, **extra)], "steps": 2, "tol": None}},
+                         {"smooth": {"border": "s:top..bot", "spline": 0, "ends": 0.005, "tol": 0.03, "rounds": 60}}]
+    held2 = (uv[:, 1] > 0.24 - 1e-9) | (uv[:, 0] > 0.08 - 1e-9)
+    _, i_keep = gp.style(M, X, held2, ops({}), body=(BV, BF))
+    _, i_go = gp.style(M, X, held2, ops({"let_go_above": "s:bot"}), body=(BV, BF))
+    assert i_go[1]["smooth"]["rounds"] > i_keep[1]["smooth"]["rounds"], (i_keep[1], i_go[1])

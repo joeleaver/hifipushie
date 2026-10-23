@@ -10651,3 +10651,23 @@ Muslin fit, styling, no sim; judged beside the concept only. Same fit as r36 (as
 - Code (C184): kb jacket.wear.open.style gets the slide before the swing (ramp, band 12 mm, follow 0.001, with side + back);
   the kb test asserts it. Default styling on g1 (sty37.sh g1 k1) = v1 exactly. Sheets check/*_k1c.png.
 - Suite (17 files, capped, -rs): 296 passed, 4 xfailed, PYTEST_EXIT 0 ($FR37/suite.log, 14.8 min).
+
+## fit round 38 (2026-10-23; $FR38 = /mnt/data/hifipushie/dress_garrett/fit_round38; branch claude/garrett-jacket-r38)
+Muslin fit, styling, no sim; judged beside the concept only. Same fit (fit_g1.pkl = r35's g1, read-only copy).
+- Mishap, repaired: a sweep tag "g1" wrote asm_g1.pkl through the r38 -> r37 -> r36 symlinks and clobbered r36's fit copy;
+  restored from fit_round35/asm_g1.pkl (md5 e42b8ab5); the r38 tools now read fit_g1.pkl (chmod a-w).
+- Fault 1 (Joe's red arrows: both edges curve IN toward CF under the break; edge 450 41-50 vs 71). The fit leaves the edge
+  50 deg off the vertical just under the break (break x 64 -> 38 at 21 mm below it). Variants on g1 (sw38.sh, reads tab38.sh):
+  soft (feathered) hold round the break 30 / 50 mm (b1 / b2): 450 43-52 / 46-53, slide still stops on stretch; + ramp 0.6 (b3)
+  40-49; + lead 30 mm (b4 / b5) moves the break itself (L 70-72); forced shares (diag38): per-vertex plumb + soft 80 mm 16.6 %
+  p99, the corner still the top-3 %. A 'roll' op (cloth past the extended roll line turned, fading over 80-120 mm): stops at
+  step 1; forced 160 / 90 deg: 24 / 19 % and the fronts thrown 45-69 mm forward. All dropped (code reverted; diff kept in
+  $FR38/explore_soft_roll.diff).
+  CAUSE: the slide's grip (ramped arcs ~0 under the break) stayed held for every later op, so the swing / smooths could not
+  move the bridge break..cutawayTop. f1 (let go above cutawayTop after the slide): 400/450/500 L 54/52/63, R 56/54/63,
+  threads 7.25. + smooth border break..cutawayTop: spline 1 no change (h1); CHORD (spline 0) 3D: L stuck at 55-56 (the chord
+  cut into the shirt, the floor pushed it out, h3-h8); chord in x / z only, last op (h9): L 63/61/63, R 63/63/63, edge 450
+  60 / 64, 550 75 / 77, 650 102, threads 7.37 (fronts 8.41). Upper half unchanged (V 232, lapel 137/136, roll 76/62).
+- Code (C185): style slide "let_go_above"; smooth_border spline 0 = front-view chord (stops on stretch / on the chord);
+  kb jacket.wear.open: the slide lets go above cutawayTop, the two chord smooths last. Default styling on g1 (sty38.sh g1 k2)
+  = h9 exactly. Sheets check/*_k2c.png; Joe's spot before | after: check/joespot_before_after.png (concept | r37 k1 | k2).

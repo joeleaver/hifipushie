@@ -933,7 +933,8 @@ def smooth_border(M: dict, X: np.ndarray, held, border: str, spline: int = 10, l
     way onto it and pinned, the rest re-solved (`iters`); stops when the stretch would exceed the least + `tol`, or the
     border's 3D kink over `win` stops dropping. Spike sp10 (spline 10, lam 0.4, win 30 mm, tol 1.5 %): the collar's
     side-view kinks 18 / 34 -> 12 / 12 deg. Returns (X_new, info: rounds, kink deg start / end, stretch p99 start /
-    end (%))."""
+    end (%)). `spline` 0 (C185): drawn toward the straight CHORD between the walk's ends in the front view (x, z; y as it
+    lies), stopping on stretch / shear or on the chord, not on the kink: an open jacket's edge runs straight from the break."""
     from scipy.interpolate import LSQUnivariateSpline
     X = np.asarray(X, float)
     held = _mask(held, len(X))
@@ -963,13 +964,20 @@ def smooth_border(M: dict, X: np.ndarray, held, border: str, spline: int = 10, l
         p = Y[chw]
         s = np.r_[0, np.cumsum(np.linalg.norm(np.diff(p, axis=0), axis=1))]
         kn = np.linspace(s[0], s[-1], nk + 2)[1:-1]
-        fit = np.column_stack([LSQUnivariateSpline(s, p[:, c], kn, k=3)(s) for c in range(3)])
+        if spline == 0:  # (C185: the border drawn toward its CHORD in the FRONT view, x and z, its depth y left as it
+            # lies: a 3D chord cut into the shirt and the floor pushed it back out round the body, L 450 stuck at 56 vs 63)
+            fit = p[0] + (s / max(s[-1], 1e-9))[:, None] * (p[-1] - p[0])
+            fit[:, 1] = p[:, 1]
+        else:
+            fit = np.column_stack([LSQUnivariateSpline(s, p[:, c], kn, k=3)(s) for c in range(3)])
         T, fx = Y.copy(), fixed.copy()
         T[chw[mov]] = p[mov] + lam * (fit[mov] - p[mov])
         fx[chw[mov]] = True
         Yt = A.solve(T, fx, iters)
         kt, mt, (sn, sh) = _kink3d(Yt[chw], win), _kink3d(Yt[chw], win, mov), st(Yt)
-        if sn > least + tol or _jammed(sh, lock) or (kt > kk - 0.2 and mt > mm_ - 0.2):
+        # (chord mode: a straight target, so the kink read isn't the stop: the stretch / shear stop, or on the chord)
+        bend = spline != 0 and (kt > kk - 0.2 and mt > mm_ - 0.2)
+        if sn > least + tol or _jammed(sh, lock) or bend or (spline == 0 and np.abs(fit[mov] - p[mov]).max(initial=0) < 5e-4):
             r -= 1
             break
         Y, kk, mm_, least = Yt, min(kk, kt), min(mm_, mt), min(least, sn)
@@ -1041,6 +1049,10 @@ def style(M: dict, X: np.ndarray, held, ops: list[dict], body=None, log=None, fl
                 on_ = np.where((pid_ == pid_[ch[0]]) & ~base)[0]
                 mine[on_[cKDTree(uv_[ch]).query(uv_[on_])[0] <= float(sl.get("patch", 0.04))]] = True
             X, inf = slide(M, X, base | (placed & ~mine), ss, body=body, log=log, **a)
+            for sl in ss:  # ("let_go_above": the grip above that point is let go after the slide, C185)
+                if sl.get("let_go_above"):
+                    v_ = vertex(M, sl["let_go_above"])
+                    mine &= ~((pid_ == pid_[v_]) & (X[:, 2] > X[v_, 2]))
             placed |= mine
             for sl in ss:  # (a slide's "with" pieces above the edge's top stay as they lie for later ops)
                 wp = [q for q in sl.get("with") or [] if q in M["names"]]
@@ -1474,7 +1486,9 @@ def slide(M: dict, X: np.ndarray, held, slides: list[dict], body=None, steps: in
     beyond the band over which the rest of the piece follows, falling off to 0; default 0.12)}. The band moves along the
     body surface, horizontally round it, toward the side, keeping its fitted offset off the body; the free cloth starts
     where it would follow and is solved. Staged, until it would stretch (`tol`, as turn). What it grips stays held
-    for later ops. Returns (X_new, info)."""
+    for later ops ("let_go_above": a point: style() lets go of the grip above it after the slide, C185: the un-lap's
+    small arcs just under the break, held, kept the later swing and smooths from pulling the edge straight). Returns
+    (X_new, info)."""
     from . import pattern_form as pf_
     from .cloth_made import outward
     X = np.asarray(X, float)
