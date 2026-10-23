@@ -10841,3 +10841,8 @@ stretch); any hold left is soft, feathered, and names its support. STATE: docs/s
   stand, canvassed chest) are supported by their own STIFFNESS, which the model lacks, so hung they fall (shirt rows,
   jacket chest); (3) gravity does not stop the lap: the lap comes from the seat wrapping the girth round the body,
   and the hang (no plumb hold) still leaves the edge 30-55 mm off CF vs the concept's 71-94.
+- H2 (fit hang, HANG_G 0.02: a fifth of the weight, 822 s): threads p99 17.1 % (max 220), shear p99 47.6, sew gap 11.0,
+  collar 51 % / stand 38 % p99, top 9 mm lower: the neck stretch does NOT scale with the weight, so it is the hang phase's
+  seating (HANG_SUPPORT: attraction only where the body faces up) + the settle's friction / contact, not the load.
+  H2_h2 styled collapsed (edge 0, hem+30 274, threads 57 %). The fit hang is rejected as built.
+- Suite (17 garment files, capped, -rs): 302 passed, 4 xfailed, PYTEST_EXIT 0 ($SU/suite.log).

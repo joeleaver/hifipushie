@@ -17,8 +17,8 @@ WHY (measured): local / global swings slowly + Jacobi caps leave strain under su
 stiffness (not modelled); the lap is the seat's wrap, not missing weight.
 RUNS: $SU = /mnt/data/hifipushie/supports (run.sh -> this worktree; chain1-7.sh; tab38.sh <tags>; diagH.py; shirt.py).
 Sheets: check/cmp_concept_k3_nhh2.png, check/cmp_wholefront_k3_nhn_nhh.png, check/joeseam_k3_nhn_nhh_nhh2.png.
-H2 (fit hang G 0.02) + H2_h2 queued (chain6: f_H2.log, diag_H2.log, r_H2_h2.log); suite chain7 -> suite.log.
-NEXT: read H2 (does a weaker weight keep the neck under ~10 %?). If the hang is pursued: (1) a stiffness model for made /
+H2 (fit hang G 0.02): neck still 51 % / p99 17 % (not the load: the hang seating), H2_h2 collapsed. Suite: 302 passed, 4 xfailed, PYTEST_EXIT 0 ($SU/suite.log).
+NEXT: coordinator / Joe decide whether to pursue the hang. If pursued: (1) a stiffness model for made /
 canvassed pieces (their support) before hanging them; (2) replace the seat's all-round attraction (the lap's source)
 by contact-only seating, measured on the edge 450-650; (3) soft feathered styling holds (FlatARAP proximal weights)
 for the canvas hold. Otherwise k3 stays and dress_garrett_fit resumes r39 steps 2-4 on it.
