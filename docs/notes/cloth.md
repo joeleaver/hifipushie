@@ -10519,3 +10519,4 @@ Muslin fit, styling, no sim; judged beside the concept only.
   1021: +210), i.e. side and back seams run straight or flare from the underarm to the hem. The gate's waist_suppression
   (<= 8 %) passes a taper Joe's "falls straight down" rules out: the row should read plumb for this design.
 - Sheets: check/{wholefront,upper_front,upper_three,side}_t12sc.png (= the kb recipe k33; t5sc = the swing alone).
+- Suite (17 files, capped, -rs, HIFIPUSHIE_HOME=workspace + ASSETS): 289 passed, 4 xfailed, 0 skipped, pytest exit 0 ($FR33/suite.log, 12.0 min).

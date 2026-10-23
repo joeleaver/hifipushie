@@ -5,7 +5,7 @@ line plumb). Put "the reference jacket is worn open, unbuttoned" in every review
 only. Covered show-through is not a fault (C153); the shirt patches at the shoulders are culled later, don't chase them.
 PROCESS: muslin fit (worn open, C171), styling by the kind's wear as data (C174 / C178), remeasurement; no sim; judged
 beside the concept only (C165). Shirt = gc_garrett's shirt as worn, not tuned here. Jacket hps = "corner".
-STATE: round 33 in progress. gc_garrett store v4: the jacket's dead sim-era keys dropped (under pin, sculpt /
+STATE: round 33 done. Suite (17 files, capped -rs): pytest exit 0, 289 passed, 4 xfailed, 0 skipped ($FR33/suite.log). gc_garrett store v4: the jacket's dead sim-era keys dropped (under pin, sculpt /
 under_sculpt / finish); gate PASS_WAIVED pattern 5701667c body e31aac35 (= r32), gate_status now matches it (C176:
 fit_garment works again on the layered jacket). Styling recipe (garment_kb jacket.wear.open) REPLACED (C178): swing the
 lower front about break -> side hem, lay it back down + in, smooth, edge into one long curve (C177), hem down, relax.
@@ -20,8 +20,8 @@ FAULT 3 (fit read, fitread33.py / girth33.py): the muslin's threads at waist and
 seat 1057, hem 1021 mm (body seat 935): the hem hugs the seat (61 mm ease, back tilts in 16 deg). Needs: waist girth
 >= chest (~1170-1210: suppression 7.75 % -> ~0; the gate allows <= 8 %), hem ~1230 (+210 mm, side + back seams flared
 straight down from the underarm). The narrow hem also caps how far the fronts can open (both swing and grips stop on stretch).
-NEXT: (1) render + reads done for k33/t12 (check/*_t12sc.png); (2) the pattern: no waist suppression + hem flare per the
-numbers above, gate, refit, restyle with the kb (opening should follow); (3) V 221 vs 237.
+NEXT: (1) the PATTERN: no waist suppression + hem flare per the
+numbers above, gate, refit, restyle with the kb (re-read edge 450, still 39-45 vs 71: no styling lever, C178 notes); (2) V 221 vs 237; (3) the kb recipe needs cutawayTop (square fronts: none).
 ## Method ($FR33 = /mnt/data/hifipushie/dress_garrett/fit_round33; run.sh: this worktree)
 Op by op: runops.sh <tag> (op33.py on $FR32/asm_a1.pkl with ops_<tag>.json; no json = the kb) -> op_<tag>.log,
 asm_<tag>_<k>.pkl; sumops.py <tag>; fwd33.py (side-view hang); reads30.sh; post30.sh <tag> (sheets). Gate: hk1.py.
