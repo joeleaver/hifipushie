@@ -10887,3 +10887,17 @@ Jacket runs ($CV; reads = tab38.sh; concept edge 450/550/650 71/78/94, waist 414
 Shirt (shirt.py, wf_simon open collar, Joe's photo / trace rows): s0 (no bend) ALL PASS, threads 6.47; b0 (STYLE_BEND,
 W 5): 4 rows FAIL (corners 0.37, V 47 deg, V depth 0.28, leaf edge 73 deg), threads 18.7: the collar ops (band ends
 turned, points pulled) were tuned on bending-free cloth; the stand's rest is the CLOSED fit, so opening it costs.
+- bending fix 1 (hairpins): a hinge folded past 90 deg at rest (the fall over its stand, the lapel's turn) takes the
+  stencil's own direction (its summed normal is noise). Fix 2 (the rest in the hinge's FRAME: edge, normal, m): the fit
+  is not isometric to the flat pattern, so the stencil has in-plane parts; a normal-only target put forces on the start
+  (the shirt's first relax went threads 7.0 -> 14.0 %; now 7.04 -> 7.03). KATs unchanged.
+- SHIRT, op by op on shirt_s0's fit (shdiag.py, no tie): full ops + STYLE_BEND W 5: 2 rows fail (tips 1.17, leaf 49),
+  threads 12.2. SIMPLER OPS with the stiffness: v3 = relax, hold (back 70 deg, feathered to 130), turn the band ends,
+  push x2 (no point pulls, no smooths): ALL Joe's rows PASS at W 1 / 2 / 5 (threads 12.5-12.7 %); the same v3 without
+  bending fails 3 rows (tips 0.59, leaf 10 deg, edge turn 37). The cost: threads p99 12.5 vs 6.47 (the turn takes the
+  stiff stand round its hinges: 7.2 -> 17.3 % in that op; the bending keeps the fit's strain, the plain relax let it go).
+- JACKET c2_k3 (slim + keyed fit, NO PLUMB_HOLD; kb style, no styling bend): edge 450/550/650 54-61 / 67-76 / 84-88
+  (r39 nh, no plumb hold, old pattern: 25-15 / 12-7 / 7-3; k3 60-64 / 74-77 / 101; concept 71/78/94), waist 416 (414),
+  hem+30 426 (482; k3 444), V 225, lapel 136/146, ahead 31-53, threads 9.71: the fronts stay open without the cord.
+  c2b_k3 (+ styling bend): slide starts at threads 31 % (the canvas round the break resists the un-lap): edge 47-54 /
+  50-74 / 35-96, threads 13.7: the kb ops (tuned on floppy cloth) fight the canvas.

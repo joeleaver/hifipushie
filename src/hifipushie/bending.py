@@ -213,11 +213,30 @@ class Bending:
         self.mag = None
         if not (isinstance(rest, str) and rest == "flat"):
             R0 = np.asarray(rest, float)
-            # SIGNED (a fold's sense against the hinge's normal): an unsigned magnitude let a roll flip to the other
-            # sense at a hinge for free (the rolled-collar KAT turned over its stand, edge 24 -> -22 mm)
-            self.mag = np.einsum("hd,hd->h", self.S @ R0, self._normal(R0))
+            # THE REST IN THE HINGE'S OWN FRAME (edge e, normal n, m = n x e): the stencil of a placement that is not
+            # isometric to the flat pattern (the fit's threads strain a few %) has in-plane parts too; a target along
+            # the normal only put forces on the start (the shirt's first relax went from threads 7.0 to 14.0 %). SIGNED
+            # (an unsigned magnitude let a roll flip over its stand for free: edge 24 -> -22 mm). A hinge folded past
+            # 90 deg (a collar's fall over its stand, a lapel's turn): its summed normal is noise, so its out-of-edge
+            # part goes along the stencil's own current direction (the fold's bisector, well defined at a hairpin).
+            d0 = self.S @ R0
+            e0, n0 = self._frame(R0)
+            self.ce = np.einsum("hd,hd->h", d0, e0)
+            self.cn = np.einsum("hd,hd->h", d0, n0)
+            self.cm = np.einsum("hd,hd->h", d0, np.cross(n0, e0))
+            self.big = self._fold_angle(R0) > np.radians(90) if len(H) else np.zeros(0, bool)
+            self.cp = np.linalg.norm(d0 - self.ce[:, None] * e0, axis=1)
+            self.mag = np.linalg.norm(d0, axis=1)
             if flat_below is not None and len(H):
-                self.mag = self.mag * (we > flat_below + 1e-9)
+                flat = we <= flat_below + 1e-9
+                self.mag[flat] = 0.0
+                for c_ in (self.ce, self.cn, self.cm, self.cp):
+                    c_[flat] = 0.0
+
+    def _frame(self, X: np.ndarray):
+        a, b = X[self.H[:, 0]], X[self.H[:, 1]]
+        e = (b - a) / np.maximum(np.linalg.norm(b - a, axis=1, keepdims=True), 1e-15)
+        return e, self._normal(X)
 
     def _normal(self, X: np.ndarray) -> np.ndarray:
         """Per hinge: the unit normal of its two faces (a, b, c) and (b, a, d), summed."""
@@ -225,12 +244,27 @@ class Bending:
         n = np.cross(b - a, c - a) + np.cross(a - b, d - b)
         return n / np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-15)
 
+    def _fold_angle(self, X: np.ndarray) -> np.ndarray:
+        """Per hinge: the dihedral fold angle (rad, 0 = flat) from the two faces' normals."""
+        a, b, c, d = (X[self.H[:, k]] for k in range(4))
+        na, nb = np.cross(b - a, c - a), np.cross(a - b, d - b)
+        cs = np.einsum("hd,hd->h", na, nb) / np.maximum(np.linalg.norm(na, axis=1) * np.linalg.norm(nb, axis=1), 1e-30)
+        return np.arccos(np.clip(cs, -1.0, 1.0))
+
     def target(self, X: np.ndarray) -> np.ndarray | None:
-        """t (h, 3): the rest fold (signed, x the stencil's size) along the hinge's current normal; None for a flat
+        """t (h, 3): the rest stencil vector carried into the hinge's current frame (see __init__); None for a flat
         rest."""
         if self.mag is None:
             return None
-        return self.mag[:, None] * self._normal(X)
+        e, n = self._frame(X)
+        t = self.ce[:, None] * e + self.cn[:, None] * n + self.cm[:, None] * np.cross(n, e)
+        if self.big.any():
+            d = (self.S @ X)[self.big]
+            eb = e[self.big]
+            u = d - np.einsum("hd,hd->h", d, eb)[:, None] * eb
+            t[self.big] = self.ce[self.big, None] * eb + self.cp[self.big, None] * u / np.maximum(
+                np.linalg.norm(u, axis=1, keepdims=True), 1e-12)
+        return t
 
     def rhs(self, X: np.ndarray) -> np.ndarray:
         """S^T diag(d) t(X): the global step's right-hand side (zero for a flat rest)."""
