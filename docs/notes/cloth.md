@@ -10467,3 +10467,4 @@ PATTERN, not by moving the break.
   line. Still short: the V (221 vs 237), the lapel face reads as a thin rolled band in 3/4, collar stands stiff at the
   back neck. Lower half worse than k2: the L front edge zigzags at the waist, the R hem corner flares out with a dent,
   hem narrower (422), body pinched at the waist (376 vs 414) and boxy. Nothing approved.
+- Suite (17 files, capped, -rs, HIFIPUSHIE_HOME=workspace + ASSETS): 287 passed, 4 xfailed, 0 skipped, pytest exit 0 ($FR32/suite.log, 13.3 min).

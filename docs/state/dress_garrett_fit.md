@@ -14,7 +14,7 @@ READS a1s | concept (k2 r31): lapel 150 133/130 | 127/134 (118/116); V 200 221 |
 hem 422 | 482 (451); length 738 | 748; crumple p95 12.5 | smooth (9.9/11.1); threads p99 8.3 %; flaps sunk 0/0.
 LOOK: upper half the closest yet (broad lapels, notch at the concept's height); lower half WORSE than k2 (L edge zigzag
 at the waist, R hem corner flared + dented, hem narrow, waist pinched 376 vs 414). Nothing approved. $0.
-Suite: see the last commit (17 files, capped -rs).
+Suite (17 files, capped -rs): pytest exit 0, 287 passed, 4 xfailed, 0 skipped ($FR32/suite.log, 13 min).
 NEXT: (1) the lower fronts: the kb styling recipe lands differently on the new front (a1 unstyled hem 398 = w1h's 400;
 styled 422 vs k2 451): read the zigzag (which grip makes it: style one op at a time on asm_a1.pkl, reads per op) and
 fix the recipe as DATA (garment_kb kinds.jacket.wear.open.style), both sides; smooth_border on front.X:break..cfHem is a
