@@ -196,7 +196,7 @@ def test_plumb_cut_sized_to_the_tube():
             ops = [op for op in pj.jacket_ops(OPS, t, 20.0) if not (op["op"] == "contour" and op.get("edge") == "centre_back")]
             for op in ops:
                 if op["op"] == "waist_suppression":
-                    op["silhouette"] = "plumb"
+                    op.update(silhouette="plumb", tube=True)  # (opt-in since C179)
             D = pd.start("bodice", t, dict(BLOCK, fitted=False, chest_ease=0.15, waist_ease=0.16))
             pd.apply(D, ops)
             Bp = _bp(D)
@@ -212,6 +212,42 @@ def test_plumb_cut_sized_to_the_tube():
         assert tgt - 10 <= out["tube"][2] and out["tube"][3] <= tgt + 25, (name, out)
         assert abs(out["tube"][1] - out["old"][1]) <= 3, (name, out)  # (the chest keeps its ease)
         assert out["old"][0] == "FAIL" and out["old"][3] > tgt + 25, (name, out)
+
+
+def _plumb_rows(tape, tube=False, side=None):
+    ops = [op for op in pj.jacket_ops(OPS, tape, 20.0) if not (op["op"] == "contour" and op.get("edge") == "centre_back")]
+    for op in ops:
+        if op["op"] == "waist_suppression":
+            op.update(silhouette="plumb", tube=tube)
+        if op["op"] == "contour" and op.get("edge") == ["sideF", "sideB"] and side is not None:
+            op["at"] = side
+    D = pd.start("bodice", tape, dict(BLOCK, fitted=False, chest_ease=0.15, waist_ease=0.16))
+    pd.apply(D, ops)
+    Bp = _bp(D)
+    return _rows(Bp, tape, {"design": {"details": {"pockets": "flap"}, "ops": ops}}), Bp
+
+
+def test_plumb_falls_straight():
+    """(fit round 34, C179; Joe: the jacket "should basically just fall straight down") A plumb jacket takes nothing in
+    under the chest and the row falls_straight holds it: the fall girth (fronts CF -> side seam) never drops, no body
+    seam comes back in. The tube cut (C94, now the op's opt-in `tube`) FAILs it (CB / side-back taper in) though its
+    old rows pass; a side take-in at the waist FAILs; a hem flare at the side seams passes and lets the hem out."""
+    for name, tape0 in sorted(BODIES.items()):
+        tape = dict(tape0, waist=round(0.815 * tape0["chest"]), plumbGirth=round(1.028 * tape0["chest"]))
+        tube, _ = _plumb_rows(tape, tube=True)
+        assert tube["falls_straight"]["status"] == "FAIL", (name, tube["falls_straight"])
+        assert tube["waist_plumb"]["status"] == "PASS" and tube["waist_suppression"]["status"] == "PASS", name
+        plain, Bp = _plumb_rows(tape)
+        for k in ("falls_straight", "waist_plumb", "waist_suppression"):
+            assert plain[k]["status"] == "PASS", (name, k, plain[k])
+        fs = pj.falls_straight(Bp)
+        assert fs["loss"] < 0.005 and all(v["taper"] < 0.001 for v in fs["seams"].values()), (name, fs["seams"])
+        pinch, _ = _plumb_rows(tape, side=[["chest", 0.0], ["waist", 0.006], ["hem", 0.0]])
+        assert pinch["falls_straight"]["status"] == "FAIL", (name, pinch["falls_straight"])
+        flare, Bf = _plumb_rows(tape, side=[["chest", 0.0], ["waist", -0.002], ["hem", -0.02]])
+        assert flare["falls_straight"]["status"] == "PASS", (name, flare["falls_straight"])
+        ff = pj.falls_straight(Bf)
+        assert ff["hem"] - fs["hem"] > 0.12 and ff["seams"]["sideF"]["hem"] > 0.06, (name, ff["hem"], fs["hem"])
 
 
 def test_collar_fall_has_its_fold_line_and_the_gate_refuses_one_without():

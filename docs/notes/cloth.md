@@ -10520,3 +10520,12 @@ Muslin fit, styling, no sim; judged beside the concept only.
   (<= 8 %) passes a taper Joe's "falls straight down" rules out: the row should read plumb for this design.
 - Sheets: check/{wholefront,upper_front,upper_three,side}_t12sc.png (= the kb recipe k33; t5sc = the swing alone).
 - Suite (17 files, capped, -rs, HIFIPUSHIE_HOME=workspace + ASSETS): 289 passed, 4 xfailed, 0 skipped, pytest exit 0 ($FR33/suite.log, 12.0 min).
+
+## fit round 34 (2026-10-23; $FR34 = /mnt/data/hifipushie/dress_garrett/fit_round34; branch claude/garrett-jacket-r34)
+Muslin fit, styling, no sim; judged beside the concept only. Design: falls straight down, worn open.
+- Step 1, the GATE (C179; flat34.py = gc_garrett's jacket flat via cloth_workflow.Ctx, ops edited by JSON): plumb now takes
+  nothing in (the C94 tube cut = opt-in `tube: true`), its rows read the fall girth (fronts CF -> side seam), new row
+  falls_straight (girth loss <= 2 %, no seam back in > 4 mm). Flat reads (flat_tube.log / flat_plumb.log):
+  round-33 pattern (tube): fall girth 1112 -> 1055 from ~100 mm under the chest; FAIL falls_straight 4.8 %, cb 37 mm at
+  121, sideB 16 at 359 (its old rows: waist_plumb PASS; waist_suppression read 8.6 % with the laps in);
+  plain plumb: 1113 chest -> hem flat, PASS all (with the laps the old suppression read 3.9 %: front-edge style, not fall).

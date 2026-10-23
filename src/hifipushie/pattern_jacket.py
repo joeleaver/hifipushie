@@ -241,6 +241,19 @@ PLUMB_ALLOW = 2 * math.pi * (0.008 + 0.0016)
 PLUMB_RAMP = 0.10
 PLUMB_SHARE = {"cb": 0.70, "side_back": 0.30, "side_front": 0.0}
 PLUMB_FLOOR_TOL, PLUMB_CEIL = 0.010, 0.025
+# FALLS STRAIGHT (fit round 34, C179; Joe 2026-10-20: the jacket "should basically just fall straight down"): the tube cut
+# above made the plumb silhouette TAPER under the chest (Garrett flat 1112 -> 1055 less the lap; worn: chest 1167, waist
+# 1094, hem 1021, the hem 13-17 mm off the seat, front-view waist 375 / hem 415 vs the concept's 414 / 482) and the gate
+# passed it (waist_suppression <= the tube's surplus + 3 %). A plumb draft now takes nothing in (the tube cut is the
+# op's opt-in `tube: true`) and the row falls_straight checks the outcome on the flat pattern from just under the
+# underarm (FALL_TOP under the chest line) to FALL_HEM above the hem: (a) the FALL GIRTH (back + side pieces' spans, the
+# fronts from CF to their side seam: the laps and a cutaway hem are the front edge's style, not the body's fall) never
+# drops more than FALL_TOL of its top value; (b) every body seam (side-front, side-back, centre back: the let-out of all
+# its edges, both halves, against the vertical through its point at the top, each piece on its own grain) never comes
+# back in by more than FALL_SEAM_TOL below its widest point above: straight or flaring, never tapering.
+FALL_TOL = 0.02
+FALL_SEAM_TOL = 0.004
+FALL_TOP, FALL_HEM = 0.015, 0.010
 
 
 def plumb_target(m: dict) -> float | None:
@@ -262,6 +275,90 @@ def _lap(D_or_Bp: dict, y: float) -> float:
         s += _span_at(Q, y)
     half = not any("." in k for k in D_or_Bp["pieces"])
     return s * (2 if half else 1)
+
+
+def _xs_at(P: np.ndarray, y: float) -> list:
+    """The outline's crossings of the line y = const (half-open, as _span_at), sorted."""
+    n, xs = len(P), []
+    for i in range(n):
+        a, b = P[i], P[(i + 1) % n]
+        if (a[1] > y) != (b[1] > y):
+            xs.append(a[0] + (b[0] - a[0]) * (y - a[1]) / (b[1] - a[1]))
+    return sorted(xs)
+
+
+def _torso_seam_edges(Bp: dict) -> list:
+    """(piece name, outline, edge seam, +1 = the edge is the piece's max-x side) for every body-seam edge of the torso
+    pieces: a front's side seam (sideF), a side panel's sideF / sideB, a back's sideB and centre back."""
+    out = []
+    for nm, pc in Bp["pieces"].items():
+        if pc.get("role") not in ("front", "back"):
+            continue
+        P, N = np.asarray(pc["P"], float), pc.get("names") or {}
+        sg = 1.0 if np.median(P[:, 0]) > 0 else -1.0
+        if "cfNeck" in N or "break" in N:  # a front: its side seam is the side away from CF (x = 0)
+            out.append((nm, P, "sideF", sg))
+        elif "cbNeck" in N or "cbHem" in N:  # a back: centre back toward x = 0 (its own CB point), sideB the other side
+            cbx = float(P[N.get("cbHem", N.get("cbNeck")), 0])
+            mid = float(np.median(P[:, 0]))
+            out.append((nm, P, "cb", 1.0 if cbx > mid else -1.0))
+            if "sideB.a" in N:
+                out.append((nm, P, "sideB", -1.0 if cbx > mid else 1.0))
+        elif "sideF.b" in N and "sideB.b" in N:  # a side panel
+            f = 1.0 if P[N["sideF.b"], 0] > P[N["sideB.b"], 0] else -1.0
+            out += [(nm, P, "sideF", f), (nm, P, "sideB", -f)]
+    return out
+
+
+def fall_girth(Bp: dict, y: float) -> float:
+    """The FALL GIRTH at level y (C179): back and side pieces' spans + each front from CF (x = 0) to its side seam (the
+    laps past CF and a cutaway hem are the front edge's style), x2 for a half draft."""
+    s = 0.0
+    for nm, pc in Bp["pieces"].items():
+        if pc.get("role") not in ("front", "back"):
+            continue
+        P, N = np.asarray(pc["P"], float), pc.get("names") or {}
+        if "cfNeck" in N or "break" in N:
+            sg = 1.0 if np.median(P[:, 0]) > 0 else -1.0
+            xs = _xs_at(P, y)
+            s += max([sg * x for x in xs] + [0.0])
+        else:
+            s += _span_at(P, y)
+    half = not any("." in k for k in Bp["pieces"])
+    return s * (2 if half else 1)
+
+
+def falls_straight(Bp: dict, n: int = 40) -> dict:
+    """C179's reads on a flat jacket (see FALL_TOL): the fall girth profile from FALL_TOP under the chest line to FALL_HEM
+    above the hem (top, min, hem, the loss as a fraction of the top) and each body seam's let-out profile (m, + = out, all
+    its edges, both halves) against its point at the top: `taper` = the most it comes back in below its widest point
+    above, and where (m below the chest line)."""
+    m = (Bp.get("draft") or {}).get("meta") or {}
+    yc = float(m["chest_y"]) - FALL_TOP
+    hem = max(float(np.asarray(pc["P"])[:, 1].min()) for pc in Bp["pieces"].values()
+              if pc.get("role") in ("front", "back"))
+    ys = np.linspace(yc, hem + FALL_HEM, n)
+    G = np.array([fall_girth(Bp, y) for y in ys])
+    half = not any("." in k for k in Bp["pieces"])
+    seams = {}
+    for nm, P, seam, side in _torso_seam_edges(Bp):
+        xe, base = [], None
+        for y in ys:
+            xs = _xs_at(P, y)
+            x = (max(xs) if side > 0 else min(xs)) if xs else None
+            if x is not None and base is None:
+                base = x
+            xe.append(0.0 if x is None else side * (x - base))
+        seams.setdefault(seam, np.zeros(n))
+        seams[seam] = seams[seam] + np.asarray(xe) * (2 if half else 1)
+    out = {"ys": ys, "girth": G, "top": float(G[0]), "min": float(G.min()), "hem": float(G[-1]),
+           "loss": float((G[0] - G.min()) / max(G[0], 1e-9)), "seams": {}}
+    for seam, f in seams.items():
+        run = np.maximum.accumulate(f)
+        k = int(np.argmax(run - f))
+        out["seams"][seam] = {"taper": float(run[k] - f[k]), "at": float(m["chest_y"] - ys[k]),
+                              "hem": float(f[-1]), "max_in": float(-f.min())}
+    return out
 
 
 def _plumb_cut(D: dict) -> None:
@@ -313,7 +410,8 @@ def op_waist_suppression(D: dict, waist_ease: float | None = None, share: dict |
         raise ValueError(f"waist_suppression silhouette {silhouette!r}: one of {SILHOUETTES}")
     if silhouette == "plumb":
         D["log"].append("waist suppression R8 silhouette plumb: none (CB, side panels and dart untouched; Joe 2026-10-20)")
-        _plumb_cut(D)
+        if o.get("tube"):  # (C94's tube cut, opt-in since C179: it tapers under the chest, falls_straight refuses it)
+            _plumb_cut(D)
         return
     if silhouette == "straight":  # (the suit's CB / dart mm, no side take-ins: no gain, which would scale them up)
         share = dict(SHARE, **(share or {}), **{k: 0.0 for k in STRAIGHT_SIDES})
@@ -914,13 +1012,18 @@ def tailor_rows(Bp: dict, tape: dict, g: dict | None = None, button_mm: float = 
         sup = (ch - wa) / max(ch, 1e-9) * 100
         sil = next((op_.get("silhouette", "suit") for op_ in ((g.get("design") or {}).get("ops") or [])
                     if op_.get("op") == "waist_suppression"), "suit")
+        tube = any(op_.get("op") == "waist_suppression" and op_.get("tube")
+                   for op_ in ((g.get("design") or {}).get("ops") or []))
+        if sil == "plumb" and not tube:  # (C179: the fall girth, the front edge's laps / cutaway out: they're style)
+            ch, wa = fall_girth(Bp, meta["chest_y"]), fall_girth(Bp, meta["waist_y"])
+            sup = (ch - wa) / max(ch, 1e-9) * 100
         if sil == "plumb":  # (fit round 24: nothing taken in; the waist >= the chest less the drape, hips >= waist)
             hy_ = float(meta.get("hips_y", meta["waist_y"]))
             # the narrowest row from the chest line to the hip line (the pinch is not always at the waist line)
             ys_ = np.linspace(float(meta["chest_y"]), hy_, 25)
-            gs_ = [torso_span(Bp, y_, half=False) for y_ in ys_]
+            gs_ = [(torso_span(Bp, y_, half=False) if tube else fall_girth(Bp, y_)) for y_ in ys_]
             wmin, hp_ = min(gs_), gs_[-1]
-            tgt = plumb_target(tape)
+            tgt = plumb_target(tape) if tube else None
             if tgt is not None:  # (C94: the tube's girth under the chest, floor AND ceiling; less the lap)
                 ys2 = np.linspace(float(meta["chest_y"]) - PLUMB_RAMP, hy_, 20)
                 es = [torso_span(Bp, y_, half=False) - _lap(Bp, y_) for y_ in ys2]
@@ -935,7 +1038,7 @@ def tailor_rows(Bp: dict, tape: dict, g: dict | None = None, button_mm: float = 
             else:
                 row("waist_plumb", src(8), wmin * 1000, f">= {ch * (1 - PLUMB_TOL) * 1000:.0f}", 0,
                     ok=wmin >= ch * (1 - PLUMB_TOL) and hp_ >= wmin - 0.005,
-                    why=f"silhouette plumb (Joe 2026-10-20 'fall straight down'): the narrowest flat girth chest -> hips "
+                    why=f"silhouette plumb (Joe 2026-10-20 'fall straight down'): the narrowest flat fall girth (C179) chest -> hips "
                         f"{wmin * 1000:.0f} ({(ys_[int(np.argmin(gs_))] - ys_[0]) * 1000:+.0f} mm from the chest line) >= chest "
                         f"{ch * 1000:.0f} x {1 - PLUMB_TOL:.2f}, hips {hp_ * 1000:.0f} >= waist; a pinch here is the block's "
                         f"fitted side seam or a CB contour")
@@ -946,11 +1049,24 @@ def tailor_rows(Bp: dict, tape: dict, g: dict | None = None, button_mm: float = 
         elif sil == "plumb":
             # (C94: a tube-sized plumb cut takes the chest's surplus over the tube in under the chest, then hangs
             # straight: the allowed reduction is that surplus + PLUMB_TOL)
-            tgt_ = plumb_target(tape)
+            tgt_ = plumb_target(tape) if tube else None
             cap = PLUMB_TOL if tgt_ is None else max(PLUMB_TOL, (ch - _lap(Bp, meta["chest_y"]) - tgt_) / ch + PLUMB_TOL)
             row("waist_suppression", src(8), sup, f"<= {cap * 100:.0f} % (plumb)", 0, ok=sup <= cap * 100,
-                units="% of chest", why=f"chest {ch * 1000:.0f} / waist {wa * 1000:.0f} mm on the flat pattern; "
-                                        f"silhouette plumb: only the chest's surplus over the tube taken in (C94)")
+                units="% of chest", why=f"chest {ch * 1000:.0f} / waist {wa * 1000:.0f} mm on the flat pattern; " +
+                                        (f"silhouette plumb: only the chest's surplus over the tube taken in (C94)" if tube else
+                                         "silhouette plumb: nothing taken in (fall girths, C179)"))
+            fs = falls_straight(Bp)
+            bad = {k: v for k, v in fs["seams"].items() if v["taper"] > FALL_SEAM_TOL}
+            sm = ", ".join(f"{k} {v['taper'] * 1000:.1f} at {v['at'] * 1000:.0f} (hem {v['hem'] * 1000:+.0f})"
+                           for k, v in sorted(fs["seams"].items()))
+            row("falls_straight", src(8), fs["loss"] * 100, f"girth loss <= {FALL_TOL * 100:.0f} %, every seam "
+                f"taper <= {FALL_SEAM_TOL * 1000:.0f} mm", 0, ok=fs["loss"] <= FALL_TOL and not bad,
+                units="% of the fall girth under the underarm",
+                why=f"silhouette plumb (Joe 2026-10-20: 'should basically just fall straight down', C179): fall girth "
+                    f"(fronts CF -> side seam) {fs['top'] * 1000:.0f} under the underarm, min {fs['min'] * 1000:.0f}, hem "
+                    f"{fs['hem'] * 1000:.0f}; seams' come-back-in below their widest (mm, at mm under the chest line; "
+                    f"hem let-out): {sm}" + ("; the op's tube cut (C94) takes the girth in under the chest" if tube
+                                             else ""))
         else:
             row("waist_suppression", src(8), sup, "11-20 %", 0, ok=11.0 <= sup <= 20.0, units="% of chest",
                 why=f"chest {ch * 1000:.0f} / waist {wa * 1000:.0f} mm on the flat pattern (Jaeger reads 13-17 %)")
