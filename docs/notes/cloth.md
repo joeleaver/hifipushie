@@ -10936,3 +10936,17 @@ turned, points pulled) were tuned on bending-free cloth; the stand's rest is the
   Fit: the interfaced triangles' threads capped at 2 % each round (_thread_limit) while keyed bending acts.
 - Like-for-like jacket threads (thr.py / hem30): c0_none (no keyed, no holds) 11.48 vs c2_none (keyed) 9.62: the
   keyed FIT lowered threads; the "7.42 -> 9.6" was against k3, whose holds supplied the shape.
+- h2 (session-1 band, FIT_HINGE_W 2, NO threads first) no hold: edge 46-60 / 30-48 / 37-55 (asymmetric), lapel
+  108/141, hem 441, threads 15.67: stronger stiffness without the hierarchy is worse everywhere (session 1's NEXT (1)
+  is answered: no).
+- t1 (band, W1, THREADS FIRST fit, no plumb hold) no hold, kb ops (no styling bend): edge 59-67 / 62-67 / 78-79
+  (concept 71/78/94; c2_none 52-58/67-72/82-86; k3 60-64/74-77/101), V 228 (237), lapel 125/136 (127/134: the best
+  yet), hem+30 470 (482), waist 429 (414), ahead 30-38; fit grain p99 7.2 (c2 8.9; front canvas 6.9 vs 10.0 by
+  thr.py). Styled threads p99 11.90 (c2_none 9.62): the rise is in the STYLING of plain cloth (front plain p99 67 %
+  by thr.py: a local tear / fold; styling had no threads-first without bending). A/B running: chainD (t1_tfa:
+  GP_THREAD_FIRST_ALL=1; t1_b5: styling bend W5 + TF).
+- SHIRT under threads first (shdiag on shirt_s0, wf_simon): full ops no bend ALL PASS 6.47 (unchanged); full ops +
+  bend W5 ALL PASS 7.12 (s1 without TF: 2 rows fail, 12.2); v3 simpler ops + bend W5 / W1: 2 rows FAIL (edge max
+  turn 52 deg, collar crumple p95 0.316 / 0.32), threads 6.62 / 6.56 (s1 without TF: all pass at 12.5). So v3's pass
+  was bought with stretch; under the rule it fails. The shirt keeps today's ops; the styling bend + TF passes every
+  row at +0.65 threads: not "no worse", stays off.
