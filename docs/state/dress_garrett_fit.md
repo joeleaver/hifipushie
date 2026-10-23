@@ -23,8 +23,8 @@ SEAM (coordinator, Joe on r38's front|side seam, TOP): measured: seam at 91-93 d
 66-79), fold across it 34-110 deg in the fit (r34 0-26): PLUMB_HOLD pins the seam LINE, the panels crease along it.
 plumb hold "band" (C188 candidate, default OFF; KAT test_plumb_hold_band_moves_the_panels_with_their_seam): b40 flattens
 the side|back seam (fold 2-15 vs 21-60) but NOT front|side (40-103 in the fit): its fold has another source (the front
-panel's own hang vs a side panel held plumb). b80 was running at handover (f_b80 / s_b80s / seam_b80 logs in $FR39).
-NEXT (precise): 1) read seam_b80.log; if front|side is still folded, op-by-op on g1's FIT (not styling) to find what
+panel's own hang vs a side panel held plumb). b80: side|back flat, front|side fit still 32-85 (styled 4-64): the band alone does not fix it.
+NEXT (precise): 1) op-by-op on g1's FIT (not styling) to find what
 folds the front|side seam: try plumb_hold seams [["side","back"]] only (front|side free) + band, and the front panel's
 side edge held with the side panel (band on the front piece only). Render Joe's crop (crop clay wholefront (10,280,190,880))
 + side for g1 / best; seam angle target: just behind the silhouette (>= ~100 deg) or flat at 90. 2) Then r39 steps 2

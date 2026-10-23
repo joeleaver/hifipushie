@@ -10730,3 +10730,7 @@ Base: r38's k3 (asm_k3.pkl copied; fit_g1.pkl a read-only copy, not a symlink). 
   panel held plumb. b80 was still running at handover ($FR39/f_b80.log, s_b80s.log, seam_b80.log). No renders yet.
   Handover at ~100 tool calls; steps 2-4 and the LOOK review not started; the 17-file suite not run on this branch
   (cloth_layers 24 passed; pattern_form plumb_hold tests 2 passed).
+  b80 (band 80 mm), fold deg by depth 250..700: fit front|side L 6/32/70/65/55/52/49/72/85/85, R 5-76 (still folded);
+  side|back 2-36 (flat). Styled b80s front|side L 4/23/64/11/7/14/34/7/10/7, R 11-55: better than k3 (4-143) and b40s
+  but still 35-64 deg at 300-350 (under the arm) and R 39-55 at 300-450. A wider band doesn't flatten front|side in the
+  fit: confirms the fold there is not the seam line's pin alone. All background jobs ended (fits39.done).
