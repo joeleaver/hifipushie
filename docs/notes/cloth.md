@@ -10563,3 +10563,26 @@ Muslin fit, styling, no sim; judged beside the concept only. Design: falls strai
   r33; sides straight; side_p2sc.png: the back now falls plumb from the blades (right); upper_three: lapels / collar as
   r33. sp2sc: hem width right but flared side corners, fronts still nearly shut.
 - Suite (17 files, capped, -rs, HIFIPUSHIE_HOME=workspace + ASSETS): 291 passed, 4 xfailed, 0 skipped, PYTEST_EXIT 0 ($FR34/suite.log, 11.7 min).
+
+## fit round 35 (2026-10-23; $FR35 = /mnt/data/hifipushie/dress_garrett/fit_round35; branch claude/garrett-jacket-r35)
+Muslin fit, styling, no sim; judged beside the concept only. Fault in: r34's side seam slid forward in the fit (C180).
+- Code (C181): pattern_form.PLUMB_HOLD / plumb_hold_for / plumb_seam_pins (assemble kwarg plumb_hold; on_form passes it;
+  a y-only pin needs its own factor: system() returns Ax, Ayz, Ay) and garment_pull.plumb (styling op "plumb":
+  borders laid on the vertical through their tops, staged, until a thread would stretch). KATs: leaning-body tube
+  (without the hold the seams go > 30 mm forward, with it <= 3 / 5 mm), slid sheet (plumb op).
+- A/B (fit35.py = on_form on the stored v5 spec with garment edits; fs35.sh; path35.py = the seam's path; tab35.sh):
+  edge 450/550/650 | waist / hem | side line | V | lapel 150 (concept 71/78/94 | 414/482 | <=20 | 237 | 127/134):
+  r34 p2s 24/11/6 | 384/425 | 40 | 221 | 135/131
+  a1s fit xy hung   77/124/168 | 522/507 | box (chest 477) | 239 | 141/139
+  a2s fit y hung    59/90/124 | 434/470 | 21 | 232 | 137/136   <- chosen (default); g1s via the gate = identical
+  a3s fit y live    45/71/98 | 378/459 | 32 (pinched, hem flared) | 228 | 136/134
+  a4s fit xy live   44/62/85 | 466/456 (sweep 537) | box (chest 448) | 226 | 135/133
+  b1s style xy+kb   16-50/5-51/6-5 | 403/467 | 36 | 216 | 130/128 (plumb op stopped on stretch at 25 mm)
+  b2s style y+kb    10-40/0/0 | 388/441 | 38 | 214 | 130/127
+  Seam (front|side, L) at the hem: r33 y -66, r34 -107 (slid), a2 -27, a3 -53. Length below HPS a2s 727 (r34 757, concept 748).
+- Gate g1 (gate35.py, stored spec + code default): PASS_WAIVED 17b169ab / e31aac35, falls_straight PASS. Fit threads p99 7.4.
+- LOOK (mine, check/*_g1sc.png): the fronts are OPEN now (r34 read closed) and the lapels / collar are as r34. Faults:
+  the lower fronts swing out past the concept toward the hem (650: 124 vs 94; corners thrown out to the sides like coat
+  tails), the hem flares (side line -30 at the hem), the fronts are 20-30 mm short (727 vs 748: the swing lifts the corner),
+  the side view is a sack (front panel stands well off the belly), shirt show-through patches at the armholes / chest sides
+  (509 vs r34 475 verts; covered, culled later). Flaps lie on the fronts (sunk 0/25) but ride 49-51 mm off the body.
