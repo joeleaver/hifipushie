@@ -10397,3 +10397,4 @@ columns, C165). Shirt = gc_garrett's shirt on the muslin fit, styled as worn (on
   through the jacket at both shoulders / upper chest (the shirt under the pressed layer pokes out; the visibility cull
   keeps them because they're seen); the front edges curl inward at the waist into a rope fold (belly crumple 12-14
   mm); the pocket flaps are dents; the hem is narrow (426 vs 482) and the body boxy; the shirt placket is lumpy.
+- Suite (17 files, capped, -rs, HIFIPUSHIE_HOME=workspace + ASSETS): 283 passed, 4 xfailed, 0 skipped, pytest exit 0 ($FR30/suite.log, 16 min).
