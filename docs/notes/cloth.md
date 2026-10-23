@@ -10068,3 +10068,19 @@ COLLAR_ROLL 20 (r29c20): jacket top 38 / 32 / 19, shirt shows 14 / 14 / 14 (tell
 11.0 -> 14.3 %. COLLAR_ROLL 16 (r29c16): CB top stays 38 (the fall wraps the shirt collar's top), side fall 1-11 (no
 longer covers the stand's seam at the side): worse. KEPT roll 20 mm. R16's 25-30 mm is a jacket over a ~45 mm shirt
 collar; gc1's is 36: waived by name in the gate (waive29.json), ledger row C160.
+Step 2, the pattern + gate. Combined pattern r29p1 = COLLAR_ROLL 20 + CUTAWAY {"angle_deg": 10, "start": 0.2,
+"end": 0.55} (flatcut29.py, edge cut back from its line at mm below the neck point: Jaeger's default 2.5 deg: 600 1 /
+650 4 / 700 7 / 750 12 / 790 27; r29p1: 7 / 16 / 26 / 39 / 62, the concept's ~65 at the hem). Closed fit r29p1: jacket
+p99 15.7 % (base 11.0); collar CB 39 / az45 30 / side 5 (the side lay lower than r29c20's 19: the fit isn't stable at
+the side). Gate (gate29.py: needs job29's env LAPEL_W / ROLL_R / SLEEVE_OVER and pj.STAND_RUN_OFF, else another
+pattern hash): r29base PASS_WAIVED (daaf6c1a); r29p1 PASS_WAIVED abfa0f45 (= the placed keys) with named waivers
+front_cutaway_angle (10 vs Jaeger 2.5), collar_stand / collar_stand_cb (C160), notch (angle 57.9 vs 60-90, came with
+the 20 mm roll; base passes). C161: rounds 25-28's releases carried round 19's gate keys (g25.py): fixed in
+cloth_release.write (refuses another pattern's keys) + g29.py uses the placed pattern's keys.
+Lapel / V read (lapel29.py, m10 rows 100-300): the narrow V is NOT the lapel's width. Released r28h: outer 137 / 126 /
+110 / 82 / 58 / 43 at 100 / 120 / 150 / 200 / 250 / 300 vs the concept 148 at 93, 127 at 148, 110 at 261, 87 at 341;
+the break point opens to 61 off CF but the turned face at 250-300 stays INSIDE it (58 / 43): the roll line above the
+break doesn't swing open with the release (closed fit roll 33 / 8 / 0 at 150 / 250 / 350, round 15), so the lapel lies
+as on a buttoned jacket. Round 15 matched the lapel's face width to the concept (67-39 vs 68-44 at 120-220): widening
+the pattern lapel would make the face too wide. Lever tried: lapel=1 in g29.py (soft pins on the lapel's outer edge
+break -> lapelPoint carried out to the concept's front-view edge on the chest's surface) vs r29a (r28h's recipe).

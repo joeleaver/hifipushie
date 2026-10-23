@@ -386,12 +386,26 @@ def job(res: dict, X: np.ndarray, g: dict | None = None, under: dict | None = No
     if dec:
         cfg["declared"] = dec
     info["seconds_gravity"] = (frames + settle_frames) / 24.0
+    if res.get("gate_keys"):  # (C161: write() checks the gate keys it is given are this pattern's)
+        cfg["_gate_keys"] = dict(res["gate_keys"])
     return cfg, arrays, info
 
 
+class GateKeyMismatch(ValueError):
+    pass
+
+
 def write(job_dir: Path, cfg: dict, arrays: dict, names: list, gate: dict | None) -> Path:
-    """The job folder (cloth_job.write) with the pattern gate's keys beside it (run_zozo refuses without a PASS)."""
+    """The job folder (cloth_job.write) with the pattern gate's keys beside it (run_zozo refuses without a PASS).
+    C161 (garrett jacket fit round 29): the keys must be the drafted pattern's own (job() records res["gate_keys"]
+    in cfg["_gate_keys"], dropped before writing): rounds 25-28 wrote round 19's keys into every release job, so
+    run_zozo checked an older pattern's PASS record. A job built from another pattern's keys is refused."""
     from . import cloth_job
+    cfg = dict(cfg)
+    own = cfg.pop("_gate_keys", None)
+    if own and gate and (own.get("pattern"), own.get("body")) != (gate.get("pattern"), gate.get("body")):
+        raise GateKeyMismatch(f"gate keys {gate.get('pattern')} / {gate.get('body')} are not this job's pattern "
+                              f"{own.get('pattern')} / {own.get('body')}: pass res['gate_keys'] (C161)")
     jd = cloth_job.write(Path(job_dir), cfg, arrays, names)
     cloth_job.write_gate_keys(jd, gate)
     return jd
