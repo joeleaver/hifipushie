@@ -558,3 +558,46 @@ def test_hidden_removes_under_cloth_poking_out_through_the_outer():
     assert not h0[bump].all()  # (seen through the jacket: kept by the view rule alone)
     assert h1[bump].all() and info["pierced_out"] > 0, info
     assert not h1[top].any()  # (beyond the jacket's open end: drawn)
+
+
+def test_hidden_removes_under_cloth_touching_or_poking_through_a_coarse_outer():
+    """C187 (garrett jacket fit round 39: white shards at the sleeve heads / upper arms): on a COARSE outer sleeve
+    (~16 mm edges, Garrett's jacket sleeve ~12 mm) pierced_out's "outer cloth all round" read on vertices alone found
+    angular gaps over 120 deg in the middle of the cloth (5 neighbours), so a shirt sleeve poking 3 mm through was
+    kept; and shirt lying within ~1-3 mm UNDER the jacket (closer than the views' HIDE_TOL, out of reach of the old
+    -1 mm band) was neither covered nor pierced: drawn with cloth thickness it z-fights through (now `touch`:
+    under the outer by < 3 mm with the outer or body in front of it in every judged view). Arm tubes round z:
+    body r 45, shirt r 58 with a bump to r 63, jacket r 60 (24 round, 15 mm rows, open ends): the bump AND the shirt
+    touching the jacket are hidden by default; the shirt beyond the jacket's open end stays drawn."""
+    from hifipushie import cloth, cloth_layers as cl
+
+    def tube(r, z0, z1, nz, na, bump=None):
+        th = np.linspace(0, 2 * np.pi, na, endpoint=False)
+        V = []
+        for z in np.linspace(z0, z1, nz):
+            for t in th:
+                rr = bump if bump is not None and abs(z - 0.15) < 0.02 and abs(np.angle(np.exp(1j * (t + np.pi / 2)))) < 0.3 else r
+                V.append((rr * np.cos(t), rr * np.sin(t), z))
+        F = []
+        for i in range(nz - 1):
+            for k in range(na):
+                a, b, c, d = i * na + k, i * na + (k + 1) % na, (i + 1) * na + k, (i + 1) * na + (k + 1) % na
+                F += [(a, b, d), (a, d, c)]
+        return np.array(V), np.array(F)
+
+    Vb, Fb = tube(0.045, -0.05, 0.40, 31, 48)
+    Vs, Fs = tube(0.058, 0.0, 0.36, 73, 96, bump=0.063)
+    Vj, Fj = tube(0.060, 0.0, 0.30, 21, 24)
+    body = cloth.Body({"V": Vb, "F": [list(f) for f in Fb], "J": {}})
+    under = {"V": Vs, "mesh": {"F": Fs}}
+    outer = {"V": Vj, "F": Fj, "mesh": {"F": Fj}, "body": body}
+    r = np.hypot(Vs[:, 0], Vs[:, 1])
+    bump = (r > 0.062)[Fs].all(1)
+    mid = ((Vs[:, 2] > 0.05) & (Vs[:, 2] < 0.25))[Fs].all(1)
+    top = (Vs[:, 2] > 0.33)[Fs].all(1)
+    assert bump.sum() > 4
+    po = cl.pierced_out(Vs, Vj, Fj, Vb)
+    assert po[Fs[bump]].all()  # (poking through the middle of a coarse sleeve: covered all round)
+    h = cl.hidden(under, outer)
+    assert h[bump].all() and h[mid].mean() > 0.9, (h[bump].mean(), h[mid].mean())  # (before C187: 0.016)
+    assert not h[top].any()  # (beyond the jacket's open end: drawn)

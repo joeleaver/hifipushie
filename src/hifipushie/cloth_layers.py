@@ -649,6 +649,11 @@ def _face_components(F: np.ndarray, sel: np.ndarray) -> np.ndarray:
 
 
 PIERCE_OUT = 0.0005  # m: under cloth further than this outside the outer cloth over it pokes through (C183)
+PIERCE_TOUCH = 0.0045  # m: under cloth closer than this UNDER the outer cloth over it, where the outer lies all round it
+# within TOUCH_EDGE, pokes through or z-fights it when drawn (C187)
+TOUCH_EDGE = 0.06  # m: ... a wider "all round" than PIERCE_EDGE: cloth a few mm under the outer near an opening (a neck,
+# a front edge) is seen through it from the judged views' elevations; the sleeve-head specks lay >= ~100 mm from any
+# opening (fit round 39)
 PIERCE_REACH = 0.03  # m: the outer cloth "over" an under vertex: its nearest outer vertex within this
 PIERCE_SIDE = 0.025  # m: ... and no further than this to the side of that vertex's normal (jacket edges ~20 mm)
 PIERCE_EDGE = 0.03  # m: an outer vertex covers when its own cloth lies all round it within this (no edge / fold / opening)
@@ -658,7 +663,8 @@ GAP_COVER = np.radians(120.0)  # ... "all round": no angular gap wider than this
 def hidden(under: dict, outer: dict, margin: float = 0.03, reach: float = 0.06, edge_margin: dict | None = None,
            pierce: float = 0.002, rule: str = "visibility", dirs: np.ndarray | None = None,
            tol: float = HIDE_TOL, rings: int = HIDE_RINGS, island_faces: int = ISLAND_FACES, px: float = 0.002,
-           info: dict | None = None, pierce_out: float | None = PIERCE_OUT) -> np.ndarray:
+           info: dict | None = None, pierce_out: float | None = PIERCE_OUT,
+           touch: float | None = PIERCE_TOUCH) -> np.ndarray:
     """Per triangle of the under garment: True where NO judged view can see it for the outer garment (the B cull:
     renders and looks draw only the rest). rule "visibility" (default, fit round 28):
     - a vertex is hidden when the outer garment (its triangles, both sides: the facings show through an open front) or
@@ -681,6 +687,12 @@ def hidden(under: dict, outer: dict, margin: float = 0.03, reach: float = 0.06, 
     cloth round a poke, under the outer by less than `tol` (a view can't call it covered), goes with it: counted alone
     (369 pokes) the visible grow and the island rule put every patch back (+2 faces hidden), so they are hidden last,
     after the connectivity rules; made pieces (collar, cuffs) never. None: off.
+    touch (C187, fit round 39: white shards at Garrett's sleeve heads): an under vertex in the same all-round cover lying
+    less than `touch` UNDER the outer cloth (by its nearest vertex: on a coarse sleeve, ~12 mm edges, that read is off by
+    a few mm; the specks were within +-3 mm of the jacket's surface), where the outer cloth lies all round it within
+    TOUCH_EDGE (60 mm: away from the openings it could be seen through), counts as pierced. Tried and dropped: a
+    per-view test (z-buffer gaps) to tell a poke from cloth seen through an opening: grazing views and 2 mm pixels on
+    the silhouettes read the specks as seen in 8 of 72 views. Drawn with cloth thickness it pokes / z-fights. None: off.
     rule "margin": the old rule (`_hidden_margin`: margin / reach / edge_margin / pierce), kept for a CLOSED fit worn
     open (cloth_check.visible_fit_rows predicts the opened V by edge margins: no view of the closed fit shows it).
     info: filled with counts (hidden vertices, islands merged, made pieces kept)."""
@@ -697,10 +709,15 @@ def hidden(under: dict, outer: dict, margin: float = 0.03, reach: float = 0.06, 
     occ_V, occ_F = np.concatenate(oV), np.concatenate(oF)
     dirs = judged_dirs() if dirs is None else np.asarray(dirs, float)
     hidden_v = occluded(Vu, occ_V, occ_F, dirs, px=px, tol=tol).all(0)
-    n_pierce = 0
+    n_pierce = n_touch = 0
     if pierce_out is not None and body is not None and len(getattr(body, "V", [])):
         po = pierced_out(Vu, Vo, Fo, np.asarray(body.V, float), outer.get("mesh"), tol=pierce_out - tol)
         n_pierce = int((po & ~hidden_v).sum())
+        if touch is not None:  # (C187: touching the covering outer from under it, away from its openings)
+            tc = pierced_out(Vu, Vo, Fo, np.asarray(body.V, float), tol=-touch, edge=TOUCH_EDGE) & ~po & ~hidden_v
+            n_touch = int(tc.sum())
+            po = po | tc
+            n_pierce += n_touch
     E = np.unique(np.sort(np.r_[Fu[:, [0, 1]], Fu[:, [1, 2]], Fu[:, [2, 0]]], 1), axis=0)
     vis = _grow(~hidden_v, E, rings)
     hid = (~vis)[Fu].all(1)
@@ -744,7 +761,7 @@ def hidden(under: dict, outer: dict, margin: float = 0.03, reach: float = 0.06, 
     if info is not None:
         info.update(hidden_vertices=int(hidden_v.sum()), directions=int(len(dirs)), hidden_faces=int(hid.sum()),
                     faces=int(len(Fu)), holes_kept=n_hole, islands_grown=n_isl, made_kept_whole=kept_made,
-                    pierced_out=n_pierce)
+                    pierced_out=n_pierce, touching=n_touch)
     return hid
 
 
@@ -764,16 +781,23 @@ def pierced_out(Vu, Vo, Fo, body_V, mesh=None, tol: float = PIERCE_OUT, reach: f
     n /= np.linalg.norm(n, axis=1, keepdims=True) + 1e-12
     _d, bi = cKDTree(np.asarray(body_V, float)).query(Vo)
     n *= np.where(((Vo - np.asarray(body_V, float)[bi]) * n).sum(1) < 0, -1.0, 1.0)[:, None]
-    dist, j = cKDTree(Vo).query(Vu)
+    used = np.unique(Fo)  # (only cloth: vertices on no triangle (cut away above an opening) neither cover nor lie over)
+    dist, j = cKDTree(Vo[used]).query(Vu)
+    j = used[j]
     rel = Vu - Vo[j]
     out = (rel * n[j]).sum(1)
     lat = np.linalg.norm(rel - out[:, None] * n[j], axis=1)
     cand = (dist < reach) & (lat < side) & (out > tol)
-    tree = cKDTree(Vo)
+    # (fit round 39, C187: "all round" is read on the outer CLOTH, sampled on its triangles (corners, edge midpoints,
+    # centroids), not on its vertices only: on a coarse sleeve (~12 mm edges) a vertex has 5 neighbours beyond
+    # edge * 0.3 and their angular gaps passed 120 deg in the middle of the cloth, so shirt poking through the jacket's
+    # upper arm was kept: the sleeve-head specks)
+    S = np.concatenate([Vo[used], Vo[Fo].mean(1)] + [(Vo[Fo[:, a_]] + Vo[Fo[:, b_]]) / 2 for a_, b_ in ((0, 1), (1, 2), (2, 0))])
+    tree = cKDTree(S)
     covers = {}
     for jj in np.unique(j[cand]):  # (the outer cloth lies ALL ROUND it: no free edge, fold or opening within `edge`)
         nb = np.asarray(tree.query_ball_point(Vo[jj], edge))
-        d = Vo[nb] - Vo[jj]
+        d = S[nb] - Vo[jj]
         d -= (d @ n[jj])[:, None] * n[jj]
         e1 = np.cross(n[jj], [0.0, 0.0, 1.0] if abs(n[jj][2]) < 0.9 else [1.0, 0.0, 0.0])
         e1 /= np.linalg.norm(e1) + 1e-12

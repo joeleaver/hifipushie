@@ -10681,3 +10681,23 @@ Muslin fit, styling, no sim; judged beside the concept only. Same fit (fit_g1.pk
 - Step 3: fault 3 checked after 1 and 2: edge 650 still 101 (k3; profile L 95 / R 100), set by the plumb swing (op 4: 102)
   and hardly touched by the lay-back / smooths; not fixed this round. Sleeve-head shard specks (C183 leftovers) not touched.
 - Suite (17 files, capped, -rs): 297 passed, 4 xfailed, PYTEST_EXIT 0 ($FR38/suite.log, 19 min).
+
+## fit round 39 (2026-10-23; $FR39 = /mnt/data/hifipushie/dress_garrett/fit_round39; branch claude/garrett-jacket-r39)
+Base: r38's k3 (asm_k3.pkl copied; fit_g1.pkl a read-only copy, not a symlink). Scripts copied from $FR38 with paths moved.
+- Step 1, the sleeve-head / upper-arm SPECKS (speck39.py, sd39.py, why39.py): shirt, not the jacket's own back faces.
+  208 kept shirt vertices seen in the speck region (|x| > 130, above the elbow): yoke 66, fronts 46, sleeves 96; nearest
+  jacket piece back / front / top / under sleeve. Against the jacket SURFACE (closest point on its triangles) they lie
+  -3..+3 mm (p5..p95): cloth touching the jacket, poking through by a hair or z-fighting it when drawn with thickness.
+  Two holes in C183's pierced_out: (a) "outer all round" was read on VERTICES: the jacket sleeve's ~12 mm edges leave 5
+  neighbours beyond 9 mm, gaps 125-148 deg: the 3 mm poke on the front of each upper arm (the solid patch) failed it;
+  (b) shirt 1-3 mm UNDER the jacket (chords, a nearest-vertex normal off by ~1 mm at 10 mm to the side) sat between the
+  poke band (> -1 mm) and the views' HIDE_TOL (1.5 mm in front): neither covered nor pierced, drawn.
+  Fix (C187, cloth_layers): the cover test samples the outer's triangles (corners, edge midpoints, centroids; only
+  vertices on a triangle: orphans above a cut opening covered it in the collar fixture), and hidden(touch=PIERCE_TOUCH
+  4.5 mm, TOUCH_EDGE 60 mm): under cloth within 4.5 mm under the outer, where the outer lies all round within 60 mm,
+  is pierced too. Sweep (k3 recull, wholefront / side / upper_three clay, check/speck_*.png): cover fix alone (c0)
+  leaves the shards; poke band -3 / -4.5 mm with 30 mm cover (c1.5 / c3) clears them but c3 hides cloth seen through
+  an opening in the collar fixture (test_cull_never_hides_cloth_a_judged_view_sees); per-view z-buffer guards (shirt
+  never seen with clear air / with the outer's inside behind it) kept 113 of 142 specks (grazing views, 2 mm pixels on
+  the silhouette): dropped. Final (te = default): seen-in-region 208 -> 17, hidden faces 15401 -> 16439, collar / V kept.
+  Test: test_cloth_layers::test_hidden_removes_under_cloth_touching_or_poking_through_a_coarse_outer (before: mid 0.016).

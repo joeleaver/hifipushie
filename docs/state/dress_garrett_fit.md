@@ -1,4 +1,4 @@
-# STATE: dress_garrett_fit (Garrett jacket over the muslin shirt: muslin form fit + styling, NO sim) -- 2026-10-23, round 38
+# STATE: dress_garrett_fit (Garrett jacket over the muslin shirt: muslin form fit + styling, NO sim) -- 2026-10-23, round 39
 
 DESIGN FACTS (Joe, settled): the jacket is worn OPEN, unbuttoned; it falls straight down (no waist suppression, side
 line plumb). Put "the reference jacket is worn open, unbuttoned" in every review's context. Renders show the OPEN jacket
@@ -17,7 +17,9 @@ unchanged; threads p99 7.42 (fronts 8.43) | 7.73 (8.79).
 LOOK (check/*_k3c.png, check/joespot_before_after.png): the inward curve under the break is gone, both edges run straight
 and plumb from the break to the cut-away's top, then the cut-away; the sides fall straight; upper half as r37. Still: the
 edge is plumb (64) where the concept leans out a little (71 at 450); hem+30 38 narrow; shard specks at the sleeve heads.
-NEXT: (3) 650 = 101 vs 94 (the cut-away below cutawayTop opens 7 mm too far); (4) sleeve-head specks; the edge lean (450).
+ROUND 39 (in progress, $FR39 = /mnt/data/hifipushie/dress_garrett/fit_round39): step 1 done: sleeve-head specks = shirt touching
+the jacket (-3..+3 mm), culled by C187 (cloth_layers touch band + triangle-sampled cover); seen 208 -> 17.
+NEXT: step 2 (650 overshoot: swing stop vs the straight edge), 3 (hem 444 vs 482: fit or hold), 4 (450 lean), then LOOK review.
 ## Method ($FR38 = /mnt/data/hifipushie/dress_garrett/fit_round38; run.sh: this worktree; fit_g1.pkl read-only)
 sw38.sh <tag> <params json> (mkv38 variant of the kb style on g1 + reads, no render); tab38.sh <tags>; sty38.sh g1 <tag> (default
 kb + reads + sheets); op38.py (op by op); flare38.py (per-piece hem moves); crop38.py (Joe's spot crop); diag38.py (forced shares).
