@@ -5,7 +5,7 @@ line plumb). Put "the reference jacket is worn open, unbuttoned" in every review
 only. Covered show-through is not a fault (C153); the shirt patches at the shoulders are culled later, don't chase them.
 PROCESS: muslin fit (worn open, C171), styling by the kind's wear as data (C174 / C178), remeasurement; no sim; judged
 beside the concept only (C165). Shirt = gc_garrett's shirt as worn, not tuned here. Jacket hps = "corner".
-STATE: round 37 (suite: see NEXT). PATTERN unchanged (gc_garrett v5; gate g1 PASS_WAIVED). FIT = r35's g1 (PLUMB_HOLD, C181).
+STATE: round 37; suite (17 files, capped -rs) PYTEST_EXIT 0, 296 passed, 4 xfailed ($FR37/suite.log). PATTERN unchanged (gc_garrett v5; gate g1 PASS_WAIVED). FIT = r35's g1 (PLUMB_HOLD, C181).
 STYLING (default, kb jacket.wear.open): hold above break, relax, SLIDE (C184: un-lap, the lapped edge slid round the body
 keeping its offset, ramp break -> cutawayTop, side + back following, until stretch: half the lap), plumb SWING (C182, now
 28 deg), lay-back, smooths, hem down, relax. CULL C183 (pierce_out).

@@ -10650,3 +10650,4 @@ Muslin fit, styling, no sim; judged beside the concept only. Same fit as r36 (as
   29-37; concept widens ~42 / side; hem+30 486 vs 482). Upper half unchanged: V 232, lapel 137/136, roll 76/62.
 - Code (C184): kb jacket.wear.open.style gets the slide before the swing (ramp, band 12 mm, follow 0.001, with side + back);
   the kb test asserts it. Default styling on g1 (sty37.sh g1 k1) = v1 exactly. Sheets check/*_k1c.png.
+- Suite (17 files, capped, -rs): 296 passed, 4 xfailed, PYTEST_EXIT 0 ($FR37/suite.log, 14.8 min).
