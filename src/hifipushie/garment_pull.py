@@ -1218,7 +1218,10 @@ def hold_region(M: dict, X: np.ndarray, pieces=None, within_deg: float | None = 
         else:
             out |= on & (_ring_angle(M, X, pieces, of, center) < within_deg)
     if at is not None:
-        out[vertices(M, at)] = True
+        if isinstance(at, (list, tuple)):  # (C186: a named border of a piece the garment hasn't is skipped, as a slide's "with")
+            at = [q for q in at if not isinstance(q, str) or ":" not in q or q.split(":")[0] in M["names"]]
+        if not isinstance(at, (list, tuple)) or len(at):
+            out[vertices(M, at)] = True
     return out
 
 

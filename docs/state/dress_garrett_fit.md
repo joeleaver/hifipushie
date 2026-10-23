@@ -5,20 +5,19 @@ line plumb). Put "the reference jacket is worn open, unbuttoned" in every review
 only. Covered show-through is not a fault (C153); the shirt patches at the shoulders are culled later, don't chase them.
 PROCESS: muslin fit (worn open, C171), styling by the kind's wear as data (C174 / C178), remeasurement; no sim; judged
 beside the concept only (C165). Shirt = gc_garrett's shirt as worn, not tuned here. Jacket hps = "corner".
-STATE: round 38 step 1 (C185). PATTERN unchanged (gc_garrett v5; gate g1 PASS_WAIVED). FIT = r35's g1 (PLUMB_HOLD, C181);
+STATE: round 38 step 2 (C185, C186). PATTERN unchanged (gc_garrett v5; gate g1 PASS_WAIVED). FIT = r35's g1 (PLUMB_HOLD, C181);
 $FR38/fit_g1.pkl is a read-only copy (a tag "g1" once wrote through the symlinks: never name a styled tag after a fit).
-STYLING (default, kb jacket.wear.open): hold above break, relax, SLIDE (C184 un-lap, now lets go of its grip above
+STYLING (default, kb jacket.wear.open): hold the side / back hems (C186), hold above break, relax, SLIDE (C184 un-lap, now lets go of its grip above
 cutawayTop, C185), plumb SWING (C182), lay-back, smooths, hem down, relax, then each edge break..cutawayTop drawn to its
 front-view CHORD (smooth_border spline 0, C185). CULL C183.
-READS k2 (default) | r37 k1 | concept: edge 450/550/650 60-64/75-77/102 | 41-50/74-77/101 | 71/78/94; edge profile
-400/450/500 L 63/61/63 R 63/63/63 (k1 42/39/63, 47/46/63); side view ahead w/-100/-200/-300 L 34/31/34/38 R 26/27/35/34;
-hem+30 504 | 486 | 482; side line out at the hem 33-64 | 48-62 | ~42; length 736; V 232, lapel 137/136, roll 76/62
-unchanged; threads p99 7.37 (fronts 8.41) | 7.73 (8.79).
-LOOK (check/*_k2c.png, check/joespot_before_after.png): the inward curve under the break is gone, both edges run straight
-and plumb from the break to the cut-away's top, then the cut-away; upper half as r37. Still: the edge is plumb (64) where
-the concept leans out a little (71 at 450); side panels flare at the hem; shard specks at the sleeve heads.
-NEXT: (2) the side hem flare (cause: the styling: the slide's side/back follow + swing; fit alone 29-37 out, flare38.py:
-side.L at the hem moves +20 out, +18 back, 32 -> 53 mm off the body); (3) 650 = 102 vs 94; (4) sleeve-head specks.
+READS k3 (default) | r37 k1 | concept: edge 450/550/650 60-64/74-77/101 | 41-50/74-77/101 | 71/78/94; edge profile
+400/450/500 L 64/61/63 R 63/63/63 (k1 42/39/63, 47/46/63); side view ahead w/-100/-200/-300 L 34/30/34/34 R 26/26/33/31;
+hem+30 444 | 486 | 482; side line out at the hem 29-42 | 48-62 | ~42; length 736; V 232, lapel 137/136, roll 76/62
+unchanged; threads p99 7.42 (fronts 8.43) | 7.73 (8.79).
+LOOK (check/*_k3c.png, check/joespot_before_after.png): the inward curve under the break is gone, both edges run straight
+and plumb from the break to the cut-away's top, then the cut-away; the sides fall straight; upper half as r37. Still: the
+edge is plumb (64) where the concept leans out a little (71 at 450); hem+30 38 narrow; shard specks at the sleeve heads.
+NEXT: (3) 650 = 101 vs 94 (the cut-away below cutawayTop opens 7 mm too far); (4) sleeve-head specks; the edge lean (450).
 ## Method ($FR37 = /mnt/data/hifipushie/dress_garrett/fit_round37; run.sh: this worktree; r36 tools in $FR36)
 op37.py (op by op), mku37.py (slide variants), diag37.py (slide forced to shares: strain map), sty37.sh <fit> <out> [ops].
 op36.py <asm> <tag> [ops.json] (op by op + edge33 + fwd36 reads); mkops36.py (kb + plumb, variants); sty36.sh <fit>

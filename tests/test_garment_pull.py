@@ -623,7 +623,10 @@ def test_open_jacket_is_styled_by_its_wear_as_data():
     from hifipushie import garment_design as gd
     ops = gd.wear({"design": {"kind": "jacket"}, "worn_open": {"front.L:break": 0.064}}, "style")
     kinds = [next(iter(o)) for o in ops]
-    assert kinds[0] == "hold" and ops[0]["hold"]["above"] == ["front.L:break", "front.R:break"], ops[0]
+    assert kinds[:2] == ["hold", "hold"] and ops[1]["hold"]["above"] == ["front.L:break", "front.R:break"], ops[:2]
+    # (C186, fit round 38) the side / back hems held where the fit hung them (the un-lap flared them out like a skirt)
+    assert ops[0]["hold"]["at"] == ["side.L:sideF.b..sideB.b", "back.L:sideB.b..cbHem", "side.R:sideF.b..sideB.b",
+                                    "back.R:sideB.b..cbHem"], ops[0]
     assert kinds[-5:-2] == ["smooth", "pull", "relax"] and ops[-4]["pull"]["handles"][0]["dir"] == "down", kinds
     # (C185, fit round 38) ... and last each edge from the break to the cut-away's top drawn straight (the front-view
     # chord), the slide having let go of its grip above cutawayTop (it had pinched the edge in under the break)
@@ -802,3 +805,5 @@ def test_open_edge_is_drawn_straight_after_the_slide_lets_go():
     _, i_keep = gp.style(M, X, held2, ops({}), body=(BV, BF))
     _, i_go = gp.style(M, X, held2, ops({"let_go_above": "s:bot"}), body=(BV, BF))
     assert i_go[1]["smooth"]["rounds"] > i_keep[1]["smooth"]["rounds"], (i_keep[1], i_go[1])
+    # (C186) a hold "at" a border of a piece the garment hasn't (a jacket with no side panel) is skipped
+    assert gp.hold_region(M, X, at=["side.L:sideF.b..sideB.b", "s:mid..bot"]).sum() == len(gp.border_chain(M, "s:mid..bot"))

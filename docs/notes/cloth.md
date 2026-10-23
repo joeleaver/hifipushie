@@ -10671,3 +10671,10 @@ Muslin fit, styling, no sim; judged beside the concept only. Same fit (fit_g1.pk
 - Code (C185): style slide "let_go_above"; smooth_border spline 0 = front-view chord (stops on stretch / on the chord);
   kb jacket.wear.open: the slide lets go above cutawayTop, the two chord smooths last. Default styling on g1 (sty38.sh g1 k2)
   = h9 exactly. Sheets check/*_k2c.png; Joe's spot before | after: check/joespot_before_after.png (concept | r37 k1 | k2).
+- Step 2, fault 2 (the side-hem flare, 53-62 / side vs concept ~42). Cause = STYLING, not the fit: op by op (op38.py o2 +
+  sideline) fit 29-37 -> after the slide 49-56, unchanged by the swing / pulls / smooths; flare38.py: side.L at the hem +20 mm
+  out, +18 back, 32 -> 55 mm off the body. The slide's side / back follow faded to 0 at the hem (with_fade, w1 from
+  cutawayTop / w2 from the break): 51-56 / 53-61, so it is the lap taken up, pushed into the side panel (dropped).
+  Hem-held side panels (hold "at" the side hem border, s1): 29-43, hem+30 446; + back hems (s2): 29-42, hem+30 444, threads
+  7.42, edge unchanged. Now the kb default (C186): k3 (sty38.sh g1 k3) = s2 exactly. Sheets check/*_k3c.png;
+  check/wholefront_k2_vs_s2.png. The hem is now 38 narrower than the concept's 482 at hem+30 (the fit's own 454 - 10).
