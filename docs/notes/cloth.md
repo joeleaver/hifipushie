@@ -10095,7 +10095,7 @@ Joe's call: fix the lump by correcting where the shirt's HPS sits, as a measurin
   the styled fall buckles into a hard twist where it crosses the shoulder seam (more visible than the dome), the collar
   sits 11-15 mm lower round the back / side, and the front leaves read shorter and flatter than gc1's long points.
 - PARKED: measure_defs.HPS_CORNER False (garment key hps "corner" opts in; probes no longer need env HP_HPS). gc1 stays.
-  Ledger C156. NEXT (Joe's call): (a) keep gc1; or (b) a round on the corner: the front neck depth from the body's
+  Ledger C160. NEXT (Joe's call): (a) keep gc1; or (b) a round on the corner: the front neck depth from the body's
   drop (length kept) and the fall's shoulder buckle, judged beside gc1.
 - Garment suite (14 files incl. test_measure_defs) under capped: 236 passed, 4 xfailed, pytest exit 0 (r3/tests_r3.log).
 
@@ -10149,3 +10149,29 @@ Today's fit (FIT: isometric edges, shear-stiff; neck pin 200 x an edge, seams 40
 - Caveats: Simon's coarser mesh shows a per-triangle red / blue checkerboard (stiff threads on triangles: locking);
   read regions, not single faces. Garrett's TUCKED half reads squashed in both fits: the tuck rule (TUCK_CAP) presses
   it onto the hips, a squash source of its own. Grain is the pattern's y everywhere (the solver's default).
+
+## the muslin fit as the default (2026-10-22, Joe: "make the muslin fit the default fit ... report what breaks")
+- pattern_form: WOVEN True, NECK_PIN_W 2 (LEGACY_NECK_PIN_W 200), WOVEN_SLACK stays False; assemble(fit_model=
+  "woven" | "isometric" | None); fit_model_for(model, garment, g): garment key fit_model (GARMENT_KEYS, NOT_SIM), else
+  garment_kb fit_holds ("gc_garrett:shirt" gc1, "dt_tess:*" the approved coat + its unders, "c12_n18c:*" the approved
+  jacket, model gone) -> "isometric". A_info["fit_model"] records it.
+- VERIFIED bit-identical (r3/same.py): held gc_garrett shirt = today's fit (max |dX| 0.0000 mm, isometric); wf_simon
+  on the new default = the muslin probe kn_s (0.0000 mm, woven).
+- NOT HELD and now on the muslin fit: everything else, incl. gc_garrett's jacket / trousers (in flight on the main
+  thread, over the held shirt), sh_garrett, dg_garrett, tc_tess's coat (dress-tess s19), wf_simon.
+- Suite (14 garment files, capped): 11 failed, 226 passed, 4 xfailed, pytest exit 1 (r3/tests_flip.log; was 236 / 0).
+  By cause:
+  (a) principal / edge strain read as stretch (shear counts): test_diagonal_fold_170 (edge stretch 11.4 %; threads
+      <= 1.9 %, shear max 13.4 deg CHECKED), test_two_panel_sleeve_on_real_arm (p99 22.5 % vs 6), test_open_front_hangs_
+      without_moving_its_side_seams (p99 14.4 % vs 3; drift and hang PASS), test_bridge_hourglass_tube (stretch p99 18.6
+      vs <= 0.65 x): unverified beyond the diagonal fold.
+  (b) a FREE sheet shears with nothing driving it (SHEAR_STIFF 0.011 holds nothing): the diagonal fold above, and
+      test_fold_running_off_mid_length_lies_flat_past_it (turned 27.7 vs < 25): woven needs a small shear restoring
+      term where no obstacle acts.
+  (c) the hard neck pin is the tested rule: test_neck_point_on_hps (a lone panel lands 29.6 mm off the hps with the
+      soft pin; Simon's shirt 3 mm, Garrett's 12): needs a new KAT for where a soft-pinned garment lands.
+  (d) collar KATs a little off: test_sprung_fall_lies_on_the_shoulders (turned 168.3 vs >= 170),
+      test_shallow_fall_lands_close_round_the_neck (gaps 16-26 mm round the neck).
+  (e) wf_simon's open-collar reads moved by its refit: points apart 157 vs <= 154 / <= 150 (two tests), leaf front edge
+      49 vs 25-48 (test_a_shirt_without_a_tie_is_styled_open_by_default).
+STATE: the flip (5aed0492, branch claude/cool-chaum-8e917e) was NOT landed: main keeps the isometric default; the opt-in corner hps, NECK_PIN_W and the muslin-test notes are landed (C160-C162). NEXT: fix (a)-(e), then flip the default.

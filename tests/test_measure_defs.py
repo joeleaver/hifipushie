@@ -216,7 +216,7 @@ def test_freesewing_waist_is_the_narrowest_section(tape):
 def test_hps_corner_is_where_the_neck_meets_the_shoulder(mannequin, tape):
     """FreeSewing's hps ("where your neck meets your shoulder"), tailor "corner": on a round neck standing on a sloped
     shoulder slab the loop 2 cm up the neck ("widest", 1.50) is 30 mm above the corner; "corner" is the slab's top just
-    outside the neck (garrett collar r3, C156: Garrett's shirt pinned 2 cm up his near-vertical neck bridged it)."""
+    outside the neck (garrett collar r3, C160: Garrett's shirt pinned 2 cm up his near-vertical neck bridged it)."""
     w = np.asarray(tape["at"]["hps.L"])
     assert abs(w[2] - 1.50) < 0.004  # the default is still the legacy loop point
     c = np.asarray(tailor.measure(*mannequin, hps="corner")["at"]["hps.L"])
@@ -231,7 +231,7 @@ def test_hps_definition_is_the_consumers_unless_held():
     from hifipushie import cloth
     kinds = cloth._kb()["kinds"]
     g = {"pattern": {"from": "simon"}}
-    assert md.hps_definition(g, {}) is None and not md.HPS_CORNER  # parked: opt-in only (C156)
+    assert md.hps_definition(g, {}) is None and not md.HPS_CORNER  # parked: opt-in only (C160)
     gc = dict(g, hps="corner")
     assert md.hps_definition(gc, {}) == "corner"
     assert md.hps_definition({"pattern": {"from": "draft", "block": "bodice"}, "hps": "corner"}, {}) == "corner"

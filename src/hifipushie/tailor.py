@@ -216,7 +216,7 @@ def _neck_corner(V, T, L, sh) -> np.ndarray:
     shoulder point's (`measure` top_at: a section across the body, its top near the shoulder joint's y). Where the
     neck slopes into its shoulders the loop 2 cm up it nearly sits on the crest (wf_simon 5 mm lower); where the neck
     stands above the shoulder (Garrett: near-vertical, on a flat trapezius shelf) it drops onto the crest (23 mm, 24 mm
-    back). Pinned 2 cm up such a neck, the shoulder seam bridged the corner (C154 lump, C156)."""
+    back). Pinned 2 cm up such a neck, the shoulder seam bridged the corner (C154 lump, C160)."""
     L = np.asarray(L, float)
     w = L[np.argmax(L[:, 0])]
     x = float(w[0]) + float(os.environ.get("HP_HPS_OUT", NECK_CORNER_OUT))

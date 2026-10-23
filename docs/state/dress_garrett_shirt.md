@@ -1,6 +1,6 @@
 # STATE: dress_garrett_shirt (Garrett's shirt, open collar) -- 2026-10-22, garrett collar round 3 (done, PARKED)
 
-ROUND 3 (files $G/r3; notes cloth.md "garrett collar round 3"; ledger C156): the lump as a MEASURING fault. The tape's
+ROUND 3 (files $G/r3; notes cloth.md "garrett collar round 3"; ledger C160): the lump as a MEASURING fault. The tape's
 hps (loop 2 cm up the neck) sits on Simon's crest but 19 mm above Garrett's. New tape mode "corner" (FS: where the neck
 meets the shoulder: the crest just outside the neck; Garrett 23 down / 24 back, Simon 5 down), hps tapes rebased by
 the drop so only the neck moves. Garrett hd: ridge 61 -> 13 PASS, bump 14.8 -> 10.1 FAIL (<= 8), crumple .299, throat in
@@ -11,10 +11,12 @@ CODE: PARKED opt-in (measure_defs.HPS_CORNER False; garment key hps "corner"); g
 NEXT: Joe's call: keep gc1 (lump stays), or a round on the corner (front neck redrafted from the body's drop with the
 neckline length kept + the fall's shoulder buckle). Sheets: $G/r3/gc1_vs_hd_sheet.png, side_crop_gc1_hd.png.
 
-MUSLIN TEST (C157; notes cloth.md "stiff-thread muslin test"): refitted with threads held / shear free, most of today's
+MUSLIN TEST (C161; notes cloth.md "stiff-thread muslin test"): refitted with threads held / shear free, most of today's
 red is the fit's own; REAL misfits on Garrett: the yoke corner at the neck point (threads p95 8 %, shear 47 deg) and
 the hips (side seams 4-19 mm open). Straightening (r3b) can't fix the lump: it is the relaxed shape. NEXT (Joe): a
 muslin gate, then the two misfits as pattern alterations; maps $G/r3/mapn_garrett_sheet.png, mapn_simon_sheet.png.
+MUSLIN DEFAULT (C162, Joe's direction): tried as THE fit (5aed0492, branch claude/cool-chaum-8e917e, NOT on main):
+gc1 held bit-identical; 11 garment tests fail, causes (a)-(e) in cloth.md. NEXT: fix (a)-(e), then flip the default.
 
 ROUND 2 (branch claude/garrett-collar-lump, files $G/r2): Joe approved gc1's throat / V / points / button; the one fault
 is the LUMP under the fall's outer edge (side view). MEASURED: the shoulder seam (front | yoke) within 50 mm of the neck
@@ -51,8 +53,6 @@ with a *_source key: closures front first 0.043 from cfNeck (concept 83 below HP
 - Points apart: 147 +-20 | 176 | 154               -- 179 | 179
 - Points below HPS 50-61: | 59 / 66 | 73 / 75      -- 68 / 67 | 68 / 67
 - First done button: 83 | 203 (b1 8.7 open) | 85.9 -- 131.8 | 131.8 (gap 0)
-- Strain p99 drawn: | 14.2 % | 7.8 % (collar+stand+fronts 6.2) -- 9.6 | 9.6
-- Collar crumple p95 <= .30: | .37 | .23; tips .68 -> .066; folded 2 -> 0 -- .25 | .25
 - Open rows FAIL on gc1: corners .20 (.4-.75), V depth below tips -.15, leaf front edge 51 (25-48), edge turn 59 (32).
 
 ## Commands ($G/r3; run.sh = this worktree's code under capped)

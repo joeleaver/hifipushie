@@ -8,7 +8,7 @@ Spec `spec["cloth"][name]`:
    "pieces": {name: piece spec (pattern.from_spec) + "wrap"}, "seams": [[a, b], ...], "stitches": [[a, b]...]
              (own pieces, or added to a design's), "drop": [pieces of the design left out],
    "alter": [pattern ops], "fabric": preset name or {...}, "interfaced": [pieces], "color": "#rrggbb",
-   "hps": "corner" (opt in to the side neck point where the neck meets the shoulder, measure_defs C156; parked),
+   "hps": "corner" (opt in to the side neck point where the neck meets the shoulder, measure_defs C160; parked),
    "state": "worn" | "hung" (on a hanger: hanger.py) | {"hang": {"hanger": {...}, "rail": {...}}} | "draped",
    "resolution": m (triangle size, default 0.02)}
 
@@ -9653,7 +9653,7 @@ def length_level(m: dict, given: dict | None = None) -> dict:
     where the hps tape puts it and only the waist / hem move. Measurements the garment gives itself win."""
     given = dict(given or {})
     # the side neck point "corner" (tailor) lies hpsDrop under the loop point the nape rule was set on: the length,
-    # hung from the hps, is shorter by it so the waist / hem keep their body level (garrett collar r3, C156)
+    # hung from the hps, is shorter by it so the waist / hem keep their body level (garrett collar r3, C160)
     drop = float(m.pop("hpsDrop", 0.0))
     if "napeToWaistBack" in m and "hpsToWaistBack" in m and "neck" in m and "hpsToWaistBack" not in given:
         d_ = 0.05 * float(m["neck"]) + float(m["napeToWaistBack"]) - drop - float(m["hpsToWaistBack"])
