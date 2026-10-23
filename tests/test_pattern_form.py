@@ -2020,3 +2020,17 @@ def test_open_neck_known_answer_fails_a_soft_roll():
     M, X0, body, I = _open_neck_case(angle=95.0, radius=0.008)
     r = open_neck_read(M, pf.assemble({"mesh": M, "X0": X0}, body, iters=80)["V"], body, I, False)
     assert all(r[s]["turn"] < 120 and r[s]["gap_p90"] > 8.0 for s in "LR"), r
+
+
+def test_the_muslin_fit_is_the_default_and_approved_garments_are_held():
+    """C162 (Joe 2026-10-22: the muslin fit, always): the form fit holds warp / weft (WOVEN), pins the neck softly and
+    never squashes threads; garments approved on the old isometric fit are held on it until refitted (garment_kb
+    fit_holds), and the garment key fit_model overrides both ways."""
+    assert pf.WOVEN and pf.NECK_PIN_W == 2.0 and not pf.WOVEN_SLACK and pf.LEGACY_NECK_PIN_W == 200.0
+    assert pf.fit_model_for("gc_garrett", "shirt", {}) == "isometric"  # gc1, approved
+    assert pf.fit_model_for("dt_tess", "coat", {}) == "isometric" and pf.fit_model_for("dt_tess", "jeans", {}) == "isometric"
+    assert pf.fit_model_for("wf_simon", "shirt", {}) is None  # the default: the muslin fit
+    assert pf.fit_model_for("gc_garrett", "shirt", {"fit_model": "woven"}) == "woven"  # a refit lifts the hold
+    assert pf.fit_model_for("wf_simon", "shirt", {"fit_model": "isometric"}) == "isometric"
+    with pytest.raises(ValueError):
+        pf.fit_model_for("wf_simon", "shirt", {"fit_model": "stretchy"})

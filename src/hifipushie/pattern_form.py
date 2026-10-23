@@ -137,7 +137,12 @@ FIT_STIFF = 12.0  # an isometry edge's weight (x an ARAP cell edge's): the lengt
 # stiffness E = Fm / EMT ~ 7800 gf/cm per unit strain, G = 0.75 x 57.3 = 43 gf/cm per rad: G / E = 0.0055. Energy per
 # area: E eps^2 / 2 (stretch) vs G gamma^2 / 2 (shear); the projections cost (1 + s) eps^2 and s gamma^2 / 2 (small
 # strain), so s / (1 + s) = 2 G / E.
-WOVEN = False
+# THE MUSLIN FIT IS THE FIT (Joe 2026-10-22, C161 / C162: "shouldn't this always be the measuring process, always?"):
+# WOVEN on, the neck pin soft (NECK_PIN_W), threads never squashed (WOVEN_SLACK off). A pattern that can't reach shows
+# as thread strain / open seams in the one fit everyone looks at, not as stretch hidden by an isometric fit. Garments
+# fitted and approved on the old fit are HELD on it ("isometric": WOVEN off, neck pin 200) until refitted: garment key
+# fit_model, or garment_kb fit_holds by "model:garment" (fit_model_for).
+WOVEN = True
 KES_G = 0.75  # gf/cm/deg: shear rigidity of a suiting wool (KES-FB1 G, 0.6-0.9)
 KES_EMT = 0.064  # strain at KES_FM (KES-FB1 EMT, 6.1-6.7 %)
 KES_FM = 500.0  # gf/cm: KES-FB1's maximum tensile load for wovens
@@ -888,7 +893,23 @@ def woven_shear_deg(W: dict, X: np.ndarray) -> np.ndarray:
 # such points keeps the landmark.
 NECK_SPLIT = False  # module default OFF: garment key "neck_split": true (the parked jacket regressed with it, C113)
 NECK_SPLIT_MAX = 0.02  # m along the loop
-NECK_PIN_W = 200.0  # the neck points' pin weight (the shoulder point's is 2: soft); probe override HP_NECK_PIN_W
+NECK_PIN_W = 2.0  # the neck points' pin weight, as the shoulder point's: soft (the muslin fit; C161)
+LEGACY_NECK_PIN_W = 200.0  # fit_model "isometric" (held garments): the neck point pinned hard
+FIT_MODELS = ("woven", "isometric")
+
+
+def fit_model_for(model: str, garment: str, g: dict | None = None) -> str | None:
+    """The fit model a garment is assembled with: its garment key "fit_model", else "isometric" when garment_kb
+    fit_holds names "model:garment" or "model:*" (approved on the old fit, held until refitted), else None (the
+    module default: the muslin fit)."""
+    fm = (g or {}).get("fit_model")
+    if fm is not None:
+        if fm not in FIT_MODELS:
+            raise ValueError(f"fit_model {fm!r}: one of {', '.join(FIT_MODELS)}")
+        return fm
+    from . import cloth
+    holds = cloth._kb().get("fit_holds") or {}
+    return "isometric" if f"{model}:{garment}" in holds or f"{model}:*" in holds else None
 
 
 def _boundary_path_len(M, a: int, b: int) -> float | None:
@@ -970,7 +991,7 @@ def neck_split_point(body, share: float, max_move: float | None = None):
     return half[j] + f * (half[j + 1] - half[j])
 
 
-def _pins(M, X0, body, ease, bsurf, under_v=None, neck_split: bool | None = None):
+def _pins(M, X0, body, ease, bsurf, under_v=None, neck_split: bool | None = None, neck_w: float | None = None):
     """Landmark pins: ([vertex], [target xyz], [weight]) full pins and ([vertex], [weight]) centre-line (x = 0) pins.
     A layer over another (under_v: the under garment's vertices) has its neck point ON THE LAYER BELOW plus ease, not
     on the skin: the under layer's height off the skin there (its collar band at the neck point) + THICK + ease
@@ -1003,7 +1024,7 @@ def _pins(M, X0, body, ease, bsurf, under_v=None, neck_split: bool | None = None
                         if len(hh):
                             lift = float(hh.min()) + THICK + ease  # (the layer itself, not its band standing beside)
                 q = q + lift * n[0]
-            full.append((v, q, float(os.environ.get("HP_NECK_PIN_W", NECK_PIN_W))))
+            full.append((v, q, float(NECK_PIN_W if neck_w is None else neck_w)))
         elif pt in ("shoulder", "shoulder.m") and "shoulder.L" in at:
             q = np.asarray(at["shoulder.L"], float) * [side, 1, 1]
             if bsurf is not None:
@@ -2104,15 +2125,19 @@ def covered(osurf, X, bsurf=None):
 def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = EASE, fasten="default",
              iters: int = 120, X0: np.ndarray | None = None, attract: float = 0.5, log=None, pressed: bool = True,
              worn_open: dict | None = None, shoulder_pad: dict | None = None, over: dict | None = None,
-             bridge: float = 0.0, neck_split: bool | None = None) -> dict:
+             bridge: float = 0.0, neck_split: bool | None = None, fit_model: str | None = None) -> dict:
     """The garment assembled on the form (see the module docstring). pattern: a placed garment (cloth.build
     place_only result: "mesh", "X0", "pieces") or {"mesh": M, "X0": start, "pieces": B (optional)}. body: a
     cloth.Body (V, T, at) or None (a free sheet: the fold tests). under: {"V", "F"} of the garment under (the shirt
-    under the jacket) or None. worn_open: {point name: offset m} (WORN_OPEN). Returns {"V", "F", "M", "info"}."""
+    under the jacket) or None. worn_open: {point name: offset m} (WORN_OPEN). fit_model: "woven" | "isometric" | None
+    (the module default WOVEN / NECK_PIN_W; fit_model_for). Returns {"V", "F", "M", "info"}."""
+    woven_ = WOVEN if fit_model is None else fit_model == "woven"
+    neck_w_ = LEGACY_NECK_PIN_W if fit_model == "isometric" else NECK_PIN_W
     M = pattern["mesh"]
     B = pattern.get("pieces")
     closed_args = dict(body=body, under=under, ease=ease, fasten=fasten, iters=iters, X0=X0, attract=attract,
-                       pressed=pressed, shoulder_pad=shoulder_pad, over=over, bridge=bridge)  # (OPEN_HOLD: the same garment closed)
+                       pressed=pressed, shoulder_pad=shoulder_pad, over=over, bridge=bridge,
+                       fit_model=fit_model)  # (OPEN_HOLD: the same garment closed)
     X = np.asarray(X0 if X0 is not None else pattern["X0"], float).copy()
     Xplaced = X.copy()  # (the placement: a fold its wrap turned keeps the sense the wrap gave it)
     F = np.asarray(M["F"])
@@ -2144,7 +2169,8 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
     # buttons on the centre line: a front's closure (cuffs, plackets close where they are)
     cf_fast = [tuple(int(x) for x in v) for c in M.get("closures") or [] if c.get("name") == "front"
                for v in (c.get("v") or []) if tuple(int(x) for x in v) in set(fast)]
-    full, cx = _pins(M, X, body, ease, bsurf, under_v=under["V"] if under is not None else None, neck_split=neck_split)
+    full, cx = _pins(M, X, body, ease, bsurf, under_v=under["V"] if under is not None else None, neck_split=neck_split,
+                     neck_w=neck_w_)
     ox = worn_open_pins(M, X, worn_open)
     ox_named = list(ox)  # (the named worn-open points alone: ox gains the edge pins below)
     # 1. collars / stands stood up from their seams; 2. flaps turned
@@ -2260,7 +2286,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
     else:
         Kb, bend_rhs, kb = None, None, 0.0
     Wv = None
-    if FIT and WOVEN:  # (WOVEN: the grain-frame triangles: off the fold rows; made pieces stay ARAP)
+    if FIT and woven_:  # (WOVEN: the grain-frame triangles: off the fold rows; made pieces stay ARAP)
         wcell = np.zeros(n, bool)
         for fd, g, turn in folds_:
             for r_ in g["rows"]:
@@ -2271,7 +2297,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
     nE0 = len(E)
     n_src0 = len(src)
     flapv0 = np.zeros(n_src0, bool)  # (WOVEN_FLAPS: a directed edge whose cell is a flap vertex off the rows)
-    if FIT and WOVEN:
+    if FIT and woven_:
         rowv_ = np.zeros(n, bool)
         flv_ = np.zeros(n, bool)
         for fd, g, turn in folds_:
@@ -2861,12 +2887,12 @@ def layered_fit(ures: dict, ores: dict, mode: str = "outer_first", ug: dict | No
 
     def ua(over=None):
         return assemble(ures, ures.get("body"), ease=UNDER_EASE, worn_open=ug.get("worn_open"), iters=iters,
-                        shoulder_pad=ug.get("shoulder_pad"), over=over, log=log,
+                        shoulder_pad=ug.get("shoulder_pad"), over=over, log=log, fit_model=ug.get("fit_model"),
                         bridge=bridge_fraction(ug))
 
     def oa(under=None, ease=EASE):
         return assemble(ores, ores.get("body"), under=under, ease=ease, worn_open=og.get("worn_open"), iters=iters,
-                        shoulder_pad=og.get("shoulder_pad"), log=log,
+                        shoulder_pad=og.get("shoulder_pad"), log=log, fit_model=og.get("fit_model"),
                         bridge=bridge_fraction(og))
 
     if mode == "lie":  # (UNDER_LIE_CAP: the under layer's fullness laid down, then the over layer fitted over it)
@@ -2918,8 +2944,10 @@ def on_form(model: str, garment: str, spec: dict | None = None, g: dict | None =
     under = {"V": und["A"], "F": und["mesh"]["F"]} if und is not None else None
     # garment key "worn_open" {point: offset m, "source": why}: the form rule for fronts worn open (worn_open_pins)
     out = assemble(res, res["body"], under=under, ease=EASE if under is not None else UNDER_EASE, log=log,
-                   worn_open=g.get("worn_open"), shoulder_pad=g.get("shoulder_pad"), bridge=bridge_fraction(g), neck_split=g.get("neck_split"))
+                   worn_open=g.get("worn_open"), shoulder_pad=g.get("shoulder_pad"), bridge=bridge_fraction(g), neck_split=g.get("neck_split"),
+                   fit_model=fit_model_for(model, garment, g))
     res["A"], res["A_info"], res["form_under"] = out["V"], out["info"], und
+    res["A_info"]["fit_model"] = fit_model_for(model, garment, g) or ("woven" if WOVEN else "isometric")
     if cloth.expanded(g).get("tucked"):
         res["A"], res["A_info"]["tucked"] = tuck(res, res["A"], cloth.expanded(g))
     return res
