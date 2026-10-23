@@ -10260,3 +10260,32 @@ conditions; looks judged beside the REFERENCE only (C165).
   (concept: cut away below the button, quarters open), the V closes high (mid-chest; concept's button at the waist,
   long open V), lapels narrow with no clear notch (concept: wide notched lapels), no waist suppression, soft sloping
   shoulders (concept: square, built), the collar stands up the neck in the side view instead of lying on it.
+
+## muslin default, styling stops read threads (2026-10-22, branch claude/muslin-default; files /mnt/data/hifipushie/muslin_default/p3)
+- Every styling stop now reads THREADS (C169): garment_pull.thread_p99 = pooled p99 of warp / weft |len - 1| (each face's
+  gradient in its thread frame: pattern x / y on grain, M["grain"] honoured if given, as tip_read / the fit's
+  grain_stretch_pct) + shear p99 PER PIECE, locked at pattern_form.SHEAR_LOCK_DEG 35 (a piece already past it: +1 deg,
+  SHEAR_LOCK_NOISE). pull / turn tol / smooth / smooth_border stop on either ("stretch" | "shear"); relax and dir "easy"
+  read the same; MCP style text says threads + shear. edge_stretch / stretch_p99 kept as reads, not stops.
+- Probes (t3.py on the test v1 fit; wobble.py): all-faces SHEAR_STIFF woven styling (the old WOVEN_STYLE) trellises free
+  cloth: wobble smooth kink 38.7 -> 29.1 (stalls; end-zone wobble kept), test 2 points 158 apart (concept 147 +- 7),
+  test 3 159, collar shear p99 22 deg; tips clean (0.039 / 0.084). Free-face reads (C147's turn mask) for pull / smooth:
+  test 2 158 / test 3 136. Per-piece THREAD read: the band-end turn (no tol, the old recipes) leaves front.L's free top
+  at threads p99 16-41 %, the pull then never stops by threads (66 mm). Pooled threads + per-piece shear, with a
+  start-relative lock and no noise margin: test 3 pull 0 mm (39.5 -> 39.7 read noise).
+- KEPT: WOVEN_STYLE on, with the fit's SHEAR_FREE on undriven faces (no fixed vertex), i.e. the fit's own local step
+  (C166; env GP_STYLE_SHEAR_FREE=off for the A/B): wobble 38.7 -> 14.1 (iso 13.2); test 2 151.2 apart, below 61 / 58,
+  tips 0.053 / 0.131 (closed 0.038 / 0.086, limit +0.05), collar shear p99 4.2; test 3 153.5, below 74.0 / 71.4, tips
+  0.066 / 0.146 (limit +0.06: at it), kink 7.8 / 6.5 (<= 8).
+- Rewritten (encoded the edge read / one old result): open-by-default edge p99 <= 7 % -> threads p99 <= 7 % and every
+  piece's shear under the lock (planted: the collar grown 10 % fails); buttons "tops part > 20 mm at tol 1.0" -> the free
+  corner dragged in-plane jams at 15 mm (shear p99 36.5; isometric ran 30 mm): stopped by shear / max_move, > 10 mm;
+  test 3 points apart 130-150 (sp10 / f2's 137) -> the concept band 140-154 as test 2 (turned-only collar 66.8 fails).
+- Suite (17 files, capped, -rs): 280 passed, 4 xfailed, 0 skipped, pytest exit 0 (p3/s1.log, 20 min). C162 ENFORCED.
+- LOOK p3/simon_styled_sheet.png (photo | trace | clay | diag; repo-default muslin fit s_m1, worn_style): open-collar rows
+  all PASS (corners 0.47, tips 1.05, V 55 deg, V depth 0.19, leaf edge 48 = the range's top, tip crumple 0.187 vs closed
+  0.03-0.07). VERDICT (blunt): NOT the photo. Points spread and the leaves turn out, but the fronts still overlap up to
+  the throat: no open V of skin (photo / trace: a deep V to the 2nd button); the leaves are small and lie flat / wide
+  where the photo's stand tall round the neck; a dent at the left stand. The sheet isn't scale-matched (references are
+  tight neck crops, the clay shows the torso): crop the render to the neck next time.
+- NEXT: coordinator lands; then the V depth (the fronts' top opening) on the muslin fit.

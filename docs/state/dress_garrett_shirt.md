@@ -15,10 +15,10 @@ MUSLIN TEST (C161; notes cloth.md "stiff-thread muslin test"): refitted with thr
 red is the fit's own; REAL misfits on Garrett: the yoke corner at the neck point (threads p95 8 %, shear 47 deg) and
 the hips (side seams 4-19 mm open). Straightening (r3b) can't fix the lump: it is the relaxed shape. NEXT (Joe): a
 muslin gate, then the two misfits as pattern alterations; maps $G/r3/mapn_garrett_sheet.png, mapn_simon_sheet.png.
-MUSLIN DEFAULT (C162; branch claude/muslin-default, NOT landed; C165-C168): no holds; edge kink = kink_deg <= 8; jacket
-under layer = shirt's worn form fit, no sim. Suite 2 failed / 278 passed / 4 xfailed, exit 1 (full2.log): both reds the
-collar tip crumple (0.146 / 0.163); cause: styling solve isometric on the woven fit (WOVEN_STYLE fixes tips, but stops
-read edge stretch: 4 reds). NEXT: pull / turn / smooth stops read threads, WOVEN_STYLE on, suite, C162 ENFORCED. Jacket
+MUSLIN DEFAULT (C162 ENFORCED; branch claude/muslin-default, NOT landed: coordinator lands; C165-C169): no holds; styling
+solve = the fit's woven cloth (WOVEN_STYLE on, SHEAR_FREE undriven); stops read threads + per-piece shear lock 35 (C169).
+17 files exit 0: 280 passed, 4 xfailed ($M/p3/s1.log). Look $M/p3/simon_styled_sheet.png: rows pass, but the V is
+shallow (fronts overlap to the throat; photo's V to the 2nd button), leaves small / flat. NEXT: land; then V depth. Jacket
 on the muslin fit ($M/jacket_jon1_sheet.png): boxy, fronts lap to hem, high V, narrow lapels: NOT the concept.
 
 ROUND 2 (branch claude/garrett-collar-lump, files $G/r2): Joe approved gc1's throat / V / points / button; the one fault
