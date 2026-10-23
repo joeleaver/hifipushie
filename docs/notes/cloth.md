@@ -10621,3 +10621,4 @@ Muslin fit, styling, no sim; judged beside the concept only (concept edge off CF
   A mesh-border test missed the lapel edge (a sewn seam) -> replaced by the all-round test. KAT
   test_cloth_layers::test_hidden_removes_under_cloth_poking_out_through_the_outer. Garrett h1s: 768 pokes, +656 faces
   hidden (12352 -> 13008); the armhole patches gone, small shards left at the sleeve heads (check/pierce_ab_wholefront.png).
+- Suite (17 files, capped, -rs, HIFIPUSHIE_HOME=workspace + ASSETS): 295 passed, 4 xfailed, PYTEST_EXIT 0 ($FR36/suite.log, 12.9 min).
