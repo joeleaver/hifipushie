@@ -10813,3 +10813,13 @@ stretch); any hold left is soft, feathered, and names its support. STATE: docs/s
   relax hung, no floor: the shirt isn't worn open, so styling had none): 6 rows FAIL, threads p99 327 %, shear 82 deg:
   the free collar / stand fell through the neck. -> a hung relax with no floor takes the body as its floor (style()).
   shf (fit hang too): fit threads p99 4.5 -> 8.6 %, 6 rows FAIL (with the floorless styling hang).
+- Shirt with the styling hang floored on the body (sh2): 5 rows FAIL (leaf edge 54, collar crumple 1.44, tip crumple
+  0.65, 13 folded faces, mirror 8.9), threads 8.8: the collar / stand (made, interfaced: their stiffness is their
+  support, not the body) fall and crumple. Fit hang alone (sf, styling unchanged): 3 rows FAIL (leaf edge 49 / 48,
+  edge turn 48 / 32, crumple 0.37 / 0.3), fit threads 4.5 -> 8.6. The hang breaks the shirt's open collar either way.
+- Fit H (hang: true, plumb_hold: false, HANG_G 0.1, 600 rounds, 1019 s): threads p99 24.4 % (max 180), shear p99 42 deg,
+  sew gap 10.9 mm, top 10 mm lower: the weight hangs on the neck pins and the stretch gathers at the neck (stand 62 %,
+  collar 53, fronts 30 / 23, faces > 10 % at z 1.41-1.56; nh: 137 faces). Styled H_h: edge L 82/78/59 R 28/26/23
+  (asymmetric), waist 439, hem+30 440, length 798 (+43), threads 26.8; H_k (kb style + holds): edge 53/54/52 L
+  39/43/36 R, stands 100-137 mm ahead of the body, threads 31. FAILS the muslin rule: rejected. (diagH.py: per piece.)
+  Queued: H2 (HANG_G 0.02); styling variants on the shirt floor + the canvas hold kept (ops_hang2: H_h2, nh_h2, H_n2).
