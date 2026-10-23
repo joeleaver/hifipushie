@@ -10431,3 +10431,4 @@ jacket garment key hps = "corner" (sethps.py, store version 2). Base fit = r30's
   mostly gone, a soft fold remains beside the L edge at 450). WORSE than r30 above: lapels narrower, V 190 vs 237: the
   held fit's lapel, where r30's swing widened it by moving the break. The lower fronts flare out at the hem corners;
   body boxy; shirt patches at the shoulders (dropped: culled later).
+- Suite (17 files, capped, -rs, HIFIPUSHIE_HOME=workspace + ASSETS): 286 passed, 4 xfailed, 0 skipped, pytest exit 0 ($FR31/suite.log, 16.6 min).
