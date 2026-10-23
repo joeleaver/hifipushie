@@ -10734,3 +10734,14 @@ Base: r38's k3 (asm_k3.pkl copied; fit_g1.pkl a read-only copy, not a symlink). 
   side|back 2-36 (flat). Styled b80s front|side L 4/23/64/11/7/14/34/7/10/7, R 11-55: better than k3 (4-143) and b40s
   but still 35-64 deg at 300-350 (under the arm) and R 39-55 at 300-450. A wider band doesn't flatten front|side in the
   fit: confirms the fold there is not the seam line's pin alone. All background jobs ended (fits39.done).
+- b80 (band 0.08, both seams held): front|side still folded in the fit (L 32-85, R 50-76 deg 300-700 below HPS); band
+  is not the lever for front|side. Step 2 (fits39b.sh <tag> <json>: fit + kb style + reads + sheets + seam reads):
+  sb = hold side|back ONLY (front|side free), sbb = sb + band 0.04, own = front|side held at each seam vertex's OWN hung
+  (x, y) (new per-seam anchor: a third item "own" / {"anchor", "drop"} in plumb_hold seams).
+  FIT fold across front|side 250-750: sb 3-26 deg, sbb 1-26, own 4-29 (146 at the R hem corner); side|back 0-16 all.
+  So the cord IS the hold on front|side: freed, the seam lies flat. Styled: sb front|side 78 (waist) / 84 (hips) / 61
+  (hem+30) deg from CF, folds 2-37 (hem corner 63-117). BUT the fronts close without that hold (C180 again): edge
+  450/550/650 sb 24-19 / 15-13 / 10, sbb 28-23 / 20-18 / 16-15, own 33-35 / 31-36 / 36-44 (k3 60-64 / 74-77 / 101);
+  waist 365-379, hem+30 430-448. Free, the seam slides forward at the hem (61 deg) and the girth becomes lap.
+  Next: hold front|side on a vertical through where it HANGS lower down ("drop": the vertical through the hung seam
+  point `drop` below its top, a straight line from the top to it): d150, d200, d200b (+ band 0.04).
