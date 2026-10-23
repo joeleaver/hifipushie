@@ -15,8 +15,11 @@ MUSLIN TEST (C161; notes cloth.md "stiff-thread muslin test"): refitted with thr
 red is the fit's own; REAL misfits on Garrett: the yoke corner at the neck point (threads p95 8 %, shear 47 deg) and
 the hips (side seams 4-19 mm open). Straightening (r3b) can't fix the lump: it is the relaxed shape. NEXT (Joe): a
 muslin gate, then the two misfits as pattern alterations; maps $G/r3/mapn_garrett_sheet.png, mapn_simon_sheet.png.
-MUSLIN DEFAULT (C162, Joe's direction): tried as THE fit (5aed0492, branch claude/cool-chaum-8e917e, NOT on main):
-gc1 held bit-identical; 11 garment tests fail, causes (a)-(e) in cloth.md. NEXT: fix (a)-(e), then flip the default.
+MUSLIN DEFAULT (C162; branch claude/muslin-default, NOT landed): holds DROPPED (Joe: current clothes are no baseline,
+C165); SHEAR_FREE / SHEAR_RAMP fix the free / transient shear (C166); KATs rewritten to thread strain + shear, soft
+neck pin (C167). Suite 2 failed / 277 passed (garment_pull spike variants: right tip crumple, edge kink 23.2 vs 22).
+Corner hps NOT flipped (bump 9.3-10.6 > 8 on the muslin fit). NEXT: fix the 2 garment_pull reds by cause; jfit.py
+saving the pressed under, then re-look the jacket beside the concept; files /mnt/data/hifipushie/muslin_default.
 
 ROUND 2 (branch claude/garrett-collar-lump, files $G/r2): Joe approved gc1's throat / V / points / button; the one fault
 is the LUMP under the fall's outer edge (side view). MEASURED: the shoulder seam (front | yoke) within 50 mm of the neck

@@ -10209,3 +10209,20 @@ conditions; looks judged beside the REFERENCE only (C165).
 - (d) collar KATs: the muslin fit was WRONG (unconverged transient shear in the bodice cone), fixed by SHEAR_RAMP:
   sprung fall turned 170.0 (>= 170; iso 171.5; 480 rounds 168.8: tight), shallow fall drop 7.2 (want 6.4), out 14.1
   (<= 17.4). Unchanged tests.
+- Suite (17 files, slot/capped, -rs): 2 failed, 277 passed, 4 xfailed, pytest exit 1 (full1.log). Left, both
+  test_garment_pull on the spike v1 fit of wf_simon (old style variants y3 / sp10, not the photo / trace KAT, which
+  PASSES every row: leaf front edge 47 in 25-48, points apart no longer fail): (1) points_pulled_open: RIGHT tip
+  crumple 0.146 vs closed 0.086 + 0.05 (twist 69 vs 34): a real rule (styling must not crumple a tip) -> find whether
+  the pull's stretch stop (edge strain, counts shear) or the fit's tip shear causes it; (2) hugs_the_neck: edge kink
+  max 23.2 vs <= 22 (left 19.4; f2 20, planted fault 29): an old-result margin; rewrite to a rule that still catches
+  the 29 deg hard border, or restyle. Not loosened.
+- Corner hps (Garrett shirt, muslin fit, greads.py): crest 66 -> 14 deg PASS, bump 15.7 -> 9.3 mm (closed) / 10.6
+  (styled) still FAIL (<= 8: the front pillow), throat closes (V bottom 48 -> 18 mm below its hps, corners 0.36 ->
+  0.23 / neck), points 51 below hps (concept 50-61) and 140 apart (147 +-20). NOT flipped (measure_defs.HPS_CORNER
+  stays False): the pillow persists on the muslin fit. Which hps the concept's reads hang from is open.
+- Looks ($M = /mnt/data/hifipushie/muslin_default): simon_closed_sheet.png, simon_styled_sheet.png (photo | trace |
+  clay | diag): open, points spread, but the leaves lie flatter / wider than the photo's and the V is shallow (fronts
+  overlap; photo's V runs to the 2nd button); the render frame is cropped narrow (box needs widening in cloth.render).
+  jacket_m1_sheet.png INVALID as a look: rendered the shirt UNPRESSED under a jacket fitted over the pressed shirt (shirt
+  pokes through everywhere); jfit.py must save the pressed under. on_form can't fit gc_garrett's jacket (model_body
+  needs the shirt's SIM: under_missing; the form fit shouldn't); jfit.py places it without.
