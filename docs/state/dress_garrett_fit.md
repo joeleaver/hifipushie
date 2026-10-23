@@ -5,25 +5,33 @@ line plumb). Put "the reference jacket is worn open, unbuttoned" in every review
 only. Covered show-through is not a fault (C153); the shirt patches at the shoulders are culled later, don't chase them.
 PROCESS: muslin fit (worn open, C171), styling by the kind's wear as data (C174 / C178), remeasurement; no sim; judged
 beside the concept only (C165). Shirt = gc_garrett's shirt as worn, not tuned here. Jacket hps = "corner".
-STATE: round 35 done; suite (17 files, capped -rs) PYTEST_EXIT 0, 293 passed, 4 xfailed ($FR35/suite.log). PATTERN unchanged (gc_garrett v5, r34's plumb pattern, flat fall girth
-1113 / 1131 / 1273; gate g1 PASS_WAIVED 17b169ab / e31aac35, falls_straight PASS).
-FIT (C181, default for plumb designs): pattern_form.PLUMB_HOLD holds the front|side and side|back seams below their
-tops in y on the vertical through the top as it HUNG before the seat (soft, w 2, ramp 50 mm). Won the A/B over the same
-rule as a first styling op (garment_pull.plumb: stops half way on stretch, fronts stay lapped) and over live / xy anchors.
-READS g1s (default) | r34 p2s | concept: edge 450/550/650 59-60/87-92/122-126 | 24/11/6 | 71/78/94; waist 434 | 384 | 414;
-hem 470 | 425 | 482; side line in max 21 | 40 | <= 20 (hem flares 30 out); V 232 | 221 | 237; lapel 150 137/136 | 135/131 |
-127/134; roll 150/250 76/62 | 77/60 | 69/64; length 727 | 757 | 748; flaps sunk 0/25, off body 49-51.
-LOOK: fronts OPEN (r34 closed), upper half as r34. Faults: the lower fronts open too far toward the hem (650: 124 vs 94)
-with the hem corners thrown out sideways (coat tails), hem flared, fronts 21 mm short, side view a sack (front panel well
-off the belly), shirt show-through at the armholes / chest sides (509 vs 475 verts).
-NEXT: (1) the hem corners: the kb swing turns 48 deg about break -> sideF.b now that the seam sits back (y -27): read the
-turn / pull-down ops op by op (runops) on asm_g1, cap the swing by the edge reads (or the front's hang) so 650 lands ~94
-and the length stays ~748; (2) the side-view sack: front panel depth at the belly; (3) V 232 vs 237 (5 mm); (4) kb cutawayTop.
-## Method ($FR35 = /mnt/data/hifipushie/dress_garrett/fit_round35; run.sh: this worktree; r34 tools in $FR34)
-fs35.sh <tag> '<garment json>' [ops.json] (fit35 = on_form on the stored spec, capped -> asm_<tag>.pkl, stylekb, reads35);
-gj35.sh <tag> (gate35 on the stored spec + style + reads + post35 sheets); tab35.sh r_*.log (the table rows);
-path35.py (the side seams' path); mkops35.py (plumb op + kb). r34: flat34, runops.sh, op34, seam34, derive34.
+STATE: round 36 done; suite (17 files, capped -rs): see $FR36/suite.log. PATTERN unchanged (gc_garrett v5, r34 plumb
+pattern; gate g1 PASS_WAIVED 17b169ab / e31aac35). FIT = r35's g1 (PLUMB_HOLD, C181), unchanged.
+STYLING (C182, default): the kb swing stops where the edge below the break hangs plumb in the front view (turn
+"plumb": [break, cutawayTop]): 41 / 39 deg (r35 48). CULL (C183, default): shirt poking out through the jacket where
+it covers is hidden (pierce_out), never made pieces.
+READS h1s (default) | r35 g1s | concept: edge 450/550/650 54-57/79-82/111 | 59-60/87-92/122-126 | 71/78/94; waist 434 |
+434 | 414; hem+30 454 (sweep 472) | 470 | 482; side line in max 21, out 37 at the hem (fit's own; concept widens 42/side)
+| same | <= 20 in; V 232 | 232 | 237; lapel 150 137/136 | same | 127/134; roll 76/62 | same | 69/64; length 727 | 727 |
+748 (corner 728 on the FIT: the fit / pattern, not the swing); side view ahead of the body w/-100/-200/-300 38/47/55/42
+| 44/52/61/47 (fit 36/26/25/9); flaps sunk 0/25, off body 49/51 (they lie on the front: the front's stand-off);
+styling threads p99 8.2.
+LOOK (check/*_h1sc.png): fronts open, lower corners no longer coat tails but the cut-away still swings out from the
+waist (650: 111 vs 94); edge 450 dips in (54 vs 71: the edge break..cutawayTop sags in between, not gripped); side view
+still a sack: the lower front ~11 mm proud of the chest's plumb line, 40-55 mm off the lower belly; armhole patches gone,
+shards left at the sleeve heads; a tiny dark speck on the shirt chest (not a culled face; check).
+SACK CAUSE (measured): the rigid swing about break -> sideF.b (hinge behind the edge moves it forward) + the lapped
+width (opened, the panel spans a shorter chord to the held side seam and bows out). The lay-back pull stops on stretch
+whatever its direction (normal 27 mm, back+down 18, with hem 21); freeing the side panels changes nothing.
+NEXT: (1) the sack: lay the swung panel back onto the fit's side-view line (a stop like plumb: the front's side-view
+depth back to the fit's / the chest plumb line) -- the stretch stop blocks it, so find what stretches (op36 + a strain map
+on asm_p1_4) before changing the op; (2) the 450 dip: the edge break..cutawayTop hanging straight (grip from the break
+jams: p2 / p3); (3) length 727 vs 748 on the fit itself; (4) cull shards at the sleeve heads.
+## Method ($FR36 = /mnt/data/hifipushie/dress_garrett/fit_round36; run.sh: this worktree; r35 tools in $FR35)
+op36.py <asm> <tag> [ops.json] (op by op + edge33 + fwd36 reads); mkops36.py (kb + plumb, variants); sty36.sh <fit>
+<out> [ops] (style + reads36 + edgeprof36 + prof36 + fwd33 + post36 sheets); tab36.sh r_*.log.
 ## Dead ends (one line each)
+- Swing gripped from the break (r36 p2 / p3): jams at 0 deg. Lay-back direction / hem / free sides (q2 q3 r1): stretch-bound.
 - Gravity substitutes; release sims (cloth.md r20-r29); lapel pins in a release (r29b); roll rows graded (C156).
 - Closed (buttoned) fit as the base for the lapel (C171). UNDER_FLOOR on by default (C172). Break swung out (r30).
 - Opening pulls with no down: a free front swings up and open (r31). belly 14 @ 0.35 fails waist_suppression (r32).
