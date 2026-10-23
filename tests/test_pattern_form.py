@@ -2149,13 +2149,16 @@ def test_plumb_hold_hangs_the_side_seams_on_the_vertical():
     assert pf.plumb_hold_for({"design": {"ops": [{"op": "waist_suppression", "silhouette": "plumb", "tube": True}]}}) is None
     assert pf.plumb_hold_for({"plumb_hold": {"w": 5.0}})["w"] == 5.0
     pins = pf.plumb_seam_pins(M, X0, pf.PLUMB_HOLD)
-    assert len({t for _v, t, _w, _a in pins}) == 2  # (each seam its own line)
-    assert max(w for _v, _t, w, _a in pins) == pf.PLUMB_HOLD["w"] and min(w for _v, _t, w, _a in pins) < pf.PLUMB_HOLD["w"]
+    assert len({t for _v, t, _w, _a, _n in pins}) == 2  # (each seam its own line)
+    assert max(w for _v, _t, w, _a, _n in pins) == pf.PLUMB_HOLD["w"] and min(w for _v, _t, w, _a, _n in pins) < pf.PLUMB_HOLD["w"]
     on = pf.assemble({"mesh": M, "X0": X0, "body": body}, body, ease=pf.UNDER_EASE, iters=120, plumb_hold=pf.plumb_hold_for(plumb_g))
     off = pf.assemble({"mesh": M, "X0": X0, "body": body}, body, ease=pf.UNDER_EASE, iters=120)
     assert "plumb_off_mm" not in off["info"]
 
     def fwd(V):  # the most a fully held seam vertex lies off its seam top's y (mm)
-        return max(abs(V[v, 1] - V[t, 1]) for v, t, w, _a in pf.plumb_seam_pins(M, V, pf.PLUMB_HOLD) if w >= pf.PLUMB_HOLD["w"]) * 1000
-    assert on["info"]["plumb_off_mm"]["max"] <= 3.0 and fwd(on["V"]) <= 3.0, (on["info"], fwd(on["V"]))
+        return max(abs(V[v, 1] - V[t, 1]) for v, t, w, _a, _n in pf.plumb_seam_pins(M, V, pf.PLUMB_HOLD) if w >= pf.PLUMB_HOLD["w"]) * 1000
+    assert on["info"]["plumb_off_mm"]["max"] <= 3.0 and fwd(on["V"]) <= 5.0, (on["info"], fwd(on["V"]))
     assert fwd(off["V"]) > 30.0, fwd(off["V"])
+    live = pf.assemble({"mesh": M, "X0": X0, "body": body}, body, ease=pf.UNDER_EASE, iters=120,
+                       plumb_hold=dict(pf.PLUMB_HOLD, anchor="live"))
+    assert live["info"]["plumb_off_mm"]["max"] <= 3.0 and fwd(live["V"]) <= 3.0, (live["info"], fwd(live["V"]))

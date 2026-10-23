@@ -1729,13 +1729,15 @@ OPEN_HANG = True  # with OPEN_HOLD: the free edge below the lowest worn-open poi
 # vs 74-81 in round 33, y 63 -> 107 mm forward) and the extra girth became front LAP: the open fronts met at CF (C180).
 # PLUMB_HOLD: each seam between the named piece kinds (front|side, side|back on a three-panel jacket; front|back where
 # there is no side panel), its vertices below the seam's top held SOFTLY (weight PLUMB_W per vertex, ramped in over
-# "ramp" m below the top, as the neck pin: soft) on the vertical through the top AS IT LIES each round (the line hangs
-# from the underarm point wherever the fit puts it): axes "y" (front / back) by default; "xy" also holds x, outward only.
-# A/B on Garrett (fit_round35): "xy" from the seat-time top boxed the jacket (the armhole's bottom stands 238 mm out:
-# chest 477 / waist 522 / hem 571 vs the concept's 397 / 414 / 482); a FIXED anchor read before the seat took the seam
-# 36 mm behind where the settled underarm hangs (-27 vs -63); as a styling op (garment_pull.plumb) the seams stop at
-# half the way (the threads would stretch) and the fronts stay lapped.
-PLUMB_HOLD = {"seams": [["front", "side"], ["side", "back"]], "w": 2.0, "ramp": 0.05, "axes": "y"}
+# "ramp" m below the top, as the neck pin: soft) on the vertical through the top: "anchor" "hung" (default) = where the
+# top hangs when the jacket is on the shoulders, before the seat draws it onto the body (read once, as the seat
+# starts), "live" = the top as it lies each round; axes "y" (front / back) by default, "xy" also holds x, outward only.
+# A/B on Garrett (fit_round35 a1-a4 + styled b1-b2; concept edge off CF 450/550/650 71/78/94, waist / hem 414 / 482,
+# side line <= 20): hung y (a2) 59/90/124, 434 / 470, 21 (chosen: widths + side line right, the fronts open); live y
+# (a3) 45/71/98 but 378 / 459 and the sides pinched in 32 under the chest (a flared skirt); xy boxed the jacket (a1
+# hung: chest 477 / waist 522; a4 live: 448 / 466); as a first styling op (garment_pull.plumb, b1 / b2) the seams stop
+# half way (the threads would stretch) and the fronts stay lapped (edge 450 10-50, 650 0-6).
+PLUMB_HOLD = {"seams": [["front", "side"], ["side", "back"]], "w": 2.0, "ramp": 0.05, "axes": "y", "anchor": "hung"}
 
 
 def plumb_hold_for(g: dict | None) -> dict | None:
@@ -1751,8 +1753,9 @@ def plumb_hold_for(g: dict | None) -> dict | None:
 
 
 def plumb_seam_pins(M: dict, X: np.ndarray, hold: dict | None) -> list:
-    """[(vertex, top vertex, weight, axes)] for PLUMB_HOLD on the fit X: per seam (each side), its sewn vertices on
-    both pieces below its top (weight ramped in), the target the (x, y) of the seam's top vertex as it lies."""
+    """[(vertex, top vertex, weight, axes, anchor xy or None)] for PLUMB_HOLD on the fit X: per seam (each side), its
+    sewn vertices on both pieces below its top (weight ramped in); the target the (x, y) of the seam's top vertex: on
+    X ("hung", the anchor given) or as it lies each round ("live", None)."""
     if not hold:
         return []
     pid = np.asarray(M["piece"])
@@ -1776,7 +1779,8 @@ def plumb_seam_pins(M: dict, X: np.ndarray, hold: dict | None) -> list:
                 for k in v:
                     r = float(np.clip((X[tv, 2] - X[k, 2]) / ramp, 0.0, 1.0))
                     if r > 0:
-                        out.append((int(k), tv, float(hold.get("w", 2.0)) * r, hold.get("axes", "y")))
+                        out.append((int(k), tv, float(hold.get("w", 2.0)) * r, hold.get("axes", "y"),
+                                    None if hold.get("anchor", "hung") == "live" else (float(X[tv, 0]), float(X[tv, 1]))))
     return out
 
 
@@ -2435,7 +2439,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
             dx[a] += PK * 100.0
             dx[b] += PK * 100.0
         dy = np.zeros(n)
-        for v, _t, w_, ax_ in py:
+        for v, _t, w_, ax_, _a in py:
             if "x" in ax_:
                 dx[v] += PK * w_
             if "y" in ax_:
@@ -2639,12 +2643,12 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
             for v, x_, w_ in ox:
                 bx[v] += PK * w_ * x_
             by = bp[:, 1].copy()
-            for v, t_, w_, ax_ in py:  # PLUMB_HOLD: the top as it lies; x only outward
+            for v, t_, w_, ax_, an_ in py:  # PLUMB_HOLD: the hung top (or as it lies); x only outward
+                x_, y_ = an_ if an_ is not None else (float(X[t_, 0]), float(X[t_, 1]))
                 if "x" in ax_:
-                    x_ = float(X[t_, 0])
                     bx[v] += PK * w_ * (math.copysign(max(abs(float(X[v, 0])), abs(x_)), x_))
                 if "y" in ax_:
-                    by[v] += PK * w_ * float(X[t_, 1])
+                    by[v] += PK * w_ * y_
             Xn = np.c_[Ax.solve(bx), Ay.solve(by), Ayz.solve(bp[:, 2])]
             if grav > 0:  # a step never moves a vertex more than SETTLE_STEP (contact can't be tunnelled; the
                 # equilibrium is unchanged: there the steps are 0)
@@ -2851,9 +2855,11 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
         info["shear_deg"] = {"p50": round(float(np.median(sh_)), 1), "p99": round(float(np.percentile(sh_, 99)), 1),
                              "max": round(float(sh_.max()), 1)}
     if py:  # (C181) how far the plumb-held seam vertices ended off their vertical (mm, horizontal)
-        dpl = np.array([np.hypot(X[v, 0] - (math.copysign(max(abs(float(X[v, 0])), abs(float(X[t_, 0]))), float(X[t_, 0]))
-                                            if "x" in ax_ else X[v, 0]), (X[v, 1] - X[t_, 1]) if "y" in ax_ else 0.0)
-                        for v, t_, w_, ax_ in py if w_ > 0]) * 1000
+        def _an(t_, an_):
+            return an_ if an_ is not None else (float(X[t_, 0]), float(X[t_, 1]))
+        dpl = np.array([np.hypot(X[v, 0] - (math.copysign(max(abs(float(X[v, 0])), abs(_an(t_, an_)[0])), _an(t_, an_)[0])
+                                            if "x" in ax_ else X[v, 0]), (X[v, 1] - _an(t_, an_)[1]) if "y" in ax_ else 0.0)
+                        for v, t_, w_, ax_, an_ in py if w_ > 0]) * 1000
         info["plumb_off_mm"] = {"p50": round(float(np.median(dpl)), 1), "max": round(float(dpl.max()), 1)}
     if holds:  # how far the held seams ended from the closed fit (mm): the hang's side effect
         dh = np.array([np.linalg.norm(X[v] - q) for v, q, _ in holds]) * 1000
