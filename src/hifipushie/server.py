@@ -3010,20 +3010,22 @@ def style_garment(name: str, garment: str, ops: list[dict], free: list[str] | No
         if kind == "pull":
             stops.append(inf["stopped"])
             lines.append(f"  {k + 1} pull: moved (mm) {json.dumps(inf['moved_mm'])} in {inf['steps']} steps of "
-                         f"{inf['step_mm']:g} mm, stopped by {inf['stopped']}; stretch p99 start {inf['stretch_p99_start']} "
+                         f"{inf['step_mm']:g} mm, stopped by {inf['stopped']}; threads p99 start {inf['stretch_p99_start']} "
                          f"/ least {inf['stretch_p99_least']} / end {inf['stretch_p99_end']} % (tol {inf['tol_pct']:g} % "
-                         f"over the least); gripped {json.dumps(inf['gripped'])}")
+                         f"over the least), shear p99 {inf['shear_p99_deg'][0]} -> {inf['shear_p99_deg'][1]} deg (lock "
+                         f"{inf['shear_lock_deg']}); gripped {json.dumps(inf['gripped'])}")
         elif kind == "turn":
-            lines.append(f"  {k + 1} turn: {json.dumps(inf['turns'])}; stretch p99 {inf['stretch_p99_start']} -> "
-                         f"{inf['stretch_p99_end']} %")
+            lines.append(f"  {k + 1} turn: {json.dumps(inf['turns'])}; threads p99 {inf['stretch_p99_start']} -> "
+                         f"{inf['stretch_p99_end']} %, shear p99 {inf['shear_p99_deg'][0]} -> {inf['shear_p99_deg'][1]} deg")
         elif kind == "relax":
-            lines.append(f"  {k + 1} relax: stretch p99 {inf['stretch_p99'][0]} -> {inf['stretch_p99'][1]} %")
+            lines.append(f"  {k + 1} relax: threads p99 {inf['stretch_p99'][0]} -> {inf['stretch_p99'][1]} %")
         elif kind == "hold":
             lines.append(f"  {k + 1} hold: {inf['held']} vertices kept where they are for the later ops")
         else:
-            lines.append(f"  {k + 1} smooth {', '.join(inf['pieces'])}: {inf['rounds']} rounds, roughness p95 "
-                         f"{inf['rough_p95_mm'][0]} -> {inf['rough_p95_mm'][1]} mm, stretch p99 {inf['stretch_p99'][0]} "
-                         f"-> {inf['stretch_p99'][1]} %")
+            lines.append(f"  {k + 1} smooth {', '.join(inf.get('pieces') or [inf.get('border', '')])}: {inf['rounds']} rounds, "
+                         + (f"roughness p95 {inf['rough_p95_mm'][0]} -> {inf['rough_p95_mm'][1]} mm" if "rough_p95_mm" in inf
+                            else f"kink {inf['kink_deg'][0]} -> {inf['kink_deg'][1]} deg")
+                         + f", threads p99 {inf['stretch_p99'][0]} -> {inf['stretch_p99'][1]} %")
     crum = {p: [round(float(np.percentile(gpl.crumple(M, X_fit, p), 95)), 3),
                 round(float(np.percentile(c, 95)), 3)] for p in free if len(c := gpl.crumple(M, Xn, p))}
     pts = sorted({h["at"] for o in ops for h in (o.get("pull") or {}).get("handles", [])

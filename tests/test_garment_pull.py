@@ -254,7 +254,10 @@ def test_shirt_collar_hugs_the_neck_at_the_back_and_sides():
     assert infos[3]["pull"]["stopped"] == "stretch"
     assert all(b - a <= 7 for a, b in zip(r0, r)), (r0, r)  # hugs (this +5-6 mm; unheld: the fall +8 / +14 mm off)
     assert all(c <= c0 + 2.0 for c, c0 in zip(corner, corner0)), (corner0, corner)  # (this 1.5 / 2.5, closed 2.7)
-    assert 130 <= apart <= 150 and all(66 <= b <= 80 for b in below), (apart, below)  # this 138 / 73-74; f2 ~ 137 / 76
+    # points apart: the CONCEPT's ~147 (as test 2: 140-154), not one old result (C165: the 130-150 band was sp10 / f2's
+    # 137-138 on the iso fit). This 153.5 on the muslin fit, styled woven (C169); the unpulled collar (66.8, turned
+    # only) fails it
+    assert 140 <= apart <= 154 and all(66 <= b <= 80 for b in below), (apart, below)
     assert abs(below[0] - below[1]) <= 3, below  # mirrored pulls (unmirrored: 74 / 72)
     assert infos[4]["smooth"]["rounds"] > 0
     # ONE SWOOP, NO CREASE (C168): the kink is the turn the edge's own bend doesn't explain (edge_turns kink_deg: turn
@@ -358,7 +361,16 @@ def test_a_shirt_without_a_tie_is_styled_open_by_default():
     rows = gp.open_collar_rows(M, X)
     print(rows)
     assert all(r["status"] == "PASS" for r in rows), [r for r in rows if r["status"] != "PASS"]
-    assert gp.stretch_p99(M, X, ["collar", "stand", "front.L", "front.R"]) <= 0.07
+    # unstretched, read as THREADS with shear apart (C169: an edge read counts the bias shear the woven styling allows,
+    # 7.5 % here at threads p99 well under); planted fault: the collar grown 10 % fails the same read
+    pcs = ["collar", "stand", "front.L", "front.R"]
+    t99, sh99 = gp.thread_p99(M, X, pcs)
+    print("threads p99", t99, "shear p99 by piece", sh99, "edge", gp.stretch_p99(M, X, pcs))
+    assert t99 <= 0.07 and all(sh99 <= pf.SHEAR_LOCK_DEG), (t99, sh99)
+    on = np.asarray(M["piece"]) == M["names"].index("collar")
+    Xb = X.copy()
+    Xb[on] = X[on].mean(0) + 1.1 * (X[on] - X[on].mean(0))
+    assert gp.thread_p99(M, Xb, pcs)[0] > 0.07
 
 
 def _two_fronts(n=21, w=0.1, h=0.2):
@@ -398,10 +410,14 @@ def test_worn_style_holds_the_fastened_buttons():
     assert np.linalg.norm(Xo[a] - Xo[b]) > 0.003, "control: the old mask should let the top pair open"
     held = gp.hold_mask(M, X, ["front.L", "front.R"], "closure:front")
     assert held[a] and held[b]
-    Xn, _ = gp.pull(M, X, held, hs, step=0.003, max_move=0.03, tol=1.0)
+    Xn, info = gp.pull(M, X, held, hs, step=0.003, max_move=0.03, tol=1.0)
     for a, b in pairs:
         assert np.linalg.norm(Xn[a] - Xn[b]) < 1e-6
-    assert np.linalg.norm(Xn[M["points"]["front.L:top"]] - X[M["points"]["front.L:top"]]) > 0.02  # the tops still part
+    # the tops still part, as far as the cloth lets them (C169: tol 1.0 switches the thread stop off, not the shear
+    # lock: the free corner dragged in its own plane jams at 15 mm, shear p99 36.5 deg; the isometric solve sheared it
+    # 30 mm to max_move)
+    assert info["stopped"] in ("shear", "max_move"), info
+    assert np.linalg.norm(Xn[M["points"]["front.L:top"]] - X[M["points"]["front.L:top"]]) > 0.01
 
 
 def test_a_garment_edits_its_wear_style_by_op_kind():
