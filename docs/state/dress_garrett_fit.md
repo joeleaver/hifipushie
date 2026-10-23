@@ -5,7 +5,7 @@ line plumb). Put "the reference jacket is worn open, unbuttoned" in every review
 only. Covered show-through is not a fault (C153); the shirt patches at the shoulders are culled later, don't chase them.
 PROCESS: muslin fit (worn open, C171), styling by the kind's wear as data (C174 / C178), remeasurement; no sim; judged
 beside the concept only (C165). Shirt = gc_garrett's shirt as worn, not tuned here. Jacket hps = "corner".
-STATE: round 35 done; suite: see $FR35/suite.log. PATTERN unchanged (gc_garrett v5, r34's plumb pattern, flat fall girth
+STATE: round 35 done; suite (17 files, capped -rs) PYTEST_EXIT 0, 293 passed, 4 xfailed ($FR35/suite.log). PATTERN unchanged (gc_garrett v5, r34's plumb pattern, flat fall girth
 1113 / 1131 / 1273; gate g1 PASS_WAIVED 17b169ab / e31aac35, falls_straight PASS).
 FIT (C181, default for plumb designs): pattern_form.PLUMB_HOLD holds the front|side and side|back seams below their
 tops in y on the vertical through the top as it HUNG before the seat (soft, w 2, ramp 50 mm). Won the A/B over the same

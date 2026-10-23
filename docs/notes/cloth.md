@@ -10586,3 +10586,4 @@ Muslin fit, styling, no sim; judged beside the concept only. Fault in: r34's sid
   tails), the hem flares (side line -30 at the hem), the fronts are 20-30 mm short (727 vs 748: the swing lifts the corner),
   the side view is a sack (front panel stands well off the belly), shirt show-through patches at the armholes / chest sides
   (509 vs r34 475 verts; covered, culled later). Flaps lie on the fronts (sunk 0/25) but ride 49-51 mm off the body.
+- Suite (17 files, capped, -rs, HIFIPUSHIE_HOME=workspace + ASSETS): 293 passed, 4 xfailed, 0 skipped, PYTEST_EXIT 0 ($FR35/suite.log, 13.3 min).
