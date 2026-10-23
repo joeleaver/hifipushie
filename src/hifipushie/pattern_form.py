@@ -116,6 +116,15 @@ HANG_FIELD = False
 # The mesh carries the weights as M["bend_w"] for the styling (garment_pull.STYLE_BEND).
 FIT_BEND_KEYED = __import__("os").environ.get("PF_BEND_KEYED", "0") == "1"
 FIT_HINGE_W = float(__import__("os").environ.get("PF_HINGE_W", "1.0"))  # x FIT_BEND per unit weight over plain
+# STIFFNESS NEVER BUYS SHAPE WITH STRETCH (canvas s2, Joe 2026-10-23: "it shouldn't really be a choice between
+# stiffness and stretch"): woven cloth barely stretches along its threads, canvassed or not; stiffness changes how it
+# BENDS. In a weighted sum (ARAP + hinges) a stiff piece asked for a shape it can't reach bought it with thread strain
+# (session 1: keyed fit threads p99 7.2 -> 8.4 %, the jacket styled 7.4 -> 9.6 %). The hierarchy: every round the
+# interfaced triangles' warp / weft are projected back within FIT_THREAD_CAP (_thread_limit: the bias still shears),
+# then contact; the hinges act only inside what the threads allow. Env PF_THREAD_FIRST=0 for the A/B.
+FIT_THREAD_FIRST = __import__("os").environ.get("PF_THREAD_FIRST", "1") == "1"
+FIT_THREAD_CAP = float(__import__("os").environ.get("PF_THREAD_CAP", "0.02"))  # (the muslin's ~1-2 %)
+FIT_THREAD_SWEEPS = 4
 HANG_G = 0.1  # the weight per vertex x mean pattern edge^2 (as SETTLE_G)
 HANG_ITERS = 600  # (the towel KAT: 150 rounds left it half way, 26 mm; 600: 9-10 mm, hems +3 / +0.4)
 HANG_STRAIN = 0.01  # the most the weight stretches a thread (warp / weft): the muslin's "until it would stretch"
@@ -2501,6 +2510,11 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
         flapv0 = (flv_ & ~rowv_)[src]
 
     bend_f = 1.0  # (the settle's bending scale, SETTLE_BEND)
+    Wk = None  # THREADS FIRST (FIT_THREAD_FIRST): the interfaced triangles' threads capped every round while keyed bending acts
+    if FIT_THREAD_FIRST and Wv is not None and bend_w is not None and np.max(bend_w) > 1.0 + 1e-9:
+        mk_ = (np.asarray(bend_w, float)[Wv["F"]] > 1.0 + 1e-9).all(1)
+        if mk_.any():
+            Wk = {"F": Wv["F"][mk_], "q": Wv["q"][mk_], "Dinv": Wv["Dinv"][mk_]}
 
     def system(wc, sw=sw):
         w = wE
@@ -2745,6 +2759,8 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                 Xn = X + dX * np.minimum(1.0, SETTLE_STEP / np.maximum(ln, 1e-12))
             if grav > 0 and hang_ and Wv is not None:  # HANG: the THREADS capped (the bias still shears)
                 Xn = _thread_limit(Wv, Xn, HANG_STRAIN, SETTLE_SWEEPS)
+            if Wk is not None:  # THREADS FIRST: the stiff cloth bends only within the shapes its threads allow
+                Xn = _thread_limit(Wk, Xn, FIT_THREAD_CAP, FIT_THREAD_SWEEPS)
             if grav > 0:  # strain limit: the weight never stretches an edge past SETTLE_STRAIN (wovens barely give)
                 for _ in range(SETTLE_SWEEPS):
                     dv = Xn[E[:, 1]] - Xn[E[:, 0]]

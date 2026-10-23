@@ -98,6 +98,15 @@ HANG_SWEEPS = 4  # Jacobi sweeps of the thread cap a round
 # (cloth's own rest; only interfaced cloth is made to a shape).
 STYLE_BEND = __import__("os").environ.get("GP_STYLE_BEND", "0") == "1"
 STYLE_BEND_W = float(__import__("os").environ.get("GP_STYLE_BEND_W", "5.0"))
+# THREADS FIRST (canvas s2, Joe: "it shouldn't really be a choice between stiffness and stretch"): with STYLE_BEND on,
+# every round projects each face's warp / weft back within max(its length when the STYLING started (_bend_rest), 1 + STYLE_THREAD_CAP)
+# (_thread_cap), so the bending acts only within the shapes the threads allow; a pull then stops earlier, never
+# stretches further. Env GP_THREAD_FIRST=0 for the A/B.
+STYLE_THREAD_FIRST = __import__("os").environ.get("GP_THREAD_FIRST", "1") == "1"
+STYLE_THREAD_CAP = float(__import__("os").environ.get("GP_THREAD_CAP", "0.01"))
+STYLE_THREAD_FINAL = 60  # bending-free rounds at most at the end of a solve, until every face is within its bound
+STYLE_THREAD_TOL = 0.002  # (a thread this far past its bound counts as within it)
+STYLE_THREAD_ROUNDS = int(__import__("os").environ.get("GP_THREAD_ROUNDS", "2"))  # bending-free rounds a round
 STYLE_BEND_PLAIN = float(__import__("os").environ.get("GP_STYLE_BEND_PLAIN", "0.0"))  # (x a plain vertex's weight 1)
 
 STEP = 0.003  # m: a handle's move per step
@@ -335,8 +344,17 @@ class FlatARAP:
             np.maximum.at(wv, self.inv, bw)
             self.bend = bd_.Bending(self.WF, self.U, self.n, wv, STYLE_BEND_W, rest=self.weld(np.asarray(
                 M["_bend_rest"] if M.get("_bend_rest") is not None else X, float)), flat_below=STYLE_BEND_PLAIN)
+            self.L0 = self.L
             self.L = (self.L + self.bend.K).tocsr()
-        self._lu = {}
+            if STYLE_THREAD_FIRST:  # THREADS FIRST: each face's warp / weft kept within max(its start, 1 + cap)
+                self.Dinv0 = np.linalg.inv(np.stack([self.U[:, 1] - self.U[:, 0], self.U[:, 2] - self.U[:, 0]], -1))
+                W0 = self.weld(np.asarray(M["_bend_rest"] if M.get("_bend_rest") is not None else X, float))  # (the
+                # styling's start, as the bending's rest: a per-op start would ratchet the bound up op by op)
+                ln0 = np.linalg.norm(np.stack([W0[self.WF[:, 1]] - W0[self.WF[:, 0]], W0[self.WF[:, 2]] - W0[self.WF[:, 0]]], -1)
+                                     @ self.Dinv0, axis=1)
+                self.thread_hi = np.maximum(ln0, 1.0 + STYLE_THREAD_CAP)
+                self.thread_lo = np.minimum(ln0, 1.0 - STYLE_THREAD_CAP)  # (nor shorter: a woven buckles, it doesn't shrink)
+        self._lu, self._lu0 = {}, {}
         self.floor, self.floor_pushed = _bind_floor(M.get("_floor"), self.inv), 0  # (style(floor=...): C170)
         self.shear = self.shear_free = None
         if WOVEN_STYLE:
@@ -384,24 +402,15 @@ class FlatARAP:
             fall = HANG_G * HANG_PROX * self.mass[fi]
         U, WF, Wt = self.U, self.WF, self.Wt
         Y = Y.copy()
+        tf = getattr(self, "thread_hi", None) is not None
+        if tf:  # THREADS FIRST: the bending-free (ARAP / woven only) system for the rounds that give the threads back
+            k0 = key + b"t"
+            if k0 not in self._lu0:
+                L0f = self.L0[fi]
+                self._lu0 = {k0: (splu(L0f[:, fi].tocsc()), L0f[:, ci].tocsr())}
+            lu0, L0fc = self._lu0[k0]
         for _ in range(iters):
-            S = np.zeros((len(WF), 3, 2))
-            for k, (a, b, _c) in enumerate(_HE):
-                S += Wt[:, k, None, None] * (Y[WF[:, a]] - Y[WF[:, b]])[:, :, None] * (U[:, a] - U[:, b])[:, None, :]
-            Uu, _, Vt = np.linalg.svd(S, full_matrices=False)
-            R = Uu @ Vt  # (m, 3, 2): each face's closest orthonormal map from its pattern to its current edges
-            if self.shear is not None:  # WOVEN (the fit's cloth): warp / weft at their length, shear at its weight
-                Fg = np.stack([Y[WF[:, 1]] - Y[WF[:, 0]], Y[WF[:, 2]] - Y[WF[:, 0]]], -1) @ self.Dinv
-                Ps = Fg / np.maximum(np.linalg.norm(Fg, axis=1, keepdims=True), 1e-12)
-                sh = self.shear
-                if self.shear_free is not None:  # (undriven faces, no fixed vertex: the fit's SHEAR_FREE, C166)
-                    sh = np.where(fixed[WF].any(1), self.shear, self.shear_free)[:, None, None]
-                R = (Ps + sh * R) / (1.0 + sh)
-            rhs = np.zeros((self.n, 3))
-            for k, (a, b, _c) in enumerate(_HE):
-                v = Wt[:, k, None] * np.einsum("mij,mj->mi", R, U[:, a] - U[:, b])
-                np.add.at(rhs, WF[:, a], v)
-                np.add.at(rhs, WF[:, b], -v)
+            rhs = self._arap_rhs(Y, fixed)
             if self.bend is not None:  # (the rest curvature along the current direction: bending.Bending.rhs)
                 rhs = rhs + self.bend.rhs(Y)
             r = rhs[fi] - Lfc @ Y[ci]
@@ -417,20 +426,65 @@ class FlatARAP:
             Y[fi] = Yf
             if hang:  # (the threads capped: the weight never stretches a thread past HANG_STRAIN)
                 Y = self._thread_cap(Y, fixed)
+            if tf:  # THREADS FIRST: the bending acts within the threads. Rounds of the bending-free solve give back the
+                # length the bending bought (a Jacobi cap alone can't: a strip stretched end to end stayed 12.4 %), then
+                # the cap takes off what is still past each face's bound
+                for _r in range(STYLE_THREAD_ROUNDS):
+                    r0 = self._arap_rhs(Y, fixed)[fi] - L0fc @ Y[ci]
+                    Y[fi] = np.column_stack([lu0.solve(r0[:, k]) for k in range(3)])
+                Y = self._thread_cap(Y, fixed, hi=self.thread_hi, lo=self.thread_lo)
             if self.floor:  # THE LAYER FLOOR (C170): what went under its floor this round is put back on it
                 Y = self._floor(Y, fixed)
             if eps is not None and dmax < eps:
                 break
+        if tf:  # THREADS FIRST, the last word: bending-free rounds until no face is past its bound (the bending chose the
+            # shape on the way; the threads have the last say), floors kept
+            for _r in range(STYLE_THREAD_FINAL):
+                Fg = np.stack([Y[WF[:, 1]] - Y[WF[:, 0]], Y[WF[:, 2]] - Y[WF[:, 0]]], -1) @ self.Dinv0
+                ln_ = np.linalg.norm(Fg, axis=1)
+                if max(float((ln_ - self.thread_hi).max()), float((self.thread_lo - ln_).max())) <= STYLE_THREAD_TOL:
+                    break
+                r0 = self._arap_rhs(Y, fixed)[fi] - L0fc @ Y[ci]
+                Y[fi] = np.column_stack([lu0.solve(r0[:, k]) for k in range(3)])
+                Y = self._thread_cap(Y, fixed, hi=self.thread_hi, lo=self.thread_lo)
+                if self.floor:
+                    Y = self._floor(Y, fixed)
         return Y
 
-    def _thread_cap(self, Y: np.ndarray, fixed: np.ndarray, sweeps: int | None = None) -> np.ndarray:
+    def _arap_rhs(self, Y: np.ndarray, fixed: np.ndarray) -> np.ndarray:
+        """The local step (each face's closest rotation of its pattern, WOVEN: warp / weft at their length, shear at
+        its weight) as the global step's right-hand side (welded, (n, 3))."""
+        U, WF, Wt = self.U, self.WF, self.Wt
+        S = np.zeros((len(WF), 3, 2))
+        for k, (a, b, _c) in enumerate(_HE):
+            S += Wt[:, k, None, None] * (Y[WF[:, a]] - Y[WF[:, b]])[:, :, None] * (U[:, a] - U[:, b])[:, None, :]
+        Uu, _, Vt = np.linalg.svd(S, full_matrices=False)
+        R = Uu @ Vt  # (m, 3, 2): each face's closest orthonormal map from its pattern to its current edges
+        if self.shear is not None:  # WOVEN (the fit's cloth): warp / weft at their length, shear at its weight
+            Fg = np.stack([Y[WF[:, 1]] - Y[WF[:, 0]], Y[WF[:, 2]] - Y[WF[:, 0]]], -1) @ self.Dinv
+            Ps = Fg / np.maximum(np.linalg.norm(Fg, axis=1, keepdims=True), 1e-12)
+            sh = self.shear
+            if self.shear_free is not None:  # (undriven faces, no fixed vertex: the fit's SHEAR_FREE, C166)
+                sh = np.where(fixed[WF].any(1), self.shear, self.shear_free)[:, None, None]
+            R = (Ps + sh * R) / (1.0 + sh)
+        rhs = np.zeros((self.n, 3))
+        for k, (a, b, _c) in enumerate(_HE):
+            v = Wt[:, k, None] * np.einsum("mij,mj->mi", R, U[:, a] - U[:, b])
+            np.add.at(rhs, WF[:, a], v)
+            np.add.at(rhs, WF[:, b], -v)
+        return rhs
+
+    def _thread_cap(self, Y: np.ndarray, fixed: np.ndarray, sweeps: int | None = None, hi=None, lo=None) -> np.ndarray:
         """Jacobi thread-strain limit (pattern_form._thread_limit on the welded faces): a face whose warp or weft is
-        longer than 1 + HANG_STRAIN mapped back to it about its centroid; fixed vertices stay."""
+        longer than 1 + HANG_STRAIN (or `hi`, per face: THREADS FIRST) mapped back to it about its centroid; fixed vertices stay."""
         U, WF = self.U, self.WF
         for _ in range(HANG_SWEEPS if sweeps is None else sweeps):
             Fg = np.stack([Y[WF[:, 1]] - Y[WF[:, 0]], Y[WF[:, 2]] - Y[WF[:, 0]]], -1) @ self.Dinv0
             ln = np.linalg.norm(Fg, axis=1)
-            sc = np.clip(ln, 1.0 - HANG_STRAIN, 1.0 + HANG_STRAIN) / np.maximum(ln, 1e-12)  # (nor shorter: a woven buckles)
+            if hi is not None:  # (THREADS FIRST: each face's own bounds, longer or shorter)
+                sc = np.clip(ln, np.asarray(lo) if lo is not None else 0.0, np.asarray(hi)) / np.maximum(ln, 1e-12)  # ((faces, 2) warp / weft)
+            else:
+                sc = np.clip(ln, 1.0 - HANG_STRAIN, 1.0 + HANG_STRAIN) / np.maximum(ln, 1e-12)  # (nor shorter: a woven buckles)
             bad = (np.abs(sc - 1.0) > 1e-9).any(1)
             if not bad.any():
                 break

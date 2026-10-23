@@ -140,3 +140,37 @@ def test_drafted_canvas_region_covers_its_area():
     assert np.allclose(s[np.abs(u - 0.07) < 1e-9], 0.5)
     w = bd.weights(Bp, M)
     assert np.isclose(w[u < 0.04].min(), bd.BEND_KIND["canvas"]) and np.isclose(w[u > 0.08].max(), 1.0)
+
+
+def _walked_bend(kind):
+    """A 120 mm strip clamped at one end (12 mm), resting flat; its tip walked in 20 steps round a quarter bend whose arc
+    keeps the strip's length (a shape its threads allow). -> (thread strain max, mid-strip z mm, the arc's mid z mm)."""
+    M = _strip()
+    u = M["uv"][:, 0]
+    X = np.c_[M["uv"], np.zeros(len(u))]
+    M["bend_w"] = np.full(len(X), bd.BEND_KIND[kind])
+    M["_bend_rest"] = X.copy()
+    r = 0.108 * 2 / np.pi
+    tip = u > 0.1199
+    Xn = X.copy()
+    for f in np.linspace(0.05, 1, 20):
+        th, rf = (u[tip] - 0.012) / r * f, r / f
+        Xn[tip, 0] = 0.012 + rf * np.sin(th)
+        Xn[tip, 2] = -(rf - rf * np.cos(th))
+        Xn, _ = gp.relax(M, Xn, (u < 0.012) | tip, iters=40)
+    t, _ = gp.thread_strain(M, Xn)
+    um = u[np.argmin(np.abs(u - 0.066))]
+    mid = np.abs(u - um) < 1e-7
+    return float(t.max()), 1000 * float(Xn[mid, 2].mean()), -1000 * (r - r * np.cos((um - 0.012) / r))
+
+
+def test_stiffness_never_buys_shape_with_stretch(bend_on, verbose=True):
+    """THREADS FIRST (canvas s2; Joe: "it shouldn't really be a choice between stiffness and stretch"): bending stiffness
+    changes how cloth bends, never how far its threads give. A canvassed strip walked round a bend its threads allow
+    keeps its threads within ~1 % (the weighted sum alone bought the stiff shape with 12.4 % strain) and takes the
+    bend's arc (the least-bending shape the threads allow: mid within 3 mm); plain cloth's threads stay within 1 % too."""
+    out = {k: _walked_bend(k) for k in ("plain", "canvas")}
+    if verbose:
+        print(out)
+    assert out["plain"][0] < 0.01 and out["canvas"][0] < 0.015, out
+    assert abs(out["canvas"][1] - out["canvas"][2]) < 3.0, out
