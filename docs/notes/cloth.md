@@ -10678,3 +10678,6 @@ Muslin fit, styling, no sim; judged beside the concept only. Same fit (fit_g1.pk
   Hem-held side panels (hold "at" the side hem border, s1): 29-43, hem+30 446; + back hems (s2): 29-42, hem+30 444, threads
   7.42, edge unchanged. Now the kb default (C186): k3 (sty38.sh g1 k3) = s2 exactly. Sheets check/*_k3c.png;
   check/wholefront_k2_vs_s2.png. The hem is now 38 narrower than the concept's 482 at hem+30 (the fit's own 454 - 10).
+- Step 3: fault 3 checked after 1 and 2: edge 650 still 101 (k3; profile L 95 / R 100), set by the plumb swing (op 4: 102)
+  and hardly touched by the lay-back / smooths; not fixed this round. Sleeve-head shard specks (C183 leftovers) not touched.
+- Suite (17 files, capped, -rs): 297 passed, 4 xfailed, PYTEST_EXIT 0 ($FR38/suite.log, 19 min).
