@@ -1722,6 +1722,58 @@ OPEN_HOLD_W = 20.0  # the held seam vertex's pull to its closed-fit position (3D
 OPEN_HANG = True  # with OPEN_HOLD: the free edge below the lowest worn-open point hangs plumb from it (worn_open_edge)
 
 
+# A PLUMB JACKET'S SIDE SEAMS HANG ON THE VERTICAL BELOW THE UNDERARM (fit round 35, C181; Joe 2026-10-20: the jacket
+# "should basically just fall straight down"): real tailoring cuts the side seam plumb and the jacket hangs from the
+# shoulders, so below its underarm point the side seam sits on the vertical through it. Without it the muslin fit of
+# round 34's straight-fall pattern slid the front panel's side seam forward round the body (60 deg from CF at the hem
+# vs 74-81 in round 33, y 63 -> 107 mm forward) and the extra girth became front LAP: the open fronts met at CF (C180).
+# PLUMB_HOLD: each seam between the named piece kinds (front|side, side|back on a three-panel jacket; front|back where
+# there is no side panel), its vertices below the seam's top held SOFTLY (weight PLUMB_W per vertex, ramped in over
+# "ramp" m below the top, as the neck pin: soft) on the vertical through the top: y (front / back) both ways; x only
+# outward (the cloth may stand out past the line where the body is wider, never be drawn in to it).
+PLUMB_HOLD = {"seams": [["front", "side"], ["side", "back"]], "w": 2.0, "ramp": 0.05, "axes": "xy"}
+
+
+def plumb_hold_for(g: dict | None) -> dict | None:
+    """The plumb hold garment g is fitted with: its own "plumb_hold" (a dict edits PLUMB_HOLD, false none), else
+    PLUMB_HOLD for a design declared to fall straight (cloth_workflow.falls_straight_design, C179), else None."""
+    from .cloth_workflow import falls_straight_design
+    own = (g or {}).get("plumb_hold")
+    if own is False:
+        return None
+    if isinstance(own, dict):
+        return dict(PLUMB_HOLD, **own)
+    return dict(PLUMB_HOLD) if (own or falls_straight_design(g or {})) else None
+
+
+def plumb_seam_pins(M: dict, X: np.ndarray, hold: dict | None) -> list:
+    """[(vertex, x target, y target, weight, axes)] for PLUMB_HOLD on the fit X: per seam (each side), its sewn vertices
+    on both pieces, the target the (x, y) of the seam's top vertex."""
+    if not hold:
+        return []
+    pid = np.asarray(M["piece"])
+    names = list(M["names"])
+    kind = [nm.split(".")[0] for nm in names]
+    side = [nm.split(".", 1)[1] if "." in nm else "" for nm in names]
+    sw = np.asarray(M["sew"]).reshape(-1, 2)
+    out = []
+    for ka, kb in hold.get("seams") or []:
+        for sd in sorted({s for s in side if s}):
+            ia = [k for k, nm in enumerate(names) if kind[k] == ka and side[k] == sd]
+            ib = [k for k, nm in enumerate(names) if kind[k] == kb and side[k] == sd]
+            m = (np.isin(pid[sw[:, 0]], ia) & np.isin(pid[sw[:, 1]], ib)) | (np.isin(pid[sw[:, 0]], ib) & np.isin(pid[sw[:, 1]], ia))
+            if not m.any():
+                continue
+            v = np.unique(sw[m].ravel())
+            top = X[v[np.argmax(X[v, 2])]]
+            ramp = max(float(hold.get("ramp", 0.05)), 1e-6)
+            for k in v:
+                r = float(np.clip((top[2] - X[k, 2]) / ramp, 0.0, 1.0))
+                if r > 0:
+                    out.append((int(k), float(top[0]), float(top[1]), float(hold.get("w", 2.0)) * r, hold.get("axes", "xy")))
+    return out
+
+
 def open_seam_holds(M: dict, Xc: np.ndarray, ox: list, placed: dict | None = None, fast: list | None = None) -> list:
     """A worn-open front HANGS from its seams (fit round 10): in a real jacket worn open the front pivots about the roll
     line / break and its edge falls by its weight, while the side seams, the back and the sleeves stay where the body
@@ -2166,12 +2218,14 @@ def covered(osurf, X, bsurf=None):
 def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = EASE, fasten="default",
              iters: int = 120, X0: np.ndarray | None = None, attract: float = 0.5, log=None, pressed: bool = True,
              worn_open: dict | None = None, shoulder_pad: dict | None = None, over: dict | None = None,
-             bridge: float = 0.0, neck_split: bool | None = None, fit_model: str | None = None) -> dict:
+             bridge: float = 0.0, neck_split: bool | None = None, fit_model: str | None = None,
+             plumb_hold: dict | None = None) -> dict:
     """The garment assembled on the form (see the module docstring). pattern: a placed garment (cloth.build
     place_only result: "mesh", "X0", "pieces") or {"mesh": M, "X0": start, "pieces": B (optional)}. body: a
     cloth.Body (V, T, at) or None (a free sheet: the fold tests). under: {"V", "F"} of the garment under (the shirt
     under the jacket) or None. worn_open: {point name: offset m} (WORN_OPEN). fit_model: "woven" | "isometric" | None
-    (the module default WOVEN / NECK_PIN_W; fit_model_for). Returns {"V", "F", "M", "info"}."""
+    (the module default WOVEN / NECK_PIN_W; fit_model_for). plumb_hold: PLUMB_HOLD's form (plumb_hold_for) or None.
+    Returns {"V", "F", "M", "info"}."""
     woven_ = WOVEN if fit_model is None else fit_model == "woven"
     neck_w_ = LEGACY_NECK_PIN_W if fit_model == "isometric" else NECK_PIN_W
     M = pattern["mesh"]
@@ -2214,6 +2268,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                      neck_w=neck_w_)
     ox = worn_open_pins(M, X, worn_open)
     ox_named = list(ox)  # (the named worn-open points alone: ox gains the edge pins below)
+    py = []  # PLUMB_HOLD pins (set before the seat: plumb_seam_pins)
     # 1. collars / stands stood up from their seams; 2. flaps turned
     placed = {k: True for k in range(len(names))}
     if B is not None:
@@ -2373,7 +2428,14 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
         for a, b in cf_fast:
             dx[a] += PK * 100.0
             dx[b] += PK * 100.0
-        return splu((A0 + diags(dp + dx)).tocsc()), splu((A0 + diags(dp)).tocsc())
+        dy = np.zeros(n)
+        for v, _x, _y, w_, ax_ in py:
+            if "x" in ax_:
+                dx[v] += PK * w_
+            if "y" in ax_:
+                dy[v] += PK * w_
+        Ayz_ = splu((A0 + diags(dp)).tocsc())
+        return splu((A0 + diags(dp + dx)).tocsc()), Ayz_, (splu((A0 + diags(dp + dy)).tocsc()) if dy.any() else Ayz_)
 
     wc = np.full(n, 1.0 if bsurf is not None else 1e-3)
     # a pressed crease holds its angle: the fold rows' cells weigh 1 + PRESS x strength (folds.PRESS, as the sims'
@@ -2406,7 +2468,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
         held = np.zeros(n, bool)
         if grav > 0:
             wc = np.full(n, SETTLE_FREE)
-        Ax, Ayz = system(wc) if sw_ is None else system(wc, sw_)
+        Ax, Ayz, Ay = system(wc) if sw_ is None else system(wc, sw_)
         fa = np.asarray(fast, int).reshape(-1, 2)
         ccon = np.zeros(n, bool)
         ucon = np.zeros(n, bool)  # (UNDER_FLOOR: the vertices on the under layer)
@@ -2416,6 +2478,8 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
         for v_, _, _ in ox:
             drv_[v_] = True
         for v_, _ in cx:
+            drv_[v_] = True
+        for v_, *_ in py:
             drv_[v_] = True
         drv_pin = drv_.copy()
         ramp_n = max(int(SHEAR_RAMP * iters), 1)
@@ -2428,7 +2492,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                 if (c_ != ccon).any():
                     ccon = c_
                     wc = wc_keep + LAYER_W * (ccon | ucon)
-                    Ax, Ayz = system(wc) if sw_ is None else system(wc, sw_)
+                    Ax, Ayz, Ay = system(wc) if sw_ is None else system(wc, sw_)
             if UNDER_FLOOR and usurf is not None and ceil_on[0] and grav <= 0 and it % 5 == 0:  # (C172: the vertices
                 # on the under layer weigh LAYER_W in the solve, as the ceiling's: contact the solve knows)
                 cv_, du_, _ = covered(usurf, X, bsurf)
@@ -2436,12 +2500,12 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                 if (c_ != ucon).any():
                     ucon = c_
                     wc = wc_keep + LAYER_W * (ccon | ucon)
-                    Ax, Ayz = system(wc) if sw_ is None else system(wc, sw_)
+                    Ax, Ayz, Ay = system(wc) if sw_ is None else system(wc, sw_)
             if grav > 0 and it and (held != (wc > SETTLE_FREE)).sum() > SETTLE_REFAC:  # (the contact set changed: the
                 # held vertices' weight; the solve must know the contact, else everything else falls a step per round
                 # and only the touching vertices are put back: the tube read 780 % stretch in 8 rounds)
                 wc = np.where(held, SETTLE_HOLD, SETTLE_FREE)
-                Ax, Ayz = system(wc) if sw_ is None else system(wc, sw_)
+                Ax, Ayz, Ay = system(wc) if sw_ is None else system(wc, sw_)
             # local: per-cell rotation (Kabsch of the rest one-ring onto the current)
             cur = X[src] - X[dst]  # (x_i - x_j) for cell i = src
             Cm = np.zeros((n, 3, 3))
@@ -2568,7 +2632,13 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                 bx[v] += 0.0
             for v, x_, w_ in ox:
                 bx[v] += PK * w_ * x_
-            Xn = np.c_[Ax.solve(bx), Ayz.solve(bp[:, 1]), Ayz.solve(bp[:, 2])]
+            by = bp[:, 1].copy()
+            for v, x_, y_, w_, ax_ in py:  # PLUMB_HOLD: x only outward (the cloth's x when it already stands past the line)
+                if "x" in ax_:
+                    bx[v] += PK * w_ * (math.copysign(max(abs(float(X[v, 0])), abs(x_)), x_))
+                if "y" in ax_:
+                    by[v] += PK * w_ * y_
+            Xn = np.c_[Ax.solve(bx), Ay.solve(by), Ayz.solve(bp[:, 2])]
             if grav > 0:  # a step never moves a vertex more than SETTLE_STEP (contact can't be tunnelled; the
                 # equilibrium is unchanged: there the steps are 0)
                 dX = Xn - X
@@ -2739,6 +2809,9 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
     # onto the form (drawn toward the body's offset), then let go: the pattern's lengths decide how far it stands off
     # (a membrane can't resist a pull onto a curved form: held there it shrinks; the ease would read short)
     ceil_on[0] = True
+    if plumb_hold and body is not None:  # (C181: the side seams on the vertical below their tops, from the seat on)
+        py = plumb_seam_pins(M, X, plumb_hold)
+        info["plumb_hold_v"] = len(py)
     X = relax(X, iters // 2)
     tr("seat", X, M)
     info["turned_deg_mid"] = [round(fold_turned(M, X, g), 0) for fd, g, t in folds_]
@@ -2770,6 +2843,10 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                                      "max": round(float(gs_.max()) * 100, 1)}
         info["shear_deg"] = {"p50": round(float(np.median(sh_)), 1), "p99": round(float(np.percentile(sh_, 99)), 1),
                              "max": round(float(sh_.max()), 1)}
+    if py:  # (C181) how far the plumb-held seam vertices ended off their vertical (mm, horizontal)
+        dpl = np.array([np.hypot(X[v, 0] - (math.copysign(max(abs(float(X[v, 0])), abs(x_)), x_) if "x" in ax_ else X[v, 0]),
+                                 (X[v, 1] - y_) if "y" in ax_ else 0.0) for v, x_, y_, w_, ax_ in py if w_ > 0]) * 1000
+        info["plumb_off_mm"] = {"p50": round(float(np.median(dpl)), 1), "max": round(float(dpl.max()), 1)}
     if holds:  # how far the held seams ended from the closed fit (mm): the hang's side effect
         dh = np.array([np.linalg.norm(X[v] - q) for v, q, _ in holds]) * 1000
         info["open_hold_drift_mm"] = {"p50": round(float(np.median(dh)), 1), "max": round(float(dh.max()), 1)}
@@ -3019,7 +3096,7 @@ def on_form(model: str, garment: str, spec: dict | None = None, g: dict | None =
     # garment key "worn_open" {point: offset m, "source": why}: the form rule for fronts worn open (worn_open_pins)
     out = assemble(res, res["body"], under=under, ease=EASE if under is not None else UNDER_EASE, log=log,
                    worn_open=g.get("worn_open"), shoulder_pad=g.get("shoulder_pad"), bridge=bridge_fraction(g), neck_split=g.get("neck_split"),
-                   fit_model=fit_model_for(model, garment, g))
+                   fit_model=fit_model_for(model, garment, g), plumb_hold=plumb_hold_for(g))
     res["A"], res["A_info"], res["form_under"] = out["V"], out["info"], und
     res["A_info"]["fit_model"] = fit_model_for(model, garment, g) or ("woven" if WOVEN else "isometric")
     if cloth.expanded(g).get("tucked"):

@@ -645,3 +645,34 @@ def test_open_jacket_is_styled_by_its_wear_as_data():
     assert gp.vertex(M, "s:a..b@0.5") == ix(5, 0) and gp.vertex(M, "s:a..b@0") == ix(0, 0)
     h = gp.hold_region(M, X, above="s:c")
     assert h.sum() == nx * 3 and h[ix(3, 2)] and not h[ix(3, 1)], int(h.sum())
+
+
+def test_plumb_lays_a_slid_seam_back_on_the_vertical():
+    """C181 (garrett jacket fit round 35): a plumb jacket's side seam hangs on the vertical below its underarm. A sheet
+    hanging in x-z (100 mm wide, 300 tall), its rows turned about its held left edge more and more toward the hem (0 at
+    the top, 35 deg at the bottom: the right edge, the seam, slid forward round the body in -y, as the muslin fit slid
+    the front panel's side seam). The plumb op lays the right border back on the vertical through its top: y within
+    3 mm of the top's below the ramp, x out to the top's, and the threads stretch less, not more."""
+    nx, ny = 11, 31
+    uv = np.array([(x, y) for x in np.linspace(0, 0.1, nx) for y in np.linspace(0, 0.3, ny)])
+    ix = lambda i, j: i * ny + j
+    F = [f for i in range(nx - 1) for j in range(ny - 1)
+         for f in ((ix(i, j), ix(i + 1, j), ix(i + 1, j + 1)), (ix(i, j), ix(i + 1, j + 1), ix(i, j + 1)))]
+    th = np.radians(35.0) * (0.3 - uv[:, 1]) / 0.3
+    X = np.c_[uv[:, 0] * np.cos(th), -uv[:, 0] * np.sin(th), uv[:, 1]]
+    M = {"F": np.array(F), "uv": uv, "piece": np.zeros(len(uv), int), "names": ["sheet"], "sew": [],
+         "points": {"sheet:tr": ix(nx - 1, ny - 1), "sheet:br": ix(nx - 1, 0)}}
+    held = uv[:, 0] < 1e-9
+    Xn, info = gp.plumb(M, X, held, ["sheet:tr..br"], ramp=0.03, tol=None)
+    seam = gp.border_chain(M, "sheet:tr..br")
+    low = seam[uv[seam, 1] < 0.3 - 0.03]
+    assert np.abs(X[low, 1]).max() > 0.05  # (slid 57 mm forward at the hem)
+    assert np.abs(Xn[low, 1]).max() < 0.003, np.abs(Xn[low, 1]).max()
+    assert Xn[low, 0].min() > 0.1 - 0.003
+    assert info["stretch_p99_end"] <= info["stretch_p99_start"], info
+    assert np.allclose(Xn[held], X[held])
+    # as a styling op: what it laid stays where it put it for the ops after it
+    Xs, infos = gp.style(M, X, held, [{"plumb": {"borders": ["sheet:tr..br"], "ramp": 0.03, "tol": None}},
+                                      {"relax": {"iters": 10}}])
+    assert np.abs(Xs[low, 1]).max() < 0.003 and list(infos[0]) == ["plumb"]
+    assert gp.ops_pieces(M, [{"plumb": {"borders": ["sheet:tr..br"]}}]) == ["sheet"]

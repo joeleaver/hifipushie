@@ -2118,3 +2118,45 @@ def test_tight_outer_tube_lies_over_the_under_one():
     assert on["through"] == 0 and on["min_mm"] >= pf.LAYER_GAP * 1000 - 0.3 and not on["info_through_under"], res
     assert on["grain_p99"] > off["grain_p99"], res  # (the misfit shows as strain)
     assert off["through"] > 0, res  # (the control: the soft push loses to the lengths)
+
+
+def _twisted_two_panel_tube(r=0.05, ease=0.01, H=0.3, deg=40.0):
+    """A tube of a "front.L" and a "side.L" (half the girth each) sewn at both edges, placed TWISTED: each row turned
+    about the axis by deg x (depth below the top / H), so the seams run slanted round the body (as round 34's muslin fit
+    slid the front panel's side seam forward)."""
+    W = 2 * math.pi * (r + ease)
+    B = _B({"front.L": _piece([[0, 0], [W / 2, 0], [W / 2, H], [0, H]], names={"a0": 0, "a1": 1, "a2": 2, "a3": 3}),
+            "side.L": _piece([[W / 2, 0], [W, 0], [W, H], [W / 2, H]], names={"b0": 0, "b1": 1, "b2": 2, "b3": 3})},
+           seams=[["front.L:a1>a2", "side.L:b0>b3"], ["side.L:b1>b2", "front.L:a0>a3"]])
+    M = cloth.mesh(B, 0.008)
+    th = M["uv"][:, 0] / W * 2 * math.pi + math.radians(deg) * (H - M["uv"][:, 1]) / H
+    return M, np.c_[(r + ease) * np.cos(th), (r + ease) * np.sin(th), 0.1 + M["uv"][:, 1]]
+
+
+def test_plumb_hold_hangs_the_side_seams_on_the_vertical():
+    """KAT (C181, garrett jacket fit round 35): a design declared to fall straight (plumb, no tube cut) is fitted with
+    its side seams held softly on the vertical below their tops (PLUMB_HOLD, on by default for such a design). A
+    two-panel tube placed twisted 40 deg on a cylinder: with the hold every held seam vertex ends within 3 mm of its
+    vertical (plumb_off_mm; measured 0.5); without it the seams stay slanted (> 20 deg round the axis at the hem)."""
+    body = _cyl_body(0.05, -0.1, 0.5)
+    M, X0 = _twisted_two_panel_tube()
+    plumb_g = {"design": {"ops": [{"op": "waist_suppression", "silhouette": "plumb"}]}}
+    assert pf.plumb_hold_for(plumb_g) == pf.PLUMB_HOLD
+    assert pf.plumb_hold_for(dict(plumb_g, plumb_hold=False)) is None
+    assert pf.plumb_hold_for({"design": {"ops": [{"op": "waist_suppression", "silhouette": "plumb", "tube": True}]}}) is None
+    assert pf.plumb_hold_for({"plumb_hold": {"w": 5.0}})["w"] == 5.0
+    pins = pf.plumb_seam_pins(M, X0, pf.PLUMB_HOLD)
+    assert pins and max(w for *_, w, _a in pins) == pf.PLUMB_HOLD["w"] and min(w for *_, w, _a in pins) < pf.PLUMB_HOLD["w"]
+    on = pf.assemble({"mesh": M, "X0": X0, "body": body}, body, ease=pf.UNDER_EASE, iters=120, plumb_hold=pf.plumb_hold_for(plumb_g))
+    off = pf.assemble({"mesh": M, "X0": X0, "body": body}, body, ease=pf.UNDER_EASE, iters=120)
+    assert on["info"]["plumb_off_mm"]["max"] <= 3.0, on["info"]
+    assert "plumb_off_mm" not in off["info"]
+
+    def slant(V):  # the largest turn round the axis of a seam vertex 50 mm or more below its seam's top (deg)
+        out = 0.0
+        for v, x, y, w, _a in pf.plumb_seam_pins(M, V, pf.PLUMB_HOLD):
+            if w >= pf.PLUMB_HOLD["w"]:
+                d = math.degrees(math.atan2(V[v, 1], V[v, 0]) - math.atan2(y, x))
+                out = max(out, abs((d + 180) % 360 - 180))
+        return out
+    assert slant(on["V"]) < 3.0 and slant(off["V"]) > 20.0, (slant(on["V"]), slant(off["V"]))

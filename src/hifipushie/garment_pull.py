@@ -1026,6 +1026,12 @@ def style(M: dict, X: np.ndarray, held, ops: list[dict], body=None, log=None, fl
                 X, inf = smooth_border(M, X, hold_now, a.pop("border"), **a)
             else:
                 X, inf = smooth(M, X, hold_now, a.pop("pieces"), **a)
+        elif kind == "plumb":  # (C181: seams laid on the vertical; what it grips stays where it put it)
+            mine = np.zeros(len(X), bool)
+            for b in a["borders"]:
+                mine[border_chain(M, b)] = True
+            X, inf = plumb(M, X, base | (placed & ~mine), a.pop("borders"), log=log, **a)
+            placed |= mine
         elif kind == "relax":
             X, inf = relax(M, X, base | placed, **a)
         elif kind == "push":
@@ -1044,7 +1050,7 @@ def style(M: dict, X: np.ndarray, held, ops: list[dict], body=None, log=None, fl
                 feathers.append((fv, fw, X.copy()))
                 inf["feathered"] = int(len(fv))
         else:
-            raise ValueError(f"no styling op {kind!r} (pull, turn, smooth, relax, hold, push)")
+            raise ValueError(f"no styling op {kind!r} (pull, turn, smooth, relax, hold, push, plumb)")
         if kind in FEATHER_AFTER and feathers:  # (the feathered band drawn back after each move)
             for fv, fw, ref in feathers:
                 keep = ~placed[fv]
@@ -1373,6 +1379,72 @@ def turn(M: dict, X: np.ndarray, held, turns: list[dict], body=None, steps: int 
     return Xn, info
 
 
+def plumb(M: dict, X: np.ndarray, held, borders: list, ramp: float = 0.05, axes: str = "xy", steps: int = 10,
+          iters: int = 20, relax_iters: int = RELAX_ITERS, tol: float | None = 0.01, confirm: int = CONFIRM_ITERS,
+          pieces=None, log=None):
+    """LAY SEAMS ON THE VERTICAL (fit round 35, C181): each border ("piece:a..b", a seam) moved, staged, onto the
+    vertical through its top vertex below it (ramped in over `ramp` m): y (front / back) both ways, x only outward
+    (axes "xy"; "y" leaves x). A plumb jacket's side seams hang plumb from the underarm (pattern_form.PLUMB_HOLD is
+    the fit's form of the same rule). Until it would stretch (`tol`, as turn). What it grips stays held for later ops.
+    Returns (X_new, info)."""
+    X = np.asarray(X, float)
+    held = np.asarray(held)
+    if held.dtype != bool:
+        hm = np.zeros(len(X), bool)
+        hm[held.astype(int)] = True
+        held = hm
+    A = FlatARAP(M, X)
+    Y = A.weld(X)
+    fixed = A.welded_mask(held)
+    g_all, tgt = [], []
+    for b in borders:
+        g = np.unique(A.inv[border_chain(M, b)])
+        top = Y[g[np.argmax(Y[g, 2])]]
+        r = np.clip((top[2] - Y[g, 2]) / max(ramp, 1e-6), 0.0, 1.0)
+        T = Y[g].copy()
+        if "x" in axes:
+            T[:, 0] = np.where(np.abs(T[:, 0]) < abs(top[0]), T[:, 0] + r * (top[0] - T[:, 0]), T[:, 0])
+        if "y" in axes:
+            T[:, 1] = T[:, 1] + r * (top[1] - T[:, 1])
+        g_all.append(g)
+        tgt.append(T)
+        fixed[g] = True
+    if pieces is None:
+        pieces = sorted(set(np.asarray(M["piece"])[~A.unweld(fixed)].tolist()))
+    Y = A.solve(Y, fixed, relax_iters)
+    tf = thread_faces(M, pieces, ~held)
+    st = lambda W: thread_p99(M, A.unweld(W), faces=tf)
+    s0, sh0 = st(Y)
+    least, lock = s0, _shear_lock(sh0)
+    P0 = [Y[g].copy() for g in g_all]
+    done, stopped = 0, "done"
+    for k in range(1, steps + 1):
+        T = Y.copy()
+        for g, p0, t in zip(g_all, P0, tgt):
+            T[g] = p0 + (t - p0) * k / steps
+        Yk = A.solve(T, fixed, iters)
+        if tol is not None:
+            s, sh = st(Yk)
+            if log:
+                log(f"plumb step {k}: threads p99 {s * 100:.2f} %, shear p99 {_shmax(sh)} deg")
+            confirmed = (s > least + tol or _jammed(sh, lock)) and confirm
+            if confirmed:
+                s, sh = st(A.solve(Yk, fixed, confirm, eps=CONVERGED))
+            if s > least + tol or _jammed(sh, lock):
+                stopped = "stretch" if s > least + tol else "shear"
+                break
+            if not confirmed:
+                least = min(least, s)
+        Y, done = Yk, k
+    Xn = A.unweld(Y)
+    Xn[held] = X[held]
+    s1, sh1 = st(A.weld(Xn))
+    info = {"stretch_p99_start": round(s0 * 100, 2), "stretch_p99_end": round(s1 * 100, 2),
+            "shear_p99_deg": [_shmax(sh0), _shmax(sh1)], "share_done": round(done / steps, 2), "stopped": stopped,
+            "moved_mm": {b: round(float(np.abs(Y[g] - p0).max()) * 1000, 1) for b, g, p0 in zip(borders, g_all, P0)}}
+    return Xn, info
+
+
 def hold_mask(M: dict, X: np.ndarray, free, below=None, margin: float = 0.005,
               button_hold: float = BUTTON_HOLD) -> np.ndarray:
     """What stays still: every piece not in `free`, and on the free pieces whatever lies more than `margin` below
@@ -1473,6 +1545,8 @@ def ops_pieces(M: dict, ops: list[dict]) -> list:
             out |= set(a.get("pieces") or [])
             if "border" in a:
                 out.add(a["border"].split(":")[0])
+        if kind == "plumb":
+            out |= {b.split(":")[0] for b in a.get("borders") or []}
     return sorted(p for p in out if p in M["names"])
 
 
@@ -1489,7 +1563,7 @@ def style_ops(g: dict) -> list:
     ops = own if isinstance(own, list) else garment_design.wear(g, "style")
     ops = [{k: dict(v) for k, v in o.items()} for o in ops or []]
     if isinstance(own, dict):
-        bad = sorted(set(own) - {"pull", "turn", "smooth", "relax", "hold", "push"})
+        bad = sorted(set(own) - {"pull", "turn", "smooth", "relax", "hold", "push", "plumb"})
         if bad:
             raise ValueError(f"style edits name no op kind {bad} (pull, turn, smooth, relax, hold, push)")
         for o in ops:
