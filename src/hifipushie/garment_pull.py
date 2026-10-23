@@ -1118,7 +1118,14 @@ def style(M: dict, X: np.ndarray, held, ops: list[dict], body=None, log=None, fl
                     top = float(X[border_chain(M, sl["at"])[0], 2])
                     placed |= np.isin(np.asarray(M["piece"]), _piece_ids(M, wp)) & (X[:, 2] >= top) & ~base
         elif kind == "relax":
-            X, inf = relax(M, X, base | placed, **a)
+            hung_ = STYLE_HANG if a.get("hang") is None else bool(a.get("hang"))
+            if hung_ and not floor and body is not None:  # (HANG: what hangs rests on its supports: with no layer
+                # floor the body is its floor for this op; hung through nothing, wf_simon's open collar fell through
+                # the neck: threads p99 326 %, shear 82 deg)
+                M_ = dict(M, _floor=layer_floor(M, X, body=body))
+                X, inf = relax(M_, X, base | placed, **a)
+            else:
+                X, inf = relax(M, X, base | placed, **a)
         elif kind == "push":
             X, inf = push(M, X, base | placed, a.pop("pieces"), body, **a)
         elif kind == "hold":
@@ -1875,12 +1882,12 @@ def style_ops(g: dict) -> list:
     return ops
 
 
-def worn_style(M: dict, X: np.ndarray, body, g: dict, log=None):
+def worn_style(M: dict, X: np.ndarray, body, g: dict, log=None, under=None):
     """HOW THE KIND IS WORN, set by hand (C146): the wear's "style" ops (garment_kb kinds.<kind>.wear.<tie|no_tie>.style,
     via garment_design.wear(g, "style")) run on the closed form fit: the pieces they move are free, the rest held, and
     on those pieces whatever lies below the top fastened front button stays closed. A shirt without a tie gets its
     collar opened as Joe's references show (the shirt spike's c1). Returns (X_new, infos) or (X, None) when the kind has
-    no style for how it is worn."""
+    no style for how it is worn. under: (V, F) of the garment under a worn-open one (a floor, layer_floor)."""
     ops = style_ops(g)
     if not ops:
         return np.asarray(X, float), None
@@ -1894,7 +1901,10 @@ def worn_style(M: dict, X: np.ndarray, body, g: dict, log=None):
             # pocket flaps sank 14-19 of 25 vertices into the opened fronts, r31 k1)
             if nm_[pa] in free or nm_[pb] in free:
                 free = sorted(set(free) | {nm_[pa], nm_[pb]})
-        return style(Ms, X, hold_mask(Ms, X, free), ops, body=body, log=log, floor=layer_floor(Ms, X, body=body))
+        # (under = (V, F): the garment under it as a floor too, the layer that supports it; supports thread: hung
+        # without it, Garrett's jacket chest went down through the shirt)
+        return style(Ms, X, hold_mask(Ms, X, free), ops, body=body, log=log,
+                     floor=layer_floor(Ms, X, body=body, under=under))
     below = "closure:front" if any(c.get("name") == "front" for c in M.get("closures") or []) else None
     held = hold_mask(M, X, free, below)
     return style(M, X, held, ops, body=body, log=log)

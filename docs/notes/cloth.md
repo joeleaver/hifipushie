@@ -10800,3 +10800,16 @@ stretch); any hold left is soft, feathered, and names its support. STATE: docs/s
   floors as ever; HANG_ITERS 1500. Sheet held by its top edge, tilted 30 deg: spread 200 -> 9 mm, drop 403 (400),
   threads 1.87 % (the cap's Jacobi leaves ~2 % under the held row; stronger force: 3.8 %). Local / global moves a big
   rotation slowly (400 rounds: 44 mm back): the rounds are the price.
+### Step 3, first reads (Garrett jacket; concept edge 450/550/650 71/78/94, waist / hem+30 414 / 482)
+- nh = r39's fit without PLUMB_HOLD (fronts lapped: r39 nhs edge 25-15 / 12-7 / 7-3 with the kb style's holds).
+  nh_n (kb style WITHOUT its two holds, no hang): edge L/R 38/33, 47/37, 47/38; waist 380, hem+30 458; side line out
+  12-20 at the hem; threads p99 7.58. Dropping the hem-border + above-break holds alone opened the fronts 12-40 mm.
+  nh_h (+ every relax hung, 1500 rounds): edge 53/66, 61/33, 75/48 (open, but L / R differ up to 28 mm); waist 433,
+  hem+30 479 (482); length 767 (755: the weight's +12 mm); threads 9.71 (fronts 11.3); V / lapel reads null. LOOK
+  (check/wholefront_nh_hc.png): fronts open, but the chest / lapels sank into the shirt (shirt specks all over the
+  upper chest, the lapel edges ragged): styling's floors were the body + flaps only, NOT the shirt; hung, the freed
+  chest went through it. -> worn_style(under=) passes the garment under as a floor (layer_floor already took it).
+- wf_simon shirt (open no-tie style; Joe's photo / trace rows): s0 defaults ALLPASS, threads 6.47. sh (every styling
+  relax hung, no floor: the shirt isn't worn open, so styling had none): 6 rows FAIL, threads p99 327 %, shear 82 deg:
+  the free collar / stand fell through the neck. -> a hung relax with no floor takes the body as its floor (style()).
+  shf (fit hang too): fit threads p99 4.5 -> 8.6 %, 6 rows FAIL (with the floorless styling hang).
