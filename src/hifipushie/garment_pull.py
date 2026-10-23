@@ -89,12 +89,21 @@ MIRROR_REACH = 0.03  # m: a handle's mirror partner is the one whose lead is thi
 CONVERGED = 1e-5  # m: the confirm stops early once no vertex moves more than this in a round
 FASTENED = 0.008  # m: a closure pair this near on the fit is done up (garment_reads.BUTTON_DONE_MM)
 BUTTON_HOLD = 0.008  # m (pattern): a fastened button holds its cloth this near both of its vertices (hold_mask)
+WOVEN_STYLE = __import__("os").environ.get("GP_WOVEN_STYLE", "0") == "1"  # opt-in A/B (C168): see FlatARAP
 SIDE_MIN = 0.015  # m: a "side" is taken only from a point at least this far off x = 0
 _HE = ((0, 1, 2), (1, 2, 0), (2, 0, 1))
 
 
 class FlatARAP:
-    """Per-face ARAP against the flat pattern on the WELDED mesh (sewn pairs one vertex). W = welded positions."""
+    """Per-face ARAP against the flat pattern on the WELDED mesh (sewn pairs one vertex). W = welded positions.
+    WOVEN_STYLE (opt-in A/B, C168; env GP_WOVEN_STYLE=1): the local step as the muslin fit's (pattern_form.WOVEN:
+    (P_s + SHEAR_STIFF R) / (1 + SHEAR_STIFF), pattern x / y as the threads). WHY: the styling solve is isometric
+    (shear-stiff) on a woven fit, so its rounds take the fit's shear back as length: wf_simon's closed muslin collar
+    (right tip warp p5 -4.4 %, the fall's roll side -3 to -8 %), band ends turned, read tip crumple 0.146 vs closed
+    0.086 (the iso fit 0.101; with the turn run to convergence BOTH crumple, 0.27 / 0.28: the early stop hid it). With
+    it: tips 0.039 / 0.084 (= closed), points 147 apart (concept ~147); but the edge-stretch reads (pull / smooth
+    stops, tip stretch) count the shear it allows: 4 test_garment_pull reds (the wobble smooth, the spike reads'
+    smooth stopping at 0 rounds, the open-by-default stretch). Needs the stops read as threads first."""
 
     def __init__(self, M: dict, X: np.ndarray):
         F = np.asarray(M["F"], int)
@@ -134,6 +143,12 @@ class FlatARAP:
         Lw = coo_matrix((np.r_[w, w], (np.r_[I, J], np.r_[J, I])), shape=(self.n, self.n)).tocsr()
         self.L = (diags(np.asarray(Lw.sum(1)).ravel()) - Lw).tocsr()
         self._lu = {}
+        self.shear = None
+        if WOVEN_STYLE:
+            from . import pattern_form as pf_
+            if pf_.WOVEN:
+                Dm = np.stack([self.U[:, 1] - self.U[:, 0], self.U[:, 2] - self.U[:, 0]], -1)
+                self.Dinv, self.shear = np.linalg.inv(Dm), pf_.SHEAR_STIFF
 
     def weld(self, X: np.ndarray) -> np.ndarray:
         W = np.zeros((self.n, 3))
@@ -165,6 +180,10 @@ class FlatARAP:
                 S += Wt[:, k, None, None] * (Y[WF[:, a]] - Y[WF[:, b]])[:, :, None] * (U[:, a] - U[:, b])[:, None, :]
             Uu, _, Vt = np.linalg.svd(S, full_matrices=False)
             R = Uu @ Vt  # (m, 3, 2): each face's closest orthonormal map from its pattern to its current edges
+            if self.shear is not None:  # WOVEN (the fit's cloth): warp / weft at their length, shear at its weight
+                Fg = np.stack([Y[WF[:, 1]] - Y[WF[:, 0]], Y[WF[:, 2]] - Y[WF[:, 0]]], -1) @ self.Dinv
+                Ps = Fg / np.maximum(np.linalg.norm(Fg, axis=1, keepdims=True), 1e-12)
+                R = (Ps + self.shear * R) / (1.0 + self.shear)
             rhs = np.zeros((self.n, 3))
             for k, (a, b, _c) in enumerate(_HE):
                 v = Wt[:, k, None] * np.einsum("mij,mj->mi", R, U[:, a] - U[:, b])
@@ -883,8 +902,18 @@ def tip_read(M: dict, X: np.ndarray, point, near: float = 0.015, mid: float = 0.
     md = on & (np.abs(d - mid) < 0.005)
     a, b = vn[nr].mean(0), vn[md].mean(0)
     tw = np.degrees(np.arccos(np.clip(abs(a @ b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-12), -1, 1)))
+    # THREADS AND SHEAR APART (C166 / C168): on the woven fit an edge on the bias lengthens when the cloth shears; the
+    # threads (pattern x / y: the grain of a piece cut on it) are what stretch
+    Fn = F[nr[F].all(1)]
+    Dm = np.stack([uv[Fn[:, 1]] - uv[Fn[:, 0]], uv[Fn[:, 2]] - uv[Fn[:, 0]]], -1)
+    okf = np.abs(np.linalg.det(Dm)) > 1e-14
+    Fg = np.stack([X[Fn[okf, 1]] - X[Fn[okf, 0]], X[Fn[okf, 2]] - X[Fn[okf, 0]]], -1) @ np.linalg.inv(Dm[okf])
+    ln = np.linalg.norm(Fg, axis=1)
+    sh = np.degrees(np.arcsin(np.clip(np.abs((Fg[:, :, 0] * Fg[:, :, 1]).sum(1)) / np.maximum(ln[:, 0] * ln[:, 1], 1e-12), 0, 1)))
     return {"crumple_p95_mm": round(float(np.percentile(lap[nr], 95)), 3),
-            "stretch_max_pct": round(float(stv[en].max()), 1), "twist_deg": round(float(tw), 1)}
+            "stretch_max_pct": round(float(stv[en].max()), 1), "twist_deg": round(float(tw), 1),
+            "thread_max_pct": round(float(np.abs(ln - 1).max() * 100), 1) if len(ln) else 0.0,
+            "shear_max_deg": round(float(sh.max()), 1) if len(sh) else 0.0}
 
 
 def folded(M: dict, X: np.ndarray, point, radius: float = 0.025, deg: float = 120.0) -> int:
@@ -1085,20 +1114,29 @@ def edge_turns(M: dict, X: np.ndarray, piece: str, mid: str, end: str, center=No
     if center is not None:
         cc = X[pid == _piece_ids(M, [center])[0]][:, :2].mean(0)
         ang = np.degrees(np.arctan2(X[o, 0] - cc[0], X[o, 1] - cc[1]))
+    def turn_at(i, w):
+        a = np.searchsorted(arc, arc[i] - w / 2)
+        b = np.searchsorted(arc, arc[i] + w / 2) - 1
+        if a >= i or b <= i:
+            return None
+        d1, d2 = yz[i] - yz[a], yz[b] - yz[i]
+        return float(np.degrees(np.arccos(np.clip(d1 @ d2 / (np.linalg.norm(d1) * np.linalg.norm(d2) + 1e-12), -1, 1))))
+    # KINK = THE TURN NOT EXPLAINED BY THE EDGE'S OWN BEND (muslin default, C168): an arc turns twice as much over twice
+    # the window, a crease turns as much; so the kink at a vertex is its turn over `window` less half its turn over
+    # 2 x `window` (an arc: 0; a crease of c deg: c / 2). A collar edge bending down to its point turns 20-23 deg per
+    # 15 mm there and is one swoop; a hard hold border creases it
     turns = []
     for i in range(len(o)):
-        a = np.searchsorted(arc, arc[i] - window / 2)
-        b = np.searchsorted(arc, arc[i] + window / 2) - 1
-        if a >= i or b <= i:
+        t, t2 = turn_at(i, window), turn_at(i, 2 * window)
+        if t is None or t2 is None:
             continue
-        d1, d2 = yz[i] - yz[a], yz[b] - yz[i]
-        t = np.degrees(np.arccos(np.clip(d1 @ d2 / (np.linalg.norm(d1) * np.linalg.norm(d2) + 1e-12), -1, 1)))
-        turns.append((t, ang[i]))
+        turns.append((t, ang[i], t - t2 / 2))
     turns = np.array(turns)
     turns = turns[(np.abs(turns[:, 1]) < np.abs(ang[-1]) - skip_deg) & (np.abs(turns[:, 1]) >= min_deg)]
-    j = int(np.argmax(turns[:, 0]))
+    j, k_ = int(np.argmax(turns[:, 0])), int(np.argmax(turns[:, 2]))
     return {"max_turn_deg": round(float(turns[j, 0]), 1), "at_deg": round(float(turns[j, 1]), 1),
-            "p50_deg": round(float(np.median(turns[:, 0])), 1)}
+            "p50_deg": round(float(np.median(turns[:, 0])), 1),
+            "kink_deg": round(float(turns[k_, 2]), 1), "kink_at_deg": round(float(turns[k_, 1]), 1)}
 
 
 def ops_pieces(M: dict, ops: list[dict]) -> list:

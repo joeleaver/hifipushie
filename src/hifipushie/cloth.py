@@ -9666,9 +9666,12 @@ def length_level(m: dict, given: dict | None = None) -> dict:
     return m
 
 
-def model_body(name: str, spec: dict, g: dict, simulate: bool = True) -> dict:
+def model_body(name: str, spec: dict, g: dict, simulate: bool = True, under: dict | None = None) -> dict:
     """The collider a garment settles on: the model's base body (worn, hung: dressed on it first), or for a drape
-    over the "model" the model's whole built surface (a table under a tablecloth, a bed under a blanket)."""
+    over the "model" the model's whole built surface (a table under a tablecloth, a bed under a blanket).
+    under: a layered garment's under garment AS GIVEN (a result with "V" as it lies, "mesh", "pieces", "key"): the
+    form fit's own (pattern_form.on_form: the under garment's muslin fit, styled as worn), used instead of its pinned
+    or simulated result; nothing is simulated or looked up for it."""
     st = _state(g)
     over = st["drape"].get("over", "model") if isinstance(st, dict) and "drape" in st else "body"
     if over == "body" and spec.get("base"):
@@ -9682,10 +9685,10 @@ def model_body(name: str, spec: dict, g: dict, simulate: bool = True) -> dict:
             if ug not in (spec.get("cloth") or {}):
                 raise ClothError(f"over: no garment {ug!r} in this model's cloth (have {', '.join(spec.get('cloth') or {})})")
             u = spec["cloth"][ug]
-            pin_ = (expanded(g).get("under") or {}).get("pin")
+            pin_ = None if under is not None else (expanded(g).get("under") or {}).get("pin")
             # (garment key under = {"pin": <pickled finished result>}: the garment under this one IS that result (its
             # own key "pin_..." goes into this one's sim key), not a build of the spec's own garment)
-            ures = under_pinned(pin_, name) if pin_ else thaw(spec, u)[1] if u.get("frozen") else build(
+            ures = under if under is not None else under_pinned(pin_, name) if pin_ else thaw(spec, u)[1] if u.get("frozen") else build(
                 _garment_for_sim(u), model_body(name, spec, u, simulate), f"{name}:{ug}",
                 log=lambda *_: None, cached_only=not simulate)
             src = dict(src, under=None if ures is None else {"V": collider_verts(ures), "F": ures["mesh"]["F"], "key": ures["key"],

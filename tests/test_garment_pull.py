@@ -25,6 +25,7 @@ import pytest
 from scipy.optimize import brentq
 
 from hifipushie import garment_pull as gp
+from hifipushie import pattern_form as pf
 
 L, WIDTH, CHORD = 0.30, 0.02, 0.20
 
@@ -142,6 +143,26 @@ def _shirt_v1():
     return _FIT["res"]
 
 
+KINK_MAX = 8.0  # deg: edge_turns kink_deg, half a 16 deg crease
+
+
+def _plant_crease(M, X, a0, deg):
+    """The planted fault for the edge's kink read: the collar beyond `a0` deg round the neck from CB (its sign: the
+    side) turned `deg` in the side (y, z) plane about the x line through its outer edge there: a crease of `deg`."""
+    pid = np.asarray(M["piece"])
+    k, st = M["names"].index("collar"), M["names"].index("stand")
+    cc = X[pid == st][:, :2].mean(0)
+    ang = np.degrees(np.arctan2(X[:, 0] - cc[0], X[:, 1] - cc[1]))
+    side = (pid == k) & (np.sign(ang) == np.sign(a0))
+    on, ring = side & (np.abs(ang) > abs(a0)), side & (np.abs(np.abs(ang) - abs(a0)) < 3)
+    p = X[ring][np.argmin(X[ring, 2])]
+    th = np.radians(deg)
+    R = np.array([[1, 0, 0], [0, np.cos(th), -np.sin(th)], [0, np.sin(th), np.cos(th)]])
+    Y = X.copy()
+    Y[on] = (X[on] - p) @ R.T + p
+    return Y
+
+
 def _fall_edge_r(M, X, angles=(0, 90, -90)):
     """The collar fall's outer edge (its lowest vertex) distance from the band's centre axis (mm) at angles round the
     neck from CB (shirt spike csec.py)."""
@@ -189,7 +210,8 @@ def test_shirt_collar_points_pulled_open_give_the_spike_reads():
     assert sm["rounds"] > 0 and sm["rough_p95_mm"][1] < sm["rough_p95_mm"][0]
     for s in sides:  # the tips as clean as the closed collar's (a point dragged by one vertex: 15-18 % / pinched)
         assert tips[s]["crumple_p95_mm"] <= tips0[s]["crumple_p95_mm"] + 0.05, (s, tips[s], tips0[s])
-        assert tips[s]["stretch_max_pct"] <= tips0[s]["stretch_max_pct"] + 1.0, (s, tips[s], tips0[s])
+        assert tips[s]["thread_max_pct"] <= tips0[s]["thread_max_pct"] + 1.0, (s, tips[s], tips0[s])  # (C166: threads)
+        assert tips[s]["shear_max_deg"] <= pf.SHEAR_LOCK_DEG, (s, tips[s])
         assert flips[s] <= 1, flips  # the closed collar 0; a rigid patch 18 / 28
     assert np.allclose(Xn[held], X[held])
 
@@ -201,7 +223,7 @@ def test_shirt_collar_hugs_the_neck_at_the_back_and_sides():
     end 40 deg as a 15 mm area, pull the points side / out (mirrored), smooth the collar's outer edge toward one curve
     (the fall released from the hug), smooth. The fall hugs the neck at CB and the sides as the closed collar
     does (73 mm vs 67-68; f2 73); the band's top corner keeps its closed stretch (3 corner vertices turned alone:
-    14-22 %); clean tips; no hard-border kink in the edge's side profile (q40's hard 110 deg border: 29 deg)."""
+    14-22 %); clean tips; no crease in the edge's side profile (kink_deg <= KINK_MAX; a planted 20 deg crease fails)."""
     res = _shirt_v1()
     X, M, body = np.asarray(res["A"], float), res["mesh"], res["body"]
     P = M["points"]
@@ -210,7 +232,7 @@ def test_shirt_collar_hugs_the_neck_at_the_back_and_sides():
     sides = ("left", "right")
     r0 = _fall_edge_r(M, X)
     tips0 = {s: gp.tip_read(M, X, f"collar:{s}TopEdge") for s in sides}
-    corner0 = [gp.tip_read(M, X, f"stand:{s}TopCf", near=0.008)["stretch_max_pct"] for s in sides]
+    corner0 = [gp.tip_read(M, X, f"stand:{s}TopCf", near=0.008)["thread_max_pct"] for s in sides]
     turns = [{"at": f"stand:{s}BottomEdge..{s}TopCf", "about": [f"stand:{s}BottomHinge", f"stand:{s}TopHinge"],
               "deg": 40, "toward": "side", "side_from": f"stand:{s}BottomHinge"} for s in sides]
     handles = [{"at": f"collar:{s}TopEdge", "dir": {"side": 1, "out": 0.3}, "side_from": f"collar:{s}TopHinge"}
@@ -223,7 +245,7 @@ def test_shirt_collar_hugs_the_neck_at_the_back_and_sides():
            {"smooth": {"pieces": ["collar", "stand"]}}]
     Xn, infos = gp.style(M, X, held, ops, body=(np.asarray(body.V, float), np.asarray(body.T, int)))
     r = _fall_edge_r(M, Xn)
-    corner = [gp.tip_read(M, Xn, f"stand:{s}TopCf", near=0.008)["stretch_max_pct"] for s in sides]
+    corner = [gp.tip_read(M, Xn, f"stand:{s}TopCf", near=0.008)["thread_max_pct"] for s in sides]
     l, rr = Xn[P["collar:leftTopEdge"]], Xn[P["collar:rightTopEdge"]]
     apart, below = abs(l[0] - rr[0]) * 1000, [(hps[2] - p[2]) * 1000 for p in (l, rr)]
     tips = {s: gp.tip_read(M, Xn, f"collar:{s}TopEdge") for s in sides}
@@ -235,11 +257,21 @@ def test_shirt_collar_hugs_the_neck_at_the_back_and_sides():
     assert 130 <= apart <= 150 and all(66 <= b <= 80 for b in below), (apart, below)  # this 138 / 73-74; f2 ~ 137 / 76
     assert abs(below[0] - below[1]) <= 3, below  # mirrored pulls (unmirrored: 74 / 72)
     assert infos[4]["smooth"]["rounds"] > 0
-    assert all(k["max_turn_deg"] <= 22 for k in kinks), kinks  # this 10 / 20 (sp10 12 / 12: the right side is open)
+    # ONE SWOOP, NO CREASE (C168): the kink is the turn the edge's own bend doesn't explain (edge_turns kink_deg: turn
+    # over 15 mm less half the turn over 30 mm; an arc 0, a crease of c deg c / 2). Smooth edges read 3-6.4 (closed
+    # 3.6 / 4.0, this 6.4 / 6.3 where the leaf bends down to the point, max turn 19 / 23 there); a planted crease of
+    # 15 / 20 / 29 deg reads 11-15 / 15-20 / 21-27. The limit catches a crease of 16 deg or more (the old max-turn <= 22
+    # sat between one fit's result, 20, and q40's hard border, 29: the muslin fit's leaf turns 23 deg smoothly)
+    assert all(k["kink_deg"] <= KINK_MAX for k in kinks), kinks
+    for s, a0 in zip(sides, (-90, 90)):  # the planted fault: a 20 deg crease in the same edge fails the same read
+        kp = gp.edge_turns(M, _plant_crease(M, Xn, a0, 20.0), "collar", "collar:topMid", f"collar:{s}TopEdge",
+                           center="stand")
+        assert kp["kink_deg"] > KINK_MAX, (s, kp)
     assert float(np.percentile(gp.crumple(M, Xn, "collar"), 95)) <= 0.30
     for s in sides:
         assert tips[s]["crumple_p95_mm"] <= tips0[s]["crumple_p95_mm"] + 0.06, (s, tips[s], tips0[s])
-        assert tips[s]["stretch_max_pct"] <= tips0[s]["stretch_max_pct"] + 1.0, (s, tips[s], tips0[s])
+        assert tips[s]["thread_max_pct"] <= tips0[s]["thread_max_pct"] + 1.0, (s, tips[s], tips0[s])  # (C166: threads)
+        assert tips[s]["shear_max_deg"] <= pf.SHEAR_LOCK_DEG, (s, tips[s])
         assert tips[s]["twist_deg"] <= tips0[s]["twist_deg"] + 15, (s, tips[s], tips0[s])  # this 19 / 31 vs 18 / 35
         assert gp.folded(M, Xn, f"collar:{s}TopEdge") <= 1
 

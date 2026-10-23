@@ -159,6 +159,13 @@ WOVEN_SLACK = False  # A/B only: warp / weft free in compression (a woven buckle
 # acts the cloth shears as before (the misfit the muslin reveals stays: Garrett's yoke corner, notes "muslin default").
 # A turned flap's cells (WOVEN_FLAPS) are woven only where driven too: free, they stay ARAP (its pattern shape).
 SHEAR_FREE = 1.0
+# SHEAR_YIELD (opt-in A/B, C168): the hysteresis holds a free cell's shear only while its threads are at length (KES
+# 2HG / E ~ 0.02-0.04 % of thread strain): a free cell whose threads strain past this yields to the driven weight. At
+# 0.001 the wf_simon collar's free right tip compresses -3.4 % (warp p5) instead of -4.4 and styles clean (0.109 vs
+# closed 0.091 + 0.05), but every free cell shears more (shear p99 13.9 -> 19.0): the points open 156 apart (concept
+# ~147, <= 154), the run-off fold folds past its run-off, the break step reads 2.6 mm, open-collar reads fail (5 reds,
+# /mnt/data/hifipushie/muslin_default/pfy.log). None: off (needs its own round).
+SHEAR_YIELD = float(os.environ["PF_SHEAR_YIELD"]) if os.environ.get("PF_SHEAR_YIELD") else None
 SHEAR_LOCK_DEG = 35.0  # a woven's shear jamming angle (shirting / suiting ~30-40 deg): past it the cloth can't shear
 # SHEAR_RAMP (C166): the local / global step takes a shear back by only s / (1 + s) a round (1.1 % at SHEAR_STIFF), so
 # a transient's shear (a collar stood up, a placement on a cone) outlived the rounds: the shoulder-collar KAT's
@@ -2434,6 +2441,9 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                     s_it = SHEAR_STIFF if it >= ramp_n else math.exp(math.log(SHEAR_FREE) + (it / ramp_n) * (
                         math.log(SHEAR_STIFF) - math.log(SHEAR_FREE)))  # (SHEAR_RAMP: a transient's shear decays first)
                     sh_t = np.where(drv_[Wv["F"]].any(1), s_it, SHEAR_FREE)  # (SHEAR_FREE: nothing drives it)
+                    if SHEAR_YIELD is not None:  # (SHEAR_YIELD: the hysteresis gives where the threads would strain)
+                        th_ = np.abs(np.linalg.norm(_woven_grad(Wv, X)[0], axis=1) - 1.0).max(1)
+                        sh_t = np.where(th_ > SHEAR_YIELD, np.minimum(sh_t, s_it), sh_t)
                     tg_, has_ = woven_targets(Wv, X, nE0, shear=sh_t)
                     m2 = np.zeros(len(src), bool)
                     m2[:2 * nE0] = np.r_[has_, has_]
@@ -2969,8 +2979,15 @@ def on_form(model: str, garment: str, spec: dict | None = None, g: dict | None =
         g["construct"] = dict(g["construct"], sim_collar=True)
     ug = cloth.expanded(g).get("over")
     und = on_form(model, ug, spec, log=log) if ug and ug in (spec.get("cloth") or {}) else None
-    res = cloth.build(cloth._garment_for_sim(g), cloth.model_body(model, spec, g, simulate=False), f"{model}:{garment}",
-                      log=lambda *_: None, place_only=True)
+    if und is not None:
+        und = under_as_worn(und, spec["cloth"][ug], log=log)
+    # THE UNDER LAYER IS THE UNDER GARMENT'S FORM FIT, AS WORN (muslin default, C168): the over garment is placed on the
+    # body padded by it, drafted from the tape taken over it, laid on its body without its neck pieces: the sim path's
+    # steps, given the form fit instead of the under garment's sim (none needed; before, model_body looked the sim up and
+    # refused the jacket "under_missing" until the shirt was simulated, and a pinned sim stood in for the form's shirt)
+    ures = None if und is None else dict(und, V=np.asarray(und["A"], float), key=f"form:{ug}:{cloth._arr_hash(np.asarray(und['A'], float))}")
+    res = cloth.build(cloth._garment_for_sim(g), cloth.model_body(model, spec, g, simulate=False, under=ures),
+                      f"{model}:{garment}", log=lambda *_: None, place_only=True)
     if und is not None and PRESS_UNDER:
         # the under garment as it lies under this one (cloth.pressed, the sims' own rule: loose cloth pressed to at most
         # the garment's under_cap off the body, made pieces as they are). Unpressed, the shirt's own ease held the
@@ -2989,6 +3006,21 @@ def on_form(model: str, garment: str, spec: dict | None = None, g: dict | None =
     if cloth.expanded(g).get("tucked"):
         res["A"], res["A_info"]["tucked"] = tuck(res, res["A"], cloth.expanded(g))
     return res
+
+
+def under_as_worn(und: dict, gu: dict, log=None) -> dict:
+    """An under garment's form fit as it is worn under another: its kind's wear style (garment_pull.worn_style: a
+    shirt without a tie, collar opened) on the closed fit, unless it declares its own worn_open or "style": false (as
+    fit_garment styles it). "A" = the worn vertices, "A_closed" the closed fit, "A_style" the op reads (None: no
+    style)."""
+    from . import cloth, garment_pull as gp
+    gx = cloth.expanded(gu)
+    if gx.get("worn_open") or gx.get("style", True) is False or und.get("form_under") is not None:
+        return dict(und, A_closed=und["A"], A_style=None)
+    body = und["body"]
+    Xs, info = gp.worn_style(und["mesh"], np.asarray(und["A"], float), (np.asarray(body.V, float), np.asarray(body.T, int)),
+                             gx, log=log)
+    return dict(und, A=Xs, A_closed=und["A"], A_style=info)
 
 
 TUCK_CAP = 0.006  # m: tucked cloth below the line lies at most this off the body (a waistband over it: one cloth + ease)
