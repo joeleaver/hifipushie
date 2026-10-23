@@ -10911,3 +10911,10 @@ turned, points pulled) were tuned on bending-free cloth; the stand's rest is the
   LOOK c2_k3: shirt patches show through the jacket's chest below the lapels; c2_none: no show-through, no cord (the
   side panels are off the front-view outline), fronts open; hem fuller than the concept with a corner flip (L), pocket
   flaps ragged, the edge under the break runs in a little before the cut-away.
+- DISENTANGLED: c0 (slim, NO keyed fit, no plumb hold): k3 edge 41-48/44-46/53-55, none 25-32/71-78/30-33: the fronts
+  lap again. So the canvas FIT stiffness (not the slim pattern) keeps the fronts open without PLUMB_HOLD. c1 (keyed +
+  plumb hold): edge 67-71/67-69/81-127, V 210, lapel 114/137: the two together over-open and twist the lapel.
+- SEAM (seamn39.py, front|side fold deg 250..750 below HPS): s1_k3 L 60/43/51/7/5/29/9/19/22/15/26 (the cord);
+  c2_none L 19/10/44/42/38/8/21/12/8/13/6, R 2/15/52/49/16/23/3/6/9/12/12; c0_none (lapped) L 5/40/37/28/14/9/3/6/6/11/14.
+  Joe's framing (check/joeseam_s1k3_c2k3_c2none_c0none.png): the cord in s1_k3 and c0_none, gone in c2_k3 / c2_none.
+- Session 1 handover: STATE NEXT (FIT_HINGE_W sweep to reach edge 450 >= 60 with threads <= 8.5, then defaults).
