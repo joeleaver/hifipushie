@@ -981,5 +981,9 @@ def test_made_pieces_move_with_what_they_are_sewn_to(monkeypatch):
     gp.worn_style(M, X, None, g, under=(UV, um["F"], um))
     fl = {f["name"]: f for f in seen["floor"]}
     made_v = np.where(np.isin(pid, [1, 2, 3]))[0]
+    assert set(fl["under"]["v"]).isdisjoint(made_v) and "under1" not in fl
+    monkeypatch.setattr(gp, "UNDER_MADE", True)
+    gp.worn_style(M, X, None, g, under=(UV, um["F"], um))
+    fl = {f["name"]: f for f in seen["floor"]}
     assert set(fl["under"]["v"]).isdisjoint(made_v) and set(fl["under1"]["v"]) == set(made_v)
     assert np.allclose(fl["under"]["surf"].V[:, 2], -0.01) and np.allclose(fl["under1"]["surf"].V[:, 2], -0.02)

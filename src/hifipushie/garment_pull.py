@@ -174,9 +174,13 @@ MADE_FREE = __import__("os").environ.get("GP_MADE_FREE", "1") == "1"
 # THE UNDER GARMENT'S OWN CLOTH IS THE FLOOR (canvas s6, C202; the fit's rule C200): worn_style's under floor may be
 # (V, F, under mesh): then the under garment's made pieces (a shirt's collar / stand: a thin two-sided leaf at the
 # neck) are no floor for this garment's own cloth: on t5f the shirt collar leaf tore the jacket's gorge in the first
-# relax (max 27.7 -> 72.7 %). They are the floor for this garment's made pieces (its collar / stand lie on the shirt's
-# collar / stand): with no floor there the freed jacket collar sank through the shirt's (poke-through 317 -> 1986).
+# relax (max 27.7 -> 72.7 %).
 UNDER_OWN = __import__("os").environ.get("GP_UNDER_OWN", "1") == "1"
+# UNDER_MADE (opt-in, GP_UNDER_MADE=1): this garment's made pieces floored on the under garment's made pieces. On t5f
+# (the fit leaves the jacket's collar partly inside the shirt's at CB: C200 floors only cloth on cloth) it tore the
+# freed jacket collar / stand at CB (34 % / 35 %) and refused the open turn; off, they have no under floor (as in the
+# fit) and the shirt collar shows through the jacket's at the back neck (poke-through 317 -> ~2000 vertices).
+UNDER_MADE = __import__("os").environ.get("GP_UNDER_MADE", "0") == "1"
 
 
 def _local_reach(V, Fs):
@@ -2188,7 +2192,9 @@ def worn_style(M: dict, X: np.ndarray, body, g: dict, log=None, under=None):
                     ix_ = -np.ones(len(uV_), int)
                     ix_[iv_] = np.arange(len(iv_))
                     return uV_[iv_], ix_[Fp]
-                under = [part_(uF_[~mk_]) + (~mine_,), part_(uF_[mk_]) + (mine_,)]  # (cloth on cloth, made on made)
+                under = [part_(uF_[~mk_]) + (~mine_,)]  # (cloth on cloth)
+                if UNDER_MADE:  # (made on made: opt-in, see UNDER_MADE)
+                    under.append(part_(uF_[mk_]) + (mine_,))
             else:
                 under = (uV_, uF_)
         # (under = (V, F): the garment under it as a floor too, the layer that supports it; supports thread: hung
