@@ -2284,3 +2284,46 @@ def test_hang_sleeve_tube(verbose=True):
     assert bot >= 2 * ease - 0.005, bot
     assert inside == 0, inside
     assert gs["p99"] <= 1.5, gs
+
+
+def _stitched_flap_case(fit_stitch=True, dx=0.03, dz=-0.02):
+    """A front panel on the plane chest with a pocket flap stitched along an interior pocket line (3 stitch points),
+    the flap placed dx / dz off its line (as Garrett's fit left them 10-58 mm off). Returns (stitch gap max mm, flap
+    in front of the panel mm, thread stretch)."""
+    front = _piece([[0, 0], [0.3, 0], [0.3, 0.4], [0, 0.4]], marks={"q0": [0.10, 0.2], "q1": [0.15, 0.2], "q2": [0.20, 0.2]})
+    flap = _piece([[0, 0], [0.1, 0], [0.1, 0.05], [0.05, 0.05], [0, 0.05]], names={"t2": 2, "t1": 3, "t0": 4})
+    B = _B({"front": front, "flap": flap})
+    B["stitches"] = [["flap:t0", "front:q0"], ["flap:t1", "front:q1"], ["flap:t2", "front:q2"]]
+    M = cloth.mesh(B, 0.01)
+    st = np.asarray(M["stitch"]).reshape(-1, 2)
+    assert len(st) == 3, st
+    body = _plane_body(0.0)
+    pid = np.asarray(M["piece"])
+    fk = M["names"].index("flap")
+    X0 = np.c_[M["uv"][:, 0], np.full(len(M["uv"]), -0.006), 1.0 + M["uv"][:, 1]]
+    fl = pid == fk  # (the flap: its pattern's top on the pocket line, z 1.2, hanging to 1.15, then put off by dx / dz)
+    X0[fl] = np.c_[0.10 + M["uv"][fl, 0] + dx, np.full(fl.sum(), -0.010), 1.15 + M["uv"][fl, 1] + dz]
+    was = pf.FIT_STITCH
+    pf.FIT_STITCH = fit_stitch
+    try:
+        V = pf.assemble({"mesh": M, "X0": X0}, body, iters=80, attract=0.0)["V"]
+    finally:
+        pf.FIT_STITCH = was
+    gap = float(np.linalg.norm(V[st[:, 0]] - V[st[:, 1]], axis=1).max()) * 1000
+    fr = pid == M["names"].index("front")
+    over = (np.median(V[fr, 1]) - np.median(V[fl, 1])) * 1000
+    return gap, over, _stretch(V, M)
+
+
+def test_the_fit_sews_a_patch_on_its_stitch_line(verbose=True):
+    """(canvas s8, C206) FIT_STITCH: a pocket flap placed 36 mm off its pocket line ends ON it (every stitch pair within
+    2 mm), one cloth thickness in front of its panel, threads unstretched (< 5 %); with the stitch unsewn (the fit
+    before C206) the planted gap stays (> 20 mm: the styling's weld then yanked Garrett's flaps 19-46 mm)."""
+    on = _stitched_flap_case(True)
+    off = _stitched_flap_case(False)
+    if verbose:
+        print(f"stitched: gap {on[0]:.1f} mm, flap {on[1]:.1f} mm over the panel, stretch {on[2] * 100:.1f} %; unsewn: gap {off[0]:.1f} mm")
+    assert on[0] <= 2.0, on
+    assert on[1] > 0.0, on
+    assert on[2] < 0.05, on
+    assert off[0] > 20.0, off

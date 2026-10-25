@@ -225,9 +225,11 @@ spec: the garment (merged into the stored one key by key, null deletes; replace=
   or {"preset", overrides}), color, roughness, state, quality, resolution (final triangle size, 0.01), coarse
   (the blocking sim's, 0.02), cleanup ({smooth, weld, clear, keep, seams (welded seams pressed flat)} or false),
   detail (seam/stitch/hem maps: {seam, topstitch, stitch, hem, buttons, thread} or false), closures (how its
-  openings are fastened AND worn: an entry of a name is laid over the design's own key by key, so
-  [{"name": "collar", "state": "open"}] is a shirt with the top button undone, [{"name": "front", "state":
-  "open"}] a jacket hanging open, {"open_above": mark} undoes the fastenings above a mark; see the guide).
+  openings are fastened: an entry of a name is laid over the design's own key by key, so [{"name": "collar",
+  "state": "open"}] is a shirt with the top button undone, {"open_above": mark} undoes the fastenings above a mark;
+  see the guide). How a garment is WORN (a jacket worn open, a collar opened) is STYLING, not a sim: fit_garment
+  fits it on the form and styles it by its wear's ops (worn_open + the kind's "open" wear; style_garment /
+  pull_garment for more). A sim is at most a wrinkle source on a styled fit, never the way to open a front.
 state: "worn" (default: sewn on the body and settled), "draped" (laid flat and dropped on the model's surface: a
   tablecloth, a blanket; {"drape": {"over": "model" | "body"}}), or "hung" (dressed first, a hanger put inside
   it under the shoulders with its hook through the neck opening, the body taken away: it settles onto the hanger,

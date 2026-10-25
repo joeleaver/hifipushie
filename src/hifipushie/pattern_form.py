@@ -1328,6 +1328,18 @@ def roll_turn_weight(M: dict, X: np.ndarray, k: int) -> np.ndarray:
 # off the BODY (20-24 mm) while the plumb cut + BRIDGE moved the fronts out (~26 mm) and sank 20-25 of 25 vertices behind
 # the front (r24c); a flap that starts behind its front stays there through the release (CCD keeps the order).
 PATCH_ON_BASE = True
+# FIT_STITCH (canvas s8, C206): the fit SEWS a patch's stitch line (M["stitch"]: a pocket flap's top edge on its pocket
+# line) like a seam. Before, PATCH_ON_BASE laid the flap on its base unsewn: each flap's stitched edge ended 10-58 mm off
+# its pocket line, and worn_style's weld (C174) then yanked it there (19-46 mm, threads 0.6 -> 23 %, dragging the
+# front). The stitch is not a bending hinge (the flap folds down over its base there). Env PF_FIT_STITCH=0: off.
+FIT_STITCH = __import__("os").environ.get("PF_FIT_STITCH", "1") == "1"
+
+
+def fit_sew(M: dict) -> np.ndarray:
+    """The pairs the fit closes: M["sew"], plus M["stitch"] with FIT_STITCH (C206)."""
+    sw = np.asarray(M["sew"]).reshape(-1, 2)
+    st = np.asarray(M.get("stitch") if M.get("stitch") is not None else np.zeros((0, 2), int), int).reshape(-1, 2)
+    return np.r_[sw.astype(int), st] if FIT_STITCH and len(st) else sw
 
 
 def patches(M: dict) -> list:
@@ -2399,7 +2411,8 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
         else:
             face_sign[nm] = 1.0
     folds_ = _fold_cells(M, face_sign)
-    sw = np.asarray(M["sew"]).reshape(-1, 2)
+    sw = fit_sew(M)  # (the seams, and with FIT_STITCH the patches' stitch lines, C206)
+    sw_seam = np.asarray(M["sew"]).reshape(-1, 2)  # (seams only: the base-across-seam reads and the bending welds)
     fast = fastened(M, "worn_open" if worn_open and fasten == "default" else fasten)
     # buttons on the centre line: a front's closure (cuffs, plackets close where they are)
     cf_fast = [tuple(int(x) for x in v) for c in M.get("closures") or [] if c.get("name") == "front"
@@ -2441,8 +2454,8 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                 # where the shoulder pushed it, it stood off (Garrett round 3: 88-112 deg at the neck sides).
                 ob = np.zeros(n, bool)
                 ob[bv] = True
-                oth = sorted({int(pid[b]) for a, b in sw if ob[a] and pid[b] != pid[a]}
-                             | {int(pid[a]) for a, b in sw if ob[b] and pid[a] != pid[b]})
+                oth = sorted({int(pid[b]) for a, b in sw_seam if ob[a] and pid[b] != pid[a]}
+                             | {int(pid[a]) for a, b in sw_seam if ob[b] and pid[a] != pid[b]})
                 if oth:
                     ov = np.where(np.isin(pid, oth))[0]
                     bv = np.union1d(bv, ov)
@@ -2457,7 +2470,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                             continue
                         f2 = np.zeros(n, bool)
                         f2[np.asarray(g2["rows"][-1]["v"], int)] = True
-                        if any((f2[a] and pid[b] in oth) or (f2[b] and pid[a] in oth) for a, b in sw):
+                        if any((f2[a] and pid[b] in oth) or (f2[b] and pid[a] in oth) for a, b in sw_seam):
                             bv = np.union1d(bv, np.where(f2)[0])
                             bt_ = np.r_[bt_.reshape(-1, 3), F[f2[F].all(1)]]
             over.append((fv, bv, bt_))
@@ -2516,7 +2529,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
     if FIT:
         hbar = float(np.mean(np.linalg.norm(uv[E[:, 0]] - uv[E[:, 1]], axis=1)))
         kb = FIT_BEND * hbar ** 2
-        sw_b = sw[~(cellv[sw[:, 0]] | cellv[sw[:, 1]])] if len(sw) else sw  # (made pieces: not welded)
+        sw_b = sw_seam[~(cellv[sw_seam[:, 0]] | cellv[sw_seam[:, 1]])] if len(sw_seam) else sw_seam  # (made pieces: not welded; a stitch is no hinge)
         Kb, bend_rhs = _fit_bending(M, F, uv, n, sw_b, cellv)
         Kb = kb * Kb
         if bend_w is not None and np.max(bend_w) > 1.0 + 1e-9:  # (FIT_BEND_KEYED: the interfaced cloth's extra

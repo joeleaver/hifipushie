@@ -75,7 +75,7 @@ Design-sheet keys go in `design`; garment keys in `spec` (`design_garment(..., s
 | Key | Where | What it does, and when |
 |---|---|---|
 | `tie` | garment / sheet | false (default): a shirt worn with only its collar button open; true: closed to the top |
-| `closures` `[{"name", "state"}]` | garment | How an opening is worn: `{"name": "front", "state": "open"}` hangs a jacket open (buttons stay on); laid over the design's entry by name |
+| `closures` `[{"name", "state"}]` | garment | What is fastened: `{"name": "front", "state": "open"}` undoes a jacket's front (buttons stay on; worn open = styled by its wear's ops, not a sim); laid over the design's entry by name |
 | `collar_spread` | garment | An open shirt collar's spread [out, down, from] deg (default [18, 14, 65]); false keeps it a ring |
 | `wrap` `{piece: {wrap keys}}` | garment | Laid over a drafted table's piece wraps: how THIS body wears a piece, e.g. `{"stand": {"tilt": 15, "pivot": "back"}, "collar": {"tilt": 15}}` tips the neck bands' front down about the nape (a forward neck under a low jaw) |
 | closure `finish`, `topstitch`, `hole`, `button` | closure entry | How the placket / faced edge, buttonholes and buttons look (guide(topic="cloth_sim"), "Closures and bands") |

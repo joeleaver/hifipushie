@@ -85,9 +85,10 @@ One entry per closure:
 - The entry makes the button stitches, the buttons as small geometry (also in the export and scene) and a report
   line per closure (closed is <= 6 mm apart). A `front_closure`, `cuff` or `fly` chosen on the sheet with no closure
   entry fails here; a closure that didn't hold fails stage 5. `kind: "zip"` takes `"seam": [arc, arc]`.
-- How it is WORN is the closure's `state`, set on the garment without repeating the entry: a garment's entry of a
-  name is laid over the design's key by key (`[{"name": "front", "state": "open"}]`: a jacket hanging open, its
-  buttons still on the under front; stage 3 lists it "worn open").
+- What is fastened is the closure's `state`, set on the garment without repeating the entry: a garment's entry of a
+  name is laid over the design's key by key (`[{"name": "front", "state": "open"}]`: its buttons undone, still on
+  the under front; stage 3 lists it "worn open"). How it is WORN open is styling (fit_garment's wear ops,
+  style_garment), not a sim; a sim is at most a wrinkle source.
 - In a drafted garment the op `{"op": "buttons", "piece": "front", "n": 2, "state": "open", "size": 0.02}` writes
   the closure itself (left front over right).
 - A front worn `open` starts the fronts apart (`open_gap`, default 0.16 m at the hem). Started lapped like a
