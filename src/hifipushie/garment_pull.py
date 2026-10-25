@@ -1646,7 +1646,11 @@ def turn(M: dict, X: np.ndarray, held, turns: list[dict], body=None, steps: int 
         plan.append((g, a, b - a, sense * np.radians(t["deg"]), Y[g].copy(), sense))
         if t.get("plumb"):
             u, lo = (A.inv[vertex(M, q)] for q in t["plumb"])
-            pl.append((len(plan) - 1, u, lo, 1.0 if Y[u][0] >= 0 else -1.0))
+            # ("plumb_from": "start" (C204): the plumb line through the upper point AS THE STYLING FOUND IT (the fit's
+            # form rule, e.g. the worn-open break), not where earlier ops let it drift)
+            xu_ = (float(np.asarray(M["_X"])[vertex(M, t["plumb"][0])][0])
+                   if t.get("plumb_from") == "start" and M.get("_X") is not None else None)
+            pl.append((len(plan) - 1, u, lo, 1.0 if Y[u][0] >= 0 else -1.0, xu_))
         fixed[g] = True
     if pieces is None:
         free = ~A.unweld(fixed)
@@ -1659,8 +1663,8 @@ def turn(M: dict, X: np.ndarray, held, turns: list[dict], body=None, steps: int 
     done, stopped = 0, "deg"
     share = np.zeros(len(plan))  # (each turn's share of its deg reached)
     stop_at = {}  # (plumb turns: the share where the line hung plumb)
-    plumb_off = lambda W, u, lo, sg: sg * float(W[lo][0] - W[u][0])
-    off_prev = {i: plumb_off(Y, u, lo, sg) for i, u, lo, sg in pl}
+    plumb_off = lambda W, u, lo, sg, xu=None: sg * float(W[lo][0] - (W[u][0] if xu is None else xu))
+    off_prev = {i: plumb_off(Y, u, lo, sg, xu) for i, u, lo, sg, xu in pl}
 
     def place(sh):
         T = Y.copy()
@@ -1672,10 +1676,10 @@ def turn(M: dict, X: np.ndarray, held, turns: list[dict], body=None, steps: int 
         nxt = np.array([stop_at.get(i, k / steps) for i in range(len(plan))])
         Yk = A.solve(place(nxt), fixed, iters)
         crossed = False
-        for i, u, lo, sg in pl:
+        for i, u, lo, sg, xu in pl:
             if i in stop_at:
                 continue
-            o = plumb_off(Yk, u, lo, sg)
+            o = plumb_off(Yk, u, lo, sg, xu)
             if o >= 0:
                 o0 = off_prev[i]
                 f = o0 / (o0 - o) if o0 < 0 else 0.0
@@ -1709,8 +1713,8 @@ def turn(M: dict, X: np.ndarray, held, turns: list[dict], body=None, steps: int 
             "shear_p99_deg": [_shmax(sh0), _shmax(sh1)],
             "deg_turned": [round(float(abs(np.degrees(th))) * float(q), 1) for (_g, _a, _x, th, _p, _s), q in zip(plan, share)],
             "stopped": stopped, "plumb": {str(turns[i]["at"]): {"hung": bool(i in stop_at and share[i] >= stop_at[i] - 1e-9),
-                                                                 "off_mm": round(plumb_off(Y, u, lo, sg) * 1000, 1)}
-                                          for i, u, lo, sg in pl} or None,
+                                                                 "off_mm": round(plumb_off(Y, u, lo, sg, xu) * 1000, 1)}
+                                          for i, u, lo, sg, xu in pl} or None,
             "turns": {str(t["at"]): {"sense": s, "moved_mm": round(float(np.linalg.norm(Y[g].mean(0) - p0.mean(0)))
                                                                     * 1000, 1)}
                       for t, (g, _a, _x, _t, p0, s) in zip(turns, plan)}}
@@ -1785,7 +1789,7 @@ def slide(M: dict, X: np.ndarray, held, slides: list[dict], body=None, steps: in
         if isinstance(by, dict):
             pl = by.get("plumb") or [int(ch[0]), int(ch[-1])]
             up, lo = vertex(M, pl[0]), vertex(M, pl[1])
-            xu = sgn * float(X[up][0])
+            xu = sgn * float((np.asarray(M["_X"]) if by.get("from") == "start" and M.get("_X") is not None else X)[up][0])  # (C204)
             i_up, i_lo = int(np.where(ch == up)[0][0]), int(np.where(ch == lo)[0][0])
             reach = 0.25
             tr = _march(surf, X[ch], np.full(len(ch), sgn), np.full(len(ch), reach))
@@ -2179,7 +2183,12 @@ def worn_style(M: dict, X: np.ndarray, body, g: dict, log=None, under=None):
                 up_ = np.asarray(um_["piece"])
                 mk_ = np.isin(up_[uF_[:, 0]], [um_["names"].index(p) for p in um_["made"] if p in um_["names"]])
                 mine_ = np.isin(pid_, [nm_.index(p) for p in M.get("made") or [] if p in nm_])  # (this one's made pieces)
-                under = [(uV_, uF_[~mk_], ~mine_), (uV_, uF_[mk_], mine_)]  # (cloth on cloth, made on made)
+                def part_(Fp):  # (only the vertices its faces use: a floor's surface is read at its vertices)
+                    iv_ = np.unique(Fp)
+                    ix_ = -np.ones(len(uV_), int)
+                    ix_[iv_] = np.arange(len(iv_))
+                    return uV_[iv_], ix_[Fp]
+                under = [part_(uF_[~mk_]) + (~mine_,), part_(uF_[mk_]) + (mine_,)]  # (cloth on cloth, made on made)
             else:
                 under = (uV_, uF_)
         # (under = (V, F): the garment under it as a floor too, the layer that supports it; supports thread: hung

@@ -944,3 +944,42 @@ def test_a_patch_covers_what_is_under_it():
     assert (Y[:nb][cov, 2] <= 0.001 - pf.THICK + 1e-6).all(), Y[:nb][cov, 2].max()
     far = (np.abs(X[:nb, 0]) > 0.035) | (np.abs(X[:nb, 1]) > 0.035)
     assert np.allclose(Y[:nb][far], X[:nb][far])
+
+
+def test_made_pieces_move_with_what_they_are_sewn_to(monkeypatch):
+    """C202 A MADE PIECE MOVES WITH THE CLOTH IT IS SEWN TO (canvas s6): worn_style held every piece no op names, so a
+    jacket worn open kept its stand + collar where the fit left them while the fronts relaxed, and the plain gorge cloth
+    sewn to the held stand tore (front plain p99 9.5 -> 13.8 % in one relax, weft +16-24 % by the stand seam; freed:
+    8.1 %). A made piece sewn to a moved piece is free, through a chain (collar -> stand -> front); a made piece sewn
+    only to held cloth stays held. And under = (V, F, mesh): the under garment's made pieces are no floor for this
+    garment's own cloth, only for its made pieces (cloth on cloth, made on made)."""
+    S = _sheet(n=5, size=0.04)
+    k = len(S["uv"])
+    names = ["front", "stand", "collar", "pocket", "back"]
+    M = {"F": np.vstack([S["F"] + i * k for i in range(5)]), "uv": np.vstack([S["uv"] + [0.05 * i, 0] for i in range(5)]),
+         "piece": np.repeat(np.arange(5), k), "names": names, "made": ["stand", "collar", "pocket"], "points": {},
+         "sew": np.array([[0 * k + 4, 1 * k + 0], [1 * k + 4, 2 * k + 0], [4 * k + 4, 3 * k + 0]])}
+    X = np.c_[M["uv"], np.zeros(len(M["uv"]))]
+    seen = {}
+
+    def fake_style(Ms, X_, held, ops, body=None, log=None, floor=None):
+        seen["held"], seen["floor"] = np.asarray(held, bool), floor
+        return X_, []
+    monkeypatch.setattr(gp, "style", fake_style)
+    monkeypatch.setattr(gp, "PATCH_LIE", False)
+    g = {"worn_open": {"front:x": 0.06}, "style": [{"smooth": {"pieces": ["front"]}}]}
+    monkeypatch.setattr(gp, "style_ops", lambda g_: g_["style"])
+    pid = M["piece"]
+    for on in (True, False):
+        monkeypatch.setattr(gp, "MADE_FREE", on)
+        gp.worn_style(M, X, None, g)
+        h = seen["held"]
+        assert not h[pid == 0].any() and h[pid == 4].all() and h[pid == 3].all()  # (the pocket sewn to held cloth: held)
+        assert (not h[pid == 1].any() and not h[pid == 2].any()) if on else (h[pid == 1].all() and h[pid == 2].all())
+    UV = np.array([[-1, -1, -0.01], [1, -1, -0.01], [0, 1, -0.01], [-1, -1, -0.02], [1, -1, -0.02], [0, 1, -0.02]], float)
+    um = {"F": np.array([[0, 1, 2], [3, 4, 5]]), "piece": np.array([0, 0, 0, 1, 1, 1]), "names": ["front", "collar"], "made": ["collar"]}
+    gp.worn_style(M, X, None, g, under=(UV, um["F"], um))
+    fl = {f["name"]: f for f in seen["floor"]}
+    made_v = np.where(np.isin(pid, [1, 2, 3]))[0]
+    assert set(fl["under"]["v"]).isdisjoint(made_v) and set(fl["under1"]["v"]) == set(made_v)
+    assert np.allclose(fl["under"]["surf"].V[:, 2], -0.01) and np.allclose(fl["under1"]["surf"].V[:, 2], -0.02)
