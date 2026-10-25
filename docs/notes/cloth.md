@@ -10950,3 +10950,9 @@ turned, points pulled) were tuned on bending-free cloth; the stand's rest is the
   turn 52 deg, collar crumple p95 0.316 / 0.32), threads 6.62 / 6.56 (s1 without TF: all pass at 12.5). So v3's pass
   was bought with stretch; under the rule it fails. The shirt keeps today's ops; the styling bend + TF passes every
   row at +0.65 threads: not "no worse", stays off.
+- chainC / D (threads-first fit unless noted; no holds): t1_tfa (TF in every styling solve) edge 37 / 40-45 / 52-56,
+  threads 10.45: the slide stops on stretch: the honest reach of today's ops under the rule; t1_b5 (styling bend W5
+  + TF) 26-34 / 48-51 / 59-60, 11.52; t2 (W2) 48-60 / 36-52 / 43-59, 15.83 (W2 asymmetric with or without TF); t1f
+  (flap + front-under-flap h 8 mm) 58-65 / 50-52 / 57-60, 11.43, flaps sunk 19/104: refining alone does not lay the
+  flaps (the floor reach / gap is the lever, not resolution). Suite 308 passed, 4 xfailed, PYTEST_EXIT 0. Defaults NOT
+  flipped. Next session: the plain-cloth tear in the kb styling (front plain p99 67 %) under TF, op by op.

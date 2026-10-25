@@ -20,8 +20,10 @@ RUNS ($S2; concept 71/78/94, hem+30 482, V 237, lapel 127/134; k3 60-64/74-77/10
 | d1_none | half canvas, W1, no TF fit | 41-45 / 40-42 / 36 | hem 393 | V 226 | lapel 126/132 | thr 11.17 |
 | h2_none | band, W2, no TF fit | 46-60 / 30-48 / 37-55 | 441 | 223 | 108/141 | 15.67 |
 | t1_none | band, W1, TF fit; kb ops | 59-67 / 62-67 / 78-79 | 470 | 228 | 125/136 | 11.90 (fit grain 7.2) |
-| t1_tfa | t1 + TF in every styling solve | 37 / 40-45 / 52-56 | 449 | 209 | 125/128 | (slide stops on stretch) |
-| t1_b5 / t2_none / t1f_none | styling bend W5 + TF / TF fit W2 / + flap mesh refine | chainD / chainC: read |
+| t1_tfa | t1 + TF in every styling solve | 37 / 40-45 / 52-56 | 449 | 209 | 125/128 | 10.45 (slide stops on stretch) |
+| t1_b5 | t1 + styling bend W5 + TF | 26-34 / 48-51 / 59-60 | 388 | 203 | 115/132 | 11.52 |
+| t2_none | band, W2, TF fit | 48-60 / 36-52 / 43-59 | 446 | 221 | 100/144 | 15.83 |
+| t1f_none | t1 + flap / front-under-flap mesh h 8 mm | 58-65 / 50-52 / 57-60 | 447 | 226 | 125/136 | 11.43; flaps sunk 19/104 (min -2.4) |
 t1's styled threads rise is in the kb STYLING of plain cloth (front plain p99 67 % by thr.py), not the stiffness;
 with TF in all styling (t1_tfa) the slide stops early and the fronts fall short: the honest reach of today's ops.
 SHIRT under TF (shdiag on shirt_s0): full ops no bend PASS 6.47; full ops + bend W5 PASS 7.12 (s1: 2 fail, 12.2);
@@ -35,4 +37,5 @@ t1's kb styling tears plain front cloth (thr.py per op: dump asm after each op w
 the slide / turn ops tuned on floppy cloth): retune that op under TF, prove it; (3) if a TF variant reaches edge 450
 >= 60 & threads <= 8.5 (or reads >= k3 vs concept) -> flip: FIT_BEND_KEYED on, gc_garrett plumb_hold off, kb
 jacket.wear.open holds out, KAT, ledger; (4) renders post38.sh <tag> + cmp.py + joeseam39.py, then the blind LOOK
-(gates.md; context "the reference jacket is worn open, unbuttoned"; wholefront, upper_front, side). Suite: $S2/suite.log.
+(gates.md; context "the reference jacket is worn open, unbuttoned"; wholefront, upper_front, side). Suite (17 garment files + test_bending, after the last code commit): 308 passed, 4 xfailed, PYTEST_EXIT 0 ($S2/suite.log).
+No renders / blind review this session (no variant earned one: none beats c2_none / k3 on edge AND threads).
