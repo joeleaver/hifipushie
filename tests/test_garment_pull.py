@@ -880,3 +880,18 @@ def test_a_floor_has_a_side(monkeypatch):
     d, _, dist, _ = gp._signed_i(fl["surf"], Xb)
     beh = d < 0
     assert beh.any() and np.allclose(np.asarray(fl["level"])[beh], np.minimum(d[beh], 0.0015))
+
+
+def test_thread_stop_never_tears_a_face():
+    """C198 THREADS FIRST FOR A PINNED MOVE: the slack strip's free end dragged along the chord with a loose p99 stop
+    (tol 10 %): by the p99 the drag goes on while the faces at the grip tear. With "thread_stop" the drag stops before
+    any face's warp / weft passes max(its start, STYLE_THREAD_CAP) + BORDER_LOCAL_TOL."""
+    M, X, held = _strip()
+    h = [{"at": "strip:tipA..tipB", "dir": [1, 0, 0]}]
+    F, _ = gp.thread_faces(M)
+    worst = lambda Y: float(gp.thread_strain(M, Y)[0].max())
+    X0, i0 = gp.pull(M, X, held, h, step=0.003, tol=0.10, max_move=0.4)
+    X1, i1 = gp.pull(M, X, held, h, step=0.003, tol=0.10, max_move=0.4, thread_stop=True)
+    assert worst(X0) > 0.05, worst(X0)
+    assert i1["stopped"] == "thread" and worst(X1) <= gp.STYLE_THREAD_CAP + gp.BORDER_LOCAL_TOL + 0.01, (i1["stopped"], worst(X1))
+    assert i1["moved_mm"]["strip:tipA..tipB"] < i0["moved_mm"]["strip:tipA..tipB"]
