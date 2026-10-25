@@ -11158,3 +11158,15 @@ turned, points pulled) were tuned on bending-free cloth; the stand's rest is the
 - (b) C208 FIT_MADE_FLOOR (opt-in PF_FIT_MADE_FLOOR=1): with UNDER_FLOOR, the jacket's made pieces floored on the
   shirt's made pieces once the bands are stood up (the shirt collar's top still shows above the jacket's: d2 heights
   at CB jacket fall 25-48 mm over HPS, shirt collar 36-71). Run m1 (+ GP_UNDER_MADE=1 in the styling).
+- (a) cont.: PD without a shear term tore (p2: threads 61 %, shear 80 deg); with SHEAR_FREE's 1.0 the rotation half
+  sprang the fronts back (p3 breaks 50 / 68); with SHEAR_STIFF only (p4 / p7, + a shear lock at max(start, 35 deg))
+  the first relax holds (L 62, R 68 but R 25 mm forward) yet the FULL open styling tears: p6 (no lock) threads 107 %,
+  p8 (lock) 44 % (front.L 73 %, stand 35), edge 87-102 / 75-91 / 94-105. Kept opt-in (C207). Next: perop on p8 to name
+  the op that tears (likely the slide / turn grips: under the PD local step a gripped face has no rotation pull, only
+  the band), then retry.
+- (b) m1 (C208 + GP_UNDER_MADE): poke 1152 -> 278 verts; collar threads fit 14 -> 22, styled 22.5 -> 35; edge 58-50 /
+  73-73 / 102-107, hem 477, length 723. Kept opt-in; suspect the jacket collar's draft (too small to ride over).
+- LOOK (d2 vs d1 beside the concept, $S8/check/cmp_d2_d1_{wholefront,upper_front,side}.png): flaps now clean
+  rectangles on their pocket lines (d1's were crumpled); fronts hem in less (hem 471); otherwise the same jacket: V
+  much wider and deeper than the concept's, lapels narrow, the gorge / collar ends still stand as crumpled tabs, the
+  fronts curve to a cutaway instead of falling straight.

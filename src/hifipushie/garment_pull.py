@@ -115,6 +115,8 @@ STYLE_BEND_PLAIN = float(__import__("os").environ.get("GP_STYLE_BEND_PLAIN", "0.
 # cannot walk: the alternation (bending round, STYLE_THREAD_ROUNDS bending-free solves, cap, one-sided floor) swung
 # Garrett's stiff fronts 35-65 mm forward in the first relax (exp1 b1; b0 without bending 5-9 mm).
 STYLE_TF_PD = __import__("os").environ.get("GP_TF_PD", "0") == "1"
+_tps = __import__("os").environ.get("GP_TF_PD_SHEAR")
+STYLE_TF_PD_SHEAR = float(_tps) if _tps else None  # (None: the weave's SHEAR_STIFF)
 
 STEP = 0.003  # m: a handle's move per step
 TOL = 0.005  # stretch p99 allowed above the least the pull has reached (0.5 %: the shirt's knee, module docstring)
@@ -412,6 +414,7 @@ class FlatARAP:
             # styling's start, as the bending's rest: a per-op start would ratchet the bound up op by op)
             ln0 = np.linalg.norm(np.stack([W0[self.WF[:, 1]] - W0[self.WF[:, 0]], W0[self.WF[:, 2]] - W0[self.WF[:, 0]]], -1)
                                  @ self.Dinv0, axis=1)
+            self._bend_rest_X = M["_bend_rest"] if M.get("_bend_rest") is not None else X  # (C207's shear lock start)
             self.thread_hi = np.maximum(ln0, 1.0 + STYLE_THREAD_CAP)
             self.thread_lo = np.minimum(ln0, 1.0 - STYLE_THREAD_CAP)  # (nor shorter: a woven buckles, it doesn't shrink)
         self._lu, self._lu0 = {}, {}
@@ -546,6 +549,38 @@ class FlatARAP:
             Fg = np.stack([Y[WF[:, 1]] - Y[WF[:, 0]], Y[WF[:, 2]] - Y[WF[:, 0]]], -1) @ self.Dinv0
             ln = np.maximum(np.linalg.norm(Fg, axis=1), 1e-12)
             R = Fg * (np.clip(ln, self.thread_lo, self.thread_hi) / ln)[:, None, :]
+            # (and the weave's SHEAR within its lock: warp / weft turned symmetrically about their bisector to at most
+            # max(the styling start's shear, SHEAR_LOCK_DEG) off square; lengths alone let faces shear flat, p99 88 deg
+            # and threads 107 % by the end of the styling: s8 p6)
+            a_ = R[:, :, 0] / np.maximum(np.linalg.norm(R[:, :, 0], axis=1, keepdims=True), 1e-12)
+            b_ = R[:, :, 1] / np.maximum(np.linalg.norm(R[:, :, 1], axis=1, keepdims=True), 1e-12)
+            th = np.arccos(np.clip(np.sum(a_ * b_, 1), -1.0, 1.0))
+            if getattr(self, "shear_lim", None) is None:
+                from . import pattern_form as pf_
+                W0 = self.weld(np.asarray(self._bend_rest_X, float))
+                F0 = np.stack([W0[WF[:, 1]] - W0[WF[:, 0]], W0[WF[:, 2]] - W0[WF[:, 0]]], -1) @ self.Dinv0
+                c0 = np.sum(F0[:, :, 0] * F0[:, :, 1], 1) / np.maximum(np.linalg.norm(F0[:, :, 0], axis=1) * np.linalg.norm(F0[:, :, 1], axis=1), 1e-12)
+                self.shear_lim = np.maximum(np.abs(np.arccos(np.clip(c0, -1, 1)) - np.pi / 2), np.radians(pf_.SHEAR_LOCK_DEG))
+            tc = np.clip(th, np.pi / 2 - self.shear_lim, np.pi / 2 + self.shear_lim)
+            bad_ = np.abs(tc - th) > 1e-9
+            if bad_.any():
+                bis = a_[bad_] + b_[bad_]
+                bis /= np.maximum(np.linalg.norm(bis, axis=1, keepdims=True), 1e-12)
+                pn = b_[bad_] - a_[bad_]
+                pn /= np.maximum(np.linalg.norm(pn, axis=1, keepdims=True), 1e-12)
+                h_ = tc[bad_, None] / 2
+                la, lb = np.linalg.norm(R[bad_, :, 0], axis=1, keepdims=True), np.linalg.norm(R[bad_, :, 1], axis=1, keepdims=True)
+                R[bad_, :, 0] = la * (np.cos(h_) * bis - np.sin(h_) * pn)
+                R[bad_, :, 1] = lb * (np.cos(h_) * bis + np.sin(h_) * pn)
+            if self.shear is not None:  # (the weave's shear stiffness as WOVEN's: the threads' band mixed with the
+                # pattern's closest rotation; without it the faces sheared freely, p99 80 deg, threads 61 %: s8 p2)
+                S_ = np.zeros((len(WF), 3, 2))
+                for k, (a, b, _c) in enumerate(_HE):
+                    S_ += Wt[:, k, None, None] * (Y[WF[:, a]] - Y[WF[:, b]])[:, :, None] * (U[:, a] - U[:, b])[:, None, :]
+                Uu, _, Vt = np.linalg.svd(S_, full_matrices=False)
+                sh = STYLE_TF_PD_SHEAR if STYLE_TF_PD_SHEAR is not None else self.shear  # (not SHEAR_FREE's 1.0:
+                # half the target a rotation of the flat pattern sprang the fronts back again, breaks 50 / 68: s8 p3)
+                R = (R + sh * (Uu @ Vt)) / (1.0 + sh)
             rhs = np.zeros((self.n, 3))
             for k, (a, b, _c) in enumerate(_HE):
                 v = Wt[:, k, None] * np.einsum("mij,mj->mi", R, U[:, a] - U[:, b])
