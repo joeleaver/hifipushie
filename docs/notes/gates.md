@@ -202,3 +202,16 @@ to judge." It never sees the author's caption or numbers.
   across independent threads, never two agents editing the same module. One ordered plan per thread, each step with
   its question stated up front. (Today ~10 stacked dress-form branches + 5 parallel cloth agents: flag-name
   mismatches, ledger id collisions, a fit validated on the pattern being replaced, sheets nobody could compare.)
+
+## Coordinator (2026-10-25; ledger P27-P31)
+- USE THE NEW PROCESS (Joe 2026-10-23): once Joe agrees a new process (the muslin fit, remeasuring, no holds), the next
+  round uses it. Landing it on main comes first; no more rounds on the old path "to compare".
+- VERIFY BEFORE PUSH: read the suite's PYTEST_EXIT in its own step (or re-run the suite on the merged main) before any
+  push; never chain check and push in one command. An agent's report can quote another run's exit.
+- A TRADE-OFF MEANS THE MODEL IS WRONG (Joe 2026-10-23): when two goods trade off in a result (stiffness vs stretch,
+  fronts open vs side seam flat), suspect the model before choosing between them (C189, C195).
+- NO WRITES THROUGH SYMLINKS: agents never write into an older round's files through a link; copy read-only, never name
+  a new tag after an existing file (fit round 38: a styled tag "g1" wrote through the links into the fit).
+- VERDICT: overall standing against the reference first (how close: "80 % there"), then the faults ranked by game
+  visibility (1 m / 3 m). Garments are judged beside the REFERENCE only, never against current or approved garments
+  (C165).

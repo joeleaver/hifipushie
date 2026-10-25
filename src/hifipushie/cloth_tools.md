@@ -94,7 +94,8 @@ Renders take the GPU lock.
 
 `fit_garment(name, garment, views=None, size=560, clay=True, diag=None, force=False, save=None, styled=True)`
 
-The virtual dress form: the garment assembled from its pattern on the body with NO sim (pattern_form: landmarks
+The virtual dress form: the garment assembled from its pattern on the body with NO sim, as a MUSLIN (C162: woven,
+threads held, the bias shears, a soft neck pin; this fit IS the fit, no release sim follows) (pattern_form: landmarks
 pinned, seams closed, folds on their lines, relaxed against the flat pattern; a layered garment over its under one).
 On a build without the dress form it shows the placed rest and says so. Refuses until pattern_check has a PASS
 for this exact pattern (force=True looks anyway and the text says FORCED).
@@ -171,7 +172,8 @@ no sim), then `ops` run in order, each from where the last left the cloth:
   opened, sink into the chest; pushed off they lie open with soft folds. Never every piece: a push dented the band.
 - `{"relax": {"iters"?}}`: the free cloth relaxed against its pattern (nothing gripped).
 - `{"hold": {"pieces", "within_deg"?, "feather_to"?, "feather_pieces"?, "of"?: "back" | "front", "center"?, "at"?}}`:
-  "feather_pieces" feathers only those (the BAND, not the collar's fall: feathering the fall too made an S of the
+  Hold only a REAL support (C190: shoulder / neck contact, a sewn seam, a fastened closure, the layer under), soft
+  and named; a hold standing in for gravity makes pinches, cords and rigid-grip creases. "feather_pieces" feathers only those (the BAND, not the collar's fall: feathering the fall too made an S of the
   collar's edge, in-out-in to the tip; band only gives one arc, C146). Keep a region
   where it is NOW for every later op. With `feather_to` (deg), the band beyond `within_deg` is FEATHERED: after every
   later pull it is drawn back toward where the hold found it, by a share fading 1 -> 0, then pinned and re-solved
@@ -202,8 +204,9 @@ no sim), then `ops` run in order, each from where the last left the cloth:
   areas, points pulled {"side": 1, "out": 0.3}, the outer edge smoothed as a border (fall released), smoothed.
   Result: points 144 apart, 73 / 73 mm below HPS, the fall 72-73 mm off the neck axis at CB / the sides (closed
   67-68), band corner 1.5-2.5 %, edge kinks 10 / 20 deg.
+- Finish every styling with smooth + pull down (C174); a hand lets go after its move and what hangs free drops (C199).
 - Judge it like a fit: clay + diag beside the reference, one view per review_view. Too far or not far enough: change
-  the direction, the sequence or what is held, never the solver.
+  the direction, the sequence or what is held, never the solver, and never a stiffness that stretches a thread (C195).
 
 ### `dress`
 

@@ -117,29 +117,43 @@ Traps: half-sided preview; judging cards against the photo; photo mask errors; t
 ## Stage 5: clothes
 
 Joe 2026-10-20: "we need to be better at measuring up front." 34 garment rounds were mostly lost to things a flat
-check would have caught (ledger C61 / C113 / C117 / M9-M11, docs/notes/measurements.md). Order, like a pattern maker:
+check would have caught (ledger C61 / C113 / C117 / M9-M11, docs/notes/measurements.md). Order, like a pattern maker
+(process as of 2026-10-25: measure -> flat gate -> muslin fit -> styling as worn; no sim in the path):
 0. MEASURE THE BODY FOR THE DRAFTS, before any draft: every measurement a draft consumes comes from the tape in THAT
    draft's definition (measure_defs: per-draft definitions with sources, adapters at the boundary; a draft refuses a
    measurement with no declared definition; gate row `measure_definitions`). A new garment kind or draft declares its
    measurements and their definitions first, with a synthetic-body known answer (tests/test_measure_defs.py). Read the
    values against the body: shoulder seam vs the body's neck point -> shoulder point (length + drop), neckline vs the
-   neck base + the book's ease, hip line height, plumb girth. A fix left opt-in for one garment is checked against
+   neck base + the book's ease, hip line height, plumb girth. The neck point is where the neck meets the shoulder
+   (FreeSewing's, hps "corner", C160, opt-in per garment). A fix left opt-in for one garment is checked against
    every garment that consumes the same measurement.
 1. DESCRIBE big to small from the reference (checklist items with value + tolerance become gate rows, C103): opening /
    closure state, silhouette, length, collar state, then details. Physics vs art intent: a pose a real garment
-   wouldn't take is reached by ARRANGING (C81), never by bending the pattern. Ask Joe only what his rules don't settle.
+   wouldn't take is reached by STYLING (C81, C142), never by bending the pattern. Ask Joe only what his rules don't settle.
 2. UNDER GARMENTS FIRST (C85): a garment worn under another passes its own fit before anything is fitted over it.
    What a cover hides is culled (cloth_layers.hidden); judge the under garment where it SHOWS (C90, C115).
 3. FLAT PATTERN gate (below): every visible part a cut piece or a sized mark (plackets, flaps, buttons); folds,
    presses and pleats checked by the generic fold family (C106) flat; tailoring rules with sources.
-4. DRESS FORM fit (pattern_form, no sim) in the CLOSED state; worn big reads measured on the fit (C104); fold family
-   on the form; whole-front view judged first, then crops of what Joe flags (C52, garment-loop memory).
-5. WORN STATE: an open front = closed fit -> ONE short release sim (cloth_release) -> arrangement (arrange_garment);
-   an open collar = arranged. Renders for Joe show the design state, never an internal stage.
-6. Layered pairs: the over garment fits over the body + the under garment's allowance; the under garment kept where seen.
-7. Freeze (`cloth.freeze`): the export consumes the frozen pickles. Hand finish only for small faults on the result.
-Tools: `pattern_check`, `fit_garment`, `release_garment`, `arrange_garment`, `review_view`, `judge_asset`.
-Guide: `guide(topic="cloth")`. Threads: docs/state/dress_garrett_fit.md, dress_garrett_shirt.md.
+4. THE MUSLIN FIT IS THE FIT (C162; fit_garment, pattern_form, no sim): woven cloth on the form, threads held, bias
+   shears up to the weave's jam (SHEAR_LOCK_DEG), a soft neck pin that never drags cloth to a landmark by stretching it
+   (C161, C166, C167); misfit read as thread strain by region (C169). An open front is fitted with its break open
+   (C171). Worn big reads measured on the fit (C104); fold family on the form; whole-front view first, then crops of
+   what Joe flags (C52). No release sim: a sim is optional, a wrinkle source at most (C157 superseded).
+5. STYLE AS WORN (fit_garment's wear ops / style_garment): pull until it would stretch (a THREAD strain or the shear
+   lock stops it, C142, C169, C198); every styling ends with smooth + pull down (C174); a hand LETS GO after its move
+   and what hangs free drops, the lower fronts hang (C199). Renders for Joe show the design state, never a stage.
+6. SUPPORTS, NOT HOLDS (C190): hold only what physically carries the garment (shoulder / neck contact, sewn seams,
+   fastened closures, layer contact), soft and named. Workaround holds made the pinch, the narrow hem, the side-seam
+   cord and the rigid-grip creases (C186, C188, C189); PLUMB_HOLD (C181) is being replaced by the canvas default.
+7. THREADS FIRST, THEN BENDING (C195): stiffness never buys shape with stretch. Collars and canvassed fronts keep
+   their shape by drafted canvas / interfacing bending (C194, C196); floors have a side and floor cloth on cloth
+   (C197, C200, C202). A trade-off between two goods means the model is wrong (gates.md "Coordinator").
+8. LAYERS: the under garment fits first (C85); the over garment fits over it; covered show-through is not a composing
+   fault (C153); the cull hides only what no judged view sees, plus covered poke-through (C158, C183, C187).
+9. JUDGE beside the REFERENCE only: current / approved garments are never a baseline (C165). Verdict: overall standing
+   first, then faults ranked by game visibility. Freeze (`cloth.freeze`); hand finish only small faults on the result.
+Tools: `pattern_check`, `fit_garment`, `style_garment`, `review_view`, `judge_asset` (`dress` only as a wrinkle source).
+Guide: `guide(topic="cloth")`. Threads: docs/state/canvas.md (the no-hold default), dress_garrett_fit.md, dress_garrett_shirt.md.
 
 ### Pattern gate (ENFORCED, 2026-10-19)
 Joe: "we're spending too much time on sim before we validate our patterns." Before ANY sim of a drafted garment:
@@ -159,8 +173,8 @@ Joe: "we're spending too much time on sim before we validate our patterns." Befo
 - Pattern ops and construct option dicts that change a default carry `"source": "<where the number came from>"`;
   the gate WARNS without one (traps.md "A misread note became a pattern default").
 
-Gate: measurement definitions and the pattern gate on the draft; the dress-form fit judged for fit, silhouette and big
-reads; the worn state judged in the game render at 1 m / 3 m. Re-freeze only when a blind review prefers the candidate.
+Gate: measurement definitions and the pattern gate on the draft; the muslin fit judged for fit, silhouette and big
+reads; the styled worn state judged in the game render at 1 m / 3 m. Re-freeze only when a blind review prefers the candidate.
 Joe approves each garment ("garment").
 Stop-loss: two failed levers on one fault -> measure it FLAT (lengths vs the body's surface paths, the measurement's
 definition) before another form or sim lever (shirt rounds 1-6: neck levers on a shoulder-slope bug).

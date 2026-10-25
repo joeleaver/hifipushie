@@ -1,4 +1,4 @@
-# Clothes: read, design, draft, construct, then simulate
+# Clothes: read, design, draft, fit on the form, style as worn
 
 Garments here are made the way garment makers make them: decided on a design sheet, drafted to the body's
 measurements, checked FLAT (the pattern gate), assembled on the dress form and judged there, and only then, optionally,
@@ -8,8 +8,8 @@ tablecloth or a blanket is the same machinery: one flat piece draped on a prop.
 **The order (2026-10-19; the tools enforce it and their texts end with the next step):**
 pattern (`design_garment`, `look_pattern`, `alter_pattern`) -> `pattern_check` (the flat gate: every sim refuses
 without its PASS) -> `fit_garment` (the pattern assembled on the form, no sim) -> judge clay + diag beside the
-reference, ONE view per `review_view` call -> optional sim (`dress`), a wrinkle source only -> game mesh
-(garment_game). Closing seams, building made pieces or hand-finishing AFTER a sim is not a step: measured on Garrett's
+reference, ONE view per `review_view` call -> styled as worn (fit_garment's wear ops / `style_garment`) -> optional
+sim (`dress`), a wrinkle source only -> game mesh (garment_game). Closing seams, building made pieces or hand-finishing AFTER a sim is not a step: measured on Garrett's
 jacket 2026-10-19 it pushed face strain p99 from 4.7 % to 66-74 %. A fault is fixed on the pattern and re-checked.
 
 **Measure first (Joe 2026-10-20: "we need to be better at measuring up front"):** before any draft, every body
@@ -18,8 +18,21 @@ measurement the draft consumes must arrive in THAT draft's definition (measure_d
 Read the drafted pattern against the body flat before fitting: shoulder seam vs the body's neck point -> shoulder
 point (length and drop), neckline vs the neck base + ease, hip line height, plumb girth. Most lost rounds on Garrett's
 jacket and shirt were definition mismatches (shoulder slope, hip level, neck point) found late by fitting.
-Under garments are fitted first and judged where they show; an open front or open collar is a worn state reached by
-release + arrangement (`release_garment`, `arrange_garment`).
+Under garments are fitted first and judged where they show. An open front or open collar is a worn state reached by
+STYLING the muslin fit (pull until it would stretch, smooth, pull down), not by a release sim or an arrangement.
+
+**The fit and styling rules (2026-10-25; ledger docs/notes/codified.md):**
+- The MUSLIN fit is the fit (C162): woven cloth, threads held, the bias shears up to the weave's jam, a soft neck pin
+  (C166, C167). Misfit reads as thread strain by region; cloth never stretches to reach a landmark.
+- SUPPORTS, NOT HOLDS (C190): hold only what physically carries the garment (shoulder / neck contact, sewn seams,
+  fastened closures, the layer under), soft and named. Holds standing in for gravity made pinches, narrow hems, a
+  side seam standing like a cord and rigid-grip creases.
+- THREADS FIRST, THEN BENDING (C195): stiffness never buys shape with stretch. Collars and canvassed fronts hold their
+  shape by drafted canvas / interfacing (C196); if two goods trade off, the model is wrong.
+- Styling (C142, C174, C199): pull until a thread would stretch; a hand lets go after its move and what hangs free
+  drops; every styling ends with smooth + pull down.
+- Judge beside the REFERENCE only: your current or approved garments are never the baseline (C165). Verdict: overall
+  standing first, then faults ranked.
 
 **The two rules everything else follows:**
 1. **Describe the garment from the reference before choosing anything.** Kind, construction, fabric, measurements
@@ -52,9 +65,9 @@ worked examples), `cloth_tools` (every cloth tool's parameters).
 | 1 | Design sheet | Decides kind, fabric, fit and every detail before cutting | `design_garment` (`garment_reference` for choices) | Every choice traced to a description item; no hard failures |
 | 2 | Pattern | Drafts to the body, walks seams, trues corners, measures against the body | `look_pattern`, `alter_pattern` | Seams walk, ease and evidence pass; the draft's measurements match the description |
 | 3 | Pattern gate (flat) | Checks the pattern against the checklist before cutting cloth | `pattern_check` | PASS (FAIL / UNMEASURED rows block every sim) |
-| 4 | Construction + arrange | Plans sewing order, layers, folds, interfacing; pins the pieces round the body | `check_garment(stages=["construction", "place"])` | Passes |
-| 5 | Fit on the form | Pins the muslin on the dress form and judges it | `fit_garment` | Strain p99 <= 6 %, no layer pierce; clay + diag judged beside the reference, one `review_view` per view, no MAJOR |
-| 5b | Style it as worn | fit_garment already sets it as its kind is worn (a shirt without a tie: the wear's style ops open the collar, C146); otherwise pull a collar open, a shirt down, a cuff up, then smooth ripples, each as far as the cloth goes without stretching (never pins at a guessed spot). Handles are turning areas; holds feathered and per piece; long edges smoothed toward one curve; measured beside the reference every look | `fit_garment` (default) / `style_garment` | The open collar reads PASS (item / target / ours); pulls stopped by stretch (not max_move); tips as clean as the fit's; judged like the fit |
+| 4 | Construction + placement | Plans sewing order, layers, folds, interfacing; places the pieces round the body | `check_garment(stages=["construction", "place"])` | Passes |
+| 5 | Muslin fit on the form | Fits the muslin on the dress form (threads held, bias shears, soft neck pin; an open front with its break open) and judges it | `fit_garment` | Strain p99 <= 6 %, no layer pierce; clay + diag judged beside the reference, one `review_view` per view, no MAJOR |
+| 5b | Style it as worn | fit_garment already sets it as its kind is worn (a shirt without a tie: the wear's style ops open the collar, C146); otherwise pull a collar open, a shirt down, a cuff up, then smooth ripples, each as far as the cloth goes without stretching (never pins at a guessed spot); each hand lets go after its move, what hangs free drops, and every styling ends with smooth + pull down. Hold only real supports. Handles are turning areas; holds feathered and per piece; long edges smoothed toward one curve; measured beside the reference every look | `fit_garment` (default) / `style_garment` | The open collar reads PASS (item / target / ours); pulls stopped by stretch (not max_move); tips as clean as the fit's; judged like the fit |
 | 6 | Optional sim | Only a wrinkle source over a fit already judged | `dress`, `look_cloth` (clay + diag by default) | Fit unchanged from the form; never closed, rebuilt or hand-finished after |
 | 7 | Game mesh | Remeshes in pattern space, bakes the detail | garment_game, `export_asset` | judge_asset self-checks pass; reviewed one view per call |
 
@@ -128,7 +141,7 @@ Pattern and construction
   "end_in": m short of CF, "point": m}], "source"}]; drape.draft builds it on the dress form's cloth, flattens it and
   writes "out" (the pieces replace the design's, same names). Never hand-edit "out": change the worn spec and draft
   again (gate row drape_band_current refuses a stale piece; drape_band_flat: flattening strain p99 <= 2 %). Drape ONE
-  state (closed); the other (open) is the arrangement target, checked with drape.reach. Round 1: the op and KATs work;
+  state (closed); the other (open) is the styling target, checked with drape.reach. Round 1: the op and KATs work;
   Garrett's stand still flares (docs/state/drape_band.md), so the drafted pieces are not yet a passing collar.
 - Fix FIT and construction in the pattern (ease, length, truing, a walked seam, a detail's options), never by
   sculpting, never by solver settings, never by a pass on the drape after a sim.
@@ -142,7 +155,8 @@ Pattern and construction
 - Stale options persist: `design_garment` merges key by key. Read the resolved sheet back every time; clear with
   `false`, null or `replace=True`.
 
-Simulation
+Simulation (optional: a wrinkle source at most, over a fit + styling already judged; never a fitting, release or
+opening step)
 - One simulation at a time; one change per sim. Know the noise (about 2 mm): only a difference over about 5 mm is
   the change. Read each build's numbers from its own report.
 - Draft (2 cm) judges fit and big shape only; details are judged at final.
@@ -191,6 +205,9 @@ evidence that the reference doesn't show it.
 | An open jacket's fronts tenting forward | Side-panel hem spring: cut the panel seams straight below the waist (cloth_faults) |
 | Lowering a jacket's collar stand to show more shirt collar | Lower the back neck and the notch instead (cloth_design) |
 | Buttons missing in a render, so a sim is queued | Buttons are built after the sim; the render must draw them |
+| A hold standing in for gravity (a hem, a side seam or a styling grip held to keep a shape) | Hold only real supports (shoulders, neck, seams, fastened closures, the layer under); let go and let it hang (C190, C199) |
+| Raising stiffness until the shape holds, paid for in stretch | Threads first: no stiffness that stretches a thread; draft a canvas / interfacing region (C195, C196) |
+| Judging a new garment against your own old or approved garment ("no worse than before") | Judge beside the reference only; old garments are not a baseline (C165) |
 
 Full fault table with causes and fixes: guide(topic="cloth_faults").
 

@@ -9,3 +9,6 @@ history goes to docs/notes/<thread>.md, append-only, read only by grep.
 
 Judging (every thread): `bin/judge shots <glb> --head <approved head>` -> `bin/judge report <new> --ref <old> --head ..`
 -> `bin/judge ab <old> <new> <out> --head ..` (self-checks refuse bad runs; docs/notes/judge.md).
+
+Garments (2026-10-25): dress_garrett_fit's method (muslin fit + styling, no sim) is now the canvas thread's no-hold
+default: read docs/state/canvas.md first; the process is docs/notes/character_recipe.md "Stage 5: clothes".
