@@ -1,5 +1,10 @@
 # STATE: dress_garrett_fit (Garrett jacket over the muslin shirt: muslin form fit + styling, NO sim) -- 2026-10-23, round 39 (closed, waiting on the hold redesign)
 
+METHOD NOW (canvas s7, C205, 2026-10-25; supersedes the FIT / STYLING lines below): the jacket is fitted from the repo
+defaults with its canvas's stiffness (keyed), the shirt's own cloth as its floor from the first relax (C200), NO plumb
+hold; styled by kb jacket.wear.open = canvas s6 t5f_ps8's recipe (no holds; C199 let go, C204 plumb from the start),
+the shirt's own cloth the styling floor (C202). fit_garment(gc_garrett, jacket) = t5f_ps8 (0.000 mm). Faults and
+their work: docs/state/canvas.md.
 DESIGN FACTS (Joe, settled): SLIM-CUT, MODERN (2026-10-23: "the concept is a slim-cut jacket; the pattern looks like an
 older style with a lot more material": slimmed in the pattern by the canvas thread, gc_garrett v6, docs/state/canvas.md);
 the jacket is worn OPEN, unbuttoned; it falls straight down (no waist suppression, side

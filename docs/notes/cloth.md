@@ -11099,3 +11099,29 @@ turned, points pulled) were tuned on bending-free cloth; the stand's rest is the
   R 46/67/93 (concept 71/78/94), hem+30 498, len 729, threads p99 6.46 (collar 15.2), chest 0 % behind the shirt;
   shirt poke-through at the back neck 1742. LOOK: more open, clean chest, but the lower fronts flare A-line and L / R
   differ; not flipped, no blind review. Suite 313 passed, 4 xfailed, PYTEST_EXIT 0.
+
+## canvas stiffness session 7 (2026-10-25; $S7 = /mnt/data/hifipushie/canvas/s7; branch claude/canvas7)
+- FLIP (C205): Joe took s6's t5f_ps8 as the base. pattern_form: FIT_BEND_KEYED None = per garment (keyed when the
+  garment DECLARES interfacing: its own "interfaced" / "interfacing_kind" and bending.weights > 1); such a garment gets
+  assemble(under_floor="relax1") (C200) and no default plumb hold (plumb_hold_for(g, stiff)); env PF_BEND_KEYED /
+  PF_UNDER_FLOOR still force either way. server.fit_garment passes the under garment (V, F, mesh) to worn_style (C202:
+  the shirt's own cloth is the styling floor; before, fit_garment styled with no under floor at all). kb
+  jacket.wear.open.style = $S6/ops_ps.json; the old (held) recipe kept as style_holds_superseded.
+- Reproduction ($S7/repro.py d1, no env): fit = s5 fit_t5f, shirt = its under, styled = s6 asm_t5f_ps8: max 0.000 mm.
+- First try keyed every garment with bending.weights > 1: the shirt's kind-default fusible collar then counted, and
+  wf_simon's open collar failed its photo / trace rows (leaf front edge 49 vs 25-48; edge turn 35 vs 0-32) + 2 spike
+  rows. Narrowed to a declaration; those 4 pass again. test_open_jacket_is_styled_by_its_wear_as_data restated as the
+  new recipe's rules (no hold; let go; plumb from the start; hang keep for its relax only; thread_stop finish).
+- (a) THE BREAKS GO IN 11-15 mm IN THE FIRST RELAX (exp1.py: the wear's first op with free = what the whole list
+  names, flags varied): unchanged with no floor at all, with MADE_FREE off, with the flap stitches dropped, with the
+  padded body. The fronts spring back toward their flat rest: the fit holds them curved round the chest (seat
+  attraction, the worn-open pin w60, the neck pins) within its 2 % thread cap (en2.py: warp p50 +2.3 % round the break
+  -> 0; edgelen.py: break -> HPS chord 395 -> 404 mm, the edge itself not stretched); nothing in the styling keeps a
+  front on the body. STYLE_BEND (rest = the fit, the "moulded canvas") is WORSE: W 0.5 / 1.5 / 5 lifted the lapel 20-45
+  mm forward (break 57 / 87-97 / 138), with or without floors: the styling bending does not hold the shape it is given
+  (suspect: Bending's rest at the turned-lapel fold hinges). A hang as the first relax: worse (break 36-47).
+- (e) RAGGED FLAPS: the fit never sews a patch's stitch (assemble's sew set is M["sew"] only; PATCH_ON_BASE lays the
+  flap on its base, unsewn): each flap's 5 stitched top-edge vertices end 10-58 mm off their pocket-line partners
+  (flap.py). worn_style welds the stitch: the flap is yanked 19-46 mm, threads 0.6 -> 23 %, and drags the front.
+- Not reached this session: (b) the shirt collar over the jacket's at CB, (c) flare / hem / length, (d) the bulge,
+  (f) C200's KAT, looks, the blind review.

@@ -615,41 +615,49 @@ def test_layer_floor_reach_is_local_to_a_coarse_base():
 
 
 def test_open_jacket_is_styled_by_its_wear_as_data():
-    """C174 (garrett jacket fit round 31; Joe: "I'd smooth it out, pull it down"): a jacket worn open is styled by its
-    kind's "open" wear (garment_kb kinds.jacket.wear.open.style): the fronts above the break held as fitted, the edge
-    below gripped part-way down (border points "piece:a..b@t") and drawn side and down, then the artist's finish:
-    smooth, the hem pulled down, relax. A jacket worn closed has no wear style; a border point is the chain's vertex
-    at that share of its length, and a hold "above" holds that piece from the point's height up."""
+    """C174 (garrett jacket fit round 31; Joe: "I'd smooth it out, pull it down"), restated by C205 (canvas s7: the
+    recipe is canvas s6 t5f_ps8's, Joe's base; supports, not holds): a jacket worn open is styled by its kind's "open"
+    wear (garment_kb kinds.jacket.wear.open.style) as data: NO hold op (the old recipe held the side / back hems and the
+    fronts above the break: workaround holds, kept as style_holds_superseded); the lapped lower front slid back round
+    the body then swung about break -> side seam at the hem until its edge hangs plumb, both reading the plumb from the
+    break as the styling found it (C204) and letting go after their move (C199); the lower fronts hung by their weight
+    (a relax hang whose keep holds only for that relax); then the artist's finish: smooth, the edges smoothed and the hem
+    pulled down until a thread would stretch (C198), relax, each edge break -> cut-away top drawn straight (C185). A
+    jacket worn closed has no wear style; a border point is the chain's vertex at that share of its length."""
     from hifipushie import garment_design as gd
     ops = gd.wear({"design": {"kind": "jacket"}, "worn_open": {"front.L:break": 0.064}}, "style")
     kinds = [next(iter(o)) for o in ops]
-    assert kinds[:2] == ["hold", "hold"] and ops[1]["hold"]["above"] == ["front.L:break", "front.R:break"], ops[:2]
-    # (C186, fit round 38) the side / back hems held where the fit hung them (the un-lap flared them out like a skirt)
-    assert ops[0]["hold"]["at"] == ["side.L:sideF.b..sideB.b", "back.L:sideB.b..cbHem", "side.R:sideF.b..sideB.b",
-                                    "back.R:sideB.b..cbHem"], ops[0]
-    assert kinds[-5:-2] == ["smooth", "pull", "relax"] and ops[-4]["pull"]["handles"][0]["dir"] == "down", kinds
-    # (C185, fit round 38) ... and last each edge from the break to the cut-away's top drawn straight (the front-view
-    # chord), the slide having let go of its grip above cutawayTop (it had pinched the edge in under the break)
-    assert [o["smooth"]["border"] for o in ops[-2:]] == ["front.L:break..cutawayTop", "front.R:break..cutawayTop"], ops[-2:]
-    assert all(o["smooth"]["spline"] == 0 for o in ops[-2:]), ops[-2:]
-    assert [q.get("let_go_above") for q in ops[kinds.index("slide")]["slide"]["slides"]] == ["front.L:cutawayTop", "front.R:cutawayTop"]
-    # (C178, fit round 33) the lower front swung as one panel about break -> side seam at the hem, laid back on the body
-    # (down + in), then each edge smoothed into one long curve; no point grips part-way down the edge (zigzag / flare)
-    tu = ops[kinds.index("turn")]["turn"]["turns"]
-    assert [t["about"] for t in tu] == [["front.L:break", "front.L:sideF.b"], ["front.R:break", "front.R:sideF.b"]], tu
-    # (C182, fit round 36) ... until the edge below the break hangs plumb (break -> cutawayTop), not by a fixed angle
-    assert [t.get("plumb") for t in tu] == [["front.L:break", "front.L:cutawayTop"], ["front.R:break", "front.R:cutawayTop"]], tu
-    # (C184, fit round 37) ... after the lapped cloth has first slid back round the body (un-lap), the side and back
-    # panels following, its lap set by the hang (the edge from the break to the cut-away's top on the vertical)
-    su = ops[kinds.index("turn") - 1]["slide"]["slides"]
-    assert [q["at"] for q in su] == ["front.L:break..cfHem", "front.R:break..cfHem"], su
-    assert [q["by"] for q in su] == [{"plumb": t["plumb"], "ramp": True} for t in tu], su
-    assert [q["with"] for q in su] == [["side.L", "back.L"], ["side.R", "back.R"]], su
-    lay = ops[kinds.index("turn") + 1]["pull"]["handles"]
-    assert [h["at"] for h in lay] == [t["at"] for t in tu] and all(h["dir"]["out"] < 0 < h["dir"]["down"] for h in lay), lay
+    assert "hold" not in kinds, kinds  # (supports, not holds, C190 / C205)
+    assert kinds == ["relax", "slide", "turn", "relax", "smooth", "smooth", "smooth", "pull", "relax", "smooth", "smooth"], kinds
+    old = gd.kb()["kinds"]["jacket"]["wear"]["open"]["style_holds_superseded"]  # (the old recipe, kept, unused)
+    assert [next(iter(o)) for o in old][:2] == ["hold", "hold"]
+    # (C199) every hand lets go; the hang's keep is for that relax only, the fronts below the break free
+    su, tu = ops[1]["slide"], ops[2]["turn"]
+    assert su.get("let_go") and tu.get("let_go"), (su, tu)
+    hang = ops[3]["relax"]
+    assert hang.get("hang") and hang["keep"]["above"] == ["front.L:break", "front.R:break"], hang
+    assert not {"front.L", "front.R"} & set(hang["keep"]["pieces"]), hang
+    # (C178 / C182 / C204) the lower front swung as one panel about break -> side seam at the hem until its edge below
+    # the break hangs plumb, read from where the styling found the break
+    assert [t["about"] for t in tu["turns"]] == [["front.L:break", "front.L:sideF.b"], ["front.R:break", "front.R:sideF.b"]], tu
+    assert [t.get("plumb") for t in tu["turns"]] == [["front.L:break", "front.L:cutawayTop"], ["front.R:break", "front.R:cutawayTop"]], tu
+    assert all(t.get("plumb_from") == "start" for t in tu["turns"]), tu
+    # (C184) ... after the lapped cloth slid back round the body (un-lap), the side and back panels following, its lap
+    # set by the same plumb line; the slide lets go of its grip above cutawayTop (C185)
+    assert [q["at"] for q in su["slides"]] == ["front.L:break..cfHem", "front.R:break..cfHem"], su
+    assert [q["by"] for q in su["slides"]] == [{"plumb": t["plumb"], "ramp": True, "from": "start"} for t in tu["turns"]], su
+    assert [q["with"] for q in su["slides"]] == [["side.L", "back.L"], ["side.R", "back.R"]], su
+    assert [q.get("let_go_above") for q in su["slides"]] == ["front.L:cutawayTop", "front.R:cutawayTop"]
+    # (C198) the pinned finishing moves stop on their worst thread; no point grips part-way down the edge
+    fin = [o for o in ops[4:] if "pull" in o or ("smooth" in o and "border" in o["smooth"])]
+    assert len(fin) == 5 and all(next(iter(o.values())).get("thread_stop") for o in fin), fin
+    pl = next(o for o in ops if "pull" in o)["pull"]["handles"]
+    assert [h["at"] for h in pl] == ["front.L:cfHem..sideF.b", "front.R:cfHem..sideF.b"] and all(h["dir"] == "down" for h in pl), pl
     assert not any("@" in h["at"] for o in ops if "pull" in o for h in o["pull"]["handles"]), ops
     assert {o["smooth"]["border"] for o in ops if "smooth" in o and "border" in o["smooth"]} == {
         "front.L:break..cfHem", "front.R:break..cfHem", "front.L:break..cutawayTop", "front.R:break..cutawayTop"}
+    assert [o["smooth"]["border"] for o in ops[-2:]] == ["front.L:break..cutawayTop", "front.R:break..cutawayTop"], ops[-2:]
+    assert all(o["smooth"]["spline"] == 0 for o in ops[-2:]), ops[-2:]
     assert gd.wear({"design": {"kind": "jacket"}}, "style") == []
     nx, ny = 11, 5
     uv = np.array([(x, y) for x in np.linspace(0, 0.1, nx) for y in np.linspace(0, 0.04, ny)])
