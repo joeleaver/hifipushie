@@ -2356,12 +2356,23 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
     fsurf = bridged_surface(body, float(bridge), float(X[:, 2].min()) - 0.02) if body is not None and bridge > 0 else None
     usurf = _Surface(under["V"], under["F"], ref=bsurf) if under is not None and bsurf is not None else None
     osurf = _Surface(over["V"], over["F"], ref=bsurf) if over is not None and bsurf is not None else None
+    ufsurf = usurf  # (UNDER_FLOOR's surface: the under garment's own cloth, not its made pieces (C200: its collar / stand
+    # are a thin leaf at the neck; floored on them, the jacket's neck cloth tore, front plain p99 9 -> 18 %, max 100 %))
+    if usurf is not None and UNDER_FLOOR and under.get("floor_F") is not None:
+        fF_ = np.asarray(under["floor_F"], int)
+        iv_ = np.unique(fF_)
+        ix_ = -np.ones(len(under["V"]), int)
+        ix_[iv_] = np.arange(len(iv_))
+        ufsurf = _Surface(np.asarray(under["V"], float)[iv_], ix_[fF_], ref=bsurf)
     ceil_on = [LAYER_FROM == "relax1"]
     uf_on = [UNDER_FLOOR_FROM == "relax1"]  # (UNDER_FLOOR's start; C200)
     uf_side = np.ones(len(X), bool)  # (UNDER_FLOOR_SIDE: the vertices outside the under layer at the placement)
     if UNDER_FLOOR and UNDER_FLOOR_SIDE and usurf is not None:
-        cv0_, du0_, _ = covered(usurf, X, bsurf)
+        cv0_, du0_, _ = covered(ufsurf, X, bsurf)
         uf_side = ~(cv0_ & (du0_ < 0.0))
+        # (and only this garment's own cloth: its made pieces (collar, stand) rest on the under garment's made pieces,
+        # which are no floor; floored on the shirt's yoke there the jacket's collar 15.7 -> 21.8 %, stand 10 -> 19 %)
+        uf_side &= ~np.isin(pid, [names.index(p_) for p_ in (M.get("made") or []) if p_ in names])
     # which face of each piece is its outside (CCW in the pattern = +z normal): from the start's placement
     face_sign = {}
     Nf = np.cross(X[F[:, 1]] - X[F[:, 0]], X[F[:, 2]] - X[F[:, 0]])
@@ -2621,7 +2632,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                     Ax, Ayz, Ay = system(wc) if sw_ is None else system(wc, sw_)
             if UNDER_FLOOR and usurf is not None and uf_on[0] and grav <= 0 and it % 5 == 0:  # (C172: the vertices
                 # on the under layer weigh LAYER_W in the solve, as the ceiling's: contact the solve knows)
-                cv_, du_, _ = covered(usurf, X, bsurf)
+                cv_, du_, _ = covered(ufsurf, X, bsurf)
                 c_ = cv_ & (du_ < LAYER_GAP + 0.001) & uf_side
                 if (c_ != ucon).any():
                     ucon = c_
@@ -2818,7 +2829,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                     Xn[lo] += nrm[lo] * (off[lo] - d[lo])[:, None]
             if UNDER_FLOOR and usurf is not None and uf_on[0] and grav <= 0:  # THE UNDER LAYER IS A FLOOR (C172): hard
                 # contact over the garment under it, the ceiling's mirror (see UNDER_FLOOR)
-                cv_, du_, nu_ = covered(usurf, Xn, bsurf)
+                cv_, du_, nu_ = covered(ufsurf, Xn, bsurf)
                 cv_ &= (du_ < LAYER_GAP) & uf_side
                 Xn[cv_] += nu_[cv_] * np.minimum(LAYER_GAP - du_[cv_], LAYER_STEP if it < iters - 1 else 1.0)[:, None]
             X = Xn
@@ -3231,6 +3242,10 @@ def on_form(model: str, garment: str, spec: dict | None = None, g: dict | None =
                                         float(g.get("under_cap", cloth.UNDER_CAP)), cloth.under_fall(g)),
                    A_unpressed=und["A"])
     under = {"V": und["A"], "F": und["mesh"]["F"]} if und is not None else None
+    if under is not None and und["mesh"].get("made"):  # (UNDER_FLOOR: the floor is the under garment's own cloth, C200)
+        uF_, upid_ = np.asarray(und["mesh"]["F"]), np.asarray(und["mesh"]["piece"])
+        mk_ = np.isin(upid_[uF_[:, 0]], [und["mesh"]["names"].index(p) for p in und["mesh"]["made"] if p in und["mesh"]["names"]])
+        under["floor_F"] = uF_[~mk_]
     from . import bending as _bd
     bw = _bd.weights(res.get("pieces"), res["mesh"], g)  # (the mesh carries them for the styling: STYLE_BEND)
     res["mesh"]["bend_w"] = bw

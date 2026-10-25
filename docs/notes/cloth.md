@@ -11037,3 +11037,14 @@ turned, points pulled) were tuned on bending-free cloth; the stand's rest is the
   into the collar (stand 18-21 -> 10, collar 11-13 -> 15.7).
 - POCKET FLAPS (flapgap.py): each flap is 25 vertices over a front meshed 10-12 mm there; 7-12 front vertices under each
   flap stand at or outside it (0-4.5 mm, 13 mm in the turn) between the flap's vertices: a mesh-resolution fault.
+- FIT FLOOR A/B (keyed, TF, no plumb hold; chest behind the shirt L / R; per-piece threads, pooled read):
+  | fit | floor | behind | p99 | fronts | stand / collar | front plain (thr.py) |
+  | t5a | none (= fit_t1) | 46 / 37 % | 8.81 | 7.5 / 7.1 | 10.0 / 15.7 | 9.3 |
+  | t5b | C172 from the seat (pushes from behind) | 0 / 0 | 10.84 | 10.3 / 10.7 | 40.1 / 15.8 | 22.7 |
+  | t5c | from relax1, placement side | 0 / 0 | 8.71 | 9.1 / 7.0 | 14.8 / 13.3 | 18.4 (41 faces at the gorge z 1.52-1.55: the shirt collar leaf) |
+  | t5e | t5c, floor = the shirt's own cloth (no collar / stand) | 0 / 0 | 9.61 | 6.1 / 7.0 | 18.9 / 21.8 | 9.4 |
+  t5b: pushed out from behind after the seat, the sunk chest needs length it hasn't (the C172 rejection again). From
+  relax1 the chest never sinks; the fronts' threads drop (6.1 / 7.0). The neck tear in t5c was the shirt's collar leaf;
+  t5e's collar / stand got worse because the jacket's made pieces were floored on the shirt's yoke under the shirt collar.
+- Flaps refined (mesh_refine + flaps h 6 mm, front near the flap marks): the PLACEMENT broke (side.L triangle 0.17 m);
+  place.py tests variants.
