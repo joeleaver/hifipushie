@@ -11065,3 +11065,4 @@ turned, points pulled) were tuned on bending-free cloth; the stand's rest is the
 - LOOK (check/cmp_*_t1hc_t5fhc_k3.png): t5f_hc's chest is the cleanest yet (no shirt through, lapels flat on the
   chest) but the opening closes from the button down and the hem draws in; t1_hc keeps the opening, the left-chest
   show-through stays. Not flipped; no blind review (gate not met).
+- Suite (17 garment files + test_bending, after 30dc65c4): 312 passed, 4 xfailed, PYTEST_EXIT 0 ($S5/suite.log; the first run failed test_tight_outer_tube_lies_over_the_under_one: the side rule now only with the floor from relax1).

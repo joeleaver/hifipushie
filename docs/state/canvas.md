@@ -25,7 +25,7 @@ LOOK ($S5/check/cmp_{wholefront,upper_front,side}_t1hc_t5fhc_k3.png; rows t1_hc 
 t5f_hc has the cleanest chest yet (no shirt through, lapels lie flat on the chest) but the fronts close toward CF from
 the button down and the hem draws in (edge 31-49 at 450): worse than t1_hc for the opening, the main concept read.
 t1_hc keeps the best opening and still shows the shirt at the left chest. DEFAULTS NOT flipped. No blind review.
-Suite: see $S5/suite.log (PYTEST_EXIT line).
+Suite (18 files, after the last code commit 30dc65c4): 312 passed, 4 xfailed, PYTEST_EXIT 0 ($S5/suite.log).
 NEXT: (1) re-style on t5f (the floor fit): find why the R slide / turn refuse (perop_t5f_hc.log: thread stop at the
 torn gorge?) and the first relax's gorge tear (styling floor C197 on the new fit's neck: compare gap / where.py per op);
 fix the fit's gorge (grain max 36 % at |x| 85 z 1.54) first. (2) then re-tune the open ops on t5f to reach edge
