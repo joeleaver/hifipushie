@@ -154,6 +154,12 @@ FLOOR_REACH_CAP = 3.0
 # (cos > FLOOR_SIDE_COS; followed round by round, so a slide round the body turns with it). GP_FLOOR_SIDE=0 for the A/B.
 FLOOR_SIDE = __import__("os").environ.get("GP_FLOOR_SIDE", "1") == "1"
 FLOOR_SIDE_COS = 0.5
+# THREADS FIRST FOR A PINNED MOVE (canvas s3, C198): smooth_border pins its border on the target and re-solves the rest;
+# its stop read the p99 (+ tol), so 1 % of the faces could tear: the open jacket's last two edge smooths (break ..
+# cutawayTop, to the chord) took the canvassed lapel's worst faces 35 -> 154 % at p99 + 3 points. With it a round is
+# refused once any face's warp / weft passes max(its op-start strain, STYLE_THREAD_CAP) + BORDER_LOCAL_TOL.
+BORDER_LOCAL_STOP = __import__("os").environ.get("GP_BORDER_LOCAL", "1") == "1"
+BORDER_LOCAL_TOL = 0.02
 FLOOR_CONTACT = __import__("os").environ.get("GP_FLOOR_CONTACT", "1") == "1"  # (FlatARAP.solve: floor pushes held, C197)
 FLOOR_SIDE_TRACK = __import__("os").environ.get("GP_FLOOR_SIDE_TRACK", "1") == "1"  # (A/B: rule (2) alone off)
 
@@ -569,11 +575,16 @@ class FlatARAP:
                 # base and stays over the SAME cloth, so it is read against the base vertex it started over, not the
                 # nearest: Garrett's left lapel lay where two sheets of its base met (the front, the turn of the roll),
                 # neighbours took their nearest from either and were shoved apart up to 9 mm a round: canvas 122 %)
-                ni = fl["anchor"][free]
-                dv = Y[w] - surf.V[ni]
-                n = surf.N[ni]
-                d = np.sum(dv * n, 1)
-                dist = np.linalg.norm(dv, axis=1)
+                # (while it is still over that vertex; one that has slid off it, as a pocket flap over a sliding front,
+                # is read against the nearest: anchored only, 10 of 25 flap vertices sank up to 18 mm)
+                d, n, dist, ni = _signed_i(surf, Y[w])
+                na = fl["anchor"][free]
+                dv = Y[w] - surf.V[na]
+                da = np.sum(dv * surf.N[na], 1)
+                ta = np.sqrt(np.maximum((dv ** 2).sum(1) - da ** 2, 0.0))
+                on = ta < np.asarray(fl["reach"])[na]
+                d, n, ni = np.where(on, da, d), np.where(on[:, None], surf.N[na], n), np.where(on, na, ni)
+                dist = np.where(on, np.linalg.norm(dv, axis=1), dist)
             else:
                 d, n, dist, ni = _signed_i(surf, Y[w])
             tang = np.sqrt(np.maximum(dist ** 2 - d ** 2, 0.0))
@@ -1166,6 +1177,8 @@ def smooth_border(M: dict, X: np.ndarray, held, border: str, spline: int = 10, l
     # fired at 0-2 rounds whatever the middle did; it goes on while either read drops
     k0 = kk = _kink3d(Y[chw], win)
     m0 = mm_ = _kink3d(Y[chw], win, mov)
+    if BORDER_LOCAL_STOP:  # (THREADS FIRST for a pinned move, C198: each face against its own start, not the p99)
+        t_lim = np.maximum(thread_strain(M, X, faces=tf)[0].max(1), STYLE_THREAD_CAP) + BORDER_LOCAL_TOL
     nk = int(min(spline, max(1, len(ch) // 3 - 1)))  # (a coarse border: fewer knots than its vertices allow fail fpchec)
     r = 0
     for r in range(1, rounds + 1):
@@ -1185,7 +1198,9 @@ def smooth_border(M: dict, X: np.ndarray, held, border: str, spline: int = 10, l
         kt, mt, (sn, sh) = _kink3d(Yt[chw], win), _kink3d(Yt[chw], win, mov), st(Yt)
         # (chord mode: a straight target, so the kink read isn't the stop: the stretch / shear stop, or on the chord)
         bend = spline != 0 and (kt > kk - 0.2 and mt > mm_ - 0.2)
-        if sn > least + tol or _jammed(sh, lock) or bend or (spline == 0 and np.abs(fit[mov] - p[mov]).max(initial=0) < 5e-4):
+        torn = BORDER_LOCAL_STOP and bool((thread_strain(M, A.unweld(Yt), faces=tf)[0].max(1) > t_lim).any())
+        if sn > least + tol or _jammed(sh, lock) or bend or torn or \
+                (spline == 0 and np.abs(fit[mov] - p[mov]).max(initial=0) < 5e-4):
             r -= 1
             break
         Y, kk, mm_, least = Yt, min(kk, kt), min(mm_, mt), min(least, sn)
