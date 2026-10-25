@@ -1245,6 +1245,10 @@ def style(M: dict, X: np.ndarray, held, ops: list[dict], body=None, log=None, fl
     for op in ops:
         (kind, a), = op.items()
         a = dict(a)
+        let_go = bool(a.pop("let_go", False)) if kind in ("pull", "turn", "slide") else False  # (C199: the hand lets go:
+        # what this op gripped is NOT held for later ops; supports, not holds (C190: styling grips held for every later
+        # op stand for no support). Its "with" / let_go_above rules then have nothing left to keep.)
+        placed0 = placed.copy()
         if kind == "pull":
             hs = a.pop("handles")
             mine = np.zeros(len(X), bool)
@@ -1294,14 +1298,17 @@ def style(M: dict, X: np.ndarray, held, ops: list[dict], body=None, log=None, fl
                     top = float(X[border_chain(M, sl["at"])[0], 2])
                     placed |= np.isin(np.asarray(M["piece"]), _piece_ids(M, wp)) & (X[:, 2] >= top) & ~base
         elif kind == "relax":
+            keep = a.pop("keep", None)  # (C199: hold_region kwargs held for THIS relax only: a hang of the lower fronts
+            # alone keeps the rest as it lies, without holding it for later ops)
+            kept = hold_region(M, X, **keep) if keep else np.zeros(len(X), bool)
             hung_ = STYLE_HANG if a.get("hang") is None else bool(a.get("hang"))
             if hung_ and not floor and body is not None:  # (HANG: what hangs rests on its supports: with no layer
                 # floor the body is its floor for this op; hung through nothing, wf_simon's open collar fell through
                 # the neck: threads p99 326 %, shear 82 deg)
                 M_ = dict(M, _floor=layer_floor(M, X, body=body))
-                X, inf = relax(M_, X, base | placed, **a)
+                X, inf = relax(M_, X, base | placed | kept, **a)
             else:
-                X, inf = relax(M, X, base | placed, **a)
+                X, inf = relax(M, X, base | placed | kept, **a)
         elif kind == "push":
             X, inf = push(M, X, base | placed, a.pop("pieces"), body, **a)
         elif kind == "hold":
@@ -1319,6 +1326,8 @@ def style(M: dict, X: np.ndarray, held, ops: list[dict], body=None, log=None, fl
                 inf["feathered"] = int(len(fv))
         else:
             raise ValueError(f"no styling op {kind!r} (pull, turn, slide, smooth, relax, hold, push, plumb)")
+        if let_go:  # (what it picked up is let go too)
+            placed = placed0 & ~mine
         if kind in FEATHER_AFTER and feathers:  # (the feathered band drawn back after each move)
             for fv, fw, ref in feathers:
                 keep = ~placed[fv]

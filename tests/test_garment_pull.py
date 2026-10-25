@@ -849,6 +849,26 @@ def test_hang_sheet_from_its_top_edge(verbose=True):
     assert reads[False][0] > 0.15, reads[False]
 
 
+def test_a_hand_lets_go(verbose=True):
+    """C199 THE HAND LETS GO (canvas s4; supports, not holds, C190): a styling grip with "let_go": true is not held for
+    later ops. The hung sheet (top edge held, tilted 30 deg): a pull grips its hem's middle, then a hung relax. Held
+    where the pull left it (the old rule), the hem stays tilted (y spread > 100 mm); let go, the sheet falls plumb
+    (spread <= 12 mm, as test_hang_sheet_from_its_top_edge). And a relax's "keep" holds only for that relax."""
+    M, X, top = _hung_sheet()
+    reads = {}
+    for lg in (False, True):
+        ops = [{"pull": {"handles": [{"at": 10, "dir": "down"}], "max_move": 0.006, "let_go": lg}},
+               {"relax": {"hang": True}}]
+        Xn, _ = gp.style(M, X, top, ops)
+        reads[lg] = float(Xn[:, 1].max() - Xn[:, 1].min())
+        if verbose:
+            print(f"let_go {lg}: y spread {reads[lg] * 1000:.1f} mm")
+    assert reads[False] > 0.10, reads
+    assert reads[True] <= 0.012, reads
+    Xk, _ = gp.style(M, X, top, [{"relax": {"hang": True, "keep": {"at": list(range(21))}}}])
+    assert np.allclose(Xk[:21], X[:21]) and float(Xk[:, 1].max() - Xk[:, 1].min()) > 0.10
+
+
 def test_a_floor_has_a_side(monkeypatch):
     """C197 A FLOOR HAS A SIDE: a thin two-sided leaf under the cloth (a shirt's open collar beside a jacket's gorge: a
     3 mm slab, top face out +z, bottom face out -z). The cloth starts 5 mm over it; a round takes part of it 1 mm into
