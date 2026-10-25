@@ -847,3 +847,36 @@ def test_hang_sheet_from_its_top_edge(verbose=True):
     assert abs(drop - 0.4) <= 0.015 * 0.4, drop
     assert th <= 0.025, th
     assert reads[False][0] > 0.15, reads[False]
+
+
+def test_a_floor_has_a_side(monkeypatch):
+    """C197 A FLOOR HAS A SIDE: a thin two-sided leaf under the cloth (a shirt's open collar beside a jacket's gorge: a
+    3 mm slab, top face out +z, bottom face out -z). The cloth starts 5 mm over it; a round takes part of it 1 mm into
+    the leaf, nearer the bottom face. Without the side rule the floor reads those vertices as 1 mm off the BOTTOM face
+    and shoves them out through it to the far side (the jacket's lapel cloth 260 % in one relax); with it the push only
+    acts from the side each vertex is tracked on, so none ends on the far side. And a vertex that starts behind the
+    floor, not over it, keeps its own depth as its level (it is never shoved through from behind)."""
+    M = _sheet(n=21, size=0.1)
+    X = np.c_[M["uv"] - 0.05, np.full(len(M["uv"]), 0.005)]
+    LV, LF = _box([-0.04, -0.04, -0.0015], [0.04, 0.04, 0.0015])
+    for side in (False, True):
+        monkeypatch.setattr(gp, "FLOOR_SIDE", side)
+        floor = gp.layer_floor(M, X, under=(LV, LF), flaps=False, gap=0.0015)
+        A = gp.FlatARAP(dict(M, _floor=floor), X)
+        W = A.weld(X)
+        inside = (np.abs(W[:, 0]) < 0.03) & (np.abs(W[:, 1]) < 0.03)
+        W[inside, 2] = -0.0005  # (into the leaf, nearer its bottom face)
+        Y = A._floor(W, np.zeros(A.n, bool))
+        through = int((Y[inside, 2] < -0.0015).sum())
+        if side:
+            assert through == 0, through
+        else:
+            assert through > 0.5 * inside.sum(), through  # (the old floor shoves them out through the far face)
+    monkeypatch.setattr(gp, "FLOOR_SIDE", True)
+    Xb = X.copy()
+    Xb[:, 2] = -0.004  # (all of it starts BEHIND the leaf: the bottom face's side for those under it, beside it for the rest)
+    Xb[np.abs(Xb[:, 0]) < 0.045, 2] = 0.004
+    fl = gp.layer_floor(M, Xb, under=(LV, LF), flaps=False, gap=0.0015)[0]
+    d, _, dist, _ = gp._signed_i(fl["surf"], Xb)
+    beh = d < 0
+    assert beh.any() and np.allclose(np.asarray(fl["level"])[beh], np.minimum(d[beh], 0.0015))

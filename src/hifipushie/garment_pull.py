@@ -144,6 +144,17 @@ FLOOR_REACH = 1.5  # x the floor's LOCAL edge (its nearest vertex's longest edge
 
 
 FLOOR_REACH_CAP = 3.0
+# A FLOOR HAS A SIDE (canvas s3, C197): a layer floor pushes a vertex out only from the side it started on. Two ways the
+# shirt's open collar (a thin two-sided leaf beside the jacket's gorge) tore the jacket's plain lapel cloth 260 % in the
+# open styling's FIRST relax (front plain p99 9 -> 18 %, then 67 % by the end): (1) a vertex BEHIND the floor (d < 0)
+# but not yet over it was given the gap, so when it came over it was shoved through the leaf to its far side (12 mm in a
+# round); (2) next to a thin leaf the nearest floor vertex flips between its two faces, so neighbours were pushed in
+# opposite directions. Now a vertex behind its floor at the start keeps its own depth (never pushed through from
+# behind), and a push applies only while the floor normal under the vertex agrees with the one it is tracked on
+# (cos > FLOOR_SIDE_COS; followed round by round, so a slide round the body turns with it). GP_FLOOR_SIDE=0 for the A/B.
+FLOOR_SIDE = __import__("os").environ.get("GP_FLOOR_SIDE", "1") == "1"
+FLOOR_SIDE_COS = 0.5
+FLOOR_SIDE_TRACK = __import__("os").environ.get("GP_FLOOR_SIDE_TRACK", "1") == "1"  # (A/B: rule (2) alone off)
 
 
 def _local_reach(V, Fs):
@@ -200,6 +211,9 @@ def layer_floor(M: dict, X: np.ndarray, body=None, under=None, gap: float | None
         lev = np.full(len(d), gap if slides else -np.inf)
         over = (tang < rch) & (dist < 0.03)
         lev[over] = np.minimum(gap, d[over])
+        if FLOOR_SIDE and slides:  # (A FLOOR HAS A SIDE, C197: behind it at the start, never pushed through it from behind)
+            behind = ~over & (d < 0)
+            lev[behind] = d[behind]
         return lev
 
     out = []
@@ -212,7 +226,8 @@ def layer_floor(M: dict, X: np.ndarray, body=None, under=None, gap: float | None
         d, _, dist, ni = _signed_i(sf, X)
         rch = reach(sf.V, Fs)
         tang = np.sqrt(np.maximum(dist ** 2 - d ** 2, 0.0))
-        out.append({"name": nm, "v": allv, "level": level(d, dist, tang, rch[ni]), "surf": sf, "reach": rch, "ref": ref})
+        out.append({"name": nm, "v": allv, "level": level(d, dist, tang, rch[ni]), "surf": sf, "reach": rch, "ref": ref,
+                    "n0": sf.N[ni]})
     if flaps:
         fl = fm_.flap_faces(M, F)
         for nm in sorted({fd["piece"] for fd in M.get("folds") or []}):
@@ -261,11 +276,11 @@ def _dyn_floor(name, X, fv, bv, bF, ref, gap, rch, level):
     from . import pattern_form as pf_
     ix = -np.ones(len(X), int)
     ix[bv] = np.arange(len(bv))
-    d, _, dist, ni = _signed_i(pf_._Surface(X[bv], ix[bF], ref=ref), X[fv])
+    d, _, dist, ni = _signed_i(pf_._Surface(X[bv], ix[bF], ref=ref), X[fv])  # (_ = the floor normal under each, C197)
     tang = np.sqrt(np.maximum(dist ** 2 - d ** 2, 0.0))
     rch = _local_reach(X[bv], ix[bF])  # (per base vertex, C173)
     return {"name": name, "v": fv, "level": level(d, dist, tang, rch[ni], slides=False), "surf": None, "bv": bv, "bF": ix[bF],
-            "reach": rch, "ref": ref}
+            "reach": rch, "ref": ref, "n0": _}
 
 
 def _bind_floor(floor, inv):
@@ -279,6 +294,9 @@ def _bind_floor(floor, inv):
         if not keep.any():
             continue
         b = dict(fl, w=inv[np.asarray(fl["v"])[keep]], level=np.asarray(fl["level"])[keep])
+        if fl.get("n0") is not None:  # (the side each vertex is tracked on, C197: _floor writes it back, so the next op starts from it)
+            fl["n0"] = np.asarray(fl["n0"], float)
+            b["n0"], b["_src"], b["_keep"] = np.array(fl["n0"][keep]), fl, np.where(keep)[0]
         if fl.get("surf") is None:
             b["bw"] = inv[np.asarray(fl["bv"])]
         out.append(b)
@@ -520,6 +538,15 @@ class FlatARAP:
             d, n, dist, ni = _signed_i(surf, Y[w])
             tang = np.sqrt(np.maximum(dist ** 2 - d ** 2, 0.0))
             m = (d < lev) & (tang < np.asarray(fl["reach"])[ni])
+            if FLOOR_SIDE and FLOOR_SIDE_TRACK and fl.get("n0") is not None:  # (A FLOOR HAS A SIDE, C197: pushed only from the side the vertex
+                # is tracked on; the tracked normal follows where the floor under it turns gradually)
+                n0 = fl["n0"][free]
+                agree = (n * n0).sum(1) > FLOOR_SIDE_COS
+                m &= agree
+                ix_ = np.where(free)[0][agree]
+                fl["n0"][ix_] = n[agree]
+                if fl.get("_src") is not None:  # (written back to the styling's floor list: the next op starts from it)
+                    fl["_src"]["n0"][fl["_keep"][ix_]] = n[agree]
             if m.any():
                 Y[w[m]] += (lev[m] - d[m])[:, None] * n[m]
                 self.floor_pushed += int(m.sum())
