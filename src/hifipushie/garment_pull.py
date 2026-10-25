@@ -2067,6 +2067,66 @@ def style_ops(g: dict) -> list:
     return ops
 
 
+# WHAT A PATCH COVERS LIES UNDER IT (canvas s5, C201): a pocket flap is 25 vertices (~12 mm apart) over a front meshed
+# 5-12 mm; the floor keeps the FLAP's vertices off the front, but the front's vertices between them stood level with or
+# 1-13 mm outside the flap (7-12 per flap, Garrett's open jacket): the flaps rendered ragged, the front showing through.
+# After a worn-open styling, every base vertex a stitched patch covers (its nearest patch vertex within the patch's
+# local edge sideways) and not at least THICK behind it is laid THICK behind it, along the patch's normal.
+PATCH_LIE = True
+PATCH_LIE_REACH = 0.008  # m: the farthest outside the patch a covered base vertex is still laid under it (further: not under it)
+
+
+def patch_lie(M: dict, X: np.ndarray, body=None, gap: float | None = None) -> tuple[np.ndarray, dict]:
+    """(X with each stitched patch's covered base cloth laid `gap` (THICK) behind the patch, {patch: moved count, max
+    mm}). See PATCH_LIE."""
+    from . import pattern_form as pf_
+    from .cloth_made import outward
+    X = np.asarray(X, float).copy()
+    gap = pf_.THICK if gap is None else gap
+    F = np.asarray(M["F"], int)
+    pid = np.asarray(M["piece"])
+    names = list(M["names"])
+    bvf = _body_vf(body)
+    ref = pf_._Surface(bvf[0], outward(*bvf)) if bvf is not None else None
+    st = np.asarray(M.get("stitch") if M.get("stitch") is not None else [], int).reshape(-1, 2)
+    out = {}
+    for pa in sorted({int(p) for p in pid[st.ravel()]}) if len(st) else []:
+        other = {int(pid[b]) if pid[a] == pa else int(pid[a]) for a, b in st if pa in (pid[a], pid[b])} - {pa}
+        if not other or (pid == pa).sum() >= min((pid == o).sum() for o in other):
+            continue
+        pF = F[(pid[F] == pa).all(1)]
+        bv = np.setdiff1d(np.where(np.isin(pid, sorted(other)))[0], st.ravel())
+        P0, P1, P2 = X[pF[:, 0]], X[pF[:, 1]], X[pF[:, 2]]
+        Nt = np.cross(P1 - P0, P2 - P0)
+        Nt /= np.maximum(np.linalg.norm(Nt, axis=1, keepdims=True), 1e-12)
+        if ref is not None:  # (oriented off the body)
+            _, nb_, _ = ref.signed((P0 + P1 + P2) / 3.0)
+            Nt *= np.sign(np.sum(Nt * nb_, 1) + 1e-12)[:, None]
+        Q = X[bv]
+        near = np.linalg.norm(Q[:, None, :] - ((P0 + P1 + P2) / 3.0)[None], axis=2).min(1) < 0.05
+        bv, Q = bv[near], Q[near]
+        # (covered = the base vertex projects INSIDE a patch triangle along its normal: a nearest-vertex read also took
+        # base cloth beside the patch's edge, up to one patch edge out, and dented a ring round it)
+        d = np.einsum("btk,tk->bt", Q[:, None, :] - P0[None], Nt)
+        Pp = Q[:, None, :] - d[:, :, None] * Nt[None]
+        e0, e1, e2 = P1 - P0, P2 - P0, Pp - P0[None]
+        d00, d01, d11 = np.sum(e0 * e0, 1), np.sum(e0 * e1, 1), np.sum(e1 * e1, 1)
+        d20, d21 = np.einsum("btk,tk->bt", e2, e0), np.einsum("btk,tk->bt", e2, e1)
+        den = np.maximum(d00 * d11 - d01 ** 2, 1e-18)
+        v_ = (d11 * d20 - d01 * d21) / den
+        w_ = (d00 * d21 - d01 * d20) / den
+        ins = (v_ >= -1e-6) & (w_ >= -1e-6) & (v_ + w_ <= 1 + 1e-6) & (d > -0.02) & (d < PATCH_LIE_REACH)
+        dd = np.where(ins, np.abs(d), np.inf)
+        k = np.argmin(dd, 1)
+        hit = np.isfinite(dd[np.arange(len(bv)), k])
+        dk = d[np.arange(len(bv)), k]
+        m = hit & (dk > -gap)
+        X[bv[m]] -= Nt[k[m]] * (dk[m] + gap)[:, None]
+        d = dk
+        out[names[pa]] = {"moved": int(m.sum()), "max_mm": round(float((d[m] + gap).max() * 1000), 1) if m.any() else 0.0}
+    return X, out
+
+
 def worn_style(M: dict, X: np.ndarray, body, g: dict, log=None, under=None):
     """HOW THE KIND IS WORN, set by hand (C146): the wear's "style" ops (garment_kb kinds.<kind>.wear.<tie|no_tie>.style,
     via garment_design.wear(g, "style")) run on the closed form fit: the pieces they move are free, the rest held, and
@@ -2088,8 +2148,13 @@ def worn_style(M: dict, X: np.ndarray, body, g: dict, log=None, under=None):
                 free = sorted(set(free) | {nm_[pa], nm_[pb]})
         # (under = (V, F): the garment under it as a floor too, the layer that supports it; supports thread: hung
         # without it, Garrett's jacket chest went down through the shirt)
-        return style(Ms, X, hold_mask(Ms, X, free), ops, body=body, log=log,
-                     floor=layer_floor(Ms, X, body=body, under=under))
+        Xs, inf_ = style(Ms, X, hold_mask(Ms, X, free), ops, body=body, log=log,
+                         floor=layer_floor(Ms, X, body=body, under=under))
+        if PATCH_LIE:
+            Xs, pl_ = patch_lie(Ms, Xs, body=body)
+            if inf_ is not None:
+                inf_ = dict(inf_, patch_lie=pl_) if isinstance(inf_, dict) else inf_
+        return Xs, inf_
     below = "closure:front" if any(c.get("name") == "front" for c in M.get("closures") or []) else None
     held = hold_mask(M, X, free, below)
     return style(M, X, held, ops, body=body, log=log)

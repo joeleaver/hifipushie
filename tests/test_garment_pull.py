@@ -915,3 +915,32 @@ def test_thread_stop_never_tears_a_face():
     assert worst(X0) > 0.05, worst(X0)
     assert i1["stopped"] == "thread" and worst(X1) <= gp.STYLE_THREAD_CAP + gp.BORDER_LOCAL_TOL + 0.01, (i1["stopped"], worst(X1))
     assert i1["moved_mm"]["strip:tipA..tipB"] < i0["moved_mm"]["strip:tipA..tipB"]
+
+
+def test_a_patch_covers_what_is_under_it():
+    """C201 WHAT A PATCH COVERS LIES UNDER IT: a coarse patch (5 x 5 vertices, 10 mm apart) stitched along its top row
+    onto a fine base (2.5 mm) lying in z = 0; the patch lies 1 mm out, but the base bulges 3 mm out under it, so its
+    vertices between the patch's stand outside the patch (the ragged pocket flap). patch_lie lays every covered base
+    vertex THICK behind the patch; base cloth beside the patch is not moved."""
+    from hifipushie import pattern_form as pf
+    B = _sheet(n=41, size=0.1)
+    P = _sheet(n=5, size=0.04)
+    nb = len(B["uv"])
+    M = {"F": np.r_[B["F"], P["F"] + nb], "uv": np.r_[B["uv"], P["uv"] + 0.03], "piece": np.r_[np.zeros(nb, int), np.ones(len(P["uv"]), int)],
+         "names": ["front", "flap"], "sew": np.zeros((0, 2), int), "points": {}}
+    X = np.c_[np.r_[B["uv"], P["uv"] + 0.03] - 0.05, np.zeros(len(M["uv"]))]
+    X[nb:, 2] = 0.001
+    under = (np.abs(X[:nb, 0] - 0.0) < 0.019) & (np.abs(X[:nb, 1] - 0.0) < 0.019)
+    X[:nb][under, 2] = 0.003
+    top = nb + np.where(np.isclose(P["uv"][:, 1], 0.04))[0]  # (the flap's top row stitched to the base under it)
+    st = [(int(np.argmin(np.linalg.norm(X[:nb, :2] - X[t, :2], axis=1))), int(t)) for t in top]
+    M["stitch"] = np.asarray(st)
+    BV = np.array([(x, y, -0.02) for x in np.linspace(-0.2, 0.2, 9) for y in np.linspace(-0.2, 0.2, 9)])
+    ix = lambda i, j: i * 9 + j
+    BF = np.array([f for i in range(8) for j in range(8) for f in ((ix(i, j), ix(i + 1, j), ix(i + 1, j + 1)), (ix(i, j), ix(i + 1, j + 1), ix(i, j + 1)))])
+    Y, info = gp.patch_lie(M, X, body=(BV, BF))
+    cov = under & ~np.isin(np.arange(nb), M["stitch"][:, 0])
+    assert info["flap"]["moved"] >= 0.9 * cov.sum(), (info, int(cov.sum()))
+    assert (Y[:nb][cov, 2] <= 0.001 - pf.THICK + 1e-6).all(), Y[:nb][cov, 2].max()
+    far = (np.abs(X[:nb, 0]) > 0.035) | (np.abs(X[:nb, 1]) > 0.035)
+    assert np.allclose(Y[:nb][far], X[:nb][far])
