@@ -2815,8 +2815,11 @@ def fit_garment(name: str, garment: str, views: list[str] | None = None, size: i
     # (C174: a garment worn open is fitted open (C171) and styled by its kind's "open" wear: the fronts below the break)
     if styled and gx.get("style", True) is not False and (res.get("form_under") is None or gx.get("worn_open")):
         from . import garment_pull as gpl
+        fu_ = res.get("form_under")  # (C205: the under garment's own cloth is the styling floor, C202, as the fit's C200)
         Xs, sinfo = gpl.worn_style(res["mesh"], np.asarray(X, float), (np.asarray(res["body"].V, float),
-                                   np.asarray(res["body"].T, int)), gx)
+                                   np.asarray(res["body"].T, int)), gx,
+                                   under=None if fu_ is None else (np.asarray(fu_["A"], float),
+                                                                   np.asarray(fu_["mesh"]["F"]), fu_["mesh"]))
         if sinfo is not None:
             X = res["A"] = Xs
             style_txt = "  worn (C146: the wear's style ops on the closed fit): " + "; ".join(

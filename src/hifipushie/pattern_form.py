@@ -114,7 +114,10 @@ HANG_FIELD = False
 # every vertex alike; FIT_BEND_KEYED adds the interfaced cloth's extra stiffness (bending.weights - 1: canvas 19, fusible
 # 7) as edge hinges with a flat rest, x FIT_HINGE_W x FIT_BEND (plain cloth's term unchanged). Garment key "bend_keyed": true / false (None: the flag).
 # The mesh carries the weights as M["bend_w"] for the styling (garment_pull.STYLE_BEND).
-FIT_BEND_KEYED = __import__("os").environ.get("PF_BEND_KEYED", "0") == "1"
+# DEFAULT ON for a garment that declares interfacing (canvas s7, C205; Joe on s6's t5f_ps8: "the base to build on"): None
+# = per garment (keyed when bending.weights reads any interfaced cloth, > 1); env PF_BEND_KEYED=1 / 0 forces it for A/Bs.
+_env_kb = __import__("os").environ.get("PF_BEND_KEYED")
+FIT_BEND_KEYED = None if _env_kb is None else _env_kb == "1"
 FIT_HINGE_W = float(__import__("os").environ.get("PF_HINGE_W", "1.0"))  # x FIT_BEND per unit weight over plain
 # STIFFNESS NEVER BUYS SHAPE WITH STRETCH (canvas s2, Joe 2026-10-23: "it shouldn't really be a choice between
 # stiffness and stretch"): woven cloth barely stretches along its threads, canvassed or not; stiffness changes how it
@@ -1810,16 +1813,19 @@ OPEN_HANG = True  # with OPEN_HOLD: the free edge below the lowest worn-open poi
 PLUMB_HOLD = {"seams": [["front", "side"], ["side", "back"]], "w": 2.0, "ramp": 0.05, "axes": "y", "anchor": "hung"}
 
 
-def plumb_hold_for(g: dict | None) -> dict | None:
+def plumb_hold_for(g: dict | None, stiff: bool = False) -> dict | None:
     """The plumb hold garment g is fitted with: its own "plumb_hold" (a dict edits PLUMB_HOLD, false none), else
-    PLUMB_HOLD for a design declared to fall straight (cloth_workflow.falls_straight_design, C179), else None."""
+    PLUMB_HOLD for a design declared to fall straight (cloth_workflow.falls_straight_design, C179), else None.
+    stiff (C205, canvas s7): the garment is fitted with its interfacing's stiffness (FIT_BEND_KEYED): then no default
+    hold: a WORKAROUND hold, replaced by the canvas's stiffness + the shirt floor from the first relax (C200) + the
+    open styling without holds (canvas s6 t5f_ps8, Joe 2026-10-25: the base); kept, off, for unkeyed fits and A/Bs."""
     from .cloth_workflow import falls_straight_design
     own = (g or {}).get("plumb_hold")
     if own is False:
         return None
     if isinstance(own, dict):
         return dict(PLUMB_HOLD, **own)
-    return dict(PLUMB_HOLD) if (own or falls_straight_design(g or {})) else None
+    return dict(PLUMB_HOLD) if (own or (falls_straight_design(g or {}) and not stiff)) else None
 
 
 def plumb_seam_pins(M: dict, X: np.ndarray, hold: dict | None) -> list:
@@ -2298,6 +2304,10 @@ LAYER_W = 20.0  # a vertex touching the over layer: its proximal weight (x a fre
 # 118, but moved the roll off the concept (150 / 250: 58 / 47 vs w1h 70 / 58, concept 69 / 64; break 337 vs 379 below
 # HPS), opened a sew gap 4.6 mm and grain max 98 %; Joe: covered show-through is culled anyway (C153), so not pursued.
 UNDER_FLOOR = __import__("os").environ.get("PF_UNDER_FLOOR", "0") == "1"
+# (canvas s7, C205: a garment that declares interfacing is fitted with UNDER_FLOOR from "relax1" by default (on_form
+# passes assemble(under_floor="relax1")); garment key "under_floor": "relax1" | "seat" | false; env PF_UNDER_FLOOR set
+# = the module values for every garment, the A/B switch)
+UNDER_FLOOR_ENV = __import__("os").environ.get("PF_UNDER_FLOOR") is not None
 # THE FLOOR UNDER A STIFF LAYER WINS, FROM THE START, ON ITS OWN SIDE (canvas s5, C200): with the interfaced cloth's
 # hinges in the fit (FIT_BEND_KEYED), the soft push off the shirt (the T target above) lost to the canvas's flat rest:
 # Garrett's chest sank behind the shirt in the FIRST relax (46-49 % of the chest vertices, p10 -12 mm) and in the swing
@@ -2327,14 +2337,18 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
              iters: int = 120, X0: np.ndarray | None = None, attract: float = 0.5, log=None, pressed: bool = True,
              worn_open: dict | None = None, shoulder_pad: dict | None = None, over: dict | None = None,
              bridge: float = 0.0, neck_split: bool | None = None, fit_model: str | None = None,
-             plumb_hold: dict | None = None, hang: bool | None = None, bend_w: np.ndarray | None = None) -> dict:
+             plumb_hold: dict | None = None, hang: bool | None = None, bend_w: np.ndarray | None = None,
+             under_floor=None) -> dict:
     """The garment assembled on the form (see the module docstring). pattern: a placed garment (cloth.build
     place_only result: "mesh", "X0", "pieces") or {"mesh": M, "X0": start, "pieces": B (optional)}. body: a
     cloth.Body (V, T, at) or None (a free sheet: the fold tests). under: {"V", "F"} of the garment under (the shirt
     under the jacket) or None. worn_open: {point name: offset m} (WORN_OPEN). fit_model: "woven" | "isometric" | None
     (the module default WOVEN / NECK_PIN_W; fit_model_for). plumb_hold: PLUMB_HOLD's form (plumb_hold_for) or None.
     hang: the HANG (supports, not holds; None: HANG_FIELD). bend_w: per vertex bending weight (FIT_BEND_KEYED,
-    bending.weights; None: every vertex 1). Returns {"V", "F", "M", "info"}."""
+    bending.weights; None: every vertex 1). under_floor: UNDER_FLOOR's start for this fit ("relax1" | "seat" | False;
+    None: the module's UNDER_FLOOR / UNDER_FLOOR_FROM). Returns {"V", "F", "M", "info"}."""
+    uf_ = UNDER_FLOOR if under_floor is None else bool(under_floor)
+    uff_ = UNDER_FLOOR_FROM if under_floor is None or under_floor is True else str(under_floor)
     hang_ = HANG_FIELD if hang is None else bool(hang)
     woven_ = WOVEN if fit_model is None else fit_model == "woven"
     neck_w_ = LEGACY_NECK_PIN_W if fit_model == "isometric" else NECK_PIN_W
@@ -2342,7 +2356,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
     B = pattern.get("pieces")
     closed_args = dict(body=body, under=under, ease=ease, fasten=fasten, iters=iters, X0=X0, attract=attract,
                        pressed=pressed, shoulder_pad=shoulder_pad, over=over, bridge=bridge,
-                       fit_model=fit_model)  # (OPEN_HOLD: the same garment closed)
+                       fit_model=fit_model, under_floor=under_floor)  # (OPEN_HOLD: the same garment closed)
     X = np.asarray(X0 if X0 is not None else pattern["X0"], float).copy()
     Xplaced = X.copy()  # (the placement: a fold its wrap turned keeps the sense the wrap gave it)
     F = np.asarray(M["F"])
@@ -2358,16 +2372,16 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
     osurf = _Surface(over["V"], over["F"], ref=bsurf) if over is not None and bsurf is not None else None
     ufsurf = usurf  # (UNDER_FLOOR's surface: the under garment's own cloth, not its made pieces (C200: its collar / stand
     # are a thin leaf at the neck; floored on them, the jacket's neck cloth tore, front plain p99 9 -> 18 %, max 100 %))
-    if usurf is not None and UNDER_FLOOR and under.get("floor_F") is not None:
+    if usurf is not None and uf_ and under.get("floor_F") is not None:
         fF_ = np.asarray(under["floor_F"], int)
         iv_ = np.unique(fF_)
         ix_ = -np.ones(len(under["V"]), int)
         ix_[iv_] = np.arange(len(iv_))
         ufsurf = _Surface(np.asarray(under["V"], float)[iv_], ix_[fF_], ref=bsurf)
     ceil_on = [LAYER_FROM == "relax1"]
-    uf_on = [UNDER_FLOOR_FROM == "relax1"]  # (UNDER_FLOOR's start; C200)
+    uf_on = [uff_ == "relax1"]  # (UNDER_FLOOR's start; C200)
     uf_side = np.ones(len(X), bool)  # (UNDER_FLOOR_SIDE: the vertices outside the under layer at the placement)
-    if UNDER_FLOOR and UNDER_FLOOR_SIDE and UNDER_FLOOR_FROM == "relax1" and usurf is not None:  # (from the seat on: C172 as it was, a tube placed inside is put out)
+    if uf_ and UNDER_FLOOR_SIDE and uff_ == "relax1" and usurf is not None:  # (from the seat on: C172 as it was, a tube placed inside is put out)
         cv0_, du0_, _ = covered(ufsurf, X, bsurf)
         uf_side = ~(cv0_ & (du0_ < 0.0))
         # (and only this garment's own cloth: its made pieces (collar, stand) rest on the under garment's made pieces,
@@ -2630,7 +2644,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                     ccon = c_
                     wc = wc_keep + LAYER_W * (ccon | ucon)
                     Ax, Ayz, Ay = system(wc) if sw_ is None else system(wc, sw_)
-            if UNDER_FLOOR and usurf is not None and uf_on[0] and grav <= 0 and it % 5 == 0:  # (C172: the vertices
+            if uf_ and usurf is not None and uf_on[0] and grav <= 0 and it % 5 == 0:  # (C172: the vertices
                 # on the under layer weigh LAYER_W in the solve, as the ceiling's: contact the solve knows)
                 cv_, du_, _ = covered(ufsurf, X, bsurf)
                 c_ = cv_ & (du_ < LAYER_GAP + 0.001) & uf_side
@@ -2827,7 +2841,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                     d, nrm, _ = bsurf.signed(Xn)
                     lo = d < off
                     Xn[lo] += nrm[lo] * (off[lo] - d[lo])[:, None]
-            if UNDER_FLOOR and usurf is not None and uf_on[0] and grav <= 0:  # THE UNDER LAYER IS A FLOOR (C172): hard
+            if uf_ and usurf is not None and uf_on[0] and grav <= 0:  # THE UNDER LAYER IS A FLOOR (C172): hard
                 # contact over the garment under it, the ceiling's mirror (see UNDER_FLOOR)
                 cv_, du_, nu_ = covered(ufsurf, Xn, bsurf)
                 cv_ &= (du_ < LAYER_GAP) & uf_side
@@ -3249,13 +3263,20 @@ def on_form(model: str, garment: str, spec: dict | None = None, g: dict | None =
     from . import bending as _bd
     bw = _bd.weights(res.get("pieces"), res["mesh"], g)  # (the mesh carries them for the styling: STYLE_BEND)
     res["mesh"]["bend_w"] = bw
-    keyed = g.get("bend_keyed")
-    bw = bw if (FIT_BEND_KEYED if keyed is None else bool(keyed)) else None
+    keyed = g.get("bend_keyed")  # (C205: default = the garment DECLARES interfacing; FIT_BEND_KEYED forces it)
+    # (declared = the garment's own "interfaced" / "interfacing_kind" (a drafted canvas, C196), and stiffer cloth for it:
+    # a shirt's kind-default fusible collar is not a declaration; keyed, wf_simon's open collar failed its photo rows)
+    interfaced = bool(g.get("interfaced") or g.get("interfacing_kind")) and bool(len(bw) and np.max(bw) > 1.0 + 1e-9)
+    keyed_on = (interfaced if FIT_BEND_KEYED is None else FIT_BEND_KEYED) if keyed is None else bool(keyed)
+    bw = bw if keyed_on else None
+    uf = g.get("under_floor")  # (C205: the stiff layer's floor from the first relax, C200, for an interfaced garment)
+    if uf is None and keyed_on and not UNDER_FLOOR_ENV:
+        uf = "relax1"
     # garment key "worn_open" {point: offset m, "source": why}: the form rule for fronts worn open (worn_open_pins)
     out = assemble(res, res["body"], under=under, ease=EASE if under is not None else UNDER_EASE, log=log,
                    worn_open=g.get("worn_open"), shoulder_pad=g.get("shoulder_pad"), bridge=bridge_fraction(g), neck_split=g.get("neck_split"),
-                   fit_model=fit_model_for(model, garment, g), plumb_hold=plumb_hold_for(g),
-                   hang=hang_for(g), bend_w=bw)
+                   fit_model=fit_model_for(model, garment, g), plumb_hold=plumb_hold_for(g, stiff=keyed_on),
+                   hang=hang_for(g), bend_w=bw, under_floor=uf)
     res["A"], res["A_info"], res["form_under"] = out["V"], out["info"], und
     res["A_info"]["fit_model"] = fit_model_for(model, garment, g) or ("woven" if WOVEN else "isometric")
     if cloth.expanded(g).get("tucked"):
