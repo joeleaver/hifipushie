@@ -11015,3 +11015,11 @@ turned, points pulled) were tuned on bending-free cloth; the stand's rest is the
   C197 rules off one at a time on t1_fz (GP_FLOOR_SIDE=0 / GP_FLOOR_SIDE_TRACK=0 / GP_FLOOR_CONTACT=0): end 32 / 29 /
   26 % (t1_fz 29 %) and the plain front tears again (p99 18.2 / 15.8 / 15.5 vs 12.4). Not C197: the threads-first
   fit puts the chest behind the shirt; rule 1 (behind -> own depth) only declines to shove it out.
+- t1_hc = t1_hb with hang_iters 4000 (ops_hc.json): edge 69-66 / 77-79 / 84-97, hem+30 484, front len 737, stands
+  57 56 45 24 (L) / 52 50 49 31 (R), threads 9.05 (fronts 6.83). The best no-hold candidate; L 650 still 84 (-10).
+- LOOK (check/cmp_{wholefront,upper_front,side}_hb_lg_k3.png: concept | clay | diag, hb / lg / k3): hb beats t1_fz
+  clearly: the lower fronts fall near straight with a rounded cutaway, corners no longer kick out or forward. It still
+  loses to k3: the shirt shows through the left chest (the fit), the front bulges forward from chest to pocket (stands
+  43-58 vs k3 16-31), the hem rises toward the front (737 vs 748), the left lapel edge still doubles. lg (let go only)
+  still kicks the corners out and forward at the hip. Not flipped: threads 9.0 > 8.5 (excess outside the fronts, from
+  the fit) and the chest show-through. No blind review (the flip gate was not met).
