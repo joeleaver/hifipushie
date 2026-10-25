@@ -11125,3 +11125,27 @@ turned, points pulled) were tuned on bending-free cloth; the stand's rest is the
   (flap.py). worn_style welds the stitch: the flap is yanked 19-46 mm, threads 0.6 -> 23 %, and drags the front.
 - Not reached this session: (b) the shirt collar over the jacket's at CB, (c) flare / hem / length, (d) the bulge,
   (f) C200's KAT, looks, the blind review.
+
+## canvas stiffness session 8 (2026-10-25; $S8 = /mnt/data/hifipushie/canvas/s8; branch claude/canvas8)
+- (e) C206 FIT_STITCH (default on): assemble closes M["stitch"] with the seams (pattern_form.fit_sew; not a bending
+  hinge, not a base-across-seam link). KAT test_the_fit_sews_a_patch_on_its_stitch_line (flap planted 36 mm off its
+  line: 0.0 mm stitched, 36.1 unsewn, 0.8 % stretch). Garrett d2 ($S8/repro.py d2, no env): fit stitch gaps p50 / max
+  0.52 / 0.62 and 0.28 / 0.66 mm (d1: 30 / 58, 35 / 43); fit threads p99 9.25 -> 8.76 (collar 19.5 -> 14.1). Styled
+  (r_d2.log): edge 450 52 / 50, 550 65 / 72, 650 90 / 105 (concept 71 / 78 / 94; d1 66-46 / 80-67 / 106-93), hem+30
+  471 (482; d1 498), front length 735 (748; d1 729), threads p99 7.64 (fronts 4.0; d1 6.46) but the COLLAR 15.2 ->
+  22.5 % (76 % of the values over 8.5 %); flaps 10.4 / 9.7 -> 6.2 / 4.2 %, flap off front p50 2.7 / 1.6 mm (4 / 25 sunk).
+  The whole fit moved (vs d1 p50 6.9 mm, max 46): the flaps no longer drag the fronts.
+- Housekeeping: cloth_tools.md / cloth_construction.md / cloth_design.md no longer say a closure "state": "open" wears
+  a jacket open in a sim: open = styling (fit_garment's wear ops, style_garment); a sim is a wrinkle source at most.
+- (a) STYLE_BEND probes on d1's first relax (exp1.py <fit> <tag> 1, $S8/exp1_b*.log; break (x off CF, depth, y)):
+  b0 no bend: break L 53,-187 R 50,-176 (start 64,-176 / 64,-171), fronts fw 5-9 mm;
+  b1 bend (THREAD_ROUNDS 2): break 138,-263 / 126,-263, the WHOLE front forward 35-65 mm (hem too), collar 26 -> 112 %;
+  b2 bend, threads first off: fronts fw 4-19, threads 21 %; b5 rounds 0: chest fw 18-25, break L 80,-212; b6 rounds 1:
+  fw 26-56; b4 bend + plain cloth resting too: 40-76 forward. So the drift grows with the bending-free rounds: it is
+  the alternation (bending round, bending-free rounds, thread cap, one-sided floor) that walks the stiff front off the
+  body, not a fold. With nothing anchoring a free stiff shell (no weight in a relax) its springback becomes a rigid
+  swing about the shoulder.
+- Fold strips (foldprobe.py): a canvassed strip folded sharp at ONE hinge row (no roll) opens under the hang (170: 6
+  deg, 178: 11.5); rolled over >= 4 mm it holds (0.0-0.2 deg). The jacket has NO hinge past 90 deg on its fronts
+  (hingeprobe.py: the lapel's turn is spread over rows), so that is not the jacket's fault. A face-frame target for
+  folds past 90 deg was tried and did not help the strip (reverted).
