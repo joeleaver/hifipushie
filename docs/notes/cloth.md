@@ -11057,3 +11057,11 @@ turned, points pulled) were tuned on bending-free cloth; the stand's rest is the
   patch covers (projected INSIDE a patch triangle, within 8 mm outside it) is laid THICK behind it. A nearest-vertex
   read dented a ring round the flap (moved base cloth one flap edge out, 19.7 mm moves); the triangle read moves 10 / 11
   vertices on asm_t1_hc (max 2.6 / 4.6 mm), then none stand through. Refining the flap mesh instead broke the placement.
+- STYLED (perop + ops_hc; reads r_<tag>.log): t1_hc re-styled with patch_lie: rows unchanged (66-69 / 77-79 / 84-97,
+  hem+30 484, len 737), threads 9.15 (fronts 7.07; 6.83 without). t5f_hc: 49-31 / 64-49 / 86-73, hem+30 469, len 730,
+  stands L 55 62 61 49 / R 32 38 53 44, threads 10.23 (fronts 7.77). Per op (eo_t5f_hc.log): the first relax tears the
+  plain gorge cloth (front plain p99 16.7, max 68, z 1.52-1.54), the R slide and turn do nothing, the fronts lap in.
+  ops_ho (hang from the bust down) failed: hold_region "above" takes points, "front.L:bust" is a mark.
+- LOOK (check/cmp_*_t1hc_t5fhc_k3.png): t5f_hc's chest is the cleanest yet (no shirt through, lapels flat on the
+  chest) but the opening closes from the button down and the hem draws in; t1_hc keeps the opening, the left-chest
+  show-through stays. Not flipped; no blind review (gate not met).
