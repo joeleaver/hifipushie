@@ -11066,3 +11066,28 @@ turned, points pulled) were tuned on bending-free cloth; the stand's rest is the
   chest) but the opening closes from the button down and the hem draws in; t1_hc keeps the opening, the left-chest
   show-through stays. Not flipped; no blind review (gate not met).
 - Suite (17 garment files + test_bending, after 30dc65c4): 312 passed, 4 xfailed, PYTEST_EXIT 0 ($S5/suite.log; the first run failed test_tight_outer_tube_lies_over_the_under_one: the side rule now only with the floor from relax1).
+
+## canvas stiffness session 6 (2026-10-25; $S6 = /mnt/data/hifipushie/canvas/s6; branch claude/canvas6)
+- GORGE TEAR (gorge.py: the open styling's FIRST relax alone on fit_t5f, floors varied; front plain p99 / max %):
+  start 9.5 / 27.7; shirt whole as the under floor (s5's perop) 16.0 / 72.7; the shirt's own cloth 16.4 / 35.6; no
+  under floor 13.8 / 30.4; no floor at all 13.8 / 30.8. Two causes: (a) the shirt's collar leaf as floor (the max,
+  C200's fit fault again, now in the styling); (b) worn_style held every piece no op names: the jacket's STAND and
+  COLLAR stayed where the fit left them while the fronts relaxed, so the plain gorge cloth sewn to the held stand tore
+  (dface.py: weft +16-24 % on the faces by the stand seam, sewn vertex 0 mm moved, its neighbour 1.5 mm). Stand +
+  collar free: no under floor 8.1 / 19.6 (all p99 7.68), own cloth 11.9 / 25.6, whole shirt 12.5 / 36.1.
+  Fix C202 (garment_pull.MADE_FREE, UNDER_OWN, default on): a made piece sewn to a moved piece moves with it; worn_style
+  takes under = (V, F, its mesh) and floors this garment's own cloth on the under garment's own cloth.
+- t5f_hc6 (C202, the jacket's made pieces with NO under floor): threads p99 5.92 (fronts 4.33; collar 9.5, stand 6.9;
+  t5f_hc 10.23), hem+30 480, len 732, edge 56/37 | 76/57 | 97/84 (concept 71 / 78 / 94); but the freed collar sank
+  into the shirt's (shirt poke-through 1986 verts, collar 1272 / stand 544; t5f_hc 317). t5f_hc6b (+ made on made:
+  the jacket's collar / stand floored on the shirt's): poke 296, but collar 31.6 / stand 33.9 % (296 collar faces > 12 %
+  at CB, z 1.55-1.58): the jacket fall is too SHORT to go over the shirt collar.
+- R SIDE DOES NOTHING (infos.py, brk.py): the slide's lap and the turn are set by plumb (break -> cutawayTop), a RELATIVE
+  rule: after the first relax R's cutawayTop is already out of its break (49 / 49, off +3.8..+6 mm), so the slide's arc
+  is 0 and the turn stops at share 0 ("hung"). The whole R edge has lapped in with its break (64 -> 49 in the first
+  relax, 35 at the end; concept 64): the plumb rule can't open a front whose break went in.
+- COLLAR LENGTH (seamlen.py, collen.py): sewn edges match flat (stand on the neckline 168.9 / 168.7 front, 111.1 / 109.6
+  back; fall on the stand 554.8 = 554.8): NOT short to its gorge / notch. The fall's FREE edge (outer + ends) is
+  longer in 3D than drafted in every fit: k3 +2.6-4.3 %, t1_hc +3.0-7.8, fit_t5f +3.9-9.2 % (680 vs 645 mm: +17.7 mm a
+  half = round 2's pi x ring 17.3). pattern_jacket.turn_stack grew it by pi x ring_outer (4.3 mm) since fit round 3
+  ("the under-stack never reaches the outer edge": on the bare form). C203 (opt-in PJ_UNDER_RING=1): + pi x t_under.

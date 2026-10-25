@@ -165,6 +165,18 @@ BORDER_LOCAL_STOP = __import__("os").environ.get("GP_BORDER_LOCAL", "1") == "1"
 BORDER_LOCAL_TOL = 0.02
 FLOOR_CONTACT = __import__("os").environ.get("GP_FLOOR_CONTACT", "1") == "1"  # (FlatARAP.solve: floor pushes held, C197)
 FLOOR_SIDE_TRACK = __import__("os").environ.get("GP_FLOOR_SIDE_TRACK", "1") == "1"  # (A/B: rule (2) alone off)
+# A MADE PIECE MOVES WITH THE CLOTH IT IS SEWN TO (canvas s6, C202): worn_style froze every piece no op names, so on a
+# jacket worn open the stand and collar (made pieces, sewn to the fronts' gorge and the backs' neck) stayed where the fit
+# left them while the fronts relaxed: the plain gorge cloth sewn to the held stand tore in the FIRST relax (front plain
+# p99 9.5 -> 13.8 % with no floor at all, weft +16-24 % on the faces by the stand seam). A made piece (M["made"]) sewn
+# to a moved piece is free; one sewn only to held cloth stays held. Off: GP_MADE_FREE=0 (A/B).
+MADE_FREE = __import__("os").environ.get("GP_MADE_FREE", "1") == "1"
+# THE UNDER GARMENT'S OWN CLOTH IS THE FLOOR (canvas s6, C202; the fit's rule C200): worn_style's under floor may be
+# (V, F, under mesh): then the under garment's made pieces (a shirt's collar / stand: a thin two-sided leaf at the
+# neck) are no floor for this garment's own cloth: on t5f the shirt collar leaf tore the jacket's gorge in the first
+# relax (max 27.7 -> 72.7 %). They are the floor for this garment's made pieces (its collar / stand lie on the shirt's
+# collar / stand): with no floor there the freed jacket collar sank through the shirt's (poke-through 317 -> 1986).
+UNDER_OWN = __import__("os").environ.get("GP_UNDER_OWN", "1") == "1"
 
 
 def _local_reach(V, Fs):
@@ -229,14 +241,19 @@ def layer_floor(M: dict, X: np.ndarray, body=None, under=None, gap: float | None
     out = []
     allv = np.arange(len(X))
     stat = [("body", bvf[0], outward(*bvf))] if bvf is not None else []
-    if under is not None:
-        stat.append(("under", np.asarray(under[0], float), np.asarray(under[1], int)))
-    for nm, V, Fs in stat:
+    stat = [s_ + (allv,) for s_ in stat]
+    if under is not None:  # ((V, F), or a list of (V, F, vertex mask): each part of the under garment a floor for only
+        # those vertices of this one, C202: its own cloth for this one's own cloth, its made pieces for this one's)
+        for k_, u_ in enumerate(under if isinstance(under, list) else [under]):
+            vm_ = allv if len(u_) < 3 or u_[2] is None else allv[np.asarray(u_[2], bool)]
+            if len(vm_) and len(u_[1]):
+                stat.append(("under" if k_ == 0 else f"under{k_}", np.asarray(u_[0], float), np.asarray(u_[1], int), vm_))
+    for nm, V, Fs, vv in stat:
         sf = pf_._Surface(V, Fs, ref=ref if nm != "body" else None) if nm != "body" else ref
-        d, _, dist, ni = _signed_i(sf, X)
+        d, _, dist, ni = _signed_i(sf, X[vv])
         rch = reach(sf.V, Fs)
         tang = np.sqrt(np.maximum(dist ** 2 - d ** 2, 0.0))
-        out.append({"name": nm, "v": allv, "level": level(d, dist, tang, rch[ni]), "surf": sf, "reach": rch, "ref": ref,
+        out.append({"name": nm, "v": vv, "level": level(d, dist, tang, rch[ni]), "surf": sf, "reach": rch, "ref": ref,
                     "n0": sf.N[ni]})
     if flaps:
         fl = fm_.flap_faces(M, F)
@@ -2132,7 +2149,8 @@ def worn_style(M: dict, X: np.ndarray, body, g: dict, log=None, under=None):
     via garment_design.wear(g, "style")) run on the closed form fit: the pieces they move are free, the rest held, and
     on those pieces whatever lies below the top fastened front button stays closed. A shirt without a tie gets its
     collar opened as Joe's references show (the shirt spike's c1). Returns (X_new, infos) or (X, None) when the kind has
-    no style for how it is worn. under: (V, F) of the garment under a worn-open one (a floor, layer_floor)."""
+    no style for how it is worn. under: (V, F) or (V, F, its mesh) of the garment under a worn-open one (a floor, layer_floor; with the mesh, only
+    its own cloth, C202); the made pieces sewn to a moved piece move with it (MADE_FREE, C202)."""
     ops = style_ops(g)
     if not ops:
         return np.asarray(X, float), None
@@ -2146,6 +2164,24 @@ def worn_style(M: dict, X: np.ndarray, body, g: dict, log=None, under=None):
             # pocket flaps sank 14-19 of 25 vertices into the opened fronts, r31 k1)
             if nm_[pa] in free or nm_[pb] in free:
                 free = sorted(set(free) | {nm_[pa], nm_[pb]})
+        if MADE_FREE:  # (C202: a made piece sewn to a moved piece moves with it, through a chain: collar -> stand -> fronts)
+            made_ = [p for p in M.get("made") or [] if p in nm_]
+            sw_ = np.asarray(M["sew"], int).reshape(-1, 2)
+            for _ in range(len(made_)):
+                add = {p for p in made_ if p not in free and any(
+                    (nm_[a_] == p and nm_[b_] in free) or (nm_[b_] == p and nm_[a_] in free) for a_, b_ in pid_[sw_])}
+                if not add:
+                    break
+                free = sorted(set(free) | add)
+        if under is not None and len(under) > 2:  # ((V, F, under mesh): the floor is its own cloth, C202 / C200)
+            uV_, uF_, um_ = np.asarray(under[0], float), np.asarray(under[1], int), under[2]
+            if UNDER_OWN and um_ is not None and um_.get("made"):
+                up_ = np.asarray(um_["piece"])
+                mk_ = np.isin(up_[uF_[:, 0]], [um_["names"].index(p) for p in um_["made"] if p in um_["names"]])
+                mine_ = np.isin(pid_, [nm_.index(p) for p in M.get("made") or [] if p in nm_])  # (this one's made pieces)
+                under = [(uV_, uF_[~mk_], ~mine_), (uV_, uF_[mk_], mine_)]  # (cloth on cloth, made on made)
+            else:
+                under = (uV_, uF_)
         # (under = (V, F): the garment under it as a floor too, the layer that supports it; supports thread: hung
         # without it, Garrett's jacket chest went down through the shirt)
         Xs, inf_ = style(Ms, X, hold_mask(Ms, X, free), ops, body=body, log=log,

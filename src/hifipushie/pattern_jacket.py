@@ -54,6 +54,14 @@ TURN = {"fabric": "wool_suiting", "canvas": "hair_canvas", "under": "cotton_shir
 # Drafted with the one-piece collar's profile (op_collar: h = stand x (1 - (s / s_x)^p), p from the crossing angle),
 # floored at `end` m (a band of cloth, not a zero-width strip). Off = the stand drafted to stand_front at the notch
 # (fit rounds 2-17: the stand's end stood 7-30 mm off the lapel and carried the fall's end as a tab).
+# R18 (canvas s6, C203): THE FALL'S OUTER EDGE GOES ROUND WHAT THE ROLL WRAPS OVER. On the form (fit rounds 30+, the
+# shirt fitted under) Garrett's fall's free edge is 3-9 % longer in 3D than drafted in every fit (k3 +2.6-4.3 %, t1 +3
+# -7.8 %, t5f +4-9 %: 680 vs 645 mm, +17.7 mm a half), its threads p99 9.5-16 %: round 3's rule (the under-stack never
+# reaches the outer edge) held on the bare form, not over a fitted shirt collar. Freed in the styling it sank through
+# the shirt's collar (poke-through 317 -> 1986); floored on it, it tore at CB (collar 31.6 %). UNDER_RING on: the half
+# outer edge grows by pi x (ring_outer + t_under) (the shirt collar + the jacket's stand it rolls over), not pi x
+# ring_outer. Opt-in (env PJ_UNDER_RING=1) until the flip test.
+UNDER_RING = __import__("os").environ.get("PJ_UNDER_RING", "0") == "1"
 STAND_RUN_OFF = {"on": False, "end": 0.003, "over": 0.03}  # OPT-IN: on the form the fall still turns 172 deg past s_x (fit round 18)
 
 
@@ -85,7 +93,7 @@ def turn_stack(fabric: str | None = None, canvas: str | None = None, under: str 
     ring_o = 0.5 * (t_fall + t)
     return {"cloth_mm": t, "canvas_mm": tc, "under_mm": tu, "t_fall_mm": round(t_fall, 3), "t_under_mm": round(t_under, 3),
             "depth_mm": round(math.pi / 2 * t_fall + t_under, 2), "ring_mm": round(ring, 3),
-            "ring_outer_mm": round(ring_o, 3), "length_mm": round(math.pi * ring_o, 2),
+            "ring_outer_mm": round(ring_o, 3), "length_mm": round(math.pi * (ring_o + (t_under if UNDER_RING else 0.0)), 2),
             "source": src(18) + " (fit round 2: turn of cloth from the fabrics' KB thickness; canvas inferred)"}
 
 
