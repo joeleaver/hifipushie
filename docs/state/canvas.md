@@ -25,6 +25,7 @@ plain front (p99 15.5-18.2). The threads-first fit puts the chest behind the shi
 LOOK ($S4/check/cmp_{wholefront,upper_front,side}_hb_lg_k3.png): hb beats t1_fz (fronts fall near straight, corners
 no longer kick) but still loses to k3: chest show-through, front bulges forward chest -> pocket, hem rises to the front,
 left lapel edge doubles. DEFAULTS NOT flipped (threads 9.05 > 8.5; show-through). No blind review (gate not met).
+Suite (17 garment files + test_bending, after the last code commit): 311 passed, 4 xfailed, PYTEST_EXIT 0 ($S4/suite.log).
 NEXT: (1) the threads-first fit's layer contact: the chest behind the shirt at fit time (pattern_form floor vs the
 shirt in the TF fit; compare fit_s1); fix there, not in styling. (2) threads p99 9.0: the excess is outside the fronts
 (fronts 6.8): find the pieces (thr.py per piece on asm_t1_hc) - likely the fit. (3) the forward bulge chest -> pocket
