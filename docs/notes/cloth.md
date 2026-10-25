@@ -11048,3 +11048,12 @@ turned, points pulled) were tuned on bending-free cloth; the stand's rest is the
   t5e's collar / stand got worse because the jacket's made pieces were floored on the shirt's yoke under the shirt collar.
 - Flaps refined (mesh_refine + flaps h 6 mm, front near the flap marks): the PLACEMENT broke (side.L triangle 0.17 m);
   place.py tests variants.
+  | t5f | t5e + this garment's made pieces (collar, stand, flaps) off the floor | 0 / 0 | 9.25 | 6.5 / 5.7 | 15.3 / 19.5 | 9.5 (grain max 36, t5e 131) |
+  t5f = the fit floor rule (C200): from relax1, on the shirt's own cloth, for the jacket's own cloth, never from behind.
+  Chest stand-off off the shirt at the end p50 15 / 7 mm (t5a 2 / 4). The collar's excess (colw.py) is at the collar
+  END on the gorge (|x| 90-120 mm, z 1.54-1.56, warp stretch), in t5a too (82 faces > 12 %; t5f 94): the collar is
+  short to its notch, a draft / collar-end fault, not the floor's; it alone keeps the pooled p99 over 8.5 (k3 8.78 too).
+- POCKET FLAPS fix (C201, garment_pull.patch_lie, PATCH_LIE on): after a worn-open styling the base cloth a stitched
+  patch covers (projected INSIDE a patch triangle, within 8 mm outside it) is laid THICK behind it. A nearest-vertex
+  read dented a ring round the flap (moved base cloth one flap edge out, 19.7 mm moves); the triangle read moves 10 / 11
+  vertices on asm_t1_hc (max 2.6 / 4.6 mm), then none stand through. Refining the flap mesh instead broke the placement.
