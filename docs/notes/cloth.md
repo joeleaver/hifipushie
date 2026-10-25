@@ -10988,3 +10988,30 @@ turned, points pulled) were tuned on bending-free cloth; the stand's rest is the
   difference is the fit's shape). LOOK (t1_fz | s1_k3 beside the concept, check/cmp_*_t1fz_s1k3.png): t1_fz reads WORSE
   than k3: lower fronts flare out A-line (concept falls straight), hem corners kick out, a shirt patch shows through the
   left chest (upper_front), the left lapel's edge doubles. Not flipped, no blind review (no candidate earned one).
+
+## canvas stiffness session 4 (2026-10-25; $S4 = /mnt/data/hifipushie/canvas/s4; branch claude/canvas4)
+- WHY t1_fz flares (edgeop.py / lean.py per op on $S3/perop_t1_fz.pkl): the grain of the lower fronts is already near
+  plumb (lean -2..+8 deg); what is wrong is that the lower front never DROPS: cfHem stays at d 706 (k3 748, concept
+  front length 748) and 46 mm forward (y -172 vs k3 -127). A short, kicked-forward panel shows more of its cutaway at a
+  given depth: 650 at 101-106. Grain plumb + full drop predicts 65 / 73 / 94 off the break x 65 (pattern cutaway: weft
+  0 at cutawayTop, +61 at cfHem) = the concept's 71 / 78 / 94. The cause of the no-drop: style() keeps every grip HELD
+  for all later ops (C190 listed "styling grips held for every later op" as no support): the slide's 12 mm edge strip
+  and the turn's 40 mm corner patch. The inward pull and the hem pull-down then fight held cloth (0-3 mm).
+- C199 (code): "let_go": true on pull / turn / slide (the grip is not held afterwards, what it picked up let go too);
+  relax "keep": hold_region kwargs held for that relax only. KAT test_a_hand_lets_go. Defaults unchanged.
+- Candidates on fit_t1 (ops_<tag>.json = ops_ts with slide + turn let go, inward pull removed):
+  | tag | what | edge 450/550/650 | hem+30 | front len | stands waist/-100/-200/-300 L | thr p99 (fronts) |
+  | concept | | 71 / 78 / 94 | 482 | 748 | | |
+  | s1_k3 | holds | 59-64 / 72-74 / 95-97 | 480 | 748 | 31 22 28 16 | 8.78 (8.26) |
+  | t1_fz | s3 | 77-84 / 83-85 / 101-106 | 476 | 728 | 54 45 52 49 | 9.27 (7.31) |
+  | t1_lg | let go only | 64-72 / 70-78 / 93 | 474 | 730 | 61 52 60 63 | 9.05 (6.83) |
+  | t1_pd | let go + pull straight down (thread stop) | = lg (the pull stops at 0) | | | | |
+  | t1_ha | let go + hang (all free cloth) | 52-61 / 54-58 / 65-68 | 438 | 751 | 49 50 48 40 | 9.01 |
+  | t1_hb | let go + hang of the lower fronts only (keep: other pieces, fronts above break) | 67-69 / 70-78 / 84-96 | 486 | 736 | 58 54 43 35 | 8.98 (6.80) |
+  ha: the whole jacket sags in (hem 438). hb: corners drop 20 mm and come back 33 mm (cfHem y -144), the edge rows in
+  band except L 650 (84). Threads p99 stay ~9.0: the excess is outside the fronts (fronts 6.8), from the fit.
+- SHOW-THROUGH (gap.py: jacket front chest vertices nearer the body than the shirt beside them): fit_t1 at styling
+  START has 46 / 37 % of them behind the shirt (p10 -8.5 mm); fit_s1 (k3's) 12 / 8 %; t1f / t2 / h2 fits alike 41-60 %.
+  C197 rules off one at a time on t1_fz (GP_FLOOR_SIDE=0 / GP_FLOOR_SIDE_TRACK=0 / GP_FLOOR_CONTACT=0): end 32 / 29 /
+  26 % (t1_fz 29 %) and the plain front tears again (p99 18.2 / 15.8 / 15.5 vs 12.4). Not C197: the threads-first
+  fit puts the chest behind the shirt; rule 1 (behind -> own depth) only declines to shove it out.
