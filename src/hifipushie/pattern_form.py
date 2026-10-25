@@ -2367,7 +2367,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
     ceil_on = [LAYER_FROM == "relax1"]
     uf_on = [UNDER_FLOOR_FROM == "relax1"]  # (UNDER_FLOOR's start; C200)
     uf_side = np.ones(len(X), bool)  # (UNDER_FLOOR_SIDE: the vertices outside the under layer at the placement)
-    if UNDER_FLOOR and UNDER_FLOOR_SIDE and usurf is not None:
+    if UNDER_FLOOR and UNDER_FLOOR_SIDE and UNDER_FLOOR_FROM == "relax1" and usurf is not None:  # (from the seat on: C172 as it was, a tube placed inside is put out)
         cv0_, du0_, _ = covered(ufsurf, X, bsurf)
         uf_side = ~(cv0_ & (du0_ < 0.0))
         # (and only this garment's own cloth: its made pieces (collar, stand) rest on the under garment's made pieces,
