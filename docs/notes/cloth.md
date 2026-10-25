@@ -11091,3 +11091,11 @@ turned, points pulled) were tuned on bending-free cloth; the stand's rest is the
   longer in 3D than drafted in every fit: k3 +2.6-4.3 %, t1_hc +3.0-7.8, fit_t5f +3.9-9.2 % (680 vs 645 mm: +17.7 mm a
   half = round 2's pi x ring 17.3). pattern_jacket.turn_stack grew it by pi x ring_outer (4.3 mm) since fit round 3
   ("the under-stack never reaches the outer edge": on the bare form). C203 (opt-in PJ_UNDER_RING=1): + pi x t_under.
+- C202 compacted (a floor's surface is read at its VERTICES: the uncompacted (V, F_own) of t5f_hc6 still carried the
+  shirt collar's vertices): made on made (t5f_hc7) tears the freed collar / stand at CB (34 / 35 %), refuses the turn;
+  now opt-in (GP_UNDER_MADE). t6r (fit with PJ_UNDER_RING) + made on made + ops_ps: worse (collar 44.5 %, slide refused
+  on shear 44 deg): C203 not proven, stays opt-in.
+- C204 (turn "plumb_from": "start", slide by.from "start"; $S6/ops_ps.json = ops_hc + both): t5f_ps8 edge L 66/80/106,
+  R 46/67/93 (concept 71/78/94), hem+30 498, len 729, threads p99 6.46 (collar 15.2), chest 0 % behind the shirt;
+  shirt poke-through at the back neck 1742. LOOK: more open, clean chest, but the lower fronts flare A-line and L / R
+  differ; not flipped, no blind review. Suite 313 passed, 4 xfailed, PYTEST_EXIT 0.
