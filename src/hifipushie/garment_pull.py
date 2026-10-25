@@ -109,6 +109,12 @@ STYLE_THREAD_FINAL = 60  # bending-free rounds at most at the end of a solve, un
 STYLE_THREAD_TOL = 0.002  # (a thread this far past its bound counts as within it)
 STYLE_THREAD_ROUNDS = int(__import__("os").environ.get("GP_THREAD_ROUNDS", "2"))  # bending-free rounds a round
 STYLE_BEND_PLAIN = float(__import__("os").environ.get("GP_STYLE_BEND_PLAIN", "0.0"))  # (x a plain vertex's weight 1)
+# THREADS AS THE LOCAL STEP (canvas s8, C207; OPT-IN, env GP_TF_PD=1): with STYLE_BEND, each face's local target is its
+# own current map with warp / weft clamped into [thread_lo, thread_hi] (projective dynamics' strain limit) instead of
+# a rotation of the flat pattern followed by bending-free rounds. One energy (threads band + bending), so the rounds
+# cannot walk: the alternation (bending round, STYLE_THREAD_ROUNDS bending-free solves, cap, one-sided floor) swung
+# Garrett's stiff fronts 35-65 mm forward in the first relax (exp1 b1; b0 without bending 5-9 mm).
+STYLE_TF_PD = __import__("os").environ.get("GP_TF_PD", "0") == "1"
 
 STEP = 0.003  # m: a handle's move per step
 TOL = 0.005  # stretch p99 allowed above the least the pull has reached (0.5 %: the shirt's knee, module docstring)
@@ -510,7 +516,7 @@ class FlatARAP:
             if tf:  # THREADS FIRST: the bending acts within the threads. Rounds of the bending-free solve give back the
                 # length the bending bought (a Jacobi cap alone can't: a strip stretched end to end stayed 12.4 %), then
                 # the cap takes off what is still past each face's bound
-                for _r in range(STYLE_THREAD_ROUNDS):
+                for _r in range(0 if STYLE_TF_PD else STYLE_THREAD_ROUNDS):
                     r0 = self._arap_rhs(Y, fixed)[fi] - L0fc @ Y[ci]
                     Y[fi] = np.column_stack([lu0.solve(r0[:, k]) for k in range(3)])
                 Y = self._thread_cap(Y, fx, hi=self.thread_hi, lo=self.thread_lo)
@@ -536,6 +542,16 @@ class FlatARAP:
         """The local step (each face's closest rotation of its pattern, WOVEN: warp / weft at their length, shear at
         its weight) as the global step's right-hand side (welded, (n, 3))."""
         U, WF, Wt = self.U, self.WF, self.Wt
+        if STYLE_TF_PD and self.bend is not None and getattr(self, "thread_hi", None) is not None:  # (C207)
+            Fg = np.stack([Y[WF[:, 1]] - Y[WF[:, 0]], Y[WF[:, 2]] - Y[WF[:, 0]]], -1) @ self.Dinv0
+            ln = np.maximum(np.linalg.norm(Fg, axis=1), 1e-12)
+            R = Fg * (np.clip(ln, self.thread_lo, self.thread_hi) / ln)[:, None, :]
+            rhs = np.zeros((self.n, 3))
+            for k, (a, b, _c) in enumerate(_HE):
+                v = Wt[:, k, None] * np.einsum("mij,mj->mi", R, U[:, a] - U[:, b])
+                np.add.at(rhs, WF[:, a], v)
+                np.add.at(rhs, WF[:, b], -v)
+            return rhs
         S = np.zeros((len(WF), 3, 2))
         for k, (a, b, _c) in enumerate(_HE):
             S += Wt[:, k, None, None] * (Y[WF[:, a]] - Y[WF[:, b]])[:, :, None] * (U[:, a] - U[:, b])[:, None, :]

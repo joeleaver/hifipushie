@@ -11149,3 +11149,12 @@ turned, points pulled) were tuned on bending-free cloth; the stand's rest is the
   deg, 178: 11.5); rolled over >= 4 mm it holds (0.0-0.2 deg). The jacket has NO hinge past 90 deg on its fronts
   (hingeprobe.py: the lapel's turn is spread over rows), so that is not the jacket's fault. A face-frame target for
   folds past 90 deg was tried and did not help the strip (reverted).
+- (a) THE FIX TRIED: C207 STYLE_TF_PD (opt-in GP_TF_PD=1, with GP_STYLE_BEND=1): the threads ARE the local step (each
+  face's current map, warp / weft clamped into [thread_lo, thread_hi]: projective dynamics' strain limit) and no
+  bending-free rounds: one energy, nothing to walk. First relax on d2 (exp1 p1): breaks L 64,-184 R 66,-176 (start
+  64,-183 / 64,-167), fronts move 0-6 mm; no bend (b11) breaks in to 53 / 53; bend + old threads first (b12) the
+  fronts 24-41 mm forward. Hang-first relax (ops_hang0, every piece hung): b10 no bend breaks 36 / 41, hem out to
+  98 / 122, threads 17 %; b9 bend: L / R asymmetric 57 / 24, stand 34 %. Not a support.
+- (b) C208 FIT_MADE_FLOOR (opt-in PF_FIT_MADE_FLOOR=1): with UNDER_FLOOR, the jacket's made pieces floored on the
+  shirt's made pieces once the bands are stood up (the shirt collar's top still shows above the jacket's: d2 heights
+  at CB jacket fall 25-48 mm over HPS, shirt collar 36-71). Run m1 (+ GP_UNDER_MADE=1 in the styling).

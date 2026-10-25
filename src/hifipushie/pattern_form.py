@@ -2316,6 +2316,12 @@ LAYER_W = 20.0  # a vertex touching the over layer: its proximal weight (x a fre
 # 118, but moved the roll off the concept (150 / 250: 58 / 47 vs w1h 70 / 58, concept 69 / 64; break 337 vs 379 below
 # HPS), opened a sew gap 4.6 mm and grain max 98 %; Joe: covered show-through is culled anyway (C153), so not pursued.
 UNDER_FLOOR = __import__("os").environ.get("PF_UNDER_FLOOR", "0") == "1"
+# FIT_MADE_FLOOR (canvas s8, C208; OPT-IN until proven, env PF_FIT_MADE_FLOOR=1): with UNDER_FLOOR, this garment's
+# MADE pieces (a jacket's collar + stand) are floored on the under garment's made pieces (the shirt's collar + stand)
+# once the bands are stood up: the jacket's collar lies OVER the shirt's at the back neck (the shirt's shows above it).
+# Without it the fit left the shirt collar outside the jacket's at CB (947 collar + 172 stand vertices poking through,
+# Garrett d2), and the styling's made-on-made floor (garment_pull.UNDER_MADE) then tore the freed collar (34 %).
+FIT_MADE_FLOOR = __import__("os").environ.get("PF_FIT_MADE_FLOOR", "0") == "1"
 # (canvas s7, C205: a garment that declares interfacing is fitted with UNDER_FLOOR from "relax1" by default (on_form
 # passes assemble(under_floor="relax1")); garment key "under_floor": "relax1" | "seat" | false; env PF_UNDER_FLOOR set
 # = the module values for every garment, the A/B switch)
@@ -2390,6 +2396,15 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
         ix_ = -np.ones(len(under["V"]), int)
         ix_[iv_] = np.arange(len(iv_))
         ufsurf = _Surface(np.asarray(under["V"], float)[iv_], ix_[fF_], ref=bsurf)
+    umsurf = None  # FIT_MADE_FLOOR (C208): the under garment's made pieces as the floor of this garment's made pieces
+    if usurf is not None and uf_ and FIT_MADE_FLOOR and under.get("made_F") is not None and len(under["made_F"]):
+        mF_ = np.asarray(under["made_F"], int)
+        iv_ = np.unique(mF_)
+        ix_ = -np.ones(len(under["V"]), int)
+        ix_[iv_] = np.arange(len(iv_))
+        umsurf = _Surface(np.asarray(under["V"], float)[iv_], ix_[mF_], ref=bsurf)
+    mine_made = np.isin(pid, [names.index(p_) for p_ in (M.get("made") or []) if p_ in names])
+    made_floor_on = [False]  # (from the bands' stand-up on; from the start when nothing waits to be stood up)
     ceil_on = [LAYER_FROM == "relax1"]
     uf_on = [uff_ == "relax1"]  # (UNDER_FLOOR's start; C200)
     uf_side = np.ones(len(X), bool)  # (UNDER_FLOOR_SIDE: the vertices outside the under layer at the placement)
@@ -2859,6 +2874,10 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                 cv_, du_, nu_ = covered(ufsurf, Xn, bsurf)
                 cv_ &= (du_ < LAYER_GAP) & uf_side
                 Xn[cv_] += nu_[cv_] * np.minimum(LAYER_GAP - du_[cv_], LAYER_STEP if it < iters - 1 else 1.0)[:, None]
+                if umsurf is not None and made_floor_on[0]:  # (C208: made on made, once the bands are stood up)
+                    cv_, du_, nu_ = covered(umsurf, Xn, bsurf)
+                    cv_ &= (du_ < LAYER_GAP) & mine_made
+                    Xn[cv_] += nu_[cv_] * np.minimum(LAYER_GAP - du_[cv_], LAYER_STEP if it < iters - 1 else 1.0)[:, None]
             X = Xn
         wc, bend_f = wc_keep, bend_keep
         return X
@@ -2868,6 +2887,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
     if laps:  # (LAP_LAYER: the over piece starts outside the under one; see lap_order)
         X, info["lap_order"] = lap_order(X, laps, bsurf)
     tr("placement", X, M)
+    made_floor_on[0] = B is None or all(placed.values())
     if B is not None and not all(placed.values()):
         # the bands' own vertices relax only after they are stood up: first the rest of the garment, WITHOUT the
         # bands' seams (sewn to a band still where the placement left it, a tab out of the back, the neckline was
@@ -2885,6 +2905,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
             X, edge = _swing_front(M, X, ox, fast, bsurf)
             tr("swing", X, M)
         X, info["stood_up"] = _band_init(M, B, X, placed)
+        made_floor_on[0] = True
         tr("band_init", X, M)
     elif ox and SWING_FIRST:
         X, edge = _swing_front(M, X, ox, fast, bsurf)
@@ -3273,6 +3294,7 @@ def on_form(model: str, garment: str, spec: dict | None = None, g: dict | None =
         uF_, upid_ = np.asarray(und["mesh"]["F"]), np.asarray(und["mesh"]["piece"])
         mk_ = np.isin(upid_[uF_[:, 0]], [und["mesh"]["names"].index(p) for p in und["mesh"]["made"] if p in und["mesh"]["names"]])
         under["floor_F"] = uF_[~mk_]
+        under["made_F"] = uF_[mk_]  # (FIT_MADE_FLOOR: this garment's made pieces over the under garment's, C208)
     from . import bending as _bd
     bw = _bd.weights(res.get("pieces"), res["mesh"], g)  # (the mesh carries them for the styling: STYLE_BEND)
     res["mesh"]["bend_w"] = bw
