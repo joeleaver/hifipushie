@@ -154,6 +154,7 @@ FLOOR_REACH_CAP = 3.0
 # (cos > FLOOR_SIDE_COS; followed round by round, so a slide round the body turns with it). GP_FLOOR_SIDE=0 for the A/B.
 FLOOR_SIDE = __import__("os").environ.get("GP_FLOOR_SIDE", "1") == "1"
 FLOOR_SIDE_COS = 0.5
+FLOOR_CONTACT = __import__("os").environ.get("GP_FLOOR_CONTACT", "1") == "1"  # (FlatARAP.solve: floor pushes held, C197)
 FLOOR_SIDE_TRACK = __import__("os").environ.get("GP_FLOOR_SIDE_TRACK", "1") == "1"  # (A/B: rule (2) alone off)
 
 
@@ -280,7 +281,7 @@ def _dyn_floor(name, X, fv, bv, bF, ref, gap, rch, level):
     tang = np.sqrt(np.maximum(dist ** 2 - d ** 2, 0.0))
     rch = _local_reach(X[bv], ix[bF])  # (per base vertex, C173)
     return {"name": name, "v": fv, "level": level(d, dist, tang, rch[ni], slides=False), "surf": None, "bv": bv, "bF": ix[bF],
-            "reach": rch, "ref": ref, "n0": _}
+            "reach": rch, "ref": ref, "n0": _, "anchor": ni}
 
 
 def _bind_floor(floor, inv):
@@ -297,6 +298,8 @@ def _bind_floor(floor, inv):
         if fl.get("n0") is not None:  # (the side each vertex is tracked on, C197: _floor writes it back, so the next op starts from it)
             fl["n0"] = np.asarray(fl["n0"], float)
             b["n0"], b["_src"], b["_keep"] = np.array(fl["n0"][keep]), fl, np.where(keep)[0]
+        if fl.get("anchor") is not None:
+            b["anchor"] = np.asarray(fl["anchor"])[keep]
         if fl.get("surf") is None:
             b["bw"] = inv[np.asarray(fl["bv"])]
         out.append(b)
@@ -398,39 +401,66 @@ class FlatARAP:
         out[self.inv[np.asarray(mask, bool)]] = True
         return out
 
-    def solve(self, Y: np.ndarray, fixed: np.ndarray, iters: int = ITERS, eps: float | None = None,
-              hang: bool = False) -> np.ndarray:
-        """Up to `iters` local / global rounds from Y, stopping once no vertex moves more than `eps` in one; vertices
-        `fixed` (welded mask) stay where Y has them. hang: the free cloth's WEIGHT (HANG: a weak downward force per
-        rest area against a small proximal weight, each round's move clamped to HANG_STEP, the threads capped at
-        HANG_STRAIN; the floors as ever)."""
+    def _factors(self, fixed: np.ndarray, hang: bool, tf: bool):
+        """The global step's factorizations for one fixed set (kept for the last few sets: a solve's floor contacts
+        add to its fixed set, C197, and the next solve starts from the op's own again)."""
         key = np.packbits(fixed).tobytes() + (b"h" if hang else b"")
         fi, ci = np.where(~fixed)[0], np.where(fixed)[0]
         if key not in self._lu:
             Lf = self.L[fi]
             Aff = Lf[:, fi] + (diags(np.full(len(fi), HANG_PROX)) if hang else 0)
-            self._lu = {key: (splu(Aff.tocsc()), Lf[:, ci].tocsr())}  # (one fixed set at a time: the pull's)
+            if len(self._lu) >= 4:
+                self._lu.pop(next(iter(self._lu)))
+            self._lu[key] = (splu(Aff.tocsc()), Lf[:, ci].tocsr())
         lu, Lfc = self._lu[key]
-        if hang:
-            if getattr(self, "mass", None) is None:
-                a_ = 0.5 * np.abs((self.U[:, 1, 0] - self.U[:, 0, 0]) * (self.U[:, 2, 1] - self.U[:, 0, 1])
-                                  - (self.U[:, 1, 1] - self.U[:, 0, 1]) * (self.U[:, 2, 0] - self.U[:, 0, 0]))
-                m_ = np.zeros(self.n)
-                for c in range(3):
-                    np.add.at(m_, self.WF[:, c], a_ / 3)
-                self.mass = m_ / max(float(m_.mean()), 1e-12)
-                self.Dinv0 = np.linalg.inv(np.stack([self.U[:, 1] - self.U[:, 0], self.U[:, 2] - self.U[:, 0]], -1))
-            fall = HANG_G * HANG_PROX * self.mass[fi]
-        U, WF, Wt = self.U, self.WF, self.Wt
-        Y = Y.copy()
-        tf = getattr(self, "thread_hi", None) is not None
+        lu0 = L0fc = None
         if tf:  # THREADS FIRST: the bending-free (ARAP / woven only) system for the rounds that give the threads back
             k0 = key + b"t"
             if k0 not in self._lu0:
                 L0f = self.L0[fi]
-                self._lu0 = {k0: (splu(L0f[:, fi].tocsc()), L0f[:, ci].tocsr())}
+                if len(self._lu0) >= 4:
+                    self._lu0.pop(next(iter(self._lu0)))
+                self._lu0[k0] = (splu(L0f[:, fi].tocsc()), L0f[:, ci].tocsr())
             lu0, L0fc = self._lu0[k0]
+        return fi, ci, lu, Lfc, lu0, L0fc
+
+    def solve(self, Y: np.ndarray, fixed: np.ndarray, iters: int = ITERS, eps: float | None = None,
+              hang: bool = False) -> np.ndarray:
+        """Up to `iters` local / global rounds from Y, stopping once no vertex moves more than `eps` in one; vertices
+        `fixed` (welded mask) stay where Y has them. hang: the free cloth's WEIGHT (HANG: a weak downward force per
+        rest area against a small proximal weight, each round's move clamped to HANG_STEP, the threads capped at
+        HANG_STRAIN; the floors as ever). FLOOR_CONTACT (C197): a vertex the floor put back is held where the floor
+        put it for the rest of this solve, so the cloth round it follows it in the next global step (pushed after the
+        threads' cap and fought by the next round, the lapel's floor shoved its vertices up to 9 mm a round, 190 mm in
+        one relax, and tore the canvassed lapel 122 %)."""
+        if hang and getattr(self, "mass", None) is None:
+            a_ = 0.5 * np.abs((self.U[:, 1, 0] - self.U[:, 0, 0]) * (self.U[:, 2, 1] - self.U[:, 0, 1])
+                              - (self.U[:, 1, 1] - self.U[:, 0, 1]) * (self.U[:, 2, 0] - self.U[:, 0, 0]))
+            m_ = np.zeros(self.n)
+            for c in range(3):
+                np.add.at(m_, self.WF[:, c], a_ / 3)
+            self.mass = m_ / max(float(m_.mean()), 1e-12)
+            self.Dinv0 = np.linalg.inv(np.stack([self.U[:, 1] - self.U[:, 0], self.U[:, 2] - self.U[:, 0]], -1))
+        U, WF, Wt = self.U, self.WF, self.Wt
+        Y = Y.copy()
+        tf = getattr(self, "thread_hi", None) is not None
+        fixed = np.asarray(fixed, bool)
+        fx = fixed.copy()  # (the op's fixed set + this solve's floor contacts)
+        fi, ci, lu, Lfc, lu0, L0fc = self._factors(fx, hang, tf)
+
+        def floor_round(Y):
+            nonlocal fx, fi, ci, lu, Lfc, lu0, L0fc
+            self._pushed_static = np.zeros(self.n, bool)
+            Yp = self._floor(Y, fx)
+            if FLOOR_CONTACT:  # (static floors only: the body, the garment under. A flap's floor is its own moving base:
+                # pinned in place while the base moved, the canvassed lapel tore 256 %)
+                new = self._pushed_static & ~fx
+                if new.any():
+                    fx = fx | new
+                    fi, ci, lu, Lfc, lu0, L0fc = self._factors(fx, hang, tf)
+            return Yp
         for _ in range(iters):
+            fall = HANG_G * HANG_PROX * self.mass[fi] if hang else None
             rhs = self._arap_rhs(Y, fixed)
             if self.bend is not None:  # (the rest curvature along the current direction: bending.Bending.rhs)
                 rhs = rhs + self.bend.rhs(Y)
@@ -446,16 +476,16 @@ class FlatARAP:
             dmax = float(np.abs(Yf - Y[fi]).max()) if len(fi) else 0.0
             Y[fi] = Yf
             if hang:  # (the threads capped: the weight never stretches a thread past HANG_STRAIN)
-                Y = self._thread_cap(Y, fixed)
+                Y = self._thread_cap(Y, fx)
             if tf:  # THREADS FIRST: the bending acts within the threads. Rounds of the bending-free solve give back the
                 # length the bending bought (a Jacobi cap alone can't: a strip stretched end to end stayed 12.4 %), then
                 # the cap takes off what is still past each face's bound
                 for _r in range(STYLE_THREAD_ROUNDS):
                     r0 = self._arap_rhs(Y, fixed)[fi] - L0fc @ Y[ci]
                     Y[fi] = np.column_stack([lu0.solve(r0[:, k]) for k in range(3)])
-                Y = self._thread_cap(Y, fixed, hi=self.thread_hi, lo=self.thread_lo)
+                Y = self._thread_cap(Y, fx, hi=self.thread_hi, lo=self.thread_lo)
             if self.floor:  # THE LAYER FLOOR (C170): what went under its floor this round is put back on it
-                Y = self._floor(Y, fixed)
+                Y = floor_round(Y)
             if eps is not None and dmax < eps:
                 break
         if tf:  # THREADS FIRST, the last word: bending-free rounds until no face is past its bound (the bending chose the
@@ -467,9 +497,9 @@ class FlatARAP:
                     break
                 r0 = self._arap_rhs(Y, fixed)[fi] - L0fc @ Y[ci]
                 Y[fi] = np.column_stack([lu0.solve(r0[:, k]) for k in range(3)])
-                Y = self._thread_cap(Y, fixed, hi=self.thread_hi, lo=self.thread_lo)
+                Y = self._thread_cap(Y, fx, hi=self.thread_hi, lo=self.thread_lo)
                 if self.floor:
-                    Y = self._floor(Y, fixed)
+                    Y = floor_round(Y)
         return Y
 
     def _arap_rhs(self, Y: np.ndarray, fixed: np.ndarray) -> np.ndarray:
@@ -535,7 +565,17 @@ class FlatARAP:
             w, lev = w[free], fl["level"][free]
             surf = fl["surf"] if fl["surf"] is not None else \
                 pf_._Surface(Y[fl["bw"]], fl["bF"], ref=fl["ref"])
-            d, n, dist, ni = _signed_i(surf, Y[w])
+            if FLOOR_SIDE and fl.get("anchor") is not None:  # (A FLOOR HAS A SIDE, C197: a flap / patch is sewn to its
+                # base and stays over the SAME cloth, so it is read against the base vertex it started over, not the
+                # nearest: Garrett's left lapel lay where two sheets of its base met (the front, the turn of the roll),
+                # neighbours took their nearest from either and were shoved apart up to 9 mm a round: canvas 122 %)
+                ni = fl["anchor"][free]
+                dv = Y[w] - surf.V[ni]
+                n = surf.N[ni]
+                d = np.sum(dv * n, 1)
+                dist = np.linalg.norm(dv, axis=1)
+            else:
+                d, n, dist, ni = _signed_i(surf, Y[w])
             tang = np.sqrt(np.maximum(dist ** 2 - d ** 2, 0.0))
             m = (d < lev) & (tang < np.asarray(fl["reach"])[ni])
             if FLOOR_SIDE and FLOOR_SIDE_TRACK and fl.get("n0") is not None:  # (A FLOOR HAS A SIDE, C197: pushed only from the side the vertex
@@ -550,6 +590,8 @@ class FlatARAP:
             if m.any():
                 Y[w[m]] += (lev[m] - d[m])[:, None] * n[m]
                 self.floor_pushed += int(m.sum())
+                if fl["surf"] is not None and getattr(self, "_pushed_static", None) is not None:
+                    self._pushed_static[w[m]] = True
         return Y
 
 
