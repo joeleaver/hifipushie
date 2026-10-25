@@ -10956,3 +10956,23 @@ turned, points pulled) were tuned on bending-free cloth; the stand's rest is the
   (flap + front-under-flap h 8 mm) 58-65 / 50-52 / 57-60, 11.43, flaps sunk 19/104: refining alone does not lay the
   flaps (the floor reach / gap is the lever, not resolution). Suite 308 passed, 4 xfailed, PYTEST_EXIT 0. Defaults NOT
   flipped. Next session: the plain-cloth tear in the kb styling (front plain p99 67 %) under TF, op by op.
+
+## canvas stiffness session 3 (2026-10-25; $S3 = /mnt/data/hifipushie/canvas/s3; branch claude/canvas3)
+- Per-op reads (perop.py: garment_pull's op functions wrapped, X in / out per op; front plain / canvas faces by
+  bend_w): on t1's fit the plain-front tear (p99 67 %, max 650 %) is NOT a styling op: it starts in the FIRST relax
+  (front plain max 14 -> 260 %, 18 faces, front.R at z 1.52 beside the shirt's open collar) and the turn / pull grow
+  it (p99 135 / 186 %). relaxab.py (relax with each floor alone): the UNDER floor (the shirt) does it. spot2.py: the
+  shirt collar is a thin two-sided leaf; neighbouring jacket vertices took their nearest shirt vertex from either face
+  (normals +-0.96 x), and a vertex behind the leaf but not over it was given the gap, so it was shoved 12 mm through.
+- C197 A FLOOR HAS A SIDE: (1) behind the floor and not over it at the start -> its own depth as its level; (2) a push
+  only while the normal under the vertex agrees with the one it is tracked on (cos > 0.5, followed per round, written
+  back so the next op starts from it). Both needed (rule 1 alone: the turn re-tore it 343 %). First relax max 260 ->
+  41 %; whole styling front plain p99 66.8 -> 16.3 (t1_fs). KAT test_a_floor_has_a_side.
+- But t1_fs canvas (lapel) p99 10.8 -> 22.7, edge 450 59-67 -> 43-57: the lapel's own flap floor (flap:front.L) fought
+  the relax: pushed after the threads' cap, re-broken each round, up to 9 mm a round / 190 mm per relax (flapdiag.py),
+  canvas max 122 % (TF all on or off). Its left lapel lies where two sheets of its base meet; neighbours alternated
+  nearest base vertex between them (cos 0.26-0.7). Fixes: a flap / patch floor reads each vertex against the base
+  vertex it STARTED over ("sewn to its base, stays over the same cloth"); static floor contacts (body, under) are held
+  where the floor put them for the rest of that solve (pinning a flap's contacts while its base moved: 256 %, so not
+  for flaps). First relax, TF all: canvas p99 25.9 -> 4.8 (no floor 4.5), plain 12.3; default 21.5 -> 5.0.
+  test_garment_pull 27 passed.
