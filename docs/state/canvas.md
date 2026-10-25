@@ -31,4 +31,4 @@ move that brings the lower fronts in by MOVING (a slide / turn back toward plumb
 (front plain p99 9.3 -> 12.4) and the slide; GP_THREAD_FIRST_ALL tears the canvassed lapel at z 1.26-1.33 (t1_fza):
 find why (cap vs held contacts?) before using it. (4) then step 3/4 of s2's NEXT (flip test, renders, blind LOOK).
 (5) pocket-flap floor, hem corner flip: not reached.
-Suite (17 garment files + test_bending): see $S3/suite.log (quoted in the commit after it).
+Suite (17 garment files + test_bending, after the last code commit): 310 passed, 4 xfailed, PYTEST_EXIT 0 ($S3/suite.log).
