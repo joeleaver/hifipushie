@@ -10976,3 +10976,15 @@ turned, points pulled) were tuned on bending-free cloth; the stand's rest is the
   where the floor put them for the rest of that solve (pinning a flap's contacts while its base moved: 256 %, so not
   for flaps). First relax, TF all: canvas p99 25.9 -> 4.8 (no floor 4.5), plain 12.3; default 21.5 -> 5.0.
   test_garment_pull 27 passed.
+- C198 per-face thread stop for pinned moves (pull / smooth_border "thread_stop": true, opt-in: on by default it broke
+  3 shirt open-collar tests). Jacket reads ($S3, t1 fit, no holds, ops_none + floors C197):
+  | t1_fx | floors, old stops | 53-64 / 75-77 / 90-96 | hem 480 | V 244 | lapel 132/144 | thr 10.39 (fronts 9.64) |
+  | t1_fy | + border thread stop | 75-78 / 75-78 / 91-96 | 484 | 234 | 125/143 | 9.88 (8.65) |
+  | t1_fz | + pull thread stop (= ops_ts.json) | 77-84 / 83-85 / 101-106 | 476 | 228 | 121/142 | 9.27 (7.31) |
+  | t1_fza | t1_fz + GP_THREAD_FIRST_ALL | 69-82 / 76-82 / 94-103 | 459 | 222 | 122/140 | 13.20 (21.9: canvas torn z 1.26-1.33, open) |
+  | d2_none | HALF canvas region, TF fit | 42-44 / 42 / 36-38 | 408 | 220 | 121/125 | 7.98 (fit front plain 3.6) |
+  Under the thread stop every pull stops at 0-3 mm: they had pulled the fronts back IN by stretching; with no pull the
+  fronts swing too wide (650 at 101-106 vs 94). The half canvas still does not open (styling has no bending, so the
+  difference is the fit's shape). LOOK (t1_fz | s1_k3 beside the concept, check/cmp_*_t1fz_s1k3.png): t1_fz reads WORSE
+  than k3: lower fronts flare out A-line (concept falls straight), hem corners kick out, a shirt patch shows through the
+  left chest (upper_front), the left lapel's edge doubles. Not flipped, no blind review (no candidate earned one).

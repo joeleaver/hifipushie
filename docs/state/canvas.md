@@ -1,41 +1,34 @@
-# STATE: canvas (canvas / interfacing BENDING STIFFNESS in the fit + styling; the jacket with no workaround holds) -- 2026-10-23
+# STATE: canvas (canvas / interfacing BENDING STIFFNESS; the jacket with no workaround holds) -- 2026-10-25
 
-GOAL (Joe, after C190-C192): canvassed / interfaced pieces keep their shape by STIFFNESS so the workaround holds go.
-Not a sim; no rented GPU. Concept SLIM-CUT (gc_garrett v6, C193). Session 1 = main 78507629 (history: cloth.md
-"canvas stiffness"); session 2 = branch claude/canvas2 (cloth.md "canvas stiffness session 2"), files $S2 =
-/mnt/data/hifipushie/canvas/s2 (run.sh = this worktree's code; fitc.py / sty2.sh / tab38.sh / thr.py as session 1).
-JOE (s2, via coordinator): "It shouldn't really be a choice between stiffness and stretch." -> C195 THREADS FIRST:
-- styling (garment_pull.STYLE_THREAD_FIRST, on with STYLE_BEND): bending-free rounds after each round (2) and to
-  convergence at the end (<= 60), each face's warp / weft within max(styling-start length, 1 +/- STYLE_THREAD_CAP 1 %).
-- fit (pattern_form.FIT_THREAD_FIRST, on with keyed bending): interfaced triangles' threads capped (2 %) each round.
-- KAT test_stiffness_never_buys_shape_with_stretch: walked strip canvas 12.4 -> 1.1 %, on the arc; plain 0.15 %.
-- Like-for-like (no holds) the keyed fit had NOT raised jacket threads: c0_none 11.48 vs c2_none 9.62; k3's 7.42
-  had holds supplying the shape. The shirt / jacket STYLING bend did raise them (12.5 / 15 %): retest under C195.
-CANVAS REGION (C196): cloth.interfacing "region" (polygon of piece points / marks; outline full; feathered out).
-Session 1's canvas = a 100 mm band along the front edge break..lapelPoint (lapel + strip) + stand / collar.
-Real half canvas = forepart shoulder + armhole to the pocket line + lapel (+ bridle on the roll line): drafted as
-$S2/region_half.json. d1 (half canvas, keyed fit W1, NO threads first): edge 41-45/40-42/36, hem 393, threads 11.17:
-worse (more stiff area, bought with stretch). Not adopted; retry under threads first (NEXT).
-RUNS ($S2; concept 71/78/94, hem+30 482, V 237, lapel 127/134; k3 60-64/74-77/101 thr 7.42; c2_none 52-58/67-72/82-86 9.62):
-| d1_none | half canvas, W1, no TF fit | 41-45 / 40-42 / 36 | hem 393 | V 226 | lapel 126/132 | thr 11.17 |
-| h2_none | band, W2, no TF fit | 46-60 / 30-48 / 37-55 | 441 | 223 | 108/141 | 15.67 |
-| t1_none | band, W1, TF fit; kb ops | 59-67 / 62-67 / 78-79 | 470 | 228 | 125/136 | 11.90 (fit grain 7.2) |
-| t1_tfa | t1 + TF in every styling solve | 37 / 40-45 / 52-56 | 449 | 209 | 125/128 | 10.45 (slide stops on stretch) |
-| t1_b5 | t1 + styling bend W5 + TF | 26-34 / 48-51 / 59-60 | 388 | 203 | 115/132 | 11.52 |
-| t2_none | band, W2, TF fit | 48-60 / 36-52 / 43-59 | 446 | 221 | 100/144 | 15.83 |
-| t1f_none | t1 + flap / front-under-flap mesh h 8 mm | 58-65 / 50-52 / 57-60 | 447 | 226 | 125/136 | 11.43; flaps sunk 19/104 (min -2.4) |
-t1's styled threads rise is in the kb STYLING of plain cloth (front plain p99 67 % by thr.py), not the stiffness;
-with TF in all styling (t1_tfa) the slide stops early and the fronts fall short: the honest reach of today's ops.
-SHIRT under TF (shdiag on shirt_s0): full ops no bend PASS 6.47; full ops + bend W5 PASS 7.12 (s1: 2 fail, 12.2);
-v3 + bend W5 / W1: 2 FAIL (edge turn 52 deg, crumple 0.32), 6.6 (s1: pass at 12.5: bought with stretch). Shirt keeps
-today's ops; styling bend stays off (+0.65 threads).
-FAULTS on c2_none: pocket flaps ragged = coarse flap (25 vertices, 37 mm apart) over a coarser front, the front pokes
-through between flap vertices (s1_k3 too) -> t1f (flap h 8 mm + the front under it). Hem corner flip / boxy side: open.
-DEFAULTS: NOT flipped (FIT_BEND_KEYED off, plumb hold on, kb holds in): no variant yet matches k3 on edge AND threads.
-NEXT: (1) read t1_b5, t2_none, t1f_none (tab38.sh <tag>; grep "threads p99" r_<tag>.log; thr.py); (2) find where
-t1's kb styling tears plain front cloth (thr.py per op: dump asm after each op with stylekb2 + gp.thread_strain;
-the slide / turn ops tuned on floppy cloth): retune that op under TF, prove it; (3) if a TF variant reaches edge 450
->= 60 & threads <= 8.5 (or reads >= k3 vs concept) -> flip: FIT_BEND_KEYED on, gc_garrett plumb_hold off, kb
-jacket.wear.open holds out, KAT, ledger; (4) renders post38.sh <tag> + cmp.py + joeseam39.py, then the blind LOOK
-(gates.md; context "the reference jacket is worn open, unbuttoned"; wholefront, upper_front, side). Suite (17 garment files + test_bending, after the last code commit): 308 passed, 4 xfailed, PYTEST_EXIT 0 ($S2/suite.log).
-No renders / blind review this session (no variant earned one: none beats c2_none / k3 on edge AND threads).
+GOAL (Joe): canvassed pieces keep their shape by STIFFNESS so the workaround holds go. No sim, no rented GPU.
+Concept SLIM-CUT, worn open, falls straight (workspace/garrett_v20/concept_v8_front_apose.png). Rules: threads first
+(C195: "not a choice between stiffness and stretch"); supports, not holds (C190).
+Sessions: s1 main 78507629; s2 claude/canvas2 ($S2 /mnt/data/hifipushie/canvas/s2); s3 claude/canvas3
+($S3 /mnt/data/hifipushie/canvas/s3; history cloth.md "canvas stiffness session 3").
+S3 FOUND: t1's plain-front tear (p99 67 %, max 650 %) was the LAYER FLOOR, not a styling op (perop.py per-op reads):
+- shirt's open collar (thin two-sided leaf) shoved jacket gorge vertices through it in opposite directions, first relax
+  260 %; the lapel's own flap floor fought every round (9 mm a round), canvas 122 %.
+- C197 (default ON): floor has a side (behind -> own depth; push only from the tracked side), flap / patch read against
+  the base vertex it started over (nearest once slid off), static floor contacts held for the rest of the solve.
+  KAT test_a_floor_has_a_side. Front plain p99 66.8 -> 16.3; first relax canvas p99 25.9 -> 4.8 (= no floor).
+- C198 (opt-in per op, "thread_stop": true): pull / smooth_border refuse a step once any face passes max(start, 1 %)
+  + 2 %. KAT test_thread_stop_never_tears_a_face. On by default it broke 3 shirt open-collar tests.
+RUNS (concept edge 450/550/650 71/78/94, hem+30 482, V 237, lapel 127/134; s1_k3 59-64/72-74/95-97 thr 8.78):
+| t1_none (s2) | old floors | 59-67 / 62-67 / 78-79 | 470 | 228 | 125/136 | 11.90 |
+| t1_fy | floors + border stop | 75-78 / 75-78 / 91-96 | 484 | 234 | 125/143 | 9.88 (fronts 8.65) |
+| t1_fz | + pull stop (ops_ts.json) | 77-84 / 83-85 / 101-106 | 476 | 228 | 121/142 | 9.27 (fronts 7.31) |
+| t1_fza | t1_fz + GP_THREAD_FIRST_ALL | 69-82 / 76-82 / 94-103 | 459 | 222 | 122/140 | 13.20: canvas torn (open) |
+| d2_none | half canvas, TF fit | 42-44 / 42 / 36-38 | 408 | 220 | 121/125 | 7.98 |
+Under thread stops every pull stops at 0-3 mm: the kb pulls drew the fronts back IN by stretching. Without them the
+fronts over-open and flare A-line. LOOK t1_fz vs s1_k3 ($S3/check/cmp_{wholefront,upper_front,side}_t1fz_s1k3.png,
+joeseam_s1k3_t1fz.png): WORSE than k3 (flare, hem corners kick out, shirt shows through the left chest, left lapel
+edge doubled). DEFAULTS NOT flipped (threads 9.27 > 8.5 and the look loses to k3). No blind review (no candidate).
+NEXT: (1) the shirt show-through on t1_fz's left chest: a side effect of C197 rule 1 (behind -> own depth) or the
+contacts? A/B GP_FLOOR_SIDE_TRACK / GP_FLOOR_CONTACT on t1_fz (perop.py fit_t1 tag ops_ts.json; rd.sh; post38.sh).
+(2) the fronts' fall: replace the kb's inward pulls (front cutawayTop..cfHem "down 0.5, out -1"; hem "down") with a
+move that brings the lower fronts in by MOVING (a slide / turn back toward plumb, or a gentler turn deg: the turn at
+60 deg now over-opens) and keep thread_stop; target 650 ~94, falls straight. (3) residual plain strain: the first relax
+(front plain p99 9.3 -> 12.4) and the slide; GP_THREAD_FIRST_ALL tears the canvassed lapel at z 1.26-1.33 (t1_fza):
+find why (cap vs held contacts?) before using it. (4) then step 3/4 of s2's NEXT (flip test, renders, blind LOOK).
+(5) pocket-flap floor, hem corner flip: not reached.
+Suite (17 garment files + test_bending): see $S3/suite.log (quoted in the commit after it).
