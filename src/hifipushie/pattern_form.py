@@ -2297,7 +2297,16 @@ LAYER_W = 20.0  # a vertex touching the over layer: its proximal weight (x a fre
 # push): on Garrett's worn-open jacket (f1) it cut the jacket through the shirt 131 -> 18 and the shirt poking out 442 ->
 # 118, but moved the roll off the concept (150 / 250: 58 / 47 vs w1h 70 / 58, concept 69 / 64; break 337 vs 379 below
 # HPS), opened a sew gap 4.6 mm and grain max 98 %; Joe: covered show-through is culled anyway (C153), so not pursued.
-UNDER_FLOOR = False
+UNDER_FLOOR = __import__("os").environ.get("PF_UNDER_FLOOR", "0") == "1"
+# THE FLOOR UNDER A STIFF LAYER WINS, FROM THE START, ON ITS OWN SIDE (canvas s5, C200): with the interfaced cloth's
+# hinges in the fit (FIT_BEND_KEYED), the soft push off the shirt (the T target above) lost to the canvas's flat rest:
+# Garrett's chest sank behind the shirt in the FIRST relax (46-49 % of the chest vertices, p10 -12 mm) and in the swing
+# (75 %, p50 -11 mm), before the C172 floor (from the seat) acts; the keyed fits c1 / c2 / h2 / t1 end 37-56 % behind,
+# the unkeyed c0 4-8 %. UNDER_FLOOR_FROM "relax1": the floor acts in every relax. UNDER_FLOOR_SIDE: a vertex behind the
+# under layer at the PLACEMENT (a jacket point placed inside the shirt's open collar leaf) is never pushed through it
+# from behind (C197's rule at fit time); the rest are kept outside it every round.
+UNDER_FLOOR_FROM = __import__("os").environ.get("PF_UNDER_FLOOR_FROM", "seat")
+UNDER_FLOOR_SIDE = __import__("os").environ.get("PF_UNDER_FLOOR_SIDE", "1") == "1"
 LAYER_FROM = "seat"  # the ceiling acts from this phase on ("relax1": all relaxes; "seat": once made pieces are stood up)
 
 
@@ -2348,6 +2357,11 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
     usurf = _Surface(under["V"], under["F"], ref=bsurf) if under is not None and bsurf is not None else None
     osurf = _Surface(over["V"], over["F"], ref=bsurf) if over is not None and bsurf is not None else None
     ceil_on = [LAYER_FROM == "relax1"]
+    uf_on = [UNDER_FLOOR_FROM == "relax1"]  # (UNDER_FLOOR's start; C200)
+    uf_side = np.ones(len(X), bool)  # (UNDER_FLOOR_SIDE: the vertices outside the under layer at the placement)
+    if UNDER_FLOOR and UNDER_FLOOR_SIDE and usurf is not None:
+        cv0_, du0_, _ = covered(usurf, X, bsurf)
+        uf_side = ~(cv0_ & (du0_ < 0.0))
     # which face of each piece is its outside (CCW in the pattern = +z normal): from the start's placement
     face_sign = {}
     Nf = np.cross(X[F[:, 1]] - X[F[:, 0]], X[F[:, 2]] - X[F[:, 0]])
@@ -2605,10 +2619,10 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                     ccon = c_
                     wc = wc_keep + LAYER_W * (ccon | ucon)
                     Ax, Ayz, Ay = system(wc) if sw_ is None else system(wc, sw_)
-            if UNDER_FLOOR and usurf is not None and ceil_on[0] and grav <= 0 and it % 5 == 0:  # (C172: the vertices
+            if UNDER_FLOOR and usurf is not None and uf_on[0] and grav <= 0 and it % 5 == 0:  # (C172: the vertices
                 # on the under layer weigh LAYER_W in the solve, as the ceiling's: contact the solve knows)
                 cv_, du_, _ = covered(usurf, X, bsurf)
-                c_ = cv_ & (du_ < LAYER_GAP + 0.001)
+                c_ = cv_ & (du_ < LAYER_GAP + 0.001) & uf_side
                 if (c_ != ucon).any():
                     ucon = c_
                     wc = wc_keep + LAYER_W * (ccon | ucon)
@@ -2802,10 +2816,10 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                     d, nrm, _ = bsurf.signed(Xn)
                     lo = d < off
                     Xn[lo] += nrm[lo] * (off[lo] - d[lo])[:, None]
-            if UNDER_FLOOR and usurf is not None and ceil_on[0] and grav <= 0:  # THE UNDER LAYER IS A FLOOR (C172): hard
+            if UNDER_FLOOR and usurf is not None and uf_on[0] and grav <= 0:  # THE UNDER LAYER IS A FLOOR (C172): hard
                 # contact over the garment under it, the ceiling's mirror (see UNDER_FLOOR)
                 cv_, du_, nu_ = covered(usurf, Xn, bsurf)
-                cv_ &= du_ < LAYER_GAP
+                cv_ &= (du_ < LAYER_GAP) & uf_side
                 Xn[cv_] += nu_[cv_] * np.minimum(LAYER_GAP - du_[cv_], LAYER_STEP if it < iters - 1 else 1.0)[:, None]
             X = Xn
         wc, bend_f = wc_keep, bend_keep
@@ -2928,6 +2942,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
     # onto the form (drawn toward the body's offset), then let go: the pattern's lengths decide how far it stands off
     # (a membrane can't resist a pull onto a curved form: held there it shrinks; the ease would read short)
     ceil_on[0] = True
+    uf_on[0] = True
     if plumb_hold and body is not None:  # (C181: the side seams on the vertical below their tops, from the seat on)
         py = plumb_seam_pins(M, X, plumb_hold)
         info["plumb_hold_v"] = len(py)

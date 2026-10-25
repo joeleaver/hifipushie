@@ -11023,3 +11023,17 @@ turned, points pulled) were tuned on bending-free cloth; the stand's rest is the
   43-58 vs k3 16-31), the hem rises toward the front (737 vs 748), the left lapel edge still doubles. lg (let go only)
   still kicks the corners out and forward at the hip. Not flipped: threads 9.0 > 8.5 (excess outside the fronts, from
   the fit) and the chest show-through. No blind review (the flip gate was not met).
+
+## canvas stiffness session 5 (2026-10-25; $S5 = /mnt/data/hifipushie/canvas/s5; branch claude/canvas5)
+- SHOW-THROUGH CAUSE (gap.py on stored fits): keyed bending, not threads first. Chest vertices behind the shirt at fit
+  end: c0 (unkeyed, no plumb hold) 8 / 4 %; s1 (unkeyed, plumb hold) 12 / 8 %; c1 / c2 (keyed, no TF) 50 / 48 %; h2 (W2,
+  no TF) 52 / 56 %; t1 (keyed + TF) 46 / 37 %. Traced t5a (= fit_t1's recipe, reproduces it): placement 2 / 11 %,
+  relax1 49 / 49 % (p10 -12 mm), swing 75 / 69 % (p50 -11 mm), seat 45 / 50 %, let_go 46 / 37 %. The chest sinks in the
+  FIRST relax and the swing, where the shirt is only a soft target (T) and the canvas's flat-rest hinges win; the C172
+  floor (UNDER_FLOOR, opt-in) starts only at the seat.
+- THREADS p99 9.05 (perpiece5.py, the table's pooled read, per piece): the excess is the COLLAR (15.7 %, 64-68 % of the
+  values over 8.5 %), set by the fit and untouched by the styling (fit_t1 = asm_t1_hc there); fronts 6.3-7.6, backs
+  5.9-7.1 (styling adds ~1.4 on back.L). k3 is 8.78 too (collar 10.8, front.L 8.9). Keyed fits move the stand's strain
+  into the collar (stand 18-21 -> 10, collar 11-13 -> 15.7).
+- POCKET FLAPS (flapgap.py): each flap is 25 vertices over a front meshed 10-12 mm there; 7-12 front vertices under each
+  flap stand at or outside it (0-4.5 mm, 13 mm in the turn) between the flap's vertices: a mesh-resolution fault.
