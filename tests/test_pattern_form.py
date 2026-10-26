@@ -2327,3 +2327,30 @@ def test_the_fit_sews_a_patch_on_its_stitch_line(verbose=True):
     assert on[1] > 0.0, on
     assert on[2] < 0.05, on
     assert off[0] > 20.0, off
+
+
+def test_worn_open_unfastened_front_has_no_lap(off=0.05):
+    """(canvas s14, C223) pattern_form.OPEN_LAP: a garment WORN OPEN with nothing fastened has no lap (its fronts never
+    lie on each other as worn). Known answer: the mirrored lapels on a flat chest with a closure over front.L / under
+    front.R and no pairs fastened, worn_open {"break": 50 mm}: OPEN_LAP False -> no lap layering (no "lap_order" in the
+    info) and the two breaks mirror each other within 1 mm; OPEN_LAP True (the control) layers them (lap_order)."""
+    M = _mirrored_lapels("press")
+    M["closures"] = [{"name": "front", "kind": "buttons", "over": "front.L", "under": "front.R", "state": "open",
+                      "pairs": [], "v": []}]
+    body = _plane_body(0.0)
+    X0 = np.c_[M["uv"][:, 0], np.full(len(M["uv"]), -0.006), 1.0 + M["uv"][:, 1]]
+    res = {}
+    old = pf.OPEN_LAP
+    try:
+        for on in (True, False):
+            pf.OPEN_LAP = on
+            out = pf.assemble({"mesh": M, "X0": X0}, body, iters=80, attract=0.0, worn_open={"break": off})
+            bx = {k: float(out["V"][v, 0]) for k, v in M["points"].items() if k.endswith(":break")}
+            res[on] = (bx, "lap_order" in out["info"])
+            print(f"OPEN_LAP {on}: breaks {({k: round(x * 1000, 1) for k, x in bx.items()})} mm, layered {res[on][1]}")
+    finally:
+        pf.OPEN_LAP = old
+    bx, layered = res[False]
+    assert not layered, res
+    assert abs(bx["front.L:break"] + bx["front.R:break"]) < 0.001 and abs(bx["front.L:break"] - off) < 0.003, bx
+    assert res[True][1], res  # (the control: layered)

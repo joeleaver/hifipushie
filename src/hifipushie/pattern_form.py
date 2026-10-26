@@ -1985,6 +1985,13 @@ def _swing_front(M, X, ox, fast, bsurf):
 # vertices 315-568 mm below HPS, made in relax1 and kept by every release since; his shirt: 188 + 210, 79-699 mm). An
 # intersection-free sim keeps a crossing it starts with, so no release or arrangement could part them.
 LAP_LAYER = True
+# OPEN_LAP (canvas s14): a garment WORN OPEN with nothing fastened has no lap: its fronts never lie on each other as worn.
+# Layered anyway, the closed placement's relax1 pushed the over front (Garrett's L) 28 mm past CF and the under one (R) back
+# to 8: the swing to the same worn-open offset (64 mm) then turned L 20 mm further than R, and the fit's lower fronts came
+# out asymmetric (edge 450 / 550 / 650 L 63 / 56 / 58 vs R 70 / 60 / 54, cfHem 710 vs 691 below HPS); the styling's slide
+# and turn read the R edge as already plumb and moved only L (s13 r20: final edge 450 L 61 / R 49). False: no lap layering
+# when worn open and unfastened (env PF_OPEN_LAP=0); True: the old layering (default until a render reads as well).
+OPEN_LAP = __import__("os").environ.get("PF_OPEN_LAP", "1") == "1"
 LAP_GAP = THICK  # m: the over piece's least gap off the under piece where they lap (one cloth layer)
 LAP_REACH = 0.012  # m: an over vertex laps the under piece where it is within this of its nearest vertex ACROSS (tangentially: ~ the mesh edge; 6 mm missed the 10 mm triangles below the lapel)
 LAP_DEPTH = 0.008  # m: ... and at most this far behind or in front of it (further is another layer: 30 mm caught the lapel)
@@ -2534,7 +2541,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
         lay_adj.data[:] = 1.0
     else:
         lay_adj = None
-    laps = lap_layers(M, X, fast, skip=flapv) if LAP_LAYER else []  # (a lapped closure's over piece outside its under piece; turned flaps lie on their own base)
+    laps = lap_layers(M, X, fast, skip=flapv) if LAP_LAYER and not (worn_open and not fast and not OPEN_LAP) else []  # (a lapped closure's over piece outside its under piece; turned flaps lie on their own base; OPEN_LAP)
     # off-the-body target per vertex
     off = ease + THICK * flapv
     on_flap = flapv.copy()  # (no seat attraction onto the body: turned flaps + what the press laid on them)
