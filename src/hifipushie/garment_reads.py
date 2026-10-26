@@ -14,6 +14,9 @@ READINGS (numbers, read off the geometry, never off a design key):
 - `collar_reads(X, M, hps_z)`  (C97) the collar's state: its points (each side's lowest fall vertex) apart, off CF and
   below the HPS (front view), whether the fall is turned down over the stand at CB (fall_above_stand_mm < 0), and the
   label collar_state standing / closed / part / spread.
+- `lapel_face_reads(X, M, hps_z)` (C218) the lapel FACE in the front view per row below the HPS: roll edge to the turned
+  cloth's outer edge, perpendicular to the roll, and where the face ends (the visible break). The outer edge's offset
+  off CF alone missed thin lapels (canvas s12).
 - `tuck_reads(X, body, line_z)` (C97, design key "tucked") the cloth below the tuck line: its p90 stand-off off the body
   and how far the hem runs below the line (hidden by the garment over it).
 - `collar_draft_reads(Bp, g)`  (C101) ANY collar with a stand (role collar_stand) and a fall (role collar_fall) sewn to
@@ -132,6 +135,76 @@ def front_reads(X, M, hps_z: float, closure: str = "front") -> dict:
     return out
 
 
+LAPEL_FACE_ROWS = (150, 200, 250, 300, 350)  # mm below the HPS (the concept's traced rows, canvas s12)
+LAPEL_FACE_SOURCE = ("canvas s12 (C218): the lapel read that missed the thin lapels was the OUTER EDGE's offset off CF "
+                     "(122 vs the concept's 127-134 at 150 below HPS, 'only 5-12 mm apart') while the visible lapel FACE "
+                     "ended 55 mm above the concept's break and was 4-25 mm narrower from 200 down. Read like the traced "
+                     "concept: front view, per row from the roll (the front's CF-most edge) to the turned cloth's outermost "
+                     "edge, perpendicular to the roll's lean")
+
+
+def _section_x(X, F, z):
+    """|x| of the points where triangles F cross the plane at height z (front view sections), (n,) array."""
+    P = X[F]
+    dz = P[:, :, 2] - z
+    xs = []
+    for i, j in ((0, 1), (1, 2), (2, 0)):
+        a, b = dz[:, i], dz[:, j]
+        m = (a * b < 0) | ((a == 0) & (b != 0))
+        if m.any():
+            t = a[m] / (a[m] - b[m])
+            xs.append(np.abs(P[m, i, 0] + t * (P[m, j, 0] - P[m, i, 0])))
+    return np.concatenate(xs) if xs else np.zeros(0)
+
+
+def lapel_face_reads(X, M, hps_z: float, turned=None, rows=LAPEL_FACE_ROWS) -> dict:
+    """The LAPEL FACE as the front view shows it (C218), per side (L = +x): at each row (mm below hps_z) the roll edge
+    (the front piece's CF-most section point: the roll's crest seen from the front), the outer edge (the turned cloth's
+    outermost section point) and the face = outer - roll, x cos of the roll edge's local lean (perpendicular to the
+    roll); lapel_face_end_below_hps_mm: the lowest row (1 mm steps) with turned cloth beyond the roll, i.e. where the
+    face ends (the concept: the break, 386). turned: bool per face of M["F"] (default folds.flap_faces: the cloth past a
+    fold's last row). No front with a turned flap: {}."""
+    from . import folds as fm
+    X = np.asarray(X, float)
+    F = np.asarray(M["F"])
+    if not len(F):
+        return {}
+    turned = fm.flap_faces(M, F) if turned is None else np.asarray(turned, bool)
+    pid = np.asarray(M["piece"])
+    rr = _roles(M)
+    out: dict = {}
+    for k, r in enumerate(rr):
+        if r != "front":
+            continue
+        fk = pid[F[:, 0]] == k
+        if not (fk & turned).any():
+            continue
+        s = "L" if X[pid == k, 0].mean() > 0 else "R"
+        Ff, Ft = F[fk], F[fk & turned]
+        zt = X[np.unique(Ft), 2]
+        prof = []
+        for dmm in np.arange(math.floor((hps_z - zt.max()) * 1000), math.ceil((hps_z - zt.min()) * 1000) + 1):
+            z = hps_z - dmm / 1000
+            xt, xf = _section_x(X, Ft, z), _section_x(X, Ff, z)
+            if len(xt) and len(xf):
+                prof.append((float(dmm), float(xf.min()) * 1000, float(xt.max()) * 1000))
+        if not prof:
+            continue
+        P = np.asarray(prof)
+        out[f"lapel_face_end_below_hps_{s}_mm"] = round(float(P[-1, 0]), 1)
+        for d in rows:
+            if not (P[0, 0] <= d <= P[-1, 0]):
+                out[f"lapel_face_{s}_{d}_mm"] = 0.0 if d > P[-1, 0] else None
+                continue
+            ro, xo = np.interp(d, P[:, 0], P[:, 1]), np.interp(d, P[:, 0], P[:, 2])
+            near = np.abs(P[:, 0] - d) <= 25
+            lean = np.polyfit(P[near, 0], P[near, 1], 1)[0] if near.sum() > 3 else 0.0
+            out[f"lapel_face_{s}_{d}_mm"] = round(float((xo - ro) * math.cos(math.atan(lean))), 1)
+            out[f"lapel_roll_{s}_{d}_mm"] = round(float(ro), 1)
+            out[f"lapel_outer_{s}_{d}_mm"] = round(float(xo), 1)
+    return out
+
+
 def collar_reads(X, M, hps_z: float) -> dict:
     """The collar's worn state (front view: x across, z up): the fall's points, its turn over the stand at CB."""
     X = np.asarray(X, float)
@@ -206,6 +279,8 @@ def big_reads(res: dict, X=None, g: dict | None = None) -> dict:
         return {}
     hz = float(np.asarray(hps, float).reshape(-1)[2])
     out = {**front_reads(X, M, hz), **collar_reads(X, M, hz)}
+    if any(str(fd.get("name", "")).startswith("lapel") for fd in M.get("folds") or []):
+        out.update(lapel_face_reads(X, M, hz))
     lz = tuck_line_z(body, g or {})
     if lz is not None:
         torso = ~_mask(M, ("sleeve", "cuff", "collar_stand", "collar_fall"))

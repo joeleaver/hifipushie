@@ -1,6 +1,7 @@
 """Known answers for garment_reads (shirt round 2: C97 big reads on the form, C98 checklist rows, C101 collar rules,
 C100 lit-vs-lit colour). Synthetic pieces / meshes: no draft, no Blender, ~1 s."""
 import json
+import math
 import os
 
 import numpy as np
@@ -270,3 +271,61 @@ def test_own_colour_objects_take_the_spec_colour_and_stripe(monkeypatch):
     assert out[0]["color"] == "#c9b8a6"  # (the body keeps its own)
     assert out[1]["color"] == "#bdb8b4" and out[1]["stripe"]["pitch_mm"] == 2.5 and out[1]["roughness"] == 0.8
     assert out[1]["uv"].shape == (3, 2) and objs[1]["color"] == "#5b7fa6"  # (the clay objects unchanged)
+
+
+# ----------------------------------------------------------------------------------- C218: the lapel FACE (canvas s12)
+def _lapel_mesh(lean_deg=0.0, yaw_deg=0.0, end=386.0, taper=0.25):
+    """front.L / front.R: a forepart sheet (y -0.12) from the roll edge out to 0.2 m, and a turned lapel (y -0.125)
+    from the roll edge out by w(d) = taper x (end - d) mm (d below HPS, 90..end), yawed yaw_deg about the roll (its
+    outer edge swung back in y); the roll edge leans lean_deg toward CF going down (60 mm off CF at 90 below HPS).
+    Returns X, M, turned (bool per face)."""
+    V, piece, F, turned = [], [], [], []
+    ds = np.arange(90.0, 600.0, 4.0)
+    for k, sg in ((0, 1), (1, -1)):
+        for part in ("front", "lapel"):
+            base = len(V)
+            for d in ds:
+                e = 60.0 - (d - 90.0) * math.tan(math.radians(lean_deg))
+                w = max(taper * (end - d), 0.0) if part == "lapel" else 200.0 - e
+                for u in np.linspace(0.0, 1.0, 9):
+                    x = e + u * w * math.cos(math.radians(yaw_deg))
+                    y = -0.12 if part == "front" else -0.125 + u * w * math.sin(math.radians(yaw_deg)) / 1000
+                    V.append((sg * x / 1000, y, HPS - d / 1000))
+                    piece.append(k)
+            n = len(ds)
+            for i in range(n - 1):
+                if part == "lapel" and ds[i] >= end:
+                    break
+                for j in range(8):
+                    a, b, c, dd = base + i * 9 + j, base + i * 9 + j + 1, base + (i + 1) * 9 + j, base + (i + 1) * 9 + j + 1
+                    F += [(a, b, dd), (a, dd, c)]
+                    turned += [part == "lapel"] * 2
+    M = {"names": ["front.L", "front.R"], "piece": np.asarray(piece), "F": np.asarray(F), "closures": []}
+    return np.asarray(V, float), M, np.asarray(turned)
+
+
+
+def test_lapel_face_reads_a_known_flat_lapel():
+    """C218: a flat lapel w = 0.25 x (386 - d) mm reads its own width at each row (+-1 mm), both sides, and its face ends
+    at the break (386, the concept's)."""
+    X, M, t = _lapel_mesh()
+    r = gr.lapel_face_reads(X, M, HPS, turned=t)
+    for s in "LR":
+        for d in (150, 200, 250, 300, 350):
+            assert abs(r[f"lapel_face_{s}_{d}_mm"] - 0.25 * (386 - d)) <= 1.0, (s, d, r)
+        assert abs(r[f"lapel_face_end_below_hps_{s}_mm"] - 386) <= 4.0, r
+
+
+def test_lapel_face_is_perpendicular_to_the_roll_and_shows_the_turn_aside():
+    """C218: a roll edge leaning 15 deg reads the face perpendicular to it (horizontal width x cos 15); a lapel turned 40
+    deg aside (C212's sideways faces) reads foreshortened (x cos 40): the front view, like the traced concept."""
+    X, M, t = _lapel_mesh(lean_deg=15.0)
+    r = gr.lapel_face_reads(X, M, HPS, turned=t)
+    assert abs(r["lapel_face_L_200_mm"] - 0.25 * 186 * math.cos(math.radians(15))) <= 1.5, r
+    X, M, t = _lapel_mesh(yaw_deg=40.0)
+    r = gr.lapel_face_reads(X, M, HPS, turned=t)
+    assert abs(r["lapel_face_L_200_mm"] - 0.25 * 186 * math.cos(math.radians(40))) <= 1.0, r
+    # a lapel whose face ends 55 mm high (Garrett d2: 330) reads 0 at 350, not the outer edge's offset
+    X, M, t = _lapel_mesh(end=331.0)
+    r = gr.lapel_face_reads(X, M, HPS, turned=t)
+    assert r["lapel_face_L_350_mm"] == 0.0 and abs(r["lapel_face_end_below_hps_L_mm"] - 331) <= 4.0, r

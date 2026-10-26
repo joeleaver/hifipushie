@@ -11250,3 +11250,21 @@ Job: hold the unbuttoned front open (the pressed rest + weight). No default chan
   the hem is fuller; lapels still clearly narrower than the concept, the gorge crumpled in both, the side the same.
   Not the default; no blind review (edge 450 13-17 mm short). The u-variants (UNDER_MADE) without stiffness tear the
   collar (p5du 12.85 %).
+
+## canvas stiffness session 12 (2026-10-25; $S12 = /mnt/data/hifipushie/canvas/s12; branch claude/canvas12)
+Job: the lapels read as thin strips beside the concept's broad faces; the lapel read (outer edge off CF) said 5-12 mm.
+- Concept traced (face12.py; ovl_concept.png): camera fit 0.88054 px/mm, HPS row 350, CF = the shirt's button line
+  628 px. Roll = first jacket px out from the shirt (gray < 120), outer = darkest px within +-6 of hand picks (grid_R /
+  grid_Lw at 4x), median-smoothed. Face (perp. to roll) 150 / 200 / 250 / 300 / 350: L 62 / 51 / 39 / 27 / 14, R 62 / 53 /
+  44 / 37 / 25; roll L 73 / 69 / 67 / 64 / 63, R 69 / 63 / 56 / 46 / 42 off CF; ends at the break 386; lapel point L 149 /
+  R 145 off CF at 89 / 93; notch (gorge) 68-69 below HPS, 127-131 off CF.
+- Ours (same rows, front-view raster and mesh sections agree +-2 mm): d2 face 61 / 49 / 33 / 17 / 0, ends 330-336, roll
+  61 / 56 / 52 / 49; p5d 60 / 47 / 32 / 15 / 0, ends 333-337; fit_d2 53 / 40 / 25 / 13 / 0, ends 317-321.
+- Where the face is lost (geo12 / brk12): NOT the styling's yaw (3D vs projected 1-3 mm) and not the draft's width (flat
+  from the roll line 64-71 at 150, like the concept). It is the LENGTH: (a) the worn break 365-370 (fit 352-356) vs 386,
+  with the buttons (379 / 496 vs 399 / 518): the flat break 0.425 was set in fit round 9 when the form put it at 386;
+  the open fit now puts it 34 mm higher; (b) the roll's rows run parallel to the roll line 15.5 mm wide on the flap side,
+  so the last row meets the lapel edge 35-42 mm above the break (rows end d 352 / 344 / 335 / 326 / 317 on fit_d2):
+  the lowest 40 mm of the lapel is roll band, no face; (c) the styling slides the lapel point down 80 -> 102 (concept
+  89-93). Per distance above the break, ours vs concept: 217 +2, 167 0, 117 -5, 67 -11, 17 -14 mm.
+- The read: garment_reads.lapel_face_reads (C218) in big_reads; KATs on a synthetic flat / leaning / yawed lapel.
