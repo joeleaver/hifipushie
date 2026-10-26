@@ -11317,3 +11317,14 @@ Job: the lapels read as thin strips beside the concept's broad faces; the lapel 
   lapelR_ref_eevee_workbench_bc44.png) shows the lapel's edge line and its stand like the concept. Workbench shadows on
   (bc44sh) change little. Not a geometry fault; judge the lapel's stand in EEVEE (engine-agnostic: EEVEE) or by lift13's
   numbers. C221.
+- e20 (repro with no overrides on v9) = b20, max |dA| 0.0 mm.
+- (3) NOTCH TABS: the cause is named by the gate's waived row collar_stand_end (stand 14.2 mm at the collar's end vs
+  3: a stand standing to the notch carries the end as a tab). R28 (pattern_jacket collar_two_piece run_off: the stand
+  runs off where the lapel's roll line crosses the gorge; the fall's roll runs off with it, folds "run_off") has been
+  OPT-IN since fit rounds 18-19 (gorge twist then). b18r (b18 + collar.run_off) and r20 (v9 + run_off): the collar's
+  end lies flat on the lapel as a clean notch (check/notch_b18_vs_b18r.png, notch_r20.png), the collar climbs the neck
+  cleanly in upper_front. r20: face 62/54/41/28/17 ; 62/53/43/29/18, break 374/376, edge 61-49/74-67/98-97 (650 nearer
+  94), hem 486, len 728, threads p99 5.55 (b20 6.39), collar heights az 0/45/90 stand lo 29/21/11 (b20 29/23/1), lift
+  outer edge 6.0 / 4.5. Gate PASS_WAIVED 09456467b628eb573deb: collar_stand_end now PASSES; notch angle 57.1 (60-90)
+  FAILS under its existing waiver (round 29: the 20 mm collar roll). LOOK (check/cmp_r20_b20_bc44_*.png): r20 reads
+  best (notches like the concept's, no crumple). -> DEFAULT gc_garrett v10 (setdef13b.py, checked=True). C222.
