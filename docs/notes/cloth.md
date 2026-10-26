@@ -11268,3 +11268,17 @@ Job: the lapels read as thin strips beside the concept's broad faces; the lapel 
   the lowest 40 mm of the lapel is roll band, no face; (c) the styling slides the lapel point down 80 -> 102 (concept
   89-93). Per distance above the break, ours vs concept: 217 +2, 167 0, 117 -5, 67 -11, 17 -14 mm.
 - The read: garment_reads.lapel_face_reads (C218) in big_reads; KATs on a synthetic flat / leaning / yawed lapel.
+- Candidates (repro12.py: lapel op keys overridden in memory, fit + default styling; reads lf12 / rd.sh / geo12):
+  break_y 0.45 FAILED in placement (collar triangle 0.22 m: cloth.place; not chased). b44 = break_y 0.44; c08 =
+  roll_converge 0.08 (C219); bc44 = both.
+  | run | face 150/200/250/300/350 (L) | face ends L/R | break vtx | lapel pt | outer 150 | V200 | edge 450/550/650 | hem | len | thr p99 |
+  | concept | 62/51/39/27/14 | 386 | 386 | 89-93 | 127-134 | 237 | 71/78/94 | 482 | 748 | - |
+  | d2 | 61/49/33/17/0 | 330/336 | 365/370 | 102 | 122 | 209 | 52-50/65-72/90-105 | 470 | 735 | 7.64 |
+  | b44 | 61/49/34/20/0 | 341/347 | 378/383 | 95-99 | 126-127 | 218 | 45-49/55-68/85-100 | 467 | 732 | 7.64 |
+  | c08 | 60/47/31/17/1 | 350/360 | 360/368 | 93-101 | - | - | - | - | - | - |
+  | bc44 | 59/47/32/18/8 (R 61/50/36/20/10) | 366/376 | 376/385 | 94-101 | 125-126 | 218 | 57-50/70-70/95-101 | 481 | 729 | 5.75 |
+  button1 b44 392 (concept 399, d2 379).
+- LOOK bc44 vs d2 beside the concept (check/cmp_bc44_d2_*.png, ovl_bc44.png): the lapels run on down to the break and
+  read longer, the V deeper and closer to the concept's; L / R more even; the hem fuller (481). Still: the faces read
+  flat (no edge shadow / thickness line like the concept's), narrower from 250 down (18-20 vs 27-37 at 300), the gorge
+  crumpled, the front 19 mm short. At least as good as d2; better at the lapels.
