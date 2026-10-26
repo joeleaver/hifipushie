@@ -37,3 +37,4 @@ NEXT (in order; scripts in $S10: perop9 / opcol9 / yaw10 / lean10 / sm10 / cap9 
 3. Gorge tabs + stand flare at 110 deg: the lapel roll pulling the stand top out; measure the roll line's 3D path from
    the break to CB against the neck before any draft change; R30 only with the fall drafted from a straightened roll.
 4. Hem (456-477 vs 482) and 650 edge after 1-2.
+SUITE s10 (18 files, docs-only branch): 315 passed, 4 xfailed, PYTEST_EXIT 0 ($S10/suite.log).

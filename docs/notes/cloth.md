@@ -11229,3 +11229,4 @@ No default changed; no code left changed (dead levers reverted, the stand-lean p
   round the neck, no shirt collar over it at the back); everything else the same or worse: lapels a touch narrower,
   L hem corner kicks out / R hangs in (asymmetric), side view bulges forward at the pocket and tucks in at the hem
   (d2 falls straighter). Gorge tabs crumpled in both. Not the default; no blind review (edge rows not within +-8).
+- Suite (18 files): 315 passed, 4 xfailed, PYTEST_EXIT 0 ($S10/suite.log).
