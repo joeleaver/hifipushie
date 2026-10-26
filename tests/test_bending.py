@@ -198,3 +198,39 @@ def test_threads_outweigh_bending_in_the_one_solve(bend_on, monkeypatch, verbose
     if verbose:
         print("mem_w", A.mem_w, "threads p99", np.percentile(t.max(1), 99))
     assert np.percentile(t.max(1), 99) < 0.015
+
+
+def test_pressed_canvas_keeps_its_pressing_through_the_styling(bend_on, monkeypatch, verbose=True):
+    """C214 (canvas s11): a strip PRESSED into a curve (the rolled strip: canvas pad-stitched and steamed round a 12 mm
+    half cylinder, its rest = that shape, the styling start) held along its first 5 mm, through a styling relax AND a
+    smooth (the hand flattening ripples): canvassed it keeps its pressing (radius within 15 % of 12 mm, edge within
+    4 mm of 24 mm up); plain cloth does not (it falls, edge > 10 mm lower). With SMOOTH_PRESSED off the smooth's fair
+    aims at zero curvature and irons the canvas's pressing out too (the A/B the default switch rests on)."""
+    monkeypatch.setattr(gp, "SMOOTH_PRESSED", True)
+    out = {}
+    for kind in ("plain", "canvas"):
+        M, X = _rolled()
+        M["bend_w"] = np.full(len(X), bd.BEND_KIND[kind])
+        M["_bend_rest"] = X.copy()
+        held = M["uv"][:, 1] < 0.005
+        X1, _ = gp.relax(M, X, held, hang=True, hang_iters=1500)
+        X2, inf = gp.smooth(M, X1, held, ["strip"], tol=0.02)
+        edge = M["uv"][:, 1] > M["uv"][:, 1].max() - 1e-7
+        out[kind] = (_roll_radius(X2, M), 1000 * float(X2[edge, 2].mean()), inf["rounds"])
+        if verbose:
+            print(f"{kind:8s} pressed roll radius {out[kind][0]:.1f} mm (12.0), edge {out[kind][1]:.1f} mm up (24), smooth {inf}")
+    assert abs(out["canvas"][0] - 12.0) <= 0.15 * 12.0, out
+    assert abs(out["canvas"][1] - 24.0) <= 4.0, out
+    assert out["plain"][1] < 24.0 - 10.0, out
+    # (the A/B: the same canvas strip smoothed flat-aimed loses more of its pressing)
+    monkeypatch.setattr(gp, "SMOOTH_PRESSED", False)
+    M, X = _rolled()
+    M["bend_w"] = np.full(len(X), bd.BEND_KIND["canvas"])
+    M["_bend_rest"] = X.copy()
+    held = M["uv"][:, 1] < 0.005
+    X1, _ = gp.relax(M, X, held, hang=True, hang_iters=1500)
+    X2, inf = gp.smooth(M, X1, held, ["strip"], tol=0.02)
+    r_flat = _roll_radius(X2, M)
+    if verbose:
+        print(f"canvas, flat-aimed smooth: radius {r_flat:.1f} mm, {inf}")
+    assert abs(out["canvas"][0] - 12.0) <= abs(r_flat - 12.0) + 0.05, (out, r_flat)

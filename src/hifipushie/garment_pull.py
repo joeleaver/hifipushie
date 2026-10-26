@@ -81,7 +81,7 @@ from scipy.spatial import cKDTree
 # relax with STYLE_HANG) lets the free cloth settle under a weak downward field onto what supports it (the held pieces,
 # the floors), each round's move clamped to HANG_STEP, the threads capped at HANG_STRAIN (the muslin's stop). Known
 # answer: tests/test_garment_pull.py test_hang_sheet_from_its_top_edge.
-STYLE_HANG = False
+STYLE_HANG = __import__("os").environ.get("GP_STYLE_HANG", "0") == "1"  # (canvas s11: env for the A/B, every relax hung)
 HANG_G = 0.004  # m: the free move a round the weight would make (force = HANG_G x HANG_PROX x rest area / mean)
 HANG_PROX = 0.0025  # the hang's proximal weight (x a cot weight): small, so the free modes (a panel's swing) move
 HANG_STEP = 0.004  # m: the most a vertex moves in one hang round
@@ -130,6 +130,15 @@ STYLE_TF_PD_MEM = float(__import__("os").environ.get("GP_TF_PD_MEM", "1"))  # (1
 # jacket's pull solve 7.1 %)
 _tps = __import__("os").environ.get("GP_TF_PD_SHEAR")
 STYLE_TF_PD_SHEAR = float(_tps) if _tps else None  # (None: the weave's SHEAR_STIFF)
+
+# A PRESSED CANVAS IS SMOOTHED TO ITS PRESSING, NOT FLAT (canvas s11; C214): smooth's fair moved every brushed vertex
+# toward its one-ring centroid along its normal, i.e. toward ZERO curvature: on a canvassed front that irons out the
+# moulded chest and the lapel's roll (pad-stitched and steamed into the worn-open shape: its rest), and Garrett's
+# front smooth closed the break 6-8 mm under the stiff styling (u2). A hand smoothing a pressed front takes out the
+# ripples on top of its pressing: with SMOOTH_PRESSED the fair aims at the pressing's own normal offset (the styling
+# start, M["_bend_rest"], = the fit), by the vertex's interfacing share (bend_w 1 -> 0, canvas -> 1, feathered).
+# Plain cloth is faired flat as before.
+SMOOTH_PRESSED = __import__("os").environ.get("GP_SMOOTH_PRESSED", "0") == "1"
 
 STEP = 0.003  # m: a handle's move per step
 TOL = 0.005  # stretch p99 allowed above the least the pull has reached (0.5 %: the shirt's knee, module docstring)
@@ -1196,6 +1205,30 @@ def smooth(M: dict, X: np.ndarray, held, pieces, lam: float = 0.5, iters: int = 
         o = ((S / np.maximum(cnt, 1)[:, None] - Yc) * vn).sum(1)
         return o[:, None] * vn, np.abs(o)
 
+    if SMOOTH_PRESSED and M.get("_bend_rest") is not None and M.get("bend_w") is not None:  # (C214: the pressing kept)
+        from . import bending as bd_
+        bwv = np.zeros(A.n)
+        np.maximum.at(bwv, A.inv, np.asarray(M["bend_w"], float))
+        prs = np.clip((bwv - 1.0) / (bd_.BEND_KIND["canvas"] - 1.0), 0.0, 1.0)
+        if prs.any():
+            def _vn_cen(Z):
+                fn = np.cross(Z[WF[:, 1]] - Z[WF[:, 0]], Z[WF[:, 2]] - Z[WF[:, 0]])
+                vn = np.zeros_like(Z)
+                for k in range(3):
+                    np.add.at(vn, WF[:, k], fn)
+                vn /= np.linalg.norm(vn, axis=1)[:, None] + 1e-12
+                S = np.zeros_like(Z)
+                np.add.at(S, Ew[:, 0], Z[Ew[:, 1]])
+                np.add.at(S, Ew[:, 1], Z[Ew[:, 0]])
+                return vn, S / np.maximum(cnt, 1)[:, None]
+            W0 = A.weld(np.asarray(M["_bend_rest"], float))
+            vn0, c0 = _vn_cen(W0)
+            o0 = prs * ((c0 - W0) * vn0).sum(1)  # (the pressing's own offset, by the interfacing share)
+
+            def normal_offset(Yc):  # noqa: F811 (the fair aims at the pressing's offset, not flat)
+                vn, c = _vn_cen(Yc)
+                o = ((c - Yc) * vn).sum(1) - o0
+                return o[:, None] * vn, np.abs(o)
     sp = stretch_pieces  # (default: the pull's read, every piece with free cloth: one rule for both operations)
     if sp is None:
         sp = sorted(set(np.asarray(M["piece"])[~held].tolist()))
