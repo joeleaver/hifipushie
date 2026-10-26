@@ -46,3 +46,4 @@ NEXT (in order; scripts in $S11: go*.sh, perop9, sm11 / smw11 (re-run a captured
    roll (lapel29) on fit_d2 vs p5d: the flap's width itself.
 4. If 1-3 reach break ~60 and length / 650 hold: p5d family as the default candidate (shirt photo / trace rows and Tess's
    coat must pass: SMOOTH_HAND touches every smooth, the pressing touches fused pieces at share 0.37).
+SUITE s11 (18 files): 316 passed, 4 xfailed, PYTEST_EXIT 0 ($S11/suite.log); flags off = d2 (max 0.00004 mm, asm_e0).
