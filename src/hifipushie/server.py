@@ -150,7 +150,13 @@ TOOL_GROUPS: dict[str, dict] = {
                  "tools": ["likeness", "fit_likeness", "likeness_points", "character_read", "project_reference",
                            "texture_from_reference", "reference_brief", "check_references"]},
     "hair": {"about": "hair as curve locks: groom, look, reference, export", "tools": ["groom_hair", "tie_hair", "look_hair", "hair_reference", "hair_from_reference", "export_hair"]},
-    "cloth": {"about": "garments: design, pattern, the pattern gate, alterations, fit on the form, dress (sim), "
+    "cloth": {"workflow": "Clothes come from the pattern: design_garment -> pattern_check (the flat gate; sims refuse "
+                          "without its PASS) -> fit_garment (on the form, no sim) -> judge clay + diag beside the "
+                          "reference -> a sim (dress) only as a wrinkle source -> game mesh",
+              # the workflow's order (find_tool ranks a matched domain's early steps first)
+              "steps": ["design_garment", "pattern_check", "fit_garment", "style_garment", "check_garment",
+                        "look_cloth", "dress"],
+              "about": "garments: design, pattern, the pattern gate, alterations, fit on the form, dress (sim), "
                        "references",
               "tools": ["design_garment", "look_pattern", "alter_pattern", "pattern_check", "fit_garment", "style_garment", "release_garment", "arrange_garment",
                         "check_garment", "dress", "look_cloth", "garment_reference",
@@ -494,7 +500,21 @@ def find_tool(query: str = "", limit: int = 5) -> str:
                 "find_tool(\"<job>\") gives parameters + an example call; guide(topic=\"<tool>\") the full text.\n"
                 + "\n".join(f"{g} ({about}): {', '.join(ts)}" for g, about, ts in groups if ts))
     q = _words(query)
-    ranked = sorted(((sc, t) for t, sc in _tool_scores(q).items()), key=lambda x: (-x[0], x[1]))
+    scores = _tool_scores(q)
+    top = max(scores.values(), default=0.0)
+    flow = ""
+    if top > 0:
+        # A query in a domain with a workflow: its steps first, in order (the entry step on top), the rest of the
+        # domain next, other domains' stray word matches (a "dressed brow") after: the process, not a shortcut.
+        g = _group_of(max(sorted(scores), key=lambda t: scores[t]))
+        steps = TOOL_GROUPS.get(g, {}).get("steps", [])
+        if steps:
+            flow = TOOL_GROUPS[g]["workflow"] + f' (guide(topic="{g}")).\n'
+            for t in TOOL_GROUPS[g]["tools"]:
+                if scores.get(t, 0) > 0 or t in steps:
+                    scores[t] = scores.get(t, 0) + top * (1 + (len(steps) - steps.index(t)) / len(steps)
+                                                          if t in steps else 0.5)
+    ranked = sorted(((sc, t) for t, sc in scores.items()), key=lambda x: (-x[0], x[1]))
     ranked = [(sc, t) for sc, t in ranked if sc > 0][:max(1, int(limit))]
     if not ranked:
         return f"no tool matches {query!r}: find_tool(\"\") lists every tool by domain."
@@ -503,7 +523,7 @@ def find_tool(query: str = "", limit: int = 5) -> str:
         how = "native" if t in CORE else "via call_tool"
         out.append(f"{i}. {t} [{_group_of(t)}, {how}] use when: {_use_when(t)}\n"
                    f"   params: {_param_text(t)}\n   e.g. {_example(t)}")
-    return ("\n".join(out) + '\nnext: run the best match (non-core: call_tool(name, args)); guide(topic="<tool>") '
+    return (flow + "\n".join(out) + '\nnext: run the best match (non-core: call_tool(name, args)); guide(topic="<tool>") '
             "has its full parameters and behaviour.")
 
 

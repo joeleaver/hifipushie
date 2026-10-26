@@ -33,6 +33,11 @@ def test_garment_query_ranks_a_garment_tool():
     assert GARMENT_TOOLS & set(top), top
     top = _ranked("dress a character in a hoodie", 3)
     assert GARMENT_TOOLS & set(top), top
+    # the workflow leads: design before the sim; no other domain's stray word match ("dressed brow")
+    full = _ranked("dress a character in a hoodie", 10)
+    assert full.index("design_garment") < full.index("dress"), full
+    assert set(full[:5]) <= GARMENT_TOOLS, full
+    assert server.find_tool("dress a character in a hoodie").startswith("Clothes come from the pattern: design_garment")
     assert _ranked("groom hair")[0] == "groom_hair"
 
 
