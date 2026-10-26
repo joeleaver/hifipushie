@@ -11410,3 +11410,12 @@ Goal: styling threads-first like the fit (C209), so the stiff styling keeps the 
   shear p99 25 deg vs 7): the threads-first bound is max(the fit's length, 1.01), so the stiff styling keeps the fit's own
   strain where the default styling relaxes it; break 366 below HPS (20 above the concept's); side view: pocket flaps stand
   off the front (check/cmp_b3L_b2L_r20_side.png).
+- Face read (face15.py = face13 into s15; L ; R at 150/200/250/300/350): b2L 58;57 49;48 37;37 27;26 12;13 (concept
+  62;62 51;53 39;44 27;37 14;25; r20 62;62 54;53 41;43 28;29 17;18): 3-5 mm narrower than r20 above 250. Break 366 below
+  HPS (concept 386).
+- EEVEE (render13 RTEX=1, check/cmp_eevee_b2L_r20_upper_front.png): the V straighter and more even than r20 (concept-like);
+  the lapel faces ripple / pucker along the roll (r20 smoother); collar end lump at the R notch on both.
+- Blind review: bin/review ../review_b2L with clay wholefront / upper_front + the EEVEE upper front; the diag crops are
+  refused as contact sheets (the body's grey gutter); the run itself failed on the reviewer's weekly limit. Not reviewed.
+- Verdict: b2L is the first stiff styling with the edge rows within +-8 and the fronts hanging; its surface (lapel
+  ripple, flaps off the front) and threads (8.3 vs 5.55) read worse than r20. Opt-in only (GP_STYLE_BEND=1 + oL17 fit).

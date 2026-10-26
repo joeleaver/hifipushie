@@ -37,16 +37,21 @@ S14 (no default change; v10 = r20 stays): causes per stage (repro14.py prints ev
   (fit 64 -> first relax -11, smooth -4, pull -5 -> 42-53). Stiff styling (GP_STYLE_BEND) holds it but fronts 10-14 %,
   no hang (o0b): wrong model.
 - Collar-end "fold": the collar fall's end (run_off) stands 6-13 mm off the lapel (cend14.py), R tilted more; lift cause open.
-S15 (claude/canvas15; $S15 /mnt/data/hifipushie/canvas/s15): the STIFF STYLING made threads-first (opt-in GP_STYLE_BEND=1).
-- C225: the stiff styling's stretch (o0b fronts 10-14 %) was the threads-first CAP: its lower bound pushed eased faces
-  out (lapel roll above the break) and stretched their neighbours in the solve's final bending-free rounds (canvas p99
-  5.8 -> 12.4 % in relax1). The threads-first caps now bound STRETCH only (GP_THREAD_CAP_LO=1 for the A/B).
-- C226: C209's ONE scalar thread weight (~13000) was a lag spring on plain cloth too: the lower front never hung. Now
-  per face, MEM x the bending at its own vertices (GP_TF_PD_LOCAL=0 for the A/B). Both only on the stiff path.
-| run (perop edge, L ; R) | edge 450 | 550 | 650 | len | break x | fronts thr p99 (perop) |
-| concept | 71 | 78 | 94 | 748 | 64 | |
-| r20 (v10 default) | 59 ; 47 | 71 ; 64 | 94 ; 94 | 733 ; 725 | 53 ; 41 | 4.1 |
-| o0b (s14 stiff) | 67 ; 64 | 67 ; 68 | 68 ; 68 | 711 ; 705 | 57 ; 56 | 13.8 |
-| b3L (oL17 fit + stiff, s15 code) | 65 ; 74 | 76 ; 84 | 92 ; 103 | 747 ; 740 | 56 ; 64 | 8.7 (canvas 3.8) |
-| b3r (r20 fit + stiff) | 69 ; 75 | 80 ; 95 | 105 ; 120 | 724 ; 718 | 64 ; 64 | 7.0 |
-NEXT: renders + reads of b3L (post.sh / rd.sh) beside the concept and r20; then decide default vs opt-in.
+S15 (claude/canvas15; $S15 /mnt/data/hifipushie/canvas/s15): the STIFF STYLING made threads-first (still OPT-IN GP_STYLE_BEND=1).
+- C225: o0b's 10-14 % fronts came from the threads-first CAP: its lower bound pushed eased faces out at the lapel roll
+  above the break and stretched the folded neighbours (relax1 canvas p99 5.8 -> 12.4 %). Caps now bound STRETCH only
+  (GP_THREAD_CAP_LO=1 = old). C226: C209's one scalar thread weight (~13000) was a lag spring on plain cloth: the lower
+  front never hung. Now per face, MEM x the bending at its vertices (GP_TF_PD_LOCAL=0 = old). Both only on the stiff path
+  (the default styling has no bending): shirt collar / Tess coat unaffected by construction.
+| run (raster, L ; R) | edge 450 | 550 | 650 | len | hem | break x | thr p99 | face 150/200/250/300/350 (L) |
+| concept | 71 | 78 | 94 | 748 | 482 | 64 | | 62 / 51 / 39 / 27 / 14 |
+| r20 (v10 default) | 61 ; 49 | 74 ; 67 | 98 ; 97 | 728 | 486 | 53 ; 41 | 5.55 | 62 / 54 / 41 / 28 / 17 |
+| b2L (oL17 fit + GP_STYLE_BEND=1, s15 code) | 68 ; 76 | 78 ; 84 | 94 ; 99 | 745 | 477 | 55 ; 63 | 8.33 | 58 / 49 / 37 / 27 / 12 |
+- b2L: every edge row within +-8 (first time); LOOK (check/cmp_b3L_b2L_r20_*.png, cmp_eevee_b2L_r20_upper_front.png): the
+  V opens evenly and straight like the concept, but the lapel faces ripple along the roll (fronts shear p99 25 deg vs 7),
+  pocket flaps stand off the front (side), stand / collar threads 18 / 15 %. Not the default. Blind review not run (the
+  reviewer's weekly limit). b3r (r20's asymmetric fit, stiff): lower fronts swing out (R 650 120).
+NEXT: (1) the stiff styling keeps the FIT's strain: threads-first bound = max(fit length, 1.01), so stand / collar /
+  fronts stay at the fit's 15-18 % / shear 25 deg where the default styling relaxes them; bleed the bound toward 1.01 over
+  the styling (no ratchet) and re-run b2L. (2) pocket flaps standing off under the stiff styling. (3) blind review of b2L
+  (review_b2L/, command in notes). (4) relax1's L / R seed; collar end lift. SUITE: see $S15/suite.log.
