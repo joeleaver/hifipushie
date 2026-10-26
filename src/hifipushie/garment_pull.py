@@ -139,6 +139,13 @@ STYLE_TF_PD_SHEAR = float(_tps) if _tps else None  # (None: the weave's SHEAR_ST
 # start, M["_bend_rest"], = the fit), by the vertex's interfacing share (bend_w 1 -> 0, canvas -> 1, feathered).
 # Plain cloth is faired flat as before.
 SMOOTH_PRESSED = __import__("os").environ.get("GP_SMOOTH_PRESSED", "0") == "1"
+# A SMOOTHING HAND TAKES OUT RIPPLES, NOT THE DRAPE (canvas s11; C215): the fair (lam 0.5, up to 20 rounds) is a strong
+# low-pass: it also flattened the fronts' large-scale curvature round the chest; on Garrett's open jacket the whole
+# front moved 10-24 mm (the plain lower front most, dz ~0), the edge forward and in (break 59 -> 50 / 53). Pressing the
+# fair onto the body (its outward part dropped) changed 1 mm. With SMOOTH_HAND = k (rings, GP_SMOOTH_HAND; 0 off) the
+# fair aims at the HIGH-PASS of the normal-offset field: the offset minus its k-ring average (a palm's reach), so
+# ripples go and the curvature at a palm's scale and above stays.
+SMOOTH_HAND = int(__import__("os").environ.get("GP_SMOOTH_HAND", "0"))
 
 STEP = 0.003  # m: a handle's move per step
 TOL = 0.005  # stretch p99 allowed above the least the pull has reached (0.5 %: the shirt's knee, module docstring)
@@ -1237,6 +1244,25 @@ def smooth(M: dict, X: np.ndarray, held, pieces, lam: float = 0.5, iters: int = 
     free = ~keep
     s0, sh0 = st(Y)
     least, lock = s0, _shear_lock(sh0)
+    if SMOOTH_HAND > 0:  # (C215: the fair aims at the offsets' high-pass: ripples, not the drape)
+        _nh = normal_offset
+
+        def normal_offset(Yc, _nh=_nh):  # noqa: F811
+            d_, _ = _nh(Yc)
+            fn_ = np.cross(Yc[WF[:, 1]] - Yc[WF[:, 0]], Yc[WF[:, 2]] - Yc[WF[:, 0]])
+            vn_ = np.zeros_like(Yc)
+            for k_ in range(3):
+                np.add.at(vn_, WF[:, k_], fn_)
+            vn_ /= np.linalg.norm(vn_, axis=1)[:, None] + 1e-12
+            o_ = (d_ * vn_).sum(1)  # (signed: the wrapped fair's offset along the normal)
+            lp = o_.copy()
+            for _k in range(SMOOTH_HAND):
+                S_ = np.zeros(len(lp))
+                np.add.at(S_, Ew[:, 0], lp[Ew[:, 1]])
+                np.add.at(S_, Ew[:, 1], lp[Ew[:, 0]])
+                lp = 0.5 * lp + 0.5 * S_ / np.maximum(cnt, 1)
+            o_ = o_ - lp
+            return o_[:, None] * vn_, np.abs(o_)
     r0 = rr = float(np.percentile(normal_offset(Y)[1][free], 95))
     k = 0
     for k in range(1, rounds + 1):
