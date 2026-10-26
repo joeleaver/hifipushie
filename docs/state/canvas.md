@@ -41,4 +41,4 @@ NEXT: (1) the break's spring-back in the styling (fit 64 -> 42-53): find what th
   the styling's first relax releases (threads first: compare the fit's and the style relax's energies on the chest /
   lapel cells), so the break stays ~64 with the fronts still hanging; then re-run oL17 (even + right length) and judge.
   (2) relax1's L / R seed (L 30 / R 9 past CF with laps off). (3) collar end lift 6-13 mm. (4) blind review once the
-  edge rows are within +-8. (5) shirt collar at the back. SUITE s14: see $S14/suite.log.
+  edge rows are within +-8. (5) shirt collar at the back. SUITE s14 (18 files): 321 passed, 4 xfailed, PYTEST_EXIT 0 ($S14/suite.log).

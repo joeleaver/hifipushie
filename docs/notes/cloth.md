@@ -11372,3 +11372,4 @@ No default changed (gc_garrett v10 = r20 stays). One opt-in lever landed (OPEN_L
 - (2) R collar crown / light-blue sliver: the sliver is the collar fall's END (run_off) lying on the lapel past the notch
   (diag colour = collar). cend14: the ends stand 6-13 mm off the lapel face (one layer would be ~2-3), R tilted more
   (p90 24 vs 15 deg); not twisted on edge. The EEVEE fold is that lifted end; cause of the lift not found.
+- SUITE (18 files, v10 in place): 321 passed, 4 xfailed, PYTEST_EXIT 0 ($S14/suite.log). EEVEE oL17 vs r20: check/cmp_eevee_oL17_r20_upper_front.png.
