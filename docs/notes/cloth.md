@@ -11445,3 +11445,32 @@ Goal: b2L (oL17 fit + stiff styling) reads at least as well as r20 against the c
   styling's ops (style() sets M["_tf_bleed"]).
 - Review gate (C227): grid_gutters refused the diag crops (the flat body colour spans the crop height: a 191 px run of flat
   columns); a gutter now has to be a straight band (its colour covers <= half the line beside it). KAT in test_codified.
+- Runs (oL17 fit + GP_STYLE_BEND=1 + the s15 code; perop16.py; reads rd.sh; raster edges L ; R, concept 71/78/94):
+  | run | levers | edge 450 | 550 | 650 | len | hem | thr p99 | stand / collar | lapel rough / shear | fore rough |
+  | b2L (s15) | - | 68;76 | 78;84 | 94;99 | 745 | 477 | 8.33 | 18.4 / 15.0 | 1.14 / 12.7 | 1.45-1.95 |
+  | e1 | bleed | 71;78 | 81;85 | 97;101 | 743 | 481 | 9.07 | 14.8 / 19.3 | 1.08 / 13.2 | 1.8-2.0 |
+  | e2 | bleed + PD shear 1.0 | 70;77 | 83;90 | 107;117 | 742 | 516 | 8.10 | 4.9 / 5.0 | 0.95 / 1.6 | 2.3-2.7 |
+  | e3 | bleed + press | 71;74 | 79;81 | 99;100 | 743 | 478 | 10.19 | 5.7 / 18.5 | 0.18 / 3.6 | 1.25-1.66 (front.L 10.3: last relax) |
+  | e4 | bleed + press + shear 1.0 | 71;75 | 81;80 | 107;96 | 744 | 521 | 8.29 | 3.0 / 4.8 | 0.2 / 1.0 | 2.1-2.5 |
+  | e5 | bleed + press + shear-free undriven | 71;74 | 79;82 | 103;84 | 742 | 510 | 7.41 | 3.2 / 4.6 | 0.2 / 0.9 | 2.4-2.6 |
+  | e6 | press + shear-free undriven | 72;75 | 83;79 | 108;96 | 742 | 524 | 7.77 | 2.4 / 4.9 | 0.2 / 0.8 | 2.6-2.9 |
+  | e7 | press | 72;69 | 80;76 | 99;98 | 744 | 477 | 7.98 | 9.0 / 17.0 | 0.18 / 2.8 | 1.23-1.38 |
+  | e8 | shear-free undriven | 70;76 | 82;90 | 103;88 | 740 | 512 | 7.31 | 6.3 / 5.4 | 1.0 / 1.7 | 2.6-3.1 |
+  | r20 (default) | | 61;49 | 74;67 | 98;97 | 728 | 486 | 5.55 | 8.7 / 11.0 | 0.23 / 1.7 | 1.1 |
+  Per piece per op (pcop16.py): the stiff styling's FIRST relax shears the collar 6 -> 40 deg (b2L, e7 alike); the
+  press smooth alone (bending-free) takes stand / collar / fronts to 10 / 7 / 6 % but closes the break 64 -> 44 (why the
+  press is the rest only, not the start). Shear-free in the PD step (uniform or the default's per-face rule) fixes the
+  collar and crumples the forepart / flares the hem: the shape the bending holds needs the shear; P29: the collar's
+  shape is drafted wrong for where the stiff styling puts it (open question, NEXT). Shear-free lever reverted.
+- Lapel face rows (garment_reads.lapel_face_reads, L;R at 150/200/250/300/350): e7 64;63 56;55 45;44 33;32 24;23 end
+  390;387 | b2L 61;60 53;53 43;43 30;29 22;22 | r20 65;65 57;56 46;46 31;32 22;24 (C228 restores r20's width).
+- Collar ends (cend14, off lapel p50 / max): fit 6.2 / 10.5 L, 5.0 / 10.8 R; e7 13.6 / 18.3 L, 8.6 / 12.8 R; b2L 11.3 / 15.3,
+  7.8 / 11.7; r20 7.6 / 13.0, 5.9 / 10.9. Not addressed (worse under e7 on L).
+- Flaps (flap16 nearest-front-vertex p50 / max): fit 9.4 / 17 ; 10.4 / 22.5; e7 10.2 / 17.3 ; 9.5 / 25.0; r20 7.1 / 15.8 ;
+  6.3 / 14.0. Side view: e7's flaps stand off like b2L's. Not addressed.
+- LOOK (check/cmp_e7_b2L_r20_{wholefront,upper_front,side}.png, cmp_eevee_e7_b2L_r20_upper_front.png): e7's lapels are
+  clean in EEVEE (b2L's pale ripple band along the roll gone; L lapel smooth, R a faint sheen), the V as straight and even
+  as b2L's; r20's lapels similar but its V uneven (R closed). Still: the R collar end / gorge crumple (all three), pocket
+  flaps standing off in the side view and the lower front bulging forward below the pocket (e7 = b2L, r20 flatter).
+- Blind review (worktree bin/review, C227's gate passed the diag crop; review_e7.log): exit 4, the reviewer's weekly limit
+  (resets 1 pm America/Denver). Not reviewed.
