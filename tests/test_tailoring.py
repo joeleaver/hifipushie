@@ -547,3 +547,35 @@ def test_lapel_belly_bows_the_edge_out_and_keeps_its_ends():
         assert abs(off.max() - 0.01) < 0.0015, (nm, off.max())  # the peak is the belly (sampled points)
         s = np.r_[0, np.cumsum(np.linalg.norm(np.diff(E1, axis=0), axis=1))]
         assert abs(s[int(np.argmax(off))] / s[-1] - 0.4) < 0.1, nm  # ... where it's asked
+
+
+def test_a_low_lapel_belly_keeps_the_lower_lapel_wide():
+    """C220 (canvas s13): the concept's lapel FACE keeps width down to the break (300 / 350 below HPS: 27-37 / 14-25 mm)
+    where a straight break -> point edge with its belly at 0.4 tapers to a sliver (Garrett bc44: 18 / 8). belly 0.022 at
+    belly_at 0.15 bows the LOWER edge: the flat face (perpendicular to the roll line) a quarter of the way up from the
+    break is the straight taper + nearly the whole belly, and the edge still meets the break and the lapel point."""
+    for nm, tape in BODIES.items():
+        def face_at(belly, at, frac):
+            ops = pj.jacket_ops(OPS, tape, 20.0)
+            for o in ops:
+                if o["op"] == "lapel":
+                    o.update(belly=belly, belly_at=at)
+            D = pd.start("bodice", tape, BLOCK)
+            pd.apply(D, ops)
+            pc = D["pieces"]["front.L"] if "front.L" in D["pieces"] else D["pieces"]["front"]
+            f = next(f for f in D["folds"] if f.get("name") == "lapel roll")
+            R0, R1 = np.asarray(f["line"][0]), np.asarray(f["line"][1])
+            u = (R1 - R0) / np.linalg.norm(R1 - R0)
+            n = np.array([-u[1], u[0]])
+            if n @ (_pt(pc, "lapelPoint") - R0) < 0:
+                n = -n
+            E = pc["P"][pattern.arc_indices(pc, "break>lapelPoint")]
+            t, w = (E - R0) @ u, (E - R0) @ n
+            T = frac * ((_pt(pc, "lapelPoint") - R0) @ u)
+            return float(np.interp(T, t, w)), E, pc
+        hi, _, _ = face_at(0.01, 0.4, 0.25)
+        lo, E, pc = face_at(0.022, 0.15, 0.25)
+        straight, _, _ = face_at(0.0, 0.4, 0.25)
+        assert lo - straight > 0.018, (nm, lo, straight)  # nearly the whole 22 mm belly a quarter of the way up
+        assert lo - hi > 0.009, (nm, lo, hi)  # the 0.4 belly gives the lower lapel less than half that
+        assert np.allclose(E[0], _pt(pc, "break")) and np.allclose(E[-1], _pt(pc, "lapelPoint"))

@@ -11287,3 +11287,29 @@ Job: the lapels read as thin strips beside the concept's broad faces; the lapel 
   spec's shirt has a stray "source_probe" key (probe_garrett) that fails cloth.validate: saved checked=False after
   validating the edit without it. Not reviewed blind (edge 450 off by 14-21 mm).
 - SUITE (18 files, spec v7 in place): 319 passed, 4 xfailed, PYTEST_EXIT 0 ($S12/suite.log).
+
+## canvas stiffness session 13 (2026-10-26; $S13 = /mnt/data/hifipushie/canvas/s13; branch claude/canvas13)
+- HOUSEKEEPING: gc_garrett's shirt key `source_probe` (probe_garrett 2026-10-22, a provenance string nothing reads) ->
+  `probe_source` (the validator's provenance spelling <key>_source): spec v8 saved checked=True (fixprobe13.py).
+- (1) LOWER LAPEL NARROW: the cause is the DRAFT. flat13.py reads the face in the pattern (uv, perpendicular to the roll
+  line) at t mm above the break: bc44 20:9 40:18 60:24 80:30 100:36 140:47 180:60 240:67 (point t 297, w 76): the
+  straight break -> point edge + belly 10 @ 0.4 tapers to nothing at the break. face12's flat / 3D / projected reads agree
+  (300: flat_last 15.7, 3d 15.5, proj 11.7, worn face 18): neither the fit nor roll_converge loses it; the roll band
+  costs a further ~10 mm (crown to the face, ~ W - 2r for r ~ 5 mm). The concept's face is ~linear with ~12 mm left at
+  the break: target flat W = face + ~10 -> needed belly ~14 / 21 / 15 / 11 / 7 at t 36 / 86 / 136 / 186 / 236: a belly
+  peaking LOW. Candidates (repro13.py, lapel keys in memory):
+  | tag | belly @ at | face 150/200/250/300/350 L ; R | break | edge 450/550/650 | hem | len | thr p99 | lift edge |
+  | concept | | 62/51/39/27/14 ; 62/53/44/37/25 | 386 | 71/78/94 | 482 | 748 | | |
+  | bc44 | 10 @ 0.4 | 59/47/32/18/7 ; 60/49/35/18/9 | 365/375 | 57-50/70-70/95-101 | 481 | 729 | 5.75 | 5.9/3.7 |
+  | b18 | 18 @ 0.25 | 62/53/40/26/11 ; 62/53/42/28/16 | 367/375 | 55-49/68-68/95-99 | 481 | 729 | 5.94 | 4.9/5.3 |
+  | b22 | 22 @ 0.15 | 63/55/44/32/23 ; 64/55/44/33/24 | 380/380 | 47-50/56-69/87-102 | 471 | 734 | 7.42 | 10.3/9.6 |
+  LOOK (check/cmp_b18_b22_bc44_*.png): both read fuller to the break than bc44, lapel ending with a rounded belly at
+  the break like the concept; b22 a touch fuller but its lower L front moved in (edge 450 47, 550 56) and the hem
+  narrowed 10; b18 changes nothing else. KAT test_tailoring::test_a_low_lapel_belly_keeps_the_lower_lapel_wide. C220.
+- (2) LAPEL "PAINTED ON": lift13.py reads each turned-lapel vertex off the forepart beneath it: bc44's outer edge
+  already stands 4-6 mm off (p50 5.9 L / 3.7 R), middle 4-7 mm; about a real lapel (three layers ~2.5 mm + a soft lie).
+  The flat read is the CLAY LIGHT: the workbench studio light from the camera side shows no step between two parallel
+  faces. The same bc44 geometry in EEVEE (render13.py RTEX=1: key sun + fill; check/upper_front_bc44tx.png,
+  lapelR_ref_eevee_workbench_bc44.png) shows the lapel's edge line and its stand like the concept. Workbench shadows on
+  (bc44sh) change little. Not a geometry fault; judge the lapel's stand in EEVEE (engine-agnostic: EEVEE) or by lift13's
+  numbers. C221.
