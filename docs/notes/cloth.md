@@ -11419,3 +11419,4 @@ Goal: styling threads-first like the fit (C209), so the stiff styling keeps the 
   refused as contact sheets (the body's grey gutter); the run itself failed on the reviewer's weekly limit. Not reviewed.
 - Verdict: b2L is the first stiff styling with the edge rows within +-8 and the fronts hanging; its surface (lapel
   ripple, flaps off the front) and threads (8.3 vs 5.55) read worse than r20. Opt-in only (GP_STYLE_BEND=1 + oL17 fit).
+- SUITE (18 files): 323 passed, 4 xfailed, PYTEST_EXIT 0 ($S15/suite.log).

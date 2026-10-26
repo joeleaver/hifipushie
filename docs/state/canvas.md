@@ -54,4 +54,4 @@ S15 (claude/canvas15; $S15 /mnt/data/hifipushie/canvas/s15): the STIFF STYLING m
 NEXT: (1) the stiff styling keeps the FIT's strain: threads-first bound = max(fit length, 1.01), so stand / collar /
   fronts stay at the fit's 15-18 % / shear 25 deg where the default styling relaxes them; bleed the bound toward 1.01 over
   the styling (no ratchet) and re-run b2L. (2) pocket flaps standing off under the stiff styling. (3) blind review of b2L
-  (review_b2L/, command in notes). (4) relax1's L / R seed; collar end lift. SUITE: see $S15/suite.log.
+  (review_b2L/, command in notes). (4) relax1's L / R seed; collar end lift. SUITE s15 (18 files): 323 passed, 4 xfailed, PYTEST_EXIT 0 ($S15/suite.log).
