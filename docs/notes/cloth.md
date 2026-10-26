@@ -11206,3 +11206,26 @@ turned, points pulled) were tuned on bending-free cloth; the stand's rest is the
   again ("garment" = canvassed garments per garment, "1" all); C209's thread weight stays wherever the one solve runs.
   e3 = repo default styling of fit_d2: compared with s8's asm_d2 in $S9/cmp_e3_d2.log; suite rerun $S9/suite.log: 315 passed, 4 xfailed, PYTEST_EXIT 0; e3 vs d2 max 0.0000 mm
   (the e2-default run kept as suite_r2.log).
+
+## canvas stiffness session 10 (2026-10-25; $S10 = /mnt/data/hifipushie/canvas/s10; branch claude/canvas10)
+No default changed; no code left changed (dead levers reverted, the stand-lean prototype parked as a patch).
+- Fault 3 (shirt collar at the back): opcol9 on s9's perop_d2: the stand top at CB sinks in the first relax (77.7 ->
+  75.1), the TURN (-> 71.0, collar threads 12.4 -> 25.2, shirt over 0 -> 108; the turn moved front.L 12 deg / 16 mm
+  but the whole ring 6 mm forward / down) and the hem pull + relax (-> 68.6, 389 over). Cause: nothing supports the
+  ring at the back. u1 (GP_UNDER_MADE=1): ring held, collar torn at CB by the pull + relax (35.7 / stand 27.9 %). u2
+  (GP_UNDER_MADE=1 GP_STYLE_BEND=garment): ring held, collar 13.8 / stand 13.2, shirt poke 84 (d2 1152). C211.
+- Fault 1 (lapel): yaw10 / roll30 / lapel29: the fit is right (roll 73 / 67, break 64), the styling closes it (d2 61 /
+  52, break 47 / 41; first relax -11, smooth -4, pull -4; the slide is refused at step 0); lapel faces turned 11-26 deg
+  sideways (r32 ~0). The flap faces end 35-40 mm above the break vertex (365-370 below HPS vs 386). sm10 on the
+  captured smooth: unfaired fold rows 0.3 mm, Taubin 1-2 mm: dead. C212.
+- Fault 2 (stand at the side): lean10: drafted top = neck CB..notch (0.0 %); leans in at CB anyway, out +12 at 110 deg
+  where the top is already ~6 % short. R30 cone lean prototype broke the fall's spread (45 deg cap) and the
+  gc_garrett build (KeyError 'stand'); $S10/stand_lean_r30.patch. C213.
+- Reads (concept | d2 | u1 | u2): lapel 150 127-134 | 122/122 | 126/122 | 116/115; V 200 237 | 209 | 215 | 195; edge
+  450 / 550 / 650 71 / 78 / 94 | 52-50 / 65-72 / 90-105 | 60-50 / 76-74 / 109-110 | 58-60 / 88-68 / 107-66; hem+30
+  482 | 470 | 477 | 456; length 748 | 735 | 722 | 728; threads p99 7.64 | 11.35 (collar 25.2) | 8.31 (collar 11.0);
+  shirt poke 1152 | 349 | 84.
+- LOOK u2 vs d2 beside the concept (check/cmp_u2_d2_*.png): the collar is better (jacket collar sits over the shirt's
+  round the neck, no shirt collar over it at the back); everything else the same or worse: lapels a touch narrower,
+  L hem corner kicks out / R hangs in (asymmetric), side view bulges forward at the pocket and tucks in at the hem
+  (d2 falls straighter). Gorge tabs crumpled in both. Not the default; no blind review (edge rows not within +-8).

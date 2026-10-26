@@ -1,51 +1,39 @@
-# STATE: canvas (canvas / interfacing BENDING STIFFNESS; the jacket with no workaround holds) -- 2026-10-25 (s9)
+# STATE: canvas (canvas / interfacing BENDING STIFFNESS; the jacket with no workaround holds) -- 2026-10-25 (s10)
 
 GOAL (Joe): canvassed pieces keep their shape by STIFFNESS so the workaround holds go. No sim, no rented GPU.
 Concept SLIM-CUT, worn open, falls straight (workspace/garrett_v20/concept_v8_front_apose.png). Rules: threads first
 (C195); supports, not holds (C190); styling ends with smooth + pull down; current garments are not a baseline.
-Sessions: s1 78507629; s2-s9 claude/canvas2-9 ($S9 /mnt/data/hifipushie/canvas/s9; history cloth.md "canvas stiffness
-session 9"). Ledger C190-C210.
+Sessions: s1 78507629; s2-s10 claude/canvas2-10 ($S10 /mnt/data/hifipushie/canvas/s10; history cloth.md "canvas
+stiffness session 10"). Ledger C190-C213.
 DEFAULT (C205 + C206): interfaced garments fitted keyed, shirt floor from relax1, no plumb hold, styled on the shirt's
 own cloth WITHOUT bending (= s8's d2), the FIT sews patch stitches. C209's RULE is on wherever the one solve runs (the
 threads' term >= the stiff cloth's median bending, STYLE_TF_PD_MEM 1); the STIFF STYLING itself is OPT-IN
 (GP_STYLE_BEND=1, or =garment: canvassed garments only) until a render beats d2 beside the concept (coordinator
 2026-10-25: e2's reads are worse than d2's). e3 = repo default on fit_d2 = d2 (cmp_e3_d2.log).
-S9 FINDINGS:
-- (a) FIXED (C209): the op that tore under C207 was not a grip: the hem pull took 0 steps; its plain relax solve (20
-  rounds, nothing moved, grips free or not) tore front.L's canvassed lapel 6.9 -> 19.5 %, its settle -> 63 %
-  (solvelog9 / probe9 / step9 on cap_pull_pd.pkl). Cause: the canvas bending (K diag median 13681) swamped the threads
-  (L diag 3.5): the global step was bending only, and the Jacobi cap after it tore (one round: global 12.7 -> cap
-  43.6 %). Threads weighted 10 x the bending: the same solve 6.9 %; full styling pd10: threads p99 8.19 (fronts 5.3,
-  collar 10.8 vs d2 22.5), >20 % faces 20 vs 70.
-- (b) MEASURED, NOT THE DRAFT (C210): the collar's neck edge / stand top need +4.4 / +2.4 % over flat to ride the
-  shirt collar in the FIT (rad9 / need9); the STYLING pulls the stand top in at CB (r 78 -> 69 mm, shirt collar
-  fall ~76-80) and down (z 39 -> 33 over HPS; shirt fold at 54-58): need +8.6 %. So the shirt shows at CB because the
-  styling sinks the jacket collar (d2 389 shirt verts outside the jacket at CB; m1 0). At the side (90 deg) the jacket
-  roll sits 20-36 mm below the shirt top and 25 mm off the neck (r 94 vs shirt band 68): the collar flares off the
-  neck instead of hugging it. No draft change made.
-- (c) lapel / V: fit_d2 lapel 150 125/127, V 200 220, break 315-320 below HPS; styled d2 122 / 209 / 329-335; pd10
-  119 / 201 / 320-324 (concept 127-134 / 237 / 386; r32: 133 / 221). Narrowed 8 mm in the fit since r32 and 11-19 more
-  in the styling; the break sits 50-65 mm HIGH (the V is shallower by the numbers, it reads deeper because the lapel
-  faces turn sideways: not measured yet).
-RUNS (concept edge 450/550/650 71/78/94, hem+30 482, front len 748; threads = pooled p99 (fronts; collar)):
-| d2 (s8 default) | 52-50 / 65-72 / 90-105 | 471 | 735 | 7.64 (4.0; 22.5) |
-| pd10 = e1 (C209 MEM 10) | 56-62 / 69-71 / 80-69 | 457 | 729 | 8.19 (5.3; 10.8) |
-| e2 (C209 MEM 1, opt-in) | 50-63 / 61-71 / 70-68 | 450 | 730 | 7.58 (5.5; 10.8) |
-LOOK pd10 vs d2 (check/cmp_pd10_d2_*.png): about the same jacket: upper fronts a little straighter, collar threads
-halved, but the lower fronts still cut away and hem in more (457), a crease on the right front at the pocket; SIDE
-view WORSE: the lower front bulges forward at the pocket and tucks in under it at the hem (d2 fell straighter). V /
-lapel / gorge tabs / shirt collar at the back unchanged. No blind review (edge rows not within +-8 mm). Back to d2:
-GP_STYLE_BEND=0 (identical to s8's d2).
-SUITE (18 files, styling bend off by default): 315 passed, 4 xfailed, PYTEST_EXIT 0 ($S9/suite.log); e3 vs d2 max 0.0000 mm. r1 2 red ($S9/suite_r1.log): the shirt styled with
-  its fused bending 7.2 % > 7 (-> canvassed only) and C195's walked-bend arc at MEM 10 (28.6 vs 19.4 mm; -> MEM 1).
-NEXT (in order; scripts in $S9: perop9.py <fit> <tag> [ops] (per op, per piece), solvelog9.py, cap9.py + probe9.py
-(capture an op's input, probe its solve), rad9 / need9 / over9.py (collar vs shirt), rd.sh / post.sh / sheet.py):
-1. Collar sinks in the styling: perop9 on e1 + opcol9.py <fit> <tag> (cbTop r / z, shirt-over at CB per op) to name the
-   op that pulls the collar down / in; fix it there (a made band is supported by the shirt collar it rides on: C208's
-   made-on-made floor in the STYLING may now hold without tearing, retry m1 under C209).
-2. The side of the neck: the jacket roll 25 mm off the neck at 90 deg; read the stand's lean (neck edge r vs top r)
-   on the fit; if the stand top is as long as its neck edge the collar can't hug: a drafting rule (top edge shorter
-   by the lean), test_tailoring + Tess's coat path.
-3. Lapel face yaw (the lapel turned sideways reads narrow): measure the lapel face normal at HPS-150 vs the concept's
-   flat-on lapel; the break 50-65 mm high vs 386: pattern (break_y 0.425) or fit (worn_open break 64)?
-4. e2 not rendered (pd10 is). Hem 450-457 vs 482 / 650 edge 80-69 vs 94: the lower fronts hem in under C209; then flare, bulge, C200's KAT.
+S10 FINDINGS (no default changed, no code changed):
+- Shirt collar at the back (C211): the styling's first relax, TURN and hem pull + relax drag the unsupported collar ring
+  forward / down (stand top at CB r 77.7 -> 68.6, 389 shirt verts over). The shirt collar is its support: GP_UNDER_MADE
+  =1 alone tears the collar at CB in the pull (35.7 %); with GP_STYLE_BEND=garment (C209) it holds (u2: collar 13.8 /
+  stand 13.2 %, shirt poke 84 vs d2 1152). The fix exists but only with the stiff styling, which loses elsewhere.
+- Lapel (C212): the FIT is right (roll 150 73, break 64); the STYLING closes the break 64 -> 47 / 41 (relax -11,
+  smooth -4, pull -4; the slide refused at step 0) and turns the lapel faces 11-26 deg sideways (r32 0). Stiff styling
+  holds the relax only. "Break high" = the flap's last row; the break vertex sits 365-370 (concept 386).
+- Stand at the side (C213): the draft's top = neck CB..notch (0 %), but the side flare (+12 mm out at 110 deg) is where
+  the top is already short: the lapel roll pulls it. R30 cone-lean prototype parked ($S10/stand_lean_r30.patch: breaks
+  the fall's spread solve + the gc_garrett build).
+RUNS (concept edge 450/550/650 71/78/94, hem+30 482, len 748, lapel 150 127-134, V 237):
+| d2 (default) | 52-50 / 65-72 / 90-105 | 470 | 735 | lapel 122 V 209 | threads 7.64, shirt poke 1152 |
+| u1 (UNDER_MADE) | 60-50 / 76-74 / 109-110 | 477 | 722 | 126/122 V 215 | 11.35 (collar 25.2), poke 349 |
+| u2 (UNDER_MADE + STYLE_BEND=garment) | 58-60 / 88-68 / 107-66 | 456 | 728 | 116/115 V 195 | 8.31, poke 84 |
+LOOK u2 vs d2 ($S10/check/cmp_u2_d2_*.png): collar better; lapels a touch narrower, hem asymmetric, side view bulges
+at the pocket and tucks in at the hem (d2 straighter). u2 does not earn the default. No blind review.
+NEXT (in order; scripts in $S10: perop9 / opcol9 / yaw10 / lean10 / sm10 / cap9 / repro.py / post.sh / sheet.py):
+1. The fronts close in every styling solve because nothing holds an open front open (no gravity in relax / smooth /
+   pull; ARAP relaxes the form's opening). Find the support: hang the fronts from the shoulders in the first relax
+   (hang over the whole front, not only below the break) or the stiff styling's bending rest at the FIT shape for the
+   lapel + chest canvas only; read the break per op (target 64 held) and yaw10 (lapel facing front).
+2. With the break held, re-run u2 (shirt collar floor + C209) and read the lapel / hem / side bulge; if the side bulge
+   persists, it is the stiff styling's (pd10 had it too): per-op side profile (fwd33) to name the op.
+3. Gorge tabs + stand flare at 110 deg: the lapel roll pulling the stand top out; measure the roll line's 3D path from
+   the break to CB against the neck before any draft change; R30 only with the fall drafted from a straightened roll.
+4. Hem (456-477 vs 482) and 650 edge after 1-2.
