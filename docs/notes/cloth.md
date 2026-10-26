@@ -11305,7 +11305,11 @@ Job: the lapels read as thin strips beside the concept's broad faces; the lapel 
   | b22 | 22 @ 0.15 | 63/55/44/32/23 ; 64/55/44/33/24 | 380/380 | 47-50/56-69/87-102 | 471 | 734 | 7.42 | 10.3/9.6 |
   LOOK (check/cmp_b18_b22_bc44_*.png): both read fuller to the break than bc44, lapel ending with a rounded belly at
   the break like the concept; b22 a touch fuller but its lower L front moved in (edge 450 47, 550 56) and the hem
-  narrowed 10; b18 changes nothing else. KAT test_tailoring::test_a_low_lapel_belly_keeps_the_lower_lapel_wide. C220.
+  narrowed 10; b18 changes nothing else. Middle b20 (20 @ 0.2): face 63/54/42/31/18 ; 63/54/44/32/20 (= the concept
+  within 1-4 mm at every row), break 376/379, edge 59-50/73-69/103-103, hem 480, len 725, thr p99 6.39 (fronts 3.66).
+  LOOK (check/cmp_b20_b18_bc44_*.png, ovl_b20.png): b20 reads best: lapels full to the break, rounded into it like the
+  concept; rest unchanged. -> DEFAULT gc_garrett v9 (setdef13.py, checked=True); gate PASS_WAIVED 30c40cc66aaf2cc57ba1
+  (the default's four waived rows, values identical). KAT test_tailoring::test_a_low_lapel_belly_keeps_the_lower_lapel_wide. C220.
 - (2) LAPEL "PAINTED ON": lift13.py reads each turned-lapel vertex off the forepart beneath it: bc44's outer edge
   already stands 4-6 mm off (p50 5.9 L / 3.7 R), middle 4-7 mm; about a real lapel (three layers ~2.5 mm + a soft lie).
   The flat read is the CLAY LIGHT: the workbench studio light from the camera side shows no step between two parallel
