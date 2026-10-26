@@ -1184,7 +1184,7 @@ def worn_open_pins(M: dict, X0: np.ndarray, worn_open: dict | None) -> list:
     Sources travel with the offsets (the caller's): Garrett's concept break 64 mm off CF (concept px, both sides)."""
     out = []
     for nm, off in (worn_open or {}).items():
-        if nm == "source":
+        if nm in ("source", "lap"):  # ("lap": open_lap's key, not a point)
             continue
         for k, v in M["points"].items():
             pt = k.split(":", 1)[1]
@@ -1991,7 +1991,16 @@ LAP_LAYER = True
 # out asymmetric (edge 450 / 550 / 650 L 63 / 56 / 58 vs R 70 / 60 / 54, cfHem 710 vs 691 below HPS); the styling's slide
 # and turn read the R edge as already plumb and moved only L (s13 r20: final edge 450 L 61 / R 49). False: no lap layering
 # when worn open and unfastened (env PF_OPEN_LAP=0); True: the old layering (default until a render reads as well).
-OPEN_LAP = __import__("os").environ.get("PF_OPEN_LAP", "1") == "1"
+_ol = __import__("os").environ.get("PF_OPEN_LAP")
+OPEN_LAP = None if _ol is None else _ol == "1"  # (None: per garment, worn_open {"lap": false}, C232)
+
+
+def open_lap(worn_open) -> bool:
+    """Whether a garment worn open keeps the lap layering: OPEN_LAP when set (env / tests), else its worn_open dict's
+    "lap" (default true: the old layering) (C232)."""
+    if OPEN_LAP is not None:
+        return OPEN_LAP
+    return bool(worn_open.get("lap", True)) if isinstance(worn_open, dict) else True
 LAP_GAP = THICK  # m: the over piece's least gap off the under piece where they lap (one cloth layer)
 LAP_REACH = 0.012  # m: an over vertex laps the under piece where it is within this of its nearest vertex ACROSS (tangentially: ~ the mesh edge; 6 mm missed the 10 mm triangles below the lapel)
 LAP_DEPTH = 0.008  # m: ... and at most this far behind or in front of it (further is another layer: 30 mm caught the lapel)
@@ -2541,7 +2550,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
         lay_adj.data[:] = 1.0
     else:
         lay_adj = None
-    laps = lap_layers(M, X, fast, skip=flapv) if LAP_LAYER and not (worn_open and not fast and not OPEN_LAP) else []  # (a lapped closure's over piece outside its under piece; turned flaps lie on their own base; OPEN_LAP)
+    laps = lap_layers(M, X, fast, skip=flapv) if LAP_LAYER and not (worn_open and not fast and not open_lap(worn_open)) else []  # (a lapped closure's over piece outside its under piece; turned flaps lie on their own base; OPEN_LAP)
     # off-the-body target per vertex
     off = ease + THICK * flapv
     on_flap = flapv.copy()  # (no seat attraction onto the body: turned flaps + what the press laid on them)

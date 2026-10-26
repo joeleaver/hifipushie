@@ -96,11 +96,13 @@ HANG_SWEEPS = 4  # Jacobi sweeps of the thread cap a round
 # fit: a canvas is moulded and steamed to it, a collar made to its roll; a fold present at the start stays a fold),
 # overall STYLE_BEND_W x the cot weights' scale. Plain cloth (weight 1) keeps STYLE_BEND_PLAIN of it, resting FLAT
 # (cloth's own rest; only interfaced cloth is made to a shape).
-_sb = __import__("os").environ.get("GP_STYLE_BEND", "0")  # (C209: OFF by default until a render beats d2 against the
+_sb = __import__("os").environ.get("GP_STYLE_BEND")  # (C209: OFF by default until a render beats d2 against the
 # concept (coordinator 2026-10-25: e2's threads 7.58 but hem 450 / edge 650 70-68 / lapel 116 read worse than d2);
 # "garment" = per garment: worn_style styles a CANVASSED garment (bend_w >= BEND_KIND["canvas"]) with its bending under
-# STYLE_TF_PD; "1" / "0" force)
-STYLE_BEND = None if _sb == "garment" else _sb == "1"
+# STYLE_TF_PD; "1" / "0" force; unset (canvas s17, C232): per garment, the garment key "style_bend" (a canvassed garment
+# that declares it is styled stiff; its dict carries the stiff styling's own levers, see worn_style))
+STYLE_BEND = None if _sb in (None, "garment") else _sb == "1"
+STYLE_BEND_ANY_CANVAS = _sb == "garment"  # (the old "garment" mode: every canvassed garment, key or not)
 STYLE_BEND_W = float(__import__("os").environ.get("GP_STYLE_BEND_W", "5.0"))
 # THREADS FIRST (canvas s2, Joe: "it shouldn't really be a choice between stiffness and stretch"): with STYLE_BEND on,
 # every round projects each face's warp / weft back within max(its length when the STYLING started (_bend_rest), 1 + STYLE_THREAD_CAP)
@@ -191,7 +193,8 @@ SMOOTH_HAND = int(__import__("os").environ.get("GP_SMOOTH_HAND", "0"))
 # large scale, was tried: its rest strained the threads 12-21 %, the smooth's move is not smooth where holds meet free
 # cloth; the bending is rotation invariant, so the smoothed shape's own curvature is the rest.) The threads' bounds and
 # the shear lock stay on the fit itself.
-BEND_REST_PRESS = __import__("os").environ.get("GP_BEND_REST_PRESS", "0") == "1"
+_e = __import__("os").environ.get("GP_BEND_REST_PRESS")
+BEND_REST_PRESS = None if _e is None else _e == "1"  # (None: per garment, style_bend {"press": ...}, C232)
 # THE LAST WORD TAKES NO LENGTH OUT OF THE SHEAR (canvas s17, C230): under STYLE_TF_PD the threads-first last word
 # (STYLE_THREAD_FINAL bending-free rounds until no face is past its bound) has one thing resisting shear, the weave's
 # SHEAR_STIFF (0.011) mix, and the lock (max(start, SHEAR_LOCK_DEG 35)). A face past its bound after the bending rounds
@@ -199,7 +202,24 @@ BEND_REST_PRESS = __import__("os").environ.get("GP_BEND_REST_PRESS", "0") == "1"
 # Garrett's collar 6 -> 42 deg p99 in the stiff styling's first relax (20 rounds without the last word: 9; bending weight
 # x 0.002: still 42). With FINAL_SHEAR_HOLD the last word's shear lock per face is max(the face's shear when the last word
 # starts, its styling start's): it shortens threads by moving cloth, not by shearing more. Env GP_FINAL_SHEAR_HOLD=0 / 1.
-FINAL_SHEAR_HOLD = __import__("os").environ.get("GP_FINAL_SHEAR_HOLD", "0") == "1"
+_e = __import__("os").environ.get("GP_FINAL_SHEAR_HOLD")
+FINAL_SHEAR_HOLD = None if _e is None else _e == "1"  # (None: per garment, style_bend {"final_shear_hold": ...}, C232)
+# PLAIN CLOTH IS NOT MADE TO A SHAPE (canvas s17, C231): under STYLE_TF_PD every face's threads target was its CURRENT
+# map within the band [min(fit, .99), max(fit, 1.01)], plain cloth too, so the stiff styling left the plain body where
+# the fit put it, stretch and all (Garrett oL17: plain threads p99 15 % at the fit; the fit's let-go puffs the lower
+# fronts forward and out with no weight on them: waist 452 / hip 481 wide vs 415 / 437 under the default styling, the
+# lower front 25-30 mm forward of the chest's plumb in the side view). Only interfaced cloth is made to a shape (pressed,
+# moulded, rolled); plain cloth's rest is its pattern, as in the default styling. With TF_PD_PLAIN the faces with no
+# bending within TF_PD_LOCAL_RINGS (mem_f 1) target their pattern lengths (warp / weft 1, the shear as before) in the
+# PD step. Env GP_TF_PD_PLAIN=0 / 1.
+_e = __import__("os").environ.get("GP_TF_PD_PLAIN")
+TF_PD_PLAIN = None if _e is None else _e == "1"  # (None: per garment, style_bend {"plain_pattern": ...}, C232)
+
+
+def _opt(flag, M: dict, key: str) -> bool:
+    """A stiff-styling lever: the module flag when set (env / tests), else the garment's (worn_style puts the garment key
+    "style_bend"'s levers on the mesh dict as M[key], C232)."""
+    return bool(flag) if flag is not None else bool((M or {}).get(key))
 
 STEP = 0.003  # m: a handle's move per step
 TOL = 0.005  # stretch p99 allowed above the least the pull has reached (0.5 %: the shirt's knee, module docstring)
@@ -550,6 +570,7 @@ class FlatARAP:
             if TF_BLEED and M.get("_tf_bleed") is not None:  # (C229: the fit's own stretch let go over the styling)
                 self.thread_hi = 1.0 + STYLE_THREAD_CAP + float(M["_tf_bleed"]) * (self.thread_hi - 1.0 - STYLE_THREAD_CAP)
             self.thread_lo = np.minimum(ln0, 1.0 - STYLE_THREAD_CAP)  # (nor shorter: a woven buckles, it doesn't shrink)
+        self._fsh, self._pdp = _opt(FINAL_SHEAR_HOLD, M, "_final_shear_hold"), _opt(TF_PD_PLAIN, M, "_pd_plain")
         self._lu, self._lu0 = {}, {}
         self.floor, self.floor_pushed = _bind_floor(M.get("_floor"), self.inv), 0  # (style(floor=...): C170)
         self.shear = self.shear_free = None
@@ -662,7 +683,7 @@ class FlatARAP:
             if eps is not None and dmax < eps:
                 break
         lim_ = None
-        if tf and FINAL_SHEAR_HOLD and getattr(self, "_pd", False) and getattr(self, "shear_lim", None) is not None:
+        if tf and getattr(self, "_fsh", False) and getattr(self, "_pd", False) and getattr(self, "shear_lim", None) is not None:
             # (FINAL_SHEAR_HOLD, C230: the last word takes no length out of the shear: each face's shear may not grow
             # past max(where the bending rounds left it, the styling start's))
             Fg = np.stack([Y[WF[:, 1]] - Y[WF[:, 0]], Y[WF[:, 2]] - Y[WF[:, 0]]], -1) @ self.Dinv0
@@ -694,6 +715,9 @@ class FlatARAP:
             Fg = np.stack([Y[WF[:, 1]] - Y[WF[:, 0]], Y[WF[:, 2]] - Y[WF[:, 0]]], -1) @ self.Dinv0
             ln = np.maximum(np.linalg.norm(Fg, axis=1), 1e-12)
             R = Fg * (np.clip(ln, self.thread_lo, self.thread_hi) / ln)[:, None, :]
+            if getattr(self, "_pdp", False) and getattr(self, "mem_f", None) is not None:  # (C231: plain cloth's target is its pattern)
+                pl_ = self.mem_f <= 1.0 + 1e-9
+                R[pl_] = Fg[pl_] / ln[pl_][:, None, :]
             # (and the weave's SHEAR within its lock: warp / weft turned symmetrically about their bisector to at most
             # max(the styling start's shear, SHEAR_LOCK_DEG) off square; lengths alone let faces shear flat, p99 88 deg
             # and threads 107 % by the end of the styling: s8 p6)
@@ -1508,7 +1532,7 @@ def style(M: dict, X: np.ndarray, held, ops: list[dict], body=None, log=None, fl
         M["_bend_rest"] = X.copy()
     if floor:  # (C170: layer_floor's floors, read by every op's solve)
         M["_floor"] = floor
-    if BEND_REST_PRESS and M.get("bend_w") is not None and M.get("_bend_rest_shape") is None and \
+    if _opt(BEND_REST_PRESS, M, "_bend_press") and M.get("bend_w") is not None and M.get("_bend_rest_shape") is None and \
             (STYLE_BEND if STYLE_BEND is not None else bool(M.get("_style_bend"))):  # (C228: the canvas pressed first)
         M["_bend_rest_shape"] = press_rest(M, M["_bend_rest"], base)
     placed = np.zeros(len(X), bool)  # what earlier ops gripped: held where they left it
@@ -2419,7 +2443,12 @@ def worn_style(M: dict, X: np.ndarray, body, g: dict, log=None, under=None):
     # styled so too went 7.0 -> 7.2 % threads, shear 35.1 deg past its lock: test_a_shirt_without_a_tie_is_styled_open_
     # by_default; not proven on fused cloth, so it keeps the bending-free styling)
     from . import bending as bd_
-    M = dict(M, _style_bend=bw_ is not None and float(np.max(bw_)) >= bd_.BEND_KIND["canvas"] - 1e-9)
+    sbk = g.get("style_bend")  # (C232: the garment's stiff styling, opt-in per garment: true or {its levers: bool})
+    sbo = sbk if isinstance(sbk, dict) else {}
+    M = dict(M, _style_bend=bw_ is not None and float(np.max(bw_)) >= bd_.BEND_KIND["canvas"] - 1e-9 and
+             (STYLE_BEND_ANY_CANVAS or bool(sbk)),
+             _bend_press=bool(sbo.get("press")), _final_shear_hold=bool(sbo.get("final_shear_hold")),
+             _pd_plain=bool(sbo.get("plain_pattern")))
     free = ops_pieces(M, ops)
     if g.get("worn_open"):  # (C174: a garment worn OPEN: fitted open, no button done; its stitched patches sewn as the
         # fit has them (welded like seams) and the fit's layer order kept as a floor (body, flaps, patches; C170 / C173))

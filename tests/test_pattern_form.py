@@ -2348,9 +2348,17 @@ def test_worn_open_unfastened_front_has_no_lap(off=0.05):
             bx = {k: float(out["V"][v, 0]) for k, v in M["points"].items() if k.endswith(":break")}
             res[on] = (bx, "lap_order" in out["info"])
             print(f"OPEN_LAP {on}: breaks {({k: round(x * 1000, 1) for k, x in bx.items()})} mm, layered {res[on][1]}")
+        # (C232, canvas s17: per garment, the worn_open dict's "lap": false, with the flag unset; default: layered)
+        pf.OPEN_LAP = None
+        for lap in (True, False):
+            out = pf.assemble({"mesh": M, "X0": X0}, body, iters=80, attract=0.0, worn_open={"break": off, "lap": lap})
+            res[f"key {lap}"] = ({k: float(out["V"][v, 0]) for k, v in M["points"].items() if k.endswith(":break")},
+                                 "lap_order" in out["info"])
     finally:
         pf.OPEN_LAP = old
     bx, layered = res[False]
     assert not layered, res
     assert abs(bx["front.L:break"] + bx["front.R:break"]) < 0.001 and abs(bx["front.L:break"] - off) < 0.003, bx
     assert res[True][1], res  # (the control: layered)
+    assert res["key True"][1] and not res["key False"][1], res
+    assert abs(res["key False"][0]["front.L:break"] - bx["front.L:break"]) < 1e-6, res

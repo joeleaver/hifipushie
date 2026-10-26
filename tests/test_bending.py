@@ -415,3 +415,56 @@ def test_the_last_word_takes_no_length_out_of_the_shear(bend_on, monkeypatch, ve
             print(f"hold {hold}: shear p99 {out[hold][0]:.1f} deg, threads p99 {out[hold][1] * 100:.2f} %")
     assert out[True][0] <= 0.5 * out[False][0], out
     assert out[True][1] <= out[False][1] + 1e-4, out
+
+
+def test_plain_cloth_is_not_made_to_a_shape(bend_on, monkeypatch, verbose=True):
+    """C231 (canvas s17): PLAIN CLOTH IS NOT MADE TO A SHAPE. Under STYLE_TF_PD every face's threads target was its
+    current map within the band about the fit, plain cloth too, so the stiff styling kept the plain body where the fit
+    left it, stretch included (Garrett: plain threads p99 15 % at the fit; the lower fronts puffed forward and out). A
+    strip canvassed over its first half (12 mm held) and plain beyond, the plain half left 10 % stretched along its warp:
+    one relax. With TF_PD_PLAIN (plain faces target their pattern lengths) the plain threads p99 ends within 2 %; without,
+    over 6 %; the canvas half's threads stay within 2 % either way."""
+    out = {}
+    for plain in (False, True):
+        monkeypatch.setattr(gp, "TF_PD_PLAIN", plain)
+        M = _strip()
+        u = M["uv"][:, 0]
+        X = np.c_[np.where(u > 0.06, 0.06 + (u - 0.06) * 1.10, u), M["uv"][:, 1], np.zeros(len(u))]
+        M["bend_w"] = np.where(u <= 0.06, bd.BEND_KIND["canvas"], 1.0)
+        Xn, _ = gp.style(M, X, u < 0.012, [{"relax": {}}])
+        F, _ = gp.thread_faces(M)
+        ln = _thread_lengths(M, Xn).max(1) - 1
+        cu = u[F].mean(1)
+        out[plain] = (float(np.percentile(ln[cu > 0.075], 99)), float(np.percentile(ln[cu < 0.045], 99)))
+        if verbose:
+            print(f"TF_PD_PLAIN {plain}: plain threads p99 {out[plain][0] * 100:.2f} %, canvas {out[plain][1] * 100:.2f} %")
+    assert out[True][0] <= 0.02, out
+    assert out[False][0] >= 0.06, out
+    assert out[True][1] <= 0.02 and out[False][1] <= 0.02, out
+
+
+def test_the_stiff_styling_is_a_garment_key(monkeypatch):
+    """C232 (canvas s17): the stiff styling and its levers are the GARMENT's (not env-only), so a fit from the repo spec
+    reproduces a candidate: with the module flags unset (None), worn_style styles a canvassed garment stiff only when it
+    declares "style_bend", and its dict's levers ("press", "final_shear_hold", "plain_pattern") reach the solve; a
+    garment without the key, or not canvassed, keeps the bending-free styling."""
+    for f in ("STYLE_BEND", "BEND_REST_PRESS", "FINAL_SHEAR_HOLD", "TF_PD_PLAIN"):
+        monkeypatch.setattr(gp, f, None)
+    monkeypatch.setattr(gp, "STYLE_BEND_ANY_CANVAS", False)
+    seen = {}
+    monkeypatch.setattr(gp, "style", lambda M, X, held, ops, **kw: (seen.update(M=M), (X, None))[1])
+    M = _strip()
+    X = np.c_[M["uv"], np.zeros(len(M["uv"]))]
+    ops = [{"smooth": {"pieces": ["strip"]}}]
+    lev = {"press": True, "final_shear_hold": True, "plain_pattern": False}
+    for canvas, key, want in ((True, lev, True), (True, None, False), (False, lev, False), (True, True, True)):
+        M["bend_w"] = np.full(len(X), bd.BEND_KIND["canvas" if canvas else "fusible"])
+        g = {"style": ops} if key is None else {"style": ops, "style_bend": key}
+        gp.worn_style(M, X, None, g)
+        Ms = seen["M"]
+        assert bool(Ms["_style_bend"]) == want, (canvas, key)
+        assert gp._opt(gp.FINAL_SHEAR_HOLD, Ms, "_final_shear_hold") == (isinstance(key, dict)), key
+        assert gp._opt(gp.TF_PD_PLAIN, Ms, "_pd_plain") is False
+        assert gp._opt(gp.BEND_REST_PRESS, Ms, "_bend_press") == (isinstance(key, dict)), key
+    monkeypatch.setattr(gp, "FINAL_SHEAR_HOLD", False)  # (a set flag wins: env / tests)
+    assert gp._opt(gp.FINAL_SHEAR_HOLD, Ms, "_final_shear_hold") is False
