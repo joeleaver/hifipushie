@@ -192,6 +192,14 @@ SMOOTH_HAND = int(__import__("os").environ.get("GP_SMOOTH_HAND", "0"))
 # cloth; the bending is rotation invariant, so the smoothed shape's own curvature is the rest.) The threads' bounds and
 # the shear lock stay on the fit itself.
 BEND_REST_PRESS = __import__("os").environ.get("GP_BEND_REST_PRESS", "0") == "1"
+# THE LAST WORD TAKES NO LENGTH OUT OF THE SHEAR (canvas s17, C230): under STYLE_TF_PD the threads-first last word
+# (STYLE_THREAD_FINAL bending-free rounds until no face is past its bound) has one thing resisting shear, the weave's
+# SHEAR_STIFF (0.011) mix, and the lock (max(start, SHEAR_LOCK_DEG 35)). A face past its bound after the bending rounds
+# was brought back by SHEARING its neighbours to the lock (a rhombus keeps its sides and spans a longer diagonal):
+# Garrett's collar 6 -> 42 deg p99 in the stiff styling's first relax (20 rounds without the last word: 9; bending weight
+# x 0.002: still 42). With FINAL_SHEAR_HOLD the last word's shear lock per face is max(the face's shear when the last word
+# starts, its styling start's): it shortens threads by moving cloth, not by shearing more. Env GP_FINAL_SHEAR_HOLD=0 / 1.
+FINAL_SHEAR_HOLD = __import__("os").environ.get("GP_FINAL_SHEAR_HOLD", "0") == "1"
 
 STEP = 0.003  # m: a handle's move per step
 TOL = 0.005  # stretch p99 allowed above the least the pull has reached (0.5 %: the shirt's knee, module docstring)
@@ -653,6 +661,14 @@ class FlatARAP:
                 Y = floor_round(Y)
             if eps is not None and dmax < eps:
                 break
+        lim_ = None
+        if tf and FINAL_SHEAR_HOLD and getattr(self, "_pd", False) and getattr(self, "shear_lim", None) is not None:
+            # (FINAL_SHEAR_HOLD, C230: the last word takes no length out of the shear: each face's shear may not grow
+            # past max(where the bending rounds left it, the styling start's))
+            Fg = np.stack([Y[WF[:, 1]] - Y[WF[:, 0]], Y[WF[:, 2]] - Y[WF[:, 0]]], -1) @ self.Dinv0
+            c_ = np.sum(Fg[:, :, 0] * Fg[:, :, 1], 1) / np.maximum(np.linalg.norm(Fg[:, :, 0], axis=1) * np.linalg.norm(Fg[:, :, 1], axis=1), 1e-12)
+            lim_ = self.shear_lim
+            self.shear_lim = np.minimum(lim_, np.maximum(np.abs(np.arccos(np.clip(c_, -1, 1)) - np.pi / 2), self.shear_start))
         if tf:  # THREADS FIRST, the last word: bending-free rounds until no face is past its bound (the bending chose the
             # shape on the way; the threads have the last say), floors kept
             for _r in range(STYLE_THREAD_FINAL):
@@ -665,6 +681,8 @@ class FlatARAP:
                 Y = self._thread_cap(Y, fx, hi=self.thread_hi, lo=self.thread_lo if STYLE_THREAD_CAP_LO else None)
                 if self.floor:
                     Y = floor_round(Y)
+        if lim_ is not None:
+            self.shear_lim = lim_
         return Y
 
     def _arap_rhs(self, Y: np.ndarray, fixed: np.ndarray) -> np.ndarray:
@@ -687,7 +705,8 @@ class FlatARAP:
                 W0 = self.weld(np.asarray(self._bend_rest_X, float))
                 F0 = np.stack([W0[WF[:, 1]] - W0[WF[:, 0]], W0[WF[:, 2]] - W0[WF[:, 0]]], -1) @ self.Dinv0
                 c0 = np.sum(F0[:, :, 0] * F0[:, :, 1], 1) / np.maximum(np.linalg.norm(F0[:, :, 0], axis=1) * np.linalg.norm(F0[:, :, 1], axis=1), 1e-12)
-                self.shear_lim = np.maximum(np.abs(np.arccos(np.clip(c0, -1, 1)) - np.pi / 2), np.radians(pf_.SHEAR_LOCK_DEG))
+                self.shear_start = np.abs(np.arccos(np.clip(c0, -1, 1)) - np.pi / 2)
+                self.shear_lim = np.maximum(self.shear_start, np.radians(pf_.SHEAR_LOCK_DEG))
             tc = np.clip(th, np.pi / 2 - self.shear_lim, np.pi / 2 + self.shear_lim)
             bad_ = np.abs(tc - th) > 1e-9
             if bad_.any():

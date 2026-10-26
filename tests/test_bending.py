@@ -390,3 +390,28 @@ def test_the_canvas_is_pressed_before_it_is_worn(bend_on, monkeypatch, verbose=T
     if verbose:
         print(f"pressed roll radius {r:.1f} mm (12)")
     assert abs(r - 12.0) <= 0.15 * 12.0, r
+
+
+def test_the_last_word_takes_no_length_out_of_the_shear(bend_on, monkeypatch, verbose=True):
+    """C230 (canvas s17): THE LAST WORD TAKES NO LENGTH OUT OF THE SHEAR. Under STYLE_TF_PD the threads-first last word
+    (bending-free rounds until no face is past its bound) is resisted in shear only by the weave's SHEAR_STIFF mix, so
+    faces past their bound after the bending rounds were brought back by shearing their neighbours toward the lock
+    (Garrett's collar 6 -> 42 deg p99 in the stiff styling's first relax). A flat canvassed strip held at both ends,
+    its canvas made to a 20 mm dome (the bending's rest), one relax: with FINAL_SHEAR_HOLD (the last word's lock per face
+    = max(its shear entering the last word, its styling start's)) the shear p99 is at most half (5.5 vs 13.2 deg) and
+    the threads p99 no worse (3.1 vs 5.7 %)."""
+    out = {}
+    for hold in (False, True):
+        monkeypatch.setattr(gp, "FINAL_SHEAR_HOLD", hold)
+        M = _strip()
+        u, v = M["uv"][:, 0], M["uv"][:, 1]
+        X = np.c_[u, v, np.zeros(len(u))]
+        M["bend_w"] = np.full(len(X), bd.BEND_KIND["canvas"])
+        M["_bend_rest_shape"] = np.c_[u, v, 0.02 * np.exp(-((u - 0.06) / 0.012) ** 2)]
+        Xn, _ = gp.style(M, X, (u < 0.012) | (u > 0.108), [{"relax": {}}])
+        t, sh = gp.thread_strain(M, Xn)
+        out[hold] = (float(np.percentile(sh, 99)), float(np.percentile(t.max(1), 99)))
+        if verbose:
+            print(f"hold {hold}: shear p99 {out[hold][0]:.1f} deg, threads p99 {out[hold][1] * 100:.2f} %")
+    assert out[True][0] <= 0.5 * out[False][0], out
+    assert out[True][1] <= out[False][1] + 1e-4, out
