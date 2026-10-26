@@ -314,3 +314,79 @@ def test_a_canvassed_panel_lets_its_plain_cloth_hang(bend_on, verbose=True):
     assert out["local"][0] >= 0.75, out
     assert out["scalar"][0] < 0.2, out
     assert out["local"][1] <= 0.03, out
+
+
+def _stretched_canvas_strip(stretch=0.10):
+    """A canvassed strip whose free half was left stretched along its warp by the fit (x 1 + stretch), its first 12 mm
+    held: the styling's start."""
+    M = _strip()
+    u = M["uv"][:, 0]
+    X = np.c_[np.where(u > 0.012, 0.012 + (u - 0.012) * (1 + stretch), u), M["uv"][:, 1], np.zeros(len(u))]
+    M["bend_w"] = np.full(len(X), bd.BEND_KIND["canvas"])
+    return M, X, u < 0.012
+
+
+def test_the_fits_stretch_is_let_go_over_the_styling(bend_on, monkeypatch, verbose=True):
+    """C229 (canvas s16): THE FIT'S STRETCH IS LET GO OVER THE STYLING. The threads-first upper bound was max(the face's
+    length at the styling start, 1.01): a face the fit left stretched kept it to the end (Garrett's stiff-styled stand 18 %,
+    collar 15 %, where the default styling relaxes them), since the stiff styling's PD threads target is the face's current
+    map within that band. With TF_BLEED the bound's excess shrinks to 0 over the styling's ops: a canvassed strip left
+    10 % stretched, styled with three relaxes, ends with its threads p99 within 1.5 % (1.05); without, over 6 % (7.8)."""
+    out = {}
+    for bleed in (False, True):
+        monkeypatch.setattr(gp, "TF_BLEED", bleed)
+        M, X, held = _stretched_canvas_strip()
+        Xn, _ = gp.style(M, X, held, [{"relax": {}}, {"relax": {}}, {"relax": {}}])
+        out[bleed] = float(np.percentile(_thread_lengths(M, Xn).max(1) - 1, 99))
+        if verbose:
+            print(f"bleed {bleed}: threads p99 {out[bleed] * 100:.2f} %")
+    assert out[True] <= 0.015, out
+    assert out[False] >= 0.06, out
+
+
+def _rough_mm(M, X):
+    """p95 of |the normal offset to the one-ring centroid| (mm) over the strip's interior vertices: a crumple's read."""
+    F = np.asarray(M["F"])
+    E = np.unique(np.sort(np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]], 1), axis=0)
+    cnt = np.bincount(E.ravel(), minlength=len(X)).astype(float)
+    S = np.zeros_like(X)
+    np.add.at(S, E[:, 0], X[E[:, 1]])
+    np.add.at(S, E[:, 1], X[E[:, 0]])
+    fn = np.cross(X[F[:, 1]] - X[F[:, 0]], X[F[:, 2]] - X[F[:, 0]])
+    vn = np.zeros_like(X)
+    for k in range(3):
+        np.add.at(vn, F[:, k], fn)
+    vn /= np.linalg.norm(vn, axis=1)[:, None] + 1e-12
+    o = np.abs(((S / cnt[:, None] - X) * vn).sum(1))
+    inner = (cnt >= 6) & (M["uv"][:, 0] > 0.02)
+    return 1000 * float(np.percentile(o[inner], 95))
+
+
+def test_the_canvas_is_pressed_before_it_is_worn(bend_on, monkeypatch, verbose=True):
+    """C228 (canvas s16): THE CANVAS IS PRESSED BEFORE IT IS WORN. The stiff styling's bending rested on the fit as it
+    is: a crumple in the fit was part of the rest, so a smooth faired it and the next solve put it back (Garrett's lapel:
+    rough 1.17 mm at the fit, 1.14 after the stiff styling, 0.14 after the default one). A canvassed strip crumpled at
+    the start (a checkerboard of +-0.6 mm bumps, 6 mm apart), held along its first 12 mm, styled smooth then relax:
+    with BEND_REST_PRESS (the rest = the canvassed pieces smoothed without bending first) it ends at most half as rough
+    as without; and pressing keeps a made shape: the rolled strip's roll stays within 15 % of its 12 mm radius."""
+    out = {}
+    for press in (False, True):
+        monkeypatch.setattr(gp, "BEND_REST_PRESS", press)
+        M = _strip()
+        u, v = M["uv"][:, 0], M["uv"][:, 1]
+        bump = 0.0006 * np.sin(np.pi * u / 0.006) * np.sin(np.pi * v / 0.006) * (u > 0.02)
+        X = np.c_[u, v, bump]
+        M["bend_w"] = np.full(len(X), bd.BEND_KIND["canvas"])
+        Xn, _ = gp.style(M, X, u < 0.012, [{"smooth": {"pieces": ["strip"]}}, {"relax": {}}])
+        out[press] = (_rough_mm(M, X), _rough_mm(M, Xn))
+        if verbose:
+            print(f"press {press}: rough {out[press][0]:.3f} -> {out[press][1]:.3f} mm")
+    assert out[True][1] <= 0.5 * out[False][1], out
+    M, X = _rolled()
+    M["bend_w"] = np.full(len(X), bd.BEND_KIND["canvas"])
+    held = M["uv"][:, 1] < 0.005
+    Xn, _ = gp.style(M, X, held, [{"smooth": {"pieces": ["strip"]}}, {"relax": {}}])
+    r = _roll_radius(Xn, M)
+    if verbose:
+        print(f"pressed roll radius {r:.1f} mm (12)")
+    assert abs(r - 12.0) <= 0.15 * 12.0, r
