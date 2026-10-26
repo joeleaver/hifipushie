@@ -11171,3 +11171,29 @@ turned, points pulled) were tuned on bending-free cloth; the stand's rest is the
   much wider and deeper than the concept's, lapels narrow, the gorge / collar ends still stand as crumpled tabs, the
   fronts curve to a cutaway instead of falling straight.
 - Suite: first run 1 red (test_a_shirt_without_a_tie_is_styled_open_by_default: FIT_STITCH sewed the shirt's button stitches, threads 7.4 % vs 7); fit_sew restricted to patch stitches (jacket d2 unchanged: all 10 are flap stitches); rerun 314 passed, 4 xfailed, PYTEST_EXIT 0.
+
+## canvas stiffness session 9 (2026-10-25; $S9 = /mnt/data/hifipushie/canvas/s9; branch claude/canvas9)
+- (a) perop9.py on fit_d2 (per op, per piece threads, break): d2 default: the turn takes >20 % faces 19 -> 52, the
+  hang relax (op 3) moves nothing in either run (230-380 s), the fronts' smooth then the floor between ops raise "all".
+  C207 (GP_STYLE_BEND=1 GP_TF_PD=1): every op holds (front.L 6.9 %, breaks 67 / 67) until op 7, the hem pull: front.L
+  6.9 -> 63 %, then the relax 77 %. The pull took 0 steps (stopped at once): the tear is in its plain solves.
+  solvelog9 (every FlatARAP.solve logged): the pull's 20-round relax 6.9 -> 19.5, the step 63.8, the settle 63.0.
+  cap9.py captured the pull's input (cap_pull_pd.pkl); probe9 variants of that one solve: nobend 6.6, nofloor 6.7,
+  nocap 18.9, nogrip 24.9, nocontact 50, noshear 22.7, nolock 23.4, bend weight 1 or 2: 20. step9 (one round split):
+  global 12.7 -> CAP 43.6 -> floor 43.6 (no pushes); K diag median 13681 vs threads 3.5. Bending-only global step +
+  Jacobi cap = the tear. Fix C209: threads' term x mem_w (median bending of the stiff vertices x STYLE_TF_PD_MEM /
+  median thread diag): MEM 1: 7.1 %, 10: 6.9, 100: 6.8. KAT strips (kat9.py): a rolled canvas strip swung 15 deg
+  springs back 6.3 mm at MEM 0 and 1.4-5 mm at MEM 0.1-10 (60 rounds): local / global converges slowly on the soft
+  modes once the threads dominate (more rounds, not a weaker thread; the trade-off is the solver's speed, not the model).
+- pd10 (C207 + C209 MEM 10, full styling): threads p99 8.19 (fronts 5.32, collar 10.8, stand 14.0), edge 56-62 /
+  69-71 / 80-69, hem+30 457, length 729, break 320-324 below HPS (L 54, R 46 off CF; start 64), shirt poke 157 verts
+  (collar 133). Made the default per the brief (threads <= 8.5 %): GP_TF_PD default 1, STYLE_BEND per garment
+  (declares interfacing). e1 = repo default on fit_d2 (style.py, no env) for the identity check.
+- (b) collar vs shirt collar (rad9 / need9 / over9 / collar9; r about the shirt stand's centroid axis): fit_d2 at CB
+  jacket neck edge r 86 z 24 (over the jacket HPS), stand top r 78 z 39; shirt band r 73 z 24 -> fold r 66 z 54, fall
+  edge r 80 z 24. Styled d2: stand top r 69 z 33 (inside the shirt's fall), 389 shirt collar vertices outside the jacket
+  at CB (m1 0). CB..90 deg need over flat: fit +4.4 (neck) / +2.4 (top) %, styled +5.4 / +8.6. The draft is not short
+  (C210); the styling pulls the collar in / down. At 90 deg the jacket roll r 92-94 vs the shirt band 68: flares off.
+- (c) lapel29 on fit_d2 (unstyled): lapel 150 125 / 127, V 200 220, break 315-320, lapel point 80 below HPS (r32: 133
+  / 221; concept 127-134 / 237 / 386 / 93). d2 styled 122 / 209; pd10 119 / 201.
+- LOOK pd10 vs d2 beside the concept ($S9/check/cmp_pd10_d2_{wholefront,upper_front,side}.png): about the same jacket.

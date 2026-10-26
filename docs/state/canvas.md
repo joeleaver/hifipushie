@@ -1,41 +1,46 @@
-# STATE: canvas (canvas / interfacing BENDING STIFFNESS; the jacket with no workaround holds) -- 2026-10-25 (s8)
+# STATE: canvas (canvas / interfacing BENDING STIFFNESS; the jacket with no workaround holds) -- 2026-10-25 (s9)
 
 GOAL (Joe): canvassed pieces keep their shape by STIFFNESS so the workaround holds go. No sim, no rented GPU.
 Concept SLIM-CUT, worn open, falls straight (workspace/garrett_v20/concept_v8_front_apose.png). Rules: threads first
 (C195); supports, not holds (C190); styling ends with smooth + pull down; current garments are not a baseline.
-Sessions: s1 78507629; s2-s8 claude/canvas2-8 ($S8 /mnt/data/hifipushie/canvas/s8; history cloth.md "canvas stiffness
-session 8"). Ledger C190-C208.
-DEFAULT (C205 + C206): interfaced garments fitted keyed, shirt floor from relax1, no plumb hold, styled on the shirt's
-own cloth; the FIT sews patch stitch lines (C206 FIT_STITCH, on). d2 = $S8/fit_d2.pkl / asm_d2.pkl (repro.py d2).
-S8 FINDINGS:
-- (e) FIXED (C206): flap stitch gaps in the fit 10-58 -> <= 0.66 mm; styled flaps 10.4 / 9.7 -> 6.2 / 4.2 %; the
-  flaps render as clean rectangles on their lines (check/cmp_d2_d1_wholefront.png).
-- (a) CAUSE FOUND, FIX NOT DONE: not a fold (no front hinge past 90 deg, hingeprobe.py). The styling's threads-first
-  ALTERNATION (bending round, 2 bending-free solves, cap, one-sided floor) walks the free canvassed fronts 24-65 mm
-  forward (exp1 b1 / b12). C207 STYLE_TF_PD (opt-in GP_TF_PD=1 + GP_STYLE_BEND=1; threads band + shear lock as the
-  local step): the FIRST relax holds the breaks (p7: 62 / 67); the FULL styling still tears (p8 threads p99 44 %,
-  front.L 73 %).
-- (b) C208 FIT_MADE_FLOOR (opt-in): poke 1152 -> 278 but collar threads 22.5 -> 35 % (m1). A trade-off (P29):
-  suspect the jacket collar's draft is too small round the neck to ride over the shirt collar.
-- Housekeeping done: cloth_tools / cloth_construction / cloth_design say open = styling, a sim = wrinkle source.
+Sessions: s1 78507629; s2-s9 claude/canvas2-9 ($S9 /mnt/data/hifipushie/canvas/s9; history cloth.md "canvas stiffness
+session 9"). Ledger C190-C210.
+DEFAULT (C205 + C206 + C209): interfaced garments fitted keyed, shirt floor from relax1, no plumb hold, styled on the
+shirt's own cloth, the FIT sews patch stitches; NEW (C209): a garment that declares interfacing is STYLED with its
+bending under STYLE_TF_PD (GP_STYLE_BEND unset = per garment; GP_TF_PD default 1), the threads' term weighted
+STYLE_TF_PD_MEM (10) x the stiff cloth's bending. e1 = the d2 fit styled by the repo default ($S9/asm_e1.pkl).
+S9 FINDINGS:
+- (a) FIXED (C209): the op that tore under C207 was not a grip: the hem pull took 0 steps; its plain relax solve (20
+  rounds, nothing moved, grips free or not) tore front.L's canvassed lapel 6.9 -> 19.5 %, its settle -> 63 %
+  (solvelog9 / probe9 / step9 on cap_pull_pd.pkl). Cause: the canvas bending (K diag median 13681) swamped the threads
+  (L diag 3.5): the global step was bending only, and the Jacobi cap after it tore (one round: global 12.7 -> cap
+  43.6 %). Threads weighted 10 x the bending: the same solve 6.9 %; full styling pd10: threads p99 8.19 (fronts 5.3,
+  collar 10.8 vs d2 22.5), >20 % faces 20 vs 70.
+- (b) MEASURED, NOT THE DRAFT (C210): the collar's neck edge / stand top need +4.4 / +2.4 % over flat to ride the
+  shirt collar in the FIT (rad9 / need9); the STYLING pulls the stand top in at CB (r 78 -> 69 mm, shirt collar
+  fall ~76-80) and down (z 39 -> 33 over HPS; shirt fold at 54-58): need +8.6 %. So the shirt shows at CB because the
+  styling sinks the jacket collar (d2 389 shirt verts outside the jacket at CB; m1 0). At the side (90 deg) the jacket
+  roll sits 20-36 mm below the shirt top and 25 mm off the neck (r 94 vs shirt band 68): the collar flares off the
+  neck instead of hugging it. No draft change made.
+- (c) lapel / V: fit_d2 lapel 150 125/127, V 200 220, break 315-320 below HPS; styled d2 122 / 209 / 329-335; pd10
+  119 / 201 / 320-324 (concept 127-134 / 237 / 386; r32: 133 / 221). Narrowed 8 mm in the fit since r32 and 11-19 more
+  in the styling; the break sits 50-65 mm HIGH (the V is shallower by the numbers, it reads deeper because the lapel
+  faces turn sideways: not measured yet).
 RUNS (concept edge 450/550/650 71/78/94, hem+30 482, front len 748; threads = pooled p99 (fronts; collar)):
-| d1 (s7 default) | 66-46 / 80-67 / 106-93 | 498 | 729 | 6.46 (4-5; 15.2) |
-| d2 (C206, DEFAULT) | 52-50 / 65-72 / 90-105 | 471 | 735 | 7.64 (4.0; 22.5) |
-| m1 (d2 + C208 + UNDER_MADE) | 58-50 / 73-73 / 102-107 | 477 | 723 | 13.29 (4.8; 35.1) |
-| p8 (d2 fit, C207 styling) | 87-102 / 75-91 / 94-105 | 468 | 725 | 44.2 (60; 23.4) |
-LOOK d2: same jacket as d1 apart from the flaps: V too wide / deep, lapels narrow, gorge tabs, cutaway fronts.
-No blind review (edge rows not within +-8 mm).
-SUITE (18 files): 314 passed, 4 xfailed, PYTEST_EXIT 0 ($S8/suite.log). First run 1 red ($S8/suite_r1.log): FIT_STITCH sewed
-  wf_simon's button stitches (threads 6.5 -> 7.4 %); fit_sew now closes PATCH stitches only (the jacket: all 10 are).
-NEXT (in order; scripts in $S8: exp1.py <fit> <tag> <N | ops.json[:N]>, style.py <fit> <tag>, rd.sh <tag>, post.sh
-<tag> + sheet.py <tag>c <out>, repro.py <tag>):
-1. (a) Find the op that tears under C207: copy s6/perop.py, run per op on fit_d2 with GP_STYLE_BEND=1 GP_TF_PD=1,
-   threads per piece after each op. Suspect grips (slide / turn / pull fixed sets): under the PD local step a gripped
-   face's neighbours get only the band, no pull toward a rotation; try SHEAR_STIFF higher only on faces touching a
-   fixed vertex, or the old local step inside grip ops. Goal: full styling threads <= d2's 7.6 with breaks held.
-   Then a KAT: a canvassed curved panel (rest = moulded) free on a sphere floor keeps its place in a relax.
-2. (b) Measure the jacket collar's neck-edge length vs the shirt collar's outer ring at CB (seamlen.py / collen.py in
-   s6); if short, fix the draft, then FIT_MADE_FLOOR on.
-3. (c) flare / hem 471 vs 482 / length 735 vs 748; (d) bulge; (f) C200's KAT.
-4. Looks when something changes visibly (wholefront, upper_front, side; concept | new | d2 clay + diag); blind review
-   at +-8 mm of 71 / 78 / 94.
+| d2 (s8 default) | 52-50 / 65-72 / 90-105 | 471 | 735 | 7.64 (4.0; 22.5) |
+| pd10 = e1 (C209, DEFAULT) | 56-62 / 69-71 / 80-69 | 457 | 729 | 8.19 (5.3; 10.8) |
+LOOK pd10 vs d2 (check/cmp_pd10_d2_*.png): about the same jacket: upper fronts a little straighter, collar threads
+halved, but the lower fronts still cut away and hem in more (457), a crease on the right front at the pocket; V / lapel
+/ gorge tabs / shirt collar at the back unchanged. No blind review (edge rows not within +-8 mm).
+SUITE: see cloth.md session 9 / $S9/suite.log.
+NEXT (in order; scripts in $S9: perop9.py <fit> <tag> [ops] (per op, per piece), solvelog9.py, cap9.py + probe9.py
+(capture an op's input, probe its solve), rad9 / need9 / over9.py (collar vs shirt), rd.sh / post.sh / sheet.py):
+1. Collar sinks in the styling: perop9 on e1 + opcol9.py <fit> <tag> (cbTop r / z, shirt-over at CB per op) to name the
+   op that pulls the collar down / in; fix it there (a made band is supported by the shirt collar it rides on: C208's
+   made-on-made floor in the STYLING may now hold without tearing, retry m1 under C209).
+2. The side of the neck: the jacket roll 25 mm off the neck at 90 deg; read the stand's lean (neck edge r vs top r)
+   on the fit; if the stand top is as long as its neck edge the collar can't hug: a drafting rule (top edge shorter
+   by the lean), test_tailoring + Tess's coat path.
+3. Lapel face yaw (the lapel turned sideways reads narrow): measure the lapel face normal at HPS-150 vs the concept's
+   flat-on lapel; the break 50-65 mm high vs 386: pattern (break_y 0.425) or fit (worn_open break 64)?
+4. Hem 457 vs 482 / 650 edge 80-69 vs 94: the lower fronts hem in under C209; then flare, bulge, C200's KAT.

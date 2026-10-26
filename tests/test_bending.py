@@ -174,3 +174,27 @@ def test_stiffness_never_buys_shape_with_stretch(bend_on, verbose=True):
         print(out)
     assert out["plain"][0] < 0.01 and out["canvas"][0] < 0.015, out
     assert abs(out["canvas"][1] - out["canvas"][2]) < 3.0, out
+
+
+def test_threads_outweigh_bending_in_the_one_solve(bend_on, monkeypatch, verbose=True):
+    """C209 (canvas s9): under STYLE_TF_PD the threads' term in the global step weighs STYLE_TF_PD_MEM x the stiff
+    cloth's median bending weight (at weight 1 the canvas bending was ~3900 x the threads: Garrett d2's hem pull, a
+    solve with nothing moved, tore the canvassed lapel 6.9 -> 63 %; with the weight 6.9 %). Here: the weight is applied,
+    and a canvassed rolled strip swung 15 deg off its made roll, its stand held, relaxes with its threads within 1.5 %."""
+    monkeypatch.setattr(gp, "STYLE_TF_PD", True)
+    M, X = _rolled()
+    M["bend_w"] = np.full(len(X), bd.BEND_KIND["canvas"])
+    M["_bend_rest"] = X.copy()
+    A = gp.FlatARAP(M, X)
+    kd = A.bend.K.diagonal()
+    assert A.mem_w * np.median(A.L0.diagonal()) >= 0.99 * gp.STYLE_TF_PD_MEM * np.median(kd), A.mem_w
+    held = M["uv"][:, 1] < 0.005
+    c, s = np.cos(np.radians(15)), np.sin(np.radians(15))
+    Y = X.copy()
+    Y[~held] = X[~held] @ np.array([[1, 0, 0], [0, c, -s], [0, s, c]]).T
+    for _ in range(3):
+        Y, _inf = gp.relax(M, Y, held, hang=False)
+    t, _ = gp.thread_strain(M, Y)
+    if verbose:
+        print("mem_w", A.mem_w, "threads p99", np.percentile(t.max(1), 99))
+    assert np.percentile(t.max(1), 99) < 0.015
