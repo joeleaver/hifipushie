@@ -26,9 +26,7 @@ S13 (spec v10 = DEFAULT r20 = v9 b20 + collar run_off; v8 = shirt `source_probe`
   PASS; gate PASS_WAIVED 09456467b628eb573deb -> DEFAULT v10 (LOOK check/cmp_r20_b20_bc44_*.png).
 S14 (no default change; v10 = r20 stays): causes per stage (repro14.py prints every fit phase + styling op per side).
 | oL17 (PF_OPEN_LAP=0 + length_bonus 0.17) | 49 ; 49 | 68 ; 67 | 101 ; 98 | 747 | 478 | 42 ; 43 | 4.31 |
-- C223: R/L asymmetry is the FIT (relax1 leaves L 30 past CF, R 9; the swing turns L further; slide / turn then fire on
-  L only). OPEN_LAP False (PF_OPEN_LAP=0, OPT-IN, KAT test_worn_open_unfastened_front_has_no_lap) evens the fit; relax1's
-  seed not found. Even, both sides land at R's values: r20's better L was an accident.
+- C223: R/L asymmetry is the FIT's lap; OPEN_LAP False (opt-in; C232: worn_open lap false) evens it.
 - C224: length is the draft: length_bonus is metres; 0.17 -> 747 (opt-in candidate oL17; LOOK level with r20, the V
   at the waist narrower: check/cmp_oL17_o0b_r20_*.png). The edge rows follow the break, which the STYLING closes
   (fit 64 -> first relax -11, smooth -4, pull -5 -> 42-53). Stiff styling (GP_STYLE_BEND) holds it but fronts 10-14 %,
