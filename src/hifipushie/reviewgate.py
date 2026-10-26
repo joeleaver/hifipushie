@@ -18,6 +18,7 @@ from pathlib import Path
 import numpy as np
 
 MAX_SIDE = 3000      # px: a crop bigger than this is a sheet
+GUTTER_SPILL = 0.5  # (grid_gutters) a flat run whose colour covers more of the line beside it is picture, not a gutter
 MAX_ASPECT = 3.2     # a crop this many times wider than tall (or taller than wide) is a strip of panels
 # A number with a unit, or a word that claims a result: neither belongs in a region name or the --context line.
 CLAIM = re.compile(r"\d+(\.\d+)?\s*(mm|cm|px|%|l\*|db|deg|°)|\b(fixed|improved|better|worse|closer|matches|"
@@ -79,7 +80,11 @@ def grid_gutters(img, min_frac: float = 0.15) -> str | None:
     """Gutters of a multi-view grid: a full-length row or column of one flat colour inside the image (not within
     min_frac of an edge), as a contact sheet's tile borders leave, of a value unlike the image's own background (the
     border's commonest value) and with picture on both sides. A single view on a flat background has background
-    columns, but those match the border, so they don't count."""
+    columns, but those match the border, so they don't count. A gutter is a STRAIGHT band: its colour stops at the run's
+    edges. A flat region of the picture itself (a diagnostic render's flat body / shirt colour spanning the crop's
+    height) also leaves full-length flat lines, but its colour carries on past the run on many lines (the silhouette
+    widens): a run whose colour covers more than GUTTER_SPILL of the line just outside it, on either side, is not a
+    gutter (canvas s16, C227: the diag crops were refused as contact sheets)."""
     import numpy as np
     a = np.asarray(img.convert("L"), dtype=np.int16)
     h, w = a.shape
@@ -93,6 +98,15 @@ def grid_gutters(img, min_frac: float = 0.15) -> str | None:
         lo, hi = int(n * min_frac), int(n * (1 - min_frac))
         for i in np.flatnonzero(flat[lo:hi]) + lo:
             if busy[:i].sum() > 0.1 * n and busy[i + 1:].sum() > 0.1 * n:
+                i0, i1 = i, i  # (the run of flat lines of this line's colour round i)
+                while i0 > 0 and flat[i0 - 1] and abs(int(lines_min[i0 - 1]) - int(lines_min[i])) <= 2:
+                    i0 -= 1
+                while i1 < n - 1 and flat[i1 + 1] and abs(int(lines_min[i1 + 1]) - int(lines_min[i])) <= 2:
+                    i1 += 1
+                v = int(lines_min[i])
+                spill = [float((np.abs(np.take(a, j, axis=1 - axis) - v) <= 2).mean()) for j in (i0 - 1, i1 + 1) if 0 <= j < n]
+                if spill and max(spill) > GUTTER_SPILL:
+                    continue
                 return f"a flat gutter {name} at {i} of {n} px"
     return None
 

@@ -331,3 +331,10 @@ def test_review_refuses_a_contact_sheet_grid():
     sheet[200:220, :] = 20
     sheet[:, 200:220] = 20
     assert reviewgate.grid_gutters(Image.fromarray(sheet))
+    # (canvas s16) a diagnostic render's flat body colour spans the crop's height inside one view: the silhouette
+    # widens past the full-height columns (a neck above, shoulders below), so it is picture, not a gutter
+    diag = np.full((300, 300), 90, np.uint8)
+    diag[20:280, 20:280] = (rng.random((260, 260)) * 200 + 30).astype(np.uint8)
+    diag[:, 140:160] = 196  # (the neck: full height)
+    diag[120:, 100:200] = 196  # (the body below it, wider)
+    assert reviewgate.grid_gutters(Image.fromarray(diag)) is None
