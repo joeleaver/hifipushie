@@ -11475,3 +11475,37 @@ Goal: b2L (oL17 fit + stiff styling) reads at least as well as r20 against the c
 - Blind review (worktree bin/review, C227's gate passed the diag crop; review_e7.log): exit 4, the reviewer's weekly limit
   (resets 1 pm America/Denver). Not reviewed.
 - SUITE (18 files): 325 passed, 4 xfailed, PYTEST_EXIT 0 ($S16/suite.log).
+
+## canvas stiffness session 17 (2026-10-26; $S17 = /mnt/data/hifipushie/canvas/s17; branch claude/canvas17)
+Goal: e7 (oL17 fit + GP_STYLE_BEND=1 GP_BEND_REST_PRESS=1) or a successor reads at least as well as r20 everywhere, then default.
+- Tools: prof17.py (side profile: front's foremost y per depth), xsec17.py (horizontal sections: front / shirt / body y per x),
+  ph17.py (the waist bulge per FIT phase from phases_*.pkl), opy17.py (the same per styling op from a perop dump), wst17.py
+  (signed warp / weft at the waist per phase), fsh17.py (front shear map), cshear17.py / zz17.py / big17.py / cmove17.py
+  (collar shear maps, zigzag test, folded hinges, per-piece moves), rx17.py (worn_style replayed to its n-th relax, ~10 s:
+  the A/B harness), repro17.py (= s14 repro14 into s17) + fit.sh (oL17 fit + e7 styling).
+- (2) COLLAR SHEAR, CAUSE FOUND (C230): rx17 on the oL17 fit, first stiff relax, collar threads / shear p99:
+  | variant | collar | stand |
+  | e7 | 22.3 / 41.7 | 17.5 / 22.5 |
+  | bending x 0.1 / x 0.002 | 22.3 / 41.7, 22.2 / 41.6 | |
+  | no floors / no under layer / no FLOOR_CONTACT | 21.4 / 41.3, 20.8 / 42.1, 20.3 / 41.1 | |
+  | folded hinges (> 90 deg) like the others | 22.3 / 42.1 | |
+  | TF_PD_MEM 10 / TF_PD_LOCAL 0 / CAP_LO 1 | 21.3 / 41.2, 21.0 / 42.1, 22.3 / 44.4 | |
+  | 1 round + last word / 1 round, no last word | 22.7 / 42.2, 16.2 / 6.9 | |
+  | 20 rounds, no last word (STYLE_THREAD_FINAL 0) | 9.4 / 9.4 | 19.5 / 15.9 |
+  | FINAL_SHEAR_HOLD | 10.0 / 8.4 | 18.6 / 14.8 |
+  Not the bending, not the floors, not the stand / fall fold: the threads-first LAST WORD (bending-free rounds until no face
+  is past its bound) resists shear only by the SHEAR_STIFF 0.011 mix up to the 35 deg lock, so faces the bending rounds
+  left past their bound were brought back by shearing their neighbours. The shear is in patches at the side neck (pattern
+  u 74-148 mm, the neck edge), 57 % one sign, 26 % of hot neighbours opposite (patches, not a zigzag). C230
+  FINAL_SHEAR_HOLD: the last word's lock per face = max(its shear entering the last word, its styling start's).
+- (1) THE SIDE-VIEW KICK: the lower front stands 25-30 mm forward of the chest's plumb (e7 front.L at x 80-140 off CF:
+  -170 @ 350, -204 @ 450, -195 @ 650 mm y; r20 -188 / -176 / -173: plumb). Per FIT phase (ph17): every variant is on the
+  body at the seat (450 / 500: -135..-146); the LET-GO (relax, no attraction, no weight) puffs it: t0 (= r20's fit) -165 /
+  -162, L17 -192 / -190, o0 -177 / -184, oL17 -191 / -189. No shear there (fsh17: 0-5 deg) and threads ~isometric (wst17):
+  a free mode of the weightless let-go below the break (edge_free 0). The styling's hang (op 4) then hangs the plain lower
+  front plumb from that waist: 650 goes -135 -> -195 (e7), -137 -> -191 (d0 = default styling on oL17: its waist goes back
+  to -176 / -181 but the hem leans on to -207). So the kick is the oL17 FIT's let-go; the stiff styling keeps it (canvas at
+  400-500 near the edge, bw 6-20, rests on the fit / its pressing), the default styling swaps it for a leaning hem.
+  The stiff styling also keeps the fit's plain cloth as the fit left it (the PD threads target is the current map in a band
+  about the fit, plain too): e7 waist / hip widths 452 / 481 vs 415 / 437 default-styled (concept waist 414). C231
+  TF_PD_PLAIN (plain faces target their pattern lengths): strip KAT 8 % -> 0.02 %; on the jacket the kick stays (e10).
