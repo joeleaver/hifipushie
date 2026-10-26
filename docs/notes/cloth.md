@@ -11420,3 +11420,28 @@ Goal: styling threads-first like the fit (C209), so the stiff styling keeps the 
 - Verdict: b2L is the first stiff styling with the edge rows within +-8 and the fronts hanging; its surface (lapel
   ripple, flaps off the front) and threads (8.3 vs 5.55) read worse than r20. Opt-in only (GP_STYLE_BEND=1 + oL17 fit).
 - SUITE (18 files): 323 passed, 4 xfailed, PYTEST_EXIT 0 ($S15/suite.log).
+
+## canvas stiffness session 16 (2026-10-26; $S16 = /mnt/data/hifipushie/canvas/s16; branch claude/canvas16)
+Goal: b2L (oL17 fit + stiff styling) reads at least as well as r20 against the concept, then default.
+- Tools: rip16.py (LAPEL RIPPLE per stage: front's turned lapel / forepart HPS..break: rough = p95 |high-pass of the normal
+  offset| mm (SMOOTH_HAND's read, 6 rings), shear p99 deg, threads p99 %), hinge16.py (hinge fold-angle counts on the
+  lapel), press16.py (pressed-rest offline), perop16.py (= perop15 into s16), cend14.py (collar ends, s14).
+- WHY THE LAPEL RIPPLES (b2L): the fit's lapel is crumpled (rough 1.17 mm, 302 hinges > 20 deg, shear 20.8); the DEFAULT
+  styling removes it: its first relax takes the shear 20.8 -> 3.9 (SHEAR_FREE on undriven faces), its smooth the
+  roughness 1.00 -> 0.14 (d0 = default styling on the oL17 fit, per op). The STIFF styling keeps both (rough 1.14, shear
+  12.7 at the end): every term of it is at rest at the start: the threads' PD target is the current map within the band
+  [min(ln0, .99), max(ln0, 1.01)], the shear mix weighs the pattern at SHEAR_STIFF 0.011 (no SHEAR_FREE), the bending rests
+  on the fit (crumples included). Its smooth fairs 1.15 -> 1.00, then the next pull / relax puts the crumples back.
+  | run | lapel rough L ; R | lapel shear | lapel threads | fore rough |
+  | fit oL17 | 1.17 ; 1.21 | 20.8 ; 17.5 | 6.7 ; 4.7 | 1.30 ; 1.70 |
+  | d0 (default styling) | 0.17 ; 0.19 | 1.6 ; 1.5 | 2.1 ; 2.0 | 0.82 ; 0.82 |
+  | b2L (stiff, s15) | 1.14 ; 1.16 | 12.7 ; 10.7 | 4.2 ; 4.3 | 1.45 ; 1.95 |
+  | r20 (default v10) | 0.23 ; 0.28 | 1.7 ; 2.0 | 1.8 ; 2.0 | 1.15 ; 1.09 |
+- Faired rest (high-pass of the fit's normal offset faired out, folds kept by angle or by the declared rows): the lapel's
+  crumple hinges are as sharp as the roll's (20-45 deg), and the declared fold rows cover most of the lapel; the fair moved
+  p99 4-9 mm. Dropped. A high-pass of a bending-free smooth's move: rest threads 12-21 %. Dropped. Lever kept: the rest
+  = the canvassed pieces smoothed bending-free (C228, GP_BEND_REST_PRESS=1).
+- Threads bleed (C229, GP_TF_BLEED=1): the threads-first upper bound's excess over 1.01 shrinks linearly to 0 over the
+  styling's ops (style() sets M["_tf_bleed"]).
+- Review gate (C227): grid_gutters refused the diag crops (the flat body colour spans the crop height: a 191 px run of flat
+  columns); a gutter now has to be a straight band (its colour covers <= half the line beside it). KAT in test_codified.

@@ -137,6 +137,14 @@ STYLE_TF_PD_MEM = float(__import__("os").environ.get("GP_TF_PD_MEM", "1"))  # (1
 # hard rule. With THREAD_CAP_LO off the cap enforces hi only; the PD local step still targets lengths within [lo, hi]
 # (a soft term). Env GP_THREAD_CAP_LO=1 for the A/B. (Only the threads-first path: STYLE_BEND / STYLE_THREAD_FIRST_ALL.)
 STYLE_THREAD_CAP_LO = __import__("os").environ.get("GP_THREAD_CAP_LO", "0") == "1"
+# THE FIT'S STRETCH IS LET GO OVER THE STYLING (canvas s16, C229): the threads-first upper bound was max(the face's length
+# at the styling start, 1 + STYLE_THREAD_CAP), so a face the fit left stretched (Garrett's stand 18 %, collar 15 %) kept
+# that stretch to the end: the bound never asks less, and nothing else in the stiff styling shortens a thread (the PD
+# target is the current map within the band). The default styling relaxes them (5.55 %). A woven stretched on the form
+# springs back as it is handled: with TF_BLEED the bound's excess over 1 + cap shrinks linearly over the styling's ops
+# (share 1 at the first op, 0 at the last: style() sets M["_tf_bleed"]), the same for every op from the styling's own
+# start (no ratchet: a per-op start would carry each op's stretch into the next). Env GP_TF_BLEED=0 for the A/B.
+TF_BLEED = __import__("os").environ.get("GP_TF_BLEED", "0") == "1"
 # THE THREADS OUTWEIGH THE BENDING WHERE THERE IS BENDING (canvas s15, C226): C209's weight was ONE scalar (mem_w ~13000
 # on Garrett's canvassed jacket) on every face's threads term, plain cloth too. Within its band a face's threads target is
 # its current map, so the term also acts as a lag spring on every move: x 13000 the plain lower front (no bending: only
@@ -172,6 +180,18 @@ PRESSED_REST = __import__("os").environ.get("GP_PRESSED_REST", "0") == "1"
 # fair aims at the HIGH-PASS of the normal-offset field: the offset minus its k-ring average (a palm's reach), so
 # ripples go and the curvature at a palm's scale and above stays.
 SMOOTH_HAND = int(__import__("os").environ.get("GP_SMOOTH_HAND", "0"))
+# THE CANVAS IS PRESSED BEFORE IT IS WORN (canvas s16, C228): the stiff styling's bending rested on the styling's start
+# (the fit) as it is, crumples and all. Every term of the stiff styling is at rest there (the threads' target is the
+# current map within its band, the bending's the start), so its smooth faired a ripple and the next solve's bending put it
+# back: Garrett's lapel kept the fit's roughness (high-pass normal offset p95 1.17 -> 1.14 mm over the whole styling; the
+# default styling's smooth takes it to 0.14) and rendered as a pale ripple band along the roll. A tailor presses the
+# canvas: the iron takes the crinkle out and keeps the moulding and the roll. With BEND_REST_PRESS (GP_BEND_REST_PRESS=1)
+# style() first SMOOTHS the canvassed pieces WITHOUT bending (the default styling's own smooth, from the fit, the same
+# holds and floors: press_rest) and the bending rests on that shape. (A high-pass of the smooth's move, to keep the fit's
+# large scale, was tried: its rest strained the threads 12-21 %, the smooth's move is not smooth where holds meet free
+# cloth; the bending is rotation invariant, so the smoothed shape's own curvature is the rest.) The threads' bounds and
+# the shear lock stay on the fit itself.
+BEND_REST_PRESS = __import__("os").environ.get("GP_BEND_REST_PRESS", "0") == "1"
 
 STEP = 0.003  # m: a handle's move per step
 TOL = 0.005  # stretch p99 allowed above the least the pull has reached (0.5 %: the shirt's knee, module docstring)
@@ -399,6 +419,17 @@ def _bind_floor(floor, inv):
     return out
 
 
+def press_rest(M: dict, X: np.ndarray, held) -> np.ndarray:
+    """(C228) The canvas pressed: the canvassed pieces (any vertex at bend_w > 1) smoothed WITHOUT bending from X (the
+    default styling's smooth, with M's floors, `held` kept): the bending's rest shape."""
+    bw = np.asarray(M["bend_w"], float)
+    pid, nm = np.asarray(M["piece"]), list(M["names"])
+    pcs = [nm[k] for k in sorted(set(pid[bw > 1.0 + 1e-9].tolist()))]
+    if not pcs:
+        return np.asarray(X, float).copy()
+    return smooth(dict(M, bend_w=None), np.asarray(X, float), held, pcs)[0]
+
+
 class FlatARAP:
     """Per-face ARAP against the flat pattern on the WELDED mesh (sewn pairs one vertex). W = welded positions.
     WOVEN_STYLE (DEFAULT since C169; env GP_WOVEN_STYLE=0 for the isometric A/B): the local step as the muslin fit's (pattern_form.WOVEN:
@@ -473,8 +504,9 @@ class FlatARAP:
             bw = np.where(bw > 1.0 + 1e-9, bw, bw * STYLE_BEND_PLAIN)  # (plain cloth: STYLE_BEND_PLAIN of its weight)
             wv = np.zeros(self.n)
             np.maximum.at(wv, self.inv, bw)
-            self.bend = bd_.Bending(self.WF, self.U, self.n, wv, STYLE_BEND_W, rest=self.weld(np.asarray(
-                M["_bend_rest"] if M.get("_bend_rest") is not None else X, float)), flat_below=STYLE_BEND_PLAIN)
+            rest_ = self.weld(np.asarray(M["_bend_rest_shape"] if M.get("_bend_rest_shape") is not None else
+                                         M["_bend_rest"] if M.get("_bend_rest") is not None else X, float))  # (C228: pressed)
+            self.bend = bd_.Bending(self.WF, self.U, self.n, wv, STYLE_BEND_W, rest=rest_, flat_below=STYLE_BEND_PLAIN)
             self.L0 = self.L
             self.mem_w = 1.0
             stiff = wv > 1.0 + 1e-9
@@ -507,6 +539,8 @@ class FlatARAP:
                                  @ self.Dinv0, axis=1)
             self._bend_rest_X = M["_bend_rest"] if M.get("_bend_rest") is not None else X  # (C207's shear lock start)
             self.thread_hi = np.maximum(ln0, 1.0 + STYLE_THREAD_CAP)
+            if TF_BLEED and M.get("_tf_bleed") is not None:  # (C229: the fit's own stretch let go over the styling)
+                self.thread_hi = 1.0 + STYLE_THREAD_CAP + float(M["_tf_bleed"]) * (self.thread_hi - 1.0 - STYLE_THREAD_CAP)
             self.thread_lo = np.minimum(ln0, 1.0 - STYLE_THREAD_CAP)  # (nor shorter: a woven buckles, it doesn't shrink)
         self._lu, self._lu0 = {}, {}
         self.floor, self.floor_pushed = _bind_floor(M.get("_floor"), self.inv), 0  # (style(floor=...): C170)
@@ -1455,12 +1489,16 @@ def style(M: dict, X: np.ndarray, held, ops: list[dict], body=None, log=None, fl
         M["_bend_rest"] = X.copy()
     if floor:  # (C170: layer_floor's floors, read by every op's solve)
         M["_floor"] = floor
+    if BEND_REST_PRESS and M.get("bend_w") is not None and M.get("_bend_rest_shape") is None and \
+            (STYLE_BEND if STYLE_BEND is not None else bool(M.get("_style_bend"))):  # (C228: the canvas pressed first)
+        M["_bend_rest_shape"] = press_rest(M, M["_bend_rest"], base)
     placed = np.zeros(len(X), bool)  # what earlier ops gripped: held where they left it
     feathers = []  # (vertices, share, positions at the hold) of each feathered hold
     regions = np.zeros(len(X), bool)  # what hold ops hold (a smooth may "release" pieces of it)
     infos = []
-    for op in ops:
+    for i_op, op in enumerate(ops):
         (kind, a), = op.items()
+        M["_tf_bleed"] = 1.0 - i_op / max(len(ops) - 1, 1)  # (C229: the fit's stretch let go over the styling)
         a = dict(a)
         let_go = bool(a.pop("let_go", False)) if kind in ("pull", "turn", "slide") else False  # (C199: the hand lets go:
         # what this op gripped is NOT held for later ops; supports, not holds (C190: styling grips held for every later
