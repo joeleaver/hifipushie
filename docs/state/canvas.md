@@ -53,6 +53,7 @@ S17 (claude/canvas17; $S17 /mnt/data/hifipushie/canvas/s17; notes cloth.md "canv
   break: lower fronts puff 25-30 mm forward at 450-500 below HPS; t0 / r20's fit does not, L17 and o0 both do). The stiff
   canvas there keeps it, the hang hangs the plain front plumb from it. Plain flaps in the fit (f1) and a hung pressing
   (e11 / e12) made it worse. (b) collar ends 13 mm off the lapel L (r20 8); (c) raster break 373 vs 386.
+SUITE s17 (18 files): 328 passed, 4 xfailed, PYTEST_EXIT 0 ($S17/suite.log).
 NEXT: (1) the oL17 fit's let-go puff: find why length_bonus 0.17 / no lap puff the free lower front (t0 doesn't; ph17.py
   per phase, xsec17.py); a fix in the fit (the free mode below the break), then restyle with e10's levers. (2) collar ends
   (cend14) and R gorge crumple. (3) raster break 373 vs 386. (4) blind review of e10 vs r20 once the limit resets
