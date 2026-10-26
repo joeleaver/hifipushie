@@ -158,21 +158,31 @@ def _walked_bend(kind):
         Xn[tip, 0] = 0.012 + rf * np.sin(th)
         Xn[tip, 2] = -(rf - rf * np.cos(th))
         Xn, _ = gp.relax(M, Xn, (u < 0.012) | tip, iters=40)
-    t, _ = gp.thread_strain(M, Xn)
+    ln = _thread_lengths(M, Xn)
     um = u[np.argmin(np.abs(u - 0.066))]
     mid = np.abs(u - um) < 1e-7
-    return float(t.max()), 1000 * float(Xn[mid, 2].mean()), -1000 * (r - r * np.cos((um - 0.012) / r))
+    return (float(ln.max() - 1), 1000 * float(Xn[mid, 2].mean()), -1000 * (r - r * np.cos((um - 0.012) / r)),
+            float(1 - ln.min()))
+
+
+def _thread_lengths(M, X):
+    """Per face warp / weft length (pattern = 1): > 1 stretched, < 1 eased."""
+    F, D = gp.thread_faces(M)
+    return np.linalg.norm(np.stack([X[F[:, 1]] - X[F[:, 0]], X[F[:, 2]] - X[F[:, 0]]], -1) @ D, axis=1)
 
 
 def test_stiffness_never_buys_shape_with_stretch(bend_on, verbose=True):
     """THREADS FIRST (canvas s2; Joe: "it shouldn't really be a choice between stiffness and stretch"): bending stiffness
     changes how cloth bends, never how far its threads give. A canvassed strip walked round a bend its threads allow
     keeps its threads within ~1 % (the weighted sum alone bought the stiff shape with 12.4 % strain) and takes the
-    bend's arc (the least-bending shape the threads allow: mid within 3 mm); plain cloth's threads stay within 1 % too."""
+    bend's arc (the least-bending shape the threads allow: mid within 3 mm); plain cloth's threads stay within 1 % too.
+    (C225, canvas s15: the threads' hard rule is STRETCH, read apart from easing: a thread may ease / buckle shorter,
+    here up to 2 %, as the cap no longer pushes eased faces back out.)"""
     out = {k: _walked_bend(k) for k in ("plain", "canvas")}
     if verbose:
         print(out)
-    assert out["plain"][0] < 0.01 and out["canvas"][0] < 0.015, out
+    assert out["plain"][0] < 0.0125 and out["canvas"][0] < 0.015, out
+    assert out["plain"][3] < 0.02 and out["canvas"][3] < 0.02, out
     assert abs(out["canvas"][1] - out["canvas"][2]) < 3.0, out
 
 
@@ -187,7 +197,11 @@ def test_threads_outweigh_bending_in_the_one_solve(bend_on, monkeypatch, verbose
     M["_bend_rest"] = X.copy()
     A = gp.FlatARAP(M, X)
     kd = A.bend.K.diagonal()
-    assert A.mem_w * np.median(A.L0.diagonal()) >= 0.99 * gp.STYLE_TF_PD_MEM * np.median(kd), A.mem_w
+    if gp.STYLE_TF_PD_LOCAL:  # (C226: per face; at every stiff vertex the threads' diagonal >= MEM x its bending's)
+        st = kd > 0
+        assert np.all(A.L0.diagonal()[st] >= 0.99 * gp.STYLE_TF_PD_MEM * kd[st]), A.mem_w
+    else:
+        assert A.mem_w * np.median(A.L0.diagonal()) >= 0.99 * gp.STYLE_TF_PD_MEM * np.median(kd), A.mem_w
     held = M["uv"][:, 1] < 0.005
     c, s = np.cos(np.radians(15)), np.sin(np.radians(15))
     Y = X.copy()
@@ -234,3 +248,69 @@ def test_pressed_canvas_keeps_its_pressing_through_the_styling(bend_on, monkeypa
     if verbose:
         print(f"canvas, flat-aimed smooth: radius {r_flat:.1f} mm, {inf}")
     assert abs(out["canvas"][0] - 12.0) <= abs(r_flat - 12.0) + 0.05, (out, r_flat)
+
+
+def test_threads_first_never_pushes_eased_cloth_out(bend_on, monkeypatch, verbose=True):
+    """C225 (canvas s15): THREADS FIRST IS NO THREAD LONGER, NOT NONE SHORTER. A canvassed strip folded 170 deg along its
+    middle (a lapel's edge with its facing turned under), the facing half pressed in EASED (its threads laid 4 % short:
+    its rest), held at one end, through the stiff styling's hang: it keeps its ease (a thread still >= 2.5 % short) and
+    no thread stretches past 0.5 %. With the old two-sided caps (THREAD_CAP_LO: eased faces pushed back out to 1 %) the
+    ease is ironed out (<= 1.5 %): on Garrett's open jacket that push-out, at the lapel's roll above the break (78 faces
+    of ~3 mm2), stretched their neighbours and took the canvas threads p99 5.8 -> 12.4 % in one relax."""
+    out = {}
+    for lo in (True, False):
+        monkeypatch.setattr(gp, "STYLE_THREAD_CAP_LO", lo)
+        M = _strip(L=0.10, W=0.04, nx=41, ny=9)
+        u = M["uv"][:, 0]
+        X = np.c_[M["uv"], np.zeros(len(u))]
+        far = u > 0.05
+        s_ = (u[far] - 0.05) * (1 - 0.04)
+        t = np.radians(170)
+        X[far, 0] = 0.05 + s_ * np.cos(t)
+        X[far, 2] = s_ * np.sin(t)
+        M["bend_w"] = np.full(len(X), bd.BEND_KIND["canvas"])
+        M["_bend_rest"] = X.copy()
+        Xn, _ = gp.relax(M, X, u < 0.012, hang=True, hang_iters=600)
+        ln = _thread_lengths(M, Xn)
+        out[lo] = (float(ln.max() - 1), float(1 - ln.min()))
+        if verbose:
+            print(f"cap lo {lo}: stretch max {out[lo][0] * 100:.2f} %, ease max {out[lo][1] * 100:.2f} %")
+    assert out[False][1] >= 0.025 and out[False][0] <= 0.005, out
+    assert out[True][1] <= 0.015, out
+
+
+def test_a_canvassed_panel_lets_its_plain_cloth_hang(bend_on, verbose=True):
+    """C226 (canvas s15): THE THREADS OUTWEIGH THE BENDING WHERE THERE IS BENDING. A woven sheet (300 x 400 mm, top edge
+    held, started 30 deg off plumb: test_garment_pull's hung sheet) canvassed over its top 160 mm, plain below, under the
+    stiff styling's hang: the plain cloth hangs (its hem at least 75 % of the way from where it started to plumb under
+    the canvas's lower edge) with its threads p99 under 3 % (the default styling's hung sheet, no bending: 1.9 %, its
+    bound 2.5 %; here the canvas rows by the hold carry the plain cloth's weight: 2.4 %). With C209's one scalar weight
+    (x ~13000 on every face: within its band a face's threads term is a lag spring on every move) the hem does not move
+    (under 20 % of the way): Garrett's stiff-styled lower front never hung (o0b). The canvas itself keeps its stiffness
+    (test_canvassed_strip_holds_where_plain_cloth_bends)."""
+    import importlib, sys as _s
+    sys_path = __import__("os").path.dirname(__file__)
+    if sys_path not in _s.path:
+        _s.path.insert(0, sys_path)
+    hung = importlib.import_module("test_garment_pull")._hung_sheet
+    out = {}
+    for case in ("plain", "scalar", "local"):
+        M, X, top = hung()
+        v = M["uv"][:, 1]
+        M["bend_w"] = np.ones(len(X)) if case == "plain" else np.where(v > 0.24, bd.BEND_KIND["canvas"], 1.0)
+        M["_bend_rest"] = X.copy()
+        old = gp.STYLE_TF_PD_LOCAL
+        gp.STYLE_TF_PD_LOCAL = case != "scalar"
+        try:
+            Xn, _ = gp.relax(M, X, top, hang=True)
+        finally:
+            gp.STYLE_TF_PD_LOCAL = old
+        hem0, hem = X[v < 1e-9, 1].mean(), Xn[v < 1e-9, 1].mean()
+        ce = Xn[np.abs(v - 0.24) < 0.008, 1].mean()
+        out[case] = ((hem - hem0) / (ce - hem0), float(np.percentile(_thread_lengths(M, Xn).max(1) - 1, 99)))
+        if verbose:
+            print(f"{case:7s}: hem {(hem - hem0) * 1000:.0f} mm of {(ce - hem0) * 1000:.0f} to plumb ({out[case][0]:.2f}), "
+                  f"stretch p99 {out[case][1] * 100:.2f} %")
+    assert out["local"][0] >= 0.75, out
+    assert out["scalar"][0] < 0.2, out
+    assert out["local"][1] <= 0.03, out

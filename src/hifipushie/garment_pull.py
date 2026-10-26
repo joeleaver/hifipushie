@@ -128,6 +128,26 @@ STYLE_TF_PD = __import__("os").environ.get("GP_TF_PD", "1") == "1"  # (DEFAULT s
 STYLE_TF_PD_MEM = float(__import__("os").environ.get("GP_TF_PD_MEM", "1"))  # (10 held the jacket too but kept a canvassed
 # strip off its least-bending arc, 28.6 vs 19.4 mm: test_stiffness_never_buys_shape_with_stretch; 1: 21.3, and the
 # jacket's pull solve 7.1 %)
+# THREADS FIRST MEANS NO THREAD LONGER, NOT NONE SHORTER (canvas s15, C225): the threads-first cap (_thread_cap with
+# each face's bounds) also pushed every face SHORTER than thread_lo back out to it. At the lapel's roll above the break
+# (Garrett's open jacket, 78 faces of ~3 mm2 at x 60 mm, 320-370 mm below HPS) the inner faces are eased (0.99) and
+# have nowhere to grow: the Jacobi push-out stretched their neighbours, and the solve's "last word" bending-free rounds
+# took the canvas threads p99 5.8 -> 12.4 % in the stiff styling's first relax (bounds hi 1.01; faces at 1.06-1.17).
+# Without the push-out the same rounds end at 5.4 %. A woven eases / buckles below the mesh; only stretching is the
+# hard rule. With THREAD_CAP_LO off the cap enforces hi only; the PD local step still targets lengths within [lo, hi]
+# (a soft term). Env GP_THREAD_CAP_LO=1 for the A/B. (Only the threads-first path: STYLE_BEND / STYLE_THREAD_FIRST_ALL.)
+STYLE_THREAD_CAP_LO = __import__("os").environ.get("GP_THREAD_CAP_LO", "0") == "1"
+# THE THREADS OUTWEIGH THE BENDING WHERE THERE IS BENDING (canvas s15, C226): C209's weight was ONE scalar (mem_w ~13000
+# on Garrett's canvassed jacket) on every face's threads term, plain cloth too. Within its band a face's threads target is
+# its current map, so the term also acts as a lag spring on every move: x 13000 the plain lower front (no bending: only
+# its threads and its weight act on it) moved 13000 x slower per hang round and never hung (o0b: length +2 mm in 4000
+# rounds, hem forward 129 mm; bending-free +17 / +29). Scaling the weight up with it is wrong: the canvas then droops
+# like plain cloth (the strip KAT's canvas tip 106 mm of 108). With TF_PD_LOCAL each face's threads weigh
+# STYLE_TF_PD_MEM x the bending at ITS vertices (K diag / L diag per vertex, dilated TF_PD_LOCAL_RINGS rings, the
+# face's max; at least 1): threads still outweigh the bending wherever there is any, plain cloth keeps the default
+# styling's weighting and hangs as it does there. Env GP_TF_PD_LOCAL=0 for the A/B (C209's scalar).
+STYLE_TF_PD_LOCAL = __import__("os").environ.get("GP_TF_PD_LOCAL", "1") == "1"
+TF_PD_LOCAL_RINGS = 2
 _tps = __import__("os").environ.get("GP_TF_PD_SHEAR")
 STYLE_TF_PD_SHEAR = float(_tps) if _tps else None  # (None: the weave's SHEAR_STIFF)
 
@@ -459,11 +479,24 @@ class FlatARAP:
             self.mem_w = 1.0
             stiff = wv > 1.0 + 1e-9
             self._pd = bool(STYLE_TF_PD and stiff.any())  # (C207 / C209: plain cloth alone keeps C195's threads first)
+            self.mem_f = None
             if self._pd and STYLE_TF_PD_MEM > 0:  # (C209: the threads' term outweighs the bending)
                 kd, ld = self.bend.K.diagonal(), self.L.diagonal()
-                if stiff.any() and np.median(ld) > 0:
+                if STYLE_TF_PD_LOCAL and stiff.any():  # (C226: per face, where the bending is)
+                    mv = np.maximum(1.0, STYLE_TF_PD_MEM * kd / np.maximum(ld, 1e-12))
+                    for _ in range(TF_PD_LOCAL_RINGS):  # (dilated: the faces round a stiff vertex weigh as it does)
+                        mf_ = mv[self.WF].max(1)
+                        np.maximum.at(mv, self.WF.ravel(), np.repeat(mf_, 3))
+                    self.mem_f = mv[self.WF].max(1)
+                    self.Wt = self.Wt * self.mem_f[:, None]
+                    w = self.Wt.ravel()
+                    Lw = coo_matrix((np.r_[w, w], (np.r_[I, J], np.r_[J, I])), shape=(self.n, self.n)).tocsr()
+                    self.L = self.L0 = (diags(np.asarray(Lw.sum(1)).ravel()) - Lw).tocsr()
+                    self.mem_w = float(np.median(self.mem_f[stiff[self.WF].any(1)]))  # (a read only: the rhs is weighted per face)
+                    self._mem_in_wt = True
+                elif stiff.any() and np.median(ld) > 0:
                     self.mem_w = max(1.0, STYLE_TF_PD_MEM * float(np.median(kd[stiff])) / float(np.median(ld)))
-            self.L = (self.mem_w * self.L + self.bend.K).tocsr()
+            self.L = ((1.0 if getattr(self, "_mem_in_wt", False) else self.mem_w) * self.L + self.bend.K).tocsr()
         if (STYLE_THREAD_FIRST and self.bend is not None) or STYLE_THREAD_FIRST_ALL:  # THREADS FIRST: each face's
             # warp / weft kept within max(its styling-start length, 1 +/- cap)
             self.L0 = getattr(self, "L0", None) if self.bend is not None else self.L
@@ -558,7 +591,7 @@ class FlatARAP:
             return Yp
         for _ in range(iters):
             fall = HANG_G * HANG_PROX * self.mass[fi] if hang else None
-            rhs = self._arap_rhs(Y, fixed) * getattr(self, "mem_w", 1.0)  # (C209: the threads' weight, 1 unless PD)
+            rhs = self._arap_rhs(Y, fixed) * (1.0 if getattr(self, "_mem_in_wt", False) else getattr(self, "mem_w", 1.0))  # (C209: the threads' weight, 1 unless PD; C226: in Wt per face)
             if self.bend is not None:  # (the rest curvature along the current direction: bending.Bending.rhs)
                 rhs = rhs + self.bend.rhs(Y)
             r = rhs[fi] - Lfc @ Y[ci]
@@ -573,14 +606,14 @@ class FlatARAP:
             dmax = float(np.abs(Yf - Y[fi]).max()) if len(fi) else 0.0
             Y[fi] = Yf
             if hang:  # (the threads capped: the weight never stretches a thread past HANG_STRAIN)
-                Y = self._thread_cap(Y, fx)
+                Y = self._thread_cap(Y, fx, both=not tf or STYLE_THREAD_CAP_LO)  # (C225: threads first caps stretch only)
             if tf:  # THREADS FIRST: the bending acts within the threads. Rounds of the bending-free solve give back the
                 # length the bending bought (a Jacobi cap alone can't: a strip stretched end to end stayed 12.4 %), then
                 # the cap takes off what is still past each face's bound
                 for _r in range(0 if getattr(self, "_pd", False) else STYLE_THREAD_ROUNDS):
                     r0 = self._arap_rhs(Y, fixed)[fi] - L0fc @ Y[ci]
                     Y[fi] = np.column_stack([lu0.solve(r0[:, k]) for k in range(3)])
-                Y = self._thread_cap(Y, fx, hi=self.thread_hi, lo=self.thread_lo)
+                Y = self._thread_cap(Y, fx, hi=self.thread_hi, lo=self.thread_lo if STYLE_THREAD_CAP_LO else None)
             if self.floor:  # THE LAYER FLOOR (C170): what went under its floor this round is put back on it
                 Y = floor_round(Y)
             if eps is not None and dmax < eps:
@@ -594,7 +627,7 @@ class FlatARAP:
                     break
                 r0 = self._arap_rhs(Y, fixed)[fi] - L0fc @ Y[ci]
                 Y[fi] = np.column_stack([lu0.solve(r0[:, k]) for k in range(3)])
-                Y = self._thread_cap(Y, fx, hi=self.thread_hi, lo=self.thread_lo)
+                Y = self._thread_cap(Y, fx, hi=self.thread_hi, lo=self.thread_lo if STYLE_THREAD_CAP_LO else None)
                 if self.floor:
                     Y = floor_round(Y)
         return Y
@@ -674,7 +707,8 @@ class FlatARAP:
             np.add.at(rhs, WF[:, b], -v)
         return rhs
 
-    def _thread_cap(self, Y: np.ndarray, fixed: np.ndarray, sweeps: int | None = None, hi=None, lo=None) -> np.ndarray:
+    def _thread_cap(self, Y: np.ndarray, fixed: np.ndarray, sweeps: int | None = None, hi=None, lo=None,
+                    both: bool = True) -> np.ndarray:
         """Jacobi thread-strain limit (pattern_form._thread_limit on the welded faces): a face whose warp or weft is
         longer than 1 + HANG_STRAIN (or `hi`, per face: THREADS FIRST) mapped back to it about its centroid; fixed vertices stay."""
         U, WF = self.U, self.WF
@@ -684,7 +718,8 @@ class FlatARAP:
             if hi is not None:  # (THREADS FIRST: each face's own bounds, longer or shorter)
                 sc = np.clip(ln, np.asarray(lo) if lo is not None else 0.0, np.asarray(hi)) / np.maximum(ln, 1e-12)  # ((faces, 2) warp / weft)
             else:
-                sc = np.clip(ln, 1.0 - HANG_STRAIN, 1.0 + HANG_STRAIN) / np.maximum(ln, 1e-12)  # (nor shorter: a woven buckles)
+                sc = np.clip(ln, 1.0 - HANG_STRAIN if both else 0.0, 1.0 + HANG_STRAIN) / np.maximum(ln, 1e-12)  # (nor
+                # shorter: a woven buckles; both False (C225): longer only)
             bad = (np.abs(sc - 1.0) > 1e-9).any(1)
             if not bad.any():
                 break

@@ -11373,3 +11373,28 @@ No default changed (gc_garrett v10 = r20 stays). One opt-in lever landed (OPEN_L
   (diag colour = collar). cend14: the ends stand 6-13 mm off the lapel face (one layer would be ~2-3), R tilted more
   (p90 24 vs 15 deg); not twisted on edge. The EEVEE fold is that lifted end; cause of the lift not found.
 - SUITE (18 files, v10 in place): 321 passed, 4 xfailed, PYTEST_EXIT 0 ($S14/suite.log). EEVEE oL17 vs r20: check/cmp_eevee_oL17_r20_upper_front.png.
+
+## canvas stiffness session 15 (2026-10-26; $S15 = /mnt/data/hifipushie/canvas/s15; branch claude/canvas15)
+Goal: styling threads-first like the fit (C209), so the stiff styling keeps the break AND hangs, threads ~5 %.
+- Tools: throp15.py (thread strain per op from a perop dump: all / fronts / canvas / plain, p99 + max), diag15.py (the nth
+  styling relax replayed with its FlatARAP solve instrumented per round: after the global step, the cap, the floor; then
+  the final bending-free loop; FINAL=old|none|prox:<mu>, NOCAP / NOFLOOR / NOLO), perop15.py (perop14 + thread rows).
+- WHY GP_STYLE_BEND STRETCHED (o0b, first relax: canvas threads p99 4.7 -> 12.4 %): not the weighted sum (the 20 main
+  rounds keep canvas 5.7-5.8 %, mem_w 13172 = K median 46381 / L median 3.52), not the floor (NOFLOOR same). It is the
+  solve's "THREADS FIRST, the last word" loop (60 bending-free rounds + cap): 5.7 -> 11.4 (20 rounds) -> 13.8 (40). NOCAP
+  5.2 %; a proximal final loop (moves < 1 mm) still 12.3 %: the CAP. Its lower bound (thread_lo = min(start, 0.99)) pushes
+  eased faces back out; the 78 faces that went > 10 % sit at x +-60 mm, 320-370 below HPS (the lapel roll above the
+  break), 3.1 mm2 (median canvas face 10.8), warp / weft 0.99 -> 1.06-1.17 against hi 1.01. With lo off (NOLO) 5.4 %. C225.
+- WHY IT DID NOT HANG: C209's mem_w multiplies EVERY face's threads term; within the band the target is the face's current
+  map, i.e. a lag spring of weight mem_w on every move, so the plain lower front (no bending) hung 13000 x slower (o0b
+  hang relax: length +2 mm, hem 129 mm forward). (b1 = C225 + the hang's force / proximal scaled by mem_w: hangs, 650
+  94 / 88, but break 49 / 49 and the canvas strip KAT droops 106 of 108 mm: canvas as floppy as plain. Rejected.) The fix:
+  per-face weight, MEM x the bending at the face's own vertices (C226). Strip KAT: canvas tip creeps 1.3 / 3.3 / 4.8 mm at
+  1500 / 6000 / 24000 rounds (gravity unscaled): the canvas's hold is mostly stiffness, some lag.
+- Per-op threads (fronts p99 %, canvas | plain) and reads (L | R edge 450/550/650, break):
+  | run | fit | relax1 | turn | hang | smooth | pull | final | edge L | edge R | brk | len |
+  | r20 (default) | 7.5 (5.1 / 10.5) | 7.7 (3.9 / 11.9) | 4.1 | 4.2 | 5.0 | 4.2 | 4.1 (2.1 / 6.7) | 59/71/94 | 47/64/94 | 53 / 41 | 733 / 725 |
+  | o0b (s14 stiff) | 7.2 (4.7 / 9.7) | 12.0 (12.4 / 8.8) | 12.3 | 12.3 | 12.3 | 13.9 | 13.8 (14.8 / 9.1) | 67/67/68 | 64/68/68 | 57 / 56 | 711 / 705 |
+  | b1c (C225) | 7.2 | 6.3 (4.8 / 8.9) | 6.0 | 5.9 | 6.1 | 5.8 | 6.5 (4.3 / 12.0) | 71/66/73 | 59/79/76 | 56 / 51 | 712 / 708 |
+  | b2 (C225 + C226) | 7.2 | 6.8 (4.2 / 9.5) | 5.9 | 5.7 | 5.6 | 5.6 | 6.2 (3.9 / 9.8) | 66/77/95 | 69/86/110 | 57 / 60 | 725 / 724 |
+  concept 71/78/94, break 64, length 748.
