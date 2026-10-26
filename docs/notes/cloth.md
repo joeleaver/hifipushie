@@ -11282,3 +11282,7 @@ Job: the lapels read as thin strips beside the concept's broad faces; the lapel 
   read longer, the V deeper and closer to the concept's; L / R more even; the hem fuller (481). Still: the faces read
   flat (no edge shadow / thickness line like the concept's), narrower from 250 down (18-20 vs 27-37 at 300), the gorge
   crumpled, the front 19 mm short. At least as good as d2; better at the lapels.
+- DEFAULT: gc_garrett v7 (setdef12.py) = bc44: lapel break_y 0.44 + roll_converge 0.08. Pattern gate PASS_WAIVED
+  (3dfe339cad6c5ca47dc0; refs v2, the default record ba44bd88's waivers; the same three FAIL rows, values identical). The
+  spec's shirt has a stray "source_probe" key (probe_garrett) that fails cloth.validate: saved checked=False after
+  validating the edit without it. Not reviewed blind (edge 450 off by 14-21 mm).

@@ -20,6 +20,16 @@ S12 (the lapel FACE, C218; concept traced, face12.py, ovl_*.png):
 - The width at 150 matches; the LOWER lapel is missing: the worn break 365-370 vs 386 (buttons 379 / 496 vs 399 / 518;
   flat break_y 0.425 dates from fit round 9) and the roll's 15.5 mm band eats the lapel's last 35-42 mm above the break.
   Not the yaw (1-3 mm), not the draft's width. garment_reads.lapel_face_reads (in big_reads) + KATs.
-NEXT (s12, in flight): b45 = break_y 0.425 -> 0.45 (repro12.py, fit + default styling) -> face / table reads + looks;
-then the roll band near the break (rows taper to the break?), pattern_check / test_tailoring / Tess's coat on any draft
-change; s11's NEXT (R turn asymmetry, first relax, a support at the roll) after.
+- FIX (C219 + draft): gc_garrett v7 = lapel break_y 0.425 -> 0.44 + roll_converge 0.08 (folds "converge": the roll's
+  rows close onto the line at the break). bc44 (= the new default): face 59 / 47 / 32 / 18 / 8 (R 61 / 50 / 36 / 20 / 10),
+  ends 366 / 376, break vertex 376 / 385, lapel pt 94-101, outer 150 125-126, V200 218, edge 450 57 / 50, 550 70 / 70,
+  650 95 / 101, hem 481, len 729, threads p99 5.75 (d2 7.64). Gate PASS_WAIVED (3dfe339c, the default's waivers, no new
+  row). LOOK (check/cmp_bc44_d2_*): lapels run to the break, V longer, L / R even; >= d2 -> DEFAULT (spec v7). No blind
+  review (edge 450 -14 / -21 outside +-8). break_y 0.45 broke the collar's placement (not chased).
+  NOTE: the spec's shirt carries a stray key "source_probe" (probe_garrett 2026-10-22) that fails cloth.validate: v7 was
+  saved checked=False after validating the edit with that key dropped; main's code ignores roll_converge until merged.
+NEXT: (1) the face from 250 down is still 7-17 mm narrow (300: 18-20 vs 27-37): the lapel taper (width at the point 81,
+  belly 10 @ 0.4) vs the concept's straighter, wider lower lapel; try belly_at lower / more belly on the form, read with
+  lapel_face_reads. (2) The faces read flat: the concept's edge line is a shadow at the lapel's thickness / lift off the
+  forepart (render RTHICK lapel 2.2 mm): read the lapel's stand-off at its outer edge. (3) Front length 729 vs 748 and
+  edge 450 57 / 50 vs 71. (4) s11's NEXT: R turn asymmetry, the first relax, a support at the roll line.
