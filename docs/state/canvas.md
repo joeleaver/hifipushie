@@ -27,4 +27,5 @@ S13 (spec v10 = DEFAULT r20 = v9 b20 + collar run_off; v8 = shirt `source_probe`
 NEXT: (1) blind review once the edge rows are within +-8 (edge 450 L 61 / R 49 vs 71).
   (2) front length 725 vs 748, edge 450 L 59 / R 50 vs 71, 650 103 vs 94 (the lower front kicked forward, C217).
   (3) the opening at the break: our roll meets CF ~45-48 off vs the concept's ~55-64. (4) s11: R turn asymmetry.
-  No blind review yet (edge 450 outside +-8).
+  (5) EEVEE r20: a small fold at the R collar crown by the gorge. SUITE s13 (18 files, v10): 320 passed, 4 xfailed,
+  PYTEST_EXIT 0 ($S13/suite.log). No blind review yet (edge 450 outside +-8).

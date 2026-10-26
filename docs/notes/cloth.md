@@ -11328,3 +11328,6 @@ Job: the lapels read as thin strips beside the concept's broad faces; the lapel 
   outer edge 6.0 / 4.5. Gate PASS_WAIVED 09456467b628eb573deb: collar_stand_end now PASSES; notch angle 57.1 (60-90)
   FAILS under its existing waiver (round 29: the 20 mm collar roll). LOOK (check/cmp_r20_b20_bc44_*.png): r20 reads
   best (notches like the concept's, no crumple). -> DEFAULT gc_garrett v10 (setdef13b.py, checked=True). C222.
+- e10 (repro, no overrides, on v10) = r20, max |dA| 0.0 mm. EEVEE r20 (check/upper_front_r20tx.png): the lapels stand
+  like the concept's; a small fold shows at the R collar's crown by the gorge (not in the clay).
+- SUITE (18 files, spec v10 in place): 320 passed, 4 xfailed, PYTEST_EXIT 0 ($S13/suite.log).
