@@ -11286,3 +11286,4 @@ Job: the lapels read as thin strips beside the concept's broad faces; the lapel 
   (3dfe339cad6c5ca47dc0; refs v2, the default record ba44bd88's waivers; the same three FAIL rows, values identical). The
   spec's shirt has a stray "source_probe" key (probe_garrett) that fails cloth.validate: saved checked=False after
   validating the edit without it. Not reviewed blind (edge 450 off by 14-21 mm).
+- SUITE (18 files, spec v7 in place): 319 passed, 4 xfailed, PYTEST_EXIT 0 ($S12/suite.log).

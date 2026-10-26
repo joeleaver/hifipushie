@@ -28,6 +28,7 @@ S12 (the lapel FACE, C218; concept traced, face12.py, ovl_*.png):
   review (edge 450 -14 / -21 outside +-8). break_y 0.45 broke the collar's placement (not chased).
   NOTE: the spec's shirt carries a stray key "source_probe" (probe_garrett 2026-10-22) that fails cloth.validate: v7 was
   saved checked=False after validating the edit with that key dropped; main's code ignores roll_converge until merged.
+SUITE s12 (18 files, spec v7): 319 passed, 4 xfailed, PYTEST_EXIT 0 ($S12/suite.log).
 NEXT: (1) the face from 250 down is still 7-17 mm narrow (300: 18-20 vs 27-37): the lapel taper (width at the point 81,
   belly 10 @ 0.4) vs the concept's straighter, wider lower lapel; try belly_at lower / more belly on the form, read with
   lapel_face_reads. (2) The faces read flat: the concept's edge line is a shadow at the lapel's thickness / lift off the
