@@ -11331,3 +11331,44 @@ Job: the lapels read as thin strips beside the concept's broad faces; the lapel 
 - e10 (repro, no overrides, on v10) = r20, max |dA| 0.0 mm. EEVEE r20 (check/upper_front_r20tx.png): the lapels stand
   like the concept's; a small fold shows at the R collar's crown by the gorge (not in the clay).
 - SUITE (18 files, spec v10 in place): 320 passed, 4 xfailed, PYTEST_EXIT 0 ($S13/suite.log).
+
+## canvas stiffness session 14 (2026-10-26; $S14 = /mnt/data/hifipushie/canvas/s14; branch claude/canvas14)
+No default changed (gc_garrett v10 = r20 stays). One opt-in lever landed (OPEN_LAP), causes found for the lower front.
+- Tools: repro14.py (repro13 + "block.<k>" / "op.<name>.<k>" overrides; prints the edge read after every FIT phase via
+  pattern_form.TRACE and every styling op; phases_<tag>.pkl), perop14.py (styling only on a saved fit, env as given),
+  phsym14.py (L / R mirror diffs per fit phase), flat14*.py (flat vs worn lengths), cend14.py (collar end lie at the notch).
+  Edge read here = the break..cfHem chain x off CF (mm) at 450 / 550 / 650 below that side's HPS (within 1-3 mm of m10's raster).
+- t0 (repro, no overrides) = r20 to the mm. Per stage (L | R): fit let_go 63/56/58 len 710 | 70/60/54 len 691; style
+  relax 54/52/56 | 61/57/51 (break 64 -> 52 / 51); slide L +17 mm arc, R 0; turn L 16 deg, R 0 ("plumb", R off 2.4 mm);
+  hang relax 68/78/97 | 57/71/97 (hem 30-46 mm forward, length +17 / +29); smooth, pull down, relax close the top
+  -9 / -10 at 450 (break -> 53 / 41). Final 59/71/94 | 47/64/94.
+- (a) R/L ASYMMETRY (session 11's open item): the FIT, not the styling. The closed placement relaxes (relax1) with the
+  L front 28-30 mm past CF and R 8-9 mm (phsym14: front x +11 mm L-R after the swing); the swing to the same 64 mm
+  offset turns L ~20 mm further, the fit's lower fronts differ (above), and the styling's slide / turn read R's edge as
+  already plumb and move only L. The lap layering (L over R) was suspected: OPEN_LAP False (PF_OPEN_LAP=0: no lap
+  layering for a worn-open garment with nothing fastened) makes the FIT symmetric (let_go 69/64/60 | 68/63/60) but
+  relax1 still differs (L -30 / R -9): the seed is elsewhere in relax1 (body and shirt are symmetric to 0-5 mm; not
+  chased). With both sides equal neither gets the slide / turn: o0 final 48/64/98 | 47/62/93 (both at r20's R).
+  So r20's better L was the asymmetric fit's accident. C223.
+- (b) LENGTH: the draft. block_options length_bonus is METRES at CB (pattern_blocks: ly += length_bonus), set 0.12 ->
+  0.15 in canvas step 0 for a 31 mm shortfall; worn 728 vs 748. L17 (length_bonus 0.17): length 744 / 739; oL17
+  (+ OPEN_LAP False): 745 / 747, raster 747 (concept 748), hem 478 (482), 650 101 / 98 (94), threads p99 4.31 (r20 5.55).
+  C224.
+- (c) THE BREAK CLOSES IN THE STYLING (the main cause of edge 450 / 550 short): fit 64 off CF (the worn-open pin), first
+  relax -11 / -13 (the fit's pinned shape is not a rest of the styling's cloth), smooth -4, pull down -5: final 42-53.
+  The edge below hangs from the break (450 ~ break + 6, 550 ~ break + 20), so the edge rows follow it. Stiff styling
+  (GP_STYLE_BEND=1, o0b; + GP_PRESSED_REST=1, o0bp) keeps the break (57 / 56) and 450 (67 / 64) but the lower front
+  doesn't hang (650 68 vs 94, length 711 / 705, hem 451) and threads p99 14.5 % (fronts 10.8, shear 43): the model is
+  wrong there (P29), not a candidate. oL17b (stiff on oL17) 68/63/63 | 67/54/54, len 729 / 724: no.
+- Reads (raster m10, L ; R): | run | edge 450 | 550 | 650 | len | hem | break x (roll) | thr p99 |
+  | concept | 71 | 78 | 94 | 748 | 482 | 64 | |
+  | r20 | 61 ; 49 | 74 ; 67 | 98 ; 97 | 728 | 486 | 53 ; 41 | 5.55 |
+  | o0 | 49 ; 49 | 68 ; 66 | 102 ; 97 | 729 | 473 | 42 ; 43 | 4.66 |
+  | oL17 | 49 ; 49 | 68 ; 67 | 101 ; 98 | 747 | 478 | 42 ; 43 | 4.31 |
+  | o0b | 69 ; 66 | 66 ; 69 | 71 ; 71 | 724 | 451 | 57 ; 56 | 14.52 |
+- LOOK (check/cmp_oL17_o0b_r20_*.png): oL17 is even L / R and the right length, the cut-away corners like the concept's;
+  the V at the waist is narrower than r20's L (both fronts now like r20's R). Level with r20, not better: not the
+  default. o0b: fronts hang as flat panels, hem square and short: worse. No blind review (edge 450 22 mm short).
+- (2) R collar crown / light-blue sliver: the sliver is the collar fall's END (run_off) lying on the lapel past the notch
+  (diag colour = collar). cend14: the ends stand 6-13 mm off the lapel face (one layer would be ~2-3), R tilted more
+  (p90 24 vs 15 deg); not twisted on edge. The EEVEE fold is that lifted end; cause of the lift not found.
