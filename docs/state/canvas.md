@@ -1,4 +1,4 @@
-# STATE: canvas (canvas / interfacing BENDING STIFFNESS; the jacket with no workaround holds) -- 2026-10-26 (s16)
+# STATE: canvas (canvas / interfacing BENDING STIFFNESS; the jacket with no workaround holds) -- 2026-10-26 (s17)
 
 GOAL (Joe): canvassed pieces keep their shape by STIFFNESS so the workaround holds go. No sim, no rented GPU.
 Concept SLIM-CUT, worn open, falls straight (workspace/garrett_v20/concept_v8_front_apose.png). Rules: threads first
@@ -36,25 +36,26 @@ S14 (no default change; v10 = r20 stays): causes per stage (repro14.py prints ev
 - Collar-end "fold": the collar fall's end (run_off) stands 6-13 mm off the lapel (cend14.py), R tilted more; lift cause open.
 S15 (claude/canvas15): stiff styling threads-first: C225 caps bound stretch only; C226 thread weight per face. b2L (oL17
   fit + GP_STYLE_BEND=1): every edge row within +-8 of the concept, but the lapels ripple along the roll, threads 8.33.
-S16 (claude/canvas16; $S16 /mnt/data/hifipushie/canvas/s16; notes cloth.md "canvas stiffness session 16"):
-- Cause of the ripple: the stiff styling is at rest at the fit (PD threads target = current map in band, shear weight
-  SHEAR_STIFF 0.011, bending rest = the fit's crumples); the default styling's relax / smooth remove them.
-- C228 GP_BEND_REST_PRESS=1 (OPT-IN): bending rest = the canvassed pieces smoothed bending-free first. C229 GP_TF_BLEED=1
-  (OPT-IN, no use on the jacket: collar strain rides on shear). C227: review gate no longer refuses diag crops.
-| run (raster L ; R) | edge 450 | 550 | 650 | len | hem | break | thr p99 | stand / collar | lapel rough / shear |
-| concept | 71 | 78 | 94 | 748 | 482 | 386 | | | |
-| r20 (v10 DEFAULT) | 61 ; 49 | 74 ; 67 | 98 ; 97 | 728 | 486 | 374 | 5.55 | 8.7 / 11.0 | 0.23 / 1.7 |
-| b2L | 68 ; 76 | 78 ; 84 | 94 ; 99 | 745 | 477 | 366 | 8.33 | 18.4 / 15.0 | 1.14 / 12.7 |
-| e7 = b2L + PRESS (best) | 72 ; 69 | 80 ; 76 | 99 ; 98 | 744 | 477 | 370 | 7.98 | 9.0 / 17.0 | 0.18 / 2.8 |
-  e7 = s14/fit_oL17.pkl styled with GP_STYLE_BEND=1 GP_BEND_REST_PRESS=1 ($S16/asm_e7.pkl, asm_e7c.pkl). LOOK
-  (check/cmp_eevee_e7_b2L_r20_upper_front.png): lapels clean like r20, V straight and even like b2L. Lapel face = r20's.
-- Not default: collar threads 17 % (r20 11), threads p99 7.98 vs 5.55, pocket flaps stand off (side), the lower front
-  bulges forward below the pocket, R collar end crumple (all). Blind review not run (reviewer weekly limit).
-- Dead ends s16: faired rest (high-pass of the fit; crumples as sharp as the roll); high-pass of the press move (rest
-  strained 12-21 %); press as the styling START (break closes 64 -> 44); SHEAR_FREE in the PD step, uniform or per face
-  (collar 5 % but forepart crumples, hem 510-524; reverted); bleed alone (collar 19 %).
-NEXT: (1) the collar shears 6 -> 40 deg in the stiff styling's first relax (pcop16.py): find what drives it (bending
-  rest vs the stand's hold vs the floor) and fix there; that is the collar's 17 %. (2) lower front bulge + flaps standing
-  off in the side view under the stiff styling (flaps bw 8: interfaced, rest = fit). (3) blind review of e7 vs r20
-  (review command in $S16/review_e7.log's notes). (4) collar ends (cend14) worse on e7 L (13.6 mm). Then the default.
-SUITE s16 (18 files): 325 passed, 4 xfailed, PYTEST_EXIT 0 ($S16/suite.log).
+S16 (claude/canvas16): C228 GP_BEND_REST_PRESS (bending rest = canvassed pieces smoothed bending-free), C229 GP_TF_BLEED;
+  e7 = oL17 fit + GP_STYLE_BEND=1 + PRESS: lapels clean like r20, edges at the concept; collar 17 %, side kick, wide waist.
+S17 (claude/canvas17; $S17 /mnt/data/hifipushie/canvas/s17; notes cloth.md "canvas stiffness session 17"):
+- C230 GP_FINAL_SHEAR_HOLD (OPT-IN): the collar's 6 -> 42 deg was the threads-first LAST WORD shearing faces back under
+  their bound (not bending / floors / fold): its lock is now max(entry shear, start shear). Collar 17 -> 7.3 %.
+- C231 GP_TF_PD_PLAIN (OPT-IN): plain faces target their pattern in the PD step. Threads p99 6.81 -> 6.45.
+- C232: levers are GARMENT KEYS: "style_bend": true | {"press", "final_shear_hold", "plain_pattern"}; worn_open {"lap":
+  false}; env flags only override when set. No garment declares them: defaults unchanged (v10 = r20).
+| run (L ; R) | edge 450 | 550 | 650 | len | hem | break | thr p99 | collar / stand | waist / hip |
+| concept | 71 | 78 | 94 | 748 | 482 | 64@386 | | | 414 / - |
+| r20 (DEFAULT) | 61;49 | 74;67 | 98;97 | 728 | 486 | 53;41 @380 | 5.55 | 11.0 / 8.7 | 402 / 424 |
+| e7 | 72;69 | 80;76 | 99;98 | 744 | 477 | 58;55 @374 | 7.98 | 17.0 / 9.0 | 452 / 481 |
+| e10 = e7 + C230 + C231 | 72;70 | 80;78 | 97;98 | 744 | 482 | 58;56 @373 | 6.45 | 7.3 / 9.5 | 453 / 479 |
+  e10 = $S17/asm_e10.pkl; repro: oL17 fit + env GP_STYLE_BEND=1 GP_BEND_REST_PRESS=1 GP_FINAL_SHEAR_HOLD=1 GP_TF_PD_PLAIN=1
+  (or the garment keys above + worn_open lap false + length_bonus 0.17). LOOK check/cmp_e10_e7_r20_*.png: = e7.
+- NOT DEFAULT: (a) SIDE KICK + WAIST FLARE come from the oL17 FIT's let-go (relax with no attraction / weight below the
+  break: lower fronts puff 25-30 mm forward at 450-500 below HPS; t0 / r20's fit does not, L17 and o0 both do). The stiff
+  canvas there keeps it, the hang hangs the plain front plumb from it. Plain flaps in the fit (f1) and a hung pressing
+  (e11 / e12) made it worse. (b) collar ends 13 mm off the lapel L (r20 8); (c) raster break 373 vs 386.
+NEXT: (1) the oL17 fit's let-go puff: find why length_bonus 0.17 / no lap puff the free lower front (t0 doesn't; ph17.py
+  per phase, xsec17.py); a fix in the fit (the free mode below the break), then restyle with e10's levers. (2) collar ends
+  (cend14) and R gorge crumple. (3) raster break 373 vs 386. (4) blind review of e10 vs r20 once the limit resets
+  ($S17/review_cmd.sh e10 | r20).
