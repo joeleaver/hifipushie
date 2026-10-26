@@ -2990,9 +2990,21 @@ def fit_garment(name: str, garment: str, views: list[str] | None = None, size: i
         if vr["passed"]:
             uf = dict(uf, passed=True)
     M = res["mesh"]
-    s = diag_render.face_strain(X, M["F"], M["uv"])
-    s = s[cc.drawn_faces(res)]  # (a tucked garment: the cloth under the trousers line is not judged)
-    p99 = float(np.percentile(s, 99) * 100) if len(s) else None
+    # (C64 / C166, threads hard 2026-10-26: read the THREADS past their cap, the bias's shear apart)
+    from . import pattern_form as _pf
+    ts_, sh_ = _pf.face_threads(M, res.get("pieces"), X)
+    inf_ = res.get("A_info") or {}
+    cp_ = inf_.get("thread_cap_pct")
+    cap_f = np.full(len(ts_), (cp_ if isinstance(cp_, (int, float)) else _pf.FIT_THREAD_CAP * 100) / 100)
+    if isinstance(cp_, dict):
+        for k_, nm_ in enumerate(M["names"]):
+            if nm_ in cp_:
+                cap_f[np.asarray(M["piece"])[np.asarray(M["F"])[:, 0]] == k_] = cp_[nm_] / 100
+    dr_ = cc.drawn_faces(res)  # (a tucked garment: the cloth under the trousers line is not judged)
+    s, sh_, cap_f = ts_[dr_], sh_[dr_], cap_f[dr_]
+    over = np.maximum(s - cap_f, 0.0)
+    p99 = float(np.percentile(over, 99) * 100) if len(s) else None
+    misfit = next_steps.misfit_lines(inf_)
     pierce = None
     if under is not None:
         from . import garment_game
@@ -3009,12 +3021,15 @@ def fit_garment(name: str, garment: str, views: list[str] | None = None, size: i
     gs = ([under] if under else []) + [(garment, X, M)]
     ims, d = _garment_sheets(name, f"fit_{garment}", res["body"], gs, views, size, clay=clay, diag=diag)
     txt = (f"{name}:{garment}: {how}{'' if st['passed'] else ' -- FORCED: the pattern gate has not passed'}\n"
-           f"  face strain vs the flat pattern: p99 {p99:.1f} %, max {float(s.max() * 100):.1f} % "
-           f"(gate <= {next_steps.STRAIN_P99_MAX:g} %)\n"
+           f"  threads (warp / weft) vs the flat pattern: p99 {float(np.percentile(s, 99) * 100):.1f} %, max "
+           f"{float(s.max() * 100):.1f} %; past their cap p99 {p99:.1f} % (gate <= {next_steps.THREAD_OVER_P99_MAX:g} %); "
+           f"cap {cp_ if cp_ is not None else 'none (threads not hard)'} %\n"
+           f"  bias shear p99 {float(np.percentile(sh_, 99)):.0f} deg (jams past {_pf.SHEAR_LOCK_DEG:g})\n"
+           f"  what the fit could not reach: {'; '.join(misfit) if misfit else 'nothing'}\n"
            f"  layer pierce: {'n/a (no under garment)' if pierce is None else f'{pierce} faces'}\n"
            f"  single views for review_view: {d}\n" + style_txt + fit_txt + vis_txt)
     return [_out(im, _save_suffix(save, tag)) for tag, im in ims] + [
-        txt + next_steps.after_fit(name, garment, p99, pierce, validated,
+        txt + next_steps.after_fit(name, garment, p99, pierce, validated, misfit=misfit,
                                    worn_open=bool(cloth.expanded(spec["cloth"][garment]).get("worn_open")))]
 
 

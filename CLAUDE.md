@@ -76,5 +76,6 @@ OpenBLAS is capped at 4 threads in `__init__.py`.
 - Drape band (wrapped folds drafted by draping): docs/state/drape_band.md -> cloth.md "drape band round <N>"
 - Canvas stiffness (bending, slim jacket, fewer holds): docs/state/canvas.md -> cloth.md "canvas stiffness"
 - Supports, not holds (hold redesign: the hang, off): docs/state/supports.md -> cloth.md "supports, not holds"
+- Threads hard (no stretch past the cloth's cap; misfit read by piece): docs/state/threads_hard.md -> codified.md C235
 - No state page yet (history only): topology, blender_scene, terrain, streambeds, vegetation, clutter, onemesh, likeness,
   refstudy, garrett_head, measuremodels, rig, base, retopo, images, faceshapes, headbody, resources, budgets, audit.

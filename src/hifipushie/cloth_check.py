@@ -438,14 +438,14 @@ def _form_read():
 def fit_rows(res: dict, X, strain_p99: float | None, worn_under: bool, g: dict | None = None, model: str = "",
              garment: str = "") -> list:
     """The fit gate's rows for a garment assembled ALONE on the form (res: on_form / cloth.build place_only, X its
-    vertices): strain p99, and when worn_under the median stand-off off the body in the waist band (+- 15 mm).
+    vertices): threads past their cap p99 (strain_p99, next_steps.THREAD_OVER_P99_MAX), and when worn_under the median stand-off off the body in the waist band (+- 15 mm).
     With the garment's spec g (+ model, garment): its BIG READS on the fit (C97: garment_reads.big_reads) judged by the
     piece checklist's items read "fit" (C98), and an UNMEASURED row per worn big read the garment kind asks for that no
     checklist item reads; ordered big to small (C52: big_first)."""
     from . import next_steps, pattern_form
-    rows = [{"id": "fit_strain_p99", "stage": 2, "ours": None if strain_p99 is None else round(strain_p99, 1),
-             "target": f"<= {next_steps.STRAIN_P99_MAX:g} %",
-             "status": "PASS" if strain_p99 is not None and strain_p99 <= next_steps.STRAIN_P99_MAX else "FAIL"}]
+    rows = [{"id": "fit_threads_p99", "stage": 2, "ours": None if strain_p99 is None else round(strain_p99, 1),
+             "target": f"<= {next_steps.THREAD_OVER_P99_MAX:g} % past the cap",
+             "status": "PASS" if strain_p99 is not None and strain_p99 <= next_steps.THREAD_OVER_P99_MAX else "FAIL"}]
     if g is not None:
         rows += checklist_fit_rows(res, X, g, model, garment)
     if worn_under:

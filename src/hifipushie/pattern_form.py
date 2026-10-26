@@ -128,6 +128,19 @@ FIT_HINGE_W = float(__import__("os").environ.get("PF_HINGE_W", "1.0"))  # x FIT_
 FIT_THREAD_FIRST = __import__("os").environ.get("PF_THREAD_FIRST", "1") == "1"
 FIT_THREAD_CAP = float(__import__("os").environ.get("PF_THREAD_CAP", "0.02"))  # (the muslin's ~1-2 %)
 FIT_THREAD_SWEEPS = 4
+# THREADS ARE HARD IN EVERY FIT (Joe 2026-10-26: "I don't understand why it CAN stretch, why are we allowing it?").
+# The muslin fit (C161-C167) made the threads STIFF, not hard: warp / weft were one weighted term in the same solve as
+# the seams, the seat's attraction, the body's push and the pins, so any stronger pull still bought its shape with
+# thread stretch, and the hard cap (THREADS FIRST, C195) ran only on interfaced cloth. Now every fit round ENDS with
+# every woven triangle's warp / weft projected within the cloth's cap (_thread_limit, after contact and the layers):
+# THREAD_CAP_WOVEN for a woven, the garment's stretch_limit (its fabric's "limit") for a knit (over KNIT_LIMIT). The
+# bias still shears, up to the weave's jamming angle (SHEAR_LOCK_DEG, wovens): clamped threads alone moved Garrett's
+# jacket misfit into shear past it (p99 33 -> 41 deg). A pattern that can't reach shows as what it can't reach (a pin short, a seam open, cloth inside
+# the body), never as stretch. Env PF_THREADS_HARD=0 for the A/B.
+THREADS_HARD = os.environ.get("PF_THREADS_HARD", "1") == "1"
+THREADS_HARD_SWEEPS = 30  # per fit round (the next round's solve moves it again)
+THREADS_HARD_FINAL = 1000  # at the end of every relax phase: run to convergence (early exit), threads over contact
+KNIT_LIMIT = 0.05
 HANG_G = 0.1  # the weight per vertex x mean pattern edge^2 (as SETTLE_G)
 HANG_ITERS = 600  # (the towel KAT: 150 rounds left it half way, 26 mm; 600: 9-10 mm, hems +3 / +0.4)
 HANG_STRAIN = 0.01  # the most the weight stretches a thread (warp / weft): the muslin's "until it would stretch"
@@ -140,30 +153,118 @@ def hang_for(g: dict | None) -> bool:
     return HANG_FIELD if own is None else bool(own)
 
 
-def _thread_limit(W: dict, X: np.ndarray, cap: float, sweeps: int = 4) -> np.ndarray:
-    """Jacobi strain limit in the THREAD frame: every FIT triangle whose warp or weft is longer than 1 + cap is mapped
-    back to it, or shorter than 1 - cap (its deformation gradient's thread columns scaled, about its centroid); vertices take the mean of their
-    triangles' corrections. Shear is untouched (the bias shears freely, as the woven fit)."""
+def piece_stretch_asked(uv: np.ndarray, E: np.ndarray, pid: np.ndarray, sw: np.ndarray) -> dict:
+    """{piece index: the stretch its own pattern asks of it}: along every seam, a piece whose sewn edge is SHORTER
+    than the edge it is sewn to must stretch by the ratio - 1 (a knit's rib band, cuff, neckband: drafted short).
+    The 95th percentile over the piece's sewn edges; pieces sewn at length (or longer: eased in) ask 0."""
+    part = {}
+    for a, b in np.asarray(sw, int).reshape(-1, 2):
+        part.setdefault(int(a), int(b))
+        part.setdefault(int(b), int(a))
+    asked = {}
+    for a, b in np.asarray(E, int):
+        pa, pb = part.get(int(a)), part.get(int(b))
+        if pa is None or pb is None or pid[pa] != pid[pb] or pid[pa] == pid[a]:
+            continue
+        l0 = float(np.linalg.norm(uv[a] - uv[b]))
+        if l0 > 1e-6:
+            asked.setdefault(int(pid[a]), []).append(float(np.linalg.norm(uv[pa] - uv[pb])) / l0 - 1.0)
+    return {k: max(0.0, float(np.percentile(v, 95))) for k, v in asked.items()}
+
+
+def _tri_colours(F: np.ndarray, n: int) -> list:
+    """Greedy colouring of triangles so no two of one colour share a vertex: [index arrays], one per colour."""
+    col = np.full(len(F), -1)
+    used = [set() for _ in range(n)]
+    for t, f in enumerate(np.asarray(F).tolist()):
+        taken = used[f[0]] | used[f[1]] | used[f[2]]
+        c = 0
+        while c in taken:
+            c += 1
+        col[t] = c
+        for v in f:
+            used[v].add(c)
+    return [np.where(col == c)[0] for c in range(int(col.max()) + 1)] if len(F) else []
+
+
+def _thread_limit(W: dict, X: np.ndarray, cap, sweeps: int = 4, lock_deg: float | None = None) -> np.ndarray:
+    """Strain limit in the THREAD frame: every FIT triangle whose warp or weft is longer than 1 + cap (or shorter than
+    1 - cap: a woven buckles, it does not shrink) is mapped back to it, about its centroid. Shear is untouched (the
+    bias shears freely, as the woven fit) up to lock_deg (None: no lock): past it the weave jams, and the warp / weft
+    are turned back apart about their bisector to 90 - lock_deg. cap: a number or one per triangle ((t, 1)).
+    GAUSS-SEIDEL BY COLOUR (threads hard, C235): triangles sharing no vertex are projected exactly, one colour after the
+    other. The old Jacobi pass (each vertex the MEAN of its triangles' corrections) stalls: on a panel that lies at
+    length with ease, 2000 sweeps left a thread at 7 % (30: 9.75 %)."""
     Ft, q = W["F"], W["q"]
+    if "colours" not in W:
+        W["colours"] = _tri_colours(Ft, int(Ft.max()) + 1 if len(Ft) else 0)
+    capa = np.broadcast_to(np.asarray(cap, float).reshape(-1, 1) if np.ndim(cap) else np.full((len(Ft), 1), float(cap)),
+                           (len(Ft), 1))
     X = X.copy()
     for _ in range(sweeps):
-        Fg = _woven_grad(W, X)[0]
-        ln = np.linalg.norm(Fg, axis=1)  # (t, 2)
-        sc = np.clip(ln, 1.0 - cap, 1.0 + cap) / np.maximum(ln, 1e-12)  # (nor shorter: a woven buckles, it does not shrink)
-        bad = (np.abs(sc - 1.0) > 1e-9).any(1)
-        if not bad.any():
+        moved = False
+        for grp in W["colours"]:
+            fg = Ft[grp]
+            Fg = np.stack([X[fg[:, 1]] - X[fg[:, 0]], X[fg[:, 2]] - X[fg[:, 0]]], -1) @ W["Dinv"][grp]
+            ln = np.linalg.norm(Fg, axis=1)  # (g, 2)
+            cg = capa[grp]
+            sc = np.clip(ln, 1.0 - cg, 1.0 + cg) / np.maximum(ln, 1e-12)
+            bad = (np.abs(sc - 1.0) > 1e-9).any(1)
+            jam = None
+            if lock_deg is not None:
+                cu = np.einsum("ti,ti->t", Fg[:, :, 0], Fg[:, :, 1]) / np.maximum(ln[:, 0] * ln[:, 1], 1e-12)
+                jam = np.degrees(np.arcsin(np.clip(np.abs(cu), 0, 1))) > lock_deg + 1e-6
+                bad = bad | jam
+            if not bad.any():
+                continue
+            moved = True
+            Fb = Fg[bad] * sc[bad][:, None, :]
+            if jam is not None and jam[bad].any():  # (the weave jammed: open the angle back to 90 - lock_deg)
+                j_ = jam[bad]
+                fu, fv = Fb[j_, :, 0], Fb[j_, :, 1]
+                lu, lv = np.linalg.norm(fu, axis=1), np.linalg.norm(fv, axis=1)
+                uh, vh = fu / np.maximum(lu, 1e-12)[:, None], fv / np.maximum(lv, 1e-12)[:, None]
+                bi, pe = uh + vh, uh - vh
+                bi /= np.maximum(np.linalg.norm(bi, axis=1), 1e-12)[:, None]
+                pe /= np.maximum(np.linalg.norm(pe, axis=1), 1e-12)[:, None]
+                h_ = np.radians(90.0 - lock_deg) / 2.0
+                Fb[j_, :, 0] = (np.cos(h_) * bi + np.sin(h_) * pe) * lu[:, None]
+                Fb[j_, :, 1] = (np.cos(h_) * bi - np.sin(h_) * pe) * lv[:, None]
+            qb, fb = q[grp][bad], fg[bad]
+            qc = qb.mean(1)
+            xc = X[fb].mean(1)
+            X[fb] = xc[:, None, :] + np.einsum("bij,bcj->bci", Fb, qb - qc[:, None, :])
+        if not moved:
             break
-        Fb = Fg[bad] * sc[bad][:, None, :]
-        qb, fb = q[bad], Ft[bad]
-        qc = qb.mean(1)
-        xc = X[fb].mean(1)
-        tgt = xc[:, None, :] + np.einsum("bij,bcj->bci", Fb, qb - qc[:, None, :])
-        cor = np.zeros_like(X)
+    return X
+
+
+def _hard_pass(W: dict, X: np.ndarray, cap, pairs: np.ndarray, sweeps: int, lock_deg: float | None = None) -> np.ndarray:
+    """THREADS_HARD's finish: the threads (_thread_limit, every triangle) and the sewn / fastened pairs (each pair on
+    its midpoint) projected in turn until both hold (or `sweeps`). Seams are supports: a thread clamp alone opened them
+    (Garrett's jacket 39 mm, the hoodie 19)."""
+    pairs = np.asarray(pairs, int).reshape(-1, 2)
+    for _ in range(sweeps):
+        X = _thread_limit(W, X, cap, 1, lock_deg)
+        if not len(pairs):
+            Y = _thread_limit(W, X, cap, 1, lock_deg)
+            if np.abs(Y - X).max() < 1e-7:
+                return Y
+            X = Y
+            continue
+        gap = np.linalg.norm(X[pairs[:, 0]] - X[pairs[:, 1]], axis=1)
+        acc = np.zeros_like(X)
         cnt = np.zeros(len(X))
-        for c in range(3):
-            np.add.at(cor, fb[:, c], tgt[:, c] - X[fb[:, c]])
-            np.add.at(cnt, fb[:, c], 1.0)
-        X += cor / np.maximum(cnt, 1.0)[:, None]
+        mid = 0.5 * (X[pairs[:, 0]] + X[pairs[:, 1]])
+        for c in (0, 1):
+            np.add.at(acc, pairs[:, c], mid)
+            np.add.at(cnt, pairs[:, c], 1.0)
+        on = cnt > 0
+        X[on] = acc[on] / cnt[on, None]
+        Y = _thread_limit(W, X, cap, 1, lock_deg)
+        if gap.max() < 1e-4 and np.abs(Y - X).max() < 1e-7:
+            return Y
+        X = Y
     return X
 
 
@@ -979,6 +1080,25 @@ def woven_shear_deg(W: dict, X: np.ndarray) -> np.ndarray:
     c = np.einsum("ti,ti->t", Fg[:, :, 0], Fg[:, :, 1]) / np.maximum(
         np.linalg.norm(Fg[:, :, 0], axis=1) * np.linalg.norm(Fg[:, :, 1], axis=1), 1e-12)
     return np.degrees(np.arcsin(np.clip(np.abs(c), 0, 1)))
+
+
+def face_threads(M: dict, B: dict | None, X: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Per face of M: (the larger |warp / weft stretch| as a fraction, the bias shear in deg) of the map flat pattern ->
+    X, in each piece's grain frame (B["pieces"][name]["grain"], default 90). The fit's misfit read (C64, C166): an edge
+    or principal strain counts the bias's shear as stretch. Degenerate pattern faces read 0."""
+    F = np.asarray(M["F"])
+    E = np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]]
+    E = np.unique(np.sort(E, 1), axis=0)
+    W = _woven_setup(M, B, F, E, np.zeros(len(M["uv"]), bool))
+    Fg = np.stack([X[W["F"][:, 1]] - X[W["F"][:, 0]], X[W["F"][:, 2]] - X[W["F"][:, 0]]], -1) @ W["Dinv"]
+    ln = np.linalg.norm(Fg, axis=1)
+    c = np.einsum("ti,ti->t", Fg[:, :, 0], Fg[:, :, 1]) / np.maximum(ln[:, 0] * ln[:, 1], 1e-12)
+    key = {tuple(f): i for i, f in enumerate(F.tolist())}
+    st, sh = np.zeros(len(F)), np.zeros(len(F))
+    idx = np.array([key[tuple(f)] for f in W["F"].tolist()], int)
+    st[idx] = np.abs(ln - 1.0).max(1)
+    sh[idx] = np.degrees(np.arcsin(np.clip(np.abs(c), 0, 1)))
+    return st, sh
 
 
 # THE NECK POINT SPLITS THE NECK AS THE GARMENT'S NECKLINE DOES (shirt round 4, C113). The neck pins put every piece
@@ -2605,6 +2725,22 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
         mk_ = (np.asarray(bend_w, float)[Wv["F"]] > 1.0 + 1e-9).all(1)
         if mk_.any():
             Wk = {"F": Wv["F"][mk_], "q": Wv["q"][mk_], "Dinv": Wv["Dinv"][mk_]}
+    lock_h = None
+    cap_h = None  # THREADS_HARD: this garment's thread cap (a knit's: per triangle of Wh)
+    info_cap = {}
+    Wh = None  # THREADS_HARD: every triangle (folded, made and turned pieces are cut from the pattern too)
+    hard_pairs = np.zeros((0, 2), int)
+    if THREADS_HARD and Wv is not None:
+        Wh = _woven_setup(M, B, F, E, np.zeros(n, bool), skip={k for k in range(len(names)) if not placed[k]})
+        hard_pairs = np.r_[np.asarray(sw, int).reshape(-1, 2), np.asarray(fast, int).reshape(-1, 2)]
+        lim_ = float((B or {}).get("stretch_limit") or 0.0)
+        cap_h = FIT_THREAD_CAP
+        lock_h = None if lim_ > KNIT_LIMIT else SHEAR_LOCK_DEG  # (a woven jams past its lock angle; a knit has none here)
+        if lim_ > KNIT_LIMIT:  # a knit: each piece stretches as far as its own pattern asks (a rib band), within the fabric
+            ask_ = piece_stretch_asked(uv, E, pid, sw)
+            cpp = np.array([min(lim_, FIT_THREAD_CAP + ask_.get(k, 0.0)) for k in range(len(names))])
+            cap_h = cpp[pid[Wh["F"][:, 0]]][:, None]
+            info_cap = {names[k]: round(float(c) * 100, 1) for k, c in enumerate(cpp) if c > FIT_THREAD_CAP + 1e-9}
 
     def system(wc, sw=sw):
         w = wE
@@ -2901,11 +3037,16 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                     cv_, du_, nu_ = covered(umsurf, Xn, bsurf)
                     cv_ &= (du_ < LAYER_GAP) & mine_made
                     Xn[cv_] += nu_[cv_] * np.minimum(LAYER_GAP - du_[cv_], LAYER_STEP if it < iters - 1 else 1.0)[:, None]
+            if cap_h is not None:  # THREADS_HARD: the round ends with no thread past its cap (contact can't buy stretch)
+                Xn = _thread_limit(Wh, Xn, cap_h, THREADS_HARD_SWEEPS, lock_deg=lock_h)
             X = Xn
+        if cap_h is not None:  # THREADS_HARD: the phase ends with the threads converged (what that pushes into the
+            # body is the misfit read: inside_body, not hidden stretch)
+            X = _hard_pass(Wh, X, cap_h, hard_pairs, THREADS_HARD_FINAL, lock_deg=lock_h)
         wc, bend_f = wc_keep, bend_keep
         return X
 
-    info = {}
+    info = {"thread_cap_pct": None if cap_h is None else (info_cap or round(FIT_THREAD_CAP * 100, 1))}
     tr = TRACE or (lambda *a_: None)
     if laps:  # (LAP_LAYER: the over piece starts outside the under one; see lap_order)
         X, info["lap_order"] = lap_order(X, laps, bsurf)
@@ -3041,6 +3182,8 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
         info["settled"] = {"iters": it_, "g": g_, "hang": bool(hang_)}
     if laps:  # (LAP_LAYER: nothing of the over piece left through the under one)
         X, info["lap_finish"] = lap_finish(M, X, laps, bsurf)
+    if cap_h is not None:  # THREADS_HARD: what the phases after the last relax moved (swing, press, laps) held too
+        X = _hard_pass(Wh, X, cap_h, hard_pairs, THREADS_HARD_FINAL, lock_deg=lock_h)
     info["turned_deg"] = [round(fold_turned(M, X, g), 0) for fd, g, t in folds_]
     # report
     l0 = np.linalg.norm(uv[E[:, 0]] - uv[E[:, 1]], axis=1)
@@ -3085,8 +3228,12 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
     if bsurf is not None:
         d, _, _ = bsurf.signed(X)
         info["inside_body"] = int((d < 0).sum())
+        info["inside_by_piece"] = {names[k]: {"n": int(((d < 0) & (pid == k)).sum()),
+                                              "depth_mm": round(float(-d[(d < 0) & (pid == k)].min()) * 1000, 1)}
+                                   for k in range(len(names)) if ((d < 0) & (pid == k)).any()}
+        # (the neck points too: soft since C167, their miss IS the misfit read; w >= 100 alone listed none)
         info["neck_point_mm"] = {k: round(placement_error(X[v], q), 1) for k, v in M["points"].items()
-                                 for v_, q, w_ in full if v_ == v and w_ >= 100}
+                                 for v_, q, w_ in full if v_ == v and (w_ >= 100 or k.split(":")[-1].startswith("hps"))}
     if usurf is not None:
         du, _, dist = usurf.signed(X)
         info["through_under"] = int(((du < 0) & (dist < 0.01)).sum())

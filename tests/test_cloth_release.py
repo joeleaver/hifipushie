@@ -194,9 +194,9 @@ def test_released_front_swings_open_and_the_chest_stays(tmp_path):
 
 def test_fit_points_worn_open_designs_to_the_release():
     from hifipushie import next_steps
-    t = next_steps.after_fit("m", "jacket", 3.0, 0, True, worn_open=True)
+    t = next_steps.after_fit("m", "jacket", 0.5, 0, True, worn_open=True)
     assert 'release_garment("m", "jacket")' in t
-    assert "release_garment" not in next_steps.after_fit("m", "jacket", 3.0, 0, True)
+    assert "release_garment" not in next_steps.after_fit("m", "jacket", 0.5, 0, True)
 
 
 def test_release_tool_is_registered():

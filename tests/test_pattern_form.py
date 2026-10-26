@@ -2362,3 +2362,54 @@ def test_worn_open_unfastened_front_has_no_lap(off=0.05):
     assert res[True][1], res  # (the control: layered)
     assert res["key True"][1] and not res["key False"][1], res
     assert abs(res["key False"][0]["front.L:break"] - bx["front.L:break"]) < 1e-6, res
+
+
+def test_threads_are_hard_in_the_fit():
+    """(C235, Joe 2026-10-26: "why are we allowing it [to stretch]?") The lone panel of test_neck_point_on_hps, whose
+    neck point can't reach the body's without its top edge shortening: on the default fit no thread ends past the
+    woven cap (FIT_THREAD_CAP + 0.5 % for the clamp's convergence) and no triangle shears past the weave's jamming angle;
+    the misfit shows as the miss (the neck point stops > 10 mm short), not as stretch. PF_THREADS_HARD off for the A/B."""
+    body = _neck_body()
+    hps = body.at["hps.L"]
+    _, nrm, _ = pf._body_surface(body).signed(hps[None])
+    tgt = hps + 0.003 * nrm[0]
+    P = [[0, 0], [0.14, 0], [0.14, 0.2], [0.03, 0.2], [0.0, 0.17]]
+    M = cloth.mesh(_B({"front.L": _piece(P, names={"hps": 3})}), 0.01)
+    v = M["points"]["front.L:hps"]
+    th = -0.9 - 0.25 + (M["uv"][:, 0] - 0.03) / 0.19
+    X0 = np.c_[0.19 * np.cos(th), 0.19 * np.sin(th), 1.25 + M["uv"][:, 1]]
+    assert pf.THREADS_HARD
+    out = pf.assemble({"mesh": M, "X0": X0}, body, iters=120, ease=0.003)
+    st, sh = pf.face_threads(M, None, out["V"])
+    miss = float(np.linalg.norm(out["V"][v] - tgt))
+    print(f"threads hard: max {st.max() * 100:.2f} %, shear max {sh.max():.1f} deg, neck point {miss * 1000:.0f} mm short")
+    assert st.max() < pf.FIT_THREAD_CAP + 0.005, st.max()
+    assert sh.max() < pf.SHEAR_LOCK_DEG + 0.5, sh.max()
+    assert miss > 0.010, miss
+
+
+def test_thread_limit_locks_a_jammed_shear():
+    """(C235) _thread_limit with lock_deg: one triangle sheared 50 deg with a 10 % stretched warp comes back to its
+    cap and to the lock angle (the warp / weft opened apart about their bisector)."""
+    q = np.array([[0.0, 0.0], [0.01, 0.0], [0.0, 0.01]])
+    W = {"F": np.array([[0, 1, 2]]), "q": q[None], "Dinv": np.linalg.inv(np.stack([q[1] - q[0], q[2] - q[0]], -1))[None]}
+    a = math.radians(50.0)
+    X = np.array([[0.0, 0.0, 0.0], [0.01, 0.0, 0.0], [0.011 * math.sin(a), 0.011 * math.cos(a), 0.0]])
+    Y = pf._thread_limit(W, X, 0.02, 30, lock_deg=35.0)
+    Fg = np.stack([Y[1] - Y[0], Y[2] - Y[0]], -1) @ W["Dinv"][0]
+    ln = np.linalg.norm(Fg, axis=0)
+    shear = math.degrees(math.asin(abs(Fg[:, 0] @ Fg[:, 1]) / (ln[0] * ln[1])))
+    assert np.all(np.abs(ln - 1) < 0.0201) and shear < 35.01, (ln, shear)
+
+
+def test_a_knit_piece_stretches_as_far_as_its_seams_ask():
+    """(C235) piece_stretch_asked: a rib band drafted at 85 % of the hem it is sewn to must stretch 17.6 %; the body
+    sewn to it asks nothing (it is eased, not stretched)."""
+    body_ = _piece([[0, 0], [0.4, 0], [0.4, 0.2], [0, 0.2]], names={"h0": 0, "h1": 1})
+    band = _piece([[0, 0], [0.34, 0], [0.34, 0.05], [0, 0.05]], names={"t0": 3, "t1": 2})
+    B = _B({"front": body_, "band": band}, seams=[["front:h0>h1", "band:t0>t1"]])
+    M = cloth.mesh(B, 0.01)
+    F = np.asarray(M["F"])
+    a = pf.piece_stretch_asked(np.asarray(M["uv"], float), pf._edges(F), np.asarray(M["piece"]), np.asarray(M["sew"]))
+    names = list(M["names"])
+    assert abs(a[names.index("band")] - 0.4 / 0.34 + 1) < 0.01 and a.get(names.index("front"), 0.0) < 0.001, a

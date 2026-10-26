@@ -9,7 +9,14 @@ finishing are NOT steps: measured 2026-10-19 (dress-garrett), they pushed face s
 """
 from __future__ import annotations
 
-STRAIN_P99_MAX = 6.0  # % face strain p99 on the form, body pieces (cloth_check form_strain row: KES EMT for suiting)
+# THE FIT IS READ ON THE THREADS (C64, C166; threads hard, 2026-10-26): a face's warp / weft stretch past its cloth's
+# cap (pattern_form.THREADS_HARD: 2 % woven, a knit piece what its own seams ask), p99 over the drawn faces, in % past
+# the cap. Face (principal) strain counted the bias's free shear as stretch: the hoodie trial read 13.9 % on threads
+# at 6.6 %. With the threads hard a misfit shows as what the fit could NOT reach (MISFIT_*), named for the pattern.
+THREAD_OVER_P99_MAX = 1.0
+MISFIT_SEW_MM = 3.0  # a seam left open by more than this: the pattern can't close it without stretching
+MISFIT_INSIDE_MM = 2.0  # cloth deeper than this inside the body (shallower: the contact's own tolerance)
+MISFIT_NECK_MM = 10.0  # a neck point this far off the body's: the neckline / shoulder is mis-drafted (C167)
 
 
 def _ids(rows, status) -> list:
@@ -44,19 +51,39 @@ def after_pattern_check(rec: dict, model: str, garment: str) -> str:
     return "\n".join(out)
 
 
+def misfit_lines(info: dict) -> list[str]:
+    """What the fit could not reach, from on_form's A_info, as pattern faults with where and how much."""
+    out = []
+    gap = info.get("sew_gap_mm")
+    if gap is not None and gap > MISFIT_SEW_MM:
+        out.append(f"a seam stays open {gap:.0f} mm: the pieces can't meet without stretching: true the seam lengths "
+                   "or let the pattern out there")
+    for k, mm in (info.get("neck_point_mm") or {}).items():
+        if mm is not None and mm > MISFIT_NECK_MM:
+            out.append(f"neck point {k} {mm:.0f} mm off the body's: the neckline / shoulder can't reach it (C167)")
+    ins = {k: v for k, v in (info.get("inside_by_piece") or {}).items() if v.get("depth_mm", 0) > MISFIT_INSIDE_MM}
+    if ins:
+        out.append("cloth inside the body (the pattern can't go round there without stretching: let it out there, "
+                   "or a limb went through a sleeve): " + ", ".join(f"{k} {v['n']} vertices, {v['depth_mm']:.0f} mm deep"
+                                                               for k, v in sorted(ins.items(), key=lambda kv: -kv[1]["n"])))
+    return out
+
+
 def after_fit(model: str, garment: str, strain_p99: float | None, pierce: int | None, validated: bool,
-              backfaces: int | None = None, worn_open: bool = False) -> str:
-    """fit_garment's next step from what it measured on the form. worn_open: the design says the closure is worn
-    open: the form judges it CLOSED and one release sim opens it (Joe 2026-10-20)."""
+              backfaces: int | None = None, worn_open: bool = False, misfit: list[str] | None = None) -> str:
+    """fit_garment's next step from what it measured on the form. strain_p99: threads past their cap, p99 % (see
+    THREAD_OVER_P99_MAX). misfit: what the fit could not reach (misfit_lines). worn_open: the design says the closure
+    is worn open: the form judges it CLOSED and one release sim opens it (Joe 2026-10-20)."""
     out = []
     if worn_open:
         out.append(f"worn open: judge the CLOSED fit here (top button fastened), then release_garment(\"{model}\", "
                    f"\"{garment}\"): ONE short sim from this fit that undoes the closure and lets the fronts hang under "
                    "gravity (no holds on the form: five rounds of them failed)")
     bad = []
-    if strain_p99 is not None and strain_p99 > STRAIN_P99_MAX:
-        bad.append(f"strain p99 {strain_p99:.1f} % > {STRAIN_P99_MAX:g} %: the pattern is too small / mis-shaped "
-                   "where the strain map is red: fix the PATTERN there (not the solver, not a hand pass)")
+    if strain_p99 is not None and strain_p99 > THREAD_OVER_P99_MAX:
+        bad.append(f"threads p99 {strain_p99:.1f} % past their cap (> {THREAD_OVER_P99_MAX:g} %): the pattern is too "
+                   "small / mis-shaped where the strain map is red: fix the PATTERN there (not the solver, not a hand pass)")
+    bad += list(misfit or [])
     if pierce:
         # NOT a composing fault (Joe 2026-10-22, C153): the under garment's covered triangles are culled later, so its
         # show-through is reported, never a fix; judge the outer garment's own shape (the under one hidden)

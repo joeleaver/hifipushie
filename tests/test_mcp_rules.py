@@ -71,8 +71,8 @@ def test_next_steps_follow_the_result():
     assert "fit_garment" in t and "DON'T" not in t
     # fit: a red strain or a pierce names the pattern fix; a clean one says judge one view at a time
     assert "fix on the pattern" in next_steps.after_fit("m", "j", 30.0, 0, True)
-    assert "pierce" in next_steps.after_fit("m", "j", 3.0, 12, True)
-    clean = next_steps.after_fit("m", "j", 3.0, None, False)
+    assert "pierce" in next_steps.after_fit("m", "j", 0.5, 12, True)
+    clean = next_steps.after_fit("m", "j", 0.5, None, False)
     assert "ONE view per review_view" in clean and "not validated" in clean
     assert "no reference" in next_steps.after_look("garment", False)
     assert "BESIDE its reference" in next_steps.after_look("garment", True)

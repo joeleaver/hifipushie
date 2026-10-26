@@ -112,7 +112,7 @@ def test_checklist_items_become_rows_ordered_big_first(tmp_path, monkeypatch):
     res = {"mesh": M, "body": type("B", (), {"at": {"hps.L": np.array([0.08, 0.0, HPS])}})()}
     fr = cc.fit_rows(res, V, 3.0, False, g={"checklist": "t_shirt"})
     st = {r["id"]: r["status"] for r in fr}
-    assert st["checklist:spread"] == "FAIL" and st["fit_strain_p99"] == "PASS"
+    assert st["checklist:spread"] == "FAIL" and st["fit_threads_p99"] == "PASS"
     assert cc.verdict(fr) == "FAIL"
     assert [r.get("stage", 3) for r in fr] == sorted(r.get("stage", 3) for r in fr)
     V2, M2 = _front_mesh(open_front=False, spread=True)
