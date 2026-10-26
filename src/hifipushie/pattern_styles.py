@@ -194,7 +194,9 @@ def op_lapel(D: dict, piece: str = "front", break_y: float | None = None, stand:
     `roll_stand` inside the neck point. Then {"op": "collar", "type": "roll", "stop": gorge} drafts the collar.
     `roll_radius` (m, 0.006) and `roll_strength` (0.5) are the roll line's fold: the lapel lies about two radii off
     the forepart at the line (a pressed, canvassed lapel: a smaller radius and more strength). `belly` (m, 0) bows the
-    lapel edge out from the straight break -> point line, peaking at `belly_at` (0.5) of it (R29, _lapel_belly)."""
+    lapel edge out from the straight break -> point line, peaking at `belly_at` (0.5) of it (R29, _lapel_belly).
+    `roll_converge` (m, 0 = off; C219): the roll's rows converge onto the roll line within that length of the break, so
+    the roll tightens to a crease there and the turned face runs down to the break (folds.rows "converge")."""
     pc = D["pieces"][piece]
     low = "cfHem" if "cfHem" in pc["names"] else "cfWaist"
     pd.op_extend(D, piece, f"cfNeck>{low}", stand, name="stand")
@@ -254,7 +256,8 @@ def op_lapel(D: dict, piece: str = "front", break_y: float | None = None, stand:
     D["centre"][piece] = "open"
     D["folds"].append({"piece": piece, "line": [B.tolist(), (Rp + u * 0.02).tolist()], "angle": 15, "kind": "roll",
                        "radius": float(o.get("roll_radius", 0.006)), "strength": float(o.get("roll_strength", 0.5)),
-                       "flap": "lapelPoint", "name": "lapel roll"})
+                       "flap": "lapelPoint", "name": "lapel roll",
+                       **({"converge": [float(o["roll_converge"]), "break"]} if float(o.get("roll_converge", 0.0)) > 0 else {})})
     D["meta"]["break"] = [float(B[0]), float(B[1])]
     D["log"].append(f"lapel on {piece}: front edge extended {stand * 1000:.0f} mm, break point {abs(yb) * 1000:.0f} mm "
                     f"below the neck point, lapel point {width * 1000:.0f} mm from the roll line; gorge "

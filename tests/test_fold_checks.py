@@ -173,3 +173,31 @@ def test_two_piece_collar_rows_on_their_known_answer():
     fl = np.asarray(g["rows"][-1]["v"])
     sunk[fl, :2] -= 0.006 * sunk[fl, :2] / np.linalg.norm(sunk[fl, :2], axis=1, keepdims=True)
     assert rows(sunk)["fold_on_base"]["status"] == "FAIL"
+
+
+def _lapel_piece():
+    """A front's lapel in pattern coordinates: the break at (0, 0), the roll line straight up x = 0, the lapel (x > 0)
+    widening to its point 80 mm off the line 290 mm up (the flap); the forepart x < 0."""
+    P = np.array([[-0.2, -0.3], [0.0, -0.3], [0.0, 0.0], [0.08, 0.29], [0.0, 0.38], [-0.2, 0.38]], float)
+    return {"front": {"P": P, "names": {"break": 2, "lapelPoint": 3}, "marks": {}}}
+
+
+def test_converged_roll_turns_the_lapel_down_to_the_break():
+    """C219 (canvas s12): a roll's rows run parallel to its line, so on a lapel narrowing to its break the last row meets
+    the lapel edge (and the turned face ends) 35-42 mm above the break (Garrett's jacket: the face ended 330 below HPS vs
+    the concept's 386). "converge" [length, "break"] shrinks the rows' offsets within that length of the break: the last
+    row reaches within 15 mm of it; off, the rows are the parallel ones (unchanged)."""
+    from hifipushie import folds
+    pcs = _lapel_piece()
+    f = {"piece": "front", "line": [[0.0, 0.0], [0.0, 0.40]], "angle": 15, "kind": "roll", "radius": 0.006,
+         "strength": 0.8, "flap": "lapelPoint", "name": "lapel roll"}
+    par = folds.rows(pcs, f, 0.006)
+    con = folds.rows(pcs, dict(f, converge=[0.08, "break"]), 0.006)
+    assert len(par["lines"]) == len(con["lines"]) >= 3 and par["sign"] == con["sign"]
+    low = lambda r: float(np.asarray(r["lines"][-1])[:, 1].min())
+    assert low(par) > 0.035, low(par)
+    assert low(con) < 0.015, low(con)
+    # far from the break the converged rows are the parallel ones
+    a, b = np.asarray(par["lines"][-1]), np.asarray(con["lines"][-1])
+    at = lambda L, y: float(np.interp(y, L[:, 1], L[:, 0]))
+    assert abs(at(a, 0.2) - at(b, 0.2)) < 1e-4

@@ -109,6 +109,9 @@ def fade(M: dict, fd: dict, idx) -> np.ndarray:
     return x * x * (3 - 2 * x)
 
 
+CONVERGE_FLOOR = 0.25  # (C219) a converged roll's rows keep this share of their spacing at the break (rows apart, not one vertex)
+
+
 def rows(pcs: dict, f: dict, h: float, sewn: np.ndarray | None = None, min_width: float = 0.0) -> dict:
     """A fold's rows in its piece's pattern coordinates: {"lines": [polyline, ...] (the line, then the rows a roll adds
     toward the flap), "sign": the flap's side of the line (+1 left of its direction), "turn": rad per row (+ = over
@@ -155,8 +158,21 @@ def rows(pcs: dict, f: dict, h: float, sewn: np.ndarray | None = None, min_width
     nrm = np.c_[-t[:, 1], t[:, 0]]
     nrm /= np.linalg.norm(nrm, axis=1, keepdims=True) + 1e-12
     tot = pattern.length(L)
+    # C219 (canvas s12, OPT-IN "converge": [length m, point name or [x, y]]): a lapel's roll dies out at the break. Its rows run
+    # parallel to the line at j x s, so where the lapel edge closes onto the line (the break) the last row meets the
+    # edge 35-42 mm above it and that much of the lapel is roll band, no face (Garrett: the face ended 330 vs the
+    # concept's 386). Converging, the rows' offsets shrink to CONVERGE_FLOOR x within `length` of the point (the end
+    # of the line nearest it): the roll tightens to a crease at the break and the turned face runs down to it.
+    sc = np.ones(len(L))
+    cv = f.get("converge")
+    if cv and float(cv[0]) > 0:
+        ss = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(L, axis=0), axis=1))]
+        cp = P[pattern.index_of(pc, cv[1])] if isinstance(cv[1], str) else np.asarray(cv[1], float)
+        if np.linalg.norm(L[-1] - cp) < np.linalg.norm(L[0] - cp):
+            ss = ss[-1] - ss
+        sc = np.clip(ss / float(cv[0]), CONVERGE_FLOOR, 1.0)
     for j in range(1, k):
-        Lj = L + sign * j * s * nrm
+        Lj = L + sign * j * s * nrm * sc[:, None]
         ins = pattern._poly_inside(P, Lj)
         if ins.mean() < 0.8:  # the roll would run off the piece (a fold right beside the outline): fewer rows
             break
