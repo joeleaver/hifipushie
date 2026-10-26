@@ -11398,3 +11398,15 @@ Goal: styling threads-first like the fit (C209), so the stiff styling keeps the 
   | b1c (C225) | 7.2 | 6.3 (4.8 / 8.9) | 6.0 | 5.9 | 6.1 | 5.8 | 6.5 (4.3 / 12.0) | 71/66/73 | 59/79/76 | 56 / 51 | 712 / 708 |
   | b2 (C225 + C226) | 7.2 | 6.8 (4.2 / 9.5) | 5.9 | 5.7 | 5.6 | 5.6 | 6.2 (3.9 / 9.8) | 66/77/95 | 69/86/110 | 57 / 60 | 725 / 724 |
   concept 71/78/94, break 64, length 748.
+- Runs on the s14 fits with GP_STYLE_BEND=1 (raster reads, rd.sh, L ; R; concept 71/78/94, break 64 @ 386, len 748, hem 482):
+  | run | edge 450 | 550 | 650 | break x | break below HPS | len | hem | thr p99 (fronts) | stand / collar |
+  | r20 (default) | 61 ; 49 | 74 ; 67 | 98 ; 97 | 53 ; 41 | 374 / 376 | 728 | 486 | 5.55 (3.23) | 8.7 / 11.0 |
+  | oL17 (s14) | 49 ; 49 | 68 ; 67 | 101 ; 98 | 42 ; 43 | 374 / 377 | 747 | 478 | 4.31 (3.77) | 5.1 / 4.7 |
+  | b2L (oL17 fit, stiff, C225 + C226) | 68 ; 76 | 78 ; 84 | 94 ; 99 | 55 ; 63 | 366 | 745 | 477 | 8.33 (6.18) | 18.4 / 15.0 |
+  | b3L (b2L + the hang's own cap stretch-only) | 68 ; 76 | 79 ; 87 | 96 ; 107 | 56 ; 64 | 365 | 742 | 484 | 8.05 (6.32) | 18.0 / 13.6 |
+  b3L's hang-cap change moved R 550 / 650 out 3 / 8 mm: reverted (the hang's own cap stays two-sided); the code = b2L's.
+  b3r (r20's asymmetric fit, stiff): perop L 69/80/105, R 75/95/120: the fit's L / R seed swings the lower fronts out.
+  Every edge row of b2L is within +-8 of the concept (first time). Faults: threads p99 8.3 (stand 18, collar 15, fronts
+  shear p99 25 deg vs 7): the threads-first bound is max(the fit's length, 1.01), so the stiff styling keeps the fit's own
+  strain where the default styling relaxes it; break 366 below HPS (20 above the concept's); side view: pocket flaps stand
+  off the front (check/cmp_b3L_b2L_r20_side.png).

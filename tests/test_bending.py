@@ -250,33 +250,33 @@ def test_pressed_canvas_keeps_its_pressing_through_the_styling(bend_on, monkeypa
     assert abs(out["canvas"][0] - 12.0) <= abs(r_flat - 12.0) + 0.05, (out, r_flat)
 
 
-def test_threads_first_never_pushes_eased_cloth_out(bend_on, monkeypatch, verbose=True):
-    """C225 (canvas s15): THREADS FIRST IS NO THREAD LONGER, NOT NONE SHORTER. A canvassed strip folded 170 deg along its
-    middle (a lapel's edge with its facing turned under), the facing half pressed in EASED (its threads laid 4 % short:
-    its rest), held at one end, through the stiff styling's hang: it keeps its ease (a thread still >= 2.5 % short) and
-    no thread stretches past 0.5 %. With the old two-sided caps (THREAD_CAP_LO: eased faces pushed back out to 1 %) the
-    ease is ironed out (<= 1.5 %): on Garrett's open jacket that push-out, at the lapel's roll above the break (78 faces
-    of ~3 mm2), stretched their neighbours and took the canvas threads p99 5.8 -> 12.4 % in one relax."""
-    out = {}
-    for lo in (True, False):
-        monkeypatch.setattr(gp, "STYLE_THREAD_CAP_LO", lo)
-        M = _strip(L=0.10, W=0.04, nx=41, ny=9)
-        u = M["uv"][:, 0]
-        X = np.c_[M["uv"], np.zeros(len(u))]
-        far = u > 0.05
-        s_ = (u[far] - 0.05) * (1 - 0.04)
-        t = np.radians(170)
-        X[far, 0] = 0.05 + s_ * np.cos(t)
-        X[far, 2] = s_ * np.sin(t)
-        M["bend_w"] = np.full(len(X), bd.BEND_KIND["canvas"])
-        M["_bend_rest"] = X.copy()
-        Xn, _ = gp.relax(M, X, u < 0.012, hang=True, hang_iters=600)
-        ln = _thread_lengths(M, Xn)
-        out[lo] = (float(ln.max() - 1), float(1 - ln.min()))
-        if verbose:
-            print(f"cap lo {lo}: stretch max {out[lo][0] * 100:.2f} %, ease max {out[lo][1] * 100:.2f} %")
-    assert out[False][1] >= 0.025 and out[False][0] <= 0.005, out
-    assert out[True][1] <= 0.015, out
+def test_threads_first_never_pushes_eased_cloth_out(verbose=True):
+    """C225 (canvas s15): THREADS FIRST IS NO THREAD LONGER, NOT NONE SHORTER. A fold in its smallest form: faces A and B
+    lie on opposite sides of a free vertex p in the pattern, but B is turned back over A in 3D (a lapel's edge with its
+    facing). A is eased 4 % (warp 0.96), B sits at its stretch bound (1.01). The threads-first cap with a lower bound
+    pushes A back out toward 0.99 by moving p, and since B is folded over A that move lengthens B past its bound (here to
+    2.45 %): on Garrett's open jacket the push-out at the lapel's roll above the break (78 faces of ~3 mm2) took the
+    canvas threads p99 5.8 -> 12.4 % in one relax. Without the lower bound A keeps its ease and B its bound. The styling
+    calls the cap without it unless GP_THREAD_CAP_LO=1."""
+    assert not gp.STYLE_THREAD_CAP_LO
+    uv = np.array([[0, 0], [-0.01, 0.01], [-0.01, -0.01], [0.01, 0.01], [0.01, -0.01]], float)
+    M = {"F": np.array([[1, 2, 0], [0, 4, 3]]), "uv": uv, "piece": np.zeros(5, int), "names": ["s"], "sew": [],
+         "points": {}}
+    A = gp.FlatARAP(M, np.c_[uv, np.zeros(5)])
+    A.Dinv0 = np.linalg.inv(np.stack([A.U[:, 1] - A.U[:, 0], A.U[:, 2] - A.U[:, 0]], -1))
+    Y = np.array([[0, 0, 0], [-0.0096, 0.01, 0], [-0.0096, -0.01, 0], [-0.01005, 0.01, 0.001], [-0.01005, -0.01, 0.001]])
+    fixed = np.array([False, True, True, True, True])
+
+    def lengths(Z):
+        return np.linalg.norm(np.stack([Z[A.WF[:, 1]] - Z[A.WF[:, 0]], Z[A.WF[:, 2]] - Z[A.WF[:, 0]]], -1) @ A.Dinv0,
+                              axis=1)
+    hi, lo = np.full((2, 2), 1.01), np.full((2, 2), 0.99)
+    with_lo = lengths(A._thread_cap(Y.copy(), fixed, sweeps=20, hi=hi, lo=lo))
+    no_lo = lengths(A._thread_cap(Y.copy(), fixed, sweeps=20, hi=hi, lo=None))
+    if verbose:
+        print("with lo", with_lo.round(4).tolist(), "| without", no_lo.round(4).tolist())
+    assert with_lo.max() > 1.02, with_lo  # (the push-out stretches the folded neighbour past its bound)
+    assert no_lo.max() <= 1.01 + 1e-6 and no_lo.min() <= 0.961, no_lo  # (no thread past its bound, the ease kept)
 
 
 def test_a_canvassed_panel_lets_its_plain_cloth_hang(bend_on, verbose=True):

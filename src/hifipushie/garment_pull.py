@@ -606,7 +606,8 @@ class FlatARAP:
             dmax = float(np.abs(Yf - Y[fi]).max()) if len(fi) else 0.0
             Y[fi] = Yf
             if hang:  # (the threads capped: the weight never stretches a thread past HANG_STRAIN)
-                Y = self._thread_cap(Y, fx, both=not tf or STYLE_THREAD_CAP_LO)  # (C225: threads first caps stretch only)
+                Y = self._thread_cap(Y, fx)  # (the hang's own cap stays two-sided about the pattern: stretch-only here
+                # moved Garrett's stiff-styled R edge 550 / 650 out 3 / 7 mm, b3L vs b2L, s15)
             if tf:  # THREADS FIRST: the bending acts within the threads. Rounds of the bending-free solve give back the
                 # length the bending bought (a Jacobi cap alone can't: a strip stretched end to end stayed 12.4 %), then
                 # the cap takes off what is still past each face's bound
@@ -707,8 +708,7 @@ class FlatARAP:
             np.add.at(rhs, WF[:, b], -v)
         return rhs
 
-    def _thread_cap(self, Y: np.ndarray, fixed: np.ndarray, sweeps: int | None = None, hi=None, lo=None,
-                    both: bool = True) -> np.ndarray:
+    def _thread_cap(self, Y: np.ndarray, fixed: np.ndarray, sweeps: int | None = None, hi=None, lo=None) -> np.ndarray:
         """Jacobi thread-strain limit (pattern_form._thread_limit on the welded faces): a face whose warp or weft is
         longer than 1 + HANG_STRAIN (or `hi`, per face: THREADS FIRST) mapped back to it about its centroid; fixed vertices stay."""
         U, WF = self.U, self.WF
@@ -718,8 +718,7 @@ class FlatARAP:
             if hi is not None:  # (THREADS FIRST: each face's own bounds, longer or shorter)
                 sc = np.clip(ln, np.asarray(lo) if lo is not None else 0.0, np.asarray(hi)) / np.maximum(ln, 1e-12)  # ((faces, 2) warp / weft)
             else:
-                sc = np.clip(ln, 1.0 - HANG_STRAIN if both else 0.0, 1.0 + HANG_STRAIN) / np.maximum(ln, 1e-12)  # (nor
-                # shorter: a woven buckles; both False (C225): longer only)
+                sc = np.clip(ln, 1.0 - HANG_STRAIN, 1.0 + HANG_STRAIN) / np.maximum(ln, 1e-12)  # (nor shorter: a woven buckles)
             bad = (np.abs(sc - 1.0) > 1e-9).any(1)
             if not bad.any():
                 break
