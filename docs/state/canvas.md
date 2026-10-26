@@ -1,10 +1,10 @@
-# STATE: canvas (canvas / interfacing BENDING STIFFNESS; the jacket with no workaround holds) -- 2026-10-25 (s10)
+# STATE: canvas (canvas / interfacing BENDING STIFFNESS; the jacket with no workaround holds) -- 2026-10-25 (s11, in progress)
 
 GOAL (Joe): canvassed pieces keep their shape by STIFFNESS so the workaround holds go. No sim, no rented GPU.
 Concept SLIM-CUT, worn open, falls straight (workspace/garrett_v20/concept_v8_front_apose.png). Rules: threads first
 (C195); supports, not holds (C190); styling ends with smooth + pull down; current garments are not a baseline.
-Sessions: s1 78507629; s2-s10 claude/canvas2-10 ($S10 /mnt/data/hifipushie/canvas/s10; history cloth.md "canvas
-stiffness session 10"). Ledger C190-C213.
+Sessions: s1 78507629; s2-s11 claude/canvas2-11 ($S11 /mnt/data/hifipushie/canvas/s11; history cloth.md "canvas
+stiffness session 11"). Ledger C190-C214.
 DEFAULT (C205 + C206): interfaced garments fitted keyed, shirt floor from relax1, no plumb hold, styled on the shirt's
 own cloth WITHOUT bending (= s8's d2), the FIT sews patch stitches. C209's RULE is on wherever the one solve runs (the
 threads' term >= the stiff cloth's median bending, STYLE_TF_PD_MEM 1); the STIFF STYLING itself is OPT-IN
@@ -38,3 +38,8 @@ NEXT (in order; scripts in $S10: perop9 / opcol9 / yaw10 / lean10 / sm10 / cap9 
    the break to CB against the neck before any draft change; R30 only with the fall drafted from a straightened roll.
 4. Hem (456-477 vs 482) and 650 edge after 1-2.
 SUITE s10 (18 files, docs-only branch): 315 passed, 4 xfailed, PYTEST_EXIT 0 ($S10/suite.log).
+S11 (in progress): the pressed rest. The stiff styling's bending rest IS already the styling start (= the fit's
+worn-open shape: _bend_rest, C209); what irons the pressing out is smooth's fair (toward zero curvature). C214
+SMOOTH_PRESSED (opt-in, GP_SMOOTH_PRESSED=1): the fair aims at the pressing's own offset by the interfacing share;
+KAT test_pressed_canvas_keeps_its_pressing_through_the_styling. Running $S11/go.sh: p1 (pressed smooth, no bending),
+p2 (+ GP_STYLE_BEND=garment), p3 (+ GP_STYLE_HANG=1: every relax hung), p2u / p3u (+ GP_UNDER_MADE=1).
