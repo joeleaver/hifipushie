@@ -11509,3 +11509,22 @@ Goal: e7 (oL17 fit + GP_STYLE_BEND=1 GP_BEND_REST_PRESS=1) or a successor reads 
   The stiff styling also keeps the fit's plain cloth as the fit left it (the PD threads target is the current map in a band
   about the fit, plain too): e7 waist / hip widths 452 / 481 vs 415 / 437 default-styled (concept waist 414). C231
   TF_PD_PLAIN (plain faces target their pattern lengths): strip KAT 8 % -> 0.02 %; on the jacket the kick stays (e10).
+- Runs (oL17 fit, perop17; reads rd.sh / lf16 / cend14; concept edge 71 / 78 / 94, len 748, hem 482, break 64 @ 386):
+  | run | levers | edge 450 | 550 | 650 | len | hem | break (raster) | thr p99 | collar / stand | front L / R | waist / hip |
+  | e7 (s16) | press | 72;69 | 80;76 | 99;98 | 744 | 477 | 58@376 / 55@372 | 7.98 | 17.0 / 9.0 | 7.9 / 5.4 | 452 / 481 |
+  | e9 | + FINAL_SHEAR_HOLD | 72;71 | 79;77 | 99;98 | 744 | 478 | 57@374 / 56@373 | 6.81 | 7.5 / 9.5 | 7.7 / 5.1 | 453 / 482 |
+  | e10 | + TF_PD_PLAIN | 72;70 | 80;78 | 97;98 | 744 | 482 | 58@373 / 56@372 | 6.45 | 7.3 / 9.5 | 7.1 / 4.5 | 453 / 479 |
+  | r20 (default) | | 61;49 | 74;67 | 98;97 | 728 | 486 | 53@380 / 41@381 | 5.55 | 11.0 / 8.7 | 3.8 / 2.9 | 402 / 424 |
+  Lapel face L;R 150/200/250/300/350: e10 64;63 55;55 45;44 33;32 23;23 | e7 64;63 56;55 45;44 33;32 24;23 | r20 65;65 57;56
+  46;46 31;32 22;24. Collar ends (cend14 off lapel p50 / max L | R): e10 13.4 / 16.9 | 9.2 / 13.8; e7 13.6 / 18.3 | 8.6 / 12.8;
+  r20 7.6 / 13.0 | 5.9 / 10.9 (not addressed). front.L's p99 is the pocket-patch corner (450-500 mm, x 215-240), r20 too.
+- Dead ends s17: f1 = the oL17 FIT with plain (not fusible) pocket flaps: the let-go still puffs (-192 @ 450) and R broke
+  (break 101 @ 315, len 691). PRESS_HANG (the pressing also hangs, bending-free, 1500 rounds; e11 / e12): the whole lower
+  front leans forward (650: -216 / -214), R edge 87-89 / 112, break L 50: reverted. A bending-free hang on this fit leans
+  the hem (d0 too): the fit's lower front is the problem.
+- LOOK (check/cmp_e10_e7_r20_{wholefront,upper_front,side}.png, cmp_eevee_e10_e7_r20_upper_front.png): e10 reads as e7:
+  lapels clean in EEVEE, V straight and even (r20's R lapel closed); the lower fronts flare out at the hips and the hem
+  corners swing out (waist 453 vs concept 414; r20 402), the side view's kick below the pocket unchanged, R notch / gorge
+  crumple in all three. Collar shear fixed is invisible at this framing.
+- Blind review: bin/review exit 4 again (weekly limit, review_e10.log / review_r20.log). Not reviewed.
+- Verdict: e10 not the default (waist flare + side kick worse than r20; break still 373 vs 386). C230 / C231 kept opt-in.
