@@ -139,6 +139,12 @@ STYLE_TF_PD_SHEAR = float(_tps) if _tps else None  # (None: the weave's SHEAR_ST
 # start, M["_bend_rest"], = the fit), by the vertex's interfacing share (bend_w 1 -> 0, canvas -> 1, feathered).
 # Plain cloth is faired flat as before.
 SMOOTH_PRESSED = __import__("os").environ.get("GP_SMOOTH_PRESSED", "0") == "1"
+# THE PRESSING IN PLANE (canvas s11; C216): a canvas is shrunk / stretched with the iron into its worn shape, so its
+# in-plane rest is the pressed shape too. With PRESSED_REST the styling's closest-rotation targets (the ARAP local step;
+# under STYLE_TF_PD the shear mix) rotate each canvassed face's PRESSED triangle (the pattern triangle stretched by the
+# fit's own stretch tensor at the styling start, M["_bend_rest"], by the interfacing share) instead of the flat
+# pattern's; the threads' frames, bounds and every read stay on the pattern.
+PRESSED_REST = __import__("os").environ.get("GP_PRESSED_REST", "0") == "1"
 # A SMOOTHING HAND TAKES OUT RIPPLES, NOT THE DRAPE (canvas s11; C215): the fair (lam 0.5, up to 20 rounds) is a strong
 # low-pass: it also flattened the fronts' large-scale curvature round the chest; on Garrett's open jacket the whole
 # front moved 10-24 mm (the plain lower front most, dz ~0), the edge forward and in (break 59 -> 50 / 53). Pressing the
@@ -411,6 +417,21 @@ class FlatARAP:
         e1, e2 = U[:, 1] - U[:, 0], U[:, 2] - U[:, 0]
         good &= np.abs(e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0]) > 1e-10
         self.U, self.WF = U[good], WF[good]
+        self.Ur = self.U  # (the rotation targets' rest: the pattern, or the pressed triangle, C216)
+        if PRESSED_REST and M.get("_bend_rest") is not None and M.get("bend_w") is not None:
+            from . import bending as bd_
+            fw_ = np.asarray(M["bend_w"], float)[np.asarray(F)[good]].mean(1)
+            sh_ = np.clip((fw_ - 1.0) / (bd_.BEND_KIND["canvas"] - 1.0), 0.0, 1.0)
+            if sh_.any():
+                Xr = np.asarray(M["_bend_rest"], float)[np.asarray(F)[good]]
+                Dm_ = np.stack([self.U[:, 1] - self.U[:, 0], self.U[:, 2] - self.U[:, 0]], -1)
+                Fg_ = np.stack([Xr[:, 1] - Xr[:, 0], Xr[:, 2] - Xr[:, 0]], -1) @ np.linalg.inv(Dm_)  # (m, 3, 2)
+                C_ = np.einsum("mki,mkj->mij", Fg_, Fg_)  # (the fit's metric in the pattern frame)
+                w_, V_ = np.linalg.eigh(C_)
+                Sx = np.einsum("mij,mj,mkj->mik", V_, np.sqrt(np.maximum(w_, 1e-12)), V_)
+                Sx = np.eye(2)[None] + sh_[:, None, None] * (Sx - np.eye(2)[None])
+                c_ = self.U.mean(1, keepdims=True)
+                self.Ur = c_ + np.einsum("mij,mkj->mki", Sx, self.U - c_)
         Wt, I, J = [], [], []
         for a, b, c in _HE:  # cot weight of half-edge (a, b) = 0.5 cot(angle at c), from the rest triangle
             p, q = self.U[:, a] - self.U[:, c], self.U[:, b] - self.U[:, c]
@@ -582,6 +603,7 @@ class FlatARAP:
         """The local step (each face's closest rotation of its pattern, WOVEN: warp / weft at their length, shear at
         its weight) as the global step's right-hand side (welded, (n, 3))."""
         U, WF, Wt = self.U, self.WF, self.Wt
+        Ur = self.Ur  # (the rotation targets' rest: C216's pressed triangles, else the pattern)
         if getattr(self, "_pd", False) and self.bend is not None and getattr(self, "thread_hi", None) is not None:  # (C207)
             Fg = np.stack([Y[WF[:, 1]] - Y[WF[:, 0]], Y[WF[:, 2]] - Y[WF[:, 0]]], -1) @ self.Dinv0
             ln = np.maximum(np.linalg.norm(Fg, axis=1), 1e-12)
@@ -613,32 +635,41 @@ class FlatARAP:
                 # pattern's closest rotation; without it the faces sheared freely, p99 80 deg, threads 61 %: s8 p2)
                 S_ = np.zeros((len(WF), 3, 2))
                 for k, (a, b, _c) in enumerate(_HE):
-                    S_ += Wt[:, k, None, None] * (Y[WF[:, a]] - Y[WF[:, b]])[:, :, None] * (U[:, a] - U[:, b])[:, None, :]
+                    S_ += Wt[:, k, None, None] * (Y[WF[:, a]] - Y[WF[:, b]])[:, :, None] * (Ur[:, a] - Ur[:, b])[:, None, :]
                 Uu, _, Vt = np.linalg.svd(S_, full_matrices=False)
                 sh = STYLE_TF_PD_SHEAR if STYLE_TF_PD_SHEAR is not None else self.shear  # (not SHEAR_FREE's 1.0:
                 # half the target a rotation of the flat pattern sprang the fronts back again, breaks 50 / 68: s8 p3)
-                R = (R + sh * (Uu @ Vt)) / (1.0 + sh)
+                Rr, R, cR = Uu @ Vt, R / (1.0 + sh), sh / (1.0 + sh)
+            else:
+                Rr, cR = None, 0.0
             rhs = np.zeros((self.n, 3))
             for k, (a, b, _c) in enumerate(_HE):
                 v = Wt[:, k, None] * np.einsum("mij,mj->mi", R, U[:, a] - U[:, b])
+                if Rr is not None:
+                    v = v + Wt[:, k, None] * cR * np.einsum("mij,mj->mi", Rr, Ur[:, a] - Ur[:, b])
                 np.add.at(rhs, WF[:, a], v)
                 np.add.at(rhs, WF[:, b], -v)
             return rhs
         S = np.zeros((len(WF), 3, 2))
         for k, (a, b, _c) in enumerate(_HE):
-            S += Wt[:, k, None, None] * (Y[WF[:, a]] - Y[WF[:, b]])[:, :, None] * (U[:, a] - U[:, b])[:, None, :]
+            S += Wt[:, k, None, None] * (Y[WF[:, a]] - Y[WF[:, b]])[:, :, None] * (Ur[:, a] - Ur[:, b])[:, None, :]
         Uu, _, Vt = np.linalg.svd(S, full_matrices=False)
-        R = Uu @ Vt  # (m, 3, 2): each face's closest orthonormal map from its pattern to its current edges
+        R = Uu @ Vt  # (m, 3, 2): each face's closest orthonormal map from its rest (pattern / pressed) to its current edges
         if self.shear is not None:  # WOVEN (the fit's cloth): warp / weft at their length, shear at its weight
             Fg = np.stack([Y[WF[:, 1]] - Y[WF[:, 0]], Y[WF[:, 2]] - Y[WF[:, 0]]], -1) @ self.Dinv
             Ps = Fg / np.maximum(np.linalg.norm(Fg, axis=1, keepdims=True), 1e-12)
             sh = self.shear
             if self.shear_free is not None:  # (undriven faces, no fixed vertex: the fit's SHEAR_FREE, C166)
                 sh = np.where(fixed[WF].any(1), self.shear, self.shear_free)[:, None, None]
-            R = (Ps + sh * R) / (1.0 + sh)
+            P_, cR = Ps / (1.0 + sh), sh / (1.0 + sh)
+            cR = np.asarray(cR).reshape(-1, 1) if np.ndim(cR) else cR  # (per face: (m, 1))
+        else:
+            P_, cR = None, 1.0
         rhs = np.zeros((self.n, 3))
         for k, (a, b, _c) in enumerate(_HE):
-            v = Wt[:, k, None] * np.einsum("mij,mj->mi", R, U[:, a] - U[:, b])
+            v = Wt[:, k, None] * cR * np.einsum("mij,mj->mi", R, Ur[:, a] - Ur[:, b])
+            if P_ is not None:
+                v = v + Wt[:, k, None] * np.einsum("mij,mj->mi", P_, U[:, a] - U[:, b])
             np.add.at(rhs, WF[:, a], v)
             np.add.at(rhs, WF[:, b], -v)
         return rhs
