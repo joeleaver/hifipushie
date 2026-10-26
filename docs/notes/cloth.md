@@ -11474,3 +11474,4 @@ Goal: b2L (oL17 fit + stiff styling) reads at least as well as r20 against the c
   flaps standing off in the side view and the lower front bulging forward below the pocket (e7 = b2L, r20 flatter).
 - Blind review (worktree bin/review, C227's gate passed the diag crop; review_e7.log): exit 4, the reviewer's weekly limit
   (resets 1 pm America/Denver). Not reviewed.
+- SUITE (18 files): 325 passed, 4 xfailed, PYTEST_EXIT 0 ($S16/suite.log).

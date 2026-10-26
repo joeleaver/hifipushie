@@ -57,4 +57,4 @@ NEXT: (1) the collar shears 6 -> 40 deg in the stiff styling's first relax (pcop
   rest vs the stand's hold vs the floor) and fix there; that is the collar's 17 %. (2) lower front bulge + flaps standing
   off in the side view under the stiff styling (flaps bw 8: interfaced, rest = fit). (3) blind review of e7 vs r20
   (review command in $S16/review_e7.log's notes). (4) collar ends (cend14) worse on e7 L (13.6 mm). Then the default.
-SUITE s16: see $S16/suite.log.
+SUITE s16 (18 files): 325 passed, 4 xfailed, PYTEST_EXIT 0 ($S16/suite.log).
