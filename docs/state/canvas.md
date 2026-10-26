@@ -5,11 +5,11 @@ Concept SLIM-CUT, worn open, falls straight (workspace/garrett_v20/concept_v8_fr
 (C195); supports, not holds (C190); styling ends with smooth + pull down; current garments are not a baseline.
 Sessions: s1 78507629; s2-s9 claude/canvas2-9 ($S9 /mnt/data/hifipushie/canvas/s9; history cloth.md "canvas stiffness
 session 9"). Ledger C190-C210.
-DEFAULT (C205 + C206 + C209): interfaced garments fitted keyed, shirt floor from relax1, no plumb hold, styled on the
-shirt's own cloth, the FIT sews patch stitches; NEW (C209): a garment that declares interfacing is STYLED with its
-bending under STYLE_TF_PD (GP_STYLE_BEND unset = per garment; GP_TF_PD default 1), the threads' term weighted
-STYLE_TF_PD_MEM (1) x the stiff cloth's median bending; CANVASSED garments only (bend_w >= 20; the fused shirt keeps the
-bending-free styling). e2 = the d2 fit styled by the repo default ($S9/asm_e2.pkl; e1 = MEM 10 = pd10).
+DEFAULT (C205 + C206): interfaced garments fitted keyed, shirt floor from relax1, no plumb hold, styled on the shirt's
+own cloth WITHOUT bending (= s8's d2), the FIT sews patch stitches. C209's RULE is on wherever the one solve runs (the
+threads' term >= the stiff cloth's median bending, STYLE_TF_PD_MEM 1); the STIFF STYLING itself is OPT-IN
+(GP_STYLE_BEND=1, or =garment: canvassed garments only) until a render beats d2 beside the concept (coordinator
+2026-10-25: e2's reads are worse than d2's). e3 = repo default on fit_d2 = d2 (cmp_e3_d2.log).
 S9 FINDINGS:
 - (a) FIXED (C209): the op that tore under C207 was not a grip: the hem pull took 0 steps; its plain relax solve (20
   rounds, nothing moved, grips free or not) tore front.L's canvassed lapel 6.9 -> 19.5 %, its settle -> 63 %
@@ -30,13 +30,13 @@ S9 FINDINGS:
 RUNS (concept edge 450/550/650 71/78/94, hem+30 482, front len 748; threads = pooled p99 (fronts; collar)):
 | d2 (s8 default) | 52-50 / 65-72 / 90-105 | 471 | 735 | 7.64 (4.0; 22.5) |
 | pd10 = e1 (C209 MEM 10) | 56-62 / 69-71 / 80-69 | 457 | 729 | 8.19 (5.3; 10.8) |
-| e2 (C209 MEM 1, DEFAULT) | 50-63 / 61-71 / 70-68 | 450 | 730 | 7.58 (5.5; 10.8) |
+| e2 (C209 MEM 1, opt-in) | 50-63 / 61-71 / 70-68 | 450 | 730 | 7.58 (5.5; 10.8) |
 LOOK pd10 vs d2 (check/cmp_pd10_d2_*.png): about the same jacket: upper fronts a little straighter, collar threads
 halved, but the lower fronts still cut away and hem in more (457), a crease on the right front at the pocket; SIDE
 view WORSE: the lower front bulges forward at the pocket and tucks in under it at the hem (d2 fell straighter). V /
 lapel / gorge tabs / shirt collar at the back unchanged. No blind review (edge rows not within +-8 mm). Back to d2:
 GP_STYLE_BEND=0 (identical to s8's d2).
-SUITE (18 files): 315 passed, 4 xfailed, PYTEST_EXIT 0 ($S9/suite.log). r1 2 red ($S9/suite_r1.log): the shirt styled with
+SUITE (18 files, styling bend off by default): 315 passed, 4 xfailed, PYTEST_EXIT 0 ($S9/suite.log); e3 vs d2 max 0.0000 mm. r1 2 red ($S9/suite_r1.log): the shirt styled with
   its fused bending 7.2 % > 7 (-> canvassed only) and C195's walked-bend arc at MEM 10 (28.6 vs 19.4 mm; -> MEM 1).
 NEXT (in order; scripts in $S9: perop9.py <fit> <tag> [ops] (per op, per piece), solvelog9.py, cap9.py + probe9.py
 (capture an op's input, probe its solve), rad9 / need9 / over9.py (collar vs shirt), rd.sh / post.sh / sheet.py):

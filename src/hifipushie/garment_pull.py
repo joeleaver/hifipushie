@@ -96,9 +96,11 @@ HANG_SWEEPS = 4  # Jacobi sweeps of the thread cap a round
 # fit: a canvas is moulded and steamed to it, a collar made to its roll; a fold present at the start stays a fold),
 # overall STYLE_BEND_W x the cot weights' scale. Plain cloth (weight 1) keeps STYLE_BEND_PLAIN of it, resting FLAT
 # (cloth's own rest; only interfaced cloth is made to a shape).
-_sb = __import__("os").environ.get("GP_STYLE_BEND")  # (C209: unset = per garment: worn_style styles a CANVASSED garment
-# (bend_w >= BEND_KIND["canvas"] anywhere) with its bending, under STYLE_TF_PD; "1" / "0" force)
-STYLE_BEND = None if _sb is None else _sb == "1"
+_sb = __import__("os").environ.get("GP_STYLE_BEND", "0")  # (C209: OFF by default until a render beats d2 against the
+# concept (coordinator 2026-10-25: e2's threads 7.58 but hem 450 / edge 650 70-68 / lapel 116 read worse than d2);
+# "garment" = per garment: worn_style styles a CANVASSED garment (bend_w >= BEND_KIND["canvas"]) with its bending under
+# STYLE_TF_PD; "1" / "0" force)
+STYLE_BEND = None if _sb == "garment" else _sb == "1"
 STYLE_BEND_W = float(__import__("os").environ.get("GP_STYLE_BEND_W", "5.0"))
 # THREADS FIRST (canvas s2, Joe: "it shouldn't really be a choice between stiffness and stretch"): with STYLE_BEND on,
 # every round projects each face's warp / weft back within max(its length when the STYLING started (_bend_rest), 1 + STYLE_THREAD_CAP)

@@ -11202,3 +11202,7 @@ turned, points pulled) were tuned on bending-free cloth; the stand's rest is the
   mode) -> MEM 1 (21.3; the jacket pull solve 7.1 %). e2 (repo default, MEM 1) on fit_d2: threads p99 7.58 (fronts
   5.45, collar 10.8, stand 13.4), edge 50-63 / 61-71 / 70-68, hem+30 450, length 730, break 317-322, lapel 150 116 /
   117, V 200 197. Suite: 315 passed, 4 xfailed, PYTEST_EXIT 0.
+- Coordinator: don't flip the default on threads alone (e2 unrendered, reads worse than d2). GP_STYLE_BEND default "0"
+  again ("garment" = canvassed garments per garment, "1" all); C209's thread weight stays wherever the one solve runs.
+  e3 = repo default styling of fit_d2: compared with s8's asm_d2 in $S9/cmp_e3_d2.log; suite rerun $S9/suite.log: 315 passed, 4 xfailed, PYTEST_EXIT 0; e3 vs d2 max 0.0000 mm
+  (the e2-default run kept as suite_r2.log).
