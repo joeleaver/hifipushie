@@ -96,8 +96,8 @@ HANG_SWEEPS = 4  # Jacobi sweeps of the thread cap a round
 # fit: a canvas is moulded and steamed to it, a collar made to its roll; a fold present at the start stays a fold),
 # overall STYLE_BEND_W x the cot weights' scale. Plain cloth (weight 1) keeps STYLE_BEND_PLAIN of it, resting FLAT
 # (cloth's own rest; only interfaced cloth is made to a shape).
-_sb = __import__("os").environ.get("GP_STYLE_BEND")  # (C209: unset = per garment: worn_style styles a garment that
-# DECLARES interfacing (bend_w > 1 anywhere, as C205's keyed fit) with its bending, under STYLE_TF_PD; "1" / "0" force)
+_sb = __import__("os").environ.get("GP_STYLE_BEND")  # (C209: unset = per garment: worn_style styles a CANVASSED garment
+# (bend_w >= BEND_KIND["canvas"] anywhere) with its bending, under STYLE_TF_PD; "1" / "0" force)
 STYLE_BEND = None if _sb is None else _sb == "1"
 STYLE_BEND_W = float(__import__("os").environ.get("GP_STYLE_BEND_W", "5.0"))
 # THREADS FIRST (canvas s2, Joe: "it shouldn't really be a choice between stiffness and stretch"): with STYLE_BEND on,
@@ -123,7 +123,9 @@ STYLE_TF_PD = __import__("os").environ.get("GP_TF_PD", "1") == "1"  # (DEFAULT s
 # bending only, faces stretched / collapsed in plane, and the Jacobi cap after it tore the lapel (Garrett d2's hem pull,
 # a solve with nothing moved: front.L 6.9 -> 19.5 -> 63 %). Woven cloth is far stiffer along its threads than in
 # bending; with the threads dominant the bending still chooses the shape among the near-isometric ones.
-STYLE_TF_PD_MEM = float(__import__("os").environ.get("GP_TF_PD_MEM", "10"))
+STYLE_TF_PD_MEM = float(__import__("os").environ.get("GP_TF_PD_MEM", "1"))  # (10 held the jacket too but kept a canvassed
+# strip off its least-bending arc, 28.6 vs 19.4 mm: test_stiffness_never_buys_shape_with_stretch; 1: 21.3, and the
+# jacket's pull solve 7.1 %)
 _tps = __import__("os").environ.get("GP_TF_PD_SHEAR")
 STYLE_TF_PD_SHEAR = float(_tps) if _tps else None  # (None: the weave's SHEAR_STIFF)
 
@@ -416,9 +418,10 @@ class FlatARAP:
                 M["_bend_rest"] if M.get("_bend_rest") is not None else X, float)), flat_below=STYLE_BEND_PLAIN)
             self.L0 = self.L
             self.mem_w = 1.0
-            if STYLE_TF_PD and STYLE_TF_PD_MEM > 0:  # (C209: the threads' term outweighs the bending)
+            stiff = wv > 1.0 + 1e-9
+            self._pd = bool(STYLE_TF_PD and stiff.any())  # (C207 / C209: plain cloth alone keeps C195's threads first)
+            if self._pd and STYLE_TF_PD_MEM > 0:  # (C209: the threads' term outweighs the bending)
                 kd, ld = self.bend.K.diagonal(), self.L.diagonal()
-                stiff = wv > 1.0 + 1e-9
                 if stiff.any() and np.median(ld) > 0:
                     self.mem_w = max(1.0, STYLE_TF_PD_MEM * float(np.median(kd[stiff])) / float(np.median(ld)))
             self.L = (self.mem_w * self.L + self.bend.K).tocsr()
@@ -535,7 +538,7 @@ class FlatARAP:
             if tf:  # THREADS FIRST: the bending acts within the threads. Rounds of the bending-free solve give back the
                 # length the bending bought (a Jacobi cap alone can't: a strip stretched end to end stayed 12.4 %), then
                 # the cap takes off what is still past each face's bound
-                for _r in range(0 if STYLE_TF_PD else STYLE_THREAD_ROUNDS):
+                for _r in range(0 if getattr(self, "_pd", False) else STYLE_THREAD_ROUNDS):
                     r0 = self._arap_rhs(Y, fixed)[fi] - L0fc @ Y[ci]
                     Y[fi] = np.column_stack([lu0.solve(r0[:, k]) for k in range(3)])
                 Y = self._thread_cap(Y, fx, hi=self.thread_hi, lo=self.thread_lo)
@@ -561,7 +564,7 @@ class FlatARAP:
         """The local step (each face's closest rotation of its pattern, WOVEN: warp / weft at their length, shear at
         its weight) as the global step's right-hand side (welded, (n, 3))."""
         U, WF, Wt = self.U, self.WF, self.Wt
-        if STYLE_TF_PD and self.bend is not None and getattr(self, "thread_hi", None) is not None:  # (C207)
+        if getattr(self, "_pd", False) and self.bend is not None and getattr(self, "thread_hi", None) is not None:  # (C207)
             Fg = np.stack([Y[WF[:, 1]] - Y[WF[:, 0]], Y[WF[:, 2]] - Y[WF[:, 0]]], -1) @ self.Dinv0
             ln = np.maximum(np.linalg.norm(Fg, axis=1), 1e-12)
             R = Fg * (np.clip(ln, self.thread_lo, self.thread_hi) / ln)[:, None, :]
@@ -2229,8 +2232,11 @@ def worn_style(M: dict, X: np.ndarray, body, g: dict, log=None, under=None):
     ops = style_ops(g)
     if not ops:
         return np.asarray(X, float), None
-    bw_ = M.get("bend_w")  # (C209: a garment that declares interfacing is styled with its stiffness, threads first)
-    M = dict(M, _style_bend=bw_ is not None and float(np.max(bw_)) > 1.0 + 1e-9)
+    bw_ = M.get("bend_w")  # (C209: a CANVASSED garment is styled with its stiffness, threads first; a fused shirt collar
+    # styled so too went 7.0 -> 7.2 % threads, shear 35.1 deg past its lock: test_a_shirt_without_a_tie_is_styled_open_
+    # by_default; not proven on fused cloth, so it keeps the bending-free styling)
+    from . import bending as bd_
+    M = dict(M, _style_bend=bw_ is not None and float(np.max(bw_)) >= bd_.BEND_KIND["canvas"] - 1e-9)
     free = ops_pieces(M, ops)
     if g.get("worn_open"):  # (C174: a garment worn OPEN: fitted open, no button done; its stitched patches sewn as the
         # fit has them (welded like seams) and the fit's layer order kept as a floor (body, flaps, patches; C170 / C173))

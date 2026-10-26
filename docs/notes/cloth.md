@@ -11197,3 +11197,8 @@ turned, points pulled) were tuned on bending-free cloth; the stand's rest is the
 - (c) lapel29 on fit_d2 (unstyled): lapel 150 125 / 127, V 200 220, break 315-320, lapel point 80 below HPS (r32: 133
   / 221; concept 127-134 / 237 / 386 / 93). d2 styled 122 / 209; pd10 119 / 201.
 - LOOK pd10 vs d2 beside the concept ($S9/check/cmp_pd10_d2_{wholefront,upper_front,side}.png): about the same jacket.
+- Suite r1 2 red: the shirt (fused) styled with bending under PD 7.2 % > 7 -> the per-garment default is CANVASSED
+  garments only; C195's walked-bend KAT at MEM 10: canvas mid 28.6 vs arc 19.4 mm (PD converges slowly on the soft
+  mode) -> MEM 1 (21.3; the jacket pull solve 7.1 %). e2 (repo default, MEM 1) on fit_d2: threads p99 7.58 (fronts
+  5.45, collar 10.8, stand 13.4), edge 50-63 / 61-71 / 70-68, hem+30 450, length 730, break 317-322, lapel 150 116 /
+  117, V 200 197. Suite: 315 passed, 4 xfailed, PYTEST_EXIT 0.
