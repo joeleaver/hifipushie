@@ -1336,10 +1336,17 @@ FIT_STITCH = __import__("os").environ.get("PF_FIT_STITCH", "1") == "1"
 
 
 def fit_sew(M: dict) -> np.ndarray:
-    """The pairs the fit closes: M["sew"], plus M["stitch"] with FIT_STITCH (C206)."""
+    """The pairs the fit closes: M["sew"], plus with FIT_STITCH (C206) the stitch pairs of PATCHES (`patches`: a pocket
+    flap on its line). Other stitches stay open in the fit (a shirt's button stitches join two layers lying on each
+    other: sewn in the fit, wf_simon's open collar threads went 6.5 -> 7.4 %, over its 7 % row)."""
     sw = np.asarray(M["sew"]).reshape(-1, 2)
     st = np.asarray(M.get("stitch") if M.get("stitch") is not None else np.zeros((0, 2), int), int).reshape(-1, 2)
-    return np.r_[sw.astype(int), st] if FIT_STITCH and len(st) else sw
+    if not (FIT_STITCH and len(st)):
+        return sw
+    pid = np.asarray(M["piece"])
+    pk = [k for k, _b, _v in patches(M)]
+    st = st[np.isin(pid[st[:, 0]], pk) | np.isin(pid[st[:, 1]], pk)]
+    return np.r_[sw.astype(int), st] if len(st) else sw
 
 
 def patches(M: dict) -> list:

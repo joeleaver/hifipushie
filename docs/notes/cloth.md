@@ -11170,3 +11170,4 @@ turned, points pulled) were tuned on bending-free cloth; the stand's rest is the
   rectangles on their pocket lines (d1's were crumpled); fronts hem in less (hem 471); otherwise the same jacket: V
   much wider and deeper than the concept's, lapels narrow, the gorge / collar ends still stand as crumpled tabs, the
   fronts curve to a cutaway instead of falling straight.
+- Suite: first run 1 red (test_a_shirt_without_a_tie_is_styled_open_by_default: FIT_STITCH sewed the shirt's button stitches, threads 7.4 % vs 7); fit_sew restricted to patch stitches (jacket d2 unchanged: all 10 are flap stitches); rerun 314 passed, 4 xfailed, PYTEST_EXIT 0.
