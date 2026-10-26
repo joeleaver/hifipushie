@@ -37,8 +37,16 @@ S14 (no default change; v10 = r20 stays): causes per stage (repro14.py prints ev
   (fit 64 -> first relax -11, smooth -4, pull -5 -> 42-53). Stiff styling (GP_STYLE_BEND) holds it but fronts 10-14 %,
   no hang (o0b): wrong model.
 - Collar-end "fold": the collar fall's end (run_off) stands 6-13 mm off the lapel (cend14.py), R tilted more; lift cause open.
-NEXT: (1) the break's spring-back in the styling (fit 64 -> 42-53): find what the fit's pinned open shape stores that
-  the styling's first relax releases (threads first: compare the fit's and the style relax's energies on the chest /
-  lapel cells), so the break stays ~64 with the fronts still hanging; then re-run oL17 (even + right length) and judge.
-  (2) relax1's L / R seed (L 30 / R 9 past CF with laps off). (3) collar end lift 6-13 mm. (4) blind review once the
-  edge rows are within +-8. (5) shirt collar at the back. SUITE s14 (18 files): 321 passed, 4 xfailed, PYTEST_EXIT 0 ($S14/suite.log).
+S15 (claude/canvas15; $S15 /mnt/data/hifipushie/canvas/s15): the STIFF STYLING made threads-first (opt-in GP_STYLE_BEND=1).
+- C225: the stiff styling's stretch (o0b fronts 10-14 %) was the threads-first CAP: its lower bound pushed eased faces
+  out (lapel roll above the break) and stretched their neighbours in the solve's final bending-free rounds (canvas p99
+  5.8 -> 12.4 % in relax1). The threads-first caps now bound STRETCH only (GP_THREAD_CAP_LO=1 for the A/B).
+- C226: C209's ONE scalar thread weight (~13000) was a lag spring on plain cloth too: the lower front never hung. Now
+  per face, MEM x the bending at its own vertices (GP_TF_PD_LOCAL=0 for the A/B). Both only on the stiff path.
+| run (perop edge, L ; R) | edge 450 | 550 | 650 | len | break x | fronts thr p99 (perop) |
+| concept | 71 | 78 | 94 | 748 | 64 | |
+| r20 (v10 default) | 59 ; 47 | 71 ; 64 | 94 ; 94 | 733 ; 725 | 53 ; 41 | 4.1 |
+| o0b (s14 stiff) | 67 ; 64 | 67 ; 68 | 68 ; 68 | 711 ; 705 | 57 ; 56 | 13.8 |
+| b3L (oL17 fit + stiff, s15 code) | 65 ; 74 | 76 ; 84 | 92 ; 103 | 747 ; 740 | 56 ; 64 | 8.7 (canvas 3.8) |
+| b3r (r20 fit + stiff) | 69 ; 75 | 80 ; 95 | 105 ; 120 | 724 ; 718 | 64 ; 64 | 7.0 |
+NEXT: renders + reads of b3L (post.sh / rd.sh) beside the concept and r20; then decide default vs opt-in.
