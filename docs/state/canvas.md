@@ -1,4 +1,4 @@
-# STATE: canvas (canvas / interfacing BENDING STIFFNESS; the jacket with no workaround holds) -- 2026-10-25 (s11, in progress)
+# STATE: canvas (canvas / interfacing BENDING STIFFNESS; the jacket with no workaround holds) -- 2026-10-25 (s11)
 
 GOAL (Joe): canvassed pieces keep their shape by STIFFNESS so the workaround holds go. No sim, no rented GPU.
 Concept SLIM-CUT, worn open, falls straight (workspace/garrett_v20/concept_v8_front_apose.png). Rules: threads first
@@ -27,19 +27,22 @@ RUNS (concept edge 450/550/650 71/78/94, hem+30 482, len 748, lapel 150 127-134,
 | u2 (UNDER_MADE + STYLE_BEND=garment) | 58-60 / 88-68 / 107-66 | 456 | 728 | 116/115 V 195 | 8.31, poke 84 |
 LOOK u2 vs d2 ($S10/check/cmp_u2_d2_*.png): collar better; lapels a touch narrower, hem asymmetric, side view bulges
 at the pocket and tucks in at the hem (d2 straighter). u2 does not earn the default. No blind review.
-NEXT (in order; scripts in $S10: perop9 / opcol9 / yaw10 / lean10 / sm10 / cap9 / repro.py / post.sh / sheet.py):
-1. The fronts close in every styling solve because nothing holds an open front open (no gravity in relax / smooth /
-   pull; ARAP relaxes the form's opening). Find the support: hang the fronts from the shoulders in the first relax
-   (hang over the whole front, not only below the break) or the stiff styling's bending rest at the FIT shape for the
-   lapel + chest canvas only; read the break per op (target 64 held) and yaw10 (lapel facing front).
-2. With the break held, re-run u2 (shirt collar floor + C209) and read the lapel / hem / side bulge; if the side bulge
-   persists, it is the stiff styling's (pd10 had it too): per-op side profile (fwd33) to name the op.
-3. Gorge tabs + stand flare at 110 deg: the lapel roll pulling the stand top out; measure the roll line's 3D path from
-   the break to CB against the neck before any draft change; R30 only with the fall drafted from a straightened roll.
-4. Hem (456-477 vs 482) and 650 edge after 1-2.
-SUITE s10 (18 files, docs-only branch): 315 passed, 4 xfailed, PYTEST_EXIT 0 ($S10/suite.log).
-S11 (in progress): the pressed rest. The stiff styling's bending rest IS already the styling start (= the fit's
-worn-open shape: _bend_rest, C209); what irons the pressing out is smooth's fair (toward zero curvature). C214
-SMOOTH_PRESSED (opt-in, GP_SMOOTH_PRESSED=1): the fair aims at the pressing's own offset by the interfacing share;
-KAT test_pressed_canvas_keeps_its_pressing_through_the_styling. Running $S11/go.sh: p1 (pressed smooth, no bending),
-p2 (+ GP_STYLE_BEND=garment), p3 (+ GP_STYLE_HANG=1: every relax hung), p2u / p3u (+ GP_UNDER_MADE=1).
+
+S11 FINDINGS (no default changed; three OPT-IN levers, all off = d2 exactly):
+- The stiff styling's bending rest already WAS the fit's shape. New: C214 SMOOTH_PRESSED (GP_SMOOTH_PRESSED=1; KAT),
+  C215 SMOOTH_HAND (GP_SMOOTH_HAND=4: the smooth takes ripples, not the wrap), C216 PRESSED_REST (GP_PRESSED_REST=1:
+  canvassed faces' rotation targets rest on the fit's pressed triangle). C217: the weight (GP_STYLE_HANG=1) CLOSES
+  the front (p3 48 / 30): dropped.
+- Best: p5d (all three, no bending): break 56 / 45 (d2 47 / 41, fit 64), threads 5.97, hem 486, lapel faces front
+  (yaw +4), shirt poke 583; but length 724 (748), edge 650 107-109 (94), lapel 122 / 120 (127-134). LOOK: level with
+  d2, not better (check/cmp_p5d_d2_*.png). Stiff styling (p4) loses the lower front again (650 72 / 70, hem 450).
+- Per op (p5d): the first relax still closes 9, the R TURN closes R 2 while L opens 9, smooth -4, pull -3.
+NEXT (in order; scripts in $S11: go*.sh, perop9, sm11 / smw11 (re-run a captured op), rd.sh, yaw10, post.sh, sheet.py):
+1. The R turn: turn L opens the break +9, R closes it -2 (p5d; the same in every run). Read turn's R grip / axis
+   (front.R:break..sideF.b) against L's on the fit: an asymmetric input, before any new lever.
+2. The first relax (-9 even pressed): per-face read of which faces spring back (canvas vs plain lower front); a
+   support at the roll line (the lapel's roll held by its pressing against the chest), not weight (C217).
+3. Lapel 120-122 vs 127-134 is NOT the break alone (p5d break +9, lapel unchanged): read the lapel's outer edge vs the
+   roll (lapel29) on fit_d2 vs p5d: the flap's width itself.
+4. If 1-3 reach break ~60 and length / 650 hold: p5d family as the default candidate (shirt photo / trace rows and Tess's
+   coat must pass: SMOOTH_HAND touches every smooth, the pressing touches fused pieces at share 0.37).

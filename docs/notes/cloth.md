@@ -11230,3 +11230,23 @@ No default changed; no code left changed (dead levers reverted, the stand-lean p
   L hem corner kicks out / R hangs in (asymmetric), side view bulges forward at the pocket and tucks in at the hem
   (d2 falls straighter). Gorge tabs crumpled in both. Not the default; no blind review (edge rows not within +-8).
 - Suite (18 files): 315 passed, 4 xfailed, PYTEST_EXIT 0 ($S10/suite.log).
+
+## canvas stiffness session 11 (2026-10-25; $S11 = /mnt/data/hifipushie/canvas/s11; branch claude/canvas11)
+Job: hold the unbuttoned front open (the pressed rest + weight). No default changed; three opt-in levers landed.
+- Pressed rest (C214 / C216): the stiff styling's bending rest was ALREADY the fit's shape (_bend_rest = the styling
+  start). New: SMOOTH_PRESSED (the fair aims at the pressing, not flat; KAT on a pressed strip) and PRESSED_REST (the
+  rotation targets rest on the fit's in-plane pressed triangle for canvassed faces).
+- The smooth (C215): sm11 / smw11 on the captured front smooth: the whole front moved 10-24 mm, horizontally (the fair is a
+  strong low-pass flattening the wrap). SMOOTH_HAND=4 (high-pass fair): forward drift 18 -> 6 mm.
+- Weight (C217): every relax hung closes the front (p3 48 / 30). Dropped.
+- Per-op break (fit 64 / 64; L / R final): d2 47 / 41 | p1 46 / 41 | p2 50 / 47 | p3 48 / 30 | p4 52 / 52 |
+  p4d 47 / 43 | p5d 56 / 45. p5d: relax 55 / 55, turn L 64 / R 53, smooth -4, pull -3. R's turn closes it.
+- Reads (concept | d2 | p4d | p5d | p5du | p4 (stiff)): edge 450 71 | 52-50 | 54/53 | 58/54 | 58/53 | 52/66; 550 78 |
+  65-72 | 66/75 | 75/76 | 75/75 | 64/74; 650 94 | 90-105 | 93/109 | 107/109 | 107/108 | 72/70; hem+30 482 | 470 |
+  479 | 486 | 486 | 450; length 748 | 735 | 733 | 724 | 724 | 729; lapel 150 127-134 | 122 | 122 | 122/120 | 122/120 |
+  119/120; V 200 237 | 209 | 209 | 208 | 207 | 204; lapel yaw 150 0 (r32) | +11 | +3/+5 | +5/+4 | +6/+4 | +14/+11;
+  threads p99 | 7.64 | 6.72 | 5.97 | 12.85 | 7.48; shirt poke | 1152 | 1135 | 583 | 353 | 152.
+- LOOK p5d vs d2 beside the concept (check/cmp_p5d_d2_*.png; p4d check/cmp_p4d_d2_*): level. Lapels face front and
+  the hem is fuller; lapels still clearly narrower than the concept, the gorge crumpled in both, the side the same.
+  Not the default; no blind review (edge 450 13-17 mm short). The u-variants (UNDER_MADE) without stiffness tear the
+  collar (p5du 12.85 %).
