@@ -156,14 +156,6 @@ TF_BLEED = __import__("os").environ.get("GP_TF_BLEED", "0") == "1"
 # styling's weighting and hangs as it does there. Env GP_TF_PD_LOCAL=0 for the A/B (C209's scalar).
 STYLE_TF_PD_LOCAL = __import__("os").environ.get("GP_TF_PD_LOCAL", "1") == "1"
 TF_PD_LOCAL_RINGS = 2
-# THE WEAVE'S SHEAR IS THE SAME RULE IN BOTH STYLINGS (canvas s16, C230): the stiff styling's PD local step mixed the
-# pattern's closest rotation in at SHEAR_STIFF (~0.011) on every face, so a sheared face had (almost) nothing taking its
-# shear back: Garrett's lapel kept the fit's shear (p99 20.8 -> 12.7 deg; the default styling 1.6), the collar / stand
-# their 15-18 % threads. The default styling's WOVEN solve gives UNDRIVEN faces (no fixed vertex) the fit's SHEAR_FREE
-# (C166: where nothing drives the cloth it does not shear). A uniform SHEAR_FREE (GP_TF_PD_SHEAR=1, s8 / s16 e2) let the
-# collar go (5 %) but sprang the lower fronts out (650 107 / 117, hem sweep 516). With TF_PD_SHEAR_FREE the PD step uses
-# the default's per-face rule. Env GP_TF_PD_SHEAR_FREE=1 (OPT-IN).
-STYLE_TF_PD_SHEAR_FREE = __import__("os").environ.get("GP_TF_PD_SHEAR_FREE", "0") == "1"
 _tps = __import__("os").environ.get("GP_TF_PD_SHEAR")
 STYLE_TF_PD_SHEAR = float(_tps) if _tps else None  # (None: the weave's SHEAR_STIFF)
 
@@ -715,12 +707,7 @@ class FlatARAP:
                 Uu, _, Vt = np.linalg.svd(S_, full_matrices=False)
                 sh = STYLE_TF_PD_SHEAR if STYLE_TF_PD_SHEAR is not None else self.shear  # (not SHEAR_FREE's 1.0:
                 # half the target a rotation of the flat pattern sprang the fronts back again, breaks 50 / 68: s8 p3)
-                if STYLE_TF_PD_SHEAR_FREE and STYLE_TF_PD_SHEAR is None and self.shear_free is not None:  # (C230: the
-                    # fit's own rule: undriven faces take SHEAR_FREE, as WOVEN_STYLE's default solve does)
-                    sh = np.where(fixed[WF].any(1), self.shear, self.shear_free)[:, None, None]
-                    Rr, R, cR = Uu @ Vt, R / (1.0 + sh), (sh / (1.0 + sh)).reshape(-1, 1)
-                else:
-                    Rr, R, cR = Uu @ Vt, R / (1.0 + sh), sh / (1.0 + sh)
+                Rr, R, cR = Uu @ Vt, R / (1.0 + sh), sh / (1.0 + sh)
             else:
                 Rr, cR = None, 0.0
             rhs = np.zeros((self.n, 3))
