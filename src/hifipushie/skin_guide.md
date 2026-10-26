@@ -1,6 +1,6 @@
 # Skin: texturing a human the way character artists do
 
-Tools (`enable_toolset("human")`): `skin` (describe the skin), `look_skin` (fast close-ups + measurements),
+Tools (run with `call_tool`): `skin` (describe the skin), `look_skin` (fast close-ups + measurements),
 `skin_from_reference` (measure the skin in the model's fitted reference pictures and set the description from it),
 `skin_project` (the pictures projected into the head's atlas as a measurement), `skin_reference` (every key, default
 and zone), plus the ordinary paint tools (`edit_model` paint ops address the same anatomy with `{"zone": name}`).

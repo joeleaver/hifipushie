@@ -1,24 +1,23 @@
-# hifipushie tools: toolsets and the core reference
+# hifipushie tools: the core, find_tool / call_tool, and the core reference
 
 Read the playbook (guide(topic="")) and the domain's guide before working: each starts with describing the reference.
 
-The server's tools are grouped in toolsets. A session starts with the core; `enable_toolset(name)` adds a set (the
-client refreshes its tool list on the server's list_changed notification: Claude Code does, within the same turn;
-in Claude Code a new tool may be deferred: find it with ToolSearch), `enable_toolset("")` lists them and which are
-on. Before working in a domain, enable its set and read its guide topic. Hosts that don't refresh: start the server
-with `HIFIPUSHIE_TOOLSETS=all`, or a list like `hair,cloth` (default `core`); `HIFIPUSHIE_CALL_TOOL=1` adds
-`call_tool(name, args)`, which runs any tool, enabled or not.
+The server registers a small core natively (guide, find_tool, call_tool, list_models, get_model, kit_reference,
+put_model, edit_model, look, check, measure, history, revert, review_view). Every other tool runs through
+`call_tool(name, args)`, in any host: clients don't refresh their tool list mid-session, so tools are never switched
+on later. `find_tool("<what you want to do>")` ranks every tool and gives its purpose, parameters and an example
+call; `find_tool("")` lists every tool by domain. Before working in a domain, read its guide topic.
 
-| toolset | holds | full docs |
+| domain | holds | full docs |
 |---|---|---|
-| core | guide, enable_toolset, list_models, get_model, kit_reference, put_model, edit_model, look, check, measure, history, revert | here |
+| core (native) | guide, find_tool, call_tool, list_models, get_model, kit_reference, put_model, edit_model, look, check, measure, history, revert | here |
 | plan | set_plan, set_reference, compare, fit, clearance, style_check | here |
 | scene | sync, pull, heavy_status, heavy_queue | here |
 | export | export, export_asset, rig | here |
 | human | human, measure_human, fit_human, nudge_human, human_reference, block_in_start, block_in_look, block_in_step, lid_read, eye_ruler, face_ruler, brow_read, skin, look_skin, skin_reference, skin_from_reference, skin_project | guide(topic="human"), guide(topic="block_in"), guide(topic="skin") |
 | likeness | likeness, fit_likeness, likeness_points, character_read, project_reference, texture_from_reference, reference_brief, check_references | guide(topic="likeness") |
-| hair (+ scene) | groom_hair, tie_hair, look_hair, hair_reference, export_hair | guide(topic="hair") |
-| cloth (+ scene) | design_garment, look_pattern, check_garment, dress, look_cloth, garment_reference, garment_from_reference, check_garment_reference, garment_reference_brief | guide(topic="cloth"), guide(topic="cloth_reference") |
+| hair | groom_hair, tie_hair, look_hair, hair_reference, export_hair | guide(topic="hair") |
+| cloth | design_garment, look_pattern, check_garment, dress, look_cloth, garment_reference, garment_from_reference, check_garment_reference, garment_reference_brief | guide(topic="cloth"), guide(topic="cloth_reference") |
 | terrain | set_terrain, check_terrain, look_terrain, export_terrain, terrain_history | guide(topic="terrain") |
 | plants | grow_plant, edit_plant, get_plant, look_plant, look_plants, plant_form, plant_reference, export_plant, wind_plant, sync_plant, plant_history, grow_stand, look_stand, export_stand | guide(topic="vegetation") |
 | clutter | make_clutter, look_clutter, clutter_kit | guide(topic="clutter") |
@@ -28,7 +27,7 @@ topic named above, and guide(topic="<tool name>") returns just that section.
 
 ## Tool reference
 
-The full documentation of this topic's tools: their MCP descriptions are the short form. guide(topic="<tool name>") returns one section. These are the core, plan, scene and export toolsets.
+The full documentation of this topic's tools: their MCP descriptions are the short form. guide(topic="<tool name>") returns one section. These are the core, plan, scene and export domains (non-core ones via call_tool).
 
 ### `guide`
 
@@ -66,13 +65,13 @@ bushes, litter, reeds) as game assets in five styles, with make_clutter, look_cl
 topic="likeness": the facial-likeness checklist (forensic examiners' feature list, likeness artists' order,
 anthropometry): what to look at and measure on a reference, for the likeness and fit_likeness tools.
 
-### `enable_toolset`
+### `find_tool`
 
-`enable_toolset(name='')`
+`find_tool(query='', limit=5)`
 
-Add a toolset's tools to this session (the server may start with only the core). name: a toolset or a comma
-list, "all"; "" lists the toolsets, what each holds and which are on. The new tools appear after the client
-refreshes its tool list (notifications/tools/list_changed); if they don't, restart with HIFIPUSHIE_TOOLSETS.
+Find the tool for a job: ranks every hifipushie tool (native or not) by word match on its name and docs, and
+gives each one's purpose, parameters and an example call (non-core tools run through call_tool). query: what you
+want to do, e.g. "fit a garment" ("" lists every tool by domain); limit: how many.
 
 ### `list_models`
 
@@ -482,6 +481,6 @@ is `bin/judge ab`).
 
 `call_tool(name, args=None)`
 
-Run any hifipushie tool by name, enabled or not (registered only with HIFIPUSHIE_CALL_TOOL=1, for hosts that
-ignore list_changed). args: that tool's arguments. enable_toolset("") lists the tools; guide(topic=<tool>) has
-each one's parameters.
+Run any hifipushie tool by name, native or not, exactly as a native call (images included). args: that tool's
+arguments as an object. find_tool("<job>") names the tool, its parameters and an example call; guide(topic=<tool>)
+has its full text. Unknown, missing or mistyped args: an error naming the parameters it expects.

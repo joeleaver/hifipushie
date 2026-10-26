@@ -35,7 +35,7 @@ def after_pattern_check(rec: dict, model: str, garment: str) -> str:
         out.append(f"next: the pattern gate is {rec.get('status')}: DON'T simulate; re-run pattern_check")
     else:
         info = _ids(rows, "INFO")
-        out.append(f"next: fit_garment(\"{model}\", \"{garment}\"): assemble it on the form (no sim) and judge clay + "
+        out.append(f"next: call_tool(\"fit_garment\", {{\"name\": \"{model}\", \"garment\": \"{garment}\"}}): assemble it on the form (no sim) and judge clay + "
                    "diag beside the reference, one view at a time (review_view)")
         if info:
             out.append(f"  INFO rows (not gating, read them on the form): {', '.join(info[:8])}")
@@ -85,7 +85,7 @@ def after_alter(rows: list, model: str, garment: str) -> str:
         return ("next: these seams don't walk (lengths differ past their declared ease): "
                 + "; ".join(f"{r.get('a', '?')} | {r.get('b', '?')}" for r in bad[:6])
                 + f" -- match them (op \"match\") before pattern_check(\"{model}\", \"{garment}\")")
-    return f"next: pattern_check(\"{model}\", \"{garment}\") (the flat gate: the record is per pattern, so re-run it)"
+    return f"next: call_tool(\"pattern_check\", {{\"name\": \"{model}\", \"garment\": \"{garment}\"}}) (the flat gate: the record is per pattern, so re-run it)"
 
 
 def after_look(kind: str, has_reference: bool) -> str:
@@ -102,7 +102,7 @@ def after_dress_refused(blocked: dict, model: str) -> str:
     lines = []
     for g, why in blocked.items():
         lines.append(f"{g}: NOT simulated: {why}")
-        lines.append(f"  next: pattern_check(\"{model}\", \"{g}\"), fix its FAIL / UNMEASURED rows, fit_garment, "
+        lines.append(f"  next: call_tool(\"pattern_check\", {{\"name\": \"{model}\", \"garment\": \"{g}\"}}), fix its FAIL / UNMEASURED rows, fit_garment, "
                      "judge; a sim comes after (optional: a wrinkle source)")
     return "\n".join(lines)
 

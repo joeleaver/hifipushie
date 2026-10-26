@@ -120,7 +120,7 @@ def test_pattern_check_fail_says_dont_simulate(gate):
 def test_dress_refuses_without_a_pass_and_names_the_tool(gate):
     before = dict(cloth._JOBS)
     txt = server.dress(MODEL, "skirt")
-    assert "NOT simulated" in txt and 'pattern_check("t", "skirt")' in txt, txt
+    assert "NOT simulated" in txt and 'call_tool("pattern_check", {"name": "t", "garment": "skirt"})' in txt, txt
     assert cloth._JOBS == before  # no sim was started
     txt = server.dress(MODEL, "skirt", force=True)  # force skips the stage checks, never the pattern gate
     assert "NOT simulated" in txt and cloth._JOBS == before

@@ -2,7 +2,7 @@
 
 ## Tool reference
 
-The full documentation of this topic's tools: their MCP descriptions are the short form. guide(topic="<tool name>") returns one section. These tools are the `hair` toolset: enable_toolset("hair") turns it on.
+The full documentation of this topic's tools: their MCP descriptions are the short form. guide(topic="<tool name>") returns one section. These tools are the `hair` domain: run them with call_tool(name, args); find_tool(\"<job>\") gives each one's parameters and an example call.
 
 ### `groom_hair`
 

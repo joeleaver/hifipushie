@@ -7,7 +7,7 @@ grown tree as realistic, blobby, anime, cartoon or pixar (storybook) foliage and
 flowers) are assembled from pictures on cards. Units are metres, Z up, the trunk's foot at [0, 0, 0]; +y is north,
 "azimuth 0" looks along +y. The same spec always grows the same tree.
 
-Enable the tools with `enable_toolset("plants")`. Sub-topics (guide(topic=...)): `vegetation_spec` (every spec key:
+Run the tools with `call_tool(name, args)`. Sub-topics (guide(topic=...)): `vegetation_spec` (every spec key:
 habit, environment, guides, cuts, prunes, envelope, leaves, bark, the report, botanical keys, what goes wrong),
 `vegetation_styles` (the five styles and their sheets), `vegetation_forest` (sets, ages, stands, forests),
 `vegetation_small` (grass, ferns, flowers, swards, groundcover), `vegetation_export` (LODs, wind, seasons, impostors,

@@ -8,8 +8,9 @@ section you're in.
 Conventions: metres, Blender axes, Z up; a creature FACES -Y and its left side is +X. Names ending ".L" are mirrored
 to ".R" across X: store only the centre line and the left side. Every change is checkpointed (history / revert).
 
-Toolsets: the core is always on; `enable_toolset(name)` adds plan, scene, export, human, likeness, hair, cloth,
-terrain, plants or clutter. guide(topic="tools") lists them; guide(topic="<tool>") gives any tool's parameters.
+Tools: a small core is native; every other tool (plan, scene, export, human, likeness, hair, cloth, terrain, plants,
+clutter) runs through `call_tool(name, args)`. `find_tool("<job>")` names the tool with its parameters and an
+example call; guide(topic="<tool>") gives any tool's full text.
 
 Sub-topics of this playbook (guide(topic=...)): `spec` (the spec format: joints, bones, blobs, kits, anatomy, parts,
 seated joints, strokes, paint, prefabs; the workflow in brief), `looking` (seeing and showing: views, close-ups,
@@ -27,7 +28,7 @@ from pictures), `human`, `likeness`, `skin`, `hair`, `cloth`, `terrain`, `vegeta
 | A creature, a cartoon character | skeleton + blobs + kits (hand, face, foot) + strokes | this playbook, `spec`, `blockout` |
 | A prop, a building, a room | prefabs, arrays, hard solids, `walls` | `props` |
 | Hair / clothes / skin | their own tools on the model | `hair`, `cloth`, `skin` |
-| Terrain, trees and plants, clutter | their own toolsets | `terrain`, `vegetation`, `clutter` |
+| Terrain, trees and plants, clutter | their own tools | `terrain`, `vegetation`, `clutter` |
 
 ## Stage 0: describe the reference first (every subject)
 

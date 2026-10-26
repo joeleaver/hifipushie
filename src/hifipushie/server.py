@@ -26,7 +26,7 @@ hifipushie models characters, creatures, props and environments as a skeleton (j
 on it, smooth-blended into one surface, meshed and rendered for you to look at; hair, cloth, realistic humans,
 terrain, plants and clutter have their own tools.
 Call `guide` once before modelling: the playbook (stages, the spec format, strokes, parts, paint, what goes wrong).
-guide(topic="tools") lists the toolsets; guide(topic=<tool name>) gives any tool's full parameters.
+find_tool("<job>") finds any tool; guide(topic=<tool name>) gives any tool's full parameters.
 
 Conventions: metres, Blender axes: Z up, the creature FACES -Y, its left side is +X. Names ending ".L" are mirrored
 to ".R" across X: store only the centre line and the left side.
@@ -37,8 +37,9 @@ weather, plan, base (realistic humans start here, not from blobs), hair, cloth, 
 Workflow: plan (set_plan) -> blockout (put_model, fit) -> secondary forms (strokes) -> detail -> history (story) ->
 paint; check and look after each stage. Every change is checkpointed (history / revert).
 
-Toolsets: the core is always on; enable_toolset(name) adds one of plan, scene, export, human, likeness, hair,
-cloth, terrain, plants, clutter (enable_toolset("") lists them and what is on). Domains have a guide topic (hair,
+Tools: a small core is native; every other tool (plan, scene, export, human, likeness, hair, cloth, terrain,
+plants, clutter) runs through call_tool(name, args): find_tool("what you want to do") names the tool with its
+parameters and an example call; find_tool("") lists every tool by domain. Domains have a guide topic (hair,
 cloth, cloth_reference, skin, human, block_in, likeness, terrain, vegetation, clutter): read it before working there.
 A person's head from pictures: the artist block-in (guide topic block_in) is the default.
 Clothes come from the pattern: design -> pattern_check (the flat gate; sims refuse without its PASS) -> fit_garment
@@ -111,12 +112,12 @@ def _tool_with_errors(_reg=None):
                         return await anyio.to_thread.run_sync(call, ev, a, k, abandon_on_cancel=True)
                     finally:
                         ev.set()  # (after a normal return the thread is done: a no-op)
-            if _reg is not None:  # another registry (tests): registered at once, as before toolsets
+            if _reg is not None:  # another registry (tests): registered at once
                 register(run)
                 return fn
-            # Registered later, by toolset (`_register_toolsets` / enable_toolset): the server starts with the core.
+            # Only the core is registered natively (`_register_core`); every tool is reachable by call_tool.
             _TOOLS[fn.__name__] = (register, run)
-            if _STARTED:  # a tool defined after start-up (a plugin module, a test's extra tools): on at once
+            if _STARTED:  # a tool defined after start-up (a plugin module, a test's extra tools): native at once
                 _register(fn.__name__)
             return fn  # module-level name stays the plain function (tests and scripts call it directly)
         return deco
@@ -125,13 +126,14 @@ def _tool_with_errors(_reg=None):
 
 mcp.tool = _tool_with_errors()
 
-# Toolsets: every tool belongs to exactly one. The server registers "core" plus what HIFIPUSHIE_TOOLSETS names
-# ("core" (the default), "all", or a comma list like "hair,cloth"); enable_toolset adds a set at run time and sends
-# notifications/tools/list_changed. Tool definitions cost context on every turn (75 tools were ~36k tokens).
+# A small native core + find_tool + call_tool. MCP clients don't refresh their tool list mid-session (a trial agent
+# called enable_toolset("cloth,human") and never saw the tools), and 100+ schemas cost context on every turn. So the
+# server registers only CORE natively; find_tool searches every tool and call_tool runs any of them (C-row in
+# docs/notes/codified.md). TOOL_GROUPS is grouping metadata only (find_tool's domains); every tool is in exactly one.
 _TOOLS: dict[str, tuple] = {}  # name -> (register, wrapped coroutine), filled by the decorator
-TOOLSETS: dict[str, dict] = {
-    "core": {"about": "models, specs, look, check, measure, history, the guide",
-             "tools": ["guide", "enable_toolset", "list_models", "get_model", "kit_reference", "put_model",
+TOOL_GROUPS: dict[str, dict] = {
+    "core": {"about": "native tools: models, specs, look, check, measure, history, the guide, find / call any tool",
+             "tools": ["guide", "find_tool", "call_tool", "list_models", "get_model", "kit_reference", "put_model",
                        "edit_model", "look", "check", "measure", "history", "revert", "review_view"]},
     "plan": {"about": "plans, reference images, compare, silhouette fit, clearance, style check",
              "tools": ["set_plan", "set_reference", "compare", "fit", "clearance", "style_check"]},
@@ -147,10 +149,9 @@ TOOLSETS: dict[str, dict] = {
     "likeness": {"about": "matching a real person's face and look from reference pictures",
                  "tools": ["likeness", "fit_likeness", "likeness_points", "character_read", "project_reference",
                            "texture_from_reference", "reference_brief", "check_references"]},
-    "hair": {"about": "hair as curve locks: groom, look, reference, export", "also": ["scene"],
-             "tools": ["groom_hair", "tie_hair", "look_hair", "hair_reference", "hair_from_reference", "export_hair"]},
+    "hair": {"about": "hair as curve locks: groom, look, reference, export", "tools": ["groom_hair", "tie_hair", "look_hair", "hair_reference", "hair_from_reference", "export_hair"]},
     "cloth": {"about": "garments: design, pattern, the pattern gate, alterations, fit on the form, dress (sim), "
-                       "references", "also": ["scene"],
+                       "references",
               "tools": ["design_garment", "look_pattern", "alter_pattern", "pattern_check", "fit_garment", "style_garment", "release_garment", "arrange_garment",
                         "check_garment", "dress", "look_cloth", "garment_reference",
                         "garment_from_reference", "check_garment_reference", "garment_reference_brief"]},
@@ -163,8 +164,8 @@ TOOLSETS: dict[str, dict] = {
     "clutter": {"about": "ground clutter kits (rocks, logs, leaves ...) for terrain",
                 "tools": ["make_clutter", "look_clutter", "clutter_kit"]},
 }
-_ENABLED: set[str] = set()
-_STARTED = False  # set once the module's tools are registered by toolset
+CORE: list[str] = TOOL_GROUPS["core"]["tools"]
+_STARTED = False  # set once the core is registered
 
 
 def _compact_schema(s, props: bool = False):
@@ -192,21 +193,6 @@ def _compact_schema(s, props: bool = False):
     return out
 
 
-def _toolset_names(spec: str) -> list[str]:
-    """The toolsets a HIFIPUSHIE_TOOLSETS value names, with their "also"s; "all" = every set."""
-    names = [s.strip().lower() for s in (spec or "core").split(",") if s.strip()]
-    if "all" in names:
-        return list(TOOLSETS)
-    out = ["core"]
-    for n in names:
-        if n not in TOOLSETS:
-            raise ValueError(f"no toolset {n!r} (toolsets: {', '.join(TOOLSETS)})")
-        for m in [n, *TOOLSETS[n].get("also", [])]:
-            if m not in out:
-                out.append(m)
-    return out
-
-
 def _register(t: str):
     """Register one tool with the MCP server: its docstring dedented, its schema compacted."""
     import inspect
@@ -217,45 +203,20 @@ def _register(t: str):
     tool.parameters = _compact_schema(tool.parameters)
 
 
-def _enable(names: list[str]) -> list[str]:
-    """Register these toolsets' tools; returns the tool names added."""
-    added = []
-    for n in names:
-        if n in _ENABLED:
-            continue
-        for t in TOOLSETS[n]["tools"]:
-            _register(t)
-            added.append(t)
-        _ENABLED.add(n)
+def enable_all() -> list[str]:
+    """Every tool native (in-process users of the registry: the oxidegen artist and its worker)."""
+    added = [t for t in _TOOLS if t not in mcp._tool_manager._tools]
+    for t in added:
+        _register(t)
     return added
 
 
-def enable_all() -> list[str]:
-    """Every toolset on (in-process users of the registry: the oxidegen artist and its worker)."""
-    return _enable(list(TOOLSETS))
-
-
-def _register_toolsets():
-    """Called once all tools are defined: core + HIFIPUSHIE_TOOLSETS (default core); HIFIPUSHIE_CALL_TOOL=1 adds
-    call_tool, for hosts that neither show list_changed tools nor allow a restart with more sets."""
-    import os
+def _register_core():
+    """Called once all tools are defined: register the core natively; the rest stay reachable via call_tool."""
     global _STARTED
-    _enable(_toolset_names(os.environ.get("HIFIPUSHIE_TOOLSETS", "core")))
-    if os.environ.get("HIFIPUSHIE_CALL_TOOL", "").strip() not in ("", "0"):
-        _register("call_tool")
-    in_sets = {t for s in TOOLSETS.values() for t in s["tools"]} | {"call_tool"}
-    for t in [t for t in _TOOLS if t not in in_sets]:  # a new tool nobody put in a toolset: on, never lost
+    for t in CORE:
         _register(t)
     _STARTED = True
-
-
-# Advertise tools.listChanged (the SDK's default options say false, and clients may ignore the notification then).
-def _init_options(notification_options=None, *a, _orig=mcp._lowlevel_server.create_initialization_options, **k):
-    from mcp.server.lowlevel.server import NotificationOptions
-    return _orig(notification_options or NotificationOptions(tools_changed=True), *a, **k)
-
-
-mcp._lowlevel_server.create_initialization_options = _init_options
 
 
 def _png(im: PILImage.Image) -> Image:
@@ -410,33 +371,183 @@ def _tool_section(name: str) -> str:
     raise ValueError(f"no reference section for tool {name!r}")
 
 
-@mcp.tool(structured_output=False)
-async def enable_toolset(name: str = "", ctx: Context | None = None) -> str:
-    """Add a toolset's tools to this session (the server may start with only the core). name: a toolset or a comma
-    list, "all"; "" lists the toolsets, what each holds and which are on. The new tools appear after the client
-    refreshes its tool list (notifications/tools/list_changed); if they don't, restart with HIFIPUSHIE_TOOLSETS."""
-    if not name.strip():
-        return "\n".join(f"{n} ({'on' if n in _ENABLED else 'off'}): {s['about']}. Tools: {', '.join(s['tools'])}"
-                         for n, s in TOOLSETS.items())
-    sets = _toolset_names(name)
-    added = _enable(sets)
-    if added and ctx is not None:
-        # Both eras: 2026-07-28+ clients get it on their subscriptions/listen stream (the bus); older ones as a
-        # plain notification on the session (the SDK drops that one at the modern era).
-        await ctx.notify_tools_changed()
-        await ctx.session.send_tool_list_changed()
-    return (f"enabled {', '.join(sets)}: added {', '.join(added)}" if added
-            else f"already enabled: {', '.join(sets)}")
+_STOP = set("a an the to of in on for and or with my it its is are be i we you want need how do does can from by "
+             "into at as this that some me make new one any".split()
+         # every tool works on a model / character: those words say nothing about which tool (C-row, find_tool)
+         + "model character creature thing tool".split())
+
+
+def _stem(w: str) -> str:
+    for suf in ("ing", "es", "ed", "s"):
+        if w.endswith(suf) and len(w) > len(suf) + 2 and not (suf == "s" and w.endswith("ss")):
+            return w[:-len(suf)]
+    return w
+
+
+def _words(text: str) -> set[str]:
+    return {_stem(w) for w in re.findall(r"[a-z0-9]+", text.lower()) if w not in _STOP and len(w) > 1}
+
+
+def _group_of(name: str) -> str:
+    return next((g for g, s in TOOL_GROUPS.items() if name in s["tools"]), "other")
+
+
+def _use_when(name: str) -> str:
+    """A tool's first sentence: what it is for."""
+    import inspect
+    doc = " ".join(inspect.cleandoc(getattr(globals().get(name), "__doc__", None) or "").split())
+    m = re.match(r"(.+?[.!?])(\s|$)", doc)
+    first = m.group(1) if m else doc
+    return first if len(first) <= 220 else first[:217] + "..."
+
+
+def _params(name: str) -> list[tuple[str, str, bool, str]]:
+    """(name, type text, required, default text) for each of a tool's arguments (ctx left out)."""
+    import inspect
+    out = []
+    for p in inspect.signature(globals()[name]).parameters.values():
+        if p.name == "ctx":
+            continue
+        ann = p.annotation if isinstance(p.annotation, str) else getattr(p.annotation, "__name__", str(p.annotation))
+        ann = "" if p.annotation is inspect.Parameter.empty else ann
+        req = p.default is inspect.Parameter.empty
+        out.append((p.name, ann, req, "" if req else json.dumps(p.default, default=str)))
+    return out
+
+
+def _param_text(name: str) -> str:
+    ps = _params(name)
+    if not ps:
+        return "(no arguments)"
+    return ", ".join(f"{n}: {a or 'any'}" + ("" if req else f" = {d}") for n, a, req, d in ps)
+
+
+def _example(name: str) -> str:
+    def ph(n, a):
+        a = a.split("|")[0].strip()
+        return {"int": 0, "float": 0.0, "bool": False}.get(a, [] if a.startswith("list") else
+                                                            {} if a.startswith("dict") else "...")
+    req = {n: ph(n, a) for n, a, r, _ in _params(name) if r}
+    if name in CORE:
+        return f"{name}(" + ", ".join(f"{k}={json.dumps(v)}" for k, v in req.items()) + ")"
+    return f'call_tool(name="{name}", args={json.dumps(req)})'
+
+
+_SECTIONS: dict[str, str] = {}
+
+
+def _section_text(name: str) -> str:
+    if name not in _SECTIONS:
+        try:
+            _SECTIONS[name] = _tool_section(name)
+        except ValueError:
+            _SECTIONS[name] = ""
+    return _SECTIONS[name]
+
+
+_FIELDS: dict[str, list] = {}
+
+
+def _tool_fields(name: str) -> list[tuple[float, set[str]]]:
+    """A tool's searchable words by field, with each field's weight: name 4, description 2, domain 1, guide 1."""
+    import inspect
+    if name not in _FIELDS:
+        g = _group_of(name)
+        _FIELDS[name] = [(4.0, _words(name.replace("_", " "))),
+                         (2.0, _words(inspect.cleandoc(globals()[name].__doc__ or ""))),
+                         (1.0, _words(g + " " + TOOL_GROUPS.get(g, {}).get("about", ""))),
+                         (1.0, _words(_section_text(name)))]
+    return _FIELDS[name]
+
+
+def _tool_scores(q: set[str]) -> dict[str, float]:
+    """Word match of the query on every tool: per query word, the best field it appears in (+0.5 if in both the
+    description and the guide section), times the word's rarity across tools (idf: "hoodie" outweighs
+    "character"). Deterministic, no model."""
+    import math
+    tools = [t for t in _TOOLS if t != "find_tool"]
+    union = {t: set().union(*(ws for _, ws in _tool_fields(t))) for t in tools}
+    out = {}
+    for t in tools:
+        f = _tool_fields(t)
+        score = 0.0
+        for w in q:
+            hits = [wt for wt, ws in f if w in ws]
+            if hits:
+                df = sum(w in u for u in union.values())
+                score += (max(hits) + (0.5 if w in f[1][1] and w in f[3][1] else 0.0)) * math.log((len(tools) + 1) / (df + 0.5))
+        out[t] = score
+    return out
 
 
 @mcp.tool(structured_output=False)
-async def call_tool(name: str, args: dict | None = None):
-    """Run any hifipushie tool by name, enabled or not (registered only with HIFIPUSHIE_CALL_TOOL=1, for hosts that
-    ignore list_changed). args: that tool's arguments. enable_toolset("") lists the tools; guide(topic=<tool>) has
-    each one's parameters."""
+def find_tool(query: str = "", limit: int = 5) -> str:
+    """Find the tool for a job: ranks every hifipushie tool (native or not) by word match on its name and docs, and
+    gives each one's purpose, parameters and an example call (non-core tools run through call_tool). query: what you
+    want to do, e.g. "fit a garment" ("" lists every tool by domain); limit: how many."""
+    if not query.strip():
+        groups = [(g, s["about"], [t for t in s["tools"] if t in _TOOLS]) for g, s in TOOL_GROUPS.items()]
+        rest = sorted(t for t in _TOOLS if _group_of(t) == "other")
+        if rest:
+            groups.append(("other", "not in a domain yet", rest))
+        return ("Every tool by domain (core = native; the rest via call_tool(name, args)). "
+                "find_tool(\"<job>\") gives parameters + an example call; guide(topic=\"<tool>\") the full text.\n"
+                + "\n".join(f"{g} ({about}): {', '.join(ts)}" for g, about, ts in groups if ts))
+    q = _words(query)
+    ranked = sorted(((sc, t) for t, sc in _tool_scores(q).items()), key=lambda x: (-x[0], x[1]))
+    ranked = [(sc, t) for sc, t in ranked if sc > 0][:max(1, int(limit))]
+    if not ranked:
+        return f"no tool matches {query!r}: find_tool(\"\") lists every tool by domain."
+    out = []
+    for i, (sc, t) in enumerate(ranked, 1):
+        how = "native" if t in CORE else "via call_tool"
+        out.append(f"{i}. {t} [{_group_of(t)}, {how}] use when: {_use_when(t)}\n"
+                   f"   params: {_param_text(t)}\n   e.g. {_example(t)}")
+    return ("\n".join(out) + '\nnext: run the best match (non-core: call_tool(name, args)); guide(topic="<tool>") '
+            "has its full parameters and behaviour.")
+
+
+_CALL_TOOLS: dict[str, object] = {}  # name -> the SDK Tool built for a non-native tool (validation + context)
+
+
+def _tool_obj(name: str):
+    """The SDK Tool for `name`: the native one, or one built once from the same wrapped function."""
+    t = mcp._tool_manager._tools.get(name)
+    if t is None:
+        if name not in _CALL_TOOLS:
+            from mcp.server.mcpserver.tools import Tool
+            _CALL_TOOLS[name] = Tool.from_function(_TOOLS[name][1], name=name, structured_output=False)
+        t = _CALL_TOOLS[name]
+    return t
+
+
+@mcp.tool(structured_output=False)
+async def call_tool(name: str, args: dict | None = None, ctx: Context | None = None):
+    """Run any hifipushie tool by name, native or not, exactly as a native call (images included). args: that tool's
+    arguments as an object. find_tool("<job>") names the tool, its parameters and an example call; guide(topic=<tool>)
+    has its full text. Unknown, missing or mistyped args: an error naming the parameters it expects."""
+    import difflib
+    from pydantic import ValidationError
     if name not in _TOOLS or name == "call_tool":
-        raise ValueError(f"no tool {name!r}")
-    return await _TOOLS[name][1](**(args or {}))
+        near = difflib.get_close_matches(name, list(_TOOLS), n=3)
+        raise ValueError(f"no tool {name!r}" + (f" (did you mean {', '.join(near)}?)" if near else "")
+                         + f'; find_tool("{name.replace("_", " ")}") searches every tool')
+    args = dict(args or {})
+    expected = f"{name} expects: {_param_text(name)}"
+    names = {p[0] for p in _params(name)}
+    unknown = sorted(set(args) - names)
+    missing = [p[0] for p in _params(name) if p[2] and p[0] not in args]
+    if unknown or missing:
+        raise ValueError(f"call_tool({name!r}): " + "; ".join(
+            ([f"unknown argument(s) {', '.join(unknown)}"] if unknown else [])
+            + ([f"missing required {', '.join(missing)}"] if missing else [])) + f". {expected}")
+    tool = _tool_obj(name)
+    try:
+        tool.fn_metadata.validate_arguments(args)
+    except ValidationError as e:
+        bad = "; ".join(f"{'.'.join(str(x) for x in err['loc'])}: {err['msg']}" for err in e.errors())
+        raise ValueError(f"call_tool({name!r}): bad argument(s): {bad}. {expected}") from None
+    return await tool.run(args, ctx)
 
 
 @mcp.tool(structured_output=False)
@@ -1355,7 +1466,7 @@ def tie_hair(name: str, style: dict | None = None, carry_from: str | None = None
                              "(riff afterwards with tie_hair(name, style=...), which regrows)")
         r = hair.reseat(name, carry_from, note=note)
         return (f"saved {name} v{r['version']}: {r['locks']} locks of {carry_from} re-seated (head x{r['k']:.3f})\n"
-                f"{_hair_counts(store.load(name))}\nnext: look_hair(name, views=['around']) beside {carry_from}'s "
+                f"{_hair_counts(store.load(name))}\nnext: call_tool(\"look_hair\", {{\"name\": \"{name}\", \"views\": [\"around\"]}}) beside {carry_from}'s "
                 f"approved renders at the same views of the head")
     r = hair.tie_style(name, _spec_arg(style) if style else None, carry_from=carry_from,
                        look=_spec_arg(look) if look else None, note=note)
@@ -1376,7 +1487,7 @@ def tie_hair(name: str, style: dict | None = None, carry_from: str | None = None
                + (f" + {m['wisps']['loose']} thick loose locks" if m['wisps'].get('loose') else "")
                + (f" + {m['wisps']['baby']} baby hairs" if m['wisps'].get('baby') else "") if m.get("wisps") else "")
             + f"; hairline edge {ga.get('edge', 0):.2f} (0 hard .. 1 soft)"
-            + f"\n{_hair_counts(spec)}\nnext: look_hair(name, views=['around']) (every side, with the bust: tied hair is "
+            + f"\n{_hair_counts(spec)}\nnext: call_tool(\"look_hair\", {{\"name\": \"{name}\", \"views\": [\"around\"]}}) (every side, with the bust: tied hair is "
               "tuned through the front and is wrong from behind first); change one word of the style to riff")
 
 
@@ -1692,7 +1803,7 @@ def dress(name: str, garment: str | None = None, spec: dict | None = None, state
             out.append(cloth.report(gn, res) if res is not None else f"{gn}: done")
         else:
             out.append(f"{gn}: {_cloth_status(st)}")
-    return head + "\n".join(out) + ("\nnext: look_cloth(name) for renders (strain map, close-ups with focus=...)"
+    return head + "\n".join(out) + (f"\nnext: call_tool(\"look_cloth\", {{\"name\": \"{name}\"}}) for renders (strain map, close-ups with focus=...)"
                                     if all(s["state"] == "done" for s in sts.values()) else
                                     "\ncall dress(name) or look_cloth(name) again for progress")
 
@@ -2598,7 +2709,7 @@ def design_garment(name: str, garment: str, design: dict | None = None, spec: di
     gs[garment] = g
     v = store.save(name, full, note or f"design {garment}")
     r = cloth_workflow.run(name, garment, ("design",), images=False)
-    return f"saved {name} v{v}\n" + cloth_workflow.text(r) + "\nnext: look_pattern(name, garment)"
+    return f"saved {name} v{v}\n" + cloth_workflow.text(r) + f"\nnext: call_tool(\"look_pattern\", {{\"name\": \"{name}\", \"garment\": \"{garment}\"}})"
 
 
 @mcp.tool(structured_output=False)
@@ -2800,12 +2911,12 @@ def fit_garment(name: str, garment: str, views: list[str] | None = None, size: i
     res = pattern_form.on_form(name, garment, spec)
     st = cc.gate_status(name, garment, spec, res=res)
     if not st["passed"] and not force:
-        return (f"{garment}: not fitted: {st['why']}\nnext: pattern_check(\"{name}\", \"{garment}\") and fix its rows "
+        return (f"{garment}: not fitted: {st['why']}\nnext: call_tool(\"pattern_check\", {{\"name\": \"{name}\", \"garment\": \"{garment}\"}}) and fix its rows "
                 "first; the form judges a pattern that passed flat (force=True only to look)")
     uf = cc.under_fit_status(name, garment, spec)  # (C85: the under garment fits on its own first)
     if not uf["passed"] and not force and not uf.get("provisional"):
-        return (f"{garment}: not fitted: its under garment doesn't fit yet: {uf['why']}\nnext: fit_garment(\"{name}\", "
-                f"\"{uf['under']}\") and fix it until its own fit PASSes (tucked, its fullness soft against the body); "
+        return (f"{garment}: not fitted: its under garment doesn't fit yet: {uf['why']}\nnext: call_tool(\"fit_garment\", "
+                f"{{\"name\": \"{name}\", \"garment\": \"{uf['under']}\"}}) and fix it until its own fit PASSes (tucked, its fullness soft against the body); "
                 "never fit an outer garment over an under garment that doesn't fit (force=True only to look)")
     X = res["A"]
     # HOW IT IS WORN, set by hand (C146): the wear's style ops (garment_kb kinds.<kind>.wear.<tie|no_tie>.style) run on
@@ -2853,7 +2964,7 @@ def fit_garment(name: str, garment: str, views: list[str] | None = None, size: i
         vr = cc.rejudge_under_visible(name, garment, spec, res)
         if not vr["passed"] and not force:
             return (f"{garment}: not fitted: its under garment doesn't fit where it SHOWS under {garment}: {vr['why']}\n"
-                    f"next: fit_garment(\"{name}\", \"{uf['under']}\") and fix it until those rows PASS (force=True only "
+                    f"next: call_tool(\"fit_garment\", {{\"name\": \"{name}\", \"garment\": \"{uf['under']}\"}}) and fix it until those rows PASS (force=True only "
                     "to look)")
         vis_txt = f"  under garment judged on what shows (C85 visible scope): {vr['why']}\n"
         if vr["passed"]:
@@ -2890,18 +3001,16 @@ def fit_garment(name: str, garment: str, views: list[str] | None = None, size: i
 @mcp.tool(structured_output=False)
 def release_garment(name: str, garment: str, release: list[str] | None = None, submit: bool = False):
     """WORN OPEN = the closed fit + ONE release sim (Joe 2026-10-20): fits the garment CLOSED on the dress form, then
-    writes one short cloth job STARTED from that fit (rest = the flat pattern, the closure in `release` (default
-    ["front"]) not sewn, the under garment pressed under as a collider, neck pieces held, 2 s of gravity + 1 s settle)
-    and preflights it. submit=True runs it (rented when HIFIPUSHIE_GPU=bundle: counts against the $5/day; refused
-    without the pattern gate's PASS). Returns the start report, the preflight and, after a run, how far each piece
-    moved from the fit. Details: cloth_release's docstring; docs/state/cloth_release.md."""
+    writes one short cloth job started from that fit with the closure in `release` (default ["front"]) not sewn, and
+    preflights it; submit=True runs it (refused without the pattern gate's PASS). Full text:
+    guide(topic="release_garment")."""
     from . import cloth_job, cloth_release, cloth_check as cc
     spec = store.load(name)
     if garment not in (spec.get("cloth") or {}):
         raise ValueError(f"no garment {garment!r} (have {', '.join(spec.get('cloth') or {}) or 'none'})")
     st = cc.gate_status(name, garment, spec)
     if not st["passed"]:
-        return (f"{garment}: not released: {st['why']}\nnext: pattern_check(\"{name}\", \"{garment}\") first; the release "
+        return (f"{garment}: not released: {st['why']}\nnext: call_tool(\"pattern_check\", {{\"name\": \"{name}\", \"garment\": \"{garment}\"}}) first; the release "
                 "sim needs the pattern gate's PASS like every sim")
     r = cloth_release.from_form(name, garment, spec, release=tuple(release or ("front",)))
     jd = cloth_release.write(store.HOME / "_cache" / "release" / f"{name}_{garment}" / "sim", r["cfg"], r["arrays"],
@@ -2914,7 +3023,7 @@ def release_garment(name: str, garment: str, release: list[str] | None = None, s
         return "\n".join(lines + ["next: the start fails the preflight: fix the fit (strain over the limit = the "
                                   "pattern too small there; pairs = layers through each other), not the solver"])
     if not submit:
-        return "\n".join(lines + [f"next: release_garment(\"{name}\", \"{garment}\", submit=True) runs it (one sim)"])
+        return "\n".join(lines + [f"next: call_tool(\"release_garment\", {{\"name\": \"{name}\", \"garment\": \"{garment}\", \"submit\": true}}) runs it (one sim)"])
     with cloth_job.submitting():
         d, log_ = cloth_release.run(jd, progress=lambda *_: None, log=lambda *_: None)
     mv = cloth_release.moved(r["res"]["mesh"], r["arrays"]["X"], d["V"])
@@ -2927,16 +3036,9 @@ def release_garment(name: str, garment: str, release: list[str] | None = None, s
 @mcp.tool(structured_output=False)
 def arrange_garment(name: str, garment: str, pins: list[dict], keep: bool = False, pull: float | None = None,
                     release: list[str] | None = None, hold_ring_mm: float = 0.0, submit: bool = False):
-    """ARRANGE a worn garment BY HAND (Joe 2026-10-20: as a man settles his coat after sitting): an openness or pose
-    physics alone won't give is placed, never drafted or fitted in. The release job (release_garment) plus SOFT pins:
-    each pin {"at": "piece:point" | "piece:a..b" (the piece's border between two named points), and "to": [x, y, z]
-    | "by": [dx, dy, dz] (+ "by_end" for an edge: blended along it) | "targets": [[x, y, z] per vertex], "name"?}
-    pulled to its target over 1 s of gravity (the under garment, real friction), held 1 s, then let go for a 1 s
-    settle. Reports per pin how near it got, the SPRINGBACK once let go and the stretch near the pins vs the rest.
-    Springback over 10 mm: rerun with keep=True (light pins kept: the result is recorded "placed by hand").
-    pull: the pins' spring (default cloth_release.ARRANGE_PULL); hold_ring_mm: also hold the bodice that close to
-    the held neck pieces (their seam can't part). submit=True runs it (rented when HIFIPUSHIE_GPU=bundle).
-    Details: cloth_release's docstring ("ARRANGE"); docs/state/cloth_release.md."""
+    """ARRANGE a worn garment BY HAND (Joe 2026-10-20): the release job plus SOFT pins (each {"at": "piece:point" |
+    "piece:a..b", "to" | "by" | "targets"}) pulled over 1 s, held, then let go; reports each pin's reach and the
+    springback. keep, pull, release, hold_ring_mm, submit: guide(topic="arrange_garment") has every parameter."""
     from . import cloth_job, cloth_release, cloth_check as cc
     spec = store.load(name)
     if garment not in (spec.get("cloth") or {}):
@@ -2945,7 +3047,7 @@ def arrange_garment(name: str, garment: str, pins: list[dict], keep: bool = Fals
         raise ValueError("pins: at least one {\"at\": ..., \"to\" | \"by\" | \"targets\": ...}")
     st = cc.gate_status(name, garment, spec)
     if not st["passed"]:
-        return (f"{garment}: not arranged: {st['why']}\nnext: pattern_check(\"{name}\", \"{garment}\") first; the "
+        return (f"{garment}: not arranged: {st['why']}\nnext: call_tool(\"pattern_check\", {{\"name\": \"{name}\", \"garment\": \"{garment}\"}}) first; the "
                 "arrangement is a sim and needs the pattern gate's PASS like every sim")
     arr_opt = {"keep": bool(keep), **({"pull": float(pull)} if pull is not None else {})}
     r = cloth_release.from_form(name, garment, spec, release=tuple(release or ("front",)), pins=pins,
@@ -2958,7 +3060,7 @@ def arrange_garment(name: str, garment: str, pins: list[dict], keep: bool = Fals
     if not pre["ok"]:
         return "\n".join(lines + ["next: the start fails the preflight: fix the fit, not the solver"])
     if not submit:
-        return "\n".join(lines + [f"next: arrange_garment(..., submit=True) runs it (one sim)"])
+        return "\n".join(lines + [f"next: call_tool(\"arrange_garment\", {{..., \"submit\": true}}) runs it (one sim)"])
     with cloth_job.submitting():
         d, _ = cloth_release.run(jd, progress=lambda *_: None, log=lambda *_: None)
     M = r["res"]["mesh"]
@@ -2994,7 +3096,7 @@ def style_garment(name: str, garment: str, ops: list[dict], free: list[str] | No
                          '{"smooth": {"pieces": [...]}} | {"relax": {}} | {"hold": {"pieces": [...], "within_deg"?}}')
     st = cc.gate_status(name, garment, spec)
     if not st["passed"] and not force:
-        return (f"{garment}: not styled: {st['why']}\nnext: pattern_check(\"{name}\", \"{garment}\") and fix its rows "
+        return (f"{garment}: not styled: {st['why']}\nnext: call_tool(\"pattern_check\", {{\"name\": \"{name}\", \"garment\": \"{garment}\"}}) and fix its rows "
                 "first; styling starts from the form fit of a pattern that passed flat (force=True only to look)")
     res = pattern_form.on_form(name, garment, spec)
     X_fit, M, body = np.asarray(res["A"], float), res["mesh"], res["body"]
@@ -3759,7 +3861,7 @@ def clutter_kit(out_dir: str, kinds: list[str] | None = None, styles: list[str] 
     return f"{len(K)} folders in {out_dir}; manifest clutter.json" + (f"; missing: {miss}" if miss else "") + "\n" + "\n".join(lines)
 
 
-_register_toolsets()
+_register_core()
 
 
 def main():

@@ -1,5 +1,9 @@
 # MCP tool definitions: toolsets and short descriptions (2026-10-09, "toolsets" agent)
 
+SUPERSEDED 2026-10-26 (C233): toolsets / enable_toolset / HIFIPUSHIE_TOOLSETS are gone. The server registers a
+small native core; find_tool searches every tool and call_tool runs any of them (clients don't refresh their tool
+list mid-session). TOOLSETS is now TOOL_GROUPS, grouping metadata for find_tool. The history below is as it was.
+
 The user: the server's tool definitions cost ~36k tokens on every turn (75 tools) plus 2.8k of instructions.
 
 ## What changed

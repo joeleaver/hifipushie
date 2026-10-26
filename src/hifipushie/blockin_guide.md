@@ -13,7 +13,7 @@ slider tweaks one at a time make faces uglier. Whole-face directions learnt from
 your eye catches what the points miss; the measurements catch what your eye misses. The solve gives the base; you
 make the final artistic calls with hand steps.
 
-Enable the tools with `enable_toolset("human")` (and `likeness`). Sub-topics (guide(topic=...)): `blockin_solve`
+Run the tools (human, likeness) with `call_tool(name, args)`. Sub-topics (guide(topic=...)): `blockin_solve`
 (the joint solve in detail: what it reads, cameras, lens and distance, detectors, what it can't read),
 `blockin_steps` (the step vocabulary: free / held / mm / sculpt / base keys / identity components; coupling; filling
 a vocabulary gap; GNM's control atlas), `blockin_features` (the orbit, the eye step, the eye ruler, brows and iris,

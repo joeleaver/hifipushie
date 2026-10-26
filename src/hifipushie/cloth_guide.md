@@ -49,7 +49,7 @@ STYLING the muslin fit (pull until it would stretch, smooth, pull down), not by 
    pattern, and nothing is closed, rebuilt or sculpted on the drape afterwards (strain p99 4.7 % -> 66-74 % that way).
    Fine detail (rib, stitching, small creases) goes in the normal map.
 
-Enable the tools with `enable_toolset("cloth")`. Traps (symptom -> real cause): guide(topic="traps"); tailoring
+Run the tools with `call_tool(name, args)`. Traps (symptom -> real cause): guide(topic="traps"); tailoring
 principles: guide(topic="tailoring"). Sub-topics (guide(topic=...)): `cloth_reference` (reading a
 reference item by item), `cloth_design` (design-sheet keys, tailoring numbers, knits, jeans, wear rules),
 `cloth_construction` (folds, interfacing, closures, layers, the start), `cloth_sim` (solvers, where sims run,

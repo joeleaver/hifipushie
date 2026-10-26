@@ -8,7 +8,7 @@ Pick the path by the job:
 - **Stylised, feature-animation hair**: sculpted LOCKS, a few big designed shapes: guide(topic="hair_locks").
 - **Game export**: cards cut from the strands (`export_hair` / `export_asset`).
 
-Enable the tools with `enable_toolset("hair")`; the model needs its scene once (`sync`). Sub-topics
+Run the tools with `call_tool(name, args)`; the model needs its scene once (`sync`). Sub-topics
 (guide(topic=...)): `hair_checklist` (the 15 rules that make hair read as hair: measure and knob for each),
 `hair_tied` (`tie_hair`: every style word), `hair_loose` (`groom.loose`, recipes per hair type, existing sculpted
 grooms as strands, laying a crop), `hair_short` (short cuts as a baked cap + cards), `hair_colour` (the look's colour

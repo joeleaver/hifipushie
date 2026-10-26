@@ -203,7 +203,7 @@ def test_release_tool_is_registered():
     from hifipushie import server
     assert callable(getattr(server, "release_garment", None))
     assert callable(getattr(server, "arrange_garment", None))
-    assert "arrange_garment" in server.TOOLSETS["cloth"]["tools"]
+    assert "arrange_garment" in server.TOOL_GROUPS["cloth"]["tools"]
 
 
 def test_seam_gaps_fail_round16_and_pass_its_closed_fit():

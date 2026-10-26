@@ -135,7 +135,7 @@ boulders + 20,000 bushes over 400 x 400 m with the json's LOD distances and cull
 
 ## Tool reference
 
-The full documentation of this topic's tools: their MCP descriptions are the short form. guide(topic="<tool name>") returns one section. These tools are the `clutter` toolset: enable_toolset("clutter") turns it on.
+The full documentation of this topic's tools: their MCP descriptions are the short form. guide(topic="<tool name>") returns one section. These tools are the `clutter` domain: run them with call_tool(name, args); find_tool(\"<job>\") gives each one's parameters and an example call.
 
 ### `make_clutter`
 

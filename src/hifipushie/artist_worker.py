@@ -54,7 +54,7 @@ def serve(reply_fd: int) -> None:
     for mod in filter(None, os.environ.get("HIFIPUSHIE_ARTIST_PRELOAD", "").split(",")):
         importlib.import_module(mod)  # (tests register extra tools this way)
     from .server import enable_all, mcp
-    enable_all()  # every toolset (the server alone starts with the core)
+    enable_all()  # every tool native (the server alone registers only the core)
     replies = os.fdopen(reply_fd, "w", buffering=1)
 
     def send(obj):

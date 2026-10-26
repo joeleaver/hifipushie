@@ -4,7 +4,7 @@ The cloth tools' full parameters and behaviour, one section per tool (guide(topi
 
 ## Tool reference
 
-The full documentation of this topic's tools: their MCP descriptions are the short form. guide(topic="<tool name>") returns one section. These tools are the `cloth` toolset: enable_toolset("cloth") turns it on.
+The full documentation of this topic's tools: their MCP descriptions are the short form. guide(topic="<tool name>") returns one section. These tools are the `cloth` domain: run them with call_tool(name, args); find_tool(\"<job>\") gives each one's parameters and an example call.
 
 ### `design_garment`
 
@@ -285,3 +285,29 @@ patterns and the rules they are drafted by), "operations" (dart moves, slash and
 facings, collars from the neckline, sleeves into the armhole: what each does and what it keeps matched),
 "derivations" (per garment category: which block, which operations, why; or one name, e.g. "blazer"), "rules"
 (ease, balance, grain, shaping, seams, proportions), "all".
+
+### `release_garment`
+
+`release_garment(name, garment, release=None, submit=False)`
+
+WORN OPEN = the closed fit + ONE release sim (Joe 2026-10-20): fits the garment CLOSED on the dress form, then
+writes one short cloth job STARTED from that fit (rest = the flat pattern, the closure in `release` (default
+["front"]) not sewn, the under garment pressed under as a collider, neck pieces held, 2 s of gravity + 1 s settle)
+and preflights it. submit=True runs it (rented when HIFIPUSHIE_GPU=bundle: counts against the $5/day; refused
+without the pattern gate's PASS). Returns the start report, the preflight and, after a run, how far each piece
+moved from the fit. Details: cloth_release's docstring; docs/state/cloth_release.md.
+
+### `arrange_garment`
+
+`arrange_garment(name, garment, pins, keep=False, pull=None, release=None, hold_ring_mm=0.0, submit=False)`
+
+ARRANGE a worn garment BY HAND (Joe 2026-10-20: as a man settles his coat after sitting): an openness or pose
+physics alone won't give is placed, never drafted or fitted in. The release job (release_garment) plus SOFT pins:
+each pin {"at": "piece:point" | "piece:a..b" (the piece's border between two named points), and "to": [x, y, z]
+| "by": [dx, dy, dz] (+ "by_end" for an edge: blended along it) | "targets": [[x, y, z] per vertex], "name"?}
+pulled to its target over 1 s of gravity (the under garment, real friction), held 1 s, then let go for a 1 s
+settle. Reports per pin how near it got, the SPRINGBACK once let go and the stretch near the pins vs the rest.
+Springback over 10 mm: rerun with keep=True (light pins kept: the result is recorded "placed by hand").
+pull: the pins' spring (default cloth_release.ARRANGE_PULL); hold_ring_mm: also hold the bodice that close to
+the held neck pieces (their seam can't part). submit=True runs it (rented when HIFIPUSHIE_GPU=bundle).
+Details: cloth_release's docstring ("ARRANGE"); docs/state/cloth_release.md.

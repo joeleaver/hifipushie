@@ -6,7 +6,7 @@ and cover masks. You never paint heights. Where you want a specific landform (a 
 you can drop down and write it; otherwise the compiler fills in plausible ground (drainage, spurs, gullies)
 between what you placed, and never moves anything you placed. Axes: x east, y north, z up; metres by default.
 
-Enable the tools with `enable_toolset("terrain")`. Sub-topics (guide(topic=...)): `terrain_world` (world kinds,
+Run the tools with `call_tool(name, args)`. Sub-topics (guide(topic=...)): `terrain_world` (world kinds,
 compression, unknown kinds and the designer's questions, scale and units, tilt, the frame's edge), `terrain_shapes`
 (peaks, cols, ridges, basins, passes, canyons, mesas, volcanoes, sea and coast, fords, rivers, landforms, rock,
 rugged, volumes and caves, ground), `terrain_places` (zones, sites, routes, lines, walls, cover, intent checks,
