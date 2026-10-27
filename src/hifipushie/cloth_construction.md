@@ -59,6 +59,21 @@ The plan lists:
 - End a roll fold a few cm above a fastening (over front ~2 cm above button 1, under front ~6 cm): a roll line that
   crosses a band's inner row at a shallow angle makes a sliver triangle and the start fails.
 
+### Geometry or maps: a game artist's call (folded bands, `represent`)
+
+A narrow folded detail that lies close to the surface reads, at game distance, as a seam, a topstitch and a texture,
+not as folded geometry: a T-shirt's rib neckband looks like "just a seam" on a real tee, and a game artist paints it.
+Keep it in the PATTERN (it sets the neckline, its length, its stretch); choose how the FIT shows it:
+- generated band `"represent": "flush"` (`details.collar.generate`, or a `generate` entry with `fold`): fitted as one
+  layer at its finished height, cut as a cone that leans onto the slope round the neck (`lean_deg`, default 45), the
+  fold, rib and a topstitch in the detail maps. Use it for thin ribs and hems seen at game distance.
+- `"represent": "folded"` (default): the real construction, two layers with both raw edges in the seam. Use it where
+  the fold IS the read: a thick heavy rib with a rounded top edge, a hero close-up, collars, cuffs, lapels. A narrow
+  folded band needs a fine mesh (`mesh_refine` ~4 mm on it) or it rounds into a tube: at 9 mm triangles an 18 mm band's
+  layers stood 9.6 mm apart (a roll), at 4 mm 3.0 mm.
+Judge it beside the reference close-up: if the reference shows a seam line and texture, flush; if it shows a
+separate rounded edge, folded.
+
 ### Interfacing, made and draped
 
 - Interfacing multiplies bending (practice 5-20x the shell): whole pieces or a band along a line (`interfaced`).

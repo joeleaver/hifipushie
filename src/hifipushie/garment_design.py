@@ -526,6 +526,9 @@ def _check(ev: dict, Bp: dict, R: dict, D: dict, entry: dict, lap: str | None) -
             return True, f"fold line on {r}: " + ", ".join(f"{f['piece']} {f.get('kind', 'press')} {f.get('angle')} deg" for f in fl)
         if legacy:
             return True, f"{r} placed folded (wrap.fold {pcs[legacy[0]]['wrap']['fold']}: the old U; a fold line replaces it)"
+        flush = [n for n in names if (pcs[n].get("represent") or {}).get("fold") == "maps"]
+        if flush:  # (generate represent "flush": the fold is in the pattern, drawn in the maps, not folded geometry)
+            return True, f"{r} folded in the pattern, represented flush (one layer; the fold in the maps)"
         return False, f"no fold line on {r} ({', '.join(names) or 'no such piece'})"
     if "not_made" in ev:
         r = ev["not_made"]

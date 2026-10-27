@@ -2465,3 +2465,29 @@ def test_diag_strain_map_reads_threads_past_their_cap():
     Xk[b, 0] = uvk[b, 0] * (0.4 / 0.34)  # the band stretched to the hem (+17.6 %, what its seam asks)
     ok = dr.face_threads_over(Xk, Fk, Mk)
     assert np.abs(ok).max() < 0.01, np.abs(ok).max()
+
+
+def test_flush_band_is_one_leaning_layer_with_its_fold_in_the_maps():
+    """(C237, Joe 2026-10-27: a tee's rib band reads as a seam + texture; geometry or maps is the agent's call)
+    garment_blocks.generate with represent "flush" on a folded ring band: one layer at the finished height (half the
+    cut), cut as a cone leaning in (top edge shorter than the sewn edge), no fold entry, a topstitch line for the maps,
+    and the piece records what the pattern really is; "folded" (the default) keeps the fold and sews both raw edges."""
+    from hifipushie import garment_blocks as gb, pattern
+    pts = [("a0", [0, 0]), ("a1", [0.5, 0]), ("a2", [0.5, 0.3]), ("a3", [0, 0.3])]
+    pcs = {"front": pattern.from_spec("front", {"outline": gb._outline(pts)})}
+    base = {"band": "neckband", "along": "front:a3>a2", "ratio": 0.9, "height": 0.036, "ring": True, "fold": True}
+    ex_f, ex_l = {}, {}
+    fo, seams_f, _, _ = gb.generate(pcs, dict(base), ex_f)
+    fl, seams_l, _, _ = gb.generate(pcs, dict(base, represent="flush"), ex_l)
+    nb_f, nb_l = fo["neckband"], fl["neckband"]
+    assert ex_f.get("folds") and not ex_l.get("folds")
+    assert any(s[0].startswith("neckband:nw>n>ne") for s in seams_f) and not any(s[0].startswith("neckband:nw") and ">n>" in s[0] for s in seams_l)
+    Pl = np.asarray(nb_l["P"])
+    h_l = float(np.linalg.norm(Pl[nb_l["names"]["n"]] - Pl[nb_l["names"]["s"]]))  # (across the band at its middle)
+    assert np.ptp(np.asarray(nb_f["P"])[:, 1]) == pytest.approx(0.036, abs=1e-9)
+    assert h_l == pytest.approx(0.018, abs=1e-6), h_l  # (one layer at the finished height)
+    top = pattern.length(np.asarray(nb_l["P"])[[nb_l["names"][k] for k in ("ne", "n", "nw")]])
+    sew = pattern.length(np.asarray(nb_l["P"])[[nb_l["names"][k] for k in ("sw", "s", "se")]])
+    assert top < sew - 0.01, (top, sew)  # (the cone: its free edge shorter, it leans onto the slope)
+    assert "top_stitch" in nb_l["lines"] and nb_l["represent"]["fold"] == "maps"
+    assert nb_l["represent"]["cut_height"] == pytest.approx(0.036)

@@ -141,7 +141,10 @@ def test_generate_band_ring():
     P = B["pieces"]["neckband"]["P"]
     assert abs(np.ptp(P[:, 0]) - 0.5 * 0.85) < 1e-6 and "fold" in B["pieces"]["neckband"]["lines"]
     assert abs(gd.dims(B, {})["neckband_ratio"] - 0.85) < 1e-6
-    assert len(B["seams"]) == 2  # to the body, and its own ring seam
+    # to the body by BOTH raw edges (folded in half, both edges in the one seam: C237), and its own ring seam
+    assert len(B["seams"]) == 3 and ["neckband:nw>n>ne", ["body:nw>n>ne"]] in B["seams"], B["seams"]
+    Bf = cloth.pieces(dict(own, generate=[dict(own["generate"][0], represent="flush")]), {})
+    assert len(Bf["seams"]) == 2 and "fold" not in Bf["pieces"]["neckband"]["lines"]  # (flush: one layer, C237)
 
 
 def test_pattern_sheet_renders():

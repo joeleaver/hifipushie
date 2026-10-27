@@ -210,9 +210,21 @@ def generate(pcs: dict, entry: dict, extra: dict | None = None) -> tuple[dict, l
     # neck's base instead of standing up the neck like a mock neck: a straight strip stretched on only leans by the
     # strain it holds across its 2 cm, and a knit spreads that strain; dress-tess s19-s27), > 1 flares out.
     tr = float(entry.get("top_ratio", 1.0))
+    flush = entry.get("represent") == "flush" and bool(entry.get("fold")) and lap <= 0
+    if flush:
+        # REPRESENT "flush" (a game artist's call, Joe 2026-10-27: a T-shirt's rib band reads as a seam, a topstitch
+        # and a rib texture, not as folded geometry): the folded band is fitted as ONE layer at its finished height
+        # (half the cut), cut as a cone that leans onto the slope round the neck (lean_deg, default 45: the ring's
+        # top edge h cos(lean) further in than its seam), the fold / rib / stitching left to the detail maps.
+        # "folded" (the default) is the real construction: two layers, which need a fine mesh to lie flat.
+        h = h / 2
+        if "top_ratio" not in entry and entry.get("ring"):
+            R_ = L / (2 * math.pi)
+            tr = 1.0 - h * math.cos(math.radians(float(entry.get("lean_deg", 45.0)))) / R_
     if abs(tr - 1.0) > 1e-6:
-        if lap > 0 or entry.get("fold"):
-            raise ValueError(f"generate {nm}: top_ratio is for a single-layer ring band (no overlap, no fold)")
+        if lap > 0 or (entry.get("fold") and not flush):
+            raise ValueError(f"generate {nm}: top_ratio is for a single-layer ring band (no overlap, no fold; a folded "
+                             f"band as represent 'flush')")
         sg = 1.0 if tr < 1 else -1.0
         R1 = h / abs(1.0 - tr)  # the sewn edge's radius; the free edge's is R1 - sg * h
         if L / R1 > 2 * math.pi * 0.95:
@@ -239,8 +251,15 @@ def generate(pcs: dict, entry: dict, extra: dict | None = None) -> tuple[dict, l
         marks = {"button1": [x0 + lap / 2, h / 2], "buttonhole1": [x1 - lap / 2, h / 2]}
         if at_end:
             marks = {"button1": [x1 - lap / 2, h / 2], "buttonhole1": [x0 + lap / 2, h / 2]}
-    if entry.get("fold"):
+    if entry.get("fold") and not flush:
         lines["fold"] = [[x0, h / 2], [x1, h / 2]]
+    if flush:  # (the topstitch 4 mm above the seam, drawn in the detail maps: cloth.mesh stitch_lines)
+        ts = min(0.004, 0.4 * h)
+        if abs(tr - 1.0) > 1e-6:
+            a2 = np.linspace(-L / 2 / R1, L / 2 / R1, 2 * n_ + 1)
+            lines["top_stitch"] = [[(R1 - sg * ts) * math.sin(a), sg * (R1 - (R1 - sg * ts) * math.cos(a))] for a in a2]
+        else:
+            lines["top_stitch"] = [[x0, ts], [x1, ts]]
     d["marks"], d["lines"] = marks, lines
     pc = pattern.from_spec(nm, d)
     pc["wrap"] = dict(entry.get("wrap") or {"to": "torso"})
@@ -254,7 +273,16 @@ def generate(pcs: dict, entry: dict, extra: dict | None = None) -> tuple[dict, l
         sh = list(pc["wrap"].get("shift") or [0.0, 0.0])
         pc["wrap"]["shift"] = [float(sh[0]) - mid, float(sh[1])]
     pc["role"] = entry.get("role", nm)
+    if flush:
+        pc["represent"] = {"as": "flush", "cut_height": 2 * h, "fold": "maps"}  # (what the pattern really is)
     seams = [[f"{nm}:sw>s>lapEnd" if at_end else f"{nm}:{'lapStart' if lap > 0 else 'sw'}>s>se", along]]
+    if entry.get("fold") and lap <= 0 and not flush:
+        # FOLDED IN HALF, BOTH RAW EDGES IN THE ONE SEAM (a rib neckband / cuff / hem band is folded first and its two
+        # raw edges are sewn to the edge together): the free edge is sewn to that edge too. Left free, the folded half
+        # floated and the band opened into a tube 10 mm thick standing off the neck (T-shirt trial t3: layers 9.6 mm
+        # apart, p50, the fold turned 176 deg). Sewn to the edge it is sewn to (sewn to the band's own sewn edge,
+        # the mesher refused one edge in two seams with different counts)
+        seams.append([f"{nm}:nw>n>ne", along])
     if entry.get("ring"):
         seams.append([f"{nm}:sw>nw", f"{nm}:se>ne"])
     stitches = [[f"{nm}:button1", f"{nm}:buttonhole1"]] if lap > 0 else []
@@ -265,7 +293,7 @@ def generate(pcs: dict, entry: dict, extra: dict | None = None) -> tuple[dict, l
             extra.setdefault("seam_notes", {})[json.dumps(seams[0])] = {
                 "ease": [round(e_ - 0.02, 4), round(e_ + 0.02, 4)],
                 "why": f"{nm}: cut {ratio:.2f} x the edge it is sewn to and stretched on (ratio)"}
-        if entry.get("fold"):
+        if entry.get("fold") and not flush:
             extra.setdefault("folds", []).append({"piece": nm, "line": "fold", "angle": 360.0, "kind": "press",
                                                   "name": f"{nm} fold"})
     return {nm: pc}, seams, stitches, inter

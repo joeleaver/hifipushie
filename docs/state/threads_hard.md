@@ -38,4 +38,8 @@ NECK + MAP (C236, 2026-10-27): diag strain map = threads past cap; tee neckline 
 seam a band width out, neck pins moved out with it); knit bands rest at their sewn length. Trial tee refit
 (workspace trial_tshirt_t3d = t3 v23 minus its own neckline op): reads as a crew neck; OPEN the band is a thick round
 roll standing off the neck at the sides. Renders /mnt/data/hifipushie/neckband/ab_clay*.png, crew2_neck.png.
-NEXT: the band's roll (fold gap / thickness?) ; the 3 open fold tests; a fresh agent re-runs the tee end to end.
+BAND (C237, 2026-10-27): folded bands sew both raw edges (BUILD 18); generate represent "flush" (one leaning layer,
+fold in the maps) is the agent's call; trial tee t3d with a flush band reads like Joe's reference (ref_vs_flush.png);
+its neckline opening still a little high / narrow. OPEN: pressing a narrow fold flat as geometry (collars, cuffs).
+NEXT: a fresh agent makes the tee end to end on this code (crew neck + flush band are the tee kind's defaults? flush is
+NOT a default: the agent chooses); the 3 open fold tests; the flat-fold capability.

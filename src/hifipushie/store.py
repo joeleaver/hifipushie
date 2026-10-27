@@ -16,7 +16,7 @@ import numpy as np
 from . import sdf, spec as specmod
 
 HOME = Path(os.environ.get("HIFIPUSHIE_HOME") or Path.cwd() / "workspace")
-BUILD_VERSION = 17  # (17: simon band sewn edge to edge, collar / stand h 2 mm on the form, 2026-10-21) bump when meshing changes, so cached builds are redone
+BUILD_VERSION = 18  # (18: a folded band's free edge sewn into its seam, 2026-10-27; 17: simon band sewn edge to edge, collar / stand h 2 mm on the form, 2026-10-21) bump when meshing changes, so cached builds are redone
 
 
 def prune_stages(prefix: str, mark: str, keep: str = "", budget_gb: float | None = None, idle_s: float = 3600) -> list:
