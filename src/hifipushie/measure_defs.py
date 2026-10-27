@@ -128,7 +128,8 @@ _BLOCK_UPPER = dict(
     {k: v for k, v in _BRIAN.items()},
     **{k: v for k, v in _LOWER.items()},
     **_own("napeToWaistBack", "hpsToArmpitBack", "hpsToSeatFront", "hpsToSeatBack", "neckBase", "napeBaseToWaistBack",
-           "neckBaseFrontDrop", "hpsToWaistBackRaw", "bustSpan"),
+           "neckBaseFrontDrop", "hpsToWaistBackRaw", "bustSpan", "hpsToShoulder", "hpsToHipLineBack", "hpsToCrotchBack",
+           "waistToUpperLeg", "waistToSeat", "shoulderToElbow"),
 )
 _BLOCK_UPPER["neck"] = (AMB, None, _BRIAN["neck"][2] + "; a garment worn over another reads it round the under "
                                    "garment's collar (cloth.over_measures)")

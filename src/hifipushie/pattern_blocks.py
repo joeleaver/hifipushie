@@ -82,7 +82,10 @@ BODICE_DEFAULTS = {"chest_ease": 0.10, "waist_ease": 0.10, "hips_ease": 0.08, "c
                    "length_bonus": 0.0, "fitted": False, "darts": False, "bust_dart": None, "across_back": 0.98,
                    "across_front": 0.93, "back_neck": 0.05, "cb": "fold", "cf": "open", "front_balance": "auto"}
 KNIT_DEFAULTS = dict(BODICE_DEFAULTS, chest_ease=0.0, waist_ease=0.02, hips_ease=0.0, biceps_ease=0.05,
-                     armhole_depth=0.0, collar_ease=0.12, cf="fold", underarm=None)
+                     armhole_depth=0.0, collar_ease=0.12, cf="fold", underarm=None, bust_dart=False,
+                     shoulder_from="seam")
+# (a knit takes no bust dart: it shapes by stretch. The bodice's auto dart (chest over high bust) put one on a men's
+# jersey tee front, tee trials t3 / t4; bust_dart None asks for it again)
 UNDERARM_DEFAULT = 0.025  # m below the armpit, down the back's tape: a set-in sleeve's underarm
 
 
@@ -145,13 +148,23 @@ def bodice(m: dict, opts: dict | None = None, knit: bool = False) -> dict:
         # (the ring above when the body has it, else the loop rule's); the neckline seam is one band width out from it:
         # the width + w at the side neck point, the front and back necks w lower.
         w = float(o.get("band_width", 0.02))
-        nw, fn, bn = nw + w, fn + w, bn + w
+        side = w * float(o.get("crew_side", 0.0))  # (how far out at the neck point: 0 = on the ring; with a band
+        # width out (1.0) the tee's neckline was 519 mm and its shoulder seam 32 mm short; the trial agent, judging
+        # Joe's reference, narrowed it back to the ring: t4)
+        nw, fn, bn = nw + side, fn + w, bn + w
         log.append(f"crew neck: the band's edge ({w * 1000:.0f} mm) on the neck's base, the seam {w * 1000:.0f} mm out")
     if o.get("front_neck") is not None:
         fn = float(o["front_neck"])
     sx = mm("shoulderToShoulder") / 2 * (1 + o["shoulder_ease"])
     slope = math.radians(float(m.get("shoulderSlope", 13.0)))
     sy = (sx - nw) * math.tan(slope)
+    if o.get("shoulder_from") == "seam" and "hpsToShoulder" in m:
+        # THE SHOULDER SEAM AS LONG AS THE BODY'S (knit default; tee trials t3 / t4: half the shoulder-to-shoulder
+        # tape from the neck width left it 10 mm short, the gate failed it and the agent reshaped it by hand): the
+        # neck point lies on the body's hps (the form pins it there), so the seam runs the body's hps -> shoulder point,
+        # less a crew neck's side offset, at the body's slope, times the shoulder ease
+        ls_ = (mm("hpsToShoulder") - (side if crew else 0.0)) * (1 + o["shoulder_ease"])
+        sx, sy = nw + ls_ * math.cos(slope), ls_ * math.sin(slope)
     wy = mm("hpsToWaistBack")
     ay = wy - mm("waistToArmpit") * (1 - o["armhole_depth"] - o["biceps_ease"] / 2)
     if o.get("underarm_rule", "back_tape") != "waist_tape_legacy" and "hpsToArmpitBack" in m:
@@ -176,6 +189,27 @@ def bodice(m: dict, opts: dict | None = None, knit: bool = False) -> dict:
         # sides (dress-garrett j12, 2026-10-15). The waist line (darts, pockets) stays on the hps tape.
         lw_ = bn + mm("napeBaseToWaistBack" if ring_ is not None else "napeToWaistBack")
         ly = lw_ + (hy - wy) if to_hips else lw_
+    lv = o["length"]
+    if isinstance(lv, str) and lv not in ("waist", "hips"):
+        lv = {"to": lv}
+    if isinstance(lv, dict):  # A BODY LEVEL (tee trial t4: "hip length" took three rounds of metres): {"to": "waist" |
+        # "hips" (the iliac crest) | "seat" | "crotch", "below": m (negative: above)}, down the back from the nape
+        to_ = lv.get("to", "hips")
+        dl = {"waist": 0.0, "hips": hy - wy, "seat": mm("waistToSeat") if "waistToSeat" in m else hy - wy + 0.08,
+              "crotch": mm("waistToUpperLeg") if "waistToUpperLeg" in m else hy - wy + 0.18}.get(to_)
+        if dl is None:
+            raise ValueError(f"block length: 'to' is waist | hips | seat | crotch, got {to_!r}")
+        lw0 = (bn + mm("napeBaseToWaistBack" if ring_ is not None else "napeToWaistBack")) if "napeToWaistBack" in m else wy
+        ly = lw0 + dl + float(lv.get("below", 0.0))
+        tape_ = {"waist": "hpsToWaistBack", "hips": "hpsToHipLineBack", "seat": "hpsToSeatBack",
+                 "crotch": "hpsToCrotchBack"}.get(to_)
+        if tape_ in m:  # (the body's own tape from the hps down the back to that level: the garment hangs from its
+            # neck points, so its length is measured from there; the nape tape + the back neck put it 4-7 cm off)
+            ly = mm(tape_) + float(lv.get("below", 0.0))
+            lw0 = mm("hpsToWaistBack") if "hpsToWaistBack" in m else lw0
+        to_hips = ly > lw0 + 0.03
+        log.append(f"length: the hem {abs(float(lv.get('below', 0.0))) * 1000:.0f} mm "
+                   f"{'below' if float(lv.get('below', 0.0)) >= 0 else 'above'} the {to_} ({ly * 1000:.0f} mm from the hps line)")
     if isinstance(o["length"], (int, float)):  # metres below the hps at centre back
         ly, to_hips = float(o["length"]), float(o["length"]) > wy + 0.03
     ly += float(o["length_bonus"])
@@ -284,8 +318,8 @@ def bodice(m: dict, opts: dict | None = None, knit: bool = False) -> dict:
             pc["darts"]["bustDart"] = ("bustDartA", "bustDartTip", "bustDartB")
         if "waistDartA" in pc["names"]:
             pc["darts"]["waistDart"] = ("waistDartA", "waistDartTip", "waistDartB")
-        if crew:
-            pc["neck_out"] = w  # (the form's neck pin lands this far out along the shoulder: pattern_form._pins)
+        if crew and side > 0:
+            pc["neck_out"] = side  # (the form's neck pin lands this far out along the shoulder: pattern_form._pins)
         out[which] = pc
     f, b = out["front"], out["back"]
     low = "hem" if to_hips else "waist"
@@ -350,6 +384,7 @@ def solve_cap(W: float, ah_front: float, ah_back: float, ease: float) -> dict:
     return {"h": h, "xt": xt, "front": f, "back": b, "ok": True, "why": ""}
 
 
+SHORT_SLEEVE_HEM = 0.92
 SLEEVE_DEFAULTS = {"biceps_ease": 0.15, "cap_ease": 0.015, "wrist_ease": 0.25, "length_bonus": 0.0, "length": None,
                    "hem_width": None, "cap_height": None}
 # The cap height as a share of the armhole depth (vertical, shoulder point to underarm, mean of front and back) by garment
@@ -404,6 +439,10 @@ def sleeve(m: dict, body: dict, opts: dict | None = None, armhole: tuple | None 
         cap = solve_cap(W, af, ab, o["cap_ease"])
     L = float(o["length"]) if o["length"] else mm("shoulderToWrist") * (1 + o["length_bonus"])
     hw = float(o["hem_width"]) if o["hem_width"] else mm("wrist") * (1 + o["wrist_ease"])
+    if not o["hem_width"] and o["length"] and "shoulderToElbow" in m and L < mm("shoulderToElbow"):
+        # A SHORT SLEEVE ends above the elbow: its hem is nearly the sleeve's own width (SHORT_SLEEVE_HEM of the
+        # biceps), not a wrist: tapered to the wrist's 18 cm it pinched the arm, tee trials t3 / t4
+        hw = SHORT_SLEEVE_HEM * W
     hem_y = -(L - cap["h"])
     elbow_y = -(mm("shoulderToElbow") - cap["h"]) if "shoulderToElbow" in m else hem_y * 0.45
     back, frontc = _cap(W, cap["h"], cap["xt"])

@@ -420,6 +420,8 @@ def measure(V: np.ndarray, faces, J: dict, hps: str | None = None) -> dict:
     at["shoulder.L"] = top
     hps = at["hps.L"]
     mm["shoulderSlope"] = float(np.degrees(np.arctan2(hps[2] - top[2], top[0] - hps[0])))
+    mm["hpsToShoulder"] = float(np.linalg.norm(np.asarray(top, float) - np.asarray(hps, float)))  # (the shoulder
+    # seam's own length on the body: the knit block drafts its seam to it, pattern_blocks "shoulder_from")
     # the slope of the shoulder LINE itself (the top of the shoulder from just outside the neck to the shoulder
     # point), not of the chord from hps: hps is taken on the neck's side 2 cm up the neck, above the shoulder line's
     # own start, and its chord read 28 deg on a body whose shoulder lies at 17 (FreeSewing's standard: 13). A draft
@@ -636,6 +638,15 @@ def measure(V: np.ndarray, faces, J: dict, hps: str | None = None) -> dict:
         mm.update(_leg_girths(V, T, J, at, zmin))
     except Exception:  # (a body without legs the scan can read: trouser drafts fall back to their proportions)
         pass
+    # the hps down the back to the hip line and to the crotch: where a hem lands, measured as the pattern is (the block's
+    # body-level lengths, pattern_blocks "length" {"to": ...}; nape-to-waist + a vertical put tee trial t5's hem 4-7 cm
+    # off its level)
+    for key_, z_ in (("hpsToHipLineBack", at.get("hips_z")), ("hpsToCrotchBack", at.get("crotch_z"))):
+        if z_ is not None and float(z_) < float(hps[2]):
+            try:
+                mm[key_] = length(down(float(z_), hps[0], hps[0], 1))
+            except Exception:  # (a body the tape can't run down keeps the block's estimate)
+                pass
     mm["height"] = float(V[:, 2].max() - zmin)
     if corner_ is not None:
         # "corner": the neck point moves DOWN onto the crest, and every line a draft hangs from it (Brian: the chest,
@@ -645,7 +656,8 @@ def measure(V: np.ndarray, faces, J: dict, hps: str | None = None) -> dict:
         # trip over the top of the shoulder, the crest's don't), so the armhole rose 15 mm and the hem fell 19 (r3 hc0)
         w_ = np.asarray(at["hps.L"], float)
         dz = float(w_[2] - corner_[2])
-        for k in ("hpsToWaistBack", "hpsToBust", "hpsToArmpitBack", "hpsToSeatFront", "hpsToSeatBack", "hpsToWaistFront"):
+        for k in ("hpsToWaistBack", "hpsToBust", "hpsToArmpitBack", "hpsToSeatFront", "hpsToSeatBack", "hpsToWaistFront",
+                  "hpsToHipLineBack", "hpsToCrotchBack"):
             if k in mm:
                 mm[k] = float(mm[k]) - dz
         mm["hpsDrop"] = dz  # (cloth.length_level: the nape-based length hangs from the hps too)

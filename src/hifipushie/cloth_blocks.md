@@ -45,9 +45,9 @@ armholePitch, armhole, waist, hem, cfHem, bust, the darts' points...), so operat
 
 | Block | Drafted from | The rules that matter |
 |---|---|---|
-| `bodice` | neck, shoulders, chest, waist, hips, lengths | Chest quarter = chest x (1 + ease) / 4. The front neck's depth is solved so the neckline is half the neck girth + ease. Armhole depth from waist-to-armpit. Waist suppression goes to the side seam, a dart, or is left for panel seams. Options: `fitted`, `darts`, `bust_dart`, `length` (hips, waist, or metres), `cb` / `cf` (fold, seam, open) |
-| `knit` | the same | The bodice with 0-2% ease, no darts, a looser neck, a cap without ease |
-| sleeve (op `sleeve`) | biceps, arm lengths, wrist, **the armhole** | Width = biceps + ease; cap length = armhole + cap ease; the cap's height is solved from those two. A wide sleeve gets a low cap, a narrow one a high cap |
+| `bodice` | neck, shoulders, chest, waist, hips, lengths | Chest quarter = chest x (1 + ease) / 4. The front neck's depth is solved so the neckline is half the neck girth + ease. Armhole depth from waist-to-armpit. Waist suppression goes to the side seam, a dart, or is left for panel seams. Options: `fitted`, `darts`, `bust_dart`, `length` (a body level `{"to": "waist" / "hips" (the hip line) / "seat" / "crotch", "below": m}` (negative: above), measured down the back from the neck point; or metres), `neckline` (`"crew"`: the band's edge on the neck's base, the seam a band width lower, `band_width`, `crew_side`), `cb` / `cf` (fold, seam, open). Knit drafts come out trued (every seam end squared; garment key `auto_true` true / false for any draft) |
+| `knit` | the same | The bodice with 0-2% ease, no darts (bust dart off), a looser neck, a cap without ease; its shoulder seam drafted as long as the body's neck point to shoulder point (`shoulder_from: "seam"`) |
+| sleeve (op `sleeve`) | biceps, arm lengths, wrist, **the armhole** | Width = biceps + ease; cap length = armhole + cap ease; the cap's height is solved from those two. A wide sleeve gets a low cap, a narrow one a high cap. A short sleeve (`length` above the elbow) hems at about its own width; `hem_width` overrides |
 | `trouser` | waist, seat, rise, leg lengths | Seat quarters -1 / +1 cm; fork = seat / 16 + 5 mm (back about double); the back seam slanted and raised; the back inseam 5 mm short |
 | skirt (`from: skirt_block`) | waist, seat | Quarters with ease; the difference shared between side seam and darts |
 

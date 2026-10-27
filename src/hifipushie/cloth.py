@@ -398,6 +398,15 @@ def pieces(g: dict, meas_mm: dict) -> dict:
         out[nm] = pc
     for nm in g.get("drop", []):
         out.pop(nm, None)
+    if draft_info is not None and g.get("auto_true", draft_info.get("block") == "knit"):  # (our drafts come out
+        # trued: cloth_check.auto_true; garment key auto_true. Default: knit drafts (tees, sweaters, hoodies); a
+        # tailored draft's neckline corners are partly design and trued its collar lay moved (test_collar made_lay):
+        # opt in with auto_true true. The garment's own alter ops still apply after it)
+        from . import cloth_check as _cc
+        tl_ = []
+        out = _cc.auto_true(out, seams, g.get("truing_corners") or (), tl_)
+        if tl_:
+            draft_info = dict(draft_info, trued=tl_)
     out = pattern.apply(out, g.get("alter"))
     seams += g.get("seams", [])
     stitches += g.get("stitches", [])

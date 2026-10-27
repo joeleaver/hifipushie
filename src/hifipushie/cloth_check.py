@@ -242,6 +242,41 @@ def junctions(Bp: dict, reach: float = TRUE_REACH, corners=()) -> list:
     return out
 
 
+def auto_true(pcs: dict, seams: list, corners=(), log=None) -> dict:
+    """DRAFTS COME OUT TRUED (tee trial t4: 4-5 of 17 rounds went on hand truing, "true" ops whose `keep` bent a sleeve
+    hem into a wave): every seam end the truing row would fail (junctions: turn > TRUE_DEG, not a corner by design, not
+    a crossing) is trued on BOTH pieces by pattern.true_corner, each side taking half the turn so the joined edge runs
+    on as one line, the seam edge held (keep = the seam side's far end on that piece). Returns the trued pieces."""
+    out = dict(pcs)
+    for _ in range(2):  # (a corner trued on one seam can move another seam's end on the same point: once more)
+        jn = junctions({"pieces": out, "seams": seams}, corners=tuple(corners or ()))
+        todo = [r for r in jn if not r["ok"]]
+        if not todo:
+            break
+        for r in todo:
+            A, B = r["seam"]
+            sa, sb = _side(out, A), _side(out, B)
+            sm_ = r["deg_a"] + r["deg_b"]
+            # (smooth is a total of 180 + 360 k: a piece outlined the other way, a sleeve sewn to itself, reads its
+            # wrist corners reflex, 278 + 278; aimed at 180 its hem was bent into a wave)
+            fix = (180.0 + 360.0 * round((sm_ - 180.0) / 360.0) - sm_) / 2.0
+            for side_, deg_ in ((sa, r["deg_a"]), (sb, r["deg_b"])):
+                done = False
+                for e_, nm, ix, _ in {id(x): x for x in (side_[0], side_[-1])}.values():
+                    for at_i, far_i in ((int(ix[0]), int(ix[-1])), (int(ix[-1]), int(ix[0]))):
+                        at_, keep = _pname(out[nm], at_i), _pname(out[nm], far_i)
+                        if done or f"{nm}:{at_}" not in r["at"].split(" | ") or at_.startswith("#") or keep.startswith("#"):
+                            continue
+                        try:
+                            out[nm] = pattern.true_corner(out[nm], at_, keep, float(deg_ + fix))
+                        except Exception:  # (a corner the op can't bend is left for the gate to name)
+                            continue
+                        done = True
+                        if log is not None:
+                            log.append(f"trued {nm}:{at_} (keep {keep}): {deg_:.0f} -> {deg_ + fix:.0f} deg")
+    return out
+
+
 def _pname(pc, i):
     nm = [k for k, v in pc["names"].items() if int(v) == int(i) and not k.startswith("_")]
     return nm[0] if nm else f"#{i}"
@@ -1498,6 +1533,12 @@ def measure_definitions_row(body, g: dict, kind: str = "") -> dict:
     return measure_defs.gate_row(c, mm, measure_defs.holds_for(g, cloth._kb()["kinds"].get(kind or "", {})))
 
 
+def neck_widen(g: dict) -> float:
+    """m: how far the garment's neckline ops move the neck point out along the shoulder (op "neckline" widen)."""
+    ops = list(((g or {}).get("design") or {}).get("ops") or []) or list(((g or {}).get("pattern") or {}).get("ops") or [])
+    return float(sum(float(o_.get("widen") or 0.0) for o_ in ops if isinstance(o_, dict) and o_.get("op") == "neckline"))
+
+
 def shoulder_seam_row(M: dict, body, g: dict, kind: str = "") -> dict:
     """The shoulder seam's flat length / drop per piece vs the body's hps -> shoulder point (see above)."""
     at = getattr(body, "at", {}) if body is not None else {}
@@ -1519,12 +1560,21 @@ def shoulder_seam_row(M: dict, body, g: dict, kind: str = "") -> dict:
     from . import cloth
     from . import measure_defs
     want = measure_defs.slope_definition(g, cloth._kb()["kinds"].get(kind or "", {}))
-    bad = [f"{pc} len {r['len_mm']} < {blen - SHOULDER_SEAM_LEN_TOL:.1f}" for pc, r in per.items()
-           if r["len_mm"] < blen - SHOULDER_SEAM_LEN_TOL]
+    # THE NECK POINT'S OWN OFFSET (tee trial t4): a neckline widened along the shoulder (a crew neck's neck_out, a
+    # neckline op's widen) starts the seam that far out, so its seam is that much shorter and still ends at the
+    # shoulder point. Held to the body's full length, a wider neckline failed the row and the agent pushed the shoulder
+    # out to match (a 2 cm dropped shoulder), then back again for each neckline change (2 rounds).
+    off = 1000 * (float(M.get("neck_out") or 0.0) + neck_widen(g))
+    tgt = blen - off
+    if off:
+        ours["neck_point_out_mm"] = round(off, 1)
+    bad = [f"{pc} len {r['len_mm']} < {tgt - SHOULDER_SEAM_LEN_TOL:.1f}" for pc, r in per.items()
+           if r["len_mm"] < tgt - SHOULDER_SEAM_LEN_TOL]
     bad += [f"{pc} drop {r['drop_mm']} vs {bdrop:.1f}" for pc, r in per.items()
             if abs(r["drop_mm"] - bdrop) > SHOULDER_SEAM_DROP_TOL]
     row = {"id": "shoulder_seam_flat", "stage": 1, "measure": "cloth_check.shoulder_seam_row", "ours": ours,
-           "ref": {"len_mm": f">= body - {SHOULDER_SEAM_LEN_TOL}", "drop_mm": f"body +- {SHOULDER_SEAM_DROP_TOL}"}}
+           "ref": {"len_mm": f">= body{f' - neck point out {off:.0f}' if off else ''} - {SHOULDER_SEAM_LEN_TOL}",
+                   "drop_mm": f"body +- {SHOULDER_SEAM_DROP_TOL}"}}
     if want != "chord" or g.get("shoulder_pad"):
         return dict(row, status="INFO", why="judged for drafts on the chord slope (cloth.slope_measures)",
                     **({"miss": "; ".join(bad)} if bad else {}))

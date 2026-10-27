@@ -41,5 +41,8 @@ roll standing off the neck at the sides. Renders /mnt/data/hifipushie/neckband/a
 BAND (C237, 2026-10-27): folded bands sew both raw edges (BUILD 18); generate represent "flush" (one leaning layer,
 fold in the maps) is the agent's call; trial tee t3d with a flush band reads like Joe's reference (ref_vs_flush.png);
 its neckline opening still a little high / narrow. OPEN: pressing a narrow fold flat as geometry (collars, cuffs).
-NEXT: a fresh agent makes the tee end to end on this code (crew neck + flush band are the tee kind's defaults? flush is
-NOT a default: the agent chooses); the 3 open fold tests; the flat-fold capability.
+TEE ITERATIONS (C238, 2026-10-27): t4 (fresh agent, Joe's 2 refs) took 17 design versions; post-mortem
+trials/t4/postmortem.md. Fixes 1-4 landed (defaults, auto-trued knit drafts, body-level lengths, shoulder gate neck
+offset). A defaults-only tee (workspace trial_tshirt_t5d) now drafts clean (shoulder exact, 0/18 truing, hem at the
+hip line within 3 mm). Not yet done: fit close-up / maps view (fix 5), numbers-only fit (fix 6).
+NEXT: t5 = the same brief, fresh agent; count iterations (target 3).

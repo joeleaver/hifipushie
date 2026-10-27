@@ -249,3 +249,29 @@ def test_front_balance_auto_from_the_body_tapes():
     assert pb.front_balance({"hpsToSeatFront": 678.0, "hpsToSeatBack": 711.0}) == 0.0  # old hps: the old cut
     assert pb.front_balance({}) == 0.0
     assert pb.front_balance({"hpsToSeatFront": 713.0, "hpsToSeatBack": 673.0}, 0.0) == 0.0  # explicit wins
+
+
+def test_a_tee_drafts_right_first_time():
+    """(tee trial t4 post-mortem, Joe 2026-10-27: simple things in ~3 iterations) The knit block as the tee kind drafts
+    it needs no hand fixes: no bust dart; the shoulder seam as long as the body's hps -> shoulder point (hpsToShoulder)
+    at its slope; a short sleeve hems at about its own width (SHORT_SLEEVE_HEM), not a wrist; a body-level length
+    ({"to": "hips"}) drafts to the body's own tape from the hps down the back (hpsToHipLineBack); through cloth.pieces
+    the knit draft comes out trued (no seam end past cloth_check.TRUE_DEG); and the gate's shoulder row allows for a
+    neckline widened along the shoulder (neck_widen)."""
+    import math
+    m = dict(MM, hpsToShoulder=165.0, hpsToHipLineBack=640.0, chest=994.0, highBust=940.0)
+    K = pd.start("knit", m, {"length": {"to": "hips"}})
+    f = K["pieces"]["front"]
+    assert "bustDartA" not in f["names"]  # (the chest is 54 mm over the high bust: the bodice would dart it)
+    sh = np.linalg.norm(f["P"][f["names"]["shoulder"]] - f["P"][f["names"]["hps"]])
+    assert abs(sh - 0.165) < 1e-6, sh
+    hem_y = min(float(f["P"][f["names"][k], 1]) for k in f["names"] if k.startswith("hem") or k.startswith("cfHem"))
+    assert abs(-hem_y - 0.640) < 1e-6, hem_y
+    pd.apply(K, [{"op": "sleeve", "length": 0.21}])
+    s = K["meta"]["sleeve"]
+    assert abs(s["hem_width"] - pb.SHORT_SLEEVE_HEM * s["width"]) < 1e-9, s
+    g = {"pattern": {"from": "draft", "block": "knit", "block_options": {"length": {"to": "hips"}},
+                     "ops": [{"op": "sleeve", "length": 0.21}, {"op": "unfold"}]}}
+    Bp = cloth.pieces(g, m)
+    assert all(r["ok"] for r in cloth_check.junctions(Bp)), [r for r in cloth_check.junctions(Bp) if not r["ok"]]
+    assert cloth_check.neck_widen({"design": {"ops": [{"op": "neckline", "widen": 0.02}, {"op": "sleeve"}]}}) == 0.02
