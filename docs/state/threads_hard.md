@@ -13,11 +13,18 @@ solve's: capped both ways the loop cycled with contact); stiff pieces (cells / i
 rows. HARD_CELLS False (made pieces / folds / flaps keep their own rests; in: sprung fall rippled 130 mm), HARD_FLAP_PLANES
 False (pushed every collar thread to the cap). Reports: over_cap_by_piece, inside_by_piece, neck_point_mm; next_steps
 misfit_lines; fit_garment gates threads past cap p99 <= 1 %; face_threads reads stretch only.
-TESTS (87a5a5ba +): cloth files ($T/pf_r3.log) 2 fail, both MADE PIECES layering: nested collars 4-5 bodice + 2-4 stand
-vertices through the inner (2 fixes failed: made-on-made plane, re-linearised planes), fold_checks two-piece collar
-fold_on_base share 0.033 (< 0.02). HARD_FLAP_PLANES on fixes fold_on_base but breaks the straight collar (stand 19 / 27)
-and nested (19/10/7): off. Restated (needed stretch on the soft fit): plumb hold x2 (14.2 %), sprung fall (4.8 %),
-collars' edge strain, tight tube (16 % short; layer under now hard in every fit), fold run-off 26 deg (25.2 vs 23.9).
-OPEN: made pieces (collars, bands) are outside the hard loop: their stretch is soft (straight collar threads p99 5.2 %, max 58 at the crease) and their layering is the 2 failing tests; in the loop they rippled (HARD_CELLS). Collars cut without spring can't turn flat at 2 %.
+DEFAULTS now: HARD_CELLS True (made pieces / folds / flaps IN the loop: out, they absorbed every misfit on real
+garments: shirt stand p99 534 %, jacket fronts 40 %), STIFF_SQUEEZE False, CREASE_CAP 0.25 (fold-row triangles: the
+outer layer of a fold is longer). READOUTS r5 ($T/readouts_r4.log + task logs): shirt sleeves / cuffs / back <= 3 %,
+yoke 6.7, front.L 12 (max 53); inside 6 (soft 113). Jacket sides / sleeves ~2 %, inside 0, seams 0.2 mm, neck points
+11-17 mm short. Collar / lapel p99 ~25 % = crease rows at CREASE_CAP (where.py counts them as cloth: read them apart).
+Hoodie not re-run on r5. Shirt 157 s, jacket 730 s.
+TESTS ($T/pf_r5.log): cloth files 3 fail, NOT loosened further: fold run-off 26.5 (< 26, soft 23.9), sprung fall ripple
+16.9 mm (< 15), fold_checks two-piece fold_on_base share 0.107 (< 0.02: the fall through its stand). Nested collars and
+the straight collar pass. Restated (needed stretch on the soft fit): plumb hold x2 (14.2 %), sprung fall turn 165
+(4.8 %), collars' edge strain, tight tube (16 % short), fold run-off 26. Suite (with HIFIPUSHIE_ASSETS set: the repo's
+convention, else test modules' HOME leaks break asset lookup): only cloth + unrelated eyedetail / skin noise / rented
+sims gate / terrain fixture 'T' errors (untouched code; not re-run on main).
+OPEN: a fall sinks through its stand (fold_on_base); flap-on-base planes (HARD_FLAP_PLANES) fixed it but broke the straight collar while cells were out: re-test with cells in. Collars cut without spring can't turn flat at 2 %.
 Scratch A/B scripts: $T/kat.py <test names>, cellab.py, plumbab.py, planeab.py, fallthreads.py.
-NEXT: full suite ($T/suite2.log); hoodie / jacket / shirt readouts; T-shirt trial (a T-shirt has no made pieces: the open item doesn't block it). Then made pieces in the loop with their own folded rest as the thread frame.
+NEXT: T-shirt trial (fresh session, MCP only, this branch); judge its full figure; then the 3 open tests.

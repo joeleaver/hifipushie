@@ -140,7 +140,9 @@ FIT_THREAD_SWEEPS = 4
 THREADS_HARD = os.environ.get("PF_THREADS_HARD", "1") == "1"
 THREADS_HARD_SWEEPS = 30  # per fit round (the next round's solve moves it again)
 THREADS_HARD_FINAL = 1000  # the last round of every phase and the end of assemble: to convergence (early exit)
-HARD_CELLS = False  # the ARAP cells' triangles (made pieces, folds, flaps) in the hard loop. Off: they keep their own
+STIFF_SQUEEZE = False
+CREASE_CAP = 0.25
+HARD_CELLS = True  # the ARAP cells' triangles (made pieces, folds, flaps) in the hard loop. Off: they keep their own
 # (folded) rests in the solve, and the flat pattern's threads fought them (in: the sprung fall rippled 130 mm, the
 # straight collar's stand 23 of 27 mm; out: 27.0 mm, ripple 4). Their stretch is still the solve's (soft): OPEN
 HARD_FLAP_PLANES = False  # a turned flap held on its base as a hard plane. Off: the flap's soft target (FLAP_PULL) only;
@@ -2765,8 +2767,10 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
         for fd, g, turn in folds_:
             for r_ in g["rows"]:
                 row_[np.asarray(r_["row"], int)] = True
-        Wh["stiff"] = (stiff_[Wh["F"]].any(1) & ~row_[Wh["F"]].any(1))[:, None]  # (shorter no more than the cap: a
-        # stiff piece doesn't buckle finer than the mesh; free, the sprung fall's edge rippled 67 mm)
+        if STIFF_SQUEEZE:
+            Wh["stiff"] = (stiff_[Wh["F"]].any(1) & ~row_[Wh["F"]].any(1))[:, None]  # (shorter no more than the cap:
+            # a stiff piece doesn't buckle finer than the mesh; free, the sprung fall's edge rippled 67 mm)
+        crease_t = row_[Wh["F"]].any(1)  # (CREASE_CAP: a fold's outer layer is longer than its inner)
         hard_pairs = np.r_[np.asarray(sw, int).reshape(-1, 2), np.asarray(fast, int).reshape(-1, 2)]
         lim_ = float((B or {}).get("stretch_limit") or 0.0)
         cap_h = FIT_THREAD_CAP
@@ -2776,6 +2780,9 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
             cpp = np.array([min(lim_, FIT_THREAD_CAP + ask_.get(k, 0.0)) for k in range(len(names))])
             cap_h = cpp[pid[Wh["F"][:, 0]]][:, None]
             info_cap = {names[k]: round(float(c) * 100, 1) for k, c in enumerate(cpp) if c > FIT_THREAD_CAP + 1e-9}
+        if CREASE_CAP is not None and crease_t.any():
+            cap_h = np.broadcast_to(np.asarray(cap_h, float).reshape(-1, 1), (len(Wh["F"]), 1)).copy()
+            cap_h[crease_t] = np.maximum(cap_h[crease_t], CREASE_CAP)
 
     def hard_planes(X):
         """THREADS_HARD's contact, as planes at X (see _hard_pass): the form (nothing inside it), the layer under (one
