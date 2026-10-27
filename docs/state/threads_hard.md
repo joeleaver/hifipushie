@@ -27,4 +27,12 @@ convention, else test modules' HOME leaks break asset lookup): only cloth + unre
 sims gate / terrain fixture 'T' errors (untouched code; not re-run on main).
 OPEN: a fall sinks through its stand (fold_on_base); flap-on-base planes (HARD_FLAP_PLANES) fixed it but broke the straight collar while cells were out: re-test with cells in. Collars cut without spring can't turn flat at 2 %.
 Scratch A/B scripts: $T/kat.py <test names>, cellab.py, plumbab.py, planeab.py, fallthreads.py.
-NEXT: T-shirt trial (fresh session, MCP only, this branch); judge its full figure; then the 3 open tests.
+T-SHIRT TRIAL t3 (2026-10-27, fresh headless claude in this checkout, MCP only; /mnt/data/hifipushie/trials/t3/log.md,
+fit_v23_*.png): ~85 tool calls, reads as a tee (~70 %): threads p99 2.8 %, misfit "nothing", none inside. Faults: neckband
+stands up like a mock-turtle; boxy, hem flares, sleeves stand off (no gravity on the form); the diag strain map still
+paints EDGE strain (bias shear red / blue) while the gate reads threads. The misfit report never had to fire (a tee
+fits within its threads). Its tool gaps: style push KeyError 'rounds', contour op crash, collar band ratio ignored
+under options (works under generate.ratio), worn_top channels knit side seams, no close-up of the fit, renders' names
+not printed.
+NEXT: diag strain map -> threads past cap; neckband lie; the 3 open fold tests; a trial that DOES misfit (a tight
+woven garment) to exercise the report.
