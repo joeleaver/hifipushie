@@ -26,8 +26,9 @@ Modes (combinable; a face's colour: strain > panels > layers > clay, then the ov
   pattern (period STRIPE_P), so they follow the cloth; the renderer mixes per pixel ("SC"/"SB" stripe colours, "ST"
   the stripe coordinate per corner).
 - backfaces: back faces RED (inside-out pieces, seeing through to the underside).
-- strain: per-face stretch vs the flat pattern (the larger principal stretch of the face's map uv -> 3D, signed):
-  blue compressed -> white 0 -> red stretched, +-STRAIN_SCALE full scale (printed by `strain_bar`).
+- strain: per-face THREADS PAST THEIR CAP (face_threads_over: warp / weft in the piece's grain frame, as the fit
+  reads them, C235; bias shear is not stretch): white within the cap, red past it (stretched), blue shorter than it
+  (a wrinkle finer than the mesh), +-STRAIN_SCALE full scale (printed by `strain_bar`).
 - layers: each garment a LAYERS colour by layer; faces of an inner layer that cross the outer layer, or have the outer
   layer behind them (within PIERCE_REACH, toward the body), MAGENTA.
 """
@@ -101,6 +102,36 @@ def face_strain(V, F, uv) -> np.ndarray:
     hi, lo = s[:, 0] - 1, s[:, 1] - 1
     out = np.where(np.abs(hi) >= np.abs(lo), hi, lo)
     return np.where(ok, out, 0.0)
+
+
+def face_threads_over(V, F, M) -> np.ndarray:
+    """Per face: how far its warp / weft go PAST their cap (C235: the fit's own read, in each piece's grain frame,
+    M["grain"], default 90; bias shear is not stretch, C64). +0.05 = a thread 5 % past its cap, -0.05 = 5 % shorter
+    than the cap allows (a wrinkle finer than the mesh), 0 within it. The cap: FIT_THREAD_CAP for a woven; for a knit
+    (M["stretch_limit"] > KNIT_LIMIT) each piece's own seams' ask on top (a rib band), within the fabric's limit."""
+    from . import pattern_form as pf
+    V, F = np.asarray(V, float), np.asarray(F)
+    uv, pid = np.asarray(M["uv"], float), np.asarray(M["piece"])
+    names = list(M["names"])
+    gr = list(M.get("grain") or [90.0] * len(names))
+    B = {"pieces": {nm: {"grain": gr[k]} for k, nm in enumerate(names)}}
+    E = np.unique(np.sort(np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]], 1), axis=0)
+    W = pf._woven_setup({"uv": uv, "piece": pid, "names": names}, B, F, E, np.zeros(len(uv), bool))
+    Fg = np.stack([V[W["F"][:, 1]] - V[W["F"][:, 0]], V[W["F"][:, 2]] - V[W["F"][:, 0]]], -1) @ W["Dinv"]
+    ln = np.linalg.norm(Fg, axis=1) - 1.0  # (t, 2)
+    cap = np.full(len(names), pf.FIT_THREAD_CAP)
+    lim = float(M.get("stretch_limit") or 0.0)
+    if lim > pf.KNIT_LIMIT and len(M.get("sew", [])):
+        ask = pf.piece_stretch_asked(uv, E, pid, np.asarray(M["sew"]))
+        cap = np.array([min(lim, pf.FIT_THREAD_CAP + ask.get(k, 0.0)) for k in range(len(names))])
+    c = cap[pid[W["F"][:, 0]]]
+    hi, lo = ln.max(1) - c, ln.min(1) + c
+    o = np.where(hi > 0, hi, np.where(lo < 0, lo, 0.0))
+    o = np.where((hi > 0) & (lo < 0) & (-lo > hi), lo, o)
+    key = {tuple(f): i for i, f in enumerate(F.tolist())}
+    out = np.zeros(len(F))
+    out[[key[tuple(f)] for f in W["F"].tolist()]] = o
+    return out
 
 
 def strain_rgb(s, scale: float = STRAIN_SCALE) -> np.ndarray:
@@ -291,7 +322,8 @@ def diag_shading(objects: list, diag, body=None, strain_scale: float = STRAIN_SC
                 if (pid == k).any():
                     legend.append((f"{g['name']}:{nm}", c))
         if "strain" in modes:
-            s = face_strain(V, F, M["uv"])
+            s = face_threads_over(V, F, M)  # (threads past their cap, as the fit reads them; was principal
+            # strain, which painted bias shear red / blue while the gate read threads: T-shirt trial t3)
             front = strain_rgb(s, strain_scale)
             stats[g["name"]] = {"strain_p50": float(np.median(np.abs(s))), "strain_p99": float(np.percentile(np.abs(s), 99))}
         back = front.copy()
@@ -385,7 +417,8 @@ def legend_strip(legend: list, width: int, strain: bool = False, scale: float = 
         d.text((6, y + 2), "strain", fill=(240, 240, 240))
         for f, t in ((0, f"-{scale * 100:.0f}%"), (0.5, "0"), (1, f"+{scale * 100:.0f}%")):
             d.text((60 + int(f * (w - 1)) - 10, y + 18), t, fill=(240, 240, 240))
-        d.text((60 + w + 8, y + 2), "blue compressed / red stretched vs flat pattern", fill=(240, 240, 240))
+        d.text((60 + w + 8, y + 2), "threads past their cap: red stretched, blue shortened (wrinkle); white within; "
+               "bias shear not counted", fill=(240, 240, 240))
     return im
 
 

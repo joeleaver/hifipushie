@@ -1032,6 +1032,9 @@ def mesh(B: dict, h: float = 0.02, fold_width: float = 0.0) -> dict:
     marks_n = {k: int(remap[v]) for k, v in marks.items() if used[v]}
     return {"uv": uv_n, "piece": pid_n, "names": names, "F": remap[F], "folds": fold_recs,
             "made": [nm for nm in names if mod[nm][0] == "made"],
+            # (the thread frame per piece and the fabric's stretch limit: the diagnostic strain map reads threads as
+            # the fit does, C235)
+            "grain": [float(pcs[nm].get("grain", 90.0)) for nm in names], "stretch_limit": B.get("stretch_limit"),
             "sew": sew, "sew_seam": sew_seam, "stitch": stitch,
             "marks": marks_n, "closures": closuremod.resolve(B.get("closures"), marks_n, pts_n, B.get("seams"), sew, sew_seam, pcs=pcs),
             "points": pts_n, "border": border_n,

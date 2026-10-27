@@ -2432,3 +2432,36 @@ def test_a_knit_piece_stretches_as_far_as_its_seams_ask():
     a = pf.piece_stretch_asked(np.asarray(M["uv"], float), pf._edges(F), np.asarray(M["piece"]), np.asarray(M["sew"]))
     names = list(M["names"])
     assert abs(a[names.index("band")] - 0.4 / 0.34 + 1) < 0.01 and a.get(names.index("front"), 0.0) < 0.001, a
+
+
+def test_diag_strain_map_reads_threads_past_their_cap():
+    """(C235, T-shirt trial t3: the diag strain map painted bias shear red / blue while the gate read threads) The
+    map's value is the threads past their cap, in the piece's grain frame: a panel sheared 30 deg on the bias reads 0,
+    its warp stretched 5 % reads +3 % (past the 2 % cap), shortened 8 % reads -6 %; a knit rib band drafted 15 % short
+    of the hem it is sewn to reads 0 at 15 % stretch (its own seam asks it)."""
+    from hifipushie import diag_render as dr
+    P = [[0, 0], [0.1, 0], [0.1, 0.1], [0, 0.1]]
+    M = cloth.mesh(_B({"p": _piece(P)}), 0.02)
+    uv, F = np.asarray(M["uv"]), np.asarray(M["F"])
+    flat = np.c_[uv, np.zeros(len(uv))]
+    a = math.radians(30)
+    # pure shear keeping the warp (pattern y) length: x' = x + y sin(a), y' = y cos(a)
+    sheared = np.c_[uv[:, 0] + uv[:, 1] * math.sin(a), uv[:, 1] * math.cos(a), np.zeros(len(uv))]
+    assert np.abs(dr.face_threads_over(flat, F, M)).max() < 1e-9
+    assert np.abs(dr.face_threads_over(sheared, F, M)).max() < 1e-9
+    st = dr.face_threads_over(np.c_[uv[:, 0], uv[:, 1] * 1.05, np.zeros(len(uv))], F, M)
+    assert np.allclose(st, 0.03, atol=1e-9), st
+    sh = dr.face_threads_over(np.c_[uv[:, 0], uv[:, 1] * 0.92, np.zeros(len(uv))], F, M)
+    assert np.allclose(sh, -0.06, atol=1e-9), sh
+    hem = [[0, 0], [0.4, 0], [0.4, 0.1], [0, 0.1]]
+    band = [[0, 0.1], [0.34, 0.1], [0.34, 0.14], [0, 0.14]]
+    Bk = _B({"front": _piece(hem, names={"h0": 3, "h1": 2}), "band": _piece(band, names={"t0": 0, "t1": 1})},
+            seams=[["front:h0>h1", "band:t0>t1"]])
+    Bk["stretch_limit"] = 0.25
+    Mk = cloth.mesh(Bk, 0.02)
+    uvk, Fk, pk = np.asarray(Mk["uv"]), np.asarray(Mk["F"]), np.asarray(Mk["piece"])
+    Xk = np.c_[uvk, np.zeros(len(uvk))]
+    b = pk == Mk["names"].index("band")
+    Xk[b, 0] = uvk[b, 0] * (0.4 / 0.34)  # the band stretched to the hem (+17.6 %, what its seam asks)
+    ok = dr.face_threads_over(Xk, Fk, Mk)
+    assert np.abs(ok).max() < 0.01, np.abs(ok).max()
