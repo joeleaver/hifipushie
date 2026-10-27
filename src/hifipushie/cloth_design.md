@@ -21,7 +21,8 @@ design_garment(name, "shirt", design={"kind": "shirt", "from": "simon", "fit": "
   patch pockets, fly, band, mid rise). There is no sweater kind: `hoodie` is the generic pullover-knit kind (a historical
   name) and its DEFAULTS are a hooded sweatshirt's (french terry, loose fit, hood, kangaroo pocket, dropped shoulder
   into a deep armhole). A crew-neck sweater overrides them: `"block": "knit"`, set-in sleeve, collar `rib_neckband`,
-  cuff `rib`, hem `rib_band`, pockets `none`, jersey, `worn_top: true`, and its armhole MEASURED on the draft against
+  cuff `rib`, hem `rib_band`, pockets `none`, jersey (`worn_top` only if its band starts stretched; never on a tee),
+  and its armhole MEASURED on the draft against
   the armpit (see "Knits").
 - **from:** what drafts it. `simon` (shirt, FreeSewing), `carlton` (overcoat, FreeSewing), `skirt_block` (our own
   skirt draft). Or a `block` + `ops` (guide(topic="cloth_blocks")). Or leave both out and give own `pieces` +
@@ -95,7 +96,7 @@ Design-sheet keys go in `design`; garment keys in `spec` (`design_garment(..., s
 | `pad_over` | garment (outer) | How far up a body normal the under garment still pads, x its own distance to the body (1.1 jackets / coats, 1.5 otherwise) |
 | `collar_ends` | garment | A notched collar past the neck's side: "made" (default) or "draped" (EXPERIMENTAL, not usable yet) |
 | `support` | garment | Pads on the body, not cloth: `[{"kind": "shoulder_pad", "thickness": 0.012}, "sleeve_head"]`. Without them a jacket's shoulders slope soft |
-| `worn_top` | garment / kind | true for shirts, jackets and coats (the kind's default): fronts and backs built on the form. Set it for knits with a seam-laid neckband |
+| `worn_top` | garment / kind | true for shirts, jackets and coats (the kind's default): fronts and backs built on the form. Not for a straight-hanging knit (a tee: it channelled the side seams, trials t3 / t5) |
 | `press_lay` | garment | How far a pressed lapel starts off its front (0.003; 0.005 where an open shirt collar's points lie under the lapels) |
 | `worn_envelope` | garment | Smoothing rounds of the surface a worn top is laid on (0 = the padded body; up to ~10 where the under garment's open collar makes steps; more rides the jacket up) |
 | `made`, `made_folds` | garment / sheet | Override made / draped per piece; `made_folds` didn't pay on lapels. Leave them off |

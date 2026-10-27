@@ -2808,13 +2808,55 @@ def _hstack(paths: list) -> PILImage.Image:
     return out
 
 
-def _garment_sheets(name: str, tag: str, body, garments: list, views, size: int, clay: bool, diag) -> tuple:
+VIEW_DIRS = {"three": {"name": "three", "dir": [-0.65, -0.72, 0.15]}, "top": {"name": "top", "dir": [0.0, -0.05, 1.0]}}
+NATIVE_VIEWS = ("front", "side", "back")
+
+
+def _views(views) -> tuple:
+    """View names -> what the renderers take (a name or {"name", "dir"}). An unknown name is refused with the list
+    (tee trials t4 / t5: "three", the default, and "neck" crashed on a missing PNG)."""
+    out = []
+    for v in views or ("front", "three", "side", "back"):
+        if isinstance(v, dict) or v in NATIVE_VIEWS:
+            out.append(v)
+        elif v in VIEW_DIRS:
+            out.append(VIEW_DIRS[v])
+        else:
+            raise ValueError(f"unknown view {v!r}: use {', '.join(NATIVE_VIEWS + tuple(VIEW_DIRS))} (a region close-up: "
+                             "focus=\"neck\" | shoulders | chest | hem | sleeve)")
+    return tuple(out)
+
+
+FOCUS = ("neck", "shoulders", "chest", "hem", "sleeve")
+
+
+def _focus_box(body, focus: str):
+    """The render box of a region close-up, from the body's landmarks (hps.L, shoulder.L, hips_z)."""
+    at = {k: np.asarray(v, float).reshape(-1) for k, v in (getattr(body, "at", {}) or {}).items()}
+    if focus not in FOCUS:
+        raise ValueError(f"unknown focus {focus!r}: use {', '.join(FOCUS)}")
+    if "hps.L" not in at or "shoulder.L" not in at:
+        raise ValueError("focus needs the body's hps / shoulder landmarks (a base human)")
+    h, sh = at["hps.L"][-3:], at["shoulder.L"][-3:]
+    z_hip = float(at["hips_z"][-1]) if "hips_z" in at else float(h[2]) - 0.55
+    c, half = {"neck": (h * [0, 1, 1], [0.17, 0.17, 0.13]),
+               "shoulders": (sh * [0, 1, 1], [abs(sh[0]) + 0.09, 0.2, 0.15]),
+               "chest": (np.array([0.0, h[1], h[2] - 0.2]), [0.26, 0.2, 0.18]),
+               "hem": (np.array([0.0, h[1], z_hip]), [0.3, 0.25, 0.16]),
+               "sleeve": (sh + [0.04, 0.0, -0.12], [0.16, 0.16, 0.18])}[focus]
+    c, half = np.asarray(c, float), np.asarray(half, float)
+    return c - half, c + half
+
+
+def _garment_sheets(name: str, tag: str, body, garments: list, views, size: int, clay: bool, diag,
+                    box=None) -> tuple:
     """Clay strip and diag sheet of garments [(name, V, mesh dict)] on the body. Returns ([(label, PIL image)],
-    the single-view PNGs' folder). Takes the GPU (resources.heavy)."""
+    the single-view PNGs' folder). Takes the GPU (resources.heavy). box: a region close-up (_focus_box)."""
     from . import cloth, diag_render, resources
     rows = _diag_rows(diag)
-    views = tuple(views or ("front", "three", "side", "back"))
-    box = _garment_box([V for _, V, _ in garments])
+    views = _views(views)
+    asp = 1.0 if box is not None else 0.62  # (a close-up is square)
+    box = box if box is not None else _garment_box([V for _, V, _ in garments])
     d = _render_dir(name)
     objs = [{"name": "body", "V": body.V, "F": body.T, "color": "#c9b8a6"}]
     cols = ["#5b7fa6", "#8a6f4e", "#4e8a6f", "#7a4e8a"]
@@ -2824,16 +2866,16 @@ def _garment_sheets(name: str, tag: str, body, garments: list, views, size: int,
     out = []
     with resources.heavy(f"mcp {tag} {name}", gb=4, gpu=True):
         if clay:
-            pngs = cloth.render(objs, str(d / f"{tag}_clay"), views=views, resolution=size, box=box)
+            pngs = cloth.render(objs, str(d / f"{tag}_clay"), views=views, resolution=size, box=box, aspect=asp)
             out.append(("clay", _hstack(pngs)))
         if rows:
             p = diag_render.sheet([(" + ".join(r), objs, {"diag": r}) for r in rows], d / f"{tag}_diag.png", None,
-                                  views=views, resolution=size, box=box, aspect=0.62)
+                                  views=views, resolution=size, box=box, aspect=asp)
             out.append(("diag", PILImage.open(p).convert("RGB")))
         if clay:  # (C100) each garment in its OWN colour (+ woven stripe) under the game light: the colour is judged
             # here, never on the clay strip's fixed identification colours
             pngs = cloth.render(own_colour_objects(name, objs), str(d / f"{tag}_own"), views=views, resolution=size,
-                                box=box, textured=True)
+                                box=box, textured=True, aspect=asp)
             out.append(("own colour", _hstack(pngs)))
     return out, d
 
@@ -2884,7 +2926,8 @@ def _gate_rows_text(rec: dict) -> str:
         st = "WAIVED" if w.get(r["id"]) else r["status"]
         val = "" if r.get("ours") is None else f" ours {r['ours']}"
         val += "" if r.get("ref") is None else f" ref {r['ref']}"
-        lines.append(f"  {st:<10} {r['id']}{val}" + (f": {r['why']}" if r.get("why") and st != "PASS" else ""))
+        lines.append(f"  {st:<10} {r['id']}{val}" + (f": {r['why']}" if r.get("why") and st != "PASS" else "")
+                     + (f"\n             fix: {r['fix']}" if r.get("fix") and st not in ("PASS", "WAIVED") else ""))
     return "\n".join(lines)
 
 
@@ -2915,11 +2958,13 @@ def pattern_check(name: str, garment: str, refs: str | dict | None = None, waive
 
 @mcp.tool(structured_output=False)
 def fit_garment(name: str, garment: str, views: list[str] | None = None, size: int = 560, clay: bool = True,
-                diag: list | bool | None = None, force: bool = False, save: str | None = None, styled: bool = True):
+                diag: list | bool | None = None, force: bool = False, save: str | None = None, styled: bool = True,
+                focus: str | None = None):
     """The garment assembled from its pattern on the body (the dress form), NO sim: clay + diag (default
     panels+seams+turned; strain+layers), strain p99 and layer pierce, and the next step. Refuses until pattern_check
     PASSes (force=True looks anyway, said in the text). Then styled as its kind is worn (C146; styled=False: closed).
-    views, size, clay, diag, save. Details:
+    views (front, three, side, back, top), size, clay, diag, save. focus: a CLOSE-UP of one region (neck, shoulders,
+    chest, hem, sleeve), framed from the body's landmarks: judge a detail beside a close-up reference with it. Details:
     guide(topic="fit_garment")."""
     from . import cloth, cloth_check as cc, diag_render, next_steps
     spec = store.load(name)
@@ -3019,7 +3064,11 @@ def fit_garment(name: str, garment: str, views: list[str] | None = None, size: i
     elif not uf["passed"]:
         fit_txt = f"  FORCED: the under garment's own fit has not passed ({uf['why']})\n"
     gs = ([under] if under else []) + [(garment, X, M)]
-    ims, d = _garment_sheets(name, f"fit_{garment}", res["body"], gs, views, size, clay=clay, diag=diag)
+    box_ = _focus_box(res["body"], focus) if focus else None
+    tag_ = f"fit_{garment}" + (f"_{focus}" if focus else "")
+    ims, d = _garment_sheets(name, tag_, res["body"], gs, views, max(size, 700) if focus else size, clay=clay,
+                             diag=diag, box=box_)
+    saved_ = [_save_suffix(save, t) for t, _ in ims] if save else []
     txt = (f"{name}:{garment}: {how}{'' if st['passed'] else ' -- FORCED: the pattern gate has not passed'}\n"
            f"  threads (warp / weft) vs the flat pattern: p99 {float(np.percentile(s, 99) * 100):.1f} %, max "
            f"{float(s.max() * 100):.1f} %; past their cap p99 {p99:.1f} % (gate <= {next_steps.THREAD_OVER_P99_MAX:g} %); "
@@ -3027,7 +3076,11 @@ def fit_garment(name: str, garment: str, views: list[str] | None = None, size: i
            f"  bias shear p99 {float(np.percentile(sh_, 99)):.0f} deg (jams past {_pf.SHEAR_LOCK_DEG:g})\n"
            f"  what the fit could not reach: {'; '.join(misfit) if misfit else 'nothing'}\n"
            f"  layer pierce: {'n/a (no under garment)' if pierce is None else f'{pierce} faces'}\n"
-           f"  single views for review_view: {d}\n" + style_txt + fit_txt + vis_txt)
+           f"  single views for review_view: {d} ({tag_}_<clay|own>_<view>.png)\n"
+           + (f"  saved: {', '.join(saved_)}\n" if saved_ else "")
+           + (f"  close-up: {focus} (framed from the body's landmarks)\n" if focus else
+              "  (a detail beside a close-up reference: focus=\"neck\" | shoulders | chest | hem | sleeve)\n")
+           + style_txt + fit_txt + vis_txt)
     return [_out(im, _save_suffix(save, tag)) for tag, im in ims] + [
         txt + next_steps.after_fit(name, garment, p99, pierce, validated, misfit=misfit,
                                    worn_open=bool(cloth.expanded(spec["cloth"][garment]).get("worn_open")))]
@@ -3240,6 +3293,26 @@ def alter_pattern(name: str, garment: str, ops: list[dict], replace: bool = Fals
 REPO = Path(__file__).resolve().parents[2]  # (bin/review, docs/notes: present in a source checkout)
 
 
+DETAIL_WORDS = ("neck", "collar", "band", "cuff", "hem", "pocket", "button", "seam", "placket", "lapel", "stitch")
+
+
+def framing_refusal(region: str, result: str) -> None:
+    """A detail judged on a whole figure is refused (tee trials t4 / t5: a neck close-up reference against a full-figure
+    render, the neck ~40 px across; the reviewer failed it "too small to judge" and its MAJORs sent the agent on 4 blind
+    rounds). Whole figure: the subject (everything off the corner's background colour) spans >= 85 % of the image's
+    height with background above it (a close-up is cut by the frame's top edge)."""
+    if not any(w in region.lower() for w in DETAIL_WORDS):
+        return
+    im = np.asarray(PILImage.open(result).convert("RGB"), float)
+    bg = im[2, 2]
+    fg = np.abs(im - bg).sum(2) > 30
+    rows = np.where(fg.any(1))[0]
+    if len(rows) and (rows[-1] - rows[0]) >= 0.85 * im.shape[0] and rows[0] > 0.02 * im.shape[0]:
+        raise ValueError(f"review_view: the region ({region!r}) is a detail but the result shows the whole figure; the "
+                         "reviewer can't judge it at that size. Render the region close up (fit_garment focus=\"neck\" | "
+                         "shoulders | chest | hem | sleeve), pass one view of it, and crop the reference to the same region")
+
+
 @mcp.tool(structured_output=False)
 def review_view(region: str, reference: str, result: str, context: str = "", stage: str = "", not_stages: str = "",
                 dry: bool = False, out_dir: str | None = None):
@@ -3254,6 +3327,7 @@ def review_view(region: str, reference: str, result: str, context: str = "", sta
         if not Path(p).exists():
             raise ValueError(f"no image {p}")
     reviewgate.refuse_inputs([reference, result], [region], context)  # (raises InputRefused: the rules broken)
+    framing_refusal(region, result)
     tool = REPO / "bin" / "review"
     if not tool.exists():
         raise RuntimeError(f"bin/review not found at {tool} (a source checkout of hifipushie has it)")

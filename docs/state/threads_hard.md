@@ -45,4 +45,7 @@ TEE ITERATIONS (C238, 2026-10-27): t4 (fresh agent, Joe's 2 refs) took 17 design
 trials/t4/postmortem.md. Fixes 1-4 landed (defaults, auto-trued knit drafts, body-level lengths, shoulder gate neck
 offset). A defaults-only tee (workspace trial_tshirt_t5d) now drafts clean (shoulder exact, 0/18 truing, hem at the
 hip line within 3 mm). Not yet done: fit close-up / maps view (fix 5), numbers-only fit (fix 6).
-NEXT: t5 = the same brief, fresh agent; count iterations (target 3).
+C239 (2026-10-27): trials.md process + the t5 fixes (close-ups, framing refusal, misfit noise, tee sleeve, sleeve
+levels, worn_top advice, gates name fixes). Tests: only known failures (3 fold KATs; find_tool / toolsets break on a
+test-only "nap" tool leaked by test_artist's preload, pre-existing; blockin needs workspace model fs_ge3).
+NEXT: t6 = the hoodie (transfer test), fresh agent, no reference; then its post-mortem into trials.md.

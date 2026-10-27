@@ -267,3 +267,34 @@ def test_one_form_switch_for_gate_and_tools():
         assert "FORM_VALIDATED" not in src and "pattern_form.form_validated" not in src
     gate = inspect.getsource(cc.pattern_gate)
     assert "form_validated()" in gate and "FORM_VALIDATED" not in gate
+
+
+def test_views_close_ups_and_misfit_noise(tmp_path):
+    """(C239, tee trials t4 / t5) fit_garment's view names resolve ("three" crashed) and an unknown one lists the valid
+    names; a region close-up is framed from the body's landmarks; review_view refuses a detail judged on a whole
+    figure; a few triangles barely past their cap are not a misfit."""
+    import types
+    import numpy as np
+    from PIL import Image
+    from hifipushie import server, next_steps
+    assert server._views(["front", "three"])[1]["name"] == "three"
+    with pytest.raises(ValueError, match="front, side, back, three, top"):
+        server._views(["neck"])
+    body = types.SimpleNamespace(at={"hps.L": [0.06, 0.0, 1.5], "shoulder.L": [0.2, 0.0, 1.43], "hips_z": 0.95})
+    lo, hi = server._focus_box(body, "neck")
+    assert np.allclose((lo + hi) / 2, [0.0, 0.0, 1.5]) and (hi - lo)[2] < 0.3
+    with pytest.raises(ValueError, match="unknown focus"):
+        server._focus_box(body, "knee")
+    full = np.full((400, 200, 3), 60, np.uint8)
+    full[30:395, 80:120] = 200  # a figure standing in the frame, background above it
+    close = np.full((300, 300, 3), 60, np.uint8)
+    close[0:300, 50:250] = 200  # a close-up: cut by the top edge
+    pf_, pc_ = tmp_path / "full.png", tmp_path / "close.png"
+    Image.fromarray(full).save(pf_)
+    Image.fromarray(close).save(pc_)
+    with pytest.raises(ValueError, match="whole figure"):
+        server.framing_refusal("crew neckline and neckband, front", str(pf_))
+    server.framing_refusal("crew neckline and neckband, front", str(pc_))
+    server.framing_refusal("whole silhouette, front", str(pf_))
+    assert next_steps.misfit_lines({"over_cap_by_piece": {"back": {"n": 1, "max_pct": 0.2}}}) == []
+    assert next_steps.misfit_lines({"over_cap_by_piece": {"back": {"n": 12, "max_pct": 0.6}}})

@@ -275,3 +275,18 @@ def test_a_tee_drafts_right_first_time():
     Bp = cloth.pieces(g, m)
     assert all(r["ok"] for r in cloth_check.junctions(Bp)), [r for r in cloth_check.junctions(Bp) if not r["ok"]]
     assert cloth_check.neck_widen({"design": {"ops": [{"op": "neckline", "widen": 0.02}, {"op": "sleeve"}]}}) == 0.02
+
+
+def test_sleeve_length_levels_and_the_gates_name_their_fix():
+    """(C239) A sleeve length is a body level ("short" = SHORT_SLEEVE x shoulder-to-elbow, "elbow", "three_quarter",
+    "long"), metres still taken; a failing truing row names its fix (auto_true / the true op)."""
+    for lv, want in (("short", pb.SHORT_SLEEVE * MM["shoulderToElbow"] / 1000), ("elbow", MM["shoulderToElbow"] / 1000),
+                     ("long", MM["shoulderToWrist"] / 1000)):
+        K = pd.start("knit", MM, {})
+        pd.apply(K, [{"op": "sleeve", "length": lv}])
+        assert abs(K["meta"]["sleeve"]["length"] - want) < 1e-9, (lv, K["meta"]["sleeve"]["length"], want)
+    g = {"pattern": {"from": "draft", "block": "bodice", "ops": [{"op": "sleeve"}]}, "auto_true": False}
+    Bp = cloth.pieces(g, MM)
+    rows = cloth_check.gate_rows(Bp, [])
+    tr = next(r for r in rows if r["id"] == "truing")
+    assert tr["status"] == "PASS" or "auto_true" in tr.get("fix", ""), tr

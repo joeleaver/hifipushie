@@ -16,7 +16,9 @@ from __future__ import annotations
 THREAD_OVER_P99_MAX = 1.0
 MISFIT_SEW_MM = 3.0  # a seam left open by more than this: the pattern can't close it without stretching
 MISFIT_INSIDE_MM = 2.0  # cloth deeper than this inside the body (shallower: the contact's own tolerance)
-MISFIT_NECK_MM = 10.0  # a neck point this far off the body's: the neckline / shoulder is mis-drafted (C167)
+MISFIT_NECK_MM = 10.0
+MISFIT_OVER_N = 5  # triangles past their cap in one piece before it is a misfit
+MISFIT_OVER_PCT = 1.0  # ... or one of them this far (%) past it  # a neck point this far off the body's: the neckline / shoulder is mis-drafted (C167)
 
 
 def _ids(rows, status) -> list:
@@ -66,7 +68,11 @@ def misfit_lines(info: dict) -> list[str]:
         out.append("cloth inside the body (the pattern can't go round there without stretching: let it out there, "
                    "or a limb went through a sleeve): " + ", ".join(f"{k} {v['n']} vertices, {v['depth_mm']:.0f} mm deep"
                                                                for k, v in sorted(ins.items(), key=lambda kv: -kv[1]["n"])))
-    ov = info.get("over_cap_by_piece") or {}
+    # (a few triangles barely past the cap are the solver's noise, not a pattern fault: tee trials t3 / t4 / t5 read "1
+    # triangles, up to 0 % over" in most fits and spent attention on it; reported from MISFIT_OVER_N triangles or a
+    # MISFIT_OVER_PCT overshoot)
+    ov = {k: v for k, v in (info.get("over_cap_by_piece") or {}).items()
+          if v.get("n", 0) >= MISFIT_OVER_N or v.get("max_pct", 0) >= MISFIT_OVER_PCT}
     if ov:
         out.append("threads past their cap where the cloth meets the form or the layer under it (too small there: let "
                    "it out): " + ", ".join(f"{k} {v['n']} triangles, up to {v['max_pct']:.0f} % over"

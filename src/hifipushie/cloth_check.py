@@ -1223,9 +1223,14 @@ def gate_rows(Bp: dict, items: list, ctx=None, gname: str = "", refs: dict | Non
     # corners by design, e.g. a notched collar's notch, a band's extension past CF; reported, not failed)
     jn = junctions(Bp, corners=tuple(corners or ()))
     badj = [r for r in jn if not r["ok"]]
-    rows.append({"id": "truing", "stage": 2, "status": "FAIL" if badj else "PASS", "measure": "cloth_check.junctions",
-                 "ours": f"{len(jn)} seam ends, {len(badj)} turn > {TRUE_DEG:.0f} deg",
-                 "detail": [f"{r['at']}: {r['deg_a']} + {r['deg_b']} -> turn {r['turn_deg']}" for r in badj][:16]})
+    tr_row = {"id": "truing", "stage": 2, "status": "FAIL" if badj else "PASS", "measure": "cloth_check.junctions",
+              "ours": f"{len(jn)} seam ends, {len(badj)} turn > {TRUE_DEG:.0f} deg",
+              "detail": [f"{r['at']}: {r['deg_a']} + {r['deg_b']} -> turn {r['turn_deg']}" for r in badj][:16]}
+    if badj:  # (a gate names the fix: tee trial t4 spent 4-5 rounds on hand truing it couldn't locate)
+        tr_row["fix"] = ("garment key \"auto_true\": true trues every failing seam end on both pieces, the seam held "
+                         "(knit drafts do it by default); or per corner, alter op {\"op\": \"true\", \"piece\": <piece>, "
+                         "\"at\": <the corner>, \"keep\": <the seam's other end>} at: " + ", ".join(r["at"] for r in badj[:6]))
+    rows.append(tr_row)
     extra, refs = extra or {}, refs or {}
     for it in items:
         cl = classify(it)
@@ -1578,6 +1583,14 @@ def shoulder_seam_row(M: dict, body, g: dict, kind: str = "") -> dict:
     if want != "chord" or g.get("shoulder_pad"):
         return dict(row, status="INFO", why="judged for drafts on the chord slope (cloth.slope_measures)",
                     **({"miss": "; ".join(bad)} if bad else {}))
+    if bad:  # (the gate names the fix: by how much and which op)
+        short = max(tgt - r["len_mm"] for r in per.values())
+        if short > SHOULDER_SEAM_LEN_TOL:
+            ang = math.atan2(bdrop, max(math.sqrt(max(blen ** 2 - bdrop ** 2, 1.0)), 1.0))
+            row["fix"] = (f"the seam is {short:.0f} mm short of the body's: move the shoulder point out along it, op "
+                          f"{{\"op\": \"reshape\", \"piece\": \"front\" and \"back\", \"point\": \"shoulder\", \"by\": "
+                          f"[{short * math.cos(ang) / 1000:.3f}, {-short * math.sin(ang) / 1000:.3f}]}} (a knit draft "
+                          "takes the body's seam by default: shoulder_from \"seam\")")
     return dict(row, status="FAIL" if bad else "PASS", **({"miss": "; ".join(bad)} if bad else {}))
 
 

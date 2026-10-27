@@ -111,7 +111,8 @@ dropped shoulder with the sleeve in a DEEPER armhole). A fitted crewneck sweater
 all of that from the description:
 - `"block": "knit"` with a set-in `{"op": "sleeve"}` (no dropped-shoulder reshape), shoulder seam at the shoulder point;
 - details collar `rib_neckband` (a crew neckline at the neck's base), cuff `rib`, hem `rib_band`, pockets `none`;
-- the fit and ease you read (a fitted knit 0-10%), fabric `jersey`, garment key `worn_top: true`;
+- the fit and ease you read (a fitted knit 0-10%), fabric `jersey`; `worn_top` only for a fitted knit whose band starts
+  stretched round a loose tube (on a straight-hanging tee it pressed the side seams into a channel: tee trials t3, t5);
 - **armhole depth: the target is the underarm 2-4 cm below the armpit. Don't trust the kind's default: measure the
   draft's armhole bottom against the body's armpit on the pattern sheet (stage 2) and fix it before any sim.**
 - band heights read from the reference (a crew neckband is usually 2-3 cm, cuffs and hem 5-7 cm), hem where the

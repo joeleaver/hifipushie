@@ -10,6 +10,7 @@ silhouette errors), not mouse control. North star: tools that let an LLM work li
 - Any stage: read `docs/notes/gates.md` first.
 - New character: follow `docs/notes/character_recipe.md` (stage order, defaults, gates) and check `docs/notes/traps.md`
   before trusting a measure. Lesson ledger: `docs/notes/codified.md` (add a row for every new lesson).
+- Blind end-to-end trials and where their lessons go (tool > kind entry > guide; transfer-tested): `docs/notes/trials.md`.
 
 ## Hard rules
 - Gates every stage: DESCRIBE the reference as measurable items -> MEASURE each round -> LOOK (independent blind reviewer on

@@ -385,6 +385,7 @@ def solve_cap(W: float, ah_front: float, ah_back: float, ease: float) -> dict:
 
 
 SHORT_SLEEVE_HEM = 0.92
+SHORT_SLEEVE = 0.62  # a short sleeve's length, x the shoulder-to-elbow tape (mid upper arm: trials t4 / t5 by eye)
 SLEEVE_DEFAULTS = {"biceps_ease": 0.15, "cap_ease": 0.015, "wrist_ease": 0.25, "length_bonus": 0.0, "length": None,
                    "hem_width": None, "cap_height": None}
 # The cap height as a share of the armhole depth (vertical, shoulder point to underarm, mean of front and back) by garment
@@ -437,6 +438,13 @@ def sleeve(m: dict, body: dict, opts: dict | None = None, armhole: tuple | None 
         o["biceps_ease"] = W / mm("biceps") - 1
     else:
         cap = solve_cap(W, af, ab, o["cap_ease"])
+    if isinstance(o["length"], str):  # a body level (tee trials: 0.21, 0.20, 0.18 m by hand): "short" (SHORT_SLEEVE x the
+        # shoulder-to-elbow tape: mid upper arm), "elbow", "three_quarter" (half way elbow -> wrist), "long" (the wrist)
+        se_, sw_ = mm("shoulderToElbow") if "shoulderToElbow" in m else 0.55 * mm("shoulderToWrist"), mm("shoulderToWrist")
+        lv_ = {"short": SHORT_SLEEVE * se_, "elbow": se_, "three_quarter": 0.5 * (se_ + sw_), "long": sw_}
+        if o["length"] not in lv_:
+            raise ValueError(f"sleeve length: a level ({', '.join(lv_)}) or metres, got {o['length']!r}")
+        o["length"] = lv_[o["length"]] * (1 + o["length_bonus"])
     L = float(o["length"]) if o["length"] else mm("shoulderToWrist") * (1 + o["length_bonus"])
     hw = float(o["hem_width"]) if o["hem_width"] else mm("wrist") * (1 + o["wrist_ease"])
     if not o["hem_width"] and o["length"] and "shoulderToElbow" in m and L < mm("shoulderToElbow"):
