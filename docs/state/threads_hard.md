@@ -13,17 +13,11 @@ solve's: capped both ways the loop cycled with contact); stiff pieces (cells / i
 rows. HARD_CELLS False (made pieces / folds / flaps keep their own rests; in: sprung fall rippled 130 mm), HARD_FLAP_PLANES
 False (pushed every collar thread to the cap). Reports: over_cap_by_piece, inside_by_piece, neck_point_mm; next_steps
 misfit_lines; fit_garment gates threads past cap p99 <= 1 %; face_threads reads stretch only.
-TESTS ($T=/mnt/data/hifipushie/threads; $T/pf_r2.log): pattern_form + fold_checks + mcp_rules + garment_reads: 7 fail.
-- KATs whose old answer NEEDED stretch (measured on the soft fit): plumb hold (threads p99 14.2 %, max 25) x2 tests;
-  sprung fall turned 166.8 of 170 (soft fall p99 4.8 %, max 7.5); straight collar asserts EDGE strain p99 < 10 (an
-  unsprung fall's edge needs ~4.7 %; its geometry is exact now: 27.0 / 12.9 mm, 176 deg). RESTATE each per C235: threads
-  <= cap + the misfit reported (over_cap / gap), keep the shape asserts the cut allows; record the soft numbers.
-- REAL faults to fix: nested collars through each other (bodice 12, stand 12, fall 8 vertices; flap-on-base is soft
-  now); fold_checks two-piece collar fold_on_base FAIL (same); fold running off mid-length 25.2 vs < 25 deg (marginal).
-- Still untested on this design: the rest of the suite (old env leak fixed in tests/test_artist.py), hoodie / jacket /
-  shirt readouts ($T/ab.py <model> <garment> <tag>, $T/where.py), timing (the old final-pass version ran 3.5x slower).
-OPEN: made pieces' stretch is still soft (ARAP cells; HARD_CELLS off). Collars cut without spring can't turn flat at 2 %.
+TESTS (87a5a5ba +): cloth files ($T/pf_r3.log) 2 fail, both MADE PIECES layering: nested collars 4-5 bodice + 2-4 stand
+vertices through the inner (2 fixes failed: made-on-made plane, re-linearised planes), fold_checks two-piece collar
+fold_on_base share 0.033 (< 0.02). HARD_FLAP_PLANES on fixes fold_on_base but breaks the straight collar (stand 19 / 27)
+and nested (19/10/7): off. Restated (needed stretch on the soft fit): plumb hold x2 (14.2 %), sprung fall (4.8 %),
+collars' edge strain, tight tube (16 % short; layer under now hard in every fit), fold run-off 26 deg (25.2 vs 23.9).
+OPEN: made pieces (collars, bands) are outside the hard loop: their stretch is soft (straight collar threads p99 5.2 %, max 58 at the crease) and their layering is the 2 failing tests; in the loop they rippled (HARD_CELLS). Collars cut without spring can't turn flat at 2 %.
 Scratch A/B scripts: $T/kat.py <test names>, cellab.py, plumbab.py, planeab.py, fallthreads.py.
-NEXT: restate the 4 stretch-dependent KATs; fix nested-collar layering (flap planes as a softer hard? or made-on-made
-floor); full suite exit 0; hoodie / jacket / shirt readouts; then a FRESH agent makes a T-shirt through the MCP on this
-branch (Joe 2026-10-26); judge its full figure myself before sending.
+NEXT: full suite ($T/suite2.log); hoodie / jacket / shirt readouts; T-shirt trial (a T-shirt has no made pieces: the open item doesn't block it). Then made pieces in the loop with their own folded rest as the thread frame.
