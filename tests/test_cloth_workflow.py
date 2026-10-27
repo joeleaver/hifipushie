@@ -143,6 +143,9 @@ def test_generate_band_ring():
     assert abs(gd.dims(B, {})["neckband_ratio"] - 0.85) < 1e-6
     # to the body by BOTH raw edges (folded in half, both edges in the one seam: C237), and its own ring seam
     assert len(B["seams"]) == 3 and ["neckband:nw>n>ne", ["body:nw>n>ne"]] in B["seams"], B["seams"]
+    import json as _j
+    notes = B.get("seam_notes") or {}
+    assert all(_j.dumps(s_) in notes for s_ in B["seams"] if s_[1] == ["body:nw>n>ne"]), notes  # (both stretched on)
     Bf = cloth.pieces(dict(own, generate=[dict(own["generate"][0], represent="flush")]), {})
     assert len(Bf["seams"]) == 2 and "fold" not in Bf["pieces"]["neckband"]["lines"]  # (flush: one layer, C237)
 

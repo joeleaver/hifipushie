@@ -106,15 +106,15 @@ def face_strain(V, F, uv) -> np.ndarray:
 
 def face_threads_over(V, F, M) -> np.ndarray:
     """Per face: how far its warp / weft go PAST their cap (C235: the fit's own read, in each piece's grain frame,
-    M["grain"], default 90; bias shear is not stretch, C64). +0.05 = a thread 5 % past its cap, -0.05 = 5 % shorter
+    M["grain"] {piece: deg}, default 90; bias shear is not stretch, C64). +0.05 = a thread 5 % past its cap, -0.05 = 5 % shorter
     than the cap allows (a wrinkle finer than the mesh), 0 within it. The cap: FIT_THREAD_CAP for a woven; for a knit
     (M["stretch_limit"] > KNIT_LIMIT) each piece's own seams' ask on top (a rib band), within the fabric's limit."""
     from . import pattern_form as pf
     V, F = np.asarray(V, float), np.asarray(F)
     uv, pid = np.asarray(M["uv"], float), np.asarray(M["piece"])
     names = list(M["names"])
-    gr = list(M.get("grain") or [90.0] * len(names))
-    B = {"pieces": {nm: {"grain": gr[k]} for k, nm in enumerate(names)}}
+    gr = M.get("grain") or {}  # ({piece: deg}, as garment_pull._thread_frames reads it)
+    B = {"pieces": {nm: {"grain": float(gr.get(nm, 90.0))} for nm in names}}
     E = np.unique(np.sort(np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]], 1), axis=0)
     W = pf._woven_setup({"uv": uv, "piece": pid, "names": names}, B, F, E, np.zeros(len(uv), bool))
     Fg = np.stack([V[W["F"][:, 1]] - V[W["F"][:, 0]], V[W["F"][:, 2]] - V[W["F"][:, 0]]], -1) @ W["Dinv"]

@@ -290,9 +290,12 @@ def generate(pcs: dict, entry: dict, extra: dict | None = None) -> tuple[dict, l
     if extra is not None:
         if abs(ratio - 1.0) > 1e-9:
             e_ = ratio - 1.0  # (the band's length over the edge's: a 0.85 rib band is 15% shorter, stretched on)
-            extra.setdefault("seam_notes", {})[json.dumps(seams[0])] = {
-                "ease": [round(e_ - 0.02, 4), round(e_ + 0.02, 4)],
-                "why": f"{nm}: cut {ratio:.2f} x the edge it is sewn to and stretched on (ratio)"}
+            note = {"ease": [round(e_ - 0.02, 4), round(e_ + 0.02, 4)],
+                    "why": f"{nm}: cut {ratio:.2f} x the edge it is sewn to and stretched on (ratio)"}
+            for sm_ in seams:  # (both raw edges of a folded band are stretched on: the second lacked it, and the
+                # gate read it as a plain seam 8 % short, tee trial t4)
+                if sm_[1] == along:
+                    extra.setdefault("seam_notes", {})[json.dumps(sm_)] = dict(note)
         if entry.get("fold") and not flush:
             extra.setdefault("folds", []).append({"piece": nm, "line": "fold", "angle": 360.0, "kind": "press",
                                                   "name": f"{nm} fold"})

@@ -1034,7 +1034,7 @@ def mesh(B: dict, h: float = 0.02, fold_width: float = 0.0) -> dict:
             "made": [nm for nm in names if mod[nm][0] == "made"],
             # (the thread frame per piece and the fabric's stretch limit: the diagnostic strain map reads threads as
             # the fit does, C235)
-            "grain": [float(pcs[nm].get("grain", 90.0)) for nm in names], "stretch_limit": B.get("stretch_limit"),
+            "grain": {nm: float(pcs[nm].get("grain", 90.0)) for nm in names}, "stretch_limit": B.get("stretch_limit"),
             # (a crew neck's seam, out from the neck's base by its band: the neck pins land that far out, pattern_form)
             "neck_out": max([float(pcs[nm].get("neck_out") or 0.0) for nm in names] + [0.0]),
             "sew": sew, "sew_seam": sew_seam, "stitch": stitch,
