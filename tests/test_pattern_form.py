@@ -474,8 +474,12 @@ def test_curved_collar_on_neck(dip=0.03):
     # fold flat without growing the fall's edge: 174 at 16% p99 on the 30 mm dip (the tool's honest best, recorded)
     assert turned >= (175 if dip == 0 else 170) - 0.5, turned
     # (a crease on a CURVED pattern line can't fold flat unstretched: the fall's edge must grow, as a tailor spreads or
-    # stretches it; 7% on the straight neckline, ~16% on the 30 mm dip)
-    assert st["p99"] < (10 if dip == 0 else 20), st
+    # stretches it; 7% on the straight neckline, ~16% on the 30 mm dip). THREADS HARD (C235): the bodice's threads hold
+    # their cap; the collar is a made piece (HARD_CELLS off), its stretch still the solve's: OPEN (measured: straight
+    # p99 5.2 %, max 58 at the crease; dip p99 13.3 %), no longer asserted as an edge strain (C64: edges count the bias)
+    stf, _ = pf.face_threads(M, c["B"], V)
+    pidf = np.asarray(M["piece"])[np.asarray(M["F"])[:, 0]]
+    assert stf[pidf == c["kb"]].max() < pf.FIT_THREAD_CAP + 0.006, stf[pidf == c["kb"]].max()
 
 
 def _two_piece_collar_case(stand=0.028, fall=0.045, at=0.004, r=0.06, ease=0.004, gap_n=10, kind="roll",
@@ -1905,7 +1909,9 @@ def test_sprung_fall_lies_on_the_shoulders(verbose=True):
     c = _shoulder_collar_case()
     out = pf.assemble({"mesh": c["M"], "X0": c["X0"], "pieces": c["B"]}, c["body"], iters=120, ease=0.004)
     r = _shoulder_collar_read(c, out["V"], verbose=verbose, lab="sprung fall on shoulders")
-    assert r["turned"] >= 170, r
+    # (threads hard, C235: 166.8 with the bodice's threads at their cap; the soft fit's 170 took the fall's threads
+    # p99 4.8 %, max 7.5 %)
+    assert r["turned"] >= 165, r
     assert r["gap_max"] <= 3.0 and r["gap_p50"] >= -1.0, r
     assert r["ripple_max"] < 15, r
 
@@ -2099,7 +2105,8 @@ def tight_over_case(r=0.05, inner=0.010, outer=0.003, verbose=True):
             d, _, _ = us.signed(o["V"])
             mo = (o["V"][:, 2] > 0.14) & (o["V"][:, 2] < 0.26)
             out[on] = {"through": int((d[mo] < 0).sum()), "min_mm": round(float(d[mo].min()) * 1000, 2),
-                       "info_through_under": o["info"].get("through_under"), "grain_p99": o["info"]["grain_stretch_pct"]["p99"]}
+                       "info_through_under": o["info"].get("through_under"), "grain_p99": o["info"]["grain_stretch_pct"]["p99"],
+                       "over_cap": o["info"].get("over_cap_by_piece") or {}}
     finally:
         pf.UNDER_FLOOR = old
     if verbose:
@@ -2110,14 +2117,15 @@ def tight_over_case(r=0.05, inner=0.010, outer=0.003, verbose=True):
 def test_tight_outer_tube_lies_over_the_under_one():
     """KAT (C172, garrett jacket fit round 31): a garment fitted over another never ends inside it; where its pattern
     can't reach round the layer under it, the misfit shows as strain (the muslin read), not as cloth hidden in the under
-    layer. A tube cut 1 mm smaller in radius than the tube it is worn over: with the under layer as a floor nothing of it
-    is inside the inner tube and its grain strain shows the misfit (> 1 %); the control (the old soft push) leaves it
-    through (measured: on 0 through, min +1.5 mm, grain p99 ...; off ... through)."""
+    layer. A tube cut 7 mm smaller in radius than the tube it is worn over (~16 % short round): with the under layer as
+    a floor nothing of it is inside the inner tube and its strain shows the misfit. THREADS HARD (C235): the default
+    fit's hard loop holds the layer under too (UNDER_FLOOR or not: the old soft-push control no longer ends through),
+    and the misfit is READ: threads past their cap, by piece (over_cap_by_piece)."""
     res = tight_over_case(verbose=False)
-    on, off = res[True], res[False]
-    assert on["through"] == 0 and on["min_mm"] >= pf.LAYER_GAP * 1000 - 0.3 and not on["info_through_under"], res
-    assert on["grain_p99"] > off["grain_p99"], res  # (the misfit shows as strain)
-    assert off["through"] > 0, res  # (the control: the soft push loses to the lengths)
+    for on in (True, False):
+        r = res[on]
+        assert r["through"] == 0 and r["min_mm"] >= pf.LAYER_GAP * 1000 - 0.3 and not r["info_through_under"], res
+        assert r["over_cap"] and r["grain_p99"] > 1.0, res  # (the misfit shows as strain, named by piece)
 
 
 def _leaning_two_panel_case(r=0.05, ease=0.01, H=0.3, lean=0.04):
@@ -2157,11 +2165,17 @@ def test_plumb_hold_hangs_the_side_seams_on_the_vertical():
 
     def fwd(V):  # the most a fully held seam vertex lies off its seam top's y (mm)
         return max(abs(V[v, 1] - V[t, 1]) for v, t, w, _a, _n in pf.plumb_seam_pins(M, V, pf.PLUMB_HOLD) if w >= pf.PLUMB_HOLD["w"]) * 1000
-    assert on["info"]["plumb_off_mm"]["max"] <= 3.0 and fwd(on["V"]) <= 5.0, (on["info"], fwd(on["V"]))
+    # THREADS HARD (C235): a straight tube with 10 mm ease can't hang plumb past a 40 mm lean without stretching (the
+    # soft fit met <= 3 mm on threads p99 14.2 %, max 25 %): the hold pulls the seams toward the vertical as far as the
+    # threads allow (measured: on 22 mm, live 32, off 39) and the miss is its read (plumb_off_mm), not hidden stretch
+    st_on, _ = pf.face_threads(M, None, on["V"])
+    assert st_on.max() < pf.FIT_THREAD_CAP + 0.005, st_on.max()
+    assert fwd(on["V"]) < fwd(off["V"]) - 10.0 and on["info"]["plumb_off_mm"]["max"] > 3.0, (on["info"], fwd(on["V"]))
     assert fwd(off["V"]) > 30.0, fwd(off["V"])
     live = pf.assemble({"mesh": M, "X0": X0, "body": body}, body, ease=pf.UNDER_EASE, iters=120,
                        plumb_hold=dict(pf.PLUMB_HOLD, anchor="live"))
-    assert live["info"]["plumb_off_mm"]["max"] <= 3.0 and fwd(live["V"]) <= 3.0, (live["info"], fwd(live["V"]))
+    assert fwd(live["V"]) < fwd(off["V"]) - 5.0, (live["info"], fwd(live["V"]))
+    assert not on["info"]["inside_body"] and not live["info"]["inside_body"], (on["info"], live["info"])
 
 
 def test_plumb_hold_band_moves_the_panels_with_their_seam():
@@ -2191,7 +2205,10 @@ def test_plumb_hold_band_moves_the_panels_with_their_seam():
     bd = pf.assemble({"mesh": M, "X0": X0, "body": body}, body, ease=pf.UNDER_EASE, iters=120,
                      plumb_hold=dict(pf.PLUMB_HOLD, band=0.04))
     off = max(abs(bd["V"][v, 1] - bd["V"][t, 1]) for v, t, w, _a, _n in base if w >= pf.PLUMB_HOLD["w"]) * 1000
-    assert off <= 5.0, off
+    off_on = max(abs(on["V"][v, 1] - on["V"][t, 1]) for v, t, w, _a, _n in base if w >= pf.PLUMB_HOLD["w"]) * 1000
+    # (threads hard, C235: the seams as near the vertical as the plain hold gets them, 22 mm here; the soft fit's
+    # <= 5 mm took 14 % stretch, see test_plumb_hold_hangs_the_side_seams_on_the_vertical)
+    assert off <= off_on + 2.0, (off, off_on)
     assert fold(bd["V"]) <= fold(on["V"]) + 1.0, (fold(bd["V"]), fold(on["V"]))
 
 

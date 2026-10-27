@@ -150,6 +150,8 @@ THREAD_SQUEEZE = 1.0  # how much shorter a thread may get in the hard loop (None
 # edge. Capped both ways, a flat panel couldn't buckle round the body and the loop cycled with the contact (the lone
 # panel: 1000 sweeps still moving 1e-5 m, threads 4-10 %); 0.1 / 0.3 converged (2e-6 m)
 HARD_TOL = 2e-6  # m: a sweep that moves nothing further has converged
+HARD_RELIN = 1  # finishing passes, the contact planes re-taken before each (4 changed nothing on the nested collars)
+HARD_SKIN = 1e-4  # m: the form's plane a hair outside it (on it exactly, rounding read cloth "inside" at -0.0 mm)
 HARD_REACH = 0.01  # m: contact planes for the vertices this near what they must stay outside (a round moves less)
 KNIT_LIMIT = 0.05
 HANG_G = 0.1  # the weight per vertex x mean pattern edge^2 (as SETTLE_G)
@@ -2782,11 +2784,20 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
         if bsurf is not None:
             d, nrm, _ = bsurf.signed(X)
             v = np.where(d < HARD_REACH)[0]
-            out.append((v, nrm[v], d[v], X[v].copy(), np.zeros(len(v))))
+            out.append((v, nrm[v], d[v], X[v].copy(), np.full(len(v), HARD_SKIN)))
+        if usurf is not None and not (uf_ and uf_on[0]):  # (the layer under as the default fit knows it: its
+            # soft push made hard; without it the clamp drew the outer collar's bodice through the inner, 7-18 vertices)
+            du_, nu_, dist_ = usurf.signed(X)
+            v = np.where((dist_ < 0.03) & (du_ < LAYER_GAP + HARD_REACH))[0]
+            out.append((v, nu_[v], du_[v], X[v].copy(), np.full(len(v), LAYER_GAP)))
         if uf_ and usurf is not None and uf_on[0]:
             cv_, du_, nu_ = covered(ufsurf, X, bsurf)
             v = np.where(cv_ & (du_ < LAYER_GAP + HARD_REACH) & uf_side)[0]
             out.append((v, nu_[v], du_[v], X[v].copy(), np.full(len(v), LAYER_GAP)))
+            if umsurf is not None and made_floor_on[0]:  # (C208: made on made, once the bands are stood up)
+                cv_, du_, nu_ = covered(umsurf, X, bsurf)
+                v = np.where(cv_ & (du_ < LAYER_GAP + HARD_REACH) & mine_made)[0]
+                out.append((v, nu_[v], du_[v], X[v].copy(), np.full(len(v), LAYER_GAP)))
         if osurf is not None and ceil_on[0]:
             cv_, do_, no_ = covered(osurf, X, bsurf)
             v = np.where(cv_ & (do_ > -LAYER_GAP - HARD_REACH))[0]
@@ -2802,6 +2813,16 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
             v = np.asarray(fv)[m]
             out.append((v, nfl[m], dfl[m], X[v].copy(), np.asarray(gp, float)[m]))
         return out
+
+    def hard_finish(X, pairs):
+        """THREADS_HARD to convergence, the contact planes re-taken where the cloth went (linearised once, a
+        long finishing pass slid cloth off the real surface: 4 + 4 nested-collar vertices through the inner)."""
+        for _ in range(HARD_RELIN):
+            X0_ = X
+            X = _hard_pass(Wh, X, cap_h, pairs, THREADS_HARD_FINAL, lock_deg=lock_h, planes=hard_planes(X))
+            if np.abs(X - X0_).max() < HARD_TOL:
+                break
+        return X
 
     def system(wc, sw=sw):
         w = wE
@@ -3103,8 +3124,8 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                     Xn[cv_] += nu_[cv_] * np.minimum(LAYER_GAP - du_[cv_], LAYER_STEP if it < iters - 1 else 1.0)[:, None]
             if cap_h is not None:  # THREADS_HARD: the solve predicted, the hard constraints project (threads, the
                 # seams this phase sews, contact as planes where the solve put the cloth), to convergence on its last round
-                Xn = _hard_pass(Wh, Xn, cap_h, hp_, THREADS_HARD_FINAL if it == iters - 1 else THREADS_HARD_SWEEPS,
-                                lock_deg=lock_h, planes=hard_planes(Xn))
+                Xn = (hard_finish(Xn, hp_) if it == iters - 1 else
+                      _hard_pass(Wh, Xn, cap_h, hp_, THREADS_HARD_SWEEPS, lock_deg=lock_h, planes=hard_planes(Xn)))
             X = Xn
         wc, bend_f = wc_keep, bend_keep
         return X
@@ -3246,7 +3267,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
     if laps:  # (LAP_LAYER: nothing of the over piece left through the under one)
         X, info["lap_finish"] = lap_finish(M, X, laps, bsurf)
     if cap_h is not None:  # THREADS_HARD: what the phases after the last relax moved (swing, press, laps) held too
-        X = _hard_pass(Wh, X, cap_h, hard_pairs, THREADS_HARD_FINAL, lock_deg=lock_h, planes=hard_planes(X))
+        X = hard_finish(X, hard_pairs)
     info["turned_deg"] = [round(fold_turned(M, X, g), 0) for fd, g, t in folds_]
     # report
     l0 = np.linalg.norm(uv[E[:, 0]] - uv[E[:, 1]], axis=1)
