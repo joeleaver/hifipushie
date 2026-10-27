@@ -117,7 +117,8 @@ def bodice(m: dict, opts: dict | None = None, knit: bool = False) -> dict:
         ln_ = pattern.length(np.r_[[[0, -fn]], bez([0, -fn], [nw * 0.75, -fn], [nw, -fn * 0.45], [nw, 0])])
         lo_, hi_ = (fn, hi_) if ln_ < target else (lo_, fn)
     ring_ = None
-    if o.get("neckline", "upper_loop") == "ring" and all(k in m for k in ("neckBase", "napeBaseToWaistBack", "hpsToWaistBack",
+    crew = o.get("neckline") == "crew"
+    if o.get("neckline", "upper_loop") in ("ring", "crew") and all(k in m for k in ("neckBase", "napeBaseToWaistBack", "hpsToWaistBack",
                                                                    "neckBaseFrontDrop")):
         # the neckline ON the base-of-neck ring the hps sits on (dress-garrett r): the back neck's drop below the hps
         # line is the body's own (the hps tape minus the ring's centre-back tape, down the back), the front neck's depth
@@ -137,6 +138,15 @@ def bodice(m: dict, opts: dict | None = None, knit: bool = False) -> dict:
             nw = 0.5 * (lo_ + hi_)
             lo_, hi_ = (nw, hi_) if blen(nw) + flen(nw) < target else (lo_, nw)
         ring_ = (bn, fn, target)
+    if crew:
+        # A CREW NECK (T-shirt trial t3: drafted as a shirt's neckline, half the neck girth + ease, the tee's was a
+        # high jewel neck hugging the neck, 56 mm front drop, 8 mm ABOVE the hps at the back, 4 mm out from the neck at
+        # the side, and its 18 mm band read as a mock-turtle). The band's FINISHED edge lies on the base-of-neck ring
+        # (the ring above when the body has it, else the loop rule's); the neckline seam is one band width out from it:
+        # the width + w at the side neck point, the front and back necks w lower.
+        w = float(o.get("band_width", 0.02))
+        nw, fn, bn = nw + w, fn + w, bn + w
+        log.append(f"crew neck: the band's edge ({w * 1000:.0f} mm) on the neck's base, the seam {w * 1000:.0f} mm out")
     if o.get("front_neck") is not None:
         fn = float(o["front_neck"])
     sx = mm("shoulderToShoulder") / 2 * (1 + o["shoulder_ease"])
@@ -274,6 +284,8 @@ def bodice(m: dict, opts: dict | None = None, knit: bool = False) -> dict:
             pc["darts"]["bustDart"] = ("bustDartA", "bustDartTip", "bustDartB")
         if "waistDartA" in pc["names"]:
             pc["darts"]["waistDart"] = ("waistDartA", "waistDartTip", "waistDartB")
+        if crew:
+            pc["neck_out"] = w  # (the form's neck pin lands this far out along the shoulder: pattern_form._pins)
         out[which] = pc
     f, b = out["front"], out["back"]
     low = "hem" if to_hips else "waist"

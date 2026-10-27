@@ -69,6 +69,7 @@
                   "regular": {"chest": [0.04, 0.16], "waist": [0.06, 0.45], "hips": [0.04, 0.25]},
                   "relaxed": {"chest": [0.15, 0.35], "waist": [0.20, 0.65], "hips": [0.15, 0.40]}},
           "details": {"collar": "rib_neckband", "cuff": "hemmed", "front_closure": "pullover", "hem": "coverstitch"},
+          "draft": {"block": "knit", "block_options": {"neckline": "crew", "band_width": 0.02}},
           "required": ["collar", "cuff", "hem"],
           "sewing_order": ["front", "back", "neckband", "sleeve"]},
   "hoodie": {"region": "upper", "seam_finish": "topstitched", "fabric": "french_terry", "lap": null, "cap_ease": [-0.03, 0.03],

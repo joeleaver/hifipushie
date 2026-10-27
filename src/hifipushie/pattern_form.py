@@ -156,6 +156,7 @@ HARD_RELIN = 1  # finishing passes, the contact planes re-taken before each (4 c
 HARD_SKIN = 1e-4  # m: the form's plane a hair outside it (on it exactly, rounding read cloth "inside" at -0.0 mm)
 HARD_REACH = 0.01  # m: contact planes for the vertices this near what they must stay outside (a round moves less)
 KNIT_LIMIT = 0.05
+KNIT_BAND_REST = True  # a knit piece sewn short rests at its sewn length in the fit (knit_band_rest)
 HANG_G = 0.1  # the weight per vertex x mean pattern edge^2 (as SETTLE_G)
 HANG_ITERS = 600  # (the towel KAT: 150 rounds left it half way, 26 mm; 600: 9-10 mm, hems +3 / +0.4)
 HANG_STRAIN = 0.01  # the most the weight stretches a thread (warp / weft): the muslin's "until it would stretch"
@@ -185,6 +186,37 @@ def piece_stretch_asked(uv: np.ndarray, E: np.ndarray, pid: np.ndarray, sw: np.n
         if l0 > 1e-6:
             asked.setdefault(int(pid[a]), []).append(float(np.linalg.norm(uv[pa] - uv[pb])) / l0 - 1.0)
     return {k: max(0.0, float(np.percentile(v, 95))) for k, v in asked.items()}
+
+
+def knit_band_rest(M: dict) -> dict:
+    """KNIT_BAND_REST: the mesh with each knit piece drafted SHORT of what it is sewn to (a rib neckband, cuff, hem band:
+    piece_stretch_asked) resting at its SEWN length, its pattern scaled along its seam's direction by 1 + the ask about
+    its centroid. A rib stretches onto its seam as it is sewn: that is its worn rest. Held at its cut length, the fit
+    split the difference with the jersey it is sewn to (the neckline shortened past its cap, gathered) and the short
+    ring rode up the neck to where the neck is as narrow (T-shirt trial t3: a crew band read as a mock-turtle). The
+    returned mesh is the fit's only: reads against the drafted pattern (face_threads, the diag map) still see the
+    band's stretch, within its knit cap."""
+    uv = np.asarray(M["uv"], float).copy()
+    pid = np.asarray(M["piece"])
+    F = np.asarray(M["F"])
+    sw = np.asarray(M.get("sew", []), int).reshape(-1, 2)
+    if not len(sw):
+        return M
+    E = np.unique(np.sort(np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]], 1), axis=0)
+    ask = piece_stretch_asked(uv, E, pid, sw)
+    for k, a in ask.items():
+        if a <= 1e-4:
+            continue
+        sv = np.unique(sw[pid[sw] == k])
+        if len(sv) < 2:
+            continue
+        p = uv[sv] - uv[sv].mean(0)
+        d = np.linalg.svd(p, full_matrices=False)[2][0]  # (the seam's direction in the pattern)
+        m = pid == k
+        c = uv[m].mean(0)
+        r = uv[m] - c
+        uv[m] = c + r + np.outer(r @ d, d) * a
+    return dict(M, uv=uv)
 
 
 def _tri_colours(F: np.ndarray, n: int) -> list:
@@ -1248,6 +1280,12 @@ def _pins(M, X0, body, ease, bsurf, under_v=None, neck_split: bool | None = None
         q_ = neck_split_point(body, sh_) if sh_ is not None else None
         if q_ is not None:
             hps_at = q_
+    if hps_at is not None and float(M.get("neck_out") or 0.0) > 0 and "shoulder.L" in at:
+        # a CREW neck (pattern_blocks neckline "crew"): the seam lies its band's width out from the neck's base, so
+        # its neck point lands that far out toward the shoulder point (pinned on the body's, the pin dragged the
+        # neckline back in against the neck: miss 8.6 mm, the front drop 52 of the drafted ~75 mm)
+        d_ = np.asarray(at["shoulder.L"], float).reshape(-1)[:3] - hps_at
+        hps_at = hps_at + float(M["neck_out"]) * d_ / max(float(np.linalg.norm(d_)), 1e-9)
     for k, v in M["points"].items():
         nm, pt = k.split(":", 1)
         side = 1.0 if X0[v, 0] >= 0 else -1.0
@@ -2538,6 +2576,8 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
     neck_w_ = LEGACY_NECK_PIN_W if fit_model == "isometric" else NECK_PIN_W
     M = pattern["mesh"]
     B = pattern.get("pieces")
+    if KNIT_BAND_REST and float((B or {}).get("stretch_limit") or 0.0) > KNIT_LIMIT:
+        M = knit_band_rest(M)
     closed_args = dict(body=body, under=under, ease=ease, fasten=fasten, iters=iters, X0=X0, attract=attract,
                        pressed=pressed, shoulder_pad=shoulder_pad, over=over, bridge=bridge,
                        fit_model=fit_model, under_floor=under_floor)  # (OPEN_HOLD: the same garment closed)

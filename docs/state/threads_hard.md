@@ -34,5 +34,8 @@ paints EDGE strain (bias shear red / blue) while the gate reads threads. The mis
 fits within its threads). Its tool gaps: style push KeyError 'rounds', contour op crash, collar band ratio ignored
 under options (works under generate.ratio), worn_top channels knit side seams, no close-up of the fit, renders' names
 not printed.
-NEXT: diag strain map -> threads past cap; neckband lie; the 3 open fold tests; a trial that DOES misfit (a tight
-woven garment) to exercise the report.
+NECK + MAP (C236, 2026-10-27): diag strain map = threads past cap; tee neckline "crew" (band edge on the neck base,
+seam a band width out, neck pins moved out with it); knit bands rest at their sewn length. Trial tee refit
+(workspace trial_tshirt_t3d = t3 v23 minus its own neckline op): reads as a crew neck; OPEN the band is a thick round
+roll standing off the neck at the sides. Renders /mnt/data/hifipushie/neckband/ab_clay*.png, crew2_neck.png.
+NEXT: the band's roll (fold gap / thickness?) ; the 3 open fold tests; a fresh agent re-runs the tee end to end.
