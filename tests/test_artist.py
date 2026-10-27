@@ -31,6 +31,15 @@ from hifipushie import artist  # noqa: E402
 TOKEN = "test-token"
 
 
+@pytest.fixture(autouse=True)
+def _assets_env_restored(monkeypatch):
+    """A Runner points HIFIPUSHIE_ASSETS at its packs dir (process-wide); put it back after each test, or every later
+    test in the suite looks for GNM / MakeHuman in a deleted tmp dir."""
+    monkeypatch.setenv("HIFIPUSHIE_ASSETS", os.environ.get("HIFIPUSHIE_ASSETS", ""))
+    if not os.environ["HIFIPUSHIE_ASSETS"]:
+        monkeypatch.delenv("HIFIPUSHIE_ASSETS")
+
+
 def small_spec() -> dict:
     return {
         "joints": {"pelvis": {"pos": [0, 0, 0.5], "r": 0.1}, "chest": {"pos": [0, 0, 0.8], "r": 0.12},

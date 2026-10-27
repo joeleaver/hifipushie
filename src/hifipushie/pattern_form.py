@@ -139,7 +139,18 @@ FIT_THREAD_SWEEPS = 4
 # the body), never as stretch. Env PF_THREADS_HARD=0 for the A/B.
 THREADS_HARD = os.environ.get("PF_THREADS_HARD", "1") == "1"
 THREADS_HARD_SWEEPS = 30  # per fit round (the next round's solve moves it again)
-THREADS_HARD_FINAL = 1000  # at the end of every relax phase: run to convergence (early exit), threads over contact
+THREADS_HARD_FINAL = 1000  # the last round of every phase and the end of assemble: to convergence (early exit)
+HARD_CELLS = False  # the ARAP cells' triangles (made pieces, folds, flaps) in the hard loop. Off: they keep their own
+# (folded) rests in the solve, and the flat pattern's threads fought them (in: the sprung fall rippled 130 mm, the
+# straight collar's stand 23 of 27 mm; out: 27.0 mm, ripple 4). Their stretch is still the solve's (soft): OPEN
+HARD_FLAP_PLANES = False  # a turned flap held on its base as a hard plane. Off: the flap's soft target (FLAP_PULL) only;
+# hard, it pushed the collar out until every thread sat at its cap (p50 2.0 % against 0.3)
+THREAD_SQUEEZE = 1.0  # how much shorter a thread may get in the hard loop (None: as its cap). Stretch is the hard
+# rule; shortening is the solve's (its isometry, soft): a woven buckles, and a wrinkle finer than the mesh is a shorter
+# edge. Capped both ways, a flat panel couldn't buckle round the body and the loop cycled with the contact (the lone
+# panel: 1000 sweeps still moving 1e-5 m, threads 4-10 %); 0.1 / 0.3 converged (2e-6 m)
+HARD_TOL = 2e-6  # m: a sweep that moves nothing further has converged
+HARD_REACH = 0.01  # m: contact planes for the vertices this near what they must stay outside (a round moves less)
 KNIT_LIMIT = 0.05
 HANG_G = 0.1  # the weight per vertex x mean pattern edge^2 (as SETTLE_G)
 HANG_ITERS = 600  # (the towel KAT: 150 rounds left it half way, 26 mm; 600: 9-10 mm, hems +3 / +0.4)
@@ -208,7 +219,10 @@ def _thread_limit(W: dict, X: np.ndarray, cap, sweeps: int = 4, lock_deg: float 
             Fg = np.stack([X[fg[:, 1]] - X[fg[:, 0]], X[fg[:, 2]] - X[fg[:, 0]]], -1) @ W["Dinv"][grp]
             ln = np.linalg.norm(Fg, axis=1)  # (g, 2)
             cg = capa[grp]
-            sc = np.clip(ln, 1.0 - cg, 1.0 + cg) / np.maximum(ln, 1e-12)
+            sq_ = cg if THREAD_SQUEEZE is None else THREAD_SQUEEZE
+            if "stiff" in W:
+                sq_ = np.where(W["stiff"][grp], cg, sq_)
+            sc = np.clip(ln, 1.0 - sq_, 1.0 + cg) / np.maximum(ln, 1e-12)
             bad = (np.abs(sc - 1.0) > 1e-9).any(1)
             jam = None
             if lock_deg is not None:
@@ -239,32 +253,36 @@ def _thread_limit(W: dict, X: np.ndarray, cap, sweeps: int = 4, lock_deg: float 
     return X
 
 
-def _hard_pass(W: dict, X: np.ndarray, cap, pairs: np.ndarray, sweeps: int, lock_deg: float | None = None) -> np.ndarray:
-    """THREADS_HARD's finish: the threads (_thread_limit, every triangle) and the sewn / fastened pairs (each pair on
-    its midpoint) projected in turn until both hold (or `sweeps`). Seams are supports: a thread clamp alone opened them
-    (Garrett's jacket 39 mm, the hoodie 19)."""
+def _hard_pass(W: dict, X: np.ndarray, cap, pairs: np.ndarray, sweeps: int, lock_deg: float | None = None,
+               planes=None) -> np.ndarray:
+    """THREADS_HARD's constraint loop (C235: the rebuild, position-based dynamics' projection after the solve's
+    prediction): the threads (_thread_limit, every triangle), the sewn / fastened pairs (each pair on its midpoint) and
+    the contact `planes` (v, n, d0, x0, target: n . (x - x0) + d0 >= target, linearised where the round started: the
+    form, the layers, a flap on its base) projected in turn, Gauss-Seidel, until a sweep moves nothing (HARD_TOL) or
+    `sweeps`. Contact last: where the pattern can't reach round what it's worn over, the threads end past their cap
+    there (the misfit, over_cap_by_piece), never cloth through it (C172). The soft goals (bending, folds, attraction,
+    pins) are the next round's solve. A clamp alone after the solve undid the contact (a tight outer tube 743 vertices
+    through the one under it); sewing seams the phase doesn't sew dragged a neckline off the neck."""
     pairs = np.asarray(pairs, int).reshape(-1, 2)
     for _ in range(sweeps):
+        X0 = X
         X = _thread_limit(W, X, cap, 1, lock_deg)
-        if not len(pairs):
-            Y = _thread_limit(W, X, cap, 1, lock_deg)
-            if np.abs(Y - X).max() < 1e-7:
-                return Y
-            X = Y
-            continue
-        gap = np.linalg.norm(X[pairs[:, 0]] - X[pairs[:, 1]], axis=1)
-        acc = np.zeros_like(X)
-        cnt = np.zeros(len(X))
-        mid = 0.5 * (X[pairs[:, 0]] + X[pairs[:, 1]])
-        for c in (0, 1):
-            np.add.at(acc, pairs[:, c], mid)
-            np.add.at(cnt, pairs[:, c], 1.0)
-        on = cnt > 0
-        X[on] = acc[on] / cnt[on, None]
-        Y = _thread_limit(W, X, cap, 1, lock_deg)
-        if gap.max() < 1e-4 and np.abs(Y - X).max() < 1e-7:
-            return Y
-        X = Y
+        if len(pairs):
+            acc = np.zeros_like(X)
+            cnt = np.zeros(len(X))
+            mid = 0.5 * (X[pairs[:, 0]] + X[pairs[:, 1]])
+            for c in (0, 1):
+                np.add.at(acc, pairs[:, c], mid)
+                np.add.at(cnt, pairs[:, c], 1.0)
+            on = cnt > 0
+            X[on] = acc[on] / cnt[on, None]
+        for v, nn, d0, x0, tg in planes or ():
+            viol = tg - (d0 + np.einsum("ij,ij->i", nn, X[v] - x0))
+            m = viol > 0
+            if m.any():
+                X[v[m]] += nn[m] * viol[m, None]
+        if np.abs(X - X0).max() < HARD_TOL:
+            break
     return X
 
 
@@ -1083,9 +1101,10 @@ def woven_shear_deg(W: dict, X: np.ndarray) -> np.ndarray:
 
 
 def face_threads(M: dict, B: dict | None, X: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Per face of M: (the larger |warp / weft stretch| as a fraction, the bias shear in deg) of the map flat pattern ->
-    X, in each piece's grain frame (B["pieces"][name]["grain"], default 90). The fit's misfit read (C64, C166): an edge
-    or principal strain counts the bias's shear as stretch. Degenerate pattern faces read 0."""
+    """Per face of M: (the larger warp / weft STRETCH as a fraction, >= 0, the bias shear in deg) of the map flat
+    pattern -> X, in each piece's grain frame (B["pieces"][name]["grain"], default 90). The fit's misfit read (C64,
+    C166): an edge or principal strain counts the bias's shear as stretch. A shorter thread is not read: a woven
+    buckles, and a wrinkle finer than the mesh is a shorter edge (THREAD_SQUEEZE). Degenerate pattern faces read 0."""
     F = np.asarray(M["F"])
     E = np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]]
     E = np.unique(np.sort(E, 1), axis=0)
@@ -1096,7 +1115,7 @@ def face_threads(M: dict, B: dict | None, X: np.ndarray) -> tuple[np.ndarray, np
     key = {tuple(f): i for i, f in enumerate(F.tolist())}
     st, sh = np.zeros(len(F)), np.zeros(len(F))
     idx = np.array([key[tuple(f)] for f in W["F"].tolist()], int)
-    st[idx] = np.abs(ln - 1.0).max(1)
+    st[idx] = np.maximum(ln - 1.0, 0.0).max(1)
     sh[idx] = np.degrees(np.arcsin(np.clip(np.abs(c), 0, 1)))
     return st, sh
 
@@ -2731,7 +2750,21 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
     Wh = None  # THREADS_HARD: every triangle (folded, made and turned pieces are cut from the pattern too)
     hard_pairs = np.zeros((0, 2), int)
     if THREADS_HARD and Wv is not None:
-        Wh = _woven_setup(M, B, F, E, np.zeros(n, bool), skip={k for k in range(len(names)) if not placed[k]})
+        Wh = _woven_setup(M, B, F, E, np.zeros(n, bool))  # (every piece: the bands too, once stood up; skipping
+        # the pieces placed later left collars unlimited: the straight collar's edges 604 %)
+        if not HARD_CELLS:  # (A/B: the ARAP cells' triangles, held by their own rests in the solve, left out)
+            kt_ = ~cellv[Wh["F"]].any(1)
+            Wh = {"F": Wh["F"][kt_], "q": Wh["q"][kt_], "Dinv": Wh["Dinv"][kt_]}
+        stiff_ = cellv.copy()  # (made pieces / folds / flaps: ARAP cells; interfaced cloth: keyed bending)
+        if bend_w is not None:
+            stiff_ |= np.asarray(bend_w, float) > 1.0 + 1e-9
+        row_ = np.zeros(n, bool)  # (a fold's row: the crease folds within one triangle, its cross thread shorter
+        # by most of its length; held at the cap, the roll stood open)
+        for fd, g, turn in folds_:
+            for r_ in g["rows"]:
+                row_[np.asarray(r_["row"], int)] = True
+        Wh["stiff"] = (stiff_[Wh["F"]].any(1) & ~row_[Wh["F"]].any(1))[:, None]  # (shorter no more than the cap: a
+        # stiff piece doesn't buckle finer than the mesh; free, the sprung fall's edge rippled 67 mm)
         hard_pairs = np.r_[np.asarray(sw, int).reshape(-1, 2), np.asarray(fast, int).reshape(-1, 2)]
         lim_ = float((B or {}).get("stretch_limit") or 0.0)
         cap_h = FIT_THREAD_CAP
@@ -2741,6 +2774,34 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
             cpp = np.array([min(lim_, FIT_THREAD_CAP + ask_.get(k, 0.0)) for k in range(len(names))])
             cap_h = cpp[pid[Wh["F"][:, 0]]][:, None]
             info_cap = {names[k]: round(float(c) * 100, 1) for k, c in enumerate(cpp) if c > FIT_THREAD_CAP + 1e-9}
+
+    def hard_planes(X):
+        """THREADS_HARD's contact, as planes at X (see _hard_pass): the form (nothing inside it), the layer under (one
+        LAYER_GAP over it, C172), the layer over (LAYER_GAP under it), a turned flap on its base (its gap out)."""
+        out = []
+        if bsurf is not None:
+            d, nrm, _ = bsurf.signed(X)
+            v = np.where(d < HARD_REACH)[0]
+            out.append((v, nrm[v], d[v], X[v].copy(), np.zeros(len(v))))
+        if uf_ and usurf is not None and uf_on[0]:
+            cv_, du_, nu_ = covered(ufsurf, X, bsurf)
+            v = np.where(cv_ & (du_ < LAYER_GAP + HARD_REACH) & uf_side)[0]
+            out.append((v, nu_[v], du_[v], X[v].copy(), np.full(len(v), LAYER_GAP)))
+        if osurf is not None and ceil_on[0]:
+            cv_, do_, no_ = covered(osurf, X, bsurf)
+            v = np.where(cv_ & (do_ > -LAYER_GAP - HARD_REACH))[0]
+            out.append((v, -no_[v], -do_[v], X[v].copy(), np.full(len(v), LAYER_GAP)))
+        for (fv, bv, bt), gp in zip(over, over_gap) if HARD_FLAP_PLANES else ():
+            if not len(bt):
+                continue
+            ix = -np.ones(n, int)
+            ix[bv] = np.arange(len(bv))
+            ok_ = (ix[bt] >= 0).all(1)
+            dfl, nfl, dist = _Surface(X[bv], ix[bt[ok_]], ref=bsurf).signed(X[fv])
+            m = (dist < 0.02) & (dfl < np.asarray(gp) + HARD_REACH)
+            v = np.asarray(fv)[m]
+            out.append((v, nfl[m], dfl[m], X[v].copy(), np.asarray(gp, float)[m]))
+        return out
 
     def system(wc, sw=sw):
         w = wE
@@ -2808,6 +2869,9 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
             wc = np.full(n, SETTLE_FREE)
         Ax, Ayz, Ay = system(wc) if sw_ is None else system(wc, sw_)
         fa = np.asarray(fast, int).reshape(-1, 2)
+        # (THREADS_HARD: the seams this phase sews; a band not yet stood up is not sewn: closed at once, the collar
+        # tab out of the back dragged the neckline off the neck, the stand at CB -9 of 27 mm)
+        hp_ = hard_pairs if sw_ is None else np.r_[np.asarray(sw_, int).reshape(-1, 2), fa]
         ccon = np.zeros(n, bool)
         ucon = np.zeros(n, bool)  # (UNDER_FLOOR: the vertices on the under layer)
         drv_ = np.zeros(n, bool)  # (SHEAR_FREE: the vertices something drives: pins, the body in reach, the layers)
@@ -3037,12 +3101,11 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                     cv_, du_, nu_ = covered(umsurf, Xn, bsurf)
                     cv_ &= (du_ < LAYER_GAP) & mine_made
                     Xn[cv_] += nu_[cv_] * np.minimum(LAYER_GAP - du_[cv_], LAYER_STEP if it < iters - 1 else 1.0)[:, None]
-            if cap_h is not None:  # THREADS_HARD: the round ends with no thread past its cap (contact can't buy stretch)
-                Xn = _thread_limit(Wh, Xn, cap_h, THREADS_HARD_SWEEPS, lock_deg=lock_h)
+            if cap_h is not None:  # THREADS_HARD: the solve predicted, the hard constraints project (threads, the
+                # seams this phase sews, contact as planes where the solve put the cloth), to convergence on its last round
+                Xn = _hard_pass(Wh, Xn, cap_h, hp_, THREADS_HARD_FINAL if it == iters - 1 else THREADS_HARD_SWEEPS,
+                                lock_deg=lock_h, planes=hard_planes(Xn))
             X = Xn
-        if cap_h is not None:  # THREADS_HARD: the phase ends with the threads converged (what that pushes into the
-            # body is the misfit read: inside_body, not hidden stretch)
-            X = _hard_pass(Wh, X, cap_h, hard_pairs, THREADS_HARD_FINAL, lock_deg=lock_h)
         wc, bend_f = wc_keep, bend_keep
         return X
 
@@ -3183,7 +3246,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
     if laps:  # (LAP_LAYER: nothing of the over piece left through the under one)
         X, info["lap_finish"] = lap_finish(M, X, laps, bsurf)
     if cap_h is not None:  # THREADS_HARD: what the phases after the last relax moved (swing, press, laps) held too
-        X = _hard_pass(Wh, X, cap_h, hard_pairs, THREADS_HARD_FINAL, lock_deg=lock_h)
+        X = _hard_pass(Wh, X, cap_h, hard_pairs, THREADS_HARD_FINAL, lock_deg=lock_h, planes=hard_planes(X))
     info["turned_deg"] = [round(fold_turned(M, X, g), 0) for fd, g, t in folds_]
     # report
     l0 = np.linalg.norm(uv[E[:, 0]] - uv[E[:, 1]], axis=1)
@@ -3231,6 +3294,14 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
         info["inside_by_piece"] = {names[k]: {"n": int(((d < 0) & (pid == k)).sum()),
                                               "depth_mm": round(float(-d[(d < 0) & (pid == k)].min()) * 1000, 1)}
                                    for k in range(len(names)) if ((d < 0) & (pid == k)).any()}
+    if Wh is not None and len(Wh["F"]):  # THREADS_HARD: where the threads end past their cap (the misfit), by piece
+        fh_ = Wh["F"]
+        Fg_ = np.stack([X[fh_[:, 1]] - X[fh_[:, 0]], X[fh_[:, 2]] - X[fh_[:, 0]]], -1) @ Wh["Dinv"]
+        ov_ = (np.linalg.norm(Fg_, axis=1) - 1.0).max(1) - np.broadcast_to(np.asarray(cap_h, float).reshape(-1), len(fh_))
+        pk_ = pid[fh_[:, 0]]
+        info["over_cap_by_piece"] = {names[k]: {"n": int(((ov_ > 0.005) & (pk_ == k)).sum()),
+                                                "max_pct": round(float(ov_[pk_ == k].max()) * 100, 1)}
+                                     for k in range(len(names)) if ((ov_ > 0.005) & (pk_ == k)).any()}
         # (the neck points too: soft since C167, their miss IS the misfit read; w >= 100 alone listed none)
         info["neck_point_mm"] = {k: round(placement_error(X[v], q), 1) for k, v in M["points"].items()
                                  for v_, q, w_ in full if v_ == v and (w_ >= 100 or k.split(":")[-1].startswith("hps"))}

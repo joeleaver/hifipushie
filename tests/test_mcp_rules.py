@@ -248,7 +248,7 @@ def test_render_pattern_check_and_fit_default_to_diag(gate):
     out = server.fit_garment(MODEL, "skirt", views=["front", "back"], size=320)
     (txt,) = _texts(out)
     assert len(_images(out)) == 3  # clay + diag + own colour under the game light (C107)
-    assert "strain vs the flat pattern: p99" in txt and "next:" in txt
+    assert "threads (warp / weft) vs the flat pattern: p99" in txt and "next:" in txt
     assert list((store.HOME / "_looks" / MODEL).glob("fit_skirt_diag_r0_*.png"))  # single views for review_view
 
 

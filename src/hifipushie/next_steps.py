@@ -66,6 +66,11 @@ def misfit_lines(info: dict) -> list[str]:
         out.append("cloth inside the body (the pattern can't go round there without stretching: let it out there, "
                    "or a limb went through a sleeve): " + ", ".join(f"{k} {v['n']} vertices, {v['depth_mm']:.0f} mm deep"
                                                                for k, v in sorted(ins.items(), key=lambda kv: -kv[1]["n"])))
+    ov = info.get("over_cap_by_piece") or {}
+    if ov:
+        out.append("threads past their cap where the cloth meets the form or the layer under it (too small there: let "
+                   "it out): " + ", ".join(f"{k} {v['n']} triangles, up to {v['max_pct']:.0f} % over"
+                                           for k, v in sorted(ov.items(), key=lambda kv: -kv[1]["n"])))
     return out
 
 
