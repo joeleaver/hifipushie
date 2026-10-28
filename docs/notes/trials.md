@@ -37,7 +37,7 @@ Each is a rule of the craft or of the tool contract, not of one garment. Fix hom
 
 1. **Cloth hangs.** A garment falls from its supports (shoulders, waist) under its own weight; nothing is drawn onto the
    body except where it rests on it. Wings at the sides (hoodie, tee), sleeves standing off the arm (hoodie, tee), a hem
-   clinging into the crotch (shirt) are the same missing hang. [fit: a hang step with hard threads; gates below]
+   clinging into the crotch (shirt) are the same missing hang. [x hang step, C244 (provisional: two KATs open, see docs/state/hang.md)]
 2. **Early review measures how it hangs, not only that it is clean.** Hang gates in fit_garment, each naming the piece
    and the fix: side stand-off vs the ease (wings), sleeve axis vs the arm's and the gap under it, a step / spike where
    the cap meets the body, cloth drawn between the legs or into a hollow. A blind look runs without a reference against
