@@ -157,7 +157,18 @@ def test_drawn_between_the_legs_found_and_a_bridging_hem_passes():
     assert h["depth_mm"] > hr.HOLLOW_MAX_MM and h["where"] == "between the legs", h
 
 
-def test_hang_rows_are_the_fits_until_a_hang_step_and_never_block():
+def test_hang_rows_are_the_patterns_once_the_fit_hangs():
+    """C244: with the hang step a hang FAIL is the pattern's: owner "pattern", its fix names the pattern move, and it
+    blocks the detail rows like any big read."""
+    assert hr.HANG_STEP
+    w = hr.rows({"wings": {"L": {"wing_mm": 46.0, "z": 1.12, "side_off_mm": 77.0}}})[0]
+    assert w["status"] == "FAIL" and w["owner"] == "pattern" and "PATTERN" in w["fix"] and "side seams" in w["fix"]
+    detail = {"id": "collar_corners", "stage": 3, "status": "PASS"}
+    assert cc.big_first([w, detail])[-1]["status"] == "BLOCKED"
+
+
+def test_hang_rows_are_the_fits_until_a_hang_step_and_never_block(monkeypatch):
+    monkeypatch.setattr(hr, "HANG_STEP", False)
     rows = hr.rows({"wings": {"L": {"wing_mm": 46.0, "z": 1.12, "side_off_mm": 77.0}}})
     w = rows[0]
     assert w["status"] == "FAIL" and w["owner"] == "fit" and "no hang step yet" in w["fix"]
@@ -168,6 +179,7 @@ def test_hang_rows_are_the_fits_until_a_hang_step_and_never_block():
 
 
 def test_fit_rows_carry_the_hang_rows_and_after_fit_lists_them(monkeypatch):
+    monkeypatch.setattr(hr, "HANG_STEP", False)  # (the fit's-fault listing; with the hang step they are pattern rows)
     monkeypatch.setattr(hr, "reads", lambda res, X: {"wings": {"L": {"wing_mm": 40.0, "z": 1.1, "side_off_mm": 70.0}}})
     rows = cc.fit_rows({"mesh": {}, "body": None}, None, 0.5, False, model="m", garment="g")
     assert {r["id"] for r in rows} >= {"fit_threads_p99", "hang_wings"}

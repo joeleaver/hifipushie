@@ -184,6 +184,10 @@ HANG_HOLD = 1000.0
 HANG_FROM_SEAT = True
 HANG_FREE_SHOULDER = True
 HANG_STIFF = 10.0
+# ... but only from this share of the rounds on: the solve is local-global, so a stiff isometry also holds every edge's
+# current DIRECTION, and a large move (a half of the towel KAT tilted 30 deg, falling plumb) went STIFF x slower (10x:
+# 600 rounds left it 28-40 mm off plumb, 1x: 6-8 mm). The weight's moves first, then the lengths pulled back.
+HANG_STIFF_FROM = 0.0  # (0.5 / 0.8: the KAT sheet still 11-17 mm off plumb, its hems 22-38 mm high; garments not run)
 HANG_SWEEPS = 10
 HANG_REFAC = 50
 HANG_SLACK = False  # (A/B: compressed edges free in the weight's rounds; no gate changed, the hoodie's wings 21.5 either way)
@@ -2988,8 +2992,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
         bend_keep, wE_keep = bend_f, wE
         if grav > 0:
             bend_f = SETTLE_BEND
-        if grav > 0 and hang_:  # (HANG_STIFF: the lengths stiffer than the weight; see HANG_STIFF)
-            wE = wE * HANG_STIFF
+        k_stiff = int(HANG_STIFF_FROM * iters) if grav > 0 and hang_ and HANG_STIFF != 1.0 else -1
         l0e = np.linalg.norm(uv[E[:, 0]] - uv[E[:, 1]], axis=1)
         wc_keep = wc
         held = np.zeros(n, bool)
@@ -3037,6 +3040,9 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                 # held vertices' weight; the solve must know the contact, else everything else falls a step per round
                 # and only the touching vertices are put back: the tube read 780 % stretch in 8 rounds)
                 wc = np.where(held, HANG_HOLD if hang_ else SETTLE_HOLD, SETTLE_FREE)
+                Ax, Ayz, Ay = system(wc) if sw_ is None else system(wc, sw_)
+            if it == k_stiff:  # (HANG_STIFF from here on: see HANG_STIFF_FROM)
+                wE = wE_keep * HANG_STIFF
                 Ax, Ayz, Ay = system(wc) if sw_ is None else system(wc, sw_)
             # local: per-cell rotation (Kabsch of the rest one-ring onto the current)
             cur = X[src] - X[dst]  # (x_i - x_j) for cell i = src

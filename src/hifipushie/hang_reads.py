@@ -41,9 +41,10 @@ from __future__ import annotations
 
 import numpy as np
 
-# The fit has no hang step yet (another agent builds it in pattern_form): every hang FAIL is the fit's, and its fix says
-# so. The hang step sets this True when it lands; the rows then name the pattern / the hang as the fix.
-HANG_STEP = False
+# The fit hangs (pattern_form's hang step, C244, 2026-10-28: on the default path the four calibration garments' fits
+# read wings 1.5-8.5, sleeve top 1.7-8.9, apex 2.2-7.3, hollow 0-6.3 mm): a hang FAIL is the PATTERN's, owner "pattern",
+# and its fix names the pattern move (PATTERN_FIX). False: the old rule (the fit's fault, never blocking).
+HANG_STEP = True
 
 # ---------------------------------------------------------------- thresholds (evidence: calibrate.txt, 2026-10-27)
 # Measured on the four fits (worst level / side; /mnt/data/hifipushie/hang_gates/calibrate.txt, sections_*.png):
