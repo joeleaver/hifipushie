@@ -63,6 +63,11 @@ WING_MAX_MM = 20.0
 SLEEVE_TOP_GAP_MAX_MM = 10.0
 SLEEVE_AXIS_MAX_DEG = 10.0  # the sleeve's axis off the arm's (a tube held out at an angle): 2.5-4.4 deg on all four
 ARM_SECTION_REACH = 0.09  # m: an arm section reaching further from its station than this has cut the torso too
+# A station is a sleeve section only where the cloth goes ROUND the arm (no gap in its angle about the arm's centre over
+# this). Hang round 2 (2026-10-27): a short sleeve hung from its cap has its hem lower under the arm than over it, so the
+# last plane square to the arm cut only the hem's underside (16 points, an arc, its "top gap" -38 mm, its centre 40 mm
+# off): read as a station, the tee's sleeve axis came out 47-49 deg from 3 stations 30 mm apart.
+SLEEVE_ARC_GAP_DEG = 90.0
 # Shoulder: the apex over the cloth's local plane (SPIKE_R) within SHOULDER_R of the shoulder point. Hoodie t6 10.4-10.8 mm
 # (the cusps Joe saw, shoulder_hoodie.png); the padded jacket's rounded shoulder 4.3-6.6 (shoulder_jacket.png: a dome),
 # tee 3.3, shirt 4.4.
@@ -188,6 +193,17 @@ def _axis(P: np.ndarray) -> np.ndarray:
     return v if v @ (P[-1] - P[0]) > 0 else -v
 
 
+def _arc_gap_deg(P: np.ndarray, n: np.ndarray) -> float:
+    """The largest gap (deg) in the angles of points P (relative to an axis point) about the axis n."""
+    a = np.cross(n, [0.0, 0.0, 1.0] if abs(n[2]) < 0.9 else [1.0, 0.0, 0.0])
+    a /= np.linalg.norm(a)
+    b = np.cross(n, a)
+    th = np.sort(np.degrees(np.arctan2(P @ b, P @ a)))
+    if len(th) < 3:
+        return 360.0
+    return float(np.max(np.r_[np.diff(th), th[0] + 360.0 - th[-1]]))
+
+
 def sleeve_reads(M: dict, X, body, under=None) -> dict:
     """Per sleeve ("L" = the +x one): in sections square to the arm, the median gap between the sleeve and the TOP of
     what supports it (the arm, or the under garment's sleeve over it: under = (V, F)) in mm, under it, the stations
@@ -225,6 +241,8 @@ def sleeve_reads(M: dict, X, body, under=None) -> dict:
                     continue
                 C = np.concatenate(Ls)
                 c0 = A.mean(0)
+                if _arc_gap_deg(C - c0, n) > SLEEVE_ARC_GAP_DEG:
+                    continue  # (the plane cut the hem obliquely: the cloth doesn't go round the arm there)
                 if under is not None:  # (the support: the arm and the under garment's cloth round it)
                     Lu = [L for L in tailor.slice_loops(under[0], under[1], o, n)
                           if np.linalg.norm(L - o, axis=1).max() < ARM_SECTION_REACH + 0.03]

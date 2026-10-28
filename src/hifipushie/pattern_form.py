@@ -161,6 +161,10 @@ HANG_G = 0.1  # the weight per vertex x mean pattern edge^2 (as SETTLE_G)
 HANG_ITERS = 600  # (the towel KAT: 150 rounds left it half way, 26 mm; 600: 9-10 mm, hems +3 / +0.4)
 HANG_STRAIN = 0.01  # the most the weight stretches a thread (warp / weft): the muslin's "until it would stretch"
 HANG_SUPPORT = True
+HANG_UP = 0.3
+HANG_ANCHOR = False
+HANG_FROM_SEAT = False
+HANG_REFAC = 0
 
 
 def hang_for(g: dict | None) -> bool:
@@ -320,6 +324,17 @@ def _hard_pass(W: dict, X: np.ndarray, cap, pairs: np.ndarray, sweeps: int, lock
         if np.abs(X - X0).max() < HARD_TOL:
             break
     return X
+
+
+# RESUME (hang round 2, A/B only): {phase: X} replaces that phase's relax by the given vertices (a TRACE snapshot of the
+# same garment), so a later step is iterated without re-running the phases before it. None = off (every fit).
+RESUME = None
+
+
+def _resumed(phase: str, run):
+    if RESUME is not None and phase in RESUME:
+        return np.asarray(RESUME[phase], float).copy()
+    return run()
 
 
 # TRACE (dress-garrett 2026-10-19 form sleeves): a callable (phase, X, M) called after each assembly phase (placement,
@@ -2945,6 +2960,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
         l0e = np.linalg.norm(uv[E[:, 0]] - uv[E[:, 1]], axis=1)
         wc_keep = wc
         held = np.zeros(n, bool)
+        anc = None  # (HANG_ANCHOR: where each supported vertex came to rest)
         if grav > 0:
             wc = np.full(n, SETTLE_FREE)
         Ax, Ayz, Ay = system(wc) if sw_ is None else system(wc, sw_)
@@ -2983,7 +2999,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                     ucon = c_
                     wc = wc_keep + LAYER_W * (ccon | ucon)
                     Ax, Ayz, Ay = system(wc) if sw_ is None else system(wc, sw_)
-            if grav > 0 and it and (held != (wc > SETTLE_FREE)).sum() > SETTLE_REFAC:  # (the contact set changed: the
+            if grav > 0 and it and (held != (wc > SETTLE_FREE)).sum() > (max(HANG_REFAC, 1) if hang_ else SETTLE_REFAC):  # (the contact set changed: the
                 # held vertices' weight; the solve must know the contact, else everything else falls a step per round
                 # and only the touching vertices are put back: the tube read 780 % stretch in 8 rounds)
                 wc = np.where(held, SETTLE_HOLD, SETTLE_FREE)
@@ -3027,12 +3043,16 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
             np.add.at(b, dst, -Re)
             # proximal / obstacle targets
             T = X.copy()
+            was_ = held.copy()
+            if grav > 0 and hang_ and HANG_ANCHOR and anc is not None:  # static friction: a supported vertex is held
+                T[held] = anc[held]  # where it came to rest, not where the last round left it (that creeps)
             if bsurf is not None:
                 d, nrm, _ = bsurf.signed(X)
                 lo = d < off
                 T[lo] += nrm[lo] * (off[lo] - d[lo])[:, None]
                 if grav > 0:  # (settle: no attraction; resting cloth is held where it touches)
-                    held = held | (d < off + 0.0015)
+                    c_ = d < off + 0.0015
+                    held = (c_ & (nrm[:, 2] > HANG_UP)) if hang_ else (held | c_)
                 da, na_ = d, nrm
                 if fsurf is not None and attract > 0:  # BRIDGE: drawn onto the body's offset with its hollows filled
                     # (the union of the body and the filled torso: the nearer surface outside, the filled one inside it)
@@ -3153,12 +3173,14 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                 d, nrm, _ = bsurf.signed(Xn)
                 lo = d < off
                 Xn[lo] += nrm[lo] * (off[lo] - d[lo])[:, None]
-                held = held | lo
+                held = held | ((lo & (nrm[:, 2] > HANG_UP)) if hang_ else lo)
                 if usurf is not None:
                     du, nu, dist = usurf.signed(Xn)
                     near = (dist < 0.03) & (du < off + 0.001)
                     Xn[near] += nu[near] * (off[near] + 0.001 - du[near])[:, None]
-                    held |= near
+                    held |= (near & (nu[:, 2] > HANG_UP)) if hang_ else near
+                if hang_:
+                    anc = Xn.copy() if anc is None else np.where((held & ~was_)[:, None], Xn, anc)
             for lp_ in laps:  # LAP_LAYER: hard, every round (a soft target lost to the lengths: the fronts stayed woven)
                 Xn = _lap_separate(Xn, lp_, bsurf, final=LAP_FINAL and it == iters - 1)
             if osurf is not None and ceil_on[0]:  # TWO LAYERS: hard contact under the over layer (a proximal target alone lost to the
@@ -3205,7 +3227,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
         # their offsets, the swing then found nothing left to turn (0 deg) and the front edge between break and hem
         # stayed by CF: Garrett hips gap 99 vs the drape's 178 mm. The swing turns the whole front; the pins settle it.)
         ox_hold, ox = ox, ([] if SWING_FIRST and SWING_UNPINNED else ox)
-        X = relax(X, max(20, iters // 3), sw_=sw[keep])
+        X = _resumed("relax1", lambda: relax(X, max(20, iters // 3), sw_=sw[keep]))
         ox = ox_hold
         tr("relax1", X, M)
         if ox and SWING_FIRST:
@@ -3312,10 +3334,11 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
     if plumb_hold and body is not None:  # (C181: the side seams on the vertical below their tops, from the seat on)
         py = plumb_seam_pins(M, X, plumb_hold)
         info["plumb_hold_v"] = len(py)
-    X = relax(X, iters // 2)
+    X = _resumed("seat", lambda: relax(X, iters // 2))
     tr("seat", X, M)
     info["turned_deg_mid"] = [round(fold_turned(M, X, g), 0) for fd, g, t in folds_]
-    X = relax(X, iters, attract=0.0, loose=LOOSE_PRESS if LOOSE_ROUND else 0.0)
+    if not (hang_ and HANG_FROM_SEAT):
+        X = _resumed("let_go", lambda: relax(X, iters, attract=0.0, loose=LOOSE_PRESS if LOOSE_ROUND else 0.0))
     tr("let_go", X, M)
     if SETTLE or hang_:  # the cloth's weight with real contact (see SETTLE; HANG_FIELD: the threads capped)
         h_ = float(np.mean(np.linalg.norm(uv[E[:, 0]] - uv[E[:, 1]], axis=1)))
