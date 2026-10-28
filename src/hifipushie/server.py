@@ -3045,6 +3045,9 @@ def fit_garment(name: str, garment: str, views: list[str] | None = None, size: i
         for k_, nm_ in enumerate(M["names"]):
             if nm_ in cp_:
                 cap_f[np.asarray(M["piece"])[np.asarray(M["F"])[:, 0]] == k_] = cp_[nm_] / 100
+    if _pf.CREASE_CAP is not None:  # (a fold row's allowance, as the fit gives it: pattern_form.crease_faces)
+        cr_ = _pf.crease_faces(M)
+        cap_f[cr_] = np.maximum(cap_f[cr_], _pf.CREASE_CAP)
     dr_ = cc.drawn_faces(res)  # (a tucked garment: the cloth under the trousers line is not judged)
     s, sh_, cap_f = ts_[dr_], sh_[dr_], cap_f[dr_]
     over = np.maximum(s - cap_f, 0.0)
@@ -3217,6 +3220,9 @@ def style_garment(name: str, garment: str, ops: list[dict], free: list[str] | No
             lines.append(f"  {k + 1} relax: threads p99 {inf['stretch_p99'][0]} -> {inf['stretch_p99'][1]} %")
         elif kind == "hold":
             lines.append(f"  {k + 1} hold: {inf['held']} vertices kept where they are for the later ops")
+        elif kind != "smooth" or "rounds" not in inf:  # (push and the wear's own ops: reported as they are; read as a
+            # smooth they crashed every style_garment call, KeyError 'rounds', tee t3 / shirt t7)
+            lines.append(f"  {k + 1} {kind}: " + json.dumps(inf, default=str)[:300])
         else:
             lines.append(f"  {k + 1} smooth {', '.join(inf.get('pieces') or [inf.get('border', '')])}: {inf['rounds']} rounds, "
                          + (f"roughness p95 {inf['rough_p95_mm'][0]} -> {inf['rough_p95_mm'][1]} mm" if "rough_p95_mm" in inf

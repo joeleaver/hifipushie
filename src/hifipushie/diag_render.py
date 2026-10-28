@@ -125,6 +125,12 @@ def face_threads_over(V, F, M) -> np.ndarray:
         ask = pf.piece_stretch_asked(uv, E, pid, np.asarray(M["sew"]))
         cap = np.array([min(lim, pf.FIT_THREAD_CAP + ask.get(k, 0.0)) for k in range(len(names))])
     c = cap[pid[W["F"][:, 0]]]
+    if pf.CREASE_CAP is not None and M.get("folds"):  # (a fold row's allowance, as the fit gives it)
+        rowv = np.zeros(len(uv), bool)
+        for fd in M["folds"]:
+            for r_ in fd.get("rows") or []:
+                rowv[np.asarray(r_, int)] = True
+        c = np.where(rowv[W["F"]].any(1), np.maximum(c, pf.CREASE_CAP), c)
     hi, lo = ln.max(1) - c, ln.min(1) + c
     o = np.where(hi > 0, hi, np.where(lo < 0, lo, 0.0))
     o = np.where((hi > 0) & (lo < 0) & (-lo > hi), lo, o)

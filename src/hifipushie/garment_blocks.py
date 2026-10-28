@@ -218,7 +218,10 @@ def generate(pcs: dict, entry: dict, extra: dict | None = None) -> tuple[dict, l
         # top edge h cos(lean) further in than its seam), the fold / rib / stitching left to the detail maps.
         # "folded" (the default) is the real construction: two layers, which need a fine mesh to lie flat.
         h = h / 2
-        if "top_ratio" not in entry and entry.get("ring"):
+        neck_ = any(w_ in str(entry.get("role", nm)).lower() for w_ in ("neck", "collar"))
+        if "top_ratio" not in entry and entry.get("ring") and (neck_ or "lean_deg" in entry):
+            # (only a band that lies on a slope leans: a neckband on the neck's base. A cuff or hem band hangs as a
+            # cylinder: leant at 45 deg the hoodie's flush cuffs became flared rings, 305 % strain, trial t6)
             R_ = L / (2 * math.pi)
             tr = 1.0 - h * math.cos(math.radians(float(entry.get("lean_deg", 45.0)))) / R_
     if abs(tr - 1.0) > 1e-6:

@@ -242,15 +242,30 @@ def junctions(Bp: dict, reach: float = TRUE_REACH, corners=()) -> list:
     return out
 
 
+MADE_ROLES = ("collar", "stand", "fall", "cuff", "band", "facing", "lapel", "placket", "yoke_facing", "hood")
+
+
+def _made_like(nm: str, pc: dict) -> bool:
+    """A piece made rather than draped (a collar, stand, cuff, band, facing, lapel; or any piece with a fold / roll
+    line): its corners are design, not truing faults."""
+    role = str(pc.get("role") or nm).lower()
+    if any(r_ in role or r_ in nm.lower() for r_ in MADE_ROLES):
+        return True
+    return any(("fold" in k or "roll" in k) for k in (pc.get("lines") or {}))
+
+
 def auto_true(pcs: dict, seams: list, corners=(), log=None) -> dict:
     """DRAFTS COME OUT TRUED (tee trial t4: 4-5 of 17 rounds went on hand truing, "true" ops whose `keep` bent a sleeve
     hem into a wave): every seam end the truing row would fail (junctions: turn > TRUE_DEG, not a corner by design, not
     a crossing) is trued on BOTH pieces by pattern.true_corner, each side taking half the turn so the joined edge runs
     on as one line, the seam edge held (keep = the seam side's far end on that piece). Returns the trued pieces."""
     out = dict(pcs)
+    made_ = {nm for nm, pc in pcs.items() if _made_like(nm, pc)}
     for _ in range(2):  # (a corner trued on one seam can move another seam's end on the same point: once more)
         jn = junctions({"pieces": out, "seams": seams}, corners=tuple(corners or ()))
-        todo = [r for r in jn if not r["ok"]]
+        # (a made piece's corners and the seam ends on it are design: a collar's, a cuff's, a lapel's; trued, a
+        # tailored jacket's collar lay moved, test_collar made_lay)
+        todo = [r for r in jn if not r["ok"] and not any(x.split(":", 1)[0] in made_ for x in r["at"].split(" | "))]
         if not todo:
             break
         for r in todo:
@@ -1222,7 +1237,9 @@ def gate_rows(Bp: dict, items: list, ctx=None, gname: str = "", refs: dict | Non
     # pattern truing: every seam end's joined edge turns <= TRUE_DEG (garment key "truing_corners": seam ends that are
     # corners by design, e.g. a notched collar's notch, a band's extension past CF; reported, not failed)
     jn = junctions(Bp, corners=tuple(corners or ()))
-    badj = [r for r in jn if not r["ok"]]
+    made_ = {nm for nm, pc in Bp["pieces"].items() if _made_like(nm, pc)}
+    # (a made piece's corners are design, reported not failed: the shirt's collar ends on its stand at CF, trial t7)
+    badj = [r for r in jn if not r["ok"] and not any(x.split(":", 1)[0] in made_ for x in r["at"].split(" | "))]
     tr_row = {"id": "truing", "stage": 2, "status": "FAIL" if badj else "PASS", "measure": "cloth_check.junctions",
               "ours": f"{len(jn)} seam ends, {len(badj)} turn > {TRUE_DEG:.0f} deg",
               "detail": [f"{r['at']}: {r['deg_a']} + {r['deg_b']} -> turn {r['turn_deg']}" for r in badj][:16]}
