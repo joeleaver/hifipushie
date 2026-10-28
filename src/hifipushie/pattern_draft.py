@@ -1318,6 +1318,13 @@ def start(block: str, meas_mm: dict, opts: dict | None = None) -> dict:
 
 
 def apply(D: dict, ops: list) -> dict:
+    # every op and parameter checked before any runs (design_schema, C241: hoodie t6's sleeve {"ease": 0.18} was
+    # swallowed by **kwargs and the biceps stayed at 5 %): an unknown one names the op's parameters
+    from . import design_schema
+    try:
+        design_schema.check_ops(ops, "draft")
+    except design_schema.ContractError as e:
+        raise DraftError(str(e))
     for k, op in enumerate(ops or []):
         o = dict(op)
         kind = o.pop("op")

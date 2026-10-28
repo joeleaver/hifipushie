@@ -1,0 +1,1368 @@
+{
+ "carlton": {
+  "acrossBackFactor": {
+   "default": 0.97,
+   "max": 1,
+   "menu": "fit",
+   "min": 0.93,
+   "type": "pct"
+  },
+  "armholeDepth": {
+   "default": 0.05,
+   "max": 0.5,
+   "menu": null,
+   "min": -0.1,
+   "type": "pct"
+  },
+  "armholeDepthFactor": {
+   "default": 0.65,
+   "max": 0.7,
+   "menu": "fit",
+   "min": 0.5,
+   "type": "pct"
+  },
+  "backNeckCutout": {
+   "default": 0.05,
+   "max": 0.08,
+   "menu": "advanced",
+   "min": 0.02,
+   "type": "pct"
+  },
+  "backPleat": {
+   "default": 0.048,
+   "type": "constant"
+  },
+  "beltWidth": {
+   "default": 0.15,
+   "max": 0.2,
+   "menu": "style",
+   "min": 0.1,
+   "type": "pct"
+  },
+  "bicepsEase": {
+   "default": 0.2,
+   "max": 0.5,
+   "menu": "fit",
+   "min": 0,
+   "type": "pct"
+  },
+  "brianFitCollar": {
+   "default": true,
+   "type": "constant"
+  },
+  "buttonSpacingHorizontal": {
+   "default": 0.435,
+   "max": 0.6,
+   "menu": "style",
+   "min": 0.15,
+   "type": "pct"
+  },
+  "chestEase": {
+   "default": 0.1,
+   "max": 0.2,
+   "menu": "fit",
+   "min": 0.05,
+   "type": "pct"
+  },
+  "chestPocketAngle": {
+   "default": 4,
+   "max": 6,
+   "menu": "pockets",
+   "min": 0,
+   "type": "deg"
+  },
+  "chestPocketHeight": {
+   "default": 0.6,
+   "max": 0.8,
+   "menu": "pockets",
+   "min": 0.4,
+   "type": "pct"
+  },
+  "chestPocketPlacement": {
+   "default": 0.55,
+   "max": 0.65,
+   "menu": "pockets",
+   "min": 0.3,
+   "type": "pct"
+  },
+  "chestPocketWidth": {
+   "default": 0.25,
+   "max": 0.5,
+   "menu": "pockets",
+   "min": 0.15,
+   "type": "pct"
+  },
+  "chestShapingMax": {
+   "default": 5,
+   "type": "constant"
+  },
+  "collarEase": {
+   "default": 0.145,
+   "type": "constant"
+  },
+  "collarFactor": {
+   "default": 4.8,
+   "type": "constant"
+  },
+  "collarFlare": {
+   "default": 0.2,
+   "max": 0.4,
+   "menu": "collar",
+   "min": 0,
+   "type": "pct"
+  },
+  "collarHeight": {
+   "default": 0.096,
+   "max": 0.11,
+   "menu": "collar",
+   "min": 0.08,
+   "type": "pct"
+  },
+  "collarSpread": {
+   "default": 4,
+   "max": 6,
+   "menu": "collar",
+   "min": 2,
+   "type": "deg"
+  },
+  "cuffEase": {
+   "default": 0.6,
+   "max": 1,
+   "menu": "fit",
+   "min": 0.3,
+   "type": "pct"
+  },
+  "cuffLength": {
+   "default": 0.15,
+   "max": 0.2,
+   "menu": "style",
+   "min": 0.1,
+   "type": "pct"
+  },
+  "draftForHighBust": {
+   "default": false,
+   "menu": "fit",
+   "type": "bool"
+  },
+  "frontArmholeDeeper": {
+   "default": 0.005,
+   "max": 0.015,
+   "menu": "advanced",
+   "min": 0,
+   "type": "pct"
+  },
+  "frontOverlap": {
+   "default": 0.015,
+   "max": 0.02,
+   "menu": "advanced",
+   "min": 0.01,
+   "type": "pct"
+  },
+  "innerPocketDepth": {
+   "default": 1.1,
+   "max": 1.4,
+   "menu": "pockets",
+   "min": 0.75,
+   "type": "pct"
+  },
+  "innerPocketPlacement": {
+   "default": 0.53,
+   "max": 0.62,
+   "menu": "pockets",
+   "min": 0.42,
+   "type": "pct"
+  },
+  "innerPocketWeltHeight": {
+   "default": 0.035,
+   "max": 0.05,
+   "menu": "pockets",
+   "min": 0.025,
+   "type": "pct"
+  },
+  "innerPocketWidth": {
+   "default": 0.5,
+   "max": 0.65,
+   "menu": "pockets",
+   "min": 0.45,
+   "type": "pct"
+  },
+  "lapelReduction": {
+   "default": 0.05,
+   "max": 0.1,
+   "menu": "advanced",
+   "min": 0,
+   "type": "pct"
+  },
+  "legacyArmholeDepth": {
+   "default": false,
+   "menu": "advanced",
+   "type": "bool"
+  },
+  "length": {
+   "default": 0.69,
+   "max": 1,
+   "menu": "style",
+   "min": 0.35,
+   "type": "pct"
+  },
+  "lengthBonus": {
+   "default": 0,
+   "type": "constant"
+  },
+  "libraryFitSleeve": {
+   "default": true,
+   "type": "constant"
+  },
+  "mockTwoPartSleeve": {
+   "default": false,
+   "type": "constant"
+  },
+  "pocketFlapRadius": {
+   "default": 0.15,
+   "max": 0.5,
+   "menu": "pockets",
+   "min": 0,
+   "type": "pct"
+  },
+  "pocketHeight": {
+   "default": 0.15,
+   "max": 0.4,
+   "menu": "pockets",
+   "min": 0,
+   "type": "pct"
+  },
+  "pocketPlacementHorizontal": {
+   "default": 0.11,
+   "max": 0.2,
+   "menu": "pockets",
+   "min": 0.05,
+   "type": "pct"
+  },
+  "pocketPlacementVertical": {
+   "default": 0.06,
+   "max": 0.6,
+   "menu": "pockets",
+   "min": 0.05,
+   "type": "pct"
+  },
+  "pocketRadius": {
+   "default": 0.2,
+   "max": 0.5,
+   "menu": "pockets",
+   "min": 0,
+   "type": "pct"
+  },
+  "pocketWidth": {
+   "default": 0.95,
+   "max": 1.2,
+   "menu": "pockets",
+   "min": 0.7,
+   "type": "pct"
+  },
+  "s3Armhole": {
+   "default": 0,
+   "max": 1,
+   "menu": "style",
+   "min": -1,
+   "type": "pct"
+  },
+  "s3Collar": {
+   "default": 0,
+   "max": 1,
+   "menu": "style",
+   "min": -1,
+   "type": "pct"
+  },
+  "seatEase": {
+   "default": 0.14,
+   "max": 0.25,
+   "menu": "fit",
+   "min": 0.08,
+   "type": "pct"
+  },
+  "shoulderEase": {
+   "default": 0,
+   "max": 0.06,
+   "menu": "fit",
+   "min": -0.02,
+   "type": "pct"
+  },
+  "shoulderSlopeReduction": {
+   "default": 0.12,
+   "max": 0.8,
+   "menu": "advanced",
+   "min": 0,
+   "type": "pct"
+  },
+  "sleeveBend": {
+   "default": 10,
+   "max": 20,
+   "menu": "fit",
+   "min": 0,
+   "type": "deg"
+  },
+  "sleeveLengthBonus": {
+   "default": 0.07,
+   "max": 0.2,
+   "menu": "fit",
+   "min": 0,
+   "type": "pct"
+  },
+  "sleevecapEase": {
+   "default": 0.01,
+   "max": 0.1,
+   "menu": "advanced",
+   "min": 0,
+   "type": "pct"
+  },
+  "sleevecapHeight": {
+   "default": 0.45,
+   "max": 0.6,
+   "menu": "advanced",
+   "min": 0.4,
+   "type": "pct"
+  },
+  "waistEase": {
+   "default": 0.14,
+   "max": 0.25,
+   "menu": "fit",
+   "min": 0.08,
+   "type": "pct"
+  }
+ },
+ "jaeger": {
+  "acrossBackFactor": {
+   "default": 0.97,
+   "max": 1,
+   "menu": "advanced",
+   "min": 0.93,
+   "type": "pct"
+  },
+  "armholeDepth": {
+   "default": 0.05,
+   "max": 0.5,
+   "menu": null,
+   "min": -0.1,
+   "type": "pct"
+  },
+  "armholeDepthFactor": {
+   "default": 0.6,
+   "max": 0.7,
+   "menu": null,
+   "min": 0.5,
+   "type": "pct"
+  },
+  "backNeckCutout": {
+   "default": 0.05,
+   "max": 0.08,
+   "menu": "advanced",
+   "min": 0.02,
+   "type": "pct"
+  },
+  "backVent": {
+   "default": 1,
+   "max": 2,
+   "menu": "style",
+   "min": 0,
+   "type": "count"
+  },
+  "backVentLength": {
+   "default": 0.35,
+   "max": 1,
+   "menu": "style",
+   "min": 0.15,
+   "type": "pct"
+  },
+  "bicepsEase": {
+   "default": 0.2,
+   "max": 0.4,
+   "menu": "fit",
+   "min": 0.1,
+   "type": "pct"
+  },
+  "brianFitCollar": {
+   "default": true,
+   "type": "constant"
+  },
+  "buttonLength": {
+   "default": 0.3,
+   "max": 0.6,
+   "menu": "style",
+   "min": 0.3,
+   "type": "pct"
+  },
+  "buttons": {
+   "default": "2",
+   "list": [
+    "1",
+    "2",
+    "3"
+   ],
+   "menu": "style",
+   "type": "list"
+  },
+  "centerBackDart": {
+   "default": 0.005,
+   "max": 0.015,
+   "menu": "fit",
+   "min": 0,
+   "type": "pct"
+  },
+  "centerFrontHemDrop": {
+   "default": 0.02,
+   "max": 0.04,
+   "menu": "style",
+   "min": 0,
+   "type": "pct"
+  },
+  "chestEase": {
+   "default": 0.08,
+   "max": 0.2,
+   "menu": "fit",
+   "min": -0.04,
+   "type": "pct"
+  },
+  "chestPocketAngle": {
+   "default": 2.5,
+   "max": 7,
+   "menu": "pockets",
+   "min": 0,
+   "type": "deg"
+  },
+  "chestPocketDepth": {
+   "default": 1.1,
+   "max": 1.5,
+   "menu": "pockets",
+   "min": 0.7,
+   "type": "pct"
+  },
+  "chestPocketPlacement": {
+   "default": 0.52,
+   "max": 0.6,
+   "menu": "pockets",
+   "min": 0.4,
+   "type": "pct"
+  },
+  "chestPocketWeltSize": {
+   "default": 0.175,
+   "max": 0.25,
+   "menu": "pockets",
+   "min": 0.1,
+   "type": "pct"
+  },
+  "chestPocketWidth": {
+   "default": 0.37,
+   "max": 0.45,
+   "menu": "pockets",
+   "min": 0.3,
+   "type": "pct"
+  },
+  "chestShaping": {
+   "default": 0.3,
+   "max": 1,
+   "menu": "advanced",
+   "min": 0,
+   "type": "pct"
+  },
+  "chestShapingMax": {
+   "default": 5,
+   "type": "constant"
+  },
+  "collarEase": {
+   "default": 0.035,
+   "max": 0.1,
+   "menu": "fit",
+   "min": 0,
+   "type": "pct"
+  },
+  "collarFactor": {
+   "default": 4.8,
+   "type": "constant"
+  },
+  "collarHeight": {
+   "default": 0.09,
+   "max": 0.1,
+   "menu": "collar",
+   "min": 0.07,
+   "type": "pct"
+  },
+  "collarNotchAngle": {
+   "default": 45,
+   "max": 60,
+   "menu": "collar",
+   "min": 30,
+   "type": "deg"
+  },
+  "collarNotchDepth": {
+   "default": 0.15,
+   "max": 0.5,
+   "menu": "collar",
+   "min": 0.15,
+   "type": "pct"
+  },
+  "collarNotchReturn": {
+   "default": 1,
+   "max": 1,
+   "menu": "collar",
+   "min": 0.5,
+   "type": "pct"
+  },
+  "collarRoll": {
+   "default": 0.05,
+   "max": 0.1,
+   "menu": "collar",
+   "min": 0,
+   "type": "pct"
+  },
+  "collarSpread": {
+   "default": 13,
+   "max": 35,
+   "menu": "collar",
+   "min": 5,
+   "type": "deg"
+  },
+  "cuffEase": {
+   "default": 0.4,
+   "max": 1,
+   "menu": "fit",
+   "min": 0.02,
+   "type": "pct"
+  },
+  "draftForHighBust": {
+   "default": false,
+   "menu": null,
+   "type": "bool"
+  },
+  "frontArmholeDeeper": {
+   "default": 0.005,
+   "max": 0.015,
+   "menu": "advanced",
+   "min": 0,
+   "type": "pct"
+  },
+  "frontCutawayAngle": {
+   "default": 2.5,
+   "max": 4,
+   "menu": "style",
+   "min": 1,
+   "type": "deg"
+  },
+  "frontCutawayEnd": {
+   "default": 0.4,
+   "max": 0.4,
+   "menu": "style",
+   "min": 0.1,
+   "type": "pct"
+  },
+  "frontCutawayStart": {
+   "default": 0.3,
+   "max": 0.7,
+   "menu": "style",
+   "min": 0.1,
+   "type": "pct"
+  },
+  "frontDartPlacement": {
+   "default": 0.55,
+   "max": 0.6,
+   "menu": "advanced",
+   "min": 0.45,
+   "type": "pct"
+  },
+  "frontOverlap": {
+   "default": 0.015,
+   "max": 0.02,
+   "menu": "advanced",
+   "min": 0.01,
+   "type": "pct"
+  },
+  "frontPocketDepth": {
+   "default": 1.1,
+   "max": 1.3,
+   "menu": "pockets",
+   "min": 0.8,
+   "type": "pct"
+  },
+  "frontPocketPlacement": {
+   "default": 0.75,
+   "max": 0.85,
+   "menu": "pockets",
+   "min": 0.65,
+   "type": "pct"
+  },
+  "frontPocketRadius": {
+   "default": 0.1,
+   "max": 0.5,
+   "menu": "pockets",
+   "min": 0,
+   "type": "pct"
+  },
+  "frontPocketWidth": {
+   "default": 0.68,
+   "max": 0.75,
+   "menu": "pockets",
+   "min": 0.55,
+   "type": "pct"
+  },
+  "hemRadius": {
+   "default": 1,
+   "max": 1,
+   "menu": "style",
+   "min": 0.35,
+   "type": "pct"
+  },
+  "hipsEase": {
+   "default": 0.12,
+   "max": 0.2,
+   "menu": "fit",
+   "min": 0.08,
+   "type": "pct"
+  },
+  "innerPocketDepth": {
+   "default": 1.1,
+   "max": 1.4,
+   "menu": "pockets",
+   "min": 0.75,
+   "type": "pct"
+  },
+  "innerPocketPlacement": {
+   "default": 0.52,
+   "max": 0.62,
+   "menu": "pockets",
+   "min": 0.42,
+   "type": "pct"
+  },
+  "innerPocketWeltHeight": {
+   "default": 0.035,
+   "max": 0.05,
+   "menu": "pockets",
+   "min": 0.025,
+   "type": "pct"
+  },
+  "innerPocketWidth": {
+   "default": 0.5,
+   "max": 0.65,
+   "menu": "pockets",
+   "min": 0.45,
+   "type": "pct"
+  },
+  "lapelReduction": {
+   "default": 0.05,
+   "max": 0.1,
+   "menu": "style",
+   "min": 0,
+   "type": "pct"
+  },
+  "lapelStart": {
+   "default": 0.1,
+   "max": 0.35,
+   "menu": "style",
+   "min": 0,
+   "type": "pct"
+  },
+  "legacyArmholeDepth": {
+   "default": false,
+   "menu": "advanced",
+   "type": "bool"
+  },
+  "lengthBonus": {
+   "default": 0.19,
+   "max": 0.25,
+   "menu": "fit",
+   "min": 0.1,
+   "type": "pct"
+  },
+  "libraryFitSleeve": {
+   "default": true,
+   "type": "constant"
+  },
+  "mockTwoPartSleeve": {
+   "default": false,
+   "type": "constant"
+  },
+  "pocketFoldover": {
+   "default": 0.25,
+   "max": 0.35,
+   "menu": "pockets",
+   "min": 0.15,
+   "type": "pct"
+  },
+  "reduceHipsStandardFraction": {
+   "default": 0.1,
+   "type": "constant"
+  },
+  "reduceWaistDartFraction": {
+   "default": 0.05,
+   "type": "constant"
+  },
+  "reduceWaistStandardFraction": {
+   "default": 0.08,
+   "type": "constant"
+  },
+  "rollLineCollarHeight": {
+   "default": 0.06,
+   "max": 0.09,
+   "menu": "collar",
+   "min": 0.05,
+   "type": "pct"
+  },
+  "s3Armhole": {
+   "default": 0,
+   "type": "constant"
+  },
+  "s3Collar": {
+   "default": 0,
+   "type": "constant"
+  },
+  "shoulderEase": {
+   "default": 0,
+   "max": 0.06,
+   "menu": "fit",
+   "min": -0.02,
+   "type": "pct"
+  },
+  "shoulderSlopeReduction": {
+   "default": 0,
+   "max": 0.8,
+   "menu": "advanced",
+   "min": 0,
+   "type": "pct"
+  },
+  "sideFrontPlacement": {
+   "default": 0.85,
+   "max": 0.9,
+   "menu": "advanced",
+   "min": 0.8,
+   "type": "pct"
+  },
+  "sleeveBend": {
+   "default": 10,
+   "max": 20,
+   "menu": "fit",
+   "min": 0,
+   "type": "deg"
+  },
+  "sleeveLengthBonus": {
+   "default": 0,
+   "max": 0.15,
+   "menu": "fit",
+   "min": -0.2,
+   "type": "pct"
+  },
+  "sleeveVentLength": {
+   "default": 0.35,
+   "max": 0.55,
+   "menu": "sleeves",
+   "min": 0.25,
+   "type": "pct"
+  },
+  "sleeveVentWidth": {
+   "default": 0.18,
+   "max": 0.26,
+   "menu": "sleeves",
+   "min": 0.1,
+   "type": "pct"
+  },
+  "sleevecapEase": {
+   "default": 0.01,
+   "max": 0.1,
+   "menu": "advanced",
+   "min": 0,
+   "type": "pct"
+  },
+  "sleevecapHeight": {
+   "default": 0.45,
+   "max": 0.6,
+   "menu": "advanced",
+   "min": 0.4,
+   "type": "pct"
+  },
+  "waistEase": {
+   "default": 0.14,
+   "max": 0.25,
+   "menu": "fit",
+   "min": 0.08,
+   "type": "pct"
+  }
+ },
+ "simon": {
+  "acrossBackFactor": {
+   "default": 0.98,
+   "max": 1,
+   "menu": "advanced",
+   "min": 0.93,
+   "type": "pct"
+  },
+  "armholeDepth": {
+   "default": 0.02,
+   "max": 0.5,
+   "menu": null,
+   "min": -0.1,
+   "type": "pct"
+  },
+  "armholeDepthFactor": {
+   "default": 0.55,
+   "max": 0.7,
+   "menu": null,
+   "min": 0.5,
+   "type": "pct"
+  },
+  "backDartShaping": {
+   "default": 0.25,
+   "max": 0.75,
+   "menu": "advanced",
+   "min": 0.05,
+   "type": "pct"
+  },
+  "backDarts": {
+   "default": "auto",
+   "list": [
+    "auto",
+    "never",
+    "always"
+   ],
+   "menu": "style",
+   "type": "list"
+  },
+  "backNeckCutout": {
+   "default": 0.05,
+   "max": 0.08,
+   "menu": "advanced",
+   "min": 0.02,
+   "type": "pct"
+  },
+  "barrelCuffNarrowButton": {
+   "default": true,
+   "menu": null,
+   "type": "bool"
+  },
+  "bicepsEase": {
+   "default": 0.15,
+   "max": 0.5,
+   "menu": "fit",
+   "min": 0,
+   "type": "pct"
+  },
+  "boxPleat": {
+   "default": false,
+   "menu": "style",
+   "type": "bool"
+  },
+  "boxPleatFold": {
+   "default": 0.15,
+   "max": 0.2,
+   "menu": "advanced",
+   "min": 0.1,
+   "type": "pct"
+  },
+  "boxPleatWidth": {
+   "default": 0.07,
+   "max": 0.1,
+   "menu": "advanced",
+   "min": 0.04,
+   "type": "pct"
+  },
+  "brianFitCollar": {
+   "default": true,
+   "type": "constant"
+  },
+  "buttonFreeLength": {
+   "default": 0.02,
+   "max": 0.15,
+   "menu": "style.closure",
+   "min": -0.1,
+   "type": "pct"
+  },
+  "buttonPlacketStyle": {
+   "default": "classic",
+   "list": [
+    "classic",
+    "seamless"
+   ],
+   "menu": null,
+   "type": "list"
+  },
+  "buttonPlacketWidth": {
+   "default": 0.05,
+   "max": 0.08,
+   "menu": "style.closure",
+   "min": 0.02,
+   "type": "pct"
+  },
+  "buttonholePlacketFoldWidth": {
+   "default": 0.16,
+   "max": 0.24,
+   "menu": "style.closure",
+   "min": 0.08,
+   "type": "pct"
+  },
+  "buttonholePlacketStyle": {
+   "default": "seamless",
+   "list": [
+    "classic",
+    "seamless"
+   ],
+   "menu": null,
+   "type": "list"
+  },
+  "buttonholePlacketWidth": {
+   "default": 0.08,
+   "max": 0.12,
+   "menu": "style.closure",
+   "min": 0.04,
+   "type": "pct"
+  },
+  "buttons": {
+   "default": 7,
+   "max": 12,
+   "menu": "style.closure",
+   "min": 4,
+   "type": "count"
+  },
+  "chestEase": {
+   "default": 0.15,
+   "max": 0.35,
+   "menu": "fit",
+   "min": -0.04,
+   "type": "pct"
+  },
+  "collarAngle": {
+   "default": 85,
+   "max": 130,
+   "menu": "style.collar",
+   "min": 60,
+   "type": "deg"
+  },
+  "collarBend": {
+   "default": 0.035,
+   "max": 0.1,
+   "menu": "style.collar",
+   "min": 0,
+   "type": "pct"
+  },
+  "collarEase": {
+   "default": 0.02,
+   "max": 0.1,
+   "menu": "fit",
+   "min": 0,
+   "type": "pct"
+  },
+  "collarFactor": {
+   "default": 5,
+   "type": "constant"
+  },
+  "collarFlare": {
+   "default": 3.5,
+   "max": 10,
+   "menu": "style.collar",
+   "min": 0,
+   "type": "deg"
+  },
+  "collarGap": {
+   "default": 0.025,
+   "max": 0.06,
+   "menu": "style.collar",
+   "min": 0,
+   "type": "pct"
+  },
+  "collarRoll": {
+   "default": 0.03,
+   "max": 0.06,
+   "menu": "style.collar",
+   "min": 0,
+   "type": "pct"
+  },
+  "collarStandBend": {
+   "default": 3,
+   "max": 5,
+   "menu": "style.collar",
+   "min": 0,
+   "type": "deg"
+  },
+  "collarStandCurve": {
+   "default": 2,
+   "max": 5,
+   "menu": "style.collar",
+   "min": 0,
+   "type": "deg"
+  },
+  "collarStandWidth": {
+   "default": 0.08,
+   "max": 0.13,
+   "menu": "style.collar",
+   "min": 0.03,
+   "type": "pct"
+  },
+  "collarWidth": {
+   "default": 1.2,
+   "max": 2,
+   "menu": "style.collar",
+   "min": 0.9,
+   "type": "pct"
+  },
+  "cuffButtonRows": {
+   "default": 1,
+   "max": 2,
+   "menu": null,
+   "min": 1,
+   "type": "count"
+  },
+  "cuffDrape": {
+   "default": 0.05,
+   "max": 0.1,
+   "menu": null,
+   "min": 0,
+   "type": "pct"
+  },
+  "cuffEase": {
+   "default": 0.2,
+   "max": 0.4,
+   "menu": null,
+   "min": 0.1,
+   "type": "pct"
+  },
+  "cuffLength": {
+   "default": 0.1,
+   "max": 0.15,
+   "menu": null,
+   "min": 0.03,
+   "type": "pct"
+  },
+  "cuffOverlap": {
+   "default": 0.15,
+   "type": "constant"
+  },
+  "cuffStyle": {
+   "default": "angledBarrelCuff",
+   "list": [
+    "roundedBarrelCuff",
+    "angledBarrelCuff",
+    "straightBarrelCuff",
+    "roundedFrenchCuff",
+    "angledFrenchCuff",
+    "straightFrenchCuff"
+   ],
+   "menu": null,
+   "type": "list"
+  },
+  "draftForHighBust": {
+   "default": false,
+   "menu": null,
+   "type": "bool"
+  },
+  "extraTopButton": {
+   "default": true,
+   "menu": "style.closure",
+   "type": "bool"
+  },
+  "ffsa": {
+   "default": 1.5,
+   "max": 2,
+   "menu": "advanced",
+   "min": 1,
+   "type": "pct"
+  },
+  "frontArmholeDeeper": {
+   "default": 0.002,
+   "max": 0.005,
+   "menu": "advanced",
+   "min": 0,
+   "type": "pct"
+  },
+  "hemCurve": {
+   "default": 0.5,
+   "max": 1,
+   "menu": "style",
+   "min": 0.25,
+   "type": "pct"
+  },
+  "hemStyle": {
+   "default": "straight",
+   "list": [
+    "straight",
+    "baseball",
+    "slashed"
+   ],
+   "menu": "style",
+   "type": "list"
+  },
+  "hipsEase": {
+   "default": 0.15,
+   "max": 0.35,
+   "menu": "fit",
+   "min": 0.1,
+   "type": "pct"
+  },
+  "legacyArmholeDepth": {
+   "default": false,
+   "menu": "advanced",
+   "type": "bool"
+  },
+  "lengthBonus": {
+   "default": 0.25,
+   "max": 0.6,
+   "menu": "fit",
+   "min": -0.04,
+   "type": "pct"
+  },
+  "libraryFitSleeve": {
+   "default": true,
+   "type": "constant"
+  },
+  "mockSleeve": {
+   "default": false,
+   "type": "constant"
+  },
+  "optionPrefix": {
+   "default": "",
+   "type": "constant"
+  },
+  "roundBack": {
+   "default": 0,
+   "max": 0.1,
+   "menu": "fit",
+   "min": 0,
+   "type": "pct"
+  },
+  "s3Armhole": {
+   "default": 0,
+   "max": 1,
+   "menu": "style",
+   "min": -1,
+   "type": "pct"
+  },
+  "s3Collar": {
+   "default": 0,
+   "max": 1,
+   "menu": "style",
+   "min": -1,
+   "type": "pct"
+  },
+  "separateButtonPlacket": {
+   "default": false,
+   "menu": "style.closure",
+   "type": "bool"
+  },
+  "separateButtonholePlacket": {
+   "default": false,
+   "menu": "style.closure",
+   "type": "bool"
+  },
+  "shoulderEase": {
+   "default": 0.02,
+   "max": 0.15,
+   "menu": "fit",
+   "min": 0,
+   "type": "pct"
+  },
+  "shoulderSlopeReduction": {
+   "default": 0,
+   "max": 0.8,
+   "menu": "advanced",
+   "min": 0,
+   "type": "pct"
+  },
+  "sleeveHemShort": {
+   "default": 0.04,
+   "max": 0.2,
+   "menu": null,
+   "min": 0.01,
+   "type": "pct"
+  },
+  "sleeveLengthBonus": {
+   "default": 0.035,
+   "max": 0.1,
+   "menu": null,
+   "min": -0.4,
+   "type": "pct"
+  },
+  "sleeveLengthShort": {
+   "default": 0.4,
+   "max": 1,
+   "menu": null,
+   "min": 0.2,
+   "type": "pct"
+  },
+  "sleevePlacketLength": {
+   "default": 0.25,
+   "max": 0.35,
+   "menu": null,
+   "min": 0.15,
+   "type": "pct"
+  },
+  "sleevePlacketWidth": {
+   "default": 0.13,
+   "max": 0.18,
+   "menu": null,
+   "min": 0.08,
+   "type": "pct"
+  },
+  "sleeveStyle": {
+   "default": "long",
+   "list": [
+    "short",
+    "long"
+   ],
+   "menu": "style",
+   "type": "list"
+  },
+  "sleeveWidthGuarantee": {
+   "default": 0.9,
+   "max": 1,
+   "menu": "advanced",
+   "min": 0.25,
+   "type": "pct"
+  },
+  "sleevecapBackFactorX": {
+   "default": 0.6,
+   "max": 0.65,
+   "menu": "advanced.sleevecap",
+   "min": 0.35,
+   "type": "pct"
+  },
+  "sleevecapBackFactorY": {
+   "default": 0.33,
+   "max": 0.65,
+   "menu": "advanced.sleevecap",
+   "min": 0.3,
+   "type": "pct"
+  },
+  "sleevecapEase": {
+   "default": 0,
+   "max": 0.1,
+   "menu": "advanced.sleevecap",
+   "min": 0,
+   "type": "pct"
+  },
+  "sleevecapFrontFactorX": {
+   "default": 0.55,
+   "max": 0.65,
+   "menu": "advanced.sleevecap",
+   "min": 0.35,
+   "type": "pct"
+  },
+  "sleevecapFrontFactorY": {
+   "default": 0.33,
+   "max": 0.65,
+   "menu": "advanced.sleevecap",
+   "min": 0.3,
+   "type": "pct"
+  },
+  "sleevecapQ1Offset": {
+   "default": 0.017,
+   "max": 0.07,
+   "menu": "advanced.sleevecap",
+   "min": 0,
+   "type": "pct"
+  },
+  "sleevecapQ1Spread1": {
+   "default": 0.1,
+   "max": 0.2,
+   "menu": "advanced.sleevecap",
+   "min": 0.04,
+   "type": "pct"
+  },
+  "sleevecapQ1Spread2": {
+   "default": 0.15,
+   "max": 0.2,
+   "menu": "advanced.sleevecap",
+   "min": 0.04,
+   "type": "pct"
+  },
+  "sleevecapQ2Offset": {
+   "default": 0.035,
+   "max": 0.07,
+   "menu": "advanced.sleevecap",
+   "min": 0,
+   "type": "pct"
+  },
+  "sleevecapQ2Spread1": {
+   "default": 0.15,
+   "max": 0.2,
+   "menu": "advanced.sleevecap",
+   "min": 0.04,
+   "type": "pct"
+  },
+  "sleevecapQ2Spread2": {
+   "default": 0.1,
+   "max": 0.2,
+   "menu": "advanced.sleevecap",
+   "min": 0.04,
+   "type": "pct"
+  },
+  "sleevecapQ3Offset": {
+   "default": 0.025,
+   "max": 0.07,
+   "menu": "advanced.sleevecap",
+   "min": 0,
+   "type": "pct"
+  },
+  "sleevecapQ3Spread1": {
+   "default": 0.1,
+   "max": 0.2,
+   "menu": "advanced.sleevecap",
+   "min": 0.04,
+   "type": "pct"
+  },
+  "sleevecapQ3Spread2": {
+   "default": 0.08,
+   "max": 0.2,
+   "menu": "advanced.sleevecap",
+   "min": 0.04,
+   "type": "pct"
+  },
+  "sleevecapQ4Offset": {
+   "default": 0.01,
+   "max": 0.07,
+   "menu": "advanced.sleevecap",
+   "min": 0,
+   "type": "pct"
+  },
+  "sleevecapQ4Spread1": {
+   "default": 0.07,
+   "max": 0.2,
+   "menu": "advanced.sleevecap",
+   "min": 0.04,
+   "type": "pct"
+  },
+  "sleevecapQ4Spread2": {
+   "default": 0.063,
+   "max": 0.2,
+   "menu": "advanced.sleevecap",
+   "min": 0.04,
+   "type": "pct"
+  },
+  "sleevecapTopFactorX": {
+   "default": 0.5,
+   "max": 0.75,
+   "menu": "advanced.sleevecap",
+   "min": 0.25,
+   "type": "pct"
+  },
+  "sleevecapTopFactorY": {
+   "default": 0.45,
+   "max": 1.25,
+   "menu": "advanced.sleevecap",
+   "min": 0.35,
+   "type": "pct"
+  },
+  "splitYoke": {
+   "default": false,
+   "menu": "style",
+   "type": "bool"
+  },
+  "waistEase": {
+   "default": 0.15,
+   "max": 0.35,
+   "menu": "fit",
+   "min": 0.1,
+   "type": "pct"
+  },
+  "yokeHeight": {
+   "default": 0.7,
+   "max": 0.9,
+   "menu": "style",
+   "min": 0.4,
+   "type": "pct"
+  }
+ }
+}

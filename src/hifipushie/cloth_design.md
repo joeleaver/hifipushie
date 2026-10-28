@@ -43,9 +43,31 @@ design_garment(name, "shirt", design={"kind": "shirt", "from": "simon", "fit": "
 - **method:** `"simulate"` (sew and simulate everything) or `"settle"` (construct, settle lightly, detail:
   guide(topic="cloth_sim")).
 - **pattern:** draft words passed through (`ease`, `length`, `sleeve_length`, `options`, `measurements`).
+- **auto_true:** true / false: every seam end the truing gate fails is trued on both pieces (default true on knit
+  drafts). **truing_corners:** a LIST of seam-end labels (as the truing row prints them) that are corners by design.
 
 Hard failures: a choice the draft source can't make (the reply names what it can make); a choice that needs another
 (a barrel cuff needs a sleeve placket; buttons need a placket).
+
+### The contract: strict, self-describing, transactional (C241)
+
+Every key is checked when `design_garment` / `alter_pattern` is called; an unknown one is an ERROR that lists the
+valid ones with units, sign and default, e.g. `cloth 'hoodie' ops[2] (sleeve): unknown key "ease"; sleeve
+takes: biceps_ease (fraction of the biceps girth (+ = roomier); default 0.15), cap_ease (...), ...`. Nothing is
+silently dropped, and a call that fails saves nothing (the reply's `saved v<N>` is the only proof of a save).
+
+- **Which keys go where.** A design drafted from a block (`"from": "draft"` / `"block"`) takes `block_options`, `ops`
+  and a detail's `"op"` params. A FreeSewing draft (`simon`, `carlton`, `jaeger`) takes its own options (`pattern.options`,
+  a detail's `"options"`) and the pattern words; `ops` / `block_options` on it are refused (they never run there:
+  shape its drafted pieces with `alter_pattern`). A detail is `{"type", "options", "op", "generate", "trim"}`.
+- **FreeSewing options REPLACE their default, they do not add to it.** Units are FreeSewing's: a percent option is
+  a FRACTION (`lengthBonus` default 0.25 = 25 %). `"lengthBonus": 0.05` gives 0.05, i.e. 20 points SHORTER than the
+  default, not 5 % longer (shirt t7 cut 17 cm in two probes). The reply lists every option set with what it replaces;
+  `guide(topic="design_garment")` errors name each option's type, default and range (`freesewing_options.json`).
+- **Units in our drafts.** Lengths in metres; eases are fractions of the girth (0.15 = 15 %); angles in degrees.
+  Pattern coordinates: x right (out from a half piece's centre line), **y UP** (+y toward the neck on a bodice, the
+  cap on a sleeve): `reshape` / `move` `"by": [0, -0.01]` LOWERS a point 10 mm. `block_options.length_bonus` is
+  metres added to the bodice; the sleeve op's `length_bonus` is a fraction of its length.
 
 `garment_reference(kind=...)` -> `lessons`: read them before designing that kind.
 

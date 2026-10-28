@@ -51,7 +51,13 @@ armholePitch, armhole, waist, hem, cfHem, bust, the darts' points...), so operat
 | `trouser` | waist, seat, rise, leg lengths | Seat quarters -1 / +1 cm; fork = seat / 16 + 5 mm (back about double); the back seam slanted and raised; the back inseam 5 mm short |
 | skirt (`from: skirt_block`) | waist, seat | Quarters with ease; the difference shared between side seam and darts |
 
-**Operations** (`"ops"`, applied in order to HALF pieces, centre at x = 0; `unfold` runs last by itself):
+**Operations** (`"ops"`, applied in order to HALF pieces, centre at x = 0; `unfold` runs last by itself).
+Units: metres for every length (`amount`, `width`, `height`, `depth`, `radius`, `falloff`, `spacing`...), fractions
+for eases / shares / ratios (0.15 = 15 %), degrees for angles. Coordinates: x right (out from the centre line), **y
+UP** (+y toward the neck on a bodice, the cap on a sleeve): `reshape` `"by": [0, -0.01]` lowers the point 10 mm.
+Each op's parameters are read from its code and checked when `design_garment` is called: an unknown one (the
+sleeve takes `biceps_ease`, not `ease`) or a missing required one is an error that lists the op's parameters with
+units and defaults. Ops run only on a block draft; a FreeSewing draft's pieces are shaped by `alter_pattern`.
 
 | Op | What it does | What it keeps |
 |---|---|---|
