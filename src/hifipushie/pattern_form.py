@@ -169,6 +169,7 @@ HANG_FREE_SHOULDER = False
 HANG_HOLD = 10.0
 HANG_STIFF = 1.0
 HANG_SWEEPS = 30
+HANG_SEAT_UP = 0.0
 HANG_REFAC = 0
 
 
@@ -3079,7 +3080,8 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                     fb_ = de_ < d
                     da, na_ = np.where(fb_, de_, d), np.where(fb_[:, None], ne_, nrm)
                 hi = (np.abs(da - off) > 0.002) & (da < 0.06) & (d >= off) & ~on_flap & (grav <= 0)  # (a turned flap lies on its base, not on the body)
-                aw_ = attract * (np.clip(na_[hi, 2], 0.0, 1.0) if (SEAT_GRAVITY or (hang_ and HANG_SUPPORT)) else 1.0)
+                aw_ = attract * (np.clip((na_[hi, 2] - (HANG_SEAT_UP if hang_ else 0.0)) / (1.0 - (HANG_SEAT_UP if hang_ else 0.0)),
+                                         0.0, 1.0) if (SEAT_GRAVITY or (hang_ and HANG_SUPPORT)) else 1.0)
                 aw_ = aw_ * edge_free[hi]  # (worn open: the cloth near the open edge is not drawn onto the body)
                 if fsurf is not None and BRIDGE_HANG and attract > 0:  # (BRIDGE_HANG: on the torso band, cloth standing OUT of the filled
                     # surface is drawn in only (1 - bridge) as hard: a stiff garment hangs where its lengths put it)
@@ -3715,6 +3717,49 @@ def under_as_worn(und: dict, gu: dict, log=None) -> dict:
     Xs, info = gp.worn_style(und["mesh"], np.asarray(und["A"], float), (np.asarray(body.V, float), np.asarray(body.T, int)),
                              gx, log=log)
     return dict(und, A=Xs, A_closed=und["A"], A_style=info)
+
+
+def hard_threads(res: dict, X, under=None, sweeps: int = THREADS_HARD_FINAL) -> np.ndarray:
+    """THREADS_HARD after the fit (hang round 2, A/B): a fitted garment's X (e.g. styled) projected as assemble's end
+    does: every triangle's warp / weft within the garment's cap (a knit piece: its pattern's ask over it), the seams and
+    fastened closures sewn, nothing inside the body or the layer under (under = (V, F)), contact last."""
+    M, B, body = res["mesh"], res.get("pieces"), res["body"]
+    X = np.asarray(X, float)
+    F = np.asarray(M["F"])
+    uv = np.asarray(M["uv"], float)
+    pid = np.asarray(M["piece"])
+    E = _edges(F)
+    W = _woven_setup(M, B, F, E, np.zeros(len(X), bool))
+    lim_ = float((B or {}).get("stretch_limit") or 0.0)
+    sw = fit_sew(M)
+    cap = FIT_THREAD_CAP
+    if lim_ > KNIT_LIMIT:
+        ask = piece_stretch_asked(uv, E, pid, sw)
+        cap = np.array([(1.0 + ask.get(k, 0.0)) * (1.0 + min(lim_, FIT_THREAD_CAP)) - 1.0
+                        for k in range(len(M["names"]))])[pid[W["F"][:, 0]]][:, None]
+    if CREASE_CAP is not None:
+        ct = np.asarray(crease_faces(M), bool)
+        key = {tuple(f): i for i, f in enumerate(F.tolist())}
+        cw = np.array([ct[key[tuple(f)]] for f in W["F"].tolist()])
+        cap = np.broadcast_to(np.asarray(cap, float).reshape(-1, 1), (len(W["F"]), 1)).copy()
+        cap[cw] = np.maximum(cap[cw], CREASE_CAP)
+    pairs = np.r_[np.asarray(sw, int).reshape(-1, 2), np.asarray(fastened(M), int).reshape(-1, 2)]
+    bsurf = _body_surface(body)
+    usurf = _Surface(under[0], under[1], ref=bsurf) if under is not None else None
+
+    def planes(X_):
+        d, nrm, _ = bsurf.signed(X_)
+        v = np.where(d < HARD_REACH)[0]
+        out = [(v, nrm[v], d[v], X_[v].copy(), np.full(len(v), HARD_SKIN))]
+        if usurf is not None:
+            du_, nu_, dist_ = usurf.signed(X_)
+            v = np.where((dist_ < 0.03) & (du_ < LAYER_GAP + HARD_REACH))[0]
+            out.append((v, nu_[v], du_[v], X_[v].copy(), np.full(len(v), LAYER_GAP)))
+        return out
+    lock = None if lim_ > KNIT_LIMIT else SHEAR_LOCK_DEG
+    for _ in range(max(HARD_RELIN, 2)):
+        X = _hard_pass(W, X, cap, pairs, sweeps, lock_deg=lock, planes=planes(X))
+    return X
 
 
 TUCK_CAP = 0.006  # m: tucked cloth below the line lies at most this off the body (a waistband over it: one cloth + ease)

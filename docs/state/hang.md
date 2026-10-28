@@ -20,14 +20,20 @@ the shoulder (HANG_FREE_SHOULDER: the pin made the apex), the lengths 10x the we
 solve stretched the torso faster than 30 sweeps / round could project it back: hoodie past cap p99 3.2 % -> 0.7 %),
 10 hard sweeps / round (HANG_SWEEPS), refactor only when 50+ supports change (HANG_REFAC: 1 s -> 0.4 s / round).
 
-MEASURED (resumed A/Bs, results.jsonl): tee_k10 wings 3.5, sleeve top 5.6 / under 6, apex 4.7, hollow 8.9; past cap
-0.42 %; hang 34 s. hd_k10 wings 2.5, sleeve 4.1 / 28.5, apex 9.0-9.6 FAIL, hollow 0; past cap 0.72 %; hang 172 s.
-Baseline: tee sleeve 13.5 FAIL; hoodie 46 / 16 / 11 FAIL, past cap 16.2 % (knit rib bands, see READ FIXES).
+MEASURED (full fits, C2 = C1 + HANG_SEAT_UP 0.5 / HANG_UP 0.5: the seat draws onto, and the hang holds on, only body
+facing well up (shoulders, trapezius); at 0 / 0.3 the shirt's back was drawn onto the top of the seat, hollow 11, and
+its girth went to the sides, wings 33). wings / sleeve top / apex / hollow mm, past cap p99 %, fit s:
+  tee    base 4.5-8.5 / 13.5 F / 3.4 / 0, 0.76, 218    C2 5.5 / 6.1 / 2.3 / 0, 0.10, 81
+  hoodie base 46 F / 16.5 F / 10.8 F / 0, 16.2, 470    C2 1.5 / 8.9 / 7.3 / 0, 0.67, 134
+  shirt  base 29.5 F / 7.5 / 4.5 / 33 F, 5.2 (styled), 418   u5 (=C2) 18.5 / 3.8 / 3.6 / 6.3, fit 0.24 but STYLED 15.5
+  jacket running.
+READ FIXES).
 READ FIXES (committed with evidence in the code): (1) sleeve stations need cloth all round the arm (a partial hem cut
 read the tee axis 47-49 deg); (2) wings read from below the armhole's bottom when it is under the armpit (the hoodie's
 is 117 mm under; above it the torso cut crosses the armhole edges to the sleeve, 17-21 mm "wing" by construction;
 below 1.5-3.5); calibration verdicts unchanged (hoodie 46 FAIL, the rest PASS); (3) thread_cap_pct of a knit band
 reported against the DRAFTED pattern (it rests at its sewn length in the fit: hem band 14 % read as past cap).
-OPEN: hoodie apex 9 (free shoulder from the start: running hd_c1), shirt / jacket not run yet; rib cuffs past cap
-13 % (p99 of all faces passes); time.
-NEXT: hd_c1 + sh_c1 full fits (running), jacket; then defaults on, tests, BUILD_VERSION, HANG_STEP, renders.
+OPEN: the shirt's STYLING (garment_pull.worn_style, open collar) stretches the fronts / stand past cap: base 5.2 %,
+on the hung fit 15.5 % (fit itself 0.24 %); A/B pattern_form.hard_threads after the styling. Rib cuffs 13 % (all-face
+p99 passes).
+NEXT: jacket C2; shirt post-style hard A/B; then defaults on, tests, BUILD_VERSION, HANG_STEP, renders.
