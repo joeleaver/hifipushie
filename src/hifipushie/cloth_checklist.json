@@ -114,5 +114,185 @@
    "view": "front", "region": {"around": ["elbow.L", "knee.L"], "pad": 0.12}, "type": "level", "scale": ["clean", "some folds", "rumpled"], "measure": "fold_level", "tolerance": 1, "sets": "fabric; cleanup; cloth_detail fine folds"},
   {"id": "wear_age", "gate": "later", "gate_why": "the wear / breakdown pass (stage 5 paint), not a pattern item", "stage": 5, "kinds": ["*"], "what": "New and pressed, worn in (soft creases at the elbows and behind the knees), or old (shine, bagging, frayed edges).",
    "view": "close", "region": {"around": ["elbow.L"], "pad": 0.08}, "type": "level", "scale": ["new", "worn in", "old"], "measure": "missing: no wear / breakdown pass on cloth yet (paint layers)", "tolerance": 1, "sets": "paint layers on the garment's part"}
- ]
+ ],
+ "design_targets": {
+  "_doc": "THE KIND'S CHECKLIST IS THE DESIGN INPUT (trials lesson 3, C243): every measurable item of a brief is given as the target itself (design_garment design.targets {item: value}); the draft SOLVES it (design_targets.py: each item mapped to the block option / op / FreeSewing option that makes it, numeric ones solved on the drafted pattern), pattern_check measures the SAME item on the drafted pattern (a row 'target:<item>', target vs drafted) and a reviewer reads the same sentence ('review'). ONE definition per item: what it is on the body (definition), how the pattern is measured (pattern), units, tolerance (the gate's band around the target), what it sets (sets). Kinds list the items they take and their defaults in garment_kb.json kinds.<kind>.targets; a choice item named like a detail (collar, cuff, pockets, hem, front_closure, yoke, ...) is that detail's choice. Numbers come from the body (tapes) or a kind's range, never from one trial.",
+  "items": {
+   "fit": {
+    "type": "choice",
+    "stage": 2,
+    "units": "a fit of the kind (garment_kb kinds.<kind>.fit: fitted / regular / relaxed ...)",
+    "definition": "how much room the garment has, as the kind's fit names it; each girth's ease band",
+    "pattern": "the ease rows (chest_ease, waist_ease, hip_ease) inside the fit's band",
+    "sets": "design.fit; the ease targets default to the middle of the fit's band per girth",
+    "review": "Does it read as the fit asked (close, regular room, relaxed and loose) from across the room?"
+   },
+   "body_length": {
+    "type": "level",
+    "stage": 1,
+    "levels": [
+     "waist",
+     "hips",
+     "seat",
+     "crotch"
+    ],
+    "units": "a body level (\"hips\" or {\"to\": \"hips\", \"below\": m, + = lower}) or m from the hps down the back",
+    "definition": "where the FINISHED hem ends at centre back (a hem band's lower edge included), from the high point of the shoulder (hps) down the back: the body's own tape hpsTo<Level>Back (waist: hpsToWaistBack, hips: hpsToHipLineBack, seat: hpsToSeatBack, crotch: hpsToCrotchBack) + below",
+    "pattern": "the back's centre-back length from the hps line to the CB hem (yoke + back on a FreeSewing draft, one frame) + the hem band's finished height",
+    "tolerance": 0.005,
+    "reference_item": "body_length",
+    "sets": "block_options.length {to, below} with the band's height taken off (drafted) | lengthBonus (FreeSewing, solved on the draft)",
+    "review": "Where does the hem end at the back against the body (waist, hip bone, seat, crotch)?"
+   },
+   "sleeve_length": {
+    "type": "sleeve_level",
+    "stage": 1,
+    "levels": [
+     "short",
+     "elbow",
+     "three_quarter",
+     "long"
+    ],
+    "units": "a level (\"long\" or {\"to\": \"long\", \"below\": m}) or m from the shoulder point",
+    "definition": "where the FINISHED sleeve ends (a cuff's edge included), from the body's shoulder point down the arm: short = SHORT_SLEEVE x shoulderToElbow (mid upper arm), elbow = shoulderToElbow, three_quarter = half way elbow -> wrist, long = shoulderToWrist (the wrist bone); + below",
+    "pattern": "the sleeve piece from its cap top to its hem + the cuff's finished height + the shoulder seam's run past the shoulder point (a dropped shoulder)",
+    "tolerance": 0.005,
+    "reference_item": "sleeve_end",
+    "sets": "op sleeve length (level) + length_bonus (drafted, solved) | sleeveLengthBonus (FreeSewing, solved)",
+    "review": "Where does the sleeve end on the arm (mid upper arm, elbow, wrist bone)?"
+   },
+   "shoulder": {
+    "type": "shoulder",
+    "stage": 1,
+    "units": "\"set_in\" | \"dropped\" (the drop_shoulder default, 50 mm) | m past the shoulder point",
+    "definition": "where the shoulder seam ends against the body's shoulder point (acromion): set in = on it; dropped = run on that far down the arm",
+    "pattern": "the front's shoulder seam: hps -> shoulderDrop minus hps -> shoulder (0 without a drop)",
+    "tolerance": 0.003,
+    "reference_item": "shoulder_width",
+    "sets": "op drop_shoulder drop (drafted designs); a FreeSewing shirt is set in",
+    "review": "Does the shoulder seam sit on the shoulder point, or drop down the arm by the asked amount?"
+   },
+   "chest_ease": {
+    "type": "fraction",
+    "stage": 2,
+    "units": "fraction of the body's chest girth (+ = roomier)",
+    "definition": "the garment's girth at the chest (at the underarm) over the body's chest tape, minus 1: the ease look_pattern's 'ease at' lines and the flat_pattern gate print",
+    "pattern": "cloth.sizing: each torso piece's width at its underarm point, a closure's overlap past centre front left out (design_targets.ease_rows)",
+    "tolerance": 0.006,
+    "girth": "chest",
+    "reference_item": "chest_width",
+    "sets": "block_options.chest_ease (drafted) | chestEase (FreeSewing, solved)",
+    "review": "Is there the asked room across the chest (no drag lines, no tenting)?"
+   },
+   "waist_ease": {
+    "type": "fraction",
+    "stage": 2,
+    "units": "fraction of the body's waist girth",
+    "definition": "the garment's girth at the waist over the body's waist tape, minus 1 (look_pattern's 'ease at waist')",
+    "pattern": "cloth.sizing: each torso piece's width at the draft's waist line, or the body's waist height",
+    "tolerance": 0.006,
+    "girth": "waist",
+    "reference_item": "waist_suppression",
+    "sets": "waistEase (FreeSewing, solved); a block's straight side seam follows the chest (reported, not a target)",
+    "review": "Is the waist shaped as asked (straight, or taken in)?"
+   },
+   "hip_ease": {
+    "type": "fraction",
+    "stage": 2,
+    "units": "fraction of the body's hips girth (the tape the draft consumes)",
+    "definition": "the garment's girth at the body's hip height over the body's hips tape, minus 1 (look_pattern's 'ease at hips'; not read when the hem is above it)",
+    "pattern": "cloth.sizing: each torso piece's width at the body's hip height (pattern y from the hps)",
+    "tolerance": 0.006,
+    "girth": "hips",
+    "reference_item": "hem_sweep",
+    "sets": "block_options.hips_ease (drafted) | hipsEase (FreeSewing, solved)",
+    "review": "Does the body hang with the asked room at the hips (not clinging, not flaring)?"
+   },
+   "cap_ease": {"type": "fraction", "stage": 2, "units": "fraction of the armhole (the cap's seam over the armhole's, minus 1)", "definition": "the sleeve cap's ease into the armhole: how much longer the cap's seam line is than the armhole it is set into", "pattern": "cloth_check.seams: the set-in sleeve's cap seam (sleeve cap || armhole), its ease as the gate reads it", "tolerance": 0.006, "sets": "op sleeve cap_ease (drafted) | sleevecapEase (FreeSewing, solved: a chest ease that grows the armhole would otherwise leave the cap short, shirt probe -0.3 % against the gate's 0..3 %)", "review": "Does the sleeve set into the armhole smoothly (no pleats or puckers at the cap, no pull across the top of the arm)?"},
+  "neckline": {
+    "type": "neckline",
+    "stage": 1,
+    "styles": [
+     "crew",
+     "round",
+     "v",
+     "collar",
+     "hood"
+    ],
+    "units": "{\"style\": crew | round | v | collar | hood, \"width\": m, \"depth\": m} (or the style alone)",
+    "definition": "the neckline as a tech pack measures it: width = neck width seam to seam (the neck points apart, flat), depth = the front neck drop from the hps line down to the centre-front neckline seam",
+    "pattern": "the front piece: 2 x |hps.x - cfNeck.x| and hps.y - cfNeck.y; style from the draft (crew: the block's crew neckline + a neckband; v: op neckline shape v; collar: a stand / collar piece; hood: a hood piece)",
+    "tolerance": 0.003,
+    "reference_item": "collar",
+    "sets": "block_options.neckline crew / details.collar (style); op neckline widen / front (width / depth, drafted, solved); a FreeSewing draft's neckline is its collar's",
+    "review": "Is the neckline the asked shape, as wide and as deep as asked (crew on the base of the neck, a V to its depth)?"
+   },
+   "neckband_width": {
+    "type": "m",
+    "stage": 3,
+    "units": "m, finished (a folded band shows half its cut)",
+    "definition": "the neckband's finished width, seam to edge",
+    "pattern": "the neckband piece's height at its middle, halved when folded (garment_design.dims neckband_width)",
+    "tolerance": 0.001,
+    "dim": "neckband_width",
+    "detail": "collar",
+    "sets": "details.collar.generate.height = 2 x width + block_options.band_width = width (the crew's seam one band out)",
+    "review": "Is the neckband as wide as asked?"
+   },
+   "cuff_height": {
+    "type": "m",
+    "stage": 3,
+    "units": "m, finished",
+    "definition": "the cuff's finished height, seam to edge",
+    "pattern": "the cuff piece's height at its middle, halved when folded (garment_design.dims cuff_height)",
+    "tolerance": 0.001,
+    "dim": "cuff_height",
+    "detail": "cuff",
+    "sets": "details.cuff.generate.height = 2 x height (a rib cuff) | cuffLength (FreeSewing, solved)",
+    "review": "Are the cuffs as deep as asked?"
+   },
+   "hem_band_height": {
+    "type": "m",
+    "stage": 3,
+    "units": "m, finished",
+    "definition": "the hem band's finished height, seam to edge",
+    "pattern": "the hem band piece's height at its middle, halved when folded (garment_design.dims band_height)",
+    "tolerance": 0.001,
+    "dim": "band_height",
+    "detail": "hem",
+    "sets": "details.hem.generate.height = 2 x height (a rib band)",
+    "review": "Is the hem band as deep as asked?"
+   },
+   "hem_shape": {
+    "type": "hem",
+    "stage": 1,
+    "shapes": [
+     "straight",
+     "curved",
+     "shirttail"
+    ],
+    "units": "{\"shape\": straight | curved | shirttail, \"rise\": m (the side seam's hem point above the centre front hem)} or the shape alone",
+    "definition": "the hem's line: straight, or curving up to the side seam by `rise` (a shirttail 50-80 mm, a curved tee hem 15-50 mm)",
+    "pattern": "the front piece: the side seam's hem end above the centre-front hem",
+    "tolerance": 0.005,
+    "ranges": {
+     "straight": [
+      0.0,
+      0.005
+     ],
+     "curved": [
+      0.015,
+      0.05
+     ],
+     "shirttail": [
+      0.04,
+      0.09
+     ]
+    },
+    "reference_item": "back_length",
+    "sets": "op hem_shape shape / rise (drafted) | details.hem shirttail -> hemStyle baseball + hemCurve (FreeSewing, solved)",
+    "review": "Is the hem the asked line (level, or curving up to the sides by the asked rise)?"
+   }
+  }
+ }
 }

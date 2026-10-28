@@ -36,7 +36,10 @@ DETAIL_KINDS = ("collar", "cuff", "sleeve_placket", "front_closure", "placket", 
                 "pockets", "hem", "yoke", "darts", "pleats", "back_vent", "belt", "lining", "shoulder", "topstitch",
                 "crease", "belt_loops")
 SHEET_KEYS = {"kind", "from", "fit", "fabric", "details", "pattern", "notes", "method", "made", "block",
-              "block_options", "ops", "over", "support", "layer_gap", "open", "tie", "auto_true", "truing_corners"}
+              "block_options", "ops", "over", "support", "layer_gap", "open", "tie", "auto_true", "truing_corners",
+              "targets", "solved"}
+# (targets: {item: value}, the kind's checklist as the design input; solved: {knob path: value}, what design_garment
+# solved them to on the body. design_targets.py, C243)
 # (auto_true: true / false, every failing seam end trued on both pieces (cloth.pieces; default true on knit drafts);
 # truing_corners: seam-end labels that are corners by design. Shirt t7: the gate's fix text named "auto_true" and the
 # sheet refused it, then truing_corners: true crashed alter_pattern "'bool' object is not iterable")
@@ -114,6 +117,14 @@ def validate(sheet: dict, where: str = "design") -> None:
         choices = [k for k in K["details"][d] if not k.startswith("_")]
         if c not in choices:
             raise ClothError(f"{where}: {d} {c!r} unknown (have {', '.join(choices)})")
+    from . import design_targets  # (C243: the kind's checklist items, each value in its units; unknown ones refused)
+    try:
+        design_targets.check(sheet, where)
+    except design_targets.TargetError as e:
+        raise ClothError(str(e))
+    sv = sheet.get("solved")
+    if sv is not None and not (isinstance(sv, dict) and all(isinstance(k, str) for k in sv)):
+        raise ClothError(f"{where}: solved is {{knob path: value}} (written by design_garment from the targets)")
     # the strict contract (design_schema, C241): detail params, ops / block options only where the route runs them,
     # every op parameter, block option and FreeSewing option known, with its units and default in the error
     from . import design_schema
@@ -127,6 +138,8 @@ def resolve(sheet: dict) -> dict:
     """The sheet with every detail decided: {"kind", "from", "fit", "fabric" (name, solver spec, physical numbers),
     "details": {d: {"choice", "params", "source": "sheet" | "kind default", "kb": entry, "recipe": what the design
     does for it, or None, "cannot": why the design can't}}, "problems": [hard failures]}."""
+    from . import design_targets
+    sheet = design_targets.effective(sheet)  # (C243: the targets laid in as choices / options / ops, the sheet's on top)
     K = kb()
     kind = sheet["kind"]
     kd = K["kinds"][kind]
@@ -222,6 +235,8 @@ def _merge(a: dict, b: dict) -> dict:
 
 def compile_sheet(sheet: dict) -> dict:
     """The garment keys the sheet stands for (no draft yet): pattern, drop, fabric, folds, generate, detail."""
+    from . import design_targets
+    sheet = design_targets.effective(sheet)  # (C243: targets -> the options / ops / choices that make them)
     r = resolve(sheet)
     rec = r["recipe"] or {}
     out: dict = {}

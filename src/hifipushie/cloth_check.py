@@ -1717,6 +1717,22 @@ def shoulder_seam_row(M: dict, body, g: dict, kind: str = "") -> dict:
     return dict(row, status="FAIL" if bad else "PASS", **({"miss": "; ".join(bad)} if bad else {}))
 
 
+# THE KIND'S CHECKLIST IS THE DESIGN INPUT (C243, trials lesson 3): a sheet's targets (design.targets) are measured
+# here by the same definition the draft solved them with (design_targets.measure: cloth_checklist.json design_targets),
+# one row "target:<item>" each, target vs drafted. design_garment solved them on this body, so round 1 passes the
+# measurable items by construction; a FAIL means the body or an explicit option changed since (the row's fix).
+def target_rows(Bp: dict, g: dict, kind: str = "", body=None) -> list:
+    sheet = (g or {}).get("design") or {}
+    if not sheet.get("targets"):
+        return []
+    from . import design_targets
+    try:
+        return design_targets.rows(Bp, sheet, kind or sheet.get("kind") or "", body=body)
+    except design_targets.TargetError as e:
+        return [{"id": "target:sheet", "stage": 1, "status": "FAIL", "why": str(e),
+                 "fix": "fix the targets (garment_reference(kind=...) lists the kind's items)"}]
+
+
 def pattern_gate(model: str, garment: str, spec: dict | None = None, refs=None, waive: dict | None = None,
                  sheet: bool = False, concept: str | None = None, log=print, keep: dict | None = None) -> dict:
     """Measure the garment's pattern on its body WITHOUT a sim and write the gate record (see the section comment).
@@ -1752,6 +1768,7 @@ def pattern_gate(model: str, garment: str, spec: dict | None = None, refs=None, 
     from . import drape as drape_mod
     rows += drape_mod.gate_rows(g)  # (draped bands: generated from the CURRENT worn spec, flattened within the limit)
     rows.append(shoulder_seam_row(M, res["body"], g, kind or ""))
+    rows += target_rows(res["pieces_full"], g, kind or "", res["body"])
     rows.append(measure_definitions_row(res["body"], g, kind or ""))
     rows += tailor_rows_for(res["pieces_full"], kind, g)
     rows += piece_checklist_rows(model, garment, g, res)

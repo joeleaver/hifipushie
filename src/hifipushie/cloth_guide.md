@@ -100,6 +100,16 @@ the item list as a form and turns your answers into a design-sheet patch and a t
 6. **Surface details that make it read.** Rib, topstitching (and its colour), plackets, buttons, rivets, seams.
    Note any the tools can't build yet (see "Known gaps") so they're decided, not forgotten.
 
+**Write the measurable items as the kind's checklist, and design FROM it (C243).** `garment_reference(kind=...)`
+returns `targets_template`: every item the kind takes (body_length, sleeve_length, shoulder, fit and the ease per
+girth, neckline, band heights, hem_shape, every detail as a choice) with its one definition, units, default and range.
+Give them as targets, not as options: `design_garment(design={"kind": "tee", "targets": {"fit": "regular",
+"body_length": "hips", "sleeve_length": "short", "neckline": "crew"}})`. The draft SOLVES each (lengths as body
+levels, ease, the dropped shoulder's drop, the shirttail's rise, band heights; FreeSewing options found on the draft)
+and the reply prints target -> drafted per item; pattern_check measures the same items (rows `target:<item>`). Don't
+translate a target into an option by hand: an option or op you give yourself OVERRIDES its target (the reply says so).
+An item the draft can't make is refused with the reason.
+
 Then pick the kind, draft source or block, fit, fabric and details, and say which item justifies each. Kinds,
 details and fabrics: guide(topic="cloth_design"), `garment_reference(kind=...)` (read the kind's `lessons` before
 designing it).
@@ -129,6 +139,8 @@ body:
   `armhole_depth` (a share of waist-to-armpit) lowers it: 0.12-0.14 is ~3 cm on a jacket;
 - body length from the HPS at CB; sleeve length; band, cuff and collar heights; ease per girth;
 - the neckline: a crewneck sits at the neck's base, not scooped.
+With targets, that table is pattern_check's `target:<item>` rows (solved by design_garment, so they pass first time);
+items the checklist doesn't cover yet (armhole depth, collar stand) you still measure by hand.
 Print a table: item | reference | draft | pass. Fix the biggest miss in the design sheet, then look again. Don't
 dress a garment whose draft misses its description.
 

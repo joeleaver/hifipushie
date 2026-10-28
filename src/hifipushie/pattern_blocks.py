@@ -453,12 +453,18 @@ def sleeve(m: dict, body: dict, opts: dict | None = None, armhole: tuple | None 
         hw = SHORT_SLEEVE_HEM * W
     hem_y = -(L - cap["h"])
     elbow_y = -(mm("shoulderToElbow") - cap["h"]) if "shoulderToElbow" in m else hem_y * 0.45
+    # A SLEEVE THAT ENDS ABOVE THE ELBOW has no elbow points (design targets, C243): drawn at the elbow's depth below a
+    # short sleeve's hem, the outline ran underarm -> elbow (165 mm down) -> back UP to the hem (60 mm): a spike past
+    # the hem on every short-sleeve tee since the level landed (t4 / t5 drafts; the sleeve read 275 mm long for 170)
+    elbow_on = elbow_y > hem_y + 0.01
     back, frontc = _cap(W, cap["h"], cap["xt"])
     pts = [("underarmB", back[0])] + [(None, p) for p in back[1:-1]] + [("capTop", back[-1])]
     pts += [(None, p) for p in frontc[:-1]] + [("underarmF", frontc[-1])]
     we = lambda y: hw / 2 + (W / 2 - hw / 2) * (1 - y / hem_y)  # the underarm seam's x at depth y
-    pts += [("elbowF", [we(elbow_y), elbow_y]), ("wristF", [hw / 2, hem_y]), ("wristB", [-hw / 2, hem_y]),
-            ("elbowB", [-we(elbow_y), elbow_y])]
+    pts += ([("elbowF", [we(elbow_y), elbow_y])] if elbow_on else []) + [("wristF", [hw / 2, hem_y]),
+                                                                       ("wristB", [-hw / 2, hem_y])] \
+        + ([("elbowB", [-we(elbow_y), elbow_y])] if elbow_on else [])
+    elbow_y = elbow_y if elbow_on else 0.5 * hem_y  # (the elbow line, read for the sleeve's bend: inside the piece)
     # pitch notches: where the armhole's pitch points land on the cap (by the same fraction of each part)
     marks = {}
     pc = make_piece("sleeve", pts, "sleeve", {"to": "arm.L", "front": 1}, "copy", marks,
