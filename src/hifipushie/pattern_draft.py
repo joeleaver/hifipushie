@@ -1254,9 +1254,19 @@ def op_waistband(D: dict, height: float = 0.04, overlap: float = 0.035, ratio: f
                     "(generated at unfold from the waist edges as they are then)")
 
 
+def op_sleeve_recorded(D: dict, **o) -> None:
+    """The sleeve op as the OPS table runs it: its options are kept (meta sleeve_op) so an op that re-cuts the armhole
+    afterwards (drop_shoulder) can re-draft the sleeve into it with the same options."""
+    if D["meta"].get("shoulder_drop") and "biceps_ease" in o:
+        D["log"].append(f"!! sleeve: its own biceps_ease {float(o['biceps_ease']) * 100:.0f}% holds, so its cap isn't lowered "
+                        f"to the dropped shoulder (the drop's {D['meta']['shoulder_drop']['biceps_ease'] * 100:.0f}% would)")
+    D["meta"]["sleeve_op"] = dict(o)
+    op_sleeve(D, **o)
+
+
 OPS = {"waistband": op_waistband, "style_line": op_style_line, "take_in": op_take_in, "square": op_square, "dart": op_dart, "dart_to_ease": op_dart_to_ease,
        "flare": op_flare, "lengthen": op_lengthen, "extend": op_extend, "reshape": op_reshape, "facing": op_facing,
-       "collar": op_collar, "sleeve": op_sleeve, "two_piece": op_two_piece}
+       "collar": op_collar, "sleeve": op_sleeve_recorded, "two_piece": op_two_piece}
 
 
 # ---------------------------------------------------------------- the draft

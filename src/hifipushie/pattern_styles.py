@@ -18,6 +18,11 @@ pattern_draft.OPS. Same contract: named points, named edges kept, mating edges m
   buttons        button marks along a line of a paired piece, stitched left to right.
   neckline       the neckline redrawn on front and back together: widened along the shoulder by the same amount on
                  both (the shoulder seams stay equal), lowered at centre front / back, round, V or square.
+  drop_shoulder  a dropped shoulder on any upper-body block: the shoulder seam run on past the shoulder point along its
+                 own line, the underarm lowered, the armhole re-cut as one curve square to both seams (searched: one
+                 bend, no bump), the sleeve cap lowered to match (C240; hoodie trial t6: hand reshapes made an armhole
+                 ear, S-waves and shoulder-point nubs, 4 rounds). The drop is declared (meta shoulder_drop, point
+                 shoulderDrop) and the shoulder gate reads it (declared_shoulder_drop).
 """
 from __future__ import annotations
 
@@ -29,6 +34,7 @@ import numpy as np
 
 from . import pattern, pattern_blocks as pb
 from . import pattern_draft as pd
+from . import pattern_tailor as pt
 from .pattern_draft import DraftError, _flat, _insert, _point, _remap, _replace, _rot, edge_length
 
 
@@ -725,6 +731,204 @@ def op_neckline(D: dict, widen: float = 0.0, front: float = 0.0, back: float = 0
     D["log"].append(f"neckline: neck point moved {widen * 1000:.0f} mm along the shoulder on front and back, centre front "
                     f"{front * 1000:.0f} mm lower ({shape}), centre back {back * 1000:.0f} mm lower; neckline now front "
                     f"{moved['neck_front'] * 1000:.0f} + back {moved['neck_back'] * 1000:.0f} mm per half")
+
+
+DROP_SHOULDER = 0.05  # m: a dropped shoulder's default drop past the shoulder point (relaxed tops 40-80 mm: the t6 brief)
+DROP_LOWER = 0.5  # the underarm lowered by this share of the drop (Joseph-Armstrong's dropped shoulder: the armhole
+# deepened as the shoulder drops, so the arm can still lift; 25 mm for a 50 mm drop)
+
+
+def _bezier(P0, P1, P2, P3, m: int = 160) -> np.ndarray:
+    t = np.linspace(0.0, 1.0, m)[:, None]
+    return (1 - t) ** 3 * P0 + 3 * (1 - t) ** 2 * t * P1 + 3 * (1 - t) * t ** 2 * P2 + t ** 3 * P3
+
+
+def _one_bend(C: np.ndarray) -> bool:
+    """The polyline turns one way only (no S-wave): every turn between consecutive segments has the same sign."""
+    d = np.diff(C, axis=0)
+    z = d[:-1, 0] * d[1:, 1] - d[:-1, 1] * d[1:, 0]
+    z = z[np.abs(z) > 1e-12 * max(1.0, float(np.abs(z).max(initial=0.0)))]
+    return len(z) == 0 or bool((z > 0).all() or (z < 0).all())
+
+
+def armhole_curve(A, dA, S, dS, scoop_x: float) -> np.ndarray:
+    """A smooth armhole from the underarm A (leaving along dA: square to the side seam) to the shoulder end S
+    (arriving from dS: square to the shoulder seam), one bend only (no S-wave), never out past S nor below A (no bump),
+    its innermost point as near x = scoop_x as that allows (the block's across-chest / across-back kept). The handles
+    are searched, not guessed: the hoodie trial's hand reshapes of the shoulder point / pitch made an "ear" and S-waves."""
+    A, S, dA, dS = (np.asarray(v, float) for v in (A, S, dA, dS))
+    ch = float(np.linalg.norm(S - A))
+    best, best_c = None, np.inf
+    for k1 in np.linspace(0.08, 0.9, 18):
+        for k2 in np.linspace(0.08, 0.9, 18):
+            C = _bezier(A, A + dA * k1 * ch, S + dS * k2 * ch, S)
+            if C[:, 0].max() > max(A[0], S[0]) + 1e-5 or C[:, 1].min() < A[1] - 1e-5 or not _one_bend(C):
+                continue
+            cost = abs(float(C[:, 0].min()) - scoop_x)
+            if cost < best_c - 1e-9:
+                best, best_c = C, cost
+    if best is None:
+        raise DraftError("drop_shoulder: no smooth armhole joins the underarm to the dropped shoulder (less drop, or "
+                         "less lower)")
+    cum = np.r_[0, np.cumsum(np.linalg.norm(np.diff(best, axis=0), axis=1))]
+    s_ = np.linspace(0, cum[-1], max(8, int(math.ceil(cum[-1] / 0.008)) + 1))
+    return np.c_[np.interp(s_, cum, best[:, 0]), np.interp(s_, cum, best[:, 1])]
+
+
+def _cap_h(D: dict, W: float, af: float, ab: float) -> dict:
+    return pb.solve_cap(W, af, ab, 0.0 if D["meta"].get("knit") else pb.SLEEVE_DEFAULTS["cap_ease"])
+
+
+def op_drop_shoulder(D: dict, drop: float = DROP_SHOULDER, lower: float | None = None, **o) -> None:
+    """A dropped shoulder on any upper-body block (bodice, knit, after a neckline or a yoke): on front and back alike
+    the shoulder seam runs on `drop` m past the shoulder point along its own line (so the two stay matched), the
+    underarm is lowered `lower` m down the side seam (default half the drop: both side seams alike), and the armhole is
+    re-cut as one smooth curve from the new underarm to the new seam end, square to both seams (no S-wave, no bump). The
+    sleeve cap is lowered to match: its height is the set-in cap's minus the drop (the drop now covers the top of the
+    arm) plus the underarm's lowering (its biceps line goes down with it), the sleeve made as wide as that cap needs (op sleeve after this takes it; a sleeve already drafted is re-drafted
+    into the new armhole). The draft records the drop (meta shoulder_drop); "shoulder" stays on the body's shoulder
+    point (the form pins it there), "shoulderDrop" names the seam's new end (the shoulder seam and armhole edges end
+    there). Before style lines that cut the armhole, two_piece and raglan."""
+    pt.refuse_unknown("drop_shoulder", o)
+    drop = float(drop)
+    lower = DROP_LOWER * drop if lower is None else float(lower)
+    if drop <= 0:
+        raise DraftError(f"drop_shoulder: drop is m past the shoulder point, > 0 (got {drop})")
+    if lower < 0:
+        raise DraftError(f"drop_shoulder: lower is m the underarm moves down the side seam, >= 0 (got {lower})")
+    if D["meta"].get("shoulder_drop"):
+        raise DraftError("drop_shoulder: this draft's shoulder is already dropped (one drop_shoulder; give the total)")
+    need = ("armhole_front", "armhole_back", "shoulder_front", "shoulder_back")
+    if any(k not in D["edges"] for k in need):
+        raise DraftError(f"drop_shoulder: needs an upper-body block with its armhole and shoulder edges ({', '.join(need)}); "
+                         "a raglan or kimono has none")
+    for k in ("top", "under"):
+        if k in D["pieces"]:
+            raise DraftError("drop_shoulder: the sleeve is already two pieces: drop the shoulder before two_piece")
+    m = D["meta"]["measurements"]
+    biceps = float(m["biceps"]) / 1000.0
+    af0, ab0 = edge_length(D, D["edges"]["armhole_front"]), edge_length(D, D["edges"]["armhole_back"])
+    had = "sleeve" in D["pieces"]
+    W0 = (D["meta"]["sleeve"]["width"] if had else biceps * (1 + D["meta"].get("biceps_ease", 0.15)))
+    h0 = D["meta"]["sleeve"]["cap"]["h"] if had else _cap_h(D, W0, af0, ab0)["h"]
+    did = []
+    for which in ("front", "back"):
+        arm, sh = D["edges"][f"armhole_{which}"], D["edges"][f"shoulder_{which}"]
+        if len(arm) != 1 or len(sh) != 1 or arm[0].split(":")[0] != sh[0].split(":")[0]:
+            raise DraftError(f"drop_shoulder: the {which} armhole is cut ({' + '.join(arm)}): drop the shoulder before "
+                             "the style line that cuts it")
+        pn, arc = arm[0].split(":", 1)
+        pc = D["pieces"][pn]
+        toks = arc.split(">")
+        if toks[-1] != "shoulder" or "hps" not in pc["names"]:
+            raise DraftError(f"drop_shoulder: {pn}'s armhole {arc} doesn't end at its shoulder point")
+        P = pc["P"]
+        H, S = P[pc["names"]["hps"]].copy(), P[pc["names"]["shoulder"]].copy()
+        u = _unit(S - H)
+        S2 = S + u * drop
+        ix = pattern.arc_indices(pc, arc)
+        n = len(P)
+        step = 1 if (ix[0] + 1) % n == ix[1] else -1
+        L_old = P[ix]
+        A = L_old[0].copy()
+        A2, ra = pt.slide_end(pc, ix[0], -step, lower)
+        pt._ends_named(pc, ra, "drop_shoulder (the underarm lowered)")
+        below = P[((ra[-1] if ra else ix[0]) - step) % n]  # (the side seam's next point below the new underarm)
+        sd =_unit(below - A2) if np.linalg.norm(below - A2) > 1e-9 else np.array([0.0, -1.0])
+        dA = np.array([-sd[1], sd[0]])
+        if dA[0] > 0:  # (square to the side seam, heading in toward the centre line)
+            dA = -dA
+        dS = np.array([u[1], -u[0]])
+        if dS[1] > 0:  # (square to the shoulder seam, heading down the armhole)
+            dS = -dS
+        scoop = max(float(A[0] - L_old[:, 0].min()), 0.0)
+        C = armhole_curve(A2, dA, S2, dS, float(A2[0]) - scoop)
+        cum0 = np.r_[0, np.cumsum(np.linalg.norm(np.diff(L_old, axis=0), axis=1))]
+        put = {}
+        if "armholePitch" in pc["names"] and pc["names"]["armholePitch"] in ix:
+            fp = cum0[ix.index(pc["names"]["armholePitch"])] / max(cum0[-1], 1e-9)
+            cumc = np.r_[0, np.cumsum(np.linalg.norm(np.diff(C, axis=0), axis=1))]
+            put["armholePitch"] = int(np.clip(np.argmin(np.abs(cumc - fp * cumc[-1])), 1, len(C) - 2))
+        Q = np.r_[C, [S]]  # underarm .. curve .. the new seam end, then the body's shoulder point on the seam
+        put.update({k_: 0 for k_ in pd._names_at(pc, ix[0])})
+        put["shoulderDrop"] = len(Q) - 2
+        put.update({k_: len(Q) - 1 for k_ in pd._names_at(pc, ix[-1])})
+        pt.replace_run(pc, ra[::-1] + ix, Q, put)
+        _end_at(D, pn, "shoulder", "shoulderDrop")
+        did.append(f"{which} armhole {pattern.length(L_old) * 1000:.0f} -> {edge_length(D, D['edges'][f'armhole_{which}']) * 1000:.0f} mm")
+    af, ab = edge_length(D, D["edges"]["armhole_front"]), edge_length(D, D["edges"]["armhole_back"])
+    D["meta"]["armhole_front"], D["meta"]["armhole_back"] = af, ab
+    # the cap lowered by the drop and its biceps line by the underarm's lowering (Joseph-Armstrong's dropped shoulder:
+    # cap height - drop + lower), the sleeve widened until its cap stands that high in the new armhole. Measured: the
+    # knit block on the test body (tests/test_pattern_draft MM), 50 mm drop: cap 162 -> 137 mm, the sleeve 357 -> 440 mm
+    # wide (biceps ease 5 -> 29%: a relaxed sweatshirt's); cap - drop alone (112 mm) widened it to 472 mm (39%)
+    want = max(h0 - drop + lower, 0.25 * h0)
+    lo, hi = biceps * 0.8, biceps * 4.0
+    if _cap_h(D, lo, af, ab)["h"] < want:
+        W = lo
+    else:
+        for _ in range(50):
+            mid = 0.5 * (lo + hi)
+            c = _cap_h(D, mid, af, ab)
+            lo, hi = (mid, hi) if (c["ok"] and c["h"] > want) else (lo, mid)
+        W = lo
+    be = W / biceps - 1.0
+    D["meta"]["biceps_ease"] = be
+    D["meta"]["shoulder_drop"] = {"drop": drop, "lower": lower, "cap_h_set_in": h0, "cap_h": want, "biceps_ease": be}
+    D["log"].append(f"drop_shoulder: the shoulder seam runs on {drop * 1000:.0f} mm past the shoulder point (front and "
+                    f"back), the underarm {lower * 1000:.0f} mm lower, the armhole re-cut in one curve ({'; '.join(did)}); "
+                    f"the cap {h0 * 1000:.0f} -> {want * 1000:.0f} mm high, the sleeve {W * 1000:.0f} mm wide (biceps "
+                    f"ease {be * 100:.0f}%)")
+    if had:  # a sleeve drafted before the drop goes into the new armhole, with the op's own other options
+        opts = dict(D["meta"].get("sleeve_op") or {})
+        D["pieces"].pop("sleeve")
+        D["seams"] = [s for s in D["seams"] if not any(e.startswith("sleeve:") for side in s for e in _flat(side))]
+        D["notes"] = {k: v for k, v in D["notes"].items() if '"sleeve:' not in k}
+        for k in ("sleeve_hem", "cap"):
+            D["edges"].pop(k, None)
+        D["log"].append("  the sleeve drafted before it is re-drafted into the dropped armhole")
+        pd.OPS["sleeve"](D, **opts)
+
+
+def _end_at(D: dict, piece: str, old: str, new: str) -> None:
+    """Every edge spec on `piece` that ENDS at the point `old` ends at `new` instead (seams, named edges, style lines,
+    the seam notes keyed on them): the shoulder seam and the armhole end at the dropped seam end."""
+    def fix(spec):
+        if not isinstance(spec, str):
+            return [fix(x) for x in spec]
+        pn, arc = spec.split(":", 1)
+        if pn != piece:
+            return spec
+        t = arc.split(">")
+        t = [new if (k in (0, len(t) - 1) and x == old) else x for k, x in enumerate(t)]
+        return f"{pn}:{'>'.join(t)}"
+    notes = {}
+    seams = []
+    for s in D["seams"]:
+        s2 = [fix(s[0]), fix(s[1])]
+        k0, k1 = json.dumps(s), json.dumps(s2)
+        if k0 in D["notes"]:
+            notes[k1] = D["notes"][k0]
+        seams.append(s2)
+    D["notes"] = {k: v for k, v in D["notes"].items() if k not in {json.dumps(s) for s in D["seams"]}} | notes
+    D["seams"] = seams
+    D["edges"] = {k: [fix(e) for e in v] for k, v in D["edges"].items()}
+    D["lines"] = {k: (tuple(fix(x) for x in v) if isinstance(v, (list, tuple)) else v) for k, v in D["lines"].items()}
+
+
+def declared_shoulder_drop(g: dict) -> float:
+    """m: the shoulder drop a garment's design DECLARES (its drop_shoulder ops, the kind's and details' included):
+    what cloth_check's shoulder seam row adds to the body's seam for the seam's end."""
+    from . import cloth
+    try:
+        pat = (cloth.expanded(g or {}) or {}).get("pattern") or {}
+    except Exception:  # (a sheet that doesn't compile is judged elsewhere)
+        pat = (g or {}).get("pattern") or {}
+    return float(sum(float(o_.get("drop", DROP_SHOULDER)) for o_ in pat.get("ops") or []
+                     if isinstance(o_, dict) and o_.get("op") == "drop_shoulder"))
+
+
+pd.OPS.update({"drop_shoulder": op_drop_shoulder})
 
 
 pd.OPS.update({"neckline": op_neckline, "shawl": op_shawl, "lapel": op_lapel, "cut_away": op_cut_away, "darts_to_seam": op_darts_to_seam,

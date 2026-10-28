@@ -47,8 +47,9 @@
             "fit": {"slim": {"chest": [0.06, 0.14], "waist": [0.06, 0.20], "hips": [0.0, 0.20]},
                     "regular": {"chest": [0.10, 0.24], "waist": [0.12, 0.35], "hips": [0.0, 0.30]},
                     "relaxed": {"chest": [0.20, 0.40], "waist": [0.25, 0.50], "hips": [0.15, 0.40]}},
-            "details": {"collar": "shirt_collar", "cuff": "barrel", "sleeve_placket": "tower", "front_closure": "buttons",
+            "details": {"collar": "shirt_collar", "cuff": "barrel", "sleeve_placket": "slit", "front_closure": "buttons",
                         "placket": "folded", "hem": "shirttail", "yoke": "single", "topstitch": "edge"},
+            "_details_doc": "Every default drafts (C240, tests/test_shape_ops.py; shirt trial t7 lost a round to an unmakeable default): the sleeve placket is the bound slit Simon makes (a tower placket's strips aren't sewn on yet); the shirttail hem is Simon's baseball hem (hemStyle) or, on a drafted shirt, op hem_shape.",
             "required": ["collar", "cuff", "sleeve_placket", "front_closure", "hem"],
             "sewing_order": ["yoke", "back", "front", "placket", "collar_stand", "collar_fall", "sleeve", "sleeve_placket", "cuff"],
             "lessons": ["Worn without a tie only the COLLAR button is undone; every front button stays closed (two open read wrong to the user). Simon's extraTopButton stays false: a button with nothing fastened to it draws as a hole on the open collar. Where: wear.no_tie (kind default).",
@@ -60,8 +61,9 @@
                         "Tucked in = the TROUSERS worn over the shirt (trousers over: shirt); worn free the shirt hangs over the waistband and hides the belt. Where: none (the trousers' over key)."]},
   "blouse": {"region": "upper", "seam_finish": "pressed_to_side", "fabric": "cotton_shirting", "lap": "right_over_left", "cap_ease": [0.0, 0.04],
              "fit": {"regular": {"chest": [0.08, 0.20], "waist": [0.10, 0.30], "hips": [0.06, 0.25]}},
-             "details": {"collar": "convertible", "cuff": "barrel", "sleeve_placket": "continuous", "front_closure": "buttons",
-                         "placket": "folded", "hem": "straight_double", "darts": "bust"},
+             "details": {"collar": "shirt_collar", "cuff": "barrel", "sleeve_placket": "slit", "front_closure": "buttons",
+                         "placket": "folded", "hem": "straight_double", "darts": "none"},
+             "_details_doc": "Every default drafts (C240): from Simon, the shirt draft that makes blouses here: a shirt collar, the bound slit, no darts. A convertible collar, a continuous placket or bust darts are a drafted design's (block bodice with darts, op collar) and say so in the sheet.",
              "required": ["collar", "cuff", "front_closure", "hem"],
              "sewing_order": ["front", "back", "facing", "collar_fall", "sleeve", "sleeve_placket", "cuff"]},
   "tee": {"region": "upper", "seam_finish": "pressed_to_side", "fabric": "jersey", "lap": null, "cap_ease": [-0.03, 0.03],
@@ -76,6 +78,8 @@
              "fit": {"regular": {"chest": [0.10, 0.25], "waist": [0.10, 0.35], "hips": [0.05, 0.25]},
                      "boxy": {"chest": [0.14, 0.35], "waist": [0.25, 0.65], "hips": [0.10, 0.40]}},
              "details": {"collar": "hood", "cuff": "rib", "front_closure": "pullover", "hem": "rib_band", "pockets": "kangaroo"},
+             "draft": {"block": "knit", "block_options": {"length": {"to": "hips"}}, "ops": [{"op": "sleeve"}]},
+             "_draft_doc": "Drafted by the kind itself (C240: every default drafts): the knit block to the hip line (the rib band below it: hoodie trial t6 took a size chart's 68-72 cm and put the band at the crotch), a set-in sleeve; the hood, kangaroo pocket and rib bands come from their details. A dropped shoulder is details shoulder \"dropped\" (op drop_shoulder: the seam run on past the shoulder point, the armhole re-cut, the cap lowered; t6 spent 4 rounds on reshape hacks).",
              "required": ["collar", "cuff", "hem"],
              "sewing_order": ["front", "back", "pocket", "hood", "sleeve", "cuff", "hem_band"]},
   "sweater": {"definition_holds": {"hps": "held on the tape's legacy side neck point (the neck loop 2 cm up the neck, widest) until refitted on FreeSewing's (where the neck meets the shoulder: tailor 'corner', measure_defs C156): Tess s18 freeze", "highBust": "held on the tape's legacy highBust (= chest) until refitted on FreeSewing's (just under the arms; measure_defs M11): Tess 854.7 -> 847.9 (3.4 mm: under the 8 mm bust-dart threshold; held with the s18 freeze)", "shoulderSlope": "held on the tape's line fit until refitted on the hps -> shoulder point chord every draft reads (measure_defs M9) (Tess s18 freeze); Tess 12.63 -> 21.98", "hips": "held on the tape's legacy hips (hip joint + 2 cm) until refitted on FreeSewing's (iliac crest; measure_defs M10): Tess hips 912.6 -> 757.1, waistToHips 151.3 -> 44.8", "waistToHips": "held on the tape's legacy hips (hip joint + 2 cm) until refitted on FreeSewing's (iliac crest; measure_defs M10): Tess hips 912.6 -> 757.1, waistToHips 151.3 -> 44.8"}, "region": "upper", "seam_finish": "pressed_to_side", "fabric": "sweater_knit", "lap": null, "cap_ease": [-0.03, 0.03],
@@ -94,8 +98,10 @@
              "fit": {"slim": {"chest": [0.07, 0.15], "waist": [0.06, 0.16], "seat": [0.03, 0.12], "_doc": "slim-cut, modern (canvas thread 2026-10-23, Joe on the Garrett concept): chest ease 7.5-10.5 cm in slim jackets (one-button 7.5, two / three-button 10.5: Research Journal of the Costume Culture 2015, doi 10.7741/rjcc.2015.23.5.835), up to 15 % where the shirt under it needs the room (layer_clearance); a plumb (falls straight) jacket reads its waist / seat by the fall rule"},
                      "regular": {"chest": [0.08, 0.16], "waist": [0.08, 0.20], "seat": [0.04, 0.15]},
                      "relaxed": {"chest": [0.08, 0.18], "waist": [0.18, 0.32], "seat": [0.06, 0.18]}},
-             "details": {"collar": "notched_lapel", "cuff": "hemmed", "front_closure": "buttons", "hem": "coat",
+             "details": {"collar": "notched_lapel", "cuff": "hemmed", "front_closure": "button_stand", "hem": "coat",
                          "lining": "full", "shoulder": "pad_and_head", "pockets": "flap"},
+             "draft": {"block": "bodice", "ops": [{"op": "sleeve"}, {"op": "two_piece"}]},
+             "_draft_doc": "C240 (every default drafts): a sheet with nothing else drafts the bodice block with a two-piece sleeve and a lining; the lapel, collar and pockets are the design's ops (examples/garment_sheets/shawl_jacket.json; pattern_jacket). Sheets giving their own block and ops are unchanged (every jacket sheet already has sleeve + two_piece).",
              "required": ["collar", "front_closure", "hem", "lining"],
              "sewing_order": ["front", "facing", "back", "collar_fall", "sleeve", "lining"],
              "lessons": ["Built on the form (worn_top, this kind's default): fronts and backs laid up the body over the shoulders, shoulder and CB seams pinned, the collar on that neckline, lapels pressed onto the fronts. On a cylinder the shoulder seams started 23-25 cm apart and the left lapel unrolled. Where: kind default; stage 4 start gaps.",
@@ -116,6 +122,8 @@
            "fit": {"regular": {"chest": [0.08, 0.32], "waist": [0.10, 0.35], "seat": [0.08, 0.30]}},
            "details": {"collar": "notched_lapel", "cuff": "hemmed", "front_closure": "double_breasted", "hem": "coat",
                        "lining": "full", "shoulder": "pad_and_head", "back_vent": "lapped_vent"},
+           "draft": {"block": "bodice", "ops": [{"op": "sleeve"}]},
+           "_draft_doc": "C240 (every default drafts): a sheet with nothing else drafts the bodice block, a sleeve and a lining (the Carlton table, from carlton, is a shell: no lining, no pads); the lapel, collar and vent are the design's ops. Sheets giving their own block and ops are unchanged.",
            "required": ["collar", "front_closure", "hem", "lining"],
            "sewing_order": ["back", "belt", "skirt_back", "front", "facing", "collar_stand", "collar_fall", "sleeve"],
            "lessons": ["Built on the form like a jacket (worn_top) and drafted over what it is worn over (over); the jacket's lessons on the tent, hip room, the stand and the lapels apply."]},
@@ -123,7 +131,9 @@
                "fit": {"slim": {"waist": [0.0, 0.03], "seat": [0.02, 0.06]},
                        "regular": {"waist": [0.0, 0.04], "seat": [0.04, 0.10]},
                        "relaxed": {"waist": [0.0, 0.05], "seat": [0.08, 0.18]}},
-               "details": {"waistband": "straight", "fly": "zip_fly", "pockets": "slant", "hem": "blind", "pleats": "none"},
+               "details": {"waistband": "extended", "fly": "zip_fly", "pockets": "slant", "hem": "blind", "pleats": "none"},
+               "draft": {"block": "trouser"},
+               "_draft_doc": "C240 (every default drafts): the trouser block; a zip fly opens the centre front, so the band is the extended one opening over it (a straight band opens at centre back: two openings). Leg cut and length are the block's defaults or the sheet's.",
                "required": ["waistband", "fly", "hem"],
                "sewing_order": ["leg_front", "fly", "leg_back", "pocket", "waistband"]},
   "jeans": {"region": "lower", "seam_finish": "felled", "fabric": "denim", "lap": "left_over_right", "_doc": "Five-pocket jeans, drafted by this kind itself (the trouser block, as suit_trousers, then what makes jeans: a back YOKE instead of back darts (the dart's intake taken into the yoke seam), front scoop pockets, back patch pockets, a mid rise below the natural waist, no crease, felled seams). A design sheet {kind: jeans} with nothing else makes straight-leg jeans cut to stack on the shoe.", "fit": {"slim": {"waist": [0.0, 0.03], "seat": [0.02, 0.06]}, "straight": {"waist": [0.0, 0.04], "seat": [0.04, 0.09]}, "relaxed": {"waist": [0.0, 0.05], "seat": [0.08, 0.15]}}, "draft": {"block": "trouser", "block_options": {"length": "break", "waist_ease": 0.02, "back_dart": 0.0, "waist_drop": 0.04}, "fit_options": {"slim": {"leg": "slim", "seat_ease": 0.04}, "straight": {"leg": "straight", "seat_ease": 0.06}, "relaxed": {"leg": "wide", "seat_ease": 0.1}}}, "details": {"waistband": "extended", "fly": "zip_fly", "crease": "none", "darts": "yoke", "belt_loops": "loops", "belt": "none", "pockets": "jeans", "hem": "straight_double", "pleats": "none"}, "required": ["waistband", "fly", "hem", "darts", "pockets"], "sewing_order": ["leg_front", "fly", "leg_back", "pocket", "waistband"], "lessons": ["Jeans differ from tailored trousers in construction, not just the rise: the back's suppression is in the YOKE seam (back_dart 0, the yoke's take_in), the front has scoop pockets, the back patch pockets (op pocket, laid on the back leg: not girth), seams felled.", "Cut to stack on the shoe (length break); a straight leg's hem ~ the knee's width. Measure a reference's rise and the leg's width at knee and hem before choosing the fit (Tess: straight, ~355 mm round at the hem)."]},
@@ -150,7 +160,9 @@
                            "A shirt tucked in = these trousers over: shirt (the belt shows only then). It has passed the coarse sim, not yet the fine settle: try fine_settle false."]},
   "shorts": {"region": "lower", "seam_finish": "topstitched", "fabric": "cotton_twill", "lap": "left_over_right",
              "fit": {"regular": {"waist": [0.0, 0.04], "seat": [0.05, 0.14]}},
-             "details": {"waistband": "straight", "fly": "zip_fly", "pockets": "slant", "hem": "straight_double"},
+             "details": {"waistband": "extended", "fly": "zip_fly", "pockets": "slant", "hem": "straight_double"},
+             "draft": {"block": "trouser", "block_options": {"length": "shorts"}},
+             "_draft_doc": "C240 (every default drafts): the trouser block cut to shorts length; the extended band over the zip fly, as trousers.",
              "required": ["waistband", "hem"],
              "sewing_order": ["leg_front", "fly", "leg_back", "waistband"]},
   "skirt": {"region": "lower", "seam_finish": "pressed_open", "fabric": "cotton_twill", "lap": null,
@@ -163,11 +175,15 @@
   "dress": {"region": "upper", "seam_finish": "pressed_open", "fabric": "cotton_shirting", "lap": null, "cap_ease": [0.0, 0.04],
             "fit": {"regular": {"chest": [0.05, 0.12], "waist": [0.03, 0.10], "seat": [0.04, 0.12]}},
             "details": {"collar": "faced_neckline", "cuff": "hemmed", "skirt_closure": "cb_zip", "darts": "bust", "hem": "blind"},
+            "draft": {"block": "bodice", "block_options": {"fitted": true, "darts": true, "length": {"to": "crotch", "below": 0.3}},
+                      "ops": [{"op": "sleeve", "length": "short"}]},
+            "_draft_doc": "C240 (every default drafts): a fitted, darted bodice run on to just above the knee (300 mm below the crotch: fish-eye darts past the waist) with short sleeves; a sheet's own block options win key by key.",
             "required": ["collar", "skirt_closure", "hem"],
             "sewing_order": ["front", "back", "facing", "sleeve"]},
   "flat": {"region": "whole", "seam_finish": "pressed_open", "fabric": "linen", "lap": null, "fit": {},
            "details": {"hem": "straight_double"}, "required": ["hem"], "sewing_order": ["panel"],
-           "_doc": "A flat thing: a tablecloth, a blanket, a curtain (state draped)."}
+           "own_pieces": true,
+           "_doc": "A flat thing: a tablecloth, a blanket, a curtain (state draped). Its pieces are the garment's own (rects / outlines), so it has no draft to default to (own_pieces: tests/test_shape_ops.py drafts every other kind's defaults)."}
  },
 
  "seam_finishes": {
@@ -226,6 +242,7 @@
      "folds": [{"on": "front", "kind": "roll", "angle": 20, "where": "roll line"}, {"on": "facing", "kind": "roll", "angle": 20, "where": "roll line"}],
      "evidence": [{"piece": "facing"}, {"fold": "front"}, {"not_made": "front"}]},
    "hood": {"label": "hood: two sides (or sides + centre panel) sewn round the neckline, the face edge turned or bound",
+     "draft": {"ops": [{"op": "hood"}]},
      "made_of": [{"role": "hood", "layers": 2, "interfaced": false, "rests": "flat"}],
      "seams": [["hood", "front", "plain"], ["hood", "back", "plain"]],
      "folds": [{"on": "hood", "kind": "press", "angle": 360, "where": "the face edge turned in 20-30 mm"}],
@@ -376,14 +393,14 @@
    "welt": {"label": "welt pocket (a slot with a welt, bag inside)", "evidence": []},
    "flap": {"label": "flap pocket", "made_of": [{"role": "pocket", "interfaced": true}], "evidence": []},
    "in_seam": {"label": "pocket bag in the side seam (invisible from outside)", "evidence": []},
-   "kangaroo": {"label": "kangaroo pocket on a hoodie's front", "made_of": [{"role": "pocket"}], "evidence": [{"piece": "pocket"}]},
+   "kangaroo": {"label": "kangaroo pocket on a hoodie's front", "draft": {"ops": [{"op": "pocket", "piece": "front", "type": "kangaroo"}]}, "made_of": [{"role": "pocket"}], "evidence": [{"piece": "pocket"}]},
    "slant": {"label": "slant front pocket (trousers)", "evidence": []},
    "jeans": {"label": "five-pocket jeans: front scoop pockets (a curved opening from the waist to the side seam) and back patch pockets (130 x 145 mm, pointed bottom) on the back legs below the yoke", "draft": {"ops": [{"op": "style_line", "piece": "front", "name": "scoop", "from": {"edge": "cWaist>sideWaist", "t": 0.5}, "to": {"edge": "sideWaist>sideSeat", "dist": 0.075}, "names": ["front", "pocket_side"]}, {"op": "pocket", "piece": "back", "type": "patch", "at": [0.13, -0.085], "width": 0.13, "height": 0.145, "name": "back_pocket"}]}, "evidence": []},
    "none": {"label": "no pockets", "evidence": []}
   },
   "hem": {
    "_doc": "Hems aren't in the seam-line pattern: the hem depth goes to the detail maps (cloth DETAIL hem), and a fold line where the solver can hold it.",
-   "shirttail": {"label": "curved shirttail hem, narrow double-turned 5-6 mm, edge-stitched", "detail": {"hem": 0.006}, "dims": {"hem_depth": [5, 8]}, "evidence": []},
+   "shirttail": {"label": "curved shirttail hem, narrow double-turned 5-6 mm, edge-stitched; the side seam 50-80 mm shorter than the centre front / back", "detail": {"hem": 0.006}, "dims": {"hem_depth": [5, 8], "side_rise": [50, 80]}, "draft": {"ops": [{"op": "hem_shape", "shape": "shirttail"}]}, "evidence": []},
    "straight_double": {"label": "double-turned straight hem 10-25 mm", "detail": {"hem": 0.015}, "dims": {"hem_depth": [10, 25]}, "evidence": []},
    "blind": {"label": "blind-stitched hem 30-50 mm (skirts, trousers), invisible from outside", "detail": {"hem": 0.04, "topstitch": 0.0}, "dims": {"hem_depth": [30, 50]}, "evidence": []},
    "coat": {"label": "coat hem 40-50 mm turned and blind-stitched (sleeve hems 30-40)", "detail": {"hem": 0.045, "topstitch": 0.0}, "dims": {"hem_depth": [40, 50]}, "evidence": []},
@@ -444,14 +461,17 @@
    "none": {"label": "no crease (jeans, chinos, casual trousers)", "evidence": []}
   },
   "lining": {
-   "full": {"label": "fully lined (body and sleeves)", "made_of": [{"role": "lining"}], "evidence": [{"piece": "lining"}]},
+   "full": {"label": "fully lined (body and sleeves)", "draft": {"ops": [{"op": "lining"}]}, "made_of": [{"role": "lining"}], "evidence": [{"piece": "lining"}]},
    "half": {"label": "half lined", "made_of": [{"role": "lining"}], "evidence": [{"piece": "lining"}]},
    "none": {"label": "unlined (shell only)", "evidence": []}
   },
   "shoulder": {
    "pad_and_head": {"label": "shoulder pad + sleeve head roll", "evidence": [],
      "lessons": ["Pads are not cloth: garment key support [{\"kind\": \"shoulder_pad\", \"thickness\": 0.012}, \"sleeve_head\"] (pads on the body under the garment). Without them a jacket's shoulders slope soft; they add tension at the pit seams."]},
-   "none": {"label": "unstructured shoulder", "evidence": []}
+   "none": {"label": "unstructured shoulder", "evidence": []},
+   "dropped": {"label": "dropped shoulder: the shoulder seam run on 40-80 mm past the shoulder point down the arm, the armhole deepened and re-cut, a low, wide sleeve cap (sweatshirts, relaxed knits)",
+     "draft": {"ops": [{"op": "drop_shoulder"}]}, "dims": {"shoulder_drop": [30, 80]}, "evidence": [],
+     "lessons": ["A drop is an op, not a reshape: op drop_shoulder {drop, lower} runs the seam on along its own line, re-cuts the armhole in one curve and lowers the cap; the shoulder gate holds the seam's end to the body + the declared drop (hoodie t6: reshape(shoulder) made an armhole ear and shoulder-point nubs; reshape(armholePitch) S-waves; 4 rounds)."]}
   },
   "topstitch": {
    "edge": {"label": "edge-stitched 1.5-3 mm from collar, stand, cuffs, placket edges", "detail": {"topstitch": 0.002}, "dims": {"edge_distance": [1.5, 3]}, "evidence": []},
@@ -494,7 +514,7 @@
      "sleeve_placket": {"slit": {}, "none": {}},
      "front_closure": {"buttons": {}},
      "placket": {"folded": {}},
-     "hem": {"shirttail": {}, "straight_double": {"options": {"hemCurve": 0.25}}},
+     "hem": {"shirttail": {"options": {"hemStyle": "baseball"}}, "straight_double": {"options": {"hemStyle": "straight"}}},
      "yoke": {"single": {}},
      "topstitch": {"edge": {}, "flat_fell": {}, "none": {}},
      "darts": {"none": {}, "back_shoulder": {}},
@@ -684,7 +704,17 @@
    },
    "reshape": {
     "does": "moves a point, neighbours eased along",
-    "use": "lowered or widened necklines, curved hems, a dropped shoulder"
+    "use": "a point nudged by hand; NOT a hem shape (op hem_shape) or a dropped shoulder (op drop_shoulder): reshaped, the hoodie's shoulder made an armhole ear and S-waves (trial t6) and a hem's seams came unmatched"
+   },
+   "hem_shape": {
+    "does": "redraws the hem on every piece its hem edges cross: {\"op\": \"hem_shape\", \"shape\": \"shirttail\" | \"curved\" | \"straight\", \"rise\": m the side point goes up its side seam (shirttail 0.06), \"front_drop\" / \"back_drop\": m the centre goes down (high-low), \"flat\": share of the half hem kept level}",
+    "use": "a shirttail, a curved tee / blouse hem, a high-low hem (back_drop > front_drop), a straight hem re-levelled; before extend and facings",
+    "keeps": "every seam ending on the hem (side, panel, dart): both edges moved by the same length; the hem square at the centre and the side seam"
+   },
+   "drop_shoulder": {
+    "does": "a dropped shoulder: {\"op\": \"drop_shoulder\", \"drop\": m past the shoulder point (0.05), \"lower\": m the underarm goes down (half the drop)}: the seam run on along its line, the armhole re-cut in one smooth curve, the sleeve cap lowered (a wider sleeve)",
+    "use": "sweatshirts, hoodies, relaxed knits and shirts (detail shoulder: dropped adds it); before style lines across the armhole and two_piece",
+    "keeps": "shoulder and side seams matched; 'shoulder' stays on the body's shoulder point (the form pins it), 'shoulderDrop' ends the seam; the shoulder gate expects the declared drop"
    },
    "facing": {
     "does": "traces a new piece from a piece along edges",

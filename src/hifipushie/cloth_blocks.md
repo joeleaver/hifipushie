@@ -70,6 +70,8 @@ armholePitch, armhole, waist, hem, cfHem, bust, the darts' points...), so operat
 | `contour` | Shapes an edge by an amount per level (`at`: [[level, m] ...]; top, chest, waist, hips, hem or a y): a shaped centre-back seam, a hem's spring. A style line's name shapes both its edges | Mirror seams equal; a panel seam's small difference declared |
 | `join` | Two pieces sewn together become one, the seam gone: a side panel with no side seam, a yoke cut on | Every other seam and edge; says how much shaping the seam's curve carried (now lost) |
 | `round_corner` | A corner rounded (`radius` or `along` [m, m]): a cut-away front hem, pocket corners. Before facings | The corner's name, on the curve |
+| `hem_shape` | The hem redrawn on every piece its hem edges cross (any block, after panels and darts): `shape` shirttail / curved / straight; `rise` m the side point goes up its side seam (shirttail 0.06, curved 0.03, straight 0); `front_drop` / `back_drop` m the centre goes down (high-low: a longer back); `flat` the share of the half hem kept level. Square at centre and side. Before `extend` and facings | Every seam ending on the hem: both edges moved alike (side, panel, dart) |
+| `drop_shoulder` | A dropped shoulder on any upper-body block: the shoulder seam run on `drop` m (0.05) past the shoulder point along its line, the underarm `lower` m (half the drop) down the side seam, the armhole re-cut in one curve square to both seams, the sleeve cap lowered (cap - drop + lower: a wider sleeve; a sleeve drafted before is re-drafted). `shoulder` stays on the body's shoulder point, `shoulderDrop` ends the seam; the shoulder gate holds the seam's end to body + the declared drop. Detail `shoulder: dropped` adds it. Before style lines across the armhole and `two_piece` | Shoulder and side seams matched |
 | `pocket` | `type` patch / kangaroo / welt / flap: laid on a piece's outside and tacked along its sewn edges (`at` [x, y] the top edge's middle, `width`, `height`). `type` in_seam (`piece` front, `other` back, `top`, `opening`): the seam left open, two bags sewn to its lips, lying inside the front | The piece under it; the split seam's two parts |
 | `lining` | Every body piece traced as `<piece>_lining`, sewn to each other as the shells are, laid inside them, sewn to the shell along `attach` (hems, sleeve hems, back neck). Last, before unfold | The shells' seam matches |
 | `fisheye` | A double-pointed waist dart on a piece that runs past the waist (run on to the hem as a closed cut). `darts: true` on a hip-length bodice makes them | Its legs equal |
@@ -134,6 +136,12 @@ so it follows that piece round a roll line.
 
 A pleat is laid CLOSED by the placement (the cloth past its line runs back a depth and on again: three layers), a
 raglan sleeve's shoulder parts stay on the torso, and a point may be given by level: `{"edge": ..., "y": "waist"}`.
+
+A ready-made draft's own style options go through its design table, and the table follows the points each option
+names: Simon's `"hem": "baseball"` (the shirttail: the shirt kind's default `hem: shirttail`) or `"slashed"` end the side
+seam at their own points (`point_aliases` in cloth_designs.json). On a drafted (block) shirt the shirttail is
+`hem_shape`. Every kind's defaults draft as they stand (tests/test_shape_ops.py); a choice a source can't make is
+refused in stage 1 with what it can make.
 
 Not built yet: a welt pocket's cut and bag; a lining with its own pleat and trimmed to the facing; pleats that die
 inside a piece.
