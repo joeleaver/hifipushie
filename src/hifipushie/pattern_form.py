@@ -157,26 +157,42 @@ HARD_SKIN = 1e-4  # m: the form's plane a hair outside it (on it exactly, roundi
 HARD_REACH = 0.01  # m: contact planes for the vertices this near what they must stay outside (a round moves less)
 KNIT_LIMIT = 0.05
 KNIT_BAND_REST = True  # a knit piece sewn short rests at its sewn length in the fit (knit_band_rest)
-HANG_G = 0.1  # the weight per vertex x mean pattern edge^2 (as SETTLE_G)
-HANG_ITERS = 600  # (the towel KAT: 150 rounds left it half way, 26 mm; 600: 9-10 mm, hems +3 / +0.4)
+# THE HANG STEP (hang round 2, 2026-10-28, C243; Joe 2026-10-27: "We're still getting wings on the side ... that and the
+# disconnected sleeves are the main things"). DEFAULT ON for every garment fitted on the form (on_form: HANG_ON_FORM;
+# garment key "hang": false to opt out; assemble() called directly keeps HANG_FIELD, off, so the free-sheet / bar KATs
+# keep their answers). The fit: (1) the seat draws cloth onto the body only where the body faces well UP (HANG_SUPPORT x
+# (n_z - HANG_SEAT_UP) / (1 - HANG_SEAT_UP)): the shoulders and the trapezius, not the top of the seat (at 0 the shirt
+# t7's back was drawn onto the seat, hollow 11 mm, its girth pushed to the sides, wings 33 mm; at 0.5: 6 / 18); (2) NO
+# let-go (HANG_FROM_SEAT: with no attraction and no weight the tubes sprang back round off their supports, hoodie t6
+# sleeve top gap 4.9 -> 13 mm, wings 16 -> 24); (3) the weight (HANG_G x mean edge^2 per vertex mass, HANG_ITERS rounds)
+# against hard contact, the vertices resting on body facing up (n_z > HANG_UP) held where they came to rest (HANG_ANCHOR,
+# HANG_HOLD: static friction; at 10 they crept, the hoodie slid 36 mm down the neck and its threads went 3 % past cap),
+# the shoulder point NOT pinned 12 mm over the shoulder (HANG_FREE_SHOULDER: that pin made the hoodie's apex, 10.8 mm),
+# the lengths HANG_STIFF x stiffer than the weight's pull (at 1x the solve stretched the hoodie's torso faster than the
+# hard sweeps put it back: past cap p99 3.2 % -> 0.7 % at 10x), HANG_SWEEPS hard sweeps a round (the last round and the
+# end of assemble still converge), the solve refactored only when HANG_REFAC supports changed (1 s -> 0.4 s a round).
+# Measured (/mnt/data/hifipushie/hang2/results.jsonl): see docs/state/hang.md and the C243 row.
+HANG_ON_FORM = True
+HANG_G = 0.3  # the weight per vertex x mean pattern edge^2 (as SETTLE_G); 0.1 left the tee's sleeve 10-11 mm over the arm
+HANG_ITERS = 200
 HANG_STRAIN = 0.01  # the most the weight stretches a thread (warp / weft): the muslin's "until it would stretch"
 HANG_SUPPORT = True
-HANG_UP = 0.3
-HANG_ANCHOR = False
-HANG_FROM_SEAT = False
-HANG_SLACK = False
-HANG_FREE_SHOULDER = False
-HANG_HOLD = 10.0
-HANG_STIFF = 1.0
-HANG_SWEEPS = 30
-HANG_SEAT_UP = 0.0
-HANG_REFAC = 0
+HANG_SEAT_UP = 0.5
+HANG_UP = 0.5
+HANG_ANCHOR = True
+HANG_HOLD = 1000.0
+HANG_FROM_SEAT = True
+HANG_FREE_SHOULDER = True
+HANG_STIFF = 10.0
+HANG_SWEEPS = 10
+HANG_REFAC = 50
+HANG_SLACK = False  # (A/B: compressed edges free in the weight's rounds; no gate changed, the hoodie's wings 21.5 either way)
 
 
 def hang_for(g: dict | None) -> bool:
-    """Whether garment g is fitted with the hang (garment key "hang", else HANG_FIELD)."""
+    """Whether garment g is fitted on the form with the hang (garment key "hang", else HANG_ON_FORM / HANG_FIELD)."""
     own = (g or {}).get("hang")
-    return HANG_FIELD if own is None else bool(own)
+    return (HANG_FIELD or HANG_ON_FORM) if own is None else bool(own)
 
 
 def piece_stretch_asked(uv: np.ndarray, E: np.ndarray, pid: np.ndarray, sw: np.ndarray) -> dict:
@@ -3716,13 +3732,32 @@ def under_as_worn(und: dict, gu: dict, log=None) -> dict:
     body = und["body"]
     Xs, info = gp.worn_style(und["mesh"], np.asarray(und["A"], float), (np.asarray(body.V, float), np.asarray(body.T, int)),
                              gx, log=log)
+    if info is not None:  # (STYLE_HARD: the styling ends threads-hard, as fit_garment styles it)
+        Xs = styled_hard(und, Xs)
     return dict(und, A=Xs, A_closed=und["A"], A_style=info)
 
 
+# THE STYLING ENDS THREADS-HARD TOO (hang round 2, C243): C235 made thread stretch hard in every fit, but the wear's
+# styling (garment_pull.worn_style: the shirt's open collar, the jacket worn open) runs after the fit and stretched
+# what the fit had held: shirt t7 fit 0.24 % past cap p99, styled 15.5 % (fronts 33-36 %, stand 14 %; on the old fit
+# 5.2 %); jacket gc_garrett styled 4.7 % (fit 1.3 %). Projected after the styling (hard_threads: threads, seams,
+# closures, contact last), the shirt read 0.22 % with every hang read unchanged and the open collar's other rows as
+# styled (its V depth below the tips 0.33 of the neck, past the 0.25 target: the fronts' stretch had dropped the V).
+STYLE_HARD = True
+
+
+def styled_hard(res: dict, Xs) -> np.ndarray:
+    """STYLE_HARD: the styled vertices of an on_form result projected threads-hard (over its under garment)."""
+    if not STYLE_HARD or not THREADS_HARD:
+        return np.asarray(Xs, float)
+    fu = res.get("form_under")
+    return hard_threads(res, Xs, None if fu is None else (np.asarray(fu["A"], float), np.asarray(fu["mesh"]["F"])))
+
+
 def hard_threads(res: dict, X, under=None, sweeps: int = THREADS_HARD_FINAL) -> np.ndarray:
-    """THREADS_HARD after the fit (hang round 2, A/B): a fitted garment's X (e.g. styled) projected as assemble's end
-    does: every triangle's warp / weft within the garment's cap (a knit piece: its pattern's ask over it), the seams and
-    fastened closures sewn, nothing inside the body or the layer under (under = (V, F)), contact last."""
+    """THREADS_HARD after the fit (STYLE_HARD): a fitted garment's X (styled) projected as assemble's end does: every
+    triangle's warp / weft within the garment's cap (a knit piece: its pattern's ask over it), the seams and fastened
+    closures sewn, nothing inside the body or the layer under (under = (V, F)), contact last."""
     M, B, body = res["mesh"], res.get("pieces"), res["body"]
     X = np.asarray(X, float)
     F = np.asarray(M["F"])

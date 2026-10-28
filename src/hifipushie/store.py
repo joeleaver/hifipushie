@@ -16,7 +16,7 @@ import numpy as np
 from . import sdf, spec as specmod
 
 HOME = Path(os.environ.get("HIFIPUSHIE_HOME") or Path.cwd() / "workspace")
-BUILD_VERSION = 20  # (20: kind defaults that draft (shirt slit placket + baseball shirttail, hoodie / jacket / coat / trousers / shorts / dress drafts), 2026-10-27; 19:knit shoulder seam from the body, crew side, drafts auto-trued, 2026-10-27; 18: a folded band's free edge sewn into its seam, 2026-10-27; 17: simon band sewn edge to edge, collar / stand h 2 mm on the form, 2026-10-21) bump when meshing changes, so cached builds are redone
+BUILD_VERSION = 21  # (21: the fit hangs (C243: hang step on the form, the styling ends threads-hard), 2026-10-28; 20: kind defaults that draft (shirt slit placket + baseball shirttail, hoodie / jacket / coat / trousers / shorts / dress drafts), 2026-10-27; 19:knit shoulder seam from the body, crew side, drafts auto-trued, 2026-10-27; 18: a folded band's free edge sewn into its seam, 2026-10-27; 17: simon band sewn edge to edge, collar / stand h 2 mm on the form, 2026-10-21) bump when meshing changes, so cached builds are redone
 
 
 def prune_stages(prefix: str, mark: str, keep: str = "", budget_gb: float | None = None, idle_s: float = 3600) -> list:

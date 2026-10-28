@@ -2997,7 +2997,7 @@ def fit_garment(name: str, garment: str, views: list[str] | None = None, size: i
                                    under=None if fu_ is None else (np.asarray(fu_["A"], float),
                                                                    np.asarray(fu_["mesh"]["F"]), fu_["mesh"]))
         if sinfo is not None:
-            X = res["A"] = Xs
+            X = res["A"] = pattern_form.styled_hard(res, Xs)  # (STYLE_HARD, C243: the styling ends threads-hard)
             style_txt = "  worn (C146: the wear's style ops on the closed fit): " + "; ".join(
                 f"{next(iter(o))} {json.dumps(next(iter(o.values())), default=str)[:90]}" for o in sinfo) + "\n"
             if "collar" in res["mesh"]["names"] and "collar:leftTopEdge" in res["mesh"]["points"]:
