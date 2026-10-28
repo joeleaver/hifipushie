@@ -164,6 +164,11 @@ HANG_SUPPORT = True
 HANG_UP = 0.3
 HANG_ANCHOR = False
 HANG_FROM_SEAT = False
+HANG_SLACK = False
+HANG_FREE_SHOULDER = False
+HANG_HOLD = 10.0
+HANG_STIFF = 1.0
+HANG_SWEEPS = 30
 HANG_REFAC = 0
 
 
@@ -1112,14 +1117,14 @@ def _woven_grad(W: dict, X: np.ndarray):
     return Fg, Ps, U @ Vt
 
 
-def woven_targets(W: dict, X: np.ndarray, nE: int, shear: float | None = None):
+def woven_targets(W: dict, X: np.ndarray, nE: int, shear: float | None = None, slack: bool | None = None):
     """WOVEN local step: per undirected edge of E (mean over its FIT triangles) the target of x_E0 - x_E1, and the mask
     of the edges that have one. (See WOVEN.)"""
     s = SHEAR_STIFF if shear is None else shear
     if np.ndim(s):  # (per FIT triangle: SHEAR_FREE where nothing drives the cloth)
         s = np.asarray(s, float)[:, None, None]
     Fg, Ps, Pr = _woven_grad(W, X)
-    if WOVEN_SLACK:
+    if WOVEN_SLACK if slack is None else slack:
         Ps = Ps * np.minimum(np.linalg.norm(Fg, axis=1, keepdims=True), 1.0)
     T = (Ps + s * Pr) / (1.0 + s)
     q = W["q"]
@@ -2603,6 +2608,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
     neck_w_ = LEGACY_NECK_PIN_W if fit_model == "isometric" else NECK_PIN_W
     M = pattern["mesh"]
     B = pattern.get("pieces")
+    uv_drafted = np.asarray(M["uv"], float)  # (the reads judge the fit against the DRAFTED pattern: thread_cap_pct)
     if KNIT_BAND_REST and float((B or {}).get("stretch_limit") or 0.0) > KNIT_LIMIT:
         M = knit_band_rest(M)
     closed_args = dict(body=body, under=under, ease=ease, fasten=fasten, iters=iters, X0=X0, attract=attract,
@@ -2667,6 +2673,9 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                for v in (c.get("v") or []) if tuple(int(x) for x in v) in set(fast)]
     full, cx = _pins(M, X, body, ease, bsurf, under_v=under["V"] if under is not None else None, neck_split=neck_split,
                      neck_w=neck_w_)
+    if hang_ and HANG_FREE_SHOULDER:  # the shoulder point rests on the shoulder (contact), not pinned over it
+        shv_ = {int(v) for k, v in M["points"].items() if k.split(":", 1)[1] in ("shoulder", "shoulder.m")}
+        full = [p_ for p_ in full if int(p_[0]) not in shv_]
     ox = worn_open_pins(M, X, worn_open)
     ox_named = list(ox)  # (the named worn-open points alone: ox gains the edge pins below)
     py = []  # PLUMB_HOLD pins (set before the seat: plumb_seam_pins)
@@ -2846,7 +2855,12 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
             ask_ = piece_stretch_asked(uv, E, pid, sw)
             cpp = np.array([min(lim_, FIT_THREAD_CAP + ask_.get(k, 0.0)) for k in range(len(names))])
             cap_h = cpp[pid[Wh["F"][:, 0]]][:, None]
-            info_cap = {names[k]: round(float(c) * 100, 1) for k, c in enumerate(cpp) if c > FIT_THREAD_CAP + 1e-9}
+            # (reported against the DRAFTED pattern, as fit_garment reads the threads: a rib band rests at its sewn
+            # length here (KNIT_BAND_REST), so its own ask is ~0 on the fit's mesh; reported as that, the gate read
+            # every rib cuff / hem band past its cap: hoodie t6 cuffs 18 %, hem band 14 %, past cap p99 16 %)
+            ask0_ = piece_stretch_asked(uv_drafted, E, pid, sw)
+            cpp_d = np.array([(1.0 + ask0_.get(k, 0.0)) * (1.0 + c) - 1.0 for k, c in enumerate(cpp)])
+            info_cap = {names[k]: round(float(c) * 100, 1) for k, c in enumerate(cpp_d) if c > FIT_THREAD_CAP + 1e-9}
         if CREASE_CAP is not None and crease_t.any():
             cap_h = np.broadcast_to(np.asarray(cap_h, float).reshape(-1, 1), (len(Wh["F"]), 1)).copy()
             cap_h[crease_t] = np.maximum(cap_h[crease_t], CREASE_CAP)
@@ -2953,14 +2967,17 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
         mass /= max(float(mass.mean()), 1e-12)
 
     def relax(X, iters, attract=attract, sw_=None, loose=0.0, grav=0.0):
-        nonlocal wc, bend_f
-        bend_keep = bend_f
+        nonlocal wc, bend_f, wE
+        bend_keep, wE_keep = bend_f, wE
         if grav > 0:
             bend_f = SETTLE_BEND
+        if grav > 0 and hang_:  # (HANG_STIFF: the lengths stiffer than the weight; see HANG_STIFF)
+            wE = wE * HANG_STIFF
         l0e = np.linalg.norm(uv[E[:, 0]] - uv[E[:, 1]], axis=1)
         wc_keep = wc
         held = np.zeros(n, bool)
         anc = None  # (HANG_ANCHOR: where each supported vertex came to rest)
+        slack_ = grav > 0 and hang_ and HANG_SLACK
         if grav > 0:
             wc = np.full(n, SETTLE_FREE)
         Ax, Ayz, Ay = system(wc) if sw_ is None else system(wc, sw_)
@@ -3002,7 +3019,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
             if grav > 0 and it and (held != (wc > SETTLE_FREE)).sum() > (max(HANG_REFAC, 1) if hang_ else SETTLE_REFAC):  # (the contact set changed: the
                 # held vertices' weight; the solve must know the contact, else everything else falls a step per round
                 # and only the touching vertices are put back: the tube read 780 % stretch in 8 rounds)
-                wc = np.where(held, SETTLE_HOLD, SETTLE_FREE)
+                wc = np.where(held, HANG_HOLD if hang_ else SETTLE_HOLD, SETTLE_FREE)
                 Ax, Ayz, Ay = system(wc) if sw_ is None else system(wc, sw_)
             # local: per-cell rotation (Kabsch of the rest one-ring onto the current)
             cur = X[src] - X[dst]  # (x_i - x_j) for cell i = src
@@ -3022,6 +3039,8 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                 ne = ~arap_e
                 ln = np.linalg.norm(cur[ne], axis=1, keepdims=True)
                 Re[ne] = cur[ne] / np.maximum(ln, 1e-12) * np.linalg.norm(rest[ne], axis=1, keepdims=True)
+                if slack_:  # (HANG_SLACK: an edge shorter than its pattern length is slack: cloth buckles, no push)
+                    Re[ne] = cur[ne] / np.maximum(ln, 1e-12) * np.minimum(np.linalg.norm(rest[ne], axis=1, keepdims=True), ln)
                 if Wv is not None:  # WOVEN: warp / weft held, shear soft (the triangles' targets; see WOVEN)
                     s_it = SHEAR_STIFF if it >= ramp_n else math.exp(math.log(SHEAR_FREE) + (it / ramp_n) * (
                         math.log(SHEAR_STIFF) - math.log(SHEAR_FREE)))  # (SHEAR_RAMP: a transient's shear decays first)
@@ -3029,7 +3048,7 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
                     if SHEAR_YIELD is not None:  # (SHEAR_YIELD: the hysteresis gives where the threads would strain)
                         th_ = np.abs(np.linalg.norm(_woven_grad(Wv, X)[0], axis=1) - 1.0).max(1)
                         sh_t = np.where(th_ > SHEAR_YIELD, np.minimum(sh_t, s_it), sh_t)
-                    tg_, has_ = woven_targets(Wv, X, nE0, shear=sh_t)
+                    tg_, has_ = woven_targets(Wv, X, nE0, shear=sh_t, slack=True if slack_ else None)
                     m2 = np.zeros(len(src), bool)
                     m2[:2 * nE0] = np.r_[has_, has_]
                     # (a flap's own cells woven only where something drives them: a free flap keeps its ARAP cells,
@@ -3206,9 +3225,10 @@ def assemble(pattern: dict, body=None, under: dict | None = None, ease: float = 
             if cap_h is not None:  # THREADS_HARD: the solve predicted, the hard constraints project (threads, the
                 # seams this phase sews, contact as planes where the solve put the cloth), to convergence on its last round
                 Xn = (hard_finish(Xn, hp_) if it == iters - 1 else
-                      _hard_pass(Wh, Xn, cap_h, hp_, THREADS_HARD_SWEEPS, lock_deg=lock_h, planes=hard_planes(Xn)))
+                      _hard_pass(Wh, Xn, cap_h, hp_, HANG_SWEEPS if grav > 0 and hang_ else THREADS_HARD_SWEEPS,
+                                 lock_deg=lock_h, planes=hard_planes(Xn)))
             X = Xn
-        wc, bend_f = wc_keep, bend_keep
+        wc, bend_f, wE = wc_keep, bend_keep, wE_keep
         return X
 
     info = {"thread_cap_pct": None if cap_h is None else (info_cap or round(FIT_THREAD_CAP * 100, 1))}

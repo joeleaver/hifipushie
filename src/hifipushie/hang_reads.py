@@ -13,7 +13,8 @@ their roles (garment_design.role_of) and the body from its landmarks (body.at: s
 crotch_z), never from one garment's names.
 
 READINGS (mm, read off the fitted vertices X and the body; `reads(res, X)` returns all four):
-- `wing_reads`      per side (L = +x): in horizontal sections of the torso pieces from the armpit down to the hem, the
+- `wing_reads`      per side (L = +x): in horizontal sections of the torso pieces from the armpit (or the armhole's bottom,
+                    if lower) down to the hem, the
                     WING: how far the section's outermost cloth runs as a thin double layer (front and back closer than
                     WING_T) before it opens out; a smooth hang turns round the side in a few mm (a round of radius r
                     reaches WING_T across within WING_T^2 / 8r: < 1 mm). Also the side stand-off off the body vs the
@@ -144,6 +145,23 @@ def _torso_section(body, z):
     return tailor.section(BV, np.asarray(body.T), (0.0, 0.0, z), (0.0, 0.0, 1.0), (0.0, float(mid[:, 1].mean()), z))
 
 
+def _armhole_bottom(M: dict, X, torso) -> float:
+    """The lowest point (z, m) of the seams joining a sleeve to the torso pieces; +inf without sleeves / seams.
+    Above it a horizontal section of the torso pieces alone crosses the armhole's front and back edges, which run out to
+    the sleeve's underarm seam: a thin double layer by construction, not a side hanging out (hang round 2: the hoodie t6's
+    armhole bottom lies 117 mm under the armpit; hung, its torso read 17.5-21.5 mm there, the sleeve-torso junction, and
+    1.5-3.5 mm at every level below it; Joe's wings were below it, z 1.12-1.14, 46 mm)."""
+    from . import cloth_reference as cr
+    sw = np.asarray(M.get("sew") if M.get("sew") is not None else [], int).reshape(-1, 2)
+    if not len(sw):
+        return float("inf")
+    pv = np.asarray(M["piece"])
+    sl = [k for k, r in enumerate(_roles(M["names"])) if r in cr.SLEEVE_ROLES]
+    a, b = np.isin(pv[sw], sl), np.isin(pv[sw], list(torso))
+    m = (a[:, 0] & b[:, 1]) | (a[:, 1] & b[:, 0])
+    return float(np.asarray(X, float)[sw[m].ravel(), 2].min()) if m.any() else float("inf")
+
+
 def wing_reads(M: dict, X, body) -> dict:
     """Per side ("L" = +x): the worst level's wing (thin double-layer run at the side, mm), its z, the side's stand-off
     off the body and the front / back stand-offs at that level (mm). {} without torso pieces or landmarks."""
@@ -157,7 +175,7 @@ def wing_reads(M: dict, X, body) -> dict:
     if not len(Ft):
         return {}
     zt = X[np.unique(Ft), 2]
-    z0 = _scalar(at["armpit_z"]) - STEP
+    z0 = min(_scalar(at["armpit_z"]), _armhole_bottom(M, X, torso)) - STEP
     z1 = max(float(zt.min()) + STEP, _scalar(at.get("crotch_z", zt.min())) + STEP)
     out: dict = {}
     for z in np.arange(z0, z1, -STEP):
