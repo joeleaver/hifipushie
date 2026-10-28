@@ -45,7 +45,8 @@ Each is a rule of the craft or of the tool contract, not of one garment. Fix hom
 3. **Targets are inputs.** Every measurable item of the brief (lengths, ease, shoulder position, neckline position, hem
    shape) is given as the target itself and the draft solves it; the gate measures the same item, so round 1 passes the
    measurable things by construction. One checklist per kind is the design input, the draft target, the gate row and
-   the review item. [x lengths as body levels, sleeve levels; tool: per-kind checklist as input]
+   the review item. [x lengths as body levels, sleeve levels; x per-kind checklist as input (C243: design.targets,
+   design_targets.py; tee / hoodie / shirt / blouse; provisional until a blind trial designs from it)]
 4. **The tool contract is strict.** An unknown key, op or option is an error naming the valid ones, with units and sign;
    an op a draft can't run is refused with the reason (never silently dropped); a failed call saves nothing; an option
    that replaces a default says so. (hoodie 5 rounds, shirt 5 + 7 on silent / crashing routes) [tool]

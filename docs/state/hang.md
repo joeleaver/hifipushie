@@ -27,7 +27,6 @@ its girth went to the sides, wings 33). wings / sleeve top / apex / hollow mm, p
   hoodie base 46 F / 16.5 F / 10.8 F / 0, 16.2, 470    C2 1.5 / 8.9 / 7.3 / 0, 0.67, 134
   shirt  base 29.5 F / 7.5 / 4.5 / 33 F, 5.2 (styled), 418   u5 (=C2) 18.5 / 3.8 / 3.6 / 6.3, fit 0.24 but STYLED 15.5
   jacket running.
-READ FIXES).
 READ FIXES (committed with evidence in the code): (1) sleeve stations need cloth all round the arm (a partial hem cut
 read the tee axis 47-49 deg); (2) wings read from below the armhole's bottom when it is under the armpit (the hoodie's
 is 117 mm under; above it the torso cut crosses the armhole edges to the sleeve, 17-21 mm "wing" by construction;

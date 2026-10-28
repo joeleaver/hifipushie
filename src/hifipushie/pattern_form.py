@@ -157,7 +157,7 @@ HARD_SKIN = 1e-4  # m: the form's plane a hair outside it (on it exactly, roundi
 HARD_REACH = 0.01  # m: contact planes for the vertices this near what they must stay outside (a round moves less)
 KNIT_LIMIT = 0.05
 KNIT_BAND_REST = True  # a knit piece sewn short rests at its sewn length in the fit (knit_band_rest)
-# THE HANG STEP (hang round 2, 2026-10-28, C243; Joe 2026-10-27: "We're still getting wings on the side ... that and the
+# THE HANG STEP (hang round 2, 2026-10-28, C244; Joe 2026-10-27: "We're still getting wings on the side ... that and the
 # disconnected sleeves are the main things"). DEFAULT ON for every garment fitted on the form (on_form: HANG_ON_FORM;
 # garment key "hang": false to opt out; assemble() called directly keeps HANG_FIELD, off, so the free-sheet / bar KATs
 # keep their answers). The fit: (1) the seat draws cloth onto the body only where the body faces well UP (HANG_SUPPORT x
@@ -171,7 +171,7 @@ KNIT_BAND_REST = True  # a knit piece sewn short rests at its sewn length in the
 # the lengths HANG_STIFF x stiffer than the weight's pull (at 1x the solve stretched the hoodie's torso faster than the
 # hard sweeps put it back: past cap p99 3.2 % -> 0.7 % at 10x), HANG_SWEEPS hard sweeps a round (the last round and the
 # end of assemble still converge), the solve refactored only when HANG_REFAC supports changed (1 s -> 0.4 s a round).
-# Measured (/mnt/data/hifipushie/hang2/results.jsonl): see docs/state/hang.md and the C243 row.
+# Measured (/mnt/data/hifipushie/hang2/results.jsonl): see docs/state/hang.md and the C244 row.
 HANG_ON_FORM = True
 HANG_G = 0.3  # the weight per vertex x mean pattern edge^2 (as SETTLE_G); 0.1 left the tee's sleeve 10-11 mm over the arm
 HANG_ITERS = 200
@@ -3737,7 +3737,7 @@ def under_as_worn(und: dict, gu: dict, log=None) -> dict:
     return dict(und, A=Xs, A_closed=und["A"], A_style=info)
 
 
-# THE STYLING ENDS THREADS-HARD TOO (hang round 2, C243): C235 made thread stretch hard in every fit, but the wear's
+# THE STYLING ENDS THREADS-HARD TOO (hang round 2, C244): C235 made thread stretch hard in every fit, but the wear's
 # styling (garment_pull.worn_style: the shirt's open collar, the jacket worn open) runs after the fit and stretched
 # what the fit had held: shirt t7 fit 0.24 % past cap p99, styled 15.5 % (fronts 33-36 %, stand 14 %; on the old fit
 # 5.2 %); jacket gc_garrett styled 4.7 % (fit 1.3 %). Projected after the styling (hard_threads: threads, seams,

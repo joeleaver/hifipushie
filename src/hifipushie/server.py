@@ -2648,7 +2648,15 @@ def garment_reference(kind: str | None = None, detail: str | None = None, princi
         if kind not in K["kinds"]:
             raise ValueError(f"no kind {kind!r} (have {', '.join(k for k in K['kinds'] if not k.startswith('_'))})")
         srcs = [d for d, v in K["designs"].items() if not d.startswith("_") and kind in v.get("kinds", [v.get("kind")])]
-        return json.dumps({"kind": kind, **K["kinds"][kind], "draft_sources": srcs}, indent=1)
+        from . import design_targets
+        # (C243) the kind's checklist FIRST: the template the brief is written as (design.targets), each item with its
+        # one definition, units, default and range; the draft solves it, pattern_check measures it
+        tpl = design_targets.template(kind)
+        head = ({"targets_template": tpl, "how": "describe the brief as these items: design_garment(design={\"kind\": "
+                 f"\"{kind}\", \"targets\": {{item: value}}}}); the draft solves each, pattern_check measures each "
+                 "(rows target:<item>). Items left out take the default."} if tpl else
+                {"targets_template": f"none yet for {kind} (kinds with one: {', '.join(design_targets.kinds_with_targets())})"})
+        return json.dumps({"kind": kind, **head, **K["kinds"][kind], "draft_sources": srcs}, indent=1)
     if detail:
         if detail not in K["details"]:
             raise ValueError(f"no detail {detail!r} (have {', '.join(k for k in K['details'] if not k.startswith('_'))})")
@@ -2713,8 +2721,11 @@ def garment_reference_brief(garments: dict, subject: str = "a man", outfit: str 
 def design_garment(name: str, garment: str, design: dict | None = None, spec: dict | None = None,
                    replace: bool = False, note: str = "") -> str:
     """Clothing stage 1: the design sheet in spec.cloth[garment].design (kind, from or block + ops, fit, fabric,
-    details, pattern, notes), merged (replace=True replaces). spec: other garment keys. Returns the resolved sheet,
-    failures first. Next: look_pattern. Details: guide(topic="design_garment")."""
+    details, pattern, notes, auto_true, truing_corners), merged (replace=True replaces; null deletes a key). spec:
+    other garment keys. Every key, op, op parameter, block option and FreeSewing option is checked: an unknown one is
+    an error naming the valid ones with units and defaults; a call that fails saves nothing. Returns the resolved
+    sheet, failures first, and what each option set replaces. Next: look_pattern. Details:
+    guide(topic="design_garment")."""
     from . import cloth_workflow
     from .hair import merge_patch
     full = store.load(name)
@@ -2727,9 +2738,56 @@ def design_garment(name: str, garment: str, design: dict | None = None, spec: di
     if not g.get("design"):
         raise ValueError("give the design sheet: design={'kind': ..., 'from': ..., 'details': {...}}")
     gs[garment] = g
+    # TRANSACTIONAL (C241): checked and run on the trial spec first, saved last; a call that raises saves nothing
+    # (shirt t7: crashed calls had already saved their ops and the next call applied them twice)
+    design_contract_check(g, f"cloth {garment!r}", design=True)
+    from . import cloth
+    cloth.validate(full)  # (the garment keys, as the save will check them: refused before the stage runs)
+    tg_lines = _solve_targets(name, garment, full, g)
+    r = cloth_workflow.run(name, garment, ("design",), images=False, spec=full)
+    replaced = _design_replacements(g)
     v = store.save(name, full, note or f"design {garment}")
-    r = cloth_workflow.run(name, garment, ("design",), images=False)
-    return f"saved {name} v{v}\n" + cloth_workflow.text(r) + f"\nnext: call_tool(\"look_pattern\", {{\"name\": \"{name}\", \"garment\": \"{garment}\"}})"
+    return (f"saved {name} v{v}\n" + cloth_workflow.text(r)
+            + ("\n" + "\n".join(tg_lines) if tg_lines else "")
+            + ("\noptions set (each REPLACES its default, it does not add to it):\n  " + "\n  ".join(replaced)
+               if replaced else "")
+            + f"\nnext: call_tool(\"look_pattern\", {{\"name\": \"{name}\", \"garment\": \"{garment}\"}})")
+
+
+def _solve_targets(name: str, garment: str, full: dict, g: dict) -> list:
+    """THE KIND'S CHECKLIST IS THE DESIGN INPUT (C243): the sheet's targets solved on this body (design_targets.solve:
+    each numeric item's option / op turned until the drafted pattern measures it), stored as design.solved; the
+    reply's lines, target -> drafted per item. A sheet without targets drops a stale "solved"."""
+    from . import cloth, cloth_workflow, design_targets as dt
+    sheet = g["design"]
+    if not sheet.get("targets"):
+        sheet.pop("solved", None)
+        return []
+    try:
+        c = cloth_workflow.Ctx(name, garment, full)
+        meas = c.meas
+        out = dt.solve(g, meas, lambda gg: cloth.pieces(cloth._garment_for_sim(gg), meas), body=c.body)
+    except dt.TargetError as e:
+        raise ValueError(str(e))
+    sheet["solved"] = {k: (float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else v)
+                       for k, v in out["solved"].items()}
+    rows_ = dt.rows(out["Bp"], sheet, sheet.get("kind") or "", body=c.body)
+    return dt.reply_lines(rows_, out["plan"], out)
+
+
+def design_contract_check(g: dict, where: str, design: bool = True) -> None:
+    """design_garment / alter_pattern's strict contract (design_schema, C241): raises ValueError naming the valid keys,
+    their units, sign and default. design=False (alter_pattern): garment keys + alteration ops only."""
+    from . import design_schema, pattern as pattern_mod
+    try:
+        design_schema.check_garment(g, where, design=design)
+    except (design_schema.ContractError, pattern_mod.AlterError) as e:
+        raise ValueError(str(e))
+
+
+def _design_replacements(g: dict) -> list:
+    from . import design_schema
+    return design_schema.design_notes(g)
 
 
 @mcp.tool(structured_output=False)
@@ -2997,7 +3055,7 @@ def fit_garment(name: str, garment: str, views: list[str] | None = None, size: i
                                    under=None if fu_ is None else (np.asarray(fu_["A"], float),
                                                                    np.asarray(fu_["mesh"]["F"]), fu_["mesh"]))
         if sinfo is not None:
-            X = res["A"] = pattern_form.styled_hard(res, Xs)  # (STYLE_HARD, C243: the styling ends threads-hard)
+            X = res["A"] = pattern_form.styled_hard(res, Xs)  # (STYLE_HARD, C244: the styling ends threads-hard)
             style_txt = "  worn (C146: the wear's style ops on the closed fit): " + "; ".join(
                 f"{next(iter(o))} {json.dumps(next(iter(o.values())), default=str)[:90]}" for o in sinfo) + "\n"
             if "collar" in res["mesh"]["names"] and "collar:leftTopEdge" in res["mesh"]["points"]:
@@ -3261,10 +3319,11 @@ def style_garment(name: str, garment: str, ops: list[dict], free: list[str] | No
 @mcp.tool(structured_output=False)
 def alter_pattern(name: str, garment: str, ops: list[dict], replace: bool = False, note: str = ""):
     """A pattern maker's alteration on the flat pattern (garment key "alter", applied in order): slash_spread, turn,
-    move, scale, slit, trim, and where this build has them "true" (a corner trued to 90 deg) and "match" (walk the
-    seam: an edge made the length of the edges it's sewn to). Drafted before saving (a bad op saves nothing);
-    replace=True replaces the list. Returns the flat sheet, the walked seams and the next step. note. Details:
-    guide(topic="alter_pattern")."""
+    move, scale, slit, trim, true (a corner trued to 90 deg), match (walk the seam: an edge made the length of the
+    edges it's sewn to). Pattern coordinates: metres, x right, y UP (move {"by": [0, -0.01]} lowers a point 10 mm).
+    Every op and key is checked first (an unknown one names each op's keys with units and defaults); drafted, read and
+    rendered before saving: a call that fails saves nothing. replace=True replaces the list. Returns the flat sheet,
+    the walked seams and the next step. note. Details: guide(topic="alter_pattern")."""
     from . import cloth, cloth_check as cc, next_steps, pattern_sheet
     full = store.load(name)
     gs = full.get("cloth") or {}
@@ -3275,16 +3334,17 @@ def alter_pattern(name: str, garment: str, ops: list[dict], replace: bool = Fals
         raise ValueError('ops is a list of {"op": ..., "piece": ..., ...}')
     g = dict(gs[garment])
     g["alter"] = list(ops) if replace else list(g.get("alter") or []) + list(ops)
+    design_contract_check(g, f"cloth {garment!r}", design=False)  # (the new ops named by their index in the list)
     trial = json.loads(json.dumps(full))
     trial["cloth"][garment] = g
     res = cloth.build(cloth._garment_for_sim(g), cloth.model_body(name, trial, g, simulate=False),
-                      f"{name}:{garment}", log=lambda *_: None, place_only=True)  # raises on a bad op: nothing saved
-    full["cloth"][garment] = g
-    v = store.save(name, full, note or f"alter {garment}: " + ", ".join(o["op"] for o in ops))
+                      f"{name}:{garment}", log=lambda *_: None, place_only=True)
+    # TRANSACTIONAL (C241): everything the reply reads runs BEFORE the save (shirt t7: alter_pattern crashed after
+    # saving, "'bool' object is not iterable" in the truing read, and the next call applied its 4 ops twice)
     Bp = res["pieces_full"]
     kind = cloth.expanded(g).get("design", {}).get("kind") or ""
     rows = cc.seams(Bp, kind)
-    lines = [f"saved {name} v{v}: {len(g['alter'])} alteration(s) on {garment}", "walked seams (A | B, mm, ease):"]
+    lines = ["walked seams (A | B, mm, ease):"]
     for r in rows:
         lines.append(f"  {'ok ' if r['ok'] else 'BAD'} {r['a']} | {r['b']}: {r['len_a_mm']} / {r['len_b_mm']} "
                      f"({r['ease'] * 100:+.1f} %, {r['kind']})"
@@ -3292,10 +3352,14 @@ def alter_pattern(name: str, garment: str, ops: list[dict], replace: bool = Fals
     # truing, read as the gate's "truing" row reads it (garment key truing_corners = design corners)
     bad = [j for j in cc.junctions(Bp, corners=tuple(g.get("truing_corners") or ())) if not j["ok"]]
     lines.append(f"truing: {len(bad)} seam end(s) turn > {cc.TRUE_DEG:g} deg"
-                 + (": " + "; ".join(f"{j['at']} {j['turn_deg']} deg ({' | '.join(j['seam'])})" for j in bad[:5])
-                    if bad else ""))
+                 + (": " + "; ".join(f"{j['at']} {j['turn_deg']} deg ({' | '.join(map(str, j['seam']))})"
+                                     for j in bad[:5]) if bad else ""))
     im = pattern_sheet.render(Bp, f"{name}:{garment} flat pattern", seam_rows=rows)
-    return [_out(im, None), "\n".join(lines) + "\n" + next_steps.after_alter(rows, name, garment)]
+    tail = next_steps.after_alter(rows, name, garment)
+    full["cloth"][garment] = g
+    v = store.save(name, full, note or f"alter {garment}: " + ", ".join(o["op"] for o in ops))
+    lines.insert(0, f"saved {name} v{v}: {len(g['alter'])} alteration(s) on {garment}")
+    return [_out(im, None), "\n".join(lines) + "\n" + tail]
 
 
 REPO = Path(__file__).resolve().parents[2]  # (bin/review, docs/notes: present in a source checkout)

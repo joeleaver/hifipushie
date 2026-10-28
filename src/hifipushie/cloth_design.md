@@ -43,9 +43,52 @@ design_garment(name, "shirt", design={"kind": "shirt", "from": "simon", "fit": "
 - **method:** `"simulate"` (sew and simulate everything) or `"settle"` (construct, settle lightly, detail:
   guide(topic="cloth_sim")).
 - **pattern:** draft words passed through (`ease`, `length`, `sleeve_length`, `options`, `measurements`).
+- **auto_true:** true / false: every seam end the truing gate fails is trued on both pieces (default true on knit
+  drafts). **truing_corners:** a LIST of seam-end labels (as the truing row prints them) that are corners by design.
 
 Hard failures: a choice the draft source can't make (the reply names what it can make); a choice that needs another
 (a barrel cuff needs a sleeve placket; buttons need a placket).
+
+### Targets: the kind's checklist is the input (C243)
+
+```
+design_garment(name, "hoodie", design={"kind": "hoodie", "targets": {"fit": "relaxed", "body_length": "hips",
+               "shoulder": "dropped", "collar": "hood", "pockets": "kangaroo", "cuff": "rib", "hem": "rib_band"}})
+```
+Items (one definition each: cloth_checklist.json `design_targets`; the kind's list and defaults:
+`garment_reference(kind=...)` `targets_template`): `body_length` (a body level waist / hips / seat / crotch, or
+`{"to", "below": m}`: the FINISHED hem at CB from the hps, a band included), `sleeve_length` (short / elbow /
+three_quarter / long, or `{"to", "below"}`: the finished sleeve, cuff included, from the shoulder point), `shoulder`
+(set_in / dropped / m past the shoulder point), `fit` + `chest_ease` / `waist_ease` / `hip_ease` (fractions; default
+the middle of the fit's band; a block's waist and hips follow its chest), `neckline` (`{"style": crew | round | v |
+collar | hood, "width": m seam to seam, "depth": m front drop from the hps}`), `neckband_width` / `cuff_height` /
+`hem_band_height` (m, finished), `hem_shape` (`{"shape": straight | curved | shirttail, "rise": m}`), and every
+detail as a choice (`collar`, `cuff`, `pockets`, `hem`, ...). Unknown items are refused with the kind's list. What
+each sets: a drafted design's block options and ops (length, chest_ease, sleeve length + length_bonus,
+drop_shoulder, hem_shape, neckline, the bands' generate heights), a FreeSewing draft's options solved on the draft
+(lengthBonus, sleeveLengthBonus, chestEase / waistEase / hipsEase, cuffLength, hemCurve); the solved numbers are kept
+in `design.solved`. An option or op the sheet gives itself overrides its target (the reply lists it). Kinds with a
+checklist: tee, hoodie, shirt, blouse.
+
+### The contract: strict, self-describing, transactional (C241)
+
+Every key is checked when `design_garment` / `alter_pattern` is called; an unknown one is an ERROR that lists the
+valid ones with units, sign and default, e.g. `cloth 'hoodie' ops[2] (sleeve): unknown key "ease"; sleeve
+takes: biceps_ease (fraction of the biceps girth (+ = roomier); default 0.15), cap_ease (...), ...`. Nothing is
+silently dropped, and a call that fails saves nothing (the reply's `saved v<N>` is the only proof of a save).
+
+- **Which keys go where.** A design drafted from a block (`"from": "draft"` / `"block"`) takes `block_options`, `ops`
+  and a detail's `"op"` params. A FreeSewing draft (`simon`, `carlton`, `jaeger`) takes its own options (`pattern.options`,
+  a detail's `"options"`) and the pattern words; `ops` / `block_options` on it are refused (they never run there:
+  shape its drafted pieces with `alter_pattern`). A detail is `{"type", "options", "op", "generate", "trim"}`.
+- **FreeSewing options REPLACE their default, they do not add to it.** Units are FreeSewing's: a percent option is
+  a FRACTION (`lengthBonus` default 0.25 = 25 %). `"lengthBonus": 0.05` gives 0.05, i.e. 20 points SHORTER than the
+  default, not 5 % longer (shirt t7 cut 17 cm in two probes). The reply lists every option set with what it replaces;
+  `guide(topic="design_garment")` errors name each option's type, default and range (`freesewing_options.json`).
+- **Units in our drafts.** Lengths in metres; eases are fractions of the girth (0.15 = 15 %); angles in degrees.
+  Pattern coordinates: x right (out from a half piece's centre line), **y UP** (+y toward the neck on a bodice, the
+  cap on a sleeve): `reshape` / `move` `"by": [0, -0.01]` LOWERS a point 10 mm. `block_options.length_bonus` is
+  metres added to the bodice; the sleeve op's `length_bonus` is a fraction of its length.
 
 `garment_reference(kind=...)` -> `lessons`: read them before designing that kind.
 
