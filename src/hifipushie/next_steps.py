@@ -103,10 +103,21 @@ def after_fit(model: str, garment: str, strain_p99: float | None, pierce: int | 
     if backfaces:
         bad.append(f"{backfaces} faces seen from behind (red in the backfaces view): a piece inside out or a flap "
                    "turned the wrong way")
+    # HOW IT HANGS (hang_reads, lesson 2 of trials t3-t7): the fit's hang rows, read by cloth_check.fit_rows just before
+    # this. The fit's own faults (owner "fit": no hang step yet) are listed as faults with their fix but apart from the
+    # pattern's, so an agent doesn't re-draft a pattern to chase them (hoodie t6 / shirt t7 spent rounds that way).
+    from . import cloth_check
+    hang = [r for r in cloth_check.LAST_HANG.pop((model, garment), []) if r.get("status") in ("FAIL", "UNMEASURED")]
+    bad += [f"{r['id']}: {r.get('fix') or r.get('why')}" for r in hang if not cloth_check.fit_owned(r)]
+    fit_hang = [r for r in hang if cloth_check.fit_owned(r)]
     if bad:
         out.append("next: fix on the pattern, then pattern_check and fit_garment again:")
         out += [f"  {b}" for b in bad]
-    else:
+    if fit_hang:
+        out.append("hang faults (FAIL: how it hangs is wrong; the FIT's, not the pattern's: no hang step yet, so judge "
+                   "the pattern by its other rows and name these in every review / report, never call the fit right):")
+        out += [f"  FAIL {r['id']}: {r['fix']}" for r in fit_hang]
+    if not bad:
         out.append("next: judge the clay AND the diag views beside the reference, ONE view per review_view call "
                    "(no contact sheets, no captions); a clean form is not a right garment")
     if not validated:

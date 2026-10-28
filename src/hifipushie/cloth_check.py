@@ -483,6 +483,7 @@ def fit_rows(res: dict, X, strain_p99: float | None, worn_under: bool, g: dict |
              "status": "PASS" if strain_p99 is not None and strain_p99 <= next_steps.THREAD_OVER_P99_MAX else "FAIL"}]
     if g is not None:
         rows += checklist_fit_rows(res, X, g, model, garment)
+    rows += hang_fit_rows(res, X, model, garment)
     if worn_under:
         body = res["body"]
         at = getattr(body, "at", {}) or {}
@@ -492,6 +493,31 @@ def fit_rows(res: dict, X, strain_p99: float | None, worn_under: bool, g: dict |
         else:
             rows.append(dict(standoff_row(body, X, float(np.asarray(z).reshape(-1)[-1])), stage=2))
     return big_first(rows) if g is not None else rows
+
+
+# HOW IT HANGS (lesson 2 of trials t3-t7, Joe 2026-10-27: "wings on the side ... and the disconnected sleeves ... shouldn't
+# ever have passed early review"): every fit is read for wings at the side seams, sleeves standing off the arm, spikes at
+# the shoulder point and cloth drawn into a hollow (hang_reads: definitions, thresholds and their calibration). Until the
+# fit has a hang step the rows FAIL with owner "fit" and say so: they don't block the detail rows (C52) or an outer
+# garment's fit (C85), since no pattern change can fix them. LAST_HANG keeps the last fit's hang rows per garment for
+# next_steps.after_fit, which lists them with their fix.
+LAST_HANG: dict = {}
+
+
+def hang_fit_rows(res: dict, X, model: str = "", garment: str = "") -> list:
+    """The hang rows (hang_reads.rows) of a fit; remembered in LAST_HANG[(model, garment)] for after_fit."""
+    from . import hang_reads
+    try:
+        rows = hang_reads.rows(hang_reads.reads(res, X))
+    except Exception as e:  # noqa: BLE001 (a reader that breaks is unmeasured and says so)
+        rows = [{"id": "hang", "family": "hang", "stage": 1, "status": "UNMEASURED", "why": f"{type(e).__name__}: {e}"}]
+    LAST_HANG[(model, garment)] = rows
+    return rows
+
+
+def fit_owned(r: dict) -> bool:
+    """A row whose fault is the fit's own (no hang step yet), not the pattern's: reported FAIL, never blocking."""
+    return r.get("owner") == "fit"
 
 
 def checklist_fit_rows(res: dict, X, g: dict, model: str = "", garment: str = "") -> list:
@@ -629,6 +655,11 @@ def under_fit_status(model: str, garment: str, spec: dict | None = None) -> dict
         rec = None
     if passed(rec):
         return {"under": un, "passed": True, "why": "PASS"}
+    if rec and all(r["status"] == "PASS" or fit_owned(r) for r in rec["rows"]):
+        # (failing only on the fit's own hang rows: no pattern fix exists for the under garment, so the outer one waits
+        # for nothing; the hang faults stay in its record and in fit_garment's text)
+        return {"under": un, "passed": True, "why": "PASS but for the fit's own hang rows (no hang step yet): "
+                + ", ".join(r["id"] for r in rec["rows"] if r["status"] != "PASS")}
     bad = [r["id"] for r in rec["rows"] if r["status"] != "PASS"] if rec else []
     # (fit round 24) failing only on rows about cloth the outer garment may hide: PROVISIONAL, re-judged on what shows
     # once the outer garment is assembled (visible_fit_rows); the caller refuses when those still fail
@@ -1192,6 +1223,66 @@ def _rule(it: dict, v: float):
     return ("PASS" if abs(miss) <= float(it.get("tolerance", 0) or 0) else "FAIL"), round(miss, 1)
 
 
+# A GATE'S TARGET IS THE DRAFT'S RULE (lesson 5 of trials t3-t7): the sleeve's designed cap note (pattern_draft.op_sleeve)
+# declared the band ask +- 1.2 %, but the cap lands ~1.3 % under the ask once the armhole is trued (hoodie t6: ask 0 ->
+# -1.3 %, FAIL at the band's edge; ask 1.4 % -> +0.0 % and the band moved with it to +0.2..+2.6: three rounds spent
+# chasing the gate's own centre). The craft rule the ask is drawn from is the kind's cap ease (garment_kb kinds.<kind>.
+# cap_ease: knit -3..+3 %, shirt -1..+3 %, jacket 3..6 %), so a designed cap is judged on that band; the ask's band
+# stays only for a kind with no rule.
+def note_band(note: dict | None, garment_kind: str = "") -> dict | None:
+    """The declared seam note as the gate judges it: a designed sleeve cap on its kind's cap-ease rule."""
+    if not note or not str(note.get("why", "")).startswith("sleeve cap ease"):
+        return note
+    try:
+        from . import garment_design
+        cb = ((garment_design.kb().get("kinds") or {}).get(garment_kind) or {}).get("cap_ease")
+    except Exception:  # noqa: BLE001 (no kb: the note as declared)
+        cb = None
+    if not cb:
+        return note
+    return dict(note, ease=[float(cb[0]), float(cb[1])],
+                why=f"{note['why']}; judged on the {garment_kind} rule {cb[0] * 100:+.0f}..{cb[1] * 100:+.0f} % "
+                    "(the band the ask comes from: the cap lands ~1 % under its ask once the armhole is trued)")
+
+
+# The collar stand's flat check (garment_kb collar.shirt_collar dims stand_cb 30..35, the shirtmakers' practice) contradicted
+# the kind's own collar rule (kinds.<kind>.collar, cloth.collar_options: the stand as tall as the neck allows less a
+# finger under the jaw, never under 20 mm): shirt t7 drafted 22 mm on its neck and the gate failed it "practice 30..35";
+# following the gate to 33 mm made the fall stand up, exactly as the rule's own lesson says (2 rounds + a waiver). The
+# rule is the target: stand_cb from the rule's minimum to what the neck allows (+ 1 mm of drafting slack).
+RULE_SLACK_MM = 1.0
+
+
+def rule_dims(kind: str, meas: dict | None) -> dict:
+    """{dim: [lo, hi] mm} that a kind's drafting rule sets from this body (stand_cb from kinds.<kind>.collar and the
+    neckHeight tape); {} when the kind has no rule or the tape is missing."""
+    try:
+        from . import garment_design
+        rule = ((garment_design.kb().get("kinds") or {}).get(kind) or {}).get("collar")
+    except Exception:  # noqa: BLE001
+        return {}
+    nh = (meas or {}).get("neckHeight")
+    if not rule or not nh or "stand" not in rule:
+        return {}
+    lo, hi = 1000 * float(rule["stand"][0]), 1000 * float(rule["stand"][1])
+    t = float(np.clip(float(nh) - 1000 * float(rule.get("under_jaw", 0.0)), lo, hi))
+    return {"stand_cb": [round(lo, 1), round(t + RULE_SLACK_MM, 1)]}
+
+
+def with_rule_dims(res: dict | None, kind: str, meas: dict | None) -> dict | None:
+    """garment_design's resolved sheet with each detail's dims replaced by rule_dims where the kind's rule sets them
+    (the flat evidence check then reads the same target the draft solved)."""
+    rd = rule_dims(kind, meas)
+    if not res or not rd:
+        return res
+    det = {}
+    for d, info in (res.get("details") or {}).items():
+        dm = (info.get("kb") or {}).get("dims") or {}
+        hit = {k: v for k, v in rd.items() if k in dm}
+        det[d] = dict(info, kb=dict(info["kb"], dims=dict(dm, **hit))) if hit else info
+    return dict(res, details=det)
+
+
 def gate_rows(Bp: dict, items: list, ctx=None, gname: str = "", refs: dict | None = None, extra: dict | None = None,
               garment_kind: str = "", corners=(), ease_bands: dict | None = None, form_ok: bool = True,
               flat: dict | None = None, drape: dict | None = None) -> list:
@@ -1208,7 +1299,7 @@ def gate_rows(Bp: dict, items: list, ctx=None, gname: str = "", refs: dict | Non
     # read as the flat pattern stage reads it (cloth_workflow.seam_rows): the gate and the stage must agree (muslin 1:
     # the jacket cap read "+3.0% outside 0..3%" here and "in its declared +1.8..+4.2%" there)
     for r in sm:
-        n_ = (Bp.get("seam_notes") or {}).get(_json.dumps([r["a"], r["b"]]))
+        n_ = note_band((Bp.get("seam_notes") or {}).get(_json.dumps([r["a"], r["b"]])), garment_kind)
         if n_ and not (ease_bands and r.get("declared")):
             lo, hi = n_["ease"]
             r["band"] = (min(lo, -hi) if lo >= 0 and r["ease"] < 0 else lo, hi)
@@ -1306,7 +1397,7 @@ def big_first(rows: list, waive: dict | None = None) -> list:
     waive = waive or {}
     rows = sorted(rows, key=lambda r: r.get("stage", 3))
     big = [r["id"] for r in rows if r.get("stage", 3) in BIG_STAGES and r["status"] in ("FAIL", "UNMEASURED")
-           and not waive.get(r["id"])]
+           and not waive.get(r["id"]) and not fit_owned(r)]  # (the fit's own faults: no pattern fix, nothing to block)
     if big:
         for r in rows:
             if r.get("stage", 3) not in BIG_STAGES and r["status"] in ("PASS", "FAIL"):

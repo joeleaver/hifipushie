@@ -447,7 +447,7 @@ mesh in clay (facets and folds); engine=False leaves the first out (faster).
 
 ### `review_view`
 
-`review_view(region, reference, result, context='', stage='', not_stages='', dry=False, out_dir=None)`
+`review_view(region, reference, result, context='', stage='', not_stages='', dry=False, out_dir=None, checklist=None)`
 
 The LOOK gate (docs/notes/gates.md): an independent, blind art-director review of ONE view, one region: the reference
 crop beside the result crop, nothing else. The input gate (reviewgate) REFUSES a contact sheet (grid gutters), an
@@ -461,6 +461,10 @@ One call = one view: every checklist region (and each camera of it) is its own c
 diag view of a region (fit_garment / look_cloth single views) as its own call beside the clay one.
 The text ends with the next step: on FAIL fix every independent MAJOR (grouped by cause) and review again; no
 verdict = the review did not run (never 0 MAJORs).
+NO REFERENCE (trials t6 / t7 had none, and no independent look ran): reference="" judges the result alone against a
+fixed checklist, default "hang" (how clothes hang: no wings at the sides, the sleeves rest on and follow the arm, one
+smooth shoulder line into the sleeve, the hem clear of the legs and the seat, no seam spikes, the collar / hood sits,
+cloth with weight). Give it each fit_garment single view (front, side, back, a focus close-up), one per call.
 
 ### `judge_asset`
 

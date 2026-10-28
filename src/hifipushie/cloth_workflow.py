@@ -161,7 +161,7 @@ def seam_rows(c: Ctx) -> list:
     # ease an operation declared (a dart released into gathers, a cap's designed ease, a stretched inseam)
     notes = c.Bp.get("seam_notes") or {}
     for r in rows:
-        n = notes.get(json.dumps([r["a"], r["b"]]))
+        n = cloth_check.note_band(notes.get(json.dumps([r["a"], r["b"]])), c.kind or "")  # (lesson 5: the kind's rule)
         if n:
             lo, hi = n["ease"]
             r["band"] = (min(lo, -hi) if lo >= 0 and r["ease"] < 0 else lo, hi)
@@ -202,7 +202,8 @@ def stage_pattern(c: Ctx, image: bool = True) -> dict:
     Bp = c.Bp
     # every sheet choice evidenced in the pieces and seams
     if c.res:
-        for ok, d, ch, txt in garment_design.evidence(c.res, Bp, c.meas):
+        # (lesson 5: a dim a kind's rule sets, e.g. the collar stand from the neck, is judged on that rule)
+        for ok, d, ch, txt in garment_design.evidence(cloth_check.with_rule_dims(c.res, c.kind or "", c.meas), Bp, c.meas):
             (o["info"] if ok else o["fail"]).append(f"{d} {ch}: {txt}")
     # seam table: ease per kind, notches
     rows = seam_rows(c)

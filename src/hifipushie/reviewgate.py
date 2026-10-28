@@ -25,6 +25,39 @@ CLAIM = re.compile(r"\d+(\.\d+)?\s*(mm|cm|px|%|l\*|db|deg|°)|\b(fixed|improved|
                    r"correct(ed)?|approved|best|pass(es|ed)?|fail(s|ed)?|v\d+\w*|r\d+\w*)\b", re.I)
 
 
+# A BLIND LOOK WITH NO REFERENCE (lesson 2 of trials t3-t7, 2026-10-27): the hoodie t6 and shirt t7 trials had no
+# reference image, so no independent look ran and wings, sleeves standing off the arm, shoulder spikes and a shirttail
+# drawn between the legs reached the coordinator. With no reference the reviewer judges the result alone against this
+# fixed list of how clothes hang (true of any garment on any body: it names no design choice and no number), so a trial
+# without a reference still gets an independent look. bin/review --checklist hang; review_view(reference="").
+CHECKLISTS = {
+    "hang": [
+        "the sides hang: no cloth standing out at the side seams like wings or fins; the body panels fall from the "
+        "chest and shoulder blades",
+        "the sleeves follow the arm: each rests on the top of the arm and hangs from it, the slack underneath; no tube "
+        "standing off the arm all round, none held out at an angle to it",
+        "the shoulder is one smooth line from the neck into the sleeve: no spike, point or step where the sleeve meets "
+        "the body",
+        "the hem falls clear: it bridges between the legs and across the seat, never drawn in between the legs or "
+        "clinging into a hollow",
+        "no spikes, pinches or ridges along the seams",
+        "the collar or hood sits: it lies round the neck / over the head as worn, not standing off, funnelled or "
+        "collapsed",
+        "the cloth reads as cloth with weight: it hangs down from what supports it, not shrink-wrapped onto the body "
+        "and not inflated away from it",
+    ],
+}
+
+
+def checklist_prompt(name: str) -> str:
+    """The reviewer's instruction for a no-reference look against CHECKLISTS[name] (ValueError naming the lists)."""
+    if name not in CHECKLISTS:
+        raise ValueError(f"no review checklist {name!r} (have {', '.join(CHECKLISTS)})")
+    items = "\n".join(f"{i + 1}. {t}" for i, t in enumerate(CHECKLISTS[name]))
+    return ("There is NO reference: judge the RESULT alone against how real clothes hang on a person. Check each point "
+            "and say for each whether the result breaks it, where and how badly:\n" + items)
+
+
 class InputRefused(ValueError):
     pass
 
