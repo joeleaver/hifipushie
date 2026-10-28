@@ -11,7 +11,10 @@ The full documentation of this topic's tools: their MCP descriptions are the sho
 `design_garment(name, garment, design=None, spec=None, replace=False, note='')`
 
 Stage 1 of the clothing workflow (guide(topic="cloth")): the design sheet, decided before any drafting, as a
-pattern maker does. Stored in spec["cloth"][garment]["design"] (merged key by key, null deletes; replace=True
+pattern maker does. STRICT (C241): every sheet key, detail param, op, op parameter, block option and FreeSewing
+option is checked; an unknown one is an error listing the valid ones with units, sign and default; a failed call
+saves nothing; each FreeSewing option set is reported with the default it REPLACES (Simon's lengthBonus default
+0.25: 0.05 gives 0.05, not 0.30). Units, signs, which keys go on which route: guide(topic="cloth_design"). Stored in spec["cloth"][garment]["design"] (merged key by key, null deletes; replace=True
 replaces the garment). design: {"kind": shirt | blouse | tee | hoodie | jacket | coat | trousers | shorts | skirt |
 dress | flat, "from": a draft source that can make it (simon, carlton, skirt_block; or DESIGN it: "block":
 bodice | knit | trouser | skirt, "block_options": {...}, "ops": [pattern operations] (garment_reference(principles=
@@ -59,14 +62,22 @@ images: the pattern sheet and the placed start as images (save=path writes them 
 `alter_pattern(name, garment, ops, replace=False, note='')`
 
 A pattern maker's alteration on the FLAT pattern: ops appended to the garment key "alter" (replace=True replaces the
-list) and applied in order after the draft (pattern.apply). Ops: slash_spread, turn, move, scale, slit, trim
-({"length"} or {"match": [edges]}), and where this build has them (they land from the dress-garrett branches):
-"true" ({"piece", "at", "keep", "deg": 90, "blend": 0.04}: the edge leaving point `at` bent so the piece's corner
-there is `deg`, the kept seam unmoved: necklines / armholes meet the shoulder seam at ~90 deg) and "match"
-({"piece", "edge", "to": [edges], "line", "ease"}: WALK THE SEAM, the pieces lengthened across `line` until `edge`
-equals the summed `to` edges x (1 + ease): a collar's neck edge = its neckline). An op this build doesn't know is
-an error and nothing is saved (the alteration is drafted and placed before the save). Each op that changes a default
-carries "source" (where the number came from; the gate warns without one).
+list) and applied in order after the draft (pattern.apply). Units: metres, fractions for ease, degrees. Coordinates:
+x right, **y UP** (+y toward the neck / the cap). Ops (pattern.ALTER_OPS; every key checked, an unknown or missing
+one is an error listing the op's keys with units and defaults):
+- slash_spread {piece, line, amount (m opened at the free end, + adds cloth), hinge "a" | "b" | "none"}
+- turn {piece, line (a straight fold line), keep (a point on the side kept)}
+- move {piece, point, by [dx, dy] m (y UP: [0, -0.01] lowers the point 10 mm), falloff 0.05 m}
+- scale {piece, line, amount (m added parallel across the line, - shortens)}
+- slit {piece, line, width 0.003, name}; trim {piece, edge "a>b", length m OR match [edges], name}
+- true {piece, at, keep, deg 90, blend 0.04}: the edge leaving point `at` bent so the piece's corner there is `deg`,
+  the kept seam unmoved (necklines / armholes meet the shoulder seam at ~90 deg)
+- match {piece, edge "piece:a>b", to ["piece:a>b", ...] (a LIST), line (or {piece: line}), ease}: WALK THE SEAM, the
+  pieces lengthened across `line` until `edge` equals the summed `to` edges x (1 + ease)
+A line is a line name, [[x, y], [x, y]] m, or two point names ("name+[dx,dy]" offsets). A draft op (round_corner,
+reshape...) is refused here with the reason: draft ops run on a block draft (design_garment ops). Nothing is saved
+unless the whole call succeeds (drafted, placed, seams walked and the sheet rendered before the save). Each op that
+changes a default carries "source" (where the number came from; the gate warns without one).
 Returns the flat pattern sheet and every seam walked (A | B lengths, ease, notches off; truing junctions where the
 build has them), then the next step: seams that don't walk -> "match" them; else pattern_check (the gate record is
 per pattern, so any alteration needs a new one).

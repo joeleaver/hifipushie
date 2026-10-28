@@ -548,52 +548,166 @@ def trim(piece: dict, edge: str, dist: float, name: str = "trim") -> dict:
     return dict(out, names=names)
 
 
+# THE ALTERATION OPS' CONTRACT (C241, trials lesson 4): {op: {param: (default or REQ, units / sign)}}. apply checks
+# every op against it before it changes anything, so an unknown key or op is an error naming the valid ones (shirt
+# t7: move -> KeyError 'piece', then 'by'; match -> "not enough values to unpack (expected 2, got 1)" x3, then
+# KeyError 'line'; move's y axis unstated, the first move went 14 cm the wrong way). Coordinates: metres, x right
+# (out from a half piece's centre line), y UP (+y toward the neck on a bodice, the cap on a sleeve).
+REQ = object()
+_LINE = ('a line: its name on the piece, [[x, y], [x, y]] (m), or two point names (a point may carry an offset '
+         '"name+[dx,dy]")')
+_PIECE = (REQ, "the piece name, or a list of piece names (the op runs on each)")
+ALTER_OPS = {
+    "slash_spread": {"piece": _PIECE, "line": (REQ, _LINE + ", cut from the outline in"),
+                     "amount": (REQ, "m opened at the free end (+ opens / adds cloth, - closes)"),
+                     "hinge": ("a", '"a" | "b": the end of the line it hinges at; "none": opened parallel')},
+    "turn": {"piece": _PIECE, "line": (REQ, "a straight fold line: " + _LINE),
+             "keep": (REQ, "a point name on the side that is kept (the other side is turned under)")},
+    "move": {"piece": _PIECE, "point": (REQ, "a named outline point"),
+             "by": (REQ, "[dx, dy] m: x right, y UP (+dy raises the point toward the neck / cap; a hem lowered "
+                         "10 mm is [0, -0.01])"),
+             "falloff": (0.05, "m along the outline over which neighbours are dragged along")},
+    "scale": {"piece": _PIECE, "line": (REQ, _LINE + " across which it lengthens"),
+              "amount": (REQ, "m added parallel across the line (+ lengthens, - shortens)")},
+    "slit": {"piece": _PIECE, "line": (REQ, _LINE + "; the end on the outline is the mouth"),
+             "width": (0.003, "m between the lips at the mouth"),
+             "name": (None, "names .a / .b / .tip (default: the line's)")},
+    "trim": {"piece": _PIECE, "edge": (REQ, 'the edge "a>b" on the piece, cut square across from a'),
+             "length": (None, "m from a (give length OR match)"),
+             "match": (None, 'edges ["piece:a>b", ...] whose summed length it is cut to (give length OR match)'),
+             "name": ("trim", "names the cut's ends <name>.a / <name>.b")},
+    "match": {"piece": _PIECE, "edge": (REQ, 'the edge made to length, "piece:a>b" (piece name, colon, points)'),
+              "to": (REQ, 'a LIST of the edges it is sewn to, each "piece:a>b"'),
+              "line": (REQ, "where the length goes in on each piece: " + _LINE + ", or {piece: line}"),
+              "ease": (0.0, "fraction: + makes edge longer than the summed to edges")},
+    "true": {"piece": _PIECE, "at": (REQ, "the corner point (a seam end)"),
+             "keep": (REQ, "the point at the far end of the kept (seam) edge; the other edge is bent"),
+             "deg": (90.0, "deg: the interior angle wanted at the corner"),
+             "blend": (0.04, "m along the bent edge over which the bend fades out")},
+}
+ALTER_META = {"op", "source"}
+DRAFT_ONLY = ('design ops run only while drafting from a block (design_garment "ops" with "from": "draft" + '
+              '"block"); on pieces already drafted (a FreeSewing draft) use an alteration op')
+
+
+class AlterError(ValueError):
+    pass
+
+
+def alter_takes(kind: str) -> str:
+    t = ALTER_OPS[kind]
+    return f"{kind} takes: " + ", ".join(
+        f"{k} ({doc}; {'REQUIRED' if d is REQ else 'default ' + repr(d)})" for k, (d, doc) in t.items())
+
+
+def _edge_ok(e) -> bool:
+    return isinstance(e, str) and ":" in e and ">" in e.split(":", 1)[1]
+
+
+def check_alter(ops, where: str = "alter") -> None:
+    """Every alteration op known, every key known to it, every required key given, edges in "piece:a>b" form."""
+    if ops is None:
+        return
+    if not isinstance(ops, list):
+        raise AlterError(f'{where} is a list of {{"op": kind, "piece": ..., ...}}, got {type(ops).__name__}')
+    for i, op in enumerate(ops):
+        at = f"{where}[{i}]"
+        if not isinstance(op, dict) or "op" not in op:
+            raise AlterError(f'{at}: an alteration is {{"op": kind, "piece": ..., ...}}, got {op!r}'[:300])
+        kind = op["op"]
+        if kind not in ALTER_OPS:
+            hint = ""
+            try:
+                from . import pattern_draft
+                if kind in pattern_draft.OPS:
+                    hint = f" ({kind!r} is a DRAFT op: {DRAFT_ONLY})"
+            except Exception:
+                pass
+            raise AlterError(f"{at}: unknown alteration op {kind!r}{hint}; alteration ops: "
+                             + "; ".join(alter_takes(k) for k in ALTER_OPS))
+        t = ALTER_OPS[kind]
+        bad = sorted(set(op) - set(t) - ALTER_META)
+        if bad:
+            raise AlterError(f"{at} ({kind}): unknown key{'s' if len(bad) > 1 else ''} "
+                             + ", ".join(f'"{b}"' for b in bad) + f"; {alter_takes(kind)}")
+        miss = [k for k, (d, _) in t.items() if d is REQ and k not in op]
+        if miss:
+            raise AlterError(f"{at} ({kind}): missing " + ", ".join(f'"{m}"' for m in miss) + f"; {alter_takes(kind)}")
+        if kind == "move" and not (isinstance(op["by"], (list, tuple)) and len(op["by"]) == 2):
+            raise AlterError(f"{at} (move): by is [dx, dy] m (x right, y UP), got {op['by']!r}")
+        if kind == "trim" and ("length" in op) == ("match" in op):
+            raise AlterError(f"{at} (trim): give length (m) OR match (edges), not "
+                             f"{'both' if 'length' in op else 'neither'}; " + alter_takes(kind))
+        if kind == "match":
+            if not _edge_ok(op["edge"]):
+                raise AlterError(f'{at} (match): edge is one string "piece:a>b", got {op["edge"]!r}')
+            if not (isinstance(op["to"], list) and op["to"] and all(_edge_ok(e) for e in op["to"])):
+                raise AlterError(f'{at} (match): to is a list of "piece:a>b" edges, got {op["to"]!r}')
+        if kind == "trim" and "match" in op and not (isinstance(op["match"], list)
+                                                     and all(_edge_ok(e) for e in op["match"])):
+            raise AlterError(f'{at} (trim): match is a list of "piece:a>b" edges, got {op["match"]!r}')
+
+
 def apply(pieces: dict, ops: list) -> dict:
-    """Apply alteration ops in order: {"op": "slash_spread" | "turn" | "move" | "scale" | "slit", "piece", ...}."""
+    """Apply alteration ops in order (ALTER_OPS: slash_spread, turn, move, scale, slit, trim, match, true), each
+    {"op", "piece", ...}. Every op is checked (check_alter) before any runs; an op that fails names its index."""
+    check_alter(ops)
     pieces = {k: copy.copy(v) for k, v in pieces.items()}
+    for i, op in enumerate(ops or []):
+        try:
+            pieces = _apply_one(pieces, op)
+        except AlterError:
+            raise
+        except (KeyError, ValueError, IndexError, TypeError) as e:
+            msg = e.args[0] if isinstance(e, KeyError) and e.args else str(e)
+            raise AlterError(f"alter[{i}] ({op['op']}): {type(e).__name__}: {msg}; {alter_takes(op['op'])}") from e
+    return pieces
+
+
+def _apply_one(pieces: dict, op: dict) -> dict:
+    pieces = dict(pieces)
 
     def elen(e):  # an edge "piece:a>b>c"'s length, as cloth_check.seams sums a seam side
         nm_, spec_ = e.split(":", 1)
         return length(pieces[nm_]["P"][arc_indices(pieces[nm_], spec_)])
 
-    for op in ops or []:
-        kind = op["op"]
-        names = op["piece"] if isinstance(op["piece"], list) else [op["piece"]]
-        if kind == "match":
-            # WALK THE SEAM: lengthen (or shorten) the pieces parallel across `line` by what `edge` lacks against the
-            # summed `to` edges x (1 + ease), read once on the pattern as it now is (after a "true" bent the
-            # neckline): a collar's neck edge equals its neckline. The same amount goes to every named piece (a stand
-            # and the collar sewn to its top keep matching each other).
-            amount = sum(elen(e) for e in op["to"]) * (1.0 + float(op.get("ease", 0.0))) - elen(op["edge"])
-            m_amount = amount
-        for nm in names:
-            if nm not in pieces:
-                raise KeyError(f"alter {kind}: no piece {nm!r} (have {', '.join(pieces)})")
-            p = pieces[nm]
-            if kind == "slash_spread":
-                pieces[nm] = slash_spread(p, _line(p, op["line"]), float(op["amount"]), op.get("hinge", "a"))
-            elif kind == "turn":
-                pieces[nm] = turn(p, op["line"] if isinstance(op["line"], str) else _line(p, op["line"]),
-                                  keep_point=op.get("keep"))
-            elif kind == "move":
-                pieces[nm] = move_point(p, op["point"], op["by"], float(op.get("falloff", 0.05)))
-            elif kind == "scale":
-                pieces[nm] = slash_spread(p, _line(p, op["line"]), float(op["amount"]), "none")
-            elif kind == "slit":
-                pieces[nm] = slit(p, op["line"], float(op.get("width", 0.003)), op.get("name"))
-            elif kind == "trim":  # "length": m, or "match": edges ("piece:a>b") whose summed length it is cut to
-                dist = float(op["length"]) if "length" in op else sum(
-                    length(pieces[e.split(":")[0]]["P"][arc_indices(pieces[e.split(":")[0]], e.split(":", 1)[1])])
-                    for e in op["match"])
-                pieces[nm] = trim(p, op["edge"], dist, op.get("name", "trim"))
-            elif kind == "match":
-                if abs(m_amount) > 1e-6:
-                    ln = op["line"][nm] if isinstance(op["line"], dict) else op["line"]
-                    pieces[nm] = slash_spread(p, _line(p, ln), m_amount, "none")
-            elif kind == "true":
-                pieces[nm] = true_corner(p, op["at"], op["keep"], float(op.get("deg", 90.0)), float(op.get("blend", 0.04)))
-            else:
-                raise ValueError(f"unknown alteration op {kind!r} (slash_spread, turn, move, scale, slit, trim, true, match)")
+    kind = op["op"]
+    names = op["piece"] if isinstance(op["piece"], list) else [op["piece"]]
+    if kind == "match":
+        # WALK THE SEAM: lengthen (or shorten) the pieces parallel across `line` by what `edge` lacks against the
+        # summed `to` edges x (1 + ease), read once on the pattern as it now is (after a "true" bent the
+        # neckline): a collar's neck edge equals its neckline. The same amount goes to every named piece (a stand
+        # and the collar sewn to its top keep matching each other).
+        amount = sum(elen(e) for e in op["to"]) * (1.0 + float(op.get("ease", 0.0))) - elen(op["edge"])
+        m_amount = amount
+    for nm in names:
+        if nm not in pieces:
+            raise KeyError(f"alter {kind}: no piece {nm!r} (have {', '.join(pieces)})")
+        p = pieces[nm]
+        if kind == "slash_spread":
+            pieces[nm] = slash_spread(p, _line(p, op["line"]), float(op["amount"]), op.get("hinge", "a"))
+        elif kind == "turn":
+            pieces[nm] = turn(p, op["line"] if isinstance(op["line"], str) else _line(p, op["line"]),
+                              keep_point=op.get("keep"))
+        elif kind == "move":
+            pieces[nm] = move_point(p, op["point"], op["by"], float(op.get("falloff", 0.05)))
+        elif kind == "scale":
+            pieces[nm] = slash_spread(p, _line(p, op["line"]), float(op["amount"]), "none")
+        elif kind == "slit":
+            pieces[nm] = slit(p, op["line"], float(op.get("width", 0.003)), op.get("name"))
+        elif kind == "trim":  # "length": m, or "match": edges ("piece:a>b") whose summed length it is cut to
+            dist = float(op["length"]) if "length" in op else sum(
+                length(pieces[e.split(":")[0]]["P"][arc_indices(pieces[e.split(":")[0]], e.split(":", 1)[1])])
+                for e in op["match"])
+            pieces[nm] = trim(p, op["edge"], dist, op.get("name", "trim"))
+        elif kind == "match":
+            if abs(m_amount) > 1e-6:
+                ln = op["line"][nm] if isinstance(op["line"], dict) else op["line"]
+                pieces[nm] = slash_spread(p, _line(p, ln), m_amount, "none")
+        elif kind == "true":
+            pieces[nm] = true_corner(p, op["at"], op["keep"], float(op.get("deg", 90.0)), float(op.get("blend", 0.04)))
+        else:
+            raise AlterError(f"unknown alteration op {kind!r} ({', '.join(ALTER_OPS)})")
     return pieces
 
 
