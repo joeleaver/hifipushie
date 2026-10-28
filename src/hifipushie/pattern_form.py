@@ -1136,6 +1136,18 @@ def woven_shear_deg(W: dict, X: np.ndarray) -> np.ndarray:
     return np.degrees(np.arcsin(np.clip(np.abs(c), 0, 1)))
 
 
+def crease_faces(M: dict) -> np.ndarray:
+    """Per face of M: on a fold's row (a vertex on any M["folds"] row). The fit lets these stretch to CREASE_CAP (a
+    fold's outer layer is longer than its inner); every read of threads past their cap must allow the same (hoodie
+    trial t6: its folded rib cuffs read 17 % past the plain cap on every fit, and the gate never said why)."""
+    F = np.asarray(M["F"])
+    row = np.zeros(len(M["uv"]), bool)
+    for fd in M.get("folds") or []:
+        for r_ in fd.get("rows") or []:
+            row[np.asarray(r_, int)] = True
+    return row[F].any(1)
+
+
 def face_threads(M: dict, B: dict | None, X: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Per face of M: (the larger warp / weft STRETCH as a fraction, >= 0, the bias shear in deg) of the map flat
     pattern -> X, in each piece's grain frame (B["pieces"][name]["grain"], default 90). The fit's misfit read (C64,

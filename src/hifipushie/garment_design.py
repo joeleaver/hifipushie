@@ -236,16 +236,23 @@ def compile_sheet(sheet: dict) -> dict:
         band = r["fit_bands"].get("chest")
         if band and "chest_ease" not in bo and block in ("bodice", "knit"):
             bo["chest_ease"] = round(0.5 * (band[0] + band[1]), 3)  # ease by garment category: the fit's middle
-        ops = list(sheet.get("ops") or [])
+        own = list(sheet.get("ops") or [])
+        # the kind's and the details' ops go in BEFORE the sheet's own first unfold (the sheet's order kept otherwise):
+        # appended after it they ran on unfolded pieces or not at all (shape-ops agent, C240: the coat kind and the
+        # lining: full detail had to be cut back to drafting the block only; test_cloth_heldcollar's coat sheet ends
+        # in an explicit unfold)
+        cut = next((i for i, o_ in enumerate(own) if isinstance(o_, dict) and o_.get("op") == "unfold"), len(own))
+        ops, tail_ = own[:cut], own[cut:]
         # (a kind's own draft ops, e.g. the sweater's set-in sleeve, unless the sheet has an op of that kind)
-        mine_ = {o_.get("op") for o_ in ops}
+        mine_ = {o_.get("op") for o_ in own}
         ops += [dict(o_) for o_ in (kdr.get("ops") or []) if o_.get("op") not in mine_]
         # (an op is known by its kind AND its name: two details may each cut a style line, a yoke and a pocket scoop)
-        have = {(o_.get("op"), o_.get("name")) for o_ in ops}
+        have = {(o_.get("op"), o_.get("name")) for o_ in ops + tail_}
         for info in r["details"].values():
             for op in (info["kb"].get("draft") or {}).get("ops", []):
                 if (op["op"], op.get("name")) not in have and (op["op"], None) not in have:
                     ops.append(_merge(op, info["params"].get("op") or {}))
+        ops += tail_
         out["pattern"] = {"from": "draft", "block": block, "block_options": bo, "ops": ops, "kind": r["kind"]}
     elif r["from"]:
         pat = {"from": rec.get("pattern_from", r["from"])}

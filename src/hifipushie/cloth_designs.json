@@ -66,6 +66,10 @@
   "fit_alterations": {
    "large_abdomen": {"op": "slash_spread", "piece": ["front.L", "front.R"], "line": ["waist", "cfWaist-notch"], "hinge": "a"}
   },
+  "point_aliases": {
+   "_doc": "table point names that follow a style option (freesewing.aliased): Simon's side seam ends at its point 'hem' on the straight hem, at bballEnd on the baseball (shirttail) hem, at slashStart on the slashed hem; the seams name 'hem' and the alias follows the hemStyle drafted (word: hem)",
+   "hemStyle": {"_default": "straight", "baseball": {"hem": "bballEnd"}, "slashed": {"hem": "slashStart"}}
+  },
   "words": {
    "ease": {"chest": "chestEase", "waist": "waistEase", "hips": "hipsEase", "biceps": "bicepsEase", "neck": "collarEase", "wrist": "cuffEase", "shoulders": "shoulderEase"},
    "length": "lengthBonus",

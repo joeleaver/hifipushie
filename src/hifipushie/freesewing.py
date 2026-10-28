@@ -49,7 +49,7 @@ def draft(design: str, measurements: dict, options: dict | None = None, sa: floa
     k = key(design, measurements, options, sa)
     path = _cache_dir() / f"{k}.json"
     if path.exists():
-        return json.loads(path.read_text())
+        return aliased(design, options, json.loads(path.read_text()))
     from . import assets
     pack = assets.pack("freesewing")  # says how to fetch it when missing
     run = pack / "draft.mjs"
@@ -67,4 +67,25 @@ def draft(design: str, measurements: dict, options: dict | None = None, sa: floa
     if errs:
         raise ValueError(f"FreeSewing {design}: " + "; ".join(errs[:5]))
     path.write_text(json.dumps(out))
+    return aliased(design, options, out)
+
+
+def aliased(design: str, options: dict, out: dict) -> dict:
+    """The draft with the design table's point aliases for the options it was drafted with (cloth_designs.json
+    <design>.point_aliases: {option: {value: {table name: the draft's point}}, "_default": the option's default}): a
+    design's own style options rename the points its seams end at (Simon's side seam ends at "hem" on the straight hem,
+    at bballEnd on the baseball (shirttail) hem, at slashStart on the slashed one), so the table names one point and the
+    alias follows the option (shirt trial t7: a shirttail through hemStyle crashed the seams, "piece 'back' has no
+    point 'hem'", 7 rounds). Applied after the cache: the cached draft stays FreeSewing's own."""
+    from . import cloth
+    tbl = (cloth.designs().get(design) or {}).get("point_aliases") or {}
+    for opt, by_value in tbl.items():
+        if opt.startswith("_"):
+            continue
+        val = str(options.get(opt, by_value.get("_default", "")))
+        for alias, point in (by_value.get(val) or {}).items():
+            for part in (out.get("parts") or {}).values():
+                pts = part.get("points") or {}
+                if pts.get(point):
+                    pts[alias] = pts[point]
     return out

@@ -74,6 +74,29 @@ def test_a_new_op_is_covered_without_edits():
         del pdm.OPS["contract_probe"]
 
 
+def test_shape_ops_are_covered():
+    """hem_shape / drop_shoulder (C240) refuse unknown keys themselves (pattern_tailor.refuse_unknown): the contract
+    reads their named parameters and adds no free "name" they would refuse at draft time."""
+    T = ds.op_table()
+    assert {"shape", "rise", "front_drop", "back_drop"} <= set(T["hem_shape"]["params"])
+    assert "name" not in T["drop_shoulder"]["params"] and "drop" in T["drop_shoulder"]["params"]
+    ds.check_ops([{"op": "hem_shape", "shape": "shirttail", "rise": 0.08}, {"op": "drop_shoulder", "drop": 0.05}])
+    assert 'unknown parameter "depth"' in _err(ds.check_ops, [{"op": "drop_shoulder", "depth": 0.05}])
+
+
+def test_kind_and_detail_ops_go_before_the_sheets_own_unfold():
+    """Appended after a sheet's explicit unfold, the kind's / details' ops never applied (C240: the coat kind and the
+    lining detail were cut back to the block only)."""
+    c = gd.compile_sheet({"kind": "hoodie", "ops": [{"op": "neckline", "front": 0.01}, {"op": "unfold"},
+                                                    {"op": "reshape", "piece": "front.L", "point": "hps",
+                                                     "by": [0, 0.001]}]})
+    kinds = [o["op"] for o in c["pattern"]["ops"]]
+    assert kinds[0] == "neckline" and kinds[-2:] == ["unfold", "reshape"], kinds
+    assert "sleeve" in kinds[:kinds.index("unfold")], kinds
+    c = gd.compile_sheet({"kind": "hoodie", "ops": [{"op": "neckline", "front": 0.01}]})
+    assert "unfold" not in [o["op"] for o in c["pattern"]["ops"]]
+
+
 def test_draft_apply_refuses_before_any_op_runs():
     D = {"log": []}
     with pytest.raises(pdm.DraftError) as e:

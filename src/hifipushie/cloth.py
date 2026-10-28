@@ -398,10 +398,12 @@ def pieces(g: dict, meas_mm: dict) -> dict:
         out[nm] = pc
     for nm in g.get("drop", []):
         out.pop(nm, None)
-    if draft_info is not None and g.get("auto_true", draft_info.get("block") == "knit"):  # (our drafts come out
-        # trued: cloth_check.auto_true; garment key auto_true. Default: knit drafts (tees, sweaters, hoodies); a
-        # tailored draft's neckline corners are partly design and trued its collar lay moved (test_collar made_lay):
-        # opt in with auto_true true. The garment's own alter ops still apply after it)
+    auto_ = draft_info is not None and (draft_info.get("block") == "knit" or draft_info.get("design") != "draft")
+    if draft_info is not None and g.get("auto_true", auto_):  # (drafts come out trued: cloth_check.auto_true, made
+        # pieces' corners excepted. Default: knit drafts and FreeSewing drafts (the shirt trial t7 spent 8 rounds truing
+        # Simon's corners by hand); our tailored bodice drafts opt in with garment key auto_true: their body corners
+        # are shaped on purpose (trued, the jacket's collar lay moved, test_collar made_lay, made pieces excepted or not).
+        # The garment's own alter ops still apply after it)
         from . import cloth_check as _cc
         tl_ = []
         out = _cc.auto_true(out, seams, g.get("truing_corners") or (), tl_)

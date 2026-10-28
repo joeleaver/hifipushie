@@ -2491,3 +2491,24 @@ def test_flush_band_is_one_leaning_layer_with_its_fold_in_the_maps():
     assert top < sew - 0.01, (top, sew)  # (the cone: its free edge shorter, it leans onto the slope)
     assert "top_stitch" in nb_l["lines"] and nb_l["represent"]["fold"] == "maps"
     assert nb_l["represent"]["cut_height"] == pytest.approx(0.036)
+
+
+def test_flush_cuff_is_a_cylinder_and_fold_rows_keep_their_allowance():
+    """(hoodie trial t6) A flush band leans only where it lies on a slope (a neckband): a flush cuff is a straight
+    strip (its free edge as long as its sewn edge), not a cone; and every thread read gives a fold row the fit's
+    CREASE_CAP (pattern_form.crease_faces), so a folded cuff isn't read past its cap on its crease."""
+    from hifipushie import garment_blocks as gb, pattern
+    pts = [("a0", [0, 0]), ("a1", [0.3, 0]), ("a2", [0.3, 0.3]), ("a3", [0, 0.3])]
+    pcs = {"sleeve": pattern.from_spec("sleeve", {"outline": gb._outline(pts)})}
+    e = {"band": "cuff", "role": "cuff", "along": "sleeve:a0>a1", "ratio": 0.85, "height": 0.13, "ring": True,
+         "fold": True, "represent": "flush"}
+    cu = gb.generate(pcs, e, {})[0]["cuff"]
+    P = np.asarray(cu["P"])
+    top = pattern.length(P[[cu["names"][k] for k in ("ne", "n", "nw")]])
+    sew = pattern.length(P[[cu["names"][k] for k in ("sw", "s", "se")]])
+    assert abs(top - sew) < 1e-6, (top, sew)
+    B = _B({"p": _piece([[0, 0], [0.2, 0], [0.2, 0.1], [0, 0.1]])},
+           folds=[{"piece": "p", "line": [[0.0, 0.05], [0.2, 0.05]], "angle": 0, "kind": "press", "name": "f"}])
+    M = cloth.mesh(B, 0.01)
+    cr = pf.crease_faces(M)
+    assert 0 < cr.sum() < len(M["F"])

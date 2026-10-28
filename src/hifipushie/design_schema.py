@@ -226,6 +226,14 @@ def dict_keys(fn, var: str, _seen=None) -> tuple[dict, list]:
                 continue
         if isinstance(q, ast.Call) and node_ in q.args:
             f = _resolve(q.func, glb)
+            if f is not None and f.__name__ == "refuse_unknown":
+                # (pattern_tailor.refuse_unknown(op, o, allowed): the op refuses any kwarg outside `allowed` itself)
+                al = q.args[2] if len(q.args) > 2 else next((kw.value for kw in q.keywords if kw.arg == "allowed"), None)
+                for x in (_lit(al) or ()) if al is not None else ():
+                    if isinstance(x, str):
+                        add(x)
+                keys["__closed__"] = True  # (no free label key either: the op itself refuses it)
+                continue
             if f is not None:
                 ps = list(inspect.signature(f).parameters)
                 i = q.args.index(node_)
@@ -279,7 +287,7 @@ def _op_table_cached(ops_key: tuple) -> dict:
                 if not k.startswith("_") and k not in params:
                     params[k] = {"required": False, "default": d}
             open_ = bool(esc)
-            if "name" not in params:  # (a label: garment_design keys ops by kind + name; harmless where unread)
+            if "name" not in params and not extra.get("__closed__"):  # (a label: garment_design keys ops by kind + name; harmless where unread)
                 params["name"] = {"required": False, "default": None}
         out[kind] = {"params": params, "open": open_, "escapes": esc if vk else [],
                      "module": fn.__module__.rsplit(".", 1)[-1], "doc": (fn.__doc__ or "").strip().split("\n")[0]}
