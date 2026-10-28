@@ -9,6 +9,12 @@ their ease declared.
   round_corner  a corner of the outline rounded (a cut-away front hem, a patch pocket, a cuff, a collar point).
   fisheye       a double-pointed dart inside a piece that runs past the waist (run on to the hem as a closed cut:
                 a cloth mesh can't hold a cut that doesn't reach its edge).
+  hem_shape     the hem redrawn to a shape (shirttail, curved, straight; high-low by front / back drops) on every piece
+                its hem edges cross: each seam ending on the hem is moved along by the same arc length on both its
+                edges, so the side, panel and dart seams stay matched whatever drafted them (C240; shirt trial t7 lost
+                7 rounds to a shirttail it couldn't make).
+Helpers the shape ops share: slide_end (a seam end moved along its edge by arc length), replace_run (a run of the
+outline replaced by a polyline, names kept), refuse_unknown (an unknown op key is an error naming the valid ones).
 """
 from __future__ import annotations
 
@@ -617,6 +623,168 @@ def _fly_j(pc: dict, top: str, end: str, width: float) -> np.ndarray:
 
 def pb_edge_length(pc: dict, arc: str) -> float:
     return pattern.length(pc["P"][pattern.arc_indices(pc, arc)])
+
+
+# ---------------------------------------------------------------- outline runs (shape ops: hem_shape, drop_shoulder)
+
+
+def refuse_unknown(op: str, o: dict, allowed: tuple = ()) -> None:
+    """The tool contract (trials.md lesson 4): an unknown key is an error naming the valid ones, never silently ignored
+    (hoodie t6: a sleeve "ease" was dropped without a word and cost a round)."""
+    bad = sorted(k for k in o if k not in allowed)
+    if bad:
+        raise DraftError(f"{op}: unknown key(s) {', '.join(bad)} (have {', '.join(allowed) or 'none beyond the named ones'})")
+
+
+def slide_end(pc: dict, i: int, step: int, t: float) -> tuple:
+    """Move the outline point i along the outline AWAY from a run (step +1 / -1: the direction of the neighbour edge)
+    by arc length t: t > 0 walks into the neighbour edge (it gets t shorter: a hem raised up its side seam), t < 0
+    runs the neighbour edge on past i along its last segment (|t| longer). Returns (new xy, [indices passed over, nearest
+    first]). Two mating edges slid by the same t stay the same length, whatever their shapes."""
+    P = pc["P"]
+    n = len(P)
+    if t < 0:
+        j = (i + step) % n
+        d = P[i] - P[j]
+        return P[i] + d / max(float(np.linalg.norm(d)), 1e-12) * (-t), []
+    acc, k, passed = 0.0, i, []
+    while True:
+        j = (k + step) % n
+        seg = float(np.linalg.norm(P[j] - P[k]))
+        if acc + seg > t + 1e-9:
+            return P[k] + (P[j] - P[k]) * (t - acc) / max(seg, 1e-12), passed
+        acc += seg
+        k = j
+        if k == i or len(passed) > n - 3:
+            raise DraftError(f"{pc['name']}: can't move {t * 1000:.0f} mm along its outline (the edge is shorter)")
+        passed.append(k)
+
+
+def replace_run(pc: dict, run: list, Q, put: dict | None = None) -> None:
+    """Replace the consecutive outline indices `run` (in outline-walk order, either way round) by the polyline Q
+    (Q[0] takes run[0]'s place, Q[-1] run[-1]'s). Names on run[0] / run[-1] go to Q's ends; names on the inside of the
+    run go to the nearest point of Q; put {name: k}: names placed on Q[k] (new or moved)."""
+    P, n = pc["P"], len(pc["P"])
+    Q = np.asarray(Q, float).reshape(-1, 2)
+    step = 1 if len(run) < 2 or (run[0] + 1) % n == run[1] else -1
+    inside = set(run)
+    rest, k = [], (run[-1] + step) % n
+    while k not in inside:
+        rest.append(k)
+        k = (k + step) % n
+    ring = [("q", j) for j in range(len(Q))] + [("p", k) for k in rest]
+    if step < 0:  # (keep the outline's own orientation)
+        ring = ring[::-1]
+    newP = np.array([Q[j] if s == "q" else P[j] for s, j in ring])
+    pos_q = {j: m for m, (s, j) in enumerate(ring) if s == "q"}
+    pos_p = {j: m for m, (s, j) in enumerate(ring) if s == "p"}
+    names = {}
+    for nm, v in pc["names"].items():
+        if v in pos_p:
+            names[nm] = pos_p[v]
+        elif v == run[0]:
+            names[nm] = pos_q[0]
+        elif v == run[-1]:
+            names[nm] = pos_q[len(Q) - 1]
+        else:
+            names[nm] = pos_q[int(np.argmin(np.linalg.norm(Q - P[v], axis=1)))]
+    for nm, j in (put or {}).items():
+        names[nm] = pos_q[j % len(Q)]
+    pc["P"], pc["names"] = newP, names
+
+
+def _ends_named(pc: dict, idx: list, what: str) -> None:
+    """Refuse to slide a seam end past a NAMED point (a waist, a notch): the edges named to it would lose their end."""
+    real = [k for k, v in pc["names"].items() if v in set(idx) and not k.startswith("_")]
+    if real:
+        raise DraftError(f"{pc['name']}: {what} passes the point(s) {', '.join(sorted(real))}: less, or shape below them")
+
+
+# The hem's curve (op hem_shape): how much of the half hem, from the centre, stays level before it curves to the side
+# seam. A shirttail keeps the middle ~40% level and turns up into the side (the side seam a few cm long: Simon's
+# baseball hem starts its curve half way from the centre, 50%); a curved hem bends all the way across; a straight hem is
+# level, turning only in the last fifth where a different front / back drop (high-low) has to meet the shared side point.
+HEM_FLAT = {"shirttail": 0.4, "curved": 0.0, "straight": 0.8}
+HEM_RISE = {"shirttail": 0.06, "curved": 0.03, "straight": 0.0}  # m, the side's default rise: a dress shirt's tail
+# rises 50-80 mm at the side seam (Simon's baseball hem: the side point 50% of the way up to the hip line, 70 mm on the
+# test body); a curved tee / blouse hem 20-40 mm
+
+
+def _hem_curve(u, flat: float):
+    """0 at the centre (u = 0) to 1 at the side (u = 1), level at both ends (the hem meets the centre fold and the side
+    seam square: a pattern maker's truing rule, so the front and back curves join without a point at either)."""
+    t = np.clip((np.asarray(u, float) - flat) / max(1.0 - flat, 1e-9), 0.0, 1.0)
+    return t * t * t * (t * (6 * t - 15) + 10)
+
+
+def op_hem_shape(D: dict, shape: str = "shirttail", rise: float | None = None, front_drop: float = 0.0,
+                 back_drop: float = 0.0, edges=None, flat: float | None = None, **o) -> None:
+    """The hem redrawn to a shape, on every piece its hem edges run over (whatever drafted them: a bodice or knit
+    block, after style lines, panels, darts). `shape` shirttail | curved | straight; `rise` (m): the side point raised
+    up its side seam (front and back by the same arc length, so the side seam stays matched; default by shape: shirttail
+    60 mm, curved 30, straight 0; negative lowers it); `front_drop` / `back_drop` (m): the centre front / back hem
+    lowered (a high-low hem: back_drop > front_drop; negative raises it); `flat`: the share of the half hem kept level
+    at the centre (default by shape). The hem meets the centre and the side seam square. Panel and dart seams that end
+    on the hem are moved along by the same amount on both their edges, so every seam stays matched.
+    `edges`: hem edge names (default hem_front + hem_back). Do it before extend (a button stand) and facings."""
+    refuse_unknown("hem_shape", o)
+    if shape not in HEM_FLAT:
+        raise DraftError(f"hem_shape: shape {shape!r} unknown (have {', '.join(HEM_FLAT)}; a high-low hem is "
+                         "front_drop / back_drop on any shape)")
+    rise = HEM_RISE[shape] if rise is None else float(rise)
+    flat = HEM_FLAT[shape] if flat is None else float(flat)
+    if not 0.0 <= flat < 1.0:
+        raise DraftError(f"hem_shape: flat is a share of the half hem, 0 <= flat < 1 (got {flat})")
+    names = list(edges) if isinstance(edges, (list, tuple)) else [edges] if edges else \
+        [e for e in ("hem_front", "hem_back") if e in D["edges"]]
+    if not names:
+        raise DraftError("hem_shape: this draft has no hem edges (hem_front / hem_back)")
+    drops = {"hem_front": float(front_drop), "hem_back": float(back_drop)}
+    did = []
+    for en in names:
+        if en not in D["edges"]:
+            raise DraftError(f"hem_shape: no edge {en!r} (have {', '.join(k for k in D['edges'] if 'hem' in k)})")
+        chain = list(D["edges"][en])
+        drop = drops.get(en, 0.0)
+        segs = []
+        for spec in chain:  # (the chain runs from the side seam to the centre: u 1 -> 0 by length along it)
+            pn, arc = spec.split(":", 1)
+            segs.append((pn, arc, pattern.length(D["pieces"][pn]["P"][pattern.arc_indices(D["pieces"][pn], arc)])))
+        T = sum(s[2] for s in segs)
+        if T < 1e-6:
+            raise DraftError(f"hem_shape: {en} has no length")
+        L0 = edge_length(D, chain)
+        dy = lambda u: -drop * (1.0 - float(_hem_curve(u, flat))) + rise * float(_hem_curve(u, flat))
+        s0 = 0.0
+        for pn, arc, ln in segs:
+            pc = D["pieces"][pn]
+            ua, ub = 1.0 - s0 / T, 1.0 - (s0 + ln) / T
+            s0 += ln
+            ix = pattern.arc_indices(pc, arc)
+            n = len(pc["P"])
+            step = 1 if (ix[0] + 1) % n == ix[1] else -1
+            # each end slides along the edge it meets (the side seam, a panel seam, a dart leg, the centre line) by the
+            # same amount its mate does: the seams stay matched by construction
+            qa, ra = slide_end(pc, ix[0], -step, dy(ua))
+            qb, rb = slide_end(pc, ix[-1], step, dy(ub))
+            _ends_named(pc, ra + rb, f"hem_shape ({en})")
+            m = max(4, int(math.ceil(ln / 0.01)))
+            u = np.linspace(ua, ub, m + 1)
+            Sa, Sb = float(_hem_curve(ua, flat)), float(_hem_curve(ub, flat))
+            w = (_hem_curve(u, flat) - Sa) / (Sb - Sa) if abs(Sb - Sa) > 1e-9 else (u - ua) / (ub - ua)
+            Q = np.c_[qa[0] + (qb[0] - qa[0]) * (u - ua) / (ub - ua), qa[1] + (qb[1] - qa[1]) * w]
+            put = {k_: 0 for k_ in pd._names_at(pc, ix[0])}
+            put.update({k_: len(Q) - 1 for k_ in pd._names_at(pc, ix[-1])})
+            replace_run(pc, ra[::-1] + ix + rb, Q, put)
+        did.append(f"{en} {L0 * 1000:.0f} -> {edge_length(D, chain) * 1000:.0f} mm"
+                   + (f", centre {drop * 1000:+.0f} mm lower" if drop else ""))
+    rec = {"shape": shape, "rise": rise, "front_drop": float(front_drop), "back_drop": float(back_drop), "flat": flat}
+    D["meta"]["hem_shape"] = rec
+    D["log"].append(f"hem_shape {shape}: the side point {rise * 1000:+.0f} mm up its side seam (front and back alike), "
+                    f"level for the middle {flat * 100:.0f}% then curved, square at centre and side; " + "; ".join(did))
+
+
+pd.OPS.update({"hem_shape": op_hem_shape})
 
 
 pd.OPS.update({"crease": op_crease, "fly": op_fly, "lining": op_lining, "pocket": op_pocket, "contour": op_contour, "join": op_join, "round_corner": op_round_corner, "fisheye": op_fisheye})

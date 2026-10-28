@@ -1592,11 +1592,26 @@ def shoulder_seam_row(M: dict, body, g: dict, kind: str = "") -> dict:
         ours["neck_point_out_mm"] = round(off, 1)
     bad = [f"{pc} len {r['len_mm']} < {tgt - SHOULDER_SEAM_LEN_TOL:.1f}" for pc, r in per.items()
            if r["len_mm"] < tgt - SHOULDER_SEAM_LEN_TOL]
+    # A DECLARED DROP (op drop_shoulder; hoodie trial t6: a real 50 mm drop failed "body +- 10" and the agent spent 4
+    # rounds on reshape hacks): "shoulder" stays on the body's shoulder point (the rows above), the seam runs on to
+    # "shoulderDrop" by the drop the design declares; its end is held to body + that drop
+    from . import pattern_styles
+    dec = 1000 * pattern_styles.declared_shoulder_drop(g)
+    for k, v in P.items():
+        pc, pt = k.split(":", 1)
+        if pt == "shoulderDrop" and f"{pc}:hps" in P and pc in per:
+            ext = 1000 * float(np.linalg.norm(uv[v] - uv[P[f"{pc}:hps"]])) - per[pc]["len_mm"]
+            per[pc]["drop_past_mm"] = round(ext, 1)
+            if abs(ext - dec) > SHOULDER_SEAM_LEN_TOL:
+                bad.append(f"{pc} seam runs {ext:.1f} mm past the shoulder point, declared {dec:.0f}")
+    if dec:
+        ours["declared_drop_mm"] = round(dec, 1)
     bad += [f"{pc} drop {r['drop_mm']} vs {bdrop:.1f}" for pc, r in per.items()
             if abs(r["drop_mm"] - bdrop) > SHOULDER_SEAM_DROP_TOL]
     row = {"id": "shoulder_seam_flat", "stage": 1, "measure": "cloth_check.shoulder_seam_row", "ours": ours,
            "ref": {"len_mm": f">= body{f' - neck point out {off:.0f}' if off else ''} - {SHOULDER_SEAM_LEN_TOL}",
-                   "drop_mm": f"body +- {SHOULDER_SEAM_DROP_TOL}"}}
+                   "drop_mm": f"body +- {SHOULDER_SEAM_DROP_TOL}",
+                   **({"drop_past_mm": f"declared {dec:.0f} +- {SHOULDER_SEAM_LEN_TOL}"} if dec else {})}}
     if want != "chord" or g.get("shoulder_pad"):
         return dict(row, status="INFO", why="judged for drafts on the chord slope (cloth.slope_measures)",
                     **({"miss": "; ".join(bad)} if bad else {}))

@@ -58,7 +58,9 @@ def test_kb_is_consistent():
 def test_sheet_defaults_and_failures():
     r = gd.resolve({"kind": "shirt", "from": "simon"})
     assert r["details"]["collar"]["choice"] == "shirt_collar" and r["details"]["collar"]["source"] == "kind default"
-    assert any("sleeve_placket" in p and "can't make" in p for p in r["problems"]), r["problems"]  # simon has no placket
+    assert not r["problems"], r["problems"]  # (C240: every kind default drafts; the shirt's placket is the slit)
+    r = gd.resolve({"kind": "shirt", "from": "simon", "details": {"sleeve_placket": "tower"}})
+    assert any("sleeve_placket" in p and "can't make" in p for p in r["problems"]), r["problems"]  # simon has no tower
     r = gd.resolve({"kind": "shirt", "from": "simon", "details": {"sleeve_placket": "none"}})
     assert any("needs a sleeve_placket" in p for p in r["problems"]), r["problems"]  # a barrel cuff needs one
     r = gd.resolve({"kind": "skirt", "from": "skirt_block", "fit": "a_line"})
