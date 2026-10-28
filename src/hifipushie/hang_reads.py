@@ -13,7 +13,8 @@ their roles (garment_design.role_of) and the body from its landmarks (body.at: s
 crotch_z), never from one garment's names.
 
 READINGS (mm, read off the fitted vertices X and the body; `reads(res, X)` returns all four):
-- `wing_reads`      per side (L = +x): in horizontal sections of the torso pieces from the armpit down to the hem, the
+- `wing_reads`      per side (L = +x): in horizontal sections of the torso pieces from the armpit (or the armhole's bottom,
+                    if lower) down to the hem, the
                     WING: how far the section's outermost cloth runs as a thin double layer (front and back closer than
                     WING_T) before it opens out; a smooth hang turns round the side in a few mm (a round of radius r
                     reaches WING_T across within WING_T^2 / 8r: < 1 mm). Also the side stand-off off the body vs the
@@ -40,9 +41,10 @@ from __future__ import annotations
 
 import numpy as np
 
-# The fit has no hang step yet (another agent builds it in pattern_form): every hang FAIL is the fit's, and its fix says
-# so. The hang step sets this True when it lands; the rows then name the pattern / the hang as the fix.
-HANG_STEP = False
+# The fit hangs (pattern_form's hang step, C244, 2026-10-28: on the default path the four calibration garments' fits
+# read wings 1.5-8.5, sleeve top 1.7-8.9, apex 2.2-7.3, hollow 0-6.3 mm): a hang FAIL is the PATTERN's, owner "pattern",
+# and its fix names the pattern move (PATTERN_FIX). False: the old rule (the fit's fault, never blocking).
+HANG_STEP = True
 
 # ---------------------------------------------------------------- thresholds (evidence: calibrate.txt, 2026-10-27)
 # Measured on the four fits (worst level / side; /mnt/data/hifipushie/hang_gates/calibrate.txt, sections_*.png):
@@ -63,6 +65,11 @@ WING_MAX_MM = 20.0
 SLEEVE_TOP_GAP_MAX_MM = 10.0
 SLEEVE_AXIS_MAX_DEG = 10.0  # the sleeve's axis off the arm's (a tube held out at an angle): 2.5-4.4 deg on all four
 ARM_SECTION_REACH = 0.09  # m: an arm section reaching further from its station than this has cut the torso too
+# A station is a sleeve section only where the cloth goes ROUND the arm (no gap in its angle about the arm's centre over
+# this). Hang round 2 (2026-10-27): a short sleeve hung from its cap has its hem lower under the arm than over it, so the
+# last plane square to the arm cut only the hem's underside (16 points, an arc, its "top gap" -38 mm, its centre 40 mm
+# off): read as a station, the tee's sleeve axis came out 47-49 deg from 3 stations 30 mm apart.
+SLEEVE_ARC_GAP_DEG = 90.0
 # Shoulder: the apex over the cloth's local plane (SPIKE_R) within SHOULDER_R of the shoulder point. Hoodie t6 10.4-10.8 mm
 # (the cusps Joe saw, shoulder_hoodie.png); the padded jacket's rounded shoulder 4.3-6.6 (shoulder_jacket.png: a dome),
 # tee 3.3, shirt 4.4.
@@ -139,6 +146,23 @@ def _torso_section(body, z):
     return tailor.section(BV, np.asarray(body.T), (0.0, 0.0, z), (0.0, 0.0, 1.0), (0.0, float(mid[:, 1].mean()), z))
 
 
+def _armhole_bottom(M: dict, X, torso) -> float:
+    """The lowest point (z, m) of the seams joining a sleeve to the torso pieces; +inf without sleeves / seams.
+    Above it a horizontal section of the torso pieces alone crosses the armhole's front and back edges, which run out to
+    the sleeve's underarm seam: a thin double layer by construction, not a side hanging out (hang round 2: the hoodie t6's
+    armhole bottom lies 117 mm under the armpit; hung, its torso read 17.5-21.5 mm there, the sleeve-torso junction, and
+    1.5-3.5 mm at every level below it; Joe's wings were below it, z 1.12-1.14, 46 mm)."""
+    from . import cloth_reference as cr
+    sw = np.asarray(M.get("sew") if M.get("sew") is not None else [], int).reshape(-1, 2)
+    if not len(sw):
+        return float("inf")
+    pv = np.asarray(M["piece"])
+    sl = [k for k, r in enumerate(_roles(M["names"])) if r in cr.SLEEVE_ROLES]
+    a, b = np.isin(pv[sw], sl), np.isin(pv[sw], list(torso))
+    m = (a[:, 0] & b[:, 1]) | (a[:, 1] & b[:, 0])
+    return float(np.asarray(X, float)[sw[m].ravel(), 2].min()) if m.any() else float("inf")
+
+
 def wing_reads(M: dict, X, body) -> dict:
     """Per side ("L" = +x): the worst level's wing (thin double-layer run at the side, mm), its z, the side's stand-off
     off the body and the front / back stand-offs at that level (mm). {} without torso pieces or landmarks."""
@@ -152,7 +176,7 @@ def wing_reads(M: dict, X, body) -> dict:
     if not len(Ft):
         return {}
     zt = X[np.unique(Ft), 2]
-    z0 = _scalar(at["armpit_z"]) - STEP
+    z0 = min(_scalar(at["armpit_z"]), _armhole_bottom(M, X, torso)) - STEP
     z1 = max(float(zt.min()) + STEP, _scalar(at.get("crotch_z", zt.min())) + STEP)
     out: dict = {}
     for z in np.arange(z0, z1, -STEP):
@@ -186,6 +210,17 @@ def _axis(P: np.ndarray) -> np.ndarray:
     c = P.mean(0)
     v = np.linalg.svd(P - c)[2][0]
     return v if v @ (P[-1] - P[0]) > 0 else -v
+
+
+def _arc_gap_deg(P: np.ndarray, n: np.ndarray) -> float:
+    """The largest gap (deg) in the angles of points P (relative to an axis point) about the axis n."""
+    a = np.cross(n, [0.0, 0.0, 1.0] if abs(n[2]) < 0.9 else [1.0, 0.0, 0.0])
+    a /= np.linalg.norm(a)
+    b = np.cross(n, a)
+    th = np.sort(np.degrees(np.arctan2(P @ b, P @ a)))
+    if len(th) < 3:
+        return 360.0
+    return float(np.max(np.r_[np.diff(th), th[0] + 360.0 - th[-1]]))
 
 
 def sleeve_reads(M: dict, X, body, under=None) -> dict:
@@ -225,6 +260,8 @@ def sleeve_reads(M: dict, X, body, under=None) -> dict:
                     continue
                 C = np.concatenate(Ls)
                 c0 = A.mean(0)
+                if _arc_gap_deg(C - c0, n) > SLEEVE_ARC_GAP_DEG:
+                    continue  # (the plane cut the hem obliquely: the cloth doesn't go round the arm there)
                 if under is not None:  # (the support: the arm and the under garment's cloth round it)
                     Lu = [L for L in tailor.slice_loops(under[0], under[1], o, n)
                           if np.linalg.norm(L - o, axis=1).max() < ARM_SECTION_REACH + 0.03]
@@ -363,9 +400,24 @@ def reads(res: dict, X) -> dict:
     return out
 
 
-def _cause() -> str:
+# With the hang step (HANG_STEP) a hang FAIL is the PATTERN's: the fit hangs it from its supports, so what still stands
+# off, spikes or clings is cut that way. The pattern fix per read (a pattern maker's first move for that fault):
+PATTERN_FIX = {
+    "wings": "the girth at that level is more than the hang can carry round: take ease out at the side seams there (or "
+             "shape the side seam in), keeping the chest / hip ease the kind asks",
+    "sleeves": "the sleeve is held off the arm by its cap: raise the cap (a higher cap hangs the sleeve closer to the "
+               "arm) or take width out of the upper sleeve",
+    "shoulders": "the cap meets the shoulder seam in a point: lower the cap's ease at the top, or shorten / drop the "
+                 "shoulder seam so the cap's crown lies on the shoulder",
+    "hollow": "the hem can't bridge the hollow: shorten the hem there or give the seat / front more width so it hangs "
+              "clear",
+}
+
+
+def _cause(read: str = "") -> str:
     if HANG_STEP:
-        return ""
+        return f" (the fit hangs the garment from its supports: this is cut into the PATTERN: {PATTERN_FIX[read]})" \
+            if read in PATTERN_FIX else ""
     return (" (no hang step yet: the fit draws the cloth onto the body, so this is the FIT's fault, not the "
             "pattern's: don't re-draft the pattern to chase it; judge the pattern by its other rows)")
 
@@ -373,7 +425,6 @@ def _cause() -> str:
 def rows(rd: dict) -> list:
     """The hang fit rows (family "hang", stage 1: a big read) from reads(): FAIL naming the side / piece and the fix."""
     out = []
-    why_fit = _cause()
 
     def row(id_, ok, ours, target, fix, measure, err=None):
         if err:
@@ -384,7 +435,7 @@ def rows(rd: dict) -> list:
         r = {"id": id_, "family": "hang", "stage": 1, "status": "PASS" if ok else "FAIL", "ours": ours,
              "target": target, "measure": measure}
         if not ok:
-            r["fix"] = fix + why_fit
+            r["fix"] = fix + _cause(id_[5:])
             r["owner"] = "pattern" if HANG_STEP else "fit"
         return r
 
