@@ -49,6 +49,27 @@ design_garment(name, "shirt", design={"kind": "shirt", "from": "simon", "fit": "
 Hard failures: a choice the draft source can't make (the reply names what it can make); a choice that needs another
 (a barrel cuff needs a sleeve placket; buttons need a placket).
 
+### Targets: the kind's checklist is the input (C243)
+
+```
+design_garment(name, "hoodie", design={"kind": "hoodie", "targets": {"fit": "relaxed", "body_length": "hips",
+               "shoulder": "dropped", "collar": "hood", "pockets": "kangaroo", "cuff": "rib", "hem": "rib_band"}})
+```
+Items (one definition each: cloth_checklist.json `design_targets`; the kind's list and defaults:
+`garment_reference(kind=...)` `targets_template`): `body_length` (a body level waist / hips / seat / crotch, or
+`{"to", "below": m}`: the FINISHED hem at CB from the hps, a band included), `sleeve_length` (short / elbow /
+three_quarter / long, or `{"to", "below"}`: the finished sleeve, cuff included, from the shoulder point), `shoulder`
+(set_in / dropped / m past the shoulder point), `fit` + `chest_ease` / `waist_ease` / `hip_ease` (fractions; default
+the middle of the fit's band; a block's waist and hips follow its chest), `neckline` (`{"style": crew | round | v |
+collar | hood, "width": m seam to seam, "depth": m front drop from the hps}`), `neckband_width` / `cuff_height` /
+`hem_band_height` (m, finished), `hem_shape` (`{"shape": straight | curved | shirttail, "rise": m}`), and every
+detail as a choice (`collar`, `cuff`, `pockets`, `hem`, ...). Unknown items are refused with the kind's list. What
+each sets: a drafted design's block options and ops (length, chest_ease, sleeve length + length_bonus,
+drop_shoulder, hem_shape, neckline, the bands' generate heights), a FreeSewing draft's options solved on the draft
+(lengthBonus, sleeveLengthBonus, chestEase / waistEase / hipsEase, cuffLength, hemCurve); the solved numbers are kept
+in `design.solved`. An option or op the sheet gives itself overrides its target (the reply lists it). Kinds with a
+checklist: tee, hoodie, shirt, blouse.
+
 ### The contract: strict, self-describing, transactional (C241)
 
 Every key is checked when `design_garment` / `alter_pattern` is called; an unknown one is an ERROR that lists the

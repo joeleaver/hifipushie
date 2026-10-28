@@ -2648,7 +2648,15 @@ def garment_reference(kind: str | None = None, detail: str | None = None, princi
         if kind not in K["kinds"]:
             raise ValueError(f"no kind {kind!r} (have {', '.join(k for k in K['kinds'] if not k.startswith('_'))})")
         srcs = [d for d, v in K["designs"].items() if not d.startswith("_") and kind in v.get("kinds", [v.get("kind")])]
-        return json.dumps({"kind": kind, **K["kinds"][kind], "draft_sources": srcs}, indent=1)
+        from . import design_targets
+        # (C243) the kind's checklist FIRST: the template the brief is written as (design.targets), each item with its
+        # one definition, units, default and range; the draft solves it, pattern_check measures it
+        tpl = design_targets.template(kind)
+        head = ({"targets_template": tpl, "how": "describe the brief as these items: design_garment(design={\"kind\": "
+                 f"\"{kind}\", \"targets\": {{item: value}}}}); the draft solves each, pattern_check measures each "
+                 "(rows target:<item>). Items left out take the default."} if tpl else
+                {"targets_template": f"none yet for {kind} (kinds with one: {', '.join(design_targets.kinds_with_targets())})"})
+        return json.dumps({"kind": kind, **head, **K["kinds"][kind], "draft_sources": srcs}, indent=1)
     if detail:
         if detail not in K["details"]:
             raise ValueError(f"no detail {detail!r} (have {', '.join(k for k in K['details'] if not k.startswith('_'))})")
@@ -2735,13 +2743,36 @@ def design_garment(name: str, garment: str, design: dict | None = None, spec: di
     design_contract_check(g, f"cloth {garment!r}", design=True)
     from . import cloth
     cloth.validate(full)  # (the garment keys, as the save will check them: refused before the stage runs)
+    tg_lines = _solve_targets(name, garment, full, g)
     r = cloth_workflow.run(name, garment, ("design",), images=False, spec=full)
     replaced = _design_replacements(g)
     v = store.save(name, full, note or f"design {garment}")
     return (f"saved {name} v{v}\n" + cloth_workflow.text(r)
+            + ("\n" + "\n".join(tg_lines) if tg_lines else "")
             + ("\noptions set (each REPLACES its default, it does not add to it):\n  " + "\n  ".join(replaced)
                if replaced else "")
             + f"\nnext: call_tool(\"look_pattern\", {{\"name\": \"{name}\", \"garment\": \"{garment}\"}})")
+
+
+def _solve_targets(name: str, garment: str, full: dict, g: dict) -> list:
+    """THE KIND'S CHECKLIST IS THE DESIGN INPUT (C243): the sheet's targets solved on this body (design_targets.solve:
+    each numeric item's option / op turned until the drafted pattern measures it), stored as design.solved; the
+    reply's lines, target -> drafted per item. A sheet without targets drops a stale "solved"."""
+    from . import cloth, cloth_workflow, design_targets as dt
+    sheet = g["design"]
+    if not sheet.get("targets"):
+        sheet.pop("solved", None)
+        return []
+    try:
+        c = cloth_workflow.Ctx(name, garment, full)
+        meas = c.meas
+        out = dt.solve(g, meas, lambda gg: cloth.pieces(cloth._garment_for_sim(gg), meas), body=c.body)
+    except dt.TargetError as e:
+        raise ValueError(str(e))
+    sheet["solved"] = {k: (float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else v)
+                       for k, v in out["solved"].items()}
+    rows_ = dt.rows(out["Bp"], sheet, sheet.get("kind") or "", body=c.body)
+    return dt.reply_lines(rows_, out["plan"], out)
 
 
 def design_contract_check(g: dict, where: str, design: bool = True) -> None:
