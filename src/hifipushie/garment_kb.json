@@ -101,7 +101,7 @@
              "details": {"collar": "notched_lapel", "cuff": "hemmed", "front_closure": "button_stand", "hem": "coat",
                          "lining": "full", "shoulder": "pad_and_head", "pockets": "flap"},
              "draft": {"block": "bodice", "ops": [{"op": "sleeve"}, {"op": "two_piece"}]},
-             "_draft_doc": "C240 (every default drafts): a sheet with nothing else drafts the bodice block with a two-piece sleeve and a lining; the lapel, collar and pockets are the design's ops (examples/garment_sheets/shawl_jacket.json; pattern_jacket). Sheets giving their own block and ops are unchanged (every jacket sheet already has sleeve + two_piece).",
+             "_draft_doc": "C240 (every default drafts): a sheet with nothing else drafts the bodice block with a two-piece sleeve; the lapel, collar, pockets and lining (op lining) are the design's ops (examples/garment_sheets/shawl_jacket.json; pattern_jacket). Sheets giving their own block and ops are unchanged (every jacket sheet already has sleeve + two_piece).",
              "required": ["collar", "front_closure", "hem", "lining"],
              "sewing_order": ["front", "facing", "back", "collar_fall", "sleeve", "lining"],
              "lessons": ["Built on the form (worn_top, this kind's default): fronts and backs laid up the body over the shoulders, shoulder and CB seams pinned, the collar on that neckline, lapels pressed onto the fronts. On a cylinder the shoulder seams started 23-25 cm apart and the left lapel unrolled. Where: kind default; stage 4 start gaps.",
@@ -122,8 +122,8 @@
            "fit": {"regular": {"chest": [0.08, 0.32], "waist": [0.10, 0.35], "seat": [0.08, 0.30]}},
            "details": {"collar": "notched_lapel", "cuff": "hemmed", "front_closure": "double_breasted", "hem": "coat",
                        "lining": "full", "shoulder": "pad_and_head", "back_vent": "lapped_vent"},
-           "draft": {"block": "bodice", "ops": [{"op": "sleeve"}]},
-           "_draft_doc": "C240 (every default drafts): a sheet with nothing else drafts the bodice block, a sleeve and a lining (the Carlton table, from carlton, is a shell: no lining, no pads); the lapel, collar and vent are the design's ops. Sheets giving their own block and ops are unchanged.",
+           "draft": {"block": "bodice"},
+           "_draft_doc": "C240 (every default drafts): a sheet with nothing else drafts the bodice block (the Carlton table, from carlton, is a shell: no lining, no pads); sleeve, lapel, collar, vent and lining (op lining) are the design's ops. No kind ops: garment_design appends a kind's / detail's ops AFTER the sheet's, past an explicit unfold (a sleeve appended to test_cloth_heldcollar's coat ran after its unfold and failed).",
            "required": ["collar", "front_closure", "hem", "lining"],
            "sewing_order": ["back", "belt", "skirt_back", "front", "facing", "collar_stand", "collar_fall", "sleeve"],
            "lessons": ["Built on the form like a jacket (worn_top) and drafted over what it is worn over (over); the jacket's lessons on the tent, hip room, the stand and the lapels apply."]},
@@ -461,7 +461,7 @@
    "none": {"label": "no crease (jeans, chinos, casual trousers)", "evidence": []}
   },
   "lining": {
-   "full": {"label": "fully lined (body and sleeves)", "draft": {"ops": [{"op": "lining"}]}, "made_of": [{"role": "lining"}], "evidence": [{"piece": "lining"}]},
+   "full": {"label": "fully lined (body and sleeves)", "made_of": [{"role": "lining"}], "evidence": [{"piece": "lining"}]},
    "half": {"label": "half lined", "made_of": [{"role": "lining"}], "evidence": [{"piece": "lining"}]},
    "none": {"label": "unlined (shell only)", "evidence": []}
   },
