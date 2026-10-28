@@ -103,6 +103,12 @@ Returns the clay strip, the diag sheet (default panels + seams + turned; strain 
 strain vs the flat pattern (p99 and max; the gate is p99 <= 6 %, KES EMT for suiting), the layer pierce (faces of the
 under garment through this one), the folder of single-view PNGs for review_view, and "next:": a red strain or a
 pierce names the pattern fix; otherwise judge clay + diag beside the reference, one view per review_view call.
+HOW IT HANGS (hang_reads, every fit): rows hang_wings (thin double layer standing out at the side seams), hang_sleeves
+(the gap over the TOP of the arm: a hanging sleeve rests there), hang_shoulders (cloth proud of its neighbourhood at
+the shoulder point) and hang_hollow (cloth inside the body section's convex hull: between the legs, the seat). Until
+the fit has a hang step they FAIL as the FIT's faults (owner "fit"): listed with their fix, never a pattern change,
+and they block neither the detail rows nor an outer garment. No reference image: review_view(reference="") runs the
+blind "how clothes hang" look on each view.
 A sim after this is optional, a wrinkle source only; never close or hand-finish after a sim (measured 2026-10-19:
 strain p99 4.7 % -> 66-74 %). views, size, clay, save.
 WORN AS ITS KIND SAYS (C146): after the closed fit, the wear's style ops (garment_kb kinds.<kind>.wear.<tie|no_tie>

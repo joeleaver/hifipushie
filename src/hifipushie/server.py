@@ -3066,6 +3066,8 @@ def fit_garment(name: str, garment: str, views: list[str] | None = None, size: i
         fit_txt = "  own fit (C85): " + "; ".join(f"{r['status']} {r['id']} {r.get('ours')}" for r in rows) + "\n"
     elif not uf["passed"]:
         fit_txt = f"  FORCED: the under garment's own fit has not passed ({uf['why']})\n"
+    if under is not None:  # (an outer garment's hang is read too: cloth_check.LAST_HANG, listed by next_steps.after_fit)
+        cc.hang_fit_rows(res, X, name, garment)
     gs = ([under] if under else []) + [(garment, X, M)]
     box_ = _focus_box(res["body"], focus) if focus else None
     tag_ = f"fit_{garment}" + (f"_{focus}" if focus else "")
@@ -3321,24 +3323,37 @@ def framing_refusal(region: str, result: str) -> None:
 
 @mcp.tool(structured_output=False)
 def review_view(region: str, reference: str, result: str, context: str = "", stage: str = "", not_stages: str = "",
-                dry: bool = False, out_dir: str | None = None):
+                dry: bool = False, out_dir: str | None = None, checklist: str | None = None):
     """An independent blind review of ONE view: one region, one reference crop | one result crop (gates.md LOOK).
     Refuses contact sheets, captions, and numbers / claims in region or context. Runs a fresh reviewer with no context
     (bin/review) -> faults MAJOR / MINOR + VERDICT; dry=True returns the pair image + prompt for an independent agent
-    instead. stage / not_stages scope it; out_dir. Details: guide(topic="review_view")."""
+    instead. stage / not_stages scope it; out_dir. NO REFERENCE: reference="" judges the result alone against a fixed
+    checklist (default "hang": how clothes hang; reviewgate.CHECKLISTS), e.g. one fit_garment view. Details:
+    guide(topic="review_view")."""
     import subprocess
     import tempfile
     from . import next_steps, reviewgate
-    for p in (reference, result):
+    noref = not (reference or "").strip()
+    if noref:
+        # (lesson 2 of trials t3-t7: a trial without a reference image got no independent look at all; the fixed
+        # "how clothes hang" list is the reference then)
+        checklist = checklist or "hang"
+        reviewgate.checklist_prompt(checklist)  # (ValueError naming the lists)
+    elif checklist:
+        raise ValueError("review_view: checklist is the no-reference look (reference=\"\"); with a reference the "
+                         "reviewer judges against it")
+    for p in ([result] if noref else [reference, result]):
         if not Path(p).exists():
             raise ValueError(f"no image {p}")
-    reviewgate.refuse_inputs([reference, result], [region], context)  # (raises InputRefused: the rules broken)
+    reviewgate.refuse_inputs([result] if noref else [reference, result], [region], context)  # (raises InputRefused)
     framing_refusal(region, result)
     tool = REPO / "bin" / "review"
     if not tool.exists():
         raise RuntimeError(f"bin/review not found at {tool} (a source checkout of hifipushie has it)")
     out = Path(out_dir) if out_dir else Path(tempfile.mkdtemp(prefix="review_", dir=_render_dir("_reviews")))
-    cmd = [str(tool), str(out), f"{region}={reference}:{result}"]
+    cmd = [str(tool), str(out), f"{region}={result}" if noref else f"{region}={reference}:{result}"]
+    if noref:
+        cmd += ["--checklist", checklist]
     for flag, v in (("--context", context), ("--stage", stage), ("--not", not_stages)):
         if v:
             cmd += [flag, v]

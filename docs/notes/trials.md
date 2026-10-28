@@ -41,7 +41,7 @@ Each is a rule of the craft or of the tool contract, not of one garment. Fix hom
 2. **Early review measures how it hangs, not only that it is clean.** Hang gates in fit_garment, each naming the piece
    and the fix: side stand-off vs the ease (wings), sleeve axis vs the arm's and the gap under it, a step / spike where
    the cap meets the body, cloth drawn between the legs or into a hollow. A blind look runs without a reference against
-   a short "how clothes hang" list. [gates, review]
+   a short "how clothes hang" list. [x gates (C242: hang_reads, FAIL as the fit's until a hang step), x review_view no-reference]
 3. **Targets are inputs.** Every measurable item of the brief (lengths, ease, shoulder position, neckline position, hem
    shape) is given as the target itself and the draft solves it; the gate measures the same item, so round 1 passes the
    measurable things by construction. One checklist per kind is the design input, the draft target, the gate row and
@@ -52,7 +52,7 @@ Each is a rule of the craft or of the tool contract, not of one garment. Fix hom
 5. **Every draft comes out trued and its gates agree with its rules.** Seam ends square on any draft, made pieces and
    declared design corners excepted; a gate's target comes from the same rule the draft uses (stand height from the
    collar rule, shoulder from the declared drop, cap ease centred on what the solver reaches). (shirt truing 8, gate
-   thresholds 2, hoodie cap band 3) [x knit drafts trued; tool: all drafts, gates from the draft's rules]
+   thresholds 2, hoodie cap band 3) [x knit drafts trued; x stand + cap ease from the rules (C242); tool: all drafts, shoulder from the drop]
 6. **Shape is an op, not a hack.** A hem shape (shirttail, curved, high-low), a dropped shoulder, a corner rounded:
    one general op each, on any piece whatever drafted it; a third-party draft's own options (Simon hemStyle) work
    through the design table. (shirt 7, hoodie 4) [tool]

@@ -178,6 +178,16 @@ def test_review_view_refuses_sheets_and_claims(tmp_path, home):
     assert "region" in inspect.signature(server.review_view).parameters  # one region per call, by signature
 
 
+def test_review_view_without_a_reference_runs_the_hang_checklist(tmp_path, home):
+    b = _crop(tmp_path / "b.png", 2)
+    out = server.review_view("whole garment, front", "", b, context="a game character's hoodie", dry=True,
+                             out_dir=str(tmp_path / "rv"))
+    (txt,) = _texts(out)
+    assert "NO reference" in txt and "wings" in txt and "between the legs" in txt and "REFERENCE on the left" not in txt
+    with pytest.raises(ValueError, match="checklist"):
+        server.review_view("whole garment, front", b, b, checklist="hang", dry=True)
+
+
 # ------------------------------------------------------------------ game garments: the LOD pierce gate
 
 def _sheet(name, z):

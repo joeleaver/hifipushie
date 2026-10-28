@@ -5,6 +5,9 @@ to the coordinator. The reviewer sees only the images and neutral item names: no
 
   review <out_dir> <item>=<reference.png>:<result.png> [...] [--context "what this is"] [--dry]
          [--stage "<what this stage owns>"] [--not "<what other stages own>"]
+  review <out_dir> <item>=<result.png> [...] --checklist hang [--context ...] [--dry]
+         NO REFERENCE: the result alone, judged against a fixed list (hifipushie/reviewgate.py CHECKLISTS: "hang" = how
+         clothes hang: wings, sleeves follow the arm, shoulder line, hem clear of the legs, seams, collar / hood, weight)
 
   item      a checklist region name, e.g. "sweater armhole, front" or "crease, right eye" (names only, no values)
   context   ONE neutral line: what kind of thing is shown (e.g. "a game character's knit sweater, simulated").
@@ -28,6 +31,7 @@ def opt(name):
         i = args.index(name); v = args[i + 1]; del args[i:i + 2]; return v
     return ""
 ctx, stage, other = opt("--context"), opt("--stage"), opt("--not")
+CHECK = opt("--checklist")  # no reference: items are <item>=<result.png>, judged against reviewgate.CHECKLISTS[CHECK]
 DRY = "--dry" in args
 if DRY: args.remove("--dry")
 out = os.path.abspath(args[0]); os.makedirs(out, exist_ok=True)
@@ -44,9 +48,23 @@ if reviewgate is not None:
         reviewgate.refuse_inputs([p for _, _, pr in _it for p in pr.split(":") if p], [n for n, _, _ in _it], ctx)
     except reviewgate.InputRefused as e:
         print(e, file=sys.stderr); sys.exit(5)
+    if CHECK:
+        try:
+            reviewgate.checklist_prompt(CHECK)
+        except ValueError as e:
+            print(e, file=sys.stderr); sys.exit(5)
 items = []
 for n, a in enumerate(args[1:]):
     name, _, pair = a.partition("=")
+    if CHECK:  # (no reference: the result alone, judged against the fixed checklist)
+        if not (name and pair): sys.exit(f"bad item: {a} (with --checklist: <item>=<result.png>)")
+        B = Image.open(pair).convert("RGB")
+        h = min(900, B.height); B = B.resize((max(1, B.width * h // B.height), h))
+        if B.width > 1800: B = B.resize((1800, int(h * 1800 / B.width))); h = B.height
+        im = Image.new("RGB", (B.width, h + 22), (30, 30, 30)); im.paste(B, (0, 22))
+        ImageDraw.Draw(im).text((4, 4), "RESULT", fill=(255, 255, 255))
+        p = os.path.join(out, f"pair_{n}.png"); im.save(p); items.append((name, p))
+        continue
     ref, _, res = pair.partition(":")
     if not (name and ref and res): sys.exit(f"bad pair: {a}")
     A, B = Image.open(ref).convert("RGB"), Image.open(res).convert("RGB")
@@ -77,6 +95,19 @@ Judge construction and form first, then material and surface, then colour. A cle
 is still wrong. Don't praise. Don't guess at causes or fixes beyond one short "needs:" line per fault. Say if a crop is too small or
 too blurry to judge. Mark each fault MAJOR (a viewer would notice at game distance or it changes what the thing is) or MINOR.
 {scope}End with exactly one line: "VERDICT: PASS" only if there is no MAJOR fault in any region, otherwise "VERDICT: FAIL"."""
+if CHECK:  # NO REFERENCE (reviewgate.CHECKLISTS: a trial without a reference image still gets an independent look)
+    prompt = f"""You are a senior art director at a game studio reviewing a garment on a character. You have no stake in it.
+{('What is shown: ' + ctx) if ctx else ''}
+Each image below is one view of the RESULT. Read every image with the Read tool.
+{listing}
+
+{reviewgate.checklist_prompt(CHECK)}
+
+For each view, list every point the RESULT breaks: worst first, concretely (where, what, how far off). Then anything else that
+reads wrong for a real garment worn on a person. Don't praise. Don't guess at causes or fixes beyond one short "needs:" line per
+fault. Say if a view is too small or too blurry to judge. Mark each fault MAJOR (a viewer would notice at game distance or it
+changes what the thing is) or MINOR.
+{scope}End with exactly one line: "VERDICT: PASS" only if there is no MAJOR fault in any view, otherwise "VERDICT: FAIL"."""
 # A bare `claude -p` loads the user's whole setup (MCP servers, CLAUDE.md, memory: ~210k tokens per call, measured
 # 2026-10-15 by the audit agent); the reviewer needs only Read on its pair images.
 if DRY:  # (Joe 2026-10-19) fallback when the CLI is refused: a fresh subagent gets ONE image per message
