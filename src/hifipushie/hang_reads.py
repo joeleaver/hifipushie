@@ -399,9 +399,24 @@ def reads(res: dict, X) -> dict:
     return out
 
 
-def _cause() -> str:
+# With the hang step (HANG_STEP) a hang FAIL is the PATTERN's: the fit hangs it from its supports, so what still stands
+# off, spikes or clings is cut that way. The pattern fix per read (a pattern maker's first move for that fault):
+PATTERN_FIX = {
+    "wings": "the girth at that level is more than the hang can carry round: take ease out at the side seams there (or "
+             "shape the side seam in), keeping the chest / hip ease the kind asks",
+    "sleeves": "the sleeve is held off the arm by its cap: raise the cap (a higher cap hangs the sleeve closer to the "
+               "arm) or take width out of the upper sleeve",
+    "shoulders": "the cap meets the shoulder seam in a point: lower the cap's ease at the top, or shorten / drop the "
+                 "shoulder seam so the cap's crown lies on the shoulder",
+    "hollow": "the hem can't bridge the hollow: shorten the hem there or give the seat / front more width so it hangs "
+              "clear",
+}
+
+
+def _cause(read: str = "") -> str:
     if HANG_STEP:
-        return ""
+        return f" (the fit hangs the garment from its supports: this is cut into the PATTERN: {PATTERN_FIX[read]})" \
+            if read in PATTERN_FIX else ""
     return (" (no hang step yet: the fit draws the cloth onto the body, so this is the FIT's fault, not the "
             "pattern's: don't re-draft the pattern to chase it; judge the pattern by its other rows)")
 
@@ -409,7 +424,6 @@ def _cause() -> str:
 def rows(rd: dict) -> list:
     """The hang fit rows (family "hang", stage 1: a big read) from reads(): FAIL naming the side / piece and the fix."""
     out = []
-    why_fit = _cause()
 
     def row(id_, ok, ours, target, fix, measure, err=None):
         if err:
@@ -420,7 +434,7 @@ def rows(rd: dict) -> list:
         r = {"id": id_, "family": "hang", "stage": 1, "status": "PASS" if ok else "FAIL", "ours": ours,
              "target": target, "measure": measure}
         if not ok:
-            r["fix"] = fix + why_fit
+            r["fix"] = fix + _cause(id_[5:])
             r["owner"] = "pattern" if HANG_STEP else "fit"
         return r
 
