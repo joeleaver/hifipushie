@@ -3695,6 +3695,7 @@ def on_form(model: str, garment: str, spec: dict | None = None, g: dict | None =
                    fit_model=fit_model_for(model, garment, g), plumb_hold=plumb_hold_for(g, stiff=keyed_on),
                    hang=hang_for(g), bend_w=bw, under_floor=uf)
     res["A"], res["A_info"], res["form_under"] = out["V"], out["info"], und
+    res["worn_open"] = g.get("worn_open")  # (STYLE_HARD fastens as the fit does)
     res["A_info"]["fit_model"] = fit_model_for(model, garment, g) or ("woven" if WOVEN else "isometric")
     if cloth.expanded(g).get("tucked"):
         res["A"], res["A_info"]["tucked"] = tuck(res, res["A"], cloth.expanded(g))
@@ -3748,13 +3749,34 @@ STYLE_HARD = True
 
 def styled_hard(res: dict, Xs) -> np.ndarray:
     """STYLE_HARD: the styled vertices of an on_form result projected threads-hard (over its under garment)."""
-    if not STYLE_HARD or not THREADS_HARD:
+    if not STYLE_HARD or not THREADS_HARD or res.get("form_under") is not None:
+        # (a garment over another: its contact is the fit's own layer rules (the under garment's cloth as a floor only
+        # where it lay outside it, its made pieces apart, C172 / C200 / C208), which this projection doesn't have:
+        # gc_garrett's jacket projected so went 1.8 -> 3.6 % past cap on its fit, 36 vertices inside, the shoulder
+        # apex 8.4 mm; styled alone 3.8 %, apex 6.7 (OPEN: an outer garment's styling past its threads)
         return np.asarray(Xs, float)
+    return hard_threads(res, Xs, under_floor_of(res))
+
+
+def under_floor_of(res: dict):
+    """(V, F) of an on_form result's under garment as the floor its cloth lies on: its own cloth, not its made pieces
+    (the fit's UNDER_FLOOR rule, C200: floored on the shirt's collar, the jacket's stand went 25 -> 33 % past cap), or
+    None."""
     fu = res.get("form_under")
-    return hard_threads(res, Xs, None if fu is None else (np.asarray(fu["A"], float), np.asarray(fu["mesh"]["F"])))
+    if fu is None:
+        return None
+    V, F, um = np.asarray(fu["A"], float), np.asarray(fu["mesh"]["F"]), fu["mesh"]
+    if um.get("made"):
+        up = np.asarray(um["piece"])
+        F = F[~np.isin(up[F[:, 0]], [um["names"].index(p) for p in um["made"] if p in um["names"]])]
+        iv = np.unique(F)  # (a surface is read at its vertices: only the floor's own)
+        ix = -np.ones(len(V), int)
+        ix[iv] = np.arange(len(iv))
+        V, F = V[iv], ix[F]
+    return V, F
 
 
-def hard_threads(res: dict, X, under=None, sweeps: int = THREADS_HARD_FINAL) -> np.ndarray:
+def hard_threads(res: dict, X, under=None, sweeps: int = THREADS_HARD_FINAL, relin: int = 2) -> np.ndarray:
     """THREADS_HARD after the fit (STYLE_HARD): a fitted garment's X (styled) projected as assemble's end does: every
     triangle's warp / weft within the garment's cap (a knit piece: its pattern's ask over it), the seams and fastened
     closures sewn, nothing inside the body or the layer under (under = (V, F)), contact last."""
@@ -3778,7 +3800,10 @@ def hard_threads(res: dict, X, under=None, sweeps: int = THREADS_HARD_FINAL) -> 
         cw = np.array([ct[key[tuple(f)]] for f in W["F"].tolist()])
         cap = np.broadcast_to(np.asarray(cap, float).reshape(-1, 1), (len(W["F"]), 1)).copy()
         cap[cw] = np.maximum(cap[cw], CREASE_CAP)
-    pairs = np.r_[np.asarray(sw, int).reshape(-1, 2), np.asarray(fastened(M), int).reshape(-1, 2)]
+    # (fastened as the fit fastens it: a garment worn open has no button done but its closed closures; with the
+    # default's top front button the jacket's fronts were drawn shut, front.L 12 % past cap)
+    pairs = np.r_[np.asarray(sw, int).reshape(-1, 2),
+                  np.asarray(fastened(M, "worn_open" if res.get("worn_open") else "default"), int).reshape(-1, 2)]
     bsurf = _body_surface(body)
     usurf = _Surface(under[0], under[1], ref=bsurf) if under is not None else None
 
@@ -3792,7 +3817,7 @@ def hard_threads(res: dict, X, under=None, sweeps: int = THREADS_HARD_FINAL) -> 
             out.append((v, nu_[v], du_[v], X_[v].copy(), np.full(len(v), LAYER_GAP)))
         return out
     lock = None if lim_ > KNIT_LIMIT else SHEAR_LOCK_DEG
-    for _ in range(max(HARD_RELIN, 2)):
+    for _ in range(max(HARD_RELIN, relin)):
         X = _hard_pass(W, X, cap, pairs, sweeps, lock_deg=lock, planes=planes(X))
     return X
 
