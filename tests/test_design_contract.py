@@ -31,7 +31,7 @@ def _err(fn, *a, **k) -> str:
 def test_sleeve_ease_is_refused_and_names_biceps_ease():
     """hoodie t6: sleeve {"ease": 0.18} was swallowed by **kwargs ("biceps width 346 mm (ease 5%)" unchanged)."""
     msg = _err(ds.check_ops, [{"op": "sleeve", "ease": 0.18}], "design")
-    assert 'ops[0] (sleeve): unknown parameter "ease"' in msg
+    assert 'ops[0] (sleeve): unknown key "ease"' in msg
     assert "biceps_ease (fraction of the biceps girth" in msg and "bodice 0.15, knit 0.05" in msg and "cap_ease" in msg
     ds.check_ops([{"op": "sleeve", "biceps_ease": 0.32, "length": "short", "source": "t"}], "design")
 
@@ -39,7 +39,7 @@ def test_sleeve_ease_is_refused_and_names_biceps_ease():
 def test_missing_required_parameter_is_named_at_design_time():
     """hoodie t6: reshape with "move" passed design_garment and failed at look_pattern ("missing ... 'by'")."""
     msg = _err(ds.check_ops, [{"op": "reshape", "piece": "front", "point": "shoulder", "move": [0, 0.01]}])
-    assert 'unknown parameter "move"' in msg and "y UP" in msg
+    assert 'unknown key "move"' in msg and "y UP" in msg
     msg = _err(ds.check_ops, [{"op": "reshape", "piece": "front", "point": "shoulder"}])
     assert 'missing "by"' in msg and "REQUIRED" in msg
 
@@ -69,7 +69,7 @@ def test_a_new_op_is_covered_without_edits():
         t = ds.op_table()["contract_probe"]["params"]
         assert {"piece", "depth", "curve", "tilt"} <= set(t) and t["piece"]["required"]
         ds.check_ops([{"op": "contract_probe", "piece": "front", "tilt": 0.1}])
-        assert 'unknown parameter "tlit"' in _err(ds.check_ops, [{"op": "contract_probe", "piece": "f", "tlit": 1}])
+        assert 'unknown key "tlit"' in _err(ds.check_ops, [{"op": "contract_probe", "piece": "f", "tlit": 1}])
     finally:
         del pdm.OPS["contract_probe"]
 
@@ -81,7 +81,7 @@ def test_shape_ops_are_covered():
     assert {"shape", "rise", "front_drop", "back_drop"} <= set(T["hem_shape"]["params"])
     assert "name" not in T["drop_shoulder"]["params"] and "drop" in T["drop_shoulder"]["params"]
     ds.check_ops([{"op": "hem_shape", "shape": "shirttail", "rise": 0.08}, {"op": "drop_shoulder", "drop": 0.05}])
-    assert 'unknown parameter "depth"' in _err(ds.check_ops, [{"op": "drop_shoulder", "depth": 0.05}])
+    assert 'unknown key "depth"' in _err(ds.check_ops, [{"op": "drop_shoulder", "depth": 0.05}])
 
 
 def test_kind_and_detail_ops_go_before_the_sheets_own_unfold():

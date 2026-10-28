@@ -20,7 +20,7 @@ The valid sets come from the code, so a new op or option is covered without edit
   - alteration ops: pattern.ALTER_OPS (the table pattern.apply dispatches on).
   - design-sheet keys: garment_design.SHEET_KEYS; detail params: DETAIL_PARAM_KEYS.
 
-Errors read: '<where> ops[3] (sleeve): unknown parameter "ease"; sleeve takes: biceps_ease (fraction of the biceps
+Errors read: '<where> ops[3] (sleeve): unknown key "ease"; sleeve takes: biceps_ease (fraction of the biceps
 girth, + = roomier; default 0.15), ...'. A FreeSewing option set on the sheet is reported in design_garment's output as
 REPLACING its default ("lengthBonus 0.05 replaces the default 0.25 (FreeSewing pct 25): total 0.05").
 """
@@ -347,7 +347,7 @@ def check_ops(ops, where: str = "design") -> None:
         if not t["open"]:
             bad = sorted(given - set(t["params"]))
             if bad:
-                raise ContractError(f"{at} ({kind}): unknown parameter{'s' if len(bad) > 1 else ''} "
+                raise ContractError(f"{at} ({kind}): unknown key{'s' if len(bad) > 1 else ''} "
                                     + ", ".join(f'"{b}"' for b in bad) + f"; {takes(kind)}")
         miss = [k for k, e in t["params"].items() if e["required"] and k not in op]
         if miss:

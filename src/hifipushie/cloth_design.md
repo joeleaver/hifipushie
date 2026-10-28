@@ -52,7 +52,7 @@ Hard failures: a choice the draft source can't make (the reply names what it can
 ### The contract: strict, self-describing, transactional (C241)
 
 Every key is checked when `design_garment` / `alter_pattern` is called; an unknown one is an ERROR that lists the
-valid ones with units, sign and default, e.g. `cloth 'hoodie' ops[2] (sleeve): unknown parameter "ease"; sleeve
+valid ones with units, sign and default, e.g. `cloth 'hoodie' ops[2] (sleeve): unknown key "ease"; sleeve
 takes: biceps_ease (fraction of the biceps girth (+ = roomier); default 0.15), cap_ease (...), ...`. Nothing is
 silently dropped, and a call that fails saves nothing (the reply's `saved v<N>` is the only proof of a save).
 
