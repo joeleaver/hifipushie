@@ -26,7 +26,24 @@ for k in range(3): np.add.at(VN, Fs[:, k], fn)
 VN /= np.maximum(np.linalg.norm(VN, axis=1), 1e-12)[:, None]
 cen = np.array([0, (o["at"]["cf_neck"][1] + o["at"]["cb_neck"][1]) / 2, 0])
 outw = np.sign(np.einsum("ij,ij->i", VN[sv][:, :2], (X[sv] - cen)[:, :2]))[:, None]; VN[sv] *= outw
-ci = np.array([v for v in np.where(pc == iC)[0] if v not in fixed]); dd, j = kd.query(X[ci]); q = X[sv[j]]; nq = VN[sv[j]]
-sd = np.einsum("ij,ij->i", X[ci] - q, nq); push = (sd < 0.0015) & (dd < 0.01)
-X[ci[push]] += nq[push] * (0.0015 - sd[push])[:, None]; print(f"collar: {push.sum()} vertices kept outside the band")
+neckc = np.asarray(o["orders"]["neck_c"]); rollc = np.asarray(o["orders"]["roll"])
+kn_ = cKDTree(uv[neckc]); dr_ = np.median(kn_.query(uv[rollc])[0])
+cv = np.array([v for v in np.where(pc == iC)[0] if v not in fixed])
+inturn = kn_.query(uv[cv])[0] < dr_ + 0.001                              # the fold's own turn wraps the band: leave it
+Fc = F[np.all(pc[F] == iC, axis=1)]; idsC = np.unique(Fc); liC = {v: i for i, v in enumerate(idsC)}
+edC = np.unique(np.sort(np.r_[Fc[:, [0, 1]], Fc[:, [1, 2]], Fc[:, [2, 0]]], axis=1), axis=0)
+nbr = [[] for _ in idsC]
+for a_, b_ in edC: nbr[liC[a_]].append(b_); nbr[liC[b_]].append(a_)
+npush = 0
+for it in range(30):                                                    # push out gently, re-smooth, repeat
+    dd, j = kd.query(X[cv]); q = X[sv[j]]; nq = VN[sv[j]]
+    sd = np.einsum("ij,ij->i", X[cv] - q, nq); push = (sd < 0.0015) & (dd < 0.01) & ~inturn
+    npush = max(npush, int(push.sum()))
+    X[cv[push]] += 0.5 * nq[push] * (0.0015 - sd[push])[:, None]
+    Xn = X.copy()
+    for k_, v in enumerate(cv):
+        if inturn[k_]: continue
+        Xn[v] = 0.5 * X[v] + 0.5 * X[nbr[liC[v]]].mean(0)
+    X = Xn
+print(f"collar: up to {npush} vertices pushed outside the band (gently, re-smoothed); {inturn.sum()} in the fold's turn left as filled")
 pickle.dump({"A": X, "mesh": M, "bodyV": o["bodyV"], "bodyF": o["bodyF"], "at": o["at"]}, open(f"{D}{t}S.pkl", "wb")); print("saved", t + "S")
