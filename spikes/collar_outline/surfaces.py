@@ -12,20 +12,37 @@ if not (len(sys.argv) > 2 and sys.argv[2] == "noturn"):          # the fold's tu
     iS_, iC_ = nm.index("stand"), nm.index("collar"); r_t = 0.0012
     neckc_ = np.asarray(o["orders"]["neck_c"]); rollc_ = np.asarray(o["orders"]["roll"]); sbo = np.asarray(o["orders"]["neckline"])
     S_ = X[neckc_]; kbx = cKDTree(uv[sbo, :1]); Bb = X[sbo[kbx.query(uv[neckc_, :1])[1]]]
-    tg = np.gradient(S_, axis=0); tg /= np.linalg.norm(tg, axis=1)[:, None]
+    _n = len(S_); _i = np.arange(_n); tg = S_[np.clip(_i + 5, 0, _n - 1)] - S_[np.clip(_i - 5, 0, _n - 1)]   # wide stencil
+    tg /= np.linalg.norm(tg, axis=1)[:, None]
     up = S_ - Bb; up -= tg * np.einsum("ij,ij->i", up, tg)[:, None]; up /= np.linalg.norm(up, axis=1)[:, None]
     nn = np.cross(tg, up); yax_ = (o["at"]["cf_neck"][1] + o["at"]["cb_neck"][1]) / 2
     nn *= np.sign(np.einsum("ij,ij->i", nn[:, :2], np.c_[S_[:, 0], S_[:, 1] - yax_]))[:, None]
     kn2 = cKDTree(uv[neckc_]); t_roll = float(np.median(kn2.query(uv[rollc_])[0]))
     L1 = max(t_roll - np.pi * r_t / 2, 0.0005); t_end = L1 + np.pi * r_t
-    cvs = np.where(pc == iC_)[0]; dt, ji = kn2.query(uv[cvs]); sel = dt <= t_end
-    for v, tt_, i in zip(cvs[sel], dt[sel], ji[sel]):
-        if v in set(neckc_): continue
-        if tt_ <= L1: X[v] = S_[i] + up[i] * tt_ + nn[i] * 0.0003
+    E2 = uv[neckc_]; ea, eb = E2[:-1], E2[1:]
+    def proj(p2):                                      # (index, fraction, overshoot past the ends, distance across) on the flat seam
+        v_ = eb - ea; w_ = p2 - ea; f0 = (w_ * v_).sum(1) / (v_ * v_).sum(1); f = np.clip(f0, 0, 1)
+        q = ea + v_ * f[:, None]; dd_ = np.linalg.norm(p2 - q, axis=1); k = int(np.argmin(dd_))
+        over = 0.0
+        if k == 0 and f0[0] < 0: over = f0[0] * np.linalg.norm(v_[0])
+        if k == len(ea) - 1 and f0[k] > 1: over = (f0[k] - 1) * np.linalg.norm(v_[k])
+        nrm2 = np.array([-v_[k, 1], v_[k, 0]]) / np.linalg.norm(v_[k])
+        return k, f[k], over, abs((p2 - (ea[k] + v_[k] * f0[k])) @ nrm2)
+    def lerp(A_, k, f): return A_[k] * (1 - f) + A_[k + 1] * f
+    cvs = np.where(pc == iC_)[0]; ns_ = set(neckc_); nturn = 0
+    for v in cvs:
+        if v in ns_: continue
+        k, f, over, tt_ = proj(uv[v])
+        if tt_ > t_end: continue
+        Sv = lerp(S_, k, f); tv = lerp(tg, k, f); tv /= np.linalg.norm(tv); uvv = lerp(up, k, f); uvv /= np.linalg.norm(uvv)
+        nv = lerp(nn, k, f); nv /= np.linalg.norm(nv)
+        Sv = Sv + tv * over * (1 if k > 0 else 1)          # past the seam's end: carry on along it
+        if tt_ <= L1: X[v] = Sv + uvv * tt_ + nv * 0.0003
         else:
-            ph = (tt_ - L1) / r_t; C_ = S_[i] + up[i] * L1 + nn[i] * (r_t + 0.0003)
-            X[v] = C_ - nn[i] * r_t * np.cos(ph) + up[i] * r_t * np.sin(ph)
-        fixed.add(int(v))
+            ph = (tt_ - L1) / r_t; C_ = Sv + uvv * L1 + nv * (r_t + 0.0003)
+            X[v] = C_ - nv * r_t * np.cos(ph) + uvv * r_t * np.sin(ph)
+        fixed.add(int(v)); nturn += 1
+    sel = np.zeros(nturn)
     for v in rollc_: fixed.add(int(v))
     print(f"fold turn: {sel.sum()} vertices on the turn (crown at the roll line, {t_roll*1e3:.1f} mm up; radius {r_t*1e3:.1f} mm)")
 for piece in (nm.index("stand"), nm.index("collar")):
