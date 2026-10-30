@@ -45,6 +45,12 @@ ends = [(int(np.argmin(np.abs(uv[st, 0] - uv[PT[k], 0]))), np.sign(X0[PT[h], 0])
 def ramp(u):
     w = np.clip((np.abs(u) - hu) / 0.03, 0, 1); return w * w * (3 - 2 * w)
 FRONT = {False: ramp(uv[sb, 0]), True: ramp(uv[st, 0])}
+_cl = [c for c in M["closures"] if c["name"] == "front"][0]["v"][0]; _bt = X0[_cl[0]].copy(); _bt[0] = 0.0
+PLACKET = []
+for side, bv in (("front.L", _cl[0]), ("front.R", _cl[1])):
+    cfn = PT[f"{side}:cfNeck"]; Lp = float(np.linalg.norm(uv[cfn] - uv[bv]))
+    ci_ = int(np.argmin(np.linalg.norm(B0 - X0[cfn], axis=1)))
+    PLACKET.append((ci_, _bt, Lp))
 def res(x):
     B, T = unpack(x); r = []
     r.append(HARD * (np.linalg.norm(np.diff(B, axis=0), axis=1) - LB))
@@ -62,6 +68,7 @@ def res(x):
     r.append(P.get("lean_w", 2.0) * (BT[2:] - 2 * BT[1:-1] + BT[:-2]).ravel())   # the band's lean changes smoothly along it
     Q = np.r_[B[freeB], T]; _, j = bkd.query(Q); r.append(5 * np.minimum(np.einsum("ij,ij->i", Q - bV[j], bN[j]) - 0.004, 0))
     r.append((B - B[mB] * [-1, 1, 1]).ravel()); r.append((T - T[mT] * [-1, 1, 1]).ravel())
+    for ci_, bpos, Lp in PLACKET: r.append(HARD * np.array([max(np.linalg.norm(B[ci_] - bpos) - Lp, 0.0)]))   # sewn placket: at most its cut
     if P.get("gap"): r.append(np.array([GAPW * (T[j, 0] - s * P["gap"] / 2) for j, s in ends]))
     return np.concatenate(r)
 sol = least_squares(res, x0, max_nfev=P.get("nfev", 200), x_scale="jac" if P.get("xs") else 1.0)
@@ -80,6 +87,9 @@ for it in range(400):
         dv = B[i] - T[j]; l = np.linalg.norm(dv); e = (l - L) / l; worst = max(worst, abs(l - L) / L)
         if freeB[i]: T[j] += 0.5 * e * dv; B[i] -= 0.5 * e * dv
         else: T[j] += e * dv
+    for ci_, bpos, Lp in PLACKET:
+        dv = B[ci_] - bpos; l = np.linalg.norm(dv)
+        if l > Lp: B[ci_] -= dv * (l - Lp) / l; worst = max(worst, (l - Lp) / Lp)
     if worst < 1e-4: break
 print(f"length projection: {it+1} passes, worst link {worst*100:.3f} %")
 eb = np.abs(np.linalg.norm(np.diff(B, axis=0), axis=1) / LB - 1).max(); et = np.abs(np.linalg.norm(np.diff(T, axis=0), axis=1) / LT - 1).max()
