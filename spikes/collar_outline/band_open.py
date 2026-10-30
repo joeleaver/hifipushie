@@ -66,6 +66,22 @@ def res(x):
     return np.concatenate(r)
 sol = least_squares(res, x0, max_nfev=P.get("nfev", 200), x_scale="jac" if P.get("xs") else 1.0)
 B, T = unpack(sol.x)
+# lengths are HARD: project the band's links and its lines across back to their cut lengths (the back neckline stays)
+for it in range(400):
+    worst = 0.0
+    for C, L, free_mask in ((B, LB, freeB), (T, LT, np.ones(nT, bool))):
+        for i in range(len(L)):
+            dv = C[i + 1] - C[i]; l = np.linalg.norm(dv); e = (l - L[i]) / l; worst = max(worst, abs(l - L[i]) / L[i])
+            fa, fb = free_mask[i], free_mask[i + 1]
+            if fa and fb: C[i] += 0.5 * e * dv; C[i + 1] -= 0.5 * e * dv
+            elif fa: C[i] += e * dv
+            elif fb: C[i + 1] -= e * dv
+    for (j, i), L in zip(XL, XLL):
+        dv = B[i] - T[j]; l = np.linalg.norm(dv); e = (l - L) / l; worst = max(worst, abs(l - L) / L)
+        if freeB[i]: T[j] += 0.5 * e * dv; B[i] -= 0.5 * e * dv
+        else: T[j] += e * dv
+    if worst < 1e-4: break
+print(f"length projection: {it+1} passes, worst link {worst*100:.3f} %")
 eb = np.abs(np.linalg.norm(np.diff(B, axis=0), axis=1) / LB - 1).max(); et = np.abs(np.linalg.norm(np.diff(T, axis=0), axis=1) / LT - 1).max()
 print(f"{tag}: cost {sol.cost:.2e} nfev {sol.nfev}; worst link neckline {eb*100:.1f} % band top {et*100:.1f} %")
 print("  top CF ends x:", [round(T[j, 0] * 1e3, 1) for j, _ in ends], " bottom CF ends x:", [round(B[int(np.argmin(np.abs(uv[sb, 0] - uv[PT[k], 0]))), 0] * 1e3, 1) for k in ("stand:leftBottomCf", "stand:rightBottomCf")])

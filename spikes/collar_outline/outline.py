@@ -86,7 +86,17 @@ hu_ = abs(uv[PT["stand:rightBottomHinge"], 0])
 def _fw(o):                                                           # past the side neck the stiff edges run straight
     if o is chains.get("neckline"): return 1.0
     u = np.abs(uv[o[1:-1], 0]); w = np.clip((u - hu_ * 0.9) / 0.03, 0, 1); return Pj.get("edge_stiff", 1.0) * (1 + (Pj.get("front_stiff", 1.0) - 1) * w * w * (3 - 2 * w))
-FRONTW = {k_: _fw(o) for k_, o in chains.items() if k_ in ("outer", "roll")}
+FRONTW = {} if Pj.get("from_pattern") else {k_: _fw(o) for k_, o in chains.items() if k_ in ("outer", "roll")}
+import json as _json
+from hifipushie import bending as _bending, cloth as _cloth
+_des = _json.load(open(_cloth.__file__.replace("cloth.py", "cloth_designs.json")))["simon"]
+_intf = {e if isinstance(e, str) else e["piece"] for e in _des.get("interfaced", [])}
+def _kind_of(piece_name): return _bending.BEND_KIND[_bending.BEND_DEFAULT_KIND] if piece_name in _intf else 1.0
+_piece_of = {"band_top": "stand", "neckline": "stand", "roll": "collar", "outer": "collar", "endL": "collar", "endR": "collar"}
+KSTIFF = {k_: _kind_of(_piece_of[k_]) for k_ in chains}
+if Pj.get("from_pattern"):
+    FRONTW_OFF = True
+    print("stiffness from the pattern:", {k_: KSTIFF[k_] for k_ in chains}, "(interfaced:", sorted(_intf), ")")
 free = sorted({key(v) for o in chains.values() for v in o} - set(fixed))
 ix = {v: i for i, v in enumerate(free)}; n = len(free)
 x0 = np.concatenate([Xc[v] for v in free])
@@ -158,7 +168,8 @@ def res(xv):
     for a, b, L, kind in links:
         e_ = np.linalg.norm(pos(xv, a) - pos(xv, b)) - L; r_.append(HARD * (e_ if kind == "exact" else max(e_, 0.0)))
     for nmc_, o in chains.items():                                   # bend as little as the lengths allow; the collar is interfaced
-        bw = bend_w * (Pj.get("stiff", 3.0) if nmc_ in ("outer", "roll", "endL", "endR", "band_top", "neckline") else 1.0)
+        if Pj.get("from_pattern"): bw = bend_w * KSTIFF[nmc_]            # the pattern's interfacing (BEND_KIND x plain)
+        else: bw = bend_w * (Pj.get("stiff", 3.0) if nmc_ in ("outer", "roll", "endL", "endR", "band_top", "neckline") else 1.0)
         P_ = np.array([pos(xv, v) for v in o]); fw = FRONTW.get(nmc_, 1.0)
         r_.extend(((bw * fw)[:, None] * (P_[2:] - 2 * P_[1:-1] + P_[:-2]) if np.ndim(fw) else bw * (P_[2:] - 2 * P_[1:-1] + P_[:-2])).ravel())
     P_ = np.array([pos(xv, v) for v in outside]); _, j = bkd.query(P_); sd = np.einsum("ij,ij->i", P_ - bV[j], bN[j])
@@ -215,7 +226,25 @@ for r_i, vv in enumerate(rows):
     for c in vv: J[r_i, c] = 1
 assert len(rows) == len(res(x0)), (len(rows), len(res(x0)))
 sol = least_squares(res, x0, jac_sparsity=J, max_nfev=Pj.get("nfev", 80), verbose=0)
-xv = sol.x
+xv = sol.x.copy()
+# lengths are HARD: project every exact link (and every at-most link that is too long) back to its cut length
+A_ = xv.reshape(-1, 3)
+def P3(v):
+    v = key(v); return fixed[v] if v in fixed else A_[ix[v]]
+hard_links = [(a, b, L) for a, b, L, kind in links if kind == "exact"] ; most = [(a, b, L) for a, b, L, kind in links if kind != "exact"]
+for it in range(Pj.get("proj_iters", 400)):
+    worst = 0.0
+    for group, atmost in ((hard_links, False), (most, True)):
+        for a, b, L in group:
+            ka, kb_ = key(a), key(b); pa, pb = P3(a), P3(b); dv = pb - pa; l = np.linalg.norm(dv)
+            fa, fb = (ka in ix), (kb_ in ix)
+            if l < 1e-9 or (atmost and l <= L) or not (fa or fb): continue
+            e = (l - L) / l; worst = max(worst, abs(l - L) / max(L, 1e-6))
+            if fa and fb: A_[ix[ka]] += 0.5 * e * dv; A_[ix[kb_]] -= 0.5 * e * dv
+            elif fa: A_[ix[ka]] += e * dv
+            elif fb: A_[ix[kb_]] -= e * dv
+    if worst < 1e-4: break
+xv = A_.ravel(); print(f"length projection: {it+1} passes, worst link {worst*100:.3f} %")
 for nmc, o in chains.items():
     P_ = np.array([pos(xv, v) for v in o]); L3 = arclen(P_)[-1]; Lf = flatlen(o).sum()
     print(f"{nmc:9s}: {L3*1e3:6.1f} mm vs cut {Lf*1e3:6.1f}  (worst link {np.abs(np.linalg.norm(np.diff(P_,axis=0),axis=1)/flatlen(o)-1).max()*100:.1f} %)")

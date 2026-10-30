@@ -9,7 +9,11 @@ D = "/mnt/data/hifipushie/folds_ab/D/"; t = sys.argv[1]
 o = pickle.load(open(f"{D}{t}_outline.pkl", "rb")); X = o["X"].copy(); M = o["mesh"]; F = np.asarray(M["F"]); uv = M["uv"]; pc = M["piece"]; nm = M["names"]
 fixed = set(int(v) for k_, ord_ in o["orders"].items() for v in ord_)
 if not (len(sys.argv) > 2 and sys.argv[2] == "noturn"):          # the fold's turn: up the band, over a half circle, down outside
-    iS_, iC_ = nm.index("stand"), nm.index("collar"); r_t = 0.0012
+    iS_, iC_ = nm.index("stand"), nm.index("collar")
+    import json as _json
+    from hifipushie import cloth as _cloth
+    _rf = [f_ for f_ in _json.load(open(_cloth.__file__.replace("cloth.py", "cloth_designs.json")))["simon"]["folds"] if f_["piece"] == "collar"]
+    r_t = float(_rf[0].get("radius", 0.0012)) if _rf else 0.0012      # the pattern's roll radius
     neckc_ = np.asarray(o["orders"]["neck_c"]); rollc_ = np.asarray(o["orders"]["roll"]); sbo = np.asarray(o["orders"]["neckline"])
     S_ = X[neckc_]; kbx = cKDTree(uv[sbo, :1]); Bb = X[sbo[kbx.query(uv[neckc_, :1])[1]]]
     _n = len(S_); _i = np.arange(_n); tg = S_[np.clip(_i + 5, 0, _n - 1)] - S_[np.clip(_i - 5, 0, _n - 1)]   # wide stencil
