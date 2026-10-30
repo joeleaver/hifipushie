@@ -111,7 +111,7 @@ for endc, corner in ((endL, PT["collar:leftTopEdge"]), (endR, PT["collar:rightTo
 RIGID = set()
 for endc in (endL, endR):                                                  # the roll line ends on the end edge
     re_ = roll[int(np.argmin(np.min(np.linalg.norm(uv[roll][:, None] - uv[endc][None], axis=2), axis=1)))]
-    for ev in endc[np.linalg.norm(uv[endc] - uv[re_], axis=1) < 0.012]:
+    for ev in endc[np.linalg.norm(uv[endc] - uv[re_], axis=1) < Pj.get("roll_tie", 0.012)]:
         cross_pairs.append((re_, ev)); RIGID.add((re_, ev))
 kn, ko = cKDTree(uv[neck_c]), cKDTree(uv[outer])                    # the collar's width all along: seam -> roll -> edge
 tr = tangent(uv[roll])
