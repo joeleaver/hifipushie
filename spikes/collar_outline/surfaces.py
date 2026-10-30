@@ -83,6 +83,41 @@ for it in range(30):                                                    # push o
         Xn[v] = 0.5 * X[v] + 0.5 * X[nbr[liC[v]]].mean(0)
     X = Xn
 print(f"collar: up to {npush} vertices pushed outside the band (gently, re-smoothed); {inturn.sum()} in the fold's turn left as filled")
+# corner patch: the last stretch of each leaf near its neck end copies the clean profile 10 mm inside, rigidly
+if not (len(sys.argv) > 2 and sys.argv[2] == "noturn"):
+    from scipy.interpolate import LinearNDInterpolator as LNI
+    ci_c = np.where(pc == iC_)[0]; interp = LNI(uv[ci_c], X[ci_c])
+    seam_s = np.r_[0, np.cumsum(np.linalg.norm(np.diff(E2, axis=0), axis=1))]; Ltot = seam_s[-1]
+    def frame(k, f):
+        tv = lerp(tg, k, f); tv /= np.linalg.norm(tv); uvv = lerp(up, k, f); uvv -= tv * (uvv @ tv); uvv /= np.linalg.norm(uvv)
+        return lerp(S_, k, f), np.c_[tv, uvv, np.cross(tv, uvv)]
+    REACH, BLEND, TMAX = P_C = (0.010, 0.008, 0.034)
+    npatch = 0
+    for v in ci_c:
+        k, f, over, tt_ = proj(uv[v])
+        if tt_ > TMAX: continue
+        sv_ = seam_s[k] + f * (seam_s[k + 1] - seam_s[k]) + over
+        dend = min(sv_, Ltot - sv_)                                # distance to the nearer seam end (negative past it)
+        if dend > REACH + BLEND: continue
+        end_sign = -1 if sv_ < Ltot / 2 else 1
+        s_ref = sv_ - end_sign * (REACH - min(dend, REACH)) if dend < REACH else sv_
+        s_ref = (REACH if end_sign < 0 else Ltot - REACH)
+        kr = int(np.clip(np.searchsorted(seam_s, s_ref) - 1, 0, len(seam_s) - 2)); fr = (s_ref - seam_s[kr]) / (seam_s[kr + 1] - seam_s[kr])
+        # the flat point at the same distance across, at the reference section
+        seam_uv_v = ea[k] + (eb[k] - ea[k]) * f; seam_uv_r = ea[kr] + (eb[kr] - ea[kr]) * fr
+        tv2 = (eb[kr] - ea[kr]) / np.linalg.norm(eb[kr] - ea[kr]); tv2v = (eb[k] - ea[k]) / np.linalg.norm(eb[k] - ea[k])
+        rel = uv[v] - seam_uv_v; rel_r = np.array([rel @ tv2v, rel @ np.array([-tv2v[1], tv2v[0]])])
+        uv_ref = seam_uv_r + tv2 * 0 + np.array([-tv2[1], tv2[0]]) * rel_r[1]
+        Xr = interp(uv_ref[None])[0]
+        if np.isnan(Xr[0]): continue
+        So, Fo = frame(kr, fr); St, Ft = frame(k, f); St = St + Ft[:, 0] * over
+        Xp = St + Ft @ (Fo.T @ (Xr - So)) + Ft[:, 0] * rel_r[0] * 0
+        w = 1.0 if dend <= REACH else 1 - (dend - REACH) / BLEND
+        w *= 1.0 if tt_ <= TMAX - 0.016 else max(0.0, (TMAX - tt_) / 0.016)
+        w = w * w * (3 - 2 * w)
+        X[v] = (1 - w) * X[v] + w * Xp; npatch += 1
+    print(f"corner patches: {npatch} vertices copy the profile {P_C[0]*1e3:.0f} mm inside")
+
 # the band stays under the collar's fall where they overlap (its tab past the collar's end); re-smooth the band after
 FcC = F[np.all(pc[F] == iC, axis=1)]; VNc = np.zeros_like(X); fnc = np.cross(X[FcC[:, 1]] - X[FcC[:, 0]], X[FcC[:, 2]] - X[FcC[:, 0]])
 for k in range(3): np.add.at(VNc, FcC[:, k], fnc)

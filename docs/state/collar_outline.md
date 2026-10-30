@@ -14,11 +14,10 @@ pattern's own lengths with only bends chosen; surfaces filled between; soft part
 - Judge: the piece alone, large, 4 sides, curves drawn; reference photos (folds_ab/refs) for the IDEA of the style.
 
 ## Open (ranked)
-1. Small kink at each leaf's front corner tip (where the band end, the collar end and the fold turn meet). Two fixes
-   failed (rigid roll tie radius; blending the end edge into the turn): next = model the corner as its own small
-   rigid patch (like the point triangle) at the end of the fold.
+1. DONE (Joe chose B): corner patch - the last 10 mm of each leaf copies the clean profile 10 mm inside, rigidly along
+   the seam, blended out over 8 mm / 16 mm; a slight angle change remains where it blends out.
 2. Hang the soft fronts / yoke from the open band (not yet).
 3. Library: a general `outline` module (chains, cross lines, stiffness, contact, surfaces) + MCP tool; then cuffs,
    lapels, a whole simple garment, transfer-tested on another body.
 
-STATE: shape nailed for closed + open collar (spike). NEXT: corner patch, then fronts hang from the band.
+STATE: shape nailed for closed + open collar (spike), corner patch in. NEXT: fronts hang from the band.
