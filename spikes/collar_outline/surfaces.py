@@ -83,4 +83,23 @@ for it in range(30):                                                    # push o
         Xn[v] = 0.5 * X[v] + 0.5 * X[nbr[liC[v]]].mean(0)
     X = Xn
 print(f"collar: up to {npush} vertices pushed outside the band (gently, re-smoothed); {inturn.sum()} in the fold's turn left as filled")
+# the band stays under the collar's fall where they overlap (its tab past the collar's end); re-smooth the band after
+FcC = F[np.all(pc[F] == iC, axis=1)]; VNc = np.zeros_like(X); fnc = np.cross(X[FcC[:, 1]] - X[FcC[:, 0]], X[FcC[:, 2]] - X[FcC[:, 0]])
+for k in range(3): np.add.at(VNc, FcC[:, k], fnc)
+VNc /= np.maximum(np.linalg.norm(VNc, axis=1), 1e-12)[:, None]
+cvv = np.unique(FcC); VNc[cvv] *= np.sign(np.einsum("ij,ij->i", VNc[cvv][:, :2], (X[cvv] - cen)[:, :2]))[:, None]
+neck_set = np.asarray(o["orders"]["neck_c"]); knn = cKDTree(uv[neck_set]); fall = cvv[knn.query(uv[cvv])[0] > 0.008]
+svb = np.array([v for v in sv if v not in fixed]); FsB = F[np.all(pc[F] == iS, axis=1)]; liB = {v: i for i, v in enumerate(sv)}
+nbB = [[] for _ in sv]
+for a_, b_ in np.unique(np.sort(np.r_[FsB[:, [0, 1]], FsB[:, [1, 2]], FsB[:, [2, 0]]], axis=1), axis=0): nbB[liB[a_]].append(b_); nbB[liB[b_]].append(a_)
+moved = 0
+for it in range(30):
+    kf = cKDTree(X[fall]); dd, j = kf.query(X[svb]); q = X[fall[j]]; n_ = VNc[fall[j]]
+    sd = np.einsum("ij,ij->i", X[svb] - q, n_); bad = (sd > -0.0008) & (dd < 0.008)
+    moved = max(moved, int(bad.sum()))
+    X[svb[bad]] -= 0.6 * n_[bad] * (sd[bad] + 0.0008)[:, None]
+    Xn = X.copy()
+    for v in svb: Xn[v] = 0.6 * X[v] + 0.4 * X[nbB[liB[v]]].mean(0)
+    X = Xn
+print(f"band: up to {moved} vertices kept under the collar's fall")
 pickle.dump({"A": X, "mesh": M, "bodyV": o["bodyV"], "bodyF": o["bodyF"], "at": o["at"]}, open(f"{D}{t}S.pkl", "wb")); print("saved", t + "S")
