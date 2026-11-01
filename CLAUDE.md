@@ -26,6 +26,10 @@ silhouette errors), not mouse control. North star: tools that let an LLM work li
   restart fresh past ~250k tokens.
 - Judge renders yourself before forwarding (agents over-rate); reference beside every result; send renders to Joe as files.
 - Bump `store.BUILD_VERSION` whenever meshing output changes. Incremental builds must equal cold builds.
+- Branches: when an agent finishes, the coordinator lands its branch (suite passing) or closes it with a reason and an
+  archive tag, then removes its worktree, BEFORE the next agent starts. A pile of unmerged branches is a failure.
+- Agents start from the latest commit holding every lesson so far, never from one behind a running or unharvested agent.
+- Code files stay around 500 lines: split by responsibility, behaviour-preserving, apart from behaviour changes.
 - Keep this file < 8 KB: no thread history here.
 
 ## Conventions
