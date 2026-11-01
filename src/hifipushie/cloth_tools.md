@@ -109,7 +109,7 @@ of its kind measured there: seam lengths / ease / notches, lengths and widths, d
 standoff; where this build has them, truing (junction angles), the collar draft and notch, flat tailor rows. Items
 with no pattern-stage measure or no reference reading are UNMEASURED and block; drape items are SIM (judged later);
 trial-placement readings are INFO until the form is validated. The record (/mnt/data/hifipushie/pattern_gate/<key>.json,
-keyed by the pattern's content hash + the body's) is what every sim checks: `dress` and every cloth job refuse
+keyed by the pattern's content hash + the body's) is what chain_garment checks: it refuses
 without a PASS for exactly this pattern + body.
 refs: the reference reading (cloth_reference.read's output or its saved path). waive: {item id: reason} accepts a
 FAIL / UNMEASURED row by name (recorded; PASS_WAIVED).

@@ -2839,7 +2839,7 @@ def _design_replacements(g: dict) -> list:
 @mcp.tool(structured_output=False)
 def look_pattern(name: str, garment: str, save: str | None = None):
     """Clothing stage 2: the garment drafted to the body as a flat pattern sheet, with the checks (choices evidenced,
-    seam ease, notches, ease vs body), failures first. save. Next: check_garment. Details:
+    seam ease, notches, ease vs body), failures first. save. Next: pattern_check. Details:
     guide(topic="look_pattern")."""
     from . import cloth_workflow
     res = cloth_workflow.run(name, garment, ("design", "pattern"), images=True)
