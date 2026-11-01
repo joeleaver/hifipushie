@@ -528,7 +528,12 @@ class Build:
         lie = rs[outer]
         S.add_contact(rs[np.r_[outer, roll]], self.body.contact, GAP)
         hy = hpsy - 0.01
-        S.add_contact(lie, self.body.contact, FALL_GAP, rest=REST)
+        under = getattr(self, "under_cloth", None)  # the fall rests on what is under it: the body, then the cloth built there
+        if under is None:
+            S.add_contact(lie, self.body.contact, FALL_GAP, rest=REST)
+        else:
+            S.add_contact(lie, self.body.contact, FALL_GAP)
+            S.add_contact(lie, under, LAYER, rest=REST)
 
         def outward(Y):  # outside faces out: the edge further from the neck axis than the roll
             a = rs[pa_o[:, 0]]
@@ -567,7 +572,8 @@ class Build:
         self.X = S.solve(60)
         held = np.ones(net.n, bool)
         held[free] = False
-        Xn, rd = project(self.X, I, J, L, E, held, [(self.body.contact, free, GAP)], iters=80, step=0.004)
+        fl = [(self.body.contact, free, GAP)]  # (lengths first: the rest on the cloth is the light pull above)
+        Xn, rd = project(self.X, I, J, L, E, held, fl, iters=80, step=0.004)
         self.X = Xn
         self.fall_links = (I, J, L, E)
         l = np.linalg.norm(Xn[I] - Xn[J], axis=1) / np.maximum(L, 1e-9) - 1
@@ -1353,6 +1359,28 @@ class GarmentBuild(Build):
         self.fall_surface()
         self.stiff_last()
 
+    def _cloth_contact(self):
+        """The soft cloth as built, outward side up: what a stiff leaf rests on."""
+        net, R = self.net, self.roles
+        F = net.F[~np.isin(net.piece[net.F[:, 0]], [net.pid(p) for p in ([R.band, R.fall] + list(R.rings)) if p])].copy()
+        X = self.X
+        fn = np.cross(X[F[:, 1]] - X[F[:, 0]], X[F[:, 2]] - X[F[:, 0]])
+        bn = self.body.contact.query(X[F].mean(1))[1]
+        flip = (fn * bn).sum(1) < 0
+        F[flip] = F[flip][:, [0, 2, 1]]
+        return Contact(X, F)
+
+    def _rest_fall(self):
+        """The stiff fall rests on the soft cloth built under it (its stand-off is the garment's ease, not the skin's): the
+        fall is solved again on that, then the soft cloth again under the fall. Stiff first still: the band never moves."""
+        if not self.roles.fall:
+            return
+        self.under_cloth = self._cloth_contact()
+        self.fall_build()
+        self.fall_surface()
+        self.stiff_last()
+        self.soft_net(start=self.X.copy())
+
     def run(self):
         t0 = time.time()
         final = self.wear["state"]
@@ -1361,6 +1389,7 @@ class GarmentBuild(Build):
         self.rings()
         self.reads["stiff_closed_s"] = round(time.time() - t0, 1)
         self.soft_net()
+        self._rest_fall()
         self.reads["closed_s"] = round(time.time() - t0, 1)
         if final == "open":
             Xc = self.X.copy()
@@ -1371,6 +1400,11 @@ class GarmentBuild(Build):
             self.X = Xn
             bz = float(Xc[self.roles.front["v"][0][0], 2])
             self.soft_net(start=Xn, far_z=bz - 0.03)
+            self.under_cloth = self._cloth_contact()
+            self.fall_build()
+            self.fall_surface()
+            self.stiff_last()
+            self.soft_net(start=self.X.copy(), far_z=bz - 0.03)
         self.reads["chains"] = self.chain_read(self.X)
         self.reads["seam_gap_mm"] = round(self.net.seam_gap(self.X), 3)
         self.reads["build_s"] = round(time.time() - t0, 1)
