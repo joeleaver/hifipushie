@@ -55,11 +55,15 @@ for fname, bv, over in (("front.L", cl["v"][0][0], 1.0), ("front.R", cl["v"][0][
     r_ = minimize(lambda q: ((fold(uv[top], q[0], q[1])[0] - Tgt) ** 2).sum(), best[1:], method="Nelder-Mead", options={"xatol": 1e-3, "fatol": 1e-9})
     al, ph = r_.x
     Yt, _ = fold(uv[top], al, ph); res_ = Tgt - Yt; o_ = np.argsort(uv[top, 0])
-    pos, sd_ = fold(uv[strip], al, ph); ytop = np.median(fold(uv[top], al, ph)[1]); tt = np.clip(sd_ / ytop, 0, 1)
+    pos, sd_ = fold(uv[strip], al, ph); sdt = fold(uv[top], al, ph)[1]; tt = np.clip(sd_ / np.maximum(np.interp(uv[strip, 0], uv[top[o_], 0], sdt[o_]), 1e-4), 0, 1)   # 0 at the crease, 1 on the sewn edge
     pos += np.column_stack([np.interp(uv[strip, 0], uv[top[o_], 0], res_[o_, k]) for k in range(3)]) * tt[:, None]
     up_ = sd_ > -0.002; wb = np.clip((uv[strip, 1] - (yb - BL)) / BL, 0, 1); wb = wb * wb * (3 - 2 * wb)
     below = Xfit[strip].copy(); below[:, 1] -= over * LAP * wb                # under the crease the buttoned strip stays, lapped
-    pos = np.where(up_[:, None], pos, below); X[strip] = pos; fixed[strip] = True
+    pos = pos + (Xfit[strip] - Mf(uv[strip])) * (1 - tt)[:, None]         # the fold acts on the real shape: no jump at the crease
+    pos[:, 1] += (below[:, 1] - Xfit[strip, 1]) * (~up_)
+    X[strip] = pos; X[top] = Tgt                                        # the sewn edge stays on the band
+    fixed[strip[tt < P.get("rigid_to", 0.5)]] = True                    # the strip's top part relaxes to the band, lengths exact
+    fixed[top] = True
     print(f"{fname}: crease {np.degrees(al):.0f} deg off the flat x axis, fold {np.degrees(ph):.0f} deg; top edge off {np.linalg.norm(res_, axis=1).max()*1e3:.1f} mm")
     print(f"{fname}: rigid strip {(hi_-lo_)*1e3:.1f} mm wide, {len(strip)} vertices; top sewn edge off the plane {np.linalg.norm(res_, axis=1).max()*1e3:.1f} mm")
 inner = [(a, b) for a, b in sew if inP[a] and inP[b]]                    # seams inside the network
@@ -166,6 +170,27 @@ movI = inP & ~known
 iv = np.where(movI)[0]
 for it in range(P.get("iters_d", 300)):
     lengths(np.ones(len(ed), bool), movI, P.get("passes", 20) // 10 + 1); contacts(iv)
+# E: everything not held may move; lengths get the last word
+movE = inP & ~fixed; ivE = np.where(movE)[0]
+for it in range(P.get("iters_e", 1500)):
+    lengths(np.ones(len(ed), bool), movE, 2)
+    if it % 25 == 0: contacts(ivE)
+lengths(np.ones(len(ed), bool), movE, 40)
+# the over-side stays in front where the two plackets lap, from the button down to the hold line
+zb_ = Xfit[cl["v"][0][0], 2]; Lv = np.where((pc == nm.index("front.L")) & (X[:, 2] < zb_ + 0.002) & (X[:, 2] > zb_ - P.get("below", 0.02) - 0.002) & (np.abs(X[:, 0]) < 0.02))[0]
+Rv = np.where((pc == nm.index("front.R")) & (X[:, 2] < zb_ + 0.002) & (X[:, 2] > zb_ - P.get("below", 0.02) - 0.002) & (np.abs(X[:, 0]) < 0.02))[0]
+for it in range(40):
+    dd_, j_ = cKDTree(X[Rv][:, [0, 2]]).query(X[Lv][:, [0, 2]]); gap = X[Rv[j_], 1] - X[Lv, 1]; near_ = dd_ < 0.005
+    bad_ = near_ & (gap < 0.0016); dy = (0.0016 - gap[bad_]) / 2
+    li_, ri_ = Lv[bad_][movE[Lv[bad_]]], Rv[j_[bad_]][movE[Rv[j_[bad_]]]]
+    X[li_, 1] -= ((0.0016 - gap[bad_])[movE[Lv[bad_]]]) * 0.5; X[ri_, 1] += ((0.0016 - gap[bad_])[movE[Rv[j_[bad_]]]]) * 0.5
+    lengths(np.ones(len(ed), bool), movE, 4)
+dd_, j_ = cKDTree(X[Rv][:, [0, 2]]).query(X[Lv][:, [0, 2]]); gap = (X[Rv[j_], 1] - X[Lv, 1])[dd_ < 0.005]
+for it in range(P.get("iters_f", 400)):                                  # the body is a floor to the very end
+    contacts(ivE); lengths(np.ones(len(ed), bool), movE, 1)
+contacts(ivE)
+_, j_ = bkd.query(X[ivE]); sd_ = np.einsum("ij,ij->i", X[ivE] - bV[j_], bN[j_]); print(f"free cloth inside the body: {(sd_ < 0).sum()} of {len(ivE)}; closest {sd_.min()*1e3:.1f} mm")
+print(f"plackets lapped below the button: left in front by {gap.min()*1e3:.1f} .. {gap.max()*1e3:.1f} mm over {len(gap)} points")
 dv = X[ed[:, 1]] - X[ed[:, 0]]; l = np.linalg.norm(dv, axis=1) / Lf - 1
 touched = (np.linalg.norm(X - Xfit, axis=1) > 1e-6)[ed[:, 0]] | (np.linalg.norm(X - Xfit, axis=1) > 1e-6)[ed[:, 1]]
 lfit = np.linalg.norm(Xfit[ed[:, 1]] - Xfit[ed[:, 0]], axis=1) / Lf - 1

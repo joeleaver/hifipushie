@@ -25,8 +25,9 @@ Every edge of back, yoke, fronts is a chain; seams merged; button 1 a pivot tied
 held: band neckline, armholes, cloth from 2 cm below the button. The band's whole sewn front is limited by its cut distance
 to button 1. Each placket is a rigid strip (edge .. marked fold line, the mesh is one layer) that folds out of plane along
 a solved crease through button 1 (L 51 deg / 110 deg fold, R -39 / 83); left lies over right. upper.py Q12
-'{"below":0.02,"iters_d":600,"passes":40,"btn_r":0}'. Free chain links <= 1.75 %. OPEN: 67 links > 2 % over the fit, worst
-28.8 % at the top of the left strip (top edge misses the fold's plane by 2.8 / 4.1 mm). No gravity hang yet. NICO-TOP
-unavailable (Joe 2026-11-01): sims local.
+'{"below":0.02,"iters_d":300,"passes":40,"btn_r":0,"rigid_to":0.0}': the strip starts folded, only its sewn edge + the button
+stay held; the fold acts on the real shape; final stages let all unheld cloth move, lengths + body floor to the end.
+Free chain links <= 1.75 %; cloth inside the body 0. OPEN: 42 links > 2 % beyond the fit, worst 6.5 % (yoke by the neck +
+armhole); lap gap touches 0 at one point. No gravity hang yet. NICO-TOP unavailable (Joe 2026-11-01): sims local.
 
-STATE: closed + open collar and the upper shirt built from chains (spike). NEXT: top-of-strip stretch, then gravity hang.
+STATE: closed + open collar and the upper shirt built from chains (spike). NEXT: gravity hang of the soft cloth, then library module.
