@@ -1107,6 +1107,8 @@ class GarmentBuild(Build):
         stiff_v = self._stiff_mask()
         if getattr(self, "extra_held", None) is not None:
             stiff_v = stiff_v | self.extra_held
+        if getattr(self, "stay_v", None) is not None:  # (open wear: the buttoned cloth below the first button stays as built)
+            stiff_v = stiff_v | self.stay_v
         held = np.zeros(net.n, bool)
         held[rs[stiff_v]] = True
         # sewn group mean for the free ones
@@ -1234,8 +1236,14 @@ class GarmentBuild(Build):
         edge = set(int(v) for k_ in ("outer", "endL", "endR") for v in self.fall_ch[k_])
         inner = ids[[int(v) not in edge for v in ids]]
         d, j = cKDTree(Y[ids]).query(Y[nodes])
-        nearest_edge = np.isin(ids[j], list(edge))
-        return ct, nodes[(d < 0.03) & ~nearest_edge]
+        q = ids[j]
+        at_edge = np.isin(q, list(edge))
+        # a node nearest the leaf's edge counts unless it lies past that edge (in the leaf's own plane, away from the leaf)
+        kin = cKDTree(Y[inner])
+        qin = inner[kin.query(Y[q])[1]]
+        away = unit(Y[q] - Y[qin])
+        past = ((Y[nodes] - Y[q]) * away).sum(1) > 0.002
+        return ct, nodes[(d < 0.03) & ~(at_edge & past)]
 
     def _closure_ties(self):
         """Fastened pairs of a closure between two pieces: a layer apart (root a, root b, distance)."""
@@ -1359,6 +1367,9 @@ class GarmentBuild(Build):
         self.fall_surface()
         self.stiff_last()
 
+    def thread_read_all(self):
+        self.reads["threads"] = self.thread_model.report(self.X)
+
     def _cloth_contact(self):
         """The soft cloth as built, outward side up: what a stiff leaf rests on."""
         net, R = self.net, self.roles
@@ -1399,12 +1410,15 @@ class GarmentBuild(Build):
             Xn = self.plackets(Xc)
             self.X = Xn
             bz = float(Xc[self.roles.front["v"][0][0], 2])
+            self.stay_v = np.isin(self.net.piece, [self.net.pid(p) for p in self.roles.panels]) & (Xc[:, 2] < bz - 0.02)
             self.soft_net(start=Xn, far_z=bz - 0.03)
             self.under_cloth = self._cloth_contact()
             self.fall_build()
             self.fall_surface()
             self.stiff_last()
             self.soft_net(start=self.X.copy(), far_z=bz - 0.03)
+            self.stay_v = None
+            self.thread_read_all()
         self.reads["chains"] = self.chain_read(self.X)
         self.reads["seam_gap_mm"] = round(self.net.seam_gap(self.X), 3)
         self.reads["build_s"] = round(time.time() - t0, 1)
@@ -1507,7 +1521,9 @@ class GarmentBuild(Build):
         M = S / np.maximum(cnt, 1)[:, None]
         M = np.where(hold[:, None], self.X, M)
         moved = np.linalg.norm(M[rs] - self.X, axis=1)
-        I2, J2, L2, E2, held, fl2, th = self.final_links
+        I2, J2, L2, E2, _, fl2, th = self.final_links
+        held = np.zeros(net.n, bool)
+        held[rs[hold]] = True
         self.reads["hang_moved_mm"] = {"p50": round(float(np.median(moved[~hold]) * 1e3), 1), "p95": round(float(np.percentile(moved[~hold], 95) * 1e3), 1),
                                        "max": round(float(moved[~hold].max() * 1e3), 1), "drop_mm": round(float((self.X[~hold, 2] - M[rs][~hold, 2]).mean() * 1e3), 1)}
         self.reads["after_hang_before_lengths"] = {"threads": th.report(M[rs]), "chains_free_worst_pct": self.chain_read(M[rs])["free_worst_pct"]}
