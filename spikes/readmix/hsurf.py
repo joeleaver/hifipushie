@@ -6,7 +6,7 @@ scan (in GNM world through the fit's similarity): mean |d| and mean signed d (+ 
 Regions: groundtruth's report regions (lips, nose, chin, cheeks, face)."""
 import json, os, sys
 import numpy as np
-sys.path.insert(0, "/home/joe/dev/hifipushie/.claude/worktrees/groundtruth/spikes/groundtruth")
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "groundtruth"))
 import gt, hsrdset as H
 from hifipushie import blockin as bi, store
 

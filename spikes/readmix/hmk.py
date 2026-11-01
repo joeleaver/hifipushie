@@ -9,9 +9,10 @@ held-out subjects are for SCORING only), as groundtruth's gmk.py makes them from
 Pictures -> /mnt/data/hifipushie/readmix/pics/<k>_<view>.png (never the repo). Models in main's workspace."""
 import json, sys
 from pathlib import Path
+import os
 import numpy as np
 from PIL import Image
-G_ = "/home/joe/dev/hifipushie/.claude/worktrees/groundtruth/spikes/groundtruth"
+G_ = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "groundtruth")
 sys.path.insert(0, G_)
 import gt, hsrd, hsrdset as H
 from gmk import canon, CL, SIZE, PXM
