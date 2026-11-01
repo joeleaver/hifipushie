@@ -755,26 +755,39 @@ def _wrinkles(p, J, layer, T, ctx) -> None:
         j = "lm_brow_inner" + sd
         # (g2: on the brow heads it read as two smudges over the brows; the photo's lies medial of the brow head, ~60 %
         # of the way to the midline, from the brows' lower edge up)
-        path = [(-0.07, -0.012, -0.1), (-0.095, -0.012, 0.0), (-0.09, -0.012, 0.1), (-0.065, -0.012, 0.19)]
-        P = [pt(j, [sx * q[0], q[1], q[2]]) for q in path]
+        P = [pt(j, [sx * q[0], q[1], q[2]]) for q in knots]
         core = {"spot": {"at": P, "radius": [round(r * io, 6) for r in (0.06, 0.075, 0.07, 0.05)], "soft": 1.0, "line": True}}
         wide = {"spot": {"at": P, "radius": [round(r * io, 6) for r in (0.12, 0.15, 0.14, 0.1)], "soft": 1.0, "line": True},
                 "blend": "max", "weight": 0.45}
-        mid = pt(j, [sx * -0.085, -0.012, 0.04])
-        fade = {"spot": {"at": mid, "radius": [round(r * io, 6) for r in (0.2, 0.3, 0.2)], "soft": 1.0}, "blend": "multiply"}
+        mid = pt(j, [sx * -0.06, -0.012, 0.14])
+        fade = {"spot": {"at": mid, "radius": [round(r * io, 6) for r in (0.2, 0.42, 0.2)], "soft": 1.0}, "blend": "multiply"}
         crease = {"spot": {"at": P[:3], "radius": [round(r * io, 6) for r in (0.025, 0.035, 0.03)], "soft": 1.0, "line": True},
                   "blend": "max", "weight": 0.7}   # (the furrow's floor: the photo's has a line in it, at one side)
         return {"mask": [core, crease, wide, fade], "weight": k}   # (weight: the second side's share, blended by max)
+    # (r22: the photo's furrows rise from the brow heads ~2.5x as far, into the forehead lines, and lie nearer the brow
+    # heads; at -.07..-.095 io and .3 io long the two sides merged into one short pink spot between the brows)
+    knots = [(-0.04, -0.012, -0.08), (-0.055, -0.012, 0.06), (-0.05, -0.012, 0.24), (-0.03, -0.012, 0.42)]  # the furrow's bowed path
     gside = str(w.get("glabella_side", "R" if int(p.get("seed", 0) or 0) % 2 == 0 else "L")).upper()
     lead, other = (".R", ".L") if gside == "R" else (".L", ".R")
+    # uneven depth along the furrow and between the sides (a muscle's crease, not a ruled line): soft spots of seeded
+    # place and size along both paths, multiplied in (was a per-pixel "noise" at .12 io: skin features carry no
+    # procedural noise in the shader; spots are cheap and follow the landmarks)
+    rng = np.random.default_rng(int(p.get("seed", 0) or 0) * 7919 + 211)
+    lumps, lrad = [], []
+    for sd in (".L", ".R"):
+        sx = 1 if sd == ".L" else -1
+        for t in np.sort(rng.uniform(0.05, 2.95, 4)):
+            i = int(t)
+            q = [knots[i][c] + (t - i) * (knots[i + 1][c] - knots[i][c]) for c in range(3)]
+            lumps.append(pt("lm_brow_inner" + sd, [sx * (q[0] + rng.uniform(-0.01, 0.01)), q[1], q[2]]))
+            lrad.append(round(float(rng.uniform(0.045, 0.09)) * io, 6))
     glabella = [furrow(lead, 1.0), {**furrow(other, 0.35), "blend": "max"},
-                # uneven depth along the furrow and between the sides (a muscle's crease, not a ruled line)
-                {"noise": {"scale": round(0.12 * io, 5), "range": [0.25, 0.8]}, "blend": "multiply", "weight": 0.45}]
+                {"spot": {"at": lumps, "radius": lrad, "soft": 1.0}, "blend": "multiply", "weight": 0.25}]
 
     # the lines of expression, each a tapered groove, in one layer: every group's strength scales its own mask
     groups = [
         # (r17: the frown lines run from ~.2 io up between the brows down to the nasion, a soft furrow; were +-.09, half the photo's)
-        # (r18: 0.9 -> 3.2: the broad furrow spreads the same depth wider, faded at its ends, x noise: at .9 it vanished)
+        # (r18: 0.9 -> 3.2: the broad furrow spreads the same depth wider, faded at its ends, x uneven spots: at .9 it vanished)
         ("glabella", 3.2, glabella),
         ("crows_feet_rays", 0.7, rays([("lm_eye_outer.L", (0.06, 0.03, 0.01), (0.34, 0.22, 0.14)), ("lm_eye_outer.L", (0.07, 0.03, -0.02), (0.38, 0.25, -0.02)),
                                   ("lm_eye_outer.L", (0.06, 0.03, -0.05), (0.33, 0.22, -0.18)), ("lm_eye_outer.L", (0.05, 0.03, -0.09), (0.24, 0.16, -0.3))], 0.014)),
@@ -790,7 +803,7 @@ def _wrinkles(p, J, layer, T, ctx) -> None:
         if a > 0.02:  # a fan of fine creases of uneven depth, under the few drawn ones
             groove(nm + "_fine", a, 0.0004, [{"tile": {"swatch": "wrinkles", "size": size, "rotate": rot, "range": [0.5 - 0.42 * min(a, 1), 1.0],
                                                        "vary": False}}, {"vertex": True, "mask": _zones(zs, 1.1)}], 0.2)
-    for lname, members in (("folds", ("glabella", "nasolabial", "marionette")), ("crows_feet", ("crows_feet_rays",)), ("under_eye", ("under_eye_rays",))):
+    for lname, members in (("folds", ("nasolabial", "marionette")), ("glabella", ("glabella",)), ("crows_feet", ("crows_feet_rays",)), ("under_eye", ("under_eye_rays",))):
         stack = []
         for name, k, m in groups:
             a = float(np.clip(amt[name] * k, 0, 1.6))
@@ -798,7 +811,11 @@ def _wrinkles(p, J, layer, T, ctx) -> None:
                 continue
             stack.append({"mask": m + [{"levels": [0.0, round(1.6 / a, 3)]}], **({"blend": "max"} if stack else {})})
         if stack:  # (one mask of all ~20 tapered lines ran Cycles out of stack under the bump)
-            layer(f"wrinkle_{lname}", height=-0.00065, color=crease, mix="multiply", opacity=0.75, roughness=min(base_r + 0.1, 0.95), mask=stack)
+            # (r22: the glabella's furrows a neutral grey and fainter: with the shared reddish crease tint at .75 they read as a
+            # pink spot, glabella a* - cheek -0.1 vs the photo's -1.4)
+            gl = lname == "glabella"
+            layer(f"wrinkle_{lname}", height=-0.00065, color=[0.86, 0.86, 0.865] if gl else crease, mix="multiply", opacity=0.8 if gl else 0.75,
+                  roughness=min(base_r + 0.1, 0.95), mask=stack)
     # fields of lines: a tiling swatch of wandering lines, laid across (forehead, neck) or turned (above the lip)
     a = amt["forehead"]
     if a > 0.02:
