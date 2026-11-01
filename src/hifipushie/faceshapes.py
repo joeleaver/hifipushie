@@ -749,24 +749,48 @@ class Face:
         return moved @ rot.T
 
     def _brow(self, name: str, s: str | None, Xm: np.ndarray) -> np.ndarray:
+        """The brows, by where along the brow a point is (0 at the inner end, 1 at the outer). Sized to read at a
+        conversation's distance: at 0.06-0.09 R, moved as one piece, a brow at 1.0 was hard to tell from the neutral
+        and anger looked like grief (oxidegen's emotion takes, 2026-10-03)."""
         d = np.zeros_like(Xm)
+        R = self.R
         for side, b in self.brows.items():
             if s is not None and side != s:
                 continue
             hb = b["half"]
-            # keep the eye itself still: the brow's pull fades over the upper lid
-            if name == "browInnerUp":
-                m = _bump(np.linalg.norm(Xm - b["inner"], axis=1), 0.5 * hb, 1.5 * hb)
-                d += m[:, None] * self.up * 0.09 * self.R
-            elif name.startswith("browOuterUp"):
-                m = _bump(np.linalg.norm(Xm - b["outer"], axis=1), 0.5 * hb, 1.4 * hb)
-                d += m[:, None] * self.up * 0.08 * self.R
-            else:  # browDown: down, toward the middle, a little forward
-                m = _bump(np.linalg.norm(Xm - b["c"], axis=1), 0.8 * hb, 1.7 * hb)
-                toward = -self.side * (1 if side == "Left" else -1)
-                d += m[:, None] * (-self.up * 0.06 * self.R + toward * 0.03 * self.R + self.out * 0.015 * self.R)
+            ax = b["outer"] - b["inner"]
+            ln = max(float(np.linalg.norm(ax)), 1e-9)
+            ax = ax / ln
+            rel = Xm - b["inner"]
+            t = rel @ ax / ln                                    # along the brow
+            near = np.linalg.norm(rel - np.clip(t, 0.0, 1.0)[:, None] * ln * ax, axis=1)  # from the brow's line
+            sg = 1 if side == "Left" else -1
+            toward = -self.side * sg
+            # each brow owns its own half: at the middle the two share the move (summed, the glabella went twice
+            # as far as either brow and stood up as a lump on the nose's bridge)
+            own = _ss(((Xm - self.M) @ self.side) * sg / hb + 0.5)
+            if name == "browInnerUp":  # frontalis' middle: the inner ends up and a little together (worry, grief)
+                m = _bump(np.linalg.norm(rel, axis=1), 0.6 * hb, 1.8 * hb) * own
+                d += m[:, None] * (self.up * 0.16 * R + toward * 0.02 * R)
+            elif name.startswith("browOuterUp"):  # its sides: the outer end up, the arch with it
+                m = _bump(np.linalg.norm(Xm - b["outer"], axis=1), 0.6 * hb, 1.7 * hb)
+                d += m[:, None] * self.up * 0.14 * R
+            else:  # browDown (corrugator + procerus): a slant, the inner end down hard, in and forward over the eye
+                m = _bump(near, 0.9 * hb, 1.9 * hb) * own
+                inner = 1.0 - _ss(t)
+                d += m[:, None] * (-self.up * ((0.05 + 0.11 * inner) * R)[:, None] + toward * (0.05 * inner * R)[:, None]
+                                   + self.out * (0.025 * inner * R)[:, None])
+        # the brow slides over the eyeball, never into it: no point ends nearer an eye's centre than it started, or
+        # than the lid's own clearance (the hooded lid of a frown); the eye's own surface stays still
         for ev in self.eyes.values():
-            d *= _ss((np.linalg.norm(Xm - ev["c"], axis=1) - 1.01 * ev["r"]) / (0.05 * ev["r"]))[:, None]
+            c, r = ev["c"], ev["r"]
+            d0 = np.linalg.norm(Xm - c, axis=1)
+            d *= _ss((d0 - 1.01 * r) / (0.05 * r))[:, None]
+            q = Xm + d - c
+            d1 = np.linalg.norm(q, axis=1)
+            floor = np.minimum(d0, 1.08 * r)
+            low = d1 < floor
+            d[low] = (c + q[low] * (floor[low] / np.maximum(d1[low], 1e-9))[:, None]) - Xm[low]
         return d
 
 
