@@ -1,3 +1,5 @@
+import sys as _s; _s.path.insert(0, "/mnt/data/hifipushie/folds_ab/D")
+from joined import joined
 import sys, pickle, numpy as np
 from PIL import Image, ImageDraw
 from hifipushie import cloth, resources
@@ -7,7 +9,7 @@ rows=[]
 with resources.heavy("lookw",gb=3.0,gpu=True):
     for t in tags:
         d=pickle.load(open(f"{D}{t}.pkl","rb")); X=np.asarray(d["A"],float); M=d["mesh"]; F=np.asarray(M["F"])
-        parts=[{"name":"body","V":d["bodyV"],"F":d["bodyF"],"color":"#c4bcb4"},{"name":"shirt","V":X,"F":F,"color":"#c9ccd2","thickness":0.0004,"offset":0.0}]
+        parts=[{"name":"body","V":d["bodyV"],"F":d["bodyF"],"color":"#c4bcb4"},{"name":"shirt","V":X,"F":joined(X,M,np.asarray(d["bodyV"],float),np.asarray(d["bodyF"])),"color":"#c9ccd2","thickness":0.0004,"offset":0.0}]
         rows.append((t,[Image.open(cloth.render(parts,f"{D}{t}_w_{n}",views=[{"name":n,"dir":v}],resolution=560,box=box)[0]).convert("RGB") for n,v in views]))
 H=520; sc=lambda im: im.resize((int(im.size[0]*H/im.size[1]),H))
 W=max(sum(sc(i).size[0] for i in r[1]) for r in rows); sh=Image.new("RGB",(W,(H+22)*len(rows)),"white"); dr=ImageDraw.Draw(sh)

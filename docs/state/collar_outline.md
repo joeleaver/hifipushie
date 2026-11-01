@@ -38,4 +38,10 @@ OPEN: 27 free vertices inside the full body (deepest 2.7 mm; skin specks under t
 up to 3.4 mm; link p99 5.8 %, max 65 % (was 79.5 % before the hang); wrinkly yoke round the neck; sleeves are the old
 fit's and were not hung (gap at the back armhole).
 
-STATE: collar + upper shirt from chains, hung with ZOZO (spike). NEXT: neck-side contacts, then sleeves, then library module.
+## Whole shirt hang H2 (622 s local): hang_prep.py Q12 h2 144 sleeves -> hang_run.py h2 -> hang_finish.py h2 H2 Q12; look.py / lookw.py H2
+Renders now use joined.py: sewn vertices shared, every piece facing out (the pronounced seams were mostly per-piece shading).
+Cuffs held; body under band + cuffs and patches at 111 contacts cut from the collider. OPEN: sleeves are the old crushed fit
+hung: link p99 34 %, max 76 %; sleeves + armpit in the body up to 21 mm; skin at the back armholes. Side seams sewn only every
+20 mm (2 cm body mesh). A post-hang "press" tore the chest (286 %): removed, don't repeat it.
+
+STATE: shirt from chains, hung locally; collar, neck, torso read right. NEXT: build the sleeves from chains, then library module.
