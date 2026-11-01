@@ -22,8 +22,10 @@ silhouette errors), not mouse control. North star: tools that let an LLM work li
 - Memory: heavy jobs take `resources.heavy` (declare the real GB) and run under /mnt/data/hifipushie/bin/capped (renders also
   take the GPU lock); light sweeps use bin/slot. Kill only PIDs you started.
 - Durable / big files on /mnt/data/hifipushie, never /tmp. Third-party assets via `assets.py` ($HIFIPUSHIE_ASSETS).
-- Document as you go: rewrite your STATE page + append notes + commit after every step (STATE / NEXT line). Hand over and
-  restart fresh past ~250k tokens.
+- Lessons live in tools: a default, a check or a refused call. Only what can't be enforced goes in the guide, kept short.
+  docs/notes/* is a frozen archive: read by grep, no new appends except codified.md's one-line rows.
+- Write your STATE page once, at the end of a run, with its NEXT line; commit as you go. Hand over and restart past ~250k tokens.
+- One gate per run: the result beside its reference. Exploring runs have none. Spikes are promoted or deleted when the run ends.
 - Judge renders yourself before forwarding (agents over-rate); reference beside every result; send renders to Joe as files.
 - Bump `store.BUILD_VERSION` whenever meshing output changes. Incremental builds must equal cold builds.
 - Branches: when an agent finishes, the coordinator lands its branch (suite passing) or closes it with a reason and an
