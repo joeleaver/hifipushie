@@ -46,14 +46,16 @@ from .chain_net import BendSolve, Contact, Network, Threads, project, unit
 PATTERN_KEYS = ("uv", "piece", "names", "F", "folds", "made", "grain", "sew", "sew_seam", "stitch", "marks", "closures",
                 "points", "border", "stitch_lines")
 GAP = 0.0045  # m: soft cloth and stiff parts stay this far off the body (ZOZO's reach + a mesh edge's sag over an arm)
-RING_GAP = 0.003  # m: a stiff ring off a limb (ZOZO's reach): it hangs loose, so its gap is the solver's, no more
+RING_GAP = 0.004  # m: a stiff ring off a limb (ZOZO's reach): it hangs loose, so its gap is the solver's, no more
+RING_H = 0.008  # m: mesh size on a stiff ring
+UNDER = 0.002  # m: soft cloth under the fall
 LAYER = 0.003  # m: one layer of cloth over another (the fall over the shirt, the over placket over the under)
 FALL_GAP = GAP + LAYER + 0.002  # the fall rests on the soft cloth under it
 REST = 0.1  # weight of the light rest pull (contact itself is 5)
 CAP = 0.02  # thread cap of soft cloth (pattern_form.FIT_THREAD_CAP)
 SHEAR_LIMIT = 0.27  # the weave's own limit on a mesh edge (zozo_hang.woven_limit, 2 % threads, jam 35 deg)
 OPEN_SPREAD = 1.7  # default open wear: the collar points this many neck widths apart
-MAX_LINK_PCT = 0.05  # a chain link further off than this after the last projection is refused
+MAX_FREE_PCT = 2.0  # % a free chain link may read off its cut at a stage's end before the build is refused
 
 
 class ChainRefused(ValueError):
@@ -359,7 +361,7 @@ class Build:
             sew_ = self.sewn_with(p, R.band)
             for fv, sv in sew_.items():
                 L = float(np.linalg.norm(uv[fv] - uv[bvs[0] if net.piece[bvs[0]] == net.pid(p) else bvs[1]]))
-                if L < 0.09:
+                if L < 0.25:  # (the whole neck edge sewn to this front)
                     limit.append((int(rs[sv]), bpos, L))
         self._open_limit = limit
         free = np.unique(np.r_[nb[fB], nt])
@@ -375,7 +377,7 @@ class Build:
         for ch, C0, node in ((sb, B0, nb), (st, T0, nt)):
             k0_ = C0[2:] - 2 * C0[1:-1] + C0[:-2]
             rest = k0_ * (1 - front_w(uv[ch[1:-1], 0]))[:, None]  # the pressed curve relaxes past the side neck
-            S.add_bend(node, cn.BEND_BASE * net.bend[ch[1:-1]], rest=rest * (cn.H0 / np.maximum(np.linalg.norm(np.diff(C0, axis=0), axis=1)[1:], 1e-5)) ** 0)
+            S.add_bend(node, cn.BEND_BASE * net.bend[ch[1:-1]], rest=rest)
         S.add_contact(np.r_[nb[fB], nt], self.body.contact, GAP)
         rows = []
         for ch, chain in ((sb, nb), (st, nt)):
@@ -489,7 +491,7 @@ class Build:
         for i in range(0, len(roll), 15):
             for a, b in ((across(i, neck), roll[i]), (roll[i], across(i, outer))):
                 pairs.append((a, b))
-                exact.append(bool(min(self.X[rs[a], 1], self.X[rs[b], 1]) > hpsy - 0.01))
+                exact.append(self.wear["state"] == "open" and bool(min(self.X[rs[a], 1], self.X[rs[b], 1]) > hpsy - 0.01))
         mid = roll[int(np.argmin(np.abs(uv[roll, 0])))]
         for ec, oc in ((endL, 0), (endR, len(outer) - 1)):
             for k in (3, 6, 10, 15):  # each point keeps its cut corner
@@ -524,7 +526,7 @@ class Build:
         for nm, o in chains.items():
             S.add_bend(rs[o], cn.BEND_BASE * net.bend[o[1:-1]])
         lie = rs[outer]
-        S.add_contact(rs[np.r_[outer, roll]], self.body.contact, GAP + LAYER)
+        S.add_contact(rs[np.r_[outer, roll]], self.body.contact, GAP)
         hy = hpsy - 0.01
         S.add_contact(lie, self.body.contact, FALL_GAP, rest=REST)
 
@@ -565,7 +567,7 @@ class Build:
         self.X = S.solve(60)
         held = np.ones(net.n, bool)
         held[free] = False
-        Xn, rd = project(self.X, I, J, L, E, held, [(self.body.contact, free, GAP + LAYER)])
+        Xn, rd = project(self.X, I, J, L, E, held, [(self.body.contact, free, GAP)], iters=80, step=0.004)
         self.X = Xn
         self.fall_links = (I, J, L, E)
         l = np.linalg.norm(Xn[I] - Xn[J], axis=1) / np.maximum(L, 1e-9) - 1
@@ -631,7 +633,7 @@ class Build:
             return k, f[k], over, abs((p2 - (ea[k] + vv[k] * f0[k])) @ nrm)
         fixed = set(int(v) for k_ in ("neck", "roll", "outer", "endL", "endR") for v in ch[k_])
         lerp = lambda A_, k, f: A_[k] * (1 - f) + A_[k + 1] * f
-        ns = set(int(v) for v in neck)
+        ns = set(int(v) for v in np.r_[neck, ch["endL"], ch["endR"], ch["outer"]])  # (the chains stand; the turn fills between)
         for v in cvs:
             if int(v) in ns:
                 continue
@@ -717,9 +719,29 @@ class Build:
         self.reads["stiff_s"] = round(time.time() - t0, 1)
 
 
+def joined_faces(X, M, bV, bT) -> np.ndarray:
+    """The garment's faces with sewn vertices shared and every piece facing outward (the spike's joined.py: pronounced
+    seams were mostly per-piece shading). Used by every render of a chain build."""
+    X = np.asarray(X, float)
+    F = np.asarray(M["F"], np.int64).copy()
+    pc = np.asarray(M["piece"])
+    s = np.asarray(M["sew"], np.int64).reshape(-1, 2)
+    s = s[np.linalg.norm(X[s[:, 0]] - X[s[:, 1]], axis=1) < 0.002]
+    root = cn.union_roots(len(X), s)
+    N = cn_vnormals(np.asarray(bV, float), np.asarray(bT, np.int64))
+    kd = cKDTree(bV)
+    for p in np.unique(pc):
+        fi = np.where(pc[F[:, 0]] == p)[0]
+        c = X[F[fi]].mean(1)
+        n = np.cross(X[F[fi, 1]] - X[F[fi, 0]], X[F[fi, 2]] - X[F[fi, 0]])
+        if (n * N[kd.query(c)[1]]).sum() < 0:
+            F[fi] = F[fi][:, [0, 2, 1]]
+    return root[F]
+
+
 def zozo_legal() -> float:
     """The nearest a cloth point may start to the collider (ZOZO's contact offset + a hair)."""
-    return 0.0021
+    return 0.00203
 
 
 def _keep_roots(net, X):
@@ -961,6 +983,8 @@ class GarmentBuild(Build):
             def perim(h):
                 return float(np.linalg.norm(np.diff(np.r_[h, h[:1]], axis=0), axis=1).sum())
             best = None
+            from . import zozo_hang as zh
+            Fr_ = net.F[np.all(net.piece[net.F] == net.pid(ring), axis=1)]
             for k in range(40):  # the ring's shape: the limb's own sections, each at the ring's own closed length; a
                 # buttoned cuff flares towards its seam (one button: the overlap opens there), never past the cut width
                 P = None
@@ -994,7 +1018,10 @@ class GarmentBuild(Build):
                         Cc, o, f, d = ax.at(s_end + 0.5 * hgt_ * np.ones(len(u)))
                         Cc2 = Cc + d * ((np.abs(u[:, 1] - y0) - 0.5 * hgt_))[:, None]
                         P = Cc2 + o * pp[:, 0:1] + f * pp[:, 1:2]
-                        sdm = float(self.body.contact.query(P)[0].min())
+                        Xt_ = self.X.copy()
+                        Xt_[rv] = P
+                        sdm = min(float(self.body.contact.query(P)[0].min()),  # (faces and edges too, as ZOZO reads them)
+                                  zh.legality(Xt_, Fr_, self.body.V, self.body.T)["min_mm"] * 1e-3)
                         if best is None or sdm > best[0]:
                             best = (sdm, P, s_end, C0, C1)
                         if sdm >= RING_GAP:
@@ -1116,6 +1143,9 @@ class GarmentBuild(Build):
         chain_nodes = np.unique(np.r_[net.link_i, net.link_j, li, lj])
         cf = chain_nodes[~held[chain_nodes]]
         floor = [(self.body.contact, cf, GAP)]
+        uf = self._under_fall(Xf, cf)
+        if uf is not None and len(uf[1]):
+            floor.append((uf[0], uf[1], UNDER))
         Y = Xf
         nbr: dict = {}
         for a, b in zip(net.link_i, net.link_j):
@@ -1146,12 +1176,60 @@ class GarmentBuild(Build):
         L2, E2 = np.r_[L, Lm[k]], np.r_[E, np.zeros(int(k.sum()), bool)]
         th = Threads(uv, soft_F, CAP, root=rs)
         fl2 = [(self.body.contact, nodes[~held[nodes]], GAP)]
-        Z, rd2 = project(Z, I2, J2, L2, E2, held, fl2, threads=th, iters=40, step=0.008)
+        uf = self._under_fall(Z, nodes[~held[nodes]])
+        under = [(uf[0], uf[1], UNDER)] if uf is not None and len(uf[1]) else []
+        fl2 = fl2 + under
+        for rnd in range(3):
+            Z, rd2 = project(Z, I2, J2, L2, E2, held, fl2, threads=th, iters=40, step=0.008)
+            Z, rd3 = project(Z, I, J, L, E, held, fl2, iters=30, step=0.008)  # lengths last
+            self.log(f"mesh round {rnd}: {rd2} / {rd3}")
+        # the floor seen by faces and edges, not only points (a 20 mm chord sags onto a sharp bump): a point whose element
+        # comes nearer than ZOZO's reach gets that much more floor, and the lengths are solved again with it
+        from . import zozo_hang as zh
+        ids_ = nodes[~held[nodes]]
+        gaps = np.full(net.n, GAP)
+        F_r = rs[soft_F]
+        F_r = F_r[(F_r[:, 0] != F_r[:, 1]) & (F_r[:, 1] != F_r[:, 2]) & (F_r[:, 0] != F_r[:, 2])]
+        for rnd in range(6):
+            pr = zh.contact_pairs(Z, F_r, self.body.V, self.body.T, zh.REACH)
+            self.log(f"edge floor {rnd}: {len(pr['d'])} pairs under reach")
+            if not len(pr["d"]):
+                break
+            for c, dv in zip(pr["cloth"], pr["d"]):
+                c = c[c >= 0]
+                gaps[c] = np.maximum(gaps[c], self.body.contact.query(Z[c])[0] + (zh.REACH - dv) + 0.0006)
+            fl3 = [(self.body.contact, ids_, gaps[ids_])] + under
+            Z, rd3 = project(Z, I2, J2, L2, E2, held, fl3, threads=th, iters=20, step=0.008)
+            Z, rd3 = project(Z, I, J, L, E, held, fl3, iters=25, step=0.008)
+            fl2 = fl3
+        self.reads["last_lengths"] = rd3
         self.X = Z[rs]
         self.reads["soft_mesh"] = rd2
         self.reads["threads"] = th.report(self.X)
         self.thread_model = th
         self.final_links = (I2, J2, L2, E2, held, fl2, th)
+
+    def _under_fall(self, Y, nodes):
+        """The soft cloth stays under the fall: its underside as a Contact and the soft nodes in its footprint."""
+        net, R = self.net, self.roles
+        if not R.fall:
+            return None
+        uv = net.uv
+        F = net.F[np.all(net.piece[net.F] == net.pid(R.fall), axis=1)]
+        kn = cKDTree(uv[self.fall_ch["neck"]])
+        leaf = kn.query(uv)[0] > self.droll + 0.004  # the leaf, past the turn
+        F = F[leaf[F].all(1)]
+        fn = np.cross(Y[F[:, 1]] - Y[F[:, 0]], Y[F[:, 2]] - Y[F[:, 0]])
+        bn = self.body.contact.query(Y[F].mean(1))[1]
+        flip = (fn * bn).sum(1) < 0
+        F[flip] = F[flip][:, [0, 2, 1]]
+        ct = Contact(Y, F, side=-1.0)
+        ids = np.unique(F)
+        edge = set(int(v) for k_ in ("outer", "endL", "endR") for v in self.fall_ch[k_])
+        inner = ids[[int(v) not in edge for v in ids]]
+        d, j = cKDTree(Y[ids]).query(Y[nodes])
+        nearest_edge = np.isin(ids[j], list(edge))
+        return ct, nodes[(d < 0.03) & ~nearest_edge]
 
     def _closure_ties(self):
         """Fastened pairs of a closure between two pieces: a layer apart (root a, root b, distance)."""
@@ -1290,9 +1368,237 @@ class GarmentBuild(Build):
             self.wear["state"] = "open"
             self.stiff_stage()
             Xn = self.plackets(Xc)
+            self.X = Xn
             bz = float(Xc[self.roles.front["v"][0][0], 2])
             self.soft_net(start=Xn, far_z=bz - 0.03)
-        self.reads["chains"] = self.net.chain_report(self.X)
+        self.reads["chains"] = self.chain_read(self.X)
         self.reads["seam_gap_mm"] = round(self.net.seam_gap(self.X), 3)
         self.reads["build_s"] = round(time.time() - t0, 1)
         return self.X
+
+    def chain_read(self, X) -> dict:
+        """Chains at X. A soft link with both ends sewn to a stiff part is gathered into it (a sleeve into its cuff):
+        it may only be shorter; those are read apart."""
+        net = self.net
+        held = np.zeros(net.n, bool)
+        held[net.root[self._stiff_mask()]] = True
+        both = held[net.link_i] & held[net.link_j]
+        rep = net.chain_report(X)
+        l = np.linalg.norm(X[net.link_j] - X[net.link_i], axis=1)
+        e = np.abs(l / np.maximum(net.link_L, 1e-9) - 1) * 100
+        free = ~both
+        rep["free_worst_pct"] = round(float(e[free].max()), 3) if free.any() else 0.0
+        rep["free_p99_pct"] = round(float(np.percentile(e[free], 99)), 3) if free.any() else 0.0
+        k = int(np.argmax(np.where(free, e, -1)))
+        c = int(np.where(net.link_of_chain == k)[0][0])
+        rep["free_worst_line"] = (f"{net.names[net.chain_piece[c]]} {'fold line' if net.chain_kind[c] else 'edge'} at flat "
+                                  f"({net.uv[net.chain_v[c, 0], 0]:.3f}, {net.uv[net.chain_v[c, 0], 1]:.3f})")
+        over = (l - net.link_L) / np.maximum(net.link_L, 1e-9) * 100
+        rep["gathered_links"] = int(both.sum())
+        rep["held_longest_over_pct"] = round(float(over[both].max()), 2) if both.any() else 0.0
+        return rep
+
+    def gate_lengths(self):
+        """Lengths have the last word: a free chain link past MAX_FREE_PCT is refused by piece and line."""
+        c = self.chain_read(self.X)
+        self.reads["chains"] = c
+        if c["free_worst_pct"] > MAX_FREE_PCT:
+            raise ChainRefused(f"a length can't hold: {c['free_worst_line']} is {c['free_worst_pct']} % off its cut (limit "
+                               f"{MAX_FREE_PCT} %). next: the pattern can't make this line on this body: look_pattern, then "
+                               "alter_pattern at that line, pattern_check, chain_garment again")
+
+    # ---- 7. the hang
+    def hold_mask(self):
+        net = self.net
+        h = self._stiff_mask().copy()
+        if getattr(self, "extra_held", None) is not None:
+            h |= self.extra_held
+        return np.isin(net.root, net.root[h])
+
+    def write_job(self, jd: Path, fabric: dict, frames: int = 144, name: str = "chain_garment"):
+        """The ZOZO job: the soft cloth under gravity, stiff parts held, the whole body the collider. A start ZOZO would
+        refuse is refused here by name: it is the chain build's fault, never fixed by cutting, pushing or holding."""
+        from . import cloth_job as cj, cloth_zozo as cz, zozo_hang as zh
+        net = self.net
+        X = np.asarray(self.X, float)
+        uv, F = net.uv, net.F
+        bV, bT = self.body.V, self.body.T
+        hold = self.hold_mask()
+        whole = self._stiff_mask()
+        lg = zh.legality(X, F, bV, bT)
+        if not lg["ok"]:
+            w = lg["worst"][0] if lg["worst"] else None
+            nm = net.names[net.piece[w[1][0]]] if w else "?"
+            who = {}
+            pr = zh.contact_pairs(X, F, bV, bT, zh.BODY_OFFSET + 1e-9)
+            for c in pr["cloth"]:
+                k_ = net.names[net.piece[c[c >= 0][0]]]
+                who[k_] = who.get(k_, 0) + 1
+            raise ChainRefused(f"illegal start: {lg['illegal']} cloth / body pairs inside ZOZO's contact offset ({lg['by_kind']}), nearest "
+                               f"{lg['min_mm']} mm, worst on {nm}; by piece {who}. next: this is a chain-build fault; report it, nothing is pushed or cut")
+        lim = zh.woven_limit()
+        flat = np.c_[uv, np.zeros(len(uv))]
+        R = flat.copy()
+        R[whole] = X[whole]
+        ci = np.where(hold)[0].astype(np.int64)
+        arrays = dict(X=X, uv=uv, F=F, sew=net.sew, stitch=np.asarray(net.M.get("stitch", np.zeros((0, 2))), np.int64).reshape(-1, 2),
+                      stiff=np.clip(np.maximum(self.pat.stiff, whole.astype(float)), 0, 1), piece=net.piece.astype(np.int64),
+                      pins=np.zeros(0, np.int64), bodyV=bV, bodyT=bT, carryIdx=ci, carryPoses=X[ci][None], rest=R,
+                      restIdx=np.where(whole)[0].astype(np.int64))
+        made = [p for p in net.names if whole[net.verts(p)].all()]
+        cfg = {"fabric": fabric, "name": name, "placement": "smooth", "wraps": {}, "made": made, "strain_limit": lim}
+        jc = cj.job_config(cfg, net.names)
+        jc["stages"] = [{"name": "settle", "frames": int(frames), "gravity": 1, "sew": True, "self_collision": True, "fixed": [], "body": True}]
+        jc["snap"] = 24
+        jd = Path(jd)
+        jd.mkdir(parents=True, exist_ok=True)
+        np.savez(jd / "in.npz", **arrays)
+        (jd / "job.json").write_text(json.dumps(jc, indent=1, default=cj._jsonable))
+        ss = zh.start_strain(arrays, jc)
+        if not ss["ok"]:
+            raise ChainRefused(f"start past the strain limit: {ss['over']} of {ss['faces']} faces, by piece {ss.get('by_piece')}; worst "
+                               f"{ss.get('worst')}. next: a chain-build fault; report it, the limit is not a setting")
+        self.reads["hang_start"] = {"legal_min_mm": lg["min_mm"], "strain_ok": True, "held": int(hold.sum()), "frames": int(frames)}
+        return jd
+
+    def finish_hang(self, V):
+        """ZOZO's result back into the build: seams welded (a held side wins), lengths the last word, the body a floor."""
+        net = self.net
+        rs = net.root
+        Vb = np.asarray(V, float)
+        hold = self.hold_mask()
+        cnt = np.bincount(rs, minlength=net.n).astype(float)
+        S = np.zeros((net.n, 3))
+        np.add.at(S, rs, Vb)
+        M = S / np.maximum(cnt, 1)[:, None]
+        M = np.where(hold[:, None], self.X, M)
+        moved = np.linalg.norm(M[rs] - self.X, axis=1)
+        I2, J2, L2, E2, held, fl2, th = self.final_links
+        self.reads["hang_moved_mm"] = {"p50": round(float(np.median(moved[~hold]) * 1e3), 1), "p95": round(float(np.percentile(moved[~hold], 95) * 1e3), 1),
+                                       "max": round(float(moved[~hold].max() * 1e3), 1), "drop_mm": round(float((self.X[~hold, 2] - M[rs][~hold, 2]).mean() * 1e3), 1)}
+        self.reads["after_hang_before_lengths"] = {"threads": th.report(M[rs]), "chains_free_worst_pct": self.chain_read(M[rs])["free_worst_pct"]}
+        n_chain = len(self.net.link_i) + len(self.net.lines()[0]) + len(self._closure_ties())
+        Z = M.copy()
+        Z, rd = project(Z, I2[:n_chain], J2[:n_chain], L2[:n_chain], E2[:n_chain], held, fl2, iters=60, step=0.006)
+        self.reads["hang_last_lengths"] = rd
+        self.X = Z[rs]
+        self.reads["threads"] = th.report(self.X)
+        self.reads["chains"] = self.chain_read(self.X)
+        self.reads["seam_gap_mm"] = round(net.seam_gap(self.X), 3)
+        return self.X
+
+
+# ---- the job: what the MCP tools run (a worker process, so a hang never blocks the server)
+def load_garment(model: str, garment: str, spec: dict | None = None) -> tuple:
+    """(Pattern, Body, fabric) of a saved garment: the draft meshed flat with fold lines as edges (cloth.build place_only);
+    positions in the result are dropped by Pattern, never read."""
+    from . import bending, cloth, pattern_form as pf, store
+    spec = spec or store.load(model)
+    g = json.loads(json.dumps(spec["cloth"][garment]))
+    g["mesh_refine"] = pf.form_refine(g)
+    src, _ = pf.form_source(model, garment, spec, g)
+    res = cloth.build(cloth._garment_for_sim(g), src, f"{model}:{garment}", log=lambda *_: None, place_only=True)
+    M, B = res["mesh"], res["pieces"]
+    st = cloth.interfacing(B, M)
+    # a stiff ring keeps a smooth section: its chords must not sag into the limb (L^2 / 8R over a 25 mm wrist)
+    rings = [n for i, n in enumerate(M["names"]) if st[np.asarray(M["piece"]) == i].mean() > 0.95 and n not in ("collar", "stand")]
+    rings = [n for n in rings if not any(f.get("piece") == n and f.get("kind") == "roll" for f in M.get("folds") or [])]
+    if rings:
+        g["mesh_refine"] = list(g["mesh_refine"]) + [{"piece": rings, "h": RING_H}]
+        res = cloth.build(cloth._garment_for_sim(g), src, f"{model}:{garment}", log=lambda *_: None, place_only=True)
+        M, B = res["mesh"], res["pieces"]
+    radius = {f["name"]: float(f["radius"]) for f in (B.get("folds") or []) if isinstance(f, dict) and f.get("radius") and f.get("name")}
+    pat = pattern_from_mesh(M, cloth.interfacing(B, M), bending.weights(B, M, g), radius)
+    body = Body(np.asarray(res["body"].V, float), np.asarray(res["body"].T, np.int64),
+                {k: np.asarray(v, float) if np.ndim(v) else float(v) for k, v in res["body"].at.items()})
+    return pat, body, res.get("fabric") or cloth.fabric(g)
+
+
+def job_dir(model: str, garment: str, wear: str) -> Path:
+    from . import store
+    d = store.HOME / model / "chain" / f"{garment}_{wear}"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _status(d: Path, **kw):
+    p = d / "status.json"
+    st = json.loads(p.read_text()) if p.exists() else {}
+    st.update(kw)
+    t = d / "status.tmp"
+    t.write_text(json.dumps(st, default=str))
+    t.replace(p)
+
+
+def status(d: Path) -> dict:
+    p = Path(d) / "status.json"
+    return json.loads(p.read_text()) if p.exists() else {}
+
+
+def worker(model: str, garment: str, wear: dict):
+    """Build, then hang. Every stage writes its numbers to status.json; a refusal is a result, not a crash."""
+    from . import cloth, zozo_hang as zh
+    d = job_dir(model, garment, wear["state"])
+    _status(d, stage="building", wear=wear, t0=time.time())
+    import pickle
+    try:
+        pat, body, fabric = load_garment(model, garment)
+        b = GarmentBuild(pat, body, wear, log=lambda *_: None)
+        b.run()
+        pickle.dump({"X": b.X, "M": pat.M, "bV": body.V, "bT": body.T, "reads": b.reads}, open(d / "built.pkl", "wb"))
+        _status(d, stage="built", reads=b.reads)
+        b.gate_lengths()
+        jd = b.write_job(d / "zozo", fabric, name=f"chain:{model}:{garment}")
+        _status(d, stage="hanging", reads=b.reads)
+        out, _ = zh.run(jd, timeout=3000)
+        X = b.finish_hang(out["V"] if hasattr(out, "keys") else out[0])
+        b.gate_lengths()
+        pickle.dump({"X": X, "M": pat.M, "bV": body.V, "bT": body.T, "reads": b.reads}, open(d / "final.pkl", "wb"))
+        _status(d, stage="done", reads=b.reads)
+    except ChainRefused as e:
+        _status(d, stage="refused", refused=str(e))
+    except Exception as e:  # (a crash is reported as one, with what it was doing)
+        import traceback
+        _status(d, stage="failed", error=f"{type(e).__name__}: {e}", trace=traceback.format_exc()[-1500:])
+
+
+def render_views(X, M, bV, bT, out: str, views=None, focus: str | None = None, size: int = 640, log=print) -> list:
+    """Sewn vertices joined, every piece facing outward. focus None: the whole figure, on the body; "neck": the collar
+    close, on the body; a piece's name: that piece ALONE, large, four sides. Returns [(view, path)]."""
+    from . import cloth, resources
+    X = np.asarray(X, float)
+    F = joined_faces(X, M, bV, bT)
+    names = list(M["names"])
+    pc = np.asarray(M["piece"])
+    cloth_part = {"name": "shirt", "V": X, "F": F, "color": "#a9c4e6"}
+    body_part = {"name": "body", "V": bV, "F": bT, "color": "#c4bcb4"}
+    if focus in names:
+        Fp = np.asarray(M["F"])[pc[np.asarray(M["F"])[:, 0]] == names.index(focus)]
+        ids = np.unique(Fp)
+        P = X[ids]
+        parts = [dict(cloth_part, F=joined_faces(X, M, bV, bT)[pc[np.asarray(M["F"])[:, 0]] == names.index(focus)])]
+        lo, hi = P.min(0), P.max(0)
+        c, r = 0.5 * (lo + hi), 0.55 * float((hi - lo).max()) + 0.005
+        box = [(c - r).tolist(), (c + r).tolist()]
+        views = views or [("front", [0, -1, 0.1]), ("back", [0, 1, 0.1]), ("left", [1, 0, 0.1]), ("right", [-1, 0, 0.1])]
+    elif focus == "neck":
+        z = float(X[pc == names.index(next(n for n in names if n in ("collar", "stand")) if any(n in names for n in ("collar", "stand")) else names[0]), 2].mean())
+        parts = [body_part, cloth_part]
+        box = [[-0.14, -0.2, z - 0.1], [0.14, 0.09, z + 0.09]]
+        views = views or [("front", [0, -1, 0.1]), ("three", [-0.6, -0.8, 0.15]), ("side", [-1, 0, 0.05]), ("back", [0, 1, 0.3])]
+    else:
+        parts = [body_part, cloth_part]
+        lo, hi = X.min(0), X.max(0)
+        box = [[lo[0] - 0.05, lo[1] - 0.05, lo[2] - 0.03], [hi[0] + 0.05, hi[1] + 0.05, float(np.asarray(bV)[:, 2].max()) + 0.02]]
+        views = views or [("front", [0, -1, 0.05]), ("three", [-0.6, -0.8, 0.1]), ("side", [-1, 0, 0.05]), ("back", [0, 1, 0.05])]
+    res = []
+    with resources.heavy(f"look chain {Path(out).name}", gb=3.0, gpu=True, log=log):
+        for nm, dv in views:
+            p = cloth.render(parts, f"{out}_{nm}", views=[{"name": nm, "dir": list(dv)}], resolution=size, box=box)[0]
+            res.append((nm, str(p)))
+    return res
+
+
+if __name__ == "__main__":
+    import sys
+    worker(sys.argv[1], sys.argv[2], json.loads(sys.argv[3]))

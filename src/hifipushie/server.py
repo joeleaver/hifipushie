@@ -42,9 +42,9 @@ plants, clutter) runs through call_tool(name, args): find_tool("what you want to
 parameters and an example call; find_tool("") lists every tool by domain. Domains have a guide topic (hair,
 cloth, cloth_reference, skin, human, block_in, likeness, terrain, vegetation, clutter): read it before working there.
 A person's head from pictures: the artist block-in (guide topic block_in) is the default.
-Clothes come from the pattern: design -> pattern_check (the flat gate; sims refuse without its PASS) -> fit_garment
-(on the form, no sim) -> judge clay + diag beside the reference -> a sim only as a wrinkle source -> game mesh. Never
-tune the solver, never close or hand-finish after a sim (measured: strain p99 4.7 % -> 66-74 %).
+Clothes: design_garment -> pattern_check (the flat gate) -> chain_garment (the only way a garment is started: built from
+the pattern's own lengths, then hung) -> look_chain beside the reference. Never tune anything: wear is the only choice; a
+fault is fixed on the pattern (alter_pattern) and re-checked. guide(topic="cloth").
 Judge every result beside its reference before forwarding it; reviews are review_view, ONE view per call. Tool texts
 end with "next:": do what it says. Traps: guide(topic="traps"). Terrain tools may return questions for the designer:
 ask them, don't answer them yourself.
@@ -140,7 +140,7 @@ TOOL_GROUPS: dict[str, dict] = {
     "scene": {"about": "the Blender scene (sync, pull) and the heavy-job queue",
               "tools": ["sync", "pull", "heavy_status", "heavy_queue"]},
     "export": {"about": "OBJ export, game-ready assets (GLB/FBX, PBR maps), the export rig, judging a GLB",
-               "tools": ["export", "export_asset", "rig", "judge_asset", "game_garment"]},
+               "tools": ["export", "export_asset", "rig", "judge_asset"]},
     "human": {"about": "realistic humans: the base body, the artist block-in of a head from pictures (the default), "
                        "measurements, fits, skin",
               "tools": ["human", "measure_human", "fit_human", "nudge_human", "human_reference", "block_in_start",
@@ -150,17 +150,13 @@ TOOL_GROUPS: dict[str, dict] = {
                  "tools": ["likeness", "fit_likeness", "likeness_points", "character_read", "project_reference",
                            "texture_from_reference", "reference_brief", "check_references"]},
     "hair": {"about": "hair as curve locks: groom, look, reference, export", "tools": ["groom_hair", "tie_hair", "look_hair", "hair_reference", "hair_from_reference", "export_hair"]},
-    "cloth": {"workflow": "Clothes come from the pattern: design_garment -> pattern_check (the flat gate; sims refuse "
-                          "without its PASS) -> fit_garment (on the form, no sim) -> judge clay + diag beside the "
-                          "reference -> a sim (dress) only as a wrinkle source -> game mesh",
+    "cloth": {"workflow": "Clothes: design_garment -> pattern_check (the flat gate) -> chain_garment (the only way a garment "
+                          "is started) -> look_chain beside the reference; a fault is fixed on the pattern (alter_pattern)",
               # the workflow's order (find_tool ranks a matched domain's early steps first)
-              "steps": ["design_garment", "pattern_check", "fit_garment", "style_garment", "check_garment",
-                        "look_cloth", "dress"],
-              "about": "garments: design, pattern, the pattern gate, alterations, fit on the form, dress (sim), "
-                       "references",
-              "tools": ["design_garment", "look_pattern", "alter_pattern", "pattern_check", "fit_garment", "style_garment", "release_garment", "arrange_garment",
-                        "check_garment", "dress", "look_cloth", "garment_reference",
-                        "garment_from_reference", "check_garment_reference", "garment_reference_brief"]},
+              "steps": ["design_garment", "pattern_check", "chain_garment", "look_chain"],
+              "about": "garments: design, pattern, the pattern gate, alterations, the chain build (the only start), references",
+              "tools": ["design_garment", "look_pattern", "alter_pattern", "pattern_check", "chain_garment", "look_chain",
+                        "garment_reference", "garment_from_reference", "garment_reference_brief"]},
     "terrain": {"about": "terrain and game levels (height fields in a level designer's words)",
                 "tools": ["set_terrain", "check_terrain", "look_terrain", "export_terrain", "terrain_history"]},
     "plants": {"about": "trees and plants (grown, measured, exported), stands of them, wind",
@@ -217,9 +213,39 @@ def enable_all() -> list[str]:
     return added
 
 
+# THE ONE PATH (Joe 2026-11-01: "that should be the only path available to the agent for starting clothing"). These tools
+# start or continue a garment the old way (fit on the form, styling a fit, a sim, what reads their results). They stay
+# plain Python for the library and its tests; the MCP layer doesn't offer them: not listed, not found, not callable, their
+# guide sections hidden. HIFIPUSHIE_LEGACY_CLOTH=1 in the server's environment restores all of it (C262).
+GATED_CLOTH = ("fit_garment", "style_garment", "release_garment", "arrange_garment", "dress", "look_cloth", "check_garment",
+               "check_garment_reference", "game_garment")
+LEGACY_CLOTH = os.environ.get("HIFIPUSHIE_LEGACY_CLOTH") == "1"
+_GATED: dict[str, tuple] = {}
+
+
+def _gate_cloth():
+    if LEGACY_CLOTH:
+        TOOL_GROUPS["cloth"]["tools"] = TOOL_GROUPS["cloth"]["tools"] + [t for t in GATED_CLOTH if t != "game_garment"]
+        TOOL_GROUPS["export"]["tools"] = TOOL_GROUPS["export"]["tools"] + ["game_garment"]
+        return
+    for t in GATED_CLOTH:
+        if t in _TOOLS:
+            _GATED[t] = _TOOLS.pop(t)
+
+
+def _gated_paragraphs(text: str) -> str:
+    """A guide text without the paragraphs about the gated routes."""
+    if LEGACY_CLOTH:
+        return text
+    import re
+    pat = re.compile(r"\b(" + "|".join(GATED_CLOTH) + r")\b|\bsims?\b|\bdress\(|\bon_form\b|on the form|dress form", re.I)
+    return "\n\n".join(p for p in text.split("\n\n") if not pat.search(p))
+
+
 def _register_core():
     """Called once all tools are defined: register the core natively; the rest stay reachable via call_tool."""
     global _STARTED
+    _gate_cloth()
     for t in CORE:
         _register(t)
     _STARTED = True
@@ -548,6 +574,9 @@ async def call_tool(name: str, args: dict | None = None, ctx: Context | None = N
     has its full text. Unknown, missing or mistyped args: an error naming the parameters it expects."""
     import difflib
     from pydantic import ValidationError
+    if name in _GATED:
+        raise ValueError(f"{name} is not available: garments start with chain_garment (design_garment -> pattern_check -> "
+                         "chain_garment -> look_chain); find_tool(\"make a garment\") shows the steps")
     if name not in _TOOLS or name == "call_tool":
         near = difflib.get_close_matches(name, list(_TOOLS), n=3)
         raise ValueError(f"no tool {name!r}" + (f" (did you mean {', '.join(near)}?)" if near else "")
@@ -3314,6 +3343,152 @@ def style_garment(name: str, garment: str, ops: list[dict], free: list[str] | No
         nxt = ("judge clay + diag beside the reference, one view per review_view; too far or not far enough = change "
                "the direction or what is held, never pin a handle at a coordinate; ripples left = a smooth op")
     return [_out(im, _save_suffix(save, tag)) for tag, im in ims] + ["\n".join(lines) + f"\nnext: {nxt}"]
+
+
+def _chain_gate(name: str, garment: str, spec: dict) -> str | None:
+    """None when the garment may be built; else the refusal, naming the next step."""
+    from . import cloth, cloth_check as cc, pattern_form
+    if garment not in (spec.get("cloth") or {}):
+        return (f"no garment {garment!r} on {name} (have {', '.join(spec.get('cloth') or {}) or 'none'}).\nnext: "
+                f"call_tool(\"design_garment\", {{\"name\": \"{name}\", \"garment\": \"{garment}\", \"design\": {{...}}}})")
+    g = json.loads(json.dumps(spec["cloth"][garment]))
+    g["mesh_refine"] = pattern_form.form_refine(g)
+    src, _ = pattern_form.form_source(name, garment, spec, g)
+    res = cloth.build(cloth._garment_for_sim(g), src, f"{name}:{garment}", log=lambda *_: None, place_only=True)
+    st = cc.gate_status(name, garment, spec, res=res)
+    if not st["passed"]:
+        return (f"{garment}: not built: {st['why']}\nnext: call_tool(\"pattern_check\", {{\"name\": \"{name}\", \"garment\": "
+                f"\"{garment}\"}}), fix its rows on the pattern, then chain_garment again")
+    return None
+
+
+def _chain_text(st: dict) -> str:
+    r = st.get("reads") or {}
+    c = r.get("chains") or {}
+    t = r.get("threads") or {}
+    lines = []
+    if c:
+        lines.append(f"  chains: {c.get('links')} links; free worst {c.get('free_worst_pct')} % ({c.get('free_worst_line')}), p99 "
+                     f"{c.get('free_p99_pct')} %; {c.get('gathered_links')} gathered into stiff parts (held longest over "
+                     f"{c.get('held_longest_over_pct')} %)")
+    if t:
+        lines.append(f"  threads (warp / weft): p99 {t.get('p99_pct')} %, max {t.get('max_pct')} %, {t.get('over_cap')} of {t.get('faces')} faces past the cap")
+    if "seam_gap_mm" in r:
+        lines.append(f"  seams: largest gap {r['seam_gap_mm']} mm; pattern truing {r.get('seam_truing')}")
+    if r.get("band"):
+        lines.append(f"  band: {r['band']}")
+    if r.get("band_open"):
+        lines.append(f"  band open: {r['band_open']}")
+    if r.get("plackets"):
+        lines.append(f"  plackets: {r['plackets']}")
+    if r.get("rings"):
+        lines.append(f"  rings: {r['rings']}")
+    if r.get("hang_moved_mm"):
+        lines.append(f"  hang: moved {r['hang_moved_mm']}; before the last lengths {r.get('after_hang_before_lengths')}")
+    return "\n".join(lines)
+
+
+@mcp.tool(structured_output=False)
+def chain_garment(name: str, garment: str, wear: str = "closed", opening: float | None = None):
+    """START A GARMENT: the only way. Builds it from its pattern and the body as chains of the pattern's own lengths (only
+    bends are free; stiff parts first, soft cloth hung from them), then hangs the soft cloth. No fit is read, nothing is
+    tuned. wear: "closed" (top button done) or "open" (top button undone); opening: only with wear "open", how far the collar
+    opens: the collar points this many neck widths apart (default 1.7, 1.2..2.2). Refuses until pattern_check passes; refuses by
+    piece and line if a length can't hold. Returns the build's numbers in about a minute while the hang runs on (5-10 min);
+    next: look_chain. Details: guide(topic="chain_garment")."""
+    import subprocess
+    import sys
+    import time as _t
+    from . import chain_garment as cg
+    if wear not in ("closed", "open"):
+        raise ValueError(f"wear {wear!r}: \"closed\" or \"open\"")
+    if opening is not None and wear != "open":
+        raise ValueError("opening is how far an open collar opens: only with wear=\"open\"")
+    if opening is not None and not 1.0 <= float(opening) <= 2.6:
+        raise ValueError(f"opening {opening}: collar points apart in neck widths, 1.0 .. 2.6 (default 1.7)")
+    spec = store.load(name)
+    refused = _chain_gate(name, garment, spec)
+    if refused:
+        return refused
+    d = cg.job_dir(name, garment, wear)
+    st0 = cg.status(d)
+    if st0.get("stage") in ("building", "built", "hanging") and _t.time() - float(st0.get("t0", 0)) < 3600:
+        return (f"{name}:{garment} ({wear}) is already at stage {st0['stage']}.\nnext: call_tool(\"look_chain\", "
+                f"{{\"name\": \"{name}\", \"garment\": \"{garment}\", \"wear\": \"{wear}\"}})")
+    for f in ("status.json", "built.pkl", "final.pkl"):
+        (d / f).unlink(missing_ok=True)
+    w = {"state": wear}
+    if opening is not None:
+        w["spread"] = float(opening)
+    cmd = [sys.executable, "-m", "hifipushie.chain_garment", name, garment, json.dumps(w)]
+    capped = "/mnt/data/hifipushie/bin/capped"
+    cmd = ([capped] if os.path.exists(capped) else []) + cmd
+    subprocess.Popen(cmd, stdout=open(d / "worker.log", "w"), stderr=subprocess.STDOUT, start_new_session=True,
+                     env=dict(os.environ, HIFIPUSHIE_HOME=str(store.HOME)))
+    t0 = _t.time()
+    st = {}
+    while _t.time() - t0 < 300:
+        st = cg.status(d)
+        if st.get("stage") in ("built", "hanging", "done", "refused", "failed"):
+            break
+        _t.sleep(2)
+    return _chain_answer(name, garment, wear, st)
+
+
+def _chain_answer(name: str, garment: str, wear: str, st: dict) -> str:
+    look = f"call_tool(\"look_chain\", {{\"name\": \"{name}\", \"garment\": \"{garment}\", \"wear\": \"{wear}\"}})"
+    stage = st.get("stage", "building")
+    if stage == "refused":
+        return f"{name}:{garment} ({wear}): refused: {st.get('refused')}"
+    if stage == "failed":
+        return (f"{name}:{garment} ({wear}): the build failed: {st.get('error')}\nnext: report this to the coordinator as a tool "
+                "fault, with the text above; don't work round it")
+    head = {"building": "still building", "built": "built; the hang is starting", "hanging": "built; the hang is running (5-10 min)",
+            "done": "built and hung"}.get(stage, stage)
+    return f"{name}:{garment} ({wear}): {head}\n{_chain_text(st)}\nnext: {look}" + (
+        " (it shows the build now, the hang when it ends)" if stage != "done" else " beside your reference; review_view one view per call")
+
+
+@mcp.tool(structured_output=False)
+def look_chain(name: str, garment: str, wear: str = "closed", focus: str | None = None, size: int = 640,
+               reference: str | None = None, save: str | None = None):
+    """Look at a chain_garment result: the hung garment when the hang has ended, else the build (said in the text). focus:
+    none = the whole figure on the body (front, three, side, back); "neck" = the collar close, on the body; a piece's name
+    (collar, stand, cuff.L, ...) = that piece ALONE, large, four sides. reference: a picture's path, shown beside each view.
+    Returns the views + numbers. Details: guide(topic="look_chain")."""
+    import pickle
+    from . import chain_garment as cg
+    if wear not in ("closed", "open"):
+        raise ValueError(f"wear {wear!r}: \"closed\" or \"open\"")
+    d = cg.job_dir(name, garment, wear)
+    st = cg.status(d)
+    if not st:
+        return f"no chain build of {garment} ({wear}).\nnext: call_tool(\"chain_garment\", {{\"name\": \"{name}\", \"garment\": \"{garment}\", \"wear\": \"{wear}\"}})"
+    src = d / "final.pkl" if (d / "final.pkl").exists() else (d / "built.pkl" if (d / "built.pkl").exists() else None)
+    if src is None:
+        return _chain_answer(name, garment, wear, st)
+    r = pickle.load(open(src, "rb"))
+    names = list(r["M"]["names"])
+    if focus is not None and focus != "neck" and focus not in names:
+        raise ValueError(f"focus {focus!r}: \"neck\" or a piece: {', '.join(names)}")
+    tag = f"{garment}_{wear}" + (f"_{focus}" if focus else "")
+    paths = cg.render_views(r["X"], r["M"], r["bV"], r["bT"], str(d / tag), focus=focus, size=size)
+    ims = []
+    refim = PILImage.open(reference).convert("RGB") if reference else None
+    for nm, p in paths:
+        im = PILImage.open(p).convert("RGB")
+        if refim is not None:
+            h = im.size[1]
+            rr = refim.resize((int(refim.size[0] * h / refim.size[1]), h))
+            sh = PILImage.new("RGB", (rr.size[0] + im.size[0] + 6, h), "white")
+            sh.paste(rr, (0, 0))
+            sh.paste(im, (rr.size[0] + 6, 0))
+            im = sh
+        ims.append(_out(im, _save_suffix(save, nm) if save else None))
+    txt = _chain_answer(name, garment, wear, st).split("\nnext:")[0]
+    return ims + [txt + f"\n  views: {', '.join(p for _, p in paths)}\nnext: judge beside your reference (review_view, one view per "
+                  "call); a fault: fix it on the pattern (alter_pattern), pattern_check, chain_garment again; close views: focus=\"neck\" or a "
+                  "piece's name"]
 
 
 @mcp.tool(structured_output=False)
