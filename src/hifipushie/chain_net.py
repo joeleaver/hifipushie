@@ -161,7 +161,10 @@ class Network:
         out = []
         for f in self.M.get("folds") or []:
             for row in f.get("rows") or []:
-                out.append((f, np.asarray(row, np.int64)))
+                r = np.unique(np.asarray(row, np.int64))
+                P = self.uv[r] - self.uv[r].mean(0)
+                ax = np.linalg.svd(P, full_matrices=False)[2][0]  # a fold line runs one way: ordered along it
+                out.append((f, r[np.argsort(P @ ax)]))
         return out
 
     def _chain_links(self):
@@ -325,13 +328,13 @@ def mirror_map(net: Network, pairs=(), solo=()) -> np.ndarray:
 class Threads:
     """Thread stretch of soft faces: each face's warp and weft columns of the deformation gradient, for project()."""
 
-    def __init__(self, uv, F, cap: float):
+    def __init__(self, uv, F, cap: float, root=None):
         uv, self.F = np.asarray(uv, float), np.asarray(F, np.int64)
         a, b, c = uv[self.F[:, 0]], uv[self.F[:, 1]], uv[self.F[:, 2]]
         e1, e2 = b - a, c - a
         det = e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0]
         ok = np.abs(det) > 1e-12
-        self.F = self.F[ok]
+        self.F = (self.F if root is None else np.asarray(root)[self.F])[ok]
         e1, e2, det = e1[ok], e2[ok], det[ok]
         # dX/du = g[:, 1] (X1 - X0) + g[:, 2] (X2 - X0), etc.: the shape gradients of the three corners
         gu = np.c_[-(e2[:, 1] - e1[:, 1]), e2[:, 1], -e1[:, 1]] / det[:, None]
@@ -355,7 +358,7 @@ def _solve(J, C, eps):
     m = J.shape[0]
     A = (J @ J.T + eps * sp.identity(m, format="csr")).tocsc()
     try:
-        lam = splu(A, permc_spec="MMD_AT_PLUS_A", options={"SymmetricMode": True}).solve(C)
+        lam = splu(A, permc_spec="MMD_AT_PLUS_A", diag_pivot_thresh=0.0, options={"SymmetricMode": True}).solve(C)
     except RuntimeError:  # (singular: heavier regularisation; the outer loop keeps its measure)
         lam = splu((J @ J.T + 1e3 * eps * sp.identity(m, format="csr")).tocsc()).solve(C)
     return J.T @ lam
@@ -463,24 +466,40 @@ def project(X, i, j, L, exact, held=None, contacts=(), threads=None, iters: int 
             break
         J = sp.coo_matrix((np.concatenate(Vals), (np.concatenate(Rows), np.concatenate(Cols))), shape=(m, 3 * nf)).tocsr()
         C_all = np.concatenate(Cs)
-        dx = -_solve(J, C_all, eps).reshape(-1, 3)
-        big = float(np.linalg.norm(dx, axis=1).max())
-        if big > step:
-            dx *= step / big
-        # a line search on the links' own error: a linearised step on short links can overshoot (a rotating 2 mm link)
 
         def merit(Y):
             d_ = np.linalg.norm(Y[j] - Y[i], axis=1) - L
             d_ = np.where(exact, d_, np.maximum(d_, 0))
-            return float(np.sum(d_[~both_held] ** 2))
+            tot = float(np.sum(d_[~both_held] ** 2))
+            for ct, ids, gap in contacts:
+                ids = np.asarray(ids, np.int64)
+                mv_ = ~held[ids]
+                sd_ = ct.query(Y[ids[mv_]])[0]
+                g_ = float(gap) if np.ndim(gap) == 0 else np.asarray(gap, float)[mv_]
+                tot += float(np.sum(np.minimum(sd_ - g_, 0) ** 2))
+            if threads is not None:
+                tot += float(np.sum(np.maximum(threads.stretch(Y)[0] - threads.cap, 0) ** 2)) * 1e-4
+            return tot
         m0 = merit(X)
-        s = 1.0
-        for _ in range(7):
-            Y = X.copy()
-            Y[~held] += s * dx
-            if merit(Y) <= m0 or m0 < 1e-14:
+        # Levenberg: damping rises when a linearised step overshoots (short links rotate), falls when it is taken
+        Y = X
+        for tr in range(6):
+            dx = -_solve(J, C_all, eps).reshape(-1, 3)
+            nd = np.linalg.norm(dx, axis=1)
+            dx *= np.minimum(1.0, step / np.maximum(nd, 1e-12))[:, None]  # (each point's own cap: one far point can't freeze the rest)
+            done = False
+            for s in (1.0, 0.5, 0.25):
+                Y = X.copy()
+                Y[~held] += s * dx
+                if merit(Y) < m0:
+                    done = True
+                    break
+            if done:
+                eps = max(eps * (0.5 if s == 1.0 else 2.0), 1e-7)
                 break
-            s *= 0.5
+            eps = min(eps * 16, 1.0)
+        if not done:
+            break
         X = Y
     return X, read
 
@@ -628,16 +647,21 @@ class BendSolve:
         return X
 
 
-def fill(Xref, X, known, uv, F, ids=None):
+def fill(Xref, X, known, uv, F, ids=None, root=None):
     """Surfaces between fixed chains: the displacement of the known vertices carried over the pattern mesh by a Laplace
-    solve (edge weights 1 / flat length), added to the reference shape. known: bool per vertex. F: faces to fill over."""
-    from scipy.sparse.linalg import spsolve
+    solve (edge weights 1 / flat length), added to the reference shape. known: bool per vertex. F: faces to fill over.
+    root: sewn groups fill as one point (pieces then carry the displacement across their seams)."""
     F = np.asarray(F, np.int64)
+    e = edges_of(F)
+    w = 1.0 / np.maximum(np.linalg.norm(uv[e[:, 0]] - uv[e[:, 1]], axis=1), 1e-5)
+    if root is not None:
+        e = np.asarray(root)[e]
+        k = e[:, 0] != e[:, 1]
+        e, w = e[k], w[k]
+        ids = np.unique(e) if ids is None else ids
     ids = np.unique(F) if ids is None else np.asarray(ids, np.int64)
     li = -np.ones(len(X), np.int64)
     li[ids] = np.arange(len(ids))
-    e = edges_of(F)
-    w = 1.0 / np.maximum(np.linalg.norm(uv[e[:, 0]] - uv[e[:, 1]], axis=1), 1e-5)
     a, b = li[e[:, 0]], li[e[:, 1]]
     n = len(ids)
     Lm = sp.coo_matrix((np.r_[w, w], (np.r_[a, b], np.r_[b, a])), shape=(n, n)).tocsr()

@@ -46,6 +46,7 @@ from .chain_net import BendSolve, Contact, Network, Threads, project, unit
 PATTERN_KEYS = ("uv", "piece", "names", "F", "folds", "made", "grain", "sew", "sew_seam", "stitch", "marks", "closures",
                 "points", "border", "stitch_lines")
 GAP = 0.0045  # m: soft cloth and stiff parts stay this far off the body (ZOZO's reach + a mesh edge's sag over an arm)
+RING_GAP = 0.003  # m: a stiff ring off a limb (ZOZO's reach): it hangs loose, so its gap is the solver's, no more
 LAYER = 0.003  # m: one layer of cloth over another (the fall over the shirt, the over placket over the under)
 FALL_GAP = GAP + LAYER + 0.002  # the fall rests on the soft cloth under it
 REST = 0.1  # weight of the light rest pull (contact itself is 5)
@@ -716,6 +717,11 @@ class Build:
         self.reads["stiff_s"] = round(time.time() - t0, 1)
 
 
+def zozo_legal() -> float:
+    """The nearest a cloth point may start to the collider (ZOZO's contact offset + a hair)."""
+    return 0.0021
+
+
 def _keep_roots(net, X):
     return np.asarray(X, float)[net.root]
 
@@ -734,3 +740,559 @@ def _neighbours(F) -> dict:
         nb.setdefault(int(a), []).append(int(b))
         nb.setdefault(int(b), []).append(int(a))
     return nb
+
+
+class TorsoRings:
+    """Garment-sized rings per height: the torso's convex section (arms left out, so hollows are bridged), offset until
+    its perimeter is the pattern's own width at that height. index 0 = centre front, going towards +X."""
+    DZ, NS = 0.01, 720
+
+    def __init__(self, body: Body, width_of, gap: float):
+        V, at = body.V, body.at
+        self.hz = float(body.p("hps.L")[2])
+        self.z0 = float(at["crotch_z"]) - 0.2
+        sx = abs(float(body.p("shoulder.L")[0]))
+        self.armpit = float(at["armpit_z"])
+        zs = np.arange(self.z0, self.hz + 0.03, self.DZ)
+        hulls, t = [], []
+        last = None
+        tpit = None
+        for z in zs[::-1] * 0 + zs:  # bottom up
+            # (arms left out: they leave the torso downwards at an angle; the hands hang wide of the hips)
+            lim = sx if z >= self.armpit + 0.03 else min(0.83 * sx + max(self.armpit - 0.03 - z, 0.0) * 0.4, 1.25 * sx)
+            s = V[(np.abs(V[:, 2] - z) < 0.012) & (np.abs(V[:, 0]) < lim), :2]
+            if len(s) >= 6:
+                s = np.r_[s, s * [-1, 1]]
+                h = s[ConvexHull(s).vertices]
+                last = h
+            hulls.append(last)
+            need = width_of(z - self.hz)
+            per = float(np.linalg.norm(np.diff(np.r_[last, last[:1]], axis=0), axis=1).sum()) if last is not None else 0.0
+            tk = (need - per) / (2 * math.pi) if need else None
+            if z <= self.armpit and tk is not None:
+                tpit = tk
+            t.append(max(gap + 0.002, tk if (z <= self.armpit and tk is not None) else (tpit if tpit is not None else gap + 0.002)))
+        first = next(h for h in hulls if h is not None)
+        hulls = [first if h is None else h for h in hulls]
+        self.t = np.array(t)
+        from scipy.ndimage import gaussian_filter1d
+        self.t = gaussian_filter1d(self.t, 3, mode="nearest")
+        self.R, self.P = [], []
+        for h, tt in zip(hulls, self.t):
+            e = np.diff(np.r_[h[-1:], h, h[:1]], axis=0)
+            n = unit(np.c_[e[:, 1], -e[:, 0]])
+            nv = unit(n[:-1] + n[1:])
+            Q = h + nv * tt
+            Q = np.r_[Q, Q[:1]]
+            s = np.r_[0, np.cumsum(np.linalg.norm(np.diff(Q, axis=0), axis=1))]
+            q = np.linspace(0, s[-1], self.NS, endpoint=False)
+            P = np.c_[np.interp(q, s, Q[:, 0]), np.interp(q, s, Q[:, 1])]
+            cy = P[:, 1].mean()
+            k = int(np.argmin(np.abs(P[:, 0]) + 10 * (P[:, 1] > cy)))
+            self.R.append(np.roll(P, -k, axis=0))
+            self.P.append(float(s[-1]))
+        self.R, self.P = np.array(self.R), np.array(self.P)
+
+    def at_x(self, x, z, back: bool):
+        """Point on the front (or back) half of the ring at height z whose X is x (above the armpit the cloth runs flat
+        across the chest and back to the armhole; arc length would carry it round the side)."""
+        z = np.clip(np.asarray(z, float), self.z0, self.z0 + self.DZ * (len(self.R) - 1.001))
+        fk = (z - self.z0) / self.DZ
+        k = fk.astype(int)
+        out = np.zeros((len(z), 3))
+        out[:, 2] = z
+        for ki in np.unique(np.r_[k, k + 1]):
+            Rg = self.R[ki]
+            n = self.NS // 2
+            half = Rg[: n + 1]  # centre front -> +X side -> centre back
+            top = int(np.argmax(half[:, 0]))
+            hx, hy = (half[top:, 0], half[top:, 1]) if back else (half[: top + 1, 0], half[: top + 1, 1])
+            o = np.argsort(hx)
+            for m_, wgt in ((k == ki, 1 - (fk - k)), (k + 1 == ki, fk - k)):
+                if m_.any():
+                    ax_ = np.abs(np.asarray(x, float)[m_])
+                    out[m_, 0] += wgt[m_] * np.sign(np.asarray(x, float)[m_]) * np.minimum(ax_, hx[o][-1])
+                    out[m_, 1] += wgt[m_] * np.interp(ax_, hx[o], hy[o])
+        return out
+
+    def at(self, s, z, half_back=None):
+        """Point(s) at arc s from centre front (+ towards +X); half_back: s counted from centre back instead (s = x)."""
+        z = np.clip(np.asarray(z, float), self.z0, self.z0 + self.DZ * (len(self.R) - 1.001))
+        fk = (z - self.z0) / self.DZ
+        k = fk.astype(int)
+        f = (fk - k)[:, None]
+
+        def on(ki):
+            per = self.P[ki]
+            sv = np.asarray(s, float) if half_back is None else per / 2 - np.asarray(s, float)
+            a = (sv / per % 1.0) * self.NS
+            i = a.astype(int) % self.NS
+            g = (a - np.floor(a))[:, None]
+            return self.R[ki, i] * (1 - g) + self.R[ki, (i + 1) % self.NS] * g
+        xy = on(k) * (1 - f) + on(k + 1) * f
+        return np.c_[xy, z]
+
+
+class LimbAxis:
+    """A limb's smooth axis from the body's shoulder, elbow and wrist, with a frame: o (outer side), f (front side)."""
+
+    def __init__(self, body: Body, side: float):
+        from scipy.ndimage import gaussian_filter1d
+        m = np.array([side, 1, 1])
+        S, E, W = body.p("shoulder.L") * m, body.p("elbow.L") * m, body.p("wrist.L") * m
+        # (the landmark is the shoulder's surface; the axis runs inside the arm, its radius under it)
+        S = S - side * unit(np.cross(unit(E - S), [0, 1.0, 0])) * 0.2 * abs(S[0])
+        d = unit(W - E)
+        P = np.array([S - unit(E - S) * 0.15, S, E, W, W + d * 0.2])
+        s0 = np.r_[0, np.cumsum(np.linalg.norm(np.diff(P, axis=0), axis=1))]
+        q = np.arange(0, s0[-1], 0.002)
+        C = np.column_stack([np.interp(q, s0, P[:, k]) for k in range(3)])
+        C = gaussian_filter1d(C, 18, axis=0, mode="nearest")
+        s = np.r_[0, np.cumsum(np.linalg.norm(np.diff(C, axis=0), axis=1))]
+        # s measured from the shoulder point
+        self.s = s - s[int(np.argmin(np.linalg.norm(C - S, axis=1)))]
+        self.C = C
+        self.d = unit(np.gradient(C, axis=0))
+        self.o = side * unit(np.cross(self.d, [0, 1.0, 0]))
+        f = unit(np.cross(self.o, self.d))
+        self.f = f * np.sign(-(f[:, 1]).mean())
+        self.wrist = float(self.s[int(np.argmin(np.linalg.norm(C - W, axis=1)))])
+
+    def at(self, s):
+        s = np.asarray(s, float)
+        g = lambda A: np.column_stack([np.interp(s, self.s, A[:, k]) for k in range(3)])
+        return g(self.C), unit(g(self.o)), unit(g(self.f)), unit(g(self.d))
+
+
+class GarmentBuild(Build):
+    """All stages. run() -> self.X (the chain build, before the hang)."""
+
+    # ---- which cloth
+    def _stiff_mask(self):
+        net, R = self.net, self.roles
+        whole = [p for p in (R.band, R.fall) if p] + list(R.rings)
+        m = np.isin(net.piece, [net.pid(p) for p in whole])
+        return m
+
+    def _front_panels(self):
+        R = self.roles
+        return [p for p in (R.front or {}).values() if isinstance(p, str) and p in R.panels] if R.front else []
+
+    def _width_of(self):
+        """The garment's whole width at a flat height y (below the armhole): twice (front half + back half)."""
+        net, R = self.net, self.roles
+        uv = net.uv
+        fr = [p for p in R.panels if hand_of(p) > 0 and (not R.front or p in (R.front["over"], R.front["under"]))]
+        bk = [p for p in R.panels if hand_of(p) == 0]
+
+        def w(y):
+            out = 0.0
+            for group in (fr, bk):
+                best = 0.0
+                for p in group:
+                    v = net.verts(p)
+                    s = v[np.abs(uv[v, 1] - y) < 0.012]
+                    if len(s):
+                        best = max(best, float(np.abs(uv[s, 0]).max()))
+                out += best
+            return 2 * out
+        return w
+
+    # ---- 3. rings
+    def rings(self):
+        net, R = self.net, self.roles
+        self.axes = {}
+        self.reads["rings"] = {}
+        for ring in R.rings:
+            side = hand_of(ring)
+            if side == 0:
+                raise ChainRefused(f"{ring}: a ring not worn on a limb (a waistband?) has no chain build yet. next: tell the "
+                                   "coordinator; don't fit it another way")
+            tube = next((t for t in R.tubes if self.sewn_with(ring, t)), None)
+            if tube is None:
+                raise ChainRefused(f"{ring}: sewn to no tube piece. next: check its seams (pattern_check)")
+            ax = self.axes.setdefault(side, LimbAxis(self.body, side))
+            sew_ = self.sewn_with(ring, tube)
+            rv = net.verts(ring)
+            cl = next((c for c in net.M.get("closures") or [] if c["over"] == ring), None)
+            if cl is None:
+                raise ChainRefused(f"{ring}: no closure of its own: a ring closes on a button. next: add it to the pattern")
+            u = net.uv[rv]
+            a, b = cl["v"][0]
+            C = abs(float(net.uv[a, 0] - net.uv[b, 0]))
+            y0 = float(np.mean([net.uv[v, 1] for v in sew_]))
+            r = C / (2 * math.pi)
+            tv = net.verts(tube)
+            Lt = float(net.uv[tv, 1].max() - net.uv[tv, 1].min())
+            ub = float(net.uv[b, 0])
+            s_end = Lt
+            sw = list(sew_.items())
+            bestphase = None
+            T_ = self.body.T
+            V = np.r_[self.body.V, self.body.V[T_].mean(1), self.body.V[T_[:, [0, 1]]].mean(1), self.body.V[T_[:, [1, 2]]].mean(1),
+                      self.body.V[T_[:, [2, 0]]].mean(1)]  # (the surface, not only its vertices)
+            hgt_ = float(np.ptp(u[:, 1]))
+            W_ = float(np.ptp(u[:, 0]))
+            vf = np.abs(u[:, 1] - y0) / hgt_
+            ug = RING_GAP * 2 * math.pi
+
+            def section(s_mid, half):
+                """The limb's convex section over a stretch of the axis, in the frame at s_mid."""
+                c0, o0, f0, d0 = (q[0] for q in ax.at(np.array([s_mid])))
+                rel = V - c0
+                nr = (np.abs(rel @ d0) < half) & (np.linalg.norm(rel, axis=1) < 0.09)
+                if nr.sum() < 6:
+                    return None
+                q = np.c_[rel[nr] @ o0, rel[nr] @ f0]
+                return q[ConvexHull(q).vertices]
+
+            def ring_at(h, per_want, fr):
+                per = float(np.linalg.norm(np.diff(np.r_[h, h[:1]], axis=0), axis=1).sum())
+                t = (per_want - per) / (2 * math.pi)
+                e = np.diff(np.r_[h[-1:], h, h[:1]], axis=0)
+                nn = unit(np.c_[e[:, 1], -e[:, 0]])
+                Q = h + unit(nn[:-1] + nn[1:]) * t
+                Q = np.roll(Q, -int(np.argmin(np.abs(np.arctan2(Q[:, 1], Q[:, 0])))), axis=0)  # (every section starts on the same side)
+                Q = np.r_[Q, Q[:1]]
+                sa = np.r_[0, np.cumsum(np.linalg.norm(np.diff(Q, axis=0), axis=1))]
+                sq = (fr % 1.0) * sa[-1]
+                return np.c_[np.interp(sq, sa, Q[:, 0]), np.interp(sq, sa, Q[:, 1])]
+
+            def perim(h):
+                return float(np.linalg.norm(np.diff(np.r_[h, h[:1]], axis=0), axis=1).sum())
+            best = None
+            for k in range(40):  # the ring's shape: the limb's own sections, each at the ring's own closed length; a
+                # buttoned cuff flares towards its seam (one button: the overlap opens there), never past the cut width
+                P = None
+                h0, h1 = section(s_end + 0.25 * hgt_, 0.25 * hgt_ + 0.002), section(s_end + 0.75 * hgt_, 0.25 * hgt_ + 0.002)
+                if h0 is not None and h1 is not None:
+                    C0, C1 = max(C, perim(h0) + ug), max(C, perim(h1) + ug)
+                    if C0 <= W_ and C1 <= W_:
+                        Cv = C0 + (C1 - C0) * vf
+                        if bestphase is None:  # the ring turned to meet its tube: the sewn points at their own angles
+                            rvid = {int(q): i for i, q in enumerate(rv)}
+                            ti = np.array([rvid[q] for q, _ in sw])
+                            tp = self._tube_points(tube, np.array([q for _, q in sw]), s_end)
+                            Cc0, o0_, f0_, _d = ax.at(np.full(len(sw), s_end))
+                            ang_t = np.arctan2(((tp - Cc0) * f0_).sum(1), ((tp - Cc0) * o0_).sum(1))
+                            bc = None
+                            for dn in (1.0, -1.0):
+                                for ph_ in np.linspace(0, 1, 48, endpoint=False):
+                                    frs = dn * (u[ti, 0] - ub) / Cv[ti] + ph_
+                                    pr = ring_at(h0, C0, frs)
+                                    ang_r = np.arctan2(pr[:, 1], pr[:, 0])
+                                    cost = float((1 - np.cos(ang_r - ang_t)).sum())
+                                    if bc is None or cost < bc[0]:
+                                        bc = (cost, dn, ph_)
+                            bestphase = bc[1:]
+                        fr = bestphase[0] * (u[:, 0] - ub) / Cv + bestphase[1]
+                        p0, p1 = ring_at(h0, C0, fr), ring_at(h1, C1, fr)
+                        pp = p0 + (p1 - p0) * vf[:, None]
+                        lap = LAYER * np.clip(bestphase[0] * (u[:, 0] - ub) / Cv, 0, 1)
+                        rad = unit(pp - pp.mean(0))
+                        pp = pp + rad * lap[:, None]
+                        Cc, o, f, d = ax.at(s_end + 0.5 * hgt_ * np.ones(len(u)))
+                        Cc2 = Cc + d * ((np.abs(u[:, 1] - y0) - 0.5 * hgt_))[:, None]
+                        P = Cc2 + o * pp[:, 0:1] + f * pp[:, 1:2]
+                        sdm = float(self.body.contact.query(P)[0].min())
+                        if best is None or sdm > best[0]:
+                            best = (sdm, P, s_end, C0, C1)
+                        if sdm >= RING_GAP:
+                            break
+                s_end -= 0.005
+            P = None
+            if best is not None and best[0] >= zozo_legal():
+                _, P, s_end, C0, C1 = best
+                self.reads.setdefault("ring_closed_at", {})[ring] = {"mm": [round(C0 * 1e3, 1), round(C * 1e3, 1), round(C1 * 1e3, 1)], "gap_mm": round(best[0] * 1e3, 2)}
+            if P is None:
+                raise ChainRefused(f"{ring}: closed length {C * 1e3:.0f} mm does not clear the limb anywhere up the {tube}. "
+                                   "next: lengthen the ring in the pattern (alter_pattern)")
+            self.X[rv] = P
+            self.X[net.root[rv]] = P
+            self.reads["rings"][ring] = {"radius_mm": round(r * 1e3, 1), "at_mm_along_limb": round(s_end * 1e3, 1), "tube_mm": round(Lt * 1e3, 1)}
+            self.reads["rings"][ring]["slid_back_mm"] = round((Lt - s_end) * 1e3, 1)
+            self._ring_s = getattr(self, "_ring_s", {})
+            self._ring_s[tube] = s_end
+
+    # ---- 4. the soft start
+    def _tube_points(self, t, v, s_end=None):
+        """Vertices v of tube t at their start: rows round the limb's axis at the pattern's width."""
+        net, R = self.net, self.roles
+        uv = net.uv
+        side = hand_of(t)
+        ax = self.axes.setdefault(side, LimbAxis(self.body, side))
+        tv = net.verts(t)
+        xa, ya = uv[tv, 0], uv[tv, 1]
+        fp = [p for p in R.panels if self.sewn_with(t, p) and R.front and p in (R.front["over"], R.front["under"])]
+        sf = float(np.sign(np.mean([uv[q, 0] for q in self.sewn_with(t, fp[0])]))) if fp else 1.0
+        ytop, ybot = float(ya.max()), float(ya.min())
+        L = ytop - ybot
+        s_end = getattr(self, "_ring_s", {}).get(t, L) if s_end is None else s_end
+        bins = np.round(ya / 0.01).astype(int)
+        wmax = {b: float(xa[bins == b].max() - xa[bins == b].min()) for b in np.unique(bins)}
+        wide = max(wmax.values())
+        yw = float(ya[np.argmax(np.abs(xa))])  # the cap (rows above the widest): whole width, so its edge rings the armhole
+        x, y = uv[v, 0], uv[v, 1]
+        w = np.array([wide if yy >= yw else max(wmax[int(round(yy / 0.01))], 0.06) for yy in y])
+        s = (ytop - y) * s_end / L
+        Cc, o, f, d = ax.at(s)
+        ph = 2 * math.pi * x * sf / w
+        return Cc + (np.cos(ph)[:, None] * o + np.sin(ph)[:, None] * f) * (w / (2 * math.pi))[:, None]
+
+    def soft_start(self):
+        net, R = self.net, self.roles
+        uv = net.uv
+        hz = float(self.body.p("hps.L")[2])
+        rings = TorsoRings(self.body, self._width_of(), GAP)
+        self.torso = rings
+        X = self.X.copy()
+        over = R.front["over"] if R.front else None
+        for p in R.panels:
+            v = net.verts(p)
+            x, y = uv[v, 0], uv[v, 1]
+            z = hz + y
+            hand = hand_of(p)
+            isfront = bool(R.front and p in (R.front["over"], R.front["under"]))
+            P = rings.at(x, z) if isfront else rings.at(x, z, half_back=True)
+            wz = np.clip((z - (rings.armpit - 0.04)) / 0.08, 0, 1)
+            wz = (wz * wz * (3 - 2 * wz))[:, None]
+            P = P * (1 - wz) + rings.at_x(x, z, not isfront) * wz
+            if p == over:  # the over side lies a layer outside the under side, fading away from the centre
+                w = np.clip((0.12 - np.abs(x)) / 0.06, 0, 1)
+                cen = np.array([0.0, float(self.body.p("cf_neck")[1] + self.body.p("cb_neck")[1]) / 2])
+                P[:, :2] += unit(P[:, :2] - cen) * (LAYER * w)[:, None]
+            X[v] = P
+        for t in R.tubes:
+            v = net.verts(t)
+            X[v] = self._tube_points(t, v)
+        return X
+
+    def soft_net(self, start=None, far_z=None):
+        """Chains + lines of the soft cloth from its start, stiff nodes held; then surfaces; then the threads."""
+        net, R = self.net, self.roles
+        rs, uv = net.root, net.uv
+        stiff_v = self._stiff_mask()
+        if getattr(self, "extra_held", None) is not None:
+            stiff_v = stiff_v | self.extra_held
+        held = np.zeros(net.n, bool)
+        held[rs[stiff_v]] = True
+        # sewn group mean for the free ones
+        X0 = self.soft_start() if start is None else np.array(start, float)
+        count = np.zeros(net.n)
+        S_ = np.zeros((net.n, 3))
+        np.add.at(S_, rs, X0)
+        np.add.at(count, rs, 1)
+        Xm = S_ / np.maximum(count, 1)[:, None]
+        Xm = np.where(held[:, None], self.X, Xm)
+        Xm = Xm[rs]
+        soft_F = net.F[~np.isin(net.piece[net.F[:, 0]], [net.pid(p) for p in ([R.band, R.fall] + list(R.rings)) if p])]
+        far_z = float(self.body.at["armpit_z"]) - 0.04 if far_z is None else far_z
+        nodes = np.unique(rs[soft_F])
+        ring_near = np.zeros(net.n, bool)
+        for t in R.tubes:
+            tv = net.verts(t)
+            ring_near[rs[tv[uv[tv, 1] > uv[tv, 1].max() - 0.45]]] = False
+        # the seams' moves carried into each piece (per piece: two sides of a seam start apart)
+        count_g = np.bincount(rs, minlength=net.n)
+        sewn_v = count_g[rs] > 1
+        Xf = Xm.copy()
+        for p in R.panels + R.tubes:
+            v = net.verts(p)
+            Fp = net.F[np.all(net.piece[net.F] == net.pid(p), axis=1)]
+            kn = np.zeros(net.n, bool)
+            kn[v] = sewn_v[v] | held[rs[v]] | ((X0[v, 2] < far_z) & np.isin(p, R.panels))
+            Yv = X0.copy()
+            Yv[v[kn[v]]] = Xm[v[kn[v]]]
+            Xf[v] = cn.fill(X0, Yv, kn, uv, Fp, v)[v]
+        Xf = Xf[rs]
+        # the chains and lines (the stiff pieces' own are held)
+        li, lj, lL, lE = net.lines()
+        I, J = np.r_[net.link_i, li], np.r_[net.link_j, lj]
+        L, E = np.r_[net.link_L, lL], np.r_[np.ones(len(net.link_L), bool), lE]
+        ties = self._closure_ties()
+        if len(ties):
+            I, J = np.r_[I, ties[:, 0].astype(int)], np.r_[J, ties[:, 1].astype(int)]
+            L, E = np.r_[L, ties[:, 2]], np.r_[E, np.ones(len(ties), bool)]
+        chain_nodes = np.unique(np.r_[net.link_i, net.link_j, li, lj])
+        cf = chain_nodes[~held[chain_nodes]]
+        floor = [(self.body.contact, cf, GAP)]
+        Y = Xf
+        nbr: dict = {}
+        for a, b in zip(net.link_i, net.link_j):
+            nbr.setdefault(int(a), set()).add(int(b))
+            nbr.setdefault(int(b), set()).add(int(a))
+        two = np.array([v for v, q in nbr.items() if len(q) == 2 and not held[v]], np.int64)
+        n0 = np.array([sorted(nbr[int(v)])[0] for v in two], np.int64)
+        n1 = np.array([sorted(nbr[int(v)])[1] for v in two], np.int64)
+        rd = {}
+        for rnd in range(4):
+            Y, rd = project(Y, I, J, L, E, held, floor, iters=20, step=0.015)
+            self.log(f"chains round {rnd}: {rd}")
+            if rnd < 3:
+                Y[two] = 0.8 * Y[two] + 0.1 * (Y[n0] + Y[n1])
+        Y, rd = project(Y, I, J, L, E, held, floor, iters=40, step=0.015)
+        self.reads["soft_chains"] = rd
+        # surfaces between the chains
+        known2 = held.copy()
+        known2[chain_nodes] = True
+        Z = cn.fill(Xf, Y, known2, uv, soft_F, ids=nodes, root=rs)
+        Z = np.where(np.isin(np.arange(net.n), nodes)[:, None], Z, Y)[rs]
+        # threads, chains last
+        E_all = net.edges[~np.all(stiff_v[net.edges], axis=1)]
+        Lm = np.linalg.norm(uv[E_all[:, 0]] - uv[E_all[:, 1]], axis=1) * (1 + SHEAR_LIMIT)
+        ei, ej = rs[E_all[:, 0]], rs[E_all[:, 1]]
+        k = ei != ej
+        I2, J2 = np.r_[I, ei[k]], np.r_[J, ej[k]]
+        L2, E2 = np.r_[L, Lm[k]], np.r_[E, np.zeros(int(k.sum()), bool)]
+        th = Threads(uv, soft_F, CAP, root=rs)
+        fl2 = [(self.body.contact, nodes[~held[nodes]], GAP)]
+        Z, rd2 = project(Z, I2, J2, L2, E2, held, fl2, threads=th, iters=40, step=0.008)
+        self.X = Z[rs]
+        self.reads["soft_mesh"] = rd2
+        self.reads["threads"] = th.report(self.X)
+        self.thread_model = th
+        self.final_links = (I2, J2, L2, E2, held, fl2, th)
+
+    def _closure_ties(self):
+        """Fastened pairs of a closure between two pieces: a layer apart (root a, root b, distance)."""
+        net, R = self.net, self.roles
+        out = []
+        if R.front:
+            for (a, b), c in zip(R.front["v"], R.front.get("closed") or []):
+                if c:
+                    out.append((net.root[a], net.root[b], LAYER))
+        return np.array(out, float).reshape(-1, 3)
+
+    # ---- 5. plackets, open
+    def plackets(self, Xclosed):
+        """Each placket is a stiff strip that folds out of plane along a crease through the first fastened button: solved
+        so its sewn top edge reaches the open band. Above the crease it folds, the rest stays; the fold acts on the real
+        shape, so nothing jumps at the crease. The over side stays in front of the under side."""
+        from scipy.optimize import minimize
+        net, R = self.net, self.roles
+        uv, rs = net.uv, net.root
+        cl = R.front
+        extra = np.zeros(net.n, bool)
+        rep = {}
+        Xnew = self.X.copy()
+        for pname, bv, over in ((cl["over"], cl["v"][0][0], 1.0), (cl["under"], cl["v"][0][1], -1.0)):
+            pv = net.verts(pname)
+            rows = [r for f, r in net.fold_rows() if f["piece"] == pname]
+            if not rows:
+                raise ChainRefused(f"{pname}: no pressed fold marks its placket. next: declare the placket fold in the pattern")
+            fx = float(np.median(uv[rows[0], 0]))
+            ex = float(uv[pv, 0].min() if fx > 0 else uv[pv, 0].max())
+            lo, hi = sorted((ex, fx))
+            yb = float(uv[bv, 1])
+            BL = 0.02
+            strip = pv[(uv[pv, 0] >= lo - 1e-5) & (uv[pv, 0] <= hi + 1e-5) & (uv[pv, 1] > yb - BL)]
+            sew_ = self.sewn_with(pname, R.band)
+            top = np.array(sorted(v for v in sew_ if lo - 1e-5 <= uv[v, 0] <= hi + 1e-5), np.int64)
+            piv = Xclosed[bv].copy()
+            piv[0] = 0.0
+            piv[1] -= over * LAYER / 2
+            near = strip[np.abs(uv[strip, 1] - yb) < 0.012]
+            A_, B_ = np.c_[uv[near], np.zeros(len(near))], Xclosed[near]
+            ca, cb = A_.mean(0), B_.mean(0)
+            Us, _, Vt = np.linalg.svd((A_ - ca).T @ (B_ - cb))
+            Rf = Vt.T @ Us.T
+            if np.linalg.det(Rf) < 0:
+                Vt[-1] *= -1
+                Rf = Vt.T @ Us.T
+
+            def Mf(Q):
+                return (np.c_[Q - uv[bv], np.zeros(len(Q))]) @ Rf.T + piv
+
+            def fold(Q, al, ph, soft=0.004):
+                dir2 = np.array([math.cos(al), math.sin(al)])
+                nor2 = np.array([-dir2[1], dir2[0]])
+                sd = (Q - uv[bv]) @ nor2
+                ws = np.clip(sd / soft + 0.5, 0, 1)
+                ws = ws * ws * (3 - 2 * ws)
+                k3 = Rf @ np.r_[dir2, 0.0]
+                p3 = Mf(Q) - piv
+                c_, s_ = np.cos(ph * ws)[:, None], np.sin(ph * ws)[:, None]
+                return piv + p3 * c_ + np.cross(k3, p3) * s_ + k3 * (p3 @ k3)[:, None] * (1 - c_), sd
+            Tgt = self.X[rs[top]]
+            best = None
+            for al in np.radians(np.arange(-75, 76, 3)):
+                for ph in np.radians(np.arange(-178, 179, 4)):
+                    Y_, sd_ = fold(uv[top], al, ph)
+                    if (sd_ < 0).any():
+                        continue  # the crease stays below the whole top edge
+                    c_ = float(((Y_ - Tgt) ** 2).sum())
+                    if best is None or c_ < best[0]:
+                        best = (c_, al, ph)
+            if best is None:
+                raise ChainRefused(f"{pname}: no crease through the first fastened button clears the placket's top edge. "
+                                   "next: check the button position against the neck (design_garment)")
+            r_ = minimize(lambda q: float(((fold(uv[top], q[0], q[1])[0] - Tgt) ** 2).sum()), best[1:], method="Nelder-Mead",
+                          options={"xatol": 1e-3, "fatol": 1e-9})
+            al, ph = r_.x
+            Yt, sdt = fold(uv[top], al, ph)
+            res = Tgt - Yt
+            o_ = np.argsort(uv[top, 0])
+            pos, sd_ = fold(uv[strip], al, ph)
+            tt = np.clip(sd_ / np.maximum(np.interp(uv[strip, 0], uv[top[o_], 0], sdt[o_]), 1e-4), 0, 1)
+            pos += np.column_stack([np.interp(uv[strip, 0], uv[top[o_], 0], res[o_, k]) for k in range(3)]) * tt[:, None]
+            pos = pos + (Xclosed[strip] - Mf(uv[strip])) * (1 - tt)[:, None]
+            below = sd_ < -0.002
+            pos[below, 1] = Xclosed[strip[below], 1]
+            Xnew[strip] = pos
+            Xnew[top] = Tgt
+            extra[strip[tt > 0.0]] = True
+            extra[top] = True
+            rep[pname] = {"crease_deg": round(math.degrees(al), 1), "fold_deg": round(math.degrees(ph), 1),
+                          "top_edge_off_mm": round(float(np.linalg.norm(res, axis=1).max() * 1e3), 2)}
+        self.reads["plackets"] = rep
+        self.extra_held = extra
+        return Xnew
+
+    # ---- the whole build
+    def stiff_last(self):
+        """Every other edge and fold row of the stiff pieces, as chains, between the ones already fixed."""
+        net, R = self.net, self.roles
+        rs = net.root
+        for p in [q for q in (R.band, R.fall) if q]:
+            pid = net.pid(p)
+            m = net.chain_piece == pid
+            ids = net.link_of_chain[m]
+            I, J, L = net.link_i[ids], net.link_j[ids], net.link_L[ids]
+            fixed = np.zeros(net.n, bool)
+            fixed[:] = True
+            mv = np.unique(np.r_[I, J])
+            base = rs[np.r_[self.sb, self.st]] if p == R.band else rs[np.r_[self.fall_ch["neck"], self.fall_ch["outer"], self.fall_ch["endL"], self.fall_ch["endR"]]]
+            fixed[mv] = False
+            fixed[base] = True
+            self.X, rd = project(self.X, I, J, L, np.ones(len(I), bool), fixed, iters=20, step=0.004)
+            self.X = self.X[rs]
+            self.reads[f"{p}_edges"] = rd
+
+    def stiff_stage(self):
+        self.band_closed() if not hasattr(self, "sb") else self.band_open()
+        self.fall_build()
+        self.fill_band()
+        self.fall_surface()
+        self.stiff_last()
+
+    def run(self):
+        t0 = time.time()
+        final = self.wear["state"]
+        self.wear["state"] = "closed"
+        self.stiff_stage()
+        self.rings()
+        self.reads["stiff_closed_s"] = round(time.time() - t0, 1)
+        self.soft_net()
+        self.reads["closed_s"] = round(time.time() - t0, 1)
+        if final == "open":
+            Xc = self.X.copy()
+            self.X_closed = Xc
+            self.wear["state"] = "open"
+            self.stiff_stage()
+            Xn = self.plackets(Xc)
+            bz = float(Xc[self.roles.front["v"][0][0], 2])
+            self.soft_net(start=Xn, far_z=bz - 0.03)
+        self.reads["chains"] = self.net.chain_report(self.X)
+        self.reads["seam_gap_mm"] = round(self.net.seam_gap(self.X), 3)
+        self.reads["build_s"] = round(time.time() - t0, 1)
+        return self.X
