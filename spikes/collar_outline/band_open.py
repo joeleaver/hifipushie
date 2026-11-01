@@ -48,9 +48,14 @@ FRONT = {False: ramp(uv[sb, 0]), True: ramp(uv[st, 0])}
 _cl = [c for c in M["closures"] if c["name"] == "front"][0]["v"][0]; _bt = X0[_cl[0]].copy(); _bt[0] = 0.0
 PLACKET = []
 for side, bv in (("front.L", _cl[0]), ("front.R", _cl[1])):
-    cfn = PT[f"{side}:cfNeck"]; Lp = float(np.linalg.norm(uv[cfn] - uv[bv]))
-    ci_ = int(np.argmin(np.linalg.norm(B0 - X0[cfn], axis=1)))
-    PLACKET.append((ci_, _bt, Lp))
+    pi_ = M["names"].index(side); pc_ = M["pc"] if "pc" in M else M["piece"]
+    for a_, b_ in np.asarray(M["sew"]):                              # every point of the neck edge sewn to this front
+        fv_ = a_ if pc_[a_] == pi_ else (b_ if pc_[b_] == pi_ else None); sv_ = b_ if fv_ == a_ else a_
+        if fv_ is None or sv_ not in set(sb.tolist()): continue
+        Lp = float(np.linalg.norm(uv[fv_] - uv[bv]))
+        if Lp < P.get("plk_r", 0.075):
+            PLACKET.append((int(np.where(sb == sv_)[0][0]), X0[bv].copy(), Lp))
+print(f"neck edge points limited by their cut distance to button 1: {len(PLACKET)}; start violation {max(np.linalg.norm(Bg[c_]-b_)-L_ for c_,b_,L_ in PLACKET)*1e3:.1f} mm")
 def res(x):
     B, T = unpack(x); r = []
     r.append(HARD * (np.linalg.norm(np.diff(B, axis=0), axis=1) - LB))
@@ -68,7 +73,7 @@ def res(x):
     r.append(P.get("lean_w", 2.0) * (BT[2:] - 2 * BT[1:-1] + BT[:-2]).ravel())   # the band's lean changes smoothly along it
     Q = np.r_[B[freeB], T]; _, j = bkd.query(Q); r.append(5 * np.minimum(np.einsum("ij,ij->i", Q - bV[j], bN[j]) - 0.004, 0))
     r.append((B - B[mB] * [-1, 1, 1]).ravel()); r.append((T - T[mT] * [-1, 1, 1]).ravel())
-    for ci_, bpos, Lp in PLACKET: r.append(HARD * np.array([max(np.linalg.norm(B[ci_] - bpos) - Lp, 0.0)]))   # sewn placket: at most its cut
+    r.append(HARD * np.array([max(np.linalg.norm(B[ci_] - bpos) - Lp, 0.0) for ci_, bpos, Lp in PLACKET]))   # sewn front: at most its cut
     if P.get("gap"): r.append(np.array([GAPW * (T[j, 0] - s * P["gap"] / 2) for j, s in ends]))
     return np.concatenate(r)
 sol = least_squares(res, x0, max_nfev=P.get("nfev", 200), x_scale="jac" if P.get("xs") else 1.0)
@@ -91,6 +96,7 @@ for it in range(400):
         dv = B[ci_] - bpos; l = np.linalg.norm(dv)
         if l > Lp: B[ci_] -= dv * (l - Lp) / l; worst = max(worst, (l - Lp) / Lp)
     if worst < 1e-4: break
+print("worst over cut distance to the button (mm):", round(max(np.linalg.norm(B[c_]-b_)-L_ for c_,b_,L_ in PLACKET)*1e3,2))
 print(f"length projection: {it+1} passes, worst link {worst*100:.3f} %")
 eb = np.abs(np.linalg.norm(np.diff(B, axis=0), axis=1) / LB - 1).max(); et = np.abs(np.linalg.norm(np.diff(T, axis=0), axis=1) / LT - 1).max()
 print(f"{tag}: cost {sol.cost:.2e} nfev {sol.nfev}; worst link neckline {eb*100:.1f} % band top {et*100:.1f} %")
