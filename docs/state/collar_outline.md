@@ -30,4 +30,12 @@ stay held; the fold acts on the real shape; final stages let all unheld cloth mo
 Free chain links <= 1.75 %; cloth inside the body 0. OPEN: 42 links > 2 % beyond the fit, worst 6.5 % (yoke by the neck +
 armhole); lap gap touches 0 at one point. No gravity hang yet. NICO-TOP unavailable (Joe 2026-11-01): sims local.
 
-STATE: closed + open collar and the upper shirt built from chains (spike). NEXT: gravity hang of the soft cloth, then library module.
+## Hang (local ZOZO, 284 s on the 890M; result H1)
+hang_prep.py Q12 h1 -> hang_run.py h1 -> hang_finish.py h1 H1 Q12, RUN WITH THE PATH-A WORKTREE'S CODE (agent-a31fb4eb7a07d59fa:
+zozo_hang is not on threads-hard). Torso only; band, collar, plackets above the hold line, sewn rows, armholes held;
+body under the band cut from the collider (35 mm + one 12 mm patch). Free cloth moved p50 6.5, p95 16 mm; held 0.05 mm.
+OPEN: 27 free vertices inside the full body (deepest 2.7 mm; skin specks under the collar at the back + side); seam gap
+up to 3.4 mm; link p99 5.8 %, max 65 % (was 79.5 % before the hang); wrinkly yoke round the neck; sleeves are the old
+fit's and were not hung (gap at the back armhole).
+
+STATE: collar + upper shirt from chains, hung with ZOZO (spike). NEXT: neck-side contacts, then sleeves, then library module.
