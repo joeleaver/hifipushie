@@ -2349,7 +2349,7 @@ def lid_read(name: str, match: bool | str = False, out: str | None = None, seen:
 
 @mcp.tool(structured_output=False)
 def brow_read(name: str, match: bool = False, out: str | None = None):
-    """The dressed brow HAIR (skin.hair.brows) against the front picture's, through its fitted camera: lower edge /
+    """The groomed brow HAIR (skin.hair.brows) against the front picture's, through its fitted camera: lower edge /
     middle line miss in mm at the model, and the picture's iris (limbus, mm at the model; its colour) against the
     drawn one. match=True: skin.hair.brows' placement (drop, tilt, apart, fall, thickness, taper) fitted to the
     picture's hair band and written to `out` (default: the model itself). Paint only. Details: guide(topic="brow_read")."""
@@ -3407,12 +3407,11 @@ def _chain_text(st: dict) -> str:
 
 @mcp.tool(structured_output=False)
 def chain_garment(name: str, garment: str, wear: str = "closed", opening: float | None = None):
-    """START A GARMENT: the only way to dress a character, fit or drape clothes on a body. Builds it from its pattern and the body as chains of the pattern's own lengths (only
-    bends are free; stiff parts first, soft cloth hung from them), then hangs the soft cloth. No fit is read, nothing is
-    tuned. wear: "closed" (top button done) or "open" (top button undone); opening: only with wear "open", how far the collar
-    opens: the collar points this many neck widths apart (default 1.7, 1.2..2.2). Refuses until pattern_check passes; refuses by
-    piece and line if a length can't hold. Returns the build's numbers in about a minute while the hang runs on (5-10 min);
-    next: look_chain. Details: guide(topic="chain_garment")."""
+    """START A GARMENT: the only way to dress a character, fit or drape clothes on a body. Built from the pattern and the body
+    as chains of the pattern's own lengths (only bends are free; stiff parts first, soft cloth hung from them). wear: "closed" or
+    "open" (top button undone); opening: only with "open": collar points this many neck widths apart (default 1.7). Refuses until
+    pattern_check passes, and by piece and line if a length can't hold. Answers after the build (1-3 min); the hang runs on
+    (5-10 min). next: look_chain. Details: guide(topic="chain_garment")."""
     import subprocess
     import sys
     import time as _t

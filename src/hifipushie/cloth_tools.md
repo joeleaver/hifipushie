@@ -5,7 +5,7 @@ The cloth tools' full parameters and behaviour, one section per tool (guide(topi
 ## Tool reference
 
 ### `chain_garment`
-`chain_garment(name, garment, wear="closed", opening=None)`: THE start of every garment. Reads the drafted pattern and the
+`chain_garment(name, garment, wear="closed", opening=None)`: THE start of every garment: to dress a character, to fit or drape clothes on a body. Reads the drafted pattern and the
 body, never a fit. Stages: band and collar (or other stiff parts) as chains of their cut lengths, stiffness from the
 pattern's interfacing, resting on the high points; cuffs as stiff rings on the limb's own section; the soft pieces wrapped on a
 garment-sized section and solved as a network with the body as a floor; surfaces filled between the chains; open wear then

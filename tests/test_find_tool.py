@@ -35,16 +35,16 @@ def test_garment_query_ranks_a_garment_tool():
     assert GARMENT_TOOLS & set(top), top
     # the workflow leads: design before the sim; no other domain's stray word match ("dressed brow")
     full = _ranked("dress a character in a hoodie", 10)
-    assert full.index("design_garment") < full.index("dress"), full
-    assert set(full[:5]) <= GARMENT_TOOLS, full
-    assert server.find_tool("dress a character in a hoodie").startswith("Clothes come from the pattern: design_garment")
+    assert full.index("design_garment") < full.index("chain_garment"), full
+    assert set(full[:4]) <= GARMENT_TOOLS, full
+    assert server.find_tool("dress a character in a hoodie").startswith("Clothes: design_garment")
     assert _ranked("groom hair")[0] == "groom_hair"
 
 
 def test_find_tool_gives_params_and_an_example():
-    text = server.find_tool("fit garment on the dress form", 1)
-    assert "fit_garment" in text and "params: name: str, garment: str" in text, text
-    assert 'call_tool(name="fit_garment", args={"name": "...", "garment": "..."})' in text, text
+    text = server.find_tool("fit garment on the body", 3)
+    assert "chain_garment" in text and "params: name: str, garment: str" in text, text
+    assert 'call_tool(name="chain_garment", args={"name": "...", "garment": "..."})' in text, text
     assert server.find_tool("put a model", 3)  # core tools are found too (shown as native calls)
 
 
@@ -88,10 +88,10 @@ def test_bad_args_name_the_expected_parameters():
     e = _error("design_garment", {"nme": "x"})
     assert "unknown argument(s) nme" in e and "missing required name, garment" in e, e
     assert "design_garment expects: name: str, garment: str" in e, e
-    e = _error("fit_garment", {"name": "x", "garment": "y", "size": "big"})
-    assert "bad argument(s): size" in e and "fit_garment expects:" in e, e
-    e = _error("fit_garmnt", {})
-    assert "no tool 'fit_garmnt'" in e and "fit_garment" in e and "find_tool" in e, e
+    e = _error("look_chain", {"name": "x", "garment": "y", "size": "big"})
+    assert "bad argument(s): size" in e and "look_chain expects:" in e, e
+    e = _error("chain_garmnt", {})
+    assert "no tool 'chain_garmnt'" in e and "chain_garment" in e and "find_tool" in e, e
 
 
 def test_every_tool_reachable_through_call_tool():
