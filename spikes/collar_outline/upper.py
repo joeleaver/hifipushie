@@ -23,6 +23,45 @@ for a, b in sew:                                                          # sewn
         if inP[p_] and not inP[q_]: X[p_] = X[q_]; fixed[p_] = True
 low = inP & (Xfit[:, 2] < zB - P.get("below", 0.04)); fixed[low] = True
 for v_ in cl["v"][0]: fixed[v_] = True                                   # the first fastened button: the pivot
+# the plackets: rigid flat strips above the button (edge .. marked fold line), top sewn to the band, pivoting at the button;
+# below it they blend back to the buttoned cloth; the over-side (front.L) lies in front of the under-side
+BL = P.get("below", 0.02); LAP = P.get("lap", 0.0008)
+for fname, bv, over in (("front.L", cl["v"][0][0], 1.0), ("front.R", cl["v"][0][1], -1.0)):
+    pi_ = nm.index(fname); pv = np.where(pc == pi_)[0]; yb = uv[bv, 1]
+    fx = np.median(uv[[f_ for f_ in M["folds"] if f_["piece"] == fname][0]["rows"][0], 0])
+    ex = uv[pv, 0].min() if fx > 0 else uv[pv, 0].max()                 # the strip's free edge
+    lo_, hi_ = sorted((ex, fx)); strip = pv[(uv[pv, 0] >= lo_ - 1e-5) & (uv[pv, 0] <= hi_ + 1e-5) & (uv[pv, 1] > yb - BL)]
+    top = np.array(sorted({int(q) for a_, b_ in sew for q, o_ in ((a_, b_), (b_, a_)) if pc[q] == pi_ and pc[o_] == iS and lo_ - 1e-5 <= uv[q, 0] <= hi_ + 1e-5}))
+    piv = Xfit[bv].copy(); piv[0] = 0.0; piv[1] -= over * LAP
+    # the strip's plane at the button, as fitted; above a crease through the button it folds back about that crease
+    nearb = strip[np.abs(uv[strip, 1] - yb) < 0.012]; A_ = np.c_[uv[nearb], np.zeros(len(nearb))]; B_ = Xfit[nearb]
+    ca, cb = A_.mean(0), B_.mean(0); Us, Ss, Vt = np.linalg.svd((A_ - ca).T @ (B_ - cb)); Rf = Vt.T @ Us.T
+    if np.linalg.det(Rf) < 0: Vt[-1] *= -1; Rf = Vt.T @ Us.T
+    def Mf(Q): return (np.c_[Q - uv[bv], np.zeros(len(Q))]) @ Rf.T + piv
+    def fold(Q, al, ph, soft=0.004):
+        dir2 = np.array([np.cos(al), np.sin(al)]); nor2 = np.array([-dir2[1], dir2[0]])
+        sd = (Q - uv[bv]) @ nor2; ws = np.clip(sd / soft + 0.5, 0, 1); ws = ws * ws * (3 - 2 * ws)
+        k3 = Rf @ np.r_[dir2, 0.0]; p3 = Mf(Q) - piv
+        c_, s_ = np.cos(ph * ws)[:, None], np.sin(ph * ws)[:, None]
+        return piv + p3 * c_ + np.cross(k3, p3) * s_ + k3 * (p3 @ k3)[:, None] * (1 - c_), sd
+    Tgt = X[top]; best = None
+    for al in np.radians(np.arange(-75, 76, 3)):
+        for ph in np.radians(np.arange(-178, 179, 4)):
+            Y_, sd_ = fold(uv[top], al, ph)
+            if (sd_ < 0).any(): continue                               # the crease stays below the whole top edge
+            c_ = ((Y_ - Tgt) ** 2).sum()
+            if best is None or c_ < best[0]: best = (c_, al, ph)
+    from scipy.optimize import minimize
+    r_ = minimize(lambda q: ((fold(uv[top], q[0], q[1])[0] - Tgt) ** 2).sum(), best[1:], method="Nelder-Mead", options={"xatol": 1e-3, "fatol": 1e-9})
+    al, ph = r_.x
+    Yt, _ = fold(uv[top], al, ph); res_ = Tgt - Yt; o_ = np.argsort(uv[top, 0])
+    pos, sd_ = fold(uv[strip], al, ph); ytop = np.median(fold(uv[top], al, ph)[1]); tt = np.clip(sd_ / ytop, 0, 1)
+    pos += np.column_stack([np.interp(uv[strip, 0], uv[top[o_], 0], res_[o_, k]) for k in range(3)]) * tt[:, None]
+    up_ = sd_ > -0.002; wb = np.clip((uv[strip, 1] - (yb - BL)) / BL, 0, 1); wb = wb * wb * (3 - 2 * wb)
+    below = Xfit[strip].copy(); below[:, 1] -= over * LAP * wb                # under the crease the buttoned strip stays, lapped
+    pos = np.where(up_[:, None], pos, below); X[strip] = pos; fixed[strip] = True
+    print(f"{fname}: crease {np.degrees(al):.0f} deg off the flat x axis, fold {np.degrees(ph):.0f} deg; top edge off {np.linalg.norm(res_, axis=1).max()*1e3:.1f} mm")
+    print(f"{fname}: rigid strip {(hi_-lo_)*1e3:.1f} mm wide, {len(strip)} vertices; top sewn edge off the plane {np.linalg.norm(res_, axis=1).max()*1e3:.1f} mm")
 inner = [(a, b) for a, b in sew if inP[a] and inP[b]]                    # seams inside the network
 # mesh edges of the pieces + seams
 Fp = F[np.all(inP[F], axis=1)]
