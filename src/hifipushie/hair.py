@@ -2577,6 +2577,12 @@ SWOOP_BACK = 0.003  # m inside the hairline where they start
 SWOOP_LAYERS = 3  # each swoop card is this many stacked cards of the fine short tiles
 SWOOP_GAP = 0.0012  # m between those layers
 SWOOP_LIFT = 0.007  # m the swoop's cards rise mid-lock over where its strands lie (its wave)
+BABY_TONE = 1.0  # (round 43, opt-in) baby-hair cards' vertex tone x this. Tess's "nape tick marks" (18-38 mm dark dashes
+# under the tie, vertex colour .32-.49 vs the tail's .65) are THESE cards (baby_locks all round the hairline, kind "baby",
+# cls None: hair_clumps' NAPE_LIFT / NAPE_SHORT only see clump cards, so round 42's lever never reached them; t43/trace.py)
+BABY_NAPE = (0.05, 0.02)  # (round 44; default after a blind A/B vs r42c NEW 2 / OLD 0 / SAME 2) (z, y) m: on a TIED groom, baby cards rooted lower than z under the scalp's
+# centre AND more than y behind it are dropped (the groom has no baby hairs at the nape under a gather: they drew
+# Tess's dark tick marks there; t43/ticks.py found them at z < -0.06, y > +0.025). () = off
 SHORT_BABY_PRIO = 0.3  # a short cut's baby hairs (the hero tier's soft hairline) are kept before second-layer cards
 SHORT_STRAIGHT = 0.6  # share a short cut's card is drawn toward its straight chord (no hooks)
 SHORT_EDGE = 0.0  # m inside the hairline where a short cut's cards end (past it their thick strands stood as wires)
@@ -2785,7 +2791,7 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
                                 triangles=int(CARD_CUT_SHARE * int(budget)) if budget else 20000)
         St_ = cards[0].pop("_St") if cards else None
     elif D is not None:  # cards cut from the groom's own strands, clustered as coarsely as the tier asks
-        cards = hc.clump_cards(D, hair_locks, sc.C, S, lk, int(g.get("seed", 0)))
+        cards = stamp_cls(hc.clump_cards(D, hair_locks, sc.C, S, lk, int(g.get("seed", 0))), hair_locks)
     if D is not None:
         if budget and not short and not clumped:
             # a groom with many locks (tesshair7's volume rows, halo, curls: Tess's W18 cut 7,123 cards / 243k
@@ -2801,7 +2807,7 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
                 if gi_ + 1 >= len(CUT_GROUPS):
                     break
                 S_ = {**S_, "group": CUT_GROUPS[gi_ + 1], "card_width": float(S_["card_width"]) * 1.4}
-                cards = hc.clump_cards(D, hair_locks, sc.C, S_, lk, int(g.get("seed", 0)))
+                cards = stamp_cls(hc.clump_cards(D, hair_locks, sc.C, S_, lk, int(g.get("seed", 0))), hair_locks)
             if S_ is not S:
                 print(f"hair cards: cut as group {S_['group']!r}, card_width {S_['card_width'] * 1000:.0f} mm (the tier's "
                       f"{S.get('group')!r} cut's coverage layer alone was over {CUT_SHARE:.0%} of {int(budget)} triangles)",
@@ -3088,10 +3094,31 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
         cap = hc.join(*parts_)
         shell_raw = (nc_, cu_, cv_, len(shell_maps))
     baby = hc.cards_of(baby_locks(sc, g, S, int(g.get("seed", 0))), sc.C, S, lk)
+    if BABY_NAPE and bands:  # (round 44) see BABY_NAPE
+        _c0 = np.asarray(sc.C, float)
+        baby = [c for c in baby if not ((np.asarray(c["P"], float)[0, 2] - _c0[2]) < -float(BABY_NAPE[0])
+                                        and (np.asarray(c["P"], float)[0, 1] - _c0[1]) > float(BABY_NAPE[1]))]
     for c in baby:  # (the first to go under a budget, after single fly-aways)
         # (a short cut's soft line: on the hairline tile they were opaque stamps on the forehead; the baby tile
         # needs enough hairs to show: SHORT_TILE["baby"])
         c["kind"], c["layer"], c["prio"] = "baby", 1, (SHORT_BABY_PRIO if short else float(S["layers"]) + 0.6)
+        if BABY_TONE != 1.0:  # (round 43, opt-in) see BABY_TONE
+            c["value"] = float(c.get("value", 1.0)) * BABY_TONE
+    if FRONT_SHORT > 0 and cards:  # (round 46) see FRONT_SHORT
+        _c0 = np.asarray(sc.C, float); _dr = {}
+        def _fs(c_):
+            if c_.get("kind") != "baked" or c_.get("fly") or c_.get("cls") == "face" or not len(c_.get("P", [])):
+                return False
+            r_ = np.asarray(c_["P"], float)[0] - _c0
+            hit = float(c_["s"][-1]) < FRONT_SHORT and r_[1] < FRONT_SHORT_YZ[0] and r_[2] > FRONT_SHORT_YZ[1]
+            if hit:
+                k_ = f"{c_.get('cls')}/L{c_.get('layer')}" + "".join(f"/{f}" for f in ("edge", "arch", "cover", "lit", "row") if c_.get(f))
+                _dr[k_] = _dr.get(k_, 0) + 1
+            return hit
+        _pop = sum(1 for c_ in cards if c_.get("kind") == "baked")
+        cards = [c_ for c_ in cards if not _fs(c_)]
+        print(f"FRONT_SHORT {FRONT_SHORT}: dropped {sum(_dr.values())} front cards: {_dr}", flush=True)
+        hc.lever_matched("hair.FRONT_SHORT", sum(_dr.values()), _pop)  # (round 47) r46f dropped 0, said only in a log
     info = {}
     seg = None
     if budget:  # baby hairs are cards like any others: they go before coverage does
@@ -3147,9 +3174,13 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
         # cards' value wherever they showed (the pale helmet / crown patch, the pale stripe down the back)
         from . import hair_colour as hcol
         pk_ = hcol.peak(lk)
-        cap = {**cap, "col": np.asarray(cap["col"], np.float32) / pk_}
+        cap = {**cap, "col": np.clip(np.asarray(cap["col"], np.float32)
+                                     * float(CAP_TONE_TIERS.get(tier_name, CAP_TONE)) / pk_, 0, 1)}
         core = None if core is None else {**core, "col": np.asarray(core["col"], np.float32) / pk_}
         band = [{**b_, "col": np.asarray(b_["col"], np.float32) / pk_} for b_ in band]
+    if hc.BEND_ROWS > 0 and cards:  # (round 47) see hc.lever_matched
+        hc.lever_matched("hair_cards.BEND_ROWS" + (f"[{','.join(hc.BEND_CLS)}]" if hc.BEND_CLS else ""),
+                         sum(1 for c_ in cards if hc.bend_selected(c_)), len(cards))
     mc = hc.mesh(cards, S, lk, at["tiles"], segment=seg)
     if clumped or at.get("rows_total", at.get("rows")) != at.get("rows"):  # everything else wears the tiles / chart, now the top rows of the atlas
         mc = hc.remap_v(mc, at, mc.get("baked"))
@@ -3198,6 +3229,17 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
             "coverage": at["coverage"], "clearance": clearance}
 
 
+def stamp_cls(cards: list, locks: list) -> list:
+    """(round 47) hair_clumps' card class ("tail" / "face" / "single" / "head"; "fly" for fly-aways) on clump_cards'
+    cards, which carried none: every class filter (BEND_CLS, TAIL_AXIS_N, FIT_FLOOR) matched 0 cards at LOD1-3."""
+    from .hair_clumps import classify
+    by_ = {k_["name"]: k_ for k_ in locks}
+    for c_ in cards:
+        if c_.get("cls") is None:
+            c_["cls"] = "fly" if c_.get("kind") == "fly" else classify(by_.get(c_.get("lock")) or {})
+    return cards
+
+
 def card_classes(before: list, after: list, S: dict, seg, locks: dict) -> dict:
     """Where a budget's cards went: per class of lock (face-framing, hanging hair, head hair, single hairs) and card
     layer, cards and triangles cut vs kept. The export report carries it, so a tier that loses a region says so."""
@@ -3222,6 +3264,15 @@ def card_classes(before: list, after: list, S: dict, seg, locks: dict) -> dict:
     return dict(sorted(out.items()))
 
 
+FRONT_SHORT = 0.0  # (round 46, opt-in) m: clump cards (not face / fly) shorter than this rooted in front of and above the
+# head centre (FRONT_SHORT_YZ: y < [0], z > [1] from C) are dropped: r45a's dark splintered patch where the part meets the
+# forehead was 17-20 mm, 6-vertex cards at vcol .37-.46 wearing a long card's tile squashed (its tips = the serrations)
+FRONT_SHORT_YZ = (-0.05, 0.02)
+CAP_TONE = 1.4  # (round 45; default after the blind A/B r45a vs r44d NEW 2 / OLD 0 / SAME 2) x the card cap's vertex colour under the colour model (0.9 / peak:
+# ~0.35 on Tess vs the cards' ~0.65; the cap's albedo 52 vs the cards' 85-93 in the crown box): where it shows between
+# cards it is ~40 % of the darkest crown pixels at 2x its area share (t45/capshare.py)
+CAP_TONE_TIERS: dict = {}  # (round 47, opt-in) tier -> CAP_TONE there: the far tier (group "free") keeps no head cards, so
+# its whole head IS the cap at CAP_TONE's darker-than-cards value: LOD3's head read a shade darker than LOD0's
 CAP_BARE_FLOOR = True  # a cap vertex with no coverage card within CAP_FAR lies at the floor (False: its mass height, before round 18)
 CAP_UNDER = 0.0025  # m: the cap stays this far under the lowest coverage card over it
 CAP_FAR = 12.0  # deg: a cap vertex with no card within CAP_REACH takes the nearest cards' height within this
@@ -4381,6 +4432,8 @@ def _export_hair(name, out_dir, tiers, groom, spec, check, sheet, textures) -> d
         # "triangles" = DRAWN triangles, back faces included: the budgets' unit (c10, coordinator 2026-10-18; cards_job
         # fits the cards to it). "card_faces" = the cards' faces without their BACK_FACES copies (round 36's count);
         # "index_triangles" = "triangles" (kept for round 36's readers)
+        # (round 40) "vertices" = the GLB's vertices (back faces have their own, outward normals); "drawn_max" = the
+        # role's range maximum the drawn triangles must stay within ("budget"'s card faces = the role's default)
         rep["tiers"][tier] = {"glb": str(glb), "triangles": n_idx_, "card_faces": n_idx_ - n_back_, "index_triangles": n_idx_,
                               "vertices": _gpu_vertices(part), "positions": int(len(part["verts"])),
                               "drawn_max": (hc_.get("budget") or {}).get("drawn_max"),

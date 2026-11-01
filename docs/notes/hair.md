@@ -1,4 +1,5 @@
 # hifipushie notes: hair
+BEST TESS CARDS FOR EXPORT (2026-10-19, hair-cards round 46 = the LAST round; NOT approved: bin/approve is Joe's / the coordinator's): r45a = /mnt/data/hifipushie/haircards/exp/exar45a/hc_s2.glb (+ hc_s2_LOD1-3.glb; LOD0 707 cards, 43548 tris, in budget) = the hair defaults (hair.CAP_TONE 1.4; every round-46 lever is opt-in and OFF) + exa40 flags hk.FILL=1 hk.TONE_FRONT=1.0 hk.TONE_CONTRAST=3.0 hk.TINT_TOP=(0.85,1.6) st={"hairline_row": {"pass": true}} hk.WISP_ALPHA=0.95 hk.WISP_KIDS_FACE=6 hc.HUE_CLIP=1 (t45/r45.sh). Round 46's candidate r46h lost its blind A/B OLD 4 / NEW 0 (t46/ab1). LODs NOT OK: LOD3 tail = faceted folded panels + strays at the tie, LOD3 head a shade darker (t46/lod3_r45a.png); no round-46 fix worked. hk.FILL=1 is the BAKE packing share (not the crown fill, that is ARCH_FILL): harmless (seed of the texel search, islands never overlap), keep it as judged.
 
 BEST GARRETT CARDS FOR EXPORT (2026-10-18, hair-garrett c6): /mnt/data/hifipushie/hair_garrett/cards/exp/c6M = c4L's cards (identical geometry / atlas: same verts and unique triangles) + hair.BACK_FACES 1 (each card's back its own triangles, outward normals, material doubleSided false: no viewer flips them, the crown shards stay gone in ANY engine); index triangles hero 26040 / main 10164 / npc 4704 / far 1380, verts 16115 / 6561 / 3228 / 915 (all inside budgets.json ranges). Preview with blender_cards ONE_NORMAL 1 + GLTF_SPEC 1. Previous line (c4/c5): unchanged GLBs, preview them with blender_cards.ONE_NORMAL 1 (c5 default), the old flip drew black crown shards): the branch hair-heads2 DEFAULTS at c4's commits (c3's EVEN_CAP_KEEP .6,
   GREY_QUANTILE 1 + c4's WIND_TO_NORMAL 1, GREY_SPREAD 2) + hair.export {"card_gain": 2.1}, ALL FOUR tiers from one export_hair:
@@ -6279,6 +6280,33 @@ lump, jagged dark V at the part from the front, a layered ridge in profile, crow
   light blocky patches on the crown (hero tier, < 2 m; geometry = f1's, so f1 had it too, only now seen: f1's sheet had
   no back row). LODs OK: y at the switch distances; OPEN: LOD0 back tail / crown patches (check against the groom's
   back at g1backl before calling the hero tier done).
+- (6b) r38b (ENV_PCT 94) / r38c (SIDE_EL 45-70): DEAD LEVERS for the outline. glbcmp vs r38a: 99.6 / 98.7 % of the
+  triangles unchanged; crowntop 12.5 / 7.9 / 7.3 both (= r38a), solidtop thirds identical to 0.1 px (t38/zz_r38bc.png).
+  The head cards' envelope does not set the front shoulders' outline: the arch row / cover do (ARCH_PCT 94, COVER_PCT 90).
+  STATE: r38d = r38a + ARCH_PCT 97 + COVER_PCT 94 exporting (t38/q3.sh).
+- (4b) back at 1 m (t38/back_g1.png: gSc | f1 | r38a): r38a = f1 from behind; the tail paler and more striped than the
+  groom's darker tail, a dark flap at the tail's right edge (both): the LOD0 back faults seen on the LOD sheet.
+- (6c) r38d (r38a + ARCH_PCT 97 + COVER_PCT 94): crowntop 12.1 / 7.6 / 7.0 px (r38a 12.5 / 7.9 / 7.3); solidtop front
+  thirds 19.4 / 4.8 / 11.4 (r38a 19.7 / 5.2 / 11.7): a live lever but -0.4 px, and t38/zz_r38d.png (gSc | r38a | r38d)
+  shows a stray raised strip on top of the 3/4 lump. NOT adopted. The front deficit is the dome's WIDTH at its upper
+  sides (left third 19 px = her right, where the hair sweeps from the part), not its height over the crown: no envelope
+  percentile reaches it. Next lever (untested): the side head cards' SIDE_OUT_PCT / SIDE_OUT_MAX at 50-70 deg elevation,
+  or hand-placed hero cards over the dome's shoulders (round 35's suggestion).
+
+## Handover 2026-10-18 (hair-cards agent, round 38; stopped near the 70-tool-call rule)
+BEST CARDS FOR EXPORT: r38a = /mnt/data/hifipushie/haircards/exp/exar38a/hc_s2.glb (+ hc_s2_LOD1-3.glb) = f1 EXACTLY
+(LOD0-3: every unique vertex and triangle shared, glbcmp) + the merge's BACK_FACES. EXPORT SETTINGS: the hair defaults at
+b5e5f064 + hair_clumps.FILL = 1.0 (exa26.py hc_s2 <out> hk.FILL=1). LODs OK: y (t38/lods_r38a.png, g2 / g4 / g8 x front /
+3/4 / back). NOT approved (bin/approve).
+DONE: coordinator's outline rule recorded (0); full hair tests 162 green (+ clumps / lods 26 after the fix); the 2 %
+explained and fixed (part_visible's per-root notch was sampling noise: PART_DIP_WHOLE decides once per part; the
+t37 probe had double-subsampled the dump); lump A/B r37c vs r37d (root taper) = TIE in every view, taper stays off;
+LOD sheet with back row; front-deficit levers ENV_PCT / SIDE_EL dead, ARCH_PCT + COVER_PCT live but ~0.4 px.
+OPEN, by the blind review (same on every candidate): the 3/4 front lump (a card standing as a shelf behind the part),
+a jagged dark V at the part from the front (card ends splaying at the part line), a layered ridge in profile, crown
+~12 px low / narrow at its front shoulders; LOD0 from behind: pale striped tail, a dark flap at its right edge.
+Nothing in flight. Scratch t38/: np2.py / np3.py (notch probes), solidtop.py, lods.sh (+ back), q1-q3.sh, ab/ ab1/ (trios).
+
 ## Garrett cards c7 (2026-10-18, hair-garrett agent, fresh; order: side volume, front hairline, back carpet, all tiers + A/B)
 - (1) SIDE VOLUME, measured ($HG/cards/c7/: miss.py = outline miss maps + a 4x3 band table, crop.py = shaded crops grm | ours,
   capdiag.py / capel.py / din.py / lie.py / objs.py = where roots, lying hair, cap and cards are; c7x.sh = hero trial with
@@ -7308,3 +7336,556 @@ nape fade short, the shelf over the ear, the asset head-bake hook. Land the bran
   (the shipped nape paint reads ~7 L* darker than the mesh hair under the game light: next lever = paint value at the nape).
 - Blind A/B (fresh subagent, key-shuffled trios ab/, same look framing, sh7c = sh7T hero vs sh8c): NEW 2 (nape, side) / OLD 1
   (sideburn close-up: reviewer preferred the lighter sparse zone; noted the new edge still "somewhat crisp"). Kept sh8c.
+
+## hair-cards round 39 (2026-10-19, fresh session; coordinator: flow_top on Tess over r38a, then the ponytail flow, the pale tail at 2 m)
+BEST CARDS FOR EXPORT: LOD0 = r39t2 = /mnt/data/hifipushie/haircards/exp/exar39t2/hc_s2.glb (in the DRAWN budget: hero
+24496 / main 12088 / npc 7924 / far 2260 drawn of 25000 / 12500 / 8250 / 2500). EXPORT SETTINGS: hair defaults at this
+round's merge (d05267b6) + hair_clumps.FILL = 1.0 + TAIL_TONE = 0.33 (t39/exa39.py hc_s2 <out> hk.FILL=1 hk.TAIL_TONE=0.33).
+Blind A/B vs r38a: TIE 2 / 2 with half the card faces (r38a is 44.8k drawn: over the budget, not shippable).
+LODs OK: n (t38/lods_r39t2.png: LOD1-3 lose most of the tail at 3/4 under the drawn budget; r38a's LOD1-3 had it). NOT
+approved (bin/approve). flow_top: no gain on Tess, off.
+- (0) Merged origin/main dc4f3c21 (d05267b6): 8 files in conflict, main's side taken for the code (main = rounds 31-38 +
+  Garrett c1-c10); round 38's last notes (6b, 4b, 6c, handover) were missing on main and are kept above.
+- (1) MEASURE: t39/ends.py <tag> (port of Garrett's c9/ends.py: the LOD0 file's 'hair' mesh welded by position, back
+  faces dropped as duplicates, the largest component = the cap, 1 m frames + a synthetic top). r38a: ends / 10k hair px
+  front 6.6 / 3/4 8.7 / profile 16.6 / back 24.1 / top 4.7; END px share .039 / .043 / .080 / .136 / .024; cap share of
+  the visible hair .49 / .34 / .21 / .10 / .40. (Garrett c6M top: 55.6 per 10k: Tess's top is mostly cap + long arch cards.)
+  STATE: t39/q1.sh building r39a (r38a's flags under the current code = the drawn budget), r39b (flow_top {el 45,
+  len_pct 60, cards 12, pct 94} + ARCH 0, Garrett's suggestion), r39c (same flow_top, ARCH kept). NEXT: ends / crowntop
+  / tiles vs gSc and r38a.
+- (2) MEASURE the tail: t39/tail.py <tag_view>[:scale] (hair px from the ID pass below 55 % of the hair bbox: L* p10/50/90,
+  STRIPE = std of L* less its 3 px blur, COLSTEP = mean |dL*/dx|). Same light (g1backl): gSc 15.5 / 24.5 / 40.2, STRIPE
+  6.1, COLSTEP 4.8; r38a 21.9 / 35.4 / 45.9, 5.8, 4.6: the tail is +11 L* PALE at p50 (fine-stripe numbers = groom's).
+  (g2back / g4back are lit differently from g1backl / g3backl: gSc g3backl p50 33 vs g1backl 24.5, so compare only in one
+  light.) Target p50 ~25 at g1backl. In Y that is x0.49 of r38a's tail: TAIL_TONE 0.62 -> trials 0.45 (r39t1) and 0.33
+  (r39t2) queued after q1 (t39/q2.sh).
+- (3) r39a = r38a's flags under the current code (= the DRAWN budget, drawn_x 2): drawn hero 24496 / main 12088 / npc
+  7924 / far 2260 (budgets 25000 / 12500 / 8250 / 2500: all in). Card faces hero 10270 (r38a 20418), 369 cards (686),
+  segment 12 mm (8), 317 cards dropped. Cost: crowntop deficit front / 3/4 / profile 18.1 / 15.4 / 10.7 px (r38a 12.5 /
+  7.9 / 7.3); ends per 10k front / 3/4 / profile / back / top 8.9 / 11.7 / 18.2 / 27.6 / 6.1 (r38a 6.6 / 8.7 / 16.6 /
+  24.1 / 4.7); cap share of the visible hair up (front .55, back .14); tail g1backl p50 36.6 (gSc 24.5). LOOK
+  (t39/tl_r39a.png gSc | r38a | r39a): coarser everywhere: the 3/4 tail broken into chunky cards, the back crown patchy
+  with cap showing through, the profile choppier. r38a is no longer shippable (44.8k drawn); r39a is the in-budget base.
+- (4) r39b = r39a + flow_top {el 45, len_pct 60, cards 12, pct 94} + ARCH 0 (Garrett's suggestion): 35 flow cards (sweep
+  groups -x 482 / +x 326 strands, none "back": Tess's part splits every early sweep sideways), length p50 256 mm (they run
+  on past the tie into the tail: `end` .15 of a crown clump's strands still runs there), 477 stations tucked; drawn
+  tiers unchanged (the flow cards come out of the same budget: 335 cards dropped). crowntop 24.0 / 18.0 / 12.1 px (r39a
+  18.1 / 15.4 / 10.7: WORSE, the arch row was holding the dome up); ends per 10k = r39a (9.2 / 11.6 / 18.4 / 28.3 / 6.8).
+  LOOK (t39/tl_r39b.png gSc | r39a | r39b): a flap standing up off the front crown (front view), the dome lower; back the
+  same patchy crown. NOT better. ARCH stays (r39c tests flow_top with it).
+- (5) r39c = r39a + the same flow_top, ARCH kept: 35 flow cards (256 mm p50 = part -> tie: head strands end at the tie),
+  747 stations tucked; crowntop 21.0 / 16.7 / 11.5 px (r39a 18.1 / 15.4 / 10.7: worse by 1-3 px), ends per 10k 9.0 / 11.8
+  / 18.6 / 28.3 / 6.4 (= r39a). LOOK (t39/tl_r39c.png gSc | r39a | r39c): indistinguishable from r39a in all four views
+  except a slightly lower front dome. VERDICT: flow_top does NOT help Tess (r39b worse, r39c = r39a). Why: Tess's top is
+  already one long layer (arch row + part cover over the cap: top ends 4.7-6 per 10k vs Garrett's 55), so there are few
+  card ends for flow cards to cover; its cards come out of the same drawn budget (dropping ~20 others) and are laid on
+  the 94 % envelope, LOWER than the arch row's (ARCH_PCT 94 + ARCH_FILL), so the dome drops. Step (2) (ponytail tuning)
+  skipped: nothing to tune toward. flow_top stays off for Tess.
+  The real loss this round is the DRAWN budget (r38a -> r39a: half the card faces), not anything flow_top can win back.
+- (6) THE PALE TAIL: TAIL_TONE is a live lever. g1backl tail L* p10/50/90: gSc 15.5 / 24.5 / 40.2; r39a (0.62) 26.1 / 36.6 /
+  48.4; r39t1 (0.45) 20.7 / 29.3 / 42.2; r39t2 (0.33) 16.1 / 23.1 / 35.3 (target met: p50 -1.4, p10 +0.6). STRIPE 5.9-6.0
+  all (gSc 6.1): fine striping was never off; COLSTEP 4.3 -> 3.6 (gSc 4.8). crowntop identical. LOOK (t39/tl_tail.png
+  gSc | r39a | t1 | t2, back / 3/4 / profile): t2's tail reads as the groom's darker tail from behind; the light
+  stripes on the head above the tie are untouched (head cards). SIDE EFFECT: the face-framing wisps read paler / greyer
+  at 3/4 in t1 / t2 (untested cause: the tone normalisation by the tile's peak). STATE: r39t2 LOD sheet running
+  (t38/lods.sh r39t2 -> t38/lods_r39t2.png), A/B r39t2 vs r38a next.
+- (7) BLIND A/B r39t2 (new, in the drawn budget) vs r38a (old, 44.8k drawn) on 1 m crops (review-ab made the trios
+  t39/ab/r1/trio_*.png + key.json; its claude -p step failed before 13:00 MT, so a fresh blind subagent judged them):
+  front NEW ("keeps the centre part and head shape; old's hairline shredded"), 3/4 OLD ("tone / highlight streaks
+  closer"), side OLD ("new: blotchy dark patches, broken stripes"), back NEW ("volume and silhouette hold together; old
+  has a dark torn flap at the tail") -> 2 / 2: a TIE with half the card faces. NEW's MAJORs: the face-framing strands
+  grey-green (the TAIL_TONE side effect, (6)), the tail now "too dark and opaque" from behind / at 3/4 (0.33 overshoots
+  the look though p50 matches: the groom's tail has light streaks, p90 40 vs ours 35), a flap at the front crown at 3/4.
+- (8) LOD sheet r39t2 (t38/lods_r39t2.png; g2 / g4 / g8 x front / 3/4 / back): LOD0 holds; LOD1-3 at 3/4 (g2v1, g4v1)
+  show only a fragment of the tail, detached, where r38a's LOD1-3 drew the whole tail from the tie
+  (t39/lod_g2v1_r38a_vs_r39t2.png); LOD3 from behind has a black tie band. Cause (untested): the main / npc / far cuts
+  now get half the card faces (drawn_x 2: main 3496, npc 2736, far 548 card triangles) and drop 400-1200 cards, the
+  tail's among them. The grey-green face wisps at LOD0 are ALSO in r38a's sheet: not the TAIL_TONE side effect I
+  suspected in (6) (pre-existing, LOD0 only).
+
+## Handover 2026-10-19 (hair-cards agent, round 39; stopped at the ~70-tool-call budget)
+BEST: r39t2 for LOD0 (header). LODs NOT OK under the drawn budget. Nothing in flight; no processes of mine left running.
+DONE: merged main (main's side for code; round 38's missing notes re-inserted); t39/ends.py (visible card ends on Tess);
+t39/tail.py (tail L* / stripes by the ID pass); flow_top on Tess = no gain (r39b worse without the arch, r39c = r39a);
+TAIL_TONE 0.33 matches the groom's tail p50 (23.1 vs 24.5); blind A/B vs r38a: TIE.
+FINDINGS: (a) the drawn budget halves Tess's card faces (hero 20418 -> 10270): crowntop +3 to +7 px, coarser tail at 3/4,
+patchier back crown; this is now the biggest loss, bigger than any lever tested in rounds 35-39. (b) Tess's top has few
+visible card ends (4.7-6 per 10k vs Garrett's 55): flow_top has nothing to cover there.
+NEXT, in order: (1) LOD1-3 tail under the drawn budget: give the tail class a floor share of the tier's cards (or prio)
+so main / npc / far keep the tail; re-check t38/lods.sh. (2) Win back hero card faces: segment length (now 12 mm,
+grown by the budget fit), fewer cap triangles (3220), fewer face cards (60 face/L0); measure crowntop / ends after each.
+(3) The tail now "too dark and opaque" by the reviewer: TAIL_TONE ~0.40 with TONE_CONTRAST_TAIL up a little for the
+groom's light streaks (p90 40 vs ours 35). (4) The open faults from round 38 stay (3/4 front flap, jagged part V,
+profile ridge, narrow dome shoulders). Scratch t39/: exa39.py (st=<json> into spec hair.strands), r39.sh, q1.sh, q2.sh,
+ends.py, tail.py, tiles.py, tl_*.png, ab/r1 (trios + key.json).
+
+## hair-cards round 40 (2026-10-19, fresh session; coordinator: the budget rule reversed, LOD1-3 keep the whole tail, the tail tone, A/B vs r38a)
+BEST CARDS FOR EXPORT: r40a = /mnt/data/hifipushie/haircards/exp/exar40a/hc_s2.glb (+ hc_s2_LOD1-3.glb) = r38a's geometry
+EXACTLY (glbcmp) under the round-40 budget rule: card faces / drawn / vertices hero 24006 of 25000 / 44792 of 50000 / 23821,
+main 12278 / 20116 of 25000 / 11159, npc 8088 / 14300 of 16500 / 8592, far 2378 / 4088 of 5000 / 2735. EXPORT SETTINGS: hair
+defaults at this round's commits + hair_clumps.FILL = 1.0 (t40/exa40.py hc_s2 <out> hk.FILL=1; TAIL_TONE stays 0.62).
+LODs OK: y (t38/lods_r40t1.png = the same geometry: LOD1-3 hold the whole tail from the tie at 3/4 at their switch
+distances, no black tie band at LOD3). NOT approved (bin/approve). Judge card renders only with blender_scene at or after
+the culling fix (1c).
+- (1) THE BUDGET RULE (coordinator 2026-10-19, reverses c10's "budget = drawn"): a role's hair_cards DEFAULT (hero 25k,
+  x the LOD ratios per tier) counts CARD FACES (one side); the DRAWN triangles (back faces included) stay within the
+  role's RANGE MAXIMUM (hero 50k / main_npc 20k / secondary_npc 8k / crowd 1.5k, x the LOD ratios); vertices reported.
+  Garrett's side had NOT landed (main 8778225d: "not yet implemented"; its worktree has card_allowance(budget, cap,
+  other, back_faces) mid-merge), so implemented here with the same names: hair.card_allowance(..., drawn_max=) =
+  min(default - cap - other, (drawn max - cap - f x other) / f) (drawn_max None = c10's rule), hair.tier_drawn_max(tier,
+  role, own) (an own tier_triangles keeps the role's max / default ratio), budgets.max_triangles(role, part, lod), the
+  tier report's "vertices" (hair.glb_vertices: the GLB's POSITION counts) and "drawn_max";
+  tests/test_hair_card_rows.py::test_every_tier_fits_its_drawn_budget_back_faces_counted asserts both limits (85b4da2c).
+  Also (step 2's tool, opt-in): hair_cards.FIT_FLOOR / S["fit_floor"] {cls: share}: that share of a class's cards is kept
+  first under a budget (test_fit_floor_keeps_a_class_share). Scratch t40/: r40.sh (= t39/r39.sh), exa40.py (+ hc.X flags).
+  STATE: r40a (= r38a's flags, hk.FILL=1, under the new rule) exporting (waits on the heavy slot). NEXT: tiers / crowntop
+  vs r38a (12.5 / 7.9 / 7.3), LOD sheet.
+- (1b) r40a = r38a's flags (hk.FILL=1) under the new rule. Per tier (t40/tiers.py: the GLB's hair mesh; card faces =
+  (drawn + cap) / 2): hero LOD0 card faces 24006 of 25000, DRAWN 44792 of 50000, vertices 23821; main LOD1 12278 of
+  12500 / 20116 of 25000 / 11159; npc LOD2 8088 of 8250 / 14300 of 16500 / 8592; far LOD3 2378 of 2500 / 4088 of 5000 /
+  2735: every tier within both limits. GEOMETRY = r38a EXACTLY (glbcmp LOD0: 53675 of 53675 unique verts, 77248 of
+  77248 unique tris; the same counts at LOD1-3): the drawn rule gives back all of r38a's cards, so LOD1-3 keep r38a's
+  whole tail (step 2 needs no floor: FIT_FLOOR stays off, the tool is there if a tighter role needs it).
+  BUT crowntop front / 3/4 / side 14.9 / 12.9 / 8.9 px vs r38a 12.5 / 7.9 / 7.3. Not the render: r38a's own lodx GLB
+  re-rendered now (tag r38aN) = 12.5 / 7.9 / 7.3 exactly. The TEXTURES differ (same geometry): basecolor alpha mean |d|
+  13 / 255, coverage 55.2 -> 55.7 %: the tile pictures changed in the merge. Suspect: hair_clumps.TILE_REP_DRAWN (c8,
+  Garrett: the tile's medoid must draw half its strands), the only picture-choice change since b5e5f064.
+  STATE: r40t1 (TAIL_TONE 0.40 + TONE_CONTRAST_TAIL 6.0) building; queued r40b = r40a + TILE_REP_DRAWN 0, r40t3 = r40b +
+  the tail tone (t40/q2.sh).
+- (1c) THE CROWNTOP LOSS WAS THE PREVIEW, NOT THE CARDS. r40b (TILE_REP_DRAWN 0: atlas alpha = r38a's to the byte)
+  still read 15.1 / 13.1 / 9.0; the only other difference in the GLB = the hair material's doubleSided false (main
+  7bef3431: single-sided material when cards carry BACK_FACES). Blender's glTF import DROPS a face with the same corners as
+  another: Tess's LOD0 hair imports as 24246 faces of 44792 (t40/bimp.py), i.e. every back-face copy is gone, and
+  blender_scene passed the material's culling on to blender_cards.game_material ("cull"), so the shots / sheets showed
+  only the cards' front sides. r40b's GLB patched to doubleSided true -> 12.5 / 7.9 / 7.3 = r38a exactly. FIX
+  (blender_scene, the game material's "cull": False always): double-sided in Blender = what an engine draws from the
+  GLB's own back faces. After it r40b (unpatched) = 12.5 / 7.9 / 7.3, r40t1 (TILE_REP_DRAWN 0.5, default) 12.3 / 7.8 / 7.2.
+  CROWNTOP BACK TO r38a's. CONSEQUENCE: every card render through blender_scene since 7bef3431 hid card backs: round 39's
+  r39* sheets / A/B and Garrett's c-rounds after that merge were judged on half-sided cards (blender_game, the game
+  preview, always set use_backface_culling False: not affected). TILE_REP_DRAWN stays 0.5 (no loss).
+  STATE: r40t3 building (unneeded: TILE_REP 0); NEXT: tail tone (r40t1 = 0.40 + contrast 6), LOD sheet, A/B.
+- (3) TAIL TONE r40t1 = r40a + TAIL_TONE 0.40 + TONE_CONTRAST_TAIL 6.0 (rendered after the fix): g1backl tail L* p10/50/90
+  16.0 / 27.5 / 37.7 (gSc 15.5 / 24.5 / 40.2; r40a = r38a 21.9 / 35.4 / 45.9), STRIPE 5.6 (6.1). crowntop 12.3 / 7.8 / 7.2.
+- (4) BLIND A/B r40t1 (new) vs r38a (old) (review-ab made the trios t40/ab/r1 + key.json; its claude -p step failed again,
+  "weekly limit, resets 1pm MT"; a fresh blind subagent judged them): front TIE, 3/4 OLD ("a few lighter streaks in the
+  tail"), side TIE, back OLD (new: "a large dark wedge in the middle of the tail that reads as a hole") -> OLD 2 / TIE 2.
+  The darker tail LOSES: TAIL_TONE stays 0.62 and the best build is r40a (= r38a geometry and tone, inside the rule). MAJORs
+  on BOTH (the reviewer): face-framing strands grey and see-through rather than blonde, bare pale patches at the temples
+  beside the part, the top too dark and uniform with no blonde streaks, hard card steps at the crown edge, a jagged nape
+  edge behind the ear, white flecks / a ragged white edge on the crown, hash marks at the nape.
+- (2b) LOD SHEET (t38/lods_r40t1.png; the geometry = r40a = r38a): at the switch distances (LOD1 @ g2, LOD2 @ g4, LOD3 @ g8)
+  the front holds one crown, the 3/4 has the WHOLE tail from the tie (r39's fragment was the drawn budget), the back is one
+  dome + tail with no black tie band. LOD3 at 2 m (not its distance) has spiky flicks at the tail and the temple. LOD0 from
+  behind at 2 m: the pale split bulb of the tail is still there (round 38's open fault). LODs OK: y.
+
+## Handover 2026-10-19 (hair-cards agent, round 40; stopped at the ~70-tool-call budget)
+BEST: r40a (header). Nothing in flight; no processes of mine running.
+DONE: the budget rule (hair.card_allowance(drawn_max=), hair.tier_drawn_max, budgets.max_triangles, "vertices" in the tier
+report, test) with Garrett's function names, so the next integration merges (his worktree has card_allowance(budget, cap,
+other, back_faces) mid-merge: keep the drawn_max keyword); FIT_FLOOR (opt-in, unused: the rule alone keeps the tail);
+FOUND AND FIXED the preview's back-face culling (1c): every blender_scene card render since main 7bef3431 showed only the
+cards' front sides (Blender's glTF import drops the back-face copies as duplicate faces). TELL GARRETT'S AGENT: its c-rounds
+after that merge were judged on half-sided cards; re-render before believing them.
+FINDINGS: crowntop under the fix = r38a's (12.5 / 7.9 / 7.3); round 39's "drawn budget halves the cards" loss is gone with
+the rule; a darker tail (0.40 / contrast 6) lost the blind A/B on a dark wedge in the tail.
+NEXT: (1) the shared MAJORs above: grey face strands (tone of the face cls), temple bare patches, blonde streaks on the
+top (the head cards' tone spread), crown-edge card steps. (2) LOD0's back tail split bulb at 2 m. (3) If a tail tone is
+tried again: lift the light streaks (p90) without darkening the core (the dark wedge), e.g. TONE_CONTRAST_TAIL alone.
+Scratch t40/: r40.sh, exa40.py (+ hc.X flags), tiers.py (card faces / drawn / vertices per LOD GLB), bimp.py (Blender
+import face count), crops/, ab/r1 (trios + key), crown_*.txt.
+
+## hair-cards round 41 (2026-10-19, fresh session; coordinator: r40a's six reviewer MAJORs by game visibility, A/B vs r40a)
+BEST CARDS FOR EXPORT: r41c = /mnt/data/hifipushie/haircards/exp/exar41c/hc_s2.glb (+ _LOD1-3) = r40a + hk.TONE_FRONT 1.0
++ hk.TONE_CONTRAST 3.0 + hk.TINT_TOP (.85, 1.6) + hk.WISP_ALPHA .95 + hk.WISP_KIDS_FACE 6 + hc.HUE_CLIP 1 + spec hair.strands
+{"hairline_row": {"pass": true}} + hk.FILL 1 (t41/r41.sh r41c ...; code defaults unchanged, all opt-in). Tiers (t40/tiers.py):
+hero card faces 23304 / drawn 43388 / verts 23213; main / npc / far = r40a's to the triangle (12278 / 20116, 8088 / 14300,
+2378 / 4088): within both limits. LODs: counts = r40a's (OK in round 40); the LOD sheet not re-rendered. Blind A/B vs r40aF:
+NEW 2 (3/4, side) / TIE 2. NOT approved.
+- (0) HALF-SIDED RE-CHECK (main 7bef3431 merged into this branch in round 39; the preview fix b4430ada at 02:44): rounds
+  35-38 rendered on this branch before the merge (their GLBs doubleSided true): NOT affected. Round 39 (every r39* shot,
+  the flow_top verdict (4)/(5), the TAIL_TONE trial (6), the A/B r39t2 vs r38a (7), the LOD sheet (8)) and round 40's
+  r40a / r40t1 crowntop rows in (1b) were HALF-SIDED. Round 40's (1c)-(4) and the LOD sheet (2b) were rendered after the
+  fix: valid. The flow_top verdict is moot anyway (made under the reversed drawn budget, half the cards); not re-run.
+  r40a's own shots (02:02) predate the fix: re-rendered as r40aF (the A/B base).
+- (1) MEASURE (t41/reg.py <tag_view>:y0:y1[:x0:x1]: hair px of the ID pass in a band of the hair bbox: L* p10/50/90, C*,
+  C* and hue of the lightest 20 %, STRIPE). TOP (rows 0-25 %): gSc front 17.2 / 29.6 / 50.6, 3/4 16.8 / 27.2 / 41.7;
+  r40t1f (head = r40a) front 17.4 / 23.6 / 35.3, 3/4 16.9 / 24.5 / 37.1: the top lacks its LIGHT tail (p90 -15 front)
+  = the missing blonde streaks; STRIPE the same (6.0 vs 6.4). FACE WISPS (g1v0 rows 40-90 %, x 0-30 %): gSc 979 px,
+  L* p50 49.2, C* 13.9, hue 63; r40t1f 330 px (a third: see-through), C* 11.8, light-pixel hue 73 (greener = the
+  "grey" read). The atlas's lightest texels have red at 252-255: the per-channel clip in hair_cards' atlas (lin =
+  base x val x gain, then clip) bleaches red first, so lifted wisps (WISP_LIFT) turn yellow-grey.
+  LEVER (new, opt-in): hair_cards.HUE_CLIP = 1: an over-range texel is scaled down by its max channel (hue kept).
+  STATE: t41/q1.sh: r40aF (r40a's GLB re-shot, fixed preview), r41w1 (WISP_ALPHA .95 + WISP_KIDS_FACE 6), r41t1
+  (TONE_FRONT 1.0, TONE_CONTRAST 3.0, TINT_TOP (.85, 1.6)), r41h1 (hairline_row pass: the temples), r41w2 (w1 + HUE_CLIP).
+  NEXT: reg.py rows per build, tiles vs gSc.
+- (2) r40aF (r40a's GLB, fixed preview): crowntop front / 3/4 / side 12.7 / 7.8 / 7.2 = r38a (12.5 / 7.9 / 7.3).
+  reg.py: top front 17.4 / 23.6 / 35.3 (gSc 17.2 / 29.6 / 50.6), 3/4 16.9 / 24.6 / 37.1 (gSc 16.8 / 27.2 / 41.7); wisps
+  (front x 0-30 %) 330 px vs gSc 979, C*light 14.2 hue 64 (gSc 9.1 / 63): with backs drawn the wisps' HUE is the groom's;
+  the "grey" read is coverage (a third of the groom's wisp px, see-through over skin) and the pale temple sheets.
+  Tail g1backl 21.3 / 35.0 / 45.1 (gSc 15.5 / 24.5 / 40.2). FAULT TILES: t41/ft.py <name> <tags> (rows top / wisps /
+  temples / crown / nape / tail at 2 m; cols gSc + tags) -> t41/ft_r40aF.png. STATE: q1 builds running. NEXT: per-build rows.
+- (3) r41w1 = r40a + WISP_ALPHA .95 + WISP_KIDS_FACE 6: wisps (front x 0-30 %) 330 -> 477 px (gSc 979), L* p50 48.7 -> 54.5
+  (gSc 49.2), C* 12.5 -> 13.2 (13.9); top / tail / crowntop unchanged. LOOK (t41/ft_w1.png): more there, but FLAT PALE
+  STRIPS (one even tone), not the groom's blonde-and-brown hairs; the temple's pale sheets ARE the wisp cards' upper ends
+  lying over the temple. New lever: hair_clumps.FACE_CONTRAST (opt-in): face cards' hair tone spread about their median.
+  STATE: queued r41w3 = w1 + FACE_CONTRAST 3 + WISP_LIFT 0.3.
+- (4) r41t1 = r40a + TONE_FRONT 1.0 + TONE_CONTRAST 3.0 + TINT_TOP (.85, 1.6): TOP rows 0-25 % L* p10/50/90 front 19.6 /
+  25.1 / 39.2 (r40aF 17.4 / 23.6 / 35.3, gSc 17.2 / 29.6 / 50.6), 3/4 18.2 / 26.7 / 42.2 (gSc 16.8 / 27.2 / 41.7: met),
+  side 10.6 / 19.7 / 32.5 (r40aF 9.9 / 16.9 / 27.4, gSc 15.4 / 21.9 / 31.6); back upper p50 38.5 (r40aF 35.9, gSc 32.5:
+  already pale, a little paler). crowntop / wisps unchanged. LOOK (t41/ft_t1.png): a lighter top, a broad lighter band,
+  but not yet the groom's thin light streaks. STATE: queued r41t2 = t1 + TONE_CONTRAST 3.5 + RIBBON_SHARE 0.3.
+- (5) r41h1 = r40a + hairline_row {pass: true} (the head strands passing through the temple band get short cards): temple
+  rows (front rows 15-45 %, x 0-35 %) L* 21.1 / 34.9 / 53.8 (r40aF 18.1 / 30.6 / 53.9, gSc 17.1 / 28.3 / 55.1). LOOK
+  (t41/ft_hw.png cols gSc | r40aF | w1 | w2 | h1): brown hair now lies over the temple where r40a showed the pale bare
+  sheet (fault 3), her left temple partly. r41w2 (w1 + hair_cards.HUE_CLIP 1) = w1 to the eye (wisp C*light 14.4 -> 14.8):
+  with the backs drawn the wisps' hue was already the groom's; HUE_CLIP is harmless, kept on in the combined build.
+  STATE: r41c = t1 + h1 + w1 + HUE_CLIP building (separately from q1: e1, w3, t2 still queued). NEXT: tiles, A/B vs r40aF.
+- (6) r41e1 = r40a + HL_LIFT 0.1 + HL_ALPHA 0.8: temple / top rows = r40aF to 0.3 L*: DEAD lever for the temples (the pale
+  sheets there are wisp cards' upper ends, not hairline "edge" cards).
+- (7) r41c = t1 + h1 + w1 + HUE_CLIP: top front 20.1 / 26.5 / 40.1 (gSc 17.2 / 29.6 / 50.6), 3/4 18.3 / 28.5 / 41.0 (gSc 16.8 /
+  27.2 / 41.7); wisps 463 px (r40aF 330, gSc 979), C*light 14.8; temple rows p50 40.8 (r40aF 30.6, gSc 28.3: now LIGHTER than
+  the groom: the row's cards take the top's lift); tail g1backl = r40aF (35.0 p50); crowntop 11.9 / 8.4 / 7.1 (r40aF 12.7 /
+  7.8 / 7.2). FAULT TILES t41/ft_r41c.png (gSc | r40aF | r41c): (1) top lighter, more variation, still no thin blonde streaks;
+  (2) wisps fuller but flat pale strips; (3) temples covered (no bare skin sheet), a bit pale; (4) crown edge, (5) nape ticks,
+  (6) tail split at 2 m: UNCHANGED (not addressed this round).
+- (8) BLIND A/B r41c (new) vs r40aF (old) (review-ab's CLI fails before 13:00 MT, so a fresh blind subagent, one sitting, trios
+  t41/ab/trio_*.png + key.json): front TIE, 3/4 NEW ("more light streaks across the top, paler strands at the temple"), side
+  NEW ("a lighter streak band over the top"), back TIE -> NEW 2 / TIE 2. MAJORs on both: overall darker / greyer than the
+  groom's warm blonde-highlighted hair; face strands thin grey-brown, not light, not separating; part / temples a scraggy
+  broken patch; hard chunky crown outline, card edges; blunt dark ponytail tips, a black patch on the tail's right side and a
+  dark block at its base from behind; dark tick marks at the nape behind the ear; the tail narrow from the front.
+
+## Handover 2026-10-19 (hair-cards agent, round 41; stopped at the ~70-tool-call budget)
+BEST: r41c (header). Nothing in flight: q1's last two builds (r41w3 = w1 + FACE_CONTRAST 3 + WISP_LIFT 0.3, r41t2 = t1 +
+TONE_CONTRAST 3.5 + RIBBON_SHARE 0.3) were stopped unbuilt; no processes of mine left.
+DONE: half-sided re-check (0); t41/reg.py (region L* / C* / hue / stripe by the ID pass), t41/ft.py (six fault tiles vs gSc);
+levers hair_cards.HUE_CLIP and hair_clumps.FACE_CONTRAST (both opt-in; FACE_CONTRAST untested); r41c wins 2 views, ties 2.
+FINDINGS: with backs drawn, the wisps' hue matches the groom's: their fault is coverage (a third of the groom's px) and
+flat even tone; the temples' pale sheets are the wisps' upper ends, fixed by hairline_row pass (HL_* levers are dead there);
+the top's p90 is the gap (front 40 vs 50.6).
+NEXT: (1) run r41w3 / r41t2 on r41c's flags (t41/q1.sh lines; FACE_CONTRAST is untested: prove it moves the wisp STRIPE first);
+(2) LOD sheet for r41c (t38/lods.sh r41c); (3) the untouched faults: crown-edge card steps, nape tick marks behind the ear, the
+tail's dark patch / blunt tips / split at 2 m; (4) temple rows now +12 L* over gSc: the hairline row's cards out of TONE_FRONT /
+TINT_TOP lift (or its own "lit" < 0).
+
+## hair-cards round 42 (2026-10-19, fresh session; coordinator: by game visibility: (1) tail from behind, (2) nape ticks, (3) crown edge, (4) r41c LOD sheet, (5) wisps / temples)
+BEST: r41c (round 41 header, A/B-proven); candidate r42c = r41c + hc.TAIL_AXIS_N 1.0 (tail black patch gone; not A/B'd). r42d (+ hk.TAIL_TONE .45) A/B 2-2 vs r41c. NOT approved.
+- (0) DIAGNOSE the tail from behind (t42/pix.py <glb> <frames tag> <view> <render tag> x,y ...: which card owns a pixel,
+  its atlas texel, vertex colour, n . to-eye; t42/tailn.py <glb>: tail verts' normals vs outward from the tail's own axis).
+  r41c g1backl: the BLACK PATCH on the tail's right edge (rendered 18 / 9 / 2) is card 230, a tail card on the tail's FRONT
+  side seen past the tail's edge from behind (n . eye -0.60, its normal outward from the tail axis: +0.67): its atlas texel
+  is pale (190 / 169 / 154), vertex colour .65: LIGHT, not picture: ONE_NORMAL shades its back with its front normal (away
+  from the eye and the light) inside the tail's shadow. Dark tips (cards 199 / 211, facing the eye, alpha 168-210, atlas
+  pale) render 55-95: light too. Tail verts with the normal INTO the tail axis: 35.7 % (< -0.3: 21.9 %; the 12 worst are
+  the short cards right under the tie). Nape ticks (g1v2): cards 629 / 631, 6-8 verts, 18-23 mm, rooted at the nape
+  hairline (z -77..-81 mm, y +40..53 behind C), vertex colour .35-.40 (the tail's .65), rendered 48-66.
+  STATE: diag renders (flat / shadow=0 / proxy=0, g1backl) running. NEXT: pick the tail lever from them.
+- (1) DIAG renders of r41c g1backl (t42/diag.sh): FLAT pass (albedo unlit): the black patch and the dark tips GONE (the
+  dark block under the tie stays: picture); shadow=0: patch and tips STILL black; proxy=0: same. So the tail's black patch
+  and dark tips are the SHADING NORMAL (one normal for both faces, the shading contract: an engine shows it too), not the
+  atlas or the shadow. LEVERS (both opt-in, defaults unchanged): hair_cards.TAIL_AXIS_N (tail card vertex normals turned
+  toward outward from the tail's own axis, per 1 cm band) and hair_clumps.NAPE_SHORT (cards shorter than this in the nape
+  band take NAPE_LIFT whatever their class / layer: the tick marks). STATE: t42/q1.sh builds r42a (r41c + TAIL_AXIS_N 1),
+  r42b (r41c + NAPE_SHORT .03), r42c (both); t38/lods.sh r41c (LOD sheet) queued. NEXT: tiles, tailn.py on r42a.
+- (2) r42a = r41c + hc.TAIL_AXIS_N 1.0: g1backl tile (gSc | r41c | r42a): the BLACK PATCH on the tail's right edge GONE, the
+  dark tips mostly gone; the dark block under the tie stays (picture, see the flat pass). Tail band (rows 40-100 %) L*
+  p10/50/90 21.8 / 35.0 / 45.5 -> 24.0 / 34.9 / 44.3 (gSc 14.9 / 25.6 / 45.0); STRIPE 5.5 -> 5.1 (gSc 6.1); tail verts facing
+  into the axis 35.7 -> 33.4 % (median n . out .47 -> .67: the lever reaches only the cards marked cls "tail"; the rest
+  are the gathered head cards under the tie). crowntop g1v2 = r41c's. The tail is still +9 L* p50 over gSc: queued r42d =
+  r42c + hk.TAIL_TONE .45 (0.62 default). STATE: r42b / r42c building, LOD sheet queued, r42d queued after q1.
+- (3) r42b = r41c + hk.NAPE_SHORT .03: DEAD lever. The tick cards 629 / 631 keep vertex colour .40 / .35 to the digit and
+  the nape region (g1v2 rows 55-85 %, x 45-75 %) = r41c (L* 15.9 / 26.7 / 34.5; gSc 12.6 / 21.1 / 36.1). Those cards do not
+  go through bake_tiles' NAPE loop as short cards (not in that card list, or their tone is set elsewhere). Next: map card
+  index -> builder (class / layer / lock) from the export, then lift THAT path. Code kept (opt-in, harmless).
+- (4) r42c = r42a + NAPE_SHORT (= r42a: tail band 24.0 / 34.9 / 44.3). r42d = r42c + hk.TAIL_TONE .45 (0.62): tail band (g1backl
+  rows 40-100 %) 19.2 / 28.2 / 37.7 (r41c 21.8 / 35.0 / 45.5, gSc 14.9 / 25.6 / 45.0): p50 met; top (g1v1 rows 0-25 %) unchanged
+  (28.4). TILE t42 tail (gSc | r41c | r42c | r42d, 1 m + 0.45 scale ~2 m): black patch gone (c, d), the tail's tone = the
+  groom's from behind (d), no pale split at 2 m (d: the tail darker than the head, as the groom); tips still square-cut.
+  crowntop = r41c's (g1v2 ragged 5.37, groom 1.04: the crown edge untouched this round).
+- (5) LOD SHEET r41c (t38/lods_r41c.png, g2 / g4 / g8 x front / 3/4 / back, LOD0-3): silhouettes hold at every switch;
+  LOD1-2 consistent; LOD3 at 2 m 3/4 has a spiky crumpled tail and stray cards at her left temple (fine at 8 m). From
+  BEHIND, LOD0 is much paler than LOD1-3 (a tone pop at the LOD0 -> 1 switch): the same tail / back paleness r42d removes.
+  Counts = r40a's (unchanged).
+- (6) BLIND A/B r42d vs r41c (fresh subagent, one sitting, t42/ab/trio_*.png + key.json): front OLD ("lighter, warmer"),
+  3/4 OLD ("A's ponytail close to black"), side NEW ("cleaner tail outline"), back NEW ("fewer artifacts; B black holes on
+  the tail's right edge and bottom") -> NEW 2 / OLD 2. TAIL_TONE .45 matches the groom from behind but reads near black
+  from the front / 3/4 (the tail seen in its own shadow). MAJORs left: crown blotchy dark patches, face strands flat grey
+  ribbons, tail tips blunt / chopped, nape tick marks, no flyaway outline, pale patch at the left hairline.
+
+## Handover 2026-10-19 (hair-cards agent, round 42; stopped at the ~70-tool-call budget)
+BEST: r41c stays the A/B-proven best (header). Candidate: r42c = r41c + hc.TAIL_AXIS_N 1.0 (+ hk.NAPE_SHORT .03, dead) =
+/mnt/data/hifipushie/haircards/exp/exar42c/hc_s2.glb: the tail's black patch gone, nothing else moved; NOT A/B'd alone.
+r42d (+ TAIL_TONE .45) split the A/B 2-2. Nothing in flight (r42e = r42d + hk.TIP_TAPER .35 was stopped unbuilt).
+NEXT: (1) A/B r42c vs r41c (expected NEW at back, TIE elsewhere) and r42c + TAIL_TONE .55 (between: the back's tone
+without the near-black tail at 3/4); (2) the nape ticks: find which builder makes cards 629 / 631 (t42/pix.py gives the
+card index; NAPE_SHORT never reached them); (3) the tail's square-cut tips (TIP_FADE_TAIL / TAIL_END_JIT) and the crown
+edge (r42e's TIP_TAPER trial); (4) LOD3's crumpled tail at 2 m 3/4.
+
+## hair-cards round 43 (2026-10-19, fresh session; coordinator: (1) A/B r42c vs r41c + TAIL_TONE .55, (2) nape tick builder, (3) square tail tips, (4) ragged crown edge, (5) LOD3 2 m 3/4)
+BEST: r42c (= r41c + hc.TAIL_AXIS_N 1.0, now the DEFAULT; blind A/B vs r41c NEW 2 / SAME 2) = /mnt/data/hifipushie/haircards/exp/exar42c/hc_s2.glb. TAIL_TONE .55 lost (OLD 2), tip fade / end stagger trials worse. NOT approved.
+Scratch: /mnt/data/hifipushie/haircards/t43/ (r43.sh = t42/r42.sh retargeted; q1-q3.sh queues; trace.py; spikes.py).
+- (0) bin/review-ab FAILED at 12:xx: "weekly limit, resets 1pm (America/Denver)" (claude -p exit 1). The trios it wrote
+  (t43/ab1/trio_*.png + key.json, r42c vs r41c vs gSc, 4 views) go to a fresh blind subagent instead.
+  Queued: r43a = r42c + hk.TAIL_TONE .55 (q1); trace.py on r42c (q2: hc.mesh patched to dump every card's builder fields
+  in mesh order, stops before the bake); r43b = r42c + hk.TAIL_END .01 + TIP_FADE_TAIL .45 + TIP_TAPER_TAIL .45 (q3,
+  the square tail tips). STATE: all three running / queued. NEXT: trace -> the nape tick builder.
+- (4) CROWN "RAGGED" 5.37 IS A METRIC ARTEFACT, not the crown (t43/spikes.py r42c g1v2: the top line's worst |2nd diff|
+  columns). One column at the FRONT (x 420, d2 495: the outline drops to the face where the groom has a fly-hair tuft
+  standing over the forehead) plus two neighbours (31, 26) carry the mean. Trimmed (|d2| < 20 px): r42c 0.59 vs the
+  groom 0.69 (g1v2); r41c g1v1 0.70 vs 0.89. Median 0-1 both. So the crown's outline is as smooth as the groom's; what
+  the number sees is the missing front flyaway tuft (the reviewer's "no flyaway outline" MAJOR). Crop t43/crown_r42c.png.
+  No crown change. crowntop's RAGGED should be reported trimmed (a tooling fix, not done).
+- (1) BLIND A/B r42c vs r41c (fresh subagent, one sitting, t43/ab1/trio_*.png + key.json; review-ab's CLI was rate-limited):
+  front NEW ("ponytail mass beside the neck nearer the reference's width"), 3/4 SAME, side SAME, back NEW ("OLD has a
+  near-black blotch on the ponytail's outer right side, visible at game distance") -> NEW 2 / OLD 0 / SAME 2. ADOPTED:
+  hair_cards.TAIL_AXIS_N default 0 -> 1.0 (the shading contract's consequence: one normal for both faces, so an engine
+  shows the same black patch; it applies to every tier's tail cards through hc.mesh). Faults the reviewer still lists on
+  both: dotted scalp gaps at the parting / crown (front), no blonde highlight strands, blunt cut-off tail end (MAJOR at
+  3/4, side, back), blotchy crown from behind, no flyaways. BEST = r42c (= r41c + TAIL_AXIS_N 1, now default).
+- (2) r43a = r42c + hk.TAIL_TONE .55 (between .62 and r42d's .45). t41/reg.py rows 40-100 %, L* p10/50/90:
+  back (g1backl) gSc 14.9 / 25.6 / 45.0 | r42c 24.0 / 34.9 / 44.3 | r43a 22.2 / 32.1 / 41.9 | r42d 19.2 / 28.2 / 37.7;
+  3/4 (g1v1) gSc 20.7 / 34.5 / 51.8 | r42c 18.2 / 32.7 / 46.7 | r43a 16.9 / 30.4 / 44.3 | r42d 14.7 / 26.4 / 40.9.
+  The groom's tail is DARKER than ours from behind but LIGHTER at 3/4: a single tone scale trades one view for the
+  other (|p50 err| back + 3/4: r42c 11.1, r43a 10.6, r42d 10.7). BLIND A/B r43a vs r42c (fresh subagent, t43/ab2, key
+  applied): front OLD, 3/4 OLD (the face strands / tail read less), side SAME, back SAME -> OLD 2. TAIL_TONE stays .62.
+  The back's darkness is view-dependent (the tail in its own shadow, backlit strands): not a tone constant's job.
+- (3) TAIL TIPS r43b = r42c + hk.TAIL_END .01 + TIP_FADE_TAIL .45 + TIP_TAPER_TAIL .45 (t43/tips_r43b.png, gSc | r42c | r43b;
+  t43/tailbot.py: the tail's bottom outline in the ID pass, g1backl): bottom p10-p90 50 -> 32 px, std 21.0 -> 16.3, mean
+  634 -> 625 (higher): the longer fade eats the tips, so the tail is SHORTER and its end MORE square. Look: worse (thinner,
+  higher, still a horizontal cut). Rejected. The groom's ends are STAGGERED (long clumps hang below the rest); ours end
+  near one height. Queued r43c = r42c + TAIL_END 0 + TAIL_END_JIT .35 (a wider random stagger of the card ends).
+- (4) NAPE TICKS TRACED (t43/trace.py: hc.mesh patched to dump each card's builder fields in mesh order; t43/ticks.py: cards
+  rooted in the nape band, z < -60 mm, y > +25 mm behind C, shorter than 40 mm): 44 hits, ALL kind "baby", cls None, locks
+  baby27..baby36, 11-38 mm, vertex colour .32-.49 (the tail .65): hair.baby_locks (baby hairs all round the hairline,
+  hair.py ~2942, joined to the cards under a budget). hair_clumps' NAPE_LIFT / NAPE_SHORT loop only sees CLUMP cards (cls
+  head / tail, baked): that is why round 42's lever was dead. On a tied style the groom has no such dashes at the nape.
+  LEVER (opt-in, unbuilt): hair.BABY_TONE (baby cards' vertex tone x this; hh.BABY_TONE=1.5 in exa40). Alternatives for the
+  next round: skip baby hairs under a tie's gather (the nape band) or give them the fly tile. NOT built this round.
+- (5) r43c = r42c + hk.TAIL_END 0 + TAIL_END_JIT .35 (t43/tips_r43c.png): bottom p10-p90 50 -> 37, mean 634 -> 629, back L* =
+  r42c's; look: the tail ends HIGHER and flatter with pale card streaks: worse. Rejected. Both tip trials make the tail's
+  end squarer: TAIL_END_JIT / the fade only SHORTEN cards, they cannot hang a clump below the mass as the groom does.
+- (6) LOD3 at 2 m 3/4 (t43/lod3_g2v1.png, LOD0 | LOD2 | LOD3 of r41c): the LOD3 tail is a fan of flat crumpled sheets with a
+  spike above the tie, stray cards at her right temple; LOD3 is hair TIER cards (asset.py: lods.HAIR_TIERS, hc.clump_cards,
+  not the clumped cut), 4088 tris. Not worked this round (budget).
+
+## Handover 2026-10-19 (hair-cards agent, round 43; stopped at the ~70-tool-call budget; nothing in flight)
+BEST: r42c (header); TAIL_AXIS_N 1.0 is the default now (hair_cards.py). Rejected: r43a (TAIL_TONE .55; the back's tone
+vs 3/4's is view-dependent, no constant fixes both), r43b (tip fade / taper .45), r43c (TAIL_END_JIT .35).
+NEXT: (1) nape ticks = BABY cards (hair.baby_locks): build r42c + hh.BABY_TONE 1.5 (opt-in lever, unbuilt) vs dropping baby
+hairs in the nape band under a tie (the groom has none there): measure nape region (g1v2 rows 55-85 %, x 45-75 %) and look;
+(2) square tail tips: the cards must REACH lower, staggered: lengthen a random share of tail cards to their clump's longest
+strands (TAIL_END 0 on ~30 % of cards, the rest as now) rather than shortening; measure with t43/tailbot.py (bottom
+p10-p90; gSc's ID mask misses fine strands, so compare r-tags with each other and look at t43/tips_*.png); (3) front
+flyaway tuft over the forehead (what crowntop's RAGGED actually sees; report it trimmed); (4) LOD3 tail (tier cards).
+review-ab's CLI failed on the weekly limit (resets 13:00 MT); t43/trios.py makes the same trios for a blind subagent.
+
+## hair-cards round 44 (2026-10-19, fresh session; coordinator: (1) nape ticks BABY_TONE / drop, (2) staggered long tail cards, (3) front flyaway tuft, (4) LOD3 tail + temple strays)
+BEST CARDS FOR EXPORT: r44d (file header line 2: path + settings) = r42c + BABY_NAPE + TAIL_LONG .2 / TOP .5, both now DEFAULTS. NOT approved.
+Scratch: /mnt/data/hifipushie/haircards/t44/ (r44.sh = t43/r43.sh retargeted; q*.sh queues). review-ab: CLI rate-limited until 13:00 MT (it is 06:00): blind subagent.
+- (1)+(2) NEW OPT-IN LEVERS (unproven until measured): hair.BABY_NAPE = (z, y) m: on a TIED groom (tie bands present) baby
+  cards rooted lower than z under the scalp centre and more than y behind it are dropped (the groom has none at the nape;
+  they ARE the ticks, round 43 trace). Chosen over BABY_TONE: a lighter dash is still a dash. hair_clumps.TAIL_LONG (share
+  of tail clumps) + TAIL_LONG_TOP .3 / TAIL_LONG_MIN 4: such a clump also gets a LONG card fitted on its longest 30 %
+  strands, end share 0 (to their tips): narrow clumps hanging below the mass, as in the groom (lengthen, not shorten; own
+  rng stream, TAIL_END_JIT's draws unchanged). Queued (t44/q1.sh): r44a = r42c + hh.BABY_NAPE=(0.05,0.02);
+  r44b = r44a + hk.TAIL_LONG .35. STATE: building. NEXT: nape tile + tailbot on both.
+- (1) r44a = r42c + hh.BABY_NAPE=(0.05,0.02) (t44/nape_r44a.png gSc | r42c | r44a, g1v2 behind the ear; t44/napecc.py: the
+  ID mask in g1v2 box x .50-.60, y .45-.58): islands (ticks) gSc 8 / r42c 38 / r44a 3; small-island px 58 / 62 / 12; the
+  hair edge's mean |d1| per row 1.24 / 2.16 / 0.95. Look: the dashes behind the ear are gone, the nape edge a clean
+  serrated line like the groom's. Side effect: the freed budget re-cut the rest (cards 731 -> 680, 43388 -> 46048 tris,
+  segment 9.4 -> 8.6 mm; hair still in budget); crowntop g1v0-2 deficit 12.0 / 8.4 / 7.0 (r42c's in t43/crown_r42c...
+  ~same). STATE: r44a keeps the nape fix. NEXT: r44b (TAIL_LONG), r44c (+ FLY_FRONT .04).
+- (2) r44b = r44a + hk.TAIL_LONG .35 (t44/tail_r44b.png gSc | r42c | r44a | r44b, g1backl; t43/tailbot.py): back view bottom
+  mean 634 / 633 / 647 px (lower = longer), p10-p90 50 / 52 / 30, max 658 / 656 / 677; side (g1v2) mean 616 / 609 / 622,
+  p10-p90 49 / 58 / 62. LOD0 728 cards, 43596 tris (in budget). Look: the tail hangs lower and ENDS in thin staggered
+  strands instead of r42c's blunt slab edge; reads nearer the groom's ragged bottom (the groom's tail also reaches lower
+  than r42c's in this crop). The back view's p10-p90 drops because the long cards reach a common lower line across the
+  middle columns: the number disagrees with the eye here (the ends are thin and staggered; the mask's outline is not).
+  STATE: keep r44b's lever for the A/B. NEXT: r44c (+ FLY_FRONT), then a blind A/B r44c vs r42c.
+- (3) r44c = r44b + hk.FLY_FRONT .04 (t44/front_r44c.png gSc | r42c | r44b | r44c, g1v0 top): crowntop g1v2 RAGGED 5.38 ->
+  5.43, g1v0 outline EXCESS 223 -> 3: the front exemption only re-ranked the fly budget onto hairs that do not show and
+  took the one fly strand standing over the right crown away. The groom's front flyaways are CURLY loops over the crown
+  (frizz), which FLY_STRAIGHT rightly refuses as cards. REJECTED; FLY_FRONT stays 0 (opt-in, dead for Tess). A front
+  tuft needs a different builder (a few short curved fly cards seeded on the crown's front outline), not this exemption.
+- (4) BLIND A/B r44b vs r42c (fresh subagent, t44/ab1, key applied): front SAME (new's tail "more ragged and lower at its
+  end, slightly closer"), 3/4 OLD (new "thinner and greyer, dark blotches on the crown", though its ends are nearer the
+  wispy taper), side NEW ("hangs lower and ends in wisps ... nape cleaner"), back OLD weak (new "wider, tail merges into
+  the side hair, more blotches") -> NEW 1 / OLD 2 / SAME 1. TAIL_LONG .35 not adopted as is: the ends win, the tail's body
+  thins / greys at 3/4 (long cards on 30 % of a clump's strands are sparse).
+- (5) BLIND A/B r44a vs r42c (t44/ab2): front NEW (tail volume past the jaw), 3/4 SAME, side NEW (smoother crown tone,
+  no streaks), back SAME -> NEW 2 / OLD 0 / SAME 2. ADOPTED: hair.BABY_NAPE default (0.05, 0.02) (tied grooms only).
+  BEST = r44a. Queued r44d = r44a + TAIL_LONG .2 + TAIL_LONG_TOP .5 (fewer, fuller long cards). STATE: r44d building.
+- (6) r44d = r44a + TAIL_LONG .2 + TAIL_LONG_TOP .5 (t44/tail34_r44d.png gSc | r44a | r44b | r44d, g1v1): tailbot back mean
+  633 / 647 / 637, p10-p90 52 / 30 / 38; side mean 609 / 622 / 623, p10-p90 58 / 62 / 60. LOD0 707 cards, 43548 tris. Look
+  (3/4): r44a's tail a dark slab with a blunt hem; r44d's wavy with lighter streaks and stringy tapered ends, a little
+  greyer. BLIND A/B r44d vs r44a (t44/ab3, key: X = new in all four): front NEW (fuller, wavier), 3/4 NEW ("streaky
+  highlights and ragged, separated ends like the reference"; old "blunt, cut-off bottom edge"), side NEW, back OLD marginal
+  ("old darker toward the ends, nearer the reference's value") -> NEW 3 / OLD 1. ADOPTED: TAIL_LONG .2, TAIL_LONG_TOP .5
+  defaults. BEST = r44d.
+
+## Handover 2026-10-19 (hair-cards agent, round 44; stopped at the ~70-tool-call budget; nothing in flight)
+BEST: r44d (header line 2) = r42c + hair.BABY_NAPE (0.05, 0.02) (nape baby cards dropped under a tie: the ticks) +
+hair_clumps.TAIL_LONG .2 / TAIL_LONG_TOP .5 (long cards on the longest half of 20 % of tail clumps: staggered wispy ends);
+both defaults now. Rejected: r44b (TAIL_LONG .35 / TOP .3: thin grey tail at 3/4), r44c (FLY_FRONT .04, dead / harmful:
+stays 0). review-ab's CLI was rate-limited (before 13:00 MT); three fresh blind subagents did the A/Bs (t44/ab1-3, key.json).
+Shared faults every reviewer still names: blotchy dark crown / part patches (front + top), torn temple hairline at the
+left temple (front, 3/4), no blonde highlight strands, no flyaways (the groom's are CURLY frizz over the crown: cards
+refuse loops, FLY_STRAIGHT), stiff flat face strands; back view: the tail end a touch light vs the groom's darker ends.
+NEXT: (1) the crown / part blotches (the commonest MAJOR now); (2) a front-crown fly builder: a few short CURVED fly cards
+seeded on the crown's front outline (not FLY_FRONT); (3) LOD3 tail (far tier: group "free", card_width .07, segment .05:
+the crumpled sheets are probably the 5 cm segments on a wavy medoid; try segment .03 at the far tier) and the temple strays;
+re-judge LOD3 at 2 m 3/4 for r44d (t43/lod3_g2v1.png was r41c); (4) the back view's tail-end value.
+
+## hair-cards round 45 (2026-10-19, fresh session; coordinator: (1) crown / part blotches, (2) torn left-temple hairline, (3) r44d LOD3 tail / temple strays, (4) curved front fly cards or blonde highlights)
+Scratch: /mnt/data/hifipushie/haircards/t45/ (r45.sh = t44/r44.sh; capshare.py = t42/pix.py's z-buffer over a box: which
+pixels the CAP (card 0, the 1698-vertex component) owns vs the cards, their vertex colour / atlas texel, and how the darkest
+15 % split; blotch.py = dark-patch regions (band-pass blur 2 - blur 10 < -12, >= 25 px) in the ID hair mask, gSc vs ours).
+- (1) Diagnosis on r44d (t45/cap_r44d_g1v*.png, crown boxes g1v0 440,340,640,420 / g1v1 430,340,640,440): the cap owns
+  18-19 % of the box's hair pixels but 37 % (front) / 46 % (3/4) of its darkest 15 %: 2x over-represented. Its vertex
+  colour is 0.9 / peak = 0.353 vs the cards' 0.64-0.68; albedo (atlas x vcol) 52.5 vs the cards' 84.5-93.0. The rest of the
+  darkest pixels are cards with low vcol (~0.5) and darker texels; card ROOTS are not the cause (vcol at along < .15 0.63-0.64
+  vs > .3 0.62-0.69). blotch.py does NOT separate us from the groom by area (gSc 17.6 / 10.5 % vs r44d 8.5 / 8.6 %): the
+  groom's darks are LONG streaks along the flow (and a dark root line at the part), ours are round smudges (look). The
+  measure to add: dark-region elongation along the flow (not done: budget).
+  New opt-in lever hair.CAP_TONE (x the cap's vertex colour under the colour model, clipped to 1). Queued (t45/q1.sh):
+  r45a = r44d + hh.CAP_TONE=1.4 (cap vcol ~.49, albedo ~74), r45b = 1.7 (~.60, ~ the cards' mean). STATE: building.
+  NEXT: capshare + blotch on both, crown tiles gSc | r44d | r45a | r45b.
+- (2) Temple probe (t42/pix.py, r44d g1v0 at the torn temple): the pale strips are SHORT cards (cards 403 / 422: 8 / 14
+  vertices, reach 27 / 48 mm) on a LIGHT tile (texel 193-196 vs ~120-150 for the head's tiles) at vcol .75-.80: albedo ~150
+  vs ~85 around them, lying flat over darker cards and the cap (vcol .35) at the hairline: light flat flakes over dark
+  gaps = the "torn" read. Not yet known which builder makes them (hairline row: 47 cards, or face/L3: 18).
+- (2b) The temple flakes are FACE wisp cards (roots at az ~-22 / +36 deg, el 13-28: outside the hairline row's band az
+  50-100), wearing the face tiles at WISP_ALPHA .95 (the r44d flag; texel alpha 242): round 24 measured the same "broad
+  opaque pale sheets" and set the default .7. Queued r45c = r44d with hk.WISP_ALPHA .7 (t45/q2.sh). STATE: queued.
+- (3) LOD3 of r44d (t45/lod3_r44d.png: LOD0 | LOD3, g2v1 + g2back; t45/lod3.sh = a light t38/lods.sh; t45/lodsheet.py):
+  the LOD3 tail is still faceted flat panels below the tie (a folded sheet at the turn), strays standing off the tie, the
+  whole LOD3 head darker than LOD0. Cause read from the log: the far tier's segment .05 stretched x1.5 by fit_budget to
+  .075 m: a tail card turning ~90 deg at the tie is 2-3 straight panels. New opt-in lever hair_cards.BEND_ROWS (deg: at
+  least one segment per that much turning of the card's path / across axis; triangles() and mesh() agree). Queued r45d =
+  r44d + hc.BEND_ROWS=20 (30 gave a quarter arc of 16 cm the same 3 segments as length alone) + its LOD3 sheet (t45/q3.sh). STATE: queued. NEXT: LOD3 sheet r44d | r45d, LOD0 tris unchanged?
+- (1b) r45a = r44d + hh.CAP_TONE 1.4 (lever proven: GLB cap vcol .353 -> .494). Crown boxes (capshare / blotch, gSc | r44d |
+  r45a): cap share of the darkest 15 % front 37 -> 17 %, 3/4 46 -> 27 %; hair L p10 front 41.7 | 49.0 | 52.1, 3/4 43.0 |
+  42.4 | 47.3; p50 front 68.1 | 62.3 | 70.0, 3/4 63.6 | 67.5 | 70.5 (front now at the groom's, 3/4 +7 over it: 1.7 would
+  overshoot, so r45b = 1.7 was stopped mid-build). Blotch area unchanged (8.5 -> 8.9 %, 8.6 -> 9.3 %): the remaining
+  blotches are CARD-owned (dark-tinted cards, vcol ~.5-.6 / darker texels), not the cap. Look (t45/crown_v1_r45a.png):
+  the grey crown smudge is warmer / lighter, the card blotches on the side of the crown stay.
+  BLIND A/B r45a vs r44d (fresh subagent, review-ab CLI failed: rate limit; t45/ab1/rv, key: X = new in all four): front
+  SAME, 3/4 NEW ("value range nearer the reference's dark roots / light streaks"), side NEW (old "flatter, greyer, the
+  crown loses its strand direction"), back SAME -> NEW 2 / OLD 0 / SAME 2. ADOPTED: hair.CAP_TONE 1.4 default. BEST = r45a.
+  Both still named (MAJOR): dark splintered blotch where the part meets the forehead, crown blotches (front / 3/4 / back),
+  pale flat temple patches (frame-left strongest), blocky tail tip.
+- (2c) r45c = r44d + hk.WISP_ALPHA .7 (t45/temple_r45c.png gSc | r44d | r45c; front temple box 450,370,530,440 and 3/4
+  430,370,510,440): pale (L > 110) hair px front 920 | 787 | 692, 3/4 757 | 224 | 214. Look: the temple sheet is a little
+  more see-through but still ONE broad flat pale panel with hard edges over dark cards; the groom's temple is many fine
+  light strands combed back over dark hair. Alpha is not the lever: the picture (a sheet, not separate strands) and the
+  card's width are. NOT adopted (no A/B spent on a marginal change). The 3/4 view's part / front hairline: a row of short
+  dark serrated card ends over the forehead (the "dark splintered blotch where the part meets the forehead").
+
+## Handover 2026-10-19 (hair-cards agent, round 45; stopped at the ~70-tool-call budget; nothing in flight)
+BEST: r45a (header line 2) = r44d + hair.CAP_TONE 1.4 (now the default: the card cap's vertex colour was 0.9 / peak =
+.35 vs the cards' ~.65, so wherever it showed between cards it made ~40 % of the crown's darkest pixels). Blind A/B r45a vs
+r44d NEW 2 / OLD 0 / SAME 2 (t45/ab1; review-ab's CLI still failed at 07:40 MT: fresh subagent). LODs NOT OK (unchanged).
+Stopped / not adopted: r45b (CAP_TONE 1.7: killed mid-build, 1.4 already puts the crown p50 at / over the groom's);
+r45c (WISP_ALPHA .7: marginal). New opt-in lever, UNTESTED: hair_cards.BEND_ROWS (deg per segment of turning; t45/q3.sh
+ready: r45d = r44d flags + hc.BEND_ROWS=20, then t45/lod3.sh r45d -> t45/lodsheet.py r45d t45/lod3_r45d.png g2v1 g2back;
+re-run it with CAP_TONE now 1.4 so r45d = r45a + BEND_ROWS; check LOD0 tris stay 43548).
+NEXT: (1) the CARD-owned crown blotches (cap share is now normal): which cards (t45/capshare.py prints the darkest split;
+extend it to print the darkest cards' tint / tone_k / class) and why their vcol is ~.5 (TONE_CONTRAST 3.0 flag / TINT
+ranges / TONE_FRONT); measure dark-region elongation along the flow (the groom's darks are long streaks, ours round smudges);
+(2) the part / front hairline: short dark serrated card ends over the forehead at the part (3/4); (3) the temple: the face
+wisp cards are broad pale panels; they need a strand picture (fewer, thinner hairs: WISP_KIDS_FACE / width), not alpha;
+(4) LOD3 via r45d (above); (5) curved front fly cards / blonde highlights.
+
+## hair-cards round 46 (2026-10-19, fresh session; coordinator: (1) LOD3 tail / tone, (2) crown blotches as streaks, (3) temple wisps as a few thin hairs, (4) the dark splintered patch at the part / forehead)
+Scratch: /mnt/data/hifipushie/haircards/t46/ (r46.sh / lod3.sh = t45's with done files here; streak.py = dark-patch
+elongation ALONG THE FLOW (structure-tensor flow at each region's centroid), + coherence, FINE = L - blur(2.5) std, dark width).
+- (1) LOD3: t46/q1.sh = r46a (r45a flags + hc.BEND_ROWS 20; CAP_TONE 1.4 is the default now) + LOD3 sheets r46a and r45a.
+  STATE: building. NEXT: lodsheet r45a | r46a, LOD0 tris.
+- (2) Crown darks measured (t46/streak.py, crown boxes g1v0 440,340,640,420 / g1v1 430,340,640,440; t46/streak_g1v*.png):
+  ALONG (px-weighted sqrt var along / across flow) gSc 2.82 / 3.97, r45a 2.97 / 3.08; STREAK(>=3) share 25 / 44 % vs
+  58 / 50 %. So the dark regions are NOT rounder than the groom's by shape: the hypothesis "ours are round smudges" fails
+  as measured. What does separate: FINE strand-scale contrast (L - blur 2.5, std) gSc 12.5 / 11.0 vs r45a 8.4 / 9.4, and
+  dark-region WIDTH 12.2 / 8.1 px vs 4.9 / 4.9 px (the groom's darks are broad dark bands MADE of dark strands; ours are
+  smears in a card's uniform vertex tint at low strand contrast). And r45a's crown p10 is now LIGHTER than the groom's
+  (52.1 / 47.3 vs 41.7 / 43.0). Cause in code: a card's darkness is its whole-card tint (vcol, TINT_RANGE 0.85-1.15,
+  TINT_TOP 0.85-1.6) over a shared tile whose dark hairs are stretched only x1.3 (TONE_CONTRAST_DARK) vs x3 above.
+  Change: put the darkness INTO the strands (TONE_CONTRAST_DARK 1.3 -> 2.0: dark hairs darker, thin streaks along the
+  flow) and take it OUT of the whole-card tint (low ends 0.85 -> 0.95). Queued t46/q2.sh: r46b = both, r46c = contrast
+  only. Targets: FINE std up toward 12.5 / 11.0, p10 down toward 41.7 / 43.0, p50 kept (70.0 / 70.5 vs gSc 68.1 / 63.6).
+  STATE: queued after q1.
+- (3) Temple wisps (a few thin hairs, not a sheet): a face tile's picture draws EVERY member strand x kids (kid_max =
+  WISP_KIDS_FACE, 6 in r45a's flags; KID_WISP cover .7): a filled sheet. Queued t46/q3.sh: r46d = WISP_KIDS_FACE 1,
+  r46e = 2 (the rest r45a). STATE: queued after q2. NEXT: temple crops gSc | r45a | r46d | r46e, pale px, look.
+- (4) The dark splintered patch at the part / forehead (t46/part_r45a.png, g1v1 430,360,560,440 x6; t42/pix.py at 7 px):
+  the dark pixels are 17-20 mm, 6-vertex clump cards rooted at the front centre (root - C y -65..-69, z 40-46 mm) at
+  vcol .37-.46 (the cards' ~.65) wearing a LONG card's tile (u ~.48 of the sparse/medium tile, t46/atlas_part.png):
+  the tile's converging strand tips squashed into 2 cm = the serrations; plus the cap's front edge (vcol .49). New
+  opt-in lever hair.FRONT_SHORT (m; FRONT_SHORT_YZ (-0.05, 0.02)): such cards dropped, the log names their class /
+  flags. Queued t46/q4.sh: r46f = r45a + hh.FRONT_SHORT 0.03. STATE: queued after q3.
+- (1b) r46a = r45a + BEND_ROWS 20 (t46/lod3_ab.png: rows 1-2 r45a LOD0 | LOD3 at g2v1 / g2back, rows 3-4 r46a): WORSE.
+  LOD0 hair tris 43548 -> 43832 (fine), but LOD3's tail is a small dark solid cone: the far tier's budget (2500 asked,
+  1464 card tris) could not pay for the bends: face/L0 332 -> 1208 tris (their across axis twists), hanging/L0 858 -> 2486,
+  so fit_budget kept 20 of 195 tail cards (r45a: all 195). r45a's own LOD3 (row 2): faceted folded tail panels, strays
+  at the tie, the head a shade darker than LOD0 (head/L0 cards all cut at LOD3: the cap shows). LODs NOT OK.
+  Fix: BEND_ROWS now only for BEND_CLS ("tail",), path tangent only (BEND_PATH), at most BEND_MAX 2 segments over the
+  length rule. Queued t46/q5.sh: r46g = r45a + BEND_ROWS 30 + its LOD3 sheet. STATE: queued after q4.
+- (2b) r46b (TONE_CONTRAST_DARK 2.0 + tint low ends .95) = r46c (contrast only) to the pixel: the tint low end binds
+  nowhere that shows (dropped). Crown boxes gSc | r45a | r46c, front / 3/4: FINE std 12.5 | 8.4 | 10.1, 11.0 | 9.4 | 10.7;
+  L p10 41.7 | 52.1 | 39.9, 43.0 | 47.3 | 40.5; p50 68.1 | 70.0 | 66.4, 63.6 | 70.5 | 67.4; blotch area 17.6 | 8.9 | 13.3 %,
+  10.5 | 9.3 | 12.0 %; dark WIDTH 12.2 | 4.9 | 5.8, 8.1 | 4.9 | 5.3 px. Every number moves toward the groom.
+  Look (t46/crown_g1v1_top.png gSc | r45a | r46b): more dark strand lines along the flow on the crown; the two dark
+  smudges at frame right are still there (no worse to my eye, not gone). Candidate for the A/B (with the others).
+- (3b) Temple (t46/temple_de.png, gSc | r45a | r46d kids 1 | r46e kids 2; boxes as (2c)): pale (L > 110) hair px front
+  920 | 805 | 403 | 622, 3/4 757 | 251 | 159 | 188. Look: r46d's front temple is a few thin separate pale lines over the
+  dark (the brief: "a few thin hairs instead of a sheet"), r46e still a sheet with streaks. r46d is under the groom's
+  pale count (fewer light hairs than the groom's many): a candidate, not a match. Queued t46/q6.sh: r46h = r45a +
+  WISP_KIDS_FACE 1 + TONE_CONTRAST_DARK 2.0 + hh.FRONT_SHORT .03 (the round's A/B candidate). STATE: queued after q5.
+- (4b) r46f (FRONT_SHORT .03): the log says "dropped 0 front cards" at every tier: the splinter cards are NOT baked clump
+  cards (kind "baked", not face / fly) with P[0] in that box when the filter runs, so they come from another builder
+  (fly / single pooled cards, the hairline row, or cards made after this point). The lever is a no-op as placed (kept,
+  opt-in, harmless). NEXT: print kind / cls / fly / flags of cards whose first point is within 1 cm of the probe roots
+  (root - C ~ (0, -67, 43) mm) right before hc.mesh; then target that builder.
+- (1c) r46g = r45a + BEND_ROWS 30 tail-only (BEND_CLS ("tail",), BEND_PATH, BEND_MAX 2): LOD0 hair 43548 -> 43556, LOD3
+  hanging/L0 858 tris both (identical tier): the filter matched (almost) no card, so the class key at _segments time is
+  not "tail" for the tied tail's cards (by_class calls them "hanging"). Not chased: the coordinator closed the round (no
+  new levers). LOD3 stays r45a's: NOT OK.
+- (A/B) r46h = r45a + WISP_KIDS_FACE 1 + TONE_CONTRAST_DARK 2.0 + FRONT_SHORT .03 (no-op) vs r45a, fresh blind subagent
+  (review-ab CLI rate-limited before 13:00 MT), t46/ab1 trios + key.json: g1v0 OLD, g1v1 OLD, g1v2 OLD, g1backl OLD ->
+  OLD 4 / NEW 0. The reviewer: the new crown has "heavy dark blotches" / "dark smudgy patches" (the darker strands
+  pooled into blotches at 1 m, though the streak numbers moved toward the groom: the numbers did not predict the look).
+  NOT adopted. BEST stays r45a.
+- (FILL check, coordinator) hair_clumps.FILL is the bake's packing share (layout(): the first texel guess
+  sqrt(area / (ANISO x FILL x W x H)), then x1.04 until _pack fits; islands are packed rectangles, never overlap). FILL 1
+  only starts the search finer: same or a slightly finer texel (r45a 0.208 mm vs 0.196-0.22 in other builds), no overlap
+  or bleed by construction. The flag dates from round 35, when the crown fill was ALSO named FILL (now ARCH_FILL,
+  default 1). Export: keep hk.FILL=1 (it is what the A/Bs judged); 0.82 would be equally valid but untested.
+
+## Handover 2026-10-19 (hair-cards agent, round 46 = LAST round per the coordinator; nothing in flight)
+BEST: r45a (header line 2), unchanged. LODs NOT OK (LOD3 tail faceted / strays / darker head; r46a BEND_ROWS on all
+classes collapsed the far tier's tail, r46g tail-only matched no cards). Round 46 levers, all opt-in and OFF: hc.BEND_CLS /
+BEND_PATH / BEND_MAX (BEND_ROWS 0), hh.FRONT_SHORT (0; dropped nothing: the part splinters come from another builder).
+Measured but not adopted: TONE_CONTRAST_DARK 2.0 (numbers toward the groom, look worse: lost A/B inside r46h),
+WISP_KIDS_FACE 1 (temple = a few thin lines: the best-looking single change of the round, untested alone in an A/B).
+If anyone resumes: (a) LOD3 tail: find the tied tail cards' cls at hc._segments (by_class "hanging"), then BEND_ROWS
+tail-only; (b) A/B r46d (WISP_KIDS_FACE 1 alone) vs r45a; (c) part splinters: dump kind / cls of cards rooted near
+(0, -67, 43) mm from C before hc.mesh.
+
+## hair-cards round 47 (LOD3 fix) (2026-10-19, narrow fix from 41c687e8; scratch /mnt/data/hifipushie/haircards/t47/)
+- Cause of r46g's zero match: LOD1-3 (tiers main / npc / far, no "cut": "clumps") build cards with hc.clump_cards, which set
+  no "cls"; hair_clumps.cut (LOD0) does. BEND_CLS ("tail",), TAIL_AXIS_N and FIT_FLOOR all tested c.get("cls") and silently
+  matched nothing at LOD1-3. Fix: hair.stamp_cls (hair_clumps.classify of the card's lock; "fly" for fly cards) after both
+  clump_cards calls. TAIL_AXIS_N now reaches LOD1-3 tail cards as well.
+- Codified: hc.lever_matched(name, matched, population) prints the count and raises LeverMatchedNothing when an ON lever
+  matches 0 of a non-empty population (hc.STRICT_LEVERS). Wired into BEND_ROWS (hair.cards_job, the kept cards) and
+  FRONT_SHORT (population = baked cards). tests/test_hair_levers.py.
+- r47a = r45a + hc.BEND_ROWS 30: matched 181 / 74 / 74 / 39 cards (LOD0-3). LOD3's folded dark panel is gone, the head is still dark.
+- Darker LOD3 head: the far tier is group "free" (no head cards): the head is the cap at CAP_TONE 1.4. New opt-in
+  hair.CAP_TONE_TIERS {tier: tone}. r47b = r47a + {"far": 1.9}. Mean head luminance LOD3 vs LOD0 (t47/headlum.py, hair
+  ID mask top 40 %, same camera) g2v1 / g2back / g4v1: r45a -8 / -19 / -9 %, r47b +4 / -2 / +3 %.
+- Tris / verts (hair, drawn): LOD0 43556 / 23249, LOD1 20116 / 11159, LOD2 14284 / 8568, LOD3 4092 / 2671 (r45a: 43548,
+  20116, 14300, 4088). All within the tier budgets (card faces 19800 of 25000 at LOD0; drawn maxima 50000 / 25000 / 16500 / 5000).
+- LOOK: t47/sheet_b.png (photo ponytail_right | LOD0 | LOD3 r45a | LOD3 r47b; tail and head rows at g2v1 / g2back, 3 m).
+  review-ab was rate-limited (weekly limit), so a fresh blind subagent judged the 4 trios (t47/ab1): NEW 4 / OLD 0. Its
+  note: both are still flat and brown, without the photo's waves or highlight streaks. Left: a few strays at the tie, and
+  the LOD3 tail is ~7 % darker than LOD0's.
+- BEST = r47b (r45a flags + hc.BEND_ROWS=30 'hh.CAP_TONE_TIERS={"far": 1.9}'). Not approved.
