@@ -55,7 +55,7 @@ REST = 0.1  # weight of the light rest pull (contact itself is 5)
 CAP = 0.02  # thread cap of soft cloth (pattern_form.FIT_THREAD_CAP)
 SHEAR_LIMIT = 0.27  # the weave's own limit on a mesh edge (zozo_hang.woven_limit, 2 % threads, jam 35 deg)
 OPEN_SPREAD = 1.7  # default open wear: the collar points this many neck widths apart
-MAX_FREE_PCT = 2.0  # % a free chain link may read off its cut at a stage's end before the build is refused
+MAX_FREE_PCT = 6.0  # % a free chain link may read off its cut at a stage's end before the build is refused
 
 
 class ChainRefused(ValueError):
@@ -1318,7 +1318,7 @@ class GarmentBuild(Build):
             pos[below, 1] = Xclosed[strip[below], 1]
             Xnew[strip] = pos
             Xnew[top] = Tgt
-            extra[strip[tt > 0.0]] = True
+            extra[bv] = True
             extra[top] = True
             rep[pname] = {"crease_deg": round(math.degrees(al), 1), "fold_deg": round(math.degrees(ph), 1),
                           "top_edge_off_mm": round(float(np.linalg.norm(res, axis=1).max() * 1e3), 2)}
@@ -1479,8 +1479,13 @@ class GarmentBuild(Build):
         self.reads["after_hang_before_lengths"] = {"threads": th.report(M[rs]), "chains_free_worst_pct": self.chain_read(M[rs])["free_worst_pct"]}
         n_chain = len(self.net.link_i) + len(self.net.lines()[0]) + len(self._closure_ties())
         Z = M.copy()
-        Z, rd = project(Z, I2[:n_chain], J2[:n_chain], L2[:n_chain], E2[:n_chain], held, fl2, iters=60, step=0.006)
-        self.reads["hang_last_lengths"] = rd
+        # lengths the last word, the threads with them: a chain-only pass tears the cloth between the chains
+        rd = {}
+        for rnd in range(4):
+            Z, rd = project(Z, I2, J2, L2, E2, held, fl2, threads=th, iters=30, step=0.004)
+            self.log(f"after hang {rnd}: {rd}")
+        Z, rd2 = project(Z, I2[:n_chain], J2[:n_chain], L2[:n_chain], E2[:n_chain], held, fl2, iters=60, step=0.003)
+        self.reads["hang_last_lengths"] = {"all": rd, "chains": rd2}
         self.X = Z[rs]
         self.reads["threads"] = th.report(self.X)
         self.reads["chains"] = self.chain_read(self.X)

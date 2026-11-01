@@ -4,6 +4,24 @@ The cloth tools' full parameters and behaviour, one section per tool (guide(topi
 
 ## Tool reference
 
+### `chain_garment`
+`chain_garment(name, garment, wear="closed", opening=None)`: THE start of every garment. Reads the drafted pattern and the
+body, never a fit. Stages: band and collar (or other stiff parts) as chains of their cut lengths, stiffness from the
+pattern's interfacing, resting on the high points; cuffs as stiff rings on the limb's own section; the soft pieces wrapped on a
+garment-sized section and solved as a network with the body as a floor; surfaces filled between the chains; open wear then
+undoes the band, whose sewn front is limited by its cut distance to the first fastened button, and folds the plackets along a
+solved crease; the soft cloth hangs under gravity (ZOZO, 5-10 min) with the stiff parts held; lengths last. wear: "closed" or
+"open". opening: only with "open": collar points this many neck widths apart (default 1.7, 1.0 .. 2.6). The answer comes after
+the build (1-3 min) with chains, threads, seams and band numbers while the hang runs on. Refuses: an unpassed pattern gate (next:
+pattern_check); a line whose length can't hold (named, next: alter_pattern there); a start the solver would refuse (a tool
+fault, named: report it). Nothing is pushed, cut or loosened to get past a refusal.
+
+### `look_chain`
+`look_chain(name, garment, wear="closed", focus=None, size=640, reference=None, save=None)`: the hung result when the hang has
+ended, else the build (the text says which). focus: none = whole figure, four views on the body; "neck" = the collar close, on
+the body; a piece's name = that piece alone, large, four sides. Sewn seams are joined and every piece faces outward.
+reference: an image path shown beside each view. Judge each view yourself against the reference, then review_view one view per call.
+
 The full documentation of this topic's tools: their MCP descriptions are the short form. guide(topic="<tool name>") returns one section. These tools are the `cloth` domain: run them with call_tool(name, args); find_tool(\"<job>\") gives each one's parameters and an example call.
 
 ### `design_garment`

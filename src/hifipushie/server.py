@@ -340,11 +340,28 @@ def guide(topic: str = "") -> str:
             return (f"guide topic {t!r}: {GUIDE_TOPICS[t]} is not in this checkout (an installed package without "
                     "the repo's docs/)" + (" -- guide(topic=\"cloth_design\") has the tailoring numbers"
                                            if "tailoring" in t else ""))
-        return p.read_text()
+        txt = _gated_paragraphs(p.read_text())
+        if t == "cloth" and not LEGACY_CLOTH:
+            txt = _CHAIN_GUIDE + "\n\n" + txt
+        return txt
+    if topic.strip() in _GATED:
+        return f"{topic.strip()} is not available: garments start with chain_garment. guide(topic=\"chain_garment\")"
     if topic.strip() in _TOOLS:
         return _tool_section(topic.strip())
     raise ValueError('topic is "" (the modelling playbook), a domain ("' + '", "'.join(k for k in GUIDE_TOPICS if k)
                      + '") or a tool\'s name')
+
+
+_CHAIN_GUIDE = """# Clothes: the one path
+
+design_garment -> pattern_check -> chain_garment -> look_chain. There is no other way to start a garment. Every edge, seam,
+hem, fold and roll line is a chain at its exact cut length, sewn points are one node, and only bends are free: stiff parts
+(band, collar, cuffs, plackets) are built first from the pattern's interfacing and hold their own shape; the soft cloth
+hangs from them under gravity; lengths have the last word. Your choices are the DESIGN (the pattern) and the WEAR ("closed",
+"open", how far an open collar opens). Nothing else is a setting. A fault is fixed on the pattern (alter_pattern),
+pattern_check, chain_garment again. If a length can't hold the tool names the piece and the line.
+Judge with look_chain: the whole figure, focus="neck" for the collar close, a piece's name for that piece alone, four sides,
+with reference= beside every view; review_view one view per call."""
 
 
 # guide topics -> files; each domain file ends with "## Tool reference": a "### `tool`" section per tool
@@ -3023,8 +3040,8 @@ def pattern_check(name: str, garment: str, refs: str | dict | None = None, waive
                   views: list[str] | None = None, size: int = 480, diag: list | bool | None = None,
                   save: str | None = None):
     """THE PATTERN GATE, flat, no sim: measures every checklist item on the drafted + placed pattern, writes the record
-    every sim needs (dress refuses without a PASS). Returns the flat pattern sheet, the diag views of the pattern
-    on the dress form as the gate read it (default panels+seams+turned; strain+layers; diag=False none), the per-item
+    chain_garment needs (it refuses without a PASS). Returns the flat pattern sheet, the diag views of the pattern
+    as the gate read it (default panels+seams+turned; strain+layers; diag=False none), the per-item
     table and the next step.
     refs (reference reading), waive {id: reason}, views, size, save. Details: guide(topic="pattern_check")."""
     from . import cloth_check as cc, next_steps, pattern_sheet
@@ -3390,7 +3407,7 @@ def _chain_text(st: dict) -> str:
 
 @mcp.tool(structured_output=False)
 def chain_garment(name: str, garment: str, wear: str = "closed", opening: float | None = None):
-    """START A GARMENT: the only way. Builds it from its pattern and the body as chains of the pattern's own lengths (only
+    """START A GARMENT: the only way to dress a character, fit or drape clothes on a body. Builds it from its pattern and the body as chains of the pattern's own lengths (only
     bends are free; stiff parts first, soft cloth hung from them), then hangs the soft cloth. No fit is read, nothing is
     tuned. wear: "closed" (top button done) or "open" (top button undone); opening: only with wear "open", how far the collar
     opens: the collar points this many neck widths apart (default 1.7, 1.2..2.2). Refuses until pattern_check passes; refuses by
@@ -3556,7 +3573,7 @@ def framing_refusal(region: str, result: str) -> None:
     rows = np.where(fg.any(1))[0]
     if len(rows) and (rows[-1] - rows[0]) >= 0.85 * im.shape[0] and rows[0] > 0.02 * im.shape[0]:
         raise ValueError(f"review_view: the region ({region!r}) is a detail but the result shows the whole figure; the "
-                         "reviewer can't judge it at that size. Render the region close up (fit_garment focus=\"neck\" | "
+                         "reviewer can't judge it at that size. Render the region close up (look_chain focus=\"neck\" | "
                          "shoulders | chest | hem | sleeve), pass one view of it, and crop the reference to the same region")
 
 
@@ -3567,7 +3584,7 @@ def review_view(region: str, reference: str, result: str, context: str = "", sta
     Refuses contact sheets, captions, and numbers / claims in region or context. Runs a fresh reviewer with no context
     (bin/review) -> faults MAJOR / MINOR + VERDICT; dry=True returns the pair image + prompt for an independent agent
     instead. stage / not_stages scope it; out_dir. NO REFERENCE: reference="" judges the result alone against a fixed
-    checklist (default "hang": how clothes hang; reviewgate.CHECKLISTS), e.g. one fit_garment view. Details:
+    checklist (default "hang": how clothes hang; reviewgate.CHECKLISTS), e.g. one look_chain view. Details:
     guide(topic="review_view")."""
     import subprocess
     import tempfile

@@ -33,7 +33,7 @@ def after_pattern_check(rec: dict, model: str, garment: str) -> str:
     ok = rec.get("status") in ("PASS", "PASS_WAIVED")
     out = []
     if not ok and (fails or unm):
-        out.append(f"next: the pattern gate is {rec.get('status')}: DON'T simulate (dress refuses).")
+        out.append(f"next: the pattern gate is {rec.get('status')}: chain_garment refuses until it passes.")
         if fails:
             out.append(f"  fix these rows on the flat pattern first (alter_pattern / design_garment): {', '.join(fails)}")
         if unm:
@@ -41,13 +41,13 @@ def after_pattern_check(rec: dict, model: str, garment: str) -> str:
                        f"(garment_from_reference) or waive each BY NAME with a reason (waive={{id: why}})")
         out.append(f"  then pattern_check(\"{model}\", \"{garment}\") again")
     elif not ok:
-        out.append(f"next: the pattern gate is {rec.get('status')}: DON'T simulate; re-run pattern_check")
+        out.append(f"next: the pattern gate is {rec.get('status')}: chain_garment refuses until it passes; re-run pattern_check")
     else:
         info = _ids(rows, "INFO")
-        out.append(f"next: call_tool(\"fit_garment\", {{\"name\": \"{model}\", \"garment\": \"{garment}\"}}): assemble it on the form (no sim) and judge clay + "
-                   "diag beside the reference, one view at a time (review_view)")
+        out.append(f"next: call_tool(\"chain_garment\", {{\"name\": \"{model}\", \"garment\": \"{garment}\", \"wear\": \"closed\"}}): the only way "
+                   "a garment is started; then look_chain beside the reference, one view at a time (review_view)")
         if info:
-            out.append(f"  INFO rows (not gating, read them on the form): {', '.join(info[:8])}")
+            out.append(f"  INFO rows (not gating): {', '.join(info[:8])}")
     for w in rec.get("warnings") or []:
         out.append(f"  warning: {w}")
     return "\n".join(out)
