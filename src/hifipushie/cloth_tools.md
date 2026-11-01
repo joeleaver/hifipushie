@@ -60,7 +60,7 @@ evidenced in the pieces and seam table (a turned collar has a fold line, a barre
 the fall covers the stand...), every seam's ease in its band (sleeve cap by kind, bands, plain seams), notches
 aligned, ease against the body per girth inside the fit's band, every piece sewn to something, the details'
 dimensions. Fix failures in the design sheet (design_garment) or the garment's pattern options before going on.
-Next: check_garment(stages=["construction", "place"]).
+Next: pattern_check.
 
 ### `check_garment`
 
@@ -108,7 +108,7 @@ THE PATTERN GATE (codified C11): the garment drafted and placed on its body (no 
 of its kind measured there: seam lengths / ease / notches, lengths and widths, design choices, the neckline
 standoff; where this build has them, truing (junction angles), the collar draft and notch, flat tailor rows. Items
 with no pattern-stage measure or no reference reading are UNMEASURED and block; drape items are SIM (judged later);
-dress-form readings are INFO until the form is validated. The record (/mnt/data/hifipushie/pattern_gate/<key>.json,
+trial-placement readings are INFO until the form is validated. The record (/mnt/data/hifipushie/pattern_gate/<key>.json,
 keyed by the pattern's content hash + the body's) is what every sim checks: `dress` and every cloth job refuse
 without a PASS for exactly this pattern + body.
 refs: the reference reading (cloth_reference.read's output or its saved path). waive: {item id: reason} accepts a
@@ -116,7 +116,7 @@ FAIL / UNMEASURED row by name (recorded; PASS_WAIVED).
 Returns: the FLAT pattern sheet (pieces, grain, notches, seam list with lengths and ease), the DIAG views of the
 placed pattern (by default two rows: panels + seams + turned, then strain + layers; diag=False none, or your own
 modes / rows), and the per-item table FAIL / UNMEASURED first, then "next:": on a FAIL the rows to fix and "don't
-simulate"; on a PASS fit_garment. views (default front, three, side, back), size (px), save (PNG path prefix).
+simulate"; on a PASS chain_garment. views (default front, three, side, back), size (px), save (PNG path prefix).
 Renders take the GPU lock.
 
 ### `fit_garment`

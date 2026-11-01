@@ -148,6 +148,9 @@ def test_only_path_for_clothes():
         t = server.guide(topic)
         assert not any(re.search(r"\b" + g + r"\b", t) for g in GATED), topic
     assert "chain_garment" in server.guide("cloth")
+    for t in ("look_pattern", "pattern_check", "garment_from_reference", "review_view", "alter_pattern"):
+        s = server.guide(t)
+        assert not any(re.search(r"\b" + g + r"\b", s) for g in GATED if g != "dress") and "dress`" not in s, t
 
 
 def test_chain_tool_strict_arguments():

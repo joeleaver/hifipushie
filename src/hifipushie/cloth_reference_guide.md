@@ -166,7 +166,7 @@ the view, the choices or the points to mark). With answers ({garment: {item id: 
 [u, v]}, "view": i, "confidence": "high" | "medium" | "low", "note"} | "not visible"}}): the design-sheet patch per
 garment (choices -> details, wear -> closures / tie / over, fabric, colour) and the target table (lengths anchored
 on body landmarks, widths in metres), stored in <model>/cloth_refs.json. The patch is NOT applied: review it, then
-design_garment / edit the garment. check_garment_reference judges a sim against it.
+design_garment / edit the garment. look_chain with reference= judges the result against it.
 
 ### `check_garment_reference`
 
