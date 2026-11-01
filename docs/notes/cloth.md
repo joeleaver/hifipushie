@@ -11528,3 +11528,18 @@ Goal: e7 (oL17 fit + GP_STYLE_BEND=1 GP_BEND_REST_PRESS=1) or a successor reads 
   crumple in all three. Collar shear fixed is invisible at this framing.
 - Blind review: bin/review exit 4 again (weekly limit, review_e10.log / review_r20.log). Not reviewed.
 - Verdict: e10 not the default (waist flare + side kick worse than r20; break still 373 vs 386). C230 / C231 kept opt-in.
+
+## chain garment library (2026-11-01; branch chain-garment; dev /mnt/data/hifipushie/chain_garment)
+- Collapse of folds_ab/N/net.py found: one-way mirror map (C261). Sewn merge fine: largest group 4; a link whose ends are sewn together closes a
+  cut and is dropped.
+- Jacobi length passes replaced by fast projection (chain_net.project): J J^T solve + Levenberg + per-point cap; whole closed chain build 18 s
+  first time it worked, about 2 min with the fall rest and the edge floor.
+- Fold rows are not ordered in M["folds"]: sort along the row (a 500 % "chain error" was an unordered row).
+- Torso section: arms left out with a limit that grows downwards, capped at 1.25 x shoulder x, or the fingers enter the hull at the hem.
+- Above the armpit the wrap goes by X, not arc length: arc length carried the armhole round the side, seams 100-200 mm apart at the start.
+- Sleeve cap: rows above the widest at the sleeve's WHOLE width, so the cap's edge rings the armhole.
+- Rings: section of the limb's sampled surface (vertices alone underread: the mesh is sparse), flared towards the seam within the cut width.
+- Stiff collar lines at most when closed (exact only on the open back: at the closed back they stretched the outer edge 15 %).
+- Legal ZOZO start with the whole collider: mesh floor raised where ZOZO's own pairs (edge-edge, face-vertex) come under reach, then lengths again.
+- Post-hang chains alone tore the cloth (C263). The fall on the cloth (C264).
+- pattern_check on wf_simon: FAIL seams + flat_pattern (S12 band 436.8 vs 441.2, ease -1.0 % at the band's limit) + 7 unmeasured.

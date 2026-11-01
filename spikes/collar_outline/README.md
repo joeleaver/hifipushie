@@ -23,3 +23,5 @@ Data / renders: /mnt/data/hifipushie/folds_ab/D/ (refs in ../refs). Body / patte
 
 ## Open
 Dimples along the top fold; the leaf's front corner at the band end is mangled; fronts not yet hung from the band.
+
+LIBRARY NOW (2026-11-01): `src/hifipushie/chain_net.py`, `chain_garment.py`, tools chain_garment / look_chain; these spike scripts are history.
