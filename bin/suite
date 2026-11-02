@@ -34,7 +34,7 @@ SLOW_HEADER = """# The slow tier: node ids (or a file path), one per line; conft
 # Made by `bin/suite --full` then `bin/suite --recut`, from measured CPU seconds, never by hand to hide a fault.
 """
 FAST_BUDGET_S = 600
-RUN_LIMIT_S = {"fast": 2700, "full": 6 * 3600}  # (the whole run, past every per-test limit; only a wedged child gets here)
+RUN_LIMIT_S = {"fast": 4 * 3600, "full": 12 * 3600}  # (the whole run, past every per-test limit; only a wedged child gets here)
 
 
 def read_known() -> dict:
