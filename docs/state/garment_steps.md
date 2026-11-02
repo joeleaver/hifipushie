@@ -43,7 +43,7 @@ ORDER: tooling for every step first; then the steps one at a time, shirt + hussa
 | T9 | Layering: chains rest on the garment underneath | 5 | M | T7 |
 | T10 | Details and trims: buttons, braid, frogging, tabs on the surface, following it through the sim | 7 | M-L | T7 |
 | T11 | Export: chain garment -> game mesh, retopology, skinned to the rig | 10 | L | T10 |
-| T12 | Layering fix: the over garment keeps its pattern's shape (body + the under cloth's thickness + its stiff / solid parts); the under garment is then fitted INSIDE it (compressed, spare cloth folds); both hung together | 5, 8 | M | T9 |
+| T12 | Layering, VISIBLE-ONLY by default (Joe 2026-11-02): the under garment's hidden pieces omitted, its visible parts (collar, cuffs, tails, an open V) fitted inside the over garment's openings and held there; the over garment on the body + the under cloth's thickness + its built stiff / solid parts; no joint hang. Full compression + joint hang only when the plan asks (the over garment comes off at runtime, a close-up) | 1, 2, 5, 8 | M | T9 |
 | T13 | Draped garments (cloak, cape, hood): the gate split: fitted parts judged at the build, the fall judged on the hang; the head in the body for a hood | 6, 8 | M | T12 |
 | T14 | Appearance: materials, colour variation, stitching, worn leather, a ragged hem, restrained weathering from the story, painted on the pattern's UVs | new, before 9 | M-L | T11 |
 Test garments: the shirt (every step), the hussar jacket (fitted + trims), the RANGER outfit (Joe 2026-11-02: "a truly
