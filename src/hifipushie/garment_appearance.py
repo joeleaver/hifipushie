@@ -24,6 +24,7 @@ from scipy.spatial import cKDTree
 
 from . import budgets, garment_game as gg
 
+PAD_PX = 8  # texels padded past a piece's edge (mips and bilinear never pull the background in)
 MIN_TEXELS = 3.0  # a surface layer whose period is under this many texels is dropped (it would alias)
 WEAR_MAX = 0.6  # the most a fully worn (wear 1) texel moves toward its worn colour: restraint is the default
 CONTACT_M = 0.02  # a garment point within this of the body rubs on it
@@ -121,7 +122,7 @@ def print_of(c: dict, a: dict) -> dict | None:
         return None
     rep = float(p["repeat_mm"]) / 1000
     col = (p.get("colours") or [[0, 0, 0]])[0]
-    return {"kind": k, "repeat_m": rep, "line_m": float(p.get("line_mm") or rep * 1000 * 0.08) / 1000,
+    return {"kind": k, "repeat_m": rep, "line_m": float(p.get("line_mm") or rep * 1000 * 0.05) / 1000,
             "colour": np.asarray(col, float) / (255 if max(col) > 1 else 1)}
 
 
@@ -364,9 +365,12 @@ def bake(drape: dict, cloth_of: dict, cloths: dict, plan: dict, grain: dict, siz
     out_rgba = np.zeros((size, size, 4)); out_r = np.full((size, size), 0.8); out_h = np.zeros((size, size))
     out_rgba[rows, cols, :3] = base; out_rgba[rows, cols, 3] = alpha; out_r[rows, cols] = rough; out_h[rows, cols] = H
     # pad outside the pieces (mips / bilinear never pull the background in)
-    idx = distance_transform_edt(pid < 0, return_distances=False, return_indices=True)
+    dist, idx = distance_transform_edt(pid < 0, return_distances=True, return_indices=True)
     out_rgba[..., :3] = out_rgba[idx[0], idx[1], :3]
     out_r, out_h = out_r[idx[0], idx[1]], out_h[idx[0], idx[1]]
+    far = dist > PAD_PX  # (beyond the pad: the cloth's mean colour, flat: the sheet reads as pieces)
+    out_rgba[far, :3] = base.mean(0) if len(base) else 0.5
+    out_h[far] = 0.0
     out_rgba[..., 3] = np.where(pid >= 0, out_rgba[..., 3], 0.0)
     gy, gx = np.gradient(out_h)
     k = 0.6

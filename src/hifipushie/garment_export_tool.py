@@ -73,10 +73,12 @@ def run(name: str, garment: str, wear: str = "open", role: str = ge.ROLE, look: 
         k = gk.query(x["V"])[1]
         meshes.append({"name": f"{garment}_{dn}", "V": x["V"], "T": x["F"], "colour": ge.hex_rgb(x["colour"]),
                        "J": gJ[k], "W": gW[k], "roughness": 0.5})
+    mat = materials(rec, meshes, garment)
     out = d / "export"
     glb = glbw.write(out / f"{garment}.glb", garment, meshes, rb)
     counts = glbw.read_counts(glb)
     lines = ge.text(name, garment, what, g, n_det, budget, role, tries, st, bend, glb, sd, winfo)
+    lines.append("  " + mat)
     rows = ge.gate_rows(g, n_det, budget, st, bend, sd)
     verdict = "PASS" if all(x["status"] in ("PASS", "INFO") for x in rows) else "FAIL"
     looks = []
@@ -96,6 +98,23 @@ def run(name: str, garment: str, wear: str = "open", role: str = ge.ROLE, look: 
     lines.append("next: look at it beside the reference (shape); a FAIL row names what to change: the role / pieces "
                  "(triangles), the hang (stretch), the weights / the build (a bend row: its pose's close-up; the body's own crease is the body's)")
     return looks, "\n".join(lines)
+
+
+def materials(rec: dict, meshes: list, garment: str) -> str:
+    """Step 9a's maps on the garment mesh and its detail materials (T14); without them, flat colours (said)."""
+    ap = (rec["steps"].get("9a") or {}).get("output") or {}
+    maps = ap.get("maps") or {}
+    if not maps or not all(Path(p).exists() for p in maps.values()):
+        return ("materials: FLAT colours (no appearance, step 9a); next: garment_appearance (it bakes the maps this "
+                "export puts on the GLB; the record writes step 10 only after 9a)")
+    meshes[0].update({"textures": maps, "alpha_cut": bool(ap.get("alpha_cut"))})
+    for m in meshes[1:]:
+        x = (ap.get("details") or {}).get(m["name"][len(garment) + 1:])
+        if x:
+            m.update({"colour": ge.hex_rgb(x.get("colour")), "metallic": x["metallic"], "roughness": x["roughness"]})
+    return (f"materials: step 9a's maps ({ap.get('size')} px: base, metallic-roughness, normal; "
+            f"{ap.get('texel_mm')} mm/texel) on the pattern UVs; details " +
+            (", ".join(f"{k} {v['material']}" for k, v in (ap.get("details") or {}).items()) or "flat"))
 
 
 def cKD(V):
