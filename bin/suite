@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """The test gate: land when this exits 0.
     bin/suite          the fast tier (plain pytest: under 10 minutes)
-    bin/suite --full   every test
+    bin/suite --full   every test; also measures: CPU seconds per test go to /mnt/data/hifipushie/suite_cpu.log
+    bin/suite --recut  rewrite tests/slow_tests.txt from that log (a test is slow from CUT_CPU_S seconds of CPU)
 Exit 0: nothing failed that tests/known_failures.txt doesn't list. Exit 1: something new failed. Exit 2: the gate
 itself didn't get an answer (the run was aborted, or known_failures.txt is malformed): never read that as a pass.
 Prints new failures, known entries that now pass (take them off the list), entries naming no test (--full only),
@@ -26,6 +27,12 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 KNOWN = REPO / "tests" / "known_failures.txt"
 CAPPED = Path("/mnt/data/hifipushie/bin/capped")
+SLOW = REPO / "tests" / "slow_tests.txt"
+CPU_LOG = (Path("/mnt/data/hifipushie") if Path("/mnt/data/hifipushie").is_dir() else REPO / ".pytest_cache") / "suite_cpu.log"
+CUT_CPU_S = 3.0  # (CPU, not wall: under load 120 wall was 12 x CPU; CPU is what the quiet laptop's 10 minutes are made of)
+SLOW_HEADER = """# The slow tier: node ids (or a file path), one per line; conftest marks them `slow`, plain pytest skips them.
+# Made by `bin/suite --full` then `bin/suite --recut`, from measured CPU seconds, never by hand to hide a fault.
+"""
 FAST_BUDGET_S = 600
 RUN_LIMIT_S = {"fast": 2700, "full": 6 * 3600}  # (the whole run, past every per-test limit; only a wedged child gets here)
 
@@ -73,11 +80,30 @@ def log_path() -> Path:
         else REPO / ".pytest_cache" / "suite_last.log"
 
 
+def recut() -> int:
+    if not CPU_LOG.exists():
+        print(f"suite: no {CPU_LOG}: run bin/suite --full first")
+        return 2
+    cpu = {}
+    for ln in CPU_LOG.read_text().splitlines():
+        m = re.match(r"(\S+) \S+ (\S) (.*) \((?:setup|call|teardown)\)$", ln)
+        if m:
+            k = m[3].split("[")[0]
+            cpu[k] = cpu.get(k, 0.0) + float(m[1]) + (1e6 if m[2] == "T" else 0.0)
+    slow = sorted(k for k, v in cpu.items() if v >= CUT_CPU_S)
+    SLOW.write_text(SLOW_HEADER + "".join(k + "\n" for k in slow))
+    fast = sum(v for v in cpu.values() if v < CUT_CPU_S)
+    print(f"suite: {len(slow)} of {len(cpu)} tests slow; the fast tier is {fast / 60:.1f} CPU minutes")
+    return 0
+
+
 def main() -> int:
     args = sys.argv[1:]
-    if set(args) - {"--full"}:
+    if set(args) - {"--full", "--recut"}:
         print(__doc__)
         return 2
+    if "--recut" in args:
+        return recut()
     tier = "full" if "--full" in args else "fast"
     known = read_known()
     held = held_heavy()
@@ -94,6 +120,9 @@ def main() -> int:
     home = tempfile.mkdtemp(prefix="suite_home_", dir=scratch)
     env = dict(os.environ, COLUMNS="200", CAP=os.environ.get("CAP", "20G" if tier == "full" else "12G"),
                HIFIPUSHIE_HOME=home)
+    if tier == "full":
+        CPU_LOG.unlink(missing_ok=True)
+        env["HIFIPUSHIE_TEST_CPULOG"] = str(CPU_LOG)
     log = log_path()
     log.parent.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
