@@ -24,7 +24,9 @@ silhouette errors), not mouse control. North star: tools that let an LLM work li
 - Durable / big files on /mnt/data/hifipushie, never /tmp. Third-party assets via `assets.py` ($HIFIPUSHIE_ASSETS).
 - Lessons live in tools: a default, a check or a refused call. Only what can't be enforced goes in the guide, kept short.
   docs/notes/* is a frozen archive: read by grep, no new appends except codified.md's one-line rows.
-- Write your STATE page once, at the end of a run, with its NEXT line; commit as you go. Hand over and restart past ~250k tokens.
+- Write your STATE page once, at the end of a run, with its NEXT line; commit as you go.
+- Every run has one deliverable and a budget: 90 min, 100 tool calls, 250k tokens. At the budget commit, write STATE and stop.
+  Prove on the cheapest check that can fail; a long job (hang, suite) is a final proof, run once. Crop tool output; never cat.
 - One gate per run: the result beside its reference. Exploring runs have none. Spikes are promoted or deleted when the run ends.
 - Judge renders yourself before forwarding (agents over-rate); reference beside every result; send renders to Joe as files.
 - Bump `store.BUILD_VERSION` whenever meshing output changes. Incremental builds must equal cold builds.
