@@ -1,47 +1,35 @@
-# STATE: collar_outline -> garments built from the pattern's outline (2026-10-29)
+# STATE: chain garment -> garments built from the pattern's outline (library + tools since 2026-11-01)
 
-Joe 2026-10-29: "That's pretty damn good ... This is how we should build clothes, right here."
-GOAL: stiff / folded pieces (collar, band, cuffs, plackets, lapels), then whole garments, built as CHAINS of the
-pattern's own lengths with only bends chosen; surfaces filled between; soft parts hang from the stiff ones.
+Joe: "This is how we should build clothes, right here." "that should be the only path available to the agent for starting
+clothing." "We need to get to a point where a blind agent can build a great-lookin piece of clothing without tons of
+iterations or manual feedback."
 
-## Current best
-- Open collar Q5S, closed collar O15S: renders /mnt/data/hifipushie/folds_ab/D/ (Q5S_collar_plain.png, Q5S_zooms.png).
-- Code + recipe: spikes/collar_outline/README.md (outline.py, band_open.py, surfaces.py, look*.py). Ledger C259, C260.
-- Rules: lengths hard, bends free; stiff parts keep their own shape (pressed curve round the back, straight past the side
-  neck); contact = can't sink in + light rest; cross lines may shorten only where the cloth curves; point triangles
-  rigid; outside faces out, band upright; open = stiff band's own shape unbuttoned, collar solved on the held band;
-  surfaces: fold turn = half circle (2.4 mm) round the band top, fall filled, band kept under the fall.
-- Judge: the piece alone, large, 4 sides, curves drawn; reference photos (folds_ab/refs) for the IDEA of the style.
+## What exists
+- `src/hifipushie/chain_net.py`: general core (Network, sewn nodes, chains, lines, mirror_map, Contact, Threads, project = fast
+  projection with Levenberg damping and a per-point step cap, BendSolve = sparse LM, fill). Docstring is the spec.
+- `src/hifipushie/chain_garment.py`: roles read from the pattern, stages, ZOZO job, worker, render_views. Docstring is the spec.
+- Tools: `chain_garment(name, garment, wear, opening)`, `look_chain(name, garment, wear, focus, size, reference, save)`.
+- `server.GATED_CLOTH` removes the old routes from the MCP layer; `HIFIPUSHIE_LEGACY_CLOTH=1` restores them. Python API untouched.
+- zozo_hang.py + cloth_zozo.py came from the hang branch (worktree-agent-a31fb4eb7a07d59fa); made_shape.py etc did not (lazy imports,
+  not used by the chain path; zozo_hang.settle / write_job would need them).
+- Tests: tests/test_chain_garment.py. Dev scripts + renders: /mnt/data/hifipushie/chain_garment/ (dev/, renders/). Ledger C259-C264.
 
-## Open (ranked)
-1. DONE (Joe chose B): corner patch - the last 10 mm of each leaf copies the clean profile 10 mm inside, rigidly along
-   the seam, blended out over 8 mm / 16 mm; a slight angle change remains where it blends out.
-2. Hang the soft fronts / yoke from the open band (not yet).
-3. Library: a general `outline` module (chains, cross lines, stiffness, contact, surfaces) + MCP tool; then cuffs,
-   lapels, a whole simple garment, transfer-tested on another body.
+## Stages (closed): band -> fall -> rings -> soft chains -> surfaces -> threads, chains last -> fall rests on the cloth -> soft again
+-> hang -> threads + chains last. Open: the closed build, then band opened, fall on it, plackets folded, soft again twice, hang.
 
-## Upper shirt as a chain network (upper.py, best Q12U; band U4 -> outline Q12 -> surfaces Q12 -> `upper.py Q12 '{"below":0.02,"iters_d":600,"passes":40}'`)
-Every edge of back, yoke, fronts is a chain; seams merged; button 1 a pivot tied to the chains by lines across the placket;
-held: band neckline, armholes, cloth from 2 cm below the button. The band's whole sewn front is limited by its cut distance
-to button 1. Each placket is a rigid strip (edge .. marked fold line, the mesh is one layer) that folds out of plane along
-a solved crease through button 1 (L 51 deg / 110 deg fold, R -39 / 83); left lies over right. upper.py Q12
-'{"below":0.02,"iters_d":300,"passes":40,"btn_r":0,"rigid_to":0.0}': the strip starts folded, only its sewn edge + the button
-stay held; the fold acts on the real shape; final stages let all unheld cloth move, lengths + body floor to the end.
-Free chain links <= 1.75 %; cloth inside the body 0. OPEN: 42 links > 2 % beyond the fit, worst 6.5 % (yoke by the neck +
-armhole); lap gap touches 0 at one point. No gravity hang yet. NICO-TOP unavailable (Joe 2026-11-01): sims local.
+## Last round (wf_simon, final code; ZOZO output from the worker, 144 frames local, finish re-applied by dev/refinish.py)
+closed: free chains 0.0 %, threads p99 5.62 max 26.95; open: free chains 0.003 %, threads p99 7.15 max 47.68; seam gap 0; no collider cut, nothing pushed.
+Renders /mnt/data/hifipushie/chain_garment/renders/tool_{closed,open}_{fig,neck,collar}_*.png. Judged: closed ~70 %, open ~55-60 % of the references.
 
-## Hang (local ZOZO, 284 s on the 890M; result H1)
-hang_prep.py Q12 h1 -> hang_run.py h1 -> hang_finish.py h1 H1 Q12, RUN WITH THE PATH-A WORKTREE'S CODE (agent-a31fb4eb7a07d59fa:
-zozo_hang is not on threads-hard). Torso only; band, collar, plackets above the hold line, sewn rows, armholes held;
-body under the band cut from the collider (35 mm + one 12 mm patch). Free cloth moved p50 6.5, p95 16 mm; held 0.05 mm.
-OPEN: 27 free vertices inside the full body (deepest 2.7 mm; skin specks under the collar at the back + side); seam gap
-up to 3.4 mm; link p99 5.8 %, max 65 % (was 79.5 % before the hang); wrinkly yoke round the neck; sleeves are the old
-fit's and were not hung (gap at the back armhole).
+## Known limits (ranked)
+1. Open: shoulder cloth rides over the collar leaves (leaves half buried), collar stands high, plackets ragged at the throat. Closed: same fault, milder.
+2. wf_simon's own pattern FAILS pattern_check (seams, flat_pattern: S12 band 436.8 vs 441.2, ease -1.0 % at the limit; 7 rows unmeasured): the tool
+   refuses it. The proof ran the worker directly (same code, gate skipped). A blind trial must reach a PASS first.
+3. The tool's spawn + answer path was not run to a built result (it refused at the gate on wf_simon); the worker it spawns was.
+4. Free cloth rises 7-8 mm on average in the hang (drop_mm negative): not understood.
+5. Stiff chains are not all exact after surfaces: collar fold line 7.7 % closed / 16.3 % open, collar edge 9.3 % closed (held links, read not gated).
+6. Cuffs: cut closes 183 mm, forearm needs 200 mm at the seam: the ring flares; held links read 28 %. Sleeve hems gather into cuffs without pleats.
+7. Soft mesh 20 mm: seams every 20 mm, coarse. Corner patch at the leaf's neck end not ported. Post-hang lines across plackets may shorten.
+8. game_garment gated: no export from chain results. Roles proven: band + fall + rings + tubes + panels only, one body, no transfer test.
 
-## Whole shirt hang H2 (622 s local): hang_prep.py Q12 h2 144 sleeves -> hang_run.py h2 -> hang_finish.py h2 H2 Q12; look.py / lookw.py H2
-Renders now use joined.py: sewn vertices shared, every piece facing out (the pronounced seams were mostly per-piece shading).
-Cuffs held; body under band + cuffs and patches at 111 contacts cut from the collider. OPEN: sleeves are the old crushed fit
-hung: link p99 34 %, max 76 %; sleeves + armpit in the body up to 21 mm; skin at the back armholes. Side seams sewn only every
-20 mm (2 cm body mesh). A post-hang "press" tore the chest (286 %): removed, don't repeat it.
-
-STATE: shirt from chains, hung locally; collar, neck, torso read right. NEXT: build the sleeves from chains, then library module.
+STATE: tool + gating landed on branch chain-garment. NEXT: fault 1 (fall over the soft cloth), then a default shirt that passes pattern_check, then the blind trial.

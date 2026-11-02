@@ -57,6 +57,7 @@ Test subjects: examples/troll.json (reference), workspace/goblin, fox.
 - Skin: `skin_read.py`, `skin_folds.py`, `skin_project.py` (docs/notes/skin.md). Hair: `hair.py`, `hair_flow.py`,
   `hair_cards.py`, `hair_cap.py` (docs/notes/hair.md). Cloth: `cloth.py`, `pattern.py`, `tailor.py`, `freesewing.py`
   (docs/notes/cloth.md); `garment_pull.py` styles a fitted garment by pull / smooth until it would stretch (C142-3).
+- Start of every garment: `chain_net.py` + `chain_garment.py` (docstrings are the spec); old cloth routes gated in `server.GATED_CLOTH`.
 - Export: `asset.py` + `blender_asset.py` (docs/notes/asset.md, game_ready.md), `rig.py` (docs/notes/rig.md),
   `retopo.py` (docs/notes/retopo.md), `budgets.py` + budgets.json (docs/notes/budgets.md).
 - `resources.py` (docs/notes/resources.md); `server.py` MCP tools (mcp 2.x MCPServer; every tool wrapped by
@@ -86,5 +87,6 @@ OpenBLAS is capped at 4 threads in `__init__.py`.
 - Canvas stiffness (bending, slim jacket, fewer holds): docs/state/canvas.md -> cloth.md "canvas stiffness"
 - Supports, not holds (hold redesign: the hang, off): docs/state/supports.md -> cloth.md "supports, not holds"
 - Threads hard (no stretch past the cloth's cap; misfit read by piece): docs/state/threads_hard.md -> codified.md C235
+- Chain garment (THE start of every garment: chain_net.py, chain_garment.py, tools chain_garment + look_chain): docs/state/collar_outline.md -> codified.md C259-C264
 - No state page yet (history only): topology, blender_scene, terrain, streambeds, vegetation, clutter, onemesh, likeness,
   refstudy, garrett_head, measuremodels, rig, base, retopo, images, faceshapes, headbody, resources, budgets, audit.

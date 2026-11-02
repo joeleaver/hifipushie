@@ -4,6 +4,24 @@ The cloth tools' full parameters and behaviour, one section per tool (guide(topi
 
 ## Tool reference
 
+### `chain_garment`
+`chain_garment(name, garment, wear="closed", opening=None)`: THE start of every garment: to dress a character, to fit or drape clothes on a body. Reads the drafted pattern and the
+body, never a fit. Stages: band and collar (or other stiff parts) as chains of their cut lengths, stiffness from the
+pattern's interfacing, resting on the high points; cuffs as stiff rings on the limb's own section; the soft pieces wrapped on a
+garment-sized section and solved as a network with the body as a floor; surfaces filled between the chains; open wear then
+undoes the band, whose sewn front is limited by its cut distance to the first fastened button, and folds the plackets along a
+solved crease; the soft cloth hangs under gravity (ZOZO, 5-10 min) with the stiff parts held; lengths last. wear: "closed" or
+"open". opening: only with "open": collar points this many neck widths apart (default 1.7, 1.0 .. 2.6). The answer comes after
+the build (1-3 min) with chains, threads, seams and band numbers while the hang runs on. Refuses: an unpassed pattern gate (next:
+pattern_check); a line whose length can't hold (named, next: alter_pattern there); a start the solver would refuse (a tool
+fault, named: report it). Nothing is pushed, cut or loosened to get past a refusal.
+
+### `look_chain`
+`look_chain(name, garment, wear="closed", focus=None, size=640, reference=None, save=None)`: the hung result when the hang has
+ended, else the build (the text says which). focus: none = whole figure, four views on the body; "neck" = the collar close, on
+the body; a piece's name = that piece alone, large, four sides. Sewn seams are joined and every piece faces outward.
+reference: an image path shown beside each view. Judge each view yourself against the reference, then review_view one view per call.
+
 The full documentation of this topic's tools: their MCP descriptions are the short form. guide(topic="<tool name>") returns one section. These tools are the `cloth` domain: run them with call_tool(name, args); find_tool(\"<job>\") gives each one's parameters and an example call.
 
 ### `design_garment`
@@ -42,7 +60,7 @@ evidenced in the pieces and seam table (a turned collar has a fold line, a barre
 the fall covers the stand...), every seam's ease in its band (sleeve cap by kind, bands, plain seams), notches
 aligned, ease against the body per girth inside the fit's band, every piece sewn to something, the details'
 dimensions. Fix failures in the design sheet (design_garment) or the garment's pattern options before going on.
-Next: check_garment(stages=["construction", "place"]).
+Next: pattern_check.
 
 ### `check_garment`
 
@@ -90,15 +108,15 @@ THE PATTERN GATE (codified C11): the garment drafted and placed on its body (no 
 of its kind measured there: seam lengths / ease / notches, lengths and widths, design choices, the neckline
 standoff; where this build has them, truing (junction angles), the collar draft and notch, flat tailor rows. Items
 with no pattern-stage measure or no reference reading are UNMEASURED and block; drape items are SIM (judged later);
-dress-form readings are INFO until the form is validated. The record (/mnt/data/hifipushie/pattern_gate/<key>.json,
-keyed by the pattern's content hash + the body's) is what every sim checks: `dress` and every cloth job refuse
+trial-placement readings are INFO until the form is validated. The record (/mnt/data/hifipushie/pattern_gate/<key>.json,
+keyed by the pattern's content hash + the body's) is what chain_garment checks: it refuses
 without a PASS for exactly this pattern + body.
 refs: the reference reading (cloth_reference.read's output or its saved path). waive: {item id: reason} accepts a
 FAIL / UNMEASURED row by name (recorded; PASS_WAIVED).
 Returns: the FLAT pattern sheet (pieces, grain, notches, seam list with lengths and ease), the DIAG views of the
 placed pattern (by default two rows: panels + seams + turned, then strain + layers; diag=False none, or your own
 modes / rows), and the per-item table FAIL / UNMEASURED first, then "next:": on a FAIL the rows to fix and "don't
-simulate"; on a PASS fit_garment. views (default front, three, side, back), size (px), save (PNG path prefix).
+simulate"; on a PASS chain_garment. views (default front, three, side, back), size (px), save (PNG path prefix).
 Renders take the GPU lock.
 
 ### `fit_garment`

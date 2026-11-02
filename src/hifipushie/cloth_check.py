@@ -1346,10 +1346,9 @@ def gate_rows(Bp: dict, items: list, ctx=None, gname: str = "", refs: dict | Non
         if cl == "sim" and it.get("measure") in _form_read():
             # (C97) a big read of the worn state: read on the form fit (fit_rows, from the piece checklist's items),
             # never deferred to a sim the form path doesn't run
-            row.update(status="FORM", why="a big read of the worn state: judged on the form fit (fit_garment's fit "
-                                          "record, the piece checklist's items: garment_reads)")
+            row.update(status="FORM", why="a big read of the worn state: judged on the worn garment (look_chain)")
         elif cl == "sim":
-            row.update(status="SIM", why="judged after the sim (drape, folds, closures, the worn tells)")
+            row.update(status="SIM", why="judged on the hung garment (look_chain: drape, folds, closures, the worn tells)")
         elif cl == "later":
             row.update(status="INFO", why=f"a later stage's item (stage {it.get('stage')}): not a pattern check")
         elif cl == "worn":
@@ -1396,7 +1395,7 @@ def gate_rows(Bp: dict, items: list, ctx=None, gname: str = "", refs: dict | Non
             if not form_ok and ctx is not None and it.get("measure") not in SPEC_READ:
                 # read on the dress form, which is not validated: shown, not judged (design choices read the spec)
                 row.update(form_status=row["status"], status="INFO",
-                           why=f"read on the dress form (not validated: {FORM_FAULTS}) {row.get('why', '')}".strip())
+                           why=f"read on the gate's own trial placement, not the garment (not validated: {FORM_FAULTS}) {row.get('why', '')}".strip())
         rows.append(row)
     return rows
 
@@ -1786,7 +1785,7 @@ def pattern_gate(model: str, garment: str, spec: dict | None = None, refs=None, 
                  "why": "the dress form's own report (folds turned, stretch, neck point on the body's HPS)"})
     for r_ in form_strain_rows(res, roles, g) + form_shape_rows(res):
         if not form_ok and r_["status"] in ("PASS", "FAIL"):
-            r_.update(form_status=r_["status"], status="INFO", why=f"read on the dress form (not validated: {FORM_FAULTS})")
+            r_.update(form_status=r_["status"], status="INFO", why=f"read on the gate's own trial placement, not the garment (not validated: {FORM_FAULTS})")
         rows.append(r_)
     warns = option_sources(g)
     rec = make_record(model, garment, kind, keys, rows, waive, warns, bool(targets))

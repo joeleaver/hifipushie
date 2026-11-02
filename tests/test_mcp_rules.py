@@ -65,10 +65,10 @@ def test_next_steps_follow_the_result():
     fail = {"status": "FAIL", "rows": [{"id": "seams", "status": "FAIL"}, {"id": "rise", "status": "UNMEASURED"},
                                        {"id": "drape", "status": "SIM"}]}
     t = next_steps.after_pattern_check(fail, "m", "jacket")
-    assert "DON'T simulate" in t and "seams" in t and "rise" in t and "drape" not in t
+    assert "refuses until it passes" in t and "seams" in t and "rise" in t and "drape" not in t
     ok = dict(fail, status="PASS_WAIVED", waived={"seams": "x", "rise": "y"})
     t = next_steps.after_pattern_check(ok, "m", "jacket")
-    assert "fit_garment" in t and "DON'T" not in t
+    assert "chain_garment" in t and "DON'T" not in t
     # fit: a red strain or a pierce names the pattern fix; a clean one says judge one view at a time
     assert "fix on the pattern" in next_steps.after_fit("m", "j", 30.0, 0, True)
     assert "pierce" in next_steps.after_fit("m", "j", 0.5, 12, True)
@@ -93,14 +93,14 @@ def test_garment_looks_default_to_diag():
 
 def test_instructions_and_guide_carry_the_order():
     ins = server.INSTRUCTIONS
-    assert "pattern_check" in ins and "fit_garment" in ins and "review_view" in ins
+    assert "pattern_check" in ins and "chain_garment" in ins and "review_view" in ins
     assert "built on the drape" not in ins and "finished by hand" not in ins  # (wrong since 2026-10-19)
     assert len(ins) < 3000
     g = server.guide("cloth")
-    assert "pattern_check" in g and "fit_garment" in g and "66-74" in g
+    assert "pattern_check" in g and "chain_garment" in g
     assert server.guide("traps").startswith("# Traps")
     assert server.guide("tailoring")  # the principles, or where they are while on their branch
-    for t in ("pattern_check", "fit_garment", "alter_pattern", "review_view", "judge_asset", "game_garment"):
+    for t in ("pattern_check", "chain_garment", "look_chain", "alter_pattern", "review_view", "judge_asset"):
         assert server.guide(t).startswith(f"### `{t}`"), t
 
 
@@ -111,7 +111,7 @@ def test_pattern_check_fail_says_dont_simulate(gate):
     (txt,) = _texts(out)
     assert len(_images(out)) == 1  # the flat pattern sheet
     assert "pattern gate t:skirt: FAIL" in txt and "UNMEASURED" in txt
-    assert "DON'T simulate" in txt and 'pattern_check("t", "skirt")' in txt
+    assert "refuses until it passes" in txt and 'pattern_check("t", "skirt")' in txt
     # FAIL / UNMEASURED rows are listed before the passing ones
     lines = [ln.split()[0] for ln in txt.splitlines() if ln.startswith("  ") and ln.split()[0].isupper()]
     assert lines.index("UNMEASURED") < lines.index("PASS")
@@ -132,7 +132,7 @@ def test_fit_refuses_until_the_pattern_passes(gate):
     rec = cc.pattern_gate(MODEL, "skirt", log=lambda *_: None)
     out = server.pattern_check(MODEL, "skirt", waive=_waive_all(rec), diag=False)
     (t,) = _texts(out)
-    assert "PASS_WAIVED" in t and "fit_garment" in t and "DON'T" not in t
+    assert "PASS_WAIVED" in t and "chain_garment" in t and "DON'T" not in t
     assert cc.gate_status(MODEL, "skirt")["passed"]
 
 

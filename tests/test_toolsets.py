@@ -22,9 +22,8 @@ clutter_kit""".split()
 # added since: the artist block-in (2026-10-10)
 ADDED = {"block_in_start", "block_in_look", "block_in_step", "block_in_solve", "lid_read", "block_in_expression", "gnm_controls", "lip_read",
          "brow_read", "eye_ruler", "face_ruler", "tie_hair", "skin_from_reference", "hair_from_reference", "skin_project",
-         "pattern_check", "fit_garment", "alter_pattern", "review_view", "judge_asset",  # (the garment gates as tools, 2026-10-19)
-         "release_garment", "arrange_garment", "style_garment",
-         "game_garment"}  # (worn open 2026-10-20; pull / turn / smooth, C142 / C143)
+         "pattern_check", "alter_pattern", "review_view", "judge_asset",  # (the garment gates as tools, 2026-10-19)
+         "chain_garment", "look_chain"}  # (the one way to start a garment; the older routes are gated, C262)
 
 
 def _tokens(tools) -> int:
@@ -35,7 +34,8 @@ def test_every_tool_in_one_group():
     groups = [t for s in server.TOOL_GROUPS.values() for t in s["tools"]]
     assert len(groups) == len(set(groups)), "a tool in two groups"
     assert set(groups) == set(server._TOOLS), set(groups) ^ set(server._TOOLS)
-    assert set(BEFORE) <= set(groups), set(BEFORE) - set(groups)
+    kept = set(BEFORE) - set(server.GATED_CLOTH)  # (the older clothing routes are gated: not offered, C262)
+    assert kept <= set(groups), kept - set(groups)
     assert len(BEFORE) == 75 and set(groups) - set(BEFORE) == {"find_tool", "call_tool"} | ADDED
     assert not hasattr(server, "enable_toolset") and not hasattr(server, "TOOLSETS")
 

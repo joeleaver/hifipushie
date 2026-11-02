@@ -189,6 +189,94 @@ def _start_stretch(R: np.ndarray, X: np.ndarray, F: np.ndarray) -> np.ndarray:
     return np.linalg.svd(Ds @ inv, compute_uv=False)[:, 0]
 
 
+def flat_rest(job: dict, d, X: np.ndarray, F: np.ndarray, log=None) -> dict:
+    """The rest a "flat" job rests on and the strain limit per vertex, as main() hands them to ZOZO (one function, so
+    the pre-flight reads exactly what the solver gets: zozo_hang.start_strain). Bending rest flat (0) on ordinary cloth.
+    Pieces wholly interfaced (collar, stand, cuffs) rest as made in membrane and bending (in.npz "rest": their made
+    shape; else as placed): a turned collar's U and a cuff's curl are the made shape. Every hinge lies inside one
+    piece, so choosing per piece is consistent. Returns {flat3, ref, lim, lv, tgt, need, zone, zv, sig}."""
+    log = log or (lambda *a: None)
+    pid = np.asarray(d["piece"])
+    uv = np.asarray(d["uv"], float)
+    flat3 = np.c_[uv, np.zeros(len(uv))]
+    made = np.isin(pid, [job["pieces"].index(nm) for nm in job.get("made", [])])  # cloth.made_pieces
+    if "rest" in d:  # cloth.rest_shape: the made pieces as made (before the start was pushed clear of the body)
+        flat3[made] = np.asarray(d["rest"], float)[made]
+    else:
+        flat3[made] = X[made]
+    lifted = made.copy()  # pieces that may start past the strain limit (placed folded or closed round a limb)
+    if "releaseIdx" in d:
+        lifted[np.asarray(d["releaseIdx"], np.int64)] = True
+    if "carryIdx" in d:  # held pieces (method "settle") rest as they start: nothing in them is solved
+        ci = np.asarray(d["carryIdx"], np.int64)
+        # (the fine settle gives their made shape as "rest": a flap released after the press rests folded as made,
+        # not as it started, open)
+        if "restIdx" in d and "rest" in d:  # the fine settle: the made pieces (their free flaps too) rest as made;
+            # draped cloth held far from them rests flat like the cloth it is joined to
+            ri = np.asarray(d["restIdx"], np.int64)
+            flat3[ri] = np.asarray(d["rest"], float)[ri]
+            made[ri] = True
+        else:
+            flat3[ci] = X[ci]
+            made[ci] = True
+    for nm in job.get("rest_placed", []):  # (experiments: these pieces rest as they start)
+        sel_ = pid == job["pieces"].index(nm)
+        flat3[sel_] = X[sel_]
+    for nm in job.get("rest_flat", []):  # (experiments: these made pieces rest on the flat pattern)
+        sel_ = pid == job["pieces"].index(nm)
+        flat3[sel_] = np.c_[uv, np.zeros(len(uv))][sel_]
+        made[sel_] = False
+    ref = flat3.copy()
+    if "bend_rest" in d:  # fold lines (folds.py): the flat pattern folded at its lines, where the cloth rests flat
+        ref[~made] = np.asarray(d["bend_rest"], float)[~made]
+    # a made piece pushed clear of the body starts stretched past its rest (a cuff round a wrist fatter than it
+    # was made for); a strain-limited solver can't start past the limit, so those pieces get a limit above their
+    # start stretch, and contract onto the body to their made size
+    lim = float(job.get("strain_limit", 0.05))
+    sig = _start_stretch(flat3, X, F)
+    # so do the few triangles of draped cloth that start past it by construction (the rows of a roll line turned
+    # round a chest that curves, a cut-on collar's stand pushed a millimetre off the neck): a local limit above
+    # their start, never more than START_OVER of the cloth (more is a placement fault: cloth_workflow stage 4)
+    over = (sig > 1.0 + lim) & ~lifted[F].all(1)
+    if 0 < over.mean() <= float(job.get("start_over", 0.03)):
+        lifted[np.unique(F[over])] = True
+        log(f"zozo: {int(over.sum())} triangles of draped cloth start up to {(float(sig[over].max()) - 1) * 100:.0f}% "
+            "stretched (fold rows, pushed bands): a local strain limit there")
+    fm = lifted[F].all(1) | over
+    need = float(sig[fm].max()) - 1.0 if fm.any() else 0.0
+    # (experiment) job "zone_limit": {"pieces": [...whole], "top": {piece: m from its pattern top}, "value": 0.15}:
+    # another strain limit there (the shoulder/yoke dome)
+    zl = job.get("zone_limit")
+    zone = np.zeros(len(pid))
+    if zl:
+        for nm in zl.get("pieces", []):
+            zone[pid == job["pieces"].index(nm)] = 1.0
+        for nm, dy in (zl.get("top") or {}).items():
+            sel_ = pid == job["pieces"].index(nm)
+            zone[sel_ & (uv[:, 1] > uv[sel_, 1].max() - float(dy))] = 1.0
+        zone[made] = 0.0
+    tgt = min(1.0, 1.3 * need + 0.02) if need > 0.8 * lim else None
+    # pieces DECLARED stretched on (job "declared" {piece: e}: a rib band cut 0.85 of the edge it is sewn to is
+    # 18% stretched once sewn, more round a wrist or neck at the contact offset): a strain limit below that keeps
+    # the band at its cut length, and its seams can't close (Tess's jumper: cuffs open 20-47 mm, the neckband 62 mm
+    # off the back; carried onto the fine mesh and welded, 5x at the cuff)
+    zv = float(zl["value"]) if zl else lim
+    lv = vertex_limits(pid, job["pieces"], lim, lifted, tgt, zone > 0, zv, job.get("declared"))
+    return {"flat3": flat3, "ref": ref, "lim": lim, "lv": lv, "tgt": tgt, "need": need, "zone": zone, "zv": zv,
+            "sig": sig}
+
+
+def face_limits(lv: np.ndarray, lim: float, F: np.ndarray) -> np.ndarray:
+    """Each triangle's strain limit as ZOZO builds it: set_param_spatial("strain-limit", w, T) with w = (lv - lim) /
+    (T - lim) per vertex; each element takes the MEAN of its vertices' weights (frontend _scene_object_.set_param_spatial),
+    lerp(lim, T, w): the mean of its vertices' limits. (shrink 1: shell_effective_strain_limit is the limit itself)"""
+    lv = np.asarray(lv, float)
+    if not (lv > lim).any():
+        return np.full(len(F), float(lim))
+    T = float(lv.max())
+    w = np.clip((lv - lim) / max(T - lim, 1e-9), 0, 1)
+    return lim + (T - lim) * w[np.asarray(F)].mean(1)
+
 BEND_SCALE = 1.28e-5  # ZOZO's shell_bend_stiffness.kernel.cpp: hinge k = BEND_SCALE * bend * |e|^2 / area * areal density
 
 
@@ -481,75 +569,10 @@ def main():
     stiff = np.asarray(d["stiff"], float)
     pid = np.asarray(d["piece"])
     if rest == "flat":
-        # bending rest flat (0) on ordinary cloth. Pieces wholly interfaced (collar, stand, cuffs) rest as placed in membrane and bending: a turned collar's U
-        # and a cuff's curl are the made shape, and a fold over coarse triangles isn't isometric to the flat. Every
-        # hinge lies inside one piece, so choosing per piece is consistent
-        uv = np.asarray(d["uv"], float)
-        flat3 = np.c_[uv, np.zeros(len(uv))]
-        made = np.isin(pid, [job["pieces"].index(nm) for nm in job.get("made", [])])  # cloth.made_pieces
-        if "rest" in d:  # cloth.rest_shape: the made pieces as made (before the start was pushed clear of the body)
-            flat3[made] = np.asarray(d["rest"], float)[made]
-        else:
-            flat3[made] = X[made]
-        lifted = made.copy()  # pieces that may start past the strain limit (placed folded or closed round a limb)
-        if "releaseIdx" in d:
-            lifted[np.asarray(d["releaseIdx"], np.int64)] = True
-        if "carryIdx" in d:  # held pieces (method "settle") rest as they start: nothing in them is solved
-            ci = np.asarray(d["carryIdx"], np.int64)
-            # (the fine settle gives their made shape as "rest": a flap released after the press rests folded as made,
-            # not as it started, open)
-            if "restIdx" in d and "rest" in d:  # the fine settle: the made pieces (their free flaps too) rest as made;
-                # draped cloth held far from them rests flat like the cloth it is joined to
-                ri = np.asarray(d["restIdx"], np.int64)
-                flat3[ri] = np.asarray(d["rest"], float)[ri]
-                made[ri] = True
-            else:
-                flat3[ci] = X[ci]
-                made[ci] = True
-        for nm in job.get("rest_placed", []):  # (experiments: these pieces rest as they start)
-            sel_ = pid == job["pieces"].index(nm)
-            flat3[sel_] = X[sel_]
-        for nm in job.get("rest_flat", []):  # (experiments: these made pieces rest on the flat pattern)
-            sel_ = pid == job["pieces"].index(nm)
-            flat3[sel_] = np.c_[uv, np.zeros(len(uv))][sel_]
-            made[sel_] = False
-        ref = flat3.copy()
-        if "bend_rest" in d:  # fold lines (folds.py): the flat pattern folded at its lines, where the cloth rests flat
-            ref[~made] = np.asarray(d["bend_rest"], float)[~made]
-        g.set_bend_rest_vert(ref)
-        # a made piece pushed clear of the body starts stretched past its rest (a cuff round a wrist fatter than it
-        # was made for); a strain-limited solver can't start past the limit, so those pieces get a limit above their
-        # start stretch, and contract onto the body to their made size
-        lim = float(job.get("strain_limit", 0.05))
-        sig = _start_stretch(flat3, X, F)
-        # so do the few triangles of draped cloth that start past it by construction (the rows of a roll line turned
-        # round a chest that curves, a cut-on collar's stand pushed a millimetre off the neck): a local limit above
-        # their start, never more than START_OVER of the cloth (more is a placement fault: cloth_workflow stage 4)
-        over = (sig > 1.0 + lim) & ~lifted[F].all(1)
-        if 0 < over.mean() <= float(job.get("start_over", 0.03)):
-            lifted[np.unique(F[over])] = True
-            log(f"zozo: {int(over.sum())} triangles of draped cloth start up to {(float(sig[over].max()) - 1) * 100:.0f}% "
-                "stretched (fold rows, pushed bands): a local strain limit there")
-        fm = lifted[F].all(1) | over
-        need = float(sig[fm].max()) - 1.0 if fm.any() else 0.0
-        # (experiment) job "zone_limit": {"pieces": [...whole], "top": {piece: m from its pattern top}, "value": 0.15}:
-        # another strain limit there (the shoulder/yoke dome)
-        zl = job.get("zone_limit")
-        zone = np.zeros(len(pid))
-        if zl:
-            for nm in zl.get("pieces", []):
-                zone[pid == job["pieces"].index(nm)] = 1.0
-            for nm, dy in (zl.get("top") or {}).items():
-                sel_ = pid == job["pieces"].index(nm)
-                zone[sel_ & (uv[:, 1] > uv[sel_, 1].max() - float(dy))] = 1.0
-            zone[made] = 0.0
-        tgt = min(1.0, 1.3 * need + 0.02) if need > 0.8 * lim else None
-        # pieces DECLARED stretched on (job "declared" {piece: e}: a rib band cut 0.85 of the edge it is sewn to is
-        # 18% stretched once sewn, more round a wrist or neck at the contact offset): a strain limit below that keeps
-        # the band at its cut length, and its seams can't close (Tess's jumper: cuffs open 20-47 mm, the neckband 62 mm
-        # off the back; carried onto the fine mesh and welded, 5x at the cuff)
-        zv = float(zl["value"]) if zl else lim
-        lv = vertex_limits(pid, job["pieces"], lim, lifted, tgt, zone > 0, zv, job.get("declared"))
+        fr = flat_rest(job, d, X, F, log)
+        g.set_bend_rest_vert(fr["ref"])
+        lim, lv, tgt, need, zone, zv = fr["lim"], fr["lv"], fr["tgt"], fr["need"], fr["zone"], fr["zv"]
+        flat3 = fr["flat3"]
         if (lv > lim).any():
             T = float(lv.max())
             g.param.set("strain-limit", lim)
@@ -845,7 +868,8 @@ def main():
         per = sum(v for _, v in ms) / max(1, len(ms))
     except Exception:
         per = float("nan")
-    gap = np.linalg.norm(V[sew[:, 0]] - V[sew[:, 1]], axis=1)
+    # (zozo_ref 2026-10-28: a job with no seams, the towel over a bar, failed here after the sim: empty percentile)
+    gap = np.linalg.norm(V[sew[:, 0]] - V[sew[:, 1]], axis=1) if len(sew) else np.zeros(1)
     log(f"zozo: {frame} frames in {wall:.1f} s ({per:.0f} ms/frame), seam gaps mean {gap.mean() * 1000:.1f} mm p95 "
         f"{np.percentile(gap, 95) * 1000:.1f} mm, z {V[:, 2].min():.3f}..{V[:, 2].max():.3f}")
     snaps = {}

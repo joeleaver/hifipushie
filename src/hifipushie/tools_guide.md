@@ -289,7 +289,7 @@ they're made, their unsaved moves and tweaks come back, and the session is saved
 hair_only: only the hair's curve locks (after pulling what a person changed in the scene; seconds): enough after
 groom_hair or lock edits when the body hasn't changed. look_hair doesn't need it (it renders the spec's hair).
 Garments (spec["cloth"]) go in as meshes in the collection "cloth" with their pattern uv, sewing-detail maps and a
-colour node a person can change; only simulated ones (dress) go in, a sync never starts a sim. cloth_only: just
+colour node a person can change; only hung ones go in, a sync never starts a sim. cloth_only: just
 the garments (seconds). A person's sculpt of a garment in Blender comes back with pull as offsets on that sim.
 
 ### `pull`
@@ -458,13 +458,13 @@ PASS / FAIL. ~1 min. dry=True: no reviewer is run; you get the pair image and th
 agent (ONE image per message), never your own reading. stage / not_stages scope it (faults of other stages are listed
 apart and don't count). out_dir: where pair_0.png / review.md go (default under the workspace).
 One call = one view: every checklist region (and each camera of it) is its own call. Construction reviews give the
-diag view of a region (fit_garment / look_cloth single views) as its own call beside the clay one.
+diag view of a region (look_chain single views) as its own call beside the clay one.
 The text ends with the next step: on FAIL fix every independent MAJOR (grouped by cause) and review again; no
 verdict = the review did not run (never 0 MAJORs).
 NO REFERENCE (trials t6 / t7 had none, and no independent look ran): reference="" judges the result alone against a
 fixed checklist, default "hang" (how clothes hang: no wings at the sides, the sleeves rest on and follow the arm, one
 smooth shoulder line into the sleeve, the hem clear of the legs and the seat, no seam spikes, the collar / hood sits,
-cloth with weight). Give it each fit_garment single view (front, side, back, a focus close-up), one per call.
+cloth with weight). Give it each look_chain single view (front, side, back, a focus close-up), one per call.
 
 ### `judge_asset`
 
