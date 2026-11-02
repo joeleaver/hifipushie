@@ -1,5 +1,6 @@
 """skin_read / skin_folds on synthetic input (`uv run python tests/test_skin_read.py`; no Blender): the hand-made head
 of test_skin stands in for a base body; the "picture's albedo" is our own albedo model run with other parameters."""
+import pytest
 import copy
 import pathlib
 import tempfile
@@ -168,6 +169,7 @@ class _Fake(sr.Context):
     pass
 
 
+@pytest.mark.timeout(1800)  # (every Albedo call rebuilds the paint layers, the fit makes many: costly, not hung)
 @_tmp
 def test_colour_read_and_fit_recover_zones():
     """The picture's albedo = our model with other zone strengths and lip colours: the region reads see the

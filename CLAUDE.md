@@ -64,7 +64,10 @@ Test subjects: examples/troll.json (reference), workspace/goblin, fox.
   `_tool_with_errors`). Audits: bin/audit, bin/audit-summary (docs/notes/audit.md).
 - Performance invariants (field_at chunking, PartGrid reuse, caches keyed by content): docs/notes/performance.md.
 
-## Testing without restarting the MCP
+## Testing
+Gate before landing: `bin/suite` (fast tier; `--full` for all). Exit 0 = nothing new against tests/known_failures.txt;
+1 = new failures; 2 = no verdict. Plain `pytest` skips slow tests, also in a named file: `pytest -m "" tests/test_x.py`.
+Without restarting the MCP:
 `uv run python -c "from hifipushie import server; ..."`; `look` returns `[Image, str]` (`Image.data` = PNG bytes).
 The running MCP server has the code from when it started. Tooling repros: `uv run python tests/test_tooling.py`.
 OpenBLAS is capped at 4 threads in `__init__.py`.
@@ -76,17 +79,16 @@ OpenBLAS is capped at 4 threads in `__init__.py`.
 - Garrett hair (shells): docs/state/garrett_hair.md -> hair.md "Garrett short-hair shells sh<N>"
 - Skin: docs/state/skin.md -> skin.md "## r<N>"
 - Dress Garrett (jacket + shirt fit): docs/state/dress_garrett_fit.md -> cloth.md "fit round <N>"
-- Dress Garrett shirt (alone, then under the jacket): docs/state/dress_garrett_shirt.md -> cloth.md "shirt round <N>"
-- Shirt spike (Simon's collar + shirt on the average male, closed + open, no sim; was the collar spike):
-  docs/state/collar_spike.md -> cloth.md "shirt spike 2026-10-21"
+- Dress Garrett shirt: docs/state/dress_garrett_shirt.md -> cloth.md "shirt round <N>"
+- Shirt spike: docs/state/collar_spike.md -> cloth.md "shirt spike 2026-10-21"
 - Dress Tess: docs/state/dress_tess.md -> cloth.md "dress-tess session <N>"
-- Tailoring (jacket rules): docs/state/tailoring.md -> cloth.md "tailoring <date>"
-- MCP rules (tools carry the gates): docs/state/mcp_rules.md -> mcp_audit.md "## History"
-- Pattern gate (sims refused without a PASS record): docs/state/pattern_gate.md -> pattern_gate.md
-- Drape band (wrapped folds drafted by draping): docs/state/drape_band.md -> cloth.md "drape band round <N>"
-- Canvas stiffness (bending, slim jacket, fewer holds): docs/state/canvas.md -> cloth.md "canvas stiffness"
-- Supports, not holds (hold redesign: the hang, off): docs/state/supports.md -> cloth.md "supports, not holds"
-- Threads hard (no stretch past the cloth's cap; misfit read by piece): docs/state/threads_hard.md -> codified.md C235
+- Tailoring: docs/state/tailoring.md -> cloth.md "tailoring <date>"
+- MCP rules: docs/state/mcp_rules.md -> mcp_audit.md "## History"
+- Pattern gate: docs/state/pattern_gate.md -> pattern_gate.md
+- Drape band: docs/state/drape_band.md -> cloth.md "drape band round <N>"
+- Canvas stiffness: docs/state/canvas.md -> cloth.md "canvas stiffness"
+- Supports, not holds: docs/state/supports.md -> cloth.md "supports, not holds"
+- Threads hard: docs/state/threads_hard.md -> codified.md C235
 - Chain garment (THE start of every garment: chain_net.py, chain_garment.py, tools chain_garment + look_chain): docs/state/collar_outline.md -> codified.md C259-C264
-- No state page yet (history only): groundtruth, topology, blender_scene, terrain, streambeds, vegetation, clutter, onemesh, likeness,
-  refstudy, garrett_head, measuremodels, rig, base, retopo, images, faceshapes, headbody, resources, budgets, audit.
+- Test suite: docs/state/test_suite.md
+- No state page yet: grep docs/notes/<thread>.md.
