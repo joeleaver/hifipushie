@@ -19,9 +19,10 @@ iterations or manual feedback."
   flat_pattern on two defaults: fit slim taken for a regular draft (chest +14.7 %, waist +23.1 %), S12 stand 436.8 vs 441.2.
   Fixed in the draft (garment_kb simon default_fit regular; cloth_designs simon "match" of stand + collar after truing): flat
   read now seams all ok (stand 437.9 vs 441.2 before the walk moved after truing; re-read after the move not done) and ease in band.
-- The FULL gate (pattern_gate, on_form) on the fixed default did NOT finish in this run: ~10 % of one core at load 85-98 (capped
-  slice CPUWeight 20), 6.7 CPU-min in 56 min. Running at the end: /mnt/data/hifipushie/chain_first/gate0.py -> gate1.log
-  (prints status + non-PASS rows; writes the record on cf_shirt if PASS). Unmeasured rows (7 on wf_simon) unknown here.
+- The FULL gate on the fixed default ran to the end (3834 s wall at load ~90): FAIL, 8 of 44 rows blocking. seams and
+  flat_pattern now PASS. Blocking: FAIL collar_fall_cover (stand cb 27.0, ends 27.9 / 30.8, fall cb 40.2, roll above seam 4.0,
+  turn 2.06 mm; the row's target text was cut off in the log, so the failing number is not identified yet) and UNMEASURED collar,
+  front_closure, cuff, pockets, layering, fabric, colour (no reference reading given: refs=). Log: /mnt/data/hifipushie/chain_first/gate1.log.
 
 ## Not done (this run's deliverable is NOT met)
 - chain_garment never ran end to end through the tool: no PASS record yet, so no closed / open job, no look_chain, no renders.
@@ -32,6 +33,7 @@ iterations or manual feedback."
 2. Free cloth rises 7-8 mm on average in the hang (not understood). 3. Stiff chains not exact after surfaces (collar fold line
 7.7 % closed / 16.3 % open). 4. Cuffs flare (cut 183 mm vs forearm 200 mm). 5. Soft mesh 20 mm, coarse. 6. No export.
 
-STATE: job + default-shirt fixes on branch chain-first (44a641ad, e1dc20f0). NEXT: read gate1.log; if cf_shirt PASSES, run
+STATE: job + default-shirt fixes on branch chain-first (44a641ad, e1dc20f0). NEXT: read collar_fall_cover's target (cloth_check) and fix that default in the draft; decide with Joe whether the 7
+reference rows need a refs reading or should not block a default; then, on a PASS, run
 chain_garment wear closed then open through the tool on cf_shirt (one hang each), look_chain beside folds_ab/refs; if not, fix
 the next failing default row in the draft. Run the gate when the machine is less loaded (load 90 starves the capped slice).
