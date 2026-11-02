@@ -1,6 +1,7 @@
 # Skin: texturing a human the way character artists do
 
-Tools (run with `call_tool`): `skin` (describe the skin), `look_skin` (fast close-ups + measurements),
+Tools (run with `call_tool`): `skin` (describe the skin), `look_skin` (fast close-ups + measurements; `beside=` one
+region next to its reference crop), `brow_read` (the brow hair against the picture),
 `skin_from_reference` (measure the skin in the model's fitted reference pictures and set the description from it),
 `skin_project` (the pictures projected into the head's atlas as a measurement), `skin_reference` (every key, default
 and zone), plus the ordinary paint tools (`edit_model` paint ops address the same anatomy with `{"zone": name}`).
@@ -11,6 +12,18 @@ landmarks).
 Sub-topics (guide(topic=...)): `skin_layers` (every stage in detail: the person under the skin, pigment model, zones,
 mottling, features, folds, hair on the skin, eyes, micro detail, roughness, cosmetics, shading; what goes wrong;
 sources), `skin_tools` (every skin tool's parameters; guide(topic="tool:skin") is the `skin` tool's own section).
+
+## The route (photographs of a person)
+
+1. Approved head, forms in it (lid fold, bags): a change after this makes the atlas stale.
+2. `skin` with `age` and `tone`, read from the forehead (the atlas takes its exposure from it).
+3. `skin_from_reference(name)`: atlas, read, layer stack. `read_only=True` first shows the read. Paintings:
+   `painting=True` (the per-picture read; an atlas bakes brushwork).
+4. `brow_read(name, match=True)`: places the brow hair. The atlas route reads no irises, folds, pores or roughness.
+5. Hand finish with `skin`, one lever a step; under a stack the reply names keys with no effect, and `skin(stack_edit=...)`
+   moves its layers.
+6. `look_skin(name, beside=<region>)`, then its `review_view` call, one region per call: the gate. Fold relief over 1 mm
+   is head form, not skin.
 
 **The rule everything else follows: read the skin from the reference before setting anything.** Tone, redness and
 where it sits, texture scale, lips, under-eye, brows, creases, eyes: as measured items, each compared close-up beside
@@ -36,6 +49,7 @@ Per item: the reference's value (measured or read), how you'll measure yours, a 
 authority for colour (the most frontal, evenly lit one) and mark what no picture shows as inferred. With fitted
 reference cameras (the block-in's), `skin_from_reference(read_only=True)` measures most of this; read it as data and
 check it by eye.
+`base.head.lid_fold` is the lid's geometry (head form); `skin.folds.lid_fold` is the crease line in the skin. Both exist.
 
 1. **Overall tone**: L*a*b* in named boxes (forehead, cheek, nose, chin). Judge tone on the FOREHEAD (cheeks flush);
    check the photo's cast on the sclera (neutral ~R/B 1.0-1.1) before trusting its numbers.
@@ -71,8 +85,8 @@ pigment model (never a colour picker), then features, folds, hair, eyes, make-up
 | 9 | Shading check | `shading` (subsurface) | EEVEE `views=["face", "ear"]`, then the exported GLB in EEVEE set up like a game |
 
 From pictures: `skin_from_reference` reads the pictures as a MEASUREMENT (de-lit against your own render under each
-picture's fitted light) and sets tone, zones, features, brows, stubble, eyes and folds from them, in rounds;
-`skin_project` projects the pictures into the head's atlas as a layer stack. The photo's pixels don't ship; the
+picture's fitted light) and sets tone, zones, features, brows and stubble from them, in rounds (eyes and folds too on
+the per-picture read, `painting=True`); it runs `skin_project` itself, which projects the pictures into the head's atlas. The photo's pixels don't ship; the
 decomposition does. Shape first: forms the head should have (a lid fold, bags) go into the head before the projection,
 or their shading is taken as pigment.
 
@@ -96,9 +110,8 @@ or their shading is taken as pigment.
 
 ## Self-review loop (every round)
 
-1. Render close-ups per feature (`look_skin` views: bust, face, cheek, eye, brow, lips, ear, jaw; flat and lit) at the
-   reference crop's framing, and put each BESIDE the reference crop. A whole-face sheet is not enough: skin is judged
-   feature by feature.
+1. `look_skin(beside=...)` per region (face, forehead, brows, eye, cheek, nose, mouth, jaw): model and reference crop at
+   one framing, and its reply is the `review_view` call. A whole-face sheet is not enough: skin is judged feature by feature.
 2. Per region (tone, redness, texture and highlight, lips, under-eye and lids, brows, creases, facial hair, eyes),
    list what reads wrong against the reference, concretely (where, what, how far off). Mark each MAJOR (wrong tone or
    redness distribution, plastic or waxy, a missing or extra feature that identifies the person, painted-on shapes, a

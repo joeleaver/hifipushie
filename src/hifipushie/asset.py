@@ -2794,6 +2794,8 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
         triangles = 15000
         log.append("WARNING budgets: no role given and no triangles: 15000 (not a stated budget; pass role=)")
     spec = store.load(name)
+    from . import skin_route
+    skin_route.refuse_photo_skin(spec)
     if (spec.get("base") or {}).get("head_approved"):  # (Garrett s7) the head geometry must BE the approved head's: a
         # gate, not a swap (geometry is built from the stored model); compose the spec with approved_head first
         lg_ = []
