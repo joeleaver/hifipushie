@@ -28,8 +28,8 @@ the hussar jacket), so no tool quietly becomes a shirt tool.
 | 9 | Look and approve | the garment beside the reference, blind review, approval | look_chain, review_view, approve | blind look | one sheet per garment from the step-0 reference |
 | 10 | Export | game mesh, retopology, skinned to the character's rig | none for chain garments | budgets | the whole step |
 
-Known (runs 1-3): step 5: archive/chain-run3: band resting on the high points fixed the collar's tilt (9.6 -> 24 deg); the
-band is built closed though its button is open. Step 8: open wear hung with 1 in 5 faces past the thread cap.
+Known for iteration: steps 5-6: the build mesh's irregular strip where the hex lattice meets the outline (test: rows
+following the outline; are the ragged plackets from it?). Step 8: open wear hung with 1 in 5 faces past the thread cap.
 ORDER: tooling for every step first; then the steps one at a time, shirt + hussar together, each iterated until good.
 
 ## Tooling runs (one deliverable each, in order; "minimal" = the step works end to end for any garment, not yet good)
