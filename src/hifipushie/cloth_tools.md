@@ -5,12 +5,12 @@ The cloth tools' full parameters and behaviour, one section per tool (guide(topi
 ## Tool reference
 
 ### `chain_garment`
-`chain_garment(name, garment, wear="closed", opening=None, wait=50, rebuild=False)`: THE start of every garment: to dress a character, to fit or drape clothes on a body. Reads the drafted pattern and the
+`chain_garment(name, garment, wear="closed", opening=None, wait=50, rebuild=False, waive=None)`: THE start of every garment: to dress a character, to fit or drape clothes on a body. Reads the drafted pattern and the
 body, never a fit. Stages: band and collar (or other stiff parts) as chains of their cut lengths, stiffness from the
 pattern's interfacing, resting on the high points; cuffs as stiff rings on the limb's own section; the soft pieces wrapped on a
 garment-sized section and solved as a network with the body as a floor; surfaces filled between the chains; open wear then
 undoes the band, whose sewn front is limited by its cut distance to the first fastened button, and folds the plackets along a
-solved crease; the soft cloth hangs under gravity (ZOZO, 5-10 min) with the stiff parts held; lengths last. wear: "closed" or
+solved crease; then the STRUCTURE check reads the build (never a hang) beside the reference reading (<model>/cloth_refs.json) or a named kind default: collar under the jaw, its top line's tilt, the points' spread and drop, the leaves lying; the front meeting and straight; the open V's depth and taper; the hem level; sleeve length and cuff ease. A FAIL ends the job "structure_failed": the answer lists each failing row with its target, source and change: (the alter_pattern op, design option or build stage to fix); waive={row id: why} rebuilds and accepts those rows by name (PASS_WAIVED). Only on a pass does the soft cloth hang under gravity (ZOZO, 5-10 min) with the stiff parts held; lengths last. wear: "closed" or
 "open". opening: only with "open": collar points this many neck widths apart (default 1.7, 1.0 .. 2.6). A job: the call starts it
 and answers with its stage after at most wait s (0 .. 280); a build takes 2-10 min, then the hang runs, both slower on a loaded
 machine. Call again with the same arguments for the stage: that never starts a second build. Once built the answer carries the chains,
@@ -20,8 +20,8 @@ pattern_check); a line whose length can't hold (named, next: alter_pattern there
 fault, named: report it). Nothing is pushed, cut or loosened to get past a refusal.
 
 ### `look_chain`
-`look_chain(name, garment, wear="closed", focus=None, size=640, reference=None, save=None)`: the hung result when the hang has
-ended, else the build (the text says which). focus: none = whole figure, four views on the body; "neck" = the collar close, on
+`look_chain(name, garment, wear="closed", focus=None, size=640, reference=None, save=None)`: the BUILD until its structure
+check passed and the hang ended, then the hung result (the text says which). focus: none = whole figure, four views on the body; "neck" = the collar close, on
 the body; a piece's name = that piece alone, large, four sides. Sewn seams are joined and every piece faces outward.
 reference: an image path shown beside each view. Judge each view yourself against the reference, then review_view one view per call.
 
