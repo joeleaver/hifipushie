@@ -197,6 +197,57 @@ def test_job_answers_at_once_and_a_poll_never_starts_a_second(monkeypatch, tmp_p
     assert len(calls) == 2
 
 
+def _plan(band="open", front="closed", **front_kw):
+    """A step-0..2 record's outputs (garment_plan shapes): a band closure, a front closure, a cuff."""
+    parts = {"pieces": {"front.L": {}, "front.R": {}, "collar_band": {}, "collar": {}, "cuff.L": {}},
+             "closures": {"front": {"pieces": ["front.L", "front.R"]}, "band": {"pieces": ["collar_band"]},
+                          "cuff.L": {"pieces": ["cuff.L"]}}}
+    style = {"state": {"front": dict(state=front, source="photo", **front_kw), "band": {"state": band, "source": "photo"},
+                       "cuff.L": {"state": "closed", "source": "convention"}},
+             "bends": [{"id": "collar_spread", "on": "collar", "what": "collar_points_apart", "source": "photo",
+                        "target": {"value": 1.6, "unit": "ratio", "of": "neck_width"}}]}
+    return {"read": {}, "parts": parts, "style": style}
+
+
+def test_the_plan_decides_the_worn_state():
+    """T7 (C287): the band closure's planned state is the wear; the plan's collar spread is the FALL's target; a
+    contradicting wear / opening is refused by name; no record = the arguments, as before."""
+    from hifipushie import chain_plan as cp
+    w = cp.planned_wear(_plan())
+    assert w["state"] == "open" and w["spread"] == 1.6 and "state.band open" in w["state_from"]
+    assert cp.planned_wear(_plan(band="closed"))["state"] == "closed" and "spread" not in cp.planned_wear(_plan(band="closed"))
+    with pytest.raises(cp.PlanContradiction, match="contradicts the style plan: state.band open"):
+        cp.planned_wear(_plan(), wear="closed")
+    with pytest.raises(cp.PlanContradiction, match="opening 2.0 contradicts"):
+        cp.planned_wear(_plan(), opening=2.0)
+    assert cp.planned_wear(_plan(), wear="open", opening=1.6)["spread"] == 1.6  # (agreeing arguments are fine)
+    with pytest.raises(cp.PlanContradiction, match="wholly open front"):
+        cp.planned_wear(_plan(front="open"))
+    with pytest.raises(cp.PlanContradiction, match="fastened_from"):
+        cp.planned_wear(_plan(front="partly"))
+    with pytest.raises(cp.PlanContradiction, match="under a closed band"):
+        cp.planned_wear(_plan(band="closed", front="partly", fastened_from=2))
+    assert cp.planned_wear(_plan(front="partly", fastened_from=2))["fastened_from"] == 2
+    assert cp.planned_wear(None) == {"state": "closed"}
+    assert cp.planned_wear(None, "open", 1.5) == {"state": "open", "spread": 1.5}
+    assert cp.planned_wear({"read": {}, "parts": {}, "style": None}, "open") == {"state": "open"}  # (a record, no step 2)
+    fr = cp.fasten_from({"over": "front.L", "under": "front.R", "v": [(1, 2), (3, 4), (5, 6)], "closed": [True] * 3}, 2)
+    assert fr["v"] == [(3, 4), (5, 6)] and fr["closed"] == [True, True]
+
+
+def test_the_tool_builds_the_planned_state(monkeypatch, tmp_path):
+    from hifipushie import chain_structure as cs
+    calls, _ = _job_model(monkeypatch, tmp_path, "put(stage='building')\ntime.sleep(2)\n")
+    monkeypatch.setattr(server, "_chain_gate", lambda *a: None)
+    server.chain_garment("m", "shirt", wait=0)  # no record: closed, as before
+    assert calls[-1]["state"] == "closed" and "plan" not in calls[-1]
+    monkeypatch.setattr(cs, "load_plan", lambda m, g: _plan())
+    t = server.chain_garment("m", "shirt", wait=0)
+    assert calls[-1]["state"] == "open" and calls[-1]["spread"] == 1.6 and "(open)" in t
+    with pytest.raises(ValueError, match="contradicts the style plan"):
+        server.chain_garment("m", "shirt", wear="closed", wait=0)
+
+
 def test_job_open_poll_keeps_the_opening(monkeypatch, tmp_path):
     _job_model(monkeypatch, tmp_path, "put(stage='building')\ntime.sleep(2)\n")
     monkeypatch.setattr(server, "_chain_gate", lambda *a: None)
@@ -449,3 +500,23 @@ def test_step8_fails_on_faces_past_the_cap(monkeypatch, tmp_path):
     from hifipushie import chain_presim as cp
     g = cp.threads_gate({"stage": "done", "reads": {"threads": {"over_cap": 3, "faces": 9}}, "build_threads": {"over_cap": 2}})
     assert g["back_to"] == "5" and "already past the cap" in g["line"]
+
+
+def test_open_build_holds_the_first_button_through_the_soft_cloth(monkeypatch):
+    """T7: the open band is tied to the first fastened button where button_start put it; the first soft solve must hold
+    it there (free, the soft cloth carried it 10 mm down and 14 mm out: the fronts' neck-to-button reach ran past cut)."""
+    import types
+    from hifipushie import chain_plan as cp
+    seen = []
+    net = types.SimpleNamespace(n=6, root=np.arange(6), piece=np.zeros(6, int), pid=lambda p: 0)
+    b = types.SimpleNamespace(net=net, roles=types.SimpleNamespace(front={"v": [(1, 2)]}, panels=["front.L"]),
+                              wear={"state": "open"}, reads={}, X=np.zeros((6, 3)))
+    for m in ("band_closed", "band_open", "fall_build", "fill_band", "fall_surface", "stiff_last", "rings",
+              "thread_read_all", "_cloth_contact"):
+        setattr(b, m, lambda *a, **k: None)
+    b.soft_net = lambda start=None, far_z=None: seen.append(None if getattr(b, "extra_held", None) is None
+                                                             else np.where(b.extra_held)[0].tolist())
+    b.plackets = lambda Xs: Xs
+    monkeypatch.setattr(cp, "button_start", lambda b_: np.array([0.0, -0.11, 1.41]))
+    cp.build_open(b, 0.0)
+    assert seen[0] == [1, 2]

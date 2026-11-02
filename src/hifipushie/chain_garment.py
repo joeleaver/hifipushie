@@ -9,11 +9,15 @@ sewn to itself is a TUBE (sleeves); other soft pieces are PANELS wrapped round t
 the FRONT. A role the core can't build is refused by name; there is no fallback to another path.
 
 THE ORDER (each from a visible fault; C259-C262): stiff parts first, soft parts hang from them, never the reverse.
-1. BAND: chains + exact lines, closed round the neck on its own button. Stiff all along (pattern's interfacing), keeps its
-   own shape, rests on the high points: can't sink in plus a light rest pull, never follows the surface.
-   Open wear: the closed band's pressed curve kept round the back, relaxed straight past the side necks, started from a
-   swung-open guess; the sewn front is limited: every neck-edge point at most its cut distance from the first fastened
-   button. Worn straight = mirror symmetric.
+THE STATE (T7, C287; chain_plan.py): built straight into the garment record's style plan (step 2): each closure in its
+planned state, the plan's bend targets (collar spread) as the stages' targets; wear is derived from the plan (a
+contradicting wear is refused); no closed garment is built and then styled open.
+1. BAND: chains + exact lines, its pressed ring of its own button-to-buttonhole length, resting on the high points
+   (chain_rest.rest_ring, C280). Stiff all along (pattern's interfacing), keeps its own shape: can't sink in plus a light
+   rest pull, never follows the surface. Closed band: closed on its own button.
+   Open band: the pressed curve kept round the back, relaxed straight past the side necks, started from a swung-open
+   guess; the sewn front is limited: every neck-edge point at most its cut distance from the first fastened button
+   (its start on the torso: nothing soft is built yet). Worn straight = mirror symmetric.
 2. FALL on the held band: roll line, outer edge, ends: exact chains; lines across may shorten where the leaf curves, full
    width where it lies flat at the back; the point's triangle is rigid. Outside faces out.
 3. RINGS: a stiff circle of the piece's own closed length, where the tube's own length reaches, clear of the body.
@@ -158,6 +162,9 @@ class Build:
         self.wear = {"state": "closed", "spread": OPEN_SPREAD, **(wear or {})}
         self.net = Network(pattern.M, pattern.stiff, pattern.bend)
         self.roles = read_roles(self.net)
+        if self.wear.get("fastened_from") and self.roles.front:  # (style plan: a front fastened partly, T7)
+            from .chain_plan import fasten_from
+            self.roles.front = fasten_from(self.roles.front, int(self.wear["fastened_from"]))
         self.X = np.zeros((self.net.n, 3))
         self.held = np.zeros(self.net.n, bool)
         self.reads: dict = {"seam_truing": self.net.seam_mismatch()}
@@ -248,6 +255,9 @@ class Build:
         th = (sB - sB[mid]) / C * 2 * np.pi * su  # 0 = centre back, + = towards worn +X
         hz = self.body.p("hps.L")[2]
         B = np.c_[a * np.sin(th), yc + b * np.cos(th), zc + dz * np.cos(th) + (hz - zc) * np.sin(th) ** 2]
+        from .chain_rest import rest_ring
+        side = B[np.argmax(B[:, 0])]  # it rests on the high points: it may drop and tip front-down about the side necks (C280)
+        B, self.reads["band_rest"] = rest_ring(B, self.body.contact, GAP, np.array([0.0, side[1], side[2]]))
         kb = cKDTree(uv[sb, :1])
         cross = np.array([(j, int(kb.query(uv[v, :1])[1])) for j, v in enumerate(st)])
         hgt = np.linalg.norm(uv[st] - uv[sb[cross[:, 1]]], axis=1)
@@ -500,9 +510,12 @@ class Build:
         hpsy = self.body.p("hps.L")[1]
         pairs, exact = [], []
         for i in range(0, len(roll), 15):
-            for a, b in ((across(i, neck), roll[i]), (roll[i], across(i, outer))):
+            # the leaf (roll -> outer edge) is stiff and lies open at its full cut width all round, in either wear: an
+            # "at most" leaf folded narrow and the closed points stayed together at CF, standing off (C280, run 3). The
+            # wrap over the band (neck -> roll) may shorten where it curves.
+            for a, b, lf in ((across(i, neck), roll[i], False), (roll[i], across(i, outer), True)):
                 pairs.append((a, b))
-                exact.append(self.wear["state"] == "open" and bool(min(self.X[rs[a], 1], self.X[rs[b], 1]) > hpsy - 0.01))
+                exact.append(lf or (self.wear["state"] == "open" and bool(min(self.X[rs[a], 1], self.X[rs[b], 1]) > hpsy - 0.01)))
         mid = roll[int(np.argmin(np.abs(uv[roll, 0])))]
         for ec, oc in ((endL, 0), (endR, len(outer) - 1)):
             for k in (3, 6, 10, 15):  # each point keeps its cut corner
@@ -572,7 +585,7 @@ class Build:
             zc = self.X[rs[st[len(st) // 2]], 2]
             nb_ = nbody[(np.abs(nbody[:, 2] - (zc - 0.02)) < 0.004) & (np.abs(nbody[:, 0]) < 0.1) & (nbody[:, 1] > yc - 0.1) & (nbody[:, 1] < yc + 0.1)]
             neckW = 2 * float(np.abs(nb_[:, 0]).max())
-            ptx = float(self.wear["spread"]) * neckW / 2
+            ptx = float(self.wear["spread_mm"]) / 2000 if self.wear.get("spread_mm") else float(self.wear["spread"]) * neckW / 2
             self.reads["open_target_mm"] = round(2 * ptx * 1e3, 1)
             for ec in (endL, endR):
                 p = rs[ec[-1]]
@@ -1332,6 +1345,10 @@ class GarmentBuild(Build):
             r_ = minimize(lambda q: float(((fold(uv[top], q[0], q[1])[0] - Tgt) ** 2).sum()), best[1:], method="Nelder-Mead",
                           options={"xatol": 1e-3, "fatol": 1e-9})
             al, ph = r_.x
+            # the strip is all the crease folds, and BL past it: a steep crease folds cloth below the button too, and a
+            # strip cut at a fixed height below the button tore there (T7: front.L edge +59 % 14 mm under the button)
+            xr = pv[(uv[pv, 0] >= lo - 1e-5) & (uv[pv, 0] <= hi + 1e-5)]
+            strip = np.union1d(strip, xr[fold(uv[xr], al, ph)[1] > -BL])
             Yt, sdt = fold(uv[top], al, ph)
             res = Tgt - Yt
             o_ = np.argsort(uv[top, 0])
@@ -1404,32 +1421,19 @@ class GarmentBuild(Build):
         self.soft_net(start=self.X.copy())
 
     def run(self):
+        """Built straight into the planned state (T7, chain_plan.py): an open band is built open, never closed first."""
         t0 = time.time()
-        final = self.wear["state"]
-        self.wear["state"] = "closed"
-        self.stiff_stage()
-        self.rings()
-        self.reads["stiff_closed_s"] = round(time.time() - t0, 1)
-        self.soft_net()
-        self._rest_fall()
-        self.reads["closed_s"] = round(time.time() - t0, 1)
-        if final == "open":
-            Xc = self.X.copy()
-            self.X_closed = Xc
-            self.wear["state"] = "open"
+        if self.wear["state"] == "open" and self.roles.band and self.roles.front:
+            from .chain_plan import build_open
+            build_open(self, t0)
+        else:
+            if self.wear["state"] == "open":
+                raise ChainRefused("open wear needs a band and a front closure in the pattern: next: build it closed")
             self.stiff_stage()
-            Xn = self.plackets(Xc)
-            self.X = Xn
-            bz = float(Xc[self.roles.front["v"][0][0], 2])
-            self.stay_v = np.isin(self.net.piece, [self.net.pid(p) for p in self.roles.panels]) & (Xc[:, 2] < bz - 0.02)
-            self.soft_net(start=Xn, far_z=bz - 0.03)
-            self.under_cloth = self._cloth_contact()
-            self.fall_build()
-            self.fall_surface()
-            self.stiff_last()
-            self.soft_net(start=self.X.copy(), far_z=bz - 0.03)
-            self.stay_v = None
-            self.thread_read_all()
+            self.rings()
+            self.reads["stiff_closed_s"] = round(time.time() - t0, 1)
+            self.soft_net()
+            self._rest_fall()
         self.reads["chains"] = self.chain_read(self.X)
         self.reads["seam_gap_mm"] = round(self.net.seam_gap(self.X), 3)
         self.reads["build_s"] = round(time.time() - t0, 1)
@@ -1625,10 +1629,13 @@ BUILD_GB = 8.0  # the build's real peak (rss read per job: status "peak_gb"); th
 
 
 def job_key(spec: dict, garment: str, wear: dict) -> str:
-    """What a job answers for: the body, this garment, the wear. Another garment on the model doesn't change it."""
+    """What a job answers for: the body, this garment, the wear (from the style plan, T7), and the build's code
+    (store.BUILD_VERSION: a job built by older stages is built again; C280). Another garment on the model doesn't change it."""
+    from . import store
     rest = {k: v for k, v in spec.items() if k != "cloth"}
     wear = {k: v for k, v in wear.items() if k not in ("waive", "resume")}  # (a waiver re-reads the saved build, T2)
-    return hashlib.sha1(json.dumps([rest, spec["cloth"][garment], wear], sort_keys=True, default=str).encode()).hexdigest()[:16]
+    return hashlib.sha1(json.dumps([rest, spec["cloth"][garment], wear, store.BUILD_VERSION], sort_keys=True,
+                                   default=str).encode()).hexdigest()[:16]
 
 
 def write_status(d: Path, **kw):

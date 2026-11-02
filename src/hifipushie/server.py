@@ -3506,20 +3506,20 @@ def _chain_spawn(d, name: str, garment: str, w: dict) -> int:
 
 
 @mcp.tool(structured_output=False)
-def chain_garment(name: str, garment: str, wear: str = "closed", opening: float | None = None, wait: float = 50.0,
+def chain_garment(name: str, garment: str, wear: str | None = None, opening: float | None = None, wait: float = 50.0,
                   rebuild: bool = False, waive: dict | None = None):
-    """START A GARMENT: the only way to dress a character, fit or drape clothes on a body. Built from the pattern and the body
-    as chains of the pattern's lengths. wear: "closed" or "open"; opening: only with "open" (collar points apart, neck
-    widths). Refuses until pattern_check passes. A JOB: build (2-10 min), STRUCTURE check of the build beside the
-    reference, then the hang only on its pass. Answers its stage within wait (s); call again, same arguments, to poll;
-    rebuild=True starts over; waive={row: why} accepts failing structure rows. After a pass it waits for pre-sim approval
-    (Joe's), then the same call hangs. Answers end in next:.
+    """START A GARMENT: the only way to dress a character, fit or drape clothes on a body. Built from the pattern as chains of its lengths, straight
+    into the record's style plan (each closure's state, the collar spread); without a plan, wear "closed" | "open" and
+    opening (points apart, neck widths); a contradicting wear is refused. Needs pattern_check's PASS. A JOB: build, a
+    STRUCTURE check beside the reference, pre-sim approval (Joe's), then the hang. Call again with the same arguments to
+    poll or resume; rebuild=True starts over; waive={row: why} accepts failing rows. Answers end in next:.
     guide(topic="chain_garment")."""
     import time as _t
     from . import chain_garment as cg
-    if wear not in ("closed", "open"):
-        raise ValueError(f"wear {wear!r}: \"closed\" or \"open\"")
-    if opening is not None and wear != "open":
+    from . import chain_plan, chain_structure as _cs
+    if wear not in (None, "closed", "open"):
+        raise ValueError(f"wear {wear!r}: \"closed\" or \"open\" (or none: the style plan's)")
+    if opening is not None and wear == "closed":
         raise ValueError("opening is how far an open collar opens: only with wear=\"open\"")
     if opening is not None and not 1.0 <= float(opening) <= 2.6:
         raise ValueError(f"opening {opening}: collar points apart in neck widths, 1.0 .. 2.6 (default 1.7)")
@@ -3528,9 +3528,8 @@ def chain_garment(name: str, garment: str, wear: str = "closed", opening: float 
     spec = store.load(name)
     if garment not in (spec.get("cloth") or {}):
         return _chain_gate(name, garment, spec)
-    w = {"state": wear}
-    if opening is not None:
-        w["spread"] = float(opening)
+    w = chain_plan.planned_wear(_cs.load_plan(name, garment), wear, opening)  # (T7: the plan wins; raises on a contradiction)
+    wear = w["state"]
     if waive:
         if not isinstance(waive, dict) or not all(isinstance(v, str) and v.strip() for v in waive.values()):
             raise ValueError("waive: {structure row id: the reason it is accepted}, each reason a sentence")
