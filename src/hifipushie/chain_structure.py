@@ -196,6 +196,10 @@ def reads(X, M, bV, bT, at: dict) -> dict:
     fz = fz[np.abs(fz[:, 0]) < 0.03] if len(fz) else fz
     if len(fz):
         r["closure_length_mm"] = round(float(np.ptp(fz[:, 2])) * 1000, 1)
+        fr_all = X[np.where(_pieces(M, ("front",)))[0]]  # (T8) the fronts' lowest points below the closure's end at CF
+        end = fr_all[np.abs(fr_all[:, 0]) < 0.01]
+        if len(end):
+            r["cutaway_drop_mm"] = round(float(end[:, 2].min() - fr_all[:, 2].min()) * 1000, 1)
     return {k: (float(v) if isinstance(v, np.floating) else v) for k, v in r.items()}
 
 
