@@ -6,13 +6,13 @@ iterations or manual feedback."
 
 ## What exists
 - `chain_net.py` (general core) and `chain_garment.py` (roles, stages, ZOZO job, worker, render_views): docstrings are the spec.
-- Tools: `chain_garment(name, garment, wear, opening, wait=50, rebuild=False)` is a JOB (chain-first, C265): refusals at once;
+- Tools: `chain_garment(name, garment, wear, opening, wait=50, rebuild=False)` is a JOB (chain-first, C275): refusals at once;
   else it starts the worker (bin/capped, build under resources.heavy BUILD_GB 8) and answers its stage within wait (<= 280 s).
   Same-argument calls poll, never start a second worker (key = body + this garment + wear); a finished job answers with its
   numbers; a changed pattern starts anew; rebuild=True starts over; a dead worker reads "failed"; every answer names its next
   call. `look_chain(name, garment, wear, focus, size, reference, save)` unchanged.
 - `server.GATED_CLOTH` hides the old routes (HIFIPUSHIE_LEGACY_CLOTH=1 restores). Tests: tests/test_chain_garment.py (stub-worker
-  job tests). Dev: /mnt/data/hifipushie/chain_garment/, /mnt/data/hifipushie/chain_first/. Ledger C259-C265.
+  job tests). Dev: /mnt/data/hifipushie/chain_garment/, /mnt/data/hifipushie/chain_first/. Ledger C259-C275.
 
 ## Default shirt vs pattern_check (chain-first)
 - A fresh design_garment {kind shirt, from simon} on wf_simon's body (model cf_shirt, workspace of the main checkout) FAILED
