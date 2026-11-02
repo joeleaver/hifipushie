@@ -216,3 +216,9 @@ def test_job_refusal_is_immediate_and_starts_nothing(monkeypatch, tmp_path):
     monkeypatch.setattr(server, "_chain_gate", lambda *a: "shirt: not built: FAIL\nnext: call_tool(\"pattern_check\")")
     assert "not built" in server.chain_garment("m", "shirt")
     assert not calls
+
+
+def test_a_design_defaults_to_the_fit_it_drafts():
+    from hifipushie import garment_design as gd
+    assert gd.resolve({"kind": "shirt", "from": "simon"})["fit"] == "regular"
+    assert gd.resolve({"kind": "shirt", "from": "simon", "fit": "slim"})["fit"] == "slim"

@@ -302,6 +302,7 @@ def pieces(g: dict, meas_mm: dict) -> dict:
     g = expanded(g)
     pat = g.get("pattern")
     gen, folds_tbl, seam_notes = [], [], {}
+    walk_ops = []
     closures_in = []
     from . import drape as drape_mod
     drape_folds = []
@@ -360,7 +361,10 @@ def pieces(g: dict, meas_mm: dict) -> dict:
         out, drape_folds = drape_mod.replace_pieces(out, g)
         for nm in g.get("drop", []):
             out.pop(nm, None)
-        out = pattern.apply(out, [op for op in tbl.get("alter", []) if op["piece"] in out])
+        # (a "match" walks a seam, so it waits for the truing below: truing Simon's neck ends lengthens the neckline 3 mm)
+        on_ = [op for op in tbl.get("alter", []) if all(n in out for n in ([op["piece"]] if isinstance(op["piece"], str) else op["piece"]))]
+        out = pattern.apply(out, [op for op in on_ if op["op"] != "match"])
+        walk_ops = [op for op in on_ if op["op"] == "match"]
         if tbl.get("collar_rule") and pat.get("band_ends", tbl.get("band_ends", True)):  # (a shirt's band ends under its
             # collar points; the design table can keep the draft's own ends: simon, C139)
             be_ = band_ends(out)
@@ -409,7 +413,7 @@ def pieces(g: dict, meas_mm: dict) -> dict:
         out = _cc.auto_true(out, seams, g.get("truing_corners") or (), tl_)
         if tl_:
             draft_info = dict(draft_info, trued=tl_)
-    out = pattern.apply(out, g.get("alter"))
+    out = pattern.apply(out, walk_ops + list(g.get("alter") or []))
     seams += g.get("seams", [])
     stitches += g.get("stitches", [])
     # generated pieces (garment_blocks.generate: bands sized from the drafted edges they're sewn to)

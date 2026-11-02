@@ -503,7 +503,7 @@
 
  "designs": {
   "_doc": "What each draft source can make: per detail choice, the recipe (FreeSewing options, pieces dropped, fold lines, generated pieces) and what it can't make yet (and why). A sheet choice a design can't make is a hard failure in stage 1. fit_options: draft options per fit. pattern_from: the cloth design table / block name (default: the design's own name).",
-  "simon": {"kind": "shirt", "kinds": ["shirt", "blouse"],
+  "simon": {"kind": "shirt", "kinds": ["shirt", "blouse"], "default_fit": "regular",
     "can": {
      "collar": {"shirt_collar": {"options": {"collarGap": 0, "collarWidth": 1.45}, "folds": [{"piece": "collar", "line": {"edge": "collar:leftBottomEdge>bottomMid>rightBottomEdge", "offset": 0.004}, "angle": 15, "kind": "roll", "radius": 0.003, "strength": 0.6, "name": "collar roll"}]},
                 "band": {"drop": ["collar"]}},
