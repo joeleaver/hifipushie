@@ -299,9 +299,11 @@ def under_parts(r: dict):
     return X, F[~sf], F[sf], b
 
 
-def layered_body(model: str, garment: str, body: Body, under: dict, log=print) -> LayeredBody:
+def layered_body(model: str, garment: str, body: Body, under: dict, log=print, push: dict | None = None) -> LayeredBody:
     """The collider of a garment worn over `under` (under_for's answer): the body + each under garment's thickness where
-    it covers, its stiff parts and its solid details (LayeredBody)."""
+    it covers, its stiff parts and its solid details (LayeredBody). push (chain_hidden, C296: mode visible decides what is
+    hidden first): None = every stiff part and detail pushes (T12, mode full); else every under face is thickness only and
+    only push[u] {"stiff_F": welded faces, "details": names} stand off ({}: nothing does: the build before the decision)."""
     import pickle
     from . import chain_press as cpr, garment_details as gd
     layers, info = [], {}
@@ -313,6 +315,8 @@ def layered_body(model: str, garment: str, body: Body, under: dict, log=print) -
         t_u = thickness(model, u)
         push, gap_out = cpr.room(t_u, t_o, mode)
         X, Fs, Fst, _ = under_parts(r)
+        if push is not None:  # (hidden first: thickness only, then only what is kept and pushes)
+            Fs, Fst = np.concatenate([Fs, Fst]), np.asarray((push.get(u) or {}).get("stiff_F", Fst[:0]), np.int64)
         if len(Fs):
             layers.append(Layer(u, "cloth", X, outward(X, Fs, body.contact), push, body.contact, role="cover"))
         if len(Fst):
@@ -323,6 +327,8 @@ def layered_body(model: str, garment: str, body: Body, under: dict, log=print) -
             meshes = dp.get("built") or {}
             Vs, Fs_, off = [], [], 0
             for n_, m in meshes.items():
+                if push is not None and n_ not in (push.get(u) or {}).get("details", ()):
+                    continue
                 if m and len(m.get("F", [])):
                     Vs.append(np.asarray(m["V"], float))
                     Fs_.append(np.asarray(m["F"], np.int64) + off)

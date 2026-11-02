@@ -1684,11 +1684,17 @@ def worker(model: str, garment: str, wear: dict):
         else:
             with resources.heavy(f"chain build {model}:{garment} {wear['state']}", gb=BUILD_GB, log=note):
                 pat, body, fabric = load_garment(model, garment)
-                if wear.get("under"):  # (worn over another garment: the body + its surface + its details, T9)
-                    from . import chain_layers as cl
-                    body = cl.layered_body(model, garment, body, wear["under"], log=note)
-                b = GarmentBuild(pat, body, wear, log=lambda *_: None)
-                b.run()
+                from . import chain_press as cpr
+                if wear.get("under") and cpr.mode(model, garment)[0] == "visible":  # (hidden decided first: C296)
+                    from . import chain_hidden as ch
+                    b, body = ch.build_over(model, garment, body, wear["under"],
+                                            lambda lb: GarmentBuild(pat, lb, wear, log=lambda *_: None), log=note)
+                else:
+                    if wear.get("under"):  # (worn over another garment, layers "full": everything of it pushes, T12)
+                        from . import chain_layers as cl
+                        body = cl.layered_body(model, garment, body, wear["under"], log=note)
+                    b = GarmentBuild(pat, body, wear, log=lambda *_: None)
+                    b.run()
             bid = cp.save_build(d, b, pat, body, fabric)
             _status(d, stage="built", reads=b.reads, note="", build_s=elapsed(status(d)), peak_gb=round(_peak_gb(), 1),
                     build_id=bid, build_threads=b.reads.get("threads"))
