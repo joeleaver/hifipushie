@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import copy
 import json
+import time
 
 from . import store
 
@@ -20,6 +21,7 @@ STEPS = ["skin", "skin_from_reference", "brow_read", "look_skin"]
 FIND_WORDS = {"skin", "por", "stubble", "makeup", "cosmet", "freckl", "wrinkl", "blemish", "mole"}
 REGIONS = ("face", "forehead", "brows", "eye", "cheek", "nose", "mouth", "jaw")   # look_skin(beside=...), order of review
 BODY_ONLY = ("tone",)   # under a stack the face's colour is the stack's: these move what it doesn't cover (neck, body)
+DIFF_SECONDS = 25.0   # no_effect's budget: each key is one build of the layers, a skin edit must stay quick
 NOT_LAYERS = ("folds", "hair", "eyes", "stack", "projection", "only", "part")  # geometry or strands: no layer diff tells
 
 
@@ -76,13 +78,13 @@ def plan_read(spec: dict, project: bool | None, painting: bool, read_only: bool)
     return True, line + "route: de-lit atlas, then the layer stack (photographs)\n"
 
 
-def _live(spec: dict) -> tuple[dict, dict]:
+def _live(spec: dict, J: dict) -> tuple[dict, dict]:
     """What shows on a stacked face: the layers but the coloured "_pre" ones (composited into the base the stack paints
     over; skin.layers' comment has the lever checks), and the base's channels but its colour."""
     from . import skin
-    sk = spec["skin"]   # (without its map layers: they don't depend on these keys, and building them costs ~13 s a call)
+    sk = spec["skin"]   # (its map layers and the joints: they don't depend on these keys, and cost most of a build)
     light = {**spec, "skin": {**sk, "stack": {**sk["stack"], "layers": []}}}
-    ls = {k: v for k, v in skin.layers(light).items() if not (v.get("_pre") and "color" in v)}
+    ls = {k: v for k, v in skin._build(light, J).items() if not (v.get("_pre") and "color" in v)}
     base = (skin.part_base(spec) or (None, {}))[1]
     return ls, {k: v for k, v in base.items() if k != "color"}
 
@@ -118,15 +120,20 @@ def no_effect(old: dict, new: dict, patch: dict) -> str:
     """The keys of this patch that change nothing on a stacked face, by diffing what shows with and without each."""
     if not ((new.get("skin") or {}).get("stack")) or not patch:
         return ""
-    dead, body = [], []
-    now = json.dumps(_live(new), sort_keys=True, default=str)
+    from . import skin
+    dead, body, late = [], [], []
+    t0 = time.monotonic()
+    J = skin._joints(new)
+    now = json.dumps(_live(new, J), sort_keys=True, default=str)
     for path in _leaves(patch):
         was, is_ = _get(old.get("skin"), path), _get(new.get("skin"), path)
         if was == is_:
             continue
         if path[0] in BODY_ONLY:
             body.append(".".join(path))
-        elif json.dumps(_live({**new, "skin": _with(new["skin"], path, was)}), sort_keys=True, default=str) == now:
+        elif time.monotonic() - t0 > DIFF_SECONDS:
+            late.append(".".join(path))
+        elif json.dumps(_live({**new, "skin": _with(new["skin"], path, was)}, J), sort_keys=True, default=str) == now:
             dead.append(".".join(path))
     out = ""
     if dead:
@@ -134,6 +141,8 @@ def no_effect(old: dict, new: dict, patch: dict) -> str:
                 "stack_edit, zones.lid_shade / under_eye_shade, hair.brows.shadow, lips.over_stack: true\n")
     if body:
         out += f"BODY ONLY under the stack (the face keeps the stack's colour): {', '.join(body)}\n"
+    if late:
+        out += f"not checked against the stack (out of time): {', '.join(late)}: set fewer keys a call\n"
     return out
 
 

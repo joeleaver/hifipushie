@@ -73,11 +73,12 @@ def test_stack_edit():
 
 
 def test_no_effect_names_covered_keys(monkeypatch):
-    def layers(sp):
+    def layers(sp, J):
         s = sp["skin"]
         return {"skin:midface": {"color": [s.get("zones", {}).get("m", 0)] * 3, "_pre": True},
                 "skin:lid_shade": {"color": [s.get("zones", {}).get("lid", 0)] * 3}}
-    monkeypatch.setattr("hifipushie.skin.layers", layers)
+    monkeypatch.setattr("hifipushie.skin._build", layers)
+    monkeypatch.setattr("hifipushie.skin._joints", lambda sp: {})
     monkeypatch.setattr("hifipushie.skin.part_base", lambda sp: ("body", {"color": [0, 0, 0], "roughness": 0.5}))
     old = _spec(stack={"layers": []}, zones={"m": 0, "lid": 0}, tone={"melanin": 0.2})
     patch = {"zones": {"m": 1, "lid": 1}, "tone": {"melanin": 0.3}}
