@@ -157,12 +157,12 @@ TOOL_GROUPS: dict[str, dict] = {
                          "(loose, short) -> look_hair -> export_asset ships the character (export_hair: the hair alone)",
              "steps": ["hair_from_reference", "tie_hair", "groom_hair", "look_hair", "export_hair"],
              "tools": ["groom_hair", "tie_hair", "look_hair", "hair_reference", "hair_from_reference", "export_hair"]},
-    "cloth": {"workflow": "Clothes: design_garment -> pattern_check (the flat gate) -> chain_garment (the only way a garment "
+    "cloth": {"workflow": "Clothes: garment_plan (read, parts, style) -> design_garment -> pattern_check (the flat gate) -> chain_garment (the only way a garment "
                           "is started) -> look_chain beside the reference; a fault is fixed on the pattern (alter_pattern)",
               # the workflow's order (find_tool ranks a matched domain's early steps first)
-              "steps": ["design_garment", "pattern_check", "chain_garment", "look_chain"],
+              "steps": ["garment_plan", "design_garment", "pattern_check", "chain_garment", "look_chain"],
               "about": "garments: design, pattern, the pattern gate, alterations, the chain build (the only start), references",
-              "tools": ["design_garment", "look_pattern", "alter_pattern", "pattern_check", "chain_garment", "look_chain",
+              "tools": ["garment_plan", "design_garment", "look_pattern", "alter_pattern", "pattern_check", "chain_garment", "look_chain",
                         "garment_record", "garment_reference", "garment_from_reference", "garment_reference_brief"]},
     "terrain": {"about": "terrain and game levels (height fields in a level designer's words)",
                 "tools": ["set_terrain", "check_terrain", "look_terrain", "export_terrain", "terrain_history"]},
@@ -2785,15 +2785,16 @@ def garment_reference(kind: str | None = None, detail: str | None = None, princi
 @mcp.tool(structured_output=False)
 def garment_from_reference(name: str, garments: dict, views: list[dict] | str, answers: dict | None = None,
                            save: bool = True) -> str:
-    """Read reference art of an outfit into design-sheet patches and a target table. garments {name: kind}, views
-    [{image, kind, points, crops}]; without answers: the form; with answers: the patch (not applied) stored in
-    cloth_refs.json. save. Details: guide(topic="garment_from_reference")."""
+    """NOT a garment's start (that is garment_plan: read, parts, style into the garment record). Reads landmark-anchored
+    target lengths off reference art into cloth_refs.json for pattern_check refs=. garments {name: kind}, views
+    [{image, kind, points, crops}]; without answers: the form; with answers: the patch (not applied). save. Details:
+    guide(topic="garment_from_reference")."""
     from . import cloth_reference as cr
     vs = json.loads(views) if isinstance(views, str) else views
     path = store.HOME / name / "cloth_refs.json"
     out = cr.read(name, garments, vs, answers, save=path if (save and answers) else None)
     if not answers:
-        return out["text"] + "\nnext: answer the form: the same call with answers={garment: {item id: answer}}"
+        return out["text"] + "\n(a garment starts at garment_plan step='read': this form only feeds pattern_check's reference rows)" + "\nnext: answer the form: the same call with answers={garment: {item id: answer}}"
     # (C278: the reading is only used where it is passed: pattern_check's reference rows stay UNMEASURED without refs=)
     nxt = "; ".join(f"call_tool(\"pattern_check\", {json.dumps({'name': name, 'garment': g_, 'refs': str(path)})})"
                     for g_ in garments) if save else "the same call with save=True, then pattern_check with refs= its path"
@@ -3652,6 +3653,19 @@ def garment_record(name: str, garment: str, sheet: bool = False):
         return txt
     p = gr.sheet(name, garment)
     return [_out(PILImage.open(p).convert("RGB"), None), txt + f"\n  sheet: {p}"]
+
+
+@mcp.tool(structured_output=False)
+def garment_plan(name: str, garment: str, step: str, plan: dict | str, look: bool = True):
+    """STEPS 0-2 OF A GARMENT (the record's start, any garment): step="read" (kind, cloth as numbers, fit, the views),
+    "parts" (every piece and detail: seen / occluded / inferred, how far built, stiff, layer; the seams, each with the
+    body measurements or style proportion its length needs) or "style" (the ONE worn state per closure, bends, pose,
+    the rows the photo judges). plan: that step's dict. Refused by name when incomplete or inconsistent; else written
+    into the garment record with a look drawn over the reference (look). Details: guide(topic="garment_plan")."""
+    from . import garment_plan as gp
+    r = gp.write(name, garment, step, _spec_arg(plan) if isinstance(plan, str) else plan, look=look)
+    txt = gp.text(name, garment, r)
+    return [_out(PILImage.open(p_).convert("RGB"), None) for p_ in r["look"][:2]] + [txt] if r["look"] else txt
 
 
 @mcp.tool(structured_output=False)
