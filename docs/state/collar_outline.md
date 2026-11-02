@@ -39,3 +39,21 @@ STATE: branch t7-state, targeted tests pass (test_chain_garment/structure/garmen
 end of the tooling list). NEXT: find what holds the open fronts' hem in the first soft_net (stages5.py open vs closed; then
 rebuild with start.py 0 rebuild, HIFIPUSHIE_ASSETS=/home/joe/dev/hifipushie/workspace/_templates); then the V (first button
 held at its cut distance reads 0.49 nw vs 0.26-0.38: check the plan's button vs button_start) and the leaves lying.
+
+## T8 (2026-11-02): roles from any pattern (C289; chain_roles.py, tests/test_chain_roles.py)
+Roles from construction + the DECLARED role (draft_pattern pieces.<n>.role -> M["roles"]): FALL (roll fold) / BAND (stiff,
+under the fall) / STAND (stiff, on the neckline, no fall: build_stand, the band ring with its own top edge) / a stiff
+"collar_fall" with no roll refused by name / RINGS / TUBE of one self-sewn piece or several limb-role pieces sewn together
+(two-piece sleeve) / PANELS (half backs = the back; hem = the outline) / FRONT lapped, or ZIP edge to edge (pairs made
+along the declared edges, ZIP_GAP, no layer). cf_shirt's roles read the same (t7 built.pkl; scripts/shirt_roles.py).
+Hussar (HOME /mnt/data/hifipushie/t8, wf_simon:hussar): collar declared role collar_stand (steps 1-4 redone through the
+tools, T6's style plan); the stand ring read the neckline 11 % short round the neck base + GAP (384 vs ~427 mm) ->
+redrafted with brian collarEase 0.16 (430 mm); flat gate PASS. Build (job hussar_open, 65-83 s): NO length refusal (free
+worst 0.0 %, stand 430.6/430.5 mm, rise 75.7 deg), STRUCTURE FAIL: collar_height 0.055 (0.14-0.20), collar_upright 72.7
+(76.5-93.5), closure_front part / meets 0.862 (>= 0.9), soft_cloth_smooth 2.39 (<= 1); PASS cutaway_drop 0.14, closure_collar
+open, hem_level_lr 3.9 mm. Sheet: /mnt/data/hifipushie/t8/sheet_b2.png. By eye: stand upright round back and sides but dives to
+a V at CF (ring rests tipped 17 deg front-down: the eased ring drops in front); zip edges meet; cutaway right way but rounded;
+sleeves two-piece, follow the arm to the wrist; back hem rolls into a ledge; boxy vs the fitted reference.
+NEXT: the stand's front: hold the stand's CF ends at the fronts' neckline (not the ring's rest tilt) or raise the fronts'
+neck on the pattern; the back-hem ledge (soft network fill, same as T7's hem); where the zip parts (14 % of its length).
+Dev: /mnt/data/hifipushie/t8/scripts/{redraft,redraft2,stage_check,chain,reads,render}.py.
