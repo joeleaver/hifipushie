@@ -42,7 +42,7 @@ STEPS = [
     ("4", "draft", "flat pattern + seam pairs, stiff pieces, folds, closures; the flat gate", "draft_pattern", "none", "4"),
     ("5", "chains", "the pattern's edges as exact-length chains in the planned state", "chain_garment", "none", "4"),
     ("6", "surfaces", "the garment surface; the structure gate", "chain_garment", "none", "4"),
-    ("7", "details", "buttons, braid, frogging, pockets on the surface", None, "none", "6"),
+    ("7", "details", "buttons, braid, frogging on the surface, at the pattern's marks", "garment_details", "none", "6"),
     ("7a", "presim", "the built, detailed garment beside the reference, approved before the sim", None, "setting", "6"),
     ("8", "sim", "folds only: soft cloth under gravity, stiff parts and the state held", "chain_garment", "none", "4"),
     ("9", "look", "the garment beside the reference, blind review, approval", "look_chain", "required", "4"),

@@ -14,7 +14,10 @@ Declarations (JSON beside the code; names are step 1's):
   edges {piece: {edge: "pointA>pointB" | "a>via>b" | {"path": a path of the part}}}
   seams [{"a": "piece:edge" | [chain], "b": ..., "ease": [lo, hi] (a over b, -1), "why"}]: step 1's seams, sewn
   stiff [piece] (interfaced); folds [{"name", "piece", "line": edge | arc | {"edge", "offset"}, "kind", ...}] (style
-  folds too: a rolled cuff); closures [closures.py entries, "edge": {"over": edge, "under": edge}]; omit {piece: why}.
+  folds too: a rolled cuff); closures [closures.py entries, "edge": {"over": edge, "under": edge}]; omit {piece: why};
+  marks {detail: mark | [marks]}: WHERE each step-1 detail sits on the pattern, decided here once (garment_details.py
+  docstring: at / rows / points / follows / path / lines; stiffens: a trim that stiffens its edge); a closure's
+  buttons are its own marks. A step-1 detail built full / simplified with no mark is refused (cloth-made ones: pieces).
 `validate` refuses by name (a step-1 seam with no drafted edge or not sewn, a drafted piece not in the inventory, a built
   inventory piece not drafted). `block(pat)` is the ONE converter: the draft + declarations as cloth.pieces' block
   (pieces, seams, seam_notes, interfaced, folds, closures), so cloth.mesh makes chain_garment.PATTERN_KEYS as for every
@@ -32,7 +35,7 @@ import numpy as np
 
 RUNNER = Path(__file__).with_name("draft_own_run.mjs")
 TIMEOUT = 60  # s
-DECL_KEYS = {"pieces", "edges", "seams", "stiff", "folds", "closures", "omit", "notes"}
+DECL_KEYS = {"pieces", "edges", "seams", "stiff", "folds", "closures", "omit", "notes", "marks"}
 PIECE_KEYS = {"part", "fold", "mirror", "flip_y", "cut", "grain", "place", "role"}
 BUILT = ("full", "simplified")  # step 1's "build" values that are cut
 PLAIN_TOL = 0.01  # a seam with no declared ease: its two sides agree within 1 % (cloth_check KINDS "plain")
@@ -178,6 +181,33 @@ def validate(decl: dict, step1: dict, parts: dict | None = None) -> list:
         for k in ("over", "under"):
             if c.get(k) and c[k] not in pcs:
                 bad.append(f"closure {c.get('name')!r}: {k} {c[k]!r} is not a drafted piece")
+    return bad + validate_marks(decl, step1)
+
+
+def validate_marks(decl: dict, step1: dict) -> list:
+    """The details' marks (T10, C290): every built step-1 detail is marked on the pattern (or is a closure's own button
+    / a cloth piece); every mark names a step-1 detail, on drafted pieces, with position keys only."""
+    from . import garment_details as gd
+    bad, mk, pcs = [], decl.get("marks") or {}, decl.get("pieces") or {}
+    det = step1.get("details") or {}
+    if not isinstance(mk, dict):
+        return ["marks: {detail: mark | [marks]} (garment_details.py docstring)"]
+    kinds = {x.get("name"): x.get("kind") for x in decl.get("closures") or []}
+    byclosure = {d for nm, c in (step1.get("closures") or {}).items() for d in c.get("details") or []
+                 if kinds.get(nm) == "buttons" or (kinds.get(nm) == "zip" and (det.get(d) or {}).get("cloth"))}
+    for n, m in mk.items():
+        if n not in det:
+            bad.append(f"marks.{n}: not a step-1 detail ({', '.join(det) or 'none'})")
+            continue
+        bad += gd.check_mark(n, m)
+        for x in m if isinstance(m, list) else [m]:
+            p = x.get("piece") if isinstance(x, dict) else None
+            if p and p not in pcs:
+                bad.append(f"marks.{n}: piece {p!r} is not drafted")
+    for n, x in det.items():
+        if x.get("build") in BUILT and n not in mk and n not in byclosure and not gd.cloth_made(x.get("what")):
+            bad.append(f"step 1 detail {n!r} (build {x.get('build')}) has no mark: declare marks.{n} (where it sits on "
+                       "the pattern: at / rows / points / follows / path)")
     return bad
 
 

@@ -162,7 +162,7 @@ TOOL_GROUPS: dict[str, dict] = {
               # the workflow's order (find_tool ranks a matched domain's early steps first)
               "steps": ["garment_plan", "body_tape", "draft_pattern", "pattern_check", "chain_garment", "look_chain"],
               "about": "garments: design, pattern, the pattern gate, alterations, the chain build (the only start), references",
-              "tools": ["garment_plan", "draft_pattern", "design_garment", "look_pattern", "alter_pattern", "pattern_check", "chain_garment", "look_chain",
+              "tools": ["garment_plan", "draft_pattern", "garment_details", "design_garment", "look_pattern", "alter_pattern", "pattern_check", "chain_garment", "look_chain",
                         "garment_record", "body_tape", "garment_reference", "garment_from_reference", "garment_reference_brief"]},
     "terrain": {"about": "terrain and game levels (height fields in a level designer's words)",
                 "tools": ["set_terrain", "check_terrain", "look_terrain", "export_terrain", "terrain_history"]},
@@ -3726,6 +3726,18 @@ def draft_pattern(name: str, garment: str, design: str, declarations: dict | str
     sheet, txt = dot.run(name, garment, design, _spec_arg(declarations) if isinstance(declarations, str) else declarations,
                          options, sa)
     return [_out(PILImage.open(sheet).convert("RGB"), None), txt] if sheet else txt
+
+
+@mcp.tool(structured_output=False)
+def garment_details(name: str, garment: str, details: dict | str, wear: str = "open", look: bool = True):
+    """STEP 7: DETAILS AND TRIMS at the pattern's MARKS (positions are marked at step 4: draft_pattern declarations.marks;
+    a closure's buttons are its own). details: {step-1 detail: {kind point|line|motif, size_mm | width_mm, thickness_mm,
+    shape, colour}}: geometry only. Made on the latest chain build (wear), carried onto the hung garment (never
+    simulated); writes step 7 (+ 7a). Refused by name: a detail not inventoried, omitted, cloth-made (a piece) or
+    unmarked. Returns the look (shape) + every detail's count, marks, sizes. guide(topic="garment_details")"""
+    from . import garment_details_tool as gdt
+    looks, txt = gdt.run(name, garment, _spec_arg(details) if isinstance(details, str) else details, wear, look)
+    return [_out(PILImage.open(p_).convert("RGB"), None) for p_ in looks] + [txt] if looks else txt
 
 
 @mcp.tool(structured_output=False)
