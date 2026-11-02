@@ -78,6 +78,16 @@ start), "sim" (after dress: the verdict plus the numeric targets: layer gaps, co
 waistband height, sleeves on a hanger, crest radius, strain; each judged at the quality it belongs to).
 images: the pattern sheet and the placed start as images (save=path writes them with _pattern/_place suffixes).
 
+### `garment_record`
+`garment_record(name, garment, sheet=False)`: the garment record (src/hifipushie/garment_record.py; the steps:
+docs/state/garment_steps.md). One file per garment, workspace/<model>/garments/<garment>.json: per step its output (or a
+pointer), status, gate rows, reference, look and, on a FAIL, back_to. pattern_check writes step 4, chain_garment steps 5, 6
+and 8, look_chain the build's look (6) and the hung garment's look (9). A write to a step whose previous step isn't ready
+is refused by name; a changed step makes the later ones stale. Approvals: `bin/approve add garment
+<model>.<garment>.<step> <record>#<digest> <sheet> joe|coordinator` (the answer prints it); they hold while the digest
+does. Step 7a's approval is required unless HIFIPUSHIE_PRESIM_APPROVAL=optional. sheet=True renders the step-0
+reference beside every look plus a status tile.
+
 ### `alter_pattern`
 
 `alter_pattern(name, garment, ops, replace=False, note='')`

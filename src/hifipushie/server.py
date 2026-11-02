@@ -163,7 +163,7 @@ TOOL_GROUPS: dict[str, dict] = {
               "steps": ["design_garment", "pattern_check", "chain_garment", "look_chain"],
               "about": "garments: design, pattern, the pattern gate, alterations, the chain build (the only start), references",
               "tools": ["design_garment", "look_pattern", "alter_pattern", "pattern_check", "chain_garment", "look_chain",
-                        "garment_reference", "garment_from_reference", "garment_reference_brief"]},
+                        "garment_record", "garment_reference", "garment_from_reference", "garment_reference_brief"]},
     "terrain": {"about": "terrain and game levels (height fields in a level designer's words)",
                 "tools": ["set_terrain", "check_terrain", "look_terrain", "export_terrain", "terrain_history"]},
     "plants": {"about": "trees and plants (grown, measured, exported), stands of them, wind",
@@ -3118,13 +3118,15 @@ def pattern_check(name: str, garment: str, refs: str | dict | None = None, waive
     res = keep["res"]
     Bp = res["pieces_full"]
     kind = rec.get("kind") or ""
-    out = [_out(pattern_sheet.render(Bp, f"{name}:{garment} flat pattern",
-                                     seam_rows=cc.seams(Bp, kind)), _save_suffix(save, "flat"))]
+    flat = pattern_sheet.render(Bp, f"{name}:{garment} flat pattern", seam_rows=cc.seams(Bp, kind))
+    out = [_out(flat, _save_suffix(save, "flat"))]
     if _diag_rows(diag):
         ims, _ = _garment_sheets(name, f"pattern_{garment}", res["body"], [(garment, res["A"], res["mesh"])],
                                  views, size, clay=False, diag=diag)
         out += [_out(im, _save_suffix(save, tag)) for tag, im in ims]
-    out.append(_gate_rows_text(rec) + "\n" + next_steps.after_pattern_check(rec, name, garment))
+    from . import garment_record as gr  # (step 4 of the garment record)
+    refused = gr.from_pattern_check(name, garment, rec, str(cc.record_path(rec["pattern"], rec["body"])), flat)
+    out.append(_gate_rows_text(rec) + (f"\n  {refused}" if refused else "") + "\n" + next_steps.after_pattern_check(rec, name, garment))
     return out
 
 
@@ -3578,7 +3580,7 @@ def _chain_answer(name: str, garment: str, wear: str, st: dict, opening: float |
         body = (f"  structure: {sc.get('verdict')} ({len(sc.get('rows') or [])} rows" +
                 (f"; waived: {', '.join(r['id'] for r in sc['rows'] if r.get('waived'))}" if any(r.get("waived") for r in sc.get("rows") or []) else "")
                 + ")" + (f"\n{body}" if body else ""))
-    txt = f"{name}:{garment} ({wear}): {head}" + (f"\n{body}" if body else "")
+    txt = f"{name}:{garment} ({wear}): {head}" + (f"\n{body}" if body else "") + (f"\n  {st['record']}" if st.get("record") else "")
     if stage == "done":
         return f"{txt}\nnext: {look} beside your reference; review_view one view per call"
     if stage in ("queued", "building"):
@@ -3627,9 +3629,28 @@ def look_chain(name: str, garment: str, wear: str = "closed", focus: str | None 
         ims.append(_out(im, _save_suffix(save, nm) if save else None))
     txt = _chain_answer(name, garment, wear, st).split("\nnext:")[0]
     txt += f"\n  shown: {'the hung garment' if src.name == 'final.pkl' else 'the BUILD (before any hang)'}"
+    if focus is None:  # (the garment record: the build's look on step 6, the hung garment's as step 9)
+        from . import garment_record as gr
+        refused = gr.from_look_chain(name, garment, wear, src.name == "final.pkl", [p for _, p in paths])
+        txt += f"\n  {refused}" if refused else ""
     return ims + [txt + f"\n  views: {', '.join(p for _, p in paths)}\nnext: judge beside your reference (review_view, one view per "
                   "call); a fault: fix it on the pattern (alter_pattern), pattern_check, chain_garment again; close views: focus=\"neck\" or a "
                   "piece's name"]
+
+
+@mcp.tool(structured_output=False)
+def garment_record(name: str, garment: str, sheet: bool = False):
+    """THE GARMENT RECORD: one file per garment holding every step's output, status (todo / done / failed / approved),
+    gate rows, reference and look (docs/state/garment_steps.md, steps 0-10 + 7a). Answers each step's status, what is
+    stale (an earlier step changed), the next step, what it may use (the step before it, ready only) and the call that
+    makes it. A step is written only when the step before it is ready; approvals are Joe's or the coordinator's
+    (bin/approve), read here, never written. sheet=True: the step-0 reference beside every look, and the statuses. Details: guide(topic="garment_record")."""
+    from . import garment_record as gr
+    txt = gr.answer(name, garment)
+    if not sheet:
+        return txt
+    p = gr.sheet(name, garment)
+    return [_out(PILImage.open(p).convert("RGB"), None), txt + f"\n  sheet: {p}"]
 
 
 @mcp.tool(structured_output=False)

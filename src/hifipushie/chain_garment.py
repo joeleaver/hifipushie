@@ -1703,6 +1703,14 @@ def worker(model: str, garment: str, wear: dict):
     except Exception as e:  # (a crash is reported as one, with what it was doing)
         import traceback
         _status(d, stage="failed", error=f"{type(e).__name__}: {e}", trace=traceback.format_exc()[-1500:])
+    finally:  # (steps 5, 6 and 8 of the garment record; a refusal of the record's order is noted, the job stands)
+        try:
+            from . import garment_record as gr
+            msg = gr.from_chain(model, garment, wear["state"], d, status(d))
+        except Exception as e:  # (the record never breaks a build)
+            msg = f"record: not written: {type(e).__name__}: {e}"
+        if msg:
+            _status(d, record=msg)
 
 
 def _peak_gb() -> float:
