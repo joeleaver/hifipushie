@@ -116,15 +116,39 @@ def fasten_from(front: dict, k: int) -> dict:
     return dict(front, v=v[k - 1:], closed=list(front.get("closed") or [True] * len(v))[k - 1:])
 
 
+def button_start(b) -> np.ndarray:
+    """Where the first fastened button starts, before any soft cloth: its cut distance below the front's neck point (sewn
+    to the band, already built), down the body's centre front, a gap and a layer off it. (cf_shirt: the closed build's
+    button sat 90 mm (cut) below the neck point; the torso-ring start put it 39 mm lower and 20 mm forward, and the
+    band opened against it stretched its links 9x.)"""
+    from .chain_garment import GAP, LAYER
+    net, R = b.net, b.roles
+    p, bv = R.front["over"], R.front["v"][0]
+    bvp = bv[0] if net.piece[bv[0]] == net.pid(p) else bv[1]
+    sew = list(b.sewn_with(p, R.band))
+    L = np.linalg.norm(net.uv[sew] - net.uv[bvp], axis=1)
+    top = b.X[net.root[sew[int(np.argmin(L))]]].copy()
+    ys = np.arange(top[1] - 0.15, top[1] + 0.15, 0.001)
+    for z in np.arange(top[2], top[2] - 3 * L.min(), -0.002):
+        P = np.c_[np.zeros(len(ys)), ys, np.full(len(ys), z)]
+        near = np.where(b.body.contact.query(P)[0] <= GAP + LAYER)[0]  # the front surface: the first point from the front
+        if not len(near):
+            continue
+        q = P[near[0]]
+        if np.linalg.norm(q - top) >= L.min():
+            return q
+    return np.array([0.0, top[1], top[2] - L.min()])
+
+
 def build_open(b, t0: float) -> None:
     """The open build, straight (module doc). b: a chain_garment.GarmentBuild with wear state "open"."""
     net, R = b.net, b.roles
     b.wear["state"] = "open"
     b.band_closed()  # the band's pressed ring: its rest shape (band_open keeps its curve round the back)
     b.reads["band_ring_s"] = round(time.time() - t0, 1)
-    P0 = b.soft_start()  # the cloth's start on the torso: where the first fastened button begins
     bv = R.front["v"][0]
-    b.X[net.root[bv[0]]], b.X[net.root[bv[1]]] = P0[bv[0]], P0[bv[1]]
+    b.X[net.root[bv[0]]] = b.X[net.root[bv[1]]] = button_start(b)  # (nothing soft is built yet)
+    b.reads["button_start_mm"] = [round(float(c) * 1e3, 1) for c in b.X[net.root[bv[0]]]]
     b.band_open()  # the band in its planned state: ends apart, the sewn fronts tied to the first fastened button
     b.fall_build()
     b.fill_band()
