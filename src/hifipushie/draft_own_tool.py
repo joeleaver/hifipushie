@@ -4,7 +4,7 @@ flat gate, the record's step 4 and its look. draft_own.py holds the parts (Node 
 `run(name, garment, design, declarations, options, sa)` -> (sheet path | None, answer text). It reads steps 1 (pieces,
 seams, closures) and 3 (measurements, by name) of the garment record (garment_record.READS), drafts in
 <model>/garments/<garment>/draft/, validates, builds the pieces through cloth.pieces (pattern {"from": "own"}), meshes
-them flat (cloth.mesh: the keys chain_garment reads), gates, draws the flat sheet (shape only: C286) and lists its
+them flat (cloth.mesh: the keys chain_garment reads), gates, draws the flat sheet (shape only: C288) and lists its
 numbers in the text, writes
 the spec's garment entry (so pattern_check and chain_garment find it) and step 4.
 """

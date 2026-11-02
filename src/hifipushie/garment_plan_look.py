@@ -5,7 +5,7 @@ Step 1: pieces outlined, labelled; SEEN solid, OCCLUDED dashed, INFERRED dotted;
 or outlines in the same line style. The legend lists every piece and detail, also those with no place on the picture.
 Step 2: the judged rows' marks (yellow) with their targets; the closures' states, the bends and the pose in the legend.
 Saved in the record's look directory (garment_record.look_dir) as step<id>_<key>_v<view>.png.
-Shape first (C286: pictures are for shape, text is for numbers): labels on the picture are large names only, never
+Shape first (C288: pictures are for shape, text is for numbers): labels on the picture are large names only, never
 overlapping (a label that would overlap moves); targets and numbers are in garment_plan's text answer, which lists
 every item the legend lists.
 """

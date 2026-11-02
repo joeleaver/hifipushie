@@ -292,7 +292,7 @@ def stage_pattern(c: Ctx, image: bool = True) -> dict:
                                            if c.kind else "")
         im = pattern_sheet.render(Bp, title, seam_rows=rows)
         o["images"].append(("pattern", im))
-        o["info"] += pattern_sheet.text_lines(Bp, rows)  # (the sheet is shape only: its numbers are here, C286)
+        o["info"] += pattern_sheet.text_lines(Bp, rows)  # (the sheet is shape only: its numbers are here, C288)
         if im.info.get("names_off"):
             o["info"].append("on the sheet without a name (too small): " + ", ".join(im.info["names_off"]))
     return o

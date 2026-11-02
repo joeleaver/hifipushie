@@ -1,4 +1,4 @@
-"""STRUCTURE ROWS: the one vocabulary of what a style-plan row may judge, and the rows the pre-sim gate reads (C286).
+"""STRUCTURE ROWS: the one vocabulary of what a style-plan row may judge, and the rows the pre-sim gate reads (C288).
 
 Why (garment_steps T6): run 2's structure rows were a shirt's, their targets INFERRED by the agent who wrote them (dress
 shirt convention) or read from a README. The garment record now carries the targets: step 2 (garment_plan "style")
@@ -110,7 +110,7 @@ def check_row(r: dict, w: str, bad: list, ids: dict | None = None):
 
 # ---------------------------------------------------------------- general rules (true of every garment)
 ROUGH_SMOOTH_R_MM = 40.0  # the tightest body curve soft cloth wraps (a forearm): the smooth tube of the limit
-ROUGH_LIMIT_X = 2.0       # the limit is twice that smooth tube's reading at the piece's own edge length (C286)
+ROUGH_LIMIT_X = 2.0       # the limit is twice that smooth tube's reading at the piece's own edge length (C288)
 
 
 def rule_items(roles: set, soft: list, closures: dict) -> list:
@@ -146,7 +146,7 @@ def rule_items(roles: set, soft: list, closures: dict) -> list:
         I.append(dict(id="soft_cloth_smooth", read="soft_rough_over_limit", range=[None, 1.0], stage=1,
                       source=f"rule: the build has no folds (garment_steps 7a: structure only); each soft piece's "
                              f"bump p90 (face normal vs its neighbours', as a height at the mesh's edge) <= "
-                             f"{ROUGH_LIMIT_X:g}x a smooth R{ROUGH_SMOOTH_R_MM:.0f} mm tube's at the same edge (C286); "
+                             f"{ROUGH_LIMIT_X:g}x a smooth R{ROUGH_SMOOTH_R_MM:.0f} mm tube's at the same edge (C288); "
                              f"read: worst piece's ratio to its limit",
                       change="crumpled soft cloth: the SURFACES / soft network fill (chain_garment) wrinkles it: " + _C))
     return I

@@ -418,7 +418,7 @@ def _dense(P: np.ndarray, step: float = 0.005) -> np.ndarray:
 def draw(tape: Tape, rows: list, path, h: int = 760) -> str:
     """Front / side / back: the body in clay, each row's tape line in its colour (solid where seen, thin where behind
     the body), numbered at the line in a large digit; a large legend maps each number to its row's NAME. No values
-    on the image (C286: pictures are for shape, text is for numbers): every value is in run's text answer."""
+    on the image (C288: pictures are for shape, text is for numbers): every value is in run's text answer."""
     from PIL import Image, ImageDraw
     from .pattern_sheet import _font
     f_num, f_leg = _font(20), _font(20)

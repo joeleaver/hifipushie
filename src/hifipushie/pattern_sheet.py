@@ -1,4 +1,4 @@
-"""The flat pattern as a pattern maker lays it out on the table, drawn for SHAPE (C286: pictures are for shape, text is
+"""The flat pattern as a pattern maker lays it out on the table, drawn for SHAPE (C288: pictures are for shape, text is
 for numbers). Every piece at one scale: its outline, grain arrow, notches, buttons/buttonholes, internal lines, fold
 lines (dashed blue), interfacing (hatched), ONE large piece name inside the piece (sized down to fit, or left off and
 said so in `img.info["names_off"]`), every seam pair in one colour on both its edges, a 10 cm scale bar and a big

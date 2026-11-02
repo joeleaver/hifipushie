@@ -319,7 +319,7 @@ def sheet(model: str, garment: str, size: int = 360) -> Path:
                                                     "axes": None})
     txt = Image.new("RGB", (size, size), (30, 31, 35))
     d = ImageDraw.Draw(txt)
-    from .pattern_sheet import _font  # (large: a glance tile; every status is also in answer's text, C286)
+    from .pattern_sheet import _font  # (large: a glance tile; every status is also in answer's text, C288)
     fs = _font(max(12, min(22, (size - 16) // len(IDS) - 4)))
     for k, sid in enumerate(IDS):
         x = s[sid]
