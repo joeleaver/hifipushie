@@ -38,7 +38,7 @@ shirt + hussar jacket together, each iterated until good.
 ## Tooling runs (one deliverable each, in order; "minimal" = the step works end to end for any garment, not yet good)
 | # | Run | Steps | Size | Needs |
 |---|---|---|---|---|
-| T1 | Garment record: one file per garment holding each step's output, its status and approval; a FAIL's "back to step N"; one look sheet per garment from the step-0 reference | all, 9 | S | - |
+| T1 | Garment record: one file per garment holding each step's output, its status and approval; a FAIL's "back to step N"; one look sheet per garment from the step-0 reference | all, 9 | S | DONE (C281) |
 | T2 | Pre-sim approval (required internally, a setting for agents) + threads past the cap in the hang's answer and gate | 7a, 8 | S | T1 |
 | T3 | Measure by name: girth at a level, arc between landmarks, surface length, the landmark list; tape lines drawn as its look | 3 | S-M | T1 |
 | T4 | Reading, parts inventory, style plan: tools that write them into the record, validate them, and draw them over the reference (occluded / inferred marked) | 0, 1, 2 | M | T1 |
@@ -51,4 +51,14 @@ shirt + hussar jacket together, each iterated until good.
 | T11 | Export: chain garment -> game mesh, retopology, skinned to the rig | 10 | L | T10 |
 About 11-14 runs at the run budget. The shirt and the hussar jacket are the test garments of every run from T4 on.
 
-NEXT: Joe agrees the list; T1 first.
+T1 DONE (2026-11-02, branch t1-record, C281): `garment_record.py` (STEPS = the one step list), file
+workspace/<model>/garments/<garment>.json (+ <garment>/ for looks and sheet.png); tool garment_record(name, garment,
+sheet) in the cloth group. Writers: pattern_check -> 4 (gate rows, flat sheet as look); chain_garment's worker -> 5, 6
+(structure rows), 8 (hang); look_chain (focus None) -> 6's look (build) / 9 (hung). Approval only through bin/approve:
+`approve add garment <model>.<garment>.<step> <record>#<digest> <sheet> joe|coordinator` (the answer prints it); held
+while the digest holds. 7a: required unless HIFIPUSHIE_PRESIM_APPROVAL=optional; steps needing approval: 7a, 9 (STEPS'
+approval column). Gaps: steps 0-3, 7, 7a, 10 have no writer yet, so on today's garments pattern_check / chain_garment
+answer "record: ... refused: step 3 (measure) is not ready" (the tools still run); T2 must stop the hang before 7a.
+Unverified: a real build / hang writing the record (tests stub them); the sheet on real looks.
+
+NEXT: T2 (pre-sim approval in chain_garment: no hang until the record's 7a is ready; threads past the cap).

@@ -89,6 +89,7 @@ OpenBLAS is capped at 4 threads in `__init__.py`.
 - Canvas stiffness: docs/state/canvas.md -> cloth.md "canvas stiffness"
 - Supports, not holds: docs/state/supports.md -> cloth.md "supports, not holds"
 - Threads hard: docs/state/threads_hard.md -> codified.md C235
-- Chain garment (THE start of every garment: chain_net.py, chain_garment.py, tools chain_garment + look_chain): docs/state/collar_outline.md -> codified.md C259-C264
+- Chain garment (THE start of every garment; tools chain_garment + look_chain): docs/state/collar_outline.md -> codified.md C259-C264
+- Garment steps (the process + tooling runs): docs/state/garment_steps.md
 - Test suite: docs/state/test_suite.md
 - No state page yet: grep docs/notes/<thread>.md.
