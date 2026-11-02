@@ -25,6 +25,7 @@ ADDED = {"block_in_start", "block_in_look", "block_in_step", "block_in_solve", "
          "pattern_check", "alter_pattern", "review_view", "judge_asset",  # (the garment gates as tools, 2026-10-19)
          "chain_garment", "look_chain",  # (the one way to start a garment; the older routes are gated, C262)
          "garment_record",  # (one file per garment, every step's output and status: T1, C281)
+         "body_tape",  # (garment step 3: measure a body by name, T3, C283)
          "set_expression"}  # (the head route: pose a finished head in an expression, 5ffab5a2)
 
 

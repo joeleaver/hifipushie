@@ -88,6 +88,31 @@ is refused by name; a changed step makes the later ones stale. Approvals: `bin/a
 does. Step 7a's approval is required unless HIFIPUSHIE_PRESIM_APPROVAL=optional. sheet=True renders the step-0
 reference beside every look plus a status tile.
 
+### `body_tape`
+`body_tape(name, measurements=None, garment="", landmarks=False)`: garment step 3, measuring the model's base body BY NAME
+(src/hifipushie/body_tape.py; its docstring is the spec). Measure what steps 1-2 (parts, style plan) call for: each seam
+you will draft needs a length or a girth on the body; name it and say how it is taken. measurements: a list of
+- a FreeSewing name as a string ("chest", "hpsToWaistBack", ...; tailor.measure's list, in FreeSewing's definition through
+  measure_defs; {"name", "kind": "freesewing", "consumer": null} for the tape's own),
+- {"name", "kind": "girth", "at": LEVEL} round the torso, level; {"square_to": "arm.L" | "forearm.L" | "thigh.L" |
+  "shin.L" | "neck", "t" | "along" (m) | "at" (a landmark)} round a limb; "fullest" / "narrowest": [LEVEL, LEVEL]
+  (body) or [t0, t1] (limb). The tape is the section's convex hull (it bridges hollows).
+- {"name", "kind": "arc", "from", "to", "over": "front" | "back" | "top" | "bottom" | "left" | "right", "taut": true}:
+  over the surface, the shortest plane arc through both landmarks bulging to that side.
+- {"name", "kind": "length", "from", "to", "via": [...], "over": "surface" | "straight", "side"}; or {"from", "down_to":
+  LEVEL, "side": "back" | "front"}: the tailor's tape down the body at the start's x, taut (hpsToWaistBack's way).
+- {"name", "kind": "height", "from", "to"}: vertical between LEVELs or landmarks ("floor").
+LEVEL: armpit, chest, waist, high_hip, hips, seat, crotch (tailor's definitions), any landmark's height, {"z": m},
+{"between": [LEVEL, LEVEL], "t": f}, {"at": LEVEL, "dz": m}. Landmarks (landmarks=True lists them with positions and
+how each is found): hps.L, shoulder_point.L, neck_side.L, cf_neck, cb_neck, bust.L, cf_/cb_/side_<level> (.L/.R), crotch,
+floor, crown, every joint (inside the body: straight and vertical only; "joint:<name>" where a name is taken).
+A refusal says what is wrong and what to say instead (an unknown landmark lists them; a level outside the body gives
+the body's range); the others are still measured. The look (always made): every tape on the body front / side / back,
+numbered, solid where seen, its value in the legend; workspace/<model>/tape/step3_measure.png, or with garment the
+record's look folder, and step 3 of the record is written (refused until step 2 is ready). Example:
+`body_tape("wf_simon", [{"name": "back_waist_to_seat", "kind": "length", "from": "cb_waist", "to": "cb_seat", "side":
+"back"}, "chest"], garment="hussar")`.
+
 ### `alter_pattern`
 
 `alter_pattern(name, garment, ops, replace=False, note='')`
