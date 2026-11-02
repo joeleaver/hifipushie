@@ -1,4 +1,17 @@
-# STATE: Tess hair cards (hair-cards agent) -- rewritten 2026-10-19, round 47 = LOD3 fix (narrow, not polish)
+# STATE: Hair (route done 2026-11-01; Tess cards section below is STALE, as of 2026-10-19)
+
+## Hair route (2026-11-01, branch hair-route): a blind agent is walked down one path
+- Code: src/hifipushie/hair_route.py (server.py only calls it). Default path: top of hair_guide.md.
+- Done: blockers 5, 7, 10, the routes, blocker 4's small part. first groom on a `base` = strands; `hair.export` keys closed;
+  groom_hair(style="cards") refused; every hair tool ends `next:`; find_tool("hair") leads with the path; hair_short.md =
+  shells (sources moved to hair_background); `hair.head` hash with a warning in groom, look, export_hair, export_asset.
+- Grown solid grooms on a `base` with no style (153 in workspace/) stay locks and warn. No stored hash = no head warning.
+- Not done: blockers 1 and 2 (constants not promoted: a default shell or card export is unjudged), 3 (no trial), rest of 4
+  (no approval gate, tie_hair carry_from without reseat still regrows), 6, 8, 9.
+- Unverified: no render or real MCP session this run; `next:` on look_hair, export_hair, hair_reference tested on the route
+  functions, not through a render. Real specs: hg_G88a reads short, th_W18 not, hash stable on both (copies).
+
+## STALE below: 2026-10-19. r47 landed by hand in 89638730; its flags are still opt-in. Check before trusting.
 
 ## BEST CARDS FOR EXPORT (NOT approved: bin/approve is Joe's / the coordinator's)
 - **r47b**: /mnt/data/hifipushie/haircards/exp/exar47b/hc_s2.glb (+ hc_s2_LOD1.glb, _LOD2, _LOD3). Branch tess-hair-r47.
@@ -43,3 +56,5 @@ head luminance t47/headlum.py <tag>; tris t47/lodcount.py exp/exa<tag>; tiles t4
 History: docs/notes/hair.md "hair-cards round 47 (LOD3 fix)".
 
 STATE: round 47 done, r47b best. NEXT: coordinator / Joe approve r47b; export with the two extra flags.
+
+NEXT: blockers 1 + 2 with renders and a transfer test (promote the winning card and shell values to defaults), then a blind hair trial.

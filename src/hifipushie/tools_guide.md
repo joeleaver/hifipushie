@@ -38,7 +38,7 @@ strokes and parts, how to judge renders and diagnose artifacts. Read it before m
 topic="terrain": the terrain vocabulary (landscapes and game levels in a level designer's words: world kinds,
 basins, passes, canyons, sites, routes, walls, cover, intent checks), for set_terrain and the other terrain tools.
 topic="hair": hair from a description of the hairstyle: realistic strand grooms (tied with tie_hair, loose with
-groom_hair), short cuts, game cards (export_hair); topic="hair_locks": stylised sculpted locks.
+groom_hair), short cuts as shells, game export (export_asset; export_hair is the hair alone); topic="hair_locks": stylised sculpted locks.
 topic="cloth": garments the way pattern makers and garment artists make them, in stages (design sheet, flat
 pattern and its checks, construction plan, arrangement, draft, final), with design_garment, look_pattern,
 check_garment, garment_reference, dress, look_cloth and sync(cloth_only=True).
@@ -286,7 +286,7 @@ asset shades only itself; props never shade the building). Only what changed is 
 Live: when the person's running Blender has this scene.blend open with the Blender MCP add-on's server started
 (port 9876, or $BLENDER_MCP_PORT), sync and pull run inside that session: changes appear in their viewport as
 they're made, their unsaved moves and tweaks come back, and the session is saved to scene.blend afterwards.
-hair_only: only the hair's curve locks (after pulling what a person changed in the scene; seconds): enough after
+hair_only: only the hair's locks (after pulling what a person changed in the scene; seconds): enough after
 groom_hair or lock edits when the body hasn't changed. look_hair doesn't need it (it renders the spec's hair).
 Garments (spec["cloth"]) go in as meshes in the collection "cloth" with their pattern uv, sewing-detail maps and a
 colour node a person can change; only hung ones go in, a sync never starts a sim. cloth_only: just

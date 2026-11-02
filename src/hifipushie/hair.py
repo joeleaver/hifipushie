@@ -1099,6 +1099,8 @@ def reseat(name: str, src: str, note: str = "") -> dict:
     h = carry(src, sp, sa)
     h["locks"] = seat_locks(sp, sa, sb)
     h.pop("removed", None)
+    from . import hair_route
+    h["head"] = hair_route.head_key(sb)
     spec["hair"] = h
     if (sp.get("parts") or {}).get("hair"):
         spec.setdefault("parts", {})["hair"] = json.loads(json.dumps(sp["parts"]["hair"]))
@@ -1659,7 +1661,7 @@ def validate(spec: dict) -> None:
     h = hair_of(spec)
     if not h:
         return
-    keys = {"groom", "locks", "look", "cap", "stage", "part", "filler", "removed", "export", "style", "strands"}
+    keys = {"groom", "locks", "look", "cap", "stage", "part", "filler", "removed", "export", "style", "strands", "head"}
     bad = set(h) - keys
     if bad:
         raise HairError(f"hair: unknown keys {sorted(bad)} (have {', '.join(sorted(keys))})")
@@ -1671,6 +1673,8 @@ def validate(spec: dict) -> None:
     groom_params(spec)
     if h.get("style", "locks") not in STYLES:
         raise HairError(f'hair style is one of {", ".join(STYLES)}')
+    from . import hair_route
+    hair_route.check_export(h)
     if h.get("strands") is not None:
         from . import hair_cards
         try:
@@ -1724,11 +1728,13 @@ def groom(name: str, replace: bool = False, note: str = "", patch: dict | None =
     edited or added in Blender comes back with it from scene.pull) are kept unless replace; locks deleted in Blender
     (`hair.removed`) aren't grown again."""
     spec = store.load(name)
+    from . import hair_route
     h = spec.setdefault("hair", {})
     if patch:
         h["groom"] = merge_patch(h.get("groom") or {}, patch)
     if stage is not None:
         h["stage"] = stage
+    hair_route.default_style(spec)
     validate(spec)
     sc = scalp(name, spec)
     g = groom_params(spec)
@@ -1748,6 +1754,7 @@ def groom(name: str, replace: bool = False, note: str = "", patch: dict | None =
     h["locks"] = {**new, **keep}
     if h.get("groom") is not None and not h["groom"].get("fit"):
         h["groom"]["fit"] = head_ref(sc)  # the head these locks were grown on: the groom carries to other heads (carry)
+    h["head"] = hair_route.head_key(sc)  # (look / export warn when the head changes under the groom)
     v = store.save(name, spec, note or f"hair: grew {len(new)} locks from the groom")
     tiers: dict = {}
     for n, lk in new.items():

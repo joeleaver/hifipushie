@@ -169,6 +169,44 @@ to what a swept lens lock already is. Stylised solid hair stays on locks (style 
 - DAE graduation work, real-time hair LODs: https://digitalartsandentertainment.com/article/367/+Ellie+Porfyridou++Graduation+Work%3A++Real-time+Hair+
 - Godot BaseMaterial3D: https://docs.godotengine.org/en/4.3/classes/class_basematerial3d.html
 
+# Short cuts in game practice (sources; our route is guide(topic="hair_short"))
+
+What game hair artists do, as far as it could be sourced:
+
+- **The cap carries the look.** A mesh close over the skull wears a texture of the hair itself; breakdowns say a
+  flat colour "can pass" but painted or baked fibres on the cap sell it, and for buzz cuts the advice is to bake the
+  strand groom down into the head's texture (The Rookies breakdown; Polycount "hair study: shaved bun"; Thomas
+  Pecht's buzz cut is described as "hair cards + baked hair cap, single texture"). Commercial short-hair assets
+  ship colour, alpha, depth, direction (flow), id, normal, root and specular maps (3D Scan Store's real-time buzz
+  cut); bake tools output flow, height, root / tip, normal and AO.
+- **Cards over it are layers of falling opacity**: an opaque base that covers the scalp, then 2-3 sparser break-up
+  layers, the last ones for the hairline and fly-aways (80.lv "Tips & tricks on hair for games"; Epic's Hair Card
+  Generator: clumps of three cards, single-strand fly-away cards, a card group of its own for the hairline's short
+  hairs, and for a buzz cut cards of two triangles). Root alpha fades so cards sink into the scalp; some cards
+  stand across the others so the hair is not thick from one side and thin from the other (Polycount).
+- **Shading**: anisotropic along the hair with a FLOW map on the cap (Reallusion's hair shader: the flow map
+  "overcomes the obtuse look of low-poly hair cards"), depth / id / root packed for the shader (inZOI's mod docs),
+  Kajiya-Kay or Marschner-style lobes (Scheuermann 2004; Karis 2016).
+- **Alpha**: alpha test alone sparkles and thins with distance; mips must keep the alpha's coverage (Castano,
+  "Computing alpha mipmaps"; Unity's mipMapsPreserveCoverage), or use alpha to coverage (Golus) or dither + TAA.
+- Budgets seen: 5.3k polygons (a marketplace buzz cut), ~9k triangles single-sided (Jansen Turk's breakdown, which
+  of his lengths unstated). Shell "fur" (copies of the mesh along the normals with strand dots) is documented for
+  short fur, not found in a shipped human buzz cut.
+
+Sources: The Rookies, a real-time hair breakdown (https://www.therookies.co/projects/65082);
+Polycount "Hair study: shaved bun" (https://polycount.com/discussion/237326/hair-study-shaved-bun) and "How should I
+texture characters hair" (https://polycount.com/discussion/160776/how-should-i-texture-characters-hair), read as
+search snippets; 80.lv "Tips & tricks on hair for games" (https://80.lv/articles/tips-tricks-on-hair-for-games/);
+Epic, Hair Card Generator (https://dev.epicgames.com/documentation/unreal-engine/hair-card-generator-for-grooms-in-unreal-engine);
+3D Scan Store real-time buzz cut (https://www.3dscanstore.com/hair/realtime-hair-buzzcut); Reallusion's hair shader
+textures (https://manual.reallusion.com/Character-Creator-4/Content/ENU/4.0/15_Digital_Human_Shader/Hair/Textures-3-4.htm);
+inZOI mod docs, hair texture set-up (https://mod-docs.playinzoi.com/docs/modkit-docs/modkit/project/caz/hair/05-texturesetup);
+Castano, "Computing alpha mipmaps" (https://ludicon.com/castano/blog/articles/computing-alpha-mipmaps/); Karis, "Physically
+based hair shading in Unreal" (https://blog.selfshadow.com/publications/s2016-shading-course/karis/s2016_pbs_epic_hair.pdf);
+Godot forum, run-time glTF textures without mipmaps (https://forum.godotengine.org/t/not-applied-mipmap-at-gltf-runtime-loaded-model/94799);
+Godot's gltf_document.cpp (no anisotropy / specular / sheen extension). No numbers for a short cut from a named
+studio talk were found; a strand's width in texels and "bent normals for caps" have no source (ours by measure).
+
 # Strand grooms through the tools (realistic hair, and its game cards)
 
 For realistic hair the locks stay what you reason in, but they become GUIDES: `groom_hair(name, style="strands")`
