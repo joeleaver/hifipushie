@@ -185,7 +185,7 @@ def hem_sleeve(X, M, bV, at) -> dict:
     return out
 
 
-def reads(X, M, bV, bT, at: dict) -> dict:
+def reads(X, M, bV, bT, at: dict, drape_build: dict | None = None) -> dict:
     hz = float(np.asarray(at["hps.L"])[2])
     X = np.asarray(X, float)
     r = {}
@@ -195,6 +195,7 @@ def reads(X, M, bV, bT, at: dict) -> dict:
     r.update(collar_extra(X, M, bV, bT, at))
     r.update(front_extra(X, M, fr, hz))
     r.update(hem_sleeve(X, M, bV, at))
+    r.update(drape_build or {})
     if r.get("v_bottom_below_hps_mm") is not None and r.get("collar_points_below_hps_mean_mm") is not None:
         r["v_below_points_nw"] = round((r["v_bottom_below_hps_mm"] - r["collar_points_below_hps_mean_mm"]) /
                                        max(r.get("neck_width_mm") or _neck_w(at), 1.0), 2)
@@ -225,9 +226,10 @@ def items(M, plan: dict | None) -> tuple[list, list]:
     else:
         its, notes = sr.plan_items(plan, roles)
     cl = sr.closure_reads(plan.get("parts") if plan else None, ((plan or {}).get("style") or {}).get("state") or {})
-    its = its + sr.rule_items(roles, sr.soft_pieces(M, (plan or {}).get("parts")), cl)
+    from . import chain_drape as cd
+    its = its + sr.rule_items(roles, sr.soft_pieces(M, (plan or {}).get("parts")), cl) + cd.rule_items(plan)
     for it in its:
-        it["on"] = STAGE
+        it.setdefault("on", STAGE)  # (T13: a draped row waits for the hang: LATER here, judged at step 8)
     return its, notes
 
 
@@ -254,7 +256,7 @@ def _plan_reads(X, M, r: dict, its: list, plan: dict | None) -> None:
 def check(X, M, bV, bT, at: dict, wear: dict, plan: dict | None = None, waive: dict | None = None) -> dict:
     """{"verdict", "rows", "reads", "notes"}: the build measured against the record's rows (garment_reads.checklist_rows)."""
     from . import cloth_check as cc
-    r = reads(X, M, bV, bT, at)
+    r = reads(X, M, bV, bT, at, (wear or {}).get("drape_reads"))
     its, notes = items(M, plan)
     _plan_reads(X, M, r, its, plan)
     rows = gr.checklist_rows(its, r, STAGE)
@@ -272,7 +274,11 @@ def check(X, M, bV, bT, at: dict, wear: dict, plan: dict | None = None, waive: d
             if (waive or {}).get(row["id"]):
                 row["waived"] = waive[row["id"]]
     rows.sort(key=lambda x: (x["status"] not in ("FAIL", "UNMEASURED"), x["stage"]))
-    return {"verdict": cc.verdict(rows, waive), "rows": rows, "reads": r, "notes": notes}
+    waits = [x["id"] for x in rows if x["status"] == "LATER"]
+    out = {"verdict": cc.verdict(rows, waive), "rows": rows, "reads": r, "notes": notes}
+    if waits:  # (T13: the draped rows wait for the hang; pre-sim approval judges the held structure only)
+        out["waits_for_hang"] = waits
+    return out
 
 
 def passed(st: dict | None) -> bool:

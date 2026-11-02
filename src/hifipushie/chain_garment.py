@@ -1409,7 +1409,10 @@ class GarmentBuild(Build):
     def run(self):
         """Built straight into the planned state (T7, chain_plan.py): an open band is built open, never closed first."""
         t0 = time.time()
-        if self.roles.stand:  # (a stand collar: nothing turned over it, its own closure open or closed; T8 C289)
+        if getattr(self, "drape", None):  # (T13 C297: draped pieces: the held line built, the free cloth a start to fall from)
+            from .chain_drape import build_drape
+            build_drape(self, t0)
+        elif self.roles.stand:  # (a stand collar: nothing turned over it, its own closure open or closed; T8 C289)
             from .chain_roles import build_stand
             build_stand(self, t0)
         elif self.wear["state"] == "open" and self.roles.band and self.roles.front:
@@ -1669,7 +1672,7 @@ def elapsed(st: dict) -> int:
 def worker(model: str, garment: str, wear: dict):
     """Build, structure, pre-sim approval (step 7a, chain_presim.py), then hang. Every stage writes its numbers to
     status.json; a refusal is a result, not a crash. wear["resume"]: the build is loaded from built.pkl, never rebuilt."""
-    from . import chain_presim as cp, chain_structure as cs, resources, zozo_hang as zh
+    from . import chain_drape as cd, chain_presim as cp, chain_structure as cs, resources, zozo_hang as zh
     d = job_dir(model, garment, wear["state"])
     resume = wear.get("resume") or ""  # ("approved" / "waiver": from built.pkl, see chain_presim)
     _status(d, stage="resuming" if resume else "building", pid=os.getpid())
@@ -1688,13 +1691,15 @@ def worker(model: str, garment: str, wear: dict):
                     from . import chain_layers as cl
                     body = cl.layered_body(model, garment, body, wear["under"], log=note)
                 b = GarmentBuild(pat, body, wear, log=lambda *_: None)
+                b.drape = cd.info(model, garment, b.net)  # (T13: the plan's draped pieces, else None)
                 b.run()
             bid = cp.save_build(d, b, pat, body, fabric)
             _status(d, stage="built", reads=b.reads, note="", build_s=elapsed(status(d)), peak_gb=round(_peak_gb(), 1),
                     build_id=bid, build_threads=b.reads.get("threads"))
         sc = status(d).get("structure") if resume == "approved" else None  # (approved as read: not read again)
         if not sc:
-            sc = cs.check(b.X, pat.M, body.V, body.T, body.at, wear, cs.load_plan(model, garment), waive)  # (C279, C286)
+            sc = cs.check(b.X, pat.M, body.V, body.T, body.at, dict(wear, drape_reads=cd.build_reads(b)),
+                          cs.load_plan(model, garment), waive)  # (C279, C286; T13: draped rows wait for the hang)
             sc["reads"].pop("front_gap_profile", None)
         _status(d, structure=sc)
         from . import chain_layers as cl  # (inside the garment under it, then the lengths: T9)
@@ -1720,8 +1725,14 @@ def worker(model: str, garment: str, wear: dict):
         pickle.dump({"X": X, "M": pat.M, "bV": body.V, "bT": body.T, "reads": b.reads}, open(d / "final.pkl", "wb"))
         _status(d, stage="hung", reads=b.reads, note="")  # (a refusal below still leaves the hung result to look at)
         b.gate_lengths()
+        if getattr(b, "drape", None):  # (T13: step 8's gate gains the draped rows, read on the hung cloth)
+            hs = cd.hang_check(X, pat.M, body, cs.load_plan(model, garment), b.drape, waive)
+            _status(d, hang_structure=hs)
+            if not cs.passed(hs):
+                _status(d, stage="hang_rows_failed", reads=b.reads)
+                return
         _status(d, stage="done", reads=b.reads)
-    except ChainRefused as e:
+    except (ChainRefused, cd.DrapeRefused) as e:
         _status(d, stage="refused", refused=str(e))
     except Exception as e:  # (a crash is reported as one, with what it was doing)
         import traceback

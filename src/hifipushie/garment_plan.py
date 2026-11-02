@@ -17,12 +17,14 @@ STEP 1 "parts": {pieces, details, closures, seams, over?}
   over     [garment names of this model it is worn over] (T9: built on their approved builds; chain_layers)
   pieces   {name: {what, cloth (a step-0 cloth), seen: seen|occluded|inferred, from (convention; needed unless seen),
             build: full|simplified|omit, why (unless full), stiff: bool, layer: int (0 = next to the body / the garment
-            under it), where?: {view, outline: [[u,v],..]} (needed when seen)}}
+            under it), where?: {view, outline: [[u,v],..]} (needed when seen), hang?: fitted|draped (T13: hangs free
+            below where it is held; its fall judged on the hang), held?: [its edges built on the body] (draped only)}}
   details  {name: {what, on: [pieces], cloth? (braid, zip tape...), follows?: ["piece:edge"] (a trim along edges), count?, seen, from?, build, why?, where?: {view, at: [[u,v],..] | outline | outlines}}}
   closures {name: {what, pieces: [pieces it joins; one for a band closing on itself], details?: [details]}}
   seams    [{a: "piece:edge", b: "piece:edge", kind?: seam|fold|set_in|topstitch, length: {body: [measurement names]} |
             {style: {ratio | value_mm, of?, source}}}]
-STEP 2 "style": {state, bends, pose, rows, layers?}
+STEP 2 "style": {state, bends, pose, rows, layers?, drape?}
+  drape  {piece: {falls: down|up, source}}  (T13: a step-1 hang "draped" piece's start: a hood worn up falls up; chain_drape)
   layers {mode: visible|full, why}  (worn over another garment: visible (default) keeps the garment under where it is seen;
           full fits all of it inside, for a reason: chain_press.py, T12)
   state  {closure: {state: open|closed|partly, detail?, source}}   (EVERY inventory closure, none other)
@@ -267,6 +269,8 @@ def check_parts(p: dict, read: dict) -> dict:
     lone = [n for n, x in pieces.items() if isinstance(x, dict) and x.get("build") != "omit" and n not in joined]
     if lone:
         bad.append(f"pieces with no seam: {', '.join(lone)} (every built piece joins another piece, or is folded from one)")
+    from . import chain_drape as cd
+    cd.check_parts(pieces, bad)  # (T13: hang fitted | draped, held edges)
     if bad:
         raise PlanRefused("step 1 (parts) refused:\n  " + "\n  ".join(bad))
     p["measurements"] = sorted(needs)  # (what step 3 must measure, by name)
@@ -323,6 +327,14 @@ def check_style(p: dict, read: dict, parts: dict) -> dict:
         if r.get("at") is not None and not (_uv_list(r["at"]) and isinstance(r.get("view", 0), int)
                                             and 0 <= r.get("view", 0) < nv):
             bad.append(f"{w}.at: [[u, v], ...] on view (a step-0 view index)")
+    from . import chain_drape as cd
+    cd.check_style(p, pieces, bad)  # (T13: drape falls; a hang row needs a draped piece falling that way)
+    falls = {x["falls"] for x in cd.plan_drape({"parts": parts, "style": p}).values()}
+    for i, r in enumerate(rows):
+        k = sr.KINDS.get(r.get("what")) or {}
+        if k.get("needs_drape") and k["needs_drape"] not in falls:
+            bad.append(f"rows[{i}] {r.get('id', '')}: {r['what']} is judged on the hang of a draped piece falling "
+                       f"{k['needs_drape']}; step 1 / 2 have none ({sr.stage_kinds()})")
     if bad:
         raise PlanRefused("step 2 (style) refused:\n  " + "\n  ".join(bad))
     return p

@@ -26,6 +26,7 @@ BASES = {
     "neck_width": dict(desc="the neck's width at the collar (body: twice the neck side's x)", read="neck_width_mm"),
     "shoulder_width": dict(desc="shoulder point to shoulder point (body landmarks)", read="shoulder_width_mm"),
     "closure_length": dict(desc="the closure's length down CF (the fronts' extent at CF)", read="closure_length_mm"),
+    "stature": dict(desc="the figure's height, floor to the top of the head", read="stature_mm"),
 }
 
 _C = "chain_garment / chain_net: a build fault, report it"
@@ -78,6 +79,25 @@ KINDS = {
     "trim_lines_apart": dict(desc="the distance between two trim lines (braid)", units=("mm", "ratio", "px"),
                              base="shoulder_width", read=None, missing="no trims on chain builds yet (T10)",
                              change="the detail's placement"),
+    # (T13, C297) the DRAPED kinds: a draped piece's fall is the sim's, so these wait for the hang (step 8); a build-time
+    # kind on the hang, or a hang kind on the build, is refused by garment_plan with the list (stage_kinds)
+    "drape_hem_height": dict(desc="a draped piece's hem above the floor (front view; ratio of stature: the figure's "
+                                  "height in the picture)", units=("mm", "ratio", "px"), base="stature",
+                             read="drape_hem_height_mm", on="hang", needs_drape="down",
+                             change="the draped piece's length from its held line (alter_pattern its hem radius)"),
+    "drape_hem_spread": dict(desc="a draped piece's hem width, side to side (front view)", units=("mm", "ratio", "px"),
+                             base="shoulder_width", read="drape_hem_spread_mm", on="hang", needs_drape="down",
+                             change="the draped piece's fullness at the hem (alter_pattern its hem arc: a half circle vs "
+                                    "a full circle)"),
+    "drape_front_back": dict(desc="a draped piece's back hem below (+) its front hem (side view)",
+                             units=("mm", "ratio", "px"), base="stature", read="drape_back_below_front_mm", on="hang",
+                             needs_drape="down", change="the front / back lengths from the held line (alter_pattern)"),
+    "hood_opening": dict(desc="a hood's face opening, side to side (front view)", units=("mm", "ratio", "px"),
+                         base="neck_width", read="hood_opening_mm", on="hang", needs_drape="up",
+                         change="the hood's face edge (alter_pattern its front edge length / the neck edge)"),
+    "hood_depth": dict(desc="a hood's depth from its face edge to its back (side view)", units=("mm", "ratio", "px"),
+                       base="neck_width", read="hood_depth_mm", on="hang", needs_drape="up",
+                       change="the hood's depth (alter_pattern its back seam out / in)"),
     "not_judged": dict(desc="a part the reference can't judge (no view of it): listed, never a gate row", units=()),
 }
 for _b, _d in BASES.items():
@@ -88,6 +108,15 @@ for _b, _d in BASES.items():
 def vocabulary() -> str:
     return "; ".join(f"{k} ({'|'.join(v['units']) or 'no target'}{', of ' + v['base'] if v.get('base') else ''}): "
                      f"{v['desc']}" for k, v in KINDS.items())
+
+
+def stage_kinds() -> str:
+    """The kinds judged on each stage (T13): the build's (fitted structure) and the hang's (a draped piece's fall)."""
+    by: dict = {}
+    for k, v in KINDS.items():
+        if not v.get("base_only") and k != "not_judged":
+            by.setdefault(v.get("on", STAGE), []).append(k)
+    return "; ".join(f"on the {s}: {', '.join(ks)}" for s, ks in by.items())
 
 
 def check_row(r: dict, w: str, bad: list, ids: dict | None = None):
@@ -102,6 +131,9 @@ def check_row(r: dict, w: str, bad: list, ids: dict | None = None):
     u = t.get("unit")
     if u is not None and u not in KINDS[k]["units"]:
         bad.append(f"{w}: unit {u!r} for {k}: one of {', '.join(KINDS[k]['units']) or 'none (not judged)'}")
+    want = r.get("judged")  # (T13: "build" | "hang": where the row is judged; a draped row waits for the hang)
+    if want is not None and want != KINDS[k].get("on", STAGE):
+        bad.append(f"{w}: judged {want!r} but {k} is judged on the {KINDS[k].get('on', STAGE)}: {stage_kinds()}")
     if u == "ratio" and t.get("of") is not None:
         base = KINDS[k].get("base")
         of = t["of"]
@@ -226,6 +258,8 @@ def soft_pieces(M, parts: dict | None) -> list:
         by_role.setdefault(_role(n, p), []).append(bool(p.get("stiff")))
     out = []
     for n in M["names"]:
+        if (pcs.get(n) or {}).get("hang") == "draped":  # (T13: a draped piece's start is not its shape)
+            continue
         st = [bool(pcs[n].get("stiff"))] if n in pcs else by_role.get(_role(n))
         if st is not None and not any(st):
             out.append(n)
@@ -238,12 +272,16 @@ def closure_reads(parts: dict | None, state: dict) -> dict:
     for c, st in (state or {}).items():
         pcs = (parts or {}).get("pieces") or {}
         roles = {_role(p, pcs.get(p)) for p in (((parts or {}).get("closures") or {}).get(c) or {}).get("pieces") or []}
-        read = "front_state" if "front" in roles else "band_state" if "collar_stand" in roles else None
+        drp = {p for p in (((parts or {}).get("closures") or {}).get(c) or {}).get("pieces") or []
+               if (pcs.get(p) or {}).get("hang") == "draped"}
+        read = ("front_state" if "front" in roles else "band_state" if "collar_stand" in roles else
+                "drape_clasp_state" if drp else None)
         out[c] = dict(st, read=read, roles=sorted(roles))
     return out
 
 
 STATE_OF = {"front_state": {"closed": "closed", "open": "open", "partly": "part"},
+            "drape_clasp_state": {"closed": "closed", "open": "open", "partly": "open"},
             "band_state": {"closed": "closed", "open": "open", "partly": "open"}}
 
 
@@ -262,6 +300,8 @@ def plan_items(plan: dict | None, roles: set) -> tuple[list, list]:
     """(items, notes): the style plan's rows and numeric bends as structure items; notes list what is not judged."""
     style = (plan or {}).get("style") or {}
     views = ((plan or {}).get("read") or {}).get("views") or []
+    from .chain_drape import plan_drape
+    falls = {x["falls"] for x in plan_drape(plan).values()}
     rows = [dict(r, _from="row") for r in style.get("rows") or []]
     kinds = {r.get("what") for r in rows}
     for b in style.get("bends") or []:
@@ -286,9 +326,11 @@ def plan_items(plan: dict | None, roles: set) -> tuple[list, list]:
         if kid == "not_judged" or k.get("base_only"):
             notes.append(f"{rid}: {'not judged' if kid == 'not_judged' else 'a base (ratios are of it)'} ({src})")
             continue
-        it = dict(id=rid, stage=1, source=src, change=k.get("change", ""))
+        it = dict(id=rid, stage=1, source=src, change=k.get("change", ""), on=k.get("on", STAGE))
         miss = None
-        if k.get("needs") and not set(k["needs"]) <= roles:
+        if k.get("needs_drape") and k["needs_drape"] not in falls:
+            miss = f"no draped piece falling {k['needs_drape']} in step 1 / 2 (the plan judges one)"
+        elif k.get("needs") and not set(k["needs"]) <= roles:
             miss = f"the build has no {' + '.join(sorted(set(k['needs']) - roles))} piece (the plan judges one)"
         elif "value" not in t:
             miss = f"the target is a description ({t.get('is')!r}): give a number (value, unit) to judge it on the build"
