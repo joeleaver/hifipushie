@@ -13,10 +13,11 @@ READS (`reads`, numbers off the built vertices; heights from the body's landmark
 - front: garment_reads.front_reads (state, met share, V bottom, V half widths) plus the over front edge's straightness.
 - hem: CF / CB / left / right hem heights. Sleeves: the cuff's end past the wrist along the arm; the cuff's ease.
 
-ROWS (`items` -> garment_reads.checklist_rows on stage "build"): each item has its target, its SOURCE (the reference
-reading when it answers, else a named kind default: the measured reference notes beside the photos or a stated INFERRED
-convention, never a number fitted to a build) and its CHANGE: what to alter when it fails (an alter_pattern op, a design
-option, or the build stage that owns it) so a blind agent can act. Items whose pieces the garment lacks are left out.
+ROWS (C286, `items`): from the garment record, never a garment's conventions in code. Step 2's rows (and its numeric
+bends) are judged by their kind (structure_rows.KINDS: the one vocabulary garment_plan validates against) with the plan's
+target and source; general rules (structure_rows.rule_items: a fall lies down, the hem level left to right, each closure in
+its planned state, soft cloth not crumpled) are added with the rule as their source. No style plan, or a row with no build
+reading yet: UNMEASURED, named (the gate never passes it silently; waive by name with a reason).
 """
 from __future__ import annotations
 
@@ -25,10 +26,10 @@ from pathlib import Path
 
 import numpy as np
 
-from . import garment_reads as gr
+from . import garment_reads as gr, structure_rows as sr
 
 STAGE = "build"
-REF_NOTES = "folds_ab/refs README (Joe 2026-10-29, the default shirt's collar references)"
+BAND_SHUT_MM = 5.0  # a band's ends this close are shut (its button's overlap holds them together)
 LAYER_REST_MM = 5.0  # chain_garment: the fall rests on the soft cloth under it at LAYER + 2 mm
 
 
@@ -76,6 +77,21 @@ def collar_extra(X, M, bV, bT, at) -> dict:
         db = np.abs(Contact(bV, np.asarray(bT, np.int64)).query(X[low])[0]) - GAP
         out["collar_leaf_standoff_p90_mm"] = round(float(np.percentile(np.minimum(d, db), 90)) * 1000, 1)
     out["neck_width_mm"] = round(_neck_w(at), 1)
+    fr_c = P[P[:, 1] < cf[1] + 0.03]
+    if len(fr_c):  # the collar's height at its front: the 20 mm band nearest CF
+        ax = np.abs(fr_c[:, 0])
+        out["collar_front_height_mm"] = round(float(np.ptp(fr_c[ax <= ax.min() + 0.02, 2])) * 1000, 1)
+    fb = X[fall][(np.abs(X[fall, 0]) < 0.015) & (X[fall, 1] > cb[1] - 0.03)]
+    if len(fb):
+        out["collar_fall_cb_width_mm"] = round(float(np.ptp(fb[:, 2])) * 1000, 1)
+    stn = X[np.where(_pieces(M, ("collar_stand",)))[0]]
+    sf = stn[stn[:, 1] < cf[1] + 0.03]
+    sl, sr_ = sf[sf[:, 0] > 0], sf[sf[:, 0] <= 0]
+    if len(sl) and len(sr_):  # a band closing on itself: its two front ends touch (<= BAND_SHUT_MM) or stand apart
+        from scipy.spatial import cKDTree
+        g = float(cKDTree(sl).query(sr_)[0].min()) * 1000
+        out["band_ends_gap_mm"] = round(g, 1)
+        out["band_state"] = "closed" if g <= BAND_SHUT_MM else "open"
     if "collar_points_apart_mm" in (ca := gr.collar_reads(X, M, float(np.asarray(at["hps.L"])[2]))):
         out["collar_points_apart_nw"] = round(ca["collar_points_apart_mm"] / out["neck_width_mm"], 2)
     return out
@@ -101,6 +117,10 @@ def front_extra(X, M, fr: dict, hps_z: float) -> dict:
             z -= gr.SCAN_STEP_MM / 1000
         if xs:
             out["front_edge_wander_mm"] = round(float(np.ptp(xs)) * 1000, 1)
+            k = max(int(round(40 / gr.SCAN_STEP_MM)), 1)  # the edge off vertical over each 40 mm: a kink shows
+            if len(xs) > k:
+                dx = np.abs(np.asarray(xs[k:]) - np.asarray(xs[:-k]))
+                out["front_edge_kink_deg"] = round(float(np.degrees(np.arctan2(dx.max(), k * gr.SCAN_STEP_MM / 1000))), 1)
     vb = fr.get("v_bottom_below_hps_mm")
     if vb and prof:
         top = prof[0][2] + prof[0][3]
@@ -156,6 +176,7 @@ def hem_sleeve(X, M, bV, at) -> dict:
 
 def reads(X, M, bV, bT, at: dict) -> dict:
     hz = float(np.asarray(at["hps.L"])[2])
+    X = np.asarray(X, float)
     r = {}
     r.update(gr.collar_reads(X, M, hz))
     fr = gr.front_reads(X, M, hz)
@@ -166,137 +187,94 @@ def reads(X, M, bV, bT, at: dict) -> dict:
     if r.get("v_bottom_below_hps_mm") is not None and r.get("collar_points_below_hps_mean_mm") is not None:
         r["v_below_points_nw"] = round((r["v_bottom_below_hps_mm"] - r["collar_points_below_hps_mean_mm"]) /
                                        max(r.get("neck_width_mm") or _neck_w(at), 1.0), 2)
+    pts = r.get("collar_points_below_hps_mm")
+    if r.get("v_bottom_below_hps_mm") is not None and pts:
+        r["v_below_points_mm"] = round(r["v_bottom_below_hps_mm"] - min(pts), 1)  # below the HIGHER point
+    if "shoulder.L" in at:
+        r["shoulder_width_mm"] = round(2 * abs(float(np.asarray(at["shoulder.L"])[0])) * 1000, 1)
+    fz = X[np.where(_pieces(M, ("front",)))[0]]
+    fz = fz[np.abs(fz[:, 0]) < 0.03] if len(fz) else fz
+    if len(fz):
+        r["closure_length_mm"] = round(float(np.ptp(fz[:, 2])) * 1000, 1)
     return {k: (float(v) if isinstance(v, np.floating) else v) for k, v in r.items()}
 
 
-def _ref_value(refs: dict | None, garment: str, key: str):
-    t = (((refs or {}).get("targets") or {}).get(garment) or {}).get(key) or {}
-    return t.get("value") if t.get("visible") else None
-
-
-def items(M, wear: dict, refs: dict | None = None, garment: str = "shirt") -> list:
-    """The structure items this garment has pieces for, with targets for this wear."""
+def items(M, plan: dict | None) -> tuple[list, list]:
+    """(items, notes): the style plan's rows (structure_rows.plan_items) + the general rules for this build's pieces."""
     roles = set(gr._roles(M))
-    state = wear.get("state", "closed")
-    from .chain_garment import OPEN_SPREAD
-    spread = float(wear.get("spread") or OPEN_SPREAD)
-    I = []
-
-    def add(i, read, src, change, stage=1, **tgt):
-        I.append(dict(id=i, read=read, on=STAGE, stage=stage, source=src, change=change, **tgt))
-    if {"collar_fall", "collar_stand"} <= roles:
-        ref_cs = _ref_value(refs, garment, "collar_state")
-        if ref_cs is not None:
-            add("collar_wear", "wear_collar", f"reference reading collar_state {ref_cs!r}",
-                f"wear the collar as the reference shows: chain_garment wear=\"{'open' if ref_cs == 'open' else 'closed'}\"",
-                equals="open" if ref_cs == "open" else "closed")
-        add("collar_under_jaw", "collar_jaw_clear_mm", "kind default (shirt collar): sits on the neck base, clear of the jaw "
-            "with the head level; " + REF_NOTES + ": ~28 mm of neck between the collar's top and the jaw at the side (front "
-            "view, 0.46 mm/px), INFERRED >= 20 mm",
-            "the collar rides up the neck: lower the CF neckline (alter_pattern move the front neck point down on front.L and "
-            "front.R) or a lower stand (design option collar stand height); if the pattern is right, the BAND stage "
-            "(chain_garment band_closed / band_open) stands the band upright instead of leaning it on the neck: a build "
-            "fault, report it", range=[20.0, None])
-        add("collar_tilt", "collar_top_tilt_deg", REF_NOTES + ": the collar's top line tilts ~31 deg in the side view "
-            "(back high, front low); +-10 deg",
-            "the collar is a level tube: its front must sit lower than its back: drop the CF neckline (alter_pattern move the "
-            "front neck point down) and curve the stand's front end up (alter_pattern slash_spread on the stand's top edge); "
-            "if the pattern has it, the BAND stage holds the band level: a build fault", range=[21.0, 41.0])
-        add("collar_points_drop", "collar_points_below_back_top_mm", REF_NOTES + ": the points ~107 mm below the collar's "
-            "back top (side view, 0.55 mm/px); +-20 %",
-            "the fall is too shallow / deep at its points: alter_pattern move the collar's point corner (fall) down / up",
-            range=[86.0, 128.0])
-        if state == "open":
-            src = (f"wear open, opening {spread} neck widths (chain_garment.OPEN_SPREAD 1.7 from " + REF_NOTES +
-                   ": points ~442 px apart at a ~265 px neck); +-20 %")
-            lo, hi = 0.8 * spread, 1.2 * spread
-        else:
-            src = ("kind default (shirt collar, buttoned): the points spread over the collarbones, a point collar's tips "
-                   "~75-130 mm apart (menswear convention 3-5 in, INFERRED) = 0.6-1.1 neck widths")
-            lo, hi = 0.6, 1.1
-        add("collar_points_spread", "collar_points_apart_nw", src,
-            "the points don't spread: the FALL stage keeps the leaves turned in round the neck: check the fall's outer edge "
-            "length against the neckline (alter_pattern move the fall's point corner outward = a wider spread); if the cut "
-            "reaches, the FALL stage (chain_garment fall_build) doesn't let the leaf turn out: a build fault",
-            range=[round(lo, 2), round(hi, 2)])
-        add("collar_leaves_lie", "collar_leaf_standoff_p90_mm", f"the fall rests on the cloth under it (chain_garment: "
-            f"LAYER + 2 mm = {LAYER_REST_MM:.0f} mm); a coarse panel mesh (20 mm) reads up to ~5 mm more: <= 10 mm",
-            "the leaves stand off the shirt (a cone round the neck): the fall's outer edge is too short to lie on the "
-            "shoulders (alter_pattern slash_spread the fall's outer edge) or the FALL stage holds it up: a build fault",
-            range=[None, 10.0])
-        add("collar_turned", "fall_above_stand_mm", "garment_reads.collar_reads: the fall turned down over the stand at CB "
-            "(fall above the stand's top < 0)", "the fall stands above the stand: the roll line / fall depth "
-            "(alter_pattern on the collar's roll fold) or the FALL stage: a build fault", range=[None, 0.0])
-    if "front" in roles:
-        add("front_meets", "front_met_share", "wear: the buttoned front meets from the V bottom to the hem (garment_reads "
-            "front_state closed: met share >= 0.9, MEET_MM 2 mm)",
-            "the fronts gape between buttons: the PLACKETS / soft network leave the CF edges apart: check the closure's "
-            "button marks on the pattern (alter_pattern move), else a build fault (chain_garment plackets)", range=[0.9, None])
-        add("front_edge_straight", "front_edge_wander_mm", "kind default: a buttoned front edge hangs plumb from the first "
-            "fastened button to the hem curve; INFERRED <= 10 mm (under half a 25 mm box placket)",
-            "the front edge wanders: the fronts are not the same length either side of CF or the buttons are not evenly "
-            "spaced (alter_pattern match the front edges; move button marks); else a build fault (soft network)",
-            range=[None, 10.0], stage=2)
-        if state == "open":
-            add("v_depth", "v_below_points_nw", REF_NOTES + ": the V bottom ~85 px below the higher point at a ~265 px neck "
-                "(0.32 neck widths); +-50 %", "the V is too shallow / deep: the first fastened button "
-                "(alter_pattern move the front's button marks) or the collar's opening", range=[0.16, 0.48])
-            add("v_straight", "v_taper", "kind default: an open shirt front is a straight V: its width at half depth is "
-                "half its top width, INFERRED 0.3-0.7", "the V bows: the PLACKETS stage folds the over placket out along a "
-                "curve; the fold line must run from the band end to the first fastened button: a build fault",
-                range=[0.3, 0.7], stage=2)
-    if {"front", "back"} <= roles:
-        add("hem_level_lr", "hem_left_right_mm", "kind default: worn straight the hem is level left to right (the pattern "
-            "is mirrored); <= 10 mm", "the hem hangs lower one side: front.L / front.R lengths differ (alter_pattern match) "
-            "or the soft network starts askew: a build fault", range=[None, 10.0], stage=2)
-        add("hem_level_fb", "hem_cf_cb_mm", "kind default (shirt): the back hem no higher than the front, a shirttail back "
-            "at most 40 mm lower (INFERRED, dress shirt convention)", "the hem tips front / back: the front and back "
-            "lengths at CF / CB (alter_pattern move the hem points), or the soft network rides up: a build fault",
-            range=[-40.0, 0.0], stage=2)
-    if "cuff" in roles:
-        add("sleeve_length", "sleeve_past_wrist_mm", "kind default (shirt): the cuff covers the wrist bone, ending 0-40 mm "
-            "past the wrist joint along the arm (INFERRED, dress shirt convention)", "the sleeve is short / long: "
-            "alter_pattern move the sleeve's hem points (or the cuff depth); else the RINGS stage placed the cuff off its "
-            "length: a build fault", range=[0.0, 40.0], stage=2)
-        add("cuff_fit", "cuff_ease_mm", "kind default (shirt cuff, buttoned): the wrist girth + 20-50 mm, a cuff that slides "
-            "but doesn't flare (INFERRED, dress shirt convention)", "the cuff is too wide (flares) / tight: alter_pattern "
-            "scale the cuff's length (or move its button mark)", range=[20.0, 50.0], stage=2)
-    return I
+    if not (plan or {}).get("style"):
+        its = [dict(id="style_plan", read="unmeasured:style_plan", range=[None, None], stage=1,
+                    source="garment record step 2", missing="no style plan in the garment record",
+                    change="garment_plan(step=\"style\") writes the targets this gate judges (back to step 2)")]
+        notes = []
+    else:
+        its, notes = sr.plan_items(plan, roles)
+    cl = sr.closure_reads(plan.get("parts") if plan else None, ((plan or {}).get("style") or {}).get("state") or {})
+    its = its + sr.rule_items(roles, sr.soft_pieces(M, (plan or {}).get("parts")), cl)
+    for it in its:
+        it["on"] = STAGE
+    return its, notes
 
 
-def check(X, M, bV, bT, at: dict, wear: dict, refs: dict | None = None, garment: str = "shirt", waive: dict | None = None) -> dict:
-    """{"verdict", "rows", "reads"}: the build measured against its items (rows: garment_reads.checklist_rows)."""
+def _plan_reads(X, M, r: dict, its: list, plan: dict | None) -> None:
+    """Readings the items name beyond reads(): closure states, roughness, ratios ("a/b")."""
+    st = ((plan or {}).get("style") or {}).get("state") or {}
+    for c, x in sr.closure_reads((plan or {}).get("parts"), st).items():
+        v = r.get(x["read"]) if x["read"] else None
+        r[f"closure_state:{c}"] = None if v is None else next(
+            (k for k, w in sr.STATE_OF[x["read"]].items() if w == v and k == x["state"]), v)
+    soft = sr.soft_pieces(M, (plan or {}).get("parts"))
+    if soft:
+        rough = sr.roughness(X, M, soft)
+        r["soft_rough"] = rough
+        if rough:
+            r["soft_rough_over_limit"] = round(max(v["bump_p90_mm"] / v["limit_mm"] for v in rough.values()), 2)
+    for it in its:
+        k = it["read"] if isinstance(it["read"], str) else ""
+        if "/" in k and ":" not in k:
+            a, b = (r.get(x) for x in k.split("/"))
+            r[k] = round(a / b, 3) if a is not None and b else None
+
+
+def check(X, M, bV, bT, at: dict, wear: dict, plan: dict | None = None, waive: dict | None = None) -> dict:
+    """{"verdict", "rows", "reads", "notes"}: the build measured against the record's rows (garment_reads.checklist_rows)."""
     from . import cloth_check as cc
     r = reads(X, M, bV, bT, at)
-    r["wear_collar"] = wear.get("state", "closed")
-    its = items(M, wear, refs, garment)
+    its, notes = items(M, plan)
+    _plan_reads(X, M, r, its, plan)
     rows = gr.checklist_rows(its, r, STAGE)
-    change = {f"checklist:{it['id']}": it["change"] for it in its}
+    by = {f"checklist:{it['id']}": it for it in its}
     for row in rows:
         cid = row["id"]
+        it = by[cid]
         row["id"] = cid.split(":", 1)[1]
         row.pop("checklist", None)
         row["measure"] = "chain_structure (the build)"
+        if it.get("missing"):
+            row.update(status="UNMEASURED", why=it["missing"], ours={}, read=[])
         if row["status"] in ("FAIL", "UNMEASURED"):
-            row["change"] = change[cid]
+            row["change"] = it["change"]
             if (waive or {}).get(row["id"]):
                 row["waived"] = waive[row["id"]]
     rows.sort(key=lambda x: (x["status"] not in ("FAIL", "UNMEASURED"), x["stage"]))
-    return {"verdict": cc.verdict(rows, waive), "rows": rows, "reads": r}
+    return {"verdict": cc.verdict(rows, waive), "rows": rows, "reads": r, "notes": notes}
 
 
 def passed(st: dict | None) -> bool:
     return bool(st) and st.get("verdict") in ("PASS", "PASS_WAIVED")
 
 
-def load_refs(model: str) -> dict | None:
-    """The model's saved reference reading (garment_from_reference: <model>/cloth_refs.json), or None."""
-    from . import store
-    p = Path(store.HOME) / model / "cloth_refs.json"
+def load_plan(model: str, garment: str) -> dict | None:
+    """The garment record's steps 0-2 outputs ({read, parts, style}), or None (no record)."""
+    from . import garment_record as grec
+    p = grec.path(model, garment)
     try:
-        return json.loads(p.read_text()) if p.exists() else None
+        st = json.loads(p.read_text()).get("steps") or {} if p.exists() else None
     except ValueError:
         return None
+    if st is None:
+        return None
+    return {k: (st.get(n) or {}).get("output") for k, n in (("read", "0"), ("parts", "1"), ("style", "2"))}
 
 
 def row_line(r: dict) -> str:

@@ -1695,7 +1695,7 @@ def worker(model: str, garment: str, wear: dict):
                     build_id=bid, build_threads=b.reads.get("threads"))
         sc = status(d).get("structure") if resume == "approved" else None  # (approved as read: not read again)
         if not sc:
-            sc = cs.check(b.X, pat.M, body.V, body.T, body.at, wear, cs.load_refs(model), garment, waive)  # the BUILD (C279)
+            sc = cs.check(b.X, pat.M, body.V, body.T, body.at, wear, cs.load_plan(model, garment), waive)  # (C279, C286)
             sc["reads"].pop("front_gap_profile", None)
         _status(d, structure=sc)
         b.gate_lengths()  # (a length refusal is answered first; the structure rows stay in the status beside it)

@@ -50,8 +50,8 @@ def _style():
     return {"state": {"front": {"state": "closed", "source": "front view"}},
             "bends": [{"id": "lie", "on": "front.L", "target": {"is": "flat"}, "source": "front view"}],
             "pose": {"name": "arms down", "source": "front view"},
-            "rows": [{"id": "width", "what": "fronts' width over the picture", "target": {"value": 0.5, "unit": "ratio",
-                                                                                        "of": "picture width"},
+            "rows": [{"id": "width", "what": "trim_lines_apart", "note": "the two binding lines apart",
+                      "target": {"value": 0.5, "unit": "ratio", "of": "shoulder_width"},
                       "source": "front view", "view": 0, "at": [[50, 150], [150, 150]]}]}
 
 

@@ -25,8 +25,9 @@ STEP 2 "style": {state, bends, pose, rows}
   state  {closure: {state: open|closed|partly, detail?, source}}   (EVERY inventory closure, none other)
   bends  [{id, on (piece | piece:edge | detail | closure), target: {value, unit, of (a ratio's base)} | {is}, source}]
   pose   {name, source}
-  rows   [{id, what, target: {value, unit, tol?} | {is}, source, view?, at?: [[u,v],..]}]  (what the photo judges: T6's
-          structure gate targets)
+  rows   [{id, what, target: {value, unit, tol?, of?} | {is}, source, note?, view?, at?: [[u,v],..]}]  (what the photo
+          judges: the structure gate's targets). what = a structure_rows.KINDS kind (refused otherwise, with the list); a
+          ratio is OF the kind's base (its name or a row id of it); a numeric bend names its kind in "what" too (C286)
 """
 from __future__ import annotations
 
@@ -34,7 +35,7 @@ import json
 import re
 from pathlib import Path
 
-from . import garment_record as gr
+from . import garment_record as gr, structure_rows as sr
 
 STEPS = {"read": "0", "parts": "1", "style": "2", "0": "0", "1": "1", "2": "2"}
 VIEWS = ("front", "back", "side", "three", "detail", "other")
@@ -285,12 +286,15 @@ def check_style(p: dict, read: dict, parts: dict) -> dict:
         else:
             _src(x, f"state.{c}", bad)
     names = set(pieces) | set(details) | set(closures)
+    kinds = {r.get("id"): r.get("what") for r in p.get("rows") or [] if isinstance(r, dict)}
     for i, b in enumerate(p.get("bends") or []):
         w = f"bends[{i}] {b.get('id', '')}".strip()
         if str(b.get("on", "")).split(":")[0] not in names:
             bad.append(f"{w}.on {b.get('on')!r}: not a piece, detail or closure of the inventory")
         _target(b.get("target"), w, bad)
         _src(b, w, bad)
+        if b.get("what") is not None or "value" in (b.get("target") or {}):  # (C286: a numeric bend is judged too)
+            sr.check_row(b, w, bad, kinds)
     pose = p.get("pose")
     if not isinstance(pose, dict) or not pose.get("name"):
         bad.append("pose: {name (e.g. 'arms down, relaxed'), source}")
@@ -307,6 +311,7 @@ def check_style(p: dict, read: dict, parts: dict) -> dict:
             bad.append(f"{w}: a unique id and what it judges")
         _target(r.get("target"), w, bad)
         _src(r, w, bad)
+        sr.check_row(r, w, bad, kinds)  # (C286: what = a structure_rows kind)
         if r.get("at") is not None and not (_uv_list(r["at"]) and isinstance(r.get("view", 0), int)
                                             and 0 <= r.get("view", 0) < nv):
             bad.append(f"{w}.at: [[u, v], ...] on view (a step-0 view index)")

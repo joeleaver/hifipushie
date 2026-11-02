@@ -269,7 +269,7 @@ def _stub_worker(monkeypatch, tmp_path, verdict: str, hang_over: int = 0, build_
     _SEEN.update(hang=0, check=0, build=0, build_threads={"p99_pct": 0.5, "max_pct": 1.0, "over_cap": build_over, "faces": 100},
                  hang_threads={"p99_pct": 1.9, "max_pct": 6.1 if hang_over else 1.9, "over_cap": hang_over, "faces": 100})
 
-    def check(X, M, bV, bT, at, wear, refs, garment, waive):
+    def check(X, M, bV, bT, at, wear, plan, waive):
         _SEEN["check"] += 1
         _SEEN["waive"] = waive
         ok = verdict == "PASS" or "collar_under_jaw" in (waive or {})
@@ -284,7 +284,7 @@ def _stub_worker(monkeypatch, tmp_path, verdict: str, hang_over: int = 0, build_
     monkeypatch.setattr(cg, "load_garment", lambda m, g: (_Pat(), _Body(), {}))
     monkeypatch.setattr(cg, "GarmentBuild", _Build)
     monkeypatch.setattr(cs, "check", check)
-    monkeypatch.setattr(cs, "load_refs", lambda m: None)
+    monkeypatch.setattr(cs, "load_plan", lambda m, g: None)
     monkeypatch.setattr(zh, "run", run)
     return _SEEN
 
@@ -309,29 +309,39 @@ def test_structure_pass_hangs_and_a_waiver_reaches_the_check(monkeypatch, tmp_pa
 
 
 def test_structure_rows_and_waiver():
-    """Real items and rows on stub readings: a failing row names its source and what to change; a waiver by name passes."""
-    from hifipushie import chain_structure as cs
+    """Rows from a style plan on stub readings: a failing row names its source and what to change; a waiver by name passes;
+    no plan: one UNMEASURED row naming step 2 (C286)."""
+    from hifipushie import chain_structure as cs, cloth_check as cc, garment_reads as gr
     M = {"names": ["front.L", "front.R", "back", "stand", "collar", "cuff.L"]}
-    good = {"collar_jaw_clear_mm": 40.0, "collar_top_tilt_deg": 30.0, "collar_points_below_back_top_mm": 107.0,
-            "collar_points_apart_nw": 0.8, "collar_leaf_standoff_p90_mm": 6.0, "fall_above_stand_mm": -10.0,
-            "front_met_share": 1.0, "front_edge_wander_mm": 3.0, "hem_left_right_mm": 2.0, "hem_cf_cb_mm": -10.0,
-            "sleeve_past_wrist_mm": 15.0, "cuff_ease_mm": 30.0, "wear_collar": "closed"}
-    its = cs.items(M, {"state": "closed"})
-    assert {"collar_under_jaw", "collar_tilt", "collar_points_spread", "collar_leaves_lie", "front_meets",
-            "front_edge_straight", "hem_level_lr", "sleeve_length", "cuff_fit"} <= {i["id"] for i in its}
+    plan = {"read": {"views": [{"view": "front"}]},
+            "parts": {"pieces": {"front.L": {}, "front.R": {}, "back": {}, "stand": {"stiff": True}, "collar": {"stiff": True}},
+                      "closures": {"front": {"pieces": ["front.L", "front.R"]}}},
+            "style": {"state": {"front": {"state": "closed", "source": "front view"}},
+                      "rows": [{"id": "spread", "what": "collar_points_apart", "target": {"value": 1.0, "unit": "ratio",
+                                "tol": 0.2, "of": "neck_width"}, "source": "front view"},
+                               {"id": "tilt", "what": "collar_tilt", "target": {"value": 30, "unit": "deg", "tol": 5},
+                                "source": "side view"}]}}
+    its, _ = cs.items(M, plan)
+    assert {"spread", "tilt", "collar_leaves_lie", "collar_turned", "closure_front", "closure_front_meets", "hem_level_lr",
+            "soft_cloth_smooth"} <= {i["id"] for i in its}
     assert all(i["source"] and i["change"] for i in its)
-    from hifipushie import cloth_check as cc, garment_reads as gr
+    good = {"collar_points_apart_mm": 120.0, "neck_width_mm": 120.0, "collar_top_tilt_deg": 30.0,
+            "collar_leaf_standoff_p90_mm": 6.0, "fall_above_stand_mm": -10.0, "closure_state:front": "closed",
+            "front_met_share": 1.0, "hem_left_right_mm": 2.0, "soft_rough_over_limit": 0.5}
 
     def run(readings, waive=None):
-        rows = gr.checklist_rows(its, readings, cs.STAGE)
-        for r in rows:
-            r["id"] = r["id"].split(":", 1)[1]
+        r = dict(readings)
+        r["collar_points_apart_mm/neck_width_mm"] = r["collar_points_apart_mm"] / r["neck_width_mm"]
+        rows = gr.checklist_rows(its, r, cs.STAGE)
+        for x in rows:
+            x["id"] = x["id"].split(":", 1)[1]
         return cc.verdict(rows, waive), rows
     assert run(good)[0] == "PASS"
-    v, rows = run(dict(good, collar_jaw_clear_mm=12.9, collar_points_apart_nw=0.34))
-    assert v == "FAIL" and {r["id"] for r in rows if r["status"] == "FAIL"} == {"collar_under_jaw", "collar_points_spread"}
-    assert run(dict(good, collar_jaw_clear_mm=12.9), {"collar_under_jaw": "a turned head"})[0] == "PASS_WAIVED"
-    assert "v_depth" in {i["id"] for i in cs.items(M, {"state": "open"})}  # the V only when worn open
+    v, rows = run(dict(good, collar_points_apart_mm=40.0, soft_rough_over_limit=2.8))
+    assert v == "FAIL" and {r["id"] for r in rows if r["status"] == "FAIL"} == {"spread", "soft_cloth_smooth"}
+    assert run(dict(good, collar_top_tilt_deg=9.6), {"tilt": "the reference is a turned head"})[0] == "PASS_WAIVED"
+    its0, _ = cs.items(M, None)
+    assert any(i["id"] == "style_plan" and i.get("missing") for i in its0)
 
 
 def test_structure_fail_answer_lists_rows_and_look_shows_the_build(monkeypatch, tmp_path):
