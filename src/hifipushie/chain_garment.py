@@ -55,7 +55,7 @@ REST = 0.1  # weight of the light rest pull (contact itself is 5)
 CAP = 0.02  # thread cap of soft cloth (pattern_form.FIT_THREAD_CAP)
 SHEAR_LIMIT = 0.27  # the weave's own limit on a mesh edge (zozo_hang.woven_limit, 2 % threads, jam 35 deg)
 OPEN_SPREAD = 1.7  # default open wear: the collar points this many neck widths apart
-MAX_FREE_PCT = 6.0  # % a free chain link may read off its cut at a stage's end before the build is refused
+MAX_FREE_PCT = 2.0  # % a free chain link may read off its cut at a stage's end before the build is refused
 
 
 class ChainRefused(ValueError):
@@ -1522,6 +1522,7 @@ class GarmentBuild(Build):
         M = np.where(hold[:, None], self.X, M)
         moved = np.linalg.norm(M[rs] - self.X, axis=1)
         I2, J2, L2, E2, _, fl2, th = self.final_links
+        fl2 = fl2[:1]  # (the body: ZOZO has kept the cloth under the held fall; a squeezed point there must not stall the lengths)
         held = np.zeros(net.n, bool)
         held[rs[hold]] = True
         self.reads["hang_moved_mm"] = {"p50": round(float(np.median(moved[~hold]) * 1e3), 1), "p95": round(float(np.percentile(moved[~hold], 95) * 1e3), 1),
@@ -1534,7 +1535,26 @@ class GarmentBuild(Build):
         for rnd in range(4):
             Z, rd = project(Z, I2, J2, L2, E2, held, fl2, threads=th, iters=30, step=0.004)
             self.log(f"after hang {rnd}: {rd}")
-        Z, rd2 = project(Z, I2[:n_chain], J2[:n_chain], L2[:n_chain], E2[:n_chain], held, fl2, iters=60, step=0.003)
+        # the chains last, with their moves carried into the cloth between them (a chain pass alone tears it, C263). Lines may
+        # shorten here: a strip curved both ways by the hang can't keep every line across it exact and its chains too
+        Ec = E2[:n_chain] & (np.arange(n_chain) < len(self.net.link_i))
+        chain_nodes = np.unique(np.r_[self.net.link_i, self.net.link_j])
+        rd2 = {}
+        for rnd in range(3):
+            Z0 = Z.copy()
+            Z, rd2 = project(Z, I2[:n_chain], J2[:n_chain], L2[:n_chain], Ec, held, fl2, iters=40, step=0.003)
+            kn = held.copy()
+            kn[chain_nodes] = True
+            for p in self.roles.panels + self.roles.tubes:
+                v = net.verts(p)
+                Fp = net.F[np.all(net.piece[net.F] == net.pid(p), axis=1)]
+                k_ = np.zeros(net.n, bool)
+                k_[v] = kn[rs[v]]
+                Zr, Z0r = Z[rs], Z0[rs]
+                filled = cn.fill(Z0r, Zr, k_, net.uv, Fp, v)
+                free_ = v[~k_[v]]
+                Z[rs[free_]] = filled[free_]
+            self.log(f"chains after hang {rnd}: {rd2}")
         self.reads["hang_last_lengths"] = {"all": rd, "chains": rd2}
         self.X = Z[rs]
         self.reads["threads"] = th.report(self.X)
@@ -1607,8 +1627,9 @@ def worker(model: str, garment: str, wear: dict):
         _status(d, stage="hanging", reads=b.reads)
         out, _ = zh.run(jd, timeout=3000)
         X = b.finish_hang(out["V"] if hasattr(out, "keys") else out[0])
-        b.gate_lengths()
         pickle.dump({"X": X, "M": pat.M, "bV": body.V, "bT": body.T, "reads": b.reads}, open(d / "final.pkl", "wb"))
+        _status(d, stage="hung", reads=b.reads)  # (a refusal below still leaves the hung result to look at)
+        b.gate_lengths()
         _status(d, stage="done", reads=b.reads)
     except ChainRefused as e:
         _status(d, stage="refused", refused=str(e))
