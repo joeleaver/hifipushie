@@ -85,12 +85,18 @@ def piece_h(M: dict, h: float) -> dict:
 
 # ---------------------------------------------------------------- the re-grid
 
-def regrid(drape: dict, h: float, body: np.ndarray | None = None, lines: dict | None = None, hp: dict | None = None):
+def regrid(drape: dict, h: float, body: np.ndarray | None = None, lines: dict | None = None, hp: dict | None = None,
+           joints: dict | None = None):
     """Every piece re-gridded in 2D at ~h (hp: per piece), mapped onto the drape, seams shared, wound away from body.
-    Returns (pieces, merged mesh)."""
+    joints None: the old route (garment_game.remesh_panel: hex grid + Delaunay); a dict ({piece: joint polylines},
+    garment_loops.joint_lines): clean loops (garment_loops.remesh_loops, T11b). Returns (pieces, merged mesh)."""
+    from . import garment_loops as gl
     hp = hp or {n: h for n in drape["names"]}
     bd = gg.boundaries(drape, hp)
-    pieces = [gg.remesh_panel(drape, n, bd[n], hp[n], (lines or {}).get(n, ())) for n in bd]
+    if joints is None:
+        pieces = [gg.remesh_panel(drape, n, bd[n], hp[n], (lines or {}).get(n, ())) for n in bd]
+    else:
+        pieces = [gl.remesh_loops(drape, n, bd[n], hp[n], (lines or {}).get(n, ()), joints.get(n, ())) for n in bd]
     gg._weld_corners(pieces)
     if body is not None:
         tree = cKDTree(body)
@@ -103,10 +109,15 @@ def regrid(drape: dict, h: float, body: np.ndarray | None = None, lines: dict | 
     return pieces, gg.merged(pieces)
 
 
-def game_mesh(drape: dict, M: dict, h: float, body=None) -> dict:
+def game_mesh(drape: dict, M: dict, h: float, body=None, joints: dict | None = None) -> dict:
     """The game mesh at ~h: outer + inner + rims (garment_game.shell), uv = the packed pattern atlas, and the outer
-    mesh's pattern uv (metres) for the stretch."""
-    pieces, m = regrid(drape, h, body, fold_lines(M), piece_h(M, h))
+    mesh's pattern uv (metres) for the stretch. joints: see regrid (None: the old hex route)."""
+    from . import garment_loops as gl
+    pieces, m = regrid(drape, h, body, fold_lines(M), piece_h(M, h), joints)
+    m["quad_share"] = round(gl.quad_share(pieces), 3) if joints is not None else 0.0
+    offs = np.cumsum([0] + [len(p["V"]) for p in pieces])[:-1]  # (merged stacks the pieces in order)
+    m["quads"] = np.vstack([np.asarray(p.get("quads", np.zeros((0, 4), int))).reshape(-1, 4) + o
+                            for p, o in zip(pieces, offs)])
     uvs, side = gg.atlas(pieces)
     m["uv_pattern"], m["uv"] = m["uv"], np.vstack(uvs)
     sh = gg.shell(m, m["T"])
@@ -115,13 +126,14 @@ def game_mesh(drape: dict, M: dict, h: float, body=None) -> dict:
     return sh
 
 
-def fit_budget(drape: dict, M: dict, budget: int, extra: int = 0, body=None, h0: float = 0.02) -> tuple[dict, list]:
+def fit_budget(drape: dict, M: dict, budget: int, extra: int = 0, body=None, h0: float = 0.02,
+               joints: dict | None = None) -> tuple[dict, list]:
     """The finest grid whose triangles (+ extra: the details) fit the budget, within [H_MIN, H_MAX]: h scaled by
     sqrt(count / target) a few times. Returns (game mesh, tries [(h, triangles)]). Over budget at H_MAX: the H_MAX mesh
     (the caller refuses)."""
     target, h, tries, best = BUDGET_FILL * budget - extra, h0, [], None
     for _ in range(6):
-        g = game_mesh(drape, M, h, body)
+        g = game_mesh(drape, M, h, body, joints)
         n = len(g["T"])
         tries.append((round(h, 4), n))
         if n + extra <= budget and (best is None or n > len(best["T"])):
