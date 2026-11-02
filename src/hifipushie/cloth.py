@@ -9554,8 +9554,9 @@ def validate(spec: dict) -> None:
             if bad:
                 raise ClothError(f"{where}: pattern keys {sorted(bad)} unknown for {pat['from']} (have {sorted(okp)})")
         elif isinstance(pat, dict) and pat.get("from") == "own":  # (draft_pattern: the agent's own design, step 4)
-            if set(pat) != {"from", "dir"}:
-                raise ClothError(f'{where}: an own pattern is {{"from": "own", "dir": its draft dir}}: written by draft_pattern')
+            if not {"from", "dir"} <= set(pat) <= {"from", "dir", "digest"}:  # (digest: the draft's content, the job key's)
+                raise ClothError(f'{where}: an own pattern is {{"from": "own", "dir": its draft dir, "digest"}}: written by '
+                                 'draft_pattern')
         elif pat is not None:
             if not isinstance(pat, dict) or pat.get("from") not in names:
                 raise ClothError(f'{where}: pattern is {{"from": one of {names + list(garment_blocks.BLOCKS)}, "ease": {{...}}, "length"...}}')
