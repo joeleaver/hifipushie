@@ -87,9 +87,11 @@ def _slow_ids() -> set:
 def pytest_collection_modifyitems(config, items):
     slow = _slow_ids()
     for item in items:
-        # (a parametrized test is listed by its bare name: all its cases are one cost class)
-        if item.nodeid in slow or item.nodeid.split("[")[0] in slow:
+        # (a parametrized test is listed by its bare name, an unmeasured file by its path)
+        if {item.nodeid, item.nodeid.split("[")[0], item.nodeid.split("::")[0]} & slow:
             item.add_marker(pytest.mark.slow)
+    if os.environ.get("HIFIPUSHIE_TEST_CPULOG"):
+        import hifipushie.server  # noqa: F401  (measuring: 7 s of import is the run's, not the first test's)
 
 
 # -- no hangs -------------------------------------------------------------------------------------------------------
