@@ -3442,6 +3442,11 @@ def _chain_gate(name: str, garment: str, spec: dict) -> str | None:
     if garment not in (spec.get("cloth") or {}):
         return (f"no garment {garment!r} on {name} (have {', '.join(spec.get('cloth') or {}) or 'none'}).\nnext: "
                 f"call_tool(\"design_garment\", {{\"name\": \"{name}\", \"garment\": \"{garment}\", \"design\": {{...}}}})")
+    if (spec["cloth"][garment].get("pattern") or {}).get("from") == "own":  # (draft_pattern: step 4's flat gate, T5)
+        from . import garment_record as gr
+        v = ((gr.load(name, garment)["steps"]["4"].get("gate") or {}).get("verdict"))
+        return None if v == "PASS" else (f"{garment}: step 4's flat gate is {v or 'not run'}.\nnext: call_tool("
+                                         f"\"pattern_check\", {{\"name\": \"{name}\", \"garment\": \"{garment}\"}})")
     g = json.loads(json.dumps(spec["cloth"][garment]))
     g["mesh_refine"] = pattern_form.form_refine(g)
     src, _ = pattern_form.form_source(name, garment, spec, g)
