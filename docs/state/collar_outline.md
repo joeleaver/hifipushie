@@ -17,16 +17,19 @@ iterations or manual feedback."
 ## Stages (closed): band -> fall -> rings -> soft chains -> surfaces -> threads, chains last -> fall rests on the cloth -> soft again
 -> hang -> threads + chains last. Open: the closed build, then band opened, fall on it, plackets folded, soft again twice, hang.
 
-## Known limits (ranked; see the last round's numbers below)
-1. wf_simon's own pattern FAILS pattern_check (rows seams, flat_pattern; collar, front_closure, cuff, pockets, layering, fabric, colour
-   unmeasured): the tool refuses it. The proof ran the worker directly (same code, gate skipped). A blind trial must reach a PASS first:
-   check a default shirt can.
-2. MAX_FREE_PCT is 6 %, far above "exact": free chains read 1-3 % after the hang on 20 mm soft links. Tighten when the last pass converges.
-3. Cuffs: the cut closes 183 mm, the forearm section needs 200 mm at the seam end: the ring flares (one button, the overlap opens); held
-   links there read up to 28 %. Sleeve hems are gathered into cuffs without pleats.
-4. Soft mesh is 20 mm: seams sewn every 20 mm, chords coarse. Corner patch at the leaf's neck end was not ported (the chains are kept instead).
-5. game_garment is gated: it reads sim drapes, not chain results. Export from chain results is not built.
-6. Only a shirt roles set is proven: band + fall + rings + tubes + panels. A waistband ring, a lapel, a collar without a band are refused by name.
-   One body only: no transfer test.
+## Last round (wf_simon, final code; ZOZO output from the worker, 144 frames local, finish re-applied by dev/refinish.py)
+closed: free chains 0.0 %, threads p99 5.62 max 26.95; open: free chains 0.003 %, threads p99 7.15 max 47.68; seam gap 0; no collider cut, nothing pushed.
+Renders /mnt/data/hifipushie/chain_garment/renders/tool_{closed,open}_{fig,neck,collar}_*.png. Judged: closed ~70 %, open ~55-60 % of the references.
 
-STATE: tool + gating landed on branch chain-garment; closed and open proved on wf_simon (see report). NEXT: blind trial, then the ranked limits.
+## Known limits (ranked)
+1. Open: shoulder cloth rides over the collar leaves (leaves half buried), collar stands high, plackets ragged at the throat. Closed: same fault, milder.
+2. wf_simon's own pattern FAILS pattern_check (seams, flat_pattern: S12 band 436.8 vs 441.2, ease -1.0 % at the limit; 7 rows unmeasured): the tool
+   refuses it. The proof ran the worker directly (same code, gate skipped). A blind trial must reach a PASS first.
+3. The tool's spawn + answer path was not run to a built result (it refused at the gate on wf_simon); the worker it spawns was.
+4. Free cloth rises 7-8 mm on average in the hang (drop_mm negative): not understood.
+5. Stiff chains are not all exact after surfaces: collar fold line 7.7 % closed / 16.3 % open, collar edge 9.3 % closed (held links, read not gated).
+6. Cuffs: cut closes 183 mm, forearm needs 200 mm at the seam: the ring flares; held links read 28 %. Sleeve hems gather into cuffs without pleats.
+7. Soft mesh 20 mm: seams every 20 mm, coarse. Corner patch at the leaf's neck end not ported. Post-hang lines across plackets may shorten.
+8. game_garment gated: no export from chain results. Roles proven: band + fall + rings + tubes + panels only, one body, no transfer test.
+
+STATE: tool + gating landed on branch chain-garment. NEXT: fault 1 (fall over the soft cloth), then a default shirt that passes pattern_check, then the blind trial.
