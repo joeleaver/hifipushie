@@ -134,6 +134,9 @@ def fit_one(ub, oX, oF, body, mode_: str, gap_out: float, log=None) -> dict:
     li, lj = net.link_i, net.link_j
     lk = kv[li] & kv[lj] & ~(held[li] & held[lj])
     e = np.abs(np.linalg.norm(X[lj] - X[li], axis=1) / np.maximum(net.link_L, 1e-9) - 1) * 100
+    e0 = np.abs(np.linalg.norm(X0[lj] - X0[li], axis=1) / np.maximum(net.link_L, 1e-9) - 1) * 100
+    ok0 = e0 <= MAX_FREE_PCT  # (the press answers for the lengths the build held; a build's own fault stays its own)
+    lk_ok = lk & ok0
     by = {}
     for p in net.names:
         v = net.verts(p)
@@ -153,7 +156,8 @@ def fit_one(ub, oX, oF, body, mode_: str, gap_out: float, log=None) -> dict:
         by[p] = row
     out_lim = covered & (sd < gap_out - 0.001) & soft
     read = {"mode": mode_, "pieces": by, "press": rd, "chains_free_worst_pct": chains["free_worst_pct"],
-            "kept_free_worst_pct": round(float(e[lk].max()), 3) if lk.any() else 0.0,
+            "kept_free_worst_pct": round(float(e[lk_ok].max()), 3) if lk_ok.any() else 0.0,
+            "build_free_worst_pct": round(float(e0.max()), 3), "press_broken_links": int((lk_ok & (e > MAX_FREE_PCT)).sum()),
             "outside_limit": int(out_lim.sum()), "kept_faces": int(keep.sum()), "faces": len(F), "held_edge": int(held.sum())}
     if out_lim.any():
         z = X[out_lim][:, 2]
@@ -204,7 +208,8 @@ def fit_unders(model: str, garment: str, b, body, d=None, log=None) -> tuple:
                              0.0, body.body_contact)
         worst = rd["kept_free_worst_pct"]
         if worst > MAX_FREE_PCT:
-            why.append(f"{u} can't keep its lengths inside {garment}: {worst} % off its cut where it is kept ({m}); "
+            why.append(f"{u} can't keep its lengths inside {garment}: {worst} % off its cut where it is kept ({m}, "
+                       f"{rd['press_broken_links']} links its build held); "
                        f"the room {garment} leaves is too small: ease {garment} there in the draft (step 4)")
         if d is not None:
             pickle.dump({"X": f["X"], "M": r["M"], "F_kept": Fw, "keep": f["keep"], "held": f["held"],

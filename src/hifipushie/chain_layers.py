@@ -415,6 +415,10 @@ def gate(b, body, put=None, refused=ChainRefused, d=None):
             put(under_fit=fr)
     rd = reads(b.X, b.pat.M, body)
     if fit_why:
+        if rd:
+            b.reads["layers"] = rd
+            if put:
+                put(layers=rd)
         raise refused(f"worn over {', '.join(body.info)}: {fit_why}")
     if rd:
         b.reads["layers"] = rd

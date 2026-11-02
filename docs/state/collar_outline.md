@@ -38,20 +38,23 @@ NEXT: the stand's front: hold the stand's CF ends at the fronts' neckline (not t
 neck on the pattern; the back-hem ledge (soft network fill, same as T7's hem); where the zip parts (14 % of its length).
 Dev: /mnt/data/hifipushie/t8/scripts/{redraft,redraft2,stage_check,chain,reads,render}.py.
 
-## T9 (2026-11-02): layering (C292; chain_layers.py, tests/test_chain_layers.py)
-Declared: step 1's `over: ["shirt"]` (garment_plan: a garment of the model with a record, not itself, no loop). ORDER, at
-the call: each under garment's build with its step 6 done and 7a ready, else refused by name + next (dev setting
-HIFIPUSHIE_LAYER_UNDER=built: any saved build, flagged UNAPPROVED). Its build id is in the job key. COLLIDER: the body
-INFLATED over the under garment (its hung result, else its build) + its details.pkl solids, gap = its cloth thickness +
-ZOZO's reach (buttons: reach); one closed surface, so torso rings, contact, structure gate and ZOZO all read it. One way:
-the shirt never moves. GATE: over-garment points inside it refused by piece / level / girth to add, before the lengths.
-Build 1 (nearest of body and the shirt's own open surface) crumpled the jacket into a bolero: replaced.
-Proof (HOME /mnt/data/hifipushie/t9/ws, cf_shirt: T10's shirt + T8's hussar, same body; shirt UNAPPROVED, its own build
-refused): build 2 (199 s) REFUSED: collar (the stand) inside the shirt at 1508 points, 11.4 mm deep at the neck (the
-shirt's open collar stands 20-50 mm off the neck; a 430 mm stand can't go round it); fronts/backs 26-40 points <= 11 mm
-at the neck/armpit (pulled in by the stand). Closest to the buttons 3.6 mm (none inside). Rows vs T8 body alone:
-collar_height 0.096 (0.055), collar_upright 62.5 (72.7), front_meets 0.718 (0.862), soft_cloth_smooth 3.93 (2.39); same
-PASS (cutaway 0.181, hem 3.8 mm). Sheets /mnt/data/hifipushie/t9/sheet_b2_{whole,neck}.png: jacket outside the shirt
-everywhere, shirt collar hidden in the stand, but the stand flares out and dips at CF; boxy; shirt tails below the hem.
-NEXT: an approved shirt first (T7's NEXT); then the stand's ease over the shirt collar (collarEase from the shirt's neck
-standoff) or the shirt's collar tucked; a hang over the layered collider is unverified.
+## T9 + T12 (2026-11-02): layering (C292, C294; chain_layers.py, chain_press.py, tests/test_chain_layers.py)
+Step 1 `over: [...]` (validated); step 2 `layers` {mode: visible (default) | full, why}. ORDER: the under's steps 1 + 4 and
+a build (not approved); its fit after the over's build; both approved at the over's 7a (dev: HIFIPUSHIE_LAYER_UNDER=built).
+COLLIDER: body + the under's THICKNESS where its soft cloth covers (room()) + its stiff parts' and details' real stand-off
+(T9 inflated over the whole loose shirt). FIT (chain_press, in the gate): the under's last solve, chains first, with the
+over's inner side as an outer limit where it covers; stiff parts stay; visible mode drops cloth hidden beyond 30 mm of the
+seen, holds the cut edge, advises step 1 `build` per piece; <over job>/under_<u>.pkl. GATE: links the under's build held
+broken past MAX_FREE_PCT, then the over inside the fit: refused by name.
+Proof (HOME /mnt/data/hifipushie/t12/ws; shirt = T7's REFUSED build, own free worst 49 %): 1 build (1135 s) REFUSED: shirt
+40.4 % off at 41 links its build held, 1224 points left outside the limit (waist / chest). Jacket rows T12 / T8 / T9:
+collar_height .084/.055/.096, upright 64.6/72.7/62.5, front_meets .77/.862/.718, smooth 2.05/2.39/3.93, cutaway
+.109 FAIL/.14/.181, hem_lr 8.5/3.9/3.8 mm; jacket free worst 34.9 % at back.L cbNeck (T8 0.0): the shirt's stiff open
+collar pushes the stand. Shirt: sleeves 99.5 % hidden (85 % pressed, in 8-9 mm), yoke / stand / collar 99 % hidden (collar
+inside the stand), cuffs 72-77 % seen, fronts / back 61-67 % kept. Sheets /mnt/data/hifipushie/t12/sheet_b1_{pair,neck,
+jacket_vs_t8}.png. By eye: jacket alone = T8's (a little broader at the neck): no inflation; shirt pokes through at chest /
+shoulder blades and its tails are a lumpy skirt with a ragged cut: the shirt build's fault, as gated.
+LEFT: full mode's joint hang (merge both write_job arrays, plain body, self_collision, split, finish_hang each); seen
+parts riding the over's hang; an open collar laid OUTSIDE a lapel needs a plan field (piece `layer` vs the over's).
+NEXT: an approved shirt build (T7's NEXT), rebuild the pair; if the stand still breaks, the shirt collar `build: omit`
+under a closed stand (the advice) or the stand eased over it in the draft.
