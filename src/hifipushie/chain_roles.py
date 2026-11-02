@@ -280,6 +280,19 @@ def tube_group_points(b, t, v):
 
 
 # ---- the stand
+def _top_edge(net, piece, sb):
+    """A stand's free top edge, in outline order and the neck chain's direction: the outline arc off the neck seam,
+    where it is (nearly) farthest from it (the ends' upright edges left out: ordered by x they zig-zagged)."""
+    lp = np.asarray(net.loop(piece))
+    ins = np.isin(lp, sb)
+    k = next(i for i in range(len(lp)) if ins[i] and not ins[(i + 1) % len(lp)])
+    lp, ins = np.roll(lp, -(k + 1)), np.roll(ins, -(k + 1))
+    arc = lp[: int(np.argmax(ins))] if ins.any() else lp
+    d = cKDTree(net.uv[sb]).query(net.uv[arc])[0]
+    top = arc[d >= 0.9 * d.max()]
+    return top[::-1] if net.uv[top[0], 0] > net.uv[top[-1], 0] else top
+
+
 def stand_ring(b):
     """The STAND: the band stage's ring with its own top edge (module doc). Sets b.sb / b.st / b._band_lines like
     band_closed, so fill_band, stiff_last and the soft network hold it as they hold a band."""
@@ -296,11 +309,7 @@ def stand_ring(b):
     if len(soft_sewn) < 4:
         raise ChainRefused(f"{R.band}: a stand not sewn to the body cloth's neckline. next: sew its neck edge (draft_pattern)")
     sb = b.order_x(soft_sewn)
-    bv = net.verts(R.band)
-    border = np.asarray(net.M.get("border"), bool) if net.M.get("border") is not None else np.ones(net.n, bool)
-    bb = bv[border[bv] & ~np.isin(bv, sb)]
-    dist = cKDTree(uv[sb]).query(uv[bb])[0]
-    st = b.order_x(bb[dist > 0.7 * dist.max()])
+    st = _top_edge(net, R.band, sb)
     LB = np.linalg.norm(np.diff(uv[sb], axis=0), axis=1)
     sB = np.r_[0, np.cumsum(LB)]
     C = float(sB[-1])
