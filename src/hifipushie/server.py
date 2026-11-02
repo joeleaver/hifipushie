@@ -3530,6 +3530,13 @@ def chain_garment(name: str, garment: str, wear: str | None = None, opening: flo
         return _chain_gate(name, garment, spec)
     w = chain_plan.planned_wear(_cs.load_plan(name, garment), wear, opening)  # (T7: the plan wins; raises on a contradiction)
     wear = w["state"]
+    from . import chain_layers as _cl
+    try:  # (worn over another garment: its approved build is the collider, part of the job key; T9)
+        under = _cl.under_for(name, garment)
+    except _cl.LayerRefused as e:
+        return f"{name}:{garment}: refused (layering): {e}"
+    if under:
+        w["under"] = under
     if waive:
         if not isinstance(waive, dict) or not all(isinstance(v, str) and v.strip() for v in waive.values()):
             raise ValueError("waive: {structure row id: the reason it is accepted}, each reason a sentence")
@@ -3560,7 +3567,7 @@ def chain_garment(name: str, garment: str, wear: str | None = None, opening: flo
     while st.get("stage") in cg.RUNNING and _t.time() - t0 < float(wait):
         _t.sleep(min(2.0, float(wait)))
         st = cg.live_status(d)
-    return _chain_answer(name, garment, wear, st, opening)
+    return _cl.with_answer(_chain_answer(name, garment, wear, st, opening), st)
 
 
 def _chain_answer(name: str, garment: str, wear: str, st: dict, opening: float | None = None) -> str:
@@ -3698,7 +3705,7 @@ def body_tape(name: str, measurements: list | None = None, garment: str = "", la
 def garment_plan(name: str, garment: str, step: str, plan: dict | str, look: bool = True):
     """STEPS 0-2 OF A GARMENT (the record's start, any garment): step="read" (kind, cloth as numbers, fit, the views),
     "parts" (every piece and detail: seen / occluded / inferred, how far built, stiff, layer; the seams, each with the
-    body measurements or style proportion its length needs) or "style" (the ONE worn state per closure, bends, pose,
+    body measurements or style proportion its length needs; over: the garments it is worn over) or "style" (the ONE worn state per closure, bends, pose,
     the rows the photo judges). plan: that step's dict. Refused by name when incomplete or inconsistent; else written
     into the garment record with a look drawn over the reference (look). Details: guide(topic="garment_plan")."""
     from . import garment_plan as gp

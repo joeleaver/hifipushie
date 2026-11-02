@@ -13,7 +13,8 @@ STEP 0 "read": {kind, views, cloth, fit, notes?}
           stiffness: drapey|soft|medium|crisp|stiff|rigid; colour: [r,g,b] | {at: [[u,v],..], view}; print?: {kind,
           repeat_mm, colours?, source}; grain: text}}   (a fabric name fills the numbers from garment_kb.json)
   fit    {region: {ease_mm, source}}                  (chest, waist, hip, sleeve, neck... any region names)
-STEP 1 "parts": {pieces, details, closures, seams, worn_over?}
+STEP 1 "parts": {pieces, details, closures, seams, over?}
+  over     [garment names of this model it is worn over] (T9: built on their approved builds; chain_layers)
   pieces   {name: {what, cloth (a step-0 cloth), seen: seen|occluded|inferred, from (convention; needed unless seen),
             build: full|simplified|omit, why (unless full), stiff: bool, layer: int (0 = next to the body / the garment
             under it), where?: {view, outline: [[u,v],..]} (needed when seen)}}
@@ -335,6 +336,12 @@ def write(model: str, garment: str, step: str, plan: dict, look: bool = True) ->
         raise PlanRefused("step 2 refused: step 1 (parts) has no inventory yet: garment_plan step='parts' first")
     p = check_read(plan) if sid == "0" else check_parts(plan, out["0"]) if sid == "1" else \
         check_style(plan, out["0"], out["1"])
+    if sid == "1" and "over" in p:  # (worn over another garment of this model: exists, has a record, no loop; T9)
+        from . import chain_layers as cl
+        try:
+            p["over"] = cl.check_over(model, garment, p["over"])
+        except cl.LayerRefused as e:
+            raise PlanRefused(f"step 1 (parts) refused: {e}") from None
     ref = p["views"][0]["image"] if sid == "0" else None
     st = gr.write(model, garment, sid, "done", output=p, reference=ref, by="garment_plan")
     paths = []
@@ -355,6 +362,8 @@ def text(model: str, garment: str, r: dict) -> str:
                      f" ({c['source']})")
         L.append("  fit: " + ", ".join(f"{k} +{v['ease_mm']} mm" for k, v in p["fit"].items()))
     elif sid == "1":
+        if p.get("over"):
+            L.append(f"  worn over: {', '.join(p['over'])} (built over their approved builds: chain_layers, T9)")
         for n, x in p["pieces"].items():  # (every item of the look's legend: C288, the look is for shape)
             L.append(f"  piece {n}: {x['seen']}, build {x['build']}, {'stiff' if x['stiff'] else 'soft'}, layer {x['layer']}"
                      + (f", from {x['from']}" if x["seen"] != "seen" and x.get("from") else "")
