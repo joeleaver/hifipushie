@@ -337,7 +337,15 @@ def reading(it: dict, ans, views: list) -> dict:
         out["at_px"] = [list(map(float, p0)), list(map(float, p1))]
     elif typ == "colour" and (ans.get("points") or ans.get("value")):
         if ans.get("value") is not None:
-            out["value"] = ans["value"]
+            # (C278) "#rrggbb" is read as [r, g, b], the sampled form compare needs (a hex value read UNMEASURED:
+            # "could not convert string to float")
+            hv = ans["value"]
+            if isinstance(hv, str):
+                h = hv.strip().lstrip("#")
+                if len(h) != 6:
+                    raise ValueError(f"colour {hv!r}: \"#rrggbb\" or [r, g, b] 0..255, or points on the picture")
+                hv = [int(h[i:i + 2], 16) for i in (0, 2, 4)]
+            out["value"] = [int(c) for c in hv]
         else:
             out["value"] = _sample_colour(v["image"], list((ans.get("points") or {}).values()))
             out["at_px"] = [list(map(float, p)) for p in ans["points"].values()]
