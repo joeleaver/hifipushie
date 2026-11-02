@@ -176,12 +176,15 @@ def _arc_fracs(X: np.ndarray, n: int) -> np.ndarray:
     return np.interp(np.linspace(0, s[-1], n + 1), s, np.arange(len(X), dtype=float))
 
 
-def boundaries(drape: dict, h: float) -> dict:
+def boundaries(drape: dict, h) -> dict:
     """Every kept panel's outer loop split into runs (seam runs and free runs), each resampled at ~h. A seam is
     resampled ONCE (canonical fractions along its pair list) and both sides take those samples: the 3D point is the
     mean of the two sides, so the two panels meet exactly. Returns {piece: {"loop2d", "loop3d", "gid", "free"}}:
-    gid = a global id per boundary sample (shared by both sides of a seam), free = per loop edge, not on a seam."""
+    gid = a global id per boundary sample (shared by both sides of a seam), free = per loop edge, not on a seam.
+    h: one edge length, or {piece name: h} (a seam takes the finer of its two sides; garment_export: stiff pieces finer)."""
     V, uv, F, pc = drape["V"], drape["uv"], drape["F"], drape["piece"]
+    hd = h if isinstance(h, dict) else None
+    hp = (lambda n: hd[n]) if hd is not None else (lambda n: h)
     sew, ss = drape["sew"], drape["sew_seam"]
     side = {}  # vertex -> (seam, 'a'|'b', partner)
     for (a, b), s in zip(sew, ss):
@@ -238,7 +241,7 @@ def boundaries(drape: dict, h: float) -> dict:
             pa = {int(a): int(b) for (a, b), t in zip(sew, ss) if t == s}
             A = np.array(ch); B = np.array([pa[x] for x in ch])
             L = 0.5 * (np.linalg.norm(np.diff(V[A], axis=0), axis=1).sum() + np.linalg.norm(np.diff(V[B], axis=0), axis=1).sum())
-            m = max(1, int(round(L / h)))
+            m = max(1, int(round(L / min(hp(n), hp(drape["names"][int(pc[B[0]])])))))
             f = _arc_fracs(0.5 * (V[A] + V[B]), m)
             P = 0.5 * (_interp_chain(V[A], f) + _interp_chain(V[B], f))
             c = {"P": P, "uvA": _interp_chain(uv[A], f), "uvB": _interp_chain(uv[B], f), "gid": new_ids(m + 1)}
@@ -257,7 +260,7 @@ def boundaries(drape: dict, h: float) -> dict:
                 free = False
             else:
                 X = np.array(ch)
-                m = max(1, int(round(np.linalg.norm(np.diff(V[X], axis=0), axis=1).sum() / h)))
+                m = max(1, int(round(np.linalg.norm(np.diff(V[X], axis=0), axis=1).sum() / hp(n))))
                 f = _arc_fracs(uv[X], m)
                 u2, P, g, free = _interp_chain(uv[X], f), _interp_chain(V[X], f), new_ids(m + 1), True
             L2.append(u2[:-1]); L3.append(P[:-1]); G += g[:-1]; FR += [free] * (len(u2) - 1)
@@ -290,9 +293,10 @@ def _bary_map(uvp: np.ndarray, Q: np.ndarray, Vp: np.ndarray, Fp: np.ndarray) ->
     return np.einsum("nk,nkd->nd", W, Vp[Fp[T]])
 
 
-def remesh_panel(drape: dict, name: str, bd: dict, h: float) -> dict:
+def remesh_panel(drape: dict, name: str, bd: dict, h: float, lines=()) -> dict:
     """One panel re-gridded in 2D at edge ~h (boundary samples + a hex grid inside, Delaunay, trimmed to the
-    panel), mapped onto the drape. Returns {"V", "uv", "T", "gid" (boundary vertices; -1 inside), "free_edges"}."""
+    panel), mapped onto the drape. lines: 2D polylines inside the panel (fold lines: a collar's roll, a pressed front
+    band) sampled at h / 2 and kept as vertex rows, so a fold isn't cut by a chord (garment_export). Returns {"V", "uv", "T", "gid" (boundary vertices; -1 inside), "free_edges"}."""
     i = drape["names"].index(name)
     pc, F = drape["piece"], drape["F"]
     Fi = F[(pc[F] == i).all(1)]
@@ -310,6 +314,16 @@ def remesh_panel(drape: dict, name: str, bd: dict, h: float) -> dict:
     if len(G):
         dd, _ = cKDTree(dense).query(G)
         G = G[dd > 0.6 * h]
+    Ls = [np.asarray(L, float) for L in lines if len(L) > 1]
+    if Ls:
+        S = np.concatenate([_interp_chain(L, np.linspace(0, len(L) - 1, max(2, int(np.ceil(
+            np.linalg.norm(np.diff(L, axis=0), axis=1).sum() / (0.5 * h))) + 1))) for L in Ls])
+        S = S[poly.contains_points(S)]
+        if len(S):
+            S = S[cKDTree(dense).query(S)[0] > 0.3 * h]
+        if len(G) and len(S):
+            G = G[cKDTree(S).query(G)[0] > 0.45 * h]
+        G = np.vstack([G, S]) if len(S) else G
     P2 = np.vstack([loop2, G])
     tri = Delaunay(P2).simplices
     cen = P2[tri].mean(1)

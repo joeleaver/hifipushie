@@ -20,7 +20,7 @@ grow_plant edit_plant look_plant look_plants grow_stand look_stand export_stand 
 export_plant wind_plant sync_plant plant_history heavy_status heavy_queue make_clutter look_clutter
 clutter_kit""".split()
 # added since: the artist block-in (2026-10-10)
-ADDED = {"garment_details", "block_in_start", "block_in_look", "block_in_step", "block_in_solve", "lid_read", "block_in_expression", "gnm_controls", "lip_read",
+ADDED = {"garment_details", "export_garment", "block_in_start", "block_in_look", "block_in_step", "block_in_solve", "lid_read", "block_in_expression", "gnm_controls", "lip_read",
          "brow_read", "eye_ruler", "face_ruler", "tie_hair", "skin_from_reference", "hair_from_reference", "skin_project",
          "pattern_check", "alter_pattern", "review_view", "judge_asset",  # (the garment gates as tools, 2026-10-19)
          "chain_garment", "look_chain",  # (the one way to start a garment; the older routes are gated, C262)

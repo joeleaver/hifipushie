@@ -184,6 +184,23 @@ is SHAPE (C288): the build with its details beside the reference + the flat piec
 (count, marks in pattern terms, sizes) are in the text. chain_garment's step 7 is done only when every inventoried detail
 is placed (or there are none); until then 7a can't be written, so the build waits for this call.
 
+### `export_garment`
+`export_garment(name, garment, wear="open", role="main_npc", look=True)`: step 10, the chain garment as a game asset
+(src/hifipushie/garment_export.py docstring: the method). The hung garment (final.pkl; else the build) is the HIGH poly; the
+game mesh is a re-grid of the FLAT PATTERN mapped onto it (garment_game's remesh: seams sampled once and shared, stiff
+(made) pieces to 8 rows across, fold lines kept as vertex rows), outer + inner faces + rims on free edges, so the UVs ARE
+the pattern (pieces packed in one square). The grid is the finest that fits the role's `clothing` LOD0 budget
+(budgets.json; details count too), between 6 and 40 mm; over budget at 40 mm is refused with what to change (a bigger role,
+fewer pieces built in full at step 1, simpler details at step 7); a budget is never changed to pass. Step 7's details
+(details.pkl) are their own meshes and materials. Weights: read off the body (rig.skin_parts: the base body's own at its
+surface), Mixamo bone names (rig.rig_bones); a detail takes its nearest garment vertex's. Gate rows (numbers in the text):
+triangles <= budget; UV stretch (3D / pattern area per triangle) p95 no more than the drape's + 0.03, p5 no more than 0.10
+below it (chords across folds); no open pattern edges; the weight check (LeftArm raised 45 deg: each vertex's distance to
+the body changes <= 12 mm p95 where the body moved). Refused unless step 9 is approved (internally an approved 7a exports the
+build; step 10 is then not written: the text says so). Writes <job>/export/<garment>.glb (+ _export.json, the look GLBs)
+and step 10; the look is SHAPE: the GLB with the body in EEVEE (asset.preview), rest beside the reference, and posed.
+Not done: LODs, the normal bake of the folds (garment_game.bake), layering culls (a shirt under a jacket).
+
 ### `alter_pattern`
 
 `alter_pattern(name, garment, ops, replace=False, note='')`
