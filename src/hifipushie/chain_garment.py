@@ -29,7 +29,10 @@ THE ORDER (each from a visible fault; C259-C262): stiff parts first, soft parts 
    straight, the V (open); the hem level; sleeve length and cuff ease. Each row: target, source, and on FAIL what to
    change. The job ends "structure_failed" with its rows unless every row passes or is waived by name with a reason. The
    hang adds folds by design: a hung result never judges a structure fault, nor hides one.
-8. HANG (hang()): the soft cloth under gravity in ZOZO, stiff parts held; lengths have the last word afterwards.
+7a. PRE-SIM APPROVAL (chain_presim.py): after a pass the job stops at "awaiting_approval" until the garment record's step
+   7a is approved (or HIFIPUSHIE_PRESIM_APPROVAL=optional); the same call then resumes from built.pkl, never rebuilds.
+8. HANG (hang()): the soft cloth under gravity in ZOZO, stiff parts held; lengths have the last word afterwards. Its gate:
+   no face past the thread cap (chain_presim.threads_gate).
    The collider is the whole body: nothing is cut from it. An illegal start is a build fault and is refused by name.
 
 Every stage ends in chain_net.project; Build.reads holds the numbers; a length that can't hold raises ChainRefused naming
@@ -1617,13 +1620,14 @@ def job_dir(model: str, garment: str, wear: str) -> Path:
     return d
 
 
-RUNNING = ("queued", "building", "built", "hanging", "hung")  # stages a live worker is in; the rest are its ends
+RUNNING = ("queued", "building", "resuming", "built", "hanging", "hung")  # stages a live worker is in; the rest are its ends
 BUILD_GB = 8.0  # the build's real peak (rss read per job: status "peak_gb"); the hang declares its own kind
 
 
 def job_key(spec: dict, garment: str, wear: dict) -> str:
     """What a job answers for: the body, this garment, the wear. Another garment on the model doesn't change it."""
     rest = {k: v for k, v in spec.items() if k != "cloth"}
+    wear = {k: v for k, v in wear.items() if k not in ("waive", "resume")}  # (a waiver re-reads the saved build, T2)
     return hashlib.sha1(json.dumps([rest, spec["cloth"][garment], wear], sort_keys=True, default=str).encode()).hexdigest()[:16]
 
 
@@ -1667,31 +1671,50 @@ def elapsed(st: dict) -> int:
 
 
 def worker(model: str, garment: str, wear: dict):
-    """Build, then hang. Every stage writes its numbers to status.json; a refusal is a result, not a crash."""
-    from . import chain_structure as cs, resources, zozo_hang as zh
+    """Build, structure, pre-sim approval (step 7a, chain_presim.py), then hang. Every stage writes its numbers to
+    status.json; a refusal is a result, not a crash. wear["resume"]: the build is loaded from built.pkl, never rebuilt."""
+    from . import chain_presim as cp, chain_structure as cs, resources, zozo_hang as zh
     d = job_dir(model, garment, wear["state"])
-    _status(d, stage="building", pid=os.getpid())
+    resume = wear.get("resume") or ""  # ("approved" / "waiver": from built.pkl, see chain_presim)
+    _status(d, stage="resuming" if resume else "building", pid=os.getpid())
     note = lambda m: _status(d, note=str(m)[:200])
     waive = dict(wear.get("waive") or {})
-    wear = {k: v for k, v in wear.items() if k != "waive"}
+    wear = {k: v for k, v in wear.items() if k not in ("waive", "resume")}
     import pickle
     try:
-        with resources.heavy(f"chain build {model}:{garment} {wear['state']}", gb=BUILD_GB, log=note):
-            pat, body, fabric = load_garment(model, garment)
-            b = GarmentBuild(pat, body, wear, log=lambda *_: None)
-            b.run()
-        pickle.dump({"X": b.X, "M": pat.M, "bV": body.V, "bT": body.T, "reads": b.reads,
-                     "at": {k: np.asarray(v).tolist() for k, v in body.at.items()}}, open(d / "built.pkl", "wb"))
-        _status(d, stage="built", reads=b.reads, note="", build_s=elapsed(status(d)), peak_gb=round(_peak_gb(), 1))
-        sc = cs.check(b.X, pat.M, body.V, body.T, body.at, wear, cs.load_refs(model), garment, waive)  # judge the BUILD (C279)
-        sc["reads"].pop("front_gap_profile", None)
+        if resume:  # (approved, or a waiver: the saved build, as it was)
+            b, r = cp.load_build(d)
+            pat, body, fabric = b.pat, b.body, r.get("fabric") or {}
+        else:
+            with resources.heavy(f"chain build {model}:{garment} {wear['state']}", gb=BUILD_GB, log=note):
+                pat, body, fabric = load_garment(model, garment)
+                b = GarmentBuild(pat, body, wear, log=lambda *_: None)
+                b.run()
+            bid = cp.save_build(d, b, pat, body, fabric)
+            _status(d, stage="built", reads=b.reads, note="", build_s=elapsed(status(d)), peak_gb=round(_peak_gb(), 1),
+                    build_id=bid, build_threads=b.reads.get("threads"))
+        sc = status(d).get("structure") if resume == "approved" else None  # (approved as read: not read again)
+        if not sc:
+            sc = cs.check(b.X, pat.M, body.V, body.T, body.at, wear, cs.load_refs(model), garment, waive)  # the BUILD (C279)
+            sc["reads"].pop("front_gap_profile", None)
         _status(d, structure=sc)
         b.gate_lengths()  # (a length refusal is answered first; the structure rows stay in the status beside it)
         if not cs.passed(sc):
             _status(d, stage="structure_failed")
             return
+        gr_msg = gr_from_chain(model, garment, wear["state"], d, dict(status(d), stage="presim"))
+        go, why, msg = cp.gate_presim(model, garment, wear["state"], d, status(d))
+        if not go:  # (step 7a: nothing is hung that wasn't approved built)
+            sheet = None
+            try:
+                from . import garment_record as gr
+                sheet = str(gr.sheet(model, garment))
+            except Exception:  # (the sheet is a look; its failure never loses the build)
+                pass
+            _status(d, stage=cp.AWAIT, presim=why, sheet=sheet, record="; ".join(m for m in (gr_msg, msg) if m))
+            return
         jd = b.write_job(d / "zozo", fabric, name=f"chain:{model}:{garment}")
-        _status(d, stage="hanging", reads=b.reads)
+        _status(d, stage="hanging", reads=b.reads, presim=why)
         out, _ = zh.run(jd, log=note, timeout=3000)
         X = b.finish_hang(out["V"] if hasattr(out, "keys") else out[0])
         pickle.dump({"X": X, "M": pat.M, "bV": body.V, "bT": body.T, "reads": b.reads}, open(d / "final.pkl", "wb"))
@@ -1704,13 +1727,18 @@ def worker(model: str, garment: str, wear: dict):
         import traceback
         _status(d, stage="failed", error=f"{type(e).__name__}: {e}", trace=traceback.format_exc()[-1500:])
     finally:  # (steps 5, 6 and 8 of the garment record; a refusal of the record's order is noted, the job stands)
-        try:
-            from . import garment_record as gr
-            msg = gr.from_chain(model, garment, wear["state"], d, status(d))
-        except Exception as e:  # (the record never breaks a build)
-            msg = f"record: not written: {type(e).__name__}: {e}"
-        if msg:
-            _status(d, record=msg)
+        if status(d).get("stage") != cp.AWAIT:
+            msg = gr_from_chain(model, garment, wear["state"], d, status(d))
+            if msg:
+                _status(d, record=msg)
+
+
+def gr_from_chain(model: str, garment: str, wear: str, d: Path, st: dict) -> str:
+    try:
+        from . import garment_record as gr
+        return gr.from_chain(model, garment, wear, d, st)
+    except Exception as e:  # (the record never breaks a build)
+        return f"record: not written: {type(e).__name__}: {e}"
 
 
 def _peak_gb() -> float:

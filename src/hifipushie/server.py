@@ -3500,7 +3500,8 @@ def chain_garment(name: str, garment: str, wear: str = "closed", opening: float 
     as chains of the pattern's lengths. wear: "closed" or "open"; opening: only with "open" (collar points apart, neck
     widths). Refuses until pattern_check passes. A JOB: build (2-10 min), STRUCTURE check of the build beside the
     reference, then the hang only on its pass. Answers its stage within wait (s); call again, same arguments, to poll;
-    rebuild=True starts over; waive={row: why} accepts failing structure rows. Answers end in next:.
+    rebuild=True starts over; waive={row: why} accepts failing structure rows. After a pass it waits for pre-sim approval
+    (Joe's), then the same call hangs. Answers end in next:.
     guide(topic="chain_garment")."""
     import time as _t
     from . import chain_garment as cg
@@ -3537,6 +3538,12 @@ def chain_garment(name: str, garment: str, wear: str = "closed", opening: float 
             (d / f).unlink(missing_ok=True)
         cg.write_status(d, stage="queued", key=key, wear=w, t0=_t.time())
         cg.write_status(d, pid=_chain_spawn(d, name, garment, w))
+    else:  # (step 7a approved, or a new waiver: the same call resumes from the saved build, never rebuilds; T2)
+        from . import chain_presim as cp
+        why = cp.resume_wanted(name, garment, d, st, w)
+        if why:
+            cg.write_status(d, stage="queued", wear=w, t0=_t.time(), resumed=why, note="")
+            cg.write_status(d, pid=_chain_spawn(d, name, garment, dict(w, resume="waiver" if "waiver" in why else "approved")))
     t0 = _t.time()
     st = cg.live_status(d)
     while st.get("stage") in cg.RUNNING and _t.time() - t0 < float(wait):
@@ -3567,10 +3574,14 @@ def _chain_answer(name: str, garment: str, wear: str, st: dict, opening: float |
                 f"\nnext: {look} to see the build beside your reference; then each row's change (alter_pattern, "
                 f"pattern_check, then {again}); a row the reference can't decide: {again[:-2]}, \"waive\": {{\"<row id>\": "
                 f"\"<why>\"}}}})")
+    if stage == "awaiting_approval":
+        from . import chain_presim as cp
+        return cp.awaiting_text(name, garment, wear, st, f"{name}:{garment} ({wear}): built; STRUCTURE "
+                                f"{(st.get('structure') or {}).get('verdict')}\n{_chain_text(st)}", again, look)
     if stage == "failed":
         return (f"{name}:{garment} ({wear}): the build failed: {st.get('error')}\nnext: report this to the coordinator as a tool "
                 f"fault, with the text above; don't work round it. {_chain_call(name, garment, wear, opening, rebuild=True)} starts over")
-    head = {"queued": "starting", "building": "building", "built": "built; the structure check is reading the build", "hanging": "built; the hang is running",
+    head = {"queued": "starting", "building": "building", "resuming": "resuming from the saved build (no rebuild)", "built": "built; the structure check is reading the build", "hanging": "built; the hang is running",
             "hung": "hung; the last lengths are being read", "done": "built and hung"}.get(stage, stage)
     head += f" ({cg.elapsed(st)} s)" if stage != "done" else ""
     if st.get("note"):
@@ -3583,7 +3594,12 @@ def _chain_answer(name: str, garment: str, wear: str, st: dict, opening: float |
                 + ")" + (f"\n{body}" if body else ""))
     txt = f"{name}:{garment} ({wear}): {head}" + (f"\n{body}" if body else "") + (f"\n  {st['record']}" if st.get("record") else "")
     if stage == "done":
-        return f"{txt}\nnext: {look} beside your reference; review_view one view per call"
+        from . import chain_presim as cp
+        g = cp.threads_gate(st)
+        if g and g["verdict"] == "FAIL":
+            return (f"{txt}\n{g['line']}\nnext: {look} to find where the cloth is pulled; then back to step {g['back_to']} "
+                    f"as the change: line says (the cap is the cloth's, never a setting)")
+        return f"{txt}" + (f"\n{g['line']}" if g else "") + f"\nnext: {look} beside your reference; review_view one view per call"
     if stage in ("queued", "building"):
         return f"{txt}\nnext: {again} for the stage; nothing to look at yet"
     return f"{txt}\nnext: {again} for the stage; {look} shows the build until the hang ends"

@@ -226,52 +226,67 @@ def test_a_design_defaults_to_the_fit_it_drafts():
 
 # ---- the pre-sim STRUCTURE gate (C279): judge the build, never the hang
 
-def _stub_worker(monkeypatch, tmp_path, verdict: str):
-    """cg.worker on stubs: no build, no ZOZO; the structure check answers `verdict`. Returns what the hang saw."""
+class _Pat:  # (module level: the saved build pickles them, as it pickles the real ones)
+    M = {"names": ["front.L"], "piece": [0, 0, 0], "F": [[0, 1, 2]]}
+
+
+class _Body:
+    V, T, at = np.zeros((3, 3)), np.array([[0, 1, 2]]), {"hps.L": [0.06, 0.0, 1.5]}
+
+
+_SEEN: dict = {}
+
+
+class _Build:
+    def __init__(self, pat, body, wear, log=None):
+        _SEEN["build"] += 1
+        self.pat, self.body, self.log = pat, body, log
+        self.X, self.reads, self.wear = np.zeros((3, 3)), {"threads": dict(_SEEN["build_threads"])}, wear
+
+    def run(self):
+        pass
+
+    def gate_lengths(self):
+        pass
+
+    def write_job(self, jd, fabric, name=""):
+        return jd
+
+    def finish_hang(self, V):
+        self.reads["threads"] = dict(_SEEN["hang_threads"])
+        return np.ones((3, 3))
+
+
+def _stub_worker(monkeypatch, tmp_path, verdict: str, hang_over: int = 0, build_over: int = 0):
+    """cg.worker on stubs: no build, no ZOZO; the structure check answers `verdict` (a waived row passes). Returns counts."""
     import contextlib
     from hifipushie import chain_structure as cs, resources, store, zozo_hang as zh
     monkeypatch.setattr(store, "HOME", tmp_path)
+    monkeypatch.setenv("HIFIPUSHIE_APPROVED", str(tmp_path / "approved.json"))
+    monkeypatch.delenv("HIFIPUSHIE_PRESIM_APPROVAL", raising=False)
     monkeypatch.setattr(resources, "heavy", lambda *a, **k: contextlib.nullcontext())
-    seen = {"hang": 0, "check": 0}
-
-    class Pat:
-        M = {"names": ["front.L"], "piece": [0, 0, 0], "F": [[0, 1, 2]]}
-
-    class Body:
-        V, T, at = np.zeros((3, 3)), np.array([[0, 1, 2]]), {"hps.L": [0.06, 0.0, 1.5]}
-
-    class Build:
-        def __init__(self, pat, body, wear, log=None):
-            self.X, self.reads, self.wear = np.zeros((3, 3)), {}, wear
-
-        def run(self):
-            pass
-
-        def gate_lengths(self):
-            pass
-
-        def write_job(self, jd, fabric, name=""):
-            return jd
-
-        def finish_hang(self, V):
-            return np.ones((3, 3))
+    _SEEN.clear()
+    _SEEN.update(hang=0, check=0, build=0, build_threads={"p99_pct": 0.5, "max_pct": 1.0, "over_cap": build_over, "faces": 100},
+                 hang_threads={"p99_pct": 1.9, "max_pct": 6.1 if hang_over else 1.9, "over_cap": hang_over, "faces": 100})
 
     def check(X, M, bV, bT, at, wear, refs, garment, waive):
-        seen["check"] += 1
-        seen["waive"] = waive
-        rows = [{"id": "collar_under_jaw", "status": "PASS" if verdict == "PASS" else "FAIL", "stage": 1, "ours": {}}]
-        return {"verdict": verdict, "rows": rows, "reads": {}}
+        _SEEN["check"] += 1
+        _SEEN["waive"] = waive
+        ok = verdict == "PASS" or "collar_under_jaw" in (waive or {})
+        rows = [{"id": "collar_under_jaw", "status": "PASS" if verdict == "PASS" else "FAIL", "stage": 1, "ours": {},
+                 **({"waived": waive["collar_under_jaw"]} if verdict != "PASS" and ok else {})}]
+        return {"verdict": "PASS" if verdict == "PASS" else "PASS_WAIVED" if ok else "FAIL", "rows": rows, "reads": {}}
 
     def run(jd, log=None, timeout=0):
-        seen["hang"] += 1
+        _SEEN["hang"] += 1
         return {"V": np.ones((3, 3))}, None
 
-    monkeypatch.setattr(cg, "load_garment", lambda m, g: (Pat(), Body(), {}))
-    monkeypatch.setattr(cg, "GarmentBuild", Build)
+    monkeypatch.setattr(cg, "load_garment", lambda m, g: (_Pat(), _Body(), {}))
+    monkeypatch.setattr(cg, "GarmentBuild", _Build)
     monkeypatch.setattr(cs, "check", check)
     monkeypatch.setattr(cs, "load_refs", lambda m: None)
     monkeypatch.setattr(zh, "run", run)
-    return seen
+    return _SEEN
 
 
 def test_structure_fail_stops_before_the_hang(monkeypatch, tmp_path):
@@ -286,9 +301,10 @@ def test_structure_fail_stops_before_the_hang(monkeypatch, tmp_path):
 
 def test_structure_pass_hangs_and_a_waiver_reaches_the_check(monkeypatch, tmp_path):
     seen = _stub_worker(monkeypatch, tmp_path, "PASS")
+    monkeypatch.setenv("HIFIPUSHIE_PRESIM_APPROVAL", "optional")  # (the shipped agents' setting: no pre-sim stop)
     cg.worker("m", "shirt", {"state": "open", "waive": {"collar_tilt": "the reference is a turned head"}})
     st = cg.status(cg.job_dir("m", "shirt", "open"))
-    assert st["stage"] == "done" and seen["hang"] == 1
+    assert st["stage"] == "done" and seen["hang"] == 1 and seen["build"] == 1
     assert seen["waive"] == {"collar_tilt": "the reference is a turned head"}
 
 
@@ -344,3 +360,82 @@ def test_structure_fail_answer_lists_rows_and_look_shows_the_build(monkeypatch, 
     assert shown == [0.0] and "the BUILD (before any hang)" in res[-1]
     with pytest.raises(ValueError, match="waive"):
         server.chain_garment("m", "shirt", waive={"collar_tilt": ""})
+
+
+# ---- step 7a (pre-sim approval) and step 8 (threads past the cap): T2
+
+def _presim_model(monkeypatch, tmp_path, verdict="PASS", **kw):
+    """The real tool and the real worker, in-process on the stub build; the record ready up to step 4."""
+    import os
+    from hifipushie import garment_record as gr, store
+    seen = _stub_worker(monkeypatch, tmp_path, verdict, **kw)
+    monkeypatch.setattr(store, "load", lambda n: {"bones": {}, "cloth": {"shirt": {"design": {"kind": "shirt"}}}})
+    monkeypatch.setattr(server, "_chain_gate", lambda *a: None)
+    for sid in ("0", "1", "2", "3", "4"):
+        gr.write("m", "shirt", sid, "done", output={"n": sid})
+    calls = []
+
+    def spawn(d, name, garment, w):
+        calls.append(w)
+        cg.worker(name, garment, w)
+        return os.getpid()
+    monkeypatch.setattr(server, "_chain_spawn", spawn)
+    return seen, calls
+
+
+def _approve_7a(tmp_path):
+    import json
+    from hifipushie import garment_record as gr
+    rec = gr.load("m", "shirt")
+    (tmp_path / "approved.json").write_text(json.dumps({"approved": {"garment/m.shirt.7a": {
+        "model": f"{gr.path('m', 'shirt')}#{rec['steps']['7a']['digest']}", "by": "joe"}}, "log": []}))
+
+
+def test_presim_awaits_approval_then_resumes_from_the_saved_build(monkeypatch, tmp_path):
+    from hifipushie import garment_record as gr
+    seen, calls = _presim_model(monkeypatch, tmp_path)
+    t = server.chain_garment("m", "shirt", wait=5)
+    d = cg.job_dir("m", "shirt", "closed")
+    assert cg.status(d)["stage"] == "awaiting_approval" and seen["hang"] == 0 and not (d / "final.pkl").exists()
+    assert "STOPPED BEFORE THE HANG" in t and "bin/approve add garment m.shirt.7a" in t and "never approves" in t
+    assert "sheet.png" in t and gr.load("m", "shirt")["steps"]["7a"]["status"] == "done"
+    t = server.chain_garment("m", "shirt", wait=5)  # (not approved: the same answer, nothing started)
+    assert len(calls) == 1 and "STOPPED BEFORE THE HANG" in t
+    _approve_7a(tmp_path)
+    t = server.chain_garment("m", "shirt", wait=5)
+    assert calls[-1].get("resume") == "approved" and cg.status(d)["stage"] == "done", t
+    assert seen["build"] == 1 and seen["check"] == 1 and seen["hang"] == 1  # (resumed: never rebuilt, never re-read)
+    s = gr.states(gr.load("m", "shirt"))
+    assert s["7a"]["status"] == "approved" and s["8"]["status"] == "done" and "built and hung" in t
+
+
+def test_presim_optional_hangs_straight_away(monkeypatch, tmp_path):
+    seen, calls = _presim_model(monkeypatch, tmp_path)
+    monkeypatch.setenv("HIFIPUSHIE_PRESIM_APPROVAL", "optional")
+    t = server.chain_garment("m", "shirt", wait=5)
+    assert seen["hang"] == 1 and len(calls) == 1 and "built and hung" in t and "step 8 threads: PASS" in t
+
+
+def test_a_waiver_resumes_from_the_saved_build(monkeypatch, tmp_path):
+    seen, calls = _presim_model(monkeypatch, tmp_path, verdict="FAIL")
+    t = server.chain_garment("m", "shirt", wait=5)
+    assert "STRUCTURE FAIL" in t and seen["build"] == 1
+    t = server.chain_garment("m", "shirt", wait=5, waive={"collar_under_jaw": "a turned head in the reference"})
+    assert calls[-1].get("resume") == "waiver" and seen["build"] == 1 and seen["check"] == 2
+    assert cg.status(cg.job_dir("m", "shirt", "closed"))["stage"] == "awaiting_approval" and "STRUCTURE PASS_WAIVED" in t
+    assert seen["hang"] == 0
+
+
+def test_step8_fails_on_faces_past_the_cap(monkeypatch, tmp_path):
+    from hifipushie import garment_record as gr
+    seen, calls = _presim_model(monkeypatch, tmp_path, hang_over=20)
+    monkeypatch.setenv("HIFIPUSHIE_PRESIM_APPROVAL", "optional")
+    t = server.chain_garment("m", "shirt", wait=5)
+    assert "STEP 8 FAIL threads: 20 of 100 faces past the thread cap" in t and "back to step 5" in t
+    assert "\n  change: " in t and "never raise the cap" in t and "next:" in t
+    st = gr.load("m", "shirt")["steps"]["8"]
+    assert st["status"] == "failed" and st["back_to"] == "5" and st["gate"]["rows"][0]["status"] == "FAIL"
+    assert gr.next_step(gr.load("m", "shirt"))["step"] == "5"
+    from hifipushie import chain_presim as cp
+    g = cp.threads_gate({"stage": "done", "reads": {"threads": {"over_cap": 3, "faces": 9}}, "build_threads": {"over_cap": 2}})
+    assert g["back_to"] == "5" and "already past the cap" in g["line"]

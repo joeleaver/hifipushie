@@ -186,6 +186,9 @@ def write(model: str, garment: str, step, status: str, output: dict | None = Non
     if i:
         st["inputs"] = rec["steps"][IDS[i - 1]].get("digest")
     st["digest"] = _digest(st)
+    was = rec["steps"][sid]
+    if _digest(was) == was.get("digest") == st["digest"] and was.get("inputs") == st.get("inputs"):  # (the same result again: kept, its
+        st = dict(was, **{k: st[k] for k in ("look", "reference") if k in st})  # approval with it; a new look attached)
     rec["steps"][sid] = st
     _save(rec)
     return st
@@ -238,7 +241,8 @@ def _uses(rec: dict, sid: str) -> dict | None:
 def _call(rec: dict, sid: str) -> str:
     t = STEP[sid]["tool"]
     if sid == "7a":
-        return "the built garment's look beside the reference, then approval (T2 writes this step)"
+        return ("chain_garment writes it after a structure PASS (stage awaiting_approval); then the build's look beside the "
+                "reference and approval by Joe or the coordinator: " + approve_cmd(rec, sid))
     if not t:
         return f"no tool writes step {sid} ({STEP[sid]['key']}) yet: see docs/state/garment_steps.md"
     return f"call_tool(\"{t}\", {json.dumps({'name': rec['model'], 'garment': rec['garment']})})"
@@ -327,18 +331,22 @@ def from_pattern_check(model: str, garment: str, rec: dict, gate_path: str = "",
 def from_chain(model: str, garment: str, wear: str, d: Path, st: dict) -> str:
     """chain_garment's worker at its end: step 5 (the chains), 6 (structure rows), 8 (the hang)."""
     stage, sc = st.get("stage"), st.get("structure") or {}
-    out = {"job": str(d), "wear": wear}
+    out = {"job": str(d), "wear": wear, "build": st.get("build_id")}
     msgs = []
     if stage == "refused" and not (d / "final.pkl").exists():
         return _try(write, model, garment, "5", "failed", output=dict(out, refused=st.get("refused")), by="chain_garment")
-    if stage not in ("structure_failed", "done", "refused"):
+    if stage not in ("structure_failed", "presim", "awaiting_approval", "done", "refused"):
         return ""
     msgs.append(_try(write, model, garment, "5", "done", output=dict(out, built=str(d / "built.pkl")), by="chain_garment"))
     from .chain_structure import passed
     msgs.append(_try(write, model, garment, "6", "done" if passed(sc) else "failed", by="chain_garment",
                      output=dict(out, built=str(d / "built.pkl")), gate={"verdict": sc.get("verdict"), "rows": sc.get("rows")}))
-    if stage in ("done", "refused") and (d / "final.pkl").exists():
-        msgs.append(_try(write, model, garment, "8", "done" if stage == "done" else "failed", by="chain_garment",
+    if stage in ("done", "refused") and (d / "final.pkl").exists():  # (step 8: its gate is the threads reading, T2)
+        from .chain_presim import threads_gate
+        g = threads_gate(st) or {}
+        ok = stage == "done" and g.get("verdict") != "FAIL"
+        msgs.append(_try(write, model, garment, "8", "done" if ok else "failed", by="chain_garment", gate=g or None,
+                         back_to=g.get("back_to") if g.get("verdict") == "FAIL" else None,
                          output=dict(out, hung=str(d / "final.pkl"), refused=st.get("refused"), reads=st.get("reads"))))
     return "; ".join(m for m in msgs if m)
 
@@ -347,6 +355,7 @@ def from_look_chain(model: str, garment: str, wear: str, hung: bool, paths: list
     """look_chain: the build's look goes on step 6; the hung garment's look is step 9's output (then approval)."""
     if not hung:
         attach_look(model, garment, "6", paths)
+        attach_look(model, garment, "7a", paths)  # (the build is what 7a approves)
         return ""
     return _try(write, model, garment, "9", "done", output={"wear": wear, "views": [str(p) for p in paths]},
                 look=paths, by="look_chain")
