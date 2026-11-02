@@ -3,7 +3,7 @@
 Read guide(topic="hair") first: describe the hairstyle in words before touching a knob.
 
 A cut with a mean lock under 6 cm (`hair.MASS_MIN`) is not built like long hair. Cards cut per clump read as torn paper
-at bust distance, and a baked cap with sparse cards lost every round: **shells won, across 8 rounds** on the one short
+at bust distance, and a baked cap with sparse cards was rejected the same way: **shells won, across 8 rounds** on the one short
 groom tried (Garrett sh1-8). That is one head, and the result is not approved.
 
 1. **Groom it as strands**: `hair_from_reference` writes a combed short cut, or `groom_hair(name, groom={"loose": {...}})`
