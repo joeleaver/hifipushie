@@ -178,7 +178,8 @@ def items(M, wear: dict, refs: dict | None = None, garment: str = "shirt") -> li
     """The structure items this garment has pieces for, with targets for this wear."""
     roles = set(gr._roles(M))
     state = wear.get("state", "closed")
-    spread = float(wear.get("spread") or 1.7)
+    from .chain_garment import OPEN_SPREAD
+    spread = float(wear.get("spread") or OPEN_SPREAD)
     I = []
 
     def add(i, read, src, change, stage=1, **tgt):

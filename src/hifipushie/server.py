@@ -3549,7 +3549,11 @@ def _chain_answer(name: str, garment: str, wear: str, st: dict, opening: float |
     stage = st.get("stage", "queued")
     again = _chain_call(name, garment, wear, opening)
     if stage == "refused":
-        return f"{name}:{garment} ({wear}): refused: {st.get('refused')}\nnext: fix it on the pattern (alter_pattern), pattern_check, then {again}"
+        sc = st.get("structure") or {}
+        bad = [r["id"] for r in sc.get("rows") or [] if r["status"] in ("FAIL", "UNMEASURED") and not r.get("waived")]
+        more = f"\n  structure (the build, read before the refusal): {sc.get('verdict')}; failing: {', '.join(bad)}" if sc else ""
+        return (f"{name}:{garment} ({wear}): refused: {st.get('refused')}{more}\nnext: fix it on the pattern (alter_pattern), "
+                f"pattern_check, then {again}")
     if stage == "structure_failed":
         from . import chain_structure as cs
         sc = st.get("structure") or {}

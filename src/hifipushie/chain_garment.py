@@ -1686,10 +1686,10 @@ def worker(model: str, garment: str, wear: dict):
         sc = cs.check(b.X, pat.M, body.V, body.T, body.at, wear, cs.load_refs(model), garment, waive)  # judge the BUILD (C279)
         sc["reads"].pop("front_gap_profile", None)
         _status(d, structure=sc)
+        b.gate_lengths()  # (a length refusal is answered first; the structure rows stay in the status beside it)
         if not cs.passed(sc):
             _status(d, stage="structure_failed")
             return
-        b.gate_lengths()
         jd = b.write_job(d / "zozo", fabric, name=f"chain:{model}:{garment}")
         _status(d, stage="hanging", reads=b.reads)
         out, _ = zh.run(jd, log=note, timeout=3000)
