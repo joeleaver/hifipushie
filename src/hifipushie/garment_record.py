@@ -298,7 +298,7 @@ def answer(model: str, garment: str) -> str:
 def sheet(model: str, garment: str, size: int = 360) -> Path:
     """One sheet per garment: the step-0 reference beside every look the record holds; a tile of every step's status."""
     from PIL import Image, ImageDraw
-    from .render import FONT, contact_sheet
+    from .render import contact_sheet
     rec = load(model, garment)
     s = states(rec)
     ims, frames = [], []
@@ -319,10 +319,12 @@ def sheet(model: str, garment: str, size: int = 360) -> Path:
                                                     "axes": None})
     txt = Image.new("RGB", (size, size), (30, 31, 35))
     d = ImageDraw.Draw(txt)
+    from .pattern_sheet import _font  # (large: a glance tile; every status is also in answer's text, C286)
+    fs = _font(max(12, min(22, (size - 16) // len(IDS) - 4)))
     for k, sid in enumerate(IDS):
         x = s[sid]
-        d.text((8, 8 + 18 * k), f"{sid:>3} {STEP[sid]['key']:<9} {x['status']}" + (" STALE" if x["stale"] else ""),
-               fill=(235, 235, 235) if x["ready"] else (230, 150, 120), font=FONT)
+        d.text((8, 8 + (size - 16) // len(IDS) * k), f"{sid} {STEP[sid]['key']} {x['status']}" + (" STALE" if x["stale"] else ""),
+               fill=(235, 235, 235) if x["ready"] else (230, 150, 120), font=fs)
     ims.append(txt), frames.append({"name": "steps", "axes": None})
     out = look_dir(model, garment) / "sheet.png"
     contact_sheet(ims, frames).save(out)
