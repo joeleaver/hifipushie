@@ -355,16 +355,28 @@ def text(model: str, garment: str, r: dict) -> str:
                      f" ({c['source']})")
         L.append("  fit: " + ", ".join(f"{k} +{v['ease_mm']} mm" for k, v in p["fit"].items()))
     elif sid == "1":
-        for n, x in p["pieces"].items():
-            L.append(f"  piece {n}: {x['seen']}, build {x['build']}, {'stiff' if x['stiff'] else 'soft'}, layer {x['layer']}")
-        L.append(f"  details: {', '.join(p.get('details') or {}) or 'none'}; closures: {', '.join(p.get('closures') or {}) or 'none'}")
-        L.append(f"  seams: {len(p['seams'])}; step 3 measures: {', '.join(p['measurements']) or 'nothing by body'}")
+        for n, x in p["pieces"].items():  # (every item of the look's legend: C286, the look is for shape)
+            L.append(f"  piece {n}: {x['seen']}, build {x['build']}, {'stiff' if x['stiff'] else 'soft'}, layer {x['layer']}"
+                     + (f", from {x['from']}" if x["seen"] != "seen" and x.get("from") else "")
+                     + ("" if isinstance(x.get("where"), dict) else " (no place on the picture)"))
+        for n, x in (p.get("details") or {}).items():
+            L.append(f"  detail {n} x{x.get('count', 1)} on {', '.join(x['on'])}: {x['seen']}, build {x['build']}")
+        L.append("  closures: " + (", ".join(f"{c} ({', '.join(v.get('pieces') or [])}; {len(v.get('details') or [])} details)"
+                                            for c, v in (p.get("closures") or {}).items()) or "none"))
+        L += [f"  seam {r_['a']} = {r_['b']}" + (f" ({r_['kind']})" if r_.get("kind") else "") for r_ in p["seams"]]
+        L.append(f"  step 3 measures: {', '.join(p['measurements']) or 'nothing by body'}")
     else:
-        L.append("  state: " + ", ".join(f"{c} {x['state']}" for c, x in p["state"].items()) + f"; pose: {p['pose']['name']}")
-        L.append(f"  bends: {', '.join(b.get('id', b['on']) for b in p.get('bends') or [])}; rows: "
-                 + ", ".join(r_['id'] for r_ in p["rows"]))
+        from .garment_plan_look import _tgt
+        L += [f"  closure {c}: {x['state']}" + (f" ({x['detail']})" if x.get("detail") else "") for c, x in p["state"].items()]
+        L.append(f"  pose: {p['pose']['name']}")
+        L += [f"  bend {b.get('id', '')} on {b['on']}: {_tgt(b['target'])}" for b in p.get("bends") or []]
+        L += [f"  row {r_['id']}: {_tgt(r_['target'])}" + (f" (marked on view {r_.get('view', 0)})" if r_.get("at")
+                                                          else " (not marked)") for r_ in p["rows"]]
     L += [f"  look: {x}" for x in r["look"]]
-    nxt = {"0": "judge the look against the picture, then garment_plan step='parts'",
-           "1": "judge the look (occluded / inferred marked) against the picture, then garment_plan step='style'",
-           "2": "judge the look against the picture; step 3 measures the names step 1 calls for"}[sid]
+    nxt = {"0": "judge the look against the picture (are the samples on the right cloth), then garment_plan step='parts'",
+           "1": "judge the look's SHAPES against the picture (does each outline follow its piece; occluded / inferred "
+                "marked), then garment_plan step='style'",
+           "2": "judge the look against the picture (does each yellow mark span what its row names)"
+                "; step 3 measures the names step 1 calls for"}[sid]
+    nxt += "; names and numbers are this text's, never read off the look"
     return "\n".join(L + [f"next: {nxt} (garment_record shows the record)"])

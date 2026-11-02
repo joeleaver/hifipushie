@@ -5,6 +5,9 @@ Step 1: pieces outlined, labelled; SEEN solid, OCCLUDED dashed, INFERRED dotted;
 or outlines in the same line style. The legend lists every piece and detail, also those with no place on the picture.
 Step 2: the judged rows' marks (yellow) with their targets; the closures' states, the bends and the pose in the legend.
 Saved in the record's look directory (garment_record.look_dir) as step<id>_<key>_v<view>.png.
+Shape first (C286: pictures are for shape, text is for numbers): labels on the picture are large names only, never
+overlapping (a label that would overlap moves); targets and numbers are in garment_plan's text answer, which lists
+every item the legend lists.
 """
 from __future__ import annotations
 
@@ -13,10 +16,13 @@ import math
 from PIL import Image, ImageDraw
 
 from . import garment_record as gr
-from .render import FONT
+from .pattern_sheet import _font
+
+FONT = _font(20)      # labels on the picture: names only
+FONT_LEG = _font(17)  # the legend (every line also in garment_plan.text)
 
 W = 900          # the picture's width in the look
-LEG = 420        # the legend's width
+LEG = 560        # the legend's width
 PAL = [(80, 200, 255), (255, 120, 200), (120, 255, 140), (255, 170, 60), (190, 140, 255), (60, 230, 220),
        (255, 90, 90), (200, 230, 80), (150, 190, 255), (255, 210, 150)]
 GREY, YEL, WHITE = (150, 150, 150), (255, 230, 40), (240, 240, 240)
@@ -45,13 +51,12 @@ _PLACED: list = []   # label boxes on the image being drawn (a label that would 
 def _label(d, xy, s, col):
     w = d.textlength(s, font=FONT)
     x = min(max(xy[0], 2), d.im.size[0] - w - 4)
-    y = min(max(xy[1], 2), d.im.size[1] - 18)
-    for _ in range(12):
-        if not any(x < b[2] and b[0] < x + w and y < b[3] and b[1] < y + 16 for b in _PLACED):
-            break
-        y = min(y + 17, d.im.size[1] - 18)
-    _PLACED.append((x - 2, y - 1, x + w + 2, y + 16))
-    d.rectangle([x - 2, y - 1, x + w + 2, y + 15], fill=(0, 0, 0))
+    y0 = min(max(xy[1], 2), d.im.size[1] - 28)
+    hit = lambda x_, y_: any(x_ < b[2] and b[0] < x_ + w and y_ < b[3] and b[1] < y_ + 26 for b in _PLACED)  # noqa: E731
+    cands = [(x, min(max(y0 + k * dy, 2), d.im.size[1] - 28)) for k in range(14) for dy in (27, -27)]
+    x, y = next((c for c in [(x, y0)] + cands if not hit(*c)), (x, y0))
+    _PLACED.append((x - 3, y - 2, x + w + 3, y + 26))
+    d.rectangle([x - 3, y - 2, x + w + 3, y + 25], fill=(0, 0, 0))
     d.text((x, y), s, fill=col, font=FONT)
 
 
@@ -71,14 +76,14 @@ def _base(read: dict, i: int):
 def _sheet(im: Image.Image, legend: list, title: str) -> Image.Image:
     import textwrap
     lines = [(t if k == 0 else "      " + t, col) for s, col in legend
-             for k, t in enumerate(textwrap.wrap(s, 56, subsequent_indent="") or [""])]
-    h = max(im.size[1], 30 + 17 * len(lines))
+             for k, t in enumerate(textwrap.wrap(s, 54, subsequent_indent="") or [""])]
+    h = max(im.size[1], 40 + 22 * len(lines))
     out = Image.new("RGB", (im.size[0] + LEG, h), (24, 25, 28))
     out.paste(im, (0, 0))
     d = ImageDraw.Draw(out)
-    d.text((im.size[0] + 10, 6), title, fill=WHITE, font=FONT)
+    d.text((im.size[0] + 10, 6), title, fill=WHITE, font=FONT_LEG)
     for k, (s, col) in enumerate(lines):
-        d.text((im.size[0] + 10, 26 + 17 * k), s, fill=col, font=FONT)
+        d.text((im.size[0] + 10, 34 + 22 * k), s, fill=col, font=FONT_LEG)
     return out
 
 
@@ -122,7 +127,7 @@ def _read(d, s, vi, plan, read, parts):
             for u, v in cf.get("at") or []:
                 _ring(d, u * s, v * s, 12, YEL, None)
                 d.rectangle([u * s + 14, v * s - 8, u * s + 30, v * s + 8], fill=col, outline=WHITE)
-                _label(d, (u * s + 34, v * s - 8), n, YEL)
+                _label(d, (u * s + 34, v * s - 12), n, YEL)
         leg.append((f"cloth {n}: {c.get('fabric') or ''} rgb {c['colour']}", col if sum(col) > 150 else WHITE))
         leg.append((f"  {c['gsm']} gsm, {c['thickness_mm']} mm, {c['stretch']}, {c['stiffness']}", WHITE))
         if c.get("print") and c["print"] != "none":
@@ -148,7 +153,7 @@ def _parts(d, s, vi, plan, read, parts):
             P = [(u * s, v * s) for u, v in w["outline"]]
             _line(d, P, col, 3, dash, closed=True)
             cx, cy = sum(p[0] for p in P) / len(P), sum(p[1] for p in P) / len(P)
-            _label(d, (cx - 20, cy - 8), n, col)
+            _label(d, (cx - d.textlength(n, font=FONT) / 2, cy - 12), n, col)
         leg.append((f"{n}: {x['seen']}, {x['build']}, {'stiff' if x['stiff'] else 'soft'}, L{x['layer']}"
                     + ("" if drawn or w else "  (no place)"), col))
         if x["seen"] != "seen":
@@ -186,6 +191,6 @@ def _style(d, s, vi, plan, read, parts):
             _line(d, P, YEL, 3, None)
             for u, v in P:
                 _ring(d, u, v, 5, YEL, None)
-            _label(d, (P[-1][0] + 8, P[-1][1] - 8), f"{r['id']}: {_tgt(r['target'])}", YEL)
+            _label(d, (P[-1][0] + 8, P[-1][1] - 12), r["id"], YEL)  # (the target is the text's)
         leg.append((f"  {r['id']}: {_tgt(r['target'])}" + ("" if r.get("at") else " (not marked)"), YEL))
     return leg
