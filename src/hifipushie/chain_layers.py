@@ -233,20 +233,25 @@ class LayeredBody(Body):
         V, T = body.V, body.T
         self.kd = cKDTree(V)
         nb = _rings(T, len(V))
-        stand, push = np.zeros(len(V)), np.zeros(len(V))
-        for L in layers:
+        fields = []
+        for L in layers:  # (per layer: how far it stands off each body vertex, filled over the 1-ring, smoothed once)
             P = L.c.V
             d = body.contact.query(P)[0]
             k = self.kd.query(P)[1]
             ok = d > 0
-            if L.kind == "cloth":
-                np.maximum.at(stand, k[ok], d[ok])
-            np.maximum.at(push, k[ok], d[ok] + L.gap - GAP)
-        for _ in range(2):  # (fill: a body vertex between two mapped ones)
-            stand = np.maximum(stand, np.array([stand[n].max() if len(n) else 0.0 for n in nb]))
-            push = np.maximum(push, np.array([push[n].max() if len(n) else 0.0 for n in nb]))
-        push = 0.5 * push + 0.5 * np.array([push[n].mean() if len(n) else 0.0 for n in nb])
-        self.stand, self.push = stand, np.maximum(push, 0.0)
+            f = np.zeros(len(V))
+            np.maximum.at(f, k[ok], d[ok])
+            for _ in range(2):  # (fill: a body vertex between two mapped ones)
+                f = np.maximum(f, np.array([f[n].max() if len(n) else 0.0 for n in nb]))
+            f = 0.5 * f + 0.5 * np.array([f[n].mean() if len(n) else 0.0 for n in nb])
+            fields.append((L, f))
+        # stand: the under cloth as the collider models it (the reads' "inside" is against THIS, the surface it was built on)
+        self.stand = np.max([f for L, f in fields if L.kind == "cloth"], axis=0) if any(L.kind == "cloth" for L, _ in fields) \
+            else np.zeros(len(V))
+        push = np.zeros(len(V))
+        for L, f in fields:
+            push = np.maximum(push, np.where(f > 0, f + L.gap - GAP, 0.0))
+        self.push = push
         self.V = V + _vnormals(V, T) * self.push[:, None]
         self.T = T
         self.contact = Contact(self.V, self.T)
@@ -315,16 +320,19 @@ def reads(X, M, body) -> dict:
     out = {"under": body.info}
     d0 = body.body_contact.query(X)[0]
     k = body.kd.query(X)[1]
-    raw = {}
+    raw, near = {}, {}
     for L in body.layers:
         if L.kind == "cloth":  # (off the under cloth: off the body minus how far it stands off there; covered where it does)
             raw[L.name] = (d0 - body.stand[k], body.stand[k] > 0)
+            near[L.name] = float(cKDTree(L.c.V).query(X)[0].min())
         else:
             raw[L.name] = L.query(X)[::2]
     for name, (d, cov) in raw.items():
         dc = np.where(cov, d, np.inf)
         inside = np.where(dc < -INSIDE_TOL)[0]
         row = {"closest_mm": round(float(dc.min()) * 1e3, 2) if np.isfinite(dc).any() else None, "inside": int(len(inside))}
+        if name in near:  # (to the under garment's own vertices, unsigned: its rough build, not the model of it)
+            row["nearest_vertex_mm"] = round(near[name] * 1e3, 2)
         if len(inside):
             by = {}
             for i in inside:

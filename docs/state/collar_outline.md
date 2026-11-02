@@ -16,29 +16,9 @@ iterations or manual feedback." 2026-11-02: "We need a pre-sim judge of the stru
 - Rows: from the record's step 2 (structure_rows.py, T6 C286); run 2's INFERRED shirt rows and its cf_shirt tables
   are superseded (git history; T6's rows on run 2's builds: /mnt/data/hifipushie/t6/structure_t6.json).
 
-## T7 (2026-11-02): built straight into the plan's state (C287; chain_plan.py)
-The tool takes wear from the record's step 2 (cf_shirt: front closed, band open, spread 1.7 nw); an open band is built open
-(button_start -> band_open -> fall -> soft). Fixed this run: the first fastened button is HELD through the soft cloth (it drifted
-10 mm down / 14 mm out, the fronts' neck-to-button ran 12.6 mm past cut); a placket strip is everything its crease folds + BL
-(a fixed-height strip tore the front edge +59 % under a steep crease). BUILD_VERSION 24. Test: test_open_build_holds_the_first_button.
-Proof build (HOME /mnt/data/hifipushie/t7/ws, job cf_shirt/chain/shirt_open) STILL REFUSED: free worst 58.9 -> 49.1 %, now the
-fronts' placket FOLD LINE at the hem (uv y -0.75..-0.79, 20 mm from cfHem, both fronts; built/cut 747/713 mm). Front edge
-58.9 -> 37.8 / 33.0 -> 15.7 %; fall 6.0 -> 2.7 %; collar_edges 45 -> 22 % (the 2nd roll fold row at the points: 1.6 mm links,
-<0.5 mm, held, not gated). Hem cause NOT found: made in the FIRST soft_net of the open flow (closed flow on the same pattern:
-1.2-2.1 %); the hem point stops at z 780 whatever its start (756 or 770), not held, not tied, not sewn, not under the fall, 30 mm
-off the body. Hanging the panels from the built band (soft_start dz) made it worse (65 %): reverted. Next suspect: net.lines()
-across the hem, or a node of the held band/button dragging a line. Dev: /mnt/data/hifipushie/t7/stages5.py <open|closed>
-(first soft solve, ~3.5 min, prints the hem fold + what pins it), look_hem.py, render.py, sheet_fix1_{neck,whole}.png.
-Rows (T6 open on run 2 -> T7): collar_points_apart PASS 1.56 -> FAIL 1.535 (target 1.55-1.85, plan's), collar_tilt 22.5 FAIL ->
-33.3 PASS, collar_leaves_lie 27.1 -> 28.9 FAIL, placket_straight 25.6 -> 30.8 FAIL, closure_front part -> part FAIL, front_meets
-0.802 -> 0.863 FAIL, hem_level_lr 15.1 FAIL -> 3.1 PASS, soft_cloth_smooth 3.8 -> 4.32 FAIL, v_depth 0.30 PASS -> 0.494 FAIL,
-closure_band open PASS. By eye: the points spread like the reference, but the fronts fold out as ragged lapels to a deep V,
-the leaves stand off the shoulders, a tail hangs at the CF hem.
-
-STATE: branch t7-state, targeted tests pass (test_chain_garment/structure/garment_record/toolsets); bin/suite not run (one at the
-end of the tooling list). NEXT: find what holds the open fronts' hem in the first soft_net (stages5.py open vs closed; then
-rebuild with start.py 0 rebuild, HIFIPUSHIE_ASSETS=/home/joe/dev/hifipushie/workspace/_templates); then the V (first button
-held at its cut distance reads 0.49 nw vs 0.26-0.38: check the plan's button vs button_start) and the leaves lying.
+## T7 (2026-11-02, C287; chain_plan.py): built straight into the plan's state. Its proof (cf_shirt shirt_open, HOME
+/mnt/data/hifipushie/t7/ws) is still REFUSED (free 49.1 %: the open fronts' placket fold at the hem); rows and NEXT: git
+history of this page (commit 80eb32ef) and cloth.md.
 
 ## T8 (2026-11-02): roles from any pattern (C289; chain_roles.py, tests/test_chain_roles.py)
 Roles from construction + the DECLARED role (draft_pattern pieces.<n>.role -> M["roles"]): FALL (roll fold) / BAND (stiff,
@@ -57,3 +37,21 @@ sleeves two-piece, follow the arm to the wrist; back hem rolls into a ledge; box
 NEXT: the stand's front: hold the stand's CF ends at the fronts' neckline (not the ring's rest tilt) or raise the fronts'
 neck on the pattern; the back-hem ledge (soft network fill, same as T7's hem); where the zip parts (14 % of its length).
 Dev: /mnt/data/hifipushie/t8/scripts/{redraft,redraft2,stage_check,chain,reads,render}.py.
+
+## T9 (2026-11-02): layering (C292; chain_layers.py, tests/test_chain_layers.py)
+Declared: step 1's `over: ["shirt"]` (garment_plan: a garment of the model with a record, not itself, no loop). ORDER, at
+the call: each under garment's build with its step 6 done and 7a ready, else refused by name + next (dev setting
+HIFIPUSHIE_LAYER_UNDER=built: any saved build, flagged UNAPPROVED). Its build id is in the job key. COLLIDER: the body
+INFLATED over the under garment (its hung result, else its build) + its details.pkl solids, gap = its cloth thickness +
+ZOZO's reach (buttons: reach); one closed surface, so torso rings, contact, structure gate and ZOZO all read it. One way:
+the shirt never moves. GATE: over-garment points inside it refused by piece / level / girth to add, before the lengths.
+Build 1 (nearest of body and the shirt's own open surface) crumpled the jacket into a bolero: replaced.
+Proof (HOME /mnt/data/hifipushie/t9/ws, cf_shirt: T10's shirt + T8's hussar, same body; shirt UNAPPROVED, its own build
+refused): build 2 (199 s) REFUSED: collar (the stand) inside the shirt at 1508 points, 11.4 mm deep at the neck (the
+shirt's open collar stands 20-50 mm off the neck; a 430 mm stand can't go round it); fronts/backs 26-40 points <= 11 mm
+at the neck/armpit (pulled in by the stand). Closest to the buttons 3.6 mm (none inside). Rows vs T8 body alone:
+collar_height 0.096 (0.055), collar_upright 62.5 (72.7), front_meets 0.718 (0.862), soft_cloth_smooth 3.93 (2.39); same
+PASS (cutaway 0.181, hem 3.8 mm). Sheets /mnt/data/hifipushie/t9/sheet_b2_{whole,neck}.png: jacket outside the shirt
+everywhere, shirt collar hidden in the stand, but the stand flares out and dips at CF; boxy; shirt tails below the hem.
+NEXT: an approved shirt first (T7's NEXT); then the stand's ease over the shirt collar (collarEase from the shirt's neck
+standoff) or the shirt's collar tucked; a hang over the layered collider is unverified.
