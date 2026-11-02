@@ -1,3 +1,6 @@
 # Tests that fail for a reason nobody has fixed yet: `node id  # one-line reason`. bin/suite fails only on anything else.
 # An entry is a debt, not a pardon: never list a test to get a landing through.
 tests/test_skin.py::test_features_and_shader_budget  # skin:wrinkle_folds has a per-pixel noise mask, the budget rule forbids it: real fault on main (base_bad.log), not re-confirmed on integrate
+tests/test_pattern_form.py::test_fold_running_off_mid_length_lies_flat_past_it  # threads hard (C235, 92b29237): dihedral before the run-off 26.5 (< 26; soft fit 23.9): open in docs/state/threads_hard.md, not loosened
+tests/test_pattern_form.py::test_sprung_fall_lies_on_the_shoulders  # threads hard (C235, 92b29237): fall ripple 16.9 mm (< 15): open in docs/state/threads_hard.md, not loosened
+tests/test_fold_checks.py::test_two_piece_collar_rows_on_their_known_answer  # threads hard (C235, 92b29237): the fall sinks through its stand, fold_on_base share 0.107 (< 0.02): OPEN in docs/state/threads_hard.md

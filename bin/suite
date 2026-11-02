@@ -144,7 +144,8 @@ def main() -> int:
         return 2
     bad, passed = {}, set()
     for ln in lines:
-        m = re.match(r"(FAILED|ERROR|PASSED) (\S+)(?: - (.*))?$", ln)
+        # (a parametrized id can hold spaces, "test_x[head from pictures]": \S+ dropped 6 failures from the verdict)
+        m = re.match(r"(FAILED|ERROR|PASSED) (\S+?(?:\[[^\]]*\])?)(?: - (.*))?$", ln)
         if m and m[1] == "PASSED":
             passed.add(m[2])
         elif m:

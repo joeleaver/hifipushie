@@ -10,6 +10,7 @@ import tempfile
 import numpy as np
 
 from hifipushie import diag_render as dr
+from hifipushie import pattern_form as pf
 
 
 def grid(x0, x1, z0, z1, nx, nz, y=0.0, flip=False):
@@ -149,7 +150,12 @@ def render_cases(out):
         M2["uv"] = us
         box = ([-0.05, -0.25, -0.05], [0.46, 0.25, 0.45])
         im, _ = _render([{"name": "g", "V": Vs, "F": Fs, "mesh": M2}], ["strain"], box, out, "kp_strain")
-        red = [_close(_px(im, box, x, 0.2), dr.RED) for x in np.linspace(0.005, 0.405, 81)]
+        # (since C235, 04280b99, the map reads threads PAST their cap: 10 % stretch is 8 % past a 2 % cap, 0.8 of red)
+        over = dr.face_threads_over(Vs, Fs, M2)
+        cx = us[Fs].mean(1)[:, 0]
+        assert np.allclose(over[(cx > 0.15) & (cx < 0.25)], 0.10 - pf.FIT_THREAD_CAP, atol=1e-3), over.max()
+        want = "#%02x%02x%02x" % tuple(int(round(c * 255)) for c in dr.strain_rgb([0.10 - pf.FIT_THREAD_CAP])[0])
+        red = [_close(_px(im, box, x, 0.2), want) for x in np.linspace(0.005, 0.405, 81)]
         xs = np.linspace(0.005, 0.405, 81)
         strip = (xs > 0.155) & (xs < 0.255)  # (the strip is 0.15..0.26 in 3D)
         rows += [("strip red", all(np.array(red)[strip])),

@@ -631,11 +631,13 @@ def test_rented_sims_need_an_explicit_opt_in():
     from hifipushie import cloth_job
     sent = []
     real = cloth_job.run_external
-    cloth_job.run_external = lambda jd, b, p, t, cmd=None: sent.append(cmd) or ({}, [])
+    cloth_job.run_external = lambda jd, b, p, t, cmd=None, **kw: sent.append(cmd) or ({}, [])
     old = {k: os.environ.get(k) for k in ("HIFIPUSHIE_ZOZO_REMOTE", "HIFIPUSHIE_GPU", "HP_SUBMIT_SIMS")}
     try:
         os.environ.pop("HP_SUBMIT_SIMS", None)
         jd = Path(tempfile.mkdtemp()) / "sim"
+        jd.mkdir()  # (a job with no pattern, so the pattern gate (eacfe6c4) lets it through: this tests the opt-in)
+        (jd / cloth_job.GATE_FILE).write_text('{"pattern": null}')
         for remote, gpu in (("/x/spikes/gpu_cloth/bundle.sh", ""), ("", "bundle"), ("/x/remote.sh --box a", "")):
             os.environ["HIFIPUSHIE_ZOZO_REMOTE"] = remote
             os.environ["HIFIPUSHIE_GPU"] = gpu
