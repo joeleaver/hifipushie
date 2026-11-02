@@ -137,13 +137,13 @@ def after_alter(rows: list, model: str, garment: str) -> str:
     return f"next: call_tool(\"pattern_check\", {{\"name\": \"{model}\", \"garment\": \"{garment}\"}}) (the flat gate: the record is per pattern, so re-run it)"
 
 
-def after_look(kind: str, has_reference: bool) -> str:
-    """look / look_cloth / look_skin: what a look must be before it is forwarded."""
+def after_look(kind: str, has_reference: bool, how: str = "") -> str:
+    """look / look_cloth / look_skin: what a look must be before it is forwarded. how: the call that does it."""
     if not has_reference:
         return (f"next: no reference beside this {kind}: set one (set_reference / the stage's reference reading) and "
                 "judge against it; a look with nothing to compare to proves nothing")
     return (f"next: judge this {kind} yourself BESIDE its reference before forwarding it, then an independent "
-            "review_view per region (one view per call)")
+            "review_view per region (one view per call)" + (f": {how}" if how else ""))
 
 
 def after_dress_refused(blocked: dict, model: str) -> str:

@@ -232,7 +232,7 @@ def face_boxes(spec: dict, cam: dict, size: int) -> tuple[dict, float]:
 
 
 def look(name: str, views=DEFAULT, size: int = 768, light: str | None = None, flat: bool = False,
-         layer: str | None = None, measure: bool = True, save: str | None = None, engine: str = "eevee"):
+         layer: str | None = None, measure: bool = True, save: str | None = None):
     """Render the views (see VIEWS) and measure the face. Returns (sheet image, text, {view: image})."""
     from PIL import Image
     from . import paint, render, scene, skin
@@ -270,8 +270,6 @@ def look(name: str, views=DEFAULT, size: int = 768, light: str | None = None, fl
                 job = {"mode": "render", "blend": str(scene.blend_path(sn)), "views": frames, "size": size, "hide": [],
                        "flat": flat, "samples": 16,
                        "lighting": {**lights[lt], "target": [round(float(x), 4) for x in cams[group[0]]["target"]]}}
-                if engine == "cycles" and not flat and not layer:  # path traced: real subsurface scattering
-                    job.update(engine="cycles", samples=64)
                 if layer:
                     from . import paintnodes
                     st = store.load(sn)
@@ -318,6 +316,85 @@ def look(name: str, views=DEFAULT, size: int = 768, light: str | None = None, fl
         text.append(report_text(rep))
     look.report, look.images = rep, imgs
     return sheet, "\n".join(text), imgs
+
+
+def _crop_of(spec: dict, cam: dict, region: str) -> list:
+    """The square picture crop [x0, y0, x1, y1] of a region through a fitted camera, on the side facing it."""
+    from . import humanfit
+    from .skin import interocular
+    J = _J(spec)
+    io = interocular(J)
+    Rc = humanfit._cam_rot(cam)
+    c0, t0 = np.asarray(cam["centre"], float), np.asarray(cam["t"], float)
+    pos = c0 - Rc.T @ t0                                   # (the camera's own position: skin_read.fitted_frame)
+    side = region[-2:] if region[-2:] in (".L", ".R") else (".R" if pos[0] < J["lm_nose_tip"][0] else ".L")
+    region = region[:-2] if region[-2:] in (".L", ".R") else region
+    sx = -1.0 if side == ".R" else 1.0
+    br, tip = J["lm_nose_bridge"], J["lm_nose_tip"]
+    at, half = {"forehead": (br + io * np.array([0, 0, 0.75]), 0.8), "brows": (br + io * np.array([0, 0, 0.1]), 1.05),
+                "eye": (J.get("eye_front" + side, J["lm_lid_upper" + side]), 0.5),
+                "cheek": (J["lm_lid_lower" + side] + io * np.array([0.1 * sx, 0, -0.6]), 0.5),
+                "nose": (0.5 * (br + tip), 0.62), "mouth": (J["lm_lip_seam"], 0.62),
+                "jaw": (J["lm_chin"] + io * np.array([0, 0, 0.25]), 0.7)}[region]
+    Xc = Rc @ (np.asarray(at, float) - c0) + t0
+    w, h = cam["size"]
+    u, v = cam["f"] * Xc[0] / Xc[2] + w / 2, cam["f"] * Xc[1] / Xc[2] + h / 2
+    r = min(half * io * cam["f"] / Xc[2], w / 2, h / 2)
+    x0, y0 = float(np.clip(u - r, 0, w - 2 * r)), float(np.clip(v - r, 0, h - 2 * r))   # (kept whole: the frame stays square)
+    return [x0, y0, x0 + 2 * r, y0 + 2 * r]
+
+
+def beside(name: str, region: str, view: int | None = None, size: int = 768, light: str | None = None,
+           views=None, flat: bool = False, layer: str | None = None):
+    """ONE region of the model and of the reference at the same framing: the picture's crop, and the model through that
+    picture's fitted camera, under its fitted light at its exposure. The two files are what review_view takes. Returns
+    (the two side by side, text). Photo pixels here are for judging: they are written to the workspace only."""
+    from PIL import Image
+    from . import blockin, resources, skin_read, skin_route
+    if views or flat or layer:
+        raise ValueError("look_skin: beside is one region, lit like its picture: it takes no views, flat or layer")
+    if light not in (None, "photo"):
+        raise ValueError("look_skin: beside renders under the picture's own light (light=\"photo\"); another light has no "
+                         "reference to stand beside")
+    base = region[:-2] if region[-2:] in (".L", ".R") else region
+    if base not in skin_route.REGIONS:
+        raise ValueError(f"look_skin: beside is one of {', '.join(skin_route.REGIONS)} (.L / .R picks a side)")
+    if isinstance(view, int) and not isinstance(view, bool) and view < 0:
+        raise ValueError("look_skin: view is a reference picture's index")
+    rj, spec = blockin._refs(name), store.load(name)
+    vi = blockin._front(rj) if view is None else view
+    if vi >= len(rj["views"]) or not rj["views"][vi].get("image") or rj["cameras"][vi] is None:
+        raise ValueError(f"look_skin: reference view {vi} has no picture or no fitted camera ({len(rj['views'])} views)")
+    cam = rj["cameras"][vi]
+    box = skin_read.boxes(name)[vi] if base == "face" else _crop_of(spec, cam, region)
+    log: list = []
+    lt = skin_read.photo_light(name, vi)
+    with resources.heavy(f"look_skin beside {name}", gb=8, gpu=True, log=log.append):
+        sn = ensure(name, "head", log)
+        px = skin_read.shoot(sn, [skin_read.fitted_frame(cam, box, "v")],
+                             {k: v for k, v in lt.items() if k not in ("fitted", "measured")}, size=size)["v"]
+    res = Image.alpha_composite(Image.new("RGBA", (size, size), (128, 128, 128, 255)), Image.fromarray(px).convert("RGBA")).convert("RGB")
+    ref = Image.open(rj["views"][vi]["image"]).convert("RGB").crop(tuple(int(round(x)) for x in box)).resize((size, size), Image.LANCZOS)
+    d = store.HOME / "_looks" / "skin_beside"
+    d.mkdir(parents=True, exist_ok=True)
+    f_ref, f_res = d / f"{name}_{region}_v{vi}_reference.png", d / f"{name}_{region}_v{vi}_result.png"
+    ref.save(f_ref)
+    res.save(f_res)
+    pair = Image.new("RGB", (2 * size, size))
+    pair.paste(ref, (0, 0))
+    pair.paste(res, (size, 0))
+    side_px = box[2] - box[0]
+    text = [f"{region}: reference picture {vi} (left) | the model, its camera and fitted light (right); the crop is {side_px:.0f} picture px"]
+    if side_px < 96:
+        text.append(f"the picture shows this region at only {side_px:.0f} px: no fine texture can be judged in it")
+    if not lt.get("measured"):
+        text.append("exposure NOT measured yet (no read has run): lightness here means nothing until skin_from_reference has")
+    text.append("bare-skin stage: no hair, no clothes, so the judgement is the skin's")
+    text += log
+    rest = [r for r in skin_route.REGIONS if r != base]
+    args = {"region": base, "reference": str(f_ref), "result": str(f_res), "stage": "skin colour and surface", "not_stages": "hair, clothes, backdrop"}
+    text.append(skin_route.next_look(args, rest))
+    return pair, "\n".join(text)
 
 
 def report_text(rep: dict) -> str:

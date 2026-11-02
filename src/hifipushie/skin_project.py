@@ -1695,7 +1695,7 @@ def apply(name: str, out: str | None = None, remove: bool = False, opacity: floa
     """make() + the images into the content store + spec["skin"]["projection"] saved (on `out`, a copy with the
     references, or on `name`). remove=True takes it out. raw=True lays the UN-de-lit blend instead (the comparison).
     opacity: 0 (default) = the atlas is a MEASUREMENT only: the skin that ships is the procedural layers, which
-    skin_from_reference fits to it; 1 = "photo skin": the de-lit picture itself as the colour (the ceiling, a judging
+    skin_from_reference fits to it; 1 = the de-lit picture itself as the colour (the ceiling: refused by the export, a judging
     overlay, an explicit opt-in).
     The files (albedo, raw, detail, confidence, report) are also written to <model>/skin_projection/ (or save_dir)."""
     import copy

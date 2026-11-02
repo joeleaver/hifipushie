@@ -2,11 +2,11 @@
 
 ## Tool reference
 
-The full documentation of this topic's tools: their MCP descriptions are the short form. guide(topic="<tool name>") returns one section. These tools are the `human` domain: run them with call_tool(name, args); find_tool(\"<job>\") gives each one's parameters and an example call.
+The full documentation of this topic's tools: their MCP descriptions are the short form. guide(topic="<tool name>") returns one section. These tools are the `skin` domain: run them with call_tool(name, args); find_tool(\"<job>\") gives each one's parameters and an example call.
 
 ### `skin`
 
-`skin(name, skin=None, replace=False, note='')`
+`skin(name, skin=None, replace=False, note='', stack_edit=None)`
 
 Describe a human's skin (spec["skin"]) and save it: the description expands into ordinary paint layers
 ("skin:<layer>", under the model's own paint) and the skin part's shading. guide(topic="skin") is the artist's
@@ -30,11 +30,15 @@ skin: a patch merged into the stored description (objects key by key, null delet
                        hand, and leaves that skin and its shading alone.
 Any layer of the model's own paint can use the same anatomy: {"zone": "cheekbone.L"} in edit_model paint ops.
 Then look_skin (fast cropped close-ups + measurements), or sync + look for the whole model.
-Returns the tone's colours and the layers the description made.
+Returns the tone's colours and the layers the description made; under a stack it names the patch's keys with no effect
+on the face and the ones that move only the body. With folds it gives their relief in mm (skin carries <= 1 mm), and it
+warns when the head isn't approved.
+stack_edit: a measured stack's layer strengths (skin_layers.edit): a name (blush, pale, tan, older, no_stubble, rested,
+tired), a list of names, or {layer: strength}, 1 = as measured. Each call sets all of them: edits don't add up.
 
 ### `look_skin`
 
-`look_skin(name, views=None, size=768, light=None, flat=False, layer=None, engine='eevee', save=None)`
+`look_skin(name, views=None, size=768, light=None, flat=False, layer=None, save=None, beside='', view=None)`
 
 Close looks at the skin, fast: bare-skin crops of the model (head and shoulders; forearm and hand: without
 clothes or hair, ~1 mm mesh, kept between calls) rendered under fixed lights, with measurements of the face next
@@ -48,16 +52,19 @@ light: "studio" (a key from the model's right + a weak fill), "soft" (broad fron
 reference's own fitted light AT THE PICTURE'S EXPOSURE, as the last skin_from_reference read measured it: the light to
 judge tone beside the reference; a render 10 L under its reference reads as a tan whatever the albedo); default per view. flat=True: the unlit colour. layer: one layer's mask, orange on grey clay
 ("freckles" = "skin:freckles"; or any paint layer's name).
-engine: "eevee" (fast) or "cycles" (path traced, slower: real subsurface scattering: the shading check for
-shadow edges and back-lit ears).
+beside: THE GATE: one region (face, forehead, brows, eye, cheek, nose, mouth, jaw; ".L" / ".R" picks a side) of the model
+through the picture's fitted camera, under its fitted light at its exposure, beside the same crop of the picture. view:
+which reference picture (default the front). Writes both crops to files and ends with the review_view call that takes
+them. One region a call; no views, flat or layer. Bare skin: no hair or clothes.
 Judge in this order: flat colour at bust distance (tone, zones), then the lit bust, then the close-ups.
 
 ### `skin_from_reference`
 
-`skin_from_reference(name, out='', groups=None, rounds=2, read_only=False, stubble=None, anchor='auto', tone=None, white=None, project=False, layers=True)`
+`skin_from_reference(name, out='', groups=None, rounds=2, read_only=False, stubble=None, anchor='auto', tone=None, white=None, project=None, layers=True, painting=False)`
 
-WITH A DE-LIT ATLAS (the default route for photographs of a person): `project=True` first runs skin_project as a
-MEASUREMENT (the atlas, its confidence and each view's fitted light colour are stored on the model; its colour layer
+WITH A DE-LIT ATLAS (the default: photographs of a person; a fresh atlas on the model is reused, `project=True` remakes
+it, a stale one is remade and the reply says so, read_only=True with project=True is refused): it first runs skin_project
+as a MEASUREMENT (the atlas, its confidence and each view's fitted light colour are stored on the model; its colour layer
 stays off), the read then takes the atlas as its picture (one albedo for every view, light and shading already out;
 ours = our albedo at the same surface points: no stage, no render; the irises and the folds are not read this way),
 and `layers=True` stores the skin's colour as a STACK OF LAYER MAPS decomposed from the atlas (`skin.stack`,
@@ -85,7 +92,7 @@ An export of a full human head with these maps needs ~15-20 GB: under the machin
 run it with CAP=20G (bin/capped). The lid fold's vertices keep their built positions in the export's wrap (the field
 would collapse the hood); the bake's rays inside the fold's slit still pick up speckle on the upper lid (open).
 
-WITHOUT an atlas (paintings, a model with no projection): the per-picture read below.
+`painting=True` (paintings only: an atlas bakes brushwork): the per-picture read below.
 
 The reference pictures as a MEASUREMENT of the skin: the description (spec["skin"]) is set from what the fitted
 references show, and the result is the ordinary procedural skin (clean under any light, from any angle). The picture
@@ -177,19 +184,17 @@ placement of the horizontal grooves is biased toward the wall the light misses i
 
 The fitted reference pictures as a de-lit ATLAS in the head's own texture space: the MEASUREMENT skin_from_reference
 fits the skin to (its layer stack). By default nothing of the photograph is laid as colour (`opacity=0`); `opacity=1`
-is the explicit "photo skin" mode (the de-lit picture itself as the colour: the ceiling, a judging overlay). Each picture is
+lays the de-lit picture itself as a JUDGING OVERLAY (the ceiling to compare against): the export refuses it. Each picture is
 projected through its fitted camera into the head's own texture space (the one human mesh's atlas, ~0.2 mm a texel),
 de-lit into albedo, blended, the unseen filled, and saved as `skin.projection` = {albedo, detail, box, opacity,
 detail_depth, head}: two images the skin lays as layers `skin:projection` (colour, over the skin's own colours and
 painted hair, under scars / tattoos / make-up) and `skin:projection_detail` (fine relief). Relief, roughness,
-scattering, eyes, strands and the lid margins (wet line, caruncle, lash roots) stay the procedural skin's. export_asset
-bakes it like any paint. Needs a one-mesh head with fitted references and an ACCEPTED shape: the pictures land where
+scattering, eyes, strands and the lid margins (wet line, caruncle, lash roots) stay the procedural skin's. Needs a one-mesh head with fitted references and an ACCEPTED shape: the pictures land where
 the model's surface is. After the head's shape changes, run it again (the layer stores the head's key).
 
-Use it when the references are photographs of the person and likeness matters more than a clean procedural skin: the
-face's own pigment, brows, stubble shadow, lines and asymmetries come with it. Not for paintings (brushwork lands on
-the skin) and not as a way round a wrong shape (a misplaced feature is painted where the picture has it, with no
-form under it).
+skin_from_reference runs this itself; call it alone to read the report or to judge the overlay. Not for paintings
+(brushwork lands on the skin) and not as a way round a wrong shape (a misplaced feature lands where the picture has it,
+with no form under it).
 
 Steps, and what each cannot know (the reply reports all of it per model):
 - PROJECT: per texel and picture the colour, facing angle and a confidence (seen, square-on, unclipped, lit).
