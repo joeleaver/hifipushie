@@ -131,7 +131,7 @@ def test_only_path_for_clothes():
     """A blind agent asking how to make clothes lands on the chain path and nothing else."""
     for q in ("make a shirt", "fit a garment", "dress the character", "drape a jacket on the body", "clothes", "simulate cloth"):
         t = server.find_tool(q, limit=8)
-        assert "Clothes: design_garment" in t and "chain_garment" in t, (q, t)
+        assert "Clothes: garment_plan" in t and "chain_garment" in t, (q, t)  # (T4: a garment starts at its reading)
         names = re.findall(r"^\d+\. (\w+) ", t, re.M)
         assert not set(names) & set(GATED), (q, names)
     full = server.find_tool("")

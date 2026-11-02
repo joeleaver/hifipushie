@@ -35,9 +35,9 @@ from . import store
 
 # (id, key, what the step outputs, the call that makes it or None, approval: none / required / setting, default back_to)
 STEPS = [
-    ("0", "read", "the reading: kind, cloth, fit; the reference picture", "garment_from_reference", "none", "0"),
-    ("1", "parts", "every piece and detail: seen / occluded / inferred, how far built, layer order", None, "none", "0"),
-    ("2", "style", "the ONE worn state, as bends and targets; the pose", None, "none", "1"),
+    ("0", "read", "the reading: kind, cloth, fit; the reference picture", "garment_plan", "none", "0"),
+    ("1", "parts", "every piece and detail: seen / occluded / inferred, how far built, layer order; the seams", "garment_plan", "none", "0"),
+    ("2", "style", "the ONE worn state, as bends and targets; the pose", "garment_plan", "none", "1"),
     ("3", "measure", "every measurement steps 1-2 call for, by name", None, "none", "2"),
     ("4", "draft", "flat pattern + seam pairs, stiff pieces, folds, closures; the flat gate", "pattern_check", "none", "4"),
     ("5", "chains", "the pattern's edges as exact-length chains in the planned state", "chain_garment", "none", "4"),
@@ -245,7 +245,10 @@ def _call(rec: dict, sid: str) -> str:
                 "reference and approval by Joe or the coordinator: " + approve_cmd(rec, sid))
     if not t:
         return f"no tool writes step {sid} ({STEP[sid]['key']}) yet: see docs/state/garment_steps.md"
-    return f"call_tool(\"{t}\", {json.dumps({'name': rec['model'], 'garment': rec['garment']})})"
+    a = {"name": rec["model"], "garment": rec["garment"]}
+    if t == "garment_plan":
+        a.update(step=STEP[sid]["key"], plan="{...}")  # (the plan's form: guide(topic="garment_plan"))
+    return f"call_tool(\"{t}\", {json.dumps(a)})"
 
 
 def answer(model: str, garment: str) -> str:

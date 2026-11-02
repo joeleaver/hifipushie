@@ -113,6 +113,23 @@ record's look folder, and step 3 of the record is written (refused until step 2 
 `body_tape("wf_simon", [{"name": "back_waist_to_seat", "kind": "length", "from": "cb_waist", "to": "cb_seat", "side":
 "back"}, "chest"], garment="hussar")`.
 
+### `garment_plan`
+`garment_plan(name, garment, step, plan, look=True)`: steps 0, 1, 2 of the garment record (src/hifipushie/garment_plan.py:
+its docstring is the full form), for ANY garment. You are the intelligence: look at the picture, know the construction;
+the tool is the structure, the refusals and the look. step="read" (0): kind; views [{image, view, scale?}]; cloth {name:
+{fabric (a garment_kb fabric fills gsm / thickness / bending length) or the numbers + source, stiffness, colour [r,g,b] or
+{at: [[u, v]], view} (sampled), print {kind, repeat_mm, source}, grain}}; fit {region: {ease_mm, source}}. step="parts" (1):
+pieces {name: {what, cloth, seen: seen|occluded|inferred, from (the convention, unless seen), build: full|simplified|omit,
+why, stiff, layer, where {view, outline}}}, details {name: {what, on, cloth, follows ["piece:edge"] (a trim along edges), count, seen, build, where {view, at | outline |
+outlines (one per instance)}}},
+closures {name: {what, pieces, details}}, seams [{a: "piece:edge", b, kind, length: {body: [names]} | {style: {ratio |
+value_mm, of, source}}}]; the answer lists the body measurements step 3 must take. step="style" (2): state {closure:
+{state: open|closed|partly, source}} for EVERY closure (build straight into it; never build closed then style open),
+bends [{id, on, target {value, unit, of (a ratio's base)} | {is}, source}], pose {name, source}, rows [{id, what, target, source, view, at}]
+(what the photo judges: the structure gate's targets). Refused by name: a seam on a piece not in the inventory, a built
+piece with no seam, a target with no source, a state for a closure the inventory lacks. look (default): drawn over the
+reference: seen solid, occluded dashed, inferred dotted, omitted grey, judged rows yellow; saved as the step's look.
+
 ### `alter_pattern`
 
 `alter_pattern(name, garment, ops, replace=False, note='')`
