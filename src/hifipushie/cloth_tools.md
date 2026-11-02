@@ -5,14 +5,17 @@ The cloth tools' full parameters and behaviour, one section per tool (guide(topi
 ## Tool reference
 
 ### `chain_garment`
-`chain_garment(name, garment, wear="closed", opening=None)`: THE start of every garment: to dress a character, to fit or drape clothes on a body. Reads the drafted pattern and the
+`chain_garment(name, garment, wear="closed", opening=None, wait=50, rebuild=False)`: THE start of every garment: to dress a character, to fit or drape clothes on a body. Reads the drafted pattern and the
 body, never a fit. Stages: band and collar (or other stiff parts) as chains of their cut lengths, stiffness from the
 pattern's interfacing, resting on the high points; cuffs as stiff rings on the limb's own section; the soft pieces wrapped on a
 garment-sized section and solved as a network with the body as a floor; surfaces filled between the chains; open wear then
 undoes the band, whose sewn front is limited by its cut distance to the first fastened button, and folds the plackets along a
 solved crease; the soft cloth hangs under gravity (ZOZO, 5-10 min) with the stiff parts held; lengths last. wear: "closed" or
-"open". opening: only with "open": collar points this many neck widths apart (default 1.7, 1.0 .. 2.6). The answer comes after
-the build (1-3 min) with chains, threads, seams and band numbers while the hang runs on. Refuses: an unpassed pattern gate (next:
+"open". opening: only with "open": collar points this many neck widths apart (default 1.7, 1.0 .. 2.6). A job: the call starts it
+and answers with its stage after at most wait s (0 .. 280); a build takes 2-10 min, then the hang runs, both slower on a loaded
+machine. Call again with the same arguments for the stage: that never starts a second build. Once built the answer carries the chains,
+threads, seams and band numbers. A finished job answers with its result; a changed pattern starts anew; rebuild=True starts over.
+Every answer's next: names the call. A worker that dies reads as failed, not as running for ever. Refuses: an unpassed pattern gate (next:
 pattern_check); a line whose length can't hold (named, next: alter_pattern there); a start the solver would refuse (a tool
 fault, named: report it). Nothing is pushed, cut or loosened to get past a refusal.
 

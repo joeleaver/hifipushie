@@ -31,8 +31,11 @@ Every stage ends in chain_net.project; Build.reads holds the numbers; a length t
 the piece and the line and what to do next."""
 from __future__ import annotations
 
+import hashlib
 import json
 import math
+import os
+import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -1596,13 +1599,26 @@ def job_dir(model: str, garment: str, wear: str) -> Path:
     return d
 
 
-def _status(d: Path, **kw):
-    p = d / "status.json"
+RUNNING = ("queued", "building", "built", "hanging", "hung")  # stages a live worker is in; the rest are its ends
+BUILD_GB = 8.0  # the build's real peak (rss read per job: status "peak_gb"); the hang declares its own kind
+
+
+def job_key(spec: dict, garment: str, wear: dict) -> str:
+    """What a job answers for: the body, this garment, the wear. Another garment on the model doesn't change it."""
+    rest = {k: v for k, v in spec.items() if k != "cloth"}
+    return hashlib.sha1(json.dumps([rest, spec["cloth"][garment], wear], sort_keys=True, default=str).encode()).hexdigest()[:16]
+
+
+def write_status(d: Path, **kw):
+    p = Path(d) / "status.json"
     st = json.loads(p.read_text()) if p.exists() else {}
     st.update(kw)
-    t = d / "status.tmp"
+    t = Path(d) / f"status.{os.getpid()}.tmp"
     t.write_text(json.dumps(st, default=str))
     t.replace(p)
+
+
+_status = write_status
 
 
 def status(d: Path) -> dict:
@@ -1610,25 +1626,49 @@ def status(d: Path) -> dict:
     return json.loads(p.read_text()) if p.exists() else {}
 
 
+def _alive(pid) -> bool:
+    try:
+        text = Path(f"/proc/{int(pid)}/status").read_text()
+    except (OSError, TypeError, ValueError):
+        return False
+    return not re.search(r"^State:\s+Z", text, re.M)  # (a dead child the server hasn't reaped is not a worker)
+
+
+def live_status(d: Path) -> dict:
+    """status(), with a worker that died mid-job (OOM kill, reboot) read as failed: its stage would say running for ever."""
+    st = status(d)
+    if st.get("stage") in RUNNING and "pid" in st and not _alive(st["pid"]) and status(d).get("stage") in RUNNING:
+        tail = (Path(d) / "worker.log").read_text(errors="replace")[-300:] if (Path(d) / "worker.log").exists() else ""
+        write_status(d, stage="failed", error=f"the worker died at stage {st['stage']} ({tail.strip() or 'no output'})")
+        st = status(d)
+    return st
+
+
+def elapsed(st: dict) -> int:
+    return int(time.time() - float(st.get("t0") or time.time()))
+
+
 def worker(model: str, garment: str, wear: dict):
     """Build, then hang. Every stage writes its numbers to status.json; a refusal is a result, not a crash."""
-    from . import cloth, zozo_hang as zh
+    from . import resources, zozo_hang as zh
     d = job_dir(model, garment, wear["state"])
-    _status(d, stage="building", wear=wear, t0=time.time())
+    _status(d, stage="building", pid=os.getpid())
+    note = lambda m: _status(d, note=str(m)[:200])
     import pickle
     try:
-        pat, body, fabric = load_garment(model, garment)
-        b = GarmentBuild(pat, body, wear, log=lambda *_: None)
-        b.run()
+        with resources.heavy(f"chain build {model}:{garment} {wear['state']}", gb=BUILD_GB, log=note):
+            pat, body, fabric = load_garment(model, garment)
+            b = GarmentBuild(pat, body, wear, log=lambda *_: None)
+            b.run()
         pickle.dump({"X": b.X, "M": pat.M, "bV": body.V, "bT": body.T, "reads": b.reads}, open(d / "built.pkl", "wb"))
-        _status(d, stage="built", reads=b.reads)
+        _status(d, stage="built", reads=b.reads, note="", build_s=elapsed(status(d)), peak_gb=round(_peak_gb(), 1))
         b.gate_lengths()
         jd = b.write_job(d / "zozo", fabric, name=f"chain:{model}:{garment}")
         _status(d, stage="hanging", reads=b.reads)
-        out, _ = zh.run(jd, timeout=3000)
+        out, _ = zh.run(jd, log=note, timeout=3000)
         X = b.finish_hang(out["V"] if hasattr(out, "keys") else out[0])
         pickle.dump({"X": X, "M": pat.M, "bV": body.V, "bT": body.T, "reads": b.reads}, open(d / "final.pkl", "wb"))
-        _status(d, stage="hung", reads=b.reads)  # (a refusal below still leaves the hung result to look at)
+        _status(d, stage="hung", reads=b.reads, note="")  # (a refusal below still leaves the hung result to look at)
         b.gate_lengths()
         _status(d, stage="done", reads=b.reads)
     except ChainRefused as e:
@@ -1636,6 +1676,11 @@ def worker(model: str, garment: str, wear: dict):
     except Exception as e:  # (a crash is reported as one, with what it was doing)
         import traceback
         _status(d, stage="failed", error=f"{type(e).__name__}: {e}", trace=traceback.format_exc()[-1500:])
+
+
+def _peak_gb() -> float:
+    import resource
+    return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1e6
 
 
 def render_views(X, M, bV, bT, out: str, views=None, focus: str | None = None, size: int = 640, log=print) -> list:
