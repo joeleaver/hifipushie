@@ -5,22 +5,22 @@ DECLARED in the plan: the over garment's step 1 (parts) names what it is worn ov
 on the same model). garment_plan validates it (check_over): each name is a garment of the model with a record, not the
 garment itself, and not worn over this one (no loop).
 
-THE ORDER (under_for, at chain_garment's call, a refusal at once): the over garment's build needs each under garment's
-BUILD, approved: the under's step 6 (structure) done and its step 7a ready (approved; or done when
-HIFIPUSHIE_PRESIM_APPROVAL=optional). Its surface is its hung result when there is one (final.pkl, step 8 done), else its
-build (built.pkl). Development setting HIFIPUSHIE_LAYER_UNDER=built: any saved build of the under garment is accepted,
-its approval state is carried in the answer as "UNAPPROVED" (a proof on an unfinished under garment; never for an agent).
+THE ORDER (under_for, at chain_garment's call, a refusal at once; T12): the over garment's build needs each under
+garment's step 4 (pattern), step 1 (parts: which are stiff) and a BUILD of it (built.pkl: not approved; its details.pkl when
+placed). The under garment's final fit comes AFTER the over garment's build (chain_press.fit_unders, in the gate) and both
+are approved together at the over garment's step 7a. Development setting HIFIPUSHIE_LAYER_UNDER=built: an under garment
+whose record lacks steps 1 / 4 is accepted, flagged in the answer (a proof on an unfinished record; never for an agent).
 The under garment's build id is part of the over garment's job key: a rebuilt shirt rebuilds the jacket.
 
-THE COLLIDER (LayeredBody, a chain_garment.Body): the body INFLATED over the under garment's surface (its hung result or
-build) and its solid details (garment_details' details.pkl meshes: buttons push the over garment out by their own
-thickness): each body vertex pushed out by how far they stand off it there. One closed surface, read as a body by every
-stage, the torso rings, ZOZO and the structure gate (the hang and the gate see the same collider). The gap off an under
-cloth is its thickness (the record's step 0 cloth, the thickest of its cloths) + ZOZO's reach; off a solid detail ZOZO's
-reach. Where the under garment isn't (past its hem, beside an open front) the body is not inflated. Stiff parts rest on the under garment's
-high points by the same contact (a jacket's stand on the shirt's collar).
+THE COLLIDER (LayeredBody, a chain_garment.Body; T12, C294): the over garment keeps ITS pattern's shape: the body offset
+by the under garment's THICKNESS where its soft cloth covers the body (never its shape: T9 inflated the body over the
+shirt's loose build and the jacket ballooned), plus its STIFF parts (the pieces its build holds: band, fall, cuffs) and its
+SOLID details (details.pkl: buttons), which really push an outer garment out. One closed surface, read as a body by every
+stage, the torso rings, ZOZO and the structure gate.
 
-ONE WAY: the under garment is not changed by this build (no two-way sim: the shirt does not give under the jacket).
+THE UNDER GARMENT INSIDE (chain_press.py): fitted inside the over build after it, lengths exact, between the body and the
+over garment's inner side; visible-only by default (hidden cloth dropped, its edge held), the whole of it pressed for the
+plan's step 2 layers {"mode": "full", why}.
 
 THE GATE (gate): before the length gate, anything of the over garment inside an under one (its midsurface crossed, or
 inside a solid detail) is refused by name: the piece, how many points, how deep, at which body level, and what to change
@@ -110,17 +110,17 @@ def under_for(model: str, garment: str) -> dict:
         st = cg.status(d)
         built = (d / "built.pkl").exists()
         rs = gr.states(gr.load(model, u))
-        ok = rs["6"]["status"] in ("done", "approved") and rs["7a"]["ready"]
-        if not built or (not ok and not dev):
-            why = ("no build" if not built else
-                   f"its step 6 (structure) is {rs['6']['status']}" if rs["6"]["status"] not in ("done", "approved") else
-                   f"its step 7a (the built garment approved) is not ready ({rs['7a']['why'] or rs['7a']['status']})")
+        miss = [f"its step {k} ({w}) is {rs[k]['status']}" for k, w in (("1", "parts: which are stiff"), ("4", "pattern"))
+                if rs[k]["status"] not in ("done", "approved")]
+        ok = not miss
+        if not built or (miss and not dev):
+            why = "no build" if not built else "; ".join(miss)
             raise LayerRefused(
-                f"{garment} is worn over {u}: {u} is built first and its build approved; {why} (job {d}, stage "
-                f"{st.get('stage', 'none')}).\nnext: call_tool(\"chain_garment\", {{\"name\": \"{model}\", \"garment\": \"{u}\"}}) "
-                f"until it passes, its step 7a approved; then this call again")
-        hung = (d / "final.pkl").exists() and st.get("stage") == "done"
-        out[u] = {"job": str(d), "surface": "hung" if hung else "built", "build_id": str(st.get("build_id") or ""),
+                f"{garment} is worn over {u}: {u}'s pattern (step 4), its parts (step 1) and a build of it come first (its "
+                f"build need not be approved: it is fitted inside {garment} after {garment}'s build, and both are approved "
+                f"together at {garment}'s step 7a); {why} (job {d}, stage {st.get('stage', 'none')}).\nnext: "
+                f"call_tool(\"chain_garment\", {{\"name\": \"{model}\", \"garment\": \"{u}\"}}); then this call again")
+        out[u] = {"job": str(d), "surface": "built", "build_id": str(st.get("build_id") or ""),
                   "approved": bool(ok), "details": (d / "details.pkl").exists()}
     return out
 
@@ -170,8 +170,10 @@ def _bary(Q, A, B, C):
 class Layer:
     """One under surface: open cloth (covers a point unless its closest place is on the open edge) or closed solids."""
 
-    def __init__(self, name: str, kind: str, V, F, gap: float, body_contact=None):
-        self.name, self.kind, self.gap, self.bc = name, kind, float(gap), body_contact
+    def __init__(self, name: str, kind: str, V, F, gap: float, body_contact=None, role: str = "stand"):
+        """role (the collider, LayeredBody): "cover" pushes by gap where it covers the body (soft cloth: its thickness),
+        "stand" by how far it stands off + gap (stiff parts, solid details)."""
+        self.name, self.kind, self.gap, self.bc, self.role = name, kind, float(gap), body_contact, role
         self.c = Contact(V, F)
         self.lo, self.hi = self.c.V.min(0) - REACH, self.c.V.max(0) + REACH
         if kind == "cloth":
@@ -218,22 +220,27 @@ class Layer:
 
 
 class LayeredBody(Body):
-    """The body INFLATED over what it wears: each body vertex pushed out along its normal by how far the under layers
-    stand off it there (their furthest point mapped to that vertex, + the layer's gap - GAP; filled over the 1-ring,
-    smoothed once). One closed, well-oriented surface: every stage, the torso rings, ZOZO and the structure gate read
-    it as they read a body (the stages' GAP off it = each layer's own gap off the layer). at, body_V / body_T (the body
-    itself) and stand (m per body vertex: the under cloth's own distance off the body) are kept for the reads.
-    (A first cut took the nearest of the body and the shirt's own open surface: a built shirt's rough faces and their
-    turned sides crumpled the jacket into a bolero: T9 build 1.)"""
+    """The body offset by what it wears, for the OVER garment's build (T12, C294): each body vertex pushed out along its
+    normal by the room the under garment needs there:
+      - where an under garment's SOFT cloth covers the body (its build mapped to the nearest body vertex, filled over the
+        1-ring): its THICKNESS, not its shape (room(): both half thicknesses + ZOZO's reach + the under cloth once, or
+        FOLDS times for layers "full"); a loose under build never inflates the over garment;
+      - under its STIFF parts (interfaced: a band, a collar fall, a cuff; pieces held in its build): how far they stand off
+        the body + both half thicknesses + the reach (a stiff part really pushes an outer garment out);
+      - under its SOLID details (details.pkl: buttons): how far they stand off + the over's half thickness + the reach.
+    One closed, well-oriented surface: every stage, the torso rings, ZOZO and the structure gate read it as a body (the
+    stages keep GAP off it). at, body_V / body_T / body_contact (the body itself) are kept for the reads. fits: {under:
+    Layer} the under garment's fit INSIDE the over garment (chain_press.fit_unders), what the gate reads.
+    (T9 inflated the body over the under garment's whole surface: Joe: "the shirt is inflating the jacket".)"""
 
     def __init__(self, body: Body, layers: list, info: dict):
         self.body_V, self.body_T, self.at = body.V, body.T, body.at
         self.body_contact = body.contact
-        self.layers, self.info = layers, info
+        self.layers, self.info, self.fits = layers, info, {}
         V, T = body.V, body.T
         self.kd = cKDTree(V)
         nb = _rings(T, len(V))
-        fields = []
+        push = np.zeros(len(V))
         for L in layers:  # (per layer: how far it stands off each body vertex, filled over the 1-ring, smoothed once)
             P = L.c.V
             d = body.contact.query(P)[0]
@@ -243,14 +250,12 @@ class LayeredBody(Body):
             np.maximum.at(f, k[ok], d[ok])
             for _ in range(2):  # (fill: a body vertex between two mapped ones)
                 f = np.maximum(f, np.array([f[n].max() if len(n) else 0.0 for n in nb]))
-            f = 0.5 * f + 0.5 * np.array([f[n].mean() if len(n) else 0.0 for n in nb])
-            fields.append((L, f))
-        # stand: the under cloth as the collider models it (the reads' "inside" is against THIS, the surface it was built on)
-        self.stand = np.max([f for L, f in fields if L.kind == "cloth"], axis=0) if any(L.kind == "cloth" for L, _ in fields) \
-            else np.zeros(len(V))
-        push = np.zeros(len(V))
-        for L, f in fields:
-            push = np.maximum(push, np.where(f > 0, f + L.gap - GAP, 0.0))
+            if L.role == "cover":  # (the soft cloth: its thickness where it covers, never its shape)
+                p = np.where(f > 0, L.gap, 0.0)
+            else:
+                f = 0.5 * f + 0.5 * np.array([f[n].mean() if len(n) else 0.0 for n in nb])
+                p = np.where(f > 0, f + L.gap - GAP, 0.0)
+            push = np.maximum(push, p)
         self.push = push
         self.V = V + _vnormals(V, T) * self.push[:, None]
         self.T = T
@@ -274,32 +279,63 @@ def _rings(T, n) -> list:
     return [np.array(x, np.int64) for x in nb]
 
 
+def welded(F, root) -> np.ndarray:
+    """F on the sewn roots (a seam is not an open edge), degenerate faces dropped."""
+    F = np.asarray(root)[np.asarray(F, np.int64)] if root is not None else np.asarray(F, np.int64)
+    return F[(F[:, 0] != F[:, 1]) & (F[:, 1] != F[:, 2]) & (F[:, 0] != F[:, 2])]
+
+
+def under_parts(r: dict):
+    """(X, soft faces, stiff faces, the build or None) of an under garment's built.pkl: stiff = the pieces its build holds
+    (band, fall, rings: cn roles from the pattern's declarations); without a saved build everything reads soft."""
+    X = np.asarray(r["X"], float)
+    b = r.get("build")
+    root = getattr(getattr(b, "net", None), "root", None)
+    F = welded(r["M"]["F"], root)
+    if b is None:
+        return X, F, F[:0], None
+    st = np.isin(b.net.root, b.net.root[b._stiff_mask()])
+    sf = st[F].all(1)
+    return X, F[~sf], F[sf], b
+
+
 def layered_body(model: str, garment: str, body: Body, under: dict, log=print) -> LayeredBody:
-    """The collider of a garment worn over `under` (under_for's answer): the body + each under surface + its details."""
-    from . import garment_details as gd
+    """The collider of a garment worn over `under` (under_for's answer): the body + each under garment's thickness where
+    it covers, its stiff parts and its solid details (LayeredBody)."""
+    import pickle
+    from . import chain_press as cpr, garment_details as gd
     layers, info = [], {}
+    t_o = thickness(model, garment)
+    mode = cpr.mode(model, garment)[0]
     for u, x in under.items():
         d = Path(x["job"])
-        r = gd.load_result(d / ("final.pkl" if x["surface"] == "hung" else "built.pkl"))
-        gap = thickness(model, u) + zozo_legal()
-        X = np.asarray(r["X"], float)
-        layers.append(Layer(u, "cloth", X, outward(X, r["M"]["F"], body.contact), gap, body.contact))
+        r = pickle.load(open(d / "built.pkl", "rb"))
+        t_u = thickness(model, u)
+        push, gap_out = cpr.room(t_u, t_o, mode)
+        X, Fs, Fst, _ = under_parts(r)
+        if len(Fs):
+            layers.append(Layer(u, "cloth", X, outward(X, Fs, body.contact), push, body.contact, role="cover"))
+        if len(Fst):
+            layers.append(Layer(f"{u}:stiff", "cloth", X, outward(X, Fst, body.contact), gap_out, body.contact))
         dets = []
         if x.get("details") and (d / "details.pkl").exists():
             dp = gd.load_result(d / "details.pkl")
-            meshes = (dp.get("hung") if x["surface"] == "hung" else None) or dp.get("built") or {}
-            Vs, Fs, off = [], [], 0
+            meshes = dp.get("built") or {}
+            Vs, Fs_, off = [], [], 0
             for n_, m in meshes.items():
                 if m and len(m.get("F", [])):
                     Vs.append(np.asarray(m["V"], float))
-                    Fs.append(np.asarray(m["F"], np.int64) + off)
+                    Fs_.append(np.asarray(m["F"], np.int64) + off)
                     off += len(m["V"])
                     dets.append(n_)
             if Vs:
-                V, F = np.concatenate(Vs), np.concatenate(Fs)
-                layers.append(Layer(f"{u}:details", "solid", V, closed_outward(V, F), zozo_legal()))
-        info[u] = dict(x, gap_mm=round(gap * 1e3, 2), details_in=dets)
-    return LayeredBody(body, layers, info)
+                V, F = np.concatenate(Vs), np.concatenate(Fs_)
+                layers.append(Layer(f"{u}:details", "solid", V, closed_outward(V, F), t_o / 2 + zozo_legal()))
+        info[u] = dict(x, mode=mode, push_mm=round(push * 1e3, 2), gap_mm=round(gap_out * 1e3, 2),
+                       thick_mm=[round(t_u * 1e3, 2), round(t_o * 1e3, 2)], details_in=dets)
+    LB = LayeredBody(body, layers, info)
+    LB.model, LB.garment = model, garment
+    return LB
 
 
 # ---------------------------------------------------------------- reads and the gate
@@ -321,12 +357,16 @@ def reads(X, M, body) -> dict:
     d0 = body.body_contact.query(X)[0]
     k = body.kd.query(X)[1]
     raw, near = {}, {}
+    fits = getattr(body, "fits", {}) or {}
     for L in body.layers:
-        if L.kind == "cloth":  # (off the under cloth: off the body minus how far it stands off there; covered where it does)
-            raw[L.name] = (d0 - body.stand[k], body.stand[k] > 0)
+        if L.role == "cover" and L.name in fits:  # (the under garment as fitted inside this one: chain_press)
+            L = fits[L.name]
+        elif L.role == "cover":  # (not fitted: its thickness over the body is the under cloth, covered where it is)
+            raw[L.name] = (d0 - L.gap, body.push[k] > 0)
+            continue
+        raw[L.name] = L.query(X)[::2]
+        if L.kind == "cloth":
             near[L.name] = float(cKDTree(L.c.V).query(X)[0].min())
-        else:
-            raw[L.name] = L.query(X)[::2]
     for name, (d, cov) in raw.items():
         dc = np.where(cov, d, np.inf)
         inside = np.where(dc < -INSIDE_TOL)[0]
@@ -362,10 +402,20 @@ def inside_refusal(rd: dict) -> str:
     return "; ".join(msgs)
 
 
-def gate(b, body, put=None, refused=ChainRefused):
-    """The worker's gate after the build: inside an under garment first (refused by name), then the length gate. A
+def gate(b, body, put=None, refused=ChainRefused, d=None):
+    """The worker's gate after the build: each under garment fitted inside it first (chain_press: its lengths kept, else
+    refused by name), then anything of it inside an under garment's fit (refused by name), then the length gate. A
     length refusal on a layered build says what it is worn over (a pattern too small reads as stretch)."""
+    fit_why = ""
+    if isinstance(body, LayeredBody) and hasattr(b, "net"):
+        from . import chain_press as cpr
+        fr, fit_why = cpr.fit_unders(getattr(body, "model", ""), getattr(body, "garment", ""), b, body, d=d)
+        b.reads["under_fit"] = fr
+        if put:
+            put(under_fit=fr)
     rd = reads(b.X, b.pat.M, body)
+    if fit_why:
+        raise refused(f"worn over {', '.join(body.info)}: {fit_why}")
     if rd:
         b.reads["layers"] = rd
         if put:
@@ -388,12 +438,16 @@ def answer_line(st: dict) -> str:
     if not rd:
         return ""
     u = rd.get("under") or {}
-    parts = [f"{n} ({x.get('surface')}{'' if x.get('approved') else ', UNAPPROVED (' + SETTING + '=built)'}"
-             f"{', gap ' + str(x['gap_mm']) + ' mm' if 'gap_mm' in x else ''})" for n, x in u.items()]
+    parts = [f"{n} ({x.get('mode', 'visible')}{'' if x.get('approved') else ', its record UNFINISHED (' + SETTING + '=built, dev only)'}"
+             f"{', thickness push ' + str(x['push_mm']) + ' mm' if 'push_mm' in x else ''})" for n, x in u.items()]
     near = [f"{n} {r['closest_mm']} mm" + (f" ({r['inside']} inside)" if r.get("inside") else "")
             for n, r in rd.items() if n != "under" and isinstance(r, dict)]
+    fit = st.get("under_fit") or {}
+    fits = [f"{n} fitted inside ({r.get('mode')}: {r.get('kept_faces')}/{r.get('faces')} faces kept, lengths "
+            f"{r.get('kept_free_worst_pct')} % worst)" + ("; " + "; ".join(r["advice"]) if r.get("advice") else "")
+            for n, r in fit.items() if isinstance(r, dict) and "mode" in r]
     return ("  layered: built over " + ", ".join(parts) + (f"; closest: {', '.join(near)}" if near else "") +
-            "; the garment under is not changed (one way)")
+            ("; " + "; ".join(fits) if fits else "") + "; approved together at this garment's 7a")
 
 
 def with_answer(text: str, st: dict) -> str:
