@@ -500,3 +500,23 @@ def test_step8_fails_on_faces_past_the_cap(monkeypatch, tmp_path):
     from hifipushie import chain_presim as cp
     g = cp.threads_gate({"stage": "done", "reads": {"threads": {"over_cap": 3, "faces": 9}}, "build_threads": {"over_cap": 2}})
     assert g["back_to"] == "5" and "already past the cap" in g["line"]
+
+
+def test_open_build_holds_the_first_button_through_the_soft_cloth(monkeypatch):
+    """T7: the open band is tied to the first fastened button where button_start put it; the first soft solve must hold
+    it there (free, the soft cloth carried it 10 mm down and 14 mm out: the fronts' neck-to-button reach ran past cut)."""
+    import types
+    from hifipushie import chain_plan as cp
+    seen = []
+    net = types.SimpleNamespace(n=6, root=np.arange(6), piece=np.zeros(6, int), pid=lambda p: 0)
+    b = types.SimpleNamespace(net=net, roles=types.SimpleNamespace(front={"v": [(1, 2)]}, panels=["front.L"]),
+                              wear={"state": "open"}, reads={}, X=np.zeros((6, 3)))
+    for m in ("band_closed", "band_open", "fall_build", "fill_band", "fall_surface", "stiff_last", "rings",
+              "thread_read_all", "_cloth_contact"):
+        setattr(b, m, lambda *a, **k: None)
+    b.soft_net = lambda start=None, far_z=None: seen.append(None if getattr(b, "extra_held", None) is None
+                                                             else np.where(b.extra_held)[0].tolist())
+    b.plackets = lambda Xs: Xs
+    monkeypatch.setattr(cp, "button_start", lambda b_: np.array([0.0, -0.11, 1.41]))
+    cp.build_open(b, 0.0)
+    assert seen[0] == [1, 2]
