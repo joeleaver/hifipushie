@@ -51,14 +51,9 @@ shirt + hussar jacket together, each iterated until good.
 | T11 | Export: chain garment -> game mesh, retopology, skinned to the rig | 10 | L | T10 |
 About 11-14 runs at the run budget. The shirt and the hussar jacket are the test garments of every run from T4 on.
 
-T1 DONE (2026-11-02, branch t1-record, C281): `garment_record.py` (STEPS = the one step list), file
-workspace/<model>/garments/<garment>.json (+ <garment>/ for looks and sheet.png); tool garment_record(name, garment,
-sheet) in the cloth group. Writers: pattern_check -> 4 (gate rows, flat sheet as look); chain_garment's worker -> 5, 6
-(structure rows), 8 (hang); look_chain (focus None) -> 6's look (build) / 9 (hung). Approval only through bin/approve:
-`approve add garment <model>.<garment>.<step> <record>#<digest> <sheet> joe|coordinator` (the answer prints it); held
-while the digest holds. 7a: required unless HIFIPUSHIE_PRESIM_APPROVAL=optional; steps needing approval: 7a, 9 (STEPS'
-approval column). Gaps: steps 0-3, 7, 7a, 10 have no writer yet, so on today's garments pattern_check / chain_garment
-answer "record: ... refused: step 3 (measure) is not ready" (the tools still run); T2 must stop the hang before 7a.
-Unverified: a real build / hang writing the record (tests stub them); the sheet on real looks.
+T1 DONE (2026-11-02, t1-record, C281): garment_record.py (STEPS = the one step list); workspace/<model>/garments/<garment>.json;
+tool garment_record(name, garment, sheet). Writers: pattern_check -> 4; chain worker -> 5, 6 (structure), 8; look_chain -> 6's look, 9.
+Approval: `approve add garment <model>.<garment>.<step> <record>#<digest> <sheet> joe|coordinator`; needed on 7a (unless
+HIFIPUSHIE_PRESIM_APPROVAL=optional) and 9. Steps 0-3, 7, 7a, 10 have no writer yet: today's tools answer "record: refused".
 
 NEXT: T2 (pre-sim approval in chain_garment: no hang until the record's 7a is ready; threads past the cap).
