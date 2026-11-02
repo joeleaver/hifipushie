@@ -38,6 +38,7 @@ contradicting wear is refused); no closed garment is built and then styled open.
 8. HANG (hang()): the soft cloth under gravity in ZOZO, stiff parts held; lengths have the last word afterwards. Its gate:
    no face past the thread cap (chain_presim.threads_gate).
    The collider is the whole body: nothing is cut from it. An illegal start is a build fault and is refused by name.
+   Worn over another garment (step 1's "over", chain_layers.py, T9): the body + that garment's surface + its details.
 
 Every stage ends in chain_net.project; Build.reads holds the numbers; a length that can't hold raises ChainRefused naming
 the piece and the line and what to do next."""
@@ -1682,6 +1683,9 @@ def worker(model: str, garment: str, wear: dict):
         else:
             with resources.heavy(f"chain build {model}:{garment} {wear['state']}", gb=BUILD_GB, log=note):
                 pat, body, fabric = load_garment(model, garment)
+                if wear.get("under"):  # (worn over another garment: the body + its surface + its details, T9)
+                    from . import chain_layers as cl
+                    body = cl.layered_body(model, garment, body, wear["under"], log=note)
                 b = GarmentBuild(pat, body, wear, log=lambda *_: None)
                 b.run()
             bid = cp.save_build(d, b, pat, body, fabric)
@@ -1692,7 +1696,8 @@ def worker(model: str, garment: str, wear: dict):
             sc = cs.check(b.X, pat.M, body.V, body.T, body.at, wear, cs.load_plan(model, garment), waive)  # (C279, C286)
             sc["reads"].pop("front_gap_profile", None)
         _status(d, structure=sc)
-        b.gate_lengths()  # (a length refusal is answered first; the structure rows stay in the status beside it)
+        from . import chain_layers as cl  # (inside the garment under it, then the lengths: T9)
+        cl.gate(b, body, put=lambda **kw: _status(d, **kw))  # (a refusal is answered first; structure rows stay beside it)
         if not cs.passed(sc):
             _status(d, stage="structure_failed")
             return
