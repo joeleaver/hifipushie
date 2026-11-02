@@ -35,4 +35,20 @@ open. Step 8: open wear hung with 1 in 5 faces past the thread cap.
 ORDER: tooling and process for every step first (no agent iteration runs until then); then the steps one at a time,
 shirt + hussar jacket together, each iterated until good.
 
-NEXT: list the tooling deliverables (one brief each, smallest first), Joe agrees the list.
+## Tooling runs (one deliverable each, in order; "minimal" = the step works end to end for any garment, not yet good)
+| # | Run | Steps | Size | Needs |
+|---|---|---|---|---|
+| T1 | Garment record: one file per garment holding each step's output, its status and approval; a FAIL's "back to step N"; one look sheet per garment from the step-0 reference | all, 9 | S | - |
+| T2 | Pre-sim approval (required internally, a setting for agents) + threads past the cap in the hang's answer and gate | 7a, 8 | S | T1 |
+| T3 | Measure by name: girth at a level, arc between landmarks, surface length, the landmark list; tape lines drawn as its look | 3 | S-M | T1 |
+| T4 | Reading, parts inventory, style plan: tools that write them into the record, validate them, and draw them over the reference (occluded / inferred marked) | 0, 1, 2 | M | T1 |
+| T5 | Agent-written FreeSewing: the agent's design (extending a block) run in Node; its declarations (seam pairs, stiff pieces, folds, closures); one general converter; pattern_check rows general. Proof: a shirt drafted fresh from brian, no Simon glue | 4 | L | T3, T4 |
+| T6 | Structure rows from the record: targets from the reading + style plan, never INFERRED shirt rows; a crumpled-cloth row | 6 | M | T4 |
+| T7 | Chains in the planned state: the band in its closure's own state; build straight into the style plan | 5 | M | T4, T6 |
+| T8 | Chain roles beyond a shirt: stand collar, panels with tails / cutaway, waistband, zip | 5 | L | T5 |
+| T9 | Layering: chains rest on the garment underneath | 5 | M | T7 |
+| T10 | Details and trims: buttons, braid, frogging, tabs on the surface, following it through the sim | 7 | M-L | T7 |
+| T11 | Export: chain garment -> game mesh, retopology, skinned to the rig | 10 | L | T10 |
+About 11-14 runs at the run budget. The shirt and the hussar jacket are the test garments of every run from T4 on.
+
+NEXT: Joe agrees the list; T1 first.
