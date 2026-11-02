@@ -2198,16 +2198,23 @@ def block_in_start(name: str, refs: str | list[dict], sex: str | float | None = 
 
 @mcp.tool(structured_output=False)
 def block_in_look(name: str, views: list[int] | None = None, table: bool = True, save: str | None = None,
-                  before: str | None = None, focus: str | None = None, read: str = "", keep: bool | None = None):
+                  before: str | None = None, focus: str | None = None, read: str = "", keep: bool | None = None,
+                  judge: bool = False):
     """The block-in sheet: per picture photo | clay under its light | overlay | outline difference | squints, at the
     eyes, + the target table. focus = a feature (eyes, nose, mouth, chin_jaw, cheeks, ears): ZOOM IN crops + raking
-    light + its own rows. read / keep log your ZOOM OUT verdict on the step that made name. views, table, save,
-    before. Details: guide(topic="block_in_look")."""
+    light + its own rows. judge=True: THE JUDGING SHEET, photo | blend | the pictures projected as the head's skin |
+    clay: clay alone reads younger and softer, judge here every few rounds. read / keep log your ZOOM OUT verdict on the
+    step that made name. views, table, save, before. Details: guide(topic="block_in_look")."""
     from . import blockin as bi
     note = ""
     if read or keep is not None:
         bi.note(name, read, keep)
         note = f"logged on the step that made {name}: zoom-out read" + ("" if keep is None else f", kept={keep}") + "\n"
+    if judge:
+        from . import blockin_judge as bj
+        r = bj.sheet(name, save or str(store.HOME / "human_renders" / f"blockin_{name}_judge.png"), views=views)
+        return [_png(PILImage.open(r["out"])), note + f"judging sheet: {r['out']}: where a picture smears or doubles on the "
+                "turned head, the geometry is wrong there"]
     if focus:
         out = save or str(store.HOME / "human_renders" / f"blockin_{name}_{focus}.png")
         r = bi.focus(name, focus, out, views=views, before=before)

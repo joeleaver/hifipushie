@@ -172,7 +172,7 @@ Read guide(topic="block_in") first: the loop, the stage-0 description and the se
      from identity: the solve bakes it in. Say so when you report such a head.
    - On a loaded machine set OPENBLAS_NUM_THREADS=1 for scripts that call the solve: its many small solves stall
      in thread contention (0.3 s against 200 s for one call's down-weighting search with load 60).
-   - JUDGE the result on the judging sheet (: reference | best: 50 % blend, the reference
-     pictures projected as its skin, own dressing | the rest), not on a dressed render in an unrelated dressing:
+   - JUDGE the result on `block_in_look(name, judge=True)` (reference | 50 % blend | the pictures projected as its
+     skin | clay), not on a dressed render in an unrelated dressing:
      look at the blend before calling a feature wrong. Face-ID scores do not judge shape (they read the projected
      texture).

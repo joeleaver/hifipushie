@@ -52,8 +52,8 @@ driving manual: what you see -> the GNM control), `likeness` (the feature checkl
    eye or put them back). It does NOT see the surface inside the silhouette (cheek volume, the lid's fold, the nose's
    planes): those are hand steps. Details: `blockin_solve`.
 4. **Look**: `block_in_look(name)` (every step returns it too): per picture photo | clay under the photo's own fitted
-   light | 50 % overlay | outline difference | squinted photo | squinted clay. Judge on the judging sheet: the
-   reference beside the result, and the reference pictures projected as the head's skin + a blend.
+   light | 50 % overlay | outline difference | squinted photo | squinted clay. Judge on the judging sheet,
+   `block_in_look(name, judge=True)`: the reference beside the result, the pictures projected as the head's skin, a blend.
 5. **Squint and name the single BIGGEST difference** in sculptor's terms: masses and planes, not features. Check the
    sex and age read. Then look the phrase up in the driving manual (`gnm_controls(phrase="...")`, guide topic
    `gnm_driving`): the control, its sign, mm per unit, what to hold, what it drags. If the difference is measurable,
@@ -103,7 +103,7 @@ SCULPT it (macros held), and only then a local residual.
 ## Self-review loop (every round)
 
 1. Reference beside result at the same camera: the block-in sheet per view (photo | clay under its light | blend |
-   outline) and, every few rounds, the judging sheet (reference projected as skin + blend), whole face and per
+   outline) and, every few rounds, `block_in_look(name, judge=True)` (reference projected as skin + blend), whole face and per
    feature (focus crops).
 2. Per region (overall mass and proportions, profile, jaw and chin, cheeks, nose, eyes and brows, mouth, ears), list
    what reads wrong against the reference, concretely (where, what, how far off in mm where the ruler reads it).

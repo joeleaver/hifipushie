@@ -51,12 +51,13 @@ Returns the first sheet and target table. The rest mouth is closed by GNM's expr
 mouth_gap dropped), see 7c.
 
 ### `block_in_look`
-block_in_look(name, views=None, table=True, save=None, before=None, focus=None, read="", keep=None): the sheet (see
+block_in_look(name, views=None, table=True, save=None, before=None, focus=None, read="", keep=None, judge=False): the sheet (see
 the loop, 2) of any block-in
 model, rows per view (views = indices), crops fixed at the start head's frame so rounds compare; table=False skips
 the target table. before = another model (any earlier round): under each view a row photo | before | after | the
 change (|after - before| x4, dark = moved) | squint before | squint after. block_in_step's sheet always has it.
 The text gives each view's eye-registration shift (pixels: a large one means the camera misplaces the head).
+- judge=True: the judging sheet: per view photo | 50 % blend | the pictures projected as the head's skin (front last) | clay.
 - focus: one of eyes, nose, mouth, chin_jaw, cheeks, ears: the ZOOM-IN sheet (see the feature pass): rows per view
   (the ear only in turned views) photo | clay | overlay | local contours | raking light | squint photo | squint clay;
   with before = another model a second row photo | before | after | change | raking before | raking after. The text
