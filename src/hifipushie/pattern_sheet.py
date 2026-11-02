@@ -107,7 +107,8 @@ def seam_names(Bp: dict) -> list:
 
 def text_lines(Bp: dict, seam_rows=None, names: list | None = None, decl: dict | None = None) -> list:
     """The sheet's numbers as text (the image carries none): every piece (name, size, cut count, stiff, grain, role)
-    and every seam pair (both edges, both lengths, the ease, PASS/FAIL). names: the seams' names (default
+    and every seam pair (both edges, both lengths, the ease, PASS/FAIL): failing pairs first with their kind and band,
+    then each passing pair on one compact line. names: the seams' names (default
     seam_names); decl: draft_pattern's declarations (cut counts, folds)."""
     pcs, stiff = Bp.get("pieces") or {}, {e if isinstance(e, str) else e.get("piece") for e in Bp.get("interfaced") or []}
     dp = (decl or {}).get("pieces") or {}
@@ -120,19 +121,24 @@ def text_lines(Bp: dict, seam_rows=None, names: list | None = None, decl: dict |
                    f"grain {float(pc.get('grain', 90)):.0f} deg, role {garment_design.role_of(nm, pc)}")
     names = names or seam_names(Bp)
     rows = list(seam_rows or [])
-    out.append(f"seams ({len(names)}; S<n> is the n-th colour in the sheet's legend; lengths a / b mm):")
+    fail, ok_lines, bare = [], [], []
     for i, nm in enumerate(names):
         r = rows[i] if i < len(rows) else None
         if r is None:
-            out.append(f"  S{i + 1} {nm}")
+            bare.append(f"  S{i + 1} {nm}")
             continue
         band = r.get("band")
-        ok = r.get("ok", True) and not r.get("notches_off")
-        out.append(f"  S{i + 1} {'PASS' if ok else 'FAIL'} {nm}: {float(r['len_a_mm']):.0f} / {float(r['len_b_mm']):.0f} mm, "
-                   f"ease {float(r['ease']) * 100:+.1f} % ({r.get('kind', '')}"
-                   + (f", band {band[0] * 100:+.1f}..{band[1] * 100:+.1f} %" if band else "") + ")"
-                   + (f", notches off {r['notches_off']}" if r.get("notches_off") else ""))
-    return out
+        a, b, e = float(r["len_a_mm"]), float(r["len_b_mm"]), float(r["ease"]) * 100
+        if r.get("ok", True) and not r.get("notches_off"):  # (a passing pair: one compact line)
+            ok_lines.append(f"  S{i + 1} PASS {nm}: {a:.0f} / {b:.0f} mm, ease {e:+.1f} %")
+            continue
+        fail.append(f"  S{i + 1} FAIL {nm}: {a:.0f} / {b:.0f} mm, ease {e:+.1f} % ({r.get('kind', '')}"
+                    + (f", band {band[0] * 100:+.1f}..{band[1] * 100:+.1f} %" if band else "") + ")"
+                    + (f", notches off {r['notches_off']}" if r.get("notches_off") else ""))
+    # failing pairs first, with their numbers (Joe, T8): what to fix is at the top
+    out.append(f"seams ({len(names)}; S<n> is the n-th colour in the sheet's legend; lengths a / b mm; "
+               f"{len(fail)} failing first):")
+    return out + fail + ok_lines + bare
 
 
 def render(Bp: dict, title: str = "", px_per_m: float = 900.0, width_m: float = 1.9, seam_rows=None,

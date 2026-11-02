@@ -39,7 +39,7 @@ KINDS = {
                         change="drop the CF neckline (alter_pattern move the front neck point down); else the BAND "
                                "stage holds the band level: " + _C),
     "collar_rise": dict(desc="a stand collar's rise from the neckline, deg from horizontal (90 = upright)", units=("deg",),
-                        read=None, missing="no stand-rise reading yet", needs=("collar_stand",),
+                        read="collar_rise_deg", needs=("collar_stand",),
                         change="the stand's curve (alter_pattern on its neck edge) or the BAND stage"),
     "collar_points_drop": dict(desc="the collar points below the collar's back top (side view)", units=("mm", "ratio", "px"),
                                base="neck_width", read="collar_points_below_back_top_mm", needs=("collar_fall",),
@@ -69,7 +69,8 @@ KINDS = {
                            units=("mm", "ratio", "px"), base="closure_length", read=None,
                            missing="no hem-at-landmark reading yet", change="the body length (alter_pattern)"),
     "cutaway_drop": dict(desc="a cutaway front's points below the closure's end", units=("mm", "ratio", "px"),
-                         base="closure_length", read=None, missing="no cutaway chain role yet (T8)", change="the front hem"),
+                         base="closure_length", read="cutaway_drop_mm",
+                         change="the front's hem points (alter_pattern move the cutaway's tip) or the closure's end"),
     "trim_row_count": dict(desc="rows of a trim (frogging, buttons, braid) per side", units=("count",), read=None,
                            missing="no trims on chain builds yet (T10)", change="the detail's count (step 1)"),
     "trim_row_pitch": dict(desc="the spacing of a trim's rows", units=("mm", "ratio", "px"), base="closure_length",

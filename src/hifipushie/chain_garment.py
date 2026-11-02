@@ -59,7 +59,7 @@ from . import chain_net as cn
 from .chain_net import BendSolve, Contact, Network, Threads, project, unit
 
 PATTERN_KEYS = ("uv", "piece", "names", "F", "folds", "made", "grain", "sew", "sew_seam", "stitch", "marks", "closures",
-                "points", "border", "stitch_lines")
+                "points", "border", "stitch_lines", "roles")
 GAP = 0.0045  # m: soft cloth and stiff parts stay this far off the body (ZOZO's reach + a mesh edge's sag over an arm)
 RING_GAP = 0.004  # m: a stiff ring off a limb (ZOZO's reach): it hangs loose, so its gap is the solver's, no more
 RING_H = 0.008  # m: mesh size on a stiff ring
@@ -117,36 +117,15 @@ class Roles:
     front: dict | None
     band_closure: dict | None
     fold: dict | None
+    stand: bool = False  # the band is a STAND: nothing turned over it (chain_roles)
+    tube_groups: dict = field(default_factory=dict)  # piece -> the pieces of its several-piece tube (chain_roles)
 
 
 def read_roles(net: Network) -> Roles:
-    names = net.names
-    whole = {n: float(net.stiff[net.verts(n)].mean()) > 0.95 for n in names}
-    sewn: dict = {n: set() for n in names}
-    self_sewn = set()
-    for a, b in net.sew:
-        pa, pb = names[net.piece[a]], names[net.piece[b]]
-        if pa == pb:
-            self_sewn.add(pa)
-        else:
-            sewn[pa].add(pb)
-            sewn[pb].add(pa)
-    fold = next((f for f in net.M.get("folds") or [] if f.get("kind") == "roll"), None)
-    fall = fold["piece"] if fold else None
-    band = None
-    if fall:
-        cand = [p for p in sewn[fall] if whole[p]]
-        if not cand:
-            raise ChainRefused(f"{fall}: a roll piece sewn straight to the body cloth (no interfaced band): a chain build "
-                               "needs the band it stands on. next: add a band to the pattern (design_garment)")
-        band = cand[0]
-    closures = net.M.get("closures") or []
-    band_cl = next((c for c in closures if band and c["over"] == band), None)
-    front = next((c for c in closures if c["over"] != c["under"]), None)
-    rings = [n for n in names if whole[n] and n not in (band, fall)]
-    tubes = [n for n in names if not whole[n] and n in self_sewn]
-    panels = [n for n in names if not whole[n] and n not in tubes]
-    return Roles(band, fall, rings, tubes, panels, front, band_cl, fold)
+    """The pattern's roles: chain_roles.read_roles (its doc: fall, band, stand, rings, tubes of one or more pieces,
+    panels, the front lapped or edge to edge)."""
+    from .chain_roles import read_roles as rr
+    return rr(net)
 
 
 def hand_of(name: str) -> float:
@@ -935,7 +914,7 @@ class GarmentBuild(Build):
         net, R = self.net, self.roles
         uv = net.uv
         fr = [p for p in R.panels if hand_of(p) > 0 and (not R.front or p in (R.front["over"], R.front["under"]))]
-        bk = [p for p in R.panels if hand_of(p) == 0]
+        bk = [p for p in R.panels if hand_of(p) == 0 or (hand_of(p) > 0 and R.front and p not in (R.front["over"], R.front["under"]))]  # (a back cut in halves from CB: its .L half)
 
         def w(y):
             out = 0.0
@@ -1075,6 +1054,9 @@ class GarmentBuild(Build):
     def _tube_points(self, t, v, s_end=None):
         """Vertices v of tube t at their start: rows round the limb's axis at the pattern's width."""
         net, R = self.net, self.roles
+        if t in R.tube_groups:  # (a tube of several pieces: a two-piece sleeve; T8)
+            from .chain_roles import tube_group_points
+            return tube_group_points(self, t, v)
         uv = net.uv
         side = hand_of(t)
         ax = self.axes.setdefault(side, LimbAxis(self.body, side))
@@ -1103,7 +1085,8 @@ class GarmentBuild(Build):
         rings = TorsoRings(self.body, self._width_of(), GAP)
         self.torso = rings
         X = self.X.copy()
-        over = R.front["over"] if R.front else None
+        from .chain_roles import edge_to_edge
+        over = R.front["over"] if R.front and not edge_to_edge(R.front) else None  # (edge to edge: no lap, no layer)
         for p in R.panels:
             v = net.verts(p)
             x, y = uv[v, 0], uv[v, 1]
@@ -1271,12 +1254,13 @@ class GarmentBuild(Build):
 
     def _closure_ties(self):
         """Fastened pairs of a closure between two pieces: a layer apart (root a, root b, distance)."""
+        from .chain_roles import tie_gap
         net, R = self.net, self.roles
         out = []
         if R.front:
             for (a, b), c in zip(R.front["v"], R.front.get("closed") or []):
                 if c:
-                    out.append((net.root[a], net.root[b], LAYER))
+                    out.append((net.root[a], net.root[b], tie_gap(R.front, LAYER)))
         return np.array(out, float).reshape(-1, 3)
 
     # ---- 5. plackets, open
@@ -1423,7 +1407,10 @@ class GarmentBuild(Build):
     def run(self):
         """Built straight into the planned state (T7, chain_plan.py): an open band is built open, never closed first."""
         t0 = time.time()
-        if self.wear["state"] == "open" and self.roles.band and self.roles.front:
+        if self.roles.stand:  # (a stand collar: nothing turned over it, its own closure open or closed; T8 C289)
+            from .chain_roles import build_stand
+            build_stand(self, t0)
+        elif self.wear["state"] == "open" and self.roles.band and self.roles.front:
             from .chain_plan import build_open
             build_open(self, t0)
         else:

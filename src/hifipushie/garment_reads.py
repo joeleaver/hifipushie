@@ -59,7 +59,8 @@ COLLAR_FABRIC_SOURCE = ("a shirt collar: two layers of the shell + a fused inter
 
 def _roles(M) -> list:
     from . import garment_design
-    return [garment_design.role_of(n) for n in M["names"]]
+    decl = M.get("roles") or {}  # (the draft's declared role first: a stand named "collar"; T8)
+    return [decl.get(n) or garment_design.role_of(n) for n in M["names"]]
 
 
 def _mask(M, roles) -> np.ndarray:
@@ -85,6 +86,10 @@ def front_reads(X, M, hps_z: float, closure: str = "front") -> dict:
         XL, XR = X[mL], X[mR]
         top = min(XL[:, 2].max(), XR[:, 2].max())
         bot = max(XL[:, 2].min(), XR[:, 2].min()) + 0.03
+        for c in M.get("closures") or []:  # an edge-to-edge closure (a zip) ends where its edges end: a cutaway below
+            if c.get("name") == closure and c.get("kind") == "zip" and c.get("v"):  # it parts by design (T8)
+                pv = np.asarray(c["v"], np.int64).reshape(-1, 2)
+                bot = max(bot, float(X[pv].mean(axis=1)[:, 2].min()))
         prof = []
         z = top - 0.004
         while z > bot:

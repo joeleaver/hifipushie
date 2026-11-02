@@ -1057,6 +1057,8 @@ def mesh(B: dict, h: float = 0.02, fold_width: float = 0.0) -> dict:
     marks_n = {k: int(remap[v]) for k, v in marks.items() if used[v]}
     return {"uv": uv_n, "piece": pid_n, "names": names, "F": remap[F], "folds": fold_recs,
             "made": [nm for nm in names if mod[nm][0] == "made"],
+            # (a piece's declared role, when the draft names one: a stand collar named "collar"; T8 C289)
+            "roles": {nm: str(pcs[nm]["role"]) for nm in names if pcs[nm].get("role")},
             # (the thread frame per piece and the fabric's stretch limit: the diagnostic strain map reads threads as
             # the fit does, C235)
             "grain": {nm: float(pcs[nm].get("grain", 90.0)) for nm in names}, "stretch_limit": B.get("stretch_limit"),
@@ -9554,8 +9556,9 @@ def validate(spec: dict) -> None:
             if bad:
                 raise ClothError(f"{where}: pattern keys {sorted(bad)} unknown for {pat['from']} (have {sorted(okp)})")
         elif isinstance(pat, dict) and pat.get("from") == "own":  # (draft_pattern: the agent's own design, step 4)
-            if set(pat) != {"from", "dir"}:
-                raise ClothError(f'{where}: an own pattern is {{"from": "own", "dir": its draft dir}}: written by draft_pattern')
+            if not {"from", "dir"} <= set(pat) <= {"from", "dir", "digest"}:  # (digest: the draft's content, the job key's)
+                raise ClothError(f'{where}: an own pattern is {{"from": "own", "dir": its draft dir, "digest"}}: written by '
+                                 'draft_pattern')
         elif pat is not None:
             if not isinstance(pat, dict) or pat.get("from") not in names:
                 raise ClothError(f'{where}: pattern is {{"from": one of {names + list(garment_blocks.BLOCKS)}, "ease": {{...}}, "length"...}}')

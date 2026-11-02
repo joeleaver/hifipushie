@@ -1,0 +1,394 @@
+"""CHAIN ROLES (garment_steps T8, C289): the roles a chain build reads from ANY pattern, beyond a collared shirt.
+
+Joe (2026-11-02): every garment is built by the same general chain build, from its pattern; nothing garment-specific.
+A role comes from the pattern's construction (what is interfaced, what is sewn to what, which fold rolls, which closure
+joins which pieces) plus the piece's declared role (draft_pattern's `role`, carried on the flat mesh as M["roles"];
+else the role its name reads as, garment_design.role_of). Names never pick a stage on their own.
+
+- FALL: a piece with a "roll" fold. BAND: the wholly interfaced piece the fall is sewn to (a shirt's collar band).
+- STAND: a wholly interfaced piece sewn to the body cloth's neckline with nothing turned over it (role collar_stand /
+  neckband, no fall): the BAND stage's ring of its own neckline length, resting on the high points, upright; its top is
+  its own free edge (a band's top is its seam to the fall). Built by build_stand(), never as a ring round a limb. Its
+  ends meet at CF where the front below them is closed edge to edge; its own closure open = the top ends left free.
+  A stiff piece whose role reads "collar_fall" with no roll fold is refused by name (a fall needs its roll; a collar
+  that stands needs role collar_stand): the stand mistaken for a fall was T5's hussar sheet.
+- RINGS: other wholly interfaced pieces (cuffs, waistbands).
+- TUBE: a soft piece sewn to itself, OR several soft pieces of a limb role (sleeve, leg) on one side sewn to each other
+  (a two-piece sleeve: top sleeve + undersleeve). A group is started round the limb's axis piece after piece, each over
+  its share of the girth at that height (tube_group_points); every later stage treats its pieces as tube cloth.
+- PANELS: every other soft piece, wrapped round the torso; a back cut in halves (back.L / back.R from a CB seam) counts
+  as the back (its x runs from CB). The hem is the pattern's own outline: a cutaway, tails or a straight hem are only
+  lengths, nothing is special-cased.
+- FRONT: a closure between two pieces. Buttons LAP (the over side a layer outside the under, tied a layer apart); a ZIP
+  with no seam is EDGE TO EDGE: its pairs are made along the two declared edges (zip_pairs, written into the pattern's
+  closure so the reads see them), tied ZIP_GAP apart, no layer offset.
+"""
+from __future__ import annotations
+
+import time
+
+import numpy as np
+from scipy.spatial import cKDTree
+
+STAND_ROLES = ("collar_stand", "neckband")
+TUBE_ROLES = ("sleeve", "leg_front", "leg_back")
+EDGE_TO_EDGE = ("zip",)
+ZIP_GAP = 0.002  # m: an edge-to-edge closure's two edges this far apart (the teeth between them), side by side
+EDGE_TOL = 0.0015  # m: a border vertex this near a closure's declared edge is on it
+
+
+def piece_roles(net) -> dict:
+    from . import garment_design
+    decl = net.M.get("roles") or {}
+    return {n: decl.get(n) or garment_design.role_of(n) for n in net.names}
+
+
+def edge_to_edge(front: dict | None) -> bool:
+    return bool(front) and front.get("kind") in EDGE_TO_EDGE
+
+
+def tie_gap(front: dict | None, layer: float) -> float:
+    """How far apart a fastened pair is held: a lap's layer, an edge-to-edge closure's teeth."""
+    return ZIP_GAP if edge_to_edge(front) else layer
+
+
+def _on_edge(net, piece: str, poly) -> tuple:
+    """(vertices, param 0..1 along the polyline) of a piece's border vertices on a declared edge polyline (flat uv)."""
+    P = np.asarray(poly, float).reshape(-1, 2)
+    v = net.verts(piece)
+    border = np.asarray(net.M.get("border"), bool) if net.M.get("border") is not None else np.ones(net.n, bool)
+    v = v[border[v]]
+    if len(P) < 2 or not len(v):
+        return np.zeros(0, int), np.zeros(0)
+    seg = np.diff(P, axis=0)
+    sl = np.linalg.norm(seg, axis=1)
+    s0 = np.r_[0, np.cumsum(sl)]
+    q = net.uv[v][:, None, :] - P[None, :-1]
+    t = np.clip((q * seg[None]).sum(-1) / np.maximum(sl ** 2, 1e-12), 0, 1)
+    d = np.linalg.norm(q - t[..., None] * seg[None], axis=-1)
+    k = np.argmin(d, axis=1)
+    on = d[np.arange(len(v)), k] <= EDGE_TOL
+    par = (s0[k] + t[np.arange(len(v)), k] * sl[k]) / max(s0[-1], 1e-9)
+    return v[on], par[on]
+
+
+def zip_pairs(net, front: dict) -> dict:
+    """An edge-to-edge closure without fastening marks: one pair per vertex along the over edge, matched to the under
+    edge at the same share of its length. Written into the pattern's closure (the reads take its pairs from there)."""
+    ex = front.get("edge_xy") or {}
+    if front.get("v") or ex.get("over") is None or ex.get("under") is None:
+        return front
+    vo, to = _on_edge(net, front["over"], ex["over"])
+    vu, tu = _on_edge(net, front["under"], ex["under"])
+    if not len(vo) or not len(vu):
+        return front
+    k = cKDTree(tu[:, None]).query(to[:, None])[1]
+    pairs = sorted(([int(a), int(vu[j])] for a, j in zip(vo, k)), key=lambda p: -net.uv[p[0], 1])
+    closed = [front.get("state", "closed") == "closed"] * len(pairs)
+    for c in net.M.get("closures") or []:
+        if c.get("name") == front.get("name"):
+            c["v"], c["closed"] = pairs, closed
+    return dict(front, v=pairs, closed=closed)
+
+
+def _tube_groups(net, soft: list, role: dict, self_sewn: set, sewn: dict) -> dict:
+    """{piece: [its tube's pieces]}: a self-sewn soft piece alone; limb-role soft pieces of one side sewn to each other."""
+    from .chain_garment import hand_of
+    out = {p: [p] for p in soft if p in self_sewn}
+    limb = [p for p in soft if role[p] in TUBE_ROLES and p not in out]
+    seen: set = set()
+    for p in limb:
+        if p in seen:
+            continue
+        grp, todo = [], [p]
+        while todo:
+            q = todo.pop()
+            if q in seen:
+                continue
+            seen.add(q)
+            grp.append(q)
+            todo += [r for r in sewn[q] if r in limb and r not in seen and hand_of(r) == hand_of(p)]
+        if len(grp) > 1:
+            grp = sorted(grp, key=lambda q: -float(net.uv[net.verts(q), 1].max() - net.uv[net.verts(q), 1].min()))
+            for q in grp:
+                out[q] = grp
+    return out
+
+
+def read_roles(net):
+    """The pattern's roles (module doc). Raises ChainRefused naming a role the core can't build."""
+    from .chain_garment import ChainRefused, Roles
+    names = net.names
+    role = piece_roles(net)
+    whole = {n: float(net.stiff[net.verts(n)].mean()) > 0.95 for n in names}
+    sewn: dict = {n: set() for n in names}
+    self_sewn = set()
+    for a, b in net.sew:
+        pa, pb = names[net.piece[a]], names[net.piece[b]]
+        if pa == pb:
+            self_sewn.add(pa)
+        else:
+            sewn[pa].add(pb)
+            sewn[pb].add(pa)
+    fold = next((f for f in net.M.get("folds") or [] if f.get("kind") == "roll"), None)
+    fall = fold["piece"] if fold else None
+    band, stand = None, False
+    if fall:
+        cand = [p for p in sewn[fall] if whole[p]]
+        if not cand:
+            raise ChainRefused(f"{fall}: a roll piece sewn straight to the body cloth (no interfaced band): a chain build "
+                               "needs the band it stands on. next: add a band to the pattern (design_garment)")
+        band = cand[0]
+    else:
+        on_body = [p for p in names if whole[p] and any(not whole[q] for q in sewn[p])]
+        falls = [p for p in on_body if role[p] == "collar_fall"]
+        if falls:
+            raise ChainRefused(f"{falls[0]}: a stiff collar read as a FALL (role collar_fall) with no roll fold: a fall "
+                               "needs its roll line; a collar that stands up needs role collar_stand. next: declare the "
+                               "piece's role (draft_pattern pieces.<name>.role, garment_plan parts) or its roll fold")
+        stands = [p for p in on_body if role[p] in STAND_ROLES]
+        if stands:
+            band, stand = stands[0], True
+    closures = net.M.get("closures") or []
+    band_cl = next((c for c in closures if band and c["over"] == band), None)
+    front = next((c for c in closures if c["over"] != c["under"]), None)
+    if edge_to_edge(front):
+        front = zip_pairs(net, front)
+    rings = [n for n in names if whole[n] and n not in (band, fall)]
+    soft = [n for n in names if not whole[n]]
+    groups = _tube_groups(net, soft, role, self_sewn, sewn)
+    tubes = [n for n in soft if n in groups]
+    panels = [n for n in soft if n not in groups]
+    return Roles(band, fall, rings, tubes, panels, front, band_cl, fold, stand=stand,
+                 tube_groups={k: v for k, v in groups.items() if len(v) > 1})
+
+
+# ---- a tube of several pieces
+def _rows(xa, ya):
+    """Per 10 mm height bin: (x low, x high) of a piece."""
+    bins = np.round(ya / 0.01).astype(int)
+    return {int(k): (float(xa[bins == k].min()), float(xa[bins == k].max())) for k in np.unique(bins)}
+
+
+def _sides(b, p, q):
+    """Which x-side of piece p (-1 low, +1 high) is sewn to piece q, and which side of q it meets."""
+    uv = b.net.uv
+    s = b.sewn_with(p, q)
+    if not s:
+        return None
+    cp, cq = np.median(uv[b.net.verts(p), 0]), np.median(uv[b.net.verts(q), 0])
+    a = np.array(list(s.keys()))
+    c = np.array(list(s.values()))
+    return float(np.sign(np.mean(uv[a, 0]) - cp)), float(np.sign(np.mean(uv[c, 0]) - cq))
+
+
+def _loop(b, grp):
+    """The group's pieces round the limb: [(piece, direction)], direction +1 = low x -> high x."""
+    order = [(grp[0], 1.0)]
+    while len(order) < len(grp):
+        p, d = order[-1]
+        nxt = None
+        for q in grp:
+            if q in [o[0] for o in order]:
+                continue
+            for sp, sq in ([_sides(b, p, q)] if _sides(b, p, q) else []):
+                if sp == d:  # p's exit side (its high side going +1) meets q: q enters from that side
+                    nxt = (q, -sq)
+            if nxt:
+                break
+        if nxt is None:
+            nxt = next((q, 1.0) for q in grp if q not in [o[0] for o in order])
+        order.append(nxt)
+    return order
+
+
+def tube_group_points(b, t, v):
+    """Vertices v of piece t (one piece of a several-piece tube) at their start: round the limb's axis, each piece over
+    its share of the girth at that height (heights from the wrist end up), the top piece's middle on the limb's outer
+    side, turning so the cloth sewn to the front panel faces front."""
+    from .chain_garment import LimbAxis, hand_of
+    net, R = b.net, b.roles
+    uv = net.uv
+    grp = R.tube_groups[t]
+    side = hand_of(t)
+    ax = b.axes.setdefault(side, LimbAxis(b.body, side)) if hasattr(b, "axes") else LimbAxis(b.body, side)
+    info = {}
+    for p in grp:
+        pv = net.verts(p)
+        xa, ya = uv[pv, 0], uv[pv, 1]
+        y0 = float(ya.min())
+        rows = _rows(xa, ya - y0)
+        wk = {k: max(hi - lo, 0.03) for k, (lo, hi) in rows.items()}
+        kw = max(wk, key=wk.get)
+        info[p] = dict(y0=y0, rows=rows, w=wk, kw=kw, wide=wk[kw], top=int(max(rows)))
+    H = max((float(uv[net.verts(p), 1].max()) - info[p]["y0"]) for p in grp)
+
+    def width(p, k):
+        f = info[p]
+        if k >= f["kw"]:
+            return f["wide"]  # the cap (rows above the widest): whole width, so its edge rings the armhole
+        k = min(max(k, min(f["w"])), f["top"])
+        while k not in f["w"]:
+            k += 1
+        return f["w"][k]
+
+    def lohi(p, k):
+        f = info[p]
+        k = min(max(k, min(f["rows"])), f["top"])
+        while k not in f["rows"]:
+            k += 1
+        lo, hi = f["rows"][k]
+        return lo, max(hi, lo + 1e-3)
+
+    order = _loop(b, grp)
+
+    def phase(p, x, y):
+        h = y - info[p]["y0"]
+        k = np.round(h / 0.01).astype(int)
+        out = np.zeros(len(x))
+        for i, (xx, kk) in enumerate(zip(x, k)):
+            W = sum(width(q, kk) for q, _ in order)
+            off = 0.0
+            for q, d in order:
+                if q == p:
+                    lo, hi = lohi(q, kk)
+                    fr = (xx - lo) / (hi - lo)
+                    fr = fr if d > 0 else 1 - fr
+                    out[i] = 2 * np.pi * (off + np.clip(fr, 0, 1) * width(q, kk)) / W
+                    break
+                off += width(q, kk)
+        return out
+
+    top = grp[0]  # the longest piece: the top sleeve, its middle on the outer side
+    tv = net.verts(top)
+    mid_y = float(uv[tv, 1].max()) - 0.05
+    mid = phase(top, np.array([float(np.median(uv[tv, 0]))]), np.array([mid_y]))[0]
+    fp = [(q, pp) for q in grp for pp in R.panels if b.sewn_with(q, pp) and R.front and pp in (R.front["over"], R.front["under"])]
+    sf = 1.0
+    if fp:
+        q, pp = fp[0]
+        a = np.array(list(b.sewn_with(q, pp).keys()))
+        ph = np.angle(np.exp(1j * (phase(q, uv[a, 0], uv[a, 1]) - mid)))
+        sf = float(np.sign(np.mean(ph))) or 1.0
+    s_end = H
+    x, y = uv[v, 0], uv[v, 1]
+    ph = (phase(t, x, y) - mid) * sf
+    s = (H - (y - info[t]["y0"])) * s_end / H
+    Wv = np.array([sum(width(q, int(round((yy - info[t]["y0"]) / 0.01))) for q, _ in order) for yy in y])
+    Cc, o, f, d = ax.at(s)
+    return Cc + (np.cos(ph)[:, None] * o + np.sin(ph)[:, None] * f) * (Wv / (2 * np.pi))[:, None]
+
+
+# ---- the stand
+def _top_edge(net, piece, sb):
+    """A stand's free top edge, in outline order and the neck chain's direction: the outline arc off the neck seam,
+    where it is (nearly) farthest from it (the ends' upright edges left out: ordered by x they zig-zagged)."""
+    lp = np.asarray(net.loop(piece))
+    ins = np.isin(lp, sb)
+    k = next(i for i in range(len(lp)) if ins[i] and not ins[(i + 1) % len(lp)])
+    lp, ins = np.roll(lp, -(k + 1)), np.roll(ins, -(k + 1))
+    arc = lp[: int(np.argmax(ins))] if ins.any() else lp
+    d = cKDTree(net.uv[sb]).query(net.uv[arc])[0]
+    top = arc[d >= 0.9 * d.max()]
+    return top[::-1] if net.uv[top[0], 0] > net.uv[top[-1], 0] else top
+
+
+def stand_ring(b):
+    """The STAND: the band stage's ring with its own top edge (module doc). Sets b.sb / b.st / b._band_lines like
+    band_closed, so fill_band, stiff_last and the soft network hold it as they hold a band."""
+    import math
+    from . import chain_net as cn
+    from .chain_garment import GAP, REST, ChainRefused, hand_of
+    from .chain_net import BendSolve
+    from .chain_rest import rest_ring
+    net, R = b.net, b.roles
+    uv, rs = net.uv, net.root
+    soft_sewn = set()
+    for p in R.panels:
+        soft_sewn |= set(b.sewn_with(R.band, p))
+    if len(soft_sewn) < 4:
+        raise ChainRefused(f"{R.band}: a stand not sewn to the body cloth's neckline. next: sew its neck edge (draft_pattern)")
+    sb = b.order_x(soft_sewn)
+    st = _top_edge(net, R.band, sb)
+    LB = np.linalg.norm(np.diff(uv[sb], axis=0), axis=1)
+    sB = np.r_[0, np.cumsum(LB)]
+    C = float(sB[-1])
+    mid = int(np.argmin(np.abs(sB - C / 2)))
+    left = [p for p in R.panels if hand_of(p) > 0 and b.sewn_with(R.band, p)]
+    su = float(np.sign(np.mean([uv[q, 0] for q in b.sewn_with(R.band, left[0])]) - uv[sb[mid], 0])) if left else 1.0
+    a, bb_, yc, zc, dz = b._neck_ring(C)
+    th = (sB - sB[mid]) / C * 2 * np.pi * su
+    hz = b.body.p("hps.L")[2]
+    B = np.c_[a * np.sin(th), yc + bb_ * np.cos(th), zc + dz * np.cos(th) + (hz - zc) * np.sin(th) ** 2]
+    sidep = B[np.argmax(B[:, 0])]
+    B, b.reads["band_rest"] = rest_ring(B, b.body.contact, GAP, np.array([0.0, sidep[1], sidep[2]]))
+    kb = cKDTree(uv[sb])
+    cross = np.array([(j, int(kb.query(uv[v])[1])) for j, v in enumerate(st)])
+    hgt = np.linalg.norm(uv[st] - uv[sb[cross[:, 1]]], axis=1)
+    for phi in np.radians(np.arange(0, 41, 2.5)):  # it leans with the neck: the least tilt forward that clears it
+        T = B[cross[:, 1]] + np.array([0.0, -math.sin(phi), math.cos(phi)]) * hgt[:, None]
+        if b.body.contact.query(T)[0].min() >= GAP:
+            break
+    b.X[rs[sb]] = B
+    b.X[rs[st]] = T
+    nb, nt = rs[sb], rs[st]
+    cbn = rs[sb[mid]]
+    free = np.unique(np.r_[nb, nt])
+    free = free[free != cbn]
+    S = BendSolve(b.X, free)
+    Lt = np.linalg.norm(np.diff(uv[st], axis=0), axis=1)
+    S.add_links(nb[:-1], nb[1:], LB, np.ones(len(LB), bool))
+    S.add_links(nt[:-1], nt[1:], Lt, np.ones(len(st) - 1, bool))
+    ev = cross[np.unique(np.r_[np.arange(0, len(cross), 4), len(cross) - 1])]  # (the end corners too: free, the stand's
+    # end edges ran 41 % past their cut)
+    S.add_links(nt[ev[:, 0]], nb[ev[:, 1]], hgt[ev[:, 0]], np.ones(len(ev), bool))
+    S.add_bend(nb, cn.BEND_BASE * net.bend[sb[1:-1]])
+    S.add_bend(nt, cn.BEND_BASE * net.bend[st[1:-1]])
+    S.add_contact(nt, b.body.contact, GAP)
+    S.add_contact(nb, b.body.contact, GAP, rest=REST)
+    rows = []
+    front_shut = bool(R.front) and all(R.front.get("closed") or [False])
+    ends = [(nb[0], nb[-1])] if front_shut else []  # the fronts below meet at CF: so do the stand's neck ends
+    if R.band_closure and all(R.band_closure.get("closed") or [False]):
+        ends.append((nt[0], nt[-1]))  # its own closure done: the top ends meet too
+    for p0, p1 in ends:
+        rows += [([p0], [1.0], 0, 0.0, cn.HARD), ([p1], [1.0], 0, 0.0, cn.HARD),
+                 ([p0, p1], [1.0, -1.0], 1, 0.0, cn.HARD), ([p0, p1], [1.0, -1.0], 2, 0.0, cn.HARD)]
+    sT = np.r_[0, np.cumsum(Lt)]
+    for chain, s, m in ((nb, sB, mid), (nt, sT, int(np.argmin(np.abs(cross[:, 1] - mid))))):  # worn straight: mirror
+        mj = np.searchsorted(s, 2 * s[m] - s).clip(0, len(s) - 1)
+        for q in range(len(chain)):
+            if q < m and mj[q] > m:
+                rows += [([chain[q], chain[mj[q]]], [1.0, 1.0], 0, 0.0, 1.0),
+                         ([chain[q], chain[mj[q]]], [1.0, -1.0], 1, 0.0, 1.0),
+                         ([chain[q], chain[mj[q]]], [1.0, -1.0], 2, 0.0, 1.0)]
+    S.add_linear(rows)
+
+    def upright(Y):  # it stands: its top above its bottom
+        d = Y[nt[ev[:, 0]], 2] - Y[nb[ev[:, 1]], 2] - 0.012
+        bad = d < 0
+        m = len(ev)
+        g = np.zeros((m, 3))
+        g[:, 2] = 10.0 * bad
+        k = np.arange(m)
+        return 10 * np.where(bad, d, 0.0), np.r_[k, k], np.r_[nt[ev[:, 0]], nb[ev[:, 1]]], np.r_[g, -g]
+    S.add_fn(upright)
+    b.X = S.solve(60)
+    b.sb, b.st = sb, st
+    b._band_lines = (nb, nt, ev, hgt, LB)
+    b._band_project(held=np.isin(np.arange(net.n), [cbn]))
+    b.reads["band"] = b._band_read()
+    up = b.X[nt[ev[:, 0]]] - b.X[nb[ev[:, 1]]]
+    b.reads["stand"] = {"rise_deg_median": round(float(np.median(np.degrees(np.arctan2(
+        up[:, 2], np.linalg.norm(up[:, :2], axis=1))))), 1), "ends_meet": [bool(e) for e in (front_shut,)]}
+
+
+def build_stand(b, t0: float) -> None:
+    """A garment whose collar is a STAND: the stand's ring, its surface and edges, rings, then the soft cloth under it
+    (closed front: fastened edge to edge or lapped as its closure says)."""
+    stand_ring(b)
+    b.fill_band()
+    b.stiff_last()
+    b.rings()
+    b.reads["stiff_stand_s"] = round(time.time() - t0, 1)
+    b.soft_net()
