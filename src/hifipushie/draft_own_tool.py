@@ -4,7 +4,8 @@ flat gate, the record's step 4 and its look. draft_own.py holds the parts (Node 
 `run(name, garment, design, declarations, options, sa)` -> (sheet path | None, answer text). It reads steps 1 (pieces,
 seams, closures) and 3 (measurements, by name) of the garment record (garment_record.READS), drafts in
 <model>/garments/<garment>/draft/, validates, builds the pieces through cloth.pieces (pattern {"from": "own"}), meshes
-them flat (cloth.mesh: the keys chain_garment reads), gates, draws the flat sheet with the seam pairs labelled, writes
+them flat (cloth.mesh: the keys chain_garment reads), gates, draws the flat sheet (shape only: C286) and lists its
+numbers in the text, writes
 the spec's garment entry (so pattern_check and chain_garment find it) and step 4.
 """
 from __future__ import annotations
@@ -26,20 +27,10 @@ def measurements(step3: dict) -> dict:
     return out
 
 
-def _labels(B: dict, decl: dict) -> dict:
-    """{piece: lines}: each seam's number at its edges, so the sheet shows which edge sews to which."""
-    lab = {nm: [] for nm in B["pieces"]}
-    for i, s in enumerate(decl.get("seams") or []):
-        for side, other in (("a", "b"), ("b", "a")):
-            for e in do._sides(s[side]):
-                p, ed = e.split(":", 1)
-                if p in lab:
-                    lab[p].append(f"S{i + 1} {ed} > {', '.join(do._sides(s[other]))}"[:48])
-    for nm, pd in (decl.get("pieces") or {}).items():
-        if nm in lab:
-            lab[nm].insert(0, f"cut {pd.get('cut', 1)}{' on fold' if pd.get('fold') else ''}"
-                              f"{' stiff' if nm in (decl.get('stiff') or []) else ''}")
-    return lab
+def seam_names(decl: dict) -> list:
+    """Each declared seam's name, both sides' edges as the declarations name them (the legend's and the text's)."""
+    side = lambda x: x if isinstance(x, str) else " + ".join(x)
+    return [f"{side(s['a'])} = {side(s['b'])}" for s in decl.get("seams") or []]
 
 
 def flat_check(name: str, garment: str) -> tuple[list, dict, dict]:
@@ -98,8 +89,8 @@ def run(name: str, garment: str, design: str, declarations: dict, options: dict 
     rows = do.gate(B, declarations, rd["1"])
     v = do.verdict(rows)
     seam_rows = next(r for r in rows if r["id"] == "seams")["detail"]
-    im = pattern_sheet.render(B, f"{name}:{garment} draft_pattern (own design)", seam_rows=seam_rows,
-                              labels=_labels(B, declarations), grid=True)
+    names = seam_names(declarations) if len(declarations.get("seams") or []) == len(B["seams"]) else None
+    im = pattern_sheet.render(B, f"{name}:{garment} draft_pattern (own design)", grid=True, names=names)
     sheet = gr.look_dir(name, garment) / "step4_flat.png"
     im.save(sheet)
     spec = store.load(name)
@@ -116,8 +107,13 @@ def run(name: str, garment: str, design: str, declarations: dict, options: dict 
              f"  pieces {len(B['pieces'])}: {', '.join(B['pieces'])}",
              f"  flat mesh: {out['mesh']['vertices']} vertices, {out['mesh']['faces']} faces; keys {', '.join(keys)}"]
     lines += [f"  {r['status']} {r['id']}: {r.get('value', '')}{' | ' + r['why'] if r.get('why') else ''}"[:600] for r in rows]
-    lines.append(f"  look: {sheet}")
+    lines += ["  " + ln for ln in pattern_sheet.text_lines(B, seam_rows, names, declarations)]
+    if im.info.get("names_off"):
+        lines.append(f"  on the sheet without a name (too small to hold one): {', '.join(im.info['names_off'])}")
+    lines.append(f"  look: {sheet} (shape only: outlines, grain, one colour per seam pair; every number is above)")
     lines.append(f"  {rec}" if rec else f"  record: step 4 written ({gr.path(name, garment)})")
-    nxt = ("judge the flat sheet beside the reference (every piece, every seam pair labelled); then chain_garment"
+    nxt = ("compare the sheet's SHAPES with the reference (is the band curved and which way, does the hem run straight "
+           "or curve, are the pieces the reference's pieces); take every number from this text, never off the image; "
+           "then chain_garment"
            if v == "PASS" else "fix the failing rows in the design or the declarations and call again")
     return str(sheet), "\n".join(lines) + f"\nnext: {nxt}"

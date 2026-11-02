@@ -1,8 +1,9 @@
-"""The flat pattern as a pattern maker lays it out on the table: every piece at one scale, named, with its role, size,
-grain arrow, notches, buttons/buttonholes, internal lines, fold lines (dashed blue, with angle and kind),
-interfacing (hatched), and every seam in its own colour with its number on both sides (S3a / S3b), so a seam's
-two edges can be matched by eye. A 10 cm scale bar; the seam list underneath. Stage 2 of the clothing workflow
-(look_pattern)."""
+"""The flat pattern as a pattern maker lays it out on the table, drawn for SHAPE (C286: pictures are for shape, text is
+for numbers). Every piece at one scale: its outline, grain arrow, notches, buttons/buttonholes, internal lines, fold
+lines (dashed blue), interfacing (hatched), ONE large piece name inside the piece (sized down to fit, or left off and
+said so in `img.info["names_off"]`), every seam pair in one colour on both its edges, a 10 cm scale bar and a big
+legend mapping each colour to its seam's name. No numbers on the image: sizes, cut counts, lengths and ease are in
+`text_lines` (every caller puts them in its text answer). Stage 2 of the clothing workflow (look_pattern)."""
 from __future__ import annotations
 
 import colorsys
@@ -91,30 +92,72 @@ def offset_outline(P: np.ndarray, dist: float) -> np.ndarray:
     return P + n * (dist / c)[:, None]
 
 
+NAME_PX = (44, 18)  # a piece name's largest and smallest size (px); smaller than 18 is left off and reported
+LEGEND_PX = 24
+
+
+def _side_name(s) -> str:
+    return s if isinstance(s, str) else " + ".join(s)
+
+
+def seam_names(Bp: dict) -> list:
+    """One name per seam (its two sides' edges), the legend's and text_lines' wording."""
+    return [f"{_side_name(A)} = {_side_name(B)}" for A, B in Bp["seams"]]
+
+
+def text_lines(Bp: dict, seam_rows=None, names: list | None = None, decl: dict | None = None) -> list:
+    """The sheet's numbers as text (the image carries none): every piece (name, size, cut count, stiff, grain, role)
+    and every seam pair (both edges, both lengths, the ease, PASS/FAIL). names: the seams' names (default
+    seam_names); decl: draft_pattern's declarations (cut counts, folds)."""
+    pcs, stiff = Bp["pieces"], {e if isinstance(e, str) else e.get("piece") for e in Bp.get("interfaced") or []}
+    dp = (decl or {}).get("pieces") or {}
+    out = [f"pieces ({len(pcs)}; sizes are the piece's width x height on the sheet, mm):"]
+    for nm, pc in pcs.items():
+        sz = np.ptp(np.asarray(pc["P"], float), 0) * 1000
+        cut = int(dp.get(nm, {}).get("cut", pc.get("cut", 1)))
+        fold = " on fold" if dp.get(nm, {}).get("fold") else ""
+        out.append(f"  {nm}: {sz[0]:.0f} x {sz[1]:.0f} mm, cut {cut}{fold}{', stiff' if nm in stiff else ''}, "
+                   f"grain {float(pc.get('grain', 90)):.0f} deg, role {garment_design.role_of(nm, pc)}")
+    names = names or seam_names(Bp)
+    rows = list(seam_rows or [])
+    out.append(f"seams ({len(Bp['seams'])}; S<n> is the n-th colour in the sheet's legend; lengths a / b mm):")
+    for i, nm in enumerate(names):
+        r = rows[i] if i < len(rows) else None
+        if r is None:
+            out.append(f"  S{i + 1} {nm}")
+            continue
+        band = r.get("band")
+        ok = r.get("ok", True) and not r.get("notches_off")
+        out.append(f"  S{i + 1} {'PASS' if ok else 'FAIL'} {nm}: {float(r['len_a_mm']):.0f} / {float(r['len_b_mm']):.0f} mm, "
+                   f"ease {float(r['ease']) * 100:+.1f} % ({r.get('kind', '')}"
+                   + (f", band {band[0] * 100:+.1f}..{band[1] * 100:+.1f} %" if band else "") + ")"
+                   + (f", notches off {r['notches_off']}" if r.get("notches_off") else ""))
+    return out
+
+
 def render(Bp: dict, title: str = "", px_per_m: float = 900.0, width_m: float = 1.9, seam_rows=None,
-           notes: list | None = None, grid: bool = False, sa: float = 0.0, labels: dict | None = None,
-           points=()) -> Image.Image:
-    """The pattern sheet. seam_rows: cloth_check rows (ease, flags) to print in the seam list. grid: a 1 cm grid (10 cm
-    lines darker) under the pieces, true scale; sa: a seam allowance (m) drawn as the cutting line outside each piece's
-    sewing line (thin dashed); labels {piece: [text lines]} written on the piece (measurements); points [(piece, name,
-    label)]: named pattern points marked and labelled (break, lapel point, neck point...)."""
+           grid: bool = False, sa: float = 0.0, points=(), names: list | None = None) -> Image.Image:
+    """The pattern sheet, shape only. grid: a light 1 cm grid (10 cm lines darker) under the pieces, true scale,
+    unnumbered; sa: a seam allowance (m) drawn as the cutting line outside each piece's sewing line (thin dashed);
+    points [(piece, name, label)]: named pattern points marked (a dot; the names belong in the text answer);
+    names: the seams' names for the legend (default seam_names). seam_rows is accepted for the callers' symmetry and
+    not drawn: its numbers go in text_lines. img.info["names_off"]: pieces whose name did not fit inside them."""
     pcs = Bp["pieces"]
     off, W, H = _layout(pcs, width_m)
-    list_h = 22 * (len(Bp["seams"]) + 3 + len(notes or [])) + 40
+    names = names or seam_names(Bp)
+    f_leg = _font(LEGEND_PX)
     S = px_per_m
-    img = Image.new("RGB", (int(W * S), int(H * S) + list_h + 40), (255, 255, 255))
+    leg_h = (LEGEND_PX + 12) * (len(Bp["seams"]) + 2) + 40
+    img = Image.new("RGB", (int(W * S), int(H * S) + 60 + leg_h), (255, 255, 255))
     d = ImageDraw.Draw(img, "RGBA")
-    f_big, f_mid, f_small = _font(18), _font(14), _font(12)
-    Hpx = int(H * S) + 40
-    if grid:  # true scale: 1 cm cells, every 10 cm darker, numbered
+    Hpx = int(H * S) + 60
+    if grid:  # true scale: 1 cm cells, every 10 cm darker (no numbers: the scale bar gives the scale)
         for i in range(int(W * 100) + 1):
             x = i * S / 100.0
-            d.line([(x, 40), (x, Hpx)], fill=(200, 210, 230) if i % 10 == 0 else (236, 240, 248), width=1)
-            if i % 10 == 0:
-                d.text((x + 2, 42), f"{i}", fill=(150, 160, 190), font=f_small)
+            d.line([(x, 60), (x, Hpx)], fill=(214, 222, 238) if i % 10 == 0 else (242, 245, 250), width=1)
         for j in range(int(H * 100) + 1):
             y = Hpx - j * S / 100.0
-            d.line([(0, y), (W * S, y)], fill=(200, 210, 230) if j % 10 == 0 else (236, 240, 248), width=1)
+            d.line([(0, y), (W * S, y)], fill=(214, 222, 238) if j % 10 == 0 else (242, 245, 250), width=1)
 
     def tp(nm, q):  # pattern point of a piece -> image px (y flipped: pattern y up)
         dx, dy, sz = off[nm]
@@ -123,7 +166,20 @@ def render(Bp: dict, title: str = "", px_per_m: float = 900.0, width_m: float = 
         y = Hpx - (q[..., 1] + dy) * S
         return np.stack([x, y], -1)
 
-    d.text((10, 8), title, fill=(0, 0, 0), font=f_big)
+    def pt(nm, px):  # image px -> the piece's pattern point
+        dx, dy, sz = off[nm]
+        px = np.asarray(px, float)
+        return np.stack([px[..., 0] / S - dx, (Hpx - px[..., 1]) / S - dy], -1)
+
+    from .cloth import _inside
+
+    def inside(nm, box, pad=6):  # an image-px box (x0, y0, x1, y1) wholly inside the piece
+        x0, y0, x1, y1 = box[0] - pad, box[1] - pad, box[2] + pad, box[3] + pad
+        xs, ys = np.linspace(x0, x1, 7), np.linspace(y0, y1, 5)
+        Q = np.array([(x, y) for x in xs for y in ys])
+        return bool(_inside(np.asarray(pcs[nm]["P"], float), pt(nm, Q)).all())
+
+    d.text((10, 10), title, fill=(0, 0, 0), font=_font(30))
     # pieces: fill, interfacing hatch, outline
     inter = {}
     for e in Bp["interfaced"]:
@@ -136,7 +192,7 @@ def render(Bp: dict, title: str = "", px_per_m: float = 900.0, width_m: float = 
             P = pc["P"]
             lo, hi = P.min(0), P.max(0)
             step = 0.012
-            from .cloth import _inside, _seg_dist
+            from .cloth import _seg_dist
             ref = None
             if not isinstance(e, str) and "edge" in e:  # (a fused facing's band: along an outline arc)
                 ref = np.asarray(pc["P"], float)[pattern.arc_indices(pc, e["edge"])]
@@ -156,61 +212,48 @@ def render(Bp: dict, title: str = "", px_per_m: float = 900.0, width_m: float = 
                     ok &= dd < w
                 if ok.sum() < 2:
                     continue
-                # draw the inside runs
-                run = []
+                run = []  # draw the inside runs
                 for q, k in zip(Q, ok):
                     if k:
                         run.append(q)
                     elif len(run) > 1:
-                        d.line([tuple(p) for p in tp(nm, np.array(run))], fill=(150, 120, 60, 110), width=1)
+                        d.line([tuple(p) for p in tp(nm, np.array(run))], fill=(150, 120, 60, 90), width=1)
                         run = []
                     else:
                         run = []
                 if len(run) > 1:
-                    d.line([tuple(p) for p in tp(nm, np.array(run))], fill=(150, 120, 60, 110), width=1)
+                    d.line([tuple(p) for p in tp(nm, np.array(run))], fill=(150, 120, 60, 90), width=1)
         for k, L in (pc.get("lines") or {}).items():  # the draft's internal lines (chest, waist, placket folds...)
             _dashed(d, tp(nm, np.asarray(L)), fill=(170, 170, 170), width=1, dash=4, gap=4)
         d.line(poly + [poly[0]], fill=(30, 30, 30), width=2)
         if sa > 0:  # the cutting line, a seam allowance outside the sewing line
             C = tp(nm, offset_outline(pc["P"], sa))
             _dashed(d, list(C) + [C[0]], fill=(90, 90, 90), width=1, dash=6, gap=4)
-    # seams: each its colour, label at the middle of each side's edges
+    # seams: both edges of a pair in the pair's colour, thick (matched by colour, never by a printed code)
     for si, (A, B) in enumerate(Bp["seams"]):
         col = _seam_colour(si, len(Bp["seams"]))
-        for lab, side in (("a", A), ("b", B)):
+        for side in (A, B):
             for e in ([side] if isinstance(side, str) else side):
                 nm, arc = e.split(":", 1)
                 if nm not in pcs:
                     continue
-                L = pcs[nm]["P"][pattern.arc_indices(pcs[nm], arc)]
-                pts = tp(nm, L)
-                d.line([tuple(p) for p in pts], fill=col + (230,), width=5)
-                m = pts[len(pts) // 2]
-                c = tp(nm, pcs[nm]["P"].mean(0))
-                v = c - m
-                v = v / (np.linalg.norm(v) + 1e-9) * 16
-                d.text(tuple(m + v - [10, 7]), f"S{si + 1}{lab}", fill=col, font=f_small)
-    # fold lines
+                pts = tp(nm, pcs[nm]["P"][pattern.arc_indices(pcs[nm], arc)])
+                d.line([tuple(p) for p in pts], fill=col + (240,), width=8, joint="curve")
+    # fold lines (dashed blue; their angle and kind are in the text)
     for f in Bp.get("folds") or []:
         try:
             Q = garment_design.fold_polyline(pcs, f)
-        except Exception as ex:  # drawn as a note: the sheet must still render
-            d.text((10, 30), f"fold {f} unresolved: {ex}", fill=(200, 0, 0), font=f_small)
+        except Exception:  # the sheet must still render (callers report the fold)
             continue
-        pts = tp(f["piece"], Q)
-        _dashed(d, pts, fill=(20, 60, 220), width=3, dash=12, gap=5)
-        d.text(tuple(pts[0] + [4, -16]), f"fold {f.get('angle')}° {f.get('kind', 'press')}", fill=(20, 60, 220), font=f_small)
+        _dashed(d, tp(f["piece"], Q), fill=(20, 60, 220), width=4, dash=14, gap=6)
     for nm, pc in pcs.items():  # the old placement fold (wrap.fold: rise, layer): where the U starts
         w = pc.get("wrap") or {}
         if w.get("fold") and not any(f.get("piece") == nm for f in Bp.get("folds") or []):
             from .cloth import _fold_line
-            # the sewn edge offset by the rise: drawn from _fold_line's first row (it needs the seams only)
             try:
                 FL = _fold_line(Bp, nm, 0.01)
                 if FL is not None:
-                    n3 = len(FL) // 3
-                    _dashed(d, tp(nm, FL[:n3]), fill=(20, 60, 220), width=2, dash=4, gap=4)
-                    d.text(tuple(tp(nm, FL[0]) + [4, -16]), f"placed fold (U {w['fold']})", fill=(20, 60, 220), font=f_small)
+                    _dashed(d, tp(nm, FL[:len(FL) // 3]), fill=(20, 60, 220), width=3, dash=6, gap=5)
             except Exception:
                 pass
     # marks: notches (ticks), buttons (circles), buttonholes (slots)
@@ -222,60 +265,83 @@ def render(Bp: dict, title: str = "", px_per_m: float = 900.0, width_m: float = 
             p = tp(nm, v)
             kl = k.lower()
             if "notch" in kl:
-                d.line([tuple(p - [0, 6]), tuple(p + [0, 6])], fill=(220, 0, 0), width=2)
-                d.line([tuple(p - [6, 0]), tuple(p + [6, 0])], fill=(220, 0, 0), width=2)
+                d.line([tuple(p - [0, 8]), tuple(p + [0, 8])], fill=(220, 0, 0), width=3)
+                d.line([tuple(p - [8, 0]), tuple(p + [8, 0])], fill=(220, 0, 0), width=3)
             elif "buttonhole" in kl:
-                d.rectangle([tuple(p - [3, 8]), tuple(p + [3, 8])], outline=(60, 60, 60), width=2)
+                d.rectangle([tuple(p - [4, 10]), tuple(p + [4, 10])], outline=(60, 60, 60), width=2)
             elif "button" in kl:
-                d.ellipse([tuple(p - 6), tuple(p + 6)], outline=(60, 60, 60), width=2)
-    # per piece: name, role, size, grain, where it goes
-    for nm, pc in pcs.items():
-        P = pc["P"]
-        c = tp(nm, 0.5 * (P.min(0) + P.max(0)))
-        sz = np.ptp(P, 0) * 1000
-        role = garment_design.role_of(nm, pc)
-        w = pc.get("wrap") or {}
-        g = math.radians(float(pc.get("grain", 90)))
-        L = min(0.35 * min(np.ptp(P, 0).max(), 0.3), 0.12) * S
-        u = np.array([math.cos(g), -math.sin(g)]) * L / 2
-        d.line([tuple(c - u), tuple(c + u)], fill=(90, 90, 90), width=2)
-        for s in (-1, 1):  # arrow heads
-            tip = c + s * u
-            perp = np.array([-u[1], u[0]]) / (np.linalg.norm(u) + 1e-9) * 6
-            d.line([tuple(tip), tuple(tip - s * u / np.linalg.norm(u) * 10 + perp)], fill=(90, 90, 90), width=2)
-            d.line([tuple(tip), tuple(tip - s * u / np.linalg.norm(u) * 10 - perp)], fill=(90, 90, 90), width=2)
-        txt = f"{nm}  [{role}]\n{sz[0]:.0f} x {sz[1]:.0f} mm\n-> {w.get('to', 'torso')}" + (
-            f" {w.get('side')}" if w.get("side") else "") + (f" @{w['level']}" if w.get("level") else "") + (
-            f" out {w['out'] * 1000:.0f}mm" if w.get("out") else "")
-        if (labels or {}).get(nm):
-            txt += "\n" + "\n".join(labels[nm])
-        d.multiline_text(tuple(c + [8, 6]), txt, fill=(0, 0, 0), font=f_mid, spacing=2)
-    for nm, pn, lab in points:  # named pattern points (break, lapel point, neck point ...)
+                d.ellipse([tuple(p - 7), tuple(p + 7)], outline=(60, 60, 60), width=3)
+    for nm, pn, lab in points:  # named pattern points: a dot (the name is the caller's text)
         if nm in pcs and pn in pcs[nm]["names"]:
             p = tp(nm, pcs[nm]["P"][pcs[nm]["names"][pn]])
-            d.ellipse([tuple(p - 5), tuple(p + 5)], fill=(200, 40, 140))
-            d.text(tuple(p + [7, -7]), lab, fill=(160, 20, 110), font=f_small)
-    # scale bar
-    y0 = Hpx - 18
-    d.line([(20, y0), (20 + 0.1 * S, y0)], fill=(0, 0, 0), width=3)
-    d.text((24 + 0.1 * S, y0 - 9), "10 cm", fill=(0, 0, 0), font=f_small)
-    # seam list
-    y = Hpx + 6
-    d.text((10, y), "seams (both sides sewn by fraction of their length: ease spreads evenly; '!!' outside its band)",
-           fill=(0, 0, 0), font=f_mid)
-    y += 22
-    rows = {i: r for i, r in enumerate(seam_rows or [])}
-    for si, (A, B) in enumerate(Bp["seams"]):
+            d.ellipse([tuple(p - 7), tuple(p + 7)], fill=(200, 40, 140))
+    # per piece: ONE large name inside the piece, and the grain arrow beside it
+    names_off = []
+    for nm, pc in pcs.items():
+        P = np.asarray(pc["P"], float)
+        c = tp(nm, 0.5 * (P.min(0) + P.max(0)))
+        placed = None
+        for px in range(NAME_PX[0], NAME_PX[1] - 1, -2):
+            f = _font(px)
+            x0, y0, x1, y1 = d.textbbox((0, 0), nm, font=f)
+            for rot in (False, True) if np.ptp(P[:, 1]) > np.ptp(P[:, 0]) else (False,):  # (a tall piece: upright)
+                tw, th = (y1 - y0, x1 - x0) if rot else (x1 - x0, y1 - y0)
+                for dy in (0.0, -0.25, 0.25, -0.4, 0.4):
+                    cy = c[1] + dy * np.ptp(P[:, 1]) * S
+                    box = (c[0] - tw / 2, cy - th / 2, c[0] + tw / 2, cy + th / 2)
+                    if inside(nm, box):
+                        placed = (box, f, x0, y0, rot)
+                        break
+                if placed:
+                    break
+            if placed:
+                break
+        g = math.radians(float(pc.get("grain", 90)))
+        u1 = np.array([math.cos(g), -math.sin(g)])
+        ext = float(np.ptp(P @ np.array([math.cos(g), math.sin(g)]))) * S
+        u = u1 * min(0.12 * S, 0.35 * min(np.ptp(P, 0).max(), 0.3) * S, 0.7 * ext) / 2
+        spots = [c]
+        if placed:
+            bx = placed[0]
+            mid = np.array([0.5 * (bx[0] + bx[2]), 0.5 * (bx[1] + bx[3])])
+            spots = [mid - [0.5 * (bx[2] - bx[0]) + 28, 0], mid + [0.5 * (bx[2] - bx[0]) + 28, 0],
+                     mid + [0, 0.5 * (bx[3] - bx[1]) + abs(u[1]) + 14], mid - [0, 0.5 * (bx[3] - bx[1]) + abs(u[1]) + 14], c]
+        a0 = next((s for s in spots if inside(nm, (min(s[0] - u[0], s[0] + u[0]), min(s[1] - u[1], s[1] + u[1]),
+                                                    max(s[0] - u[0], s[0] + u[0]), max(s[1] - u[1], s[1] + u[1])), pad=2)),
+                  spots[-1])
+        d.line([tuple(a0 - u), tuple(a0 + u)], fill=(70, 70, 70), width=3)
+        for s in (-1, 1):  # arrow heads
+            tip = a0 + s * u
+            n_ = u / (np.linalg.norm(u) + 1e-9)
+            perp = np.array([-n_[1], n_[0]]) * 7
+            d.line([tuple(tip), tuple(tip - s * n_ * 12 + perp)], fill=(70, 70, 70), width=3)
+            d.line([tuple(tip), tuple(tip - s * n_ * 12 - perp)], fill=(70, 70, 70), width=3)
+        if placed:
+            box, f, x0, y0, rot = placed
+            if rot:  # written bottom to top
+                m = Image.new("L", (int(box[3] - box[1]) + 2, int(box[2] - box[0]) + 2), 0)
+                ImageDraw.Draw(m).text((-x0, -y0), nm, fill=255, font=f)
+                m = m.rotate(90, expand=True)
+                img.paste((0, 0, 0), (int(box[0]), int(box[1])), m)
+            else:
+                d.text((box[0] - x0, box[1] - y0), nm, fill=(0, 0, 0), font=f)
+        else:
+            names_off.append(nm)
+    # scale bar (under the pieces, above the legend)
+    y0 = Hpx + 26
+    d.line([(20, y0), (20 + 0.1 * S, y0)], fill=(0, 0, 0), width=5)
+    for x in (20, 20 + 0.1 * S):
+        d.line([(x, y0 - 8), (x, y0 + 8)], fill=(0, 0, 0), width=3)
+    d.text((30 + 0.1 * S, y0 - 14), "10 cm", fill=(0, 0, 0), font=_font(LEGEND_PX))
+    # legend: colour -> seam name (big; no numbers: lengths and ease are in the text answer)
+    y = Hpx + 12 + LEGEND_PX + 20
+    for si, nm in enumerate(names):
         col = _seam_colour(si, len(Bp["seams"]))
-        nm_ = lambda s: s if isinstance(s, str) else " + ".join(s)
-        r = rows.get(si)
-        extra = ""
-        if r is not None:
-            extra = f"  {'!! ' if not r['ok'] or r['notches_off'] else ''}{r['kind']} {r['len_a_mm']:.0f}/{r['len_b_mm']:.0f} mm " \
-                    f"ease {r['ease'] * 100:+.1f}%"
-        d.text((10, y), f"S{si + 1}: {nm_(A)}  ||  {nm_(B)}{extra}", fill=col, font=f_small)
-        y += 18
-    for ln in notes or []:
-        d.text((10, y), ln, fill=(0, 0, 0), font=f_small)
-        y += 18
+        d.rectangle([(14, y + 4), (64, y + LEGEND_PX)], fill=col)
+        t, room = f"S{si + 1}  {nm}", img.width - 90
+        while d.textlength(t, font=f_leg) > room and len(t) > 8:  # (cut to the sheet: the full name is in the text)
+            t = t[:-4] + "..."
+        d.text((76, y), t, fill=(0, 0, 0), font=f_leg)
+        y += LEGEND_PX + 12
+    img.info["names_off"] = names_off
     return img
