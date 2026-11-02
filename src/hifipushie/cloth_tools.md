@@ -95,11 +95,12 @@ the tool is the structure, the refusals and the look. step="read" (0): kind; vie
 {fabric (a garment_kb fabric fills gsm / thickness / bending length) or the numbers + source, stiffness, colour [r,g,b] or
 {at: [[u, v]], view} (sampled), print {kind, repeat_mm, source}, grain}}; fit {region: {ease_mm, source}}. step="parts" (1):
 pieces {name: {what, cloth, seen: seen|occluded|inferred, from (the convention, unless seen), build: full|simplified|omit,
-why, stiff, layer, where {view, outline}}}, details {name: {what, on, count, seen, build, where {view, at | outline}}},
+why, stiff, layer, where {view, outline}}}, details {name: {what, on, cloth, follows ["piece:edge"] (a trim along edges), count, seen, build, where {view, at | outline |
+outlines (one per instance)}}},
 closures {name: {what, pieces, details}}, seams [{a: "piece:edge", b, kind, length: {body: [names]} | {style: {ratio |
 value_mm, of, source}}}]; the answer lists the body measurements step 3 must take. step="style" (2): state {closure:
 {state: open|closed|partly, source}} for EVERY closure (build straight into it; never build closed then style open),
-bends [{id, on, target {value, unit} | {is}, source}], pose {name, source}, rows [{id, what, target, source, view, at}]
+bends [{id, on, target {value, unit, of (a ratio's base)} | {is}, source}], pose {name, source}, rows [{id, what, target, source, view, at}]
 (what the photo judges: the structure gate's targets). Refused by name: a seam on a piece not in the inventory, a built
 piece with no seam, a target with no source, a state for a closure the inventory lacks. look (default): drawn over the
 reference: seen solid, occluded dashed, inferred dotted, omitted grey, judged rows yellow; saved as the step's look.
