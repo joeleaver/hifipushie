@@ -7,7 +7,6 @@ measurements of the model." "we don't know what measurements we need until we se
 there are." "What about a 'parts' step, where we inventory what needs to be built, what's occluded, etc? And should we
 identify the style and make a styling strategy early? ... why build the shirt closed and then style it open, if we only
 need it open?"
-
 Every step has: an input, an output, ONE tool, a gate (measured against something named; each FAIL says what to change
 AND which step to go back to), and a look (the step's own result beside the reference, never a later step's). A step
 consumes only the approved output of the step before it. Every step is iterated on TWO garments together (the shirt and
@@ -27,11 +26,9 @@ the hussar jacket), so no tool quietly becomes a shirt tool.
 | 8 | Sim | folds only: soft cloth under gravity (ZOZO), stiff parts and the plan's state held | `chain_garment` HANG after the structure PASS | lengths after the hang | threads past the cap in the answer and the gate (open wear: 1 in 5 faces) |
 | 9 | Look and approve | the garment beside the reference, blind review, approval | look_chain, review_view, approve | blind look | one sheet per garment from the step-0 reference |
 | 10 | Export | game mesh, retopology, skinned to the character's rig | none for chain garments | budgets | the whole step |
-
 Known for iteration: steps 5-6: the build mesh's irregular strip where the hex lattice meets the outline (test: rows
 following the outline; are the ragged plackets from it?). Step 8: open wear hung with 1 in 5 faces past the thread cap.
 ORDER: tooling for every step first; then the steps one at a time, shirt + hussar together, each iterated until good.
-
 ## Tooling runs (one deliverable each, in order; "minimal" = the step works end to end for any garment, not yet good)
 | # | Run | Steps | Size | Needs |
 |---|---|---|---|---|
@@ -46,15 +43,17 @@ ORDER: tooling for every step first; then the steps one at a time, shirt + hussa
 | T9 | Layering: chains rest on the garment underneath | 5 | M | T7 |
 | T10 | Details and trims: buttons, braid, frogging, tabs on the surface, following it through the sim | 7 | M-L | T7 |
 | T11 | Export: chain garment -> game mesh, retopology, skinned to the rig | 10 | L | T10 |
-About 11-14 runs at the run budget. The shirt and the hussar jacket are the test garments of every run from T4 on.
-T1 DONE (2026-11-02, t1-record, C281): garment_record.py (STEPS = the one step list); workspace/<model>/garments/<garment>.json;
-tool garment_record(name, garment, sheet). Writers: pattern_check -> 4; chain worker -> 5, 6 (structure), 8; look_chain -> 6's look, 9.
-Approval: `approve add garment <model>.<garment>.<step> <record>#<digest> <sheet> joe|coordinator`; needed on 7a (unless
-HIFIPUSHIE_PRESIM_APPROVAL=optional) and 9. Steps 0-3, 7, 7a, 10 have no writer yet: today's tools answer "record: refused".
-T2 (C282): chain_presim.py: the job stops at awaiting_approval; approval / a waiver resume from built.pkl; step 8 FAILs on
-faces past the cap (back to 5). Unverified on a real build. T3 (C283): body_tape(name, measurements, garment): girth / arc /
-length / height / FreeSewing names, landmark list; equals tailor.measure on wf_simon + dg_garrett. T4 (C284):
-garment_plan(name, garment, step read|parts|style, plan): shirt + hussar read (/mnt/data/hifipushie/t4/). Open: step 3
-needs step 1's measurement list; measurement names not checked against body_tape's landmarks; worn-over-another-garment.
+| T12 | Layering fix: the over garment keeps its pattern's shape (body + the under cloth's thickness + its stiff / solid parts); the under garment is then fitted INSIDE it (compressed, spare cloth folds); both hung together | 5, 8 | M | T9 |
+| T13 | Draped garments (cloak, cape, hood): the gate split: fitted parts judged at the build, the fall judged on the hang; the head in the body for a hood | 6, 8 | M | T12 |
+| T14 | Appearance: materials, colour variation, stitching, worn leather, a ragged hem, restrained weathering from the story, painted on the pattern's UVs | new, before 9 | M-L | T11 |
+Test garments: the shirt (every step), the hussar jacket (fitted + trims), the RANGER outfit (Joe 2026-11-02: "a truly
+worthwhile clothing test": /mnt/data/hifipushie/refs/ranger/front.png: shirt, split-skirt tunic, leather jerkin, belt + crossed
+straps + pouches, bracers, hooded cloak; layering 4-5 deep). Leather goods are stiff-leather garments from patterns (a strap is
+a chain, a pouch a small sewn box, buckles / rings solid details at marks). Boots: out of the garment route for now (a solid).
 
-NEXT: T5 + T6 in parallel (Joe: the list runs without stops; targeted tests per run, one suite at the end).
+DONE (2026-11-02, C281-C293; every run landed on main): T1 record, T2 pre-sim approval, T3 body_tape, T4 garment_plan, T5
+draft_pattern, T6 structure rows from the plan, T7 build into the plan's state, T8 roles (stand, multi-piece tube, zip), T9
+layering (one-way: wrong, T12), T10 garment_details at pattern marks, T11 + fix export_garment (loops, weights, 4-pose bend
+check: the shirt still FAILS it at the armpit), looks shape-only (C288). Fast suite PASS on main; full tier rerunning.
+
+NEXT: full suite verdict; then T12, T13, T14; then the steps one at a time (shirt, hussar, ranger).
