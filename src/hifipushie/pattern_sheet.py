@@ -102,14 +102,14 @@ def _side_name(s) -> str:
 
 def seam_names(Bp: dict) -> list:
     """One name per seam (its two sides' edges), the legend's and text_lines' wording."""
-    return [f"{_side_name(A)} = {_side_name(B)}" for A, B in Bp["seams"]]
+    return [f"{_side_name(A)} = {_side_name(B)}" for A, B in Bp.get("seams") or []]
 
 
 def text_lines(Bp: dict, seam_rows=None, names: list | None = None, decl: dict | None = None) -> list:
     """The sheet's numbers as text (the image carries none): every piece (name, size, cut count, stiff, grain, role)
     and every seam pair (both edges, both lengths, the ease, PASS/FAIL). names: the seams' names (default
     seam_names); decl: draft_pattern's declarations (cut counts, folds)."""
-    pcs, stiff = Bp["pieces"], {e if isinstance(e, str) else e.get("piece") for e in Bp.get("interfaced") or []}
+    pcs, stiff = Bp.get("pieces") or {}, {e if isinstance(e, str) else e.get("piece") for e in Bp.get("interfaced") or []}
     dp = (decl or {}).get("pieces") or {}
     out = [f"pieces ({len(pcs)}; sizes are the piece's width x height on the sheet, mm):"]
     for nm, pc in pcs.items():
@@ -120,7 +120,7 @@ def text_lines(Bp: dict, seam_rows=None, names: list | None = None, decl: dict |
                    f"grain {float(pc.get('grain', 90)):.0f} deg, role {garment_design.role_of(nm, pc)}")
     names = names or seam_names(Bp)
     rows = list(seam_rows or [])
-    out.append(f"seams ({len(Bp['seams'])}; S<n> is the n-th colour in the sheet's legend; lengths a / b mm):")
+    out.append(f"seams ({len(names)}; S<n> is the n-th colour in the sheet's legend; lengths a / b mm):")
     for i, nm in enumerate(names):
         r = rows[i] if i < len(rows) else None
         if r is None:
