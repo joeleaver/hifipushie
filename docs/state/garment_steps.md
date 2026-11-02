@@ -1,31 +1,37 @@
-# STATE: garment steps -> the process every garment follows (draft for Joe, 2026-11-02)
+# STATE: garment steps -> the process every garment follows (agreed with Joe, 2026-11-02)
 
-Joe: "I don't want to do another agent run until we've got tooling and process in place for all 6 steps. Then I want to
-take the steps one at a time, iterating until we're good at each one." "I don't want to keep building specific drafters.
-Agents should have enough general intelligence to build a fresh pattern using FreeSewing, based on 3d measurements of the
-model." "we don't know what measurements we need until we see the clothing and discern what seams there are."
+Joe: "I don't want to do another agent run until we've got tooling and process in place for all [the] steps. Then I want
+to take the steps one at a time, iterating until we're good at each one." "I don't want to keep building specific
+drafters. Agents should have enough general intelligence to build a fresh pattern using FreeSewing, based on 3d
+measurements of the model." "we don't know what measurements we need until we see the clothing and discern what seams
+there are." "What about a 'parts' step, where we inventory what needs to be built, what's occluded, etc? And should we
+identify the style and make a styling strategy early? ... why build the shirt closed and then style it open, if we only
+need it open?"
 
-Every step has: an input, an output, ONE tool, a gate (measured against something named, each FAIL saying what to
-change), and a look (the step's own result beside the reference, never a later step's). A step consumes only the
-approved output of the step before it.
+Every step has: an input, an output, ONE tool, a gate (measured against something named; each FAIL says what to change
+AND which step to go back to), and a look (the step's own result beside the reference, never a later step's). A step
+consumes only the approved output of the step before it. Every step is iterated on TWO garments together (the shirt and
+the hussar jacket), so no tool quietly becomes a shirt tool.
 
 | # | Step | Output | Tool today | Gate today | Missing |
 |---|---|---|---|---|---|
-| 0 | Read the construction from the reference | pieces, seams (which edge to which), closures, stiff parts, fit (ease), style lengths as proportions | `garment_from_reference`: picks from fixed choices (collar type, buttons, pockets, cloth, colour) | none on the reading itself | the reading as construction, for any garment; a look: the reading drawn over the reference |
-| 1 | Pattern: have one, or draft one | flat pattern + what FreeSewing can't draw: seam pairs, stiff pieces, folds, closures | `design_garment` runs a PUBLISHED FreeSewing design (Simon) through per-design glue (garment_kb recipes, Simon's collar rule) | `pattern_check` (flat gate: seams, lengths, refs rows) | an agent-written FreeSewing design (extending a block: brian, bent...) run in Node; the agent's seam / stiffness / fold / closure declarations; ONE general converter; pattern_check's rows general (every seam has a partner of its length, every piece in the reading is cut). A pattern brought in from outside |
-| 2 | Measure | every measurement the draft asks for: body ones taken in 3D, style ones read off the reference | `tailor.measure`: a fixed FreeSewing list, inside design_garment | none of its own | measurement BY NAME on demand (girth at a level, arc between landmarks, surface length), as a tool; the tape lines drawn on the body as its look |
-| 3 | Chains for every seam, fitted in 3D | the pattern's edges as exact-length chains on the body; stiff parts first, only bends chosen | `chain_garment` stages BAND, FALL, RINGS, SOFT NETWORK, PLACKETS | lengths: a free chain > 2 % off its cut is refused by name | roles beyond a shirt (refused by name today: stand collars, tails, waistbands, zips, braid); a look at the chains alone |
-| 4 | Surfaces from the chains, check the fit | the garment surface | `chain_garment` SURFACES | STRUCTURE (`chain_structure`, run 2): collar, front, V, hem, sleeve rows vs the reference | rows from the step-0 reading for any garment (today shirt rows, several targets INFERRED); a row for rough / crumpled cloth |
-| 5 | Style | how it is worn: open / closed, tucked, rolled sleeves, collar up... | only open / closed wear inside the build | none | the styling step and its tool (garment_pull, the old route's, is gated off); a gate: the styled garment vs the reference, no thread past its cap |
-| 6 | Sim the rest | soft cloth hung under gravity (ZOZO), stiff parts held | `chain_garment` HANG, after the structure PASS | lengths after the hang; threads past the cap measured but not in the answer | the threads-past-cap reading in the answer and the gate; the hang judged only as folds on an approved structure |
+| 0 | Read the reference | what the garment is: kind, cloth (thickness, stiffness, weight, colour, print, grain), fit (ease) | `garment_from_reference`: fixed choices (collar type, buttons, pockets, cloth, colour) | none | the reading for any garment; cloth as numbers the build and sim use |
+| 1 | Parts inventory | every piece and detail: seen / occluded / inferred (and from what convention), how far each must be built (full / simplified / left out: a shirt body under a closed jacket), the layer order | none | none | the whole step; its look: the inventory drawn over the reference, occluded parts marked |
+| 2 | Style plan | the ONE worn state to build (open / closed, collar spread, rolled sleeves, tucked), as bends and targets; the pose; which rows the photo judges | only wear="open"/"closed" on the build | none | the whole step. The state is built directly (no build closed then styled open); styling is bends, lengths never change |
+| 3 | Measure | every measurement steps 1-2 call for: body ones in 3D by name, style ones as proportions off the reference | `tailor.measure`: a fixed FreeSewing list inside design_garment | none | measurement BY NAME as a tool; its look: the tape lines on the body |
+| 4 | Draft | flat pattern + what FreeSewing can't draw: seam pairs, stiff pieces, folds (incl. style folds: a rolled cuff), closures | `design_garment`: PUBLISHED designs (Simon) through per-design glue | `pattern_check` (flat gate) | an agent-written FreeSewing design extending a block (brian, bent...); the declarations; ONE general converter; general pattern_check rows (every seam has a partner of its length, every inventoried piece cut); a pattern brought in, graded to the body |
+| 5 | Chains in 3D, in the planned state | the pattern's edges as exact-length chains; stiff parts first; only bends chosen; resting on the body OR the garment under it (layering) | `chain_garment` BAND, FALL, RINGS, SOFT NETWORK, PLACKETS | a free chain > 2 % off its cut is refused | roles beyond a shirt; the band built in its closure's own state (run 3: always closed, the likely cause of the points held together + the front.R stretch); layering; a look at the chains alone |
+| 6 | Surfaces, checked | the garment surface | `chain_garment` SURFACES | STRUCTURE (`chain_structure`): shirt rows, several targets INFERRED | rows from steps 0-2 for any garment (construction + the style plan's targets); a row for rough / crumpled cloth |
+| 7 | Details and trims | buttons, braid, frogging, zips, tabs, pockets on the surface, following it | none (chain garments) | none | the whole step |
+| 8 | Sim | folds only: soft cloth under gravity (ZOZO), stiff parts and the plan's state held | `chain_garment` HANG after the structure PASS | lengths after the hang | threads past the cap in the answer and the gate (open wear: 1 in 5 faces) |
+| 9 | Look and approve | the garment beside the reference, blind review, approval | look_chain, review_view, approve | blind look | one sheet per garment from the step-0 reference |
+| 10 | Export | game mesh, retopology, skinned to the character's rig | none for chain garments | budgets | the whole step |
 
-Known from runs 1-3 (kept for when each step comes up):
-- Step 3, run 3 (archive/chain-run3, not landed): the band resting on the high points fixed the collar's tilt (9.6 -> 24
-  deg); the band is always built closed though the pattern says its button is open: the likely cause of the points held
-  together AND the front.R stretch under the collar's end.
-- Step 6: open wear hung with 1 in 5 faces past the thread cap.
+Known from runs 1-3 (kept for when each step comes up): step 5, run 3 (archive/chain-run3, not landed): the band resting
+on the high points fixed the collar's tilt (9.6 -> 24 deg); the band is built closed though the pattern's button is
+open. Step 8: open wear hung with 1 in 5 faces past the thread cap.
 
-ORDER (agreed before any agent run): tooling for 0, 1, 2 and 5 (the missing steps), then the steps one at a time, each
-iterated on the shirt until good, then the jacket through the same steps.
+ORDER: tooling and process for every step first (no agent iteration runs until then); then the steps one at a time,
+shirt + hussar jacket together, each iterated until good.
 
-NEXT: Joe agrees this page; then the tooling briefs, one deliverable each.
+NEXT: list the tooling deliverables (one brief each, smallest first), Joe agrees the list.
