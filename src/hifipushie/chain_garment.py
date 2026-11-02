@@ -24,7 +24,12 @@ THE ORDER (each from a visible fault; C259-C262): stiff parts first, soft parts 
    rotation stretches); the fold acts on the real shape so nothing jumps at the crease; over side over under side.
 6. SURFACES fill between fixed chains (fold turn: a half circle of the pattern's radius round the band top; the band stays
    under the fall; corner patch at the leaf's neck end).
-7. HANG (hang()): the soft cloth under gravity in ZOZO, stiff parts held; lengths have the last word afterwards.
+7. STRUCTURE (chain_structure.py, C279): the BUILD is measured beside the reference before any hang: the collar's
+   clearance under the jaw, its top line's tilt, the points' spread and drop, the leaves lying; the front meeting and
+   straight, the V (open); the hem level; sleeve length and cuff ease. Each row: target, source, and on FAIL what to
+   change. The job ends "structure_failed" with its rows unless every row passes or is waived by name with a reason. The
+   hang adds folds by design: a hung result never judges a structure fault, nor hides one.
+8. HANG (hang()): the soft cloth under gravity in ZOZO, stiff parts held; lengths have the last word afterwards.
    The collider is the whole body: nothing is cut from it. An illegal start is a build fault and is refused by name.
 
 Every stage ends in chain_net.project; Build.reads holds the numbers; a length that can't hold raises ChainRefused naming
@@ -1663,18 +1668,27 @@ def elapsed(st: dict) -> int:
 
 def worker(model: str, garment: str, wear: dict):
     """Build, then hang. Every stage writes its numbers to status.json; a refusal is a result, not a crash."""
-    from . import resources, zozo_hang as zh
+    from . import chain_structure as cs, resources, zozo_hang as zh
     d = job_dir(model, garment, wear["state"])
     _status(d, stage="building", pid=os.getpid())
     note = lambda m: _status(d, note=str(m)[:200])
+    waive = dict(wear.get("waive") or {})
+    wear = {k: v for k, v in wear.items() if k != "waive"}
     import pickle
     try:
         with resources.heavy(f"chain build {model}:{garment} {wear['state']}", gb=BUILD_GB, log=note):
             pat, body, fabric = load_garment(model, garment)
             b = GarmentBuild(pat, body, wear, log=lambda *_: None)
             b.run()
-        pickle.dump({"X": b.X, "M": pat.M, "bV": body.V, "bT": body.T, "reads": b.reads}, open(d / "built.pkl", "wb"))
+        pickle.dump({"X": b.X, "M": pat.M, "bV": body.V, "bT": body.T, "reads": b.reads,
+                     "at": {k: np.asarray(v).tolist() for k, v in body.at.items()}}, open(d / "built.pkl", "wb"))
         _status(d, stage="built", reads=b.reads, note="", build_s=elapsed(status(d)), peak_gb=round(_peak_gb(), 1))
+        sc = cs.check(b.X, pat.M, body.V, body.T, body.at, wear, cs.load_refs(model), garment, waive)  # judge the BUILD (C279)
+        sc["reads"].pop("front_gap_profile", None)
+        _status(d, structure=sc)
+        if not cs.passed(sc):
+            _status(d, stage="structure_failed")
+            return
         b.gate_lengths()
         jd = b.write_job(d / "zozo", fabric, name=f"chain:{model}:{garment}")
         _status(d, stage="hanging", reads=b.reads)

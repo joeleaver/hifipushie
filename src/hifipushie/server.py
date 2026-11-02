@@ -3493,12 +3493,12 @@ def _chain_spawn(d, name: str, garment: str, w: dict) -> int:
 
 @mcp.tool(structured_output=False)
 def chain_garment(name: str, garment: str, wear: str = "closed", opening: float | None = None, wait: float = 50.0,
-                  rebuild: bool = False):
+                  rebuild: bool = False, waive: dict | None = None):
     """START A GARMENT: the only way to dress a character, fit or drape clothes on a body. Built from the pattern and the body
-    as chains of the pattern's own lengths (stiff parts first, soft cloth hung from them). wear: "closed" or "open"; opening:
-    only with "open" (collar points apart, neck widths). Refuses until pattern_check passes. A JOB (build 2-10 min, then the
-    hang): answers with its stage after at most wait (s); call again, same arguments, for the stage (never a second build);
-    rebuild=True starts over. The answer's next: says what to call. Details: guide(topic="chain_garment")."""
+    as chains of the pattern's lengths. wear: "closed" or "open"; opening: only with "open" (collar points apart, neck
+    widths). Refuses until pattern_check passes. A JOB: build (2-10 min), STRUCTURE check of the build beside the
+    reference, then the hang only on its pass. Answers its stage within wait (s); call again, same arguments, to poll;
+    rebuild=True starts over; waive={row: why} accepts failing structure rows. Answers end in next:."""
     import time as _t
     from . import chain_garment as cg
     if wear not in ("closed", "open"):
@@ -3515,6 +3515,10 @@ def chain_garment(name: str, garment: str, wear: str = "closed", opening: float 
     w = {"state": wear}
     if opening is not None:
         w["spread"] = float(opening)
+    if waive:
+        if not isinstance(waive, dict) or not all(isinstance(v, str) and v.strip() for v in waive.values()):
+            raise ValueError("waive: {structure row id: the reason it is accepted}, each reason a sentence")
+        w["waive"] = {str(k): str(v) for k, v in waive.items()}
     key = cg.job_key(spec, garment, w)
     d = cg.job_dir(name, garment, wear)
     st = cg.live_status(d)
@@ -3546,15 +3550,30 @@ def _chain_answer(name: str, garment: str, wear: str, st: dict, opening: float |
     again = _chain_call(name, garment, wear, opening)
     if stage == "refused":
         return f"{name}:{garment} ({wear}): refused: {st.get('refused')}\nnext: fix it on the pattern (alter_pattern), pattern_check, then {again}"
+    if stage == "structure_failed":
+        from . import chain_structure as cs
+        sc = st.get("structure") or {}
+        bad = [r for r in sc.get("rows") or [] if r["status"] in ("FAIL", "UNMEASURED") and not r.get("waived")]
+        ok = [r["id"] for r in sc.get("rows") or [] if r["status"] == "PASS"]
+        return (f"{name}:{garment} ({wear}): built; STRUCTURE {sc.get('verdict')}: the hang does not run ({len(bad)} rows "
+                f"fail; pass: {', '.join(ok) or 'none'})\n" + "\n".join(cs.row_line(r) for r in bad) +
+                f"\nnext: {look} to see the build beside your reference; then each row's change (alter_pattern, "
+                f"pattern_check, then {again}); a row the reference can't decide: {again[:-2]}, \"waive\": {{\"<row id>\": "
+                f"\"<why>\"}}}})")
     if stage == "failed":
         return (f"{name}:{garment} ({wear}): the build failed: {st.get('error')}\nnext: report this to the coordinator as a tool "
                 f"fault, with the text above; don't work round it. {_chain_call(name, garment, wear, opening, rebuild=True)} starts over")
-    head = {"queued": "starting", "building": "building", "built": "built; the hang is starting", "hanging": "built; the hang is running",
+    head = {"queued": "starting", "building": "building", "built": "built; the structure check is reading the build", "hanging": "built; the hang is running",
             "hung": "hung; the last lengths are being read", "done": "built and hung"}.get(stage, stage)
     head += f" ({cg.elapsed(st)} s)" if stage != "done" else ""
     if st.get("note"):
         head += f"; {st['note']}"
     body = _chain_text(st)
+    sc = st.get("structure")
+    if sc:
+        body = (f"  structure: {sc.get('verdict')} ({len(sc.get('rows') or [])} rows" +
+                (f"; waived: {', '.join(r['id'] for r in sc['rows'] if r.get('waived'))}" if any(r.get("waived") for r in sc.get("rows") or []) else "")
+                + ")" + (f"\n{body}" if body else ""))
     txt = f"{name}:{garment} ({wear}): {head}" + (f"\n{body}" if body else "")
     if stage == "done":
         return f"{txt}\nnext: {look} beside your reference; review_view one view per call"
@@ -3566,7 +3585,8 @@ def _chain_answer(name: str, garment: str, wear: str, st: dict, opening: float |
 @mcp.tool(structured_output=False)
 def look_chain(name: str, garment: str, wear: str = "closed", focus: str | None = None, size: int = 640,
                reference: str | None = None, save: str | None = None):
-    """Look at a chain_garment result: the hung garment when the hang has ended, else the build (said in the text). focus:
+    """Look at a chain_garment result: the build until its structure check passed and the hang ended, then the hung garment
+    (said in the text). focus:
     none = the whole figure on the body (front, three, side, back); "neck" = the collar close, on the body; a piece's name
     (collar, stand, cuff.L, ...) = that piece ALONE, large, four sides. reference: a picture's path, shown beside each view.
     Returns the views + numbers. Details: guide(topic="look_chain")."""
@@ -3578,7 +3598,9 @@ def look_chain(name: str, garment: str, wear: str = "closed", focus: str | None 
     st = cg.status(d)
     if not st:
         return f"no chain build of {garment} ({wear}).\nnext: call_tool(\"chain_garment\", {{\"name\": \"{name}\", \"garment\": \"{garment}\", \"wear\": \"{wear}\"}})"
-    src = d / "final.pkl" if (d / "final.pkl").exists() else (d / "built.pkl" if (d / "built.pkl").exists() else None)
+    from . import chain_structure as cs
+    hung_ok = (d / "final.pkl").exists() and cs.passed(st.get("structure"))  # (C279: the build until its structure passed)
+    src = d / "final.pkl" if hung_ok else (d / "built.pkl" if (d / "built.pkl").exists() else None)
     if src is None:
         return _chain_answer(name, garment, wear, st)
     r = pickle.load(open(src, "rb"))
@@ -3600,6 +3622,7 @@ def look_chain(name: str, garment: str, wear: str = "closed", focus: str | None 
             im = sh
         ims.append(_out(im, _save_suffix(save, nm) if save else None))
     txt = _chain_answer(name, garment, wear, st).split("\nnext:")[0]
+    txt += f"\n  shown: {'the hung garment' if src.name == 'final.pkl' else 'the BUILD (before any hang)'}"
     return ims + [txt + f"\n  views: {', '.join(p for _, p in paths)}\nnext: judge beside your reference (review_view, one view per "
                   "call); a fault: fix it on the pattern (alter_pattern), pattern_check, chain_garment again; close views: focus=\"neck\" or a "
                   "piece's name"]
