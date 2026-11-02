@@ -163,7 +163,7 @@ TOOL_GROUPS: dict[str, dict] = {
               "steps": ["design_garment", "pattern_check", "chain_garment", "look_chain"],
               "about": "garments: design, pattern, the pattern gate, alterations, the chain build (the only start), references",
               "tools": ["design_garment", "look_pattern", "alter_pattern", "pattern_check", "chain_garment", "look_chain",
-                        "garment_record", "garment_reference", "garment_from_reference", "garment_reference_brief"]},
+                        "garment_record", "body_tape", "garment_reference", "garment_from_reference", "garment_reference_brief"]},
     "terrain": {"about": "terrain and game levels (height fields in a level designer's words)",
                 "tools": ["set_terrain", "check_terrain", "look_terrain", "export_terrain", "terrain_history"]},
     "plants": {"about": "trees and plants (grown, measured, exported), stands of them, wind",
@@ -3652,6 +3652,19 @@ def garment_record(name: str, garment: str, sheet: bool = False):
         return txt
     p = gr.sheet(name, garment)
     return [_out(PILImage.open(p).convert("RGB"), None), txt + f"\n  sheet: {p}"]
+
+
+@mcp.tool(structured_output=False)
+def body_tape(name: str, measurements: list | None = None, garment: str = "", landmarks: bool = False):
+    """MEASURE A BODY BY NAME (garment step 3): each measurement your garment's seams call for, named and defined by
+    you: girth (at a level, square to the body or a limb; fullest / narrowest between), arc (over the surface between
+    landmarks, front / back / ...), length (surface or straight, via landmarks; down the body to a level), height, or a
+    FreeSewing name as a string. Answers each in mm with how it was taken, and the tape lines drawn on the body (front /
+    side / back). No measurements, or landmarks=True: the landmarks and levels you can name. garment: writes step 3 of
+    its record. Details: guide(topic="body_tape")."""
+    from . import body_tape as bt
+    look, txt = bt.run(name, _spec_arg(measurements) if measurements else None, garment, landmarks)
+    return txt if look is None else [_out(PILImage.open(look).convert("RGB"), None), txt]
 
 
 @mcp.tool(structured_output=False)
