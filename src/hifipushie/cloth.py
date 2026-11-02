@@ -322,6 +322,14 @@ def pieces(g: dict, meas_mm: dict) -> dict:
         closures_in += [dict(c) for c in blk.get("closures") or []]
         seam_notes = dict(blk.get("seam_notes") or {})
         pat = None
+    if pat and pat.get("from") == "own":  # the agent's own FreeSewing draft + its declarations (draft_own, step 4)
+        from . import draft_own
+        blk = draft_own.block(pat)
+        out, seams, interfaced = dict(blk["pieces"]), list(blk["seams"]), list(blk["interfaced"])
+        draft_info, seam_notes = blk["draft"], dict(blk["seam_notes"])
+        folds_tbl += blk["folds"]
+        closures_in += [dict(c) for c in blk["closures"]]
+        pat = None
     if pat:
         from . import freesewing
         tbl = designs().get(pat["from"])
@@ -9545,6 +9553,9 @@ def validate(spec: dict) -> None:
             bad = {k for k in set(pat) - okp if k != "source" and not k.endswith("_source")}
             if bad:
                 raise ClothError(f"{where}: pattern keys {sorted(bad)} unknown for {pat['from']} (have {sorted(okp)})")
+        elif isinstance(pat, dict) and pat.get("from") == "own":  # (draft_pattern: the agent's own design, step 4)
+            if set(pat) != {"from", "dir"}:
+                raise ClothError(f'{where}: an own pattern is {{"from": "own", "dir": its draft dir}}: written by draft_pattern')
         elif pat is not None:
             if not isinstance(pat, dict) or pat.get("from") not in names:
                 raise ClothError(f'{where}: pattern is {{"from": one of {names + list(garment_blocks.BLOCKS)}, "ease": {{...}}, "length"...}}')

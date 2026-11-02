@@ -1,0 +1,271 @@
+{
+ "pieces": {
+  "front.L": {
+   "part": "hussar.front",
+   "mirror": false,
+   "place": {
+    "to": "torso",
+    "side": "front"
+   }
+  },
+  "back.L": {
+   "part": "hussar.back",
+   "mirror": false,
+   "place": {
+    "to": "torso",
+    "side": "back"
+   }
+  },
+  "sleeve.L": {
+   "part": "hussar.topsleeve",
+   "place": {
+    "to": "arm.L",
+    "front": 1
+   }
+  },
+  "undersleeve.L": {
+   "part": "hussar.undersleeve",
+   "place": {
+    "to": "arm.L",
+    "front": 1
+   }
+  },
+  "front.R": {
+   "part": "hussar.front",
+   "mirror": true,
+   "place": {
+    "to": "torso",
+    "side": "front"
+   }
+  },
+  "back.R": {
+   "part": "hussar.back",
+   "mirror": true,
+   "place": {
+    "to": "torso",
+    "side": "back"
+   }
+  },
+  "sleeve.R": {
+   "part": "hussar.topsleeve",
+   "place": {
+    "to": "arm.R",
+    "front": 1
+   }
+  },
+  "undersleeve.R": {
+   "part": "hussar.undersleeve",
+   "place": {
+    "to": "arm.R",
+    "front": 1
+   }
+  },
+  "collar": {
+   "part": "hussar.collar",
+   "place": {
+    "to": "neck",
+    "edge": "bm"
+   }
+  }
+ },
+ "edges": {
+  "front.L": {
+   "shoulder": "hps>shoulder",
+   "side": "hem2>armhole",
+   "armhole": "armhole>armholePitch>shoulder",
+   "neck": "hps>cfNeck",
+   "cf": "cfNeck>cfPoint",
+   "cutaway": "cfPoint>hem2"
+  },
+  "back.L": {
+   "shoulder": "hps>shoulder",
+   "side": "hem2>armhole",
+   "armhole": "armholePitch>armhole",
+   "neck": "cbNeck>hps",
+   "cb": "cbNeck>cbHem2",
+   "armhole_up": "shoulder>armholePitch"
+  },
+  "sleeve.L": {
+   "cap": "tsLeftEdge>top>backPitchPoint",
+   "front": "tsLeftEdge>tsWristLeft",
+   "back": "backPitchPoint>tsRightEdge>tsWristRight"
+  },
+  "undersleeve.L": {
+   "cap": "usTip>usLeftEdge",
+   "front": "usLeftEdge>usWristLeft",
+   "back": "usTip>usRightEdge>usWristRight"
+  },
+  "front.R": {
+   "shoulder": "hps>shoulder",
+   "side": "hem2>armhole",
+   "armhole": "armhole>armholePitch>shoulder",
+   "neck": "cfNeck>hps",
+   "cf": "cfNeck>cfPoint",
+   "cutaway": "cfPoint>hem2"
+  },
+  "back.R": {
+   "shoulder": "hps>shoulder",
+   "side": "hem2>armhole",
+   "armhole": "armholePitch>armhole",
+   "neck": "hps>cbNeck",
+   "cb": "cbNeck>cbHem2",
+   "armhole_up": "shoulder>armholePitch"
+  },
+  "sleeve.R": {
+   "cap": "tsLeftEdge>top>backPitchPoint",
+   "front": "tsLeftEdge>tsWristLeft",
+   "back": "backPitchPoint>tsRightEdge>tsWristRight"
+  },
+  "undersleeve.R": {
+   "cap": "usTip>usLeftEdge",
+   "front": "usLeftEdge>usWristLeft",
+   "back": "usTip>usRightEdge>usWristRight"
+  },
+  "collar": {
+   "neck": "bl>bm>br"
+  }
+ },
+ "seams": [
+  {
+   "a": "front.L:shoulder",
+   "b": "back.L:shoulder",
+   "ease": [
+    0.0,
+    0.06
+   ],
+   "why": "the back shoulder is eased onto the front over the blade"
+  },
+  {
+   "a": "front.L:side",
+   "b": "back.L:side"
+  },
+  {
+   "a": [
+    "undersleeve.L:cap",
+    "sleeve.L:cap"
+   ],
+   "b": [
+    "back.L:armhole",
+    "front.L:armhole",
+    "back.L:armhole_up"
+   ],
+   "ease": [
+    0.0,
+    0.12
+   ],
+   "why": "a set-in cap is eased into the armhole"
+  },
+  {
+   "a": "sleeve.L:front",
+   "b": "undersleeve.L:front",
+   "ease": [
+    -0.02,
+    0.02
+   ],
+   "why": "the forearm seam, stretched or eased a little at the elbow"
+  },
+  {
+   "a": "sleeve.L:back",
+   "b": "undersleeve.L:back",
+   "ease": [
+    -0.01,
+    0.05
+   ],
+   "why": "bent's hindarm: drafted equal; up to 5 % ease at the elbow allowed"
+  },
+  {
+   "a": "front.R:shoulder",
+   "b": "back.R:shoulder",
+   "ease": [
+    0.0,
+    0.06
+   ],
+   "why": "the back shoulder is eased onto the front over the blade"
+  },
+  {
+   "a": "front.R:side",
+   "b": "back.R:side"
+  },
+  {
+   "a": [
+    "undersleeve.R:cap",
+    "sleeve.R:cap"
+   ],
+   "b": [
+    "back.R:armhole",
+    "front.R:armhole",
+    "back.R:armhole_up"
+   ],
+   "ease": [
+    0.0,
+    0.12
+   ],
+   "why": "a set-in cap is eased into the armhole"
+  },
+  {
+   "a": "sleeve.R:front",
+   "b": "undersleeve.R:front",
+   "ease": [
+    -0.02,
+    0.02
+   ],
+   "why": "the forearm seam, stretched or eased a little at the elbow"
+  },
+  {
+   "a": "sleeve.R:back",
+   "b": "undersleeve.R:back",
+   "ease": [
+    -0.01,
+    0.05
+   ],
+   "why": "bent's hindarm: drafted equal; up to 5 % ease at the elbow allowed"
+  },
+  {
+   "a": "back.L:cb",
+   "b": "back.R:cb"
+  },
+  {
+   "a": "collar:neck",
+   "b": [
+    "front.R:neck",
+    "back.R:neck",
+    "back.L:neck",
+    "front.L:neck"
+   ]
+  }
+ ],
+ "stiff": [
+  "collar"
+ ],
+ "closures": [
+  {
+   "name": "front",
+   "kind": "zip",
+   "over": "front.L",
+   "under": "front.R",
+   "edge": {
+    "over": "cf",
+    "under": "cf"
+   }
+  },
+  {
+   "name": "collar",
+   "kind": "hooks",
+   "over": "collar",
+   "under": "collar",
+   "at": [
+    [
+     "eye",
+     "hook"
+    ]
+   ],
+   "state": "open",
+   "gap": 0.01
+  }
+ ],
+ "omit": {
+  "facing.L": "behind the zip, unseen: the front's edge is built as one cloth (a detail at step 7)",
+  "facing.R": "behind the zip, unseen: the front's edge is built as one cloth (a detail at step 7)",
+  "lining": "inside, unseen: the jacket is built single layer"
+ }
+}
