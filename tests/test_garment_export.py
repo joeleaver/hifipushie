@@ -186,6 +186,9 @@ def test_refused_without_approval_and_the_record_write(tmp_path, monkeypatch):
     assert p.name == "built.pkl" and "step 9 approved" in what
     (d / "final.pkl").write_bytes(b"x")
     assert get.source(gr.load(m, g), d)[0].name == "final.pkl"
+    with pytest.raises(gr.OrderRefused):  # (T14) the export consumes the appearance step (9a)
+        gr.write(m, g, "10", "done", output={"glb": "x.glb"})
+    gr.write(m, g, "9a", "done", output={"textures": {}})
     gr.write(m, g, "10", "done", output={"glb": "x.glb", "triangles": 10}, gate={"verdict": "PASS", "rows": []})
     s = gr.states(gr.load(m, g))
     assert s["10"]["ready"] and gr.load(m, g)["steps"]["10"]["output"]["glb"] == "x.glb"

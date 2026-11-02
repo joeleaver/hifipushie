@@ -46,6 +46,7 @@ STEPS = [
     ("7a", "presim", "the built, detailed garment beside the reference, approved before the sim", None, "setting", "6"),
     ("8", "sim", "folds only: soft cloth under gravity, stiff parts and the state held", "chain_garment", "none", "4"),
     ("9", "look", "the garment beside the reference, blind review, approval", "look_chain", "required", "4"),
+    ("9a", "appearance", "materials on the pattern UVs: colour, print on the grain, stitching, wear, fray; textures", "garment_appearance", "none", "2"),
     ("10", "export", "game mesh, retopology, skinned to the rig", None, "none", "10"),
 ]
 IDS = [s[0] for s in STEPS]

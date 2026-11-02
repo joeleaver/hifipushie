@@ -115,7 +115,11 @@ def game_mesh(drape: dict, M: dict, h: float, body=None, joints: dict | None = N
     offs = np.cumsum([0] + [len(p["V"]) for p in pieces])[:-1]  # (merged stacks the pieces in order)
     m["quads"] = np.vstack([np.asarray(p.get("quads", np.zeros((0, 4), int))).reshape(-1, 4) + o
                             for p, o in zip(pieces, offs)])
-    uvs, side = gg.atlas(pieces)
+    # (T14) the atlas is laid from the PATTERN pieces' boxes (garment_appearance.layout), so the appearance step's
+    # textures, baked on the pattern before the game mesh exists, land on these UVs exactly
+    from . import garment_appearance as ga
+    lay = ga.layout(drape)
+    uvs, side = [ga.atlas_uv(lay, p["name"], p["uv"]) for p in pieces], lay["side"]
     m["uv_pattern"], m["uv"] = m["uv"], np.vstack(uvs)
     sh = gg.shell(m, m["T"])
     sh.update({"outer": m, "h": h, "side": side, "pieces": [p["name"] for p in pieces],

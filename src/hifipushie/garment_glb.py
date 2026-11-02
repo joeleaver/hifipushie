@@ -1,7 +1,8 @@
 """A small skinned GLB for step 10 (garment_export): meshes with flat-colour materials, UVs, one skin.
 
 meshes: [{"name", "V" (Blender axes), "T", "uv" (optional, [0, 1]), "N" (optional), "colour" [r, g, b] 0..1, "J", "W"
-(optional: bone indices / weights, 4 per vertex), "double_sided" (optional)}]; bones as rig.rig_bones gives them
+(optional: bone indices / weights, 4 per vertex), "double_sided", "metallic", "roughness" (optional), "textures"
+(optional, T14: {"base", "mr", "normal"}: PNG paths on the uv; "alpha_cut": an alpha-tested base)}]; bones as rig.rig_bones gives them
 ({"name", "head", "parent", "twist"?}): a joint node per bone at its head (parents first), twist bones turned as
 asset.write_glb turns them, one skin. The <glb>.json beside it carries bounds_blender (asset.preview's cameras).
 """
@@ -35,6 +36,18 @@ def write(path: Path, name: str, meshes: list[dict], bones: list[dict] | None = 
         return len(accs) - 1
 
     nodes, gl_meshes, mats, skins, top = [], [], [], [], []
+    images, textures = [], []
+
+    def image(png) -> int:
+        """A PNG file embedded once (bufferView + mimeType) -> its texture index."""
+        data = Path(png).read_bytes()
+        while len(buf) % 4:
+            buf.append(0)
+        views.append({"buffer": 0, "byteOffset": len(buf), "byteLength": len(data)})
+        buf.extend(data)
+        images.append({"bufferView": len(views) - 1, "mimeType": "image/png"})
+        textures.append({"source": len(images) - 1, "sampler": 0})
+        return len(textures) - 1
     nb = len(bones or [])
     if nb:
         head = np.array([_Z_TO_Y @ np.asarray(b["head"], float) for b in bones])
@@ -78,9 +91,22 @@ def write(path: Path, name: str, meshes: list[dict], bones: list[dict] | None = 
             attrs["JOINTS_0"] = add(J.astype(np.uint8 if nb <= 256 else np.uint16), 34962, 5121 if nb <= 256 else 5123, "VEC4")
             attrs["WEIGHTS_0"] = add(W.astype(np.float32), 34962, 5126, "VEC4")
         T = np.asarray(m["T"], np.uint32).reshape(-1)
-        mats.append({"name": f"{m['name']}_material", "doubleSided": bool(m.get("double_sided", False)),
-                     "pbrMetallicRoughness": {"baseColorFactor": [*map(float, m.get("colour") or [0.8, 0.8, 0.8]), 1.0],
-                                              "metallicFactor": 0.0, "roughnessFactor": float(m.get("roughness", 0.8))}})
+        mat = {"name": f"{m['name']}_material", "doubleSided": bool(m.get("double_sided", False)),
+               "pbrMetallicRoughness": {"baseColorFactor": [*map(float, m.get("colour") or [0.8, 0.8, 0.8]), 1.0],
+                                        "metallicFactor": float(m.get("metallic", 0.0)),
+                                        "roughnessFactor": float(m.get("roughness", 0.8))}}
+        tex = m.get("textures") or {}
+        if tex and m.get("uv") is not None:  # (T14: garment_appearance's maps, baked on the pattern UVs)
+            pbr = mat["pbrMetallicRoughness"]
+            if tex.get("base"):
+                pbr["baseColorTexture"], pbr["baseColorFactor"] = {"index": image(tex["base"])}, [1.0, 1.0, 1.0, 1.0]
+            if tex.get("mr"):
+                pbr["metallicRoughnessTexture"], pbr["roughnessFactor"] = {"index": image(tex["mr"])}, 1.0
+            if tex.get("normal"):
+                mat["normalTexture"] = {"index": image(tex["normal"])}
+            if m.get("alpha_cut"):
+                mat["alphaMode"], mat["alphaCutoff"] = "MASK", 0.5
+        mats.append(mat)
         gl_meshes.append({"name": m["name"], "primitives": [{"attributes": attrs, "indices": add(T, 34963, 5125, "SCALAR"),
                                                              "material": len(mats) - 1}]})
         nodes.append({"name": m["name"], "mesh": len(gl_meshes) - 1, **({"skin": 0} if skinned else {})})
@@ -90,6 +116,9 @@ def write(path: Path, name: str, meshes: list[dict], bones: list[dict] | None = 
             "buffers": [{"byteLength": len(buf)}], "bufferViews": views, "accessors": accs}
     if skins:
         gltf["skins"] = skins
+    if images:
+        gltf.update({"images": images, "textures": textures,
+                     "samplers": [{"magFilter": 9729, "minFilter": 9987, "wrapS": 33071, "wrapT": 33071}]})
     js = json.dumps(gltf, separators=(",", ":")).encode()
     js += b" " * (-len(js) % 4)
     while len(buf) % 4:
