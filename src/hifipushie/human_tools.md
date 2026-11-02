@@ -6,7 +6,7 @@ The full documentation of this topic's tools: their MCP descriptions are the sho
 
 ### `human`
 
-`human(name, age=30, sex=0.5, weight=0.5, muscle=None, height=None, seed=None, outfit=None, tone=None, skin=None, head=None, bust=None, firmness=None, note='', source='makehuman', style=None)`
+`human(name, age=30, sex=0.5, weight=0.5, muscle=None, height=None, seed=None, outfit=None, tone=None, skin=None, head=None, bust=None, firmness=None, note='', source='human', style=None)`
 
 A whole person from a description, saved as an ordinary model: "a 3-year-old girl" = human("mia", age=3,
 sex="female"). The body has that age's MEASURED proportions and size by default (stature from WHO's growth
@@ -23,7 +23,7 @@ an adult woman stands ~3 cm ahead of the breast bone (an A/B cup; MakeHuman's ow
 from 11 to 17 years, softer with age, lifted when dressed (as a bra holds it); children and men have none.
 Clothes are cloth with their own volume (they hang from the chest and belly, bridge the bust, cover the navel);
 a baby's onesie goes over a nappy. The face is the seed's: features, lids and mouth differ per person.
-source: "makehuman" (default: a GNM head grafted onto the MakeHuman body at build time) or "human" = ONE MESH
+source: "human" (default) = ONE MESH or "makehuman" (a GNM head grafted onto the MakeHuman body at build time)
 (onemesh.py: GNM's head topology stitched once onto MakeHuman's body; the body's own head carries the face, so
 there is no neck tube, cross-fade or head scale, and the skin weights are hand-made everywhere).
 style (source "human" only): a style sheet name ("human_feature", "human_cartoon", "human_anime",

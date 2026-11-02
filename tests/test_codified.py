@@ -39,7 +39,7 @@ def test_sculpted_expression_deltas_are_refused(monkeypatch):
 
 def test_expression_presets_are_arkit_mixes():
     from hifipushie import faceshapes as fs
-    w = fs.expression("smile_tess")
+    w = fs.expression("smile")
     assert w["mouthSmileLeft"] == w["mouthSmileRight"] == 0.8 and w["cheekSquintLeft"] == 1.0
     assert w["eyeSquintLeft"] == 0.5 and w["mouthDimpleLeft"] == 0.6 and w["mouthPressLeft"] == 0.2
     assert w["mouthUpperUpLeft"] == pytest.approx(0.108)

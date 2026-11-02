@@ -3,13 +3,13 @@
 Read guide(topic="block_in") first: the loop, the stage-0 description and the self-review.
 
 1. **Start from a base of the right kind**: `block_in_start(name, refs, sex=...)`. The person's body (MakeHuman's
-   age / weight / height from `refs`, a one-mesh human whose pictures are fitted by `human_reference`), the identity =
+   age / weight / height from the `age` / `body` arguments), the identity =
    GNM's sampler CLASS MEAN for the sex (and an ethnicity class only if you know it), on a **GNM-NATIVE head**: GNM's true base (`gnm_base` 1, `dimorphism` 0, `eyes` 1, no head style sliders), GNM's
    own eyeball / mouth / teeth / tongue, at GNM's own size with the body fitted to it (`base.head.attach: "native"`,
    guide topic human_shape). **Nothing of ours is on its surface**: the head's local layers are off (sliders, warp, folds,
    pose, shape) and the refs model's sculpt `strokes`, `skin.folds` and painted wrinkle relief (`skin.wrinkles`) are
    NOT carried; the reply lists what was DROPPED and what was LEFT (skin tone, zones, paint layers, micro relief).
-   `carry=True` keeps them, `attach="body"` gives the old body-carried head (with `gnm_base` by age): both are the
+   `carry=True` keeps them: that is the
    old behaviour, asked for explicitly. The cameras of a refs model whose head stood at another size or place are
    CARRIED onto the new head (same view, same yaw) and the first `block_in_solve` lays them on it. Never start from a
    previous fit: it carries that fit's mistakes. The reply is the first sheet and table.
@@ -172,7 +172,7 @@ Read guide(topic="block_in") first: the loop, the stage-0 description and the se
      from identity: the solve bakes it in. Say so when you report such a head.
    - On a loaded machine set OPENBLAS_NUM_THREADS=1 for scripts that call the solve: its many small solves stall
      in thread contention (0.3 s against 200 s for one call's down-weighting search with load 60).
-   - JUDGE the result on the judging sheet (: reference | best: 50 % blend, the reference
-     pictures projected as its skin, own dressing | the rest), not on a dressed render in an unrelated dressing:
+   - JUDGE the result on `block_in_look(name, judge=True)` (reference | 50 % blend | the pictures projected as its
+     skin | clay), not on a dressed render in an unrelated dressing:
      look at the blend before calling a feature wrong. Face-ID scores do not judge shape (they read the projected
      texture).

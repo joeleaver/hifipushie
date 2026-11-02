@@ -23,17 +23,17 @@ relief | out / in | face rms | face-ID | macros dragged (sd per unit) | nearest 
 block_in_step: `"gnm:<control>": amount` (identity controls) or `"sculpt:<zone>": mm` (a combination, macros held).
 
 ### `block_in_start`
-block_in_start(name, refs, sex=None, age=None, body=None, gnm_base=None, ethnicity=None, cameras="keep",
-replace=False, save=None, expression=False, attach="native", carry=False): the block-in's first model.
-- refs: a one-mesh human whose pictures are fitted (`human_reference` wrote its human_refs.json: views + cameras):
-  its body is taken (body = keys merged over it, e.g. {"weight": 0.3}); or a views list ([{"image", "size", "yaw",
-  "points"}] as human_reference) with age / sex / body for a new body, cameras fitted on the new head.
+block_in_start(name, refs, sex=None, age=None, body=None, ethnicity=None, cameras="keep",
+replace=False, save=None, expression=False, carry=False): the block-in's first model.
+- refs: the pictures: a views list [{"image": path, "size": [w, h], "yaw": deg, "lens_mm": mm}, ...] (yaw 0 = front,
+  check_references reads the set first; lens_mm when known; "points" for a profile, which the detector can't read),
+  with age / sex / body for a new body, cameras fitted on the new head. Or a one-mesh human whose pictures are
+  already fitted: its body is taken (body = keys merged over it, e.g. {"weight": 0.3}).
+- body: base.body keys (weight, muscle, height). Nothing reads a body from pictures: state it.
 - sex: "male" | "female" | 0..1 (default the body's): the base is that sex's class mean in GNM's semantic sampler.
-- attach: "native" (default): GNM's own head: true base, its eyeball / mouth / teeth, its own size (x the stature's
-  allometry: `base.head.size`), the body fitted (stature exact, the neck base laid on GNM's). Head keys with no
-  meaning there are dropped and named (`base.style.human.head_size`, `base.head.scale` ...). "body": the old
-  body-carried head; then gnm_base: default by age (0.5 to 25, 0 from 50, linear between). gnm_base with
-  attach="native" is refused (it IS the true base).
+- The head is GNM's own: true base, its eyeball / mouth / teeth, its own size (x the stature's allometry:
+  `base.head.size`), the body fitted (stature exact, the neck base laid on GNM's). Head keys with no meaning there
+  are dropped and named (`base.style.human.head_size`, `base.head.scale` ...).
 - carry: False (default): the refs model's `strokes`, `skin.folds`, `skin.fold_expressions` are removed and
   `skin.wrinkles` set to {"amount": 0}: a new head has nothing of ours on its surface (garrett_a1's nine sculpt
   strokes once rode unseen on every head started from it). True keeps them. The reply's DROPPED line names every
@@ -51,12 +51,13 @@ Returns the first sheet and target table. The rest mouth is closed by GNM's expr
 mouth_gap dropped), see 7c.
 
 ### `block_in_look`
-block_in_look(name, views=None, table=True, save=None, before=None, focus=None, read="", keep=None): the sheet (see
+block_in_look(name, views=None, table=True, save=None, before=None, focus=None, read="", keep=None, judge=False): the sheet (see
 the loop, 2) of any block-in
 model, rows per view (views = indices), crops fixed at the start head's frame so rounds compare; table=False skips
 the target table. before = another model (any earlier round): under each view a row photo | before | after | the
 change (|after - before| x4, dark = moved) | squint before | squint after. block_in_step's sheet always has it.
 The text gives each view's eye-registration shift (pixels: a large one means the camera misplaces the head).
+- judge=True: the judging sheet: per view photo | 50 % blend | the pictures projected as the head's skin (front last) | clay.
 - focus: one of eyes, nose, mouth, chin_jaw, cheeks, ears: the ZOOM-IN sheet (see the feature pass): rows per view
   (the ear only in turned views) photo | clay | overlay | local contours | raking light | squint photo | squint clay;
   with before = another model a second row photo | before | after | change | raking before | raking after. The text
@@ -71,11 +72,13 @@ block_in_step(name, moves, out=None, seen="", why="", cameras=None, look=True, s
 - moves: {direction: amount}: macros free / held (`name!`), `nd:<gap>`, `sex`, `eth0..2`, `pc:<region><i>`,
   `gnm:<control>` add (amount in sd); `sculpt:<zone>` / `relief:<zone>` add the least-cost GNM move per mm (macros
   held; the reply gives its |dc|, the macros let go and the skin moved elsewhere);
-  `weight`, `lid_upper`, `lid_lower` are SET; `head_scale`, `gnm_base`, `dimorphism`, `eye_size` are SET on a
-  body-carried head and REFUSED on a GNM-native one (they do nothing there; the refusal says why). `neck_mm`: the
+  `weight`, `lid_upper`, `lid_lower` are SET; `head_scale`, `gnm_base`, `dimorphism`, `eye_size` are REFUSED on a
+  GNM-native head (they do nothing there; the refusal says why). `neck_mm`: the
   neck's girth at its narrowest in real mm (native heads; the least identity change, the head's size and the face's
-  measures held; the reply gives |dc|). `{"attach": "native"}` alone: the head switched to GNM-native, its cameras
-  carried onto the new size and place, dead keys dropped and named. An unknown name lists the vocabulary.
+  measures held; the reply gives |dc|). An unknown name lists the vocabulary. A move over 1 sd (`mm:` against its
+  measure's sd) warns.
+- Refused before the first block_in_solve (hand_first=True overrides, for pictures the solve can't read) and on a
+  set_expression model (step from its neutral).
 - out: the new model's name (default: name with its number + 1, or name_01); an existing name is refused.
 - seen: the biggest difference you named; why: why this move answers it. Both logged.
 - cameras: view indices whose camera to refit on the result head (camera only, the head held), e.g. a painted view
@@ -83,6 +86,14 @@ block_in_step(name, moves, out=None, seen="", why="", cameras=None, look=True, s
 - look=False returns the text only. Reply: |c| before -> after, the moved macro's read, the largest coupled moves,
   the target pass counts before -> after, the items that changed, and the new sheet (with before | after | change
   rows: a half-sd step is hard to see beside the photo alone) + table.
+
+### `set_expression`
+set_expression(name, mix, out=None): a finished head posed. A NEW model (out, default <name>_<preset>) whose
+base.head.expression is the mix on top of the head's own; name stays neutral; no mixing on a posed model.
+- mix: a preset (smile, open_mouth, frown, surprise, blink; only smile has been reviewed) or ARKit shape weights 0..1. An
+  unknown name, a weight outside 0..1, cheekPuff or an eyeLook (no GNM parameters) is refused.
+- Parameters only: each shape is its GNM expression coefficients (skin, lower teeth and tongue follow).
+- A picture's own expression while judging is block_in_expression, which never reaches the model.
 
 ### `block_in_expression`
 block_in_expression(name, out=None, views=None, clear=False, seen="", why="", look=True, save=None): a round that
@@ -133,7 +144,6 @@ lid as one structure on GNM's lid rings (fold="crisp", the default: recipe A, a 
 fold line, brows and measures held; fold="donor" / donor="s376" | "s540" | a block-in model's name: toward that lid)
 with the eyeball guard; a new block-in step (out, seen as block_in_step); returns the focus=eyes sheet (before | after) and the report.
 expression=True adds GNM's eye-region expression to the opening's solve: only for a real pose (a squint). ~5 min.
-match="pose": the older lid pose offsets (lid_upper / lid_lower, metres).
 
 ### `eye_ruler`
 eye_ruler(name, model=None, save=None): the front picture's eyes against the model's mesh, in mm at the model (the

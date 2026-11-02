@@ -36,8 +36,9 @@ driving manual: what you see -> the GNM control), `likeness` (the feature checkl
 
 ## The loop
 
-1. **Start from a base of the right kind**: `block_in_start(name, refs, sex=...)`: the body from the refs, the
-   identity = GNM's class mean for the sex (an ethnicity class only if you know it), on a GNM-NATIVE head (GNM's own
+1. **Start from a base of the right kind**: `block_in_start(name, refs=[{"image": path, "size": [w, h], "yaw": 0},
+   ...], sex=..., age=..., body={...})`: refs are the pictures, sex / age / body you state (nothing reads a body from
+   pictures), the identity = GNM's class mean for the sex (an ethnicity class only if you know it), on a GNM-NATIVE head (GNM's own
    base, eyeball, mouth, at its own size, the body fitted to it). Nothing of ours is on its surface; the reply lists
    what was dropped and what was left. Never start from a previous fit: it carries that fit's mistakes.
 2. **Measure first**: `face_ruler(name)` reads the millimetre measures off the pictures (skin outlines and iris
@@ -51,8 +52,8 @@ driving manual: what you see -> the GNM control), `likeness` (the feature checkl
    eye or put them back). It does NOT see the surface inside the silhouette (cheek volume, the lid's fold, the nose's
    planes): those are hand steps. Details: `blockin_solve`.
 4. **Look**: `block_in_look(name)` (every step returns it too): per picture photo | clay under the photo's own fitted
-   light | 50 % overlay | outline difference | squinted photo | squinted clay. Judge on the judging sheet: the
-   reference beside the result, and the reference pictures projected as the head's skin + a blend.
+   light | 50 % overlay | outline difference | squinted photo | squinted clay. Judge on the judging sheet,
+   `block_in_look(name, judge=True)`: the reference beside the result, the pictures projected as the head's skin, a blend.
 5. **Squint and name the single BIGGEST difference** in sculptor's terms: masses and planes, not features. Check the
    sex and age read. Then look the phrase up in the driving manual (`gnm_controls(phrase="...")`, guide topic
    `gnm_driving`): the control, its sign, mm per unit, what to hold, what it drags. If the difference is measurable,
@@ -64,7 +65,8 @@ driving manual: what you see -> the GNM control), `likeness` (the feature checkl
    reply). Otherwise step again from the earlier model; free moves drag neighbours: put them back with a held step.
 8. **The feature pass** once the whole face is right (below), then the eyes (orbit first, then the lid step), the
    lips and the picture's expression (`blockin_features`).
-9. **Done** when the outline sits on the pictures in every view, the table passes (or every miss is explained: a
+9. **Expressions** on the finished head: `set_expression` (mixes of GNM's parameters, a new model).
+10. **Done** when the outline sits on the pictures in every view, the table passes (or every miss is explained: a
    painted view, a detector guess), and the squinted clay reads as the same person: age, sex, mass. Then likeness,
    skin, hair, clothes, on THIS head.
 
@@ -101,7 +103,7 @@ SCULPT it (macros held), and only then a local residual.
 ## Self-review loop (every round)
 
 1. Reference beside result at the same camera: the block-in sheet per view (photo | clay under its light | blend |
-   outline) and, every few rounds, the judging sheet (reference projected as skin + blend), whole face and per
+   outline) and, every few rounds, `block_in_look(name, judge=True)` (reference projected as skin + blend), whole face and per
    feature (focus crops).
 2. Per region (overall mass and proportions, profile, jaw and chin, cheeks, nose, eyes and brows, mouth, ears), list
    what reads wrong against the reference, concretely (where, what, how far off in mm where the ruler reads it).
@@ -119,7 +121,7 @@ wrong is explained, not chased.
 | Mistake | Instead |
 |---|---|
 | Big steps (> 1 sd): one move explains three differences | Small steps, one difference each |
-| Chasing a uniform size with `head_size!` / `eye_spacing!` | The SIZE line: refit the camera or `head_scale` |
+| Chasing a uniform size with `head_size!` / `eye_spacing!` | The SIZE line: refit the camera |
 | Judging on the outline overlay alone | Squint; the planes inside the outline |
 | Fixing eyes with identity steps | Lids are their own step (`lid_read`); the orbit first |
 | Hand moves before the joint solve | `block_in_solve` from the start head first |

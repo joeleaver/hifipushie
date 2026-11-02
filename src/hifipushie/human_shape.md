@@ -116,8 +116,8 @@ turns that round:
   and names that step); hair and clothes made on the old head must be remade.
 - `block_in_start` makes a native head BY DEFAULT with nothing of ours on its surface (no strokes, no
   skin.folds, no wrinkle relief carried from the refs model); on it block_in_step refuses head_scale / gnm_base /
-  dimorphism / eye_size. The `human` tool itself is unchanged: its default head is still the grafted one, and
-  `source="human"` a body-carried seeded face; pass `head={"attach": "native"}` for a native one.
+  dimorphism / eye_size. The `human` tool's own default is a body-carried seeded face on one mesh; pass
+  `head={"attach": "native"}` for a native one.
 - the NECK: GNM's female class-mean neck is 363 mm (ANSUR 330 +- 18) and MakeHuman's female neck ~290 at any weight:
   a class-mean woman is flagged NECK CONFLICT. block_in_solve puts ANSUR's prior on the neck's girth (guide topic
   block_in_solve); without pictures, `block_in_step {"neck_mm": mm}` sets it.
