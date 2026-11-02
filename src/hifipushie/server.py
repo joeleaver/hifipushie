@@ -3500,7 +3500,8 @@ def chain_garment(name: str, garment: str, wear: str = "closed", opening: float 
     as chains of the pattern's lengths. wear: "closed" or "open"; opening: only with "open" (collar points apart, neck
     widths). Refuses until pattern_check passes. A JOB: build (2-10 min), STRUCTURE check of the build beside the
     reference, then the hang only on its pass. Answers its stage within wait (s); call again, same arguments, to poll;
-    rebuild=True starts over; waive={row: why} accepts failing structure rows. Answers end in next:."""
+    rebuild=True starts over; waive={row: why} accepts failing structure rows. Answers end in next:.
+    guide(topic="chain_garment")."""
     import time as _t
     from . import chain_garment as cg
     if wear not in ("closed", "open"):
