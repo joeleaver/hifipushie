@@ -22,7 +22,9 @@ STEP 1 "parts": {pieces, details, closures, seams, over?}
   closures {name: {what, pieces: [pieces it joins; one for a band closing on itself], details?: [details]}}
   seams    [{a: "piece:edge", b: "piece:edge", kind?: seam|fold|set_in|topstitch, length: {body: [measurement names]} |
             {style: {ratio | value_mm, of?, source}}}]
-STEP 2 "style": {state, bends, pose, rows}
+STEP 2 "style": {state, bends, pose, rows, layers?}
+  layers {mode: visible|full, why}  (worn over another garment: visible (default) keeps the garment under where it is seen;
+          full fits all of it inside, for a reason: chain_press.py, T12)
   state  {closure: {state: open|closed|partly, detail?, source}}   (EVERY inventory closure, none other)
   bends  [{id, on (piece | piece:edge | detail | closure), target: {value, unit, of (a ratio's base)} | {is}, source}]
   pose   {name, source}
@@ -296,6 +298,11 @@ def check_style(p: dict, read: dict, parts: dict) -> dict:
         _src(b, w, bad)
         if b.get("what") is not None or "value" in (b.get("target") or {}):  # (C286: a numeric bend is judged too)
             sr.check_row(b, w, bad, kinds)
+    lay = p.get("layers")  # (T12: how a garment worn over another layers it: chain_press.py)
+    if lay is not None and not (isinstance(lay, dict) and lay.get("mode") in ("visible", "full")
+                                and (lay["mode"] == "visible" or str(lay.get("why") or "").strip())):
+        bad.append("layers: {mode: visible (default: the garment under kept where seen) | full (the whole garment under "
+                   "fitted inside and hung with this one), why (needed for full: it comes off at runtime, a close-up)}")
     pose = p.get("pose")
     if not isinstance(pose, dict) or not pose.get("name"):
         bad.append("pose: {name (e.g. 'arms down, relaxed'), source}")

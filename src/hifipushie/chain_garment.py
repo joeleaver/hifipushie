@@ -38,7 +38,8 @@ contradicting wear is refused); no closed garment is built and then styled open.
 8. HANG (hang()): the soft cloth under gravity in ZOZO, stiff parts held; lengths have the last word afterwards. Its gate:
    no face past the thread cap (chain_presim.threads_gate).
    The collider is the whole body: nothing is cut from it. An illegal start is a build fault and is refused by name.
-   Worn over another garment (step 1's "over", chain_layers.py, T9): the body + that garment's surface + its details.
+   Worn over another garment (step 1's "over", chain_layers.py + chain_press.py, T12): the body + that garment's
+   thickness + its stiff parts and details; the garment under is then fitted inside this one (visible parts by default).
 
 Every stage ends in chain_net.project; Build.reads holds the numbers; a length that can't hold raises ChainRefused naming
 the piece and the line and what to do next."""
@@ -1697,7 +1698,7 @@ def worker(model: str, garment: str, wear: dict):
             sc["reads"].pop("front_gap_profile", None)
         _status(d, structure=sc)
         from . import chain_layers as cl  # (inside the garment under it, then the lengths: T9)
-        cl.gate(b, body, put=lambda **kw: _status(d, **kw), refused=ChainRefused)  # (a refusal is answered first; structure rows stay beside it)
+        cl.gate(b, body, put=lambda **kw: _status(d, **kw), refused=ChainRefused, d=d)  # (a refusal is answered first; structure rows stay beside it)
         if not cs.passed(sc):
             _status(d, stage="structure_failed")
             return
