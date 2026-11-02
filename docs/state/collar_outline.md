@@ -38,7 +38,13 @@ iterations or manual feedback."
 2. Free cloth rises 7-8 mm on average in the hang (not understood). 3. Stiff chains not exact after surfaces. 4. Cuffs
 flare (cut 183 mm vs forearm 200 mm). 5. Soft mesh 20 mm, coarse. 6. No export.
 
-STATE: branch chain-run1 (6cbf64f6..). NEXT: find why the closed build stretches front.R's front edge below the neck (the
+Joe 2026-11-02: "you're running zozo sims and then saying 'everything looked bunched' but that's what's _supposed_ to happen.
+We need a pre-sim judge of the structure." The verdict above judged the HUNG cloth; the collar tube / points not spread are
+already in the build (closed build views). Judge the build, never the hang.
+
+STATE: landed on main (238ba4f3). NEXT (chain run 2): the pre-sim STRUCTURE gate: the job stops at "built", a structure
+check measures the build beside the reference (collar height under the jaw, point spread, leaves lying, V, front edges,
+hem, sleeve / cuff), each failing row naming what to change; the hang refused without its PASS. THEN (run 3): find why the closed build stretches front.R's front edge below the neck (the
 French front's fold line vs the band end / button 1 when closed; same on the old collar), fix it in the draft or the
 build (never MAX_FREE_PCT), rerun chain_garment wear closed through the tool, look_chain beside folds_ab/refs; then the
 open collar funnel and the threads past cap.
