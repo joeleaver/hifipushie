@@ -145,7 +145,7 @@ def resolve(sheet: dict) -> dict:
     kd = K["kinds"][kind]
     fr = sheet.get("from") or ("draft" if (sheet.get("block") or kd.get("draft")) else None)
     rec = K["designs"].get(fr) if (fr and fr != "draft") else None  # a drafted design is judged by evidence alone
-    fit = sheet.get("fit") or (next(iter(kd.get("fit", {})), None))
+    fit = sheet.get("fit") or (rec or {}).get("default_fit") or (next(iter(kd.get("fit", {})), None))  # (a draft has the fit it drafts)
     problems = []
     if rec and rec.get("kind") != kind and kind not in rec.get("kinds", []):
         problems.append(f"design {fr} makes a {rec.get('kind')}, not a {kind}")

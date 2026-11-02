@@ -21,7 +21,11 @@
    {"op": "turn", "piece": "front.R", "line": "placketOuterFold", "keep": "neck"},
    {"op": "turn", "piece": "front.L", "line": "placketFold1", "keep": "neck"},
    {"op": "slit", "piece": "sleeve.L", "line": "placketCut", "width": 0.0025},
-   {"op": "slit", "piece": "sleeve.R", "line": "placketCut", "width": 0.0025}
+   {"op": "slit", "piece": "sleeve.R", "line": "placketCut", "width": 0.0025},
+   {"op": "match", "piece": ["stand", "collar"], "edge": "stand:leftBottomEdge>leftBottomCf>bottomMid>rightBottomCf>rightBottomEdge",
+    "to": ["front.R:placketTopOut>cfNeck>neck", "yoke:neck.m>cbNeck>neck", "front.L:neck>cfNeck>placketTopFold1"],
+    "line": {"stand": ["bottomMid", "topMid"], "collar": ["bottomMid", "topMid"]},
+    "source": "the plackets turned above lengthen the neckline past the stand Simon cut for it (S12, -1.0 %): the seam is walked after them"}
   ],
   "seams": [
    ["back:hem>armhole", "front.L:hem>armhole"],

@@ -3466,15 +3466,34 @@ def _chain_text(st: dict) -> str:
     return "\n".join(lines)
 
 
-@mcp.tool(structured_output=False)
-def chain_garment(name: str, garment: str, wear: str = "closed", opening: float | None = None):
-    """START A GARMENT: the only way to dress a character, fit or drape clothes on a body. Built from the pattern and the body
-    as chains of the pattern's own lengths (only bends are free; stiff parts first, soft cloth hung from them). wear: "closed" or
-    "open" (top button undone); opening: only with "open": collar points this many neck widths apart (default 1.7). Refuses until
-    pattern_check passes, and by piece and line if a length can't hold. Answers after the build (1-3 min); the hang runs on
-    (5-10 min). next: look_chain. Details: guide(topic="chain_garment")."""
+def _chain_call(name: str, garment: str, wear: str, opening: float | None = None, **more) -> str:
+    args = {"name": name, "garment": garment, "wear": wear}
+    if opening is not None:
+        args["opening"] = opening
+    return f"call_tool(\"chain_garment\", {json.dumps(dict(args, **more))})"
+
+
+def _chain_spawn(d, name: str, garment: str, w: dict) -> int:
+    """The worker, its own process under bin/capped: a hang never blocks the server. Returns its pid."""
     import subprocess
     import sys
+    cmd = [sys.executable, "-m", "hifipushie.chain_garment", name, garment, json.dumps(w)]
+    capped = "/mnt/data/hifipushie/bin/capped"
+    cmd = ([capped] if os.path.exists(capped) else []) + cmd
+    return subprocess.Popen(cmd, stdout=open(d / "worker.log", "w"), stderr=subprocess.STDOUT, start_new_session=True,
+                            env=dict(os.environ, HIFIPUSHIE_HOME=str(store.HOME))).pid
+
+
+@mcp.tool(structured_output=False)
+def chain_garment(name: str, garment: str, wear: str = "closed", opening: float | None = None, wait: float = 50.0,
+                  rebuild: bool = False):
+    """START A GARMENT: the only way to dress a character, fit or drape clothes on a body. Built from the pattern and the body
+    as chains of the pattern's own lengths (only bends are free; stiff parts first, soft cloth hung from them). wear: "closed" or
+    "open" (top button undone); opening: only with "open": collar points this many neck widths apart (default 1.7). Refuses at once
+    until pattern_check passes. A JOB: starts the build + hang (2-10 min build, then the hang, slower on a loaded machine), answers
+    with its stage after at most wait (s). Call again, same arguments, for the stage: it never starts a second build; a finished job
+    answers with its numbers; a changed pattern starts anew; rebuild=True starts over. The answer's next: says what to call. Details:
+    guide(topic="chain_garment")."""
     import time as _t
     from . import chain_garment as cg
     if wear not in ("closed", "open"):
@@ -3483,47 +3502,60 @@ def chain_garment(name: str, garment: str, wear: str = "closed", opening: float 
         raise ValueError("opening is how far an open collar opens: only with wear=\"open\"")
     if opening is not None and not 1.0 <= float(opening) <= 2.6:
         raise ValueError(f"opening {opening}: collar points apart in neck widths, 1.0 .. 2.6 (default 1.7)")
+    if not 0 <= float(wait) <= 280:
+        raise ValueError(f"wait {wait}: seconds, 0 .. 280; call again for the stage")
     spec = store.load(name)
-    refused = _chain_gate(name, garment, spec)
-    if refused:
-        return refused
-    d = cg.job_dir(name, garment, wear)
-    st0 = cg.status(d)
-    if st0.get("stage") in ("building", "built", "hanging") and _t.time() - float(st0.get("t0", 0)) < 3600:
-        return (f"{name}:{garment} ({wear}) is already at stage {st0['stage']}.\nnext: call_tool(\"look_chain\", "
-                f"{{\"name\": \"{name}\", \"garment\": \"{garment}\", \"wear\": \"{wear}\"}})")
-    for f in ("status.json", "built.pkl", "final.pkl"):
-        (d / f).unlink(missing_ok=True)
+    if garment not in (spec.get("cloth") or {}):
+        return _chain_gate(name, garment, spec)
     w = {"state": wear}
     if opening is not None:
         w["spread"] = float(opening)
-    cmd = [sys.executable, "-m", "hifipushie.chain_garment", name, garment, json.dumps(w)]
-    capped = "/mnt/data/hifipushie/bin/capped"
-    cmd = ([capped] if os.path.exists(capped) else []) + cmd
-    subprocess.Popen(cmd, stdout=open(d / "worker.log", "w"), stderr=subprocess.STDOUT, start_new_session=True,
-                     env=dict(os.environ, HIFIPUSHIE_HOME=str(store.HOME)))
+    key = cg.job_key(spec, garment, w)
+    d = cg.job_dir(name, garment, wear)
+    st = cg.live_status(d)
+    if st.get("stage") in cg.RUNNING:
+        if st.get("key") != key or rebuild:  # (two workers in one folder would write over each other)
+            return (f"{name}:{garment} ({wear}): a job of a different pattern or opening is at stage {st['stage']}; it ends first.\n"
+                    f"next: {_chain_call(name, garment, wear, opening)} when this one has ended")
+    elif st.get("key") != key or rebuild:
+        refused = _chain_gate(name, garment, spec)
+        if refused:
+            return refused
+        for f in ("status.json", "built.pkl", "final.pkl"):
+            (d / f).unlink(missing_ok=True)
+        cg.write_status(d, stage="queued", key=key, wear=w, t0=_t.time())
+        cg.write_status(d, pid=_chain_spawn(d, name, garment, w))
     t0 = _t.time()
-    st = {}
-    while _t.time() - t0 < 300:
-        st = cg.status(d)
-        if st.get("stage") in ("built", "hanging", "done", "refused", "failed"):
-            break
-        _t.sleep(2)
-    return _chain_answer(name, garment, wear, st)
+    st = cg.live_status(d)
+    while st.get("stage") in cg.RUNNING and _t.time() - t0 < float(wait):
+        _t.sleep(min(2.0, float(wait)))
+        st = cg.live_status(d)
+    return _chain_answer(name, garment, wear, st, opening)
 
 
-def _chain_answer(name: str, garment: str, wear: str, st: dict) -> str:
+def _chain_answer(name: str, garment: str, wear: str, st: dict, opening: float | None = None) -> str:
+    """Every answer of the job names the next call."""
+    from . import chain_garment as cg
     look = f"call_tool(\"look_chain\", {{\"name\": \"{name}\", \"garment\": \"{garment}\", \"wear\": \"{wear}\"}})"
-    stage = st.get("stage", "building")
+    stage = st.get("stage", "queued")
+    again = _chain_call(name, garment, wear, opening)
     if stage == "refused":
-        return f"{name}:{garment} ({wear}): refused: {st.get('refused')}"
+        return f"{name}:{garment} ({wear}): refused: {st.get('refused')}\nnext: fix it on the pattern (alter_pattern), pattern_check, then {again}"
     if stage == "failed":
         return (f"{name}:{garment} ({wear}): the build failed: {st.get('error')}\nnext: report this to the coordinator as a tool "
-                "fault, with the text above; don't work round it")
-    head = {"building": "still building", "built": "built; the hang is starting", "hanging": "built; the hang is running (5-10 min)",
-            "done": "built and hung"}.get(stage, stage)
-    return f"{name}:{garment} ({wear}): {head}\n{_chain_text(st)}\nnext: {look}" + (
-        " (it shows the build now, the hang when it ends)" if stage != "done" else " beside your reference; review_view one view per call")
+                f"fault, with the text above; don't work round it. {_chain_call(name, garment, wear, opening, rebuild=True)} starts over")
+    head = {"queued": "starting", "building": "building", "built": "built; the hang is starting", "hanging": "built; the hang is running",
+            "hung": "hung; the last lengths are being read", "done": "built and hung"}.get(stage, stage)
+    head += f" ({cg.elapsed(st)} s)" if stage != "done" else ""
+    if st.get("note"):
+        head += f"; {st['note']}"
+    body = _chain_text(st)
+    txt = f"{name}:{garment} ({wear}): {head}" + (f"\n{body}" if body else "")
+    if stage == "done":
+        return f"{txt}\nnext: {look} beside your reference; review_view one view per call"
+    if stage in ("queued", "building"):
+        return f"{txt}\nnext: {again} for the stage; nothing to look at yet"
+    return f"{txt}\nnext: {again} for the stage; {look} shows the build until the hang ends"
 
 
 @mcp.tool(structured_output=False)

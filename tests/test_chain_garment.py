@@ -160,3 +160,65 @@ def test_chain_tool_strict_arguments():
         server.chain_garment("x", "y", wear="closed", opening=1.5)
     with pytest.raises(ValueError, match="1.0"):
         server.chain_garment("x", "y", wear="open", opening=9)
+
+
+def _job_model(monkeypatch, tmp_path, script: str):
+    """The job path on a stub worker: the real tool, spawn and status files; no build, no gate."""
+    import json
+    import subprocess
+    import sys
+    from hifipushie import store
+    monkeypatch.setattr(store, "HOME", tmp_path)
+    monkeypatch.setattr(store, "load", lambda n: {"bones": {}, "cloth": {"shirt": {"design": {"kind": "shirt"}}}})
+    calls = []
+
+    def spawn(d, name, garment, w):
+        calls.append(w)
+        code = ("import json,sys,time,pathlib\nd=pathlib.Path(sys.argv[1])\ndef put(**k):\n st=json.loads((d/'status.json').read_text())\n"
+                " st.update(k)\n (d/'status.json').write_text(json.dumps(st))\n" + script)
+        return subprocess.Popen([sys.executable, "-c", code, str(d)]).pid
+
+    monkeypatch.setattr(server, "_chain_spawn", spawn)
+    return calls, json
+
+
+def test_job_answers_at_once_and_a_poll_never_starts_a_second(monkeypatch, tmp_path):
+    calls, _ = _job_model(monkeypatch, tmp_path, "put(stage='building')\ntime.sleep(4)\nput(stage='done', reads={})\n")
+    monkeypatch.setattr(server, "_chain_gate", lambda *a: None)
+    t = server.chain_garment("m", "shirt", wait=0)
+    assert 'next: call_tool("chain_garment"' in t and '"wear": "closed"' in t
+    t = server.chain_garment("m", "shirt", wait=0)
+    assert len(calls) == 1 and "next: call_tool" in t
+    t = server.chain_garment("m", "shirt", wait=20)
+    assert "built and hung" in t and "look_chain" in t and len(calls) == 1
+    t = server.chain_garment("m", "shirt", wait=0)  # a finished job answers with its result
+    assert "built and hung" in t and len(calls) == 1
+    server.chain_garment("m", "shirt", wait=0, rebuild=True)
+    assert len(calls) == 2
+
+
+def test_job_open_poll_keeps_the_opening(monkeypatch, tmp_path):
+    _job_model(monkeypatch, tmp_path, "put(stage='building')\ntime.sleep(2)\n")
+    monkeypatch.setattr(server, "_chain_gate", lambda *a: None)
+    t = server.chain_garment("m", "shirt", wear="open", opening=1.5, wait=0)
+    assert '"opening": 1.5' in t.split("next:")[1]
+
+
+def test_job_dead_worker_reads_failed(monkeypatch, tmp_path):
+    _job_model(monkeypatch, tmp_path, "put(stage='building')\nimport os\nos._exit(9)\n")
+    monkeypatch.setattr(server, "_chain_gate", lambda *a: None)
+    t = server.chain_garment("m", "shirt", wait=15)
+    assert "the worker died" in t and "rebuild" in t
+
+
+def test_job_refusal_is_immediate_and_starts_nothing(monkeypatch, tmp_path):
+    calls, _ = _job_model(monkeypatch, tmp_path, "")
+    monkeypatch.setattr(server, "_chain_gate", lambda *a: "shirt: not built: FAIL\nnext: call_tool(\"pattern_check\")")
+    assert "not built" in server.chain_garment("m", "shirt")
+    assert not calls
+
+
+def test_a_design_defaults_to_the_fit_it_drafts():
+    from hifipushie import garment_design as gd
+    assert gd.resolve({"kind": "shirt", "from": "simon"})["fit"] == "regular"
+    assert gd.resolve({"kind": "shirt", "from": "simon", "fit": "slim"})["fit"] == "slim"
