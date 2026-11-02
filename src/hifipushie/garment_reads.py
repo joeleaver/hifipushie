@@ -59,7 +59,8 @@ COLLAR_FABRIC_SOURCE = ("a shirt collar: two layers of the shell + a fused inter
 
 def _roles(M) -> list:
     from . import garment_design
-    return [garment_design.role_of(n) for n in M["names"]]
+    decl = M.get("roles") or {}  # (the draft's declared role first: a stand named "collar"; T8)
+    return [decl.get(n) or garment_design.role_of(n) for n in M["names"]]
 
 
 def _mask(M, roles) -> np.ndarray:
