@@ -85,15 +85,76 @@ def test_glb_counts_and_skin(tmp_path):
     assert json.loads(p.with_suffix(".json").read_text())["bounds_blender"]
 
 
-def test_weight_check_follows_when_weights_match():
-    bones = [{"name": "root", "head": np.zeros(3), "parent": -1}, {"name": "mixamorig:LeftArm", "head": np.zeros(3), "parent": 0}]
-    bV = np.random.default_rng(0).normal(size=(200, 3)) * 0.1 + [0.3, 0, 0]
-    gV = bV * 1.02
-    J = np.c_[np.ones((200, 1), int), np.zeros((200, 3), int)]; W = np.c_[np.ones((200, 1)), np.zeros((200, 3))]
-    wc = ge.weight_check(bones, gV, J, W, bV, J, W)
-    assert wc["ok"] and wc["moved_vertices"] > 100
-    J0 = np.zeros_like(J)  # the garment left on the root: it stays behind as the arm moves
-    assert not ge.weight_check(bones, gV, J0, W, bV, J, W)["ok"]
+def test_loops_follow_the_outline_quad_dominant_seams_shared():
+    """garment_loops: rings parallel to every border, quads, the seam still shared, UVs still the pattern."""
+    from scipy.spatial import cKDTree
+    from hifipushie import garment_loops as gl
+    r = tiny_result()
+    g, _ = ge.fit_budget(ge.drape_of(r), r["M"], 1500, body=r["bV"], joints={})
+    o = g["outer"]
+    assert o["quad_share"] >= 0.7 and g["missing_boundary_edges"] == 0
+    hp = ge.piece_h(r["M"], g["h"])
+    U = o["uv_pattern"][o["piece"] == 0]
+    d = np.min(np.stack([U[:, 0], 0.3 - U[:, 0], U[:, 1], 0.4 - U[:, 1]]), 0)  # distance to piece a's border
+    h = hp["a"]
+    for k in range(1, gl.LOOP_RINGS + 1):  # ring k: a row of vertices k h in from the border all round
+        on = np.abs(d - k * h) < 0.08 * h
+        assert on.sum() >= 0.8 * (2 * (0.3 + 0.4) - 8 * k * h) / h
+    # the ring's consecutive points are mesh edges (a loop, not just points)
+    E = set(map(tuple, np.sort(np.concatenate([o["T"][:, [0, 1]], o["T"][:, [1, 2]], o["T"][:, [2, 0]]]), 1).tolist()))
+    idx = np.flatnonzero(o["piece"] == 0)[np.abs(d - h) < 0.08 * h]
+    P = o["uv_pattern"][idx]
+    nb = cKDTree(P).query(P, k=2)[1][:, 1]
+    assert np.mean([(min(a, b), max(a, b)) in E for a, b in zip(idx, idx[nb])]) > 0.9
+    on = np.isclose(o["uv_pattern"][:, 0], 0.3, atol=1e-6)
+    A, B = o["V"][on & (o["piece"] == 0)], o["V"][on & (o["piece"] == 1)]
+    assert len(A) == len(B) and np.allclose(A[np.argsort(A[:, 2])], B[np.argsort(B[:, 2])])
+    st = ge.uv_stretch(o)
+    assert 0.97 < st["p5"] and st["p95"] < 1.01
+
+
+def _sheet(nx, ny, w, h, z):
+    U, F = _grid(nx, ny, w, h)
+    return np.c_[U[:, 0] - w / 2, U[:, 1], np.full(len(U), z)], F
+
+
+def test_projected_weights_smoothed_do_not_jump_between_neighbours():
+    """A two-bone body whose weights STEP at x = 0; cloth 3 cm off it: the projection alone jumps across one edge,
+    the geodesic smoothing spreads it over the radius."""
+    from hifipushie import garment_bend as gb
+    bV, bT = _sheet(41, 11, 0.8, 0.2, 0.0)
+    ref = np.c_[(bV[:, 0] < 0).astype(float), (bV[:, 0] >= 0).astype(float)]
+    gV, gT = _sheet(33, 9, 0.64, 0.16, 0.03)
+    gV[:, 1] += 0.02
+    E = gb.edges_of(gT)
+    D0, _ = gb.transfer(bV, bT, ref, gV, gT, 0.02, smooth=False)
+    D1, info = gb.transfer(bV, bT, ref, gV, gT, 0.02, smooth=True)
+    j0 = 0.5 * np.abs(D0[E[:, 0]] - D0[E[:, 1]]).sum(1).max()
+    j1 = 0.5 * np.abs(D1[E[:, 0]] - D1[E[:, 1]]).sum(1).max()
+    assert info["geo_radius_m"] >= gb.GEO_R_MIN and j0 > 0.9 and j1 < 0.5
+    assert np.allclose(D1.sum(1), 1, atol=1e-9)
+
+
+def test_bend_check_fails_a_kink_and_passes_a_smooth_bend():
+    """Two bones turning at x = 0 by 40 deg: garment weights that STEP there kink (one sharp new crease); the same
+    smooth ramp as the body's bends cleanly."""
+    from hifipushie import garment_bend as gb
+    bones = [{"name": "root", "head": np.zeros(3), "parent": -1}, {"name": "b1", "head": np.zeros(3), "parent": 0}]
+    bV, bT = _sheet(41, 11, 0.8, 0.2, -0.002)  # (a close fit: 2 mm off; farther off, the outer layer of a bend is
+    gV, gT = _sheet(41, 11, 0.8, 0.2, 0.0)     # longer than the skin's by stand-off x curvature, and that is strain)
+
+    def jw(V, ramp):
+        w1 = np.clip(0.5 + V[:, 0] / ramp, 0, 1) if ramp else (V[:, 0] > 0).astype(float)
+        return np.c_[np.zeros(len(V), int), np.ones(len(V), int), np.zeros((len(V), 2), int)], np.c_[1 - w1, w1, np.zeros((len(V), 2))]
+    bJ, bW = jw(bV, 0.2)
+    turn = {"bend": {"b1": ([0, 1, 0], 40.0)}}
+    sJ, sW = jw(gV, 0.2)
+    ok = gb.deformation(bones, gV, gT, sJ, sW, bV, bT, bJ, bW, turn)
+    assert ok["ok"] and ok["poses"]["bend"]["new_creases"] == 0
+    kJ, kW = jw(gV, 0)
+    bad = gb.deformation(bones, gV, gT, kJ, kW, bV, bT, bJ, bW, turn)
+    assert not bad["ok"] and bad["poses"]["bend"]["new_creases"] > 0
+    assert bad["limits"]["crease_deg"] == gb.CREASE_FLOOR  # a flat sheet's sharpest rest fold is below the floor
 
 
 def _write_steps(model, garment, upto):

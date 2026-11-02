@@ -11,7 +11,8 @@ from pathlib import Path
 
 import numpy as np
 
-from . import garment_details as gd, garment_export as ge, garment_game as gg, garment_glb as glbw, garment_record as gr
+from . import garment_bend as gb, garment_details as gd, garment_export as ge, garment_game as gg, garment_glb as glbw
+from . import garment_loops as gl, garment_record as gr
 
 SKIN = [0.85, 0.69, 0.55]
 
@@ -46,7 +47,8 @@ def run(name: str, garment: str, wear: str = "open", role: str = ge.ROLE, look: 
     details = ge.details_of(d, pkl.name == "final.pkl")
     n_det = sum(len(x["F"]) for x in details.values())
     drape = ge.drape_of(r)
-    g, tries = ge.fit_budget(drape, r["M"], budget, n_det, body=bV)
+    rb = rig.rig_bones(spec)
+    g, tries = ge.fit_budget(drape, r["M"], budget, n_det, body=bV, joints=gl.joint_lines(drape, rb))
     total = len(g["T"]) + n_det
     if total > budget:
         big = max(details, key=lambda k: len(details[k]["F"])) if details else None
@@ -58,11 +60,12 @@ def run(name: str, garment: str, wear: str = "open", role: str = ge.ROLE, look: 
             "(step 1: an occluded piece simplified or left out), or simpler details (step 7: fewer segments)")
     st = ge.uv_stretch(g["outer"])
     sd = ge.stretch(drape["V"], drape["uv"], drape["F"])
-    rb = rig.rig_bones(spec)
     o = g["outer"]
-    gJ, gW = ge.skin(spec, rb, o["V"], o["T"])
-    bJ, bW = ge.skin(spec, rb, bV, bT)
-    wc = ge.weight_check(rb, o["V"], gJ, gW, bV, bJ, bW)
+    gJ, gW, winfo = gb.skin(spec, rb, o["V"], o["T"], g["h"])
+    bJ, bW, _ = gb.skin(spec, rb, bV, bT, 0.0, smooth=False)
+    made = [i for i, n in enumerate(g["pieces"]) if n in set(r["M"].get("made") or [])]
+    bend = gb.deformation(rb, o["V"], o["T"], gJ, gW, bV, bT, bJ, bW,
+                          soft_faces=~np.isin(np.asarray(o["piece"])[np.asarray(o["T"])[:, 0]], made))
     J2, W2 = np.vstack([gJ, gJ]), np.vstack([gW, gW])  # (the inner faces share the outer's vertices' weights)
     gk = cKD(o["V"])
     meshes = [{"name": garment, "V": g["V"], "T": g["T"], "uv": g["uv"], "N": g["N"], "colour": colour, "J": J2, "W": W2}]
@@ -73,16 +76,17 @@ def run(name: str, garment: str, wear: str = "open", role: str = ge.ROLE, look: 
     out = d / "export"
     glb = glbw.write(out / f"{garment}.glb", garment, meshes, rb)
     counts = glbw.read_counts(glb)
-    lines = ge.text(name, garment, what, g, n_det, budget, role, tries, st, wc, glb, sd)
-    rows = ge.gate_rows(g, n_det, budget, st, wc, sd)
-    verdict = "PASS" if all(x["status"] == "PASS" for x in rows) else "FAIL"
+    lines = ge.text(name, garment, what, g, n_det, budget, role, tries, st, bend, glb, sd, winfo)
+    rows = ge.gate_rows(g, n_det, budget, st, bend, sd)
+    verdict = "PASS" if all(x["status"] in ("PASS", "INFO") for x in rows) else "FAIL"
     looks = []
     if look:
-        looks = render_looks(name, garment, rec, meshes, rb, bV, bT, bJ, bW, wc, out)
+        looks = render_looks(name, garment, rec, meshes, rb, bV, bT, bJ, bW, out)
         lines.append("  look (shape only): " + ", ".join(map(str, looks)))
     numbers = {"glb": str(glb), "source": str(pkl), "role": role, "budget": budget, "triangles": total, "counts": counts,
                "grid_mm": round(g["h"] * 1000, 1), "tries": tries, "stretch": st, "drape_stretch": sd,
-               "weights": {k: v for k, v in wc.items() if not k.startswith("posed")}, "bones": len(rb)}
+               "quad_share": o.get("quad_share"), "weights": winfo, "bend": {"limits": bend["limits"], "poses": bend["poses"]},
+               "bones": len(rb)}
     ge.write_json(out / f"{garment}_export.json", numbers)
     msg = gr._try(gr.write, name, garment, "10", "done" if verdict == "PASS" else "failed", output=numbers,
                   gate={"verdict": verdict, "rows": rows}, look=looks, back_to=None if verdict == "PASS" else "10",
@@ -90,7 +94,7 @@ def run(name: str, garment: str, wear: str = "open", role: str = ge.ROLE, look: 
     lines.insert(1, f"  gate {verdict}: " + "; ".join(f"{x['row']} {x['status']}" for x in rows))
     lines.append(f"  {msg}" if msg else "  record: step 10 written")
     lines.append("next: look at it beside the reference (shape); a FAIL row names what to change: the role / pieces "
-                 "(triangles), the hang (stretch), the rig (weights)")
+                 "(triangles), the hang (stretch), the weights / the build (a bend row: its pose's close-up; the body's own crease is the body's)")
     return looks, "\n".join(lines)
 
 
@@ -99,29 +103,22 @@ def cKD(V):
     return cKDTree(V)
 
 
-def render_looks(name, garment, rec, meshes, rb, bV, bT, bJ, bW, wc, out: Path) -> list:
-    """The GLB with the body, rendered in EEVEE (asset.preview: the game's view), rest and the arm raised, beside the
-    reference. One Blender run per GLB, under the heavy / GPU lock."""
+def render_looks(name, garment, rec, meshes, rb, bV, bT, bJ, bW, out: Path) -> list:
+    """The GLB with the body at rest (EEVEE: asset.preview, the game's view) beside the reference, then one close-up
+    sheet per bend pose (garment_bend_look: shoulder + armpit, the elbow when bent; the bare body beside it)."""
     from . import asset, resources
+    from . import garment_bend_look as gbl
     from .garment_details_tool import _ref, beside
-    from . import rig
     body = {"name": "body", "V": bV, "T": bT, "colour": SKIN, "J": bJ, "W": bW}
     G = np.vstack([m["V"] for m in meshes])
     fr = [(G.min(0) - 0.03).tolist(), (G.max(0) + 0.03).tolist()]  # the cameras frame the garment, not the body
     rest = glbw.write(out / f"{garment}_look.glb", garment, [body] + meshes, rb, frame=fr)
-    turn = {rb[ge.bone_index(rb, ge.ARM_BONE)]["name"]: ge.ARM_TURN}
-    posed = [dict(m, V=rig.pose(rb, m["V"], m["J"], m["W"], turn)) for m in [body] + meshes]
-    for m in posed:  # (smooth normals of the posed surface: the rest normals no longer apply)
-        m["N"] = gg.normals(m["V"], np.asarray(m["T"]))
-    P = np.vstack([m["V"] for m in posed[1:]])
-    pose_glb = glbw.write(out / f"{garment}_look_arm.glb", garment, posed, None,
-                          frame=[(P.min(0) - 0.03).tolist(), (P.max(0) + 0.03).tolist()])
-    shots = []
     with resources.heavy(f"export_garment look {name}:{garment}", gb=4, gpu=True):
-        for g_, tag, views in ((rest, "rest", ["front", "side", "back", "three_quarter"]), (pose_glb, "arm", ["front", "three_quarter"])):
-            im = asset.preview(g_, views, size=512)
-            p = out / f"{garment}_{tag}.png"
-            im.save(p)
-            shots.append(p)
+        im = asset.preview(rest, ["front", "side", "back", "three_quarter"], size=512)
+    p = out / f"{garment}_rest.png"
+    im.save(p)
     ld = gr.look_dir(name, garment)
-    return [beside(_ref(rec), [shots[0]], ld / "step10_rest.png"), beside(None, [shots[1]], ld / "step10_arm.png")]
+    shots = [beside(_ref(rec), [p], ld / "step10_rest.png")]
+    for b in gbl.looks(rb, meshes, body, {}, out, f"{garment}_"):
+        shots.append(beside(None, [b], ld / f"step10_{b.stem.split(garment + '_', 1)[-1]}.png"))
+    return shots
