@@ -121,11 +121,9 @@ Argue a MAJOR away only with evidence that the reference doesn't show it.
 
 ## 4d. Realistic humans start from a base, not blobs
 
-Start from `spec["base"]`: a MakeHuman body (parametric age / weight / muscle / height) with a GNM head (realistic
-faces, identity and expression components), e.g.
-`"base": {"body": {"source": "makehuman", "age": 45, "weight": 0.72, "muscle": 0.3, "height": 1.78}, "head":
-{"source": "gnm", "scale": 1.12}, "eyes": "eyes"}`. Shape it with parameters (body macros, `base.head` fit / regions /
-pose / shape, a style sheet), not sculpting. A person from pictures: the artist block-in (guide(topic="block_in")).
+Start from `human(name, age=45, sex="male", weight=0.72, muscle=0.3, height=1.78)`: one mesh, a MakeHuman body with a
+GNM head (realistic faces, identity and expression components). Shape it with parameters (body macros, `base.head`,
+a style sheet), not sculpting. A person from pictures: the artist block-in (guide(topic="block_in")).
 Feature detail, skin, hair and clothes come after it, on the head it produces. `check` warns when a spec looks
 humanoid but has no base.
 

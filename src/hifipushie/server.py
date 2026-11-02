@@ -94,7 +94,8 @@ def _tool_with_errors(_reg=None):
                     from . import resources
                     with resources.cancel_scope(ev):
                         try:
-                            return fn(*a, **k)
+                            from . import head_route
+                            return head_route.with_next(fn, a, k, fn(*a, **k))
                         except ToolError:
                             raise
                         except Exception as e:
@@ -144,7 +145,7 @@ TOOL_GROUPS: dict[str, dict] = {
     "human": {"about": "realistic humans: the base body, the artist block-in of a head from pictures (the default), "
                        "measurements, fits, skin",
               "tools": ["human", "measure_human", "fit_human", "nudge_human", "human_reference", "block_in_start",
-                        "block_in_look", "block_in_step", "block_in_solve", "block_in_expression", "lid_read", "eye_ruler", "face_ruler", "lip_read", "brow_read", "gnm_controls", "skin",
+                        "block_in_look", "block_in_step", "block_in_solve", "block_in_expression", "set_expression", "lid_read", "eye_ruler", "face_ruler", "lip_read", "brow_read", "gnm_controls", "skin",
                         "look_skin", "skin_reference", "skin_from_reference", "skin_project"]},
     "likeness": {"about": "matching a real person's face and look from reference pictures",
                  "tools": ["likeness", "fit_likeness", "likeness_points", "character_read", "project_reference",
@@ -500,12 +501,14 @@ _FIELDS: dict[str, list] = {}
 def _tool_fields(name: str) -> list[tuple[float, set[str]]]:
     """A tool's searchable words by field, with each field's weight: name 4, description 2, domain 1, guide 1."""
     import inspect
+    from . import head_route
     if name not in _FIELDS:
         g = _group_of(name)
         _FIELDS[name] = [(4.0, _words(name.replace("_", " "))),
                          (2.0, _words(inspect.cleandoc(globals()[name].__doc__ or ""))),
                          (1.0, _words(g + " " + TOOL_GROUPS.get(g, {}).get("about", ""))),
-                         (1.0, _words(_section_text(name)))]
+                         (1.0, _words(_section_text(name))),
+                         (4.0, _words(head_route.KEYWORDS.get(name, "")))]
     return _FIELDS[name]
 
 
@@ -542,8 +545,9 @@ def find_tool(query: str = "", limit: int = 5) -> str:
         return ("Every tool by domain (core = native; the rest via call_tool(name, args)). "
                 "find_tool(\"<job>\") gives parameters + an example call; guide(topic=\"<tool>\") the full text.\n"
                 + "\n".join(f"{g} ({about}): {', '.join(ts)}" for g, about, ts in groups if ts))
+    from . import head_route
     q = _words(query)
-    scores = _tool_scores(q)
+    scores = head_route.pin_block_in(query, _tool_scores(q))
     top = max(scores.values(), default=0.0)
     flow = ""
     if top > 0:
@@ -1971,11 +1975,11 @@ def _head_hint(spec: dict) -> str:
 def human(name: str, age: float = 30, sex: float | str = 0.5, weight: float = 0.5, muscle: float | None = None,
           height: float | None = None, seed: int | None = None, outfit: str | None = None,
           tone: float | dict | None = None, skin: dict | bool | None = None, head: dict | None = None,
-          bust: float | None = None, firmness: float | None = None, note: str = "", source: str = "makehuman",
+          bust: float | None = None, firmness: float | None = None, note: str = "", source: str = "human",
           style: str | dict | None = None) -> str:
     """A whole person from a description, saved as a model: human("mia", age=3, sex="female"). Measured proportions for
     age; dressed. Params: age, sex, weight, muscle, height, seed (the face), outfit, tone, skin, head, bust,
-    firmness, source ("makehuman" | "human" = one mesh), style (one-mesh style sheet or sliders). Details:
+    firmness, source ("human" = one mesh, the default | "makehuman"), style (one-mesh style sheet or sliders). Details:
     guide(topic="human")."""
     from . import humans
     sp = humans.spec(age=age, sex=sex, weight=weight, muscle=muscle, height=height, seed=seed, outfit_kind=outfit,
@@ -2067,7 +2071,9 @@ def measure_human(name: str, since: int | None = None, picture: bool = True):
         old = old.get("spec", old)
         st0 = humanfit.state(old["base"])
         text += f"\nsince v{since}:\n" + humanfit.effects_text(humanfit.side_effects(st0, st, set()), top=30)
-    text += "\nlandmarks for nudge_human: " + ", ".join(humanfit.LANDMARKS) + ", eye.L, eye.R"
+    from . import head_route
+    if not head_route.is_block_in(name):
+        text += "\nlandmarks for nudge_human: " + ", ".join(humanfit.LANDMARKS) + ", eye.L, eye.R"
     if not picture:
         return text
     return [_png(humanfit.head_sheet(st0, st) if st0 is not None else humanfit.head_sheet(st)), text]
@@ -2079,7 +2085,8 @@ def fit_human(name: str, set: dict | str, free: list[str] | None = None, release
     """Set measures on a one-mesh human and let a minimal-change solver find the sliders: set = {"nose_width": 34 |
     "+2" | "x0.95", "a/b": ratio}. free (["identity"] | "body"), release, force, figure, save, note. Replies
     INTEGRITY, UNINTENDED, before | after; a broken result isn't saved. Details: guide(topic="fit_human")."""
-    from . import humanfit
+    from . import head_route, humanfit
+    head_route.refuse_off_route(name, "fit_human")
     sp, b = _human_base(name)
     want = _spec_arg(set) if isinstance(set, str) else dict(set)
     st0 = humanfit.state(b)
@@ -2095,7 +2102,8 @@ def nudge_human(name: str, landmark: str, move: list[float] | None = None, to: l
     """Move ONE face landmark by `move` [x,y,z] m or `to` a point; others held, mirror follows; what the sliders can't
     do becomes a local correction (radius) and is reported. Same reply as fit_human. Details:
     guide(topic="nudge_human")."""
-    from . import humanfit
+    from . import head_route, humanfit
+    head_route.refuse_off_route(name, "nudge_human")
     sp, b = _human_base(name)
     st0 = humanfit.state(b)
     nb, rep = humanfit.nudge(b, landmark, move=move, to=to, radius=radius, force=force)
@@ -2111,7 +2119,9 @@ def human_reference(name: str, views: list[dict] | str, fit: bool = True, free: 
     {landmark: [u, v]}}]; a camera per view, shared identity. method "map" (detector + priors, default) | "points";
     read (a character read in macro sigmas), measure, fit, free, force, figure, save. Details:
     guide(topic="human_reference")."""
-    from . import humanfit
+    from . import head_route, humanfit
+    if fit:
+        head_route.refuse_off_route(name, "human_reference(fit=True)")
     sp, b = _human_base(name)
     vs = json.loads(views) if isinstance(views, str) else views
     st0 = humanfit.state(b)
@@ -2121,7 +2131,9 @@ def human_reference(name: str, views: list[dict] | str, fit: bool = True, free: 
         nb, rep = humanfit_map.fit(b, vs, read=rd, force=force, free=tuple(free or ("identity",)) if fit else (), measure=measure)
     else:
         nb, rep = humanfit.fit_views(b, vs, free=tuple(free or ("identity",)) if fit else (), force=force)
-    (store.HOME / name / "human_refs.json").write_text(json.dumps({"views": vs, "cameras": rep["cameras"]}, indent=1))
+    rp = store.HOME / name / "human_refs.json"
+    kept = {"blockin": json.loads(rp.read_text())["blockin"]} if head_route.is_block_in(name) else {}  # (the chain's record)
+    rp.write_text(json.dumps({"views": vs, "cameras": rep["cameras"], **kept}, indent=1))
     out = _human_apply(name, sp, nb, rep, note or "human_reference fit", force, save and fit, st0, None, figure)
     if rep.get("method") == "map":
         extra = "\n".join(f"view {i}: {v['evidence']}, lens ~{v['lens_mm']:.0f} mm" + (" (its lm0..lm67 points ignored: detector re-read)" if v["ignored_lm68"] else "") + (f" DROPPED from the identity: {v['rms_mm']} mm rms against the other pictures (not one projection / another face / wrong yaw?)" if v.get("dropped") else "")
@@ -2152,18 +2164,19 @@ def _blockin_sheet(name: str, save: str | None, views: list | None = None, table
 
 @mcp.tool(structured_output=False)
 def block_in_start(name: str, refs: str | list[dict], sex: str | float | None = None, age: float | None = None,
-                   body: dict | None = None, gnm_base: float | None = None, ethnicity: str | dict | None = None,
+                   body: dict | None = None, ethnicity: str | dict | None = None,
                    cameras: str = "keep", replace: bool = False, save: str | None = None, expression: bool = False,
-                   attach: str = "native", carry: bool = False):
+                   carry: bool = False):
     """THE DEFAULT START for a person's head from pictures: their body, GNM's class mean for the sex on a GNM-NATIVE
     head (true base, GNM's eyeball / mouth, its own size; the body fitted), nothing of ours on its surface (the reply
-    names what was dropped), the cameras, the first look + table. refs = a one-mesh human with fitted references, or
-    a views list; sex, age, body, ethnicity (a GNM class or a blend {class: weight}; default the pooled mean),
-    cameras, attach, carry, replace, save, expression. Details: guide(topic="block_in_start")."""
+    names what was dropped), the cameras, the first look + table. refs = the pictures: a views list [{"image": path,
+    "yaw": deg, "lens_mm": mm}, ...] (check_references first) or a one-mesh human with fitted references; sex, age,
+    body (base.body keys; nothing reads a body from pictures), ethnicity (a GNM class or a blend {class: weight};
+    default the pooled mean), cameras, carry, replace, save, expression. Details: guide(topic="block_in_start")."""
     from . import blockin as bi
     e = bi.start(name, _spec_arg(refs) if isinstance(refs, str) and refs.strip().startswith("[") else refs, sex=sex,
-                 age=age, body=body, gnm_base=gnm_base, ethnicity=ethnicity, cameras=cameras, replace=replace,
-                 expression=expression, attach=attach, carry=carry)
+                 age=age, body=body, ethnicity=ethnicity, cameras=cameras, replace=replace,
+                 expression=expression, carry=carry)
     s = e["start"]
     out = _blockin_sheet(name, save)
     head = ("GNM-NATIVE head (true base, GNM's eyeball / mouth / teeth, GNM's own size; the body fitted)" if s["attach"] == "native"
@@ -2179,9 +2192,7 @@ def block_in_start(name: str, refs: str | list[dict], sex: str | float | None = 
     if s["attach"] == "native":
         from . import onemesh
         txt += onemesh.attach_report(store.load(name)["base"])["text"] + "\n"
-    out[1] = (txt + out[1]
-              + "\nNEXT: block_in_solve (the joint step; its first call lays the cameras on this head), 3-4 calls until |dc| < 2; "
-                "then squint at the sheet and name the single biggest difference in masses and planes.")
+    out[1] = txt + out[1]
     return out
 
 
@@ -2214,17 +2225,17 @@ def block_in_look(name: str, views: list[int] | None = None, table: bool = True,
 @mcp.tool(structured_output=False)
 def block_in_step(name: str, moves: dict, out: str | None = None, seen: str = "", why: str = "",
                   cameras: list[int] | None = None, look: bool = True, save: str | None = None,
-                  feature: str | None = None):
-    """One block-in round: a NEW model (out, default the next number) = name moved ({"chin_height": 0.5,
-    "eye_spacing!": 0.3, "nd:radix_width": 1, "head_scale": 1.05, "lid_upper": -0.001}); seen / why logged; feature =
-    the feature zoomed in on (its before | after crops come back too); cameras; look; save. Details:
-    guide(topic="block_in_step")."""
-    from . import blockin as bi
+                  feature: str | None = None, hand_first: bool = False):
+    """One block-in round: a NEW model (out, default the next number) = name moved ({"mm:chin_height": 1.5,
+    "chin_height": 0.5, "eye_spacing!": 0.3, "sculpt:<zone>": 1}); seen / why logged; feature = the feature zoomed in
+    on (its before | after crops come back too); cameras; look; save. Refused before the first block_in_solve
+    (hand_first=True overrides). Details: guide(topic="block_in_step")."""
+    from . import blockin as bi, head_route
     mv = _spec_arg(moves) if isinstance(moves, str) else dict(moves or {})
     if "attach" in mv:   # (nativedefault) the head switched to GNM-native, its cameras carried: a step of its own
         if mv != {"attach": "native"}:
             raise ValueError('block_in_step: {"attach": "native"} is a step of its own (the head switched to GNM-native, the '
-                             "cameras carried); the other way is a new block_in_start(attach=\"body\")")
+                             "cameras carried)")
         r = bi.native_step(name, out=out, seen=seen)
         to = r["entry"]["to"]
         text = (f"{to} (from {name}): the head is GNM-NATIVE now (true base, GNM's own size, the body fitted). CAMERAS CARRIED "
@@ -2236,6 +2247,7 @@ def block_in_step(name: str, moves: dict, out: str | None = None, seen: str = ""
             return text
         sh = _blockin_sheet(to, save, before=None)
         return [sh[0], text + "\n" + sh[1]]
+    head_route.require_solved(name, hand_first)
     rep = bi.step(name, mv, out=out, seen=seen, why=why, cameras=cameras, feature=feature)
     text = bi.step_text(rep)
     if not look:
@@ -2249,8 +2261,7 @@ def block_in_step(name: str, moves: dict, out: str | None = None, seen: str = ""
         res.append(_png(PILImage.open(r["out"])))
         text += f"\nZOOM IN sheet ({feature}, before | after): {r['out']}\n" + bi.table_text(bi.feature_table(to, feature))
     sh = _blockin_sheet(to, save, before=name)
-    return [*res, sh[0], text + "\nZOOM OUT (the whole face):\n" + sh[1]
-            + f"\nlog your zoom-out verdict: block_in_look(\"{to}\", read=..., keep=...)"]
+    return [*res, sh[0], text + "\nZOOM OUT (the whole face):\n" + sh[1]]
 
 
 @mcp.tool(structured_output=False)
@@ -2270,6 +2281,16 @@ def block_in_expression(name: str, out: str | None = None, views: list[int] | No
     to = rep["entry"]["to"]
     sh = _blockin_sheet(to, save, before=name)
     return [sh[0], text + "\nZOOM OUT (before = neutral clay, after = with the picture's expression):\n" + sh[1]]
+
+
+@mcp.tool(structured_output=False)
+def set_expression(name: str, mix: dict | str, out: str | None = None) -> str:
+    """Pose a finished head in an expression: a NEW model (out, default <name>_<preset>) whose base.head.expression is
+    the mix on top of the neutral; name stays neutral. mix = a preset (smile, open_mouth, frown, surprise, blink) or
+    ARKit shape weights 0..1 ({"jawOpen": 0.3, "mouthSmileLeft": 0.5}): GNM's expression parameters only, no sculpting.
+    For a picture's own expression while judging: block_in_expression. Details: guide(topic="set_expression")."""
+    from . import head_route
+    return head_route.pose_text(name, head_route.pose(name, _spec_arg(mix) if isinstance(mix, str) and mix.strip().startswith("{") else mix, out=out))
 
 
 @mcp.tool(structured_output=False)
@@ -2318,16 +2339,13 @@ def lid_read(name: str, match: bool | str = False, out: str | None = None, seen:
     match=True: THE EYE STEP (a block-in step; set the ORBIT first: face_ruler), identity only: the opening (the eye
     ruler's margins and corners in mm), then the lid as ONE structure on GNM's lid rings: a crisp fold on the
     picture's fold line, brows held (fold="crisp", the default; fold="donor" / donor="s376": toward a donor head's
-    lid; fold="none": the opening only), with the eyeball guard; nothing painted. expression=True: GNM's eye-region expression too. match="pose": the
-    older lid_upper / lid_lower offsets. out, save (focus=eyes sheet), seen. Details: guide(topic="lid_read")."""
+    lid; fold="none": the opening only), with the eyeball guard; nothing painted. expression=True: GNM's eye-region expression too. out, save (focus=eyes
+    sheet), seen. Details: guide(topic="lid_read")."""
     from . import blockin as bi
     if not match:
         return bi.lid_text(bi.lid_read(name))
     if match == "pose":
-        rep = bi.lid_match(name, out=out, seen=seen)
-        to = rep["entry"]["to"]
-        sh = _blockin_sheet(to, save, before=name)
-        return [sh[0], bi.step_text(rep) + "\n" + bi.lid_text(bi.lid_read(to)) + "\n" + sh[1]]
+        raise ValueError('lid_read: match="pose" is retired; match=True is the eye step')
     from . import blockin_eyes as be
     lines = []
     rep = be.eye_step(name, out=out, seen=seen, log=lines.append, expression=expression, donor=donor, fold=fold)
@@ -2502,8 +2520,10 @@ def likeness(name: str, targets: bool = False, top: int = 8):
     plan. top = how many panels. Measures only. Details: guide(topic="likeness")."""
     from . import likeness as lk
     if targets:
+        from . import head_route
         sh = lk.measure_reference(name)
-        return lk.sheet_text(sh) + "\n\nstage plan (fit_likeness, big to small):\n" + lk.stage_plan(name)
+        return lk.sheet_text(sh) + ("" if head_route.is_block_in(name) else
+                                    "\n\nstage plan (fit_likeness, big to small):\n" + lk.stage_plan(name))
     txt, out, _ = lk.report(name, top=top)
     return [_png(PILImage.open(out)), txt + f"\nfocus sheet: {out}"]
 
@@ -2513,7 +2533,8 @@ def fit_likeness(name: str, stage: str, force: bool = False, save: bool = True):
     """ONE stage of the likeness fit (proportions, widths, eyes, brows, nose, mouth, chin_jaw, ears, profile): misses
     solved minimal-change, earlier stages pinned, integrity-guarded. Run likeness(targets=True) first; approve each
     stage's panels. force, save. Details: guide(topic="fit_likeness")."""
-    from . import likeness as lk
+    from . import head_route, likeness as lk
+    head_route.refuse_off_route(name, "fit_likeness")
     pn = str(store.HOME / "human_renders" / f"lk_{name}_stage_{stage}.png")
     if stage == "profile":   # the nose and chin on a turned view's contours alone (likeness_points 'profile' / 'nose')
         base, cmp, log = lk.fit_profile(name, force=force, save=save)
@@ -2540,13 +2561,15 @@ def project_reference(name: str, view: int = 0, save: str = ""):
 @mcp.tool(structured_output=False)
 def texture_from_reference(name: str, views: list[int] | None = None, opacity: float = 0.9, delight: bool = True,
                            match: str = "tone", remove: bool = False) -> str:
-    """Lay the fitted reference pictures over the head's skin as de-lit paint decals ("ref_texture_<view>"). views,
+    """Lay the fitted reference pictures over the head's skin as de-lit paint decals ("ref_texture_<view>"), to JUDGE
+    a head: photo pixels never ship (skin_project is the measured atlas). views,
     opacity, delight, match "tone"|"level"|"", remove=True takes them out. Redo after head shape changes. Details:
     guide(topic="texture_from_reference")."""
     from . import likeness_texture as lt
     r = lt.apply(name, views=views, opacity=opacity, delight=delight, match=match or None, remove=remove)
     st = lt.stale(store.load(name))
-    return r["text"] + (f"\nSTALE (made on another head shape, make again): {st}" if st else "")
+    warn = "" if remove else "\nWARNING: photo pixels never ship: remove these decals (remove=True) before export."
+    return r["text"] + warn + (f"\nSTALE (made on another head shape, make again): {st}" if st else "")
 
 
 @mcp.tool(structured_output=False)

@@ -95,6 +95,7 @@ SMILE_JAW_CANCEL = 1.0  # (r33: ON with ROLL_TUCK_COMBINED: sweep19 lmy (with _L
 # 3.6 wanted) but a dark / red dash opened in the upper lip's middle above the incisors (a fold where the vermilion is
 # pulled down under the jaw solve's own landmark lift): not shipped. 0 = the corrective is not exported)
 SMILE_JAW_CANCEL_LM = 1.0  # (r33: 1, sweep19 lmy) (r32) jawOpen_mouthSmile also takes back this share of jawOpen's upper-lip landmark lift
+NO_COEFFS = ("cheekPuff",)  # shape_coeffs: a designed offset GNM's expression can't make; set_expression refuses it
 CLOSE_LOWER = 0.8  # jawOpen_mouthClose: the lower lip's share of closing the gap jawOpen makes
 CLOSE_SEAL = 0.3  # mouthClose alone: how firmly the closed lips push forward (no vertical travel)
 
@@ -114,19 +115,27 @@ def playback(weights: dict) -> dict:
             out[name] = min(_weight_of(weights, a), _weight_of(weights, b))
     return out
 # Named expressions = mixes of the exported ARKit shapes (Joe 2026-10-18: "just use the expression parameters"; never
-# per-character sculpted deltas). smile_tess: the controls-only mix that read as a mild real smile and beat every
+# per-character sculpted deltas). smile: the controls-only mix that read as a mild real smile and beat every
 # hand-made smile in a blind review (/mnt/data/hifipushie/happy/NOTES.md); limits accepted (teeth band 81% vs the
-# photo's 62%, weak exported squints) unless Joe reopens them.
+# photo's 62%, weak exported squints) unless Joe reopens them. The others are plain starting mixes, not reviewed:
+# set_expression takes any mix of the same names.
 EXPRESSION_PRESETS = {
-    "smile_tess": {"mouthSmileLeft": 0.8, "mouthSmileRight": 0.8, "cheekSquintLeft": 1.0, "cheekSquintRight": 1.0,
+    "smile": {"mouthSmileLeft": 0.8, "mouthSmileRight": 0.8, "cheekSquintLeft": 1.0, "cheekSquintRight": 1.0,
                    "eyeSquintLeft": 0.5, "eyeSquintRight": 0.5, "mouthDimpleLeft": 0.6, "mouthDimpleRight": 0.6,
                    "mouthPressLeft": 0.2, "mouthPressRight": 0.2, "mouthUpperUpLeft": 0.108, "mouthUpperUpRight": 0.108},
+    "open_mouth": {"jawOpen": 0.6},
+    "frown": {"mouthFrownLeft": 0.7, "mouthFrownRight": 0.7, "browDownLeft": 0.5, "browDownRight": 0.5},
+    "surprise": {"jawOpen": 0.35, "browInnerUp": 0.8, "browOuterUpLeft": 0.7, "browOuterUpRight": 0.7,
+                 "eyeWideLeft": 0.6, "eyeWideRight": 0.6},
+    "blink": {"eyeBlinkLeft": 1.0, "eyeBlinkRight": 1.0},
 }
 
 
 def expression(mix) -> dict:
     """An expression's ARKit weights: a preset name (EXPRESSION_PRESETS) or a {shape: weight} mix. Every key must be
     an exported ARKit shape and every weight in [0, 1]: an expression is a parameter mix, nothing else."""
+    if isinstance(mix, str) and mix not in EXPRESSION_PRESETS:
+        raise ValueError(f"expression: no preset {mix!r}: one of {', '.join(EXPRESSION_PRESETS)}, or a mix {{shape: weight}}")
     w = dict(EXPRESSION_PRESETS[mix]) if isinstance(mix, str) else dict(mix)
     known = set(REQUIRED) | set(RECOMMENDED) | set(EXTRA)
     bad = sorted(k for k in w if k not in known)
@@ -1476,19 +1485,35 @@ class GnmFace(Face):
         cf = A.T @ np.linalg.solve(A @ A.T + 1e-9 * np.eye(3), t)
         return np.tensordot(cf, np.asarray(g["expression_basis"])[comps], 1)
 
+    def _project(self, d: np.ndarray, name: str) -> dict:
+        """Least-squares GNM expression coefficients of a shape's vertex offsets d, over the shape's own regions."""
+        G = self._setup()
+        R = G["regions"]
+        ids = {"mouth": R["lower_face"], "eye": R["left_eye"] + R["right_eye"]}.get(family(name),
+                                                                                    R["lower_face"] + R["left_eye"] + R["right_eye"])
+        n = min(len(d), G["g"]["expression_basis"].shape[1])
+        A = np.asarray(G["g"]["expression_basis"][ids][:, :n], float).reshape(len(ids), -1)
+        cf = np.linalg.solve(A @ A.T + 1e-6 * np.eye(len(ids)), A @ np.asarray(d[:n], float).ravel())
+        names = G["g"]["expression_names"]
+        return {str(names[i]): float(v) for i, v in zip(ids, cf)}
+
     def shape_coeffs(self, name: str) -> dict:
         """A shape as GNM EXPRESSION COEFFICIENTS {component name: value}: what base.head.expression takes to pose the
-        model in that shape (every component then follows: skin, lower teeth, tongue). Shapes the basis has no
-        landmarks for (cheekPuff, cheekSquint) and the eyeLook turns have none: {}."""
+        model in that shape (every component then follows: skin, lower teeth, tongue). A shape built as vertex offsets
+        (jawOpen, the smile, cheekSquint) is projected on the basis: the nearest parameter mix. NO_COEFFS (a designed
+        offset, no expression in GNM) and the eyeLook turns have none: {}."""
         g = self._setup()["g"]
         names = [str(n) for n in g["expression_names"]]
         if family(name) == "look":
             return {}
+        if name in NO_COEFFS:
+            return {}
         mv, region = self._gnm_moves(name)
         if region is None:
-            return {}
-        self._solve(mv, region, prior=JAW_PRIOR if name in JAW_PRIORED else SOLVE_RIDGE)
-        out = {names[i]: float(v) for i, v in self._last.items()}
+            out = self._project(mv, name)
+        else:
+            self._solve(mv, region, prior=JAW_PRIOR if name in JAW_PRIORED else SOLVE_RIDGE)
+            out = {names[i]: float(v) for i, v in self._last.items()}
         if name == "tongueOut" and self.gnm_mouth:
             out.update({names[i]: float(v) for i, v in self._tongue_out()[1].items()})
         return {k: round(v * self.amount.get(name, 1.0), 5) for k, v in out.items() if abs(v) > 1e-6}

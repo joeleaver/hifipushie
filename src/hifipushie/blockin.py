@@ -73,7 +73,7 @@ POSE_KEYS = ("lid_upper", "lid_lower")
 SHAPE_MOVES = ("age_nasolabial", "age_prejowl", "age_cheek_flat", "age_lid_fold", "face_planes", "face_lean",
                "cheek_hollow", "eye_bag", "lip_bow", "lip_roll", "lips_thin")
 LOCAL_SD = {"nose_radix_width": 0.09, "nose_tip_width": 0.18, "nose_dorsum_width": 0.12}
-STRIP = ("sliders", "warp", "fold", "pose", "shape", "seed", "spread", "features", "expression", "habitual")
+STRIP = ("sliders", "warp", "fold", "pose", "shape", "seed", "spread", "features", "expression", "habitual", "posed")
 SQUINT_MM = 9.0
 LIGHT = "sh"            # the sheets' light: "sh" (2nd-order spherical harmonics fitted on the skin) | "linear" (c0 + w.n, AO, shadow)
 FILL = 0.45             # display fill: the clay's shadow side lifted to this share of the lit skin's median
@@ -837,6 +837,14 @@ def expression_text(rep: dict) -> str:
     return "\n".join(s + [step_text(rep)])
 
 
+def over_sd(move: str, v: float) -> bool:
+    """A hand move past 1 population sd: mm: moves are in mm, read against that measure's own sd; the rest are in sd."""
+    if move.startswith("mm:"):
+        from . import gnm_mm
+        return abs(v) > float(gnm_mm.sd()[move[3:].rstrip("!")])
+    return abs(v) > 1.0
+
+
 def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str = "",
          cameras: list | None = None, feature: str | None = None, _identity=None, _head_set: dict | None = None) -> dict:
     """<out> = <src> moved: directions add (amount x direction), base keys and lids are SET. Logged with what was seen
@@ -859,8 +867,7 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
         bad = [k for k in (moves or {}) if k in NATIVE_REFUSE]
         if bad:
             raise ValueError("; ".join(f"block_in_step {k}: REFUSED on a GNM-native head: {NATIVE_REFUSE[k]}" for k in bad)
-                             + '. (A child or a stylised figure: edit_model set_key base.head.size; the old body-carried '
-                               'head: block_in_start(attach="body").)')
+                             + ". (A child or a stylised figure: edit_model set_key base.head.size.)")
     for k, v in (moves or {}).items():
         v = float(v)
         if k in BODY_KEYS:
@@ -919,7 +926,7 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
                 big.append(f"{k} (|dc| {abs(v) * sc['cost']:.1f})")
         else:
             c = c + v * direction(k)
-            if abs(v) > 1.0:
+            if over_sd(k, v):
                 big.append(k)
     hood = None
     if "hooding" in (moves or {}):

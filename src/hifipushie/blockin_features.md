@@ -101,4 +101,4 @@ Read guide(topic="block_in") first: the loop, the stage-0 description and the se
 8. **Judge in whole-face hair-cap clay under both lights** (the photo's light in the sheet; `look` / `look_skin` for
    the clay key and the dressed head) **before any fine detail.** A block-in is done when the outline sits on the
    pictures in every view, the table passes (or every miss is explained: a painted view, a detector guess), and the
-   squinted clay reads as the same person: age, sex, mass. Then likeness / fit_likeness for features, then skin.
+   squinted clay reads as the same person: age, sex, mass. Then likeness for the checklist, then skin.

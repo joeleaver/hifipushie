@@ -1,6 +1,6 @@
 # Humans on one mesh: make, measure, fit, without breaking what you weren't looking at
 
-`human(name, age, sex, ..., source="human")` makes a whole dressed person on ONE mesh: MakeHuman's body topology
+`human(name, age, sex, ...)` makes a whole dressed person on ONE mesh: MakeHuman's body topology
 and GNM's head topology, stitched once, offline, at the neck (hand-finished template; nothing is grafted when your
 character is built). The body's own head carries the face, so a baby has a baby's head and no neck, an old woman an
 old woman's, and the neck is always continuous. Everything else works as on any model (look, skin, hair, garments,
@@ -20,12 +20,8 @@ pupils_000).
 - The MOUTH is GNM's own: the mouth bag (its sock joins the head's surface when the lips part), teeth with gums
   (part "teeth"; the identity's teeth_* components) and tongue (part "tongue"), moved by the same expression as the
   skin (the lower row and the tongue by lower_face_region_*, the tongue by tongue_*). No key needed.
-  `base.head.interior` (the face kit's slit / bag / teeth / tongue) still works and is what an older spec with that
-  key gets; `base.head.mouth: "gnm" | "kit" | "none"` asks for one. A style that moves the lips off GNM's surface
-  (pushes, simplify, shape ops) cannot use GNM's teeth: the save and the export say so and fall back to the kit's
-  interior (or none).
-- Poses: `export_asset(face_shapes=...)` shapes are GNM expression coefficients; `faceshapes.GnmFace(spec)
-  .shape_coeffs("jawOpen")` gives them to put in base.head.expression for a posed look.
+- Expressions: `set_expression(name, "smile" | {"jawOpen": 0.3, ...})` writes a new model posed by GNM's expression
+  parameters; the neutral stays. `export_asset(face_shapes=...)` exports the same shapes.
 
 What a character artist does with a base mesh applies here: **the big proportions first (age, sex, build), then
 the face's identity, then local corrections, then style, each judged on the whole figure.**
@@ -55,11 +51,13 @@ reads as someone else is wrong.
 |---|---|---|
 | body | `base.body`: age, sex (0 female .. 1 male), weight, muscle, height, bust, firmness, race | MakeHuman's macros with measured growth (WHO stature, Snyder proportions). The head follows by construction. |
 | face identity | `base.head`: seed, spread, identity {component: sigma}, features {nose, jaw, lips, cheeks, chin, brow_ridge, eyes, cranium: -1.5..1.5}, dimorphism | GNM's scan-based identity (253 components, in sigma). The seed loses its own age / sex / weight: the body gives the head those. |
-| expression / pose | `base.head`: expression, pose {smile, lid_upper, ...}, mouth_gap | not shape: don't fit a likeness with them |
-| corrections | `base.head.shape.push_more` (written by `nudge_human`) | small smooth bumps for what the sliders can't do |
+| expression | `base.head.expression` (set_expression) | not shape: don't fit a likeness with it |
 | style | `base.style`, `base.head.eyes`, `shape.planes`, `simplify` | an artistic decision: see the style sheets |
 
 ## The rule: measure -> change ONE thing -> read the side effects -> look at the whole -> go on
+
+For a person from pictures this section stops at the body: on a block-in model fit_human, nudge_human, fit_likeness
+and human_reference(fit=True) refuse; its moves are `block_in_step` with `mm:`.
 
 Sliders are ambiguous and a number can be hit while the face around it is wrecked. So you don't set sliders: you
 state evidence and a solver finds them, and every reply tells you what ELSE happened.
@@ -117,9 +115,9 @@ nose_width/mouth_width ~0.63, jaw_width/face_width ~0.67.
 
 ## Matching a reference image
 
-**For a person's head from pictures, the artist block-in is the default** (guide(topic="block_in")): human_reference
-fits the cameras, then block_in_start / block_in_look / block_in_step / lid_read. The fit tools below (fit_human,
-nudge_human, a human_reference identity fit) are for measured targets and single corrections after it.
+**For a person's head from pictures, use the artist block-in** (guide(topic="block_in")): `block_in_start` takes the
+pictures directly, no `human` or `human_reference` first. The rest of this section is for a head with no pictures
+to follow through the block-in.
 
 - Give named points, not adjectives. Landmarks: chin, nose_tip, nose_base, nose_bridge, lip_upper, lip_lower,
   mouth_corner.L/R, jaw.L/R, jaw_back.L/R, brow.L/R, brow_inner.L/R, eye_outer.L/R, eye_inner.L/R, lid_upper.L/R,
@@ -134,8 +132,8 @@ nudge_human, a human_reference identity fit) are for measured targets and single
 ## What goes wrong
 
 - Hitting one measure with `force` and not reading UNINTENDED: the number is met and the face is someone else's.
-- Fitting a smile, an open mouth or raised brows into the identity: pose the reference's expression first
-  (`base.head.pose`) or pick neutral reference images.
+- Fitting a smile, an open mouth or raised brows into the identity: `block_in_expression` reads the picture's
+  expression, or pick neutral reference images.
 - Asking the identity for a style (huge eyes, a tiny nose): it comes back held. Use the style layer.
 - Wide `spread` on women and children masculinises a bald head: keep it at or under ~0.5.
 - Measuring the old path: these tools need `base.body.source == "human"`.
