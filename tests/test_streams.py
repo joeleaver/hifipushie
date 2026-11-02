@@ -2,6 +2,7 @@
 zone and layers under the water, the damp bank, the bed's shape only under the water, the clutter's rules, and
 nothing at all on a terrain without rivers. A small synthetic meadow with a winding river and a ford.
 uv run python tests/test_streams.py"""
+import pytest
 import json
 import tempfile
 import time
@@ -344,6 +345,32 @@ def test_hold_rivers():
     assert out[22, 30] == 8.0
     assert (out[:, :20] == Hf[:, :20]).all()
     print("ok hold rivers")
+
+
+@pytest.fixture(scope="module")
+def T():
+    return _load(SPEC)
+
+
+@pytest.fixture(scope="module")
+def _field_mats(T):
+    return _mats(T)
+
+
+@pytest.fixture(scope="module")
+def field(_field_mats):
+    return _field_mats[0]
+
+
+@pytest.fixture(scope="module")
+def mats(_field_mats):
+    return _field_mats[1]
+
+
+@pytest.fixture(scope="module")
+def n_calm(T, field, mats):
+    """The calm stream's clutter count (test_clutter_rules returns it)."""
+    return test_clutter_rules(T, field, mats)
 
 
 if __name__ == "__main__":

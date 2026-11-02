@@ -1,5 +1,6 @@
 """The whole-level look round (2026-10-02): arches through a fin, roofs scaled to the span, the ground's character
 (pointwise: tiles agree), the turf swatch tiles, clutter placement. uv run python tests/test_level_look.py"""
+import pytest
 from pathlib import Path
 
 import numpy as np
@@ -187,6 +188,11 @@ def test_route_off_turf(T):
     assert (r[turf > 0.7] < 0.05).all()
     if (turf < 0.05).any():
         assert r[turf < 0.05].max() > 0.5
+
+
+@pytest.fixture(scope="module")
+def T():
+    return _pebble()
 
 
 if __name__ == "__main__":

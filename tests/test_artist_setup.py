@@ -302,6 +302,7 @@ def test_no_update_mid_session_then_switch_when_idle(dept, tmp_path, monkeypatch
 
 
 @pytest.mark.skipif(not shutil.which("uv") or not shutil.which("git"), reason="needs uv and git")
+@pytest.mark.network
 def test_real_git_install_and_check(tmp_path, monkeypatch):
     """The git path for real: uv tool install git+file://<this repo>@HEAD into a side-by-side env, then the
     sanity check (--capabilities, the Blender probe)."""

@@ -3,6 +3,7 @@ clutter rows of kinds snag / limb with a capsule (two axis ends + diameter) in c
 outer bends, steep wooded reaches, boulders' upstream sides, bar heads and wedged across narrow channels; each end
 resting on what holds it (the bed, a bank) and nothing of the axis inside the ground, the rock or a boulder.
 uv run python tests/test_snags.py"""
+import pytest
 import json
 import tempfile
 import time
@@ -82,6 +83,11 @@ def test_rest_rejects_a_hump():
     p0, p1 = np.array([[0.0, 0.0], [0.0, 0.0]]), np.array([[10.0, 0.0], [3.0, 0.0]])
     z0, z1, ok = terrain_snags.rest(F(), None, p0, p1, np.array([0.2, 0.2]))
     assert list(ok) == [False, True] and np.allclose(z0, 0.1), (ok, z0)
+
+
+@pytest.fixture(scope="module")
+def T():
+    return _load(SPEC)
 
 
 if __name__ == "__main__":

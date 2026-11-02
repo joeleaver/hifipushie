@@ -2,6 +2,7 @@
 most 128 m covering every river's water path + 15 m, sampled from the export's field: the ground tiles' heightmap
 (pushed under the cliffs) or the cliff mesh's rock where it stands higher. A river with a 12 m fall (its face meshed
 as cliff). uv run python tests/test_corridors.py"""
+import pytest
 import json
 import tempfile
 import time
@@ -216,6 +217,11 @@ def test_drawn_surface():
     drawn = 5.0 + 0.1 * X
     assert np.abs(A[:, inside] - drawn[inside]).max() < 0.002, np.abs(A[:, inside] - drawn[inside]).max()
     print(f"ok corridor on the drawn surface: {m['drawn_samples']} samples, |corridor - drawn| < 2 mm")
+
+
+@pytest.fixture(scope="module")
+def T():
+    return _load(SPEC)
 
 
 if __name__ == "__main__":

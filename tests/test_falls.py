@@ -1,6 +1,7 @@
 """Waterfalls (terrain_falls): `rivers.<r>.falls: [{"at", "drop", "width"?}]`: a hard rock lip, a near-vertical face,
 a plunge pool, the water's level stepping at the lip, meta for the game's sheet and spray; a river falling off a sea
 cliff into the sea. uv run python tests/test_falls.py"""
+import pytest
 import copy
 import json
 import tempfile
@@ -69,6 +70,7 @@ def test_inland(T):
     print("ok inland falls:", [(f["drop"], terrain_falls.measure(T)[k]["face_deg"]) for k, f in enumerate(T.falls)])
 
 
+@pytest.mark.parametrize("T", ["sea"], indirect=True)
 def test_sea(T):
     assert len(T.falls) == 1, T.falls
     f = T.falls[0]
@@ -93,6 +95,7 @@ def _frame(f):
     return c, t_, np.array([-t_[1], t_[0]])
 
 
+@pytest.mark.parametrize("T", ["sea"], indirect=True)
 def test_sea_face(T, field=None):
     """A sea-cliff fall in the 3D cliff field (pushieworld note 120): the lip stands to the lip line, the face drops
     vertically there, and no rock stands in the sheet's path above the sea: the grid's own face was a 75-80 deg ramp
@@ -120,6 +123,7 @@ def test_sea_face(T, field=None):
     print(f"ok sea fall in the cliff field: lip to the lip line, sheet clear {throw:.1f} m out, {len(P)} points air")
 
 
+@pytest.mark.parametrize("T", ["sea"], indirect=True)
 def test_face_normals(T, field=None):
     """The meshing field's normal on a fall's face points out of it, downstream (the slope correction taken from the
     faced column right up to the face swung 1 -> 0.01 -> 1 across the riser; normals sampled off the surface turned
@@ -236,6 +240,18 @@ def test_meta(T):
         m = json.loads(mj.read_text())
         assert len(m["falls"]) == 2 and "falls_note" in m
         print("ok meta.json falls")
+
+
+_LOADED = {}
+
+
+@pytest.fixture(scope="module")
+def T(request):
+    """The inland build; the sea tests ask for theirs with indirect parametrize."""
+    name = getattr(request, "param", "inland")
+    if name not in _LOADED:
+        _LOADED[name] = _load(SPECS[name])
+    return _LOADED[name]
 
 
 if __name__ == "__main__":

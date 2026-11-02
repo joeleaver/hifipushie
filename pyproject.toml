@@ -34,3 +34,12 @@ build-backend = "uv_build"
 dev = [
     "pytest>=9.1.1",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-m 'not slow'"
+markers = [
+    "slow: measured over the fast tier's cut (tests/slow_tests.txt lists them, conftest applies it). Plain pytest skips them; pytest -m '' or bin/suite --full runs them.",
+    "network: needs PyPI; skips when it can't be reached.",
+    "timeout(seconds): this test's own limit per phase (tests/conftest.py).",
+]

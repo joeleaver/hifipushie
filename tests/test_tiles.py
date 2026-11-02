@@ -1,6 +1,7 @@
 """Tile export faults found by the first consumer export (pushieworld slice_a, 2026-10-07), on a small synthetic
 coast (128 m, sheer sea cliffs, 32 m tiles): the cliff shell's depth under sheer faces, triangle budgets that hold or
 are reported, failed checks as a report. uv run python tests/test_tiles.py"""
+import pytest
 import json
 import tempfile
 import time
@@ -466,6 +467,57 @@ def test_unpinch_drops_specks():
     P2, F4 = tm._split_nonmanifold(P, F3)
     assert len(F4) == len(F) and tm._manifold(F4) and len(tm._boundary_edges(F4)) == 0, len(F4)
     print("ok unpinch drops a closed speck:", len(F3) - len(F4), "faces")
+
+
+@pytest.fixture(scope="module")
+def T():
+    return _coast()
+
+
+@pytest.fixture(scope="module")
+def _shelled(T):
+    return _shell(T)
+
+
+@pytest.fixture(scope="module")
+def G(_shelled):
+    return _shelled[1]
+
+
+@pytest.fixture(scope="module")
+def region(_shelled):
+    return _shelled[2]
+
+
+@pytest.fixture(scope="module")
+def cf(_shelled):
+    return _shelled[3]
+
+
+@pytest.fixture(scope="module")
+def vols(_shelled):
+    return _shelled[4]
+
+
+@pytest.fixture(scope="module")
+def base(cf):
+    return cf.base
+
+
+@pytest.fixture(scope="module")
+def _mesh(G, region, cf, vols):
+    """The shell test's (P, F), for the budget."""
+    return test_shell_stops_under_the_cliff_foot(G, region, cf, vols)
+
+
+@pytest.fixture(scope="module")
+def P(_mesh):
+    return _mesh[0]
+
+
+@pytest.fixture(scope="module")
+def F(_mesh):
+    return _mesh[1]
 
 
 if __name__ == "__main__":

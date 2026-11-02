@@ -2,6 +2,7 @@
 (pushieworld note 115: a beck down the volcano's flank, its bed heights read off the old ground, raised 122 ha by over
 5 m, up to +69 m). Also: an unknown river key is a warning, not silently dropped.
 uv run python tests/test_river_cut.py"""
+import pytest
 import copy
 import time
 
@@ -86,6 +87,11 @@ def test_unknown_key_warns():
     T = base(s)
     assert any("unknown key" in w and "cascades" in w for w in T.warnings), T.warnings
     print("ok unknown river key warns")
+
+
+@pytest.fixture(scope="module")
+def A():
+    return base(SPEC)
 
 
 if __name__ == "__main__":

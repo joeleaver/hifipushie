@@ -1,8 +1,10 @@
 """KATs for drape.py (drape band round 1): a stand + fall draped on a cylinder neck over a shoulder cone, a cuff on a
 cylinder wrist, and one collar's closed vs open sweep."""
+import copy
 import math
 
 import numpy as np
+import pytest
 
 from hifipushie import drape
 
@@ -64,12 +66,24 @@ def _entry(H=0.032, land=0.010, rise=0.006):
 TURN = {"w": 0.0015, "lay": 0.0015}
 
 
-def test_stand_and_fall_on_a_cylinder_neck_over_a_shoulder_cone():
+@pytest.fixture(scope="module")
+def _closed_draft_once():
+    """The KAT collar (closed) drafted on the cylinder neck once per module: three tests take the same inputs."""
     body, under = _neck_body()
     C = _neckline()
     base = {"curve": C, "body": body, "under": under, "s_cf": drape._arc(C)[-1]}
     e = dict(_entry(), turn=TURN)
-    d = drape.draft(e, base)
+    return body, under, e, drape.draft(e, base)
+
+
+@pytest.fixture
+def closed_draft(_closed_draft_once):
+    """(body, under, e, d): a deep copy per test, so no test sees another's edits."""
+    return copy.deepcopy(_closed_draft_once)
+
+
+def test_stand_and_fall_on_a_cylinder_neck_over_a_shoulder_cone(closed_draft):
+    body, under, e, d = closed_draft
     rep = d["report"]["layers"]
     # flattening: a stand on a cylinder and a fall on a cone are developable
     assert rep["stand"]["strain_p99_pct"] < 0.5, rep
@@ -150,12 +164,8 @@ def test_cuff_on_a_cylinder_wrist():
     assert r2["depth_cb_mm"] > 60, r2  # (the run from the roll to where it lands: 50 down the band + 15 on the sleeve, as a chord)
 
 
-def test_closed_vs_open_sweep_of_one_collar():
-    body, under = _neck_body()
-    C = _neckline()
-    base = {"curve": C, "body": body, "under": under, "s_cf": drape._arc(C)[-1]}
-    e = dict(_entry(), turn=TURN)
-    d = drape.draft(e, base)
+def test_closed_vs_open_sweep_of_one_collar(closed_draft):
+    body, under, e, d = closed_draft
     Co = _neckline(straighten=0.05)
     mild = drape.reach(d, e, {"curve": Co, "body": body, "under": under, "s_cf": drape._arc(Co)[-1]})
     assert mild["ok"], {k: v for k, v in mild.items() if k != "target"}
@@ -165,14 +175,11 @@ def test_closed_vs_open_sweep_of_one_collar():
     assert deep["layers"]["collar"]["strain_p99_pct"] > mild["layers"]["collar"]["strain_p99_pct"]
 
 
-def test_gate_refuses_a_piece_whose_worn_spec_changed(tmp_path, monkeypatch):
+def test_gate_refuses_a_piece_whose_worn_spec_changed(tmp_path, monkeypatch, closed_draft):
     from hifipushie import store
     monkeypatch.setattr(store, "HOME", tmp_path)
-    body, under = _neck_body()
-    C = _neckline()
-    base = {"curve": C, "body": body, "under": under, "s_cf": drape._arc(C)[-1]}
-    e = dict(_entry(), turn=TURN)
-    rec = drape.record(e, drape.draft(e, base), "kat")
+    body, under, e, d = closed_draft
+    rec = drape.record(e, d, "kat")
     g = {"drape": [rec]}
     assert all(r["status"] == "PASS" for r in drape.gate_rows(g))
     rec2 = dict(rec, layers=[dict(rec["layers"][0], height=0.036), rec["layers"][1]])

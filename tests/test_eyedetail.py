@@ -66,7 +66,7 @@ def test_lashes_build():
     cfg = lashes.wanted({"base": {"lashes": {"upper": {"count": 40, "curl": 68, "lift": -6}, "lower": {"count": 20}}}})
     m = lashes.build(head, cfg)
     seg = cfg["segments"]
-    assert len(m["tris"]) == (40 + 20) * 2 * seg
+    assert len(m["tris"]) == 2 * (40 * (cfg["upper"].get("segments") or seg) + 20 * (cfg["lower"].get("segments") or seg))  # (per-lid segments, round 29)
     assert np.isfinite(m["verts"]).all()
     # every lash point outside the ball and in front of the skin sheet
     assert (np.linalg.norm(m["verts"], axis=1) > head["eye_r"] - 1e-5).all()

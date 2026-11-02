@@ -1,6 +1,7 @@
 """The caves checked in the terrain's report, before any export (the consumer's island: two of three caves failed the
 tile export's walk an hour after the spec was saved). A small synthetic hillside with a karst cave: one passage gentle
 enough to walk, one too steep, each told in the spec's terms. uv run python tests/test_caves_early.py"""
+import pytest
 import json
 import tempfile
 import time
@@ -78,6 +79,16 @@ def test_flow_length_is_metres():
         props = {"length": 640.0}
         xy = np.array([[0.0, 0.0], [1.0, 0.0]])
     assert terrain_caves._line_length(L) == 640.0
+
+
+@pytest.fixture(scope="module")
+def T0():
+    return _terrain(SPEC)
+
+
+@pytest.fixture(scope="module")
+def T(T0):
+    return _terrain(_place(T0))
 
 
 if __name__ == "__main__":

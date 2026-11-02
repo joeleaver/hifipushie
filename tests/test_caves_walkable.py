@@ -2,6 +2,7 @@
 94-95): a karst mouth whose floor stood over the open ground at a cliff's foot (a 0.7 m step the passage's width and
 height couldn't change), and a lava tube down a steep cone (`"grade"`: switchbacks across the flow with level landings
 at the turns). uv run python tests/test_caves_walkable.py"""
+import pytest
 import json
 import tempfile
 from pathlib import Path
@@ -148,6 +149,21 @@ def test_deep_cave_under_a_steep_face():
         got[nm] = (np.nanmin(np.array(paths[0]["headroom_m"], float)), np.nanmin(np.array(paths[0]["width_m"], float)))
     (h0, w0), (h1, w1) = got["plain"], got["rock"]
     assert h0 - h1 < 0.5 and w0 - w1 < 0.5, got
+
+
+@pytest.fixture(scope="module")
+def T0():
+    return _terrain(KARST)
+
+
+@pytest.fixture(scope="module")
+def T(T0):
+    return T0
+
+
+@pytest.fixture(scope="module")
+def C():
+    return _terrain(CONE)
 
 
 if __name__ == "__main__":

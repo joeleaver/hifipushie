@@ -1,0 +1,150 @@
+#!/usr/bin/env python3
+"""The test gate: land when this exits 0.
+    bin/suite          the fast tier (plain pytest: under 10 minutes)
+    bin/suite --full   every test
+Exit 0: nothing failed that tests/known_failures.txt doesn't list. Exit 1: something new failed. Exit 2: the gate
+itself didn't get an answer (the run was aborted, or known_failures.txt is malformed): never read that as a pass.
+Prints new failures, known entries that now pass (take them off the list), entries naming no test (--full only),
+and fast tests over 10 s (add them to tests/slow_tests.txt, or the 10 minutes go).
+
+Runs under bin/capped and NEVER inside resources.heavy: tests that render take the GPU lock themselves, so a heavy
+held around them waits on itself (2026-10: 20 minutes deadlocked). It refuses to start under a heavy job of an ancestor
+process. The log: $HIFIPUSHIE_SUITE_LOG, else /mnt/data/hifipushie/suite_last.log (else the repo's .pytest_cache).
+
+The same answer in every checkout: HIFIPUSHIE_HOME is a fresh empty dir for the run (a worktree has no workspace/, the
+main checkout has thousands of models, and known_failures.txt must mean one thing), so tests needing a workspace model
+skip here. Plain pytest in a checkout with a workspace still runs them."""
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parent.parent
+KNOWN = REPO / "tests" / "known_failures.txt"
+CAPPED = Path("/mnt/data/hifipushie/bin/capped")
+FAST_BUDGET_S = 600
+RUN_LIMIT_S = {"fast": 2700, "full": 6 * 3600}  # (the whole run, past every per-test limit; only a wedged child gets here)
+
+
+def read_known() -> dict:
+    out = {}
+    for n, line in enumerate(KNOWN.read_text().splitlines(), 1):
+        if not line.strip() or line.startswith("#"):
+            continue
+        node, _, reason = line.partition("#")
+        if not reason.strip():
+            sys.exit(print(f"suite: {KNOWN.name}:{n}: an entry needs a reason (id  # why)") or 2)
+        out[node.strip()] = reason.strip()
+    return out
+
+
+def ancestors() -> set:
+    pids, pid = set(), os.getpid()
+    while pid > 1:
+        pids.add(pid)
+        try:
+            pid = int(Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[1])
+        except OSError:
+            break
+    return pids
+
+
+def held_heavy() -> list:
+    """The heavy jobs an ancestor of this process holds or waits for (read from the queue's state, no lock taken)."""
+    code = "import json; from hifipushie import resources as r; print(json.dumps(r.status()))"
+    p = subprocess.run(["uv", "run", "python", "-c", code], cwd=REPO, capture_output=True, text=True)
+    if p.returncode:
+        return []
+    import json
+    st = json.loads(p.stdout.strip().splitlines()[-1])
+    mine = ancestors()
+    return [j["name"] for j in st.get("running", []) + st.get("waiting", []) if j.get("pid") in mine]
+
+
+def log_path() -> Path:
+    env = os.environ.get("HIFIPUSHIE_SUITE_LOG")
+    if env:
+        return Path(env)
+    return Path("/mnt/data/hifipushie/suite_last.log") if Path("/mnt/data/hifipushie").is_dir() \
+        else REPO / ".pytest_cache" / "suite_last.log"
+
+
+def main() -> int:
+    args = sys.argv[1:]
+    if set(args) - {"--full"}:
+        print(__doc__)
+        return 2
+    tier = "full" if "--full" in args else "fast"
+    known = read_known()
+    held = held_heavy()
+    if held:
+        print(f"suite: refused, running inside resources.heavy ({held}): tests take the GPU lock themselves and would "
+              "wait on it. Run bin/suite without heavy.")
+        return 2
+    cmd = ["uv", "run", "pytest", "-q", "--tb=short", "-rfEp", "--durations=25", "--durations-min=10"]
+    if tier == "full":
+        cmd += ["-m", ""]
+    if CAPPED.exists():
+        cmd = [str(CAPPED)] + cmd
+    scratch = Path("/mnt/data/hifipushie") if Path("/mnt/data/hifipushie").is_dir() else None
+    home = tempfile.mkdtemp(prefix="suite_home_", dir=scratch)
+    env = dict(os.environ, COLUMNS="200", CAP=os.environ.get("CAP", "20G" if tier == "full" else "12G"),
+               HIFIPUSHIE_HOME=home)
+    log = log_path()
+    log.parent.mkdir(parents=True, exist_ok=True)
+    t0 = time.time()
+    print(f"suite: {tier} tier, log {log}", flush=True)
+    with open(log, "w") as fh:
+        try:
+            code = subprocess.run(cmd, cwd=REPO, env=env, stdout=fh, stderr=subprocess.STDOUT,
+                                  timeout=RUN_LIMIT_S[tier]).returncode
+        except subprocess.TimeoutExpired:
+            code = -1
+    took = time.time() - t0
+    shutil.rmtree(home, ignore_errors=True)
+    text = log.read_text(errors="replace")
+    lines = text.splitlines()
+    end = next((ln for ln in reversed(lines) if re.search(r"\b(passed|failed|error|errors|no tests ran)\b.* in \d", ln)), None)
+    if code not in (0, 1) or end is None:
+        print(f"suite: ABORTED (exit {code}, no summary, {took / 60:.1f} min): no verdict. Last lines:")
+        print("\n".join(ln[:160] for ln in lines[-25:]))
+        return 2
+    bad, passed = {}, set()
+    for ln in lines:
+        m = re.match(r"(FAILED|ERROR|PASSED) (\S+)(?: - (.*))?$", ln)
+        if m and m[1] == "PASSED":
+            passed.add(m[2])
+        elif m:
+            bad[m[2]] = f"{m[1]} {(m[3] or '')[:120]}"
+    new = {k: v for k, v in bad.items() if k not in known}
+    fixed = sorted(k for k in known if k in passed)
+    print(f"suite: {end.strip('= ')}; {took / 60:.1f} min")
+    if fixed:
+        print(f"NOW PASSING, take off {KNOWN.name} ({len(fixed)}):\n  " + "\n  ".join(fixed))
+    if tier == "full":
+        gone = sorted(k for k in known if k not in bad and k not in passed
+                      and not re.search(re.escape(k) + r"\b", text))
+        if gone:
+            print(f"NAME NO TEST, take off {KNOWN.name} ({len(gone)}):\n  " + "\n  ".join(gone))
+    if tier == "fast":
+        over = [ln for ln in lines if re.match(r"\d+\.\d+s (call|setup)", ln)]
+        if over:
+            print(f"FAST TESTS OVER 10 s, list them in tests/slow_tests.txt ({len(over)}):\n  " + "\n  ".join(over[:10]))
+        if took > FAST_BUDGET_S:
+            print(f"OVER BUDGET: the fast tier took {took / 60:.1f} min, the rule is 10.")
+    if new:
+        print(f"NEW FAILURES ({len(new)}):")
+        for k, v in sorted(new.items()):
+            print(f"  {k}  [{v}]")
+        print("suite: FAIL")
+        return 1
+    print(f"suite: PASS ({len(bad)} known failures)")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

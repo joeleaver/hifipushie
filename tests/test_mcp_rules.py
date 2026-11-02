@@ -47,6 +47,16 @@ def gate(tmp_path, monkeypatch, home):
     return tmp_path
 
 
+@pytest.fixture(scope="module")
+def skirt_waive(home, tmp_path_factory):
+    """The waivers for every FAIL / UNMEASURED row of the test skirt's gate, read once per module (cc.pattern_gate on
+    the same model and pattern: two tests used to read it each), in a gate dir of its own."""
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("HIFIPUSHIE_PATTERN_GATE_DIR", str(tmp_path_factory.mktemp("waive_gate")))
+        mp.delenv(cc.GATE_ENV_OVERRIDE, raising=False)
+        return _waive_all(cc.pattern_gate(MODEL, "skirt", log=lambda *_: None))
+
+
 def _texts(out):
     return [x for x in (out if isinstance(out, list) else [out]) if isinstance(x, str)]
 
@@ -126,11 +136,10 @@ def test_dress_refuses_without_a_pass_and_names_the_tool(gate):
     assert "NOT simulated" in txt and cloth._JOBS == before
 
 
-def test_fit_refuses_until_the_pattern_passes(gate):
+def test_fit_refuses_until_the_pattern_passes(gate, skirt_waive):
     txt = server.fit_garment(MODEL, "skirt")
     assert isinstance(txt, str) and "not fitted" in txt and "pattern_check" in txt
-    rec = cc.pattern_gate(MODEL, "skirt", log=lambda *_: None)
-    out = server.pattern_check(MODEL, "skirt", waive=_waive_all(rec), diag=False)
+    out = server.pattern_check(MODEL, "skirt", waive=dict(skirt_waive), diag=False)
     (t,) = _texts(out)
     assert "PASS_WAIVED" in t and "chain_garment" in t and "DON'T" not in t
     assert cc.gate_status(MODEL, "skirt")["passed"]
@@ -250,11 +259,10 @@ needs_gpu = pytest.mark.skipif(not os.environ.get("HIFIPUSHIE_CAPPED"), reason="
 
 
 @needs_gpu
-def test_render_pattern_check_and_fit_default_to_diag(gate):
+def test_render_pattern_check_and_fit_default_to_diag(gate, skirt_waive):
     out = server.pattern_check(MODEL, "skirt", views=["front", "back"], size=320)
     assert len(_images(out)) == 2  # flat sheet + diag sheet (two rows)
-    rec = cc.pattern_gate(MODEL, "skirt", log=lambda *_: None)
-    server.pattern_check(MODEL, "skirt", waive=_waive_all(rec), diag=False)
+    server.pattern_check(MODEL, "skirt", waive=dict(skirt_waive), diag=False)
     out = server.fit_garment(MODEL, "skirt", views=["front", "back"], size=320)
     (txt,) = _texts(out)
     assert len(_images(out)) == 3  # clay + diag + own colour under the game light (C107)

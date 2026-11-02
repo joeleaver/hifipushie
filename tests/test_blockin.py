@@ -359,6 +359,7 @@ def test_crease_shape_templates():
         be.crease_shape("nope")
 
 
+@need_ref
 def test_eye_ruler_margins_on_the_mesh():
     """eyeruler: Reader.margins (the eye step's model side of the ruler): the ring's top / bottom at the ruler's columns
     in mm from the iris centre, GNM's inner-corner landmark medial of the ring's own end (the canthal pocket), and
