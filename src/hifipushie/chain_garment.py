@@ -1697,7 +1697,7 @@ def worker(model: str, garment: str, wear: dict):
             sc["reads"].pop("front_gap_profile", None)
         _status(d, structure=sc)
         from . import chain_layers as cl  # (inside the garment under it, then the lengths: T9)
-        cl.gate(b, body, put=lambda **kw: _status(d, **kw))  # (a refusal is answered first; structure rows stay beside it)
+        cl.gate(b, body, put=lambda **kw: _status(d, **kw), refused=ChainRefused)  # (a refusal is answered first; structure rows stay beside it)
         if not cs.passed(sc):
             _status(d, stage="structure_failed")
             return

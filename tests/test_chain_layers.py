@@ -37,7 +37,7 @@ def _body():
 def _layered(gap=0.002, details=None):
     body = _body()
     V, F = _sphere(0.11, zmin=-0.3)  # the shirt: open below 30 % of its radius
-    layers = [cl.Layer("shirt", "cloth", V, cl.outward(V, F, body.contact), gap)]
+    layers = [cl.Layer("shirt", "cloth", V, cl.outward(V, F, body.contact), gap, body.contact)]
     if details is not None:
         layers.append(cl.Layer("shirt:details", "solid", details[0], cl.closed_outward(*details), cl.zozo_legal()))
     return cl.LayeredBody(body, layers, {"shirt": {"gap_mm": gap * 1e3, "surface": "built", "approved": True}})
@@ -97,10 +97,11 @@ def test_over_garment_inside_the_under_is_refused_by_name():
     assert rd2["shirt"]["inside"] == 0 and 9.0 < rd2["shirt"]["closest_mm"] < 10.5 and cl.inside_refusal(rd2) == ""
     X3, M3 = _over(0.105, zmin=-1.0)  # below the shirt's hem the body alone decides: not inside the shirt there
     low = X3[:, 2] < -0.06
-    _, cov = L.contact.raw(X3[low])["shirt"]
-    assert not cov.any()
-    d, _ = L.contact.query(X3)  # the stages' floor: inside the shirt reads below GAP, below the hem the body's distance
-    assert (d[X3[:, 2] > 0.05] < cg.GAP).all() and np.allclose(d[low], 0.005, atol=0.001)
+    rd3 = cl.reads(X3[low], {"piece": M3["piece"][low], "names": M3["names"]}, L)
+    assert rd3["shirt"]["inside"] == 0
+    d, _ = L.contact.query(X3)  # the stages' floor (the inflated body): inside the shirt reads below GAP, the body below its hem
+    assert (d[X3[:, 2] > 0.05] < cg.GAP).all() and np.allclose(d[X3[:, 2] < -0.08], 0.005, atol=0.001)
+    assert np.allclose(L.contact.query(_over(0.11 + 0.002)[0][:40])[0], cg.GAP, atol=0.0015)  # (the floor = the gap off the shirt)
 
 
 class _Build:
@@ -139,8 +140,8 @@ def test_details_in_the_collider(home, tmp_path):
     V, F = _button([0.111, 0.0, 0.0])  # on the shirt's +X side, 4 mm proud
     L = _layered(details=(V, F))
     P = np.array([[0.1137, 0.0, 0.0], [0.1137, 0.0, 0.03]])  # inside the button (nearer its top) / clear of it
-    raw = L.contact.raw(P)
-    assert raw["shirt:details"][0][0] < 0 < raw["shirt:details"][0][1]
+    det = L.layers[1].query(P)
+    assert det[0][0] < 0 < det[0][1] and det[2][0]
     d, n = L.contact.query(P)
     assert d[0] < cg.GAP and n[0][0] > 0.5  # (the button pushes the over garment out, along +X)
     X, M = _over(0.113, zmin=-0.2)
@@ -156,4 +157,4 @@ def test_details_in_the_collider(home, tmp_path):
     LB = cl.layered_body("m", "jacket", _body(), {"shirt": {"job": str(d_), "surface": "built", "details": True,
                                                              "approved": True}})
     assert [x.name for x in LB.layers] == ["shirt", "shirt:details"] and LB.info["shirt"]["details_in"] == ["buttons"]
-    assert len(LB.V) == len(_body().V) + len(Vs) + len(V)
+    assert len(LB.V) == len(_body().V) and LB.push.max() > 0.01  # (the body inflated over the shirt + the button)
