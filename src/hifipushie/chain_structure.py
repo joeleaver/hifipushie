@@ -13,7 +13,7 @@ READS (`reads`, numbers off the built vertices; heights from the body's landmark
 - front: garment_reads.front_reads (state, met share, V bottom, V half widths) plus the over front edge's straightness.
 - hem: CF / CB / left / right hem heights. Sleeves: the cuff's end past the wrist along the arm; the cuff's ease.
 
-ROWS (C288, `items`): from the garment record, never a garment's conventions in code. Step 2's rows (and its numeric
+ROWS (C286, `items`): from the garment record, never a garment's conventions in code. Step 2's rows (and its numeric
 bends) are judged by their kind (structure_rows.KINDS: the one vocabulary garment_plan validates against) with the plan's
 target and source; general rules (structure_rows.rule_items: a fall lies down, the hem level left to right, each closure in
 its planned state, soft cloth not crumpled) are added with the rule as their source. No style plan, or a row with no build

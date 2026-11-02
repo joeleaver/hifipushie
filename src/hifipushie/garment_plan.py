@@ -27,7 +27,7 @@ STEP 2 "style": {state, bends, pose, rows}
   pose   {name, source}
   rows   [{id, what, target: {value, unit, tol?, of?} | {is}, source, note?, view?, at?: [[u,v],..]}]  (what the photo
           judges: the structure gate's targets). what = a structure_rows.KINDS kind (refused otherwise, with the list); a
-          ratio is OF the kind's base (its name or a row id of it); a numeric bend names its kind in "what" too (C288)
+          ratio is OF the kind's base (its name or a row id of it); a numeric bend names its kind in "what" too (C286)
 """
 from __future__ import annotations
 
@@ -293,7 +293,7 @@ def check_style(p: dict, read: dict, parts: dict) -> dict:
             bad.append(f"{w}.on {b.get('on')!r}: not a piece, detail or closure of the inventory")
         _target(b.get("target"), w, bad)
         _src(b, w, bad)
-        if b.get("what") is not None or "value" in (b.get("target") or {}):  # (C288: a numeric bend is judged too)
+        if b.get("what") is not None or "value" in (b.get("target") or {}):  # (C286: a numeric bend is judged too)
             sr.check_row(b, w, bad, kinds)
     pose = p.get("pose")
     if not isinstance(pose, dict) or not pose.get("name"):
@@ -311,7 +311,7 @@ def check_style(p: dict, read: dict, parts: dict) -> dict:
             bad.append(f"{w}: a unique id and what it judges")
         _target(r.get("target"), w, bad)
         _src(r, w, bad)
-        sr.check_row(r, w, bad, kinds)  # (C288: what = a structure_rows kind)
+        sr.check_row(r, w, bad, kinds)  # (C286: what = a structure_rows kind)
         if r.get("at") is not None and not (_uv_list(r["at"]) and isinstance(r.get("view", 0), int)
                                             and 0 <= r.get("view", 0) < nv):
             bad.append(f"{w}.at: [[u, v], ...] on view (a step-0 view index)")
