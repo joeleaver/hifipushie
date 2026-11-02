@@ -242,7 +242,7 @@ class LayeredBody(Body):
         nb = _rings(T, len(V))
         push = np.zeros(len(V))
         for L in layers:  # (per layer: how far it stands off each body vertex, filled over the 1-ring, smoothed once)
-            P = L.c.V
+            P = L.c.V[np.unique(L.c.T)]  # (only the layer's own faces' points: a stiff layer shares its garment's array)
             d = body.contact.query(P)[0]
             k = self.kd.query(P)[1]
             ok = d > 0

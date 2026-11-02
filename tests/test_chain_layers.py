@@ -1,15 +1,18 @@
-"""chain_layers (T9): a garment built over another. The plan's `over` validated, the order refusal (the under garment's
-approved build first), an over garment inside an under one refused by name, the under's solid details in the collider.
-Synthetic meshes only: no build, no render."""
+"""chain_layers (T9, T12): a garment built over another. The plan's `over` validated, the order refusal (the under
+garment's steps 1 + 4 and a build first), an over garment inside an under one refused by name, the collider = the body +
+the under's THICKNESS where it covers + its stiff parts and solid details (T12), the under garment pressed inside the over
+one with its lengths kept (chain_press). Synthetic meshes only: no build, no render."""
 import json
 import pickle
 
 import numpy as np
 import pytest
 
-from hifipushie import chain_garment as cg, chain_layers as cl, garment_plan as gp, server, store
+from types import SimpleNamespace
 
-from test_garment_plan import _parts, _read, home  # noqa: F401  (the fixture: a temporary HOME + reference picture)
+from hifipushie import chain_garment as cg, chain_layers as cl, chain_press as cpr, garment_plan as gp, server, store
+
+from test_garment_plan import _parts, _read, _style, home  # noqa: F401  (the fixture: a temporary HOME + reference picture)
 
 
 def _sphere(r, n=24, zmin=-1.0):
@@ -67,7 +70,7 @@ def test_plan_over_validated(home):
     assert cl.under_for("m", "shirt") == {}  # (worn over nothing: the body alone, as before)
 
 
-def test_order_refused_until_the_under_build_is_approved(home, monkeypatch):
+def test_order_needs_the_under_pattern_and_a_build_not_its_approval(home, monkeypatch):
     _model(home)
     gp.write("m", "jacket", "parts", dict(_parts(), over=["shirt"]), look=False)
     monkeypatch.delenv(cl.SETTING, raising=False)
@@ -77,19 +80,19 @@ def test_order_refused_until_the_under_build_is_approved(home, monkeypatch):
     assert "refused (layering)" in txt and "next:" in txt and '"garment": "shirt"' in txt
     d = cl._under_job("m", "shirt")
     pickle.dump({"X": np.zeros((3, 3)), "M": {"F": [[0, 1, 2]]}}, open(d / "built.pkl", "wb"))
-    with pytest.raises(cl.LayerRefused, match="step 6"):  # (a build alone is not enough: its structure, its approval)
+    with pytest.raises(cl.LayerRefused, match="step 1 .*step 4|need not be approved"):  # (its parts + pattern, not approval)
         cl.under_for("m", "jacket")
-    monkeypatch.setenv(cl.SETTING, "built")  # (development: any saved build, flagged)
+    monkeypatch.setenv(cl.SETTING, "built")  # (development: an unfinished record, flagged)
     u = cl.under_for("m", "jacket")
     assert u["shirt"]["approved"] is False and u["shirt"]["surface"] == "built"
-    assert "UNAPPROVED" in cl.answer_line({"wear": {"under": u}})
+    assert "UNFINISHED" in cl.answer_line({"wear": {"under": u}})
 
 
 def test_over_garment_inside_the_under_is_refused_by_name():
     L = _layered()
     X, M = _over(0.105)  # between the body (0.10) and the shirt (0.11): inside it
     rd = cl.reads(X, M, L)
-    assert rd["shirt"]["inside"] > 0 and rd["shirt"]["pieces"]["front.L"]["level"] in ("chest", "waist")
+    assert rd["shirt"]["inside"] > 0 and rd["shirt"]["pieces"]["front.L"]["level"] in ("neck", "chest", "waist")
     why = cl.inside_refusal(rd)
     assert "front.L is inside shirt" in why and "ease" in why and "draft" in why
     X2, M2 = _over(0.12)  # outside: 10 mm off the shirt, nothing inside
@@ -158,3 +161,98 @@ def test_details_in_the_collider(home, tmp_path):
                                                              "approved": True}})
     assert [x.name for x in LB.layers] == ["shirt", "shirt:details"] and LB.info["shirt"]["details_in"] == ["buttons"]
     assert len(LB.V) == len(_body().V) and LB.push.max() > 0.01  # (the body inflated over the shirt + the button)
+
+
+def test_collider_is_the_under_thickness_not_its_shape():
+    """A loose under garment (30 mm off the body) pushes the over garment out by its thickness only; its stiff part by
+    how far it really stands off."""
+    body = _body()
+    V, F = _sphere(0.13, zmin=-0.3)
+    push, gap_out = cpr.room(0.0003, 0.001)
+    assert 0 < gap_out < push < 0.004 and cpr.room(0.0003, 0.001, "full")[0] > push
+    soft = cl.Layer("shirt", "cloth", V, cl.outward(V, F, body.contact), push, body.contact, role="cover")
+    LB = cl.LayeredBody(body, [soft], {"shirt": {}})
+    assert abs(LB.push.max() - push) < 1e-9 and LB.push[body.V[:, 2] < -0.06].max() == 0  # (none past its hem)
+    top = V[:, 2] > 0.12  # a stiff part (a band) where the loose shirt is: it pushes by its stand-off
+    Fs = F[top[F].all(1)]
+    stiff = cl.Layer("shirt:stiff", "cloth", V, cl.outward(V, Fs, body.contact), gap_out, body.contact)
+    LB2 = cl.LayeredBody(body, [soft, stiff], {"shirt": {}})
+    assert LB2.push.max() > 0.025 and np.median(LB2.push[(body.V[:, 2] > 0) & (body.V[:, 2] < 0.05)]) == pytest.approx(push)
+
+
+class _Net:
+    def __init__(self, F, n, links):
+        self.F, self.root, self.names = F, np.arange(n), ["front"]
+        self.link_i, self.link_j = links[:, 0], links[:, 1]
+        self.verts = lambda p: np.arange(n)
+
+
+class _Under:
+    """A stand-in under build: chains exact (meridians), the other edges at most their length; nothing held."""
+
+    def __init__(self, V, F, body, stiff=None):
+        n = len(V)
+        E = cl.cn.edges_of(F)
+        mer = np.abs(np.arctan2(V[E[:, 0], 1], V[E[:, 0], 0]) - np.arctan2(V[E[:, 1], 1], V[E[:, 1], 0])) < 1e-6
+        self.X, self.body = V.copy(), body
+        self.net = _Net(F, n, E[mer])
+        self.net.uv = V[:, :2]
+        self.net.link_L = np.linalg.norm(V[E[mer, 1]] - V[E[mer, 0]], axis=1)
+        L = np.linalg.norm(V[E[:, 1]] - V[E[:, 0]], axis=1)
+        self.stiff = np.zeros(n, bool) if stiff is None else stiff
+        self.final_links = (E[:, 0], E[:, 1], L, mer, self.stiff, [(body.contact, np.where(~self.stiff)[0], cg.GAP)], None)
+
+    def _stiff_mask(self):
+        return self.stiff
+
+    def chain_read(self, X):
+        e = np.abs(np.linalg.norm(X[self.net.link_j] - X[self.net.link_i], axis=1) / self.net.link_L - 1) * 100
+        return {"free_worst_pct": round(float(e.max()), 3)}
+
+
+def test_under_garment_pressed_inside_the_over_one():
+    """A loose under garment (r 0.13, long) fitted inside an over one (r 0.12, shorter): its chains keep their lengths,
+    no covered point stays past the over garment's inner limit, the tails below the hem stay where they are; visible
+    mode keeps the seen cloth + a margin, its hidden edge held."""
+    body = _body()
+    LB = cl.LayeredBody(body, [], {})
+    oV, oF = _sphere(0.12, n=20, zmin=-0.3)
+    uV, uF = _sphere(0.13, n=20, zmin=-0.6)
+    ub = _Under(uV, uF, body)
+    push, gap_out = cpr.room(0.0003, 0.001)
+    f = cpr.fit_one(ub, oV, oF, LB, "visible", gap_out)
+    X, rd = f["X"], f["read"]
+    assert rd["chains_free_worst_pct"] < cg.MAX_FREE_PCT and rd["outside_limit"] == 0
+    sd, _ = cpr.OuterLimit(oV, oF, body.contact).query(X)
+    cov = sd < 0.5
+    assert cov.sum() > 100 and (sd[cov] > gap_out - 0.001).all()
+    assert (body.contact.query(X)[0] > cg.GAP - 0.001).all()
+    r = np.linalg.norm(X, axis=1)
+    assert np.median(r[uV[:, 2] > 0.05]) < 0.12 - gap_out + 0.002  # (pressed in from 0.13)
+    assert rd["pieces"]["front"]["in_mm_p95"] > 5 and rd["pieces"]["front"]["pressed_pct"] > 10
+    # (hidden: covered by the over garment; the synthetic spheres' unwelded poles read as open there, so seen + margin)
+    low = uV[:, 2] < -0.07  # the tails below the over garment's hem: seen, kept
+    kept_v = np.zeros(len(X), bool)
+    kept_v[uF[f["keep"]].ravel()] = True
+    assert kept_v[low].all() and not kept_v[(uV[:, 2] > 0.04) & (uV[:, 2] < 0.08)].any() and f["held"].sum() > 0
+    full = cpr.fit_one(ub, oV, oF, LB, "full", gap_out)
+    assert full["keep"].all() and full["held"].sum() == 0
+
+
+def test_stiff_under_parts_are_not_pressed():
+    """A stiff part of the under garment stays as built (it pushed the over garment out); the soft cloth is pressed."""
+    body = _body()
+    oV, oF = _sphere(0.12, n=20, zmin=-0.3)
+    uV, uF = _sphere(0.13, n=20, zmin=-0.6)
+    stiff = uV[:, 2] > 0.11
+    f = cpr.fit_one(_Under(uV, uF, body, stiff), oV, oF, cl.LayeredBody(body, [], {}), "full", 0.003)
+    assert np.allclose(f["X"][stiff], uV[stiff]) and np.linalg.norm(f["X"][~stiff] - uV[~stiff], axis=1).max() > 0.005
+
+
+def test_plan_layers_option(home):
+    _model(home)
+    gp.write("m", "jacket", "parts", dict(_parts(), over=["shirt"]), look=False)
+    with pytest.raises(gp.PlanRefused, match="layers"):
+        gp.write("m", "jacket", "style", dict(_style(), layers={"mode": "full"}), look=False)  # (full needs its reason)
+    gp.write("m", "jacket", "style", dict(_style(), layers={"mode": "full", "why": "the jacket comes off"}), look=False)
+    assert cpr.mode("m", "jacket")[0] == "full" and cpr.mode("m", "shirt")[0] == "visible"

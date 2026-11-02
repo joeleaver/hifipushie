@@ -73,19 +73,32 @@ class OuterLimit:
         return np.where(cov, d, 1.0), np.where(cov[:, None], n, 0.0)
 
 
-def press(ub, lim: OuterLimit, gap_out: float, rounds: int = 5, log=None) -> tuple:
-    """(X, read) the under build `ub` (a GarmentBuild with final_links) pressed inside `lim`: its last solve again with the
-    outer limit beside the body; its held (stiff) points stay."""
+def press(ub, lim: OuterLimit, gap_out: float, rounds: int = 3, log=None) -> tuple:
+    """(X, read) the under build `ub` (a GarmentBuild with final_links) pressed inside `lim`, as its soft stage builds:
+    the chains first (exact, between the body and the outer limit), the cloth between them carried by their moves
+    (chain_net.fill), the whole mesh (its edges at most their weave limit, threads at their cap), the chains last. Its held
+    (stiff) points stay. A rough start (a build its own solve can't settle) is not stalled by its rough mesh this way."""
     I2, J2, L2, E2, held, fl2, th = ub.final_links
     c0, ids, g0 = fl2[0]
     fl = [(c0, ids, g0), (lim, ids, gap_out)]
-    Z = np.asarray(ub.X, float).copy()
-    rd = {}
+    rs = ub.net.root
+    Z0 = np.asarray(ub.X, float).copy()
+    E2 = np.asarray(E2, bool)
+    Ic, Jc, Lc, Ec = I2[E2], J2[E2], L2[E2], E2[E2]
+    Y, rd = Z0, {}
     for rnd in range(rounds):
-        Z, rd = cn.project(Z, I2, J2, L2, E2, held, fl, threads=th, iters=30, step=0.004)
+        Y, rd = cn.project(Y, Ic, Jc, Lc, Ec, held, fl, iters=30, step=0.004)
         if log:
-            log(f"press {rnd}: {rd}")
-    return Z[ub.net.root], rd
+            log(f"press chains {rnd}: {rd}")
+    known = np.asarray(held, bool).copy()
+    known[np.unique(np.r_[Ic, Jc])] = True
+    Z = cn.fill(Z0, Y, known, ub.net.uv, ub.net.F, root=rs)
+    for rnd in range(rounds):
+        Z, rd = cn.project(Z, I2, J2, L2, E2, held, fl, threads=th, iters=20, step=0.004)
+        Z, rd = cn.project(Z, Ic, Jc, Lc, Ec, held, fl, iters=20, step=0.004)  # (the chains last)
+        if log:
+            log(f"press mesh {rnd}: {rd}")
+    return Z[rs], rd
 
 
 def _level(at, z):
