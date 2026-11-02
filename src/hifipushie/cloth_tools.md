@@ -162,6 +162,28 @@ design, no recipe; src/hifipushie/draft_own.py's docstring is the spec). Needs s
 text's S<n>); the text lists every piece (size, cut, stiff) and every seam pair (both edges, both lengths, ease,
 PASS/FAIL); step 4 written; pattern_check re-reads it.
 
+### `garment_details`
+`garment_details(name, garment, details, wear="open", look=True)`: step 7, details and trims (src/hifipushie/garment_details.py
+docstring: the vocabulary). WHERE each detail sits is decided ONCE, on the pattern, at step 4, as a pattern maker marks
+button and trim placement: draft_pattern's declarations `marks` {detail: mark | [marks]}, in pattern terms (named
+points and edges, mm): `at` [{point, dx, dy} | {edge, mm | t, in}], `rows` {edge, count, from_mm | from_t, pitch_mm |
+pitch_t (of the edge) | to_mm | to_t, in}, `points` "button*", `follows` ["piece:edge"] (+ in, default half the width),
+`path` [positions], a motif's `lines` [[[across, along] mm]] + `knots` (repeated at its rows: a frog), `mirror` (the
+.L/.R twin by the same names), `stiffens` (a braid / binding / zip tape that stiffens its edge: declared there so the
+build can feel it). A closure's buttons are its own marks; a zip's tape takes its declared edges. draft_pattern refuses a
+built step-1 detail with no mark. Here, `details` gives geometry only: {detail: {kind point|line|motif, size_mm (point,
+knot), width_mm (line, motif cord), thickness_mm (default the cloth's), shape dome|disc|box, colour (default the step-0
+cloth's)}}. A position here is refused; so is a detail not in step 1, omitted there, or made of cloth (pocket, flap,
+epaulette: a pattern PIECE, built by chain_garment). Every built inventory detail placed with step 1's count = PASS
+(step 7 done + 7a written with this look); else FAIL rows naming each (no mark: back to 4). Details are anchored
+barycentrically on the flat mesh and re-made on any positions of it: the build, and the HUNG garment (they never enter
+the sim: they are carried; call again after the hang to carry them, or they are carried when the hang exists). Their
+meshes stay separate from the cloth (details.pkl in the job dir, one per detail with its colour: export, T11). Solid
+details over another garment (a jacket over shirt buttons) need a clearance check: layering (T9), not done here. The look
+is SHAPE (C288): the build with its details beside the reference + the flat pieces with the details; the numbers
+(count, marks in pattern terms, sizes) are in the text. chain_garment's step 7 is done only when every inventoried detail
+is placed (or there are none); until then 7a can't be written, so the build waits for this call.
+
 ### `alter_pattern`
 
 `alter_pattern(name, garment, ops, replace=False, note='')`

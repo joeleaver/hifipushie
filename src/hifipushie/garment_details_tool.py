@@ -1,12 +1,16 @@
-"""Garment step 7 as a tool (garment_details; T10): step 1's inventory -> details placed on the pattern -> carried onto the
-latest build (and the hung garment when there is one) -> the record's step 7 (+ 7a: the built, DETAILED garment).
+"""Garment step 7 as a tool (garment_details; T10): the pattern's MARKS (step 4) + step 7's geometry ->
+details carried onto the latest build (and the hung garment when there is one) -> the record's step 7 (+ 7a: the built,
+DETAILED garment).
 
-Validated against step 1: every detail with build full / simplified must be placed (a FAIL row names each one missing or
-with another count than the inventory's); a detail not in the inventory, or one it omits, is refused by name. A spec
-fault is refused by name with nothing written. The look is for SHAPE (C288): the build with its details beside the
-reference + the flat pieces with the details drawn on them; the numbers (count, positions in pattern terms, sizes) are
-in the text. Details never enter the sim: details.pkl keeps the anchors, and they are carried onto the hung mesh.
-`presim_step7` is chain_presim's hook: step 7 is done only when every inventoried detail is placed (or there are none).
+Positions are never chosen here: marks() reads the draft's declarations.marks and the closures' own marks (buttons on
+the under piece, a zip's tape on its edges). The call gives only geometry per detail. Validated against step 1: every
+detail with build full / simplified is placed, or a FAIL row names it (no mark: back to 4; no geometry: 7; another count
+than the inventory's: 4); a detail not in the inventory, one it omits, or one made of cloth (a pattern piece) is refused
+by name, nothing written. The look is for SHAPE (C288): the build with its details beside the reference + the flat
+pieces with the details on them; numbers (count, positions in pattern terms, sizes) are in the text. Details never
+enter the sim: details.pkl keeps the anchors; they are carried onto the hung mesh. Layering (a jacket over shirt buttons)
+needs a clearance check (T9). `presim_step7` is chain_presim's hook: step 7 is done only when every inventoried detail
+is placed (or there are none).
 """
 from __future__ import annotations
 
@@ -38,16 +42,42 @@ def inventory(rec: dict) -> tuple:
             {n: x for n, x in det.items() if x.get("build") not in BUILT}, cloths)
 
 
-def declared_edges(rec: dict) -> dict:
+def declarations(rec: dict) -> dict:
     d = (rec["steps"]["4"].get("output") or {}).get("dir")
     p = Path(d) / "declarations.json" if d else None
-    return (json.loads(p.read_text()).get("edges") or {}) if p and p.exists() else {}
+    return json.loads(p.read_text()) if p and p.exists() else {}
 
 
-def place_all(fl: gd.Flat, details: dict, inv: dict, omitted: dict, cloths: dict) -> tuple:
+def marks(rec: dict, M: dict, decl: dict) -> dict:
+    """{detail: [marks]}: the draft's declared marks; else a step-1 closure's own marks (its buttons on the under piece;
+    a zip's tape along its declared edges) for the details that closure lists."""
+    out = {n: (m if isinstance(m, list) else [m]) for n, m in (decl.get("marks") or {}).items()}
+    s1 = rec["steps"]["1"].get("output") or {}
+    dcl = {c.get("name"): c for c in decl.get("closures") or []}
+    for cn, c in (s1.get("closures") or {}).items():
+        mc = next((x for x in M.get("closures") or [] if x.get("name") == cn), None) or next(
+            (x for x in M.get("closures") or [] if {x.get("over"), x.get("under")} <= set(c.get("pieces") or [])), None)
+        if not mc:
+            continue
+        for det in c.get("details") or []:
+            if det in (decl.get("marks") or {}):
+                continue
+            if mc.get("kind") == "buttons" and mc.get("pairs"):
+                m = {"piece": mc["under"], "at": [{"point": b} for _, b in mc["pairs"]], "why": f"closure {mc['name']}'s buttons"}
+            elif mc.get("kind") == "zip" and isinstance((dcl.get(mc["name"]) or {}).get("edge"), dict) and \
+                    (s1.get("details") or {}).get(det, {}).get("cloth"):
+                e = dcl[mc["name"]]["edge"]
+                m = [{"piece": mc[k], "follows": [f"{mc[k]}:{e[k]}"], "why": f"closure {mc['name']}'s edge"} for k in ("over", "under")]
+            else:
+                continue
+            out.setdefault(det, []).extend(m if isinstance(m, list) else [m])
+    return out
+
+
+def place_all(fl: gd.Flat, details: dict, inv: dict, omitted: dict, cloths: dict, mk: dict) -> tuple:
     """({name: placed}, refusals [str], gate rows). Refusals mean nothing is written."""
     placed, bad = {}, []
-    for n, spec in details.items():
+    for n, geom in details.items():
         if n in omitted:
             bad.append(f"{n}: the inventory omits it (build {omitted[n].get('build')!r}: {omitted[n].get('why', '')}); "
                        "change step 1 to build it")
@@ -55,31 +85,44 @@ def place_all(fl: gd.Flat, details: dict, inv: dict, omitted: dict, cloths: dict
         if n not in inv:
             bad.append(f"{n}: not in step 1's details ({', '.join(inv) or 'none'}): inventory it first (garment_plan step='parts')")
             continue
+        if gd.cloth_made(inv[n].get("what")):
+            bad.append(f"{n} ({inv[n].get('what')}): made of cloth, so a pattern PIECE drafted at step 4 and built by "
+                       "chain_garment, never a step-7 solid")
+            continue
+        if n not in mk:
+            bad.append(f"{n}: no mark on the pattern: positions are marked at step 4 (draft_pattern declarations.marks."
+                       f"{n}), never chosen here")
+            continue
         cl = cloths.get(inv[n].get("cloth")) or {}
         try:
-            placed[n] = gd.place(fl, n, spec, inv[n], cl)
+            placed[n] = gd.place(fl, n, mk[n], geom, inv[n], cl)
         except gd.DetailRefused as e:
             bad.append(str(e))
             continue
-        c = next((s.get("colour") for s in (spec if isinstance(spec, list) else [spec]) if isinstance(s, dict) and s.get("colour")),
-                 None) or cl.get("colour")
+        c = (geom.get("colour") if isinstance(geom, dict) else None) or cl.get("colour")
         if not (isinstance(c, (list, tuple)) and len(c) >= 3):
             bad.append(f"{n}: colour [r, g, b] (no step-0 cloth colour to take it from)")
             continue
         placed[n]["colour"] = [int(v) for v in c[:3]]
         placed[n]["cloth"] = inv[n].get("cloth")
+        placed[n]["stiffens"] = any(m.get("stiffens") for m in mk[n])
     rows = []
     for n, x in inv.items():
         want = x.get("count")
+        if gd.cloth_made(x.get("what")):
+            continue  # (a piece: the chain build's)
         if n not in placed:
-            rows.append({"id": n, "status": "FAIL", "value": "not placed", "target": f"{want or 'all'} placed",
-                         "why": "every inventoried detail with build full / simplified is placed", "back_to": "7"})
+            has = n in mk
+            rows.append({"id": n, "status": "FAIL", "value": "not placed" if has else "no mark on the pattern",
+                         "target": f"{want or 'all'} placed", "back_to": "7" if has else "4",
+                         "why": ("give its geometry (kind, size) in this call" if has else
+                                 "mark it on the pattern at step 4 (draft_pattern declarations.marks)")})
         else:
             got = placed[n]["count"]
             ok = want is None or got == want
             rows.append({"id": n, "status": "PASS" if ok else "FAIL", "value": f"{got} placed", "target": f"{want} (step 1)" if want else "any",
-                         **({} if ok else {"why": f"{got} placed, the inventory counts {want}: fix the placement or step 1",
-                                           "back_to": "7"})})
+                         **({} if ok else {"why": f"{got} marked, the inventory counts {want}: fix the marks (step 4) or step 1",
+                                           "back_to": "4"})})
     return placed, bad, rows
 
 
@@ -162,7 +205,8 @@ def text_lines(placed: dict, rows: list) -> list:
         it = x["instances"][0]
         size = (f"{it['size'] * 1000:.0f} mm {it['shape']}, {it['thick'] * 1000:.1f} thick" if it["kind"] == "point"
                 else f"{it['width'] * 1000:.1f} mm wide, {it['thick'] * 1000:.1f} thick")
-        L.append(f"  {n}: {x['count']} on {', '.join(x['pieces'])}; {size}; colour {x['colour']}")
+        L.append(f"  {n}: {x['count']} on {', '.join(x['pieces'])}; {size}; colour {x['colour']}"
+                 + ("; stiffens its edge (declared on the pattern)" if x.get("stiffens") else ""))
         L += [f"    {w}"[:400] for w in x["where"]]
     L += [f"  {r['status']} {r['id']}: {r['value']} (target {r['target']})" + (f" | {r['why']}" if r.get("why") else "")
           for r in rows if r["status"] != "PASS" or r["id"] not in placed]
@@ -173,15 +217,17 @@ def run(name: str, garment: str, details: dict, wear: str = "open", look: bool =
     """The tool body: (look paths, text)."""
     from . import chain_garment as cg, chain_presim as cp
     if not isinstance(details, dict) or not details:
-        raise gd.DetailRefused("details: {name from step 1: spec | [specs]}: guide(topic=\"garment_details\")")
+        raise gd.DetailRefused("details: {name from step 1: {kind, size_mm | width_mm, thickness_mm, shape, colour}} (positions "
+                               "are the pattern's marks): guide(topic=\"garment_details\")")
     rec = gr.load(name, garment)
     inv, omitted, cloths = inventory(rec)
     d = cg.job_dir(name, garment, wear)
     if not (d / "built.pkl").exists():
         raise gd.DetailRefused(f"no build of {garment} ({wear}) to place details on: chain_garment first")
     r = gd.load_result(d / "built.pkl")
-    fl = gd.Flat(r["M"], declared_edges(rec))
-    placed, bad, rows = place_all(fl, details, inv, omitted, cloths)
+    decl = declarations(rec)
+    fl = gd.Flat(r["M"], decl.get("edges") or {})
+    placed, bad, rows = place_all(fl, details, inv, omitted, cloths, marks(rec, r["M"], decl))
     if bad:
         return [], ("garment_details REFUSED (nothing written):\n  " + "\n  ".join(bad[:20]) +
                     "\nnext: fix those details (step 1's names; the pattern's points and edges) and call again")

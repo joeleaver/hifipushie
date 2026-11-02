@@ -1,24 +1,26 @@
 """Garment step 7: DETAILS AND TRIMS placed on the FLAT PATTERN, carried by the cloth wherever it goes (tooling run T10).
 
-Why the pattern: a button, a braid or a frog is sewn to the cloth at a place on the PIECE, so it is said in the pattern's
-own terms (named points, named edges, mm) and anchored barycentrically on the flat mesh. Its geometry is then re-made on
-ANY positions of that mesh (the flat layout, the build, the hung garment): it follows the cloth, never the other way
-round. Details never enter the sim (they are carried: re-evaluated from their anchors on the hung mesh). Nothing here
-knows a garment: step 1's inventory names the details, the call says where each goes.
+Positions are decided ONCE, on the pattern, at step 4 (a pattern maker marks button, trim and frog placement): the
+draft's declarations carry `marks` {detail: mark | [marks]} (draft_own validates them; a closure's buttons are its own
+marks). Step 7 only makes the geometry at those marks (kind, size, thickness, shape, colour); it never takes positions.
+A mark is anchored barycentrically on the flat mesh, so the geometry is re-made on ANY positions of that mesh (flat,
+built, hung): it follows the cloth. Details never enter the sim (carried from their anchors on the hung mesh). A detail
+made of cloth (pocket, flap, epaulette) is a pattern piece, never a step-7 solid. Nothing here knows a garment.
 
-Vocabulary (kind):
-  point   a small solid at a pattern point: button, tab end, knot. size_mm (diameter), thickness_mm, shape dome|disc|box.
-  line    a strip of width_mm along named edges (follows, default: the inventory's follows) inset by `in` mm (default
-          half the width: the strip's outer side on the edge), or along a polyline of positions (path): braid, binding,
-          cord, zip tape. thickness_mm (default the cloth's).
-  motif   a small set of lines / points in a local frame (across = into the piece from the edge, along = the edge),
-          repeated at rows along an edge: a frog. lines [[[across, along] mm, ...], ...], points [{at, size_mm, ...}].
-Where (pattern terms; mm; pattern x right, y up):
-  position  {"point": name, "dx", "dy"} | {"edge": "cf" | "A>B" | "piece:edge", "mm" | "t" (fraction), "in": mm inward}
+Geometry (step 7, kind):
+  point   a small solid at each marked position: button, knot, pull. size_mm (diameter), thickness_mm, shape dome|disc|box.
+  line    a strip of width_mm along the mark's edges (follows) or polyline (path). thickness_mm (default the cloth's).
+  motif   the mark's lines / knots in a local frame (across = into the piece from the edge, along = the edge), repeated at
+          its rows: a frog. width_mm (its cord), size_mm (its knots).
+Mark (step 4, positions only; mm; pattern x right, y up):
+  at        [position]: {"point": name, "dx", "dy"} | {"edge": "cf" | "A>B" | "piece:edge", "mm" | "t" (fraction), "in"}
   rows      {"edge", "count", "from_mm" | "from_t", "pitch_mm" | "pitch_t" (of the edge's length) | "to_mm" | "to_t", "in"}
   points    "button*": the piece's named points matching (marks too)
+  follows   ["piece:edge"] (+ "in" mm, default half the width: the strip's outer side on the edge); path [position]
+  lines     [[[across, along] mm, ...]] and knots [[across, along]] (a motif, at its rows)
+  piece, mirror (true: placed again on the .L <-> .R piece by the same names), stiffens (a trim that stiffens its edge:
+  declared here so the build can feel it; step 7 adds only the visible geometry), why.
   an edge: the step-4 declarations' edge name, or "pointA>pointB" / "a>via>b" along the piece's border (shorter way).
-A spec may say "mirror": true: placed again on the mirrored piece (.L <-> .R) by the same names.
 """
 from __future__ import annotations
 
@@ -32,8 +34,30 @@ from scipy.spatial import cKDTree
 
 KINDS = ("point", "line", "motif")
 SHAPES = ("dome", "disc", "box")
-KEYS = {"kind", "piece", "mirror", "at", "rows", "points", "follows", "path", "in", "lines", "size_mm", "width_mm",
-        "thickness_mm", "shape", "colour"}
+MARK_KEYS = {"piece", "mirror", "at", "rows", "points", "follows", "path", "in", "lines", "knots", "stiffens", "why"}
+GEOM_KEYS = {"kind", "size_mm", "width_mm", "thickness_mm", "shape", "colour"}
+KEYS = MARK_KEYS | GEOM_KEYS
+# a detail made of cloth is a pattern PIECE (drafted at step 4, built by the chain build), never a step-7 solid
+CLOTH_MADE = ("pocket", "flap", "epaulet", "welt", "patch", "belt loop")
+
+
+def cloth_made(what: str) -> bool:
+    return any(w in str(what).lower() for w in CLOTH_MADE)
+
+
+def check_mark(name: str, m) -> list:
+    """Refusals of one detail's MARK (positions only, as declared with the draft): [] = usable."""
+    bad = []
+    for i, x in enumerate(m if isinstance(m, list) else [m]):
+        if not isinstance(x, dict):
+            bad.append(f"marks.{name}[{i}]: a dict of positions")
+            continue
+        for k in set(x) - MARK_KEYS:
+            bad.append(f"marks.{name}[{i}]: {k!r} is not a position key ({', '.join(sorted(MARK_KEYS))})"
+                       + ("; size / kind / colour are step 7's (garment_details)" if k in GEOM_KEYS else ""))
+        if not ({"at", "rows", "points", "follows", "path"} & set(x)):
+            bad.append(f"marks.{name}[{i}]: at, rows, points, follows or path (where it sits on the pattern)")
+    return bad
 LIFT = 0.0008  # m: a detail sits this far off the cloth's surface (the closures' lift)
 OUT_TOL = 0.003  # m: a position farther than this outside its piece is refused
 STEP = 0.004  # m: the longest piece of a strip
@@ -331,9 +355,21 @@ def _piece(s: dict, inv: dict, name: str) -> str:
     raise DetailRefused(f"{name}: say its piece (\"piece\": one of {', '.join(on)}) or name edges as 'piece:edge'")
 
 
-def place(fl: Flat, name: str, spec, inv: dict, cloth: dict | None = None) -> dict:
-    """One detail (spec or [specs]) -> {"instances", "count", "where" [texts], "pieces"}; refused by name."""
-    specs = spec if isinstance(spec, list) else [spec]
+def place(fl: Flat, name: str, mark, geom: dict, inv: dict, cloth: dict | None = None) -> dict:
+    """One detail: its MARK (positions, declared on the pattern at step 4: a dict or [dicts]) + its geometry (step 7:
+    kind, size_mm / width_mm, thickness_mm, shape) -> {"instances", "count", "where" [texts], "pieces"}; refused by name."""
+    if not isinstance(geom, dict):
+        raise DetailRefused(f"{name}: {{kind, size_mm | width_mm, thickness_mm, shape, colour}}")
+    pos = set(geom) & MARK_KEYS
+    if pos:
+        raise DetailRefused(f"{name}: {sorted(pos)} are positions: they are marked on the pattern at step 4 "
+                            "(draft_pattern declarations.marks), never chosen at step 7")
+    if set(geom) - GEOM_KEYS:
+        raise DetailRefused(f"{name}: unknown keys {sorted(set(geom) - GEOM_KEYS)}; step 7 takes {', '.join(sorted(GEOM_KEYS))}")
+    bad = check_mark(name, mark)
+    if bad:
+        raise DetailRefused("; ".join(bad))
+    specs = [{**m, **geom} for m in (mark if isinstance(mark, list) else [mark])]
     cloth = cloth or {}
     insts, where, count = [], [], 0
     for s in specs:
@@ -341,7 +377,7 @@ def place(fl: Flat, name: str, spec, inv: dict, cloth: dict | None = None) -> di
             raise DetailRefused(f"{name}: each spec is a dict")
         bad = set(s) - KEYS
         if bad:
-            raise DetailRefused(f"{name}: unknown keys {sorted(bad)}; keys: {', '.join(sorted(KEYS))}")
+            raise DetailRefused(f"{name}: unknown keys {sorted(bad)}")
         kind = s.get("kind")
         if kind not in KINDS:
             raise DetailRefused(f"{name}.kind {kind!r}: one of {', '.join(KINDS)}")
@@ -410,14 +446,14 @@ def _place_one(fl, name, kind, p, s, inv, cloth) -> tuple:
             if L.ndim != 2 or L.shape[1] != 2 or len(L) < 2:
                 raise DetailRefused(f"motif line {li}: [[across, along] mm, ...] (2 or more)")
             out.append(_strip(fl, p, o + L[:, :1] * N + L[:, 1:] * T, width, thick, f"{name} row {k + 1} line {li + 1}"))
-        for q in s.get("points") or []:
-            a = np.asarray(q.get("at", [0, 0]), float) / 1000.0
-            sz = _mm(q.get("size_mm"), "points.size_mm")
-            out.append(_pt(fl, p, o + a[0] * N + a[1] * T, sz, _mm(q.get("thickness_mm", sz * 300), "points.thickness_mm"),
-                           q.get("shape", "dome"), f"{name} row {k + 1} point"))
+        for q in s.get("knots") or []:
+            a = np.asarray(q, float) / 1000.0
+            sz = _mm(s.get("size_mm", 2 * width * 1000), "size_mm")
+            out.append(_pt(fl, p, o + a[0] * N + a[1] * T, sz, _mm(s.get("thickness_mm", sz * 300), "thickness_mm"),
+                           s.get("shape", "dome"), f"{name} row {k + 1} knot"))
     if not out:
-        raise DetailRefused("a motif needs lines (with width_mm) or points")
-    return len(R), [f"{p}: motif of {len(s.get('lines') or [])} lines + {len(s.get('points') or [])} points at {txt}"], out
+        raise DetailRefused("a motif mark needs lines (across, along mm) or knots")
+    return len(R), [f"{p}: motif of {len(s.get('lines') or [])} lines + {len(s.get('knots') or [])} knots at {txt}"], out
 
 
 # ---------------------------------------------------------------- carried: the geometry on any positions of the mesh

@@ -1,7 +1,7 @@
 """PRE-SIM APPROVAL and THE THREADS GATE of a chain_garment job (docs/state/garment_steps.md steps 7a and 8; tooling run T2).
 
 Step 7a: nothing is hung that wasn't approved built. After a structure PASS (or PASS_WAIVED) the worker writes the garment
-record's steps 5, 6, 7 (a pass-through until a details step exists) and 7a (the build, its look), then:
+record's steps 5, 6, 7 (done only when every inventoried detail is placed: garment_details) and 7a (the build, its look), then:
   - HIFIPUSHIE_PRESIM_APPROVAL=optional (shipped agents): hangs straight away;
   - "required" (the default, every development run): unless 7a is already approved (the same build, digest and all), the
     job ends at stage "awaiting_approval" with the build saved (built.pkl holds the whole build). Joe or the coordinator
@@ -62,17 +62,22 @@ def load_build(d: Path, log=None) -> tuple:
 # ---- step 7a
 
 def write_presim(model: str, garment: str, wear: str, d: Path, st: dict) -> str:
-    """Steps 7 (pass-through: no details step yet) and 7a (the build beside the reference) after a structure pass.
-    Returns the record's refusal text, or ""."""
+    """Steps 7 (done only when every inventoried detail is placed on this build, or there are none: garment_details,
+    T10) and 7a (the build beside the reference) after a structure pass. Returns the record's refusal text, or ""."""
+    from . import garment_details_tool as gdt
     out = {"job": str(d), "wear": wear, "build": st.get("build_id"), "built": str(Path(d) / "built.pkl")}
-    msgs = [gr._try(gr.write, model, garment, "7", "done", by="chain_garment",
-                    output=dict(out, details=[], note="no details step yet (T10): passed through"))]
-    look = gr.load(model, garment)["steps"]["6"].get("look") or []
-    sc = st.get("structure") or {}
-    msgs.append(gr._try(gr.write, model, garment, "7a", "done", by="chain_garment", look=look,
-                        output=dict(out, structure=sc.get("verdict"),
-                                    waived=[r["id"] for r in sc.get("rows") or [] if r.get("waived")])))
+    msg, ok = gdt.presim_step7(model, garment, out)
+    msgs = [msg] + ([write_7a(model, garment, out, st)] if ok else [])
     return "; ".join(m for m in msgs if m)
+
+
+def write_7a(model: str, garment: str, out: dict, st: dict, look: list | None = None) -> str:
+    """Step 7a: the (detailed) build beside the reference; look: garment_details' look, else step 6's."""
+    look = look or gr.load(model, garment)["steps"]["6"].get("look") or []
+    sc = st.get("structure") or {}
+    return gr._try(gr.write, model, garment, "7a", "done", by="chain_garment", look=look,
+                   output=dict(out, structure=sc.get("verdict"),
+                               waived=[r["id"] for r in sc.get("rows") or [] if r.get("waived")]))
 
 
 def presim_ready(model: str, garment: str) -> tuple:
