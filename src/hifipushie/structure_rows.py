@@ -39,7 +39,7 @@ KINDS = {
                         change="drop the CF neckline (alter_pattern move the front neck point down); else the BAND "
                                "stage holds the band level: " + _C),
     "collar_rise": dict(desc="a stand collar's rise from the neckline, deg from horizontal (90 = upright)", units=("deg",),
-                        read=None, missing="no stand-rise reading yet", needs=("collar_stand",),
+                        read="collar_rise_deg", needs=("collar_stand",),
                         change="the stand's curve (alter_pattern on its neck edge) or the BAND stage"),
     "collar_points_drop": dict(desc="the collar points below the collar's back top (side view)", units=("mm", "ratio", "px"),
                                base="neck_width", read="collar_points_below_back_top_mm", needs=("collar_fall",),

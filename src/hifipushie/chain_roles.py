@@ -339,7 +339,8 @@ def stand_ring(b):
     Lt = np.linalg.norm(np.diff(uv[st], axis=0), axis=1)
     S.add_links(nb[:-1], nb[1:], LB, np.ones(len(LB), bool))
     S.add_links(nt[:-1], nt[1:], Lt, np.ones(len(st) - 1, bool))
-    ev = cross[::4]
+    ev = cross[np.unique(np.r_[np.arange(0, len(cross), 4), len(cross) - 1])]  # (the end corners too: free, the stand's
+    # end edges ran 41 % past their cut)
     S.add_links(nt[ev[:, 0]], nb[ev[:, 1]], hgt[ev[:, 0]], np.ones(len(ev), bool))
     S.add_bend(nb, cn.BEND_BASE * net.bend[sb[1:-1]])
     S.add_bend(nt, cn.BEND_BASE * net.bend[st[1:-1]])

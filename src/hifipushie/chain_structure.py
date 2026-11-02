@@ -45,7 +45,7 @@ def collar_extra(X, M, bV, bT, at) -> dict:
     """Clearance under the jaw, top-line tilt, the points' drop below the back top, the leaves' stand-off."""
     col = np.where(_pieces(M, ("collar_fall", "collar_stand")))[0]
     fall = np.where(_pieces(M, ("collar_fall",)))[0]
-    if not len(col) or not len(fall):
+    if not len(col):  # (a stand has no fall: its reads below, the fall's skipped; T8)
         return {}
     cf, cb = np.asarray(at["cf_neck"], float), np.asarray(at["cb_neck"], float)
     bV = np.asarray(bV, float)
@@ -86,12 +86,23 @@ def collar_extra(X, M, bV, bT, at) -> dict:
         out["collar_fall_cb_width_mm"] = round(float(np.ptp(fb[:, 2])) * 1000, 1)
     stn = X[np.where(_pieces(M, ("collar_stand",)))[0]]
     sf = stn[stn[:, 1] < cf[1] + 0.03]
+    if not len(fall) and len(sf):  # a stand: its state is its top ends' (its neck ends meet where the front below is shut)
+        sf = sf[sf[:, 2] >= sf[:, 2].max() - 0.012]
     sl, sr_ = sf[sf[:, 0] > 0], sf[sf[:, 0] <= 0]
     if len(sl) and len(sr_):  # a band closing on itself: its two front ends touch (<= BAND_SHUT_MM) or stand apart
         from scipy.spatial import cKDTree
         g = float(cKDTree(sl).query(sr_)[0].min()) * 1000
         out["band_ends_gap_mm"] = round(g, 1)
         out["band_state"] = "closed" if g <= BAND_SHUT_MM else "open"
+    if len(stn) and not len(fall):  # a stand's rise: per 15 deg round the neck, its lowest to highest point off level
+        c = stn[:, :2].mean(axis=0)
+        sec = np.round(np.degrees(np.arctan2(stn[:, 0] - c[0], stn[:, 1] - c[1])) / 15).astype(int)
+        rise = []
+        for k in np.unique(sec):
+            q = stn[sec == k]
+            lo, hi = q[np.argmin(q[:, 2])], q[np.argmax(q[:, 2])]
+            rise.append(np.degrees(np.arctan2(hi[2] - lo[2], np.linalg.norm(hi[:2] - lo[:2]))))
+        out["collar_rise_deg"] = round(float(np.median(rise)), 1)
     if "collar_points_apart_mm" in (ca := gr.collar_reads(X, M, float(np.asarray(at["hps.L"])[2]))):
         out["collar_points_apart_nw"] = round(ca["collar_points_apart_mm"] / out["neck_width_mm"], 2)
     return out
