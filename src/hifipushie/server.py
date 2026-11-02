@@ -2790,8 +2790,15 @@ def garment_from_reference(name: str, garments: dict, views: list[dict] | str, a
     cloth_refs.json. save. Details: guide(topic="garment_from_reference")."""
     from . import cloth_reference as cr
     vs = json.loads(views) if isinstance(views, str) else views
-    out = cr.read(name, garments, vs, answers, save=(store.HOME / name / "cloth_refs.json") if (save and answers) else None)
-    return out["text"]
+    path = store.HOME / name / "cloth_refs.json"
+    out = cr.read(name, garments, vs, answers, save=path if (save and answers) else None)
+    if not answers:
+        return out["text"] + "\nnext: answer the form: the same call with answers={garment: {item id: answer}}"
+    # (C278: the reading is only used where it is passed: pattern_check's reference rows stay UNMEASURED without refs=)
+    nxt = "; ".join(f"call_tool(\"pattern_check\", {json.dumps({'name': name, 'garment': g_, 'refs': str(path)})})"
+                    for g_ in garments) if save else "the same call with save=True, then pattern_check with refs= its path"
+    return (out["text"] + "\nnext: apply each patch you agree with (design_garment: its design, color at the garment), then " + nxt
+            + "; an item the reference doesn't show stays UNMEASURED: waive it by name there (waive={id: why})")
 
 
 @mcp.tool(structured_output=False)

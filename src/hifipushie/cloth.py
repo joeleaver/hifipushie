@@ -129,7 +129,7 @@ def collar_options(tbl: dict, opts: dict, m: dict) -> dict:
     """A shirt collar's draft options from the wearer's neck (garment_kb.json kinds.<kind>.collar; the table's
     "collar_rule" names how its draft spells them: "simon" = FreeSewing Simon's options). The stand as tall as the
     neck allows less a finger's room under the jaw (`under_jaw`), within the shirtmakers' 25-35 mm, never under
-    `stand[0]`; the fall at centre back `fall_over` deeper than the stand (it must cover the stand's seam); the points
+    `stand[0]`; the fall at centre back covers the stand's seam by `fall_over` as worn (+ 2 x `roll_above` + `turn`); the points
     `points` long. (Simon's defaults gave a 20 mm stand, a 41 mm fall and 57 mm points: "tall, tight, small points".)
     Simon: stand = neck x collarStandWidth; fall at CB = stand x collarWidth x (1 + collarRoll); a point's edge
     ~ (fall + collar length x collarBend) / sin(collarAngle), collar length = neck x (1 + collarEase - collarGap)."""
@@ -139,7 +139,9 @@ def collar_options(tbl: dict, opts: dict, m: dict) -> dict:
     if not rule or not neck or not nh or tbl.get("collar_rule") != "simon":
         return {}
     s = float(np.clip(nh - 1000 * rule["under_jaw"], 1000 * rule["stand"][0], 1000 * rule["stand"][1]))
-    f = s + 1000 * rule["fall_over"]
+    # (C278) fall_over is the WORN cover of the stand seam: the roll line roll_above up the fall raises the worn stand
+    # and shortens the worn fall by it, and the turn of cloth takes its own (garment_reads.collar_draft_reads)
+    f = s + 1000 * (rule["fall_over"] + 2 * rule.get("roll_above", 0.0) + rule.get("turn", 0.0))
     roll = float(opts.get("collarRoll", 0.03))
     L = neck * (1 + float(opts.get("collarEase", 0.02)) - float(opts.get("collarGap", 0.025)))
     ang = math.radians(float(opts.get("collarAngle", 85)))

@@ -480,7 +480,14 @@ def dims(Bp: dict, meas_mm: dict) -> dict:
     if fa:
         out["collar_cb"] = _band_height(pcs[fa]) * 1000
         if st:
-            out["fall_cover"] = (_band_height(pcs[fa]) - _roll_rise(Bp, fa) - _band_height(pcs[st])) * 1000
+            # (C278) ONE definition of the cover, the gate row collar_fall_cover's: the worn fall below the roll, less
+            # the turn of cloth, past the worn stand (the roll line roll_above up the fall counts on both sides). This
+            # dim read fall - roll - stand (roll once, no turn), so the two gates' windows met only at 15-16 mm of raw
+            # fall-over and no default sat inside both (Simon: 9.2 here vs 3.1 worn).
+            from . import garment_reads
+            cr_ = garment_reads.collar_draft_reads(Bp)
+            out["fall_cover"] = cr_["collar_fall_cover_mm"] if cr_ else \
+                (_band_height(pcs[fa]) - _roll_rise(Bp, fa) - _band_height(pcs[st])) * 1000
     if cu:
         out["cuff_height"] = _finished_height(Bp, cu) * 1000
         cg = _closed_girth(Bp, cu)
