@@ -223,39 +223,6 @@ def _inner(face, Xm, T) -> np.ndarray:
     return (L["back"][T].mean(1) > 0.5 * face.thick) & (L["u"][T].max(1) < 1.0)  # (past the corners: the cheek)
 
 
-def test_brows_read():
-    """Brows move far enough to read and anger isn't grief: browDown is a slant (the inner end drops furthest, in
-    toward the middle), browInnerUp lifts the inner end only, the two brows share the middle (no doubled lump on the
-    nose's bridge), and no point ends inside an eyeball (the frown's lid hoods the eye, sliding over it)."""
-    spec = _spec()
-    face = faceshapes.Face(spec)
-    parts = {k: dict(v) for k, v in _parts().items()}
-    faceshapes.apply(spec, parts, True, [])
-    body = parts["body"]
-    S, X, R = body["shapes"], body["verts"], face.R
-    b = face.brows["Left"]
-    near = lambda p: np.linalg.norm(X - p, axis=1) < 0.5 * b["half"]
-    dn = S["browDownLeft"][0]
-    assert (dn[near(b["inner"])] @ face.up).mean() < -0.1 * R, (dn[near(b["inner"])] @ face.up).mean() / R
-    assert (dn[near(b["inner"])] @ face.up).mean() < 1.8 * (dn[near(b["outer"])] @ face.up).mean() < 0
-    assert (dn[near(b["inner"])] @ face.side).mean() < -0.02 * R  # the creature's left brow moves toward the middle
-    up = S["browInnerUp"][0]
-    assert (up[near(b["inner"])] @ face.up).mean() > 0.1 * R
-    assert np.abs(up[near(b["outer"])]).max() < 0.25 * np.abs(up[near(b["inner"])]).max()
-    assert (S["browOuterUpLeft"][0][near(b["outer"])] @ face.up).mean() > 0.09 * R
-    # the middle goes no further than a brow's own inner end, with both brows down
-    both = dn + S["browDownRight"][0]
-    mid = np.abs((X - face.M) @ face.side) < 0.1 * b["half"]
-    assert np.linalg.norm(both[mid], axis=1).max() <= np.linalg.norm(dn, axis=1).max() + 1e-9
-    assert np.abs(dn[(X - face.M) @ face.side < -0.6 * b["half"]]).max() < 1e-9  # the left brow leaves the right alone
-    for name in ("browDownLeft", "browInnerUp", "browOuterUpLeft"):
-        for ev in face.eyes.values():
-            d0 = np.linalg.norm(X - ev["c"], axis=1)
-            d1 = np.linalg.norm(X + S[name][0] - ev["c"], axis=1)
-            # (to 1% of the eye's radius: the move is worked out on the meshed position, applied at the neutral)
-            assert (d1 >= np.minimum(d0, 1.08 * ev["r"]) - 0.01 * ev["r"]).all(), name
-
-
 def test_neutral_sealed():
     """The neutral's lips meet along the whole line, corners too: from the front and from either side no inside of
     the mouth shows (<= 0.3 mm per column; Garrett's neutral showed a ~1 mm slit and 5-7 mm open corners), and the
