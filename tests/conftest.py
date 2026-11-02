@@ -1,7 +1,9 @@
 """The suite's rails, so a run can be trusted (docs/state/test_suite.md; the gate itself is bin/suite).
 
 - No leaks: os.environ and the cwd are put back after every test and every module, whatever the test did
-  (artist.py sets HIFIPUSHIE_ASSETS; one test leaving it at a temp dir failed most of the tests after it).
+  (artist.py sets HIFIPUSHIE_ASSETS; one test leaving it at a temp dir failed most of the tests after it). So is
+  the MCP tool registry (a test's tool or enable_all leaked into find_tool / toolsets), and a hifipushie module
+  attribute patched with test code goes back at its module's end; patched at import, the run refuses to start.
 - No hangs: each phase of a test (setup, call, teardown) has a time limit, stdlib only: SIGALRM raises SuiteTimeout
   in the main thread, again every 10 s if something swallows it. A hang inside C code never returns to Python to see the signal, so faulthandler is the backstop: past
   3 x the limit + 120 s it prints every stack and ends the whole run (exit 1, no summary: bin/suite reports it aborted).
@@ -17,6 +19,7 @@ import os
 import signal
 import socket
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -61,19 +64,94 @@ def _put_back(env: dict, cwd: str) -> None:
     os.chdir(cwd)
 
 
+def _registry():
+    """The MCP tool registry as it stands (None before hifipushie.server is imported: nothing to put back then)."""
+    s = sys.modules.get("hifipushie.server")
+    if s is None:
+        return None
+    groups = {k: (g["tools"], list(g["tools"])) for k, g in s.TOOL_GROUPS.items()}
+    return (s, dict(s._TOOLS), dict(s.mcp._tool_manager._tools), dict(s._CALL_TOOLS), groups)
+
+
+def _put_back_registry(snap) -> None:
+    """A tool a test defined (tests/artist_test_tools.py's `nap`) or registered (artist's enable_all) goes again: the
+    full run once failed 17 find_tool / toolsets / route tests on a leaked `nap`. The defining module leaves
+    sys.modules too, so the next test importing it registers its tools afresh."""
+    if snap is None:
+        return
+    s, tools, native, call, groups = snap
+    for name in set(s._TOOLS) - set(tools):
+        mod = getattr(s._TOOLS[name][1], "__module__", "") or ""
+        if not mod.startswith("hifipushie"):
+            sys.modules.pop(mod, None)
+    for live, saved in ((s._TOOLS, tools), (s.mcp._tool_manager._tools, native), (s._CALL_TOOLS, call)):
+        if live != saved:
+            live.clear()
+            live.update(saved)
+    for k, (lst, items) in groups.items():
+        if k in s.TOOL_GROUPS:
+            s.TOOL_GROUPS[k]["tools"] = lst
+            lst[:] = items
+
+
+_TESTS = str(Path(__file__).parent)
+
+
+def _test_made(v) -> bool:
+    """A function or class defined under tests/, or a unittest.mock object: what a test patches in."""
+    if type(v).__module__ == "unittest.mock":
+        return True
+    code = getattr(getattr(v, "__func__", v), "__code__", None)
+    return code is not None and code.co_filename.startswith(_TESTS)
+
+
+def _hp_attrs() -> dict:
+    return {(n, k): v for n, m in list(sys.modules.items()) if m is not None and n.split(".")[0] == "hifipushie"
+            for k, v in list(vars(m).items())}
+
+
+def _put_back_patches(before: dict, where: str) -> None:
+    """A hifipushie module attribute a test patched without monkeypatch goes back at the end of its module; one with
+    nothing to go back to (patched at import) is an error naming it."""
+    stuck = []
+    for (n, k), v in _hp_attrs().items():
+        if _test_made(v):
+            old = before.get((n, k))
+            if old is not None and old is not v and not _test_made(old):
+                setattr(sys.modules[n], k, old)
+            else:
+                stuck.append(f"{n}.{k}")
+    if stuck:
+        pytest.fail(f"{where} left {', '.join(stuck)} patched with test code: patch in a fixture (monkeypatch), "
+                    "never at import (tests/conftest.py)", pytrace=False)
+
+
+def pytest_collection_finish(session):
+    """An import-time patch reaches every test collected after the file (test_cloth_precache's cloth._build stub
+    failed 12 collar / mcp_rules tests with KeyError 'n'): refused before anything runs."""
+    stuck = sorted(f"{n}.{k} ({getattr(v, '__code__', None) and v.__code__.co_filename})"
+                   for (n, k), v in _hp_attrs().items() if _test_made(v))
+    if stuck:
+        raise pytest.UsageError("a test file patches hifipushie at import: " + "; ".join(stuck)
+                                + ". Patch in a fixture (tests/conftest.py)")
+
+
 @pytest.fixture(autouse=True, scope="module")
-def _module_restores_state():
+def _module_restores_state(request):
     """Outside every module-scoped fixture: what they set stays for the module, and ends with it."""
-    env, cwd = dict(os.environ), os.getcwd()
+    env, cwd, reg, attrs = dict(os.environ), os.getcwd(), _registry(), _hp_attrs()
     yield
     _put_back(env, cwd)
+    _put_back_registry(reg)
+    _put_back_patches(attrs, request.node.nodeid)
 
 
 @pytest.fixture(autouse=True)
 def _test_restores_state():
-    env, cwd = dict(os.environ), os.getcwd()
+    env, cwd, reg = dict(os.environ), os.getcwd(), _registry()
     yield
     _put_back(env, cwd)
+    _put_back_registry(reg)
 
 
 # -- two tiers ------------------------------------------------------------------------------------------------------

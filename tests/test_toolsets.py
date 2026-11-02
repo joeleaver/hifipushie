@@ -23,7 +23,8 @@ clutter_kit""".split()
 ADDED = {"block_in_start", "block_in_look", "block_in_step", "block_in_solve", "lid_read", "block_in_expression", "gnm_controls", "lip_read",
          "brow_read", "eye_ruler", "face_ruler", "tie_hair", "skin_from_reference", "hair_from_reference", "skin_project",
          "pattern_check", "alter_pattern", "review_view", "judge_asset",  # (the garment gates as tools, 2026-10-19)
-         "chain_garment", "look_chain"}  # (the one way to start a garment; the older routes are gated, C262)
+         "chain_garment", "look_chain",  # (the one way to start a garment; the older routes are gated, C262)
+         "set_expression"}  # (the head route: pose a finished head in an expression, 5ffab5a2)
 
 
 def _tokens(tools) -> int:

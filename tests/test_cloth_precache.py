@@ -11,11 +11,10 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
-os.environ["HIFIPUSHIE_HOME"] = tempfile.mkdtemp(prefix="hp_precache_")
+import pytest  # noqa: E402
 
 from hifipushie import cloth, store  # noqa: E402
 
-store.HOME = Path(os.environ["HIFIPUSHIE_HOME"])
 CALLS = []
 
 
@@ -34,7 +33,25 @@ def body(z=0.0):
     return {"V": np.array([[0, 0, z], [1, 0, 0], [0, 1, 0.]]), "F": [[0, 1, 2]], "J": {"hip": np.zeros(3)}, "key": "b"}
 
 
-cloth._build = fake_build
+def _stub() -> tuple:
+    """A temp HOME and the stubbed _build; returns what to put back. In a fixture, never at import: an import-time
+    patch reached every test collected after this file (cloth.build -> fake_build: KeyError 'n' in the collar tests)."""
+    old = (os.environ.get("HIFIPUSHIE_HOME"), store.HOME, cloth._build)
+    os.environ["HIFIPUSHIE_HOME"] = tempfile.mkdtemp(prefix="hp_precache_")
+    store.HOME = Path(os.environ["HIFIPUSHIE_HOME"])
+    cloth._build = fake_build
+    return old
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _stubbed():
+    env, home, build = _stub()
+    yield
+    store.HOME, cloth._build = home, build
+    if env is None:
+        os.environ.pop("HIFIPUSHIE_HOME", None)
+    else:
+        os.environ["HIFIPUSHIE_HOME"] = env
 
 
 def test_pre_cache_skips_build():
@@ -99,6 +116,7 @@ def test_memo_scope():
 
 
 if __name__ == "__main__":
+    _stub()
     for k, f in list(globals().items()):
         if k.startswith("test_"):
             f()

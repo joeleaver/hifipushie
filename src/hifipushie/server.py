@@ -3488,12 +3488,10 @@ def _chain_spawn(d, name: str, garment: str, w: dict) -> int:
 def chain_garment(name: str, garment: str, wear: str = "closed", opening: float | None = None, wait: float = 50.0,
                   rebuild: bool = False):
     """START A GARMENT: the only way to dress a character, fit or drape clothes on a body. Built from the pattern and the body
-    as chains of the pattern's own lengths (only bends are free; stiff parts first, soft cloth hung from them). wear: "closed" or
-    "open" (top button undone); opening: only with "open": collar points this many neck widths apart (default 1.7). Refuses at once
-    until pattern_check passes. A JOB: starts the build + hang (2-10 min build, then the hang, slower on a loaded machine), answers
-    with its stage after at most wait (s). Call again, same arguments, for the stage: it never starts a second build; a finished job
-    answers with its numbers; a changed pattern starts anew; rebuild=True starts over. The answer's next: says what to call. Details:
-    guide(topic="chain_garment")."""
+    as chains of the pattern's own lengths (stiff parts first, soft cloth hung from them). wear: "closed" or "open"; opening:
+    only with "open" (collar points apart, neck widths). Refuses until pattern_check passes. A JOB (build 2-10 min, then the
+    hang): answers with its stage after at most wait (s); call again, same arguments, for the stage (never a second build);
+    rebuild=True starts over. The answer's next: says what to call. Details: guide(topic="chain_garment")."""
     import time as _t
     from . import chain_garment as cg
     if wear not in ("closed", "open"):
