@@ -187,3 +187,14 @@ tests/test_face_shapes.py::test_neutral_sealed
 tests/test_face_shapes.py::test_shapes_on_the_goblin
 tests/test_faceslide.py::test_lip_seal_holds_across_identities
 tests/test_faceslide.py::test_sealed_mouth_has_no_pocket_or_slit_in_the_field
+# Over 10 s in the fast tier at load ~21, 2026-11-02 (second bin/suite list)
+tests/test_chinread.py::test_size_row_is_the_faces_scale
+tests/test_face_shapes.py::test_blink_lids_meet
+tests/test_face_shapes.py::test_blink_seal_leaves_the_cheek
+tests/test_face_shapes.py::test_clothes_take_no_shapes
+tests/test_face_shapes.py::test_glb_round_trip
+tests/test_face_shapes.py::test_jaw_leaves_the_body_under_the_neck
+tests/test_faceslide.py::test_lip_roll_recovered_from_a_render
+tests/test_faceslide.py::test_slider_recovered_from_a_render
+tests/test_fieldjit.py::test_alps
+tests/test_fieldjit.py::test_pebble
