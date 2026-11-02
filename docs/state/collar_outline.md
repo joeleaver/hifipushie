@@ -14,26 +14,31 @@ iterations or manual feedback."
 - `server.GATED_CLOTH` hides the old routes (HIFIPUSHIE_LEGACY_CLOTH=1 restores). Tests: tests/test_chain_garment.py (stub-worker
   job tests). Dev: /mnt/data/hifipushie/chain_garment/, /mnt/data/hifipushie/chain_first/. Ledger C259-C275.
 
-## Default shirt vs pattern_check (chain-first)
-- A fresh design_garment {kind shirt, from simon} on wf_simon's body (model cf_shirt, workspace of the main checkout) FAILED
-  flat_pattern on two defaults: fit slim taken for a regular draft (chest +14.7 %, waist +23.1 %), S12 stand 436.8 vs 441.2.
-  Fixed in the draft (garment_kb simon default_fit regular; cloth_designs simon "match" of stand + collar after truing): flat
-  read now seams all ok (stand 437.9 vs 441.2 before the walk moved after truing; re-read after the move not done) and ease in band.
-- The FULL gate on the fixed default ran to the end (3834 s wall at load ~90): FAIL, 8 of 44 rows blocking. seams and
-  flat_pattern now PASS. Blocking: FAIL collar_fall_cover (stand cb 27.0, ends 27.9 / 30.8, fall cb 40.2, roll above seam 4.0,
-  turn 2.06 mm; the row's target text was cut off in the log, so the failing number is not identified yet) and UNMEASURED collar,
-  front_closure, cuff, pockets, layering, fabric, colour (no reference reading given: refs=). Log: /mnt/data/hifipushie/chain_first/gate1.log.
+## Default shirt: gate + first real tool run (chain-run1, 2026-11-02)
+- Gate: cf_shirt (wf_simon body, main checkout workspace) PASS_WAIVED, 388 s: every row PASS except cuff WAIVED (the two
+  folds_ab/refs collar close-ups don't show a cuff). Refs read with garment_from_reference (choices: shirt_collar, buttons,
+  pockets none, layering none, cotton_shirting, colour #dfe7f4; saved workspace/cf_shirt/cloth_refs.json), passed refs=.
+- Fixed (C278): collar fall cut for a WORN cover (cloth.collar_options: stand + 10 + 2 x 4 roll + 2 turn; KB collarWidth 1.45
+  removed): worn cover 3.1 -> 9.6 mm; flat dim fall_cover now reads the same definition as the gate row; stand 441.2 =
+  neckline 441.2 after the walk. garment_from_reference names pattern_check refs= next; "#rrggbb" colour answers read.
+  chain_garment's length refusal names the nearest pattern point.
+- CLOSED: REFUSED by the tool after the build: front.R's front edge (placketOuterFold, 6-42 mm below placketTopOut / the
+  neck) +2.3..2.7 % vs MAX_FREE_PCT 2.0. Not caused by the collar fix: an A/B with the old fall (model cf_old, worker run
+  directly) refused at 2.337 % on the same line. Not fixed. Build views: workspace/cf_shirt/chain/shirt_closed/.
+- OPEN: built and hung through the tool (5 polls, ~20 min at load 20-66). Chains free worst 0.217 %; threads p99 5.93 %,
+  max 56 %, 4774 / 25458 faces past the cap (the answer doesn't flag it); hang moved p50 9.8 mm, drop -7.5 mm.
+  Views (beside front_open_collar): /mnt/data/hifipushie/chain_run1/look_open_{neck,whole}_{front,three,side,back}.png.
+- Verdict (open, beside the reference): reads as a regular shirt at full figure; the neck is poor. 1. the collar stands as
+  a crumpled funnel round the neck: the points don't fall onto the collarbones (ref: flat leaves, points ~1.7 neck widths
+  apart); 2. the plackets are ragged and torn-looking at the throat, the V narrow; 3. threads past the cap (stretch) in
+  1 in 5 faces; 4. front.L's placket hangs apart at the hem; 5. coarse soft mesh, cuffs flare (known).
 
-## Not done (this run's deliverable is NOT met)
-- chain_garment never ran end to end through the tool: no PASS record yet, so no closed / open job, no look_chain, no renders.
-- The job path is tested only with a stub worker; the real worker under the job was not run.
-
-## Known limits (ranked, from the last proof on wf_simon, worker run directly)
+## Known limits (ranked, before this run)
 1. Open: shoulder cloth rides over the collar leaves; collar stands high; plackets ragged at the throat. Closed milder.
-2. Free cloth rises 7-8 mm on average in the hang (not understood). 3. Stiff chains not exact after surfaces (collar fold line
-7.7 % closed / 16.3 % open). 4. Cuffs flare (cut 183 mm vs forearm 200 mm). 5. Soft mesh 20 mm, coarse. 6. No export.
+2. Free cloth rises 7-8 mm on average in the hang (not understood). 3. Stiff chains not exact after surfaces. 4. Cuffs
+flare (cut 183 mm vs forearm 200 mm). 5. Soft mesh 20 mm, coarse. 6. No export.
 
-STATE: job + default-shirt fixes on branch chain-first (44a641ad, e1dc20f0). NEXT: read collar_fall_cover's target (cloth_check) and fix that default in the draft; decide with Joe whether the 7
-reference rows need a refs reading or should not block a default; then, on a PASS, run
-chain_garment wear closed then open through the tool on cf_shirt (one hang each), look_chain beside folds_ab/refs; if not, fix
-the next failing default row in the draft. Run the gate when the machine is less loaded (load 90 starves the capped slice).
+STATE: branch chain-run1 (6cbf64f6..). NEXT: find why the closed build stretches front.R's front edge below the neck (the
+French front's fold line vs the band end / button 1 when closed; same on the old collar), fix it in the draft or the
+build (never MAX_FREE_PCT), rerun chain_garment wear closed through the tool, look_chain beside folds_ab/refs; then the
+open collar funnel and the threads past cap.
