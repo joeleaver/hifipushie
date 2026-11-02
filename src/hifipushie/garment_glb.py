@@ -16,7 +16,8 @@ import numpy as np
 _Z_TO_Y = np.array([[1, 0, 0], [0, 0, 1], [0, -1, 0]], np.float64)  # (asset._Z_TO_Y) Blender Z up -> glTF Y up
 
 
-def write(path: Path, name: str, meshes: list[dict], bones: list[dict] | None = None) -> Path:
+def write(path: Path, name: str, meshes: list[dict], bones: list[dict] | None = None, frame: list | None = None) -> Path:
+    """frame: [min, max] (Blender axes) the look's cameras frame (default: every mesh)."""
     from .asset import _arc_quat, _quat_matrix
     path = Path(path)
     buf, views, accs = bytearray(), [], []
@@ -98,7 +99,7 @@ def write(path: Path, name: str, meshes: list[dict], bones: list[dict] | None = 
         f.write(struct.pack("<III", 0x46546C67, 2, 12 + 8 + len(js) + 8 + len(buf)))
         f.write(struct.pack("<II", len(js), 0x4E4F534A)); f.write(js)
         f.write(struct.pack("<II", len(buf), 0x004E4942)); f.write(bytes(buf))
-    path.with_suffix(".json").write_text(json.dumps({"glb": path.name, "parts": {}, "bounds_blender": [lo.tolist(), hi.tolist()]}))
+    path.with_suffix(".json").write_text(json.dumps({"glb": path.name, "parts": {}, "bounds_blender": frame if frame is not None else [lo.tolist(), hi.tolist()]}))
     return path
 
 

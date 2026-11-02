@@ -11,7 +11,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import garment_details as gd, garment_export as ge, garment_glb as glbw, garment_record as gr
+from . import garment_details as gd, garment_export as ge, garment_game as gg, garment_glb as glbw, garment_record as gr
 
 SKIN = [0.85, 0.69, 0.55]
 
@@ -106,15 +106,19 @@ def render_looks(name, garment, rec, meshes, rb, bV, bT, bJ, bW, wc, out: Path) 
     from .garment_details_tool import _ref, beside
     from . import rig
     body = {"name": "body", "V": bV, "T": bT, "colour": SKIN, "J": bJ, "W": bW}
-    rest = glbw.write(out / f"{garment}_look.glb", garment, [body] + meshes, rb)
+    G = np.vstack([m["V"] for m in meshes])
+    fr = [(G.min(0) - 0.03).tolist(), (G.max(0) + 0.03).tolist()]  # the cameras frame the garment, not the body
+    rest = glbw.write(out / f"{garment}_look.glb", garment, [body] + meshes, rb, frame=fr)
     turn = {rb[ge.bone_index(rb, ge.ARM_BONE)]["name"]: ge.ARM_TURN}
     posed = [dict(m, V=rig.pose(rb, m["V"], m["J"], m["W"], turn)) for m in [body] + meshes]
-    for m in posed:
-        m.pop("N", None)
-    pose_glb = glbw.write(out / f"{garment}_look_arm.glb", garment, posed, None)
+    for m in posed:  # (smooth normals of the posed surface: the rest normals no longer apply)
+        m["N"] = gg.normals(m["V"], np.asarray(m["T"]))
+    P = np.vstack([m["V"] for m in posed[1:]])
+    pose_glb = glbw.write(out / f"{garment}_look_arm.glb", garment, posed, None,
+                          frame=[(P.min(0) - 0.03).tolist(), (P.max(0) + 0.03).tolist()])
     shots = []
     with resources.heavy(f"export_garment look {name}:{garment}", gb=4, gpu=True):
-        for g_, tag, views in ((rest, "rest", ["front", "side", "back"]), (pose_glb, "arm", ["front", "three"])):
+        for g_, tag, views in ((rest, "rest", ["front", "side", "back", "three_quarter"]), (pose_glb, "arm", ["front", "three_quarter"])):
             im = asset.preview(g_, views, size=512)
             p = out / f"{garment}_{tag}.png"
             im.save(p)

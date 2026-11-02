@@ -37,8 +37,9 @@ BUDGET_FILL = 0.92  # aim for this share of the budget (the count isn't exactly 
 ROLE = "main_npc"
 PART = "clothing"
 ARM_BONE, ARM_TURN = "LeftArm", ([0.0, -1.0, 0.0], 45.0)  # the weight check: the left arm raised 45 deg (abduction)
-STRETCH_TOL = (0.06, 0.03)  # the game mesh's stretch p5 / p95 within this of the drape's own (the re-grid's chords;
-# the drape's own compression, gathers at a sleeve cap, is the build's / hang's: steps 5, 8)
+STRETCH_TOL = (0.10, 0.03)  # vs the drape's own stretch (its compression at gathers is the build's / hang's, steps
+# 5 / 8): the game mesh may compress up to 0.10 more at p5 (its chords span folds the grid can't hold: a normal bake
+# carries those) but never stretch past the drape's p95 + 0.03 (texture stretched beyond the cut = a mapping fault)
 DRIFT_OK = 0.012  # m: p95 change of a garment vertex's distance to the body where the body moved > 1 cm
 
 
@@ -223,10 +224,10 @@ def text(model, garment, src, g, n_details, budget, role, tries, st, wc, glb, sd
 
 def gate_rows(g, n_details, budget, st, wc, sd) -> list[dict]:
     tot = len(g["T"]) + n_details
-    ok = abs(st["p5"] - sd["p5"]) <= STRETCH_TOL[0] and abs(st["p95"] - sd["p95"]) <= STRETCH_TOL[1]
+    ok = st["p5"] >= sd["p5"] - STRETCH_TOL[0] and st["p95"] <= sd["p95"] + STRETCH_TOL[1]
     return [{"row": "triangles", "status": "PASS" if tot <= budget else "FAIL", "value": tot, "target": budget},
             {"row": "uv stretch vs the drape", "status": "PASS" if ok else "FAIL", "value": [st["p5"], st["p95"]],
-             "target": f"drape p5 {sd['p5']} +- {STRETCH_TOL[0]}, p95 {sd['p95']} +- {STRETCH_TOL[1]}"},
+             "target": f"p5 >= drape {sd['p5']} - {STRETCH_TOL[0]}, p95 <= drape {sd['p95']} + {STRETCH_TOL[1]}"},
             {"row": "open pattern edges", "status": "PASS" if g["missing_boundary_edges"] == 0 else "FAIL",
              "value": g["missing_boundary_edges"], "target": 0},
             {"row": "weights follow the arm", "status": "PASS" if wc["ok"] else "FAIL", "value": wc["p95_m"],

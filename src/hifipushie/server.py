@@ -162,7 +162,7 @@ TOOL_GROUPS: dict[str, dict] = {
               # the workflow's order (find_tool ranks a matched domain's early steps first)
               "steps": ["garment_plan", "body_tape", "draft_pattern", "pattern_check", "chain_garment", "look_chain"],
               "about": "garments: design, pattern, the pattern gate, alterations, the chain build (the only start), references",
-              "tools": ["garment_plan", "draft_pattern", "garment_details", "design_garment", "look_pattern", "alter_pattern", "pattern_check", "chain_garment", "look_chain",
+              "tools": ["garment_plan", "draft_pattern", "garment_details", "export_garment", "design_garment", "look_pattern", "alter_pattern", "pattern_check", "chain_garment", "look_chain",
                         "garment_record", "body_tape", "garment_reference", "garment_from_reference", "garment_reference_brief"]},
     "terrain": {"about": "terrain and game levels (height fields in a level designer's words)",
                 "tools": ["set_terrain", "check_terrain", "look_terrain", "export_terrain", "terrain_history"]},
@@ -3737,6 +3737,18 @@ def garment_details(name: str, garment: str, details: dict | str, wear: str = "o
     unmarked. Returns the look (shape) + every detail's count, marks, sizes. guide(topic="garment_details")"""
     from . import garment_details_tool as gdt
     looks, txt = gdt.run(name, garment, _spec_arg(details) if isinstance(details, str) else details, wear, look)
+    return [_out(PILImage.open(p_).convert("RGB"), None) for p_ in looks] + [txt] if looks else txt
+
+
+@mcp.tool(structured_output=False)
+def export_garment(name: str, garment: str, wear: str = "open", role: str = "main_npc", look: bool = True):
+    """STEP 10: a chain garment as a GAME ASSET: the hung garment (else the build) re-gridded on its FLAT PATTERN (UVs =
+    the pattern) at the density that fits the role's clothing budget (budgets.json), step 7's details as their own
+    meshes, skinned to the rig with weights read off the body; one GLB. Refused by name: step 9 not approved; over
+    budget at the coarsest grid (says what to change). Writes step 10. Returns the look (EEVEE, rest + an arm raised,
+    beside the reference) + triangles vs budget, UV stretch, the weight check. guide(topic="export_garment")"""
+    from . import garment_export_tool as get
+    looks, txt = get.run(name, garment, wear, role, look)
     return [_out(PILImage.open(p_).convert("RGB"), None) for p_ in looks] + [txt] if looks else txt
 
 
