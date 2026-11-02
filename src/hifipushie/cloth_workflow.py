@@ -3,8 +3,9 @@
   1 design        the design sheet (garment_design): kind, fabric with physical numbers, fit, every construction
                   choice (collar, cuff, placket, closure, hem, ...), defaults filled from garment_kb.json; a choice the
                   draft source can't make, or one that needs another (a barrel cuff needs a sleeve placket), fails.
-  2 pattern       the draft laid flat and LOOKED at (pattern_sheet: names, roles, grain, notches, seams numbered on both
-                  sides, folds, interfacing); checks: every sheet choice evidenced in the pieces and seam table, every
+  2 pattern       the draft laid flat and LOOKED at (pattern_sheet, shape only: names, grain, notches, seam pairs by
+                  colour, folds, interfacing; the numbers in the text); checks: every sheet choice evidenced in the
+                  pieces and seam table, every
                   seam's ease in its band (cloth_check; the sleeve cap by kind), notches, ease vs the body per girth in
                   the fit's band, every piece sewn to something, the details' dimensions.
   3 construction  the making plan: sewing order, layers and which side laps, fold/press lines with angles, interfacing
@@ -289,7 +290,11 @@ def stage_pattern(c: Ctx, image: bool = True) -> dict:
         from . import pattern_sheet
         title = f"{c.name}:{c.gname}  " + (f"{c.kind} from {(c.gx.get('pattern') or {}).get('from', 'own pieces')}"
                                            if c.kind else "")
-        o["images"].append(("pattern", pattern_sheet.render(Bp, title, seam_rows=rows)))
+        im = pattern_sheet.render(Bp, title, seam_rows=rows)
+        o["images"].append(("pattern", im))
+        o["info"] += pattern_sheet.text_lines(Bp, rows)  # (the sheet is shape only: its numbers are here, C286)
+        if im.info.get("names_off"):
+            o["info"].append("on the sheet without a name (too small): " + ", ".join(im.info["names_off"]))
     return o
 
 

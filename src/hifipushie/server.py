@@ -3122,7 +3122,8 @@ def pattern_check(name: str, garment: str, refs: str | dict | None = None, waive
     res = keep["res"]
     Bp = res["pieces_full"]
     kind = rec.get("kind") or ""
-    flat = pattern_sheet.render(Bp, f"{name}:{garment} flat pattern", seam_rows=cc.seams(Bp, kind))
+    sm = cc.seams(Bp, kind)
+    flat = pattern_sheet.render(Bp, f"{name}:{garment} flat pattern", seam_rows=sm)
     out = [_out(flat, _save_suffix(save, "flat"))]
     if _diag_rows(diag):
         ims, _ = _garment_sheets(name, f"pattern_{garment}", res["body"], [(garment, res["A"], res["mesh"])],
@@ -3130,7 +3131,9 @@ def pattern_check(name: str, garment: str, refs: str | dict | None = None, waive
         out += [_out(im, _save_suffix(save, tag)) for tag, im in ims]
     from . import garment_record as gr  # (step 4 of the garment record)
     refused = gr.from_pattern_check(name, garment, rec, str(cc.record_path(rec["pattern"], rec["body"])), flat)
-    out.append(_gate_rows_text(rec) + (f"\n  {refused}" if refused else "") + "\n" + next_steps.after_pattern_check(rec, name, garment))
+    out.append(_gate_rows_text(rec) + (f"\n  {refused}" if refused else "") + "\n"
+               + "\n".join("  " + ln for ln in pattern_sheet.text_lines(Bp, sm))  # (the sheet is shape only: C286)
+               + "\n" + next_steps.after_pattern_check(rec, name, garment))
     return out
 
 
@@ -3765,6 +3768,7 @@ def alter_pattern(name: str, garment: str, ops: list[dict], replace: bool = Fals
                  + (": " + "; ".join(f"{j['at']} {j['turn_deg']} deg ({' | '.join(map(str, j['seam']))})"
                                      for j in bad[:5]) if bad else ""))
     im = pattern_sheet.render(Bp, f"{name}:{garment} flat pattern", seam_rows=rows)
+    lines += pattern_sheet.text_lines(Bp)[:len(Bp["pieces"]) + 1]  # (the pieces' sizes: the sheet is shape only, C286)
     tail = next_steps.after_alter(rows, name, garment)
     full["cloth"][garment] = g
     v = store.save(name, full, note or f"alter {garment}: " + ", ".join(o["op"] for o in ops))

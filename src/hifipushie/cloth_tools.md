@@ -2,6 +2,9 @@
 
 The cloth tools' full parameters and behaviour, one section per tool (guide(topic="<tool name>") returns one).
 
+PICTURES ARE FOR SHAPE, TEXT IS FOR NUMBERS (C286): judge a look for shape (curves, which way an edge runs, which edges
+share a colour); take every number and name from the tool's text answer, never read one off an image.
+
 ## Tool reference
 
 ### `chain_garment`
@@ -56,9 +59,9 @@ look_pattern.
 `look_pattern(name, garment, save=None)`
 
 Stage 2 of the clothing workflow: the garment drafted to the body and laid out flat on a pattern sheet (every
-piece at one scale with its name, role, size, grain arrow, notches, buttons/buttonholes, fold lines (blue dashed,
-with angle), interfacing (hatched), each seam in its own colour numbered on both sides S3a/S3b, a 10 cm bar, the
-seam list with each seam's ease), plus the checks before any sim, failures first: every design-sheet choice
+piece at one scale with one large name, grain arrow, notches, buttons/buttonholes, fold lines (blue dashed),
+interfacing (hatched), each seam pair in one colour on both its edges, a 10 cm bar and a big colour legend; shape
+only: every piece's size and every seam's lengths and ease are in the text answer), plus the checks before any sim, failures first: every design-sheet choice
 evidenced in the pieces and seam table (a turned collar has a fold line, a barrel cuff is closed and interfaced,
 the fall covers the stand...), every seam's ease in its band (sleeve cap by kind, bands, plain seams), notches
 aligned, ease against the body per girth inside the fit's band, every piece sewn to something, the details'
@@ -86,7 +89,7 @@ and 8, look_chain the build's look (6) and the hung garment's look (9). A write 
 is refused by name; a changed step makes the later ones stale. Approvals: `bin/approve add garment
 <model>.<garment>.<step> <record>#<digest> <sheet> joe|coordinator` (the answer prints it); they hold while the digest
 does. Step 7a's approval is required unless HIFIPUSHIE_PRESIM_APPROVAL=optional. sheet=True renders the step-0
-reference beside every look plus a status tile.
+reference beside every look plus a status tile; every step's status is also in the text answer.
 
 ### `body_tape`
 `body_tape(name, measurements=None, garment="", landmarks=False)`: garment step 3, measuring the model's base body BY NAME
@@ -108,7 +111,8 @@ how each is found): hps.L, shoulder_point.L, neck_side.L, cf_neck, cb_neck, bust
 floor, crown, every joint (inside the body: straight and vertical only; "joint:<name>" where a name is taken).
 A refusal says what is wrong and what to say instead (an unknown landmark lists them; a level outside the body gives
 the body's range); the others are still measured. The look (always made): every tape on the body front / side / back,
-numbered, solid where seen, its value in the legend; workspace/<model>/tape/step3_measure.png, or with garment the
+numbered, solid where seen, a large legend naming each number; every value is in the text answer (read
+values there, never off the look); workspace/<model>/tape/step3_measure.png, or with garment the
 record's look folder, and step 3 of the record is written (refused until step 2 is ready). Example:
 `body_tape("wf_simon", [{"name": "back_waist_to_seat", "kind": "length", "from": "cb_waist", "to": "cb_seat", "side":
 "back"}, "chest"], garment="hussar")`.
@@ -152,7 +156,9 @@ design, no recipe; src/hifipushie/draft_own.py's docstring is the spec). Needs s
   {"back": {"side.L": "hem>armhole"}}, "seams": [{"a": "front.L:side", "b": "back:side.L"}]}`.
 - Refused by name (nothing written): a step-1 seam with no drafted edge or not sewn, a piece not in step 1, a built piece
   not drafted. Else the flat gate: seams (each pair within its declared ease, else +-1 %), cut, sewn, closures (lapped
-  edges within 1 %), truing (info); the sheet labels every seam pair (S<n>); step 4 written; pattern_check re-reads it.
+  edges within 1 %), truing (info); the sheet is shape only (one big name per piece, each seam pair one colour, legend S<n> = the
+text's S<n>); the text lists every piece (size, cut, stiff) and every seam pair (both edges, both lengths, ease,
+PASS/FAIL); step 4 written; pattern_check re-reads it.
 
 ### `alter_pattern`
 
@@ -192,7 +198,8 @@ keyed by the pattern's content hash + the body's) is what chain_garment checks: 
 without a PASS for exactly this pattern + body.
 refs: the reference reading (cloth_reference.read's output or its saved path). waive: {item id: reason} accepts a
 FAIL / UNMEASURED row by name (recorded; PASS_WAIVED).
-Returns: the FLAT pattern sheet (pieces, grain, notches, seam list with lengths and ease), the DIAG views of the
+Returns: the FLAT pattern sheet (shape only: pieces, grain, notches, seam pairs by colour; the pieces' sizes and the
+seams' lengths and ease are in the text), the DIAG views of the
 placed pattern (by default two rows: panels + seams + turned, then strain + layers; diag=False none, or your own
 modes / rows), and the per-item table FAIL / UNMEASURED first, then "next:": on a FAIL the rows to fix and "don't
 simulate"; on a PASS chain_garment. views (default front, three, side, back), size (px), save (PNG path prefix).

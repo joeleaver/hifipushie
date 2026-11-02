@@ -417,8 +417,11 @@ def _dense(P: np.ndarray, step: float = 0.005) -> np.ndarray:
 
 def draw(tape: Tape, rows: list, path, h: int = 760) -> str:
     """Front / side / back: the body in clay, each row's tape line in its colour (solid where seen, thin where behind
-    the body), numbered at the line; the legend names each row with its value."""
+    the body), numbered at the line in a large digit; a large legend maps each number to its row's NAME. No values
+    on the image (C286: pictures are for shape, text is for numbers): every value is in run's text answer."""
     from PIL import Image, ImageDraw
+    from .pattern_sheet import _font
+    f_num, f_leg = _font(20), _font(20)
     V, T = tape.V, tape.T
     zmin, zmax = tape.zmin, tape.zmax
     s = (h - 40) / (zmax - zmin)
@@ -448,6 +451,7 @@ def draw(tape: Tape, rows: list, path, h: int = 760) -> str:
             dr.polygon(pts, fill=(g, g - 4, g - 10))
             dd.polygon(pts, fill=int((Dm[k] + 5.0) * 1000))
         zb = np.asarray(dimg, dtype=np.int64)
+        marks = []
         for n, r in enumerate(drawn):
             P = _dense(tape.lines[r["name"]])
             col = COLOURS[n % len(COLOURS)]
@@ -461,23 +465,27 @@ def draw(tape: Tape, rows: list, path, h: int = 760) -> str:
             vis = np.where(seen)[0]
             if len(vis):
                 k = vis[np.argmax(qx[vis])] if r["kind"] in ("girth", "freesewing") and len(P) > 8 else vis[len(vis) // 2]
-                dr.ellipse([qx[k] + 3, qy[k] - 9, qx[k] + 23, qy[k] + 9], fill=(255, 255, 255), outline=col, width=2)
-                dr.text((qx[k] + (10 if n < 9 else 7), qy[k] - 6), str(n + 1), fill=col)
-        dr.text((8, 6), vname, fill=(40, 40, 40))
+                base = (qx[k] + 20, qy[k])
+                cands = [(base[0] + dx, base[1] + dy) for dy, dx in ((0, 0), (0, 34), (-32, 0), (32, 0), (-32, 34),
+                                                                     (32, 34), (0, 68), (-64, 0), (64, 0))]
+                c0 = next((c for c in cands if all(abs(c[0] - a) > 33 or abs(c[1] - b) > 31 for a, b in marks)), base)
+                marks.append(c0)
+                dr.ellipse([c0[0] - 16, c0[1] - 15, c0[0] + 16, c0[1] + 15], fill=(255, 255, 255), outline=col, width=3)
+                dr.text(c0, str(n + 1), fill=col, font=f_num, anchor="mm")
+        dr.text((8, 6), vname, fill=(40, 40, 40), font=_font(24))
         tiles.append(im)
-    lw = 360
+    lw = 420
     leg = Image.new("RGB", (lw, h), (255, 255, 255))
     dl = ImageDraw.Draw(leg)
-    dl.text((10, 8), "body_tape (mm)", fill=(0, 0, 0))
+    dl.text((10, 8), "tapes (values: the text)", fill=(0, 0, 0), font=_font(22))
     for n, r in enumerate(drawn):
         col = COLOURS[n % len(COLOURS)]
-        y = 32 + 20 * n
-        dl.rectangle([10, y + 2, 26, y + 12], fill=col)
-        val = f"{r['mm']:.1f}" if "mm" in r else f"{r.get('deg')} deg"
-        dl.text((32, y), f"{n + 1}. {r['name']}  {val}", fill=(0, 0, 0))
-    off = [r["name"] for r in rows if r["name"] not in tape.lines]
-    if off:
-        dl.text((10, 40 + 20 * len(drawn)), "not drawn: " + ", ".join(off)[:52], fill=(90, 90, 90))
+        y = 44 + 30 * n
+        dl.rectangle([10, y + 2, 34, y + 22], fill=col)
+        t = f"{n + 1}  {r['name']}"
+        while dl.textlength(t, font=f_leg) > lw - 50 and len(t) > 6:
+            t = t[:-4] + "..."
+        dl.text((44, y), t, fill=(0, 0, 0), font=f_leg)
     out = Image.new("RGB", (3 * w + lw + 12, h), (255, 255, 255))
     for i, t in enumerate(tiles):
         out.paste(t, (i * (w + 4), 0))
@@ -523,9 +531,11 @@ def run(name: str, measurements: list | None = None, garment: str = "", landmark
         d = gr.look_dir(name, garment)
     d.mkdir(parents=True, exist_ok=True)
     look = draw(tape, rows, d / "step3_measure.png")
-    out = [f"{r['name']}: {r['mm'] if 'mm' in r else r['deg']} {'mm' if 'mm' in r else 'deg'} ({r['kind']}): {r['how']}"
+    num = {id(r): n + 1 for n, r in enumerate([r for r in rows if r["name"] in tape.lines])}  # (draw's numbering)
+    out = [f"{num.get(id(r), '-')}. {r['name']}: {r['mm'] if 'mm' in r else r['deg']} "
+           f"{'mm' if 'mm' in r else 'deg'} ({r['kind']}): {r['how']}" + ("" if id(r) in num else " (no line drawn)")
            for r in rows]
-    txt = "\n".join(out + errs) + f"\nlook: {look}"
+    txt = "\n".join(out + errs) + f"\nlook: {look} (the tapes' paths, numbered as above; every value is here)"
     if landmarks:
         txt = landmark_text(tape) + "\n" + txt
     if garment:
@@ -536,4 +546,4 @@ def run(name: str, measurements: list | None = None, garment: str = "", landmark
             txt += f"\nrecord: step 3 (measure) written: {gr.path(name, garment)}"
         except gr.OrderRefused as e:
             txt += f"\nrecord: refused: {e}"
-    return look, txt + "\nnext: judge the look (each tape where the garment's seam needs it); a missing one: add it by name"
+    return look, txt + "\nnext: judge the look for WHERE each tape runs (each where the garment's seam needs it); the values are this text's; a missing one: add it by name"
