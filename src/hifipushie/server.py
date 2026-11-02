@@ -157,12 +157,12 @@ TOOL_GROUPS: dict[str, dict] = {
                          "(loose, short) -> look_hair -> export_asset ships the character (export_hair: the hair alone)",
              "steps": ["hair_from_reference", "tie_hair", "groom_hair", "look_hair", "export_hair"],
              "tools": ["groom_hair", "tie_hair", "look_hair", "hair_reference", "hair_from_reference", "export_hair"]},
-    "cloth": {"workflow": "Clothes: garment_plan (read, parts, style) -> design_garment -> pattern_check (the flat gate) -> chain_garment (the only way a garment "
+    "cloth": {"workflow": "Clothes: garment_plan (read, parts, style) -> body_tape -> draft_pattern (your own FreeSewing design) -> pattern_check (the flat gate) -> chain_garment (the only way a garment "
                           "is started) -> look_chain beside the reference; a fault is fixed on the pattern (alter_pattern)",
               # the workflow's order (find_tool ranks a matched domain's early steps first)
-              "steps": ["garment_plan", "design_garment", "pattern_check", "chain_garment", "look_chain"],
+              "steps": ["garment_plan", "body_tape", "draft_pattern", "pattern_check", "chain_garment", "look_chain"],
               "about": "garments: design, pattern, the pattern gate, alterations, the chain build (the only start), references",
-              "tools": ["garment_plan", "design_garment", "look_pattern", "alter_pattern", "pattern_check", "chain_garment", "look_chain",
+              "tools": ["garment_plan", "draft_pattern", "design_garment", "look_pattern", "alter_pattern", "pattern_check", "chain_garment", "look_chain",
                         "garment_record", "body_tape", "garment_reference", "garment_from_reference", "garment_reference_brief"]},
     "terrain": {"about": "terrain and game levels (height fields in a level designer's words)",
                 "tools": ["set_terrain", "check_terrain", "look_terrain", "export_terrain", "terrain_history"]},
@@ -3114,6 +3114,9 @@ def pattern_check(name: str, garment: str, refs: str | dict | None = None, waive
     table and the next step.
     refs (reference reading), waive {id: reason}, views, size, save. Details: guide(topic="pattern_check")."""
     from . import cloth_check as cc, next_steps, pattern_sheet
+    if ((store.load(name).get("cloth") or {}).get(garment, {}).get("pattern") or {}).get("from") == "own":
+        from . import draft_own_tool as dot  # (drafted with draft_pattern: the general flat gate, re-read: T5)
+        return dot.check_text(name, garment)
     keep: dict = {}
     rec = cc.pattern_gate(name, garment, refs=refs, waive=waive, log=lambda *_: None, keep=keep)
     res = keep["res"]
@@ -3695,6 +3698,20 @@ def garment_plan(name: str, garment: str, step: str, plan: dict | str, look: boo
     r = gp.write(name, garment, step, _spec_arg(plan) if isinstance(plan, str) else plan, look=look)
     txt = gp.text(name, garment, r)
     return [_out(PILImage.open(p_).convert("RGB"), None) for p_ in r["look"][:2]] + [txt] if r["look"] else txt
+
+
+@mcp.tool(structured_output=False)
+def draft_pattern(name: str, garment: str, design: str, declarations: dict | str, options: dict | None = None,
+                  sa: float = 10.0):
+    """STEP 4: YOUR OWN PATTERN. design: a FreeSewing design you write (JS module on @freesewing/core, usually parts
+    `from:` brian / bent / jaeger; ends `export default new Design({...})`), drafted in Node (sandboxed, timeout) with
+    step 3's measurements by name. declarations: what it can't draw, in step 1's names: pieces, edges, seams (+ ease,
+    why), stiff, folds, closures, omit. Refused by name when they don't match step 1; else the flat gate (seams, cut,
+    sewn, closures), the flat sheet with seam pairs and step 4 written. guide(topic="draft_pattern")."""
+    from . import draft_own_tool as dot
+    sheet, txt = dot.run(name, garment, design, _spec_arg(declarations) if isinstance(declarations, str) else declarations,
+                         options, sa)
+    return [_out(PILImage.open(sheet).convert("RGB"), None), txt] if sheet else txt
 
 
 @mcp.tool(structured_output=False)

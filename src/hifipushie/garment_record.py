@@ -39,7 +39,7 @@ STEPS = [
     ("1", "parts", "every piece and detail: seen / occluded / inferred, how far built, layer order; the seams", "garment_plan", "none", "0"),
     ("2", "style", "the ONE worn state, as bends and targets; the pose", "garment_plan", "none", "1"),
     ("3", "measure", "every measurement steps 1-2 call for, by name", None, "none", "2"),
-    ("4", "draft", "flat pattern + seam pairs, stiff pieces, folds, closures; the flat gate", "pattern_check", "none", "4"),
+    ("4", "draft", "flat pattern + seam pairs, stiff pieces, folds, closures; the flat gate", "draft_pattern", "none", "4"),
     ("5", "chains", "the pattern's edges as exact-length chains in the planned state", "chain_garment", "none", "4"),
     ("6", "surfaces", "the garment surface; the structure gate", "chain_garment", "none", "4"),
     ("7", "details", "buttons, braid, frogging, pockets on the surface", None, "none", "6"),
@@ -49,6 +49,8 @@ STEPS = [
     ("10", "export", "game mesh, retopology, skinned to the rig", None, "none", "10"),
 ]
 IDS = [s[0] for s in STEPS]
+# the earlier steps a step reads beyond the one before it (T4: the draft needs step 1's seams AND step 3's measurements)
+READS = {"3": ("1", "2"), "4": ("1", "3")}
 STEP = {s[0]: dict(zip(("id", "key", "what", "tool", "approval", "back_to"), s)) for s in STEPS}
 for _s in STEPS:
     STEP[_s[1]] = STEP[_s[0]]  # (a step by its key too: "draft" == "4")
@@ -235,7 +237,25 @@ def next_step(rec: dict, approved: dict | None = None) -> dict:
 
 def _uses(rec: dict, sid: str) -> dict | None:
     i = IDS.index(sid)
-    return {"step": IDS[i - 1], **rec["steps"][IDS[i - 1]].get("output", {})} if i else None
+    u = {"step": IDS[i - 1], **rec["steps"][IDS[i - 1]].get("output", {})} if i else None
+    if u is not None and READS.get(sid):
+        u["reads"] = {s: rec["steps"][s].get("output", {}) for s in READS[sid] if s != IDS[i - 1]}
+    return u
+
+
+def reads(model: str, garment: str, step) -> dict:
+    """{step: output} of every earlier step this one reads (READS, else the step before it). Refused by name (OrderRefused)
+    when one isn't ready: a step consumes only ready outputs."""
+    sid = _sid(step)
+    rec = load(model, garment)
+    i = IDS.index(sid)
+    want = READS.get(sid) or ((IDS[i - 1],) if i else ())
+    s = states(rec)
+    for w in want:
+        if not s[w]["ready"]:
+            raise OrderRefused(f"{model}:{garment}: step {sid} ({STEP[sid]['key']}) reads step {w} ({STEP[w]['key']}), "
+                               f"which is not ready ({s[w]['status']}{'; ' + s[w]['why'] if s[w]['why'] else ''})")
+    return {w: rec["steps"][w].get("output", {}) for w in want}
 
 
 def _call(rec: dict, sid: str) -> str:

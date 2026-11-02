@@ -130,6 +130,30 @@ bends [{id, on, target {value, unit, of (a ratio's base)} | {is}, source}], pose
 piece with no seam, a target with no source, a state for a closure the inventory lacks. look (default): drawn over the
 reference: seen solid, occluded dashed, inferred dotted, omitted grey, judged rows yellow; saved as the step's look.
 
+### `draft_pattern`
+`draft_pattern(name, garment, design, declarations, options=None, sa=10)`: garment step 4, YOUR OWN pattern (no published
+design, no recipe; src/hifipushie/draft_own.py's docstring is the spec). Needs steps 1 (parts, seams) and 3 (body_tape).
+- design: a FreeSewing 4 ES module. Import blocks and extend them: `import { Design } from '@freesewing/core'`,
+  `import { back, front } from '@freesewing/brian'` (also bent, jaeger, carlton parts; `@freesewing/library`: sleeve,
+  topsleeve, undersleeve). A part: `{ name, from: back, hide: { from: true, inherited: true }, after, measurements,
+  options, draft: ({ points, Point, paths, Path, snippets, Snippet, store, measurements, options, part }) => part }`.
+  Each visible part draws `paths.seam` (the closed sewing line, mm, y down); hide the inherited paths you don't sew.
+  Button marks: `snippets.btn1 = new Snippet('button', point)`. End with `export default new Design({ parts: [...] })`.
+  Measurements are step 3's names (FreeSewing's or your own). Node runs it without network, fs read-only, 60 s; an
+  error comes back as `design.mjs line N: message` with the line.
+- declarations (step 1's names): `pieces` {piece: {"part", "fold": "x0" (cut on the fold at x 0: mirrored points are
+  "<name>.m"), "mirror", "cut", "grain", "place": {"to": "torso" | "arm.L" | "neck", "side", ...}}}; `edges` {piece:
+  {edge: "a>b" | "a>via>b" (outline points) | {"path": a path of the part}}}; `seams` [{"a": "piece:edge" | [chain in
+  order], "b": ..., "ease": [lo, hi] (a over b - 1), "why"}] (every step-1 seam; a seam sewn to several edges is one
+  chain); `stiff` [piece]; `folds` [{"name", "piece", "line": [p, q] | edge, "kind": "press" | "roll"}] (a step-1 seam of
+  kind fold is a fold named like its edge); `closures` [{"name", "kind", "over", "under", "edge": {"over": edge,
+  "under": edge}, "at": [[hole mark, button mark]]}]; `omit` {piece: why} (a built step-1 piece you don't cut).
+  Example: `{"pieces": {"back": {"part": "my.back", "fold": "x0", "place": {"to": "torso", "side": "back"}}}, "edges":
+  {"back": {"side.L": "hem>armhole"}}, "seams": [{"a": "front.L:side", "b": "back:side.L"}]}`.
+- Refused by name (nothing written): a step-1 seam with no drafted edge or not sewn, a piece not in step 1, a built piece
+  not drafted. Else the flat gate: seams (each pair within its declared ease, else +-1 %), cut, sewn, closures (lapped
+  edges within 1 %), truing (info); the sheet labels every seam pair (S<n>); step 4 written; pattern_check re-reads it.
+
 ### `alter_pattern`
 
 `alter_pattern(name, garment, ops, replace=False, note='')`
