@@ -156,6 +156,10 @@ def build_open(b, t0: float) -> None:
     b.stiff_last()
     b.rings()
     b.reads["stiff_open_s"] = round(time.time() - t0, 1)
+    # the first fastened button stays where the open band was tied to it: left free, the soft cloth carried it 10 mm down
+    # and 14 mm out, the fronts' neck-to-button reach ran 12.6 mm past its cut and the plackets tore (T7)
+    b.extra_held = np.zeros(net.n, bool)
+    b.extra_held[list(bv)] = True
     b.soft_net()  # the soft cloth under the open band, fastened only where the plan fastens
     Xs = b.X.copy()
     b.X = b.plackets(Xs)

@@ -1345,6 +1345,10 @@ class GarmentBuild(Build):
             r_ = minimize(lambda q: float(((fold(uv[top], q[0], q[1])[0] - Tgt) ** 2).sum()), best[1:], method="Nelder-Mead",
                           options={"xatol": 1e-3, "fatol": 1e-9})
             al, ph = r_.x
+            # the strip is all the crease folds, and BL past it: a steep crease folds cloth below the button too, and a
+            # strip cut at a fixed height below the button tore there (T7: front.L edge +59 % 14 mm under the button)
+            xr = pv[(uv[pv, 0] >= lo - 1e-5) & (uv[pv, 0] <= hi + 1e-5)]
+            strip = np.union1d(strip, xr[fold(uv[xr], al, ph)[1] > -BL])
             Yt, sdt = fold(uv[top], al, ph)
             res = Tgt - Yt
             o_ = np.argsort(uv[top, 0])
