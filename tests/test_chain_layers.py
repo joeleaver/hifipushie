@@ -10,6 +10,8 @@ import pytest
 
 from types import SimpleNamespace
 
+from scipy.spatial import cKDTree
+
 from hifipushie import chain_garment as cg, chain_layers as cl, chain_press as cpr, garment_plan as gp, server, store
 
 from test_garment_plan import _parts, _read, _style, home  # noqa: F401  (the fixture: a temporary HOME + reference picture)
@@ -256,3 +258,69 @@ def test_plan_layers_option(home):
         gp.write("m", "jacket", "style", dict(_style(), layers={"mode": "full"}), look=False)  # (full needs its reason)
     gp.write("m", "jacket", "style", dict(_style(), layers={"mode": "full", "why": "the jacket comes off"}), look=False)
     assert cpr.mode("m", "jacket")[0] == "full" and cpr.mode("m", "shirt")[0] == "visible"
+
+
+class _PNet(_Net):
+    """_Net with pieces: `piece` per vertex, names in order."""
+
+    def __init__(self, F, n, links, piece, names):
+        super().__init__(F, n, links)
+        self.names, self.piece = names, piece
+        self.verts = lambda p: np.where(self.piece == names.index(p))[0]
+
+
+def _hidden_setup():
+    """Body r 0.10; over r 0.12 open below (a jacket with a hem); under r 0.13, longer, a stiff 'collar' band high up
+    (under the over garment everywhere), 'front' the rest (its tails below the hem seen)."""
+    body = _body()
+    oV, oF = _sphere(0.12, n=20, zmin=-0.3)
+    uV, uF = _sphere(0.13, n=20, zmin=-0.6)
+    collar = (uV[:, 2] > 0.06) & (uV[:, 2] < 0.105)
+    ub = _Under(uV, uF, body, stiff=collar)
+    ub.net = _PNet(uF, len(uV), np.c_[ub.net.link_i, ub.net.link_j], collar.astype(int), ["front", "collar"])
+    ub.net.uv, ub.net.link_L = uV[:, :2], np.linalg.norm(uV[ub.net.link_j] - uV[ub.net.link_i], axis=1)
+    lim = cpr.OuterLimit(oV, oF, body.contact)
+    return body, oV, oF, uV, uF, ub, lim, collar
+
+
+def test_hidden_parts_omitted_before_they_push():
+    """C296: a stiff under collar the over garment hides is omitted at the decision, before the over garment's last
+    solve: it is not in what pushes (T12 pushed the stand out by it, then advised `omit`); the record names the step 1
+    change; the tails below the hem are kept."""
+    from hifipushie import chain_hidden as ch
+    body, oV, oF, uV, uF, ub, lim, collar = _hidden_setup()
+    dec = ch.decide(ub, lim, "shirt", "jacket")
+    assert "collar" in dec["omitted"] and "front" not in dec["omitted"]
+    assert not dec["keep_v"][collar].any() and dec["keep_v"][uV[:, 2] < -0.07].all()
+    assert len(dec["push_F"]) == 0 and '"collar": {"build": "omit"' in dec["record"] and "garment_plan" in dec["record"]
+    # the collider from what pushes: nothing stands off at the collar (T12's stiff layer would have)
+    t12 = cl.LayeredBody(body, [cl.Layer("shirt:stiff", "cloth", uV, cl.outward(uV, uF[collar[uF].all(1)], body.contact),
+                                         0.002, body.contact)], {})
+    near = (body.V[:, 2] > 0.05) & (body.V[:, 2] < 0.09)
+    assert t12.push[near].max() > 0.02
+    stand = [cl.Layer("shirt:stiff", "cloth", uV, cl.outward(uV, dec["push_F"], body.contact), 0.002, body.contact)] \
+        if len(dec["push_F"]) else []
+    assert cl.LayeredBody(body, stand, {}).push.max() == 0.0
+
+
+def test_trimmed_edge_lies_inside_the_cover():
+    """C296: the kept part's cut runs MARGIN into the hidden cloth on a smooth line (smoother than the faces' boundary),
+    every cut point inside the over garment (covered, between its inner side and the body) and held; omitted cloth is
+    not pressed; the kept links keep their lengths."""
+    from hifipushie import chain_hidden as ch
+    body, oV, oF, uV, uF, ub, lim, collar = _hidden_setup()
+    gap_out = cpr.room(0.0003, 0.001)[1]
+    dec = ch.decide(ub, lim, "shirt", "jacket")
+    f = cpr.fit_one(ub, oV, oF, cl.LayeredBody(body, [], {}), "visible", gap_out, decided=dec)
+    X, rd, cut = f["X"], f["read"], f["held"]
+    assert cut.sum() > 10 and rd["cut"]["cut_inside_pct"] == 100.0
+    sd, _ = lim.query(X[cut])
+    assert (sd < 0.5).all() and (sd > gap_out - 0.001).all()
+    assert (body.contact.query(X[cut])[0] > cg.GAP - 0.001).all()
+    seen = ~dec["covered"]
+    dist = cKDTree(uV[seen]).query(X[cut])[0]
+    assert np.median(dist) > 0.5 * ch.MARGIN  # (into the hidden cloth, not at the seen edge)
+    r0, r1 = rd["cut"]["cut_rough_mm"]
+    assert r1 < r0
+    assert np.allclose(X[collar], uV[collar]) and rd["kept_free_worst_pct"] < cg.MAX_FREE_PCT
+    assert rd["omitted"] and "collar" in rd["omitted"]
