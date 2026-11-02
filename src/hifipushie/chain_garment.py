@@ -1443,11 +1443,24 @@ class GarmentBuild(Build):
         k = int(np.argmax(np.where(free, e, -1)))
         c = int(np.where(net.link_of_chain == k)[0][0])
         rep["free_worst_line"] = (f"{net.names[net.chain_piece[c]]} {'fold line' if net.chain_kind[c] else 'edge'} at flat "
-                                  f"({net.uv[net.chain_v[c, 0], 0]:.3f}, {net.uv[net.chain_v[c, 0], 1]:.3f})")
+                                  f"({net.uv[net.chain_v[c, 0], 0]:.3f}, {net.uv[net.chain_v[c, 0], 1]:.3f})"
+                                  + self._near_point(int(net.link_i[k]), net.names[net.chain_piece[c]]))
         over = (l - net.link_L) / np.maximum(net.link_L, 1e-9) * 100
         rep["gathered_links"] = int(both.sum())
         rep["held_longest_over_pct"] = round(float(over[both].max()), 2) if both.any() else 0.0
         return rep
+
+    def _near_point(self, v: int, piece: str) -> str:
+        """(C278) the worst link named by the pattern point nearest it on its piece: flat coordinates alone don't say
+        where to alter_pattern."""
+        net = self.net
+        pts = [(n.split(":", 1)[1], i) for n, i in (net.M.get("points") or {}).items()
+               if isinstance(i, (int, np.integer)) and n.startswith(piece + ":")]
+        if not pts:
+            return ""
+        d = [float(np.linalg.norm(net.uv[i] - net.uv[v])) for _, i in pts]
+        j = int(np.argmin(d))
+        return f", {d[j] * 1000:.0f} mm from {piece}:{pts[j][0]}"
 
     def gate_lengths(self):
         """Lengths have the last word: a free chain link past MAX_FREE_PCT is refused by piece and line."""
