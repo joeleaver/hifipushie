@@ -2,49 +2,50 @@
 
 Joe: "This is how we should build clothes, right here." "that should be the only path available to the agent for starting
 clothing." "We need to get to a point where a blind agent can build a great-lookin piece of clothing without tons of
-iterations or manual feedback."
+iterations or manual feedback." 2026-11-02: "We need a pre-sim judge of the structure." (C279: judge the build, not the hang)
 
 ## What exists
-- `chain_net.py` (general core) and `chain_garment.py` (roles, stages, ZOZO job, worker, render_views): docstrings are the spec.
-- Tools: `chain_garment(name, garment, wear, opening, wait=50, rebuild=False)` is a JOB (chain-first, C275): refusals at once;
-  else it starts the worker (bin/capped, build under resources.heavy BUILD_GB 8) and answers its stage within wait (<= 280 s).
-  Same-argument calls poll, never start a second worker (key = body + this garment + wear); a finished job answers with its
-  numbers; a changed pattern starts anew; rebuild=True starts over; a dead worker reads "failed"; every answer names its next
-  call. `look_chain(name, garment, wear, focus, size, reference, save)` unchanged.
-- `server.GATED_CLOTH` hides the old routes (HIFIPUSHIE_LEGACY_CLOTH=1 restores). Tests: tests/test_chain_garment.py (stub-worker
-  job tests). Dev: /mnt/data/hifipushie/chain_garment/, /mnt/data/hifipushie/chain_first/. Ledger C259-C275.
+- `chain_net.py` (general core), `chain_garment.py` (roles, stages, job worker, render_views), `chain_structure.py` (the
+  pre-sim STRUCTURE gate): docstrings are the spec. THE ORDER now has 7. STRUCTURE before 8. HANG.
+- Tools: `chain_garment(name, garment, wear, opening, wait=50, rebuild=False, waive=None)` is a JOB (C275): refusals at once;
+  else a bin/capped worker builds (resources.heavy 8 GB), writes built.pkl (now with the body's `at`), runs
+  chain_structure.check on the BUILD, then the length gate. A length refusal is answered first (structure rows beside it);
+  a structure FAIL ends "structure_failed": the answer lists each failing row (value, target, source, change:) and names
+  look_chain + the waive call. The hang runs only on PASS / PASS_WAIVED (waive={row id: why}, part of the job key: it rebuilds).
+  `look_chain` shows the BUILD until the structure passed and the hang ended (says "shown: the BUILD (before any hang)").
+- Rows (garment_reads.collar_reads / front_reads + chain_structure extras, through checklist_rows stage "build", verdict by
+  cloth_check.verdict): collar_wear (only if the reading answers collar_state), collar_under_jaw >= 20 mm, collar_tilt 21-41 deg
+  (refs README 31), collar_points_drop 86-128 mm (README 107), collar_points_spread (open: OPEN_SPREAD +-20 %; closed: 0.6-1.1
+  neck widths, INFERRED), collar_leaves_lie p90 <= 10 mm, collar_turned; front_meets >= 0.9, front_edge_straight <= 10 mm;
+  open: v_depth 0.16-0.48 nw (README), v_straight 0.3-0.7; hem_level_lr <= 10 mm, hem_level_fb -40..0 mm; sleeve_length 0-40 mm
+  past the wrist, cuff_ease 20-50 mm. Sources: cloth_refs.json, the folds_ab/refs README numbers, or INFERRED kind defaults
+  (named in each row). The reading (cloth_refs.json) answers no structure item for cf_shirt: every target is a kind default.
+- Tests: tests/test_chain_garment.py (stub-worker: FAIL stops before the hang, PASS hangs + waiver reaches the check, real rows /
+  waiver on stub readings, the answer + look_chain shows the build). Dev: /mnt/data/hifipushie/chain_run2/ (run_check.py,
+  body_at.json, structure_cf_shirt.json, renders build_{closed,open}_{whole,neck}_*.png, sheets sheet_*.png).
 
-## Default shirt: gate + first real tool run (chain-run1, 2026-11-02)
-- Gate: cf_shirt (wf_simon body, main checkout workspace) PASS_WAIVED, 388 s: every row PASS except cuff WAIVED (the two
-  folds_ab/refs collar close-ups don't show a cuff). Refs read with garment_from_reference (choices: shirt_collar, buttons,
-  pockets none, layering none, cotton_shirting, colour #dfe7f4; saved workspace/cf_shirt/cloth_refs.json), passed refs=.
-- Fixed (C278): collar fall cut for a WORN cover (cloth.collar_options: stand + 10 + 2 x 4 roll + 2 turn; KB collarWidth 1.45
-  removed): worn cover 3.1 -> 9.6 mm; flat dim fall_cover now reads the same definition as the gate row; stand 441.2 =
-  neckline 441.2 after the walk. garment_from_reference names pattern_check refs= next; "#rrggbb" colour answers read.
-  chain_garment's length refusal names the nearest pattern point.
-- CLOSED: REFUSED by the tool after the build: front.R's front edge (placketOuterFold, 6-42 mm below placketTopOut / the
-  neck) +2.3..2.7 % vs MAX_FREE_PCT 2.0. Not caused by the collar fix: an A/B with the old fall (model cf_old, worker run
-  directly) refused at 2.337 % on the same line. Not fixed. Build views: workspace/cf_shirt/chain/shirt_closed/.
-- OPEN: built and hung through the tool (5 polls, ~20 min at load 20-66). Chains free worst 0.217 %; threads p99 5.93 %,
-  max 56 %, 4774 / 25458 faces past the cap (the answer doesn't flag it); hang moved p50 9.8 mm, drop -7.5 mm.
-  Views (beside front_open_collar): /mnt/data/hifipushie/chain_run1/look_open_{neck,whole}_{front,three,side,back}.png.
-- Verdict (open, beside the reference): reads as a regular shirt at full figure; the neck is poor. 1. the collar stands as
-  a crumpled funnel round the neck: the points don't fall onto the collarbones (ref: flat leaves, points ~1.7 neck widths
-  apart); 2. the plackets are ragged and torn-looking at the throat, the V narrow; 3. threads past the cap (stretch) in
-  1 in 5 faces; 4. front.L's placket hangs apart at the hem; 5. coarse soft mesh, cuffs flare (known).
+## cf_shirt builds (existing built.pkl, main checkout; no new build, no hang)
+| row | closed | open |
+|---|---|---|
+| collar_under_jaw (mm) | FAIL 12.9 | PASS 41.3 |
+| collar_tilt (deg) | FAIL 9.6 | PASS 22.5 (edge) |
+| collar_points_spread (nw) | FAIL 0.34 (42 mm) | PASS 1.56 |
+| collar_leaves_lie (p90 mm) | FAIL 14.7 | FAIL 27.1 |
+| collar_points_drop / collar_turned | PASS 114.8 / -10.3 | PASS 116.5 / -12.8 |
+| front_meets (share) | FAIL 0.825 | FAIL 0.802 |
+| front_edge_straight (mm) | FAIL 40.2 | FAIL 40.2 |
+| v_depth / v_straight | - | PASS 0.29 / 0.45 |
+| hem_level_lr / hem_level_fb (mm) | FAIL 15.1 / FAIL +15.7 (back higher) | same |
+| sleeve_length (mm past wrist) | FAIL -8.3 | same |
+| cuff_ease (mm) | PASS 41.7 | same |
+Judged by eye beside folds_ab/refs (sheets above): closed = the collar a level tube to the jaw, points together, leaves standing
+off; open = a leaf stands off as a wing; both: the front edge kinks between buttons, the front hem droops at CF and is
+uneven L/R. Every one has a failing row. GAPS (visible, no row): 1. the soft cloth in the build is rough / crumpled (sleeves,
+side seams); 2. the open plackets look ragged at the throat; 3. the hem_level_fb and cuff targets are INFERRED conventions
+(not read off the reference); 4. waiving rebuilds (no resume from built.pkl). Not run: the worker end to end on a real build.
 
-## Known limits (ranked, before this run)
-1. Open: shoulder cloth rides over the collar leaves; collar stands high; plackets ragged at the throat. Closed milder.
-2. Free cloth rises 7-8 mm on average in the hang (not understood). 3. Stiff chains not exact after surfaces. 4. Cuffs
-flare (cut 183 mm vs forearm 200 mm). 5. Soft mesh 20 mm, coarse. 6. No export.
-
-Joe 2026-11-02: "you're running zozo sims and then saying 'everything looked bunched' but that's what's _supposed_ to happen.
-We need a pre-sim judge of the structure." The verdict above judged the HUNG cloth; the collar tube / points not spread are
-already in the build (closed build views). Judge the build, never the hang.
-
-STATE: landed on main (238ba4f3). NEXT (chain run 2): the pre-sim STRUCTURE gate: the job stops at "built", a structure
-check measures the build beside the reference (collar height under the jaw, point spread, leaves lying, V, front edges,
-hem, sleeve / cuff), each failing row naming what to change; the hang refused without its PASS. THEN (run 3): find why the closed build stretches front.R's front edge below the neck (the
-French front's fold line vs the band end / button 1 when closed; same on the old collar), fix it in the draft or the
-build (never MAX_FREE_PCT), rerun chain_garment wear closed through the tool, look_chain beside folds_ab/refs; then the
-open collar funnel and the threads past cap.
+STATE: branch chain-run2, bin/suite exit 0 (fast tier). NEXT (run 3): fix what the rows flag, starting with the closed front.R
+stretch (the length refusal: placketOuterFold 6-42 mm below the neck, +2.3..2.7 % vs 2.0; never MAX_FREE_PCT) and the closed
+collar (under_jaw, tilt, spread, leaves: the BAND stage stands the band upright, the FALL keeps the leaves turned in); then
+front_meets / front_edge_straight / hem rows; rerun chain_garment wear closed through the tool and read its structure rows
+before any hang; add rows for gaps 1-2.
