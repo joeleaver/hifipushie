@@ -176,3 +176,14 @@ tests/test_veg_style.py
 tests/test_veg_sward.py
 tests/test_vegetation.py
 tests/test_view_lighting.py
+# Over 10 s in the fast tier at load ~90, 2026-11-02 (bin/suite's own list); replace on the first --recut.
+tests/test_chinread.py::test_tie_keeps_a_width_from_drifting_with_biased_reads_but_lets_it_follow_the_face
+tests/test_chinread.py::test_tie_row_is_the_part_of_a_measure_the_read_ones_do_not_explain
+tests/test_face_ruler.py::test_a_fitted_camera_costs_the_absolute_sizes
+tests/test_face_ruler.py::test_a_measure_the_pictures_do_not_show_is_not_read
+tests/test_face_shapes.py::test_closed_combos_stay_closed
+tests/test_face_shapes.py::test_gnm_head_shapes
+tests/test_face_shapes.py::test_neutral_sealed
+tests/test_face_shapes.py::test_shapes_on_the_goblin
+tests/test_faceslide.py::test_lip_seal_holds_across_identities
+tests/test_faceslide.py::test_sealed_mouth_has_no_pocket_or_slit_in_the_field
