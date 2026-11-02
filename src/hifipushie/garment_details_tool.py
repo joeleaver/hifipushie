@@ -67,7 +67,7 @@ def marks(rec: dict, M: dict, decl: dict) -> dict:
             elif mc.get("kind") == "zip" and isinstance((dcl.get(mc["name"]) or {}).get("edge"), dict) and \
                     (s1.get("details") or {}).get(det, {}).get("cloth"):
                 e = dcl[mc["name"]]["edge"]
-                m = [{"piece": mc[k], "follows": [f"{mc[k]}:{e[k]}"], "why": f"closure {mc['name']}'s edge"} for k in ("over", "under")]
+                m = {"follows": [f"{mc[k]}:{e[k]}" for k in ("over", "under")], "why": f"closure {mc['name']}'s edges"}
             else:
                 continue
             out.setdefault(det, []).extend(m if isinstance(m, list) else [m])

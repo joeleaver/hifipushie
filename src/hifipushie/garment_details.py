@@ -16,7 +16,8 @@ Mark (step 4, positions only; mm; pattern x right, y up):
   at        [position]: {"point": name, "dx", "dy"} | {"edge": "cf" | "A>B" | "piece:edge", "mm" | "t" (fraction), "in"}
   rows      {"edge", "count", "from_mm" | "from_t", "pitch_mm" | "pitch_t" (of the edge's length) | "to_mm" | "to_t", "in"}
   points    "button*": the piece's named points matching (marks too)
-  follows   ["piece:edge"] (+ "in" mm, default half the width: the strip's outer side on the edge); path [position]
+  follows   ["piece:edge"] (+ "in" mm, default half the width: the strip's outer side on the edge); edges on several
+            pieces in one mark = ONE trim (a binding, a zip's tape); path [position]. A mark (and its mirror) = one run.
   lines     [[[across, along] mm, ...]] and knots [[across, along]] (a motif, at its rows)
   piece, mirror (true: placed again on the .L <-> .R piece by the same names), stiffens (a trim that stiffens its edge:
   declared here so the build can feel it; step 7 adds only the visible geometry), why.
@@ -383,6 +384,10 @@ def place(fl: Flat, name: str, mark, geom: dict, inv: dict, cloth: dict | None =
             raise DetailRefused(f"{name}.kind {kind!r}: one of {', '.join(KINDS)}")
         p0 = _piece(s, inv, name)
         passes = [(p0, s)] + ([(mirror_name(p0), _remap(s, p0, mirror_name(p0)))] if s.get("mirror") else [])
+        fp = list(dict.fromkeys(e.split(":", 1)[0] for e in s.get("follows") or [] if isinstance(e, str) and ":" in e))
+        if kind == "line" and not s.get("piece") and not s.get("path") and len(fp) > 1:
+            passes = [(q, s) for q in fp]  # (one trim across several pieces: a binding, a zip's tape)
+            count -= len(fp) - 1
         for p, t in passes:
             if inv.get("on") and p not in inv["on"]:
                 raise DetailRefused(f"{name} on {p}: the inventory puts it on {', '.join(inv['on'])}")
@@ -419,6 +424,9 @@ def _place_one(fl, name, kind, p, s, inv, cloth) -> tuple:
         if not pos:
             raise DetailRefused("a point detail needs at, rows or points")
         where += [t for _, t in pos if not t.startswith("row ")]
+        if len(pos) > 1 and not s.get("rows"):
+            gap = np.linalg.norm(np.diff(np.array([uv for uv, _ in pos]), axis=0), axis=1) * 1000
+            where.append(f"spacing {', '.join(f'{g:.0f}' for g in gap)} mm")
         return len(pos), [f"{p}: " + "; ".join(where)], [_pt(fl, p, uv, size, thick, shape, t) for uv, t in pos]
     width = _mm(s.get("width_mm"), "width_mm")
     thick = _mm(s.get("thickness_mm", cth if cth else 1.0), "thickness_mm")
