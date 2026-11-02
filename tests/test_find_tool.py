@@ -33,16 +33,17 @@ def test_garment_query_ranks_a_garment_tool():
     assert GARMENT_TOOLS & set(top), top
     top = _ranked("dress a character in a hoodie", 3)
     assert GARMENT_TOOLS & set(top), top
-    # the workflow leads: design before the sim; no other domain's stray word match ("dressed brow")
+    # the workflow leads: the reading and the draft before the build (docs/state/garment_steps.md); no other domain's
+    # stray word match ("dressed brow")
     full = _ranked("dress a character in a hoodie", 10)
-    assert full.index("design_garment") < full.index("chain_garment"), full
+    assert full.index("garment_plan") < full.index("draft_pattern") < full.index("chain_garment"), full
     assert set(full[:4]) <= GARMENT_TOOLS, full
-    assert server.find_tool("dress a character in a hoodie").startswith("Clothes: design_garment")
+    assert server.find_tool("dress a character in a hoodie").startswith("Clothes: garment_plan")
     assert _ranked("groom hair")[0] == "groom_hair"
 
 
 def test_find_tool_gives_params_and_an_example():
-    text = server.find_tool("fit garment on the body", 3)
+    text = server.find_tool("fit garment on the body", 5)  # (the workflow leads: plan, tape, draft, then the build)
     assert "chain_garment" in text and "params: name: str, garment: str" in text, text
     assert 'call_tool(name="chain_garment", args={"name": "...", "garment": "..."})' in text, text
     assert server.find_tool("put a model", 3)  # core tools are found too (shown as native calls)

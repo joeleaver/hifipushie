@@ -42,9 +42,10 @@ plants, clutter) runs through call_tool(name, args): find_tool("what you want to
 parameters and an example call; find_tool("") lists every tool by domain. Domains have a guide topic (hair,
 cloth, cloth_reference, skin, human, block_in, likeness, terrain, vegetation, clutter): read it before working there.
 A person's head from pictures: the artist block-in (guide topic block_in) is the default.
-Clothes: design_garment -> pattern_check (the flat gate) -> chain_garment (the only way a garment is started: built from
-the pattern's own lengths, then hung) -> look_chain beside the reference. Never tune anything: wear is the only choice; a
-fault is fixed on the pattern (alter_pattern) and re-checked. guide(topic="cloth").
+Clothes: garment_plan (read, parts, style plan) -> body_tape -> draft_pattern (your own FreeSewing design; its flat gate)
+-> chain_garment (the only way a garment is built: the pattern's own lengths, in the planned state) -> garment_details ->
+look_chain beside the reference -> export_garment. garment_record shows every step. Never tune anything; a fault is fixed
+where its step says. guide(topic="cloth").
 Judge every result beside its reference before forwarding it; reviews are review_view, ONE view per call. Tool texts
 end with "next:": do what it says. Traps: guide(topic="traps"). Terrain tools may return questions for the designer:
 ask them, don't answer them yourself.
@@ -157,10 +158,10 @@ TOOL_GROUPS: dict[str, dict] = {
                          "(loose, short) -> look_hair -> export_asset ships the character (export_hair: the hair alone)",
              "steps": ["hair_from_reference", "tie_hair", "groom_hair", "look_hair", "export_hair"],
              "tools": ["groom_hair", "tie_hair", "look_hair", "hair_reference", "hair_from_reference", "export_hair"]},
-    "cloth": {"workflow": "Clothes: garment_plan (read, parts, style) -> body_tape -> draft_pattern (your own FreeSewing design) -> pattern_check (the flat gate) -> chain_garment (the only way a garment "
-                          "is started) -> look_chain beside the reference; a fault is fixed on the pattern (alter_pattern)",
+    "cloth": {"workflow": "Clothes: garment_plan (read, parts, style) -> body_tape -> draft_pattern (your own FreeSewing design + its flat gate) -> chain_garment (the only way a garment "
+                          "is built) -> garment_details -> look_chain beside the reference -> export_garment; garment_record shows every step",
               # the workflow's order (find_tool ranks a matched domain's early steps first)
-              "steps": ["garment_plan", "body_tape", "draft_pattern", "pattern_check", "chain_garment", "look_chain"],
+              "steps": ["garment_plan", "body_tape", "draft_pattern", "chain_garment", "garment_details", "look_chain", "export_garment"],
               "about": "garments: design, pattern, the pattern gate, alterations, the chain build (the only start), references",
               "tools": ["garment_plan", "draft_pattern", "garment_details", "export_garment", "design_garment", "look_pattern", "alter_pattern", "pattern_check", "chain_garment", "look_chain",
                         "garment_record", "body_tape", "garment_reference", "garment_from_reference", "garment_reference_brief"]},
@@ -361,7 +362,7 @@ def guide(topic: str = "") -> str:
 
 _CHAIN_GUIDE = """# Clothes: the one path
 
-design_garment -> pattern_check -> chain_garment -> look_chain. There is no other way to start a garment. Every edge, seam,
+garment_plan (read, parts, style) -> body_tape -> draft_pattern -> chain_garment -> garment_details -> look_chain -> export_garment. There is no other way to start a garment. Every edge, seam,
 hem, fold and roll line is a chain at its exact cut length, sewn points are one node, and only bends are free: stiff parts
 (band, collar, cuffs, plackets) are built first from the pattern's interfacing and hold their own shape; the soft cloth
 hangs from them under gravity; lengths have the last word. Your choices are the DESIGN (the pattern) and the WEAR ("closed",
@@ -564,9 +565,10 @@ def find_tool(query: str = "", limit: int = 5) -> str:
         if steps:
             flow = TOOL_GROUPS[g]["workflow"] + f' (guide(topic="{g}")).\n'
             for t in TOOL_GROUPS[g]["tools"]:
-                if scores.get(t, 0) > 0 or t in steps:
-                    scores[t] = scores.get(t, 0) + top * (1 + (len(steps) - steps.index(t)) / len(steps)
-                                                          if t in steps else 0.5)
+                if t in steps:  # strictly in the workflow's order: a step's own word match can't jump an earlier step
+                    scores[t] = top * (2 + len(steps) - steps.index(t))
+                elif scores.get(t, 0) > 0:
+                    scores[t] = scores[t] + top * 0.5
     named = query.strip().lower().replace(" ", "_")  # a query that IS a tool's name gets that tool first
     ranked = sorted(((sc, t) for t, sc in scores.items()), key=lambda x: (x[1] != named, -x[0], x[1]))
     ranked = [(sc, t) for sc, t in ranked if sc > 0][:max(1, int(limit))]
@@ -603,7 +605,7 @@ async def call_tool(name: str, args: dict | None = None, ctx: Context | None = N
     import difflib
     from pydantic import ValidationError
     if name in _GATED:
-        raise ValueError(f"{name} is not available: garments start with chain_garment (design_garment -> pattern_check -> "
+        raise ValueError(f"{name} is not available: garments start with garment_plan (garment_plan -> body_tape -> draft_pattern -> "
                          "chain_garment -> look_chain); find_tool(\"make a garment\") shows the steps")
     if name not in _TOOLS or name == "call_tool":
         near = difflib.get_close_matches(name, list(_TOOLS), n=3)
