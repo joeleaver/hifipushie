@@ -123,6 +123,16 @@ def skin(spec: dict, rb: list[dict], V: np.ndarray, T: np.ndarray, h: float, smo
     smooth=False: the projection alone (the body's own mesh)."""
     from . import rig, rig_template
     Wq, Tq, ref, spread = body_field(spec, rb)
+    D, info = transfer(Wq, Tq, ref, V, T, h, smooth)
+    J, W = rig_template.top_k(D)
+    if spread:
+        J, W = rig._spread_twist(rb, V, J, W)
+    return np.asarray(J), np.asarray(W, float), info
+
+
+def transfer(Wq, Tq, ref, V, T, h: float, smooth: bool = True):
+    """(dense weights, info): the body's (Wq, Tq, ref) at each vertex's projected point, smoothed over (V, T)."""
+    from . import rig_template
     V = np.asarray(V, float)
     D = rig_template.from_surface(Wq, Tq, ref, V, None)
     off = cKDTree(Wq).query(V)[0]
@@ -132,10 +142,7 @@ def skin(spec: dict, rb: list[dict], V: np.ndarray, T: np.ndarray, h: float, smo
         r = geo_radius(h, sp)
         D = geodesic_smooth(V, T, D, r)
         info["geo_radius_m"] = round(r, 4)
-    J, W = rig_template.top_k(D)
-    if spread:
-        J, W = rig._spread_twist(rb, V, J, W)
-    return np.asarray(J), np.asarray(W, float), info
+    return D, info
 
 
 # ---------------------------------------------------------------- the poses
@@ -282,7 +289,7 @@ def deformation(rb, gV, gT, gJ, gW, bV, bT, bJ, bW, pose_set: dict | None = None
         xc = dc - np.maximum(gc[E2[:, 0]], gc[E2[:, 1]])
         new = (th0 <= climit) & (th1 > climit) & (xc > 0)  # a NEW crease past every rest fold, more than the skin's
         moved = np.linalg.norm(P - Vw, axis=1) > 0.005
-        me, me2 = moved[E].any(1), moved[E2].any(1)
+        me, me2 = moved[E].any(1), moved[Tw[F2].reshape(len(F2), -1)].any(1)  # (a hinge edge itself stays put)
         xs_m, xc_m = xs[me], xc[me2]
         sp = float(np.percentile(xs_m, STRAIN_Q)) if len(xs_m) else 0.0
         smax = float(xs_m.max()) if len(xs_m) else 0.0

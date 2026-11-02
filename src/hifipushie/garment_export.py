@@ -36,11 +36,8 @@ MADE_MIN_ROWS = gg.MADE_MIN_ROWS  # a stiff piece keeps this many rows across it
 BUDGET_FILL = 0.92  # aim for this share of the budget (the count isn't exactly predictable from h)
 ROLE = "main_npc"
 PART = "clothing"
-ARM_BONE, ARM_TURN = "LeftArm", ([0.0, -1.0, 0.0], 45.0)  # the weight check: the left arm raised 45 deg (abduction)
-STRETCH_TOL = (0.10, 0.03)  # vs the drape's own stretch (its compression at gathers is the build's / hang's, steps
-# 5 / 8): the game mesh may compress up to 0.10 more at p5 (its chords span folds the grid can't hold: a normal bake
-# carries those) but never stretch past the drape's p95 + 0.03 (texture stretched beyond the cut = a mapping fault)
-DRIFT_OK = 0.012  # m: p95 change of a garment vertex's distance to the body where the body moved > 1 cm
+# UV stretch row: INFORMATIONAL (T11b). T11 set its limits after seeing the numbers and widened them once to pass; no
+# named tolerance exists (budgets.json gives texel densities per role, not a stretch tolerance), so it gates nothing.
 
 
 class ExportRefused(ValueError):
@@ -179,27 +176,11 @@ def bone_index(rb: list[dict], short: str) -> int:
 
 
 def skin(spec: dict, rb: list[dict], V: np.ndarray, T: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """(J, W) for the garment read off the body (rig.skin_parts: the part isn't the skin, so it takes the base's)."""
+    """T11's weights (the old route, kept for comparison): rig.skin_parts' transfer, not smoothed over the cloth.
+    The export uses garment_bend.skin (projected + geodesic)."""
     from . import rig
     return rig.skin_parts(spec, rb, {"garment_export_probe": (np.asarray(V, float), np.asarray(T, np.int64))},
                           smooth=3)["garment_export_probe"]
-
-
-def weight_check(rb, gV, gJ, gW, bV, bJ, bW, turn=None) -> dict:
-    """The garment posed with its weights vs the body posed with its own: for each garment vertex, its distance to
-    its nearest body vertex at rest and posed; over the vertices whose body vertex moved > 1 cm, the change's p50 /
-    p95 (m) and how many moved. A sleeve that follows the arm changes by millimetres."""
-    from . import rig
-    turn = turn or {rb[bone_index(rb, ARM_BONE)]["name"]: ARM_TURN}
-    gP, bP = rig.pose(rb, gV, gJ, gW, turn), rig.pose(rb, bV, bJ, bW, turn)
-    d0, k = cKDTree(bV).query(gV)
-    d1 = np.linalg.norm(gP - bP[k], axis=1)
-    moved = np.linalg.norm(bP[k] - bV[k], axis=1) > 0.01
-    ch = np.abs(d1 - d0)[moved]
-    q = np.percentile(ch, [50, 95]) if len(ch) else [0.0, 0.0]
-    return {"bone": list(turn)[0], "deg": float(list(turn.values())[0][1]), "moved_vertices": int(moved.sum()),
-            "p50_m": round(float(q[0]), 4), "p95_m": round(float(q[1]), 4), "ok": bool(len(ch) and q[1] <= DRIFT_OK),
-            "posed_garment": gP, "posed_body": bP}
 
 
 def details_of(d: Path, hung: bool) -> dict:
@@ -221,29 +202,35 @@ def hex_rgb(c) -> list:
     return [0.8, 0.8, 0.8]
 
 
-def text(model, garment, src, g, n_details, budget, role, tries, st, wc, glb, sd) -> list[str]:
+def text(model, garment, src, g, n_details, budget, role, tries, st, bend, glb, sd, winfo) -> list[str]:
+    from . import garment_bend as gb
     tot = len(g["T"]) + n_details
+    o = g["outer"]
     return [f"{model}:{garment} export (step 10) from the {src}: {glb}",
             f"  triangles {tot} / budget {budget} ({role} {PART} LOD0): garment {len(g['T'])} (outer {g['outer_faces']}, "
             f"inner {g['inner_faces']}, rims {g['rim_faces']}) + details {n_details}; grid {g['h'] * 1000:.0f} mm "
-            f"(tries {', '.join(f'{h * 1000:.0f} mm: {n}' for h, n in tries)}); stiff pieces to {MADE_MIN_ROWS} rows",
+            f"(tries {', '.join(f'{h * 1000:.0f} mm: {n}' for h, n in tries)}); stiff pieces to {MADE_MIN_ROWS} rows; "
+            f"loops: quad share {o.get('quad_share', 0):.2f}",
             f"  UVs = the pattern ({len(g['pieces'])} pieces packed, square {g['side']:.2f} m); stretch 3D / pattern "
-            f"p5 {st['p5']} p50 {st['p50']} p95 {st['p95']} max {st['max']} (the drape's own: p5 {sd['p5']} p95 {sd['p95']}); open pattern edges {g['missing_boundary_edges']}",
-            f"  weights read off the body; check: {wc['bone']} {wc['deg']:.0f} deg: distance to the body changes p50 "
-            f"{wc['p50_m'] * 1000:.1f} mm p95 {wc['p95_m'] * 1000:.1f} mm over {wc['moved_vertices']} moving vertices "
-            f"({'follows' if wc['ok'] else 'DOES NOT follow'}: limit {DRIFT_OK * 1000:.0f} mm)"]
+            f"p5 {st['p5']} p50 {st['p50']} p95 {st['p95']} max {st['max']} (the drape's own: p5 {sd['p5']} p95 {sd['p95']}; "
+            f"informational: no named limit); open pattern edges {g['missing_boundary_edges']}",
+            f"  weights: the body's at each vertex's projected skin point, smoothed over the garment within "
+            f"{winfo.get('geo_radius_m', 0) * 100:.1f} cm (stand-off p95 {winfo['standoff_p95_m'] * 100:.1f} cm)"] + gb.rows_text(bend)
 
 
-def gate_rows(g, n_details, budget, st, wc, sd) -> list[dict]:
+def gate_rows(g, n_details, budget, st, bend, sd) -> list[dict]:
     tot = len(g["T"]) + n_details
-    ok = st["p5"] >= sd["p5"] - STRETCH_TOL[0] and st["p95"] <= sd["p95"] + STRETCH_TOL[1]
-    return [{"row": "triangles", "status": "PASS" if tot <= budget else "FAIL", "value": tot, "target": budget},
-            {"row": "uv stretch vs the drape", "status": "PASS" if ok else "FAIL", "value": [st["p5"], st["p95"]],
-             "target": f"p5 >= drape {sd['p5']} - {STRETCH_TOL[0]}, p95 <= drape {sd['p95']} + {STRETCH_TOL[1]}"},
+    rows = [{"row": "triangles", "status": "PASS" if tot <= budget else "FAIL", "value": tot, "target": budget},
+            {"row": "uv stretch vs the drape (informational)", "status": "INFO", "value": [st["p5"], st["p95"]],
+             "target": f"the drape's p5 {sd['p5']} p95 {sd['p95']}: no named limit"},
             {"row": "open pattern edges", "status": "PASS" if g["missing_boundary_edges"] == 0 else "FAIL",
-             "value": g["missing_boundary_edges"], "target": 0},
-            {"row": "weights follow the arm", "status": "PASS" if wc["ok"] else "FAIL", "value": wc["p95_m"],
-             "target": DRIFT_OK}]
+             "value": g["missing_boundary_edges"], "target": 0}]
+    L = bend["limits"]
+    for pn, r in bend["poses"].items():
+        rows.append({"row": f"bends cleanly: {pn}", "status": "PASS" if r["ok"] else "FAIL",
+                     "value": {"strain_p99": r["strain_p99"], "new_creases": r["new_creases"], "where": r["crease_where"]},
+                     "target": f"strain over the skin's p99 <= {L['strain_p99']}; no new crease past {L['crease_deg']} deg"})
+    return rows
 
 
 def budget_for(role: str) -> int:

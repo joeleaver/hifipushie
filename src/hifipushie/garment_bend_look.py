@@ -8,7 +8,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
-from PIL import Image, ImageDraw
 
 SKIN = [0.85, 0.69, 0.55]
 SIZE = 640  # px per panel
@@ -41,29 +40,24 @@ def cameras(rb, turns: dict, bent: bool) -> list[dict]:
     return cams
 
 
+BARE_OFFSET = np.array([1.5, 0.0, 0.0])  # m: the bare body stands this far beside the dressed one (one Blender run)
+
+
 def render(meshes_posed: list[dict], body_posed: dict, cams: list[dict], out: Path, tag: str) -> Path:
-    """Two rows: the garment on the body, the bare body; one column per camera. Returns the sheet."""
+    """Two rows: the garment on the body, the bare body (the same cameras, shifted with it); one GLB, one run."""
     from . import asset, resources
     from . import garment_glb as glbw
     out.mkdir(parents=True, exist_ok=True)
-    rows = []
+    bare = dict(body_posed, name="bare", V=body_posed["V"] + BARE_OFFSET)
+    ms = [body_posed] + meshes_posed + [bare]
+    G = np.vstack([m["V"] for m in ms])
+    glb = glbw.write(out / f"bend_{tag}.glb", tag, ms, None, frame=[G.min(0).tolist(), G.max(0).tolist()])
+    cams2 = cams + [dict(c, name=c["name"] + " (bare)", eye=(np.asarray(c["eye"]) + BARE_OFFSET).tolist(),
+                         target=(np.asarray(c["target"]) + BARE_OFFSET).tolist()) for c in cams]
     with resources.heavy(f"export_garment bend look {tag}", gb=4, gpu=True):
-        for k, ms in (("dressed", [body_posed] + meshes_posed), ("bare", [body_posed])):
-            G = np.vstack([m["V"] for m in ms])
-            glb = glbw.write(out / f"bend_{tag}_{k}.glb", k, ms, None, frame=[G.min(0).tolist(), G.max(0).tolist()])
-            im = asset.preview(glb, [], size=SIZE, cameras=cams)
-            p = out / f"bend_{tag}_{k}.png"
-            im.save(p)
-            rows.append(Image.open(p).convert("RGB"))
-    w = max(r.size[0] for r in rows)
-    sheet = Image.new("RGB", (w, sum(r.size[1] for r in rows) + 30), "white")
-    ImageDraw.Draw(sheet).text((8, 8), f"{tag}: top = garment on the body, bottom = the bare body (same cameras)", fill="black")
-    y = 30
-    for r in rows:
-        sheet.paste(r, (0, y))
-        y += r.size[1]
+        im = asset.preview(glb, [], size=SIZE, cameras=cams2)
     p = out / f"bend_{tag}.png"
-    sheet.save(p)
+    im.save(p)
     return p
 
 
