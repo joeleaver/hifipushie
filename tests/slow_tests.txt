@@ -58,6 +58,16 @@ tests/test_snags.py::test_snags
 tests/test_streams.py::test_lake_shore_and_beach
 tests/test_streams.py::test_swatches_and_styles
 tests/test_streams.py::test_zone_and_layers
+# Module fixtures past the sweep's limit (a terrain build per file): the whole file, or marking one test moves the cost.
+tests/test_falls.py
+tests/test_level_look.py
+tests/test_streams.py
+tests/test_tiles.py
+tests/test_snags.py
+tests/test_corridors.py
+tests/test_caves_early.py
+tests/test_caves_walkable.py
+tests/test_river_cut.py
 # not measured yet:
 tests/test_artist.py
 tests/test_artist_setup.py

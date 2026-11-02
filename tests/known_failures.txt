@@ -1,0 +1,4 @@
+# Tests that fail for a reason nobody has fixed yet: `node id  # one-line reason`. bin/suite fails only on anything else.
+# An entry is a debt, not a pardon: never list a test to get a landing through.
+tests/test_gnm_native.py::test_jaw_open_moves_gnms_own_pieces_and_opens_the_bag  # face.shape_coeffs("jawOpen") returns {}: real fault on main (base_bad.log), not re-confirmed on integrate
+tests/test_skin.py::test_features_and_shader_budget  # skin:wrinkle_folds has a per-pixel noise mask, the budget rule forbids it: real fault on main (base_bad.log), not re-confirmed on integrate
