@@ -149,7 +149,11 @@ TOOL_GROUPS: dict[str, dict] = {
     "likeness": {"about": "matching a real person's face and look from reference pictures",
                  "tools": ["likeness", "fit_likeness", "likeness_points", "character_read", "project_reference",
                            "texture_from_reference", "reference_brief", "check_references"]},
-    "hair": {"about": "hair as curve locks: groom, look, reference, export", "tools": ["groom_hair", "tie_hair", "look_hair", "hair_reference", "hair_from_reference", "export_hair"]},
+    "hair": {"about": "hair: strand grooms, tied styles, stylised locks, look, reference, export",
+             "workflow": "Hair: describe it in words -> hair_from_reference (the start) -> tie_hair (tied) or groom_hair "
+                         "(loose, short) -> look_hair -> export_asset ships the character (export_hair: the hair alone)",
+             "steps": ["hair_from_reference", "tie_hair", "groom_hair", "look_hair", "export_hair"],
+             "tools": ["groom_hair", "tie_hair", "look_hair", "hair_reference", "hair_from_reference", "export_hair"]},
     "cloth": {"workflow": "Clothes: design_garment -> pattern_check (the flat gate) -> chain_garment (the only way a garment "
                           "is started) -> look_chain beside the reference; a fault is fixed on the pattern (alter_pattern)",
               # the workflow's order (find_tool ranks a matched domain's early steps first)
@@ -557,7 +561,8 @@ def find_tool(query: str = "", limit: int = 5) -> str:
                 if scores.get(t, 0) > 0 or t in steps:
                     scores[t] = scores.get(t, 0) + top * (1 + (len(steps) - steps.index(t)) / len(steps)
                                                           if t in steps else 0.5)
-    ranked = sorted(((sc, t) for t, sc in scores.items()), key=lambda x: (-x[0], x[1]))
+    named = query.strip().lower().replace(" ", "_")  # a query that IS a tool's name gets that tool first
+    ranked = sorted(((sc, t) for t, sc in scores.items()), key=lambda x: (x[1] != named, -x[0], x[1]))
     ranked = [(sc, t) for sc, t in ranked if sc > 0][:max(1, int(limit))]
     if not ranked:
         return f"no tool matches {query!r}: find_tool(\"\") lists every tool by domain."
@@ -1472,11 +1477,12 @@ def _hair_gates(look) -> str:
 def groom_hair(name: str, groom: dict | None = None, replace: bool = False, stage: str | None = None,
                note: str = "", style: str | None = None, strands: dict | None = None, look: dict | None = None,
                fuller: dict | None = None, trim: dict | list | None = None):
-    """Grow the hair's curve locks from spec.hair.groom and save. groom: a patch (hairline, parting, volume, length,
-    flow, tiers, drawn clumps, tie, loose ...); replace regrows all; stage "mass"|"locks"; style
-    "locks"|"strands"|"cards"; strands / look: strand dials and material; fuller {region: m} and trim reshape
-    existing locks. Then look_hair. Details: guide(topic="groom_hair")."""
-    from . import hair
+    """Grow the hair from spec.hair.groom and save. groom: a patch (hairline, parting, volume, length, flow, tiers,
+    drawn clumps, tie, loose ...); replace regrows all; stage "mass"|"locks"; style "strands" (realistic; the default
+    on a model with `base`) | "locks" (solid, stylised); strands / look: strand dials and material; fuller {region: m}
+    and trim reshape existing locks. Then look_hair. Details: guide(topic="groom_hair")."""
+    from . import hair, hair_route
+    hair_route.check_style_arg(style)
     if style is not None or strands or look:
         sp = store.load(name)
         h = sp.setdefault("hair", {})
@@ -1505,14 +1511,15 @@ def groom_hair(name: str, groom: dict | None = None, replace: bool = False, stag
             shaped += f"trim {t_}: {rep['cut']} locks cut, {rep['untouched']} untouched, too short to cut {rep['too_short']}\n"
         v = store.save(name, sp, note or "hair: fuller / trim")
         if not (groom or replace or stage):
-            return shaped + f"saved {name} v{v}\n{_hair_counts(sp)}"
+            return shaped + f"saved {name} v{v}\n{_hair_counts(sp)}\n" + hair_route.groom_next(name, sp)
     r = hair.groom(name, replace=replace, note=note, patch=_spec_arg(groom) if groom else None, stage=stage)
     spec = store.load(name)
     return (shaped + f"saved {name} v{r['version']}: grew " + (", ".join(f"{t} {n}" for t, n in r["grown"].items()) or "nothing")
             + f"; kept {len(r['kept'])} hand/edited locks" + (f" ({', '.join(r['kept'][:12])}{'...' if len(r['kept']) > 12 else ''})" if r["kept"] else "")
             + (f"; {len(r['not_regrown'])} names not regrown (deleted in Blender: hair.removed; replace=True "
                f"forgets them)" if r["not_regrown"] else "")
-            + f"\n{_hair_counts(spec)}; stage {(spec.get('hair') or {}).get('stage', 'locks')}")
+            + f"\n{_hair_counts(spec)}; style {(spec.get('hair') or {}).get('style', 'locks')}; "
+              f"stage {(spec.get('hair') or {}).get('stage', 'locks')}\n" + hair_route.groom_next(name, spec))
 
 
 @mcp.tool(structured_output=False)
@@ -1567,7 +1574,7 @@ def look_hair(name: str, views: list[str] | None = None, size: int = 480, clay: 
     tier (game cards) + debug, engine "cycles", size, save, stage (a model with the same head whose scene is used),
     measure {"view": "ref2", "mask": png, "tie": [x, y], "colour": true} (outline / tail / colour against that
     picture). Needs `sync` once (of the model or its stage). Details: guide(topic="look_hair")."""
-    from . import hair
+    from . import hair, hair_route
     views = list(views) if views else ["front", "three_quarter", "side", "back", "top"]
     if "around" in views:  # every side, with the bust (hair that hangs): the angles a front-tuned groom is wrong from
         i = views.index("around")
@@ -1588,6 +1595,7 @@ def look_hair(name: str, views: list[str] | None = None, size: int = 480, clay: 
         raise ValueError(f"{name} has no hair: groom_hair(name, groom={{...}}) grows it")
     out = []
     text = _hair_counts(spec)
+    stored = spec
     if tier is not None:
         if tier not in hair.CARD_TIERS:
             raise ValueError(f"tier is one of {', '.join(hair.CARD_TIERS)}")
@@ -1643,16 +1651,16 @@ def look_hair(name: str, views: list[str] | None = None, size: int = 480, clay: 
             p = Path(save).expanduser()
             lp = str(p.with_name(p.stem + "_layout" + (p.suffix or ".png"))) if not only_layout else save
         out.append(_out(lay, lp))
-    return [*out, text]
+    return [*out, text + "\n" + hair_route.look_next(name, stored, tier)]
 
 
 @mcp.tool(structured_output=False)
 def export_hair(name: str, out_dir: str, tiers: list[str] | None = None, groom: bool = True, check: bool = True,
                 save: str | None = None):
-    """The hair alone, game-ready, from a strand groom: a GLB per tier (hero/main/npc/far cards, one atlas) into
-    out_dir; groom=True also writes Alembic/USD strands; check=True judges the re-imported cards. tiers, save.
-    Details: guide(topic="export_hair")."""
-    from . import hair
+    """The hair ALONE, game-ready, from a strand groom (export_asset ships the character with its hair): a GLB per tier
+    into out_dir, one atlas. tiers: default main, npc, far; add "hero" for a close camera. groom=True also writes
+    Alembic/USD strands; check=True judges the re-imported cards. save. Details: guide(topic="export_hair")."""
+    from . import hair, hair_route
     spec = store.load(name)
     if (spec.get("hair") or {}).get("style") != "strands":
         raise ValueError(f"{name}'s hair style is {(spec.get('hair') or {}).get('style', 'locks')!r}: export_hair cuts "
@@ -1672,7 +1680,7 @@ def export_hair(name: str, out_dir: str, tiers: list[str] | None = None, groom: 
     if save and check:
         from PIL import Image as _I
         out.append(_png(_I.open(save)))
-    return [*out, "\n".join(lines)]
+    return [*out, "\n".join([*lines, hair_route.export_next(name, out_dir, tiers)])]
 
 
 @mcp.tool(structured_output=False)
@@ -1684,25 +1692,28 @@ def hair_from_reference(name: str, out: str = "", read_only: bool = False, autho
     read_only: the read alone. out: groom a copy. authority: the colour view (default the most frontal). compare
     {view index: render png through that fitted camera}: the same read on our renders, ours | picture.
     Details: guide(topic="hair_from_reference")."""
-    from . import hair_read
+    from . import hair_read, hair_route
     if compare:
         c = hair_read.compare(name, {int(k): v for k, v in _spec_arg(compare).items()}, authority=authority)
         st = hair_read.colour_step(c, (store.load(name).get("hair") or {}).get("look") or {})
-        return c["text"] + ("\ncolour step (authority view): " + st["why"] if st.get("why") else "")
+        return (c["text"] + ("\ncolour step (authority view): " + st["why"] if st.get("why") else "") + "\n"
+                + hair_route.compare_next(name))
     if read_only:
         r = hair_read.read(name, authority=authority, log=lambda s: None)
-        return r["text"] + "\n" + hair_read.start(r, store.load(name))["text"] + "\n(read only: nothing saved)"
-    return hair_read.apply(name, out=out or None, authority=authority, seed=seed, log=lambda s: None)["text"]
+        return r["text"] + "\n" + hair_read.start(r, store.load(name))["text"] + "\n(read only: nothing saved)\n" \
+            + hair_route.reader_next(name, out, True)
+    return (hair_read.apply(name, out=out or None, authority=authority, seed=seed, log=lambda s: None)["text"] + "\n"
+            + hair_route.reader_next(name, out, False))
 
 
 @mcp.tool(structured_output=False)
 def hair_reference(name: str, trace: dict | None = None, image_path: str | None = None, apply: bool = False,
                    widen: float = 1.8, save: str | None = None):
-    """Match the hair to a reference picture: store a trace (landmarks, part, hairline, hair outline, clumps in image
-    px), fit the camera to the face; apply=True carries the trace onto the groom (widen scales clump widths).
-    image_path, save. Details: guide(topic="hair_reference")."""
+    """An optional finer fit after hair_from_reference, by hand: store a trace of a reference picture (landmarks, part,
+    hairline, hair outline, clumps in image px), fit the camera to the face; apply=True carries the trace onto the
+    groom (widen scales clump widths). image_path, save. Details: guide(topic="hair_reference")."""
     from PIL import Image as PI
-    from . import hair
+    from . import hair, hair_route
     d = store._dir(name)
     if not (d / "spec.json").exists():
         raise ValueError(f"no model {name!r}")
@@ -1785,8 +1796,8 @@ def hair_reference(name: str, trace: dict | None = None, image_path: str | None 
         dr = patch["groom"]["drawn"]
         text.append(f"saved v{v}: groom parting.line ({len(patch['groom']['parting']['line'])} points, side "
                     f"{patch['groom']['parting']['side']}), hairline.front_points, {len(dr)} drawn clumps "
-                    f"({', '.join(c['name'] for c in dr)}). Next: groom_hair, then look_hair.")
-    return [_out(hair.trace_image(name), save), "\n".join(text)]
+                    f"({', '.join(c['name'] for c in dr)}).")
+    return [_out(hair.trace_image(name), save), "\n".join([*text, hair_route.reference_next(name, apply)])]
 
 
 # ---------------------------------------------------------------- cloth

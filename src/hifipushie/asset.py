@@ -3084,6 +3084,10 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
     if (spec.get("hair") or {}).get("locks"):  # curve locks (hair.py): meshed and baked in Blender, their own atlas
         from . import hair as hairmod
         spec = hair_tier_default(spec, role, log)
+        from . import hair_route
+        hw_ = hair_route.head_warning(name, spec)
+        if hw_:
+            log.append(hw_)
         hp = hairmod.export_part(name, out_dir, spec, texture=min(texture, 2048), log=log)
         if hp is not None:
             hpart, hfiles = hp

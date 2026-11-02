@@ -123,6 +123,12 @@ bin/ = the repo's bin/ (review, review-ab, approve, capped, slot, hooks; /mnt/da
 | A10 | Hair constants are module constants, not spec keys: exports must set them through one script | docs/state/garrett_export.md ("export only through sh4t.py"); HP_FS_SET env | DOC. CHECK-PLANNED: the export writes every non-default hair module constant into its report; the A/B'd build's constants must match |
 | A11 | `hair_clumps.FILL` is the BAKE's packing share (0.82), not the arch fill (ARCH_FILL) | hair_clumps.py comment at ARCH_FILL | DOC. Found today: Tess RC rc2n's HP_FS_SET and hair-cards r45a's hk.FILL=1 set FILL = 1.0 (packing share), not the arch fill. CHECK-PLANNED: HP_FS_SET warns on FILL; rename it BAKE_FILL |
 | A12 | Measures must measure the visible fault (laygeo proxy angle lied: 20 deg vs 56 rendered) | hair.md:3197 LESSONS | DOC |
+| A13 | A realistic human's first groom is strands; only a stored style or an already grown solid groom stays locks (solid on a `base` warns) | hair_route.default_style, style_warning; tests/test_hair_route.py | TOOL |
+| A14 | `hair.export` keys are a closed list: a typo used to pass and silently build cards | hair_route.check_export (hair.validate) | TOOL |
+| A15 | Cards are cut, never groomed: `groom_hair(style="cards")` is refused, look_hair(tier=...) and the exports make them | hair_route.check_style_arg | TOOL |
+| A16 | Every hair tool ends with one `next:` and find_tool("hair") leads with the path; export_asset ships, export_hair is the hair alone | hair_route.*_next, TOOL_GROUPS hair steps | TOOL |
+| A17 | Short cuts ship as shells: `hair.export.style "shells"`; groom_hair says so on a short cut, and shells on a long groom warn (look not promoted: defaults still cards, blocker 2) | hair_route.groom_next, shells_warning, hair_short.md | TOOL, partial |
+| A18 | A groom stores its head (`hair.head`); look, groom and both exports warn when the head changed under it (warning only, approval gate not built) | hair_route.head_key, head_warning | TOOL |
 
 ## Clothes
 

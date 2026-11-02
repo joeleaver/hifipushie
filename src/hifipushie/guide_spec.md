@@ -106,7 +106,7 @@ look can hide parts, clip with a plane (floor plans, cross-sections) and add per
 room); clearance checks walkable floor, headroom and door widths of environments.
 Every change is checkpointed; history/revert let you experiment freely.
 
-Hair is curve locks in the Blender scene, not part of the field: read guide(topic="hair"), then groom_hair (grow locks
+Hair is locks in the Blender scene (strand guides, or solid when stylised), not part of the field: read guide(topic="hair"), then groom_hair (grow locks
 from spec.hair.groom) -> look_hair (renders + gates: outline dents, bare volume, fit to a traced reference) -> groom_hair /
 edit_model kind "hair.locks" ... ; hair_reference matches a reference picture (camera from face landmarks, traced part,
 hairline and clumps carried onto the head); sync(hair_only=True) puts the locks in scene.blend, pull brings hand edits back.

@@ -9,7 +9,7 @@ The full documentation of this topic's tools: their MCP descriptions are the sho
 `groom_hair(name, groom=None, replace=False, stage=None, note='', style=None, strands=None, look=None, fuller=None, trim=None)`
 
 Grow the hair's locks from spec["hair"]["groom"] (the designer's words and numbers) and save them.
-Hair is curve locks (Bezier curves swept with a cupped lens profile) in the model's Blender scene, not part of
+Hair is locks (Bezier curves, guides of a strand groom or swept solid) in the model's Blender scene, not part of
 the SDF body; guide(topic="hair") is the workflow. Needs a head with face landmarks (a `base` head) or a
 groom "centre" joint.
 groom: a patch merged into the stored groom first (objects merge key by key, null deletes), e.g.
@@ -57,9 +57,10 @@ groom: a patch merged into the stored groom first (objects merge key by key, nul
   .. 1 straight out of it, "back": 0..1 combed back over the crown, "messy", "uneven", "ends": + under / - out,
   "face": 1 = kept off the face, "fringe": {length, span deg, depth, sweep, level, stiff}}: hair grown all over
   the scalp that FALLS on the neck, shoulders and back (or stands: an afro is out 1 + stiff 1 + curl): a bob,
-  loose waves, long straight hair, a fringe, a crop, tousled hair. guide(topic="hair") has recipes per style).
-style: "locks" (solid sculpted locks: stylised hair, the default), "strands" (the locks become GUIDES of a strand
-  groom on Blender's Hair Curves: realistic hair; the game export cuts cards from those strands), "cards".
+  loose waves, long straight hair, a fringe, a crop, tousled hair. guide(topic="hair_loose") has recipes per style).
+style: "strands" (the locks become GUIDES of a strand groom on Blender's Hair Curves: realistic hair, the default for
+  a first groom on a model with `base`; the game export cuts cards from those strands), "locks" (solid sculpted locks:
+  stylised hair, the default without `base`). "cards" is refused: look_hair(tier=...) and the exports cut them.
 strands: a patch of the strand dials (hair.strands; guide(topic="hair_checklist"), "Strand dials"): count, thickness,
   taper, clump, clump_size, clump_shape, stray, tip_spread, loose, wave (m), wavelength (m), curl, random, frizz,
   flyaway, tips, roots, under, under_length, flat, soft, baby. look: a patch of the material (lit, gap, tip,
@@ -218,10 +219,10 @@ outline numbers in look_hair.
 `export_hair(name, out_dir, tiers=None, groom=True, check=True, save=None)`
 
 The hair alone, game-ready, from a strand groom (hair.style "strands"; guide(topic="hair_export")):
-one GLB a tier in out_dir (`<name>_hair_<tier>.glb`; tiers hero 40k / main 16k / npc 6k / far 1.5k triangles;
-default main, npc, far), all on ONE atlas: cards cut from the groom's own strands (a lower tier = fewer, wider
-cards from bigger clumps; far = the cap + a solid tail), the cap wearing the scalp's chart, alpha MASK, two
-sided, the recipe for an engine's hair shader in the material's extras. groom=True also writes the strands
+one GLB a tier in out_dir (`<name>_hair_<tier>.glb`; tiers hero 25k / main 12.5k / npc 8.25k / far 2.5k card faces, from budgets.json;
+default main, npc, far; export_asset ships the character, this is the hair alone), all on ONE atlas: cards cut from the groom's own strands (a lower tier = fewer, wider
+cards from bigger clumps; far = the cap + a solid tail), the cap wearing the scalp's chart, alpha MASK,
+back faces as their own triangles, the recipe for an engine's hair shader in the material's extras. groom=True also writes the strands
 (`<name>_groom.abc` in cm for Unreal's groom import, `<name>_groom.usdc` with groom_* primvars).
 check=True re-imports every GLB on the head (as an engine gets it) and judges it against the strands in the same
 views and light, under a hard alpha TEST and dithered: per view iou / bare (strand silhouette left uncovered),

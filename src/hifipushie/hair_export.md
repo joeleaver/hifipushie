@@ -21,12 +21,11 @@ Read guide(topic="hair") first: describe the hairstyle in words before touching 
    pattern survives "unlit" it is in the colour (atlas or vertex colour); if it survives "no_normal" but not
    "unlit" it is the cards' geometry and shading.
 
-### Drawing the cards in an engine
-Judge game hair as the exported GLB re-imported into Blender and rendered in EEVEE set up like a game (the glTF importer's materials, alpha clip / hashed cards, no ray tracing). `spikes/godot_hair/hair_cards.gdshader` (README beside it) is a reference
-Godot shader for the exported cards: two shifted strand highlights along TANGENT's bitangent, wrapped diffuse, the
-aux texture's root / clump shade, alpha-to-coverage. Godot's own StandardMaterial reads none of the aux texture
-and draws the cards as a fine uniform hatch. Back faces: the cards share one normal on both faces; an engine that
-flips it on back faces (Godot does) draws a black fringe round the outline: un-flip it in the material.
+`export_asset` ships the character with its hair; `export_hair` is the hair alone. A short cut ships as shells
+(guide(topic="hair_short")). The default tiers are main, npc, far: name "hero" for a close camera.
+
+### Judging the cards
+Judge game hair as the exported GLB re-imported into Blender and rendered in EEVEE set up like a game (the glTF importer's materials, alpha clip / hashed cards, no ray tracing).
 
 ## Limits today
 

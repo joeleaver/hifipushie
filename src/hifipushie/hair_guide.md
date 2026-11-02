@@ -1,17 +1,27 @@
 # Hair
 
+## The default path (a realistic human)
+
+1. Describe the hairstyle in words (Stage 0 below). `sync` the model once.
+2. `hair_from_reference(name)`: a START from the fitted reference pictures. Without them, skip it.
+3. Build. Tied: `tie_hair(name, style={...})`. Loose: `groom_hair(name, groom={"loose": {...}}, stage="mass")`, then
+   `stage="locks"`. Short (mean lock under 6 cm): as loose, then shells (guide(topic="hair_short")).
+4. `look_hair(name, views=["around"])` beside the reference; fix at the stage that is wrong; repeat.
+5. `look_hair(name, tier="main")`: the game cards beside the strands.
+6. `export_asset(name, out_dir, role=...)` ships the character. `export_hair` is the hair alone.
+
+Each tool's reply ends with `next:`. Do what it says.
+
 Hair is not part of the SDF field: it lives in the model's Blender scene, so hair edits never rebuild the body.
-Pick the path by the job:
-- **Realistic hair** (the default for a realistic human): a STRAND groom on Blender's Hair Curves (`hair.style`
-  "strands"). Tied back (ponytail, bun, plait, half up): `tie_hair` with a few style words. Loose: `groom_hair` with
-  `groom.loose`. Short cuts: a baked cap + sparse cards. Judge in EEVEE (`look_hair`).
-- **Stylised, feature-animation hair**: sculpted LOCKS, a few big designed shapes: guide(topic="hair_locks").
-- **Game export**: cards cut from the strands (`export_hair` / `export_asset`).
+Off the default path:
+- **Stylised, feature-animation hair**: sculpted LOCKS, a few big designed shapes: guide(topic="hair_locks"). Ask for
+  them with `style="locks"`; a model with `base` grooms strands by default.
+- **A finer fit by hand**: `hair_reference` traces a picture, after `hair_from_reference`.
 
 Run the tools with `call_tool(name, args)`; the model needs its scene once (`sync`). Sub-topics
 (guide(topic=...)): `hair_checklist` (the 15 rules that make hair read as hair: measure and knob for each),
 `hair_tied` (`tie_hair`: every style word), `hair_loose` (`groom.loose`, recipes per hair type, existing sculpted
-grooms as strands, laying a crop), `hair_short` (short cuts as a baked cap + cards), `hair_colour` (the look's colour
+grooms as strands, laying a crop), `hair_short` (short cuts as shells), `hair_colour` (the look's colour
 keys, colour from a photo, Cycles), `hair_export` (game cards, judging the export, engines, limits), `hair_tools`
 (every hair tool's parameters), `hair_locks` (stylised), `hair_background` (practice, sources, engines).
 
