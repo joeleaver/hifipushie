@@ -39,9 +39,18 @@ def _line(d, pts, col, width, dash, closed=False):
             t += on + off
 
 
+_PLACED: list = []   # label boxes on the image being drawn (a label that would overlap one moves down)
+
+
 def _label(d, xy, s, col):
-    x, y = xy
     w = d.textlength(s, font=FONT)
+    x = min(max(xy[0], 2), d.im.size[0] - w - 4)
+    y = min(max(xy[1], 2), d.im.size[1] - 18)
+    for _ in range(12):
+        if not any(x < b[2] and b[0] < x + w and y < b[3] and b[1] < y + 16 for b in _PLACED):
+            break
+        y = min(y + 17, d.im.size[1] - 18)
+    _PLACED.append((x - 2, y - 1, x + w + 2, y + 16))
     d.rectangle([x - 2, y - 1, x + w + 2, y + 15], fill=(0, 0, 0))
     d.text((x, y), s, fill=col, font=FONT)
 
@@ -60,13 +69,16 @@ def _base(read: dict, i: int):
 
 
 def _sheet(im: Image.Image, legend: list, title: str) -> Image.Image:
-    h = max(im.size[1], 24 + 17 * len(legend))
+    import textwrap
+    lines = [(t if k == 0 else "      " + t, col) for s, col in legend
+             for k, t in enumerate(textwrap.wrap(s, 56, subsequent_indent="") or [""])]
+    h = max(im.size[1], 30 + 17 * len(lines))
     out = Image.new("RGB", (im.size[0] + LEG, h), (24, 25, 28))
     out.paste(im, (0, 0))
     d = ImageDraw.Draw(out)
     d.text((im.size[0] + 10, 6), title, fill=WHITE, font=FONT)
-    for k, (s, col) in enumerate(legend):
-        d.text((im.size[0] + 10, 26 + 17 * k), s[:62], fill=col, font=FONT)
+    for k, (s, col) in enumerate(lines):
+        d.text((im.size[0] + 10, 26 + 17 * k), s, fill=col, font=FONT)
     return out
 
 
@@ -89,6 +101,7 @@ def draw(model: str, garment: str, sid: str, plan: dict, read: dict, parts: dict
     paths = []
     for vi in _views_used(sid, plan, read):
         im, s = _base(read, vi)
+        _PLACED.clear()
         d = ImageDraw.Draw(im)
         fn = {"0": _read, "1": _parts, "2": _style}[sid]
         legend = fn(d, s, vi, plan, read, parts)
@@ -146,9 +159,9 @@ def _parts(d, s, vi, plan, read, parts):
         if w.get("view", 0) == vi:
             for u, v in w.get("at") or []:
                 _ring(d, u * s, v * s, 9, col, dash)
-            if w.get("outline"):
-                _line(d, [(u * s, v * s) for u, v in w["outline"]], col, 2, dash)
-            pts = w.get("at") or w.get("outline") or []
+            for o in ([w["outline"]] if w.get("outline") else []) + (w.get("outlines") or []):
+                _line(d, [(u * s, v * s) for u, v in o], col, 2, dash)
+            pts = w.get("at") or w.get("outline") or (w.get("outlines") or [[]])[0]
             if pts:
                 _label(d, (pts[0][0] * s + 12, pts[0][1] * s - 18), n, col)
         leg.append((f"detail {n} x{x.get('count', 1)} on {', '.join(x['on'])}: {x['seen']}, {x['build']}", col))

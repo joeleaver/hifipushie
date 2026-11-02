@@ -17,13 +17,13 @@ STEP 1 "parts": {pieces, details, closures, seams, worn_over?}
   pieces   {name: {what, cloth (a step-0 cloth), seen: seen|occluded|inferred, from (convention; needed unless seen),
             build: full|simplified|omit, why (unless full), stiff: bool, layer: int (0 = next to the body / the garment
             under it), where?: {view, outline: [[u,v],..]} (needed when seen)}}
-  details  {name: {what, on: [pieces], cloth? (braid, zip tape...), count?, seen, from?, build, why?, where?: {view, at: [[u,v],..] | outline}}}
+  details  {name: {what, on: [pieces], cloth? (braid, zip tape...), follows?: ["piece:edge"] (a trim along edges), count?, seen, from?, build, why?, where?: {view, at: [[u,v],..] | outline | outlines}}}
   closures {name: {what, pieces: [pieces it joins; one for a band closing on itself], details?: [details]}}
   seams    [{a: "piece:edge", b: "piece:edge", kind?: seam|fold|set_in|topstitch, length: {body: [measurement names]} |
             {style: {ratio | value_mm, of?, source}}}]
 STEP 2 "style": {state, bends, pose, rows}
   state  {closure: {state: open|closed|partly, detail?, source}}   (EVERY inventory closure, none other)
-  bends  [{id, on (piece | piece:edge | detail | closure), target: {value, unit} | {is}, source}]
+  bends  [{id, on (piece | piece:edge | detail | closure), target: {value, unit, of (a ratio's base)} | {is}, source}]
   pose   {name, source}
   rows   [{id, what, target: {value, unit, tol?} | {is}, source, view?, at?: [[u,v],..]}]  (what the photo judges: T6's
           structure gate targets)
@@ -72,6 +72,8 @@ def _uv_list(x) -> bool:
 def _target(t, where: str, bad: list):
     if not isinstance(t, dict) or not (("value" in t and t.get("unit") in UNITS and _num(t["value"])) or "is" in t):
         bad.append(f"{where}: target needs {{value, unit ({'|'.join(UNITS)})}} or {{is: <state>}}, got {t!r}")
+    elif t.get("unit") == "ratio" and not str(t.get("of") or "").strip():
+        bad.append(f"{where}: a ratio target names what it is OF (of: 'neck width at the collar', a row id...)")
 
 
 def _src(d: dict, where: str, bad: list):
@@ -161,8 +163,10 @@ def _where(d: dict, w: str, nviews: int, bad: list, key: str = "outline"):
         return
     if not isinstance(x, dict) or not isinstance(x.get("view", 0), int) or not 0 <= x.get("view", 0) < nviews:
         bad.append(f"{w}.where: {{view: a step-0 view index, outline | at: [[u, v], ...]}}")
-    elif not (_uv_list(x.get("outline")) or _uv_list(x.get("at"))):
-        bad.append(f"{w}.where: outline or at, as [[u, v], ...] pixels on that view")
+    elif not (_uv_list(x.get("outline")) or _uv_list(x.get("at")) or (
+            isinstance(x.get("outlines"), list) and x["outlines"] and all(map(_uv_list, x["outlines"])))):
+        bad.append(f"{w}.where: outline, outlines (one per instance: frogs, braid lines) or at, as [[u, v], ...] "
+                   "pixels on that view")
 
 
 def _seen(d: dict, w: str, nviews: int, bad: list):
@@ -214,6 +218,10 @@ def check_parts(p: dict, read: dict) -> dict:
             bad.append(f"{w}.on: the pieces it sits on; not in the inventory: {', '.join(map(str, miss)) or '(none given)'}")
         if x.get("cloth") is not None and x["cloth"] not in cloths:
             bad.append(f"{w}.cloth {x['cloth']!r}: not a step-0 cloth ({', '.join(sorted(cloths))})")
+        fl = x.get("follows") or []
+        badf = [e for e in fl if not (isinstance(e, str) and ":" in e and e.split(":")[0] in pieces)]
+        if not isinstance(fl, list) or badf:
+            bad.append(f"{w}.follows: the 'piece:edge' list a trim runs along; not in the inventory: {', '.join(map(str, badf))}")
         if x.get("count") is not None and not (isinstance(x["count"], int) and x["count"] > 0):
             bad.append(f"{w}.count: a positive int")
         _seen(x, w, nv, bad)
