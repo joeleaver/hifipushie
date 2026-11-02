@@ -1,0 +1,30 @@
+{
+ "_note": "Provenance of the ground-truth scans (downloaded 2026-10-13 into $HIFIPUSHIE_GROUNDTRUTH; NOT in git). Licences were read from the files / pages named here; copies of the licence texts lie beside the data.",
+ "lps": {
+  "what": "Infinite, 3D Head Scan by Lee Perry-Smith (one man's head: 8,842-quad mesh, colour map, 16-bit displacement)",
+  "licence": "Creative Commons Attribution 3.0 Unported (CC BY 3.0)",
+  "licence_evidence": ["lps/mcguire/x/Infinite-Scan_License.txt (inside the archive)", "lps/threejs/LeePerrySmith_License.txt", "lps/mcguire/info.js (license: CC BY 3.0, copyright I-R Entertainment Ltd.)", "lps/CC-BY-3.0-legalcode.txt"],
+  "attribution": "Infinite, 3D Head Scan by Lee Perry-Smith (www.triplegangers.com, www.ir-ltd.net), licensed under CC BY 3.0; obtained from Morgan McGuire's Computer Graphics Archive (https://casual-effects.com/data), which converted the displacement map to PNG.",
+  "files": [
+   {"url": "https://casual-effects.com/g3d/data10/research/model/lpshead/lpshead.zip", "to": "lps/mcguire/lpshead.zip", "sha256": "cc683bb006de4c1770ffbf0ec6da64c02df0173398001013b3782814b6d619ca", "bytes": 43603192},
+   {"url": "https://casual-effects.com/g3d/data10/research/model/lpshead/info.js", "to": "lps/mcguire/info.js", "sha256": "ce6f25ec33d236af1cc756c1b5dd755af929da9f5572ae7ecf5f1486f6a1c780"},
+   {"url": "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/models/gltf/LeePerrySmith/LeePerrySmith_License.txt", "to": "lps/threejs/LeePerrySmith_License.txt", "sha256": "7cf4da43a6ae6d32f7f7d063fe129a19468af6f4fe7c53b937f83959709fcb50"}
+  ]
+ },
+ "hsrd100": {
+  "what": "HSRD-100: 100 High-Quality 3D Human Scans Dataset (Digital Reality Lab / HumanScanRepository): 10 people x 10 poses, clothed photogrammetry scans with the 112-camera rig's photos, masks, RealityCapture .xmp calibration and project",
+  "licence": "Creative Commons Attribution 4.0 International (CC BY 4.0); the dataset card: 'Commercial use allowed', 'All participants provided informed consent'; person_meta.json: \"license\": \"Commercial\"",
+  "licence_evidence": ["hsrd100/README_dataset_card_2026-10-13.md (the card's YAML license: cc-by-4.0 and its License section)", "hsrd100/CC-BY-4.0-legalcode.txt", "hsrd100/dl/<pose>/person_meta.json"],
+  "card_notes": "The card lists as OUT OF SCOPE: biometric identification, medical diagnosis, surveillance. We measure a shape model's accuracy against the scan; no identification of anyone. No licence file exists in the repository beyond the card.",
+  "attribution": "HSRD-100: 100 High-Quality 3D Human Scans Dataset, Digital Reality Lab, 2025, https://huggingface.co/datasets/digitalrealitylab/HSRD-100, licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/).",
+  "base_url": "https://huggingface.co/datasets/digitalrealitylab/HSRD-100/resolve/main/data/<person>/<pose>/",
+  "files": [
+   {"pose": "HSR0040-Body-023", "file": "source/HSR0040-Body-023-Photos.zip", "sha256": "84ef3aab1cc97abb178f7e89b6dba2d09991e27b0ae39f24db353af0ab821842", "bytes": 1289810915},
+   {"pose": "HSR0040-Body-023", "file": "source/HSR0040-Body-023-RealityCapture.zip", "sha256": "dc3642bac4a61231e2de5bc225323df362ee22cb6ea20512345d415ad2ffe64e", "bytes": 574091574},
+   {"pose": "HSR0040-Body-023", "file": "scans/HSR0040-Body-023-Scan-LOD0.zip", "sha256": "3b10f004b4c0fca9f7bc2c1fe191c58736b42a088ee0a366f71d3169eafcde80", "bytes": 323483681},
+   {"pose": "HSR0112-Body-018", "file": "source/HSR0112-Body-018-Photos.zip", "sha256": "45cddafc7edd96c1a1f4b633dc6a4e3c7e1a87566e1a57899cc6f7f26dd99b73", "bytes": 1267206213},
+   {"pose": "HSR0112-Body-018", "file": "source/HSR0112-Body-018-RealityCapture.zip", "sha256": "9a701d283f6a1fc09ebe7112fe73a4362678c534cb09688c074ce13807921fcc", "bytes": 496265233},
+   {"pose": "HSR0112-Body-018", "file": "scans/HSR0112-Body-018-Scan-LOD0.zip", "sha256": "a8d8f86d8763c4377071b5478495fc449ca1848e1113acf5b7527ec12356dcf1", "bytes": 243880944}
+  ]
+ }
+}

@@ -82,6 +82,7 @@ TONE_CONTRAST_DARK = 1.3  # the stretch below the median (0 = the same k): c22's
 TONE_CONTRAST_TAIL = 4.5  # the same for tail (hanging) cards (0 = TONE_CONTRAST)
 TAIL_ROOT_LIFT = 0.6  # (round 25) tail cards' first TAIL_ROOT_LEN from the root (under the tie): tone x (1 + this), depth
 TAIL_ROOT_LEN = 0.04  # shade off there (b32 g1backl: dark angular shards under the tie where gSc's gathered locks are lit)
+FACE_CONTRAST = 0.0  # (round 41, opt-in) face-framing cards' hair tone spread about their median x this (0 = off)
 WISP_LIFT = 0.5  # a face-framing card's tone x (1 + this), depth shade off (lit hair in the open)
 FACE_YO = 0.5  # a face-framing card's layer offset from its clump's centre x this (1 = the head cards'; b22's stood off
 # the cheek as stiff planks, 1 m review g7)
@@ -95,6 +96,10 @@ PART_GAP = 0.006  # (0.016 in b28 / b29: the part band stood bare and the crown 
 FLY_CROWN = 0.02  # m over the head's centre: single hairs rooted on the head above this get no cards
 FLY_CROWN_FREE = 0.06  # m: the same for free halo hairs (rooted in the mass, not the scalp): three over the crown drew
 # dark coils standing 1.5 cm over it (the crest of reviews c6-c7)
+FLY_FRONT = 0.0  # (round 44, opt-in) m: single hairs rooted this far IN FRONT of the head's centre (y) are exempt from
+# FLY_CROWN and from FLY_FAR up to FLY_FRONT_FAR, and get their cards first: the groom's fly-hair tuft standing over the
+# forehead (what crowntop's RAGGED front column saw, round 43; the reviewer's "no flyaway outline"). 0 = off
+FLY_FRONT_FAR = 0.04  # m
 FLY_STRAIGHT = 0.6  # a flyaway strand gets a card only if its chord is this share of its length (loops read as arcs)
 IN_SHARE = 0.6  # a strand is drawn on a card only if this share of its points lies inside the card (strands leaving the card
 # at its sides were drawn as short fragments: the side of the head read as brush strokes, b10)
@@ -405,9 +410,16 @@ FACE_END = 0.0  # a face-framing card runs on to its longest strand's tip (b23 r
 # the groom's fall past it)
 TAIL_END_JIT = 0.15  # + a random share up to this per tail card: staggered ends (all at 0.03 + tapered to a point
 # drew a comb of aligned teeth at 3 m, review g7: "cut square, jagged comb-tooth"); 0 = off (before b23)
+TAIL_LONG = 0.2  # (round 44; default after blind A/B r44d vs r44a NEW 3 / OLD 1; 0 = off) share of tail clumps that also get a LONG card: fitted on the clump's longest
+# TAIL_LONG_TOP of strands and run to their longest tip (end share 0), so staggered narrow clumps hang below the mass as
+# in the groom (Tess's tail ended in one blunt horizontal cut; TAIL_END_JIT / tip fades only SHORTEN cards, t43). 0 = off
+TAIL_LONG_TOP = 0.5  # (0.3 in r44b: thin, grey long cards, A/B lost at 3/4) share of the clump's strands (by length) the long card is fitted on
+TAIL_LONG_MIN = 4  # strands at least
 NAPE_LIFT = 0.8  # (0.6 in b23-b25: wedge 29.8 vs the groom 33.5 once only tail L1 kept the lift) head cards rooted low at the back (the nape, under a tie) tinted x (1 + this): their strands lie
 # deep under the gathered hair, so their tint (strands' tone with the depth shade) drew a dark serrated block behind
 # the ear in the FLAT pass (b22 nape blob L* 19.7 vs the groom's 33.5, wedge.py g1backl); 0 = off (before b23)
+NAPE_SHORT = 0.0  # (round 42, opt-in) m: cards shorter than this in the nape band take NAPE_LIFT whatever their class / layer
+# (r41c g1v2: the dark tick marks behind the ear are 18-23 mm cards at the nape hairline, vertex colour .35-.40 vs the tail's .65)
 NAPE_BAND = (0.0, 0.035)  # m under the head's centre: the lift ramps in over this (smoothstep), times a ramp
 NAPE_Y = (-0.025, 0.01)  # m behind the head's centre (y): from beside the ear (the dark serrated marks behind the ear
 # in b23's flat pass sit at y ~ 0: a ramp from the centre back left them out, b23n = b23 there)
@@ -1079,14 +1091,22 @@ def cut(D: dict, locks: list, C, S: dict, side_of=None, seed: int = 0, layers: d
                     lab[sel] = kmeans(F[sel], max(1, int(round(k_all * sel.mean()))), seed + 7 * la) + off
                     off = int(lab[sel].max()) + 1
             todo = [(idx[lab == g], 0) for g in np.unique(lab)]
+            rng_long = np.random.default_rng(seed + 991 + 13 * la)  # (its own stream: TAIL_JIT's draws unchanged)
             while todo:
-                mem, dep = todo.pop(0)
+                it_ = todo.pop(0)
+                mem, dep = it_[:2]
+                long_ = len(it_) > 2
+                if (cls == "tail" and TAIL_LONG > 0 and not long_ and rng_long.uniform() < TAIL_LONG):  # (round 44) see TAIL_LONG
+                    ln_ = St["len"][mem]
+                    sel_ = mem[ln_ >= np.percentile(ln_, 100.0 * (1.0 - TAIL_LONG_TOP))]
+                    if len(sel_) >= TAIL_LONG_MIN:
+                        todo.append((sel_, dep, True))
                 lk = locks[int(np.bincount(St["lock"][mem]).argmax())]
                 # (hanging hair runs on to its longest strands' tips: ended where a quarter were left, Tess's tail
                 # ended in a straight cut 3 cm short)
                 # (and is its outline: a tail's outer strands spread past the 90th percentile; at it the cards' tail
                 # was 0.8 of the strands' width)
-                end_ = TAIL_END + (TAIL_END_JIT * rng.uniform() if cls == "tail" else 0.0)
+                end_ = 0.0 if long_ else TAIL_END + (TAIL_END_JIT * rng.uniform() if cls == "tail" else 0.0)
                 c = fit(St["Q"][mem], _cen_of(C, lk.get("core")), end_share=(FACE_END if cls == "face" else end_) if cls != "head" else HEAD_END,
                         max_hw=max_hw, spread=97.0 if cls == "tail" else 90.0, reference=cls == "head",
                         tip_taper=TIP_TAPER_TAIL if cls == "tail" else TIP_TAPER,
@@ -1207,9 +1227,13 @@ def cut(D: dict, locks: list, C, S: dict, side_of=None, seed: int = 0, layers: d
                 q = St["Q"][j]
                 q = q[np.isfinite(q[:, 0])]
                 far[i] = float(tr.query(q)[0].max()) if len(q) else 0.0
-        far = np.where(far > FLY_FAR, 0.0, far)  # (hairs standing 2 cm+ off the head read as spikes on cards)
+        front_ = (St["root"][idx][:, 1] < float(np.asarray(C)[1]) - FLY_FRONT) if FLY_FRONT > 0 else np.zeros(len(idx), bool)
+        far = np.where(far > np.where(front_, FLY_FRONT_FAR, FLY_FAR), 0.0, far)  # (hairs standing 2 cm+ off the head read as spikes on cards)
+        far = np.where(front_ & (far > 0), far + 1.0, far)  # (round 44) FLY_FRONT: first in the budget
         for i, j in enumerate(idx):
             lk_ = locks[int(St["lock"][j])]
+            if front_[i]:
+                continue
             if St["root"][j][2] > float(np.asarray(C)[2]) + (FLY_CROWN_FREE if lk_.get("off_head") else FLY_CROWN):
                 far[i] = 0.0  # (the halo over the crown as cards: a crest of thin strips, reviews c5-c6; a few single
                 # hairs there are below what a 25k card hero can show: left to the strands' look)
@@ -1777,6 +1801,11 @@ def bake(cards: list, St: dict, W: int, H: int, ss: int = 2, seed: int = 0, look
             k_ = TONE_CONTRAST_TAIL if (c.get("cls") == "tail" and TONE_CONTRAST_TAIL > 0) else TONE_CONTRAST
             kd_ = TONE_CONTRAST_DARK if TONE_CONTRAST_DARK > 0 else k_
             tn2 = np.clip(m_ + np.where(tn2 > m_, k_, kd_) * (tn2 - m_), 0, 1)
+        if FACE_CONTRAST > 0 and c.get("cls") == "face" and (a > 0.05).any():  # (round 41) a face wisp's hairs spread
+            # about their median like the head's: r41w1's denser wisps read as flat pale strips (the groom's: blonde
+            # and brown hairs side by side)
+            m_ = float(np.median(tn2[a > 0.05]))
+            tn2 = np.clip(m_ + FACE_CONTRAST * (tn2 - m_), 0, 1)
         if c.get("cls") == "tail" and TAIL_ROOT_LIFT > 0:
             rr_ = 1.0 - _ss(np.clip((float(c.get("s0", 0.0)) + yy * L) / TAIL_ROOT_LEN, 0.0, 1.0))  # 1 at the root
             dep = np.maximum(dep, rr_ + (1.0 - rr_) * dep)
@@ -1952,9 +1981,10 @@ def bake_tiles(cards: list, St: dict, W: int, H: int, n: int = TILES, ss: int = 
         for i, c in enumerate(cards):
             # (tail cards too: b23's dark serrated marks behind the ear are HANGING layer-1 cards, flat passes per
             # range: tris 13668-17114 alone draw them, head cards none; the head-only lift changed nothing)
-            if c.get("cls") not in ("head", "tail") or not len(c["strands"]):
+            short_ = NAPE_SHORT > 0 and float(c["s"][-1] - c["s"][0]) < NAPE_SHORT and not c.get("wisp")  # (round 42)
+            if (c.get("cls") not in ("head", "tail") and not short_) or not len(c["strands"]):
                 continue
-            if c.get("cls") == "tail" and c.get("layer") != 1:  # only the range the trace named (hanging layer 1):
+            if c.get("cls") == "tail" and c.get("layer") != 1 and not short_:  # only the range the trace named (hanging layer 1):
                 continue  # b24 lifted every tail card in the band, 1 m hair L* overshot the groom's (k 0.83-0.89)
             r_ = R0[np.asarray(c["strands"], int)].mean(0) - np.asarray(C, float)
             w_ = _ss(np.clip((-r_[2] - NAPE_BAND[0]) / (NAPE_BAND[1] - NAPE_BAND[0]), 0, 1)) \

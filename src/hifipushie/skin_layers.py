@@ -916,3 +916,53 @@ def edit(spec: dict, *names, **strengths) -> dict:
         ft["age_spots"] = max(float(ft.get("age_spots", 0.0)) if isinstance(ft.get("age_spots", 0.0), (int, float)) else 0.0, 0.5)
         s["skin"]["features"] = ft
     return s
+
+
+def even_out(spec: dict, centre, radius: float = 0.006, ring: tuple = (1.6, 2.6), amount: float = 0.7,
+             layers=("pigment", "redness", "shade"), mirror: bool = True, log=print) -> dict:
+    """A copy of the spec whose stack maps are EVENED round `centre` (neutral head coordinates, m; + its mirror across X):
+    inside a soft sphere of `radius`, each named multiply map's darkening is pulled toward its own surroundings (the
+    median over a ring of `ring` x radius), by `amount` (0 = unchanged, 1 = no darker than the ring). For the photo's
+    shading that survived the de-light as pigment (a groove deeper in the picture than on the model: Tess's alar-cheek
+    junction read as a brown / red blob in 3/4 views, r24). Lighter texels are kept (only excess darkness goes). New
+    images are ingested; the layer entries point at them (the old ones are untouched)."""
+    import tempfile
+    from pathlib import Path
+    from PIL import Image
+    from . import images
+    s = copy.deepcopy(spec)
+    st = s["skin"]["stack"]
+    at = sp.atlas(s["base"])
+    ii, jj = at["ii"], at["jj"]
+    Xn = sp.interp(at, at["neutral"])
+    cs = [np.asarray(centre, float)] + ([np.asarray(centre, float) * [-1, 1, 1]] if mirror else [])
+    w = np.zeros(len(ii))
+    rings = []
+    for c in cs:
+        d = np.linalg.norm(Xn - c, axis=1)
+        w = np.maximum(w, np.clip(1.0 - (d / radius) ** 2, 0, 1) ** 2)   # smooth to 0 at the radius
+        rings.append((d > ring[0] * radius) & (d < ring[1] * radius))
+    w = w * float(amount)
+    side = [np.linalg.norm(Xn - c, axis=1) < ring[1] * radius for c in cs]
+    new = []
+    for l in st["layers"]:
+        base_name = l["name"].rstrip("+")
+        if base_name not in layers:
+            new.append(l)
+            continue
+        a = np.asarray(Image.open(images.id_path(l["image"])).convert("RGBA"), float)
+        v = a[ii, jj, :3]
+        out = v.copy()
+        for c, rg, sd in zip(cs, rings, side):
+            ref = np.median(v[rg], 0)
+            sel = sd & (w > 0)
+            out[sel] = v[sel] + (np.maximum(v[sel], ref) - v[sel]) * w[sel, None]
+        a[ii, jj, :3] = out
+        p = Path(tempfile.mkdtemp()) / f"even_{base_name}.png"
+        Image.fromarray(np.clip(a + 0.5, 0, 255).astype(np.uint8), "RGBA").save(p)
+        iid = images.ingest(p)
+        dv = (out - v).mean(1)
+        log(f"  even_out {l['name']}: {int((w > 0.05).sum())} texels, mean lift {dv[w > 0.05].mean():+.4f}, max {dv.max():+.4f} -> {iid}")
+        new.append({**l, "image": iid})
+    st["layers"] = new
+    return s

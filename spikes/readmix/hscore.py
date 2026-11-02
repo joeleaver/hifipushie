@@ -5,7 +5,7 @@ $HIFIPUSHIE_GROUNDTRUTH/out/chains/<prefix>.json (gchain.py). Also the START (ca
 Vertex measures under ~1.3 mm are inside the truth's own slack (groundtruth: two direct fits differ 0.6-1.3 mm)."""
 import json, os, sys
 import numpy as np
-sys.path.insert(0, "/home/joe/dev/hifipushie/.claude/worktrees/groundtruth/spikes/groundtruth")
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "groundtruth"))
 import errmap, noselip
 from hifipushie import blockin as bi, store
 

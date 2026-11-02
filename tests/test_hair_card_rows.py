@@ -104,3 +104,20 @@ def test_every_tier_fits_its_drawn_budget_back_faces_counted():
             assert drawn <= dmax, (tier, bf, drawn, dmax)
     # legacy (drawn_max None): the budget itself counts drawn triangles (c10 / c11 callers)
     assert hair.card_allowance(25000, 2000, 100, back_faces=True) == (2, 2200, 11400)
+
+
+def test_fit_floor_keeps_a_class_share():
+    """(round 40) hair_cards.FIT_FLOOR / S["fit_floor"]: under a tight budget a class's floor share is kept first."""
+    from hifipushie import hair_cards as hc
+    D, locks = _groom()
+    cards = hk.cut(D, locks, C, S, None, 0, triangles=4000)
+    for i, c in enumerate(cards):
+        c["cls"] = "tail" if i % 4 == 0 else "head"
+        c["prio"] = (2.0 if c["cls"] == "tail" else 1.0) + 0.001 * i  # the tail's cards would all go first
+    S_ = {**hc.STRANDS, **S}
+    n_tail = sum(c["cls"] == "tail" for c in cards)
+    small = hc.triangles(cards, S_, float(S_["segment"]) * 1.5) // 3
+    k0, _, _ = hc.fit_budget(cards, S_, small)
+    k1, _, i1 = hc.fit_budget(cards, {**S_, "fit_floor": {"tail": 0.5}}, small)
+    assert sum(c["cls"] == "tail" for c in k1) >= min(int(np.ceil(0.5 * n_tail)), len(k1)) > sum(c["cls"] == "tail" for c in k0)
+    assert hc.triangles(k1, S_, float(S_["segment"]) * 1.5) <= small

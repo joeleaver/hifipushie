@@ -249,6 +249,7 @@ def _tile(kind: str, w: int, H: int, S: dict, rng, ss: int = 3, lines: list | No
 
 
 GREY_QUANTILE = 1  # (c3) a tile's grey share is drawn as that share of its strand pixels (quantile of their ids)
+HUE_CLIP = 0.0  # (round 41, opt-in) 1 = over-range atlas texels scaled down by their max channel (hue kept); 0 = per-channel clip
 GREY_LIFT = 1.0  # (c5) the cards' grey hairs' colour x this (the strand look's grey #6a6764 x (0.6 + 0.4 shade) drew
 # mid-grey hairs; the groom's grey strands read silver under the hair BSDF's highlight: 3/4 sides 39.5 L* vs the groom's 50)
 GREY_SPREAD = 2.0  # (c4) shared tiles' grey shares x this about their median (1 = as baked, before c4)
@@ -388,6 +389,11 @@ def atlas(S: dict, look: dict, lines: dict | None = None, cap: dict | None = Non
     if cs != 1.0:
         yl = (lin @ np.array([0.2126, 0.7152, 0.0722]))[..., None]
         lin = yl + (lin - yl) * cs
+    if HUE_CLIP > 0:  # (round 41) an over-range texel scaled down as a whole, not clipped per channel: red clipped
+        # first and the lightest texels (lifted face wisps, the top's light streaks) went grey-yellow (wisps hue 73 vs
+        # the groom's 63, C* 11.8 vs 13.9; atlas red at 252 over 125k texels)
+        mx_ = np.max(lin, axis=-1, keepdims=True)
+        lin = np.where(mx_ > 1.0, lin / np.maximum(mx_, 1e-6) ** HUE_CLIP, lin)
     col = _srgb(np.clip(lin, 0, 1))
     hr_ = float(look.get("headroom") or 1.0)
     if bake is not None and hr_ > 1.0 and (bake["alpha"] > 0.5).any():  # (c14, Garrett) the baked cards' vertex colours
@@ -630,6 +636,11 @@ def _resample(c: dict, m: int) -> dict:
     return o
 
 
+TAIL_AXIS_N = 1.0  # (round 43 default: blind A/B r42c vs r41c NEW 2 / SAME 2, the back's black blotch gone; round 42 opt-in) tied-tail (hanging, not wisp / fly) card vertex normals turned this share toward
+# outward from the tail's own axis (horizontal, per 1 cm height band of the tail's vertices). With ONE normal for both faces
+# (the shading contract), r41c's tail from behind showed a black patch at its right edge (a front-side card seen past the
+# edge, normal away from eye and light; flat pass clean, shadow=0 still black) and dark tips; 35.7 % of tail verts faced INTO
+# the tail axis (t42/tailn.py)
 WIND_TO_NORMAL = 1  # (c4) every card triangle wound to face along its vertex normals (0 = as built, before c4)
 
 
@@ -652,7 +663,7 @@ def mesh(cards: list, S: dict, look: dict, tiles: list, segment: float | None = 
     for ci, c in enumerate(cards):
         length = float(c["s"][-1] - c["s"][0])
         per = seg if float(S["wave"]) <= 0 else min(seg, lam / 6)
-        m = int(np.clip(np.ceil(length / max(per, 1e-4)), 2, 200)) + 1
+        m = _segments(c, per) + 1
         hwm = float(np.max(c["hw"]))
         c = _resample(c, m)
         vv = (c["s"] - c["s"][0]) / max(length, 1e-9)
@@ -723,6 +734,20 @@ def mesh(cards: list, S: dict, look: dict, tiles: list, segment: float | None = 
                 "tangent": z, "col": z, "along": np.zeros(0, np.float32), "layer": np.zeros(0, np.float32),
                 "card": np.zeros(0, np.int32), "baked": np.zeros(0, bool)}
     Vv, Ff, Nv_ = np.concatenate(V).astype(np.float32), np.concatenate(F).astype(np.int32), np.concatenate(Nn).astype(np.float32)
+    if TAIL_AXIS_N > 0:  # (round 42, opt-in) see TAIL_AXIS_N
+        cid_ = np.concatenate(CID)
+        tl_ = np.array([c.get("cls") == "tail" and not c.get("wisp") and not c.get("fly") for c in cards], bool)
+        tv = tl_[cid_] if len(tl_) else np.zeros(len(Vv), bool)
+        if tv.sum() > 20:
+            zb = np.round(Vv[:, 2] / 0.01)
+            outv = np.zeros_like(Nv_)
+            for b in np.unique(zb[tv]):
+                m_ = tv & (zb == b)
+                d_ = Vv[m_] - Vv[m_].mean(0)
+                d_[:, 2] = 0.0
+                outv[m_] = d_ / np.maximum(np.linalg.norm(d_, axis=1, keepdims=True), 1e-9)
+            k_ = float(TAIL_AXIS_N)
+            Nv_[tv] = _unit((1 - k_) * Nv_[tv] + k_ * outv[tv]).astype(np.float32)
     if WIND_TO_NORMAL and len(Ff):  # (c4, Garrett) a triangle whose winding opposes its vertex normals shows its BACK
         # from outside: a double-sided renderer shades a back face with the flipped normal, lit from inside = black
         # (the c3 "dark card backs / shards" on the crown's outline: folds where a card turns over its root)
@@ -1414,11 +1439,68 @@ def mass_shell(D: dict, locks: list, C, tiles: list, col=None, triangles: int = 
             "along": along.astype(np.float32), "layer": np.full(m, -1.0, np.float32), "card": np.zeros(m, np.int32)}
 
 
+BEND_ROWS = 0.0  # (round 45; opt-in) deg: a card gets at least one segment per this much turning of its path / its
+# across axis (0 = off: segments by length alone). Under a far tier's 5-7.5 cm segments a tail card that turns ~90 deg
+# at the tie was cut into 2-3 straight panels: the crumpled, faceted LOD3 tail (t43 / t45 lod3 sheets)
+# (round 46: on EVERY card with the across axis counted, r46a's LOD3 face cards cost 332 -> 1208 tris and the tail kept 20
+# of 195 cards, a small dark cone: hence the class filter, the path-only turning and the extra-segment cap)
+BEND_CLS = ("tail",)  # classes BEND_ROWS applies to (empty = all)
+BEND_PATH = True  # turning of the path tangent only (the across axis' twist left out)
+BEND_MAX = 2  # at most this many segments over the length rule (0 = no cap)
+# (round 47) r46g's tail-only BEND_ROWS matched ZERO cards for a whole round: the LOD1-3 tiers cut cards with
+# clump_cards, which set no "cls" (hair.cards_job now stamps it from the lock), and nothing said the filter was empty.
+# Every card-selecting lever reports its count through lever_matched; a lever switched ON that selects 0 of a non-empty
+# population raises (STRICT_LEVERS) instead of silently building r45a again.
+STRICT_LEVERS = True
+LEVER_MATCHES: dict = {}  # lever name -> [(matched, population), ...] of the run (the export report / tests read it)
+
+
+class LeverMatchedNothing(RuntimeError):
+    pass
+
+
+def lever_matched(name: str, matched: int, population: int) -> int:
+    """Record and print how many cards an ON lever selected; raise when it selected none of a non-empty population."""
+    LEVER_MATCHES.setdefault(name, []).append((int(matched), int(population)))
+    print(f"lever {name}: matched {int(matched)} of {int(population)} cards", flush=True)
+    if STRICT_LEVERS and population > 0 and matched == 0:
+        raise LeverMatchedNothing(f"lever {name} is on but matched 0 of {population} cards (its filter selects nothing: "
+                                  f"check the class / kind keys the cards carry at this point)")
+    return int(matched)
+
+
+def bend_selected(c: dict) -> bool:
+    return BEND_ROWS > 0 and (not BEND_CLS or c.get("cls") in BEND_CLS)
+
+
+def _turning(c: dict, path_only: bool = False) -> float:
+    """deg: the summed turning of a card's path tangent and its across axis X (the larger; path_only: the path's)."""
+    out = 0.0
+    for V_ in (np.diff(np.asarray(c["P"], float), axis=0),) + (() if path_only else (np.asarray(c["X"], float),)):
+        if len(V_) < 2:
+            continue
+        V_ = V_ / np.maximum(np.linalg.norm(V_, axis=1, keepdims=True), 1e-12)
+        out = max(out, float(np.degrees(np.arccos(np.clip((V_[1:] * V_[:-1]).sum(1), -1, 1))).sum()))
+    return out
+
+
+def _segments(c: dict, per: float) -> int:
+    n = int(np.clip(np.ceil(float(c["s"][-1] - c["s"][0]) / max(per, 1e-4)), 2, 200))
+    if bend_selected(c):
+        nb = int(np.ceil(_turning(c, path_only=BEND_PATH) / BEND_ROWS))
+        n = int(np.clip(max(n, nb if BEND_MAX <= 0 else min(nb, n + BEND_MAX)), 2, 200))
+    return n
+
+
 def triangles(cards: list, S: dict, segment: float | None = None) -> int:
     seg = float(segment or S["segment"])
     lam = max(float(S["wavelength"]), 0.01)
     per = seg if float(S["wave"]) <= 0 else min(seg, lam / 6)
-    return int(sum(2 * int(np.clip(np.ceil(float(c["s"][-1] - c["s"][0]) / per), 2, 200)) for c in cards))
+    return int(sum(2 * _segments(c, per) for c in cards))
+
+
+FIT_FLOOR: dict = {}  # (round 40) {card cls: share}: that share of a class's cards (its own prio order) is kept before
+# any other card under a budget (S["fit_floor"] per groom / tier); {} = off (the drop order is prio alone)
 
 
 def fit_budget(cards: list, S: dict, budget: int) -> tuple[list, float, dict]:
@@ -1437,6 +1519,17 @@ def fit_budget(cards: list, S: dict, budget: int) -> tuple[list, float, dict]:
         seg = min(seg_max, seg * max(1.08, min(n / budget, 2.0)))
     if triangles(keep, S, seg) > budget:
         order = sorted(range(len(keep)), key=lambda i: keep[i].get("prio", keep[i]["layer"]))
+        fl_ = {**FIT_FLOOR, **(S.get("fit_floor") or {})}
+        if any(v > 0 for v in fl_.values()):  # (round 40) a class's floor share goes first, in its own prio order: under
+            # a far tier's budget the tail's cards (prio: outer layers first) all fell behind the head's (r39: LOD1-3
+            # kept a fragment of Tess's tail at 3/4)
+            first = []
+            for cl_, sh_ in fl_.items():
+                own_ = [i for i in order if keep[i].get("cls") == cl_]
+                first += own_[:int(np.ceil(float(sh_) * len(own_)))]
+            fs_ = set(first)
+            order = sorted(first, key=lambda i: keep[i].get("prio", keep[i]["layer"])) + [i for i in order if i not in fs_]
+            info["floor"] = {cl_: int(sum(1 for i in first if keep[i].get("cls") == cl_)) for cl_ in fl_}
         cost = np.cumsum([triangles([keep[i]], S, seg) for i in order])
         m = max(1, int(np.searchsorted(cost, budget, side="right")))
         kept = sorted(order[:m])

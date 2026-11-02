@@ -88,5 +88,5 @@ OpenBLAS is capped at 4 threads in `__init__.py`.
 - Supports, not holds (hold redesign: the hang, off): docs/state/supports.md -> cloth.md "supports, not holds"
 - Threads hard (no stretch past the cloth's cap; misfit read by piece): docs/state/threads_hard.md -> codified.md C235
 - Chain garment (THE start of every garment: chain_net.py, chain_garment.py, tools chain_garment + look_chain): docs/state/collar_outline.md -> codified.md C259-C264
-- No state page yet (history only): topology, blender_scene, terrain, streambeds, vegetation, clutter, onemesh, likeness,
+- No state page yet (history only): groundtruth, topology, blender_scene, terrain, streambeds, vegetation, clutter, onemesh, likeness,
   refstudy, garrett_head, measuremodels, rig, base, retopo, images, faceshapes, headbody, resources, budgets, audit.

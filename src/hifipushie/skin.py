@@ -43,7 +43,8 @@ spec["skin"] = {
            "sclera": colour} | false   the eyeballs (the base's eyes part): see EYES
   "makeup": {"look": "natural" | "everyday" | "evening", "foundation", "concealer", "bronzer", "contour", "blush", "highlight",
              "eyeshadow", "eyeliner", "mascara", "brows", "lipstick", "nails"}                       (see MAKEUP)
-  "shading": {"subsurface": 0..1, "radius": [r, g, b], "scale": m, "specular": 0..1, "roughness": 0..1}
+  "shading": {"subsurface": 0..1, "radius": [r, g, b], "scale": m, "specular": 0..1, "roughness": 0..1,
+                                  "rough_breakup": 0..1 (1: x the cm-scale roughness blotches; < 1 for a face meshed at 1 mm)}
   "projection": {...}             the reference pictures as the head's albedo + fine relief, in the head's own texture
                                   space (made by the skin_project tool: de-lit, filled; see skin_project.py). Laid over
                                   the skin's own colours and painted hair, under scars, tattoos and make-up.
@@ -579,7 +580,7 @@ def params(spec: dict) -> dict:
                  "under_shade": float(np.clip(lips.get("under_shade", UNDER_SHADE), 0.0, 2.0)),
                  "lower": {"blood": float(low.get("blood", 1.0)), "melanin": float(low.get("melanin", 1.0))}}
     sh = sk.get("shading") or {}
-    bad = set(sh) - {"subsurface", "radius", "scale", "specular", "roughness", "coat", "coat_roughness", "sheen", "thickness"}
+    bad = set(sh) - {"subsurface", "radius", "scale", "specular", "roughness", "coat", "coat_roughness", "sheen", "thickness", "rough_breakup"}
     if bad:
         raise SpecError(f"skin shading: unknown keys {sorted(bad)} (have subsurface, radius, scale, specular, roughness)")
     p["shading"] = sh
@@ -932,14 +933,19 @@ def _build(spec: dict, J: dict) -> dict:
     if hands or joints_:
         out["skin:rough_joints"] = {"part": part, "_pre": True, "roughness": round(min(base_r + 0.16, 0.95), 3), "opacity": 0.8,
                                     "mask": _z(*((["knuckles"] if hands else []) + joints_))}
-    out["skin:rough_patches"] = {"part": part, "_pre": True, "roughness": round(min(base_r + 0.12 + 0.08 * dark, 0.95), 3), "opacity": 0.8,
+    # shading.rough_breakup (1): x the opacity of the cm-scale break-up (rough_patches 5 mm, rough_sheen 11 mm noise). At the
+    # 7 mm scene mesh these per-vertex values were averaged away; the 1 mm face (scene.face_refine) shows them as a camouflage
+    # of +.12 roughness blotches over the cheek (assembly r67 maps_r_vs_s.png), which skin doesn't have: sebum varies by
+    # region (rough_tzone / rough_cheeks), the sub-mm grain is pores. r23: answer "not meant"; lever for the 1 mm face.
+    brk = float(p["shading"].get("rough_breakup", 1.0))
+    out["skin:rough_patches"] = {"part": part, "_pre": True, "roughness": round(min(base_r + 0.12 + 0.08 * dark, 0.95), 3), "opacity": round(0.8 * brk, 3),
                                  "mask": [{"noise": {"scale": 0.005, "range": [0.38, 0.72], "seed": seed + 21}}]}
     out["skin:rough_fine"] = {"part": part, "_pre": True, "roughness": round(min(base_r + 0.14, 0.95), 3), "opacity": 0.6,
                               "mask": [{"noise": {"scale": 0.0022, "range": [0.42, 0.7], "seed": seed + 23}}]}
     if face:   # the cheeks hold little sheen (the photographs: a soft broad sheen on forehead and nose, matte cheeks)
         out["skin:rough_cheeks"] = {"part": part, "_pre": True, "roughness": round(min(base_r + 0.1, 0.9), 3), "opacity": 0.85,
                                     "mask": _z("cheek", "cheekbone", "cheek_side", "jaw", grow=1.0)}
-    out["skin:rough_sheen"] = {"part": part, "_pre": True, "roughness": round(max(base_r - 0.1, 0.15), 3), "opacity": 0.3,
+    out["skin:rough_sheen"] = {"part": part, "_pre": True, "roughness": round(max(base_r - 0.1, 0.15), 3), "opacity": round(0.3 * brk, 3),
                                "mask": [{"noise": {"scale": 0.011, "range": [0.55, 0.85], "seed": seed + 22, "warp": 0.6}}]}
 
     from . import skin_features
