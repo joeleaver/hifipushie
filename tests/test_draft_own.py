@@ -132,6 +132,7 @@ def test_tool_writes_step4_and_reads_steps_1_and_3(home, monkeypatch):
     assert "reads" in gr.next_step(gr.load("tm", "g"))["uses"]
     sheet, txt = dot.run("tm", "g", RECT, DECL)
     assert "draft_pattern: PASS" in txt and Path(sheet).exists()
+    assert "pieces (" in txt and "seams (" in txt and " ease " in txt and "SHAPES" in txt  # (C288: numbers in text)
     st = gr.load("tm", "g")["steps"]["4"]
     assert st["status"] == "done" and st["gate"]["verdict"] == "PASS" and st["look"]
     assert saved["tm"]["cloth"]["g"]["pattern"]["from"] == "own"

@@ -159,6 +159,23 @@ def test_pattern_sheet_renders():
     assert len(set(im.resize((64, 64)).getdata())) > 20  # not blank
 
 
+
+def test_pattern_sheet_numbers_are_in_text_not_the_image():
+    """C288: the sheet is shape only (no seam table under the pieces); every piece and seam pair, with its numbers,
+    is in text_lines; a piece name that can't fit inside its piece is reported, not squeezed."""
+    g, Bp = _skirt()
+    rows = cloth_check.seams(Bp, "skirt")
+    im = pattern_sheet.render(Bp, "skirt", seam_rows=rows)
+    assert isinstance(im.info.get("names_off"), list)
+    txt = "\n".join(pattern_sheet.text_lines(Bp, rows))
+    for nm in Bp["pieces"]:
+        assert f"  {nm}: " in txt and " mm, cut " in txt
+    assert txt.count("\n  S") == len(Bp["seams"]) and " ease " in txt and ("PASS" in txt or "FAIL" in txt)
+    tiny = {"pieces": {"tab": dict(Bp["pieces"][next(iter(Bp["pieces"]))])}, "seams": [], "interfaced": []}
+    tiny["pieces"]["tab"]["P"] = tiny["pieces"]["tab"]["P"] * 0.02  # (a 1 cm piece: no name fits inside it)
+    assert pattern_sheet.render(tiny, "tiny").info["names_off"] == ["tab"]
+
+
 def test_sewn_pairs_crossing_at_the_start_are_said_not_failed():
     # ZOZO starts with existing intersections allowed: pieces crossing where they are sewn / stitched (a collar on its
     # stand, a sleeve in its armhole, a cuff's lap) are a warning in stage 4; pieces with nothing joining them fail
