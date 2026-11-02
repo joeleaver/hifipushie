@@ -401,8 +401,9 @@ class Tape:
 VIEWS = (("front", lambda P: P[:, 0], lambda P: P[:, 1]),  # (name, image x, depth: smaller is nearer the viewer)
          ("side", lambda P: P[:, 1], lambda P: -P[:, 0]),  # (from the body's left, its front to the left)
          ("back", lambda P: -P[:, 0], lambda P: -P[:, 1]))
-COLOURS = [(220, 40, 40), (30, 110, 220), (20, 150, 60), (200, 110, 0), (150, 50, 190), (0, 150, 160), (200, 30, 130),
-           (110, 110, 0), (90, 60, 30), (60, 60, 200)]
+COLOURS = [(220, 40, 40), (30, 110, 220), (20, 150, 60), (230, 120, 0), (150, 50, 190), (0, 160, 170), (210, 30, 140),
+           (130, 130, 0), (110, 70, 30), (70, 70, 210), (240, 80, 120), (0, 110, 90), (170, 90, 230), (90, 160, 0),
+           (0, 70, 140), (190, 150, 40)]
 
 
 def _dense(P: np.ndarray, step: float = 0.005) -> np.ndarray:
@@ -438,21 +439,21 @@ def draw(tape: Tape, rows: list, path, h: int = 760) -> str:
         view = {"front": np.array([0, -1.0, 0]), "side": np.array([1.0, 0, 0]), "back": np.array([0, 1.0, 0])}[vname]
         light = _unit(view + np.array([0.3, 0, 0.5]))
         shade = np.clip(np.abs(nrm @ light), 0, 1)
-        for k in np.argsort(-D[T].mean(axis=1)):  # far to near
+        dimg = Image.new("I", (w, h), 10 ** 7)  # the nearest surface's depth (mm + 5 m), painted far to near
+        dd = ImageDraw.Draw(dimg)
+        Dm = D[T].mean(axis=1)
+        for k in np.argsort(-Dm):
             g = int(120 + 110 * shade[k])
-            dr.polygon([tuple(p) for p in tri[k]], fill=(g, g - 4, g - 10))
-        # a coarse depth buffer from the vertices: a tape point is seen where nothing nearer covers it
-        cell = 4
-        zb = np.full((h // cell + 2, w // cell + 2), np.inf)
-        gi, gj = np.clip((py / cell).astype(int), 0, zb.shape[0] - 1), np.clip((px / cell).astype(int), 0, zb.shape[1] - 1)
-        np.minimum.at(zb, (gi, gj), D)
+            pts = [tuple(p) for p in tri[k]]
+            dr.polygon(pts, fill=(g, g - 4, g - 10))
+            dd.polygon(pts, fill=int((Dm[k] + 5.0) * 1000))
+        zb = np.asarray(dimg, dtype=np.int64)
         for n, r in enumerate(drawn):
             P = _dense(tape.lines[r["name"]])
             col = COLOURS[n % len(COLOURS)]
             qx, qy, qd = ix(P), iy(P), fd(P)
-            i_, j_ = np.clip((qy / cell).astype(int), 1, zb.shape[0] - 2), np.clip((qx / cell).astype(int), 1, zb.shape[1] - 2)
-            near = np.min([zb[i_ + a, j_ + b] for a in (-1, 0, 1) for b in (-1, 0, 1)], axis=0)
-            seen = qd <= near + 0.012
+            i_, j_ = np.clip(qy.astype(int), 0, h - 1), np.clip(qx.astype(int), 0, w - 1)
+            seen = (qd + 5.0) * 1000 <= zb[i_, j_] + 15  # (within 15 mm of the nearest surface there: seen)
             for k in range(len(P) - 1):
                 both = seen[k] and seen[k + 1]
                 dr.line([(qx[k], qy[k]), (qx[k + 1], qy[k + 1])], fill=col if both else tuple(int(c * 0.4 + 150) for c in col),
@@ -460,8 +461,8 @@ def draw(tape: Tape, rows: list, path, h: int = 760) -> str:
             vis = np.where(seen)[0]
             if len(vis):
                 k = vis[np.argmax(qx[vis])] if r["kind"] in ("girth", "freesewing") and len(P) > 8 else vis[len(vis) // 2]
-                dr.ellipse([qx[k] + 3, qy[k] - 8, qx[k] + 19, qy[k] + 8], fill=(255, 255, 255), outline=col, width=2)
-                dr.text((qx[k] + 8, qy[k] - 6), str(n + 1), fill=col)
+                dr.ellipse([qx[k] + 3, qy[k] - 9, qx[k] + 23, qy[k] + 9], fill=(255, 255, 255), outline=col, width=2)
+                dr.text((qx[k] + (10 if n < 9 else 7), qy[k] - 6), str(n + 1), fill=col)
         dr.text((8, 6), vname, fill=(40, 40, 40))
         tiles.append(im)
     lw = 360
