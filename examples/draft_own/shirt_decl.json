@@ -1,0 +1,324 @@
+{
+ "pieces": {
+  "back": {
+   "part": "shirt.back",
+   "fold": "x0",
+   "place": {
+    "to": "torso",
+    "side": "back"
+   }
+  },
+  "yoke": {
+   "part": "shirt.yoke",
+   "fold": "x0",
+   "place": {
+    "to": "torso",
+    "side": "back",
+    "out": 0.004
+   }
+  },
+  "front.L": {
+   "part": "shirt.front",
+   "place": {
+    "to": "torso",
+    "side": "front",
+    "out": 0.004
+   }
+  },
+  "front.R": {
+   "part": "shirt.front",
+   "mirror": true,
+   "place": {
+    "to": "torso",
+    "side": "front"
+   }
+  },
+  "collar_band": {
+   "part": "shirt.band",
+   "place": {
+    "to": "neck",
+    "edge": "bm"
+   }
+  },
+  "collar": {
+   "part": "shirt.collar",
+   "place": {
+    "to": "neck",
+    "edge": "sm",
+    "above": 0.03
+   }
+  },
+  "sleeve.L": {
+   "part": "shirt.sleeve",
+   "place": {
+    "to": "arm.L",
+    "front": 1
+   }
+  },
+  "cuff.L": {
+   "part": "shirt.cuff",
+   "place": {
+    "to": "arm.L",
+    "front": 1,
+    "turn": 85
+   }
+  },
+  "sleeve.R": {
+   "part": "shirt.sleeve",
+   "place": {
+    "to": "arm.R",
+    "front": 1
+   }
+  },
+  "cuff.R": {
+   "part": "shirt.cuff",
+   "place": {
+    "to": "arm.R",
+    "front": 1,
+    "turn": 85
+   }
+  }
+ },
+ "edges": {
+  "back": {
+   "side.L": "hem2>armhole",
+   "side.R": "hem2.m>armhole.m",
+   "yoke": "yokeArm>cbYoke>yokeArm.m",
+   "armhole.L": "yokeArm>armhole",
+   "armhole.R": "yokeArm.m>armhole.m"
+  },
+  "yoke": {
+   "front.L": "hps>shoulder",
+   "front.R": "hps.m>shoulder.m",
+   "back": "yokeArm>cbYoke>yokeArm.m",
+   "neck": "hps.m>cbNeck>hps",
+   "armhole.L": "shoulder>yokeArm",
+   "armhole.R": "shoulder.m>yokeArm.m"
+  },
+  "front.L": {
+   "shoulder": "hps>shoulder",
+   "side": "hem2>armhole",
+   "armhole": "armhole>armholePitch>shoulder",
+   "neck": "hps>cfNeck>cfNeckExt",
+   "placket": "cfNeckExt>cfHemExt"
+  },
+  "front.R": {
+   "shoulder": "hps>shoulder",
+   "side": "hem2>armhole",
+   "armhole": "armhole>armholePitch>shoulder",
+   "neck": "cfNeckExt>cfNeck>hps",
+   "placket": "cfNeckExt>cfHemExt"
+  },
+  "collar_band": {
+   "neck": "bl>bm>br",
+   "top": "c1>c2"
+  },
+  "collar": {
+   "stand": "sL>sm>sR"
+  },
+  "sleeve.L": {
+   "cap": "bicepsRight>capQ2>bicepsLeft",
+   "underarm_front": "bicepsRight>wR",
+   "underarm_back": "bicepsLeft>wL",
+   "wrist": "wL>wR"
+  },
+  "cuff.L": {
+   "top": "tl>tr"
+  },
+  "sleeve.R": {
+   "cap": "bicepsRight>capQ2>bicepsLeft",
+   "underarm_front": "bicepsRight>wR",
+   "underarm_back": "bicepsLeft>wL",
+   "wrist": "wL>wR"
+  },
+  "cuff.R": {
+   "top": "tl>tr"
+  }
+ },
+ "seams": [
+  {
+   "a": "front.L:shoulder",
+   "b": "yoke:front.L"
+  },
+  {
+   "a": "front.R:shoulder",
+   "b": "yoke:front.R"
+  },
+  {
+   "a": "yoke:back",
+   "b": "back:yoke"
+  },
+  {
+   "a": "front.L:side",
+   "b": "back:side.L"
+  },
+  {
+   "a": "front.R:side",
+   "b": "back:side.R"
+  },
+  {
+   "a": "collar_band:neck",
+   "b": [
+    "front.R:neck",
+    "yoke:neck",
+    "front.L:neck"
+   ]
+  },
+  {
+   "a": "collar:stand",
+   "b": "collar_band:top"
+  },
+  {
+   "a": "sleeve.L:cap",
+   "b": [
+    "front.L:armhole",
+    "yoke:armhole.L",
+    "back:armhole.L"
+   ],
+   "ease": [
+    0.0,
+    0.12
+   ],
+   "why": "a set-in cap is eased into the armhole"
+  },
+  {
+   "a": "sleeve.L:underarm_front",
+   "b": "sleeve.L:underarm_back"
+  },
+  {
+   "a": "sleeve.L:wrist",
+   "b": "cuff.L:top",
+   "ease": [
+    0.08,
+    0.2
+   ],
+   "why": "two 16 mm pleats take the sleeve into the cuff"
+  },
+  {
+   "a": "sleeve.R:cap",
+   "b": [
+    "front.R:armhole",
+    "yoke:armhole.R",
+    "back:armhole.R"
+   ],
+   "ease": [
+    0.0,
+    0.12
+   ],
+   "why": "a set-in cap is eased into the armhole"
+  },
+  {
+   "a": "sleeve.R:underarm_front",
+   "b": "sleeve.R:underarm_back"
+  },
+  {
+   "a": "sleeve.R:wrist",
+   "b": "cuff.R:top",
+   "ease": [
+    0.08,
+    0.2
+   ],
+   "why": "two 16 mm pleats take the sleeve into the cuff"
+  }
+ ],
+ "stiff": [
+  "collar_band",
+  "collar",
+  "cuff.L",
+  "cuff.R"
+ ],
+ "folds": [
+  {
+   "name": "fall_edge",
+   "piece": "collar",
+   "line": [
+    "fL",
+    "fR"
+   ],
+   "kind": "roll",
+   "radius": 0.003
+  }
+ ],
+ "closures": [
+  {
+   "name": "front",
+   "kind": "buttons",
+   "over": "front.L",
+   "under": "front.R",
+   "edge": {
+    "over": "placket",
+    "under": "placket"
+   },
+   "at": [
+    [
+     "btn1",
+     "btn1"
+    ],
+    [
+     "btn2",
+     "btn2"
+    ],
+    [
+     "btn3",
+     "btn3"
+    ],
+    [
+     "btn4",
+     "btn4"
+    ],
+    [
+     "btn5",
+     "btn5"
+    ],
+    [
+     "btn6",
+     "btn6"
+    ],
+    [
+     "btn7",
+     "btn7"
+    ]
+   ]
+  },
+  {
+   "name": "band",
+   "kind": "buttons",
+   "over": "collar_band",
+   "under": "collar_band",
+   "at": [
+    [
+     "hole",
+     "btn"
+    ]
+   ]
+  },
+  {
+   "name": "cuff.L",
+   "kind": "buttons",
+   "over": "cuff.L",
+   "under": "cuff.L",
+   "at": [
+    [
+     "hole",
+     "btn"
+    ]
+   ]
+  },
+  {
+   "name": "cuff.R",
+   "kind": "buttons",
+   "over": "cuff.R",
+   "under": "cuff.R",
+   "at": [
+    [
+     "hole",
+     "btn"
+    ]
+   ]
+  }
+ ],
+ "omit": {
+  "sleeve_placket.L": "simplified to nothing: the 14 cm wrist slit and its binding sit under the cuff; a detail at step 7",
+  "sleeve_placket.R": "simplified to nothing: the 14 cm wrist slit and its binding sit under the cuff; a detail at step 7"
+ }
+}

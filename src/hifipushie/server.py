@@ -3114,7 +3114,7 @@ def pattern_check(name: str, garment: str, refs: str | dict | None = None, waive
     table and the next step.
     refs (reference reading), waive {id: reason}, views, size, save. Details: guide(topic="pattern_check")."""
     from . import cloth_check as cc, next_steps, pattern_sheet
-    if ((store.load(name).get("cloth") or {}).get(garment, {}).get("pattern") or {}).get("from") == "own":
+    if _own_draft(name, garment):
         from . import draft_own_tool as dot  # (drafted with draft_pattern: the general flat gate, re-read: T5)
         return dot.check_text(name, garment)
     keep: dict = {}
@@ -3698,6 +3698,13 @@ def garment_plan(name: str, garment: str, step: str, plan: dict | str, look: boo
     r = gp.write(name, garment, step, _spec_arg(plan) if isinstance(plan, str) else plan, look=look)
     txt = gp.text(name, garment, r)
     return [_out(PILImage.open(p_).convert("RGB"), None) for p_ in r["look"][:2]] + [txt] if r["look"] else txt
+
+
+def _own_draft(name: str, garment: str) -> bool:
+    try:
+        return ((store.load(name).get("cloth") or {}).get(garment, {}).get("pattern") or {}).get("from") == "own"
+    except ValueError:  # (no model: pattern_gate says so in its own words)
+        return False
 
 
 @mcp.tool(structured_output=False)

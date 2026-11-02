@@ -57,7 +57,7 @@ def test_stale_and_back_to(home):
     gr.write("m", "shirt", "5", "done", output={"n": "5b"})
     gr.write("m", "shirt", "6", "failed", gate={"verdict": "FAIL", "rows": [{"id": "collar_tilt", "status": "FAIL"}]})
     n = gr.next_step(gr.load("m", "shirt"))
-    assert n["step"] == "4" and "FAILED" in n["why"] and n["call"].startswith('call_tool("pattern_check"')
+    assert n["step"] == "4" and "FAILED" in n["why"] and n["call"].startswith('call_tool("draft_pattern"')  # (step 4's tool, T5)
 
 
 def test_approval_read_only(home):
