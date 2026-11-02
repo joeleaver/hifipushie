@@ -438,7 +438,7 @@ def test_collider_takes_worn_parts():
 
 def test_collar_from_the_neck():
     # garment_kb kinds.shirt.collar through Simon's options: the stand as tall as the neck allows (less 13 mm under
-    # the jaw) within 20-35 mm, the fall 12 mm deeper at centre back
+    # the jaw) within 20-35 mm, the fall covering the stand seam by 10 mm as worn
     tbl = {"kind": "shirt", "collar_rule": "simon"}
     o = {"collarEase": 0.115, "collarGap": 0}
     short = cloth.collar_options(tbl, o, {"neck": 400.0, "neckHeight": 29.0})
@@ -446,7 +446,8 @@ def test_collar_from_the_neck():
     assert np.isclose(short["collarStandWidth"] * 400, 20.0, atol=0.05)  # 16 mm of room: the 20 mm floor
     assert np.isclose(tall["collarStandWidth"] * 400, 35.0, atol=0.05)   # capped at 35
     for r, s in ((short, 20.0), (tall, 35.0)):
-        assert np.isclose(s * r["collarWidth"] * 1.03, s + 12.0, atol=0.1)  # fall = stand + 12 (collarRoll 3%)
+        # (C278) fall = stand + 10 worn cover + 2 x 4 mm roll + 2 mm turn (collarRoll 3%)
+        assert np.isclose(s * r["collarWidth"] * 1.03, s + 20.0, atol=0.1)
         assert 0.0 < r["collarBend"] < 0.1
     assert cloth.collar_options({"kind": "shirt"}, o, {"neck": 400.0, "neckHeight": 29.0}) == {}  # no rule: as drafted
 

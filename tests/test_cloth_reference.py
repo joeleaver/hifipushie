@@ -238,3 +238,10 @@ if __name__ == "__main__":
         if k.startswith("test_"):
             v()
             print("ok", k)
+
+
+def test_colour_answered_as_hex_reads_as_rgb():
+    # (C278) a colour answered "#rrggbb" compares like a sampled one (it read UNMEASURED: "could not convert string")
+    it = next(i for i in cr.items_for("shirt") if i["id"] == "colour")
+    assert cr.reading(it, {"value": "#dfe7f4"}, [])["value"] == [223, 231, 244]
+    assert cr.reading(it, {"value": [1, 2, 3]}, [])["value"] == [1, 2, 3]
