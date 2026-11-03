@@ -34,23 +34,22 @@ their tapes (FALLBACK named). Proof f4/ws trousers REFUSED (front.R never round 
 ## F6 (C317-C320; HOME f6): flat gate rows seam_ends + body_lengths; per-stage length reads; the START stretched (trousers
 1063 %), the pattern goes round (crotch 1032 vs seat 960 + 60). Detail: git history (73a264bf).
 ## F7 (C321-C323; chain_sew.py, HOME f7): flat then sew (ARRANGE exact 0.02 %, SEW stalled 17 min). Opt-in: HIFIPUSHIE_SEW_START=1 / build.sew_start.
-## F8 (2026-11-03, C324-C326; chain_bend.py, HOME /mnt/data/hifipushie/f8, scripts f8/scripts, logs f8/*.log)
-- chain_sew.sew = chain_bend.rigid (each soft piece a solid: 6 numbers, least squares, body a soft barrier; exact) ->
-  chain_bend.bend (Verlet + colour-batched Gauss-Seidel lengths + ramped pull + body push; stops closed / stalled <1 %
-  over 150 passes; worst_pct read every pass, the pull halves past HOLD_PCT) -> ONE exact chain_net.project (closed
-  pairs joined in it). gate_sew reads rigid + bend.
-- Trousers (f8/sewrun.log): laid gaps 97-327 mm -> RIGID 47-107 (rms 196 -> 49, 9 s, 0.02 %) -> BEND stalled 1251
-  passes / 185 s at 5-29 mm (worst transient 5 %) -> project exact (0.02 %) but reopens: inseam hem 95-97, CF 29,
-  CB 18, side 11-12, band 5-9 mm. SEW FAIL; the sew start STAYS OPT-IN. A free pull (no hold, f8/fast_c.log) closes
-  all but CF (32 mm) with 34 % transient stretch.
-- Findings: (1) waistband built 13 % past its cut at its lap (body_ring's radial lap): FIXED (C325, BUILD_VERSION 29).
-  (2) PATTERN FAULT: crotch CF 299 + CB 396 = 695 mm vs the body ~480-563 + ~15 stand-off: 130-200 mm TOO LONG (low,
-  baggy crotch; f8/scripts/crotch.py). (3) Topology: each leg's crotch extension laid through the inner thigh (4.5 % of
-  cloth inside, 48 mm deep): the CF can't close. Not fixed: the next run starts from an SDF block-in, already sewn.
-- Not done: no trousers build past SEW, no render, no hussar, provisional rows NOT calibrated (no passing build).
-  Tests: test_chain_bend (4: colours, rigid closes with zero stretch, bend closes a tube within HOLD_PCT, stall stops),
-  test_chain_loops lap test; targeted chain tests pass.
-NEXT: (a) the SDF block-in start (pieces already sewn round the body) removes the through-the-thigh lay; run chain_bend
-on it. (b) the inseam hem reopens 24 -> 95 mm in the projection: read the ankle round row against the hem width
-(pattern?) before the solver. (c) add crossSeam / crossSeamFront to body_tape (a length path between the legs) and a
-body_lengths row: the crotch is 130-200 mm long. (d) calibrate inside / holes / sewn on the first build to pass.
+## F8 (C324-C326; chain_bend.py, HOME f8): rigid then bend; trousers SEW FAIL (inseam hem 95, CF 29 mm); waistband lap fixed (BV 29). Detail: git history (60ca2d12).
+## F9 (2026-11-03, C327-C330; garment_blockin.py, blockin_map.py, HOME /mnt/data/hifipushie/f9, scripts f9/scripts)
+- Step 2 `blockin` (data): ease knots, cones, cut planes, seam planes (+ within), region seeds -> body SDF offset, meshed
+  (6 mm, taubin), cut exactly along each seam plane: regions + seam lines. Outline vs the reference: T15 on its silhouette.
+  Body marks may now be u-only ([u, null]). Trousers block-in: f9/scripts/plan_blockin.json; look f9/blockin_look.png.
+- Step 4 `blockin_map.check`: region flattened (LSCM), piece mapped by its seam ends (arc length) + harmonic inside;
+  rows map:<seam> (pattern vs line, max(25 mm, 5 %)) + area:<piece> (area, median stretch along / across).
+- Step 5 `blockin_map.start`: hooked in soft_start, OPT-IN HIFIPUSHIE_BLOCKIN_START=1 (job sets build.blockin from the plan). NOT RUN on a build.
+- Trousers: outline leg_R / leg_L FAIL p95 46 / 40 mm (hem: the concept's legs ~20 % shorter than garrett's; fork).
+  Map: side +62, inseam +113, CF -71, CB +28 mm; waist front PASS, back UNMEASURED (bug: back waist line missing).
+  Reconciled (f9/scripts/crotch_rec.py): body x=0 from waist_z = 617 mm; the block-in's fork sits 61 mm under the body's
+  crotch (the leg cones + smooth union fill the thigh notch): its 737 mm is the block-in's fault. Design ~640: the
+  pattern's 695 is ~55 mm long (mostly CB), not 130-200.
+- Tests: tests/test_blockin.py (4: cylinder regions + seam lines, matching piece ~0 distortion, too-long piece by seam,
+  start seams closed); test_garment_plan + test_structure_outline pass. No build, no render, no draft fix.
+NEXT: (a) block-in: keep the leg cones off x=0 above crotch_z (or a ceiling at crotch_z), hem cut to the pattern's
+intended break; fix the missing back waist line; rerun map (expect CB ~+50 mm). (b) fix the crotch in the draft
+(draft_pattern), re-check to PASS. (c) build with HIFIPUSHIE_BLOCKIN_START=1 through the stage gates; render front + side
+beside concept_v8. (d) job_key doesn't include the block-in: add it before relying on jobs.

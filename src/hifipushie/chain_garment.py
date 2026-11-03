@@ -1121,6 +1121,12 @@ class GarmentBuild(Build):
         from .chain_stages import mirror_starts
         from .piece_start import turn_to_seams
         X = mirror_starts(self, turn_to_seams(self, X))  # (F5 C314: a .R piece starts as its .L's mirror, never solved on its own)
+        # (F9: started on the step-2 SDF block-in: each piece mapped onto its region, seams closed; OPT-IN until a build
+        # from it passes: HIFIPUSHIE_BLOCKIN_START=1 with build.blockin set (the job sets it from the plan))
+        if getattr(self, "blockin", None) is not None and os.environ.get("HIFIPUSHIE_BLOCKIN_START") == "1":
+            from .blockin_map import start as _bstart
+            from .garment_blockin import build as _bbuild
+            return _bstart(self, _bbuild(self.blockin, self.body), X)
         # (F7: flat then sewn: exact, but its sew stalls before the seams close on the trousers: OPT-IN until it closes them,
         # HIFIPUSHIE_SEW_START=1 or build.sew_start = True; coordinator 2026-11-03)
         if getattr(self, "sew_start", os.environ.get("HIFIPUSHIE_SEW_START") == "1"):  # (that lay is the GUIDE)
@@ -1732,6 +1738,7 @@ def worker(model: str, garment: str, wear: dict):
                 def _build(lb):  # (T13: the plan's draped pieces, set before the run whatever builds it)
                     gb = GarmentBuild(pat, lb, wear, log=lambda *_: None)
                     gb.drape = cd.info(model, garment, gb.net) if hasattr(gb, "net") else None
+                    gb.blockin = ((cs.load_plan(model, garment) or {}).get("style") or {}).get("blockin")  # (F9)
                     return gb
                 from . import chain_press as cpr
                 if wear.get("under") and cpr.mode(model, garment)[0] == "visible":  # (hidden decided first: C296)

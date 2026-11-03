@@ -393,6 +393,9 @@ def check_style(p: dict, read: dict, parts: dict) -> dict:
             bad.append(f"{w}.at: [[u, v], ...] on view (a step-0 view index)")
     from . import chain_drape as cd, structure_outline as so
     so.check_plan(p, read, bad)  # (T15: traced edges + the body marks that place the view)
+    if p.get("blockin") is not None:  # (F9: the garment as worn, an SDF block-in: garment_blockin's docstring)
+        from .garment_blockin import validate as _bv
+        bad += _bv(p["blockin"])
     cd.check_style(p, pieces, bad)  # (T13: drape falls; a hang row needs a draped piece falling that way)
     falls = {x["falls"] for x in cd.plan_drape({"parts": parts, "style": p}).values()}
     for i, r in enumerate(rows):
