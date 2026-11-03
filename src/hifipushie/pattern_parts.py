@@ -207,7 +207,7 @@ def look(dp: dict, path: Path, size: int = 900) -> Path:
     lo, hi = allp.min(0), allp.max(0)
     s = (size - 120) / max(float((hi - lo).max()), 1.0)
     T = lambda q: [(float((x - lo[0]) * s + 60), float((y - lo[1]) * s + 60)) for x, y in q]
-    W, H = int((hi[0] - lo[0]) * s + 120), int((hi[1] - lo[1]) * s + 120)
+    W, H = int((hi[0] - lo[0]) * s + 380), int((hi[1] - lo[1]) * s + 120)  # (room for the right-hand names)
     im = Image.new("RGB", (W, H), "white")
     dr = ImageDraw.Draw(im)
     for k, q in polys:
