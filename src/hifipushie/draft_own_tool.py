@@ -33,6 +33,19 @@ def seam_names(decl: dict) -> list:
     return [f"{side(s['a'])} = {side(s['b'])}" for s in decl.get("seams") or []]
 
 
+def stand_ref(name: str, garment: str) -> dict | None:
+    """draft_stand.reference from step 2's collar_top trace, placed on the model's body (its landmarks); None: no trace."""
+    from . import chain_structure as cs, cloth, draft_stand, store
+    plan = cs.load_plan(name, garment)
+    if not any(t.get("what") == "collar_top" for t in ((plan or {}).get("style") or {}).get("traces") or []):
+        return None
+    try:
+        at = cloth.Body(cloth.body_mesh(store.load(name))).at
+    except (KeyError, ValueError, TypeError) as e:
+        return {"why": f"the body's landmarks: {type(e).__name__}: {str(e)[:120]}"}
+    return draft_stand.reference(plan, at)
+
+
 def flat_check(name: str, garment: str) -> tuple[list, dict, dict]:
     """(rows, B, decl) of a garment drafted with draft_pattern: the general flat gate re-read from its saved draft."""
     from . import cloth, garment_record as gr, store
@@ -42,7 +55,7 @@ def flat_check(name: str, garment: str) -> tuple[list, dict, dict]:
     rd = gr.reads(name, garment, "4")
     B = cloth.pieces(json.loads(json.dumps(g)), measurements(rd["3"]))
     B["edge_arcs"] = do.block(g["pattern"])["edge_arcs"]
-    return do.gate(B, decl, rd["1"]), B, decl
+    return do.gate(B, decl, rd["1"], stand_ref(name, garment)), B, decl
 
 
 def check_text(name: str, garment: str) -> str:
@@ -86,7 +99,7 @@ def run(name: str, garment: str, design: str, declarations: dict, options: dict 
     except (KeyError, ValueError, IndexError) as e:
         raise do.DraftRefused(f"the converter refused the draft: {e}") from None
     B["edge_arcs"] = do.block(g["pattern"])["edge_arcs"]
-    rows = do.gate(B, declarations, rd["1"])
+    rows = do.gate(B, declarations, rd["1"], stand_ref(name, garment))
     v = do.verdict(rows)
     seam_rows = next(r for r in rows if r["id"] == "seams")["detail"]
     names = seam_names(declarations) if len(declarations.get("seams") or []) == len(B["seams"]) else None
