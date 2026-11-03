@@ -1,4 +1,4 @@
-# STATE: draft_pattern (garment step 4, T5 + T5b) -> codified.md C285, C295, C300
+# STATE: draft_pattern (garment step 4, T5 + T5b) -> codified.md C285, C295, C300, C303
 Tool draft_pattern(name, garment, design, declarations, options, sa): the agent's own FreeSewing design (Node, no network,
 fs read-only, 60 s) + declarations in step 1's names -> draft_own.block (the one converter) -> cloth.mesh -> the flat
 gate -> step 4 + flat sheet. pattern_check and chain_garment's gate read an own draft's step 4. The spec's pattern
@@ -30,6 +30,31 @@ is wrong for a jacket front (it tilts over the chest), so the front target is ~3
 Judged: no full-size render (stopped by the coordinator); verdict from the overlays + numbers: worse at the collar.
 UNVERIFIED: the derivation with a body-side D; whether a straight neck edge stands on a tilted neckline at all (c1 lies
 out at CB: maybe a level-top stand still needs some rise); the shirt's chain build; half stands (.L/.R).
-NEXT: in draft_stand, take D (and D_back) from the photo / body, not the flat: the neckline's vertical drop in the view
-(collar_front traces' bottom ends vs the hps marks, else the body's hps - cf_neck z); retest; redraft the fronts
-(~h_side + 39 - 20 ~ 72 mm) and rebuild once; fix the cfNeck length refusal first if it persists (look_pattern there).
+r-hussar (2026-11-02, C303; HOME /mnt/data/hifipushie/r-hussar = t5c copy, scripts/ there, run.sh sets HOME + ASSETS):
+D SEEN: draft_stand.reference takes D = the collar_front traces' bottoms below the hps marks (hussar 49 mm; else the body's
+hps - cf_neck), D_back = the body's hps - cb_neck (-9: the neck base tilts, CB above the side neck); the flat's only when
+neither is known (said in the row). RISE: an upright level-top stand is a vertical band: free edge straight, neck edge
+FALLING at the ends by (1 - f)(D - D_b); target = f x jaeger x D_flat - (1 - f)(D - D_b), tol the heights'. shape_stand is
+a VERDICT again on the HEIGHTS (c1 108 mm fronts -> collar_height FAIL; r1 / r2 82 / 48 -> PASS; T8's 46 -> collar_front
+corners low: 3 builds agree with the rule); the CURVE's why is report-only ("INFO (curve would FAIL)"): r1 (+9) and r2
+(-13 mm) both built the stand 31 deg up, so no build backs the rise yet. Tests: test_draft_own (D seen; leaning stand).
+cfNeck REFUSAL (c1: front.L edge 30 % at cfNeck): the build's stand stage put c1's 108 mm fronts LYING OUT (stand rise
+median 10.7 deg; band neck edge read 445.6 vs cut 430.7, worst link 32 %; the stand's CF end edge lying along the
+neckline, its links 3x): dragged sideways, the front's neck corner tore (its mesh x1.5-1.7 there). Gone with the right
+heights (r1 / r2: free worst 0.0 %, band neck = cut, stand rise median 48-49 deg). Not a separate draft fault.
+REDRAFT (examples/draft_own/hussar.mjs + options): fronts 82 / CB 48 / side 53 mm (the row's targets); the CF neck 30 mm
+lower (c1's built 19 mm below hps vs the trace's 49); the stand widened about CB until its neck edge = the neckline (the
+lowered neck is longer, and collarEase also sizes the bodice neckline); HPS_AT from the store; bend 5 (neck edge -13 mm).
+ROWS p95 mm (T15-on-T8 -> c1 -> r2): hem 32.5 -> 20.1 -> 22.5 FAIL (hem untouched; 2 step corners kept, tips lost);
+collar_top 8.7 -> 10.4 -> 11.5 FAIL (built top 41 mm LOW, domed: lying out); collar_front R / L 11.8 / 6.3 -> 20.1 / 19.7
+-> 11.8 / 12.9 FAIL; zip_line PASS -> FAIL -> FAIL (p95 6.0, max 22.1 > 20.6: at the neck); collar_height FAIL -> FAIL ->
+PASS 0.151; collar_upright FAIL -> FAIL -> FAIL 31.3 deg (want 76-94). Overlay outline_r2.png (+ _top), render
+sheet_r2_neck.png / sheet_r2_whole.png. JUDGED at full size beside the reference: NOT the hussar's stand: it lies out
+like a funnel, ends far apart at the top, CB lying flat (8 mm of height at CB), crumpled seam; reference tall, upright,
+level, ends nearly meeting. Heights right on the flat, wrong on the body because the BUILD lays the stand out.
+BUILD FAULT (named, not fixed): chain_roles' stand stage only asks its top 12 mm over its bottom (`upright`), leans the
+whole ring forward to clear the neck, then later stages drop it to 31 deg; the stand's own edge links read 237-278 % over
+(gathered, so outside the free gate). UNVERIFIED: the rise rule (no upright build yet); D_back's -9 mm; the hem.
+NEXT: the stand build (chain_roles stand stage + the stages after it): an upright stand keeps its heights square to the
+ring as built (generators vertical, its CB standing), its gathered edge links within their cut; then rebuild r2 unchanged
+and read collar_upright / collar_top; only then judge the rise rule and make the curve a verdict.

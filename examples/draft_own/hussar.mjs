@@ -10,10 +10,13 @@ const TIP = [70, 135] // the cutaway's tip: this far out from CF and below the w
 const STEP_OUT = 60 // the cutaway's square step out from CF at the zip's end (mm)
 const ROUND = 16 // the stand's front top corners: rounded over this much (mm; the reference's are round)
 // The stand's heights, from the flat gate's shape_stand row on step 2's traced top line (level all round, 53 mm above the
-// side neck; it drops 20 of the neckline's 75 mm): at the side neck, at CB (the back neckline sits 18.5 mm lower) and at
-// the front ends (the front neckline drops 75 mm under a level top): h_side + D_back (1 - f), h_side + D - T.
-const H_SIDE = 53, H_CB = 67, H_FRONT = 108
-const HPS_AT = 0.44 // the side neck point along the stand's half neck edge from CB (back neck 95 / 217 mm)
+// side neck, dropping 20 mm to its front ends) over the neckline SEEN (r-hussar: the collar_front traces' bottoms 49 mm
+// below the side neck; the body's CB neck 9 mm above it): front ends h_side + D - T = 82, CB h_side + D_back (1 - f) = 48.
+// (c1 took D from the flat, 75 mm: fronts 108 tall, built lying out.)
+const H_SIDE = 53, H_CB = 48, H_FRONT = 82
+// The reference's neckline at CF sits 49 mm below the side neck; c1's built 19 (its flat 75 mm drop tilts back over the
+// chest): the front neck lowered at CF by the difference, the curve keeping its square corner at CF.
+const NECK_DOWN = 30
 const TOP_N = 24 // top-line points per half
 const HIDE = { from: true, inherited: true }
 const hideAll = (paths) => { for (const k of Object.keys(paths)) paths[k].hide() }
@@ -38,6 +41,9 @@ const front = {
   name: 'hussar.front', from: bentFront, hide: HIDE,
   draft: ({ points, Point, paths, Path, store, part }) => {
     hideAll(paths)
+    points.cfNeck = new Point(points.cfNeck.x, points.cfNeck.y + NECK_DOWN)
+    points.cfNeckCp1 = new Point(points.cfNeckCp1.x, points.cfNeckCp1.y + NECK_DOWN)
+    paths.frontCollar = new Path().move(points.hps).curve(points.neckCp2Front, points.cfNeckCp1, points.cfNeck).hide()
     points.hem2 = new Point(points.hem.x, points.cfWaist.y + HEM)
     points.cfPoint = new Point(0, points.cfWaist.y + CF_END)
     // the reference's cutaway: the front edge comes down to the zip's end, steps OUT in a square corner, then drops to
@@ -61,11 +67,21 @@ const front = {
 // 1 - cos, a front neck falling from it like sin), its front top corners rounded; no button extension (hooks).
 const collar = {
   name: 'hussar.collar', from: simonStand, after: [back, front],
-  draft: ({ points, paths, Path, snippets, Snippet, part }) => {
+  draft: ({ points, Point, paths, Path, snippets, Snippet, store, part }) => {
+    // the neck edge sized to the neckline it's sewn to (the lowered front neck is longer than simon's neck x collarEase,
+    // and collarEase also sizes the bodice's neckline): the whole stand widened about CB until its neck edge matches
+    const half = () => new Path().move(points.bottomMid)
+      .curve(points.bottomMidCp2, points.rightBottomHingeCp1, points.rightBottomHinge)
+      .curve(points.rightBottomHingeCp2, points.rightBottomCfCp1, points.rightBottomCf).length()
+    for (let it = 0; it < 3; it++) {
+      const k = (store.get('backNeck') + store.get('frontNeck')) / half()
+      for (const n of Object.keys(points)) points[n] = new Point(points[n].x * k, points[n].y)
+    }
     const bottom = new Path().move(points.bottomMid)
       .curve(points.bottomMidCp2, points.rightBottomHingeCp1, points.rightBottomHinge)
       .curve(points.rightBottomHingeCp2, points.rightBottomCfCp1, points.rightBottomCf)
     const L = bottom.length()
+    const HPS_AT = store.get('backNeck') / (store.get('backNeck') + store.get('frontNeck'))  // the side neck along the half
     const height = (u) => u < HPS_AT ? H_SIDE + (H_CB - H_SIDE) * Math.cos((Math.PI / 2) * u / HPS_AT)
       : H_SIDE + (H_FRONT - H_SIDE) * Math.sin((Math.PI / 2) * (u - HPS_AT) / (1 - HPS_AT))
     const tops = []  // CB .. the front end, right side

@@ -199,7 +199,11 @@ def _ref(points):
 
 _bowl = lambda x: ((x - 0.2) / 0.2) ** 2  # 0 at the middle (CB), 1 at the strip's two ends (the front ends)
 HUGS = (lambda x: 0.03 * _bowl(x), lambda x: 0.03 * _bowl(x) + 0.05)  # neck edge rising 30 mm, 50 mm tall all round
-AWAY = (lambda x: -0.01 * _bowl(x), lambda x: -0.01 * _bowl(x) + 0.05 + 0.07 * _bowl(x))  # falling 10 mm, 120 mm at the ends
+_slope = lambda x: (1 + (0.07 * 2 * (x - 0.2) / 0.04) ** 2) ** 0.5  # 1 / cos of the falling neck edge's slope
+AWAY = (lambda x: -0.07 * _bowl(x), lambda x: -0.07 * _bowl(x) + (0.05 + 0.07 * _bowl(x)) * _slope(x))  # upright: neck
+# edge falling 70 mm, 120 mm at the ends square to it, its top near straight
+LEANS = (lambda x: -0.01 * _bowl(x), lambda x: -0.01 * _bowl(x) + 0.05 + 0.07 * _bowl(x))  # falling 10 mm only: the top
+# curves up 60 mm in the flat, so the band leans with the neckline's plane (r-hussar build r1)
 
 
 def _stand(lo_hi, lean_in=False):
@@ -219,17 +223,19 @@ def test_stand_reference_reads_the_traced_top():
 
 def test_shape_a_level_top_over_a_dropping_neckline_wants_taller_fronts_not_a_rise():
     r = _rows(_B(_stand(HUGS, lean_in=True)), ref=_ref(LEVEL))["shape_stand"]
-    assert r["status"] == "INFO (would FAIL)" and "level" in r["value"], r
+    assert r["status"] == "FAIL" and "level" in r["value"], r
     assert "flatter / down" in r["why"] and "taller at its front ends" in r["why"] and r["back_to"] == "4", r["why"]
     ok = _rows(_B(_stand(AWAY)), ref=_ref(LEVEL))["shape_stand"]
-    assert ok["status"] == "INFO (would PASS)", ok
+    assert ok["status"] == "PASS", ok
+    lean = _rows(_B(_stand(LEANS)), ref=_ref(LEVEL))["shape_stand"]  # tall fronts but a near-straight neck edge: not upright
+    assert lean["status"] == "INFO (curve would FAIL)" and "flatter / down" in lean["why"] and "taller" not in lean["why"], lean
 
 
 def test_shape_a_top_that_follows_the_neckline_wants_the_hugging_rise():
     ok = _rows(_B(_stand(HUGS, lean_in=True)), ref=_ref(FOLLOWS))["shape_stand"]
-    assert ok["status"] == "INFO (would PASS)" and "hugging" in ok["value"], ok
+    assert ok["status"] == "PASS" and "hugging" in ok["value"], ok
     r = _rows(_B(_stand(AWAY)), ref=_ref(FOLLOWS))["shape_stand"]
-    assert r["status"] == "INFO (would FAIL)" and "up (the ends towards the free edge)" in r["why"] and "lower at its front ends" in r["why"], r
+    assert r["status"] == "FAIL" and "up (the ends towards the free edge)" in r["why"] and "lower at its front ends" in r["why"], r
 
 
 def test_shape_no_trace_reports_the_stand_and_assumes_no_style():
@@ -237,7 +243,7 @@ def test_shape_no_trace_reports_the_stand_and_assumes_no_style():
         r = _rows(_B(s))
         assert r["shape_stand"]["status"] == "INFO" and "no style assumed" in r["shape_stand"]["value"], r["shape_stand"]
     assert "rising (hugs)" in _rows(_B(_stand(HUGS)))["shape_stand"]["value"]
-    assert "near straight (upright)" in _rows(_B(_stand(AWAY)))["shape_stand"]["value"]
+    assert "near straight (upright)" in _rows(_B(_stand(LEANS)))["shape_stand"]["value"]
     falls = _strip("collar", lambda x: -0.03 * _bowl(x), lambda x: 0.05 - 0.03 * _bowl(x))
     assert "falling (stands away)" in _rows(_B(falls))["shape_stand"]["value"]
     sc = _rows(_B(_strip("collar", lambda x: 0.0, lambda x: 0.048)))["shape_seam_curve"]  # still named: straight on curved
@@ -268,3 +274,22 @@ def test_shape_a_curved_edge_sewn_to_a_straight_one_fails():
     B = {"pieces": {"a": a, "b": b}, "seams": [["a:s>e", "b:s>m>e"]], "edge_arcs": {"a": {"curve": "s>e"}, "b": {"line": "s>m>e"}}}
     r = ds.seam_curve_rows(B, {}, {})
     assert r["status"] == "FAIL" and "b:line is straight" in r["why"]
+
+
+def test_shape_stand_takes_the_neckline_drop_seen_not_the_flat():
+    """r-hussar: a tilted front drops 70 mm on the flat but only 30 mm in the view (the collar_front traces' bottoms below
+    the hps marks): a level top 50 mm above the side neck wants fronts ~80 mm tall, not 120; CB from the body's cb_neck."""
+    from hifipushie import draft_stand as dst
+    fronts = [{"id": "cf_R", "what": "collar_front", "view": 0, "points": [[385, 52], [390, 130]]},
+              {"id": "cf_L", "what": "collar_front", "view": 0, "points": [[415, 52], [410, 130]]}]
+    plan = {"read": {"views": [{"view": "front", "image": "x.png"}]},
+            "style": {"traces": [{"id": "top", "what": "collar_top", "view": 0, "points": LEVEL}] + fronts,
+                      "body_marks": _MARKS}}
+    ref = dst.reference(plan, dict(_AT, cb_neck=[0.0, 0.05, 1.49]))
+    assert abs(ref["D"] - 30) < 0.5 and abs(ref["D_back"] - 10) < 0.5 and "collar_front" in ref["D_how"], ref
+    r = _rows(_B(_stand(AWAY)), ref=ref)["shape_stand"]  # 120 mm fronts: the flat's 70 mm drop asked for them
+    assert "FAIL" in r["status"] and "lower at its front ends" in r["why"] and "wants h_side + D - T = 50 + 30 - 0 = 80" in r["why"], r
+    # no collar_front trace: the body's cf_neck is the neckline seen
+    ref2 = dst.reference({"read": plan["read"], "style": dict(plan["style"], traces=plan["style"]["traces"][:1])},
+                         dict(_AT, cf_neck=[0.0, -0.08, 1.48]))
+    assert abs(ref2["D"] - 20) < 0.5 and "cf_neck" in ref2["D_how"], ref2

@@ -118,11 +118,11 @@ def stand_rows(B: dict, decl: dict, step1: dict, ref: dict | None = None) -> dic
             why += w
             out.append(p)
     judged = bool(out) and ref is not None and "why" not in ref
-    # REPORT ONLY until the derivation holds (coordinator 2026-11-02): it took the neckline's drop D from the FLAT
-    # pattern (75 mm) where the body's is 16-39 mm (a front tilts over the chest), so it asked for fronts 30-60 mm too
-    # tall and build c1's collar collapsed. Its numbers are shown; it never fails or passes a draft. NEXT in
-    # docs/state/draft_pattern.md: D from the view, then this goes back to a verdict.
-    status = ("INFO (would FAIL)" if why else "INFO (would PASS)" if judged else "INFO") if out else "INFO"
+    # A VERDICT again on the heights (r-hussar): D is the neckline's drop SEEN, and three builds back the heights (c1's
+    # fronts 108 mm, the flat D's ask, built lying out and too tall: collar_height FAIL; r1 / r2's 82 / 48 mm: PASS; T8's
+    # 46 mm fronts: collar_front's top corners low). The curve's why stays report-only (draft_stand.CURVE_ONLY).
+    hard = [w for w in why if not w.startswith(dst.CURVE_ONLY)]
+    status = ("FAIL" if hard else "INFO (curve would FAIL)" if why else "PASS" if judged else "INFO") if out else "INFO"
     return {"id": "shape_stand", "status": status,
             "value": "; ".join(vals) if vals else "no stand / band",
             "target": ("step 2's collar_top trace decides (draft_stand.py): rise = f x %.2f x D +- %.2f D (f = the share of "
