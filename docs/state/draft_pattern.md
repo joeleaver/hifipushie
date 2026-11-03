@@ -44,5 +44,7 @@ carries parts), test_garment_record, test_body_tape (+1), test_toolsets (-m "": 
 UNVERIFIED: the running MCP server has the old code (restart to get pattern_parts); a blind agent using pattern_parts;
 carry after a step-0 change on a real record; full_arc on a stand with no fold whose neck edges don't share a point
 (falls back to the first arc); jaeger.backBase's moved points print as "(0,20)" (no name at that spot).
+F3 (C310): `pieces.<n>.pair: true` = cut 2 as a mirrored pair (draft_pairs.py); half / sideless pieces refused at
+step 4 with that declaration; t8 shirt + trousers redeclared draft and pass (f3/scripts/pairs.py).
 NEXT: a blind re-run of t8's step 4 (shirt + jacket) with pattern_parts available: count the calls to name edges and the
 refusals left; then the stand build (F1) and its rise rule.
