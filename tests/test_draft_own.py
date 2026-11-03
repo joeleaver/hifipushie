@@ -139,3 +139,93 @@ def test_tool_writes_step4_and_reads_steps_1_and_3(home, monkeypatch):
     assert "pattern_check (own draft, the flat gate): PASS" in dot.check_text("tm", "g")
     _, txt = dot.run("tm", "g", RECT, dict(DECL, seams=DECL["seams"][:1]))
     assert "REFUSED" in txt and "panel.L:back <-> panel.R:back is not sewn" in txt
+
+
+# ---------------------------------------------------------------- the flat gate's SHAPE rows (T5b, C295): no Node
+def _piece(name, pts, names, to="torso"):
+    import numpy as np
+    return {"name": name, "P": np.asarray(pts, float), "names": names, "wrap": {"to": to}}
+
+
+def _strip(name, lo, hi, n=21, to="neck"):
+    """A strip: its bottom edge y = lo(x), top y = hi(x), x over [0, 0.4]; outline bl..br, tr..tl."""
+    import numpy as np
+    xs = np.linspace(0, 0.4, n)
+    bot = [(x, lo(x)) for x in xs]
+    top = [(x, hi(x)) for x in xs[::-1]]
+    names = {"bl": 0, "bm": n // 2, "br": n - 1, "tr": n, "tm": n + n // 2, "tl": 2 * n - 1}
+    return _piece(name, bot + top, names, to)
+
+
+def _neckline():
+    """A body piece whose neck edge drops 70 mm to CF on a curve (a front)."""
+    import numpy as np
+    t = np.linspace(0, np.pi / 2, 12)
+    neck = [(0.08 * (1 - np.cos(u)), -0.07 * np.sin(u)) for u in t]  # hps (0, 0) -> cf (0.08, -0.07)
+    pts = neck + [(0.08, -0.5), (0.25, -0.5), (0.2, 0.0)]
+    return _piece("front", pts, {"hps": 0, "cf": 11, "hem": 12, "side": 13, "sh": 14})
+
+
+def _B(stand, fall=None, fall_outer=None):
+    B = {"pieces": {"front": _neckline(), "collar": stand}, "seams": [["collar:bl>bm>br", "front:hps>cf"]],
+         "edge_arcs": {"front": {"neck": "hps>cf"}, "collar": {"neck": "bl>bm>br"}}, "folds": []}
+    if fall is not None:
+        B["pieces"]["fall"] = fall
+        B["seams"].append(["fall:bl>bm>br", "collar:tl>tm>tr"])
+        B["edge_arcs"]["fall"] = {"stand": "bl>bm>br", "outer": "tl>tm>tr"}
+        B["folds"].append({"name": "roll", "piece": "fall", "kind": "roll", "line": {"edge": "bl>bm>br", "offset": 0.005}})
+    return B
+
+
+def _rows(B, role="collar_stand"):
+    from hifipushie import draft_shape as ds
+    decl = {"pieces": {"collar": {"role": role}}, "stiff": ["collar"]}
+    return {r["id"]: r for r in ds.rows(B, decl, {"pieces": {}})}
+
+
+def test_shape_a_straight_stand_fails_naming_the_change():
+    straight = _strip("collar", lambda x: 0.0, lambda x: 0.048)
+    r = _rows(_B(straight))
+    assert r["shape_stand"]["status"] == "FAIL" and "change:" in r["shape_stand"]["why"]
+    assert "straight" in r["shape_stand"]["why"] and r["shape_stand"]["back_to"] == "4"
+    sc = r["shape_seam_curve"]  # the straight neck edge sewn to the curved neckline, named
+    assert sc["status"] == "FAIL" and "collar:neck is straight" in sc["why"]
+
+
+def test_shape_a_stand_rising_at_its_ends_and_leaning_in_passes():
+    rise = lambda x: 0.03 * ((x - 0.2) / 0.2) ** 2  # the ends 30 mm towards the free edge (jaeger: 0.47 x the drop)
+    import numpy as np
+    curved = _strip("collar", rise, lambda x: rise(x) + 0.048)
+    c = curved["P"][21:]  # the free edge brought in 3 % about the middle: shorter than the neck edge
+    c[:, 0] = 0.2 + 0.97 * (c[:, 0] - 0.2)
+    r = _rows(_B(curved))
+    assert r["shape_stand"]["status"] == "PASS", r["shape_stand"]
+    assert r["shape_seam_curve"]["status"] == "PASS"
+    dropping = _strip("collar", lambda x: -rise(x), lambda x: 0.048 - rise(x))  # curved the wrong way: fails
+    assert _rows(_B(dropping))["shape_stand"]["status"] == "FAIL"
+
+
+def test_shape_a_fall_shorter_outside_fails_and_longer_passes():
+    rise = lambda x: 0.01 * ((x - 0.2) / 0.2) ** 2
+    band = _strip("collar", rise, lambda x: rise(x) + 0.032)
+    short = _strip("fall", rise, lambda x: rise(x) + 0.04)
+    s = short["P"][21:]
+    s[:, 0] = 0.2 + 0.95 * (s[:, 0] - 0.2)  # outer edge 5 % shorter than its stand seam: can't turn down
+    r = _rows(_B(band, short), role="collar_band")
+    assert r["shape_fall"]["status"] == "FAIL" and "change:" in r["shape_fall"]["why"]
+    assert r["shape_stand"]["value"].startswith("collar (band)")
+    long = _strip("fall", rise, lambda x: rise(x) + 0.04)
+    q = long["P"][21:]
+    q[:, 0] = 0.2 + 1.05 * (q[:, 0] - 0.2)
+    assert _rows(_B(band, long), role="collar_band")["shape_fall"]["status"] == "PASS"
+
+
+def test_shape_a_curved_edge_sewn_to_a_straight_one_fails():
+    import numpy as np
+    from hifipushie import draft_shape as ds
+    a = _piece("a", [(x, 0.02 * np.sin(np.pi * x / 0.3)) for x in np.linspace(0, 0.3, 15)] + [(0.3, -0.1), (0, -0.1)],
+               {"s": 0, "e": 14})
+    b = _piece("b", [(0, 0), (0.15, 0), (0.3, 0), (0.3, 0.1), (0, 0.1)], {"s": 0, "m": 1, "e": 2})
+    B = {"pieces": {"a": a, "b": b}, "seams": [["a:s>e", "b:s>m>e"]], "edge_arcs": {"a": {"curve": "s>e"}, "b": {"line": "s>m>e"}}}
+    r = ds.seam_curve_rows(B, {}, {})
+    assert r["status"] == "FAIL" and "b:line is straight" in r["why"]

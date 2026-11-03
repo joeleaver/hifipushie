@@ -145,6 +145,12 @@ design, no recipe; src/hifipushie/draft_own.py's docstring is the spec). Needs s
   options, draft: ({ points, Point, paths, Path, snippets, Snippet, store, measurements, options, part }) => part }`.
   Each visible part draws `paths.seam` (the closed sewing line, mm, y down); hide the inherited paths you don't sew.
   Button marks: `snippets.btn1 = new Snippet('button', point)`. End with `export default new Design({ parts: [...] })`.
+  REUSE FreeSewing's parts for a role it already drafts (simon collarStand / collar / cuff, jaeger / carlton collar
+  parts, bent's two-piece sleeve, brian's sleeve): `{ name: 'my.band', from: collarStand, after: [front], draft:
+  ({ part }) => part }` with its options overridden (options.json / `options`): FreeSewing's parts carry a patternmaker's
+  curves (a stand's neck edge bends, a fall's outer edge is longer). Using them is RIGHT; drawing a curved piece as
+  straight lines is what the flat gate refuses. (What's banned is garment-specific glue in hifipushie's code, never
+  FreeSewing's parts.) Examples: examples/draft_own/hussar.mjs (simon's stand, bent's sleeves), shirt.mjs.
   Measurements are step 3's names (FreeSewing's or your own). Node runs it without network, fs read-only, 60 s; an
   error comes back as `design.mjs line N: message` with the line.
 - declarations (step 1's names): `pieces` {piece: {"part", "fold": "x0" (cut on the fold at x 0: mirrored points are
@@ -158,7 +164,10 @@ design, no recipe; src/hifipushie/draft_own.py's docstring is the spec). Needs s
   {"back": {"side.L": "hem>armhole"}}, "seams": [{"a": "front.L:side", "b": "back:side.L"}]}`.
 - Refused by name (nothing written): a step-1 seam with no drafted edge or not sewn, a piece not in step 1, a built piece
   not drafted. Else the flat gate: seams (each pair within its declared ease, else +-1 %), cut, sewn, closures (lapped
-  edges within 1 %), truing (info); the sheet is shape only (one big name per piece, each seam pair one colour, legend S<n> = the
+  edges within 1 %), truing (info), and SHAPE per role (draft_shape.py; each FAIL says `change:`): a stand / band's neck
+  edge rises at its front ends (stand >= 0.24 x the neckline's front drop, jaeger; band > 0) and its free edge is shorter;
+  a fall's outer edge >= 1.012 x its stand seam (simon); a sleeve cap 0.47-0.79 x the armhole depth (brian, bent); no
+  straight edge sewn to a curved one. Name a stand's free edge `top`, a fall's `outer`; the sheet is shape only (one big name per piece, each seam pair one colour, legend S<n> = the
 text's S<n>); the text lists every piece (size, cut, stiff) and every seam pair (both edges, both lengths, ease,
 PASS/FAIL); step 4 written; pattern_check re-reads it.
 

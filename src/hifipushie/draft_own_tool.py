@@ -115,5 +115,7 @@ def run(name: str, garment: str, design: str, declarations: dict, options: dict 
     nxt = ("compare the sheet's SHAPES with the reference (is the band curved and which way, does the hem run straight "
            "or curve, are the pieces the reference's pieces); take every number from this text, never off the image; "
            "then chain_garment"
-           if v == "PASS" else "fix the failing rows in the design or the declarations and call again")
+           if v == "PASS" else "fix the failing rows in the design or the declarations (a shape row says what to change; "
+           "for a role a FreeSewing design in the pack already drafts: collar stand, collar, cuff, two-piece sleeve, "
+           "extend that part with `from:` and its options instead of drawing one) and call again")
     return str(sheet), "\n".join(lines) + f"\nnext: {nxt}"
