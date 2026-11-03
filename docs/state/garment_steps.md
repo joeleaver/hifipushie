@@ -56,8 +56,5 @@ DRIFT FOUND (Joe 2026-11-03): from F4 the build placed WHOLE pieces then correct
 block-in map) instead of steps 5-6 as agreed: chains at exact lengths first, surfaces filled between. Rebuild 5-6 as agreed.
 METHOD NOW (Joe 2026-11-03): one STEP per blind trial (/mnt/data/hifipushie/trials/s<step>-<n>/: hp client pinned to main),
 judged with Joe beside the reference, fixed, rerun, then the next step; tests run once when a step is declared done.
-s0-2 (2026-11-03): cloth / colour / ankle / waistband right; knee read 12 px wide, landmarks guessed silently, the hem hung
-on a floor under a shoe, the look drew no vertical; s0-fix2 (C336) fixed all six, general (any garment); rerun of s0-2's marks: knee 1.34.
-s0-3: the six fixes worked, but heights rested on landmarks the agent and model placed differently (waistband 9 cm, hem
-6 cm from s0-2); s0-fix3 (C338): landmark card + words, neighbour check, width at its row or at a garment height.
-NEXT: blind s0-4 = the HUSSAR jacket (trials/s0-4 ready: brief + ws; make a fresh pinned checkout of main as trial-s0-4).
+STEP 0 (trousers, not approved): s0-2 -> C336 (edges measured, vertical drawn); s0-3 heights 6-9 cm off -> C338 (landmark card,
+neighbour check, widths at a row / garment height). NEXT: blind s0-4 = HUSSAR jacket (trials/s0-4 ready; fresh trial-s0-4 checkout).
