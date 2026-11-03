@@ -38,23 +38,24 @@ NEXT: the stand's front: hold the stand's CF ends at the fronts' neckline (not t
 neck on the pattern; the back-hem ledge (soft network fill, same as T7's hem); where the zip parts (14 % of its length).
 Dev: /mnt/data/hifipushie/t8/scripts/{redraft,redraft2,stage_check,chain,reads,render}.py.
 
-## T9 + T12 (2026-11-02): layering (C292, C294; chain_layers.py, chain_press.py, tests/test_chain_layers.py)
-Step 1 `over: [...]` (validated); step 2 `layers` {mode: visible (default) | full, why}. ORDER: the under's steps 1 + 4 and
-a build (not approved); its fit after the over's build; both approved at the over's 7a (dev: HIFIPUSHIE_LAYER_UNDER=built).
-COLLIDER: body + the under's THICKNESS where its soft cloth covers (room()) + its stiff parts' and details' real stand-off
-(T9 inflated over the whole loose shirt). FIT (chain_press, in the gate): the under's last solve, chains first, with the
-over's inner side as an outer limit where it covers; stiff parts stay; visible mode drops cloth hidden beyond 30 mm of the
-seen, holds the cut edge, advises step 1 `build` per piece; <over job>/under_<u>.pkl. GATE: links the under's build held
-broken past MAX_FREE_PCT, then the over inside the fit: refused by name.
-Proof (HOME /mnt/data/hifipushie/t12/ws; shirt = T7's REFUSED build, own free worst 49 %): 1 build (1135 s) REFUSED: shirt
-40.4 % off at 41 links its build held, 1224 points left outside the limit (waist / chest). Jacket rows T12 / T8 / T9:
-collar_height .084/.055/.096, upright 64.6/72.7/62.5, front_meets .77/.862/.718, smooth 2.05/2.39/3.93, cutaway
-.109 FAIL/.14/.181, hem_lr 8.5/3.9/3.8 mm; jacket free worst 34.9 % at back.L cbNeck (T8 0.0): the shirt's stiff open
-collar pushes the stand. Shirt: sleeves 99.5 % hidden (85 % pressed, in 8-9 mm), yoke / stand / collar 99 % hidden (collar
-inside the stand), cuffs 72-77 % seen, fronts / back 61-67 % kept. Sheets /mnt/data/hifipushie/t12/sheet_b1_{pair,neck,
-jacket_vs_t8}.png. By eye: jacket alone = T8's (a little broader at the neck): no inflation; shirt pokes through at chest /
-shoulder blades and its tails are a lumpy skirt with a ragged cut: the shirt build's fault, as gated.
-LEFT: full mode's joint hang (merge both write_job arrays, plain body, self_collision, split, finish_hang each); seen
-parts riding the over's hang; an open collar laid OUTSIDE a lapel needs a plan field (piece `layer` vs the over's).
-NEXT: an approved shirt build (T7's NEXT), rebuild the pair; if the stand still breaks, the shirt collar `build: omit`
-under a closed stand (the advice) or the stand eased over it in the draft.
+## T9 + T12 + T12b (2026-11-02): layering (C292, C294, C296; chain_layers, chain_press, chain_hidden, test_chain_layers)
+Step 1 `over: [...]`; step 2 `layers` {mode: visible (default) | full, why}. ORDER (visible, chain_hidden.build_over, C296):
+(a) the over garment on the body + the under's cloth THICKNESS only; (b) visibility on that build (an under point is hidden
+where the over covers it); (c) pieces hidden >= 98 % OMITTED for real, the rest trimmed to seen + 30 mm; (d) only kept stiff
+parts + seen solid details push: the over is RE-SOLVED from (a) (held points moved out) if one reaches it, then the trim
+read again (omissions kept); (e) the kept parts pressed inside (8 rounds; only STIFF points held: the build's last solve
+held its far cloth too, T12's poke-through) and the cut moved onto the 30 mm level line of a smoothed field, smoothed,
+held inside the cover. Full mode keeps T12's order. The inside gate reads only the kept cloth. Record: reads.hidden
+{omitted + why, the garment_plan "parts" call with `build: omit` per piece}; T12's advice only for full mode.
+Proof (/mnt/data/hifipushie/t12b/ws, shirt = T7's refused build; 2 builds, the 2nd 171 s): omitted yoke, sleeves, stand,
+collar (100 % hidden); kept back 34 %, fronts 39-42 %, cuffs 75-78 %; pushing: cuffs (364 faces) + front / cuff buttons:
+re-solved (1649 held points out). Jacket free worst 1.097 % (T12 34.9, T8 0.0). Rows T12b / T12 / T8: collar_height
+.070/.084/.055, upright 70.7/64.6/72.7, front_meets .862/.77/.862, smooth 2.85/2.05/2.39, cutaway .105 FAIL/.109/.14 PASS,
+hem_lr 3.6/8.5/3.9 mm. Shirt fit (regate on build 2's jacket with the retrim, dev/regate.py): lengths PASS (kept worst
+1.8 %, 0 broken; before retrim 3.6 %, 4 links at the V top), 0 points outside the limit, cut 251 points 100 % inside the
+cover, rough p95 5.8 -> 2.0 mm (edge 9.7). STILL REFUSED: the jacket inside the shirt's kept cloth at 13 points (7 armpit
+front.L 9.8 mm; 6 high hip back.L 20 mm: the shirt tails' flare wrapping the jacket's hem rim). Sheets
+/mnt/data/hifipushie/t12b/sheet_b2_{pair,neck,jacket_vs_t8}.png: no shirt through the jacket, no shirt collar, cut unseen;
+the tails below the hem a wide lumpy skirt with a ragged hem (the shirt build's own shape); jacket alone ~ T8's. LEFT:
+full mode's joint hang; an open collar laid OUTSIDE a lapel needs a plan field (piece `layer`). NEXT: the 13 inside points (seen tails: press the seen cloth under the over's hem rim, or the inside read skips the rim
+within the over's thickness); then an approved shirt build (T7's NEXT) and the pair rebuilt.
