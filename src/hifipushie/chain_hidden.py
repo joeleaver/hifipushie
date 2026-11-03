@@ -80,6 +80,7 @@ def decide(ub, lim, under: str, over: str, details: dict | None = None) -> dict:
             omitted[p] = f"hidden under {over} ({round(hp * 100, 1)} % of it, by visibility in the planned state)"
             keep_v[v] = False
         pieces[p]["kept_pct"] = round(float(keep_v[v].mean() * 100), 1)
+    keep_v[np.asarray(net.root)[keep_v]] = True  # (a sewn point is kept, at its root, when any side of it is: one point)
     stiff = np.isin(net.root, net.root[ub._stiff_mask()])
     push_F = Fw[(stiff[Fw].all(1)) & keep_v[Fw].all(1)]
     dseen = {}

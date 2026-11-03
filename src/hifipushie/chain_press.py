@@ -38,6 +38,8 @@ FOLDS = 3  # layers "full": room for the under cloth this many times (a fold is 
 MARGIN = 0.03  # m: a seen part is kept this far into the hidden cloth (its hidden edge, held there)
 HIDDEN_OMIT = 0.98  # share of a piece hidden: "omit" it (step 1 build)
 SEEN_FULL = 0.9  # share of a piece kept below which a "full" piece is "simplified: visible + margin"
+PRESS_ROUNDS = 8  # mode visible (C296): the kept part pressed from its build (the jacket's thickness-only build sits nearer:
+# moves of 30-40 mm; 3 rounds left 13 chain links past the cap on the proof, 8 none)
 AT_LIMIT = 0.0005  # m: a point this near its outer limit is pressed
 
 
@@ -73,7 +75,7 @@ class OuterLimit:
         return np.where(cov, d, 1.0), np.where(cov[:, None], n, 0.0)
 
 
-def press(ub, lim: OuterLimit, gap_out: float, rounds: int = 3, log=None, keep_v=None) -> tuple:
+def press(ub, lim: OuterLimit, gap_out: float, rounds: int = 3, log=None, keep_v=None, step: float = 0.004) -> tuple:
     """(X, read) the under build `ub` (a GarmentBuild with final_links) pressed inside `lim`, as its soft stage builds:
     the chains first (exact, between the body and the outer limit), the cloth between them carried by their moves
     (chain_net.fill), the whole mesh (its edges at most their weave limit, threads at their cap), the chains last. Its held
@@ -97,15 +99,15 @@ def press(ub, lim: OuterLimit, gap_out: float, rounds: int = 3, log=None, keep_v
     Ic, Jc, Lc, Ec = I2[E2], J2[E2], L2[E2], E2[E2]
     Y, rd = Z0, {}
     for rnd in range(rounds):
-        Y, rd = cn.project(Y, Ic, Jc, Lc, Ec, held, fl, iters=30, step=0.004)
+        Y, rd = cn.project(Y, Ic, Jc, Lc, Ec, held, fl, iters=30, step=step)
         if log:
             log(f"press chains {rnd}: {rd}")
     known = np.asarray(held, bool).copy()
     known[np.unique(np.r_[Ic, Jc])] = True
     Z = cn.fill(Z0, Y, known, ub.net.uv, ub.net.F, root=rs)
     for rnd in range(rounds):
-        Z, rd = cn.project(Z, I2, J2, L2, E2, held, fl, threads=th, iters=20, step=0.004)
-        Z, rd = cn.project(Z, Ic, Jc, Lc, Ec, held, fl, iters=20, step=0.004)  # (the chains last)
+        Z, rd = cn.project(Z, I2, J2, L2, E2, held, fl, threads=th, iters=20, step=step)
+        Z, rd = cn.project(Z, Ic, Jc, Lc, Ec, held, fl, iters=20, step=step)  # (the chains last)
         if log:
             log(f"press mesh {rnd}: {rd}")
     return Z[rs], rd
@@ -126,7 +128,7 @@ def fit_one(ub, oX, oF, body, mode_: str, gap_out: float, log=None, decided=None
     lim = OuterLimit(oX, oF, body.body_contact)
     if decided is not None and mode_ == "visible":
         from . import chain_hidden as ch
-        X, rd = press(ub, lim, gap_out, log=log, keep_v=decided["keep_v"])
+        X, rd = press(ub, lim, gap_out, log=log, keep_v=decided["keep_v"], rounds=PRESS_ROUNDS)
         keep, held, X, cut = ch.trim(X, net.F, net.root, decided, lim, body.body_contact, gap_out)
         return _fit_read(ub, X0, X, lim, body, mode_, gap_out, rd, keep, held, decided["covered"], cut, decided)
     X, rd = press(ub, lim, gap_out, log=log)
