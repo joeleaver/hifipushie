@@ -413,7 +413,7 @@ def test_edges_are_named_spans_that_tile_the_outline(home):  # (t s1-1: free-tex
 
 def test_a_seam_length_far_from_its_edge_as_drawn_is_refused():
     from hifipushie import garment_parts_edges as pe
-    edges = {"front": {"shoulder": (0, [[0, 0], [100, 0]])}, "back": {"shoulder": None}}
+    edges = {"front": {"shoulder": (0, [[0, 0], [100, 0]], False)}, "back": {"shoulder": None}}
     seam = [{"a": "front:shoulder", "b": "back:shoulder", "length": {"body": ["shoulderToShoulder"]}}]
     bad = []
     pe.lengths(seam, edges, 0, 1.2, {"shoulderToShoulder": 450.0}, bad)  # (120 mm drawn, 450 on the body: 3.8x)
@@ -421,7 +421,27 @@ def test_a_seam_length_far_from_its_edge_as_drawn_is_refused():
     bad = []
     pe.lengths(seam, edges, 0, 1.2, {"shoulderToShoulder": 150.0}, bad)
     assert not bad
+    edges["front"]["shoulder"] = (0, [[0, 0], [100, 0]], True)  # (hidden in this view: not checked)
+    bad = []
+    pe.lengths(seam, edges, 0, 1.2, {"shoulderToShoulder": 450.0}, bad)
+    assert not bad
+    edges["front"]["shoulder"] = (0, [[0, 0], [100, 0]], False)
     seam[0]["why"] = "test"
     bad = []
     pe.lengths(seam, edges, 0, 1.2, {"shoulderToShoulder": 450.0}, bad)
     assert not bad
+
+
+def test_hidden_edges_and_trims_placed_by_their_edges(home):  # (t s1-2: an invented point; bindings traced twice)
+    gp.write("m", "w", "read", _read(home), look=False)
+    b = _parts()
+    b["details"]["edge"].pop("where")
+    p = gp.write("m", "w", "parts", b, look=False)["plan"]
+    assert p["details"]["edge"]["where"]["outlines"] == [[[100, 250], [100, 50]]]
+    b = _parts()
+    b["pieces"]["front.L"]["hidden"] = ["side"]
+    b["details"]["edge"]["follows"] = ["front.L:side"]
+    b["details"]["edge"].pop("where")  # (a hidden edge can't place a trim: it needs its own where)
+    _refused(lambda: gp.write("m", "w", "parts", b, look=False), "details.edge: seen: where")
+    b["pieces"]["front.L"]["hidden"] = ["armhole"]
+    _refused(lambda: gp.write("m", "w", "parts", b, look=False), "pieces.front.L.hidden: a list of its own edges")
