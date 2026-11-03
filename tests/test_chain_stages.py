@@ -26,12 +26,13 @@ def _legs():
 
 def test_a_tube_run_up_into_the_torso_starts_through_the_body():
     b = _build(PIECES, {p: ["thigh", "knee", "outseam"] for p in PIECES}, SEWS)  # (F4's body: legs + torso)
+    b.sew_start = False  # (the GUIDE lay read by START's rows; F7's flat-then-sew start: test_chain_sew)
     g = cst.gate_start(b, b.soft_start())
     assert _flagged(g) - {"start_length"} == {"inside"}
     assert "GAP" in next(r for r in g["rows"] if r["id"].startswith("inside"))["source"]
     # (F6) the start's own lengths are read (provisional until the lay is isometric: this tube lay stretches too)
     sl = next(r for r in g["rows"] if r["id"].startswith("start_length"))
-    assert sl["status"] in ("PASS", "INFO (would FAIL)") and "lengths" in g["reads"]
+    assert sl["status"] == "FAIL" and "lengths" in g["reads"]  # (F7: a verdict; this rows-round-the-axis lay stretches)
 
 
 def _fails(g):
@@ -75,13 +76,14 @@ def test_the_build_stops_at_the_first_failing_stage():
                                                        [0.2, 0.0, 0.0], 0.0)))(b.soft_start)
     with pytest.raises(cst.StageFailed) as e:
         b.soft_net()
-    assert e.value.stage == "start" and list(b.reads["stages"]) == ["start"]
+    assert e.value.stage == "start" and list(b.reads["stages"]) == ["arrange", "sew", "start"]
     assert e.value.build is b and b.stage_X[0] == "start"
 
 
 def _solved():
     """A clean build in report mode: every stage read, none stopping it; the stages' X kept."""
     b = _legs()
+    b.sew_start = False  # (the surfaces gate read on F5's lay: its crumple test is calibrated on that build)
     b.stage_gates = "report"
     seen = {}
     real = cst.GATES.copy()
@@ -96,7 +98,7 @@ def _solved():
 
 def test_chains_gate_reads_lengths_and_fails_a_chain_past_its_cut():
     b, seen = _solved()
-    assert list(b.reads["stages"]) == list(cst.STAGES)
+    assert list(b.reads["stages"]) == [s for s in cst.STAGES if s not in ("arrange", "sew")]  # (sew_start off here)
     g = cst.gate_chains(b, seen["chains"])
     row = next(r for r in g["rows"] if r["id"] == "length")
     assert row["status"] == "PASS" and "MAX_FREE_PCT" in row["source"]

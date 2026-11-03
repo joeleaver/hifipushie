@@ -132,7 +132,7 @@ def _place(f: dict, uv, sx: float, a: float, R: float) -> np.ndarray:
     return f["c"] + np.outer(hh, f["d"]) + R * (np.cos(th)[:, None] * f["e1"] + np.sin(th)[:, None] * f["e2"])
 
 
-def lay(b, p: str, f: dict, R: float, X: np.ndarray, placed: np.ndarray) -> tuple[np.ndarray, dict]:
+def lay(b, p: str, f: dict, R: float, X: np.ndarray, placed: np.ndarray, taken=()) -> tuple[np.ndarray, dict]:
     """Piece p on its cylinder (exact by construction): which way round (sx) and where its middle faces (a) chosen so its
     seams lie nearest the cloth already placed (stiff parts built first, the pieces laid before it); with nothing placed
     to sew to, the guide's own way round. Returns (positions, how)."""
@@ -150,11 +150,17 @@ def lay(b, p: str, f: dict, R: float, X: np.ndarray, placed: np.ndarray) -> tupl
         for a in cands:
             if len(mine):
                 cost = float(np.sum((_place(f, uv[loc[mine[:, 0]]], sx, a, R) - X[mine[:, 1]]) ** 2))
+                ac = a + sx * float(np.mean(uv[:, 0])) / R  # (never on top of a piece of its tube already laid)
+                hw = float(np.ptp(uv[:, 0])) / (2 * R)
+                for aq, hq in taken:
+                    o = max(0.0, hw + hq - abs(float(np.angle(np.exp(1j * (ac - aq))))))
+                    cost += (o * R) ** 2 * len(mine)
             else:
                 cost = float(np.mean(np.angle(np.exp(1j * (f["phi"] - a - sx * uv[:, 0] / R))) ** 2))
             if best is None or cost < best[0]:
                 best = (cost, sx, a)
     _, sx, a = best
+    f["taken"] = (a + sx * float(np.mean(uv[:, 0])) / R, float(np.ptp(uv[:, 0])) / (2 * R))
     how = {"radius_mm": round(R * 1e3, 1), "axis": [round(float(x), 3) for x in f["d"]],
            "turned_by": "its seams to the cloth placed" if len(mine) else "the guide"}
     return _place(f, uv, sx, a, R), how
@@ -185,9 +191,11 @@ def arrange(b, guide: np.ndarray) -> np.ndarray:
             R = max(_clear(b, f, R) for f in fits.values())
         else:
             R = _clear(b, f0, R, f0["phi"][::max(1, len(f0["phi"]) // 200)])
+        taken = []
         for q in grp:
             v = net.verts(q)
-            X[v], laid[q] = lay(b, q, fits[q], R, X, placed)
+            X[v], laid[q] = lay(b, q, fits[q], R, X, placed, taken)
+            taken.append(fits[q]["taken"])
             placed[v] = True
             done.add(q)
     for q in soft:
@@ -236,6 +244,13 @@ def sew(b, X, rounds: int = SEW_ROUNDS, iters: int = SEW_ITERS) -> np.ndarray:
     S = net.sew
     floor = [(b.body.contact, soft_ids, GAP)]
     log, hist = [], []
+
+    def lengths(Y, n):  # (with the body as the floor; where the floor and the lengths can't both hold, the lengths win:
+        # the cloth left through the body is read by START's inside rows, never stretched round it)
+        Y, rd = project(Y, I, J, L, E, held, floor, iters=n, step=PULL)
+        if max(rd.get("worst_exact_pct", 0), rd.get("worst_atmost_pct", 0)) > 0.5:
+            Y, rd = project(Y, I, J, L, E, held, [], iters=n, step=PULL)
+        return Y, rd
     gap_of = lambda Y: np.linalg.norm(Y[S[:, 0]] - Y[S[:, 1]], axis=1)
     for r in range(rounds):
         g = gap_of(X)
@@ -244,13 +259,13 @@ def sew(b, X, rounds: int = SEW_ROUNDS, iters: int = SEW_ITERS) -> np.ndarray:
         tgt = np.maximum(g - PULL, 0.0)
         X, _ = project(X, np.r_[I, S[:, 0]], np.r_[J, S[:, 1]], np.r_[L, tgt], np.r_[E, np.zeros(len(S), bool)],
                        held, floor, iters=iters, step=PULL)
-        X, rd = project(X, I, J, L, E, held, floor, iters=3 * iters, step=PULL)  # lengths last: never stretched shut
+        X, rd = lengths(X, 3 * iters)  # lengths last: never stretched shut
         gm = float(gap_of(X).max())
         log.append((r, round(gm * 1e3, 1), rd.get("worst_exact_pct"), rd.get("worst_atmost_pct")))
         hist.append(float(gap_of(X).sum()))
         if len(hist) > STALL and hist[-1 - STALL] - hist[-1] < STALL * 1e-3 * max(1, len(S)) * 0.05:
             break  # (stalled: the lengths hold the seams apart)
-    X, _ = project(X, I, J, L, E, held, floor, iters=10 * iters, step=PULL)  # (the lengths have the last word)
+    X, _ = lengths(X, 10 * iters)  # (the lengths have the last word)
     if len(S) and gap_of(X).max() <= SEW_TOL:  # (closed: each sewn group at its mean, a sub-mm move, then lengths)
         rt = net.root
         M_ = np.zeros((net.n, 3))

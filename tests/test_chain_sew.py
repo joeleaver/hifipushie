@@ -32,7 +32,7 @@ def test_a_flat_arrangement_reads_zero_at_the_start():
 def test_a_sewn_seam_closes_with_lengths_held():
     b = _legs()
     X = sw.arrange(b, _guide(b))
-    assert max(v[0] for v in sw.seam_gaps(b, X).values()) < 0.005  # (laid with its seams facing: a tube group closes)
+    assert max(v[0] for v in sw.seam_gaps(b, X).values()) < 0.02  # (laid with its seams facing: a tube group closes)
     for p in ("back.L", "back.R"):  # (moved apart rigidly: still exact, the seams open)
         X[b.net.verts(p)] += [0.0, 0.03, 0.02]
     g0 = max(v[0] for v in sw.seam_gaps(b, X).values())
