@@ -18,16 +18,8 @@ iterations or manual feedback." 2026-11-02: "We need a pre-sim judge of the stru
 pieces, panels, lapped / zip fronts). Hussar proof (HOME /mnt/data/hifipushie/t8): STRUCTURE FAIL at the stand's
 CF (dives to a V), sheet t8/sheet_b2.png; its rows and NEXT: git history of this page (commit 8c603bda).
 ## T9 + T12 + T12b (C292, C294, C296): layering (chain_layers, chain_press, chain_hidden); proof t12b/ws STILL REFUSED. Detail: git history (merge of t12b-hidden).
-## T13 (2026-11-02, C297, C301; chain_drape.py, tests/test_chain_drape.py): draped garments (cloak, cape, hood)
-step 1 `hang: draped` + `held: [edges]` (a hood held by its seam), step 2 `drape {piece: {falls}}`. BUILD (build_drape): the
-held line a rigid ring of its cut at the neck, points at exact chords, clasp shut; a held line sewn to itself refused; free
-cloth on clear paths from the held line; soft_net (body as floor). GATE SPLIT: hang kinds (hem height / spread, front/back,
-hood opening / depth) judged after the hang (hang_check); build rules start_clear, held_exact, clasp; hang rule hood_on_head.
-T13b proof (HOME /mnt/data/hifipushie/t13b/ws; sheets t13b/sheet_build_{all,hood}.png): NOT HUNG. The build spreads over
-the arms like a poncho to the hip, crumpled; the hood shrink-wraps the skull. Build 1400-1700 s in soft_net (splu, 107k
-constraints), not the path search. NEXT: (a) drape_start_clear reads after soft_net (4.5 mm floor) against a 6 mm limit:
-read the free cloth's start BEFORE soft_net (the limit stays); (b) start shape: paths near-vertical below the shoulders,
-the hem's fullness folded, the hood started at its depth; (c) soft_net speed; then hang, rows, render.
+## T13 (C297, C301; chain_drape.py): draped garments (cloak, cape, hood), gate split build / hang. Proof t13b/ws NOT HUNG
+(poncho-like crumpled build, soft_net 1400-1700 s). Its NEXT (start before soft_net, start shape, speed): git history (739936ca).
 ## T15 (2026-11-02, C299; structure_outline.py): OUTLINE vs REFERENCE rows `outline:<id>` from step 2's traces (kinds hem,
 front_edge, collar_top, collar_front, neckline, sleeve_end, outline) + body_marks (the body is the ruler); FAIL backs to step
 4 with the pattern edge. Detail + proof numbers: git history of this page (commit 1308bfa2) and the module docstring.
@@ -36,25 +28,31 @@ UNVERIFIED there: side / back views; traces through a tube's silhouette. r-nico:
 end edges, upright by its own height; held links counted. Detail: git history (9ba6032a).
 ## F3 (C310-C311; draft_pairs.py, chain_roles._end_edges): pairs declared at step 4 (`pair: true`), stand end edges in its
 solve; hussar stand STILL REFUSED 39.8 % at collar:rightTopIn (stretched after the stand stage). Detail: git history (c036b645).
-## F4 (2026-11-02, C312-C313; tape_geom.py, piece_start.py, tests/test_piece_start.py; HOME /mnt/data/hifipushie/f4)
-- TAPE: step 3 rows keep WHERE: a girth its `loop`, a length its `path` (metres, 0.1 mm, <= 64 pts). tailor keeps the leg
-  loops (upperLeg, knee, calf, ankle, heel); `waistTo*` / inseam / height / shoulderTo* get paths (tape_geom).
-- STEP 4: output.piece_measurements {piece: names} = step 1's seam body names on its edges + its draft part's own list.
-- START (piece_start): TUBE = soft pieces of one side closed round by their own seams (self-sewn, or 2 separate seams)
-  whose girth loops lie on their side and a length path of theirs runs along them -> MeasuredAxis through the loops'
-  centres, run on to its paths' ends. PANEL: top at the top of the length path spanning it (+-20 %), else hung from the
-  hps. Neither: the old start, "FALLBACK: ..." in reads.starts and the answer ("start <piece>: ..."). Nothing names a limb.
-- PROOF (t8 trousers, f4/ws; redraft scripts/design_f4.mjs: front / back take waistTo*, inseam, upperLeg, knee, ankle;
-  pairs from f3): step 3 PASS with loops / paths, draft PASS (10 seams 0 off). Build (job_trousers_1.log, 517 s): starts
-  "tube round its own measurements: loops ankle, knee, upperLeg, along inseam, waistToFloor..." per side, waistband at its
-  seam's height z 1070 (closed 853 / loop 820 mm). REFUSED: front.L near cfSeat 90 % off its cut; chains worst 3738 %
-  (back.L / waistband edge), front.R 2087 %. Sheet f4/sheet_trousers.png: two legs, the waist at the band, the model's
-  LEFT leg round its leg; the RIGHT thigh bare (front.R not round it), cloth crumpled. NOT a pass.
-- SLEEVE (t8 shirt redrafted as is, scripts/sleeve_check.py): sleeve.L "tube round its own measurements: loops biceps,
-  wrist, along shoulderToWrist", 40 mm mean from the old joint-axis start; fronts / back panels (first rule had grouped
-  front.L + sleeve.L via the armhole's biceps: fixed, C313). Hussar (f4/hussar) names step-1 names step 3 never took
-  (armscye_girth...), its design no measurements: FALLBACK, start unchanged (0 mm). F3's job_trousers_4: failed (its worktree removed), no result.
-NEXT: (a) the .R tube's start: dump soft_start X per piece for f4/ws trousers (scripts/start_check.py: x ranges are
-mirror-symmetric at the start, so the fault is later: _mirror / sewn roots averaging the crotch seam's two legs, or the
-.R phase sign in tube_group_points); fix, rebuild, re-render. (b) the two tubes overlap +-45 mm above the crotch: start
-the part above the crotch on the half of the torso loop (seat / waist) the piece names. (c) F3 (b), (c) still open.
+## F4 (C312-C313; tape_geom.py, piece_start.py): tapes keep where they ran; pieces start round their own loops / between
+their tapes (FALLBACK named). Proof f4/ws trousers REFUSED (front.R never round its leg). Detail: git history (b5a64c64).
+## F5 (2026-11-03, C314-C316; chain_stages.py, tests/test_chain_stages.py; HOME /mnt/data/hifipushie/f5)
+Joe: "we're simulating too early ... There's no reason for pants that bad to get simmed." The soft build is gated where each
+stage ends (soft_net hooks), cheapest first; a FAIL ends the job `stage_failed: start|chains|surfaces` (rows, back-to step,
+change, look = stage.pkl rendered: the start / the chains ALONE / the lay on the body, tapes red); look_chain shows it;
+the record marks step 5 (start, chains) or 6 (surfaces) failed. Limits: round = widest gap <= 90 deg round each sided
+girth loop; mirror <= GAP (start) / 2x(GAP+LAYER) p50 (chains); sewn (to a built stiff part) p90 <= 1/4 of that edge;
+inside share (> GAP deep) <= 0.1; length / held_length MAX_FREE_PCT; wrapped (chains moved p90 <= smallest loop radius);
+holes share of faces past (1+SHEAR_LIMIT)^2 area <= 0.01; soft_cloth_smooth (C286) read on the lay.
+- TROUSERS (f5/ws): first caught at START (20 s, not 517 s): mirror:front 122 / back 191 mm (the .R tube = the .L's
+  mirror turned 180 deg: its front piece at the back; F4's "right front never wrapped") -> FIX .R starts as the .L's
+  mirror (chain_stages.mirror_starts). Then sewn: 245-264 mm vs 50 -> FIXES: body_ring's direction checked by its left
+  piece's x (it ran the band the wrong way: each leg sewn over the other leg; tubes count as left pieces); a tube sewn to a
+  built band turns to face its seam (165 deg for the legs: front.L had started at the back) and eases onto it down to its
+  nearest loop (piece_start.turn_to_seams). Now START fails only inside:back.L/.R 0.18 (seat, 35-105 mm deep: F4 NEXT b)
+  and in report mode CHAINS held_length 3736 %: front.L's waist seam to the band is REVERSED in the draft (its CF corner
+  merged at the band's side, beside back.L's side corner: an 8 mm link 306 mm long) = a STEP 4 fault, untouched.
+  Crumple: the LAY already rough (soft_cloth_smooth 2.54 on the lay, holes 5-15 %) with these chains: the solve didn't make it.
+  Look: f5/ws/garrett/chain/trousers_closed/stage_start_{front,side,back}_*.png (legs round each leg; the top twisted).
+- HUSSAR (f5/hussar, wear open, report mode): start fails sewn:back 29 vs 23 mm (a 92 mm neck edge); chains length 14.3 %
+  + held 39.8 % (= its known F3 end refusal, now at the chain stage); surfaces holes 3-8 %, rough 1.8. NOT a clean control.
+- UNVERIFIED: holes / sewn / inside limits never seen on a build that passes the end gates (may refuse a good one);
+  no hang run; the trousers never reached the end gates.
+NEXT: (a) step 4: the trousers' front.L/.R waist seam direction (redraft f4/scripts/design_f4.mjs; a pattern_check row:
+a seam's ends meet the seams at its corners); (b) the seat start (inside:back 0.18): the part above the highest loop on
+the torso loop's half the piece names; (c) calibrate holes / sewn / inside on a build that passes (the t8 shirt) BEFORE
+trusting them; then rebuild trousers to the end gates and judge front + side beside concept_v8_front_apose.png.
