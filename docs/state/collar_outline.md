@@ -38,23 +38,22 @@ parts riding the over's hang; an open collar laid OUTSIDE a lapel needs a plan f
 NEXT: an approved shirt build (T7's NEXT), rebuild the pair; if the stand still breaks, the shirt collar `build: omit`
 under a closed stand (the advice) or the stand eased over it in the draft.
 
-## T13 (2026-11-02, C297; chain_drape.py, tests/test_chain_drape.py): draped garments (cloak, cape, hood)
-ROLE: step 1 piece `hang: draped` + `held: [edges]` (the draft's edge names built on the body); a draped piece with no held
-edge is held by its seam to one (a hood on the cloak's neck); step 2 `drape {piece: {falls: down|up}}` (hood worn up).
-BUILD (build_drape, wholly draped garments only; fitted + draped refused by name): the held line rested as a rigid ring of
-its cut length at the lowest height round the neck it fits (chain_rest.rest_ring), ends shut at CF (clasp); free cloth
-starts on clear paths from its nearest held point (out + down / up, then straight), ends fanned; soft_net projects with
-the body as floor; the held line pinned in the hang (hold_mask). BODY: the collider is already the whole
-body incl. the head (wf_simon z to 1.78 m; no hair: the head alone).
-GATE SPLIT: structure_rows hang kinds (drape_hem_height of stature, drape_hem_spread of shoulder_width, drape_front_back,
-hood_opening / hood_depth of neck_width) carry on="hang": LATER at the build (record: waits_for_hang), judged after the hang
-(chain_drape.hang_check -> status hang_structure; FAIL = stage hang_rows_failed). Build rules: drape_start_clear,
-drape_held_exact, closure clasp via drape_clasp_state; hang rule hood_on_head. A row `judged` on the wrong stage, a hang row
-with no draped piece falling that way, drape on a fitted piece: refused by garment_plan with the list.
-PROOF (HOME /mnt/data/hifipushie/t13/ws, dev scripts t13/dev, design t13/designs/cloak.mjs + cloak_decl.json): steps 0-4
-through the tools: half-circle cloak (neck 370.5 + 80 mm, r2 1365 mm) + two-piece hood; flat gate PASS (3 seams 0 off).
-Build: three fixes on the way (ring caught on the chin / inside the chest: now rested rigidly); the last build (old start
-search, t13/dev/build2.log) had not finished at the budget: the path search is a python loop per held vertex (~400
-candidates x a Contact query each): UNVERIFIED: build numbers, structure rows, 7a, hang, draped rows, render.
-NEXT: vectorise _paths (all candidates in one query), finish the build (dev/build.py), then the job (dev/job.py, dev
-HIFIPUSHIE_PRESIM_APPROVAL=optional), render the hang beside refs/ranger/front.png; the capelet as a second draped piece.
+## T13 (2026-11-02, C297, C299; chain_drape.py, tests/test_chain_drape.py): draped garments (cloak, cape, hood)
+ROLE: step 1 piece `hang: draped` + `held: [edges]`; a draped piece with no held edge is held by its seam to one (a hood);
+step 2 `drape {piece: {falls: down|up}}`. BUILD (build_drape, wholly draped garments only): the held line a rigid ring of
+its cut at the lowest neck height it fits (rest_ring), points at exact CHORDS, ends shut at CF; a held line sewn to itself
+refused (check_held_sewn); free cloth starts on clear paths from its nearest held point; soft_net with the body as floor.
+GATE SPLIT: hang kinds (drape_hem_height, drape_hem_spread, drape_front_back, hood_opening, hood_depth) on="hang": LATER at
+the build, judged by chain_drape.hang_check (FAIL = hang_rows_failed); build rules drape_start_clear, drape_held_exact,
+clasp; hang rule hood_on_head.
+PROOF T13b (HOME /mnt/data/hifipushie/t13b/ws; dev t13b/dev build.py job.py render.py paths_ab.py; design t13b/designs):
+the path search was NOT slow (0-0.15 s per held point; vectorised, same answers); the build is 1400-1700 s in soft_net's
+mesh rounds (project's splu, ~107k constraints, 35.8k-vertex net). Fixed: T13's draft sewed hood.R:neck reversed (CF end
+and CB one point: held 1343 %, clasp 142 mm; the flat gate can't see it: refused now, draft fixed in the copy); held
+links by the clasp 2.8 % short (arc steps): chords now (real ring 0.0 %, clasp 2.4 mm). JOB BUILD (before the chord fix):
+clasp PASS 4.0 mm, held FAIL 2.83, start_clear FAIL 4.3 mm, threads max 1115 %: refused, NO HANG, no draped rows.
+LOOK (t13b/sheet_build_all.png, sheet_build_hood.png): the cloak starts spread over the arms like a poncho to the hip, its
+lower half crumpled; the hood shrink-wraps the skull (no peak, no depth). A rebuild with chords runs: cloak_closed/status.json.
+NEXT: (a) drape_start_clear can't pass: range 6 mm > the floor both cloth and held line rest at (GAP 4.5 mm): coordinator
+decides the read or the range (no silent waive). (b) start shape: paths nearer vertical below the shoulders, the hem's
+fullness folded not crammed; the hood started at its depth. (c) soft_net speed for big drapes. Then hang, rows, render.
