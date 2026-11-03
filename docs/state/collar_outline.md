@@ -31,29 +31,29 @@ solve; hussar stand STILL REFUSED 39.8 % at collar:rightTopIn (stretched after t
 ## F4 (C312-C313; tape_geom.py, piece_start.py): tapes keep where they ran; pieces start round their own loops / between
 their tapes (FALLBACK named). Proof f4/ws trousers REFUSED (front.R never round its leg). Detail: git history (b5a64c64).
 ## F5 (C314-C316; chain_stages.py): START / CHAINS / SURFACES gated, stop at the first FAIL. Detail: git history (f5903839).
-## F6 (2026-11-03, C317-C320; HOME /mnt/data/hifipushie/f6, scripts f6/scripts)
-- Flat gate rows (step 4, draft_pattern): `seam_ends` (draft_seam_ends.py): a seam's edges run the same way by the
-  centre line (cf* / cb* / nape, a fold's x = 0), the side (side* / sd*), a vertical edge's top; FAIL names the swap
-  ("a>b" -> "b>a"). Fails t8 trousers' front waist (both sides) and T13b's original hood.R neck (f6/t13b_rev, neck_r
-  "cbNeck>neckR" as C301 tells it); passes the hussar, the T13b shirt / hussar / fixed cloak. ALSO FAILS t8's shirt
-  (collar_stand:cb>sh vs back:hps>cbNeck; collar_fall:cb>fe vs collar_stand:ft>cbt) and t8's jacket (front:hem>split vs
-  side_back:split>anchor, by up / down): unchecked in a build. `body_lengths` (draft_body_lengths.py): girths step 1
-  names on seams summed round vs girth + step 0 fit ease (FAIL short); lengths INFO only (step 1 says where a length
-  comes FROM). Trousers waist 819 vs 789 PASS; nothing step 1 names measures the crotch curve (waistToUpperLeg is a rise).
-- Trousers redrafted (draft_pattern, front:waist "sideWaist>cfWaist"): seam_ends PASS. START rows PASS but inside:back
-  0.104 (prov.); CHAINS held 3736 -> 420 %, length 183 %, wrapped .R 35.3 vs 34.6 mm. f6/stages_r1..r3.log.
-- Per-stage lengths (chain_stages.length_reads, every stage; START `start_length:chains` PROVISIONAL): the START
-  stretches, later stages don't add it: start worst 1063 %, back edges p90 42 % (max 1883); chains 183 % / p90 44 %;
-  surfaces the same. The plain tube lay alone (f6/scripts/start_probe.py) reads 1699 %, back p90 34 %: rows wrapped round
-  the loops' axis at each flat row's width are not the flat. turn_to_seams adds 8-19 points of p90.
-- The pattern goes round the body (f6/scripts/girth_probe.py, flat widths at depth below the side waist): crotch level
-  both legs 1032 mm vs seat 960 + 60; upperLeg one leg 647 vs 538 + 70. So the seat stretch is the START, not the draft.
-- Not done: no isometric lay; no build reached the end gates (no render, no judge); inside / holes / sewn / start_length
-  NOT calibrated (no passing build).
-NEXT: (a) the START laid from the flat, isometric by construction. Geometry found: a straight crease across a piece is
-exact only where it is a geodesic of BOTH patches it joins (a circle square to a cylinder's axis is; on a cone it is
-not), so leg cylinder + torso cylinder of different axes / radii can't share a horizontal crease exactly. Options: each
-piece on ONE cylinder / cone (exact; seams then gap: read the gaps at START = the start seam check) and let CHAINS bend
-them shut, or a crease along a ruling. Measure start_length ~0 first; then (b) START seam gaps (refuse a gap the
-pattern can't close, by seam + measurement); (c) calibrate the provisional rows on the first build that passes;
-(d) step 3: a crotch-length tape (front waist through the crotch to back waist) so body_lengths can check the curve.
+## F6 (C317-C320; HOME f6): flat gate rows seam_ends + body_lengths; per-stage length reads; the START stretched (trousers
+1063 %), the pattern goes round (crotch 1032 vs seat 960 + 60). Detail: git history (73a264bf).
+## F7 (2026-11-03, C321-C323; chain_sew.py, HOME /mnt/data/hifipushie/f7, scripts f7/scripts, logs f7/*.log)
+- FLAT THEN SEW is the soft start (GarmentBuild.soft_start -> chain_sew.flat_then_sew; b.sew_start=False = the old lay).
+  The old lay is only a GUIDE (region from piece_measurements). ARRANGE: each piece flat on ONE cylinder (a tube group
+  shares its measured axis; a panel upright through the body); which way round + facing chosen so its seams meet
+  the cloth already placed (stiff parts, earlier pieces), never on top of a piece of its tube; radius = the least
+  keeping <= 5 % of points within STANDOFF of the body; .R = the .L's mirror. SEW: each round every sewn pair may come at
+  most PULL (8 mm) nearer, then the lengths alone (chains exact, mesh edges <= flat) to convergence; the lengths win over
+  the body floor. Stops when every pair is within 0.3 mm (groups snapped to their mean) or the summed gap stalls.
+- Gates: new stages ARRANGE (arrange_length: stretch vs MAX_FREE_PCT) and SEW (sew_length; sew:<seam> gap vs SEW_TOL
+  2 mm, back to step 4, named with the points + measurement list). START's start_length is a VERDICT now.
+- Trousers (f7/ws): ARRANGE 0.02 % (R 165 mm), gaps 97-327 mm. SEW: lengths held all the way (worst +0.07 %), but
+  STALLED at round 66 / 17 min: inseam hem 93 mm, CF 53, side waist 38/28, CB 27, band 5-23 mm. START on it:
+  start_length 48.9 % (open gaps), round FAIL at the ankles. f7/sew_r2.log. The pattern goes round (F6), so the
+  STALL is probably the sew, not the pattern (the row says so: UNPROVEN). Hussar ARRANGE (f7/hussar copy): 0.0 %;
+  front R 482 / back 330 mm (far out), collar~front gap 383 mm; not sewn.
+- Not done: no trousers build past SEW, no render, no hussar build, provisional rows NOT calibrated (no passing build).
+  Tests: test_chain_sew (arrange reads 0; sewn seam closes with lengths held; a seam that can't close refused by name);
+  test_chain_stages's guide-lay tests set sew_start False. Targeted tests 54 pass.
+NEXT: (a) make the sew close: the quasi-static pull stalls where pieces must slide round the body / cone in at the
+ankle (try: pull each pair toward its midpoint with the PIECE rigidly first (a rigid step per piece per round), then
+bend; or a cone lay for a tube whose rows narrow (a flat onto a cone is exact too); and speed (17 min: fewer lengths
+iters, lines_across instead of every mesh edge)). Prove first on f7/scripts/arrange_probe.py ... sew (stall vs close),
+then build.py through the gates + render beside concept_v8_front_apose.png; then the hussar (panels laid far out:
+check the radius rule for panels); (b) calibrate inside / holes / sewn on the first build to pass; (c) crotch tape (F6 d).

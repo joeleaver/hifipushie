@@ -324,14 +324,17 @@ def gate_sew(b, X) -> dict:
                  "MAX_FREE_PCT: the sew holds every length at every round (lengths solved last)",
                  "the SEW solve stretched cloth: a bug in chain_sew.sew, not the pattern")]
     meas = ((b.net.M.get("starts") or {}).get("pieces") or {})
+    nr = len((b.reads.get("sew") or {}).get("rounds") or [])
     for si, (g, va, vb) in sorted(seam_gaps(b, X).items()):
         pa, pb = b.net.names[b.net.piece[va]], b.net.names[b.net.piece[vb]]
         names = sorted(set(meas.get(pa) or []) | set(meas.get(pb) or []))
         rows.append(_row(f"sew:{seam_name(b, si)}", round(g * 1e3, 1), round(SEW_TOL * 1e3, 1), g <= SEW_TOL,
                          "a seam closes by bending alone, every pattern length held (chain_sew.sew); limit SEW_TOL",
                          f"PATTERN FAULT: {pa}{b._near_point(va, pa)} can't reach {pb}{b._near_point(vb, pb)} without "
-                         f"stretch ({g * 1e3:.0f} mm short): the pieces are too small round the body there; check the "
-                         f"measurements / ease they were drafted from ({', '.join(names) or 'none listed'}) at step 4",
+                         f"stretch ({g * 1e3:.0f} mm short, every length held, {nr} sew rounds): the pieces too small "
+                         f"round the body there; check the measurements / ease they were drafted from "
+                         f"({', '.join(names) or 'none listed'}) at step 4. (UNPROVEN, F7: a quasi-static sew can also "
+                         f"stall short of a seam that closes; when step 4's body_lengths rows pass there, suspect the sew)",
                          "mm"))
     return verdict("sew", rows, {"lengths": ln, "gaps_mm": (b.reads.get("sew") or {}).get("gaps_mm"),
                                  "rounds": (b.reads.get("sew") or {}).get("rounds")})
