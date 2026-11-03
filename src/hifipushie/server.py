@@ -159,11 +159,11 @@ TOOL_GROUPS: dict[str, dict] = {
              "steps": ["hair_from_reference", "tie_hair", "groom_hair", "look_hair", "export_hair"],
              "tools": ["groom_hair", "tie_hair", "look_hair", "hair_reference", "hair_from_reference", "export_hair"]},
     "cloth": {"workflow": "Clothes: garment_plan (read, parts, style) -> body_tape -> draft_pattern (your own FreeSewing design + its flat gate) -> chain_garment (the only way a garment "
-                          "is built) -> garment_details -> look_chain beside the reference -> export_garment; garment_record shows every step",
+                          "is built) -> garment_details -> look_chain beside the reference -> garment_appearance -> export_garment; garment_record shows every step",
               # the workflow's order (find_tool ranks a matched domain's early steps first)
-              "steps": ["garment_plan", "body_tape", "draft_pattern", "chain_garment", "garment_details", "look_chain", "export_garment"],
+              "steps": ["garment_plan", "body_tape", "draft_pattern", "chain_garment", "garment_details", "look_chain", "garment_appearance", "export_garment"],
               "about": "garments: design, pattern, the pattern gate, alterations, the chain build (the only start), references",
-              "tools": ["garment_plan", "draft_pattern", "garment_details", "export_garment", "design_garment", "look_pattern", "alter_pattern", "pattern_check", "chain_garment", "look_chain",
+              "tools": ["garment_plan", "draft_pattern", "garment_details", "garment_appearance", "export_garment", "design_garment", "look_pattern", "alter_pattern", "pattern_check", "chain_garment", "look_chain",
                         "garment_record", "body_tape", "garment_reference", "garment_from_reference", "garment_reference_brief"]},
     "terrain": {"about": "terrain and game levels (height fields in a level designer's words)",
                 "tools": ["set_terrain", "check_terrain", "look_terrain", "export_terrain", "terrain_history"]},
@@ -3758,6 +3758,19 @@ def export_garment(name: str, garment: str, wear: str = "open", role: str = "mai
     beside the reference) + triangles vs budget, UV stretch, the weight check. guide(topic="export_garment")"""
     from . import garment_export_tool as get
     looks, txt = get.run(name, garment, wear, role, look)
+    return [_out(PILImage.open(p_).convert("RGB"), None) for p_ in looks] + [txt] if looks else txt
+
+
+@mcp.tool(structured_output=False)
+def garment_appearance(name: str, garment: str, appearance: dict | None = None, wear: str = "open",
+                       role: str = "main_npc", look: bool = True):
+    """STEP 9a: the garment's MATERIAL painted on its flat pattern (the export's UVs): base colour per cloth (step 0),
+    the print at its repeat on each piece's grain, stitching along seams and hems, wear at the body's high points and
+    free edges, frayed hems, colour variation; amounts from step 2's appearance block (or `appearance`), restrained by
+    default. Bakes base / roughness / normal at the role's texture size; export_garment uses them. Writes step 9a.
+    Returns the EEVEE look beside the reference + every layer's numbers. guide(topic="garment_appearance")"""
+    from . import garment_appearance_tool as gat
+    looks, txt = gat.run(name, garment, _spec_arg(appearance) if isinstance(appearance, str) else appearance, wear, role, look)
     return [_out(PILImage.open(p_).convert("RGB"), None) for p_ in looks] + [txt] if looks else txt
 
 

@@ -298,9 +298,9 @@ def bake(drape: dict, cloth_of: dict, cloths: dict, plan: dict, grain: dict, siz
         L["variation"] = {"amount": va, "scale_mm": vs * 1000}
         pr = print_of(c, a)
         if pr:
-            w = lines(along, pr["repeat_m"], pr["line_m"], texel)
+            w = lines(across, pr["repeat_m"], pr["line_m"], texel)  # (a stripe runs along the grain: the warp)
             if pr["kind"] == "check":
-                w = np.maximum(w, lines(across, pr["repeat_m"], pr["line_m"], texel))
+                w = np.maximum(w, lines(along, pr["repeat_m"], pr["line_m"], texel))
             col = col * (1 - w[:, None]) + pr["colour"] * w[:, None]
             L["print"] = {"kind": pr["kind"], "repeat_mm": pr["repeat_m"] * 1000, "line_mm": round(pr["line_m"] * 1000, 2),
                           "repeat_px": round(pr["repeat_m"] / texel, 1)}

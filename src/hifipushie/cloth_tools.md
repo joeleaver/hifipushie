@@ -184,6 +184,26 @@ is SHAPE (C288): the build with its details beside the reference + the flat piec
 (count, marks in pattern terms, sizes) are in the text. chain_garment's step 7 is done only when every inventoried detail
 is placed (or there are none); until then 7a can't be written, so the build waits for this call.
 
+### `garment_appearance`
+`garment_appearance(name, garment, appearance=None, wear="open", role="main_npc", look=True)`: step 9a, the garment's
+material painted on its FLAT PATTERN (garment_appearance.py docstring: the method). The export's UVs are the pattern packed
+in one square (garment_appearance.layout, shared with export_garment), so everything is in pattern coordinates (metres).
+Layers: base colour per cloth (step 0's reading; each piece's cloth from step 1, an unlisted piece gets the main cloth: said),
+variation (value noise, amount 0.03 at 80 mm by default), the print (step 0's check / stripe at its repeat_mm, line_mm
+default 5 % of the repeat) turned to each piece's grain (M["grain"], deg, 90 = along y), surface (weave / leather pebble as
+normal + roughness; DROPPED when finer than 3 texels: said), stitching (dashed, length_mm 2.5, offset_mm 3 inside seams
+and hems: border edges sewn = seam, free = hem), wear (0 by default; a wear > 0 needs `why` from the story; at the plan's
+`where`: elbows, shoulders, knees, seat, hips: the rig's joints, where the build touches the body; and free edges), fray
+(only the plan's pieces' hems: alpha cut + threads along the grain; the GLB material becomes alpha-tested). The block, in
+step 2's output as `appearance` (garment_plan validates it) or this call's argument (same check):
+`{<cloth>: {wear, why, where: [...], edges, fray: {pieces, depth_mm}, stitch: {colour, length_mm, offset_mm, edges:
+seams+hems|hems|seams|none}, variation: {amount, scale_mm}, print: {kind, repeat_mm, line_mm}}, details: {<detail>:
+{material: metal|braid|plastic|horn|wood|cloth|leather, colour}}}`. Maps at the role's clothing texture set (budgets.json
+textures.sets): <job>/appearance/<garment>_{base,mr,normal}.png + _appearance.json. The look: the textured garment + body
+in EEVEE (asset.preview), four views, a chest close-up and the texture sheet, each beside the reference (C288: shape and
+colour judged by eye, numbers in the text). Writes step 9a; export_garment then puts the maps on its GLB (without 9a it
+exports flat colours and the record refuses step 10).
+
 ### `export_garment`
 `export_garment(name, garment, wear="open", role="main_npc", look=True)`: step 10, the chain garment as a game asset
 (src/hifipushie/garment_export.py docstring: the method). The hung garment (final.pkl; else the build) is the HIGH poly; the

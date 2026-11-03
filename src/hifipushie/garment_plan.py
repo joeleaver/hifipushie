@@ -298,6 +298,8 @@ def check_style(p: dict, read: dict, parts: dict) -> dict:
         _src(b, w, bad)
         if b.get("what") is not None or "value" in (b.get("target") or {}):  # (C286: a numeric bend is judged too)
             sr.check_row(b, w, bad, kinds)
+    from .garment_appearance import check_plan  # (T14: the appearance block: amounts from the story, step 9a reads it)
+    bad += check_plan(p.get("appearance"), list((read.get("cloth") or {})), list((parts.get("details") or {})))
     lay = p.get("layers")  # (T12: how a garment worn over another layers it: chain_press.py)
     if lay is not None and not (isinstance(lay, dict) and lay.get("mode") in ("visible", "full")
                                 and (lay["mode"] == "visible" or str(lay.get("why") or "").strip())):
