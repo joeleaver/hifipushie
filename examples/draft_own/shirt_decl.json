@@ -37,14 +37,14 @@
    "part": "shirt.band",
    "place": {
     "to": "neck",
-    "edge": "bm"
+    "edge": "bottomMid"
    }
   },
   "collar": {
    "part": "shirt.collar",
    "place": {
     "to": "neck",
-    "edge": "sm",
+    "edge": "bottomMid",
     "above": 0.03
    }
   },
@@ -110,11 +110,12 @@
    "placket": "cfNeckExt>cfHemExt"
   },
   "collar_band": {
-   "neck": "bl>bm>br",
-   "top": "c1>c2"
+   "neck": "leftBottomEdge>bottomMid>rightBottomEdge",
+   "top": "leftTopCf>topMid>rightTopCf"
   },
   "collar": {
-   "stand": "sL>sm>sR"
+   "stand": "leftBottomEdge>bottomMid>rightBottomEdge",
+   "outer": "leftTopEdge>topMid>rightTopEdge"
   },
   "sleeve.L": {
    "cap": "bicepsRight>capQ2>bicepsLeft",
@@ -231,10 +232,10 @@
   {
    "name": "fall_edge",
    "piece": "collar",
-   "line": [
-    "fL",
-    "fR"
-   ],
+   "line": {
+    "edge": "stand",
+    "offset": 0.0032
+   },
    "kind": "roll",
    "radius": 0.003
   }

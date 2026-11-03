@@ -287,7 +287,8 @@ def block(pat: dict) -> dict:
 # ---------------------------------------------------------------- the flat gate
 def gate(B: dict, decl: dict, step1: dict) -> list:
     """General flat rows: seams (each pair within its declared ease, else PLAIN_TOL), cut (every built inventory piece
-    cut), sewn (every step-1 seam), closures (every step-1 closure declared; lapped edges line up), truing (INFO)."""
+    cut), sewn (every step-1 seam), closures (every step-1 closure declared; lapped edges line up), truing (INFO), and
+    the SHAPE rows per role (draft_shape.py: stand / band rise and lean, fall spread, sleeve cap, curved-to-straight seams)."""
     from . import cloth_check as cc, pattern
     rows = []
     sm = cc.seams(B)
@@ -347,7 +348,8 @@ def gate(B: dict, decl: dict, step1: dict) -> list:
                      "target": "info: drafts are auto-trued in the build", "why": "; ".join(str(j.get("at", j))[:60] for j in off[:4])})
     except (KeyError, ValueError, TypeError) as x:
         rows.append({"id": "truing", "status": "INFO", "value": "n/a", "why": str(x)[:120]})
-    return rows
+    from . import draft_shape
+    return rows + draft_shape.rows(B, decl, step1)
 
 
 def verdict(rows: list) -> str:

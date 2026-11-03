@@ -64,8 +64,9 @@
    "part": "hussar.collar",
    "place": {
     "to": "neck",
-    "edge": "bm"
-   }
+    "edge": "bottomMid"
+   },
+   "role": "collar_stand"
   }
  },
  "edges": {
@@ -75,7 +76,7 @@
    "armhole": "armhole>armholePitch>shoulder",
    "neck": "hps>cfNeck",
    "cf": "cfNeck>cfPoint",
-   "cutaway": "cfPoint>hem2"
+   "cutaway": "cfPoint>cutTip>hem2"
   },
   "back.L": {
    "shoulder": "hps>shoulder",
@@ -101,7 +102,7 @@
    "armhole": "armhole>armholePitch>shoulder",
    "neck": "cfNeck>hps",
    "cf": "cfNeck>cfPoint",
-   "cutaway": "cfPoint>hem2"
+   "cutaway": "cfPoint>cutTip>hem2"
   },
   "back.R": {
    "shoulder": "hps>shoulder",
@@ -122,7 +123,7 @@
    "back": "usTip>usRightEdge>usWristRight"
   },
   "collar": {
-   "neck": "bl>bm>br"
+   "neck": "leftBottomCf>bottomMid>rightBottomCf"
   }
  },
  "seams": [
@@ -267,5 +268,143 @@
   "facing.L": "behind the zip, unseen: the front's edge is built as one cloth (a detail at step 7)",
   "facing.R": "behind the zip, unseen: the front's edge is built as one cloth (a detail at step 7)",
   "lining": "inside, unseen: the jacket is built single layer"
+ },
+ "marks": {
+  "frogging": {
+   "piece": "front.L",
+   "mirror": true,
+   "rows": {
+    "edge": "cf",
+    "count": 7,
+    "from_mm": 45,
+    "to_t": 0.82,
+    "in": 6
+   },
+   "lines": [
+    [
+     [
+      0,
+      -7
+     ],
+     [
+      80,
+      -7
+     ],
+     [
+      92,
+      -3
+     ]
+    ],
+    [
+     [
+      0,
+      0
+     ],
+     [
+      100,
+      0
+     ]
+    ],
+    [
+     [
+      0,
+      7
+     ],
+     [
+      80,
+      7
+     ],
+     [
+      92,
+      3
+     ]
+    ]
+   ],
+   "knots": [
+    [
+     104,
+     0
+    ]
+   ]
+  },
+  "frog_buttons": {
+   "piece": "front.L",
+   "mirror": true,
+   "rows": {
+    "edge": "cf",
+    "count": 7,
+    "from_mm": 45,
+    "to_t": 0.82,
+    "in": 40
+   }
+  },
+  "vertical_braid": {
+   "piece": "front.L",
+   "mirror": true,
+   "follows": [
+    "front.L:cf"
+   ],
+   "in": 120
+  },
+  "edge_binding": {
+   "follows": [
+    "front.L:cf",
+    "front.L:cutaway",
+    "front.L:neck",
+    "front.R:cf",
+    "front.R:cutaway",
+    "front.R:neck"
+   ]
+  },
+  "shoulder_cord": {
+   "piece": "front.L",
+   "mirror": true,
+   "follows": [
+    "front.L:shoulder"
+   ],
+   "in": 4
+  },
+  "shoulder_buttons": {
+   "piece": "front.L",
+   "mirror": true,
+   "at": [
+    {
+     "edge": "shoulder",
+     "t": 0.88,
+     "in": 9
+    }
+   ]
+  },
+  "cuff_braid": {
+   "piece": "sleeve.L",
+   "mirror": true,
+   "path": [
+    {
+     "edge": "front",
+     "t": 0.86,
+     "in": 6
+    },
+    {
+     "edge": "tsWristLeft>tsWristRight",
+     "t": 0.5,
+     "in": 110
+    },
+    {
+     "edge": "back",
+     "t": 0.92,
+     "in": 6
+    }
+   ]
+  },
+  "zip_pull": {
+   "piece": "front.L",
+   "at": [
+    {
+     "edge": "cf",
+     "mm": 30,
+     "in": 6
+    }
+   ]
+  }
  }
 }
