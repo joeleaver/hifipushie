@@ -26,7 +26,7 @@ the hussar jacket), so no tool quietly becomes a shirt tool.
 | 8 | Sim | folds only: soft cloth under gravity (ZOZO), stiff parts and the plan's state held | `chain_garment` HANG after the structure PASS | lengths after the hang | threads past the cap in the answer and the gate (open wear: 1 in 5 faces) |
 | 9 | Look and approve | the garment beside the reference, blind review, approval | look_chain, review_view, approve | blind look | one sheet per garment from the step-0 reference |
 | 10 | Export | game mesh, retopology, skinned to the character's rig | none for chain garments | budgets | the whole step |
-Known for iteration: steps 5-6: the build mesh's irregular strip where the hex lattice meets the outline (test: rows
+Known for iteration: steps 5-6: plackets: the front edge kinks between buttons, fronts meet 0.86, open plackets ragged (Joe saw it on the T14 shirt; rows placket_straight + closure_front FAIL); the build mesh's irregular border strip (test: rows
 following the outline; are the ragged plackets from it?). Step 8: open wear hung with 1 in 5 faces past the thread cap.
 ORDER: tooling for every step first; then the steps one at a time, shirt + hussar together, each iterated until good.
 ## Tooling runs (one deliverable each, in order; "minimal" = the step works end to end for any garment, not yet good)
