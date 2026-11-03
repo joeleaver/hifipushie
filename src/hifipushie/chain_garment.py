@@ -943,7 +943,7 @@ class GarmentBuild(Build):
         for ring in R.rings:
             side = hand_of(ring)
             if side == 0:  # (F1: a centre ring is a stiff band on a body loop: a waistband by its seam, a belt by its length)
-                from .chain_roles import body_ring
+                from .chain_loops import body_ring
                 body_ring(self, ring)
                 continue
             tube = next((t for t in R.tubes if self.sewn_with(ring, t)), None)
@@ -1459,7 +1459,7 @@ class GarmentBuild(Build):
         over = (l - net.link_L) / np.maximum(net.link_L, 1e-9) * 100
         rep["gathered_links"] = int(both.sum())
         rep["held_longest_over_pct"] = round(float(over[both].max()), 2) if both.any() else 0.0
-        from .chain_roles import held_read
+        from .chain_loops import held_read
         rep.update(held_read(self, X, both, e, over))  # (F1: held links are lengths too)
         return rep
 
@@ -1761,6 +1761,9 @@ def worker(model: str, garment: str, wear: dict):
     except (ChainRefused, cd.DrapeRefused) as e:
         _status(d, stage="refused", refused=str(e))
     except Exception as e:  # (a crash is reported as one, with what it was doing)
+        if type(e).__name__ in ("ChainRefused", "DrapeRefused"):  # (F1: the worker runs as __main__, so a refusal
+            _status(d, stage="refused", refused=str(e))       # raised in chain_roles / chain_loops is another class)
+            return
         import traceback
         _status(d, stage="failed", error=f"{type(e).__name__}: {e}", trace=traceback.format_exc()[-1500:])
     finally:  # (steps 5, 6 and 8 of the garment record; a refusal of the record's order is noted, the job stands)
