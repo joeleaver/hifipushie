@@ -52,4 +52,5 @@ STEP 4 NEEDS (after T5b): traces whose edge lies flat in the view (a hem, a CF e
 any build: the declared edge (piece:edge) drawn in mm vs the trace (same compare(), placed by the edge's end points).
 UNVERIFIED: side / back views (only front used); a trace through a tube's silhouette (sleeves, a side outline: not a
 border edge); the job's answer text with outline rows (rows checked via chain_structure.check, not a new job).
+- r-nico (2026-11-02): the hang (zozo_hang.run) runs through the machine's configured route when one is set (localconf HIFIPUSHIE_HANG_REMOTE, local config outside the repo; default local), holding no local slot; its gate there is the job's own structure PASS + 7a (chain_gate.json, written by the worker); exit 9 = not available -> runs here, said in one line (status hang_ran). drape_start_clear reads the start before soft_net (C302).
 NEXT: step 4's flat check; redraw the hussar's cutaway (CF step out, then the tails) + the stand's front ends, rebuild.
