@@ -26,12 +26,15 @@ from pathlib import Path
 
 import numpy as np
 
-STAGES = ("start", "chains", "surfaces")
+STAGES = ("arrange", "sew", "start", "chains", "surfaces")  # (F7: arrange + sew, chain_sew.py)
 OPEN_DEG = 90.0  # a tube with a gap wider than a quarter turn round its loop is not closed round (a two-piece tube missing
 #                 one piece leaves ~180 deg)
 SLICE = 0.015  # m: half the slice read round a loop: 1.5x the 0.01 m flat row bins _tube_points lays rows at (or
 # 0.6x the mesh's own row spacing when coarser: a slice always holds a row)
-BACK = {"start": ("5", "the START (piece_start): the piece's measurement list (step 4 piece_measurements) or where its "
+BACK = {"arrange": ("5", "the ARRANGE lay (chain_sew.lay): each piece flat on one cylinder is exact; a length off is a lay bug"),
+        "sew": ("4", "the PATTERN: a seam that can't close without stretch (chain_sew.gate_sew names it, the gap and the "
+                     "measurements its pieces were drafted from): draft_pattern with the piece larger there"),
+        "start": ("5", "the START (piece_start): the piece's measurement list (step 4 piece_measurements) or where its "
                        "tapes were taken (step 3 body_tape), then chain_garment again"),
         "chains": ("5", "the CHAIN stage: a length off its cut is the pattern's (alter_pattern at the named line); a tube "
                         "or pair pulled off its start is the start or the seams joining it (pattern_check)"),
@@ -53,8 +56,7 @@ def _row(id_, value, limit, ok, source, change, unit="") -> dict:
 # Rows whose limits aren't calibrated yet (no build that passes the end gates has been read against them; the hussar fails
 # them too): reported as "INFO (would FAIL)", never stopping a build, until a passing build sets them (coordinator,
 # 2026-11-03). The other rows rest on existing rules (2 % lengths, the stand-off gap, piece_start's tube rule, roughness).
-PROVISIONAL = ("inside:", "holes:", "sewn:", "start_length:")  # (F6: start_length stays provisional until the start is
-# laid isometric by construction: every build today stretches at its start, the trousers 1063 %)
+PROVISIONAL = ("inside:", "holes:", "sewn:")  # (F7: start_length is a verdict: the start is laid flat then sewn, exact)
 
 
 def verdict(stage: str, rows: list, reads: dict | None = None) -> dict:
@@ -379,7 +381,17 @@ def gate_surfaces(b, X) -> dict:
                                                               for k, v in rough.items()}})
 
 
-GATES = {"start": gate_start, "chains": gate_chains, "surfaces": gate_surfaces}
+def _gate_arrange(b, X):
+    from .chain_sew import gate_arrange
+    return gate_arrange(b, X)
+
+
+def _gate_sew(b, X):
+    from .chain_sew import gate_sew
+    return gate_sew(b, X)
+
+
+GATES = {"arrange": _gate_arrange, "sew": _gate_sew, "start": gate_start, "chains": gate_chains, "surfaces": gate_surfaces}
 
 
 def check(b, stage: str, X):

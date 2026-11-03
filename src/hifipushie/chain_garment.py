@@ -1120,7 +1120,11 @@ class GarmentBuild(Build):
             X[v] = self._tube_points(t, v)
         from .chain_stages import mirror_starts
         from .piece_start import turn_to_seams
-        return mirror_starts(self, turn_to_seams(self, X))  # (F5 C314: a .R piece starts as its .L's mirror, never solved on its own)
+        X = mirror_starts(self, turn_to_seams(self, X))  # (F5 C314: a .R piece starts as its .L's mirror, never solved on its own)
+        if getattr(self, "sew_start", True):  # (F7: that lay is the GUIDE; the start is each piece flat, then sewn: exact)
+            from .chain_sew import flat_then_sew
+            X = flat_then_sew(self, X)
+        return X
 
     def soft_net(self, start=None, far_z=None):
         """Chains + lines of the soft cloth from its start, stiff nodes held; then surfaces; then the threads."""
