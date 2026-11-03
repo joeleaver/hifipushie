@@ -82,6 +82,15 @@ def run(name: str, garment: str, design: str, declarations: dict, options: dict 
     rd = gr.reads(name, garment, "4")
     meas = measurements(rd["3"])
     d = gr.look_dir(name, garment) / "draft"
+    from . import pattern_parts as pp  # (the design's FULL list, before drafting: a block without one crashes inside it)
+    try:
+        miss = pp.missing(design, meas, d / "inspect")
+    except pp.InspectRefused as e:
+        raise do.DraftRefused(str(e)) from None
+    if miss:
+        raise do.DraftRefused(f"design.mjs needs measurements step 3 hasn't taken: {', '.join(miss)} (the design's own list, "
+                              f"every part it drafts; have {', '.join(sorted(meas))}): measure them by name with body_tape "
+                              "(step 3), then draft again. pattern_parts(design) lists what each part needs")
     draft = do.node_draft(design, meas, options, sa, d)
     bad = do.validate(declarations, rd["1"], draft["parts"])
     if bad:

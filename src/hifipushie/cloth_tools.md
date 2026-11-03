@@ -135,6 +135,12 @@ bends [{id, on, target {value, unit, of (a ratio's base)} | {is}, source}], pose
 (what the photo judges: the structure gate's targets). Refused by name: a seam on a piece not in the inventory, a built
 piece with no seam, a target with no source, a state for a closure the inventory lacks. look (default): drawn over the
 reference: seen solid, occluded dashed, inferred dotted, omitted grey, judged rows yellow; saved as the step's look.
+Every `at` / `outline` / `points` is PIXELS of the named view's image (u right, v down from its top-left corner), never
+0-1 fractions: values all within 0..1 on an image wider than 2 px are refused (multiply by the image's width / height).
+Body measurement names in seams' `length.body` are body_tape's: FreeSewing's names the tape takes, or names you define
+in step 1's `define` {name: girth|arc|length|height} (measured by that kind at step 3); others are refused with the
+closest valid names. Rewriting step 1 carries steps 2 and 3 forward when they still validate against it (re-stamped,
+said in the answer); only what no longer validates goes stale, with the reason.
 
 ### `draft_pattern`
 `draft_pattern(name, garment, design, declarations, options=None, sa=10)`: garment step 4, YOUR OWN pattern (no published
@@ -150,8 +156,10 @@ design, no recipe; src/hifipushie/draft_own.py's docstring is the spec). Needs s
   ({ part }) => part }` with its options overridden (options.json / `options`): FreeSewing's parts carry a patternmaker's
   curves (a stand's neck edge bends, a fall's outer edge is longer). Using them is RIGHT; drawing a curved piece as
   straight lines is what the flat gate refuses. (What's banned is garment-specific glue in hifipushie's code, never
-  FreeSewing's parts.) Examples: examples/draft_own/hussar.mjs (simon's stand, bent's sleeves), shirt.mjs.
-  Measurements are step 3's names (FreeSewing's or your own). Node runs it without network, fs read-only, 60 s; an
+  FreeSewing's parts.) SEE a design's parts before declaring: `pattern_parts(design)` (a pack design or your own
+  source: what it exports, HIDDEN bases, each part's seam outline as point names in order; part=: its points and paths).
+  Measurements are step 3's names (FreeSewing's or your own); the design's full list (every part it drafts, through
+  from / after) is checked against step 3 BEFORE drafting and the missing ones named. Node runs it without network, fs read-only, 60 s; an
   error comes back as `design.mjs line N: message` with the line.
 - declarations (step 1's names): `pieces` {piece: {"part", "fold": "x0" (cut on the fold at x 0: mirrored points are
   "<name>.m"), "mirror", "cut", "grain", "place": {"to": "torso" | "arm.L" | "neck", "side", ...}}}; `edges` {piece:
@@ -172,6 +180,17 @@ design, no recipe; src/hifipushie/draft_own.py's docstring is the spec). Needs s
   rounded front top corner), never approximated by one arc; judge the sheet's outlines beside the photo. The sheet is shape only (one big name per piece, each seam pair one colour, legend S<n> = the
 text's S<n>); the text lists every piece (size, cut, stiff) and every seam pair (both edges, both lengths, ease,
 PASS/FAIL); step 4 written; pattern_check re-reads it.
+
+### `pattern_parts`
+`pattern_parts(design, name="", garment="", part="", options=None, look=False)`: the part inspector
+(src/hifipushie/pattern_parts.py). design: a pack design name (brian, bent, jaeger, carlton, simon, teagan) or your own
+design's source. Run in Node like draft_pattern. Without part: the measurements the design needs (every part it drafts),
+every part in draft order (HIDDEN = a base other parts copy, not a piece you get; from / after), its points and paths
+counts and its `seam` outline as point names in the order it runs (aliases at one spot "a=b"), then the options (default
+[min..max]). part="jaeger.front": that part's points (x right, y down, mm) and every path as point names in order;
+look=True draws it (shape only, the seam's points named large). Declare edges along that order: "a>b", "a>via>b".
+name + garment: drafted with step 3's measurements; else with stated DEFAULT values (coordinates only indicative).
+A design reaching a part only through `from` (jaeger's front via frontFacing.from) shows it here as HIDDEN or not.
 
 ### `garment_details`
 `garment_details(name, garment, details, wear="open", look=True)`: step 7, details and trims (src/hifipushie/garment_details.py

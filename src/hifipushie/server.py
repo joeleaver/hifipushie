@@ -163,7 +163,7 @@ TOOL_GROUPS: dict[str, dict] = {
               # the workflow's order (find_tool ranks a matched domain's early steps first)
               "steps": ["garment_plan", "body_tape", "draft_pattern", "chain_garment", "garment_details", "look_chain", "garment_appearance", "export_garment"],
               "about": "garments: design, pattern, the pattern gate, alterations, the chain build (the only start), references",
-              "tools": ["garment_plan", "draft_pattern", "garment_details", "garment_appearance", "export_garment", "design_garment", "look_pattern", "alter_pattern", "pattern_check", "chain_garment", "look_chain",
+              "tools": ["garment_plan", "draft_pattern", "pattern_parts", "garment_details", "garment_appearance", "export_garment", "design_garment", "look_pattern", "alter_pattern", "pattern_check", "chain_garment", "look_chain",
                         "garment_record", "body_tape", "garment_reference", "garment_from_reference", "garment_reference_brief"]},
     "terrain": {"about": "terrain and game levels (height fields in a level designer's words)",
                 "tools": ["set_terrain", "check_terrain", "look_terrain", "export_terrain", "terrain_history"]},
@@ -3744,6 +3744,19 @@ def draft_pattern(name: str, garment: str, design: str, declarations: dict | str
     sheet, txt = dot.run(name, garment, design, _spec_arg(declarations) if isinstance(declarations, str) else declarations,
                          options, sa)
     return [_out(PILImage.open(sheet).convert("RGB"), None), txt] if sheet else txt
+
+
+@mcp.tool(structured_output=False)
+def pattern_parts(design: str, name: str = "", garment: str = "", part: str = "", options: dict | None = None,
+                  look: bool = False):
+    """SEE A FREESEWING DESIGN before you declare its edges. design: a pack design name (brian, bent, jaeger, carlton,
+    simon, teagan) or your own design's source. Lists every part it drafts (HIDDEN bases, from / after), the
+    measurements it needs, its options (default, range) and each part's seam outline as point names in order; part=:
+    that part's points (x, y mm) and every path in order (look=True: its outline, names large). name + garment: drafted
+    with step 3's measurements. guide(topic="pattern_parts")"""
+    from . import pattern_parts as pp
+    p_, txt = pp.run(design, name, garment, part, options, look)
+    return [_out(PILImage.open(p_).convert("RGB"), None), txt] if p_ else txt
 
 
 @mcp.tool(structured_output=False)
