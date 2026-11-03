@@ -53,7 +53,7 @@ def _parts():
             "closures": {"front": {"what": "buttons", "pieces": ["front.L", "front.R"], "details": ["buttons"]}},
             "seams": [{"a": "front.L:side", "b": "back:side.L", "length": {"body": ["armpit_to_waist"]}},
                       {"a": "front.R:side", "b": "back:side.R", "length": {"body": ["armpit_to_waist"]}},
-                      {"a": "front.L:shoulder", "b": "back:shoulder.L", "length": {"style": {"ratio": 0.5, "of": "x",
+                      {"a": "front.L:shoulder", "b": "back:shoulder.L", "length": {"style": {"ratio": 0.5, "of": "biceps",
                                                                                               "source": "front view"}}}],
             "define": {"armpit_to_waist": "length"}}
 
@@ -118,7 +118,7 @@ def test_parts_refusals_by_name(home):
 def test_parts_write_lists_measurements_and_draws_marks(home):
     gp.write("m", "w", "read", _read(home), look=False)
     r = gp.write("m", "w", "parts", _parts())
-    assert r["plan"]["measurements"] == ["armpit_to_waist"]
+    assert r["plan"]["measurements"] == ["armpit_to_waist", "biceps"]
     im = Image.open(r["look"][0]).convert("RGB")
     s = 900 / 200
     # the seen front.L's outline is drawn (solid) over the picture: a pixel on its right edge is no longer the picture's
@@ -214,7 +214,7 @@ def test_a_parts_change_carries_a_still_valid_style_and_tape_forward(home):
     gp.write("m", "g", "read", _read(home), look=False)
     gp.write("m", "g", "parts", _parts(), look=False)
     gp.write("m", "g", "style", _style(), look=False)
-    gr.write("m", "g", "3", "done", output={"measurements": [{"name": "armpit_to_waist", "mm": 200.0}]})
+    gr.write("m", "g", "3", "done", output={"measurements": [{"name": "armpit_to_waist", "mm": 200.0}, {"name": "biceps", "mm": 300.0}]})
     d2, d3 = (gr.load("m", "g")["steps"][k]["digest"] for k in ("2", "3"))
     p = _parts()
     p["pieces"]["back"]["why"] = "never seen, reworded"  # a parts change that leaves style + tape valid
@@ -445,3 +445,19 @@ def test_hidden_edges_and_trims_placed_by_their_edges(home):  # (t s1-2: an inve
     _refused(lambda: gp.write("m", "w", "parts", b, look=False), "details.edge: seen: where")
     b["pieces"]["front.L"]["hidden"] = ["armhole"]
     _refused(lambda: gp.write("m", "w", "parts", b, look=False), "pieces.front.L.hidden: a list of its own edges")
+
+
+def test_mixed_trims_and_self_crossing_outlines_are_refused_with_why(home):  # (t s1-2 / s1-3)
+    gp.write("m", "w", "read", _read(home), look=False)
+    b = _parts()
+    b["details"]["edge"]["follows"] = ["front.L:cf", "back:hem"]
+    b["details"]["edge"].pop("where")
+    _refused(lambda: gp.write("m", "w", "parts", b, look=False), "follows back:hem, with no drawn place", "two details")
+    b = _parts()
+    b["pieces"]["front.L"]["where"]["outline"] = [[100, 50], [150, 250], [150, 50], [100, 250]]  # (a bow tie)
+    _refused(lambda: gp.write("m", "w", "parts", b, look=False), "pieces.front.L.where.outline crosses itself")
+    b["pieces"]["front.L"]["hidden"] = ["shoulder"]  # (a crossing on a hidden run is allowed)
+    assert gp.write("m", "w", "parts", b, look=False)
+    b = _parts()
+    b["seams"][2]["length"]["style"]["of"] = "nonsense"
+    _refused(lambda: gp.write("m", "w", "parts", b, look=False), "length.style.of 'nonsense': a ratio's base")
