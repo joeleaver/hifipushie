@@ -1,4 +1,4 @@
-# STATE: garment export (step 10, T11 -> T11b) -- 2026-11-02
+# STATE: garment appearance + export (steps 9a, 10; T11 -> T11b -> T14) -- 2026-11-02
 
 Tool: `export_garment(name, garment, wear="open", role="main_npc", look=True)`. Code: garment_export.py (method),
 garment_export_tool.py (tool body), garment_glb.py (GLB), garment_loops.py (T11b: the loop re-grid), garment_bend.py
@@ -28,4 +28,22 @@ Open (worst first):
 2. The body's elbow tear (MakeHuman weights + bend bones) under every sleeve: fix in rig, not the garment.
 3. Fold bake, LODs, layering cull, detail decimation (T11's list) still open.
 
-NEXT: the armpit (1), proven by the bend rows + the raised-arm close-up; then the body's elbow (2).
+T14 (appearance, step 9a, C298): `garment_appearance(name, garment, appearance=None, wear, role, look)` (cloth group).
+Code: garment_appearance.py (method: layout shared with the export's atlas, layers, check_plan), garment_appearance_tool.py.
+Record: step 9a between 9 and 10 (step 10 refused without it). Step 2 may carry `appearance` (garment_plan validates).
+export_garment puts 9a's maps (base RGBA, metallic-roughness, normal; garment_glb embeds PNGs) + detail materials on the GLB.
+- Shirt proof (copy /mnt/data/hifipushie/t14/ws, approvals stubbed test-only: t14/approved_stub.json, env t14/env.sh):
+  2048 px (main_npc), 0.72 mm/texel over a 1.48 m pattern square; check on the grain, stitching 2.5 mm at 3 mm on seams +
+  hems, wear 0.1 at the elbows (2.8 % texels), buttons plastic. Looks: ws/cf_shirt/garments/shirt/step9a_{views,close,
+  sheet}.png, step10_rest.png (the exported GLB, textured, EEVEE). My look: the check runs straight on every piece, meets
+  at the CF placket, repeat matches; colour a touch bluer and lines a touch heavier than the photo; wear invisible at
+  game distance (restrained). The reading's repeat was WRONG: FFT of the photo ~27 px = ~12 mm, not 20 mm: the proof
+  passed print {repeat_mm 12.5, line_mm 0.7} as an override; step 0 should be re-read (its reading is a test stub).
+- Ranger swatches (t14/swatch/ranger_swatches.png, script t14/swatch.py): wool, linen, worn leather at 0.72 and 0.25
+  mm/texel. Leather reads (mottled brown); wool / linen read flat at game density (twill 1.6 mm, slub 1.2 mm DROPPED
+  under 3 texels); the frayed hem reads as a regular fringe with gentle tears, NOT the photo's torn cloak hem.
+Open (T14): fray per edge (the hem only, not every free edge) + deeper irregular tears; stitches barely visible at game
+distance (fine at the close-up?); seam matching of the check is by the pattern origin only (no explicit match marks);
+the bend FAILs above are unchanged by T14.
+
+NEXT: the armpit (1), proven by the bend rows + the raised-arm close-up; then the body's elbow (2); appearance: fray per edge.
