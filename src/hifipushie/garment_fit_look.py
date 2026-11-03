@@ -15,13 +15,32 @@ from .garment_plan_look import FONT, FONT_LEG, _line
 
 H = 900
 OX = 110  # (the photo's left margin: the ruler)
+RM = 150  # (each panel's right margin: every label, outside the picture, so no garment's shape decides where they fit)
 YEL, CYAN, ORANGE, GREY, WHITE = (250, 210, 40), (60, 220, 230), (255, 140, 30), (150, 150, 150), (235, 235, 235)
 
 
+GAP = 12  # (the garment's bar this far above the body's: 6 px overlapped on a narrow limb, Joe 2026-11-03)
+
+
 def _seg(d, a, b, col, w, dash):
+    """A width bar with short end ticks across it (circles overlapped on a narrow limb)."""
+    a, b = np.asarray(a, float), np.asarray(b, float)
     _line(d, [tuple(a), tuple(b)], col, w, dash)
+    t = b - a
+    n = np.array([-t[1], t[0]]) / (np.linalg.norm(t) or 1.0) * 5
     for p in (a, b):
-        d.ellipse([p[0] - 4, p[1] - 4, p[0] + 4, p[1] + 4], outline=col, width=2)
+        d.line([tuple(p - n), tuple(p + n)], fill=col, width=2)
+
+
+def _label(d, anchor, text, x, used, col=YEL):
+    """A label in the panel's right margin at x, at the anchor's height (moved down past earlier labels), with a thin
+    leader from the anchor: general for any garment, the margin is never covered by one."""
+    y = float(anchor[1]) - 8
+    while any(abs(y - u) < 18 for u in used):
+        y += 18
+    used.append(y)
+    _line(d, [tuple(anchor), (x - 4, y + 8)], col, 1, (3, 3))
+    d.text((x, y), text, fill=col, font=FONT)
 
 
 def _lmarks(read: dict) -> dict:
@@ -67,7 +86,7 @@ def _photo(read: dict, fit: dict) -> Image.Image:
     s = H / im.size[1]
     im = im.resize((round(im.size[0] * s), H))
     im = Image.blend(im, Image.new("RGB", im.size, (0, 0, 0)), 0.3)
-    base = Image.new("RGB", (im.size[0] + OX, H), (24, 25, 28))  # (the ruler in a margin: grey on the photo doesn't read)
+    base = Image.new("RGB", (im.size[0] + OX + RM, H), (24, 25, 28))  # (the ruler in a margin: grey on the photo doesn't read)
     base.paste(im, (OX, 0))
     im, d = base, ImageDraw.Draw(base)
     lm = _lmarks(read)
@@ -75,7 +94,8 @@ def _photo(read: dict, fit: dict) -> Image.Image:
     hy = {h["name"]: (h["at"][1] if isinstance(h["at"], list) else h["at"]) * s for h in fr.get("heights") or []
           if isinstance(h, dict) and h.get("name") in heights}
     _ruler(d, {k: v * s for k, (v, _) in lm.items()}, {k for k, (_, f) in lm.items() if f != "seen"}, heights, hy, 40,
-           im.size[0] - 40)
+           im.size[0] - RM - 40)
+    used, lx = [], im.size[0] - RM + 8
     for w in fr.get("widths") or []:
         if not isinstance(w, dict):
             continue
@@ -88,24 +108,23 @@ def _photo(read: dict, fit: dict) -> Image.Image:
             P = [np.array(p) * s + [OX, 0] for p in pair]
             for q, m in zip((meas.get(key) or {}).get("marked") or [], (meas.get(key) or {}).get("moved_px") or []):
                 if m >= 1:  # (the agent's mark, where the tool moved it to the picture's edge)
-                    c = np.array(q) * s + ([OX, -6] if key == "garment" else [OX, 0])
+                    c = np.array(q) * s + ([OX, -GAP] if key == "garment" else [OX, 0])
                     d.ellipse([c[0] - 3, c[1] - 3, c[0] + 3, c[1] + 3], outline=GREY, width=1)
             if key == "body":
                 _seg(d, *P, CYAN, 2, (8, 6) if inf else None)
             else:
-                _seg(d, *[q + [0, -6] for q in P], YEL, 3, None if str(w.get("garment_from") or "seen") == "seen" else (8, 6))
-                d.text((P[1][0] + 8, P[1][1] - 14), w["at"], fill=YEL, font=FONT)
+                _seg(d, *[q + [0, -GAP] for q in P], YEL, 3, None if str(w.get("garment_from") or "seen") == "seen" else (8, 6))
+                _label(d, P[1] + [6, -GAP], w["at"], lx, used)
     for k, v in hy.items():
-        x0, x1 = OX + (im.size[0] - OX) * 0.15, OX + (im.size[0] - OX) * 0.85
-        _line(d, [(x0, v), (x1, v)], ORANGE, 2, None)
-        d.text((x1 + 4, v - 14), k, fill=ORANGE, font=FONT)
+        _line(d, [(OX, v), (lx - 6, v)], ORANGE, 2, None)
+        _label(d, (lx - 6, v), k, lx, used, ORANGE)
     return im
 
 
 def _model(read: dict, body, fit: dict, heights: dict) -> Image.Image:
     view = read["views"][read["fit_read"]["view"]].get("view", "front")
     ax = (1, 2) if view == "side" else (0, 2)
-    im = Image.new("RGB", (600, H), (24, 25, 28))
+    im = Image.new("RGB", (600 + RM, H), (24, 25, 28))
     d = ImageDraw.Draw(im)
     mesh = getattr(body, "mesh", None)
     if mesh is None:
@@ -126,6 +145,8 @@ def _model(read: dict, body, fit: dict, heights: dict) -> Image.Image:
     ys = {k: H - 30 - (body.at(k, view)["z_mm"] / 1000) * s for k in lm}
     hy = {k: H - 30 - (h["z_mm"] / 1000) * s for k, h in heights.items()}
     _ruler(d, ys, {k for k, (_, f) in lm.items() if f != "seen"}, heights, hy, 40, 560)
+    lx = 600 + 8
+    used = []
     for k, e in fit.items():
         m = body.at(k, view)
         if m.get("centre") is None:
@@ -133,11 +154,11 @@ def _model(read: dict, body, fit: dict, heights: dict) -> Image.Image:
         c, u = np.array(m["centre"]), np.array(m["dir"])
         hb, hg = m["width_mm"] / 2000, m["width_mm"] * e["ratio"] / 2000
         _seg(d, px(c - u * hb), px(c + u * hb), CYAN, 2, (8, 6) if e["body"] != "seen" else None)
-        _seg(d, px(c - u * hg) + [0, -6], px(c + u * hg) + [0, -6], YEL, 3, (8, 6) if e["garment"] != "seen" else None)
-        d.text(tuple(px(c + u * hg) + [8, -20]), k, fill=YEL, font=FONT)
+        _seg(d, px(c - u * hg) + [0, -GAP], px(c + u * hg) + [0, -GAP], YEL, 3, (8, 6) if e["garment"] != "seen" else None)
+        _label(d, px(c + u * hg) + [6, -GAP], k, lx, used)
     for k, y in hy.items():
-        _line(d, [(110, y), (490, y)], ORANGE, 2, (8, 6) if heights[k].get("extrapolated") else None)
-        d.text((494, y - 14), k, fill=ORANGE, font=FONT)
+        _line(d, [(110, y), (lx - 6, y)], ORANGE, 2, (8, 6) if heights[k].get("extrapolated") else None)
+        _label(d, (lx - 6, y), k, lx, used, ORANGE)
     return im
 
 
@@ -146,10 +167,9 @@ def draw(model: str, garment: str, read: dict, body) -> str:
     out = Image.new("RGB", (a.size[0] + b.size[0] + 20, H + 40), (24, 25, 28))
     out.paste(a, (0, 40))
     out.paste(b, (a.size[0] + 20, 40))
-    ImageDraw.Draw(out).text((8, 8), f"{garment} step 0 fit: the picture's marks | the model with the widths and heights "
-                             "they give (yellow garment, cyan body, orange heights + their spans on the left ruler; dashed = inferred; "
-                             "dotted = floor / crown, not used; numbers: the text)",
-                             fill=WHITE, font=FONT_LEG)
+    ImageDraw.Draw(out).text((8, 8), f"{garment} step 0 fit: the picture's marks | the model with what they give. yellow "
+                             "garment, cyan body, orange heights + their spans (left ruler); dashed = inferred, dotted = "
+                             "floor / crown (unused); numbers: the text", fill=WHITE, font=FONT_LEG)
     p = gr.look_dir(model, garment) / "step0_fit.png"
     out.save(p)
     return str(p)
