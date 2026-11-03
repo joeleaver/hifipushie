@@ -175,6 +175,24 @@ def _along(P: np.ndarray, s: np.ndarray) -> np.ndarray:
     return np.c_[[np.interp(s, cum, Pc[:, i]) for i in range(3)]].T
 
 
+def _chords(P: np.ndarray, s0: float, seg: np.ndarray, res: float = 2e-4) -> np.ndarray:
+    """Points along the closed polyline P from arc s0, each the next one's CHORD seg[i] apart (the pattern's links exact
+    where the ring turns sharply: at the clasp, arc steps would leave the links short)."""
+    per = float(np.linalg.norm(np.diff(np.r_[P, P[:1]], axis=0), axis=1).sum())
+    s = np.arange(s0, per, res)
+    Q = _along(P, s)
+    out, k = [Q[0]], 0
+    for L in seg:
+        d = np.linalg.norm(Q[k + 1:] - out[-1], axis=1)
+        j = int(np.argmax(d >= L)) if (d >= L).any() else len(d) - 1
+        a, b = Q[k + j], Q[k + 1 + j]  # (the chord reaches L between these two samples)
+        da, db = (float(np.linalg.norm(a - out[-1])) if j else 0.0), float(d[j])
+        f = (L - da) / max(db - da, 1e-12) if db >= L else 1.0
+        out.append(a + min(max(f, 0.0), 1.0) * (b - a))
+        k += j
+    return np.array(out)
+
+
 # ---------------------------------------------------------------- 2. the free cloth
 def _paths(X0, out, vert, tang, dmax, contact):
     """The clear path from X0: (angle off vertical, turn distance), the smallest horizontal reach that keeps CLEAR.
@@ -246,9 +264,8 @@ def build_drape(b, t0: float) -> None:
     if uv[hv[0], 0] < uv[hv[-1], 0]:  # (the end with the larger flat x goes to the wearer's left, +X)
         hv, seg = hv[::-1], seg[::-1]
     ring = held_ring(b.body, L + CLASP_GAP, GAP)
-    s = CLASP_GAP / 2 + np.r_[0, np.cumsum(seg)]
     X = np.zeros((net.n, 3))
-    X[hv] = _along(ring, s)
+    X[hv] = _chords(ring, CLASP_GAP / 2, seg)
     held = np.isin(rs, rs[hv])
     for v in np.where(held)[0]:
         X[v] = X[hv[np.where(rs[hv] == rs[v])[0][0]]]

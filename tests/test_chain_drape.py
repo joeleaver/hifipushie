@@ -114,3 +114,12 @@ def test_held_line_sewn_to_itself_refused_by_name():
     bad = SimpleNamespace(**{**vars(ok), "root": np.array([0, 1, 2, 3, 2, 2])})  # (the end and the middle, through the hood)
     with pytest.raises(ChainRefused, match=r"sewn to itself.*\[2, 4\].*hood.*wrong way round"):
         cd.check_held_sewn(bad, "cloak", hv)
+
+
+def test_held_line_placed_by_chords_exact_at_a_sharp_turn():
+    """A ring with a corner (the clasp): the held links are their cut chords, not arc steps."""
+    P = np.r_[[[0.0, 0, 0]], np.c_[np.linspace(0.01, 0.2, 40), np.linspace(0.01, 0.2, 40) * 0.2, np.zeros(40)],
+              np.c_[np.linspace(0.2, 0.01, 40), np.linspace(0.2, 0.01, 40) * -0.2, np.zeros(40)]]
+    seg = np.full(30, 0.0098)
+    Q = cd._chords(P, 0.002, seg)
+    assert np.allclose(np.linalg.norm(np.diff(Q, axis=0), axis=1), seg, rtol=1e-3)
