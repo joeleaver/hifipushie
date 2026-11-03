@@ -26,8 +26,10 @@ STEP 1 "parts": {pieces, details, closures, seams, over?, define?}
             under it), where?: {view, outline: [[u,v],..]} (needed when seen), hang?: fitted|draped (T13: hangs free
             below where it is held; its fall judged on the hang), held?: [its edges built on the body] (draped only),
             edges: {edge: [i0, i1]} spans of its outline's points that TILE it (each segment in one edge), or [names]
-            for a piece with no outline (garment_parts_edges.py, C343)}}
-  details  {name: {what, on: [pieces], cloth? (braid, zip tape...), follows?: ["piece:edge"] (a trim along edges), count?, seen, from?, build, why?, where?: {view, at: [[u,v],..] | outline | outlines}}}
+            for a piece with no outline (garment_parts_edges.py, C343), hidden?: [its edges this view can't show]}}
+  details  {name: {what, on: [pieces], cloth? (braid, zip tape...), follows?: ["piece:edge"] (a trim along edges: its
+            place comes from them when they are drawn), count?, seen, from?, build, why?, where?: {view, at: [[u,v],..] |
+            outline | outlines}}}
   closures {name: {what, pieces: [pieces it joins; one for a band closing on itself], details?: [details]}}
   seams    [{a: "piece:edge", b: "piece:edge" (declared edges), kind?: seam|fold|set_in|topstitch|bound, length: {body:
             [measurement names]} | {style: {ratio | value_mm, of?, source}}, why?}] (a body length is checked against
@@ -218,8 +220,12 @@ def check_parts(p: dict, read: dict, body=None) -> dict:
         if not isinstance(x.get("layer"), int):
             bad.append(f"{w}.layer: an int (0 = next to the body or the garment under it; a facing over a front is 1...)")
         _seen(x, w, nv, bad)
+    from . import garment_parts_edges as pe  # (every edge named, a seen piece's as spans of its outline: C343)
+    edges = pe.check(pieces, bad)
     for n, x in (details.items() if isinstance(details, dict) else []):
         w = f"details.{n}"
+        if isinstance(x, dict):
+            pe.trim_where(x, edges)  # (a trim along seen edges takes its place from them: C344)
         if not isinstance(x, dict):
             bad.append(f"{w}: a dict")
             continue
@@ -286,8 +292,6 @@ def check_parts(p: dict, read: dict, body=None) -> dict:
         define = {}
     bad += [f"seams length.body: {e}" for e in bt.name_errors(sorted(needs), define)]
     cd.check_parts(pieces, bad)  # (T13: hang fitted | draped, held edges)
-    from . import garment_parts_edges as pe  # (every edge named, a seen piece's as spans of its outline: C343)
-    edges = pe.check(pieces, bad)
     for i, s in enumerate(seams):
         if isinstance(s, dict):
             pe.refs(f"seams[{i}]", [s.get("a"), s.get("b")], edges, bad)
@@ -449,14 +453,18 @@ def text(model: str, garment: str, r: dict) -> str:
     elif sid == "1":
         if p.get("over"):
             L.append(f"  worn over: {', '.join(p['over'])} (built over their approved builds: chain_layers, T9)")
-        for n, x in p["pieces"].items():  # (every item of the look's legend: C288, the look is for shape)
+        for n, x in p["pieces"].items():  # (every name and value here, never on the look: C288, C344)
             L.append(f"  piece {n}: {x['seen']}, build {x['build']}, {'stiff' if x['stiff'] else 'soft'}, layer {x['layer']}"
                      + (f", from {x['from']}" if x["seen"] != "seen" and x.get("from") else "")
                      + (f", DRAPED (held: {', '.join(x.get('held') or []) or 'by its seam to a held edge'}; its fall "
                         "judged on the hang)" if x.get("hang") == "draped" else "")
-                     + ("" if isinstance(x.get("where"), dict) else " (no place on the picture)"))
+                     + ("" if isinstance(x.get("where"), dict) else " (no place on the picture)")
+                     + (f"; edges {', '.join(x['edges'])}" if x.get("edges") else "")
+                     + (f" (hidden in this view: {', '.join(x['hidden'])})" if x.get("hidden") else ""))
         for n, x in (p.get("details") or {}).items():
-            L.append(f"  detail {n} x{x.get('count', 1)} on {', '.join(x['on'])}: {x['seen']}, build {x['build']}")
+            L.append(f"  detail {n} x{x.get('count', 1)} on {', '.join(x['on'])}: {x['seen']}, build {x['build']}"
+                     + (f", along {', '.join(x['follows'])}" if x.get("follows") else "")
+                     + (" (placed by those edges)" if (x.get("where") or {}).get("from_edges") else ""))
         L.append("  closures: " + (", ".join(f"{c} ({', '.join(v.get('pieces') or [])}; {len(v.get('details') or [])} details)"
                                             for c, v in (p.get("closures") or {}).items()) or "none"))
         L += [f"  seam {r_['a']} = {r_['b']}" + (f" ({r_['kind']})" if r_.get("kind") else "") for r_ in p["seams"]]

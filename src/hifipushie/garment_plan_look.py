@@ -1,8 +1,10 @@
 """The look of steps 0, 1, 2 (garment_plan.py): drawn OVER the reference picture, one image per view, with a legend.
 
-Step 0: the colour samples (ringed, with the sampled swatch) and every cloth's swatch and numbers.
-Step 1: pieces outlined, labelled; SEEN solid, OCCLUDED dashed, INFERRED dotted; omitted pieces grey; details as rings
-or outlines in the same line style. The legend lists every piece and detail, also those with no place on the picture.
+Step 0: the colour samples (ringed, with the sampled swatch).
+Step 1: pieces outlined, labelled in a margin; SEEN solid, OCCLUDED dashed, INFERRED dotted; omitted pieces grey; hidden
+edges thin dashed; edge ends dotted; details as rings or outlines in the same line style.
+Steps 0 and 1 carry a KEY of the line styles only (C344, Joe 2026-11-03: agents aren't meant to read text off a
+picture): every name, value and source is in garment_plan's text answer.
 Step 2: the judged rows' marks (yellow) with their targets; the closures' states, the bends and the pose in the legend.
 Saved in the record's look directory (garment_record.look_dir) as step<id>_<key>_v<view>.png.
 Shape first (C288: pictures are for shape, text is for numbers): labels on the picture are large names only, never
@@ -22,7 +24,7 @@ FONT = _font(20)      # labels on the picture: names only
 FONT_LEG = _font(17)  # the legend (every line also in garment_plan.text)
 
 W = 900          # the picture's width in the look
-LEG = 560        # the legend's width
+LEG = 420        # the key's width (a key of line styles only; every name and value is in the text answer: C344)
 PAL = [(80, 200, 255), (255, 120, 200), (120, 255, 140), (255, 170, 60), (190, 140, 255), (60, 230, 220),
        (255, 90, 90), (200, 230, 80), (150, 190, 255), (255, 210, 150)]
 GREY, YEL, WHITE = (150, 150, 150), (255, 230, 40), (240, 240, 240)
@@ -139,7 +141,8 @@ def draw(model: str, garment: str, sid: str, plan: dict, read: dict, parts: dict
 
 
 def _read(d, s, vi, plan, read, parts):
-    leg = [(f"kind: {plan['kind']}", WHITE), ("", WHITE)]
+    leg = [("ring = a colour sample", WHITE), ("square = the colour it sampled", WHITE), ("", WHITE),
+           ("cloths, numbers, fit: the text answer", GREY)]
     for k, (n, c) in enumerate(plan["cloth"].items()):
         col = tuple(int(x) for x in c["colour"])
         cf = c.get("colour_from") or {}
@@ -148,14 +151,6 @@ def _read(d, s, vi, plan, read, parts):
                 _ring(d, u * s, v * s, 12, YEL, None)
                 d.rectangle([u * s + 14, v * s - 8, u * s + 30, v * s + 8], fill=col, outline=WHITE)
                 _label(d, (u * s + 34, v * s - 12), n, YEL)
-        leg.append((f"cloth {n}: {c.get('fabric') or ''} rgb {c['colour']}", col if sum(col) > 150 else WHITE))
-        leg.append((f"  {c['gsm']} gsm, {c['thickness_mm']} mm, {c['stretch']}, {c['stiffness']}", WHITE))
-        if c.get("print") and c["print"] != "none":
-            leg.append((f"  print {c['print'].get('kind')} repeat {c['print'].get('repeat_mm')} mm", WHITE))
-        leg.append((f"  grain: {c['grain']}", WHITE))
-        leg.append((f"  source: {c['source']}", GREY))
-    leg.append(("", WHITE))
-    leg += [(f"fit {r}: +{e['ease_mm']} mm ({e['source']})", WHITE) for r, e in plan["fit"].items()]
     return leg
 
 
@@ -164,26 +159,29 @@ def _style_of(x: dict, col):
 
 
 def _parts(d, s, vi, plan, read, parts):
-    leg = [("solid = seen   dashed = occluded   dotted = inferred", WHITE), ("grey = left out (build omit)", GREY)]
+    leg = [("solid = seen", WHITE), ("dashed = occluded", WHITE), ("dotted = inferred", WHITE),
+           ("grey = left out (build omit)", GREY), ("thin dashed run = a hidden edge", WHITE),
+           ("white dot = where one edge meets the next", WHITE), ("", WHITE),
+           ("names, edges, seams, sources: the text answer", GREY)]
     for k, (n, x) in enumerate(plan["pieces"].items()):
         col, dash = _style_of(x, PAL[k % len(PAL)])
         w = x.get("where") or {}
         drawn = w.get("view", 0) == vi and w.get("outline")
         if drawn:
             P = [(u * s, v * s) for u, v in w["outline"]]
-            _line(d, P, col, 3, dash, closed=True)
+            hid = set()  # (segments of hidden edges: dashed thin, C344)
+            for k_, sp in (x.get("edges") or {}).items() if isinstance(x.get("edges"), dict) else []:
+                if k_ in (x.get("hidden") or []) and isinstance(sp, list) and len(sp) == 2:
+                    hid |= {(sp[0] + j) % len(P) for j in range((sp[1] - sp[0]) % len(P))}
+            for g in range(len(P)):
+                a_, b_ = P[g], P[(g + 1) % len(P)]
+                _line(d, [a_, b_], col, 1 if g in hid else 3, (6, 6) if g in hid else dash)
             for sp in (x.get("edges") or {}).values() if isinstance(x.get("edges"), dict) else []:
                 if isinstance(sp, list) and sp and isinstance(sp[0], int) and 0 <= sp[0] < len(P):
                     u, v = P[sp[0]]  # (where one edge ends and the next begins)
                     d.ellipse([u - 5, v - 5, u + 5, v + 5], fill=WHITE, outline=col)
             cx, cy = sum(p[0] for p in P) / len(P), sum(p[1] for p in P) / len(P)
             _mlabel(d, (cx, cy), n, col)
-        leg.append((f"{n}: {x['seen']}, {x['build']}, {'stiff' if x['stiff'] else 'soft'}, L{x['layer']}"
-                    + ("" if drawn or w else "  (no place)"), col))
-        if x["seen"] != "seen":
-            leg.append((f"   from: {x['from']}", GREY))
-        if x.get("edges"):
-            leg.append((f"   edges: {', '.join(x['edges'])}", GREY))
     for k, (n, x) in enumerate((plan.get("details") or {}).items()):
         col, dash = _style_of(x, YEL)
         w = x.get("where") or {}
@@ -195,9 +193,6 @@ def _parts(d, s, vi, plan, read, parts):
             pts = w.get("at") or w.get("outline") or (w.get("outlines") or [[]])[0]
             if pts:
                 _mlabel(d, (pts[0][0] * s, pts[0][1] * s), n, col)
-        leg.append((f"detail {n} x{x.get('count', 1)} on {', '.join(x['on'])}: {x['seen']}, {x['build']}", col))
-    leg.append((f"closures: {', '.join(f'{c}({len(v.get('details') or [])} det)' for c, v in (plan.get('closures') or {}).items()) or 'none'}", WHITE))
-    leg.append((f"seams: {len(plan['seams'])}; measures: {', '.join(plan.get('measurements') or [])}", WHITE))
     return leg
 
 

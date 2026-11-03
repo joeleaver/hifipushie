@@ -10,6 +10,9 @@ edge: a pattern piece's boundary is its edges). A piece with no outline (occlude
 SEAM LENGTHS: a seam given a body length (FreeSewing names the tape takes) is compared with its edge as drawn on the
 step-0 fit view, at the step-0 scale: past LENGTH_X either way it is refused unless the seam says why (a front view
 foreshortens an edge running round the body: the bounds are wide; it catches the wrong measurement, not a few cm).
+HIDDEN (C344): piece.hidden = [edge names] whose course this view can't show (a collar's back neckline in a front
+view): drawn dashed, never length-checked; the outline still tiles (draw the hidden run where it would pass).
+A TRIM that follows seen edges takes its place from them (no `where` needed: t s1-2 repeated every binding run).
 """
 from __future__ import annotations
 
@@ -44,6 +47,11 @@ def check(pieces: dict, bad: list) -> dict:
                 continue
             out[n] = {k: None for k in names}
             continue
+        hid = x.get("hidden") or []
+        if not isinstance(hid, list) or any(h not in e for h in hid):
+            bad.append(f"pieces.{n}.hidden: a list of its own edges ({', '.join(e) if isinstance(e, dict) else ''}) whose "
+                       "course this view can't show")
+            hid = []
         if not isinstance(e, dict) or not e:
             bad.append(f"{w}: {{edge: [i0, i1]}}: each edge a span of the outline's points (0..{len(o) - 1})")
             continue
@@ -56,7 +64,7 @@ def check(pieces: dict, bad: list) -> dict:
             segs = [(s[0] + j) % N for j in range((s[1] - s[0]) % N)]
             for g in segs:
                 cover[g].append(k)
-            spans[k] = (view, [o[(s[0] + j) % N] for j in range(len(segs) + 1)])
+            spans[k] = (view, [o[(s[0] + j) % N] for j in range(len(segs) + 1)], k in hid)
         gaps = [g for g, c in enumerate(cover) if not c]
         twice = [g for g, c in enumerate(cover) if len(c) > 1]
         if gaps or twice:
@@ -104,8 +112,8 @@ def lengths(seams: list, edges: dict, fit_view, scale, mm: dict, bad: list) -> l
         for end in (s.get("a"), s.get("b")):
             pc, _, ed = str(end).partition(":")
             g = (edges.get(pc) or {}).get(ed)
-            if not g or g[0] != fit_view:
-                continue
+            if not g or g[0] != fit_view or g[2]:
+                continue  # (not drawn on the fit view, or hidden there)
             drawn = sum(math.dist(p, q) for p, q in zip(g[1], g[1][1:])) * scale
             if drawn < 1:
                 continue
@@ -119,3 +127,19 @@ def lengths(seams: list, edges: dict, fit_view, scale, mm: dict, bad: list) -> l
                            "takes its share); define the right one, or keep it with why")
             break
     return done
+
+
+def trim_where(x: dict, edges: dict):
+    """A seen trim with no `where` that follows only drawn, unhidden edges: its place is those edges' runs."""
+    fl = x.get("follows")
+    if x.get("where") is not None or x.get("seen") != "seen" or not isinstance(fl, list) or not fl:
+        return
+    runs = []
+    for e in fl:
+        pc, _, ed = str(e).partition(":")
+        g = (edges.get(pc) or {}).get(ed)
+        if not g or g[2]:
+            return
+        runs.append(g)
+    if len({g[0] for g in runs}) == 1:
+        x["where"] = {"view": runs[0][0], "outlines": [list(map(list, g[1])) for g in runs], "from_edges": True}
