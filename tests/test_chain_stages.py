@@ -27,11 +27,15 @@ def _legs():
 def test_a_tube_run_up_into_the_torso_starts_through_the_body():
     b = _build(PIECES, {p: ["thigh", "knee", "outseam"] for p in PIECES}, SEWS)  # (F4's body: legs + torso)
     g = cst.gate_start(b, b.soft_start())
-    assert _fails(g) == {"inside"} and "GAP" in next(r for r in g["rows"] if r["status"] == "FAIL")["source"]
+    assert _flagged(g) == {"inside"} and "GAP" in next(r for r in g["rows"] if r["id"].startswith("inside"))["source"]
 
 
 def _fails(g):
     return {r["id"].split(":")[0] for r in g["rows"] if r["status"] == "FAIL"}
+
+
+def _flagged(g):  # (FAIL, or a provisional row's "INFO (would FAIL)": chain_stages.PROVISIONAL, not yet calibrated)
+    return {r["id"].split(":")[0] for r in g["rows"] if r["status"] in ("FAIL", "INFO (would FAIL)")}
 
 
 def test_a_clean_start_passes_and_the_right_side_is_the_lefts_mirror():
@@ -58,7 +62,7 @@ def test_a_misplaced_start_fails_start_by_row():
     v = b.net.verts("back.L")
     X2[v, 0] = 0.10 + (X2[v, 0] - 0.10) * 0.3  # (pulled in round its leg's axis: inside the leg)
     X2[v, 1] *= 0.3
-    assert "inside" in _fails(cst.gate_start(b, X2))
+    assert "inside" in _flagged(cst.gate_start(b, X2))
 
 
 def test_the_build_stops_at_the_first_failing_stage():
@@ -108,7 +112,7 @@ def test_surfaces_gate_fails_a_hole_and_a_crumple():
     inner = v[~cst.chain_vertices(b.net)[v]]
     X = Z.copy()
     X[inner[len(inner) // 2]] += [0.0, 0.0, 0.3]  # (one point torn away: its faces open)
-    assert "holes" in _fails(cst.gate_surfaces(b, X))
+    assert "holes" in _flagged(cst.gate_surfaces(b, X))
     rng = np.random.default_rng(0)
     X = Z.copy()
     X[inner] += rng.normal(0, 0.01, (len(inner), 3))  # (the lay crumpled)

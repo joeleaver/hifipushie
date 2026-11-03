@@ -50,7 +50,16 @@ def _row(id_, value, limit, ok, source, change, unit="") -> dict:
             "source": source, "change": "" if ok else change}
 
 
+# Rows whose limits aren't calibrated yet (no build that passes the end gates has been read against them; the hussar fails
+# them too): reported as "INFO (would FAIL)", never stopping a build, until a passing build sets them (coordinator,
+# 2026-11-03). The other rows rest on existing rules (2 % lengths, the stand-off gap, piece_start's tube rule, roughness).
+PROVISIONAL = ("inside:", "holes:", "sewn:")
+
+
 def verdict(stage: str, rows: list, reads: dict | None = None) -> dict:
+    for r in rows:
+        if r["status"] == "FAIL" and r["id"].startswith(PROVISIONAL):
+            r["status"] = "INFO (would FAIL)"
     bad = [r for r in rows if r["status"] == "FAIL"]
     back, change = BACK[stage]
     return {"stage": stage, "verdict": "FAIL" if bad else "PASS", "rows": rows, "back_to": back if bad else None,
