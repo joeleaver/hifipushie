@@ -38,6 +38,8 @@ FOLDS = 3  # layers "full": room for the under cloth this many times (a fold is 
 MARGIN = 0.03  # m: a seen part is kept this far into the hidden cloth (its hidden edge, held there)
 HIDDEN_OMIT = 0.98  # share of a piece hidden: "omit" it (step 1 build)
 SEEN_FULL = 0.9  # share of a piece kept below which a "full" piece is "simplified: visible + margin"
+PRESS_ROUNDS = 8  # mode visible (C296): the kept part pressed from its build (the jacket's thickness-only build sits nearer:
+# moves of 30-40 mm; 3 rounds left 13 chain links past the cap on the proof, 8 none)
 AT_LIMIT = 0.0005  # m: a point this near its outer limit is pressed
 
 
@@ -73,29 +75,39 @@ class OuterLimit:
         return np.where(cov, d, 1.0), np.where(cov[:, None], n, 0.0)
 
 
-def press(ub, lim: OuterLimit, gap_out: float, rounds: int = 3, log=None) -> tuple:
+def press(ub, lim: OuterLimit, gap_out: float, rounds: int = 3, log=None, keep_v=None, step: float = 0.004) -> tuple:
     """(X, read) the under build `ub` (a GarmentBuild with final_links) pressed inside `lim`, as its soft stage builds:
     the chains first (exact, between the body and the outer limit), the cloth between them carried by their moves
     (chain_net.fill), the whole mesh (its edges at most their weave limit, threads at their cap), the chains last. Its held
     (stiff) points stay. A rough start (a build its own solve can't settle) is not stalled by its rough mesh this way."""
-    I2, J2, L2, E2, held, fl2, th = ub.final_links
-    c0, ids, g0 = fl2[0]
+    I2, J2, L2, E2, _, fl2, th = ub.final_links
+    rs = np.asarray(ub.net.root)
+    held = np.zeros(len(ub.X), bool)  # (only its STIFF parts stay: the build's last solve holds its far cloth too, C296)
+    held[rs[np.asarray(ub._stiff_mask(), bool)]] = True
+    nodes = np.unique(rs[np.asarray(ub.net.F, np.int64)])
+    c0, ids, g0 = fl2[0][0], nodes[~held[nodes]], GAP
+    if keep_v is not None:  # (hidden first, C296: only the kept part is pressed; the omitted cloth plays no part)
+        kv = np.asarray(keep_v, bool)
+        m = kv[I2] & kv[J2]
+        I2, J2, L2, E2 = I2[m], J2[m], L2[m], np.asarray(E2, bool)[m]
+        held = np.asarray(held, bool) | ~kv
+        ki = kv[ids]
+        ids, g0 = ids[ki], (g0[ki] if np.ndim(g0) else g0)
     fl = [(c0, ids, g0), (lim, ids, gap_out)]
-    rs = ub.net.root
     Z0 = np.asarray(ub.X, float).copy()
     E2 = np.asarray(E2, bool)
     Ic, Jc, Lc, Ec = I2[E2], J2[E2], L2[E2], E2[E2]
     Y, rd = Z0, {}
     for rnd in range(rounds):
-        Y, rd = cn.project(Y, Ic, Jc, Lc, Ec, held, fl, iters=30, step=0.004)
+        Y, rd = cn.project(Y, Ic, Jc, Lc, Ec, held, fl, iters=30, step=step)
         if log:
             log(f"press chains {rnd}: {rd}")
     known = np.asarray(held, bool).copy()
     known[np.unique(np.r_[Ic, Jc])] = True
     Z = cn.fill(Z0, Y, known, ub.net.uv, ub.net.F, root=rs)
     for rnd in range(rounds):
-        Z, rd = cn.project(Z, I2, J2, L2, E2, held, fl, threads=th, iters=20, step=0.004)
-        Z, rd = cn.project(Z, Ic, Jc, Lc, Ec, held, fl, iters=20, step=0.004)  # (the chains last)
+        Z, rd = cn.project(Z, I2, J2, L2, E2, held, fl, threads=th, iters=20, step=step)
+        Z, rd = cn.project(Z, Ic, Jc, Lc, Ec, held, fl, iters=20, step=step)  # (the chains last)
         if log:
             log(f"press mesh {rnd}: {rd}")
     return Z[rs], rd
@@ -106,33 +118,50 @@ def _level(at, z):
     return lv(at, z)
 
 
-def fit_one(ub, oX, oF, body, mode_: str, gap_out: float, log=None) -> dict:
+def fit_one(ub, oX, oF, body, mode_: str, gap_out: float, log=None, decided=None) -> dict:
     """The under build fitted inside the over garment (oX, oF welded): {X, keep (faces of M["F"]), held (vertices),
-    hidden, read}. read: moved / pressed by piece, the lengths, the visibility per piece."""
+    hidden, read}. read: moved / pressed by piece, the lengths, the visibility per piece. decided (chain_hidden.decide,
+    mode visible, C296): what is kept was decided before the over build's last solve: only that is pressed, its cut
+    edge trimmed onto a smooth line inside the cover and held there (read["cut"])."""
     net = ub.net
     X0 = np.asarray(ub.X, float)
     lim = OuterLimit(oX, oF, body.body_contact)
+    if decided is not None and mode_ == "visible":
+        from . import chain_hidden as ch
+        X, rd = press(ub, lim, gap_out, log=log, keep_v=decided["keep_v"], rounds=PRESS_ROUNDS)
+        keep, held, X, cut = ch.trim(X, net.F, net.root, decided, lim, body.body_contact, gap_out)
+        return _fit_read(ub, X0, X, lim, body, mode_, gap_out, rd, keep, held, decided["covered"], cut, decided)
     X, rd = press(ub, lim, gap_out, log=log)
     sd, _ = lim.query(X)
     covered = sd < 0.5
     hidden = covered & (sd > -AT_LIMIT)  # (covered, on the body's side: the over garment hides it)
-    soft = ~np.isin(net.root, net.root[ub._stiff_mask()])
-    moved = np.linalg.norm(X - X0, axis=1)
-    d_in = body.body_contact.query(X0)[0] - body.body_contact.query(X)[0]  # (how far it came in towards the body)
     F = np.asarray(net.F, np.int64)
     if mode_ == "visible" and (~hidden).any():
         near = cKDTree(X[~hidden]).query(X)[0] <= MARGIN
         keep = near[F].any(1)
     else:
         keep = np.ones(len(F), bool)
-    kv = np.zeros(len(X), bool)
-    kv[F[keep].ravel()] = True
     dv = np.zeros(len(X), bool)
     dv[F[~keep].ravel()] = True
+    kv = np.zeros(len(X), bool)
+    kv[F[keep].ravel()] = True
     held = kv & dv  # (the kept part's hidden edge: fastened there)
+    return _fit_read(ub, X0, X, lim, body, mode_, gap_out, rd, keep, held, hidden, None, None)
+
+
+def _fit_read(ub, X0, X, lim, body, mode_, gap_out, rd, keep, held, hidden, cut, decided) -> dict:
+    net = ub.net
+    F = np.asarray(net.F, np.int64)
+    sd, _ = lim.query(X)
+    covered = sd < 0.5
+    soft = ~np.isin(net.root, net.root[ub._stiff_mask()])
+    moved = np.linalg.norm(X - X0, axis=1)
+    d_in = body.body_contact.query(X0)[0] - body.body_contact.query(X)[0]  # (how far it came in towards the body)
+    kv = np.zeros(len(X), bool)
+    kv[F[keep].ravel()] = True
     chains = ub.chain_read(X)
     li, lj = net.link_i, net.link_j
-    lk = kv[li] & kv[lj] & ~(held[li] & held[lj])
+    lk = kv[li] & kv[lj] & ~((held[li] | held[lj]) if cut is not None else (held[li] & held[lj]))  # (a trimmed cut is new cloth)
     e = np.abs(np.linalg.norm(X[lj] - X[li], axis=1) / np.maximum(net.link_L, 1e-9) - 1) * 100
     e0 = np.abs(np.linalg.norm(X0[lj] - X0[li], axis=1) / np.maximum(net.link_L, 1e-9) - 1) * 100
     ok0 = e0 <= MAX_FREE_PCT  # (the press answers for the lengths the build held; a build's own fault stays its own)
@@ -154,7 +183,7 @@ def fit_one(ub, oX, oF, body, mode_: str, gap_out: float, log=None) -> dict:
             if pr.any():
                 row["pressed_at"] = _level(body.at, float(np.median(X[v][pr][:, 2])))
         by[p] = row
-    out_lim = covered & (sd < gap_out - 0.001) & soft
+    out_lim = covered & (sd < gap_out - 0.001) & soft & kv
     read = {"mode": mode_, "pieces": by, "press": rd, "chains_free_worst_pct": chains["free_worst_pct"],
             "kept_free_worst_pct": round(float(e[lk_ok].max()), 3) if lk_ok.any() else 0.0,
             "build_free_worst_pct": round(float(e0.max()), 3), "press_broken_links": int((lk_ok & (e > MAX_FREE_PCT)).sum()),
@@ -162,6 +191,11 @@ def fit_one(ub, oX, oF, body, mode_: str, gap_out: float, log=None) -> dict:
     if out_lim.any():
         z = X[out_lim][:, 2]
         read["outside_at"] = _level(body.at, float(np.median(z)))
+    if cut is not None:  # (the build's own chain read spans the omitted cloth: the kept links are what is answered for)
+        read.pop("chains_free_worst_pct")
+        read["cut"], read["omitted"] = cut, decided["omitted"]
+        seen = kv & ~covered
+        read["seen_points"] = int(seen.sum())
     return {"X": X, "keep": keep, "held": held, "hidden": hidden, "read": read}
 
 
@@ -199,13 +233,14 @@ def fit_unders(model: str, garment: str, b, body, d=None, log=None) -> tuple:
             reads[u] = {"fit": f"not fitted: {e}"}
             continue
         m = x.get("mode", "visible")
-        f = fit_one(ub, oX, oF, body, m, x["gap_mm"] * 1e-3, log=log)
+        dec = (getattr(body, "hidden", None) or {}).get(u)
+        f = fit_one(ub, oX, oF, body, m, x["gap_mm"] * 1e-3, log=log, decided=dec)
         rd = f["read"]
-        rd["advice"] = visibility_advice(model, u, rd, garment)
+        rd["advice"] = [dec["record"]] if dec and dec["record"] else ([] if dec else visibility_advice(model, u, rd, garment))
         reads[u] = rd
         Fw = welded(np.asarray(ub.net.F)[f["keep"]] if m == "visible" else ub.net.F, ub.net.root)
-        body.fits[u] = Layer(u, "cloth", f["X"], outward(f["X"], welded(ub.net.F, ub.net.root), body.body_contact),
-                             0.0, body.body_contact)
+        body.fits[u] = Layer(u, "cloth", f["X"], outward(f["X"], Fw, body.body_contact), 0.0, body.body_contact)  # (only
+        # what is kept: omitted cloth is not there to be inside of, C296)
         worst = rd["kept_free_worst_pct"]
         if worst > MAX_FREE_PCT:
             why.append(f"{u} can't keep its lengths inside {garment}: {worst} % off its cut where it is kept ({m}, "

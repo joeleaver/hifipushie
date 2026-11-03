@@ -23,20 +23,19 @@ history of this page (commit 80eb32ef) and cloth.md.
 pieces, panels, lapped / zip fronts). Hussar proof (HOME /mnt/data/hifipushie/t8): STRUCTURE FAIL at the stand's
 CF (dives to a V), sheet t8/sheet_b2.png; its rows and NEXT: git history of this page (commit 8c603bda).
 
-## T9 + T12 (2026-11-02): layering (C292, C294; chain_layers.py, chain_press.py, tests/test_chain_layers.py)
-Step 1 `over: [...]` (validated); step 2 `layers` {mode: visible (default) | full, why}. ORDER: the under's steps 1 + 4 and
-a build (not approved); its fit after the over's build; both approved at the over's 7a (dev: HIFIPUSHIE_LAYER_UNDER=built).
-COLLIDER: body + the under's THICKNESS where its soft cloth covers (room()) + its stiff parts' and details' real stand-off
-(T9 inflated over the whole loose shirt). FIT (chain_press, in the gate): the under's last solve, chains first, with the
-over's inner side as an outer limit where it covers; stiff parts stay; visible mode drops cloth hidden beyond 30 mm of the
-seen, holds the cut edge, advises step 1 `build` per piece; <over job>/under_<u>.pkl. GATE: links the under's build held
-broken past MAX_FREE_PCT, then the over inside the fit: refused by name.
-Proof (HOME /mnt/data/hifipushie/t12/ws): REFUSED as gated (the shirt build's fault: 40.4 % off at 41 links);
-numbers and sheets: git history of this page (commit 8c603bda), t12/sheet_b1_*.png.
-LEFT: full mode's joint hang (merge both write_job arrays, plain body, self_collision, split, finish_hang each); seen
-parts riding the over's hang; an open collar laid OUTSIDE a lapel needs a plan field (piece `layer` vs the over's).
-NEXT: an approved shirt build (T7's NEXT), rebuild the pair; if the stand still breaks, the shirt collar `build: omit`
-under a closed stand (the advice) or the stand eased over it in the draft.
+## T9 + T12 + T12b (2026-11-02): layering (C292, C294, C296; chain_layers, chain_press, chain_hidden, test_chain_layers)
+Step 1 `over: [...]`; step 2 `layers` {mode: visible (default) | full, why}. ORDER (visible, chain_hidden.build_over,
+C296): (a) the over garment on the body + the under's cloth THICKNESS only; (b) visibility on that build (an under point
+is hidden where the over covers it); (c) pieces hidden >= 98 % OMITTED for real, the rest trimmed to seen + 30 mm; (d)
+only kept stiff parts + seen solid details push: the over is RE-SOLVED from (a) if one reaches it, then the trim read
+again (omissions kept); (e) the kept parts pressed inside (8 rounds; only STIFF points held: the build's last solve held
+its far cloth too, T12's poke-through) and the cut moved onto the 30 mm level line of a smoothed field, smoothed, held
+inside the cover. (full mode: T12's order). The inside gate reads only the kept cloth. Record: reads.hidden {omitted +
+why, the garment_plan "parts" call with `build: omit` per piece}. Proof (/mnt/data/hifipushie/t12b/ws; shirt = T7's refused
+build): yoke, sleeves, stand, collar omitted; jacket free worst 1.097 % (T12 34.9, T8 0.0); shirt fit lengths PASS, cut
+inside the cover; rows + numbers: t12b report / git history (merge of t12b-hidden). STILL REFUSED: the jacket inside the
+kept shirt at 13 points (armpit front.L 9.8 mm; high hip back.L 20 mm: the tails wrapping the jacket's hem rim). LEFT: full
+mode's joint hang; a collar laid outside a lapel needs piece `layer`. NEXT: the 13 inside points; an approved shirt; rebuild.
 
 ## T13 (2026-11-02, C297; chain_drape.py, tests/test_chain_drape.py): draped garments (cloak, cape, hood)
 ROLE: step 1 piece `hang: draped` + `held: [edges]` (the draft's edge names built on the body); a draped piece with no held
