@@ -36,24 +36,28 @@ front_edge, collar_top, collar_front, neckline, sleeve_end, outline) + body_mark
 UNVERIFIED there: side / back views; traces through a tube's silhouette. r-nico: the hang runs on the configured route (C302).
 ## F1 (C307-C309; chain_loops.py): own drafts build or are refused by name; centre rings; the stand's top = border less
 end edges, upright by its own height; held links counted. Detail: git history (9ba6032a).
-## F3 (2026-11-02, C310-C311; draft_pairs.py, chain_roles._end_edges; HOME /mnt/data/hifipushie/f3/{ws,hussar}, logs f3/job_*.log)
-- PAIRS: `pieces.<n>.pair: true` = cut 2 (n.L + n.R, seams per side); step 4 refuses half / sideless pieces with that
-  declaration. t8 shirt / trousers as drafted: refused at step 4 by name;
-  redeclared (`mirror` -> `pair`, scripts f3/scripts/pairs.py): both DRAFT, flat gates PASS (shirt 9 pieces 16 seams,
-  trousers 5 pieces 10 seams). A folded piece's own closure closes edge / mark to its mirror (t8 waistband was 0 mm).
-- BUILDS: shirt REFUSED by name (collar_fall: a fall with no roll fold: a real draft fault, t8's agent declared none).
-  Trousers: past the waistband; result in f3/job_trousers_4.log (see report). Belt untouched (809 vs 787 + 25: draft fault).
-- STAND ENDS: end edges solved at their cut (hussar r2: 45.7 / 47.7 mm = cut; stand rise min 59.9 / CB 80.7 deg, top
-  531.6 = cut 531.5). STILL REFUSED 39.8 % at collar:rightTopIn: a link of the TOP edge's steep end run (flat x 235 -> 221,
-  y 12 -> 46), exact after the stand stage, stretched LATER (stiff_last / soft_net / a projection). Structure FAIL rows incl.
-  collar_upright, outline:collar_top, collar_front_R/L. Render: f3/hussar/sheet_f3_neck.png.
-- LEGS / GENERAL START (coordinator, from Joe: no leg list; every piece starts where its own measurements were taken):
-  NOT DONE. Found: step 3 keeps numbers only; tailor.measure keeps loops for the upper body, none for legs (_leg_girths
-  slices and drops them) and no paths for lengths (inseam, waistToFloor); t8's trouser draft used only waist + seat
-  (draft.json "measurements"); its step-1 seams name inseam / waistToFloor / waistToUpperLeg / waist; chain_roles reads
-  the leg pieces as torso PANELS (no tube: they close through the crotch).
-NEXT: (a) the general start: tailor keeps every girth's loop and every length's path (legs too); step 4 saves each part's
-measurement list (pattern_parts config); a tube = pieces closed on themselves along a length path (side + inseam), started
-round the loops on that path, panels between the tapes their edges follow; LimbAxis only as the named fallback.
-(b) find the later stage that stretches the stand's top end run (dump X after each stage on f3/hussar), hold it there.
-(c) shape_cap prints each sleeve twice.
+## F3 (C310-C311; draft_pairs.py, chain_roles._end_edges): pairs declared at step 4 (`pair: true`), stand end edges in its
+solve; hussar stand STILL REFUSED 39.8 % at collar:rightTopIn (stretched after the stand stage). Detail: git history (c036b645).
+## F4 (2026-11-02, C312-C313; tape_geom.py, piece_start.py, tests/test_piece_start.py; HOME /mnt/data/hifipushie/f4)
+- TAPE: step 3 rows keep WHERE: a girth its `loop`, a length its `path` (metres, 0.1 mm, <= 64 pts). tailor keeps the leg
+  loops (upperLeg, knee, calf, ankle, heel); `waistTo*` / inseam / height / shoulderTo* get paths (tape_geom).
+- STEP 4: output.piece_measurements {piece: names} = step 1's seam body names on its edges + its draft part's own list.
+- START (piece_start): TUBE = soft pieces of one side closed round by their own seams (self-sewn, or 2 separate seams)
+  whose girth loops lie on their side and a length path of theirs runs along them -> MeasuredAxis through the loops'
+  centres, run on to its paths' ends. PANEL: top at the top of the length path spanning it (+-20 %), else hung from the
+  hps. Neither: the old start, "FALLBACK: ..." in reads.starts and the answer ("start <piece>: ..."). Nothing names a limb.
+- PROOF (t8 trousers, f4/ws; redraft scripts/design_f4.mjs: front / back take waistTo*, inseam, upperLeg, knee, ankle;
+  pairs from f3): step 3 PASS with loops / paths, draft PASS (10 seams 0 off). Build (job_trousers_1.log, 517 s): starts
+  "tube round its own measurements: loops ankle, knee, upperLeg, along inseam, waistToFloor..." per side, waistband at its
+  seam's height z 1070 (closed 853 / loop 820 mm). REFUSED: front.L near cfSeat 90 % off its cut; chains worst 3738 %
+  (back.L / waistband edge), front.R 2087 %. Sheet f4/sheet_trousers.png: two legs, the waist at the band, the model's
+  LEFT leg round its leg; the RIGHT thigh bare (front.R not round it), cloth crumpled. NOT a pass.
+- SLEEVE (t8 shirt redrafted as is, scripts/sleeve_check.py): sleeve.L "tube round its own measurements: loops biceps,
+  wrist, along shoulderToWrist", 40 mm mean from the old joint-axis start; fronts / back panels (first rule had grouped
+  front.L + sleeve.L via the armhole's biceps: fixed, C313). Hussar (f4/hussar) names step-1 names step 3 never took
+  (armscye_girth...), its design no measurements: FALLBACK, start unchanged (0 mm).
+- F3's job_trousers_4.log: failed on a removed worktree (FileNotFoundError f3-pairs/src/hifipushie/garment_kb.json): no result.
+NEXT: (a) the .R tube's start: dump soft_start X per piece for f4/ws trousers (scripts/start_check.py: x ranges are
+mirror-symmetric at the start, so the fault is later: _mirror / sewn roots averaging the crotch seam's two legs, or the
+.R phase sign in tube_group_points); fix, rebuild, re-render. (b) the two tubes overlap +-45 mm above the crotch: start
+the part above the crotch on the half of the torso loop (seat / waist) the piece names. (c) F3 (b), (c) still open.
