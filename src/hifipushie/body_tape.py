@@ -34,6 +34,31 @@ from scipy.spatial import ConvexHull
 
 Z = np.array([0.0, 0.0, 1.0])
 KINDS = ("girth", "arc", "length", "height", "freesewing")
+# every FreeSewing-named measurement tailor.measure can take (tests/test_body_tape keeps it equal to tailor.py's mm keys):
+# garment_plan step 1 checks seam lengths' names against these + the names it defines by kind (t8: 'acrossBack' passed
+# step 1 and was refused here at step 3)
+TAKES = ("biceps", "cfBaseToWaistFront", "chest", "chestDepth", "height", "highBust", "highBustUnder", "highHip", "hips",
+         "hpsDrop", "hpsToArmpitBack", "hpsToBust", "hpsToSeatBack", "hpsToSeatFront", "hpsToShoulder", "hpsToWaistBack",
+         "hpsToWaistFront", "inseam", "napeBaseToWaistBack", "napeToWaistBack", "neck", "neckBase", "neckBaseFrontDrop",
+         "neckHeight", "plumbGirth", "seat", "shoulderSlope", "shoulderToElbow", "shoulderToShoulder", "shoulderToWrist",
+         "waist", "waistDepth", "waistToArmpit", "waistToFloor", "waistToHighHip", "waistToHips", "waistToKnee",
+         "waistToSeat", "waistToUpperLeg", "wrist")
+
+
+def name_errors(names, defined: dict | None = None) -> list:
+    """Why each measurement name can't be taken: not one of TAKES nor defined {name: kind}; with the closest valid names."""
+    import difflib
+    defined = defined or {}
+    ok = set(TAKES) | set(defined)
+    out = []
+    for n in names:
+        if n in ok:
+            continue
+        near = difflib.get_close_matches(n, sorted(ok), n=3, cutoff=0.5) or difflib.get_close_matches(
+            n.lower(), [k.lower() for k in sorted(ok)], n=3, cutoff=0.4)
+        out.append(f"{n!r} is not a measurement body_tape takes" + (f" (closest: {', '.join(near)})" if near else "") +
+                   f"; or define it by kind in step 1's define {{\"{n}\": {'|'.join(k for k in KINDS if k != 'freesewing')}}}")
+    return out
 LIMBS = {"arm": ("shoulder", "elbow"), "forearm": ("elbow", "wrist"), "thigh": ("hip", "knee"), "shin": ("knee", "ankle"),
          "neck": ("neck", "head")}
 SIDES = {"front": np.array([0, -1.0, 0]), "back": np.array([0, 1.0, 0]), "top": Z, "bottom": -Z,

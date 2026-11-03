@@ -13,7 +13,9 @@ STEP 0 "read": {kind, views, cloth, fit, notes?}
           stiffness: drapey|soft|medium|crisp|stiff|rigid; colour: [r,g,b] | {at: [[u,v],..], view}; print?: {kind,
           repeat_mm, colours?, source}; grain: text}}   (a fabric name fills the numbers from garment_kb.json)
   fit    {region: {ease_mm, source}}                  (chest, waist, hip, sleeve, neck... any region names)
-STEP 1 "parts": {pieces, details, closures, seams, over?}
+STEP 1 "parts": {pieces, details, closures, seams, over?, define?}
+  define   {measurement name: girth|arc|length|height}: a seam length's body name body_tape doesn't take by FreeSewing name
+            (body_tape.TAKES); any other name is refused with the closest valid ones
   over     [garment names of this model it is worn over] (T9: built on their approved builds; chain_layers)
   pieces   {name: {what, cloth (a step-0 cloth), seen: seen|occluded|inferred, from (convention; needed unless seen),
             build: full|simplified|omit, why (unless full), stiff: bool, layer: int (0 = next to the body / the garment
@@ -160,12 +162,61 @@ def check_read(p: dict) -> dict:
             bad.append(f"fit.{r}: ease_mm (a number: garment minus body girth)")
         else:
             _src(e, f"fit.{r}", bad)
+    bad += pixel_errors(p, p.get("views"))
     if bad:
         raise PlanRefused("step 0 (read) refused:\n  " + "\n  ".join(bad))
     return p
 
 
 # ---------------------------------------------------------------- step 1
+UV_KEYS = ("at", "outline", "outlines", "points")
+
+
+def _size(views, i):
+    try:
+        from PIL import Image
+        with Image.open(views[i]["image"]) as im:
+            return im.size
+    except (OSError, IndexError, KeyError, TypeError, ValueError):
+        return None
+
+
+def pixel_errors(p, views) -> list:
+    """Coordinates are PIXELS of the named view: [[u, v], ..] all within 0..1 on an image wider than 2 px are refused (t8:
+    0-1 values were accepted and drawn at the image corner)."""
+    views, out, sizes = views if isinstance(views, list) else [], [], {}
+
+    def uvs(x):
+        if isinstance(x, dict):
+            return [q for v in x.values() for q in uvs(v)]
+        if isinstance(x, (list, tuple)) and len(x) == 2 and all(map(_num, x)):
+            return [x]
+        return [q for v in x for q in uvs(v)] if isinstance(x, (list, tuple)) else []
+
+    def walk(x, w, view):
+        if isinstance(x, list):
+            for i, y in enumerate(x):
+                walk(y, f"{w}[{i}]", view)
+            return
+        if not isinstance(x, dict):
+            return
+        view = x.get("view", view) if isinstance(x.get("view", view), int) else view
+        for k, y in x.items():
+            pts = uvs(y) if k in UV_KEYS else []
+            if pts:
+                if view not in sizes:
+                    sizes[view] = _size(views, view)
+                sz = sizes[view]
+                if sz and sz[0] > 2 and all(0 <= float(c) <= 1 for q in pts for c in q):
+                    out.append(f"{w}.{k}: {[list(q) for q in pts[:2]]}...: [u, v] are PIXELS of view {view}'s image "
+                               f"({sz[0]} x {sz[1]} px, u right, v down from its top-left), not 0-1 fractions: multiply "
+                               f"u by {sz[0]} and v by {sz[1]}")
+            elif k not in UV_KEYS:
+                walk(y, f"{w}.{k}" if w else k, view)
+    walk(p, "", 0)
+    return out
+
+
 def _where(d: dict, w: str, nviews: int, bad: list, key: str = "outline"):
     x = d.get("where")
     if x is None:
@@ -272,8 +323,16 @@ def check_parts(p: dict, read: dict) -> dict:
     lone = [n for n, x in pieces.items() if isinstance(x, dict) and x.get("build") != "omit" and n not in joined]
     if lone:
         bad.append(f"pieces with no seam: {', '.join(lone)} (every built piece joins another piece, or is folded from one)")
-    from . import chain_drape as cd
+    from . import body_tape as bt, chain_drape as cd
+    define = p.get("define") or {}
+    kinds = [k for k in bt.KINDS if k != "freesewing"]
+    if not isinstance(define, dict) or any(v not in kinds for v in define.values()):
+        bad.append(f"define: {{measurement name: kind}} for names body_tape doesn't take by FreeSewing name; kind one of "
+                   f"{', '.join(kinds)} (step 3 measures it by that kind)")
+        define = {}
+    bad += [f"seams length.body: {e}" for e in bt.name_errors(sorted(needs), define)]
     cd.check_parts(pieces, bad)  # (T13: hang fitted | draped, held edges)
+    bad += pixel_errors(p, read.get("views"))
     if bad:
         raise PlanRefused("step 1 (parts) refused:\n  " + "\n  ".join(bad))
     p["measurements"] = sorted(needs)  # (what step 3 must measure, by name)
@@ -341,6 +400,7 @@ def check_style(p: dict, read: dict, parts: dict) -> dict:
         if k.get("needs_drape") and k["needs_drape"] not in falls:
             bad.append(f"rows[{i}] {r.get('id', '')}: {r['what']} is judged on the hang of a draped piece falling "
                        f"{k['needs_drape']}; step 1 / 2 have none ({sr.stage_kinds()})")
+    bad += pixel_errors(p, read.get("views"))
     if bad:
         raise PlanRefused("step 2 (style) refused:\n  " + "\n  ".join(bad))
     return p
@@ -369,17 +429,21 @@ def write(model: str, garment: str, step: str, plan: dict, look: bool = True) ->
             raise PlanRefused(f"step 1 (parts) refused: {e}") from None
     ref = p["views"][0]["image"] if sid == "0" else None
     st = gr.write(model, garment, sid, "done", output=p, reference=ref, by="garment_plan")
+    from . import garment_carry as gc  # (later steps that still validate are re-stamped, not left stale: F2)
+    carried = gc.carry(model, garment, sid) if sid in ("0", "1") else []
     paths = []
     if look:
         from . import garment_plan_look as gl
         paths = gl.draw(model, garment, sid, p, out["0"] if sid != "0" else p, out["1"] if sid == "2" else None)
         gr.attach_look(model, garment, sid, paths)
-    return {"step": sid, "plan": p, "digest": st["digest"], "look": paths}
+    return {"step": sid, "plan": p, "digest": st["digest"], "look": paths, "carried": carried}
 
 
 def text(model: str, garment: str, r: dict) -> str:
     sid, p = r["step"], r["plan"]
     L = [f"{model}:{garment} step {sid} ({gr.STEP[sid]['key']}) written: digest {r['digest']}"]
+    L.append("  coordinates (at / outline / points): PIXELS of the named view, u right, v down from its top-left")
+    L += r.get("carried") or []
     if sid == "0":
         L.append(f"  kind: {p['kind']}; views: " + ", ".join(f"{i} {v['view']}" for i, v in enumerate(p["views"])))
         for n, c in p["cloth"].items():

@@ -12,7 +12,10 @@ Per step (STEPS, the one list of steps; add or rename a step here and nowhere el
   back_to    on a FAIL: the step to return to (the step's default, or the writer's)
   digest     hash of output + status + gate; inputs: the digest of the step before it when it was written
 A step is READY when its status is done (approved where approval is required) and it isn't stale. A step is STALE when
-the step before it changed since it was written (its digest differs from the recorded inputs) or is stale itself.
+the step before it changed since it was written (its digest differs from the recorded inputs) or is stale itself, or
+when garment_carry marked it (`stale_why`: its saved content no longer validates against a rewritten earlier step).
+Carry forward (F2, garment_carry.py): when garment_plan rewrites step 0 / 1, later steps that still validate are
+re-stamped (`inputs` = the new digest, `carried`) instead of left stale; their digests (and approvals) don't change.
 write(N) refuses by name unless step N-1 is ready: a step consumes only the ready output of the step before it.
 
 Approvals: Joe or the coordinator only, with the existing /mnt/data/hifipushie/bin/approve into workspace/approved.json:
@@ -147,13 +150,14 @@ def states(rec: dict, approved: dict | None = None) -> dict:
         ok = approval(rec, sid, approved)
         if ok:
             status = "approved"
-        stale = bool(prev and status != "todo" and (out[prev]["stale"] or
+        stale = bool(prev and status != "todo" and (out[prev]["stale"] or bool(st.get("stale_why")) or
                      st.get("inputs") != rec["steps"][prev].get("digest")))
         if sid == "7a" and not _needs_approval(sid) and status == "todo":  # (optional pre-sim approval: passes through)
             ready, why = bool(prev and out[prev]["ready"]), "optional (HIFIPUSHIE_PRESIM_APPROVAL=optional)"
         else:
             ready = (status == "approved" or (status == "done" and not _needs_approval(sid))) and not stale
-            why = ("stale: the step before it changed" if stale else
+            why = (f"stale: {st['stale_why']}" if stale and st.get("stale_why") else
+                   "stale: the step before it changed" if stale else
                    "done; waits for approval (Joe or the coordinator)" if status == "done" and not ready else "")
         out[sid] = {"status": status, "stale": stale, "ready": ready, "why": why}
         prev = sid
@@ -284,7 +288,8 @@ def answer(model: str, garment: str) -> str:
         lines.append(f"  {sid:>3} {STEP[sid]['key']:<9} {x['status']:<9}" + (" STALE" if x["stale"] else "") +
                      (f" gate {g.get('verdict')}" if g else "") + (f" failing: {', '.join(bad[:6])}" if bad else "") +
                      (f" back_to {st['back_to']}" if x["status"] == "failed" else "") +
-                     (f" ({x['why']})" if x["why"] and not x["stale"] else ""))
+                     (f" ({x['why']})" if x["why"] and (not x["stale"] or st.get("stale_why")) else "") +
+                     (f" (carried forward after step {st['carried']['from']} changed)" if st.get("carried") and not x["stale"] else ""))
     stale = [sid for sid in IDS if s[sid]["stale"]]
     if stale:
         lines.append(f"  stale (an earlier step changed; write them again): {', '.join(stale)}")
