@@ -155,9 +155,9 @@ def read_roles(net):
     faults = sided_faults(net, role, whole, self_sewn) + ([fall_fault] if fall_fault else [])
     if faults:
         raise ChainRefused("the pattern's pieces don't make a whole garment: " + "; ".join(faults) + ". next: draft_pattern "
-                           "declarations: a piece worn on both sides is declared twice, NAME.L and NAME.R (the .R one "
-                           "`mirror: true`, which only flips a piece, never makes its pair), or cut on the fold "
-                           "(`fold: x0`); pattern_check, chain_garment again")
+                           "declarations: a piece worn on both sides is cut 2 as a mirrored pair, pieces.NAME {\"pair\": true} "
+                           "(NAME.L + NAME.R, seams per side; `mirror: true` only flips a piece, never makes its pair), "
+                           "or cut on the fold (`fold: x0`); pattern_check, chain_garment again")
     closures = net.M.get("closures") or []
     band_cl = next((c for c in closures if band and c["over"] == band), None)
     front = next((c for c in closures if c["over"] != c["under"]), None)
@@ -340,6 +340,28 @@ def _top_edge(net, piece, sb):
     return top[::-1] if net.uv[top[0], 0] > net.uv[top[-1], 0] else top
 
 
+def _end_edges(net, piece, sb, st):
+    """(F3) A stand's two END edges as chains [neck end, ..., top end]: the border vertices on neither the neck seam nor
+    the top, each given to the end whose neck and top corners are nearer, ordered from the neck up (projection on the
+    chord neck end -> top end). The cut lengths between them are the stand's own lengths (held_read reads them)."""
+    v = net.verts(piece)
+    border = np.asarray(net.M["border"], bool) if net.M.get("border") is not None else None
+    arc = v[border[v]] if border is not None else np.asarray(net.loop(piece))
+    arc = arc[~np.isin(arc, sb) & ~np.isin(arc, st)]
+    uv = net.uv
+    out = []
+    for e, (nb_, nt_) in enumerate(((sb[0], st[0]), (sb[-1], st[-1]))):
+        o = (sb[-1], st[-1]) if e == 0 else (sb[0], st[0])
+        d_me = np.linalg.norm(uv[arc] - uv[nb_], axis=1) + np.linalg.norm(uv[arc] - uv[nt_], axis=1)
+        d_ot = np.linalg.norm(uv[arc] - uv[o[0]], axis=1) + np.linalg.norm(uv[arc] - uv[o[1]], axis=1)
+        mine = arc[d_me < d_ot]
+        ch = uv[nt_] - uv[nb_]
+        t = ((uv[mine] - uv[nb_]) @ ch) / max(float(ch @ ch), 1e-12)
+        mine = mine[(t > 0) & (t < 1)]
+        out.append(np.r_[nb_, mine[np.argsort(t[(t > 0) & (t < 1)])], nt_].astype(np.int64))
+    return out
+
+
 def stand_ring(b):
     """The STAND: the band stage's ring with its own top edge (module doc). Sets b.sb / b.st / b._band_lines like
     band_closed, so fill_band, stiff_last and the soft network hold it as they hold a band."""
@@ -380,7 +402,16 @@ def stand_ring(b):
     b.X[rs[st]] = T
     nb, nt = rs[sb], rs[st]
     cbn = rs[sb[mid]]
-    free = np.unique(np.r_[nb, nt])
+    # (F3) the END edges in the solve: chains neck end -> top end at their cut, started on the straight between their
+    # corners (F1: left out, they were filled afterwards and the stand's border ran 39.8 % past its cut at a top corner)
+    ends_v = _end_edges(net, R.band, sb, st)
+    ends_c = []
+    for E in ends_v:
+        Le = np.linalg.norm(np.diff(uv[E], axis=0), axis=1)
+        f_ = np.r_[0, np.cumsum(Le)] / max(float(Le.sum()), 1e-9)
+        b.X[rs[E[1:-1]]] = (1 - f_[1:-1, None]) * b.X[rs[E[0]]] + f_[1:-1, None] * b.X[rs[E[-1]]]
+        ends_c.append((rs[E], Le))
+    free = np.unique(np.r_[nb, nt] if not ends_v else np.r_[nb, nt, np.concatenate([rs[E] for E in ends_v])])
     free = free[free != cbn]
     S = BendSolve(b.X, free)
     Lt = np.linalg.norm(np.diff(uv[st], axis=0), axis=1)
@@ -391,6 +422,11 @@ def stand_ring(b):
     S.add_links(nt[ev[:, 0]], nb[ev[:, 1]], hgt[ev[:, 0]], np.ones(len(ev), bool))
     S.add_bend(nb, cn.BEND_BASE * net.bend[sb[1:-1]])
     S.add_bend(nt, cn.BEND_BASE * net.bend[st[1:-1]])
+    for (ne, Le), E in zip(ends_c, ends_v):
+        S.add_links(ne[:-1], ne[1:], Le, np.ones(len(Le), bool))
+        if len(E) > 2:
+            S.add_bend(ne, cn.BEND_BASE * net.bend[E[1:-1]])
+            S.add_contact(ne[1:-1], b.body.contact, GAP)
     S.add_contact(nt, b.body.contact, GAP)
     S.add_contact(nb, b.body.contact, GAP, rest=REST)
     rows = []
@@ -425,6 +461,9 @@ def stand_ring(b):
     S.add_fn(upright)
     b.X = S.solve(60)
     b.sb, b.st = sb, st
+    b._end_links = (np.concatenate([ne[:-1] for ne, _ in ends_c]), np.concatenate([ne[1:] for ne, _ in ends_c]),
+                    np.concatenate([Le for _, Le in ends_c])) if ends_c else None
+    b.se = np.concatenate([E[1:-1] for E in ends_v]) if ends_v else np.zeros(0, np.int64)  # (fill_band keeps them)
     b._band_lines = (nb, nt, ev, hgt, LB)
     b._band_project(held=np.isin(np.arange(net.n), [cbn]))
     b.reads["band"] = b._band_read()
@@ -436,7 +475,12 @@ def stand_ring(b):
                         "rise_deg_cb": round(float(rise[cbk]), 1), "ends_meet": [bool(e) for e in (front_shut,)],
                         "top_mm": [round(float(lt.sum() * 1e3), 1), round(float(Lt.sum() * 1e3), 1)],
                         "neck_mm": round(float(LB.sum() * 1e3), 1),
-                        "top_worst_link_pct": round(float(np.abs(lt / np.maximum(Lt, 1e-9) - 1).max() * 100), 1)}
+                        "top_worst_link_pct": round(float(np.abs(lt / np.maximum(Lt, 1e-9) - 1).max() * 100), 1),
+                        "end_edges_mm": [[round(float(np.linalg.norm(np.diff(b.X[ne], axis=0), axis=1).sum() * 1e3), 1),
+                                          round(float(Le.sum() * 1e3), 1)] for ne, Le in ends_c],
+                        "end_worst_link_pct": round(max([float(np.abs(np.linalg.norm(np.diff(b.X[ne], axis=0), axis=1)
+                                                                     / np.maximum(Le, 1e-9) - 1).max() * 100)
+                                                         for ne, Le in ends_c] or [0.0]), 1)}
 
 
 def build_stand(b, t0: float) -> None:

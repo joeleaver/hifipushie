@@ -101,10 +101,11 @@ def paired(decl: dict) -> set:
 def expand(decl: dict, parts: dict) -> dict:
     """The declarations with every pair made two pieces (module docstring). No pair: returned as is."""
     from .draft_own import DraftRefused
-    pr = paired(decl)
+    D = _fold_closures(decl)
+    pr = paired(D)
     if not pr:
-        return decl
-    D = copy.deepcopy(decl)
+        return D
+    D = copy.deepcopy(D)
     pcs, edges = D.get("pieces") or {}, D.get("edges") or {}
     drafted = {}  # pair -> the side its drafted copy takes
     newp = {}
@@ -190,6 +191,26 @@ def expand(decl: dict, parts: dict) -> dict:
                       if f.get("piece") in pr] + [f for f in D["folds"] if f.get("piece") not in pr]
     if D.get("stiff"):
         D["stiff"] = [x for n in D["stiff"] for x in ((f"{n}.L", f"{n}.R") if n in pr else (n,))]
+    return D
+
+
+def _fold_closures(decl: dict) -> dict:
+    """A closure on ONE piece cut on the fold whose over and under name the same edge (t8: the waistband's fly
+    `end` / `end`, the shirt stand's `end` / `end`): the edge and its mirror on the other half, the two ends that close
+    (read as the same edge it closed to 0 mm)."""
+    pcs = decl.get("pieces") or {}
+    cl = decl.get("closures") or []
+    hit = [i for i, c in enumerate(cl) if c.get("over") and c.get("over") == c.get("under")
+           and (pcs.get(c["over"]) or {}).get("fold") and isinstance(c.get("edge"), dict)
+           and c["edge"].get("over") and c["edge"].get("over") == c["edge"].get("under")]
+    if not hit:
+        return decl
+    D = copy.deepcopy(decl)
+    for i in hit:
+        c = D["closures"][i]
+        e = c["edge"]["over"]
+        D.setdefault("edges", {}).setdefault(c["over"], {}).setdefault(f"{e}.m", {"mirror_of": e})
+        c["edge"] = dict(c["edge"], under=f"{e}.m")
     return D
 
 

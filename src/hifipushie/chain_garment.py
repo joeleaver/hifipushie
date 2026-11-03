@@ -302,6 +302,8 @@ class Build:
         I = np.r_[nb[:-1], nt[:-1], nt[ev[:, 0]]]
         J = np.r_[nb[1:], nt[1:], nb[ev[:, 1]]]
         L = np.r_[LB, Lt, hgt[ev[:, 0]]]
+        if getattr(self, "_end_links", None) is not None:  # (F3: a stand's end edges, chains_roles.stand_ring)
+            I, J, L = (np.r_[a, b] for a, b in zip((I, J, L), self._end_links))
         Xn, rd = project(self.X, I, J, L, np.ones(len(L), bool), held, [(self.body.contact, np.r_[nb, nt], GAP)],
                          limit=extra_limit)
         self.X = Xn
@@ -591,7 +593,7 @@ class Build:
         rs = net.root
         if R.band is None or not hasattr(self, "sb"):  # (F1: only after the band stage ran)
             return
-        for piece, known_v in ((R.band, np.r_[self.sb, self.st]),):
+        for piece, known_v in ((R.band, np.r_[self.sb, self.st, getattr(self, "se", np.zeros(0, np.int64))].astype(np.int64)),):
             F = net.F[np.all(net.piece[net.F] == net.pid(piece), axis=1)]
             known = np.zeros(net.n, bool)
             known[known_v] = True
