@@ -26,8 +26,8 @@ import numpy as np
 STANDOFF = 0.012  # m: the rigid step's barrier keeps sampled points this far off the body
 BARRIER_W = 3.0  # weight of the body barrier against the sewn pairs (rigid step)
 RIGID_SAMPLE = 300  # body-barrier points sampled per piece (rigid step)
-DAMP = 0.9  # share of the last pass's velocity kept
-PULL_SHARE = 0.25  # share of a sewn pair's gap closed per pass once ramped up
+DAMP = 0.97  # share of the last pass's velocity kept
+PULL_SHARE = 0.5  # share of a sewn pair's gap closed per pass once ramped up
 STEP = 0.004  # m: the most a sewn point is pulled in one pass
 RAMP = 60  # passes over which the pull ramps from 0 to PULL_SHARE
 ITERS = 6  # Gauss-Seidel sweeps over every length per pass (each with a share of the pull)

@@ -263,6 +263,10 @@ def sew(b, X, passes: int | None = None) -> np.ndarray:
                             passes=cb.PASSES if passes is None else passes)
     rs["gaps_mm_bend"] = gaps(X)
     t = __import__("time").time()
+    if rs["bend"]["why"] == "closed":  # (closed: the sewn pairs joined IN the projection, solved with the lengths; a
+        # snap to the group means after it shortened 20 mm chains by up to 4 %)
+        I, J = np.r_[I, S[:, 0]], np.r_[J, S[:, 1]]
+        L, E = np.r_[L, np.zeros(len(S))], np.r_[E, np.zeros(len(S), bool)]
     X, rd = project(X, I, J, L, E, held, [(b.body.contact, soft_ids, GAP)], iters=PROJECT_ITERS, step=PULL)
     if max(rd.get("worst_exact_pct", 0), rd.get("worst_atmost_pct", 0)) > PROJECT_PCT:  # (the lengths win the floor)
         X, rd = project(X, I, J, L, E, held, [], iters=PROJECT_ITERS, step=PULL)
@@ -313,20 +317,21 @@ def gate_sew(b, X) -> dict:
                  "MAX_FREE_PCT: the sew holds every length at every round (lengths solved last)",
                  "the SEW solve stretched cloth: a bug in chain_sew.sew, not the pattern")]
     meas = ((b.net.M.get("starts") or {}).get("pieces") or {})
-    nr = len((b.reads.get("sew") or {}).get("rounds") or [])
+    bd = (b.reads.get("sew") or {}).get("bend") or {}
     for si, (g, va, vb) in sorted(seam_gaps(b, X).items()):
         pa, pb = b.net.names[b.net.piece[va]], b.net.names[b.net.piece[vb]]
         names = sorted(set(meas.get(pa) or []) | set(meas.get(pb) or []))
         rows.append(_row(f"sew:{seam_name(b, si)}", round(g * 1e3, 1), round(SEW_TOL * 1e3, 1), g <= SEW_TOL,
                          "a seam closes by bending alone, every pattern length held (chain_sew.sew); limit SEW_TOL",
                          f"PATTERN FAULT: {pa}{b._near_point(va, pa)} can't reach {pb}{b._near_point(vb, pb)} without "
-                         f"stretch ({g * 1e3:.0f} mm short, every length held, {nr} sew rounds): the pieces too small "
+                         f"stretch ({g * 1e3:.0f} mm short, every length held): the pieces too small "
                          f"round the body there; check the measurements / ease they were drafted from "
-                         f"({', '.join(names) or 'none listed'}) at step 4. (UNPROVEN, F7: a quasi-static sew can also "
-                         f"stall short of a seam that closes; when step 4's body_lengths rows pass there, suspect the sew)",
+                         f"({', '.join(names) or 'none listed'}) at step 4. (UNPROVEN as a pattern fault: the bend {bd.get('why')} "
+                         f"after {bd.get('passes')} passes; cloth laid through the body (a crotch extension through the "
+                         f"inner thigh, F8) holds a seam open too: read the START inside rows)",
                          "mm"))
     return verdict("sew", rows, {"lengths": ln, "gaps_mm": (b.reads.get("sew") or {}).get("gaps_mm"),
-                                 "rounds": (b.reads.get("sew") or {}).get("rounds")})
+                                 "rigid": (b.reads.get("sew") or {}).get("rigid"), "bend": {k: v for k, v in bd.items() if k != "gap_sum_mm"}})
 
 
 def flat_then_sew(b, guide: np.ndarray) -> np.ndarray:

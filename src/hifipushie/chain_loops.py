@@ -155,9 +155,15 @@ def body_ring(b, ring: str) -> None:
             su = -su
             frac = su * (u - ub) / C
             P = _loop_at(h, C, frac)
-    lap = LAYER * ((u < ua - 1e-6) | (u > ub + 1e-6))
-    cen = P.mean(0)
-    P = P + unit(P - cen) * lap[:, None]
+    lapm = (u < ua - 1e-6) | (u > ub + 1e-6)
+    if lapm.any():  # (F8 C325: the part past the marks on the loop a LAYER out (its own length C + 2 pi LAYER), each
+        # point at its own cut distance from the mark less the step out: lengths kept. A radial offset of the loop's
+        # points stretched the lap's links by LAYER / R (~3 %) and the link over the step 13 %)
+        d = np.where(u > ub, u - ub, ua - u)
+        d1 = float(d[lapm].min())
+        step = d1 - float(np.sqrt(max(d1 ** 2 - LAYER ** 2, 0.0)))
+        fl = np.where(u > ub, su, -su) * np.maximum(d - step, 0.0) / (C + 2 * np.pi * LAYER)
+        P[lapm] = _loop_at(h, C + 2 * np.pi * LAYER, fl[lapm])
     X3 = np.c_[P, z]
     b.X[rv] = X3
     b.X[net.root[rv]] = X3
