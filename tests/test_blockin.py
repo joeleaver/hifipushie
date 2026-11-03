@@ -111,3 +111,42 @@ def test_start_seams_closed(blk):
     # every point on the block-in, outside the body
     rr = np.linalg.norm(X[:, :2], axis=1)
     assert rr.min() > R0 and abs(np.median(rr) - R) < 0.004
+
+
+# ---- F10 (C331, C333): the fork ceiling; the plan's block-in is the start
+
+
+def _fork_z(at):
+    """The highest z on the centre line (x = y = 0) where a two-cone block-in is open (field > 0), far from any body."""
+    bi = {"ease": [{"at": 0.0, "mm": 10}],
+          "shapes": [{"kind": "cone", "a": [0.06, 0.0, 0.95], "b": [0.09, 0.0, 0.1], "r_a": 0.1, "r_b": 0.07}]}
+    z = np.linspace(0.1, 0.95, 171)
+    P = np.c_[np.zeros_like(z), np.zeros_like(z), z]
+    f = gb.field(bi, SimpleNamespace(at=at), P, np.full(len(z), 1.0))
+    return float(z[f > 0].max()) if (f > 0).any() else None
+
+
+def test_fork_ceiling_keeps_the_fork_at_the_bodys_crotch():
+    low = _fork_z({})  # (F9's fault: the cones and their smooth union fill the notch far below the crotch)
+    assert low is not None and low < 0.45
+    fz = _fork_z({"crotch_z": 0.6})
+    assert fz is not None and 0.6 - 0.02 <= fz <= 0.6 + 1e-9
+
+
+def test_single_centred_shape_not_ceilinged():  # (a skirt's bell: one shape on the centre plane fills between the legs)
+    bi = {"ease": [{"at": 0.0, "mm": 10}],
+          "shapes": [{"kind": "cone", "a": [0.0, 0.0, 0.95], "b": [0.0, 0.0, 0.1], "r_a": 0.1, "r_b": 0.2}]}
+    P = np.array([[0.0, 0.0, 0.3]])
+    assert gb.field(bi, SimpleNamespace(at={"crotch_z": 0.6}), P, np.ones(1))[0] < 0
+
+
+def test_plan_blockin_is_the_start(monkeypatch):
+    from hifipushie import chain_garment as cg
+    monkeypatch.delenv("HIFIPUSHIE_BLOCKIN_START", raising=False)
+    assert cg.uses_blockin_start(SimpleNamespace(blockin=BI))
+    assert not cg.uses_blockin_start(SimpleNamespace(blockin=None))
+    monkeypatch.setenv("HIFIPUSHIE_BLOCKIN_START", "0")
+    assert not cg.uses_blockin_start(SimpleNamespace(blockin=BI))
+    spec = {"cloth": {"g": {"a": 1}}}
+    assert cg.job_key(spec, "g", {"state": "closed"}) == cg.job_key(spec, "g", {"state": "closed"}, None)
+    assert cg.job_key(spec, "g", {"state": "closed"}, BI) != cg.job_key(spec, "g", {"state": "closed"})

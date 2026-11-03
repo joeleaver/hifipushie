@@ -3545,7 +3545,7 @@ def chain_garment(name: str, garment: str, wear: str | None = None, opening: flo
         if not isinstance(waive, dict) or not all(isinstance(v, str) and v.strip() for v in waive.values()):
             raise ValueError("waive: {structure row id: the reason it is accepted}, each reason a sentence")
         w["waive"] = {str(k): str(v) for k, v in waive.items()}
-    key = cg.job_key(spec, garment, w)
+    key = cg.job_key(spec, garment, w, ((_cs.load_plan(name, garment) or {}).get("style") or {}).get("blockin"))  # (F10)
     d = cg.job_dir(name, garment, wear)
     st = cg.live_status(d)
     if st.get("stage") in cg.RUNNING:

@@ -1121,9 +1121,9 @@ class GarmentBuild(Build):
         from .chain_stages import mirror_starts
         from .piece_start import turn_to_seams
         X = mirror_starts(self, turn_to_seams(self, X))  # (F5 C314: a .R piece starts as its .L's mirror, never solved on its own)
-        # (F9: started on the step-2 SDF block-in: each piece mapped onto its region, seams closed; OPT-IN until a build
-        # from it passes: HIFIPUSHIE_BLOCKIN_START=1 with build.blockin set (the job sets it from the plan))
-        if getattr(self, "blockin", None) is not None and os.environ.get("HIFIPUSHIE_BLOCKIN_START") == "1":
+        # (F9, F10: started on the step-2 SDF block-in: each piece mapped onto its region, seams closed. THE start when the
+        # plan has a blockin (the job sets build.blockin from it); HIFIPUSHIE_BLOCKIN_START=0 turns it off for a comparison)
+        if uses_blockin_start(self):
             from .blockin_map import start as _bstart
             from .garment_blockin import build as _bbuild
             return _bstart(self, _bbuild(self.blockin, self.body), X)
@@ -1665,14 +1665,21 @@ RUNNING = ("queued", "building", "resuming", "built", "hanging", "hung")  # stag
 BUILD_GB = 8.0  # the build's real peak (rss read per job: status "peak_gb"); the hang declares its own kind
 
 
-def job_key(spec: dict, garment: str, wear: dict) -> str:
-    """What a job answers for: the body, this garment, the wear (from the style plan, T7), and the build's code
-    (store.BUILD_VERSION: a job built by older stages is built again; C280). Another garment on the model doesn't change it."""
+def uses_blockin_start(build) -> bool:
+    """(F10, C333) The block-in start is the default whenever the plan's style has a blockin; env HIFIPUSHIE_BLOCKIN_START=0
+    turns it off (a comparison run)."""
+    return getattr(build, "blockin", None) is not None and os.environ.get("HIFIPUSHIE_BLOCKIN_START", "1") != "0"
+
+
+def job_key(spec: dict, garment: str, wear: dict, blockin: dict | None = None) -> str:
+    """What a job answers for: the body, this garment, the wear (from the style plan, T7), the plan's block-in (step 2's
+    SDF garment as worn: the build STARTS from it, F10) and the build's code (store.BUILD_VERSION: a job built by older
+    stages is built again; C280). Another garment on the model doesn't change it."""
     from . import store
     rest = {k: v for k, v in spec.items() if k != "cloth"}
     wear = {k: v for k, v in wear.items() if k not in ("waive", "resume")}  # (a waiver re-reads the saved build, T2)
-    return hashlib.sha1(json.dumps([rest, spec["cloth"][garment], wear, store.BUILD_VERSION], sort_keys=True,
-                                   default=str).encode()).hexdigest()[:16]
+    parts = [rest, spec["cloth"][garment], wear, store.BUILD_VERSION] + ([blockin] if blockin is not None else [])
+    return hashlib.sha1(json.dumps(parts, sort_keys=True, default=str).encode()).hexdigest()[:16]
 
 
 def write_status(d: Path, **kw):
