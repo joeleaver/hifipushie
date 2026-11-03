@@ -48,6 +48,7 @@ def test_a_sewn_seam_closes_with_lengths_held():
     b2 = _build({p: fine for p in PIECES}, {p: ["thigh", "knee", "outseam"] for p in PIECES},
                 [(a, 12 if ca else 0, c, 12 if cb else 0) for a, ca, c, cb in SEWS])
     b2.body = _legs().body
+    b2.sew_start = True  # (opt-in while the sew stalls on real garments)
     X2 = b2.soft_start()
     assert list(b2.reads["stages"]) == ["arrange", "sew"]
     st = cst.gate_start(b2, X2)

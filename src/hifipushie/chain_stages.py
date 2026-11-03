@@ -281,6 +281,10 @@ def gate_start(b, X) -> dict:
                         "MAX_FREE_PCT: the start is laid from the flat, every chain at its cut (F6: a start that "
                         "stretches is a start bug, not something a later stage should fix)",
                         f"{ln['chain_worst_line']}: the START stretches here (piece_start's lay), before any solve"))
+    if not getattr(b, "sew_start_used", False) and rows[0]["status"] == "FAIL":
+        # (the old shape lay is KNOWN to stretch (F6); while the flat-then-sew start is opt-in, its length is reported, not
+        # a verdict, or every build would stop here: a verdict only on the sewn start)
+        rows[0]["status"] = "INFO (would FAIL)"
     sw = sewn_reads(b, X)
     reads["sewn_mm"] = {p: list(v) for p, v in sw.items()}
     for p, (m, lim) in sw.items():

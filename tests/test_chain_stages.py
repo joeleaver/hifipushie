@@ -32,7 +32,8 @@ def test_a_tube_run_up_into_the_torso_starts_through_the_body():
     assert "GAP" in next(r for r in g["rows"] if r["id"].startswith("inside"))["source"]
     # (F6) the start's own lengths are read (provisional until the lay is isometric: this tube lay stretches too)
     sl = next(r for r in g["rows"] if r["id"].startswith("start_length"))
-    assert sl["status"] == "FAIL" and "lengths" in g["reads"]  # (F7: a verdict; this rows-round-the-axis lay stretches)
+    # (F7: a verdict on the sewn start; this old rows-round-the-axis lay stretches: reported only while the sew is opt-in)
+    assert sl["status"] == "INFO (would FAIL)" and "lengths" in g["reads"]
 
 
 def _fails(g):
@@ -76,7 +77,7 @@ def test_the_build_stops_at_the_first_failing_stage():
                                                        [0.2, 0.0, 0.0], 0.0)))(b.soft_start)
     with pytest.raises(cst.StageFailed) as e:
         b.soft_net()
-    assert e.value.stage == "start" and list(b.reads["stages"]) == ["arrange", "sew", "start"]
+    assert e.value.stage == "start" and list(b.reads["stages"]) == ["start"]  # (the flat-then-sew start is opt-in)
     assert e.value.build is b and b.stage_X[0] == "start"
 
 

@@ -1121,7 +1121,10 @@ class GarmentBuild(Build):
         from .chain_stages import mirror_starts
         from .piece_start import turn_to_seams
         X = mirror_starts(self, turn_to_seams(self, X))  # (F5 C314: a .R piece starts as its .L's mirror, never solved on its own)
-        if getattr(self, "sew_start", True):  # (F7: that lay is the GUIDE; the start is each piece flat, then sewn: exact)
+        # (F7: flat then sewn: exact, but its sew stalls before the seams close on the trousers: OPT-IN until it closes them,
+        # HIFIPUSHIE_SEW_START=1 or build.sew_start = True; coordinator 2026-11-03)
+        if getattr(self, "sew_start", os.environ.get("HIFIPUSHIE_SEW_START") == "1"):  # (that lay is the GUIDE)
+            self.sew_start_used = True
             from .chain_sew import flat_then_sew
             X = flat_then_sew(self, X)
         return X
