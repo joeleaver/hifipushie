@@ -100,3 +100,17 @@ def test_held_line_and_start_paths_are_legal():
             P = cd._path_pts(X0, o, vert, np.zeros(3), a, sb, t, 0.0)
             assert body.contact.query(P)[0].min() >= cd.CLEAR * 0.99
             assert np.allclose(np.linalg.norm(P - X0, axis=1) <= t + 1e-9, True)  # (radial: never longer than its cut)
+
+
+def test_held_line_sewn_to_itself_refused_by_name():
+    """A seam paired the wrong way round sews the held line's CF end to its CB: refused, naming the seam's fix."""
+    from types import SimpleNamespace
+    import pytest
+    from hifipushie.chain_garment import ChainRefused
+    hv = np.arange(5)
+    uv = np.c_[np.linspace(0.1, -0.1, 5), np.zeros(5)]
+    ok = SimpleNamespace(root=np.arange(6), uv=np.r_[uv, [[0, 0.1]]], names=["cloak", "hood"], piece=np.r_[np.zeros(5, int), 1])
+    cd.check_held_sewn(ok, "cloak", hv)
+    bad = SimpleNamespace(**{**vars(ok), "root": np.array([0, 1, 2, 3, 2, 2])})  # (the end and the middle, through the hood)
+    with pytest.raises(ChainRefused, match=r"sewn to itself.*\[2, 4\].*hood.*wrong way round"):
+        cd.check_held_sewn(bad, "cloak", hv)

@@ -205,6 +205,22 @@ def _path_pts(X0, out, vert, tang, a, sb, t, fan):
     return P + (t * math.tan(math.radians(FAN_DEG)) * fan)[:, None] * tang
 
 
+def check_held_sewn(net, hp: str, hv) -> None:
+    """Refused by name: two points of the held line sewn into one (a seam pairs its ends the wrong way round: the held
+    ring would be pinched shut there; the flat gate's lengths can't see it)."""
+    from .chain_garment import ChainRefused
+    rs, uv = net.root, net.uv
+    _, first, cnt = np.unique(rs[hv], return_index=True, return_counts=True)
+    if (cnt > 1).any():  # (two points of the held line sewn into one: a seam pairs its ends the wrong way round)
+        k = int(first[np.argmax(cnt > 1)])
+        two = np.where(rs[hv] == rs[hv[k]])[0]
+        by = sorted({net.names[int(net.piece[v])] for v in np.where(rs == rs[hv[k]])[0]} - {hp})
+        raise ChainRefused(f"{hp}'s held line is sewn to itself: its points {two.tolist()} of {len(hv)} (flat "
+                           f"{np.round(uv[hv[two]], 3).tolist()}) are one point through {', '.join(by) or 'its own seams'}: "
+                           "a seam pairs its edges' ends the wrong way round (a:start meets b:start). next: turn one edge "
+                           "of that seam (draft_pattern edges \"p>q\" as \"q>p\")")
+
+
 def build_drape(b, t0: float) -> None:
     """Stages for a garment whose pieces are all draped (module doc). Fitted + draped pieces in one garment: refused."""
     import time
@@ -224,6 +240,7 @@ def build_drape(b, t0: float) -> None:
                            "garment_plan parts held on the one piece that is held, the others sewn to it")
     hp = own[0]
     hv = D[hp]["held"]
+    check_held_sewn(net, hp, hv)
     seg = np.linalg.norm(np.diff(uv[hv], axis=0), axis=1)
     L = float(seg.sum())
     if uv[hv[0], 0] < uv[hv[-1], 0]:  # (the end with the larger flat x goes to the wearer's left, +X)
