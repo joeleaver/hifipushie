@@ -140,7 +140,9 @@ def body_ring(b, ring: str) -> None:
         raise ChainRefused(f"{ring}: closed length {C * 1e3:.0f} mm is shorter than the body's loop at its height "
                            f"({need * 1e3:.0f} mm with its gap): it can't close round the body. next: lengthen it in the "
                            "pattern (draft_pattern), pattern_check, chain_garment again")
-    left = [p for p in R.panels if hand_of(p) > 0 and b.sewn_with(ring, p)]
+    left = [p for p in list(R.panels) + list(R.tubes) if hand_of(p) > 0 and b.sewn_with(ring, p)]  # (F5 C315: a
+    # left TUBE too (a trouser leg): with panels only, the trousers' waistband ran round the wrong way, each leg's top
+    # sewn to the band on the other side, and the chains dragged every leg piece 140-175 mm off its start)
     su = 1.0
     if left:
         lv = np.array(list(b.sewn_with(ring, left[0]).keys()))

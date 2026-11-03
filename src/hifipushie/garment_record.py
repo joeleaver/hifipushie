@@ -364,6 +364,11 @@ def from_chain(model: str, garment: str, wear: str, d: Path, st: dict) -> str:
     stage, sc = st.get("stage"), st.get("structure") or {}
     out = {"job": str(d), "wear": wear, "build": st.get("build_id")}
     msgs = []
+    if stage == "stage_failed":  # (F5: start / chains fail step 5, surfaces step 6, with the gate and its look)
+        g = st.get("stage_gate") or {}
+        return _try(write, model, garment, "6" if g.get("stage") == "surfaces" else "5", "failed", by="chain_garment",
+                    output=dict(out, stage_failed=g.get("stage")), gate={"verdict": g.get("verdict"), "stage": g.get("stage"),
+                    "rows": g.get("rows")}, back_to=g.get("back_to"), look=[p for _, p in st.get("stage_look") or []] or None)
     if stage == "refused" and not (d / "final.pkl").exists():
         return _try(write, model, garment, "5", "failed", output=dict(out, refused=st.get("refused")), by="chain_garment")
     if stage not in ("structure_failed", "presim", "awaiting_approval", "done", "refused"):

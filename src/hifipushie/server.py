@@ -3586,6 +3586,9 @@ def _chain_answer(name: str, garment: str, wear: str, st: dict, opening: float |
         more = f"\n  structure (the build, read before the refusal): {sc.get('verdict')}; failing: {', '.join(bad)}" if sc else ""
         return (f"{name}:{garment} ({wear}): refused: {st.get('refused')}{more}\nnext: fix it on the pattern (alter_pattern), "
                 f"pattern_check, then {again}")
+    if stage == "stage_failed":  # (F5: the build stopped at a stage's gate: start, chains or surfaces)
+        from . import chain_stages as cst
+        return cst.answer(name, garment, wear, st, again, look)
     if stage == "structure_failed":
         from . import chain_structure as cs
         sc = st.get("structure") or {}
@@ -3643,6 +3646,12 @@ def look_chain(name: str, garment: str, wear: str = "closed", focus: str | None 
     st = cg.status(d)
     if not st:
         return f"no chain build of {garment} ({wear}).\nnext: call_tool(\"chain_garment\", {{\"name\": \"{name}\", \"garment\": \"{garment}\", \"wear\": \"{wear}\"}})"
+    if st.get("stage") == "stage_failed" and (d / "stage.pkl").exists():  # (F5: the failing stage's own look)
+        from . import chain_stages as cst
+        paths = [tuple(p) for p in st.get("stage_look") or []] or cst.look(d, size=size)
+        return [_out(PILImage.open(p).convert("RGB"), _save_suffix(save, nm) if save else None) for nm, p in paths] + [
+            _chain_answer(name, garment, wear, st).split("\nnext:")[0] + f"\n  shown: the {st.get('stage_failed')} STAGE "
+            "(the build stopped there; red: the tapes it was measured on)\nnext: fix it where its rows say; chain_garment again"]
     from . import chain_structure as cs
     hung_ok = (d / "final.pkl").exists() and cs.passed(st.get("structure"))  # (C279: the build until its structure passed)
     src = d / "final.pkl" if hung_ok else (d / "built.pkl" if (d / "built.pkl").exists() else None)

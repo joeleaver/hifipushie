@@ -1118,7 +1118,8 @@ class GarmentBuild(Build):
         for t in R.tubes:
             v = net.verts(t)
             X[v] = self._tube_points(t, v)
-        return X
+        from .chain_stages import mirror_starts
+        return mirror_starts(self, X)  # (F5 C314: a .R piece starts as its .L's mirror, never solved on its own)
 
     def soft_net(self, start=None, far_z=None):
         """Chains + lines of the soft cloth from its start, stiff nodes held; then surfaces; then the threads."""
@@ -1133,6 +1134,9 @@ class GarmentBuild(Build):
         held[rs[stiff_v]] = True
         # sewn group mean for the free ones
         X0 = self.soft_start() if start is None else np.array(start, float)
+        from . import chain_stages as cst  # (F5: each stage gated where it ends, cheapest first)
+        if start is None:
+            cst.check(self, "start", X0)
         count = np.zeros(net.n)
         S_ = np.zeros((net.n, 3))
         np.add.at(S_, rs, X0)
@@ -1190,11 +1194,13 @@ class GarmentBuild(Build):
                 Y[two] = 0.8 * Y[two] + 0.1 * (Y[n0] + Y[n1])
         Y, rd = project(Y, I, J, L, E, held, floor, iters=40, step=0.015)
         self.reads["soft_chains"] = rd
+        cst.check(self, "chains", Y[rs])
         # surfaces between the chains
         known2 = held.copy()
         known2[chain_nodes] = True
         Z = cn.fill(Xf, Y, known2, uv, soft_F, ids=nodes, root=rs)
         Z = np.where(np.isin(np.arange(net.n), nodes)[:, None], Z, Y)[rs]
+        cst.check(self, "surfaces", Z)  # (before the thread solve: the lay's own crumpling, told apart from the solve's)
         # threads, chains last
         E_all = net.edges[~np.all(stiff_v[net.edges], axis=1)]
         Lm = np.linalg.norm(uv[E_all[:, 0]] - uv[E_all[:, 1]], axis=1) * (1 + SHEAR_LIMIT)
@@ -1773,6 +1779,10 @@ def worker(model: str, garment: str, wear: dict):
     except (ChainRefused, cd.DrapeRefused) as e:
         _status(d, stage="refused", refused=str(e))
     except Exception as e:  # (a crash is reported as one, with what it was doing)
+        if type(e).__name__ == "StageFailed":  # (F5: a stage's gate ended the build where it failed, cheapest first)
+            from . import chain_stages as cst
+            cst.on_fail(d, e, lambda **kw: _status(d, **kw), log=note)
+            return
         if type(e).__name__ in ("ChainRefused", "DrapeRefused"):  # (F1: the worker runs as __main__, so a refusal
             _status(d, stage="refused", refused=str(e))       # raised in chain_roles / chain_loops is another class)
             return
