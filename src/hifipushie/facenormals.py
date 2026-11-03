@@ -90,7 +90,7 @@ def estimate(img, box=None) -> dict:
             crop.save(p)
             src = os.path.join(td, "nrm.py")
             Path(src).write_text(_SRC)
-            with resources.heavy("facenormals (Sapiens 0.3b, CPU)", gb=6):
+            with resources.heavy("facenormals (Sapiens 0.3b, CPU)", gb=6, kind="facenormals_cpu"):  # (named: no kind = holds the GPU)
                 r = subprocess.run([str(Path(VENV) / "bin" / "python"), src, str(d / "sapiens_0.3b_normal.pt2"), p,
                                     os.path.join(td, "out.npz"), str(H), str(W), str(THREADS)], capture_output=True, text=True,
                                    timeout=1800)

@@ -1685,7 +1685,10 @@ def worker(model: str, garment: str, wear: dict):
             b, r = cp.load_build(d)
             pat, body, fabric = b.pat, b.body, r.get("fabric") or {}
         else:
-            with resources.heavy(f"chain build {model}:{garment} {wear['state']}", gb=BUILD_GB, log=note):
+            # kind named: a job of no kind is counted as holding the GPU (resources._holds_gpu), and a CPU-only build
+            # held every render behind it for its whole run; the hang claims the GPU itself (zozo_hang, gpu=True)
+            with resources.heavy(f"chain build {model}:{garment} {wear['state']}", gb=BUILD_GB, kind="chain_build",
+                                 log=note):
                 pat, body, fabric = load_garment(model, garment)
                 def _build(lb):  # (T13: the plan's draped pieces, set before the run whatever builds it)
                     gb = GarmentBuild(pat, lb, wear, log=lambda *_: None)
