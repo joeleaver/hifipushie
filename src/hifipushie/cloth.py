@@ -3089,6 +3089,24 @@ def _true_lengths(X: np.ndarray, M: dict, sel: np.ndarray, held: np.ndarray, bod
     return V
 
 
+def _neck_edge_ref(M: dict, uv, nm: str, edge: str | None = None):
+    """The flat point a neck-wrapped piece's heights are read from: the wrap's named point when the draft has it, else
+    the middle of the piece's own seam to another piece (its neck edge, by construction: an agent's own draft names its
+    points as it likes; Simon's 'bottomMid' was assumed and an own stand crashed the chain build, t8 F1)."""
+    pts = M.get("points") or {}
+    for k in ([edge] if edge else []) + ["bottomMid"]:
+        if f"{nm}:{k}" in pts:
+            return uv[pts[f"{nm}:{k}"]]
+    pid = np.asarray(M["piece"])
+    k = M["names"].index(nm)
+    sw = np.asarray(M.get("sew", []), np.int64).reshape(-1, 2)
+    mine = np.r_[sw[(pid[sw[:, 0]] == k) & (pid[sw[:, 1]] != k), 0], sw[(pid[sw[:, 1]] == k) & (pid[sw[:, 0]] != k), 1]]
+    v = np.unique(mine) if len(mine) else np.flatnonzero(pid == k)
+    if not len(mine):  # (sewn to nothing: its lowest edge)
+        v = v[uv[v, 1] <= uv[v, 1].min() + 1e-3]
+    return uv[v[np.argsort(uv[v, 0])[len(v) // 2]]]
+
+
 def _closed_girth(M: dict, nm: str) -> float:
     """A piece stitched to itself (a cuff's button and buttonhole): its girth when closed, the distance across it
     between the stitched vertices in the flat (0 if it doesn't close on itself)."""
@@ -3721,7 +3739,7 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
             nb, hd = body.J["neck"], body.J["head"]
             d = (hd - nb) / np.linalg.norm(hd - nb)
             P = pcs[nm]["P"]
-            e = uv[M["points"][f"{nm}:{w.get('edge', 'bottomMid')}"]]
+            e = _neck_edge_ref(M, uv, nm, w.get("edge"))
             width = P[:, 0].max() - P[:, 0].min()
             # the band at its own girth (a stand closes round the neck at its length / 2 pi), standing where the
             # neck is narrow enough for it, as the bodice's neckline (the same length) settles there too. Clearing
