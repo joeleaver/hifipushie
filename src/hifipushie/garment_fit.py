@@ -26,6 +26,8 @@ PARTS (C339, garment_fit_heights.py): a height is read between landmarks of its 
 up, a leg or an arm ALONG the limb (a sleeve end lands at the same place on the model's arm whatever its pose).
 ONE SCALE (C340, garment_fit_marks.scale): the body widths' mm/px and the landmarks' must agree within SCALE_TOL, or
 fit.scale_why; the refusal gives each landmark's row at the across scale.
+SEEN FIRST (C341): an inferred landmark sits within PLACE_MM of where the across scale puts it from the nearest seen
+one (or why); inferred body edges move with the measured garment edges they lie inside (the agent's inset is kept).
 FLOOR / CROWN: marked or not, heights never hang on them: in a picture they are a shoe's sole and a hat's / the hair's
 top, not the body's; a height beyond the outermost body landmark is extrapolated from the nearest body span (C336).
 LANDMARKS: below. A torso level's width is the torso section's across the view; a limb's is its section square to the
@@ -244,6 +246,15 @@ def check(fit, views: list, body=None) -> tuple[dict, dict, dict]:
                         g = q
                     else:
                         b = q
+            if "garment" in meas and bfrom != "seen":  # (inferred body edges keep their inset from the garment's: C341)
+                ga, gq = np.asarray(meas["garment"]["marked"], float), np.asarray(g, float)
+                bb = np.asarray(b, float)
+                near = [int(np.argmin(np.linalg.norm(ga - p, axis=1))) for p in bb]  # (the garment end each lies inside)
+                if sorted(near) == [0, 1]:
+                    b = [[round(float(c), 1) for c in bb[i] + (gq[near[i]] - ga[near[i]])] for i in range(2)]
+                    meas["body"] = dict(marked=[list(map(float, p)) for p in bb], measured=b,
+                                        moved_px=[round(float(np.linalg.norm(gq[n] - ga[n])), 1) for n in near],
+                                        notes=["inferred: moved with the garment edges it lies inside (its inset kept)"])
             gw, bw = math.dist(*g), math.dist(*b)
             if bw < 1:
                 bad.append(f"{wn}.body: its two edges are the same point")
@@ -296,6 +307,16 @@ def check(fit, views: list, body=None) -> tuple[dict, dict, dict]:
                        f"{nb} put it on this model ({abs(fr):.2f} of {'the ' + na + ' -> ' + nb + ' span' if inner else 'its distance from the ' + na}; {DRIFT[0]} and {DRIFT[1]:.0f} mm "
                        f"allowed): the {k} is "
                        f"{FIND.get(k, k)}. Re-mark it (or a neighbour), or keep it with {{at, from, why}}")
+    across = [body.at(w["at"], view)["width_mm"] / w["px"][1] for w in widths
+              if w.get("px") and w["at"] in LANDMARKS and LANDMARKS[w["at"]][0]]
+    if len(across) >= 2:  # (an inferred landmark hangs off the nearest seen one at the picture's scale: C341)
+        h_ = float(np.median(across))
+        for k, (sk, row, mm) in gm.placed(stand, {k for k in stand if lfrom[k] == "seen"}, z, h_).items():
+            if abs(mm) > gm.PLACE_MM and not lwhy.get(k) and k not in {o[0] for o in off}:
+                bad.append(f"fit.landmarks.{k} (inferred) is marked at row {stand[k]:.0f}; the picture's scale across "
+                           f"({h_:.2f} mm/px, the body widths) puts it at row {row} from the seen {sk} ({abs(mm):.0f} mm "
+                           f"{'lower' if mm > 0 else 'higher'}; {gm.PLACE_MM:.0f} allowed): mark it there, or keep it "
+                           "with {at, from, why}")
     if bad:
         _refuse(bad)
     heights = gfh.read(hts, use, lfrom, body, view, vi, [k for k in UNDER if k in lms], bad) if hts else {}

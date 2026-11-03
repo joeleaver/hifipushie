@@ -285,7 +285,8 @@ def test_seen_edges_are_measured_on_the_picture(home):  # (the picture's block i
     b = _read(home)
     b["fit"]["widths"][0].update(garment=[[47, 100], [153, 100]])
     f = gp.write("m", "w", "read", b, look=False)["plan"]["fit"]["chest"]
-    assert abs(f["ratio"] - 1.25) < 0.02 and max(f["measured"]["garment"]["moved_px"]) >= 2
+    assert max(f["measured"]["garment"]["moved_px"]) >= 2
+    assert abs(f["ratio"] - 100 / 74) < 0.02 and 62 <= f["measured"]["body"]["measured"][0][0] <= 63  # (inset kept: C341)
     b["fit"]["widths"][0].update(garment=[[90, 100], [110, 100]], why="knit, worn tight")  # (no edge near: kept)
     f = gp.write("m", "w", "read", b, look=False)["plan"]["fit"]["chest"]
     assert f["ratio"] == 0.25 and f["measured"]["garment"]["notes"]
@@ -374,4 +375,19 @@ def test_one_picture_one_scale(home):  # (t s0-4: across 1.17 mm/px, up and down
     e = _refused(lambda: gp.write("m", "w", "read", b, look=False), "One picture has one scale", "knee 29")
     assert "fit.landmarks" not in e
     b["fit"]["scale_why"] = "a stylised figure: long legs"
+    assert gp.write("m", "w", "read", b, look=False)
+
+
+def test_an_inferred_landmark_hangs_off_a_seen_one_at_the_pictures_scale(home):  # (t s0-6: a waist 36 mm low)
+    b = _read(home)  # (across: chest 330 mm / 80 px, waist 280 mm / 70 px: ~4.06 mm/px; the waist 200 mm under the chest)
+    b["fit"]["widths"].append({"at": "waist", "garment": [[60, 150], [140, 150]], "body": [[65, 150], [135, 150]],
+                               "body_from": "inferred: inside"})
+    b["fit"]["landmarks"]["waist"] = {"at": 150, "from": "covered: by proportion"}
+    assert gp.write("m", "w", "read", b, look=False)
+    b["fit"]["landmarks"]["waist"] = {"at": 170, "from": "covered: by proportion"}
+    for w in b["fit"]["widths"]:
+        if w["at"] == "waist":
+            w.update(garment=[[60, 170], [140, 170]], body=[[65, 170], [135, 170]])
+    _refused(lambda: gp.write("m", "w", "read", b, look=False), "fit.landmarks.waist (inferred)", "from the seen chest")
+    b["fit"]["landmarks"]["waist"]["why"] = "test"
     assert gp.write("m", "w", "read", b, look=False)

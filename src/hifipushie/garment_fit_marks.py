@@ -158,3 +158,22 @@ def scale(across: list, marks: dict, z: dict):
     v = rise / (marks[bot] - marks[top])
     rows = {k: round(marks[top] + (z[top] - z[k]) / h) for k in marks}
     return round(h, 3), round(v, 3), round(v / h - 1, 3), rows
+
+
+PLACE_MM = 30.0  # (an inferred landmark this far from where the picture's scale puts it from a seen one: refused)
+
+
+def placed(marks: dict, seen: set, z: dict, h: float) -> dict:
+    """{inferred landmark: (the seen one it is placed from, the row the across scale puts it at, mm off)}: an inferred
+    landmark hangs off the nearest SEEN one at the picture's own scale (t s0-6: a guessed waist 36 mm low lifted the
+    hem 8 cm; s0-5's sat 4 mm from it)."""
+    out = {}
+    if not seen or not h:
+        return out
+    for k in marks:
+        if k in seen:
+            continue
+        s = min(seen, key=lambda q: abs(marks[q] - marks[k]))
+        row = marks[s] + (z[s] - z[k]) / h
+        out[k] = (s, round(row), round((marks[k] - row) * h, 1))
+    return out
