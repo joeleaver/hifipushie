@@ -46,6 +46,15 @@ def stand_ref(name: str, garment: str) -> dict | None:
     return draft_stand.reference(plan, at)
 
 
+def _fit(name: str, garment: str) -> dict:
+    """Step 0's fit ease {region: {ease_mm}} (the body_lengths row's ease; {} when step 0 has none)."""
+    from . import garment_record as gr
+    try:
+        return ((gr.load(name, garment).get("steps") or {}).get("0") or {}).get("output", {}).get("fit") or {}
+    except (KeyError, ValueError, OSError, AttributeError):
+        return {}
+
+
 def flat_check(name: str, garment: str) -> tuple[list, dict, dict]:
     """(rows, B, decl) of a garment drafted with draft_pattern: the general flat gate re-read from its saved draft."""
     from . import cloth, garment_record as gr, store
@@ -56,7 +65,7 @@ def flat_check(name: str, garment: str) -> tuple[list, dict, dict]:
     B = cloth.pieces(json.loads(json.dumps(g)), measurements(rd["3"]))
     blk = do.block(g["pattern"])
     B["edge_arcs"], B["decl"] = blk["edge_arcs"], blk["decl"]
-    return do.gate(B, decl, rd["1"], stand_ref(name, garment)), B, decl
+    return do.gate(B, decl, rd["1"], stand_ref(name, garment), rd["3"], _fit(name, garment)), B, decl
 
 
 def check_text(name: str, garment: str) -> str:
@@ -111,7 +120,7 @@ def run(name: str, garment: str, design: str, declarations: dict, options: dict 
         raise do.DraftRefused(f"the converter refused the draft: {e}") from None
     blk = do.block(g["pattern"])
     B["edge_arcs"], B["decl"] = blk["edge_arcs"], blk["decl"]
-    rows = do.gate(B, declarations, rd["1"], stand_ref(name, garment))
+    rows = do.gate(B, declarations, rd["1"], stand_ref(name, garment), rd["3"], _fit(name, garment))
     v = do.verdict(rows)
     seam_rows = next(r for r in rows if r["id"] == "seams")["detail"]
     dx = B.get("decl") or declarations
