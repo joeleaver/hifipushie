@@ -44,7 +44,11 @@ STAND_RISE = 0.5 * JAEGER_RISE  # the rise's tolerance either way, x D (T5b's ha
 STAND_LEAN = 1 - 0.5 * (1 - 0.978)  # jaeger.collarStand free / neck edge: a hugging stand leans in
 FOLLOW = 0.5  # the top follows >= half the neckline's drop: the hugging stand; less: level, standing away
 TOP_DEG = 60.0  # the top line, seen: within this of level (steeper: a rounded corner or the front edge going down)
-END_SHARE = 0.25  # a front end's height: the tallest place on the free edge within this share of its arc from the end
+END_SHARE = 0.25
+# the curve's why is REPORTED, not failed (r-hussar): builds r1 / r2 with the neck edge +9 and -13 mm both built the stand
+# 31 deg up (the build lays it out whatever the curve), so no build backs the rise target yet; the heights are (c1 too
+# tall -> collar_height FAIL; r1 / r2 on target -> PASS; T8 short -> collar_front's top corners low)
+CURVE_ONLY = "(curve: reported, not failed) "  # a front end's height: the tallest place on the free edge within this share of its arc from the end
 
 
 def _curve_word(r: float, D: float) -> str:
@@ -157,7 +161,7 @@ def check(p: str, kind: str, N: np.ndarray, R: np.ndarray, top: np.ndarray | Non
     why = []
     if abs(mm(r) - r_exp) > r_tol:
         way = "flatter / down (the ends away from the free edge)" if mm(r) > r_exp else "up (the ends towards the free edge)"
-        why.append(f"{p}: neck edge {_curve_word(r, D)} {mm(r):+.0f} mm at its front ends; a top that {style.split(' (')[0]} "
+        why.append(f"{CURVE_ONLY}{p}: neck edge {_curve_word(r, D)} {mm(r):+.0f} mm at its front ends; a top that {style.split(' (')[0]} "
                    f"({f:.2f} x D) wants {r_exp:+.0f} +- {r_tol:.0f} mm (f x {JAEGER_RISE:.2f} x the flat drop - (1 - f)(D - D_back) "
                    f"seen). change: curve the neck "
                    f"edge's ends {way} by {abs(mm(r) - r_exp) - r_tol:.0f}-{abs(mm(r) - r_exp):.0f} mm (the free edge follows)")

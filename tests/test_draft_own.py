@@ -223,19 +223,19 @@ def test_stand_reference_reads_the_traced_top():
 
 def test_shape_a_level_top_over_a_dropping_neckline_wants_taller_fronts_not_a_rise():
     r = _rows(_B(_stand(HUGS, lean_in=True)), ref=_ref(LEVEL))["shape_stand"]
-    assert r["status"] == "INFO (would FAIL)" and "level" in r["value"], r
+    assert r["status"] == "FAIL" and "level" in r["value"], r
     assert "flatter / down" in r["why"] and "taller at its front ends" in r["why"] and r["back_to"] == "4", r["why"]
     ok = _rows(_B(_stand(AWAY)), ref=_ref(LEVEL))["shape_stand"]
-    assert ok["status"] == "INFO (would PASS)", ok
+    assert ok["status"] == "PASS", ok
     lean = _rows(_B(_stand(LEANS)), ref=_ref(LEVEL))["shape_stand"]  # tall fronts but a near-straight neck edge: not upright
-    assert "FAIL" in lean["status"] and "flatter / down" in lean["why"] and "taller" not in lean["why"], lean
+    assert lean["status"] == "INFO (curve would FAIL)" and "flatter / down" in lean["why"] and "taller" not in lean["why"], lean
 
 
 def test_shape_a_top_that_follows_the_neckline_wants_the_hugging_rise():
     ok = _rows(_B(_stand(HUGS, lean_in=True)), ref=_ref(FOLLOWS))["shape_stand"]
-    assert ok["status"] == "INFO (would PASS)" and "hugging" in ok["value"], ok
+    assert ok["status"] == "PASS" and "hugging" in ok["value"], ok
     r = _rows(_B(_stand(AWAY)), ref=_ref(FOLLOWS))["shape_stand"]
-    assert r["status"] == "INFO (would FAIL)" and "up (the ends towards the free edge)" in r["why"] and "lower at its front ends" in r["why"], r
+    assert r["status"] == "FAIL" and "up (the ends towards the free edge)" in r["why"] and "lower at its front ends" in r["why"], r
 
 
 def test_shape_no_trace_reports_the_stand_and_assumes_no_style():
