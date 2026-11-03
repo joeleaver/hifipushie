@@ -49,7 +49,18 @@ their tapes (FALLBACK named). Proof f4/ws trousers REFUSED (front.R never round 
   pattern's 695 is ~55 mm long (mostly CB), not 130-200.
 - Tests: tests/test_blockin.py (4: cylinder regions + seam lines, matching piece ~0 distortion, too-long piece by seam,
   start seams closed); test_garment_plan + test_structure_outline pass. No build, no render, no draft fix.
-NEXT: (a) block-in: keep the leg cones off x=0 above crotch_z (or a ceiling at crotch_z), hem cut to the pattern's
-intended break; fix the missing back waist line; rerun map (expect CB ~+50 mm). (b) fix the crotch in the draft
-(draft_pattern), re-check to PASS. (c) build with HIFIPUSHIE_BLOCKIN_START=1 through the stage gates; render front + side
-beside concept_v8. (d) job_key doesn't include the block-in: add it before relying on jobs.
+## F10 (2026-11-03, C331-C334; HOME /mnt/data/hifipushie/f10, scripts f10/scripts: redraft.py, style.py, tape.py, build.py)
+- Block-in: fork ceiling (mirrored shapes kept FORK_GAP off x=0 below crotch_z); back-waist line = data (side seam plane
+  ran above the waist). Seam planes from the classic trouser block's balance (y -0.025), source in the data. Plan step 2 has it.
+- Map F9 -> fixed block-in -> redraft: side +62 -> +62 -> -1; inseam +113 -> +73 -> +9; CF -71 -> -42 -> -19; CB +28 ->
+  +48 -> 0; waist back UNMEASURED -> +13 -> +20; areas -3/+7 -> P. PASS. Draft (f10/scripts/design_f10.mjs): hem 65 up,
+  crotch ext front seat/11 back seat/10, back rise 15, waist +7 mm/quarter, band lap marks [btn, btn2.m].
+- Start default when the plan has a blockin; job key includes it; ring sits on the block-in's seam line (BV unchanged:
+  only plans with a blockin change, and their key has it).
+- Build: START PASS (length INFO 32 % worst link at front.R hemIn: the map's distortion, median ~1.00); CHAINS: length
+  0.002 PASS, wrapped 15-23 mm PASS, held_length 19.3 % FAIL at front.L:cfWaist (the lapped band holds the two CF waist
+  ends a layer apart; the crotch seam is sewn to the waist). Surfaces / end gates not reached: no calibration.
+- Look f10/f10_vs_concept.png: legs straight to the shoe top as the concept; hips render patchy at 6-9 mm stand-off.
+NEXT: (a) the fly: crotch seam stops under the waist (draft edge crotch>cfFly + free fly edge; the block-in needs a
+`dz` on plane heights - not supported - and a non-sewn region cut at the fly), or the over's CF not lifted; (b) build
+through SURFACES to the end gates, then calibrate inside / holes / sewn; (c) start_length 32 % at the hem corner.
