@@ -1125,8 +1125,7 @@ class GarmentBuild(Build):
         # plan has a blockin (the job sets build.blockin from it); HIFIPUSHIE_BLOCKIN_START=0 turns it off for a comparison)
         if uses_blockin_start(self):
             from .blockin_map import start as _bstart
-            from .garment_blockin import build as _bbuild
-            return _bstart(self, _bbuild(self.blockin, self.body), X)
+            return _bstart(self, blockin_of(self), X)
         # (F7: flat then sewn: exact, but its sew stalls before the seams close on the trousers: OPT-IN until it closes them,
         # HIFIPUSHIE_SEW_START=1 or build.sew_start = True; coordinator 2026-11-03)
         if getattr(self, "sew_start", os.environ.get("HIFIPUSHIE_SEW_START") == "1"):  # (that lay is the GUIDE)
@@ -1669,6 +1668,14 @@ def uses_blockin_start(build) -> bool:
     """(F10, C333) The block-in start is the default whenever the plan's style has a blockin; env HIFIPUSHIE_BLOCKIN_START=0
     turns it off (a comparison run)."""
     return getattr(build, "blockin", None) is not None and os.environ.get("HIFIPUSHIE_BLOCKIN_START", "1") != "0"
+
+
+def blockin_of(build):
+    """(F10) The build's step-2 block-in, built once per build (the ring's height and the start read the same one)."""
+    if getattr(build, "_blockin_built", None) is None:
+        from .garment_blockin import build as _bbuild
+        build._blockin_built = _bbuild(build.blockin, build.body)
+    return build._blockin_built
 
 
 def job_key(spec: dict, garment: str, wear: dict, blockin: dict | None = None) -> str:

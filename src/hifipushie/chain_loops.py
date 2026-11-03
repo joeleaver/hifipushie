@@ -72,7 +72,14 @@ def _sewn_start_z(b, ring: str, hz: float) -> float:
     """The mean start height of the body cloth the ring is sewn to, as soft_start will place it (F4: a tube round its
     own measurements, a panel between its tapes; no measurements: hung from the hps)."""
     from .piece_start import panel_dz
+    from .chain_garment import blockin_of, uses_blockin_start
     net, R = b.net, b.roles
+    if uses_blockin_start(b):  # (F10, C334: started on the block-in, the band sits on ITS seam line there, not where the
+        # loop start would put the cloth: F10's waistband sat 28 mm under the block-in's waist line and the chains pulled
+        # every panel's top 35-46 mm down to it)
+        L = [P for (pa, pb), lines in blockin_of(b).seams.items() if ring in (pa, pb) for P in lines]
+        if L:
+            return float(np.mean(np.concatenate(L)[:, 2]))
     zs = []
     for p in R.panels + list(R.tubes):
         vv = np.array(list(b.sewn_with(ring, p).values()), int)
