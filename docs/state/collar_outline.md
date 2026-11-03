@@ -35,20 +35,8 @@ their tapes (FALLBACK named). Proof f4/ws trousers REFUSED (front.R never round 
 1063 %), the pattern goes round (crotch 1032 vs seat 960 + 60). Detail: git history (73a264bf).
 ## F7 (C321-C323; chain_sew.py, HOME f7): flat then sew (ARRANGE exact 0.02 %, SEW stalled 17 min). Opt-in: HIFIPUSHIE_SEW_START=1 / build.sew_start.
 ## F8 (C324-C326; chain_bend.py, HOME f8): rigid then bend; trousers SEW FAIL (inseam hem 95, CF 29 mm); waistband lap fixed (BV 29). Detail: git history (60ca2d12).
-## F9 (2026-11-03, C327-C330; garment_blockin.py, blockin_map.py, HOME /mnt/data/hifipushie/f9, scripts f9/scripts)
-- Step 2 `blockin` (data): ease knots, cones, cut planes, seam planes (+ within), region seeds -> body SDF offset, meshed
-  (6 mm, taubin), cut exactly along each seam plane: regions + seam lines. Outline vs the reference: T15 on its silhouette.
-  Body marks may now be u-only ([u, null]). Trousers block-in: f9/scripts/plan_blockin.json; look f9/blockin_look.png.
-- Step 4 `blockin_map.check`: region flattened (LSCM), piece mapped by its seam ends (arc length) + harmonic inside;
-  rows map:<seam> (pattern vs line, max(25 mm, 5 %)) + area:<piece> (area, median stretch along / across).
-- Step 5 `blockin_map.start`: hooked in soft_start, OPT-IN HIFIPUSHIE_BLOCKIN_START=1 (job sets build.blockin from the plan). NOT RUN on a build.
-- Trousers: outline leg_R / leg_L FAIL p95 46 / 40 mm (hem: the concept's legs ~20 % shorter than garrett's; fork).
-  Map: side +62, inseam +113, CF -71, CB +28 mm; waist front PASS, back UNMEASURED (bug: back waist line missing).
-  Reconciled (f9/scripts/crotch_rec.py): body x=0 from waist_z = 617 mm; the block-in's fork sits 61 mm under the body's
-  crotch (the leg cones + smooth union fill the thigh notch): its 737 mm is the block-in's fault. Design ~640: the
-  pattern's 695 is ~55 mm long (mostly CB), not 130-200.
-- Tests: tests/test_blockin.py (4: cylinder regions + seam lines, matching piece ~0 distortion, too-long piece by seam,
-  start seams closed); test_garment_plan + test_structure_outline pass. No build, no render, no draft fix.
+## F9 (C327-C330; garment_blockin.py, blockin_map.py, HOME f9): SDF block-in (step 2 `blockin`), step-4 map (LSCM per
+region, rows map:/area:), step-5 start. Trousers block-in f9/scripts/plan_blockin.json. Detail: git history (1b219ed4).
 ## F10 (2026-11-03, C331-C334; HOME /mnt/data/hifipushie/f10, scripts f10/scripts: redraft.py, style.py, tape.py, build.py)
 - Block-in: fork ceiling (mirrored shapes kept FORK_GAP off x=0 below crotch_z); back-waist line = data (side seam plane
   ran above the waist). Seam planes from the classic trouser block's balance (y -0.025), source in the data. Plan step 2 has it.
