@@ -461,3 +461,24 @@ def test_mixed_trims_and_self_crossing_outlines_are_refused_with_why(home):  # (
     b = _parts()
     b["seams"][2]["length"]["style"]["of"] = "nonsense"
     _refused(lambda: gp.write("m", "w", "parts", b, look=False), "length.style.of 'nonsense': a ratio's base")
+
+
+def test_left_side_mirrors_to_the_right(home):  # (t s1-4: .R names refused, a CB seam written as back.L:cb = back.L:cb)
+    gp.write("m", "w", "read", _read(home), look=False)
+    b = _parts()
+    b.pop("define", None)
+    b["pieces"].pop("front.R")
+    b["details"]["buttons"]["on"] = ["front.L"]
+    b["details"]["edge"]["on"] = ["front.L"]
+    b["closures"]["front"]["pieces"] = ["front.L", "front.R"]
+    b["seams"] = [{"a": "front.L:side", "b": "back:side.L", "length": {"body": ["chest"]}},
+                  {"a": "front.L:shoulder", "b": "back:shoulder.L", "length": {"body": ["chest"]}},
+                  {"a": "front.L:cf", "b": "front.R:cf", "length": {"body": ["chest"]}}]
+    _refused(lambda: gp.write("m", "w", "parts", b, look=False), "centre: the garment's centre line u on view 0")
+    b["centre"] = 100
+    p = gp.write("m", "w", "parts", b, look=False)["plan"]
+    assert p["mirrored"] == ["front.R"] and p["pieces"]["front.R"]["where"]["outline"][0] == [100, 50]
+    assert p["pieces"]["front.R"]["where"]["outline"][1] == [50, 50]  # (u 150 -> 2 x 100 - 150)
+    ends = {(s["a"], s["b"]) for s in p["seams"]}
+    assert ("front.R:side", "back:side.R") in ends and ("front.R:shoulder", "back:shoulder.R") in ends
+    assert len(p["seams"]) == 5  # (the CF seam already crosses the centre: not doubled)
