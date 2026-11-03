@@ -57,4 +57,4 @@ draft_pattern, T6 structure rows from the plan, T7 build into the plan's state, 
 layering (one-way: wrong, T12), T10 garment_details at pattern marks, T11 + fix export_garment (loops, weights, 4-pose bend
 check: the shirt still FAILS it at the armpit), looks shape-only (C288). Fast suite PASS on main; full tier rerunning.
 
-NEXT: full suite verdict; then T12, T13, T14; then the steps one at a time (shirt, hussar, ranger).
+NEXT (2026-11-02 night, weekly usage at 98 %): T12-T15, T5b/T5c, F1-F4, r-nico, r-hussar landed. Blind trial t8 (Garrett's outfit; /mnt/data/hifipushie/trials/t8/triage.md): steps 0-4 blind, no build. Before t9 (same brief, hp client in t8/): F5 = trousers build (right leg's front panel never wraps; all soft cloth crumpled: collar_outline NEXT), the stand too tall at CF. Hangs: local config ~/.config/hifipushie/local.env. Full suite: run once overnight.
