@@ -11,14 +11,16 @@ STEP 2 (garment_plan "style"): `traces` + `body_marks`.
               sharply: they must stay corners], source}]
   body_marks [{view, at: {landmark: [u,v]}, source}]  landmarks = MARKS (the body's own, .R mirrors .L; a "_z" height
               takes v only). They place the photo's figure on the body: u = u0 + a/s, v = v0 + b/s (a, b mm in the
-              view plane). The scale s (mm per px) is the view's step-0 `scale` if given (one mark then places it), else
-              fit from the marks (least squares, needs two marks apart). Which was used is said in every row.
+              view plane). The scale s (mm per px) is fit from the marks (least squares; two marks > 50 mm apart): the
+              BODY is the ruler, since the build is compared on it; step 0's view `scale` (a guess at the real garment's
+              size) only places a view with one mark, and is reported beside the fit when it disagrees by > SCALE_AGREE.
+              Which was used is said in every row, with the marks' own residual.
 STEP 6 (chain_structure.check, rows "outline:<id>"): the build projected orthographically along the view (front: from
   -Y, a = x; back: from +Y, a = -x; side: from +X, a = y; b = -z). The matching edge is found from the trace's `what`:
   KINDS names the pieces (by role) whose BORDER (the mesh's free edges: hem, front edges, a collar's top...) can make it,
   only those facing the camera where the kind says so; of those border loops the points whose nearest place on the trace
   is a perpendicular foot inside a segment (not past an end or a corner's wedge: a side seam or CF edge rising from the
-  hem is another edge) and within CAP_X tolerances are the built outline. Compared both ways (trace -> built, built ->
+  hem is another edge), running within TANGENT_DEG of the trace there and within CAP_X tolerances are the built outline. Compared both ways (trace -> built, built ->
   trace): p95 and max in mm, placed by the body, and its SHAPE after the best shift (the shift reported: a garment set
   too long / short is a pattern length, not a shape); the worst place (the trace point, in px and along the trace, the
   build's piece and the pattern edge there: step 4's declarations); each traced corner: the build turns >= CORNER_KEEP of
@@ -50,9 +52,12 @@ MARKS = ("hps", "shoulder", "neck_side", "bust", "elbow", "wrist", "cf_neck", "c
          "high_hip_z", "hips_z", "seat_z", "crotch_z")
 MIN_POINTS = 4
 TRACE_PX = 3.0      # px: a traced line sits within ~3 px of a photo's edge (its anti-aliased blur + the tracer's hand)
+TANGENT_DEG = 60.0  # a built edge crossing the trace steeper than this is another edge meeting it (a CF edge off a hem)
 CAP_X = 3.0         # built points farther than max(trace->built max, CAP_X tol) from the trace are another edge
 SHIFT_X = 2.0       # the outline placed by the body within SHIFT_X tol + the marks' residual (else: lengths / placing)
 CORNER_KEEP = 0.5   # a traced corner is kept when the build turns >= half the traced turn within one tol of it
+EDGE_NEAR_M = 0.015  # a place farther than this from every declared edge on the flat is named by the draft's points
+SCALE_AGREE = 0.05  # the step-0 scale and the body marks' own fit disagreeing by more: said in the row (placing unsure)
 CORNER_MIN_DEG = 30.0  # a listed corner turning less than this in the trace is not a corner (said, not judged)
 VIEW_AXES = {"front": ((0, 1.0), None), "back": ((0, -1.0), None), "side": ((1, 1.0), None)}  # (a = sign * X[axis])
 
@@ -165,23 +170,24 @@ def placement(view: dict, marks: dict, at: dict) -> dict:
     given = (view.get("scale") or {}).get("mm_per_px")
     A = np.array([[1.0 if i == 0 else 0.0, 1.0 if i == 1 else 0.0, mm] for _, i, mm in rows])
     y = np.array([px for px, _, _ in rows])
-    if given:
-        k = 1.0 / float(given)
-        sol = np.linalg.lstsq(A[:, :2], y - k * A[:, 2], rcond=None)[0]
-        u0, v0, how = sol[0], sol[1], f"scale {given} mm/px from step 0 ({(view.get('scale') or {}).get('from', '')}); placed by {', '.join(marks)}"
-    else:
-        sol = np.linalg.lstsq(A, y, rcond=None)[0]
-        u0, v0, k = sol
+    spread = any(np.ptp([mm for _, i, mm in rows if i == ax] or [0]) > 50 for ax in (0, 1))
+    fit = np.linalg.lstsq(A, y, rcond=None)[0] if spread and len(rows) >= 3 else None
+    if fit is not None and fit[2] > 0:  # (the BODY is the ruler: the build is compared on it)
+        u0, v0, k = fit
         how = f"scale fit from the body marks {', '.join(marks)}"
+    elif given:
+        k = 1.0 / float(given)
+        u0, v0 = np.linalg.lstsq(A[:, :2], y - k * A[:, 2], rcond=None)[0]
+        how = (f"scale {given} mm/px from step 0 ({(view.get('scale') or {}).get('from', '')}); placed by "
+               f"{', '.join(marks)} (too few marks apart to fit a scale)")
+    else:
+        raise ValueError("the body marks don't fit a scale (two landmarks > 50 mm apart, or step 0's view scale)")
     if k <= 0:
         raise ValueError("body marks give a negative scale: marks on the wrong sides")
     res = (A[:, :2] @ [u0, v0] + k * A[:, 2] - y) / k
     out = dict(s=1.0 / k, u0=float(u0), v0=float(v0), how=how, residual_mm=round(float(np.sqrt(np.mean(res ** 2))), 1))
-    if given and len({i for _, i, _ in rows}) == 2 and len(rows) >= 4:  # (a cross-check: the scale the marks alone give)
-        try:
-            out["marks_mm_per_px"] = round(float(1.0 / np.linalg.lstsq(A, y, rcond=None)[0][2]), 3)
-        except (ValueError, ZeroDivisionError):
-            pass
+    if given and fit is not None:
+        out["step0_mm_per_px"] = float(given)
     return out
 
 
@@ -286,6 +292,10 @@ def compare(trace_mm, arcs: list, edge_mm: float, mm_per_px: float, corners=(), 
     tol = TRACE_PX * mm_per_px + edge_mm
     T, sT = _resample(trace_mm, max(min(edge_mm, tol) / 2, 0.5))
     C = np.concatenate(arcs) if arcs else np.zeros((0, 2))
+    tan = np.concatenate([np.gradient(np.asarray(a, float), axis=0) for a in arcs]) if arcs else np.zeros((0, 2))
+    tan /= np.maximum(np.linalg.norm(tan, axis=1, keepdims=True), 1e-9)
+    seg = np.diff(T, axis=0)
+    seg /= np.maximum(np.linalg.norm(seg, axis=1, keepdims=True), 1e-9)
     out = dict(tol_mm=round(tol, 1), edge_mm=round(edge_mm, 1), trace_mm=round(float(sT[-1]), 1))
     if not len(C):
         return dict(out, status="UNMEASURED", why="no border of the matching pieces near the trace")
@@ -294,8 +304,9 @@ def compare(trace_mm, arcs: list, edge_mm: float, mm_per_px: float, corners=(), 
         Cs = C + shift
         d1 = np.min(np.linalg.norm(T[:, None] - Cs[None], axis=2), 1)
         cap = max(float(d1.max()), CAP_X * tol)
-        d2, _, _, inner = _foot(Cs, T)
-        keep = inner & (d2 <= cap)
+        d2, j, _, inner = _foot(Cs, T)
+        along = np.abs((tan * seg[j]).sum(1)) >= np.cos(np.radians(TANGENT_DEG))
+        keep = inner & (d2 <= cap) & along
         return d1, d2[keep], keep, None
     shift = np.zeros(2)
     for _ in range(8):  # (the best shift: built points pulled onto their trace feet, then the trace's onto them)
@@ -311,6 +322,7 @@ def compare(trace_mm, arcs: list, edge_mm: float, mm_per_px: float, corners=(), 
                p95_mm=round(float(np.percentile(alls, 95)), 1), max_mm=round(float(alls.max()), 1),
                shift_mm=[round(float(x), 1) for x in shift], worst_mm=T[w].round(1).tolist(),
                worst_along=round(float(sT[w] / sT[-1]), 2), built_kept=int(keep.sum()),
+               kept_masks=np.split(keep, np.cumsum([len(a) for a in arcs])[:-1]),
                built_near_worst=(C + shift)[int(np.argmin(np.linalg.norm(C + shift - T[w], axis=1)))].round(1).tolist())
     shift_lim = SHIFT_X * tol + residual_mm
     cs, Tm = [], np.asarray(trace_mm, float)
@@ -320,16 +332,15 @@ def compare(trace_mm, arcs: list, edge_mm: float, mm_per_px: float, corners=(), 
         if tturn < CORNER_MIN_DEG:
             cs.append(dict(index=ci, traced_deg=round(tturn, 0), kept=None, why=f"turns < {CORNER_MIN_DEG:.0f} deg in the trace"))
             continue
-        best, at = 0.0, None
+        best, gap = None, min(float(np.min(np.linalg.norm(a + shift - Tm[ci], axis=1))) for a in arcs)
         for a in arcs:
             A = a + shift
-            near = np.where(np.linalg.norm(A - Tm[ci], axis=1) <= tol)[0]
-            for i in near:
+            for i in np.where(np.linalg.norm(A - Tm[ci], axis=1) <= tol)[0]:
                 t_ = turning_deg(A, int(i), win)
-                if t_ > best:
-                    best, at = t_, A[i]
-        cs.append(dict(index=ci, traced_deg=round(tturn, 0), built_deg=round(best, 0),
-                       kept=bool(best >= CORNER_KEEP * tturn), at_mm=Tm[ci].round(1).tolist()))
+                best = t_ if best is None or t_ > best else best
+        cs.append(dict(index=ci, traced_deg=round(tturn, 0), built_deg=None if best is None else round(best, 0),
+                       nearest_mm=round(gap, 1), kept=bool(best is not None and best >= CORNER_KEEP * tturn),
+                       at_mm=Tm[ci].round(1).tolist()))
     out["corners"] = cs
     fails = []
     if out["p95_mm"] > tol:
@@ -340,7 +351,7 @@ def compare(trace_mm, arcs: list, edge_mm: float, mm_per_px: float, corners=(), 
         fails.append(f"placed {np.linalg.norm(shift):.0f} mm off (> {shift_lim:.0f} mm)")
     lost = [c for c in cs if c["kept"] is False]
     if lost:
-        fails.append(f"{len(lost)} of {sum(c['kept'] is not None for c in cs)} corners rounded off")
+        fails.append(f"{len(lost)} of {sum(c['kept'] is not None for c in cs)} corners lost")
     out.update(status="FAIL" if fails else "PASS", fails=fails, shift_limit_mm=round(shift_lim, 1))
     return out
 
@@ -368,6 +379,11 @@ def pattern_edge(M, vid: int, draft_dir) -> str | None:
         dd = _foot(uv[None], P)[0][0]
         if dd < best[0]:
             best = (dd, f"{name}:{en}")
+    if best[0] > EDGE_NEAR_M and pts:  # (no declared edge there: name the draft's two points the place lies between)
+        Q = {k: np.array([(-1 if pc.get("mirror") else 1) * x / 1000, -y / 1000]) for k, (x, y) in pts.items()
+             if isinstance(x, (int, float)) and isinstance(y, (int, float))}
+        near = sorted(Q, key=lambda k: float(np.linalg.norm(Q[k] - uv)))[:2]
+        return f"{name}: the undeclared edge between its points {' and '.join(near)}"
     return best[1]
 
 
@@ -428,6 +444,9 @@ def rows(X, M, at: dict, plan: dict | None, measured: list | None = None) -> lis
         pl = m.get("placement") or {}
         src = (f"step 2 trace {t['id']} ({t['what']}, {t.get('source', '')}); placed: {pl.get('how', '-')}; tol = "
                f"{TRACE_PX:.0f} px x {pl.get('s', 0):.2f} mm/px + the border edge {r.get('edge_mm', '?')} mm (C299)")
+        if pl.get("step0_mm_per_px") and abs(pl["step0_mm_per_px"] / pl["s"] - 1) > SCALE_AGREE:
+            src += (f"; NOTE: step 0's scale {pl['step0_mm_per_px']} mm/px is {pl['step0_mm_per_px'] / pl['s'] - 1:+.0%} off "
+                    f"the body marks' {pl['s']:.3f}: the photo's figure is not this body's size (step 0's scale is unused)")
         row = dict(id=rid, stage=6, status=r["status"], source=src, measure="structure_outline (the build, projected)",
                    ref=f"shape p95 <= {r.get('tol_mm')} mm, max <= {2 * (r.get('tol_mm') or 0):.1f}, placed within "
                        f"{r.get('shift_limit_mm')} mm, corners kept (>= {CORNER_KEEP:.0%} of the traced turn)",
@@ -441,8 +460,13 @@ def rows(X, M, at: dict, plan: dict | None, measured: list | None = None) -> lis
                        change=f"redraw the pattern edge {r.get('worst_edge') or r.get('worst_piece')} so its outline "
                               f"follows the trace: worst {r['max_mm']} mm at trace px {r.get('worst_px')} "
                               f"({r['worst_along']:.0%} along {t['id']})"
-                              + (f"; corners rounded off at trace points {[c['index'] for c in cs]} "
-                                 f"(built {[c['built_deg'] for c in cs]} deg vs traced {[c['traced_deg'] for c in cs]})"
-                                 if cs else "") + " (back to step 4: draft_pattern)")
+                              + (f"; corners lost at trace points {[c['index'] for c in cs]} (traced "
+                                 f"{[c['traced_deg'] for c in cs]} deg; built turn {[c['built_deg'] for c in cs]} deg, "
+                                 f"None = no built outline within {r['tol_mm']} mm: nearest {[c['nearest_mm'] for c in cs]} mm)"
+                                 if cs else "")
+                              + (f"; the whole edge sits {np.linalg.norm(r['shift_mm']):.0f} mm off where the body puts it "
+                                 f"(shift {r['shift_mm']} mm: the pattern's length / width to this edge)"
+                                 if any(f.startswith("placed") for f in r["fails"]) else "")
+                              + " (back to step 4: draft_pattern)")
         out.append(row)
     return out

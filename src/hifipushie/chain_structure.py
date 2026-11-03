@@ -260,6 +260,8 @@ def check(X, M, bV, bT, at: dict, wear: dict, plan: dict | None = None, waive: d
     its, notes = items(M, plan)
     _plan_reads(X, M, r, its, plan)
     rows = gr.checklist_rows(its, r, STAGE)
+    from . import structure_outline as so  # (T15, C299: the step-2 traces vs the build's outline in that view)
+    outline = so.rows(X, M, at, plan) if ((plan or {}).get("style") or {}).get("traces") else []
     by = {f"checklist:{it['id']}": it for it in its}
     for row in rows:
         cid = row["id"]
@@ -273,6 +275,10 @@ def check(X, M, bV, bT, at: dict, wear: dict, plan: dict | None = None, waive: d
             row["change"] = it["change"]
             if (waive or {}).get(row["id"]):
                 row["waived"] = waive[row["id"]]
+    for row in outline:
+        if row["status"] in ("FAIL", "UNMEASURED") and (waive or {}).get(row["id"]):
+            row["waived"] = waive[row["id"]]
+    rows += outline
     rows.sort(key=lambda x: (x["status"] not in ("FAIL", "UNMEASURED"), x["stage"]))
     waits = [x["id"] for x in rows if x["status"] == "LATER"]
     out = {"verdict": cc.verdict(rows, waive), "rows": rows, "reads": r, "notes": notes}
@@ -295,7 +301,7 @@ def load_plan(model: str, garment: str) -> dict | None:
         return None
     if st is None:
         return None
-    return {k: (st.get(n) or {}).get("output") for k, n in (("read", "0"), ("parts", "1"), ("style", "2"))}
+    return {k: (st.get(n) or {}).get("output") for k, n in (("read", "0"), ("parts", "1"), ("style", "2"), ("draft", "4"))}
 
 
 def row_line(r: dict) -> str:
