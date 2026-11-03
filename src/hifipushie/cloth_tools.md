@@ -120,13 +120,13 @@ record's look folder, and step 3 of the record is written (refused until step 2 
 "back"}, "chest"], garment="hussar")`.
 
 ### `garment_plan`
-`garment_plan(name, garment, step, plan, look=True)`: steps 0, 1, 2 of the garment record (src/hifipushie/garment_plan.py:
-its docstring is the full form), for ANY garment. You are the intelligence: look at the picture, know the construction;
+`garment_plan(name, garment, step, plan, look=True)`: steps 0, 1, 2 of the garment record (every
+refusal ends with that step's full form), for ANY garment. You are the intelligence: look at the picture, know the construction;
 the tool is the structure, the refusals and the look. step="read" (0): kind; views [{image, view, scale?}]; cloth {name:
 {fabric (a garment_kb fabric fills gsm / thickness / bending length) or the numbers + source, stiffness, colour [r,g,b] or
 {at: [[u, v]], view} (sampled), print {kind, repeat_mm, source}, grain}}; fit {view, landmarks {name: v | {at, from: how inferred}}, widths [{at (a landmark, or a garment height: 'hem'), garment [[u,v],[u,v]], body, body_from}] at that row, heights [{name, at: v, on: torso|leg|arm}]} (RATIOS on the picture, applied to the model; seen edges measured on the picture; landmarks = the points the landmark card draws, checked against each other; across and up-and-down scales agree, or scale_why). step="parts" (1):
 pieces {name: {what, cloth, seen: seen|occluded|inferred, from (the convention, unless seen), build: full|simplified|omit,
-why, stiff, layer, where {view, outline}}}, details {name: {what, on, cloth, follows ["piece:edge"] (a trim along edges), count, seen, build, where {view, at | outline |
+why, stiff, layer, where {view, outline}, edges {edge: [i0, i1] spans tiling the outline} | [names]}}, details {name: {what, on, cloth, follows ["piece:edge"] (a trim along edges), count, seen, build, where {view, at | outline |
 outlines (one per instance)}}},
 closures {name: {what, pieces, details}}, seams [{a: "piece:edge", b, kind, length: {body: [names]} | {style: {ratio |
 value_mm, of, source}}}]; the answer lists the body measurements step 3 must take. step="style" (2): state {closure:

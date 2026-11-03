@@ -24,11 +24,14 @@ STEP 1 "parts": {pieces, details, closures, seams, over?, define?}
   pieces   {name: {what, cloth (a step-0 cloth), seen: seen|occluded|inferred, from (convention; needed unless seen),
             build: full|simplified|omit, why (unless full), stiff: bool, layer: int (0 = next to the body / the garment
             under it), where?: {view, outline: [[u,v],..]} (needed when seen), hang?: fitted|draped (T13: hangs free
-            below where it is held; its fall judged on the hang), held?: [its edges built on the body] (draped only)}}
+            below where it is held; its fall judged on the hang), held?: [its edges built on the body] (draped only),
+            edges: {edge: [i0, i1]} spans of its outline's points that TILE it (each segment in one edge), or [names]
+            for a piece with no outline (garment_parts_edges.py, C343)}}
   details  {name: {what, on: [pieces], cloth? (braid, zip tape...), follows?: ["piece:edge"] (a trim along edges), count?, seen, from?, build, why?, where?: {view, at: [[u,v],..] | outline | outlines}}}
   closures {name: {what, pieces: [pieces it joins; one for a band closing on itself], details?: [details]}}
-  seams    [{a: "piece:edge", b: "piece:edge", kind?: seam|fold|set_in|topstitch, length: {body: [measurement names]} |
-            {style: {ratio | value_mm, of?, source}}}]
+  seams    [{a: "piece:edge", b: "piece:edge" (declared edges), kind?: seam|fold|set_in|topstitch|bound, length: {body:
+            [measurement names]} | {style: {ratio | value_mm, of?, source}}, why?}] (a body length is checked against
+            its edge as drawn at the step-0 scale; why keeps one the check refuses)
 STEP 2 "style": {state, bends, pose, rows, layers?, drape?}
   drape  {piece: {falls: down|up, source}}  (T13: a step-1 hang "draped" piece's start: a hood worn up falls up; chain_drape)
   layers {mode: visible|full, why}  (worn over another garment: visible (default) keeps the garment under where it is seen;
@@ -175,7 +178,25 @@ def _seen(d: dict, w: str, nviews: int, bad: list):
     _where(d, w, nviews, bad)
 
 
-def check_parts(p: dict, read: dict) -> dict:
+def _list(x, w: str, what: str, bad: list) -> list:
+    """A list field: a bare string is refused as such (t s1-1: "collar" came back spelled 'c, o, l, l, a, r')."""
+    if x is None:
+        return []
+    if isinstance(x, list):
+        return x
+    bad.append(f"{w}: a LIST of {what}, e.g. [{x!r}]" if isinstance(x, str) else f"{w}: a list of {what}")
+    return []
+
+
+def form(sid: str) -> str:
+    """The step's full form, from this module's docstring (a blind agent can't read the source: t s1-1)."""
+    doc = __doc__ or ""
+    i = doc.find(f"STEP {sid} ")
+    j = doc.find("STEP ", i + 6) if i >= 0 else -1
+    return "  the form:\n" + (doc[i:j if j > 0 else None].rstrip() if i >= 0 else "")
+
+
+def check_parts(p: dict, read: dict, body=None) -> dict:
     bad, p = [], json.loads(json.dumps(p))
     nv, cloths = len(read.get("views") or []), set(read.get("cloth") or {})
     pieces, details = p.get("pieces") or {}, p.get("details") or {}
@@ -204,13 +225,13 @@ def check_parts(p: dict, read: dict) -> dict:
             continue
         if not str(x.get("what") or "").strip():
             bad.append(f"{w}.what: what it is (button, braid, frogging, zip, tab, pocket, epaulette...)")
-        on = x.get("on") or []
+        on = _list(x.get("on"), f"{w}.on", "the pieces it sits on", bad)
         miss = [q for q in on if q not in pieces]
-        if not on or miss:
+        if (not on or miss) and not isinstance(x.get("on"), str):
             bad.append(f"{w}.on: the pieces it sits on; not in the inventory: {', '.join(map(str, miss)) or '(none given)'}")
         if x.get("cloth") is not None and x["cloth"] not in cloths:
             bad.append(f"{w}.cloth {x['cloth']!r}: not a step-0 cloth ({', '.join(sorted(cloths))})")
-        fl = x.get("follows") or []
+        fl = _list(x.get("follows"), f"{w}.follows", "'piece:edge'", bad)
         badf = [e for e in fl if not (isinstance(e, str) and ":" in e and e.split(":")[0] in pieces)]
         if not isinstance(fl, list) or badf:
             bad.append(f"{w}.follows: the 'piece:edge' list a trim runs along; not in the inventory: {', '.join(map(str, badf))}")
@@ -219,8 +240,9 @@ def check_parts(p: dict, read: dict) -> dict:
         _seen(x, w, nv, bad)
     for n, x in (closures.items() if isinstance(closures, dict) else []):
         w = f"closures.{n}"
-        ps = (x or {}).get("pieces") or []
-        miss = [q for q in ps if q not in pieces] + [d for d in (x or {}).get("details") or [] if d not in details]
+        ps = _list((x or {}).get("pieces"), f"{w}.pieces", "the pieces it joins", bad)
+        dts = _list((x or {}).get("details"), f"{w}.details", "its details", bad)
+        miss = [q for q in ps if q not in pieces] + [d for d in dts if d not in details]
         if not ps or miss:
             bad.append(f"{w}: pieces = the pieces it joins (one: a band closing on itself), details = its buttons / "
                        f"zip...; not in the inventory: {', '.join(map(str, miss)) or '(no pieces)'}")
@@ -264,9 +286,23 @@ def check_parts(p: dict, read: dict) -> dict:
         define = {}
     bad += [f"seams length.body: {e}" for e in bt.name_errors(sorted(needs), define)]
     cd.check_parts(pieces, bad)  # (T13: hang fitted | draped, held edges)
+    from . import garment_parts_edges as pe  # (every edge named, a seen piece's as spans of its outline: C343)
+    edges = pe.check(pieces, bad)
+    for i, s in enumerate(seams):
+        if isinstance(s, dict):
+            pe.refs(f"seams[{i}]", [s.get("a"), s.get("b")], edges, bad)
+    for n, x in (details.items() if isinstance(details, dict) else []):
+        if isinstance(x, dict) and isinstance(x.get("follows"), list):
+            pe.refs(f"details.{n}.follows", x["follows"], edges, bad)
+    fr = read.get("fit_read") or {}
+    sc = fr.get("scale") or {}
+    scale = (sc.get("across_mm_per_px", 0) + sc.get("up_mm_per_px", 0)) / 2 if sc else None
+    b = body() if callable(body) else body
+    mm = dict(getattr(getattr(b, "tape", None), "R", {}).get("mm") or {}) if b is not None else {}
+    p["seam_lengths_checked"] = pe.lengths(seams, edges, fr.get("view", 0), scale, mm, bad)
     bad += pixel_errors(p, read.get("views"))
     if bad:
-        raise PlanRefused("step 1 (parts) refused:\n  " + "\n  ".join(bad))
+        raise PlanRefused("step 1 (parts) refused:\n  " + "\n  ".join(bad) + "\n" + form("1"))
     p["measurements"] = sorted(needs)  # (what step 3 must measure, by name)
     return p
 
@@ -364,7 +400,7 @@ def write(model: str, garment: str, step: str, plan: dict, look: bool = True) ->
         held[:] = held or [gf.body_for(model)]
         return held[0]
     try:
-        p = check_read(plan, body=body) if sid == "0" else check_parts(plan, out["0"]) if sid == "1" else \
+        p = check_read(plan, body=body) if sid == "0" else check_parts(plan, out["0"], body) if sid == "1" else \
             check_style(plan, out["0"], out["1"])
     except PlanRefused as e:
         if sid == "0" and "fit" in str(e):  # (the model's landmarks, drawn and in words, before the marks: C338)

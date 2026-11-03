@@ -40,11 +40,12 @@ def _read(home):
 
 def _parts():
     return {"pieces": {"front.L": {"what": "front", "cloth": "shell", "seen": "seen", "build": "full", "stiff": False,
-                                   "layer": 1, "where": {"view": 0, "outline": [[100, 50], [150, 50], [150, 250], [100, 250]]}},
+                                   "layer": 1, "edges": {"shoulder": [0, 1], "side": [1, 2], "hem": [2, 3], "cf": [3, 0]}, "where": {"view": 0, "outline": [[100, 50], [150, 50], [150, 250], [100, 250]]}},
                        "front.R": {"what": "front", "cloth": "shell", "seen": "seen", "build": "full", "stiff": False,
-                                   "layer": 1, "where": {"view": 0, "outline": [[50, 50], [100, 50], [100, 250], [50, 250]]}},
+                                   "layer": 1, "edges": {"shoulder": [0, 1], "side": [1, 2], "hem": [2, 3], "cf": [3, 0]}, "where": {"view": 0, "outline": [[50, 50], [100, 50], [100, 250], [50, 250]]}},
                        "back": {"what": "back", "cloth": "shell", "seen": "occluded", "from": "a waistcoat back is one piece",
-                                "build": "simplified", "why": "never seen", "stiff": False, "layer": 1}},
+                                "build": "simplified", "why": "never seen", "stiff": False, "layer": 1,
+                                "edges": ["side.L", "side.R", "shoulder.L", "shoulder.R", "hem", "neck"]}},
             "details": {"buttons": {"what": "buttons", "on": ["front.R"], "count": 5, "seen": "seen", "build": "full",
                                     "where": {"view": 0, "at": [[100, 80], [100, 120]]}},
                         "edge": {"what": "binding", "on": ["front.L"], "cloth": "trim", "follows": ["front.L:cf"],
@@ -391,3 +392,36 @@ def test_an_inferred_landmark_hangs_off_a_seen_one_at_the_pictures_scale(home): 
     _refused(lambda: gp.write("m", "w", "read", b, look=False), "fit.landmarks.waist (inferred)", "from the seen chest")
     b["fit"]["landmarks"]["waist"]["why"] = "test"
     assert gp.write("m", "w", "read", b, look=False)
+
+
+def test_edges_are_named_spans_that_tile_the_outline(home):  # (t s1-1: free-text edges, seams of any length)
+    gp.write("m", "w", "read", _read(home), look=False)
+    b = _parts()
+    b["pieces"]["front.L"]["edges"] = {"shoulder": [0, 1], "side": [1, 2], "cf": [3, 0]}  # (segment 2 -> 3 in none)
+    _refused(lambda: gp.write("m", "w", "parts", b, look=False), "pieces.front.L.edges: the edges must tile", "in none: segments 2")
+    b = _parts()
+    b["seams"][0]["a"] = "front.L:hindarm"
+    _refused(lambda: gp.write("m", "w", "parts", b, look=False), "front.L has no edge 'hindarm'")
+    b = _parts()
+    b["details"]["buttons"]["on"] = "front.R"
+    e = _refused(lambda: gp.write("m", "w", "parts", b, look=False), "details.buttons.on: a LIST", "the form:")
+    assert "f, r, o" not in e and "edges: {edge: [i0, i1]}" in e
+    b = _parts()
+    b["pieces"]["back"].pop("edges")
+    _refused(lambda: gp.write("m", "w", "parts", b, look=False), "pieces.back.edges: name its edges ([names]")
+
+
+def test_a_seam_length_far_from_its_edge_as_drawn_is_refused():
+    from hifipushie import garment_parts_edges as pe
+    edges = {"front": {"shoulder": (0, [[0, 0], [100, 0]])}, "back": {"shoulder": None}}
+    seam = [{"a": "front:shoulder", "b": "back:shoulder", "length": {"body": ["shoulderToShoulder"]}}]
+    bad = []
+    pe.lengths(seam, edges, 0, 1.2, {"shoulderToShoulder": 450.0}, bad)  # (120 mm drawn, 450 on the body: 3.8x)
+    assert bad and "3.8x" in bad[0]
+    bad = []
+    pe.lengths(seam, edges, 0, 1.2, {"shoulderToShoulder": 150.0}, bad)
+    assert not bad
+    seam[0]["why"] = "test"
+    bad = []
+    pe.lengths(seam, edges, 0, 1.2, {"shoulderToShoulder": 450.0}, bad)
+    assert not bad
