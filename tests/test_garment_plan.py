@@ -43,7 +43,8 @@ def _parts():
             "seams": [{"a": "front.L:side", "b": "back:side.L", "length": {"body": ["armpit_to_waist"]}},
                       {"a": "front.R:side", "b": "back:side.R", "length": {"body": ["armpit_to_waist"]}},
                       {"a": "front.L:shoulder", "b": "back:shoulder.L", "length": {"style": {"ratio": 0.5, "of": "x",
-                                                                                              "source": "front view"}}}]}
+                                                                                              "source": "front view"}}}],
+            "define": {"armpit_to_waist": "length"}}
 
 
 def _style():
@@ -133,11 +134,16 @@ def test_style_written_and_the_record_points_at_the_tool(home):
     gp.write("m", "w", "parts", _parts(), look=False)
     r = gp.write("m", "w", "style", _style())
     assert r["look"] and gr.states(gr.load("m", "w"))["2"]["ready"]
-    # a changed reading makes the later steps stale
+    # a changed reading the later steps still validate against carries them forward (F2); one they don't makes them stale
     rd = _read(home)
     rd["kind"] = "a waistcoat, longer"
     gp.write("m", "w", "read", rd, look=False)
-    assert gr.states(gr.load("m", "w"))["1"]["stale"]
+    s = gr.states(gr.load("m", "w"))
+    assert s["1"]["ready"] and s["2"]["ready"]
+    rd["cloth"].pop("trim")  # step 1's binding is cut from it
+    gp.write("m", "w", "read", rd, look=False)
+    s = gr.states(gr.load("m", "w"))
+    assert s["1"]["stale"] and s["2"]["stale"] and "trim" in s["1"]["why"]
 
 
 def test_the_tool_through_call_tool(home):
@@ -163,3 +169,54 @@ def test_style_traces_refused_by_name_then_written_and_drawn(home):
     _refused(lambda: gp.write("m", "w", "style", st), "body_marks: view 0 needs two landmarks")
     r = gp.write("m", "w", "style", dict(_style(), traces=[tr], body_marks=marks))
     assert r["look"] and "trace hem (hem) on view 0: 4 points" in gp.text("m", "w", r)
+
+
+# ---------------------------------------------------------------- fix run F2 (t8 findings 4, 6, 7)
+def test_parts_refuses_measurement_names_the_tape_cannot_take(home):
+    gp.write("m", "g", "read", _read(home), look=False)
+    p = _parts()
+    p["seams"][0]["length"]["body"] = ["acrossBack", "chest"]
+    with pytest.raises(gp.PlanRefused, match=r"'acrossBack' is not a measurement body_tape takes .*define"):
+        gp.write("m", "g", "parts", p, look=False)
+    p["define"]["acrossBack"] = "arc"  # defined by kind: taken
+    r = gp.write("m", "g", "parts", p, look=False)
+    assert {"acrossBack", "chest", "armpit_to_waist"} <= set(r["plan"]["measurements"])
+    p["define"]["acrossBack"] = "freesewing"
+    with pytest.raises(gp.PlanRefused, match=r"define: \{measurement name: kind\}"):
+        gp.write("m", "g", "parts", p, look=False)
+
+
+def test_coordinates_are_pixels_and_0_1_values_are_refused(home):
+    gp.write("m", "g", "read", _read(home), look=False)
+    p = _parts()
+    p["pieces"]["front.L"]["where"]["outline"] = [[0.5, 0.2], [0.75, 0.2], [0.75, 0.8]]
+    with pytest.raises(gp.PlanRefused, match=r"pieces.front.L.where.outline: .*PIXELS of view 0's image \(200 x 300 px"):
+        gp.write("m", "g", "parts", p, look=False)
+    r = gp.write("m", "g", "parts", _parts(), look=False)
+    assert "PIXELS of the named view" in gp.text("m", "g", r)
+
+
+def test_a_parts_change_carries_a_still_valid_style_and_tape_forward(home):
+    from hifipushie import garment_record as gr
+    gp.write("m", "g", "read", _read(home), look=False)
+    gp.write("m", "g", "parts", _parts(), look=False)
+    gp.write("m", "g", "style", _style(), look=False)
+    gr.write("m", "g", "3", "done", output={"measurements": [{"name": "armpit_to_waist", "mm": 200.0}]})
+    d2, d3 = (gr.load("m", "g")["steps"][k]["digest"] for k in ("2", "3"))
+    p = _parts()
+    p["pieces"]["back"]["why"] = "never seen, reworded"  # a parts change that leaves style + tape valid
+    r = gp.write("m", "g", "parts", p, look=False)
+    assert any("step 2 (style) carried forward" in x for x in r["carried"]), r["carried"]
+    s = gr.states(gr.load("m", "g"))
+    assert s["2"]["ready"] and s["3"]["ready"] and not s["2"]["stale"] and not s["3"]["stale"]
+    assert [gr.load("m", "g")["steps"][k]["digest"] for k in ("2", "3")] == [d2, d3]  # (digests, approvals kept)
+    p["seams"][1]["length"]["body"] = ["armpit_to_waist", "chest"]  # step 3 hasn't taken chest: stale, said why
+    gp.write("m", "g", "parts", p, look=False)
+    s = gr.states(gr.load("m", "g"))
+    assert s["2"]["ready"] and s["3"]["stale"] and "hasn't taken: chest" in s["3"]["why"]
+    assert "hasn't taken: chest" in gr.answer("m", "g")
+    p["closures"] = {}  # step 2's state names a closure step 1 no longer has: style stale, with the refusal
+    p["details"]["buttons"]["what"] = "buttons"
+    gp.write("m", "g", "parts", p, look=False)
+    s = gr.states(gr.load("m", "g"))
+    assert s["2"]["stale"] and "step 2 (style) refused" in s["2"]["why"]

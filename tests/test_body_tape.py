@@ -133,3 +133,13 @@ def test_tool_writes_step3(tmp_path, monkeypatch):
     # no measurements: the landmark list
     txt = server.body_tape("wf_simon")
     assert "shoulder_point.L" in txt and "levels:" in txt and "joints" in txt
+
+
+def test_takes_is_every_name_tailor_measures():
+    """body_tape.TAKES (garment_plan step 1's vocabulary, F2) is exactly tailor.measure's FreeSewing-named keys."""
+    import re
+    from pathlib import Path
+    from hifipushie import body_tape as bt, tailor
+    src = Path(tailor.__file__).read_text()
+    assert set(bt.TAKES) == set(re.findall(r'mm\["([A-Za-z]+)"\]', src))
+    assert "closest: hpsToShoulder" in bt.name_errors(["hpsToShoulders"])[0] and not bt.name_errors(["neck", "x"], {"x": "arc"})

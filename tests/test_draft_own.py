@@ -293,3 +293,52 @@ def test_shape_stand_takes_the_neckline_drop_seen_not_the_flat():
     ref2 = dst.reference({"read": plan["read"], "style": dict(plan["style"], traces=plan["style"]["traces"][:1])},
                          dict(_AT, cf_neck=[0.0, -0.08, 1.48]))
     assert abs(ref2["D"] - 20) < 0.5 and "cf_neck" in ref2["D_how"], ref2
+
+
+# ---------------------------------------------------------------- fix run F2 (t8 findings 3, 4, 5)
+def test_pattern_parts_lists_a_designs_parts_points_and_outline_order(home):
+    from hifipushie import pattern_parts as pp
+    _, txt = pp.run("brian")
+    assert "measurements it needs" in txt and "waistToArmpit" in txt and "brian.base HIDDEN" in txt
+    assert "brian.back: from brian.base" in txt and "seam runs: cbNeck >" in txt and "DEFAULT values" in txt
+    look, one = pp.run("brian", part="brian.front", look_part=True)
+    assert "points (x right, y down, mm): " in one and "cfNeck (" in one and "path seam: cfNeck >" in one
+    assert Path(look).exists()
+    own = pp.inspect(RECT, {"waist": 800.0})  # the agent's own design: its parts, no measurement missing
+    assert not own["missing"] and "test.panel" in own["parts"] and own["parts"]["test.panel"]["paths"]["seam"]["ops"]
+
+
+def test_draft_pattern_names_a_missing_measurement_before_drafting(home):
+    from hifipushie import draft_own as do, draft_own_tool as dot, pattern_parts as pp
+    src = ("import { Design } from '@freesewing/core'\nimport { back } from '@freesewing/brian'\n"
+           "const b = { name: 'my.back', from: back, draft: ({ part }) => part }\nexport default new Design({ parts: [b] })\n")
+    assert "waistToArmpit" in pp.missing(src, {"chest": 1000.0})
+    _record(home)  # step 3 took only the waist
+    with pytest.raises(do.DraftRefused, match=r"needs measurements step 3 hasn't taken: .*waistToArmpit"):
+        dot.run("tm", "g", src, {"pieces": {}})
+
+
+def test_shape_stand_reads_a_folded_stand_whole_and_its_fall_as_a_fall():
+    """t8: a stand cut on the fold, sewn to front:neck and back:neck as two half edges, read as two stands each 'near
+    straight' while its front ends rose; the fall sewn on its top (no role, no roll fold) read as no fall."""
+    import numpy as np
+    s = _stand(HUGS)  # neck edge rising 30 mm at both ends from CB (the middle)
+    n = 21
+    s["names"] = {"fe.m": 0, "sh.m": n // 2 - 3, "cb": n // 2, "sh": n // 2 + 3, "fe": n - 1, "ft": n, "cbt": n + n // 2,
+                  "ft.m": 2 * n - 1}
+    back = _piece("back", [(0, 0), (0.035, -0.015), (0.07, -0.02), (0.07, -0.5), (0.2, -0.5), (0.2, 0)],
+                  {"hps": 0, "cb": 2})
+    fall = _strip("fall", lambda x: 0.0, lambda x: 0.04 + 0.01 * _bowl(x))
+    B = {"pieces": {"front": _neckline(), "back": back, "collar": s, "fall": fall},
+         "seams": [["collar:sh>fe", "front:hps>cf"], ["collar:cb>sh", "back:hps>cb"], ["fall:bl>bm>br", "collar:ft>cbt"]],
+         "edge_arcs": {"front": {"neck": "hps>cf"}, "back": {"neck": "hps>cb"},
+                       "collar": {"bottom": "sh>fe", "bottom_back": "cb>sh", "top": "ft>cbt"},
+                       "fall": {"bottom": "bl>bm>br", "outer": "tl>tm>tr"}}, "folds": []}
+    from hifipushie import draft_shape as ds
+    r = {x["id"]: x for x in ds.rows(B, {"pieces": {}, "stiff": ["collar", "fall"]}, {"pieces": {}})}
+    v = r["shape_stand"]["value"]
+    assert v.count("collar (") == 1 and "fall" not in v.split(";")[0].split(":")[0], v
+    assert "collar (band): neck edge rising (hugs) +30.0 mm" in v, v
+    assert r["shape_fall"]["value"].startswith("fall: outer edge"), r["shape_fall"]
+    assert ds.full_arc(s, ["sh>fe", "cb>sh"]) == "fe.m>cb>fe" and ds.full_arc(s, ["ft>cbt"]) == "ft.m>cbt>ft"
+    assert np.isfinite(ds.rise(s["P"][:n], s["P"][n + n // 2]))

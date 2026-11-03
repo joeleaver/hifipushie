@@ -81,13 +81,37 @@ def _edge_name(B: dict, e: str) -> str:
     return next((k for k, v in (B.get("edge_arcs") or {}).get(p, {}).items() if v == arc), arc)
 
 
+def full_arc(pc: dict, arcs: list) -> str:
+    """ONE arc for a piece's edges sewn to one line (F2, t8: a stand sewn to front:neck AND back:neck as two edges, each
+    half read alone, came out "near straight" at +0.9 mm while its front ends rose 18 mm, and as two stands). The arcs
+    chain end to end; a chain from a point on the mirror line (no "<name>.m") to one with a mirror ("fe" / "fe.m": the
+    half of a piece cut on the fold) is the whole edge "fe.m>cb>fe"."""
+    names = pc.get("names") or {}
+    ends = [(a.split(">")[0], a.split(">")[-1]) for a in arcs]
+    cnt = {}
+    for e in ends:
+        for k in e:
+            cnt[k] = cnt.get(k, 0) + 1
+    tips = [k for k, c in cnt.items() if c == 1] or [ends[0][0], ends[-1][-1]]
+    shared = [k for k, c in cnt.items() if c > 1]
+    a, b = (tips + tips)[:2]
+    if len(tips) == 2 and (f"{a}.m" in names) != (f"{b}.m" in names):
+        edge, axis = (a, b) if f"{a}.m" in names else (b, a)
+        return f"{edge}.m>{axis}>{edge}"
+    if len(arcs) == 1:
+        return arcs[0]
+    return f"{a}>{shared[0]}>{b}" if shared else arcs[0]
+
+
 def stand_rows(B: dict, decl: dict, step1: dict, ref: dict | None = None) -> dict:
     """shape_stand: each stand / band's curve and heights against step 2's collar traces (draft_stand.py, its docstring
-    the derivation); `ref` = draft_stand.reference(plan, at). No trace: INFO, the curve reported, no style assumed."""
+    the derivation); `ref` = draft_stand.reference(plan, at). No trace: INFO, the curve reported, no style assumed.
+    ONE row per piece: all its edges sewn to a neck line read as one neck edge (full_arc), its free edge likewise."""
     from . import draft_stand as dst, pattern
     stiff = set(decl.get("stiff") or [])
     falls = fall_pieces(B, decl, step1)
     out, why, vals = [], [], []
+    cand = {}  # piece -> ([its neck-sewn arcs], [the neck edges they're sewn to])
     for A, Bs in _seam_pairs(B):
         for mine, other in ((A, Bs), (Bs, A)):
             if len(mine) != 1:
@@ -97,26 +121,30 @@ def stand_rows(B: dict, decl: dict, step1: dict, ref: dict | None = None) -> dic
             on_neck = all(_edge_name(B, e) == "neck" and e.split(":", 1)[0] not in stiff for e in other)
             if p in falls or not (role in STAND_ROLES or (p in stiff and on_neck)) or not on_neck:
                 continue
-            pc = B["pieces"][p]
-            idx = pattern.arc_indices(pc, mine[0].split(":", 1)[1])
-            N = pc["P"][idx]
-            top = None
-            for X, Y in _seam_pairs(B):  # a fall sewn to this piece: that edge is the free edge
-                for a, b in ((X, Y), (Y, X)):
-                    if len(a) == 1 and a[0].split(":", 1)[0] == p and a[0] != mine[0] and all(
-                            e.split(":", 1)[0] in falls for e in b):
-                        top = _pts(B, a[0])
-            band = top is not None
-            for k in FREE_NAMES:
-                arc = (B.get("edge_arcs") or {}).get(p, {}).get(k)
-                if top is None and arc:
-                    top = pc["P"][pattern.arc_indices(pc, arc)]
-            drops = sorted(float(np.ptp(_pts(B, e)[:, 1])) for e in other)
-            v, w = dst.check(p, "band" if band else "stand", N, dst._rest(pc, idx), top, drops[-1],
-                             drops[0] if len(drops) > 1 else 0.0, ref)
-            vals.append(v)
-            why += w
-            out.append(p)
+            c = cand.setdefault(p, ([], []))
+            c[0].append(mine[0].split(":", 1)[1])
+            c[1].extend(other)
+    for p, (arcs, other) in cand.items():
+        pc = B["pieces"][p]
+        idx = pattern.arc_indices(pc, full_arc(pc, arcs))
+        N = pc["P"][idx]
+        top = None
+        for X, Y in _seam_pairs(B):  # a fall sewn to this piece: that edge is the free edge
+            for a, b in ((X, Y), (Y, X)):
+                if len(a) == 1 and a[0].split(":", 1)[0] == p and a[0].split(":", 1)[1] not in arcs and all(
+                        e.split(":", 1)[0] in falls for e in b):
+                    top = pc["P"][pattern.arc_indices(pc, full_arc(pc, [a[0].split(":", 1)[1]]))]
+        band = top is not None
+        for k in FREE_NAMES:
+            arc = (B.get("edge_arcs") or {}).get(p, {}).get(k)
+            if top is None and arc:
+                top = pc["P"][pattern.arc_indices(pc, full_arc(pc, [arc]))]
+        drops = sorted(float(np.ptp(_pts(B, e)[:, 1])) for e in other)
+        v, w = dst.check(p, "band" if band else "stand", N, dst._rest(pc, idx), top, drops[-1],
+                         drops[0] if len(drops) > 1 else 0.0, ref)
+        vals.append(v)
+        why += w
+        out.append(p)
     judged = bool(out) and ref is not None and "why" not in ref
     # A VERDICT again on the heights (r-hussar): D is the neckline's drop SEEN, and three builds back the heights (c1's
     # fronts 108 mm, the flat D's ask, built lying out and too tall: collar_height FAIL; r1 / r2's 82 / 48 mm: PASS; T8's
@@ -132,8 +160,25 @@ def stand_rows(B: dict, decl: dict, step1: dict, ref: dict | None = None) -> dic
 
 
 def fall_pieces(B: dict, decl: dict, step1: dict) -> set:
+    """Falls: role collar_fall, a roll fold, or (F2, t8) a piece sewn ONLY to a stand-role / stiff piece's edges other
+    than its neck edge, itself on no neck: a fall sewn on a band's top (it was read as nothing, the band as two stands)."""
     roll = {f.get("piece") for f in B.get("folds") or [] if f.get("kind") == "roll"}
-    return {p for p in B["pieces"] if p in roll or _role(p, decl, step1) in FALL_ROLES}
+    falls = {p for p in B["pieces"] if p in roll or _role(p, decl, step1) in FALL_ROLES}
+    stiff = set(decl.get("stiff") or [])
+    standish = {p for p in B["pieces"] if _role(p, decl, step1) in STAND_ROLES or p in stiff}
+    to, necked = {}, set()
+    for A, Bs in _seam_pairs(B):
+        for mine, other in ((A, Bs), (Bs, A)):
+            for e in mine:
+                to.setdefault(e.split(":", 1)[0], []).extend(other)
+                if _edge_name(B, e) == "neck":
+                    necked.add(e.split(":", 1)[0])
+    for p, other in to.items():
+        if p in falls or p in necked or _role(p, decl, step1) in STAND_ROLES or not other:
+            continue
+        if all(e.split(":", 1)[0] in standish and e.split(":", 1)[0] != p and _edge_name(B, e) != "neck" for e in other):
+            falls.add(p)
+    return falls
 
 
 def _line(B: dict, p: str, ln):
