@@ -175,27 +175,45 @@ def _along(P: np.ndarray, s: np.ndarray) -> np.ndarray:
     return np.c_[[np.interp(s, cum, Pc[:, i]) for i in range(3)]].T
 
 
+def _chords(P: np.ndarray, s0: float, seg: np.ndarray, res: float = 2e-4) -> np.ndarray:
+    """Points along the closed polyline P from arc s0, each the next one's CHORD seg[i] apart (the pattern's links exact
+    where the ring turns sharply: at the clasp, arc steps would leave the links short)."""
+    per = float(np.linalg.norm(np.diff(np.r_[P, P[:1]], axis=0), axis=1).sum())
+    s = np.arange(s0, per, res)
+    Q = _along(P, s)
+    out, k = [Q[0]], 0
+    for L in seg:
+        d = np.linalg.norm(Q[k + 1:] - out[-1], axis=1)
+        j = int(np.argmax(d >= L)) if (d >= L).any() else len(d) - 1
+        a, b = Q[k + j], Q[k + 1 + j]  # (the chord reaches L between these two samples)
+        da, db = (float(np.linalg.norm(a - out[-1])) if j else 0.0), float(d[j])
+        f = (L - da) / max(db - da, 1e-12) if db >= L else 1.0
+        out.append(a + min(max(f, 0.0), 1.0) * (b - a))
+        k += j
+    return np.array(out)
+
+
 # ---------------------------------------------------------------- 2. the free cloth
 def _paths(X0, out, vert, tang, dmax, contact):
-    """The clear path from X0: (angle off vertical, turn distance), the smallest horizontal reach that keeps CLEAR."""
+    """The clear path from X0: (angle off vertical, turn distance), the smallest horizontal reach that keeps CLEAR.
+    Every candidate (angle 0..85 deg by 5, turn every 40 mm) is tested in ONE body query (straight down first, the
+    rest only if none is clear); the first clear candidate with the least reach, in (angle, turn) order, wins."""
     t = np.arange(0.01, dmax + 0.02, 0.02)
     need = np.minimum(t / 0.05, 1.0) * CLEAR  # (the held line rests at GAP: the path clears the body as it leaves)
-    best = None
-    for a in np.radians(np.arange(0, 86, 5)):
-        for sb in np.r_[np.arange(0.04, min(dmax, 0.9), 0.04), dmax]:
-            reach = sb * math.sin(a)
-            if best is not None and reach >= best[0]:
-                continue
-            P = _path_pts(X0, out, vert, tang, a, sb, t, fan=0.0)
-            if (contact.query(P)[0] >= need).all():
-                best = (reach, a, sb)
-        if best is not None and best[0] <= 1e-6:
-            break
-    if best is None:
-        raise DrapeRefused(f"no clear path from the held line at {np.round(X0, 3).tolist()} ({1000 * float(contact.query(X0[None])[0][0]):.1f} mm off the body, "
-                           f"falls {'up' if vert[2] > 0 else 'down'}): the body is in the way "
-                           "within 85 deg (a draped piece held inside the body?)")
-    return best[1], best[2]
+    sbs = np.r_[np.arange(0.04, min(dmax, 0.9), 0.04), dmax]
+    for angs in (np.zeros(1), np.radians(np.arange(5, 86, 5))):
+        A, S = (g.ravel() for g in np.meshgrid(angs, sbs, indexing="ij"))
+        d1 = out[None] * np.sin(A)[:, None] + vert[None] * np.cos(A)[:, None]  # (c, 3)
+        tc = np.minimum(t[None], S[:, None])  # (c, nt)
+        P = X0 + tc[..., None] * d1[:, None] + (t[None] - tc)[..., None] * vert
+        ok = (contact.query(P.reshape(-1, 3))[0].reshape(len(A), len(t)) >= need).all(axis=1)
+        if ok.any():
+            reach = np.where(ok, S * np.sin(A), np.inf)
+            i = int(np.argmin(reach))
+            return float(A[i]), float(S[i])
+    raise DrapeRefused(f"no clear path from the held line at {np.round(X0, 3).tolist()} ({1000 * float(contact.query(X0[None])[0][0]):.1f} mm off the body, "
+                       f"falls {'up' if vert[2] > 0 else 'down'}): the body is in the way "
+                       "within 85 deg (a draped piece held inside the body?)")
 
 
 def _path_pts(X0, out, vert, tang, a, sb, t, fan):
@@ -203,6 +221,22 @@ def _path_pts(X0, out, vert, tang, a, sb, t, fan):
     t = np.asarray(t, float)
     P = X0 + np.minimum(t, sb)[:, None] * d1 + np.maximum(t - sb, 0)[:, None] * vert
     return P + (t * math.tan(math.radians(FAN_DEG)) * fan)[:, None] * tang
+
+
+def check_held_sewn(net, hp: str, hv) -> None:
+    """Refused by name: two points of the held line sewn into one (a seam pairs its ends the wrong way round: the held
+    ring would be pinched shut there; the flat gate's lengths can't see it)."""
+    from .chain_garment import ChainRefused
+    rs, uv = net.root, net.uv
+    _, first, cnt = np.unique(rs[hv], return_index=True, return_counts=True)
+    if (cnt > 1).any():  # (two points of the held line sewn into one: a seam pairs its ends the wrong way round)
+        k = int(first[np.argmax(cnt > 1)])
+        two = np.where(rs[hv] == rs[hv[k]])[0]
+        by = sorted({net.names[int(net.piece[v])] for v in np.where(rs == rs[hv[k]])[0]} - {hp})
+        raise ChainRefused(f"{hp}'s held line is sewn to itself: its points {two.tolist()} of {len(hv)} (flat "
+                           f"{np.round(uv[hv[two]], 3).tolist()}) are one point through {', '.join(by) or 'its own seams'}: "
+                           "a seam pairs its edges' ends the wrong way round (a:start meets b:start). next: turn one edge "
+                           "of that seam (draft_pattern edges \"p>q\" as \"q>p\")")
 
 
 def build_drape(b, t0: float) -> None:
@@ -224,14 +258,14 @@ def build_drape(b, t0: float) -> None:
                            "garment_plan parts held on the one piece that is held, the others sewn to it")
     hp = own[0]
     hv = D[hp]["held"]
+    check_held_sewn(net, hp, hv)
     seg = np.linalg.norm(np.diff(uv[hv], axis=0), axis=1)
     L = float(seg.sum())
     if uv[hv[0], 0] < uv[hv[-1], 0]:  # (the end with the larger flat x goes to the wearer's left, +X)
         hv, seg = hv[::-1], seg[::-1]
     ring = held_ring(b.body, L + CLASP_GAP, GAP)
-    s = CLASP_GAP / 2 + np.r_[0, np.cumsum(seg)]
     X = np.zeros((net.n, 3))
-    X[hv] = _along(ring, s)
+    X[hv] = _chords(ring, CLASP_GAP / 2, seg)
     held = np.isin(rs, rs[hv])
     for v in np.where(held)[0]:
         X[v] = X[hv[np.where(rs[hv] == rs[v])[0][0]]]

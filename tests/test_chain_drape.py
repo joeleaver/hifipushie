@@ -100,3 +100,26 @@ def test_held_line_and_start_paths_are_legal():
             P = cd._path_pts(X0, o, vert, np.zeros(3), a, sb, t, 0.0)
             assert body.contact.query(P)[0].min() >= cd.CLEAR * 0.99
             assert np.allclose(np.linalg.norm(P - X0, axis=1) <= t + 1e-9, True)  # (radial: never longer than its cut)
+
+
+def test_held_line_sewn_to_itself_refused_by_name():
+    """A seam paired the wrong way round sews the held line's CF end to its CB: refused, naming the seam's fix."""
+    from types import SimpleNamespace
+    import pytest
+    from hifipushie.chain_garment import ChainRefused
+    hv = np.arange(5)
+    uv = np.c_[np.linspace(0.1, -0.1, 5), np.zeros(5)]
+    ok = SimpleNamespace(root=np.arange(6), uv=np.r_[uv, [[0, 0.1]]], names=["cloak", "hood"], piece=np.r_[np.zeros(5, int), 1])
+    cd.check_held_sewn(ok, "cloak", hv)
+    bad = SimpleNamespace(**{**vars(ok), "root": np.array([0, 1, 2, 3, 2, 2])})  # (the end and the middle, through the hood)
+    with pytest.raises(ChainRefused, match=r"sewn to itself.*\[2, 4\].*hood.*wrong way round"):
+        cd.check_held_sewn(bad, "cloak", hv)
+
+
+def test_held_line_placed_by_chords_exact_at_a_sharp_turn():
+    """A ring with a corner (the clasp): the held links are their cut chords, not arc steps."""
+    P = np.r_[[[0.0, 0, 0]], np.c_[np.linspace(0.01, 0.2, 40), np.linspace(0.01, 0.2, 40) * 0.2, np.zeros(40)],
+              np.c_[np.linspace(0.2, 0.01, 40), np.linspace(0.2, 0.01, 40) * -0.2, np.zeros(40)]]
+    seg = np.full(30, 0.0098)
+    Q = cd._chords(P, 0.002, seg)
+    assert np.allclose(np.linalg.norm(np.diff(Q, axis=0), axis=1), seg, rtol=1e-3)
