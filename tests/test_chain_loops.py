@@ -82,7 +82,7 @@ def test_half_and_sideless_pieces_are_refused_by_name():
         cg.read_roles(net)
     msg = str(e.value)
     assert "front: half a garment" in msg and "sleeve: a limb piece with no side" in msg and "back" not in msg.split("next")[0]
-    assert "front.L and front.R" not in msg and "NAME.L and NAME.R" in msg
+    assert "front.L and front.R" not in msg and 'pieces.NAME {"pair": true}' in msg  # (F3: the pair declaration)
 
 
 def _trousers(band_x=0.40, band_len=None):
@@ -189,3 +189,20 @@ def test_a_held_stiff_edge_past_its_cut_is_counted():
     b.X = X
     with pytest.raises(cg.ChainRefused, match="held length can't hold"):
         b.gate_lengths()
+
+
+def test_a_stands_end_edges_are_in_its_solve_and_hold_their_cut():
+    """(F3) The hussar r2 stand was refused 39.8 % over its cut at a top corner: its END edges were filled after the
+    solve. Now each end edge is a chain neck end -> top end at its cut, solved with the ring and kept by fill_band."""
+    body = _lathe()
+    pat, _ = _stand_flat()
+    b = cg.GarmentBuild(pat, body, {"state": "closed"}, log=lambda *_: None)
+    cr.stand_ring(b)
+    s = b.reads["stand"]
+    assert len(s["end_edges_mm"]) == 2 and len(b.se) >= 4  # (5 rows: 3 inner points up each end)
+    for got, cut in s["end_edges_mm"]:
+        assert abs(got - cut) < 0.05 * cut, s
+    assert s["end_worst_link_pct"] < 5, s
+    keep = b.X[b.net.root[b.se]].copy()
+    b.fill_band()
+    assert np.allclose(b.X[b.net.root[b.se]], keep)

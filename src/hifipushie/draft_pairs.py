@@ -196,21 +196,23 @@ def expand(decl: dict, parts: dict) -> dict:
 
 def _fold_closures(decl: dict) -> dict:
     """A closure on ONE piece cut on the fold whose over and under name the same edge (t8: the waistband's fly
-    `end` / `end`, the shirt stand's `end` / `end`): the edge and its mirror on the other half, the two ends that close
-    (read as the same edge it closed to 0 mm)."""
+    `end` / `end`, the shirt stand's `end` / `end`, buttons at [btn, btn]): the edge / mark and its mirror on the
+    other half, the two ends that close (read as the same edge / mark it closed to 0 mm)."""
     pcs = decl.get("pieces") or {}
     cl = decl.get("closures") or []
     hit = [i for i, c in enumerate(cl) if c.get("over") and c.get("over") == c.get("under")
-           and (pcs.get(c["over"]) or {}).get("fold") and isinstance(c.get("edge"), dict)
-           and c["edge"].get("over") and c["edge"].get("over") == c["edge"].get("under")]
+           and (pcs.get(c["over"]) or {}).get("fold")]
     if not hit:
         return decl
     D = copy.deepcopy(decl)
     for i in hit:
         c = D["closures"][i]
-        e = c["edge"]["over"]
-        D.setdefault("edges", {}).setdefault(c["over"], {}).setdefault(f"{e}.m", {"mirror_of": e})
-        c["edge"] = dict(c["edge"], under=f"{e}.m")
+        e = (c.get("edge") or {}).get("over") if isinstance(c.get("edge"), dict) else None
+        if e and c["edge"].get("under") == e:
+            D.setdefault("edges", {}).setdefault(c["over"], {}).setdefault(f"{e}.m", {"mirror_of": e})
+            c["edge"] = dict(c["edge"], under=f"{e}.m")
+        if c.get("at"):  # (its buttons: the same mark on both ends is the mark and its mirror image)
+            c["at"] = [[a, f"{b}.m"] if a == b and not str(b).endswith(".m") else [a, b] for a, b in c["at"]]
     return D
 
 
