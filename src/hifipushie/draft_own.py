@@ -10,7 +10,8 @@ module knows a garment: the design and the declarations carry it.
   workspace): no network (a user + network namespace), fs reads only (Node's permission model), TIMEOUT s. A Node error
   comes back as DraftRefused naming design.mjs's line and its text, never a stack.
 Declarations (JSON beside the code; names are step 1's):
-  pieces {piece: {"part": draft part, "fold": "x0", "mirror", "flip_y", "cut": n, "grain": deg, "place": {wrap}}}
+  pieces {piece: {"part": draft part, "fold": "x0", "mirror", "flip_y", "pair", "cut": n, "grain": deg, "place": {wrap}}}
+  ("pair": true = cut 2 as a mirrored pair, NAME.L + NAME.R, seams per side: draft_pairs.py; "mirror" only flips)
   edges {piece: {edge: "pointA>pointB" | "a>via>b" | {"path": a path of the part}}}
   seams [{"a": "piece:edge" | [chain], "b": ..., "ease": [lo, hi] (a over b, -1), "why"}]: step 1's seams, sewn
   stiff [piece] (interfaced); folds [{"name", "piece", "line": edge | arc | {"edge", "offset"}, "kind", ...}] (style
@@ -36,7 +37,7 @@ import numpy as np
 RUNNER = Path(__file__).with_name("draft_own_run.mjs")
 TIMEOUT = 60  # s
 DECL_KEYS = {"pieces", "edges", "seams", "stiff", "folds", "closures", "omit", "notes", "marks"}
-PIECE_KEYS = {"part", "fold", "mirror", "flip_y", "cut", "grain", "place", "role"}
+PIECE_KEYS = {"part", "fold", "mirror", "flip_y", "cut", "grain", "place", "role", "pair"}
 BUILT = ("full", "simplified")  # step 1's "build" values that are cut
 PLAIN_TOL = 0.01  # a seam with no declared ease: its two sides agree within 1 % (cloth_check KINDS "plain")
 CLOSURE_TOL = 0.01  # a lapped closure's over and under edges agree within 1 % (the buttons line up)
@@ -137,6 +138,7 @@ def _folded(r: dict, decl: dict) -> bool:
 
 def validate(decl: dict, step1: dict, parts: dict | None = None) -> list:
     """Refusals (one line each, by name); [] = usable."""
+    from . import draft_pairs as dp
     bad = [f"declarations: unknown key {k!r} (have {', '.join(sorted(DECL_KEYS))})" for k in decl if k not in DECL_KEYS]
     pcs, edges, omit = decl.get("pieces") or {}, decl.get("edges") or {}, decl.get("omit") or {}
     inv = step1.get("pieces") or {}
@@ -155,6 +157,7 @@ def validate(decl: dict, step1: dict, parts: dict | None = None) -> list:
         for side in ("a", "b"):
             for e in _sides(s.get(side)):
                 p, ed = _edge_of(e)
+                p = dp.base_name(p, decl)
                 if p not in pcs:
                     bad.append(f"seam {i} {e!r}: no drafted piece {p!r}")
                 elif ed not in (edges.get(p) or {}):
@@ -179,8 +182,15 @@ def validate(decl: dict, step1: dict, parts: dict | None = None) -> list:
             bad.append(f"step 1 seam {a} <-> {b} is not sewn: a declared seam with {a} on one side and {b} on the other")
     for c in decl.get("closures") or []:
         for k in ("over", "under"):
-            if c.get(k) and c[k] not in pcs:
+            if c.get(k) and dp.base_name(c[k], decl) not in pcs:
                 bad.append(f"closure {c.get('name')!r}: {k} {c[k]!r} is not a drafted piece")
+    if parts is not None and not bad:
+        bad += dp.faults(decl, parts, step1)  # (F3: half a garment / a limb with no side, by name, with the pair)
+        if not bad:
+            try:
+                dp.expand(decl, parts)
+            except DraftRefused as e:
+                bad.append(str(e))
     return bad + validate_marks(decl, step1)
 
 
@@ -233,14 +243,21 @@ def block(pat: dict) -> dict:
     from . import pattern
     d = Path(pat["dir"])
     draft = json.loads((d / "draft.json").read_text())
-    decl = json.loads((d / "declarations.json").read_text())
+    from . import draft_pairs
+    decl = draft_pairs.expand(json.loads((d / "declarations.json").read_text()), draft["parts"])
     edges = decl.get("edges") or {}
     out, arcs = {}, {}
     for nm, pd in (decl.get("pieces") or {}).items():
         part = draft["parts"][pd["part"]]
         pc = pattern.from_freesewing(part, nm, fold=pd.get("fold"))
         arcs[nm] = {}
-        for ed, how in (edges.get(nm) or {}).items():
+        for ed, how in sorted((edges.get(nm) or {}).items(), key=lambda kv: isinstance(kv[1], dict) and "mirror_of" in kv[1]):
+            if isinstance(how, dict) and "mirror_of" in how:  # (a folded piece's other half, sewn to a pair's other copy)
+                try:
+                    arcs[nm][ed] = draft_pairs.mirror_arc(pc, arcs[nm][how["mirror_of"]])
+                except (KeyError, ValueError) as e:
+                    raise DraftRefused(f"edges.{nm}.{ed} (the mirror of {how['mirror_of']!r}): {e}") from None
+                continue
             arcs[nm][ed] = _resolve_path(pc, part, ed, how["path"]) if isinstance(how, dict) else str(how)
             try:
                 pattern.arc_indices(pc, arcs[nm][ed])
@@ -281,7 +298,7 @@ def block(pat: dict) -> dict:
         closures.append(c)
     return {"pieces": out, "seams": seams, "stitches": [], "interfaced": list(decl.get("stiff") or []),
             "draft": {"design": "own", "dir": str(d), "options": decl.get("options") or {}},
-            "folds": folds, "closures": closures, "seam_notes": notes, "edge_arcs": arcs}
+            "folds": folds, "closures": closures, "seam_notes": notes, "edge_arcs": arcs, "decl": decl}
 
 
 # ---------------------------------------------------------------- the flat gate
@@ -306,9 +323,11 @@ def gate(B: dict, decl: dict, step1: dict, stand_ref: dict | None = None) -> lis
                  "target": "each pair within its declared ease, else +-1 %", "why": "; ".join(bad[:8]),
                  "fix": "redraft the shorter side, or declare the ease with why", "back_to": "4", "detail": sm})
     inv = step1.get("pieces") or {}
-    cut = set(B["pieces"]) | set(decl.get("omit") or {})
+    from .draft_pairs import base_name
+    dx = B.get("decl") or decl  # (pairs expanded: draft_pairs)
+    cut = {base_name(n, decl) for n in B["pieces"]} | set(decl.get("omit") or {})
     miss = [n for n, it in inv.items() if it.get("build") in BUILT and n not in cut]
-    extra = [n for n in B["pieces"] if n not in inv]
+    extra = [n for n in B["pieces"] if base_name(n, decl) not in inv]
     rows.append({"id": "cut", "status": "FAIL" if miss or extra else "PASS",
                  "value": f"{len(B['pieces'])} cut, {len(decl.get('omit') or {})} omitted",
                  "target": "every built step-1 piece cut, nothing else", "why": "; ".join(
@@ -321,7 +340,7 @@ def gate(B: dict, decl: dict, step1: dict, stand_ref: dict | None = None) -> lis
     rows.append({"id": "sewn", "status": "FAIL" if uns else "PASS", "value": f"{len(step1.get('seams') or []) - len(uns)} of "
                  f"{len(step1.get('seams') or [])} step-1 seams sewn", "target": "every step-1 seam", "why": "; ".join(uns[:8]),
                  "back_to": "4"})
-    cl, why = decl.get("closures") or [], []
+    cl, why = dx.get("closures") or [], []
     for nm, c1 in (step1.get("closures") or {}).items():
         want = set(c1.get("pieces") or []) & set(B["pieces"])
         if want and not any(want <= {c.get("over"), c.get("under")} or nm == c.get("name") for c in cl):
@@ -349,7 +368,7 @@ def gate(B: dict, decl: dict, step1: dict, stand_ref: dict | None = None) -> lis
     except (KeyError, ValueError, TypeError) as x:
         rows.append({"id": "truing", "status": "INFO", "value": "n/a", "why": str(x)[:120]})
     from . import draft_shape
-    return rows + draft_shape.rows(B, decl, step1, stand_ref)
+    return rows + draft_shape.rows(B, dx, step1, stand_ref)
 
 
 def verdict(rows: list) -> str:

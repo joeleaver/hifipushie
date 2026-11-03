@@ -54,7 +54,8 @@ def flat_check(name: str, garment: str) -> tuple[list, dict, dict]:
     decl = json.loads((d / "declarations.json").read_text())
     rd = gr.reads(name, garment, "4")
     B = cloth.pieces(json.loads(json.dumps(g)), measurements(rd["3"]))
-    B["edge_arcs"] = do.block(g["pattern"])["edge_arcs"]
+    blk = do.block(g["pattern"])
+    B["edge_arcs"], B["decl"] = blk["edge_arcs"], blk["decl"]
     return do.gate(B, decl, rd["1"], stand_ref(name, garment)), B, decl
 
 
@@ -107,11 +108,13 @@ def run(name: str, garment: str, design: str, declarations: dict, options: dict 
         M = cloth.mesh(B)
     except (KeyError, ValueError, IndexError) as e:
         raise do.DraftRefused(f"the converter refused the draft: {e}") from None
-    B["edge_arcs"] = do.block(g["pattern"])["edge_arcs"]
+    blk = do.block(g["pattern"])
+    B["edge_arcs"], B["decl"] = blk["edge_arcs"], blk["decl"]
     rows = do.gate(B, declarations, rd["1"], stand_ref(name, garment))
     v = do.verdict(rows)
     seam_rows = next(r for r in rows if r["id"] == "seams")["detail"]
-    names = seam_names(declarations) if len(declarations.get("seams") or []) == len(B["seams"]) else None
+    dx = B.get("decl") or declarations
+    names = seam_names(dx) if len(dx.get("seams") or []) == len(B["seams"]) else None
     im = pattern_sheet.render(B, f"{name}:{garment} draft_pattern (own design)", grid=True, names=names)
     sheet = gr.look_dir(name, garment) / "step4_flat.png"
     im.save(sheet)

@@ -364,6 +364,8 @@ def pattern_edge(M, vid: int, draft_dir) -> str | None:
         d = Path(draft_dir)
         dec = json.loads((d / "declarations.json").read_text())
         parts = json.loads((d / "draft.json").read_text())["parts"]
+        from .draft_pairs import expand
+        dec = expand(dec, parts)  # (pairs: NAME.L / NAME.R as the build names them)
     except (OSError, ValueError, KeyError, TypeError):
         return None
     name = M["names"][int(np.asarray(M["piece"])[vid])]
