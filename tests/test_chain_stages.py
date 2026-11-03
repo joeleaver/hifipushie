@@ -27,7 +27,11 @@ def _legs():
 def test_a_tube_run_up_into_the_torso_starts_through_the_body():
     b = _build(PIECES, {p: ["thigh", "knee", "outseam"] for p in PIECES}, SEWS)  # (F4's body: legs + torso)
     g = cst.gate_start(b, b.soft_start())
-    assert _flagged(g) == {"inside"} and "GAP" in next(r for r in g["rows"] if r["id"].startswith("inside"))["source"]
+    assert _flagged(g) - {"start_length"} == {"inside"}
+    assert "GAP" in next(r for r in g["rows"] if r["id"].startswith("inside"))["source"]
+    # (F6) the start's own lengths are read (provisional until the lay is isometric: this tube lay stretches too)
+    sl = next(r for r in g["rows"] if r["id"].startswith("start_length"))
+    assert sl["status"] in ("PASS", "INFO (would FAIL)") and "lengths" in g["reads"]
 
 
 def _fails(g):

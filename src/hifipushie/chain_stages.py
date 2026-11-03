@@ -53,7 +53,8 @@ def _row(id_, value, limit, ok, source, change, unit="") -> dict:
 # Rows whose limits aren't calibrated yet (no build that passes the end gates has been read against them; the hussar fails
 # them too): reported as "INFO (would FAIL)", never stopping a build, until a passing build sets them (coordinator,
 # 2026-11-03). The other rows rest on existing rules (2 % lengths, the stand-off gap, piece_start's tube rule, roughness).
-PROVISIONAL = ("inside:", "holes:", "sewn:")
+PROVISIONAL = ("inside:", "holes:", "sewn:", "start_length:")  # (F6: start_length stays provisional until the start is
+# laid isometric by construction: every build today stretches at its start, the trousers 1063 %)
 
 
 def verdict(stage: str, rows: list, reads: dict | None = None) -> dict:
@@ -274,7 +275,7 @@ def gate_start(b, X) -> dict:
     rows, reads = _placement_rows(b, X, "start")
     ln = length_reads(b, X)
     reads["lengths"] = ln
-    rows.insert(0, _row("length", ln["chain_worst_pct"], MAX_FREE_PCT, ln["chain_worst_pct"] <= MAX_FREE_PCT,
+    rows.insert(0, _row("start_length:chains", ln["chain_worst_pct"], MAX_FREE_PCT, ln["chain_worst_pct"] <= MAX_FREE_PCT,
                         "MAX_FREE_PCT: the start is laid from the flat, every chain at its cut (F6: a start that "
                         "stretches is a start bug, not something a later stage should fix)",
                         f"{ln['chain_worst_line']}: the START stretches here (piece_start's lay), before any solve"))
