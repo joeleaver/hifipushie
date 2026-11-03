@@ -33,6 +33,8 @@ CLOSE = 0.0003  # m: the pull runs on until every sewn pair is this near (then e
 STALL = 4  # rounds: the summed seam gaps falling by less than 0.05 mm a pair a round over these = stalled
 SEW_TOL = 0.002  # m: a seam is closed when its widest sewn pair is this near (the chain stage merges them)
 REACH = 0.04  # m: body this far outside the guide's own radius still counts as under the piece
+RADII = (1.0, 1.1, 1.2, 1.35, 1.5, 1.75, 2.0, 2.5, 3.0)  # the radius tried, x the guide's / the flat's own
+INSIDE_SHARE = 0.05  # share of a laid group's points allowed nearer the body than STANDOFF (the sew's floor lifts them)
 LAP = 0.97  # a piece laid round a cylinder covers at most this share of its turn (never laps itself)
 SOFT_FLOOR = None  # (the floor is chain_garment.GAP; read at call time)
 
@@ -126,6 +128,19 @@ def _clear(b, f: dict, R: float, span=None) -> float:
     return max(R, float(rb[under].max()) + STANDOFF) if under.any() else R
 
 
+def _clear_share(b, fits: dict, R0: float) -> float:
+    """The least radius from R0 up (RADII steps) at which at most INSIDE_SHARE of the group's points, each laid the
+    guide's way round, lie nearer the body than STANDOFF (a hip the leg's cylinder passes is the sew's to wrap, not a
+    reason to lay the whole leg a hip's width out)."""
+    for k in RADII:
+        R = R0 * k
+        P = np.concatenate([_place(f, f["uv"], 1.0, float(np.angle(np.mean(np.exp(1j * (f["phi"] - f["uv"][:, 0] / R))))),
+                                   R) for f in fits.values()])
+        if float((b.body.contact.query(P[::3])[0] < STANDOFF).mean()) <= INSIDE_SHARE:
+            return R
+    return R
+
+
 def _place(f: dict, uv, sx: float, a: float, R: float) -> np.ndarray:
     th = a + sx * uv[:, 0] / R
     hh = f["h0"] + f["sy"] * uv[:, 1]
@@ -187,10 +202,7 @@ def arrange(b, guide: np.ndarray) -> np.ndarray:
         fits = {q: f0 if q == grp[0] else _fit(b, q, G[net.verts(q)], f0["c"], f0["d"]) for q in grp}
         R = max(float(np.percentile(np.concatenate([f["rg"] for f in fits.values()]), 75)),
                 sum(f["Rmin"] for f in fits.values()))
-        if len(grp) > 1 or p in b.roles.tubes:
-            R = max(_clear(b, f, R) for f in fits.values())
-        else:
-            R = _clear(b, f0, R, f0["phi"][::max(1, len(f0["phi"]) // 200)])
+        R = _clear_share(b, fits, R)
         taken = []
         for q in grp:
             v = net.verts(q)
