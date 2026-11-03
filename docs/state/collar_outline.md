@@ -1,5 +1,4 @@
 # STATE: chain garment -> garments built from the pattern's outline (library + tools since 2026-11-01)
-
 Joe: "This is how we should build clothes, right here." "that should be the only path available to the agent for starting
 clothing." "We need to get to a point where a blind agent can build a great-lookin piece of clothing without tons of
 iterations or manual feedback." 2026-11-02: "We need a pre-sim judge of the structure." (C279: judge the build, not the hang)
