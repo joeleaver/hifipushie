@@ -3,7 +3,8 @@
 The export's UVs are the pattern (garment_export: every piece's flat layout packed into one square at pattern scale), so
 everything a tailor knows in pattern coordinates paints there directly. Layers, in order, each with its amount:
   base       the cloth's colour (step 0's reading, sampled from the reference)
-  variation  subtle value noise at a named scale (the dye's and the light's unevenness), amount ~0.03
+  variation  subtle value noise at a named scale (the dye's and the light's unevenness): 0.03 at 80 mm, by family
+             (leather 0.12 at 30 mm: mottled; wool 0.05; linen 0.04), the plan's amount overrides
   print      the reading's print (check / stripe) at its real repeat, turned to the piece's grain (M["grain"], deg in
              the pattern frame, 90 = along y); phase anchored at the pattern frame's origin (pieces drafted on one
              block share it, so a check meets at matched seams as the draft placed them)
@@ -13,7 +14,8 @@ everything a tailor knows in pattern coordinates paints there directly. Layers, 
              a named stitch length; thread colour from the plan (default: the cloth's, a little darker)
   wear       restrained, from the story: at the body's high points (the plan's `where`: elbows, shoulders, knees, seat:
              the rig's joints) where the build touches the body, and along free edges; lighter / flatter colour, rougher
-  fray       a ragged edge (alpha cut + loose threads along the grain) on the hems of the plan's pieces only
+  fray       a ragged edge (alpha cut, tears at ~1.5x the depth, loose yarns across the edge) on every free edge of
+             the plan's pieces (not per edge yet)
 The plan (step 2's `appearance` block, or the tool's argument) carries every amount; check_plan validates it. Defaults
 are restrained: wear 0 unless the story gives one, no fray unless asked. Nothing here is specific to one garment.
 """
@@ -32,10 +34,10 @@ HIGH_POINT_M = 0.08  # falloff radius around a named high point (a joint)
 EDGE_WEAR_MM = 5.0  # free edges wear within this band
 # fabric families (a keyword in the reading's "fabric" / cloth name): roughness, sheen, surface layer (kind, period)
 FABRICS = {
-    "leather": {"rough": 0.55, "surface": ("pebble", 2.5), "creases_mm": 9.0},
+    "leather": {"rough": 0.55, "surface": ("pebble", 2.5), "creases_mm": 9.0, "var": (0.12, 30)},
     "denim": {"rough": 0.85, "surface": ("twill", 1.0)},
-    "wool": {"rough": 0.92, "surface": ("twill", 1.6)},
-    "linen": {"rough": 0.86, "surface": ("slub", 1.2)},
+    "wool": {"rough": 0.92, "surface": ("twill", 1.6), "var": (0.05, 60)},
+    "linen": {"rough": 0.86, "surface": ("slub", 1.2), "var": (0.04, 50)},
     "silk": {"rough": 0.38, "surface": ("plain", 0.3)},
     "cotton": {"rough": 0.78, "surface": ("plain", 0.5)},
     "": {"rough": 0.8, "surface": ("plain", 0.5)},
@@ -293,7 +295,8 @@ def bake(drape: dict, cloth_of: dict, cloths: dict, plan: dict, grain: dict, siz
         L = layers.setdefault(cname, {"cloth": cname, "fabric": fab["family"], "colour": c.get("colour"), "pieces": []})
         L["pieces"].append(n)
         var = a.get("variation") or {}
-        va, vs = float(var.get("amount", 0.03)), float(var.get("scale_mm", 80)) / 1000
+        dv = fab.get("var", (0.03, 80))  # (the family's own unevenness: leather is mottled, shirting even)
+        va, vs = float(var.get("amount", dv[0])), float(var.get("scale_mm", dv[1])) / 1000
         col *= (1 + va * vnoise(x, y, vs, seed=i))[:, None]
         L["variation"] = {"amount": va, "scale_mm": vs * 1000}
         pr = print_of(c, a)
@@ -303,7 +306,7 @@ def bake(drape: dict, cloth_of: dict, cloths: dict, plan: dict, grain: dict, siz
                 w = np.maximum(w, lines(along, pr["repeat_m"], pr["line_m"], texel))
             col = col * (1 - w[:, None]) + pr["colour"] * w[:, None]
             L["print"] = {"kind": pr["kind"], "repeat_mm": pr["repeat_m"] * 1000, "line_mm": round(pr["line_m"] * 1000, 2),
-                          "repeat_px": round(pr["repeat_m"] / texel, 1)}
+                          "repeat_px": round(float(pr["repeat_m"] / texel), 1)}
         kind, per = fab["surface"]
         per_m = per / 1000
         if per_m / texel >= MIN_TEXELS:
@@ -316,7 +319,7 @@ def bake(drape: dict, cloth_of: dict, cloths: dict, plan: dict, grain: dict, siz
             else:
                 h = np.sin(2 * np.pi * along / per_m) * np.sin(2 * np.pi * across / per_m)
             H[m] += 0.3 * h
-            L["surface"] = {"kind": kind, "period_mm": per, "period_px": round(per_m / texel, 1)}
+            L["surface"] = {"kind": kind, "period_mm": per, "period_px": round(float(per_m / texel), 1)}
         else:
             L["surface"] = {"kind": kind, "period_mm": per, "dropped": f"{per_m / texel:.1f} px < {MIN_TEXELS} px"}
         if fab.get("creases_mm"):
@@ -346,8 +349,8 @@ def bake(drape: dict, cloth_of: dict, cloths: dict, plan: dict, grain: dict, siz
             fr = a.get("fray") or {}
             if n in (fr.get("pieces") or []):
                 depth = float(fr.get("depth_mm", 12)) / 1000
-                rag = depth * (0.45 + 0.55 * (0.5 + 0.5 * vnoise(s, s * 0, 0.012, 53 + i, octaves=3)))
-                threads = (np.sin(2 * np.pi * across / 0.0018) > 0.2)
+                rag = depth * (0.45 + 0.55 * (0.5 + 0.5 * vnoise(s, s * 0, max(0.012, 1.5 * depth), 53 + i, octaves=3)))
+                threads = np.sin(2 * np.pi * s / 0.0018) > 0.2  # (loose yarns stand across the edge)
                 cut = (~seam) & ((d < rag * 0.55) | ((d < rag) & ~threads))
                 alpha[m] = np.where(cut, 0.0, 1.0)
                 edge_w = np.maximum(edge_w, (~seam) * np.clip(1 - d / (rag * 1.6), 0, 1) * 0.8)
