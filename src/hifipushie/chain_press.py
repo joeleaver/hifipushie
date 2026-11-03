@@ -239,8 +239,8 @@ def fit_unders(model: str, garment: str, b, body, d=None, log=None) -> tuple:
         rd["advice"] = [dec["record"]] if dec and dec["record"] else ([] if dec else visibility_advice(model, u, rd, garment))
         reads[u] = rd
         Fw = welded(np.asarray(ub.net.F)[f["keep"]] if m == "visible" else ub.net.F, ub.net.root)
-        body.fits[u] = Layer(u, "cloth", f["X"], outward(f["X"], welded(ub.net.F, ub.net.root), body.body_contact),
-                             0.0, body.body_contact)
+        body.fits[u] = Layer(u, "cloth", f["X"], outward(f["X"], Fw, body.body_contact), 0.0, body.body_contact)  # (only
+        # what is kept: omitted cloth is not there to be inside of, C296)
         worst = rd["kept_free_worst_pct"]
         if worst > MAX_FREE_PCT:
             why.append(f"{u} can't keep its lengths inside {garment}: {worst} % off its cut where it is kept ({m}, "

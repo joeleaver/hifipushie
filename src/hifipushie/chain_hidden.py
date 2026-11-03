@@ -56,7 +56,7 @@ def field(X, covered, Fw, rounds: int = SMOOTH) -> np.ndarray:
     return f
 
 
-def decide(ub, lim, under: str, over: str, details: dict | None = None) -> dict:
+def decide(ub, lim, under: str, over: str, details: dict | None = None, omit: dict | None = None) -> dict:
     """(b) + (c): the under build `ub` against the over garment's inner side `lim` (chain_press.OuterLimit). Returns keep_v
     (vertices kept), f (the field), covered, omitted {piece: why}, pieces {piece: hidden / kept %}, push_F (kept stiff
     faces, welded), details {name: seen?}, record (the step 1 change)."""
@@ -76,7 +76,11 @@ def decide(ub, lim, under: str, over: str, details: dict | None = None) -> dict:
             continue
         hp = float(covered[v].mean())
         pieces[p] = {"hidden_pct": round(hp * 100, 1)}
-        if hp >= HIDDEN_OMIT:
+        if omit is not None:  # (after a re-solve: the pieces omitted before it stay omitted, only the trim follows it)
+            if p in omit:
+                omitted[p] = omit[p]
+                keep_v[v] = False
+        elif hp >= HIDDEN_OMIT:
             omitted[p] = f"hidden under {over} ({round(hp * 100, 1)} % of it, by visibility in the planned state)"
             keep_v[v] = False
         pieces[p]["kept_pct"] = round(float(keep_v[v].mean() * 100), 1)
@@ -181,6 +185,20 @@ def resolve(b, LB, log=None) -> dict:
     return {"held_moved": int(bad.sum()), "last": rd}
 
 
+def retrim(b, body, under: dict, hid: dict, garment: str) -> dict:
+    """After a re-solve: each decision's trim read again on the over build as it now is; what was omitted stays omitted
+    (decided before anything pushed), what pushes is not decided again."""
+    from pathlib import Path
+    from . import chain_layers as cl, chain_presim as cp, chain_press as cpr
+    lim = cpr.OuterLimit(np.asarray(b.X, float), cl.welded(b.net.F, b.net.root), body.contact)
+    out = {}
+    for u, dec in hid.items():
+        ub, _ = cp.load_build(Path(under[u]["job"]))
+        d2 = decide(ub, lim, u, garment, omit=dec["omitted"])
+        out[u] = dict(d2, push_F=dec["push_F"], details=dec["details"], record=dec["record"])
+    return out
+
+
 def build_over(model: str, garment: str, body, under: dict, make, log=print) -> tuple:
     """(build, collider) of `garment` worn over `under` (chain_layers.under_for) in mode visible: (a)-(d) above; `make`
     (collider -> a GarmentBuild, not run). The collider carries .hidden {under: decision} for the fit (e)."""
@@ -211,6 +229,7 @@ def build_over(model: str, garment: str, body, under: dict, make, log=print) -> 
         if reach.any():
             rs = resolve(b, LD, log=log)
             rs["reached"] = int(reach.sum())
+            hid = retrim(b, body, under, hid, garment)
         LB = LD
     LB.hidden = hid
     b.body = LB
