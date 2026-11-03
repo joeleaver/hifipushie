@@ -1,13 +1,14 @@
 // A dress shirt drafted fresh on brian's block (T5 proof): back, yoke, fronts with a cut-on button extension, a one-
-// piece sleeve shortened for the cuff, a barrel cuff, a straight band and a doubled fall folded at its edge.
+// piece sleeve shortened for the cuff, a barrel cuff, simon's curved collar stand (the band) and simon's collar (the fall).
 import { Design } from '@freesewing/core'
 import { back as brianBack, front as brianFront } from '@freesewing/brian'
 import { sleeve as baseSleeve } from '@freesewing/library'
+import { collarStand as simonStand, collar as simonCollar } from '@freesewing/simon'
 
 const LEN = 1.2 // hem: the hips depth x 1.2 (an untucked shirt's length, below the seat)
 const EXT = 16 // button extension past centre front (mm)
 const YOKE = 0.45 // yoke seam: this far from the back neck to the back armhole pitch
-const CUFF_H = 62, CUFF_EASE = 1.28, PLEAT = 16, BAND_H = 32, FALL = 44, TIP = 28
+const CUFF_H = 62, CUFF_EASE = 80, PLEAT = 16, BAND_H = 32, FALL = 44, TIP = 28
 const HIDE = { from: true, inherited: true }
 const hideAll = (paths) => { for (const k of Object.keys(paths)) paths[k].hide() }
 const armholeOf = (points, Path) => new Path().move(points.armhole)
@@ -74,7 +75,7 @@ const sleeve = {
   name: 'shirt.sleeve', from: baseSleeve, after: [back, front], hide: HIDE,
   draft: ({ points, Point, paths, Path, measurements, store, part }) => {
     hideAll(paths)
-    const cuff = measurements.wrist * CUFF_EASE
+    const cuff = measurements.wrist + CUFF_EASE // closed: wrist + CUFF_EASE - 24 mm of lap, clear of the forearm
     store.set('cuffLength', cuff)
     const y = points.centerWrist.y - CUFF_H
     points.wL = new Point(-(cuff / 2 + PLEAT), y)
@@ -98,32 +99,19 @@ const cuff = {
   },
 }
 
+// The band is simon's collarStand and the fall simon's collar: a patternmaker's curves (the band's neck edge bends and
+// its front ends rise: collarStandBend 0, collarStandCurve 5, simon's own rising end of its range; the fall's outer edge
+// longer than its stand seam so it turns down over the band). Its button extensions = this front's EXT (the placket
+// widths in options.json: 2 x EXT / neck); one collarEase (brian's default, 5 %) sizes the neckline and the band alike.
 const band = {
-  name: 'shirt.band', after: [front, yoke],
-  draft: ({ points, Point, paths, Path, store, snippets, Snippet, part }) => {
-    const L = 2 * (store.get('frontNeck') + store.get('backNeck'))
-    snippets.hole = new Snippet('buttonhole', new Point(EXT, BAND_H / 2))
-    snippets.btn = new Snippet('button', new Point(L - EXT, BAND_H / 2))
-    store.set('bandTop', L - 2 * EXT)
-    points.bl = new Point(0, BAND_H); points.bm = new Point(L / 2, BAND_H); points.br = new Point(L, BAND_H)
-    points.tl = new Point(0, 0); points.tr = new Point(L, 0); points.c1 = new Point(EXT, 0); points.c2 = new Point(L - EXT, 0)
-    paths.seam = new Path().move(points.bl).line(points.bm).line(points.br).line(points.tr).line(points.c2)
-      .line(points.c1).line(points.tl).close()
+  name: 'shirt.band', from: simonStand, after: [front, yoke],
+  draft: ({ points, snippets, Snippet, part }) => {
+    snippets.hole = new Snippet('buttonhole', points.leftCf)
+    snippets.btn = new Snippet('button', points.rightCf)
     return part
   },
 }
 
-const collar = {
-  name: 'shirt.collar', after: band,
-  draft: ({ points, Point, paths, Path, store, part }) => {
-    const L = store.get('bandTop')
-    points.sL = new Point(0, 0); points.sm = new Point(L / 2, 0); points.sR = new Point(L, 0)
-    points.fR = new Point(L + TIP, -FALL); points.uR = new Point(L, -2 * FALL); points.uL = new Point(0, -2 * FALL)
-    points.fL = new Point(-TIP, -FALL)
-    paths.seam = new Path().move(points.sL).line(points.sm).line(points.sR).line(points.fR).line(points.uR)
-      .line(points.uL).line(points.fL).close()
-    return part
-  },
-}
+const collar = { name: 'shirt.collar', from: simonCollar, after: band, draft: ({ part }) => part }
 
 export default new Design({ parts: [back, yoke, front, sleeve, cuff, band, collar] })
