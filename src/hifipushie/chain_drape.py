@@ -177,25 +177,25 @@ def _along(P: np.ndarray, s: np.ndarray) -> np.ndarray:
 
 # ---------------------------------------------------------------- 2. the free cloth
 def _paths(X0, out, vert, tang, dmax, contact):
-    """The clear path from X0: (angle off vertical, turn distance), the smallest horizontal reach that keeps CLEAR."""
+    """The clear path from X0: (angle off vertical, turn distance), the smallest horizontal reach that keeps CLEAR.
+    Every candidate (angle 0..85 deg by 5, turn every 40 mm) is tested in ONE body query (straight down first, the
+    rest only if none is clear); the first clear candidate with the least reach, in (angle, turn) order, wins."""
     t = np.arange(0.01, dmax + 0.02, 0.02)
     need = np.minimum(t / 0.05, 1.0) * CLEAR  # (the held line rests at GAP: the path clears the body as it leaves)
-    best = None
-    for a in np.radians(np.arange(0, 86, 5)):
-        for sb in np.r_[np.arange(0.04, min(dmax, 0.9), 0.04), dmax]:
-            reach = sb * math.sin(a)
-            if best is not None and reach >= best[0]:
-                continue
-            P = _path_pts(X0, out, vert, tang, a, sb, t, fan=0.0)
-            if (contact.query(P)[0] >= need).all():
-                best = (reach, a, sb)
-        if best is not None and best[0] <= 1e-6:
-            break
-    if best is None:
-        raise DrapeRefused(f"no clear path from the held line at {np.round(X0, 3).tolist()} ({1000 * float(contact.query(X0[None])[0][0]):.1f} mm off the body, "
-                           f"falls {'up' if vert[2] > 0 else 'down'}): the body is in the way "
-                           "within 85 deg (a draped piece held inside the body?)")
-    return best[1], best[2]
+    sbs = np.r_[np.arange(0.04, min(dmax, 0.9), 0.04), dmax]
+    for angs in (np.zeros(1), np.radians(np.arange(5, 86, 5))):
+        A, S = (g.ravel() for g in np.meshgrid(angs, sbs, indexing="ij"))
+        d1 = out[None] * np.sin(A)[:, None] + vert[None] * np.cos(A)[:, None]  # (c, 3)
+        tc = np.minimum(t[None], S[:, None])  # (c, nt)
+        P = X0 + tc[..., None] * d1[:, None] + (t[None] - tc)[..., None] * vert
+        ok = (contact.query(P.reshape(-1, 3))[0].reshape(len(A), len(t)) >= need).all(axis=1)
+        if ok.any():
+            reach = np.where(ok, S * np.sin(A), np.inf)
+            i = int(np.argmin(reach))
+            return float(A[i]), float(S[i])
+    raise DrapeRefused(f"no clear path from the held line at {np.round(X0, 3).tolist()} ({1000 * float(contact.query(X0[None])[0][0]):.1f} mm off the body, "
+                       f"falls {'up' if vert[2] > 0 else 'down'}): the body is in the way "
+                       "within 85 deg (a draped piece held inside the body?)")
 
 
 def _path_pts(X0, out, vert, tang, a, sb, t, fan):
