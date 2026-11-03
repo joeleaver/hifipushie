@@ -9,12 +9,10 @@ ref_measure.py). Every FAIL names what to change in the design (`change`) and go
 
 Rows (`rows(B, decl, step1)`; B = draft_own.block + cloth.pieces, its pieces in FreeSewing's frame, y = the grain):
   shape_stand: a STAND / BAND (role collar_stand / collar_band / neckband, or a stiff piece sewn to edges named "neck"):
-    rise = how far its neck edge's ENDS sit towards its free edge from the chord through them, vs the neckline's front
-    drop D (the largest grain-wise drop of the neck edges it is sewn to). Source: jaeger.collarStand rises 31.0 mm on a
-    65.4 mm front drop (0.47 D): a stand alone needs >= half that (STAND_RISE). A band under a fall (simon's place):
-    simon.collarStand at its default options DROPS 7.9 mm (0.12 D) and at its own most-rising options (collarStandBend
-    0, collarStandCurve 5) rises; a band needs a rise > 0 (BAND_RISE: a straight band is 0, the shirt's T5 rectangle).
-    lean = free edge / neck edge: jaeger 0.978 -> a stand <= 0.989 (half its shortfall); a band <= 1.0.
+    its curve and heights DECIDED BY THE REFERENCE (T5c, C300; draft_stand.py, its docstring the derivation): step 2's
+    collar_top trace says whether the top follows the neckline down (the hugging stand: neck edge rising, jaeger) or
+    stays level (standing away: taller at its front ends, neck edge straight or falling). No trace: INFO (no style is a
+    law). T5b's universal "the ends rise" rule was one style taken for all (Joe: "the collar curves the wrong direction").
   shape_fall: a FALL (role collar_fall, or a piece with a "roll" fold): its outer line (an edge named outer / fall /
     edge, else its fold line) over its stand seam: simon.collar 1.024, jaeger.collar 1.038 -> >= 1.012 (half simon's).
   shape_cap: a SLEEVE cap (a seam joining pieces placed on an arm to pieces on the torso): cap height (grain-wise span
@@ -28,10 +26,6 @@ from __future__ import annotations
 
 import numpy as np
 
-STAND_RISE = 0.5 * 31.0 / 65.4  # jaeger.collarStand: rise / front drop, halved
-BAND_RISE = 0.0  # a band under a fall: rises at all (simon's options allow it; straight = 0)
-STAND_LEAN = 1 - 0.5 * (1 - 0.978)  # jaeger.collarStand free / neck edge
-BAND_LEAN = 1.0
 FALL_SPREAD = 1 + 0.5 * 0.024  # simon.collar outer / stand seam, halved excess
 CAP = (0.9 * 0.521, 1.1 * 0.715)  # brian.sleeve, bent's top + under sleeve: cap height / armhole depth
 CURVED, STRAIGHT = 0.02, 0.005  # sagitta / chord
@@ -73,25 +67,6 @@ def rise(N: np.ndarray, toward: np.ndarray) -> float:
     return float(np.dot(c - m, n))
 
 
-def _free_edge(pc: dict, N: np.ndarray) -> np.ndarray:
-    """The outline points far from the neck edge (>= 0.9 of the farthest): a stand's free edge without its ends."""
-    P = pc["P"]
-    d = np.min(np.linalg.norm(P[:, None, :] - N[None, ::max(1, len(N) // 200), :], axis=2), axis=1)
-    far = np.where(d >= 0.9 * d.max())[0]
-    # the longest run of consecutive outline indices
-    runs, cur = [], [far[0]]
-    for i in far[1:]:
-        if i == cur[-1] + 1:
-            cur.append(i)
-        else:
-            runs.append(cur)
-            cur = [i]
-    runs.append(cur)
-    if len(runs) > 1 and runs[0][0] == 0 and runs[-1][-1] == len(P) - 1:
-        runs[0] = runs.pop() + runs[0]
-    return P[max(runs, key=len)]
-
-
 def _role(nm: str, decl: dict, step1: dict) -> str:
     return str((decl.get("pieces") or {}).get(nm, {}).get("role") or (step1.get("pieces") or {}).get(nm, {}).get("role") or "")
 
@@ -106,12 +81,10 @@ def _edge_name(B: dict, e: str) -> str:
     return next((k for k, v in (B.get("edge_arcs") or {}).get(p, {}).items() if v == arc), arc)
 
 
-def _drop(B: dict, edges: list) -> float:
-    return max(float(np.ptp(_pts(B, e)[:, 1])) for e in edges)
-
-
-def stand_rows(B: dict, decl: dict, step1: dict) -> dict:
-    from . import pattern
+def stand_rows(B: dict, decl: dict, step1: dict, ref: dict | None = None) -> dict:
+    """shape_stand: each stand / band's curve and heights against step 2's collar traces (draft_stand.py, its docstring
+    the derivation); `ref` = draft_stand.reference(plan, at). No trace: INFO, the curve reported, no style assumed."""
+    from . import draft_stand as dst, pattern
     stiff = set(decl.get("stiff") or [])
     falls = fall_pieces(B, decl, step1)
     out, why, vals = [], [], []
@@ -125,41 +98,37 @@ def stand_rows(B: dict, decl: dict, step1: dict) -> dict:
             if p in falls or not (role in STAND_ROLES or (p in stiff and on_neck)) or not on_neck:
                 continue
             pc = B["pieces"][p]
-            N = _pts(B, mine[0])
+            idx = pattern.arc_indices(pc, mine[0].split(":", 1)[1])
+            N = pc["P"][idx]
             top = None
             for X, Y in _seam_pairs(B):  # a fall sewn to this piece: that edge is the free edge
                 for a, b in ((X, Y), (Y, X)):
                     if len(a) == 1 and a[0].split(":", 1)[0] == p and a[0] != mine[0] and all(
                             e.split(":", 1)[0] in falls for e in b):
                         top = _pts(B, a[0])
+            band = top is not None
             for k in FREE_NAMES:
                 arc = (B.get("edge_arcs") or {}).get(p, {}).get(k)
                 if top is None and arc:
                     top = pc["P"][pattern.arc_indices(pc, arc)]
-            band = top is not None and any(f for f in falls)
-            if top is None:
-                top = _free_edge(pc, N)
-            D = _drop(B, other)
-            r = rise(N, top.mean(0))
-            lean = pattern.length(top) / pattern.length(N)
-            rmin, lmax = (BAND_RISE, BAND_LEAN) if band else (STAND_RISE, STAND_LEAN)
-            kind = "band" if band else "stand"
-            vals.append(f"{p} ({kind}): rise {1000 * r:+.1f} mm = {r / D:+.2f} x front drop {1000 * D:.0f} mm; "
-                        f"free/neck {lean:.3f}")
-            if r / D <= rmin + 1e-9 if band else r / D < rmin:
-                why.append(f"{p}: its neck edge {'drops' if r < 0 else 'is straight' if abs(r) < 1e-3 else 'rises too little'} "
-                           f"at its front ends ({1000 * r:+.1f} mm; target {'> 0' if band else f'>= {rmin:.2f} x {1000 * D:.0f} = {1000 * rmin * D:.0f} mm'}). "
-                           f"change: curve the neck edge so its front ends rise towards the free edge (the free edge follows), "
-                           f"e.g. extend a FreeSewing stand ({'simon.collarStand: collarStandBend 0, collarStandCurve up' if band else 'jaeger.collarStand'})")
-            if lean > lmax + 1e-9:
-                why.append(f"{p}: free edge {lean:.3f} x its neck edge (target <= {lmax:.3f}: it must lean in). change: "
-                           "shorten the free edge (bring its ends in / curve it with the neck edge)")
+            drops = sorted(float(np.ptp(_pts(B, e)[:, 1])) for e in other)
+            v, w = dst.check(p, "band" if band else "stand", N, dst._rest(pc, idx), top, drops[-1],
+                             drops[0] if len(drops) > 1 else 0.0, ref)
+            vals.append(v)
+            why += w
             out.append(p)
-    return {"id": "shape_stand", "status": ("FAIL" if why else "PASS") if out else "INFO",
+    judged = bool(out) and ref is not None and "why" not in ref
+    # REPORT ONLY until the derivation holds (coordinator 2026-11-02): it took the neckline's drop D from the FLAT
+    # pattern (75 mm) where the body's is 16-39 mm (a front tilts over the chest), so it asked for fronts 30-60 mm too
+    # tall and build c1's collar collapsed. Its numbers are shown; it never fails or passes a draft. NEXT in
+    # docs/state/draft_pattern.md: D from the view, then this goes back to a verdict.
+    status = ("INFO (would FAIL)" if why else "INFO (would PASS)" if judged else "INFO") if out else "INFO"
+    return {"id": "shape_stand", "status": status,
             "value": "; ".join(vals) if vals else "no stand / band",
-            "target": f"stand rise >= {STAND_RISE:.2f} x front drop (jaeger.collarStand / 2), free/neck <= {STAND_LEAN:.3f}; "
-                      f"band (under a fall) rise > 0 (simon.collarStand's rising options), free/neck <= {BAND_LEAN:.2f}",
-            "why": "; ".join(why), "change": "; ".join(w.split("change: ", 1)[-1] for w in why), "back_to": "4"}
+            "target": ("step 2's collar_top trace decides (draft_stand.py): rise = f x %.2f x D +- %.2f D (f = the share of "
+                       "the neckline's drop D the top follows), front height = h_side + D - T, CB = h_side + D_back (1 - f), "
+                       "lean <= %.3f when f >= %.1f" % (dst.JAEGER_RISE, dst.STAND_RISE, dst.STAND_LEAN, dst.FOLLOW)),
+            "why": "; ".join(why), "change": "; ".join(x.split("change: ", 1)[-1] for x in why), "back_to": "4"}
 
 
 def fall_pieces(B: dict, decl: dict, step1: dict) -> set:
@@ -259,11 +228,11 @@ def _label(B: dict, e: str) -> str:
     return f"{e.split(':', 1)[0]}:{_edge_name(B, e)}"
 
 
-def rows(B: dict, decl: dict, step1: dict) -> list:
+def rows(B: dict, decl: dict, step1: dict, stand_ref: dict | None = None) -> list:
     out = []
     for f in (stand_rows, fall_rows, cap_rows, seam_curve_rows):
         try:
-            out.append(f(B, decl, step1))
+            out.append(f(B, decl, step1, stand_ref) if f is stand_rows else f(B, decl, step1))
         except (KeyError, ValueError, IndexError, TypeError) as x:
             out.append({"id": "shape_" + f.__name__.replace("_rows", ""), "status": "INFO",
                         "value": "n/a", "why": f"{type(x).__name__}: {str(x)[:160]}"})
