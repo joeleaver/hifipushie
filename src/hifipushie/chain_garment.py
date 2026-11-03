@@ -589,6 +589,8 @@ class Build:
     def fill_band(self):
         net, R = self.net, self.roles
         rs = net.root
+        if R.band is None or not hasattr(self, "sb"):  # (F1: only after the band stage ran)
+            return
         for piece, known_v in ((R.band, np.r_[self.sb, self.st]),):
             F = net.F[np.all(net.piece[net.F] == net.pid(piece), axis=1)]
             known = np.zeros(net.n, bool)
@@ -604,6 +606,8 @@ class Build:
         """The fall between its chains: the turn round the band top is a half circle of the pattern's radius; the rest a
         smooth fill; the fall stays a layer outside the band; a corner patch at the leaf's neck end."""
         net, R = self.net, self.roles
+        if R.fall is None:  # (F1: no fall, no surface)
+            return
         uv, rs = net.uv, net.root
         X = self.X
         ch = self.fall_ch
@@ -938,9 +942,10 @@ class GarmentBuild(Build):
         self.reads["rings"] = {}
         for ring in R.rings:
             side = hand_of(ring)
-            if side == 0:
-                raise ChainRefused(f"{ring}: a ring not worn on a limb (a waistband?) has no chain build yet. next: tell the "
-                                   "coordinator; don't fit it another way")
+            if side == 0:  # (F1: a centre ring is a stiff band on a body loop: a waistband by its seam, a belt by its length)
+                from .chain_loops import body_ring
+                body_ring(self, ring)
+                continue
             tube = next((t for t in R.tubes if self.sewn_with(ring, t)), None)
             if tube is None:
                 raise ChainRefused(f"{ring}: sewn to no tube piece. next: check its seams (pattern_check)")
@@ -1359,7 +1364,7 @@ class GarmentBuild(Build):
         """Every other edge and fold row of the stiff pieces, as chains, between the ones already fixed."""
         net, R = self.net, self.roles
         rs = net.root
-        for p in [q for q in (R.band, R.fall) if q]:
+        for p in [q for q in (R.band, R.fall) if q and (q != R.band or hasattr(self, "sb"))]:  # (F1: stages that ran)
             pid = net.pid(p)
             m = net.chain_piece == pid
             ids = net.link_of_chain[m]
@@ -1375,6 +1380,8 @@ class GarmentBuild(Build):
             self.reads[f"{p}_edges"] = rd
 
     def stiff_stage(self):
+        if self.roles.band is None:  # (F1: nothing on the neck: a fall needs its band, read_roles refuses that)
+            return
         self.band_closed() if not hasattr(self, "sb") else self.band_open()
         self.fall_build()
         self.fill_band()
@@ -1452,6 +1459,8 @@ class GarmentBuild(Build):
         over = (l - net.link_L) / np.maximum(net.link_L, 1e-9) * 100
         rep["gathered_links"] = int(both.sum())
         rep["held_longest_over_pct"] = round(float(over[both].max()), 2) if both.any() else 0.0
+        from .chain_loops import held_read
+        rep.update(held_read(self, X, both, e, over))  # (F1: held links are lengths too)
         return rep
 
     def _near_point(self, v: int, piece: str) -> str:
@@ -1474,6 +1483,10 @@ class GarmentBuild(Build):
             raise ChainRefused(f"a length can't hold: {c['free_worst_line']} is {c['free_worst_pct']} % off its cut (limit "
                                f"{MAX_FREE_PCT} %). next: the pattern can't make this line on this body: look_pattern, then "
                                "alter_pattern at that line, pattern_check, chain_garment again")
+        if c.get("held_worst_pct", 0.0) > MAX_FREE_PCT:  # (F1: a link held at both ends is still a length)
+            raise ChainRefused(f"a held length can't hold: {c['held_worst_line']} is {c['held_worst_pct']} % off its cut "
+                               f"(limit {MAX_FREE_PCT} %). next: look_chain at that line; the stiff piece's cut can't take "
+                               "this shape on this body: draft_pattern at that edge, chain_garment again")
 
     # ---- 7. the hang
     def hold_mask(self):
@@ -1748,6 +1761,9 @@ def worker(model: str, garment: str, wear: dict):
     except (ChainRefused, cd.DrapeRefused) as e:
         _status(d, stage="refused", refused=str(e))
     except Exception as e:  # (a crash is reported as one, with what it was doing)
+        if type(e).__name__ in ("ChainRefused", "DrapeRefused"):  # (F1: the worker runs as __main__, so a refusal
+            _status(d, stage="refused", refused=str(e))       # raised in chain_roles / chain_loops is another class)
+            return
         import traceback
         _status(d, stage="failed", error=f"{type(e).__name__}: {e}", trace=traceback.format_exc()[-1500:])
     finally:  # (steps 5, 6 and 8 of the garment record; a refusal of the record's order is noted, the job stands)

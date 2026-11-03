@@ -34,6 +34,8 @@ STAND_ROLES = ("collar_stand", "neckband")
 TUBE_ROLES = ("sleeve", "leg_front", "leg_back")
 EDGE_TO_EDGE = ("zip",)
 ZIP_GAP = 0.002  # m: an edge-to-edge closure's two edges this far apart (the teeth between them), side by side
+UPRIGHT_LEAN = 30.0  # deg: a stand STANDS: each of its heights within this of vertical, its top above its bottom by
+# its height x cos(this) (the solve holds it; its own edge links then read against their cut, chain_read)
 EDGE_TOL = 0.0015  # m: a border vertex this near a closure's declared edge is on it
 
 
@@ -132,6 +134,7 @@ def read_roles(net):
             sewn[pb].add(pa)
     fold = next((f for f in net.M.get("folds") or [] if f.get("kind") == "roll"), None)
     fall = fold["piece"] if fold else None
+    fall_fault = None
     band, stand = None, False
     if fall:
         cand = [p for p in sewn[fall] if whole[p]]
@@ -141,14 +144,20 @@ def read_roles(net):
         band = cand[0]
     else:
         on_body = [p for p in names if whole[p] and any(not whole[q] for q in sewn[p])]
-        falls = [p for p in on_body if role[p] == "collar_fall"]
+        falls = [p for p in names if whole[p] and role[p] == "collar_fall"]  # (F1: sewn to a stand too, not only the body)
         if falls:
-            raise ChainRefused(f"{falls[0]}: a stiff collar read as a FALL (role collar_fall) with no roll fold: a fall "
-                               "needs its roll line; a collar that stands up needs role collar_stand. next: declare the "
-                               "piece's role (draft_pattern pieces.<name>.role, garment_plan parts) or its roll fold")
+            fall_fault = (f"{falls[0]}: a stiff collar read as a FALL (role collar_fall) with no roll fold: a fall needs "
+                          "its roll line; a collar that stands up needs role collar_stand (declare the piece's role, "
+                          "draft_pattern pieces.<name>.role, or its roll fold)")
         stands = [p for p in on_body if role[p] in STAND_ROLES]
         if stands:
             band, stand = stands[0], True
+    faults = sided_faults(net, role, whole, self_sewn) + ([fall_fault] if fall_fault else [])
+    if faults:
+        raise ChainRefused("the pattern's pieces don't make a whole garment: " + "; ".join(faults) + ". next: draft_pattern "
+                           "declarations: a piece worn on both sides is declared twice, NAME.L and NAME.R (the .R one "
+                           "`mirror: true`, which only flips a piece, never makes its pair), or cut on the fold "
+                           "(`fold: x0`); pattern_check, chain_garment again")
     closures = net.M.get("closures") or []
     band_cl = next((c for c in closures if band and c["over"] == band), None)
     front = next((c for c in closures if c["over"] != c["under"]), None)
@@ -161,6 +170,29 @@ def read_roles(net):
     panels = [n for n in soft if n not in groups]
     return Roles(band, fall, rings, tubes, panels, front, band_cl, fold, stand=stand,
                  tube_groups={k: v for k, v in groups.items() if len(v) > 1})
+
+
+SIDE_TOL = 0.01  # m: a centre piece's flat is centred on x = 0 within this + 10 % of its width, else it is a half
+
+
+def sided_faults(net, role: dict, whole: dict, self_sewn: set) -> list:
+    """(F1, t8) Pieces the body wears on both sides drafted once: a soft centre piece (no .L / .R) lying wholly on one
+    side of the centre line is half of what the body wears (the t8 shirt's `front`, `mirror: true` taken for "cut
+    two": its button lap crossed x = 0 by 18 mm, the t8 trousers' crotch by 60-120 mm); a limb piece (a tube, a limb role) with no side has no limb to go round. Each named; stiff pieces never
+    (a band's ends are its own)."""
+    from .chain_garment import hand_of
+    out = []
+    for n in net.names:
+        if hand_of(n) != 0 or whole[n]:
+            continue
+        if n in self_sewn or role[n] in TUBE_ROLES:
+            out.append(f"{n}: a limb piece with no side (.L / .R)")
+            continue
+        x = net.uv[net.verts(n), 0]
+        if abs(x.min() + x.max()) / 2 > 0.1 * float(np.ptp(x)) + SIDE_TOL:  # (off centre: a lap or a crotch crosses x = 0)
+            out.append(f"{n}: half a garment (its flat lies off the centre line, x {x.min() * 1e3:.0f} to "
+                       f"{x.max() * 1e3:.0f} mm) with no other half")
+    return out
 
 
 # ---- a tube of several pieces
@@ -281,15 +313,30 @@ def tube_group_points(b, t, v):
 
 # ---- the stand
 def _top_edge(net, piece, sb):
-    """A stand's free top edge, in outline order and the neck chain's direction: the outline arc off the neck seam,
-    where it is (nearly) farthest from it (the ends' upright edges left out: ordered by x they zig-zagged)."""
-    lp = np.asarray(net.loop(piece))
-    ins = np.isin(lp, sb)
-    k = next(i for i in range(len(lp)) if ins[i] and not ins[(i + 1) % len(lp)])
-    lp, ins = np.roll(lp, -(k + 1)), np.roll(ins, -(k + 1))
-    arc = lp[: int(np.argmax(ins))] if ins.any() else lp
-    d = cKDTree(net.uv[sb]).query(net.uv[arc])[0]
-    top = arc[d >= 0.9 * d.max()]
+    """A stand's free top edge, in outline order and the neck chain's direction: the outline arc off the neck seam less
+    its two END edges. An end edge rises from an end of the neck edge: each of its points lies nearest that END (its foot
+    on the neck polyline clamps to the end vertex); a top point's foot is inside; the top is ordered by its feet. Border
+    vertices from the mesh's border mask, not loop(): its walk stopped at the first end corner. (F1: "farthest from the neck seam"
+    kept only the tallest ear of a stand taller at its ends than at CB: 13 of its top vertices, 20 mm of 470, and the
+    rest of the stand stood on nothing and fell.)"""
+    v = net.verts(piece)
+    border = np.asarray(net.M["border"], bool) if net.M.get("border") is not None else None
+    arc = v[border[v]] if border is not None else np.asarray(net.loop(piece))
+    arc = arc[~np.isin(arc, sb)]
+    P = net.uv[sb]
+    seg = np.diff(P, axis=0)
+    sl = np.sqrt(np.maximum((seg ** 2).sum(1), 1e-12))
+    q = net.uv[arc][:, None, :] - P[None, :-1]
+    t = (q * seg[None]).sum(-1) / sl ** 2
+    tc = np.clip(t, 0, 1)
+    d = np.linalg.norm(q - tc[..., None] * seg[None], axis=-1)
+    j = np.argmin(d, axis=1)
+    tj = t[np.arange(len(arc)), j]
+    end = ((j == 0) & (tj <= 0)) | ((j == len(seg) - 1) & (tj >= 1))
+    s0 = np.r_[0, np.cumsum(sl)]
+    foot = s0[j] + np.clip(tj, 0, 1) * sl[j]  # (where along the neck edge each point stands: the top's order)
+    top = arc[~end][np.argsort(foot[~end])] if (~end).sum() >= 2 else arc[np.argsort(foot)]
+    # (a top far shorter than the neck edge is no top: read it whole and let the lengths speak)
     return top[::-1] if net.uv[top[0], 0] > net.uv[top[-1], 0] else top
 
 
@@ -364,8 +411,11 @@ def stand_ring(b):
                          ([chain[q], chain[mj[q]]], [1.0, -1.0], 2, 0.0, 1.0)]
     S.add_linear(rows)
 
-    def upright(Y):  # it stands: its top above its bottom
-        d = Y[nt[ev[:, 0]], 2] - Y[nb[ev[:, 1]], 2] - 0.012
+    hz_ = hgt[ev[:, 0]] * np.cos(np.radians(UPRIGHT_LEAN))
+
+    def upright(Y):  # it stands: its top above its bottom by its own height (within UPRIGHT_LEAN of vertical; F1: a
+        # flat 12 mm let an 80 mm stand lie out at 30 deg)
+        d = Y[nt[ev[:, 0]], 2] - Y[nb[ev[:, 1]], 2] - hz_
         bad = d < 0
         m = len(ev)
         g = np.zeros((m, 3))
@@ -379,8 +429,14 @@ def stand_ring(b):
     b._band_project(held=np.isin(np.arange(net.n), [cbn]))
     b.reads["band"] = b._band_read()
     up = b.X[nt[ev[:, 0]]] - b.X[nb[ev[:, 1]]]
-    b.reads["stand"] = {"rise_deg_median": round(float(np.median(np.degrees(np.arctan2(
-        up[:, 2], np.linalg.norm(up[:, :2], axis=1))))), 1), "ends_meet": [bool(e) for e in (front_shut,)]}
+    rise = np.degrees(np.arctan2(up[:, 2], np.linalg.norm(up[:, :2], axis=1)))
+    cbk = int(np.argmin(np.abs(ev[:, 1] - mid)))
+    lt = np.linalg.norm(np.diff(b.X[nt], axis=0), axis=1)
+    b.reads["stand"] = {"rise_deg_median": round(float(np.median(rise)), 1), "rise_deg_min": round(float(rise.min()), 1),
+                        "rise_deg_cb": round(float(rise[cbk]), 1), "ends_meet": [bool(e) for e in (front_shut,)],
+                        "top_mm": [round(float(lt.sum() * 1e3), 1), round(float(Lt.sum() * 1e3), 1)],
+                        "neck_mm": round(float(LB.sum() * 1e3), 1),
+                        "top_worst_link_pct": round(float(np.abs(lt / np.maximum(Lt, 1e-9) - 1).max() * 100), 1)}
 
 
 def build_stand(b, t0: float) -> None:
@@ -392,3 +448,4 @@ def build_stand(b, t0: float) -> None:
     b.rings()
     b.reads["stiff_stand_s"] = round(time.time() - t0, 1)
     b.soft_net()
+
