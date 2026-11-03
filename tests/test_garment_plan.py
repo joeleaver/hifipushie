@@ -270,3 +270,35 @@ def test_views_by_name_in_every_step(home):
         if isinstance(x.get("where"), dict):
             x["where"]["view"] = "front"
     assert all((x.get("where") or {}).get("view", 0) == 0 for x in gp.write("m", "w", "parts", p, look=False)["plan"]["pieces"].values())
+
+
+def test_fit_form_errors_refused_with_the_form_not_crashed(home):  # (t s0-2: widths as a dict raised AttributeError)
+    for change, why in ((lambda b: b["fit"].update(widths={"chest": {}}), "fit.widths: a list"),
+                        (lambda b: b["fit"].update(heights={"hem": 250}), "fit.heights: a list"),
+                        (lambda b: b["fit"]["widths"].append("chest"), "fit.widths[1]:")):
+        bad = _read(home)
+        change(bad)
+        assert "the form: fit {view" in _refused(lambda: gp.write("m", "w", "read", bad, look=False), why)
+
+
+def test_seen_edges_are_measured_on_the_picture(home):  # (the picture's block is 50..150 wide: marks 3 px wide of it)
+    b = _read(home)
+    b["fit"]["widths"][0].update(garment=[[47, 100], [153, 100]])
+    f = gp.write("m", "w", "read", b, look=False)["plan"]["fit"]["chest"]
+    assert abs(f["ratio"] - 1.25) < 0.02 and max(f["measured"]["garment"]["moved_px"]) >= 2
+    b["fit"]["widths"][0].update(garment=[[90, 100], [110, 100]], why="knit, worn tight")  # (no edge near: kept)
+    f = gp.write("m", "w", "read", b, look=False)["plan"]["fit"]["chest"]
+    assert f["ratio"] == 0.25 and f["measured"]["garment"]["notes"]
+
+
+def test_landmarks_inferred_sensitivity_and_floor_never_used(home):
+    b = _read(home)
+    b["fit"]["landmarks"] = {"chest": 100, "waist": {"at": [[60, 150], [140, 150]], "from": "covered: by proportion"},
+                             "floor": 290}
+    r = gp.write("m", "w", "read", b, look=True)
+    h = r["plan"]["heights"]["hem"]
+    assert h["between"] == ["chest", "waist"] and h["z_mm"] == 700.0  # (the floor marked, not used)
+    assert h["landmarks"]["waist"] == "covered: by proportion" and h["mm_per_10px"]["waist"] > 0
+    assert "INFERRED: covered" in gp.text("m", "w", r) and "floor" in h["source"]
+    b["fit"]["landmarks"]["waist"] = {"at": 150}
+    _refused(lambda: gp.write("m", "w", "read", b, look=False), "fit.landmarks.waist")

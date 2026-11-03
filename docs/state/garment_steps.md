@@ -56,4 +56,6 @@ DRIFT FOUND (Joe 2026-11-03): from F4 the build placed WHOLE pieces then correct
 block-in map) instead of steps 5-6 as agreed: chains at exact lengths first, surfaces filled between. Rebuild 5-6 as agreed.
 METHOD NOW (Joe 2026-11-03): one STEP per blind trial (/mnt/data/hifipushie/trials/s<step>-<n>/: hp client pinned to main),
 judged with Joe beside the reference, fixed, rerun, then the next step; tests run once when a step is declared done.
-NEXT: blind step-0 trial s0-2 on Garrett's trousers with the ratio form (garment_fit.py; s0-1's log: trials/s0-1/log.md).
+s0-2 (2026-11-03): cloth / colour / ankle / waistband right; knee read 12 px wide, landmarks guessed silently, the hem hung
+on a floor under a shoe, the look drew no vertical; s0-fix2 (C336) fixed all six, general (any garment); rerun of s0-2's marks: knee 1.34.
+NEXT: blind step-0 trial s0-3, same trousers + brief (trials/s0-2 as the template; a fresh pinned checkout); judge with Joe.

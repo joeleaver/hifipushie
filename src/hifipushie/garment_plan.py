@@ -15,7 +15,7 @@ STEP 0 "read": {kind, views, cloth, fit, notes?}   (garment_read.py)
           stiffness: drapey|soft|medium|crisp|stiff|rigid; colour: [r,g,b] | {at: [[u,v],..], view}; print?: {kind,
           repeat_mm, colours?, source}; grain: text}}   (a fabric name fills the numbers from garment_kb.json)
   fit    RATIOS read on the picture, applied to the model's body (garment_fit.py is the spec): {view, landmarks:
-          {landmark: v}, widths: [{at, garment: [[u,v],[u,v]], body: [[u,v],[u,v]], body_from: seen | how inferred}],
+          {landmark: v | {at, from: how inferred}}, widths: [{at, garment: [[u,v],[u,v]], body: [[u,v],[u,v]], body_from: seen | how inferred}],
           heights: [{name, at: v}]} -> the record's fit {landmark: {ratio, ease_mm, ...}} and heights {name: {z_mm}}
 STEP 1 "parts": {pieces, details, closures, seams, over?, define?}
   define   {measurement name: girth|arc|length|height}: a seam length's body name body_tape doesn't take by FreeSewing name

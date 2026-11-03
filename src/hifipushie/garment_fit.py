@@ -15,6 +15,11 @@ FORM (garment_plan step "read", key "fit"):
              inferred, ratio?: garment / body (only with garment_from inferred, in place of the marks),
              why?: a garment narrower than the body (knit worn tight)}]
    heights: [{name, at: v | [u, v], source?}]  the garment's edges and levels (hem, waistband top, crotch, cuff ...)}
+  a landmark: v | [u, v] | [[u, v], [u, v]] (both sides: their mean row) | {at: one of those, from: how a covered one
+  was placed}; each height says how many mm it moves per 10 px of each landmark it hangs on (garment_fit_marks.py).
+SEEN edges are measured on the picture: each end moved to the picture's own edge near the mark (garment_fit_marks.py).
+FLOOR / CROWN: marked or not, heights never hang on them: in a picture they are a shoe's sole and a hat's / the hair's
+top, not the body's; a height beyond the outermost body landmark is extrapolated from the nearest body span (C336).
 LANDMARKS: below. A torso level's width is the torso section's across the view; a limb's is its section square to the
 limb, across it in the view; the girth is body_tape's at the same place. Ease = body girth x (ratio - 1): the garment's
 section taken as the body's scaled by the ratio (stated in every source). Heights: the fraction between the two marked
@@ -80,31 +85,54 @@ def _pair(x):
         _uv(p) and _uv(p)[0] is not None for p in x) else None
 
 
+FORM = ("fit {view: 'front', landmarks: {chest: v, waist: v | [u, v] | [[u, v], [u, v]] (both sides: their mean row) | "
+        "{at: v, from: 'how inferred' (a covered landmark)}, wrist: v}, widths: [{at: 'chest', garment: [[u,v],[u,v]], "
+        "body: [[u,v],[u,v]], body_from: 'seen' | how inferred}], heights: [{name: 'hem', at: v}]}: widths and heights are LISTS; pixels of the "
+        "view; seen edges are measured on the picture (garment_fit_marks.py)")
+UNDER = ("floor", "crown")  # (in a picture these are the shoe's sole and the hair's top, not the body's: heights skip them)
+
+
+def _refuse(bad):
+    raise FitRefused("\n  ".join(bad) + f"\n  the form: {FORM}")
+
+
 def check(fit, views: list, body=None) -> tuple[dict, dict, dict]:
     """(fit, heights, fit_read) from the reading; FitRefused names every fault. body: a Body, or a callable giving one
     (only called once the form is right); False: validate the form only."""
+    from . import garment_fit_marks as gm
     bad = []
     if isinstance(fit, dict) and fit and all(isinstance(e, dict) and "ease_mm" in e for e in fit.values()):
-        raise FitRefused("fit: ease is no longer guessed in mm: mark it on the picture and the tool applies the ratios "
-                         "to the model's body: fit {view, landmarks: {waist: v, knee: v, floor: v}, widths: [{at: "
-                         "'knee', garment: [[u,v],[u,v]], body: [[u,v],[u,v]], body_from: 'seen' | how inferred}], "
-                         "heights: [{name: 'hem', at: v}]} (guide topic garment_plan)")
+        _refuse(["fit: ease is no longer guessed in mm: mark it on the picture and the tool applies the ratios to the "
+                 "model's body"])
     if not isinstance(fit, dict) or not (fit.get("widths") or fit.get("heights")):
-        raise FitRefused("fit: {view, landmarks, widths, heights}: at least one width (garment and body edges at a "
-                         f"landmark) or height; landmarks: {', '.join(LANDMARKS)}")
+        _refuse([f"fit: at least one width (garment and body edges at a landmark) or height; landmarks: "
+                 f"{', '.join(LANDMARKS)}"])
+    for k, typ, what in (("widths", list, "a list [{at, garment, body, body_from}, ...]"),
+                         ("heights", list, "a list [{name, at}, ...]"), ("landmarks", dict, "{landmark: mark}")):
+        if fit.get(k) is not None and not isinstance(fit[k], typ):
+            bad.append(f"fit.{k}: {what}, not a {type(fit[k]).__name__}")
+    if bad:
+        _refuse(bad)
     vi = view_index(views, fit.get("view", 0), "fit", bad)
+    image = views[vi].get("image") if vi is not None and isinstance(views[vi], dict) else None
     known = ", ".join(LANDMARKS)
-    lms = {}
+    lms, lfrom = {}, {}
     for k, x in (fit.get("landmarks") or {}).items():
+        m = gm.landmark(x)
         if k not in LANDMARKS:
             bad.append(f"fit.landmarks.{k}: unknown landmark: one of {known}")
-        elif _uv(x) is None:
-            bad.append(f"fit.landmarks.{k}: v (a pixel row) or [u, v] where the {k} is on the picture")
+        elif m is None:
+            bad.append(f"fit.landmarks.{k}: v (a pixel row), [u, v], [[u, v], [u, v]] (both sides: their mean row) or "
+                       f"{{at: one of those, from: 'seen' | how the covered {k} was placed}}")
         else:
-            lms[k] = _uv(x)[1]
+            lms[k], lfrom[k] = m
     widths = []
     for i, w in enumerate(fit.get("widths") or []):
-        at, wn = (w or {}).get("at"), f"fit.widths[{i}]"
+        wn = f"fit.widths[{i}]"
+        if not isinstance(w, dict):
+            bad.append(f"{wn}: {{at, garment, body, body_from}}, not a {type(w).__name__}")
+            continue
+        at = w.get("at")
         if at not in LANDMARKS or LANDMARKS.get(at, (None,))[0] is None:
             bad.append(f"{wn}.at {at!r}: a landmark with a width: "
                        f"{', '.join(k for k, v in LANDMARKS.items() if v[0])}")
@@ -128,28 +156,38 @@ def check(fit, views: list, body=None) -> tuple[dict, dict, dict]:
                 bad.append(f"{wn}.body_from: 'seen', or how the covered body's edges were inferred")
             if g is None or b is None or not bfrom:
                 continue
+            meas = {}  # (seen edges moved to the picture's own edges: C336)
+            for key, pair, seen in (("garment", g, gfrom == "seen"), ("body", b, bfrom == "seen")):
+                if seen and image:
+                    q, moved, notes = gm.measure(image, pair)
+                    meas[key] = dict(marked=pair, measured=q, moved_px=moved, notes=notes)
+                    if key == "garment":
+                        g = q
+                    else:
+                        b = q
             gw, bw = math.dist(*g), math.dist(*b)
             if bw < 1:
                 bad.append(f"{wn}.body: its two edges are the same point")
                 continue
             widths.append(dict(at=at, ratio=gw / bw, body="seen" if bfrom == "seen" else "inferred",
                                garment="seen" if gfrom == "seen" else "inferred", note=None if bfrom == "seen" else bfrom,
-                               why=w.get("why"), px=[round(gw, 1), round(bw, 1)]))
+                               why=w.get("why"), px=[round(gw, 1), round(bw, 1)], measured=meas))
         if widths and widths[-1]["at"] == at and widths[-1]["ratio"] < 1 and not str(w.get("why") or "").strip():
             bad.append(f"{wn}: the garment is narrower than the body at the {at} ({widths[-1]['ratio']:.2f}): re-mark the "
                        "body's edges inside the garment, or say why (e.g. 'knit, worn tight')")
     hts = []
     for i, h in enumerate(fit.get("heights") or []):
-        nm, uv = (h or {}).get("name"), _uv((h or {}).get("at"))
+        nm, uv = (h or {}).get("name") if isinstance(h, dict) else None, _uv(h.get("at")) if isinstance(h, dict) else None
         if not str(nm or "").strip() or uv is None:
             bad.append(f"fit.heights[{i}]: {{name (e.g. 'hem', 'waistband top'), at: v | [u, v]}}")
         else:
             hts.append(dict(name=nm, v=uv[1], source=h.get("source")))
-    if hts and len(lms) < 2:
-        bad.append(f"fit.landmarks: heights need >= 2 body landmarks marked (have {', '.join(lms) or 'none'}): e.g. "
-                   "{waist: v, knee: v, floor: v}")
+    body_lms = [k for k in lms if k not in UNDER]
+    if hts and len(body_lms) < 2:
+        bad.append(f"fit.landmarks: heights need >= 2 body landmarks marked besides the floor / crown (have "
+                   f"{', '.join(lms) or 'none'}): e.g. {{waist: v, knee: v, ankle: v}}")
     if bad:
-        raise FitRefused("\n  ".join(bad))
+        _refuse(bad)
     if body is False:  # (validate only: another part of the reading was refused)
         return {}, {}, dict(fit)
     body = body() if callable(body) else body
@@ -160,29 +198,45 @@ def check(fit, views: list, body=None) -> tuple[dict, dict, dict]:
     for w in widths:
         m = body.at(w["at"], view)
         r = w["ratio"]
+        mv = "; ".join(f"{k} edges measured on the picture (moved {x['moved_px'][0]:.0f} / {x['moved_px'][1]:.0f} px"
+                       + (f"; {'; '.join(x['notes'])}" if x["notes"] else "") + ")"
+                       for k, x in (w.get("measured") or {}).items())
         src = (f"ratio {r:.3f} read on view {vi} ({'garment ' + str(w['px'][0]) + ' px / body ' + str(w['px'][1]) + ' px' if w.get('px') else 'given'}); "
                f"body {w['body']}{' (' + w['note'] + ')' if w['note'] else ''}; applied to the model's {LANDMARKS[w['at']][1]}: "
-               "the garment's section taken as the body's scaled by the ratio")
+               "the garment's section taken as the body's scaled by the ratio" + (f"; {mv}" if mv else ""))
         out[w["at"]] = dict(ratio=round(r, 3), ease_mm=round(m["girth_mm"] * (r - 1), 1),
                             body_girth_mm=round(m["girth_mm"], 1), garment_girth_mm=round(m["girth_mm"] * r, 1),
                             body_width_mm=round(m["width_mm"], 1), garment_width_mm=round(m["width_mm"] * r, 1),
-                            body=w["body"], garment=w["garment"], source=src, **({"why": w["why"]} if w.get("why") else {}))
+                            body=w["body"], garment=w["garment"], source=src, **({"why": w["why"]} if w.get("why") else {}),
+                            **({"measured": w["measured"]} if w.get("measured") else {}))
     heights = {}
     if hts:
-        z = {k: body.at(k, view)["z_mm"] for k in lms}
-        order = sorted(lms, key=lambda k: lms[k])
+        use = {k: v for k, v in lms.items() if k in body_lms}  # (never the floor / crown: under a shoe, over hair)
+        z = {k: body.at(k, view)["z_mm"] for k in use}
+        order = sorted(use, key=lambda k: use[k])
         for h in hts:
             v = h["v"]
-            inner = [(a, b) for a, b in zip(order, order[1:]) if lms[a] <= v <= lms[b]]
-            a, b = inner[0] if inner else ((order[0], order[1]) if v < lms[order[0]] else (order[-2], order[-1]))
-            f = (v - lms[a]) / (lms[b] - lms[a]) if lms[b] != lms[a] else 0.0
+            inner = [(a, b) for a, b in zip(order, order[1:]) if use[a] <= v <= use[b]]
+            a, b = inner[0] if inner else ((order[0], order[1]) if v < use[order[0]] else (order[-2], order[-1]))
+            f = (v - use[a]) / (use[b] - use[a]) if use[b] != use[a] else 0.0
             zz = z[a] + f * (z[b] - z[a])
+            sa, sb = gm.sensitivity(v, use[a], use[b], z[a], z[b])
+            if zz < 0:
+                bad.append(f"fit.heights {h['name']!r}: {-zz:.0f} mm under the model's floor (read from the {a} -> {b} "
+                           "span): re-mark it or the landmarks")
+                continue
+            skipped = [k for k in UNDER if k in lms]
             heights[h["name"]] = dict(z_mm=round(zz, 1), fraction=round(f, 3), between=[a, b],
-                                      extrapolated=not inner,
+                                      extrapolated=not inner, landmarks={a: lfrom[a], b: lfrom[b]},
+                                      mm_per_10px={a: sa, b: sb},
                                       source=f"{f:.3f} of the way from the {a} to the {b} on view {vi}, on the model's own "
                                              f"{a} ({z[a]:.0f} mm) and {b} ({z[b]:.0f} mm) above the floor"
                                              + (" (EXTRAPOLATED beyond them)" if not inner else "")
+                                             + (f"; the {' / '.join(skipped)} not used (in a picture: the shoe's sole / "
+                                                "the hair, not the body's)" if skipped else "")
                                              + (f"; {h['source']}" if h.get("source") else ""))
+    if bad:
+        _refuse(bad)
     read = dict(fit, view=vi)
     return out, heights, read
 
@@ -274,7 +328,15 @@ def body_for(model: str):
 def text(fit: dict, heights: dict) -> list:
     L = [f"  fit {k}: ratio {e['ratio']} (body {e['body']}, garment {e['garment']}) -> ease {e['ease_mm']:+.0f} mm "
          f"(girth {e['body_girth_mm']:.0f} -> {e['garment_girth_mm']:.0f} mm; width {e['body_width_mm']:.0f} -> "
-         f"{e['garment_width_mm']:.0f} mm)" for k, e in fit.items()]
-    L += [f"  height {k}: {h['z_mm']:.0f} mm above the floor ({h['fraction']} of {h['between'][0]} -> {h['between'][1]}"
-          f"{', EXTRAPOLATED' if h['extrapolated'] else ''})" for k, h in heights.items()]
+         f"{e['garment_width_mm']:.0f} mm)" + "".join(
+             f"; {w} edges moved to the picture's {x['moved_px'][0]:.0f} / {x['moved_px'][1]:.0f} px"
+             + (f" ({'; '.join(x['notes'])})" if x["notes"] else "")
+             for w, x in (e.get("measured") or {}).items() if max(x["moved_px"]) >= 1 or x["notes"])
+         for k, e in fit.items()]
+    for k, h in heights.items():
+        lm = h.get("landmarks") or {}
+        sens = ", ".join(f"{s:.0f} mm per 10 px of the {n} ({'seen' if lm.get(n, 'seen') == 'seen' else 'INFERRED: ' + lm[n]})"
+                         for n, s in (h.get("mm_per_10px") or {}).items())
+        L.append(f"  height {k}: {h['z_mm']:.0f} mm above the floor ({h['fraction']} of {h['between'][0]} -> "
+                 f"{h['between'][1]}{', EXTRAPOLATED' if h['extrapolated'] else ''})" + (f"; moves {sens}" if sens else ""))
     return L

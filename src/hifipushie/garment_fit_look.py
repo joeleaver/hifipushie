@@ -1,5 +1,8 @@
 """The look of step 0's fit (garment_fit.py): the picture with the agent's marks (garment edges yellow, body edges cyan,
-dashed where inferred; landmarks grey; garment heights orange) and BESIDE it the model's own body with the widths and
+dashed where inferred; landmarks grey; garment heights orange) with the VERTICAL reading drawn as plainly as the widths:
+a ruler down the left with every landmark's tick (dashed = inferred, dotted = floor / crown: never used for heights) and,
+for each height, a bracket over the span it was read in with its tick; where the tool moved a seen edge to the picture's
+edge, the agent's mark is a small grey ring. BESIDE it the model's own body with the widths and
 heights those ratios give, drawn at the same landmarks: whether the fit READS right. Shape only: numbers are the tool's
 text (C288)."""
 from __future__ import annotations
@@ -11,6 +14,7 @@ from . import garment_record as gr
 from .garment_plan_look import FONT, FONT_LEG, _line
 
 H = 900
+OX = 110  # (the photo's left margin: the ruler)
 YEL, CYAN, ORANGE, GREY, WHITE = (250, 210, 40), (60, 220, 230), (255, 140, 30), (150, 150, 150), (235, 235, 235)
 
 
@@ -20,29 +24,81 @@ def _seg(d, a, b, col, w, dash):
         d.ellipse([p[0] - 4, p[1] - 4, p[0] + 4, p[1] + 4], outline=col, width=2)
 
 
+def _lmarks(read: dict) -> dict:
+    from .garment_fit_marks import landmark
+    out = {}
+    for k, x in (read["fit_read"].get("landmarks") or {}).items():
+        m = landmark(x)
+        if m:
+            out[k] = m
+    return out
+
+
+def _ruler(d, ys: dict, inferred: set, heights: dict, hy: dict, x0: float, width: float):
+    """A ruler at x0: landmark ticks (dashed inferred, dotted floor / crown), a bracket per height over its span."""
+    from .garment_fit import UNDER
+    if not ys:
+        return
+    lo, hi = min(ys.values()), max(ys.values())
+    _line(d, [(x0, lo), (x0, hi)], GREY, 2, None)
+    for k, y in ys.items():
+        dash = (2, 5) if k in UNDER else (8, 8) if k in inferred else None
+        _line(d, [(x0 - 10, y), (x0 + 10, y)], GREY, 2, dash)
+        _line(d, [(x0 + 10, y), (x0 + width, y)], GREY, 1, dash)
+        d.text((x0 - 8, y - 18), k, fill=GREY, font=FONT)
+    for i, (k, h) in enumerate(heights.items()):
+        a, b = h.get("between") or [None, None]
+        if a not in ys or b not in ys or k not in hy:
+            continue
+        x, y = x0 + 22 + 12 * i, hy[k]
+        ya, yb = ys[a], ys[b]
+        top, bot = min(ya, yb, y), max(ya, yb, y)
+        _line(d, [(x, ys[a]), (x, ys[b])], ORANGE, 2, None)
+        if not min(ya, yb) <= y <= max(ya, yb):  # (extrapolated: the reach beyond its span dashed)
+            _line(d, [(x, top), (x, bot)], ORANGE, 1, (4, 4))
+        for yy in (ya, yb):
+            _line(d, [(x - 4, yy), (x + 4, yy)], ORANGE, 2, None)
+        d.ellipse([x - 5, y - 5, x + 5, y + 5], fill=ORANGE)
+
+
 def _photo(read: dict, fit: dict) -> Image.Image:
     fr = read["fit_read"]
     im = Image.open(read["views"][fr["view"]]["image"]).convert("RGB")
     s = H / im.size[1]
     im = im.resize((round(im.size[0] * s), H))
     im = Image.blend(im, Image.new("RGB", im.size, (0, 0, 0)), 0.3)
-    d = ImageDraw.Draw(im)
-    for k, x in (fr.get("landmarks") or {}).items():
-        v = (x[1] if isinstance(x, list) else x) * s
-        _line(d, [(0, v), (im.size[0], v)], GREY, 1, (6, 6))
-        d.text((4, v - 16), k, fill=GREY, font=FONT)
+    base = Image.new("RGB", (im.size[0] + OX, H), (24, 25, 28))  # (the ruler in a margin: grey on the photo doesn't read)
+    base.paste(im, (OX, 0))
+    im, d = base, ImageDraw.Draw(base)
+    lm = _lmarks(read)
+    heights = read.get("heights") or {}
+    hy = {h["name"]: (h["at"][1] if isinstance(h["at"], list) else h["at"]) * s for h in fr.get("heights") or []
+          if isinstance(h, dict) and h.get("name") in heights}
+    _ruler(d, {k: v * s for k, (v, _) in lm.items()}, {k for k, (_, f) in lm.items() if f != "seen"}, heights, hy, 40,
+           im.size[0] - 40)
     for w in fr.get("widths") or []:
+        if not isinstance(w, dict):
+            continue
         inf = str(w.get("body_from") or "seen") != "seen"
-        if w.get("body"):
-            _seg(d, *[np.array(p) * s for p in w["body"]], CYAN, 2, (8, 6) if inf else None)
-        if w.get("garment"):
-            g = [np.array(p) * s for p in w["garment"]]
-            _seg(d, *[q + [0, -6] for q in g], YEL, 3, None if str(w.get("garment_from") or "seen") == "seen" else (8, 6))
-            d.text((g[1][0] + 8, g[1][1] - 14), w["at"], fill=YEL, font=FONT)
-    for h in fr.get("heights") or []:
-        v = (h["at"][1] if isinstance(h["at"], list) else h["at"]) * s
-        _line(d, [(im.size[0] * 0.15, v), (im.size[0] * 0.85, v)], ORANGE, 2, None)
-        d.text((im.size[0] * 0.85 + 4, v - 14), h["name"], fill=ORANGE, font=FONT)
+        meas = (fit.get(w.get("at")) or {}).get("measured") or {}
+        for key in ("body", "garment"):
+            pair = (meas.get(key) or {}).get("measured") or w.get(key)
+            if not pair:
+                continue
+            P = [np.array(p) * s + [OX, 0] for p in pair]
+            for q, m in zip((meas.get(key) or {}).get("marked") or [], (meas.get(key) or {}).get("moved_px") or []):
+                if m >= 1:  # (the agent's mark, where the tool moved it to the picture's edge)
+                    c = np.array(q) * s + ([OX, -6] if key == "garment" else [OX, 0])
+                    d.ellipse([c[0] - 3, c[1] - 3, c[0] + 3, c[1] + 3], outline=GREY, width=1)
+            if key == "body":
+                _seg(d, *P, CYAN, 2, (8, 6) if inf else None)
+            else:
+                _seg(d, *[q + [0, -6] for q in P], YEL, 3, None if str(w.get("garment_from") or "seen") == "seen" else (8, 6))
+                d.text((P[1][0] + 8, P[1][1] - 14), w["at"], fill=YEL, font=FONT)
+    for k, v in hy.items():
+        x0, x1 = OX + (im.size[0] - OX) * 0.15, OX + (im.size[0] - OX) * 0.85
+        _line(d, [(x0, v), (x1, v)], ORANGE, 2, None)
+        d.text((x1 + 4, v - 14), k, fill=ORANGE, font=FONT)
     return im
 
 
@@ -66,6 +122,10 @@ def _model(read: dict, body, fit: dict, heights: dict) -> Image.Image:
     Q = np.c_[300 + (P[:, 0] - cx) * s, H - 30 - (P[:, 1] - z0) * s]
     for t in T:
         d.polygon([tuple(Q[i]) for i in t], fill=(95, 95, 100))
+    lm = _lmarks(read)
+    ys = {k: H - 30 - (body.at(k, view)["z_mm"] / 1000) * s for k in lm}
+    hy = {k: H - 30 - (h["z_mm"] / 1000) * s for k, h in heights.items()}
+    _ruler(d, ys, {k for k, (_, f) in lm.items() if f != "seen"}, heights, hy, 40, 560)
     for k, e in fit.items():
         m = body.at(k, view)
         if m.get("centre") is None:
@@ -75,9 +135,8 @@ def _model(read: dict, body, fit: dict, heights: dict) -> Image.Image:
         _seg(d, px(c - u * hb), px(c + u * hb), CYAN, 2, (8, 6) if e["body"] != "seen" else None)
         _seg(d, px(c - u * hg) + [0, -6], px(c + u * hg) + [0, -6], YEL, 3, (8, 6) if e["garment"] != "seen" else None)
         d.text(tuple(px(c + u * hg) + [8, -20]), k, fill=YEL, font=FONT)
-    for k, h in heights.items():
-        y = H - 30 - (h["z_mm"] / 1000) * s
-        _line(d, [(110, y), (490, y)], ORANGE, 2, (8, 6) if h.get("extrapolated") else None)
+    for k, y in hy.items():
+        _line(d, [(110, y), (490, y)], ORANGE, 2, (8, 6) if heights[k].get("extrapolated") else None)
         d.text((494, y - 14), k, fill=ORANGE, font=FONT)
     return im
 
@@ -88,7 +147,8 @@ def draw(model: str, garment: str, read: dict, body) -> str:
     out.paste(a, (0, 40))
     out.paste(b, (a.size[0] + 20, 40))
     ImageDraw.Draw(out).text((8, 8), f"{garment} step 0 fit: the picture's marks | the model with the widths and heights "
-                             "they give (yellow garment, cyan body, orange heights; dashed = inferred; numbers: the text)",
+                             "they give (yellow garment, cyan body, orange heights + their spans on the left ruler; dashed = inferred; "
+                             "dotted = floor / crown, not used; numbers: the text)",
                              fill=WHITE, font=FONT_LEG)
     p = gr.look_dir(model, garment) / "step0_fit.png"
     out.save(p)
