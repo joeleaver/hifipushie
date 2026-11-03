@@ -53,8 +53,7 @@ solve; hussar stand STILL REFUSED 39.8 % at collar:rightTopIn (stretched after t
 - SLEEVE (t8 shirt redrafted as is, scripts/sleeve_check.py): sleeve.L "tube round its own measurements: loops biceps,
   wrist, along shoulderToWrist", 40 mm mean from the old joint-axis start; fronts / back panels (first rule had grouped
   front.L + sleeve.L via the armhole's biceps: fixed, C313). Hussar (f4/hussar) names step-1 names step 3 never took
-  (armscye_girth...), its design no measurements: FALLBACK, start unchanged (0 mm).
-- F3's job_trousers_4.log: failed on a removed worktree (FileNotFoundError f3-pairs/src/hifipushie/garment_kb.json): no result.
+  (armscye_girth...), its design no measurements: FALLBACK, start unchanged (0 mm). F3's job_trousers_4: failed (its worktree removed), no result.
 NEXT: (a) the .R tube's start: dump soft_start X per piece for f4/ws trousers (scripts/start_check.py: x ranges are
 mirror-symmetric at the start, so the fault is later: _mirror / sewn roots averaging the crotch seam's two legs, or the
 .R phase sign in tube_group_points); fix, rebuild, re-render. (b) the two tubes overlap +-45 mm above the crotch: start
