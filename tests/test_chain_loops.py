@@ -206,3 +206,20 @@ def test_a_stands_end_edges_are_in_its_solve_and_hold_their_cut():
     keep = b.X[b.net.root[b.se]].copy()
     b.fill_band()
     assert np.allclose(b.X[b.net.root[b.se]], keep)
+
+
+def test_a_bands_lap_past_its_marks_keeps_every_length():
+    """F8 C325: the part of a band past its closure's marks lies a LAYER out at its own cut lengths (the trousers'
+    waistband read 13 % over the step and ~3 % along the lap when the loop's points were pushed out radially)."""
+    body = _lathe()
+    pat, _ = _pattern({"strap": (-0.55, 0.55, 0.0, 0.035, 29, 3)}, stiff=["strap"], closures=[("strap", (2, 1), (26, 1))])
+    b = cg.GarmentBuild(pat, body, {"state": "closed"}, log=lambda *_: None)
+    b.stiff_stage()
+    b.rings()
+    net = b.net
+    v = net.verts("strap")
+    k = np.isin(net.edges[:, 0], v) & np.isin(net.edges[:, 1], v)
+    E, L0 = net.edges[k], net.flat[k]
+    st = (np.linalg.norm(b.X[E[:, 0]] - b.X[E[:, 1]], axis=1) / L0 - 1) * 100
+    assert st.max() < 0.5, st.max()
+    assert np.percentile(st, 5) > -2.0, np.percentile(st, 5)
