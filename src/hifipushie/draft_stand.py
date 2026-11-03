@@ -41,7 +41,9 @@ END_SHARE = 0.25  # a front end's height: the tallest place on the free edge wit
 
 
 def _curve_word(r: float, D: float) -> str:
-    return "rising (hugs)" if r > 0.1 * D else "falling (stands away)" if r < -0.1 * D else "straight (upright)"
+    """The neck edge's curve in words: past half jaeger's rise either way (the row's own tolerance) it reads as a style."""
+    return ("rising (hugs)" if r >= STAND_RISE * D else "falling (stands away)" if r <= -STAND_RISE * D
+            else "near straight (upright)")
 
 
 def reference(plan: dict | None, at: dict | None) -> dict | None:

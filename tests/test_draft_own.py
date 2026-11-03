@@ -237,7 +237,9 @@ def test_shape_no_trace_reports_the_stand_and_assumes_no_style():
         r = _rows(_B(s))
         assert r["shape_stand"]["status"] == "INFO" and "no style assumed" in r["shape_stand"]["value"], r["shape_stand"]
     assert "rising (hugs)" in _rows(_B(_stand(HUGS)))["shape_stand"]["value"]
-    assert "falling (stands away)" in _rows(_B(_stand(AWAY)))["shape_stand"]["value"]
+    assert "near straight (upright)" in _rows(_B(_stand(AWAY)))["shape_stand"]["value"]
+    falls = _strip("collar", lambda x: -0.03 * _bowl(x), lambda x: 0.05 - 0.03 * _bowl(x))
+    assert "falling (stands away)" in _rows(_B(falls))["shape_stand"]["value"]
     sc = _rows(_B(_strip("collar", lambda x: 0.0, lambda x: 0.048)))["shape_seam_curve"]  # still named: straight on curved
     assert sc["status"] == "FAIL" and "collar:neck is straight" in sc["why"]
 
