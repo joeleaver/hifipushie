@@ -148,3 +148,18 @@ def test_the_tool_through_call_tool(home):
     bad["fit"] = {}
     with pytest.raises(Exception, match="PlanRefused: step 0 \\(read\\) refused:\\s+fit:"):
         asyncio.run(server.call_tool("garment_plan", {"name": "m", "garment": "w", "step": "read", "plan": bad}))
+
+
+def test_style_traces_refused_by_name_then_written_and_drawn(home):
+    """T15 (C299): traced edges + body marks at step 2: refused by name, then written, listed and drawn."""
+    gp.write("m", "w", "read", _read(home), look=False)
+    gp.write("m", "w", "parts", _parts(), look=False)
+    tr = {"id": "hem", "what": "hem", "view": 0, "points": [[50, 250], [100, 240], [150, 250], [160, 251]], "corners": [1],
+          "source": "front view: the hem"}
+    marks = [{"view": 0, "at": {"hps.L": [120, 50], "hps.R": [80, 50]}, "source": "front view"}]
+    st = dict(_style(), traces=[dict(tr, what="hemline")], body_marks=marks)
+    _refused(lambda: gp.write("m", "w", "style", st), "traces[0] hem.what", "hemline")
+    st = dict(_style(), traces=[tr])
+    _refused(lambda: gp.write("m", "w", "style", st), "body_marks: view 0 needs two landmarks")
+    r = gp.write("m", "w", "style", dict(_style(), traces=[tr], body_marks=marks))
+    assert r["look"] and "trace hem (hem) on view 0: 4 points" in gp.text("m", "w", r)
