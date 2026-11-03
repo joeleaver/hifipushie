@@ -149,6 +149,12 @@ def body_ring(b, ring: str) -> None:
         su = float(np.sign(np.mean(uv[lv, 0]) - 0.5 * (ua + ub))) or 1.0
     frac = su * (u - ub) / C  # (0 at a mark: centre front; the part past the other mark laps over)
     P = _loop_at(h, C, frac)
+    if left:  # (F5 C315: checked, not assumed: the left piece's seam lies on the left (+x). Read by sign alone it ran
+        k = np.isin(rv, lv)  # the trousers' band the wrong way round, each leg sewn to the band over the other leg)
+        if k.any() and float(P[k, 0].mean()) < 0:
+            su = -su
+            frac = su * (u - ub) / C
+            P = _loop_at(h, C, frac)
     lap = LAYER * ((u < ua - 1e-6) | (u > ub + 1e-6))
     cen = P.mean(0)
     P = P + unit(P - cen) * lap[:, None]

@@ -1119,7 +1119,8 @@ class GarmentBuild(Build):
             v = net.verts(t)
             X[v] = self._tube_points(t, v)
         from .chain_stages import mirror_starts
-        return mirror_starts(self, X)  # (F5 C314: a .R piece starts as its .L's mirror, never solved on its own)
+        from .piece_start import turn_to_seams
+        return mirror_starts(self, turn_to_seams(self, X))  # (F5 C314: a .R piece starts as its .L's mirror, never solved on its own)
 
     def soft_net(self, start=None, far_z=None):
         """Chains + lines of the soft cloth from its start, stiff nodes held; then surfaces; then the threads."""

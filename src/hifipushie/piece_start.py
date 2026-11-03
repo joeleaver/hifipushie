@@ -255,3 +255,68 @@ def panel_dz(b, p: str) -> float:
     dz = top - (hz + float(yv.max()))
     rd[p] = f"panel between its tapes: top at {top:.3f} m (the top of {n}), {dz * 1e3:+.0f} mm from hung at the hps"
     return dz
+
+
+TURN_STEPS = 72  # (5 deg: a tube's turn read to well under a seam's own spacing at a thigh's radius)
+
+
+def turn_to_seams(b, X):
+    """(F5 C316) A tube sewn to a stiff part built before it (a waistband, a cuff) turns about its loops' line until its
+    seam faces where it is sewn: the turn of least median distance from each sewn point to its place. The phase rule
+    (_tube_points / tube_group_points: the longest piece's middle on the outer side) is a sleeve's; this reads the
+    garment's own seam instead. Groups with nothing sewn to a built part keep their phase. Said in reads["starts"]."""
+    from .chain_garment import hand_of
+    net = b.net
+    stiff = b._stiff_mask()
+    held = np.zeros(net.n, bool)
+    held[net.root[stiff]] = True
+    X = np.array(X, float)
+    done = set()
+    for t in b.roles.tubes:
+        grp = tuple(sorted((b.roles.tube_groups or {}).get(t) or [t]))
+        if grp in done:
+            continue
+        done.add(grp)
+        side = hand_of(t)
+        loops = [P for p in grp for _, P in _tapes_of(net, p)[0] if sided(P, side)]
+        gv = np.concatenate([net.verts(p) for p in grp])
+        sv = gv[held[net.root[gv]] & ~stiff[gv]]
+        if len(loops) < 2 or len(sv) < 3:
+            continue
+        C = np.array([np.asarray(P).mean(0) for P in loops])
+        c0 = C.mean(0)
+        ax = _unit(np.linalg.svd(C - c0)[2][0])
+        tgt = b.X[net.root[sv]]
+
+        def turned(P, a):
+            d = P - c0
+            return c0 + d * np.cos(a) + np.cross(ax, d) * np.sin(a) + np.outer(d @ ax, ax) * (1 - np.cos(a))
+
+        cost = [float(np.median(np.linalg.norm(turned(X[sv], a) - tgt, axis=1)))
+                for a in np.linspace(0, 2 * np.pi, TURN_STEPS, endpoint=False)]
+        k = int(np.argmin(cost))
+        a = 2 * np.pi * k / TURN_STEPS
+        if k:
+            X[gv] = turned(X[gv], a)
+        # then the cloth between the seam and the nearest loop it was measured at eases onto the built part: each point
+        # moved by its nearest sewn point's offset (on its own piece's flat), all of it at the seam, none at that loop
+        from scipy.spatial import cKDTree
+        ts = float(((tgt - c0) @ ax).mean())
+        tl = (C - c0) @ ax
+        t_loop = float(tl[np.argmin(np.abs(tl - ts))])
+        span = ts - t_loop
+        if abs(span) > 1e-3:
+            for p in grp:
+                v = net.verts(p)
+                sp = v[np.isin(v, sv)]
+                if not len(sp):
+                    continue
+                off = b.X[net.root[sp]] - X[sp]
+                j = cKDTree(net.uv[sp]).query(net.uv[v])[1]
+                w = np.clip(((X[v] - c0) @ ax - t_loop) / span, 0, 1)
+                w = w * w * (3 - 2 * w)
+                X[v] = X[v] + off[j] * w[:, None]
+        b.reads.setdefault("starts", {})[f"{','.join(grp)} turn"] = (
+            f"turned {np.degrees(a):.0f} deg to face its seam to the built part (median {cost[0] * 1e3:.0f} -> "
+            f"{cost[k] * 1e3:.0f} mm), eased onto it down to its nearest loop")
+    return X
