@@ -136,3 +136,25 @@ def sensitivity(v, va, vb, za, zb):
     """mm a height moves per 10 px of landmark a and of landmark b (read at v between them)."""
     den = (vb - va) ** 2 or 1.0
     return round(abs((zb - za) * (v - vb) / den) * 10, 1), round(abs((zb - za) * (v - va) / den) * 10, 1)
+
+
+SCALE_TOL = 0.18  # (the across and up-and-down scales of one picture this far apart: refused. t s0-2 / s0-3 11 %
+# (the concept's shorter legs), s0-5 8 %, s0-4 25 % (its waist + hips placed low: the hem came out 6 cm high))
+MIN_RISE = 250.0  # mm on the model: a shorter landmark range doesn't give the up-and-down scale
+
+
+def scale(across: list, marks: dict, z: dict):
+    """One picture has one scale (a front or side view, not foreshortened): across, the median of the model's body
+    widths over their marked px; up and down, the model's height range over the marked rows of its outermost standing
+    landmarks. None when there is too little to say (< 2 widths, a landmark range < MIN_RISE). Otherwise
+    (across, up, apart, {landmark: the row it would have at the across scale, from the top landmark})."""
+    if len(across) < 2 or len(marks) < 2:
+        return None
+    top, bot = min(marks, key=marks.get), max(marks, key=marks.get)
+    rise = z[top] - z[bot]
+    if rise < MIN_RISE or marks[bot] == marks[top]:
+        return None
+    h = float(np.median(across))
+    v = rise / (marks[bot] - marks[top])
+    rows = {k: round(marks[top] + (z[top] - z[k]) / h) for k in marks}
+    return round(h, 3), round(v, 3), round(v / h - 1, 3), rows
