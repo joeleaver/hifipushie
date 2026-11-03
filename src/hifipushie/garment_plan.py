@@ -17,7 +17,10 @@ STEP 0 "read": {kind, views, cloth, fit, notes?}   (garment_read.py)
   fit    RATIOS read on the picture, applied to the model's body (garment_fit.py is the spec): {view, landmarks:
           {landmark: v | {at, from: how inferred}}, widths: [{at, garment: [[u,v],[u,v]], body: [[u,v],[u,v]], body_from: seen | how inferred}],
           heights: [{name, at: v}]} -> the record's fit {landmark: {ratio, ease_mm, ...}} and heights {name: {z_mm}}
-STEP 1 "parts": {pieces, details, closures, seams, over?, define?}
+STEP 1 "parts": {pieces, details, closures, seams, centre?, over?, define?}
+  centre   the garment's centre line on the picture, u (one view) or {view: u}: a piece / detail named "X.L" brings its
+            mirror "X.R" (place flipped about it, .L names inside swapped) unless you trace "X.R" yourself; a seam with
+            a .L in it brings its twin; .R names may then be used anywhere (garment_parts_mirror.py, C346)
   define   {measurement name: girth|arc|length|height}: a seam length's body name body_tape doesn't take by FreeSewing name
             (body_tape.TAKES); any other name is refused with the closest valid ones
   over     [garment names of this model it is worn over] (T9: built on their approved builds; chain_layers)
@@ -200,6 +203,8 @@ def form(sid: str) -> str:
 
 def check_parts(p: dict, read: dict, body=None) -> dict:
     bad, p = [], json.loads(json.dumps(p))
+    from . import garment_parts_mirror as gpm  # (".L" brings ".R": the project's convention, C346)
+    mirrored = gpm.mirror(p, bad) if isinstance(p, dict) else []
     nv, cloths = len(read.get("views") or []), set(read.get("cloth") or {})
     pieces, details = p.get("pieces") or {}, p.get("details") or {}
     closures, seams = p.get("closures") or {}, p.get("seams")
@@ -318,6 +323,7 @@ def check_parts(p: dict, read: dict, body=None) -> dict:
     if bad:
         raise PlanRefused("step 1 (parts) refused:\n  " + "\n  ".join(bad) + "\n" + form("1"))
     p["measurements"] = sorted(needs)  # (what step 3 must measure, by name)
+    p["mirrored"] = mirrored
     return p
 
 
@@ -478,6 +484,8 @@ def text(model: str, garment: str, r: dict) -> str:
         L.append("  closures: " + (", ".join(f"{c} ({', '.join(v.get('pieces') or [])}; {len(v.get('details') or [])} details)"
                                             for c, v in (p.get("closures") or {}).items()) or "none"))
         L += [f"  seam {r_['a']} = {r_['b']}" + (f" ({r_['kind']})" if r_.get("kind") else "") for r_ in p["seams"]]
+        if p.get("mirrored"):
+            L.append(f"  mirrored from the left side: {', '.join(p['mirrored'])}")
         L.append(f"  step 3 measures: {', '.join(p['measurements']) or 'nothing by body'}")
     else:
         from .garment_plan_look import _tgt
