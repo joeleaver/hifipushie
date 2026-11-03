@@ -1691,7 +1691,7 @@ def worker(model: str, garment: str, wear: dict):
                     from . import chain_layers as cl
                     body = cl.layered_body(model, garment, body, wear["under"], log=note)
                 b = GarmentBuild(pat, body, wear, log=lambda *_: None)
-                b.drape = cd.info(model, garment, b.net)  # (T13: the plan's draped pieces, else None)
+                b.drape = cd.info(model, garment, b.net) if hasattr(b, "net") else None  # (T13: the plan's draped pieces)
                 b.run()
             bid = cp.save_build(d, b, pat, body, fabric)
             _status(d, stage="built", reads=b.reads, note="", build_s=elapsed(status(d)), peak_gb=round(_peak_gb(), 1),

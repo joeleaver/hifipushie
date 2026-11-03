@@ -386,6 +386,8 @@ def text(model: str, garment: str, r: dict) -> str:
         for n, x in p["pieces"].items():  # (every item of the look's legend: C288, the look is for shape)
             L.append(f"  piece {n}: {x['seen']}, build {x['build']}, {'stiff' if x['stiff'] else 'soft'}, layer {x['layer']}"
                      + (f", from {x['from']}" if x["seen"] != "seen" and x.get("from") else "")
+                     + (f", DRAPED (held: {', '.join(x.get('held') or []) or 'by its seam to a held edge'}; its fall "
+                        "judged on the hang)" if x.get("hang") == "draped" else "")
                      + ("" if isinstance(x.get("where"), dict) else " (no place on the picture)"))
         for n, x in (p.get("details") or {}).items():
             L.append(f"  detail {n} x{x.get('count', 1)} on {', '.join(x['on'])}: {x['seen']}, build {x['build']}")
@@ -398,8 +400,11 @@ def text(model: str, garment: str, r: dict) -> str:
         L += [f"  closure {c}: {x['state']}" + (f" ({x['detail']})" if x.get("detail") else "") for c, x in p["state"].items()]
         L.append(f"  pose: {p['pose']['name']}")
         L += [f"  bend {b.get('id', '')} on {b['on']}: {_tgt(b['target'])}" for b in p.get("bends") or []]
+        L += [f"  drape {n}: falls {x['falls']}" for n, x in (p.get("drape") or {}).items()]
         L += [f"  row {r_['id']}: {_tgt(r_['target'])}" + (f" (marked on view {r_.get('view', 0)})" if r_.get("at")
-                                                          else " (not marked)") for r_ in p["rows"]]
+                                                          else " (not marked)")
+              + (" [judged on the HANG, step 8]" if (sr.KINDS.get(r_.get("what")) or {}).get("on") == "hang" else "")
+              for r_ in p["rows"]]
     L += [f"  look: {x}" for x in r["look"]]
     nxt = {"0": "judge the look against the picture (are the samples on the right cloth), then garment_plan step='parts'",
            "1": "judge the look's SHAPES against the picture (does each outline follow its piece; occluded / inferred "
