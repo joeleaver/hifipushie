@@ -17,9 +17,12 @@ HPS -> CF; below), D_b = the back's (CB -> HPS). The trace gives:
 The stand's height anywhere = its top - the neckline there, so:
   front ends: h_front = h_side + D - T  (= h_side + D (1 - f)),   centre back: h_back = h_side + D_b (1 - f).
 The curve: a stand of constant height whose top follows the whole drop (f = 1) is jaeger's: neck edge rising ~ JAEGER x D
-at its ends (the top concentric and shorter: it leans in). A level top (f = 0) on an upright stand: the neck edge
-straight (a cylinder), any rise left would pull the top in and down at the front. Between, the rise scales with f:
-  rise target = f x JAEGER x D, within STAND_RISE x D either way (T5b's halving of jaeger's rise).
+(the flat drop) at its ends (the top concentric and shorter: it leans in). A level top (f = 0) on an UPRIGHT stand is a
+vertical band: developed flat its free edge is ~straight and its neck edge FALLS at the front ends by the height it gains
+there, D - D_b seen (r-hussar: T5c's straight neck edge built a stand tilted with the neckline's plane, 31 deg up, CB
+lying flat). Between, blended: rise target = f x JAEGER x D_flat - (1 - f)(D - D_b), within the heights' tol.
+Heights are the nearest distance free edge -> neck edge (square to the neck edge): a steeply falling end reads a little
+short of its vertical (cos of the slope; 4 % at the hussar's 16 deg).
   lean (free / neck edge <= STAND_LEAN) only when the top follows (f >= FOLLOW): a level stand standing away needs no lean.
 Heights within tol = 2 x TRACE_PX x mm/px (two traced places per height) + the marks' residual. Approximations, said:
 an upright stand (a stand leaning 20 deg reads 6 % short in the view).
@@ -141,7 +144,11 @@ def check(p: str, kind: str, N: np.ndarray, R: np.ndarray, top: np.ndarray | Non
     Dbm = ref["D_back"] if ref.get("D_back") is not None else mm(D_b)
     f = float(np.clip(ref["T"] / Dm, 0, 1)) if Dm > 0 else 1.0
     style = "follows the neckline (hugging)" if f >= FOLLOW else "level (standing away)"
-    r_exp, r_tol = f * JAEGER_RISE * mm(D), STAND_RISE * mm(D)  # the rise is the flat's: jaeger's x its flat drop
+    # the rise (r-hussar, build r1: a near-straight neck edge on the tilted neckline built a stand rising 31 deg, not
+    # upright): an UPRIGHT stand is a vertical band; developed flat its free edge is straight where the top is level, so
+    # its neck edge falls at the front ends by the height it gains there, (1 - f)(D - D_b) seen; a top that follows (f = 1)
+    # is jaeger's cone, rising f x JAEGER x the flat drop. Between, the two blended; tol: the heights' own.
+    r_exp, r_tol = f * JAEGER_RISE * mm(D) - (1 - f) * (Dm - Dbm), tol
     hf_exp = ref["h_side"] + Dm * (1 - f)
     hb_exp = ref["h_side"] + Dbm * (1 - f)
     val += (f"; traced top ({ref['how']}): {ref['h_side']:.0f} mm above the side neck, drops {ref['T']:.0f} mm to its "
@@ -151,7 +158,8 @@ def check(p: str, kind: str, N: np.ndarray, R: np.ndarray, top: np.ndarray | Non
     if abs(mm(r) - r_exp) > r_tol:
         way = "flatter / down (the ends away from the free edge)" if mm(r) > r_exp else "up (the ends towards the free edge)"
         why.append(f"{p}: neck edge {_curve_word(r, D)} {mm(r):+.0f} mm at its front ends; a top that {style.split(' (')[0]} "
-                   f"({f:.2f} x D) wants {r_exp:+.0f} +- {r_tol:.0f} mm (f x {JAEGER_RISE:.2f} x D). change: curve the neck "
+                   f"({f:.2f} x D) wants {r_exp:+.0f} +- {r_tol:.0f} mm (f x {JAEGER_RISE:.2f} x the flat drop - (1 - f)(D - D_back) "
+                   f"seen). change: curve the neck "
                    f"edge's ends {way} by {abs(mm(r) - r_exp) - r_tol:.0f}-{abs(mm(r) - r_exp):.0f} mm (the free edge follows)")
     if abs(hf - hf_exp) > tol:
         why.append(f"{p}: front ends {hf:.0f} mm tall; the trace wants h_side + D - T = {ref['h_side']:.0f} + {Dm:.0f} - "

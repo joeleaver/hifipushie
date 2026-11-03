@@ -199,7 +199,11 @@ def _ref(points):
 
 _bowl = lambda x: ((x - 0.2) / 0.2) ** 2  # 0 at the middle (CB), 1 at the strip's two ends (the front ends)
 HUGS = (lambda x: 0.03 * _bowl(x), lambda x: 0.03 * _bowl(x) + 0.05)  # neck edge rising 30 mm, 50 mm tall all round
-AWAY = (lambda x: -0.01 * _bowl(x), lambda x: -0.01 * _bowl(x) + 0.05 + 0.07 * _bowl(x))  # falling 10 mm, 120 mm at the ends
+_slope = lambda x: (1 + (0.07 * 2 * (x - 0.2) / 0.04) ** 2) ** 0.5  # 1 / cos of the falling neck edge's slope
+AWAY = (lambda x: -0.07 * _bowl(x), lambda x: -0.07 * _bowl(x) + (0.05 + 0.07 * _bowl(x)) * _slope(x))  # upright: neck
+# edge falling 70 mm, 120 mm at the ends square to it, its top near straight
+LEANS = (lambda x: -0.01 * _bowl(x), lambda x: -0.01 * _bowl(x) + 0.05 + 0.07 * _bowl(x))  # falling 10 mm only: the top
+# curves up 60 mm in the flat, so the band leans with the neckline's plane (r-hussar build r1)
 
 
 def _stand(lo_hi, lean_in=False):
@@ -223,6 +227,8 @@ def test_shape_a_level_top_over_a_dropping_neckline_wants_taller_fronts_not_a_ri
     assert "flatter / down" in r["why"] and "taller at its front ends" in r["why"] and r["back_to"] == "4", r["why"]
     ok = _rows(_B(_stand(AWAY)), ref=_ref(LEVEL))["shape_stand"]
     assert ok["status"] == "INFO (would PASS)", ok
+    lean = _rows(_B(_stand(LEANS)), ref=_ref(LEVEL))["shape_stand"]  # tall fronts but a near-straight neck edge: not upright
+    assert "FAIL" in lean["status"] and "flatter / down" in lean["why"] and "taller" not in lean["why"], lean
 
 
 def test_shape_a_top_that_follows_the_neckline_wants_the_hugging_rise():
@@ -237,7 +243,7 @@ def test_shape_no_trace_reports_the_stand_and_assumes_no_style():
         r = _rows(_B(s))
         assert r["shape_stand"]["status"] == "INFO" and "no style assumed" in r["shape_stand"]["value"], r["shape_stand"]
     assert "rising (hugs)" in _rows(_B(_stand(HUGS)))["shape_stand"]["value"]
-    assert "near straight (upright)" in _rows(_B(_stand(AWAY)))["shape_stand"]["value"]
+    assert "near straight (upright)" in _rows(_B(_stand(LEANS)))["shape_stand"]["value"]
     falls = _strip("collar", lambda x: -0.03 * _bowl(x), lambda x: 0.05 - 0.03 * _bowl(x))
     assert "falling (stands away)" in _rows(_B(falls))["shape_stand"]["value"]
     sc = _rows(_B(_strip("collar", lambda x: 0.0, lambda x: 0.048)))["shape_seam_curve"]  # still named: straight on curved
