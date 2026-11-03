@@ -23,37 +23,32 @@ history of this page (commit 80eb32ef) and cloth.md.
 pieces, panels, lapped / zip fronts). Hussar proof (HOME /mnt/data/hifipushie/t8): STRUCTURE FAIL at the stand's
 CF (dives to a V), sheet t8/sheet_b2.png; its rows and NEXT: git history of this page (commit 8c603bda).
 
-## T9 + T12 + T12b (2026-11-02): layering (C292, C294, C296; chain_layers, chain_press, chain_hidden, test_chain_layers)
-Step 1 `over: [...]`; step 2 `layers` {mode: visible (default) | full, why}. ORDER (visible, chain_hidden.build_over,
-C296): (a) the over garment on the body + the under's cloth THICKNESS only; (b) visibility on that build (an under point
-is hidden where the over covers it); (c) pieces hidden >= 98 % OMITTED for real, the rest trimmed to seen + 30 mm; (d)
-only kept stiff parts + seen solid details push: the over is RE-SOLVED from (a) if one reaches it, then the trim read
-again (omissions kept); (e) the kept parts pressed inside (8 rounds; only STIFF points held: the build's last solve held
-its far cloth too, T12's poke-through) and the cut moved onto the 30 mm level line of a smoothed field, smoothed, held
-inside the cover. (full mode: T12's order). The inside gate reads only the kept cloth. Record: reads.hidden {omitted +
-why, the garment_plan "parts" call with `build: omit` per piece}. Proof (/mnt/data/hifipushie/t12b/ws; shirt = T7's refused
-build): yoke, sleeves, stand, collar omitted; jacket free worst 1.097 % (T12 34.9, T8 0.0); shirt fit lengths PASS, cut
-inside the cover; rows + numbers: t12b report / git history (merge of t12b-hidden). STILL REFUSED: the jacket inside the
-kept shirt at 13 points (armpit front.L 9.8 mm; high hip back.L 20 mm: the tails wrapping the jacket's hem rim). LEFT: full
-mode's joint hang; a collar laid outside a lapel needs piece `layer`. NEXT: the 13 inside points; an approved shirt; rebuild.
+## T9 + T12 + T12b (2026-11-02, C292, C294, C296): layering (chain_layers, chain_press, chain_hidden): the over garment on
+the body + the under's thickness; hidden under pieces omitted, kept stiff parts push, the kept cloth pressed inside. Proof
+/mnt/data/hifipushie/t12b/ws: STILL REFUSED (jacket inside the kept shirt at 13 points). Detail + NEXT: git history (merge of t12b-hidden).
 
-## T13 (2026-11-02, C297; chain_drape.py, tests/test_chain_drape.py): draped garments (cloak, cape, hood)
-ROLE: step 1 piece `hang: draped` + `held: [edges]` (the draft's edge names built on the body); a draped piece with no held
-edge is held by its seam to one (a hood on the cloak's neck); step 2 `drape {piece: {falls: down|up}}` (hood worn up).
-BUILD (build_drape, wholly draped garments only; fitted + draped refused by name): the held line rested as a rigid ring of
-its cut length at the lowest height round the neck it fits (chain_rest.rest_ring), ends shut at CF (clasp); free cloth
-starts on clear paths from its nearest held point (out + down / up, then straight), ends fanned; soft_net projects with
-the body as floor; the held line pinned in the hang (hold_mask). BODY: the collider is already the whole
-body incl. the head (wf_simon z to 1.78 m; no hair: the head alone).
-GATE SPLIT: structure_rows hang kinds (drape_hem_height of stature, drape_hem_spread of shoulder_width, drape_front_back,
-hood_opening / hood_depth of neck_width) carry on="hang": LATER at the build (record: waits_for_hang), judged after the hang
-(chain_drape.hang_check -> status hang_structure; FAIL = stage hang_rows_failed). Build rules: drape_start_clear,
-drape_held_exact, closure clasp via drape_clasp_state; hang rule hood_on_head. A row `judged` on the wrong stage, a hang row
-with no draped piece falling that way, drape on a fitted piece: refused by garment_plan with the list.
-PROOF (HOME /mnt/data/hifipushie/t13/ws, dev scripts t13/dev, design t13/designs/cloak.mjs + cloak_decl.json): steps 0-4
-through the tools: half-circle cloak (neck 370.5 + 80 mm, r2 1365 mm) + two-piece hood; flat gate PASS (3 seams 0 off).
-Build: three fixes on the way (ring caught on the chin / inside the chest: now rested rigidly); the last build (old start
-search, t13/dev/build2.log) had not finished at the budget: the path search is a python loop per held vertex (~400
-candidates x a Contact query each): UNVERIFIED: build numbers, structure rows, 7a, hang, draped rows, render.
-NEXT: vectorise _paths (all candidates in one query), finish the build (dev/build.py), then the job (dev/job.py, dev
-HIFIPUSHIE_PRESIM_APPROVAL=optional), render the hang beside refs/ranger/front.png; the capelet as a second draped piece.
+## T13 (2026-11-02, C297; chain_drape.py): draped garments (hang: draped + held edges; drape falls; hang rows judged after
+the hang). Proof HOME /mnt/data/hifipushie/t13/ws: build UNFINISHED at the budget (_paths per-vertex loop). Detail + NEXT:
+git history of this page (commit 1e4182a8).
+
+## T15 (2026-11-02, C299; structure_outline.py + _look, tests/test_structure_outline.py): OUTLINE vs REFERENCE
+Step 2 `traces` [{id, what (structure_outline.KINDS: hem, front_edge, collar_top, collar_front, neckline, sleeve_end,
+outline), view, points [[u,v]..] px, corners [indices], source}] + `body_marks` [{view, at: {hps.L: [u,v], waist_z: ..}}];
+garment_plan refuses each fault by name and draws the traces (cyan) on step 2's look. Step 6: chain_structure.check adds
+rows `outline:<id>`: the build projected along the view; the edge = border loops of the kind's pieces (facing the camera
+for hem / fronts), points with a perpendicular foot inside the trace, within 60 deg of it, within the cap; both ways, the
+shape after the best shift + the shift; corners: the build turns >= 50 % of the traced turn within tol. tol = 3 px x
+mm/px + the border edge; p95 <= tol, max <= 2 tol, shift <= 2 tol + marks residual. SCALE: fit from the body marks (the
+body is the ruler); step 0's scale only for a one-mark view, NOTE when off > 5 % (hussar: 1.17 vs 1.062 = +10 %: with it
+the zip PASS case fails by 34 mm at its lower end). FAIL backs to step 4 with the pattern edge (declarations; an
+undeclared edge named by the draft points it lies between). look_chain draws the sheet when step 2 has traces.
+PROOF (copy HOME /mnt/data/hifipushie/t15, T8's build, no new build; scripts t15/scripts/traces.py, check.py, gate.py):
+hem FAIL p95 32.5 / max 38.2 mm (tol 11.0), 4 of 4 corners lost (nearest built 25-38 mm), shift 88 mm down (the build
+~9 cm short by the body), worst at the notch's step corner -> front.L:cutaway; collar_top FAIL 8.7 / 12.7 (tol 4.8: built
+narrower, domed); collar_front R / L FAIL 11.8 / 6.3 (top corners low and inside: collar:tr-br end edge); zip_line PASS
+4.2 / 4.9; cutaway_drop still PASSes beside the hem FAIL. Sheet: t15/wf_simon/chain/hussar_open/hussar_open_outline_v0.png.
+STEP 4 NEEDS (after T5b): traces whose edge lies flat in the view (a hem, a CF edge) checked on the FLAT pattern before
+any build: the declared edge (piece:edge) drawn in mm vs the trace (same compare(), placed by the edge's end points).
+UNVERIFIED: side / back views (only front used); a trace through a tube's silhouette (sleeves, a side outline: not a
+border edge); the job's answer text with outline rows (rows checked via chain_structure.check, not a new job).
+NEXT: step 4's flat check; redraw the hussar's cutaway (CF step out, then the tails) + the stand's front ends, rebuild.
