@@ -251,9 +251,33 @@ def sewn_reads(b, X) -> dict:
     return out
 
 
+def length_reads(b, X) -> dict:
+    """(F6) Lengths at a stage: the chains (worst free link %, its line; held) and every soft mesh edge against its
+    flat length per piece (p50 / p90 / max % off, + = stretched). Read at every stage, so the stage that adds stretch
+    is named: the start is laid from the flat, so it should read ~0."""
+    c = b.chain_read(X)
+    out = {"chain_worst_pct": c["free_worst_pct"], "chain_worst_line": c["free_worst_line"],
+           "held_worst_pct": c.get("held_worst_pct"), "edges": {}}
+    F = np.asarray(b.net.F)
+    E = np.unique(np.sort(np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]], axis=1), axis=0)
+    L0 = np.linalg.norm(b.net.uv[E[:, 0]] - b.net.uv[E[:, 1]], axis=1)
+    e = (np.linalg.norm(X[E[:, 0]] - X[E[:, 1]], axis=1) / np.maximum(L0, 1e-9) - 1) * 100
+    for p in _soft(b):
+        k = b.net.piece[E[:, 0]] == b.net.pid(p)
+        if k.any():
+            out["edges"][p] = [round(float(x), 1) for x in (np.percentile(e[k], 50), np.percentile(e[k], 90), e[k].max())]
+    return out
+
+
 def gate_start(b, X) -> dict:
-    from .chain_garment import GAP
+    from .chain_garment import GAP, MAX_FREE_PCT
     rows, reads = _placement_rows(b, X, "start")
+    ln = length_reads(b, X)
+    reads["lengths"] = ln
+    rows.insert(0, _row("length", ln["chain_worst_pct"], MAX_FREE_PCT, ln["chain_worst_pct"] <= MAX_FREE_PCT,
+                        "MAX_FREE_PCT: the start is laid from the flat, every chain at its cut (F6: a start that "
+                        "stretches is a start bug, not something a later stage should fix)",
+                        f"{ln['chain_worst_line']}: the START stretches here (piece_start's lay), before any solve"))
     sw = sewn_reads(b, X)
     reads["sewn_mm"] = {p: list(v) for p, v in sw.items()}
     for p, (m, lim) in sw.items():
@@ -308,7 +332,7 @@ def gate_chains(b, X) -> dict:
                            f"moved from the start; limit the smallest girth radius it was started round (piece_start loops)",
                            f"{p} left its start in the chain solve (moved past its own girth's radius): the seams "
                            "joining it pull it off (pattern_check the seam pairs), or a length it can't reach", "mm"))
-    reads.update(free_worst_pct=c["free_worst_pct"], free_worst_line=c["free_worst_line"])
+    reads.update(free_worst_pct=c["free_worst_pct"], free_worst_line=c["free_worst_line"], lengths=length_reads(b, X))
     return verdict("chains", rows + pr, reads)
 
 
@@ -350,7 +374,7 @@ def gate_surfaces(b, X) -> dict:
                      f"R{sr.ROUGH_SMOOTH_R_MM:.0f} mm tube's, worst piece ({worst[0] if worst else '-'}), read on the "
                      "surface lay BEFORE the solve", f"{worst[0] if worst else ''} crumpled by the surface lay itself "
                      "(the fill between the chains), not by the solve"))
-    return verdict("surfaces", rows, {"holes": hr, "rough": {k: round(v["bump_p90_mm"] / v["limit_mm"], 2)
+    return verdict("surfaces", rows, {"lengths": length_reads(b, X), "holes": hr, "rough": {k: round(v["bump_p90_mm"] / v["limit_mm"], 2)
                                                               for k, v in rough.items()}})
 
 
