@@ -31,6 +31,7 @@ design iterations, complex in ~10.** Progress is measured as iterations-to-pass 
 | t5 | same as t4 | C238 | 8 | 7 | ~75-80 % | blind neck 4, no default sleeve 1, worn_top advice 1, no-effect guess 1 |
 | t6 | hoodie (t2's brief): TRANSFER test | C239 | 16 | 5 (+1) | ~65 %: hood, shoulder spikes | arg discovery 5, cap-ease band 3, no dropped-shoulder op 4, flush cuffs broke 2 (my bug), real fixes 4; threads gate stuck on folded cuffs (my bug) |
 | t7 | white dress shirt, no reference: TRANSFER test | C239 | 17 (+9 alteration sets) | 5 | ~65 %: hem clings into the crotch, no shirttail | truing loop 8, shirttail unreachable 7, option names/units 5, gate thresholds 2, unmakeable default 1, real fixes 6 |
+| t8 | Garrett's whole outfit (shirt, trousers, belt, open jacket), concept ref, garment steps | e3b1f8cb | shirt 4, trousers 1, belt 2, jacket 3 (no pass) | 0 built (4 crashes) | steps 0-4 reached blind for all four; NO build: chain_garment crashed on every own draft | build's collar-band leftovers (bottomMid, sb); no part inspector (~9 calls); measurement names unchecked across steps; stale cascade (/mnt/data/hifipushie/trials/t8/triage.md) |
 
 ## Generalised lessons from t3-t7 (2026-10-27) and the fixes they call for
 Each is a rule of the craft or of the tool contract, not of one garment. Fix home in brackets; [x] landed.
