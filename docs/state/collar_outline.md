@@ -32,25 +32,28 @@ the arms like a poncho to the hip, crumpled; the hood shrink-wraps the skull. Bu
 constraints), not the path search. NEXT: (a) drape_start_clear reads after soft_net (4.5 mm floor) against a 6 mm limit:
 read the free cloth's start BEFORE soft_net (the limit stays); (b) start shape: paths near-vertical below the shoulders,
 the hem's fullness folded, the hood started at its depth; (c) soft_net speed; then hang, rows, render.
-## T15 (2026-11-02, C299; structure_outline.py + _look, tests/test_structure_outline.py): OUTLINE vs REFERENCE
-Step 2 `traces` [{id, what (structure_outline.KINDS: hem, front_edge, collar_top, collar_front, neckline, sleeve_end,
-outline), view, points [[u,v]..] px, corners [indices], source}] + `body_marks` [{view, at: {hps.L: [u,v], waist_z: ..}}];
-garment_plan refuses each fault by name and draws the traces (cyan) on step 2's look. Step 6: chain_structure.check adds
-rows `outline:<id>`: the build projected along the view; the edge = border loops of the kind's pieces (facing the camera
-for hem / fronts), points with a perpendicular foot inside the trace, within 60 deg of it, within the cap; both ways, the
-shape after the best shift + the shift; corners: the build turns >= 50 % of the traced turn within tol. tol = 3 px x
-mm/px + the border edge; p95 <= tol, max <= 2 tol, shift <= 2 tol + marks residual. SCALE: fit from the body marks (the
-body is the ruler); step 0's scale only for a one-mark view, NOTE when off > 5 % (hussar: 1.17 vs 1.062 = +10 %: with it
-the zip PASS case fails by 34 mm at its lower end). FAIL backs to step 4 with the pattern edge (declarations; an
-undeclared edge named by the draft points it lies between). look_chain draws the sheet when step 2 has traces.
-PROOF (copy HOME /mnt/data/hifipushie/t15, T8's build, no new build; scripts t15/scripts/traces.py, check.py, gate.py):
-hem FAIL p95 32.5 / max 38.2 mm (tol 11.0), 4 of 4 corners lost (nearest built 25-38 mm), shift 88 mm down (the build
-~9 cm short by the body), worst at the notch's step corner -> front.L:cutaway; collar_top FAIL 8.7 / 12.7 (tol 4.8: built
-narrower, domed); collar_front R / L FAIL 11.8 / 6.3 (top corners low and inside: collar:tr-br end edge); zip_line PASS
-4.2 / 4.9; cutaway_drop still PASSes beside the hem FAIL. Sheet: t15/wf_simon/chain/hussar_open/hussar_open_outline_v0.png.
-STEP 4 NEEDS (after T5b): traces whose edge lies flat in the view (a hem, a CF edge) checked on the FLAT pattern before
-any build: the declared edge (piece:edge) drawn in mm vs the trace (same compare(), placed by the edge's end points).
-UNVERIFIED: side / back views (only front used); a trace through a tube's silhouette (sleeves, a side outline: not a
-border edge); the job's answer text with outline rows (rows checked via chain_structure.check, not a new job).
-- r-nico (2026-11-02): the hang (zozo_hang.run) runs through the machine's configured route when one is set (localconf HIFIPUSHIE_HANG_REMOTE, local config outside the repo; default local), holding no local slot; its gate there is the job's own structure PASS + 7a (chain_gate.json, written by the worker); exit 9 = not available -> runs here, said in one line (status hang_ran). drape_start_clear reads the start before soft_net (C302).
-NEXT: step 4's flat check; redraw the hussar's cutaway (CF step out, then the tails) + the stand's front ends, rebuild.
+## T15 (2026-11-02, C299; structure_outline.py): OUTLINE vs REFERENCE rows `outline:<id>` from step 2's traces (kinds hem,
+front_edge, collar_top, collar_front, neckline, sleeve_end, outline) + body_marks (the body is the ruler); FAIL backs to step
+4 with the pattern edge. Detail + proof numbers: git history of this page (commit 1308bfa2) and the module docstring.
+UNVERIFIED there: side / back views; traces through a tube's silhouette. r-nico: the hang runs on the configured route (C302).
+## F1 (2026-11-02, C307-C309; chain_loops.py, tests/test_chain_loops.py): t8's own drafts crashed the build (Simon's
+'bottomMid' in cloth.place; self.sb used with no band stage). Now: the neck wrap's edge is the piece's seam
+(cloth._neck_edge_ref); band attributes only after their stage; refusals from helper modules reach the job as refusals.
+CENTRE RINGS (body_ring): a waistband at its seam's height round the torso at its closed length (marks at CF, tail lapped);
+a belt (sewn to nothing) where the torso first takes its length nearest the waist; short ones refused with how much
+longer. HALF / SIDELESS PIECES refused by name (sided_faults), all draft faults in one answer.
+STAND: its top edge was 20 mm of one ear (loop() stopped at a corner; "farthest from the seam"): now the border less the
+end edges, ordered by foot; upright = heights within 30 deg of vertical by their own height. HELD LINKS counted (stiff
+own links exact, gathered never longer); gate_lengths refuses them past MAX_FREE_PCT.
+RESULTS (HOME /mnt/data/hifipushie/f1/ws = t8 copy; f1/hussar = r-hussar copy; logs f1/job_*.log): t8 shirt REFUSED
+(front half, sleeve with no side, fall without roll); trousers REFUSED (front, back halves); belt REFUSED (809 mm vs
+the torso's narrowest 787 + 25 gap). Hussar r2 (unchanged): BUILT 150 s, stand rise min 60 / CB 81 deg, top 531.5 = cut,
+collar_rise 31.3 -> 74.6 (want 76.5-93.5), collar_top p95 11.5 -> 10.4, collar_front_R 11.8 -> 9.8, zip_line PASS;
+REFUSED by the new held read: collar edge 39.8 % at collar:rightTopIn (the END edges: not in the stand's solve).
+Sheet f1/hussar/sheet_f1_neck.png: the stand STANDS (upright, CB standing); vs reference too tall at the fronts, CF ends
+touching at the top with a teardrop gap below, seam crumpled.
+UNVERIFIED: a waistband / belt on a real body (synthetic only: t8's are refused first); trousers' LEGS (no leg axis:
+LimbAxis reads arms only; panels below the crotch wrap the torso rings); the half-piece rule's 10 % centring on other drafts.
+NEXT: (a) the stand's END edges in its solve (tried as chains neck end -> top end: fought the ends-meet rows; read
+which corner pair holds); then rebuild r2 and judge the fronts; (b) leg axes for trousers; (c) F2 / step 4: refuse
+`mirror: true` without a pair, and declarations whose pieces the body wears twice, before the flat gate passes.
