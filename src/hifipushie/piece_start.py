@@ -8,8 +8,9 @@ from the measurements the piece was drafted from:
 - STEP 4 keeps each piece's measurement list (`piece_measurements`): the body names on step 1's seams its edges are
   on, plus its draft part's own `measurements` (FreeSewing's part config, pattern_parts). A pair's two pieces share it.
 - STEP 3 keeps where each was taken (tape_geom: a girth's loop, a length's path).
-- TUBE: soft pieces of one side sewn to each other (or one sewn to itself) whose girth loops lie on that side of the
-  body (a loop that doesn't hold the centre line): the tube starts round those loops, along the line through their
+- TUBE: soft pieces of one side whose seams close them round (one sewn to itself, or two joined by two separate
+  seams) whose girth loops lie on that side of the body (a loop that doesn't hold the centre line) and one of whose
+  length paths runs along those loops (an armhole's girth named by a body panel is not its tube): it starts round them, along the line through their
   centres, run on to the ends of the length paths it names (`MeasuredAxis`, the same interface as the old axis).
   Pieces of the other side take the loops mirrored. Nothing names a limb.
 - PANEL: an open piece starts over the region between its tapes: its top at the highest top of the length paths it
@@ -85,16 +86,56 @@ def sided(P: np.ndarray, side: float) -> bool:
     return bool(side != 0 and (np.asarray(P)[:, 0] * side).min() > SIDED_TOL)
 
 
+ALONG = 1.5  # a length path runs along a tube when its median distance to the loops' line is under this x their radius
+
+
+def _seams_between(net, a: str, b: str) -> int:
+    """How many separate seams join piece a to piece b: runs of a's sewn vertices joined by a's own mesh edges."""
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+    pa, pb = net.pid(a), net.pid(b)
+    va = np.unique([int(x) if net.piece[x] == pa else int(y) for x, y in net.sew
+                    if {int(net.piece[x]), int(net.piece[y])} == {pa, pb}])
+    if not len(va):
+        return 0
+    idx = {v: k for k, v in enumerate(va.tolist())}
+    E = np.r_[net.F[:, [0, 1]], net.F[:, [1, 2]], net.F[:, [2, 0]]]
+    E = E[np.isin(E[:, 0], va) & np.isin(E[:, 1], va)]
+    i_ = [idx[int(x)] for x in E[:, 0]]
+    j_ = [idx[int(x)] for x in E[:, 1]]
+    G = coo_matrix((np.ones(len(i_)), (i_, j_)), shape=(len(va), len(va)))
+    return int(connected_components(G, directed=False)[0])
+
+
+def _along(loops: list, paths: list) -> bool:
+    """Some length path runs along the line through the loops (a tube's own length), not off across the body."""
+    if not paths:
+        return True
+    C, k_ = np.unique(np.round([P.mean(0) for P in loops], 4), axis=0, return_index=True)  # (a loop two pieces name: once)
+    loops = [loops[k] for k in sorted(k_)]
+    C = np.array([P.mean(0) for P in loops])
+    r = max(float(np.linalg.norm(P - P.mean(0), axis=1).mean()) for P in loops)
+    u = _unit(C[-1] - C[0]) if len(C) > 1 else _unit(np.linalg.svd(loops[0] - C[0])[2][2])  # (one loop: its normal)
+    tc = (C - C[0]) @ u
+    for _, P in paths:  # (over the loops' own span: a path that only meets their line inside the body runs elsewhere)
+        sp = np.r_[0, np.cumsum(np.linalg.norm(np.diff(P, axis=0), axis=1))]
+        q = np.arange(0, sp[-1] + 1e-9, 0.01)
+        P = np.column_stack([np.interp(q, sp, P[:, k]) for k in range(3)])  # (every cm along it)
+        t = (P - C[0]) @ u
+        m = (t >= tc.min() - r) & (t <= tc.max() + r)
+        d = np.linalg.norm(np.cross(P - C[0], u), axis=1)
+        if m.sum() >= 2 and float(np.median(d[m])) < ALONG * r:
+            return True
+    return False
+
+
 def tube_groups(net, soft: list, sewn: dict, self_sewn: set) -> dict:
-    """{piece: [its tube's pieces]} for pieces whose girth loops lie on their own side: connected through seams with
-    pieces of the same side that do too (a front + back leg, a top + under sleeve) or one sewn to itself."""
+    """{piece: [its tube's pieces]}: soft pieces of one side whose seams close them round (one sewn to itself, or two
+    joined by two separate seams: a front + back leg's side and inseam, a top + under sleeve) and whose girth loops lie
+    on their side with a length path of theirs running along them."""
     from .chain_garment import hand_of
-    ok = []
-    for p in soft:
-        s = hand_of(p)
-        loops, _ = _tapes_of(net, p)
-        if s != 0 and loops and any(sided(P, s) for _, P in loops):
-            ok.append(p)
+    tp = {p: _tapes_of(net, p) for p in soft}
+    ok = [p for p in soft if hand_of(p) != 0 and any(sided(P, hand_of(p)) for _, P in tp[p][0])]
     out, seen = {}, set()
     for p in ok:
         if p in seen:
@@ -106,11 +147,17 @@ def tube_groups(net, soft: list, sewn: dict, self_sewn: set) -> dict:
                 continue
             seen.add(q)
             grp.append(q)
-            todo += [r for r in sewn[q] if r in ok and r not in seen and hand_of(r) == hand_of(p)]
-        if len(grp) > 1 or grp[0] in self_sewn:
-            grp = sorted(grp, key=lambda q: -float(np.ptp(net.uv[net.verts(q), 1])))
-            for q in grp:
-                out[q] = grp
+            todo += [r for r in sewn[q] if r in ok and r not in seen and hand_of(r) == hand_of(p)
+                     and _seams_between(net, q, r) >= 2]
+        if not (len(grp) > 1 or grp[0] in self_sewn):
+            continue
+        s = hand_of(p)
+        loops = [P for q in grp for _, P in tp[q][0] if sided(P, s)]
+        if not _along(loops, [x for q in grp for x in tp[q][1]]):
+            continue
+        grp = sorted(grp, key=lambda q: -float(np.ptp(net.uv[net.verts(q), 1])))
+        for q in grp:
+            out[q] = grp
     return out
 
 

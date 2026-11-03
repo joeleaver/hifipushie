@@ -105,3 +105,18 @@ def test_step4_lists_each_pieces_measurements():
     out = ps.piece_measurements(step1, decl, cfg, ["front.L", "front.R", "back.L", "back.R", "band"])
     assert out["front.L"] == out["front.R"] == ["inseam", "knee", "upperLeg", "waist", "waistToFloor"]
     assert out["back.R"] == ["inseam", "seat", "waistToFloor"] and out["band"] == ["waist"]
+
+
+def test_a_panel_naming_an_armhole_girth_is_no_tube():
+    """Front + back halves of one side joined by two seams (shoulder, side), naming a girth on that side (the armhole's)
+    whose loop their own length (down the torso's side) doesn't run along: panels, not a tube round the arm."""
+    tapes = dict(TAPES, arm={"kind": "loop", "pts": [[0.22 + 0.05 * np.cos(a) * 0.7, -0.05 * np.sin(a), 1.38 - 0.05 * np.cos(a) * 0.7]
+                                                     for a in np.linspace(0, 2 * np.pi, 33)]},
+                 side={"kind": "path", "pts": [[0.15, 0.0, 1.30], [0.15, 0.0, 1.10]]})
+    pieces = {"front.L": (0.0, 0.25, -0.6, 0.0, 6, 8), "back.L": (0.0, 0.25, -0.6, 0.0, 6, 8)}
+    pat, vid = _pattern(pieces)
+    pat.M["sew"] = np.array([[vid("front.L", c, 7), vid("back.L", c, 7)] for c in range(2)] +
+                            [[vid("front.L", 5, r), vid("back.L", 5, r)] for r in range(4)], np.int64)
+    pat.M["starts"] = {"pieces": {p: ["arm", "side"] for p in pieces}, "tapes": tapes}
+    b = cg.GarmentBuild(pat, _two_legs(), {"state": "closed"}, log=lambda *_: None)
+    assert sorted(b.roles.panels) == ["back.L", "front.L"] and not b.roles.tubes
