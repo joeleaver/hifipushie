@@ -37,6 +37,7 @@ from scipy.spatial import cKDTree
 
 VOXEL_MM = 6.0
 BLEND = 0.02      # m: the smooth union of a shape with the offset body (smin k)
+FORK_GAP = 0.75 * BLEND  # m: below the body's crotch a mirrored shape keeps this off x = 0 (> BLEND / 4: the smooth unions stay open)
 NEAR = 0.06       # m: the body's distance is read exactly within this; beyond, inside / outside by flood fill
 PAD = 0.03        # m: the grid past the kept body + the largest stand-off
 
@@ -152,14 +153,26 @@ class BlockIn:
     reads: dict = dfield(default_factory=dict)
 
 
-def shapes_of(bi: dict, at: dict) -> list:
+def shapes_of(bi: dict, at: dict, paired: bool = False) -> list:
+    """(a, b, r_a, r_b) per shape, mirrored ones twice; paired=True adds a 5th item: True for a mirrored pair's member."""
     out = []
     for s in bi.get("shapes") or []:
         a, b = point(at, s["a"]), point(at, s["b"])
-        out.append((a, b, float(s["r_a"]), float(s["r_b"])))
-        if s.get("mirror", True) and (abs(a[0]) > 1e-6 or abs(b[0]) > 1e-6):
-            out.append((a * [-1, 1, 1], b * [-1, 1, 1], float(s["r_a"]), float(s["r_b"])))
+        two = s.get("mirror", True) and (abs(a[0]) > 1e-6 or abs(b[0]) > 1e-6)
+        out.append((a, b, float(s["r_a"]), float(s["r_b"])) + ((two,) if paired else ()))
+        if two:
+            out.append((a * [-1, 1, 1], b * [-1, 1, 1], float(s["r_a"]), float(s["r_b"])) + ((True,) if paired else ()))
     return out
+
+
+def fork_ceiling(at: dict, P: np.ndarray) -> np.ndarray | None:
+    """(F10, C331) The body's own fork as a ceiling for a mirrored pair of shapes: below crotch_z (the highest level where
+    the body's section splits into two legs) a pair's member is kept FORK_GAP off the centre plane, so the pair and its
+    smooth union never fill the notch between the legs (F9's two leg cones put the trousers' fork 61 mm under the
+    body's). The field to max() a pair member with; None: the body has no crotch_z (one trunk: nothing to keep open)."""
+    if "crotch_z" not in at:
+        return None
+    return np.minimum(FORK_GAP - np.abs(P[:, 0]), float(at["crotch_z"]) - P[:, 2])
 
 
 def cuts_of(bi: dict, at: dict) -> list:
@@ -176,8 +189,10 @@ def field(bi: dict, body, P: np.ndarray, d_body: np.ndarray) -> np.ndarray:
     """The block-in's field at P given the body's signed distance there."""
     at = body.at
     f = d_body - _ease(at, bi["ease"], P[:, 2])
-    for a, b, ra, rb in shapes_of(bi, at):
-        f = _smin(f, _cone(P, a, b, ra, rb), BLEND)
+    ceil = fork_ceiling(at, P)
+    for a, b, ra, rb, two in shapes_of(bi, at, paired=True):
+        c = _cone(P, a, b, ra, rb)
+        f = _smin(f, np.maximum(c, ceil) if two and ceil is not None else c, BLEND)
     for Q, n in cuts_of(bi, at):
         f = np.maximum(f, (P - Q) @ n)
     return f
