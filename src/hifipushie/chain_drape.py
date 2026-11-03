@@ -38,6 +38,7 @@ DRAPED, FITTED = "draped", "fitted"
 HANGS = (FITTED, DRAPED)
 FALLS = ("down", "up")
 CLEAR = 0.012  # m: a start path keeps this far off the body (GAP + a coarse panel edge's sag)
+GAP_START = 0.0045  # m: chain_garment.GAP: where the held line rests
 CLASP_GAP = 0.004  # m: an open held line's ends at CF, closed (structure: <= chain_structure.BAND_SHUT_MM)
 FAN_DEG = 10.0  # an open held line's ends fan apart by this angle each side (two edges never on one path)
 FAN_ARC = 0.06  # m: the fan fades over this much of the held line from each end
@@ -131,39 +132,40 @@ def info(model: str, garment: str, net, spec: dict | None = None, plan: dict | N
 
 
 # ---------------------------------------------------------------- 1. the held line
-def _rest(contact, P, gap: float, top: float = 0.2, step: float = 0.002) -> np.ndarray:
-    """Each point dropped from `top` above until it is `gap` off the body (the high points hold it)."""
-    Q = np.array(P, float)
-    Q[:, 2] += top
-    live = np.ones(len(Q), bool)
-    for _ in range(int(top * 2 / step)):
-        d = contact.query(Q[live])[0]
-        stop = d <= gap + step
-        idx = np.where(live)[0]
-        live[idx[stop]] = False
-        Q[idx[~stop], 2] -= step
-        if not live.any():
-            break
-    return Q
+RING_LIFT = 0.01  # m: the widened neck-base ring starts this far above the landmarks, then rests
 
 
 def held_ring(body, length: float, gap: float, n: int = 720) -> np.ndarray:
     """A closed ring (n points, from CF going round +X, CB, -X back to CF) of 3D length `length`, resting on the body
-    round the neck base."""
+    round the neck base: the neck-base ellipse through cf_neck / neck_side / cb_neck widened to the length, lifted clear,
+    then rested as a rigid ring on the high points (chain_rest.rest_ring, the band's rest: C280)."""
+    from .chain_rest import rest_ring
     cf, cb, ns = (np.asarray(body.at[k], float) for k in ("cf_neck", "cb_neck", "neck_side.L"))
     cy, ay, ax = (cf[1] + cb[1]) / 2, (cb[1] - cf[1]) / 2, abs(ns[0])
     th = np.linspace(0, 2 * math.pi, n, endpoint=False)
     c = np.cos(th)
-    z0 = ns[2] + np.where(c > 0, c * (cf[2] - ns[2]), -c * (cb[2] - ns[2]))
-    k = 1.0
-    for _ in range(10):
-        P = np.c_[np.sin(th) * ax * k, cy - c * ay * k, z0]
-        P = _rest(body.contact, P, gap)
-        per = float(np.linalg.norm(np.diff(np.r_[P, P[:1]], axis=0), axis=1).sum())
-        if abs(per / length - 1) < 0.002:
+    z0 = ns[2] + np.where(c > 0, c * (cf[2] - ns[2]), -c * (cb[2] - ns[2])) + RING_LIFT
+    for h in np.arange(0.0, 0.15, 0.005):  # (the lowest height round the neck where a ring of this length fits)
+        k = 1.0
+        for _ in range(12):
+            P = np.c_[np.sin(th) * ax * k, cy - c * ay * k, z0 + h]
+            for _ in range(6):  # (each point put out of the body to the gap: a ring through the body is never rested)
+                d, nrm = body.contact.query(P)
+                low = d < gap * 1.05
+                if not low.any():
+                    break
+                P[low] += nrm[low] * (gap * 1.1 - d[low])[:, None]
+            per = float(np.linalg.norm(np.diff(np.r_[P, P[:1]], axis=0), axis=1).sum())
+            if abs(per / length - 1) < 5e-4:
+                break
+            k *= (length / per) ** 1.2
+        if abs(per / length - 1) < 2e-3 and float(body.contact.query(P)[0].min()) >= gap * 0.95:
             break
-        k *= (length / per) ** 0.9
-    return P
+    else:
+        raise DrapeRefused(f"no ring of the held line's {length * 1000:.0f} mm rests round the neck (last {per * 1000:.0f} mm): "
+                           "the held edge is shorter than the neck where it could sit; next: lengthen it (draft_pattern)")
+    R, info = rest_ring(P, body.contact, gap, np.r_[0.0, cy, float(ns[2]) + RING_LIFT + h])
+    return R
 
 
 def _along(P: np.ndarray, s: np.ndarray) -> np.ndarray:
@@ -177,6 +179,7 @@ def _along(P: np.ndarray, s: np.ndarray) -> np.ndarray:
 def _paths(X0, out, vert, tang, dmax, contact):
     """The clear path from X0: (angle off vertical, turn distance), the smallest horizontal reach that keeps CLEAR."""
     t = np.arange(0.01, dmax + 0.02, 0.02)
+    need = np.minimum(t / 0.05, 1.0) * CLEAR  # (the held line rests at GAP: the path clears the body as it leaves)
     best = None
     for a in np.radians(np.arange(0, 86, 5)):
         for sb in np.r_[np.arange(0.04, min(dmax, 0.9), 0.04), dmax]:
@@ -184,12 +187,13 @@ def _paths(X0, out, vert, tang, dmax, contact):
             if best is not None and reach >= best[0]:
                 continue
             P = _path_pts(X0, out, vert, tang, a, sb, t, fan=0.0)
-            if contact.query(P)[0].min() >= CLEAR:
+            if (contact.query(P)[0] >= need).all():
                 best = (reach, a, sb)
         if best is not None and best[0] <= 1e-6:
             break
     if best is None:
-        raise DrapeRefused(f"no clear path from the held line at {np.round(X0, 3).tolist()}: the body is in the way "
+        raise DrapeRefused(f"no clear path from the held line at {np.round(X0, 3).tolist()} ({1000 * float(contact.query(X0[None])[0][0]):.1f} mm off the body, "
+                           f"falls {'up' if vert[2] > 0 else 'down'}): the body is in the way "
                            "within 85 deg (a draped piece held inside the body?)")
     return best[1], best[2]
 
