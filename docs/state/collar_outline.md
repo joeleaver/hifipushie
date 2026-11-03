@@ -17,9 +17,7 @@ iterations or manual feedback." 2026-11-02: "We need a pre-sim judge of the stru
 ## T8 (2026-11-02, C289; chain_roles.py): roles from any pattern (fall, band, stand, rings, tubes of one or more
 pieces, panels, lapped / zip fronts). Hussar proof (HOME /mnt/data/hifipushie/t8): STRUCTURE FAIL at the stand's
 CF (dives to a V), sheet t8/sheet_b2.png; its rows and NEXT: git history of this page (commit 8c603bda).
-## T9 + T12 + T12b (2026-11-02, C292, C294, C296): layering (chain_layers, chain_press, chain_hidden): the over garment on
-the body + the under's thickness; hidden under pieces omitted, kept stiff parts push, the kept cloth pressed inside. Proof
-/mnt/data/hifipushie/t12b/ws: STILL REFUSED (jacket inside the kept shirt at 13 points). Detail + NEXT: git history (merge of t12b-hidden).
+## T9 + T12 + T12b (C292, C294, C296): layering (chain_layers, chain_press, chain_hidden); proof t12b/ws STILL REFUSED. Detail: git history (merge of t12b-hidden).
 ## T13 (2026-11-02, C297, C301; chain_drape.py, tests/test_chain_drape.py): draped garments (cloak, cape, hood)
 step 1 `hang: draped` + `held: [edges]` (a hood held by its seam), step 2 `drape {piece: {falls}}`. BUILD (build_drape): the
 held line a rigid ring of its cut at the neck, points at exact chords, clasp shut; a held line sewn to itself refused; free
