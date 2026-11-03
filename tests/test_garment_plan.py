@@ -360,3 +360,18 @@ def test_close_landmarks_do_not_predict_each_other():  # (t s0-4: armpit + chest
     marks = {"armpit": 100, "chest": 102, "waist": 160, "hips": 200}  # (the chest 2 px under the armpit: 5 mm off)
     d = gm.drift(marks, z, 60.0)
     assert abs(d["waist"][1]) < 30 and abs(d["hips"][1]) < 30, d
+
+
+def test_one_picture_one_scale(home):  # (t s0-4: across 1.17 mm/px, up and down 0.88: the hem 6 cm high)
+    b = _read(home)  # (across: chest 330 mm / 80 px, waist 280 mm / 70 px; up: chest 1300 -> knee 500 mm)
+    b["fit"]["widths"].append({"at": "waist", "garment": [[60, 150], [140, 150]], "body": [[65, 150], [135, 150]],
+                               "body_from": "inferred: inside"})
+    b["fit"]["landmarks"]["knee"] = 300
+    sc = gp.write("m", "w", "read", b, look=False)["plan"]["fit_read"]["scale"]
+    assert abs(sc["apart"]) < 0.18, sc
+    b["fit"]["landmarks"] = {"chest": 100, "waist": {"at": 150, "from": "seen", "why": "test"},
+                             "knee": {"at": 230, "from": "seen", "why": "test"}}  # (up and down: 800 mm / 130 px)
+    e = _refused(lambda: gp.write("m", "w", "read", b, look=False), "One picture has one scale", "knee 29")
+    assert "fit.landmarks" not in e
+    b["fit"]["scale_why"] = "a stylised figure: long legs"
+    assert gp.write("m", "w", "read", b, look=False)

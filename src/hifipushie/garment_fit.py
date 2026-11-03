@@ -24,6 +24,8 @@ that height on the model, same part as the nearest landmark); a landmark further
 put it with the model's proportions is refused unless {at, from, why} (the worst out first, then again).
 PARTS (C339, garment_fit_heights.py): a height is read between landmarks of its own part (`on`): the torso straight
 up, a leg or an arm ALONG the limb (a sleeve end lands at the same place on the model's arm whatever its pose).
+ONE SCALE (C340, garment_fit_marks.scale): the body widths' mm/px and the landmarks' must agree within SCALE_TOL, or
+fit.scale_why; the refusal gives each landmark's row at the across scale.
 FLOOR / CROWN: marked or not, heights never hang on them: in a picture they are a shoe's sole and a hat's / the hair's
 top, not the body's; a height beyond the outermost body landmark is extrapolated from the nearest body span (C336).
 LANDMARKS: below. A torso level's width is the torso section's across the view; a limb's is its section square to the
@@ -127,7 +129,8 @@ FORM = ("fit {view: 'front', landmarks: {chest: v, waist: v | [u, v] | [[u, v], 
         "heights: [{name: 'hem', at: v, on: 'torso' (default) | 'leg' | 'arm' (read ALONG that limb, pose-free)}]}: widths "
         "and heights are LISTS; pixels of the view; a width sits AT its "
         "landmark's or height's row; seen edges are measured on the picture; landmarks are the points the landmark card "
-        "draws (a landmark off from where its neighbours put it on the model is refused, unless {at, from, why})")
+        "draws (a landmark off from where its neighbours put it on the model is refused, unless {at, from, why}); one picture "
+        "has one scale: across (body widths) and up and down (landmarks) must agree, or fit.scale_why says why not")
 UNDER = ("floor", "crown")  # (in a picture these are the shoe's sole and the hair's top, not the body's: heights skip them)
 
 
@@ -320,9 +323,21 @@ def check(fit, views: list, body=None) -> tuple[dict, dict, dict]:
                             **({"measured": w["measured"]} if w.get("measured") else {}),
                             **({"section": {k: heights[w["at"]].get(k) for k in ("on", "z_mm", "along")}}
                                if w["at"] in heights else {}))
+    sc = gm.scale([e["body_width_mm"] / w["px"][1] for w in widths if w.get("px") and (e := out.get(w["at"]))],
+                  {k: v for k, v in stand.items()}, z)  # (one picture, one scale: C340)
+    if sc and abs(sc[2]) > gm.SCALE_TOL and not str(fit.get("scale_why") or "").strip():
+        h, v, apart, rows = sc
+        bad.append(f"fit: the picture's scale across (the body widths) is {h:.2f} mm/px, up and down (the landmarks) "
+                   f"{v:.2f}: {abs(apart) * 100:.0f} % apart ({gm.SCALE_TOL * 100:.0f} % allowed). One picture has one "
+                   f"scale: the landmarks are {'too close together' if apart > 0 else 'too far apart'}, or the inferred "
+                   f"body widths too {'wide' if apart > 0 else 'narrow'}. At the across scale (from the "
+                   f"{min(rows, key=rows.get)}) the landmarks would sit at rows: "
+                   + ", ".join(f"{k} {r} (marked {stand[k]:.0f})" for k, r in sorted(rows.items(), key=lambda kv: kv[1]))
+                   + ". Or keep it with fit.scale_why (a foreshortened view, a stylised figure)")
     if bad:
         _refuse(bad)
-    read = dict(fit, view=vi)
+    read = dict(fit, view=vi, **({"scale": dict(zip(("across_mm_per_px", "up_mm_per_px", "apart"), sc[:3]))}
+                                  if sc else {}))
     return out, heights, read
 
 

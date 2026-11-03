@@ -405,6 +405,10 @@ def text(model: str, garment: str, r: dict) -> str:
                      f" ({c['source']})")
         from . import garment_fit as gf
         L += gf.text(p["fit"], p.get("heights") or {})
+        sc = (p.get("fit_read") or {}).get("scale")
+        if sc:  # (one picture, one scale: C340)
+            L.append(f"  scale: across {sc['across_mm_per_px']:.2f} mm/px (body widths), up and down "
+                     f"{sc['up_mm_per_px']:.2f} (landmarks): {abs(sc['apart']) * 100:.0f} % apart")
         L.append(choices())
     elif sid == "1":
         if p.get("over"):
