@@ -56,5 +56,5 @@ DRIFT FOUND (Joe 2026-11-03): from F4 the build placed WHOLE pieces then correct
 block-in map) instead of steps 5-6 as agreed: chains at exact lengths first, surfaces filled between. Rebuild 5-6 as agreed.
 METHOD NOW (Joe 2026-11-03): one STEP per blind trial (/mnt/data/hifipushie/trials/s<step>-<n>/: hp client pinned to main),
 judged with Joe beside the reference, fixed, rerun, then the next step; tests run once when a step is declared done.
-STEP 0 (trousers, not approved): s0-2 -> C336 (edges measured, vertical drawn); s0-3 heights 6-9 cm off -> C338 (landmark card,
-neighbour check, widths at a row / garment height). NEXT: blind s0-4 = HUSSAR jacket (trials/s0-4 ready; fresh trial-s0-4 checkout).
+STEP 0: trousers s0-2/s0-3 -> C336, C338; hussar s0-4: no collar height / sleeve length -> C339 (heights on a part, limbs
+along the limb; neck, shoulder, eyes; close landmarks never a baseline). NEXT: blind s0-5 = hussar again (fresh checkout).
