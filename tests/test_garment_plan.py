@@ -302,3 +302,25 @@ def test_landmarks_inferred_sensitivity_and_floor_never_used(home):
     assert "INFERRED: covered" in gp.text("m", "w", r) and "floor" in h["source"]
     b["fit"]["landmarks"]["waist"] = {"at": 150}
     _refused(lambda: gp.write("m", "w", "read", b, look=False), "fit.landmarks.waist")
+
+
+def test_a_width_sits_at_its_landmark_or_at_a_garment_edge(home):  # (t s0-3: an "ankle" width 45 px above the ankle)
+    b = _read(home)
+    b["fit"]["widths"][0].update(garment=[[50, 120], [150, 120]], body=[[60, 120], [140, 120]])
+    assert "the chest is marked at row 100" in _refused(lambda: gp.write("m", "w", "read", b, look=False), "fit.widths[0]")
+    b = _read(home)
+    b["fit"]["widths"].append({"at": "hem", "garment": [[50, 250], [150, 250]], "body": [[70, 250], [130, 250]],
+                               "body_from": "inferred: inside"})
+    f = gp.write("m", "w", "read", b, look=False)["plan"]["fit"]["hem"]
+    assert f["section"]["z_mm"] == 700.0 and "at the hem's height" in f["source"]
+
+
+def test_a_landmark_far_from_where_its_neighbours_put_it_is_refused_unless_why(home):
+    b = _read(home)  # (chest 100 -> 1300 mm, waist 150 -> 1100 mm: 4 mm / px; the knee (500 mm) belongs near row 300)
+    b["fit"]["landmarks"]["knee"] = 250
+    e = _refused(lambda: gp.write("m", "w", "read", b, look=False), "fit.landmarks.knee: marked", "middle of the kneecap")
+    assert "never used for heights" in e and "fit.landmarks.chest" not in e
+    b["fit"]["landmarks"]["knee"] = {"at": 250, "from": "seen", "why": "a bent knee in the picture"}
+    assert gp.write("m", "w", "read", b, look=False)["plan"]["heights"]["hem"]
+    b["fit"]["landmarks"]["knee"] = 296
+    assert gp.write("m", "w", "read", b, look=False)

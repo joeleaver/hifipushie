@@ -363,8 +363,13 @@ def write(model: str, garment: str, step: str, plan: dict, look: bool = True) ->
     def body():
         held[:] = held or [gf.body_for(model)]
         return held[0]
-    p = check_read(plan, body=body) if sid == "0" else check_parts(plan, out["0"]) if sid == "1" else \
-        check_style(plan, out["0"], out["1"])
+    try:
+        p = check_read(plan, body=body) if sid == "0" else check_parts(plan, out["0"]) if sid == "1" else \
+            check_style(plan, out["0"], out["1"])
+    except PlanRefused as e:
+        if sid == "0" and "fit" in str(e):  # (the model's landmarks, drawn and in words, before the marks: C338)
+            raise PlanRefused(f"{e}\n{gf.landmark_help(model, garment, body)}") from None
+        raise
     if sid == "1" and "over" in p:  # (worn over another garment of this model: exists, has a record, no loop; T9)
         from . import chain_layers as cl
         try:
@@ -382,6 +387,8 @@ def write(model: str, garment: str, step: str, plan: dict, look: bool = True) ->
         if sid == "0" and p.get("fit_read"):  # (the marks beside the model with the widths and heights they give)
             from . import garment_fit_look as gfl
             paths.append(gfl.draw(model, garment, p, body()))
+            c = gfl.card(model, garment, body())  # (the model's landmarks: what the marks were matched to)
+            paths += [c] if c else []
         gr.attach_look(model, garment, sid, paths)
     return {"step": sid, "plan": p, "digest": st["digest"], "look": paths, "carried": carried}
 

@@ -49,7 +49,7 @@ def _lmarks(read: dict) -> dict:
     for k, x in (read["fit_read"].get("landmarks") or {}).items():
         m = landmark(x)
         if m:
-            out[k] = m
+            out[k] = m[:2]
     return out
 
 
@@ -148,7 +148,8 @@ def _model(read: dict, body, fit: dict, heights: dict) -> Image.Image:
     lx = 600 + 8
     used = []
     for k, e in fit.items():
-        m = body.at(k, view)
+        sec = e.get("section")  # (a width at a garment edge: the body's section at that edge's height)
+        m = body.at_z(sec["near"], sec["z_mm"], view) if sec else body.at(k, view)
         if m.get("centre") is None:
             continue
         c, u = np.array(m["centre"]), np.array(m["dir"])
@@ -160,6 +161,60 @@ def _model(read: dict, body, fit: dict, heights: dict) -> Image.Image:
         _line(d, [(110, y), (lx - 6, y)], ORANGE, 2, (8, 6) if heights[k].get("extrapolated") else None)
         _label(d, (lx - 6, y), k, lx, used, ORANGE)
     return im
+
+
+def card(model: str, garment: str, body, view: str = "front") -> str | None:
+    """The model's own landmarks, drawn where the tool takes each (a limb's section across the limb, a torso level
+    across the body), before any mark: the agent matches these points on the picture (t s0-3). Names only: where each
+    is, in words, is the tool's text (garment_fit.FIND)."""
+    from .garment_fit import LANDMARKS
+    mesh = getattr(body, "mesh", None)
+    if mesh is None:
+        return None
+    ax = (1, 2) if view == "side" else (0, 2)
+    V, T = np.asarray(mesh[0], float), np.asarray(mesh[1])
+    P = V[:, ax]
+    z0, z1 = P[:, 1].min(), P[:, 1].max()
+    s = (H - 60) / (z1 - z0)
+    cx = (P[:, 0].min() + P[:, 0].max()) / 2
+    im = Image.new("RGB", (600 + RM, H + 40), (24, 25, 28))
+    d = ImageDraw.Draw(im)
+
+    def px(q):
+        return np.array([300 + (q[0] - cx) * s, H + 10 - (q[1] - z0) * s])
+    Q = np.c_[300 + (P[:, 0] - cx) * s, H + 10 - (P[:, 1] - z0) * s]
+    for t in T:
+        d.polygon([tuple(Q[i]) for i in t], fill=(95, 95, 100))
+    used = []
+    for k in sorted(LANDMARKS, key=lambda k: -_z(body, k, view)):
+        try:
+            m = body.at(k, view)
+        except Exception:  # (a landmark this body lacks: left off the card)
+            continue
+        y = H + 10 - m["z_mm"] / 1000 * s
+        if m.get("centre") is not None:
+            c, u = np.array(m["centre"]), np.array(m["dir"])
+            a, b = px(c - u * m["width_mm"] / 2000), px(c + u * m["width_mm"] / 2000)
+            _seg(d, a, b, CYAN, 3, None)
+            anchor = b + [6, 0]
+            if LANDMARKS[k][0]["square_to"] == "body":
+                _line(d, [(40, y), (a[0] - 6, y)], GREY, 1, (4, 4))
+        else:
+            _line(d, [(40, y), (560, y)], GREY, 1, (2, 5))
+            anchor = np.array([560.0, y])
+        _label(d, anchor, k, 608, used, CYAN)
+    d.text((8, 8), f"{model}: the model's landmarks, where the tool takes each (cyan); find the same points on the "
+                   "picture (their words: the tool's text)", fill=WHITE, font=FONT_LEG)
+    p = gr.look_dir(model, garment) / "step0_landmarks.png"
+    im.save(p)
+    return str(p)
+
+
+def _z(body, k, view):
+    try:
+        return body.at(k, view)["z_mm"]
+    except Exception:
+        return -1.0
 
 
 def draw(model: str, garment: str, read: dict, body) -> str:

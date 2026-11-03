@@ -96,9 +96,33 @@ def landmark(x):
         return None
     if isinstance(x, dict):
         v, fr = uv(x.get("at")), str(x.get("from") or "").strip()
-        return None if v is None or not fr else (v, fr)
+        return None if v is None or not fr else (v, fr, str(x.get("why") or "").strip() or None)
     v = uv(x)
-    return None if v is None else (v, "seen")
+    return None if v is None else (v, "seen", None)
+
+
+def drift(marks: dict, z: dict) -> dict:
+    """{landmark: (fraction off, mm off on the model, neighbours)}: where each landmark is marked against where two
+    others put it with the model's own proportions. Interior: the one either side, the fraction of their span. An end:
+    its nearest and the farthest (two near ones extrapolated ~3x: a calf 2 cm off moved the ankle 6 cm), the fraction
+    of its distance from the nearest."""
+    order = sorted(marks, key=lambda k: marks[k])
+    out = {}
+    if len(order) < 3:
+        return out
+    for i, k in enumerate(order):
+        if 0 < i < len(order) - 1:
+            a, b = order[i - 1], order[i + 1]
+        else:
+            a, b = (order[1], order[-1]) if i == 0 else (order[-2], order[0])
+        if marks[b] == marks[a] or z[a] == z[b]:
+            continue
+        f_pic = (marks[k] - marks[a]) / (marks[b] - marks[a])
+        f_mod = (z[a] - z[k]) / (z[a] - z[b])
+        mm = (f_pic - f_mod) * (z[a] - z[b])
+        ref = abs(z[a] - z[b]) if 0 < i < len(order) - 1 else abs(z[k] - z[a])
+        out[k] = (round(mm / (ref or 1.0), 3), round(mm, 1), (a, b))
+    return out
 
 
 def sensitivity(v, va, vb, za, zb):
