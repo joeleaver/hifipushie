@@ -52,10 +52,10 @@ worthwhile clothing test": /mnt/data/hifipushie/refs/ranger/front.png: shirt, sp
 straps + pouches, bracers, hooded cloak; layering 4-5 deep). Leather goods are stiff-leather garments from patterns (a strap is
 a chain, a pouch a small sewn box, buckles / rings solid details at marks). Boots: out of the garment route for now (a solid).
 
-DONE (2026-11-02, C281-C293; every run landed on main): T1 record, T2 pre-sim approval, T3 body_tape, T4 garment_plan, T5
-draft_pattern, T6 structure rows from the plan, T7 build into the plan's state, T8 roles (stand, multi-piece tube, zip), T9
-layering (one-way: wrong, T12), T10 garment_details at pattern marks, T11 + fix export_garment (loops, weights, 4-pose bend
-check: the shirt still FAILS it at the armpit), looks shape-only (C288). Fast suite PASS on main; full tier rerunning.
-
-NEXT (2026-11-02 night, weekly usage at 98 %): T12-T15, T5b/T5c, F1-F4, r-nico, r-hussar landed. Blind trial t8 (Garrett's outfit; /mnt/data/hifipushie/trials/t8/triage.md): steps 0-4 blind, no build. Before t9 (same brief, hp client in t8/): F5 = trousers build (right leg's front panel never wraps; all soft cloth crumpled: collar_outline NEXT), the stand too tall at CF. Hangs: local config ~/.config/hifipushie/local.env. Full suite: run once overnight. F9 (C327-C330): the SDF block-in at step 2 (garment_blockin), the step-4 map check + step-5 start (blockin_map) exist; the trousers' block-in crotch is 60 mm too low (fix first), no build yet: collar_outline NEXT.
-s0-fix (C335): step 0's fit is ratios marked on the picture (garment_fit.py), applied to the model's tape; look step0_fit.png (marks | model). Trousers: knee 1.35 -> +121 mm, leg opening 425 mm (guessed +90 / 350). NEXT: blind step-0 trial s0-2 on the same brief; body edges on covered legs are still the agent's inference.
+DONE: T1-T15, F1-F10, s0-fix landed (C281-C335): record, approvals, body_tape, garment_plan, draft_pattern + flat gates (shape,
+seam_ends, body_lengths), structure + outline rows, stage gates (chain_stages), details, export, appearance, SDF block-in.
+DRIFT FOUND (Joe 2026-11-03): from F4 the build placed WHOLE pieces then corrected them (F4 start, F7/F8 flat+sew, F9/F10
+block-in map) instead of steps 5-6 as agreed: chains at exact lengths first, surfaces filled between. Rebuild 5-6 as agreed.
+METHOD NOW (Joe 2026-11-03): one STEP per blind trial (/mnt/data/hifipushie/trials/s<step>-<n>/: hp client pinned to main),
+judged with Joe beside the reference, fixed, rerun, then the next step; tests run once when a step is declared done.
+NEXT: blind step-0 trial s0-2 on Garrett's trousers with the ratio form (garment_fit.py; s0-1's log: trials/s0-1/log.md).
