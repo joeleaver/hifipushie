@@ -225,7 +225,9 @@ def check_parts(p: dict, read: dict, body=None) -> dict:
     for n, x in (details.items() if isinstance(details, dict) else []):
         w = f"details.{n}"
         if isinstance(x, dict):
-            pe.trim_where(x, edges)  # (a trim along seen edges takes its place from them: C344)
+            why = pe.trim_where(x, edges)  # (a trim along seen edges takes its place from them: C344)
+            if why:
+                bad.append(f"{w}: {why}")
         if not isinstance(x, dict):
             bad.append(f"{w}: a dict")
             continue
@@ -255,7 +257,7 @@ def check_parts(p: dict, read: dict, body=None) -> dict:
     if not isinstance(seams, list) or not seams:
         bad.append("seams: [{a: 'piece:edge', b: 'piece:edge', length: {body: [...]} | {style: {...}}}]")
         seams = []
-    joined, needs = set(), set()
+    joined, needs, ratio_of = set(), set(), []
     for i, s in enumerate(seams):
         w = f"seams[{i}]"
         ends = [s.get(k) for k in ("a", "b")] if isinstance(s, dict) else []
@@ -277,6 +279,8 @@ def check_parts(p: dict, read: dict, body=None) -> dict:
         elif isinstance(ln, dict) and isinstance(ln.get("style"), dict) and (
                 _num(ln["style"].get("ratio")) or _num(ln["style"].get("value_mm"))):
             _src(ln["style"], f"{w}.length.style", bad)
+            if _num(ln["style"].get("ratio")):  # (a ratio's base is measured too: t s1-3's "of biceps" was missed)
+                ratio_of.append((w, ln["style"].get("of")))
         else:
             bad.append(f"{w}.length: {{body: [measurement names]}} (step 3 measures them) or {{style: {{ratio | value_mm, "
                        "of, source}}}} read off the reference")
@@ -290,6 +294,12 @@ def check_parts(p: dict, read: dict, body=None) -> dict:
         bad.append(f"define: {{measurement name: kind}} for names body_tape doesn't take by FreeSewing name; kind one of "
                    f"{', '.join(kinds)} (step 3 measures it by that kind)")
         define = {}
+    for w, of in ratio_of:
+        if isinstance(of, str) and (of in bt.TAKES or of in define):
+            needs.add(of)  # (step 3 measures the base)
+        elif not (isinstance(of, str) and ":" in of and of.split(":")[0] in pieces):
+            bad.append(f"{w}.length.style.of {of!r}: a ratio's base: a body measurement name (step 3 measures it; one "
+                       "body_tape takes, or one you define) or a 'piece:edge'")
     bad += [f"seams length.body: {e}" for e in bt.name_errors(sorted(needs), define)]
     cd.check_parts(pieces, bad)  # (T13: hang fitted | draped, held edges)
     for i, s in enumerate(seams):

@@ -65,6 +65,12 @@ def check(pieces: dict, bad: list) -> dict:
             for g in segs:
                 cover[g].append(k)
             spans[k] = (view, [o[(s[0] + j) % N] for j in range(len(segs) + 1)], k in hid)
+        hseg = {g for g, c in enumerate(cover) if any(k in hid for k in c)}
+        xs = crossings(o, hseg)  # (t s1-2 / s1-3: a collar outline crossing itself was accepted)
+        if xs:
+            bad.append(f"pieces.{n}.where.outline crosses itself: segments {', '.join(f'{i}x{j}' for i, j in xs[:4])} "
+                       "(segment i runs from point i to i+1): a piece's outline is one simple loop; where this view "
+                       "can't show its course, mark that edge hidden")
         gaps = [g for g, c in enumerate(cover) if not c]
         twice = [g for g, c in enumerate(cover) if len(c) > 1]
         if gaps or twice:
@@ -130,16 +136,42 @@ def lengths(seams: list, edges: dict, fit_view, scale, mm: dict, bad: list) -> l
 
 
 def trim_where(x: dict, edges: dict):
-    """A seen trim with no `where` that follows only drawn, unhidden edges: its place is those edges' runs."""
+    """A seen trim with no `where` that follows only drawn, unhidden edges: its place is those edges' runs. None, or
+    why it can't be placed (t s1-3: a binding along seen and unseen edges was refused only as 'needs a where')."""
     fl = x.get("follows")
     if x.get("where") is not None or x.get("seen") != "seen" or not isinstance(fl, list) or not fl:
-        return
-    runs = []
+        return None
+    runs, off = [], []
     for e in fl:
         pc, _, ed = str(e).partition(":")
         g = (edges.get(pc) or {}).get(ed)
         if not g or g[2]:
-            return
-        runs.append(g)
+            off.append(e)
+        else:
+            runs.append(g)
+    if off:
+        return (f"follows {', '.join(off)}, with no drawn place in this view ({'hidden' if runs else 'unseen'}): a trim "
+                "along seen and unseen edges is two details (the seen run, and an inferred one with from), or give it "
+                "its own where")
     if len({g[0] for g in runs}) == 1:
         x["where"] = {"view": runs[0][0], "outlines": [list(map(list, g[1])) for g in runs], "from_edges": True}
+    return None
+
+
+def _cross(p, q, r, t) -> bool:
+    """Segments p-q and r-t cross (properly)."""
+    def o(a, b, c):
+        return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+    return (o(p, q, r) * o(p, q, t) < 0) and (o(r, t, p) * o(r, t, q) < 0)
+
+
+def crossings(outline: list, hidden_segs: set) -> list:
+    """Pairs of outline segments that cross, neither on a hidden edge (a piece's outline is a simple loop)."""
+    N, out = len(outline), []
+    for i in range(N):
+        for j in range(i + 2, N):
+            if (i == 0 and j == N - 1) or i in hidden_segs or j in hidden_segs:
+                continue
+            if _cross(outline[i], outline[(i + 1) % N], outline[j], outline[(j + 1) % N]):
+                out.append((i, j))
+    return out
