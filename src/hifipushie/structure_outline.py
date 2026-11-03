@@ -129,8 +129,8 @@ def check_plan(p: dict, read: dict, bad: list) -> None:
         unk = [k for k in m["at"] if k not in mark_names()]
         if unk:
             bad.append(f"{w}.at: unknown landmark(s) {', '.join(unk)} (have {', '.join(mark_names())})")
-        if any(not (isinstance(q, (list, tuple)) and len(q) == 2 and all(map(_num, q))) for q in m["at"].values()):
-            bad.append(f"{w}.at: each landmark at [u, v] pixels")
+        if any(not (isinstance(q, (list, tuple)) and len(q) == 2 and _num(q[0]) and (_num(q[1]) or q[1] is None)) for q in m["at"].values()):
+            bad.append(f"{w}.at: each landmark at [u, v] pixels (a point landmark's v may be null: its u only)")
         if not str(m.get("source") or "").strip():
             bad.append(f"{w}: no source")
         have.setdefault(m.get("view", 0), {}).update(m["at"])
@@ -162,11 +162,12 @@ def project(X, view: str) -> np.ndarray:
 def placement(view: dict, marks: dict, at: dict) -> dict:
     """{s (mm/px), u0, v0, how, residual_mm}: the photo's figure placed on the body by the marks."""
     rows = []  # (pixel, index 0 u / 1 v, mm)
-    for k, (u, v) in marks.items():
+    for k, (u, v) in marks.items():  # (F9: a point mark's v may be null: its u only, a figure whose heights differ)
         a, b = _mark_mm(at, k, view["view"])
-        if a is not None:
+        if a is not None and u is not None:
             rows.append((u, 0, a))
-        rows.append((v, 1, b))
+        if v is not None:
+            rows.append((v, 1, b))
     given = (view.get("scale") or {}).get("mm_per_px")
     A = np.array([[1.0 if i == 0 else 0.0, 1.0 if i == 1 else 0.0, mm] for _, i, mm in rows])
     y = np.array([px for px, _, _ in rows])

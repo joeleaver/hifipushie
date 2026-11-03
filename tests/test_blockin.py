@@ -1,377 +1,113 @@
-"""The artist block-in (blockin.py, the block_in_* tools): registration at the eyes, held / free steps, the target
-table on a known model, the step log, the tools through server.* (the running MCP has old code).
-Needs the workspace model fs_ge3 (Garrett, fitted references) for the model tests; they are skipped without it.
-uv run python -m pytest -q tests/test_blockin.py"""
-import json
-import shutil
+"""F9: the SDF block-in (garment_blockin) and the pattern mapped onto it (blockin_map), on a synthetic body cylinder."""
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
-from hifipushie import blockin as bi, humanmacro as hm, store
+from hifipushie import blockin_map as bm, garment_blockin as gb
+from hifipushie.chain_garment import Body
 
-REF = "fs_ge3"
-has_ref = (store.HOME / REF / "human_refs.json").exists()
-need_ref = pytest.mark.skipif(not has_ref, reason=f"workspace model {REF} not present")
-
-
-def _rm(*names):
-    for n in names:
-        shutil.rmtree(store.HOME / n, ignore_errors=True)
+R0, EASE = 0.10, 0.010
+R = R0 + EASE
+TOP, BOT = 0.70, 0.30
 
 
-def test_held_step_holds_the_other_macros():
-    d = bi.direction("chin_height!")
-    r0, r1 = hm.read(np.zeros(hm.K)), hm.read(d[:hm.K])
-    assert abs((r1["chin_height"] - r0["chin_height"]) - 1.0) < 0.05
-    # face_length = nose + philtrum + lips + chin by definition: a taller chin makes the face longer, nothing else moves
-    assert hm.released("chin_height") == ["face_length"]
-    others = [abs(r1[k] - r0[k]) for k in hm.NAMES if k not in ("chin_height", "face_length")]
-    assert max(others) < 0.1, max(others)
-    assert set(hm.released("face_length")) >= {"chin_height", "nose_length", "philtrum"}
-    assert hm.released("eye_spacing") == []
+def _cylinder(r=R0, z0=0.1, z1=0.9, n=96, m=60):
+    a = np.linspace(0, 2 * np.pi, n, endpoint=False)
+    z = np.linspace(z0, z1, m)
+    V = np.array([[r * np.cos(t), r * np.sin(t), h] for h in z for t in a])
+    F = []
+    for j in range(m - 1):
+        for i in range(n):
+            p, q = j * n + i, j * n + (i + 1) % n
+            F += [(p, q, q + n), (p, q + n, p + n)]
+    c0, c1 = len(V), len(V) + 1
+    V = np.r_[V, [[0, 0, z0], [0, 0, z1]]]
+    for i in range(n):
+        F += [(c0, (i + 1) % n, i), (c1, (m - 1) * n + i, (m - 1) * n + (i + 1) % n)]
+    return Body(V, np.array(F), {"waist_z": TOP})
 
 
-def test_free_step_moves_its_couplings():
-    d = bi.direction("face_length")
-    r0, r1 = hm.read(np.zeros(hm.K)), hm.read(d[:hm.K])
-    assert abs((r1["face_length"] - r0["face_length"]) - 1.0) < 0.1
-    moved = sorted((abs(r1[k] - r0[k]), k) for k in hm.NAMES if k != "face_length")
-    assert moved[-1][0] > 0.2, moved[-3:]   # the population moves neighbours with it (philtrum, chin ...)
-    # ... but not the head's size (the interocular distance): that is head_scale's job; `~` is the raw coupling
-    for n in ("cheek_fullness", "face_length", "nd:orbital_rim"):
-        assert abs(hm.read(bi.direction(n)[:hm.K])["head_size"] - r0["head_size"]) < 0.05, n
-    raw = hm.read(bi.direction("cheek_fullness~")[:hm.K])
-    assert abs(raw["head_size"] - r0["head_size"]) > 0.1
+BI = {"ease": [{"at": 0.0, "mm": EASE * 1000}], "voxel_mm": 5,
+      "cuts": [{"z": "waist_z", "keep": "below"}, {"z": BOT, "keep": "above"}],
+      "seams": [{"name": "front:side", "plane": {"y": 0.0}}],
+      "regions": [{"piece": "front", "seed": [0.0, -0.2, 0.5], "mirror": False},
+                  {"piece": "back", "seed": [0.0, 0.2, 0.5], "mirror": False}]}
 
 
-def test_vocabulary():
-    for n in ("sex", "eth0", "nd:radix_width", "radix_width", "nd:orbital_rim|hold_brow_ridge_eye_depth"):
-        assert np.linalg.norm(bi.direction(n)) > 0, n
-    D = bi.data()
-    assert np.allclose(bi.direction("sex"), D["m_m"] - D["m_f"])
-    with pytest.raises(ValueError, match="Vocabulary"):
-        bi.direction("nose_size_please")
-    assert bi.default_gnm_base(20) == 0.5 and bi.default_gnm_base(60) == 0.0 and 0.2 < bi.default_gnm_base(37.5) < 0.3
+@pytest.fixture(scope="module")
+def blk():
+    return gb.build(BI, _cylinder())
 
 
-@need_ref
-def test_a_true_gnm_start_keeps_nothing_of_the_body_templates_head():
-    """(garrettnative) on the OLD body-carried head (attach="body"; the default start is native: test_nativedefault)
-    gnm_base=1.0 is the TRUE GNM base: no dimorphism field (the one-mesh default is 0.8), no eye
-    scaling, no face style slider from the refs model; the head's size on the body (head_size) stays."""
-    a, r = "bi_test_tg", "bi_test_tg_ref"
-    _rm(a, r)
-    try:
-        shutil.copytree(store.HOME / REF, store.HOME / r)
-        sp = json.loads((store.HOME / r / "spec.json").read_text())
-        sp["base"].setdefault("style", {}).setdefault("human", {}).update({"eye_spacing": 0.012, "jaw": 0.1, "head_size": 1.03})
-        sp["base"]["head"]["eyes"] = 1.05
-        (store.HOME / r / "spec.json").write_text(json.dumps(sp))
-        bi.start(a, r, sex="male", gnm_base=1.0, attach="body")
-        b = store.load(a)["base"]
-        assert b["head"]["gnm_base"] == 1.0 and b["head"]["dimorphism"] == 0.0 and b["head"]["eyes"] == 1.0
-        assert b["style"]["human"] == {"head_size": 1.03}
-    finally:
-        _rm(a, r)
+def test_blockin_regions_and_seam_lines(blk):
+    assert gb.validate(BI, {"waist_z": TOP}) == []
+    assert blk.reads["unassigned_area_pct"] < 1.0
+    area = np.pi * R * (TOP - BOT)
+    for p in ("front", "back"):
+        assert abs(blk.reads["regions"][p] / 1e4 / area - 1) < 0.04
+    lines = blk.seams[("front", "back")] if ("front", "back") in blk.seams else blk.seams[("back", "front")]
+    assert len(lines) == 2
+    for l in lines:
+        assert abs(gb._plen(l) - (TOP - BOT)) < 0.012
 
 
-def test_registration_lands_eyes_on_eyes():
-    """The anchor on a picture whose detector points ARE the model's projected eye corners + nasion: zero shift; a
-    picture moved by (7, -3) px: that shift."""
-    Lm = np.random.default_rng(1).uniform(100, 400, (70, 2))
-    P = np.zeros((478, 2))
-    for i, j in zip([33, 133, 263, 362, 168], [36, 39, 45, 42, 27]):
-        P[i] = Lm[j]
-    a, b = bi._eye_anchor({"yaw": 0}, P, Lm)
-    assert np.allclose(a - b, 0)
-    a, b = bi._eye_anchor({"yaw": 0}, P + [7, -3], Lm)
-    assert np.allclose(a - b, [7, -3])
+def _fake(height=TOP - BOT, nu=24, nv=20):
+    """Two panels (front, back), each half the block-in's girth wide, sewn along both long edges."""
+    W = np.pi * R
+    uv, piece, F, names = [], [], [], ["front", "back"]
+    for k, p in enumerate(names):
+        o = len(uv)
+        for j in range(nv + 1):
+            for i in range(nu + 1):
+                uv.append((W * i / nu, -height * j / nv))
+                piece.append(k)
+        for j in range(nv):
+            for i in range(nu):
+                a = o + j * (nu + 1) + i
+                F += [(a, a + 1, a + nu + 2), (a, a + nu + 2, a + nu + 1)]
+    uv, piece, F = np.array(uv), np.array(piece), np.array(F)
+    col = lambda k, i: np.array([k * (nu + 1) * (nv + 1) + j * (nu + 1) + i for j in range(nv + 1)])
+    S = np.r_[np.c_[col(0, nu), col(1, 0)], np.c_[col(0, 0), col(1, nu)]]
+    ss = np.r_[np.zeros(nv + 1, int), np.ones(nv + 1, int)]
+    n = len(uv)
+    net = SimpleNamespace(names=names, piece=piece, uv=uv, F=F, sew=S, n=n, M={"sew_seam": ss},
+                          verts=lambda p: np.where(piece == names.index(p))[0], pid=lambda p: names.index(p))
+    b = SimpleNamespace(net=net, roles=SimpleNamespace(panels=names, tubes=[]), reads={},
+                        _stiff_mask=lambda: np.zeros(n, bool))
+    # the guide: each panel round its half (front at -y), top at TOP
+    G = np.zeros((n, 3))
+    for k in range(2):
+        m = piece == k
+        phi = -np.pi / 2 + uv[m, 0] / R + k * np.pi
+        G[m] = np.c_[R * 1.3 * np.sin(phi), -R * 1.3 * np.cos(phi), TOP + uv[m, 1]]
+    return b, G
 
 
-@need_ref
-def test_start_step_table_log_and_registration():
-    a, b, c = "bi_test_00", "bi_test_01", "bi_test_02"
-    _rm(a, b, c)
-    try:
-        e = bi.start(a, REF, sex="male", attach="body")   # (the old path: the default start is native, test_nativedefault)
-        sp = store.load(a)
-        h = sp["base"]["head"]
-        assert not any(k in h for k in ("sliders", "warp", "fold", "pose", "shape"))
-        assert np.allclose(bi.identity(sp), bi.data()["m_m"], atol=1e-4)
-        assert h["gnm_base"] == bi.default_gnm_base(sp["base"]["body"]["age"])
-        assert "eye_radius" not in h      # (gnmnative) the start head has GNM's own eyeball and mouth: no override,
-        assert "interior" not in h        # no kit interior carried over from the refs model
-        assert e["start"]["cameras"] == "kept"
-        with pytest.raises(ValueError, match="exists"):
-            bi.start(a, REF, sex="male", attach="body")
-        # the table on a known model: the picture's reads don't depend on the head (Garrett's concept: pupils ~65.9 mm)
-        t = bi.table(a)
-        pd = next(r for r in t["eye placement"] if r["id"] == "pupil_distance")
-        assert abs(pd["photo"] - 65.9) < 1.0, pd
-        assert all("flag" in r for g in t.values() for r in g if r["id"] == "jaw_angle_height")
-        assert "brow_eye" not in json.dumps(t)
-        assert bi.passes(t)["eye placement"].endswith("/3")
-        # registration on the real sheet: the eyes land within a few pixels
-        r = bi.look(a, str(store.HOME / a / "look.png"), views=[0])
-        assert np.hypot(*r["views"][0]["shift_px"]) < 6, r
-        # a held step moves its macro by its amount; the log names it; a step from the start again marks a revert
-        rep = bi.step(a, {"chin_height!": 0.5, "head_scale": 1.15}, seen="chin short", why="test")
-        assert rep["entry"]["to"] == b and abs(rep["entry"]["read"]["chin_height"][1] - rep["entry"]["read"]["chin_height"][0] - 0.5) < 0.05
-        assert store.load(b)["base"]["style"]["human"]["head_size"] == 1.15
-        pd1 = next(r for r in bi.table(b)["eye placement"] if r["id"] == "pupil_distance")
-        assert pd1["model"] > pd["model"] * 1.1, (pd, pd1)   # head_scale really scales the one mesh's head
-        assert "chin short" in json.dumps(bi.log(b))
-        r2 = bi.step(a, {"jaw_width": 0.3, "shape:age_nasolabial": 0.5, "shape:lips_thin": 0.2}, out=c)
-        hc = store.load(c)["base"]["head"]
-        assert hc["sliders"]["age_nasolabial"] == 0.5 and hc["shape"]["lips_thin"] == 0.2
-        assert "DESIGNED" in bi.step_text(r2) and r2["entry"]["designed"] == ["shape:age_nasolabial", "shape:lips_thin"]
-        with pytest.raises(ValueError, match="shape: one of"):
-            bi.step(a, {"shape:nose_width": 1}, out="bi_test_never")
-        lg = bi.log(c)
-        assert [x["to"] for x in lg] == [a, b, c] and "reverted" in lg[1]
-        assert "items that changed" in bi.step_text(rep) or rep["delta"] == []
-        lr = bi.lid_read(a)
-        assert set(lr["model"]) == {"L", "R"} and 0 < lr["model"]["L"]["upper"] < 2
-    finally:
-        _rm(a, b, c)
+def test_matching_piece_maps_with_no_distortion(blk):
+    b, G = _fake()
+    r = bm.check(b, blk, G)
+    assert r["verdict"] == "PASS", [x for x in r["rows"] if x["status"] != "PASS"]
+    for row in r["rows"]:
+        if row["id"].startswith("map:"):
+            assert abs(row["value"]) < 12
+    for p, st in r["map"]["pieces"].items():
+        assert abs(st["stretch"]["along"][1] - 1) < 0.05 and abs(st["stretch"]["across"][1] - 1) < 0.06
 
 
-@need_ref
-def test_brows_seated_and_focus():
-    """The brows are painted ON the surface (only on the clay's skin pixels, in a turned view too); the focus sheet
-    registers at the feature's own landmarks; a zoom-out read is logged on the step that made the model."""
-    from hifipushie import humanfit, likeness
-    a, b = "bi_test_f0", "bi_test_f1"
-    _rm(a, b)
-    try:
-        bi.start(a, REF, sex="male")
-        rj = bi._refs(a)
-        mesh = bi.presented_mesh(store.load(a)["base"])
-        assert bi.brow_source(mesh, rj) is not None
-        for vi in range(len(rj["views"])):
-            cam = rj["cameras"][vi]
-            L2 = humanfit.project(cam, mesh["state"]["L"])
-            c, s = 0.5 * (L2.min(0) + L2.max(0)), 1.4 * float(np.max(L2.max(0) - L2.min(0)))
-            box = (c[0] - s / 2, c[1] - s / 2, c[0] + s / 2, c[1] + s / 2)
-            im, k, ps = likeness.render(mesh, cam, box, px=500, brows=False, passes=True)
-            out = np.asarray(bi.seat_brows(im, ps, cam, box, k, bi.brow_source(mesh, rj)), float)
-            changed = np.abs(out - np.asarray(im.convert("RGB"), float)).sum(-1) > 1
-            assert changed.sum() > 50, vi
-            assert (ps["part"][changed] == 0).all(), vi   # never past the silhouette, never on the eyes
-        r = bi.focus(a, "nose", str(store.HOME / a / "f.png"), views=[0])
-        assert r["views"][0]["registered"] == "the feature's own landmarks"
-        assert any(x["id"] == "alar_width" for x in bi.feature_table(a, "nose")["nose"])
-        bi.step(a, {"nose_width!": -0.3}, out=b, seen="tip wide", feature="nose")
-        e = bi.note(b, "whole face unchanged, nose narrower", keep=True)
-        assert e["kept"] and e["feature"] == "nose" and len(e["feature_passes"]) == 2
-    finally:
-        _rm(a, b)
+def test_too_long_piece_flagged_by_seam_and_way(blk):
+    b, G = _fake(height=TOP - BOT + 0.12)
+    r = bm.check(b, blk, G)
+    assert r["verdict"] == "FAIL"
+    bad = [x for x in r["rows"] if x["id"].startswith("map:") and x["status"] == "FAIL"]
+    assert len(bad) == 2 and all("too long" in x["why"] and "front:side" in x["why"] for x in bad)
 
 
-@need_ref
-def test_tools_through_server():
-    from hifipushie import server
-    a = "bi_test_s0"
-    _rm(a, "bi_test_s1")
-    try:
-        out = server.block_in_start(a, REF, sex="male", save=str(store.HOME / a / "s.png"))
-        assert len(out) == 2 and "started" in out[1] and "== head shape" in out[1]
-        txt = server.block_in_step(a, {"jaw_width": 0.3}, out="bi_test_s1", look=False)
-        assert "bi_test_s1" in txt and "targets before -> after" in txt
-        assert "lid margins" in server.lid_read(a)
-        assert server.guide("block_in_step").startswith("### `block_in_step`")
-        assert "artist block-in" in server.guide("block_in") and "ZOOM IN" in server.guide("block_in")
-        assert len(server.block_in_look(a, focus="eyes", views=[0], save=str(store.HOME / a / "e.png"))) == 2
-    finally:
-        _rm(a, "bi_test_s1")
-
-
-@need_ref
-def test_fixed_eyeball_radius():
-    """head.eye_radius (blockin2): an absolute eyeball, not GNM's 14.6 mm eye x the head's scale; head_scale doesn't
-    change it, eye size does; the ball still rests under the lid rims; without the key nothing changes."""
-    import copy
-    from hifipushie import humanfit
-    b0 = store.load(REF)["base"]
-    r0 = float(humanfit.state(b0)["head"]["eye_r"])
-    assert r0 > 0.0135   # Garrett's body-scaled GNM eye (14.6 mm)
-    for hs, ke, want in ((1.0, 1.0, 0.012), (1.1, 1.0, 0.012), (1.0, 1.05, 0.0126)):
-        b = copy.deepcopy(b0)
-        b["head"]["eye_radius"] = 0.012
-        b["head"]["eyes"] = ke
-        b.setdefault("style", {}).setdefault("human", {})["head_size"] = hs
-        h = humanfit.state(b)["head"]
-        assert abs(float(h["eye_r"]) - want) < 1e-6, (hs, ke, h["eye_r"])
-        L = np.asarray(h["lm68"], float)
-        for e in h["eyes"]:   # seated: every rim landmark just outside the ball, the nearest at the seat clearance
-            rim = L[42:48] if e[0] > 0 else L[36:42]
-            d = np.linalg.norm(rim - np.asarray(e), axis=1).min() - float(h["eye_r"])
-            assert 0.0007 < d < 0.0010, d
-
-
-def test_new_human_eye_radius():
-    from hifipushie import humans
-    assert humans.eye_radius(40) == 0.012 and 0.0083 < humans.eye_radius(0) < 0.0085
-    # (gnmnative, 2026-10-12) new humans get GNM's OWN eyeball: no eye_radius written (2026-10-10 .. 12 it was 0.012);
-    # the key is an explicit override now (test_fixed_eyeball_radius; tests/test_gnm_native.py)
-    assert "eye_radius" not in humans.spec(age=30, sex=1, source="human")["base"]["head"]
-    assert "eye_radius" not in humans.spec(age=30, sex=1)["base"]["head"]   # the grafted head: unchanged
-
-
-def test_profile_contour_either_side(tmp_path):
-    """A profile facing image-right (yaw +90) reads as the mirror of the same face facing left (yaw -90), also on a
-    warm wall nearly as bright and red as the skin (the hue test)."""
-    from PIL import Image
-    H, W = 400, 300
-    yy, xx = np.mgrid[:H, :W]
-    a = np.empty((H, W, 3))
-    a[:] = (180, 141, 104)                                  # a tan wall
-    front = 145 - 25 * np.exp(-((yy - 170) / 25.0) ** 2)     # a 'nose' standing out of a straight face line
-    a[xx >= front] = (184, 128, 125)                         # the face, looking at image-left
-    Image.fromarray(a.astype(np.uint8)).save(tmp_path / "left.png")
-    Image.fromarray(a[:, ::-1].astype(np.uint8)).save(tmp_path / "right.png")
-    ptsL = {"nose_bridge": [145, 100], "nose_tip": [120, 170], "chin": [145, 300], "nose_base": [145, 200],
-            "eye_outer.L": [190, 120]}
-    cL = bi.profile_contour({"image": str(tmp_path / "left.png"), "yaw": -90, "points": ptsL})
-    ptsR = {k.replace(".L", ".R"): [W - 1 - p[0], p[1]] for k, p in ptsL.items()}
-    cR = bi.profile_contour({"image": str(tmp_path / "right.png"), "yaw": 90, "points": ptsR})
-    assert len(cL) > 50 and len(cL) == len(cR)
-    np.testing.assert_allclose(cR[:, 0], W - 1 - cL[:, 0], atol=1.0)
-    want = np.ceil(145 - 25 * np.exp(-((cL[:, 1] - 170) / 25.0) ** 2))
-    assert np.abs(cL[:, 0] - want).max() <= 3   # on the skin's edge, not on the wall
-
-
-def test_neck_double_and_lens_prior():
-    """MakeHuman's neck-double target as a body key (0.5 = none) moves only the neck front; a view's lens_mm sets
-    the camera fit's focal prior (35 mm-equivalent, on the frame's diagonal)."""
-    from hifipushie import humanfit_map, makehuman as mh
-    if not (mh.root() / "targets" / "neck" / "neck-double-incr.target").exists():
-        pytest.skip("makehuman neck targets not fetched (hifipushie-assets fetch makehuman)")
-    idx, d = mh._target("neck-double-incr.target", "neck")
-    V = np.zeros((int(idx.max()) + 1, 3))
-    mh._measures(V, {"neck_double": 1.0})
-    assert np.allclose(V[idx], d) and np.abs(V).sum() == pytest.approx(np.abs(d).sum())
-    V2 = np.zeros_like(V)
-    mh._measures(V2, {"neck_double": 0.5})
-    assert not V2.any()
-    f, sd = humanfit_map.lens_prior({"size": [1536, 2048], "lens_mm": 24})
-    assert f == pytest.approx(24 / 43.27 * 2560.0, rel=1e-3) and sd < 0.1
-    f0, sd0 = humanfit_map.lens_prior({"size": [1536, 2048]})
-    assert f0 == pytest.approx(humanfit_map.LENS[0] / 36.0 * 1536) and sd0 == humanfit_map.LENS[1]
-
-
-@need_ref
-def test_per_view_expression():
-    """A picture's own expression, fitted with identity and camera held, stored per view in the refs, applied
-    in the clay of that view only (look / table / lids), never to the model; clear removes it."""
-    a, b, c = "bi_test_x0", "bi_test_x1", "bi_test_x2"
-    _rm(a, b, c)
-    try:
-        bi.start(a, REF, sex="male")
-        rep = bi.expression_step(a, out=b)
-        f = rep["fits"][0]
-        assert f["chi2"][1] < f["chi2"][0] and f["expression"]
-        assert all(k.startswith("lower_face_region") for k in f["expression"])   # eyes are opt-in
-        assert store.load(b)["base"] == store.load(a)["base"]                    # the model stays neutral
-        rj = bi._refs(b)
-        assert len(rj["expressions"]) == len(rj["views"]) and rj["expressions"][0] == f["expression"]
-        assert bi.view_base(store.load(b)["base"], rj, 0)["head"]["expression"] == f["expression"]
-        assert bi._spec_hash(a) != bi._spec_hash(b)                              # the table is re-read
-        assert "expression" in bi.log(b)[-1] and bi.lid_read(b)["expression"]
-        bi.expression_step(b, out=c, clear=True)
-        assert not any(bi._refs(c)["expressions"])
-    finally:
-        _rm(a, b, c)
-
-
-def test_region_pcs():
-    """pc:<GNM region><i>: GNM's own principal directions of a region (nose PC0 = a higher, projecting bridge)."""
-    V = bi.region_pcs("nose_region")
-    assert V.shape == (8, 170) and np.allclose(V @ V.T, np.eye(8), atol=1e-6)
-    r0, r1 = bi._macro_read(np.zeros(170)), bi._macro_read(bi.direction("pc:nose_region0"))
-    assert r1["bridge_height"] - r0["bridge_height"] > 0.5 and r1["nose_projection"] - r0["nose_projection"] > 0.5
-    assert abs(r1["head_size"] - r0["head_size"]) < 0.02   # size kept
-    with pytest.raises(ValueError, match="no GNM region"):
-        bi.direction("pc:elbow0")
-
-
-@need_ref
-def test_eye_readers():
-    """blockin_eyes.Reader on the shipped head: lid margins near the render-based lid_read, a crease profile read; the
-    solve's expression keys are GNM's eye-region pairs."""
-    from hifipushie import blockin_eyes as be, onemesh
-    b = store.load(REF)["base"]
-    ht = onemesh.head_template(b)
-    q = be.Reader(ht).read(ht)
-    assert -1 < q["up"] < 2 and 0 < q["lo"] < 2 and np.isfinite(q["hsoft"]) and q["r_iris_mm"] > 5   # (fs_ge3: its lid pose puts the upper lid past the pole)
-    Ln, Rn, names = be._names()
-    assert Ln[0] in names and Rn[0] in names and len(Ln) == be.NE
-
-
-def test_socket_reads_the_expression():
-    """blockin_eyes.socket (the eye step's socket hold) reads humanmacro's socket rows on the mesh WITH the expression:
-    identity-only at no expression, and an eye-region expression moves them (the coupling the hold is there for)."""
-    from hifipushie import blockin_eyes as be
-    c = np.zeros(170)
-    s0 = be.socket(c, {})
-    z = hm.read(c)
-    assert all(abs(s0[k] - z[k]) < 1e-6 for k in be.SOCKET)
-    Ln, Rn, _ = be._names()
-    s1 = be.socket(c, {Ln[0]: 1.5, Rn[0]: 1.5})
-    assert max(abs(s1[k] - s0[k]) for k in be.SOCKET) > 0.05
-
-
-@need_ref
-def test_lip_readers():
-    """blockin_lips on the shipped head: GNM's border loops and contact ring found, the contact gap and lead read (a
-    sealed head reads closed), the head -> camera-frame map within a mm."""
-    from hifipushie import blockin_lips as bl, onemesh
-    b = store.load(REF)["base"]
-    up, lo = bl.border_loops()
-    assert len(up) > 15 and len(lo) > 15
-    cu, cl = bl.contact_rows()
-    assert len(cu) > 10 and len(cl) > 10
-    b2 = json.loads(json.dumps(b))
-    b2["head"].pop("lip_seal", None)
-    b2["head"]["mouth_gap"] = 0.004
-    ht = onemesh.head_template(b2)
-    g = bl.contact_gaps(ht)
-    assert g.shape == (bl.CONTACT_X,) and np.median(g) > 1.0      # parted 4 mm: read open
-    assert np.isfinite(bl.contact_lead(ht)).all()
-    _, rms = bl.head_to_world(b2, ht)
-    assert rms < 1.0
-    q = bl.lip_reads(ht)
-    assert 0 <= q["bow"] < 3
-
-
-def test_crease_shape_templates():
-    """gnmcrease 2: the eye step matches the lid's sections to GNM's own low, full fold; the templates load, and the
-    reader measures the mean head's sections in the same frame (margin at the origin, the crease below ~6 mm)."""
-    from hifipushie import blockin_eyes as be
-    for k in ("fold", "s376", "s540"):
-        T = be.crease_shape(k)
-        assert T.shape == (len(be.SECTION_FR), len(be.SECTION_S), 2)
-        assert np.isfinite(T).all()
-    fold = be.crease_shape("fold")
-    assert fold[1, 0, 1] < 1.0 and fold[1, -1, 1] > 4.0   # up the lid from the margin
-    with pytest.raises(ValueError):
-        be.crease_shape("nope")
-
-
-@need_ref
-def test_eye_ruler_margins_on_the_mesh():
-    """eyeruler: Reader.margins (the eye step's model side of the ruler): the ring's top / bottom at the ruler's columns
-    in mm from the iris centre, GNM's inner-corner landmark medial of the ring's own end (the canthal pocket), and
-    gnm_mm's held measures as a Jacobian the solve can use."""
-    from hifipushie import blockin_eyes as be, gnm_mm, onemesh
-    b = store.load(REF)["base"]
-    ht = onemesh.head_template(b)
-    m = be.Reader(ht).margins(ht)
-    mid = np.abs(be.RULER_COLS) <= 6
-    assert np.isfinite(m["up"][mid]).all() and np.isfinite(m["lo"][mid]).all()
-    assert (m["up"][mid] > m["lo"][mid]).all() and 3 < (m["up"][3] - m["lo"][3]) < 14
-    assert m["ring_out"][0] > 7 and m["ring_in"][0] < -7
-    assert 0.5 < m["ring_in"][0] - m["inner"][0] < 4.0, (m["ring_in"], m["inner"])   # the pocket: 1.9 mm on GNM's mean
-    assert gnm_mm.jacobian().shape == (len(gnm_mm.HELD), 170)
-    assert be.SIG_MM > 0 and be.LO_BIAS > 0
+def test_start_seams_closed(blk):
+    b, G = _fake()
+    X = bm.start(b, blk, G)
+    S = b.net.sew
+    assert np.linalg.norm(X[S[:, 0]] - X[S[:, 1]], axis=1).max() < 1e-9
+    # every point on the block-in, outside the body
+    rr = np.linalg.norm(X[:, :2], axis=1)
+    assert rr.min() > R0 and abs(np.median(rr) - R) < 0.004
