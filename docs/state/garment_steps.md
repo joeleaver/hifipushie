@@ -47,10 +47,8 @@ ORDER: tooling for every step first; then the steps one at a time, shirt + hussa
 | T13 | Draped garments (cloak, cape, hood): the gate split: fitted parts judged at the build, the fall judged on the hang; the head in the body for a hood | 6, 8 | M | T12 |
 | T14 | Appearance: materials, colour variation, stitching, worn leather, a ragged hem, restrained weathering from the story, painted on the pattern's UVs | new, before 9 | M-L | T11 |
 | T15 | Outline vs reference: step 2 traces the reference's key edges (hem, collar top, front edges, cutaway) as lines on the photo; step 4 checks flat edges against them, step 6 compares the build's outline in that view (mm, where, which pattern edge to redraw). Joe: "It still doesn't have any of these curves right": ratios passed an arc for a stepped notch | 2, 4, 6 | M | T5b |
-Test garments: the shirt (every step), the hussar jacket (fitted + trims), the RANGER outfit (Joe 2026-11-02: "a truly
-worthwhile clothing test": /mnt/data/hifipushie/refs/ranger/front.png: shirt, split-skirt tunic, leather jerkin, belt + crossed
-straps + pouches, bracers, hooded cloak; layering 4-5 deep). Leather goods are stiff-leather garments from patterns (a strap is
-a chain, a pouch a small sewn box, buckles / rings solid details at marks). Boots: out of the garment route for now (a solid).
+Test garments: the shirt, the hussar jacket, the RANGER outfit (/mnt/data/hifipushie/refs/ranger/front.png; layering 4-5
+deep; leather goods = stiff-leather pieces from patterns; boots out of the garment route for now), Garrett's outfit (t8).
 
 DONE: T1-T15, F1-F10, s0-fix landed (C281-C335): record, approvals, body_tape, garment_plan, draft_pattern + flat gates (shape,
 seam_ends, body_lengths), structure + outline rows, stage gates (chain_stages), details, export, appearance, SDF block-in.
