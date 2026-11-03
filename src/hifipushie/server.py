@@ -3474,6 +3474,8 @@ def _chain_text(st: dict) -> str:
                      f"{c.get('held_longest_over_pct')} %)")
     if t:
         lines.append(f"  threads (warp / weft): p99 {t.get('p99_pct')} %, max {t.get('max_pct')} %, {t.get('over_cap')} of {t.get('faces')} faces past the cap")
+    for p_, how_ in (r.get("starts") or {}).items():  # (F4: where each piece started, from its own measurements)
+        lines.append(f"  start {p_}: {how_}")
     if "seam_gap_mm" in r:
         lines.append(f"  seams: largest gap {r['seam_gap_mm']} mm; pattern truing {r.get('seam_truing')}")
     if r.get("band"):

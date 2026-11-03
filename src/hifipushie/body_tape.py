@@ -543,9 +543,12 @@ def run(name: str, measurements: list | None = None, garment: str = "", landmark
         if not measurements:
             return None, txt + "\nnext: body_tape(name, measurements=[...]) by name; kinds: guide(topic=\"body_tape\")"
     rows, errs = [], []
+    from . import tape_geom
     for it in measurements:
         try:
-            rows.append(tape.take(it))
+            r = tape.take(it)
+            src = dict(r, measure=it.get("measure", r["name"])) if isinstance(it, dict) else r
+            rows.append(dict(r, **tape_geom.geometry(tape, src)))  # (F4: where it was taken: its loop or path)
         except TapeError as e:
             errs.append(f"  REFUSED {it.get('name', it) if isinstance(it, dict) else it}: {e}")
     if errs and not rows:

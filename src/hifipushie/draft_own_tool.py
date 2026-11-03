@@ -85,7 +85,8 @@ def run(name: str, garment: str, design: str, declarations: dict, options: dict 
     d = gr.look_dir(name, garment) / "draft"
     from . import pattern_parts as pp  # (the design's FULL list, before drafting: a block without one crashes inside it)
     try:
-        miss = pp.missing(design, meas, d / "inspect")
+        cfg_ = pp.inspect(design, meas, None, draft=False, d=d / "inspect")
+        miss = list(cfg_.get("missing") or [])
     except pp.InspectRefused as e:
         raise do.DraftRefused(str(e)) from None
     if miss:
@@ -126,6 +127,9 @@ def run(name: str, garment: str, design: str, declarations: dict, options: dict 
     keys = [k for k in cg.PATTERN_KEYS if k in M]
     out = {"dir": str(d), "pieces": list(B["pieces"]), "seams": len(B["seams"]), "measurements": sorted(meas),
            "mesh": {"vertices": int(len(M["uv"])), "faces": int(len(M["F"])), "keys": keys}}
+    from . import piece_start  # (F4: which step-3 measurements each piece's lengths come from: where it starts)
+    out["piece_measurements"] = piece_start.piece_measurements(rd["1"], declarations, (cfg_.get("config") or {}).get("parts"),
+                                                              list(B["pieces"]))
     rec = gr._try(gr.write, name, garment, "4", "done" if v == "PASS" else "failed", output=out, by="draft_pattern",
                   gate={"verdict": v, "rows": rows}, look=[str(sheet)], back_to="4")
     lines = [f"{name}:{garment} draft_pattern: {v} (spec v{ver}; draft {d})",

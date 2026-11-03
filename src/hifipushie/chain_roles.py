@@ -165,7 +165,10 @@ def read_roles(net):
         front = zip_pairs(net, front)
     rings = [n for n in names if whole[n] and n not in (band, fall)]
     soft = [n for n in names if not whole[n]]
-    groups = _tube_groups(net, soft, role, self_sewn, sewn)
+    from .piece_start import tube_groups as measured_tubes  # (F4: a tube by where its own girths were taken)
+    groups = measured_tubes(net, soft, sewn, self_sewn)
+    groups.update({k: v for k, v in _tube_groups(net, [n for n in soft if n not in groups], role, self_sewn, sewn).items()
+                   if k not in groups})
     tubes = [n for n in soft if n in groups]
     panels = [n for n in soft if n not in groups]
     return Roles(band, fall, rings, tubes, panels, front, band_cl, fold, stand=stand,
@@ -238,12 +241,13 @@ def tube_group_points(b, t, v):
     """Vertices v of piece t (one piece of a several-piece tube) at their start: round the limb's axis, each piece over
     its share of the girth at that height (heights from the wrist end up), the top piece's middle on the limb's outer
     side, turning so the cloth sewn to the front panel faces front."""
-    from .chain_garment import LimbAxis, hand_of
+    from .chain_garment import hand_of
     net, R = b.net, b.roles
     uv = net.uv
     grp = R.tube_groups[t]
     side = hand_of(t)
-    ax = b.axes.setdefault(side, LimbAxis(b.body, side)) if hasattr(b, "axes") else LimbAxis(b.body, side)
+    from .piece_start import axis_for
+    ax = axis_for(b, t)
     info = {}
     for p in grp:
         pv = net.verts(p)

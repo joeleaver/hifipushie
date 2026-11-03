@@ -68,6 +68,23 @@ def _loop_at(h, C: float, frac):
     return np.c_[np.interp(sq, sa, Q[:, 0]), np.interp(sq, sa, Q[:, 1])]  # (a hull runs CCW from above: +X after CF)
 
 
+def _sewn_start_z(b, ring: str, hz: float) -> float:
+    """The mean start height of the body cloth the ring is sewn to, as soft_start will place it (F4: a tube round its
+    own measurements, a panel between its tapes; no measurements: hung from the hps)."""
+    from .piece_start import panel_dz
+    net, R = b.net, b.roles
+    zs = []
+    for p in R.panels + list(R.tubes):
+        vv = np.array(list(b.sewn_with(ring, p).values()), int)
+        if not len(vv):
+            continue
+        if p in R.tubes:
+            zs += b._tube_points(p, vv)[:, 2].tolist()
+        else:
+            zs += (hz + net.uv[vv, 1] + panel_dz(b, p)).tolist()
+    return float(np.mean(zs))
+
+
 def body_ring(b, ring: str) -> None:
     """A wholly stiff CENTRE piece closed on its own closure (a waistband, a belt): a band round the torso's loop.
     Its height: where its seam to the body cloth starts (hps z + the panels' flat y, as soft_start places them); sewn
@@ -92,7 +109,7 @@ def body_ring(b, ring: str) -> None:
     u, v = uv[rv, 0], uv[rv, 1]
     if sewn:
         sv = np.array(list(sewn.keys()))
-        z0 = hz + float(np.mean(uv[list(sewn.values()), 1]))
+        z0 = _sewn_start_z(b, ring, hz)
         vs = float(np.mean(uv[sv, 1]))
         free_up = float(np.mean(v)) >= vs  # (the band's cloth off its seam goes up the body: the panels hang below)
         z = z0 + (v - vs) * (1.0 if free_up else -1.0)

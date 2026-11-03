@@ -142,33 +142,43 @@ def length(P: np.ndarray) -> float:
     return float(np.sum(np.linalg.norm(np.diff(P, axis=0), axis=1))) if len(P) > 1 else 0.0
 
 
-def _leg_girths(V: np.ndarray, T: np.ndarray, J: dict, at: dict, zmin: float) -> dict:
+def _leg_girths(V: np.ndarray, T: np.ndarray, J: dict, at: dict, zmin: float, loops: dict | None = None) -> dict:
     """The left leg's girths (m), FreeSewing's names: upperLeg (5 cm under the crotch), knee (at the joint), calf (the
     fullest level between knee and ankle), ankle (the slimmest above the ankle joint), heel (round heel and instep:
     what a trouser hem must pass; a plane through the ankle tilted 45 deg)."""
     Z = np.array([0, 0, 1.0])
     kn, an = np.asarray(J["knee.L"], float), np.asarray(J["ankle.L"], float)
 
-    def leg(z):
+    lp = loops if loops is not None else {}  # (F4: every girth keeps the loop it was taken on)
+
+    def best(Ls, n):
+        return max(((girth(L, n), L) for L in Ls), key=lambda t: t[0], default=(0.0, None))
+
+    def leg(z, key=None):
         Ls = [L for L in slice_loops(V, T, [0, 0, z], Z) if L[:, 0].mean() > 0.02 and
               np.hypot(L[:, 0].mean() - kn[0], L[:, 1].mean() - kn[1]) < 0.2]
-        return max((girth(L, Z) for L in Ls), default=0.0)
+        g, L = best(Ls, Z)
+        if key and L is not None:
+            lp[key] = L
+        return g
     out = {}
     if "crotch_z" in at:
-        out["upperLeg"] = leg(float(at["crotch_z"]) - 0.05)
-    out["knee"] = leg(float(kn[2]))
+        out["upperLeg"] = leg(float(at["crotch_z"]) - 0.05, "upperLeg")
+    out["knee"] = leg(float(kn[2]), "knee")
     zs = np.arange(an[2] + 0.02, kn[2] - 0.04, 0.01)
     gs = np.array([leg(float(z)) for z in zs])
     if len(gs):
         k = int(np.argmax(gs))
-        out["calf"] = float(gs[k])
-        lo = gs[:k + 1][gs[:k + 1] > 0]
+        out["calf"] = leg(float(zs[k]), "calf")
+        lo = np.where(gs[:k + 1] > 0)[0]
         if len(lo):
-            out["ankle"] = float(lo.min())
+            j = int(lo[np.argmin(gs[lo])])
+            out["ankle"] = leg(float(zs[j]), "ankle")
     n = np.array([0.0, 1.0, 1.0]) / np.sqrt(2.0)  # heel (back, low) -> instep (front, up) lies in this plane
     Ls = [L for L in slice_loops(V, T, an, n) if L[:, 0].mean() > 0.02 and np.linalg.norm(L.mean(0) - an) < 0.12]
     if Ls:
-        out["heel"] = max(girth(L, n) for L in Ls)
+        out["heel"], L = best(Ls, n)
+        lp["heel"] = L
     return {k: v for k, v in out.items() if v > 0}
 
 
@@ -635,7 +645,7 @@ def measure(V: np.ndarray, faces, J: dict, hps: str | None = None) -> dict:
     except Exception:  # a body the scan can't read keeps the estimate (pattern_blocks.trouser)
         pass
     try:
-        mm.update(_leg_girths(V, T, J, at, zmin))
+        mm.update(_leg_girths(V, T, J, at, zmin, loops))
     except Exception:  # (a body without legs the scan can read: trouser drafts fall back to their proportions)
         pass
     # the hps down the back to the hip line and to the crotch: where a hem lands, measured as the pattern is (the block's

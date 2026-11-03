@@ -129,6 +129,8 @@ def test_tool_writes_step3(tmp_path, monkeypatch):
     assert st["status"] == "done" and st["look"] == [str(gr.look_dir("wf_simon", "hussar") / "step3_measure.png")]
     names = [r["name"] for r in st["output"]["measurements"]]
     assert names == ["chest", "back_waist_to_seat"] and st["output"]["refused"]
+    rows = st["output"]["measurements"]  # (F4: where each was taken: a girth's loop, a length's path)
+    assert len(rows[0]["loop"]) > 8 and len(rows[1]["path"]) >= 2
     assert gr.states(gr.load("wf_simon", "hussar"))["3"]["ready"]
     # no measurements: the landmark list
     txt = server.body_tape("wf_simon")
@@ -143,3 +145,18 @@ def test_takes_is_every_name_tailor_measures():
     src = Path(tailor.__file__).read_text()
     assert set(bt.TAKES) == set(re.findall(r'mm\["([A-Za-z]+)"\]', src))
     assert "closest: hpsToShoulder" in bt.name_errors(["hpsToShoulders"])[0] and not bt.name_errors(["neck", "x"], {"x": "arc"})
+
+
+def test_every_measurement_keeps_where_it_was_taken(tape):
+    """F4: legs too: a leg girth's loop lies on the measured (+X) side; a vertical length's path spans its value."""
+    from hifipushie import tape_geom as tg
+    for nm in ("upperLeg", "knee", "inseam", "waistToFloor", "waist"):
+        r = tape.take(nm)
+        g = tg.geometry(tape, dict(r, measure=nm))
+        if nm in ("upperLeg", "knee", "waist"):
+            L = np.asarray(g["loop"])
+            assert abs(np.linalg.norm(np.diff(L, axis=0), axis=1).sum() * 1000 - r["mm"]) < 0.03 * r["mm"]
+            assert (L[:, 0].min() > 0.01) == (nm != "waist")
+        else:
+            P = np.asarray(g["path"])
+            assert abs(np.ptp(P[:, 2]) * 1000 - r["mm"]) < 0.03 * r["mm"] + 10  # (the sole is not sliced)

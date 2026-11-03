@@ -61,7 +61,8 @@ from . import chain_net as cn
 from .chain_net import BendSolve, Contact, Network, Threads, project, unit
 
 PATTERN_KEYS = ("uv", "piece", "names", "F", "folds", "made", "grain", "sew", "sew_seam", "stitch", "marks", "closures",
-                "points", "border", "stitch_lines", "roles")
+                "points", "border", "stitch_lines", "roles",
+                "starts")  # (starts: step 3+4 measurement data, never positions: piece_start.py)
 GAP = 0.0045  # m: soft cloth and stiff parts stay this far off the body (ZOZO's reach + a mesh edge's sag over an arm)
 RING_GAP = 0.004  # m: a stiff ring off a limb (ZOZO's reach): it hangs loose, so its gap is the solver's, no more
 RING_H = 0.008  # m: mesh size on a stiff ring
@@ -951,7 +952,8 @@ class GarmentBuild(Build):
             tube = next((t for t in R.tubes if self.sewn_with(ring, t)), None)
             if tube is None:
                 raise ChainRefused(f"{ring}: sewn to no tube piece. next: check its seams (pattern_check)")
-            ax = self.axes.setdefault(side, LimbAxis(self.body, side))
+            from .piece_start import axis_for
+            ax = axis_for(self, tube)
             sew_ = self.sewn_with(ring, tube)
             rv = net.verts(ring)
             cl = next((c for c in net.M.get("closures") or [] if c["over"] == ring), None)
@@ -1068,7 +1070,8 @@ class GarmentBuild(Build):
             return tube_group_points(self, t, v)
         uv = net.uv
         side = hand_of(t)
-        ax = self.axes.setdefault(side, LimbAxis(self.body, side))
+        from .piece_start import axis_for
+        ax = axis_for(self, t)
         tv = net.verts(t)
         xa, ya = uv[tv, 0], uv[tv, 1]
         fp = [p for p in R.panels if self.sewn_with(t, p) and R.front and p in (R.front["over"], R.front["under"])]
@@ -1099,7 +1102,8 @@ class GarmentBuild(Build):
         for p in R.panels:
             v = net.verts(p)
             x, y = uv[v, 0], uv[v, 1]
-            z = hz + y
+            from .piece_start import panel_dz
+            z = hz + y + panel_dz(self, p)  # (F4: between its own tapes; no paths: hung from the hps)
             hand = hand_of(p)
             isfront = bool(R.front and p in (R.front["over"], R.front["under"]))
             P = rings.at(x, z) if isfront else rings.at(x, z, half_back=True)
@@ -1618,6 +1622,12 @@ def load_garment(model: str, garment: str, spec: dict | None = None) -> tuple:
         res = cloth.build(cloth._garment_for_sim(g), src, f"{model}:{garment}", log=lambda *_: None, place_only=True)
         M, B = res["mesh"], res["pieces"]
     radius = {f["name"]: float(f["radius"]) for f in (B.get("folds") or []) if isinstance(f, dict) and f.get("radius") and f.get("name")}
+    try:  # (F4: each piece's measurements and where step 3 took them: the build's starts, piece_start.py)
+        from . import garment_record as gr, piece_start
+        st_ = gr.load(model, garment)["steps"]
+        piece_start.attach(M, st_.get("3", {}).get("output") or {}, st_.get("4", {}).get("output") or {})
+    except (FileNotFoundError, KeyError):
+        M["starts"] = {}
     pat = pattern_from_mesh(M, cloth.interfacing(B, M), bending.weights(B, M, g), radius)
     body = Body(np.asarray(res["body"].V, float), np.asarray(res["body"].T, np.int64),
                 {k: np.asarray(v, float) if np.ndim(v) else float(v) for k, v in res["body"].at.items()})
