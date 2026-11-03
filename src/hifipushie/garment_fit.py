@@ -22,6 +22,8 @@ LANDMARK CARD + CHECKS (C338): the model's landmarks drawn (step0_landmarks.png)
 refusal; a width sits at its landmark's row or AT one of the garment's heights (a hem, a cuff: the body's section at
 that height on the model, same part as the nearest landmark); a landmark further than DRIFT from where its neighbours
 put it with the model's proportions is refused unless {at, from, why} (the worst out first, then again).
+PARTS (C339, garment_fit_heights.py): a height is read between landmarks of its own part (`on`): the torso straight
+up, a leg or an arm ALONG the limb (a sleeve end lands at the same place on the model's arm whatever its pose).
 FLOOR / CROWN: marked or not, heights never hang on them: in a picture they are a shoe's sole and a hat's / the hair's
 top, not the body's; a height beyond the outermost body landmark is extrapolated from the nearest body span (C336).
 LANDMARKS: below. A torso level's width is the torso section's across the view; a limb's is its section square to the
@@ -53,7 +55,9 @@ LANDMARKS = {
     "upper_arm": ({"square_to": "arm.L", "t": 0.5}, "one arm halfway shoulder -> elbow"),
     "elbow": ({"square_to": "forearm.L", "t": 0.02}, "one arm at the elbow joint"),
     "wrist": ({"square_to": "forearm.L", "t": 0.92}, "one arm just above the wrist joint"),
-    "neck": ({"square_to": "neck", "t": 0.3}, "the neck"),
+    "neck": ({"square_to": "neck", "t": 0.1}, "the base of the neck (higher, the section runs into the jaw: t s0-4)"),
+    "shoulder": (None, "the shoulder point (where the shoulder turns down into the arm)"),
+    "eyes": (None, "the eyes' height"),
     "crotch": (None, "the crotch level"), "floor": (None, "the floor"), "crown": (None, "the top of the head"),
 }
 # where each landmark IS, as you'd find it on a picture of any person (t s0-3: the model's "waist" and "ankle" were not
@@ -75,7 +79,9 @@ FIND = {
     "upper_arm": "halfway between the shoulder point and the elbow",
     "elbow": "the point of the elbow",
     "wrist": "the wrist bone (where a watch sits)",
-    "neck": "the middle of the neck",
+    "neck": "the base of the neck: where a shirt collar sits, where the neck meets the shoulders at the side",
+    "shoulder": "the shoulder point: where the top of the shoulder turns down into the arm (a set-in sleeve's seam)",
+    "eyes": "the centre of the eyes (a collar, hood or hat top is read between the neck and here)",
     "floor": "the floor (never used for heights: under a shoe)",
     "crown": "the top of the head (never used for heights: under hair or a hat)",
 }
@@ -118,7 +124,8 @@ def _pair(x):
 FORM = ("fit {view: 'front', landmarks: {chest: v, waist: v | [u, v] | [[u, v], [u, v]] (both sides: their mean row) | "
         "{at: v, from: 'how inferred' (a covered landmark)}, wrist: v}, widths: [{at: 'chest', garment: [[u,v],[u,v]], "
         "body: [[u,v],[u,v]], body_from: 'seen' | how inferred}, {at: 'hem' (a garment edge: one of its heights), ...}], "
-        "heights: [{name: 'hem', at: v}]}: widths and heights are LISTS; pixels of the view; a width sits AT its "
+        "heights: [{name: 'hem', at: v, on: 'torso' (default) | 'leg' | 'arm' (read ALONG that limb, pose-free)}]}: widths "
+        "and heights are LISTS; pixels of the view; a width sits AT its "
         "landmark's or height's row; seen edges are measured on the picture; landmarks are the points the landmark card "
         "draws (a landmark off from where its neighbours put it on the model is refused, unless {at, from, why})")
 UNDER = ("floor", "crown")  # (in a picture these are the shoe's sole and the hair's top, not the body's: heights skip them)
@@ -182,7 +189,7 @@ def check(fit, views: list, body=None) -> tuple[dict, dict, dict]:
         elif nm in LANDMARKS:
             bad.append(f"fit.heights[{i}]: {nm!r} is a body landmark's name: name the garment's edge (e.g. 'hem')")
         else:
-            hts.append(dict(name=nm, v=uv[1], source=h.get("source")))
+            hts.append(dict(name=nm, v=uv[1], source=h.get("source"), on=h.get("on")))
     hrow = {h["name"]: h["v"] for h in hts}
     try:
         tol = max(8.0, 0.01 * gm.gray(image).shape[0]) if image else 8.0
@@ -257,61 +264,45 @@ def check(fit, views: list, body=None) -> tuple[dict, dict, dict]:
         bad.append("fit: no body to apply the ratios to (the model needs a base body: body_tape measures it)")
         _refuse(bad)
     view = views[vi].get("view", "front") if vi is not None else "front"
-    use = {k: v for k, v in lms.items() if k in body_lms}  # (never the floor / crown: under a shoe, over hair)
-    z = {k: body.at(k, view)["z_mm"] for k in use}
+    use = {}  # (never the floor / crown: under a shoe, over hair; a landmark the model can't be measured at: named)
+    for k, v in lms.items():
+        if k not in body_lms:
+            continue
+        try:
+            body.at(k, view)
+            use[k] = v
+        except Exception as e:  # (t s0-4: the neck raised a TapeError, not a refusal)
+            bad.append(f"fit.landmarks.{k}: the model can't be measured at its {k} ({e}): leave it out and use the "
+                       "nearest other landmark")
+    from . import garment_fit_heights as gfh
     from .garment_fit_marks import drift
-    keep, off = {k: v for k, v in use.items() if not lwhy.get(k)}, []  # (kept with a why: off on purpose, judges none;
+    stand = gfh.standing(use)  # (the arm is posed differently in a picture: never in the neighbour check)
+    z = {k: body.at(k, view)["z_mm"] for k in stand}
+    keep, off = {k: v for k, v in stand.items() if not lwhy.get(k)}, []  # (kept with a why: off on purpose, judges none;
     # then the worst one out, and again: one wrong mark skews its neighbours' predictions)
     while True:
-        worst = max(((k, v) for k, v in drift(keep, z).items() if abs(v[0]) > DRIFT[0] and abs(v[1]) > DRIFT[1]
+        worst = max(((k, v) for k, v in drift(keep, z, gfh.MIN_SPAN).items() if abs(v[0]) > DRIFT[0] and abs(v[1]) > DRIFT[1]
                      ), key=lambda kv: abs(kv[1][1]), default=None)  # (by mm: a short span inflates fractions)
         if worst is None:
             break
         off.append(worst)
         keep.pop(worst[0])
-    for k, (fr, mm, (na, nb)) in off:  # (t s0-3: a belt marked as the waist, the ankle bone as the ankle)
+    for k, (fr, mm, (na, nb), inner) in off:  # (t s0-3: a belt marked as the waist, the ankle bone as the ankle)
         if True:  # (with the form's faults: one answer, C338)
             bad.append(f"fit.landmarks.{k}: marked {abs(mm):.0f} mm {'lower' if mm > 0 else 'higher'} than the {na} and "
-                       f"{nb} put it on this model ({abs(fr):.2f} of their span; {DRIFT[0]} and {DRIFT[1]:.0f} mm allowed): the {k} is "
+                       f"{nb} put it on this model ({abs(fr):.2f} of {'the ' + na + ' -> ' + nb + ' span' if inner else 'its distance from the ' + na}; {DRIFT[0]} and {DRIFT[1]:.0f} mm "
+                       f"allowed): the {k} is "
                        f"{FIND.get(k, k)}. Re-mark it (or a neighbour), or keep it with {{at, from, why}}")
     if bad:
         _refuse(bad)
-    heights = {}
-    if hts:
-        order = sorted(use, key=lambda k: use[k])
-        for h in hts:
-            v = h["v"]
-            inner = [(a, b) for a, b in zip(order, order[1:]) if use[a] <= v <= use[b]]
-            a, b = inner[0] if inner else ((order[0], order[1]) if v < use[order[0]] else (order[-2], order[-1]))
-            f = (v - use[a]) / (use[b] - use[a]) if use[b] != use[a] else 0.0
-            zz = z[a] + f * (z[b] - z[a])
-            sa, sb = gm.sensitivity(v, use[a], use[b], z[a], z[b])
-            if zz < 0:
-                bad.append(f"fit.heights {h['name']!r}: {-zz:.0f} mm under the model's floor (read from the {a} -> {b} "
-                           "span): re-mark it or the landmarks")
-                continue
-            skipped = [k for k in UNDER if k in lms]
-            heights[h["name"]] = dict(z_mm=round(zz, 1), fraction=round(f, 3), between=[a, b],
-                                      extrapolated=not inner, landmarks={a: lfrom[a], b: lfrom[b]},
-                                      mm_per_10px={a: sa, b: sb},
-                                      source=f"{f:.3f} of the way from the {a} to the {b} on view {vi}, on the model's own "
-                                             f"{a} ({z[a]:.0f} mm) and {b} ({z[b]:.0f} mm) above the floor"
-                                             + (" (EXTRAPOLATED beyond them)" if not inner else "")
-                                             + (f"; the {' / '.join(skipped)} not used (in a picture: the shoe's sole / "
-                                                "the hair, not the body's)" if skipped else "")
-                                             + (f"; {h['source']}" if h.get("source") else ""))
+    heights = gfh.read(hts, use, lfrom, body, view, vi, [k for k in UNDER if k in lms], bad) if hts else {}
     out = {}
     for w in widths:
-        if w["at"] in heights:  # (a width at a garment edge: the body's section at that edge's height on the model)
-            hz = heights[w["at"]]
-            near = min((k for k in hz["between"] if LANDMARKS[k][0]), key=lambda k: abs(use[k] - hrow[w["at"]]),
-                       default=None)
-            if near is None:
-                bad.append(f"fit.widths at {w['at']!r}: its height hangs between {' and '.join(hz['between'])}, "
-                           "neither has a section: mark a landmark on the same part (a limb or the torso)")
-                continue
-            m = body.at_z(near, hz["z_mm"], view)
-            part = f"section at the {w['at']}'s height ({hz['z_mm']:.0f} mm), on the same part as the {near}"
+        if w["at"] in heights:  # (a width at a garment edge: the body's section at that edge, on its part)
+            m, where = gfh.section(body, heights[w["at"]], view)
+            part = f"section at the {w['at']} ({where}, on the {heights[w['at']]['on']})"
+        elif w["at"] in hrow:
+            continue  # (its height was refused: said in bad)
         else:
             m = body.at(w["at"], view)
             part = LANDMARKS[w["at"]][1]
@@ -327,124 +318,12 @@ def check(fit, views: list, body=None) -> tuple[dict, dict, dict]:
                             body_width_mm=round(m["width_mm"], 1), garment_width_mm=round(m["width_mm"] * r, 1),
                             body=w["body"], garment=w["garment"], source=src, **({"why": w["why"]} if w.get("why") else {}),
                             **({"measured": w["measured"]} if w.get("measured") else {}),
-                            **({"section": {"near": near, "z_mm": heights[w["at"]]["z_mm"]}} if w["at"] in heights else {}))
+                            **({"section": {k: heights[w["at"]].get(k) for k in ("on", "z_mm", "along")}}
+                               if w["at"] in heights else {}))
     if bad:
         _refuse(bad)
     read = dict(fit, view=vi)
     return out, heights, read
-
-
-class DictBody:
-    """A body given as numbers {landmark: {girth_mm, width_mm, z_mm}} (tests; a body with no mesh)."""
-
-    def __init__(self, d: dict):
-        self.d = d
-        self.mesh = None
-
-    def at(self, lm, view="front"):
-        if lm not in self.d:
-            raise FitRefused(f"the body has no {lm!r}")
-        return self.d[lm]
-
-    def at_z(self, near: str, z_mm: float, view="front"):
-        """The section at a height: interpolated between the two numbered landmarks either side (tests)."""
-        pts = sorted((e["z_mm"], e) for e in self.d.values() if e.get("girth_mm"))
-        lo = max((p for p in pts if p[0] <= z_mm), default=pts[0], key=lambda p: p[0])
-        hi = min((p for p in pts if p[0] >= z_mm), default=pts[-1], key=lambda p: p[0])
-        f = 0.0 if hi[0] == lo[0] else (z_mm - lo[0]) / (hi[0] - lo[0])
-        return {k: lo[1][k] + f * (hi[1][k] - lo[1][k]) for k in ("girth_mm", "width_mm")} | {"z_mm": z_mm}
-
-
-class TapeBody:
-    """The model's own body through body_tape: girth, width across the view and height (mm above the floor)."""
-
-    def __init__(self, tape):
-        self.tape, self._c = tape, {}
-        self.mesh = (tape.V, tape.T)
-
-    def at(self, lm, view="front"):
-        key = (lm, view)
-        if key not in self._c:
-            item, _ = LANDMARKS[lm]
-            t = self.tape
-            if item is None:
-                z = {"floor": t.zmin, "crown": t.zmax}.get(lm)
-                z = t.level(lm)[0] if z is None else z
-                self._c[key] = {"girth_mm": 0.0, "width_mm": 0.0, "z_mm": (z - t.zmin) * 1000, "centre": None, "dir": None}
-            else:
-                self._c[key] = self._section(item, lm, view)
-        return self._c[key]
-
-    def at_z(self, near: str, z_mm: float, view="front"):
-        """The section at a height above the floor, of the same part as landmark `near` (its limb square to it, or
-        the torso level): a width read at a garment edge (a hem, a cuff, a waistband)."""
-        key = (near, round(z_mm, 1), view)
-        if key in self._c:
-            return self._c[key]
-        item, _ = LANDMARKS[near]
-        t = self.tape
-        z = t.zmin + z_mm / 1000
-        sq = item["square_to"]
-        if sq == "body":
-            it = {"square_to": "body", "at": {"z": z}}
-        else:
-            from . import body_tape as bt
-            limb, _, side = sq.partition(".")
-            ja, jb = (j + (f".{side}" if side and j not in ("neck", "head") else "") for j in bt.LIMBS[limb])
-            za, zb = t.J[ja][2], t.J[jb][2]
-            it = {"square_to": sq, "t": float(np.clip((za - z) / (za - zb) if za != zb else 0.5, 0.02, 0.97))}
-        self._c[key] = r = self._section(it, f"{near}@{z_mm:.0f}", view)
-        return r
-
-    def _section(self, item, name, view):
-        from . import body_tape as bt
-        t = self.tape
-        m = t.take(dict(item, name=f"fit:{name}", kind="girth"))
-        L = np.asarray(t.lines[f"fit:{name}"], float)
-        sq = item["square_to"]
-        if sq == "body":
-            n = np.array([0.0, 0.0, 1.0])
-        else:
-            limb, _, side = sq.partition(".")
-            ja, jb = (j + (f".{side}" if side and j not in ("neck", "head") else "") for j in bt.LIMBS[limb])
-            n = t.J[jb] - t.J[ja]
-        ax = (0, 2) if view not in SIDE_VIEWS else (1, 2)  # (the view's plane: across, up)
-        n2 = np.array([n[ax[0]], n[ax[1]]])
-        n2 = n2 / (np.linalg.norm(n2) or 1.0)
-        d = np.array([n2[1], -n2[0]])  # (across the limb in the view)
-        P = L[:, ax]
-        return {"girth_mm": m["mm"], "width_mm": float(np.ptp(P @ d)) * 1000,
-                "z_mm": (float(L[:, 2].mean()) - t.zmin) * 1000, "centre": P.mean(0).tolist(), "dir": d.tolist()}
-
-
-_BODIES: dict = {}
-
-
-def body_for(model: str):
-    """The model's base body as a TapeBody (garment_plan step 0 applies the fit's ratios to it). The body mesh is kept
-    on disk by its base's content (building it is ~20 s; a step-0 call must answer in seconds), the tape in process."""
-    import hashlib
-    import json
-    from . import body_tape as bt, cloth, store
-    spec = store.load(model)
-    if not spec.get("base"):
-        return None
-    key = hashlib.sha1(json.dumps(spec["base"], sort_keys=True, default=str).encode()).hexdigest()[:16]
-    if (model, key) in _BODIES:
-        return _BODIES[(model, key)]
-    f = store._dir(model) / "tape" / f"fit_body_{key}.npz"
-    try:
-        z = np.load(f, allow_pickle=False)
-        V, T, J = z["V"], z["T"], {k[2:]: z[k] for k in z.files if k.startswith("J:")}
-        hps = str(z["hps"]) or None
-    except (OSError, KeyError, ValueError):
-        b = cloth.model_body(model, spec, {})
-        tape = bt.Tape(b["V"], b["F"], b["J"], hps=b.get("hps"))
-        V, T, J, hps = tape.V, np.asarray(tape.T), tape.J, b.get("hps")
-        f.parent.mkdir(parents=True, exist_ok=True)
-        np.savez(f, V=V, T=T, hps=np.array(hps or ""), **{"J:" + k: v for k, v in J.items()})
-    _BODIES[(model, key)] = body = TapeBody(bt.Tape(V, T, J, hps=hps))
-    return body
 
 
 def text(fit: dict, heights: dict) -> list:
@@ -462,3 +341,6 @@ def text(fit: dict, heights: dict) -> list:
         L.append(f"  height {k}: {h['z_mm']:.0f} mm above the floor ({h['fraction']} of {h['between'][0]} -> "
                  f"{h['between'][1]}{', EXTRAPOLATED' if h['extrapolated'] else ''})" + (f"; moves {sens}" if sens else ""))
     return L
+
+
+from .garment_fit_body import ALIAS, DictBody, TapeBody, body_for  # noqa: E402,F401  (re-exported: callers use gf.*)

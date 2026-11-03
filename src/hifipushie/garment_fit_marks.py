@@ -101,27 +101,34 @@ def landmark(x):
     return None if v is None else (v, "seen", None)
 
 
-def drift(marks: dict, z: dict) -> dict:
-    """{landmark: (fraction off, mm off on the model, neighbours)}: where each landmark is marked against where two
-    others put it with the model's own proportions. Interior: the one either side, the fraction of their span. An end:
-    its nearest and the farthest (two near ones extrapolated ~3x: a calf 2 cm off moved the ankle 6 cm), the fraction
-    of its distance from the nearest."""
-    order = sorted(marks, key=lambda k: marks[k])
+def drift(marks: dict, z: dict, min_span: float = 0.0) -> dict:
+    """{landmark: (fraction off, mm off on the model, (a, b), interior)}: where each landmark is marked against where two others
+    put it with the model's own proportions. a: its nearest other landmark; b: the nearest on its far side at least
+    min_span from a on the model (t s0-4: armpit + chest 15 px apart put the waist 127 mm off), else the farthest
+    beyond a (an end, extrapolated; a near pair extrapolated ~3x: t s0-3). The fraction: of a -> b (interior) or of
+    k's distance from a (an end)."""
     out = {}
-    if len(order) < 3:
-        return out
-    for i, k in enumerate(order):
-        if 0 < i < len(order) - 1:
-            a, b = order[i - 1], order[i + 1]
+    for k in marks:
+        others = sorted((o for o in marks if o != k), key=lambda o: abs(marks[o] - marks[k]))
+        if len(others) < 2:
+            continue
+        a = others[0]
+        side = 1 if marks[a] > marks[k] else -1
+        far = [o for o in others[1:] if (marks[o] - marks[k]) * side < 0 and abs(z[o] - z[a]) >= min_span]
+        beyond = [o for o in others[1:] if (marks[o] - marks[k]) * side > 0 and abs(z[o] - z[a]) >= min_span]
+        if far:
+            b, interior = far[0], True
+        elif beyond:
+            b, interior = beyond[-1], False
         else:
-            a, b = (order[1], order[-1]) if i == 0 else (order[-2], order[0])
+            continue
         if marks[b] == marks[a] or z[a] == z[b]:
             continue
         f_pic = (marks[k] - marks[a]) / (marks[b] - marks[a])
         f_mod = (z[a] - z[k]) / (z[a] - z[b])
         mm = (f_pic - f_mod) * (z[a] - z[b])
-        ref = abs(z[a] - z[b]) if 0 < i < len(order) - 1 else abs(z[k] - z[a])
-        out[k] = (round(mm / (ref or 1.0), 3), round(mm, 1), (a, b))
+        ref = abs(z[a] - z[b]) if interior else abs(z[k] - z[a])
+        out[k] = (round(mm / (ref or 1.0), 3), round(mm, 1), (a, b), interior)
     return out
 
 

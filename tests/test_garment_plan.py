@@ -238,7 +238,7 @@ def test_fit_ratios_applied_to_the_body_and_heights_between_landmarks(home):
     r = gp.write("m", "w", "read", _read(home))
     f, h = r["plan"]["fit"]["chest"], r["plan"]["heights"]["hem"]
     assert f["ratio"] == 1.25 and f["ease_mm"] == 250.0 and f["garment_width_mm"] == 412.5 and f["body"] == "inferred"
-    assert h["z_mm"] == 700.0 and h["extrapolated"] and h["between"] == ["chest", "waist"]  # (250 px: 3 x the chest -> waist 50 px: 1300 - 3 x 200)
+    assert h["z_mm"] == 700.0 and h["extrapolated"] and set(h["between"]) == {"chest", "waist"}  # (250 px: 3 x the chest -> waist 50 px: 1300 - 3 x 200)
     assert r["plan"]["fit_read"]["view"] == 0 and any(p.endswith("step0_fit.png") for p in r["look"])
     txt = gp.text("m", "w", r)
     assert "fit chest: ratio 1.25" in txt and "height hem: 700 mm" in txt and "wool_suiting" in txt
@@ -297,7 +297,7 @@ def test_landmarks_inferred_sensitivity_and_floor_never_used(home):
                              "floor": 290}
     r = gp.write("m", "w", "read", b, look=True)
     h = r["plan"]["heights"]["hem"]
-    assert h["between"] == ["chest", "waist"] and h["z_mm"] == 700.0  # (the floor marked, not used)
+    assert set(h["between"]) == {"chest", "waist"} and h["z_mm"] == 700.0  # (the floor marked, not used)
     assert h["landmarks"]["waist"] == "covered: by proportion" and h["mm_per_10px"]["waist"] > 0
     assert "INFERRED: covered" in gp.text("m", "w", r) and "floor" in h["source"]
     b["fit"]["landmarks"]["waist"] = {"at": 150}
@@ -312,7 +312,7 @@ def test_a_width_sits_at_its_landmark_or_at_a_garment_edge(home):  # (t s0-3: an
     b["fit"]["widths"].append({"at": "hem", "garment": [[50, 250], [150, 250]], "body": [[70, 250], [130, 250]],
                                "body_from": "inferred: inside"})
     f = gp.write("m", "w", "read", b, look=False)["plan"]["fit"]["hem"]
-    assert f["section"]["z_mm"] == 700.0 and "at the hem's height" in f["source"]
+    assert f["section"]["z_mm"] == 700.0 and "section at the hem (the torso at 700 mm" in f["source"]
 
 
 def test_a_landmark_far_from_where_its_neighbours_put_it_is_refused_unless_why(home):
@@ -324,3 +324,39 @@ def test_a_landmark_far_from_where_its_neighbours_put_it_is_refused_unless_why(h
     assert gp.write("m", "w", "read", b, look=False)["plan"]["heights"]["hem"]
     b["fit"]["landmarks"]["knee"] = 296
     assert gp.write("m", "w", "read", b, look=False)
+
+
+def test_heights_on_a_part_and_landmarks_the_model_cannot_take(home):  # (t s0-4)
+    BODY["crotch"] = {"girth_mm": 0.0, "width_mm": 0.0, "z_mm": 800.0}
+    try:
+        b = _read(home)  # (a torso edge mapped under the crotch: refused, it is on a leg)
+        b["fit"]["heights"] = [{"name": "hem", "at": 290}]
+        _refused(lambda: gp.write("m", "w", "read", b, look=False), "below the model's crotch", "on: 'leg'")
+        b["fit"]["heights"] = [{"name": "cuff", "at": 200, "on": "arm"}]  # (no arm landmarks marked)
+        _refused(lambda: gp.write("m", "w", "read", b, look=False), "needs 2 of the arm's landmarks")
+        b["fit"]["heights"] = [{"name": "hem", "at": 250, "on": "knees"}]
+        _refused(lambda: gp.write("m", "w", "read", b, look=False), "on 'knees'")
+    finally:
+        BODY.pop("crotch")
+
+    class Broken(gf.DictBody):  # (a landmark the tape can't take: named, not raised)
+        def at(self, lm, view="front"):
+            if lm == "waist":
+                raise ValueError("no section there")
+            return super().at(lm, view)
+    import hifipushie.garment_fit as gfm
+    old = gfm.body_for
+    gfm.body_for = lambda model: Broken(BODY)
+    try:
+        b = _read(home)
+        _refused(lambda: gp.write("m", "w", "read", b, look=False), "fit.landmarks.waist: the model can't be measured")
+    finally:
+        gfm.body_for = old
+
+
+def test_close_landmarks_do_not_predict_each_other():  # (t s0-4: armpit + chest 15 px apart)
+    from hifipushie import garment_fit_marks as gm
+    z = {"armpit": 1300.0, "chest": 1280.0, "waist": 1100.0, "hips": 950.0}
+    marks = {"armpit": 100, "chest": 102, "waist": 160, "hips": 200}  # (the chest 2 px under the armpit: 5 mm off)
+    d = gm.drift(marks, z, 60.0)
+    assert abs(d["waist"][1]) < 30 and abs(d["hips"][1]) < 30, d

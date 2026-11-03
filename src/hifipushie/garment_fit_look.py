@@ -141,15 +141,39 @@ def _model(read: dict, body, fit: dict, heights: dict) -> Image.Image:
     Q = np.c_[300 + (P[:, 0] - cx) * s, H - 30 - (P[:, 1] - z0) * s]
     for t in T:
         d.polygon([tuple(Q[i]) for i in t], fill=(95, 95, 100))
+    from .garment_fit_heights import section, standing
     lm = _lmarks(read)
-    ys = {k: H - 30 - (body.at(k, view)["z_mm"] / 1000) * s for k in lm}
-    hy = {k: H - 30 - (h["z_mm"] / 1000) * s for k, h in heights.items()}
-    _ruler(d, ys, {k for k, (_, f) in lm.items() if f != "seen"}, heights, hy, 40, 560)
+    up = standing(lm)  # (torso + leg landmarks on the ruler; the arm's are drawn on the arm: its pose is the model's)
+    ys = {k: H - 30 - (body.at(k, view)["z_mm"] / 1000) * s for k in up}
+    straight = {k: h for k, h in heights.items() if not (h.get("along") or {}).get("bone")}
+    hy = {k: H - 30 - (h["z_mm"] / 1000) * s for k, h in straight.items()}
+    _ruler(d, ys, {k for k, (_, f) in lm.items() if f != "seen"}, straight, hy, 40, 560)
     lx = 600 + 8
     used = []
+    for k in lm:  # (a limb's own landmarks: a grey tick across the limb)
+        if k in up:
+            continue
+        m = body.at(k, view)
+        if m.get("centre") is not None:
+            c, u = np.array(m["centre"]), np.array(m["dir"])
+            _seg(d, px(c - u * m["width_mm"] / 2000), px(c + u * m["width_mm"] / 2000), GREY, 2,
+                 (6, 4) if lm[k][1] != "seen" else None)
+            _label(d, px(c + u * m["width_mm"] / 2000) + [4, 0], k, lx, used, GREY)
+    for k, h in heights.items():  # (an edge read along a limb: across the limb where it lands)
+        if k in straight:
+            continue
+        m = section(body, h, view)[0]
+        c, u = np.array(m["centre"]), np.array(m["dir"])
+        a, b = px(c - u * m["width_mm"] / 1600), px(c + u * m["width_mm"] / 1600)
+        _seg(d, a, b, ORANGE, 3, (8, 6) if h.get("extrapolated") else None)
+        _label(d, b + [4, 0], k, lx, used, ORANGE)
     for k, e in fit.items():
         sec = e.get("section")  # (a width at a garment edge: the body's section at that edge's height)
-        m = body.at_z(sec["near"], sec["z_mm"], view) if sec else body.at(k, view)
+        if sec:
+            from .garment_fit_heights import section
+            m = section(body, sec, view)[0]
+        else:
+            m = body.at(k, view)
         if m.get("centre") is None:
             continue
         c, u = np.array(m["centre"]), np.array(m["dir"])
@@ -158,7 +182,7 @@ def _model(read: dict, body, fit: dict, heights: dict) -> Image.Image:
         _seg(d, px(c - u * hg) + [0, -GAP], px(c + u * hg) + [0, -GAP], YEL, 3, (8, 6) if e["garment"] != "seen" else None)
         _label(d, px(c + u * hg) + [6, -GAP], k, lx, used)
     for k, y in hy.items():
-        _line(d, [(110, y), (lx - 6, y)], ORANGE, 2, (8, 6) if heights[k].get("extrapolated") else None)
+        _line(d, [(110, y), (lx - 6, y)], ORANGE, 2, (8, 6) if straight[k].get("extrapolated") else None)
         _label(d, (lx - 6, y), k, lx, used, ORANGE)
     return im
 
