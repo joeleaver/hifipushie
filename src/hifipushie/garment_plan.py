@@ -33,6 +33,9 @@ STEP 2 "style": {state, bends, pose, rows, layers?, drape?}
   rows   [{id, what, target: {value, unit, tol?, of?} | {is}, source, note?, view?, at?: [[u,v],..]}]  (what the photo
           judges: the structure gate's targets). what = a structure_rows.KINDS kind (refused otherwise, with the list); a
           ratio is OF the kind's base (its name or a row id of it); a numeric bend names its kind in "what" too (C286)
+  traces [{id, what, view, points [[u,v],..], corners [indices], source}] + body_marks [{view, at: {landmark: [u,v]},
+          source}]  (T15, C299: the reference's key edges traced on a view, what = a structure_outline.KINDS edge; step 6
+          compares the build's outline in that view with them in mm: structure_outline.py is the spec)
 """
 from __future__ import annotations
 
@@ -329,7 +332,8 @@ def check_style(p: dict, read: dict, parts: dict) -> dict:
         if r.get("at") is not None and not (_uv_list(r["at"]) and isinstance(r.get("view", 0), int)
                                             and 0 <= r.get("view", 0) < nv):
             bad.append(f"{w}.at: [[u, v], ...] on view (a step-0 view index)")
-    from . import chain_drape as cd
+    from . import chain_drape as cd, structure_outline as so
+    so.check_plan(p, read, bad)  # (T15: traced edges + the body marks that place the view)
     cd.check_style(p, pieces, bad)  # (T13: drape falls; a hang row needs a draped piece falling that way)
     falls = {x["falls"] for x in cd.plan_drape({"parts": parts, "style": p}).values()}
     for i, r in enumerate(rows):
@@ -407,11 +411,15 @@ def text(model: str, garment: str, r: dict) -> str:
                                                           else " (not marked)")
               + (" [judged on the HANG, step 8]" if (sr.KINDS.get(r_.get("what")) or {}).get("on") == "hang" else "")
               for r_ in p["rows"]]
+        L += [f"  trace {t['id']} ({t['what']}) on view {t.get('view', 0)}: {len(t['points'])} points, corners at "
+              f"{t.get('corners') or 'none'}" for t in p.get("traces") or []]
+        L += [f"  body marks on view {m.get('view', 0)}: {', '.join(m['at'])}" for m in p.get("body_marks") or []]
     L += [f"  look: {x}" for x in r["look"]]
     nxt = {"0": "judge the look against the picture (are the samples on the right cloth), then garment_plan step='parts'",
            "1": "judge the look's SHAPES against the picture (does each outline follow its piece; occluded / inferred "
                 "marked), then garment_plan step='style'",
-           "2": "judge the look against the picture (does each yellow mark span what its row names)"
+           "2": "judge the look against the picture (does each yellow mark span what its row names; does each cyan trace "
+                "sit ON its edge, corners ringed where it turns sharply)"
                 "; step 3 measures the names step 1 calls for"}[sid]
     nxt += "; names and numbers are this text's, never read off the look"
     return "\n".join(L + [f"next: {nxt} (garment_record shows the record)"])

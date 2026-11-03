@@ -95,8 +95,8 @@ def _views_used(sid: str, plan: dict, read: dict) -> list:
         for x in (plan.get(grp) or {}).values():
             if isinstance(x.get("where"), dict):
                 vs.add(x["where"].get("view", 0))
-    for r in plan.get("rows") or []:
-        if r.get("at"):
+    for r in (plan.get("rows") or []) + (plan.get("traces") or []):
+        if r.get("at") or r.get("points"):
             vs.add(r.get("view", 0))
     return sorted(vs) or [0]
 
@@ -193,4 +193,20 @@ def _style(d, s, vi, plan, read, parts):
                 _ring(d, u, v, 5, YEL, None)
             _label(d, (P[-1][0] + 8, P[-1][1] - 12), r["id"], YEL)  # (the target is the text's)
         leg.append((f"  {r['id']}: {_tgt(r['target'])}" + ("" if r.get("at") else " (not marked)"), YEL))
+    CY, MAG = (60, 230, 255), (255, 80, 220)
+    if plan.get("traces"):
+        leg.append(("traced edges (cyan; corners ringed, body marks magenta):", CY))
+    for t in plan.get("traces") or []:
+        if t.get("view", 0) == vi:
+            P = [(u * s, v * s) for u, v in t["points"]]
+            _line(d, P, CY, 3, None)
+            for k in t.get("corners") or []:
+                _ring(d, *P[k], 9, CY, None)
+            _label(d, (P[0][0] + 8, P[0][1] - 30), t["id"], CY)
+        leg.append((f"  {t['id']}: {t['what']}" + ("" if t.get("view", 0) == vi else f" (on view {t.get('view', 0)})"), CY))
+    for m in plan.get("body_marks") or []:
+        if m.get("view", 0) == vi:
+            for k, (u, v) in m["at"].items():
+                _ring(d, u * s, v * s, 6, MAG, None)
+                _label(d, (u * s + 8, v * s - 34), k, MAG)
     return leg
