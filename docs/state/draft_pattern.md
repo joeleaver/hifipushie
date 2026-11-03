@@ -1,38 +1,35 @@
-# STATE: draft_pattern (garment step 4, T5 + T5b) -> codified.md C285, C295
+# STATE: draft_pattern (garment step 4, T5 + T5b) -> codified.md C285, C295, C300
 Tool draft_pattern(name, garment, design, declarations, options, sa): the agent's own FreeSewing design (Node, no network,
 fs read-only, 60 s) + declarations in step 1's names -> draft_own.block (the one converter) -> cloth.mesh -> the flat
 gate -> step 4 + flat sheet. pattern_check and chain_garment's gate read an own draft's step 4. The spec's pattern
 carries a digest of draft + declarations + options (a redraft into the same dir is a new chain job).
-T5b (Joe: "Why would it build curved pieces as straight lines?"; the hussar stand was a straight trapezoid, the shirt
-band a rectangle, its fall a triangle): the flat gate checks SHAPE per role (draft_shape.py, its docstring the spec),
-targets measured on FreeSewing 4.10.2's own parts (scripts in /mnt/data/hifipushie/t5b/scripts/ref_*.py):
-- shape_stand: neck edge's ends rise towards the free edge: stand >= 0.24 x the neckline's front drop (jaeger.collarStand
-  0.47 halved), band under a fall > 0; free / neck edge <= 0.989 (jaeger 0.978) / <= 1.0 (band).
-- shape_fall: outer edge (or fold line) / stand seam >= 1.012 (simon.collar 1.024, jaeger.collar 1.038).
-- shape_cap: cap height / armhole depth in [0.47, 0.79] (brian 0.52, bent 0.72).
-- shape_seam_curve: no straight edge (sagitta/chord < 0.005) sewn to a curved one (> 0.02), names the straight edge.
-Found measuring: simon.collarStand at its DEFAULT options DROPS 7.9 mm at its ends (a near-vertical shirt band on a
-neckline at the neck base); its own range reaches a rise (collarStandBend 0, collarStandCurve 5: +5.8 mm on the shirt).
-So the band row asks only "rises at all"; the stand row's magnitude is jaeger's.
-Guide (cloth_tools.md draft_pattern) + the FAIL answer: reuse FreeSewing's part for a role (`from:` + options); using
-FreeSewing's parts is right, garment-specific glue in our code is what's banned.
-Redrafts through draft_pattern (homes /mnt/data/hifipushie/t5b/{hussar,shirt}; designs + declarations + options in
-examples/draft_own/): hussar stand = simon.collarStand, collarStandBend -6 / Curve 5 (past simon's shirt range, the
-rising way: jaeger's target), width 0.123 x neck (48 mm), no button extension: rise +27.9 mm = 0.37 x drop 75 mm,
-free/neck 0.979, every row PASS. Shirt band = simon.collarStand (Bend 0, Curve 5; extensions 2 x EXT), fall =
-simon.collar, roll fold 0.1 x band height above the stand seam (simon collarWidth 120 %): rise +5.8 mm, fall 1.024,
-every row PASS. Before: T8 hussar FAIL shape_stand + shape_seam_curve; T5 shirt FAIL seams (-20.6 %), stand, fall, curve.
-Hussar builds (chain_garment, structure; reference /mnt/data/hifipushie/refs/hussar/front.webp): collar_height / collar_upright
-T8 0.055 / 72.7 deg -> b1 (rise 0.37 D) 0.089 / 73.1 -> b2 (rise 0.52 D, Bend -9) 0.071 / 70.7. Judged at full size
-(/mnt/data/hifipushie/t5b/hussar/neck_t8_b1_b2.png, neck_b2_vs_ref.png): b2's stand no longer dips to a V: it runs round
-at one height and its ends meet at CF, but it is LOWER than the photo's (which reaches under the jaw) and hugs the neck;
-the rows read it worse, so collar_upright / collar_height may not measure lean-in vs flare as the eye does: check the
-rows (structure_rows, T13's file) before trusting them. Then (Joe's marks) b3 draft, NOT built: the stand's front top
-corners rounded (16 mm) and the cutaway a square step out (60 mm) at the zip's end then a drop to the point, traced
-from the photo (flat_b3_vs_ref.png): every row PASS. Not done: a "corner stays a corner" row: the converter keeps
-FreeSewing's vertices exactly, so it can't fail in the flat; the build is where corners round off (T15's outline-vs-
-reference row). The shape rows can't catch: an outline unlike the photo (a rounded vs stepped hem), a stand too low.
-Unverified: the shirt's chain build with simon's band + fall; jaeger/carlton parts as `from:` (need their own fronts);
-a straight skirt waistband would FAIL shape_seam_curve (a known false alarm); half stands (.L/.R) aren't measured.
-NEXT: build b3 (hussar; check collar rows read lean-in right) and the shirt with the new band + fall (chain_garment to structure) and judge its collar at full size beside the
-reference; if the hussar stand still leans out, raise its rise towards jaeger's 0.47 x drop and rebuild once.
+T5b (C295): the flat gate checks SHAPE per role (draft_shape.py, its docstring the spec; targets on FreeSewing 4.10.2's own
+parts, /mnt/data/hifipushie/t5b/scripts/ref_*.py): shape_fall (outer / stand seam >= 1.012), shape_cap ([0.47, 0.79] x
+armhole depth), shape_seam_curve (no straight edge sewn to a curved one), shape_stand (below).
+T5c (2026-11-02, C300; draft_stand.py): T5b's shape_stand forced EVERY stand's neck edge to rise (jaeger: the hugging
+stand); Joe on the hussar: "it got the collar curves the wrong direction again" (its stand stands away, top LEVEL, tall
+at CF). Now step 2's collar_top trace decides (draft_stand docstring = the derivation: the stand as a band, neck edge =
+the drafted neckline, free edge = the trace): h_side (top above the hps marks), T (its drop to the front ends, a rounded
+corner passed over: last point within 60 deg of level), f = T / D. Targets: rise f x 0.47 x D +- 0.24 D; front ends
+h_side + D - T; CB h_side + D_back (1 - f); lean <= 0.989 only if f >= 0.5; tol 2 x 3 px x mm/px + marks residual. FAIL
+says which way to curve, how much taller / lower. No trace: INFO (curve + heights reported); a band under a fall: INFO.
+draft_own_tool.stand_ref loads the body's landmarks (cloth.Body) for the placement. Tests: tests/test_draft_own.py.
+Hussar (HOME /mnt/data/hifipushie/t5c/hussar = t5b copy + T15's traces/body_marks in step 2; scripts/ there): b3 (T5b)
+FAILs the new row: rise +39 mm (want +10 +- 18), fronts 46 (want 53 + 75 - 20 = 108 +- 15), CB 46 (want 67). Redraft c1
+(examples/draft_own/hussar.mjs + options): simon.collarStand, Bend -1 (rise +9.4), top line redrawn at the traced height
+over each place of the neck edge (back 1 - cos, front sin), corners rounded 16 mm: every flat row PASS
+(flat_c1_vs_ref.png: the flat top dips at the side neck, tall ears at CB and the fronts).
+Build c1 (chain_garment, structure): REFUSED "a length can't hold: front.L edge 30 % off its cut at front.L:cfNeck";
+the rows read before it (outline_c1.png / outline_c1_top.png), T15-on-T8 -> c1 (p95 mm): hem 32.5 -> 20.1 FAIL;
+collar_top 8.7 -> 10.4 FAIL (the whole top 32 mm too HIGH); collar_front R/L 11.8 / 6.3 -> 20.1 / 19.7 FAIL (worst at the
+CF bottom); zip_line PASS -> FAIL (max 28.5, at the refusal); collar_height, collar_upright FAIL. Built (zs.py): the collar
+at CF spans 4 mm of height, at CB 7 mm: the stand does NOT stand, it lies out / collapses; it is too tall at CF.
+FOUND: D on the flat (75 mm) is not the neckline's drop on the body: hps z 1547, cf_neck 1531 (16 mm), the photo's
+neckline at CF (collar_front bottoms, v 100 vs hps v 63) ~39 mm. The derivation's "D on the flat ~ the vertical drop"
+is wrong for a jacket front (it tilts over the chest), so the front target is ~30-60 mm too tall: a build-proven fault.
+Judged: no full-size render (stopped by the coordinator); verdict from the overlays + numbers: worse at the collar.
+UNVERIFIED: the derivation with a body-side D; whether a straight neck edge stands on a tilted neckline at all (c1 lies
+out at CB: maybe a level-top stand still needs some rise); the shirt's chain build; half stands (.L/.R).
+NEXT: in draft_stand, take D (and D_back) from the photo / body, not the flat: the neckline's vertical drop in the view
+(collar_front traces' bottom ends vs the hps marks, else the body's hps - cf_neck z); retest; redraft the fronts
+(~h_side + 39 - 20 ~ 72 mm) and rebuild once; fix the cfNeck length refusal first if it persists (look_pattern there).
