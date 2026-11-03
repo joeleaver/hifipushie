@@ -303,7 +303,8 @@ def block(pat: dict) -> dict:
 
 # ---------------------------------------------------------------- the flat gate
 def gate(B: dict, decl: dict, step1: dict, stand_ref: dict | None = None) -> list:
-    """General flat rows: seams (each pair within its declared ease, else PLAIN_TOL), cut (every built inventory piece
+    """General flat rows: seams (each pair within its declared ease, else PLAIN_TOL), seam_ends (each seam's edges run
+    the same way: draft_seam_ends.py), cut (every built inventory piece
     cut), sewn (every step-1 seam), closures (every step-1 closure declared; lapped edges line up), truing (INFO), and
     the SHAPE rows per role (draft_shape.py: stand / band rise and lean, fall spread, sleeve cap, curved-to-straight seams)."""
     from . import cloth_check as cc, pattern
@@ -322,6 +323,8 @@ def gate(B: dict, decl: dict, step1: dict, stand_ref: dict | None = None) -> lis
     rows.append({"id": "seams", "status": "FAIL" if bad else "PASS", "value": f"{len(sm)} seams, {len(bad)} off",
                  "target": "each pair within its declared ease, else +-1 %", "why": "; ".join(bad[:8]),
                  "fix": "redraft the shorter side, or declare the ease with why", "back_to": "4", "detail": sm})
+    from . import draft_seam_ends
+    rows += draft_seam_ends.rows(B)  # (F6: a seam sewn the wrong way round passes every length row)
     inv = step1.get("pieces") or {}
     from .draft_pairs import base_name
     dx = B.get("decl") or decl  # (pairs expanded: draft_pairs)
