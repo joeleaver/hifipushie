@@ -27,6 +27,8 @@ PAL = [(80, 200, 255), (255, 120, 200), (120, 255, 140), (255, 170, 60), (190, 1
        (255, 90, 90), (200, 230, 80), (150, 190, 255), (255, 210, 150)]
 GREY, YEL, WHITE = (150, 150, 150), (255, 230, 40), (240, 240, 240)
 DASH = {"seen": None, "occluded": (14, 8), "inferred": (3, 6)}
+MARG = 250       # step 1: the labels' margin beside the picture (labels on the picture hid the frogging: t s1-1)
+_USED: list = []
 
 
 def _line(d, pts, col, width, dash, closed=False):
@@ -58,6 +60,19 @@ def _label(d, xy, s, col):
     _PLACED.append((x - 3, y - 2, x + w + 3, y + 26))
     d.rectangle([x - 3, y - 2, x + w + 3, y + 25], fill=(0, 0, 0))
     d.text((x, y), s, fill=col, font=FONT)
+
+
+def _mlabel(d, anchor, s, col):
+    """A label in the margin right of the picture, at its anchor's height (moved clear of the others), with a leader."""
+    y0 = min(max(anchor[1] - 12, 2), d.im.size[1] - 26)
+    y = y0
+    for k in range(200):  # (y0, then 24 px further each way, alternating, until clear of the labels placed)
+        y = y0 + 24 * ((k + 1) // 2) * (1 if k % 2 else -1)
+        if 2 <= y <= d.im.size[1] - 26 and all(abs(y - u) >= 24 for u in _USED):
+            break
+    _USED.append(y)
+    _line(d, [tuple(anchor), (W + 6, y + 12)], col, 1, (3, 3))
+    d.text((W + 10, y), s, fill=col, font=FONT)
 
 
 def _ring(d, u, v, r, col, dash):
@@ -107,6 +122,11 @@ def draw(model: str, garment: str, sid: str, plan: dict, read: dict, parts: dict
     for vi in _views_used(sid, plan, read):
         im, s = _base(read, vi)
         _PLACED.clear()
+        _USED.clear()
+        if sid == "1":  # (a margin for the labels: C343)
+            pad = Image.new("RGB", (im.size[0] + MARG, im.size[1]), (24, 25, 28))
+            pad.paste(im, (0, 0))
+            im = pad
         d = ImageDraw.Draw(im)
         fn = {"0": _read, "1": _parts, "2": _style}[sid]
         legend = fn(d, s, vi, plan, read, parts)
@@ -152,12 +172,18 @@ def _parts(d, s, vi, plan, read, parts):
         if drawn:
             P = [(u * s, v * s) for u, v in w["outline"]]
             _line(d, P, col, 3, dash, closed=True)
+            for sp in (x.get("edges") or {}).values() if isinstance(x.get("edges"), dict) else []:
+                if isinstance(sp, list) and sp and isinstance(sp[0], int) and 0 <= sp[0] < len(P):
+                    u, v = P[sp[0]]  # (where one edge ends and the next begins)
+                    d.ellipse([u - 5, v - 5, u + 5, v + 5], fill=WHITE, outline=col)
             cx, cy = sum(p[0] for p in P) / len(P), sum(p[1] for p in P) / len(P)
-            _label(d, (cx - d.textlength(n, font=FONT) / 2, cy - 12), n, col)
+            _mlabel(d, (cx, cy), n, col)
         leg.append((f"{n}: {x['seen']}, {x['build']}, {'stiff' if x['stiff'] else 'soft'}, L{x['layer']}"
                     + ("" if drawn or w else "  (no place)"), col))
         if x["seen"] != "seen":
             leg.append((f"   from: {x['from']}", GREY))
+        if x.get("edges"):
+            leg.append((f"   edges: {', '.join(x['edges'])}", GREY))
     for k, (n, x) in enumerate((plan.get("details") or {}).items()):
         col, dash = _style_of(x, YEL)
         w = x.get("where") or {}
@@ -168,7 +194,7 @@ def _parts(d, s, vi, plan, read, parts):
                 _line(d, [(u * s, v * s) for u, v in o], col, 2, dash)
             pts = w.get("at") or w.get("outline") or (w.get("outlines") or [[]])[0]
             if pts:
-                _label(d, (pts[0][0] * s + 12, pts[0][1] * s - 18), n, col)
+                _mlabel(d, (pts[0][0] * s, pts[0][1] * s), n, col)
         leg.append((f"detail {n} x{x.get('count', 1)} on {', '.join(x['on'])}: {x['seen']}, {x['build']}", col))
     leg.append((f"closures: {', '.join(f'{c}({len(v.get('details') or [])} det)' for c, v in (plan.get('closures') or {}).items()) or 'none'}", WHITE))
     leg.append((f"seams: {len(plan['seams'])}; measures: {', '.join(plan.get('measurements') or [])}", WHITE))
