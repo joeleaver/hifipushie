@@ -73,7 +73,7 @@ import numpy as np
 # garments(simulate=True)) or with HP_SUBMIT_SIMS=1 in the environment; anything else raises SimNotSubmitted, the job
 # folder already written. Free remotes (have.sh: the broker's pulled results; nobox.sh) are never gated.
 _SUBMIT = contextvars.ContextVar("hp_submit_sims", default=False)
-FREE_REMOTES = ("have.sh", "nobox.sh")
+FREE_REMOTES = ("have.sh", "nobox.sh", "lan.sh")  # (lan.sh: the department's own machines, free)
 
 
 class SimNotSubmitted(RuntimeError):

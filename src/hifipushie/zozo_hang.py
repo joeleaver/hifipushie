@@ -43,6 +43,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import shlex
 import time
 from pathlib import Path
 
@@ -651,15 +652,87 @@ def write_job(res: dict, X: np.ndarray, g: dict, jd: Path, frames: int | None = 
     return facts
 
 
+CHAIN_GATE = "chain_gate.json"  # the chain job's own gate beside its job (structure PASS + step 7a), see run()
+REMOTE_KEY = "HIFIPUSHIE_HANG_REMOTE"  # the machine's configured route (localconf), never an agent's choice
+
+
+def write_chain_gate(jd: Path, structure: str, presim: str) -> dict:
+    """The chain job's gate record beside its ZOZO job: its structure verdict (PASS / PASS_WAIVED) and why step 7a let it
+    hang (chain_presim.presim_ready). Written by the chain_garment worker only after both passed; not in in.npz /
+    job.json, so a result's cache key is the same wherever it ran."""
+    rec = {"structure": structure, "presim": presim}
+    Path(jd).mkdir(parents=True, exist_ok=True)
+    (Path(jd) / CHAIN_GATE).write_text(json.dumps(rec))
+    return rec
+
+
+def chain_gate(jd: Path) -> tuple:
+    """(gated, why): a remote route's gate for a chain job = its own structure PASS + step 7a (pre-sim approval), in
+    place of cloth_job's pattern-gate record (the old cloth path's gate). No record: not gated for a remote route."""
+    try:
+        rec = json.loads((Path(jd) / CHAIN_GATE).read_text())
+    except (OSError, ValueError):
+        return False, "no chain gate record (structure PASS + step 7a) beside the job"
+    if str(rec.get("structure", "")).split("_")[0] != "PASS":
+        return False, f"structure {rec.get('structure')!r}, not PASS"
+    if not rec.get("presim"):
+        return False, "step 7a not passed"
+    return True, f"structure {rec['structure']}, {rec['presim']}"
+
+
+def remote_route() -> str | None:
+    """The configured remote route's command (a path relative to this checkout is resolved in it), else None."""
+    from . import localconf
+    cmd = localconf.get(REMOTE_KEY)
+    if not cmd:
+        return None
+    parts = shlex.split(cmd)
+    if not Path(parts[0]).is_absolute():
+        root = Path(__file__).resolve().parents[2]
+        if (root / parts[0]).exists():
+            parts[0] = str(root / parts[0])
+    return shlex.join(parts)
+
+
 def run(jd: Path, log=print, timeout: float = 3600) -> tuple:
-    """The written job on this machine: the heavy slot + GPU (resources.heavy gpu=True), ZOZO's memory cap
-    ($HIFIPUSHIE_ZOZO_MEM). Returns (out.npz arrays, log lines)."""
-    from . import cloth_job as cj, resources
+    """The written job: through the machine's configured remote route ($HIFIPUSHIE_HANG_REMOTE, environment or
+    localconf; a command run with the job folder as its last argument that leaves out.npz there) when one is set and the
+    job carries its chain gate (chain_gate); else on this machine under the heavy slot + GPU (resources.heavy gpu=True)
+    and ZOZO's memory cap ($HIFIPUSHIE_ZOZO_MEM). A remote run holds no local slot (the laptop's GPU stays free for
+    renders). A route that answers exit 9 (not available) falls back here, said in one line. out.npz lands in the same
+    job folder either way: results are found whichever machine ran them. Returns (out.npz arrays, log lines)."""
+    from . import cloth_job as cj, localconf, resources
+    lines = []
+    def say(m):
+        lines.append(m)
+        log(m)
+    remote = remote_route()
+    if remote:
+        gated, why = chain_gate(jd)
+        if not gated:
+            say(f"zozo hang: ran locally ({why})")
+        else:
+            if cj._paid(remote) and not cj.may_submit():
+                raise cj.SimNotSubmitted(f"zozo hang {jd}: the configured route is paid; no opt-in at the call site "
+                                         "(cloth_job.submitting() or HP_SUBMIT_SIMS=1). The job folder is written.")
+            try:
+                cj._stream(shlex.split(remote) + [str(jd)], lambda m: None, timeout, localconf.environ(),
+                           "zozo hang (remote)")
+                say(f"zozo hang: ran remotely (gate: {why})")
+                arr, ol = cj.read_out(jd / "out.npz")
+                return arr, list(ol) + lines
+            except RuntimeError as e:
+                if "(exit 9)" not in str(e):
+                    raise
+                say("zozo hang: the remote route is not available: ran locally")
     cmd, env = cj.zozo_command(jd)
     with resources.heavy(f"zozo hang {jd.name}", log=log, kind="cloth_zozo", gpu=True, model=jd.name):
         cj.clear_strays(log)
         cj._stream(cmd, lambda m: None, timeout, env, "zozo hang settle")
-    return cj.read_out(jd / "out.npz")
+    if not remote:
+        say("zozo hang: ran locally")
+    arr, ol = cj.read_out(jd / "out.npz")
+    return arr, list(ol) + lines
 
 
 def weld(V: np.ndarray, M: dict, stiff=None) -> np.ndarray:

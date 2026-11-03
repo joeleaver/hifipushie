@@ -1730,8 +1730,10 @@ def worker(model: str, garment: str, wear: dict):
             _status(d, stage=cp.AWAIT, presim=why, sheet=sheet, record="; ".join(m for m in (gr_msg, msg) if m))
             return
         jd = b.write_job(d / "zozo", fabric, name=f"chain:{model}:{garment}")
+        zh.write_chain_gate(jd, sc["verdict"], why)  # (the remote route's gate: this job's structure PASS + step 7a)
         _status(d, stage="hanging", reads=b.reads, presim=why)
-        out, _ = zh.run(jd, log=note, timeout=3000)
+        out, hl = zh.run(jd, log=note, timeout=3000)
+        _status(d, hang_ran=next((m.split(": ", 1)[1] for m in hl if m.startswith("zozo hang: ")), None))
         X = b.finish_hang(out["V"] if hasattr(out, "keys") else out[0])
         pickle.dump({"X": X, "M": pat.M, "bV": body.V, "bT": body.T, "reads": b.reads}, open(d / "final.pkl", "wb"))
         _status(d, stage="hung", reads=b.reads, note="")  # (a refusal below still leaves the hung result to look at)
