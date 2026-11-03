@@ -22,8 +22,17 @@ rising way: jaeger's target), width 0.123 x neck (48 mm), no button extension: r
 free/neck 0.979, every row PASS. Shirt band = simon.collarStand (Bend 0, Curve 5; extensions 2 x EXT), fall =
 simon.collar, roll fold 0.1 x band height above the stand seam (simon collarWidth 120 %): rise +5.8 mm, fall 1.024,
 every row PASS. Before: T8 hussar FAIL shape_stand + shape_seam_curve; T5 shirt FAIL seams (-20.6 %), stand, fall, curve.
-BUILD_RESULT
+Hussar builds (chain_garment, structure; reference /mnt/data/hifipushie/refs/hussar/front.webp): collar_height / collar_upright
+T8 0.055 / 72.7 deg -> b1 (rise 0.37 D) 0.089 / 73.1 -> b2 (rise 0.52 D, Bend -9) 0.071 / 70.7. Judged at full size
+(/mnt/data/hifipushie/t5b/hussar/neck_t8_b1_b2.png, neck_b2_vs_ref.png): b2's stand no longer dips to a V: it runs round
+at one height and its ends meet at CF, but it is LOWER than the photo's (which reaches under the jaw) and hugs the neck;
+the rows read it worse, so collar_upright / collar_height may not measure lean-in vs flare as the eye does: check the
+rows (structure_rows, T13's file) before trusting them. Then (Joe's marks) b3 draft, NOT built: the stand's front top
+corners rounded (16 mm) and the cutaway a square step out (60 mm) at the zip's end then a drop to the point, traced
+from the photo (flat_b3_vs_ref.png): every row PASS. Not done: a "corner stays a corner" row: the converter keeps
+FreeSewing's vertices exactly, so it can't fail in the flat; the build is where corners round off (T15's outline-vs-
+reference row). The shape rows can't catch: an outline unlike the photo (a rounded vs stepped hem), a stand too low.
 Unverified: the shirt's chain build with simon's band + fall; jaeger/carlton parts as `from:` (need their own fronts);
 a straight skirt waistband would FAIL shape_seam_curve (a known false alarm); half stands (.L/.R) aren't measured.
-NEXT: build the shirt with the new band + fall (chain_garment to structure) and judge its collar at full size beside the
+NEXT: build b3 (hussar; check collar rows read lean-in right) and the shirt with the new band + fall (chain_garment to structure) and judge its collar at full size beside the
 reference; if the hussar stand still leans out, raise its rise towards jaeger's 0.47 x drop and rebuild once.

@@ -167,7 +167,9 @@ design, no recipe; src/hifipushie/draft_own.py's docstring is the spec). Needs s
   edges within 1 %), truing (info), and SHAPE per role (draft_shape.py; each FAIL says `change:`): a stand / band's neck
   edge rises at its front ends (stand >= 0.24 x the neckline's front drop, jaeger; band > 0) and its free edge is shorter;
   a fall's outer edge >= 1.012 x its stand seam (simon); a sleeve cap 0.47-0.79 x the armhole depth (brian, bent); no
-  straight edge sewn to a curved one. Name a stand's free edge `top`, a fall's `outer`; the sheet is shape only (one big name per piece, each seam pair one colour, legend S<n> = the
+  straight edge sewn to a curved one. Name a stand's free edge `top`, a fall's `outer`. An outline seen in the reference
+  is TRACED from it: corners stay corners (a stepped cutaway is `line`s meeting square), curves stay curves (a stand's
+  rounded front top corner), never approximated by one arc; judge the sheet's outlines beside the photo. The sheet is shape only (one big name per piece, each seam pair one colour, legend S<n> = the
 text's S<n>); the text lists every piece (size, cut, stiff) and every seam pair (both edges, both lengths, ease,
 PASS/FAIL); step 4 written; pattern_check re-reads it.
 
