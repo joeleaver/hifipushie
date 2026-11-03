@@ -46,5 +46,8 @@ carry after a step-0 change on a real record; full_arc on a stand with no fold w
 (falls back to the first arc); jaeger.backBase's moved points print as "(0,20)" (no name at that spot).
 F3 (C310): `pieces.<n>.pair: true` = cut 2 as a mirrored pair (draft_pairs.py); half / sideless pieces refused at
 step 4 with that declaration; t8 shirt + trousers redeclared draft and pass (f3/scripts/pairs.py).
-NEXT: a blind re-run of t8's step 4 (shirt + jacket) with pattern_parts available: count the calls to name edges and the
+F6 (C317-C318): flat rows `seam_ends` (draft_seam_ends.py: a seam's edges run the same way: centre line, side, a
+piece's top; FAIL names the swap) and `body_lengths` (draft_body_lengths.py: girths summed round >= body + step 0 fit
+ease; lengths INFO). t8's shirt + jacket now FAIL seam_ends (reversed stand / fall / side_back seams: redraft them).
+NEXT (F6): redraft t8's shirt and jacket seams seam_ends names; a crotch-length tape for body_lengths. Then: a blind re-run of t8's step 4 (shirt + jacket) with pattern_parts available: count the calls to name edges and the
 refusals left; then the stand build (F1) and its rise rule.

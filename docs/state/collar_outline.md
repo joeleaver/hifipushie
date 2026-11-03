@@ -30,29 +30,30 @@ end edges, upright by its own height; held links counted. Detail: git history (9
 solve; hussar stand STILL REFUSED 39.8 % at collar:rightTopIn (stretched after the stand stage). Detail: git history (c036b645).
 ## F4 (C312-C313; tape_geom.py, piece_start.py): tapes keep where they ran; pieces start round their own loops / between
 their tapes (FALLBACK named). Proof f4/ws trousers REFUSED (front.R never round its leg). Detail: git history (b5a64c64).
-## F5 (2026-11-03, C314-C316; chain_stages.py, tests/test_chain_stages.py; HOME /mnt/data/hifipushie/f5)
-Joe: "we're simulating too early ... There's no reason for pants that bad to get simmed." The soft build is gated where each
-stage ends (soft_net hooks), cheapest first; a FAIL ends the job `stage_failed: start|chains|surfaces` (rows, back-to step,
-change, look = stage.pkl rendered: the start / the chains ALONE / the lay on the body, tapes red); look_chain shows it;
-the record marks step 5 (start, chains) or 6 (surfaces) failed. Limits: round = widest gap <= 90 deg round each sided
-girth loop; mirror <= GAP (start) / 2x(GAP+LAYER) p50 (chains); sewn (to a built stiff part) p90 <= 1/4 of that edge;
-inside share (> GAP deep) <= 0.1; length / held_length MAX_FREE_PCT; wrapped (chains moved p90 <= smallest loop radius);
-holes share of faces past (1+SHEAR_LIMIT)^2 area <= 0.01; soft_cloth_smooth (C286) read on the lay.
-- TROUSERS (f5/ws): first caught at START (20 s, not 517 s): mirror:front 122 / back 191 mm (the .R tube = the .L's
-  mirror turned 180 deg: its front piece at the back; F4's "right front never wrapped") -> FIX .R starts as the .L's
-  mirror (chain_stages.mirror_starts). Then sewn: 245-264 mm vs 50 -> FIXES: body_ring's direction checked by its left
-  piece's x (it ran the band the wrong way: each leg sewn over the other leg; tubes count as left pieces); a tube sewn to a
-  built band turns to face its seam (165 deg for the legs: front.L had started at the back) and eases onto it down to its
-  nearest loop (piece_start.turn_to_seams). Now START fails only inside:back.L/.R 0.18 (seat, 35-105 mm deep: F4 NEXT b)
-  and in report mode CHAINS held_length 3736 %: front.L's waist seam to the band is REVERSED in the draft (its CF corner
-  merged at the band's side, beside back.L's side corner: an 8 mm link 306 mm long) = a STEP 4 fault, untouched.
-  Crumple: the LAY already rough (soft_cloth_smooth 2.54 on the lay, holes 5-15 %) with these chains: the solve didn't make it.
-  Look: f5/ws/garrett/chain/trousers_closed/stage_start_{front,side,back}_*.png (legs round each leg; the top twisted).
-- HUSSAR (f5/hussar, wear open, report mode): start fails sewn:back 29 vs 23 mm (a 92 mm neck edge); chains length 14.3 %
-  + held 39.8 % (= its known F3 end refusal, now at the chain stage); surfaces holes 3-8 %, rough 1.8. NOT a clean control.
-- UNVERIFIED: holes / sewn / inside limits never seen on a build that passes the end gates (may refuse a good one);
-  no hang run; the trousers never reached the end gates.
-NEXT: (a) step 4: the trousers' front.L/.R waist seam direction (redraft f4/scripts/design_f4.mjs; a pattern_check row:
-a seam's ends meet the seams at its corners); (b) the seat start (inside:back 0.18): the part above the highest loop on
-the torso loop's half the piece names; (c) calibrate holes / sewn / inside on a build that passes (the t8 shirt) BEFORE
-trusting them; then rebuild trousers to the end gates and judge front + side beside concept_v8_front_apose.png.
+## F5 (C314-C316; chain_stages.py): START / CHAINS / SURFACES gated, stop at the first FAIL. Detail: git history (f5903839).
+## F6 (2026-11-03, C317-C320; HOME /mnt/data/hifipushie/f6, scripts f6/scripts)
+- Flat gate rows (step 4, draft_pattern): `seam_ends` (draft_seam_ends.py): a seam's edges run the same way by the
+  centre line (cf* / cb* / nape, a fold's x = 0), the side (side* / sd*), a vertical edge's top; FAIL names the swap
+  ("a>b" -> "b>a"). Fails t8 trousers' front waist (both sides) and T13b's original hood.R neck (f6/t13b_rev, neck_r
+  "cbNeck>neckR" as C301 tells it); passes the hussar, the T13b shirt / hussar / fixed cloak. ALSO FAILS t8's shirt
+  (collar_stand:cb>sh vs back:hps>cbNeck; collar_fall:cb>fe vs collar_stand:ft>cbt) and t8's jacket (front:hem>split vs
+  side_back:split>anchor, by up / down): unchecked in a build. `body_lengths` (draft_body_lengths.py): girths step 1
+  names on seams summed round vs girth + step 0 fit ease (FAIL short); lengths INFO only (step 1 says where a length
+  comes FROM). Trousers waist 819 vs 789 PASS; nothing step 1 names measures the crotch curve (waistToUpperLeg is a rise).
+- Trousers redrafted (draft_pattern, front:waist "sideWaist>cfWaist"): seam_ends PASS. START rows PASS but inside:back
+  0.104 (prov.); CHAINS held 3736 -> 420 %, length 183 %, wrapped .R 35.3 vs 34.6 mm. f6/stages_r1..r3.log.
+- Per-stage lengths (chain_stages.length_reads, every stage; START `start_length:chains` PROVISIONAL): the START
+  stretches, later stages don't add it: start worst 1063 %, back edges p90 42 % (max 1883); chains 183 % / p90 44 %;
+  surfaces the same. The plain tube lay alone (f6/scripts/start_probe.py) reads 1699 %, back p90 34 %: rows wrapped round
+  the loops' axis at each flat row's width are not the flat. turn_to_seams adds 8-19 points of p90.
+- The pattern goes round the body (f6/scripts/girth_probe.py, flat widths at depth below the side waist): crotch level
+  both legs 1032 mm vs seat 960 + 60; upperLeg one leg 647 vs 538 + 70. So the seat stretch is the START, not the draft.
+- Not done: no isometric lay; no build reached the end gates (no render, no judge); inside / holes / sewn / start_length
+  NOT calibrated (no passing build).
+NEXT: (a) the START laid from the flat, isometric by construction. Geometry found: a straight crease across a piece is
+exact only where it is a geodesic of BOTH patches it joins (a circle square to a cylinder's axis is; on a cone it is
+not), so leg cylinder + torso cylinder of different axes / radii can't share a horizontal crease exactly. Options: each
+piece on ONE cylinder / cone (exact; seams then gap: read the gaps at START = the start seam check) and let CHAINS bend
+them shut, or a crease along a ruling. Measure start_length ~0 first; then (b) START seam gaps (refuse a gap the
+pattern can't close, by seam + measurement); (c) calibrate the provisional rows on the first build that passes;
+(d) step 3: a crotch-length tape (front waist through the crotch to back waist) so body_lengths can check the curve.
