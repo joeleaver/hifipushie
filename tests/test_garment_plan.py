@@ -6,7 +6,13 @@ import copy
 import pytest
 from PIL import Image
 
-from hifipushie import garment_plan as gp, garment_record as gr, server, store
+from hifipushie import garment_fit as gf, garment_plan as gp, garment_record as gr, server, store
+
+# a synthetic body (mm): the fit's ratios are applied to it (garment_fit.DictBody)
+BODY = {"chest": {"girth_mm": 1000.0, "width_mm": 330.0, "z_mm": 1300.0},
+        "waist": {"girth_mm": 800.0, "width_mm": 280.0, "z_mm": 1100.0},
+        "knee": {"girth_mm": 360.0, "width_mm": 100.0, "z_mm": 500.0},
+        "floor": {"girth_mm": 0.0, "width_mm": 0.0, "z_mm": 0.0}}
 
 
 @pytest.fixture
@@ -16,6 +22,7 @@ def home(tmp_path, monkeypatch):
     im = Image.new("RGB", (200, 300), (40, 40, 200))
     im.paste((200, 30, 30), (50, 50, 150, 250))
     im.save(tmp_path / "ref.png")
+    monkeypatch.setattr(gf, "body_for", lambda model: gf.DictBody(BODY))
     return tmp_path
 
 
@@ -25,7 +32,10 @@ def _read(home):
                                 "grain": "down CF"},
                       "trim": {"gsm": 300, "thickness_mm": 1.0, "stretch": "none", "stiffness": "stiff",
                                "colour": [210, 170, 60], "source": "braid convention", "grain": "along"}},
-            "fit": {"chest": {"ease_mm": 60, "source": "fronts lie flat"}}}
+            "fit": {"view": "front", "landmarks": {"chest": 100, "waist": 150},
+                    "widths": [{"at": "chest", "garment": [[50, 100], [150, 100]], "body": [[60, 100], [140, 100]],
+                                "body_from": "inferred: the chest inside, from the shoulders"}],
+                    "heights": [{"name": "hem", "at": 250}]}}
 
 
 def _parts():
@@ -77,9 +87,11 @@ def test_read_fills_fabric_samples_colour_and_writes_step0(home):
 def test_read_refusals_by_name(home):
     bad = _read(home)
     bad["cloth"]["shell"]["fabric"] = "unobtainium"
-    del bad["fit"]["chest"]["source"]
+    bad["fit"]["widths"][0]["at"] = "elbw"
     bad["views"][0]["view"] = "top"
-    _refused(lambda: gp.check_read(bad), "cloth.shell.fabric 'unobtainium'", "fit.chest: no source", "views[0]: view 'top'")
+    msg = _refused(lambda: gp.check_read(bad), "cloth.shell.fabric 'unobtainium'", "fit.widths[0].at 'elbw'",
+                   "views[0]: view 'top'")
+    assert "wool_suiting" in msg and "medium" in msg  # (every step-0 refusal lists the fabrics and stiffness values)
 
 
 def test_parts_before_read_is_refused(home):
@@ -136,7 +148,7 @@ def test_style_written_and_the_record_points_at_the_tool(home):
     assert r["look"] and gr.states(gr.load("m", "w"))["2"]["ready"]
     # a changed reading the later steps still validate against carries them forward (F2); one they don't makes them stale
     rd = _read(home)
-    rd["kind"] = "a waistcoat, longer"
+    rd["kind"] = "a long waistcoat"
     gp.write("m", "w", "read", rd, look=False)
     s = gr.states(gr.load("m", "w"))
     assert s["1"]["ready"] and s["2"]["ready"]
@@ -220,3 +232,41 @@ def test_a_parts_change_carries_a_still_valid_style_and_tape_forward(home):
     gp.write("m", "g", "parts", p, look=False)
     s = gr.states(gr.load("m", "g"))
     assert s["2"]["stale"] and "step 2 (style) refused" in s["2"]["why"]
+
+
+def test_fit_ratios_applied_to_the_body_and_heights_between_landmarks(home):
+    r = gp.write("m", "w", "read", _read(home))
+    f, h = r["plan"]["fit"]["chest"], r["plan"]["heights"]["hem"]
+    assert f["ratio"] == 1.25 and f["ease_mm"] == 250.0 and f["garment_width_mm"] == 412.5 and f["body"] == "inferred"
+    assert h["z_mm"] == 700.0 and h["extrapolated"] and h["between"] == ["chest", "waist"]  # (250 px: 3 x the chest -> waist 50 px: 1300 - 3 x 200)
+    assert r["plan"]["fit_read"]["view"] == 0 and any(p.endswith("step0_fit.png") for p in r["look"])
+    txt = gp.text("m", "w", r)
+    assert "fit chest: ratio 1.25" in txt and "height hem: 700 mm" in txt and "wool_suiting" in txt
+
+
+def test_fit_refusals_by_name(home):
+    for change, why in (
+            (lambda b: b["fit"]["widths"][0].update(garment=[[90, 100], [110, 100]]), "narrower than the body at the chest"),
+            (lambda b: b["fit"]["widths"][0].pop("body_from"), "fit.widths[0].body_from"),
+            (lambda b: b["fit"]["widths"][0].pop("body"), "fit.widths[0].body"),
+            (lambda b: b["fit"]["landmarks"].update(knees=3), "fit.landmarks.knees: unknown landmark"),
+            (lambda b: b.update(fit={"chest": {"ease_mm": 60, "source": "guess"}}), "no longer guessed"),
+            (lambda b: b.update(kind="suit trousers, zip fly, belt loops"), "step 1 (parts)"),
+            (lambda b: b["fit"].update(view="back"), "view 'back': no such view")):
+        bad = _read(home)
+        change(bad)
+        _refused(lambda: gp.write("m", "w", "read", bad, look=False), why)
+    ok = _read(home)
+    ok["fit"]["widths"][0].update(garment=[[90, 100], [110, 100]], why="knit, worn tight")
+    assert gp.write("m", "w", "read", ok, look=False)["plan"]["fit"]["chest"]["ratio"] == 0.25
+
+
+def test_views_by_name_in_every_step(home):
+    rd = _read(home)
+    rd["cloth"]["shell"]["colour"]["view"] = "front"
+    assert gp.write("m", "w", "read", rd, look=False)["plan"]["cloth"]["shell"]["colour_from"]["view"] == 0
+    p = _parts()
+    for x in list(p["pieces"].values()) + list((p.get("details") or {}).values()):
+        if isinstance(x.get("where"), dict):
+            x["where"]["view"] = "front"
+    assert all((x.get("where") or {}).get("view", 0) == 0 for x in gp.write("m", "w", "parts", p, look=False)["plan"]["pieces"].values())

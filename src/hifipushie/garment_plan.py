@@ -7,12 +7,16 @@ Coordinates on a picture: pixels, u right, v down. Every target carries its sour
 view, a table). Lengths are never chosen here: a seam names the body measurement(s) its length depends on (by name,
 step 3 measures them) or a style proportion read off the reference.
 
-STEP 0 "read": {kind, views, cloth, fit, notes?}
-  views  [{image, view: front|back|side|three|detail|other, shows?, scale?: {mm_per_px, from}}]
+STEP 0 "read": {kind, views, cloth, fit, notes?}   (garment_read.py)
+  kind   a short name (<= 5 words, no lists): construction goes in step 1, the worn state in step 2 (C335)
+  views  [{image, view: front|back|side|three|detail|other, shows?, scale?: {mm_per_px, from}}]; a view is named
+         anywhere in steps 0-2 by its name ("front") or its index
   cloth  {name: {fabric?: garment_kb fabric | gsm, thickness_mm, bending_length_mm, stretch: woven|knit, source;
           stiffness: drapey|soft|medium|crisp|stiff|rigid; colour: [r,g,b] | {at: [[u,v],..], view}; print?: {kind,
           repeat_mm, colours?, source}; grain: text}}   (a fabric name fills the numbers from garment_kb.json)
-  fit    {region: {ease_mm, source}}                  (chest, waist, hip, sleeve, neck... any region names)
+  fit    RATIOS read on the picture, applied to the model's body (garment_fit.py is the spec): {view, landmarks:
+          {landmark: v}, widths: [{at, garment: [[u,v],[u,v]], body: [[u,v],[u,v]], body_from: seen | how inferred}],
+          heights: [{name, at: v}]} -> the record's fit {landmark: {ratio, ease_mm, ...}} and heights {name: {z_mm}}
 STEP 1 "parts": {pieces, details, closures, seams, over?, define?}
   define   {measurement name: girth|arc|length|height}: a seam length's body name body_tape doesn't take by FreeSewing name
             (body_tape.TAKES); any other name is refused with the closest valid ones
@@ -92,80 +96,8 @@ def _src(d: dict, where: str, bad: list):
         bad.append(f"{where}: no source (name what it comes from: a view and what was read there, a convention, a table)")
 
 
-# ---------------------------------------------------------------- step 0
-def check_read(p: dict) -> dict:
-    """The reading, validated and completed (fabric numbers from garment_kb); PlanRefused names every fault."""
-    bad, p = [], json.loads(json.dumps(p))
-    if not str(p.get("kind") or "").strip():
-        bad.append("kind: say what the garment is (e.g. 'dress shirt', 'hussar jacket, stand collar, zip front')")
-    views = p.get("views")
-    if not isinstance(views, list) or not views:
-        bad.append("views: at least one reference picture [{image, view}]")
-        views = []
-    for i, v in enumerate(views):
-        if not isinstance(v, dict) or not Path(str(v.get("image", ""))).exists():
-            bad.append(f"views[{i}]: image {v.get('image') if isinstance(v, dict) else v!r} not found")
-        elif v.get("view") not in VIEWS:
-            bad.append(f"views[{i}]: view {v.get('view')!r}: one of {', '.join(VIEWS)}")
-        elif v.get("scale") is not None and not (_num((v["scale"] or {}).get("mm_per_px")) and (v["scale"] or {}).get("from")):
-            bad.append(f"views[{i}].scale: {{mm_per_px, from (what was measured to get it)}}")
-    kb = _kb_fabrics()
-    cloths = p.get("cloth")
-    if not isinstance(cloths, dict) or not cloths:
-        bad.append("cloth: {name: {...}} at least the main cloth (also braid, lining, interlining... when the garment has them)")
-        cloths = {}
-    for n, c in cloths.items():
-        w = f"cloth.{n}"
-        if not NAME.fullmatch(n) or not isinstance(c, dict):
-            bad.append(f"{w}: a name of letters, digits, _ . - and a dict")
-            continue
-        f = c.get("fabric")
-        if f is not None and f not in kb:
-            bad.append(f"{w}.fabric {f!r}: not in garment_kb fabrics ({', '.join(kb)}); or give gsm, thickness_mm, "
-                       "bending_length_mm, stretch and a source instead")
-        elif f is not None:
-            for k in ("gsm", "thickness_mm", "bending_length_mm", "stretch"):
-                c.setdefault(k, _mid(kb[f].get(k)))
-            c.setdefault("source", f"garment_kb.json fabrics.{f}")
-        for k in ("gsm", "thickness_mm"):
-            if not _num(c.get(k)):
-                bad.append(f"{w}.{k}: a number (or fabric= a garment_kb fabric)")
-        if c.get("stretch") not in ("woven", "knit", "none"):
-            bad.append(f"{w}.stretch: woven | knit | none")
-        if c.get("stiffness") not in STIFFNESS:
-            bad.append(f"{w}.stiffness: one of {', '.join(STIFFNESS)} (how it holds a shape in the picture)")
-        _src(c, w, bad)
-        col = c.get("colour")
-        if isinstance(col, dict) and _uv_list(col.get("at")) and isinstance(col.get("view", 0), int) \
-                and 0 <= col.get("view", 0) < len(views) and Path(str(views[col.get("view", 0)].get("image", ""))).exists():
-            from .cloth_reference import _sample_colour  # (garment_from_reference's working colour reading)
-            c["colour"] = _sample_colour(views[col.get("view", 0)]["image"], col["at"])
-            c["colour_from"] = {"view": col.get("view", 0), "at": col["at"]}
-        elif not (isinstance(col, list) and len(col) == 3 and all(_num(x) for x in col)):
-            bad.append(f"{w}.colour: [r, g, b] or {{at: [[u, v], ...], view}} (sampled from the picture)")
-        pr = c.get("print")
-        if pr is not None and pr != "none":
-            if not isinstance(pr, dict) or not pr.get("kind"):
-                bad.append(f"{w}.print: {{kind (check, stripe, ...), repeat_mm, source}} or 'none'")
-            elif pr.get("kind") != "none":
-                if not _num(pr.get("repeat_mm")):
-                    bad.append(f"{w}.print.repeat_mm: the repeat in mm (from a scale or a count across a known width)")
-                _src(pr, f"{w}.print", bad)
-        if not str(c.get("grain") or "").strip():
-            bad.append(f"{w}.grain: how the grain runs (e.g. 'lengthwise down CF, check matched at CF')")
-    fit = p.get("fit")
-    if not isinstance(fit, dict) or not fit:
-        bad.append("fit: {region: {ease_mm, source}} for each region the reference shows (chest, waist, sleeve...)")
-        fit = {}
-    for r, e in fit.items():
-        if not isinstance(e, dict) or not _num(e.get("ease_mm")):
-            bad.append(f"fit.{r}: ease_mm (a number: garment minus body girth)")
-        else:
-            _src(e, f"fit.{r}", bad)
-    bad += pixel_errors(p, p.get("views"))
-    if bad:
-        raise PlanRefused("step 0 (read) refused:\n  " + "\n  ".join(bad))
-    return p
+# ---------------------------------------------------------------- step 0: garment_read.py (the reading; its fit: garment_fit.py)
+from .garment_read import KIND_WORDS, check_read, choices, views_by_name  # noqa: E402,F401
 
 
 # ---------------------------------------------------------------- step 1
@@ -422,7 +354,16 @@ def write(model: str, garment: str, step: str, plan: dict, look: bool = True) ->
         raise PlanRefused(f"step {sid} refused: step 0 (read) has no reading yet: garment_plan step='read' first")
     if sid == "2" and not out["1"].get("pieces"):
         raise PlanRefused("step 2 refused: step 1 (parts) has no inventory yet: garment_plan step='parts' first")
-    p = check_read(plan) if sid == "0" else check_parts(plan, out["0"]) if sid == "1" else \
+    bad = views_by_name(plan, (plan if sid == "0" else out["0"]).get("views") or [])
+    if bad:
+        raise PlanRefused(f"step {sid} refused:\n  " + "\n  ".join(bad))
+    from . import garment_fit as gf
+    held = []  # (the model's body, measured once for the fit's ratios and its look)
+
+    def body():
+        held[:] = held or [gf.body_for(model)]
+        return held[0]
+    p = check_read(plan, body=body) if sid == "0" else check_parts(plan, out["0"]) if sid == "1" else \
         check_style(plan, out["0"], out["1"])
     if sid == "1" and "over" in p:  # (worn over another garment of this model: exists, has a record, no loop; T9)
         from . import chain_layers as cl
@@ -438,6 +379,9 @@ def write(model: str, garment: str, step: str, plan: dict, look: bool = True) ->
     if look:
         from . import garment_plan_look as gl
         paths = gl.draw(model, garment, sid, p, out["0"] if sid != "0" else p, out["1"] if sid == "2" else None)
+        if sid == "0" and p.get("fit_read"):  # (the marks beside the model with the widths and heights they give)
+            from . import garment_fit_look as gfl
+            paths.append(gfl.draw(model, garment, p, body()))
         gr.attach_look(model, garment, sid, paths)
     return {"step": sid, "plan": p, "digest": st["digest"], "look": paths, "carried": carried}
 
@@ -452,7 +396,9 @@ def text(model: str, garment: str, r: dict) -> str:
         for n, c in p["cloth"].items():
             L.append(f"  cloth {n}: gsm {c['gsm']}, {c['thickness_mm']} mm, {c['stiffness']}, colour {c['colour']}"
                      f" ({c['source']})")
-        L.append("  fit: " + ", ".join(f"{k} +{v['ease_mm']} mm" for k, v in p["fit"].items()))
+        from . import garment_fit as gf
+        L += gf.text(p["fit"], p.get("heights") or {})
+        L.append(choices())
     elif sid == "1":
         if p.get("over"):
             L.append(f"  worn over: {', '.join(p['over'])} (built over their approved builds: chain_layers, T9)")

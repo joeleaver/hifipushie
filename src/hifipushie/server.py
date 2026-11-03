@@ -3725,7 +3725,7 @@ def body_tape(name: str, measurements: list | None = None, garment: str = "", la
 
 @mcp.tool(structured_output=False)
 def garment_plan(name: str, garment: str, step: str, plan: dict | str, look: bool = True):
-    """STEPS 0-2 OF A GARMENT (the record's start, any garment): step="read" (kind, cloth as numbers, fit, the views),
+    """STEPS 0-2 OF A GARMENT (the record's start, any garment): step="read" (kind: a short name; cloth as numbers; fit as RATIOS marked on the picture, applied to the model's body),
     "parts" (every piece and detail: seen / occluded / inferred, how far built, stiff, layer; the seams, each with the
     body measurements or style proportion its length needs; over: the garments it is worn over) or "style" (the ONE worn state per closure, bends, pose,
     the rows the photo judges). plan: that step's dict; every at / outline is PIXELS of its view. Refused by name;
