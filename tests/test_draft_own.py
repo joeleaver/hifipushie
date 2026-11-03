@@ -268,3 +268,22 @@ def test_shape_a_curved_edge_sewn_to_a_straight_one_fails():
     B = {"pieces": {"a": a, "b": b}, "seams": [["a:s>e", "b:s>m>e"]], "edge_arcs": {"a": {"curve": "s>e"}, "b": {"line": "s>m>e"}}}
     r = ds.seam_curve_rows(B, {}, {})
     assert r["status"] == "FAIL" and "b:line is straight" in r["why"]
+
+
+def test_shape_stand_takes_the_neckline_drop_seen_not_the_flat():
+    """r-hussar: a tilted front drops 70 mm on the flat but only 30 mm in the view (the collar_front traces' bottoms below
+    the hps marks): a level top 50 mm above the side neck wants fronts ~80 mm tall, not 120; CB from the body's cb_neck."""
+    from hifipushie import draft_stand as dst
+    fronts = [{"id": "cf_R", "what": "collar_front", "view": 0, "points": [[385, 52], [390, 130]]},
+              {"id": "cf_L", "what": "collar_front", "view": 0, "points": [[415, 52], [410, 130]]}]
+    plan = {"read": {"views": [{"view": "front", "image": "x.png"}]},
+            "style": {"traces": [{"id": "top", "what": "collar_top", "view": 0, "points": LEVEL}] + fronts,
+                      "body_marks": _MARKS}}
+    ref = dst.reference(plan, dict(_AT, cb_neck=[0.0, 0.05, 1.49]))
+    assert abs(ref["D"] - 30) < 0.5 and abs(ref["D_back"] - 10) < 0.5 and "collar_front" in ref["D_how"], ref
+    r = _rows(_B(_stand(AWAY)), ref=ref)["shape_stand"]  # 120 mm fronts: the flat's 70 mm drop asked for them
+    assert "FAIL" in r["status"] and "lower at its front ends" in r["why"] and "wants h_side + D - T = 50 + 30 - 0 = 80" in r["why"], r
+    # no collar_front trace: the body's cf_neck is the neckline seen
+    ref2 = dst.reference({"read": plan["read"], "style": dict(plan["style"], traces=plan["style"]["traces"][:1])},
+                         dict(_AT, cf_neck=[0.0, -0.08, 1.48]))
+    assert abs(ref2["D"] - 20) < 0.5 and "cf_neck" in ref2["D_how"], ref2

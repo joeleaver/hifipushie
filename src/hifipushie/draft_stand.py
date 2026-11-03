@@ -8,9 +8,8 @@ neck edge is straight or curves the other way. A collar style isn't a law: the s
 `collar_top`, `collar_front`, placed on the body by `body_marks`) say which one this garment is.
 
 DERIVATION (the stand as a band whose neck edge is the drafted neckline and whose free edge is the trace). Heights in the
-view are vertical, in mm, the body the ruler (structure_outline.placement). Let D = the drafted neckline's front drop
-(the largest grain-wise span of the neck edges the stand is sewn to: HPS -> CF), D_b = the back's own (the smallest, CB
--> HPS; 0 for one edge). The trace gives:
+view are vertical, in mm, the body the ruler (structure_outline.placement). Let D = the neckline's front drop SEEN (vertical,
+HPS -> CF; below), D_b = the back's (CB -> HPS). The trace gives:
   h_side = the top line's highest point above the side neck points (hps marks' height on the body),
   T      = how far the top line drops from that point to its front ends (each end: the last point where the trace still
            runs within TOP_DEG of level; past it the trace turns down a rounded corner / the front edge), mean of both.
@@ -23,7 +22,12 @@ straight (a cylinder), any rise left would pull the top in and down at the front
   rise target = f x JAEGER x D, within STAND_RISE x D either way (T5b's halving of jaeger's rise).
   lean (free / neck edge <= STAND_LEAN) only when the top follows (f >= FOLLOW): a level stand standing away needs no lean.
 Heights within tol = 2 x TRACE_PX x mm/px (two traced places per height) + the marks' residual. Approximations, said:
-an upright stand (a stand leaning 20 deg reads 6 % short in the view); D on the flat ~ the vertical drop on the body.
+an upright stand (a stand leaning 20 deg reads 6 % short in the view).
+D AND D_b ARE SEEN, NOT FLAT (r-hussar; T5c took them from the flat, 75 mm, and asked for fronts 30-60 mm too tall: build
+c1's collar collapsed): a jacket front tilts over the chest, so its 75 mm flat drop is ~16-39 mm of height. D = the
+collar_front traces' bottom ends below the hps marks (the reference's own neckline at CF), else the body's hps - cf_neck;
+D_b = the body's hps - cb_neck; the flat's only when neither is known (said in the row). The RISE stays a flat quantity
+(jaeger's rise x the flat front drop): f decides the style, the flat drop scales the curve.
 Every FAIL says which way to curve and how much taller / lower, at the ends or the back.
 WITHOUT a collar_top trace the row is INFO: the stand's curve (rising: hugs / straight / falling: stands away) and its
 heights are reported, no style assumed. A BAND under a fall is INFO too (the fall's trace doesn't show the band).
@@ -68,10 +72,21 @@ def reference(plan: dict | None, at: dict | None) -> dict | None:
         k = next((i for i in range(len(Q) - 1)
                   if np.degrees(np.arctan2(abs(Q[i + 1, 1] - Q[i, 1]), abs(Q[i + 1, 0] - Q[i, 0]) + 1e-12)) < TOP_DEG), 0)
         ends.append(float(Q[k, 1]) - top)
+    cf = [so.to_mm(f["points"], pl) for f in style.get("traces") or []
+          if f.get("what") == "collar_front" and f.get("view", 0) == vi]
     fronts = {f["id"]: round(float(np.sum(np.linalg.norm(np.diff(so.to_mm(f["points"], pl), axis=0), axis=1))), 1)
               for f in style.get("traces") or [] if f.get("what") == "collar_front" and f.get("view", 0) == vi}
+    z = lambda k: float(np.asarray(at[k]).ravel()[-1]) * 1000 if k in at else None
+    if cf:  # the neckline at CF, seen: the collar_front traces' bottom ends below the side neck
+        D, D_how = float(np.mean([Q[:, 1].max() for Q in cf])) - b_hps, "the collar_front traces' bottoms below the hps marks"
+    elif z("cf_neck") is not None:
+        D, D_how = z("hps.L") - z("cf_neck"), "the body's hps - cf_neck height"
+    else:
+        D, D_how = None, "the flat pattern's (no collar_front trace, no cf_neck landmark)"
+    D_b = z("hps.L") - z("cb_neck") if z("cb_neck") is not None else None
     return dict(h_side=b_hps - top, T=float(np.mean(ends)), T_ends=ends, tol=2 * so.TRACE_PX * pl["s"] + pl["residual_mm"],
-                fronts=fronts, how=f"trace {t.get('id')} on view {vi} ({pl['how']}; residual {pl['residual_mm']} mm)")
+                fronts=fronts, D=D, D_back=D_b, D_how=D_how,
+                how=f"trace {t.get('id')} on view {vi} ({pl['how']}; residual {pl['residual_mm']} mm)")
 
 
 def _rest(pc: dict, idx: list) -> np.ndarray:
@@ -121,14 +136,16 @@ def check(p: str, kind: str, N: np.ndarray, R: np.ndarray, top: np.ndarray | Non
         return val + " (no collar_top trace at step 2: reported, no style assumed)", []
     if "why" in ref:
         return val + f" (trace not placed: {ref['why']})", []
-    Dm, Dbm, tol = mm(D), mm(D_b), ref["tol"]
+    tol = ref["tol"]  # the neckline's drops in the VIEW (r-hussar): a front tilts over the chest, its flat drop isn't seen
+    Dm = ref["D"] if ref.get("D") is not None else mm(D)
+    Dbm = ref["D_back"] if ref.get("D_back") is not None else mm(D_b)
     f = float(np.clip(ref["T"] / Dm, 0, 1)) if Dm > 0 else 1.0
     style = "follows the neckline (hugging)" if f >= FOLLOW else "level (standing away)"
-    r_exp, r_tol = f * JAEGER_RISE * Dm, STAND_RISE * Dm
+    r_exp, r_tol = f * JAEGER_RISE * mm(D), STAND_RISE * mm(D)  # the rise is the flat's: jaeger's x its flat drop
     hf_exp = ref["h_side"] + Dm * (1 - f)
     hb_exp = ref["h_side"] + Dbm * (1 - f)
     val += (f"; traced top ({ref['how']}): {ref['h_side']:.0f} mm above the side neck, drops {ref['T']:.0f} mm to its "
-            f"front ends = {f:.2f} x D: {style}"
+            f"front ends = {f:.2f} x D {Dm:.0f} mm (seen: {ref.get('D_how', 'flat')}; CB {Dbm:.0f}): {style}"
             + (f"; collar_front traced {', '.join(f'{k} {v:.0f}' for k, v in ref['fronts'].items())} mm" if ref["fronts"] else ""))
     why = []
     if abs(mm(r) - r_exp) > r_tol:
