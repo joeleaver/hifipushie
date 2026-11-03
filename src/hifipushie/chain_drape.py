@@ -309,8 +309,8 @@ def build_drape(b, t0: float) -> None:
         reads["paths"][p] = {"deg_min": min(reads["paths"][p]), "deg_max": max(reads["paths"][p])}
     b.reads["drape"] = reads
     b.reads["stiff_closed_s"] = round(time.time() - t0, 1)
-    b.soft_net(start=X0)
-    b.reads["drape"].update(start_reads(b.X, net, b.body, b.drape, held))
+    b.soft_net(start=X0)  # (soft_net floors cloth at GAP_START 4.5 mm: the start's clearance is read on X0, before it)
+    b.reads["drape"].update(start_reads(b.X, net, b.body, b.drape, held, start=X0))
 
 
 def _order_on(hv, rs, verts) -> np.ndarray:
@@ -335,11 +335,14 @@ def _free_border(net, M, pieces, held) -> np.ndarray:
     return v
 
 
-def start_reads(X, net, body, drape, held) -> dict:
-    """At the build: the draped cloth's clearance off the body, the held line's length vs its cut, the clasp shut."""
+def start_reads(X, net, body, drape, held, start=None) -> dict:
+    """At the build: the free draped cloth's clearance off the body on the START the paths made (`start`, read before
+    soft_net, which floors cloth at GAP_START: read after it, the row could never pass), the held line's length vs its
+    cut (on X), the clasp shut."""
     D = drape["pieces"]
-    v = np.where(np.isin(net.piece, [net.pid(p) for p in D]))[0]
-    clear = float(body.contact.query(X[v])[0].min()) * 1000
+    v = np.where(np.isin(net.piece, [net.pid(p) for p in D]) & ~np.asarray(held, bool))[0]
+    S = np.asarray(X if start is None else start, float)
+    clear = float(body.contact.query(S[v])[0].min()) * 1000 if len(v) else float("nan")
     hp = next(p for p in D if len(D[p]["held"]))
     hv = D[hp]["held"]
     cut = np.linalg.norm(np.diff(net.uv[hv], axis=0), axis=1)
@@ -421,7 +424,7 @@ def rule_items(plan: dict | None) -> list:
         return []
     I = [dict(id="drape_start_clear", read="drape_clear_min_mm", range=[CLEAR * 1000 * 0.5, None], stage=1, on="build",
               source=f"rule: a draped piece starts clear of the body (chain_drape CLEAR {CLEAR * 1000:.0f} mm paths; "
-                     "the soft network may settle it to half that)", change="the held line rests inside the body: "
+                     "read on the start the paths made, before the soft network)", change="the held line rests inside the body: "
                      "chain_drape held_ring / the start paths: a build fault, report it"),
          dict(id="drape_held_exact", read="drape_held_worst_pct", range=[None, 2.0], stage=1, on="build",
               source="rule: the held line is built exactly from the pattern (chain_garment MAX_FREE_PCT 2 %)",

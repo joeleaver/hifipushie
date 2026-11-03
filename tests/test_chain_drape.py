@@ -123,3 +123,20 @@ def test_held_line_placed_by_chords_exact_at_a_sharp_turn():
     seg = np.full(30, 0.0098)
     Q = cd._chords(P, 0.002, seg)
     assert np.allclose(np.linalg.norm(np.diff(Q, axis=0), axis=1), seg, rtol=1e-3)
+
+
+def test_start_clear_read_before_soft_net():
+    """drape_start_clear reads the free cloth on the start the paths made, not after soft_net (which floors cloth at
+    GAP_START 4.5 mm under the 6 mm limit: read there, the row could never pass). Held vertices are not counted."""
+    net = types.SimpleNamespace(piece=np.zeros(4, int), pid=lambda p: 0, uv=np.array([[0, 0], [0.1, 0], [0, 0.1], [0.1, 0.1]]))
+    body = types.SimpleNamespace(contact=types.SimpleNamespace(query=lambda P: (np.abs(np.asarray(P)[:, 2]), None)))
+    held = np.array([True, True, False, False])
+    X0 = np.array([[0, 0, cd.GAP_START], [0.1, 0, cd.GAP_START], [0, 0.1, 0.010], [0.1, 0.1, 0.012]])
+    X = X0.copy()
+    X[2:, 2] = cd.GAP_START  # (soft_net settled the free cloth to its floor)
+    drape = {"pieces": {"cloak": {"held": np.array([0, 1]), "falls": "down"}}}
+    assert cd.start_reads(X, net, body, drape, held, start=X0)["clear_min_mm"] == pytest.approx(10.0)
+    assert cd.start_reads(X, net, body, drape, held)["clear_min_mm"] == pytest.approx(cd.GAP_START * 1000)
+    lim = next(i for i in cd.rule_items({"style": {"drape": {"cloak": {"falls": "down", "source": "f"}}}, "parts": PARTS})
+               if i["id"] == "drape_start_clear")["range"][0]
+    assert 10.0 >= lim > cd.GAP_START * 1000
