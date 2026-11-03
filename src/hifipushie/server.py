@@ -3664,6 +3664,15 @@ def look_chain(name: str, garment: str, wear: str = "closed", focus: str | None 
             sh.paste(im, (rr.size[0] + 6, 0))
             im = sh
         ims.append(_out(im, _save_suffix(save, nm) if save else None))
+    plan = cs.load_plan(name, garment) if focus is None else None
+    if ((plan or {}).get("style") or {}).get("traces") and r.get("at"):  # (T15, C299: the step-2 traces vs this outline, on the reference)
+        from . import structure_outline as so, structure_outline_look as sol
+        ms = so.measure(r["X"], r["M"], r["at"], plan)
+        for vi in sorted({m["trace"].get("view", 0) for m in ms}):
+            p = sol.sheet([m for m in ms if m["trace"].get("view", 0) == vi], plan["read"]["views"][vi]["image"],
+                          str(d / f"{tag}_outline_v{vi}.png"))
+            ims.append(_out(PILImage.open(p).convert("RGB"), None))
+            paths.append((f"outline_v{vi}", p))
     txt = _chain_answer(name, garment, wear, st).split("\nnext:")[0]
     txt += f"\n  shown: {'the hung garment' if src.name == 'final.pkl' else 'the BUILD (before any hang)'}"
     if focus is None:  # (the garment record: the build's look on step 6, the hung garment's as step 9)
