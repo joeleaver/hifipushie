@@ -26,11 +26,9 @@ from __future__ import annotations
 import numpy as np
 
 STANDOFF = 0.012  # m: a laid piece's least distance off the body under it (outside GAP: the sew pulls it in)
-SEW_ROUNDS = 80  # most rounds the seams close in (each round: the pull, then the lengths alone)
-SEW_ITERS = 6  # project passes for the pull (the lengths alone get three times as many)
-PULL = 0.008  # m: the most a sewn pair comes nearer in one round (small: the lengths restore it without a jump)
-CLOSE = 0.0003  # m: the pull runs on until every sewn pair is this near (then each group shares its mean)
-STALL = 4  # rounds: the summed seam gaps falling by less than 0.05 mm a pair a round over these = stalled
+PROJECT_ITERS = 60  # passes of the ONE exact projection after the bend (chain_net.project)
+PROJECT_PCT = 0.5  # % a length may read off after it with the body as floor (else lengths alone: they win)
+PULL = 0.008  # m: the projection's largest move a pass
 SEW_TOL = 0.002  # m: a seam is closed when its widest sewn pair is this near (the chain stage merges them)
 REACH = 0.04  # m: body this far outside the guide's own radius still counts as under the piece
 RADII = (1.0, 1.1, 1.2, 1.35, 1.5, 1.75, 2.0, 2.5, 3.0)  # the radius tried, x the guide's / the flat's own
@@ -241,11 +239,13 @@ def seam_gaps(b, X) -> dict:
     return out
 
 
-def sew(b, X, rounds: int = SEW_ROUNDS, iters: int = SEW_ITERS) -> np.ndarray:
-    """Close every seam a PULL at a time, lengths hard every round: each sewn pair may come at most PULL nearer (at
-    most its gap less PULL), then the lengths alone are solved to convergence (lengths last: never stretched shut).
-    Stops when every seam is within SEW_TOL, or when the widest gap stalls (a seam the lengths won't let close: the
-    gate names it). `rounds` caps the rounds. Reads in b.reads["sew"]."""
+def sew(b, X, passes: int | None = None) -> np.ndarray:
+    """Close every seam with no stretch at any moment (F8, chain_bend): RIGID (each soft piece turned + slid as a solid
+    toward its seam partners), then BEND (Verlet + Gauss-Seidel lengths + a ramped pull, the body a floor; stops when
+    closed or stalled), then ONE exact projection (chain_net.project: chains exact, mesh edges at most flat). Closed
+    seams (every pair within SEW_TOL) share their mean. A seam still open is the gate's to name. Reads in
+    b.reads["sew"]: rigid, bend, project, gaps_mm per stage, lengths."""
+    from . import chain_bend as cb
     from .chain_garment import GAP
     from .chain_net import project
     net = b.net
@@ -254,41 +254,30 @@ def sew(b, X, rounds: int = SEW_ROUNDS, iters: int = SEW_ITERS) -> np.ndarray:
     soft_ids = np.where(~held & np.isin(net.piece, [net.pid(p) for p in _soft(b)]))[0]
     I, J, L, E = _links(b)
     S = net.sew
-    floor = [(b.body.contact, soft_ids, GAP)]
-    log, hist = [], []
-
-    def lengths(Y, n):  # (with the body as the floor; where the floor and the lengths can't both hold, the lengths win:
-        # the cloth left through the body is read by START's inside rows, never stretched round it)
-        Y, rd = project(Y, I, J, L, E, held, floor, iters=n, step=PULL)
-        if max(rd.get("worst_exact_pct", 0), rd.get("worst_atmost_pct", 0)) > 0.5:
-            Y, rd = project(Y, I, J, L, E, held, [], iters=n, step=PULL)
-        return Y, rd
-    gap_of = lambda Y: np.linalg.norm(Y[S[:, 0]] - Y[S[:, 1]], axis=1)
-    for r in range(rounds):
-        g = gap_of(X)
-        if not len(S) or g.max() <= CLOSE:
-            break
-        tgt = np.maximum(g - PULL, 0.0)
-        X, _ = project(X, np.r_[I, S[:, 0]], np.r_[J, S[:, 1]], np.r_[L, tgt], np.r_[E, np.zeros(len(S), bool)],
-                       held, floor, iters=iters, step=PULL)
-        X, rd = lengths(X, 3 * iters)  # lengths last: never stretched shut
-        gm = float(gap_of(X).max())
-        log.append((r, round(gm * 1e3, 1), rd.get("worst_exact_pct"), rd.get("worst_atmost_pct")))
-        hist.append(float(gap_of(X).sum()))
-        if len(hist) > STALL and hist[-1 - STALL] - hist[-1] < STALL * 1e-3 * max(1, len(S)) * 0.05:
-            break  # (stalled: the lengths hold the seams apart)
-    X, _ = lengths(X, 10 * iters)  # (the lengths have the last word)
-    if len(S) and gap_of(X).max() <= SEW_TOL:  # (closed: each sewn group at its mean, a sub-mm move, then lengths)
+    rs = b.reads.setdefault("sew", {})
+    gaps = lambda Y: {seam_name(b, si): round(g * 1e3, 1) for si, (g, _, _) in seam_gaps(b, Y).items()}
+    rs["gaps_mm_laid"] = gaps(X)
+    X, rs["rigid"] = cb.rigid(X, [net.verts(p) for p in _soft(b)], S, b.body.contact, held)
+    rs["gaps_mm_rigid"] = gaps(X)
+    X, rs["bend"] = cb.bend(X, I, J, L, E, S, held, (b.body.contact, soft_ids, GAP), tol=SEW_TOL,
+                            passes=cb.PASSES if passes is None else passes)
+    rs["gaps_mm_bend"] = gaps(X)
+    t = __import__("time").time()
+    X, rd = project(X, I, J, L, E, held, [(b.body.contact, soft_ids, GAP)], iters=PROJECT_ITERS, step=PULL)
+    if max(rd.get("worst_exact_pct", 0), rd.get("worst_atmost_pct", 0)) > PROJECT_PCT:  # (the lengths win the floor)
+        X, rd = project(X, I, J, L, E, held, [], iters=PROJECT_ITERS, step=PULL)
+    rs["project"] = {"s": round(__import__("time").time() - t, 1), "worst_exact_pct": rd.get("worst_exact_pct"),
+                     "worst_atmost_pct": rd.get("worst_atmost_pct")}
+    if len(S) and max(g for g, _, _ in seam_gaps(b, X).values()) <= SEW_TOL:  # closed: each group at its mean
         rt = net.root
         M_ = np.zeros((net.n, 3))
         np.add.at(M_, rt, X)
         cnt = np.bincount(rt, minlength=net.n)
         Xs = (M_ / np.maximum(cnt, 1)[:, None])[rt]
         X = np.where(held[:, None] | (cnt[rt] < 2)[:, None], X, Xs)
-    rs = b.reads.setdefault("sew", {})
-    rs["rounds"] = log
+    rs["rounds"] = [rs["bend"]["passes"]]
     rs["lengths"] = vertex_lengths(b, X)
-    rs["gaps_mm"] = {seam_name(b, si): round(g * 1e3, 1) for si, (g, _, _) in seam_gaps(b, X).items()}
+    rs["gaps_mm"] = gaps(X)
     return X
 
 
