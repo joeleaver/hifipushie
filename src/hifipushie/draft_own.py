@@ -151,8 +151,23 @@ def _folded(r: dict, decl: dict) -> bool:
 
 
 def validate(decl: dict, step1: dict, parts: dict | None = None) -> list:
-    """Refusals (one line each, by name); [] = usable."""
+    """Refusals (one line each, by name); [] = usable. A declared pair (pieces.X {pair: true}) is expanded to X.L + X.R
+    first and the expansion validated (C364, t s4-3: "pair never produced the right-hand pieces": the inventory check ran
+    on the unexpanded name and refused it)."""
     from . import draft_pairs as dp
+    inv_ = step1.get("pieces") or {}
+    sided = [nm for nm, pd in (decl.get("pieces") or {}).items() if isinstance(pd, dict) and pd.get("pair")
+             and nm not in inv_ and f"{nm}.L" in inv_ and f"{nm}.R" in inv_]  # (step 1 names the two sides)
+    if parts is not None and sided:
+        bad0 = [f"declarations: unknown key {k!r} (have {', '.join(sorted(DECL_KEYS))})" for k in decl if k not in DECL_KEYS]
+        bad0 += dp.faults(decl, parts, step1)
+        if bad0:
+            return bad0
+        try:
+            ex = dp.expand(json.loads(json.dumps(decl)), parts)
+        except DraftRefused as e:
+            return [str(e)]
+        return validate(ex, step1, parts)
     bad = [f"declarations: unknown key {k!r} (have {', '.join(sorted(DECL_KEYS))})" for k in decl if k not in DECL_KEYS]
     pcs, edges, omit = decl.get("pieces") or {}, decl.get("edges") or {}, decl.get("omit") or {}
     inv = step1.get("pieces") or {}

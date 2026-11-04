@@ -404,3 +404,17 @@ def test_s4_2_gaps_options_exports_edges_blocks(home):  # (C362)
         do.block({"dir": str(d)})
     msg = btr.blocks({"chest", "waist"})
     assert "FreeSewing's blocks" in msg and "brian needs" in msg and "hpsToBust" in msg
+
+
+def test_a_pair_declared_once_validates_and_builds(home):  # (t s4-3: pair never produced the .R pieces; C364)
+    from hifipushie import cloth, draft_own as do
+    d = home / "pair"
+    out = do.node_draft(RECT, {"waist": 800}, d=d)
+    decl = {"pieces": {"panel": {"part": "test.panel", "pair": True, "place": {"to": "torso", "side": "front"}}},
+            "edges": {"panel": {"side": "tr>br", "back": "tl>bl"}},
+            "seams": [{"a": "panel:side", "b": "panel:side"}, {"a": "panel:back", "b": "panel:back"}]}
+    assert do.validate(decl, STEP1, out["parts"]) == []
+    (d / "draft.json").write_text(json.dumps(out))
+    (d / "declarations.json").write_text(json.dumps(decl))
+    B = cloth.pieces({"pattern": {"from": "own", "dir": str(d)}}, {"waist": 800})
+    assert {"panel.L", "panel.R"} <= set(B["pieces"])
