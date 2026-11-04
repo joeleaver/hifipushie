@@ -57,4 +57,4 @@ block-in map) instead of steps 5-6 as agreed: chains at exact lengths first, sur
 METHOD NOW (Joe 2026-11-03): one STEP per blind trial (/mnt/data/hifipushie/trials/s<step>-<n>/: hp client pinned to main),
 judged with Joe beside the reference, fixed, rerun, then the next step; tests run once when a step is declared done.
 APPROVED (Joe): hussar step 0 s0-7, step 1 s1-7 (C336-C348; under C349 it needs caught + ratio lengths); suit jacket
-step 0 s0-8, step 1 s1-10 (trials/s1-10/ws; C349-C350). NEXT: rename one "jacket" (names collide), then step 2 on both.
+step 0 s0-8, step 1 s1-10 (trials/s1-10/ws; C349-C350). Hussar renamed garrett:hussar (s1-7 ws, approved). NEXT: step 2 on both.
