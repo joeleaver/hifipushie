@@ -301,7 +301,12 @@ def _call(rec: dict, sid: str) -> str:
         a.update(step=STEP[sid]["key"], plan="{...}")  # (the plan's form: guide(topic="garment_plan"))
     if t == "body_tape":  # (the names steps 1-2 call for; each defined as body_tape's guide says)
         a.update(measurements=sorted((rec["steps"]["1"].get("output") or {}).get("measurements") or []) or "[...]")
-    return f"call_tool(\"{t}\", {json.dumps(a)})"
+    call = f"call_tool(\"{t}\", {json.dumps(a)})"
+    if t == "body_tape":  # (C355, t s3-1: the four seam names read as the whole job)
+        call += ("  (these are the minimum: step 1's seams are drafted from them; take in the same call every "
+                 "measurement your draft (step 4) will need: its block's girths and lengths, by FreeSewing name or "
+                 "defined; step 3 is written only when it holds all of step 1's)")
+    return call
 
 
 def answer(model: str, garment: str) -> str:

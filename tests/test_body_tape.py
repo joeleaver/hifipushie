@@ -121,14 +121,19 @@ def test_tool_writes_step3(tmp_path, monkeypatch):
     # step 2 not ready: measured and drawn, the record refuses by name
     look, txt = bt.run("wf_simon", items, garment="hussar")
     assert Path(look).exists() and "record: refused" in txt and "step 2" in txt and "REFUSED bad" in txt
-    for sid in ("0", "1", "2"):  # (steps 0-2 stubbed as done)
-        gr.write("wf_simon", "hussar", sid, "done", output={"n": sid})
+    for sid in ("0", "1", "2"):  # (steps 0-2 stubbed as done; step 1 names what its seams need)
+        gr.write("wf_simon", "hussar", sid, "done", output={"n": sid} if sid != "1" else {"measurements": ["chest", "loop"]})
+    out = server.body_tape("wf_simon", items, garment="hussar")  # (C355: a name step 1 calls for is missing)
+    assert "record: refused: step 3 not written: step 1 names loop" in out[1], out[1]
+    items.append({"name": "loop", "kind": "sum", "of": ["chest", "back_waist_to_seat"]})
     out = server.body_tape("wf_simon", items, garment="hussar")
     assert isinstance(out, list) and "record: step 3 (measure) written" in out[1]
     st = gr.load("wf_simon", "hussar")["steps"]["3"]
     assert st["status"] == "done" and st["look"] == [str(gr.look_dir("wf_simon", "hussar") / "step3_measure.png")]
     names = [r["name"] for r in st["output"]["measurements"]]
-    assert names == ["chest", "back_waist_to_seat"] and st["output"]["refused"]
+    assert names == ["chest", "back_waist_to_seat", "loop"] and st["output"]["refused"]
+    m = {r["name"]: r["mm"] for r in st["output"]["measurements"]}
+    assert m["loop"] == round(m["chest"] + m["back_waist_to_seat"], 1)
     rows = st["output"]["measurements"]  # (F4: where each was taken: a girth's loop, a length's path)
     assert len(rows[0]["loop"]) > 8 and len(rows[1]["path"]) >= 2
     assert gr.states(gr.load("wf_simon", "hussar"))["3"]["ready"]
