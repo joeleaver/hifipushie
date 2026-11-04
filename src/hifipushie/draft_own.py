@@ -16,6 +16,10 @@ Declarations (JSON beside the code; names are step 1's):
   seams [{"a": "piece:edge" | [chain], "b": ..., "ease": [lo, hi] (a over b, -1), "why"}]: step 1's seams, sewn
   stiff [piece] (interfaced); folds [{"name", "piece", "line": edge | arc | {"edge", "offset"}, "kind", ...}] (style
   folds too: a rolled cuff); closures [closures.py entries, "edge": {"over": edge, "under": edge}]; omit {piece: why};
+  darts [{"piece", "legs": [edge, edge], "why"?}] (C361; each leg declared "outline point>tip"): a dart OPEN on the outline (the seam path runs in along one
+  leg to the tip and out along the other), its two legs declared edges of the piece, sewn to each other (the seam check
+  holds them to one length; they must meet at the tip). A dart drawn inside a piece (a fish dart's closed path) isn't
+  sewn: open it on the outline (cut the seam path to its tip) to take its suppression.
   marks {detail: mark | [marks]}: WHERE each step-1 detail sits on the pattern, decided here once (garment_details.py
   docstring: at / rows / points / follows / path / lines; stiffens: a trim that stiffens its edge); a closure's
   buttons are its own marks. A step-1 detail built full / simplified with no mark is refused (cloth-made ones: pieces).
@@ -35,8 +39,12 @@ from pathlib import Path
 import numpy as np
 
 RUNNER = Path(__file__).with_name("draft_own_run.mjs")
+MARK_FORM = ("a mark = {piece, mirror?: true, and one of: at: [{point, dx, dy} | {edge, mm | t, in}], rows: {edge, count, "
+             "from_mm | from_t, pitch_mm | pitch_t | to_mm | to_t, in}, points: 'button*', follows: ['piece:edge'], path: "
+             "[positions]}; an edge: a declared edge name or 'a>b' along the outline (C361: the form was only in a "
+             "docstring a blind agent can't read)")
 TIMEOUT = 60  # s
-DECL_KEYS = {"pieces", "edges", "seams", "stiff", "folds", "closures", "omit", "notes", "marks"}
+DECL_KEYS = {"pieces", "edges", "seams", "stiff", "folds", "closures", "omit", "notes", "marks", "darts"}
 PIECE_KEYS = {"part", "fold", "mirror", "flip_y", "cut", "grain", "place", "role", "pair"}
 BUILT = ("full", "simplified")  # step 1's "build" values that are cut
 PLAIN_TOL = 0.01  # a seam with no declared ease: its two sides agree within 1 % (cloth_check KINDS "plain")
@@ -104,9 +112,15 @@ def node_draft(source: str, measurements: dict, options: dict | None = None, sa:
         first = [e.splitlines()[0] for e in errs[:3]]
         raise DraftRefused(_at(source, (out.get("logs") or {}).get("line"), "FreeSewing: " + "; ".join(first)))
     miss = [m for m in out.get("measurements") or [] if m not in req["measurements"]]
+    miss += [m for m in out.get("measurements_missing") or [] if m not in miss]  # (read by a part, not declared: C361)
     if miss:
         raise DraftRefused(f"design.mjs needs measurements step 3 hasn't taken: {', '.join(miss)} (have "
-                           f"{', '.join(sorted(req['measurements']))}): measure them by name with body_tape, or use these")
+                           f"{', '.join(sorted(req['measurements']))}): retake step 3 with them by name (body_tape(name, "
+                           "measurements, garment=...): the record carries the later steps forward), or use these; never "
+                           "drop one from a block's list or supply it in the design")
+    if out.get("measurements_set"):  # (t s4-1: hpsToBust written into the measurements as hpsToWaistBack - 226)
+        raise DraftRefused(f"design.mjs sets measurements: {', '.join(out['measurements_set'])}: the body's measurements "
+                           "are step 3's only; take the missing one there by name and read it here")
     if not out.get("parts"):
         raise DraftRefused("design.mjs: the draft has no visible parts (every part hidden?)")
     for pn, p in out["parts"].items():
@@ -180,6 +194,17 @@ def validate(decl: dict, step1: dict, parts: dict | None = None) -> list:
                 bad.append(f"step 1 seam {a} <-> {b}: no drafted edge {x!r} (declare edges.{p}.{ed})")
         if not any((a in A and b in B) or (b in A and a in B) for A, B in sewn):
             bad.append(f"step 1 seam {a} <-> {b} is not sewn: a declared seam with {a} on one side and {b} on the other")
+    for i, dt in enumerate(decl.get("darts") or []):
+        p, legs = dp.base_name(str((dt or {}).get("piece")), decl), (dt or {}).get("legs")
+        if p not in pcs:
+            bad.append(f"darts[{i}]: no drafted piece {dt.get('piece')!r}")
+        elif not (isinstance(legs, list) and len(legs) == 2 and legs[0] != legs[1]):
+            bad.append(f"darts[{i}] on {p}: legs = [two edges of the piece] (the dart's sides, sewn to each other)")
+        else:
+            miss = [e for e in legs if e not in (edges.get(p) or {})]
+            if miss:
+                bad.append(f"darts[{i}] on {p}: no edge {', '.join(miss)} declared (edges.{p}: "
+                           f"{', '.join(edges.get(p) or {}) or 'none'})")
     for c in decl.get("closures") or []:
         for k in ("over", "under"):
             if c.get(k) and dp.base_name(c[k], decl) not in pcs:
@@ -201,7 +226,7 @@ def validate_marks(decl: dict, step1: dict) -> list:
     bad, mk, pcs = [], decl.get("marks") or {}, decl.get("pieces") or {}
     det = step1.get("details") or {}
     if not isinstance(mk, dict):
-        return ["marks: {detail: mark | [marks]} (garment_details.py docstring)"]
+        return [f"marks: {{detail: mark | [marks]}}; {MARK_FORM}"]
     kinds = {x.get("name"): x.get("kind") for x in decl.get("closures") or []}
     byclosure = {d for nm, c in (step1.get("closures") or {}).items() for d in c.get("details") or []
                  if kinds.get(nm) == "buttons" or (kinds.get(nm) == "zip" and (det.get(d) or {}).get("cloth"))}
@@ -216,8 +241,7 @@ def validate_marks(decl: dict, step1: dict) -> list:
                 bad.append(f"marks.{n}: piece {p!r} is not drafted")
     for n, x in det.items():
         if x.get("build") in BUILT and n not in mk and n not in byclosure and not gd.cloth_made(x.get("what")):
-            bad.append(f"step 1 detail {n!r} (build {x.get('build')}) has no mark: declare marks.{n} (where it sits on "
-                       "the pattern: at / rows / points / follows / path)")
+            bad.append(f"step 1 detail {n!r} (build {x.get('build')}) has no mark: declare marks.{n}; {MARK_FORM}")
     return bad
 
 
@@ -281,6 +305,12 @@ def block(pat: dict) -> dict:
         seams.append(S)
         if s.get("ease") is not None:
             notes[json.dumps(S)] = {"ease": [float(x) for x in s["ease"]], "why": s.get("why", "")}
+    darts = []  # (C361: a dart's legs sewn to each other, as a seam of the piece to itself)
+    for dt in decl.get("darts") or []:
+        for p in [q for q in (dt["piece"], f"{dt['piece']}.L", f"{dt['piece']}.R") if q in arcs]:
+            S = [f"{p}:{arcs[p][dt['legs'][0]]}", f"{p}:{arcs[p][dt['legs'][1]]}"]
+            seams.append(S)
+            darts.append({"piece": p, "legs": S, "why": dt.get("why", "")})
     folds = []
     for f in decl.get("folds") or []:
         f = dict(f)
@@ -298,7 +328,8 @@ def block(pat: dict) -> dict:
         closures.append(c)
     return {"pieces": out, "seams": seams, "stitches": [], "interfaced": list(decl.get("stiff") or []),
             "draft": {"design": "own", "dir": str(d), "options": decl.get("options") or {}},
-            "folds": folds, "closures": closures, "seam_notes": notes, "edge_arcs": arcs, "decl": decl}
+            "folds": folds, "closures": closures, "seam_notes": notes, "edge_arcs": arcs, "decl": decl,
+            "darts": darts}
 
 
 # ---------------------------------------------------------------- the flat gate
@@ -324,6 +355,21 @@ def gate(B: dict, decl: dict, step1: dict, stand_ref: dict | None = None, step3:
     rows.append({"id": "seams", "status": "FAIL" if bad else "PASS", "value": f"{len(sm)} seams, {len(bad)} off",
                  "target": "each pair within its declared ease, else +-1 %", "why": "; ".join(bad[:8]),
                  "fix": "redraft the shorter side, or declare the ease with why", "back_to": "4", "detail": sm})
+    if B.get("darts"):  # (C361: a dart's legs meet at its tip; each declared from the outline toward the tip)
+        from . import pattern
+        far = []
+        for dt in B["darts"]:
+            ends = []
+            for e in dt["legs"]:
+                p, arc = e.split(":", 1)
+                pc = B["pieces"][p]
+                ends.append(pc["P"][pattern.arc_indices(pc, arc)][-1])
+            gap = float(np.linalg.norm(ends[0] - ends[1])) * 1000
+            if gap > 1.0:
+                far.append(f"{dt['piece']}: its legs end {gap:.1f} mm apart")
+        rows.append({"id": "darts", "status": "FAIL" if far else "PASS", "value": f"{len(B['darts'])} darts",
+                     "target": "each dart's two legs run from the outline to ONE tip (declare both toward the tip)",
+                     "why": "; ".join(far), "fix": "declare each leg 'outline point>tip'", "back_to": "4"})
     from . import draft_seam_ends
     rows += draft_seam_ends.rows(B)  # (F6: a seam sewn the wrong way round passes every length row)
     if step3 is not None:  # (F6: the pattern against the body it was measured on, before any build)

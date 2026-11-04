@@ -35,10 +35,15 @@ if (req.draft && !out.missing.length) {
   try {
     const pattern = new D({ measurements: req.measurements, options: req.options || {}, sa: 10, complete: true })
     pattern.draft()
-    const xy = (p) => (p ? [Math.round(p.x * 100) / 100, Math.round(p.y * 100) / 100] : null)
+    const ok = (p) => p && Number.isFinite(p.x) && Number.isFinite(p.y)
+    const xy = (p) => (ok(p) ? [Math.round(p.x * 100) / 100, Math.round(p.y * 100) / 100] : null)
+    out.nan = {}  // (C361: points with no value - a measurement or option missing upstream - named, not a crash)
     for (const [pn, part] of Object.entries(pattern.parts[0] || {})) {
       const points = {}
-      for (const [k, p] of Object.entries(part.points)) points[k] = xy(p)
+      for (const [k, p] of Object.entries(part.points)) {
+        points[k] = xy(p)
+        if (p && !ok(p) && !k.startsWith('__')) (out.nan[pn] = out.nan[pn] || []).push(k)
+      }
       const paths = {}
       for (const [k, p] of Object.entries(part.paths)) {
         if (k.startsWith('__')) continue

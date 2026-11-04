@@ -112,7 +112,9 @@ def outline(path: dict, points: dict) -> list:
     for o in path.get("ops") or []:
         if o["type"] == "close":
             names.append("(close)")
-        elif o.get("to"):
+        elif o.get("to") is None:
+            names.append("(no value)")
+        else:
             ks = at.get((round(o["to"][0], 1), round(o["to"][1], 1)))
             names.append("=".join([k for k in ks if not k.startswith("__")][:3] or ks[:1]) if ks else f"({o['to'][0]:.0f},{o['to'][1]:.0f})")
     return names
@@ -143,6 +145,9 @@ def text(name: str, res: dict, part: str = "", filled: list | None = None) -> st
         L.append(f"  not drafted: no value for {', '.join(res['missing'])}")
     if res.get("draft_error"):
         L.append(f"  the draft failed: {res['draft_error']}")
+    for pn, ks in (res.get("nan") or {}).items():  # (C361, t s4-1: a crash on NaN points instead of their names)
+        L.append(f"  part {pn}: points with NO value (NaN: a measurement or option it reads is missing or bad): "
+                 f"{', '.join(ks[:12])}{' ...' if len(ks) > 12 else ''}")
     drafted = res.get("parts") or {}
     if not part:
         L.append("parts (draft order; HIDDEN = a base other parts are drafted from, not a piece you get; from = the part "

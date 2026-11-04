@@ -9,7 +9,7 @@
   "sleeve": ["sleeve", "top", "under", "topsleeve", "undersleeve"],
   "cuff": ["cuff"],
   "collar_stand": ["stand", "collarStand", "collar_stand", "collar_band", "collarBand"],
-  "collar_fall": ["collar", "upper_collar", "collar_fall"],
+  "collar_fall": ["collar", "upper_collar", "collar_fall", "undercollar", "under_collar", "topcollar", "top_collar"],
   "neckband": ["neckband", "neck_band", "binding"],
   "hood": ["hood", "hood_side", "hood_centre"],
   "facing": ["facing", "frontFacing", "neck_facing"],

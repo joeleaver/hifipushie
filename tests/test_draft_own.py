@@ -118,6 +118,12 @@ def test_node_errors_name_the_line(home):
         do.node_draft(RECT.replace("measurements.waist / 4", "measurements.waist.a.b / 4"), {"waist": 800}, d=d)
     with pytest.raises(do.DraftRefused, match=r"needs measurements step 3 hasn't taken: chest"):
         do.node_draft(RECT.replace("['waist']", "['waist', 'chest']"), {"waist": 800}, d=d)
+    with pytest.raises(do.DraftRefused, match=r"needs measurements step 3 hasn't taken: chest"):  # (read, undeclared: C361)
+        do.node_draft(RECT.replace("const w = measurements.waist / 4", "const w = (measurements.chest || 800) / 4"),
+                      {"waist": 800}, d=d)
+    with pytest.raises(do.DraftRefused, match=r"sets measurements: chest"):  # (t s4-1: hpsToBust supplied in the design)
+        do.node_draft(RECT.replace("const w = measurements.waist / 4", "measurements.chest = 900\n    const w = measurements.waist / 4"),
+                      {"waist": 800}, d=d)
     with pytest.raises(do.DraftRefused, match=r"no draft after 3 s"):
         do.node_draft(RECT.replace("const w =", "while (true) {}\n    const w ="), {"waist": 800}, d=d, timeout=3)
 
@@ -306,6 +312,10 @@ def test_pattern_parts_lists_a_designs_parts_points_and_outline_order(home):
     assert Path(look).exists()
     own = pp.inspect(RECT, {"waist": 800.0})  # the agent's own design: its parts, no measurement missing
     assert not own["missing"] and "test.panel" in own["parts"] and own["parts"]["test.panel"]["paths"]["seam"]["ops"]
+    bad = pp.inspect(RECT.replace("measurements.waist / 4", "measurements.nope / 4"), {"waist": 800.0})  # (C361: NaN)
+    assert {"tr", "br"} <= set(bad["nan"]["test.panel"])  # (x = waist / 4 is NaN; tl and bl sit at x 0)
+    t = pp.text("own", bad)
+    assert "points with NO value" in t and "tr" in t and "(no value)" in t
 
 
 def test_draft_pattern_names_a_missing_measurement_before_drafting(home):
@@ -342,3 +352,33 @@ def test_shape_stand_reads_a_folded_stand_whole_and_its_fall_as_a_fall():
     assert r["shape_fall"]["value"].startswith("fall: outer edge"), r["shape_fall"]
     assert ds.full_arc(s, ["sh>fe", "cb>sh"]) == "fe.m>cb>fe" and ds.full_arc(s, ["ft>cbt"]) == "ft.m>cbt>ft"
     assert np.isfinite(ds.rise(s["P"][:n], s["P"][n + n // 2]))
+
+
+def test_a_dart_open_on_the_outline_is_sewn(home):  # (t s4-1: no way to declare a dart; C361)
+    import copy
+    from hifipushie import cloth, draft_own as do
+    src = RECT.replace(
+        "paths.seam = new Path().move(points.tl).line(points.bl).line(points.br).line(points.tr).line(points.tl).close()",
+        "points.d1 = new Point(w / 2 - 15, 0); points.tip = new Point(w / 2, 90); points.d2 = new Point(w / 2 + 15, 0)\n"
+        "    paths.seam = new Path().move(points.tl).line(points.bl).line(points.br).line(points.tr).line(points.d2)"
+        ".line(points.tip).line(points.d1).line(points.tl).close()")
+    d = home / "dart"
+    out = do.node_draft(src, {"waist": 800}, d=d)
+    decl = copy.deepcopy(DECL)
+    for p in ("panel.L", "panel.R"):
+        decl["edges"][p].update({"in": "d1>tip", "out": "d2>tip"})
+    decl["darts"] = [{"piece": "panel.L", "legs": ["in", "out"]}]
+    assert do.validate(decl, STEP1, out["parts"]) == []
+    (d / "draft.json").write_text(json.dumps(out))
+    (d / "declarations.json").write_text(json.dumps(decl))
+    B = cloth.pieces({"pattern": {"from": "own", "dir": str(d)}}, {"waist": 800})
+    blk = do.block({"dir": str(d)})
+    assert blk["darts"] and ["panel.L:d1>tip", "panel.L:d2>tip"] in blk["seams"]
+    B["edge_arcs"], B["darts"] = blk["edge_arcs"], blk["darts"]
+    rows = {r["id"]: r for r in do.gate(B, decl, STEP1)}
+    assert rows["darts"]["status"] == "PASS" and rows["seams"]["status"] == "PASS"
+    M = cloth.mesh(B)
+    k = B["seams"].index(["panel.L:d1>tip", "panel.L:d2>tip"])
+    assert k in set(int(x) for x in M["sew_seam"]), (k, sorted(set(int(x) for x in M["sew_seam"])))  # (the dart is sewn)
+    decl["darts"] = [{"piece": "panel.L", "legs": ["in", "nope"]}]
+    assert any("no edge nope" in b for b in do.validate(decl, STEP1, out["parts"]))

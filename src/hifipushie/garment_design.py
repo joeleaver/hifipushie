@@ -372,12 +372,9 @@ def role_of(name: str, piece: dict | None = None) -> str:
             continue
         if low in (a.lower() for a in al):
             return role
-    for role, al in K.items():
-        if role.startswith("_"):
-            continue
-        if any(low.startswith(a.lower()) for a in al):
-            return role
-    return base
+    best = max(((len(a), role) for role, al in K.items() if not role.startswith("_") for a in al
+                if low.startswith(a.lower())), default=None)  # (the LONGEST alias: "undercollar" was "under" a sleeve, C361)
+    return best[1] if best else base
 
 
 def roles(Bp: dict) -> dict:

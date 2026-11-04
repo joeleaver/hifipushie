@@ -55,3 +55,19 @@ def test_a_girth_summed_round_shorter_than_the_body_fails():
     r = dbl.rows(B, step1, {"measurements": [{"name": "waist", "mm": 380.0, "loop": [[0, 0, 0]]}]},
                  {"waist": {"ease_mm": 40}})[0]
     assert r["status"] == "FAIL" and "ease 40" in r["why"]
+
+
+def test_a_two_piece_sleeves_cap_is_judged_once():  # (t s4-1: each of three cap edges against its own panel; C361)
+    import numpy as np
+    from hifipushie import draft_shape as ds
+
+    def pc(name, P, to):
+        return {"name": name, "P": np.asarray(P, float), "names": {k: i for i, k in enumerate("abcd")}, "wrap": {"to": to}}
+    sq = lambda h: [[0, 0], [0.1, 0], [0.1, h], [0, h]]  # (a: top-left, b: top-right, c, d: bottom)
+    B = {"pieces": {"top": pc("top", sq(0.12), "arm.L"), "under": pc("under", sq(0.12), "arm.L"),
+                    "front": pc("front", sq(0.2), "torso"), "back": pc("back", sq(0.2), "torso"),
+                    "side": pc("side", sq(0.2), "torso")},
+         "seams": [["top:a>d", "front:b>c"], ["top:b>c", "back:a>d"], ["under:a>b", "side:a>b"], ["top:d>c", "under:d>c"]]}
+    r = ds.cap_rows(B, {}, {})
+    assert r["value"].count(" = ") == 1, r["value"]  # (one row for the sleeve, not one per cap edge)
+    assert "top+under" in r["value"] and "0.60" in r["value"], r["value"]  # (120 mm cap over a 200 mm armhole depth)
