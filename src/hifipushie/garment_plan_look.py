@@ -23,8 +23,12 @@ from .pattern_sheet import _font
 
 FONT = _font(20)      # labels on the picture: names only
 FONT_LEG = _font(17)  # the legend (every line also in garment_plan.text)
+FONT_TICK = _font(13)  # the pixel ruler's numbers (the picture's own px)
 
-W = 900          # the picture's width in the look
+W = 900          # the picture's width in the look (set per picture by _base)
+WMIN = 600       # (a smaller picture is enlarged to 900 px to be read)
+WMAX = 1400      # a picture up to this wide is drawn in its own pixels (C353: t s2-3 read points off an 800 px photo
+                 # drawn at 900 and converted them back by eye); wider ones are scaled down, the ruler still in its px
 LEG = 420        # the key's width (a key of line styles only; every name and value is in the text answer: C344)
 PAL = [(80, 200, 255), (255, 120, 200), (120, 255, 140), (255, 170, 60), (190, 140, 255), (60, 230, 220),
        (255, 90, 90), (200, 230, 80), (150, 190, 255), (255, 210, 150)]
@@ -100,8 +104,11 @@ def _ring(d, u, v, r, col, dash):
 
 def _base(read: dict, i: int):
     im = Image.open(read["views"][i]["image"]).convert("RGB")
-    s = W / im.size[0]
-    im = im.resize((W, round(im.size[1] * s)))
+    global W
+    w0 = im.size[0]  # (own pixels from WMIN to WMAX wide; a smaller picture enlarged, a bigger one reduced: the ruler
+    s = 1.0 if WMIN <= w0 <= WMAX else (900 / w0 if w0 < WMIN else WMAX / w0)  # reads its own px either way)
+    W = round(im.size[0] * s)
+    im = im.resize((W, round(im.size[1] * s))) if s != 1.0 else im
     return Image.blend(im, Image.new("RGB", im.size, (0, 0, 0)), 0.25), s
 
 
@@ -117,6 +124,24 @@ def _sheet(im: Image.Image, legend: list, title: str) -> Image.Image:
     for k, (s, col) in enumerate(lines):
         d.text((im.size[0] + 10, 34 + 22 * k), s, fill=col, font=FONT_LEG)
     return out
+
+
+def _ruler(d, s: float, size):
+    """Pixel ticks along the picture's top and left edges, labelled in the PICTURE'S OWN px (what traces and marks
+    are written in: C353; t s2-2 made its own gridded crops to read them)."""
+    w, h = size
+    step = 50
+    for k in range(0, int(max(w, h) / s) + 1, step):
+        x, y = k * s, k * s
+        big = k % 100 == 0
+        if x <= w:
+            d.line([(x, 0), (x, 12 if big else 6)], fill=WHITE, width=1)
+            if big and 0 < k:
+                d.text((x + 2, 12), str(k), fill=WHITE, font=FONT_TICK)
+        if y <= h:
+            d.line([(0, y), (12 if big else 6, y)], fill=WHITE, width=1)
+            if big and 0 < k:
+                d.text((14, y - 8), str(k), fill=WHITE, font=FONT_TICK)
 
 
 def _views_used(sid: str, plan: dict, read: dict) -> list:
@@ -143,6 +168,10 @@ def draw(model: str, garment: str, sid: str, plan: dict, read: dict, parts: dict
         d = ImageDraw.Draw(im)
         fn = {"0": _read, "1": _parts, "2": _style}[sid]
         legend = fn(d, s, vi, plan, read, parts)
+        if sid in ("1", "2"):  # (the steps that write points on the picture: a ruler in its own px)
+            _ruler(d, s, im.size)
+            legend = legend + [("", WHITE), ("ruler: the picture's own pixels (u along the top,", GREY),
+                               ("   v down the left), what points are written in", GREY)]
         if sid in ("1", "2"):  # (margins both sides for the labels: C343, C348, C351)
             pad = Image.new("RGB", (im.size[0] + 2 * MARG, im.size[1]), (24, 25, 28))
             pad.paste(im, (MARG, 0))
@@ -212,7 +241,11 @@ def _parts(d, s, vi, plan, read, parts):
     return leg
 
 
-def _tgt(t: dict) -> str:
+def _tgt(t) -> str:
+    if not isinstance(t, dict):
+        return "no target"
+    if "height" in t:  # (C353: a step-0 height, measured on the model there)
+        return f"step 0's {t['height']} ({t.get('z_mm', '?')} mm up the model)"
     return str(t["is"]) if "is" in t else f"{t['value']} {t['unit']}" + (f" +-{t['tol']}" if t.get("tol") else "")
 
 

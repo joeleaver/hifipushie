@@ -47,11 +47,16 @@ KINDS = {  # the ONE vocabulary of traced edges (garment_plan validates against 
     "neckline": dict(roles=("front", "back", "yoke"), facing=True, desc="the body pieces' neck edge where no collar hides it"),
     "sleeve_end": dict(roles=("sleeve", "cuff"), facing=True, desc="a sleeve's or cuff's end edge"),
     "outline": dict(roles=None, facing=False, desc="any free edge of the garment as seen (every piece)"),
-    "roll_line": dict(roles=("front", "facing", "collar", "collar_fall"), facing=True, fold=True,
+    "roll_line": dict(roles=("front", "facing", "collar", "collar_fall"), facing=True,
+                      unmeasured="a fold line: the build's folds aren't compared with traces yet (C351)",
                       desc="a fold where cloth turns back on itself as worn (a lapel's roll line, a turned-back cuff's "
                            "fold): its course, from its top to where it ends (the break) as the trace's first and last "
                            "points (corners are only turns between them); not a free edge, so step 6 reports it "
                            "UNMEASURED until fold lines are compared (C351, C352)"),
+    "trim": dict(roles=None, facing=True,
+                 unmeasured="a trim's course: compared once the details are built (step 7), not on the bare build",
+                 desc="a trim's course as seen (braid, piping, a cuff's chevron, a shoulder strap's outline): name the "
+                      "detail in source; step 6 reports it UNMEASURED, the details' step judges it (C353)"),
 }
 MARKS = ("hps", "shoulder", "neck_side", "bust", "elbow", "wrist", "cf_neck", "cb_neck", "armpit_z", "chest_z", "waist_z",
          "high_hip_z", "hips_z", "seat_z", "crotch_z")
@@ -427,9 +432,8 @@ def measure(X, M, at: dict, plan: dict | None) -> list:
         except (ValueError, KeyError, np.linalg.LinAlgError) as e:
             out.append(dict(trace=t, view=v, result=dict(status="UNMEASURED", why=f"the body marks don't place the view: {e}")))
             continue
-        if KINDS.get(t.get("what"), {}).get("fold"):
-            out.append(dict(trace=t, view=v, result=dict(status="UNMEASURED", why="a fold line: the build's folds "
-                                                          "aren't compared with traces yet (C351)")))
+        if KINDS.get(t.get("what"), {}).get("unmeasured"):
+            out.append(dict(trace=t, view=v, result=dict(status="UNMEASURED", why=KINDS[t["what"]]["unmeasured"])))
             continue
         ks = matching_pieces(M, t["what"], v["view"], X)
         P2 = project(X, v["view"])

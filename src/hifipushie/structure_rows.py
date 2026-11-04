@@ -74,8 +74,10 @@ KINDS = {
                        change="alter_pattern move the sleeve's hem points (or the cuff depth); else the RINGS stage"),
     "cuff_ease": dict(points=True, desc="the cuff's girth less the wrist's", units=("mm",), read="cuff_ease_mm", needs=("cuff",),
                       change="alter_pattern scale the cuff's length (or move its button mark)"),
-    "garment_length": dict(points=True, desc="where the hem ends on the body, at the side seam (a landmark: waist, high hip, hip, "
-                                "seat...; at: the hem point at the side)",
+    "garment_length": dict(points=True, step0_on="torso",
+                           desc="where the hem ends on the body: step 0 measured it on the model, so the target names "
+                                "that step-0 height ({height: 'hem'}), never a second number (C353); at: the hem point "
+                                "at the side",
                            units=("mm", "ratio", "px"), base="closure_length", read=None,
                            missing="no hem-at-landmark reading yet", change="the body length (alter_pattern)"),
     "cutaway_drop": dict(desc="a cutaway front's lowest points below the closure's end (the lowest fastening, or where "
@@ -108,7 +110,8 @@ KINDS = {
     "hood_depth": dict(desc="a hood's depth from its face edge to its back (side view)", units=("mm", "ratio", "px"),
                        base="neck_width", read="hood_depth_mm", on="hang", needs_drape="up",
                        change="the hood's depth (alter_pattern its back seam out / in)"),
-    "not_judged": dict(desc="a part the reference can't judge (no view of it): listed, never a gate row", units=()),
+    "not_judged": dict(desc="a part the reference can't judge (no view of it): listed, never a gate row; no target "
+                            "(C353)", units=()),
 }
 for _b, _d in BASES.items():
     KINDS[_b] = dict(desc=_d["desc"] + " (a base: ratios are taken of it; not judged)", units=("mm", "px", "cm"),
