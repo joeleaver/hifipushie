@@ -237,6 +237,15 @@ def test_record_lists_what_the_next_step_uses_by_name(home):  # (t s2-1: the JSO
     a = gr.answer("m", "w")
     assert "closures: front" in a and "pieces: front.L, front.R, back" in a and "long_measurement_name_29" in a
     assert "step 0 (read):" in a and "landmarks on view 0 (picture px: v, or [u, v]): chest 100, waist 150" in a  # (C352)
+    gp.write("m", "w", "style", _style(), look=False)
+    import json as _j
+    import os as _os
+    rec = gr.load("m", "w")
+    ap = {f"garment/m.w.{k}": {"model": f"{gr.path('m', 'w')}#{rec['steps'][k]['digest']}", "by": "joe"} for k in "012"}
+    with open(_os.environ["HIFIPUSHIE_APPROVED"], "w") as f:
+        _j.dump({"approved": ap, "log": []}, f)
+    nxt = gr.answer("m", "w").splitlines()[-1]  # (C354: step 3 is body_tape's, with the names to measure)
+    assert nxt.startswith('next: call_tool("body_tape"') and '"measurements": ["armpit_to_waist", "biceps"' in nxt, nxt
 
 
 # ---------------------------------------------------------------- fix run F2 (t8 findings 4, 6, 7)

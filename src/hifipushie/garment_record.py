@@ -41,7 +41,8 @@ STEPS = [
     ("0", "read", "the reading: kind, cloth, fit; the reference picture", "garment_plan", "none", "0"),
     ("1", "parts", "every piece and detail: seen / occluded / inferred, how far built, layer order; the seams", "garment_plan", "none", "0"),
     ("2", "style", "the ONE worn state, as bends and targets; the pose", "garment_plan", "none", "1"),
-    ("3", "measure", "every measurement steps 1-2 call for, by name", None, "none", "2"),
+    ("3", "measure", "every measurement steps 1-2 call for, by name", "body_tape", "none", "2"),  # (C354: it was None,
+    # so "next:" said no tool writes step 3 though body_tape(garment=...) does)
     ("4", "draft", "flat pattern + seam pairs, stiff pieces, folds, closures; the flat gate", "draft_pattern", "none", "4"),
     ("5", "chains", "the pattern's edges as exact-length chains in the planned state", "chain_garment", "none", "4"),
     ("6", "surfaces", "the garment surface; the structure gate", "chain_garment", "none", "4"),
@@ -298,6 +299,8 @@ def _call(rec: dict, sid: str) -> str:
     a = {"name": rec["model"], "garment": rec["garment"]}
     if t == "garment_plan":
         a.update(step=STEP[sid]["key"], plan="{...}")  # (the plan's form: guide(topic="garment_plan"))
+    if t == "body_tape":  # (the names steps 1-2 call for; each defined as body_tape's guide says)
+        a.update(measurements=sorted((rec["steps"]["1"].get("output") or {}).get("measurements") or []) or "[...]")
     return f"call_tool(\"{t}\", {json.dumps(a)})"
 
 
