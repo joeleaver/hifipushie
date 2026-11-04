@@ -71,3 +71,10 @@ def test_a_two_piece_sleeves_cap_is_judged_once():  # (t s4-1: each of three cap
     r = ds.cap_rows(B, {}, {})
     assert r["value"].count(" = ") == 1, r["value"]  # (one row for the sleeve, not one per cap edge)
     assert "top+under" in r["value"] and "0.60" in r["value"], r["value"]  # (120 mm cap over a 200 mm armhole depth)
+
+
+def test_an_undercollar_with_no_role_is_judged_a_fall_not_a_stand():  # (t s4-3: C361's name fix missed the gate; C363)
+    from hifipushie import draft_shape as ds
+    assert ds._role("undercollar", {"pieces": {"undercollar": {}}}, {}) == "collar_fall"
+    assert ds._role("undercollar", {"pieces": {"undercollar": {"role": "collar_stand"}}}, {}) == "collar_stand"
+    assert ds._role("panel.L", {}, {}) == ""
