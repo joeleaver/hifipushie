@@ -40,12 +40,13 @@ def _read(home):
 
 def _parts():
     return {"pieces": {"front.L": {"what": "front", "cloth": "shell", "seen": "seen", "build": "full", "stiff": False,
-                                   "layer": 1, "edges": {"shoulder": [0, 1], "side": [1, 2], "hem": [2, 3], "cf": [3, 0]}, "where": {"view": 0, "outline": [[100, 50], [150, 50], [150, 250], [100, 250]]}},
+                                   "layer": 1, "edges": {"shoulder": [0, 1], "side": [1, 2], "hem": [2, 3], "cf": [3, 0]}, "free": ["hem"], "where": {"view": 0, "outline": [[100, 50], [150, 50], [150, 250], [100, 250]]}},
                        "front.R": {"what": "front", "cloth": "shell", "seen": "seen", "build": "full", "stiff": False,
-                                   "layer": 1, "edges": {"shoulder": [0, 1], "side": [1, 2], "hem": [2, 3], "cf": [3, 0]}, "where": {"view": 0, "outline": [[50, 50], [100, 50], [100, 250], [50, 250]]}},
+                                   "layer": 1, "edges": {"shoulder": [0, 1], "side": [1, 2], "hem": [2, 3], "cf": [3, 0]}, "free": ["hem", "cf", "shoulder"], "where": {"view": 0, "outline": [[50, 50], [100, 50], [100, 250], [50, 250]]}},
                        "back": {"what": "back", "cloth": "shell", "seen": "occluded", "from": "a waistcoat back is one piece",
                                 "build": "simplified", "why": "never seen", "stiff": False, "layer": 1,
-                                "edges": ["side.L", "side.R", "shoulder.L", "shoulder.R", "hem", "neck"]}},
+                                "edges": ["side.L", "side.R", "shoulder.L", "shoulder.R", "hem", "neck"],
+                                "free": ["shoulder.R", "hem", "neck"]}},
             "details": {"buttons": {"what": "buttons", "on": ["front.R"], "count": 5, "seen": "seen", "build": "full",
                                     "where": {"view": 0, "at": [[100, 80], [100, 120]]}},
                         "edge": {"what": "binding", "on": ["front.L"], "cloth": "trim", "follows": ["front.L:cf"],
@@ -494,3 +495,14 @@ def test_one_seam_per_edge_unless_stacked_layers():  # (t s1-5: a sleeve cap sew
     bad = []
     pe.once([{"a": "collar:top", "b": "facing:top"}, {"a": "collar:top", "b": "canvas:top"}], bad, pieces)
     assert not bad  # (stacked in one seam line)
+
+
+def test_every_edge_of_a_built_piece_is_accounted_for(home):  # (t s1-6: edges sewn to nothing passed)
+    gp.write("m", "w", "read", _read(home), look=False)
+    b = _parts()
+    b["pieces"]["front.L"]["free"] = []
+    _refused(lambda: gp.write("m", "w", "parts", b, look=False), "pieces.front.L: edges not accounted for: hem")
+    b["closures"]["front"]["edges"] = ["front.L:hem"]  # (a closure's edge counts)
+    assert gp.write("m", "w", "parts", b, look=False)
+    b["pieces"]["front.L"]["free"] = ["armhole"]
+    _refused(lambda: gp.write("m", "w", "parts", b, look=False), "pieces.front.L.free: a list of its own edges")

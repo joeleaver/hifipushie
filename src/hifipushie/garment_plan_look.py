@@ -30,7 +30,7 @@ PAL = [(80, 200, 255), (255, 120, 200), (120, 255, 140), (255, 170, 60), (190, 1
 GREY, YEL, WHITE = (150, 150, 150), (255, 230, 40), (240, 240, 240)
 DASH = {"seen": None, "occluded": (14, 8), "inferred": (3, 6)}
 MARG = 250       # step 1: the labels' margin beside the picture (labels on the picture hid the frogging: t s1-1)
-_USED: list = []
+_PENDING: list = []
 
 
 def _line(d, pts, col, width, dash, closed=False):
@@ -65,16 +65,30 @@ def _label(d, xy, s, col):
 
 
 def _mlabel(d, anchor, s, col):
-    """A label in the margin right of the picture, at its anchor's height (moved clear of the others), with a leader."""
-    y0 = min(max(anchor[1] - 12, 2), d.im.size[1] - 26)
-    y = y0
-    for k in range(200):  # (y0, then 24 px further each way, alternating, until clear of the labels placed)
-        y = y0 + 24 * ((k + 1) // 2) * (1 if k % 2 else -1)
-        if 2 <= y <= d.im.size[1] - 26 and all(abs(y - u) >= 24 for u in _USED):
-            break
-    _USED.append(y)
-    _line(d, [tuple(anchor), (W + 6, y + 12)], col, 1, (3, 3))
-    d.text((W + 10, y), s, fill=col, font=FONT)
+    """A label for later: placed in the margin on its anchor's side of the picture by _place_labels."""
+    _PENDING.append((tuple(anchor), s, col))
+
+
+def _place_labels(d, h: int):
+    """Each pending label in the margin on its anchor's side (left half -> left margin: no leader crosses the picture,
+    t s1-6), at its anchor's height, moved clear of the labels already on that side, with a leader."""
+    used = {"L": [], "R": []}
+    for (u, v), s, col in sorted(_PENDING, key=lambda t: t[0][1]):
+        side = "L" if u < W / 2 else "R"
+        y0 = min(max(v - 12, 2), h - 26)
+        y = y0
+        for k in range(200):  # (y0, then 24 px further each way, alternating, until clear)
+            y = y0 + 24 * ((k + 1) // 2) * (1 if k % 2 else -1)
+            if 2 <= y <= h - 26 and all(abs(y - q) >= 24 for q in used[side]):
+                break
+        used[side].append(y)
+        w = d.textlength(s, font=FONT)
+        if side == "L":
+            _line(d, [(u + MARG, v), (MARG - 6, y + 12)], col, 1, (3, 3))
+            d.text((MARG - 10 - w, y), s, fill=col, font=FONT)
+        else:
+            _line(d, [(u + MARG, v), (MARG + W + 6, y + 12)], col, 1, (3, 3))
+            d.text((MARG + W + 10, y), s, fill=col, font=FONT)
 
 
 def _ring(d, u, v, r, col, dash):
@@ -124,14 +138,15 @@ def draw(model: str, garment: str, sid: str, plan: dict, read: dict, parts: dict
     for vi in _views_used(sid, plan, read):
         im, s = _base(read, vi)
         _PLACED.clear()
-        _USED.clear()
-        if sid == "1":  # (a margin for the labels: C343)
-            pad = Image.new("RGB", (im.size[0] + MARG, im.size[1]), (24, 25, 28))
-            pad.paste(im, (0, 0))
-            im = pad
+        _PENDING.clear()
         d = ImageDraw.Draw(im)
         fn = {"0": _read, "1": _parts, "2": _style}[sid]
         legend = fn(d, s, vi, plan, read, parts)
+        if sid == "1":  # (margins both sides for the labels: C343, C348)
+            pad = Image.new("RGB", (im.size[0] + 2 * MARG, im.size[1]), (24, 25, 28))
+            pad.paste(im, (MARG, 0))
+            im = pad
+            _place_labels(ImageDraw.Draw(im), im.size[1])
         v = read["views"][vi]
         out = _sheet(im, legend, f"{garment} step {sid} ({key}) on view {vi} ({v['view']})")
         p = gr.look_dir(model, garment) / f"step{sid}_{key}_v{vi}.png"
@@ -159,10 +174,10 @@ def _style_of(x: dict, col):
 
 
 def _parts(d, s, vi, plan, read, parts):
-    leg = [("solid = seen", WHITE), ("dashed = occluded", WHITE), ("dotted = inferred", WHITE),
-           ("grey = left out (build omit)", GREY), ("thin dashed run = a hidden edge", WHITE),
-           ("white dot = where one edge meets the next", WHITE), ("", WHITE),
-           ("names, edges, seams, sources: the text answer", GREY)]
+    leg = [("solid = seen", WHITE), ("dashed = occluded, dotted = inferred", WHITE),
+           ("   (drawn only where given a place)", GREY), ("grey = left out (build omit)", GREY),
+           ("thin dashed run = a hidden edge", WHITE), ("white dot = where one edge meets the next", WHITE), ("", WHITE),
+           ("pieces with no place, names, edges, seams,", GREY), ("sources: the text answer", GREY)]
     for k, (n, x) in enumerate(plan["pieces"].items()):
         col, dash = _style_of(x, PAL[k % len(PAL)])
         w = x.get("where") or {}
