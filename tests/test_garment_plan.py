@@ -413,24 +413,61 @@ def test_edges_are_named_spans_that_tile_the_outline(home):  # (t s1-1: free-tex
 
 
 def test_a_seam_length_far_from_its_edge_as_drawn_is_refused():
-    from hifipushie import garment_parts_edges as pe
+    from hifipushie import garment_parts_lengths as pe
     edges = {"front": {"shoulder": (0, [[0, 0], [100, 0]], False)}, "back": {"shoulder": None}}
     seam = [{"a": "front:shoulder", "b": "back:shoulder", "length": {"body": ["shoulderToShoulder"]}}]
     bad = []
-    pe.lengths(seam, edges, 0, 1.2, {"shoulderToShoulder": 450.0}, bad)  # (120 mm drawn, 450 on the body: 3.8x)
+    pe.lengths(seam, edges, 0, 1.2, {"shoulderToShoulder": 450.0}, {}, None, bad)  # (120 mm drawn, 450 on the body: 3.8x)
     assert bad and "3.8x" in bad[0]
     bad = []
-    pe.lengths(seam, edges, 0, 1.2, {"shoulderToShoulder": 150.0}, bad)
+    pe.lengths(seam, edges, 0, 1.2, {"shoulderToShoulder": 150.0}, {}, None, bad)
     assert not bad
     edges["front"]["shoulder"] = (0, [[0, 0], [100, 0]], True)  # (hidden in this view: not checked)
     bad = []
-    pe.lengths(seam, edges, 0, 1.2, {"shoulderToShoulder": 450.0}, bad)
+    pe.lengths(seam, edges, 0, 1.2, {"shoulderToShoulder": 450.0}, {}, None, bad)
     assert not bad
     edges["front"]["shoulder"] = (0, [[0, 0], [100, 0]], False)
     seam[0]["why"] = "test"
     bad = []
-    pe.lengths(seam, edges, 0, 1.2, {"shoulderToShoulder": 450.0}, bad)
+    pe.lengths(seam, edges, 0, 1.2, {"shoulderToShoulder": 450.0}, {}, None, bad)
     assert not bad
+
+
+def test_ratio_lengths_are_checked_on_the_model():  # (t s1-9: no ratio was checked; C350)
+    from hifipushie import garment_parts_lengths as pl
+    from hifipushie.garment_fit_body import DictBody
+    edges = {"front": {"side": (0, [[0, 0], [0, 400]], False), "cf": (0, [[0, 0], [0, 100]], False)},
+             "back": {"side": None}}
+    heights = {"hem": {"z_mm": 900.0, "on": "torso"}}
+    body = DictBody({"armpit": {"z_mm": 1380.0}})
+    seam = [{"a": "front:side", "b": "back:side", "length": {"style": {"ratio": 1.0, "of": ["armpit", "hem"]}}}]
+    bad = []  # (480 mm drawn; armpit to hem on the model 480: 1.0x)
+    done = pl.lengths(seam, edges, 0, 1.2, {}, heights, body, bad)
+    assert not bad and done == [(0, 480.0, 480.0)]
+    seam[0]["length"]["style"]["ratio"] = 0.15  # (72 mm: 0.15x)
+    bad = []
+    pl.lengths(seam, edges, 0, 1.2, {}, heights, body, bad)
+    assert bad and "0.15 x armpit to hem is 72 mm" in bad[0]
+    seam[0]["length"] = {"style": {"ratio": 4.0, "of": "neck"}}  # (of a tape measurement)
+    bad = []
+    pl.lengths(seam, edges, 0, 1.2, {"neck": 400.0}, heights, body, bad)
+    assert bad and "4.0 x neck is 1600 mm" in bad[0] and "3.3x" in bad[0]
+    seam[0]["length"] = {"style": {"ratio": 4.0, "of": "front:cf"}}  # (of another drawn edge: 480 = 480)
+    bad = []
+    assert pl.lengths(seam, edges, 0, 1.2, {}, heights, body, bad) and not bad
+    seam[0]["length"] = {"style": {"value_mm": 40, "fixed": "a zip"}}  # (fixed mm, as given: 40 vs 480)
+    bad = []
+    pl.lengths(seam, edges, 0, 1.2, {}, heights, body, bad)
+    assert bad and "fixed is 40 mm" in bad[0]
+
+
+def test_mirrored_seams_swap_their_caught_edges():  # (t s1-9: the .R copy caught canvas.L)
+    from hifipushie import garment_parts_mirror as gpm
+    p = {"centre": 100, "pieces": {}, "details": {},
+         "seams": [{"a": "front.L:gorge", "b": "collar:gorge.L", "caught": ["canvas.L:gorge"]}]}
+    gpm.mirror(p, [])
+    r = [s for s in p["seams"] if s.get("mirrored_from")]
+    assert r and r[0]["caught"] == ["canvas.R:gorge"] and r[0]["b"] == "collar:gorge.R"
 
 
 def test_hidden_edges_and_trims_placed_by_their_edges(home):  # (t s1-2: an invented point; bindings traced twice)

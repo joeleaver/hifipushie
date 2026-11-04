@@ -95,6 +95,8 @@ def mirror(p: dict, bad: list) -> list:
                     e.endswith(_R) or _R + ":" in e for e in ends):
                 continue  # (no left side in it, or it already crosses the centre: back.L:cb = back.R:cb)
             t = dict(s, a=swap(s.get("a")), b=swap(s.get("b")))
+            if isinstance(s.get("caught"), list):
+                t["caught"] = swap(s["caught"])  # (t s1-9: the .R copy caught canvas.L)
             if (t["a"], t["b"]) in have:
                 continue
             t["mirrored_from"] = f"{s.get('a')} = {s.get('b')}"
