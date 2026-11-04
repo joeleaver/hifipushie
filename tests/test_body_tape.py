@@ -165,3 +165,24 @@ def test_every_measurement_keeps_where_it_was_taken(tape):
         else:
             P = np.asarray(g["path"])
             assert abs(np.ptp(P[:, 2]) * 1000 - r["mm"]) < 0.03 * r["mm"] + 10  # (the sole is not sliced)
+
+
+def test_surface_tapes_stay_on_the_body_either_way(tape):  # (t s3-2: a chord through the shoulder, a tape over the head)
+    from hifipushie import tape_checks as tc
+    a = {"name": "x", "kind": "arc", "from": "shoulder_point.L", "to": "side_armpit.L", "over": "front"}
+    b = dict(a, **{"from": "side_armpit.L", "to": "shoulder_point.L"})
+    ra, rb = tape.take(a), tape.take(b)
+    assert abs(ra["mm"] - rb["mm"]) < 1.0, (ra["mm"], rb["mm"])  # (the same tape in either direction)
+    p, q = (tape.point(n, need_surface=True) for n in ("shoulder_point.L", "side_armpit.L"))
+    chord = float(np.linalg.norm(q - p)) * 1000
+    assert ra["mm"] > chord + 10 and tc.inside(tape, np.array([p, q]))  # (not the chord, which cuts the body)
+    top = tape.take({"name": "s", "kind": "arc", "from": "hps.L", "to": "shoulder_point.L", "over": "top"})
+    h, s = (tape.point(n, need_surface=True) for n in ("hps.L", "shoulder_point.L"))
+    assert top["mm"] < tc.LONG_X * float(np.linalg.norm(s - h)) * 1000  # (along the shoulder, not over the head)
+
+
+def test_an_adapted_name_draws_the_tape_it_came_from(tape):  # (t s3-2: hips = the iliac crest, drawn at the hip joint)
+    from hifipushie import tailor
+    r = tape.take("hips")
+    L = tape.lines["hips"]
+    assert abs(tailor.length(np.r_[L, L[:1]]) * 1000 - r["mm"]) < 0.03 * r["mm"]
