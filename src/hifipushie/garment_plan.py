@@ -433,7 +433,7 @@ def text(model: str, garment: str, r: dict) -> str:
         L.append(f"  pose: {p['pose']['name']}")
         L += [f"  bend {b.get('id', '')} on {b['on']}: {_tgt(b['target'])}" for b in p.get("bends") or []]
         L += [f"  drape {n}: falls {x['falls']}" for n, x in (p.get("drape") or {}).items()]
-        L += [f"  row {r_['id']}: {_tgt(r_['target'])}" + (f" (marked on view {r_.get('view', 0)})" if r_.get("at")
+        L += [f"  row {r_['id']}: {_tgt(r_.get('target'))}" + (f" (marked on view {r_.get('view', 0)})" if r_.get("at")
                                                           else " (not marked)")
               + (" [judged on the HANG, step 8]" if (sr.KINDS.get(r_.get("what")) or {}).get("on") == "hang" else "")
               for r_ in p["rows"]]

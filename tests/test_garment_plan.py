@@ -66,7 +66,7 @@ def _style():
             "rows": [{"id": "width", "what": "trim_lines_apart", "note": "the two binding lines apart",
                       "target": {"value": 0.5, "unit": "ratio", "of": "shoulder_width"},
                       "source": "front view", "view": 0, "at": [[50, 150], [150, 150]]}],
-            "traces": [{"id": "hem", "what": "hem", "view": 0, "points": [[50, 250], [100, 240], [150, 250], [160, 251]],
+            "traces": [{"id": "hem", "what": "hem", "view": 0, "points": [[50, 250], [80, 250], [120, 250], [150, 250]],
                         "corners": [1], "source": "front view: the hem"}]}
 
 
@@ -189,6 +189,30 @@ def test_style_traces_refused_by_name_then_written_and_drawn(home):
     assert r["look"] and "trace hem (hem) on view 0: 4 points" in gp.text("m", "w", r)
     r = gp.write("m", "w", "style", r["plan"])  # (the written plan, sent back as is: its step-0 marks aren't "given")
     assert len(r["plan"]["body_marks"]) == 1
+
+
+def test_traces_sit_on_the_pictures_edges(home):  # (t s2-3: a stepped notch traced as diagonals; C353)
+    gp.write("m", "w", "read", _read(home), look=False)
+    gp.write("m", "w", "parts", _parts(), look=False)
+    st = _style()
+    st["traces"][0]["points"] = [[50, 250], [100, 200], [140, 200], [150, 250]]  # (a dip into the plain cloth)
+    _refused(lambda: gp.write("m", "w", "style", st, look=False), "traces[0] hem: points 0-", "with no edge in the picture")
+    st["traces"][0]["why"] = "test: an edge the picture can't show"
+    assert gp.write("m", "w", "style", st, look=False)
+
+
+def test_length_names_the_step0_height_and_not_judged_needs_no_target(home):  # (t s2-3; C353)
+    gp.write("m", "w", "read", _read(home), look=False)
+    gp.write("m", "w", "parts", _parts(), look=False)
+    st = _style()
+    st["rows"].append({"id": "len", "what": "garment_length", "target": {"value": 45, "unit": "px"}, "source": "f"})
+    _refused(lambda: gp.write("m", "w", "style", st, look=False), "garment_length was measured at step 0",
+             "{height: one of hem}")
+    st["rows"][-1]["target"] = {"height": "hem"}
+    st["rows"].append({"id": "back", "what": "not_judged", "source": "front view only"})
+    r = gp.write("m", "w", "style", st, look=False)
+    assert r["plan"]["rows"][1]["target"]["z_mm"] > 0
+    assert "step 0's hem (" in gp.text("m", "w", r)
 
 
 def test_body_marks_from_step0_sides_and_inferred():

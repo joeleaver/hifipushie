@@ -135,7 +135,9 @@ source}}}] (never mm read off the picture: it isn't the model; value_mm only wit
 bends [{id, on, target {value, unit, of (a ratio's base)} | {is}, source}], pose {name, source}, rows [{id, what, target, source, note?, view, at}] (what = a structure_rows kind, refused otherwise with the list: collar_points_apart, collar_tilt, collar_rise, collar_points_drop, collar_height, fall_back_width, v_depth, front_edge_plumb, hem_front_back, sleeve_end, cuff_ease, garment_length, cutaway_drop, trim_row_count, trim_row_pitch, trim_lines_apart, not_judged; bases neck_width, shoulder_width, closure_length; a ratio is OF the kind's base; a px target becomes a ratio of the base row on its view, else mm by the view's scale; a numeric bend names its kind too)
 (what the photo judges: the structure gate's targets), traces [{id, what, view, points [[u,v],..] (>= 4), corners
 [indices where it turns sharply], source}] REQUIRED (the reference's key edges: hem, front edges, collar, sleeve ends,
-roll_line...; step 6 compares the build's outline with them); the fit view's body marks are step 0's landmarks
+roll_line, trim...; each checked on the picture's own edges, a run off every edge refused unless the trace says why;
+step 6 compares the build's outline with them); a kind step 0 measured (garment_length) names its step-0 height
+({height: 'hem'}); not_judged takes no target; the look is in the picture's own px with a ruler; the fit view's body marks are step 0's landmarks
 (body_marks only for another view). Every refusal ends with the full form and the row and trace kinds, each saying
 where it is measured. Refused by name: a seam on a piece not in the inventory, a built
 piece with no seam, a target with no source, a state for a closure the inventory lacks. look (default): drawn over the

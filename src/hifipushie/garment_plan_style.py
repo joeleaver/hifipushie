@@ -53,7 +53,7 @@ def check_style(p: dict, read: dict, parts: dict) -> dict:
         w = f"rows[{i}] {r.get('id', '')}".strip()
         if not r.get("id") or ids.count(r.get("id")) > 1 or not r.get("what"):
             bad.append(f"{w}: a unique id and what it judges")
-        _target(r.get("target"), w, bad)
+        _row_target(r, w, read, bad)
         _src(r, w, bad)
         sr.check_row(r, w, bad, kinds)  # (C286: what = a structure_rows kind)
         if r.get("at") is not None and not (_uv_list(r["at"]) and isinstance(r.get("view", 0), int)
@@ -68,6 +68,9 @@ def check_style(p: dict, read: dict, parts: dict) -> dict:
                        f"{', '.join(sorted(m0['at']))}); leave them out (body_marks only for a view step 0 didn't fit)")
         p["body_marks"] = [m0] + [m for m in own if isinstance(m, dict) and m.get("view", 0) != m0["view"]]
     so.check_plan(p, read, bad)  # (T15: traced edges, required: C351; the body marks that place the view)
+    if not any(b.startswith("traces") for b in bad):  # (C353: each trace on the picture's own edges)
+        from . import structure_trace_edges as te
+        te.check(p.get("traces"), read.get("views") or [], bad)
     if p.get("blockin") is not None:  # (F9: the garment as worn, an SDF block-in: garment_blockin's docstring)
         from .garment_blockin import validate as _bv
         bad += _bv(p["blockin"])
@@ -83,3 +86,25 @@ def check_style(p: dict, read: dict, parts: dict) -> dict:
         raise PlanRefused("step 2 (style) refused:\n  " + "\n  ".join(bad) + "\n" + form("2") + "\n  row kinds (what): "
                           + sr.vocabulary() + "\n  trace kinds (what): " + so.vocabulary())  # (t s2-1: C351)
     return p
+
+
+def _row_target(r: dict, w: str, read: dict, bad: list):
+    """A row's target: none for not_judged (C353); a step-0 height BY NAME for a kind step 0 already measured
+    (structure_rows step0_on: t s2-3 gave a jacket's length as 45 px below the hips, beside step 0's hem height);
+    else {value, unit} | {is}."""
+    k, t = sr.KINDS.get(r.get("what")) or {}, r.get("target")
+    if r.get("what") == "not_judged" and t is None:
+        return
+    on = k.get("step0_on")
+    hs = {n: h for n, h in (read.get("heights") or {}).items() if isinstance(h, dict) and h.get("on", "torso") == on}
+    if on and isinstance(t, dict) and "height" in t:
+        if t["height"] not in hs:
+            bad.append(f"{w}.target.height {t['height']!r}: a step-0 height on the {on} (have {', '.join(hs) or 'none'})")
+        else:
+            t["z_mm"] = round(float(hs[t["height"]]["z_mm"]), 1)
+        return
+    if on and hs:
+        bad.append(f"{w}: {r.get('what')} was measured at step 0 on the model: target {{height: one of {', '.join(hs)}}}, "
+                   "never a second number")
+        return
+    _target(t, w, bad)
