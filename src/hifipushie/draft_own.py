@@ -191,7 +191,10 @@ def validate(decl: dict, step1: dict, parts: dict | None = None) -> list:
         for x in (a, b):
             p, ed = _edge_of(x)
             if p in pcs and ed not in (edges.get(p) or {}):
-                bad.append(f"step 1 seam {a} <-> {b}: no drafted edge {x!r} (declare edges.{p}.{ed})")
+                tw = p[:-2] + (".L" if p.endswith(".R") else ".R") if p.endswith((".L", ".R")) else None
+                hint = (f"; or declare the pair ONCE: pieces.{p[:-2]} {{part, pair: true}} with edges.{p[:-2]} "
+                        "(copied to both sides, C362)") if tw and not edges.get(p) and edges.get(tw) else ""
+                bad.append(f"step 1 seam {a} <-> {b}: no drafted edge {x!r} (declare edges.{p}.{ed}{hint})")
         if not any((a in A and b in B) or (b in A and a in B) for A, B in sewn):
             bad.append(f"step 1 seam {a} <-> {b} is not sewn: a declared seam with {a} on one side and {b} on the other")
     for i, dt in enumerate(decl.get("darts") or []):
@@ -284,9 +287,15 @@ def block(pat: dict) -> dict:
                 continue
             arcs[nm][ed] = _resolve_path(pc, part, ed, how["path"]) if isinstance(how, dict) else str(how)
             try:
-                pattern.arc_indices(pc, arcs[nm][ed])
+                ix = pattern.arc_indices(pc, arcs[nm][ed])
             except (KeyError, ValueError) as e:
                 raise DraftRefused(f"edges.{nm}.{ed} = {arcs[nm][ed]!r}: {e}") from None
+            P_ = np.asarray(pc["P"])[ix]
+            ln_ = float(np.sum(np.linalg.norm(np.diff(P_, axis=0), axis=1))) if len(P_) > 1 else 0.0
+            if not np.isfinite(ln_) or ln_ < 1e-3:  # (C362, t s4-2: "cannot convert float NaN to integer", no name)
+                raise DraftRefused(f"edges.{nm}.{ed} = {arcs[nm][ed]!r} on part {pd['part']}: "
+                                   + ("its points have no value (NaN): pattern_parts(design, part=...) names them"
+                                      if not np.isfinite(ln_) else "it is 0 mm long: its points coincide"))
         if pd.get("mirror"):
             pc = pattern.mirror_x(pc)
         if pd.get("flip_y"):

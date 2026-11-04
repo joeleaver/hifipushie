@@ -51,4 +51,30 @@ def write(name: str, garment: str, rows: list, errs: list, look: str) -> str:
                                                      "refused": [e.strip() for e in errs]}, look=[look], by="body_tape")
     except gr.OrderRefused as e:
         return f"record: refused: {e}"
-    return f"record: step 3 (measure) written: {gr.path(name, garment)} (all {len(need)} step 1 names taken)"
+    return (f"record: step 3 (measure) written: {gr.path(name, garment)} (all {len(need)} step 1 names taken)"
+            + blocks(taken))
+
+
+def blocks(taken: set) -> str:
+    """Which of FreeSewing's designs this step 3 can draft, and what each other one still needs (C362, t s4-2: every
+    jacket block needs hpsToBust, which step 3 hadn't taken; step 4 had to retake it). '' when the pack is absent."""
+    from . import assets, pattern_parts as pp
+    try:
+        have = sorted(p.name for p in (assets.pack("freesewing") / "node_modules" / "@freesewing").iterdir()
+                      if (p / "package.json").exists() and p.name not in NOT_DESIGNS)
+    except Exception:  # noqa: BLE001
+        return ""
+    ok, short = [], []
+    for n in have:
+        try:
+            need = pp.inspect(n, None, None, draft=False).get("config", {}).get("measurements") or []
+        except Exception:  # noqa: BLE001  (not a design)
+            continue
+        miss = [m for m in need if m not in taken]
+        (short.append(f"{n} needs {', '.join(miss)}") if miss else ok.append(n))
+    return ("\nFreeSewing's blocks: this step 3 can draft " + (", ".join(ok) or "none") +
+            (f"; not yet: {'; '.join(short)} (take those here, by name, before drafting from them)" if short else ""))
+
+
+NOT_DESIGNS = ("core", "core-plugins", "config", "library") + tuple(f"plugin-{x}" for x in (
+    "annotations", "bin-pack", "bust", "flip", "measurements", "mirror", "round", "sprinkle", "transform"))

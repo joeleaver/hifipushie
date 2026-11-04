@@ -19,6 +19,13 @@ try { mod = await import(path.resolve('design.mjs')) } catch (e) { fail(e) }
 const D = mod.default ?? mod.design
 if (typeof D !== 'function' || !D.patternConfig) fail(new Error('design.mjs exports no design: end it with `export default new Design({ parts: [...] })`'))
 const pc = D.patternConfig
+let exported = null  // (C362: the parts a pack design's package exports: the ones an agent can import)
+if (req.pack) {
+  try {
+    const pkg = await import('@freesewing/' + req.pack)
+    exported = Object.values(pkg).filter((v) => v && typeof v === 'object' && v.name && typeof v.draft === 'function').map((v) => v.name)
+  } catch (e) { exported = null }
+}
 const nm = (p) => (p ? (typeof p === 'string' ? p : p.name) : null)
 const opt = (o) => (typeof o === 'object' && o !== null
   ? { pct: o.pct, deg: o.deg, mm: o.mm, bool: o.bool, count: o.count, list: o.list, dflt: o.dflt, min: o.min, max: o.max }
@@ -30,6 +37,7 @@ for (const [k, p] of Object.entries(pc.parts || {})) {
   out.config.parts[k] = { from: nm(p.from), after: [].concat(p.after || []).map(nm), hide: !!(pc.partHide || {})[k],
     measurements: p.measurements || [], optional: p.optionalMeasurements || [], options: Object.keys(p.options || {}) }
 }
+out.exported = exported
 out.missing = out.config.measurements.filter((m) => !(m in (req.measurements || {})))
 if (req.draft && !out.missing.length) {
   try {

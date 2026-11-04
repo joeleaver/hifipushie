@@ -175,7 +175,8 @@ design, no recipe; src/hifipushie/draft_own.py's docstring is the spec). Needs s
   from / after) is checked against step 3 BEFORE drafting and the missing ones named. Node runs it without network, fs read-only, 60 s; an
   error comes back as `design.mjs line N: message` with the line.
 - declarations (step 1's names): `pieces` {piece: {"part", "fold": "x0" (cut on the fold at x 0: mirrored points are
-  "<name>.m"), "mirror", "cut", "grain", "place": {"to": "torso" | "arm.L" | "neck", "side", ...}}}; `edges` {piece:
+  "<name>.m"), "pair": true (a piece worn on both sides, step 1's X.L + X.R: declared ONCE as pieces.X with edges.X,
+  cut as a mirrored pair; "mirror" only flips one piece and copies no edges), "mirror", "cut", "grain", "place": {"to": "torso" | "arm.L" | "neck", "side", ...}}}; `edges` {piece:
   {edge: "a>b" | "a>via>b" (outline points) | {"path": a path of the part}}}; `seams` [{"a": "piece:edge" | [chain in
   order], "b": ..., "ease": [lo, hi] (a over b - 1), "why"}] (every step-1 seam; a seam sewn to several edges is one
   chain); `stiff` [piece]; `folds` [{"name", "piece", "line": [p, q] | edge, "kind": "press" | "roll"}] (a step-1 seam of

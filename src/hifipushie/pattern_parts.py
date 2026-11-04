@@ -68,6 +68,8 @@ def inspect(design: str, measurements: dict | None = None, options: dict | None 
     src = source(design)
     req = {"measurements": {k: float(v) for k, v in (measurements or {}).items()}, "options": dict(options or {}),
            "draft": bool(draft)}
+    if isinstance(design, str) and PACK_NAME.fullmatch(design.strip()):
+        req["pack"] = design.strip()  # (C362: which of its parts the package exports, to import)
     key = hashlib.sha1(json.dumps([src, req, RUNNER.read_text()], sort_keys=True).encode()).hexdigest()[:16]
     d = Path(d or _scratch() / key)
     cached = d / f"inspect_{key}.json"
@@ -156,13 +158,20 @@ def text(name: str, res: dict, part: str = "", filled: list | None = None) -> st
             pc, dp = c["parts"].get(pn, {}), drafted.get(pn)
             head = (f"  {pn}{' HIDDEN' if pc.get('hide') else ''}: from {pc.get('from') or '-'}, after "
                     f"{', '.join(pc.get('after') or []) or '-'}")
+            ex = res.get("exported")
+            if ex is not None and pn not in ex:  # (C362, t s4-2: jaeger's front / back aren't exported)
+                via = [f"{q}.from" for q, x in c["parts"].items() if q in ex and x.get("from") == pn] + \
+                      [f"{q}.after" for q, x in c["parts"].items() if q in ex and pn in (x.get("after") or [])]
+                head += (f"  [NOT EXPORTED: import an exported part and reach it as {' or '.join(via[:2])}]" if via else
+                         "  [NOT EXPORTED by the package]")
             if dp:
                 seam = dp["paths"].get("seam")
                 head += f"; {len(dp['points'])} points, paths {', '.join(dp['paths']) or '-'}"
                 if seam:
                     head += f"\n      seam runs: {' > '.join(outline(seam, dp['points']))}"
             L.append(head)
-        L.append("options (default [min..max]; pct in %): " + "; ".join(_opt(k, o) for k, o in c["options"].items()))
+        L.append("options (default [min..max]; pct shown in %, but GIVE IT AS A FRACTION in draft_pattern's options: "
+                 "4 % = 0.04): " + "; ".join(_opt(k, o) for k, o in c["options"].items()))
         L.append(f"next: pattern_parts(design, part=\"<part>\") for one part's points (x, y mm) and every path in order")
         return "\n".join(L)
     if part not in drafted:

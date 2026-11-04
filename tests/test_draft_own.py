@@ -382,3 +382,25 @@ def test_a_dart_open_on_the_outline_is_sewn(home):  # (t s4-1: no way to declare
     assert k in set(int(x) for x in M["sew_seam"]), (k, sorted(set(int(x) for x in M["sew_seam"])))  # (the dart is sewn)
     decl["darts"] = [{"piece": "panel.L", "legs": ["in", "nope"]}]
     assert any("no edge nope" in b for b in do.validate(decl, STEP1, out["parts"]))
+
+
+def test_s4_2_gaps_options_exports_edges_blocks(home):  # (C362)
+    import copy
+    from hifipushie import body_tape_record as btr, draft_own as do, draft_own_tool as dt, pattern_parts as pp
+    cfg = {"sleevecapEase": {"pct": 1, "min": 0, "max": 10}}
+    assert "did you mean 0.04" in dt.option_errors({"sleevecapEase": 4}, cfg)[0]
+    assert dt.option_errors({"sleevecapEase": 0.04}, cfg) == []
+    _, t = pp.run("jaeger")
+    assert "jaeger.front: from jaeger.frontBase" in t and "NOT EXPORTED: import an exported part and reach it as" in t
+    d = home / "zero"
+    src = RECT.replace("points.tr = new Point(w, 0)", "points.tr = new Point(w, 0); points.tr2 = new Point(w, 0)").replace(
+        ".line(points.tr).line(points.tl)", ".line(points.tr).line(points.tr2).line(points.tl)")
+    out = do.node_draft(src, {"waist": 800}, d=d)
+    decl = copy.deepcopy(DECL)
+    decl["edges"]["panel.L"]["nil"] = "tr>tr2"
+    (d / "draft.json").write_text(json.dumps(out))
+    (d / "declarations.json").write_text(json.dumps(decl))
+    with pytest.raises(do.DraftRefused, match=r"edges\.panel\.L\.nil = 'tr>tr2'.*0 mm long"):
+        do.block({"dir": str(d)})
+    msg = btr.blocks({"chest", "waist"})
+    assert "FreeSewing's blocks" in msg and "brian needs" in msg and "hpsToBust" in msg
