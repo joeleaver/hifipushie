@@ -66,9 +66,11 @@ SIDES = {"front": np.array([0, -1.0, 0]), "back": np.array([0, 1.0, 0]), "top": 
 LEVELS = {  # level name: (tailor's "at" key, its definition: tailor.measure's docstring)
     "armpit": ("armpit_z", "the highest torso section the arm has left"),
     "chest": ("chest_z", "the fullest torso section 2-12 cm under the armpit"),
-    "waist": ("waist_z", "70% of the way from the pelvis joint to the chest joint (skeletal, a belly doesn't move it)"),
+    "waist": ("waist_z", "the narrowest section near 70% of the way from the pelvis joint to the chest joint, where the "
+                         "body clearly dips (FreeSewing's waist); else that skeletal point (a belly: C358)"),
     "high_hip": ("high_hip_z", "the iliac crest: 0.125 x stature above the crotch (ANSUR II iliocristale)"),
-    "hips": ("hips_z", "the hip joints + 2 cm (the greater trochanter; FreeSewing's hips is the high_hip)"),
+    "fs_hips": ("fs_hips_z", "FreeSewing's hips: its standard waist-to-hips (0.073 x stature) below the waist (C358)"),
+    "hips": ("hips_z", "the hip joints + 2 cm (the greater trochanter; NOT FreeSewing's hips: that is fs_hips)"),
     "seat": ("seat_z", "the fullest torso section in the 12 cm under the hips level"),
     "crotch": ("crotch_z", "the highest level where the body's section splits into two legs"),
 }

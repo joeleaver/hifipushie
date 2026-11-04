@@ -202,3 +202,9 @@ def test_a_tilted_girth_round_the_arm_root(tape):  # (C359: the armhole as one t
     assert 0.38 < L / chest < 0.48 and abs(L - R) < 3.0, (L, R, chest)
     with pytest.raises(bt.TapeError, match="around 'elbow'"):
         tape.take(dict(it, around="elbow"))
+
+
+def test_freesewings_hips_is_a_named_level(tape):  # (t s3-5: "hips" read as FreeSewing's, but it is the hip joint's)
+    assert tape.take({"name": "wh", "kind": "height", "from": "waist", "to": "fs_hips"})["mm"] == \
+        pytest.approx(tape.R["mm"]["waistToFsHips"], abs=0.2)
+    assert "NOT FreeSewing's hips" in bt.LEVELS["hips"][1]
