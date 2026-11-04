@@ -47,6 +47,10 @@ KINDS = {  # the ONE vocabulary of traced edges (garment_plan validates against 
     "neckline": dict(roles=("front", "back", "yoke"), facing=True, desc="the body pieces' neck edge where no collar hides it"),
     "sleeve_end": dict(roles=("sleeve", "cuff"), facing=True, desc="a sleeve's or cuff's end edge"),
     "outline": dict(roles=None, facing=False, desc="any free edge of the garment as seen (every piece)"),
+    "roll_line": dict(roles=("front", "facing", "collar", "collar_fall"), facing=True, fold=True,
+                      desc="a fold where cloth turns back on itself as worn (a lapel's roll line, a turned-back cuff's "
+                           "fold): its course and where it ends (the break: a corner); not a free edge, so step 6 "
+                           "reports it UNMEASURED until fold lines are compared (C351)"),
 }
 MARKS = ("hps", "shoulder", "neck_side", "bust", "elbow", "wrist", "cf_neck", "cb_neck", "armpit_z", "chest_z", "waist_z",
          "high_hip_z", "hips_z", "seat_z", "crotch_z")
@@ -75,6 +79,10 @@ def _image_size(path) -> tuple | None:
         return None
 
 
+def vocabulary() -> str:
+    return "; ".join(f"{k}: {v['desc']}" for k, v in KINDS.items())
+
+
 def mark_names() -> list:
     return [m for m in MARKS if m.endswith("_z") or m in ("cf_neck", "cb_neck")] + \
         [f"{m}.{s}" for m in MARKS if not m.endswith("_z") and m not in ("cf_neck", "cb_neck") for s in "LR"]
@@ -85,7 +93,9 @@ def check_plan(p: dict, read: dict, bad: list) -> None:
     """Refuse bad traces / body marks BY NAME into `bad` (garment_plan.check_style)."""
     views = read.get("views") or []
     tr, bm = p.get("traces"), p.get("body_marks")
-    if tr is None:
+    if not tr:  # (C351: t s2-1 wrote a plan with no traces; they are how step 6 judges the curves)
+        bad.append("traces: required: the reference's key edges traced on a view, [{id, what, view, points [[u,v],..], "
+                   f"corners [indices], source}}]; what: {', '.join(KINDS)}")
         return
     if not isinstance(tr, list):
         bad.append("traces: [{id, what, view, points [[u,v],..], corners [indices], source}]")
@@ -415,6 +425,10 @@ def measure(X, M, at: dict, plan: dict | None) -> list:
             pl = placement(v, _marks(style, vi), at)
         except (ValueError, KeyError, np.linalg.LinAlgError) as e:
             out.append(dict(trace=t, view=v, result=dict(status="UNMEASURED", why=f"the body marks don't place the view: {e}")))
+            continue
+        if KINDS.get(t.get("what"), {}).get("fold"):
+            out.append(dict(trace=t, view=v, result=dict(status="UNMEASURED", why="a fold line: the build's folds "
+                                                          "aren't compared with traces yet (C351)")))
             continue
         ks = matching_pieces(M, t["what"], v["view"], X)
         P2 = project(X, v["view"])
