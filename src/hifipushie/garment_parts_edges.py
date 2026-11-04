@@ -7,9 +7,7 @@ FORM: piece.edges = {edge: [i0, i1]} for a piece with an outline: the edge runs 
 point i1 (forward, wrapping past the last point); the spans TILE the outline (each outline segment in exactly one
 edge: a pattern piece's boundary is its edges). A piece with no outline (occluded / inferred, no place): edges =
 [names] (or {name: null}). Seams and trims (`follows`) name "piece:edge" with a declared edge.
-SEAM LENGTHS: a seam given a body length (FreeSewing names the tape takes) is compared with its edge as drawn on the
-step-0 fit view, at the step-0 scale: past LENGTH_X either way it is refused unless the seam says why (a front view
-foreshortens an edge running round the body: the bounds are wide; it catches the wrong measurement, not a few cm).
+SEAM LENGTHS: checked against the edges as drawn: garment_parts_lengths.lengths.
 HIDDEN (C344): piece.hidden = [edge names] whose course this view can't show (a collar's back neckline in a front
 view): drawn dashed, never length-checked; the outline still tiles (draw the hidden run where it would pass).
 A TRIM that follows seen edges takes its place from them (no `where` needed: t s1-2 repeated every binding run).
@@ -22,7 +20,6 @@ from __future__ import annotations
 
 import math
 
-LENGTH_X = (0.4, 2.5)  # (body length / the edge as drawn: outside this, the wrong measurement)
 
 
 def _outline(x: dict):
@@ -106,37 +103,6 @@ def refs(where: str, names: list, edges: dict, bad: list):
         pc, ed = e.split(":", 1)
         if pc in edges and ed not in edges[pc]:
             bad.append(f"{where}: {e!r}: {pc} has no edge {ed!r} (its edges: {', '.join(edges[pc]) or 'none'})")
-
-
-def lengths(seams: list, edges: dict, fit_view, scale, mm: dict, bad: list) -> list:
-    """Each body-length seam against its edge as drawn on the fit view; [(seam, body mm, drawn mm)] checked."""
-    done = []
-    if not scale or not mm:
-        return done
-    for i, s in enumerate(seams):
-        ln = (s or {}).get("length") or {}
-        names = ln.get("body") if isinstance(ln, dict) else None
-        if not names or not all(m in mm for m in names) or str(s.get("why") or "").strip():
-            continue  # (a defined measurement: step 3 takes it; a seam with why: kept)
-        body = sum(float(mm[m]) for m in names)
-        for end in (s.get("a"), s.get("b")):
-            pc, _, ed = str(end).partition(":")
-            g = (edges.get(pc) or {}).get(ed)
-            if not g or g[0] != fit_view or g[2]:
-                continue  # (not drawn on the fit view, or hidden there)
-            drawn = sum(math.dist(p, q) for p, q in zip(g[1], g[1][1:])) * scale
-            if drawn < 1:
-                continue
-            x = body / drawn
-            done.append((i, body, drawn))
-            if not LENGTH_X[0] <= x <= LENGTH_X[1]:
-                bad.append(f"seams[{i}] {s.get('a')} = {s.get('b')}: {' + '.join(names)} is {body:.0f} mm on the model, "
-                           f"but {end} as drawn is about {drawn:.0f} mm ({x:.1f}x; {LENGTH_X[0]}-{LENGTH_X[1]}x allowed: "
-                           "a front view foreshortens): the wrong measurement (a whole girth for part of it, both shoulders "
-                           "for one), or an edge joined to several pieces given the whole length in each seam (each "
-                           "takes its share); define the right one, or keep it with why")
-            break
-    return done
 
 
 def trim_where(x: dict, edges: dict):

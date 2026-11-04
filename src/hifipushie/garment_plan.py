@@ -320,7 +320,8 @@ def check_parts(p: dict, read: dict, body=None) -> dict:
     scale = (sc.get("across_mm_per_px", 0) + sc.get("up_mm_per_px", 0)) / 2 if sc else None
     b = body() if callable(body) else body
     mm = dict(getattr(getattr(b, "tape", None), "R", {}).get("mm") or {}) if b is not None else {}
-    p["seam_lengths_checked"] = pe.lengths(seams, edges, fr.get("view", 0), scale, mm, bad)
+    p["seam_lengths_checked"] = pl.lengths(seams, edges, fr.get("view", 0), scale, mm, read.get("heights") or {}, b,
+                                           bad)  # (every length that resolves on the model: C350)
     bad += pixel_errors(p, read.get("views"))
     if bad:
         raise PlanRefused("step 1 (parts) refused:\n  " + "\n  ".join(bad) + "\n" + form("1"))
