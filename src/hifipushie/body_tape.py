@@ -327,9 +327,11 @@ class Tape:
             L = self.torso(z)
             if L is None:
                 continue
-            near = L[np.abs(L[:, 0] - start[0]) < 0.015]
+            near = L[np.abs(L[:, 0] - start[0]) < 0.015]  # (a tape ~30 mm wide rests on its highest points across)
             if len(near):
-                pts.append(near[np.argmax(sign * near[:, 1])])
+                q = near[np.argmax(sign * near[:, 1])].copy()
+                q[0] = start[0]  # (C357: drawn and measured on its own line: t s3-2's hopped across the spine's groove)
+                pts.append(q)
         P = np.array(pts)
         if len(P) >= 3:  # (tailor.measure's down(): the same taut rule, in the y-z profile)
             q = np.c_[-P[:, 2], sign * P[:, 1]]
