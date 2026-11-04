@@ -485,16 +485,46 @@ def test_left_side_mirrors_to_the_right(home):  # (t s1-4: .R names refused, a C
     assert len(p["seams"]) == 5  # (the CF seam already crosses the centre: not doubled)
 
 
-def test_one_seam_per_edge_unless_stacked_layers():  # (t s1-5: a sleeve cap sewn to both armholes)
+def test_one_seam_per_edge_stacked_edges_are_caught():  # (t s1-5: a sleeve cap sewn to both armholes; t s1-8: C349)
     from hifipushie import garment_parts_edges as pe
-    pieces = {"sleeve": {"layer": 2}, "front": {"layer": 2}, "back": {"layer": 2}, "facing": {"layer": 0},
-              "canvas": {"layer": 1}, "collar": {"layer": 2}}
     bad = []
-    pe.once([{"a": "sleeve:cap", "b": "front:armhole"}, {"a": "sleeve:cap", "b": "back:armhole"}], bad, pieces)
-    assert bad and "sleeve:cap is sewn in 2 seams side by side" in bad[0]
-    bad = []
-    pe.once([{"a": "collar:top", "b": "facing:top"}, {"a": "collar:top", "b": "canvas:top"}], bad, pieces)
-    assert not bad  # (stacked in one seam line)
+    pe.once([{"a": "sleeve:cap", "b": "front:armhole"}, {"a": "sleeve:cap", "b": "back:armhole"}], bad, {})
+    assert bad and "sleeve:cap is sewn in 2 seams" in bad[0] and "cap_front + cap_back" in bad[0]
+    bad = []  # (stacked in one seam line, whatever the layer numbers say)
+    pe.once([{"a": "collar:top", "b": "facing:top", "caught": ["canvas:top"]}], bad, {})
+    assert not bad
+    bad = []  # (two seams on one edge are refused even on different layers: say caught)
+    pe.once([{"a": "collar:top", "b": "facing:top"}, {"a": "collar:top", "b": "canvas:top"}], bad,
+            {"collar": {"layer": 2}, "facing": {"layer": 0}, "canvas": {"layer": 1}})
+    assert bad and "caught: ['piece:edge']" in bad[0]
+    bad = []  # (a caught edge sewn again elsewhere)
+    pe.once([{"a": "a:x", "b": "b:x", "caught": ["c:x"]}, {"a": "c:x", "b": "d:x"}], bad, {})
+    assert bad and bad[0].startswith("c:x is sewn in 2 seams")
+
+
+def test_caught_edges_count_and_are_checked(home):
+    gp.write("m", "w", "read", _read(home), look=False)
+    b = _parts()
+    b["pieces"]["front.L"]["free"] = []
+    b["seams"][0]["caught"] = ["front.L:hem"]
+    assert gp.write("m", "w", "parts", b, look=False)  # (a caught edge is accounted for)
+    b["seams"][0]["caught"] = ["front.L:nope"]
+    _refused(lambda: gp.write("m", "w", "parts", b, look=False), "front.L has no edge 'nope'")
+    b["seams"][0]["caught"] = "front.L:hem"
+    _refused(lambda: gp.write("m", "w", "parts", b, look=False), "caught: a list of 'piece:edge'")
+
+
+def test_seam_lengths_never_mm_off_the_picture(home):  # (t s1-8: 38 of 42 seams in picture mm; C335, C349)
+    gp.write("m", "w", "read", _read(home), look=False)
+    b = _parts()
+    b["seams"][0]["length"] = {"style": {"value_mm": 380, "source": "read off view 0, 350 px"}}
+    _refused(lambda: gp.write("m", "w", "parts", b, look=False), "millimetres read off the picture don't transfer")
+    b["seams"][0]["length"]["style"]["fixed"] = "a 20 cm zip, the same on every wearer"
+    assert gp.write("m", "w", "parts", b, look=False)
+    b["seams"][0]["length"] = {"style": {"ratio": 1.0, "of": ["armpit", "hem"], "source": "underarm to hem, view 0"}}
+    assert gp.write("m", "w", "parts", b, look=False)
+    b["seams"][0]["length"]["style"]["of"] = ["armpit", "knee_cap"]
+    _refused(lambda: gp.write("m", "w", "parts", b, look=False), "knee_cap not a step-0 height or landmark")
 
 
 def test_every_edge_of_a_built_piece_is_accounted_for(home):  # (t s1-6: edges sewn to nothing passed)

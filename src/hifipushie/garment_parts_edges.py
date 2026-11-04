@@ -14,9 +14,9 @@ HIDDEN (C344): piece.hidden = [edge names] whose course this view can't show (a 
 view): drawn dashed, never length-checked; the outline still tiles (draw the hidden run where it would pass).
 A TRIM that follows seen edges takes its place from them (no `where` needed: t s1-2 repeated every binding run).
 EVERY EDGE ACCOUNTED FOR (C348): sewn, trimmed, closed or free (piece.free), for every built piece.
-ONE SEAM PER EDGE (C347): an edge that meets several pieces side by side (the same layer: a sleeve cap meeting the
-front and the back armholes) is split into its shares, one per seam; partners on different layers are stacked in one
-seam line (a collar's top with its facing and its canvas) and may share it.
+ONE SEAM PER EDGE (C347, C349): an edge that meets several pieces side by side (a sleeve cap meeting the front and the
+back armholes) is split into its shares, one per seam; edges stacked in one seam line (a canvas caught in the gorge
+seam, a collar's top with its facing and its canvas) are ONE seam: a and b, the rest in its caught: ["piece:edge"].
 """
 from __future__ import annotations
 
@@ -184,7 +184,9 @@ def crossings(outline: list, hidden_segs: set) -> list:
 def once(seams: list, bad: list, pieces: dict | None = None):
     """Each edge is sewn in one seam at most (t s1-5: a sleeve cap sewn to the front armhole AND the back's): a pattern
     edge sews to one edge; an edge that meets several is split into its shares (a collar neckline into the fronts'
-    and the back's, a sleeve cap into cap_front and cap_back)."""
+    and the back's, a sleeve cap into cap_front and cap_back). Edges sewn into the same seam line (a canvas caught
+    in the gorge seam, a collar's top + facing + canvas) are that seam's `caught`, not more seams (C349: stacking was
+    read from layer numbers, and a canvas sharing its under collar's layer could not be sewn in)."""
     uses = {}
     for i, s in enumerate(seams):
         if not isinstance(s, dict):
@@ -193,19 +195,17 @@ def once(seams: list, bad: list, pieces: dict | None = None):
         for e, other in ((a, b), (b, a)):
             if isinstance(e, str) and ":" in e and not (e == other and s.get("kind") == "fold"):
                 uses.setdefault(e, []).append((i, other))
-    pieces = pieces or {}
-
-    def layer(e):
-        x = pieces.get(str(e).split(":")[0])
-        return x.get("layer") if isinstance(x, dict) else None
+        cg = s.get("caught") if isinstance(s.get("caught"), list) else []
+        for e in cg:
+            if isinstance(e, str) and ":" in e:
+                uses.setdefault(e, []).append((i, f"{a} = {b} (caught)"))
     for e, us in uses.items():
-        ls = [layer(o) for _, o in us]
-        if len(us) > 1 and None not in ls and len(set(ls)) == len(ls):
-            continue  # (partners on different layers: stacked in one seam line, a canvas caught with a facing)
         if len(us) > 1:
-            bad.append(f"{e} is sewn in {len(us)} seams side by side (seams {', '.join(str(i) for i, _ in us)}: to "
-                       f"{', '.join(str(o) for _, o in us)}): an edge sews to one edge; split it into its shares, one "
-                       "per seam (e.g. cap_front + cap_back, neck_front + neck_back), each its own span")
+            bad.append(f"{e} is sewn in {len(us)} seams (seams {', '.join(str(i) for i, _ in us)}: to "
+                       f"{', '.join(str(o) for _, o in us)}): an edge sews in one seam line. Side by side (a sleeve cap "
+                       "meeting the front and the back): split it into its shares, one per seam (cap_front + cap_back), "
+                       "each its own span. Stacked in one line (a canvas or facing sewn in with the seam): one seam, the "
+                       "extra edges in its caught: ['piece:edge']")
 
 
 def accounted(pieces: dict, edges: dict, seams: list, details: dict, closures: dict, bad: list):
@@ -215,7 +215,7 @@ def accounted(pieces: dict, edges: dict, seams: list, details: dict, closures: d
     used = set()
     for s in seams if isinstance(seams, list) else []:
         if isinstance(s, dict):
-            used |= {s.get("a"), s.get("b")}
+            used |= {s.get("a"), s.get("b")} | {e for e in (s.get("caught") or []) if isinstance(e, str)}
     for x in (details or {}).values() if isinstance(details, dict) else []:
         if isinstance(x, dict) and isinstance(x.get("follows"), list):
             used |= set(x["follows"])
