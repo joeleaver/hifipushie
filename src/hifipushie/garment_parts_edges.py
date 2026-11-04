@@ -13,6 +13,7 @@ foreshortens an edge running round the body: the bounds are wide; it catches the
 HIDDEN (C344): piece.hidden = [edge names] whose course this view can't show (a collar's back neckline in a front
 view): drawn dashed, never length-checked; the outline still tiles (draw the hidden run where it would pass).
 A TRIM that follows seen edges takes its place from them (no `where` needed: t s1-2 repeated every binding run).
+EVERY EDGE ACCOUNTED FOR (C348): sewn, trimmed, closed or free (piece.free), for every built piece.
 ONE SEAM PER EDGE (C347): an edge that meets several pieces side by side (the same layer: a sleeve cap meeting the
 front and the back armholes) is split into its shares, one per seam; partners on different layers are stacked in one
 seam line (a collar's top with its facing and its canvas) and may share it.
@@ -205,3 +206,35 @@ def once(seams: list, bad: list, pieces: dict | None = None):
             bad.append(f"{e} is sewn in {len(us)} seams side by side (seams {', '.join(str(i) for i, _ in us)}: to "
                        f"{', '.join(str(o) for _, o in us)}): an edge sews to one edge; split it into its shares, one "
                        "per seam (e.g. cap_front + cap_back, neck_front + neck_back), each its own span")
+
+
+def accounted(pieces: dict, edges: dict, seams: list, details: dict, closures: dict, bad: list):
+    """Every edge of a built piece is accounted for, as a pattern maker accounts for it: sewn (a seam), run along by a
+    trim (a detail's follows), a closure's (closures.<c>.edges), or FREE (piece.free: a finished edge left open, a
+    turned hem, a facing's inner edge) (t s1-6: an inner collar's neck, the canvas and facing edges sewn to nothing)."""
+    used = set()
+    for s in seams if isinstance(seams, list) else []:
+        if isinstance(s, dict):
+            used |= {s.get("a"), s.get("b")}
+    for x in (details or {}).values() if isinstance(details, dict) else []:
+        if isinstance(x, dict) and isinstance(x.get("follows"), list):
+            used |= set(x["follows"])
+    for n, c in (closures or {}).items() if isinstance(closures, dict) else []:
+        ce = (c or {}).get("edges")
+        if ce is not None and not isinstance(ce, list):
+            bad.append(f"closures.{n}.edges: a list of 'piece:edge' (the edges it closes along)")
+        elif ce:
+            refs(f"closures.{n}.edges", ce, edges, bad)
+            used |= set(ce)
+    for n, x in pieces.items():
+        if not isinstance(x, dict) or n not in edges or x.get("build") == "omit":
+            continue
+        free = x.get("free") or []
+        if not isinstance(free, list) or any(f not in edges[n] for f in free):
+            bad.append(f"pieces.{n}.free: a list of its own edges ({', '.join(edges[n])}) left open, finished")
+            free = []
+        left = [e for e in edges[n] if f"{n}:{e}" not in used and e not in free]
+        if left:
+            bad.append(f"pieces.{n}: edges not accounted for: {', '.join(left)}. Each edge is sewn (seams), run along by "
+                       "a trim (details.follows), closed (closures.<c>.edges) or free (pieces.<p>.free: a finished edge "
+                       "left open, a turned hem, a facing's inner edge)")

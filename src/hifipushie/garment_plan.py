@@ -29,11 +29,14 @@ STEP 1 "parts": {pieces, details, closures, seams, centre?, over?, define?}
             under it), where?: {view, outline: [[u,v],..]} (needed when seen), hang?: fitted|draped (T13: hangs free
             below where it is held; its fall judged on the hang), held?: [its edges built on the body] (draped only),
             edges: {edge: [i0, i1]} spans of its outline's points that TILE it (each segment in one edge), or [names]
-            for a piece with no outline (garment_parts_edges.py, C343), hidden?: [its edges this view can't show]}}
+            for a piece with no outline (garment_parts_edges.py, C343), hidden?: [its edges this view can't show],
+            free?: [its edges left open, finished: a turned hem, a facing's inner edge] (every edge of a built piece is
+            sewn, trimmed, closed or free: C348)}}
   details  {name: {what, on: [pieces], cloth? (braid, zip tape...), follows?: ["piece:edge"] (a trim along edges: its
             place comes from them when they are drawn), count?, seen, from?, build, why?, where?: {view, at: [[u,v],..] |
             outline | outlines}}}
-  closures {name: {what, pieces: [pieces it joins; one for a band closing on itself], details?: [details]}}
+  closures {name: {what, pieces: [pieces it joins; one for a band closing on itself], details?: [details],
+            edges?: ["piece:edge" it closes along]}}
   seams    [{a: "piece:edge", b: "piece:edge" (declared edges), kind?: seam|fold|set_in|topstitch|bound, length: {body:
             [measurement names]} | {style: {ratio | value_mm, of?, source}}, why?}] (a body length is checked against
             its edge as drawn at the step-0 scale; why keeps one the check refuses)
@@ -311,6 +314,7 @@ def check_parts(p: dict, read: dict, body=None) -> dict:
         if isinstance(s, dict):
             pe.refs(f"seams[{i}]", [s.get("a"), s.get("b")], edges, bad)
     pe.once(seams, bad, pieces)  # (one seam per edge, unless the partners are stacked layers: C347)
+    pe.accounted(pieces, edges, seams, details if isinstance(details, dict) else {}, closures, bad)  # (C348)
     for n, x in (details.items() if isinstance(details, dict) else []):
         if isinstance(x, dict) and isinstance(x.get("follows"), list):
             pe.refs(f"details.{n}.follows", x["follows"], edges, bad)
