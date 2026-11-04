@@ -161,6 +161,9 @@ def validate(decl: dict, step1: dict, parts: dict | None = None) -> list:
             bad.append(f"piece {nm!r} is drafted but not in step 1's inventory (have {', '.join(inv)})")
         for k in set(pd) - PIECE_KEYS:
             bad.append(f"piece {nm!r}: unknown key {k!r} (have {', '.join(sorted(PIECE_KEYS))})")
+        if pd.get("grain") is not None and (isinstance(pd["grain"], bool) or not isinstance(pd["grain"], (int, float))):
+            bad.append(f"piece {nm!r}: grain {pd['grain']!r}: degrees from the part's x axis (90 = lengthwise, the usual "
+                       "straight grain; 0 = crosswise; 45 = bias) (C363)")
         if parts is not None and pd.get("part") not in parts:
             bad.append(f"piece {nm!r}: the draft has no part {pd.get('part')!r} (has {', '.join(parts)})")
     for nm, it in inv.items():

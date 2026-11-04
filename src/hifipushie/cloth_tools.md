@@ -181,7 +181,7 @@ design, no recipe; src/hifipushie/draft_own.py's docstring is the spec). Needs s
   order], "b": ..., "ease": [lo, hi] (a over b - 1), "why"}] (every step-1 seam; a seam sewn to several edges is one
   chain); `stiff` [piece]; `folds` [{"name", "piece", "line": [p, q] | edge, "kind": "press" | "roll"}] (a step-1 seam of
   kind fold is a fold named like its edge); `closures` [{"name", "kind", "over", "under", "edge": {"over": edge,
-  "under": edge}, "at": [[hole mark, button mark]]}] (an edge: a declared edge name, or "pointA>pointB" /
+  "under": edge}, "at": [[hole point, button point]]}] (the part's point NAMES, e.g. a snippet's anchor; C363) (an edge: a declared edge name, or "pointA>pointB" /
   "a>via>b" along the piece's outline); `omit` {piece: why} (a built step-1 piece you don't cut); `darts` [{"piece",
   "legs": [edge, edge]}]: a dart OPEN on the outline (the seam path in to its tip and out), each leg declared
   "outline point>tip", sewn to each other (a dart drawn inside the piece isn't sewn: cut it into the outline);

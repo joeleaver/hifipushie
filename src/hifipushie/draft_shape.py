@@ -30,6 +30,7 @@ FALL_SPREAD = 1 + 0.5 * 0.024  # simon.collar outer / stand seam, halved excess
 CAP = (0.9 * 0.521, 1.1 * 0.715)  # brian.sleeve, bent's top + under sleeve: cap height / armhole depth
 CURVED, STRAIGHT = 0.02, 0.005  # sagitta / chord
 STAND_ROLES = ("collar_stand", "collar_band", "neckband")
+AMBIGUOUS_NAMES = ("collar",)  # (a name that doesn't say stand or fall: the seams decide, not the name: C363)
 FALL_ROLES = ("collar_fall",)
 FREE_NAMES = ("top", "free", "outer", "edge")
 OUTER_NAMES = ("outer", "fall", "edge")
@@ -68,7 +69,17 @@ def rise(N: np.ndarray, toward: np.ndarray) -> float:
 
 
 def _role(nm: str, decl: dict, step1: dict) -> str:
-    return str((decl.get("pieces") or {}).get(nm, {}).get("role") or (step1.get("pieces") or {}).get(nm, {}).get("role") or "")
+    """The declared role (draft, then step 1), else the role its NAME gives (garment_design.role_of: C363, t s4-3: an
+    undercollar with no declared role was judged as a shirt's stand, so C361's name fix never reached this gate)."""
+    from .garment_design import role_of
+    r = (decl.get("pieces") or {}).get(nm, {}).get("role") or (step1.get("pieces") or {}).get(nm, {}).get("role")
+    if r:
+        return str(r)
+    base = nm.rsplit(".", 1)[0] if nm.endswith((".L", ".R")) else nm
+    if base.lower() in AMBIGUOUS_NAMES:  # ("collar" alone: a shirt's band or a fall: its structure decides, t8)
+        return ""
+    r = role_of(nm)
+    return r if r != base else ""
 
 
 def _seam_pairs(B: dict):
