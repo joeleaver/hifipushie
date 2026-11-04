@@ -310,6 +310,7 @@ def check_parts(p: dict, read: dict, body=None) -> dict:
     for i, s in enumerate(seams):
         if isinstance(s, dict):
             pe.refs(f"seams[{i}]", [s.get("a"), s.get("b")], edges, bad)
+    pe.once(seams, bad, pieces)  # (one seam per edge, unless the partners are stacked layers: C347)
     for n, x in (details.items() if isinstance(details, dict) else []):
         if isinstance(x, dict) and isinstance(x.get("follows"), list):
             pe.refs(f"details.{n}.follows", x["follows"], edges, bad)

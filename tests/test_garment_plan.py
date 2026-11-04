@@ -482,3 +482,15 @@ def test_left_side_mirrors_to_the_right(home):  # (t s1-4: .R names refused, a C
     ends = {(s["a"], s["b"]) for s in p["seams"]}
     assert ("front.R:side", "back:side.R") in ends and ("front.R:shoulder", "back:shoulder.R") in ends
     assert len(p["seams"]) == 5  # (the CF seam already crosses the centre: not doubled)
+
+
+def test_one_seam_per_edge_unless_stacked_layers():  # (t s1-5: a sleeve cap sewn to both armholes)
+    from hifipushie import garment_parts_edges as pe
+    pieces = {"sleeve": {"layer": 2}, "front": {"layer": 2}, "back": {"layer": 2}, "facing": {"layer": 0},
+              "canvas": {"layer": 1}, "collar": {"layer": 2}}
+    bad = []
+    pe.once([{"a": "sleeve:cap", "b": "front:armhole"}, {"a": "sleeve:cap", "b": "back:armhole"}], bad, pieces)
+    assert bad and "sleeve:cap is sewn in 2 seams side by side" in bad[0]
+    bad = []
+    pe.once([{"a": "collar:top", "b": "facing:top"}, {"a": "collar:top", "b": "canvas:top"}], bad, pieces)
+    assert not bad  # (stacked in one seam line)
