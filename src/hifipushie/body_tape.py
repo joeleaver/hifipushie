@@ -33,7 +33,7 @@ from . import tailor
 from scipy.spatial import ConvexHull
 
 Z = np.array([0.0, 0.0, 1.0])
-KINDS = ("girth", "arc", "length", "height", "freesewing")
+KINDS = ("girth", "arc", "length", "height", "freesewing", "sum")  # (sum: body_tape_record, C355)
 # every FreeSewing-named measurement tailor.measure can take (tests/test_body_tape keeps it equal to tailor.py's mm keys):
 # garment_plan step 1 checks seam lengths' names against these + the names it defines by kind (t8: 'acrossBack' passed
 # step 1 and was refused here at step 3)
@@ -499,18 +499,20 @@ def draw(tape: Tape, rows: list, path, h: int = 760) -> str:
                 dr.text(c0, str(n + 1), fill=col, font=f_num, anchor="mm")
         dr.text((8, 6), vname, fill=(40, 40, 40), font=_font(24))
         tiles.append(im)
-    lw = 420
+    per = max(1, (h - 50) // 30)  # (rows per key column; more tapes: more columns, every one named: t s3-1 lost 25-26)
+    cw = 420
+    lw = cw * max(1, -(-len(drawn) // per))
     leg = Image.new("RGB", (lw, h), (255, 255, 255))
     dl = ImageDraw.Draw(leg)
     dl.text((10, 8), "tapes (values: the text)", fill=(0, 0, 0), font=_font(22))
     for n, r in enumerate(drawn):
         col = COLOURS[n % len(COLOURS)]
-        y = 44 + 30 * n
-        dl.rectangle([10, y + 2, 34, y + 22], fill=col)
+        x0, y = cw * (n // per), 44 + 30 * (n % per)
+        dl.rectangle([x0 + 10, y + 2, x0 + 34, y + 22], fill=col)
         t = f"{n + 1}  {r['name']}"
-        while dl.textlength(t, font=f_leg) > lw - 50 and len(t) > 6:
+        while dl.textlength(t, font=f_leg) > cw - 50 and len(t) > 6:
             t = t[:-4] + "..."
-        dl.text((44, y), t, fill=(0, 0, 0), font=f_leg)
+        dl.text((x0 + 44, y), t, fill=(0, 0, 0), font=f_leg)
     out = Image.new("RGB", (3 * w + lw + 12, h), (255, 255, 255))
     for i, t in enumerate(tiles):
         out.paste(t, (i * (w + 4), 0))
@@ -543,14 +545,18 @@ def run(name: str, measurements: list | None = None, garment: str = "", landmark
         if not measurements:
             return None, txt + "\nnext: body_tape(name, measurements=[...]) by name; kinds: guide(topic=\"body_tape\")"
     rows, errs = [], []
-    from . import tape_geom
+    from . import body_tape_record as btr, tape_geom
+    sums = [it for it in measurements if isinstance(it, dict) and it.get("kind") == "sum"]
     for it in measurements:
+        if it in sums:
+            continue  # (taken after the tapes they add up: body_tape_record.sums)
         try:
             r = tape.take(it)
             src = dict(r, measure=it.get("measure", r["name"])) if isinstance(it, dict) else r
             rows.append(dict(r, **tape_geom.geometry(tape, src)))  # (F4: where it was taken: its loop or path)
         except TapeError as e:
             errs.append(f"  REFUSED {it.get('name', it) if isinstance(it, dict) else it}: {e}")
+    btr.sums(sums, rows, errs)
     if errs and not rows:
         raise TapeError("\n".join(errs))
     d = store._dir(name) / "tape"
@@ -567,11 +573,6 @@ def run(name: str, measurements: list | None = None, garment: str = "", landmark
     if landmarks:
         txt = landmark_text(tape) + "\n" + txt
     if garment:
-        from . import garment_record as gr
-        try:
-            gr.write(name, garment, "3", "done", output={"body": name, "measurements": rows,
-                                                         "refused": [e.strip() for e in errs]}, look=[look], by="body_tape")
-            txt += f"\nrecord: step 3 (measure) written: {gr.path(name, garment)}"
-        except gr.OrderRefused as e:
-            txt += f"\nrecord: refused: {e}"
+        from . import body_tape_record as btr  # (step 3 of the garment's record: complete, or refused by name)
+        txt += "\n" + btr.write(name, garment, rows, errs, look)
     return look, txt + "\nnext: judge the look for WHERE each tape runs (each where the garment's seam needs it); the values are this text's; a missing one: add it by name"

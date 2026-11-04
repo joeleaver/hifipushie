@@ -107,6 +107,9 @@ you will draft needs a length or a girth on the body; name it and say how it is 
 - {"name", "kind": "length", "from", "to", "via": [...], "over": "surface" | "straight", "side"}; or {"from", "down_to":
   LEVEL, "side": "back" | "front"}: the tailor's tape down the body at the start's x, taut (hpsToWaistBack's way).
 - {"name", "kind": "height", "from", "to"}: vertical between LEVELs or landmarks ("floor").
+- {"name", "kind": "sum", "of": [names taken in the same call]}: a measurement no one tape can take, added from its
+  parts (an armhole: its front and back arcs over the shoulder). Step 3 is written only when it holds every name step 1
+  calls for (a missing one is refused by name); take the draft's own measurements in the same call.
 LEVEL: armpit, chest, waist, high_hip, hips, seat, crotch (tailor's definitions), any landmark's height, {"z": m},
 {"between": [LEVEL, LEVEL], "t": f}, {"at": LEVEL, "dz": m}. Landmarks (landmarks=True lists them with positions and
 how each is found): hps.L, shoulder_point.L, neck_side.L, cf_neck, cb_neck, bust.L, cf_/cb_/side_<level> (.L/.R), crotch,
