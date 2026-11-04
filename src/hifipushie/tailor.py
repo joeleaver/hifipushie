@@ -543,9 +543,11 @@ def measure(V: np.ndarray, faces, J: dict, hps: str | None = None) -> dict:
             if L is None:
                 continue
             xt = x0 + (x1 - x0) * (top_[2] - z) / max(top_[2] - z1, 1e-6)
-            near = L[np.abs(L[:, 0] - xt) < 0.015]
+            near = L[np.abs(L[:, 0] - xt) < 0.015]  # (a tape ~30 mm wide rests on its highest points across)
             if len(near):
-                pts.append(near[np.argmax(sign * near[:, 1])])
+                q = near[np.argmax(sign * near[:, 1])].copy()
+                q[0] = xt  # (C357: the tape on its own line: the highest point's x hopped across the spine's groove
+                pts.append(q)  # each 1 cm, adding 16 mm to hps-to-waist down the back on Garrett: 515 -> 499)
         P = np.array(pts)
         # a tape is TAUT: it bridges the hollows (the lumbar curve, under the shoulder blades, between pecs and
         # belly) and doesn't follow each slice's own bumps. Hugging the surface, hps to the waist down the back read

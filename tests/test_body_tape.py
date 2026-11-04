@@ -186,3 +186,9 @@ def test_an_adapted_name_draws_the_tape_it_came_from(tape):  # (t s3-2: hips = t
     r = tape.take("hips")
     L = tape.lines["hips"]
     assert abs(tailor.length(np.r_[L, L[:1]]) * 1000 - r["mm"]) < 0.03 * r["mm"]
+
+
+def test_a_tape_down_the_back_keeps_its_line(tape):  # (t s3-2: it hopped across the spine's groove, adding length)
+    r = tape.take({"name": "bl", "kind": "length", "from": "cb_neck", "down_to": "crotch", "side": "back"})
+    P = tape.lines["bl"]
+    assert float(np.ptp(P[:, 0])) < 1e-6 and r["mm"] > 0
