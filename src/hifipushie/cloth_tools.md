@@ -107,6 +107,9 @@ you will draft needs a length or a girth on the body; name it and say how it is 
 - {"name", "kind": "length", "from", "to", "via": [...], "over": "surface" | "straight", "side"}; or {"from", "down_to":
   LEVEL, "side": "back" | "front"}: the tailor's tape down the body at the start's x, taut (hpsToWaistBack's way).
 - {"name", "kind": "height", "from", "to"}: vertical between LEVELs or landmarks ("floor").
+- {"name", "kind": "girth", "through": [A, B], "around": "arm.L"}: a tilted girth round a limb's root, in the plane
+  through two landmarks facing along the limb (an armhole: through shoulder_point.L and side_armpit.L; stepped down
+  under B, and said, where the plane first cuts into the torso).
 - {"name", "kind": "sum", "of": [names taken in the same call]}: a measurement no one tape can take, added from its
   parts (an armhole: its front and back arcs over the shoulder). Step 3 is written only when it holds every name step 1
   calls for (a missing one is refused by name); take the draft's own measurements in the same call.
