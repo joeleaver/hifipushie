@@ -213,6 +213,9 @@ class Tape:
 
     # ------------------------------------------------------------------ the kinds
     def _girth(self, it: dict) -> tuple[float, str, np.ndarray]:
+        if "through" in it:  # (a tilted girth round a limb's root: tape_tilted, C359)
+            from . import tape_tilted
+            return tape_tilted.girth(self, it)
         sq = it.get("square_to", "body")
         search = "fullest" if "fullest" in it else "narrowest" if "narrowest" in it else None
         if sq == "body":

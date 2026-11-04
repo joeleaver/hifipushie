@@ -193,3 +193,12 @@ def test_a_tape_down_the_back_keeps_its_line(tape):  # (t s3-2: it hopped across
     r = tape.take({"name": "bl", "kind": "length", "from": "cb_neck", "down_to": "crotch", "side": "back"})
     P = tape.lines["bl"]
     assert float(np.ptp(P[:, 0])) < 1e-6 and r["mm"] > 0
+
+
+def test_a_tilted_girth_round_the_arm_root(tape):  # (C359: the armhole as one tape, not a sum of two arcs)
+    it = {"name": "scye", "kind": "girth", "through": ["shoulder_point.L", "side_armpit.L"], "around": "arm.L"}
+    L, R = tape.take(it)["mm"], tape.take(dict(it, through=["shoulder_point.R", "side_armpit.R"], around="arm.R"))["mm"]
+    chest = tape.R["mm"]["chest"]
+    assert 0.38 < L / chest < 0.48 and abs(L - R) < 3.0, (L, R, chest)
+    with pytest.raises(bt.TapeError, match="around 'elbow'"):
+        tape.take(dict(it, around="elbow"))
