@@ -46,12 +46,16 @@ def _iliac_crest(mm: dict, at: dict) -> dict:
     """FreeSewing's hips: round the body at the top of the hip bones (the iliac crest), and waistToHips from the waist
     down to it. The tape's hips is at the hip joint + 2 cm (its own definition; the seat's window hangs off it); the
     crest's girth and level are the tape's highHip / waistToHighHip (ANSUR II iliocristale height, located from the
-    crotch: tailor.ILIAC_CREST_OVER_CROTCH)."""
+    crotch: tailor.ILIAC_CREST_OVER_CROTCH). C358: FreeSewing gets fsHips / waistToFsHips instead, its own standard
+    sizes' waist-to-hips below the waist (tailor.FS_WAIST_TO_HIPS): on our bodies the crest is only 4-9 cm under the
+    waist, and FreeSewing's drafts hang their hip line and dart ends on ~13 cm."""
     out = {}
-    if "highHip" in mm:
+    if "fsHips" in mm:  # (C358: FreeSewing's own waist-to-hips convention below the waist; the crest is highHip)
+        out["hips"], out["waistToHips"] = float(mm["fsHips"]), float(mm["waistToFsHips"])
+    elif "highHip" in mm:
         out["hips"] = float(mm["highHip"])
-    if "waistToHighHip" in mm:
-        out["waistToHips"] = float(mm["waistToHighHip"])
+        if "waistToHighHip" in mm:
+            out["waistToHips"] = float(mm["waistToHighHip"])
     return out
 
 
