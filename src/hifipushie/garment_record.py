@@ -54,7 +54,7 @@ STEPS = [
 ]
 IDS = [s[0] for s in STEPS]
 # the earlier steps a step reads beyond the one before it (T4: the draft needs step 1's seams AND step 3's measurements)
-READS = {"3": ("1", "2"), "4": ("1", "3")}
+READS = {"2": ("0", "1"), "3": ("1", "2"), "4": ("1", "3")}  # (2: step 0's landmarks and heights too: C352)
 STEP = {s[0]: dict(zip(("id", "key", "what", "tool", "approval", "back_to"), s)) for s in STEPS}
 for _s in STEPS:
     STEP[_s[1]] = STEP[_s[0]]  # (a step by its key too: "draft" == "4")
@@ -256,7 +256,14 @@ def _names(u: dict, ind: str = "    ") -> list:
     for s_, o in ([(sid, u)] if sid is not None else []) + list(rd.items()):
         out.append(f"{ind}step {s_} ({STEP[s_]['key']}):")
         for k, v in (o or {}).items():
-            if isinstance(v, dict):
+            if k == "fit_read" and isinstance(v, dict):  # (t s2-2: step 2 places marks on step 0's picture)
+                lm = {n: (x.get("at") if isinstance(x, dict) else x) for n, x in (v.get("landmarks") or {}).items()}
+                sc = v.get("scale") or {}
+                out.append(f"{ind}  landmarks on view {v.get('view', 0)} (picture px: v, or [u, v]): "
+                           + ", ".join(f"{n} {json.dumps(x)}" for n, x in lm.items()))
+                if sc:
+                    out.append(f"{ind}  scale: " + ", ".join(f"{n} {x}" for n, x in sc.items()))
+            elif isinstance(v, dict):
                 out.append(f"{ind}  {k}: {', '.join(map(str, v)) or 'none'}")
             elif isinstance(v, list):
                 ids = [x if isinstance(x, str) else x.get("id") or x.get("name") if isinstance(x, dict) else None for x in v]

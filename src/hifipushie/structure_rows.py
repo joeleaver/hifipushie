@@ -52,7 +52,8 @@ KINDS = {
     "fall_back_width": dict(desc="the collar fall's depth at CB (back / side view)", units=("mm", "ratio", "px"),
                             base="neck_width", read="collar_fall_cb_width_mm", needs=("collar_fall",),
                             change="the fall's depth at CB (alter_pattern move the fall's CB outer corner)"),
-    "v_depth": dict(desc="an open front's V bottom below the higher collar point", units=("mm", "ratio", "px"),
+    "v_depth": dict(desc="an open neck's V bottom below the higher collar point: where the fronts meet, or, on fronts "
+                         "that never meet (an open jacket), where the lapels' roll lines end (the break) (C352)", units=("mm", "ratio", "px"),
                     base="neck_width", read="v_below_points_mm", needs=("front",),
                     change="the first fastened button (alter_pattern move the front's button marks) or the band's state"),
     "fronts_apart": dict(desc="an open front's gap, front edge to front edge, at a height (front view; at: the two "

@@ -49,8 +49,9 @@ KINDS = {  # the ONE vocabulary of traced edges (garment_plan validates against 
     "outline": dict(roles=None, facing=False, desc="any free edge of the garment as seen (every piece)"),
     "roll_line": dict(roles=("front", "facing", "collar", "collar_fall"), facing=True, fold=True,
                       desc="a fold where cloth turns back on itself as worn (a lapel's roll line, a turned-back cuff's "
-                           "fold): its course and where it ends (the break: a corner); not a free edge, so step 6 "
-                           "reports it UNMEASURED until fold lines are compared (C351)"),
+                           "fold): its course, from its top to where it ends (the break) as the trace's first and last "
+                           "points (corners are only turns between them); not a free edge, so step 6 reports it "
+                           "UNMEASURED until fold lines are compared (C351, C352)"),
 }
 MARKS = ("hps", "shoulder", "neck_side", "bust", "elbow", "wrist", "cf_neck", "cb_neck", "armpit_z", "chest_z", "waist_z",
          "high_hip_z", "hips_z", "seat_z", "crotch_z")

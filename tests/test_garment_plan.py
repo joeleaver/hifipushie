@@ -212,6 +212,7 @@ def test_record_lists_what_the_next_step_uses_by_name(home):  # (t s2-1: the JSO
     gp.write("m", "w", "parts", p, look=False)
     a = gr.answer("m", "w")
     assert "closures: front" in a and "pieces: front.L, front.R, back" in a and "long_measurement_name_29" in a
+    assert "step 0 (read):" in a and "landmarks on view 0 (picture px: v, or [u, v]): chest 100, waist 150" in a  # (C352)
 
 
 # ---------------------------------------------------------------- fix run F2 (t8 findings 4, 6, 7)
