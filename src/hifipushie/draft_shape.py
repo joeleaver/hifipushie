@@ -225,26 +225,49 @@ def fall_rows(B: dict, decl: dict, step1: dict) -> dict:
 
 
 def cap_rows(B: dict, decl: dict, step1: dict) -> dict:
+    """shape_cap, ONE row per sleeve (C361): the arm pieces sewn to each other are one sleeve (a two-piece sleeve's top +
+    under), its cap = every edge of them sewn to the torso, its height over the deepest of their torso partners' armhole
+    spans (t s4-1: each of three cap edges was judged alone against its own panel)."""
     vals, why = [], []
     on = lambda e, w: str((B["pieces"][e.split(":", 1)[0]].get("wrap") or {}).get("to", "")).startswith(w)
+    pc = lambda e: e.split(":", 1)[0]
+    caps, arm_links = [], []
     for A, Bs in _seam_pairs(B):
-        for cap, arm in ((A, Bs), (Bs, A)):
-            if not (all(on(e, "arm") for e in cap) and all(on(e, "torso") for e in arm)):
-                continue
-            h = float(np.ptp(np.concatenate([_pts(B, e) for e in cap])[:, 1]))
-            pcs = {e.split(":", 1)[0] for e in arm}
-            dep = max(float(np.ptp(np.concatenate([_pts(B, e) for e in arm if e.startswith(q + ":")])[:, 1])) for q in pcs)
-            r = h / dep
-            nm = "+".join(sorted({e.split(":", 1)[0] for e in cap}))
-            vals.append(f"{nm}: cap {1000 * h:.0f} / armhole depth {1000 * dep:.0f} mm = {r:.2f}")
-            if not CAP[0] <= r <= CAP[1]:
-                why.append(f"{nm}: cap height {r:.2f} x the armhole depth (target [{CAP[0]:.2f}, {CAP[1]:.2f}]). change: "
-                           f"{'raise' if r < CAP[0] else 'lower'} the cap (extend brian's sleeve / bent's two-piece sleeve "
-                           "and set its sleevecapHeight-type option)")
+        for cap, body in ((A, Bs), (Bs, A)):
+            if all(on(e, "arm") for e in cap) and all(on(e, "torso") for e in body):
+                caps.append((cap, body))
+        if all(on(e, "arm") for e in A + Bs):
+            arm_links.append({pc(e) for e in A + Bs})
+    groups: list = []  # (arm pieces joined by seams: one sleeve)
+    for cap, _ in caps:
+        groups.append({pc(e) for e in cap})
+    for link in arm_links:
+        groups.append(set(link))
+    merged = []
+    for g in groups:
+        for m in [m for m in merged if m & g]:
+            g |= m
+            merged.remove(m)
+        merged.append(g)
+    for g in merged:
+        mine = [(c, b) for c, b in caps if {pc(e) for e in c} <= g]
+        if not mine:
+            continue
+        ce = [e for c, _ in mine for e in c]
+        be = [e for _, b in mine for e in b]
+        h = float(np.ptp(np.concatenate([_pts(B, e) for e in ce])[:, 1]))
+        dep = max(float(np.ptp(np.concatenate([_pts(B, e) for e in be if pc(e) == q])[:, 1])) for q in {pc(e) for e in be})
+        r = h / dep
+        nm = "+".join(sorted(g))
+        vals.append(f"{nm}: cap {1000 * h:.0f} / armhole depth {1000 * dep:.0f} mm = {r:.2f}")
+        if not CAP[0] <= r <= CAP[1]:
+            why.append(f"{nm}: cap height {r:.2f} x the armhole depth (target [{CAP[0]:.2f}, {CAP[1]:.2f}]). change: "
+                       f"{'raise' if r < CAP[0] else 'lower'} the cap (extend brian's sleeve / bent's two-piece sleeve "
+                       "and set its sleevecapHeight-type option)")
     return {"id": "shape_cap", "status": ("FAIL" if why else "PASS") if vals else "INFO",
-            "value": "; ".join(vals) if vals else "no set-in sleeve", "why": "; ".join(why),
+            "value": "; ".join(vals) if vals else "no set-in sleeve",
             "target": f"cap height / armhole depth in [{CAP[0]:.2f}, {CAP[1]:.2f}] (brian 0.52, bent 0.72)",
-            "change": "; ".join(w.split("change: ", 1)[-1] for w in why), "back_to": "4"}
+            "why": "; ".join(why), "change": "; ".join(x.split("change: ", 1)[-1] for x in why), "back_to": "4"}
 
 
 def seam_curve_rows(B: dict, decl: dict, step1: dict) -> dict:

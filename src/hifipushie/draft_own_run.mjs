@@ -37,6 +37,11 @@ const err = (out.logs.error || []).join('\n')
 const at = err.match(/design\.mjs:(\d+)/)
 if (at) out.logs.line = Number(at[1])
 out.measurements = [...new Set(Object.values(pattern.config?.parts || {}).flatMap((p) => p.measurements || []))]
+// (C361) measurements are step 3's: one the design sets or changes, or a part reads that isn't there, is reported
+const M = (pattern.settings && pattern.settings[0] && pattern.settings[0].measurements) || {}
+out.measurements_set = Object.keys(M).filter((k) => !(k in req.measurements) || M[k] !== req.measurements[k])
+out.measurements_missing = [...new Set(logs('warn').map((w) => (w.match(/access `measurements\.(\w+)` but it is `undefined`/) || [])[1])
+  .filter(Boolean))]
 for (const [pn, part] of Object.entries(pattern.parts[0] || {})) {
   if (part.hidden) continue
   const points = {}

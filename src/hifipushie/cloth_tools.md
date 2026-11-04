@@ -180,7 +180,16 @@ design, no recipe; src/hifipushie/draft_own.py's docstring is the spec). Needs s
   order], "b": ..., "ease": [lo, hi] (a over b - 1), "why"}] (every step-1 seam; a seam sewn to several edges is one
   chain); `stiff` [piece]; `folds` [{"name", "piece", "line": [p, q] | edge, "kind": "press" | "roll"}] (a step-1 seam of
   kind fold is a fold named like its edge); `closures` [{"name", "kind", "over", "under", "edge": {"over": edge,
-  "under": edge}, "at": [[hole mark, button mark]]}]; `omit` {piece: why} (a built step-1 piece you don't cut).
+  "under": edge}, "at": [[hole mark, button mark]]}] (an edge: a declared edge name, or "pointA>pointB" /
+  "a>via>b" along the piece's outline); `omit` {piece: why} (a built step-1 piece you don't cut); `darts` [{"piece",
+  "legs": [edge, edge]}]: a dart OPEN on the outline (the seam path in to its tip and out), each leg declared
+  "outline point>tip", sewn to each other (a dart drawn inside the piece isn't sewn: cut it into the outline);
+  `marks` {detail: mark | [marks]}: WHERE each built step-1 detail sits (a closure's buttons are its own marks): a
+  mark = {"piece", "mirror"?: true (again on the .L <-> .R piece), and ONE of: "at": [{"point": name, "dx", "dy"} |
+  {"edge": edge, "mm" | "t", "in"}], "rows": {"edge", "count", "from_mm" | "from_t", "pitch_mm" | "pitch_t" |
+  "to_mm" | "to_t", "in"}, "points": "button*" (the part's named points), "follows": ["piece:edge"] (a strip along
+  edges), "path": [positions]}; positions only (size, kind, colour are step 7's). A measurement the design reads
+  that step 3 lacks, or one the design sets, is refused: retake step 3 with it by name.
   Example: `{"pieces": {"back": {"part": "my.back", "fold": "x0", "place": {"to": "torso", "side": "back"}}}, "edges":
   {"back": {"side.L": "hem>armhole"}}, "seams": [{"a": "front.L:side", "b": "back:side.L"}]}`.
 - Refused by name (nothing written): a step-1 seam with no drafted edge or not sewn, a piece not in step 1, a built piece
