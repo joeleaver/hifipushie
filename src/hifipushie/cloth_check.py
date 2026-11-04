@@ -329,7 +329,8 @@ def report(Bp: dict, garment_kind: str = "") -> list:
         line = (f"{flag}{r['kind']:<13} {r['len_a_mm']:7.1f} vs {r['len_b_mm']:7.1f} mm  ease {100 * r['ease']:+5.1f}% "
                 f"(band {100 * r['band'][0]:+.1f}..{100 * r['band'][1]:+.1f})  {name(r['a'])} || {name(r['b'])}")
         if r["notches_off"]:
-            line += "  notches off: " + ", ".join(f"{a}~{b} {d} mm" for a, b, d in r["notches_off"])
+            line += "  notches off: " + ", ".join(f"{a}~{b} {d} mm" for a, b, d in r["notches_off"]) + \
+                " (notches are the parts' FreeSewing notch snippets, not outline points: move or remove the snippet)"
         out.append(line)
     return out
 
@@ -1323,6 +1324,9 @@ def gate_rows(Bp: dict, items: list, ctx=None, gname: str = "", refs: dict | Non
     bad = [r for r in sm if not r["ok"] or r["notches_off"]]
     rows.append({"id": "seams", "stage": 2, "status": "FAIL" if bad else "PASS", "measure": "cloth_check.seams",
                  "ours": f"{len(sm)} seams, {len(bad)} outside their ease band or with notches off",
+                 "notches": "a notch is a part's FreeSewing notch SNIPPET (a mark named *notch*: `snippets.x = new "
+                            "Snippet('notch', point)`), never an outline point; each must land on its partner's within "
+                            "4 mm along the seam: move it, or remove a base's snippet you no longer sew to (C365)",
                  "detail": [f"{r['a']} || {r['b']}: ease {100 * r['ease']:+.1f}% band {r['band']} notches {r['notches_off']}"
                             for r in bad][:12]})
     # pattern truing: every seam end's joined edge turns <= TRUE_DEG (garment key "truing_corners": seam ends that are

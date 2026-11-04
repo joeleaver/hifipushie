@@ -163,7 +163,10 @@ design, no recipe; src/hifipushie/draft_own.py's docstring is the spec). Needs s
   topsleeve, undersleeve). A part: `{ name, from: back, hide: { from: true, inherited: true }, after, measurements,
   options, draft: ({ points, Point, paths, Path, snippets, Snippet, store, measurements, options, part }) => part }`.
   Each visible part draws `paths.seam` (the closed sewing line, mm, y down); hide the inherited paths you don't sew.
-  Button marks: `snippets.btn1 = new Snippet('button', point)`. End with `export default new Design({ parts: [...] })`.
+  Button marks: `snippets.btn1 = new Snippet('button', point)`; NOTCHES are `new Snippet('notch', point)` snippets,
+  never outline points: the seam check matches each to its partner's (within 4 mm), so move or drop a base's notch
+  you no longer sew to. A part made `from:` another does NOT inherit its `after:` (FreeSewing): list the parts it
+  must be drafted after again, or the draft order breaks. End with `export default new Design({ parts: [...] })`.
   REUSE FreeSewing's parts for a role it already drafts (simon collarStand / collar / cuff, jaeger / carlton collar
   parts, bent's two-piece sleeve, brian's sleeve): `{ name: 'my.band', from: collarStand, after: [front], draft:
   ({ part }) => part }` with its options overridden (options.json / `options`): FreeSewing's parts carry a patternmaker's
@@ -179,7 +182,8 @@ design, no recipe; src/hifipushie/draft_own.py's docstring is the spec). Needs s
   cut as a mirrored pair; "mirror" only flips one piece and copies no edges), "mirror", "cut", "grain", "place": {"to": "torso" | "arm.L" | "neck", "side", ...}}}; `edges` {piece:
   {edge: "a>b" | "a>via>b" (outline points) | {"path": a path of the part}}}; `seams` [{"a": "piece:edge" | [chain in
   order], "b": ..., "ease": [lo, hi] (a over b - 1), "why"}] (every step-1 seam; a seam sewn to several edges is one
-  chain); `stiff` [piece]; `folds` [{"name", "piece", "line": [p, q] | edge, "kind": "press" | "roll"}] (a step-1 seam of
+  chain: a two-piece sleeve's cap edges against the armhole's front, side and back as ONE seam [cap chain] = [armhole
+  chain], when its seams don't land on the body's); `stiff` [piece]; `folds` [{"name", "piece", "line": [p, q] | edge, "kind": "press" | "roll"}] (a step-1 seam of
   kind fold is a fold named like its edge); `closures` [{"name", "kind", "over", "under", "edge": {"over": edge,
   "under": edge}, "at": [[hole point, button point]]}] (the part's point NAMES, e.g. a snippet's anchor; C363) (an edge: a declared edge name, or "pointA>pointB" /
   "a>via>b" along the piece's outline); `omit` {piece: why} (a built step-1 piece you don't cut); `darts` [{"piece",
