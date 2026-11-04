@@ -248,6 +248,24 @@ def _uses(rec: dict, sid: str) -> dict | None:
     return u
 
 
+def _names(u: dict, ind: str = "    ") -> list:
+    """What a step uses, BY NAME and in full (t s2-1: the JSON was cut at 300 characters, so the closure and piece names
+    had to be read from the record file): each part's names, a list's count, a short value as is."""
+    out, u = [], dict(u)
+    sid, rd = u.pop("step", None), u.pop("reads", None) or {}
+    for s_, o in ([(sid, u)] if sid is not None else []) + list(rd.items()):
+        out.append(f"{ind}step {s_} ({STEP[s_]['key']}):")
+        for k, v in (o or {}).items():
+            if isinstance(v, dict):
+                out.append(f"{ind}  {k}: {', '.join(map(str, v)) or 'none'}")
+            elif isinstance(v, list):
+                ids = [x if isinstance(x, str) else x.get("id") or x.get("name") if isinstance(x, dict) else None for x in v]
+                out.append(f"{ind}  {k}: " + (", ".join(map(str, ids)) if ids and all(ids) else f"{len(v)} items"))
+            elif len(str(v)) <= 80:
+                out.append(f"{ind}  {k}: {v}")
+    return out
+
+
 def reads(model: str, garment: str, step) -> dict:
     """{step: output} of every earlier step this one reads (READS, else the step before it). Refused by name (OrderRefused)
     when one isn't ready: a step consumes only ready outputs."""
@@ -297,7 +315,8 @@ def answer(model: str, garment: str) -> str:
     n = next_step(rec)
     if n["step"] is None:
         return "\n".join(lines + ["next: nothing: every step is ready"])
-    lines.append(f"  {n['why']}; it uses: {json.dumps(n['uses'], default=str)[:300] if n['uses'] else 'nothing before it'}")
+    lines.append(f"  {n['why']}; it uses: " + ("nothing before it" if not n["uses"] else ""))
+    lines += _names(n["uses"]) if n["uses"] else []
     return "\n".join(lines + [f"next: {n['call']}"])
 
 

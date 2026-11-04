@@ -3,9 +3,10 @@
 Step 0: the colour samples (ringed, with the sampled swatch).
 Step 1: pieces outlined, labelled in a margin; SEEN solid, OCCLUDED dashed, INFERRED dotted; omitted pieces grey; hidden
 edges thin dashed; edge ends dotted; details as rings or outlines in the same line style.
-Steps 0 and 1 carry a KEY of the line styles only (C344, Joe 2026-11-03: agents aren't meant to read text off a
+Steps 0, 1 and 2 carry a KEY of the line styles only (C344, Joe 2026-11-03: agents aren't meant to read text off a
 picture): every name, value and source is in garment_plan's text answer.
-Step 2: the judged rows' marks (yellow) with their targets; the closures' states, the bends and the pose in the legend.
+Step 2: the judged rows' marks (yellow), the traced edges (cyan, corners ringed) and the body marks (magenta dots),
+named in the margins; the same key-only rule (C351, t s2-1: values and labels on the picture covered the collar).
 Saved in the record's look directory (garment_record.look_dir) as step<id>_<key>_v<view>.png.
 Shape first (C288: pictures are for shape, text is for numbers): labels on the picture are large names only, never
 overlapping (a label that would overlap moves); targets and numbers are in garment_plan's text answer, which lists
@@ -142,7 +143,7 @@ def draw(model: str, garment: str, sid: str, plan: dict, read: dict, parts: dict
         d = ImageDraw.Draw(im)
         fn = {"0": _read, "1": _parts, "2": _style}[sid]
         legend = fn(d, s, vi, plan, read, parts)
-        if sid == "1":  # (margins both sides for the labels: C343, C348)
+        if sid in ("1", "2"):  # (margins both sides for the labels: C343, C348, C351)
             pad = Image.new("RGB", (im.size[0] + 2 * MARG, im.size[1]), (24, 25, 28))
             pad.paste(im, (MARG, 0))
             im = pad
@@ -216,33 +217,33 @@ def _tgt(t: dict) -> str:
 
 
 def _style(d, s, vi, plan, read, parts):
-    leg = [(f"pose: {plan['pose']['name']}", WHITE)]
-    leg += [(f"closure {c}: {x['state']}" + (f" ({x['detail']})" if x.get("detail") else ""), YEL)
-            for c, x in plan["state"].items()]
-    leg += [(f"bend {b.get('id', '')} on {b['on']}: {_tgt(b['target'])}", (120, 255, 140)) for b in plan.get("bends") or []]
-    leg.append(("judged rows (yellow on the picture):", WHITE))
+    """Shape only (C288, C344, C351): the judged rows' marks, the traced edges and the body marks, each named in a margin;
+    a key of line styles; every target, state, bend and source is in the text answer."""
+    from .structure_rows import KINDS
+    CY, MAG = (60, 230, 255), (255, 80, 220)
+    leg = [("yellow = a judged row's marks (a line: what it", YEL), ("   measures across; rings alone: points)", YEL),
+           ("cyan = a traced edge of the reference", CY), ("cyan ring = a traced corner", CY),
+           ("magenta dot = a body mark (from step 0)", MAG), ("", WHITE),
+           ("targets, states, bends, pose, sources:", GREY), ("the text answer", GREY)]
     for r in plan["rows"]:
         if r.get("at") and r.get("view", 0) == vi:
             P = [(u * s, v * s) for u, v in r["at"]]
-            _line(d, P, YEL, 3, None)
+            if len(P) > 1 and not (KINDS.get(r.get("what")) or {}).get("points"):
+                _line(d, P, YEL, 3, None)
             for u, v in P:
-                _ring(d, u, v, 5, YEL, None)
-            _label(d, (P[-1][0] + 8, P[-1][1] - 12), r["id"], YEL)  # (the target is the text's)
-        leg.append((f"  {r['id']}: {_tgt(r['target'])}" + ("" if r.get("at") else " (not marked)"), YEL))
-    CY, MAG = (60, 230, 255), (255, 80, 220)
-    if plan.get("traces"):
-        leg.append(("traced edges (cyan; corners ringed, body marks magenta):", CY))
+                _ring(d, u, v, 6, YEL, None)
+            for u, v in (P if (KINDS.get(r.get("what")) or {}).get("points") else P[-1:]):
+                _mlabel(d, (u, v), r["id"], YEL)
     for t in plan.get("traces") or []:
         if t.get("view", 0) == vi:
             P = [(u * s, v * s) for u, v in t["points"]]
             _line(d, P, CY, 3, None)
             for k in t.get("corners") or []:
-                _ring(d, *P[k], 9, CY, None)
-            _label(d, (P[0][0] + 8, P[0][1] - 30), t["id"], CY)
-        leg.append((f"  {t['id']}: {t['what']}" + ("" if t.get("view", 0) == vi else f" (on view {t.get('view', 0)})"), CY))
+                if isinstance(k, int) and 0 <= k < len(P):
+                    _ring(d, *P[k], 9, CY, None)
+            _mlabel(d, P[len(P) // 2], t["id"], CY)
     for m in plan.get("body_marks") or []:
         if m.get("view", 0) == vi:
-            for k, (u, v) in m["at"].items():
-                _ring(d, u * s, v * s, 6, MAG, None)
-                _label(d, (u * s + 8, v * s - 34), k, MAG)
+            for u, v in m["at"].values():
+                d.ellipse([u * s - 4, v * s - 4, u * s + 4, v * s + 4], fill=MAG)
     return leg

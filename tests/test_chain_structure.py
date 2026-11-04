@@ -69,7 +69,7 @@ def test_unknown_what_refused_with_the_list():
     parts = {"pieces": {"collar": {}}, "details": {}, "closures": {"front": {"pieces": ["collar"]}}}
     base = {"state": {"front": {"state": "closed", "source": "f"}}, "pose": {"name": "arms down", "source": "f"},
             "bends": [], "rows": [{"id": "x", "what": "points spread nicely", "target": {"value": 1, "unit": "mm"},
-                                   "source": "f"}]}
+                                   "source": "f"}], "traces": [{"id": "hem", "what": "hem", "view": 0, "points": [[10, 90], [20, 92], [30, 92], [40, 90]], "source": "f"}]}
     with pytest.raises(gp.PlanRefused) as e:
         p(base, read, parts)
     assert "not a row kind" in str(e.value) and "collar_points_apart" in str(e.value) and "trim_row_pitch" in str(e.value)
@@ -84,6 +84,7 @@ def test_unknown_what_refused_with_the_list():
     with pytest.raises(gp.PlanRefused, match="bends.0. b.what None"):  # a numeric bend names its kind
         p(base, read, parts)
     base["bends"][0]["what"] = "collar_tilt"
+    base["body_marks"] = [{"view": 0, "at": {"cf_neck": [25, 20]}, "source": "f (no step-0 fit)"}]
     p(base, read, parts)
 
 

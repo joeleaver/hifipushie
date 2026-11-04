@@ -52,9 +52,12 @@ STEP 2 "style": {state, bends, pose, rows, layers?, drape?}
   rows   [{id, what, target: {value, unit, tol?, of?} | {is}, source, note?, view?, at?: [[u,v],..]}]  (what the photo
           judges: the structure gate's targets). what = a structure_rows.KINDS kind (refused otherwise, with the list); a
           ratio is OF the kind's base (its name or a row id of it); a numeric bend names its kind in "what" too (C286)
-  traces [{id, what, view, points [[u,v],..], corners [indices], source}] + body_marks [{view, at: {landmark: [u,v]},
-          source}]  (T15, C299: the reference's key edges traced on a view, what = a structure_outline.KINDS edge; step 6
-          compares the build's outline in that view with them in mm: structure_outline.py is the spec)
+  traces [{id, what, view, points [[u,v],..] (>= 4, in order along the edge), corners [indices of the points where the
+          edge turns sharply: a lapel's notch, a cutaway's tip], source}]  REQUIRED: the reference's key edges (hem, front
+          edges, collar, sleeve ends, a roll line...) traced on a view, what = a trace kind (listed on a refusal); step 6
+          compares the build's outline in that view with them in mm (T15, C299, C351)
+  body_marks [{view, at: {landmark: [u,v]}, source}]  only for a view step 0 didn't fit: the fit view is placed by step
+          0's own landmarks (C351)
 """
 from __future__ import annotations
 
@@ -382,8 +385,15 @@ def check_style(p: dict, read: dict, parts: dict) -> dict:
         if r.get("at") is not None and not (_uv_list(r["at"]) and isinstance(r.get("view", 0), int)
                                             and 0 <= r.get("view", 0) < nv):
             bad.append(f"{w}.at: [[u, v], ...] on view (a step-0 view index)")
-    from . import chain_drape as cd, structure_outline as so
-    so.check_plan(p, read, bad)  # (T15: traced edges + the body marks that place the view)
+    from . import chain_drape as cd, structure_marks as sm, structure_outline as so
+    m0, own = sm.from_read(read, parts.get("centre")), p.get("body_marks") or []
+    own = [m for m in own if not (isinstance(m, dict) and m.get("from_step0"))] if isinstance(own, list) else own
+    if m0 and isinstance(own, list):  # (C351: the fit view is placed by step 0's own landmarks, never marked again)
+        if any(isinstance(m, dict) and m.get("view", 0) == m0["view"] for m in own):
+            bad.append(f"body_marks: view {m0['view']} is placed by step 0's fit landmarks (approved: "
+                       f"{', '.join(sorted(m0['at']))}); leave them out (body_marks only for a view step 0 didn't fit)")
+        p["body_marks"] = [m0] + [m for m in own if isinstance(m, dict) and m.get("view", 0) != m0["view"]]
+    so.check_plan(p, read, bad)  # (T15: traced edges, required: C351; the body marks that place the view)
     if p.get("blockin") is not None:  # (F9: the garment as worn, an SDF block-in: garment_blockin's docstring)
         from .garment_blockin import validate as _bv
         bad += _bv(p["blockin"])
@@ -396,7 +406,8 @@ def check_style(p: dict, read: dict, parts: dict) -> dict:
                        f"{k['needs_drape']}; step 1 / 2 have none ({sr.stage_kinds()})")
     bad += pixel_errors(p, read.get("views"))
     if bad:
-        raise PlanRefused("step 2 (style) refused:\n  " + "\n  ".join(bad))
+        raise PlanRefused("step 2 (style) refused:\n  " + "\n  ".join(bad) + "\n" + form("2") + "\n  row kinds (what): "
+                          + sr.vocabulary() + "\n  trace kinds (what): " + so.vocabulary())  # (t s2-1: C351)
     return p
 
 

@@ -65,7 +65,9 @@ def _style():
             "pose": {"name": "arms down", "source": "front view"},
             "rows": [{"id": "width", "what": "trim_lines_apart", "note": "the two binding lines apart",
                       "target": {"value": 0.5, "unit": "ratio", "of": "shoulder_width"},
-                      "source": "front view", "view": 0, "at": [[50, 150], [150, 150]]}]}
+                      "source": "front view", "view": 0, "at": [[50, 150], [150, 150]]}],
+            "traces": [{"id": "hem", "what": "hem", "view": 0, "points": [[50, 250], [100, 240], [150, 250], [160, 251]],
+                        "corners": [1], "source": "front view: the hem"}]}
 
 
 def _refused(fn, *names):
@@ -171,18 +173,45 @@ def test_the_tool_through_call_tool(home):
 
 
 def test_style_traces_refused_by_name_then_written_and_drawn(home):
-    """T15 (C299): traced edges + body marks at step 2: refused by name, then written, listed and drawn."""
+    """T15 (C299, C351): traced edges at step 2, required; the fit view placed by step 0's own landmarks."""
     gp.write("m", "w", "read", _read(home), look=False)
     gp.write("m", "w", "parts", _parts(), look=False)
-    tr = {"id": "hem", "what": "hem", "view": 0, "points": [[50, 250], [100, 240], [150, 250], [160, 251]], "corners": [1],
-          "source": "front view: the hem"}
+    tr = _style()["traces"][0]
+    _refused(lambda: gp.write("m", "w", "style", dict(_style(), traces=[dict(tr, what="hemline")])),
+             "traces[0] hem.what", "hemline", "the form:", "trace kinds (what): hem:", "row kinds (what):")
+    _refused(lambda: gp.write("m", "w", "style", dict(_style(), traces=[])), "traces: required")
     marks = [{"view": 0, "at": {"hps.L": [120, 50], "hps.R": [80, 50]}, "source": "front view"}]
-    st = dict(_style(), traces=[dict(tr, what="hemline")], body_marks=marks)
-    _refused(lambda: gp.write("m", "w", "style", st), "traces[0] hem.what", "hemline")
-    st = dict(_style(), traces=[tr])
-    _refused(lambda: gp.write("m", "w", "style", st), "body_marks: view 0 needs two landmarks")
-    r = gp.write("m", "w", "style", dict(_style(), traces=[tr], body_marks=marks))
+    _refused(lambda: gp.write("m", "w", "style", dict(_style(), body_marks=marks)),
+             "body_marks: view 0 is placed by step 0's fit landmarks")
+    r = gp.write("m", "w", "style", _style())
+    m = r["plan"]["body_marks"]
+    assert len(m) == 1 and m[0]["from_step0"] and m[0]["at"] == {"chest_z": [100.0, 100.0], "waist_z": [100.0, 150.0]}
     assert r["look"] and "trace hem (hem) on view 0: 4 points" in gp.text("m", "w", r)
+    r = gp.write("m", "w", "style", r["plan"])  # (the written plan, sent back as is: its step-0 marks aren't "given")
+    assert len(r["plan"]["body_marks"]) == 1
+
+
+def test_body_marks_from_step0_sides_and_inferred():
+    from hifipushie import structure_marks as sm
+    read = {"views": [{"view": "front"}], "fit_read": {"view": 0, "landmarks": {
+        "chest": 100, "waist": {"at": 150, "from": "covered"}, "wrist": [[20, 300], [180, 300]]}}}
+    m = sm.from_read(read, centre=100)
+    assert m["at"] == {"chest_z": [100.0, 100.0], "wrist.R": [20.0, 300.0], "wrist.L": [180.0, 300.0]}  # (front: L right)
+    read["views"][0]["view"] = "back"
+    assert sm.from_read(read, centre=100)["at"]["wrist.L"] == [20.0, 300.0]
+    read["fit_read"]["landmarks"] = {"chest": 100, "waist": {"at": 150, "from": "covered"}}  # (one seen: inferred added)
+    assert set(sm.from_read(read, centre=100)["at"]) == {"chest_z", "waist_z"}
+
+
+def test_record_lists_what_the_next_step_uses_by_name(home):  # (t s2-1: the JSON was cut at 300 characters)
+    from hifipushie import garment_record as gr
+    gp.write("m", "w", "read", _read(home), look=False)
+    p = _parts()
+    for k in range(30):
+        p["define"][f"long_measurement_name_{k}"] = "length"
+    gp.write("m", "w", "parts", p, look=False)
+    a = gr.answer("m", "w")
+    assert "closures: front" in a and "pieces: front.L, front.R, back" in a and "long_measurement_name_29" in a
 
 
 # ---------------------------------------------------------------- fix run F2 (t8 findings 4, 6, 7)

@@ -5,7 +5,8 @@ shirt convention) or read from a README. The garment record now carries the targ
 names the ONE worn state per closure, bends with targets and `rows` (what the reference photo judges). So the gate's rows
 come from the record, and only general rules (true of every garment) are added with the rule as their source.
 
-KINDS: a row's "what" is one of these (garment_plan refuses any other, with this list). Each kind says what it is, the
+KINDS (points=True: its `at` marks separate points, one per side, never a line between them; t s2-1 drew a sleeve
+end from wrist to wrist across the body): a row's "what" is one of these (garment_plan refuses any other, with this list). Each kind says what it is, the
 units its target may take, the base its ratios are OF (another kind, read on the build), and the build reading that
 measures it (chain_structure.reads). A kind with no reading yet (`read` None) gives an UNMEASURED row that names what
 is missing: it never silently passes. BASES are the kinds a ratio is taken of; a row of a base kind is a base, not judged.
@@ -54,6 +55,11 @@ KINDS = {
     "v_depth": dict(desc="an open front's V bottom below the higher collar point", units=("mm", "ratio", "px"),
                     base="neck_width", read="v_below_points_mm", needs=("front",),
                     change="the first fastened button (alter_pattern move the front's button marks) or the band's state"),
+    "fronts_apart": dict(desc="an open front's gap, front edge to front edge, at a height (front view; at: the two "
+                              "edge points on one row, the row named in note: a landmark or a step-0 height)",
+                         units=("mm", "ratio", "px"), base="shoulder_width", read=None,
+                         missing="no fronts-apart reading yet (C351)",
+                         change="the closure's state (style plan) or the fronts' widths at CF (alter_pattern)"),
     "front_edge_plumb": dict(desc="a closed front's edge off vertical (worst 40 mm stretch: kinks show)", units=("deg",),
                              read="front_edge_kink_deg", needs=("front",),
                              change="the fronts' lengths either side of CF (alter_pattern match) or the button spacing; "
@@ -61,18 +67,21 @@ KINDS = {
     "hem_front_back": dict(desc="the back hem above (+) the front hem at CB / CF", units=("mm", "ratio", "px"),
                            base="closure_length", read="hem_cf_cb_mm", needs=("front", "back"),
                            change="the front and back lengths at CF / CB (alter_pattern move the hem points)"),
-    "sleeve_end": dict(desc="the sleeve's end past (+) the wrist joint along the arm", units=("mm",),
+    "sleeve_end": dict(points=True, desc="the sleeve's end past (+) the wrist joint along the arm (one arm: at = its sleeve end "
+                            "point, never a line across the body)", units=("mm",),
                        read="sleeve_past_wrist_mm", needs=("sleeve",),
                        change="alter_pattern move the sleeve's hem points (or the cuff depth); else the RINGS stage"),
-    "cuff_ease": dict(desc="the cuff's girth less the wrist's", units=("mm",), read="cuff_ease_mm", needs=("cuff",),
+    "cuff_ease": dict(points=True, desc="the cuff's girth less the wrist's", units=("mm",), read="cuff_ease_mm", needs=("cuff",),
                       change="alter_pattern scale the cuff's length (or move its button mark)"),
-    "garment_length": dict(desc="where the hem ends on the body (a landmark: waist, high hip, hip, seat...)",
+    "garment_length": dict(points=True, desc="where the hem ends on the body, at the side seam (a landmark: waist, high hip, hip, "
+                                "seat...; at: the hem point at the side)",
                            units=("mm", "ratio", "px"), base="closure_length", read=None,
                            missing="no hem-at-landmark reading yet", change="the body length (alter_pattern)"),
-    "cutaway_drop": dict(desc="a cutaway front's points below the closure's end", units=("mm", "ratio", "px"),
+    "cutaway_drop": dict(desc="a cutaway front's lowest points below the closure's end (the lowest fastening, or where "
+                              "the fronts part), measured straight down; at: the closure's end and the lowest point", units=("mm", "ratio", "px"),
                          base="closure_length", read="cutaway_drop_mm",
                          change="the front's hem points (alter_pattern move the cutaway's tip) or the closure's end"),
-    "trim_row_count": dict(desc="rows of a trim (frogging, buttons, braid) per side", units=("count",), read=None,
+    "trim_row_count": dict(points=True, desc="rows of a trim (frogging, buttons, braid) per side", units=("count",), read=None,
                            missing="no trims on chain builds yet (T10)", change="the detail's count (step 1)"),
     "trim_row_pitch": dict(desc="the spacing of a trim's rows", units=("mm", "ratio", "px"), base="closure_length",
                            read=None, missing="no trims on chain builds yet (T10)", change="the detail's placement"),
