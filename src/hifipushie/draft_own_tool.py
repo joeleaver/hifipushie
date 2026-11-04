@@ -82,6 +82,30 @@ def check_text(name: str, garment: str) -> str:
     return "\n".join(lines) + ("\nnext: chain_garment" if v == "PASS" else "\nnext: fix the rows with draft_pattern")
 
 
+def option_errors(options: dict, cfg: dict) -> list:
+    """Each given option against the design's own config (pattern_parts): a known name, inside its range. A pct option
+    is a FRACTION here (FreeSewing's own unit: 4 % = 0.04) though its config reads in %: t s4-2 gave 4 and drafted a cap
+    three times the size; a value outside [min, max] is refused with the fraction it would be."""
+    bad = []
+    for k, v in options.items():
+        o = cfg.get(k)
+        if o is None:
+            bad.append(f"options.{k}: not an option of this design (pattern_parts(design) lists them)")
+            continue
+        if "constant" in o or not isinstance(v, (int, float)) or isinstance(v, bool):
+            continue
+        for unit, scale in (("pct", 100.0), ("deg", 1.0), ("mm", 1.0), ("count", 1.0)):
+            if o.get(unit) is None:
+                continue
+            lo, hi = o.get("min"), o.get("max")
+            if lo is not None and hi is not None and not lo / scale - 1e-9 <= v <= hi / scale + 1e-9:
+                hint = (f" (a pct option is a fraction: {lo}..{hi} % = {lo / 100:g}..{hi / 100:g}; did you mean "
+                        f"{v / 100:g}?)" if unit == "pct" else "")
+                bad.append(f"options.{k} = {v}: outside its range {lo}..{hi} {unit}{hint}")
+            break
+    return bad
+
+
 def run(name: str, garment: str, design: str, declarations: dict, options: dict | None = None,
         sa: float = 10.0) -> tuple[str | None, str]:
     from . import chain_garment as cg, cloth, garment_record as gr, pattern_sheet, store
@@ -102,6 +126,9 @@ def run(name: str, garment: str, design: str, declarations: dict, options: dict 
         raise do.DraftRefused(f"design.mjs needs measurements step 3 hasn't taken: {', '.join(miss)} (the design's own list, "
                               f"every part it drafts; have {', '.join(sorted(meas))}): measure them by name with body_tape "
                               "(step 3), then draft again. pattern_parts(design) lists what each part needs")
+    obad = option_errors(options or {}, cfg_["config"].get("options") or {})  # (C362: a pct given in %: 3x the cap)
+    if obad:
+        raise do.DraftRefused("options refused (nothing drafted):\n  " + "\n  ".join(obad))
     draft = do.node_draft(design, meas, options, sa, d)
     bad = do.validate(declarations, rd["1"], draft["parts"])
     if bad:
@@ -117,7 +144,9 @@ def run(name: str, garment: str, design: str, declarations: dict, options: dict 
         B = cloth.pieces(json.loads(json.dumps(g)), meas)
         M = cloth.mesh(B)
     except (KeyError, ValueError, IndexError) as e:
-        raise do.DraftRefused(f"the converter refused the draft: {e}") from None
+        nan = " (a NaN: a point with no value, or a curve between two points that coincide; pattern_parts(design, " \
+              "part=...) names a part's points with no value)" if "nan" in str(e).lower() else ""
+        raise do.DraftRefused(f"the converter refused the draft: {e}{nan}") from None
     blk = do.block(g["pattern"])
     B["edge_arcs"], B["decl"] = blk["edge_arcs"], blk["decl"]
     rows = do.gate(B, declarations, rd["1"], stand_ref(name, garment), rd["3"], _fit(name, garment))
