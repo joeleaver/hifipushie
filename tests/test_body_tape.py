@@ -64,7 +64,8 @@ def test_by_name_equals_tailor(tape):
         assert r["how"] and f"m{i}" in tape.lines
     # FreeSewing names: tailor's value, in FreeSewing's definition (hips is the iliac crest: measure_defs' adapter)
     assert tape.take("chest")["mm"] == mm["chest"]
-    assert tape.take("hips")["mm"] == pytest.approx(mm["highHip"], abs=0.1)
+    assert tape.take("hips")["mm"] == pytest.approx(mm["fsHips"], abs=0.1)  # (C358: FreeSewing's waist-to-hips convention)
+    assert 0.06 < mm["waistToFsHips"] / (tape.zmax - tape.zmin) / 1000 < 0.09
     assert tape.take({"name": "hips_own", "kind": "freesewing", "measure": "hips", "consumer": None})["mm"] == mm["hips"]
 
 

@@ -11,8 +11,8 @@ Definitions (FreeSewing's measurement names; https://freesewing.dev/reference/me
   the shoulder joint. shoulderSlope: the hps -> shoulder point line below horizontal (degrees).
 - shoulderToShoulder: shoulder point to shoulder point over the back (the back half of the section at their height).
 - armpit: the highest torso section the arm has left. chest: the fullest torso section 2-12 cm under the armpit.
-- waist: 70% of the way from the pelvis joint to the chest joint (skeletal: near the natural waist; FreeSewing's is the
-  narrowest section: Garrett's 15 mm, Tess's 50 mm above ours). hips: at the hip joints' height + 2 cm (OUR level: the
+- waist: the narrowest section near 70% of the way from the pelvis joint to the chest joint, when the body clearly dips
+  there (FreeSewing's waist: Tess +50 mm, Garrett +15 over the 70% point); else that skeletal point (a belly: C358). hips: at the hip joints' height + 2 cm (OUR level: the
   greater trochanter's; NOT FreeSewing's hips, which is the top of the hip bone: measure_defs adapts). seat: the fullest
   section from 12 cm under that to it.
 - highHip / waistToHighHip: the girth at the iliac crest (ANSUR II iliocristale height) and the waist's height over it;
@@ -253,6 +253,14 @@ SHOULDER_SLOPE = "line"
 # height 0.6038 / 0.6110 of stature: men 18-40 0.1225, women 18-30 0.1308; measure audit ansur_levels.py). One number for
 # both (the tape doesn't know the body's sex): +-0.004 x stature = +-7 mm
 ILIAC_CREST_OVER_CROTCH = 0.125
+# the waist (C358): the narrowest section within this window of the skeletal estimate (m), when it dips this much
+# below both ends (a clear fold); measured on 8 bodies: dips 2.0-15 % where there is a waist, 0-1.3 % on bellies
+WAIST_WINDOW = (-0.05, 0.08)
+WAIST_DIP = 0.015
+# FreeSewing's hips (C358): its own patterns hang the hip line and dart ends on waistToHips 130 mm (men) / 125 (women) in
+# its standard sizes (@freesewing/models; chosen, not surveyed); the true crest is 4-9 cm under the waist on our bodies,
+# which left Simon's back dart 17 mm long. FreeSewing gets its convention, scaled by stature; our highHip stays the crest
+FS_WAIST_TO_HIPS = 0.073
 NECK_BASE_TILT = 32.0  # deg: the base-of-neck tape falls this much toward the front (ANSUR II: cervicale ~79 mm (men) /
 # 66 (women) above suprasternale over a ~110-120 mm deep neck base)
 NECK_BASE_GIRTH = 1.06  # the base ring is the lowest tilted section within this much of the narrowest one
@@ -486,6 +494,15 @@ def measure(V: np.ndarray, faces, J: dict, hps: str | None = None) -> dict:
     # waist: the narrowest 10-20 cm above the pelvis joint
     # skeletal, so a belly doesn't move it (the narrowest section rose 4 cm on a heavy body: a shorter shirt)
     zw = pelvis[2] + 0.7 * (chest_j[2] - pelvis[2])
+    # (C358) FreeSewing's waist is the narrowest section, where the body folds bending sideways: taken when the
+    # sections near the skeletal estimate dip clearly (WAIST_DIP narrower than both ends of the window) - Tess +50 mm,
+    # Garrett +15, Simon +5; a belly with no dip (the narrowest runs up to the ribs: cloth2_heavy) keeps the skeletal
+    zs_ = np.arange(zw + WAIST_WINDOW[0], zw + WAIST_WINDOW[1] + 1e-6, 0.005)
+    G_ = [girth(L_, Z) if (L_ := torso(z_)) is not None else np.nan for z_ in zs_]
+    if len(G_) > 2 and not np.isnan(G_[0]) and not np.isnan(G_[-1]) and not np.all(np.isnan(G_)):
+        i_ = int(np.nanargmin(G_))
+        if 0 < i_ < len(G_) - 1 and G_[i_] <= (1 - WAIST_DIP) * min(G_[0], G_[-1]):
+            zw = float(zs_[i_])
     L = torso(zw)
     at["waist_z"], loops["waist"], mm["waist"] = float(zw), L, girth(L, Z)
     # depths (front to back, the y extent of the section), as ANSUR II's chestdepth / waistdepth: their difference is
@@ -644,6 +661,11 @@ def measure(V: np.ndarray, faces, J: dict, hps: str | None = None) -> dict:
             if L_ is not None:
                 at["high_hip_z"] = float(zi)
                 mm["highHip"], mm["waistToHighHip"] = girth(L_, Z), W - zi
+        zf = W - FS_WAIST_TO_HIPS * float(np.ptp(V[:, 2]))  # (FreeSewing's hips: its convention below the waist, C358)
+        L_ = torso(zf)
+        if L_ is not None:
+            at["fs_hips_z"], loops["fsHips"] = float(zf), L_
+            mm["fsHips"], mm["waistToFsHips"] = girth(L_, Z), W - zf
     except Exception:  # a body the scan can't read keeps the estimate (pattern_blocks.trouser)
         pass
     try:

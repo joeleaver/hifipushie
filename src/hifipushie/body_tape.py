@@ -37,12 +37,12 @@ KINDS = ("girth", "arc", "length", "height", "freesewing", "sum")  # (sum: body_
 # every FreeSewing-named measurement tailor.measure can take (tests/test_body_tape keeps it equal to tailor.py's mm keys):
 # garment_plan step 1 checks seam lengths' names against these + the names it defines by kind (t8: 'acrossBack' passed
 # step 1 and was refused here at step 3)
-TAKES = ("biceps", "cfBaseToWaistFront", "chest", "chestDepth", "height", "highBust", "highBustUnder", "highHip", "hips",
+TAKES = ("biceps", "cfBaseToWaistFront", "chest", "chestDepth", "fsHips", "height", "highBust", "highBustUnder", "highHip", "hips",
          "hpsDrop", "hpsToArmpitBack", "hpsToBust", "hpsToSeatBack", "hpsToSeatFront", "hpsToShoulder", "hpsToWaistBack",
          "hpsToWaistFront", "inseam", "napeBaseToWaistBack", "napeToWaistBack", "neck", "neckBase", "neckBaseFrontDrop",
          "neckHeight", "plumbGirth", "seat", "shoulderSlope", "shoulderToElbow", "shoulderToShoulder", "shoulderToWrist",
          "waist", "waistDepth", "waistToArmpit", "waistToFloor", "waistToHighHip", "waistToHips", "waistToKnee",
-         "waistToSeat", "waistToUpperLeg", "wrist")
+         "waistToFsHips", "waistToSeat", "waistToUpperLeg", "wrist")
 
 
 def name_errors(names, defined: dict | None = None) -> list:
@@ -429,7 +429,7 @@ class Tape:
         loop = self.R["loops"].get({"shoulderToShoulder": "shoulders"}.get(src, src))
         if loop is None and src == "highHip" and "high_hip_z" in self.R["at"]:  # (no stored loop: the section there)
             loop = self.torso(float(self.R["at"]["high_hip_z"]))
-        if loop is not None and src in ("chest", "waist", "hips", "seat", "neck", "biceps", "wrist", "highHip"):
+        if loop is not None and src in ("chest", "waist", "hips", "seat", "neck", "biceps", "wrist", "highHip", "fsHips"):
             loop = np.r_[loop, loop[:1]]
         if loop is not None:
             self.lines[nm] = np.asarray(loop, float)
