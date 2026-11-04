@@ -214,7 +214,9 @@ def validate(decl: dict, step1: dict, parts: dict | None = None) -> list:
                         "(copied to both sides, C362)") if tw and not edges.get(p) and edges.get(tw) else ""
                 bad.append(f"step 1 seam {a} <-> {b}: no drafted edge {x!r} (declare edges.{p}.{ed}{hint})")
         if not any((a in A and b in B) or (b in A and a in B) for A, B in sewn):
-            bad.append(f"step 1 seam {a} <-> {b} is not sewn: a declared seam with {a} on one side and {b} on the other")
+            bad.append(f"step 1 seam {a} <-> {b} is not sewn: a declared seam with {a} on one side and {b} on the other "
+                       "(either may be one edge of a chain: a two-piece sleeve's cap set into the whole armhole as ONE seam, "
+                       "[cap edges] = [armhole edges], sews every cap / armhole pair of step 1: C365)")
     for i, dt in enumerate(decl.get("darts") or []):
         p, legs = dp.base_name(str((dt or {}).get("piece")), decl), (dt or {}).get("legs")
         if p not in pcs:

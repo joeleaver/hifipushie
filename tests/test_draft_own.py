@@ -418,3 +418,11 @@ def test_a_pair_declared_once_validates_and_builds(home):  # (t s4-3: pair never
     (d / "declarations.json").write_text(json.dumps(decl))
     B = cloth.pieces({"pattern": {"from": "own", "dir": str(d)}}, {"waist": 800})
     assert {"panel.L", "panel.R"} <= set(B["pieces"])
+
+
+def test_an_unsewn_step1_seam_names_the_chain_way():  # (t s4-4: a two-piece sleeve's cap as one chained seam; C365)
+    from hifipushie import draft_own as do
+    decl = {"pieces": {"panel.L": {"part": "p"}, "panel.R": {"part": "p"}},
+            "edges": {"panel.L": {"side": "a>b", "back": "c>d"}, "panel.R": {"side": "a>b", "back": "c>d"}}, "seams": []}
+    bad = do.validate(decl, STEP1)
+    assert any("is not sewn" in b and "as ONE seam" in b for b in bad), bad
