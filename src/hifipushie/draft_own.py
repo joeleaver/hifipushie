@@ -155,7 +155,10 @@ def validate(decl: dict, step1: dict, parts: dict | None = None) -> list:
     first and the expansion validated (C364, t s4-3: "pair never produced the right-hand pieces": the inventory check ran
     on the unexpanded name and refused it)."""
     from . import draft_pairs as dp
-    if parts is not None and any(isinstance(pd, dict) and pd.get("pair") for pd in (decl.get("pieces") or {}).values()):
+    inv_ = step1.get("pieces") or {}
+    sided = [nm for nm, pd in (decl.get("pieces") or {}).items() if isinstance(pd, dict) and pd.get("pair")
+             and nm not in inv_ and f"{nm}.L" in inv_ and f"{nm}.R" in inv_]  # (step 1 names the two sides)
+    if parts is not None and sided:
         bad0 = [f"declarations: unknown key {k!r} (have {', '.join(sorted(DECL_KEYS))})" for k in decl if k not in DECL_KEYS]
         bad0 += dp.faults(decl, parts, step1)
         if bad0:
