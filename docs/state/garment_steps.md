@@ -56,5 +56,5 @@ DRIFT FOUND (Joe 2026-11-03): from F4 the build placed WHOLE pieces then correct
 block-in map) instead of steps 5-6 as agreed: chains at exact lengths first, surfaces filled between. Rebuild 5-6 as agreed.
 METHOD NOW (Joe 2026-11-03): one STEP per blind trial (/mnt/data/hifipushie/trials/s<step>-<n>/: hp client pinned to main),
 judged with Joe beside the reference, fixed, rerun, then the next step; tests run once when a step is declared done.
-APPROVED (Joe): hussar (garrett:hussar, s1-7 ws) step 0 s0-7, step 1 s1-7; suit jacket (garrett:jacket) step 0 s0-8,
-step 1 s1-10 (C342-C350). Step 2: s2-1 -> C351. NEXT: judge s2-2 (suit jacket step 2, from trials/s1-10/ws), then hussar.
+APPROVED (Joe): hussar (garrett:hussar, s1-7 ws) steps 0-1; suit jacket (garrett:jacket) step 0 s0-8, step 1 s1-10,
+step 2 s2-2 (trials/s2-2/ws; C342-C352). NEXT: step 2 on the hussar (from trials/s1-7/ws), then step 3 on both.
