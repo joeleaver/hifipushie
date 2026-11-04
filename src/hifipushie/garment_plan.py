@@ -37,9 +37,11 @@ STEP 1 "parts": {pieces, details, closures, seams, centre?, over?, define?}
             outline | outlines}}}
   closures {name: {what, pieces: [pieces it joins; one for a band closing on itself], details?: [details],
             edges?: ["piece:edge" it closes along]}}
-  seams    [{a: "piece:edge", b: "piece:edge" (declared edges), kind?: seam|fold|set_in|topstitch|bound, length: {body:
-            [measurement names]} | {style: {ratio | value_mm, of?, source}}, why?}] (a body length is checked against
-            its edge as drawn at the step-0 scale; why keeps one the check refuses)
+  seams    [{a: "piece:edge", b: "piece:edge" (declared edges), kind?: seam|fold|set_in|topstitch|bound, caught?: ["piece:
+            edge" sewn into the same seam line: a canvas], length: {body: [measurement names]} | {style: {ratio, of:
+            body name | "piece:edge" | [step-0 height/landmark, another], source}} | {style: {value_mm, fixed: why it is
+            the same on every wearer, source}}, why?}] (never mm read off the picture: garment_parts_lengths; a body
+            length is checked against its edge as drawn at the step-0 scale; why keeps one the check refuses)
 STEP 2 "style": {state, bends, pose, rows, layers?, drape?}
   drape  {piece: {falls: down|up, source}}  (T13: a step-1 hang "draped" piece's start: a hood worn up falls up; chain_drape)
   layers {mode: visible|full, why}  (worn over another garment: visible (default) keeps the garment under where it is seen;
@@ -265,7 +267,16 @@ def check_parts(p: dict, read: dict, body=None) -> dict:
     if not isinstance(seams, list) or not seams:
         bad.append("seams: [{a: 'piece:edge', b: 'piece:edge', length: {body: [...]} | {style: {...}}}]")
         seams = []
-    joined, needs, ratio_of = set(), set(), []
+    from . import body_tape as bt, chain_drape as cd
+    define = p.get("define") or {}
+    kinds = [k for k in bt.KINDS if k != "freesewing"]
+    if not isinstance(define, dict) or any(v not in kinds for v in define.values()):
+        bad.append(f"define: {{measurement name: kind}} for names body_tape doesn't take by FreeSewing name; kind one of "
+                   f"{', '.join(kinds)} (step 3 measures it by that kind)")
+        define = {}
+    from . import garment_fit as gf, garment_parts_lengths as pl
+    spans = set(read.get("heights") or {}) | set(gf.LANDMARKS)  # (a ratio's span runs between step-0 heights / landmarks)
+    joined, needs = set(), set()
     for i, s in enumerate(seams):
         w = f"seams[{i}]"
         ends = [s.get(k) for k in ("a", "b")] if isinstance(s, dict) else []
@@ -280,40 +291,26 @@ def check_parts(p: dict, read: dict, body=None) -> dict:
             continue
         if s.get("kind", "seam") not in SEAM_KINDS:
             bad.append(f"{w}.kind: one of {', '.join(SEAM_KINDS)}")
-        ln = s.get("length")
-        if isinstance(ln, dict) and isinstance(ln.get("body"), list) and ln["body"] and all(
-                isinstance(m, str) and NAME.fullmatch(m) for m in ln["body"]):
-            needs.update(ln["body"])
-        elif isinstance(ln, dict) and isinstance(ln.get("style"), dict) and (
-                _num(ln["style"].get("ratio")) or _num(ln["style"].get("value_mm"))):
-            _src(ln["style"], f"{w}.length.style", bad)
-            if _num(ln["style"].get("ratio")):  # (a ratio's base is measured too: t s1-3's "of biceps" was missed)
-                ratio_of.append((w, ln["style"].get("of")))
-        else:
-            bad.append(f"{w}.length: {{body: [measurement names]}} (step 3 measures them) or {{style: {{ratio | value_mm, "
-                       "of, source}}}} read off the reference")
+        pl.check(s.get("length"), w, pieces, define, spans, bt.TAKES, bad, needs)
+        cg = s.get("caught")
+        if cg is not None and not (isinstance(cg, list) and all(isinstance(e, str) and ":" in e for e in cg)):
+            bad.append(f"{w}.caught: a list of 'piece:edge' sewn into this seam line with a and b (a canvas or "
+                       "interfacing caught in the gorge seam)")
+        elif cg:
+            for e in cg:
+                if e.split(":")[0] not in pieces:
+                    bad.append(f"{w}.caught: {e!r}: not a piece in the inventory")
+                else:
+                    joined.add(e.split(":")[0])
     lone = [n for n, x in pieces.items() if isinstance(x, dict) and x.get("build") != "omit" and n not in joined]
     if lone:
         bad.append(f"pieces with no seam: {', '.join(lone)} (every built piece joins another piece, or is folded from one)")
-    from . import body_tape as bt, chain_drape as cd
-    define = p.get("define") or {}
-    kinds = [k for k in bt.KINDS if k != "freesewing"]
-    if not isinstance(define, dict) or any(v not in kinds for v in define.values()):
-        bad.append(f"define: {{measurement name: kind}} for names body_tape doesn't take by FreeSewing name; kind one of "
-                   f"{', '.join(kinds)} (step 3 measures it by that kind)")
-        define = {}
-    for w, of in ratio_of:
-        if isinstance(of, str) and (of in bt.TAKES or of in define):
-            needs.add(of)  # (step 3 measures the base)
-        elif not (isinstance(of, str) and ":" in of and of.split(":")[0] in pieces):
-            bad.append(f"{w}.length.style.of {of!r}: a ratio's base: a body measurement name (step 3 measures it; one "
-                       "body_tape takes, or one you define) or a 'piece:edge'")
     bad += [f"seams length.body: {e}" for e in bt.name_errors(sorted(needs), define)]
     cd.check_parts(pieces, bad)  # (T13: hang fitted | draped, held edges)
     for i, s in enumerate(seams):
         if isinstance(s, dict):
-            pe.refs(f"seams[{i}]", [s.get("a"), s.get("b")], edges, bad)
-    pe.once(seams, bad, pieces)  # (one seam per edge, unless the partners are stacked layers: C347)
+            pe.refs(f"seams[{i}]", [s.get("a"), s.get("b")] + list(s.get("caught") or []), edges, bad)
+    pe.once(seams, bad, pieces)  # (one seam per edge; stacked layers are caught: C347, C349)
     pe.accounted(pieces, edges, seams, details if isinstance(details, dict) else {}, closures, bad)  # (C348)
     for n, x in (details.items() if isinstance(details, dict) else []):
         if isinstance(x, dict) and isinstance(x.get("follows"), list):

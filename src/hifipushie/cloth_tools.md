@@ -128,8 +128,9 @@ the tool is the structure, the refusals and the look. step="read" (0): kind; vie
 pieces {name: {what, cloth, seen: seen|occluded|inferred, from (the convention, unless seen), build: full|simplified|omit,
 why, stiff, layer, where {view, outline}, edges {edge: [i0, i1] spans tiling the outline} | [names]}}, details {name: {what, on, cloth, follows ["piece:edge"] (a trim along edges), count, seen, build, where {view, at | outline |
 outlines (one per instance)}}},
-closures {name: {what, pieces, details}}, seams [{a: "piece:edge", b, kind, length: {body: [names]} | {style: {ratio |
-value_mm, of, source}}}]; the answer lists the body measurements step 3 must take. step="style" (2): state {closure:
+closures {name: {what, pieces, details}}, seams [{a: "piece:edge", b, kind, caught?: ["piece:edge" sewn
+into the same line], length: {body: [names]} | {style: {ratio, of: a body name | "piece:edge" | [step-0 height, another],
+source}}}] (never mm read off the picture: it isn't the model; value_mm only with fixed: why); the answer lists the body measurements step 3 must take. step="style" (2): state {closure:
 {state: open|closed|partly, source}} for EVERY closure (build straight into it; never build closed then style open),
 bends [{id, on, target {value, unit, of (a ratio's base)} | {is}, source}], pose {name, source}, rows [{id, what, target, source, note?, view, at}] (what = a structure_rows kind, refused otherwise with the list: collar_points_apart, collar_tilt, collar_rise, collar_points_drop, collar_height, fall_back_width, v_depth, front_edge_plumb, hem_front_back, sleeve_end, cuff_ease, garment_length, cutaway_drop, trim_row_count, trim_row_pitch, trim_lines_apart, not_judged; bases neck_width, shoulder_width, closure_length; a ratio is OF the kind's base; a px target becomes a ratio of the base row on its view, else mm by the view's scale; a numeric bend names its kind too)
 (what the photo judges: the structure gate's targets). Refused by name: a seam on a piece not in the inventory, a built
