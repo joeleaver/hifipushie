@@ -198,3 +198,4 @@ tests/test_faceslide.py::test_lip_roll_recovered_from_a_render
 tests/test_faceslide.py::test_slider_recovered_from_a_render
 tests/test_fieldjit.py::test_alps
 tests/test_fieldjit.py::test_pebble
+tests/test_facepose.py::test_pose_is_the_exports_shapes
