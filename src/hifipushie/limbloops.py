@@ -24,6 +24,7 @@ import numpy as np
 from . import anatomy, kits, retopo, sdf, surface
 
 RING = 16          # vertices round a limb ring
+BODY_TRIANGLES = 12000  # the part's decimated body (parts.<p>.topology_triangles)
 HINGE_PACK = 0.4   # x a step: the extra rings either side of a hinge's crease ring
 JUNCTION = 2       # rings from the root loop out into the body
 MID_MARGIN = 0.006  # m: junction rings stay this far off the midline (x = 0)
@@ -339,7 +340,10 @@ def decimate(V, F, triangles: int):
     s.setMesh(np.asarray(V, np.float64), np.asarray(F, np.int32))
     s.simplify_mesh(target_count=int(triangles), aggressiveness=7, preserve_border=True, verbose=0)
     v, f, _ = s.getMesh()
-    return np.asarray(v, float), np.asarray(f, int)
+    f = np.asarray(f, int)
+    # a collapse can leave a fin (the same triangle twice, back to back): both copies go, the sheet stays closed
+    _, inv, cnt = np.unique(np.sort(f, 1), axis=0, return_inverse=True, return_counts=True)
+    return np.asarray(v, float), f[cnt[inv.ravel()] == 1]
 
 
 def build(spec: dict, prims, V, F, voxel: float, body_triangles: int, part: str = "body", log: list | None = None):
@@ -369,8 +373,9 @@ def build(spec: dict, prims, V, F, voxel: float, body_triangles: int, part: str 
         limbs_.append((limb, J[::-1] + rings, [None] * len(J) + labels, tip, co, no))
         log.append(f"{limb['label']}: {len(rings)} rings of {RING} (keys {', '.join(l for l in labels if l)}), "
                    f"{len(J)} junction rings, step {step * 1000:.0f} mm")
+    had = {v for lp in _boundary_loops(F) for v in lp}  # the part's own openings (a mouth cut) aren't the limbs'
     Fk = _largest(V, _clean_cut(_largest(V, F[~cut[F].any(1)]), cut))
-    loops = _boundary_loops(Fk)
+    loops = [lp for lp in _boundary_loops(Fk) if not set(lp) <= had]
     if len(loops) != len(limbs_):
         raise ValueError(f"limbs: the body cut left {len(loops)} holes for {len(limbs_)} limbs")
     # zip each hole to its outermost ring (appended after the body's vertices), on the fine mesh
