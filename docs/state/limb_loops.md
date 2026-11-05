@@ -54,5 +54,7 @@ limb only (into a belly's underside: they don't move); cutting the decimated bod
 ## Commands
 `/mnt/data/hifipushie/limbloops/{dev.py <model>, posecheck.py <model> a.npz b.npz, wire.py out.png a.npz.., glbcheck.py}`
 
-NEXT: coordinator lands (bin/suite PASS, fast tier 12.2 min: over its 10 min rule, not from this branch's 2.5 s test);
-next run: crotch patch (both legs' junctions joined by quads) + re-export, judged on the GLB front; then 2a.
+NEXT (Joe 2026-11-05, scope): step 3 is the open mouth, its own run from this branch's tip: concentric rings round
+the rim of a subtracted mouth (pud2 mouth_cut; teeth_b / tongue_b inside), rings down the walls into the cavity, clean
+border to the face; general (any mouth or beak), no template. Proof: limbloops.quality closed rings round the opening +
+GLB mouth close-up front / 3-4 beside puddles_v11/pud2.glb (the old export folded there). Then crotch patch, then 2a.
