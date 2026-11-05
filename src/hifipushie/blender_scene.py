@@ -1279,6 +1279,39 @@ def _light_rig(scene, lt, job, base):
                 ao.light_linking.receiver_collection = rc
 
 
+def _shape_pose(path):
+    """Each scene mesh of a posed part takes the move of the nearest posed point of its part (the export-fine mesh
+    posed by facepose.pose: per part "<p>|at" points, "<p>|d" their moves, "<p>|box" where any of them lie)."""
+    from mathutils.kdtree import KDTree
+    z = np.load(path)
+    parts = {k.split("|")[0] for k in z.files}
+    for ob in bpy.data.objects:
+        pn = ob.get("hp_part")
+        if ob.type != "MESH" or pn not in parts or ob.data.shape_keys:
+            continue
+        at, d, box = z[f"{pn}|at"], z[f"{pn}|d"], z[f"{pn}|box"]
+        me = ob.data
+        co = np.empty(len(me.vertices) * 3, np.float32)
+        me.vertices.foreach_get("co", co)
+        co = co.reshape(-1, 3).astype(np.float64)
+        M = np.array(ob.matrix_world)
+        W = co @ M[:3, :3].T + M[:3, 3]
+        inb = np.nonzero(np.all((W >= box[0]) & (W <= box[1]), 1))[0]
+        if not len(inb):
+            continue
+        kd = KDTree(len(at))
+        for i, p in enumerate(at):
+            kd.insert(p, i)
+        kd.balance()
+        Minv = np.linalg.inv(M[:3, :3])
+        for i in inb:
+            _, j, _ = kd.find(W[i])
+            co[i] += Minv @ d[j]
+        me.vertices.foreach_set("co", co.astype(np.float32).ravel())
+        me.update()
+        print(f"@@shape_pose {ob.name}: {len(inb)} vertices", flush=True)
+
+
 def render(job):
     T0 = time.time()
     if not job.get("opened"):
@@ -1338,6 +1371,8 @@ def render(job):
         nt.nodes["Principled BSDF"].inputs["Roughness"].default_value = 1.0
         me.materials.append(cm)
         scene.collection.objects.link(bpy.data.objects.new("hp_caps", me))
+    if job.get("shape_pose"):  # face shapes (facepose.py): this render only, never saved
+        _shape_pose(job["shape_pose"])
     cycles = job.get("engine") == "cycles"  # path traced: real subsurface scattering, and no shader compile (EEVEE
     # compiles a material's whole node program into one GPU shader: a human skin's ~100 layers took > 5 min and 10 GB)
     scene.render.engine = "CYCLES" if cycles else "BLENDER_EEVEE"

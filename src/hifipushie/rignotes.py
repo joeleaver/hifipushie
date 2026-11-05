@@ -43,6 +43,8 @@ def write(info: dict, out_dir: Path, aname: str) -> tuple[Path, Path] | None:
             "bend": rig.get("bend", []), "bend_recipe": rig.get("bend_recipe"),
             "correctives": rig.get("correctives", []), "corrective_recipe": rig.get("corrective_recipe"),
             "head": rig.get("head"), "engines": ENGINES, "known_gaps": KNOWN_GAPS,
+            "face_shapes": {k: v for k, v in (info.get("face_shapes") or {}).items()
+                            if k in ("rest", "rest_how", "correctives")},
             "axes": "Blender axes (Z up, the character faces -Y); glTF axes = (x, z, -y)"}
     jp = out_dir / f"{aname}_rig.json"
     jp.write_text(json.dumps(data, indent=1))
@@ -63,6 +65,13 @@ def write(info: dict, out_dir: Path, aname: str) -> tuple[Path, Path] | None:
               "| target | joint | axis_rest (Blender) | from | key | to |", "|---|---|---|---|---|---|"]
         L += [f"| {c['target']} | {c['joint']} | {c['axis_rest']} | {c['from_deg']} | {c['key_deg']} | "
               f"{c['to_deg'] if c['to_deg'] is not None else '-'} |" for c in data["correctives"]] + [""]
+    fs = data["face_shapes"]
+    if fs:
+        L += ["## Face shapes: rest expression", "", ("Rest: " + ", ".join(f"{k} {v:.2f}" for k, v in fs["rest"].items())
+                                                      if fs.get("rest") else "Rest: the neutral (no face_shapes.rest)."),
+              "", str(fs.get("rest_how", "")), ""]
+        if fs.get("correctives"):
+            L += ["Correctives, every frame: " + ", ".join(f"{c} = {f}" for c, f in fs["correctives"].items()), ""]
     L += ["## Known gaps", "", "What the weights and correctives don't fix yet (judged in game-like EEVEE renders):", ""]
     L += [f"- {g}" for g in KNOWN_GAPS] + [""]
     L += ["## Wiring per engine", ""] + [f"- {k.title()}: {v}" for k, v in ENGINES.items()] + [""]

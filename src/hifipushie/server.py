@@ -726,12 +726,19 @@ def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool 
          matcap: str = "clay_studio.exr", strokes: bool = False, shading: str = "clay", paint: bool = True,
          paint_layer: str | None = None, hide_parts: list[str] | None = None, only_parts: list[str] | None = None,
          clip: dict | list[dict] | None = None, camera: dict | list[dict] | None = None, instances: bool = False,
-         save: str | None = None):
+         save: str | None = None, shapes: dict | str | None = None):
     """Build and render a contact sheet (clay, or painted from the Blender scene). views (front, side, top,
     three_quarter, back, ...), focus=[x,y,z] + zoom for close-ups, resolution (160 quick, 256-320 detail), shading
     "clay"|"raking"|"curvature"|"flat", strokes=True overlays stroke paths, paint / paint_layer (one mask),
-    hide_parts / only_parts, clip (plane cuts), camera (perspective eyes), instances, save (PNG path). Details:
-    guide(topic="look")."""
+    hide_parts / only_parts, clip (plane cuts), camera (perspective eyes), instances, save (PNG path), shapes (a
+    face-kit model posed in face-shape weights as the export makes them: {"jawOpen": 0.8, ...}, "rest" or a preset;
+    paint=False is meshed exactly as the export). Details: guide(topic="look")."""
+    posed = None
+    if shapes is not None:  # face shapes: the model meshed and posed as export_asset does it (facepose.py)
+        if strokes or instances or shading == "curvature":
+            raise ValueError("shapes: not with strokes, instances or curvature shading")
+        from . import facepose
+        posed = facepose.pose(name, shapes)  # (at the export's resolution, whatever the look's)
     cams = [] if camera is None else (camera if isinstance(camera, list) else [camera])
     cams = [_resolve_camera(name, c) for c in cams]
     # "hair" is a pseudo-part (the locks aren't spec parts): hide_parts=["hair"] leaves them out of a painted look;
@@ -756,9 +763,14 @@ def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool 
         from . import scene
         r = scene.sync(name)
         closeup = focus is not None and zoom > 1
+        sp = None
+        if posed is not None:
+            from . import facepose
+            sp = facepose.scene_moves(posed[1], store._dir(name) / "build" / "face_scene_moves.npz")
         sheet, secs = scene.look(name, views or ([] if cams else (render.DEFAULT_VIEWS[:1] if closeup else render.DEFAULT_VIEWS)),
                                  cams, size, None, paint_layer, hide_parts, only_parts, flat=shading == "flat",
-                                 clip=clip, focus=focus if closeup else None, zoom=zoom, hide_hair=hide_hair)
+                                 clip=clip, focus=focus if closeup else None, zoom=zoom, hide_hair=hide_hair,
+                                 shape_pose=sp)
         if save:
             sheet.save(save)
         notes = [l for l in r["log"] if "cuts into" in l or "from the scene" in l or "scene:" in l]
@@ -768,6 +780,10 @@ def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool 
                                                         f"{c:.1%} of the surface in view"))
         info = (f"{name}: scene look (EEVEE, painted) in {secs}s, sync {sum(r['seconds'].values()):.1f}s"
                 + (f" | {'; '.join(notes)}" if notes else ""))
+        if posed is not None:
+            from . import facepose
+            sv = scene.slit_voxel(name)
+            info += " | " + facepose.note(store.load(name), posed[1]["weights"], posed[1]["seconds"], sv)
         for f, c in zip([render.camera_frame(c, i) for i, c in enumerate(cams)], cams):
             info += (f" | {f['name']}: eye ({', '.join(f'{x:.2f}' for x in f['eye'])}) -> target "
                      f"({', '.join(f'{x:.2f}' for x in f['center'])}), fov {f['fov']:.0f}" + c.get("_note", ""))
@@ -776,7 +792,15 @@ def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool 
     cam_frames = [render.camera_frame(c, i) for i, c in enumerate(cams)]
     names_ = views or ([] if cams else render.DEFAULT_VIEWS)
     planes = store.clip_planes(clip)
-    if focus is not None and zoom > 1:
+    if posed is not None:
+        with np.load(posed[0]) as z_:
+            vv = z_["verts"]
+        full_bounds = [vv.min(0).tolist(), vv.max(0).tolist()]
+        meta = {"mesh": str(posed[0]), "verts": len(vv), "voxel": 0.0, "seconds": posed[1]["seconds"],
+                "bounds": full_bounds}
+        frames = (render.view_frames(store.extent(name), names_ or render.DEFAULT_VIEWS[:1], focus, zoom)[:len(names_)]
+                  if focus is not None and zoom > 1 else None)
+    elif focus is not None and zoom > 1:
         full_bounds = store.extent(name)  # sets the view scale, as in a full look
         frames = render.view_frames(full_bounds, names_ or render.DEFAULT_VIEWS[:1], focus, zoom)
         half = 0.8 * frames[0]["scale"]
@@ -838,6 +862,9 @@ def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool 
     dims = [round(h - l, 3) for l, h in zip(lo, hi)]
     info = (f"{name}: {meta['verts']} verts, voxel {meta['voxel']:.4f}, built in {meta['seconds']}s | "
             f"size X{dims[0]} Y{dims[1]} Z{dims[2]}")
+    if posed is not None:
+        from . import facepose
+        info += " | " + facepose.note(store.load(name), posed[1]["weights"], posed[1]["seconds"])
     for f, c in zip(cam_frames, cams):
         info += (f" | {f['name']}: eye ({', '.join(f'{x:.2f}' for x in f['eye'])}) -> target "
                  f"({', '.join(f'{x:.2f}' for x in f['center'])}), fov {f['fov']:.0f}" + c.get("_note", ""))
