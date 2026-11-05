@@ -3348,6 +3348,7 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
         from . import correctives as cormod
         tc = time.time()
         corr_keys = cormod.keys(rigged["bones"])
+        seen_ = {k["name"] for k in corr_keys}
         nc_ = 0
         for pn in list(rigged["weights"]):
             if pn not in skin_at or report[pn].get("curves") or report[pn].get("lashes") or \
@@ -3355,16 +3356,21 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
                 continue
             Jp, Wp = rigged["weights"][pn]
             Fp = parts[pn]["corner_vert"].reshape(-1, 3)
-            D = cormod.solve(rigged["bones"], skin_at[pn], Fp, Jp, Wp, corr_keys, log if pn == "body" else [])
+            # this part's keys from its own limbs' girth (the frames its weights were painted with: a stub's hip
+            # gets its seat, rig.ARC_GIRTH); a person's are the plain keys
+            kp_ = cormod.keys(rigged["bones"], girth=cormod.rigmod.limb_girth(rigged["bones"], skin_at[pn], Jp, Wp))
+            corr_keys += [k for k in kp_ if k["name"] not in seen_]
+            seen_ |= {k["name"] for k in kp_}
+            D = cormod.solve(rigged["bones"], skin_at[pn], Fp, Jp, Wp, kp_, log if pn == "body" else [])
             D = {k: v for k, v in D.items() if np.abs(v).max() > cormod.EPS}
             if not D:
                 continue
             n0 = cormod.vertex_normals(skin_at[pn], Fp)
             sh = parts[pn].setdefault("shapes", {})
-            for k in corr_keys:
+            for k in kp_:
                 if k["name"] in D:
                     sh[k["name"]] = (D[k["name"]], n0, cormod.vertex_normals(skin_at[pn] + D[k["name"]], Fp))
-            report[pn]["pose_correctives"] = [k["name"] for k in corr_keys if k["name"] in D]
+            report[pn]["pose_correctives"] = [k["name"] for k in kp_ if k["name"] in D]
             nc_ += len(D)
         log.append(f"pose correctives: {len(corr_keys)} ({', '.join(sorted({k['motion'] for k in corr_keys}))}), "
                    f"{nc_} targets over the parts, {time.time() - tc:.1f}s")

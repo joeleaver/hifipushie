@@ -88,6 +88,45 @@ def test_a_persons_leg_is_untouched():
     assert np.array_equal(J0, J1) and np.array_equal(W0, W1)
 
 
+def test_stub_seat_corrective():
+    """A stub hip gets a seated corrective (correctives.UpLeg_flex, `_stub_target`); its target keeps the body skin
+    off the thigh: the belly in front stays put, the seat behind isn't carried below the turned thigh's underside."""
+    from hifipushie import correctives as cm
+    bones, V, J, W, nb = stub()
+    J2, W2 = rig._arc_bend(bones, V, J, W)
+    g = rig.limb_girth(bones, V, J, W)
+    ks = cm.keys(bones, girth=g)
+    up = [k for k in ks if k["motion"] == "UpLeg_flex"]
+    assert [k["name"] for k in up] == ["corr_LeftUpLeg_flex90"] and up[0]["frame"]["stub"]
+    assert not [k for k in cm.keys(bones) if k["motion"] == "UpLeg_flex"]  # no girth, no stub: no seat
+    tri = np.arange(len(V) // 3 * 3).reshape(-1, 3)  # (a soup: the target needs faces only for its smoothing)
+    D = cm.solve(bones, V, tri, J2, W2, up)["corr_LeftUpLeg_flex90"]
+    assert np.isfinite(D).all() and np.abs(D).max() > 1e-3
+    f = up[0]["frame"]
+    turns = rig.drive_twist(bones, {k["joint"]: (k["axis"], k["deg"]) for k in up})
+    P0, P1 = rig.pose(bones, V, J2, W2, turns), rig.pose(bones, V + D, J2, W2, turns)
+    d = V - f["pivot"]
+    front = (np.arange(len(V)) < nb) & (d @ f["o"] < -1.5 * f["stub"])
+    assert np.linalg.norm(P1 - V, axis=1)[front].max() <= np.linalg.norm(P0 - V, axis=1)[front].max() + 1e-9
+    Ro = cm._rot(up[0]["axis"], 90) @ f["o"]
+    back = (np.arange(len(V)) < nb) & (d @ f["o"] > f["stub"])
+    cap = np.maximum(cm.STUB_FLOOR * f["stub"], d @ Ro)
+    assert ((P1 - f["pivot"]) @ Ro - cap)[back].max() < ((P0 - f["pivot"]) @ Ro - cap)[back].max()
+
+
+def test_a_persons_keys_are_unchanged():
+    """A person's hip gets no corrective, girth or not, and every other key is the same (rig_r5: none for a hip)."""
+    sys.path.insert(0, str(__import__("pathlib").Path(__file__).parent))
+    from test_rig_bend import leg
+    from hifipushie import correctives as cm
+    bones, V, F, J, W = leg()
+    a, b = cm.keys(bones), cm.keys(bones, girth=rig.limb_girth(bones, V, J, W))
+    assert [k["name"] for k in a] == [k["name"] for k in b]
+    assert not any(k["motion"] == "UpLeg_flex" for k in b)
+    for x, y in zip(a, b):
+        assert np.array_equal(x["axis"], y["axis"]) and x["frame"]["outer"] == y["frame"]["outer"]
+
+
 if __name__ == "__main__":
     for k, f in list(globals().items()):
         if k.startswith("test_"):
