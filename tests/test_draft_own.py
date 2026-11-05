@@ -426,3 +426,19 @@ def test_an_unsewn_step1_seam_names_the_chain_way():  # (t s4-4: a two-piece sle
             "edges": {"panel.L": {"side": "a>b", "back": "c>d"}, "panel.R": {"side": "a>b", "back": "c>d"}}, "seams": []}
     bad = do.validate(decl, STEP1)
     assert any("is not sewn" in b and "as ONE seam" in b for b in bad), bad
+
+
+def test_pairs_expand_side_named_seams_darts_and_marks(home):  # (t s4-5: half the pair handling; C366)
+    from hifipushie import draft_own as do, draft_pairs as dp
+    out = do.node_draft(RECT, {"waist": 800}, d=home / "pairs2")
+    decl = {"pieces": {"front": {"part": "test.panel", "pair": True}, "back": {"part": "test.panel", "pair": True}},
+            "edges": {"front": {"side": "tr>br", "in": "tl>bl"}, "back": {"side": "tr>br", "in": "tl>bl"}},
+            "seams": [{"a": "front.L:side", "b": "back.L:side"}],
+            "darts": [{"piece": "front", "legs": ["side", "in"]}],
+            "marks": {"pocket.R": {"piece": "front", "at": [{"point": "tl"}]}, "pad": {"piece": "front", "follows": ["front:side"]}}}
+    D = dp.expand(decl, out["parts"])
+    ends = {(s["a"], s["b"]) for s in D["seams"]}
+    assert ("front.L:side", "back.L:side") in ends and ("front.R:side", "back.R:side") in ends  # (the .R twin)
+    assert {d["piece"] for d in D["darts"]} == {"front.L", "front.R"}
+    assert D["marks"]["pocket.R"]["piece"] == "front.R"
+    assert D["marks"]["pad"]["piece"] == "front.L" and D["marks"]["pad"]["follows"] == ["front.L:side"] and D["marks"]["pad"]["mirror"]

@@ -22,6 +22,7 @@ Nothing here knows a garment."""
 from __future__ import annotations
 
 import copy
+import json
 
 import numpy as np
 
@@ -191,7 +192,75 @@ def expand(decl: dict, parts: dict) -> dict:
                       if f.get("piece") in pr] + [f for f in D["folds"] if f.get("piece") not in pr]
     if D.get("stiff"):
         D["stiff"] = [x for n in D["stiff"] for x in ((f"{n}.L", f"{n}.R") if n in pr else (n,))]
+    _twin_seams(D, pr)
+    if D.get("darts"):  # (C366, t s4-5: darts and marks naming a pair weren't expanded)
+        dd = []
+        for dt in D["darts"]:
+            p = str(dt.get("piece"))
+            if p in pr:
+                dd += [dict(dt, piece=f"{p}.L"), dict(dt, piece=f"{p}.R")]
+            else:
+                dd.append(dt)
+                if p[:-2] in pr and _side(p) and not any(x.get("piece") == _swap(p) for x in D["darts"]):
+                    dd.append(dict(dt, piece=_swap(p)))
+        D["darts"] = dd
+    if D.get("marks"):
+        D["marks"] = {n: _pair_mark(m, n, pr) for n, m in D["marks"].items()}
     return D
+
+
+def _swap(n: str) -> str:
+    return n[:-2] + (".R" if n.endswith(".L") else ".L") if n.endswith((".L", ".R")) else n
+
+
+def _twin_seams(D: dict, pr: set):
+    """A seam naming ONE side of a pair explicitly (front.L:shoulder = back.L:shoulder, step 1's own names) brings its
+    other side's twin unless that is declared too (C366, t s4-5: the .R seams were reported "not sewn"; the rule of
+    step 1: ".L" brings ".R")."""
+    def pieces_of(s):
+        return [str(e).split(":", 1)[0] for k in ("a", "b") for e in ([s.get(k)] if isinstance(s.get(k), str) else s.get(k) or [])]
+    have = {json.dumps([s.get("a"), s.get("b")], sort_keys=True) for s in D.get("seams") or []}
+    add = []
+    for s in D.get("seams") or []:
+        ps = pieces_of(s)
+        if not any(p[:-2] in pr for p in ps if _side(p)) or not all(_side(p) for p in ps) or \
+                len({p[-1] for p in ps}) != 1:
+            continue
+        sw = lambda x: [_swap_edge(e) for e in x] if isinstance(x, list) else _swap_edge(x)
+        t = dict(s, a=sw(s.get("a")), b=sw(s.get("b")))
+        if json.dumps([t["a"], t["b"]], sort_keys=True) not in have:
+            add.append(t)
+            have.add(json.dumps([t["a"], t["b"]], sort_keys=True))
+    D["seams"] = (D.get("seams") or []) + add
+
+
+def _swap_edge(e: str) -> str:
+    p, _, ed = str(e).partition(":")
+    return f"{_swap(p)}:{ed}"
+
+
+def _pair_mark(m, detail: str, pr: set):
+    """A mark on a pair's bare name lands on the copy its detail's side names (else .L, mirrored to .R)."""
+    out = []
+    for x in m if isinstance(m, list) else [m]:
+        if isinstance(x, dict) and x.get("piece") in pr:
+            side = detail[-1] if detail.endswith((".L", ".R")) else "L"
+            q = f"{x['piece']}.{side}"
+            x = dict(_remap_piece(x, x["piece"], q), piece=q)
+            if not detail.endswith((".L", ".R")):
+                x.setdefault("mirror", True)
+        out.append(x)
+    return out if isinstance(m, list) else out[0]
+
+
+def _remap_piece(x, p: str, q: str):
+    if isinstance(x, str):
+        return q + x[len(p):] if x.startswith(p + ":") else x
+    if isinstance(x, list):
+        return [_remap_piece(v, p, q) for v in x]
+    if isinstance(x, dict):
+        return {k: _remap_piece(v, p, q) for k, v in x.items()}
+    return x
 
 
 def _fold_closures(decl: dict) -> dict:

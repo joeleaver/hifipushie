@@ -262,8 +262,11 @@ def validate_marks(decl: dict, step1: dict) -> list:
             p = x.get("piece") if isinstance(x, dict) else None
             if p and p not in pcs:
                 bad.append(f"marks.{n}: piece {p!r} is not drafted")
-    for n, x in det.items():
-        if x.get("build") in BUILT and n not in mk and n not in byclosure and not gd.cloth_made(x.get("what")):
+    mirrored = {gd.mirror_name(n) for n, m in mk.items()
+                for x in (m if isinstance(m, list) else [m]) if isinstance(x, dict) and x.get("mirror")}
+    for n, x in det.items():  # (a .L mark with mirror: true places the .R detail too, any kind: C366, t s4-5)
+        if x.get("build") in BUILT and n not in mk and n not in byclosure and n not in mirrored \
+                and not gd.cloth_made(x.get("what")):
             bad.append(f"step 1 detail {n!r} (build {x.get('build')}) has no mark: declare marks.{n}; {MARK_FORM}")
     return bad
 
@@ -407,9 +410,12 @@ def gate(B: dict, decl: dict, step1: dict, stand_ref: dict | None = None, step3:
     inv = step1.get("pieces") or {}
     from .draft_pairs import base_name
     dx = B.get("decl") or decl  # (pairs expanded: draft_pairs)
-    cut = {base_name(n, decl) for n in B["pieces"]} | set(decl.get("omit") or {})
+    # (a cut copy counts under its own name or its pair's base, whichever step 1 uses: C366, t s4-5's "not cut: front.L
+    # ... not in step 1: front.L" read the expanded copies against the unexpanded declaration)
+    own = lambda n: n if n in inv else (n[:-2] if n.endswith((".L", ".R")) and n[:-2] in inv else base_name(n, decl))
+    cut = {own(n) for n in B["pieces"]} | set(decl.get("omit") or {})
     miss = [n for n, it in inv.items() if it.get("build") in BUILT and n not in cut]
-    extra = [n for n in B["pieces"] if base_name(n, decl) not in inv]
+    extra = [n for n in B["pieces"] if own(n) not in inv]
     rows.append({"id": "cut", "status": "FAIL" if miss or extra else "PASS",
                  "value": f"{len(B['pieces'])} cut, {len(decl.get('omit') or {})} omitted",
                  "target": "every built step-1 piece cut, nothing else", "why": "; ".join(

@@ -30,6 +30,7 @@ FALL_SPREAD = 1 + 0.5 * 0.024  # simon.collar outer / stand seam, halved excess
 CAP = (0.9 * 0.521, 1.1 * 0.715)  # brian.sleeve, bent's top + under sleeve: cap height / armhole depth
 CURVED, STRAIGHT = 0.02, 0.005  # sagitta / chord
 STAND_ROLES = ("collar_stand", "collar_band", "neckband")
+LAPEL_ROLES = ("front", "facing")  # (t s4-5: a lapel's roll line made the front and facing read as a collar's fall)
 AMBIGUOUS_NAMES = ("collar",)  # (a name that doesn't say stand or fall: the seams decide, not the name: C363)
 FALL_ROLES = ("collar_fall",)
 FREE_NAMES = ("top", "free", "outer", "edge")
@@ -78,8 +79,9 @@ def _role(nm: str, decl: dict, step1: dict) -> str:
     base = nm.rsplit(".", 1)[0] if nm.endswith((".L", ".R")) else nm
     if base.lower() in AMBIGUOUS_NAMES:  # ("collar" alone: a shirt's band or a fall: its structure decides, t8)
         return ""
-    r = role_of(nm)
-    return r if r != base else ""
+    from .garment_design import kb
+    r = role_of(nm)  # (it returns the name itself when no alias matched; "front" IS a role: C366)
+    return r if r != base or r in kb()["roles"] else ""
 
 
 def _seam_pairs(B: dict):
@@ -173,7 +175,8 @@ def stand_rows(B: dict, decl: dict, step1: dict, ref: dict | None = None) -> dic
 def fall_pieces(B: dict, decl: dict, step1: dict) -> set:
     """Falls: role collar_fall, a roll fold, or (F2, t8) a piece sewn ONLY to a stand-role / stiff piece's edges other
     than its neck edge, itself on no neck: a fall sewn on a band's top (it was read as nothing, the band as two stands)."""
-    roll = {f.get("piece") for f in B.get("folds") or [] if f.get("kind") == "roll"}
+    roll = {f.get("piece") for f in B.get("folds") or [] if f.get("kind") == "roll"
+            and _role(f.get("piece"), decl, step1) not in LAPEL_ROLES}  # (a front's roll fold is its lapel: C366)
     falls = {p for p in B["pieces"] if p in roll or _role(p, decl, step1) in FALL_ROLES}
     stiff = set(decl.get("stiff") or [])
     standish = {p for p in B["pieces"] if _role(p, decl, step1) in STAND_ROLES or p in stiff}
