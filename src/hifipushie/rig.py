@@ -403,6 +403,21 @@ BEND_WEIGHTS = "arc"  # "arc" (BEND_ARC) | "overlap" (the helpers take MakeHuman
 ARC_MID = 0.04  # m: the side mask runs from 0 to 1 over this across the midline (half each side at the crotch)
 ARC_AXIAL = 3.0  # x the outer half width: past it along the limb (and one more) a vertex keeps its weights
 ARC_CHILD = {"ForeArm": "Hand", "Leg": "Foot", "UpLeg": "Leg", "Arm": "ForeArm"}
+# The zone is sized by the segment's length, which is a person's proportion (a thigh ~5x as long as it is thick). A
+# stylised limb can be shorter than it is thick (Puddles' thigh: 5.5 cm long, 6.3 cm round): its zone (2 cm reach)
+# missed the skin, the raw distance blend carried the thigh's weight 13 cm up the belly and seated, the belly tore
+# into a web. A limb whose girth (`limb_girth`) is over ARC_GIRTH x its length is a STUB: its zone's unit is
+# girth / ARC_STUB_UNIT instead. A person's limbs (girth / length ~0.2) are as before.
+ARC_GIRTH = 0.25
+# A STUB limb (its unit raised by its girth) starts inside the body's mass, so two more rules hold for it (a person's
+# limbs, unit = length, are untouched): the zone has no radial reach (past it the distance blend had carried the
+# thigh's weight 9-18 cm round its axis up the belly), and skin farther from the limb's axis than ARC_BODY (from, to)
+# x its girth is the parent's (the seat below and behind a pig's hip is body, not thigh: it swung forward and tore).
+ARC_BODY = (1.1, 2.5)
+ARC_ROOTS = ("UpLeg", "Arm")  # only where a limb leaves the body: a stub's knee is an ordinary hinge (as a stub too,
+#                              its zone covered the whole shin and the seat behind it went with the knee)
+ARC_STUB_UNIT = 0.1  # a stub's zone unit is its girth / this. Swept on Puddles seated (edges stretched > 3x; seat
+#  skin behind the thigh moved): unit = length 3542; 0.1 + ARC_BODY (1.1, 2.5) 60 (48 mm). From < 1.1 the leg's own skin (at ~1x) went to the hips: (0.5, 1.5) 2 (0 mm) was the thigh half turned
 
 
 def _sstep(x):
@@ -410,8 +425,9 @@ def _sstep(x):
     return x * x * (3 - 2 * x)
 
 
-def arc_frames(rb: list[dict]) -> list[dict]:
-    """Per bend helper: pivot, axis u, outer direction o, zone half widths, reach, and the side mask's centre."""
+def arc_frames(rb: list[dict], girth: dict | None = None) -> list[dict]:
+    """Per bend helper: pivot, axis u, outer direction o, zone half widths, reach, and the side mask's centre.
+    girth {driver joint index: m}: the zone's length unit is max(segment length, girth / ARC_GIRTH)."""
     names = [b["name"] for b in rb]
     out = []
     hips = rb[names.index(PREFIX + "Hips")]["head"] if PREFIX + "Hips" in names else None
@@ -430,6 +446,9 @@ def arc_frames(rb: list[dict]) -> list[dict]:
         ch = np.asarray(rb[names.index(PREFIX + side + ARC_CHILD[jn])]["head"], float)
         ln = float(np.linalg.norm(ch - piv))
         ud = (ch - piv) / ln
+        gr = float((girth or {}).get(jd, 0.0))
+        stub = jn in ARC_ROOTS and gr > ARC_GIRTH * ln
+        unit = gr / ARC_STUB_UNIT if stub else ln
         up = piv - np.asarray(rb[jp]["head"], float)
         up /= max(np.linalg.norm(up), 1e-9)
         u = ud if kind == "ball" else (ud + up) / max(np.linalg.norm(ud + up), 1e-9)
@@ -440,14 +459,49 @@ def arc_frames(rb: list[dict]) -> list[dict]:
         o = o - (o @ u) * u
         o /= max(np.linalg.norm(o), 1e-9)
         out.append({"helper": hi, "driver": jd, "of": jp, "pivot": piv, "u": u, "o": o, "len": ln,
-                    "outer": k_out * ln, "inner": k_in * ln, "reach": k_reach * ln, "joint": jn,
+                    "outer": k_out * unit, "inner": k_in * unit, "stub": gr if stub else None, "reach": k_reach * unit, "joint": jn,
                     "side": (1.0 if side == "Left" else -1.0), "mid": None if hips is None else float(hips[0])})
+    return out
+
+
+def limb_girth(rb: list[dict], V: np.ndarray, J: np.ndarray, W: np.ndarray) -> dict:
+    """{bend driver joint index: girth (m)}: the median distance from the segment's axis (joint -> its ARC_CHILD) of
+    the vertices on the segment's middle half whose biggest weight is that joint or below it in the chain."""
+    names = [b["name"] for b in rb]
+    V = np.asarray(V, float)
+    top = np.asarray(J)[np.arange(len(V)), np.argmax(W, 1)]
+    out = {}
+    for b in rb:
+        if not b.get("bend"):
+            continue
+        dn = b["bend"]["driver"]
+        short = dn[len(PREFIX):]
+        side = "Left" if short.startswith("Left") else "Right"
+        jn = short[len(side):]
+        if jn not in ARC_CHILD or (PREFIX + side + ARC_CHILD[jn]) not in names:
+            continue
+        jd = names.index(dn)
+        below = {jd}
+        for i, c in enumerate(rb):  # the chain under the joint (rb lists parents first) and its twist joints
+            if c["parent"] in below:
+                below.add(i)
+        piv = np.asarray(rb[jd]["head"], float)
+        ax = np.asarray(rb[names.index(PREFIX + side + ARC_CHILD[jn])]["head"], float) - piv
+        ln = float(np.linalg.norm(ax))
+        if ln < 1e-6:
+            continue
+        d = V - piv
+        t = (d @ ax) / ln ** 2
+        sel = np.isin(top, list(below)) & (t > 0.25) & (t < 0.75)
+        if sel.sum() >= 8:
+            # the lower quartile: a stub's middle half reaches into the fillet and the belly around it
+            out[jd] = float(np.percentile(np.linalg.norm(d[sel] - np.outer(t[sel], ax), axis=1), 25))
     return out
 
 
 def _arc_bend(rb: list[dict], V: np.ndarray, J: np.ndarray, W: np.ndarray):
     """BEND_ARC's repaint (see above) of every hinge with a helper; vertices out of a zone keep their weights."""
-    fr = arc_frames(rb)
+    fr = arc_frames(rb, limb_girth(rb, V, J, W))
     if not fr:
         return J, W
     fam = np.arange(len(rb))
@@ -457,18 +511,38 @@ def _arc_bend(rb: list[dict], V: np.ndarray, J: np.ndarray, W: np.ndarray):
     V = np.asarray(V, float)
     D = np.zeros((len(V), len(rb)))
     np.add.at(D, (np.repeat(np.arange(len(V)), J.shape[1]), np.asarray(J).ravel()), np.asarray(W, float).ravel())
+    geo = []
     for f in fr:
         d = V - f["pivot"]
         s = d @ f["u"]
         q = d - s[:, None] * f["u"]
-        rho = np.linalg.norm(q, axis=1)
+        geo.append((s, q, np.linalg.norm(q, axis=1)))
+    for f, (s, q, rho) in zip(fr, geo):  # a stub's body skin: the parent's, with every weight of its limb's chain
+        if not f["stub"]:
+            continue
+        chain = {f["driver"], f["helper"]}
+        for i, b in enumerate(rb):  # (rb lists parents first)
+            if b["parent"] in chain and i != f["helper"]:
+                chain.add(i)
+        cols = np.array(sorted(chain))
+        g = _sstep((rho - ARC_BODY[0] * f["stub"]) / ((ARC_BODY[1] - ARC_BODY[0]) * f["stub"]))
+        g *= 1 - _sstep((np.abs(s) - ARC_AXIAL * f["outer"]) / f["outer"])
+        if f["mid"] is not None:
+            g *= _sstep(1.0 + ((V[:, 0] - f["mid"]) * f["side"]) / ARC_MID)
+        D[:, f["of"]] += g * D[:, cols].sum(1)
+        D[:, cols] *= (1 - g)[:, None]
+    for f, (s, q, rho) in zip(fr, geo):
         c = (q @ f["o"]) / np.maximum(rho, 1e-9)
         L = f["inner"] + (f["outer"] - f["inner"]) * (1 + c) / 2
         phi = _sstep(s / (2 * L) + 0.5)
-        m = (1 - _sstep((rho - 0.7 * f["reach"]) / (0.3 * f["reach"])))
+        m = (1 - _sstep((rho - 0.7 * f["reach"]) / (0.3 * f["reach"]))) if not f["stub"] else np.ones(len(V))
+        if f["stub"]:
+            b0, b1 = ARC_BODY[0] * f["stub"], ARC_BODY[1] * f["stub"]
+            phi = phi * (1 - _sstep((rho - b0) / (b1 - b0)))  # (else the repaint hands the body skin back)
         m *= 1 - _sstep((np.abs(s) - ARC_AXIAL * f["outer"]) / f["outer"])
-        if f["mid"] is not None:  # this side of the body only (a hip's reach crosses to the other thigh)
-            m *= _sstep(0.5 + ((V[:, 0] - f["mid"]) * f["side"]) / ARC_MID)
+        if f["mid"] is not None:  # this side of the body only (a hip's reach crosses to the other thigh); a stub's
+            # repaint runs on across the midline (half of the leak it clears stayed there: a crack up the belly)
+            m *= _sstep((1.0 if f["stub"] else 0.5) + ((V[:, 0] - f["mid"]) * f["side"]) / ARC_MID)
         famp, famd = fam == f["of"], fam == f["driver"]
         wp, wd, wh = D[:, famp].sum(1), D[:, famd].sum(1), D[:, f["helper"]]
         S = wp + wd + wh
