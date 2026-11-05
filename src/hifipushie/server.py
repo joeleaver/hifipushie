@@ -642,7 +642,12 @@ def get_model(name: str) -> str:
     return summarize(spec) + "\n\n" + json.dumps(spec, indent=1)
 
 
-SOLIDS = """Hard-surface pieces (blobs): "shape": "box" | "cylinder" (size [rx, ry, half-height], along its local
+SOLIDS = """Soft primary forms (blobs): "shape": "super" (size [rx, ry, rz], "squareness" 2 = ellipsoid rising
+toward a box, or "exponents" [nx, ny, nz]): a soft block with no band where a plane meets an edge. "shape": "loft"
+("sections": [{"z", "half_width", "half_depth", "squareness": 2, "offset_y": 0}, ...] up its local z, z rising;
+"top" / "bottom": {"z", "round": 3}): ONE seamless mass through cross-sections, e.g. a head and body as one pear,
+where blended blobs leave a groove at every overlap; fit(init_loft=...) measures its sections off the outlines.
+Hard-surface pieces (blobs): "shape": "box" | "cylinder" (size [rx, ry, half-height], along its local
 z; "rot" to turn it) with "round": edge radius; any bone or blob may be "hollow": t (only a wall t thick inside its
 surface: pots, cups, pipes, a boat hull). "ends": "flat" on a bone cuts it square at its joints (sawn logs, beams, dowels; {"flat": r} rounds
 the edge by r) instead of the round caps. "bow" on a bone: [sideways, up] metres (or one number, up) of sag at
@@ -1016,12 +1021,19 @@ def compare(name: str, views: list[str] | None = None, fit: str = "auto", resolu
 def fit(name: str, views: list[str] | None = None, only: list[str] | None = None,
         lock: list[str] | None = None, params: list[str] | None = None, iterations: int = 20,
         max_step: float = 0.02, stiffness: float = 0.05, align: str = "auto", resolution: int = 160,
-        against: str = "auto", only_parts: list[str] | None = None, hide_parts: list[str] | None = None):
-    """Auto-fit joints, radii and blobs (params "pos"|"r"|"offset"|"size") to the reference or plan silhouettes and
-    save as a new version. only / lock (element names), max_step, stiffness, iterations, against, only_parts /
-    hide_parts. Block out by hand first; revert undoes. Details: guide(topic="fit")."""
+        against: str = "auto", only_parts: list[str] | None = None, hide_parts: list[str] | None = None,
+        init_loft: str | None = None):
+    """Auto-fit joints, radii and blobs (params "pos"|"r"|"offset"|"size"|"shape") to the reference or plan
+    silhouettes and save as a new version. only / lock (element names), max_step, stiffness, iterations, against,
+    only_parts / hide_parts; init_loft: a loft blob whose sections are first measured off the front / side
+    outlines. Block out by hand first; revert undoes. Details: guide(topic="fit")."""
     refs = _refs(name, views, against)
     spec = store.load(name)
+    init_lines = []
+    if init_loft:
+        spec, init_lines = fitmod.loft_from_refs(spec, refs, init_loft, align, resolution,
+                                                 _sil_parts(spec, only_parts, hide_parts))
+        init_lines = [f"{init_loft} sections from the outlines:"] + init_lines + [""]
     pin = []
     if any(w is not None for _, w in refs.values()):  # fitting to the plan: its landmarks fix joint heights
         pin = [("joints", lm["joint"], "pos", 2) for lm in (spec["plan"].get("landmarks") or {}).values()
@@ -1034,7 +1046,7 @@ def fit(name: str, views: list[str] | None = None, only: list[str] | None = None
     out = []
     for v, im in fitmod.diff_images(res).items():
         out += [_png(im), f"[{v}] IoU {res.iou_before[v]:.3f} -> {res.iou_after[v]:.3f}"]
-    out.append(f"saved {name} v{ver}\n" + _parts_note(parts) + "\n".join(res.log) + "\n\nchanges:\n" + "\n".join(res.changes or ["(none)"]))
+    out.append(f"saved {name} v{ver}\n" + _parts_note(parts) + "\n".join(init_lines + res.log) + "\n\nchanges:\n" + "\n".join(res.changes or ["(none)"]))
     return out
 
 

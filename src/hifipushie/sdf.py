@@ -13,6 +13,7 @@ import numpy as np
 from scipy import sparse
 from skimage import measure
 
+from .softforms import sd_loft, sd_super
 from .spec import Prim
 
 FAR = 1.0  # field value where no primitive reaches; only its sign matters there
@@ -377,7 +378,7 @@ def sd_shell(p: np.ndarray, pr: dict) -> np.ndarray:
 
 
 SDF = {"cone": sd_cone, "ellipsoid": sd_ellipsoid, "lids": sd_lids, "box": sd_box, "cylinder": sd_cylinder,
-       "blade": sd_blade, "collar": sd_collar, "sweep": sd_sweep,
+       "blade": sd_blade, "collar": sd_collar, "sweep": sd_sweep, "super": sd_super, "loft": sd_loft,
        "csg": sd_csg, "shell": sd_shell, "base": lambda p, pr: _sd_base(p, pr),
        "gnmpiece": lambda p, pr: _sd_gnm_piece(p, pr)}
 
