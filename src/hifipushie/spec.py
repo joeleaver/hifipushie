@@ -23,6 +23,10 @@ Spec shape (all lengths in metres):
       "strokes": {"biceps.L": {"op": "clay", "path": [...], ...}}   # see strokes.py
     }
 
+Blob shapes: "ellipsoid" (default), "box" / "cylinder" (+ "round"), "blade", "lids", "collar", "sweep", and the
+soft primary forms (softforms.py): "super" (a superellipsoid, "squareness" 2 = ellipsoid rising toward a box, no band
+where a plane turns into an edge) and "loft" (ONE seamless mass through cross-sections: a head and body as one pear).
+
 Elements are combined in layer order; within a layer adds come first, then subtracts, then modifiers
 (strokes: they displace or plane whatever the layer has built so far).
 """
@@ -35,6 +39,8 @@ import zlib
 from dataclasses import dataclass, field
 
 import numpy as np
+
+from . import softforms
 
 KINDS = ("joints", "bones", "blobs", "kits", "strokes")
 
@@ -183,7 +189,7 @@ def bone_frame(a: np.ndarray, b: np.ndarray, up=None) -> np.ndarray:
 @dataclass
 class Prim:
     name: str
-    kind: str  # "cone" | "ellipsoid" | "lids" | "box" | "displace" | "flatten" | "shell"
+    kind: str  # "cone" | "ellipsoid" | "super" | "loft" | "lids" | "box" | "displace" | "flatten" | "shell"
     op: str  # "add" | "subtract" | "intersect" | "modify"
     blend: float
     layer: int
@@ -311,6 +317,15 @@ def _compile(spec: dict) -> list[Prim]:
             continue
         if bl.get("shape") == "sweep":  # a profile swept along a path (sdf.sd_sweep): collars, plackets, necklines
             prims.append(_sweep(name, bl, k))
+            continue
+        if bl.get("shape") == "super":
+            pr, reach = softforms.super_params(name, bl, c, rot, size, SpecError)
+            prims.append(Prim(name, "super", bl.get("op", "add"), k, int(bl.get("layer", 0)), c - ext, c + ext,
+                              pr, reach=reach))
+            continue
+        if bl.get("shape") == "loft":
+            pr, lo, hi = softforms.loft_params(name, bl, c, rot, SpecError)
+            prims.append(Prim(name, "loft", bl.get("op", "add"), k, int(bl.get("layer", 0)), lo, hi, pr, reach=3.0))
             continue
         if bl.get("shape") == "box":
             rnd =min(float(bl.get("round", 0.0)), float(size.min()))
@@ -504,7 +519,7 @@ def _csg(s: dict, prims: list[Prim], els: list[dict]) -> list[Prim]:
     return out
 
 
-SHAPES = ("cone", "ellipsoid", "box", "cylinder", "blade", "lids", "csg", "collar", "sweep")
+SHAPES = ("cone", "ellipsoid", "box", "cylinder", "blade", "lids", "csg", "collar", "sweep", "super", "loft")
 
 
 OP_ORDER = {"add": 0, "subtract": 1, "intersect": 2, "modify": 3}

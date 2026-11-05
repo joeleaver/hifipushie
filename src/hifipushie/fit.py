@@ -21,12 +21,12 @@ from scipy import ndimage
 from skimage import measure
 
 from . import compare as cmp
-from . import sdf
-from .spec import compile_prims
+from . import sdf, softforms
+from .spec import SpecError, compile_prims
 
 VIEW_AXES = {"front": (0, 2, 1), "side": (1, 2, 0), "top": (0, 1, 2)}  # world axes of (u, v, depth)
 MIN_SIZE = 0.004
-GROUPS = ("pos", "r", "offset", "size")
+GROUPS = ("pos", "r", "offset", "size", "shape")  # shape: squareness of "super" / "loft" blobs
 
 
 @dataclass
@@ -84,6 +84,71 @@ def make_target(view: str, grid: sdf.Grid, ref: np.ndarray, align: str, world=No
     return Target(view, pl, sd, pad, outline)
 
 
+def loft_from_refs(spec: dict, refs: dict, name: str, align: str = "auto", resolution: int = 160,
+                   parts=None, jump: float = 0.25) -> tuple[dict, list[str]]:
+    """Set loft `name`'s sections from the reference outlines at its own section heights: half_width from the
+    front outline, half_depth and offset_y from the side one (squareness kept). The references are placed as
+    `fit` places them (against the model's current silhouette), so block the rest out first. A row the outline
+    doesn't cross keeps its values, and so does a value the outline would change by more than `jump` (25 %): an
+    arm or a snout in the outline, which it can't tell from the body. Returns the new spec and one line per section."""
+    bl = spec["blobs"][name]
+    if bl.get("shape") != "loft":
+        raise ValueError(f"{name!r} is not a loft")
+    if bl.get("rot") and any(bl["rot"]):
+        raise ValueError(f"{name!r}: sections from references need an upright loft (no rot)")
+    grid = sdf.evaluate(_prims(spec, parts), resolution)
+    targets = {v: make_target(v, grid, *(m if isinstance(m, tuple) else (m, None))[:1], align,
+                              (m[1] if isinstance(m, tuple) else None)) for v, m in refs.items()}
+    if not {"front", "side"} <= set(targets):
+        raise ValueError("sections from references need front and side references")
+    c = np.asarray(bl.get("at", [0, 0, 0]), float) + np.asarray(bl.get("offset", [0, 0, 0]), float)
+    secs, lines = [dict(x) for x in bl["sections"]], []
+    for sec in secs:
+        z = c[2] + float(sec["z"])
+        ext = {}
+        for v, ax in (("front", 0), ("side", 1)):
+            t = targets[v]
+            u = np.linspace(c[ax] - 1.5, c[ax] + 1.5, 6001)
+            inside = t.ref_sd(np.stack([u, np.full_like(u, z)], 1)) < 0
+            run = _run_through(inside, int(np.argmin(np.abs(u - c[ax]))))
+            if run is not None:
+                ext[v] = (u[run[0]] - c[ax], u[run[1]] - c[ax])
+        said = []
+        if "front" in ext:
+            w = float(max(-ext["front"][0], ext["front"][1]))
+            if abs(w / sec["half_width"] - 1) > jump:
+                said.append(f"half_width kept {sec['half_width']:.3f} (outline {w:.3f}: another part?)")
+            else:
+                sec["half_width"] = round(w, 4)
+                said.append(f"half_width {w:.3f}")
+        if "side" in ext:
+            a, b = ext["side"]
+            if abs((b - a) / 2 / sec["half_depth"] - 1) > jump:
+                said.append(f"depth kept (outline y {a:+.3f}..{b:+.3f}: another part?)")
+            else:
+                sec["half_depth"], sec["offset_y"] = round(float(b - a) / 2, 4), round(float(a + b) / 2, 4)
+                said.append(f"y {a:+.3f}..{b:+.3f}")
+        lines.append(f"z {sec['z']:.3f}: " + (" ".join(said) or "(outline not crossed: kept)"))
+    out = copy.deepcopy(spec)
+    out["blobs"][name] = {**bl, "sections": secs}
+    return out, lines
+
+
+def _run_through(inside: np.ndarray, i: int):
+    """(first, last) index of the inside run containing i, or the nearest run to it."""
+    if not inside.any():
+        return None
+    if not inside[i]:
+        idx = np.flatnonzero(inside)
+        i = int(idx[np.argmin(np.abs(idx - i))])
+    a, b = i, i
+    while a > 0 and inside[a - 1]:
+        a -= 1
+    while b < len(inside) - 1 and inside[b + 1]:
+        b += 1
+    return a, b
+
+
 # ---------------------------------------------------------------- parameters
 
 def parameters(spec: dict, groups=GROUPS, only=None, lock=()) -> list[tuple]:
@@ -116,16 +181,50 @@ def parameters(spec: dict, groups=GROUPS, only=None, lock=()) -> list[tuple]:
         if "offset" in groups:
             field = "at" if isinstance(bl.get("at"), list) else "offset"
             out += [("blobs", n, field, i) for i in range(3) if i or not centre]
+        if bl.get("shape") == "loft":
+            out += _loft_parameters(n, bl, groups)
+            continue
         if "size" in groups:
             out += [("blobs", n, "size", i) for i in range(3)]
+        if "shape" in groups and bl.get("shape") == "super":
+            out += ([("blobs", n, "exponents", i) for i in range(3)] if bl.get("exponents") is not None
+                    else [("blobs", n, "squareness", None)])
     return out
+
+
+def _loft_parameters(n: str, bl: dict, groups) -> list[tuple]:
+    """A loft's free scalars: each section's half sizes ("size"), front/back centre ("offset") and squareness
+    ("shape"), and each cap's z ("size": how far the dome reaches). Section heights stay: they're the
+    measuring stations."""
+    out = []
+    for i in range(len(bl.get("sections") or [])):
+        if "size" in groups:
+            out += [("blobs", n, "sections", (i, "half_width")), ("blobs", n, "sections", (i, "half_depth"))]
+        if "offset" in groups:
+            out.append(("blobs", n, "sections", (i, "offset_y")))
+        if "shape" in groups:
+            out.append(("blobs", n, "sections", (i, "squareness")))
+    for end in ("bottom", "top"):
+        cap = bl.get(end)
+        if "size" in groups and isinstance(cap, (int, float)):
+            out.append(("blobs", n, end, None))
+        elif "size" in groups and isinstance(cap, dict) and "z" in cap:
+            out.append(("blobs", n, end, "z"))
+    return out
+
+
+_DEFAULTS = {"squareness": 2.0, "offset_y": 0.0}
 
 
 def _get(spec, p) -> float:
     kind, name, field, i = p
     el = spec[kind][name]
     if i is None:
-        return float(el.get(field, 0.05))
+        return float(el.get(field, 3.0 if field == "squareness" else 0.05))
+    if isinstance(i, tuple):  # (section index, key): a loft's sections
+        return float(el[field][i[0]].get(i[1], _DEFAULTS.get(i[1], 0.0)))
+    if isinstance(i, str):  # a key of a dict field: a loft's cap
+        return float(el[field][i])
     return float(el.get(field, [0.0, 0.0, 0.0])[i])
 
 
@@ -134,6 +233,12 @@ def _set(spec, p, value: float):
     el = spec[kind][name]
     if i is None:
         el[field] = value
+    elif isinstance(i, tuple):
+        secs = [dict(s) for s in el[field]]
+        secs[i[0]][i[1]] = value
+        el[field] = secs
+    elif isinstance(i, str):
+        el[field] = {**el[field], i: value}
     else:
         v = list(el.get(field, [0.0, 0.0, 0.0]))
         v[i] = value
@@ -141,7 +246,11 @@ def _set(spec, p, value: float):
 
 
 def _is_size(p) -> bool:
-    return p[2] in ("r", "r_a", "r_b", "size")
+    return p[2] in ("r", "r_a", "r_b", "size") or (isinstance(p[3], tuple) and p[3][1].startswith("half_"))
+
+
+def _is_shape(p) -> bool:
+    return p[2] in ("squareness", "exponents") or (isinstance(p[3], tuple) and p[3][1] == "squareness")
 
 
 # ---------------------------------------------------------------- evaluation
@@ -269,8 +378,14 @@ def jacobian(st: State, params: list[tuple], eps: float = 1e-4) -> np.ndarray:
     J = np.zeros((len(st.P), len(params)))
     for k, p in enumerate(params):
         v = _get(spec, p)
-        _set(spec, p, v + eps)
-        prims = _prims(spec, st.parts)
+        h = eps
+        try:
+            _set(spec, p, v + h)
+            prims = _prims(spec, st.parts)
+        except SpecError:  # on an element's limit (a blade as thick as it may be): difference backwards
+            h = -eps
+            _set(spec, p, v + h)
+            prims = _prims(spec, st.parts)
         _set(spec, p, v)
         fp1 = {sdf.fingerprint(q): q for q in prims}
         changed = [fp1[f] for f in fp1.keys() - fp0.keys()] + [fp0[f] for f in fp0.keys() - fp1.keys()]
@@ -285,7 +400,7 @@ def jacobian(st: State, params: list[tuple], eps: float = 1e-4) -> np.ndarray:
                 hit |= np.all((st.P >= q.lo - m) & (st.P <= q.hi + m), axis=1)
         idx = np.flatnonzero(hit)
         if len(idx):
-            J[idx, k] = -(sdf.field_at(prims, st.P[idx], clip=False) - f0[idx]) / eps / st.gn[idx]
+            J[idx, k] = -(sdf.field_at(prims, st.P[idx], clip=False) - f0[idx]) / h / st.gn[idx]
     return J
 
 
@@ -326,6 +441,7 @@ def fit(spec: dict, refs: dict[str, np.ndarray], align: str = "auto", groups=GRO
         raise ValueError("nothing to fit: no free parameters")
     theta0 = np.array([_get(spec, p) for p in params])
     sizes = np.array([_is_size(p) for p in params])
+    shapes = np.array([_is_shape(p) for p in params])
 
     def at(theta):
         s = copy.deepcopy(spec)
@@ -354,7 +470,12 @@ def fit(spec: dict, refs: dict[str, np.ndarray], align: str = "auto", groups=GRO
             step *= max_step / max(np.abs(step).max(), max_step)
             new = st.theta + step
             new[sizes] = np.maximum(new[sizes], MIN_SIZE)
-            cand = at(new)
+            new[shapes] = np.clip(new[shapes], softforms.SQ_MIN, softforms.SQ_MAX)
+            try:
+                cand = at(new)
+            except SpecError:  # the step made an element invalid (a blade thicker than it's wide): a smaller one
+                lam *= 4
+                continue
             if cand.energy + prior(new) < st.energy + prior(st.theta):
                 gain = 1 - (cand.energy + prior(new)) / (st.energy + prior(st.theta))
                 st, lam = cand, max(lam / 3, 1e-5)
@@ -377,7 +498,10 @@ def fit(spec: dict, refs: dict[str, np.ndarray], align: str = "auto", groups=GRO
         if abs(b - a) >= 5e-4:
             moved.setdefault(p[:3], []).append((p[3], a, b))
     for (kind, name, field), vals in moved.items():
-        if vals[0][0] is None:
+        if not isinstance(vals[0][0], (int, type(None))):  # a loft's section values, a cap's z: one line each
+            changes += [f"{kind[:-1]} {name}.{field}{list(i) if isinstance(i, tuple) else '.' + i}: {a:.3f} -> {b:.3f}"
+                        f" ({b - a:+.3f})" for i, a, b in vals]
+        elif vals[0][0] is None:
             _, a, b = vals[0]
             changes.append(f"{kind[:-1]} {name}.{field}: {a:.3f} -> {b:.3f} ({b - a:+.3f})")
         else:
