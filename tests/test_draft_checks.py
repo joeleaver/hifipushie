@@ -77,4 +77,14 @@ def test_an_undercollar_with_no_role_is_judged_a_fall_not_a_stand():  # (t s4-3:
     from hifipushie import draft_shape as ds
     assert ds._role("undercollar", {"pieces": {"undercollar": {}}}, {}) == "collar_fall"
     assert ds._role("undercollar", {"pieces": {"undercollar": {"role": "collar_stand"}}}, {}) == "collar_stand"
-    assert ds._role("panel.L", {}, {}) == ""
+    assert ds._role("widget.L", {}, {}) == "" and ds._role("front.L", {}, {}) == "front"
+
+
+def test_a_lapels_roll_fold_is_not_a_collar_fall():  # (t s4-5; C366)
+    import numpy as np
+    from hifipushie import draft_shape as ds
+    sq = {"P": np.asarray([[0, 0], [0.1, 0], [0.1, 0.2], [0, 0.2]], float), "names": {"a": 0, "b": 1, "c": 2, "d": 3}}
+    B = {"pieces": {"front.L": dict(sq, name="front.L"), "undercollar": dict(sq, name="undercollar")},
+         "folds": [{"piece": "front.L", "kind": "roll"}, {"piece": "undercollar", "kind": "roll"}], "seams": []}
+    f = ds.fall_pieces(B, {}, {})
+    assert "front.L" not in f and "undercollar" in f

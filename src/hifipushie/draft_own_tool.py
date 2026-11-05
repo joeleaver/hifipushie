@@ -65,7 +65,7 @@ def flat_check(name: str, garment: str) -> tuple[list, dict, dict]:
     B = cloth.pieces(json.loads(json.dumps(g)), measurements(rd["3"]))
     blk = do.block(g["pattern"])
     B["edge_arcs"], B["decl"] = blk["edge_arcs"], blk["decl"]
-    return do.gate(B, decl, rd["1"], stand_ref(name, garment), rd["3"], _fit(name, garment)), B, decl
+    return do.gate(B, blk["decl"], rd["1"], stand_ref(name, garment), rd["3"], _fit(name, garment)), B, decl
 
 
 def check_text(name: str, garment: str) -> str:
@@ -149,7 +149,7 @@ def run(name: str, garment: str, design: str, declarations: dict, options: dict 
         raise do.DraftRefused(f"the converter refused the draft: {e}{nan}") from None
     blk = do.block(g["pattern"])
     B["edge_arcs"], B["decl"] = blk["edge_arcs"], blk["decl"]
-    rows = do.gate(B, declarations, rd["1"], stand_ref(name, garment), rd["3"], _fit(name, garment))
+    rows = do.gate(B, blk["decl"], rd["1"], stand_ref(name, garment), rd["3"], _fit(name, garment))  # (expanded: C366)
     v = do.verdict(rows)
     seam_rows = next(r for r in rows if r["id"] == "seams")["detail"]
     dx = B.get("decl") or declarations
