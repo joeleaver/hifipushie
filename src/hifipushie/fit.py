@@ -22,7 +22,7 @@ from skimage import measure
 
 from . import compare as cmp
 from . import sdf, softforms
-from .spec import compile_prims
+from .spec import SpecError, compile_prims
 
 VIEW_AXES = {"front": (0, 2, 1), "side": (1, 2, 0), "top": (0, 1, 2)}  # world axes of (u, v, depth)
 MIN_SIZE = 0.004
@@ -85,11 +85,12 @@ def make_target(view: str, grid: sdf.Grid, ref: np.ndarray, align: str, world=No
 
 
 def loft_from_refs(spec: dict, refs: dict, name: str, align: str = "auto", resolution: int = 160,
-                   parts=None) -> tuple[dict, list[str]]:
+                   parts=None, jump: float = 0.25) -> tuple[dict, list[str]]:
     """Set loft `name`'s sections from the reference outlines at its own section heights: half_width from the
     front outline, half_depth and offset_y from the side one (squareness kept). The references are placed as
     `fit` places them (against the model's current silhouette), so block the rest out first. A row the outline
-    doesn't cross keeps its values. Returns the new spec and one line per section."""
+    doesn't cross keeps its values, and so does a value the outline would change by more than `jump` (25 %): an
+    arm or a snout in the outline, which it can't tell from the body. Returns the new spec and one line per section."""
     bl = spec["blobs"][name]
     if bl.get("shape") != "loft":
         raise ValueError(f"{name!r} is not a loft")
@@ -112,14 +113,22 @@ def loft_from_refs(spec: dict, refs: dict, name: str, align: str = "auto", resol
             run = _run_through(inside, int(np.argmin(np.abs(u - c[ax]))))
             if run is not None:
                 ext[v] = (u[run[0]] - c[ax], u[run[1]] - c[ax])
+        said = []
         if "front" in ext:
-            sec["half_width"] = round(float(max(-ext["front"][0], ext["front"][1])), 4)
+            w = float(max(-ext["front"][0], ext["front"][1]))
+            if abs(w / sec["half_width"] - 1) > jump:
+                said.append(f"half_width kept {sec['half_width']:.3f} (outline {w:.3f}: another part?)")
+            else:
+                sec["half_width"] = round(w, 4)
+                said.append(f"half_width {w:.3f}")
         if "side" in ext:
             a, b = ext["side"]
-            sec["half_depth"], sec["offset_y"] = round(float(b - a) / 2, 4), round(float(a + b) / 2, 4)
-        lines.append(f"z {sec['z']:.3f}: " + (f"half_width {sec['half_width']:.3f} " if "front" in ext else "")
-                     + (f"y {ext['side'][0]:+.3f}..{ext['side'][1]:+.3f}" if "side" in ext else "")
-                     + ("" if ext else "(outline not crossed: kept)"))
+            if abs((b - a) / 2 / sec["half_depth"] - 1) > jump:
+                said.append(f"depth kept (outline y {a:+.3f}..{b:+.3f}: another part?)")
+            else:
+                sec["half_depth"], sec["offset_y"] = round(float(b - a) / 2, 4), round(float(a + b) / 2, 4)
+                said.append(f"y {a:+.3f}..{b:+.3f}")
+        lines.append(f"z {sec['z']:.3f}: " + (" ".join(said) or "(outline not crossed: kept)"))
     out = copy.deepcopy(spec)
     out["blobs"][name] = {**bl, "sections": secs}
     return out, lines
@@ -369,8 +378,14 @@ def jacobian(st: State, params: list[tuple], eps: float = 1e-4) -> np.ndarray:
     J = np.zeros((len(st.P), len(params)))
     for k, p in enumerate(params):
         v = _get(spec, p)
-        _set(spec, p, v + eps)
-        prims = _prims(spec, st.parts)
+        h = eps
+        try:
+            _set(spec, p, v + h)
+            prims = _prims(spec, st.parts)
+        except SpecError:  # on an element's limit (a blade as thick as it may be): difference backwards
+            h = -eps
+            _set(spec, p, v + h)
+            prims = _prims(spec, st.parts)
         _set(spec, p, v)
         fp1 = {sdf.fingerprint(q): q for q in prims}
         changed = [fp1[f] for f in fp1.keys() - fp0.keys()] + [fp0[f] for f in fp0.keys() - fp1.keys()]
@@ -385,7 +400,7 @@ def jacobian(st: State, params: list[tuple], eps: float = 1e-4) -> np.ndarray:
                 hit |= np.all((st.P >= q.lo - m) & (st.P <= q.hi + m), axis=1)
         idx = np.flatnonzero(hit)
         if len(idx):
-            J[idx, k] = -(sdf.field_at(prims, st.P[idx], clip=False) - f0[idx]) / eps / st.gn[idx]
+            J[idx, k] = -(sdf.field_at(prims, st.P[idx], clip=False) - f0[idx]) / h / st.gn[idx]
     return J
 
 
@@ -456,7 +471,11 @@ def fit(spec: dict, refs: dict[str, np.ndarray], align: str = "auto", groups=GRO
             new = st.theta + step
             new[sizes] = np.maximum(new[sizes], MIN_SIZE)
             new[shapes] = np.clip(new[shapes], softforms.SQ_MIN, softforms.SQ_MAX)
-            cand = at(new)
+            try:
+                cand = at(new)
+            except SpecError:  # the step made an element invalid (a blade thicker than it's wide): a smaller one
+                lam *= 4
+                continue
             if cand.energy + prior(new) < st.energy + prior(st.theta):
                 gain = 1 - (cand.energy + prior(new)) / (st.energy + prior(st.theta))
                 st, lam = cand, max(lam / 3, 1e-5)

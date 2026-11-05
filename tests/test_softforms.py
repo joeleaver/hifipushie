@@ -173,7 +173,7 @@ def test_loft_sections_from_outlines():
     target = spec_of(body=pear())
     start = copy.deepcopy(target)
     for s in start["blobs"]["body"]["sections"]:
-        s.update(half_width=0.15, half_depth=0.15, offset_y=0.0)
+        s.update(half_width=0.18, half_depth=0.16, offset_y=0.0)
     refs = {v: _world_ref(target, v, 200) for v in ("front", "side")}
     out, lines = fitmod.loft_from_refs(start, refs, "body", resolution=110)
     assert len(lines) == len(PIG)
@@ -181,3 +181,11 @@ def test_loft_sections_from_outlines():
         assert s["half_width"] == pytest.approx(w, abs=0.006)
         assert s["half_depth"] == pytest.approx((b - a) / 2, abs=0.006)
         assert s["offset_y"] == pytest.approx((a + b) / 2, abs=0.006)
+
+
+def test_loft_sections_from_outlines_keep_a_row_another_part_crosses():
+    target = spec_of(body=pear(), arm={"at": [0.24, 0, 0.32], "size": [0.08, 0.05, 0.06]})
+    start = copy.deepcopy(target)
+    refs = {v: _world_ref(target, v, 200) for v in ("front", "side")}
+    out, lines = fitmod.loft_from_refs(start, refs, "body", resolution=110)
+    assert "kept" in lines[2] and out["blobs"]["body"]["sections"][2]["half_width"] == 0.20
