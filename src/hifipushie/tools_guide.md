@@ -153,6 +153,14 @@ instances=True marks every placed prefab instance on the orthographic views: a d
 along its front (the prefab's local -Y: build prefabs facing -Y, like creatures) and its name. With a top
 view (and a clip) it's the floor plan with which way each piece of furniture faces.
 save: also write the contact sheet to this PNG path (to show someone who can't see tool images).
+shapes: a face-kit model posed in its face shapes, without an export: {"jawOpen": 0.8, "mouthSmileLeft": 0.3, ...}
+(absolute ARKit weights, as an engine sets them), "rest" (face_shapes.rest) or a preset ("smile", "frown", ...); {} is
+the closed neutral. The model is meshed as export_asset meshes it (the lips' slit at its fine voxel, at the export's
+resolution 256, whatever `resolution` says) and the export's own shape code runs on it, so it is the GLB less its
+decimation (facepose.py). Correctives are set by formula (jawOpen_mouthSmile = min(jawOpen, mouthSmile)); one given by
+hand is kept and said. ~10 s a look; the first after a geometry change ~25-40 s (meshing + the lips' seal, cached).
+paint=False is the exact one; a painted look carries the moves onto the scene's coarser meshes (nearest posed point
+of the same part) and says when its lips aren't meshed apart.
 
 ### `check`
 
@@ -397,6 +405,11 @@ teeth, tongue, eyeballs), the same vertices as the neutral (mouth closed), each 
 1, additive; names in glTF mesh.extras.targetNames, FBX blend shapes, and the json's face_shapes. Tune amounts /
 the jaw / the blink's lid seal (`lid_seal`: false | amount | {amount, over, band, reach}) in
 spec["face_shapes"] (kit_reference FACE SHAPES). The slit's part is meshed fine enough to keep the slit open.
+A rest expression (a character whose neutral face is a grin or a scowl): spec face_shapes.rest = {ARKit name: weight}.
+It is carried, not baked: the mesh stays the closed neutral and each face-shape mesh's glTF mesh.weights (default
+weights every loader applies, Playweft's too) are the rest, correctives by formula; extras.restExpression names them;
+the rig notes say how an engine plays clips over it. (Baking it measured 20-57 mm off for a closed mouth or a viseme:
+engines clamp the negative weights it would need; facepose.compare_rest.) Judge it first: look(shapes="rest").
 The log lists each skin part's most uneven shapes (a vertex moving outside its neighbours' range; smooth ~0) and
 WARNs over 0.2: a sawtooth in whatever is painted there. Check blinks posed: rig(glb=, shapes={"eyeBlinkLeft": 1}).
 asset_name: what the exported files, nodes, meshes and materials are called (default the model's name; a game
