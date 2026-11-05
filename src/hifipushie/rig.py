@@ -417,7 +417,7 @@ ARC_BODY = (1.1, 2.5)
 ARC_ROOTS = ("UpLeg", "Arm")  # only where a limb leaves the body: a stub's knee is an ordinary hinge (as a stub too,
 #                              its zone covered the whole shin and the seat behind it went with the knee)
 ARC_STUB_UNIT = 0.1  # a stub's zone unit is its girth / this. Swept on Puddles seated (edges stretched > 3x; seat
-#  skin behind the thigh moved): unit = length 3542; 0.1 + ARC_BODY (1.1, 2.5) 60 (48 mm). From < 1.1 the leg's own skin (at ~1x) went to the hips: (0.5, 1.5) 2 (0 mm) was the thigh half turned
+#  skin behind the thigh moved): unit = length (before stubs) 2442; 0.1 + ARC_BODY (1.1, 2.5) 60 (48 mm). From < 1.1 the leg's own skin (at ~1x) went to the hips: (0.5, 1.5) 2 (0 mm) was the thigh half turned
 
 
 def _sstep(x):
