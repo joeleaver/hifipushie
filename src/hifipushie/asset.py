@@ -2050,7 +2050,7 @@ BEND_RECIPE = ("Bend helpers (<joint>Bend: ForeArmBend at the elbow, LegBend at 
 
 REST_HOW = ("A rest expression (spec face_shapes.rest: a grin, a scowl) is carried, not baked: the mesh stays the true "
             "neutral (mouth closed) and each face-shape mesh's glTF mesh.weights (the default morph weights every glTF "
-            "loader applies) are the rest weights, correctives filled in by their formula; mesh.extras.restExpression "
+            "loader applies) are the rest weights, correctives by formula unless the rest sets one; mesh.extras.restExpression "
             "names them. An engine shows the rest by default; to play a clip or lipsync on it, set ABSOLUTE weights "
             "(e.g. max(rest, clip) per channel, or blend from the rest) and the correctives by formula every frame, "
             "and return to restExpression after. Not baked because correctives are min() of absolute weights and a "
