@@ -25,7 +25,8 @@ Spec shape (all lengths in metres):
 
 Blob shapes: "ellipsoid" (default), "box" / "cylinder" (+ "round"), "blade", "lids", "collar", "sweep", and the
 soft primary forms (softforms.py): "super" (a superellipsoid, "squareness" 2 = ellipsoid rising toward a box, no band
-where a plane turns into an edge) and "loft" (ONE seamless mass through cross-sections: a head and body as one pear).
+where a plane turns into an edge) and "loft" (ONE seamless mass through cross-sections: a head and body as one pear);
+"sheet" (sheet.py: one seamless thick sheet along a spine curve, tapering, folding without seams: ears, leaves, flaps).
 
 Elements are combined in layer order; within a layer adds come first, then subtracts, then modifiers
 (strokes: they displace or plane whatever the layer has built so far).
@@ -40,7 +41,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from . import softforms
+from . import sheet, softforms
 
 KINDS = ("joints", "bones", "blobs", "kits", "strokes")
 
@@ -151,9 +152,13 @@ def expand_mirror(spec: dict) -> dict:
             nb["offset"] = _mirror_vec(bl["offset"])
         if "rot" in bl:
             nb["rot"] = _mirror_rot(bl["rot"])
-        for key in ("pts", "nrm", "path", "N", "U"):  # sweeps (strokes, sweep blobs)
+        for key in ("pts", "nrm", "path", "N", "U", "spine"):  # sweeps (strokes, sweep blobs), sheets
             if key in bl:
                 nb[key] = [_mirror_vec(v) for v in bl[key]]
+        if bl.get("shape") == "sheet":  # the normal (tangent x width axis) flips under a reflection: keep its side
+            if "width_axis" in bl:
+                nb["width_axis"] = _mirror_vec(bl["width_axis"])
+            nb["hand"] = -float(bl.get("hand", 1.0))
         if bl.get("group"):
             nb["group"] = _mname(bl["group"])
         if bl.get("targets"):
@@ -322,6 +327,10 @@ def _compile(spec: dict) -> list[Prim]:
             pr, reach = softforms.super_params(name, bl, c, rot, size, SpecError)
             prims.append(Prim(name, "super", bl.get("op", "add"), k, int(bl.get("layer", 0)), c - ext, c + ext,
                               pr, reach=reach))
+            continue
+        if bl.get("shape") == "sheet":
+            pr, lo, hi = sheet.sheet_params(name, bl, c, SpecError)
+            prims.append(Prim(name, "sheet", bl.get("op", "add"), k, int(bl.get("layer", 0)), lo, hi, pr, reach=3.0))
             continue
         if bl.get("shape") == "loft":
             pr, lo, hi = softforms.loft_params(name, bl, c, rot, SpecError)
@@ -519,7 +528,7 @@ def _csg(s: dict, prims: list[Prim], els: list[dict]) -> list[Prim]:
     return out
 
 
-SHAPES = ("cone", "ellipsoid", "box", "cylinder", "blade", "lids", "csg", "collar", "sweep", "super", "loft")
+SHAPES = ("cone", "ellipsoid", "box", "cylinder", "blade", "lids", "csg", "collar", "sweep", "super", "loft", "sheet")
 
 
 OP_ORDER = {"add": 0, "subtract": 1, "intersect": 2, "modify": 3}
