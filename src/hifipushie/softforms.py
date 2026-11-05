@@ -86,15 +86,19 @@ def _natural(z: np.ndarray, y: np.ndarray) -> np.ndarray:
     if m < 3:
         return M
     h = np.diff(z)
-    A = np.zeros((m - 2, m - 2))
     rhs = 6 * (np.diff(y[1:]) / h[1:] - np.diff(y[:-1]) / h[:-1])
-    for i in range(m - 2):
-        A[i, i] = 2 * (h[i] + h[i + 1])
-        if i:
-            A[i, i - 1] = h[i]
-        if i < m - 3:
-            A[i, i + 1] = h[i + 1]
-    M[1:-1] = np.linalg.solve(A, rhs)
+    diag = 2 * (h[:-1] + h[1:])  # tridiagonal (sub = super = h[1:-1]): the Thomas algorithm, O(m) (a dense solve of
+    off = h[1:-1]                # a sheet's 255 knots took seconds on a busy BLAS)
+    n = m - 2
+    c, d = np.zeros(n), np.zeros(n)
+    c[0], d[0] = (off[0] / diag[0] if n > 1 else 0.0), rhs[0] / diag[0]
+    for i in range(1, n):
+        den = diag[i] - off[i - 1] * c[i - 1]
+        c[i] = off[i] / den if i < n - 1 else 0.0
+        d[i] = (rhs[i] - off[i - 1] * d[i - 1]) / den
+    for i in range(n - 2, -1, -1):
+        d[i] -= c[i] * d[i + 1]
+    M[1:-1] = d
     return M
 
 

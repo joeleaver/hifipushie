@@ -647,6 +647,12 @@ toward a box, or "exponents" [nx, ny, nz]): a soft block with no band where a pl
 ("sections": [{"z", "half_width", "half_depth", "squareness": 2, "offset_y": 0}, ...] up its local z, z rising;
 "top" / "bottom": {"z", "round": 3}): ONE seamless mass through cross-sections, e.g. a head and body as one pear,
 where blended blobs leave a groove at every overlap; fit(init_loft=...) measures its sections off the outlines.
+"shape": "sheet" ("spine": [[x, y, z], ...] root to tip, "curve": "spline" | "bezier" (3n + 1 controls);
+"stations": [{"t": 0..1, "half_width", "half_thickness", "cup": m, "twist": deg}, ...]; "width_axis" (default: the
+spine plane's normal); "root" / "tip": end rounding m): ONE seamless thick sheet folding along a curve without
+twisting: a floppy ear folded through 100 degrees, a leaf, flap, cape, tongue (blades hinged or chained show seams
+and knuckles). Refused when the spine bends tighter than the sheet is thick. fit moves spine points ("pos") and
+station widths ("size").
 Hard-surface pieces (blobs): "shape": "box" | "cylinder" (size [rx, ry, half-height], along its local
 z; "rot" to turn it) with "round": edge radius; any bone or blob may be "hollow": t (only a wall t thick inside its
 surface: pots, cups, pipes, a boat hull). "ends": "flat" on a bone cuts it square at its joints (sawn logs, beams, dowels; {"flat": r} rounds

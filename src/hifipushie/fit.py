@@ -184,6 +184,9 @@ def parameters(spec: dict, groups=GROUPS, only=None, lock=()) -> list[tuple]:
         if bl.get("shape") == "loft":
             out += _loft_parameters(n, bl, groups)
             continue
+        if bl.get("shape") == "sheet":
+            out += _sheet_parameters(n, bl, groups, centre)
+            continue
         if "size" in groups:
             out += [("blobs", n, "size", i) for i in range(3)]
         if "shape" in groups and bl.get("shape") == "super":
@@ -213,6 +216,19 @@ def _loft_parameters(n: str, bl: dict, groups) -> list[tuple]:
     return out
 
 
+def _sheet_parameters(n: str, bl: dict, groups, centre: bool) -> list[tuple]:
+    """A sheet's free scalars: its spine points ("pos"; a centre-line sheet keeps x) and each station's half width
+    and half thickness ("size"). Station t, cup and twist stay."""
+    out = []
+    if "pos" in groups:
+        for i in range(len(bl.get("spine") or [])):
+            out += [("blobs", n, "spine", (i, k)) for k in range(3) if k or not centre]
+    if "size" in groups:
+        for i in range(len(bl.get("stations") or [])):
+            out += [("blobs", n, "stations", (i, "half_width")), ("blobs", n, "stations", (i, "half_thickness"))]
+    return out
+
+
 _DEFAULTS = {"squareness": 2.0, "offset_y": 0.0}
 
 
@@ -221,8 +237,9 @@ def _get(spec, p) -> float:
     el = spec[kind][name]
     if i is None:
         return float(el.get(field, 3.0 if field == "squareness" else 0.05))
-    if isinstance(i, tuple):  # (section index, key): a loft's sections
-        return float(el[field][i[0]].get(i[1], _DEFAULTS.get(i[1], 0.0)))
+    if isinstance(i, tuple):  # (row, key): a loft's sections, a sheet's stations; (row, axis): a sheet's spine
+        row = el[field][i[0]]
+        return float(row[i[1]] if isinstance(i[1], int) else row.get(i[1], _DEFAULTS.get(i[1], 0.0)))
     if isinstance(i, str):  # a key of a dict field: a loft's cap
         return float(el[field][i])
     return float(el.get(field, [0.0, 0.0, 0.0])[i])
@@ -234,7 +251,7 @@ def _set(spec, p, value: float):
     if i is None:
         el[field] = value
     elif isinstance(i, tuple):
-        secs = [dict(s) for s in el[field]]
+        secs = [list(s) if isinstance(i[1], int) else dict(s) for s in el[field]]
         secs[i[0]][i[1]] = value
         el[field] = secs
     elif isinstance(i, str):
@@ -246,7 +263,7 @@ def _set(spec, p, value: float):
 
 
 def _is_size(p) -> bool:
-    return p[2] in ("r", "r_a", "r_b", "size") or (isinstance(p[3], tuple) and p[3][1].startswith("half_"))
+    return p[2] in ("r", "r_a", "r_b", "size") or (isinstance(p[3], tuple) and str(p[3][1]).startswith("half_"))
 
 
 def _is_shape(p) -> bool:
