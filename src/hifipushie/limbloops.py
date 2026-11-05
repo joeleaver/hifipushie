@@ -218,7 +218,7 @@ def junction(prims, root, n_root, side, step, voxel, count=JUNCTION):
     holds `CROTCH` of the root ring's distance from the midline (a pair of legs keeps a strip of body between them)."""
     rings, P = [], root.copy()
     co = root.mean(0)
-    hold_x = max(MID_MARGIN, CROTCH * float((root[:, 0] * side).min()))
+    hold_x = -np.inf if side is None else max(MID_MARGIN, CROTCH * float((root[:, 0] * side).min()))
     sub = 8
     for _ in range(count):
         for _ in range(sub):
@@ -228,7 +228,7 @@ def junction(prims, root, n_root, side, step, voxel, count=JUNCTION):
             t = rad - UP_SHARE * n_root
             t = t - g * (g * t).sum(1, keepdims=True)
             P2 = _project(prims, P + _unit(t) * step / sub, voxel, 4)
-            hold = P2[:, 0] * side < hold_x
+            hold = (P2[:, 0] * side < hold_x) if side is not None else np.zeros(len(P2), bool)
             P = np.where(hold[:, None], P, P2)
         P = _even(prims, P, voxel)
         rings.append(P.copy())
@@ -373,6 +373,12 @@ def build(spec: dict, prims, V, F, voxel: float, body_triangles: int, part: str 
         limbs_.append((limb, J[::-1] + rings, [None] * len(J) + labels, tip, co, no))
         log.append(f"{limb['label']}: {len(rings)} rings of {RING} (keys {', '.join(l for l in labels if l)}), "
                    f"{len(J)} junction rings, step {step * 1000:.0f} mm")
+    from . import mouthloops
+    for op in mouthloops.openings(spec, prims, V, F, part, voxel, body_triangles, log):
+        cut |= op["cut"]
+        planes.update(op["planes"])
+        limbs_.append(({"label": op["label"], "free": op["labels"].index(op["label"] + " rim")}, op["rings"],
+                       op["labels"], op["tip"], op["co"], op["no"]))
     had = {v for lp in _boundary_loops(F) for v in lp}  # the part's own openings (a mouth cut) aren't the limbs'
     Fk = _largest(V, _clean_cut(_largest(V, F[~cut[F].any(1)]), cut))
     loops = [lp for lp in _boundary_loops(Fk) if not set(lp) <= had]
@@ -385,9 +391,10 @@ def build(spec: dict, prims, V, F, voxel: float, body_triangles: int, part: str 
         lp = np.array(min(loops, key=lambda L: np.linalg.norm(V[L].mean(0) - co)))
         loops = [x for x in loops if x is not lp and not np.array_equal(x, lp)]
         O = allr[0]
-        oid = np.arange(nv, nv + RING)
+        n_r = len(allr[0])
+        oid = np.arange(nv, nv + n_r)
         Vz.append(O)
-        nv += RING
+        nv += n_r
         Vall = np.concatenate(Vz)
         # the hole runs against the body's winding; the ring goes the same way round
         if _turn(Vall[lp], co, no) != _turn(O, co, no):
@@ -411,19 +418,21 @@ def build(spec: dict, prims, V, F, voxel: float, body_triangles: int, part: str 
             raise ValueError(f"limbs: {limb['label']}'s junction ring didn't survive the decimation ({d.max():.2g} m)")
         ids = [oid]
         for R in allr[1:]:
-            ids.append(np.arange(nv, nv + RING))
+            ids.append(np.arange(nv, nv + len(R)))
             verts.append(R)
-            nv += RING
+            nv += len(R)
         verts.append(tip[None])
         tip_id = nv
         nv += 1
-        fixed += [i for x in ids for i in x] + [tip_id]
+        # (an opening's border rings over the face relax with the body: walked into a crease under a lip they folded)
+        fixed += [i for x in ids[limb.get("free", 0):] for i in x] + [tip_id]
         for lab, rid in zip(labels, ids):
             if lab:
                 keyrings[lab] = rid.tolist()
-        quads = [[a[k], a[(k + 1) % RING], b[(k + 1) % RING], b[k]] for a, b in zip(ids[:-1], ids[1:]) for k in range(RING)]
+        n_r = len(ids[0])
+        quads = [[a[k], a[(k + 1) % n_r], b[(k + 1) % n_r], b[k]] for a, b in zip(ids[:-1], ids[1:]) for k in range(n_r)]
         last = ids[-1]
-        quads += [[last[k], last[k + 1], last[(k + 2) % RING], tip_id] for k in range(0, RING, 2)]
+        quads += [[last[k], last[k + 1], last[(k + 2) % n_r], tip_id] for k in range(0, n_r, 2)]
         Vall = np.concatenate(verts)
         if _wound_in(Vall, np.array(quads), prims):
             quads = [q[::-1] for q in quads]
@@ -468,7 +477,8 @@ def _relax_zip(prims, V, L, S, fixed, voxel, rounds=20):
     return V
 
 
-def quality(V, L, S, spec: dict, prims, part: str = "body", planes: dict | None = None) -> dict:
+def quality(V, L, S, spec: dict, prims, part: str = "body", planes: dict | None = None,
+            loops: dict | None = None) -> dict:
     """Closed quad rings at the loop planes (planes: {label: (point, normal, r)}, default the anatomy's; build()
     returns its own, the root slid to its ring), per label found / edges / worst distance off the plane in mm; field
     distance at the vertices (mean / p99 mm), turned triangles, quad share."""
@@ -495,6 +505,10 @@ def quality(V, L, S, spec: dict, prims, part: str = "body", planes: dict | None 
         # a ring counts when it lies within ON_PLANE x the radius of the plane (a far one is another loop)
         rc[lab] = ({"ring": bool(best[0] < ON_PLANE * r), "edges": len(best[1]), "off_plane_mm": round(best[0] * 1000, 1)}
                    if best else {"ring": False})
+    for lab, ids in (loops or {}).items():  # a ring by its own vertices (an opening's rim needn't be flat): a
+        # closed quad edge loop through exactly them
+        path, closed = retopo._walk(int(ids[0]), int(ids[1]), faces, nb, ef, limit=4 * len(ids))
+        rc[lab] = {"ring": bool(closed and sorted(path) == sorted(map(int, ids))), "edges": len(path)}
     T = retopo.tris(L, S)
     fd = np.abs(sdf.field_at(prims, V, clip=False)) * 1000
     return {"rings": rc, "closed": f"{sum(v['ring'] for v in rc.values())}/{len(rc)}",
