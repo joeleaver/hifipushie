@@ -649,21 +649,39 @@ def split_big(mesh: Path, ctx: dict, rel: dict, texture: int, log: list) -> None
         np.savez(mesh, **z)
 
 
-def topology_parts(spec: dict, ctx: dict, out_dir: Path, log: list) -> dict:
+def topology_parts(spec: dict, ctx: dict, out_dir: Path, log: list, high: Path | None = None) -> dict:
     """Parts with a modelled topology instead of a decimation: parts.<p>.topology = "wrap" (the body of a humanoid:
-    retopo.wrap, the template's quads carried onto it; a base's grafted head keeps its own), its faces buried in
-    other parts (skin under clothes, where animation would only poke it through) dropped. {part: npz path}."""
+    retopo.wrap, the template's quads carried onto it; a base's grafted head keeps its own) or "limbs" (any creature:
+    limbloops.build, quad rings down each limb of the part and out into its body, the rest of the part decimated to
+    parts.<p>.topology_triangles, from the export's own high mesh), its faces buried in other parts (skin under
+    clothes, where animation would only poke it through) dropped. {part: npz path}."""
     import hashlib
     defs = spec.get("parts") or {}
     out = {}
     for pn in ctx["streams"]:
-        if (defs.get(ctx["origin"][pn]) or {}).get("topology") not in ("wrap", "template"):
+        kind = (defs.get(ctx["origin"][pn]) or {}).get("topology")
+        if kind not in ("wrap", "template", "limbs"):
             continue
-        if ctx["origin"][pn] != "body":
-            raise ValueError(f"parts.{pn}.topology = \"wrap\": only the body (a humanoid's) can be wrapped")
-        from . import retopo
         tl = []
-        r = retopo.wrap(spec, log=tl)
+        if kind == "limbs":
+            from . import limbloops
+            if high is None:
+                raise ValueError(f"parts.{pn}.topology = \"limbs\" needs the export's high mesh")
+            with np.load(high) as z:
+                hv, hf, hp = z["verts"], z["faces"], z["part"]
+                k = [str(n) for n in z["part_names"]].index(pn)
+            fb = hf[(hp[hf] == k).all(1)]
+            used = np.unique(fb)
+            r = limbloops.build(spec, ctx["streams"][pn], hv[used], np.searchsorted(used, fb), ctx["voxel"],
+                                int((defs.get(ctx["origin"][pn]) or {}).get("topology_triangles", limbloops.BODY_TRIANGLES)),
+                                part=ctx["origin"][pn], log=tl)
+            tl = [f"limbs: {x}" if not x.startswith("limbs") else x for x in tl]
+            log.extend(x for x in tl if "WARNING" in x)
+        else:
+            if ctx["origin"][pn] != "body":
+                raise ValueError(f"parts.{pn}.topology = \"wrap\": only the body (a humanoid's) can be wrapped")
+            from . import retopo
+            r = retopo.wrap(spec, log=tl)
         V, L, S = r["verts"], r["loops"], r["sizes"]
         names = list(ctx["streams"])
         hid = surface.hidden(ctx["streams"], V, np.full(len(V), names.index(pn)), names, ctx["voxel"],
@@ -681,7 +699,8 @@ def topology_parts(spec: dict, ctx: dict, out_dir: Path, log: list) -> dict:
         rm[used] = np.arange(len(used))
         Vk, Lk, Sk = V[used], rm[np.concatenate(kept)], np.array([len(f) for f in kept])
         gk = np.asarray(r["gnm"])[used] if r.get("gnm") is not None else None
-        if (defs.get(ctx["origin"][pn]) or {}).get("joint_density", True) and spec.get("rig", {}) is not False:
+        if kind != "limbs" and (defs.get(ctx["origin"][pn]) or {}).get("joint_density", True) and \
+                spec.get("rig", {}) is not False:  # (limbs pack their own joint loops)
             # the same triangles spent where it bends: hinge zones split, shafts thinned (topodensity.py)
             from . import rig as _rig
             from . import topodensity
@@ -695,9 +714,9 @@ def topology_parts(spec: dict, ctx: dict, out_dir: Path, log: list) -> dict:
         # face shapes go by index)
         np.savez(path, verts=Vk, loops=Lk, sizes=Sk, **extra)
         out[pn] = (str(path), hashlib.sha1(Vk.tobytes() + Lk.tobytes()).hexdigest()[:12])
-        log.append(f"{pn}: wrapped topology, {len(Sk)} faces ({(Sk == 4).mean():.0%} quads, "
+        log.append(f"{pn}: {'limb-loop' if kind == 'limbs' else 'wrapped'} topology, {len(Sk)} faces ({(Sk == 4).mean():.0%} quads, "
                    f"{int((Sk - 2).sum())} triangles), {len(faces) - len(kept)} faces under other parts dropped; "
-                   + "; ".join(x for x in tl if x.startswith(("wrapped", "head"))))
+                   + "; ".join(x for x in tl if x.startswith(("wrapped", "head", "limbs:"))))
     return out
 
 
@@ -2915,7 +2934,7 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
                 log.append(f"{u}: {area:.0f} m^2 of surface wants {np.sqrt(need / FILL):.0f}^2 texels at "
                            f"{texel_density:g}/m, more than one {texture}^2 atlas holds: expect ~{got:.0f}/m "
                            f"(split it into parts, raise texture, or give it a lower texel_density)")
-    topo = topology_parts(spec, ctx, out_dir, log)
+    topo = topology_parts(spec, ctx, out_dir, log, high)
     fill = FILL
     for attempt in range(2):
         group = density_groups(units, loads, fixed, texture, fill) if texel_density else atlas_groups(
