@@ -913,11 +913,14 @@ def _sculpted(D: dict, part: str, n: int, log: list) -> dict:
     return out
 
 
-def apply(spec: dict, parts: dict, face_shapes, log: list) -> dict:
+def apply(spec: dict, parts: dict, face_shapes, log: list, quick: bool = False, neutrals: dict | None = None) -> dict:
     """Close the neutral's mouth and give the moving parts their shapes, in place on the export's low-poly parts
     ({part: {"verts", "corner_vert", "normal", "tangent", ...}}, Blender axes). Each moving part gets
     p["shapes"] = {name: (delta (verts, 3), vertex normal before (verts, 3), after (verts, 3))}, in the order of
-    `names`; normals and tangents per corner turn with the close. Returns {part: [names]}."""
+    `names`; normals and tangents per corner turn with the close. Returns {part: [names]}.
+    quick (facepose's posed look): parts need only verts + corner_vert; the same moves, without the per-corner
+    normals, the shapes' normals and the export's diagnostics (seam, unevenness). neutrals: {part: neutral verts}
+    reused when there (they depend on geometry only; the seal is most of the time), filled in when not."""
     names = names_of(face_shapes)
     face = face_of(spec)
     if "eyeBlinkLeft" in names and not face.eyes:
@@ -947,18 +950,21 @@ def apply(spec: dict, parts: dict, face_shapes, log: list) -> dict:
                 continue
         T = p["corner_vert"].reshape(-1, 3)
         idx = p.get("gnm_index") if kind == "skin" else None  # (one mesh, own quads: GNM's vertices by index)
-        Xn = Xm + face.neutral(Xm, kind, idx)
+        cached = (neutrals or {}).get(pn)
+        Xn = Xm + face.neutral(Xm, kind, idx) if cached is None else np.asarray(cached, np.float64)
         moved_rest = False
-        if SHAPE_SCULPT and kind == "teeth":
+        if SHAPE_SCULPT and kind == "teeth" and cached is None:
             refuse_sculpt(SHAPE_SCULPT, log=log)  # (r48) a sculpted rest for the teeth (levelled incisal edges)
             z = np.load(SHAPE_SCULPT)
             if f"{base}|_neutral" in z.files and z[f"{base}|_neutral"].shape == Xn.shape:
                 Xn = Xn + np.asarray(z[f"{base}|_neutral"], np.float64); moved_rest = True
                 log.append(f"face shapes: {pn} rest + sculpt, max {np.abs(z[f'{base}|_neutral']).max() * 1000:.1f} mm")
-        if kind == "skin" and base == face.slit_part and idx is None:
+        if kind == "skin" and base == face.slit_part and idx is None and cached is None:
             Xn = Xn + face.seal(Xm, Xn, T)
+        if neutrals is not None:
+            neutrals[pn] = Xn
         n0m, n0 = vertex_normals(Xm, T), vertex_normals(Xn, T)
-        if kind == "skin":  # the close turns the corners' normals and tangents with it
+        if kind == "skin" and not quick:  # the close turns the corners' normals and tangents with it
             cv = p["corner_vert"]
             p["normal"] = turn(np.asarray(p["normal"], np.float64), n0m[cv], n0[cv]).astype(p["normal"].dtype)
             p["tangent"] = turn(np.asarray(p["tangent"], np.float64), n0m[cv], n0[cv]).astype(p["tangent"].dtype)
@@ -985,12 +991,14 @@ def apply(spec: dict, parts: dict, face_shapes, log: list) -> dict:
         if not any(np.abs(d).max() > 1e-7 for d in D.values()):
             continue
         p["verts"] = Xn.astype(p["verts"].dtype)
-        p["shapes"] = {nm: (d, n0, vertex_normals(Xn + d, T)) for nm, d in D.items()}
+        p["shapes"] = {nm: (d, n0, None if quick else vertex_normals(Xn + d, T)) for nm, d in D.items()}
         got[pn] = list(D)
         kinds[pn] = kind
         moved = sum(int((np.linalg.norm(d, axis=1) > 1e-6).any()) for d in D.values())
         log.append(f"face shapes: {pn} ({kind}) {len(D)} targets ({moved} move it), max "
                    f"{max(np.linalg.norm(d, axis=1).max() for d in D.values()) * 1000:.1f} mm")
+        if quick:
+            continue
         if kind == "skin" and idx is not None and isinstance(face, GnmFace):  # the closed lips' seam, as seen
             # from the front (an orthographic mask along -out): no inner lip / sock face in front at neutral or blink
             sealed = "mouthClose" if face._gnm.get("parted") is not None else ""  # (r44) parted rest: mouthClose seals

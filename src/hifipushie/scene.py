@@ -1152,7 +1152,7 @@ def part_hashes(prog: dict | None, bases: dict) -> dict:
 def look(name: str, views: list[str] | None = None, cameras: list[dict] | None = None, size: int = 640,
          save: str | None = None, show_layer: str | None = None, hide_parts: list[str] | None = None,
          only_parts: list[str] | None = None, flat: bool = False, clip=None, focus=None, zoom: float = 1.0,
-         lighting: dict | None = None, hide_hair: bool = False):
+         lighting: dict | None = None, hide_hair: bool = False, shape_pose=None):
     """Render the saved scene with EEVEE: named views (as look) and/or perspective cameras {"eye": [x,y,z],
     "target", "fov"}. show_layer: one paint layer's mask, orange on grey clay. hide_parts / only_parts: leave
     parts out (prefab parts too, in every instance; hide_hair: the hair's locks and caps); with only_parts the views frame what's shown. flat: unlit
@@ -1160,7 +1160,8 @@ def look(name: str, views: list[str] | None = None, cameras: list[dict] | None =
     transparent there) and the cut solids get flat caps, their part's colour darkened. focus + zoom: the named
     views framed on that point, zoom times closer (painted close-ups at the scene's mesh resolution).
     lighting: {"lights": [{"dir", "energy", "color", "angle"}], "world": {"color", "strength"}, "look", "exposure", "view"}
-    (default: the spec's style look preset, spec["style"]["look"], else one neutral sun under a grey-blue sky)."""
+    (default: the spec's style look preset, spec["style"]["look"], else one neutral sun under a grey-blue sky).
+    shape_pose: facepose.scene_moves' file: the face posed in face shapes, this render only."""
     from PIL import Image
     from .spec import compile_prims, geometry
     bp = blend_path(name)
@@ -1190,7 +1191,7 @@ def look(name: str, views: list[str] | None = None, cameras: list[dict] | None =
         from . import asset as _asset  # (rule 5) the game light rig renders under the game's view transform only
         _asset.game_light_view(lighting if lighting is not None else (spec.get("style") or {}).get("look"), f"look {name}")
         job = {"mode": "render", "blend": str(bp), "views": frames, "size": size, "hide": hide, "flat": flat,
-               "hide_hair": hide_hair,
+               "hide_hair": hide_hair, **({"shape_pose": str(shape_pose)} if shape_pose else {}),
                "samples": 32 if glass else 16,
                "lighting": lighting if lighting is not None else (spec.get("style") or {}).get("look")}
         planes = store.clip_planes(clip)
@@ -1240,3 +1241,20 @@ def look(name: str, views: list[str] | None = None, cameras: list[dict] | None =
     look.coverage = cover
     look.images = list(zip([f["name"] for f in frames], imgs))  # the panels alone (colour sampling, comparisons)
     return sheet, round(time.time() - t, 1)
+
+
+def slit_voxel(name: str, resolution: int = 256) -> float | None:
+    """The voxel sync meshes the face kit's slit part at (None: no face kit mouth)."""
+    from . import faceshapes
+    spec = store.load(name)
+    try:
+        face = faceshapes.face_of(spec)
+    except Exception:
+        return None
+    ctx = asset.split(spec, resolution, True, [], min_share=1)
+    ps = ctx["streams"].get(face.slit_part)
+    if not ps:
+        return None
+    pv, _ = part_voxel(ps, float(np.round(ctx["voxel"], 3)))
+    own = ((spec.get("parts") or {}).get(face.slit_part) or {}).get("voxel")
+    return min(pv, float(own)) if own else pv

@@ -2048,6 +2048,14 @@ BEND_RECIPE = ("Bend helpers (<joint>Bend: ForeArmBend at the elbow, LegBend at 
                "the slerped rotation in _process).")
 
 
+REST_HOW = ("A rest expression (spec face_shapes.rest: a grin, a scowl) is carried, not baked: the mesh stays the true "
+            "neutral (mouth closed) and each face-shape mesh's glTF mesh.weights (the default morph weights every glTF "
+            "loader applies) are the rest weights, correctives filled in by their formula; mesh.extras.restExpression "
+            "names them. An engine shows the rest by default; to play a clip or lipsync on it, set ABSOLUTE weights "
+            "(e.g. max(rest, clip) per channel, or blend from the rest) and the correctives by formula every frame, "
+            "and return to restExpression after. Not baked because correctives are min() of absolute weights and a "
+            "closed mouth, a blink or a viseme over a baked grin needs weights below it (negative), which engines "
+            "clamp (facepose.compare_rest).")
 CORRECTIVE_RECIPE = (
     "Pose correctives are morph targets named corr_<Side><Joint>_<motion><deg> (on the skin and the parts worn over the "
     "joint; every LOD keeps them). Each is faded in by its joint's angle, every frame after the animation and the "
@@ -2345,8 +2353,11 @@ def write_glb(path: Path, name: str, parts: dict, atlases: list[tuple[str, dict[
         for mn, q in subs:
             meshes.append({"name": mn, "primitives": [primitive(q, pn)]})
             if q.get("shapes"):  # names in extras.targetNames (the glTF convention engines and Blender read)
-                meshes[-1]["weights"] = [0.0] * len(q["shapes"])
-                meshes[-1]["extras"] = {"targetNames": list(q["shapes"])}
+                rw = q.get("shape_rest") or {}  # (face_shapes.rest: the rest expression, facepose.py)
+                meshes[-1]["weights"] = [float(rw.get(k, 0.0)) for k in q["shapes"]]
+                meshes[-1]["extras"] = {"targetNames": list(q["shapes"]),
+                                        **({"restExpression": {k: float(v) for k, v in rw.items() if k in q["shapes"]}}
+                                           if rw else {})}
             nodes.append({"name": f"{name}_{mn}", "mesh": len(meshes) - 1, **({"skin": 0} if pn in skinned else {})})
             top.append(len(nodes) - 1)
     for pf, d in prefabs.items():
@@ -2820,12 +2831,17 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
     aname = asset_name or name
     from .base import part_defs
     defs = part_defs(spec)  # (the base's implied parts too: a clear cornea's lens)
-    fine, tri_focus = {}, []
+    fine, tri_focus, rest_w = {}, [], {}
     if face_shapes:  # say now, not after the bake, that the face can't take them; mesh the slit open; keep
         # triangles at the lids and lips
         from . import faceshapes
         faceshapes.names_of(face_shapes)
         fface = faceshapes.face_of(spec)
+        from . import facepose
+        rest_w = facepose.rest_of(spec)  # face_shapes.rest: carried as the meshes' default weights, not baked
+        if set(rest_w) - set(faceshapes.names_of(face_shapes)):
+            raise faceshapes.SpecError(f"face_shapes.rest uses {sorted(set(rest_w) - set(faceshapes.names_of(face_shapes)))}, "
+                            "which this export's face_shapes leave out")
         fine, tri_focus = fface.voxels(), fface.tri_focus()
     out_dir.mkdir(parents=True, exist_ok=True)
     ctx = split(spec, resolution, instancing, log, min_share=1, voxels=fine)
@@ -3368,6 +3384,12 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
                 for pn, v in pu0_.items()))
             for pn, v in pu0_.items():
                 report.setdefault(pn, {})["under0"] = v
+    if face_shapes and rest_w:  # the rest expression: each face-shape mesh's default weights (facepose.py)
+        for p in parts.values():
+            if p.get("shapes"):
+                p["shape_rest"] = rest_w
+        log.append("face shapes: rest expression " + ", ".join(f"{k} {v:.2f}" for k, v in rest_w.items())
+                   + " as the meshes' default weights (mesh.weights, extras.restExpression); the neutral stays closed")
     write_glb(glb, aname, parts, atlas_files, ctx["prefabs"], looks, rigged, extra_ext)
     lod_info = []
     if lods:
@@ -3572,10 +3594,11 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
                                  "face-shape vertices, teeth, tongue and eyes Head 1.0") if hf else "not rigid"}}
                if rigged else {}),
             **({"face_shapes": {"names": faceshapes.names_of(face_shapes), "parts": shapes,
+                                **({"rest": rest_w} if rest_w else {}), "rest_how": REST_HOW,
                                 "correctives": {c: f"{op}({a}, {b})" for c, (op, a, b) in faceshapes.CORRECTIVES.items()
                                                 if c in faceshapes.names_of(face_shapes)},
                                 "convention": "ARKit blendshape names; glTF morph targets (names in mesh.extras."
-                                              "targetNames, default weights 0), FBX blend shapes of the same names; "
+                                              "targetNames, default weights = face_shapes.rest, else 0), FBX blend shapes of the same names; "
                                               "neutral = mouth closed, each shape its full extent at 1.0, additive; "
                                               "correctives are not ARKit channels: set each to its formula of the "
                                               "ARKit weights every frame (jawOpen_mouthClose = min(jawOpen, "
