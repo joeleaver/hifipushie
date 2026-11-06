@@ -157,14 +157,22 @@ def style_rows(B: dict, step1: dict, step3: dict | None) -> list:
     if len(exp) != len(sm):
         return [{"id": "style_lengths", "status": "INFO", "value": "n/a", "why": "seams not one to one"}]
     seen, off, fails, n = set(), [], [], 0
-    for r in step1.get("seams") or []:
+    # step 1's own resolution of each length on the model (garment_parts_lengths.lengths: [(seam, model mm, drawn)]):
+    # a ratio of a span [a, b] or of a 'piece:edge' is only resolved there (C385, t s4-15: "of": ["armpit", "hem"]
+    # crashed this row with "unhashable type: 'list'" on every draft)
+    checked = {int(x[0]): float(x[1]) for x in step1.get("seam_lengths_checked") or []
+               if isinstance(x, (list, tuple)) and len(x) >= 2}
+    for si, r in enumerate(step1.get("seams") or []):
         st = (r.get("length") or {}).get("style")
         if not isinstance(st, dict):
             continue
-        if "value_mm" in st:
+        of = st.get("of")
+        if si in checked:
+            tgt = checked[si]
+        elif "value_mm" in st:
             tgt = float(st["value_mm"])
-        elif "ratio" in st and st.get("of") in meas:
-            tgt = float(st["ratio"]) * float(meas[st["of"]]["mm"])
+        elif "ratio" in st and isinstance(of, str) and of in meas:
+            tgt = float(st["ratio"]) * float(meas[of]["mm"])
         else:
             continue
         want = {"{}:{}".format(*_base(x)) for x in (r.get("a"), r.get("b")) if isinstance(x, str) and ":" in x}
