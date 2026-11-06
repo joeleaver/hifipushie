@@ -135,7 +135,11 @@ def level(B: dict, D: dict) -> tuple[dict, list, list]:
                 E = edge(pa, ea)
                 c = _cross(E, *lines[pa], closed=False)
                 if c:
-                    got.setdefault(pb, []).append(_at_share(edge(pb, eb), _share(E, c[0][1], c[0][2])))
+                    F, f = edge(pb, eb), _share(E, c[0][1], c[0][2])
+                    if (E[-1, 1] - E[0, 1]) * (F[-1, 1] - F[0, 1]) < 0:
+                        f = 1.0 - f  # (a seam declared one edge up, one down: row seam_ends says so; the level goes by
+                        # where the edges run, C385, t s4-15: a side panel read 461 mm wide across its length)
+                    got.setdefault(pb, []).append(_at_share(F, f))
         if not got:
             break
         for p, pts in got.items():

@@ -667,3 +667,28 @@ def test_s4_13_the_pattern_round_the_body_at_each_girths_level():  # (t s4-13: a
     B["edge_arcs"] = {p: {"neck": "tl>tr"} for p in pcs if p.startswith(("front", "back"))}
     r = dg.rows(B, s3, {"waist": {"ease_mm": 40.0}}, body)[0]
     assert r["status"] == "PASS" and "pattern 900 mm round" in r["value"], r
+
+
+def test_s4_15_a_span_ratio_doesnt_crash_and_a_reversed_seam_carries_the_level():  # (t s4-15; C385)
+    import numpy as np
+    from hifipushie import draft_body_lengths as dbl, draft_girths as dg
+
+    def rect(nm, w, h):
+        return {"name": nm, "P": np.array([[0, 0], [w, 0], [w, -h], [0, -h]], float),
+                "names": {"tl": 0, "tr": 1, "br": 2, "bl": 3}, "marks": {}, "wrap": {"to": "torso", "side": "front"}}
+    B = {"pieces": {"a": rect("a", 0.2, 0.5), "b": rect("b", 0.2, 0.5)}, "seams": [["a:tr>br", "b:tl>bl"]],
+         "stitches": [], "decl": {"seams": [{"a": "a:side", "b": "b:side"}]}}
+    s1 = {"seams": [{"a": "a:side", "b": "b:side", "length": {"style": {"ratio": 0.9, "of": ["armpit", "hem"], "source": "x"}}}],
+          "seam_lengths_checked": [[0, 300.0, 280.0]]}
+    r = dbl.style_rows(B, s1, {"measurements": []})[0]  # (crashed: "unhashable type: 'list'")
+    assert r["status"] == "FAIL" and "step 1 300 mm" in r["why"], r
+    s1["seam_lengths_checked"] = []
+    assert dbl.style_rows(B, s1, {"measurements": []})[0]["status"] == "INFO"  # (unresolved here: skipped, not guessed)
+    # the level carried over a seam declared one edge up, one down still crosses the panel square
+    side = dict(rect("side", 0.05, 0.6), wrap={"to": "torso", "side": "side"})
+    back = dict(rect("back", 0.2, 0.6), wrap={"to": "torso", "side": "back"})
+    B2 = {"pieces": {"front": rect("front", 0.2, 0.6), "side": side, "back": back},
+          "seams": [["front:tr>br", "side:bl>tl"], ["side:tr>br", "back:tl>bl"], ["back:tr>br", "front:tl>bl"]],
+          "edge_arcs": {"front": {"neck": "tl>tr"}, "back": {"neck": "tl>tr"}}}
+    w = dg.level(B2, {"front": 0.2, "back": 0.2})[0]
+    assert abs(w.get("side", 0) - 0.05) < 2e-3, w  # (read across its length, 0.6 m, before)
