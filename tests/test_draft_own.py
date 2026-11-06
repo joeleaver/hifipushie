@@ -627,3 +627,35 @@ def test_a_cut_away_stand_isnt_held_to_the_neck_girth():  # (t s4-12: its top do
     r["top_girth"] = {"at": None, "nearest": {"name": "neck", "mm": 1000.0, "dz": -50.0}}
     row = _rows(_B(_stand(HUGS, lean_in=True)), ref=r)["shape_stand"]
     assert "the top doesn't close round the neck" in row["value"] and "grips" not in row["why"], row
+
+
+def test_s4_13_the_pattern_round_the_body_at_each_girths_level():  # (t s4-13: a waist 5 cm under the plan passed; C383)
+    import numpy as np
+    from hifipushie import draft_girths as dg
+    th = np.linspace(0, 2 * np.pi, 49)[:-1]
+    zs = np.linspace(0.0, 1.6, 81)
+    V = np.array([[0.14 * np.cos(t), 0.14 * np.sin(t), z] for z in zs for t in th])
+    n = len(th)
+    T = np.array([[i * n + j, i * n + (j + 1) % n, (i + 1) * n + j] for i in range(len(zs) - 1) for j in range(n)] +
+                 [[i * n + (j + 1) % n, (i + 1) * n + (j + 1) % n, (i + 1) * n + j] for i in range(len(zs) - 1) for j in range(n)])
+    body = {"V": V, "T": T, "at": {"hps.L": [0.06, 0.0, 1.5]}}
+
+    def rect(nm, w, side):
+        return {"name": nm, "P": np.array([[0, 0], [w, 0], [w, -0.7], [0, -0.7]], float),
+                "names": {"tl": 0, "tr": 1, "br": 2, "bl": 3}, "marks": {}, "wrap": {"to": "torso", "side": side}}
+    pcs = {"front.L": rect("front.L", 0.2, "front"), "front.R": rect("front.R", 0.2, "front"),
+           "side.L": rect("side.L", 0.05, "side"), "side.R": rect("side.R", 0.05, "side"),
+           "back.L": rect("back.L", 0.2, "back"), "back.R": rect("back.R", 0.2, "back"),
+           "facing.L": rect("facing.L", 0.08, "front")}
+    seams = [[f"front.{s}:tr>br", f"side.{s}:tl>bl"] for s in "LR"] + [[f"side.{s}:tr>br", f"back.{s}:tr>br"] for s in "LR"]
+    seams += [["back.L:tl>bl", "back.R:tl>bl"], ["facing.L:tl>bl", "front.L:tl>bl"]]
+    B = {"pieces": pcs, "seams": seams, "edge_arcs": {},
+         "closures": [{"over": "front.L", "under": "front.R", "edge": {"over": "tl>bl", "under": "tl>bl"}, "pairs": []}]}
+    loop = [[0.14 * np.cos(t), 0.14 * np.sin(t), 1.2] for t in th]
+    s3 = {"measurements": [{"name": "waist", "mm": 850.0, "loop": loop}]}
+    r = dg.rows(B, s3, {"waist": {"ease_mm": 80.0}}, body)[0]
+    assert r["status"] == "FAIL" and "pattern 900 mm round" in r["value"] and "30 mm tight" in r["why"], r
+    assert "facing.L" not in r["value"], r["value"]  # (a facing lying on the front isn't round the body)
+    assert dg.rows(B, s3, {"waist": {"ease_mm": 40.0}}, body)[0]["status"] == "PASS"
+    s3["measurements"][0]["mm"] = 950.0
+    assert "can't close" in dg.rows(B, s3, {}, body)[0]["why"]
