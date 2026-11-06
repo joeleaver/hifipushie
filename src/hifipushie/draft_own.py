@@ -417,7 +417,7 @@ def block(pat: dict) -> dict:
 
 # ---------------------------------------------------------------- the flat gate
 def gate(B: dict, decl: dict, step1: dict, stand_ref: dict | None = None, step3: dict | None = None,
-         fit: dict | None = None) -> list:
+         fit: dict | None = None, body: dict | None = None) -> list:
     """General flat rows: seams (each pair within its declared ease, else PLAIN_TOL), seam_ends (each seam's edges run
     the same way: draft_seam_ends.py), cut (every built inventory piece
     cut), sewn (every step-1 seam), closures (every step-1 closure declared; lapped edges line up), truing (INFO), and
@@ -459,6 +459,8 @@ def gate(B: dict, decl: dict, step1: dict, stand_ref: dict | None = None, step3:
         from . import draft_body_lengths
         rows += draft_body_lengths.rows(B, step1, step3, fit)
         rows += draft_body_lengths.style_rows(B, step1, step3)
+        from . import draft_girths  # (C383: the pattern round the body at its girths' levels)
+        rows += draft_girths.rows(B, step3, fit, body)
     inv = step1.get("pieces") or {}
     from .draft_pairs import base_name
     dx = B.get("decl") or decl  # (pairs expanded: draft_pairs)
