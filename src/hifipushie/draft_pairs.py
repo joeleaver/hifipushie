@@ -216,15 +216,25 @@ def _swap(n: str) -> str:
 def _twin_seams(D: dict, pr: set):
     """A seam naming ONE side of a pair explicitly (front.L:shoulder = back.L:shoulder, step 1's own names) brings its
     other side's twin unless that is declared too (C366, t s4-5: the .R seams were reported "not sewn"; the rule of
-    step 1: ".L" brings ".R")."""
-    def pieces_of(s):
-        return [str(e).split(":", 1)[0] for k in ("a", "b") for e in ([s.get(k)] if isinstance(s.get(k), str) else s.get(k) or [])]
+    step 1: ".L" brings ".R"). A centre piece whose EDGE carries the side (undercollar:neck_front.L) swaps that edge to
+    its declared .R twin (C376, t s4-6: the collar's right-hand seams had to be declared by hand)."""
+    edges = D.get("edges") or {}
+
+    def side_of(e):
+        p, _, ed = str(e).partition(":")
+        if _side(p):
+            return p[-1]
+        if _side(ed) and _swap(ed) in (edges.get(p) or {}):
+            return ed[-1]
+        return None
+    els = lambda s: [e for k in ("a", "b") for e in ([s.get(k)] if isinstance(s.get(k), str) else s.get(k) or [])]
     have = {json.dumps([s.get("a"), s.get("b")], sort_keys=True) for s in D.get("seams") or []}
     add = []
     for s in D.get("seams") or []:
-        ps = pieces_of(s)
-        if not any(p[:-2] in pr for p in ps if _side(p)) or not all(_side(p) for p in ps) or \
-                len({p[-1] for p in ps}) != 1:
+        es = els(s)
+        sides = [side_of(e) for e in es]
+        if None in sides or len(set(sides)) != 1 or not any(_side(str(e).split(":", 1)[0]) and
+                                                             str(e).split(":", 1)[0][:-2] in pr for e in es):
             continue
         sw = lambda x: [_swap_edge(e) for e in x] if isinstance(x, list) else _swap_edge(x)
         t = dict(s, a=sw(s.get("a")), b=sw(s.get("b")))
@@ -236,7 +246,7 @@ def _twin_seams(D: dict, pr: set):
 
 def _swap_edge(e: str) -> str:
     p, _, ed = str(e).partition(":")
-    return f"{_swap(p)}:{ed}"
+    return f"{_swap(p)}:{ed}" if _side(p) else f"{p}:{_swap(ed)}"
 
 
 def _pair_mark(m, detail: str, pr: set):

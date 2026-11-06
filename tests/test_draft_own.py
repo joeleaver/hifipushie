@@ -442,3 +442,13 @@ def test_pairs_expand_side_named_seams_darts_and_marks(home):  # (t s4-5: half t
     assert {d["piece"] for d in D["darts"]} == {"front.L", "front.R"}
     assert D["marks"]["pocket.R"]["piece"] == "front.R"
     assert D["marks"]["pad"]["piece"] == "front.L" and D["marks"]["pad"]["follows"] == ["front.L:side"] and D["marks"]["pad"]["mirror"]
+
+
+def test_a_centre_pieces_side_named_seam_is_twinned(home):  # (t s4-6: the collar's .R seams by hand; C376)
+    from hifipushie import draft_own as do, draft_pairs as dp
+    out = do.node_draft(RECT, {"waist": 800}, d=home / "pairs3")
+    decl = {"pieces": {"front": {"part": "test.panel", "pair": True}, "collar": {"part": "test.panel"}},
+            "edges": {"front": {"neck": "tl>tr"}, "collar": {"neck.L": "tl>tr", "neck.R": "br>bl"}},
+            "seams": [{"a": "collar:neck.L", "b": "front.L:neck"}]}
+    ends = {(s["a"], s["b"]) for s in dp.expand(decl, out["parts"])["seams"]}
+    assert ("collar:neck.R", "front.R:neck") in ends, ends

@@ -185,7 +185,8 @@ design, no recipe; src/hifipushie/draft_own.py's docstring is the spec). Needs s
   chain: a two-piece sleeve's cap edges against the armhole's front, side and back as ONE seam [cap chain] = [armhole
   chain], when its seams don't land on the body's); `stiff` [piece]; `folds` [{"name", "piece", "line": [p, q] | edge, "kind": "press" | "roll"}] (a step-1 seam of
   kind fold is a fold named like its edge); `closures` [{"name", "kind", "over", "under", "edge": {"over": edge,
-  "under": edge}, "at": [[hole point, button point]]}] (the part's point NAMES, e.g. a snippet's anchor; C363) (an edge: a declared edge name, or "pointA>pointB" /
+  "under": edge}, "at": [[hole, button]]}] (each a SNIPPET's name, `snippets.btn1 = new Snippet('button', p)` -> "btn1", or a
+  point ON the outline; a point inside the piece isn't a mark: C376) (an edge: a declared edge name, or "pointA>pointB" /
   "a>via>b" along the piece's outline); `omit` {piece: why} (a built step-1 piece you don't cut); `darts` [{"piece",
   "legs": [edge, edge]}]: a dart OPEN on the outline (the seam path in to its tip and out), each leg declared
   "outline point>tip", sewn to each other (a dart drawn inside the piece isn't sewn: cut it into the outline);
