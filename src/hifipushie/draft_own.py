@@ -39,7 +39,8 @@ from pathlib import Path
 import numpy as np
 
 RUNNER = Path(__file__).with_name("draft_own_run.mjs")
-MARK_FORM = ("a mark = {piece, mirror?: true, and one of: at: [{point, dx, dy} | {edge, mm | t, in}], rows: {edge, count, "
+MARK_FORM = ("a mark = {piece, mirror?: true, and one of: at: [{point, dx, dy} | {edge, mm | t, in}] (dx, dy mm in the "
+             "FLAT pattern's frame: dy UP the piece, so FreeSewing's y (down) is -dy: C380), rows: {edge, count, "
              "from_mm | from_t, pitch_mm | pitch_t | to_mm | to_t, in}, points: 'button*', follows: ['piece:edge'], path: "
              "[positions]}; an edge: a declared edge name or 'a>b' along the outline (C361: the form was only in a "
              "docstring a blind agent can't read)")
@@ -415,6 +416,7 @@ def gate(B: dict, decl: dict, step1: dict, stand_ref: dict | None = None, step3:
     if step3 is not None:  # (F6: the pattern against the body it was measured on, before any build)
         from . import draft_body_lengths
         rows += draft_body_lengths.rows(B, step1, step3, fit)
+        rows += draft_body_lengths.style_rows(B, step1, step3)
     inv = step1.get("pieces") or {}
     from .draft_pairs import base_name
     dx = B.get("decl") or decl  # (pairs expanded: draft_pairs)

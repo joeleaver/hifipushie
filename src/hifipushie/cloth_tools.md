@@ -191,7 +191,7 @@ design, no recipe; src/hifipushie/draft_own.py's docstring is the spec). Needs s
   "legs": [edge, edge]}]: a dart OPEN on the outline (the seam path in to its tip and out), each leg declared
   "outline point>tip", sewn to each other (a dart drawn inside the piece isn't sewn: cut it into the outline);
   `marks` {detail: mark | [marks]}: WHERE each built step-1 detail sits (a closure's buttons are its own marks): a
-  mark = {"piece", "mirror"?: true (again on the .L <-> .R piece), and ONE of: "at": [{"point": name, "dx", "dy"} |
+  mark = {"piece", "mirror"?: true (again on the .L <-> .R piece), and ONE of: "at": [{"point": name, "dx", "dy"} (mm, dy UP the piece: FreeSewing's y is -dy) |
   {"edge": edge, "mm" | "t", "in"}], "rows": {"edge", "count", "from_mm" | "from_t", "pitch_mm" | "pitch_t" |
   "to_mm" | "to_t", "in"}, "points": "button*" (the part's named points), "follows": ["piece:edge"] (a strip along
   edges), "path": [positions]}; positions only (size, kind, colour are step 7's). A measurement the design reads

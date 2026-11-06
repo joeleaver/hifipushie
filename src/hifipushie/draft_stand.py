@@ -108,6 +108,24 @@ def reference(plan: dict | None, at: dict | None) -> dict | None:
                 how=f"trace {t.get('id')} on view {vi} ({pl['how']}; residual {pl['residual_mm']} mm)")
 
 
+GIRTH_DZ = 20.0  # mm: a step-3 girth whose loop sits this close to the traced top's height is the girth there
+
+
+def girth_at(step3: dict, at: dict, h_side: float) -> dict:
+    """The step-3 girth taken at the traced top's height (hps + h_side), or the nearest one said (C380, t s4-10: a stand
+    whose top edge is 0.86 x its neck edge may grip the neck, and no row compared the top with the body there)."""
+    z0 = float(np.asarray(at["hps.L"]).ravel()[-1]) * 1000 + h_side
+    best = None
+    for m in (step3 or {}).get("measurements") or []:
+        L = np.asarray(m.get("loop") or [], float)
+        if L.ndim != 2 or L.shape[1] != 3 or "mm" not in m:
+            continue
+        dz = float(L[:, 2].mean()) * 1000 - z0
+        if best is None or abs(dz) < abs(best["dz"]):
+            best = {"name": m["name"], "mm": float(m["mm"]), "dz": dz}
+    return {"z": z0, "at": best if best and abs(best["dz"]) <= GIRTH_DZ else None, "nearest": best}
+
+
 def _rest(pc: dict, idx: list) -> np.ndarray:
     """The outline from the neck edge's last point round to its first (the end edges and the free edge), in order."""
     n = len(pc["P"])
@@ -186,6 +204,24 @@ def check(p: str, kind: str, N: np.ndarray, R: np.ndarray, top: np.ndarray | Non
     if abs(mm(H["back"]) - hb_exp) > tol:
         why.append(f"{p}: {mm(H['back']):.0f} mm tall at CB; the trace wants h_side + D_back (1 - f) = {hb_exp:.0f} +- "
                    f"{tol:.0f} mm. change: make it {abs(hb_exp - mm(H['back'])):.0f} mm {'taller' if hb_exp > mm(H['back']) else 'lower'} at the back")
+    tg = ref.get("top_girth")
+    if tg:  # the free edge round against the body's girth at the top's height (C380)
+        rnd = 2 * mm(pattern.length(T_)) if p.endswith((".L", ".R")) else mm(pattern.length(T_))
+        g = tg.get("at")
+        if g is None:
+            nb = tg.get("nearest")
+            val += (f"; top edge round {rnd:.0f} mm: step 3 took no girth at the top's height (hps + {ref['h_side']:.0f} mm)"
+                    + (f"; nearest {nb['name']} {nb['mm']:.0f} mm, {nb['dz']:+.0f} mm from it" if nb else "")
+                    + ": take one there (body_tape) to check the top doesn't grip")
+        elif ref.get("cut_away"):
+            val += (f"; top edge round {rnd:.0f} mm vs {g['name']} {g['mm']:.0f} mm at its height: the ends must sit "
+                    f">= {max(0.0, g['mm'] - rnd):.0f} mm apart at the top when worn")
+        elif rnd < g["mm"] * (1 - 0.01):
+            why.append(f"{p}: its top edge goes round {rnd:.0f} mm, under the body's {g['name']} {g['mm']:.0f} mm at that "
+                       f"height: it grips the neck. change: lengthen the free edge (less lean / curve) by "
+                       f"{g['mm'] - rnd:.0f} mm or more")
+        else:
+            val += f"; top edge round {rnd:.0f} mm >= {g['name']} {g['mm']:.0f} mm at its height"
     if f >= FOLLOW and lean > STAND_LEAN + 1e-9:
         why.append(f"{p}: free edge {lean:.3f} x its neck edge (a hugging stand <= {STAND_LEAN:.3f}: it must lean in). "
                    "change: shorten the free edge (curve it with the neck edge)")

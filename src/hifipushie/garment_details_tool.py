@@ -45,7 +45,14 @@ def inventory(rec: dict) -> tuple:
 def declarations(rec: dict) -> dict:
     d = (rec["steps"]["4"].get("output") or {}).get("dir")
     p = Path(d) / "declarations.json" if d else None
-    return json.loads(p.read_text()) if p and p.exists() else {}
+    if not (p and p.exists()):
+        return {}
+    decl = json.loads(p.read_text())
+    dj = Path(d) / "draft.json"  # (C380: the pairs expanded, as the build and step 4's gate read them: a mark on a
+    if dj.exists():              # pair's bare name, "front", lands on front.L; unexpanded, step 7 refused every one)
+        from . import draft_pairs
+        decl = draft_pairs.expand(decl, json.loads(dj.read_text())["parts"])
+    return decl
 
 
 def marks(rec: dict, M: dict, decl: dict) -> dict:

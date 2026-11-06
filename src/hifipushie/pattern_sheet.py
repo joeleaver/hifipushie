@@ -240,6 +240,9 @@ def render(Bp: dict, title: str = "", px_per_m: float = 900.0, width_m: float = 
                 if len(run) > 1:
                     d.line([tuple(p) for p in tp(nm, np.array(run))], fill=(150, 120, 60, 90), width=1)
         for k, L in (pc.get("lines") or {}).items():  # the draft's internal lines (chest, waist, placket folds...)
+            if str(k).startswith("detail:"):  # (a detail's strip as step 7 will place it: draft_marks, C380)
+                d.line([tuple(q) for q in tp(nm, np.asarray(L))], fill=(200, 120, 0), width=3)
+                continue
             _dashed(d, tp(nm, np.asarray(L)), fill=(170, 170, 170), width=1, dash=4, gap=4)
         d.line(poly + [poly[0]], fill=(30, 30, 30), width=2)
         if sa > 0:  # the cutting line, a seam allowance outside the sewing line
@@ -285,6 +288,8 @@ def render(Bp: dict, title: str = "", px_per_m: float = 900.0, width_m: float = 
                 d.line([tuple(p - [8, 0]), tuple(p + [8, 0])], fill=(220, 0, 0), width=3)
             elif "buttonhole" in kl:
                 d.rectangle([tuple(p - [4, 10]), tuple(p + [4, 10])], outline=(60, 60, 60), width=2)
+            elif kl.startswith("detail:"):  # (a detail's point as step 7 will place it: draft_marks, C380)
+                d.ellipse([tuple(p - 5), tuple(p + 5)], fill=(200, 120, 0))
             elif "button" in kl:
                 d.ellipse([tuple(p - 7), tuple(p + 7)], outline=(60, 60, 60), width=3)
     for nm, pn, lab in points:  # named pattern points: a dot (the name is the caller's text)

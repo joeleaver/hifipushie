@@ -13,7 +13,7 @@ Geometry (step 7, kind):
   motif   the mark's lines / knots in a local frame (across = into the piece from the edge, along = the edge), repeated at
           its rows: a frog. width_mm (its cord), size_mm (its knots).
 Mark (step 4, positions only; mm; pattern x right, y up):
-  at        [position]: {"point": name, "dx", "dy"} | {"edge": "cf" | "A>B" | "piece:edge", "mm" | "t" (fraction), "in"}
+  at        [position]: {"point": name, "dx", "dy" (mm; dy UP the piece: FreeSewing's y is -dy)} | {"edge": "cf" | "A>B" | "piece:edge", "mm" | "t" (fraction), "in"}
   rows      {"edge", "count", "from_mm" | "from_t", "pitch_mm" | "pitch_t" (of the edge's length) | "to_mm" | "to_t", "in"}
   points    "button*": the piece's named points matching (marks too)
   follows   ["piece:edge"] (+ "in" mm, default half the width: the strip's outer side on the edge); edges on several
@@ -106,7 +106,9 @@ class Flat:
         k = f"{p}:{n}"
         if k not in self.pts:
             have = sorted(x.split(":", 1)[1] for x in self.pts if x.startswith(p + ":"))
-            raise DetailRefused(f"point {k!r}: not on the pattern ({p}'s points: {', '.join(have[:40])})")
+            raise DetailRefused(f"point {k!r}: not on the pattern ({p}'s points: {', '.join(have[:40])}); only the outline's "
+                                "named points and the design's snippets reach the flat pattern, not a part's inner points: "
+                                "name a snippet there, or offset an outline point ({point, dx, dy}, dy UP) (C380)")
         return int(self.pts[k])
 
     def glob(self, p: str, pat: str) -> list:
@@ -256,6 +258,10 @@ def offset(fl: Flat, p: str, P, d: float) -> np.ndarray:
 
 
 # ---------------------------------------------------------------- positions in pattern terms
+DY_HINT = (" (a {point, dx, dy} offset is in the flat pattern's frame: dy runs UP the piece, FreeSewing's y runs down, "
+           "so a point below another is a negative dy: C380, t s4-10)")
+
+
 def _mm(x, what: str) -> float:
     if not isinstance(x, (int, float)) or isinstance(x, bool):
         raise DetailRefused(f"{what}: a number (mm)")
@@ -312,7 +318,7 @@ def rows(fl: Flat, p: str, r: dict) -> tuple:
 def _pt(fl, p, uv, size, thick, shape, where) -> dict:
     tri, W, out = fl.locate(p, [uv, uv + [0.001, 0], uv + [0, 0.001]])
     if out[0] > OUT_TOL:
-        raise DetailRefused(f"{where}: lands {out[0] * 1000:.0f} mm outside {p}")
+        raise DetailRefused(f"{where}: lands {out[0] * 1000:.0f} mm outside {p}{DY_HINT}")
     return {"kind": "point", "piece": p, "uv": np.asarray(uv, float), "tri": tri, "W": W, "size": size,
             "thick": thick, "shape": shape, "where": where}
 
@@ -324,7 +330,7 @@ def _strip(fl, p, C, width, thick, where) -> dict:
     N = np.stack([-T[:, 1], T[:, 0]], 1)
     _, _, out = fl.locate(p, C)
     if out.max() > OUT_TOL:
-        raise DetailRefused(f"{where}: runs {out.max() * 1000:.0f} mm outside {p}")
+        raise DetailRefused(f"{where}: runs {out.max() * 1000:.0f} mm outside {p}{DY_HINT}")
     ta, Wa, _ = fl.locate(p, C + 0.5 * width * N)
     tb, Wb, _ = fl.locate(p, C - 0.5 * width * N)
     return {"kind": "strip", "piece": p, "C": C, "tri": (ta, tb), "W": (Wa, Wb), "width": width, "thick": thick,
@@ -388,8 +394,12 @@ def place(fl: Flat, name: str, mark, geom: dict, inv: dict, cloth: dict | None =
         if kind == "line" and not s.get("piece") and not s.get("path") and len(fp) > 1:
             passes = [(q, s) for q in fp]  # (one trim across several pieces: a binding, a zip's tape)
             count -= len(fp) - 1
-        for p, t in passes:
-            if inv.get("on") and p not in inv["on"]:
+        on = set(inv.get("on") or [])
+        for k_, (p, t) in enumerate(passes):
+            # (a .L mark with mirror: true places the .R detail too (C366): its mirrored pass sits on the inventory's
+            # pieces mirrored; C380, t s4-10: every mirrored mark was refused here, at step 7)
+            ok = on | ({mirror_name(x) for x in on} if s.get("mirror") and k_ > 0 else set())
+            if on and p not in ok:
                 raise DetailRefused(f"{name} on {p}: the inventory puts it on {', '.join(inv['on'])}")
             fl.piece_id(p)
             try:
