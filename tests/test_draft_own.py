@@ -478,3 +478,11 @@ def test_a_centre_pieces_side_named_seam_is_twinned(home):  # (t s4-6: the colla
             "seams": [{"a": "collar:neck.L", "b": "front.L:neck"}]}
     ends = {(s["a"], s["b"]) for s in dp.expand(decl, out["parts"])["seams"]}
     assert ("collar:neck.R", "front.R:neck") in ends, ends
+
+
+def test_a_gate_rows_reasons_print_in_full():  # (t s4-8: one line cut at 600 characters hid `change:`; C378)
+    from hifipushie import draft_own_tool as dot
+    why = "; ".join(f"collar.{s}: {'x' * 400} change: make it 26 mm taller at the back" for s in "LR")
+    ln = dot.row_lines({"status": "FAIL", "id": "shape_stand", "value": "v" * 900, "why": why, "fix": "redraft"})
+    assert sum("change: make it 26 mm taller" in x for x in ln) == 2 and ln[-1] == "      fix: redraft", ln
+    assert dot.row_lines({"status": "PASS", "id": "seams", "value": "ok", "why": "", "fix": "redraft"}) == ["  PASS seams: ok"]

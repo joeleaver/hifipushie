@@ -17,6 +17,17 @@ from pathlib import Path
 from . import draft_own as do
 
 
+
+def row_lines(r: dict) -> list:
+    """A gate row as text: its value on the row's line, then EVERY reason on a line of its own, in full (C378, t s4-8:
+    one line cut at 600 characters hid the collar row's `change:` from the agent, who had to guess the fix)."""
+    out = [f"  {r['status']} {r['id']}: {r.get('value', '')}"]
+    why = [w.strip() for w in str(r.get("why") or "").split("; ") if w.strip()]
+    out += [f"      why: {w}" for w in why]
+    if r.get("status") == "FAIL" and r.get("fix") and r["fix"] not in str(r.get("why")):
+        out.append(f"      fix: {r['fix']}")
+    return out
+
 def measurements(step3: dict) -> dict:
     """{name: number} from body_tape's rows (mm; an angle in degrees: FreeSewing's shoulderSlope)."""
     out = {}
@@ -77,7 +88,7 @@ def check_text(name: str, garment: str) -> str:
                   output=dict(gr.load(name, garment)["steps"]["4"].get("output") or {}, pieces=list(B["pieces"])),
                   gate={"verdict": v, "rows": rows}, look=gr.load(name, garment)["steps"]["4"].get("look"), back_to="4")
     lines = [f"{name}:{garment} pattern_check (own draft, the flat gate): {v}"]
-    lines += [f"  {r['status']} {r['id']}: {r.get('value', '')}{' | ' + r['why'] if r.get('why') else ''}"[:600] for r in rows]
+    lines += [ln for r in rows for ln in row_lines(r)]
     lines.append(f"  {rec}" if rec else f"  record: step 4 written ({gr.path(name, garment)})")
     return "\n".join(lines) + ("\nnext: chain_garment" if v == "PASS" else "\nnext: fix the rows with draft_pattern")
 
@@ -173,7 +184,7 @@ def run(name: str, garment: str, design: str, declarations: dict, options: dict 
     lines = [f"{name}:{garment} draft_pattern: {v} (spec v{ver}; draft {d})",
              f"  pieces {len(B['pieces'])}: {', '.join(B['pieces'])}",
              f"  flat mesh: {out['mesh']['vertices']} vertices, {out['mesh']['faces']} faces; keys {', '.join(keys)}"]
-    lines += [f"  {r['status']} {r['id']}: {r.get('value', '')}{' | ' + r['why'] if r.get('why') else ''}"[:600] for r in rows]
+    lines += [ln for r in rows for ln in row_lines(r)]
     lines += ["  " + ln for ln in pattern_sheet.text_lines(B, seam_rows, names, declarations)]
     if im.info.get("names_off"):
         lines.append(f"  on the sheet without a name (too small to hold one): {', '.join(im.info['names_off'])}")
