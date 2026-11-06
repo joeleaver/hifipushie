@@ -20,6 +20,8 @@ Declarations (JSON beside the code; names are step 1's):
   leg to the tip and out along the other), its two legs declared edges of the piece, sewn to each other (the seam check
   holds them to one length; they must meet at the tip). A dart drawn inside a piece (a fish dart's closed path) isn't
   sewn: open it on the outline (cut the seam path to its tip) to take its suppression.
+  departs {edge: why} (C381): a step-1 seam drafted more than 30 % off its approved estimate, said with what the
+  reference shows there (else row style_lengths FAILs).
   marks {detail: mark | [marks]}: WHERE each step-1 detail sits on the pattern, decided here once (garment_details.py
   docstring: at / rows / points / follows / path / lines; stiffens: a trim that stiffens its edge); a closure's
   buttons are its own marks. A step-1 detail built full / simplified with no mark is refused (cloth-made ones: pieces).
@@ -45,7 +47,7 @@ MARK_FORM = ("a mark = {piece, mirror?: true, and one of: at: [{point, dx, dy} |
              "[positions]}; an edge: a declared edge name or 'a>b' along the outline (C361: the form was only in a "
              "docstring a blind agent can't read)")
 TIMEOUT = 60  # s
-DECL_KEYS = {"pieces", "edges", "seams", "stiff", "folds", "closures", "omit", "notes", "marks", "darts"}
+DECL_KEYS = {"pieces", "edges", "seams", "stiff", "folds", "closures", "omit", "notes", "marks", "darts", "departs"}
 def _roles() -> list:
     from .garment_design import kb
     return [r for r in kb()["roles"] if not r.startswith("_")] + ["collar_band"]
@@ -121,8 +123,8 @@ def node_draft(source: str, measurements: dict, options: dict | None = None, sa:
     miss += [m for m in out.get("measurements_missing") or [] if m not in miss]  # (read by a part, not declared: C361)
     if miss:
         raise DraftRefused(f"design.mjs needs measurements step 3 hasn't taken: {', '.join(miss)} (have "
-                           f"{', '.join(sorted(req['measurements']))}): retake step 3 with them by name (body_tape(name, "
-                           "measurements, garment=...): the record carries the later steps forward), or use these; never "
+                           f"{', '.join(sorted(req['measurements']))}): add them to step 3 by name (body_tape(name, "
+                           "[only these], garment=..., add=true): step 3's other measurements are kept as recorded), or use these; never "
                            "drop one from a block's list or supply it in the design")
     if out.get("measurements_set"):  # (t s4-1: hpsToBust written into the measurements as hpsToWaistBack - 226)
         raise DraftRefused(f"design.mjs sets measurements: {', '.join(out['measurements_set'])}: the body's measurements "
@@ -147,11 +149,18 @@ def _sides(s) -> list:
     return [s] if isinstance(s, str) else list(s or [])
 
 
-def _folded(r: dict, decl: dict) -> bool:
+def _folded(r: dict, decl: dict, H: set = frozenset()) -> bool:
     """A step-1 seam of kind "fold" (a piece folded on itself: a collar's fall edge) is made by a declared fold of
-    that name on that piece, not by a seam."""
+    that name on that piece, not by a seam. One between two pieces (P.L:cb <-> P.R:cb: the halves of one piece cut on
+    the fold) is made by cutting P on the fold (pieces.P.fold: H) or by a seam, never by a fold on one half (C381)."""
     if r.get("kind") != "fold":
         return False
+    from .draft_pairs import canon
+    ca, cb = canon(r["a"], H), canon(r["b"], H)
+    if isinstance(r.get("b"), str) and _edge_of(ca)[0] != _edge_of(cb)[0]:
+        return False
+    if _edge_of(ca)[0] in H and ca == cb:
+        return True
     p, ed = _edge_of(r["a"])
     return any(f.get("piece") == p and ed in (f.get("name"), f.get("line")) for f in decl.get("folds") or [])
 
@@ -177,8 +186,10 @@ def validate(decl: dict, step1: dict, parts: dict | None = None) -> list:
     bad = [f"declarations: unknown key {k!r} (have {', '.join(sorted(DECL_KEYS))})" for k in decl if k not in DECL_KEYS]
     pcs, edges, omit = decl.get("pieces") or {}, decl.get("edges") or {}, decl.get("omit") or {}
     inv = step1.get("pieces") or {}
+    H = dp.halves(decl, step1)
+    cn = lambda e: dp.canon(e, H)
     for nm, pd in pcs.items():
-        if nm not in inv:
+        if nm not in inv and nm not in H:
             bad.append(f"piece {nm!r} is drafted but not in step 1's inventory (have {', '.join(inv)})")
         for k in set(pd) - PIECE_KEYS:
             bad.append(f"piece {nm!r}: unknown key {k!r} (have {', '.join(sorted(PIECE_KEYS))})")
@@ -191,7 +202,7 @@ def validate(decl: dict, step1: dict, parts: dict | None = None) -> list:
         if parts is not None and pd.get("part") not in parts:
             bad.append(f"piece {nm!r}: the draft has no part {pd.get('part')!r} (has {', '.join(parts)})")
     for nm, it in inv.items():
-        if it.get("build") in BUILT and nm not in pcs and not str(omit.get(nm, "")).strip():
+        if it.get("build") in BUILT and nm not in pcs and nm[:-2] not in H and not str(omit.get(nm, "")).strip():
             bad.append(f"step 1 piece {nm!r} (build {it.get('build')}) is not drafted: draft it, or omit {{\"{nm}\": why}}")
     sewn = []
     for i, s in enumerate(decl.get("seams") or []):
@@ -205,24 +216,32 @@ def validate(decl: dict, step1: dict, parts: dict | None = None) -> list:
                     bad.append(f"seam {i} {e!r}: no edge {ed!r} declared on {p!r} (edges.{p}: {', '.join(edges.get(p) or {}) or 'none'})")
         if s.get("ease") is not None and not str(s.get("why", "")).strip():
             bad.append(f"seam {i} ({s.get('a')} | {s.get('b')}): an eased seam says why")
-        sewn.append((set(_sides(s.get("a"))), set(_sides(s.get("b")))))
+        sewn.append(({cn(e) for e in _sides(s.get("a"))}, {cn(e) for e in _sides(s.get("b"))}))
     for r in step1.get("seams") or []:
         a, b = r.get("a"), r.get("b")
         if any(_edge_of(x)[0] in omit for x in (a, b)):
             continue
-        if _folded(r, decl):
+        if _folded(r, decl, H):
             continue
-        if r.get("kind") == "fold":
+        two = r.get("kind") == "fold" and isinstance(b, str) and _edge_of(cn(a))[0] != _edge_of(cn(b))[0]
+        if r.get("kind") == "fold" and not two:
             bad.append(f"step 1 fold {a}: declare folds [{{\"name\": \"{_edge_of(a)[1]}\", \"piece\": \"{_edge_of(a)[0]}\", \"line\": ...}}]")
             continue
-        for x in (a, b):
+        a_, b_ = cn(a), cn(b)
+        if two and not any((a_ in A and b_ in B) or (b_ in A and a_ in B) for A, B in sewn):
+            base = _edge_of(a)[0][:-2] if _edge_of(a)[0].endswith((".L", ".R")) else _edge_of(a)[0]
+            bad.append(f"step 1 fold {a} <-> {b} joins two halves: cut them as ONE piece on the fold (pieces.{base} "
+                       f"{{part, fold: \"x0\"}}, no pair: it stands for both halves, its edges named once) or sew them "
+                       f"(a seam {a} = {b}); a fold declared on one half doesn't join them (C381)")
+            continue
+        for x in (a_, b_):
             p, ed = _edge_of(x)
             if p in pcs and ed not in (edges.get(p) or {}):
                 tw = p[:-2] + (".L" if p.endswith(".R") else ".R") if p.endswith((".L", ".R")) else None
                 hint = (f"; or declare the pair ONCE: pieces.{p[:-2]} {{part, pair: true}} with edges.{p[:-2]} "
                         "(copied to both sides, C362)") if tw and not edges.get(p) and edges.get(tw) else ""
                 bad.append(f"step 1 seam {a} <-> {b}: no drafted edge {x!r} (declare edges.{p}.{ed}{hint})")
-        if not any((a in A and b in B) or (b in A and a in B) for A, B in sewn):
+        if not any((a_ in A and b_ in B) or (b_ in A and a_ in B) for A, B in sewn):
             bad.append(f"step 1 seam {a} <-> {b} is not sewn: a declared seam with {a} on one side and {b} on the other "
                        "(either may be one edge of a chain: a two-piece sleeve's cap set into the whole armhole as ONE seam, "
                        "[cap edges] = [armhole edges], sews every cap / armhole pair of step 1: C365)")
@@ -422,19 +441,23 @@ def gate(B: dict, decl: dict, step1: dict, stand_ref: dict | None = None, step3:
     dx = B.get("decl") or decl  # (pairs expanded: draft_pairs)
     # (a cut copy counts under its own name or its pair's base, whichever step 1 uses: C366, t s4-5's "not cut: front.L
     # ... not in step 1: front.L" read the expanded copies against the unexpanded declaration)
+    from .draft_pairs import halves, canon
+    H = halves(dx, step1)
     own = lambda n: n if n in inv else (n[:-2] if n.endswith((".L", ".R")) and n[:-2] in inv else base_name(n, decl))
-    cut = {own(n) for n in B["pieces"]} | set(decl.get("omit") or {})
+    cut = {own(n) for n in B["pieces"]} | set(decl.get("omit") or {}) | {f"{n}.{s}" for n in H for s in "LR"}
     miss = [n for n, it in inv.items() if it.get("build") in BUILT and n not in cut]
-    extra = [n for n in B["pieces"] if own(n) not in inv]
+    extra = [n for n in B["pieces"] if own(n) not in inv and n not in H]
     rows.append({"id": "cut", "status": "FAIL" if miss or extra else "PASS",
                  "value": f"{len(B['pieces'])} cut, {len(decl.get('omit') or {})} omitted",
                  "target": "every built step-1 piece cut, nothing else", "why": "; ".join(
                      [f"not cut: {n}" for n in miss] + [f"not in step 1: {n}" for n in extra]), "back_to": "4"})
-    sewn = [(set(_sides(s.get("a"))), set(_sides(s.get("b")))) for s in decl.get("seams") or []]
+    sewn = [({canon(e, H) for e in _sides(s.get("a"))}, {canon(e, H) for e in _sides(s.get("b"))})
+            for s in decl.get("seams") or []]
     omit = set(decl.get("omit") or {})
     uns = [f"{r['a']} <-> {r['b']}" for r in step1.get("seams") or []
-           if not any(_edge_of(x)[0] in omit for x in (r["a"], r["b"])) and not _folded(r, decl)
-           and not any((r["a"] in A and r["b"] in Bs) or (r["b"] in A and r["a"] in Bs) for A, Bs in sewn)]
+           if not any(_edge_of(x)[0] in omit for x in (r["a"], r["b"])) and not (_folded(r, dx, H) or _folded(r, decl, H))
+           and not any((canon(r["a"], H) in A and canon(r["b"], H) in Bs) or (canon(r["b"], H) in A and
+                       canon(r["a"], H) in Bs) for A, Bs in sewn)]
     rows.append({"id": "sewn", "status": "FAIL" if uns else "PASS", "value": f"{len(step1.get('seams') or []) - len(uns)} of "
                  f"{len(step1.get('seams') or [])} step-1 seams sewn", "target": "every step-1 seam", "why": "; ".join(uns[:8]),
                  "back_to": "4"})

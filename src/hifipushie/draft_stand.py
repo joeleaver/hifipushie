@@ -108,6 +108,8 @@ def reference(plan: dict | None, at: dict | None) -> dict | None:
                 how=f"trace {t.get('id')} on view {vi} ({pl['how']}; residual {pl['residual_mm']} mm)")
 
 
+NEAR_DZ, NECK_TAPER = 100.0, 0.85  # mm; with no girth at the top's height, one this near bounds it: no neck narrows
+# to under 0.85 of itself over 100 mm (C381, t s4-11: a stand's top 194 mm round over a 406 mm neck passed, only said)
 GIRTH_DZ = 20.0  # mm: a step-3 girth whose loop sits this close to the traced top's height is the girth there
 
 
@@ -155,9 +157,35 @@ def heights(N: np.ndarray, R: np.ndarray) -> dict:
     return dict(front=(float(d[i]), float(d[j])), back=float(d[mid]), top=R[i:j + 1], mid=R[mid])
 
 
+def whole(N: np.ndarray, R: np.ndarray, top: np.ndarray | None, C: np.ndarray):
+    """A half stand (its neck edge N, the rest of its outline R from N's last point round to its first, its free edge
+    top) mirrored across its end edge C (sewn to its mirror half) into the whole stand the checks read: the neck edge
+    from one front end through CB to the other, the rest from that end round the free edge back (C381, t s4-11: each
+    half was read as a whole stand, its "CB" the half's middle and its rise the half's sagitta, about a third of the
+    front end's)."""
+    a, b = C[0], C[-1]
+    u = (b - a) / (np.linalg.norm(b - a) or 1.0)
+    M = lambda X: 2 * (a + np.outer((X - a) @ u, u)) - X
+    near = lambda X, q: float(min(np.linalg.norm(X[0] - q), np.linalg.norm(X[-1] - q)))
+    ends = (C[0], C[-1])
+    if min(np.linalg.norm(N[0] - e) for e in ends) < min(np.linalg.norm(N[-1] - e) for e in ends):
+        N, R = N[::-1], R[::-1]  # (the CB end last)
+    far = C[-1] if np.linalg.norm(C[0] - N[-1]) < np.linalg.norm(C[-1] - N[-1]) else C[0]
+    k = int(np.argmin(np.linalg.norm(R - far, axis=1)))
+    Nw = np.r_[N, M(N[::-1])[1:]]
+    Rk = R[k:]
+    Rw = np.r_[M(Rk)[::-1], Rk[1:]]
+    Tw = None
+    if top is not None:
+        T = top if np.linalg.norm(top[-1] - far) <= np.linalg.norm(top[0] - far) else top[::-1]
+        Tw = np.r_[T, M(T[::-1])[1:]] if near(T, far) < 1e-3 else T
+    return Nw, Rw, Tw
+
+
 def check(p: str, kind: str, N: np.ndarray, R: np.ndarray, top: np.ndarray | None, D: float, D_b: float,
-          ref: dict | None) -> tuple[str, list]:
-    """(value, why[]) for one stand / band (m in, mm out)."""
+          ref: dict | None, whole: bool = False) -> tuple[str, list]:
+    """(value, why[]) for one stand / band (m in, mm out). whole: N / R / top are already the whole stand (two halves
+    mirrored: `whole`), so the top's round isn't doubled."""
     from . import draft_shape as ds, pattern
     H = heights(N, R)
     T_ = H["top"] if top is None else top
@@ -206,10 +234,16 @@ def check(p: str, kind: str, N: np.ndarray, R: np.ndarray, top: np.ndarray | Non
                    f"{tol:.0f} mm. change: make it {abs(hb_exp - mm(H['back'])):.0f} mm {'taller' if hb_exp > mm(H['back']) else 'lower'} at the back")
     tg = ref.get("top_girth")
     if tg:  # the free edge round against the body's girth at the top's height (C380)
-        rnd = 2 * mm(pattern.length(T_)) if p.endswith((".L", ".R")) else mm(pattern.length(T_))
+        rnd = 2 * mm(pattern.length(T_)) if p.endswith((".L", ".R")) and not whole else mm(pattern.length(T_))
         g = tg.get("at")
-        if g is None:
-            nb = tg.get("nearest")
+        nb = tg.get("nearest")
+        if g is None and nb and abs(nb["dz"]) <= NEAR_DZ and rnd < NECK_TAPER * nb["mm"]:
+            why.append(f"{p}: its top edge goes round {rnd:.0f} mm, under {NECK_TAPER:.0%} of the body's {nb['name']} "
+                       f"{nb['mm']:.0f} mm taken {abs(nb['dz']):.0f} mm {'below' if nb['dz'] < 0 else 'above'} the top: "
+                       f"no neck narrows that much, so it grips. change: lengthen the free edge by "
+                       f"{NECK_TAPER * nb['mm'] - rnd:.0f} mm or more (less lean / curve), or take a girth at the top's "
+                       f"height (hps + {ref['h_side']:.0f} mm, body_tape add=true) to check it closer (C381)")
+        elif g is None:
             val += (f"; top edge round {rnd:.0f} mm: step 3 took no girth at the top's height (hps + {ref['h_side']:.0f} mm)"
                     + (f"; nearest {nb['name']} {nb['mm']:.0f} mm, {nb['dz']:+.0f} mm from it" if nb else "")
                     + ": take one there (body_tape) to check the top doesn't grip")

@@ -32,6 +32,7 @@ from pathlib import Path
 
 import numpy as np
 from scipy.spatial import cKDTree
+from . import garment_mirror
 
 KINDS = ("point", "line", "motif")
 SHAPES = ("dome", "disc", "box")
@@ -389,7 +390,8 @@ def place(fl: Flat, name: str, mark, geom: dict, inv: dict, cloth: dict | None =
         if kind not in KINDS:
             raise DetailRefused(f"{name}.kind {kind!r}: one of {', '.join(KINDS)}")
         p0 = _piece(s, inv, name)
-        passes = [(p0, s)] + ([(mirror_name(p0), _remap(s, p0, mirror_name(p0)))] if s.get("mirror") else [])
+        passes = [(p0, s)] + ([(mirror_name(p0), garment_mirror.flip_dx(_remap(s, p0, mirror_name(p0)), fl, p0, mirror_name(p0)))]
+                              if s.get("mirror") else [])
         fp = list(dict.fromkeys(e.split(":", 1)[0] for e in s.get("follows") or [] if isinstance(e, str) and ":" in e))
         if kind == "line" and not s.get("piece") and not s.get("path") and len(fp) > 1:
             passes = [(q, s) for q in fp]  # (one trim across several pieces: a binding, a zip's tape)

@@ -525,7 +525,73 @@ def test_step4_places_every_mark_and_compares_step1s_lengths():  # (t s4-10: mar
     assert row["status"] == "FAIL" and "dy runs UP" in row["why"], row
     # step 1's estimate against the drafted seam, both sides named by their sides (front.L / front.R)
     B["decl"] = {"seams": [{"a": "front.L:hem", "b": "front.R:hem"}]}
-    s1 = {"seams": [{"a": "front.L:hem", "b": "front.R:hem", "length": {"style": {"value_mm": 300, "source": "seen"}}}]}
+    s1 = {"seams": [{"a": "front.L:hem", "b": "front.R:hem", "length": {"style": {"value_mm": 240, "source": "seen"}}}]}
     r = dbl.style_rows(B, s1, {"measurements": []})[0]
-    assert r["status"] == "INFO" and "drafted 200 mm, step 1 300 mm" in r["info"], r
+    assert r["status"] == "INFO" and "drafted 200 mm, step 1 240 mm" in r["info"], r
     assert gd.DY_HINT
+
+
+def test_s4_11_step1_departures_fold_halves_whole_stands_mirrored_marks_and_layers():  # (t s4-11; C381)
+    import numpy as np
+    from hifipushie import cloth, draft_body_lengths as dbl, draft_marks, draft_own as do, draft_shape as ds
+    from hifipushie import pattern_sheet as ps
+
+    def rect(nm, w, h, sgn=1):
+        return {"name": nm, "P": np.array([[0, 0], [sgn * w, 0], [sgn * w, h], [0, h]], float)[::sgn],
+                "names": {"a": 0, "b": 1, "c": 2, "d": 3} if sgn > 0 else {"a": 3, "b": 2, "c": 1, "d": 0},
+                "marks": {}, "lines": {}, "wrap": {"to": "torso"}}
+    # 1. far off step 1's approved estimate: refused unless `departs` says why
+    B = {"pieces": {"front.L": rect("front.L", 0.2, 0.5), "front.R": rect("front.R", 0.2, 0.5)},
+         "seams": [["front.L:a>b", "front.R:a>b"]], "stitches": [],
+         "decl": {"seams": [{"a": "front.L:hem", "b": "front.R:hem"}]}}
+    s1 = {"seams": [{"a": "front.L:hem", "b": "front.R:hem", "length": {"style": {"value_mm": 400, "source": "seen"}}}]}
+    r = dbl.style_rows(B, s1, {"measurements": []})[0]
+    assert r["status"] == "FAIL" and "-50%" in r["why"] and "departs" in r["fix"], r
+    B["decl"]["departs"] = {"front:hem": "the reference's hem is shorter: the tab ends at the side"}
+    r = dbl.style_rows(B, s1, {"measurements": []})[0]
+    assert r["status"] == "INFO" and "departs: the reference" in r["info"], r
+    # 2. step 1's two halves joined by a fold: a fold on one half doesn't join them; one piece cut on the fold does
+    step1 = {"pieces": {"collar.L": {"build": "full"}, "collar.R": {"build": "full"}},
+             "seams": [{"a": "collar.L:cb", "b": "collar.R:cb", "kind": "fold"}]}
+    half = {"pieces": {"collar.L": {"part": "x"}, "collar.R": {"part": "x"}},
+            "edges": {"collar.L": {"cb": "a>b"}, "collar.R": {"cb": "a>b"}},
+            "folds": [{"name": "cb", "piece": "collar.L", "line": "cb", "kind": "press"}]}
+    assert any("joins two halves" in b for b in do.validate(half, step1)), do.validate(half, step1)
+    sewn = dict(half, folds=[], seams=[{"a": "collar.L:cb", "b": "collar.R:cb"}])
+    assert not do.validate(sewn, step1), do.validate(sewn, step1)
+    one = {"pieces": {"collar": {"part": "x", "fold": "x0"}}, "edges": {"collar": {"cb": "a>b"}}}
+    assert not do.validate(one, step1), do.validate(one, step1)
+    # 3. a {point, dx} mark mirrored onto a pair's mirrored copy: dx runs the other way
+    B = {"pieces": {"front.L": rect("front.L", 0.2, 0.5), "front.R": rect("front.R", 0.2, 0.5, -1)},
+         "seams": [["front.L:a>b", "front.R:a>b"]], "stitches": []}
+    M = cloth.mesh(B, 0.02)
+    st = {"details": {"braid.L": {"build": "full", "on": ["front.L"]}}}
+    mk = {"edges": {}, "marks": {"braid.L": {"piece": "front.L", "mirror": True, "path": [
+        {"point": "c", "dx": -50, "dy": -10}, {"point": "c", "dx": -50, "dy": -300}]}}}
+    row, drawn = draft_marks.place(M, mk, st)
+    assert row["status"] == "PASS" and set(drawn) == {"front.L", "front.R"}, row
+    # 4. a half stand sewn to its mirror at CB is judged whole: the rise of the whole, not the half's sagitta
+    from test_draft_own import _B, _ref, _piece, HUGS, FOLLOWS, _strip
+    whole = {r["id"]: r for r in ds.rows(_B(_strip("collar", *HUGS)), {"pieces": {"collar": {"role": "collar_stand"}},
+                                         "stiff": ["collar"]}, {"pieces": {}}, _ref(FOLLOWS))}["shape_stand"]
+    lo, hi = HUGS
+    xs = np.linspace(0.2, 0.4, 11)
+
+    def h(nm, sgn):
+        return _piece(nm, [(0.2 + sgn * (x - 0.2), lo(x)) for x in xs] + [(0.2 + sgn * (x - 0.2), hi(x)) for x in xs[::-1]],
+                      {"bl": 0, "br": 10, "tr": 11, "tl": 21}, "neck")
+    Bh = _B(_strip("collar", *HUGS))
+    Bh["pieces"] = {"front": Bh["pieces"]["front"], "collar.L": h("collar.L", 1), "collar.R": h("collar.R", -1)}
+    Bh["seams"] = [["collar.L:bl>br", "front:hps>cf"], ["collar.L:tl>bl", "collar.R:tl>bl"]]
+    Bh["edge_arcs"] = {"front": {"neck": "hps>cf"}, "collar.L": {"neck": "bl>br", "cb": "tl>bl"}, "collar.R": {"cb": "tl>bl"}}
+    r = {x["id"]: x for x in ds.rows(Bh, {"pieces": {"collar.L": {"role": "collar_stand"}}, "stiff": ["collar.L"]},
+                                     {"pieces": {}}, _ref(FOLLOWS))}["shape_stand"]
+    assert "whole: mirrored at collar.L:cb" in r["value"] and "+30.0 mm" in r["value"] and "+30.0 mm" in whole["value"], r
+    # 5. a canvas sewn edge to edge onto a piece is listed as its layer, with the host's role
+    Bl = {"pieces": {"collar": rect("collar", 0.2, 0.05), "collar_canvas": rect("collar_canvas", 0.2, 0.05),
+                     "back": rect("back", 0.2, 0.5)},
+          "seams": [["collar:a>b", "collar_canvas:a>b"], ["collar:c>d", "back:c>d"]],
+          "edge_arcs": {"collar": {"top": "a>b", "neck": "c>d"}, "collar_canvas": {"top": "a>b"}, "back": {"neck": "c>d"}}}
+    txt = "\n".join(ps.text_lines(Bl, decl={"pieces": {"collar": {"role": "collar_stand"}}}))
+    assert "collar_canvas: " in txt and "layer of collar (its role: collar_stand)" in txt, txt
+

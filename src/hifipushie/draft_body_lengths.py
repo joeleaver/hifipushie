@@ -125,20 +125,38 @@ def rows(B: dict, step1: dict, step3: dict | None, fit: dict | None) -> list:
 
 
 STYLE_OFF = 0.15  # a drafted seam this far from step 1's estimate is said (step 1 read it off the picture)
+STYLE_FAIL = 0.30  # ... and this far is refused unless `departs` names the edge with why (C381)
+
+
+def _departs(decl: dict, a, b) -> str:
+    """The declared reason a drafted seam leaves step 1's estimate: `departs` {edge (either side, pair base or sided):
+    why}, or ''."""
+    dep = decl.get("departs") or {}
+    for x in (a, b):
+        if isinstance(x, str) and ":" in x:
+            p, arc = _base(x)
+            for k in (x, f"{p}:{arc}"):
+                if str(dep.get(k) or "").strip():
+                    return str(dep[k]).strip()
+    return ""
 
 
 def style_rows(B: dict, step1: dict, step3: dict | None) -> list:
     """Row `style_lengths` (C380, t s4-7..s4-10: step 1's estimated lengths were never compared with the draft, so a
     collar top 0.48 x neck against 133 mm drafted, or a side seam 433 against 404, went unsaid): every step-1 seam whose
-    length is a STYLE estimate (value_mm, or ratio x a step-3 measurement) against its drafted edges. INFO: step 1 read
-    them off the picture and the draft follows the body; a big difference says which of the two to look at again."""
+    length is a STYLE estimate (value_mm, or ratio x a step-3 measurement) against its drafted edges. Off by more than
+    STYLE_OFF: said (INFO). Off by more than STYLE_FAIL: FAIL unless the declarations' `departs` names one of its edges
+    with why (C381, t s4-11: a stand collar's top drafted 97 mm against step 1's approved 195 passed as INFO, and the
+    collar tapered to nothing where the reference's runs full height to the zip; step 1 is approved, so leaving it is a
+    decision said aloud, not a by-product)."""
     from . import cloth_check as cc
     meas = {m["name"]: m for m in (step3 or {}).get("measurements") or []}
-    exp = (B.get("decl") or {}).get("seams") or []
+    decl = B.get("decl") or {}
+    exp = decl.get("seams") or []
     sm = cc.seams(B)
     if len(exp) != len(sm):
         return [{"id": "style_lengths", "status": "INFO", "value": "n/a", "why": "seams not one to one"}]
-    seen, off, n = set(), [], 0
+    seen, off, fails, n = set(), [], [], 0
     for r in step1.get("seams") or []:
         st = (r.get("length") or {}).get("style")
         if not isinstance(st, dict):
@@ -160,9 +178,19 @@ def style_rows(B: dict, step1: dict, step3: dict | None) -> list:
         seen.add(key)
         n += 1
         got = (sm[hit[0]]["len_a_mm"] + sm[hit[0]]["len_b_mm"]) / 2
-        if abs(got - tgt) > STYLE_OFF * tgt:
-            off.append(f"{r.get('a')} = {r.get('b')}: drafted {got:.0f} mm, step 1 {tgt:.0f} mm ({got / tgt - 1:+.0%}, "
-                       f"{str(st.get('source', '')).replace('; ', ', ')[:90]})")
-    return [{"id": "style_lengths", "status": "INFO", "value": f"{n} step-1 estimates, {len(off)} off by > "
-             f"{STYLE_OFF:.0%}", "target": "said, not refused: step 1's lengths are read off the picture",
-             "why": "", "info": "; ".join(off), "back_to": "4"}]
+        if abs(got - tgt) <= STYLE_OFF * tgt:
+            continue
+        txt = (f"{r.get('a')} = {r.get('b')}: drafted {got:.0f} mm, step 1 {tgt:.0f} mm ({got / tgt - 1:+.0%}, "
+               f"{str(st.get('source', '')).replace('; ', ', ')[:90]})")
+        why = _departs(decl, r.get("a"), r.get("b"))
+        if abs(got - tgt) > STYLE_FAIL * tgt and not why:
+            fails.append(txt)
+        else:
+            off.append(txt + (f", departs: {why.replace('; ', ', ')[:120]}" if why else ""))
+    return [{"id": "style_lengths", "status": "FAIL" if fails else "INFO", "value": f"{n} step-1 estimates, "
+             f"{len(fails) + len(off)} off by > {STYLE_OFF:.0%}, {len(fails)} by > {STYLE_FAIL:.0%} unsaid",
+             "target": f"within {STYLE_FAIL:.0%} of step 1's approved estimate, or `departs` says why",
+             "why": "; ".join(fails), "info": "; ".join(off), "back_to": "4",
+             "fix": ("step 1 is approved: draft the edge to its length; if the reference shows step 1 misread it, "
+                     "look again at the reference there (another row asking for a different length, a step-2 trace's, is such a reason), then add departs {\"<piece>:<edge>\": \"what the reference "
+                     "shows\"}") if fails else ""}]
