@@ -646,3 +646,8 @@ def test_a_garment_as_wide_at_the_waist_as_the_chest_where_the_body_narrows_is_a
     assert not gf._hangs_open(ws, [{"at": "waist", "why": "a sack coat cut straight from the chest"}])
     fitted = [dict(at="chest", px=[371.9, 335.8]), dict(at="waist", px=[309.6, 280.8])]
     assert not gf._hangs_open(fitted, [])
+    opened = [dict(at="chest", px=[384.4, 335.8], v=400), dict(at="waist", ratio=1.2, gnote="worn open: fronts apart", v=600),
+              dict(at="hips", px=[456.4, 341.2], v=700)]
+    bad = gf._hangs_open(opened, [])
+    assert len(bad) == 1 and "hips" in bad[0] and "hangs open too" in bad[0], bad
+

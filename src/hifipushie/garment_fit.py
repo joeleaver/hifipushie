@@ -168,9 +168,19 @@ def _hangs_open(widths: list, given: list) -> list:
             out.append(f"fit.widths at {lo['at']}: the garment is as wide as at the {up['at']} ({gl:.0f} vs {gu:.0f} px) "
                        f"where the body narrows ({bl:.0f} vs {bu:.0f} px). If it hangs OPEN there (fronts apart, "
                        "unfastened: the cloth falls straight from the chest), its width isn't its girth: write "
-                       "garment_from: 'worn open: <what shows>' with the ratio it has closed (the "
-                       f"{up['at']}'s, {gu / bu:.2f}, less the shaping the cut shows) and why; if it truly flares or "
-                       "is cut straight, say so in why")
+                       "garment_from: 'worn open: <what shows>' with the ratio it has closed and why: under "
+                       f"{gu / bl:.2f} (as wide as at the {up['at']}: no shaping at all) by the suppression the cut "
+                       "shows (darts, seams, a side panel); if it truly flares or is cut straight, say so in why")
+    # (C389, t s0-9: below a level read as worn open, the garment hangs open too: its hips and hem were left seen,
+    # 1261 / 1347 mm, a wide box on the model)
+    opened = [w for w in widths if str(w.get("gnote") or "").lower().startswith("worn open") and w.get("v") is not None]
+    if opened:
+        top = min(float(w["v"]) for w in opened)
+        for w in widths:
+            if w.get("px") and w.get("v") is not None and float(w["v"]) > top and not why.get(w["at"]):
+                out.append(f"fit.widths at {w['at']}: below a level read as worn open, the garment hangs open too: "
+                           "read it the same way (garment_from: 'worn open: ...' with its closed ratio), or say in "
+                           "why that it closes there")
     return out
 
 
@@ -242,7 +252,8 @@ def check(fit, views: list, body=None) -> tuple[dict, dict, dict]:
             if not isinstance(r, (int, float)) or r <= 0:
                 bad.append(f"{wn}.ratio: a number > 0 (the garment's width over the body's at {at})")
                 continue
-            widths.append(dict(at=at, ratio=float(r), body="inferred", garment="inferred", note=gfrom, why=w.get("why")))
+            widths.append(dict(at=at, ratio=float(r), body="inferred", garment="inferred", note=bfrom or None,
+                               gnote=gfrom, why=w.get("why"), v=lms.get(at, hrow.get(at))))
         else:
             if g is None:
                 bad.append(f"{wn}.garment: its two edges [[u, v], [u, v]] straight across at the {at}; covered: "
@@ -284,6 +295,7 @@ def check(fit, views: list, body=None) -> tuple[dict, dict, dict]:
                 continue
             widths.append(dict(at=at, ratio=gw / bw, body="seen" if bfrom == "seen" else "inferred",
                                garment="seen" if gfrom == "seen" else "inferred", note=None if bfrom == "seen" else bfrom,
+                               gnote=None if gfrom == "seen" else gfrom, v=row,
                                why=w.get("why"), px=[round(gw, 1), round(bw, 1)], measured=meas))
         if widths and widths[-1]["at"] == at and widths[-1]["ratio"] < 1 and not str(w.get("why") or "").strip():
             bad.append(f"{wn}: the garment is narrower than the body at the {at} ({widths[-1]['ratio']:.2f}): re-mark the "
@@ -359,7 +371,8 @@ def check(fit, views: list, body=None) -> tuple[dict, dict, dict]:
                        + (f"; {'; '.join(x['notes'])}" if x["notes"] else "") + ")"
                        for k, x in (w.get("measured") or {}).items())
         src = (f"ratio {r:.3f} read on view {vi} ({'garment ' + str(w['px'][0]) + ' px / body ' + str(w['px'][1]) + ' px' if w.get('px') else 'given'}); "
-               f"body {w['body']}{' (' + w['note'] + ')' if w['note'] else ''}; applied to the model's {part}: "
+               f"body {w['body']}{' (' + w['note'] + ')' if w['note'] else ''}"
+               + (f"; garment {w['garment']} ({w['gnote']})" if w.get("gnote") else "") + f"; applied to the model's {part}: "
                "the garment's section taken as the body's scaled by the ratio" + (f"; {mv}" if mv else ""))
         out[w["at"]] = dict(ratio=round(r, 3), ease_mm=round(m["girth_mm"] * (r - 1), 1),
                             body_girth_mm=round(m["girth_mm"], 1), garment_girth_mm=round(m["girth_mm"] * r, 1),
