@@ -100,11 +100,19 @@ def layers(B: dict) -> dict:
         for mine, other in ((A, Bs), (Bs, A)):
             for e in mine:
                 p = e.split(":", 1)[0]
+                if len(mine) == len(other) == 1 and _is_mirror(p, other[0].split(":", 1)[0]) and \
+                        _edge_name(B, e) == _edge_name(B, other[0]):
+                    continue  # (its own halves joined at CB: not a host; C382, t s4-12: a facing sewn to its mirror
+                    # and top to top on the stand read as a fall, the stand as a band, and no stand row judged it)
                 ok = len(mine) == 1 and len(other) == 1 and other[0].split(":", 1)[0] != p and \
                     _edge_name(B, e) == _edge_name(B, other[0])
                 seen.setdefault(p, []).append(other[0].split(":", 1)[0] if ok else None)
     out = {p: hs[0] for p, hs in seen.items() if hs and None not in hs and len(set(hs)) == 1}
     return {p: h for p, h in out.items() if out.get(h) != p}  # (two pieces sewn only to each other: neither)
+
+
+def _is_mirror(p: str, q: str) -> bool:
+    return p[-2:] in (".L", ".R") and q == p[:-2] + {".L": ".R", ".R": ".L"}[p[-2:]]
 
 
 def _mirror_sewn(B: dict, p: str) -> bool:

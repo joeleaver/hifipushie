@@ -401,6 +401,8 @@ def place(fl: Flat, name: str, mark, geom: dict, inv: dict, cloth: dict | None =
             # (a .L mark with mirror: true places the .R detail too (C366): its mirrored pass sits on the inventory's
             # pieces mirrored; C380, t s4-10: every mirrored mark was refused here, at step 7)
             ok = on | ({mirror_name(x) for x in on} if s.get("mirror") and k_ > 0 else set())
+            # (a piece cut on the fold stands for the inventory's halves P.L / P.R: C382, t s4-12)
+            ok |= {x[:-2] for x in on if x[-2:] in (".L", ".R") and x not in fl.names and x[:-2] in fl.names}
             if on and p not in ok:
                 raise DetailRefused(f"{name} on {p}: the inventory puts it on {', '.join(inv['on'])}")
             fl.piece_id(p)
