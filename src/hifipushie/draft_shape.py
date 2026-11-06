@@ -8,7 +8,7 @@ FreeSewing design's own part (4.10.2, measured on wf_simon's step-3 measurements
 ref_measure.py). Every FAIL names what to change in the design (`change`) and goes back to step 4.
 
 Rows (`rows(B, decl, step1)`; B = draft_own.block + cloth.pieces, its pieces in FreeSewing's frame, y = the grain):
-  shape_stand: a STAND / BAND (role collar_stand / collar_band / neckband, or a stiff piece sewn to edges named "neck"):
+  shape_stand: a STAND / BAND (role collar_stand / collar_band / neckband, or a stiff piece sewn to edges named neck*):
     its curve and heights DECIDED BY THE REFERENCE (T5c, C300; draft_stand.py, its docstring the derivation): step 2's
     collar_top trace says whether the top follows the neckline down (the hugging stand: neck edge rising, jaeger) or
     stays level (standing away: taller at its front ends, neck edge straight or falling). No trace: INFO (no style is a
@@ -84,6 +84,29 @@ def _role(nm: str, decl: dict, step1: dict) -> str:
     return r if r != base or r in kb()["roles"] else ""
 
 
+def is_neck(name: str) -> bool:
+    """An edge on the neck line: "neck", "neckline", "neck_front", "neck_back" (C377, t s4-7: only "neck" counted, so a
+    stand sewn by its neck_front / neck_back to the body's necklines was no stand and its canvas read as a fall)."""
+    return str(name).lower().startswith("neck")
+
+
+def layers(B: dict) -> dict:
+    """{layer: host}: a piece whose every seam joins one of its edges to the SAME-NAMED edge of one other piece (a canvas,
+    facing or lining cut to that piece: top to top, end to end). Its shape is its host's, so no shape row judges it
+    (C377, t s4-7: a stand collar's canvas and inner collar, sewn top to top, were judged as falls sewn on the stand).
+    A fall is sewn by a different edge (its stand seam to the stand's top), so it is never a layer."""
+    seen = {}
+    for A, Bs in _seam_pairs(B):
+        for mine, other in ((A, Bs), (Bs, A)):
+            for e in mine:
+                p = e.split(":", 1)[0]
+                ok = len(mine) == 1 and len(other) == 1 and other[0].split(":", 1)[0] != p and \
+                    _edge_name(B, e) == _edge_name(B, other[0])
+                seen.setdefault(p, []).append(other[0].split(":", 1)[0] if ok else None)
+    out = {p: hs[0] for p, hs in seen.items() if hs and None not in hs and len(set(hs)) == 1}
+    return {p: h for p, h in out.items() if out.get(h) != p}  # (two pieces sewn only to each other: neither)
+
+
 def _seam_pairs(B: dict):
     for s in B.get("seams") or []:
         yield _sides(s[0]), _sides(s[1])
@@ -123,6 +146,7 @@ def stand_rows(B: dict, decl: dict, step1: dict, ref: dict | None = None) -> dic
     from . import draft_stand as dst, pattern
     stiff = set(decl.get("stiff") or [])
     falls = fall_pieces(B, decl, step1)
+    lay = layers(B)
     out, why, vals = [], [], []
     cand = {}  # piece -> ([its neck-sewn arcs], [the neck edges they're sewn to])
     for A, Bs in _seam_pairs(B):
@@ -130,8 +154,10 @@ def stand_rows(B: dict, decl: dict, step1: dict, ref: dict | None = None) -> dic
             if len(mine) != 1:
                 continue
             p = mine[0].split(":", 1)[0]
+            if p in lay:
+                continue
             role = _role(p, decl, step1)
-            on_neck = all(_edge_name(B, e) == "neck" and e.split(":", 1)[0] not in stiff for e in other)
+            on_neck = all(is_neck(_edge_name(B, e)) and e.split(":", 1)[0] not in stiff for e in other)
             if p in falls or not (role in STAND_ROLES or (p in stiff and on_neck)) or not on_neck:
                 continue
             c = cand.setdefault(p, ([], []))
@@ -177,7 +203,8 @@ def fall_pieces(B: dict, decl: dict, step1: dict) -> set:
     than its neck edge, itself on no neck: a fall sewn on a band's top (it was read as nothing, the band as two stands)."""
     roll = {f.get("piece") for f in B.get("folds") or [] if f.get("kind") == "roll"
             and _role(f.get("piece"), decl, step1) not in LAPEL_ROLES}  # (a front's roll fold is its lapel: C366)
-    falls = {p for p in B["pieces"] if p in roll or _role(p, decl, step1) in FALL_ROLES}
+    lay = layers(B)
+    falls = {p for p in B["pieces"] if p not in lay and (p in roll or _role(p, decl, step1) in FALL_ROLES)}
     stiff = set(decl.get("stiff") or [])
     standish = {p for p in B["pieces"] if _role(p, decl, step1) in STAND_ROLES or p in stiff}
     to, necked = {}, set()
@@ -185,12 +212,12 @@ def fall_pieces(B: dict, decl: dict, step1: dict) -> set:
         for mine, other in ((A, Bs), (Bs, A)):
             for e in mine:
                 to.setdefault(e.split(":", 1)[0], []).extend(other)
-                if _edge_name(B, e) == "neck":
+                if is_neck(_edge_name(B, e)):
                     necked.add(e.split(":", 1)[0])
     for p, other in to.items():
-        if p in falls or p in necked or _role(p, decl, step1) in STAND_ROLES or not other:
+        if p in falls or p in lay or p in necked or _role(p, decl, step1) in STAND_ROLES or not other:
             continue
-        if all(e.split(":", 1)[0] in standish and e.split(":", 1)[0] != p and _edge_name(B, e) != "neck" for e in other):
+        if all(e.split(":", 1)[0] in standish and e.split(":", 1)[0] != p and not is_neck(_edge_name(B, e)) for e in other):
             falls.add(p)
     return falls
 

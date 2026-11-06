@@ -45,6 +45,7 @@ STAND_LEAN = 1 - 0.5 * (1 - 0.978)  # jaeger.collarStand free / neck edge: a hug
 FOLLOW = 0.5  # the top follows >= half the neckline's drop: the hugging stand; less: level, standing away
 TOP_DEG = 60.0  # the top line, seen: within this of level (steeper: a rounded corner or the front edge going down)
 END_SHARE = 0.25
+TRACE_CUT_MM = 10.0  # the collar_top trace runs on this far down past its corner: it traces a cut-away front end
 # the curve's why is REPORTED, not failed (r-hussar): builds r1 / r2 with the neck edge +9 and -13 mm both built the stand
 # 31 deg up (the build lays it out whatever the curve), so no build backs the rise target yet; the heights are (c1 too
 # tall -> collar_height FAIL; r1 / r2 on target -> PASS; T8 short -> collar_front's top corners low)
@@ -74,10 +75,21 @@ def reference(plan: dict | None, at: dict | None) -> dict | None:
         return {"why": f"{t.get('id')}: the body marks don't place view {vi}: {e}"}
     P = so.to_mm(t["points"], pl)  # (a right, b down) mm
     top = float(P[:, 1].min())
-    ends = []
-    for Q in (P, P[::-1]):
-        k = next((i for i in range(len(Q) - 1)
-                  if np.degrees(np.arctan2(abs(Q[i + 1, 1] - Q[i, 1]), abs(Q[i + 1, 0] - Q[i, 0]) + 1e-12)) < TOP_DEG), 0)
+    ti = int(np.argmin(P[:, 1]))
+    cs = [int(c) for c in t.get("corners") or [] if isinstance(c, int) and 0 < c < len(P) - 1]
+    ends, cut = [], []
+    for side, Q in ((-1, P), (1, P[::-1])):
+        # the trace's own corners end the top (C377, t s4-7: the hussar's front ends slant down at 45 deg to the CF neck;
+        # read by TOP_DEG alone, the slant was taken for a top following the neckline); else the first level stretch
+        near = [c for c in cs if (c < ti if side < 0 else c > ti)]
+        if near:
+            c = max(near) if side < 0 else min(near)
+            k = c if side < 0 else len(P) - 1 - c
+            cut.append(float(Q[0, 1]) - float(Q[k, 1]) > TRACE_CUT_MM)  # (the trace runs on, DOWN a front edge, past it)
+        else:
+            k = next((i for i in range(len(Q) - 1)
+                      if np.degrees(np.arctan2(abs(Q[i + 1, 1] - Q[i, 1]), abs(Q[i + 1, 0] - Q[i, 0]) + 1e-12)) < TOP_DEG), 0)
+            cut.append(False)
         ends.append(float(Q[k, 1]) - top)
     cf = [so.to_mm(f["points"], pl) for f in style.get("traces") or []
           if f.get("what") == "collar_front" and f.get("view", 0) == vi]
@@ -91,7 +103,7 @@ def reference(plan: dict | None, at: dict | None) -> dict | None:
     else:
         D, D_how = None, "the flat pattern's (no collar_front trace, no cf_neck landmark)"
     D_b = z("hps.L") - z("cb_neck") if z("cb_neck") is not None else None
-    return dict(h_side=b_hps - top, T=float(np.mean(ends)), T_ends=ends, tol=2 * so.TRACE_PX * pl["s"] + pl["residual_mm"],
+    return dict(h_side=b_hps - top, T=float(np.mean(ends)), T_ends=ends, cut_away=any(cut), tol=2 * so.TRACE_PX * pl["s"] + pl["residual_mm"],
                 fronts=fronts, D=D, D_back=D_b, D_how=D_how,
                 how=f"trace {t.get('id')} on view {vi} ({pl['how']}; residual {pl['residual_mm']} mm)")
 
@@ -165,7 +177,9 @@ def check(p: str, kind: str, N: np.ndarray, R: np.ndarray, top: np.ndarray | Non
                    f"({f:.2f} x D) wants {r_exp:+.0f} +- {r_tol:.0f} mm (f x {JAEGER_RISE:.2f} x the flat drop - (1 - f)(D - D_back) "
                    f"seen). change: curve the neck "
                    f"edge's ends {way} by {abs(mm(r) - r_exp) - r_tol:.0f}-{abs(mm(r) - r_exp):.0f} mm (the free edge follows)")
-    if abs(hf - hf_exp) > tol:
+    if ref.get("cut_away"):  # (C377: the front end edge is traced down to the neck; h_front's vertical end isn't this style)
+        val += "; front ends cut away (the trace runs down past its corner): their height isn't checked, the back's is"
+    elif abs(hf - hf_exp) > tol:
         why.append(f"{p}: front ends {hf:.0f} mm tall; the trace wants h_side + D - T = {ref['h_side']:.0f} + {Dm:.0f} - "
                    f"{ref['T']:.0f} = {hf_exp:.0f} +- {tol:.0f} mm. change: make the stand {abs(hf_exp - hf):.0f} mm "
                    f"{'taller' if hf_exp > hf else 'lower'} at its front ends (the top line drawn {'level' if f < FOLLOW else 'down'} to them)")

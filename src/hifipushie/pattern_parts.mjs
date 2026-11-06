@@ -60,7 +60,8 @@ if (req.draft && !out.missing.length) {
       out.parts[pn] = { hidden: !!part.hidden || !!(pc.partHide || {})[pn], points, paths }
     }
     const errs = [].concat(pattern.store.logs?.error || [], pattern.setStores?.[0]?.logs?.error || []).flat(3)
-    if (errs.length) out.draft_error = String(errs[0]?.message || errs[0]).split('\n')[0]
+    // (t s4-7: FreeSewing logs "Unable to draft part" FIRST and the cause after it: show both)
+    if (errs.length) out.draft_error = errs.slice(0, 3).map((e) => String(e?.message || e).split('\n')[0]).join(' | ')
   } catch (e) { out.draft_error = String((e && e.message) || e).split('\n')[0] }
 }
 process.stdout.write(JSON.stringify(out))
