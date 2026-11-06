@@ -61,10 +61,16 @@ def rows(B: dict, step1: dict, step3: dict | None, fit: dict | None) -> list:
         return [{"id": "body_lengths", "status": "INFO", "value": "n/a", "target": "every body-measured seam vs its "
                  "measurement + ease", "why": "no step-3 measurements" if not meas else "seams not one to one"}]
     fails, infos, n = [], [], 0
+    seen_: set = set()
     rounds: dict = {}  # girth name -> [(step-1 seam, expanded seam indices)]: summed round over every seam naming it
     for r in step1.get("seams") or []:
         names = ((r.get("length") or {}).get("body")) or []
-        want = {r.get("a"), r.get("b")}
+        # (C380, t s4-10: step 1 names sided pieces, "front.L:shoulder", and only the draft's side was reduced to its
+        # base, so nothing ever matched: "0 body measurements" on every paired garment)
+        want = {"{}:{}".format(*_base(x)) for x in (r.get("a"), r.get("b")) if isinstance(x, str) and ":" in x}
+        if frozenset(want) in seen_:  # (a pair's .L and .R rows: one seam, said once)
+            continue
+        seen_.add(frozenset(want))
         hit = [i for i, s in enumerate(exp) if isinstance(s.get("a"), str) and isinstance(s.get("b"), str)
                and {"{}:{}".format(*_base(s["a"])), "{}:{}".format(*_base(s["b"]))} == want]
         for nm in names:
@@ -116,3 +122,47 @@ def rows(B: dict, step1: dict, step3: dict | None, fit: dict | None) -> list:
              "round its drafted edges, >= that girth + the plan's fit ease (lengths: said, not refused)",
              "why": "; ".join(fails[:6]), "info": "; ".join(infos[:8]), "back_to": "4",
              "fix": "redraft the named edges (or step 1's measurement for the seam, step 0's ease)" if fails else ""}]
+
+
+STYLE_OFF = 0.15  # a drafted seam this far from step 1's estimate is said (step 1 read it off the picture)
+
+
+def style_rows(B: dict, step1: dict, step3: dict | None) -> list:
+    """Row `style_lengths` (C380, t s4-7..s4-10: step 1's estimated lengths were never compared with the draft, so a
+    collar top 0.48 x neck against 133 mm drafted, or a side seam 433 against 404, went unsaid): every step-1 seam whose
+    length is a STYLE estimate (value_mm, or ratio x a step-3 measurement) against its drafted edges. INFO: step 1 read
+    them off the picture and the draft follows the body; a big difference says which of the two to look at again."""
+    from . import cloth_check as cc
+    meas = {m["name"]: m for m in (step3 or {}).get("measurements") or []}
+    exp = (B.get("decl") or {}).get("seams") or []
+    sm = cc.seams(B)
+    if len(exp) != len(sm):
+        return [{"id": "style_lengths", "status": "INFO", "value": "n/a", "why": "seams not one to one"}]
+    seen, off, n = set(), [], 0
+    for r in step1.get("seams") or []:
+        st = (r.get("length") or {}).get("style")
+        if not isinstance(st, dict):
+            continue
+        if "value_mm" in st:
+            tgt = float(st["value_mm"])
+        elif "ratio" in st and st.get("of") in meas:
+            tgt = float(st["ratio"]) * float(meas[st["of"]]["mm"])
+        else:
+            continue
+        want = {"{}:{}".format(*_base(x)) for x in (r.get("a"), r.get("b")) if isinstance(x, str) and ":" in x}
+        key = frozenset(want)
+        if key in seen:  # (a pair's two sides: said once)
+            continue
+        hit = [i for i, s in enumerate(exp) if isinstance(s.get("a"), str) and isinstance(s.get("b"), str)
+               and {"{}:{}".format(*_base(s["a"])), "{}:{}".format(*_base(s["b"]))} == want]
+        if not hit or tgt <= 0:
+            continue
+        seen.add(key)
+        n += 1
+        got = (sm[hit[0]]["len_a_mm"] + sm[hit[0]]["len_b_mm"]) / 2
+        if abs(got - tgt) > STYLE_OFF * tgt:
+            off.append(f"{r.get('a')} = {r.get('b')}: drafted {got:.0f} mm, step 1 {tgt:.0f} mm ({got / tgt - 1:+.0%}, "
+                       f"{str(st.get('source', '')).replace('; ', ', ')[:90]})")
+    return [{"id": "style_lengths", "status": "INFO", "value": f"{n} step-1 estimates, {len(off)} off by > "
+             f"{STYLE_OFF:.0%}", "target": "said, not refused: step 1's lengths are read off the picture",
+             "why": "", "info": "; ".join(off), "back_to": "4"}]

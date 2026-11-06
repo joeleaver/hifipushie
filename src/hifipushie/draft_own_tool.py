@@ -24,6 +24,7 @@ def row_lines(r: dict) -> list:
     out = [f"  {r['status']} {r['id']}: {r.get('value', '')}"]
     why = [w.strip() for w in str(r.get("why") or "").split("; ") if w.strip()]
     out += [f"      why: {w}" for w in why]
+    out += [f"      info: {w.strip()}" for w in str(r.get("info") or "").split("; ") if w.strip()]  # (C380: was never shown)
     if r.get("status") == "FAIL" and r.get("fix") and r["fix"] not in str(r.get("why")):
         out.append(f"      fix: {r['fix']}")
     return out
@@ -54,7 +55,14 @@ def stand_ref(name: str, garment: str) -> dict | None:
         at = cloth.Body(cloth.body_mesh(store.load(name))).at
     except (KeyError, ValueError, TypeError) as e:
         return {"why": f"the body's landmarks: {type(e).__name__}: {str(e)[:120]}"}
-    return draft_stand.reference(plan, at)
+    ref = draft_stand.reference(plan, at)
+    if ref and "why" not in ref and "hps.L" in at:
+        try:
+            from . import garment_record as gr
+            ref["top_girth"] = draft_stand.girth_at(gr.reads(name, garment, "4")["3"], at, ref["h_side"])
+        except (KeyError, ValueError, TypeError):
+            pass
+    return ref
 
 
 def _fit(name: str, garment: str) -> dict:
@@ -76,7 +84,10 @@ def flat_check(name: str, garment: str) -> tuple[list, dict, dict]:
     B = cloth.pieces(json.loads(json.dumps(g)), measurements(rd["3"]))
     blk = do.block(g["pattern"])
     B["edge_arcs"], B["decl"] = blk["edge_arcs"], blk["decl"]
-    return do.gate(B, blk["decl"], rd["1"], stand_ref(name, garment), rd["3"], _fit(name, garment)), B, decl
+    rows = do.gate(B, blk["decl"], rd["1"], stand_ref(name, garment), rd["3"], _fit(name, garment))
+    from . import draft_marks
+    rows.append(draft_marks.place(cloth.mesh(B), blk["decl"], rd["1"])[0])  # (C380: the pairs expanded, as step 7)
+    return rows, B, decl
 
 
 def check_text(name: str, garment: str) -> str:
@@ -161,6 +172,10 @@ def run(name: str, garment: str, design: str, declarations: dict, options: dict 
     blk = do.block(g["pattern"])
     B["edge_arcs"], B["decl"] = blk["edge_arcs"], blk["decl"]
     rows = do.gate(B, blk["decl"], rd["1"], stand_ref(name, garment), rd["3"], _fit(name, garment))  # (expanded: C366)
+    from . import draft_marks
+    mrow, drawn = draft_marks.place(M, B["decl"], rd["1"])  # (C380: where every mark lands, as step 7 places it)
+    rows.append(mrow)
+    draft_marks.sheet_marks(B, drawn)
     v = do.verdict(rows)
     seam_rows = next(r for r in rows if r["id"] == "seams")["detail"]
     dx = B.get("decl") or declarations

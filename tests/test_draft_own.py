@@ -502,3 +502,30 @@ def test_an_edge_sewn_in_two_seams_is_sampled_once():  # (t s4-9: a collar's nec
     M = cloth.mesh(B, 0.02)
     per = [int(np.sum(np.asarray(M["sew_seam"]) == k)) for k in (0, 1)]
     assert per[0] == per[1] and per[0] >= 7, per
+
+
+def test_step4_places_every_mark_and_compares_step1s_lengths():  # (t s4-10: marks unplaced until step 7; C380)
+    import numpy as np
+    from hifipushie import cloth, draft_body_lengths as dbl, draft_marks, garment_details as gd
+
+    def rect(nm, w, h):
+        return {"name": nm, "P": np.array([[0, 0], [w, 0], [w, h], [0, h]], float),
+                "names": {"a": 0, "b": 1, "c": 2, "d": 3}, "marks": {}, "lines": {}, "wrap": {"to": "torso"}}
+    B = {"pieces": {"front.L": rect("front.L", 0.2, 0.5), "front.R": rect("front.R", 0.2, 0.5)},
+         "seams": [["front.L:a>b", "front.R:a>b"]], "stitches": []}
+    M = cloth.mesh(B, 0.02)
+    step1 = {"details": {"braid.L": {"build": "full", "on": ["front.L"]}}}
+    edges = {"front.L": {"cf": "b>c"}, "front.R": {"cf": "b>c"}}
+    ok = {"edges": edges, "marks": {"braid.L": {"piece": "front.L", "mirror": True, "path": [
+        {"point": "c", "dx": -50, "dy": -10}, {"point": "c", "dx": -50, "dy": -300}]}}}
+    row, drawn = draft_marks.place(M, ok, step1)
+    assert row["status"] == "PASS" and set(drawn) == {"front.L", "front.R"}, row  # (the mirrored pass is the .R detail)
+    down = {"edges": edges, "marks": {"braid.L": {"piece": "front.L", "path": [{"point": "c", "dx": -50, "dy": 300}]}}}
+    row = draft_marks.place(M, down, step1)[0]
+    assert row["status"] == "FAIL" and "dy runs UP" in row["why"], row
+    # step 1's estimate against the drafted seam, both sides named by their sides (front.L / front.R)
+    B["decl"] = {"seams": [{"a": "front.L:hem", "b": "front.R:hem"}]}
+    s1 = {"seams": [{"a": "front.L:hem", "b": "front.R:hem", "length": {"style": {"value_mm": 300, "source": "seen"}}}]}
+    r = dbl.style_rows(B, s1, {"measurements": []})[0]
+    assert r["status"] == "INFO" and "drafted 200 mm, step 1 300 mm" in r["info"], r
+    assert gd.DY_HINT
