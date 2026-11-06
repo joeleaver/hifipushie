@@ -5,8 +5,7 @@ to take the steps one at a time, iterating until we're good at each one." "I don
 drafters. Agents should have enough general intelligence to build a fresh pattern using FreeSewing, based on 3d
 measurements of the model." "we don't know what measurements we need until we see the clothing and discern what seams
 there are." "What about a 'parts' step, where we inventory what needs to be built, what's occluded, etc? And should we
-identify the style and make a styling strategy early? ... why build the shirt closed and then style it open, if we only
-need it open?"
+identify the style and make a styling strategy early? ... why build the shirt closed and then style it open, if we only need it open?"
 Every step has: an input, an output, ONE tool, a gate (measured against something named; each FAIL says what to change
 AND which step to go back to), and a look (the step's own result beside the reference, never a later step's). A step
 consumes only the approved output of the step before it. Every step is iterated on TWO garments together (the shirt and
