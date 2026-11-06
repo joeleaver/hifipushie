@@ -603,6 +603,12 @@ def _fold_line(B: dict, nm: str, h: float) -> np.ndarray | None:
     return None
 
 
+def _arc_name(pc: dict, ix) -> str:
+    """An outline arc by its named end points ("a>b"), else its indices."""
+    inv = {v: k for k, v in (pc.get("names") or {}).items()}
+    return f"{inv.get(ix[0], ix[0])}>{inv.get(ix[-1], ix[-1])}"
+
+
 def _graded(L: np.ndarray, h: float, nm: str, hz, least: int) -> np.ndarray:
     """Samples along a free outline arc: every h (as before), or every local size hz(nm, points) when graded."""
     if hz is None:
@@ -622,6 +628,8 @@ def mesh(B: dict, h: float = 0.02, fold_width: float = 0.0) -> dict:
     pcs = B["pieces"]
     names = list(pcs)
     fixed = {nm: {} for nm in names}  # piece -> {forward arc (tuple of outline ids): samples (forward)}
+    owner = {nm: {} for nm in names}  # (which seam sampled it first: the refusal names both)
+    cur = [0]
 
     def put(nm, ix, pts):
         """Store an arc's samples forward; return its keys in the asked direction."""
@@ -630,8 +638,11 @@ def mesh(B: dict, h: float = 0.02, fold_width: float = 0.0) -> dict:
         fix = tuple(ix) if fwd else tuple(ix[::-1])
         fpts = pts if fwd else pts[::-1]
         if fix in fixed[nm] and len(fixed[nm][fix]) != len(fpts):
-            raise ValueError(f"{nm}: an edge is sewn twice with different counts")
+            raise ValueError(f"{nm}: one edge ({_arc_name(pcs[nm], fix)}) is sewn in two seams that sample it "
+                             f"differently ({len(fixed[nm][fix])} vs {len(fpts)} points): seams {owner[nm][fix] + 1} and "
+                             f"{cur[0] + 1}. A tool fault, not the design's (C379): say so in the log")
         fixed[nm][fix] = fpts
+        owner[nm][fix] = cur[0]
         m = len(pts) - 1
         return [(nm, fix, q if fwd else m - q) for q in range(m + 1)]
 
@@ -658,15 +669,46 @@ def mesh(B: dict, h: float = 0.02, fold_width: float = 0.0) -> dict:
             sides.append((arcs, np.r_[0, np.cumsum(lens)] / lens.sum(), float(lens.sum())))
         seam_sides.append(sides)
 
+    # ONE count per edge (C379, t s4-9: a collar's neck edge sewn to the neckline AND to its canvas got ceil(L / h) from
+    # each seam's longer side, which differ when the neckline is eased: "sewn twice with different counts" refused every
+    # curvier collar): seams that share an edge are sampled alike, at the most any of them asks
+    def _fwd(nm, ix):
+        n_ = len(pcs[nm]["P"])
+        return (nm, tuple(ix) if len(ix) < 2 or ix[1] == (ix[0] + 1) % n_ else tuple(ix[::-1]))
+    base = [max(2, int(math.ceil(max(s[2] for s in sides) / min(ph[nm] for s in sides for nm, _ in s[0]))))
+            for sides in seam_sides]
+    parent = list(range(len(seam_sides)))
+
+    def root(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+    first = {}
+    for si, sides in enumerate(seam_sides):
+        for arcs, _, _ in sides:
+            for nm, ix in arcs:
+                k = _fwd(nm, ix)
+                if k in first:
+                    parent[root(si)] = root(first[k])
+                else:
+                    first[k] = si
+    top = {}
+    for si in range(len(seam_sides)):
+        top[root(si)] = max(top.get(root(si), 0), base[si])
+    count = [top[root(si)] for si in range(len(seam_sides))]
+
     def sample(extra):
         """Every seam's samples (extra: {seam: fractions that must be samples of both sides})."""
         for nm in names:
             fixed[nm].clear()
+            owner[nm].clear()
         keys = []
         for si, sides in enumerate(seam_sides):
+            cur[0] = si
             hs = min(ph[nm] for s in sides for nm, _ in s[0])
             Lmax = max(s[2] for s in sides)
-            n = max(2, int(math.ceil(Lmax / hs)))
+            n = count[si]
             U = list(np.unique(np.round(np.r_[sides[0][1], sides[1][1]], 9)))
             tol = SEAM_JOIN * hs / max(Lmax, 1e-9)
             for u in sorted(extra.get(si) or []):  # (closer to a sample than SEAM_JOIN h: that sample serves)
