@@ -187,12 +187,14 @@ design, no recipe; src/hifipushie/draft_own.py's docstring is the spec). Needs s
   chain: a two-piece sleeve's cap edges against the armhole's front, side and back as ONE seam [cap chain] = [armhole
   chain], when its seams don't land on the body's); `stiff` [piece]; `folds` [{"name", "piece", "line": [p, q] | edge, "kind": "press" | "roll"}] (a step-1 seam of
   kind fold is a fold named like its edge); `closures` [{"name", "kind", "over", "under", "edge": {"over": edge,
-  "under": edge}, "at": [[hole, button]]}] (each a SNIPPET's name, `snippets.btn1 = new Snippet('button', p)` -> "btn1", or a
+  "under": edge}, "at": [[hole, button]]}] (holes on `over`, the piece that laps on top: a man's left front; buttons on
+  `under`; each a SNIPPET's name, `snippets.btn1 = new Snippet('button', p)` -> "btn1", or a
   point ON the outline; a point inside the piece isn't a mark: C376) (an edge: a declared edge name, or "pointA>pointB" /
   "a>via>b" along the piece's outline); `omit` {piece: why} (a built step-1 piece you don't cut); `darts` [{"piece",
   "legs": [edge, edge]}]: a dart OPEN on the outline (the seam path in to its tip and out), each leg declared
   "outline point>tip", sewn to each other (a dart drawn inside the piece isn't sewn: cut it into the outline);
-  `marks` {detail: mark | [marks]}: WHERE each built step-1 detail sits (a closure's buttons are its own marks): a
+  `marks` {detail: mark | [marks]}: WHERE each built step-1 detail sits (a closure's holes and buttons are its own marks: each on
+  the piece step 1 puts it on): a
   mark = {"piece", "mirror"?: true (again on the .L <-> .R piece), and ONE of: "at": [{"point": name, "dx", "dy"} (mm, dy UP the piece: FreeSewing's y is -dy) |
   {"edge": edge, "mm" | "t", "in"}], "rows": {"edge", "count", "from_mm" | "from_t", "pitch_mm" | "pitch_t" |
   "to_mm" | "to_t", "in"}, "points": "button*" (the part's named points), "follows": ["piece:edge"] (a strip along
@@ -232,7 +234,7 @@ points and edges, mm): `at` [{point, dx, dy} | {edge, mm | t, in}], `rows` {edge
 pitch_t (of the edge) | to_mm | to_t, in}, `points` "button*", `follows` ["piece:edge"] (+ in, default half the width),
 `path` [positions], a motif's `lines` [[[across, along] mm]] + `knots` (repeated at its rows: a frog), `mirror` (the
 .L/.R twin by the same names), `stiffens` (a braid / binding / zip tape that stiffens its edge: declared there so the
-build can feel it). A closure's buttons are its own marks; a zip's tape takes its declared edges. draft_pattern refuses a
+build can feel it). A closure's holes (on over) and buttons (on under) are its own marks; a zip's tape takes its declared edges. draft_pattern refuses a
 built step-1 detail with no mark. Here, `details` gives geometry only: {detail: {kind point|line|motif, size_mm (point,
 knot), width_mm (line, motif cord), thickness_mm (default the cloth's), shape dome|disc|box, colour (default the step-0
 cloth's)}}. A position here is refused; so is a detail not in step 1, omitted there, or made of cloth (pocket, flap,

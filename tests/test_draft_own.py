@@ -707,3 +707,15 @@ def test_s4_16_a_darts_seams_dont_stop_the_length_rows():  # (t s4-16: "seams no
     s1 = {"seams": [{"a": "a:side", "b": "b:side", "length": {"style": {"value_mm": 300, "source": "x"}}}]}
     r = dbl.style_rows(B, s1, {"measurements": []})[0]
     assert r["status"] == "FAIL" and "drafted 500 mm, step 1 300 mm" in r["why"], r
+
+
+def test_s4_17_a_closures_holes_go_on_over_and_its_buttons_on_under():  # (t s4-16 / s4-17; C387)
+    from hifipushie import garment_details_tool as gdt
+    s1 = {"details": {"front_buttons": {"on": ["front.R"], "build": "full"},
+                      "front_buttonholes": {"on": ["front.L"], "build": "full"}},
+          "closures": {"front_closure": {"pieces": ["front.L", "front.R"], "details": ["front_buttons", "front_buttonholes"]}}}
+    M = {"closures": [{"name": "front_closure", "kind": "buttons", "over": "front.L", "under": "front.R",
+                       "pairs": [["hole1", "btn1"], ["hole2", "btn2"]]}]}
+    mk = gdt.marks({"steps": {"1": {"output": s1}}}, M, {})
+    assert mk["front_buttonholes"][0]["piece"] == "front.L" and mk["front_buttonholes"][0]["at"][0]["point"] == "hole1", mk
+    assert mk["front_buttons"][0]["piece"] == "front.R" and mk["front_buttons"][0]["at"][1]["point"] == "btn2", mk

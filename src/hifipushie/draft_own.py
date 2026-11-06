@@ -435,9 +435,21 @@ def gate(B: dict, decl: dict, step1: dict, stand_ref: dict | None = None, step3:
         if not ok:
             bad.append(f"{r['a']} || {r['b']}: {r['len_a_mm']:.1f} vs {r['len_b_mm']:.1f} mm, ease {100 * e:+.1f}% "
                        f"outside [{100 * lo:+.1f}, {100 * hi:+.1f}]%")
+        seen_n = set()
+        for na, nb, d in r.get("notches_off") or []:  # (C387, t s4-16 / s4-17: listed "FAIL" under a PASS row)
+            na = na.lstrip("|").split(">")[-1].split(":")[-1].removesuffix("-notch")  # (a notch, or a chain's joint)
+            if (na, nb) in seen_n:
+                continue
+            seen_n.add((na, nb))
+            first = lambda x: (x if isinstance(x, str) else x[0]).split(">")[0] + ("..." if not isinstance(x, str) else "")
+            bad.append(f"{first(r['a'])} || {first(r['b'])}: {na} sits {float(d):.1f} mm from {nb} along the seam "
+                       f"(> {cc.NOTCH_MM:.0f} mm): they meet when sewn")
     rows.append({"id": "seams", "status": "FAIL" if bad else "PASS", "value": f"{len(sm)} seams, {len(bad)} off",
-                 "target": "each pair within its declared ease, else +-1 %", "why": "; ".join(bad[:8]),
-                 "fix": "redraft the shorter side, or declare the ease with why", "back_to": "4", "detail": sm})
+                 "target": f"each pair within its declared ease, else +-1 %; its notches within {cc.NOTCH_MM:.0f} mm",
+                 "why": "; ".join(bad[:8]),
+                 "fix": "redraft the shorter side, or declare the ease with why; a notch off: move it (or the chain's "
+                        "start) so the two meet, e.g. a sleeve's top notch onto the shoulder seam", "back_to": "4",
+                 "detail": sm})
     if B.get("darts"):  # (C361: a dart's legs meet at its tip; each declared from the outline toward the tip)
         from . import pattern
         far = []
