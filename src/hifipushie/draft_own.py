@@ -45,6 +45,11 @@ MARK_FORM = ("a mark = {piece, mirror?: true, and one of: at: [{point, dx, dy} |
              "docstring a blind agent can't read)")
 TIMEOUT = 60  # s
 DECL_KEYS = {"pieces", "edges", "seams", "stiff", "folds", "closures", "omit", "notes", "marks", "darts"}
+def _roles() -> list:
+    from .garment_design import kb
+    return [r for r in kb()["roles"] if not r.startswith("_")] + ["collar_band"]
+
+
 PIECE_KEYS = {"part", "fold", "mirror", "flip_y", "cut", "grain", "place", "role", "pair"}
 BUILT = ("full", "simplified")  # step 1's "build" values that are cut
 PLAIN_TOL = 0.01  # a seam with no declared ease: its two sides agree within 1 % (cloth_check KINDS "plain")
@@ -176,6 +181,9 @@ def validate(decl: dict, step1: dict, parts: dict | None = None) -> list:
             bad.append(f"piece {nm!r} is drafted but not in step 1's inventory (have {', '.join(inv)})")
         for k in set(pd) - PIECE_KEYS:
             bad.append(f"piece {nm!r}: unknown key {k!r} (have {', '.join(sorted(PIECE_KEYS))})")
+        if pd.get("role") is not None and pd["role"] not in _roles():  # (t s4-7: "stand" was taken silently)
+            bad.append(f"piece {nm!r}: role {pd['role']!r} is not a role (have {', '.join(_roles())}); a layer sewn "
+                       "edge to edge onto a piece (canvas, facing, lining of it) needs none: it takes that piece's (C377)")
         if pd.get("grain") is not None and (isinstance(pd["grain"], bool) or not isinstance(pd["grain"], (int, float))):
             bad.append(f"piece {nm!r}: grain {pd['grain']!r}: degrees from the part's x axis (90 = lengthwise, the usual "
                        "straight grain; 0 = crosswise; 45 = bias) (C363)")

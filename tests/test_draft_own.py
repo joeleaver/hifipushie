@@ -196,10 +196,11 @@ LEVEL = [[340, 50], [370, 50], [400, 50], [430, 50], [460, 50]]  # the top 50 mm
 FOLLOWS = [[330, 120], [350, 90], [370, 65], [400, 50], [430, 65], [450, 90], [470, 120]]  # down the whole 70 mm drop
 
 
-def _ref(points):
+def _ref(points, corners=()):
     from hifipushie import draft_stand as dst
     plan = {"read": {"views": [{"view": "front", "image": "x.png"}]},
-            "style": {"traces": [{"id": "top", "what": "collar_top", "view": 0, "points": points}], "body_marks": _MARKS}}
+            "style": {"traces": [{"id": "top", "what": "collar_top", "view": 0, "points": points,
+                                  "corners": list(corners)}], "body_marks": _MARKS}}
     return dst.reference(plan, _AT)
 
 
@@ -225,6 +226,15 @@ def test_stand_reference_reads_the_traced_top():
     assert abs(r["h_side"] - 50) < 0.5 and abs(r["T"]) < 0.5 and abs(r["tol"] - 6.0) < 0.5, r
     f = _ref(FOLLOWS)
     assert abs(f["T"] - 70) < 0.5, f
+
+
+def test_a_traced_corner_ends_the_top_and_a_cut_away_front_isnt_held_to_a_front_height():  # (t s4-7; C377)
+    cut = [[300, 130], [340, 90], [350, 55], [400, 50], [450, 55], [460, 90], [500, 130]]  # front ends slanting 45 deg
+    assert _ref(cut)["T"] > 70 and not _ref(cut)["cut_away"]  # (no corners: the 45 deg slant reads as the top)
+    r = _ref(cut, corners=[2, 4])
+    assert abs(r["T"] - 5) < 0.5 and r["cut_away"], r
+    row = _rows(_B(_stand(HUGS, lean_in=True)), ref=r)["shape_stand"]
+    assert "cut away" in row["value"] and "h_side + D - T" not in row["why"], row
 
 
 def test_shape_a_level_top_over_a_dropping_neckline_wants_taller_fronts_not_a_rise():
@@ -426,6 +436,22 @@ def test_an_unsewn_step1_seam_names_the_chain_way():  # (t s4-4: a two-piece sle
             "edges": {"panel.L": {"side": "a>b", "back": "c>d"}, "panel.R": {"side": "a>b", "back": "c>d"}}, "seams": []}
     bad = do.validate(decl, STEP1)
     assert any("is not sewn" in b and "as ONE seam" in b for b in bad), bad
+
+
+def test_a_canvas_sewn_edge_to_edge_is_a_layer_and_neck_named_edges_count():  # (t s4-7; C377)
+    import numpy as np
+    from hifipushie import draft_own as do, draft_shape as ds
+    sq = lambda n: {"name": n, "P": np.asarray([[0, 0], [0.1, 0], [0.1, 0.04], [0, 0.04]], float),
+                    "names": {"a": 0, "b": 1, "c": 2, "d": 3}}
+    arcs = {"collar": {"neck_front": "a>b", "top": "c>d"}, "canvas": {"neck_front": "a>b", "top": "c>d"},
+            "front": {"neckline": "a>b"}}
+    B = {"pieces": {k: sq(k) for k in arcs}, "edge_arcs": arcs, "folds": [],
+         "seams": [["collar:a>b", "front:a>b"], ["canvas:c>d", "collar:c>d"], ["canvas:a>b", "collar:a>b"]]}
+    assert ds.layers(B) == {"canvas": "collar"}
+    assert ds.is_neck("neck_front") and ds.is_neck("neckline") and not ds.is_neck("top")
+    assert "canvas" not in ds.fall_pieces(B, {"stiff": ["collar"]}, {})
+    bad = do.validate({"pieces": {"x": {"part": "p", "role": "stand"}}}, {"pieces": {"x": {}}}, None)
+    assert any("role 'stand' is not a role" in b and "collar_stand" in b for b in (bad if isinstance(bad, list) else [str(bad)])), bad
 
 
 def test_pairs_expand_side_named_seams_darts_and_marks(home):  # (t s4-5: half the pair handling; C366)
