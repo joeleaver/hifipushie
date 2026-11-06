@@ -149,6 +149,24 @@ def _sides(s) -> list:
     return [s] if isinstance(s, str) else list(s or [])
 
 
+def _fold_line_seams(decl: dict) -> list:
+    """A seam joining a fold-cut piece's edge to its own mirror (P:e = P:e.m, step 1's P.L:cb = P.R:cb): that edge is
+    the fold line, which joins the halves itself (C382, t s4-12)."""
+    out, pcs = [], FOLDED(decl.get("pieces") or {})
+    for i, s in enumerate(decl.get("seams") or []):
+        A, B = _sides(s.get("a")), _sides(s.get("b"))
+        if len(A) == len(B) == 1 and ":" in str(A[0]) and ":" in str(B[0]):
+            (pa, ea), (pb, eb) = A[0].split(":", 1), B[0].split(":", 1)
+            if pa == pb and pa in pcs and {ea, eb} == {ea.removesuffix(".m"), ea.removesuffix(".m") + ".m"}:
+                out.append(f"seam {i} ({s.get('a')} | {s.get('b')}): that edge is the fold line of {pa} (cut on the "
+                           "fold): the fold joins the halves, no seam; drop it (step 1's fold there is made by the "
+                           "fold: C382)")
+    return out
+
+
+FOLDED = lambda pcs: {n for n, pd in pcs.items() if isinstance(pd, dict) and pd.get("fold") and not pd.get("pair")}
+
+
 def _folded(r: dict, decl: dict, H: set = frozenset()) -> bool:
     """A step-1 seam of kind "fold" (a piece folded on itself: a collar's fall edge) is made by a declared fold of
     that name on that piece, not by a seam. One between two pieces (P.L:cb <-> P.R:cb: the halves of one piece cut on
@@ -170,6 +188,11 @@ def validate(decl: dict, step1: dict, parts: dict | None = None) -> list:
     first and the expansion validated (C364, t s4-3: "pair never produced the right-hand pieces": the inventory check ran
     on the unexpanded name and refused it)."""
     from . import draft_pairs as dp
+    if parts is not None:
+        decl = dp.fold_halves(decl, parts)
+        on_fold = _fold_line_seams(decl)
+        if on_fold:
+            return on_fold
     inv_ = step1.get("pieces") or {}
     sided = [nm for nm, pd in (decl.get("pieces") or {}).items() if isinstance(pd, dict) and pd.get("pair")
              and nm not in inv_ and f"{nm}.L" in inv_ and f"{nm}.R" in inv_]  # (step 1 names the two sides)

@@ -595,3 +595,35 @@ def test_s4_11_step1_departures_fold_halves_whole_stands_mirrored_marks_and_laye
     txt = "\n".join(ps.text_lines(Bl, decl={"pieces": {"collar": {"role": "collar_stand"}}}))
     assert "collar_canvas: " in txt and "layer of collar (its role: collar_stand)" in txt, txt
 
+
+
+def test_s4_12_a_fold_piece_takes_step1s_half_names_and_mirror_seams_arent_hosts(home):  # (t s4-12; C382)
+    from hifipushie import draft_own as do, draft_pairs as dp, draft_shape as ds
+    out = do.node_draft(RECT, {"waist": 800}, d=home / "fold12")
+    decl = {"pieces": {"front": {"part": "test.panel", "pair": True}, "collar": {"part": "test.panel", "fold": "x0",
+                                                                                       "place": {"to": "neck"}}},
+            "edges": {"front": {"neck": "tl>tr"}, "collar": {"neck": "tl>tr"}},
+            "seams": [{"a": "front.L:neck", "b": "collar.L:neck"}],
+            "marks": {"binding.L": {"piece": "collar.L", "follows": ["collar.L:neck"]}}}
+    ex = dp.expand(decl, out["parts"])
+    got = {(s["a"], s["b"]) for s in ex["seams"]}
+    assert {b for _, b in got} == {"collar:neck", "collar:neck.m"} and {a for a, _ in got} == {"front.L:neck", "front.R:neck"}, got
+    assert ex["marks"]["binding.L"]["piece"] == "collar" and ex["edges"]["collar"].get("neck.m") or \
+        ex["marks"]["binding.L"]["follows"] == ["collar:neck"], ex["marks"]
+    fl = dict(decl, seams=[{"a": "collar.L:neck", "b": "collar.R:neck"}])
+    s1 = {"pieces": {n: {"build": "full"} for n in ("front.L", "front.R", "collar.L", "collar.R")}}
+    assert any("fold line" in b for b in do.validate(fl, s1, out["parts"])), do.validate(fl, s1, out["parts"])
+    # a facing sewn top to top on its stand AND to its own mirror at CB is still the stand's layer, not a fall
+    B = {"pieces": {n: {} for n in ("collar.L", "collar.R", "facing.L", "facing.R", "front")},
+         "seams": [["collar.L:a>b", "facing.L:a>b"], ["facing.L:c>d", "facing.R:c>d"], ["collar.L:e>f", "front:e>f"]],
+         "edge_arcs": {"collar.L": {"top": "a>b"}, "facing.L": {"top": "a>b", "cb": "c>d"}, "facing.R": {"cb": "c>d"},
+                       "front": {"neck": "e>f"}}}
+    assert ds.layers(B).get("facing.L") == "collar.L", ds.layers(B)
+
+
+def test_a_cut_away_stand_isnt_held_to_the_neck_girth():  # (t s4-12: its top doesn't close round the neck; C382)
+    cut = [[300, 130], [340, 90], [350, 55], [400, 50], [450, 55], [460, 90], [500, 130]]
+    r = _ref(cut, corners=[2, 4])
+    r["top_girth"] = {"at": None, "nearest": {"name": "neck", "mm": 1000.0, "dz": -50.0}}
+    row = _rows(_B(_stand(HUGS, lean_in=True)), ref=r)["shape_stand"]
+    assert "the top doesn't close round the neck" in row["value"] and "grips" not in row["why"], row

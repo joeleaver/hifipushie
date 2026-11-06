@@ -102,7 +102,7 @@ def paired(decl: dict) -> set:
 def expand(decl: dict, parts: dict) -> dict:
     """The declarations with every pair made two pieces (module docstring). No pair: returned as is."""
     from .draft_own import DraftRefused
-    D = _fold_closures(decl)
+    D = _fold_closures(fold_halves(decl, parts))
     pr = paired(D)
     if not pr:
         return D
@@ -308,10 +308,72 @@ def mirror_arc(pc: dict, arc: str) -> str:
         if k + ".m" not in pc["names"]:
             j = int(np.argmin(np.linalg.norm(P - P[i] * [-1, 1], axis=1)))
             if np.linalg.norm(P[j] - P[i] * [-1, 1]) > 1e-4:
-                raise ValueError(f"{pc['name']}: no mirror image of point {k!r} (is the piece cut on the fold?)")
+                raise ValueError(f"{pc['name']}: no mirror image of point {k!r} (is the piece cut on the fold? an edge "
+                                 "ON the fold line has no other half: the fold isn't sewn, declare no seam there)")
             pc["names"][k + ".m"] = j
         out.append(k + ".m")
     return ">".join(out)
+
+
+def fold_halves(decl: dict, parts: dict) -> dict:
+    """Step 1's half names on a piece cut on the fold, as that piece's own (C382, t s4-12: `collar.L:top` was refused
+    as "no drafted piece", `collar.R:...` too, and the agent found "x" / "x.m" by trial, then cut halves sewn at CB):
+    for each pieces.P {fold} (no pair), "P.<its drafted half's side>:e" -> "P:e", "P.<other>:e" -> "P:e.m" (its mirror,
+    edges.P["e.m"] made), and "P.L" / "P.R" as a piece -> "P". The drafted half's side: its flat's x (".L" = +x)."""
+    pcs = decl.get("pieces") or {}
+    folded = [n for n, pd in pcs.items() if isinstance(pd, dict) and pd.get("fold") and not pd.get("pair")
+              and pd.get("part") in (parts or {})]
+    if not folded:
+        return decl
+    D = copy.deepcopy(decl)
+    edges = D.setdefault("edges", {})
+    side = {}
+    for n in folded:
+        P = outline(parts[pcs[n]["part"]], n, {k: v for k, v in pcs[n].items() if k != "fold"})
+        side[n] = "L" if float(np.mean(P[:, 0])) >= 0 else "R"
+
+    def name(x):
+        if not isinstance(x, str):
+            return x
+        for n in folded:
+            if x in (f"{n}.L", f"{n}.R"):
+                return n
+            for sd in "LR":
+                if x.startswith(f"{n}.{sd}:"):
+                    e = x.split(":", 1)[1]
+                    if sd == side[n] or e.endswith(".m"):
+                        return f"{n}:{e}"
+                    edges.setdefault(n, {}).setdefault(f"{e}.m", {"mirror_of": e})
+                    return f"{n}:{e}.m"
+        return x
+
+    def walk(v):
+        if isinstance(v, list):
+            return [walk(x) for x in v]
+        if isinstance(v, dict):
+            return {name(k) if isinstance(k, str) and ":" in k else k: walk(x) for k, x in v.items()}
+        return name(v)
+    # a seam naming one side (front.L:neckline = collar.L:neck_front, step 1's names) brings its other side's twin, as
+    # for a pair (_twin_seams), unless declared too
+    sd = lambda e: str(e).split(":", 1)[0][-2:] if ":" in str(e) else ""
+    els = lambda x: [x] if isinstance(x, str) else list(x or [])
+    have = {json.dumps([x.get("a"), x.get("b")], sort_keys=True) for x in D.get("seams") or []}
+    for x in list(D.get("seams") or []):
+        es = els(x.get("a")) + els(x.get("b"))
+        sides = {sd(e) for e in es}
+        if len(sides) != 1 or not sides <= {".L", ".R"} or not any(str(e).split(":", 1)[0][:-2] in folded for e in es):
+            continue
+        o = {".L": ".R", ".R": ".L"}[sides.pop()]
+        sw = lambda v: [sw(e) for e in v] if isinstance(v, list) else (v.split(":", 1)[0][:-2] + o + ":" + v.split(":", 1)[1])
+        t = dict(x, a=sw(x.get("a")), b=sw(x.get("b")))
+        key = json.dumps([t["a"], t["b"]], sort_keys=True)
+        if key not in have:
+            have.add(key)
+            D["seams"].append(t)
+    for k in ("seams", "closures", "marks", "darts", "folds", "stiff", "departs"):
+        if k in D:
+            D[k] = walk(D[k])
+    return D
 
 
 def base_name(n: str, decl: dict) -> str:

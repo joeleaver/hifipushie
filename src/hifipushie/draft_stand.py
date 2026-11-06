@@ -237,7 +237,11 @@ def check(p: str, kind: str, N: np.ndarray, R: np.ndarray, top: np.ndarray | Non
         rnd = 2 * mm(pattern.length(T_)) if p.endswith((".L", ".R")) and not whole else mm(pattern.length(T_))
         g = tg.get("at")
         nb = tg.get("nearest")
-        if g is None and nb and abs(nb["dz"]) <= NEAR_DZ and rnd < NECK_TAPER * nb["mm"]:
+        if g is None and nb and abs(nb["dz"]) <= NEAR_DZ and rnd < NECK_TAPER * nb["mm"] and ref.get("cut_away"):
+            val += (f"; top edge round {rnd:.0f} mm vs {nb['name']} {nb['mm']:.0f} mm {abs(nb['dz']):.0f} mm "
+                    f"{'below' if nb['dz'] < 0 else 'above'}: front cut away, so the top doesn't close round the neck; "
+                    f"its ends sit >= {max(0.0, NECK_TAPER * nb['mm'] - rnd):.0f} mm apart when worn (C382)")
+        elif g is None and nb and abs(nb["dz"]) <= NEAR_DZ and rnd < NECK_TAPER * nb["mm"]:
             why.append(f"{p}: its top edge goes round {rnd:.0f} mm, under {NECK_TAPER:.0%} of the body's {nb['name']} "
                        f"{nb['mm']:.0f} mm taken {abs(nb['dz']):.0f} mm {'below' if nb['dz'] < 0 else 'above'} the top: "
                        f"no neck narrows that much, so it grips. change: lengthen the free edge by "
