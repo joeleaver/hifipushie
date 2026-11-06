@@ -115,7 +115,9 @@ def expand(entries: list, pcs: dict) -> tuple[list, list, list, list]:
         spaced = space_marks(c, pcs, pairs) if c.get("spacing") and pairs and kind != "zip" else None
         for a, b in pairs:
             if not _has(pcs[over], a) or not _has(pcs[under], b):
-                raise ClosureError(f"closure {c['name']!r}: no mark {over}:{a} / {under}:{b}")
+                raise ClosureError(f"closure {c['name']!r}: no mark {over}:{a} / {under}:{b} (a mark is a snippet's name - "
+                                   "snippets.btn1 = new Snippet('button', p) is 'btn1' - or a point on the outline; a "
+                                   "point inside the piece isn't one: C376)")
         if kind != "zip" and not pairs:
             raise ClosureError(f"closure {c['name']!r}: no fastenings found (marks {c.get('holes', 'buttonhole')}<n> on "
                                f"{over} with {c.get('buttons', 'button')}<n> on {under}, or 'at': [[over mark, under mark]])")
