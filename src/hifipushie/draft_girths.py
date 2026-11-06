@@ -14,7 +14,8 @@ from __future__ import annotations
 
 import numpy as np
 
-GIRTH_TOL = 0.015  # x the girth: the plan's ease met within this (a sheet read is good to about a centimetre)
+GIRTH_TOL = 0.03  # x the girth: the plan's ease met within this (the level is placed to ~1 cm on each piece, and
+# the round changes ~4 mm per cm of level on a shaped front; C384: 1.5 % read s4-14's chest, 2.6 % under, as a fault)
 NECK_GAP = 0.05  # m: a girth this close below the hps (the neck) is the collar's, not the body's
 
 
@@ -101,12 +102,18 @@ def level(B: dict, D: dict) -> tuple[dict, list, list]:
                     if e.split(":", 1)[0] in torso:
                         holes.setdefault(e.split(":", 1)[0], []).append(e.split(":", 1)[1])
     lines, under = {}, []
+    necks = {p: [edge(p, a) for k, a in (arcs.get(p) or {}).items() if ds.is_neck(k) and isinstance(a, str)]
+             for p in torso}
+    anyneck = any(necks.values())
     for p in torso:
         side = str((pcs[p].get("wrap") or {}).get("side", ""))
-        if side not in D:
+        # (the level hangs from the hps: only a piece with a neck edge reaches it; a panel placed on the back with no
+        # neck gets its line over its seams (C384, t s4-14: its own top, the armpit, was read as the hps and its waist
+        # line fell 280 mm low, below the panel, so the waist "didn't go round" and went unchecked))
+        if side not in D or (anyneck and not necks[p]):
             continue
         P = np.asarray(pcs[p]["P"], float)
-        neck = [edge(p, a) for k, a in (arcs.get(p) or {}).items() if ds.is_neck(k) and isinstance(a, str)]
+        neck = necks[p]
         top = max(float(N[:, 1].max()) for N in neck) if neck else float(P[:, 1].max())
         y = top - D[side]
         low = [float(edge(p, a)[:, 1].min()) for a in holes.get(p, [])]
@@ -154,7 +161,8 @@ def level(B: dict, D: dict) -> tuple[dict, list, list]:
     ring, lap = _ring(B, lines, widths, edge, pairs)
     for p in [p for p in widths if p not in ring]:
         widths.pop(p)
-    return widths, [p for p in torso if p not in widths and p not in lines], under, lap
+    placed = sorted(lines)
+    return widths, [p for p in torso if p not in widths and p not in lines], under, lap, placed
 
 
 def _ring(B: dict, lines: dict, widths: dict, edge, pairs: list) -> tuple[set, float]:
@@ -215,10 +223,11 @@ def rows(B: dict, step3: dict | None, fit: dict | None, body: dict | None) -> li
         D = {k: dr[k].get(z) for k in ("front", "back") if dr[k].get(z) is not None}
         if not D:
             continue
-        w, miss, under, lap = level(B, D)
+        w, miss, under, lap, lv_pieces = level(B, D)
         if not w or any(p for p in miss if str((B["pieces"][p].get("wrap") or {}).get("side", "")) in D):
             infos.append(f"{nm}: the pattern doesn't reach its level ({', '.join(miss)})" if miss else
-                         f"{nm}: the level doesn't go round the body (a hem, vent or opening breaks it there): not checked")
+                         f"{nm}: the level doesn't go round the body (a hem, vent or opening breaks it there; the line "
+                         f"was placed on {', '.join(lv_pieces) or 'no piece'}): not checked")
             continue
         g = 1000 * (sum(w.values()) - lap)
         ease, reg = _ease(nm, fit)
