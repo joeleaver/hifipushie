@@ -25,6 +25,14 @@ def _base(e: str) -> tuple[str, str]:
     return p, ed[:-2] if ed.endswith(".m") else ed
 
 
+def _declared(sm: list, exp: list, B: dict) -> list:
+    """The pattern's seams that the declarations made, in their order: a dart's legs are sewn as seams after them
+    (draft_own.build) and aren't step 1's (C386, t s4-16: an opened front dart made "seams not one to one", so neither
+    body_lengths nor style_lengths checked anything)."""
+    nd = sum(1 for _ in B.get("darts") or [])
+    return sm[:len(exp)] if len(sm) == len(exp) + nd else sm
+
+
 def _ease(name: str, fit: dict) -> tuple[float, str]:
     for r, e in (fit or {}).items():
         if r == name or ALIAS.get(r) == name:
@@ -56,7 +64,7 @@ def rows(B: dict, step1: dict, step3: dict | None, fit: dict | None) -> list:
     meas = {m["name"]: m for m in (step3 or {}).get("measurements") or []}
     dx = B.get("decl") or {}
     exp = dx.get("seams") or []
-    sm = cc.seams(B)
+    sm = _declared(cc.seams(B), exp, B)
     if len(exp) != len(sm) or not meas:
         return [{"id": "body_lengths", "status": "INFO", "value": "n/a", "target": "every body-measured seam vs its "
                  "measurement + ease", "why": "no step-3 measurements" if not meas else "seams not one to one"}]
@@ -153,7 +161,7 @@ def style_rows(B: dict, step1: dict, step3: dict | None) -> list:
     meas = {m["name"]: m for m in (step3 or {}).get("measurements") or []}
     decl = B.get("decl") or {}
     exp = decl.get("seams") or []
-    sm = cc.seams(B)
+    sm = _declared(cc.seams(B), exp, B)
     if len(exp) != len(sm):
         return [{"id": "style_lengths", "status": "INFO", "value": "n/a", "why": "seams not one to one"}]
     seen, off, fails, n = set(), [], [], 0

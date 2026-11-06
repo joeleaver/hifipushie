@@ -94,6 +94,7 @@ def flat_check(name: str, garment: str) -> tuple[list, dict, dict]:
     B = cloth.pieces(json.loads(json.dumps(g)), measurements(rd["3"]))
     blk = do.block(g["pattern"])
     B["edge_arcs"], B["decl"] = blk["edge_arcs"], blk["decl"]
+    B["darts"] = blk.get("darts") or []  # (C386: cloth.pieces drops them; the dart row and the length rows need them)
     rows = do.gate(B, blk["decl"], rd["1"], stand_ref(name, garment), rd["3"], _fit(name, garment),
                    _body(name))
     from . import draft_marks
@@ -182,6 +183,7 @@ def run(name: str, garment: str, design: str, declarations: dict, options: dict 
         raise do.DraftRefused(f"the converter refused the draft: {e}{nan}") from None
     blk = do.block(g["pattern"])
     B["edge_arcs"], B["decl"] = blk["edge_arcs"], blk["decl"]
+    B["darts"] = blk.get("darts") or []  # (C386: cloth.pieces drops them; the dart row and the length rows need them)
     rows = do.gate(B, blk["decl"], rd["1"], stand_ref(name, garment), rd["3"], _fit(name, garment),
                    _body(name))  # (expanded: C366)
     from . import draft_marks
