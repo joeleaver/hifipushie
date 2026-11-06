@@ -636,3 +636,13 @@ def test_every_edge_of_a_built_piece_is_accounted_for(home):  # (t s1-6: edges s
     assert gp.write("m", "w", "parts", b, look=False)
     b["pieces"]["front.L"]["free"] = ["armhole"]
     _refused(lambda: gp.write("m", "w", "parts", b, look=False), "pieces.front.L.free: a list of its own edges")
+
+
+def test_a_garment_as_wide_at_the_waist_as_the_chest_where_the_body_narrows_is_asked_open_or_flared():  # (C388)
+    from hifipushie import garment_fit as gf
+    ws = [dict(at="chest", px=[384.4, 335.8]), dict(at="waist", px=[394.4, 280.8]), dict(at="hips", px=[456.4, 341.2])]
+    bad = gf._hangs_open(ws, [{"at": "waist"}])
+    assert len(bad) == 1 and "hangs OPEN" in bad[0] and "waist" in bad[0], bad
+    assert not gf._hangs_open(ws, [{"at": "waist", "why": "a sack coat cut straight from the chest"}])
+    fitted = [dict(at="chest", px=[371.9, 335.8]), dict(at="waist", px=[309.6, 280.8])]
+    assert not gf._hangs_open(fitted, [])
