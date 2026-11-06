@@ -124,18 +124,14 @@ def _seg_dist(p: np.ndarray, a: np.ndarray, b: np.ndarray) -> np.ndarray:
 
 
 def weights(bones: list[dict], verts: np.ndarray, faces: np.ndarray | None = None, k: int = 4,
-            falloff: float = FALLOFF, smooth: int = SMOOTH, see=None) -> tuple[np.ndarray, np.ndarray]:
+            falloff: float = FALLOFF, smooth: int = SMOOTH) -> tuple[np.ndarray, np.ndarray]:
     """(bone indices (n, k), weights (n, k), rows summing to 1) for vertices, from each bone's own cone and blobs,
     then averaged with the vertices around (`smooth` rounds over the faces' edges) so that where one bone's flesh
-    meets another's the weights blend instead of stepping (a crease down the chest when an arm lifts).
-    `see(P, A, B)` (optional) -> bool per row: whether the bone A-B can be reached from P through the model's solid.
-    A bone that can't (across the air between a hanging arm and the side it hangs beside) takes no weight there."""
+    meets another's the weights blend instead of stepping (a crease down the chest when an arm lifts)."""
     V = np.asarray(verts, np.float64)
     D = np.stack([np.min([_flesh(p, b.get("cuts", ()), V) for p in b["prims"]], 0) for b in bones], 1)
     r = np.array([b["falloff_r"] if "falloff_r" in b else 0.5 * (b["prim"].params["ra"] + b["prim"].params["rb"])
                   for b in bones])
-    if see is not None and all("seg" in b for b in bones):
-        D = _seen(D, V, bones, r, falloff, see)
     near = D.argmin(1)
     # the blend's width is set by the thinner bone: the fat torso's own radius would spread it down the arm
     fall = np.maximum(falloff * np.minimum(r[None, :], r[near][:, None]), 1e-3)
@@ -165,54 +161,6 @@ def weights(bones: list[dict], verts: np.ndarray, faces: np.ndarray | None = Non
     return J.astype(np.int64), _settle(J, Wk, faces, smooth)
 
 
-SEE_REACH = 4.0  # bones within this many falloffs of a vertex's nearest are checked for being reachable
-SEE_TOL = 0.0002  # m: a path to a bone may graze this far out of the solid (numerical slack) and still reach it
-SEE_START = 0.002  # m: the march starts this far along the path (the vertex itself is on the skin)
-SEE_STEPS = 64
-
-
-def _seen(D: np.ndarray, V: np.ndarray, bones: list[dict], r: np.ndarray, falloff: float, see) -> np.ndarray:
-    """D with every bone a vertex can't reach through the solid set to infinity (`weights`' `see`). Only bones that
-    could take weight are checked (within SEE_REACH falloffs of the nearest); a vertex that reaches none keeps all."""
-    d0 = D.min(1, keepdims=True)
-    fall = np.maximum(falloff * np.minimum(r[None, :], r[D.argmin(1)][:, None]), 1e-3)
-    vi, bi = np.nonzero(D - d0 < SEE_REACH * fall)
-    A = np.array([b["seg"][0] for b in bones], float)
-    B = np.array([b["seg"][1] for b in bones], float)
-    ok = see(V[vi], A[bi], B[bi])
-    out = D.copy()
-    out[vi[~ok], bi[~ok]] = np.inf
-    none = ~np.isfinite(out.min(1))
-    out[none] = D[none]
-    return out
-
-
-def solid_see(prims, tol: float = SEE_TOL):
-    """`see` for `weights`: the straight path from a vertex to the nearest point of a bone's segment stays inside the
-    model's combined field (within `tol`). Marched by the field (a step never longer than the distance to the skin,
-    so no gap is stepped over, however thin), from SEE_START along it."""
-
-    def see(P, A, B):
-        ab = B - A
-        t = np.clip(((P - A) * ab).sum(1) / np.maximum((ab * ab).sum(1), 1e-12), 0, 1)
-        d = A + t[:, None] * ab - P
-        L = np.linalg.norm(d, axis=1)
-        u = d / np.maximum(L, 1e-12)[:, None]
-        x = np.full(len(P), SEE_START)
-        ok = np.ones(len(P), bool)
-        live = np.flatnonzero(L > SEE_START)
-        for _ in range(SEE_STEPS):
-            if not len(live):
-                break
-            f = sdf.field_at(prims, P[live] + x[live, None] * u[live])
-            bad = f > tol
-            ok[live[bad]] = False
-            x[live] += np.maximum(np.abs(f), 0.5 * tol)
-            live = live[~bad & (x[live] < L[live])]
-        return ok
-    return see
-
-
 def _flesh(p, cuts, V: np.ndarray) -> np.ndarray:
     """A flesh primitive's distance; a bone's cone stops at its joints' planes ({"cuts": [(point, normal)]}, keeping
     the -normal side). Blobs aren't cut: a belly on the spine would lose its sides to a hanging arm."""
@@ -223,6 +171,9 @@ def _flesh(p, cuts, V: np.ndarray) -> np.ndarray:
     for q, n in getattr(p, "flesh_cuts", ()):  # a blob shared along a chain (`_chain_pieces`): this bone's slab
         d = np.maximum(d, (V - q) @ n)
     return d
+
+
+CHAIN_ROOT_CAP = True
 
 
 def _chain_pieces(bl, A: np.ndarray, B: np.ndarray):
@@ -261,6 +212,8 @@ def _chain_pieces(bl, A: np.ndarray, B: np.ndarray):
             elif np.linalg.norm(A[o] - B[q]) < 1e-6 and U[o] @ U[q] > 0.5:  # o carries on from q's tail (not a branch)
                 n = U[q] + U[o]
                 cuts.append((B[q], n / max(np.linalg.norm(n), 1e-12)))
+        if q == inside[0] and CHAIN_ROOT_CAP:  # the run's root slab stops at its head: the loft hanging below the
+            cuts.append((A[q], -U[q]))  # hips (over a stub's thigh and knee) is the legs' to carry, as without it
         p = copy.copy(bl)
         p.flesh_cuts = cuts
         out.append((q, p))
@@ -1667,11 +1620,10 @@ def rig_weights(spec: dict, rb: list[dict], verts: np.ndarray, faces: np.ndarray
     along its own segment. Then `weights` on the rig tree: nearest-flesh distances, family-limited, smoothed. Then
     the twist chains take their segments' weight (`_spread_twist`)."""
     ids, carry = _flesh_tree(spec, rb)
-    see = None
-    if not spec.get("base") and (spec.get("rig") or {}).get("see", True):  # reached through the solid only
-        see = solid_see(compile_prims(spec))
-    J, W = weights(carry, verts, faces, k=k, smooth=smooth, see=see)
-    return _spread_twist(rb, verts, np.asarray(ids)[J], W, k)
+    J, W = weights(carry, verts, faces, k=k, smooth=smooth)
+    J, W = _spread_twist(rb, verts, np.asarray(ids)[J], W, k)
+    from .rig_join import limb_join  # a limb's weight blended across the seam its skin really has with the body's
+    return limb_join(spec, rb, verts, faces, J, W, carry, limb_girth(rb, verts, J, W))
 
 
 def _flesh_tree(spec: dict, rb: list[dict]):
@@ -1746,7 +1698,7 @@ def _flesh_tree(spec: dict, rb: list[dict]):
             flesh[i].append(Prim(rb[i]["name"], "cone", "add", 0.0, 0, np.minimum(a, bb) - r, np.maximum(a, bb) + r,
                                  {"a": a, "frame": bone_frame(a, bb), "len": float(np.linalg.norm(bb - a)), "ra": r,
                                   "rb": r, "flat": [1.0, 1.0], "bow": (0.0, 0.0), "cut": 0.0}))
-    carry = [{"name": rb[i]["name"], "parent": -1, "prims": flesh[i], "seg": seg[i],
+    carry = [{"name": rb[i]["name"], "parent": -1, "prims": flesh[i],
               "prim": next((x for x in flesh[i] if x.kind == "cone"), flesh[i][0])} for i in ids]
     pos = {i: n for n, i in enumerate(ids)}
     for n, i in enumerate(ids):  # the rig tree among the weight-carrying bones (end joints skipped)
