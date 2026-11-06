@@ -1,4 +1,4 @@
-# Flesh weights (soft forms, the torso loft, a limb's seam): STATE 2026-11-06
+# Flesh weights (soft forms, the torso loft, a limb's seam): STATE 2026-11-06 (round 2)
 
 Branch flesh-visibility (worktree .claude/worktrees/flesh-visibility), from main 769fbff2 (WIP c78e10d7 + the fix).
 Asked for by Baynard Racing: Puddles' (pud2 v74) side rose with his raised arms. Not pushed; coordinator lands.
@@ -21,27 +21,40 @@ Asked for by Baynard Racing: Puddles' (pud2 v74) side rose with his raised arms.
 | arms 80: edges > 3x / p99.9 / max | 3283 / 5.18 / 8.4 | 3028 / 6.70 / 23 | 1871 / 7.00 / 40 |
 | seated: edges > 3x / > 2x / p99.9 | 131 / 1170 / 2.23 | 1138 / 4889 / 4.37 | 126 / 1142 / 2.23 |
 
+pud2 v75 (Baynard's sculpt fix: inner-arm gap >= 4.5 mm below the armpit, upperarm / forearm blend 0.003 / 0.002),
+export d1.npz, this branch: arms 80: side moving > 3 cm 0 %, edges > 3x 268 (> 2x 1445), p99.9 2.45x, max 15x;
+seated: 101 > 3x (> 2x 1076), p99.9 2.21x. The armpit now stretches over the band instead of tearing.
+
+Head (spikes/flesh_headturn.py, d1; "shoulder tops" = the body's own skin at x > 0.12, z 0.38-0.46):
+| | main | now |
+|---|---|---|
+| shoulder tops: mean Head weight | 0.07 | 0.37 |
+| turn 45: shoulder tops moving > 1 cm / edges > 3x / p99.9 | 12 % / 5731 / 7.28 | 65 % / 2902 / 5.60 |
+| nod 30: shoulder tops moving > 1 cm / edges > 3x / p99.9 | 10 % / 1284 / 3.71 | 44 % / 258 / 2.82 |
+Render (head_turn45_rows_main_now.png): main tears the neck open (a gash where the head ball meets the body);
+now the turn is clean, spread into the shoulder tops with a light crease along the shoulder line. The head ball
+holding the shoulder tops is what this neckless pig needs: kept.
+
 ## Open, ranked by what shows in the kart
-1. ARMPIT NOT SMOOTH: the mesh WELDS the inner arm to the side along a strip z 0.25-0.35 (x 0.18-0.20): there the
-   sculpted gap is ~1 mm, not 5, and upperarm's 7 mm blend closes it. Raising the arm must tear that strip
-   (sliver triangles, max 40x); weights can only choose who stretches. Fix is the sculpt: open the inner-arm gap
-   past the arm's blend (or a smaller blend), then re-export; or a general meshing feature (a later layer's blend
-   doesn't weld across air). Re-run flesh_measure after; expect the band to do the rest.
-2. The headball (super, Head) now reaches the shoulder tops (175 verts at z 0.41-0.44 weighted to Head): check a
-   head turn before Baynard relies on it.
-3. No unit test of limb_join yet (proved on Puddles + the bit-identical check, spikes/flesh_same.py).
+1. Head turn: a light crease along the shoulder line (front view, where the turn's spread ends). Small; judge it in
+   the kart before tuning.
+2. The p99.9 2.45x arms-raised peak sits in the band's limb half (z 0.30-0.40); the band (JOIN_BAND / SPLIT) was
+   swept on the welded v74 mesh, not re-swept on v75.
 
 ## Dead ends
 - Bones reached through the solid only (WIP `solid_see`, straight path inside `field_at`): cleft hooves and a foot
   bone poking out of the toe lost their own bone (seated 131 -> 1138), changed troll / fox, and Puddles' side was
   fixed without it (soft flesh did that). Removed.
+- (v74) The armpit tore because the mesh welded the inner arm to the side (gap ~1 mm, closed by a 7 mm blend):
+  a sculpt fault, fixed in v75. Weights can't fix a weld; check the gap before the band.
 - A symmetric seam band (split 0.5): side 4-7 % moving for p99.9 4.6-6; the body side must stay put.
 
 ## Commands
 HIFIPUSHIE_HOME=~/dev/hifipushie/workspace capped uv run python spikes/flesh_measure.py pud2 <c3.npz> <outdir> <tag>
 spikes/flesh_same.py <out.npz> examples/troll.json goblin fox_rig (each checkout), then --diff a b.
+spikes/flesh_headturn.py pud2 <npz> <outdir> <tag> (head turn 45 / nod 30). Unit: tests/test_rig_join.py.
 spikes/flesh_wire.py out.png a.npz [b.npz] (CENTER / SCALE / VIEWS env).
 
-NEXT: coordinator lands flesh-visibility after bin/suite; Baynard opens Puddles' inner-arm gap (open 1) and
-re-exports; then judge the armpit raised.
+NEXT: coordinator lands flesh-visibility (suite passing); Baynard re-exports Puddles (v75) and judges arms raised and
+a head turn in the kart.
 History: this page + commits on flesh-visibility; ledger row C384.

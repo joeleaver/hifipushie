@@ -45,12 +45,37 @@ def _edges(F: np.ndarray) -> np.ndarray:
     return e
 
 
+def join_share(G, e: np.ndarray, limb: np.ndarray, band: float):
+    """The limb's share per vertex (None when no mesh edge joins a limb vertex to a body one): JOIN_SPLIT on the
+    seam, rising to 1 JOIN_SPLIT_L x band into the limb's skin and falling to 0 the rest of the band into the
+    body's. G: the mesh's edge-length graph (csr); e: its edges; limb: bool per vertex."""
+    from scipy.sparse.csgraph import dijkstra
+    seam = np.unique(e[limb[e[:, 0]] != limb[e[:, 1]]])
+    if not len(seam):
+        return None
+    dist = dijkstra(G, indices=seam, min_only=True, limit=band)
+    sgn = np.where(limb, 1.0, -1.0)
+    t = np.where(np.isfinite(dist), sgn * dist, sgn * band)
+    return np.where(t >= 0, JOIN_SPLIT + (1 - JOIN_SPLIT) * _sstep(t / max(JOIN_SPLIT_L * band, 1e-9)),
+                    JOIN_SPLIT * (1 - _sstep(-t / max((1 - JOIN_SPLIT_L) * band, 1e-9))))
+
+
+def reblend(D: np.ndarray, g: np.ndarray, cols: np.ndarray, root: int, parent: int) -> np.ndarray:
+    """Dense weights D (n, bones) with the limb's columns `cols` summing to g of each row (row sums kept), each
+    side keeping its own mix; a side with none of its own takes the joint's bone (the limb root / its parent)."""
+    wl, wb = D[:, cols].sum(1), D[:, ~cols].sum(1)
+    fill_l = np.zeros(D.shape[1]); fill_l[root] = 1.0
+    fill_b = np.zeros(D.shape[1]); fill_b[parent] = 1.0
+    L_ = np.where(wl[:, None] > 1e-6, D * cols / np.maximum(wl, 1e-12)[:, None], fill_l[None, :])
+    B_ = np.where(wb[:, None] > 1e-6, D * ~cols / np.maximum(wb, 1e-12)[:, None], fill_b[None, :])
+    return (wl + wb)[:, None] * (g[:, None] * L_ + (1 - g)[:, None] * B_)
+
+
 def limb_join(spec: dict, rb: list[dict], V: np.ndarray, F, J: np.ndarray, W: np.ndarray, carry: list[dict],
               girth: dict | None = None):
     """(J, W) with each limb's weight re-blended across its seam (module docstring). `carry`: rig._flesh_tree's
     weight-carrying bones (their "prims" name the sculpted shapes each bone holds)."""
     from scipy.sparse import coo_matrix
-    from scipy.sparse.csgraph import dijkstra
     from .rig import PREFIX
     from .spec import compile_prims
     if F is None or not len(F) or spec.get("base") or (spec.get("rig") or {}).get("join") is False:
@@ -89,27 +114,16 @@ def limb_join(spec: dict, rb: list[dict], V: np.ndarray, F, J: np.ndarray, W: np
         limb = da < db - JOIN_LABEL_TOL
         if not limb.any():
             continue
-        seam = np.unique(e[limb[e[:, 0]] != limb[e[:, 1]]])
-        if not len(seam):  # a limb whose skin never meets the body's on this mesh: its own part, weights stand
-            continue
         g_ = (girth or {}).get(root)
         band = max(JOIN_BAND * g_ if g_ else JOIN_MIN_BAND, JOIN_MIN_BAND)
-        dist = dijkstra(G, indices=seam, min_only=True, limit=band)
-        sgn = np.where(limb, 1.0, -1.0)
-        t = np.where(np.isfinite(dist), sgn * dist, sgn * band)
-        # the limb's share: JOIN_SPLIT on the seam, 0 a body side's (1 - JOIN_SPLIT) x band off it, 1 the limb's
-        g = np.where(t >= 0, JOIN_SPLIT + (1 - JOIN_SPLIT) * _sstep(t / max(JOIN_SPLIT_L * band, 1e-9)),
-                     JOIN_SPLIT * (1 - _sstep(-t / max((1 - JOIN_SPLIT_L) * band, 1e-9))))
+        g = join_share(G, e, limb, band)
+        if g is None:  # a limb whose skin never meets the body's on this mesh: its own part, weights stand
+            continue
         cols = np.zeros(len(rb), bool)
         cols[chain] = True  # (the root's own bend helper hangs from the parent: the body's side, half turned)
-        wl, wb = D[:, cols].sum(1), D[:, ~cols].sum(1)
-        tot = wl + wb
-        # a side with none of its own weight takes the joint's: the limb root, or the bone it hangs from
-        fill_l = np.zeros(len(rb)); fill_l[root] = 1.0
-        fill_b = np.zeros(len(rb)); fill_b[rb[root]["parent"]] = 1.0
-        L_ = np.where(wl[:, None] > 1e-6, D * cols / np.maximum(wl, 1e-12)[:, None], fill_l[None, :])
-        B_ = np.where(wb[:, None] > 1e-6, D * ~cols / np.maximum(wb, 1e-12)[:, None], fill_b[None, :])
-        new = tot[:, None] * (g[:, None] * L_ + (1 - g)[:, None] * B_)
+        wl = D[:, cols].sum(1)
+        new = reblend(D, g, cols, root, rb[root]["parent"])
+        tot = D.sum(1)
         upd = near[(np.abs(g[near] * tot[near] - wl[near]) > 1e-4)]
         D[upd] = new[upd]
         changed = changed or len(upd) > 0
