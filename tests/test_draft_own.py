@@ -486,3 +486,19 @@ def test_a_gate_rows_reasons_print_in_full():  # (t s4-8: one line cut at 600 ch
     ln = dot.row_lines({"status": "FAIL", "id": "shape_stand", "value": "v" * 900, "why": why, "fix": "redraft"})
     assert sum("change: make it 26 mm taller" in x for x in ln) == 2 and ln[-1] == "      fix: redraft", ln
     assert dot.row_lines({"status": "PASS", "id": "seams", "value": "ok", "why": "", "fix": "redraft"}) == ["  PASS seams: ok"]
+
+
+def test_an_edge_sewn_in_two_seams_is_sampled_once():  # (t s4-9: a collar's neck edge on the neckline and its canvas; C379)
+    import numpy as np
+    from hifipushie import cloth
+
+    def rect(nm, w, h):
+        return {"name": nm, "P": np.array([[0, 0], [w, 0], [w, h], [0, h]], float),
+                "names": {"a": 0, "b": 1, "c": 2, "d": 3}, "marks": {}, "lines": {}, "wrap": {"to": "torso"}}
+    # the collar's a>b (100 mm) sewn to the neckline (eased: 121 mm, 7 samples at 20 mm) and to its canvas (100 mm, 5)
+    B = {"pieces": {"collar": rect("collar", 0.1, 0.04), "canvas": rect("canvas", 0.1, 0.04),
+                    "front": rect("front", 0.121, 0.3)},
+         "seams": [["collar:a>b", "front:a>b"], ["canvas:a>b", "collar:a>b"]], "stitches": []}
+    M = cloth.mesh(B, 0.02)
+    per = [int(np.sum(np.asarray(M["sew_seam"]) == k)) for k in (0, 1)]
+    assert per[0] == per[1] and per[0] >= 7, per

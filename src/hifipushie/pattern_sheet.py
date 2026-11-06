@@ -105,6 +105,16 @@ def seam_names(Bp: dict) -> list:
     return [f"{_side_name(A)} = {_side_name(B)}" for A, B in Bp.get("seams") or []]
 
 
+def _role_text(nm: str, pc: dict, d: dict) -> str:
+    """The role as the shape rows read it (C379, t s4-9: a stand named "collar" was listed collar_fall while the gate
+    checked it as a stand): a name that doesn't say stand or fall, with no role declared, is decided by its seams."""
+    from . import draft_shape as ds
+    base = nm.rsplit(".", 1)[0] if nm.endswith((".L", ".R")) else nm
+    if not (d.get("role") or pc.get("role")) and base.lower() in ds.AMBIGUOUS_NAMES:
+        return "stand or fall: its seams decide (the shape rows say which)"
+    return garment_design.role_of(nm, pc)
+
+
 def text_lines(Bp: dict, seam_rows=None, names: list | None = None, decl: dict | None = None) -> list:
     """The sheet's numbers as text (the image carries none): every piece (name, size, cut count, stiff, grain, role)
     and every seam pair (both edges, both lengths, the ease, PASS/FAIL): failing pairs first with their kind and band,
@@ -118,7 +128,7 @@ def text_lines(Bp: dict, seam_rows=None, names: list | None = None, decl: dict |
         cut = int(dp.get(nm, {}).get("cut", pc.get("cut", 1)))
         fold = " on fold" if dp.get(nm, {}).get("fold") else ""
         out.append(f"  {nm}: {sz[0]:.0f} x {sz[1]:.0f} mm, cut {cut}{fold}{', stiff' if nm in stiff else ''}, "
-                   f"grain {float(pc.get('grain', 90)):.0f} deg, role {garment_design.role_of(nm, pc)}")
+                   f"grain {float(pc.get('grain', 90)):.0f} deg, role {_role_text(nm, pc, dp.get(nm, {}))}")
     names = names or seam_names(Bp)
     rows = list(seam_rows or [])
     fail, ok_lines, bare = [], [], []
