@@ -659,3 +659,11 @@ def test_s4_13_the_pattern_round_the_body_at_each_girths_level():  # (t s4-13: a
     assert dg.rows(B, s3, {"waist": {"ease_mm": 40.0}}, body)[0]["status"] == "PASS"
     s3["measurements"][0]["mm"] = 950.0
     assert "can't close" in dg.rows(B, s3, {}, body)[0]["why"]
+    # a side panel placed on the back, with no neck edge: its line comes over its seams, not from its own top (C384)
+    s3["measurements"][0]["mm"] = 850.0
+    for sd in "LR":
+        pcs[f"side.{sd}"]["P"] = pcs[f"side.{sd}"]["P"] + [0, -0.3]  # (its top at the armpit, 300 mm below the hps)
+        pcs[f"side.{sd}"]["wrap"]["side"] = "back"
+    B["edge_arcs"] = {p: {"neck": "tl>tr"} for p in pcs if p.startswith(("front", "back"))}
+    r = dg.rows(B, s3, {"waist": {"ease_mm": 40.0}}, body)[0]
+    assert r["status"] == "PASS" and "pattern 900 mm round" in r["value"], r
