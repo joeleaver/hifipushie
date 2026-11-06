@@ -151,6 +151,29 @@ def landmark_help(model: str, garment: str, body, words: bool = True) -> str:
     return "\n".join(L)
 
 
+TORSO_DOWN = ("armpit", "chest", "waist", "high_hip", "hips", "seat")  # (top to bottom)
+
+
+def _hangs_open(widths: list, given: list) -> list:
+    """A torso width as wide as the one above it where the body narrows (C388, t s4-15..s4-18: a suit jacket worn OPEN
+    in the picture hung straight from the chest; its waist was read 361 px against the chest's 356 while the body
+    narrowed 311 -> 257, ease +319 mm: every draft was refused against a box, and the last agent rightly drafted
+    1004 mm). An open garment's width there isn't its girth: read it as inferred, or say why it really flares."""
+    why = {w.get("at"): str(w.get("why") or "").strip() for w in given if isinstance(w, dict)}
+    seen = sorted((w for w in widths if w.get("px") and w["at"] in TORSO_DOWN), key=lambda w: TORSO_DOWN.index(w["at"]))
+    out = []
+    for up, lo in zip(seen, seen[1:]):
+        (gu, bu), (gl, bl) = up["px"], lo["px"]
+        if gl >= 0.97 * gu and bl < 0.92 * bu and not why.get(lo["at"]):
+            out.append(f"fit.widths at {lo['at']}: the garment is as wide as at the {up['at']} ({gl:.0f} vs {gu:.0f} px) "
+                       f"where the body narrows ({bl:.0f} vs {bu:.0f} px). If it hangs OPEN there (fronts apart, "
+                       "unfastened: the cloth falls straight from the chest), its width isn't its girth: write "
+                       "garment_from: 'worn open: <what shows>' with the ratio it has closed (the "
+                       f"{up['at']}'s, {gu / bu:.2f}, less the shaping the cut shows) and why; if it truly flares or "
+                       "is cut straight, say so in why")
+    return out
+
+
 def _refuse(bad):
     raise FitRefused("\n  ".join(bad) + f"\n  the form: {FORM}")
 
@@ -265,6 +288,7 @@ def check(fit, views: list, body=None) -> tuple[dict, dict, dict]:
         if widths and widths[-1]["at"] == at and widths[-1]["ratio"] < 1 and not str(w.get("why") or "").strip():
             bad.append(f"{wn}: the garment is narrower than the body at the {at} ({widths[-1]['ratio']:.2f}): re-mark the "
                        "body's edges inside the garment, or say why (e.g. 'knit, worn tight')")
+    bad += _hangs_open(widths, fit.get("widths") or [])
     body_lms = [k for k in lms if k not in UNDER]
     if hts and len(body_lms) < 2:
         bad.append(f"fit.landmarks: heights need >= 2 body landmarks marked besides the floor / crown (have "
