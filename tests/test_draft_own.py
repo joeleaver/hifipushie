@@ -692,3 +692,18 @@ def test_s4_15_a_span_ratio_doesnt_crash_and_a_reversed_seam_carries_the_level()
           "edge_arcs": {"front": {"neck": "tl>tr"}, "back": {"neck": "tl>tr"}}}
     w = dg.level(B2, {"front": 0.2, "back": 0.2})[0]
     assert abs(w.get("side", 0) - 0.05) < 2e-3, w  # (read across its length, 0.6 m, before)
+
+
+def test_s4_16_a_darts_seams_dont_stop_the_length_rows():  # (t s4-16: "seams not one to one"; C386)
+    import numpy as np
+    from hifipushie import draft_body_lengths as dbl
+
+    def rect(nm, w, h):
+        return {"name": nm, "P": np.array([[0, 0], [w, 0], [w, -h], [0, -h]], float),
+                "names": {"tl": 0, "tr": 1, "br": 2, "bl": 3}, "marks": {}, "wrap": {"to": "torso"}}
+    B = {"pieces": {"a": rect("a", 0.2, 0.5), "b": rect("b", 0.2, 0.5)},
+         "seams": [["a:tr>br", "b:tl>bl"], ["a:tl>tr", "a:bl>br"]], "stitches": [],
+         "darts": [{"piece": "a", "legs": ["a:tl>tr", "a:bl>br"]}], "decl": {"seams": [{"a": "a:side", "b": "b:side"}]}}
+    s1 = {"seams": [{"a": "a:side", "b": "b:side", "length": {"style": {"value_mm": 300, "source": "x"}}}]}
+    r = dbl.style_rows(B, s1, {"measurements": []})[0]
+    assert r["status"] == "FAIL" and "drafted 500 mm, step 1 300 mm" in r["why"], r
