@@ -56,8 +56,9 @@ def declarations(rec: dict) -> dict:
 
 
 def marks(rec: dict, M: dict, decl: dict) -> dict:
-    """{detail: [marks]}: the draft's declared marks; else a step-1 closure's own marks (its buttons on the under piece;
-    a zip's tape along its declared edges) for the details that closure lists."""
+    """{detail: [marks]}: the draft's declared marks; else a step-1 closure's own marks (its holes on the over piece and
+    its buttons on the under piece, each detail where step 1 puts it; a zip's tape along its declared edges) for the
+    details that closure lists."""
     out = {n: (m if isinstance(m, list) else [m]) for n, m in (decl.get("marks") or {}).items()}
     s1 = rec["steps"]["1"].get("output") or {}
     dcl = {c.get("name"): c for c in decl.get("closures") or []}
@@ -70,7 +71,14 @@ def marks(rec: dict, M: dict, decl: dict) -> dict:
             if det in (decl.get("marks") or {}):
                 continue
             if mc.get("kind") == "buttons" and mc.get("pairs"):
-                m = {"piece": mc["under"], "at": [{"point": b} for _, b in mc["pairs"]], "why": f"closure {mc['name']}'s buttons"}
+                # (each detail on the piece step 1 puts it on: holes on `over`, buttons on `under` (C387, t s4-16 /
+                # s4-17: the closure's buttonholes were marked as buttons on the under front whichever way over / under
+                # went, and refused as "on front.R: the inventory puts it on front.L"); no `on`: a name with "hole")
+                on = set((s1.get("details") or {}).get(det, {}).get("on") or [])
+                holes = mc["over"] in on and mc["under"] not in on if on else "hole" in det.lower()
+                m = ({"piece": mc["over"], "at": [{"point": a} for a, _ in mc["pairs"]], "why": f"closure {mc['name']}'s holes"}
+                     if holes else
+                     {"piece": mc["under"], "at": [{"point": b} for _, b in mc["pairs"]], "why": f"closure {mc['name']}'s buttons"})
             elif mc.get("kind") == "zip" and isinstance((dcl.get(mc["name"]) or {}).get("edge"), dict) and \
                     (s1.get("details") or {}).get(det, {}).get("cloth"):
                 e = dcl[mc["name"]]["edge"]
