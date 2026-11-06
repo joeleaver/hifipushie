@@ -107,6 +107,25 @@ def layers(B: dict) -> dict:
     return {p: h for p, h in out.items() if out.get(h) != p}  # (two pieces sewn only to each other: neither)
 
 
+def _mirror_sewn(B: dict, p: str) -> bool:
+    """p (a sided piece) is sewn to its mirror by a same-named edge (back.L:cb = back.R:cb)."""
+    return bool(p[-2:] in (".L", ".R") and _half_seam(B, p))
+
+
+def _half_seam(B: dict, p: str):
+    """(mirror piece, p's arc, edge name) when p (X.L / X.R) is sewn to its mirror X.R / X.L by the same-named edge;
+    else None."""
+    if p[-2:] not in (".L", ".R"):
+        return None
+    q = p[:-2] + {".L": ".R", ".R": ".L"}[p[-2:]]
+    for A, Bs in _seam_pairs(B):
+        for mine, other in ((A, Bs), (Bs, A)):
+            if len(mine) == len(other) == 1 and mine[0].split(":", 1)[0] == p and other[0].split(":", 1)[0] == q \
+                    and _edge_name(B, mine[0]) == _edge_name(B, other[0]):
+                return q, mine[0].split(":", 1)[1], _edge_name(B, mine[0])
+    return None
+
+
 def _seam_pairs(B: dict):
     for s in B.get("seams") or []:
         yield _sides(s[0]), _sides(s[1])
@@ -179,8 +198,21 @@ def stand_rows(B: dict, decl: dict, step1: dict, ref: dict | None = None) -> dic
             if top is None and arc:
                 top = pc["P"][pattern.arc_indices(pc, full_arc(pc, [arc]))]
         drops = sorted(float(np.ptp(_pts(B, e)[:, 1])) for e in other)
-        v, w = dst.check(p, "band" if band else "stand", N, dst._rest(pc, idx), top, drops[-1],
-                         drops[0] if len(drops) > 1 else 0.0, ref)
+        R = dst._rest(pc, idx)
+        half = _half_seam(B, p)
+        if half and half[0] in out:  # (its mirror half already judged the whole)
+            continue
+        if half:  # (C381: a half sewn to its mirror at an end edge is judged whole)
+            N, R, top = dst.whole(N, R, top, pc["P"][pattern.arc_indices(pc, half[1])])
+        v, w = dst.check(p, "band" if band else "stand", N, R, top, drops[-1],
+                         drops[0] if len(drops) > 1 else 0.0, ref, whole=bool(half))
+        if half:
+            v = v.replace(f"{p} ({'band' if band else 'stand'})", f"{p} + {half[0]} (whole: mirrored at {p}:{half[2]})", 1)
+        elif p[-2:] in (".L", ".R") and p[:-2] + {".L": ".R", ".R": ".L"}[p[-2:]] in B["pieces"] and any(
+                _mirror_sewn(B, e.split(":", 1)[0]) for e in other):
+            w.append(f"{p}: half a stand, not joined to {p[:-2] + {'.L': '.R', '.R': '.L'}[p[-2:]]} though the body it is "
+                     "sewn to joins its own halves: sew the two halves' end edges (a seam P.L:cb = P.R:cb) or cut it as "
+                     "one piece on the fold (pieces.P {part, fold: \"x0\"}) (C381)")
         vals.append(v)
         why += w
         out.append(p)

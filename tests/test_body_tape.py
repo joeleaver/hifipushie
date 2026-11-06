@@ -133,6 +133,11 @@ def test_tool_writes_step3(tmp_path, monkeypatch):
     assert st["status"] == "done" and st["look"] == [str(gr.look_dir("wf_simon", "hussar") / "step3_measure.png")]
     names = [r["name"] for r in st["output"]["measurements"]]
     assert names == ["chest", "back_waist_to_seat", "loop"] and st["output"]["refused"]
+    out = server.body_tape("wf_simon", [{"name": "back_waist_to_seat", "kind": "length", "from": "cb_waist", "to": "cb_seat",
+                                         "side": "back"}], garment="hussar", add=True)  # (C381: keep step 3, add / retake one)
+    st2 = gr.load("wf_simon", "hussar")["steps"]["3"]["output"]["measurements"]
+    assert "record: step 3 (measure) written" in out[1] and "kept from step 3 as recorded" in out[1], out[1]
+    assert [r["name"] for r in st2] == ["chest", "loop", "back_waist_to_seat"] and st2[0] == st["output"]["measurements"][0]
     m = {r["name"]: r["mm"] for r in st["output"]["measurements"]}
     assert m["loop"] == round(m["chest"] + m["back_waist_to_seat"], 1)
     rows = st["output"]["measurements"]  # (F4: where each was taken: a girth's loop, a length's path)

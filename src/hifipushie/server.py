@@ -3762,15 +3762,16 @@ def garment_record(name: str = "", garment: str = "", sheet: bool = False):
 
 
 @mcp.tool(structured_output=False)
-def body_tape(name: str, measurements: list | None = None, garment: str = "", landmarks: bool = False):
+def body_tape(name: str, measurements: list | None = None, garment: str = "", landmarks: bool = False, add: bool = False):
     """MEASURE A BODY BY NAME (garment step 3): each measurement your garment's seams call for, named and defined by
     you: girth (at a level, square to the body or a limb; fullest / narrowest between), arc (over the surface between
     landmarks, front / back / ...), length (surface or straight, via landmarks; down the body to a level), height, or a
     FreeSewing name as a string. Answers each in mm with how it was taken, and the tape lines drawn on the body (front /
     side / back). No measurements, or landmarks=True: the landmarks and levels you can name. garment: writes step 3 of
-    its record. Details: guide(topic="body_tape")."""
+    its record; add=True (with garment): keep step 3's measurements exactly as recorded and add only these (a draft
+    that needs one more). Details: guide(topic="body_tape")."""
     from . import body_tape as bt
-    look, txt = bt.run(name, _spec_arg(measurements) if measurements else None, garment, landmarks)
+    look, txt = bt.run(name, _spec_arg(measurements) if measurements else None, garment, landmarks, add)
     return txt if look is None else [_out(PILImage.open(look).convert("RGB"), None), txt]
 
 

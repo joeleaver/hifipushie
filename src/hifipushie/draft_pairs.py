@@ -317,3 +317,26 @@ def mirror_arc(pc: dict, arc: str) -> str:
 def base_name(n: str, decl: dict) -> str:
     """P.L / P.R of a paired P -> P (explicit sides in seams and closures)."""
     return n[:-2] if _side(n) and n[:-2] in paired(decl) else n
+
+
+def halves(decl: dict, step1: dict) -> set:
+    """Centre pieces cut on the fold (pieces.P {fold}, no pair) that stand for step 1's two halves P.L + P.R (C381,
+    t s4-11: step 1 named collar.L / collar.R joined by a fold at CB; only a pair could answer to those names, so the
+    agent cut two loose halves and put a press fold on one, and the collar was never joined at CB)."""
+    inv = step1.get("pieces") or {}
+    return {n for n, pd in (decl.get("pieces") or {}).items() if isinstance(pd, dict) and pd.get("fold")
+            and not pd.get("pair") and n not in inv and f"{n}.L" in inv and f"{n}.R" in inv}
+
+
+def canon(e, H: set):
+    """An edge named for step 1's half (P.L:e, P.R:e) or the converter's mirrored half (P:e.m) of a fold-cut piece in
+    H, as the one piece's edge P:e; any other edge as is."""
+    if not isinstance(e, str) or ":" not in e:
+        return e
+    p, ed = e.split(":", 1)
+    if p[-2:] in (".L", ".R") and p[:-2] in H:
+        p = p[:-2]
+    if p in H and ed.endswith(".m"):
+        ed = ed[:-2]
+    return f"{p}:{ed}"
+

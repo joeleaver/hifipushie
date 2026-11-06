@@ -110,9 +110,18 @@ def _role_text(nm: str, pc: dict, d: dict) -> str:
     checked it as a stand): a name that doesn't say stand or fall, with no role declared, is decided by its seams."""
     from . import draft_shape as ds
     base = nm.rsplit(".", 1)[0] if nm.endswith((".L", ".R")) else nm
-    if not (d.get("role") or pc.get("role")) and base.lower() in ds.AMBIGUOUS_NAMES:
+    if d.get("role"):
+        return str(d["role"])
+    if not pc.get("role") and base.lower() in ds.AMBIGUOUS_NAMES:
         return "stand or fall: its seams decide (the shape rows say which)"
     return garment_design.role_of(nm, pc)
+
+
+def _layer_text(nm: str, lay: dict, pcs: dict, own) -> str:
+    """A layer (draft_shape.layers: sewn edge to edge onto one piece) takes its host's role (C381, t s4-11: a stand's
+    canvas and facing were listed collar_fall by their names until the agent declared them stands)."""
+    h = lay[nm]
+    return f"layer of {h} (its role: {_role_text(h, pcs[h], own(h))})"
 
 
 def text_lines(Bp: dict, seam_rows=None, names: list | None = None, decl: dict | None = None) -> list:
@@ -123,12 +132,18 @@ def text_lines(Bp: dict, seam_rows=None, names: list | None = None, decl: dict |
     pcs, stiff = Bp.get("pieces") or {}, {e if isinstance(e, str) else e.get("piece") for e in Bp.get("interfaced") or []}
     dp = (decl or {}).get("pieces") or {}
     out = [f"pieces ({len(pcs)}; sizes are the piece's width x height on the sheet, mm):"]
+    from . import draft_shape as ds
+    try:
+        lay = ds.layers(Bp) if Bp.get("seams") else {}
+    except Exception:  # noqa: BLE001  (a sheet without edge names: no layers said)
+        lay = {}
+    own = lambda n: dp.get(n) or (dp.get(n[:-2]) if n.endswith((".L", ".R")) else None) or {}
     for nm, pc in pcs.items():
         sz = np.ptp(np.asarray(pc["P"], float), 0) * 1000
         cut = int(dp.get(nm, {}).get("cut", pc.get("cut", 1)))
         fold = " on fold" if dp.get(nm, {}).get("fold") else ""
         out.append(f"  {nm}: {sz[0]:.0f} x {sz[1]:.0f} mm, cut {cut}{fold}{', stiff' if nm in stiff else ''}, "
-                   f"grain {float(pc.get('grain', 90)):.0f} deg, role {_role_text(nm, pc, dp.get(nm, {}))}")
+                   f"grain {float(pc.get('grain', 90)):.0f} deg, role {_layer_text(nm, lay, pcs, own) if nm in lay and not (own(nm).get('role') or pc.get('role')) else _role_text(nm, pc, own(nm))}")
     names = names or seam_names(Bp)
     rows = list(seam_rows or [])
     fail, ok_lines, bare = [], [], []

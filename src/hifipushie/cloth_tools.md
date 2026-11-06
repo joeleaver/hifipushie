@@ -94,7 +94,7 @@ does. Step 7a's approval is required unless HIFIPUSHIE_PRESIM_APPROVAL=optional.
 reference beside every look plus a status tile; every step's status is also in the text answer.
 
 ### `body_tape`
-`body_tape(name, measurements=None, garment="", landmarks=False)`: garment step 3, measuring the model's base body BY NAME
+`body_tape(name, measurements=None, garment="", landmarks=False, add=False)`: garment step 3, measuring the model's base body BY NAME
 (src/hifipushie/body_tape.py; its docstring is the spec). Measure what steps 1-2 (parts, style plan) call for: each seam
 you will draft needs a length or a girth on the body; name it and say how it is taken. measurements: a list of
 - a FreeSewing name as a string ("chest", "hpsToWaistBack", ...; tailor.measure's list, in FreeSewing's definition through
@@ -124,6 +124,8 @@ values there, never off the look); workspace/<model>/tape/step3_measure.png, or 
 record's look folder, and step 3 of the record is written (refused until step 2 is ready). Example:
 `body_tape("wf_simon", [{"name": "back_waist_to_seat", "kind": "length", "from": "cb_waist", "to": "cb_seat", "side":
 "back"}, "chest"], garment="hussar")`.
+add=True (with garment): step 3 is kept exactly as recorded and only the measurements given are taken and added (a
+draft that needs one more measurement; C381).
 
 ### `garment_plan`
 `garment_plan(name, garment, step, plan, look=True)`: steps 0, 1, 2 of the garment record (every
