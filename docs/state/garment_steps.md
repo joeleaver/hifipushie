@@ -48,7 +48,6 @@ ORDER: tooling for every step first; then the steps one at a time, shirt + hussa
 | T15 | Outline vs reference: step 2 traces the reference's key edges (hem, collar top, front edges, cutaway) as lines on the photo; step 4 checks flat edges against them, step 6 compares the build's outline in that view (mm, where, which pattern edge to redraw). Joe: "It still doesn't have any of these curves right": ratios passed an arc for a stepped notch | 2, 4, 6 | M | T5b |
 Test garments: the shirt, the hussar jacket, the RANGER outfit (/mnt/data/hifipushie/refs/ranger/front.png; layering 4-5
 deep; leather goods = stiff-leather pieces from patterns; boots out of the garment route for now), Garrett's outfit (t8).
-
 DONE: T1-T15, F1-F10, s0-fix landed (C281-C335): record, approvals, body_tape, garment_plan, draft_pattern + flat gates (shape,
 seam_ends, body_lengths), structure + outline rows, stage gates (chain_stages), details, export, appearance, SDF block-in.
 DRIFT FOUND (Joe 2026-11-03): from F4 the build placed WHOLE pieces then corrected them (F4 start, F7/F8 flat+sew, F9/F10
@@ -57,4 +56,5 @@ METHOD NOW (Joe 2026-11-03): one STEP per blind trial (/mnt/data/hifipushie/tria
 judged with Joe beside the reference, fixed, rerun, then the next step; tests run once when a step is declared done.
 APPROVED (Joe): hussar 0-4 (s4-14; trials/s4-14/ws; C377-C384). Suit jacket: step 0 retaken s0-10 (worn open: waist/hips/
 hem read buttoned; C388-C389; trials/s0-10/ws), step 1 carried; steps 2-3 STALE (step 2 rows[8] target must name a step-0
-height), step 4 todo (s4-18 drafted, C385-C387). NEXT: jacket step 2 retake of rows[8] (s2-5), then step 4 redo.
+height), step 4 todo (s4-18 drafted, C385-C387). OPEN: fold-cut piece for step 1's halves handled to step 4 only; fall
+vs neck/gorge. NEXT: jacket step 2 retake of rows[8] (s2-5), then step 4 redo; or hussar step 5 (Joe's call).
