@@ -3741,12 +3741,13 @@ def look_chain(name: str, garment: str, wear: str = "closed", focus: str | None 
 
 
 @mcp.tool(structured_output=False)
-def garment_record(name: str = "", garment: str = "", sheet: bool = False):
+def garment_record(name: str = "", garment: str = "", sheet: bool = False, step: str = ""):
     """THE GARMENT RECORD: one file per garment holding every step's output, status (todo / done / failed / approved),
     gate rows, reference and look (docs/state/garment_steps.md, steps 0-10 + 7a). Answers each step's status, what is
     stale (an earlier step changed), the next step, what it may use (the step before it, ready only) and the call that
     makes it. A step is written only when the step before it is ready; approvals are Joe's or the coordinator's
-    (bin/approve), read here, never written. sheet=True: the step-0 reference beside every look, and the statuses. Details: guide(topic="garment_record")."""
+    (bin/approve), read here, never written. sheet=True: the step-0 reference beside every look, and the statuses.
+    step="2": that step's saved output in full (JSON), to retake it changing only what's refused. Details: guide(topic="garment_record")."""
     from . import garment_record as gr
     for given in (name, garment):  # ("garrett:jacket" in either: t s1-2 was refused for it)
         if ":" in given and not (name and garment and ":" not in name + garment):
@@ -3754,6 +3755,12 @@ def garment_record(name: str = "", garment: str = "", sheet: bool = False):
             break
     if not name or not garment:
         return "garment_record: name (the model) and garment, or one 'model:garment' (e.g. 'garrett:jacket')"
+    if step:  # (C390, t s2-5: a retake had to read the record's file to resend the old plan unchanged)
+        rec = gr.load(name, garment)
+        sid = gr._sid(step)
+        st = rec["steps"].get(sid) or {}
+        return (f"{name}:{garment} step {sid} ({gr.STEP[sid]['key']}), status {st.get('status', 'todo')}; its saved output "
+                f"(resend it with only the refused part changed):\n" + json.dumps(st.get("output") or {}, indent=1, default=str))
     txt = gr.answer(name, garment)
     if not sheet:
         return txt
