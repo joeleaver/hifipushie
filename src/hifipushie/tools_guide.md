@@ -93,16 +93,17 @@ Parameters and defaults for the kits (hand, face), strokes (clay, crease, flatte
 
 ### `put_model`
 
-`put_model(name, spec, note='')`
+`put_model(name, spec, note='', joins=None)`
 
 Create a model or replace its whole spec. Missing keys get defaults. The stored plan (set_plan) is kept
-unless the new spec gives one, or "plan": null to drop it. Returns a summary.
+unless the new spec gives one, or "plan": null to drop it. Returns a summary. joins=["ear", "tail"] adds a
+join_report line per part (WARNING under 0.75: a stalk or neck), every save.
 
 ### `edit_model`
 
-`edit_model(name, ops, note='')`
+`edit_model(name, ops, note='', joins=None)`
 
-Apply a batch of edits atomically. Ops:
+Apply a batch of edits atomically (joins: as put_model). Ops:
 {"op":"set","kind":"joints|bones|blobs|kits|strokes|paint|parts|anatomy|prefabs|instances|...","name":n,"value":{...}}
     merge fields, creates if new; a null field removes it. kind is any top-level key holding named entries.
 {"op":"set_key","key":"story|style|rig|weather|...","value":v}  replace a whole top-level key; null removes it
@@ -138,7 +139,8 @@ z = 2.2 (a plan view of a house: use views=["top"]; a torso cross-section), {"-y
 with y < 0 (the front half, seen from the front), {"x": 0} the +X half; any plane: {"point": [x,y,z],
 "normal": [x,y,z]} drops the side the normal points into; a list applies several. Cut solids get flat
 caps in their part's colour, darkened, so walls read as walls. Views keep the uncut model's framing.
-camera: a perspective panel from inside or around the model: {"eye": [x,y,z], "target": [x,y,z],
+camera: {"fitted": "<label>"} = the camera fit_concept_camera fitted to a concept (square panel; look_matched
+renders it at the concept's own size). Or a perspective panel from inside or around the model: {"eye": [x,y,z], "target": [x,y,z],
 "fov"?: degrees across (default 70), "name"?}. eye [x, y] stands a person there: on the lowest floor with
 1.8 m of headroom, eye 1.6 m above it ("eye_height" to change); target [x, y] looks level at eye height.
 A list gives several panels. Alone it replaces the default views (views adds orthographic ones back).
@@ -223,6 +225,50 @@ Attach a reference image for view "front", "side" or "top". The silhouette comes
 channel if present, else from difference against the corner background colour (threshold).
 Our side view shows the creature facing LEFT; set flip=True if the reference faces right.
 Returns the extracted mask so you can check it.
+
+### `fit_concept_camera`
+
+`fit_concept_camera(name, image, mask=None, label='concept', az=None, el=None, resolution=96)`
+
+THE way to compare a character sculpt with its concept starts here (gates.md LOOK). Fits the perspective camera
+the concept image was drawn from: azimuth, elevation, roll, focal length and aim, maximising the IoU of the
+model's silhouette with the image's foreground (a sweep of starts, Nelder-Mead, a finer polish). The foreground is
+the image's alpha, or everything not connected to the border's background colour; pass mask= (white figure on
+black) for a busy background. Conventions as look's views: az 0 = from the front, + = round toward the creature's
+left (+X); el + = from above. Saved as <model>/cameras/<label>.json. Returns the overlay (red = model only,
+blue = image only) and the camera. IoU under 0.85 is flagged: the model's shape is far off, or the mask is wrong.
+Re-fit after big shape changes; small ones keep the camera. Puddles (pud2): az -19, el +8.5, IoU 0.93.
+
+### `look_matched`
+
+`look_matched(name, label='concept', resolution=192, samples=32, only_parts=None, hide_parts=None, save=None)`
+
+The model from a fitted camera, at the concept's own size, pixel-aligned (the same box crops the same feature
+from both), in form-revealing clay: big area lights, a soft world, no hard shadows, so creases, necks and stalks
+read as form. Cycles, ~1 min at 1024 px. Returns concept | render; the render is <model>/cameras/<label>_render.png.
+Judge it by feature_tiles + bin/review, never by eye from a camera you picked.
+
+### `feature_tiles`
+
+`feature_tiles(name, features, label='concept', out_dir=None, min_px=448, pad=0.2)`
+
+Named, same-box tiles from the concept and its matched render (look_matched first): features {region: [element or
+part names] | [x0, y0, x1, y1] in image pixels}. Each region's box is its elements' bounds through the fitted
+camera, squared, padded by pad and scaled to >= min_px. Region names are what the blind reviewer reads: plain
+words, no numbers ("left ear", "right arm, elbow"). Returns the paths and the bin/review command, one pair per
+region.
+
+### `join_report`
+
+`join_report(name, parts, side='L', sections=False)`
+
+How a part joins the body, measured. SEAM = the part's skin where the rest of the model is within 1.5 mm; its
+length along its main axis over the FOOTPRINT (the part's width within 2.5 cm of the rest) is the ratio: ~1 =
+joined along its base, ~0.5 = a stalk or neck; under 0.75 = WARNING. Also given across the seam. parts: element or
+part names; a base name takes side ("ear" -> ear.L); "ear,earroot" measures two elements as one piece. The rest
+excludes the part's mirror twin. sections=True: two flat cuts through each join (the rest grey, the part red, 1 cm
+grid, up = out of the body). A silhouette can't show a stalk and a shaded render hides it under the overhang:
+measure it. put_model / edit_model(joins=[...]) report it on every save.
 
 ### `compare`
 

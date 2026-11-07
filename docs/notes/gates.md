@@ -60,6 +60,17 @@ The faults were in the PROCESS, at four points:
      (nose base to chin), each eye with its lower lid, each cheek / nasolabial area (front, + 3/4 when a 3/4 photo exists).
      Tool: assembly scratch r46/tiles.py (MediaPipe, similarity per feature); spikes/tour/tour.py does the same for heads
      from the block-in. The 1 m / 3 m frames stay, but only as the separate game-readability check under the game rig.
+   - CHARACTER SCULPTS ARE REVIEWED FROM THE CONCEPT'S OWN CAMERA (Baynard Racing, Puddles, 2026-11-06, C390). Judging
+     from a camera picked by eye, or by silhouette overlays, the author sees what was meant: Puddles' arms (welded along
+     the side), ears (on a stalk, folded the wrong way) and tail went many rounds that way. The standard LOOK input for
+     a creature / character / prop sculpt with a concept image: `fit_concept_camera(name, image)` (IoU >= 0.85; a
+     MIRROR note means check which way the face turns) -> `look_matched` (pixel-aligned clay at the concept's size) ->
+     `feature_tiles(name, {region: [elements]})` (same box from both, one region per pair) -> the `bin/review` command
+     it prints. Every visible feature is a region. Joins are MEASURED, never judged from a render: `join_report` (or
+     put_model / edit_model `joins=[...]`) per appendage, measured as the whole appendage ("ear,earroot": an ear alone
+     counts its root as body and hides the stalk); under 0.75 = joined along only part of its base. For a limb meant
+     to hang free, read it the other way: a long seam is an arm welded to the side. Re-fit the camera after big shape
+     changes.
    - Scope the review to the stage: `--stage "<what this stage owns>" --not "<other stages>"`. Faults outside
      the stage come back under OTHER STAGES, don't count toward the verdict, and go to the coordinator (who
      routes them; an approved piece is reopened only with Joe). Hide other stages' parts when they cover the

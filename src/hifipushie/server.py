@@ -139,6 +139,9 @@ TOOL_GROUPS: dict[str, dict] = {
                        "edit_model", "look", "check", "measure", "history", "revert", "review_view"]},
     "plan": {"about": "plans, reference images, compare, silhouette fit, clearance, style check",
              "tools": ["set_plan", "set_reference", "compare", "fit", "clearance", "style_check"]},
+    "concept": {"about": "match a concept image: fit its camera, render from it pixel-aligned, same-box feature tiles "
+                         "for bin/review, how parts join the body (stalk or base)",
+                "tools": ["fit_concept_camera", "look_matched", "feature_tiles", "join_report"]},
     "scene": {"about": "the Blender scene (sync, pull) and the heavy-job queue",
               "tools": ["sync", "pull", "heavy_status", "heavy_queue"]},
     "export": {"about": "OBJ export, game-ready assets (GLB/FBX, PBR maps), the export rig, judging a GLB",
@@ -695,9 +698,10 @@ def _saved(name: str, v: int, spec: dict, extra: str = "") -> str:
 
 
 @mcp.tool(structured_output=False)
-def put_model(name: str, spec: dict, note: str = "") -> str:
+def put_model(name: str, spec: dict, note: str = "", joins: list[str] | None = None) -> str:
     """Create a model or replace its whole spec (missing keys get defaults). The stored plan is kept unless the spec
-    gives one ("plan": null drops it). Returns a summary. Details: guide(topic="put_model")."""
+    gives one ("plan": null drops it). joins: parts / elements whose join to the body is reported (join_report; a
+    WARNING under 0.75 = a stalk). Returns a summary. Details: guide(topic="put_model")."""
     full = {**empty_spec(), **_spec_arg(spec)}
     kept = ""
     if "plan" not in full:
@@ -711,19 +715,19 @@ def put_model(name: str, spec: dict, note: str = "") -> str:
     elif full["plan"] is None:
         del full["plan"]
     v = store.save(name, full, note or "put_model")
-    return _saved(name, v, full, kept)
+    return _saved(name, v, full, kept) + _join_lines(name, joins)
 
 
 @mcp.tool(structured_output=False)
-def edit_model(name: str, ops: list[dict], note: str = "") -> str:
+def edit_model(name: str, ops: list[dict], note: str = "", joins: list[str] | None = None) -> str:
     """Apply a batch of edits atomically. ops: {"op": "set", "kind": <any top-level key with named entries:
     joints|bones|blobs|kits|strokes|paint|parts|...>, "name", "value"} (merge; null field removes), {"op":
     "set_key", "key", "value"}, {"op": "delete"|"rename", "kind", "name", "to"?}, {"op": "move", "joints", "delta"},
-    {"op": "scale_r", "joints", "factor"}, {"op": "global", "value"}. Edit ".L" and centre only. Details:
-    guide(topic="edit_model")."""
+    {"op": "scale_r", "joints", "factor"}, {"op": "global", "value"}. Edit ".L" and centre only. joins: as
+    put_model. Details: guide(topic="edit_model")."""
     spec = store.edit(store.load(name), ops)  # errors name the op: "op 3 (set blobs tooth.L): ..."
     v = store.save(name, spec, note or f"{len(ops)} ops")
-    return _saved(name, v, spec)
+    return _saved(name, v, spec) + _join_lines(name, joins)
 
 
 @mcp.tool(structured_output=False)
@@ -883,10 +887,94 @@ def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool 
     return [_out(sheet, save), info + shown + painted + (f" | saved {save}" if save else "") + nxt]
 
 
+def _join_lines(name: str, joins) -> str:
+    if not joins:
+        return ""
+    from . import joins as joinsmod
+    return "\n" + joinsmod.report(name, joins)
+
+
+@mcp.tool(structured_output=False)
+def fit_concept_camera(name: str, image: str, mask: str | None = None, label: str = "concept",
+                       az: float | None = None, el: float | None = None, resolution: int = 96):
+    """Fit the perspective camera a concept image was drawn from, by the model's silhouette against the image's
+    foreground (IoU; mask: a white-on-black PNG when the background isn't plain). Saved under `label`; then
+    look_matched renders from it pixel-aligned, feature_tiles cuts review tiles, look(camera={"fitted": label})
+    uses it too. az / el: a starting guess (default: a sweep). Returns the overlay (red = model only, blue = image
+    only) and the camera. Details: guide(topic="fit_concept_camera")."""
+    from . import matched
+    cam = matched.fit_camera(name, image, mask, label, resolution, az, el)
+    note = "" if cam["iou"] >= 0.85 else (" | LOW IoU: the model is far from the concept's shape, or the mask is wrong "
+                                          "(pass mask=...; az / el = a guess)")
+    if cam.get("mirror"):
+        note += (f" | MIRROR: az {cam['mirror']['az']:+.0f} fits nearly as well (IoU {cam['mirror']['iou']:.3f}; a "
+                 "symmetric silhouette can't tell the sides apart): check which way the face turns in look_matched, "
+                 "and if it's the wrong way fit again with az of the other sign")
+    return [_out(matched.overlay(name, cam, resolution), None),
+            f"{name}: camera {label!r} az {cam['az']:+.1f} el {cam['el']:+.1f} roll {cam['roll']:+.1f} "
+            f"f {cam['f_px']:.0f} px, IoU {cam['iou']:.3f}{note} | saved {matched.cam_path(name, label)} | next: "
+            f"look_matched(name, label={label!r}), then feature_tiles"]
+
+
+@mcp.tool(structured_output=False)
+def look_matched(name: str, label: str = "concept", resolution: int = 192, samples: int = 32,
+                 only_parts: list[str] | None = None, hide_parts: list[str] | None = None, save: str | None = None):
+    """Render the model from a fitted concept camera (fit_concept_camera) at the image's own size, in form-revealing
+    clay (soft area light, no hard shadows), pixel-aligned with the concept: returns concept | render. The THE
+    standard view for comparing a character sculpt with its concept; review it by feature_tiles + bin/review, never
+    by eye from a camera you picked. Details: guide(topic="look_matched")."""
+    from . import matched
+    import time
+    t = time.time()
+    path = matched.render(name, label, resolution, samples, only_parts=only_parts, hide_parts=hide_parts)
+    im = matched.pair(name, label)
+    return [_out(im, save), f"{name}: matched render {label!r} in {time.time() - t:.0f}s -> {path} | next: "
+            "feature_tiles(name, {region: [parts or elements]}) and bin/review on its pairs"
+            + (f" | saved {save}" if save else "")]
+
+
+@mcp.tool(structured_output=False)
+def feature_tiles(name: str, features: dict, label: str = "concept", out_dir: str | None = None,
+                  min_px: int = 448, pad: float = 0.2) -> str:
+    """Cut named, same-box feature tiles from the concept and its matched render (look_matched first), one pair per
+    region, for the blind review: features {region: [element or part names] | [x0, y0, x1, y1] pixels}, e.g.
+    {"left ear": ["ear.L", "earroot.L"], "tail": ["tailb0", "tailb3"]}. Region names are what the reviewer reads:
+    plain words, no numbers. Returns the tile paths and the bin/review command. Details: guide(topic="feature_tiles")."""
+    from . import matched
+    r = matched.tiles(name, features, label, out_dir, min_px, pad)
+    rows = [f"{k}: box {v[2]} -> {v[0]} | {v[1]}" for k, v in r["tiles"].items()]
+    return "\n".join([f"{len(rows)} tile pairs in {r['dir']}", *rows, "review (one region per pair, blind):",
+                       r["review"]])
+
+
+@mcp.tool(structured_output=False)
+def join_report(name: str, parts: list[str], side: str = "L", sections: bool = False):
+    """How each part joins the body, measured: the seam where its skin meets the rest, over the width of its base
+    (about 1 = joined along its base; about 0.5 = a stalk or neck; WARNING under 0.75). parts: element or part
+    names, a base name takes `side` ("ear" -> ear.L). sections=True adds two flat cuts through each join (the rest
+    grey, the part red, 1 cm grid, up = out of the body). put_model / edit_model(joins=[...]) report the same lines
+    on every save. Details: guide(topic="join_report")."""
+    from . import joins as joinsmod
+    lines, images = [], []
+    for p in parts:
+        r = joinsmod.measure(name, p, side, sections)
+        im = r.pop("image", None)
+        lines.append(joinsmod.line(r))
+        if im is not None:
+            images.append(_png(im))
+    return [*images, "\n".join(lines)]
+
+
 def _resolve_camera(name: str, cam: dict) -> dict:
-    """Fill in a camera's 2D eye (a person standing there: floor + eye_height) and 2D target (level gaze)."""
+    """Fill in a camera's 2D eye (a person standing there: floor + eye_height) and 2D target (level gaze).
+    {"fitted": label}: the camera fit_concept_camera fitted to a concept (matched.look_camera)."""
+    if isinstance(cam, dict) and "fitted" in cam:
+        from . import matched
+        return {**matched.look_camera(matched.load_camera(name, str(cam["fitted"]))),
+                **{k: v for k, v in cam.items() if k != "fitted"}}
     if not isinstance(cam, dict) or "eye" not in cam or "target" not in cam:
-        raise ValueError('camera needs {"eye": [x, y, z] or [x, y], "target": [x, y, z] or [x, y], "fov"?: deg}')
+        raise ValueError('camera needs {"eye": [x, y, z] or [x, y], "target": [x, y, z] or [x, y], "fov"?: deg} '
+                         'or {"fitted": "<label>"} (fit_concept_camera)')
     cam = dict(cam)
     eye, target = [float(x) for x in cam["eye"]], [float(x) for x in cam["target"]]
     if len(eye) == 2:
