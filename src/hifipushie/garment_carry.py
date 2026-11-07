@@ -2,7 +2,8 @@
 
 Why: every change to step 1 (parts) marked steps 2 (style) and 3 (measure) stale, so the agent re-sent unchanged steps
 by hand (3 extra calls per parts change, x3 garments). garment_record's rule (T1) stays: a step is STALE when the step
-before it changed since it was written. What's new: right after garment_plan writes step N (0 or 1), each later done step
+before it changed since it was written. What's new: right after garment_plan writes step N (0, 1 or 2: C390, t s2-5's
+step-2 retake left step 3 stale with nothing to redo), each later done step
 whose SAVED content still validates against the new steps is carried forward: re-stamped (its `inputs` set to the step
 before it's current digest, `carried` = {from, t}); its digest (status + output + gate) is unchanged, so an approval and
 the steps after it stay as they were. The first step that no longer validates stops the carry: it stays (or is marked)

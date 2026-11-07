@@ -375,7 +375,7 @@ def write(model: str, garment: str, step: str, plan: dict, look: bool = True) ->
     ref = p["views"][0]["image"] if sid == "0" else None
     st = gr.write(model, garment, sid, "done", output=p, reference=ref, by="garment_plan")
     from . import garment_carry as gc  # (later steps that still validate are re-stamped, not left stale: F2)
-    carried = gc.carry(model, garment, sid) if sid in ("0", "1") else []
+    carried = gc.carry(model, garment, sid) if sid in ("0", "1", "2") else []  # (step 2 too: C390)
     paths = []
     if look:
         from . import garment_plan_look as gl
