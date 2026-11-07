@@ -55,6 +55,6 @@ DRIFT FOUND (Joe 2026-11-03): from F4 the build placed WHOLE pieces then correct
 block-in map) instead of steps 5-6 as agreed: chains at exact lengths first, surfaces filled between. Rebuild 5-6 as agreed.
 METHOD NOW (Joe 2026-11-03): one STEP per blind trial (/mnt/data/hifipushie/trials/s<step>-<n>/: hp client pinned to main),
 judged with Joe beside the reference, fixed, rerun, then the next step; tests run once when a step is declared done.
-APPROVED (Joe): hussar 0-4 (s0-7, s1-7, s2-4, s4-14 step 3 retake + draft; trials/s4-14/ws; C377-C384); suit jacket 0-4
-(s4-6; trials/s4-6/ws). OPEN: s4-6 re-gated fails marks_placed (4) and girths (waist 76 tight); fold-cut piece for step 1's
-halves handled to step 4 only; fall vs neck/gorge. NEXT (Joe's call): hussar step 5 (s5-1), or redo the jacket's step 4.
+APPROVED (Joe): hussar 0-4 (s4-14; trials/s4-14/ws; C377-C384). Suit jacket: step 0 retaken s0-10 (worn open: waist/hips/
+hem read buttoned; C388-C389; trials/s0-10/ws), step 1 carried; steps 2-3 STALE (step 2 rows[8] target must name a step-0
+height), step 4 todo (s4-18 drafted, C385-C387). NEXT: jacket step 2 retake of rows[8] (s2-5), then step 4 redo.
