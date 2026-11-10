@@ -737,3 +737,16 @@ def test_planned_folds_row():
     assert r["status"] == "FAIL" and "fold 'collar_roll' on collar (c); the draft declares none" in r["why"]
     assert fb.wear({"bends": lapel})["lapel_roll.L"] == {"on": "front.L", "fold": "lapel_roll", "turn_deg": 170,
                                                          "lies_on": "front.L"}
+
+
+def test_seam_links_row_fails_what_the_build_refuses():
+    """C395: step 4 FAILs a seam whose two sides differ past chain_core.SEAM_LINK_MM over one link (the hussar's
+    approved draft was refused at step 5 for 4.9 mm at the underarm while step 4's truing row was INFO)."""
+    import numpy as np
+    from test_chain_loops import _pattern
+    from hifipushie import draft_links
+    pat, vid = _pattern({"a": (0.0, 0.2, 0.0, 0.05, 11, 3), "b": (0.0, 0.2, 0.05, 0.1, 11, 3)}, sew_rows=[("a", -1, "b", 0)])
+    assert draft_links.row(pat.M)["status"] == "PASS"
+    pat.M["uv"][vid("b", 10, 0), 0] += 0.006  # (one side's last link 6 mm longer: the corners don't meet)
+    r = draft_links.row(pat.M)
+    assert r["status"] == "FAIL" and "a / b: one side 20.00 mm, the other 26.00 mm" in r["why"] and r["back_to"] == "4"

@@ -25,6 +25,8 @@ REST = 0.1  # weight of the light rest pull (contact itself is 5)
 CAP = 0.02  # thread cap of soft cloth (pattern_form.FIT_THREAD_CAP)
 SHEAR_LIMIT = 0.27  # the weave's own limit on a mesh edge (zozo_hang.woven_limit, 2 % threads, jam 35 deg)
 OPEN_SPREAD = 1.7  # default open wear: the collar points this many neck widths apart
+SEAM_LINK_MM = 3.0  # mm a seam's two sides may differ over one link: the build refuses past it (one link can't be two
+# lengths); step 4's flat gate FAILs the same number (draft_links.py, C395), so no approved pattern is refused at step 5
 MAX_FREE_PCT = 2.0  # % a free chain link may read off its cut at a stage's end before the build is refused
 
 

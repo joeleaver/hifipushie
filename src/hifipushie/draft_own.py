@@ -522,7 +522,7 @@ def gate(B: dict, decl: dict, step1: dict, stand_ref: dict | None = None, step3:
         jn = cc.junctions(B)
         off = [j for j in jn if not j.get("ok", True)]
         rows.append({"id": "truing", "status": "INFO", "value": f"{len(off)} of {len(jn)} seam ends not trued",
-                     "target": "info: drafts are auto-trued in the build", "why": "; ".join(str(j.get("at", j))[:60] for j in off[:4])})
+                     "target": "info: seam ends not meeting square (what the build refuses is the seam_links row, C395)", "why": "; ".join(str(j.get("at", j))[:60] for j in off[:4])})
     except (KeyError, ValueError, TypeError) as x:
         rows.append({"id": "truing", "status": "INFO", "value": "n/a", "why": str(x)[:120]})
     from . import draft_shape
