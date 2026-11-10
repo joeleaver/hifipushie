@@ -99,8 +99,7 @@ def test_a_waistband_is_a_band_on_the_waist_loop_at_its_seam():
     pat, vid = _trousers()
     b = cg.GarmentBuild(pat, body, {"state": "closed"}, log=lambda *_: None)
     assert b.roles.rings == ["waistband"] and b.roles.band is None
-    b.stiff_stage()  # (no band: nothing on the neck, never self.sb)
-    b.rings()
+    b.stiff_rest()  # (no band: nothing on the neck, never self.sb; C399: the one stiff sequence, rings in it)
     rd = b.reads["rings"]["waistband"]
     assert rd["body_loop"] == "its seam's height" and abs(rd["z_mm"] - 1100) < 1  # (hps z + the body piece's top y)
     X = b.X[b.net.verts("waistband")]
@@ -115,8 +114,7 @@ def test_a_belt_sewn_to_nothing_sits_where_the_torso_takes_its_length_and_a_shor
     pat, _ = _pattern({"strap": (-0.47, 0.47, 0.0, 0.035, 25, 3)}, stiff=["strap"], closures=[("strap", (1, 1), (23, 1))])
     b = cg.GarmentBuild(pat, body, {"state": "closed"}, log=lambda *_: None)
     assert b.roles.rings == ["strap"] and not b.roles.panels
-    b.stiff_stage()
-    b.rings()
+    b.stiff_rest()  # (C399: stiff_stage + rings are the one stiff sequence)
     rd = b.reads["rings"]["strap"]
     assert "nearest the waist" in rd["body_loop"] and abs(rd["z_mm"] - 1100) < 40 and rd["min_gap_mm"] > 2.0
     short, _ = _pattern({"strap": (-0.3, 0.3, 0.0, 0.035, 25, 3)}, stiff=["strap"], closures=[("strap", (1, 1), (23, 1))])
@@ -169,8 +167,7 @@ def test_a_held_stiff_edge_past_its_cut_is_counted():
     body = _lathe()
     pat, _ = _trousers()
     b = cg.GarmentBuild(pat, body, {"state": "closed"}, log=lambda *_: None)
-    b.stiff_stage()
-    b.rings()
+    b.stiff_rest()  # (C399: stiff_stage + rings are the one stiff sequence)
     net = b.net
     bv = net.verts("body")  # (the soft cloth hung straight down from the band, every free link at its cut)
     top = bv[net.uv[bv, 1] > net.uv[bv, 1].max() - 1e-6]
@@ -214,8 +211,7 @@ def test_a_bands_lap_past_its_marks_keeps_every_length():
     body = _lathe()
     pat, _ = _pattern({"strap": (-0.55, 0.55, 0.0, 0.035, 29, 3)}, stiff=["strap"], closures=[("strap", (2, 1), (26, 1))])
     b = cg.GarmentBuild(pat, body, {"state": "closed"}, log=lambda *_: None)
-    b.stiff_stage()
-    b.rings()
+    b.stiff_rest()  # (C399: stiff_stage + rings are the one stiff sequence)
     net = b.net
     v = net.verts("strap")
     k = np.isin(net.edges[:, 0], v) & np.isin(net.edges[:, 1], v)

@@ -1,10 +1,9 @@
 """CHAIN FALL: stages 2 and 6 of the chain build on the neck (chain_garment.py's docstring is the spec): the FALL on the
-held band (roll line, outer edge, ends), the stiff parts' surfaces between their fixed chains, and stiff_parts (band then
-fall). Moved out of chain_garment.py as a mixin of Build (R3a, behaviour-preserving)."""
+held band (roll line, outer edge, ends), the stiff parts' surfaces between their fixed chains.
+Moved out of chain_garment.py as a mixin of Build (R3a, behaviour-preserving)."""
 from __future__ import annotations
 
 import math
-import time
 
 import numpy as np
 from scipy.spatial import cKDTree
@@ -78,8 +77,6 @@ class FallStages:
             (-up[jv] * math.cos(fallang) + out[jv] * math.sin(fallang)) + out[jv] * 0.004 * (dv > droll)[:, None]
         rootset = np.isin(rs[cv], rs[neck])
         self.X[rs[cv[~rootset]]] = P[~rootset]
-        if self.wear["state"] == "open":
-            pass  # (the leaves start from the band's own shape: the start above follows the open band)
         chains = dict(roll=roll, outer=outer, endL=endL, endR=endR)
         I, J, L, E = [], [], [], []
         for o in chains.values():
@@ -101,7 +98,7 @@ class FallStages:
             # wrap over the band (neck -> roll) may shorten where it curves.
             for a, b, lf in ((across(i, neck), roll[i], False), (roll[i], across(i, outer), True)):
                 pairs.append((a, b))
-                exact.append(lf or (self.wear["state"] == "open" and bool(min(self.X[rs[a], 1], self.X[rs[b], 1]) > hpsy - 0.01)))
+                exact.append(lf or (not self.band_tied and bool(min(self.X[rs[a], 1], self.X[rs[b], 1]) > hpsy - 0.01)))
         mid = roll[int(np.argmin(np.abs(uv[roll, 0])))]
         for ec, oc in ((endL, 0), (endR, len(outer) - 1)):
             for k in (3, 6, 10, 15):  # each point keeps its cut corner
@@ -166,7 +163,7 @@ class FallStages:
             mj = cKDTree(uv[neg] * [-1, 1]).query(uv[pos])[1]
             for a, j in zip(pos, mj):
                 rows += [([a, neg[j]], [1.0, 1.0], 0, 0.0, 1.0), ([a, neg[j]], [1.0, -1.0], 1, 0.0, 1.0), ([a, neg[j]], [1.0, -1.0], 2, 0.0, 1.0)]
-        if self.wear["state"] == "open":
+        if not self.band_tied:  # (its band's own closure undone: the points spread as step 2 plans)
             nbody = self.body.V
             zc = self.X[rs[st[len(st) // 2]], 2]
             nb_ = nbody[(np.abs(nbody[:, 2] - (zc - 0.02)) < 0.004) & (np.abs(nbody[:, 0]) < 0.1) & (nbody[:, 1] > yc - 0.1) & (nbody[:, 1] < yc + 0.1)]
@@ -322,18 +319,3 @@ class FallStages:
                 Xn[v] = 0.6 * X[v] + 0.4 * X[nbB[int(v)]].mean(0)
             X[svb] = Xn[svb]
         self.X = _keep_roots(net, X)
-
-    def stiff_parts(self):
-        """Stages 1-2 (+ open): the band and its fall, chains then surfaces."""
-        t0 = time.time()
-        self.band_closed()
-        self.reads["closed_band_s"] = round(time.time() - t0, 1)
-        self.closed_stiff = None
-        if self.roles.band is None:
-            return
-        if self.wear["state"] == "open":
-            self.band_open()
-        self.fall_build()
-        self.fill_band()
-        self.fall_surface()
-        self.reads["stiff_s"] = round(time.time() - t0, 1)

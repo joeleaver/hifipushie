@@ -3,29 +3,41 @@ one way a garment is started (Joe 2026-11-01: "that should be the only path avai
 clothing"). Input: a pattern (the flat mesh dict) and a body (V, T, at). A fit's positions are never read: Pattern
 carries only PATTERN_KEYS, so a fit has no way in.
 
-ROLES come from the pattern, not from names (read_roles): a piece with a "roll" fold is a FALL; the wholly interfaced piece
-it is sewn to is its BAND; other wholly interfaced pieces closed on themselves are RINGS (cuffs, waistbands); a soft piece
-sewn to itself is a TUBE (sleeves); other soft pieces are PANELS wrapped round the torso. A closure between two pieces is
-the FRONT. A role the core can't build is refused by name; there is no fallback to another path.
+ROLES come from the pattern's construction, never from names (read_roles, chain_holds.read): a stiff piece with a "roll"
+fold is a FALL; the wholly interfaced piece it is sewn to is its BAND; a stiff part sewn along the body cloth's neckline
+with nothing on it is a STAND (chain_roles.neck_part); other wholly interfaced pieces closed on themselves are RINGS
+(cuffs, waistbands); a soft piece sewn to itself is a TUBE (sleeves); other soft pieces are PANELS wrapped round the
+torso. A closure between two pieces is the FRONT. A role the core can't build is refused by name; no fallback path.
 
-THE ORDER (each from a visible fault; C259-C262): stiff parts first, soft parts hang from them, never the reverse.
-THE STATE (T7, C287; chain_plan.py): built straight into the garment record's style plan (step 2): each closure in its
-planned state, the plan's bend targets (collar spread) as the stages' targets; wear is derived from the plan (a
-contradicting wear is refused); no closed garment is built and then styled open.
-1. BAND: chains + exact lines, its pressed ring of its own button-to-buttonhole length, resting on the high points
-   (chain_rest.rest_ring, C280). Stiff all along (pattern's interfacing), keeps its own shape: can't sink in plus a light
-   rest pull, never follows the surface. Closed band: closed on its own button.
-   Open band: the pressed curve kept round the back, relaxed straight past the side necks, started from a swung-open
-   guess; the sewn front is limited: every neck-edge point at most its cut distance from the first fastened button
-   (its start on the torso: nothing soft is built yet). Worn straight = mirror symmetric.
-2. FALL on the held band: roll line, outer edge, ends: exact chains; lines across may shorten where the leaf curves, full
-   width where it lies flat at the back; the point's triangle is rigid. Outside faces out.
-3. RINGS: a stiff circle of the piece's own closed length, where the tube's own length reaches, clear of the body.
+THE ORDER (R3c, C399; each from a visible fault, C259-C262): ONE sequence for every garment, read from what holds what
+(chain_holds.read): stiff parts first, in Holds' order, each resting on what is under it; soft parts hang from them,
+never the reverse. run() branches on no worn state and no role (tests/test_chain_one_build.py reads its source).
+THE STATE (T7 C287, R1 C391, R3c C399; chain_plan.py, closure_ties.py): the worn state is only which closure pairs are
+tied (step 2's ties): any set, none included. A tied pair is held a layer apart (a zip's teeth edge to edge); an edge
+neither sewn nor tied is FREE: its own lengths and the body as a floor, nothing else (an open front's edges lie where
+their cloth reaches). wear["state"] is a derived label (the job's directory, the texts); the build never reads it. The
+plan's bend targets (collar spread) are the stages' targets. Draped pieces (step 1's hang "draped") are still their own
+input, chain_drape: R3e folds them into this sequence.
+1. A STIFF PART ON THE NECKLINE (rest_part): the ring of its own neckline length resting on the high points
+   (chain_rest.rest_ring, C280): chains + exact lines, stiff all along, keeps its own shape (can't sink in, a light rest
+   pull, never follows the surface). With a part sewn on top (a fall) its top is that seam (band_closed); nothing on top,
+   it stands with its own top edge (stand_ring). Its own closure TIED: closed on its own button. UNTIED (band_untied): the
+   pressed curve kept round the back, relaxed straight past the side necks, started swung open; the sewn fronts held to
+   the topmost TIED front pair (started on the torso: nothing soft is built yet), and with none tied held by nothing.
+   A stand's neck ends meet where the front's top pair is tied. Worn straight = mirror symmetric.
+2. A PART RESTING ON A PART (a fall on its band): roll line, outer edge, ends: exact chains; lines across may shorten
+   where the leaf curves, full width where it lies flat at the back; the point's triangle is rigid. Outside faces out.
+   Its band untied: its points spread as the plan's bend says.
+3. A STIFF PART RESTING ON THE BODY ELSEWHERE (RINGS): a stiff circle of its own closed length, where the tube's own length
+   reaches, clear of the body (a centre ring round the torso: chain_loops.body_ring).
 4. SOFT NETWORK: panels wrapped on a garment-sized ring per height (the torso's convex section, offset until its perimeter
-   is the pattern's width there), tubes on the limb's axis at the pattern's width. Sewn points one node, stiff nodes held,
-   chains + lines projected with the body as a floor: the start is legal by construction, nothing is pushed afterwards.
-5. PLACKETS (open): a stiff strip folds out of plane along a solved crease through the first fastened button (in-plane
-   rotation stretches); the fold acts on the real shape so nothing jumps at the crease; over side over under side.
+   is the pattern's width there), each at its own width; tubes on the limb's axis at the pattern's width. Sewn points one
+   node, stiff nodes held, tied pairs tied, chains + lines projected with the body as a floor: the start is legal by
+   construction, nothing is pushed afterwards. Plies follow their hosts (chain_holds.place_plies).
+5. PLACKETS (fold_plackets): only through a TIED pair an untied band was held to: a stiff strip folds out of plane along
+   a solved crease through it (in-plane rotation stretches) so its top reaches the band's ends apart; over side over
+   under side. No tied pair held apart (band done up, or nothing tied): no fold. Then a fall rests on the soft cloth
+   under it, and the soft cloth is solved again under the fall.
 6. SURFACES fill between fixed chains (fold turn: a half circle of the pattern's radius round the band top; the band stays
    under the fall; corner patch at the leaf's neck end).
 7. STRUCTURE (chain_structure.py, C279): the BUILD is measured beside the reference before any hang: the collar's
@@ -71,17 +83,25 @@ class Build(BandStages, FallStages):
 
     def __init__(self, pattern: Pattern, body: Body, wear: dict | None = None, log=print):
         self.pat, self.body, self.log = pattern, body, log
-        self.wear = {"state": "closed", "spread": OPEN_SPREAD, **(wear or {})}
+        from .chain_plan import apply_tie, ties_of_wear
+        from .chain_roles import neck_part
+        self.wear = ties_of_wear({"state": "closed", "spread": OPEN_SPREAD, **(wear or {})})  # (no record: wear as ties)
         self.net = Network(pattern.M, pattern.stiff, pattern.bend)
         self.roles = read_roles(self.net)
         self.holds = self.roles.holds  # (R3b chain_holds: plies follow their host, floating layers stiffen theirs)
-        if self.wear.get("ties"):  # (R1 C391: step 2's ties: exactly the fastenings the plan does up)
-            from .chain_plan import apply_tie
-            self.roles.front = apply_tie(self.roles.front, self.wear.get("front_tie"), self.net.uv)
-            self.roles.band_closure = apply_tie(self.roles.band_closure, self.wear.get("band_tie"), self.net.uv)
         self.X = np.zeros((self.net.n, 3))
         self.held = np.zeros(self.net.n, bool)
+        self.axes: dict = {}
         self.reads: dict = {"seam_truing": self.net.seam_mismatch()}
+        self.neck = neck_part(self)  # (R3c: the stiff part on the neckline, by construction: chain_roles.neck_part)
+        # (R1 C391, R3c C399: step 2's ties, exactly the fastenings the plan does up; any set, none included)
+        self.roles.front = apply_tie(self.roles.front, self.wear.get("front_tie"), self.net.uv)
+        self.roles.band_closure = apply_tie(self.roles.band_closure, self.wear.get("band_tie"), self.net.uv)
+        # its own closure done up: as its tie says; no tie in the wear (no record, wear "closed") is done up, as it always
+        # was (the pattern's own drawn state of the band closure was never the wear)
+        bc, bt = self.roles.band_closure, self.wear.get("band_tie")
+        self.band_tied = bool(bc) and (bt is None or bt.get("legacy") == "closed" or all(bc.get("closed") or [True]))
+        self.band_hold = None  # (the topmost tied front pair an untied band is held to: chain_band.band_untied)
         m = float(self.net.link_cut[:, 1].sum()) and self.net.seam_mismatch()["max_pct"]
         if self.reads["seam_truing"]["max_mm"] > SEAM_LINK_MM:
             raise ChainRefused(f"a seam's two sides differ by {self.reads['seam_truing']['max_mm']} mm over one link: "
@@ -135,37 +155,46 @@ class GarmentBuild(SoftStages, StiffStages, HangJob, Build):
 
     # ---- the whole build (the stages: chain_band, chain_fall, chain_soft, chain_stiff; the hang: chain_jobs)
     def run(self):
-        """Built straight into the planned state (T7, chain_plan.py): an open band is built open, never closed first."""
+        """THE ONE BUILD (R3c, C399; THE ORDER): stiff parts in chain_holds' order, each placed by what it rests on and
+        tied as its own tie says; then the soft cloth, tied exactly where step 2 ties it (any set of pairs, none
+        included), every edge neither sewn nor tied free; plies follow their hosts. No branch on a worn state or a role.
+        Draped pieces (step 1's hang "draped") are still their own input, chain_drape (R3e folds them in)."""
         t0 = time.time()
-        if getattr(self, "drape", None):  # (T13 C297: draped pieces: the held line built, the free cloth a start to fall from)
+        if getattr(self, "drape", None):  # (T13 C297: an INPUT, not a mode: step 1's draped pieces, R3e folds them in)
             from .chain_drape import build_drape
             build_drape(self, t0)
-        elif self.roles.stand:  # (a stand collar: nothing turned over it, its own closure open or closed; T8 C289)
-            from .chain_roles import build_stand
-            build_stand(self, t0)
-        elif self.wear["state"] == "open" and self.roles.band and self.roles.front:
-            from .chain_plan import build_open
-            build_open(self, t0)
         else:
-            if self.wear["state"] == "open":
-                raise ChainRefused("open wear needs a band and a front closure in the pattern: next: build it closed")
-            self.stiff_stage()
-            self.rings()
-            self.reads["stiff_closed_s"] = round(time.time() - t0, 1)
-            self.soft_net()
-            self._rest_fall()
+            self.stiff_rest()  # 1-3: bands, stands, falls, rings, each resting on what is under it, tied as its tie says
+            self.reads["stiff_s"] = round(time.time() - t0, 1)
+            self._hold_tied()  # the tied pair an untied band was held to stays there (none: nothing more is held)
+            self.soft_net()  # 4: the soft cloth, tied exactly where step 2 ties it; free edges free
+            self._fold_then_rest()  # 5: plackets fold through tied pairs only; a fall rests on the cloth under it
         self.reads["chains"] = self.chain_read(self.X)
         self.reads["seam_gap_mm"] = round(self.net.seam_gap(self.X), 3)
         self.reads["build_s"] = round(time.time() - t0, 1)
         return self.X
+
+    def _hold_tied(self):
+        """The topmost tied front pair stays where the untied band was held to it: left free, the soft cloth carried it
+        10 mm down and 14 mm out, the fronts' neck-to-button reach ran 12.6 mm past its cut and the plackets tore (T7).
+        No such pair (the band done up, or nothing tied): nothing extra is held."""
+        if self.band_hold is not None:
+            self.extra_held = np.zeros(self.net.n, bool)
+            self.extra_held[list(self.band_hold)] = True
+
+    def _fold_then_rest(self):
+        far_z = self.fold_plackets()
+        self._rest_fall(far_z)
+        self.stay_v = None
+        self.thread_read_all()
 
     # ---- plies follow their host after every stage that places one (R3b, chain_holds.place_plies)
     def stiff_last(self):
         super().stiff_last()
         self._plies()
 
-    def rings(self):
-        super().rings()
+    def rings(self, only=None):
+        super().rings(only)
         self._plies()
 
     def soft_net(self, start=None, far_z=None):

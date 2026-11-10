@@ -187,11 +187,14 @@ class SoftStages:
         return w
 
     # ---- 3. rings
-    def rings(self):
+    def rings(self, only=None):
+        """Each stiff ring resting on the body (all of R.rings, or `only` these): round the limb its tube goes round, or
+        round the body (chain_loops.body_ring)."""
         net, R = self.net, self.roles
-        self.axes = {}
-        self.reads["rings"] = {}
-        for ring in R.rings:
+        if not hasattr(self, "axes"):
+            self.axes = {}
+        self.reads.setdefault("rings", {})
+        for ring in (R.rings if only is None else only):
             side = hand_of(ring)
             if side == 0:  # (F1: a centre ring is a stiff band on a body loop: a waistband by its seam, a belt by its length)
                 from .chain_loops import body_ring
@@ -389,7 +392,7 @@ class SoftStages:
         stiff_v = self._stiff_mask()
         if getattr(self, "extra_held", None) is not None:
             stiff_v = stiff_v | self.extra_held
-        if getattr(self, "stay_v", None) is not None:  # (open wear: the buttoned cloth below the first button stays as built)
+        if getattr(self, "stay_v", None) is not None:  # (a placket fold: the tied cloth below its pair stays as built)
             stiff_v = stiff_v | self.stay_v
         held = np.zeros(net.n, bool)
         held[rs[stiff_v]] = True

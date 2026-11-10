@@ -11,15 +11,11 @@ top or by share along it); open / closed / partly are only their summary. Bends 
 target; ratio of the neck width, mm, or px over the plan's neck_width row). With a record the plan wins: a `wear` or an
 `opening` that contradicts it is refused by name. No record (or no step-2 state): the arguments, as before.
 
-build_open(): the open build, straight. The band is solved once as its pressed ring (its rest shape: the band as cut and
-pressed, never a state anything is built on), then opened (band_open) against the first fastened button's start on the
-torso; the fall, rings and soft cloth are built under the open band, fastened only where the plan fastens; the plackets
-fold on that cloth. No closed garment is built first (it was: stiff + soft closed, then restyled open)."""
+R3c (C399): there is no open build and no closed build, only chain_garment.GarmentBuild.run's one sequence, which ties
+exactly the pairs these ties name (apply_tie). wear["state"] is a derived label (the job's directory, status texts):
+nothing in the build branches on it. Refused only: an argument that contradicts the plan, a tie the pattern can't make
+(apply_tie's count check), an old record's "partly" that names no first button (which pairs is unknown)."""
 from __future__ import annotations
-
-import time
-
-import numpy as np
 
 class PlanContradiction(ValueError):
     """The arguments and the style plan disagree, or the plan asks for a state no stage builds."""
@@ -65,10 +61,8 @@ def planned_wear(plan: dict | None, wear: str | None = None, opening: float | No
             band = (c, x)
         elif x.get("read") == "front_state":
             front = (c, x)
-        elif s != "closed":
-            bad.append(f"ties.{c}: a fastening left undone; no chain stage builds that on this closure yet (a ring closes on "
-                       "its own button; R3, docs/proposals/step5_one_build.md)")
-    derived = "closed" if not band or band[1]["state"] == "closed" else "open"  # (the band pipeline's own switch, until R3)
+        # (C399: any other closure left undone is built as its tie says; it was refused, "no chain stage builds that")
+    derived = "closed" if not band or band[1]["state"] == "closed" else "open"  # (a LABEL only: the job's dir, the texts)
     from . import fold_bends
     w = {"state": derived, "plan": {c: x.get("state") for c, x in states.items()},
          "ties": {c: x["tie"] for c, x in states.items()}}
@@ -79,18 +73,13 @@ def planned_wear(plan: dict | None, wear: str | None = None, opening: float | No
     if front:
         c, x = front
         w["front_tie"] = x["tie"]
-        if x["state"] == "open":
-            bad.append(f"ties.{c}: none of its fastenings done up; no chain stage lays a front with nothing tied yet (R3, "
-                       "docs/proposals/step5_one_build.md); never plan a tie the reference doesn't show to get past this")
-        elif x["state"] == "partly":
-            t = x["tie"]
-            if t.get("legacy") == "partly" and not (isinstance(t.get("fastened_from"), int) and t["fastened_from"] >= 1):
-                bad.append(f"state.{c} partly (an old record): name the first fastened button, fastened_from=<1 = the top "
-                           "button>, or write ties (C391)")
-            elif derived == "closed":
-                bad.append(f"ties.{c}: a front fastening undone under a band done up; no stage builds that yet (R3)")
+        # (C399: a front with nothing tied, or partly tied under a band done up, is built: its untied edges are free)
+        t = x["tie"]
+        if t.get("legacy") == "partly" and not (isinstance(t.get("fastened_from"), int) and t["fastened_from"] >= 1):
+            bad.append(f"state.{c} partly (an old record): name the first fastened button, fastened_from=<1 = the top "
+                       "button>, or write ties (C391)")
     if bad:
-        raise PlanContradiction("the style plan asks for what no chain stage builds: " + "; ".join(bad) +
+        raise PlanContradiction("the style plan's ties can't be read: " + "; ".join(bad) +
                                 ". next: change step 2 (garment_plan)")
     why = (f"ties.{band[0]} {band[1]['state']} ({band[1].get('source', '')})" if band else
            "no band closure in the plan: closed")
@@ -113,8 +102,8 @@ def planned_wear(plan: dict | None, wear: str | None = None, opening: float | No
 
 def apply_tie(closure: dict | None, tie: dict | None, uv) -> dict | None:
     """A closure's pairs tied as step 2's tie says (closure_ties.tied: by number from the top, or by share along it).
-    A front keeps its pairs from the first tied one down (the build lays the cloth above it from the band, as a front
-    fastened from that button); every pair after it is tied or left undone as the plan says. None tied: refused."""
+    Every pair is kept, each marked tied or not (`closed`): the build ties only those, and none tied is a closure whose
+    edges are free (C399; it was refused, and the pairs above the first tied one were dropped)."""
     from . import closure_ties as ct
     from .chain_garment import ChainRefused
     if not closure or tie is None or tie.get("legacy") == "closed":  # (an old record's closed: the pattern's pairs as they were)
@@ -128,68 +117,30 @@ def apply_tie(closure: dict | None, tie: dict | None, uv) -> dict | None:
     if "fastened" in tie and tie.get("of") not in (None, len(v)):
         raise ChainRefused(f"ties.{closure.get('name', 'closure')}: the plan counts {tie['of']} fastenings, the pattern has "
                            f"{len(v)} pairs. next: change step 2 (garment_plan) or step 4 (the closure's marks)")
-    mask = ct.tied(tie, shares)
-    if not any(mask):
-        raise ChainRefused(f"ties.{closure.get('name', 'closure')}: none tied (R3). next: change step 2 (garment_plan)")
-    k = mask.index(True)
-    return dict(closure, v=v[k:], closed=mask[k:])
+    return dict(closure, v=v, closed=ct.tied(tie, shares))
 
 
-def button_start(b) -> np.ndarray:
-    """Where the first fastened button starts, before any soft cloth: its cut distance below the front's neck point (sewn
-    to the band, already built), down the body's centre front, a gap and a layer off it. (cf_shirt: the closed build's
-    button sat 90 mm (cut) below the neck point; the torso-ring start put it 39 mm lower and 20 mm forward, and the
-    band opened against it stretched its links 9x.)"""
-    from .chain_garment import GAP, LAYER
-    net, R = b.net, b.roles
-    p, bv = R.front["over"], R.front["v"][0]
-    bvp = bv[0] if net.piece[bv[0]] == net.pid(p) else bv[1]
-    sew = list(b.sewn_with(p, R.band))
-    L = np.linalg.norm(net.uv[sew] - net.uv[bvp], axis=1)
-    top = b.X[net.root[sew[int(np.argmin(L))]]].copy()
-    ys = np.arange(top[1] - 0.15, top[1] + 0.15, 0.001)
-    for z in np.arange(top[2], top[2] - 3 * L.min(), -0.002):
-        P = np.c_[np.zeros(len(ys)), ys, np.full(len(ys), z)]
-        near = np.where(b.body.contact.query(P)[0] <= GAP + LAYER)[0]  # the front surface: the first point from the front
-        if not len(near):
-            continue
-        q = P[near[0]]
-        if np.linalg.norm(q - top) >= L.min():
-            return q
-    return np.array([0.0, top[1], top[2] - L.min()])
+def first_tied(closure: dict | None, uv) -> tuple | None:
+    """The topmost TIED pair of a closure (what used to be "the first fastened button"), None when none is tied: then
+    whatever was held to it is free (C399)."""
+    if not closure:
+        return None
+    v = [tuple(p) for p, c in zip(closure.get("v") or [], closure.get("closed") or []) if c]
+    return max(v, key=lambda p: float(uv[p[0]][1])) if v else None
 
 
-def build_open(b, t0: float) -> None:
-    """The open build, straight (module doc). b: a chain_garment.GarmentBuild with wear state "open"."""
-    net, R = b.net, b.roles
-    b.wear["state"] = "open"
-    b.band_closed()  # the band's pressed ring: its rest shape (band_open keeps its curve round the back)
-    b.reads["band_ring_s"] = round(time.time() - t0, 1)
-    bv = R.front["v"][0]
-    b.X[net.root[bv[0]]] = b.X[net.root[bv[1]]] = button_start(b)  # (nothing soft is built yet)
-    b.reads["button_start_mm"] = [round(float(c) * 1e3, 1) for c in b.X[net.root[bv[0]]]]
-    b.band_open()  # the band in its planned state: ends apart, the sewn fronts tied to the first fastened button
-    b.fall_build()
-    b.fill_band()
-    b.fall_surface()
-    b.stiff_last()
-    b.rings()
-    b.reads["stiff_open_s"] = round(time.time() - t0, 1)
-    # the first fastened button stays where the open band was tied to it: left free, the soft cloth carried it 10 mm down
-    # and 14 mm out, the fronts' neck-to-button reach ran 12.6 mm past its cut and the plackets tore (T7)
-    b.extra_held = np.zeros(net.n, bool)
-    b.extra_held[list(bv)] = True
-    b.soft_net()  # the soft cloth under the open band, fastened only where the plan fastens
-    Xs = b.X.copy()
-    b.X = b.plackets(Xs)
-    bz = float(Xs[net.root[bv[0]], 2])
-    b.reads["first_fastened_z_mm"] = round(bz * 1e3, 1)
-    b.stay_v = np.isin(net.piece, [net.pid(p) for p in R.panels]) & (Xs[:, 2] < bz - 0.02)
-    b.soft_net(start=b.X.copy(), far_z=bz - 0.03)
-    b.under_cloth = b._cloth_contact()
-    b.fall_build()
-    b.fall_surface()
-    b.stiff_last()
-    b.soft_net(start=b.X.copy(), far_z=bz - 0.03)
-    b.stay_v = None
-    b.thread_read_all()
+def top_tied(closure: dict | None, uv) -> bool:
+    """Its topmost pair is tied (a stand's neck ends meet over a front done up at its top)."""
+    v = [tuple(p) for p in (closure or {}).get("v") or []]
+    if not v:
+        return False
+    k = max(range(len(v)), key=lambda i: float(uv[v[i][0]][1]))
+    return bool((closure.get("closed") or [False] * len(v))[k])
+
+
+def ties_of_wear(wear: dict) -> dict:
+    """No record (no step-2 ties): the `wear` argument read as ties, as closure_ties.of_style reads an old record. "open"
+    is the band's own closure left undone, the front's pairs as the pattern has them; "closed" is every pattern pair."""
+    if wear.get("ties") or wear.get("state") != "open":
+        return wear
+    return dict(wear, band_tie={"fastened": [], "legacy": "open"})
