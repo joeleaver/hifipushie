@@ -691,6 +691,10 @@ def topology_parts(spec: dict, ctx: dict, out_dir: Path, log: list, high: Path |
             # its mouth round the teeth, and a blink or a jaw drags them out (dropped, the left lid's margin was a row
             # of spikes with the eyeball showing through: the eyes look a little apart, so one side lost more)
             hid &= np.asarray(r["gnm"]) < 0
+        if kind == "limbs":  # an opening's rings keep their faces under teeth and tongue: they show when it moves
+            for k_, ids in (r.get("rings") or {}).items():
+                if " rim" in k_ or " wall" in k_:
+                    hid[np.asarray(ids)] = False
         st = np.r_[0, np.cumsum(S)[:-1]]
         faces = [L[a:a + k] for a, k in zip(st, S)]
         kept = [f for f in faces if not hid[f].all()]
@@ -712,6 +716,11 @@ def topology_parts(spec: dict, ctx: dict, out_dir: Path, log: list, high: Path |
         path = out_dir / f"topology_{pn}.npz"
         extra = {"gnm": gk} if gk is not None else {}  # (one mesh: GNM vertex ids,
         # face shapes go by index)
+        if r.get("rings") and kind == "limbs":  # (limbs: the key rings' vertex ids, for quality and later passes;
+            # a ring the hidden drop broke is left out)
+            import json as _json
+            keep = {k: rm[np.asarray(v)].tolist() for k, v in r["rings"].items() if (rm[np.asarray(v)] >= 0).all()}
+            extra["rings"] = np.array(_json.dumps(keep))
         np.savez(path, verts=Vk, loops=Lk, sizes=Sk, **extra)
         out[pn] = (str(path), hashlib.sha1(Vk.tobytes() + Lk.tobytes()).hexdigest()[:12])
         log.append(f"{pn}: {'limb-loop' if kind == 'limbs' else 'wrapped'} topology, {len(Sk)} faces ({(Sk == 4).mean():.0%} quads, "
