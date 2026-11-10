@@ -55,5 +55,6 @@ block-in map) instead of steps 5-6 as agreed: chains at exact lengths first, sur
 METHOD NOW (Joe 2026-11-03): one STEP per blind trial (/mnt/data/hifipushie/trials/s<step>-<n>/: hp client pinned to main),
 judged with Joe beside the reference, fixed, rerun, then the next step; tests run once when a step is declared done.
 APPROVED (Joe): hussar 0-4 (s4-14/ws), jacket 0-4 (s4-19/ws). STEP 5 BLOCKED (s5-1): pipelines picked by closure state
-+ shirt roles. docs/proposals/step5_one_build.md: R1, R2, R3a, R3b DONE (C391-C394). To redo: both step 2s (OK'd); jacket
-step 4 drafts its collar roll; hussar step 4 trues its underarm (seam_links 4.87 mm, C395). NEXT: R3c one pipeline (Joe).
++ shirt roles. docs/proposals/step5_one_build.md: R1, R2, R3a, R3b, R3c DONE (C391-C395, C399). To redo: both step 2s;
+jacket step 4 drafts its collar roll; hussar step 4 trues its underarm (C395). Jacket chains wrecked by unplaced canvas
+layers, collar-ply and facing vertices at the origin. NEXT: place floating layers + plies (R3c-2), then R3d (Joe).
