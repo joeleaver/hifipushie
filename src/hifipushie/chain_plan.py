@@ -69,8 +69,11 @@ def planned_wear(plan: dict | None, wear: str | None = None, opening: float | No
             bad.append(f"ties.{c}: a fastening left undone; no chain stage builds that on this closure yet (a ring closes on "
                        "its own button; R3, docs/proposals/step5_one_build.md)")
     derived = "closed" if not band or band[1]["state"] == "closed" else "open"  # (the band pipeline's own switch, until R3)
+    from . import fold_bends
     w = {"state": derived, "plan": {c: x.get("state") for c, x in states.items()},
          "ties": {c: x["tie"] for c, x in states.items()}}
+    if fold_bends.planned(style):  # (R2 C392: each planned fold's turn, for R3's one crease turn)
+        w["folds"] = fold_bends.wear(style)
     if band:
         w["band_tie"] = band[1]["tie"]
     if front:

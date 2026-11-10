@@ -18,10 +18,13 @@ def check_style(p: dict, read: dict, parts: dict) -> dict:
     kinds = {r.get("id"): r.get("what") for r in p.get("rows") or [] if isinstance(r, dict)}
     for i, b in enumerate(p.get("bends") or []):
         w = f"bends[{i}] {b.get('id', '')}".strip()
+        _src(b, w, bad)
+        from . import fold_bends  # (R2 C392: a fold's turn as numbers; a bend in words only is refused)
+        if fold_bends.check(b, w, pieces, p.get("traces") if isinstance(p.get("traces"), list) else [], bad):
+            continue
         if str(b.get("on", "")).split(":")[0] not in names:
             bad.append(f"{w}.on {b.get('on')!r}: not a piece, detail or closure of the inventory")
         _target(b.get("target"), w, bad)
-        _src(b, w, bad)
         if b.get("what") is not None or "value" in (b.get("target") or {}):  # (C286: a numeric bend is judged too)
             sr.check_row(b, w, bad, kinds)
     from .garment_appearance import check_plan  # (T14: the appearance block: amounts from the story, step 9a reads it)

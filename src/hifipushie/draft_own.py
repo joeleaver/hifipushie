@@ -417,7 +417,7 @@ def block(pat: dict) -> dict:
 
 # ---------------------------------------------------------------- the flat gate
 def gate(B: dict, decl: dict, step1: dict, stand_ref: dict | None = None, step3: dict | None = None,
-         fit: dict | None = None, body: dict | None = None) -> list:
+         fit: dict | None = None, body: dict | None = None, step2: dict | None = None) -> list:
     """General flat rows: seams (each pair within its declared ease, else PLAIN_TOL), seam_ends (each seam's edges run
     the same way: draft_seam_ends.py), cut (every built inventory piece
     cut), sewn (every step-1 seam), closures (every step-1 closure declared; lapped edges line up), truing (INFO), and
@@ -526,6 +526,10 @@ def gate(B: dict, decl: dict, step1: dict, stand_ref: dict | None = None, step3:
     except (KeyError, ValueError, TypeError) as x:
         rows.append({"id": "truing", "status": "INFO", "value": "n/a", "why": str(x)[:120]})
     from . import draft_shape
+    from . import fold_bends
+    fr = fold_bends.draft_row(decl, step2)  # (R2 C392: every planned fold drafted, every roll planned)
+    if fr:
+        rows.append(fr)
     return rows + draft_shape.rows(B, dx, step1, stand_ref)
 
 

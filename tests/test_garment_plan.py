@@ -61,7 +61,8 @@ def _parts():
 
 def _style():
     return {"ties": {"front": {"fastened": [1, 2, 3], "of": 3, "source": "front view"}},
-            "bends": [{"id": "lie", "on": "front.L", "target": {"is": "flat"}, "source": "front view"}],
+            "bends": [{"id": "lie", "on": "front.L", "fold": "roll", "turn_deg": 0, "lies_on": "free",
+                       "source": "front view"}],
             "pose": {"name": "arms down", "source": "front view"},
             "rows": [{"id": "width", "what": "trim_lines_apart", "note": "the two binding lines apart",
                       "target": {"value": 0.5, "unit": "ratio", "of": "shoulder_width"},
@@ -146,6 +147,12 @@ def test_style_refusals_by_name(home):
     _refused(lambda: gp.write("m", "w", "style", s), "ties.front.fastened [0, 4]")
     s["ties"] = {"front": {"span": [0.6, 0.2], "source": "x"}}
     _refused(lambda: gp.write("m", "w", "style", s), "ties.front.span")
+    s = _style()  # (C392: a bend in words only is refused; a fold's numbers checked)
+    s["bends"] = [{"id": "flat", "on": "front.L", "target": {"is": "lies flat"}, "source": "x"},
+                  {"id": "roll", "on": "front.L", "fold": "roll", "turn_deg": 200, "lies_on": "sky", "trace": "nope",
+                   "source": "x"}]
+    _refused(lambda: gp.write("m", "w", "style", s), "bends[0] flat: a bend in words only", "turn_deg 200",
+             "lies_on 'sky'", "trace 'nope'")
     s = _style()  # (C391: a named state is refused, pointing at ties)
     s["state"] = {"front": {"state": "closed", "source": "front view"}}
     _refused(lambda: gp.write("m", "w", "style", s), "not a named state")

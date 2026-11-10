@@ -134,7 +134,7 @@ def test_tool_writes_step4_and_reads_steps_1_and_3(home, monkeypatch):
     monkeypatch.setattr(store, "load", lambda name: json.loads(json.dumps(saved.get(name) or {})))
     monkeypatch.setattr(store, "save", lambda name, spec, note="": saved.__setitem__(name, spec) or 1)
     _record(home)
-    assert set(gr.reads("tm", "g", "4")) == {"1", "3"}
+    assert set(gr.reads("tm", "g", "4")) == {"1", "2", "3"}  # (C392: step 2 too, for the planned folds)
     assert "reads" in gr.next_step(gr.load("tm", "g"))["uses"]
     sheet, txt = dot.run("tm", "g", RECT, DECL)
     assert "draft_pattern: PASS" in txt and Path(sheet).exists()
@@ -719,3 +719,21 @@ def test_s4_17_a_closures_holes_go_on_over_and_its_buttons_on_under():  # (t s4-
     mk = gdt.marks({"steps": {"1": {"output": s1}}}, M, {})
     assert mk["front_buttonholes"][0]["piece"] == "front.L" and mk["front_buttonholes"][0]["at"][0]["point"] == "hole1", mk
     assert mk["front_buttons"][0]["piece"] == "front.R" and mk["front_buttons"][0]["at"][1]["point"] == "btn2", mk
+
+
+def test_planned_folds_row():
+    """R2 (C392): every fold step 2 turns is declared on its piece by name; every declared roll has a planned turn."""
+    from hifipushie import fold_bends as fb
+    decl = {"folds": [{"name": "lapel_roll", "piece": "front", "line": ["a", "b"], "kind": "roll"},
+                      {"name": "hem", "piece": "sleeve", "line": ["c", "d"], "kind": "press"}]}
+    lapel = [{"id": f"lapel_roll.{s}", "on": f"front.{s}", "fold": "lapel_roll", "turn_deg": 170, "lies_on": f"front.{s}",
+              "source": "x"} for s in "LR"]
+    assert fb.draft_row(decl, {"bends": lapel})["status"] == "PASS"
+    assert fb.draft_row(decl, None) is None  # (no step 2 read: no row)
+    r = fb.draft_row(decl, {"bends": []})
+    assert r["status"] == "FAIL" and "roll fold 'lapel_roll' on front: no step-2 bend turns it" in r["why"]
+    r = fb.draft_row(decl, {"bends": lapel + [{"id": "c", "on": "collar", "fold": "collar_roll", "turn_deg": 175,
+                                               "lies_on": "collar", "source": "x"}]})
+    assert r["status"] == "FAIL" and "fold 'collar_roll' on collar (c); the draft declares none" in r["why"]
+    assert fb.wear({"bends": lapel})["lapel_roll.L"] == {"on": "front.L", "fold": "lapel_roll", "turn_deg": 170,
+                                                         "lies_on": "front.L"}
