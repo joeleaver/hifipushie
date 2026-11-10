@@ -54,7 +54,7 @@ DRIFT FOUND (Joe 2026-11-03): from F4 the build placed WHOLE pieces then correct
 block-in map) instead of steps 5-6 as agreed: chains at exact lengths first, surfaces filled between. Rebuild 5-6 as agreed.
 METHOD NOW (Joe 2026-11-03): one STEP per blind trial (/mnt/data/hifipushie/trials/s<step>-<n>/: hp client pinned to main),
 judged with Joe beside the reference, fixed, rerun, then the next step; tests run once when a step is declared done.
-APPROVED (Joe): hussar 0-4 (s4-14; trials/s4-14/ws; C377-C384). Suit jacket 0-4 (s0-10 step 0: worn open, waist/hips/
-hem read buttoned, C388-C389; s2-5 step 2, C390; s4-19 draft, C385-C387; trials/s4-19/ws). OPEN: fold-cut piece for step
-1's halves handled to step 4 only; the fall check compares the wrong edges for a notch collar (roll line, not neck seam;
-s4-19 raised collarSpread 13 -> 33 on it: watch at step 5); step 2's top button may sit 2-3 cm high. NEXT: step 5 (Joe).
+APPROVED (Joe): hussar 0-4 (s4-14/ws, C377-C384); suit jacket 0-4 (s0-10, s2-5, s4-19/ws). STEP 5 BLOCKED (s5-1): the
+build picks pipelines by closure state and shirt roles (jacket open front + lapel roll read as a collar fall; hussar canvas
+read as a fall). Joe approved docs/proposals/step5_one_build.md; R1 ties DONE (C391). OPEN: notch-collar fall check; top
+button 2-3 cm high. NEXT: R2 folds as numbers (both garments' step 2 rerun: Joe to OK revoking their step-2 approvals).

@@ -9,9 +9,9 @@ share a colour); take every number and name from the tool's text answer, never r
 
 ### `chain_garment`
 `chain_garment(name, garment, wear=None, opening=None, wait=50, rebuild=False, waive=None)`: THE start of every garment: to dress a character, to fit or drape clothes on a body. Reads the drafted pattern and the
-body, never a fit. Built straight into the garment record's style plan (step 2, T7): the band closure's state is the wear
-(open / partly: built open, never closed first), the front fastened from its first button (partly: `fastened_from`), the
-plan's collar_points_apart its spread; give wear / opening only without a plan (a contradiction is refused). Stages: band and collar (or other stiff parts) as chains of their cut lengths, stiffness from the
+body, never a fit. Built straight into the garment record's style plan (step 2, T7): each closure's pairs are tied as step 2's
+`ties` say (which fastenings are done up: by number from the top, or a zip's share; never a named state, C391; a band
+with one undone is built open, never closed first), the plan's collar_points_apart its spread; give wear / opening only without a plan (a contradiction is refused). Stages: band and collar (or other stiff parts) as chains of their cut lengths, stiffness from the
 pattern's interfacing, resting on the high points; cuffs as stiff rings on the limb's own section; the soft pieces wrapped on a
 garment-sized section and solved as a network with the body as a floor; surfaces filled between the chains; an open band is
 opened before any soft cloth (its sewn front limited by its cut distance to the first fastened button), and the plackets fold along a
@@ -138,8 +138,10 @@ why, stiff, layer, where {view, outline}, edges {edge: [i0, i1] spans tiling the
 outlines (one per instance)}}},
 closures {name: {what, pieces, details}}, seams [{a: "piece:edge", b, kind, caught?: ["piece:edge" sewn
 into the same line], length: {body: [names]} | {style: {ratio, of: a body name | "piece:edge" | [step-0 height, another],
-source}}}] (never mm read off the picture: it isn't the model; value_mm only with fixed: why); the answer lists the body measurements step 3 must take. step="style" (2): state {closure:
-{state: open|closed|partly, source}} for EVERY closure (build straight into it; never build closed then style open),
+source}}}] (never mm read off the picture: it isn't the model; value_mm only with fixed: why); the answer lists the body measurements step 3 must take. step="style" (2): ties {closure:
+{fastened: [numbers from the top, 1 = the top], of: how many, source} | {span: [from, to] share of its length done up (a
+zip; 0 = top), source}} for EVERY closure, fastened [] = none done up (build straight into it; never build closed then
+style open),
 bends [{id, on, target {value, unit, of (a ratio's base)} | {is}, source}], pose {name, source}, rows [{id, what, target, source, note?, view, at}] (what = a structure_rows kind, refused otherwise with the list: collar_points_apart, collar_tilt, collar_rise, collar_points_drop, collar_height, fall_back_width, v_depth, front_edge_plumb, hem_front_back, sleeve_end, cuff_ease, garment_length, cutaway_drop, trim_row_count, trim_row_pitch, trim_lines_apart, not_judged; bases neck_width, shoulder_width, closure_length; a ratio is OF the kind's base; a px target becomes a ratio of the base row on its view, else mm by the view's scale; a numeric bend names its kind too)
 (what the photo judges: the structure gate's targets), traces [{id, what, view, points [[u,v],..] (>= 4), corners
 [indices where it turns sharply], source}] REQUIRED (the reference's key edges: hem, front edges, collar, sleeve ends,

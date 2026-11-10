@@ -67,7 +67,7 @@ def test_unknown_what_refused_with_the_list():
     p = gp.check_style  # step-2 validation, against the one vocabulary
     read = {"views": READ["views"]}
     parts = {"pieces": {"collar": {}}, "details": {}, "closures": {"front": {"pieces": ["collar"]}}}
-    base = {"state": {"front": {"state": "closed", "source": "f"}}, "pose": {"name": "arms down", "source": "f"},
+    base = {"ties": {"front": {"fastened": [1], "of": 1, "source": "f"}}, "pose": {"name": "arms down", "source": "f"},
             "bends": [], "rows": [{"id": "x", "what": "points spread nicely", "target": {"value": 1, "unit": "mm"},
                                    "source": "f"}], "traces": [{"id": "hem", "what": "hem", "view": 0, "points": [[10, 90], [20, 92], [30, 92], [40, 90]], "source": "f"}]}
     with pytest.raises(gp.PlanRefused) as e:

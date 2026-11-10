@@ -60,7 +60,7 @@ def _parts():
 
 
 def _style():
-    return {"state": {"front": {"state": "closed", "source": "front view"}},
+    return {"ties": {"front": {"fastened": [1, 2, 3], "of": 3, "source": "front view"}},
             "bends": [{"id": "lie", "on": "front.L", "target": {"is": "flat"}, "source": "front view"}],
             "pose": {"name": "arms down", "source": "front view"},
             "rows": [{"id": "width", "what": "trim_lines_apart", "note": "the two binding lines apart",
@@ -133,15 +133,22 @@ def test_style_refusals_by_name(home):
     gp.write("m", "w", "read", _read(home), look=False)
     gp.write("m", "w", "parts", _parts(), look=False)
     s = _style()
-    s["state"]["zip"] = {"state": "open", "source": "x"}     # a closure the inventory doesn't have
+    s["ties"]["zip"] = {"fastened": [], "of": 1, "source": "x"}  # a closure the inventory doesn't have
     del s["rows"][0]["source"]                               # a target with no source
     s["rows"][0]["target"].pop("of")                         # a ratio with no base
     s["bends"][0]["on"] = "sleeve"
-    _refused(lambda: gp.write("m", "w", "style", s), "state.zip: no closure", "rows[0] width: no source",
+    _refused(lambda: gp.write("m", "w", "style", s), "ties.zip: no closure", "rows[0] width: no source",
              "is OF", "bends[0] lie.on 'sleeve'")
     s = _style()
-    s["state"] = {}
-    _refused(lambda: gp.write("m", "w", "style", s), "state.front: the ONE worn state")
+    s["ties"] = {}
+    _refused(lambda: gp.write("m", "w", "style", s), "ties.front: which of its fastenings are done up")
+    s["ties"] = {"front": {"fastened": [0, 4], "of": 3, "source": "x"}}
+    _refused(lambda: gp.write("m", "w", "style", s), "ties.front.fastened [0, 4]")
+    s["ties"] = {"front": {"span": [0.6, 0.2], "source": "x"}}
+    _refused(lambda: gp.write("m", "w", "style", s), "ties.front.span")
+    s = _style()  # (C391: a named state is refused, pointing at ties)
+    s["state"] = {"front": {"state": "closed", "source": "front view"}}
+    _refused(lambda: gp.write("m", "w", "style", s), "not a named state")
 
 
 def test_style_written_and_the_record_points_at_the_tool(home):

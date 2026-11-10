@@ -5,23 +5,15 @@ from __future__ import annotations
 import json
 
 from . import structure_rows as sr
-from .garment_plan import STATES, PlanRefused, _src, _target, _uv_list, form, pixel_errors
+from .garment_plan import PlanRefused, _src, _target, _uv_list, form, pixel_errors
 
 
 def check_style(p: dict, read: dict, parts: dict) -> dict:
     bad, p = [], json.loads(json.dumps(p))
     nv = len(read.get("views") or [])
     pieces, details, closures = (parts.get(k) or {} for k in ("pieces", "details", "closures"))
-    state = p.get("state") if isinstance(p.get("state"), dict) else {}
-    for c in state:
-        if c not in closures:
-            bad.append(f"state.{c}: no closure {c!r} in the inventory (have {', '.join(closures) or 'none'})")
-    for c in closures:
-        x = state.get(c)
-        if not isinstance(x, dict) or x.get("state") not in STATES:
-            bad.append(f"state.{c}: the ONE worn state of this closure: {{state: {'|'.join(STATES)}, source}}")
-        else:
-            _src(x, f"state.{c}", bad)
+    from . import closure_ties as ct
+    ct.check(p, closures, bad, _src)  # (R1 C391: which fastenings are done up, never a named state)
     names = set(pieces) | set(details) | set(closures)
     kinds = {r.get("id"): r.get("what") for r in p.get("rows") or [] if isinstance(r, dict)}
     for i, b in enumerate(p.get("bends") or []):

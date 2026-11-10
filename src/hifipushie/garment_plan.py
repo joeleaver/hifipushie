@@ -42,11 +42,13 @@ STEP 1 "parts": {pieces, details, closures, seams, centre?, over?, define?}
             body name | "piece:edge" | [step-0 height/landmark, another], source}} | {style: {value_mm, fixed: why it is
             the same on every wearer, source}}, why?}] (never mm read off the picture: garment_parts_lengths; a body
             length is checked against its edge as drawn at the step-0 scale; why keeps one the check refuses)
-STEP 2 "style": {state, bends, pose, rows, layers?, drape?}
+STEP 2 "style": {ties, bends, pose, rows, layers?, drape?}
   drape  {piece: {falls: down|up, source}}  (T13: a step-1 hang "draped" piece's start: a hood worn up falls up; chain_drape)
   layers {mode: visible|full, why}  (worn over another garment: visible (default) keeps the garment under where it is seen;
           full fits all of it inside, for a reason: chain_press.py, T12)
-  state  {closure: {state: open|closed|partly, detail?, source}}   (EVERY inventory closure, none other)
+  ties   {closure: {fastened: [numbers from the top, 1 = the top], of: how many, detail?, source} | {span: [from, to]
+          share of its length done up (a zip, lacing; 0 = top), source}}  EVERY inventory closure, none other; fastened
+          [] = none done up (closure_ties.py, C391: which fastenings are done up, never a named state)
   bends  [{id, on (piece | piece:edge | detail | closure), target: {value, unit, of (a ratio's base)} | {is}, source}]
   pose   {name, source}
   rows   [{id, what, target: {value, unit, tol?, of?} | {is}, source, note?, view?, at?: [[u,v],..]}]  (what the photo
@@ -72,7 +74,6 @@ VIEWS = ("front", "back", "side", "three", "detail", "other")
 SEEN = ("seen", "occluded", "inferred")
 BUILD = ("full", "simplified", "omit")
 STIFFNESS = ("drapey", "soft", "medium", "crisp", "stiff", "rigid")
-STATES = ("open", "closed", "partly")
 SEAM_KINDS = ("seam", "fold", "set_in", "topstitch", "bound")
 UNITS = ("mm", "deg", "ratio", "count", "px", "cm")
 NAME = re.compile(r"[A-Za-z0-9_.\-]+")
@@ -429,7 +430,9 @@ def text(model: str, garment: str, r: dict) -> str:
         L.append(f"  step 3 measures: {', '.join(p['measurements']) or 'nothing by body'}")
     else:
         from .garment_plan_look import _tgt
-        L += [f"  closure {c}: {x['state']}" + (f" ({x['detail']})" if x.get("detail") else "") for c, x in p["state"].items()]
+        from . import closure_ties as ct
+        L += [f"  closure {c}: {ct.said(x['tie'])}" + (f" ({x['detail']})" if x.get("detail") else "")
+              for c, x in ct.states(p).items()]
         L.append(f"  pose: {p['pose']['name']}")
         L += [f"  bend {b.get('id', '')} on {b['on']}: {_tgt(b['target'])}" for b in p.get("bends") or []]
         L += [f"  drape {n}: falls {x['falls']}" for n, x in (p.get("drape") or {}).items()]
