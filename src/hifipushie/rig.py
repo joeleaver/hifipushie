@@ -35,6 +35,9 @@ WORN_SMOOTH = 0  # rounds of the same over a worn part's own mesh after it read 
 # two places) is cured at the lookup (rig_template.from_surface two_sided).
 
 
+SOFT = ("super", "loft", "sheet")  # the soft primary forms (softforms.py, sheet.py): flesh like any blob
+
+
 def skeleton(spec: dict) -> list[dict]:
     """[{"name", "head", "tail" (world, Blender axes), "parent" (index, -1 for the root's bones), "prim" (its
     cone), "prims" (its cone and the blobs on it)}] in an order where every parent comes before its children."""
@@ -81,7 +84,7 @@ def skeleton(spec: dict) -> list[dict]:
         b["prims"] = [b["prim"]]
     for n, bl in s["blobs"].items():
         pr = prims.get(n)
-        if pr is None or pr.kind not in ("ellipsoid", "box", "cylinder", "blade", "lids", "csg"):
+        if pr is None or pr.kind not in ("ellipsoid", "box", "cylinder", "blade", "lids", "csg") + SOFT:
             continue
         at = bl.get("at")
         if isinstance(at, dict) and at.get("bone") in index:
@@ -90,6 +93,8 @@ def skeleton(spec: dict) -> list[dict]:
             i = max(reached[at], 0)
         else:
             c = resolve_point(s, at if at is not None else [0, 0, 0]) + np.array(bl.get("offset", [0, 0, 0]), float)
+            if pr.kind in SOFT:  # a loft's or sheet's "at" is its origin, not its middle
+                c = 0.5 * (pr.lo + pr.hi)
             i = int(np.argmin(_seg_dist(c, heads, tails)))
         out[i]["prims"].append(pr)
     return out
@@ -163,7 +168,56 @@ def _flesh(p, cuts, V: np.ndarray) -> np.ndarray:
     if p.kind == "cone":
         for q, n in cuts:
             d = np.maximum(d, (V - q) @ n)
+    for q, n in getattr(p, "flesh_cuts", ()):  # a blob shared along a chain (`_chain_pieces`): this bone's slab
+        d = np.maximum(d, (V - q) @ n)
     return d
+
+
+CHAIN_ROOT_CAP = True
+
+
+def _chain_pieces(bl, A: np.ndarray, B: np.ndarray):
+    """A blob holding two or more rig segments end to end (a torso loft round Hips, Spine, Spine1, Spine2): [(q,
+    piece)], each segment q its slab of the blob, cut where it meets the next by the plane bisecting the two, so the
+    spine bends through the torso as it does through a spine cone's pieces. None when it holds fewer than two."""
+    import copy
+    L = np.linalg.norm(B - A, axis=1)
+    pts = np.concatenate([A, B])
+    f = sdf.field_at([bl], pts, clip=False)
+    inside = [q for q in range(len(A)) if L[q] > 1e-3 and f[q] < 0 and f[len(A) + q] < 0]
+    U = (B - A) / np.maximum(L, 1e-12)[:, None]
+    # only one chain, end to end and running on (a thigh hanging from the hips inside the loft isn't the torso's)
+    nxt = {q: [o for o in inside if o != q and np.linalg.norm(A[o] - B[q]) < 1e-6 and U[o] @ U[q] > 0.5]
+           for q in inside}
+    best = []
+    for q in inside:
+        if any(q in v for v in nxt.values()):
+            continue
+        run = [q]
+        while nxt[run[-1]]:
+            run.append(nxt[run[-1]][0])
+        best = max(best, run, key=len)
+    inside = best
+    if len(inside) < 2:
+        return None
+    out = []
+    for q in inside:
+        cuts = []
+        for o in inside:
+            if o == q:
+                continue
+            if np.linalg.norm(B[o] - A[q]) < 1e-6:  # o runs into q's head
+                n = U[q] + U[o]
+                cuts.append((A[q], -n / max(np.linalg.norm(n), 1e-12)))
+            elif np.linalg.norm(A[o] - B[q]) < 1e-6 and U[o] @ U[q] > 0.5:  # o carries on from q's tail (not a branch)
+                n = U[q] + U[o]
+                cuts.append((B[q], n / max(np.linalg.norm(n), 1e-12)))
+        if q == inside[0] and CHAIN_ROOT_CAP:  # the run's root slab stops at its head: the loft hanging below the
+            cuts.append((A[q], -U[q]))  # hips (over a stub's thigh and knee) is the legs' to carry, as without it
+        p = copy.copy(bl)
+        p.flesh_cuts = cuts
+        out.append((q, p))
+    return out
 
 
 def _settle(J: np.ndarray, W: np.ndarray, faces, rounds: int) -> np.ndarray:
@@ -1567,7 +1621,9 @@ def rig_weights(spec: dict, rb: list[dict], verts: np.ndarray, faces: np.ndarray
     the twist chains take their segments' weight (`_spread_twist`)."""
     ids, carry = _flesh_tree(spec, rb)
     J, W = weights(carry, verts, faces, k=k, smooth=smooth)
-    return _spread_twist(rb, verts, np.asarray(ids)[J], W, k)
+    J, W = _spread_twist(rb, verts, np.asarray(ids)[J], W, k)
+    from .rig_join import limb_join  # a limb's weight blended across the seam its skin really has with the body's
+    return limb_join(spec, rb, verts, faces, J, W, carry, limb_girth(rb, verts, J, W))
 
 
 def _flesh_tree(spec: dict, rb: list[dict]):
@@ -1607,6 +1663,11 @@ def _flesh_tree(spec: dict, rb: list[dict]):
                 if t1 - t0 > 0.02:
                     pieces.append((ids[q], t0, t1))
         for bl in b["prims"][1:]:  # blobs: the rig bone nearest their middle (a palm the hand, not a finger)
+            pieces_ = _chain_pieces(bl, A, B) if bl.kind in SOFT else None  # a torso loft: shared along the spine
+            if pieces_:
+                for q, pc in pieces_:
+                    flesh[ids[q]].append(pc)
+                continue
             flesh[ids[int(np.argmin(_seg_dist(0.5 * (bl.lo + bl.hi), A, B)))]].append(bl)
         if pieces:
             for i, t0, t1 in pieces:
