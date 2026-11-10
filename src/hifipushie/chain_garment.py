@@ -38,6 +38,11 @@ input, chain_drape: R3e folds them into this sequence.
    a solved crease through it (in-plane rotation stretches) so its top reaches the band's ends apart; over side over
    under side. No tied pair held apart (band done up, or nothing tied): no fold. Then a fall rests on the soft cloth
    under it, and the soft cloth is solved again under the fall.
+5a. THE CREASE TURN (chain_crease.py, R3d C400): every fold step 2 plans (wear["folds"]: on, fold, turn_deg, lies_on) that
+   no other stage turns, after the soft cloth is laid: the piece split along the draft's own fold row; the side with less
+   sewn length turns about the row by turn_deg (a roll round its radius, a press sharp), lies on its lies_on (its own other
+   side or another piece a LAYER out, the body at GAP, or free), then the net's projection; plies and the sewn cloth
+   beside it follow. Gated per fold (stage "crease"). A stiff part's roll (a fall) stays stage 2's (R3e folds it in).
 6. SURFACES fill between fixed chains (fold turn: a half circle of the pattern's radius round the band top; the band stays
    under the fall; corner patch at the leaf's neck end).
 7. STRUCTURE (chain_structure.py, C279): the BUILD is measured beside the reference before any hang: the collar's
