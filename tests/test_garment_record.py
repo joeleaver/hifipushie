@@ -167,3 +167,19 @@ def test_a_steps_saved_output_is_shown_and_step_3_carries_after_a_step_2_rewrite
     monkeypatch.setattr(gc, "_check", lambda sid, out, rec: "")  # (step 3's saved content still validates)
     gc.carry("tm", "g", "2")
     assert not gr.states(gr.load("tm", "g"))["3"]["stale"]
+
+
+def test_a_carried_draft_must_pass_its_flat_gate_as_it_runs_now(tmp_path, monkeypatch):
+    """C404: trial s2-6's step-2 retake carried step 4 forward as "gate PASS" while its draft FAILed planned_folds and
+    seams_crossed. Declarations matching step 1 is not the gate passing: the carry re-runs the flat gate."""
+    import json as _j
+    from hifipushie import draft_own as do, draft_own_tool as dot, garment_carry as gc
+    (tmp_path / "declarations.json").write_text(_j.dumps({"pieces": {}}))
+    monkeypatch.setattr(do, "validate", lambda *a, **k: [])
+    rec = {"model": "m", "garment": "w", "steps": {k: {"output": {}} for k in ("0", "1", "2", "3")}}
+    rows = [{"id": "planned_folds", "status": "FAIL", "why": "step 2 turns fold 'collar_roll' on collar"}]
+    monkeypatch.setattr(dot, "flat_check", lambda m, g: (rows, {}, {}))
+    why = gc._check("4", {"dir": str(tmp_path)}, rec)
+    assert "flat gate FAILs now" in why and "collar_roll" in why
+    rows[0]["status"] = "PASS"
+    assert gc._check("4", {"dir": str(tmp_path)}, rec) == ""
