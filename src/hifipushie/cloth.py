@@ -1101,6 +1101,10 @@ def mesh(B: dict, h: float = 0.02, fold_width: float = 0.0) -> dict:
             "made": [nm for nm in names if mod[nm][0] == "made"],
             # (a piece's declared role, when the draft names one: a stand collar named "collar"; T8 C289)
             "roles": {nm: str(pcs[nm]["role"]) for nm in names if pcs[nm].get("role")},
+            # (where each piece is worn, the draft's `place` {to, side}: a seamless stiff piece is a floating layer of
+            # the soft piece worn at the same place, chain_holds R3b)
+            "place": {nm: {k: str(pcs[nm]["wrap"][k]) for k in ("to", "side") if (pcs[nm].get("wrap") or {}).get(k)}
+                      for nm in names if any((pcs[nm].get("wrap") or {}).get(k) for k in ("to", "side"))},
             # (the thread frame per piece and the fabric's stretch limit: the diagnostic strain map reads threads as
             # the fit does, C235)
             "grain": {nm: float(pcs[nm].get("grain", 90.0)) for nm in names}, "stretch_limit": B.get("stretch_limit"),

@@ -13,7 +13,7 @@ from . import chain_net as cn
 from .chain_net import Contact, Network, unit
 
 PATTERN_KEYS = ("uv", "piece", "names", "F", "folds", "made", "grain", "sew", "sew_seam", "stitch", "marks", "closures",
-                "points", "border", "stitch_lines", "roles",
+                "points", "border", "stitch_lines", "roles", "place",
                 "starts")  # (starts: step 3+4 measurement data, never positions: piece_start.py)
 GAP = 0.0045  # m: soft cloth and stiff parts stay this far off the body (ZOZO's reach + a mesh edge's sag over an arm)
 RING_GAP = 0.004  # m: a stiff ring off a limb (ZOZO's reach): it hangs loose, so its gap is the solver's, no more
