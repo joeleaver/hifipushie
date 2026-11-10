@@ -38,6 +38,11 @@ input, chain_drape: R3e folds them into this sequence.
    a solved crease through it (in-plane rotation stretches) so its top reaches the band's ends apart; over side over
    under side. No tied pair held apart (band done up, or nothing tied): no fold. Then a fall rests on the soft cloth
    under it, and the soft cloth is solved again under the fall.
+5a. THE CREASE TURN (chain_crease.py, R3d C401): every fold step 2 plans (wear["folds"]: on, fold, turn_deg, lies_on) that
+   no other stage turns, after the soft cloth is laid: the piece split along the draft's own fold row; the side with less
+   sewn length turns about the row by turn_deg (a roll round its radius, a press sharp), lies on its lies_on (its own other
+   side or another piece a LAYER out, the body at GAP, or free), then the net's projection; plies and the sewn cloth
+   beside it follow. Gated per fold (stage "crease"). A stiff part's roll (a fall) stays stage 2's (R3e folds it in).
 6. SURFACES fill between fixed chains (fold turn: a half circle of the pattern's radius round the band top; the band stays
    under the fall; corner patch at the leaf's neck end).
 7. STRUCTURE (chain_structure.py, C279): the BUILD is measured beside the reference before any hang: the collar's
@@ -169,10 +174,15 @@ class GarmentBuild(SoftStages, StiffStages, HangJob, Build):
             self._hold_tied()  # the tied pair an untied band was held to stays there (none: nothing more is held)
             self.soft_net()  # 4: the soft cloth, tied exactly where step 2 ties it; free edges free
             self._fold_then_rest()  # 5: plackets fold through tied pairs only; a fall rests on the cloth under it
+            self.crease_turn()  # 5a: every planned fold no other stage turns, to its turn_deg, on its lies_on
         self.reads["chains"] = self.chain_read(self.X)
         self.reads["seam_gap_mm"] = round(self.net.seam_gap(self.X), 3)
         self.reads["build_s"] = round(time.time() - t0, 1)
         return self.X
+
+    def crease_turn(self):
+        from .chain_crease import turn_all
+        return turn_all(self)
 
     def _hold_tied(self):
         """The topmost tied front pair stays where the untied band was held to it: left free, the soft cloth carried it

@@ -99,7 +99,8 @@ def _solved():
 
 def test_chains_gate_reads_lengths_and_fails_a_chain_past_its_cut():
     b, seen = _solved()
-    assert list(b.reads["stages"]) == [s for s in cst.STAGES if s not in ("arrange", "sew")]  # (sew_start off here)
+    # (sew_start off here; crease runs after soft_net, only with planned folds: chain_crease)
+    assert list(b.reads["stages"]) == [s for s in cst.STAGES if s not in ("arrange", "sew", "crease")]
     g = cst.gate_chains(b, seen["chains"])
     row = next(r for r in g["rows"] if r["id"] == "length")
     assert row["status"] == "PASS" and "MAX_FREE_PCT" in row["source"]
