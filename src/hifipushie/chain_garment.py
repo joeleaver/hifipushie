@@ -38,7 +38,7 @@ input, chain_drape: R3e folds them into this sequence.
    a solved crease through it (in-plane rotation stretches) so its top reaches the band's ends apart; over side over
    under side. No tied pair held apart (band done up, or nothing tied): no fold. Then a fall rests on the soft cloth
    under it, and the soft cloth is solved again under the fall.
-5a. THE CREASE TURN (chain_crease.py, R3d C400): every fold step 2 plans (wear["folds"]: on, fold, turn_deg, lies_on) that
+5a. THE CREASE TURN (chain_crease.py, R3d C401): every fold step 2 plans (wear["folds"]: on, fold, turn_deg, lies_on) that
    no other stage turns, after the soft cloth is laid: the piece split along the draft's own fold row; the side with less
    sewn length turns about the row by turn_deg (a roll round its radius, a press sharp), lies on its lies_on (its own other
    side or another piece a LAYER out, the body at GAP, or free), then the net's projection; plies and the sewn cloth
