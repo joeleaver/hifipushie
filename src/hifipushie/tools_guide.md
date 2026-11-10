@@ -73,6 +73,12 @@ Find the tool for a job: ranks every hifipushie tool (native or not) by word mat
 gives each one's purpose, parameters and an example call (non-core tools run through call_tool). query: what you
 want to do, e.g. "fit a garment" ("" lists every tool by domain); limit: how many.
 
+The order of the answer: a job that uses a domain's own words (clothes, hair, skin, a human, terrain, plants,
+clutter) leads with that domain's steps in order, under its workflow line, the tool the job's verb names first
+("look at the garment" -> look_chain). Outside a domain, a tool that is for the job (the job's word in its name or
+its first sentence) comes before one that only mentions the word. When no tool is named for the job, the guide
+leads: its "Which path" table says where an unknown subject starts.
+
 ### `list_models`
 
 `list_models()`
