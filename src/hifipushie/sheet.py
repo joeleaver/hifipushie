@@ -14,6 +14,8 @@ blades along a curve comes out lumpy (each blade's round ends make a knuckle). A
                    "twist": 0,           # degrees about the spine, on top of the untwisting frame
                    "puff": 0}, ...],     # cross-section: 0 a slab with round edges, 1 a lens (an ellipse,
                                          #   thickest mid-width: pillowy clay, a leaf), between: a blend
+     "fold": "round",                    # "round": a bend tighter than the sheet is thick is refused; "crush":
+                                         #   thick clay folded hard, squashed to one crease inside, round outside
      "root": m, "tip": m,                # how far the outline rounds off at each end (default: the end's
                                          #   half width, a round end); the thickness always rounds the edge
      "at", "offset"}                     # move the whole spine
@@ -24,7 +26,11 @@ spline in arc length. A point's sheet coordinates are (s, w, n): arc length to i
 offsets along the width axis and the normal there. The core is |w| <= half_width - half_thickness, rounded at the
 ends, and the sheet is that core thickened by half_thickness (edges fully round). So the fold is seamless as long
 as the spine's bend radius stays above the half thickness (refused otherwise) and any in-plane turn (about the
-normal) stays wide next to the half width. Distance estimate: exact across the thickness, close elsewhere.
+normal) stays wide next to the half width. With "fold": "crush" a tighter bend is allowed: the spine is cut into
+pieces turning <= 20 degrees through each over-tight bend (and a thickness either side), each piece capped flat at
+its cuts, and the sheet is their union (min), which is the same sweep of cross-sections with the inside of the bend
+filled to one crease instead of folding through itself (Baynard Racing's Puddles: a fat clay ear folded ~90 degrees
+into one solid lump, gap 32). Distance estimate: exact across the thickness, close elsewhere.
 `fit` moves the spine points (group "pos") and the stations' half sizes ("size").
 """
 
@@ -165,10 +171,31 @@ def sheet_params(name: str, bl: dict, base: np.ndarray, err) -> tuple[dict, np.n
           "hand": float(bl.get("hand", 1.0)),
           "WM": np.stack([_natural(S, W[:, j]) for j in range(3)], 1)}
     hw_s, ht_s, *_ = _stations(pr, S)
-    if np.any(kappa * ht_s >= 0.9):
+    fold = bl.get("fold", "round")
+    if fold not in ("round", "crush"):
+        raise err(f"blob {name!r}: fold is \"round\" (refuse bends tighter than the thickness) or \"crush\"")
+    pr["splits"] = []
+    if fold == "crush":  # split each over-tight bend (and a thickness either side) into pieces turning <= 20 degrees:
+        # each piece is near straight, so its own nearest point is unambiguous; sd_sheet unions them
+        over = kappa * ht_s >= 0.9
+        if over.any():
+            dS = np.gradient(S)
+            near = np.zeros_like(over)
+            for i in np.where(over)[0]:
+                near |= np.abs(S - S[i]) <= 2 * ht_s[i]
+            turn = 0.0
+            for i in range(1, len(S) - 1):
+                if near[i]:
+                    turn += kappa[i] * dS[i]
+                    if turn >= np.radians(20):
+                        pr["splits"].append(float(i / _DENSE)); turn = 0.0
+                else:
+                    turn = 0.0
+    if fold == "round" and np.any(kappa * ht_s >= 0.9):
         i = int(np.argmax(kappa * ht_s))
         raise err(f"blob {name!r}: the spine bends tighter (radius {1 / kappa[i]:.3f} m at {S[i] / L:.2f} of its "
-                  f"length) than the sheet is thick ({ht_s[i]:.3f}): ease the fold or thin the sheet there")
+                  f"length) than the sheet is thick ({ht_s[i]:.3f}): ease the fold, thin the sheet there, or \"fold\": \"crush\" "
+                  f"(thick clay folded hard: squashed to a crease inside, round outside)")
     ends = []
     for key, j in (("root", 0), ("tip", -1)):
         r = float(bl.get(key, hw_s[j] - ht_s[j]))
@@ -190,78 +217,95 @@ def _stations(pr, s):
     return v[:, 0], v[:, 1], v[:, 2], np.radians(v[:, 3]), np.clip(v[:, 4], 0.0, 1.0)
 
 
-def _nearest(q: np.ndarray, pr: dict):
-    """Arc length s of each point's nearest spine point, that point and the tangent there (straight past the ends)."""
+def _nearest(q: np.ndarray, pr: dict, ua: float = 0.0, ub: float = 1.0):
+    """Arc length s of each point's nearest spine point within u in [ua, ub], that point, the tangent there (straight
+    past the spine's own ends) and how far past an inner cut (ua > 0 / ub < 1: a crush fold's split) the point lies."""
     sp, L = pr["sp"], pr["L"]
-    us = np.linspace(0.0, 1.0, _SEARCH + 1)
+    nseg = max(int(np.ceil(_SEARCH * (ub - ua))), 4)
+    us = np.linspace(ua, ub, nseg + 1)
     Ps = _spine_eval(sp, us)[0]
     a, d = Ps[:-1], np.diff(Ps, axis=0)
     r = q[:, None, :] - a[None]
     t = np.clip((r * d).sum(-1) / np.maximum((d * d).sum(-1), 1e-20), 0, 1)
     dist = ((r - t[..., None] * d) ** 2).sum(-1)
     j = np.argmin(dist, 1)
-    u = (j + t[np.arange(len(q)), j]) / _SEARCH
-    du = 1.0 / _SEARCH
+    du = (ub - ua) / nseg
+    u = ua + (j + t[np.arange(len(q)), j]) * (ub - ua) / nseg  # (written so a whole spine is bit-identical to before)
     for _ in range(4):  # Newton on (C(u) - q) . C'(u) = 0, kept within a segment of the start
         C, D, DD = _spine_eval(sp, u)
         e = C - q
         g = (e * D).sum(1)
         h = (D * D).sum(1) + (e * DD).sum(1)
         step = np.where(h > 1e-12, -g / np.maximum(h, 1e-12), 0.0)
-        u = np.clip(u + np.clip(step, -du, du), 0.0, 1.0)
+        u = np.clip(u + np.clip(step, -du, du), ua, ub)
     C, D, _ = _spine_eval(sp, u)
     T = D / np.linalg.norm(D, axis=1)[:, None]
     # arc length: the dense table at u (linear between samples of a smooth curve: sub-0.1 mm)
     s = np.interp(u, np.linspace(0, 1, _DENSE + 1), pr["S"])
     past = ((q - C) * T).sum(1)
-    lo, hi = u <= 0.0, u >= 1.0
+    lo, hi = u <= ua, u >= ub
     over = np.where(lo, np.minimum(past, 0), np.where(hi, np.maximum(past, 0), 0.0))
-    return s + over, C + over[:, None] * T, T
+    cut = np.where(lo & (ua > 0), -over, 0.0) + np.where(hi & (ub < 1), over, 0.0)  # past an inner cut: capped
+    over = np.where(cut > 0, 0.0, over)
+    return s + over, C + over[:, None] * T, T, cut
 
 
 def sd_sheet(p: np.ndarray, pr: dict) -> np.ndarray:
+    """The sheet's field; a crush fold is the union (min) of its arms, each capped flat at the split, so the inside of
+    the hard bend is one crease and the outside stays the sweep's round (a sweep is the union of its cross-sections)."""
     shp = p.shape[:-1]
     Q = p.reshape(-1, 3).astype(np.float64)
     out = np.empty(len(Q))
+    cuts = [0.0] + list(pr.get("splits", [])) + [1.0]
     for c0 in range(0, len(Q), 4096):
         q = Q[c0:c0 + 4096]
-        s, C, T = _nearest(q, pr)
-        W = _spline(pr["S"], pr["W"], pr["WM"], np.clip(s, 0, pr["L"]))
-        W -= (W * T).sum(1)[:, None] * T
-        W /= np.linalg.norm(W, axis=1)[:, None]
-        N = pr["hand"] * np.cross(T, W)
-        hw, ht, cup, tw, puff = _stations(pr, s)
-        if np.any(tw):
-            c, sn = np.cos(tw)[:, None], np.sin(tw)[:, None]
-            W, N = c * W + sn * N, c * N - sn * W
-        r = q - C
-        w, n = (r * W).sum(1), (r * N).sum(1)
-        a = np.maximum(hw - ht, 1e-4)
-        n = n - cup * (w / hw) ** 2
-        # the core outline in (s, w): |w| <= a(s), each end rounded off over its length (an ellipse quadrant)
-        er, et, htr, htt = pr["ends"]
-        s0, s1 = htr + er, pr["L"] - htt - et
-        vr = np.maximum(s0 - s, 0) / er
-        vt = np.maximum(s - s1, 0) / et
-        uu = np.abs(w) / a
-        rho = np.sqrt(uu * uu + vr * vr + vt * vt)
-        # gradient of rho over (s, w); a(s)'s slope from the station spline (small: ignore its share)
-        gw = uu / a
-        gs = (vt / et - vr / er)
-        g = np.sqrt(gw * gw + gs * gs) / np.maximum(rho, 1e-9)
-        e = (rho - 1.0) / np.maximum(g, 1e-9)
-        e = np.where(rho < 1e-9, -np.minimum(a, np.minimum(s - htr, pr["L"] - htt - s)), e)
-        h = np.abs(n)
-        d = np.hypot(np.maximum(e, 0.0), h) + np.minimum(np.maximum(e, h), 0.0) - ht
-        d = np.maximum(d, -ht)
-        if np.any(puff > 0):  # the lens: an ellipse (hw, ht) across, the same end rounding along; a convex blend of
-            # two distance estimates stays one (and stays as smooth as both)
-            vr2 = np.maximum(er - s, 0) / er
-            vt2 = np.maximum(s - (pr["L"] - et), 0) / et
-            uw, un = w / hw, n / ht
-            k0 = np.sqrt(uw * uw + un * un + vr2 * vr2 + vt2 * vt2)
-            gk = np.sqrt((uw / hw) ** 2 + (un / ht) ** 2 + (vr2 / er) ** 2 + (vt2 / et) ** 2) / np.maximum(k0, 1e-9)
-            dl = np.where(k0 > 1e-9, (k0 - 1.0) / np.maximum(gk, 1e-9), -ht)
-            d = (1 - puff) * d + puff * np.maximum(dl, -ht)
+        d = None
+        for ua, ub in zip(cuts[:-1], cuts[1:]):
+            s, C, T, cut = _nearest(q, pr, ua, ub)
+            e = _field(q, pr, s, C, T)
+            e = np.where(cut > 0, np.hypot(np.maximum(e, 0), cut) + np.minimum(np.maximum(e, cut), 0), e)
+            d = e if d is None else np.minimum(d, e)
         out[c0:c0 + 4096] = d
     return out.reshape(shp)
+
+
+def _field(q, pr, s, C, T):
+    """The section field at each point from its spine point (arc length s, point C, tangent T)."""
+    W = _spline(pr["S"], pr["W"], pr["WM"], np.clip(s, 0, pr["L"]))
+    W -= (W * T).sum(1)[:, None] * T
+    W /= np.linalg.norm(W, axis=1)[:, None]
+    N = pr["hand"] * np.cross(T, W)
+    hw, ht, cup, tw, puff = _stations(pr, s)
+    if np.any(tw):
+        c, sn = np.cos(tw)[:, None], np.sin(tw)[:, None]
+        W, N = c * W + sn * N, c * N - sn * W
+    r = q - C
+    w, n = (r * W).sum(1), (r * N).sum(1)
+    a = np.maximum(hw - ht, 1e-4)
+    n = n - cup * (w / hw) ** 2
+    # the core outline in (s, w): |w| <= a(s), each end rounded off over its length (an ellipse quadrant)
+    er, et, htr, htt = pr["ends"]
+    s0, s1 = htr + er, pr["L"] - htt - et
+    vr = np.maximum(s0 - s, 0) / er
+    vt = np.maximum(s - s1, 0) / et
+    uu = np.abs(w) / a
+    rho = np.sqrt(uu * uu + vr * vr + vt * vt)
+    # gradient of rho over (s, w); a(s)'s slope from the station spline (small: ignore its share)
+    gw = uu / a
+    gs = (vt / et - vr / er)
+    g = np.sqrt(gw * gw + gs * gs) / np.maximum(rho, 1e-9)
+    e = (rho - 1.0) / np.maximum(g, 1e-9)
+    e = np.where(rho < 1e-9, -np.minimum(a, np.minimum(s - htr, pr["L"] - htt - s)), e)
+    h = np.abs(n)
+    d = np.hypot(np.maximum(e, 0.0), h) + np.minimum(np.maximum(e, h), 0.0) - ht
+    d = np.maximum(d, -ht)
+    if np.any(puff > 0):  # the lens: an ellipse (hw, ht) across, the same end rounding along; a convex blend of
+        # two distance estimates stays one (and stays as smooth as both)
+        vr2 = np.maximum(er - s, 0) / er
+        vt2 = np.maximum(s - (pr["L"] - et), 0) / et
+        uw, un = w / hw, n / ht
+        k0 = np.sqrt(uw * uw + un * un + vr2 * vr2 + vt2 * vt2)
+        gk = np.sqrt((uw / hw) ** 2 + (un / ht) ** 2 + (vr2 / er) ** 2 + (vt2 / et) ** 2) / np.maximum(k0, 1e-9)
+        dl = np.where(k0 > 1e-9, (k0 - 1.0) / np.maximum(gk, 1e-9), -ht)
+        d = (1 - puff) * d + puff * np.maximum(dl, -ht)
+    return d

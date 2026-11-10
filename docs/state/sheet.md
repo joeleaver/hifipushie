@@ -1,4 +1,4 @@
-# Sheet element (one seamless folded sheet): STATE 2026-11-05
+# Sheet element (one seamless folded sheet): STATE 2026-11-10 (crush fold)
 
 Branch sheet (worktree .claude/worktrees/sheet), from main d89f5709. Asked for by Baynard Racing (Puddles the pig,
 gap 25 in baynard-racing/workspace/puddles/hifipushie_gaps.md). Not pushed; coordinator lands.
@@ -36,6 +36,22 @@ gap 25 in baynard-racing/workspace/puddles/hifipushie_gaps.md). Not pushed; coor
   VERDICT FAIL on likeness only: the reference fold is closed and compact, its tip resting on the head (ours an
   open hook with a gap under it), the reference flap blunter / broader at the tip, rims still read crisp.
 
+## Crush fold (branch crush-fold from main f3250f8c, 2026-11-10; Baynard gap 32)
+- `"fold": "crush"` on a sheet: a bend tighter than the half thickness is built instead of refused ("round", the
+  default, still refuses, and its message now names crush). Each over-tight bend (+ 2 half thicknesses either side)
+  is cut into pieces turning <= 20 deg; `_nearest` searches one piece's u range and reports how far a point lies past
+  an inner cut; sd_sheet = min over pieces, each capped flat at its cuts (hypot / max like a box end). A sweep is
+  the union of its cross-sections, so the outside stays round and the inside fills to one crease.
+- Ordinary sheets bit-identical to main (40k random points, plain + puff/cup/twist): no BUILD_VERSION bump.
+- tests/test_sheet.py +6 (refused unless crushed; crush on a fine fold changes nothing; fat and hard folds: |grad|
+  p1 > 0.85, p99 < 1.2 near the surface, no field jump within 8 mm of it, closed genus-0 mesh; the centre of the
+  hardest bend is solid, the outside a half thickness out). Probe: jumps only >= 12 mm inside (the lens estimate
+  deep inside, as on ordinary sheets at 29 mm).
+- Proof on Puddles (Baynard workspace, not approved): a fat ear (half thickness 3.2 -> 1.6 cm, bend radius 2.7 cm)
+  builds, fits the concept's outlines as well as the thin ones (clay off 78 cm2) and reads fatter and rounder; the
+  ear's likeness is still Baynard's modelling stage.
+- bin/suite fast tier: PASS (0 known failures; 16.5 min on a machine also running a fit).
+
 ## Open / next
 1. Likeness is Puddles' modelling stage (Baynard side): close the fold (tip down onto the temple, less air under
    it), broader blunt tip, lower crown; maybe puff < 1 on the flap for a fatter rim. Not approved (tooling run).
@@ -45,5 +61,5 @@ gap 25 in baynard-racing/workspace/puddles/hifipushie_gaps.md). Not pushed; coor
 
 - bin/suite fast tier: PASS (0 known failures; 10.7 min, over its 10 min budget on a loaded machine).
 
-NEXT: coordinator lands sheet; Baynard swaps Puddles' ear.L + earflap.L for one sheet (values above).
+NEXT: coordinator lands crush-fold (approval: Joe); then Baynard models the fat ear with it. Before: Baynard swaps Puddles' ear.L + earflap.L for one sheet (values above).
 History: this page + commits on sheet; ledger row C372.
