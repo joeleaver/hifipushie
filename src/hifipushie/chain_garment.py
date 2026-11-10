@@ -144,9 +144,10 @@ class Build:
         self.wear = {"state": "closed", "spread": OPEN_SPREAD, **(wear or {})}
         self.net = Network(pattern.M, pattern.stiff, pattern.bend)
         self.roles = read_roles(self.net)
-        if self.wear.get("fastened_from") and self.roles.front:  # (style plan: a front fastened partly, T7)
-            from .chain_plan import fasten_from
-            self.roles.front = fasten_from(self.roles.front, int(self.wear["fastened_from"]))
+        if self.wear.get("ties"):  # (R1 C391: step 2's ties: exactly the fastenings the plan does up)
+            from .chain_plan import apply_tie
+            self.roles.front = apply_tie(self.roles.front, self.wear.get("front_tie"), self.net.uv)
+            self.roles.band_closure = apply_tie(self.roles.band_closure, self.wear.get("band_tie"), self.net.uv)
         self.X = np.zeros((self.net.n, 3))
         self.held = np.zeros(self.net.n, bool)
         self.reads: dict = {"seam_truing": self.net.seam_mismatch()}

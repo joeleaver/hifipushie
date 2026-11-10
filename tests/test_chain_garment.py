@@ -214,25 +214,57 @@ def test_the_plan_decides_the_worn_state():
     contradicting wear / opening is refused by name; no record = the arguments, as before."""
     from hifipushie import chain_plan as cp
     w = cp.planned_wear(_plan())
-    assert w["state"] == "open" and w["spread"] == 1.6 and "state.band open" in w["state_from"]
+    assert w["state"] == "open" and w["spread"] == 1.6 and "ties.band open" in w["state_from"]
     assert cp.planned_wear(_plan(band="closed"))["state"] == "closed" and "spread" not in cp.planned_wear(_plan(band="closed"))
-    with pytest.raises(cp.PlanContradiction, match="contradicts the style plan: state.band open"):
+    with pytest.raises(cp.PlanContradiction, match="contradicts the style plan: ties.band open"):
         cp.planned_wear(_plan(), wear="closed")
     with pytest.raises(cp.PlanContradiction, match="opening 2.0 contradicts"):
         cp.planned_wear(_plan(), opening=2.0)
     assert cp.planned_wear(_plan(), wear="open", opening=1.6)["spread"] == 1.6  # (agreeing arguments are fine)
-    with pytest.raises(cp.PlanContradiction, match="wholly open front"):
+    with pytest.raises(cp.PlanContradiction, match="none of its fastenings done up"):
         cp.planned_wear(_plan(front="open"))
     with pytest.raises(cp.PlanContradiction, match="fastened_from"):
         cp.planned_wear(_plan(front="partly"))
-    with pytest.raises(cp.PlanContradiction, match="under a closed band"):
+    with pytest.raises(cp.PlanContradiction, match="under a band done up"):
         cp.planned_wear(_plan(band="closed", front="partly", fastened_from=2))
-    assert cp.planned_wear(_plan(front="partly", fastened_from=2))["fastened_from"] == 2
+    assert cp.planned_wear(_plan(front="partly", fastened_from=2))["front_tie"]["fastened_from"] == 2
     assert cp.planned_wear(None) == {"state": "closed"}
     assert cp.planned_wear(None, "open", 1.5) == {"state": "open", "spread": 1.5}
     assert cp.planned_wear({"read": {}, "parts": {}, "style": None}, "open") == {"state": "open"}  # (a record, no step 2)
-    fr = cp.fasten_from({"over": "front.L", "under": "front.R", "v": [(1, 2), (3, 4), (5, 6)], "closed": [True] * 3}, 2)
+    uv = {1: (0, 0.3), 3: (0, 0.2), 5: (0, 0.1)}  # (pairs' over points, top first by uv y)
+    fr = cp.apply_tie({"over": "front.L", "under": "front.R", "v": [(1, 2), (3, 4), (5, 6)], "closed": [True] * 3},
+                      {"fastened_from": 2, "legacy": "partly"}, uv)
     assert fr["v"] == [(3, 4), (5, 6)] and fr["closed"] == [True, True]
+
+
+def _tplan(band, front):
+    p = _plan()
+    p["style"].pop("state")
+    p["style"]["ties"] = {"front": dict(front, source="photo"), "band": dict(band, source="photo"),
+                          "cuff.L": {"fastened": [1], "of": 1, "source": "convention"}}
+    return p
+
+
+def test_ties_are_which_fastenings_are_done_up():
+    """R1 (C391): step 2 names the fastenings done up; open / closed / partly are only their summary; the build ties
+    exactly those pairs (any set, not only 'from button k down')."""
+    from hifipushie import chain_plan as cp, closure_ties as ct
+    w = cp.planned_wear(_tplan({"fastened": [], "of": 1}, {"fastened": [2, 3], "of": 3}))
+    assert w["state"] == "open" and w["front_tie"]["fastened"] == [2, 3] and w["plan"]["front"] == "partly"
+    assert cp.planned_wear(_tplan({"fastened": [1], "of": 1}, {"fastened": [1, 2, 3], "of": 3}))["state"] == "closed"
+    with pytest.raises(cp.PlanContradiction, match="none of its fastenings done up"):
+        cp.planned_wear(_tplan({"fastened": [], "of": 1}, {"fastened": [], "of": 3}))
+    uv = {1: (0, 0.3), 3: (0, 0.2), 5: (0, 0.1)}
+    fr = {"name": "front", "over": "front.L", "under": "front.R", "v": [(1, 2), (3, 4), (5, 6)], "closed": [True] * 3}
+    t = cp.apply_tie(fr, {"fastened": [1, 3], "of": 3}, uv)  # (top and bottom done up, the middle undone)
+    assert t["v"] == [(1, 2), (3, 4), (5, 6)] and t["closed"] == [True, False, True]
+    assert cp.apply_tie(fr, {"span": [0.4, 1.0]}, uv)["closed"] == [True, True]  # (a zip done up from 0.4 down)
+    with pytest.raises(Exception, match="counts 2 fastenings"):
+        cp.apply_tie(fr, {"fastened": [1], "of": 2}, uv)
+    assert cp.apply_tie(fr, {"all": True, "legacy": "closed"}, uv) is fr  # (an old closed record: the pattern as it was)
+    assert ct.summary({"fastened": [1], "of": 2}) == "partly" and ct.summary({"span": [0, 1]}) == "closed"
+    assert ct.said({"fastened": [], "of": 2}) == "none of 2 done up (open)"
+    assert ct.of_style({"state": {"f": {"state": "partly", "fastened_from": 2}}})["f"]["fastened_from"] == 2
 
 
 def test_the_tool_builds_the_planned_state(monkeypatch, tmp_path):

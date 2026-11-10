@@ -225,7 +225,8 @@ def items(M, plan: dict | None) -> tuple[list, list]:
         notes = []
     else:
         its, notes = sr.plan_items(plan, roles)
-    cl = sr.closure_reads(plan.get("parts") if plan else None, ((plan or {}).get("style") or {}).get("state") or {})
+    from . import closure_ties as ct
+    cl = sr.closure_reads(plan.get("parts") if plan else None, ct.states((plan or {}).get("style")))
     from . import chain_drape as cd
     its = its + sr.rule_items(roles, sr.soft_pieces(M, (plan or {}).get("parts")), cl) + cd.rule_items(plan)
     for it in its:
@@ -235,8 +236,8 @@ def items(M, plan: dict | None) -> tuple[list, list]:
 
 def _plan_reads(X, M, r: dict, its: list, plan: dict | None) -> None:
     """Readings the items name beyond reads(): closure states, roughness, ratios ("a/b")."""
-    st = ((plan or {}).get("style") or {}).get("state") or {}
-    for c, x in sr.closure_reads((plan or {}).get("parts"), st).items():
+    from . import closure_ties as ct
+    for c, x in sr.closure_reads((plan or {}).get("parts"), ct.states((plan or {}).get("style"))).items():
         v = r.get(x["read"]) if x["read"] else None
         r[f"closure_state:{c}"] = None if v is None else next(
             (k for k, w in sr.STATE_OF[x["read"]].items() if w == v and k == x["state"]), v)

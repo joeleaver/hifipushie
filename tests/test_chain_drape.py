@@ -14,7 +14,7 @@ PARTS = {"pieces": {"cloak": {"hang": "draped", "held": ["neck"]}, "hood.L": {"h
 
 
 def _style(rows, drape=None):
-    return {"state": {"clasp": {"state": "closed", "source": "f"}}, "pose": {"name": "A", "source": "f"}, "bends": [],
+    return {"ties": {"clasp": {"fastened": [1], "of": 1, "source": "f"}}, "pose": {"name": "A", "source": "f"}, "bends": [],
             "drape": drape if drape is not None else {"hood.L": {"falls": "up", "source": "f"}}, "rows": rows,
             "traces": [{"id": "hem", "what": "hem", "view": 0, "points": [[10, 90], [20, 92], [30, 92], [40, 90]], "source": "f"}],
             "body_marks": [{"view": 0, "at": {"chest_z": [25, 40], "waist_z": [25, 60]}, "source": "f (no step-0 fit)"}]}
