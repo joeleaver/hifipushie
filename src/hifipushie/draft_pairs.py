@@ -102,7 +102,7 @@ def paired(decl: dict) -> set:
 def expand(decl: dict, parts: dict) -> dict:
     """The declarations with every pair made two pieces (module docstring). No pair: returned as is."""
     from .draft_own import DraftRefused
-    D = _fold_closures(decl)
+    D = _fold_closures(fold_halves(decl, parts))
     pr = paired(D)
     if not pr:
         return D
@@ -216,15 +216,25 @@ def _swap(n: str) -> str:
 def _twin_seams(D: dict, pr: set):
     """A seam naming ONE side of a pair explicitly (front.L:shoulder = back.L:shoulder, step 1's own names) brings its
     other side's twin unless that is declared too (C366, t s4-5: the .R seams were reported "not sewn"; the rule of
-    step 1: ".L" brings ".R")."""
-    def pieces_of(s):
-        return [str(e).split(":", 1)[0] for k in ("a", "b") for e in ([s.get(k)] if isinstance(s.get(k), str) else s.get(k) or [])]
+    step 1: ".L" brings ".R"). A centre piece whose EDGE carries the side (undercollar:neck_front.L) swaps that edge to
+    its declared .R twin (C376, t s4-6: the collar's right-hand seams had to be declared by hand)."""
+    edges = D.get("edges") or {}
+
+    def side_of(e):
+        p, _, ed = str(e).partition(":")
+        if _side(p):
+            return p[-1]
+        if _side(ed) and _swap(ed) in (edges.get(p) or {}):
+            return ed[-1]
+        return None
+    els = lambda s: [e for k in ("a", "b") for e in ([s.get(k)] if isinstance(s.get(k), str) else s.get(k) or [])]
     have = {json.dumps([s.get("a"), s.get("b")], sort_keys=True) for s in D.get("seams") or []}
     add = []
     for s in D.get("seams") or []:
-        ps = pieces_of(s)
-        if not any(p[:-2] in pr for p in ps if _side(p)) or not all(_side(p) for p in ps) or \
-                len({p[-1] for p in ps}) != 1:
+        es = els(s)
+        sides = [side_of(e) for e in es]
+        if None in sides or len(set(sides)) != 1 or not any(_side(str(e).split(":", 1)[0]) and
+                                                             str(e).split(":", 1)[0][:-2] in pr for e in es):
             continue
         sw = lambda x: [_swap_edge(e) for e in x] if isinstance(x, list) else _swap_edge(x)
         t = dict(s, a=sw(s.get("a")), b=sw(s.get("b")))
@@ -236,7 +246,7 @@ def _twin_seams(D: dict, pr: set):
 
 def _swap_edge(e: str) -> str:
     p, _, ed = str(e).partition(":")
-    return f"{_swap(p)}:{ed}"
+    return f"{_swap(p)}:{ed}" if _side(p) else f"{p}:{_swap(ed)}"
 
 
 def _pair_mark(m, detail: str, pr: set):
@@ -298,12 +308,97 @@ def mirror_arc(pc: dict, arc: str) -> str:
         if k + ".m" not in pc["names"]:
             j = int(np.argmin(np.linalg.norm(P - P[i] * [-1, 1], axis=1)))
             if np.linalg.norm(P[j] - P[i] * [-1, 1]) > 1e-4:
-                raise ValueError(f"{pc['name']}: no mirror image of point {k!r} (is the piece cut on the fold?)")
+                raise ValueError(f"{pc['name']}: no mirror image of point {k!r} (is the piece cut on the fold? an edge "
+                                 "ON the fold line has no other half: the fold isn't sewn, declare no seam there)")
             pc["names"][k + ".m"] = j
         out.append(k + ".m")
     return ">".join(out)
 
 
+def fold_halves(decl: dict, parts: dict) -> dict:
+    """Step 1's half names on a piece cut on the fold, as that piece's own (C382, t s4-12: `collar.L:top` was refused
+    as "no drafted piece", `collar.R:...` too, and the agent found "x" / "x.m" by trial, then cut halves sewn at CB):
+    for each pieces.P {fold} (no pair), "P.<its drafted half's side>:e" -> "P:e", "P.<other>:e" -> "P:e.m" (its mirror,
+    edges.P["e.m"] made), and "P.L" / "P.R" as a piece -> "P". The drafted half's side: its flat's x (".L" = +x)."""
+    pcs = decl.get("pieces") or {}
+    folded = [n for n, pd in pcs.items() if isinstance(pd, dict) and pd.get("fold") and not pd.get("pair")
+              and pd.get("part") in (parts or {})]
+    if not folded:
+        return decl
+    D = copy.deepcopy(decl)
+    edges = D.setdefault("edges", {})
+    side = {}
+    for n in folded:
+        P = outline(parts[pcs[n]["part"]], n, {k: v for k, v in pcs[n].items() if k != "fold"})
+        side[n] = "L" if float(np.mean(P[:, 0])) >= 0 else "R"
+
+    def name(x):
+        if not isinstance(x, str):
+            return x
+        for n in folded:
+            if x in (f"{n}.L", f"{n}.R"):
+                return n
+            for sd in "LR":
+                if x.startswith(f"{n}.{sd}:"):
+                    e = x.split(":", 1)[1]
+                    if sd == side[n] or e.endswith(".m"):
+                        return f"{n}:{e}"
+                    edges.setdefault(n, {}).setdefault(f"{e}.m", {"mirror_of": e})
+                    return f"{n}:{e}.m"
+        return x
+
+    def walk(v):
+        if isinstance(v, list):
+            return [walk(x) for x in v]
+        if isinstance(v, dict):
+            return {name(k) if isinstance(k, str) and ":" in k else k: walk(x) for k, x in v.items()}
+        return name(v)
+    # a seam naming one side (front.L:neckline = collar.L:neck_front, step 1's names) brings its other side's twin, as
+    # for a pair (_twin_seams), unless declared too
+    sd = lambda e: str(e).split(":", 1)[0][-2:] if ":" in str(e) else ""
+    els = lambda x: [x] if isinstance(x, str) else list(x or [])
+    have = {json.dumps([x.get("a"), x.get("b")], sort_keys=True) for x in D.get("seams") or []}
+    for x in list(D.get("seams") or []):
+        es = els(x.get("a")) + els(x.get("b"))
+        sides = {sd(e) for e in es}
+        if len(sides) != 1 or not sides <= {".L", ".R"} or not any(str(e).split(":", 1)[0][:-2] in folded for e in es):
+            continue
+        o = {".L": ".R", ".R": ".L"}[sides.pop()]
+        sw = lambda v: [sw(e) for e in v] if isinstance(v, list) else (v.split(":", 1)[0][:-2] + o + ":" + v.split(":", 1)[1])
+        t = dict(x, a=sw(x.get("a")), b=sw(x.get("b")))
+        key = json.dumps([t["a"], t["b"]], sort_keys=True)
+        if key not in have:
+            have.add(key)
+            D["seams"].append(t)
+    for k in ("seams", "closures", "marks", "darts", "folds", "stiff", "departs"):
+        if k in D:
+            D[k] = walk(D[k])
+    return D
+
+
 def base_name(n: str, decl: dict) -> str:
     """P.L / P.R of a paired P -> P (explicit sides in seams and closures)."""
     return n[:-2] if _side(n) and n[:-2] in paired(decl) else n
+
+
+def halves(decl: dict, step1: dict) -> set:
+    """Centre pieces cut on the fold (pieces.P {fold}, no pair) that stand for step 1's two halves P.L + P.R (C381,
+    t s4-11: step 1 named collar.L / collar.R joined by a fold at CB; only a pair could answer to those names, so the
+    agent cut two loose halves and put a press fold on one, and the collar was never joined at CB)."""
+    inv = step1.get("pieces") or {}
+    return {n for n, pd in (decl.get("pieces") or {}).items() if isinstance(pd, dict) and pd.get("fold")
+            and not pd.get("pair") and n not in inv and f"{n}.L" in inv and f"{n}.R" in inv}
+
+
+def canon(e, H: set):
+    """An edge named for step 1's half (P.L:e, P.R:e) or the converter's mirrored half (P:e.m) of a fold-cut piece in
+    H, as the one piece's edge P:e; any other edge as is."""
+    if not isinstance(e, str) or ":" not in e:
+        return e
+    p, ed = e.split(":", 1)
+    if p[-2:] in (".L", ".R") and p[:-2] in H:
+        p = p[:-2]
+    if p in H and ed.endswith(".m"):
+        ed = ed[:-2]
+    return f"{p}:{ed}"
+

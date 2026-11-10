@@ -156,3 +156,14 @@ def test_look_chain_writes_step9(home, monkeypatch):
     rec = gr.load("m", "shirt")
     assert rec["steps"]["9"]["status"] == "done" and rec["steps"]["9"]["look"][0].endswith("_front.png")
     assert "waits for approval" in gr.next_step(rec)["why"]
+
+
+def test_a_steps_saved_output_is_shown_and_step_3_carries_after_a_step_2_rewrite(home, monkeypatch):  # (t s2-5; C390)
+    from hifipushie import garment_carry as gc, server
+    _upto(home, "tm", "g", "3")
+    assert '"n": "2"' in server.garment_record("tm", "g", step="2")
+    gr.write("tm", "g", "2", "done", output={"n": "2", "fixed": True})
+    assert gr.states(gr.load("tm", "g"))["3"]["stale"]
+    monkeypatch.setattr(gc, "_check", lambda sid, out, rec: "")  # (step 3's saved content still validates)
+    gc.carry("tm", "g", "2")
+    assert not gr.states(gr.load("tm", "g"))["3"]["stale"]

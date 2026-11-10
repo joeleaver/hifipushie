@@ -456,8 +456,11 @@ def landmark_text(tape: Tape) -> str:
             f"\n  floor z {tape.zmin:.3f}, crown z {tape.zmax:.3f}\njoints (inside the body; \"joint:<name>\" too): {js}")
 
 
-def run(name: str, measurements: list | None = None, garment: str = "", landmarks: bool = False) -> tuple[str | None, str]:
-    """The MCP tool body: (look path or None, the answer)."""
+def run(name: str, measurements: list | None = None, garment: str = "", landmarks: bool = False,
+        add: bool = False) -> tuple[str | None, str]:
+    """The MCP tool body: (look path or None, the answer). add (with garment): step 3's measurements are kept exactly as
+    the record holds them (values, how and where) and only these are taken and added, a same-named one replaced (C381,
+    t s4-7..s4-11: every step-4 retake rebuilt all 21 tapes from their "how" text to add two)."""
     from . import cloth, store
     spec = store.load(name)
     if not spec.get("base"):
@@ -477,10 +480,16 @@ def run(name: str, measurements: list | None = None, garment: str = "", landmark
         try:
             r = tape.take(it)
             src = dict(r, measure=it.get("measure", r["name"])) if isinstance(it, dict) else r
-            rows.append(dict(r, **tape_geom.geometry(tape, src)))  # (F4: where it was taken: its loop or path)
+            rows.append(dict(r, **tape_geom.geometry(tape, src), asked=it))  # (F4: where; asked: its definition)
         except TapeError as e:
             errs.append(f"  REFUSED {it.get('name', it) if isinstance(it, dict) else it}: {e}")
-    btr.sums(sums, rows, errs)
+    kept = []
+    if add:
+        if not garment:
+            raise TapeError("add=True keeps a garment's step 3 and adds to it: name the garment")
+        kept = btr.kept(name, garment, {r["name"] for r in rows} | {it.get("name") for it in sums})
+    rows = kept + rows
+    btr.sums(sums, rows, errs)  # (appends to rows)
     if errs and not rows:
         raise TapeError("\n".join(errs))
     d = store._dir(name) / "tape"
@@ -493,6 +502,9 @@ def run(name: str, measurements: list | None = None, garment: str = "", landmark
     out = [f"{num.get(id(r), '-')}. {r['name']}: {r['mm'] if 'mm' in r else r['deg']} "
            f"{'mm' if 'mm' in r else 'deg'} ({r['kind']}): {r['how']}" + ("" if id(r) in num else " (no line drawn)")
            for r in rows]
+    if kept:
+        ks = {id(k) for k in kept}
+        out = [x + (" (kept from step 3 as recorded)" if id(r) in ks else "") for x, r in zip(out, rows)]
     txt = "\n".join(out + errs) + f"\nlook: {look} (the tapes' paths, numbered as above; every value is here)"
     if landmarks:
         txt = landmark_text(tape) + "\n" + txt

@@ -113,7 +113,6 @@ tests/test_hides.py
 tests/test_humanfit.py
 tests/test_humanmacro.py
 tests/test_humanmeasure.py
-tests/test_humannormals.py
 tests/test_humans.py
 tests/test_images.py
 tests/test_island_sites.py

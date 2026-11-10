@@ -105,6 +105,25 @@ def seam_names(Bp: dict) -> list:
     return [f"{_side_name(A)} = {_side_name(B)}" for A, B in Bp.get("seams") or []]
 
 
+def _role_text(nm: str, pc: dict, d: dict) -> str:
+    """The role as the shape rows read it (C379, t s4-9: a stand named "collar" was listed collar_fall while the gate
+    checked it as a stand): a name that doesn't say stand or fall, with no role declared, is decided by its seams."""
+    from . import draft_shape as ds
+    base = nm.rsplit(".", 1)[0] if nm.endswith((".L", ".R")) else nm
+    if d.get("role"):
+        return str(d["role"])
+    if not pc.get("role") and base.lower() in ds.AMBIGUOUS_NAMES:
+        return "stand or fall: its seams decide (the shape rows say which)"
+    return garment_design.role_of(nm, pc)
+
+
+def _layer_text(nm: str, lay: dict, pcs: dict, own) -> str:
+    """A layer (draft_shape.layers: sewn edge to edge onto one piece) takes its host's role (C381, t s4-11: a stand's
+    canvas and facing were listed collar_fall by their names until the agent declared them stands)."""
+    h = lay[nm]
+    return f"layer of {h} (its role: {_role_text(h, pcs[h], own(h))})"
+
+
 def text_lines(Bp: dict, seam_rows=None, names: list | None = None, decl: dict | None = None) -> list:
     """The sheet's numbers as text (the image carries none): every piece (name, size, cut count, stiff, grain, role)
     and every seam pair (both edges, both lengths, the ease, PASS/FAIL): failing pairs first with their kind and band,
@@ -113,12 +132,18 @@ def text_lines(Bp: dict, seam_rows=None, names: list | None = None, decl: dict |
     pcs, stiff = Bp.get("pieces") or {}, {e if isinstance(e, str) else e.get("piece") for e in Bp.get("interfaced") or []}
     dp = (decl or {}).get("pieces") or {}
     out = [f"pieces ({len(pcs)}; sizes are the piece's width x height on the sheet, mm):"]
+    from . import draft_shape as ds
+    try:
+        lay = ds.layers(Bp) if Bp.get("seams") else {}
+    except Exception:  # noqa: BLE001  (a sheet without edge names: no layers said)
+        lay = {}
+    own = lambda n: dp.get(n) or (dp.get(n[:-2]) if n.endswith((".L", ".R")) else None) or {}
     for nm, pc in pcs.items():
         sz = np.ptp(np.asarray(pc["P"], float), 0) * 1000
         cut = int(dp.get(nm, {}).get("cut", pc.get("cut", 1)))
         fold = " on fold" if dp.get(nm, {}).get("fold") else ""
         out.append(f"  {nm}: {sz[0]:.0f} x {sz[1]:.0f} mm, cut {cut}{fold}{', stiff' if nm in stiff else ''}, "
-                   f"grain {float(pc.get('grain', 90)):.0f} deg, role {garment_design.role_of(nm, pc)}")
+                   f"grain {float(pc.get('grain', 90)):.0f} deg, role {_layer_text(nm, lay, pcs, own) if nm in lay and not (own(nm).get('role') or pc.get('role')) else _role_text(nm, pc, own(nm))}")
     names = names or seam_names(Bp)
     rows = list(seam_rows or [])
     fail, ok_lines, bare = [], [], []
@@ -230,6 +255,9 @@ def render(Bp: dict, title: str = "", px_per_m: float = 900.0, width_m: float = 
                 if len(run) > 1:
                     d.line([tuple(p) for p in tp(nm, np.array(run))], fill=(150, 120, 60, 90), width=1)
         for k, L in (pc.get("lines") or {}).items():  # the draft's internal lines (chest, waist, placket folds...)
+            if str(k).startswith("detail:"):  # (a detail's strip as step 7 will place it: draft_marks, C380)
+                d.line([tuple(q) for q in tp(nm, np.asarray(L))], fill=(200, 120, 0), width=3)
+                continue
             _dashed(d, tp(nm, np.asarray(L)), fill=(170, 170, 170), width=1, dash=4, gap=4)
         d.line(poly + [poly[0]], fill=(30, 30, 30), width=2)
         if sa > 0:  # the cutting line, a seam allowance outside the sewing line
@@ -275,6 +303,8 @@ def render(Bp: dict, title: str = "", px_per_m: float = 900.0, width_m: float = 
                 d.line([tuple(p - [8, 0]), tuple(p + [8, 0])], fill=(220, 0, 0), width=3)
             elif "buttonhole" in kl:
                 d.rectangle([tuple(p - [4, 10]), tuple(p + [4, 10])], outline=(60, 60, 60), width=2)
+            elif kl.startswith("detail:"):  # (a detail's point as step 7 will place it: draft_marks, C380)
+                d.ellipse([tuple(p - 5), tuple(p + 5)], fill=(200, 120, 0))
             elif "button" in kl:
                 d.ellipse([tuple(p - 7), tuple(p + 7)], outline=(60, 60, 60), width=3)
     for nm, pn, lab in points:  # named pattern points: a dot (the name is the caller's text)

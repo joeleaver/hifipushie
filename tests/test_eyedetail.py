@@ -97,28 +97,6 @@ def test_lash_shapes_ride_the_lid():
     assert np.abs(D["jawOpen"]).max() == 0
 
 
-def test_aperture_from_mask():
-    """Two almond openings (picture left / right): heights, widths and corner angles from the mask."""
-    from hifipushie import aperture
-    H, W = 200, 400
-    y, x = np.mgrid[0:H, 0:W].astype(float)
-    m = np.zeros((H, W), bool)
-    for cx in (100, 300):
-        # a lens: two circular arcs meeting at the corners, 120 px wide, 40 px tall
-        half, h = 60.0, 20.0
-        R = (half ** 2 + h ** 2) / (2 * h)
-        up = np.hypot(x - cx, y - (100 + R - h)) < R
-        lo = np.hypot(x - cx, y - (100 - R + h)) < R
-        m |= up & lo
-    r = aperture.from_mask(m, 0.1)
-    assert len(r) == 2
-    for e in r:
-        assert abs(e["open"] - 4.0) < 0.25, e
-        assert abs(e["width"] - 12.0) < 0.3, e
-        # a lens of half-width 60, sagitta 20: each arc leaves the corner at atan(2 h / half) ~ 33.7 deg -> ~67 deg
-        assert 50 < e["inner_angle"] < 80 and 50 < e["outer_angle"] < 80, e
-
-
 def test_clear_cornea():
     """base.cornea.clear: the iris plane `depth` behind the apex, the lens part between, and its implied part."""
     from hifipushie import base

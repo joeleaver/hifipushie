@@ -179,14 +179,14 @@ def rule_items(roles: set, soft: list, closures: dict) -> list:
                                                    "network starts askew: " + _C))
     for c, st in closures.items():
         I.append(dict(id=f"closure_{c}", read=f"closure_state:{c}", equals=st["state"], stage=1,
-                      source=f"style plan state.{c}: {st['state']} ({st.get('source', '')})",
-                      change=f"build the closure {c} in its planned state (chain_garment wear / T7 band state)",
+                      source=f"style plan ties.{c}: {st['state']} ({st.get('source', '')})",
+                      change=f"tie the closure {c} as its plan ties it (step 2 ties, C391; chain_garment)",
                       **({} if st.get("read") else {"missing": f"no build reading of the state of a closure on "
                                                                f"{'/'.join(st.get('roles') or ['these'])} pieces yet"})))
         if st["state"] == "closed" and st.get("read") == "front_state":
             I.append(dict(id=f"closure_{c}_meets", read="front_met_share", range=[0.9, None], stage=1,
                           source=f"rule: a closed closure's edges meet (garment_reads MEET_MM 2 mm) over >= 0.9 of it; "
-                                 f"plan state.{c} closed", change="the fronts gape: the button marks (alter_pattern "
+                                 f"plan ties.{c}: every fastening done up", change="the fronts gape: the button marks (alter_pattern "
                                                                  "move) or the PLACKETS / soft network: " + _C))
     if soft:
         I.append(dict(id="soft_cloth_smooth", read="soft_rough_over_limit", range=[None, 1.0], stage=1,

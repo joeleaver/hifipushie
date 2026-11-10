@@ -134,7 +134,7 @@ def test_tool_writes_step4_and_reads_steps_1_and_3(home, monkeypatch):
     monkeypatch.setattr(store, "load", lambda name: json.loads(json.dumps(saved.get(name) or {})))
     monkeypatch.setattr(store, "save", lambda name, spec, note="": saved.__setitem__(name, spec) or 1)
     _record(home)
-    assert set(gr.reads("tm", "g", "4")) == {"1", "3"}
+    assert set(gr.reads("tm", "g", "4")) == {"1", "2", "3"}  # (C392: step 2 too, for the planned folds)
     assert "reads" in gr.next_step(gr.load("tm", "g"))["uses"]
     sheet, txt = dot.run("tm", "g", RECT, DECL)
     assert "draft_pattern: PASS" in txt and Path(sheet).exists()
@@ -196,10 +196,11 @@ LEVEL = [[340, 50], [370, 50], [400, 50], [430, 50], [460, 50]]  # the top 50 mm
 FOLLOWS = [[330, 120], [350, 90], [370, 65], [400, 50], [430, 65], [450, 90], [470, 120]]  # down the whole 70 mm drop
 
 
-def _ref(points):
+def _ref(points, corners=()):
     from hifipushie import draft_stand as dst
     plan = {"read": {"views": [{"view": "front", "image": "x.png"}]},
-            "style": {"traces": [{"id": "top", "what": "collar_top", "view": 0, "points": points}], "body_marks": _MARKS}}
+            "style": {"traces": [{"id": "top", "what": "collar_top", "view": 0, "points": points,
+                                  "corners": list(corners)}], "body_marks": _MARKS}}
     return dst.reference(plan, _AT)
 
 
@@ -225,6 +226,15 @@ def test_stand_reference_reads_the_traced_top():
     assert abs(r["h_side"] - 50) < 0.5 and abs(r["T"]) < 0.5 and abs(r["tol"] - 6.0) < 0.5, r
     f = _ref(FOLLOWS)
     assert abs(f["T"] - 70) < 0.5, f
+
+
+def test_a_traced_corner_ends_the_top_and_a_cut_away_front_isnt_held_to_a_front_height():  # (t s4-7; C377)
+    cut = [[300, 130], [340, 90], [350, 55], [400, 50], [450, 55], [460, 90], [500, 130]]  # front ends slanting 45 deg
+    assert _ref(cut)["T"] > 70 and not _ref(cut)["cut_away"]  # (no corners: the 45 deg slant reads as the top)
+    r = _ref(cut, corners=[2, 4])
+    assert abs(r["T"] - 5) < 0.5 and r["cut_away"], r
+    row = _rows(_B(_stand(HUGS, lean_in=True)), ref=r)["shape_stand"]
+    assert "cut away" in row["value"] and "h_side + D - T" not in row["why"], row
 
 
 def test_shape_a_level_top_over_a_dropping_neckline_wants_taller_fronts_not_a_rise():
@@ -428,6 +438,22 @@ def test_an_unsewn_step1_seam_names_the_chain_way():  # (t s4-4: a two-piece sle
     assert any("is not sewn" in b and "as ONE seam" in b for b in bad), bad
 
 
+def test_a_canvas_sewn_edge_to_edge_is_a_layer_and_neck_named_edges_count():  # (t s4-7; C377)
+    import numpy as np
+    from hifipushie import draft_own as do, draft_shape as ds
+    sq = lambda n: {"name": n, "P": np.asarray([[0, 0], [0.1, 0], [0.1, 0.04], [0, 0.04]], float),
+                    "names": {"a": 0, "b": 1, "c": 2, "d": 3}}
+    arcs = {"collar": {"neck_front": "a>b", "top": "c>d"}, "canvas": {"neck_front": "a>b", "top": "c>d"},
+            "front": {"neckline": "a>b"}}
+    B = {"pieces": {k: sq(k) for k in arcs}, "edge_arcs": arcs, "folds": [],
+         "seams": [["collar:a>b", "front:a>b"], ["canvas:c>d", "collar:c>d"], ["canvas:a>b", "collar:a>b"]]}
+    assert ds.layers(B) == {"canvas": "collar"}
+    assert ds.is_neck("neck_front") and ds.is_neck("neckline") and not ds.is_neck("top")
+    assert "canvas" not in ds.fall_pieces(B, {"stiff": ["collar"]}, {})
+    bad = do.validate({"pieces": {"x": {"part": "p", "role": "stand"}}}, {"pieces": {"x": {}}}, None)
+    assert any("role 'stand' is not a role" in b and "collar_stand" in b for b in (bad if isinstance(bad, list) else [str(bad)])), bad
+
+
 def test_pairs_expand_side_named_seams_darts_and_marks(home):  # (t s4-5: half the pair handling; C366)
     from hifipushie import draft_own as do, draft_pairs as dp
     out = do.node_draft(RECT, {"waist": 800}, d=home / "pairs2")
@@ -442,3 +468,285 @@ def test_pairs_expand_side_named_seams_darts_and_marks(home):  # (t s4-5: half t
     assert {d["piece"] for d in D["darts"]} == {"front.L", "front.R"}
     assert D["marks"]["pocket.R"]["piece"] == "front.R"
     assert D["marks"]["pad"]["piece"] == "front.L" and D["marks"]["pad"]["follows"] == ["front.L:side"] and D["marks"]["pad"]["mirror"]
+
+
+def test_a_centre_pieces_side_named_seam_is_twinned(home):  # (t s4-6: the collar's .R seams by hand; C376)
+    from hifipushie import draft_own as do, draft_pairs as dp
+    out = do.node_draft(RECT, {"waist": 800}, d=home / "pairs3")
+    decl = {"pieces": {"front": {"part": "test.panel", "pair": True}, "collar": {"part": "test.panel"}},
+            "edges": {"front": {"neck": "tl>tr"}, "collar": {"neck.L": "tl>tr", "neck.R": "br>bl"}},
+            "seams": [{"a": "collar:neck.L", "b": "front.L:neck"}]}
+    ends = {(s["a"], s["b"]) for s in dp.expand(decl, out["parts"])["seams"]}
+    assert ("collar:neck.R", "front.R:neck") in ends, ends
+
+
+def test_a_gate_rows_reasons_print_in_full():  # (t s4-8: one line cut at 600 characters hid `change:`; C378)
+    from hifipushie import draft_own_tool as dot
+    why = "; ".join(f"collar.{s}: {'x' * 400} change: make it 26 mm taller at the back" for s in "LR")
+    ln = dot.row_lines({"status": "FAIL", "id": "shape_stand", "value": "v" * 900, "why": why, "fix": "redraft"})
+    assert sum("change: make it 26 mm taller" in x for x in ln) == 2 and ln[-1] == "      fix: redraft", ln
+    assert dot.row_lines({"status": "PASS", "id": "seams", "value": "ok", "why": "", "fix": "redraft"}) == ["  PASS seams: ok"]
+
+
+def test_an_edge_sewn_in_two_seams_is_sampled_once():  # (t s4-9: a collar's neck edge on the neckline and its canvas; C379)
+    import numpy as np
+    from hifipushie import cloth
+
+    def rect(nm, w, h):
+        return {"name": nm, "P": np.array([[0, 0], [w, 0], [w, h], [0, h]], float),
+                "names": {"a": 0, "b": 1, "c": 2, "d": 3}, "marks": {}, "lines": {}, "wrap": {"to": "torso"}}
+    # the collar's a>b (100 mm) sewn to the neckline (eased: 121 mm, 7 samples at 20 mm) and to its canvas (100 mm, 5)
+    B = {"pieces": {"collar": rect("collar", 0.1, 0.04), "canvas": rect("canvas", 0.1, 0.04),
+                    "front": rect("front", 0.121, 0.3)},
+         "seams": [["collar:a>b", "front:a>b"], ["canvas:a>b", "collar:a>b"]], "stitches": []}
+    M = cloth.mesh(B, 0.02)
+    per = [int(np.sum(np.asarray(M["sew_seam"]) == k)) for k in (0, 1)]
+    assert per[0] == per[1] and per[0] >= 7, per
+
+
+def test_step4_places_every_mark_and_compares_step1s_lengths():  # (t s4-10: marks unplaced until step 7; C380)
+    import numpy as np
+    from hifipushie import cloth, draft_body_lengths as dbl, draft_marks, garment_details as gd
+
+    def rect(nm, w, h):
+        return {"name": nm, "P": np.array([[0, 0], [w, 0], [w, h], [0, h]], float),
+                "names": {"a": 0, "b": 1, "c": 2, "d": 3}, "marks": {}, "lines": {}, "wrap": {"to": "torso"}}
+    B = {"pieces": {"front.L": rect("front.L", 0.2, 0.5), "front.R": rect("front.R", 0.2, 0.5)},
+         "seams": [["front.L:a>b", "front.R:a>b"]], "stitches": []}
+    M = cloth.mesh(B, 0.02)
+    step1 = {"details": {"braid.L": {"build": "full", "on": ["front.L"]}}}
+    edges = {"front.L": {"cf": "b>c"}, "front.R": {"cf": "b>c"}}
+    ok = {"edges": edges, "marks": {"braid.L": {"piece": "front.L", "mirror": True, "path": [
+        {"point": "c", "dx": -50, "dy": -10}, {"point": "c", "dx": -50, "dy": -300}]}}}
+    row, drawn = draft_marks.place(M, ok, step1)
+    assert row["status"] == "PASS" and set(drawn) == {"front.L", "front.R"}, row  # (the mirrored pass is the .R detail)
+    down = {"edges": edges, "marks": {"braid.L": {"piece": "front.L", "path": [{"point": "c", "dx": -50, "dy": 300}]}}}
+    row = draft_marks.place(M, down, step1)[0]
+    assert row["status"] == "FAIL" and "dy runs UP" in row["why"], row
+    # step 1's estimate against the drafted seam, both sides named by their sides (front.L / front.R)
+    B["decl"] = {"seams": [{"a": "front.L:hem", "b": "front.R:hem"}]}
+    s1 = {"seams": [{"a": "front.L:hem", "b": "front.R:hem", "length": {"style": {"value_mm": 240, "source": "seen"}}}]}
+    r = dbl.style_rows(B, s1, {"measurements": []})[0]
+    assert r["status"] == "INFO" and "drafted 200 mm, step 1 240 mm" in r["info"], r
+    assert gd.DY_HINT
+
+
+def test_s4_11_step1_departures_fold_halves_whole_stands_mirrored_marks_and_layers():  # (t s4-11; C381)
+    import numpy as np
+    from hifipushie import cloth, draft_body_lengths as dbl, draft_marks, draft_own as do, draft_shape as ds
+    from hifipushie import pattern_sheet as ps
+
+    def rect(nm, w, h, sgn=1):
+        return {"name": nm, "P": np.array([[0, 0], [sgn * w, 0], [sgn * w, h], [0, h]], float)[::sgn],
+                "names": {"a": 0, "b": 1, "c": 2, "d": 3} if sgn > 0 else {"a": 3, "b": 2, "c": 1, "d": 0},
+                "marks": {}, "lines": {}, "wrap": {"to": "torso"}}
+    # 1. far off step 1's approved estimate: refused unless `departs` says why
+    B = {"pieces": {"front.L": rect("front.L", 0.2, 0.5), "front.R": rect("front.R", 0.2, 0.5)},
+         "seams": [["front.L:a>b", "front.R:a>b"]], "stitches": [],
+         "decl": {"seams": [{"a": "front.L:hem", "b": "front.R:hem"}]}}
+    s1 = {"seams": [{"a": "front.L:hem", "b": "front.R:hem", "length": {"style": {"value_mm": 400, "source": "seen"}}}]}
+    r = dbl.style_rows(B, s1, {"measurements": []})[0]
+    assert r["status"] == "FAIL" and "-50%" in r["why"] and "departs" in r["fix"], r
+    B["decl"]["departs"] = {"front:hem": "the reference's hem is shorter: the tab ends at the side"}
+    r = dbl.style_rows(B, s1, {"measurements": []})[0]
+    assert r["status"] == "INFO" and "departs: the reference" in r["info"], r
+    # 2. step 1's two halves joined by a fold: a fold on one half doesn't join them; one piece cut on the fold does
+    step1 = {"pieces": {"collar.L": {"build": "full"}, "collar.R": {"build": "full"}},
+             "seams": [{"a": "collar.L:cb", "b": "collar.R:cb", "kind": "fold"}]}
+    half = {"pieces": {"collar.L": {"part": "x"}, "collar.R": {"part": "x"}},
+            "edges": {"collar.L": {"cb": "a>b"}, "collar.R": {"cb": "a>b"}},
+            "folds": [{"name": "cb", "piece": "collar.L", "line": "cb", "kind": "press"}]}
+    assert any("joins two halves" in b for b in do.validate(half, step1)), do.validate(half, step1)
+    sewn = dict(half, folds=[], seams=[{"a": "collar.L:cb", "b": "collar.R:cb"}])
+    assert not do.validate(sewn, step1), do.validate(sewn, step1)
+    one = {"pieces": {"collar": {"part": "x", "fold": "x0"}}, "edges": {"collar": {"cb": "a>b"}}}
+    assert not do.validate(one, step1), do.validate(one, step1)
+    # 3. a {point, dx} mark mirrored onto a pair's mirrored copy: dx runs the other way
+    B = {"pieces": {"front.L": rect("front.L", 0.2, 0.5), "front.R": rect("front.R", 0.2, 0.5, -1)},
+         "seams": [["front.L:a>b", "front.R:a>b"]], "stitches": []}
+    M = cloth.mesh(B, 0.02)
+    st = {"details": {"braid.L": {"build": "full", "on": ["front.L"]}}}
+    mk = {"edges": {}, "marks": {"braid.L": {"piece": "front.L", "mirror": True, "path": [
+        {"point": "c", "dx": -50, "dy": -10}, {"point": "c", "dx": -50, "dy": -300}]}}}
+    row, drawn = draft_marks.place(M, mk, st)
+    assert row["status"] == "PASS" and set(drawn) == {"front.L", "front.R"}, row
+    # 4. a half stand sewn to its mirror at CB is judged whole: the rise of the whole, not the half's sagitta
+    from test_draft_own import _B, _ref, _piece, HUGS, FOLLOWS, _strip
+    whole = {r["id"]: r for r in ds.rows(_B(_strip("collar", *HUGS)), {"pieces": {"collar": {"role": "collar_stand"}},
+                                         "stiff": ["collar"]}, {"pieces": {}}, _ref(FOLLOWS))}["shape_stand"]
+    lo, hi = HUGS
+    xs = np.linspace(0.2, 0.4, 11)
+
+    def h(nm, sgn):
+        return _piece(nm, [(0.2 + sgn * (x - 0.2), lo(x)) for x in xs] + [(0.2 + sgn * (x - 0.2), hi(x)) for x in xs[::-1]],
+                      {"bl": 0, "br": 10, "tr": 11, "tl": 21}, "neck")
+    Bh = _B(_strip("collar", *HUGS))
+    Bh["pieces"] = {"front": Bh["pieces"]["front"], "collar.L": h("collar.L", 1), "collar.R": h("collar.R", -1)}
+    Bh["seams"] = [["collar.L:bl>br", "front:hps>cf"], ["collar.L:tl>bl", "collar.R:tl>bl"]]
+    Bh["edge_arcs"] = {"front": {"neck": "hps>cf"}, "collar.L": {"neck": "bl>br", "cb": "tl>bl"}, "collar.R": {"cb": "tl>bl"}}
+    r = {x["id"]: x for x in ds.rows(Bh, {"pieces": {"collar.L": {"role": "collar_stand"}}, "stiff": ["collar.L"]},
+                                     {"pieces": {}}, _ref(FOLLOWS))}["shape_stand"]
+    assert "whole: mirrored at collar.L:cb" in r["value"] and "+30.0 mm" in r["value"] and "+30.0 mm" in whole["value"], r
+    # 5. a canvas sewn edge to edge onto a piece is listed as its layer, with the host's role
+    Bl = {"pieces": {"collar": rect("collar", 0.2, 0.05), "collar_canvas": rect("collar_canvas", 0.2, 0.05),
+                     "back": rect("back", 0.2, 0.5)},
+          "seams": [["collar:a>b", "collar_canvas:a>b"], ["collar:c>d", "back:c>d"]],
+          "edge_arcs": {"collar": {"top": "a>b", "neck": "c>d"}, "collar_canvas": {"top": "a>b"}, "back": {"neck": "c>d"}}}
+    txt = "\n".join(ps.text_lines(Bl, decl={"pieces": {"collar": {"role": "collar_stand"}}}))
+    assert "collar_canvas: " in txt and "layer of collar (its role: collar_stand)" in txt, txt
+
+
+
+def test_s4_12_a_fold_piece_takes_step1s_half_names_and_mirror_seams_arent_hosts(home):  # (t s4-12; C382)
+    from hifipushie import draft_own as do, draft_pairs as dp, draft_shape as ds
+    out = do.node_draft(RECT, {"waist": 800}, d=home / "fold12")
+    decl = {"pieces": {"front": {"part": "test.panel", "pair": True}, "collar": {"part": "test.panel", "fold": "x0",
+                                                                                       "place": {"to": "neck"}}},
+            "edges": {"front": {"neck": "tl>tr"}, "collar": {"neck": "tl>tr"}},
+            "seams": [{"a": "front.L:neck", "b": "collar.L:neck"}],
+            "marks": {"binding.L": {"piece": "collar.L", "follows": ["collar.L:neck"]}}}
+    ex = dp.expand(decl, out["parts"])
+    got = {(s["a"], s["b"]) for s in ex["seams"]}
+    assert {b for _, b in got} == {"collar:neck", "collar:neck.m"} and {a for a, _ in got} == {"front.L:neck", "front.R:neck"}, got
+    assert ex["marks"]["binding.L"]["piece"] == "collar" and ex["edges"]["collar"].get("neck.m") or \
+        ex["marks"]["binding.L"]["follows"] == ["collar:neck"], ex["marks"]
+    fl = dict(decl, seams=[{"a": "collar.L:neck", "b": "collar.R:neck"}])
+    s1 = {"pieces": {n: {"build": "full"} for n in ("front.L", "front.R", "collar.L", "collar.R")}}
+    assert any("fold line" in b for b in do.validate(fl, s1, out["parts"])), do.validate(fl, s1, out["parts"])
+    # a facing sewn top to top on its stand AND to its own mirror at CB is still the stand's layer, not a fall
+    B = {"pieces": {n: {} for n in ("collar.L", "collar.R", "facing.L", "facing.R", "front")},
+         "seams": [["collar.L:a>b", "facing.L:a>b"], ["facing.L:c>d", "facing.R:c>d"], ["collar.L:e>f", "front:e>f"]],
+         "edge_arcs": {"collar.L": {"top": "a>b"}, "facing.L": {"top": "a>b", "cb": "c>d"}, "facing.R": {"cb": "c>d"},
+                       "front": {"neck": "e>f"}}}
+    assert ds.layers(B).get("facing.L") == "collar.L", ds.layers(B)
+
+
+def test_a_cut_away_stand_isnt_held_to_the_neck_girth():  # (t s4-12: its top doesn't close round the neck; C382)
+    cut = [[300, 130], [340, 90], [350, 55], [400, 50], [450, 55], [460, 90], [500, 130]]
+    r = _ref(cut, corners=[2, 4])
+    r["top_girth"] = {"at": None, "nearest": {"name": "neck", "mm": 1000.0, "dz": -50.0}}
+    row = _rows(_B(_stand(HUGS, lean_in=True)), ref=r)["shape_stand"]
+    assert "the top doesn't close round the neck" in row["value"] and "grips" not in row["why"], row
+
+
+def test_s4_13_the_pattern_round_the_body_at_each_girths_level():  # (t s4-13: a waist 5 cm under the plan passed; C383)
+    import numpy as np
+    from hifipushie import draft_girths as dg
+    th = np.linspace(0, 2 * np.pi, 49)[:-1]
+    zs = np.linspace(0.0, 1.6, 81)
+    V = np.array([[0.14 * np.cos(t), 0.14 * np.sin(t), z] for z in zs for t in th])
+    n = len(th)
+    T = np.array([[i * n + j, i * n + (j + 1) % n, (i + 1) * n + j] for i in range(len(zs) - 1) for j in range(n)] +
+                 [[i * n + (j + 1) % n, (i + 1) * n + (j + 1) % n, (i + 1) * n + j] for i in range(len(zs) - 1) for j in range(n)])
+    body = {"V": V, "T": T, "at": {"hps.L": [0.06, 0.0, 1.5]}}
+
+    def rect(nm, w, side):
+        return {"name": nm, "P": np.array([[0, 0], [w, 0], [w, -0.7], [0, -0.7]], float),
+                "names": {"tl": 0, "tr": 1, "br": 2, "bl": 3}, "marks": {}, "wrap": {"to": "torso", "side": side}}
+    pcs = {"front.L": rect("front.L", 0.2, "front"), "front.R": rect("front.R", 0.2, "front"),
+           "side.L": rect("side.L", 0.05, "side"), "side.R": rect("side.R", 0.05, "side"),
+           "back.L": rect("back.L", 0.2, "back"), "back.R": rect("back.R", 0.2, "back"),
+           "facing.L": rect("facing.L", 0.08, "front")}
+    seams = [[f"front.{s}:tr>br", f"side.{s}:tl>bl"] for s in "LR"] + [[f"side.{s}:tr>br", f"back.{s}:tr>br"] for s in "LR"]
+    seams += [["back.L:tl>bl", "back.R:tl>bl"], ["facing.L:tl>bl", "front.L:tl>bl"]]
+    B = {"pieces": pcs, "seams": seams, "edge_arcs": {},
+         "closures": [{"over": "front.L", "under": "front.R", "edge": {"over": "tl>bl", "under": "tl>bl"}, "pairs": []}]}
+    loop = [[0.14 * np.cos(t), 0.14 * np.sin(t), 1.2] for t in th]
+    s3 = {"measurements": [{"name": "waist", "mm": 850.0, "loop": loop}]}
+    r = dg.rows(B, s3, {"waist": {"ease_mm": 80.0}}, body)[0]
+    assert r["status"] == "FAIL" and "pattern 900 mm round" in r["value"] and "30 mm tight" in r["why"], r
+    assert "facing.L" not in r["value"], r["value"]  # (a facing lying on the front isn't round the body)
+    assert dg.rows(B, s3, {"waist": {"ease_mm": 40.0}}, body)[0]["status"] == "PASS"
+    s3["measurements"][0]["mm"] = 950.0
+    assert "can't close" in dg.rows(B, s3, {}, body)[0]["why"]
+    # a side panel placed on the back, with no neck edge: its line comes over its seams, not from its own top (C384)
+    s3["measurements"][0]["mm"] = 850.0
+    for sd in "LR":
+        pcs[f"side.{sd}"]["P"] = pcs[f"side.{sd}"]["P"] + [0, -0.3]  # (its top at the armpit, 300 mm below the hps)
+        pcs[f"side.{sd}"]["wrap"]["side"] = "back"
+    B["edge_arcs"] = {p: {"neck": "tl>tr"} for p in pcs if p.startswith(("front", "back"))}
+    r = dg.rows(B, s3, {"waist": {"ease_mm": 40.0}}, body)[0]
+    assert r["status"] == "PASS" and "pattern 900 mm round" in r["value"], r
+
+
+def test_s4_15_a_span_ratio_doesnt_crash_and_a_reversed_seam_carries_the_level():  # (t s4-15; C385)
+    import numpy as np
+    from hifipushie import draft_body_lengths as dbl, draft_girths as dg
+
+    def rect(nm, w, h):
+        return {"name": nm, "P": np.array([[0, 0], [w, 0], [w, -h], [0, -h]], float),
+                "names": {"tl": 0, "tr": 1, "br": 2, "bl": 3}, "marks": {}, "wrap": {"to": "torso", "side": "front"}}
+    B = {"pieces": {"a": rect("a", 0.2, 0.5), "b": rect("b", 0.2, 0.5)}, "seams": [["a:tr>br", "b:tl>bl"]],
+         "stitches": [], "decl": {"seams": [{"a": "a:side", "b": "b:side"}]}}
+    s1 = {"seams": [{"a": "a:side", "b": "b:side", "length": {"style": {"ratio": 0.9, "of": ["armpit", "hem"], "source": "x"}}}],
+          "seam_lengths_checked": [[0, 300.0, 280.0]]}
+    r = dbl.style_rows(B, s1, {"measurements": []})[0]  # (crashed: "unhashable type: 'list'")
+    assert r["status"] == "FAIL" and "step 1 300 mm" in r["why"], r
+    s1["seam_lengths_checked"] = []
+    assert dbl.style_rows(B, s1, {"measurements": []})[0]["status"] == "INFO"  # (unresolved here: skipped, not guessed)
+    # the level carried over a seam declared one edge up, one down still crosses the panel square
+    side = dict(rect("side", 0.05, 0.6), wrap={"to": "torso", "side": "side"})
+    back = dict(rect("back", 0.2, 0.6), wrap={"to": "torso", "side": "back"})
+    B2 = {"pieces": {"front": rect("front", 0.2, 0.6), "side": side, "back": back},
+          "seams": [["front:tr>br", "side:bl>tl"], ["side:tr>br", "back:tl>bl"], ["back:tr>br", "front:tl>bl"]],
+          "edge_arcs": {"front": {"neck": "tl>tr"}, "back": {"neck": "tl>tr"}}}
+    w = dg.level(B2, {"front": 0.2, "back": 0.2})[0]
+    assert abs(w.get("side", 0) - 0.05) < 2e-3, w  # (read across its length, 0.6 m, before)
+
+
+def test_s4_16_a_darts_seams_dont_stop_the_length_rows():  # (t s4-16: "seams not one to one"; C386)
+    import numpy as np
+    from hifipushie import draft_body_lengths as dbl
+
+    def rect(nm, w, h):
+        return {"name": nm, "P": np.array([[0, 0], [w, 0], [w, -h], [0, -h]], float),
+                "names": {"tl": 0, "tr": 1, "br": 2, "bl": 3}, "marks": {}, "wrap": {"to": "torso"}}
+    B = {"pieces": {"a": rect("a", 0.2, 0.5), "b": rect("b", 0.2, 0.5)},
+         "seams": [["a:tr>br", "b:tl>bl"], ["a:tl>tr", "a:bl>br"]], "stitches": [],
+         "darts": [{"piece": "a", "legs": ["a:tl>tr", "a:bl>br"]}], "decl": {"seams": [{"a": "a:side", "b": "b:side"}]}}
+    s1 = {"seams": [{"a": "a:side", "b": "b:side", "length": {"style": {"value_mm": 300, "source": "x"}}}]}
+    r = dbl.style_rows(B, s1, {"measurements": []})[0]
+    assert r["status"] == "FAIL" and "drafted 500 mm, step 1 300 mm" in r["why"], r
+
+
+def test_s4_17_a_closures_holes_go_on_over_and_its_buttons_on_under():  # (t s4-16 / s4-17; C387)
+    from hifipushie import garment_details_tool as gdt
+    s1 = {"details": {"front_buttons": {"on": ["front.R"], "build": "full"},
+                      "front_buttonholes": {"on": ["front.L"], "build": "full"}},
+          "closures": {"front_closure": {"pieces": ["front.L", "front.R"], "details": ["front_buttons", "front_buttonholes"]}}}
+    M = {"closures": [{"name": "front_closure", "kind": "buttons", "over": "front.L", "under": "front.R",
+                       "pairs": [["hole1", "btn1"], ["hole2", "btn2"]]}]}
+    mk = gdt.marks({"steps": {"1": {"output": s1}}}, M, {})
+    assert mk["front_buttonholes"][0]["piece"] == "front.L" and mk["front_buttonholes"][0]["at"][0]["point"] == "hole1", mk
+    assert mk["front_buttons"][0]["piece"] == "front.R" and mk["front_buttons"][0]["at"][1]["point"] == "btn2", mk
+
+
+def test_planned_folds_row():
+    """R2 (C392): every fold step 2 turns is declared on its piece by name; every declared roll has a planned turn."""
+    from hifipushie import fold_bends as fb
+    decl = {"folds": [{"name": "lapel_roll", "piece": "front", "line": ["a", "b"], "kind": "roll"},
+                      {"name": "hem", "piece": "sleeve", "line": ["c", "d"], "kind": "press"}]}
+    lapel = [{"id": f"lapel_roll.{s}", "on": f"front.{s}", "fold": "lapel_roll", "turn_deg": 170, "lies_on": f"front.{s}",
+              "source": "x"} for s in "LR"]
+    assert fb.draft_row(decl, {"bends": lapel})["status"] == "PASS"
+    assert fb.draft_row(decl, None) is None  # (no step 2 read: no row)
+    r = fb.draft_row(decl, {"bends": []})
+    assert r["status"] == "FAIL" and "roll fold 'lapel_roll' on front: no step-2 bend turns it" in r["why"]
+    r = fb.draft_row(decl, {"bends": lapel + [{"id": "c", "on": "collar", "fold": "collar_roll", "turn_deg": 175,
+                                               "lies_on": "collar", "source": "x"}]})
+    assert r["status"] == "FAIL" and "fold 'collar_roll' on collar (c); the draft declares none" in r["why"]
+    assert fb.wear({"bends": lapel})["lapel_roll.L"] == {"on": "front.L", "fold": "lapel_roll", "turn_deg": 170,
+                                                         "lies_on": "front.L"}
+
+
+def test_seam_links_row_fails_what_the_build_refuses():
+    """C395: step 4 FAILs a seam whose two sides differ past chain_core.SEAM_LINK_MM over one link (the hussar's
+    approved draft was refused at step 5 for 4.9 mm at the underarm while step 4's truing row was INFO)."""
+    import numpy as np
+    from test_chain_loops import _pattern
+    from hifipushie import draft_links
+    pat, vid = _pattern({"a": (0.0, 0.2, 0.0, 0.05, 11, 3), "b": (0.0, 0.2, 0.05, 0.1, 11, 3)}, sew_rows=[("a", -1, "b", 0)])
+    assert draft_links.row(pat.M)["status"] == "PASS"
+    pat.M["uv"][vid("b", 10, 0), 0] += 0.006  # (one side's last link 6 mm longer: the corners don't meet)
+    r = draft_links.row(pat.M)
+    assert r["status"] == "FAIL" and "a / b: one side 20.00 mm, the other 26.00 mm" in r["why"] and r["back_to"] == "4"

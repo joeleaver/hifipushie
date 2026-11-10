@@ -55,7 +55,7 @@ STEPS = [
 ]
 IDS = [s[0] for s in STEPS]
 # the earlier steps a step reads beyond the one before it (T4: the draft needs step 1's seams AND step 3's measurements)
-READS = {"2": ("0", "1"), "3": ("1", "2"), "4": ("1", "3")}  # (2: step 0's landmarks and heights too: C352)
+READS = {"2": ("0", "1"), "3": ("1", "2"), "4": ("1", "2", "3")}  # (2: step 0's landmarks and heights too: C352)
 STEP = {s[0]: dict(zip(("id", "key", "what", "tool", "approval", "back_to"), s)) for s in STEPS}
 for _s in STEPS:
     STEP[_s[1]] = STEP[_s[0]]  # (a step by its key too: "draft" == "4")

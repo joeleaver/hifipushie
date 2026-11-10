@@ -1,8 +1,8 @@
 # Mouth loops (edge loops round an opening modelled into a part, no template): STATE 2026-11-05
 
-Branch mouth-loops (worktree .claude/worktrees/mouth-loops), from main 8a142ff5 (limb loops landed, C375). Step 3 of
-the creature-topology project, asked for by Joe through Baynard Racing (Puddles' open mouth). Not pushed; coordinator
-lands. Exploring run (no gate). Ledger C376. Limb part of the thread: docs/state/limb_loops.md.
+Landed on main 2026-11-10 (built on limb loops, C375; this run 2026-11-05). Step 3 of
+the creature-topology project, asked for by Joe through Baynard Racing (Puddles' open mouth). Exploring run (no gate).
+Ledger C402. Limb part of the thread: docs/state/limb_loops.md.
 
 ## What the tools hold now (mouthloops.py docstring = spec)
 - Any subtracted blob of a `topology: "limbs"` part that breaks its skin is an opening (a mouth, a beak's gape):
@@ -50,5 +50,5 @@ the fan's tip at the axis' point on the back wall (off the last ring's middle: i
 ## Commands
 `/mnt/data/hifipushie/mouthloops/{dev.py <model>, wire.py, glbmouth.py, glbq.py, topoq.py, export.py}`
 
-NEXT: coordinator lands (bin/suite PASS); next run: the crotch patch + the back-of-mouth cap, re-export, judged on
+NEXT: the crotch patch + the back-of-mouth cap, re-export, judged on
 the GLB front and through the open mouth.

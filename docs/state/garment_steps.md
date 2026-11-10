@@ -5,8 +5,7 @@ to take the steps one at a time, iterating until we're good at each one." "I don
 drafters. Agents should have enough general intelligence to build a fresh pattern using FreeSewing, based on 3d
 measurements of the model." "we don't know what measurements we need until we see the clothing and discern what seams
 there are." "What about a 'parts' step, where we inventory what needs to be built, what's occluded, etc? And should we
-identify the style and make a styling strategy early? ... why build the shirt closed and then style it open, if we only
-need it open?"
+identify the style and make a styling strategy early? ... why build the shirt closed and then style it open, if we only need it open?"
 Every step has: an input, an output, ONE tool, a gate (measured against something named; each FAIL says what to change
 AND which step to go back to), and a look (the step's own result beside the reference, never a later step's). A step
 consumes only the approved output of the step before it. Every step is iterated on TWO garments together (the shirt and
@@ -49,12 +48,13 @@ ORDER: tooling for every step first; then the steps one at a time, shirt + hussa
 | T15 | Outline vs reference: step 2 traces the reference's key edges (hem, collar top, front edges, cutaway) as lines on the photo; step 4 checks flat edges against them, step 6 compares the build's outline in that view (mm, where, which pattern edge to redraw). Joe: "It still doesn't have any of these curves right": ratios passed an arc for a stepped notch | 2, 4, 6 | M | T5b |
 Test garments: the shirt, the hussar jacket, the RANGER outfit (/mnt/data/hifipushie/refs/ranger/front.png; layering 4-5
 deep; leather goods = stiff-leather pieces from patterns; boots out of the garment route for now), Garrett's outfit (t8).
-
 DONE: T1-T15, F1-F10, s0-fix landed (C281-C335): record, approvals, body_tape, garment_plan, draft_pattern + flat gates (shape,
 seam_ends, body_lengths), structure + outline rows, stage gates (chain_stages), details, export, appearance, SDF block-in.
 DRIFT FOUND (Joe 2026-11-03): from F4 the build placed WHOLE pieces then corrected them (F4 start, F7/F8 flat+sew, F9/F10
 block-in map) instead of steps 5-6 as agreed: chains at exact lengths first, surfaces filled between. Rebuild 5-6 as agreed.
 METHOD NOW (Joe 2026-11-03): one STEP per blind trial (/mnt/data/hifipushie/trials/s<step>-<n>/: hp client pinned to main),
 judged with Joe beside the reference, fixed, rerun, then the next step; tests run once when a step is declared done.
-APPROVED (Joe): steps 0-3 on both. Hussar (garrett:hussar): s0-7, s1-7, s2-4, s3-5 (trials/s3-5/ws). Suit jacket
-(garrett:jacket): s0-8, s1-10, s2-2, s3-4 (trials/s3-4/ws). C342-C366. Step 4: s4-1..s4-5 -> C361-C366 (open: fall vs neck/gorge). NEXT: judge s4-6.
+APPROVED (Joe): hussar 0-4 (s4-14/ws), jacket 0-4 (s4-19/ws). STEP 5 BLOCKED (s5-1): pipelines picked by closure state
++ shirt roles. docs/proposals/step5_one_build.md: R1, R2, R3a-R3d DONE (C391-C395, C399, C401). To redo: both step 2s;
+jacket step 4 drafts its collar roll; hussar step 4 trues its underarm (C395). Jacket chains wrecked by unplaced canvas
+layers, collar-ply and facing vertices at the origin (the crease turn unproven on it). NEXT: place layers + plies (Joe).

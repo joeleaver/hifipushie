@@ -32,6 +32,19 @@ def sums(items: list, rows: list, errs: list):
         have[n] = rows[-1]
 
 
+def kept(name: str, garment: str, new: set) -> list:
+    """Step 3's measurements as the record holds them, but those named in `new` (body_tape add=True: C381)."""
+    from . import garment_record as gr
+    try:
+        st = gr.load(name, garment)["steps"].get("3") or {}
+    except Exception as e:  # noqa: BLE001
+        raise ValueError(f"add=True: no record to add to ({e})") from e
+    old = (st.get("output") or {}).get("measurements") or []
+    if not old:
+        raise ValueError("add=True: step 3 holds no measurements yet: take them all (add=False)")
+    return [dict(r) for r in old if r.get("name") not in new]
+
+
 def write(name: str, garment: str, rows: list, errs: list, look: str) -> str:
     """Write step 3 when it is complete; else say what is missing (the record unchanged)."""
     from . import garment_record as gr

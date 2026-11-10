@@ -5,31 +5,26 @@ from __future__ import annotations
 import json
 
 from . import structure_rows as sr
-from .garment_plan import STATES, PlanRefused, _src, _target, _uv_list, form, pixel_errors
+from .garment_plan import PlanRefused, _src, _target, _uv_list, form, pixel_errors
 
 
 def check_style(p: dict, read: dict, parts: dict) -> dict:
     bad, p = [], json.loads(json.dumps(p))
     nv = len(read.get("views") or [])
     pieces, details, closures = (parts.get(k) or {} for k in ("pieces", "details", "closures"))
-    state = p.get("state") if isinstance(p.get("state"), dict) else {}
-    for c in state:
-        if c not in closures:
-            bad.append(f"state.{c}: no closure {c!r} in the inventory (have {', '.join(closures) or 'none'})")
-    for c in closures:
-        x = state.get(c)
-        if not isinstance(x, dict) or x.get("state") not in STATES:
-            bad.append(f"state.{c}: the ONE worn state of this closure: {{state: {'|'.join(STATES)}, source}}")
-        else:
-            _src(x, f"state.{c}", bad)
+    from . import closure_ties as ct
+    ct.check(p, closures, bad, _src)  # (R1 C391: which fastenings are done up, never a named state)
     names = set(pieces) | set(details) | set(closures)
     kinds = {r.get("id"): r.get("what") for r in p.get("rows") or [] if isinstance(r, dict)}
     for i, b in enumerate(p.get("bends") or []):
         w = f"bends[{i}] {b.get('id', '')}".strip()
+        _src(b, w, bad)
+        from . import fold_bends  # (R2 C392: a fold's turn as numbers; a bend in words only is refused)
+        if fold_bends.check(b, w, pieces, p.get("traces") if isinstance(p.get("traces"), list) else [], bad):
+            continue
         if str(b.get("on", "")).split(":")[0] not in names:
             bad.append(f"{w}.on {b.get('on')!r}: not a piece, detail or closure of the inventory")
         _target(b.get("target"), w, bad)
-        _src(b, w, bad)
         if b.get("what") is not None or "value" in (b.get("target") or {}):  # (C286: a numeric bend is judged too)
             sr.check_row(b, w, bad, kinds)
     from .garment_appearance import check_plan  # (T14: the appearance block: amounts from the story, step 9a reads it)

@@ -6,7 +6,7 @@ Two nets, both run on CPU in the detector venv (likeness.VENV: OpenCV dnn + Medi
 picture, cached by the crop's bytes (asset pack "faceparse"):
   "bisenet"    BiSeNet (ResNet-34) trained on CelebAMask-HQ, 19 classes (yakhyo/face-parsing, MIT code). The DATA
                (CelebAMask-HQ) is for non-commercial research only, so the weights are a MEASURING TOOL here, never
-               shipped in an asset or the package (as faceid's ArcFace).
+               shipped in an asset or the package.
   "mediapipe"  MediaPipe's selfie_multiclass_256x256 (Apache 2.0): background / hair / body skin / face skin /
                clothes / others. No ears, nose or lips of their own.
 Validated on dressed renders over a dark painted background (spikes/refread/pval.py; the notes' "## refread").

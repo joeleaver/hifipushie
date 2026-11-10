@@ -18,7 +18,7 @@ from . import fit as fitmod
 from . import measure as meas
 from . import paint as paintmod
 from . import plan as planmod
-from . import render, skin_route, store, surface
+from . import find_route, render, skin_route, store, surface
 from .spec import empty_spec, summarize
 
 INSTRUCTIONS = """\
@@ -132,6 +132,8 @@ mcp.tool = _tool_with_errors()
 # called enable_toolset("cloth,human") and never saw the tools), and 100+ schemas cost context on every turn. So the
 # server registers only CORE natively; find_tool searches every tool and call_tool runs any of them (C-row in
 # docs/notes/codified.md). TOOL_GROUPS is grouping metadata only (find_tool's domains); every tool is in exactly one.
+# A domain may say what it makes (`subject` words) and where a job in it starts (`steps` in order, or one `entry`
+# tool): find_route.py reads a job's domain from the subject words alone, never from a stray word match (C400).
 _TOOLS: dict[str, tuple] = {}  # name -> (register, wrapped coroutine), filled by the decorator
 TOOL_GROUPS: dict[str, dict] = {
     "core": {"about": "native tools: models, specs, look, check, measure, history, the guide, find / call any tool",
@@ -139,39 +141,49 @@ TOOL_GROUPS: dict[str, dict] = {
                        "edit_model", "look", "check", "measure", "history", "revert", "review_view"]},
     "plan": {"about": "plans, reference images, compare, silhouette fit, clearance, style check",
              "tools": ["set_plan", "set_reference", "compare", "fit", "clearance", "style_check"]},
+    "concept": {"about": "match a concept image: fit its camera, render from it pixel-aligned, same-box feature tiles "
+                         "for bin/review, how parts join the body (stalk or base)",
+                "tools": ["fit_concept_camera", "look_matched", "feature_tiles", "join_report"]},
     "scene": {"about": "the Blender scene (sync, pull) and the heavy-job queue",
               "tools": ["sync", "pull", "heavy_status", "heavy_queue"]},
     "export": {"about": "OBJ export, game-ready assets (GLB/FBX, PBR maps), the export rig, judging a GLB",
                "tools": ["export", "export_asset", "rig", "judge_asset"]},
-    "human": {"about": "realistic humans: the base body, the artist block-in of a head from pictures (the default), "
+    "human": {"subject": "human humanoid", "entry": "human",
+              "about": "realistic humans: the base body, the artist block-in of a head from pictures (the default), "
                        "measurements, fits, skin",
               "tools": ["human", "measure_human", "fit_human", "nudge_human", "human_reference", "block_in_start",
                         "block_in_look", "block_in_step", "block_in_solve", "block_in_expression", "set_expression", "lid_read", "eye_ruler", "face_ruler", "lip_read", "gnm_controls"]},
     "skin": {"about": "a human's skin: description, measured from the reference pictures, close looks beside them",
-             "workflow": skin_route.ROUTE, "steps": skin_route.STEPS,
+             "subject": skin_route.FIND_WORDS, "workflow": skin_route.ROUTE, "steps": skin_route.STEPS,
              "tools": ["skin", "skin_from_reference", "brow_read", "look_skin", "skin_reference", "skin_project"]},
     "likeness": {"about": "matching a real person's face and look from reference pictures",
                  "tools": ["likeness", "fit_likeness", "likeness_points", "character_read", "project_reference",
                            "texture_from_reference", "reference_brief", "check_references"]},
-    "hair": {"about": "hair: strand grooms, tied styles, stylised locks, look, reference, export",
+    "hair": {"subject": "hair hairstyle haircut beard moustache mustache ponytail braid fringe",
+             "about": "hair: strand grooms, tied styles, stylised locks, look, reference, export",
              "workflow": "Hair: describe it in words -> hair_from_reference (the start) -> tie_hair (tied) or groom_hair "
                          "(loose, short) -> look_hair -> export_asset ships the character (export_hair: the hair alone)",
              "steps": ["hair_from_reference", "tie_hair", "groom_hair", "look_hair", "export_hair"],
              "tools": ["groom_hair", "tie_hair", "look_hair", "hair_reference", "hair_from_reference", "export_hair"]},
-    "cloth": {"workflow": "Clothes: garment_plan (read, parts, style) -> body_tape -> draft_pattern (your own FreeSewing design + its flat gate) -> chain_garment (the only way a garment "
+    "cloth": {"subject": "clothes clothing cloth garment outfit costume dress sew drape tailor fabric shirt blouse tee hoodie "
+                         "sweater jacket trousers jeans skirt cloak robe",
+              "workflow": "Clothes: garment_plan (read, parts, style) -> body_tape -> draft_pattern (your own FreeSewing design + its flat gate) -> chain_garment (the only way a garment "
                           "is built) -> garment_details -> look_chain beside the reference -> garment_appearance -> export_garment; garment_record shows every step",
               # the workflow's order (find_tool ranks a matched domain's early steps first)
               "steps": ["garment_plan", "body_tape", "draft_pattern", "chain_garment", "garment_details", "look_chain", "garment_appearance", "export_garment"],
               "about": "garments: design, pattern, the pattern gate, alterations, the chain build (the only start), references",
               "tools": ["garment_plan", "draft_pattern", "pattern_parts", "garment_details", "garment_appearance", "export_garment", "design_garment", "look_pattern", "alter_pattern", "pattern_check", "chain_garment", "look_chain",
                         "garment_record", "body_tape", "garment_reference", "garment_from_reference", "garment_reference_brief"]},
-    "terrain": {"about": "terrain and game levels (height fields in a level designer's words)",
+    "terrain": {"subject": "terrain landscape mountain valley river hill island lake coast canyon heightmap",
+                "entry": "set_terrain", "about": "terrain and game levels (height fields in a level designer's words)",
                 "tools": ["set_terrain", "check_terrain", "look_terrain", "export_terrain", "terrain_history"]},
-    "plants": {"about": "trees and plants (grown, measured, exported), stands of them, wind",
+    "plants": {"subject": "plant tree shrub grass flower fern forest vegetation foliage", "entry": "grow_plant",
+               "about": "trees and plants (grown, measured, exported), stands of them, wind",
                "tools": ["grow_plant", "edit_plant", "get_plant", "look_plant", "look_plants", "plant_form",
                          "plant_reference", "export_plant", "wind_plant", "sync_plant", "plant_history",
                          "grow_stand", "look_stand", "export_stand"]},
-    "clutter": {"about": "ground clutter kits (rocks, logs, leaves ...) for terrain",
+    "clutter": {"subject": "clutter rock boulder pebble log driftwood litter debris", "entry": "make_clutter",
+                "about": "ground clutter kits (rocks, logs, leaves ...) for terrain",
                 "tools": ["make_clutter", "look_clutter", "clutter_kit"]},
 }
 CORE: list[str] = TOOL_GROUPS["core"]["tools"]
@@ -431,14 +443,19 @@ def _tool_section(name: str) -> str:
 _STOP = set("a an the to of in on for and or with my it its is are be i we you want need how do does can from by "
              "into at as this that some me make new one any".split()
          # every tool works on a model / character: those words say nothing about which tool (C-row, find_tool)
-         + "model character creature thing tool".split())
+         + "model character creature thing tool".split()
+         # the verb every job starts with says nothing either ("start a human" led with block_in_START: C400)
+         + "start begin create build add give".split())
 
 
 def _stem(w: str) -> str:
     for suf in ("ing", "es", "ed", "s"):
         if w.endswith(suf) and len(w) > len(suf) + 2 and not (suf == "s" and w.endswith("ss")):
-            return w[:-len(suf)]
-    return w
+            w = w[:-len(suf)]
+            break
+    # one stem for "silhouette" / "silhouettes", "tree" / "trees", "pose" / "posing": the plural lost its e, the
+    # singular kept it, so "a tree" never met a tool that said "trees" (C400)
+    return w[:-1] if w.endswith("e") and len(w) > 3 else w
 
 
 def _words(text: str) -> set[str]:
@@ -449,13 +466,43 @@ def _group_of(name: str) -> str:
     return next((g for g, s in TOOL_GROUPS.items() if name in s["tools"]), "other")
 
 
-def _use_when(name: str) -> str:
-    """A tool's first sentence: what it is for."""
+def _first_sentence(name: str) -> str:
     import inspect
     doc = " ".join(inspect.cleandoc(getattr(globals().get(name), "__doc__", None) or "").split())
     m = re.match(r"(.+?[.!?])(\s|$)", doc)
-    first = m.group(1) if m else doc
+    return m.group(1) if m else doc
+
+
+def _use_when(name: str) -> str:
+    """A tool's first sentence: what it is for."""
+    first = _first_sentence(name)
     return first if len(first) <= 220 else first[:217] + "..."
+
+
+def _purpose(name: str) -> set[str]:
+    """The words of what a tool is FOR: its first sentence without its brackets (asides, argument lists), 220
+    characters of it. They count as much as its name; what its notes mention in passing counts half (C400)."""
+    first = _first_sentence(name)
+    for _ in range(3):
+        first = re.sub(r"\([^()]*\)", " ", first)
+    return _words(first[:220])
+
+
+def _verb(query: str) -> str:
+    """The job's first word that says something: its verb in "look at the garment"."""
+    return next((_stem(w) for w in re.findall(r"[a-z0-9]+", query.lower()) if w not in _STOP and len(w) > 1), "")
+
+
+def _guide_topics() -> dict[str, str]:
+    """stem -> the one-word guide topic of that name, for topics that name no tool (props, paint, story ...): the
+    guide is found by them and its example call names the topic."""
+    names = set().union(*(_words(t.replace("_", " ")) for t in _TOOLS))
+    out: dict[str, str] = {}
+    for k in GUIDE_TOPICS:
+        w = _words(k)
+        if k.isalpha() and len(w) == 1 and not w & names:
+            out.setdefault(next(iter(w)), k)
+    return out
 
 
 def _params(name: str) -> list[tuple[str, str, bool, str]]:
@@ -506,7 +553,8 @@ _FIELDS: dict[str, list] = {}
 
 
 def _tool_fields(name: str) -> list[tuple[float, set[str]]]:
-    """A tool's searchable words by field, with each field's weight: name 4, description 2, domain 1, guide 1."""
+    """A tool's searchable words by field, with each field's weight: name 4, description 2, domain 1, guide 1,
+    keywords 4 (the guide's: its topics), purpose 4."""
     import inspect
     from . import head_route
     if name not in _FIELDS:
@@ -515,7 +563,9 @@ def _tool_fields(name: str) -> list[tuple[float, set[str]]]:
                          (2.0, _words(inspect.cleandoc(globals()[name].__doc__ or ""))),
                          (1.0, _words(g + " " + TOOL_GROUPS.get(g, {}).get("about", ""))),
                          (1.0, _words(_section_text(name))),
-                         (4.0, _words(head_route.KEYWORDS.get(name, "")))]
+                         (4.0, _words(head_route.KEYWORDS.get(name, "")
+                                      + (" " + " ".join(_guide_topics()) if name == "guide" else ""))),
+                         (4.0, _purpose(name))]
     return _FIELDS[name]
 
 
@@ -543,7 +593,8 @@ def _tool_scores(q: set[str]) -> dict[str, float]:
 def find_tool(query: str = "", limit: int = 5) -> str:
     """Find the tool for a job: ranks every hifipushie tool (native or not) by word match on its name and docs, and
     gives each one's purpose, parameters and an example call (non-core tools run through call_tool). query: what you
-    want to do, e.g. "fit a garment" ("" lists every tool by domain); limit: how many."""
+    want to do, e.g. "fit a garment" ("" lists every tool by domain); limit: how many. The order of the answer:
+    guide(topic="find_tool")."""
     if not query.strip():
         groups = [(g, s["about"], [t for t in s["tools"] if t in _TOOLS]) for g, s in TOOL_GROUPS.items()]
         rest = sorted(t for t in _TOOLS if _group_of(t) == "other")
@@ -554,32 +605,30 @@ def find_tool(query: str = "", limit: int = 5) -> str:
                 + "\n".join(f"{g} ({about}): {', '.join(ts)}" for g, about, ts in groups if ts))
     from . import head_route
     q = _words(query.lower().replace("make-up", "makeup").replace("make up", "makeup"))
-    scores = head_route.pin_block_in(query, skin_route.find_bias(q, _tool_scores(q)))
-    top = max(scores.values(), default=0.0)
-    flow = ""
-    if top > 0:
-        # A query in a domain with a workflow: its steps first, in order (the entry step on top), the rest of the
-        # domain next, other domains' stray word matches (a "dressed brow") after: the process, not a shortcut.
-        g = _group_of(max(sorted(scores), key=lambda t: scores[t]))
-        steps = TOOL_GROUPS.get(g, {}).get("steps", [])
-        if steps:
-            flow = TOOL_GROUPS[g]["workflow"] + f' (guide(topic="{g}")).\n'
-            for t in TOOL_GROUPS[g]["tools"]:
-                if t in steps:  # strictly in the workflow's order: a step's own word match can't jump an earlier step
-                    scores[t] = top * (2 + len(steps) - steps.index(t))
-                elif scores.get(t, 0) > 0:
-                    scores[t] = scores[t] + top * 0.5
+    raw = _tool_scores(q)
+    scores = head_route.pin_block_in(query, skin_route.find_bias(q, raw))
+    # The domain comes from the job's subject words, never from a stray word match; in a domain its steps lead in
+    # order (the process, not a shortcut), outside one the word matches stand as they are (find_route.py, C400).
+    g, order, note = find_route.route(q, _verb(query), scores, raw, TOOL_GROUPS, _group_of,
+                                      lambda t: _tool_fields(t)[0][1],
+                                      lambda t: set().union(*(ws for wt, ws in _tool_fields(t) if wt >= 4)), _words)
     named = query.strip().lower().replace(" ", "_")  # a query that IS a tool's name gets that tool first
-    ranked = sorted(((sc, t) for t, sc in scores.items()), key=lambda x: (x[1] != named, -x[0], x[1]))
-    ranked = [(sc, t) for sc, t in ranked if sc > 0][:max(1, int(limit))]
-    if not ranked:
-        return f"no tool matches {query!r}: find_tool(\"\") lists every tool by domain."
+    if named in _TOOLS and named != "find_tool":
+        order = [named] + [t for t in order if t != named]
+    order = [t for t in order if t in _TOOLS][:max(1, int(limit))]
+    if not order:
+        return (f"no tool matches {query!r}: guide() has the \"Which path\" table; find_tool(\"\") lists every tool "
+                "by domain.")
+    flow = TOOL_GROUPS[g]["workflow"] + f' (guide(topic="{g}")).\n' if g and TOOL_GROUPS[g].get("workflow") else ""
+    topic = next((k for w, k in _guide_topics().items() if w in q), None)
     out = []
-    for i, (sc, t) in enumerate(ranked, 1):
+    for i, t in enumerate(order, 1):
         how = "native" if t in CORE else "via call_tool"
+        eg = f'guide(topic="{topic}")' if t == "guide" and topic else _example(t)
         out.append(f"{i}. {t} [{_group_of(t)}, {how}] use when: {_use_when(t)}\n"
-                   f"   params: {_param_text(t)}\n   e.g. {_example(t)}")
-    return (flow + "\n".join(out) + '\nnext: run the best match (non-core: call_tool(name, args)); guide(topic="<tool>") '
+                   f"   params: {_param_text(t)}\n   e.g. {eg}")
+    return (flow + (note + "\n" if note else "") + "\n".join(out)
+            + '\nnext: run the best match (non-core: call_tool(name, args)); guide(topic="<tool>") '
             "has its full parameters and behaviour.")
 
 
@@ -695,9 +744,11 @@ def _saved(name: str, v: int, spec: dict, extra: str = "") -> str:
 
 
 @mcp.tool(structured_output=False)
-def put_model(name: str, spec: dict, note: str = "") -> str:
-    """Create a model or replace its whole spec (missing keys get defaults). The stored plan is kept unless the spec
-    gives one ("plan": null drops it). Returns a summary. Details: guide(topic="put_model")."""
+def put_model(name: str, spec: dict, note: str = "", joins: list[str] | None = None) -> str:
+    """Make a creature, a character or a prop as a spec of joints, bones and blobs, or replace a model's whole spec
+    (missing keys get defaults). The stored plan is kept unless the spec
+    gives one ("plan": null drops it). joins: parts / elements whose join to the body is reported (join_report; a
+    WARNING under 0.75 = a stalk). Returns a summary. Details: guide(topic="put_model")."""
     full = {**empty_spec(), **_spec_arg(spec)}
     kept = ""
     if "plan" not in full:
@@ -711,19 +762,20 @@ def put_model(name: str, spec: dict, note: str = "") -> str:
     elif full["plan"] is None:
         del full["plan"]
     v = store.save(name, full, note or "put_model")
-    return _saved(name, v, full, kept)
+    return _saved(name, v, full, kept) + _join_lines(name, joins)
 
 
 @mcp.tool(structured_output=False)
-def edit_model(name: str, ops: list[dict], note: str = "") -> str:
-    """Apply a batch of edits atomically. ops: {"op": "set", "kind": <any top-level key with named entries:
+def edit_model(name: str, ops: list[dict], note: str = "", joins: list[str] | None = None) -> str:
+    """Change a model in place: move joints, set, delete or rename bones, blobs, strokes and any other named
+    entry, scale radii, as one batch of edits applied atomically. ops: {"op": "set", "kind": <any top-level key with named entries:
     joints|bones|blobs|kits|strokes|paint|parts|...>, "name", "value"} (merge; null field removes), {"op":
     "set_key", "key", "value"}, {"op": "delete"|"rename", "kind", "name", "to"?}, {"op": "move", "joints", "delta"},
-    {"op": "scale_r", "joints", "factor"}, {"op": "global", "value"}. Edit ".L" and centre only. Details:
-    guide(topic="edit_model")."""
+    {"op": "scale_r", "joints", "factor"}, {"op": "global", "value"}. Edit ".L" and centre only. joins: as
+    put_model. Details: guide(topic="edit_model")."""
     spec = store.edit(store.load(name), ops)  # errors name the op: "op 3 (set blobs tooth.L): ..."
     v = store.save(name, spec, note or f"{len(ops)} ops")
-    return _saved(name, v, spec)
+    return _saved(name, v, spec) + _join_lines(name, joins)
 
 
 @mcp.tool(structured_output=False)
@@ -733,7 +785,8 @@ def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool 
          paint_layer: str | None = None, hide_parts: list[str] | None = None, only_parts: list[str] | None = None,
          clip: dict | list[dict] | None = None, camera: dict | list[dict] | None = None, instances: bool = False,
          save: str | None = None, shapes: dict | str | None = None):
-    """Build and render a contact sheet (clay, or painted from the Blender scene). views (front, side, top,
+    """See the model from any side or close up: build and render a contact sheet (clay, or painted from the Blender
+    scene). views (front, side, top,
     three_quarter, back, ...), focus=[x,y,z] + zoom for close-ups, resolution (160 quick, 256-320 detail), shading
     "clay"|"raking"|"curvature"|"flat", strokes=True overlays stroke paths, paint / paint_layer (one mask),
     hide_parts / only_parts, clip (plane cuts), camera (perspective eyes), instances, save (PNG path), shapes (a
@@ -883,10 +936,94 @@ def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool 
     return [_out(sheet, save), info + shown + painted + (f" | saved {save}" if save else "") + nxt]
 
 
+def _join_lines(name: str, joins) -> str:
+    if not joins:
+        return ""
+    from . import joins as joinsmod
+    return "\n" + joinsmod.report(name, joins)
+
+
+@mcp.tool(structured_output=False)
+def fit_concept_camera(name: str, image: str, mask: str | None = None, label: str = "concept",
+                       az: float | None = None, el: float | None = None, resolution: int = 96):
+    """Fit the perspective camera a concept image was drawn from, by the model's silhouette against the image's
+    foreground (IoU; mask: a white-on-black PNG when the background isn't plain). Saved under `label`; then
+    look_matched renders from it pixel-aligned, feature_tiles cuts review tiles, look(camera={"fitted": label})
+    uses it too. az / el: a starting guess (default: a sweep). Returns the overlay (red = model only, blue = image
+    only) and the camera. Details: guide(topic="fit_concept_camera")."""
+    from . import matched
+    cam = matched.fit_camera(name, image, mask, label, resolution, az, el)
+    note = "" if cam["iou"] >= 0.85 else (" | LOW IoU: the model is far from the concept's shape, or the mask is wrong "
+                                          "(pass mask=...; az / el = a guess)")
+    if cam.get("mirror"):
+        note += (f" | MIRROR: az {cam['mirror']['az']:+.0f} fits nearly as well (IoU {cam['mirror']['iou']:.3f}; a "
+                 "symmetric silhouette can't tell the sides apart): check which way the face turns in look_matched, "
+                 "and if it's the wrong way fit again with az of the other sign")
+    return [_out(matched.overlay(name, cam, resolution), None),
+            f"{name}: camera {label!r} az {cam['az']:+.1f} el {cam['el']:+.1f} roll {cam['roll']:+.1f} "
+            f"f {cam['f_px']:.0f} px, IoU {cam['iou']:.3f}{note} | saved {matched.cam_path(name, label)} | next: "
+            f"look_matched(name, label={label!r}), then feature_tiles"]
+
+
+@mcp.tool(structured_output=False)
+def look_matched(name: str, label: str = "concept", resolution: int = 192, samples: int = 32,
+                 only_parts: list[str] | None = None, hide_parts: list[str] | None = None, save: str | None = None):
+    """Render the model from a fitted concept camera (fit_concept_camera) at the image's own size, in form-revealing
+    clay (soft area light, no hard shadows), pixel-aligned with the concept: returns concept | render. The THE
+    standard view for comparing a character sculpt with its concept; review it by feature_tiles + bin/review, never
+    by eye from a camera you picked. Details: guide(topic="look_matched")."""
+    from . import matched
+    import time
+    t = time.time()
+    path = matched.render(name, label, resolution, samples, only_parts=only_parts, hide_parts=hide_parts)
+    im = matched.pair(name, label)
+    return [_out(im, save), f"{name}: matched render {label!r} in {time.time() - t:.0f}s -> {path} | next: "
+            "feature_tiles(name, {region: [parts or elements]}) and bin/review on its pairs"
+            + (f" | saved {save}" if save else "")]
+
+
+@mcp.tool(structured_output=False)
+def feature_tiles(name: str, features: dict, label: str = "concept", out_dir: str | None = None,
+                  min_px: int = 448, pad: float = 0.2) -> str:
+    """Cut named, same-box feature tiles from the concept and its matched render (look_matched first), one pair per
+    region, for the blind review: features {region: [element or part names] | [x0, y0, x1, y1] pixels}, e.g.
+    {"left ear": ["ear.L", "earroot.L"], "tail": ["tailb0", "tailb3"]}. Region names are what the reviewer reads:
+    plain words, no numbers. Returns the tile paths and the bin/review command. Details: guide(topic="feature_tiles")."""
+    from . import matched
+    r = matched.tiles(name, features, label, out_dir, min_px, pad)
+    rows = [f"{k}: box {v[2]} -> {v[0]} | {v[1]}" for k, v in r["tiles"].items()]
+    return "\n".join([f"{len(rows)} tile pairs in {r['dir']}", *rows, "review (one region per pair, blind):",
+                       r["review"]])
+
+
+@mcp.tool(structured_output=False)
+def join_report(name: str, parts: list[str], side: str = "L", sections: bool = False):
+    """How each part joins the body, measured: the seam where its skin meets the rest, over the width of its base
+    (about 1 = joined along its base; about 0.5 = a stalk or neck; WARNING under 0.75). parts: element or part
+    names, a base name takes `side` ("ear" -> ear.L). sections=True adds two flat cuts through each join (the rest
+    grey, the part red, 1 cm grid, up = out of the body). put_model / edit_model(joins=[...]) report the same lines
+    on every save. Details: guide(topic="join_report")."""
+    from . import joins as joinsmod
+    lines, images = [], []
+    for p in parts:
+        r = joinsmod.measure(name, p, side, sections)
+        im = r.pop("image", None)
+        lines.append(joinsmod.line(r))
+        if im is not None:
+            images.append(_png(im))
+    return [*images, "\n".join(lines)]
+
+
 def _resolve_camera(name: str, cam: dict) -> dict:
-    """Fill in a camera's 2D eye (a person standing there: floor + eye_height) and 2D target (level gaze)."""
+    """Fill in a camera's 2D eye (a person standing there: floor + eye_height) and 2D target (level gaze).
+    {"fitted": label}: the camera fit_concept_camera fitted to a concept (matched.look_camera)."""
+    if isinstance(cam, dict) and "fitted" in cam:
+        from . import matched
+        return {**matched.look_camera(matched.load_camera(name, str(cam["fitted"]))),
+                **{k: v for k, v in cam.items() if k != "fitted"}}
     if not isinstance(cam, dict) or "eye" not in cam or "target" not in cam:
-        raise ValueError('camera needs {"eye": [x, y, z] or [x, y], "target": [x, y, z] or [x, y], "fov"?: deg}')
+        raise ValueError('camera needs {"eye": [x, y, z] or [x, y], "target": [x, y, z] or [x, y], "fov"?: deg} '
+                         'or {"fitted": "<label>"} (fit_concept_camera)')
     cam = dict(cam)
     eye, target = [float(x) for x in cam["eye"]], [float(x) for x in cam["target"]]
     if len(eye) == 2:
@@ -997,7 +1134,7 @@ def _zbuffer(verts: np.ndarray, frame: dict, size: int):
 @mcp.tool(structured_output=False)
 def measure(name: str, along: str | list[str], samples: int = 11, lo: float | None = None,
             hi: float | None = None) -> str:
-    """Cross-section sizes from the exact field. along = a bone or bone chain (widths/heights from the axis at
+    """How thick, wide and deep a form is: cross-section sizes from the exact field. along = a bone or bone chain (widths/heights from the axis at
     `samples` stations: pinches, bulges) or "x"|"y"|"z" (world slices between lo and hi, every separate part).
     Details: guide(topic="measure")."""
     return meas.measure(store.load(name), along, samples, lo, hi)
@@ -1339,7 +1476,7 @@ def history(name: str) -> str:
 
 @mcp.tool(structured_output=False)
 def revert(name: str, version: int) -> str:
-    """Restore an earlier version (saved as a new version, so nothing is lost)."""
+    """Undo: restore an earlier version (saved as a new version, so nothing is lost)."""
     spec = store.version_spec(name, version)
     v = store.save(name, spec, f"revert to v{version}")
     return f"{name} v{v} = v{version}\n" + summarize(spec)
@@ -3741,12 +3878,13 @@ def look_chain(name: str, garment: str, wear: str = "closed", focus: str | None 
 
 
 @mcp.tool(structured_output=False)
-def garment_record(name: str = "", garment: str = "", sheet: bool = False):
+def garment_record(name: str = "", garment: str = "", sheet: bool = False, step: str = ""):
     """THE GARMENT RECORD: one file per garment holding every step's output, status (todo / done / failed / approved),
     gate rows, reference and look (docs/state/garment_steps.md, steps 0-10 + 7a). Answers each step's status, what is
     stale (an earlier step changed), the next step, what it may use (the step before it, ready only) and the call that
     makes it. A step is written only when the step before it is ready; approvals are Joe's or the coordinator's
-    (bin/approve), read here, never written. sheet=True: the step-0 reference beside every look, and the statuses. Details: guide(topic="garment_record")."""
+    (bin/approve), read here, never written. sheet=True: the step-0 reference beside every look, and the statuses.
+    step="2": that step's saved output in full (JSON), to retake it changing only what's refused. Details: guide(topic="garment_record")."""
     from . import garment_record as gr
     for given in (name, garment):  # ("garrett:jacket" in either: t s1-2 was refused for it)
         if ":" in given and not (name and garment and ":" not in name + garment):
@@ -3754,6 +3892,12 @@ def garment_record(name: str = "", garment: str = "", sheet: bool = False):
             break
     if not name or not garment:
         return "garment_record: name (the model) and garment, or one 'model:garment' (e.g. 'garrett:jacket')"
+    if step:  # (C390, t s2-5: a retake had to read the record's file to resend the old plan unchanged)
+        rec = gr.load(name, garment)
+        sid = gr._sid(step)
+        st = rec["steps"].get(sid) or {}
+        return (f"{name}:{garment} step {sid} ({gr.STEP[sid]['key']}), status {st.get('status', 'todo')}; its saved output "
+                f"(resend it with only the refused part changed):\n" + json.dumps(st.get("output") or {}, indent=1, default=str))
     txt = gr.answer(name, garment)
     if not sheet:
         return txt
@@ -3762,15 +3906,16 @@ def garment_record(name: str = "", garment: str = "", sheet: bool = False):
 
 
 @mcp.tool(structured_output=False)
-def body_tape(name: str, measurements: list | None = None, garment: str = "", landmarks: bool = False):
+def body_tape(name: str, measurements: list | None = None, garment: str = "", landmarks: bool = False, add: bool = False):
     """MEASURE A BODY BY NAME (garment step 3): each measurement your garment's seams call for, named and defined by
     you: girth (at a level, square to the body or a limb; fullest / narrowest between), arc (over the surface between
     landmarks, front / back / ...), length (surface or straight, via landmarks; down the body to a level), height, or a
     FreeSewing name as a string. Answers each in mm with how it was taken, and the tape lines drawn on the body (front /
     side / back). No measurements, or landmarks=True: the landmarks and levels you can name. garment: writes step 3 of
-    its record. Details: guide(topic="body_tape")."""
+    its record; add=True (with garment): keep step 3's measurements exactly as recorded and add only these (a draft
+    that needs one more). Details: guide(topic="body_tape")."""
     from . import body_tape as bt
-    look, txt = bt.run(name, _spec_arg(measurements) if measurements else None, garment, landmarks)
+    look, txt = bt.run(name, _spec_arg(measurements) if measurements else None, garment, landmarks, add)
     return txt if look is None else [_out(PILImage.open(look).convert("RGB"), None), txt]
 
 

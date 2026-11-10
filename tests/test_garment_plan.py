@@ -60,8 +60,9 @@ def _parts():
 
 
 def _style():
-    return {"state": {"front": {"state": "closed", "source": "front view"}},
-            "bends": [{"id": "lie", "on": "front.L", "target": {"is": "flat"}, "source": "front view"}],
+    return {"ties": {"front": {"fastened": [1, 2, 3], "of": 3, "source": "front view"}},
+            "bends": [{"id": "lie", "on": "front.L", "fold": "roll", "turn_deg": 0, "lies_on": "free",
+                       "source": "front view"}],
             "pose": {"name": "arms down", "source": "front view"},
             "rows": [{"id": "width", "what": "trim_lines_apart", "note": "the two binding lines apart",
                       "target": {"value": 0.5, "unit": "ratio", "of": "shoulder_width"},
@@ -133,15 +134,28 @@ def test_style_refusals_by_name(home):
     gp.write("m", "w", "read", _read(home), look=False)
     gp.write("m", "w", "parts", _parts(), look=False)
     s = _style()
-    s["state"]["zip"] = {"state": "open", "source": "x"}     # a closure the inventory doesn't have
+    s["ties"]["zip"] = {"fastened": [], "of": 1, "source": "x"}  # a closure the inventory doesn't have
     del s["rows"][0]["source"]                               # a target with no source
     s["rows"][0]["target"].pop("of")                         # a ratio with no base
     s["bends"][0]["on"] = "sleeve"
-    _refused(lambda: gp.write("m", "w", "style", s), "state.zip: no closure", "rows[0] width: no source",
+    _refused(lambda: gp.write("m", "w", "style", s), "ties.zip: no closure", "rows[0] width: no source",
              "is OF", "bends[0] lie.on 'sleeve'")
     s = _style()
-    s["state"] = {}
-    _refused(lambda: gp.write("m", "w", "style", s), "state.front: the ONE worn state")
+    s["ties"] = {}
+    _refused(lambda: gp.write("m", "w", "style", s), "ties.front: which of its fastenings are done up")
+    s["ties"] = {"front": {"fastened": [0, 4], "of": 3, "source": "x"}}
+    _refused(lambda: gp.write("m", "w", "style", s), "ties.front.fastened [0, 4]")
+    s["ties"] = {"front": {"span": [0.6, 0.2], "source": "x"}}
+    _refused(lambda: gp.write("m", "w", "style", s), "ties.front.span")
+    s = _style()  # (C392: a bend in words only is refused; a fold's numbers checked)
+    s["bends"] = [{"id": "flat", "on": "front.L", "target": {"is": "lies flat"}, "source": "x"},
+                  {"id": "roll", "on": "front.L", "fold": "roll", "turn_deg": 200, "lies_on": "sky", "trace": "nope",
+                   "source": "x"}]
+    _refused(lambda: gp.write("m", "w", "style", s), "bends[0] flat: a bend in words only", "turn_deg 200",
+             "lies_on 'sky'", "trace 'nope'")
+    s = _style()  # (C391: a named state is refused, pointing at ties)
+    s["state"] = {"front": {"state": "closed", "source": "front view"}}
+    _refused(lambda: gp.write("m", "w", "style", s), "not a named state")
 
 
 def test_style_written_and_the_record_points_at_the_tool(home):
@@ -636,3 +650,18 @@ def test_every_edge_of_a_built_piece_is_accounted_for(home):  # (t s1-6: edges s
     assert gp.write("m", "w", "parts", b, look=False)
     b["pieces"]["front.L"]["free"] = ["armhole"]
     _refused(lambda: gp.write("m", "w", "parts", b, look=False), "pieces.front.L.free: a list of its own edges")
+
+
+def test_a_garment_as_wide_at_the_waist_as_the_chest_where_the_body_narrows_is_asked_open_or_flared():  # (C388)
+    from hifipushie import garment_fit as gf
+    ws = [dict(at="chest", px=[384.4, 335.8]), dict(at="waist", px=[394.4, 280.8]), dict(at="hips", px=[456.4, 341.2])]
+    bad = gf._hangs_open(ws, [{"at": "waist"}])
+    assert len(bad) == 1 and "hangs OPEN" in bad[0] and "waist" in bad[0], bad
+    assert not gf._hangs_open(ws, [{"at": "waist", "why": "a sack coat cut straight from the chest"}])
+    fitted = [dict(at="chest", px=[371.9, 335.8]), dict(at="waist", px=[309.6, 280.8])]
+    assert not gf._hangs_open(fitted, [])
+    opened = [dict(at="chest", px=[384.4, 335.8], v=400), dict(at="waist", ratio=1.2, gnote="worn open: fronts apart", v=600),
+              dict(at="hips", px=[456.4, 341.2], v=700)]
+    bad = gf._hangs_open(opened, [])
+    assert len(bad) == 1 and "hips" in bad[0] and "hangs open too" in bad[0], bad
+

@@ -9,13 +9,15 @@ share a colour); take every number and name from the tool's text answer, never r
 
 ### `chain_garment`
 `chain_garment(name, garment, wear=None, opening=None, wait=50, rebuild=False, waive=None)`: THE start of every garment: to dress a character, to fit or drape clothes on a body. Reads the drafted pattern and the
-body, never a fit. Built straight into the garment record's style plan (step 2, T7): the band closure's state is the wear
-(open / partly: built open, never closed first), the front fastened from its first button (partly: `fastened_from`), the
-plan's collar_points_apart its spread; give wear / opening only without a plan (a contradiction is refused). Stages: band and collar (or other stiff parts) as chains of their cut lengths, stiffness from the
+body, never a fit. Built straight into the garment record's style plan (step 2, T7): each closure's pairs are tied as step 2's
+`ties` say (which fastenings are done up: by number from the top, or a zip's share; never a named state, C391; any set,
+none included: ONE build for every garment, an edge neither sewn nor tied is free, C399), the plan's collar_points_apart its spread; give wear / opening only without a plan (a contradiction is refused). Stages: stiff parts first, in the order of what holds what (a band, a stand or a collar on the neckline, a fall on its band), as chains of their cut lengths, stiffness from the
 pattern's interfacing, resting on the high points; cuffs as stiff rings on the limb's own section; the soft pieces wrapped on a
-garment-sized section and solved as a network with the body as a floor; surfaces filled between the chains; an open band is
-opened before any soft cloth (its sewn front limited by its cut distance to the first fastened button), and the plackets fold along a
-solved crease; then the STRUCTURE check reads the build (never a hang) against the garment record's style plan (step 2's rows and numeric bends, each judged by its kind; C286) plus general rules: the fall lying, turned over its stand, each closure in its planned state (and a closed one meeting), the hem level left to right, the soft cloth not crumpled (soft_cloth_smooth: each soft piece's bump p90 <= 2x a smooth 40 mm tube's at its mesh size). No style plan, or a row with no build reading yet: UNMEASURED by name (waive with a reason or add the reading). A FAIL ends the job "structure_failed": the answer lists each failing row with its target, source and change: (the alter_pattern op, design option or build stage to fix); waive={row id: why} re-reads the saved build (no rebuild) and accepts those rows by name (PASS_WAIVED). After a pass the job stops at "awaiting_approval" (step 7a of the garment record: nothing is hung that wasn't approved built): the answer gives the sheet and the exact approve command for Joe or the coordinator; an agent never approves. Once approved, the same call resumes the hang from the saved build (HIFIPUSHIE_PRESIM_APPROVAL=optional: it hangs straight away). Then the soft cloth hangs under gravity (ZOZO, 5-10 min) with the stiff parts held; lengths last. The hang's gate (step 8): any face past the thread cap FAILS, with back to step 5 and a change: line; the cap is the cloth's, never a setting. wear: "closed" or
+garment-sized section and solved as a network with the body as a floor; surfaces filled between the chains; a band whose own closure is undone is
+opened before any soft cloth (its sewn front limited by its cut distance to the topmost tied front pair, by nothing when none is
+tied), and the plackets fold along a solved crease through that tied pair only; every fold step 2 plans (a lapel rolled to its
+break, a cuff turned back) is then turned about the draft's own fold row to its turn_deg and lies on its lies_on, lengths exact,
+gated per fold (stage "crease": turn within 15 deg, never sunk inside; chain_crease.py, C401); then the STRUCTURE check reads the build (never a hang) against the garment record's style plan (step 2's rows and numeric bends, each judged by its kind; C286) plus general rules: the fall lying, turned over its stand, each closure in its planned state (and a closed one meeting), the hem level left to right, the soft cloth not crumpled (soft_cloth_smooth: each soft piece's bump p90 <= 2x a smooth 40 mm tube's at its mesh size). No style plan, or a row with no build reading yet: UNMEASURED by name (waive with a reason or add the reading). A FAIL ends the job "structure_failed": the answer lists each failing row with its target, source and change: (the alter_pattern op, design option or build stage to fix); waive={row id: why} re-reads the saved build (no rebuild) and accepts those rows by name (PASS_WAIVED). After a pass the job stops at "awaiting_approval" (step 7a of the garment record: nothing is hung that wasn't approved built): the answer gives the sheet and the exact approve command for Joe or the coordinator; an agent never approves. Once approved, the same call resumes the hang from the saved build (HIFIPUSHIE_PRESIM_APPROVAL=optional: it hangs straight away). Then the soft cloth hangs under gravity (ZOZO, 5-10 min) with the stiff parts held; lengths last. The hang's gate (step 8): any face past the thread cap FAILS, with back to step 5 and a change: line; the cap is the cloth's, never a setting. wear: "closed" or
 "open". opening: only with "open": collar points this many neck widths apart (default 1.7, 1.0 .. 2.6). A job: the call starts it
 and answers with its stage after at most wait s (0 .. 280); a build takes 2-10 min, then the hang runs, both slower on a loaded
 machine. Call again with the same arguments for the stage: that never starts a second build. Once built the answer carries the chains,
@@ -84,7 +86,7 @@ waistband height, sleeves on a hanger, crest radius, strain; each judged at the 
 images: the pattern sheet and the placed start as images (save=path writes them with _pattern/_place suffixes).
 
 ### `garment_record`
-`garment_record(name, garment, sheet=False)`: the garment record (src/hifipushie/garment_record.py; the steps:
+`garment_record(name, garment, sheet=False, step="")`: (step="N": that step's saved output in full, to retake it changing only what's refused) the garment record (src/hifipushie/garment_record.py; the steps:
 docs/state/garment_steps.md). One file per garment, workspace/<model>/garments/<garment>.json: per step its output (or a
 pointer), status, gate rows, reference, look and, on a FAIL, back_to. pattern_check writes step 4, chain_garment steps 5, 6
 and 8, look_chain the build's look (6) and the hung garment's look (9). A write to a step whose previous step isn't ready
@@ -94,7 +96,7 @@ does. Step 7a's approval is required unless HIFIPUSHIE_PRESIM_APPROVAL=optional.
 reference beside every look plus a status tile; every step's status is also in the text answer.
 
 ### `body_tape`
-`body_tape(name, measurements=None, garment="", landmarks=False)`: garment step 3, measuring the model's base body BY NAME
+`body_tape(name, measurements=None, garment="", landmarks=False, add=False)`: garment step 3, measuring the model's base body BY NAME
 (src/hifipushie/body_tape.py; its docstring is the spec). Measure what steps 1-2 (parts, style plan) call for: each seam
 you will draft needs a length or a girth on the body; name it and say how it is taken. measurements: a list of
 - a FreeSewing name as a string ("chest", "hpsToWaistBack", ...; tailor.measure's list, in FreeSewing's definition through
@@ -124,6 +126,8 @@ values there, never off the look); workspace/<model>/tape/step3_measure.png, or 
 record's look folder, and step 3 of the record is written (refused until step 2 is ready). Example:
 `body_tape("wf_simon", [{"name": "back_waist_to_seat", "kind": "length", "from": "cb_waist", "to": "cb_seat", "side":
 "back"}, "chest"], garment="hussar")`.
+add=True (with garment): step 3 is kept exactly as recorded and only the measurements given are taken and added (a
+draft that needs one more measurement; C381).
 
 ### `garment_plan`
 `garment_plan(name, garment, step, plan, look=True)`: steps 0, 1, 2 of the garment record (every
@@ -136,9 +140,11 @@ why, stiff, layer, where {view, outline}, edges {edge: [i0, i1] spans tiling the
 outlines (one per instance)}}},
 closures {name: {what, pieces, details}}, seams [{a: "piece:edge", b, kind, caught?: ["piece:edge" sewn
 into the same line], length: {body: [names]} | {style: {ratio, of: a body name | "piece:edge" | [step-0 height, another],
-source}}}] (never mm read off the picture: it isn't the model; value_mm only with fixed: why); the answer lists the body measurements step 3 must take. step="style" (2): state {closure:
-{state: open|closed|partly, source}} for EVERY closure (build straight into it; never build closed then style open),
-bends [{id, on, target {value, unit, of (a ratio's base)} | {is}, source}], pose {name, source}, rows [{id, what, target, source, note?, view, at}] (what = a structure_rows kind, refused otherwise with the list: collar_points_apart, collar_tilt, collar_rise, collar_points_drop, collar_height, fall_back_width, v_depth, front_edge_plumb, hem_front_back, sleeve_end, cuff_ease, garment_length, cutaway_drop, trim_row_count, trim_row_pitch, trim_lines_apart, not_judged; bases neck_width, shoulder_width, closure_length; a ratio is OF the kind's base; a px target becomes a ratio of the base row on its view, else mm by the view's scale; a numeric bend names its kind too)
+source}}}] (never mm read off the picture: it isn't the model; value_mm only with fixed: why); the answer lists the body measurements step 3 must take. step="style" (2): ties {closure:
+{fastened: [numbers from the top, 1 = the top], of: how many, source} | {span: [from, to] share of its length done up (a
+zip; 0 = top), source}} for EVERY closure, fastened [] = none done up (build straight into it; never build closed then
+style open),
+bends [{id, on: piece, fold: <crease name, declared on that piece at step 4>, turn_deg 0..180 (180 = folded right back), lies_on: piece | body | free, trace?, source} (a fold: collar roll, lapel roll to the break, turned cuff) | {id, on, what: row kind, target {value, unit, of?}, source}] (a bend in words only is refused, C392), pose {name, source}, rows [{id, what, target, source, note?, view, at}] (what = a structure_rows kind, refused otherwise with the list: collar_points_apart, collar_tilt, collar_rise, collar_points_drop, collar_height, fall_back_width, v_depth, front_edge_plumb, hem_front_back, sleeve_end, cuff_ease, garment_length, cutaway_drop, trim_row_count, trim_row_pitch, trim_lines_apart, not_judged; bases neck_width, shoulder_width, closure_length; a ratio is OF the kind's base; a px target becomes a ratio of the base row on its view, else mm by the view's scale; a numeric bend names its kind too)
 (what the photo judges: the structure gate's targets), traces [{id, what, view, points [[u,v],..] (>= 4), corners
 [indices where it turns sharply], source}] REQUIRED (the reference's key edges: hem, front edges, collar, sleeve ends,
 roll_line, trim...; each checked on the picture's own edges, a run off every edge refused unless the trace says why;
@@ -185,12 +191,15 @@ design, no recipe; src/hifipushie/draft_own.py's docstring is the spec). Needs s
   chain: a two-piece sleeve's cap edges against the armhole's front, side and back as ONE seam [cap chain] = [armhole
   chain], when its seams don't land on the body's); `stiff` [piece]; `folds` [{"name", "piece", "line": [p, q] | edge, "kind": "press" | "roll"}] (a step-1 seam of
   kind fold is a fold named like its edge); `closures` [{"name", "kind", "over", "under", "edge": {"over": edge,
-  "under": edge}, "at": [[hole point, button point]]}] (the part's point NAMES, e.g. a snippet's anchor; C363) (an edge: a declared edge name, or "pointA>pointB" /
+  "under": edge}, "at": [[hole, button]]}] (holes on `over`, the piece that laps on top: a man's left front; buttons on
+  `under`; each a SNIPPET's name, `snippets.btn1 = new Snippet('button', p)` -> "btn1", or a
+  point ON the outline; a point inside the piece isn't a mark: C376) (an edge: a declared edge name, or "pointA>pointB" /
   "a>via>b" along the piece's outline); `omit` {piece: why} (a built step-1 piece you don't cut); `darts` [{"piece",
   "legs": [edge, edge]}]: a dart OPEN on the outline (the seam path in to its tip and out), each leg declared
   "outline point>tip", sewn to each other (a dart drawn inside the piece isn't sewn: cut it into the outline);
-  `marks` {detail: mark | [marks]}: WHERE each built step-1 detail sits (a closure's buttons are its own marks): a
-  mark = {"piece", "mirror"?: true (again on the .L <-> .R piece), and ONE of: "at": [{"point": name, "dx", "dy"} |
+  `marks` {detail: mark | [marks]}: WHERE each built step-1 detail sits (a closure's holes and buttons are its own marks: each on
+  the piece step 1 puts it on): a
+  mark = {"piece", "mirror"?: true (again on the .L <-> .R piece), and ONE of: "at": [{"point": name, "dx", "dy"} (mm, dy UP the piece: FreeSewing's y is -dy) |
   {"edge": edge, "mm" | "t", "in"}], "rows": {"edge", "count", "from_mm" | "from_t", "pitch_mm" | "pitch_t" |
   "to_mm" | "to_t", "in"}, "points": "button*" (the part's named points), "follows": ["piece:edge"] (a strip along
   edges), "path": [positions]}; positions only (size, kind, colour are step 7's). A measurement the design reads
@@ -199,10 +208,14 @@ design, no recipe; src/hifipushie/draft_own.py's docstring is the spec). Needs s
   {"back": {"side.L": "hem>armhole"}}, "seams": [{"a": "front.L:side", "b": "back:side.L"}]}`.
 - Refused by name (nothing written): a step-1 seam with no drafted edge or not sewn, a piece not in step 1, a built piece
   not drafted. Else the flat gate: seams (each pair within its declared ease, else +-1 %), cut, sewn, closures (lapped
-  edges within 1 %), truing (info), and SHAPE per role (draft_shape.py; each FAIL says `change:`): a stand / band's neck
+  edges within 1 %), planned_folds (every fold step 2 turns declared on its piece by name; every roll fold has a step-2
+  turn: C392), seam_links (every seam's two sides within 3 mm over each link, read on the mesh chain_garment makes of the
+  draft: what step 5 refuses, step 4 FAILs, C395), truing (info), and SHAPE per role (draft_shape.py; each FAIL says `change:`): a stand / band's neck
   edge rises at its front ends (stand >= 0.24 x the neckline's front drop, jaeger; band > 0) and its free edge is shorter;
   a fall's outer edge >= 1.012 x its stand seam (simon); a sleeve cap 0.47-0.79 x the armhole depth (brian, bent); no
-  straight edge sewn to a curved one. Name a stand's free edge `top`, a fall's `outer`. An outline seen in the reference
+  straight edge sewn to a curved one. Name a stand's free edge `top`, a fall's `outer`, neck edges `neck*`. A piece's
+  `role` (optional; else its name decides) is one of garment_kb's roles (collar_stand, collar_fall, ...); a layer sewn
+  edge to edge onto a piece by the same edge names (its canvas, inner collar) takes that piece's shape: no role needed. An outline seen in the reference
   is TRACED from it: corners stay corners (a stepped cutaway is `line`s meeting square), curves stay curves (a stand's
   rounded front top corner), never approximated by one arc; judge the sheet's outlines beside the photo. The sheet is shape only (one big name per piece, each seam pair one colour, legend S<n> = the
 text's S<n>); the text lists every piece (size, cut, stiff) and every seam pair (both edges, both lengths, ease,
@@ -227,7 +240,7 @@ points and edges, mm): `at` [{point, dx, dy} | {edge, mm | t, in}], `rows` {edge
 pitch_t (of the edge) | to_mm | to_t, in}, `points` "button*", `follows` ["piece:edge"] (+ in, default half the width),
 `path` [positions], a motif's `lines` [[[across, along] mm]] + `knots` (repeated at its rows: a frog), `mirror` (the
 .L/.R twin by the same names), `stiffens` (a braid / binding / zip tape that stiffens its edge: declared there so the
-build can feel it). A closure's buttons are its own marks; a zip's tape takes its declared edges. draft_pattern refuses a
+build can feel it). A closure's holes (on over) and buttons (on under) are its own marks; a zip's tape takes its declared edges. draft_pattern refuses a
 built step-1 detail with no mark. Here, `details` gives geometry only: {detail: {kind point|line|motif, size_mm (point,
 knot), width_mm (line, motif cord), thickness_mm (default the cloth's), shape dome|disc|box, colour (default the step-0
 cloth's)}}. A position here is refused; so is a detail not in step 1, omitted there, or made of cloth (pocket, flap,

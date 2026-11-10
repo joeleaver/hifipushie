@@ -5,13 +5,16 @@ A role comes from the pattern's construction (what is interfaced, what is sewn t
 joins which pieces) plus the piece's declared role (draft_pattern's `role`, carried on the flat mesh as M["roles"];
 else the role its name reads as, garment_design.role_of). Names never pick a stage on their own.
 
+- WHAT HOLDS WHAT (R3b): chain_holds.read. Plies and floating layers get no role here (they follow their host:
+  chain_holds.place_plies); a roll fold makes a FALL only on a stiff part (a soft piece's roll is its own fold, a lapel).
 - FALL: a piece with a "roll" fold. BAND: the wholly interfaced piece the fall is sewn to (a shirt's collar band).
-- STAND: a wholly interfaced piece sewn to the body cloth's neckline with nothing turned over it (role collar_stand /
-  neckband, no fall): the BAND stage's ring of its own neckline length, resting on the high points, upright; its top is
-  its own free edge (a band's top is its seam to the fall). Built by build_stand(), never as a ring round a limb. Its
-  ends meet at CF where the front below them is closed edge to edge; its own closure open = the top ends left free.
-  A stiff piece whose role reads "collar_fall" with no roll fold is refused by name (a fall needs its roll; a collar
-  that stands needs role collar_stand): the stand mistaken for a fall was T5's hussar sheet.
+- STAND (R3c, C399): a wholly interfaced part resting on the body, sewn along the body cloth's NECKLINE (neck_part: its
+  seam to the panels reaches within NECK_REACH of the high point, where the panels' own lengths put them), with nothing
+  sewn on top of it: the BAND stage's ring of its own neckline length, resting on the high points, upright; its top is its
+  own free edge (a band's top is its seam to the fall). Built by stand_ring(), never as a ring round a limb. Its neck
+  ends meet at CF where the front's top pair is tied; its own closure untied = the top ends left free. Read from the
+  construction only: a declared role or a name never makes a stand (it did: collar_stand / neckband; a stiff collar
+  with no roll whose name read collar_fall was refused, the suit jacket's collar among them).
 - RINGS: other wholly interfaced pieces (cuffs, waistbands).
 - TUBE: a soft piece sewn to itself, OR several soft pieces of a limb role (sleeve, leg) on one side sewn to each other
   (a two-piece sleeve: top sleeve + undersleeve). A group is started round the limb's axis piece after piece, each over
@@ -25,12 +28,12 @@ else the role its name reads as, garment_design.role_of). Names never pick a sta
 """
 from __future__ import annotations
 
-import time
 
 import numpy as np
 from scipy.spatial import cKDTree
 
-STAND_ROLES = ("collar_stand", "neckband")
+NECK_REACH = 0.10  # m: a stiff part's seam to the body cloth reaching this near the high point's height is on the neckline
+# (a collar's seam starts at the hps; a waistband's is 0.4 m or more below it)
 TUBE_ROLES = ("sleeve", "leg_front", "leg_back")
 EDGE_TO_EDGE = ("zip",)
 ZIP_GAP = 0.002  # m: an edge-to-edge closure's two edges this far apart (the teeth between them), side by side
@@ -120,39 +123,32 @@ def _tube_groups(net, soft: list, role: dict, self_sewn: set, sewn: dict) -> dic
 def read_roles(net):
     """The pattern's roles (module doc). Raises ChainRefused naming a role the core can't build."""
     from .chain_garment import ChainRefused, Roles
-    names = net.names
+    from .chain_holds import read as read_holds  # (R3b: plies and floating layers have no role of their own)
+    H = read_holds(net)
+    carried = set(H.plies) | set(H.layers)
+    names = [n for n in net.names if n not in carried]
     role = piece_roles(net)
-    whole = {n: float(net.stiff[net.verts(n)].mean()) > 0.95 for n in names}
-    sewn: dict = {n: set() for n in names}
+    whole = {n: float(net.stiff[net.verts(n)].mean()) > 0.95 for n in net.names}
+    sewn: dict = {n: set() for n in net.names}
     self_sewn = set()
     for a, b in net.sew:
-        pa, pb = names[net.piece[a]], names[net.piece[b]]
+        pa, pb = net.names[net.piece[a]], net.names[net.piece[b]]
         if pa == pb:
             self_sewn.add(pa)
         else:
             sewn[pa].add(pb)
             sewn[pb].add(pa)
-    fold = next((f for f in net.M.get("folds") or [] if f.get("kind") == "roll"), None)
+    fold = next((f for f, h in zip(net.M.get("folds") or [], H.folds) if h["fall"]), None)  # (a FALL: a stiff part's roll)
     fall = fold["piece"] if fold else None
-    fall_fault = None
     band, stand = None, False
     if fall:
-        cand = [p for p in sewn[fall] if whole[p]]
+        cand = [p for p in sewn[fall] if whole[p] and p not in carried]
         if not cand:
             raise ChainRefused(f"{fall}: a roll piece sewn straight to the body cloth (no interfaced band): a chain build "
                                "needs the band it stands on. next: add a band to the pattern (design_garment)")
         band = cand[0]
-    else:
-        on_body = [p for p in names if whole[p] and any(not whole[q] for q in sewn[p])]
-        falls = [p for p in names if whole[p] and role[p] == "collar_fall"]  # (F1: sewn to a stand too, not only the body)
-        if falls:
-            fall_fault = (f"{falls[0]}: a stiff collar read as a FALL (role collar_fall) with no roll fold: a fall needs "
-                          "its roll line; a collar that stands up needs role collar_stand (declare the piece's role, "
-                          "draft_pattern pieces.<name>.role, or its roll fold)")
-        stands = [p for p in on_body if role[p] in STAND_ROLES]
-        if stands:
-            band, stand = stands[0], True
-    faults = sided_faults(net, role, whole, self_sewn) + ([fall_fault] if fall_fault else [])
+    # (no fall: a stand on the neckline is read by the build, which knows the body: neck_part)
+    faults = sided_faults(net, role, whole, self_sewn, carried)
     if faults:
         raise ChainRefused("the pattern's pieces don't make a whole garment: " + "; ".join(faults) + ". next: draft_pattern "
                            "declarations: a piece worn on both sides is cut 2 as a mirrored pair, pieces.NAME {\"pair\": true} "
@@ -172,13 +168,13 @@ def read_roles(net):
     tubes = [n for n in soft if n in groups]
     panels = [n for n in soft if n not in groups]
     return Roles(band, fall, rings, tubes, panels, front, band_cl, fold, stand=stand,
-                 tube_groups={k: v for k, v in groups.items() if len(v) > 1})
+                 tube_groups={k: v for k, v in groups.items() if len(v) > 1}, holds=H)
 
 
 SIDE_TOL = 0.01  # m: a centre piece's flat is centred on x = 0 within this + 10 % of its width, else it is a half
 
 
-def sided_faults(net, role: dict, whole: dict, self_sewn: set) -> list:
+def sided_faults(net, role: dict, whole: dict, self_sewn: set, skip=()) -> list:
     """(F1, t8) Pieces the body wears on both sides drafted once: a soft centre piece (no .L / .R) lying wholly on one
     side of the centre line is half of what the body wears (the t8 shirt's `front`, `mirror: true` taken for "cut
     two": its button lap crossed x = 0 by 18 mm, the t8 trousers' crotch by 60-120 mm); a limb piece (a tube, a limb role) with no side has no limb to go round. Each named; stiff pieces never
@@ -186,7 +182,7 @@ def sided_faults(net, role: dict, whole: dict, self_sewn: set) -> list:
     from .chain_garment import hand_of
     out = []
     for n in net.names:
-        if hand_of(n) != 0 or whole[n]:
+        if hand_of(n) != 0 or whole[n] or n in skip:
             continue
         if n in self_sewn or role[n] in TUBE_ROLES:
             out.append(f"{n}: a limb piece with no side (.L / .R)")
@@ -366,6 +362,31 @@ def _end_edges(net, piece, sb, st):
     return out
 
 
+def neck_part(b) -> str | None:
+    """The stiff part sewn along the body cloth's neckline (module doc, STAND): the band under a fall, else the first
+    stiff ring-candidate resting on the body whose seam to the panels reaches within NECK_REACH of the high point (each
+    panel where its own lengths start it, piece_start.panel_dz). That one becomes R.band (stand), out of R.rings, and its
+    own closure is R.band_closure. Construction only: never a name or a declared role."""
+    from .piece_start import panel_dz
+    net, R = b.net, b.roles
+    if R.band:
+        return R.band
+    hz = float(b.body.p("hps.L")[2])
+    for part in b.holds.parts:
+        p = part.outer
+        if not part.stiff or part.rests_on != ["body"] or p not in R.rings:
+            continue
+        top = [hz + float(net.uv[list(sv), 1].max()) + panel_dz(b, q) for q in R.panels
+               if (sv := b.sewn_with(q, p))]
+        if top and max(top) >= hz - NECK_REACH:
+            R.band, R.stand = p, True
+            R.rings = [r for r in R.rings if r != p]
+            R.band_closure = next((c for c in net.M.get("closures") or [] if c["over"] == p), None)
+            b.reads["neck_part"] = {"part": p, "seam_top_below_hps_mm": round((hz - max(top)) * 1e3, 1)}
+            return p
+    return None
+
+
 def stand_ring(b):
     """The STAND: the band stage's ring with its own top edge (module doc). Sets b.sb / b.st / b._band_lines like
     band_closed, so fill_band, stiff_last and the soft network hold it as they hold a band."""
@@ -434,9 +455,10 @@ def stand_ring(b):
     S.add_contact(nt, b.body.contact, GAP)
     S.add_contact(nb, b.body.contact, GAP, rest=REST)
     rows = []
-    front_shut = bool(R.front) and all(R.front.get("closed") or [False])
+    from .chain_plan import top_tied
+    front_shut = top_tied(R.front, uv)  # (C399: the front's TOP pair tied; was every pair, the pairs above dropped)
     ends = [(nb[0], nb[-1])] if front_shut else []  # the fronts below meet at CF: so do the stand's neck ends
-    if R.band_closure and all(R.band_closure.get("closed") or [False]):
+    if getattr(b, "band_tied", False):  # (C399: as its tie says, chain_garment.Build.band_tied)
         ends.append((nt[0], nt[-1]))  # its own closure done: the top ends meet too
     for p0, p1 in ends:
         rows += [([p0], [1.0], 0, 0.0, cn.HARD), ([p1], [1.0], 0, 0.0, cn.HARD),
@@ -485,15 +507,3 @@ def stand_ring(b):
                         "end_worst_link_pct": round(max([float(np.abs(np.linalg.norm(np.diff(b.X[ne], axis=0), axis=1)
                                                                      / np.maximum(Le, 1e-9) - 1).max() * 100)
                                                          for ne, Le in ends_c] or [0.0]), 1)}
-
-
-def build_stand(b, t0: float) -> None:
-    """A garment whose collar is a STAND: the stand's ring, its surface and edges, rings, then the soft cloth under it
-    (closed front: fastened edge to edge or lapped as its closure says)."""
-    stand_ring(b)
-    b.fill_band()
-    b.stiff_last()
-    b.rings()
-    b.reads["stiff_stand_s"] = round(time.time() - t0, 1)
-    b.soft_net()
-

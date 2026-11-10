@@ -17,6 +17,18 @@ from pathlib import Path
 from . import draft_own as do
 
 
+
+def row_lines(r: dict) -> list:
+    """A gate row as text: its value on the row's line, then EVERY reason on a line of its own, in full (C378, t s4-8:
+    one line cut at 600 characters hid the collar row's `change:` from the agent, who had to guess the fix)."""
+    out = [f"  {r['status']} {r['id']}: {r.get('value', '')}"]
+    why = [w.strip() for w in str(r.get("why") or "").split("; ") if w.strip()]
+    out += [f"      why: {w}" for w in why]
+    out += [f"      info: {w.strip()}" for w in str(r.get("info") or "").split("; ") if w.strip()]  # (C380: was never shown)
+    if r.get("status") == "FAIL" and r.get("fix") and r["fix"] not in str(r.get("why")):
+        out.append(f"      fix: {r['fix']}")
+    return out
+
 def measurements(step3: dict) -> dict:
     """{name: number} from body_tape's rows (mm; an angle in degrees: FreeSewing's shoulderSlope)."""
     out = {}
@@ -43,7 +55,24 @@ def stand_ref(name: str, garment: str) -> dict | None:
         at = cloth.Body(cloth.body_mesh(store.load(name))).at
     except (KeyError, ValueError, TypeError) as e:
         return {"why": f"the body's landmarks: {type(e).__name__}: {str(e)[:120]}"}
-    return draft_stand.reference(plan, at)
+    ref = draft_stand.reference(plan, at)
+    if ref and "why" not in ref and "hps.L" in at:
+        try:
+            from . import garment_record as gr
+            ref["top_girth"] = draft_stand.girth_at(gr.reads(name, garment, "4")["3"], at, ref["h_side"])
+        except (KeyError, ValueError, TypeError):
+            pass
+    return ref
+
+
+def _body(name: str) -> dict | None:
+    """{"V", "at"}: the model's body and its landmarks (draft_girths places the levels on it); None: no body."""
+    from . import cloth, store
+    try:
+        b = cloth.Body(cloth.body_mesh(store.load(name)))
+        return {"V": b.V, "T": b.T, "at": b.at}
+    except (KeyError, ValueError, TypeError):
+        return None
 
 
 def _fit(name: str, garment: str) -> dict:
@@ -65,7 +94,14 @@ def flat_check(name: str, garment: str) -> tuple[list, dict, dict]:
     B = cloth.pieces(json.loads(json.dumps(g)), measurements(rd["3"]))
     blk = do.block(g["pattern"])
     B["edge_arcs"], B["decl"] = blk["edge_arcs"], blk["decl"]
-    return do.gate(B, blk["decl"], rd["1"], stand_ref(name, garment), rd["3"], _fit(name, garment)), B, decl
+    B["darts"] = blk.get("darts") or []  # (C386: cloth.pieces drops them; the dart row and the length rows need them)
+    rows = do.gate(B, blk["decl"], rd["1"], stand_ref(name, garment), rd["3"], _fit(name, garment),
+                   _body(name), step2=rd.get("2"))
+    from . import draft_marks
+    rows.append(draft_marks.place(cloth.mesh(B), blk["decl"], rd["1"])[0])  # (C380: the pairs expanded, as step 7)
+    from . import draft_links
+    rows.append(draft_links.saved_row(name, garment))  # (C395: step 4 FAILs what step 5 refuses, the build's mesh)
+    return rows, B, decl
 
 
 def check_text(name: str, garment: str) -> str:
@@ -77,7 +113,7 @@ def check_text(name: str, garment: str) -> str:
                   output=dict(gr.load(name, garment)["steps"]["4"].get("output") or {}, pieces=list(B["pieces"])),
                   gate={"verdict": v, "rows": rows}, look=gr.load(name, garment)["steps"]["4"].get("look"), back_to="4")
     lines = [f"{name}:{garment} pattern_check (own draft, the flat gate): {v}"]
-    lines += [f"  {r['status']} {r['id']}: {r.get('value', '')}{' | ' + r['why'] if r.get('why') else ''}"[:600] for r in rows]
+    lines += [ln for r in rows for ln in row_lines(r)]
     lines.append(f"  {rec}" if rec else f"  record: step 4 written ({gr.path(name, garment)})")
     return "\n".join(lines) + ("\nnext: chain_garment" if v == "PASS" else "\nnext: fix the rows with draft_pattern")
 
@@ -149,7 +185,13 @@ def run(name: str, garment: str, design: str, declarations: dict, options: dict 
         raise do.DraftRefused(f"the converter refused the draft: {e}{nan}") from None
     blk = do.block(g["pattern"])
     B["edge_arcs"], B["decl"] = blk["edge_arcs"], blk["decl"]
-    rows = do.gate(B, blk["decl"], rd["1"], stand_ref(name, garment), rd["3"], _fit(name, garment))  # (expanded: C366)
+    B["darts"] = blk.get("darts") or []  # (C386: cloth.pieces drops them; the dart row and the length rows need them)
+    rows = do.gate(B, blk["decl"], rd["1"], stand_ref(name, garment), rd["3"], _fit(name, garment),
+                   _body(name), step2=rd.get("2"))  # (expanded: C366)
+    from . import draft_marks
+    mrow, drawn = draft_marks.place(M, B["decl"], rd["1"])  # (C380: where every mark lands, as step 7 places it)
+    rows.append(mrow)
+    draft_marks.sheet_marks(B, drawn)
     v = do.verdict(rows)
     seam_rows = next(r for r in rows if r["id"] == "seams")["detail"]
     dx = B.get("decl") or declarations
@@ -162,6 +204,9 @@ def run(name: str, garment: str, design: str, declarations: dict, options: dict 
     cl[garment] = {"pattern": g["pattern"]}  # (a garment drafted afresh: no older design's keys ride along)
     spec["cloth"] = cl
     ver = store.save(name, spec, f"draft_pattern {garment}")
+    from . import draft_links  # (C395: step 4 FAILs what step 5 refuses, read on the build's own mesh of this draft)
+    rows.append(draft_links.saved_row(name, garment))
+    v = do.verdict(rows)
     keys = [k for k in cg.PATTERN_KEYS if k in M]
     out = {"dir": str(d), "pieces": list(B["pieces"]), "seams": len(B["seams"]), "measurements": sorted(meas),
            "mesh": {"vertices": int(len(M["uv"])), "faces": int(len(M["F"])), "keys": keys}}
@@ -173,7 +218,7 @@ def run(name: str, garment: str, design: str, declarations: dict, options: dict 
     lines = [f"{name}:{garment} draft_pattern: {v} (spec v{ver}; draft {d})",
              f"  pieces {len(B['pieces'])}: {', '.join(B['pieces'])}",
              f"  flat mesh: {out['mesh']['vertices']} vertices, {out['mesh']['faces']} faces; keys {', '.join(keys)}"]
-    lines += [f"  {r['status']} {r['id']}: {r.get('value', '')}{' | ' + r['why'] if r.get('why') else ''}"[:600] for r in rows]
+    lines += [ln for r in rows for ln in row_lines(r)]
     lines += ["  " + ln for ln in pattern_sheet.text_lines(B, seam_rows, names, declarations)]
     if im.info.get("names_off"):
         lines.append(f"  on the sheet without a name (too small to hold one): {', '.join(im.info['names_off'])}")

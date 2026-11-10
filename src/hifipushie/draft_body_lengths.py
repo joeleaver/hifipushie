@@ -25,6 +25,14 @@ def _base(e: str) -> tuple[str, str]:
     return p, ed[:-2] if ed.endswith(".m") else ed
 
 
+def _declared(sm: list, exp: list, B: dict) -> list:
+    """The pattern's seams that the declarations made, in their order: a dart's legs are sewn as seams after them
+    (draft_own.build) and aren't step 1's (C386, t s4-16: an opened front dart made "seams not one to one", so neither
+    body_lengths nor style_lengths checked anything)."""
+    nd = sum(1 for _ in B.get("darts") or [])
+    return sm[:len(exp)] if len(sm) == len(exp) + nd else sm
+
+
 def _ease(name: str, fit: dict) -> tuple[float, str]:
     for r, e in (fit or {}).items():
         if r == name or ALIAS.get(r) == name:
@@ -56,15 +64,21 @@ def rows(B: dict, step1: dict, step3: dict | None, fit: dict | None) -> list:
     meas = {m["name"]: m for m in (step3 or {}).get("measurements") or []}
     dx = B.get("decl") or {}
     exp = dx.get("seams") or []
-    sm = cc.seams(B)
+    sm = _declared(cc.seams(B), exp, B)
     if len(exp) != len(sm) or not meas:
         return [{"id": "body_lengths", "status": "INFO", "value": "n/a", "target": "every body-measured seam vs its "
                  "measurement + ease", "why": "no step-3 measurements" if not meas else "seams not one to one"}]
     fails, infos, n = [], [], 0
+    seen_: set = set()
     rounds: dict = {}  # girth name -> [(step-1 seam, expanded seam indices)]: summed round over every seam naming it
     for r in step1.get("seams") or []:
         names = ((r.get("length") or {}).get("body")) or []
-        want = {r.get("a"), r.get("b")}
+        # (C380, t s4-10: step 1 names sided pieces, "front.L:shoulder", and only the draft's side was reduced to its
+        # base, so nothing ever matched: "0 body measurements" on every paired garment)
+        want = {"{}:{}".format(*_base(x)) for x in (r.get("a"), r.get("b")) if isinstance(x, str) and ":" in x}
+        if frozenset(want) in seen_:  # (a pair's .L and .R rows: one seam, said once)
+            continue
+        seen_.add(frozenset(want))
         hit = [i for i, s in enumerate(exp) if isinstance(s.get("a"), str) and isinstance(s.get("b"), str)
                and {"{}:{}".format(*_base(s["a"])), "{}:{}".format(*_base(s["b"]))} == want]
         for nm in names:
@@ -116,3 +130,83 @@ def rows(B: dict, step1: dict, step3: dict | None, fit: dict | None) -> list:
              "round its drafted edges, >= that girth + the plan's fit ease (lengths: said, not refused)",
              "why": "; ".join(fails[:6]), "info": "; ".join(infos[:8]), "back_to": "4",
              "fix": "redraft the named edges (or step 1's measurement for the seam, step 0's ease)" if fails else ""}]
+
+
+STYLE_OFF = 0.15  # a drafted seam this far from step 1's estimate is said (step 1 read it off the picture)
+STYLE_FAIL = 0.30  # ... and this far is refused unless `departs` names the edge with why (C381)
+
+
+def _departs(decl: dict, a, b) -> str:
+    """The declared reason a drafted seam leaves step 1's estimate: `departs` {edge (either side, pair base or sided):
+    why}, or ''."""
+    dep = decl.get("departs") or {}
+    for x in (a, b):
+        if isinstance(x, str) and ":" in x:
+            p, arc = _base(x)
+            for k in (x, f"{p}:{arc}"):
+                if str(dep.get(k) or "").strip():
+                    return str(dep[k]).strip()
+    return ""
+
+
+def style_rows(B: dict, step1: dict, step3: dict | None) -> list:
+    """Row `style_lengths` (C380, t s4-7..s4-10: step 1's estimated lengths were never compared with the draft, so a
+    collar top 0.48 x neck against 133 mm drafted, or a side seam 433 against 404, went unsaid): every step-1 seam whose
+    length is a STYLE estimate (value_mm, or ratio x a step-3 measurement) against its drafted edges. Off by more than
+    STYLE_OFF: said (INFO). Off by more than STYLE_FAIL: FAIL unless the declarations' `departs` names one of its edges
+    with why (C381, t s4-11: a stand collar's top drafted 97 mm against step 1's approved 195 passed as INFO, and the
+    collar tapered to nothing where the reference's runs full height to the zip; step 1 is approved, so leaving it is a
+    decision said aloud, not a by-product)."""
+    from . import cloth_check as cc
+    meas = {m["name"]: m for m in (step3 or {}).get("measurements") or []}
+    decl = B.get("decl") or {}
+    exp = decl.get("seams") or []
+    sm = _declared(cc.seams(B), exp, B)
+    if len(exp) != len(sm):
+        return [{"id": "style_lengths", "status": "INFO", "value": "n/a", "why": "seams not one to one"}]
+    seen, off, fails, n = set(), [], [], 0
+    # step 1's own resolution of each length on the model (garment_parts_lengths.lengths: [(seam, model mm, drawn)]):
+    # a ratio of a span [a, b] or of a 'piece:edge' is only resolved there (C385, t s4-15: "of": ["armpit", "hem"]
+    # crashed this row with "unhashable type: 'list'" on every draft)
+    checked = {int(x[0]): float(x[1]) for x in step1.get("seam_lengths_checked") or []
+               if isinstance(x, (list, tuple)) and len(x) >= 2}
+    for si, r in enumerate(step1.get("seams") or []):
+        st = (r.get("length") or {}).get("style")
+        if not isinstance(st, dict):
+            continue
+        of = st.get("of")
+        if si in checked:
+            tgt = checked[si]
+        elif "value_mm" in st:
+            tgt = float(st["value_mm"])
+        elif "ratio" in st and isinstance(of, str) and of in meas:
+            tgt = float(st["ratio"]) * float(meas[of]["mm"])
+        else:
+            continue
+        want = {"{}:{}".format(*_base(x)) for x in (r.get("a"), r.get("b")) if isinstance(x, str) and ":" in x}
+        key = frozenset(want)
+        if key in seen:  # (a pair's two sides: said once)
+            continue
+        hit = [i for i, s in enumerate(exp) if isinstance(s.get("a"), str) and isinstance(s.get("b"), str)
+               and {"{}:{}".format(*_base(s["a"])), "{}:{}".format(*_base(s["b"]))} == want]
+        if not hit or tgt <= 0:
+            continue
+        seen.add(key)
+        n += 1
+        got = (sm[hit[0]]["len_a_mm"] + sm[hit[0]]["len_b_mm"]) / 2
+        if abs(got - tgt) <= STYLE_OFF * tgt:
+            continue
+        txt = (f"{r.get('a')} = {r.get('b')}: drafted {got:.0f} mm, step 1 {tgt:.0f} mm ({got / tgt - 1:+.0%}, "
+               f"{str(st.get('source', '')).replace('; ', ', ')[:90]})")
+        why = _departs(decl, r.get("a"), r.get("b"))
+        if abs(got - tgt) > STYLE_FAIL * tgt and not why:
+            fails.append(txt)
+        else:
+            off.append(txt + (f", departs: {why.replace('; ', ', ')[:120]}" if why else ""))
+    return [{"id": "style_lengths", "status": "FAIL" if fails else "INFO", "value": f"{n} step-1 estimates, "
+             f"{len(fails) + len(off)} off by > {STYLE_OFF:.0%}, {len(fails)} by > {STYLE_FAIL:.0%} unsaid",
+             "target": f"within {STYLE_FAIL:.0%} of step 1's approved estimate, or `departs` says why",
+             "why": "; ".join(fails), "info": "; ".join(off), "back_to": "4",
+             "fix": ("step 1 is approved: draft the edge to its length; if the reference shows step 1 misread it, "
+                     "look again at the reference there (another row asking for a different length, a step-2 trace's, is such a reason), then add departs {\"<piece>:<edge>\": \"what the reference "
+                     "shows\"}") if fails else ""}]
