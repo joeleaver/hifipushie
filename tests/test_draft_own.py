@@ -134,7 +134,7 @@ def test_tool_writes_step4_and_reads_steps_1_and_3(home, monkeypatch):
     monkeypatch.setattr(store, "load", lambda name: json.loads(json.dumps(saved.get(name) or {})))
     monkeypatch.setattr(store, "save", lambda name, spec, note="": saved.__setitem__(name, spec) or 1)
     _record(home)
-    assert set(gr.reads("tm", "g", "4")) == {"1", "3"}
+    assert set(gr.reads("tm", "g", "4")) == {"1", "2", "3"}  # (C392: step 2 too, for the planned folds)
     assert "reads" in gr.next_step(gr.load("tm", "g"))["uses"]
     sheet, txt = dot.run("tm", "g", RECT, DECL)
     assert "draft_pattern: PASS" in txt and Path(sheet).exists()
