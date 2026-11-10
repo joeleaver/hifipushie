@@ -149,7 +149,7 @@ class StiffStages:
     def _cloth_contact(self):
         """The soft cloth as built, outward side up: what a stiff leaf rests on."""
         net, R = self.net, self.roles
-        F = net.F[~np.isin(net.piece[net.F[:, 0]], [net.pid(p) for p in ([R.band, R.fall] + list(R.rings)) if p])].copy()
+        F = net.F[~np.isin(net.piece[net.F[:, 0]], [net.pid(p) for p in ([R.band, R.fall] + list(R.rings) + R.carried) if p])].copy()
         X = self.X
         fn = np.cross(X[F[:, 1]] - X[F[:, 0]], X[F[:, 2]] - X[F[:, 0]])
         bn = self.body.contact.query(X[F].mean(1))[1]

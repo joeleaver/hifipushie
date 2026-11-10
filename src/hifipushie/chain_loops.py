@@ -17,6 +17,7 @@ def held_read(b, X, both, e, over) -> dict:
     a soft link gathered into a stiff part may be shorter, never longer. Worst of either, by piece and line."""
     net, R = b.net, b.roles
     stiff = [net.pid(p) for p in [R.band, R.fall] + list(R.rings) if p]
+    stiff += [net.pid(p) for p, h in (R.holds.plies.items() if R.holds is not None else ()) if net.pid(h) in stiff]
     lp = np.full(len(net.link_i), -1)
     lp[net.link_of_chain] = net.chain_piece  # (each link's own piece: its ends may be roots on a sewn partner)
     own = both & np.isin(lp, stiff)

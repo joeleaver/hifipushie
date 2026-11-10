@@ -157,6 +157,8 @@ class SoftStages:
     def _stiff_mask(self):
         net, R = self.net, self.roles
         whole = [p for p in (R.band, R.fall) if p] + list(R.rings)
+        if R.holds is not None:  # (R3b: a stiff host's plies are held with it; a floating layer is never moved)
+            whole += [p for p, h in R.holds.plies.items() if h in whole] + list(R.holds.layers)
         m = np.isin(net.piece, [net.pid(p) for p in whole])
         return m
 
@@ -403,7 +405,7 @@ class SoftStages:
         Xm = S_ / np.maximum(count, 1)[:, None]
         Xm = np.where(held[:, None], self.X, Xm)
         Xm = Xm[rs]
-        soft_F = net.F[~np.isin(net.piece[net.F[:, 0]], [net.pid(p) for p in ([R.band, R.fall] + list(R.rings)) if p])]
+        soft_F = net.F[~np.isin(net.piece[net.F[:, 0]], [net.pid(p) for p in ([R.band, R.fall] + list(R.rings) + R.carried) if p])]
         far_z = float(self.body.at["armpit_z"]) - 0.04 if far_z is None else far_z
         nodes = np.unique(rs[soft_F])
         ring_near = np.zeros(net.n, bool)

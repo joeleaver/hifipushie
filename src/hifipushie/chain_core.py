@@ -74,6 +74,13 @@ class Roles:
     fold: dict | None
     stand: bool = False  # the band is a STAND: nothing turned over it (chain_roles)
     tube_groups: dict = field(default_factory=dict)  # piece -> the pieces of its several-piece tube (chain_roles)
+    holds: object = None  # chain_holds.Holds: plies and floating layers, the order, the folds (R3b)
+
+    @property
+    def carried(self) -> list:
+        """Pieces with no role: plies (they follow their host) and floating layers (they stiffen theirs)."""
+        h = self.holds
+        return list(h.plies) + list(h.layers) if h is not None else []
 
 
 def read_roles(net: Network) -> Roles:

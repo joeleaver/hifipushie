@@ -9,7 +9,7 @@ Step 1's layer numbers are not on the flat mesh, so they are not read.
 
 PARTS. Pieces joined as PLIES are one part. A ply LIES ON its host, cut to the same outline and sewn round it. A
 collar's canvas is sewn to the collar on all four edges. Its facing is sewn on top and end, with the neck edges left
-free inside. A jacket's top collar and undercollar are sewn along the fall and both ends. Two tests, both needed:
+free inside. A jacket's top collar and undercollar are sewn along the fall and both ends. Three tests, all needed:
 - CONGRUENT. The sewn pairs' flat positions map onto the host's by a rigid motion, within PLY_RMS. Every ply measured
   0.0 mm. Two-piece sleeves measured 23-25 mm (a top sleeve is wider than its undersleeve, sewn round a tube), and a
   shirt collar on its band measured 20.6 mm (its neck edge curves the other way to the band's top). The fit allows a
@@ -18,6 +18,9 @@ free inside. A jacket's top collar and undercollar are sewn along the fall and b
   curved, maps rigidly onto its partner. A front + facing (the front edge only) is 0.0 mm, and so are a yoke on a back
   and a shoulder seam. Their areas are 0.00-0.09 against 0.41-1.08 for the plies (canvas 1.08, collar facing 0.58,
   collar / undercollar 0.41).
+- IN ONE RUN. The sewn stretch of each outline is one run (a pocket: the canvas all round, the facing's end-top-end,
+  the collar's end-fall-end). Two halves of a tube sewn along both sides, congruent when cut alike (a synthetic trouser
+  leg's front and back), make two runs, and its two ends stay open.
 A share of the sewn LENGTH does not separate these cases (measured 2026-11-10). The undercollar is 0.47 of its outline on
 the collar and a shirt band 0.45 on its collar, while two-piece sleeves are 0.62-0.79 on each other.
 The OUTER ply is the one with the most sewn length to cloth outside the part (the body cloth or a facing). It is the
@@ -43,6 +46,7 @@ import numpy as np
 
 PLY_RMS = 0.001  # m: a ply's sewn outline maps rigidly onto its host's within this (plies 0.0 mm; sleeves, a band 20+ mm)
 PLY_AREA = 0.25  # of the piece's flat area closed round by its sewn outline (plies 0.41-1.08; one seam line 0.00-0.09)
+PLY_GAP = 0.01  # m: unsewn stretches of an outline shorter than this (a seam's corner) don't split its sewn run
 WHOLE = 0.95  # a piece is stiff when this share of its vertices is interfaced (chain_roles' rule)
 
 
@@ -130,6 +134,29 @@ def _sewn_length(net, p: int, verts: set) -> float:
     return float(np.linalg.norm(net.uv[be[on, 0]] - net.uv[be[on, 1]], axis=1).sum()) if on.any() else 0.0
 
 
+def sewn_runs(net, p: int, verts: set) -> int:
+    """How many separate stretches of piece p's outline are sewn (both ends in `verts`), round its loop."""
+    lp = net.loop(net.names[p])
+    if len(lp) < 3:
+        return 0
+    on = np.array([int(a) in verts and int(b) in verts for a, b in zip(lp, np.roll(lp, -1))], bool)
+    if on.all():
+        return 1
+    L = np.linalg.norm(net.uv[lp] - net.uv[np.roll(lp, -1)], axis=1)
+    k = int(np.argmax(~on))  # (start in a gap: every run then ends inside the loop)
+    on, L = np.roll(on, -k), np.roll(L, -k)
+    runs, gap = 0, np.inf
+    for o, l in zip(on, L):
+        if o:
+            if gap >= PLY_GAP:
+                runs += 1
+            gap = 0.0
+        else:
+            gap += l
+    lead = float(L[:int(np.argmax(on))].sum())  # (the gap before the first run joins the one after the last)
+    return runs - 1 if runs > 1 and lead + gap < PLY_GAP else runs
+
+
 def ply_pairs(net) -> list:
     """[(p, q, rms, share)] for every piece pair that passes both ply tests (module doc)."""
     pairs, _ = _sewn(net)
@@ -145,7 +172,7 @@ def ply_pairs(net) -> list:
         for k, piece in ((0, p), (1, q)):
             Fp = net.F[np.all(net.piece[net.F] == piece, axis=1)]
             sh.append(hull_share(net.uv[np.unique(ab[:, k])], _area(net.uv, Fp)))
-        if min(sh) >= PLY_AREA:
+        if min(sh) >= PLY_AREA and max(sewn_runs(net, piece, set(ab[:, k].tolist())) for k, piece in ((0, p), (1, q))) <= 1:
             out.append((p, q, rms, min(sh)))
     return out
 
