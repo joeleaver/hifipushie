@@ -11,6 +11,8 @@ docs/notes/traps.md: read that before you trust any measure.
   blind reviewer (`/mnt/data/hifipushie/bin/review <out> "<region>=<ref_crop>:<result_crop>" --stage ... --not ...`)
   -> APPROVE (Joe, or the coordinator from a reference-beside-result look: `bin/approve add <stage> <piece> ...`).
   The next stage consumes ONLY `bin/approve get <stage> <piece>`, never the newest file.
+- A sculpt with a concept image is LOOKed at from the concept's own camera: fit_concept_camera -> look_matched ->
+  feature_tiles -> bin/review; joins measured by join_report on the whole appendage (gates.md, C396).
 - Keep / revert by `bin/review-ab` (both candidates, same tiles, one sitting). Exit 4 = the review did not run; it is
   never 0 MAJORs. Before 13:00 MT the CLI is rate-limited: use a fresh blind subagent on the same trios + key.json.
 - STOP-LOSS (all stages): a fault gets at most two rounds without a visible change on its own before / after tile.
