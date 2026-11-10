@@ -207,7 +207,8 @@ design, no recipe; src/hifipushie/draft_own.py's docstring is the spec). Needs s
 - Refused by name (nothing written): a step-1 seam with no drafted edge or not sewn, a piece not in step 1, a built piece
   not drafted. Else the flat gate: seams (each pair within its declared ease, else +-1 %), cut, sewn, closures (lapped
   edges within 1 %), planned_folds (every fold step 2 turns declared on its piece by name; every roll fold has a step-2
-  turn: C392), truing (info), and SHAPE per role (draft_shape.py; each FAIL says `change:`): a stand / band's neck
+  turn: C392), seam_links (every seam's two sides within 3 mm over each link, read on the mesh chain_garment makes of the
+  draft: what step 5 refuses, step 4 FAILs, C395), truing (info), and SHAPE per role (draft_shape.py; each FAIL says `change:`): a stand / band's neck
   edge rises at its front ends (stand >= 0.24 x the neckline's front drop, jaeger; band > 0) and its free edge is shorter;
   a fall's outer edge >= 1.012 x its stand seam (simon); a sleeve cap 0.47-0.79 x the armhole depth (brian, bent); no
   straight edge sewn to a curved one. Name a stand's free edge `top`, a fall's `outer`, neck edges `neck*`. A piece's

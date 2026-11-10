@@ -54,8 +54,6 @@ DRIFT FOUND (Joe 2026-11-03): from F4 the build placed WHOLE pieces then correct
 block-in map) instead of steps 5-6 as agreed: chains at exact lengths first, surfaces filled between. Rebuild 5-6 as agreed.
 METHOD NOW (Joe 2026-11-03): one STEP per blind trial (/mnt/data/hifipushie/trials/s<step>-<n>/: hp client pinned to main),
 judged with Joe beside the reference, fixed, rerun, then the next step; tests run once when a step is declared done.
-APPROVED (Joe): hussar 0-4 (s4-14/ws, C377-C384); suit jacket 0-4 (s0-10, s2-5, s4-19/ws). STEP 5 BLOCKED (s5-1): the
-build picks pipelines by closure state and shirt roles (jacket open front + lapel roll read as a collar fall; hussar canvas
-read as a fall). docs/proposals/step5_one_build.md: R1 ties, R2 fold bends, R3a split, R3b holds DONE (C391-C394); both
-step 2s to rewrite (OK'd), jacket step 4 to draft its collar roll. FOUND: hussar refused at step 5 for a 4.9 mm seam link
-(underarm) that step 4's truing row only INFOs: step 4 must FAIL what step 5 refuses. NEXT: R3c one pipeline (Joe).
+APPROVED (Joe): hussar 0-4 (s4-14/ws), jacket 0-4 (s4-19/ws). STEP 5 BLOCKED (s5-1): pipelines picked by closure state
++ shirt roles. docs/proposals/step5_one_build.md: R1, R2, R3a, R3b DONE (C391-C394). To redo: both step 2s (OK'd); jacket
+step 4 drafts its collar roll; hussar step 4 trues its underarm (seam_links 4.87 mm, C395). NEXT: R3c one pipeline (Joe).

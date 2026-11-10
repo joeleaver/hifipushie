@@ -54,7 +54,7 @@ import numpy as np
 from . import chain_net as cn
 from .chain_net import BendSolve, Contact, Network, Threads, project, unit  # noqa: F401  (re-exported)
 # (R3a: the build split by responsibility; chain_garment stays THE import point, so every name is re-exported here)
-from .chain_core import (CAP, FALL_GAP, GAP, LAYER, MAX_FREE_PCT, OPEN_SPREAD, PATTERN_KEYS, REST,  # noqa: F401
+from .chain_core import (CAP, FALL_GAP, GAP, LAYER, MAX_FREE_PCT, OPEN_SPREAD, SEAM_LINK_MM, PATTERN_KEYS, REST,  # noqa: F401
                          RING_GAP, RING_H, SHEAR_LIMIT, UNDER, Body, ChainRefused, Pattern, Roles, _keep_roots,
                          _neighbours, cn_vnormals, hand_of, joined_faces, pattern_from_mesh, read_roles, zozo_legal)
 from .chain_band import BandStages
@@ -83,7 +83,7 @@ class Build(BandStages, FallStages):
         self.held = np.zeros(self.net.n, bool)
         self.reads: dict = {"seam_truing": self.net.seam_mismatch()}
         m = float(self.net.link_cut[:, 1].sum()) and self.net.seam_mismatch()["max_pct"]
-        if self.reads["seam_truing"]["max_mm"] > 3.0:
+        if self.reads["seam_truing"]["max_mm"] > SEAM_LINK_MM:
             raise ChainRefused(f"a seam's two sides differ by {self.reads['seam_truing']['max_mm']} mm over one link: "
                                "next: true the pattern (pattern_check, alter_pattern); a chain can't be two lengths")
         self._mirror()
