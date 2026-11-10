@@ -26,7 +26,7 @@ from pathlib import Path
 
 import numpy as np
 
-STAGES = ("arrange", "sew", "start", "chains", "surfaces")  # (F7: arrange + sew, chain_sew.py)
+STAGES = ("arrange", "sew", "start", "chains", "surfaces", "crease")  # (F7: arrange + sew, chain_sew.py; R3d: crease)
 OPEN_DEG = 90.0  # a tube with a gap wider than a quarter turn round its loop is not closed round (a two-piece tube missing
 #                 one piece leaves ~180 deg)
 SLICE = 0.015  # m: half the slice read round a loop: 1.5x the 0.01 m flat row bins _tube_points lays rows at (or
@@ -39,7 +39,8 @@ BACK = {"arrange": ("5", "the ARRANGE lay (chain_sew.lay): each piece flat on on
         "chains": ("5", "the CHAIN stage: a length off its cut is the pattern's (alter_pattern at the named line); a tube "
                         "or pair pulled off its start is the start or the seams joining it (pattern_check)"),
         "surfaces": ("6", "the SURFACES lay (chain_garment soft fill between the chains): torn or crumpled before any "
-                          "solve is the lay, not the cloth")}
+                          "solve is the lay, not the cloth"),
+        "crease": ("2", "the CREASE turn (chain_crease): step 2's fold bend (turn_deg, lies_on) or step 4's fold line")}
 
 
 class StageFailed(Exception):
@@ -395,7 +396,13 @@ def _gate_sew(b, X):
     return gate_sew(b, X)
 
 
-GATES = {"arrange": _gate_arrange, "sew": _gate_sew, "start": gate_start, "chains": gate_chains, "surfaces": gate_surfaces}
+def _gate_crease(b, X):
+    from .chain_crease import gate
+    return gate(b, X)
+
+
+GATES = {"arrange": _gate_arrange, "sew": _gate_sew, "start": gate_start, "chains": gate_chains, "surfaces": gate_surfaces,
+         "crease": _gate_crease}
 
 
 def check(b, stage: str, X):

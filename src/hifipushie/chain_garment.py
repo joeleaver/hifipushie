@@ -169,10 +169,15 @@ class GarmentBuild(SoftStages, StiffStages, HangJob, Build):
             self._hold_tied()  # the tied pair an untied band was held to stays there (none: nothing more is held)
             self.soft_net()  # 4: the soft cloth, tied exactly where step 2 ties it; free edges free
             self._fold_then_rest()  # 5: plackets fold through tied pairs only; a fall rests on the cloth under it
+            self.crease_turn()  # 5a: every planned fold no other stage turns, to its turn_deg, on its lies_on
         self.reads["chains"] = self.chain_read(self.X)
         self.reads["seam_gap_mm"] = round(self.net.seam_gap(self.X), 3)
         self.reads["build_s"] = round(time.time() - t0, 1)
         return self.X
+
+    def crease_turn(self):
+        from .chain_crease import turn_all
+        return turn_all(self)
 
     def _hold_tied(self):
         """The topmost tied front pair stays where the untied band was held to it: left free, the soft cloth carried it
