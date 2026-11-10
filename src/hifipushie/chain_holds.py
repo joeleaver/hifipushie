@@ -65,7 +65,7 @@ class Part:
 class Holds:
     parts: list  # in ORDER: stiff parts (resting first), then soft
     plies: dict  # ply piece -> its part's outer piece
-    layers: dict  # floating layer piece -> its host piece (None when no piece shares its place)
+    layers: dict  # floating layer piece -> its host piece (a hostless seamless stiff piece is a part of its own)
     folds: list  # {name, piece, part, kind, fall}
 
     def part_of(self, piece: str) -> Part | None:
@@ -197,15 +197,19 @@ def read(net) -> Holds:
         groups.setdefault(find(i), []).append(i)
     # floating layers: stiff, no seams at all
     seamed = {p for p, _ in pairs} | selfs
-    layer_ids = [i for i in range(n) if whole[i] and i not in seamed]
+    # (only with a host: a stiff piece with no seams and no soft piece sharing its place, or one a closure fastens, is a
+    # part of its own: a belt sewn to nothing closes on its own buckle and is a RING, never a layer)
+    closed = {c.get(k) for c in net.M.get("closures") or [] for k in ("over", "under")}
+    floating = [i for i in range(n) if whole[i] and i not in seamed and names[i] not in closed]
     place = net.M.get("place") or {}
     layers: dict = {}
-    for i in layer_ids:
+    for i in floating:
         pl, sd = place.get(names[i]), _side(names[i])
-        cand = [j for j in range(n) if not whole[j] and j not in layer_ids and len(groups[find(j)]) == 1 and pl
+        cand = [j for j in range(n) if not whole[j] and j not in floating and len(groups[find(j)]) == 1 and pl
                 and place.get(names[j]) == pl and _side(names[j]) == sd]
-        layers[names[i]] = names[max(cand, key=lambda j: _area(net.uv, net.F[np.all(net.piece[net.F] == j, axis=1)]))] \
-            if cand else None
+        if cand:
+            layers[names[i]] = names[max(cand, key=lambda j: _area(net.uv, net.F[np.all(net.piece[net.F] == j, axis=1)]))]
+    layer_ids = [i for i in floating if names[i] in layers]
     parts, plies, of = [], {}, {}
     for g in groups.values():
         if g[0] in layer_ids:
