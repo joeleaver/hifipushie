@@ -88,7 +88,11 @@ Refusals that stay are the pattern's own faults, each with its step to go back t
 |---|---|---|
 | R1 | Ties: step 2 `ties`, the migration, ties in the projection; `planned_wear`'s state logic deleted | S |
 | R2 | Folds as numbers: step 2 `turn_deg` / `to` / `lies_on` on draft folds, validated against the draft's fold lines; one crease turn for every fold kind | M |
-| R3 | One build order from what holds what; the free-edge rule for every garment; the four pipelines deleted; chain_garment.py split to about 500-line files | L |
+| R3a | chain_garment.py split by responsibility into about 500-line files, behaviour-preserving (the same build, bit for bit) | M |
+| R3b | What holds what: the build order read from the pattern's construction (stiff pieces, what each is sewn or tied to), not shirt role names; the hussar's canvas and the jacket's lapel roll read right | M |
+| R3c | One pipeline: the four branches of `run` replaced by that order, ties made in it, the free-edge rule for every edge neither sewn nor tied (an open front) | L |
+| R3d | The crease turn: every planned fold turned to its turn_deg, lying on its lies_on, lengths exact | M |
+| R3e | The old paths deleted once the shirt control reads no worse | S |
 | R4 | One soft start, measured on the three garments; the other two deleted | M |
 | R5 | Shirt control comparison; then s5-2 jacket, hussar step 5 (blind) | trials |
 
@@ -96,4 +100,4 @@ Refusals that stay are the pattern's own faults, each with its step to go back t
 1. Rerun step 2 for both garments (needed for numeric bends): fine to revoke their step-2 approvals when R2 lands?
 2. Is the free-edge rule enough for an open front before the sim, or should step 5 hold the open fronts where the
    plan's row puts them (the photo's fronts 111 / 123 / 177 px apart) and leave the rest to the hang?
-3. R3 is large. Split it into smaller blind-tested slices, or one tooling run with the shirt control as its gate?
+3. R3 is large: split into R3a-R3e (2026-11-10), each its own run with its own proof; the shirt control gates R3e.
