@@ -15,15 +15,39 @@ from __future__ import annotations
 import numpy as np
 
 
-def saved_row(model: str, garment: str) -> dict:
-    """The `seam_links` row of a saved draft, read on the mesh the chain build makes of it."""
+def saved_rows(model: str, garment: str) -> list:
+    """The `seam_links` and `seams_crossed` rows of a saved draft, read on the mesh the chain build makes of it."""
     from .chain_garment import load_garment
     try:
         M = load_garment(model, garment)[0].M
     except (ValueError, KeyError, FileNotFoundError) as e:  # (no body to mesh against: nothing the build could read)
-        return {"id": "seam_links", "status": "INFO", "value": "n/a",
-                "why": f"the build's mesh of this draft couldn't be made: {str(e)[:160]}", "source": "draft_links.py (C395)"}
-    return row(M)
+        return [{"id": "seam_links", "status": "INFO", "value": "n/a",
+                 "why": f"the build's mesh of this draft couldn't be made: {str(e)[:160]}", "source": "draft_links.py (C395)"}]
+    return [row(M), crossed_row(M)]
+
+
+def crossed_row(M: dict) -> dict:
+    """The `seams_crossed` row (C403): the build's own START check (chain_placed.crossed) on its mesh of the draft: no
+    node holds two points of one piece far apart on its flat. The suit jacket's draft passed seam_ends and was refused at
+    step 5 with 13 crossed rows: two neck seams declared end to end the wrong way, and both armhole chains whose edges
+    didn't follow on (the back armhole underarm -> shoulder, then the front armhole underarm -> shoulder again)."""
+    from types import SimpleNamespace
+    from .chain_core import pattern_from_mesh
+    from .chain_net import Network
+    from .chain_placed import CROSS, crossed
+    pat = pattern_from_mesh(M)
+    bad = crossed(SimpleNamespace(net=Network(pat.M, pat.stiff, pat.bend)))
+    why = "; ".join(f"{n}:{a} and {n}:{c} ({mm} mm apart on {n}'s flat) sewn into one point through {', '.join(oth)}"
+                    for n, lst in list(bad.items())[:6] for a, c, mm, oth in lst[:1])
+    return {"id": "seams_crossed", "status": "FAIL" if bad else "PASS",
+            "value": f"{len(bad)} pieces with points sewn together that lie apart",
+            "target": f"no seam joins two points of one piece more than {CROSS * 1e3:.0f} mm apart on its flat (chain_garment "
+                      "refuses it at its start)",
+            "why": (why + ". A seam between those pieces runs end to end the wrong way round, or a chain side's edges don't "
+                    "follow on: in a chain [e1, e2, ..] each edge starts where the one before it ended (where another seam "
+                    "joins them: a back armhole ending at the shoulder is followed by the front armhole STARTING at the "
+                    "shoulder). Flip that edge's direction (\"a>b\" -> \"b>a\") or reorder the chain, pattern_check again")
+            if bad else "", "back_to": "4", "source": "chain_placed.crossed on the build's mesh (draft_links.py, C403)"}
 
 
 def row(M: dict) -> dict:

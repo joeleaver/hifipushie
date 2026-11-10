@@ -56,5 +56,5 @@ METHOD NOW (Joe 2026-11-03): one STEP per blind trial (/mnt/data/hifipushie/tria
 judged with Joe beside the reference, fixed, rerun, then the next step; tests run once when a step is declared done.
 APPROVED (Joe): hussar 0-4 (s4-14/ws), jacket 0-4 (s4-19/ws). STEP 5 BLOCKED (s5-1): pipelines picked by closure state
 + shirt roles. docs/proposals/step5_one_build.md: R1, R2, R3a-R3d DONE (C391-C395, C399, C401). To redo: both step 2s;
-jacket step 4 drafts its collar roll; hussar step 4 trues its underarm (C395). Layers + plies placed (C402): the jacket
-now stops at START, 13 crossed: rows (neck + armhole seams joined end to end the wrong way; step 4's seam_ends passed them).
+jacket step 4 drafts its collar roll, flips its neck seams, orders its armhole chain; hussar step 4 trues its underarm
+and orders its armhole chain (step 4 now FAILs both: seams_crossed, C403). Layers + plies placed (C402).
