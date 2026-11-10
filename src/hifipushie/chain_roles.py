@@ -5,6 +5,8 @@ A role comes from the pattern's construction (what is interfaced, what is sewn t
 joins which pieces) plus the piece's declared role (draft_pattern's `role`, carried on the flat mesh as M["roles"];
 else the role its name reads as, garment_design.role_of). Names never pick a stage on their own.
 
+- WHAT HOLDS WHAT (R3b): chain_holds.read. Plies and floating layers get no role here (they follow their host:
+  chain_holds.place_plies); a roll fold makes a FALL only on a stiff part (a soft piece's roll is its own fold, a lapel).
 - FALL: a piece with a "roll" fold. BAND: the wholly interfaced piece the fall is sewn to (a shirt's collar band).
 - STAND: a wholly interfaced piece sewn to the body cloth's neckline with nothing turned over it (role collar_stand /
   neckband, no fall): the BAND stage's ring of its own neckline length, resting on the high points, upright; its top is
@@ -120,24 +122,27 @@ def _tube_groups(net, soft: list, role: dict, self_sewn: set, sewn: dict) -> dic
 def read_roles(net):
     """The pattern's roles (module doc). Raises ChainRefused naming a role the core can't build."""
     from .chain_garment import ChainRefused, Roles
-    names = net.names
+    from .chain_holds import read as read_holds  # (R3b: plies and floating layers have no role of their own)
+    H = read_holds(net)
+    carried = set(H.plies) | set(H.layers)
+    names = [n for n in net.names if n not in carried]
     role = piece_roles(net)
-    whole = {n: float(net.stiff[net.verts(n)].mean()) > 0.95 for n in names}
-    sewn: dict = {n: set() for n in names}
+    whole = {n: float(net.stiff[net.verts(n)].mean()) > 0.95 for n in net.names}
+    sewn: dict = {n: set() for n in net.names}
     self_sewn = set()
     for a, b in net.sew:
-        pa, pb = names[net.piece[a]], names[net.piece[b]]
+        pa, pb = net.names[net.piece[a]], net.names[net.piece[b]]
         if pa == pb:
             self_sewn.add(pa)
         else:
             sewn[pa].add(pb)
             sewn[pb].add(pa)
-    fold = next((f for f in net.M.get("folds") or [] if f.get("kind") == "roll"), None)
+    fold = next((f for f, h in zip(net.M.get("folds") or [], H.folds) if h["fall"]), None)  # (a FALL: a stiff part's roll)
     fall = fold["piece"] if fold else None
     fall_fault = None
     band, stand = None, False
     if fall:
-        cand = [p for p in sewn[fall] if whole[p]]
+        cand = [p for p in sewn[fall] if whole[p] and p not in carried]
         if not cand:
             raise ChainRefused(f"{fall}: a roll piece sewn straight to the body cloth (no interfaced band): a chain build "
                                "needs the band it stands on. next: add a band to the pattern (design_garment)")
@@ -152,7 +157,7 @@ def read_roles(net):
         stands = [p for p in on_body if role[p] in STAND_ROLES]
         if stands:
             band, stand = stands[0], True
-    faults = sided_faults(net, role, whole, self_sewn) + ([fall_fault] if fall_fault else [])
+    faults = sided_faults(net, role, whole, self_sewn, carried) + ([fall_fault] if fall_fault else [])
     if faults:
         raise ChainRefused("the pattern's pieces don't make a whole garment: " + "; ".join(faults) + ". next: draft_pattern "
                            "declarations: a piece worn on both sides is cut 2 as a mirrored pair, pieces.NAME {\"pair\": true} "
@@ -172,13 +177,13 @@ def read_roles(net):
     tubes = [n for n in soft if n in groups]
     panels = [n for n in soft if n not in groups]
     return Roles(band, fall, rings, tubes, panels, front, band_cl, fold, stand=stand,
-                 tube_groups={k: v for k, v in groups.items() if len(v) > 1})
+                 tube_groups={k: v for k, v in groups.items() if len(v) > 1}, holds=H)
 
 
 SIDE_TOL = 0.01  # m: a centre piece's flat is centred on x = 0 within this + 10 % of its width, else it is a half
 
 
-def sided_faults(net, role: dict, whole: dict, self_sewn: set) -> list:
+def sided_faults(net, role: dict, whole: dict, self_sewn: set, skip=()) -> list:
     """(F1, t8) Pieces the body wears on both sides drafted once: a soft centre piece (no .L / .R) lying wholly on one
     side of the centre line is half of what the body wears (the t8 shirt's `front`, `mirror: true` taken for "cut
     two": its button lap crossed x = 0 by 18 mm, the t8 trousers' crotch by 60-120 mm); a limb piece (a tube, a limb role) with no side has no limb to go round. Each named; stiff pieces never
@@ -186,7 +191,7 @@ def sided_faults(net, role: dict, whole: dict, self_sewn: set) -> list:
     from .chain_garment import hand_of
     out = []
     for n in net.names:
-        if hand_of(n) != 0 or whole[n]:
+        if hand_of(n) != 0 or whole[n] or n in skip:
             continue
         if n in self_sewn or role[n] in TUBE_ROLES:
             out.append(f"{n}: a limb piece with no side (.L / .R)")

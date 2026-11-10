@@ -13,7 +13,7 @@ from . import chain_net as cn
 from .chain_net import Contact, Network, unit
 
 PATTERN_KEYS = ("uv", "piece", "names", "F", "folds", "made", "grain", "sew", "sew_seam", "stitch", "marks", "closures",
-                "points", "border", "stitch_lines", "roles",
+                "points", "border", "stitch_lines", "roles", "place",
                 "starts")  # (starts: step 3+4 measurement data, never positions: piece_start.py)
 GAP = 0.0045  # m: soft cloth and stiff parts stay this far off the body (ZOZO's reach + a mesh edge's sag over an arm)
 RING_GAP = 0.004  # m: a stiff ring off a limb (ZOZO's reach): it hangs loose, so its gap is the solver's, no more
@@ -74,6 +74,13 @@ class Roles:
     fold: dict | None
     stand: bool = False  # the band is a STAND: nothing turned over it (chain_roles)
     tube_groups: dict = field(default_factory=dict)  # piece -> the pieces of its several-piece tube (chain_roles)
+    holds: object = None  # chain_holds.Holds: plies and floating layers, the order, the folds (R3b)
+
+    @property
+    def carried(self) -> list:
+        """Pieces with no role: plies (they follow their host) and floating layers (they stiffen theirs)."""
+        h = self.holds
+        return list(h.plies) + list(h.layers) if h is not None else []
 
 
 def read_roles(net: Network) -> Roles:

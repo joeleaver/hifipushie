@@ -74,6 +74,7 @@ class Build(BandStages, FallStages):
         self.wear = {"state": "closed", "spread": OPEN_SPREAD, **(wear or {})}
         self.net = Network(pattern.M, pattern.stiff, pattern.bend)
         self.roles = read_roles(self.net)
+        self.holds = self.roles.holds  # (R3b chain_holds: plies follow their host, floating layers stiffen theirs)
         if self.wear.get("ties"):  # (R1 C391: step 2's ties: exactly the fastenings the plan does up)
             from .chain_plan import apply_tie
             self.roles.front = apply_tie(self.roles.front, self.wear.get("front_tie"), self.net.uv)
@@ -157,6 +158,27 @@ class GarmentBuild(SoftStages, StiffStages, HangJob, Build):
         self.reads["seam_gap_mm"] = round(self.net.seam_gap(self.X), 3)
         self.reads["build_s"] = round(time.time() - t0, 1)
         return self.X
+
+    # ---- plies follow their host after every stage that places one (R3b, chain_holds.place_plies)
+    def stiff_last(self):
+        super().stiff_last()
+        self._plies()
+
+    def rings(self):
+        super().rings()
+        self._plies()
+
+    def soft_net(self, start=None, far_z=None):
+        out = super().soft_net(start, far_z)
+        self._plies()
+        return out
+
+    def _plies(self):
+        if self.holds is not None and (self.holds.plies or self.holds.layers):
+            from .chain_holds import place_plies
+            place_plies(self)
+            if self.holds.layers:  # (not built: they stiffen their host, R3c gives them their effect)
+                self.reads["layers"] = {k: {"stiffens": v, "built": False} for k, v in self.holds.layers.items()}
 
     def chain_read(self, X) -> dict:
         """Chains at X. A soft link with both ends sewn to a stiff part is gathered into it (a sleeve into its cuff):
