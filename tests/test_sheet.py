@@ -5,7 +5,7 @@ import pytest
 
 from hifipushie import fit as fitmod
 from hifipushie import sdf
-from hifipushie.sheet import _spine_eval
+from hifipushie.sheet import _spine_eval, _stations
 from hifipushie.spec import SpecError, compile_prims, expand_mirror
 
 # a cartoon pig's ear: root on the head, up over a fold, the outer half forward and down (the case that exposed the gap)
@@ -146,6 +146,7 @@ def test_spline_spine_and_bezier_agree_on_a_straight_line():
     {"tip": 0.2},  # rounding longer than the sheet
     # a fold tighter than the sheet is thick: the inside would fold through itself
     {"curve": "bezier", "spine": [[0, 0, 0], [0, 0, 0.03], [0.02, 0, 0.03], [0.02, 0, 0]]},
+    {"fold": "squash"},
 ])
 def test_refusals(bad):
     with pytest.raises(SpecError):
@@ -184,3 +185,64 @@ def test_puff_makes_a_lens_thickest_mid_width():
     assert np.allclose(sd(half, pts), 0.5 * sd(lens, pts) + 0.5 * sd(slab, pts))
     with pytest.raises(SpecError):
         one({**EAR, "stations": [dict(s, puff=2) for s in EAR["stations"]]})
+
+
+# a fat clay ear folded hard (Baynard Racing, Puddles, gap 32): bend radius ~0.026 m, half thickness 0.03
+FAT = dict(EAR, curve="bezier", tip=0.02,
+           spine=[[0.105, -0.005, 0.745], [0.11, -0.01, 0.84], [0.125, -0.05, 0.84], [0.15, -0.09, 0.79]],
+           stations=[{"half_width": 0.06, "half_thickness": 0.03, "puff": 1},
+                     {"half_width": 0.05, "half_thickness": 0.026, "puff": 1},
+                     {"half_width": 0.035, "half_thickness": 0.02, "puff": 1}])
+HARD = dict(FAT, spine=[[0.105, -0.005, 0.745], [0.11, -0.01, 0.83], [0.112, -0.03, 0.835], [0.13, -0.10, 0.80]])
+
+
+def grid_field(p, n=72):
+    g = np.stack(np.meshgrid(*[np.linspace(p.lo[i], p.hi[i], n) for i in range(3)], indexing="ij"), -1)
+    return sd(p, g.reshape(-1, 3)).reshape(n, n, n), (p.hi - p.lo) / (n - 1)
+
+
+def test_a_fold_tighter_than_thick_is_refused_unless_crushed():
+    with pytest.raises(SpecError, match="crush"):
+        one(FAT)
+    assert one(dict(FAT, fold="crush")).params["splits"]
+
+
+def test_crush_changes_nothing_on_a_fold_that_was_fine():
+    a, b = one(EAR), one(dict(EAR, fold="crush"))
+    assert not b.params["splits"]
+    q = np.random.default_rng(0).uniform(a.lo, a.hi, (3000, 3))
+    assert np.array_equal(sd(a, q), sd(b, q))
+
+
+@pytest.mark.parametrize("bl", [FAT, HARD], ids=["fat", "hard"])
+def test_crushed_fold_is_one_clean_solid(bl):
+    from collections import Counter
+    from skimage import measure
+    p = one(dict(bl, fold="crush"))
+    D, h = grid_field(p)
+    gn = np.linalg.norm(np.stack(np.gradient(D, *h), -1), axis=-1)
+    band = np.abs(D) < 0.006
+    assert 0.85 < np.percentile(gn[band], 1) and np.percentile(gn[band], 99) < 1.2  # a distance, near the surface
+    for a in range(3):  # no jump in the field within 8 mm of the surface (the arms meet in one crease)
+        jump = np.abs(np.diff(D, axis=a)) / h[a] > 1.5
+        assert not (jump & (np.abs(np.take(D, range(D.shape[a] - 1), axis=a)) < 0.008)).any()
+    V, F, _, _ = measure.marching_cubes(D, 0, spacing=tuple(h))
+    E = Counter(tuple(sorted(e)) for f in F for e in ((f[0], f[1]), (f[1], f[2]), (f[2], f[0])))
+    assert all(c == 2 for c in E.values()) and len(V) - len(E) + len(F) == 2  # closed, one piece, no hole
+
+
+def test_crushed_fold_fills_the_inside_and_keeps_the_outside_round():
+    p = one(dict(HARD, fold="crush"))
+    pr = p.params
+    us = np.linspace(0, 1, 513)
+    _, D, DD = _spine_eval(pr["sp"], us)
+    u = us[np.argmax(np.linalg.norm(np.cross(D, DD), axis=1) / np.linalg.norm(D, axis=1) ** 3)]  # the hardest spot
+    P, T, W, N = frame(p, [u])
+    _, D, DD = _spine_eval(pr["sp"], np.array([u]))
+    k = np.cross(D, DD)[0]; R = np.linalg.norm(D[0]) ** 3 / np.linalg.norm(k)
+    inward = np.cross(k, D[0]); inward /= np.linalg.norm(inward)  # toward the centre of curvature
+    ht = float(_stations(pr, np.interp([u], np.linspace(0, 1, len(pr["S"])), pr["S"]))[1][0])
+    assert R < ht
+    assert sd(p, P + inward * R)[0] < 0          # the centre of the bend is solid clay (squashed, no hole)
+    out = sd(p, P - inward * np.array([[ht * 0.9], [ht * 1.1]]))
+    assert out[0] < 0 < out[1]                   # the outside still a half thickness out from the spine
