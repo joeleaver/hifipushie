@@ -55,8 +55,10 @@ class HangJob:
         R = flat.copy()
         R[whole] = X[whole]
         ci = np.where(hold)[0].astype(np.int64)
+        ls = getattr(self, "layer_stiff", None)  # (R3c2: a floating layer's stiffness on its host, chain_holds)
+        ls = 0.0 if ls is None else ls
         arrays = dict(X=X, uv=uv, F=F, sew=net.sew, stitch=np.asarray(net.M.get("stitch", np.zeros((0, 2))), np.int64).reshape(-1, 2),
-                      stiff=np.clip(np.maximum(self.pat.stiff, whole.astype(float)), 0, 1), piece=net.piece.astype(np.int64),
+                      stiff=np.clip(np.maximum(np.maximum(self.pat.stiff, whole.astype(float)), ls), 0, 1), piece=net.piece.astype(np.int64),
                       pins=np.zeros(0, np.int64), bodyV=bV, bodyT=bT, carryIdx=ci, carryPoses=X[ci][None], rest=R,
                       restIdx=np.where(whole)[0].astype(np.int64))
         made = [p for p in net.names if whole[net.verts(p)].all()]
