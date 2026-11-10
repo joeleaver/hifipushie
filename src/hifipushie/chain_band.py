@@ -1,5 +1,5 @@
 """CHAIN BAND: stage 1 of the chain build (chain_garment.py's docstring is the spec): the collar BAND, its pressed ring
-resting on the high points, closed on its own button or open (the sewn front limited from the first fastened button).
+resting on the high points, tied on its own button or untied (the sewn front limited from the topmost tied front pair).
 Moved out of chain_garment.py as a mixin of Build (R3a, behaviour-preserving); Build and GarmentBuild stay in chain_garment."""
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from scipy.spatial import cKDTree
 
 from . import chain_net as cn
 from .chain_net import BendSolve, project, unit
-from .chain_core import (GAP, REST, ChainRefused, hand_of)
+from .chain_core import (GAP, LAYER, REST, ChainRefused, hand_of)
 
 
 class BandStages:
@@ -136,10 +136,44 @@ class BandStages:
         return {"neckline_mm": round(float(l.sum() * 1e3), 1), "cut_mm": round(float(LB.sum() * 1e3), 1),
                 "worst_link_pct": round(float(np.abs(l / LB - 1).max() * 100), 3), "min_gap_mm": round(float(sd.min() * 1e3), 2)}
 
-    def band_open(self):
+    def hold_start(self, hold):
+        """Where the topmost TIED front pair starts, before any soft cloth: its cut distance below the front's neck point
+        (sewn to the band, already built), down the body's centre front, a gap and a layer off it. (cf_shirt: the closed
+        build's button sat 90 mm (cut) below the neck point; the torso-ring start put it 39 mm lower and 20 mm forward,
+        and the band opened against it stretched its links 9x.) Was chain_plan.button_start (the first fastened button)."""
+        net, R = self.net, self.roles
+        p = R.front["over"]
+        bvp = hold[0] if net.piece[hold[0]] == net.pid(p) else hold[1]
+        sew = list(self.sewn_with(p, R.band))
+        L = np.linalg.norm(net.uv[sew] - net.uv[bvp], axis=1)
+        top = self.X[net.root[sew[int(np.argmin(L))]]].copy()
+        ys = np.arange(top[1] - 0.15, top[1] + 0.15, 0.001)
+        for z in np.arange(top[2], top[2] - 3 * L.min(), -0.002):
+            P = np.c_[np.zeros(len(ys)), ys, np.full(len(ys), z)]
+            near = np.where(self.body.contact.query(P)[0] <= GAP + LAYER)[0]  # the front surface: first point from the front
+            if not len(near):
+                continue
+            q = P[near[0]]
+            if np.linalg.norm(q - top) >= L.min():
+                return q
+        return np.array([0.0, top[1], top[2] - L.min()])
+
+    def band_untied(self):
+        """The band's own closure left undone: its pressed ring (band_closed, its rest shape) opened (band_open). The
+        sewn fronts are held to the topmost TIED front pair (started where hold_start puts it: nothing soft is built yet);
+        with no front pair tied nothing holds them, their edges are free (C396)."""
+        from .chain_plan import first_tied
+        hold = first_tied(self.roles.front, self.net.uv)
+        self.band_hold = hold
+        if hold is not None:
+            self.X[self.net.root[hold[0]]] = self.X[self.net.root[hold[1]]] = self.hold_start(hold)
+            self.reads["button_start_mm"] = [round(float(c) * 1e3, 1) for c in self.X[self.net.root[hold[0]]]]
+        self.band_open(hold)
+
+    def band_open(self, hold=None):
         """The stiff band's own shape unbuttoned: pressed curve kept round the back (sewn to the back piece, held),
-        relaxed straight past the side necks, started swung open; the sewn front limited by its cut distance to the first
-        fastened button."""
+        relaxed straight past the side necks, started swung open; the sewn front limited by its cut distance to the
+        topmost tied front pair (hold); none tied: not limited."""
         from scipy.spatial.transform import Rotation as Rot
         net, R = self.net, self.roles
         uv, rs = net.uv, net.root
@@ -174,14 +208,15 @@ class BandStages:
                 C[sel] = hb + np.array([Rot.from_rotvec(ax * ang * q).apply(c - hb) for c, q in zip(C[sel], w)])
         self.X[nb] = Bg
         self.X[nt] = Tg
-        # the first fastened button: the fronts stay closed there
+        # the topmost tied front pair: the fronts stay closed there (none tied: nothing holds them, C396)
         cl = R.front
-        bvs = cl["v"][0]
-        self.button = bvs
-        bpos = self._button_centre()
-        self.button_pos = bpos
+        bvs = hold
         limit = []
-        for p in (cl["over"], cl["under"]):
+        if hold is not None:
+            self.button = bvs
+            bpos = self._button_centre()
+            self.button_pos = bpos
+        for p in ((cl["over"], cl["under"]) if hold is not None else ()):
             sew_ = self.sewn_with(p, R.band)
             for fv, sv in sew_.items():
                 L = float(np.linalg.norm(uv[fv] - uv[bvs[0] if net.piece[bvs[0]] == net.pid(p) else bvs[1]]))
@@ -219,11 +254,12 @@ class BandStages:
             l = np.maximum(np.linalg.norm(d, axis=1), 1e-9)
             bad = l > lim_L
             return cn.HARD * np.where(bad, l - lim_L, 0.0), np.arange(len(l)), lim_id, (d / l[:, None]) * (cn.HARD * bad)[:, None]
-        S.add_fn(tied)
+        if limit:
+            S.add_fn(tied)
         self.X = S.solve(60)
         held = np.ones(net.n, bool)
         held[free] = False
-        rd = self._band_project(held, extra_limit=limit)
+        rd = self._band_project(held, extra_limit=limit or None)
         self.reads["band_open"] = {**self._band_read(), "limit_over_mm": rd["limit_mm"],
                                    "ends_apart_mm": round(float(np.linalg.norm(self.X[nt[0]] - self.X[nt[-1]]) * 1e3), 1),
                                    "limited_points": len(limit)}

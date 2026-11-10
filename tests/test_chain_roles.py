@@ -1,5 +1,5 @@
-"""chain_roles (T8, C289): roles read from any pattern on small synthetic ones: a STAND (declared role, no fall), a stiff
-"collar" with no roll refused by name, a TUBE of two pieces, halves of a back as panels, a ZIP edge to edge; the shirt's
+"""chain_roles (T8, C289): roles read from any pattern on small synthetic ones: a stand never read from a declared role
+or a name (C396), a TUBE of two pieces, halves of a back as panels, a ZIP edge to edge; the shirt's
 roles unchanged; draft_pattern's text lists failing seam pairs first."""
 import numpy as np
 import pytest
@@ -42,16 +42,14 @@ def _zip():
             "v": [], "edge_xy": {"over": np.array([[0.0, 0.0], [0.0, 0.02]]), "under": np.array([[0.3, 0.0], [0.3, 0.02]])}}
 
 
-def test_a_declared_stand_is_the_band_with_nothing_over_it():
-    net, _ = _pattern(JACKET, stiff=["collar"], sew=JSEW, roles={"collar": "collar_stand"}, closures=[_zip()])
-    R = cg.read_roles(net)
-    assert R.band == "collar" and R.stand and R.fall is None and "collar" not in R.rings
-
-
-def test_a_stiff_collar_with_no_roll_is_refused_by_name():
-    net, _ = _pattern(JACKET, stiff=["collar"], sew=JSEW, closures=[_zip()])  # (its name reads collar_fall)
-    with pytest.raises(cg.ChainRefused, match="collar_stand"):
-        cg.read_roles(net)
+def test_a_stand_is_read_from_the_construction_never_its_role():
+    """C396: a declared role or a name never makes a stand (read_roles leaves a stiff part with nothing on it a ring;
+    the build's chain_roles.neck_part makes it the stand when its seam lies on the neckline). A stiff collar with no
+    roll whose name reads collar_fall was refused by name (the suit jacket's collar): it is now read the same way."""
+    for roles in ({"collar": "collar_stand"}, None):
+        net, _ = _pattern(JACKET, stiff=["collar"], sew=JSEW, roles=roles, closures=[_zip()])
+        R = cg.read_roles(net)
+        assert R.band is None and not R.stand and R.fall is None and "collar" in R.rings
 
 
 def test_a_two_piece_sleeve_is_one_tube_and_half_backs_are_panels():

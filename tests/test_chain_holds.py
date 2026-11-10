@@ -111,7 +111,8 @@ def test_read_roles_reads_no_fall_from_a_soft_roll():
                sew=[("front.L", "top", "collar", "bottom"), ("front.L", "left", "front.R", "left")], folds=folds,
                roles={"collar": "collar_stand"})
     R = cg.read_roles(net)
-    assert R.fall is None and R.fold is None and R.band == "collar" and R.stand
+    # (C396: a stand is read by the build from where its seam lies, chain_roles.neck_part; read_roles leaves it a ring)
+    assert R.fall is None and R.fold is None and R.band is None and "collar" in R.rings
 
 
 def test_read_roles_gives_plies_no_role():
@@ -121,7 +122,7 @@ def test_read_roles_gives_plies_no_role():
                     ("canvas", "top", "collar", "top"), ("canvas", "left", "collar", "left"),
                     ("canvas", "right", "collar", "right")])
     R = cg.read_roles(net)
-    assert R.band == "collar" and R.carried == ["canvas"]
+    assert "collar" in R.rings and R.carried == ["canvas"]  # (C396: the stand is the build's neck_part)
     assert "canvas" not in R.rings + R.tubes + R.panels
 
 

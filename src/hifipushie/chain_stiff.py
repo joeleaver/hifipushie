@@ -1,5 +1,6 @@
-"""CHAIN STIFF: stage 5 and the stiff stages' order (chain_garment.py's docstring is the spec): closure ties, the open
-PLACKETS, the stiff pieces' remaining chains (stiff_last, stiff_stage), the thread read, and the fall resting on the soft
+"""CHAIN STIFF: stage 5 and the stiff stages' order (chain_garment.py's docstring is the spec): closure ties, the
+PLACKETS (through tied pairs only), the stiff parts placed by what they rest on (stiff_rest, rest_part), their remaining
+chains (stiff_last), the thread read, and the fall resting on the soft
 cloth under it. Moved out of chain_garment.py as a mixin of GarmentBuild (R3a, behaviour-preserving)."""
 from __future__ import annotations
 
@@ -25,9 +26,26 @@ class StiffStages:
                     out.append((net.root[a], net.root[b], tie_gap(R.front, LAYER)))
         return np.array(out, float).reshape(-1, 3)
 
-    # ---- 5. plackets, open
-    def plackets(self, Xclosed):
-        """Each placket is a stiff strip that folds out of plane along a crease through the first fastened button: solved
+    # ---- 5. plackets: a fold through a TIED pair only
+    def fold_plackets(self):
+        """The plackets fold only through the tied pair the untied band was held to (band_untied's hold): above it the
+        cloth folds to reach the band's ends apart. A front with none tied, or under a band done up, has no placket fold
+        (nothing holds its top apart from where it lies). Then the soft cloth again from the folded start, the tied cloth
+        below the pair kept as built. Returns the height below which the soft solve leaves the cloth (far_z), or None."""
+        hold = getattr(self, "band_hold", None)
+        if hold is None:
+            return None
+        net, R = self.net, self.roles
+        Xs = self.X.copy()
+        self.X = self.plackets(Xs, hold)
+        bz = float(Xs[net.root[hold[0]], 2])
+        self.reads["first_fastened_z_mm"] = round(bz * 1e3, 1)
+        self.stay_v = np.isin(net.piece, [net.pid(p) for p in R.panels]) & (Xs[:, 2] < bz - 0.02)
+        self.soft_net(start=self.X.copy(), far_z=bz - 0.03)
+        return bz - 0.03
+
+    def plackets(self, Xclosed, hold):
+        """Each placket is a stiff strip that folds out of plane along a crease through the tied pair `hold`: solved
         so its sewn top edge reaches the open band. Above the crease it folds, the rest stays; the fold acts on the real
         shape, so nothing jumps at the crease. The over side stays in front of the under side."""
         from scipy.optimize import minimize
@@ -37,7 +55,7 @@ class StiffStages:
         extra = np.zeros(net.n, bool)
         rep = {}
         Xnew = self.X.copy()
-        for pname, bv, over in ((cl["over"], cl["v"][0][0], 1.0), (cl["under"], cl["v"][0][1], -1.0)):
+        for pname, bv, over in ((cl["over"], hold[0], 1.0), (cl["under"], hold[1], -1.0)):
             pv = net.verts(pname)
             rows = [r for f, r in net.fold_rows() if f["piece"] == pname]
             if not rows:
@@ -134,14 +152,39 @@ class StiffStages:
             self.X = self.X[rs]
             self.reads[f"{p}_edges"] = rd
 
-    def stiff_stage(self):
-        if self.roles.band is None:  # (F1: nothing on the neck: a fall needs its band, read_roles refuses that)
-            return
-        self.band_closed() if not hasattr(self, "sb") else self.band_open()
-        self.fall_build()
-        self.fill_band()
-        self.fall_surface()
-        self.stiff_last()
+    def stiff_rest(self):
+        """THE ORDER 1-3: every stiff part in chain_holds' order, each placed by what it rests on (rest_part)."""
+        for part in self.holds.parts:
+            if part.stiff:
+                self.rest_part(part)
+
+    def rest_part(self, part):
+        """One stiff part, by its construction (never its name or role):
+        - resting on another part (a fall on its band): built on it, fall_build, then the stiff surfaces;
+        - resting on the body, sewn along the body cloth's neckline (chain_roles.neck_part): the ring of its own neckline
+          length on the high points. A part resting on it (a fall sewn on top): its top is that seam, band_closed, tied on
+          its own button or, untied, opened (band_untied). Nothing on it: it stands with its own top edge (stand_ring),
+          its ends meeting as its own tie and the front's top pair say;
+        - resting on the body otherwise: a ring of its own closed length round the limb or the body it is sewn to."""
+        from .chain_roles import stand_ring
+        if part.rests_on != ["body"]:
+            self.fall_build()
+            self.fill_band()
+            self.fall_surface()
+            self.stiff_last()
+        elif part.outer == self.neck:
+            carries = any(q.stiff and q.rests_on == [part.name] for q in self.holds.parts)  # (soft cloth hangs from
+            # it too: only a stiff part sewn on top makes it a band under a fall)
+            if carries:
+                self.band_closed()
+                if not self.band_tied:
+                    self.band_untied()
+            else:
+                stand_ring(self)
+                self.fill_band()
+                self.stiff_last()
+        else:
+            self.rings(only=[part.outer])
 
     def thread_read_all(self):
         self.reads["threads"] = self.thread_model.report(self.X)
@@ -157,13 +200,14 @@ class StiffStages:
         F[flip] = F[flip][:, [0, 2, 1]]
         return Contact(X, F)
 
-    def _rest_fall(self):
-        """The stiff fall rests on the soft cloth built under it (its stand-off is the garment's ease, not the skin's): the
-        fall is solved again on that, then the soft cloth again under the fall. Stiff first still: the band never moves."""
+    def _rest_fall(self, far_z=None):
+        """A stiff part resting on another rests on the soft cloth built under it too (its stand-off is the garment's
+        ease, not the skin's): the fall is solved again on that, then the soft cloth again under the fall. Stiff first
+        still: the band never moves. Nothing resting on a part: nothing to do."""
         if not self.roles.fall:
             return
         self.under_cloth = self._cloth_contact()
         self.fall_build()
         self.fall_surface()
         self.stiff_last()
-        self.soft_net(start=self.X.copy())
+        self.soft_net(start=self.X.copy(), far_z=far_z)
