@@ -385,10 +385,12 @@ def freeze(spec: dict) -> dict:
     return out
 
 
-def jacobian(st: State, params: list[tuple], eps: float = 1e-4) -> np.ndarray:
-    """d(residual)/dθ: the outline's outward motion is -(df/dθ)/|∇f|, and residuals are + when sticking out."""
+def jacobian(st: State, params: list[tuple], eps: float = 1e-4, prims_of=None) -> np.ndarray:
+    """d(residual)/dθ: the outline's outward motion is -(df/dθ)/|∇f|, and residuals are + when sticking out.
+    prims_of(spec) -> the primitives whose field the samples sit on (default: st.parts' primitives)."""
     spec = copy.deepcopy(st.spec)
-    base = _prims(spec, st.parts)
+    prims_of = prims_of or (lambda sp: _prims(sp, st.parts))
+    base = prims_of(spec)
     f0 = sdf.field_at(base, st.P, clip=False)
     fp0 = {sdf.fingerprint(q): q for q in base}
     kmax = max([q.blend for q in base] + [0.0])
@@ -398,11 +400,11 @@ def jacobian(st: State, params: list[tuple], eps: float = 1e-4) -> np.ndarray:
         h = eps
         try:
             _set(spec, p, v + h)
-            prims = _prims(spec, st.parts)
+            prims = prims_of(spec)
         except SpecError:  # on an element's limit (a blade as thick as it may be): difference backwards
             h = -eps
             _set(spec, p, v + h)
-            prims = _prims(spec, st.parts)
+            prims = prims_of(spec)
         _set(spec, p, v)
         fp1 = {sdf.fingerprint(q): q for q in prims}
         changed = [fp1[f] for f in fp1.keys() - fp0.keys()] + [fp0[f] for f in fp0.keys() - fp1.keys()]
@@ -470,10 +472,40 @@ def fit(spec: dict, refs: dict[str, np.ndarray], align: str = "auto", groups=GRO
     iou_before = st.iou
     log = [f"start: energy {st.energy:.3e}  IoU " + " ".join(f"{k} {v:.3f}" for k, v in st.iou.items())
            + f"  | {len(params)} parameters, {len(st.r)} outline samples"]
+    st = solve(st, at, lambda st: jacobian(st, params), theta0, sizes, shapes, 2.0 * targets[0].pl.px,
+               iterations, max_step, stiffness, log)
+
+    result = copy.deepcopy(original)  # the fitted values on the real model: its kits and strokes regenerate
+    for p, v in zip(params, st.theta):
+        _set(result, p, round(float(v), 5))
+    changes = []
+    moved = {}
+    for p, a, b in zip(params, theta0, st.theta):
+        if abs(b - a) >= 5e-4:
+            moved.setdefault(p[:3], []).append((p[3], a, b))
+    for (kind, name, field), vals in moved.items():
+        if not isinstance(vals[0][0], (int, type(None))):  # a loft's section values, a cap's z: one line each
+            changes += [f"{kind[:-1]} {name}.{field}{list(i) if isinstance(i, tuple) else '.' + i}: {a:.3f} -> {b:.3f}"
+                        f" ({b - a:+.3f})" for i, a, b in vals]
+        elif vals[0][0] is None:
+            _, a, b = vals[0]
+            changes.append(f"{kind[:-1]} {name}.{field}: {a:.3f} -> {b:.3f} ({b - a:+.3f})")
+        else:
+            d = [0.0, 0.0, 0.0]
+            for i, a, b in vals:
+                d[i] = b - a
+            new = [round(v, 3) for v in result[kind][name][field]]
+            changes.append(f"{kind[:-1]} {name}.{field}: moved [{d[0]:+.3f},{d[1]:+.3f},{d[2]:+.3f}] -> {new}")
+    return FitResult(result, iou_before, st.iou, changes, log, targets, st.grid)
+
+
+def solve(st, at, jac, theta0, sizes, shapes, delta, iterations, max_step, stiffness, log):
+    """Levenberg-Marquardt from state st: at(theta) -> state (energy, iou, r, w), jac(state) -> J; a spring of
+    `stiffness` toward theta0. Appends a line per iteration to log; returns the last accepted state."""
     lam, mu = 1e-2, None
     for it in range(iterations):
-        J = jacobian(st, params)
-        _, irls = _huber(st.r, 2.0 * targets[0].pl.px)
+        J = jac(st)
+        _, irls = _huber(st.r, delta)
         JtW = J.T * (st.w * irls)
         H = JtW @ J
         if mu is None:
@@ -481,7 +513,7 @@ def fit(spec: dict, refs: dict[str, np.ndarray], align: str = "auto", groups=GRO
             mu = stiffness * float(np.median(d[d > 1e-12])) if (d > 1e-12).any() else 1e-6
         prior = lambda th: 0.5 * mu * float(((th - theta0) ** 2).sum())  # noqa: E731
         grad = JtW @ st.r + mu * (st.theta - theta0)
-        A0 = H + mu * np.eye(len(params))
+        A0 = H + mu * np.eye(len(theta0))
         for _ in range(8):
             step = np.linalg.solve(A0 + lam * np.diag(np.diag(A0)), -grad)
             step *= max_step / max(np.abs(step).max(), max_step)
@@ -506,28 +538,7 @@ def fit(spec: dict, refs: dict[str, np.ndarray], align: str = "auto", groups=GRO
         if gain < 2e-3:
             break
 
-    result = copy.deepcopy(original)  # the fitted values on the real model: its kits and strokes regenerate
-    for p, v in zip(params, st.theta):
-        _set(result, p, round(float(v), 5))
-    changes = []
-    moved = {}
-    for p, a, b in zip(params, theta0, st.theta):
-        if abs(b - a) >= 5e-4:
-            moved.setdefault(p[:3], []).append((p[3], a, b))
-    for (kind, name, field), vals in moved.items():
-        if not isinstance(vals[0][0], (int, type(None))):  # a loft's section values, a cap's z: one line each
-            changes += [f"{kind[:-1]} {name}.{field}{list(i) if isinstance(i, tuple) else '.' + i}: {a:.3f} -> {b:.3f}"
-                        f" ({b - a:+.3f})" for i, a, b in vals]
-        elif vals[0][0] is None:
-            _, a, b = vals[0]
-            changes.append(f"{kind[:-1]} {name}.{field}: {a:.3f} -> {b:.3f} ({b - a:+.3f})")
-        else:
-            d = [0.0, 0.0, 0.0]
-            for i, a, b in vals:
-                d[i] = b - a
-            new = [round(v, 3) for v in result[kind][name][field]]
-            changes.append(f"{kind[:-1]} {name}.{field}: moved [{d[0]:+.3f},{d[1]:+.3f},{d[2]:+.3f}] -> {new}")
-    return FitResult(result, iou_before, st.iou, changes, log, targets, st.grid)
+    return st
 
 
 def diff_images(res: FitResult):
