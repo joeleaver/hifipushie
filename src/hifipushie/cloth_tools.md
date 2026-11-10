@@ -142,7 +142,7 @@ source}}}] (never mm read off the picture: it isn't the model; value_mm only wit
 {fastened: [numbers from the top, 1 = the top], of: how many, source} | {span: [from, to] share of its length done up (a
 zip; 0 = top), source}} for EVERY closure, fastened [] = none done up (build straight into it; never build closed then
 style open),
-bends [{id, on, target {value, unit, of (a ratio's base)} | {is}, source}], pose {name, source}, rows [{id, what, target, source, note?, view, at}] (what = a structure_rows kind, refused otherwise with the list: collar_points_apart, collar_tilt, collar_rise, collar_points_drop, collar_height, fall_back_width, v_depth, front_edge_plumb, hem_front_back, sleeve_end, cuff_ease, garment_length, cutaway_drop, trim_row_count, trim_row_pitch, trim_lines_apart, not_judged; bases neck_width, shoulder_width, closure_length; a ratio is OF the kind's base; a px target becomes a ratio of the base row on its view, else mm by the view's scale; a numeric bend names its kind too)
+bends [{id, on: piece, fold: <crease name, declared on that piece at step 4>, turn_deg 0..180 (180 = folded right back), lies_on: piece | body | free, trace?, source} (a fold: collar roll, lapel roll to the break, turned cuff) | {id, on, what: row kind, target {value, unit, of?}, source}] (a bend in words only is refused, C392), pose {name, source}, rows [{id, what, target, source, note?, view, at}] (what = a structure_rows kind, refused otherwise with the list: collar_points_apart, collar_tilt, collar_rise, collar_points_drop, collar_height, fall_back_width, v_depth, front_edge_plumb, hem_front_back, sleeve_end, cuff_ease, garment_length, cutaway_drop, trim_row_count, trim_row_pitch, trim_lines_apart, not_judged; bases neck_width, shoulder_width, closure_length; a ratio is OF the kind's base; a px target becomes a ratio of the base row on its view, else mm by the view's scale; a numeric bend names its kind too)
 (what the photo judges: the structure gate's targets), traces [{id, what, view, points [[u,v],..] (>= 4), corners
 [indices where it turns sharply], source}] REQUIRED (the reference's key edges: hem, front edges, collar, sleeve ends,
 roll_line, trim...; each checked on the picture's own edges, a run off every edge refused unless the trace says why;
@@ -206,7 +206,8 @@ design, no recipe; src/hifipushie/draft_own.py's docstring is the spec). Needs s
   {"back": {"side.L": "hem>armhole"}}, "seams": [{"a": "front.L:side", "b": "back:side.L"}]}`.
 - Refused by name (nothing written): a step-1 seam with no drafted edge or not sewn, a piece not in step 1, a built piece
   not drafted. Else the flat gate: seams (each pair within its declared ease, else +-1 %), cut, sewn, closures (lapped
-  edges within 1 %), truing (info), and SHAPE per role (draft_shape.py; each FAIL says `change:`): a stand / band's neck
+  edges within 1 %), planned_folds (every fold step 2 turns declared on its piece by name; every roll fold has a step-2
+  turn: C392), truing (info), and SHAPE per role (draft_shape.py; each FAIL says `change:`): a stand / band's neck
   edge rises at its front ends (stand >= 0.24 x the neckline's front drop, jaeger; band > 0) and its free edge is shorter;
   a fall's outer edge >= 1.012 x its stand seam (simon); a sleeve cap 0.47-0.79 x the armhole depth (brian, bent); no
   straight edge sewn to a curved one. Name a stand's free edge `top`, a fall's `outer`, neck edges `neck*`. A piece's

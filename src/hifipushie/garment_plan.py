@@ -49,7 +49,11 @@ STEP 2 "style": {ties, bends, pose, rows, layers?, drape?}
   ties   {closure: {fastened: [numbers from the top, 1 = the top], of: how many, detail?, source} | {span: [from, to]
           share of its length done up (a zip, lacing; 0 = top), source}}  EVERY inventory closure, none other; fastened
           [] = none done up (closure_ties.py, C391: which fastenings are done up, never a named state)
-  bends  [{id, on (piece | piece:edge | detail | closure), target: {value, unit, of (a ratio's base)} | {is}, source}]
+  bends  [{id, on: piece, fold: <crease name, declared on that piece at step 4>, turn_deg: 0..180 (0 = flat on, 180 = folded
+          right back), lies_on: piece | body | free, trace?: <trace id>, source} (a FOLD: a collar's roll, a lapel rolled
+          to its break, a turned-back cuff, a rolled sleeve) | {id, on (piece | piece:edge | detail | closure), what: <row
+          kind>, target: {value, unit, of?}, source} (a TARGET a stage aims at)]  a bend in words only is refused: a
+          fold, a target or a row (fold_bends.py, C392)
   pose   {name, source}
   rows   [{id, what, target: {value, unit, tol?, of?} | {is}, source, note?, view?, at?: [[u,v],..]}]  (what the photo
           judges: the structure gate's targets). what = a structure_rows.KINDS kind (refused otherwise, with the list); a
@@ -434,7 +438,8 @@ def text(model: str, garment: str, r: dict) -> str:
         L += [f"  closure {c}: {ct.said(x['tie'])}" + (f" ({x['detail']})" if x.get("detail") else "")
               for c, x in ct.states(p).items()]
         L.append(f"  pose: {p['pose']['name']}")
-        L += [f"  bend {b.get('id', '')} on {b['on']}: {_tgt(b['target'])}" for b in p.get("bends") or []]
+        L += [f"  bend {b.get('id', '')} on {b['on']}: " + (f"fold {b['fold']} turned {b.get('turn_deg')} deg, lies on "
+              f"{b.get('lies_on')}" if "fold" in b else _tgt(b.get("target") or {})) for b in p.get("bends") or []]
         L += [f"  drape {n}: falls {x['falls']}" for n, x in (p.get("drape") or {}).items()]
         L += [f"  row {r_['id']}: {_tgt(r_.get('target'))}" + (f" (marked on view {r_.get('view', 0)})" if r_.get("at")
                                                           else " (not marked)")

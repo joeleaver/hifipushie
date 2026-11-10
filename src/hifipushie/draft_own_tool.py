@@ -96,7 +96,7 @@ def flat_check(name: str, garment: str) -> tuple[list, dict, dict]:
     B["edge_arcs"], B["decl"] = blk["edge_arcs"], blk["decl"]
     B["darts"] = blk.get("darts") or []  # (C386: cloth.pieces drops them; the dart row and the length rows need them)
     rows = do.gate(B, blk["decl"], rd["1"], stand_ref(name, garment), rd["3"], _fit(name, garment),
-                   _body(name))
+                   _body(name), step2=rd.get("2"))
     from . import draft_marks
     rows.append(draft_marks.place(cloth.mesh(B), blk["decl"], rd["1"])[0])  # (C380: the pairs expanded, as step 7)
     return rows, B, decl
@@ -185,7 +185,7 @@ def run(name: str, garment: str, design: str, declarations: dict, options: dict 
     B["edge_arcs"], B["decl"] = blk["edge_arcs"], blk["decl"]
     B["darts"] = blk.get("darts") or []  # (C386: cloth.pieces drops them; the dart row and the length rows need them)
     rows = do.gate(B, blk["decl"], rd["1"], stand_ref(name, garment), rd["3"], _fit(name, garment),
-                   _body(name))  # (expanded: C366)
+                   _body(name), step2=rd.get("2"))  # (expanded: C366)
     from . import draft_marks
     mrow, drawn = draft_marks.place(M, B["decl"], rd["1"])  # (C380: where every mark lands, as step 7 places it)
     rows.append(mrow)

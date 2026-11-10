@@ -56,5 +56,6 @@ METHOD NOW (Joe 2026-11-03): one STEP per blind trial (/mnt/data/hifipushie/tria
 judged with Joe beside the reference, fixed, rerun, then the next step; tests run once when a step is declared done.
 APPROVED (Joe): hussar 0-4 (s4-14/ws, C377-C384); suit jacket 0-4 (s0-10, s2-5, s4-19/ws). STEP 5 BLOCKED (s5-1): the
 build picks pipelines by closure state and shirt roles (jacket open front + lapel roll read as a collar fall; hussar canvas
-read as a fall). Joe approved docs/proposals/step5_one_build.md; R1 ties DONE (C391). OPEN: notch-collar fall check; top
-button 2-3 cm high. NEXT: R2 folds as numbers (both garments' step 2 rerun: Joe to OK revoking their step-2 approvals).
+read as a fall). Joe approved docs/proposals/step5_one_build.md; R1 ties DONE (C391), R2 fold bends DONE (C392: both
+garments' step 2 to rewrite, Joe OK'd revoking; the jacket's step 4 then FAILs planned_folds until its rolls are drafted).
+OPEN: notch-collar fall check; top button 2-3 cm high. NEXT: R3 one build order (the crease turn lands there).
