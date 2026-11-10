@@ -202,7 +202,7 @@ def _press_rows(spec, press, resolution):
 def evaluate(spec: dict, theta, views: list[View], resolution: int, press=None) -> State:
     prims = compile_prims(spec)
     grid = sdf.evaluate(prims, resolution)
-    feats = {}
+    feats, seen = {}, {}
     rows, rs, ws, iou = [], [], [], {}
     energy = 0.0
     for v in views:
@@ -223,6 +223,7 @@ def evaluate(spec: dict, theta, views: list[View], resolution: int, press=None) 
         model = img < 0
         ref = v.mask[y0:y1, x0:x1]
         iou[v.label] = float((model & ref).sum() / max((model | ref).sum(), 1))
+        seen[v.label] = model
         mc = F._resample(measure.find_contours(np.pad(img, 1, constant_values=1.0), 0.0), 1.0, 6.0) - 1
         m_xy = np.stack([mc[:, 1] + x0, mc[:, 0] + y0], 1) if len(mc) else np.zeros((0, 2))
         xy = np.concatenate([m_xy, v.outline])
@@ -255,7 +256,7 @@ def evaluate(spec: dict, theta, views: list[View], resolution: int, press=None) 
                 rs.append(r), ws.append(w)
         iou["buried_mm"] = round(buried, 1)
     cat = lambda xs: np.concatenate(xs) if xs else np.zeros(0)  # noqa: E731
-    return State(theta, spec, rows, cat(rs), cat(ws), energy, iou, buried)
+    return State(theta, spec, rows, cat(rs), cat(ws), energy, iou, buried, extra={"seen": seen})
 
 
 def jacobian(st: State, params) -> np.ndarray:
@@ -273,6 +274,19 @@ class Result:
     after: dict
     changes: list
     log: list
+    views: list = None
+    seen: dict = None   # label -> the model's (fitted) mask over that view's box
+
+    def diff(self, label: str):
+        """RGB over the view's box: grey = both, red = model only, blue = picture only."""
+        v = next(x for x in self.views if x.label == label)
+        x0, y0, x1, y1 = v.box
+        m, r = self.seen[label], v.mask[y0:y1, x0:x1]
+        im = np.full(m.shape + (3,), 255, np.uint8)
+        im[m & r] = (150, 150, 150)
+        im[m & ~r] = (220, 40, 40)
+        im[r & ~m] = (40, 80, 230)
+        return im
 
 
 def fit(spec: dict, targets: list[dict], groups=F.GROUPS, only=None, lock=(), press=None, iterations: int = 20,
@@ -309,4 +323,16 @@ def fit(spec: dict, targets: list[dict], groups=F.GROUPS, only=None, lock=(), pr
         F._set(result, p, round(float(b), 5))
         if abs(b - a) >= 5e-4:
             changes.append(f"{p[0][:-1]} {p[1]}.{p[2]}{'' if p[3] is None else [p[3]]}: {a:.3f} -> {b:.3f}")
-    return Result(result, before, dict(st.iou), changes, log)
+    return Result(result, before, dict(st.iou), changes, log, views, st.extra["seen"])
+
+
+def polygon_mask(size, polygons) -> np.ndarray:
+    """A mask (H, W) from outline polygons in image pixels: one [[x, y], ...] or a list of them."""
+    from PIL import Image, ImageDraw
+    if polygons and np.ndim(polygons[0][0]) == 0:
+        polygons = [polygons]
+    im = Image.new("L", tuple(size), 0)
+    d = ImageDraw.Draw(im)
+    for poly in polygons:
+        d.polygon([tuple(map(float, q)) for q in poly], fill=255)
+    return np.asarray(im) > 0

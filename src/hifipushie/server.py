@@ -143,7 +143,7 @@ TOOL_GROUPS: dict[str, dict] = {
              "tools": ["set_plan", "set_reference", "compare", "fit", "clearance", "style_check"]},
     "concept": {"about": "match a concept image: fit its camera, render from it pixel-aligned, same-box feature tiles "
                          "for bin/review, how parts join the body (stalk or base)",
-                "tools": ["fit_concept_camera", "look_matched", "feature_tiles", "join_report"]},
+                "tools": ["fit_concept_camera", "look_matched", "feature_tiles", "join_report", "fit_matched"]},
     "scene": {"about": "the Blender scene (sync, pull) and the heavy-job queue",
               "tools": ["sync", "pull", "heavy_status", "heavy_queue"]},
     "export": {"about": "OBJ export, game-ready assets (GLB/FBX, PBR maps), the export rig, judging a GLB",
@@ -941,6 +941,46 @@ def _join_lines(name: str, joins) -> str:
         return ""
     from . import joins as joinsmod
     return "\n" + joinsmod.report(name, joins)
+
+
+@mcp.tool(structured_output=False)
+def fit_matched(name: str, targets: list[dict], only: list[str], params: list[str] | None = None,
+                lock: list[str] | None = None, press: dict | None = None, iterations: int = 20,
+                max_step: float = 0.01, stiffness: float = 0.05, resolution: int = 128):
+    """Fit elements' numbers (only: element names; params "pos"|"r"|"offset"|"size"|"shape") to pictures from
+    fitted cameras (fit_concept_camera) and save a new version. targets: [{"camera": label, "box": [x0,y0,x1,y1],
+    "elements"?: [names] = that part's own outline, seen in front of the rest, "outline"?: [[x,y],...] (or a list
+    of them) traced in the image, or "mask"?: white-on-black PNG; neither = the camera's image foreground}].
+    press: {"elements": [...], "mm": 3, "join": [x,y,z]}: those may sink into the rest only where they join on.
+    Returns red / blue diffs per target and the changes. Details: guide(topic="fit_matched")."""
+    from PIL import Image as PI
+    from . import fit_view, matched
+    tg = []
+    for i, t in enumerate(targets):
+        cam = matched.load_camera(name, t.get("camera", "concept"))
+        if t.get("outline"):
+            mask = fit_view.polygon_mask(cam["size"], t["outline"])
+        elif t.get("mask"):
+            mask = np.asarray(PI.open(t["mask"]).convert("L").resize(tuple(cam["size"]))) > 127
+        elif not t.get("elements"):
+            mask = matched.mask_of(cam["image"], cam.get("mask"))
+        else:
+            raise ValueError(f"target {i}: a part's outline needs outline= or mask= (traced in the image)")
+        lab = t.get("label") or f"{t.get('camera', 'concept')}{'/' + '+'.join(t['elements']) if t.get('elements') else ''}#{i}"
+        tg.append({"label": lab, "camera": cam, "mask": mask, "box": t.get("box"), "elements": t.get("elements")})
+    spec = store.load(name)
+    res = fit_view.fit(spec, tg, tuple(params or fitmod.GROUPS), only, tuple(lock or ()), press, iterations,
+                       max_step, stiffness, resolution)
+    ver = store.save(name, res.spec, "fit_matched " + " ".join(
+        f"{k} {res.before[k]:.3f}->{res.after[k]:.3f}" for k in res.after))
+    out = []
+    for t in tg:
+        out += [_png(PI.fromarray(res.diff(t["label"])).resize(
+            tuple(int(2 * x) for x in res.diff(t["label"]).shape[1::-1]))),
+            f"[{t['label']}] IoU {res.before[t['label']]:.3f} -> {res.after[t['label']]:.3f} (red = model only, "
+            "blue = picture only)"]
+    out.append(f"saved {name} v{ver}\n" + "\n".join(res.log) + "\n\nchanges:\n" + "\n".join(res.changes or ["(none)"]))
+    return out
 
 
 @mcp.tool(structured_output=False)
