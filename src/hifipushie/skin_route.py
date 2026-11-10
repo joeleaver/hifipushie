@@ -18,7 +18,7 @@ ROUTE = ("Skin: approved head -> forms into the head -> skin (age, tone) -> skin
          "one region per call")
 STEPS = ["skin", "skin_from_reference", "brow_read", "look_skin"]
 # find_tool: words that mean the skin, whatever other tool's text also has them ("stubble" is a groom_hair word too)
-FIND_WORDS = {"skin", "por", "stubble", "makeup", "cosmet", "freckl", "wrinkl", "blemish", "mole"}
+FIND_WORDS = {"skin", "por", "stubbl", "makeup", "cosmet", "freckl", "wrinkl", "blemish", "mol"}  # stems, as server._stem cuts them
 REGIONS = ("face", "forehead", "brows", "eye", "cheek", "nose", "mouth", "jaw")   # look_skin(beside=...), order of review
 BODY_ONLY = ("tone",)   # under a stack the face's colour is the stack's: these move what it doesn't cover (neck, body)
 DIFF_SECONDS = 25.0   # no_effect's budget: each key is one build of the layers, a skin edit must stay quick
