@@ -30,6 +30,19 @@ interfaced.
 LAYERS. A wholly interfaced piece with no seams at all (a jacket's chest canvas) floats inside the soft piece worn at the
 same place (to, side) on the same side (.L / .R). It stiffens that host and is not built on its own. When several soft
 pieces share the place, the host is the largest: the body cloth, where a facing is a strip along its edge.
+PLACED (R3c2): a layer still has points, and R3c's jacket left its canvases' 1103 each at the origin, held there through
+the chains ("held_length 77658 % off"). One design draws a layer and its host in ONE draft frame (the jacket's canvas:
+100 % of its flat inside its front's, 0 mm out), so place_layers maps each layer point by its flat point into the
+host's flat (layer_frame: LAYER_IN of its points within LAYER_TOL; else it is refused by name, no frame no place), onto
+the host's surface there, a LAYER inside, following the host after every stage that moves it, from the soft start on.
+Where it lies it stiffens the host: the host's points inside its flat take its bending weight (net.bend) and its
+interfacing share as the hang's stiff weight (b.layer_stiff); reads["layers"] says how many points it covers.
+INSIDE: a soft piece worn at a larger soft piece's place, sewn to it along that piece's outline in one run, its flat
+in that piece's flat (a facing in its front) HANGS INSIDE it: it starts a layer inside it (place_inside, past any
+floating layer there), not as a torso panel of its own (the jacket's facings started round the BACK half ring).
+Every ply point is placed (place_plies), the ones sewn only to a third piece too: the jacket's collar ply's 137 gorge
+points, sewn to the facings and not to the undercollar, were skipped as "sewn, already the host's", and pulled the
+facings' seam points to the origin with them.
 
 ORDER. Stiff parts come first. A stiff part sewn only to soft cloth (a band, a stand, a cuff) rests on the "body". A
 stiff part sewn to a stiff part (a fall on its band) rests on that part, so it comes after it. Soft parts hang from the
