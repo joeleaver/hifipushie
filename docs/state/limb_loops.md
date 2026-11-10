@@ -27,15 +27,19 @@ the Baynard notes folder limb_loops/)
   > 1.5x 279 -> 161. With the stub correctives about the same. r3.png (rest wire), sit_corr.png (seated, top new).
 - Seated by eye: the belly-thigh fold now runs along the rings (front / side clean, today's crumples); the crotch
   notch is still there in both (body strip between the junctions: weights, not loops); the seat about the same.
-- Real export (pudrt.glb, export_asset(rig=True); body 12.1k tris vs today's pud2.glb 14.9k), seated LBS: hips/legs
-  (z < 0.2) edges > 2x 63 -> 57, > 1.5x 265 -> 153; with the UpLeg correctives 104 -> 80, 441 -> 313. By eye NOT a
-  clear win: side better (the leg flows into the belly, no shelf); front the crotch pucker is MORE prominent and a
-  fold runs across the belly at z 0.21; back small dents / specks (bake or turned faces: unchecked) and a sharper
-  seat point. glb_{pud2,pudrt}_seated_{lbs,corr}.png. This export ran before the fin fix (2 non-manifold edges).
+- Real export (pudrt.glb, 2026-11-05): by eye NOT a clear win (crotch pucker, belly fold). Superseded by the gate below.
 
-## Open, ranked by what shows in the kart
-0. Before Baynard uses it: re-export (fin fix in), find the back specks, and fix the crotch (1): today the GLB
-   reads worse in front. Keep pud2's default topology in the kart until then.
+## Gate on today's Puddles (2026-11-10, branch limbs-gate, ledger C404): NO-GO
+Bar: the quad-cage's (tag archive/quad-retopo), /mnt/data/hifipushie/limbsgate/measure.py; pud2 v83 exported both
+ways (export_asset rig=True). Plain decimation: 11,225 tris, folds 9 (armpits), turned 8, body p99 0.42 / max 1.3 mm,
+coverage p99 3.21. "limbs" (rest 9000): 10,558 tris, folds 122, turned 98, body p99 1.99 / max 39.9, coverage 3.88;
+export audit TORN OR TANGLED at shoulder.R 67, elbow.R 47, head 19, neck 12. A shard at the right upper arm in the
+bend renders (limbsgate/bend_*.png); seated, the belly is rougher and ragged where it meets the thighs.
+- Fixed (general): a free arm hanging by the side (v76+) put the body's side inside its cut cylinder: 7 holes for 5
+  limbs. The cut now keeps only the surface connected to the limb's tip (`_reached`; test), and the hole-count error
+  names every hole and feature with its place.
+- Open, first: the tears are on the RIGHT arm only, on a mirrored model: the arm's own rings or their zip treat
+  the two sides differently (the left arm is clean). Find that before anything else.
 1. Crotch notch: needs the pair key (C374 Open 2) or a crotch patch joining both legs' junctions with quads.
 2. The rest of the body is still decimated triangles (2% quads). Later runs, in order:
    a. torso and head from the loft's own sections and the head ball's rings (quads everywhere on the body);
@@ -51,10 +55,6 @@ the Baynard notes folder limb_loops/)
 Ring evening by Laplacian along the ring (shrinks a junction ring back onto the leg); walking junction rings up the
 limb only (into a belly's underside: they don't move); cutting the decimated body (holes merge at the crotch).
 
-## Commands
-`/mnt/data/hifipushie/limbloops/{dev.py <model>, posecheck.py <model> a.npz b.npz, wire.py out.png a.npz.., glbcheck.py}`
-
-NEXT (Joe 2026-11-05, scope): step 3 is the open mouth, its own run from this branch's tip: concentric rings round
-the rim of a subtracted mouth (pud2 mouth_cut; teeth_b / tongue_b inside), rings down the walls into the cavity, clean
-border to the face; general (any mouth or beak), no template. Proof: limbloops.quality closed rings round the opening +
-GLB mouth close-up front / 3-4 beside puddles_v11/pud2.glb (the old export folded there). Then crotch patch, then 2a.
+Commands: `/mnt/data/hifipushie/limbloops/{dev,posecheck,wire,glbcheck}.py`, `/mnt/data/hifipushie/limbsgate/{export,measure,bend}.py`
+NEXT: find the right-arm asymmetry (mirror handedness in tube / junction / zip), re-gate; keep pud2 on plain
+decimation until "limbs" passes the bar.

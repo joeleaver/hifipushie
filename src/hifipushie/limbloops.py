@@ -318,6 +318,23 @@ def _turn(P, c, n):
     return np.sign(dw.sum())
 
 
+def _reached(V, F, inside, tip):
+    """The points of `inside` connected over the mesh, through `inside` only, to the one nearest the limb's tip. The
+    region past a ring and within its outline is a cylinder: a free arm hanging by the body's side (Puddles v76+,
+    4.5 mm off it) has the body's side in its cylinder too, and cutting that left a second hole beside the arm."""
+    import scipy.sparse as sp
+    import scipy.sparse.csgraph as cg
+    idx = np.flatnonzero(inside)
+    if not len(idx):
+        return inside
+    e = F[inside[F].all(1)]
+    n = len(V)
+    A = sp.coo_matrix((np.ones(3 * len(e)), (e.ravel(), np.roll(e, 1, 1).ravel())), shape=(n, n))
+    _, lab = cg.connected_components(A, directed=False)
+    seed = idx[np.argmin(np.linalg.norm(V[idx] - tip, axis=1))]
+    return inside & (lab == lab[seed])
+
+
 def _inside(X, O, co, no, step):
     """Points on the limb's side of ring O: past its plane (less a quarter step) and within its outline (its polar
     radius at their angle round the ring, plus ZIP_MARGIN of a step)."""
@@ -369,7 +386,7 @@ def build(spec: dict, prims, V, F, voxel: float, body_triangles: int, part: str 
         co = O.mean(0)
         no = np.linalg.svd(O - co)[2][2]
         no = no if no @ n_root > 0 else -no
-        cut |= _inside(V, O, co, no, step) & (V[:, 0] * limb["side"] > 0)
+        cut |= _reached(V, F, _inside(V, O, co, no, step) & (V[:, 0] * limb["side"] > 0), tip)
         limbs_.append((limb, J[::-1] + rings, [None] * len(J) + labels, tip, co, no))
         log.append(f"{limb['label']}: {len(rings)} rings of {RING} (keys {', '.join(l for l in labels if l)}), "
                    f"{len(J)} junction rings, step {step * 1000:.0f} mm")
@@ -383,7 +400,10 @@ def build(spec: dict, prims, V, F, voxel: float, body_triangles: int, part: str 
     Fk = _largest(V, _clean_cut(_largest(V, F[~cut[F].any(1)]), cut))
     loops = [lp for lp in _boundary_loops(Fk) if not set(lp) <= had]
     if len(loops) != len(limbs_):
-        raise ValueError(f"limbs: the body cut left {len(loops)} holes for {len(limbs_)} limbs")
+        where = "; ".join(f"{np.round(V[lp].mean(0) * 1000).astype(int).tolist()} mm ({len(lp)} edges)" for lp in loops)
+        feats = "; ".join(f"{L['label']} at {np.round(c * 1000).astype(int).tolist()} mm" for L, _, _, _, c, _ in limbs_)
+        raise ValueError(f"limbs: the body cut left {len(loops)} holes for {len(limbs_)} limbs. Holes: {where}. "
+                         f"Features: {feats}")
     # zip each hole to its outermost ring (appended after the body's vertices), on the fine mesh
     Vz, Fz = [V], [Fk]
     nv = len(V)

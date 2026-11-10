@@ -63,3 +63,19 @@ if __name__ == "__main__":
             fn()
             print("ok", name)
     sys.exit(0)
+
+
+def test_cut_takes_only_the_limb_not_the_body_beside_it():
+    """A free arm hanging by the body's side: the region past its ring and within its outline (a cylinder) holds the
+    body's side too; only the surface connected to the arm's tip is the limb's (Puddles v76+: 7 holes for 5 limbs)."""
+    from skimage import measure
+    from hifipushie import limbloops
+    g = np.mgrid[-1:1:64j, -1:1:64j, -1:1:64j]
+    arm = np.sqrt((g[0] - 0.5) ** 2 + g[1] ** 2 + g[2] ** 2) - 0.3
+    side = np.sqrt((g[0] + 0.35) ** 2 + g[1] ** 2 + g[2] ** 2) - 0.45  # 0.05 apart: two surfaces, both in the cylinder
+    V, F, _, _ = measure.marching_cubes(np.minimum(arm, side), 0.0, spacing=(2 / 63,) * 3)
+    V -= 1
+    inside = np.abs(V[:, 1]) < 0.35  # a slab through both
+    got = limbloops._reached(V, F, inside, np.array([0.8, 0.0, 0.0]))
+    assert got.any() and (V[got, 0] > 0.15).all(), "the body's side was cut with the arm"
+    assert (inside & (V[:, 0] > 0.2)).sum() == got.sum()
