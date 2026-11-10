@@ -67,6 +67,7 @@ class Holds:
     plies: dict  # ply piece -> its part's outer piece
     layers: dict  # floating layer piece -> its host piece (a hostless seamless stiff piece is a part of its own)
     folds: list  # {name, piece, part, kind, fall}
+    inside: dict = field(default_factory=dict)  # soft piece -> the larger soft piece it hangs inside (a facing in its front)
 
     def part_of(self, piece: str) -> Part | None:
         return next((p for p in self.parts if piece in p.pieces), None)
@@ -75,7 +76,8 @@ class Holds:
         return {"parts": [{"name": p.name, "pieces": p.pieces, "outer": p.outer, "stiff": p.stiff, "rests_on": p.rests_on,
                            **({"stiffened_by": p.stiffened_by} if p.stiffened_by else {}),
                            **({"folds": p.folds} if p.folds else {})} for p in self.parts],
-                "plies": self.plies, "layers": self.layers, "folds": self.folds}
+                "plies": self.plies, "layers": self.layers, "folds": self.folds,
+                **({"inside": self.inside} if self.inside else {})}
 
 
 def _side(name: str) -> str:
@@ -260,66 +262,205 @@ def read(net) -> Holds:
         folds.append(rec)
         if pt:
             pt.folds.append(rec["name"])
-    return Holds(stiff + soft, plies, layers, folds)
+    return Holds(stiff + soft, plies, layers, folds, inside_of(net, groups, find, whole, floating, pairs))
 
 
-# ---- the build: plies follow their host
-def place_plies(b, hosts=None) -> dict:
-    """Each ply of a placed host follows it. Sewn points are already the host's (one node). Every other point goes
-    through the flat map that the shared outline's sewn pairs give (affine least squares, ply uv -> host uv), onto
-    the host's surface at that flat point, then a LAYER inside it per ply (stiff plies next to the outer, as
-    interfacing lies). `hosts`: only these outer pieces (default: every host with a placed vertex)."""
+def inside_of(net, groups, find, whole, floating, pairs) -> dict:
+    """Soft pieces that hang INSIDE a larger soft piece (a facing inside its front): worn at the same place and side,
+    sewn to it only along its outline (an edge, never a patch on its face) in ONE run (a two-piece sleeve's halves are
+    sewn in two runs: a tube, not a lining), and its flat lying in that piece's own flat (layer_frame: one design draws
+    both in one frame). It starts a layer inside that piece, not as a panel of its own."""
+    from .chain_net import boundary_edges
+    names, n = net.names, len(net.names)
+    place = net.M.get("place") or {}
+    soft = [j for j in range(n) if not whole[j] and j not in floating and len(groups[find(j)]) == 1]
+    area = {j: _area(net.uv, net.F[np.all(net.piece[net.F] == j, axis=1)]) for j in soft}
+    out = {}
+    for j in soft:
+        pl = place.get(names[j])
+        cand = [h for h in soft if h != j and pl and place.get(names[h]) == pl and _side(names[h]) == _side(names[j])
+                and area[h] > area[j] and len(pairs.get((j, h), [])) >= 3]
+        for h in sorted(cand, key=lambda h: -area[h]):
+            Fh = net.F[np.all(net.piece[net.F] == h, axis=1)]
+            edge = set(np.unique(boundary_edges(Fh)).tolist())
+            if (all(c in edge for _, c in pairs[(j, h)]) and sewn_runs(net, j, {a for a, _ in pairs[(j, h)]}) == 1
+                    and layer_frame(net, names[j], names[h])["own"]):
+                out[names[j]] = names[h]
+                break
+    return out
+
+
+# ---- the build: plies and floating layers follow their host
+LAYER_TOL = 0.003  # m: a floating layer's flat point lies in its host's flat within this (the canvas: every point at 0)
+LAYER_IN = 0.98  # of a floating layer's points that must lie in its host's flat for the host's frame to be its own
+
+
+def _faces(net, piece: str):
+    return net.F[np.all(net.piece[net.F] == net.pid(piece), axis=1)]
+
+
+def flat_locate(uv, F, q, k: int = 8) -> tuple:
+    """(face index into F, barycentric weights clipped onto it, flat distance from q to it) of flat points q in the
+    triangles F over uv (the nearest of the k faces by centroid with the largest least weight)."""
     from scipy.spatial import cKDTree
+    q = np.asarray(q, float).reshape(-1, 2)
+    k = min(k, len(F))
+    J = np.asarray(cKDTree(uv[F].mean(1)).query(q, k=k)[1]).reshape(len(q), k)
+    t = uv[F[J]]  # (n, k, 3, 2)
+    e1, e2, d = t[:, :, 1] - t[:, :, 0], t[:, :, 2] - t[:, :, 0], q[:, None] - t[:, :, 0]
+    det = e1[..., 0] * e2[..., 1] - e1[..., 1] * e2[..., 0]
+    det = np.where(np.abs(det) < 1e-18, 1e-18, det)
+    l1 = (d[..., 0] * e2[..., 1] - d[..., 1] * e2[..., 0]) / det
+    l2 = (e1[..., 0] * d[..., 1] - e1[..., 1] * d[..., 0]) / det
+    W = np.stack([1 - l1 - l2, l1, l2], -1)
+    best = np.argmax(W.min(-1), 1)
+    r = np.arange(len(q))
+    w = np.clip(W[r, best], 0, None)
+    w /= np.maximum(w.sum(1, keepdims=True), 1e-12)
+    f = J[r, best]
+    dist = np.linalg.norm((w[:, :, None] * uv[F[f]]).sum(1) - q, axis=1)
+    return f, w, dist
+
+
+def _outward(b, X, F):
+    """Unit face normals of F at X, turned to the body's outward side (the outer side of cloth on it)."""
+    fn = np.cross(X[F[:, 1]] - X[F[:, 0]], X[F[:, 2]] - X[F[:, 0]])
+    out = b.body.contact.query(X[F].mean(1))[1]
+    fn = np.where(((fn * out).sum(1) < 0)[:, None], -fn, fn)
+    return fn / np.maximum(np.linalg.norm(fn, axis=1, keepdims=True), 1e-12)
+
+
+def _put(X, rs, v, P):
+    """Vertices v at P, through their nodes: every vertex sewn to them follows (one node, one position)."""
+    X[rs[v]] = P
+    m = np.isin(rs, rs[v])
+    X[m] = X[rs[m]]
+
+
+def layer_frame(net, layer: str, host: str) -> dict:
+    """Does the floating layer's flat lie in its host's flat (both drawn by one design, in one draft frame)? The share
+    of its points inside the host's triangles within LAYER_TOL; the frame is the host's own when LAYER_IN of them are."""
+    v = net.verts(layer)
+    _, _, dist = flat_locate(net.uv, _faces(net, host), net.uv[v])
+    share = float((dist <= LAYER_TOL).mean())
+    return {"inside": round(share, 4), "worst_mm": round(float(dist.max()) * 1e3, 2), "own": share >= LAYER_IN}
+
+
+def place_layers(b, X=None) -> dict:
+    """Each floating layer on a placed host: its flat point (in the host's own draft frame, layer_frame) onto the host's
+    surface there, a LAYER inside it, through its nodes; the host's vertices it covers take its stiffness (net.bend and
+    b.layer_stiff, the hang's stiff weight), once. A layer whose flat doesn't lie in its host's is refused by name: no
+    frame, no honest place. X: the positions to place on (default b.X), changed in place and returned."""
+    from .chain_core import LAYER, ChainRefused
+    H = getattr(b, "holds", None)
+    X = b.X if X is None else X
+    if H is None or not H.layers:
+        return {}
+    net, rs = b.net, b.net.root
+    rep = {}
+    for lay, host in H.layers.items():
+        hv = net.verts(host)
+        if not np.abs(X[hv]).sum():
+            continue  # (the host isn't built yet)
+        fr = layer_frame(net, lay, host)
+        if not fr["own"]:
+            raise ChainRefused(f"the floating layer {lay} doesn't lie in its host {host}'s flat ({fr['inside']:.0%} of its "
+                               f"points inside, worst {fr['worst_mm']} mm out): it has no place there. next: draft it "
+                               f"from {host}'s own points (draft_pattern), or sew it to {host} (a ply)")
+        Fh, v = _faces(net, host), net.verts(lay)
+        f, w, _ = flat_locate(net.uv, Fh, net.uv[v])
+        P = (w[:, :, None] * X[Fh[f]]).sum(1) - LAYER * _outward(b, X, Fh)[f]
+        _put(X, rs, v, P)
+        r = {"stiffens": host, "built": True, "frame": f"{host}'s own flat ({fr['inside']:.0%} of its points inside)",
+             "placed": int(len(v)), "inside_mm": round(LAYER * 1e3, 1)}
+        done = getattr(b, "layer_done", None) or {}
+        if lay not in done:  # (its stiffness onto the host where it lies: the host's points inside the layer's flat)
+            fl, wl, dl = flat_locate(net.uv, _faces(net, lay), net.uv[hv])
+            cov = dl <= LAYER_TOL
+            Fl = _faces(net, lay)
+            bend = (wl * net.bend[Fl[fl]]).sum(1)
+            stf = (wl * net.stiff[Fl[fl]]).sum(1)
+            net.bend[hv[cov]] = np.maximum(net.bend[hv[cov]], bend[cov])
+            if getattr(b, "layer_stiff", None) is None:
+                b.layer_stiff = np.zeros(net.n)
+            b.layer_stiff[hv[cov]] = np.maximum(b.layer_stiff[hv[cov]], stf[cov])
+            done[lay] = {"covers": int(cov.sum()), "of_host": round(float(cov.mean()), 3),
+                         "bend": round(float(bend[cov].mean()), 3) if cov.any() else 0.0,
+                         "stiff": round(float(stf[cov].mean()), 3) if cov.any() else 0.0}
+            b.layer_done = done
+        r.update(done[lay])
+        rep[lay] = r
+    b.reads.setdefault("layers", {}).update(rep)
+    return rep
+
+
+def place_inside(b, X) -> dict:
+    """(the start) Each soft piece that hangs inside another (Holds.inside, a facing in its front): its flat point onto
+    its host's start there, inside it by a LAYER per floating layer the host carries plus one (interfacing lies next to
+    the outer cloth). Only its points that no host point and no held point already place (its sewn edge stays the
+    host's; its seam to a stiff part stays there). X changed in place."""
+    from .chain_core import LAYER
+    H = getattr(b, "holds", None)
+    if H is None or not H.inside:
+        return {}
+    net, rs = b.net, b.net.root
+    held = np.zeros(net.n, bool)
+    held[rs[b._stiff_mask()]] = True
+    rep = {}
+    for p, host in H.inside.items():
+        hv = net.verts(host)
+        if not np.abs(X[hv]).sum():
+            continue
+        held_h = held.copy()
+        held_h[rs[hv]] = True
+        v = net.verts(p)
+        free = v[~held_h[rs[v]]]
+        Fh = _faces(net, host)
+        f, w, _ = flat_locate(net.uv, Fh, net.uv[free])
+        k = 1 + sum(1 for h in H.layers.values() if h == host)
+        _put(X, rs, free, (w[:, :, None] * X[Fh[f]]).sum(1) - k * LAYER * _outward(b, X, Fh)[f])
+        rep[p] = {"inside": host, "placed": int(len(free)), "on_its_seams": int(len(v) - len(free)), "inside_mm": round(k * LAYER * 1e3, 1)}
+    b.reads.setdefault("inside", {}).update(rep)
+    return rep
+
+
+def place_plies(b, hosts=None, X=None) -> dict:
+    """Each ply of a placed host follows it. A ply point sewn to the host is already the host's (one node). EVERY other
+    point (unsewn, or sewn only to a third piece: a collar ply's gorge sewn to a facing) goes through the flat map that
+    the ply's sewn pairs with its part give (affine least squares, ply uv -> host uv), onto the host's surface at that
+    flat point, then a LAYER inside it per ply (stiff plies next to the outer, as interfacing lies), through its node, so
+    the third piece's points sewn there start on it. `hosts`: only these outer pieces (default: every host with a placed
+    vertex). X: the positions to place on (default b.X), changed in place."""
     from .chain_core import LAYER
     H = getattr(b, "holds", None)
     if H is None or not H.plies:
         return {}
-    net, X, rs = b.net, b.X, b.net.root
+    own = X is None
+    net, X, rs = b.net, (b.X if X is None else X), b.net.root
     pairs, _ = _sewn(net)
     rep = {}
     for pt in H.parts:
         if len(pt.pieces) < 2 or (hosts is not None and pt.outer not in hosts):
             continue
-        ho = net.pid(pt.outer)
         hv = net.verts(pt.outer)
         if not np.abs(X[hv]).sum():
             continue  # (the host isn't built yet)
-        Fh = net.F[np.all(net.piece[net.F] == ho, axis=1)]
-        fn = np.cross(X[Fh[:, 1]] - X[Fh[:, 0]], X[Fh[:, 2]] - X[Fh[:, 0]])
-        cen = X[Fh].mean(1)
-        out = b.body.contact.query(cen)[1]  # (the body's outward normal there: the outer side)
-        fn = np.where(((fn * out).sum(1) < 0)[:, None], -fn, fn)
-        fn /= np.maximum(np.linalg.norm(fn, axis=1, keepdims=True), 1e-12)
-        kd = cKDTree(net.uv[Fh].mean(1))
+        Fh = _faces(net, pt.outer)
+        fn = _outward(b, X, Fh)
+        on_host = np.zeros(net.n, bool)
+        on_host[rs[hv]] = True  # (nodes the host's own points hold)
         plies = sorted(pt.pieces[1:], key=lambda x: -float(net.stiff[net.verts(x)].mean()))
         for k, ply in enumerate(plies, 1):
             pp = net.pid(ply)
-            ab = [(a, c) for q in [net.pid(x) for x in pt.pieces] for a, c in pairs.get((pp, q), [])]
-            ab = np.asarray(ab)
-            A = np.c_[net.uv[ab[:, 0]], np.ones(len(ab))]
-            T = np.linalg.lstsq(A, net.uv[ab[:, 1]], rcond=None)[0]
+            ab = np.asarray([(a, c) for q in [net.pid(x) for x in pt.pieces] for a, c in pairs.get((pp, q), [])])
+            T = np.linalg.lstsq(np.c_[net.uv[ab[:, 0]], np.ones(len(ab))], net.uv[ab[:, 1]], rcond=None)[0]
             v = net.verts(ply)
-            free = v[np.bincount(rs, minlength=net.n)[rs[v]] == 1]  # (not sewn: its own node)
+            free = v[~on_host[rs[v]]]
             q = np.c_[net.uv[free], np.ones(len(free))] @ T
-            _, J = kd.query(q, k=min(8, len(Fh)))
-            J = np.asarray(J).reshape(len(free), -1)
-            P = np.zeros((len(free), 3))
-            for i in range(len(free)):
-                best, bw, bj = -np.inf, None, None
-                for j in J[i]:
-                    t = net.uv[Fh[j]]
-                    M2 = np.c_[t[1] - t[0], t[2] - t[0]]
-                    try:
-                        l1, l2 = np.linalg.solve(M2, q[i] - t[0])
-                    except np.linalg.LinAlgError:
-                        continue
-                    w = np.array([1 - l1 - l2, l1, l2])
-                    if w.min() > best:
-                        best, bw, bj = w.min(), w, j
-                bw = np.clip(bw, 0, None) / max(np.clip(bw, 0, None).sum(), 1e-12)
-                P[i] = bw @ X[Fh[bj]] - k * LAYER * fn[bj]
-            X[free] = P
+            f, w, _ = flat_locate(net.uv, Fh, q)
+            _put(X, rs, free, (w[:, :, None] * X[Fh[f]]).sum(1) - k * LAYER * fn[f])
             rep[ply] = {"on": pt.outer, "placed": int(len(free)), "sewn": int(len(v) - len(free)), "inside_mm": k * LAYER * 1e3}
-    b.X = X
+    if own:
+        b.X = X
     b.reads.setdefault("plies", {}).update(rep)
     return rep
