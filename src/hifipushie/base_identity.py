@@ -75,8 +75,6 @@ POSE = {"smile": ([48, 54], [0.35, 1.0, -0.15]),  # mouth corners up (and a litt
         "mouth_raise": (list(range(48, 68)), [0.0, 1.0, 0.0]),  # the whole mouth up (a shorter philtrum)
         "brow_inner": ([20, 21, 22, 23], [0.0, 1.0, 0.0]),  # inner brow up (open, kind; negative: a frown)
         "brow_outer": ([17, 18, 25, 26], [0.0, 1.0, 0.0])}  # outer brow up (negative: drooping, relaxed)
-
-
 POSE_HOLD = 0.35  # weight of holding every landmark not moved (the rest of the face stays put)
 
 

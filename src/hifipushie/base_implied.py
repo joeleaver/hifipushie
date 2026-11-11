@@ -117,8 +117,6 @@ def inject(spec: dict) -> dict:
 
 
 CORNEA_BIG = 0.2  # m: the near-flat spheres that cut the iris plane (sag 0.09 mm over the iris; at the other eye, 6 cm
-
-
 # across, their surface is ~9 mm off its plane: each touches only its own eye)
 def clear_cornea(b: dict, c, gz, R: float, rc: float, bulge: float, sd: str = ".L") -> dict:
     """base.cornea = {"clear": true, "depth": m (0.0028)}: the eye as a game head builds it (MetaHuman's refractive

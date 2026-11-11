@@ -37,6 +37,7 @@ def border_segments(out_dir, lod=0):
     return np.concatenate(segs) if segs else np.zeros((0, 2, 3))
 
 
+
 def _site_props(T, box=None):
     """The sites' props for render_tiles' stand-ins: [x, y, ground z, yaw, name] (inside `box` if given)."""
     out = []
@@ -49,7 +50,6 @@ def _site_props(T, box=None):
             continue
         out.append([x, y, float(T.height(np.array([x, y]))), float(pr.get("yaw", 0.0)), str(pr["name"])])
     return out
-
 
 def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=True, box=None, skirt_color=None,
                  parts="all", textured=True, channel=None, ids=False, detail_fade=True, detail_show=None, haze=5000.0,

@@ -38,7 +38,6 @@ def _f64(a):
     """A 1D contiguous float64 array (what the compiled kernels take)."""
     return np.ascontiguousarray(np.asarray(a, dtype=np.float64).ravel())
 
-
 DEFAULTS = {
     "tile": 64.0,          # metres a side
     "voxel": 0.5,          # the meshing voxel (divides the tile); coarser LODs are LOD0 decimated
@@ -75,9 +74,7 @@ DEFAULTS = {
     "checks": True,        # the seam/ground/pattern checks after writing (off for previews)
 }
 
-
 DENSITY_FILL = 0.55  # the share of an atlas the packer fills (for choosing one texel density that fits every tile)
-
 
 # ground materials: what each cover type lays on the ground (tree layers: the forest floor under them)
 LAYER_OF = {"meadow": "grass", "grass": "grass", "orchard": "grass", "mown": "turf", "lawn": "turf", "fairway": "turf",
@@ -85,8 +82,6 @@ LAYER_OF = {"meadow": "grass", "grass": "grass", "orchard": "grass", "mown": "tu
             "scrub": "scrub", "heath": "scrub", "bunker": "sand", "forest": "forest_floor",
             "conifer": "forest_floor", "deciduous": "forest_floor", "rock": "rock", "scree": "rock", "sand": "sand",
             "mud": "earth", "snow": "snow"}
-
-
 LAYERS = {  # reference look (sRGB colour, roughness) and a triplanar tiling scale (m) for engines
     "grass": {"color": [0.36, 0.47, 0.20], "roughness": 0.95, "scale": 3.0},
     "turf": {"color": [0.30, 0.50, 0.17], "roughness": 0.9, "scale": 2.0},  # (mown grass: fairways, greens, lawns)

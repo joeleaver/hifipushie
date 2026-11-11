@@ -366,15 +366,9 @@ def bare_regions(sc: Scalp, g: dict, capV, fm: dict, red, total: int, cam: dict 
 
 
 GATE_MM = 1.5  # the deepest dent allowed in the hair's outline (front and 3/4), mm, from the brows up to...
-
-
 GATE_SCALE = 0.012  # m: the outline is gated on shapes at least one lock row tall (smoothed over it): a waist or
-
-
 # divot is tens of mm; a clump's step where one lock ends over the next is a notch, the relief we want
 NOTCH_SCALE = 0.006  # m: notches (clump steps at the outline) are measured on this and reported, target 2-5 mm
-
-
 CROWN_BAND = 0.02  # ...this far under the top (the top's outline is the lock crowns: reported, not gated)
 
 

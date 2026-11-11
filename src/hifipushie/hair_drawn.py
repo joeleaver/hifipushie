@@ -140,14 +140,8 @@ def split_tips(sc: Scalp, g: dict, line, name: str, lk: dict, n: int = 2, at: fl
 
 
 ROOT_TILT = 0.5  # the climbing root's tilt, x the lie's tilt behind it (1: nape rows folded at their roots)
-
-
 ROOT_CLIMB = 0.012  # m: the shortest run over which a drawn clump's root rises from under the layer to lie on it
-
-
 TILT_MAX = 1.3  # rad: the most a drawn clump's flat side turns off facing away from the head centre
-
-
 BEND_EASE = 0.7  # drawn clumps are eased until their spine's in-plane bend x half width is under this
 
 

@@ -187,20 +187,14 @@ def limbus_read(lum, cam, lb: dict, origin=(0.0, 0.0), scale: float = 1.0, reach
 
 
 FAR_OPEN = 0.8           # the far eye is read only in views turned under ~37 deg: at 45 it is half behind the bridge and, on a head
-
-
                          # that is not the model's, read 2-4.6 mm off (5 dressed pairs) even with both arcs on the model's eyeball
 
 LIMBUS_MIN = 0.03        # a limbus read under this edge contrast (luminance 0..1), or no better than another place, is dropped
-
-
 # mm: in a side view (the disc under half open) the reader puts the edge this far FORWARD of the model's own limbus
 # (spikes/orbit/oval.py limbus: 16 dressed profile pictures of 8 known heads, +0.40, sd 0.18; a 3/4's near eye: +0.09,
 # sd 0.18, left alone). On a PHOTO the cornea's dome lies over that edge: unvalidated there, so the side read's sigma
 # is 0.5 mm, not the renders' 0.2.
 LIMBUS_SIDE_BIAS = 0.4
-
-
 SIG_LIMBUS_SIDE = (0.5, 0.9)
 
 

@@ -86,14 +86,8 @@ def _lid_obs(head, view, rv):
 
 
 NU_SD = 2.0                 # prior sd of an observation's own nuisance columns (log units: wide)
-
-
 SIG_SHADE = 0.05            # log luminance: one shading sample (validated on clay pairs: spikes/reruns/shval.py)
-
-
 SHADE_N = 350               # shading samples per view
-
-
 SHADE_REGIONS = ("forehead_region", "left_temple_region", "right_temple_region", "left_zygomatic_region",
                  "right_zygomatic_region", "left_parotid_region", "right_parotid_region", "left_infraorbital_region",
                  "right_infraorbital_region", "left_cheek_region", "right_cheek_region", "chin_region")
@@ -219,11 +213,7 @@ def _shade_obs(head, view):
 
 
 SIG_NORMAL = 0.10           # radians: one learned-normal sample's tangent component (spikes/refread/nrmval.py)
-
-
 NORMAL_N = 400              # normal samples per view
-
-
 NORMAL_REGIONS = SHADE_REGIONS + ("nose_region",)
 
 
@@ -325,8 +315,6 @@ def _normal_obs(head, view, differential=None):
 
 
 SIG_LIP = 0.3               # mm: a vermilion border vertex against the picture's traced border
-
-
 # (readmix, 2026-10-14) THE LIPS' READS ON A PHOTOGRAPH ARE NOT THE MODEL'S BORDER ROWS: at the TRUE head (seven HSRD training
 # subjects, the scan-fitted identity through the rig's cameras) the photograph's colour edge lies 0.5-2.4 mm ABOVE GNM's
 # upper border row and 0.4-4.0 mm BELOW its lower one (most at the middle), and MediaPipe's border points and the
@@ -335,8 +323,6 @@ SIG_LIP = 0.3               # mm: a vermilion border vertex against the picture'
 # position / point) is taken out of a PHOTO's lip reads (lip_photo_bias.json; spikes/readmix/lipbias.py); per-person
 # scatter remains (sd 0.5-2.5 mm). The colour edge itself belongs to the PAINT, placed from the picture.
 LIP_PHOTO_BIAS = False      # OFF (2026-10-14, the coordinator's decision): on three held-out HSRD heads it took the lip heights' error
-
-
 #                             4.4 -> 1.8 mm against the fit's vertices, but the scan's SURFACE did not confirm it (lips 1.06 / 0.69 /
 #                             1.60 -> 1.03 / 0.80 / 1.76 mm; one chin 1.29 -> 2.00): an option, docs/notes/readmix.md "## TALL LIPS"
 def lip_bias(kind: str, key: str) -> float:

@@ -45,29 +45,13 @@ import numpy as np
 from . import retopo
 
 VERSION = 107  # bump when the base field changes: builds and live grids are keyed on it (107: GNM's own eyeball and mouth)
-
-
 K = 32
-
-
 FAR = 0.03  # m
-
-
 SEAM = 0.012  # m: half-width of the head graft's overlap
-
-
 TUBE_BAND = 0.08  # m: where a garment's torso tube hands over to the cloth from the body
-
-
 OWN_REACH = 0.035  # m (x the head's scale): how far over the graft plane a followed head eases onto its body's own
-
-
 LOW_LOOP = 0.004  # the neck loop's least clearance under the graft's overlap (see _neck_tube)
-
-
 _CACHE: dict = {}
-
-
 _WARNED: set = set()  # deprecation messages already given (faceslide.deprecated)
 
 
@@ -116,23 +100,11 @@ def template_joints(name="male_stylized") -> dict:
 
 
 GNM = "gnm/shape/data/versions/v3_0/gnm_head.npz"  # in the assets pack "gnm" (assets.py; Apache 2.0, see SOURCE.txt)
-
-
 GNM_CUT = 0.19  # GNM's own frame (Y up): the graft plane's height, above its bib's open edge (0.135), under its chin
-
-
 GNM_BAND = 0.028
-
-
 GNM_CHIN = 0.1912  # the mean head's chin landmark height, GNM's frame
-
-
 EYE_SEAT = 0.0008  # m: the lid rims' clearance outside the eyeball (head.eye_radius, the override, only)
-
-
 GNM_TILT = 20.0  # degrees
-
-
 LIP_RING = 2  # GNM: the inner-lip contact ring (landmarks 61-63, 65-67), rings out from the skin's open mouth loop
 
 

@@ -11,8 +11,6 @@ from .face_ruler_features import lip_bias
 # arms2.py): a camera fitted by laying the MODEL's landmarks on the picture's is off by 1.9 mm / 1.7 mm / 4.8 % / 1.1 deg
 # rms when the model is a regional transplant away from the person (the scale up to 9 %: a broader jaw reads as "closer").
 CAM_SD = (2.0, 2.0, 5.0, 1.2)
-
-
 # The reader's error on a BLOCK-IN model (the one mesh) through real fitted cameras, hair masked, camera free: sd of
 # reader - truth on dressed EEVEE pictures of 8 sampled GNM heads on the same body (spikes/faceruler/dval.py; size-free
 # gaps). compare() never shows less. neck_width (the body's neck), nose_width, lower_lip_forward and mouth_width are
@@ -28,17 +26,11 @@ MODEL_ERR = {"pupils_apart": 0.83, "eyes_forward": 2.79, "eyes_height": 1.13, "b
              # there (0.6-0.8 with the cameras KNOWN, 2.2 with true cameras left free): the profile camera's yaw, which
              # the outline pins only to ~2.5-3.3 deg, is what limits eye depth on a photo, not the limbus read (0.1 mm).)
              "brow_ridge_forward": 1.5, "side_rim_forward": 3.5, "under_eye_forward": 2.8, "brow_hollow": 1.1}
-
-
 PHOTO_CAM_SD = (1.5, 1.5, 2.5, 0.8)   # a block-in's cameras were fitted to THIS model and are anchored by its landmarks
-
-
 # with the cameras' YAW and PITCH left free too (degrees; the last two): a profile's yaw is the least known thing in a
 # block-in (few landmarks, all near the midline: Tess's was refitted by 30 degrees once), a 3/4's is held by both eyes
 PHOTO_CAM_SD6 = {"front": (1.5, 1.5, 2.5, 0.8, 2.0, 2.0), "3q": (1.5, 1.5, 2.5, 0.8, 4.0, 2.0),
                  "profile": (1.5, 1.5, 2.5, 0.8, 6.0, 2.0)}
-
-
 # (solvecams, 2026-10-13; docs/notes/solvecams.md) THE CAMERAS' PRIOR, seven numbers a view: shift mm (x, y), scale %,
 # roll, YAW, PITCH deg, DISTANCE (log x 100 ~ %): the sd of each camera's WHOLE move since the block-in's start. Measured on
 # known heads: block_in_start's fit is off by 2.2 deg yaw, 3.5 deg pitch (the front 4.6, worst 8.7), 3.5 % scale, 1-4 mm
@@ -48,27 +40,17 @@ PHOTO_CAM_SD6 = {"front": (1.5, 1.5, 2.5, 0.8, 2.0, 2.0), "3q": (1.5, 1.5, 2.5, 
 # accepted head); never a clip (read()).
 PHOTO_CAM_SD7 = {"front": (3.0, 3.0, 4.0, 1.5, 3.0, 6.0, 15.0), "3q": (3.0, 3.0, 4.0, 1.5, 8.0, 4.0, 12.0),
                  "profile": (3.0, 3.0, 4.0, 1.5, 10.0, 4.0, 8.0)}
-
-
 # DISTANCE: outlines and anchors read it weakly (at the right head, reads alone: front 20 %, 3/4 13 %, side 63 %) and on a
 # head still far from the person its column soaks up shape (a true camera drifted +28 %, a +100 % start went to +129 %):
 # held near the start's lens (lens_mm / EXIF / the 70 mm portrait prior) unless a read that sees perspective is in (the
 # dense landmarks: 5-9 %; then PHOTO_CAM_DIST_DENSE)
 PHOTO_CAM_DIST_DENSE = 40.0
-
-
 # A KNOWN LENS (readmix, 2026-10-13): a view that carries lens_mm (the brief, the file's EXIF FocalLengthIn35mmFilm) has its
 # distance held this tightly (log x 100 ~ %) round the start's, WITH the dense landmarks too: familynative's phone
 # pictures went to 0.65 x / 1.6 x / 3 x their EXIF distance under PHOTO_CAM_DIST_DENSE, worth 3-4 mm of jaw width
 PHOTO_CAM_DIST_LENS = 7.0
-
-
 MP_DROPS_ANCHORS = False    # see reference_views
-
-
 LENS_PINS = False           # True: a view with a known lens has its focal length PINNED and its scale freedom moves the camera's
-
-
 #                             distance (cam_moved(lens=True)): distance = focal x head size / pixels. BUILT, and OFF: on a scanned head
 #                             (h112, the rig's lens told) four chains with it ended at face 2.45-2.67 / lower face 2.9-3.6 mm against
 #                             2.02-2.15 / 2.3-2.5 for three without (the lens held by PHOTO_CAM_DIST_LENS's prior instead, the front
@@ -140,8 +122,6 @@ def distance_cost(dist_m: float, err: float = 0.2) -> dict:
 
 
 DIST_RANGE = (0.5, 2.0)     # a distance that is NOT known is taken to lie between these multiples of where the camera stands
-
-
 DIST_MEASURES = {"cheekbone": ("cheekbone_width", "skull_width"), "jaw": ("jaw_width", "gonial_width")}
 
 
@@ -197,8 +177,6 @@ def distance_lines(views: list, lens: list | None) -> list:
 
 
 CAM_STEP = (3.0, 3.0, 4.0, 2.0, 5.0, 4.0, 15.0)      # the most one Gauss-Newton round moves a camera (same units)
-
-
 LM_SIG = 1.5                          # mm: a clicked / detected landmark as an anchor (biased, never the measure)
 
 
@@ -220,63 +198,31 @@ def _landmark_obs(head, view, points):
 
 
 ADAPT_MIN = 8                         # solve(adapt=True): groups (type, view) of at least this many reads get their own scale
-
-
 CAM_LOOSE = 2.0                       # read(cam_first=n): the cameras-first rounds' freedom, x the cameras' sd
-
-
 CHIN_LM = (7, 8, 9)                   # differential anchors always include the chin's three
-
-
 NECK_HOLD = True                      # an anthropometric PRIOR on the neck's girth (ANSUR's mean and sd for the sex and stature) on a GNM-native head (solve_report.neck_row)
-
-
 SIZE_HOLD = True                      # the face's SIZE is held at the block-in's start head's (solve_report.size_row): no picture reads
-
-
 # it (every camera's scale and distance are free: a bigger head further away is the same image), so left free it is whatever the prior's
 # correlations make of the shape reads (GNM's head_000 is width AND size: Tess's narrow face came out 3 % small, tess_a1 3.4 % large, the
 # benchmark's heads 1-8 % large). Joe, 2026-10-12: "I'd trust the model more". compare(chin={"size": False}) / block_in_solve(size="free") releases it
 CHIN_TIE = False                      # compare(chin={"tie": ..}): the unread jaw / chin widths tied to their expectation (solve_report.tie_rows)
-
-
 TIE_OPEN = (35.0, 60.0)               # a view whose fitted camera is turned this much shows the far jaw on its silhouette: no tie on the jaw
-
-
 CHIN_LM_AXES = "auto"                 # ... "xy" | "y" | "x" | "none" | "auto" = left out when the set has a SIDE view (its outline reads
-
-
 #   the chin's height and projection to 0.3 mm; the detector's chin on a dressed picture stands 2.6 +-1.1 mm higher and
 #   2.4 mm aside of its chin on our clay render of the SAME head (eyes: 0.1) and, against that outline, left known heads'
 #   chins 3.9 mm short on average and their lower faces worse than the class mean they started from: the notes' "## chinread"), kept when it has none (nothing else reads the chin)
 SIDE_MIN = 60.0                       # degrees: a view whose fitted camera is turned at least this much is a side view
-
-
 LM_SIG_SCALE = 1.0                    # differential anchors: their sigma x this (their errors are CORRELATED: a bias, not scatter)
-
-
 LM_STRETCH = False                    # differential anchors: a free stretch (x, y apart) of the detector's face per view
-
-
 LM_STRETCH_UNIT = 0.05                # its nuisance column's unit: 5 % (prior sd NU_SD = 2 units: wide)
-
-
 SIG_IRIS_3Q = 0.5                     # mm: a 3/4 view's iris centre, detector on picture - detector on render (gaze differs)
-
-
 LM_SIG_DIFF = 1.0                    # mm: a DIFFERENTIAL anchor (the same detector on picture and render), + its pixel floor
-
-
 LM_PX = 0.6                           # picture px: the detector's own scatter on a small face (Garrett's: 1.2 mm / px)
-
-
 # (readmix, from groundtruth's Part 2) THE DIFFERENTIAL ANCHORS DO NOT CANCEL AT THE NOSE: at the TRUE head the detector on a
 # PHOTOGRAPH draws the nose base (landmarks 31-35) +1.7 / +1.6 mm wider than on our render of the same head (two scanned heads;
 # -0.1 on a render of a scan): our renders of a nose do not look to it like a photographed one. That much width is taken out
 # of the nose-base anchors of a view styled "photo", in proportion to each point's place across the base (0 = left as it was)
 LM_NOSE_WIDE = 0.0          # OFF (2026-10-14): scored on the three HELD-OUT HSRD subjects it was not calibrated on, the 1.65 mm
-
-
 #                             took the nose base from +0.6 / +1.4 / +0.6 mm to -0.9 / -0.8 / -1.5 (mean |error| 0.87 -> 1.07): the
 #                             wide nose of the two calibration heads is not a constant of the detector
 def _detect_model(head, cam, box):
@@ -363,17 +309,9 @@ def _anchor_obs(head, view, points, det, skip=()):
 # GNM skin vertex's picture position with the network's own sigma. ABSOLUTE (no render of the model): the network is
 # trained on our renders, so its landmark IS the vertex's projection. OFF by default (a pilot network).
 DENSE = False                         # reference_views(dense=None) takes this
-
-
 DENSE_SIG_SCALE = 1.0                 # x the network's sigma (2.0 until solvecams: the region floors and DENSE_NEFF do that job now)
-
-
 DENSE_SIG_FLOOR = 0.5                 # mm: never surer than this
-
-
 DENSE_MAX_MM = 3.0                    # a landmark the network is less sure of than this (mm) is left out (hidden, under hair)
-
-
 # (solvecams, 2026-10-13) THE NETWORK'S MEASURED ERROR at known heads through true cameras (6 heads, 3 dressings, one with
 # hair; spikes/solvecams/dres.py): per-axis mm by view kind and region = the FLOOR of a dense read's sigma there. Its own
 # sigma said 1.5-2.5 mm everywhere; at the truth it is 0.7 mm on a front view's lids and 4 on a true profile's, and the
@@ -386,20 +324,10 @@ DENSE_MAX_MM = 3.0                    # a landmark the network is less sure of t
 DENSE_REGION_SIG = {"front": {"lids": 2.1, "eyes": 2.3, "lips": 1.8, "brows": 2.1, "mouth": 1.4, "chin": 2.3, "nose": 1.5, "cheeks": 2.4, "forehead": 2.8},
                     "3q": {"lids": 2.4, "eyes": 2.2, "lips": 1.7, "brows": 1.9, "mouth": 1.7, "chin": 1.7, "nose": 1.8, "cheeks": 2.6, "forehead": 2.4},
                     "profile": {"lids": 2.9, "eyes": 2.6, "lips": 1.3, "brows": 2.5, "mouth": 1.8, "chin": 2.9, "nose": 2.0, "cheeks": 3.2, "forehead": 2.6}}
-
-
 DENSE_REGIONS = tuple(DENSE_REGION_SIG["front"])     # None = every skin landmark; or a tuple of denselm regions
-
-
 DENSE_IDENTITY = "all"                # "all" | "inner" (DENSE_INNER's regions only) | "none": the dense reads that may move identity
-
-
 DENSE_INNER = ("lids", "eyes", "lips", "brows", "mouth", "nose")
-
-
 DENSE_NEFF = 80                       # a view's dense reads count as this many independent ones (one crop, one network: neighbours err
-
-
 #                                       together): every sigma x sqrt(n / DENSE_NEFF)
 def dense_predict(head, view) -> dict | None:
     """The detector on a view's picture, its crop laid on the model's own 68 landmarks through the view's camera (then

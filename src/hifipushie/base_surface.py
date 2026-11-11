@@ -15,15 +15,9 @@ from .base_measures import head_of
 from .base_tubes import _neck_tube, _push, _soften, _tube_weight
 
 SEAL_OVERLAP = 0.0  # m: the contact rows pushed past each other for the FIELD (0.4 mm made the two lip sheets cross:
-
-
 # small holes in the field along the seam, Tess ts_h7)
 SEAL_H = 1.0  # the field's kernel widened this much at a sealed seam (2.0 tried: it blurred the seam's V into bigger holes)
-
-
 SEAL_H_REACH = 0.0025
-
-
 SEAL_V = (0.5, 0.25, 0.1)  # share of the vertical gap the 1st, 2nd, 3rd rows out from a sealed contact close (field only)
 
 

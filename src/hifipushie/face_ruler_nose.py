@@ -15,23 +15,13 @@ from .face_ruler_outline import _silhouette_vertices
 # along the line through both openings is read against the model's nostril RIM (GNM's exterior skin where it turns into the
 # nostril: fixed vertices) through the view's camera.
 NOSTRIL = False             # reference_views(nostrils=None) takes this. OFF: validated on ONE scanned head's front picture only (the
-
-
 #                             other scanned head's tip hides its nostrils, our own renders have no dark openings): there the
 #                             picture's opening ends 1.1 mm OUTSIDE the true rim on each side and 2.1 mm past it toward the midline
 #                             (the half-depth contour is larger than GNM's rim loop): a bias known from one head is not a calibration
 NOSTRIL_TURN = 30.0         # degrees: read in views turned less than this
-
-
 SIG_NOSTRIL = (0.8, 1.2)    # mm: an opening's lateral end / its medial end (validated on scanned heads: spikes/readmix/nostril_eval.py)
-
-
 NOSTRIL_ROI = 7.0           # mm round the model's rims that the picture is searched in
-
-
 NOSTRIL_AREA = (3.0, 160.0) # mm2: an opening smaller / larger than this is not one (hidden under the tip; a moustache's shadow)
-
-
 NOSTRIL_BIAS = (0.0, 0.0)   # mm: the picture's dark opening against the rim at the TRUE head (lateral, medial), taken out
 
 
@@ -96,26 +86,14 @@ def nostril_picture(img, centre, u, mmpx: float, roi_mm: float = NOSTRIL_ROI):
 # the camera's horizontal, outward, and the read is where the chosen FEATURE lies against the model's contour, minus its
 # BIAS measured at the truth on TRAIN subjects only (spikes/readmix/alar_eval.py); scored on the held-out ones.
 ALAR = True                 # reference_views(alar=None) takes this. ON (2026-10-14): on the three HELD-OUT HSRD subjects (4 calls, the
-
-
 #                             told-lens pooled start) the alar width error +1.7 / +1.1 / +1.7 -> +0.4 / +0.7 / +0.4 mm, nose base
 #                             +0.6 / +1.4 / +0.6 -> -0.9 / +0.9 / -0.8, lower face 2.74 / 3.49 / 3.61 -> 2.93 / 3.11 / 3.03 mm
 ALAR_TURN = 25.0            # degrees: read in views turned less than this
-
-
 ALAR_WIN = (-2.5, 4.5)      # mm along the outward horizontal, from the model's contour, searched
-
-
 ALAR_FEATURE = "edge"       # "valley" = the darkest point (the groove's shadow) | "edge" = the steepest fall going outward
-
-
 ALAR_BIAS = 0.3             # mm: the feature against the TRUE contour (+ = outside it): the steepest fall lies 0.29 mm
-
-
 #                             outside it on five TRAIN subjects (16 sides, sd 1.46); on the three HELD-OUT ones +0.15 (6 sides, sd 0.76)
 SIG_ALAR = 1.0              # mm: one side's read (its contour vertices count as one)
-
-
 ALAR_MIN = 0.04             # the least depth of the valley / step (luminance 0..1, against the profile's ends)
 
 

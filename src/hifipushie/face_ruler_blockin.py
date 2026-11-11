@@ -6,19 +6,13 @@ import numpy as np
 from .face_ruler import _C, _gnm
 
 EXPR_SET = ("compress_face", "surprise", "squint", "lips_roll_in", "corners_down", "happy", "mouth_left", "mouth_right")
-
-
 EXPR_SAY = {"compress_face": "frown / brows drawn down and together", "surprise": "brows raised (jaw dropped)", "squint": "squint",
             "lips_roll_in": "lips pressed", "corners_down": "mouth corners down", "happy": "smile (corners pulled)",
             "mouth_left": "mouth pulled to its left", "mouth_right": "mouth pulled to its right"}
-
-
 # the reads an expression may explain: the INTERIOR ones. TRIED with the outlines in (solvereads): per-view expression then
 # ate the profile (compress +0.9, surprise -0.9 on the 72 deg view: chin 10 mm back, the head 3.5 mm rms from the truth
 # after three calls against 1.8 without the term): a silhouette cannot tell an expression from a shape.
 EXPR_TYPES = ("landmark", "lid", "lip", "dense", "mp")
-
-
 # (readmix, 2026-10-14) expression="lower": each picture's LOWER-FACE expression free (the mouth: a slight smile, lips pressed /
 # rolled, corners down, mouth to one side), the upper face's classes PINNED at neutral (EXPR_PIN): solvereads' and groundtruth's
 # per-view runs let squint / surprise / compress take the misfit ("finds 0.18 of 0.30 plus spurious surprise / squint");
@@ -26,8 +20,6 @@ EXPR_TYPES = ("landmark", "lid", "lip", "dense", "mp")
 # blendshape scores are NOT a gate: a slight smile (GNM's happy x0.3, dressed) scores mouthSmile 0.024, neutral 0.001
 # (spikes/readmix/smilecal.py: on clay the score stays under 0.11 up to happy 0.3; one head scored 0 at 0.6)
 EXPR_LOWER = ("happy", "lips_roll_in", "corners_down", "mouth_left", "mouth_right")
-
-
 EXPR_PIN = 0.02
 
 
@@ -39,8 +31,6 @@ def expr_prior_of(expr, views) -> dict | None:
         side = v["kind"] == "profile"
         out[v["kind"]] = {n: (0.0, EXPR_PIN) for n in EXPR_SET if side or n not in EXPR_LOWER}
     return out
-
-
 EXPR_SD = 0.35              # prior sd of one expression coefficient (1 = GNM's full prototype of that expression class)
 
 

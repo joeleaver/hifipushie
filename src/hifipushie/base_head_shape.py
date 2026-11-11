@@ -7,17 +7,9 @@ from . import retopo
 from .base_identity import _lm_of, _local_smooth, region_weight
 
 HOLLOW_RADIUS = 0.016  # m: a hollow cheek's reach
-
-
 JAW_RADIUS = 0.009     # m: a bony jaw corner's reach (crisp: a soft one is a jowl)
-
-
 JAW_TUCK_RADIUS = 0.014  # m: the tucked under-jaw's reach
-
-
 HOOD_FORWARD = 0.4  # a hooded lid's fold comes down and this share of that forward, over the lid
-
-
 HOOD_REACH = 0.5    # its fold's height: this share of the lid-to-brow distance (and its centre 0.45 of the way up)
 
 
@@ -143,14 +135,8 @@ def _chin(W, lm, spec, mx, s):
 
 
 JAWLINE_RADIUS = 0.034   # m: how far from the old jaw line the skin still follows its move
-
-
 JAWLINE_SIGMA = 0.014    # m: along the line, each point follows the stretch of jaw line nearest it
-
-
 JAWLINE_TUCK = 0.016     # m: depth of the band under the new border / behind the new ramus that is drawn in
-
-
 JAWLINE_SMOOTH = 2       # rounds of smoothing of the move over the mesh
 
 
@@ -251,10 +237,7 @@ def _jawline(W, lm, ear, spec, mx, s, faces=None):
         lm[i] = lm[i] + (W - W0)[tr.query(lm[i])[1]]
     return W, lm
 
-
 LEAN_RADIUS = 0.03    # m: how far from the jaw's border the thinning reaches
-
-
 LEAN_KEEP = 0.004     # m: the border itself (this near the line) keeps its place: the bone doesn't thin
 
 
@@ -310,8 +293,6 @@ def _lean(W, lm, ear, spec, mx, s, faces):
 
 
 EAR_BLEND = 0.004  # m: the band at an ear's root over which its turn fades in (the skin round it is untouched)
-
-
 EAR_ROOT = 0.003   # m: ear vertices this near the rest of the skin are its attachment
 
 
@@ -429,8 +410,6 @@ def _sstep(x):
 
 
 PLANES_KEEP = {("nose_region",): 10, ("upper_lip_region", "lower_lip_region", "chin_region"): 30}  # features _planes
-
-
 # leaves alone (group names: feather rounds); the lips and chin fade out wide: feathered at 10 the kept muzzle met the
 # pushed cheek in a crease (a smile fold beside the mouth)
 def _planes(V: np.ndarray, pts: np.ndarray, n: float, g: dict, hold: float = 0.8, keep: float = 1.0) -> tuple:

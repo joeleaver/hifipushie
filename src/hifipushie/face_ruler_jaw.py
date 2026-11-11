@@ -9,14 +9,8 @@ from .face_ruler_outline import PARSE_MODEL, _resample
 
 # ---- the jaw's edge against the neck (skin on skin: no silhouette, no parser class) -----------------------------------
 JAW_REACH = 7.0             # mm: the picture's step is looked for this far either side of the model's contour
-
-
 JAW_MIN = 0.035             # luminance (0..1): the least step from the lit jaw to the neck under it
-
-
 SIG_JAW = 0.8               # mm: one jaw-under read (validated on dressed renders: spikes/solvereads/jval.py)
-
-
 JAW_STEP = 2.0              # mm between reads along the contour
 
 
@@ -146,17 +140,9 @@ def _jaw_obs(head, view, ps):
 
 # ---- the jaw / chin in front of CLOTH (chinread): skin on cloth, inside the figure's mask ----------------------------------
 CLOTH_EDGE = False          # default of view["chin"]["cloth"]
-
-
 CLOTH_REACH = 9.0           # mm: the picture's skin / cloth edge is looked for this far either side of the model's contour
-
-
 SIG_CLOTH = 0.6             # mm: one read (validated on dressed renders with a collar laid behind the jaw: spikes/chinread/clval.py)
-
-
 CLOTH_STEP = 2.0            # mm between reads along the contour
-
-
 CLOTH_DROP = 0.012          # m: the model's own surface (or nothing) lies at least this far behind the contour, 2.5 and 5 mm outside it
 
 
@@ -245,26 +231,12 @@ def _cloth_obs(head, view, ps):
 
 # ---- the jaw's lower edge as a SHADING ramp, picture against our own render under the picture's light (chinread) ---------
 RAMP = False                # default of view["chin"]["ramp"]
-
-
 RAMP_LM = (4, 12)           # the jaw line's landmarks the profiles cross: the jaw's body and the chin (the ramus is a silhouette)
-
-
 RAMP_STEP = 3.0             # mm between profiles along the jaw line
-
-
 RAMP_HALF = 13.0            # mm: a profile's half length across the jaw line
-
-
 RAMP_REACH = 7.0            # mm: the largest shift looked for
-
-
 RAMP_MIN = 0.10             # the least fall of the profile (share of its lit level) in the render AND in the picture
-
-
 RAMP_NCC = 0.90             # the least correlation of the two profiles at the best shift
-
-
 SIG_RAMP = 1.0              # mm: one profile's shift (validated: spikes/chinread/rval.py)
 
 

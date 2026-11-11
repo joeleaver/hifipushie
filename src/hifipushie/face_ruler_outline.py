@@ -48,14 +48,8 @@ def plain_backdrop(img, thr: float = 30.0) -> float:
 
 
 PARSE_MODEL = "mediapipe"   # faceparse: the outline's parser (validated: spikes/refread/pval.py)
-
-
 PARSE_SIG = 0.5             # mm: an outline read off the parser's mask (rms 0.2-0.5 on dressed renders, painted backdrop)
-
-
 PLAIN_MIN = 0.75            # parse="auto": the plain-background reader is used when the backdrop is this plain ...
-
-
 PLAIN_READS = 40            # ... and it finds this many outline samples in the view; else the parser
 
 
@@ -173,14 +167,8 @@ def _outline_obs(head, view, mask_model, mask_pic, trust=None, curve=None):
 
 
 HAIR_EDGE = True            # reference_views(hair_edge=None) takes this
-
-
 SIG_HAIR_EDGE = 0.8         # mm: a skin | hair boundary off the parser (its outline reads: 0.5; + strands lying on the skin)
-
-
 HAIR_EDGE_MIN = 0.5         # mm: the read is ONE-SIDED: only a boundary this far OUTSIDE the model's outline pulls
-
-
 OUTLINE_FEW = 20            # a view with fewer two-sided outline reads than this is said to have none worth the name
 
 

@@ -12,37 +12,17 @@ from .terrain_mesh import DEFAULTS, smax, smoothstep
 
 # ---------------------------------------------------------------- volumes
 NORMAL_H = 0.125  # the normals' stencil, voxels: exact on each side of a crease (split_normals splits at creases)
-
-
 NEAR = 2.5  # how far from a volume's surface the rock character reaches (m)
-
-
 # the rock relief is evaluated only where its weight is over RELIEF_CUT (a cost cull), and eased in from there to
 # RELIEF_FADE, so the field stays continuous where the cull starts (Field._solid)
 RELIEF_CUT = 0.01
-
-
 RELIEF_FADE = 0.1
-
-
 JUMP_LIMIT = 3  # sampled texels with a step under them (terrain_bake.bake_texels) a tile LOD may have (seam_check)
-
-
 BURIED_DEEP = 0.1  # a face is buried when its centre is deeper in the rock than this x sqrt(its area) (and > the LOD threshold)
-
-
 FLOAT_PIECE = 50.0  # m2: closed cliff pieces off the tile border that never reach the ground, under this: dropped, logged
-
-
 FLOAT_TOL = 0.15  # m over the pushed heightmap that still counts as reaching the ground (terrain_cliffs.floating's tol)
-
-
 EXPOSED_OFF = 0.5  # m out along a face's normal: rock there = behind the visible surface (terrain_cliffs.EXPOSED_OFF)
-
-
 BURIED_SHADE = 0.6  # the buried back's material: the rock's mean colour under it x this (never white)
-
-
 FALL_SEAT = 0.5  # fallen blocks seat this share of the rock relief's reach (x its weight) under the column's ground
 
 
@@ -157,14 +137,8 @@ TUBE_RUN = 16  # segments a tube evaluates together, at the points in their run'
 
 
 STACK ={"radius": 0.75}
-
-
 STACK_BUILD = 0.05  # m: the most rock relief may build out from a stack
-
-
 STACK_CARVE = 0.3  # m: ... and carve into it (cartoon facets 1.4 x cut a fin of a stack loose 5 m up: the stack's own
-
-
 # form carries its shape, the relief is texture on it)
 # a solid sea stack's radius x the sea's stack radius; its form is terrain_stack.FORM (a jointed column), a style's
 # sheet may override it (rock.stack)

@@ -60,6 +60,7 @@ def under(g: dict, H, az, el, d_in):
     return np.maximum(H - depth, np.minimum(H, 0.0015))
 
 
+
 SIDE_TUCK = (0.25, 0.65)  # |lateral| of the head direction where a top lock starts / ends lying down on the side
 
 
@@ -73,17 +74,9 @@ def side_tuck(az, el, W=None):
 
 
 TIP_STEP = 0.25  # how far a top lock's tip lifts off the lock under it, x its thickness
-
-
 SIDE_NARROW = 0.35  # and how much narrower it gets there
-
-
 FILL_SINK = 1.0  # how much of a fill lock's thickness the side/back mass sinks under it
-
-
 REGIONS = ("front", "top", "sides", "back", "nape")
-
-
 GROOM = {
     "fit": None,  # head_ref() of the head this groom was made on: lengths / volumes in metres scale with the head
     "hairline": {"front": 0.85, "temples": 0.008, "sideburns": None, "nape": 0.0, "ear": None, "ear_from": "mesh"},
@@ -117,8 +110,6 @@ GROOM = {
     "seed": 0,
     "centre": "head",  # without face landmarks (a kit-built head): the joint (or [x, y, z]) the scalp is measured from
 }
-
-
 LOOK = {"gap": "#221310", "lit": "#56352d", "sheen": "#86524a", "grey": "#9a948d", "roughness": 0.42,
         "sheen_amount": 0.45, "vary": 0.25, "grooves": 5, "groove_depth": 0.12, "anisotropic": 0.7,
         "edge": 0.55, "root": 0.12, "specular": 0.5, "band_shift": 0.25, "tip": "#7a5038", "tip_amount": 0.0,
@@ -149,8 +140,6 @@ LOOK = {"gap": "#221310", "lit": "#56352d", "sheen": "#86524a", "grey": "#9a948d
         # sun_length m: the hair's age (m from the scalp) by which `sun` lightening is full (default 0.28); shorter =
         # the dome lightens too, not only the lengths (the front view sees the first cm of every strand)
         "sun_length": None, "sun_warm": None}  # sun_warm 0..1 (default 1): the sun-lightened lengths also warm; 0 = ash  # fine_alpha: EEVEE's opacity of single hairs (the halo, locks of `hairs`)  # band: a tie's colour; strand_relief: the cards' normal map  # edge: how far across a lock its edges darken; root: how far
-
-
 # along the root darkens (0..1 of the length)
 # seen: the hair's colour as it should READ (sRGB hex; e.g. the brighter half of a photo's hair pixels). The colour
 # keys are asked for the renderer, which gives back about eevee_sat of their saturation (Cycles' hair BSDF; EEVEE's
@@ -160,8 +149,6 @@ LOOK = {"gap": "#221310", "lit": "#56352d", "sheen": "#86524a", "grey": "#9a948d
 # and eevee_sat = seen's saturation / lit's (EEVEE then draws seen exactly; Cycles gets what the gamut allows).
 # Keys given in the look still win.
 SEEN = {"gap": 0.3, "sheen": 1.45, "tip": 1.12}  # x lit (linear)
-
-
 CARD_SAT_EXP = 0.55  # card_sat = eevee_sat ** this when the look has eevee_sat and no card_sat (full_look)
 
 
@@ -217,27 +204,17 @@ def full_look(look: dict | None) -> dict:
         # look. The cards take the strands' lift (an explicit card_gain, measured by check_tiers, wins)
         lk["card_gain"] = float(lk.get("eevee_gain", LOOK["eevee_gain"]))
     return {**LOOK, **lk}
-
-
 LOCK_KEYS = {"pts", "width", "thickness", "cup", "taper", "belly", "root", "twist", "flip", "grey", "radius", "tilt",
              "handles", "tier", "edge", "hand", "free", "space", "core", "strands", "swoop", "hairs"}
-
-
 # hairs: n > 0 = the lock is n SINGLE strands (strand grooms: loose hairs beside a face; hair_strands.WISPS)
 # free: 0..1, the lock hangs clear of the head (its underside is hair too, not the dark gap side); space "xyz": pts
 # are metres from the head centre [x, y, z] (hair that leaves the head: a tail), not [az, el, h]; core: a polyline
 # (same space) the lock's outward side faces away from (a tail's own axis); strands: this lock's own card numbers
 MOD = {"width": "Width", "thickness": "Thickness", "cup": "Cup", "taper": "Taper", "belly": "Belly", "root": "Root",
        "twist": "Twist", "flip": "Flip", "grey": "Grey", "edge": "Edge", "free": "Free"}
-
-
 LOCK_DEFAULTS = {"taper": 1.0, "belly": 0.3, "root": 0.6, "twist": 0.0, "flip": 0.0, "grey": 0.0, "cup": 0.002, "edge": 0.8,
                  "free": 0.0}
-
-
 STYLES = ("locks", "cards", "strands")  # hair.style: solid sculpted locks (stylised), or strand cards (hair_cards.py)
-
-
 WORDS = {"back": (0, 1, 0), "forward": (0, -1, 0), "down": (0, 0, -1), "up": (0, 0, 1), "left": (1, 0, 0),
          "right": (-1, 0, 0), "away": None}
 

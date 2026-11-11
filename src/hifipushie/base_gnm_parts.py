@@ -110,32 +110,18 @@ def gnm_eyes(V: np.ndarray, g: dict) -> list:
 
 
 MOUTH_PUSHED = 0.001  # m: lips a style moved this far off GNM's own surface no longer fit GNM's teeth (the kit's interior)
-
-
 MOUTH_PARTED = 0.0015  # m: inner lips further apart than this = an open mouth (the bag is cut; closed, a fill)
-
-
 EYE_PART_VOXEL = 0.00025   # m: the eyes part's own voxel (see implied_parts)
-
-
 # GNM's two tooth rows are separate parts: in one part's field the rows touch at the bite and were meshed as ONE
 # piece, so jawOpen (the lower row's move, the upper row's none) stretched the triangles joining them into shards.
 # min_triangles per row: at 600 for both rows a decimated row bulged out through the closed lips; the export now takes
 # GNM's own quads for the rows (asset.own_mouth_meshes, 2828 triangles a row) and the floor keeps them whole.
 TEETH_PARTS = ("teeth", "teeth_lower")  # (upper row, lower row), each with its gums
-
-
 MOUTH_PARTS = {"teeth": {"color": [0.86, 0.83, 0.74], "roughness": 0.3, "voxel": 0.0004, "min_triangles": 4000},
                "teeth_lower": {"color": [0.86, 0.83, 0.74], "roughness": 0.3, "voxel": 0.0004, "min_triangles": 4000},
                "tongue": {"color": [0.62, 0.46, 0.43], "roughness": 0.45, "voxel": 0.0008, "min_triangles": 4000}}
-
-
 GUM_COLOR = [0.68, 0.32, 0.33]
-
-
 BAG_COLOR = [0.2, 0.07, 0.07]
-
-
 MOUTH_SUBDIVIDE = 2  # Catmull-Clark rounds on GNM's teeth / tongue before their field (edges ~2 mm -> ~0.5 mm)
 
 
@@ -230,15 +216,9 @@ def gnm_mouth(head: dict) -> dict:
 
 
 TEETH_CROWN_GROW = 1.35  # GNM's crowns are ~7 mm tall where a front incisor's is ~10.5 (adult mean); reviews expr_r7 /
-
-
 # r8 and the coordinator: "small pegs", the reference's incisors about twice the height below the lip
 TEETH_ARC = 0.0008  # m: the biting edge rises this much from the centrals to the canines (16 mm out), on a parabola
-
-
 TEETH_LEVEL_BAND = 0.0012  # m across: the neighbourhood a vertex reads its tooth's edge from
-
-
 TEETH_WIDEN = 1.05  # the arch across (GNM's 27 mm at 6 mm behind the front; inter-canine ~34 mm)
 
 
@@ -337,8 +317,6 @@ def sock_points(head: dict) -> dict:
 
 
 LIP_CLOSE = {"n": 40, "span": 0.97, "x": 15, "gap": 0.15, "overlap": 0.2, "lead": 0.3, "hold": 0.3, "corner": 0.6, "iters": 4}
-
-
 _LIPC: dict = {}
 
 

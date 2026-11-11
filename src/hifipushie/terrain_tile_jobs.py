@@ -15,8 +15,6 @@ from .terrain_tile_mesh import ZOFF, _border_keys, _boundary_edges, _tile_mc
 from .terrain_volumes import FLOAT_PIECE, FLOAT_TOL, _sea, stacks, through_view, volumes
 
 WORKER_GB = 2.0  # a tile worker's peak PSS with maps: 1.04 GB on pebble (0.5 m voxel), 1.93 GB on a 10 x 10 tile block
-
-
 # of t3_alps (1 m voxel, a 3 x 4 km terrain in the parent); field calls chunked, dense meshes streamed through
 # <out>/_work (2.2 GB on pebble before that)
 def _pool():

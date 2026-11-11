@@ -362,19 +362,11 @@ class Materials:
 
 # (`strata`): bed spacing, jitter share, plane ramp, soft beds' set-back (m); tone: soft beds' darkening
 THIN_VOID = 8.0  # m: within this of a cave or notch thin rock keeps the old rule (Field.steep's tenth)
-
-
 THIN_RELIEF = 0.35  # thin rock's relief: at most this share of its local half-thickness (Field.thin_cap); 0 = the old
-
-
 # rule (thin fins and stacks took a tenth of the relief: smooth, Durdle Door without its beds)
 THIN_TONE = 1.0  # how much of the full bed tone thin fins take back (Materials, rock colour)
-
-
 BLOCK_TONE = {"bed": 0.06, "thin": 0.08, "block": 0.04, "p_fresh": 0.05, "fresh": 0.08, "warm": [0.04, 0.0, -0.06],
               "along": 0.10, "under_ledge": 0.12}
-
-
 # block_colour's spread: per bed and per block (+-), thin packages darker, the share of freshly spalled blocks and how
 # much paler (and warmer, per channel) they are; weathering along the beds (+-) and the darkening under each ledge
 def block_colour(P, N, rc, r, fd, lines=True):

@@ -25,8 +25,6 @@ def kind_of(yaw: float) -> str:
 
 
 VIEW_DOUBT = 15.0                     # degrees between a view's stated yaw and its fitted camera's turn: say so
-
-
 KIND_SAY = {"front": "a front view", "3q": "a three-quarter view", "profile": "a profile"}
 
 
@@ -363,6 +361,8 @@ def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD7, hair: bool = True,
             "held": res.get("held") or [], "tie": tie, "expr": res.get("expr") or {}, "kinds": [v["kind"] for v in views],
             "readers": [v.get("reader") for v in views], "camera_lines": cam_lines, "bound": res.get("bound") or [], "disagree": dis["groups"],
             "n_view": n_view, "inferred": distance_inferred(res["views"], [v.get("lens") for v in views])}
+
+
 
 
 def nostril_lines(obs: list, views: list) -> list:

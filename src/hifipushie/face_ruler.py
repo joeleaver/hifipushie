@@ -43,20 +43,10 @@ from __future__ import annotations
 import numpy as np
 
 STEP_MM = 1.5            # outline sample spacing
-
-
 SIG = {"outline": 0.3, "iris": 0.12, "lips": 0.25, "brows": 0.2}     # mm: each observation's noise (validated)
-
-
 SIG_LIMBUS = (0.25, 0.6)  # mm: a limbus read in a turned view, across (the depth's direction) / up
-
-
 REACH_MM = 14.0          # an outline further than this from the model's is not matched
-
-
 TAU = 1.0                # prior sd of each identity component of (target - model)
-
-
 # The reader's own error per measure with the camera KNOWN (mm; sd of reader - mesh truth, 60 clay pairs incl. 20 from
 # GNM's template: spikes/faceruler/validate.py "hair" variant) and the factor the posterior sd is short by when the
 # camera was fitted (observed / posterior, median over measures). The table's +- is hypot(ERR_POST x posterior, ERR).
@@ -68,14 +58,8 @@ ERR = {"pupils_apart": 0.05, "eyes_forward": 0.19, "eyes_height": 0.3, "brows_ov
        # the orbit's rims (orbit, 2026-10-11): NOT validated on clay of raw GNM heads; half the block-in path's error
        # with the cameras known (spikes/orbit/osum.py known/all: 1.05 / 1.04 / 1.72 / 0.88)
        "brow_ridge_forward": 0.5, "side_rim_forward": 0.5, "under_eye_forward": 0.9, "brow_hollow": 0.45}
-
-
 ERR_POST = 1.5
-
-
 SUPER = 1                # mask supersampling
-
-
 _C: dict = {}
 
 

@@ -16,7 +16,6 @@ from .profiling import span as _span
 # non-manifold slivers (the seam check caught them). x and y stay on the tile borders.
 ZOFF = 0.137
 
-
 class Grid:
     """The world's tile grid and the meshing lattice per LOD."""
 
@@ -149,8 +148,6 @@ def _boundary_edges(faces):
 
 
 PRE = 32  # x a coarse LOD's budget: what its dense-mesh fallback reaches in one pyfqmr pass before the budget search
-
-
 # (replayed on the alps block's 12 fallbacks: 85 -> 37 s, faces <= the old ones in every case, summed error p99
 # 6.2 -> 5.7 m; 4x and 8x were faster still but their meshes sat further off the rock at the same count)
 def _decimate(P, faces, err, budget, field, border_ok=None, pre=None):

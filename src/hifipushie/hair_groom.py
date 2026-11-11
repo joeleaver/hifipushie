@@ -88,26 +88,14 @@ def look_of(spec: dict, h: dict | None = None) -> dict:
 
 
 POCKET = 0.012  # m: (one mesh) air this deep along a scalp ray is outside the head, not a pocket in it (an ear canal)
-
-
 HAIRLINE_JOIN = 25.0  # deg of azimuth over which the default line past traced front_points eases onto their end
 
 
 EAR_OPEN = 19  # cells of azimuth (x Scalp.STEP deg = 38): what stands off the head narrower than this is "a bump"
-
-
 EAR_BUMP = 0.004  # m a ray must stand off the head without the bump to count as ear
-
-
 EAR_LOW = 0.0015  # m: ... and what the ear is grown into from there
-
-
 EAR_OVER = 0.006  # m the line runs over the found ear's top by default (groom.hairline.ear)
-
-
 EAR_CLEAR = 0.003  # m: the hairline never runs lower over the found ear than this above its top
-
-
 SIDEBURNS = 0.014  # m the sideburn reaches below the found ear's top by default
 
 
@@ -568,11 +556,7 @@ _METRE_KEYS = {("length",), ("volume",), ("hairline", "temples"), ("hairline", "
                ("loose", "fringe", "level"), ("tie", "out"), ("tie", "gather", "lift"), ("tie", "gather", "width"),
                ("tie", "tail", "length"), ("tie", "tail", "fullness"), ("tie", "curtain", "lift"),
                ("tie", "frame", "length"), ("tie", "frame", "width")}
-
-
 _UNITLESS = {"across", "ramp"}  # (volume.across / ramp are shares, not metres)
-
-
 # The tie's own geometry that a tied STYLE writes in absolute metres (hair_flow.style: the dome's stand-off, wisp and
 # stray lengths, the tail's sway / air / lock waves). Until 2026-10-14 fit_to_head did not scale these: th_W18 carried
 # onto tp_h3 (a 15 % bigger scalp) kept its dome and face wisps at the old head's size while its tail scaled (review:

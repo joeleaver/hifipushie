@@ -481,8 +481,6 @@ def _local_thickness(H, c, r_open, thin):
 
 
 HOLD_REACH = 30.0  # m from a river's water line where the 3D field's ground keeps the banks the terrain grid has
-
-
 HOLD_FREEBOARD = 0.3  # m over the water the banks are kept (forms.water grades banks from level + 0.3)
 
 
