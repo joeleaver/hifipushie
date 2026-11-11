@@ -17,7 +17,9 @@ from __future__ import annotations
 import numpy as np
 
 OFF_BODY = 0.5  # m: no garment point starts this far from the body it is worn on (a sleeve's cuff hangs ~0.1 m off)
-ORIGIN = 1e-9  # m: a point exactly here was never set (the build's X starts as zeros)
+ORIGIN = 0.03  # m: a point this near the origin was never set (the build's X starts as zeros; the origin is the floor
+# between the feet, where no garment hangs). C420, t s5-2: an unplaced collar ply followed its host's unset points to
+# 3 mm off the origin (a LAYER inside), passed an exact-zero test, and drew a spike of cloth to the floor
 CROSS = 0.02  # m: two points of one piece this far apart on its flat can't be one node (a seam corner's are < a link)
 
 
