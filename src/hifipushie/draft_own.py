@@ -22,8 +22,10 @@ Declarations (JSON beside the code; names are step 1's):
   nearest names: C408); closures [closures.py entries, "edge": {"over": edge, "under": edge}]; omit {piece: why};
   darts [{"piece", "legs": [edge, edge], "why"?}] (C361; each leg declared "outline point>tip"): a dart OPEN on the outline (the seam path runs in along one
   leg to the tip and out along the other), its two legs declared edges of the piece, sewn to each other (the seam check
-  holds them to one length; they must meet at the tip). A dart drawn inside a piece (a fish dart's closed path) isn't
-  sewn: open it on the outline (cut the seam path to its tip) to take its suppression.
+  holds them to one length; they must meet at the tip). A dart drawn INSIDE a piece (a fish dart; a dart ending in a
+  pocket mouth): {"piece", "inside": <its closed path of the part>, "release": [part points..., named outline point]}:
+  drawn as it is, never cut by hand; the tool cuts it through along release and sews dart and cut shut (draft_dart_cut.py,
+  C415).
   departs {edge: why} (C381): a step-1 seam drafted more than 30 % off its approved estimate, said with what the
   reference shows there (else row style_lengths FAILs).
   marks {detail: mark | [marks]}: WHERE each step-1 detail sits on the pattern, decided here once (garment_details.py
@@ -273,10 +275,13 @@ def validate(decl: dict, step1: dict, parts: dict | None = None) -> list:
                        "(either may be one edge of a chain: a two-piece sleeve's cap set into the whole armhole as ONE seam, "
                        "[cap edges] = [armhole edges], sews every cap / armhole pair of step 1: C365; each edge of a chain starts "
                        "where the one before it ended, both chains the same way round: C403)")
+    from . import draft_dart_cut as dcut
     for i, dt in enumerate(decl.get("darts") or []):
         p, legs = dp.base_name(str((dt or {}).get("piece")), decl), (dt or {}).get("legs")
         if p not in pcs:
             bad.append(f"darts[{i}]: no drafted piece {dt.get('piece')!r}")
+        elif dcut.is_inside(dt):  # (C415: a dart drawn inside the piece; the tool cuts it through along release)
+            bad += dcut.check(i, dt, (parts or {}).get((pcs.get(p) or {}).get("part")) if parts is not None else None)
         elif not (isinstance(legs, list) and len(legs) == 2 and legs[0] != legs[1]):
             bad.append(f"darts[{i}] on {p}: legs = [two edges of the piece] (the dart's sides, sewn to each other)")
         else:
@@ -344,6 +349,23 @@ def _resolve_path(pc: dict, part: dict, edge: str, path: str) -> str:
     return ">".join(names)
 
 
+def _cut_inside_darts(pc: dict, part: dict, nm: str, decl: dict, ped: dict) -> dict:
+    """Piece nm's inside darts cut through (draft_dart_cut, C415): its edges with the two legs added."""
+    from . import draft_dart_cut as dcut
+    for dt in decl.get("darts") or []:
+        if dcut.is_inside(dt) and dt.get("piece") == nm:
+            try:
+                cut = dcut.open_inside(pc, part, dt, ped)
+            except dcut.Refused as e:
+                raise DraftRefused(str(e)) from None
+            names = []
+            for i, (ea, eb) in enumerate(cut["pairs"]):
+                ped[f"{dt['inside']}.s{i}a"], ped[f"{dt['inside']}.s{i}b"] = ea, eb
+                names.append([f"{dt['inside']}.s{i}a", f"{dt['inside']}.s{i}b"])
+            pc.setdefault("cuts", {})[dt["inside"]] = names
+    return ped
+
+
 def block(pat: dict) -> dict:
     """THE converter: the saved draft + declarations (pat["dir"]) as a cloth.pieces block."""
     from . import pattern
@@ -357,7 +379,8 @@ def block(pat: dict) -> dict:
         part = draft["parts"][pd["part"]]
         pc = pattern.from_freesewing(part, nm, fold=pd.get("fold"))
         arcs[nm] = {}
-        for ed, how in sorted((edges.get(nm) or {}).items(), key=lambda kv: isinstance(kv[1], dict) and "mirror_of" in kv[1]):
+        ped = _cut_inside_darts(pc, part, nm, decl, dict(edges.get(nm) or {}))
+        for ed, how in sorted(ped.items(), key=lambda kv: isinstance(kv[1], dict) and "mirror_of" in kv[1]):
             if isinstance(how, dict) and "mirror_of" in how:  # (a folded piece's other half, sewn to a pair's other copy)
                 try:
                     arcs[nm][ed] = draft_pairs.mirror_arc(pc, arcs[nm][how["mirror_of"]])
@@ -396,9 +419,10 @@ def block(pat: dict) -> dict:
     darts = []  # (C361: a dart's legs sewn to each other, as a seam of the piece to itself)
     for dt in decl.get("darts") or []:
         for p in [q for q in (dt["piece"], f"{dt['piece']}.L", f"{dt['piece']}.R") if q in arcs]:
-            S = [f"{p}:{arcs[p][dt['legs'][0]]}", f"{p}:{arcs[p][dt['legs'][1]]}"]
-            seams.append(S)
-            darts.append({"piece": p, "legs": S, "why": dt.get("why", "")})
+            for lg in (out[p].get("cuts") or {}).get(dt["inside"], []) if "inside" in dt else [dt["legs"]]:
+                S = [f"{p}:{arcs[p][lg[0]]}", f"{p}:{arcs[p][lg[1]]}"]  # (an inside dart: its cut, then its sides)
+                seams.append(S)
+                darts.append({"piece": p, "legs": S, "why": dt.get("why", ""), "inside": "inside" in dt})
     folds = []
     for f in decl.get("folds") or []:
         f = dict(f)
@@ -420,6 +444,11 @@ def block(pat: dict) -> dict:
             "darts": darts}
 
 
+def _at_cut(na: str, tags: set) -> bool:
+    q = na.lstrip("|").split(">")[-1].split(":")[-1]
+    return q.endswith((".cut_a", ".cut_b")) and q.rsplit(".", 1)[0] in tags
+
+
 # ---------------------------------------------------------------- the flat gate
 def gate(B: dict, decl: dict, step1: dict, stand_ref: dict | None = None, step3: dict | None = None,
          fit: dict | None = None, body: dict | None = None, step2: dict | None = None) -> list:
@@ -431,6 +460,7 @@ def gate(B: dict, decl: dict, step1: dict, stand_ref: dict | None = None, step3:
     rows = []
     sm = cc.seams(B)
     bad = []
+    cut_tags = {dt.get("inside") for dt in decl.get("darts") or [] if isinstance(dt, dict) and dt.get("inside")}
     for r in sm:
         n = (B.get("seam_notes") or {}).get(json.dumps([r["a"], r["b"]]))
         lo, hi = n["ease"] if n else (-PLAIN_TOL, PLAIN_TOL)
@@ -441,6 +471,8 @@ def gate(B: dict, decl: dict, step1: dict, stand_ref: dict | None = None, step3:
             bad.append(f"{r['a']} || {r['b']}: {r['len_a_mm']:.1f} vs {r['len_b_mm']:.1f} mm, ease {100 * e:+.1f}% "
                        f"outside [{100 * lo:+.1f}, {100 * hi:+.1f}]%")
         seen_n = set()
+        if r.get("notches_off"):  # (C415: a chain joined at a dart's cut-through is one seam: the cut is sewn shut)
+            r["notches_off"] = [x for x in r["notches_off"] if not _at_cut(x[0], cut_tags)]
         for na, nb, d in r.get("notches_off") or []:  # (C387, t s4-16 / s4-17: listed "FAIL" under a PASS row)
             na = na.lstrip("|").split(">")[-1].split(":")[-1].removesuffix("-notch")  # (a notch, or a chain's joint)
             if (na, nb) in seen_n:
@@ -455,21 +487,9 @@ def gate(B: dict, decl: dict, step1: dict, stand_ref: dict | None = None, step3:
                  "fix": "redraft the shorter side, or declare the ease with why; a notch off: move it (or the chain's "
                         "start) so the two meet, e.g. a sleeve's top notch onto the shoulder seam", "back_to": "4",
                  "detail": sm})
-    if B.get("darts"):  # (C361: a dart's legs meet at its tip; each declared from the outline toward the tip)
-        from . import pattern
-        far = []
-        for dt in B["darts"]:
-            ends = []
-            for e in dt["legs"]:
-                p, arc = e.split(":", 1)
-                pc = B["pieces"][p]
-                ends.append(pc["P"][pattern.arc_indices(pc, arc)][-1])
-            gap = float(np.linalg.norm(ends[0] - ends[1])) * 1000
-            if gap > 1.0:
-                far.append(f"{dt['piece']}: its legs end {gap:.1f} mm apart")
-        rows.append({"id": "darts", "status": "FAIL" if far else "PASS", "value": f"{len(B['darts'])} darts",
-                     "target": "each dart's two legs run from the outline to ONE tip (declare both toward the tip)",
-                     "why": "; ".join(far), "fix": "declare each leg 'outline point>tip'", "back_to": "4"})
+    from . import draft_dart_cut
+    if B.get("darts"):
+        rows.append(draft_dart_cut.row(B))  # (C361: legs meet at their tip; C415: no hand-cut slits)
     from . import draft_notches
     rows.append(draft_notches.row(B))  # (C412: a notch outside its piece, copied from the part it was drawn from)
     from . import draft_darts_inv

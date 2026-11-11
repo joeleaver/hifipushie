@@ -394,6 +394,97 @@ def test_a_dart_open_on_the_outline_is_sewn(home):  # (t s4-1: no way to declare
     assert any("no edge nope" in b for b in do.validate(decl, STEP1, out["parts"]))
 
 
+def test_a_slit_cut_by_hand_to_open_a_dart_fails(home):  # (t s4-22 / s4-23: 1 mm slits to the hem; C415)
+    import copy
+    from hifipushie import cloth, draft_own as do
+    src = RECT.replace(
+        "paths.seam = new Path().move(points.tl).line(points.bl).line(points.br).line(points.tr).line(points.tl).close()",
+        "points.d1 = new Point(w / 2 - 0.5, 0); points.tip = new Point(w / 2, 90); points.d2 = new Point(w / 2 + 0.5, 0)\n"
+        "    paths.seam = new Path().move(points.tl).line(points.bl).line(points.br).line(points.tr).line(points.d2)"
+        ".line(points.tip).line(points.d1).line(points.tl).close()")
+    d = home / "slit"
+    out = do.node_draft(src, {"waist": 800}, d=d)
+    decl = copy.deepcopy(DECL)
+    for p in ("panel.L", "panel.R"):
+        decl["edges"][p].update({"in": "d1>tip", "out": "d2>tip"})
+    decl["darts"] = [{"piece": "panel.L", "legs": ["in", "out"]}]
+    (d / "draft.json").write_text(json.dumps(out))
+    (d / "declarations.json").write_text(json.dumps(decl))
+    B = cloth.pieces({"pattern": {"from": "own", "dir": str(d)}}, {"waist": 800})
+    blk = do.block({"dir": str(d)})
+    B["edge_arcs"], B["darts"] = blk["edge_arcs"], blk["darts"]
+    r = {x["id"]: x for x in do.gate(B, decl, STEP1)}["darts"]
+    assert r["status"] == "FAIL" and "slit cut by hand" in r["why"] and "inside" in r["why"], r
+
+
+def test_a_dart_inside_the_piece_is_cut_through_and_sewn(home):  # (t s4-23: a fish dart slit to the hem by hand; C415)
+    import copy
+    import numpy as np
+    from hifipushie import cloth, draft_own as do, draft_dart_cut as dcut, pattern
+    src = RECT.replace(
+        "paths.seam = new Path().move(points.tl).line(points.bl).line(points.br).line(points.tr).line(points.tl).close()",
+        "points.bm = new Point(w / 2, h); points.dt = new Point(w / 2, 60); points.dr = new Point(w / 2 + 15, 150)\n"
+        "    points.db = new Point(w / 2, 240); points.dl = new Point(w / 2 - 15, 150); points.pk = new Point(w / 2, 255)\n"
+        "    points.lm = new Point(0, 200); points.pr = new Point(w / 2 + 40, 200)\n"
+        "    paths.seam = new Path().move(points.tl).line(points.bl).line(points.bm).line(points.br).line(points.tr)"
+        ".line(points.tl).close()\n"
+        "    paths.dart = new Path().move(points.dt).line(points.dr).line(points.db).line(points.dl).line(points.dt)"
+        ".close().hide()")
+    d = home / "idart"
+    out = do.node_draft(src, {"waist": 800}, d=d)
+    decl = copy.deepcopy(DECL)
+    for p in ("panel.L", "panel.R"):
+        decl["edges"][p].update({"hem_a": "bl>bm", "hem_b": "bm>br"})
+    decl["darts"] = [{"piece": "panel.L", "inside": "dart", "release": ["pk", "bm"]}]
+    assert do.validate(decl, STEP1, out["parts"]) == []
+    (d / "draft.json").write_text(json.dumps(out))
+    (d / "declarations.json").write_text(json.dumps(decl))
+    B = cloth.pieces({"pattern": {"from": "own", "dir": str(d)}}, {"waist": 800})
+    blk = do.block({"dir": str(d)})
+    pc = blk["pieces"]["panel.L"]
+    assert dcut._simple(np.asarray(pc["P"]))
+    L = lambda e: pattern.length(pc["P"][pattern.arc_indices(pc, e.split(":", 1)[1])])
+    (ca, cb), (la, lb) = ([L(e) for e in dt_["legs"]] for dt_ in blk["darts"])  # (the cut, then the dart's sides)
+    assert abs(ca / cb - 1) < 0.005 and abs(ca - 0.060) < 0.002, (ca, cb)  # (bm up to pk, on to the bottom tip)
+    assert abs(la / lb - 1) < 0.005 and abs(la - 0.1825) < 0.002, (la, lb)
+    assert pc["names"]["dt"] == pc["names"]["dart.tip"]  # (the part's own tip keeps its name: a mark can use it)
+    legs = blk["darts"][1]["legs"]
+    ha, hb = (pattern.length(pc["P"][pattern.arc_indices(pc, blk["edge_arcs"]["panel.L"][e])]) for e in ("hem_a", "hem_b"))
+    assert abs(ha - 0.1) < 0.002 and abs(hb - 0.1) < 0.002, (ha, hb)  # (each hem half keeps its own side of the cut)
+    B["edge_arcs"], B["darts"] = blk["edge_arcs"], blk["darts"]
+    rows = {r["id"]: r for r in do.gate(B, decl, STEP1)}
+    assert rows["darts"]["status"] == "PASS" and rows["seams"]["status"] == "PASS", (rows["darts"], rows["seams"])
+    M = cloth.mesh(B)
+    k = B["seams"].index(legs)
+    assert k in set(int(x) for x in M["sew_seam"])
+    cross = copy.deepcopy(decl)  # (a pocket mouth crossing the dart's side: the cut stops at the side, C415)
+    cross["edges"]["panel.L"].update({"back_a": "tl>lm", "back_b": "lm>bl"})
+    cross["edges"]["panel.L"].pop("back")
+    cross["seams"][1]["a"] = ["panel.L:back_a", "panel.L:back_b"]
+    cross["darts"] = [{"piece": "panel.L", "inside": "dart", "release": ["pr", "lm"]}]
+    (d / "declarations.json").write_text(json.dumps(cross))
+    blk = do.block({"dir": str(d)})
+    pc = blk["pieces"]["panel.L"]
+    assert dcut._simple(np.asarray(pc["P"])) and len(blk["darts"]) == 3
+    (ca, cb), (ua, ub), (wa, wb) = ([L(e) for e in dt_["legs"]] for dt_ in blk["darts"])
+    assert abs(ca / cb - 1) < 0.005 and abs(ca - (0.1 - 0.015 * 50 / 90)) < 0.002, (ca, cb)  # (lm across to the left side)
+    assert abs(ua / ub - 1) < 0.005 and abs(wa / wb - 1) < 0.01 and abs(ua + wa - 0.1825) < 0.002, (ua, ub, wa, wb)
+    B = cloth.pieces({"pattern": {"from": "own", "dir": str(d)}}, {"waist": 800})
+    B["edge_arcs"], B["darts"] = blk["edge_arcs"], blk["darts"]
+    rows = {r["id"]: r for r in do.gate(B, cross, STEP1)}
+    assert rows["darts"]["status"] == "PASS" and rows["seams"]["status"] == "PASS", (rows["darts"], rows["seams"])
+    assert len(set(int(x) for x in cloth.mesh(B)["sew_seam"])) == len(B["seams"])
+    bad = copy.deepcopy(decl)
+    bad["darts"] = [{"piece": "panel.L", "inside": "nodart", "release": ["bm"], "legs": ["x", "y"]}]
+    why = " ".join(do.validate(bad, STEP1, out["parts"]))
+    assert "no legs" in why and "not a path of the part" in why, why
+    bad["darts"] = [{"piece": "panel.L", "inside": "dart", "release": ["pk", "tl"]}]
+    bad["edges"]["panel.L"]["back"] = "tr>tl>bl"  # (an edge running past the cut's outline point)
+    (d / "declarations.json").write_text(json.dumps(bad))
+    with pytest.raises(do.DraftRefused, match="runs past"):
+        do.block({"dir": str(d)})
+
+
 def test_s4_2_gaps_options_exports_edges_blocks(home):  # (C362)
     import copy
     from hifipushie import body_tape_record as btr, draft_own as do, draft_own_tool as dt, pattern_parts as pp
