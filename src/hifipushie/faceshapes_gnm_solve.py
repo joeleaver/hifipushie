@@ -3,9 +3,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from .faceshapes import NO_COEFFS, family
-from .faceshapes_consts import HOLD, JAW_PRIOR, JAW_PRIORED, SOLVE_RIDGE
-
+from . import faceshapes
+from .faceshapes import family
 
 class _GnmSolve:
     """GnmFace's frame, solve and carry: GNM's own frame for the head, the expression solve, the tongue,
@@ -34,7 +33,7 @@ class _GnmSolve:
                      "tree": cKDTree(self.head["verts"])}
         return self._gnm
 
-    def _solve(self, moves: dict, region: str, hold: float = HOLD, prior: float = SOLVE_RIDGE) -> np.ndarray:
+    def _solve(self, moves: dict, region: str, hold: float = faceshapes.HOLD, prior: float = faceshapes.SOLVE_RIDGE) -> np.ndarray:
         """GNM vertex offsets (its frame) that move landmarks by `moves` ({id: [x, y, z] in mouth widths}) holding
         the rest: ridge least squares over the region's expression components (linear in them, as pose_expression)."""
         G = self._setup()
@@ -109,13 +108,13 @@ class _GnmSolve:
         names = [str(n) for n in g["expression_names"]]
         if family(name) == "look":
             return {}
-        if name in NO_COEFFS:
+        if name in faceshapes.NO_COEFFS:
             return {}
         mv, region = self._gnm_moves(name)
         if region is None:
             out = self._project(mv, name)
         else:
-            self._solve(mv, region, prior=JAW_PRIOR if name in JAW_PRIORED else SOLVE_RIDGE)
+            self._solve(mv, region, prior=faceshapes.JAW_PRIOR if name in faceshapes.JAW_PRIORED else faceshapes.SOLVE_RIDGE)
             out = {names[i]: float(v) for i, v in self._last.items()}
         if name == "tongueOut" and self.gnm_mouth:
             out.update({names[i]: float(v) for i, v in self._tongue_out()[1].items()})

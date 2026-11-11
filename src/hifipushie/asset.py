@@ -2508,9 +2508,9 @@ def export(name: str, out_dir: Path, *args, **kw) -> dict:
             pass
     with resources.heavy(f"export {name}", kind="export_asset", model=name, log=waiting,
                          gb=export_gb(store.load(name), name)):
-        from . import faceshapes_consts
+        from . import faceshapes
         notes = []
-        with faceshapes_consts.character_fits(store.load(name), notes, store._dir(name)):  # per-character fits from the spec, not the env
+        with faceshapes.character_fits(store.load(name), notes, store._dir(name)):  # per-character fits from the spec, not the env
             for m in notes:
                 waiting(m)
             res = _export(name, out_dir, *args, **kw)

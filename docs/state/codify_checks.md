@@ -4,7 +4,7 @@
 | rule | where enforced | test |
 |---|---|---|
 | 1/2 approved head, folds <= 1 mm | asset.approved_head / fold_form_gate (landed) | test_export_gates_on_the_approved_head_and_fold_form (runs, passes) |
-| 3 expressions = parameter mixes | faceshapes_consts.refuse_sculpt (env HP_SHAPE_SCULPT, face_fits.sculpt, _sculpted, teeth rest); opt-out HIFIPUSHIE_ALLOW_SHAPE_SCULPT=1 (WARNING); EXPRESSION_PRESETS["smile_tess"], expression() | test_sculpted_expression_deltas_are_refused, test_expression_presets_are_arkit_mixes |
+| 3 expressions = parameter mixes | faceshapes.refuse_sculpt (env HP_SHAPE_SCULPT, face_fits.sculpt, _sculpted, teeth rest); opt-out HIFIPUSHIE_ALLOW_SHAPE_SCULPT=1 (WARNING); EXPRESSION_PRESETS["smile_tess"], expression() | test_sculpted_expression_deltas_are_refused, test_expression_presets_are_arkit_mixes |
 | 4 hair budget | asset.hair_budget + budget_check (card faces vs default, drawn vs range max = FAIL -> _export raises; vertices); hair.BUDGET_UNIT "card_faces" (cards fitted to card faces) | test_hair_budget_* |
 | 5 view transform (AgX vs PBR Neutral) | asset.same_view / game_light_view (scene.look, asset.preview), face_light_check views= required -> MixedViewTransform | test_mixed_view_transforms_are_refused |
 | 6 half-sided hair | asset.write_glb raises on a single-sided card material whose extras say no back faces | test_single_sided_cards_without_back_faces_are_refused |

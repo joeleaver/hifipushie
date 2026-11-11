@@ -4,17 +4,13 @@ from __future__ import annotations
 
 import numpy as np
 
+from . import faceshapes as faceshapes_mod
 from .spec import SpecError
-from . import faceshapes_consts
-from .faceshapes import ALL, CORRECTIVES, SMILE_JAW_CANCEL, SMILE_JAW_CANCEL_LM, family, vertex_normals
-from .faceshapes_consts import SEAM_SHOWING, refuse_sculpt
+from . import faceshapes
+from .faceshapes import family, vertex_normals
+from .faceshapes import refuse_sculpt
 from .faceshapes_face import Face
 from .faceshapes_gnm import GnmFace
-
-UNEVEN_LIMIT = 0.2   # worst `unevenness` over which the export log warns (the lid seal's sawtooth read 0.21 / 0.38,
-#                      the same blinks unsealed and repaired 0.05-0.09)
-UNEVEN_COUNT = 0.05  # vertices over this are counted
-
 
 def unevenness(V: np.ndarray, T: np.ndarray, d: np.ndarray, sel: np.ndarray | None = None) -> tuple[float, int, int]:
     """How jagged a shape's move is over the mesh: per vertex, how far its move lies OUTSIDE the range of its edge
@@ -49,7 +45,7 @@ def unevenness(V: np.ndarray, T: np.ndarray, d: np.ndarray, sel: np.ndarray | No
         return 0.0, 0, 0
     r = np.maximum(np.maximum(lo[ok] - d[ok], d[ok] - hi[ok]), 0.0)
     q = np.linalg.norm(r, axis=1) / np.maximum(ls[ok] / cnt[ok], 2e-3)  # (a mesh finer than 2 mm: per 2 mm)
-    return float(q.max()), int((q > UNEVEN_COUNT).sum()), int(ok.sum())
+    return float(q.max()), int((q > faceshapes.UNEVEN_COUNT).sum()), int(ok.sum())
 
 
 def weld(V: np.ndarray, T: np.ndarray, tol: float = 1e-6):
@@ -77,16 +73,16 @@ def names_of(face_shapes) -> list[str]:
     """The targets an export carries: the ARKit names asked for (True: all 52), plus each corrective whose inputs
     are all there."""
     if face_shapes is True:
-        names = list(ALL)
+        names = list(faceshapes.ALL)
     else:
         if isinstance(face_shapes, str):
             face_shapes = [face_shapes]
         names = list(face_shapes or [])
-        bad = [n for n in names if n not in ALL]
+        bad = [n for n in names if n not in faceshapes.ALL]
         if bad:
-            raise SpecError(f"face_shapes: unknown shape(s) {bad} (have the ARKit names {', '.join(ALL)})")
-    return names + [c for c, (_, *ins) in CORRECTIVES.items() if all(i in names or i + "Left" in names for i in ins)
-                    and (c != "jawOpen_mouthSmile" or SMILE_JAW_CANCEL or SMILE_JAW_CANCEL_LM)]
+            raise SpecError(f"face_shapes: unknown shape(s) {bad} (have the ARKit names {', '.join(faceshapes.ALL)})")
+    return names + [c for c, (_, *ins) in faceshapes.CORRECTIVES.items() if all(i in names or i + "Left" in names for i in ins)
+                    and (c != "jawOpen_mouthSmile" or faceshapes.SMILE_JAW_CANCEL or faceshapes.SMILE_JAW_CANCEL_LM)]
 
 
 def _sculpted(D: dict, part: str, n: int, log: list) -> dict:
@@ -96,9 +92,9 @@ def _sculpted(D: dict, part: str, n: int, log: list) -> dict:
     a mesh that changed since the sculpt is skipped with a WARNING, never applied to the wrong vertices.
     REFUSED since 2026-10-18 (Joe, after r35-r48: "stop hand tuning it and just use the expression parameters"): an
     expression is a mix of the exported ARKit / GNM expression parameters, never per-character sculpted deltas."""
-    from . import faceshapes_consts
-    refuse_sculpt(faceshapes_consts.SHAPE_SCULPT, log=log)
-    z = np.load(faceshapes_consts.SHAPE_SCULPT)
+    from . import faceshapes
+    refuse_sculpt(faceshapes.SHAPE_SCULPT, log=log)
+    z = np.load(faceshapes.SHAPE_SCULPT)
     out = dict(D)
     for k in z.files:
         pn, nm = k.split("|", 1)
@@ -121,7 +117,7 @@ def apply(spec: dict, parts: dict, face_shapes, log: list, quick: bool = False, 
     quick (facepose's posed look): parts need only verts + corner_vert; the same moves, without the per-corner
     normals, the shapes' normals and the export's diagnostics (seam, unevenness). neutrals: {part: neutral verts}
     reused when there (they depend on geometry only; the seal is most of the time), filled in when not."""
-    from . import faceshapes_consts
+    from . import faceshapes
     names = names_of(face_shapes)
     face = face_of(spec)
     if "eyeBlinkLeft" in names and not face.eyes:
@@ -154,9 +150,9 @@ def apply(spec: dict, parts: dict, face_shapes, log: list, quick: bool = False, 
         cached = (neutrals or {}).get(pn)
         Xn = Xm + face.neutral(Xm, kind, idx) if cached is None else np.asarray(cached, np.float64)
         moved_rest = False
-        if faceshapes_consts.SHAPE_SCULPT and kind == "teeth" and cached is None:
-            refuse_sculpt(faceshapes_consts.SHAPE_SCULPT, log=log)  # (r48) a sculpted rest for the teeth (levelled incisal edges)
-            z = np.load(faceshapes_consts.SHAPE_SCULPT)
+        if faceshapes.SHAPE_SCULPT and kind == "teeth" and cached is None:
+            refuse_sculpt(faceshapes.SHAPE_SCULPT, log=log)  # (r48) a sculpted rest for the teeth (levelled incisal edges)
+            z = np.load(faceshapes.SHAPE_SCULPT)
             if f"{base}|_neutral" in z.files and z[f"{base}|_neutral"].shape == Xn.shape:
                 Xn = Xn + np.asarray(z[f"{base}|_neutral"], np.float64); moved_rest = True
                 log.append(f"face shapes: {pn} rest + sculpt, max {np.abs(z[f'{base}|_neutral']).max() * 1000:.1f} mm")
@@ -183,7 +179,7 @@ def apply(spec: dict, parts: dict, face_shapes, log: list, quick: bool = False, 
             mid = np.bincount(lab, h0) / np.maximum(np.bincount(lab), 1)
             lower = mid[lab] < 0
         D = face.displacements(Xm, Xn, n0, kind, names, lower, idx)
-        if faceshapes_consts.SHAPE_SCULPT:
+        if faceshapes.SHAPE_SCULPT:
             D = _sculpted(D, pn, len(Xm), log)
         if moved_rest:  # (r48) its corners' normals turned with the sculpted rest
             cv = p["corner_vert"]; n1 = vertex_normals(Xn, T)
@@ -212,24 +208,24 @@ def apply(spec: dict, parts: dict, face_shapes, log: list, quick: bool = False, 
                 got_["eyeBlinkLeft+mouthClose"] = got_.pop("eyeBlinkLeft")
             rest_ = face.seam_showing(Xn, T, idx) if sealed else None  # the parted rest itself (info, not a gate)
             if any(v is not None for v in got_.values()):
-                bad = {nm: v for nm, v in got_.items() if v is not None and v > SEAM_SHOWING}
+                bad = {nm: v for nm, v in got_.items() if v is not None and v > faceshapes_mod.SEAM_SHOWING}
                 log.append(("WARNING " if bad else "") + f"face shapes: {pn} closed lips' seam (inner lip / mouth "
-                           f"seen from the front, mm^2, limit {SEAM_SHOWING}): " + ", ".join(
+                           f"seen from the front, mm^2, limit {faceshapes_mod.SEAM_SHOWING}): " + ", ".join(
                                f"{nm or 'neutral'} {v:.3f}" for nm, v in got_.items() if v is not None)
                            + (f" (parted rest, not gated: {rest_:.3f})" if rest_ is not None else ""))
                 p["seam_showing"] = {nm or "neutral": round(float(v), 4) for nm, v in got_.items() if v is not None}
         if kind == "skin":  # a shape whose move jumps from vertex to vertex shears whatever is painted there
             first, Tw, _ = weld(Xn, T)
             un = {nm: unevenness(Xn[first], Tw, d[first], face.off_margins(nm, Xn[first])) for nm, d in D.items()}
-            p["shape_unevenness"] = {nm: round(u[0], 3) for nm, u in un.items() if u[0] > UNEVEN_COUNT}
+            p["shape_unevenness"] = {nm: round(u[0], 3) for nm, u in un.items() if u[0] > faceshapes_mod.UNEVEN_COUNT}
             top = sorted(un, key=lambda nm: -un[nm][0])[:3]
             log.append(f"face shapes: {pn} unevenness (a vertex's move outside its neighbours', per m of edge; "
-                       f"smooth ~0, limit {UNEVEN_LIMIT}): " + ", ".join(f"{nm} {un[nm][0]:.2f}" for nm in top))
+                       f"smooth ~0, limit {faceshapes_mod.UNEVEN_LIMIT}): " + ", ".join(f"{nm} {un[nm][0]:.2f}" for nm in top))
             for nm in un:  # (mouth shapes part the lips at the slit's ends: steps there are the shape, not a fault;
                 # measured, the kit's read 0.2-1.6 on a handful of vertices at the corners. Listed, not warned.)
-                if un[nm][0] > UNEVEN_LIMIT and family(nm.split("_")[0]) != "mouth":
+                if un[nm][0] > faceshapes_mod.UNEVEN_LIMIT and family(nm.split("_")[0]) != "mouth":
                     log.append(f"WARNING face shapes: {pn} {nm} moves unevenly ({un[nm][0]:.2f}, {un[nm][1]} "
-                               f"vertices over {UNEVEN_COUNT}): neighbouring vertices go different ways, which "
+                               f"vertices over {faceshapes_mod.UNEVEN_COUNT}): neighbouring vertices go different ways, which "
                                "shears painted detail into a sawtooth. Look at it posed (rig(glb=, shapes=))")
     skin = [(np.asarray(parts[q]["verts"], np.float64), {nm: np.asarray(x[0]) for nm, x in parts[q]["shapes"].items()})
             for q in got if kinds.get(q) == "skin"]

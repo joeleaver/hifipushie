@@ -219,6 +219,7 @@ def test_face_shapes_by_index_on_own_quads():
     strands read 3.2 on the same mesh)."""
     from hifipushie import faceshapes, humans, retopo
     from hifipushie import faceshapes_apply
+    from hifipushie import faceshapes
     sp = humans.spec(age=40, sex=1.0, seed=3, skin=False, source="human",
                      head={"interior": {"teeth": {"show": 0.0035}, "tongue": True}})  # (GNM's own lips: no mouth_gap)
     sp.setdefault("parts", {}).setdefault("body", {})["topology"] = "wrap"
@@ -240,7 +241,7 @@ def test_face_shapes_by_index_on_own_quads():
     first, Tw, _ = faceshapes_apply.weld(Xn, T)
     for nm in ("jawOpen", "eyeBlinkLeft"):
         u = faceshapes_apply.unevenness(Xn[first], Tw, D[nm][first], face.off_margins(nm, Xn[first]))[0]
-        assert u < faceshapes_apply.UNEVEN_LIMIT, (nm, u)
+        assert u < faceshapes.UNEVEN_LIMIT, (nm, u)
     assert np.linalg.norm(D["jawOpen"], axis=1).max() > 0.015
 
 
