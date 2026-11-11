@@ -10,6 +10,7 @@ from pathlib import Path
 import numpy as np
 
 from hifipushie import terrain, terrain_caves, terrain_mesh as tm
+from hifipushie import terrain_field, terrain_relief, terrain_volumes
 
 KARST = {"world": {"kind": "coast", "base": 10}, "extent": [[0, 0], [160, 160]], "cell": 2,
          "tilt": {"down": "south", "grade": 0.4},
@@ -46,7 +47,7 @@ def test_mouth_meets_the_ground(T):
     near = s < 10.0
     rise = np.abs(np.diff(e["_floor"][near])) / np.maximum(np.diff(s[near]), 1e-6)
     assert rise.max() < terrain_caves.GRADE_WALK, rise
-    line = terrain_caves.check(caves, field, sea=tm._sea(T))[0]
+    line = terrain_caves.check(caves, field, sea=terrain_volumes._sea(T))[0]
     assert "PASSES" in line, line
 
 
@@ -103,7 +104,7 @@ def test_graded_lava_tube(C):
     assert g10.max() <= 0.18 + 0.02, g10.max()
     cover = G.sample(xy) - (fl + e["_h"])
     assert cover.min() > 1.0, cover.min()
-    line = terrain_caves.check(caves, field, sea=tm._sea(G))[0]
+    line = terrain_caves.check(caves, field, sea=terrain_volumes._sea(G))[0]
     assert "PASSES" in line, line
 
 
@@ -135,14 +136,14 @@ def test_deep_cave_under_a_steep_face():
     g = T.sample(xy)
     w, h = 5.0, 4.0
     fl = np.full(len(xy), g.min() - 22.0 - h)
-    tube = tm.Tube("t", np.c_[xy, fl], 0.5 * w, h, fl, seed=3, rough=0.4, rough_scale=3.0, blend=0.8)
+    tube = terrain_volumes.Tube("t", np.c_[xy, fl], 0.5 * w, h, fl, seed=3, rough=0.4, rough_scale=3.0, blend=0.8)
     cv = terrain_caves.Cave("t", "lava", {"a": {}, "b": {}},
                             [{"from": "a", "to": "b", "_xy": xy, "_floor": fl, "_w": w, "_h": h}], [tube], [])
-    rock = tm.rock_config(T, dict(tm.DEFAULTS))
-    full = tm.Field(T, [tube], rock)
+    rock = terrain_relief.rock_config(T, dict(tm.DEFAULTS))
+    full = terrain_field.Field(T, [tube], rock)
     assert full.relief_at(xy[:20, 0], xy[:20, 1]).mean() > 0.5  # (the face over it takes the rock's relief)
     got = {}
-    for nm, F in (("plain", tm.Field(T, [tube], None)), ("rock", full)):
+    for nm, F in (("plain", terrain_field.Field(T, [tube], None)), ("rock", full)):
         paths = []
         line = terrain_caves.check([cv], F, paths=paths)[0]
         assert "PASSES" in line, (nm, line)

@@ -1,7 +1,7 @@
 """Seams as the eye sees them: a rendered view against its exact id pass (`render_tiles(ids=True)`: which GLB and which
 atlas chart each pixel shows, and how far away it is).
 
-The numeric seam check (terrain_mesh.map_seams) decodes each channel on both sides of a border at the same points and
+The numeric seam check (terrain_map_seams.map_seams) decodes each channel on both sides of a border at the same points and
 passes when they agree; it says nothing about what a border looks like after lighting, filtering and the eye's
 sensitivity to long straight lines, and it never looks at chart borders or at regular patterns. Here every pair of
 neighbouring pixels showing one continuous surface (no depth jump) is classed by what lies between them: a tile border

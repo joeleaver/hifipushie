@@ -13,6 +13,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from hifipushie import terrain_style as ts  # noqa: E402
 from hifipushie import terrain_mesh as tm  # noqa: E402
+from hifipushie import terrain_tile_jobs
 
 REFS = {k: dict(v) for k, v in tm.LAYERS.items()}
 
@@ -175,7 +176,7 @@ def _field(styles=None):
         T.zones = dict(T.spec["zones"])
         T.spec["styles"] = styles
     cfg = {**tm.DEFAULTS, **T.spec["export"]["tiles"]}
-    return T, tm.build_field(T, cfg)[0]
+    return T, terrain_tile_jobs.build_field(T, cfg)[0]
 
 
 def test_rock_shape_by_zone():

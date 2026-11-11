@@ -5,7 +5,8 @@ from pathlib import Path
 
 import numpy as np
 
-from hifipushie import terrain, terrain_ground, terrain_mesh, terrain_swatch
+from hifipushie import terrain, terrain_ground, terrain_swatch
+from hifipushie import terrain_materials, terrain_relief, terrain_tile_jobs, terrain_volumes
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -19,7 +20,7 @@ def _pebble():
 
 
 def test_arch_and_roofs(T):
-    vols, notes = terrain_mesh.volumes(T)
+    vols, notes = terrain_volumes.volumes(T)
     arch = [v for v in vols if getattr(v, "kind", None) == "arch"][0]
     A = arch.arch
     # taller than wide, a roof of at least half the span over it
@@ -28,14 +29,14 @@ def test_arch_and_roofs(T):
     assert top - A["floor"] - A["height"] >= max(2.0, 0.5 * A["w"]) - 1e-6
     # a fin: where the land along it is long, the neck is cut down to the floor beside the arch, not at it
     if getattr(arch, "cut", None) is not None:
-        H = terrain_mesh.cut_neck(T, T.H.copy(), arch.cut)
+        H = terrain_volumes.cut_neck(T, T.H.copy(), arch.cut)
         c, t = np.asarray(A["c"]), np.asarray(A["t"])
         mid = float(H[int(round(c[1] - T.ys[0])), int(round(c[0] - T.xs[0]))])
         assert abs(mid - top) < 0.5, (mid, top)  # (the fin over the arch is kept)
         side = c + t * (0.5 * A["through"] + 3.0)
         h_side = float(H[int(round(side[1] - T.ys[0])), int(round(side[0] - T.xs[0]))])
         assert h_side < top - 0.5 * A["height"], (h_side, top)
-    field, vols, notes, _ = terrain_mesh.build_field(T)
+    field, vols, notes, _ = terrain_tile_jobs.build_field(T)
     assert any("see-through" in n for n in notes)
     arch = [v for v in vols if getattr(v, "kind", None) == "arch"][0]
     assert arch.view["clear"] > 0.5, arch.view
@@ -44,8 +45,8 @@ def test_arch_and_roofs(T):
 
 
 def test_ground_pointwise(T):
-    field, *_ = terrain_mesh.build_field(T)
-    M = terrain_mesh.Materials(T, field)
+    field, *_ = terrain_tile_jobs.build_field(T)
+    M = terrain_materials.Materials(T, field)
     rng = np.random.default_rng(1)
     xy = np.c_[rng.uniform(150, 300, 3000), rng.uniform(60, 260, 3000)]
     h, _ = field.column(xy[:, 0], xy[:, 1])
@@ -76,8 +77,8 @@ def test_grass_swatch_tiles():
 
 
 def test_clutter(T):
-    field, *_ = terrain_mesh.build_field(T)
-    M = terrain_mesh.Materials(T, field)
+    field, *_ = terrain_tile_jobs.build_field(T)
+    M = terrain_materials.Materials(T, field)
     C = terrain_ground.clutter(T, M, field, ("bush", "tussock", "boulder"), box=[[150, 60], [300, 260]])
     kinds = C[:, 3].astype(int)
     assert (kinds == 0).sum() > 10 and (kinds == 1).sum() > 100, np.bincount(kinds)
@@ -87,7 +88,7 @@ def test_clutter(T):
 
 def test_ground_edits(T):
     """The turf's step at a cliff lip and the bunkers are real geometry, finer than the grid, and continuous."""
-    field, *_ = terrain_mesh.build_field(T)
+    field, *_ = terrain_tile_jobs.build_field(T)
     E = field.edits
     assert E is not None and E.any
     # a bunker: ~depth down inside, untouched a metre outside, the cut face within ~0.6 m
@@ -116,8 +117,8 @@ def test_ground_edits(T):
 
 
 def test_kinds_and_swatches(T):
-    field, *_ = terrain_mesh.build_field(T)
-    M = terrain_mesh.Materials(T, field)
+    field, *_ = terrain_tile_jobs.build_field(T)
+    M = terrain_materials.Materials(T, field)
     assert "turf" in M.layers
     rng = np.random.default_rng(2)
     xy = np.c_[rng.uniform(150, 600, 20000), rng.uniform(60, 500, 20000)]
@@ -135,8 +136,8 @@ def test_kinds_and_swatches(T):
 
 
 def test_clutter_lips(T):
-    field, *_ = terrain_mesh.build_field(T)
-    M = terrain_mesh.Materials(T, field)
+    field, *_ = terrain_tile_jobs.build_field(T)
+    M = terrain_materials.Materials(T, field)
     C = terrain_ground.clutter(T, M, field, ("bush", "boulder"), box=[[100, 40], [320, 280]])
     bush = C[C[:, 3] == 0]
     b, d, edge, top = field.edits.bare(bush[:, :3])
@@ -149,7 +150,7 @@ def test_clutter_lips(T):
 
 def test_thin_rock(T):
     """Thin rock (the arch's fin) keeps its relief, bounded by its local half-thickness, and shows strata."""
-    field, vols, *_ = terrain_mesh.build_field(T)
+    field, vols, *_ = terrain_tile_jobs.build_field(T)
     assert field.thin_parts, "no thin rock measured on pebble"
     A = [v for v in vols if getattr(v, "kind", None) == "arch"][0].arch
     rng = np.random.default_rng(3)
@@ -165,19 +166,19 @@ def test_thin_rock(T):
     assert np.sqrt((R * R).mean()) > 0.3, np.sqrt((R * R).mean())
     full = (t > 0.999) & np.isfinite(hw)
     if full.any():
-        assert (np.abs(R[full]) <= terrain_mesh.THIN_RELIEF * hw[full] + 1e-6).all()
-    st = terrain_mesh.strata(P, 0.0, 4242)
-    assert 0.05 < (st > 0.1).mean() < 0.9 and st.max() <= terrain_mesh.THIN_STRATA["depth"] + 1e-9
+        assert (np.abs(R[full]) <= terrain_materials.THIN_RELIEF * hw[full] + 1e-6).all()
+    st = terrain_relief.strata(P, 0.0, 4242)
+    assert 0.05 < (st > 0.1).mean() < 0.9 and st.max() <= terrain_relief.THIN_STRATA["depth"] + 1e-9
     # continuous along z: no jumps between beds (a jump meshes as shards)
     z = np.arange(0, 20, 0.01)
-    col = terrain_mesh.strata(np.c_[np.full(len(z), 200.0), np.full(len(z), 80.0), z], 0.0, 4242)
+    col = terrain_relief.strata(np.c_[np.full(len(z), 200.0), np.full(len(z), 80.0), z], 0.0, 4242)
     assert np.abs(np.diff(col)).max() < 0.05, np.abs(np.diff(col)).max()
 
 
 def test_route_off_turf(T):
     """A route is worn ground only off mown turf."""
-    field, *_ = terrain_mesh.build_field(T)
-    M = terrain_mesh.Materials(T, field)
+    field, *_ = terrain_tile_jobs.build_field(T)
+    M = terrain_materials.Materials(T, field)
     if M.routes is None or M.ground is None:
         return
     iy, ix = np.nonzero(np.asarray(M.routes, float) > 0.5)

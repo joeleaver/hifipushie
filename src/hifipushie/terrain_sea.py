@@ -563,7 +563,7 @@ def apply(T):
             k_g = int(rng.integers(5, 9))
             grooves = 0.12 * np.cos(k_g * th + rng.uniform(0, 6.3)) + 0.06 * np.cos((k_g + 3) * th + rng.uniform(0, 6.3))
             # (the core stays round: lobed, it reached up to 1.75 x its radius, past the 3D tiles' clip cylinder round
-            # it (terrain_mesh.stacks' rc), and a sliver of it stood beside the solid stack, cut loose 5-12 m up by the
+            # it (terrain_volumes.stacks' rc), and a sliver of it stood beside the solid stack, cut loose 5-12 m up by the
             # clip under it: ts_slice_a's anime stack, a 124-triangle piece floating 9.6 m up. The solid stack is the
             # form; `grooves` is still drawn so the random stream is unchanged)
             del grooves
@@ -572,7 +572,7 @@ def apply(T):
             top_z = level + hgt - tilt * np.clip(dx * math.cos(tdir) + dy * math.sin(tdir) + r, 0, 2 * r) * 0.5 \
                 - 0.12 * hgt * np.clip(lob - 0.6, 0, None) / 0.4
             # a slim core with sheer sides: the 3D tiles stand a solid, layered, undercut stack over it
-            # (terrain_mesh.Stack), which must hold the heightfield's stack inside (a wide 76 deg skirt made a fat foot
+            # (terrain_volumes.Stack), which must hold the heightfield's stack inside (a wide 76 deg skirt made a fat foot
             # no undercut could cut into); ledges are the solid stack's beds
             core = STACK_CORE * r
             side = level + hgt - (d - core) * math.tan(math.radians(84))

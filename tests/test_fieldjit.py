@@ -20,6 +20,7 @@ import numpy as np
 from scipy import ndimage
 
 from hifipushie import fieldjit, noise, terrain_facets as tf, terrain_mesh as tm
+from hifipushie import terrain_materials, terrain_relief, terrain_tile_finish, terrain_tile_jobs, terrain_tile_mesh
 
 ROOT = Path(__file__).resolve().parents[1]
 TERRAINS = {"pebble": ROOT / "examples" / "pebble_disc.json", "lava": ROOT / "examples" / "lava_field.json",
@@ -92,8 +93,8 @@ def test_pl_walk():
     rng = np.random.default_rng(2)
     q = rng.normal(size=(40_000, 3)) * 9
     q[:500] = np.round(q[:500] * 4) / 4  # (ties and lattice points)
-    same(*both(lambda: tm._pl_walk(q, 13)), "pl_walk")
-    same(*both(lambda: tm._pl_walk(q, 13, vec=True)), "pl_walk vec")
+    same(*both(lambda: terrain_relief._pl_walk(q, 13)), "pl_walk")
+    same(*both(lambda: terrain_relief._pl_walk(q, 13, vec=True)), "pl_walk vec")
 
 
 def test_facets():
@@ -153,14 +154,14 @@ def _fields(name):
     from hifipushie import terrain, terrain_bake, terrain_cliffs
     T = terrain.load(TERRAINS[name])
     cfg = {**tm.DEFAULTS, **((T.spec.get("export") or {}).get("tiles") or {})}
-    base, vols, notes, caves = tm.build_field(T, cfg)
-    G = tm.Grid(T, cfg)
+    base, vols, notes, caves = terrain_tile_jobs.build_field(T, cfg)
+    G = terrain_tile_mesh.Grid(T, cfg)
     region = terrain_cliffs.Region(T, base, G, cfg)
     bf = copy.copy(base)
     if base.rock is not None:
         bf.micro = terrain_bake.micro_relief(base.rock, float(cfg["micro"]), 1.0 / 16.0)
     front = terrain_cliffs.CliffField(bf, region).front_field()
-    return T, base, front, tm.Materials(T, base)
+    return T, base, front, terrain_materials.Materials(T, base)
 
 
 def _points(T, base, n=60_000, seed=0):
@@ -183,7 +184,7 @@ def _points(T, base, n=60_000, seed=0):
         c = v.nodes if hasattr(v, "nodes") else np.array([0.5 * (v.lo + v.hi)])
         c = c[rng.integers(0, len(c), 300)] + rng.normal(0, 2.0, (300, 3))
         P = np.r_[P, c]
-    return P[tm._morton(P, 0.5)]
+    return P[terrain_tile_finish._morton(P, 0.5)]
 
 
 def check_terrain(name):

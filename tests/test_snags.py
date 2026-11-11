@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 
 from hifipushie import terrain, terrain_mesh as tm, terrain_snags, terrain_stream
+from hifipushie import terrain_materials, terrain_tile_jobs
 
 SPEC = {"world": {"kind": "farmland", "base": 40}, "extent": [[0, 0], [256, 320]], "cell": 1.0,
         "rivers": {"beck": {"source": [128, 310, 62], "through": [[100, 230], [150, 170], [110, 100]],
@@ -27,8 +28,8 @@ def _load(spec):
 
 def test_snags(T):
     cfg = dict(tm.DEFAULTS)
-    base, vols, notes, caves = tm.build_field(T, cfg)
-    mats = tm.Materials(T, base)
+    base, vols, notes, caves = terrain_tile_jobs.build_field(T, cfg)
+    mats = terrain_materials.Materials(T, base)
     C = terrain_stream.all_clutter(T, mats, base)
     kinds = list(terrain_stream.KINDS)
     assert C.shape[1] == terrain_stream.COLS == 18

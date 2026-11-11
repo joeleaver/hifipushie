@@ -114,7 +114,7 @@ def look_terrain(name: str, map: bool = True, masks: bool = False, views: list[d
         for v in vs:
             v["name"] = f"{v['name']}_v{ver}"
         if tiles:
-            from . import terrain_mesh
+            from . import terrain_tile_views
             td = d / "tiles"
             if not (td / "manifest.json").exists():
                 raise ValueError(f"no tiles for {name!r}: run export_terrain({name!r}, tiles=True) first")
@@ -124,7 +124,7 @@ def look_terrain(name: str, map: bool = True, masks: bool = False, views: list[d
                     v["eye"] = [*v["eye"], float(T.height(np.array(v["eye"], float))) + v.get("lift", 1.7)]
                 v.setdefault("look", v["eye"])
             (d / "views").mkdir(parents=True, exist_ok=True)
-            for pth in terrain_mesh.render_tiles(T, td, vs, haze=haze, light=light,
+            for pth in terrain_tile_views.render_tiles(T, td, vs, haze=haze, light=light,
                                                  textured="styles" if styles else True):
                 out.append(_out(PILImage.open(pth), None))
                 notes.append(f"view: {pth}")
@@ -185,14 +185,14 @@ def export_terrain(name: str, size: int | None = None, engine: str | None = None
         return f"styles written to {out} (styles.json + manifest.json's \"styles\" if it exists)\n" + \
             terrain_style.summary(sec)
     if tiles:
-        from . import terrain_mesh
+        from . import terrain_tile_jobs, terrain_tiles
         out = Path(out_dir).expanduser() if out_dir else tt._dir(name) / "tiles"
         try:
-            r = terrain_mesh.export_tiles(T, out, log=_progress_log(ctx, out / "export_log.txt"))
-        except terrain_mesh.TilesCheckFailed as e:
+            r = terrain_tiles.export_tiles(T, out, log=_progress_log(ctx, out / "export_log.txt"))
+        except terrain_tile_jobs.TilesCheckFailed as e:
             # (the export is written and complete: the report, with what failed on top, not a traceback)
             r = e.result
-        return terrain_mesh.summary(r)
+        return terrain_tiles.summary(r)
     path = T.export(Path(out_dir).expanduser() if out_dir else tt._dir(name) / "export",
                     size=size or cfg.get("size"), engine=engine or cfg.get("engine"))
     meta = json.loads((path / "meta.json").read_text())

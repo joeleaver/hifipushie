@@ -729,11 +729,11 @@ def rock_scale(T) -> tuple[np.ndarray, np.ndarray]:
     up = (vb > 0.5 * (top2 + foot2)) & (top2 - foot2 > 2.0)
     thick = ndimage.distance_transform_edt(up) * T.cell
     thick = ndimage.maximum_filter(thick, odd(30.0))
-    # sea stacks are solid columns in the 3D tiles (terrain_mesh.stacks): the heightfield holds only a slim core, so
+    # sea stacks are solid columns in the 3D tiles (terrain_volumes.stacks): the heightfield holds only a slim core, so
     # round each one its own size is written in (half-thickness = its radius, its height over the sea)
     st = (getattr(T, "sea", None) or {}).get("stacks") if isinstance(getattr(T, "sea", None), dict) else None
     if st:
-        from .terrain_mesh import STACK
+        from .terrain_volumes import STACK
         for a in st:
             r = STACK["radius"] * float(a["radius"])
             m = np.hypot(T.X - a["xy"][0], T.Y - a["xy"][1]) < r + 3.0 * T.cell
@@ -1084,8 +1084,9 @@ def refs_of(T) -> dict:
     """The realistic layers' reference looks for terrain T without the 3D field (as Materials.layer_ref: the rock
     colour is the median of the steep cells' rock colour)."""
     from . import terrain_mesh as tm
+    from . import terrain_materials
     refs = {k: dict(v) for k, v in tm.LAYERS.items()}
-    rg = tm.rock_colours(T)
+    rg = terrain_materials.rock_colours(T)
     steep = T._slope() > 45
     rr = np.median(rg[steep] if steep.any() else rg.reshape(-1, 3), 0)
     refs["rock"]["color"] = [round(float(x), 3) for x in rr]
@@ -1096,16 +1097,17 @@ def refs_of(T) -> dict:
 def export_styles(T, out, mats=None, G=None, px: int = PX) -> dict:
     """The styles' files for terrain T into `out` (an export_terrain tiles directory, or a fresh one beside it): the
     textures, the zone maps, styles.json (= the manifest section) and, when out/manifest.json exists, its "styles"
-    key. `mats` / `G` (terrain_mesh.Materials / Grid) are made when not given (the 3D field's setup: seconds)."""
+    key. `mats` / `G` (terrain_materials.Materials / Grid) are made when not given (the 3D field's setup: seconds)."""
     from . import terrain_mesh as tm
+    from . import terrain_materials, terrain_tile_jobs, terrain_tile_mesh
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
     cfg = {**tm.DEFAULTS, **((T.spec.get("export") or {}).get("tiles") or {})}
     if mats is None:
-        field = tm.build_field(T, cfg)[0]
-        mats = tm.Materials(T, field)
+        field = terrain_tile_jobs.build_field(T, cfg)[0]
+        mats = terrain_materials.Materials(T, field)
     if G is None:
-        G = tm.Grid(T, cfg)
+        G = terrain_tile_mesh.Grid(T, cfg)
     refs = {nm: mats.layer_ref(nm) for nm in mats.layers}
     tiles = []
     for j in range(G.nj):

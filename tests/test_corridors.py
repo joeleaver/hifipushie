@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 
 from hifipushie import terrain, terrain_cliffs, terrain_corridors as co, terrain_mesh as tm
+from hifipushie import terrain_field, terrain_gltf, terrain_tile_jobs, terrain_tile_mesh
 
 SPEC = {"world": {"kind": "farmland", "base": 40}, "extent": [[0, 0], [256, 320]], "cell": 1.0,
         "rivers": {"beck": {"source": [128, 310, 62], "through": [[120, 200], [136, 110]], "mouth": [128, 10, 20],
@@ -27,8 +28,8 @@ def _load(spec):
 
 def test_corridors(T):
     cfg = {**tm.DEFAULTS, **SPEC["export"]["tiles"], "corridors": True}
-    base, vols, notes, caves = tm.build_field(T, cfg)
-    G = tm.Grid(T, cfg)
+    base, vols, notes, caves = terrain_tile_jobs.build_field(T, cfg)
+    G = terrain_tile_mesh.Grid(T, cfg)
     R = terrain_cliffs.Region(T, base, G, cfg)
     cf = terrain_cliffs.CliffField(base, R)
     c = co.config(cfg)
@@ -110,11 +111,11 @@ def test_sea_fall_matches_mesh():
     f = T.falls[0]
     c, t_, n = tfa._frame(f)
     i, j = int((c[0] - G.origin[0]) // G.tile), int((c[1] - G.origin[1]) // G.tile)
-    r = tm._tile_mc(cf, G, i, j, 0, vols)
+    r = terrain_tile_mesh._tile_mc(cf, G, i, j, 0, vols)
     v = G.v(0)
     idx, F = r[0], r[1]
-    P = np.c_[G.origin[0] + idx[:, 0] * v, G.origin[1] + idx[:, 1] * v, (idx[:, 2] + tm.ZOFF) * v]
-    P, _ = tm.project(cf, P, v)
+    P = np.c_[G.origin[0] + idx[:, 0] * v, G.origin[1] + idx[:, 1] * v, (idx[:, 2] + terrain_tile_mesh.ZOFF) * v]
+    P, _ = terrain_field.project(cf, P, v)
     lo, hi = G.origin + np.array([i, j]) * G.tile + 0.5, G.origin + np.array([i + 1, j + 1]) * G.tile - 0.5
     u = np.r_[np.arange(-6.0, -0.49, 0.25), np.arange(0.5, 8.01, 0.25)]  # (off the face itself: a vertical face has
     xy = np.concatenate([c + u[:, None] * t_ + s * n for s in np.linspace(-0.4, 0.4, 5) * f["width"]])  # any dz)
@@ -170,10 +171,10 @@ def test_drawn_surface():
     B = np.array([[0, 0, 9.0], [64, 0, 9.0], [64, 64, 9.0], [0, 64, 9.0]])
     F = np.array([[0, 1, 2], [0, 2, 3]], np.uint32)
     o = np.array([0.0, 0.0, 0.0])
-    tm.write_glb(d / "tile_0_0_lod0.glb", "t", [
-        {"attrs": {"POSITION": tm._to_gltf(P - o)}, "indices": F, "material": None, "extras": {"role": "surface"}},
-        {"attrs": {"POSITION": tm._to_gltf(B - o)}, "indices": F, "material": None, "extras": {"role": "buried"}}],
-        tm._to_gltf(o[None])[0].tolist(), [{"name": "m"}])
+    terrain_gltf.write_glb(d / "tile_0_0_lod0.glb", "t", [
+        {"attrs": {"POSITION": terrain_gltf._to_gltf(P - o)}, "indices": F, "material": None, "extras": {"role": "surface"}},
+        {"attrs": {"POSITION": terrain_gltf._to_gltf(B - o)}, "indices": F, "material": None, "extras": {"role": "buried"}}],
+        terrain_gltf._to_gltf(o[None])[0].tolist(), [{"name": "m"}])
     tris = co._tile_surface(d / "tile_0_0_lod0.glb")
     assert tris.shape == (2, 3, 3), tris.shape
     D = co.drawn_top(tris, 10.0, 30.0, 0.25, 9, 9)  # (rows from y 30 down, columns from x 10)

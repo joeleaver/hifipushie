@@ -10,6 +10,7 @@ from pathlib import Path
 import numpy as np
 
 from hifipushie import terrain, terrain_cliffs, terrain_mesh as tm
+from hifipushie import terrain_field, terrain_seam_check, terrain_tile_finish, terrain_tile_job, terrain_tile_jobs, terrain_tile_mesh, terrain_tiles, terrain_volumes
 
 SPEC = {"world": {"kind": "coast", "base": 10}, "extent": [[0, 0], [128, 128]], "cell": 0.64,
         "tilt": {"down": "south", "grade": 0.25},
@@ -27,16 +28,16 @@ def _coast():
 
 def _shell(T):
     cfg = {**tm.DEFAULTS, **T.spec["export"]["tiles"]}
-    base, vols, notes, caves = tm.build_field(T, cfg)
-    G = tm.Grid(T, cfg)
+    base, vols, notes, caves = terrain_tile_jobs.build_field(T, cfg)
+    G = terrain_tile_mesh.Grid(T, cfg)
     region = terrain_cliffs.Region(T, base, G, cfg)
     return cfg, G, region, terrain_cliffs.CliffField(base, region), vols
 
 
 def _mc(G, cf, vols, ij):
-    idx, F, _ = tm._tile_mc(cf, G, ij[0], ij[1], 0, vols)
+    idx, F, _ = terrain_tile_mesh._tile_mc(cf, G, ij[0], ij[1], 0, vols)
     v = G.voxel
-    return np.c_[G.origin[0] + idx[:, 0] * v, G.origin[1] + idx[:, 1] * v, (idx[:, 2] + tm.ZOFF) * v], F
+    return np.c_[G.origin[0] + idx[:, 0] * v, G.origin[1] + idx[:, 1] * v, (idx[:, 2] + terrain_tile_mesh.ZOFF) * v], F
 
 
 def test_cover_named_by_type(T):
@@ -57,7 +58,7 @@ def test_shell_stops_under_the_cliff_foot(G, region, cf, vols):
     c = P[F].mean(1)
     assert np.all(c[:, 2] > region.back_at(c[:, 0], c[:, 1])[0] - 1.0)
     # closed: no open edge except on the tile's border planes
-    be = tm._boundary_edges(F)
+    be = terrain_tile_mesh._boundary_edges(F)
     on = lambda q: (np.abs(q[:, 0] - lo[0]) < 1e-6) | (np.abs(q[:, 0] - hi[0]) < 1e-6) | \
         (np.abs(q[:, 1] - lo[1]) < 1e-6) | (np.abs(q[:, 1] - hi[1]) < 1e-6)
     assert np.all(on(P[be[:, 0]]) & on(P[be[:, 1]])), "the shell is open inside the tile"
@@ -74,15 +75,15 @@ def test_budget_holds(cf, G, P, F):
     """The cliff tile decimates to its budget: not the dense mesh handed back (495k triangles at every LOD on
     slice_a's cave tile: thin buried sheets folded at every collapse), and not far under it either (the buried back's
     own error counted as the tolerance: 1,132 triangles for LOD 0 of a 64 m cliff tile)."""
-    P2, _ = tm.project(cf, P, G.voxel)
+    P2, _ = terrain_field.project(cf, P, G.voxel)
     for budget, err in ((4000, 0.04), (1500, 0.15)):  # (the dense border alone is ~800 edges)
         t = time.time()
-        Pd, Fd = tm._decimate(P2, F, err, budget, cf)
+        Pd, Fd = terrain_tile_mesh._decimate(P2, F, err, budget, cf)
         print(f"  budget {budget}: {len(F)} -> {len(Fd)} triangles, {time.time() - t:.1f} s")
         assert len(Fd) <= 1.15 * budget + 64, (budget, len(Fd))
         if err < 0.1:
             assert len(Fd) >= 0.5 * budget, (budget, len(Fd))
-    Pc, Fc = tm._collision_mesh(P2, F, 2000)
+    Pc, Fc = terrain_tile_job._collision_mesh(P2, F, 2000)
     assert len(Fc) <= 2200 and len(Fc) < len(F)
 
 
@@ -91,7 +92,7 @@ def test_budget_check():
     L = lambda n, mc: {"triangles": n, "visible_triangles": n // 3, "marching_cubes_triangles": mc}
     tiles = [{"i": 4, "j": 1, "volumes": ["smugglers"], "lods": [L(495898, 497134), L(495622, 497134), L(700, 497134)]},
              {"i": 0, "j": 0, "lods": [L(12000, 136208), L(5999, 136208), None]}]
-    over = tm.budget_check(tiles, cfg, 3)
+    over = terrain_tile_jobs.budget_check(tiles, cfg, 3)
     assert [(o["tile"], o["lod"]) for o in over] == [([4, 1], 0), ([4, 1], 1)], over
     assert "removed nothing" in over[0]["why"] and over[0]["budget"] == 12000
 
@@ -103,14 +104,14 @@ def test_failed_checks_are_a_report(T):
     cfg = {"only": [list(TILE), list(TILE)], "lods": 2, "maps": False, "detail": False, "budget": [40, 20, 10],
            "collision_budget": 500, "incremental": False}
     try:
-        tm._export_tiles(T, out, cfg, log=lambda *a: None)
+        terrain_tiles._export_tiles(T, out, cfg, log=lambda *a: None)
         raise AssertionError("a 40-triangle budget passed")
-    except tm.TilesCheckFailed as e:
+    except terrain_tile_jobs.TilesCheckFailed as e:
         r = e.result
     M = json.loads((out / "manifest.json").read_text())
     assert M["budget_check"]["over"] and M["seam_check"]["over_budget"] >= 1
     assert all((out / L["file"]).exists() for t in M["tiles"] for L in t["lods"] if L)
-    s = tm.summary(r)
+    s = terrain_tiles.summary(r)
     assert s.startswith("CHECKS FAILED") and "against a budget of 40" in s and "COMPLETE on disk" in s, s[:400]
     t = M["tiles"][0]
     assert t["collision_triangles"] <= 550, t["collision_triangles"]
@@ -134,7 +135,7 @@ def test_plane_chain():
                   [x, 20, 0], [x, 20, 5], [x - 5, 20, 2]], float)  # an edge on the corner line y = 20
     N = np.tile([1.0, 0, 0], (len(P), 1))
     F = np.array([[0, 1, 2], [1, 3, 4], [5, 6, 7]])
-    V, _, E = tm._plane_chain((P, N, F), 0, x, (0.0, 20.0))
+    V, _, E = terrain_seam_check._plane_chain((P, N, F), 0, x, (0.0, 20.0))
     keys = {tuple(p) for p in V}
     assert (x, 0.0, 0.0) in keys and (x, 10.0, 0.0) in keys
     assert not any(abs(p[1] - 20.0) < 1e-9 for p in keys), keys  # (the corner line's edge left out)
@@ -206,11 +207,11 @@ def test_floating_pieces_dropped():
     border = np.zeros(len(P), bool)
     border[24:32] = True  # (the fourth box runs off the tile)
     clear = P[:, 2] - 0.0  # (flat ground at z 0)
-    F2, dropped = tm._drop_specks(P, F, border, 4.0, clear, 50.0)
+    F2, dropped = terrain_tile_jobs._drop_specks(P, F, border, 4.0, clear, 50.0)
     kept = {int(v) // 8 for v in np.unique(F2)}
     assert kept == {0, 2, 3}, kept
     assert len(dropped) == 1 and dropped[0]["triangles"] == 12 and dropped[0]["clearance_m"] == 7.0, dropped
-    F3, d3 = tm._drop_specks(P, F, border, 4.0)  # (no clearance: only specks under min_area)
+    F3, d3 = terrain_tile_jobs._drop_specks(P, F, border, 4.0)  # (no clearance: only specks under min_area)
     assert len(F3) == len(F) and d3 == []
 
 
@@ -238,7 +239,7 @@ def test_relief_fades_in_at_its_cut(base, G):
     xs, ys = np.arange(lo[0] + 1, hi[0] - 1, 0.5), np.arange(lo[1] + 1, hi[1] - 1, 0.5)
     X, Y = np.meshgrid(xs, ys)
     w = base.relief_at(X.ravel(), Y.ravel()).reshape(X.shape)
-    cut = tm.RELIEF_CUT
+    cut = terrain_volumes.RELIEF_CUT
     a = np.argwhere((w[:, :-1] - cut) * (w[:, 1:] - cut) < 0)  # (grid pairs straddling the cut, along x)
     assert len(a) > 20, len(a)
     a = a[np.linspace(0, len(a) - 1, 60).astype(int)]
@@ -312,7 +313,7 @@ def test_dam_stays_in_the_heightmap():
     assert lk["area"] > 100 and T.dams["pond"].any(), (lk, T.dams["pond"].sum())
     rep = "\n".join(T.report()) if isinstance(T.report(), list) else str(T.report())
     assert "dammed:" in rep, "the report says nothing of the dam"
-    lakes = tm.lake_outlines(T)
+    lakes = terrain_seam_check.lake_outlines(T)
     assert len(lakes["pond"]["outline"][0]) >= 8 and abs(lakes["pond"]["level"] - lk["level"]) < 1e-3
     cfg, G, region, cf, vols = _shell(T)
     # the pushed heightmap on its lattice, flooded to the level from the lake's centre
@@ -367,7 +368,7 @@ def test_projected_normals_never_zero():
             g[P[:, 0] > 0, 2] = 1.0 if h > 0.6 else 0.0  # (flat at the fine stencil, sloped at the wide one)
             return np.zeros(len(P)), g
     P = np.array([[1.0, 0, 0], [-1.0, 0, 0]])
-    _, N = tm._project(Flat(), P, 1.0, iterations=0)
+    _, N = terrain_field._project(Flat(), P, 1.0, iterations=0)
     assert np.allclose(np.linalg.norm(N, axis=1), 1.0), N
 
 
@@ -378,7 +379,7 @@ def test_unflip_corners():
     F = np.array([[0, 1, 2], [1, 3, 2]])
     N = np.array([[0, 0, 1], [0, 0, -1], [0, 0, 1], [0, 0, 1.0]])
     src = np.arange(4)
-    P2, F2, N2, s2 = tm._unflip_corners(P, F, N, src, np.array([True, False]))
+    P2, F2, N2, s2 = terrain_tile_finish._unflip_corners(P, F, N, src, np.array([True, False]))
     assert len(P2) == 5 and F2[0, 1] == 4 and F2[1, 0] == 1, F2
     assert np.allclose(N2[4], [0, 0, 1]) and np.allclose(N2[1], [0, 0, -1]) and s2[4] == 1
     fn = np.cross(P2[F2[:, 1]] - P2[F2[:, 0]], P2[F2[:, 2]] - P2[F2[:, 0]])
@@ -391,14 +392,14 @@ def test_long_tube_by_runs():
     rng = np.random.default_rng(3)
     t_ = np.linspace(0, 1, 120)
     nodes = np.c_[300 * t_, 40 * np.sin(9 * t_), 50 - 40 * t_]
-    tb = tm.Tube("t", nodes, 3.5, 2.5, nodes[:, 2], rough=0.2, seed=4)
+    tb = terrain_volumes.Tube("t", nodes, 3.5, 2.5, nodes[:, 2], rough=0.2, seed=4)
     P = np.c_[rng.uniform(-10, 310, 20000), rng.uniform(-50, 50, 20000), rng.uniform(0, 60, 20000)]
     got = tb.sd(P, detail=True)
-    run, tm.TUBE_RUN = tm.TUBE_RUN, 10 ** 6
+    run, terrain_volumes.TUBE_RUN = terrain_volumes.TUBE_RUN, 10 ** 6
     try:
         ref = tb.sd(P, detail=True)
     finally:
-        tm.TUBE_RUN = run
+        terrain_volumes.TUBE_RUN = run
     near = ref[0] < tb.reach - 1.0
     assert near.sum() > 1000
     for g, r in zip(got, ref):
@@ -423,14 +424,14 @@ def test_pinched_sheets_split():
     A = _closed(P, np.array([[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]]))
     B = _closed(P, np.array([[0, 1, 4], [0, 1, 5], [0, 4, 5], [1, 4, 5]]))
     F = np.r_[A, B]
-    assert not tm._manifold(F)
-    P2, F2 = tm._split_nonmanifold(P, F)
-    assert tm._manifold(F2) and len(P2) == len(P) + 2 and len(F2) == len(F), (len(P2), F2)
-    assert np.abs(P2[F2] - P[F]).max() <= tm.PINCH_GAP + 1e-9 and len(tm._boundary_edges(F2)) == 0
+    assert not terrain_tile_mesh._manifold(F)
+    P2, F2 = terrain_tile_mesh._split_nonmanifold(P, F)
+    assert terrain_tile_mesh._manifold(F2) and len(P2) == len(P) + 2 and len(F2) == len(F), (len(P2), F2)
+    assert np.abs(P2[F2] - P[F]).max() <= terrain_tile_mesh.PINCH_GAP + 1e-9 and len(terrain_tile_mesh._boundary_edges(F2)) == 0
     assert len(np.unique(P2, axis=0)) == len(P2)  # (apart: a GLB read back by position stays unpinched)
-    assert tm._split_nonmanifold(P, np.r_[A, B[1:]]) is None  # (open there)
+    assert terrain_tile_mesh._split_nonmanifold(P, np.r_[A, B[1:]]) is None  # (open there)
     # the export's decimation takes such a mesh instead of calling it a fold
-    assert tm._manifold(tm._split_nonmanifold(P, F[::-1])[1])
+    assert terrain_tile_mesh._manifold(terrain_tile_mesh._split_nonmanifold(P, F[::-1])[1])
 
 
 def test_unpinch_drops_specks():
@@ -455,7 +456,7 @@ def test_unpinch_drops_specks():
         F = F2
     P = np.array(V)
     F = np.array(F, np.int64)
-    assert tm._manifold(F) and len(F) >= 8 * tm.SPECK_FACES
+    assert terrain_tile_mesh._manifold(F) and len(F) >= 8 * terrain_tile_mesh.SPECK_FACES
     a, b = F[0, 0], F[0, 1]  # (a tetrahedron outside the shell on one of its edges)
     out = (P[a] + P[b]) / 2 * 1.3
     out2 = out + np.cross(P[b] - P[a], out) * 0.2
@@ -463,9 +464,9 @@ def test_unpinch_drops_specks():
     i, j = len(P) - 2, len(P) - 1
     tet = _closed(P, np.array([[a, b, i], [a, b, j], [a, i, j], [b, i, j]]))
     F3 = np.r_[F, tet]
-    assert not tm._manifold(F3)
-    P2, F4 = tm._split_nonmanifold(P, F3)
-    assert len(F4) == len(F) and tm._manifold(F4) and len(tm._boundary_edges(F4)) == 0, len(F4)
+    assert not terrain_tile_mesh._manifold(F3)
+    P2, F4 = terrain_tile_mesh._split_nonmanifold(P, F3)
+    assert len(F4) == len(F) and terrain_tile_mesh._manifold(F4) and len(terrain_tile_mesh._boundary_edges(F4)) == 0, len(F4)
     print("ok unpinch drops a closed speck:", len(F3) - len(F4), "faces")
 
 
