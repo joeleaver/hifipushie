@@ -1,6 +1,6 @@
 """The joint solve's observations beyond outlines (refread, 2026-10-11): differential detector anchors, the parser's
 outlines, the lids and lip borders inside the solve, the solve's guards (sigma adaptation, cmax, the camera prior on
-the whole move) and blockin.solve_step. The model tests need the workspace block-in tn_T00 (Tess's class-mean start
+the whole move) and blockin_steps.solve_step. The model tests need the workspace block-in tn_T00 (Tess's class-mean start
 with fitted references) and are skipped without it.  uv run python -m pytest -q tests/test_refread.py"""
 import json
 import shutil
@@ -116,11 +116,12 @@ def test_lid_obs_reads_a_known_lid_change(tess):
 
 @need_ref
 def test_lip_obs_reads_a_known_border_change(tess):
-    from hifipushie import blockin as bi, blockin_lips as bl
+    from hifipushie import blockin_lips as bl
+    from hifipushie import blockin_clay, blockin_models
     from hifipushie import base_identity
     A, B, dc = tess
-    rj = bi._refs(REF)
-    view = {"cam": rj["cameras"][bi._front(rj)], "kind": "front"}
+    rj = blockin_models._refs(REF)
+    view = {"cam": rj["cameras"][blockin_clay._front(rj)], "kind": "front"}
     sk = np.flatnonzero(np.asarray(base_identity._gnm_data()["skin"]))
     g2m = face_ruler_features._gnm_to_model(B)
     ev = {}
@@ -173,13 +174,13 @@ def test_parser_outline_agrees_with_the_plain_reader_on_a_studio_photo():
 
 @need_ref
 def test_solve_step_is_not_forced_and_keeps_the_cameras_whole_move():
-    from hifipushie import blockin as bi
+    from hifipushie import blockin_models, blockin_steps
     root, a, b = "_t_refread_r", "_t_refread_a", "_t_refread_b"
     try:
         for n in (root, a, b):
             shutil.rmtree(store.HOME / n, ignore_errors=True)
-        bi.fork(REF, root)                           # (its own log: the reference model is never written)
-        r1 = bi.solve_step(root, out=a)
+        blockin_models.fork(REF, root)                           # (its own log: the reference model is never written)
+        r1 = blockin_steps.solve_step(root, out=a)
         so = r1["solve"]
         assert so["n"]["outline"] >= 150 and so["n"]["lid"] >= 10 and so["n"]["lip"] >= 10 and so["n"]["landmark"] >= 40
         assert so["max_sd"] <= 3.0 + 1e-6 and 6.0 < so["c"] < 14.0
@@ -188,7 +189,7 @@ def test_solve_step_is_not_forced_and_keeps_the_cameras_whole_move():
         assert done.shape == (3, 7) and np.allclose(done, so["cameras"], atol=0.01)     # (solvecams: + distance)
         lim = 4.0 * np.array([face_ruler_camera.PHOTO_CAM_SD7[k] for k in ("front", "3q", "profile")])   # a prior now, no clip: a good set stays well inside it
         assert (np.abs(done) <= lim + 1e-6).all() and len(so["camera_lines"]) == 3
-        r2 = bi.solve_step(a, out=b)
+        r2 = blockin_steps.solve_step(a, out=b)
         s2 = r2["solve"]
         assert np.allclose(np.asarray(s2["cameras"]), done + np.asarray(s2["camera_step"]), atol=0.02)
         assert (np.abs(np.asarray(s2["cameras"])) <= lim + 1e-6).all()      # the WHOLE move stays near its prior

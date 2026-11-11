@@ -10,7 +10,7 @@ Branch face-route (worktree .claude/worktrees/face-route). Audit: /mnt/data/hifi
 - fit_human, nudge_human, fit_likeness and human_reference(fit=True) refuse a block-in model and name block_in_step
   with `mm:`. human_reference(fit=False) keeps the chain's record (rj["blockin"]).
 - block_in_step refuses a head with no block_in_solve (hand_first=True overrides) and refuses a posed model.
-  A move over 1 sd warns; an `mm:` move is read against its measure's own sd (blockin.over_sd).
+  A move over 1 sd warns; an `mm:` move is read against its measure's own sd (blockin_steps.over_sd).
 - set_expression(name, mix | preset): a NEW model (<name>_<preset>) whose base.head.expression is the mix added to the
   head's own; base.head.posed records where it came from. Presets: smile (reviewed earlier as smile_tess), open_mouth,
   frown, surprise, blink (not reviewed). cheekPuff and eyeLook are refused.

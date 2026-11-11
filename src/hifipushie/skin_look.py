@@ -352,7 +352,8 @@ def beside(name: str, region: str, view: int | None = None, size: int = 768, lig
     picture's fitted camera, under its fitted light at its exposure. The two files are what review_view takes. Returns
     (the two side by side, text). Photo pixels here are for judging: they are written to the workspace only."""
     from PIL import Image
-    from . import blockin, resources, skin_route
+    from . import resources, skin_route
+    from . import blockin_clay, blockin_models
     from . import skin_read_frames
     if views or flat or layer:
         raise ValueError("look_skin: beside is one region, lit like its picture: it takes no views, flat or layer")
@@ -364,8 +365,8 @@ def beside(name: str, region: str, view: int | None = None, size: int = 768, lig
         raise ValueError(f"look_skin: beside is one of {', '.join(skin_route.REGIONS)} (.L / .R picks a side)")
     if isinstance(view, int) and not isinstance(view, bool) and view < 0:
         raise ValueError("look_skin: view is a reference picture's index")
-    rj, spec = blockin._refs(name), store.load(name)
-    vi = blockin._front(rj) if view is None else view
+    rj, spec = blockin_models._refs(name), store.load(name)
+    vi = blockin_clay._front(rj) if view is None else view
     if vi >= len(rj["views"]) or not rj["views"][vi].get("image") or rj["cameras"][vi] is None:
         raise ValueError(f"look_skin: reference view {vi} has no picture or no fitted camera ({len(rj['views'])} views)")
     cam = rj["cameras"][vi]

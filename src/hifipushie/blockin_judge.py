@@ -9,7 +9,8 @@ wrong there. Picture pixels are for judging only: nothing here reaches the model
 import numpy as np
 from PIL import Image, ImageDraw
 
-from . import blockin as bi, humanfit, likeness as lk, likeness_read as lr, store
+from . import humanfit, likeness as lk, likeness_read as lr, store
+from . import blockin_clay, blockin_expression, blockin_models
 
 SOURCE_PX = 1000   # a picture's own depth map (visibility), long side
 
@@ -64,13 +65,13 @@ def _skinned(mesh: dict, cam: dict, box: tuple, sources: list, px: int) -> tuple
 
 def sheet(name: str, out: str, views: list | None = None, T: int = 420) -> dict:
     """The judging sheet of block-in model name. -> {"out", "views"}."""
-    rj = bi._refs(name)
+    rj = blockin_models._refs(name)
     base = store.load(name)["base"]
     VI = list(range(len(rj["views"]))) if views is None else [int(v) for v in views]
     every = range(len(rj["views"]))
-    meshes = bi._per_view(base, rj, every, lambda b: bi.presented_mesh(b, rj=rj))
-    boxes = (rj.get("blockin") or {}).get("boxes") or bi._boxes(base, rj)
-    front = bi._front(rj)
+    meshes = blockin_expression._per_view(base, rj, every, lambda b: blockin_clay.presented_mesh(b, rj=rj))
+    boxes = (rj.get("blockin") or {}).get("boxes") or blockin_models._boxes(base, rj)
+    front = blockin_clay._front(rj)
     order = [i for i in every if i != front] + [front]
     cols = ("photo", "50% blend (photo + projected)", "the pictures projected as skin", "clay")
     S = Image.new("RGB", (T * len(cols), 18 + (T + 4) * len(VI)), "white")

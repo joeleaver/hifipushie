@@ -37,7 +37,7 @@ N = 512                 # px across a view's crop (the block-in's box)
 FACE = (0.35, 0.7)      # cos between the skin's normal and the way to the camera: no trust .. full
 CLIP = (0.02, 0.97)     # picture / render values (0..1, any channel) outside this are clipped: not read
 STAGE = "_sr_"          # this reader's own dressed stages (never the look_skin / judging-sheet ones)
-# the dressed render's light before it is re-aimed to the picture's own (blockin.photo_lighting): a big soft source
+# the dressed render's light before it is re-aimed to the picture's own (blockin_look.photo_lighting): a big soft source
 # above and in front, a weak frontal fill, a pale room (the judging sheets' stage light)
 LIGHT = {"lights": [{"dir": [0.08, -0.74, 0.67], "energy": 3.3, "color": [1.0, 0.975, 0.95], "angle": 38,
                      "window": {"size": [1.4, 1.0], "distance": 2.2, "gain": 0.2}},

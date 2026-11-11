@@ -75,10 +75,10 @@ def test_crop_box_and_crop():
 
 @pytest.fixture(scope="module")
 def tess():
-    from hifipushie import blockin as bi
+    from hifipushie import blockin_models
     spec = store.load(REF)
     head = face_ruler_blockin.model_head(spec)
-    rj = bi._refs(REF)
+    rj = blockin_models._refs(REF)
     return spec, head, rj
 
 

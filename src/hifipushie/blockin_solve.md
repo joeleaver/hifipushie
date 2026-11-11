@@ -148,7 +148,7 @@ Read guide(topic="block_in") first: the loop, the stage-0 description and the se
      the jaw's shading RAMP against our own render under the fitted light (null 2.4-3.1 mm rms; a width moves it
      0.4-0.9 mm); the jaw in front of CLOTH from the parser's skin / cloth maps (3/4: median 0.2-0.4 mm but outliers
      to rms 1.7, front fails; and real sets rarely have a collar behind the jaw). A TIE of the unread widths to
-     their expectation given the read measures (options `chin={"tie": ..}` of blockin.solve_step) did not beat
+     their expectation given the read measures (options `chin={"tie": ..}` of blockin_steps.solve_step) did not beat
      leaving them free either. (4) On a good photo set a broad, square lower face from the solve is what outlines
      + GNM's population give (a jaw that IS wide at its angles: a narrower one leaves the front outline 2-6 mm inside
      the picture's); a rounded chin ball between marionette grooves is RELIEF inside the silhouette, which

@@ -78,11 +78,12 @@ def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool
                     jaw: bool = False, chin: dict | None = None, dense: bool | None = None, mp: bool | None = None,
                     hair_edge: bool | None = None, nostrils: bool | None = None, alar: bool | None = None) -> tuple:
     """A block-in model's reference pictures as the ruler's views: per picture its fitted camera, the skin's own
-    outline where the picture has one (a profile in front of a plain background: blockin.profile_contour; any view's
+    outline where the picture has one (a profile in front of a plain background: blockin_look.profile_contour; any view's
     "outline" points), and on the front picture the iris centres (eye_ruler). -> (views, notes)."""
     from PIL import Image
-    from . import blockin as bi, eye_ruler as er, humanfit, likeness, mpread, store
-    rj = bi._refs(name)
+    from . import eye_ruler as er, humanfit, likeness, mpread, store
+    from . import blockin_clay, blockin_models
+    rj = blockin_models._refs(name)
     spec = store.load(name)
     head = model_head(spec, expr={"names": EXPR_SET} if expr else None)
     views, notes = [], []
@@ -179,7 +180,7 @@ def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool
                 notes.append(f"{view['name']}: no hair-edge read (the face parser is not available: {str(e)[:100]})")
         if k == "front":
             try:
-                P = bi.detect_view(img, v)
+                P = blockin_clay.detect_view(img, v)
                 mm = likeness._mm_per_px(cam, humanfit.state(spec["base"])["L"][27:48])
                 eyes = er.read(img, P, mm)
                 extras.append(lambda h, vw, eyes=eyes: _iris_obs(h, vw, eyes))
@@ -321,16 +322,16 @@ def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD7, hair: bool = True,
     cam_lines = []
     if res.get("cam_post"):
         try:
-            from . import blockin as bi
-            st_ = [v.get("yaw", 0.0) or 0.0 for v in bi._refs(name)["views"]]
+            from . import blockin_models
+            st_ = [v.get("yaw", 0.0) or 0.0 for v in blockin_models._refs(name)["views"]]
             if only is not None:
                 st_ = [x for i, x in enumerate(st_) if i in set(int(j) for j in only)]
         except Exception:  # noqa: BLE001
             st_ = None
         cam_lines = camera_lines(views_in, res["views"], res["cam_done"], cam_sd, st_)
     try:      # each view's stated kind against the camera the solve ended on
-        from . import blockin as bi
-        rv_ = bi._refs(name)["views"]
+        from . import blockin_models
+        rv_ = blockin_models._refs(name)["views"]
         if only is not None:
             rv_ = [v for i, v in enumerate(rv_) if i in set(int(j) for j in only)]
         notes = list(notes) + [x["warn"] for x in view_sanity(rv_, [v["cam"] for v in res["views"]]) if x["warn"]]

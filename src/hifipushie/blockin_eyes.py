@@ -173,7 +173,7 @@ class Reader:
         up = np.array([0, 0, 1.0]) - fwd * fwd[2]
         up /= np.linalg.norm(up)
         lat = np.cross(up, fwd)
-        ri = 0.51 * r * 0.985                     # the drawn iris (blockin.lid_model's)
+        ri = 0.51 * r * 0.985                     # the drawn iris (blockin_lid_measure.lid_model's)
         pole = c + r * fwd
         R = V[self.ring]
         x, z = (R - pole) @ lat, (R - pole) @ up
@@ -430,12 +430,13 @@ def iris_check(name: str) -> dict:
     equal), "iris_rgb" / "iris_hex" (the picture's iris ring colour), "text"}. The lids are matched in iris radii, so a
     drawn iris k x too big opens the eye k x too tall and crowds the brow (Tess: 12.66 mm drawn, 10.7 mm hers)."""
     from PIL import Image
-    from . import blockin as bi, humanfit, likeness, store
-    rj = bi._refs(name)
-    vi = bi._front(rj)
+    from . import humanfit, likeness, store
+    from . import blockin_clay, blockin_models
+    rj = blockin_models._refs(name)
+    vi = blockin_clay._front(rj)
     v, cam = rj["views"][vi], rj["cameras"][vi]
     img = Image.open(v["image"]).convert("RGB")
-    P = bi.detect_view(img, v)
+    P = blockin_clay.detect_view(img, v)
     if P is None:
         raise ValueError("iris_check: the detector found no face on the front picture")
     lb = limbus(img, P)
@@ -491,11 +492,12 @@ def photo_evidence(img, view: dict) -> dict:
     columns of both eyes), from MediaPipe + lidfold.read_lid on the front picture. The iris' radius is the LIMBUS's
     (limbus(); "iris_k" = detector radius / limbus radius, 1.0 when it could not be read): up / lo / tps are scaled by
     it, so they are in the picture's true iris radii like the model's own reads."""
-    from . import blockin as bi, lidfold
-    lp = bi.lid_photo(img, view)
+    from . import lidfold
+    from . import blockin_clay, blockin_lid_measure
+    lp = blockin_lid_measure.lid_photo(img, view)
     if not lp:
         raise ValueError("eye step: the detector found no face (irises) on the front picture")
-    P = np.asarray(bi.detect_view(img, view), float)
+    P = np.asarray(blockin_clay.detect_view(img, view), float)
     kk = iris_scale(img, P)
     cols = lidfold.read_lid(img, P)
     tps = [c["tps"] for e in cols for c in e if np.isfinite(c.get("tps", np.nan)) and c.get("dark", 0) >= DARK_LINE]
@@ -517,12 +519,13 @@ def ruler_evidence(name: str) -> dict:
     over the margin at RULER_COLS), "crease_dark", "crease_cols" (at u -5 / 0 / +5: the eye step's three sections;
     None when the line is fainter than DARK_LINE), "eyes" (per eye), "mm" (mm per picture px)}."""
     from PIL import Image
-    from . import blockin as bi, eye_ruler, humanfit, likeness, store
-    rj = bi._refs(name)
-    vi = bi._front(rj)
+    from . import eye_ruler, humanfit, likeness, store
+    from . import blockin_clay, blockin_models
+    rj = blockin_models._refs(name)
+    vi = blockin_clay._front(rj)
     v, cam = rj["views"][vi], rj["cameras"][vi]
     img = Image.open(v["image"]).convert("RGB")
-    P = bi.detect_view(img, v)
+    P = blockin_clay.detect_view(img, v)
     if P is None:
         raise ValueError("eye ruler: the detector found no face on the front picture")
     st = humanfit.state(store.load(name)["base"])
@@ -754,9 +757,10 @@ def orbit_status(name: str, log=print) -> dict:
     by its base + cameras): {"state": "unread" (no row these pictures pin: no side view, or inside the reader's error
     everywhere) | "off" (a read row is out by more than twice its error) | "ok", "rows", "text"}."""
     import json
-    from . import blockin as bi, store
+    from . import store
+    from . import blockin_table
     from . import face_ruler_compare
-    h = bi._spec_hash(name)
+    h = blockin_table._spec_hash(name)
     p = store.HOME / name / "blockin_orbit.json"
     rows = None
     if p.exists():
@@ -786,7 +790,7 @@ def orbit_status(name: str, log=print) -> dict:
 def eye_step(name: str, out: str | None = None, seen: str = "", iters: int = 6, log=print, expression: bool = False,
              donor: str | None = None, orbit: bool = True, crease: str | None = "default", fold: str | None = None) -> dict:
     """The block-in step: the opening (solve), the lid as one structure with the eyeball guard (blockin_lid), written
-    as a new model (blockin.step with the identity set). fold: the lid's shape term: "crisp" (the default: recipe A,
+    as a new model (blockin_steps.step with the identity set). fold: the lid's shape term: "crisp" (the default: recipe A,
     blockin_lid.fold_step: a designed crisp fold on the picture's fold line, brows held), "none" (the opening only:
     the fold costs |dc| 10-20 and moves the rest of the face ~0.6 mm rms; skip it while the masses are open) or "donor" (the older
     lid_step toward a donor head's lid; implied by donor= and by expression=True). expression=True: GNM's eye-region
@@ -799,11 +803,12 @@ def eye_step(name: str, out: str | None = None, seen: str = "", iters: int = 6, 
         raise ValueError('eye step: fold="crisp" is identity only; with expression=True the lid is solved toward a donor (fold="donor")')
     from PIL import Image
     from . import blockin as bi, blockin_lid as bl, store
+    from . import blockin_clay, blockin_models, blockin_steps
     orb = orbit_status(name, log) if orbit else None
     if orb:
         log(orb["text"])
-    rj = bi._refs(name)
-    vi = bi._front(rj)
+    rj = blockin_models._refs(name)
+    vi = blockin_clay._front(rj)
     v = rj["views"][vi]
     ev = photo_evidence(Image.open(v["image"]).convert("RGB"), v)
     base = store.load(name)["base"]
@@ -854,7 +859,7 @@ def eye_step(name: str, out: str | None = None, seen: str = "", iters: int = 6, 
                 d = np.r_[mg2["up"] - np.asarray(ev["ruler"]["up"], float), mg2["lo"] - (np.asarray(ev["ruler"]["lo"], float) - LO_BIAS)]
                 lid["margin_miss"] = float(np.nanmax(np.abs(d[np.abs(np.r_[RULER_COLS, RULER_COLS]) < 7])))
                 s["read"]["margins"] = mg2
-    rep = bi.step(name, {}, out=out, seen=seen or "lids and fold vs the picture (eye step)",
+    rep = blockin_steps.step(name, {}, out=out, seen=seen or "lids and fold vs the picture (eye step)",
                   why=(f"eye step ({'identity + GNM eye-region expression' if expression else 'identity only'}; no lidfold, no "
                        f"lid pose): picture up {ev['up']:.2f} lo {ev['lo']:.2f} iris radii, fold line {ev['tps']:.2f} mm; "
                        f"opening |dc| {s['dc']:.2f}, |e| {s['e']:.2f}"

@@ -96,8 +96,8 @@ def pose(name: str, mix, out: str | None = None) -> dict:
                 ex[k] = ex.get(k, 0.0) + w * c
     ex = {k: round(float(v), 5) for k, v in ex.items() if abs(v) > 1e-6}
     if is_block_in(name):
-        from . import blockin as bi
-        bi.fork(name, out)
+        from . import blockin_models
+        blockin_models.fork(name, out)
         sp = store.load(out)
     sp["base"]["head"]["expression"] = ex
     sp["base"]["head"]["posed"] = {"from": name, "mix": weights}

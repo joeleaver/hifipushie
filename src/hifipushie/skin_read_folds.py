@@ -371,10 +371,11 @@ def _lid_read(c: Context, nominal: dict) -> dict:
     for the upper lid's fold, searched up from the PICTURE's lash line in the most frontal view fine enough
     (lidfold.read_lid; see LID_COLS); {} when no view allows it (then the path's valley read stands)."""
     from PIL import Image
-    from . import blockin, humanfit, lidfold, skin_folds as sf
+    from . import humanfit, lidfold, skin_folds as sf
+    from . import blockin_clay, blockin_models
     from .likeness_eyes import frame as eye_frame
     fd = sf.FOLDS["lid_fold"]
-    rj = blockin._refs(c.name)
+    rj = blockin_models._refs(c.name)
     best = None
     for f in c.frames:
         if f.get("mm_native", f["mm"]) <= fd["res"] and (best is None or abs(f["yaw"]) < abs(best["yaw"])):
@@ -384,7 +385,7 @@ def _lid_read(c: Context, nominal: dict) -> dict:
     f = best
     try:
         img = Image.open(f["image"]).convert("RGB")
-        P = blockin.detect_view(img, rj["views"][f["view"]])
+        P = blockin_clay.detect_view(img, rj["views"][f["view"]])
         if P is None:
             return {}
         P = np.asarray(P, float)[:, :2]

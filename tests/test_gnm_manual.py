@@ -58,11 +58,11 @@ def test_mm_moves_move_their_measure_alone():
 
 def test_step_reply_carries_the_manual():
     """block_in_step's report text has the manual's entries for its `seen` (no model needed: step_text on a report)."""
-    from hifipushie import blockin as bi
+    from hifipushie import blockin_steps
     rep = {"entry": {"to": "x", "round": 1, "from": "w", "c_norm": 1.0, "read": {}, "coupled": [], "passes": {},
                      "camera_moves": []},
            "c0": 1.0, "big": [], "delta": [], "before": {}, "manual": gm.suggest("the muzzle stands forward", top=1)}
-    assert "pc:upper_lip_region0" in bi.step_text(rep)
+    assert "pc:upper_lip_region0" in blockin_steps.step_text(rep)
 
 
 def test_ruler_reads_the_gaps_and_its_moves_close_them():

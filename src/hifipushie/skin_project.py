@@ -480,8 +480,8 @@ def exclude(at: dict, s: dict, mesh: dict, cam: dict, img, view: dict, parse: st
     # the lid margins: nothing within a band of the eyeball (the picture's lashes, wet line, a lid that sits elsewhere)
     band = LID_BAND
     try:
-        from . import blockin as bi
-        P = bi.detect_view(img, view)
+        from . import blockin_clay
+        P = blockin_clay.detect_view(img, view)
         if P is not None:
             Pm = humanfit.project(cam, L[:68])
             from . import likeness as lk
@@ -735,8 +735,9 @@ def iris_profile(img, view: dict) -> dict | None:
     pupil's edge (the steepest dark -> light step inside 0.15-0.6), "open": the share of the iris disc the lids leave};
     None without a detection or under IRIS_PX."""
     from PIL import Image, ImageDraw
-    from . import blockin as bi, blockin_eyes as be
-    P = bi.detect_view(img, view)
+    from . import blockin_eyes as be
+    from . import blockin_clay
+    P = blockin_clay.detect_view(img, view)
     if P is None or len(P) < 478:
         return None
     P = np.asarray(P, float)[:, :2]
@@ -1073,16 +1074,17 @@ def make(name: str, spec: dict | None = None, views=None, size: int = SIZE, deli
     from PIL import Image
     from scipy import ndimage
     from scipy.spatial import cKDTree
-    from . import blockin as bi, likeness as lk, store
+    from . import likeness as lk, store
+    from . import blockin_expression, blockin_models
     t0 = time.time()
     spec = spec or store.load(name)
-    rj = bi._refs(name)
+    rj = blockin_models._refs(name)
     at = atlas(spec["base"], size)
     n = len(at["ii"])
     VI = [i for i in (range(len(rj["views"])) if views is None else views) if rj["views"][i].get("image") and rj["cameras"][i] is not None]
     if not VI:
         raise ValueError(f"skin_project: {name} has no fitted reference views (human_reference / block_in first)")
-    meshes = bi._per_view(spec["base"], rj, VI, lambda b: lk.model_mesh(b))
+    meshes = blockin_expression._per_view(spec["base"], rj, VI, lambda b: lk.model_mesh(b))
     plain = _plain(at)
     regs = region_masks(at)
     beard = np.zeros(n, bool)
@@ -1702,7 +1704,8 @@ def apply(name: str, out: str | None = None, remove: bool = False, opacity: floa
     The files (albedo, raw, detail, confidence, report) are also written to <model>/skin_projection/ (or save_dir)."""
     import copy
     from PIL import Image
-    from . import blockin as bi, images, likeness_texture as lt, store
+    from . import images, likeness_texture as lt, store
+    from . import blockin_models
     spec = copy.deepcopy(store.load(name))
     dst = out or name
     if remove:
@@ -1751,10 +1754,10 @@ def apply(name: str, out: str | None = None, remove: bool = False, opacity: floa
             notes.append("  NOTE: skin.hair.stubble kept AND the picture carries its own beard shadow: the projection covers our painted shadow; "
                          "our stubble's relief / strands stand on the picture's")
     if dst != name:
-        rj = copy.deepcopy(bi._refs(name))
+        rj = copy.deepcopy(blockin_models._refs(name))
         if rj.get("blockin"):
             rj["blockin"] = {**rj["blockin"], "root": dst}
-        bi._save(dst, spec, note or f"skin projection of {name}'s references", rj)
+        blockin_models._save(dst, spec, note or f"skin projection of {name}'s references", rj)
     else:
         store.save(dst, spec, note or "skin projection: the references projected, de-lit, filled")
     r["text"] += "\n" + "\n".join([f"  saved: {dst} skin.projection (files in {d})"] + notes)

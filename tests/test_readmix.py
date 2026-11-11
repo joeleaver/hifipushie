@@ -53,9 +53,9 @@ def test_the_mix_reads_no_oval_and_nothing_past_its_turn():
 
 @pytest.fixture(scope="module")
 def tess():
-    from hifipushie import blockin as bi
+    from hifipushie import blockin_models
     spec = store.load(REF)
-    return spec, face_ruler_blockin.model_head(spec), bi._refs(REF)
+    return spec, face_ruler_blockin.model_head(spec), blockin_models._refs(REF)
 
 
 @need_ref
@@ -249,18 +249,19 @@ def test_one_lens_convention_and_a_crop_frame():
 
 def test_fallback_blend_stays_on_the_simplex():
     from hifipushie import blockin as bi
+    from hifipushie import blockin_models
     D = bi.data()
     en = [str(x) for x in D["eth_names"]]
-    p = bi.class_blend(None, True)
+    p = blockin_models.class_blend(None, True)
     assert p["source"] == "DEFAULT" and np.allclose(p["c"], D["m_m"])
-    one = bi.class_blend(en[0], False)
+    one = blockin_models.class_blend(en[0], False)
     assert one["source"] == "GIVEN" and np.allclose(one["c"], D["eth_means"][0][0])
-    half = bi.class_blend({en[0]: 2.0, en[1]: 2.0}, True)                     # normalised
+    half = blockin_models.class_blend({en[0]: 2.0, en[1]: 2.0}, True)                     # normalised
     assert half["weights"] == {en[0]: 0.5, en[1]: 0.5}
     assert np.allclose(half["c"], 0.5 * (np.asarray(D["eth_means"][1][0]) + np.asarray(D["eth_means"][1][1])))
     for bad in ({en[0]: -0.5, en[1]: 1.5}, {"martian": 1.0}, {en[0]: 0.0}):
         with pytest.raises(ValueError):
-            bi.class_blend(bad, True)
+            blockin_models.class_blend(bad, True)
 
 
 @need_ref

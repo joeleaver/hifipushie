@@ -617,12 +617,13 @@ def compare(name: str, model_name: str | None = None) -> dict:
     model) pupils apart, "moves": [text], "text"}. mm at the model; u = toward the outer corner, v = up, from each
     eye's iris centre; both eyes' mean."""
     from PIL import Image
-    from . import blockin as bi, humanfit, likeness, store
-    rj = bi._refs(name)
-    vi = bi._front(rj)
+    from . import humanfit, likeness, store
+    from . import blockin_clay, blockin_models
+    rj = blockin_models._refs(name)
+    vi = blockin_clay._front(rj)
     v, cam = rj["views"][vi], rj["cameras"][vi]
     img = Image.open(v["image"]).convert("RGB")
-    P = bi.detect_view(img, v)
+    P = blockin_clay.detect_view(img, v)
     if P is None:
         raise ValueError("eye_ruler: the detector found no face on the front picture")
     spec = store.load(model_name or name)

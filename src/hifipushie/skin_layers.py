@@ -186,19 +186,20 @@ def lips_from_indications(name: str, spec: dict, at: dict, base: np.ndarray, log
     and darkest 25 % of each left out: highlights, the parting's shadow), brought to albedo by the plain skin's gain
     (atlas / picture). Returns {"od": (n, 3) optical density over the base, "upper", "lower" (sRGB albedo), "mask"}."""
     from PIL import Image, ImageDraw
-    from . import blockin as bi, likeness as lk, store
+    from . import likeness as lk, store
+    from . import blockin_clay, blockin_expression, blockin_models
     from . import skin_read_reads
-    rj = bi._refs(name)
-    vi = bi._front(rj)
+    rj = blockin_models._refs(name)
+    vi = blockin_clay._front(rj)
     v, cam = rj["views"][vi], rj["cameras"][vi]
     img = Image.open(v["image"]).convert("RGB")
-    P = bi.detect_view(img, v)
+    P = blockin_clay.detect_view(img, v)
     if P is None or len(P) < 468:
         return None
     polys = skin_read_reads.lip_polygons(P)
     ph = sp._lin(np.asarray(img, float) / 255.0)
     H, W = ph.shape[:2]
-    mesh = bi._per_view(spec["base"], rj, [vi], lambda b: lk.model_mesh(b))[vi]
+    mesh = blockin_expression._per_view(spec["base"], rj, [vi], lambda b: lk.model_mesh(b))[vi]
     smp = sp.sample_view(at, mesh, cam, np.asarray(img))
     cols, masks = {}, {}
     for key in ("lip_upper", "lip_lower"):
@@ -665,7 +666,8 @@ def apply(name: str, out: str | None = None, note: str = "", freckles: bool = Tr
     it. The files (one PNG a layer, the provenance, the recomposition, report) go to <model>/skin_layers/."""
     from pathlib import Path
     from PIL import Image
-    from . import blockin as bi, images, likeness_texture as lt, store
+    from . import images, likeness_texture as lt, store
+    from . import blockin_models
     spec = copy.deepcopy(store.load(name))
     r = decompose(name, spec, log=log, lips=lips)
     at = r["at"]
@@ -751,10 +753,10 @@ def apply(name: str, out: str | None = None, note: str = "", freckles: bool = Tr
         sk["hair"] = h
         notes.append("  hair.stubble.shadow -> 0: the beard LAYER is the shadow now (our stubble keeps its hair dots)")
     if dst != name:
-        rj = copy.deepcopy(bi._refs(name))
+        rj = copy.deepcopy(blockin_models._refs(name))
         if rj.get("blockin"):
             rj["blockin"] = {**rj["blockin"], "root": dst}
-        bi._save(dst, spec, note or f"skin layer stack from {name}'s atlas", rj)
+        blockin_models._save(dst, spec, note or f"skin layer stack from {name}'s atlas", rj)
     else:
         store.save(dst, spec, note or "skin layer stack from the atlas", checked=False)
     r["text"] += "\n" + "\n".join([f"  saved: {dst} skin.stack ({len(layers_)} layers; files in {d})"] + notes)

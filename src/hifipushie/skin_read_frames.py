@@ -92,27 +92,29 @@ def shoot(sn: str, frames: list, lighting: dict | None, size: int = 2 * N, flat:
 
 def boxes(name: str) -> list:
     """Each view's square crop (picture pixels): the block-in's own, else round the fitted landmarks."""
-    from . import blockin, store
-    rj = blockin._refs(name)
+    from . import store
+    from . import blockin_models
+    rj = blockin_models._refs(name)
     b = (rj.get("blockin") or {}).get("boxes")
-    return [[float(x) for x in q] for q in (b or blockin._boxes(store.load(name)["base"], rj))]
+    return [[float(x) for x in q] for q in (b or blockin_models._boxes(store.load(name)["base"], rj))]
 
 
 def lighting(name: str, vi: int) -> dict:
     """LIGHT re-aimed and re-balanced to view vi's own fitted light."""
-    from . import blockin
-    return blockin.photo_lighting(name, LIGHT, vi)
+    from . import blockin_look
+    return blockin_look.photo_lighting(name, LIGHT, vi)
 
 
 def photo_light(name: str, vi: int | None = None) -> dict:
     """View vi's fitted light (default: the front view's) AT THE PICTURE'S EXPOSURE: `lighting` + "exposure" = the EV
     the last read measured between our render under that light and the picture on the plain skin (`context` stores
     it beside the stage; "measured": False and EV 0 when no read has run). For renders set beside the reference.
-    WHY (skinfolds2): blockin.photo_lighting keeps the face's front as bright as its TEMPLATE lights it, which is not
+    WHY (skinfolds2): blockin_look.photo_lighting keeps the face's front as bright as its TEMPLATE lights it, which is not
     how bright the photographer exposed it. The judging sheets' template (-0.55 EV, a filmic view) put every dressed
     head ~10 L under its reference, and the same albedo 10 L down reads as a tan."""
-    from . import blockin, store
-    vi = blockin._front(blockin._refs(name)) if vi is None else vi
+    from . import store
+    from . import blockin_clay, blockin_models
+    vi = blockin_clay._front(blockin_models._refs(name)) if vi is None else vi
     lt = lighting(name, vi)
     ev = None
     try:
@@ -143,9 +145,10 @@ def capture(name: str, spec: dict | None = None, views: list | None = None, log=
     "facing", "parse" {skin, hair, figure..: picture-parser probabilities}, "mm" per pixel, "box", "cam"}].
     spec: a variant of the model's spec to dress the stage with (default: the saved one). render=False: no R."""
     from PIL import Image
-    from . import blockin, humanfit, likeness as lk, resources, store
+    from . import humanfit, likeness as lk, resources, store
+    from . import blockin_models
     spec = spec or store.load(name)
-    rj = blockin._refs(name)
+    rj = blockin_models._refs(name)
     bx = boxes(name)
     idx = [i for i in (range(len(rj["views"])) if views is None else views)
            if rj["views"][i].get("image") and rj["cameras"][i] is not None]

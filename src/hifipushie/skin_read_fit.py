@@ -446,10 +446,11 @@ def apply(name: str, out: str | None = None, groups=DEFAULT_GROUPS, rounds: int 
     itself). rounds: read -> fit -> re-render -> read again (the second round corrects what the first could only
     estimate: freckle and beard densities, brow coverage). Returns {"model", "reads": [text per round], "fits",
     "skin", "text"}."""
-    from . import blockin, store
+    from . import store
+    from . import blockin_models
     dst = out or name
     if out and out != name:
-        blockin.fork(name, out, replace=True)
+        blockin_models.fork(name, out, replace=True)
     reads, fits = [], []
     if tone is not None:     # a STATED tone (a Fitzpatrick type 1..6, or skin.tone's own keys): the lightness prior
         spec = store.load(dst)

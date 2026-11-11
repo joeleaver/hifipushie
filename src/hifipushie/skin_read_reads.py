@@ -38,10 +38,10 @@ def _lip_read(c: Context) -> dict:
     in the loop by construction: a second round reads what the first one's parameters render as."""
     from PIL import Image, ImageDraw
     from scipy import ndimage
-    from . import blockin
+    from . import blockin_clay, blockin_models
     out = {}
     try:
-        rj = blockin._refs(c.name)
+        rj = blockin_models._refs(c.name)
     except Exception:  # noqa: BLE001
         return out
     R = regions(c)
@@ -52,7 +52,7 @@ def _lip_read(c: Context) -> dict:
         if abs(f.get("yaw", 0.0)) > LIP_YAW or "R" not in f or v["weight"] < 0.7 * max(v_["weight"] for v_ in c.views):
             continue
         try:
-            P = blockin.detect_view(Image.open(f["image"]).convert("RGB"), rj["views"][f["view"]])
+            P = blockin_clay.detect_view(Image.open(f["image"]).convert("RGB"), rj["views"][f["view"]])
         except Exception:  # noqa: BLE001
             P = None
         if P is None:
@@ -207,9 +207,10 @@ def _iris_rel(name: str, c: Context) -> dict:
     Views turned past 50 deg or with an iris under IRIS_R_PX of radius are left out. -> {"read", "ratio" (linear, per
     channel), "views", "px"}."""
     from PIL import Image
-    from . import blockin, blockin_eyes as be, lidfold
+    from . import blockin_eyes as be, lidfold
+    from . import blockin_clay, blockin_models
     from .likeness_eyes import frame
-    rj = blockin._refs(name)
+    rj = blockin_models._refs(name)
     rel, npx = [], 0
     for f in c.frames:
         vi = int(f["view"])
@@ -224,7 +225,7 @@ def _iris_rel(name: str, c: Context) -> dict:
         ours = np.median(f["R"][iris], 0) / np.maximum(np.median(f["R"][scl], 0), 1e-4)
         try:
             img = Image.open(v["image"]).convert("RGB")
-            P = blockin.detect_view(img, v)
+            P = blockin_clay.detect_view(img, v)
             if P is None:
                 continue
             lb = be.limbus(img, P)

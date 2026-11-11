@@ -191,13 +191,14 @@ def model_band(J: dict, V: np.ndarray, cam: dict, o: dict, thickness: float, xs_
 
 def _inputs(name: str, spec: dict | None = None):
     from PIL import Image
-    from . import blockin as bi, humanfit, likeness, skin_look, store
+    from . import humanfit, likeness, skin_look, store
+    from . import blockin_clay, blockin_models
     spec = store.load(name) if spec is None else spec
-    rj = bi._refs(name)
-    vi = bi._front(rj)
+    rj = blockin_models._refs(name)
+    vi = blockin_clay._front(rj)
     v, cam = rj["views"][vi], rj["cameras"][vi]
     img = Image.open(v["image"]).convert("RGB")
-    P = bi.detect_view(img, v)
+    P = blockin_clay.detect_view(img, v)
     if P is None:
         raise ValueError("brows: the detector found no face on the front picture")
     P = np.asarray(P, float)[:, :2]
