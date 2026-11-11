@@ -138,7 +138,9 @@ def read_roles(net):
         else:
             sewn[pa].add(pb)
             sewn[pb].add(pa)
-    fold = next((f for f, h in zip(net.M.get("folds") or [], H.folds) if h["fall"]), None)  # (a FALL: a stiff part's roll)
+    fold = next((f for f, h in zip(net.M.get("folds") or [], H.folds) if h["fall"] and f.get("piece") not in carried),
+                None)  # (a FALL: a stiff part's roll, on a piece of its own; C420: a roll on a ply (the jacket's top
+    # collar on its undercollar, one part) is the part's own crease, turned by the crease turn, never a fall stage)
     fall = fold["piece"] if fold else None
     band, stand = None, False
     if fall:
@@ -387,6 +389,13 @@ def neck_part(b) -> str | None:
     return None
 
 
+def body_cloth(R) -> list:
+    """The soft cloth a band or stand is sewn to: the panels AND the tubes (C420, t s5-2: the jacket's fronts are tubes,
+    read by where their girths were taken, and a stand found on panels only was laid on the back neck alone, 23 points;
+    the 35 sewn along the fronts' neck and gorge were never placed and the collar hung from the origin)."""
+    return list(R.panels) + [t for t in R.tubes if t not in R.panels]
+
+
 def stand_ring(b):
     """The STAND: the band stage's ring with its own top edge (module doc). Sets b.sb / b.st / b._band_lines like
     band_closed, so fill_band, stiff_last and the soft network hold it as they hold a band."""
@@ -398,7 +407,7 @@ def stand_ring(b):
     net, R = b.net, b.roles
     uv, rs = net.uv, net.root
     soft_sewn = set()
-    for p in R.panels:
+    for p in body_cloth(R):  # (C420: the neckline is the body cloth's, panels and tubes alike)
         soft_sewn |= set(b.sewn_with(R.band, p))
     if len(soft_sewn) < 4:
         raise ChainRefused(f"{R.band}: a stand not sewn to the body cloth's neckline. next: sew its neck edge (draft_pattern)")
@@ -408,7 +417,7 @@ def stand_ring(b):
     sB = np.r_[0, np.cumsum(LB)]
     C = float(sB[-1])
     mid = int(np.argmin(np.abs(sB - C / 2)))
-    left = [p for p in R.panels if hand_of(p) > 0 and b.sewn_with(R.band, p)]
+    left = [p for p in body_cloth(R) if hand_of(p) > 0 and b.sewn_with(R.band, p)]
     su = float(np.sign(np.mean([uv[q, 0] for q in b.sewn_with(R.band, left[0])]) - uv[sb[mid], 0])) if left else 1.0
     a, bb_, yc, zc, dz = b._neck_ring(C)
     th = (sB - sB[mid]) / C * 2 * np.pi * su

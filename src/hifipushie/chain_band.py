@@ -36,13 +36,14 @@ class BandStages:
             raise ChainRefused(f"{R.band}: no closure on the band; next: add its button in your draft's declarations (draft_pattern)")
         uv = net.uv
         soft_sewn = set()
-        for p in R.panels:
+        from .chain_roles import body_cloth
+        for p in body_cloth(R):  # (C420: panels and tubes)
             soft_sewn |= set(self.sewn_with(R.band, p))
         c2s = self.sewn_with(R.fall, R.band)
         sb, st = self.order_x(soft_sewn), self.order_x(c2s.values())
         self.sb, self.st, self.c2s = sb, st, c2s
         # which end of the band goes to which side: the seam to a ".L" piece tells
-        left = [p for p in R.panels if hand_of(p) > 0]
+        left = [p for p in body_cloth(R) if hand_of(p) > 0 and self.sewn_with(R.band, p)]
         su = np.sign(np.mean([uv[v, 0] for v in self.sewn_with(R.band, left[0])])) if left else 1.0
         self.band_su = su
         cl = R.band_closure["v"][0]

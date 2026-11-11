@@ -216,6 +216,8 @@ def run(name: str, garment: str, design: str, declarations: dict, options: dict 
     from . import piece_start  # (F4: which step-3 measurements each piece's lengths come from: where it starts)
     out["piece_measurements"] = piece_start.piece_measurements(rd["1"], declarations, (cfg_.get("config") or {}).get("parts"),
                                                               list(B["pieces"]))
+    from . import draft_tapes  # (P1: which tape each edge laid on the body lies along: step 5 lays it there)
+    out["edge_tapes"] = draft_tapes.edge_tapes(declarations, list(B["pieces"]), B.get("edge_arcs"))
     rec = gr._try(gr.write, name, garment, "4", "done" if v == "PASS" else "failed", output=out, by="draft_pattern",
                   gate={"verdict": v, "rows": rows}, look=[str(sheet)], back_to="4")
     lines = [f"{name}:{garment} draft_pattern: {v} (spec v{ver}; draft {d})",
