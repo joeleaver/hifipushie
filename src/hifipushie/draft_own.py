@@ -25,7 +25,7 @@ Declarations (JSON beside the code; names are step 1's):
   holds them to one length; they must meet at the tip). A dart drawn INSIDE a piece (a fish dart; a dart ending in a
   pocket mouth): {"piece", "inside": <its closed path of the part>, "release": [part points..., named outline point]}:
   drawn as it is, never cut by hand; the tool cuts it through along release and sews dart and cut shut (draft_dart_cut.py,
-  C415).
+  C416).
   departs {edge: why} (C381): a step-1 seam drafted more than 30 % off its approved estimate, said with what the
   reference shows there (else row style_lengths FAILs).
   marks {detail: mark | [marks]}: WHERE each step-1 detail sits on the pattern, decided here once (garment_details.py
@@ -280,7 +280,7 @@ def validate(decl: dict, step1: dict, parts: dict | None = None) -> list:
         p, legs = dp.base_name(str((dt or {}).get("piece")), decl), (dt or {}).get("legs")
         if p not in pcs:
             bad.append(f"darts[{i}]: no drafted piece {dt.get('piece')!r}")
-        elif dcut.is_inside(dt):  # (C415: a dart drawn inside the piece; the tool cuts it through along release)
+        elif dcut.is_inside(dt):  # (C416: a dart drawn inside the piece; the tool cuts it through along release)
             bad += dcut.check(i, dt, (parts or {}).get((pcs.get(p) or {}).get("part")) if parts is not None else None)
         elif not (isinstance(legs, list) and len(legs) == 2 and legs[0] != legs[1]):
             bad.append(f"darts[{i}] on {p}: legs = [two edges of the piece] (the dart's sides, sewn to each other)")
@@ -350,7 +350,7 @@ def _resolve_path(pc: dict, part: dict, edge: str, path: str) -> str:
 
 
 def _cut_inside_darts(pc: dict, part: dict, nm: str, decl: dict, ped: dict) -> dict:
-    """Piece nm's inside darts cut through (draft_dart_cut, C415): its edges with the two legs added."""
+    """Piece nm's inside darts cut through (draft_dart_cut, C416): its edges with the two legs added."""
     from . import draft_dart_cut as dcut
     for dt in decl.get("darts") or []:
         if dcut.is_inside(dt) and dt.get("piece") == nm:
@@ -471,7 +471,7 @@ def gate(B: dict, decl: dict, step1: dict, stand_ref: dict | None = None, step3:
             bad.append(f"{r['a']} || {r['b']}: {r['len_a_mm']:.1f} vs {r['len_b_mm']:.1f} mm, ease {100 * e:+.1f}% "
                        f"outside [{100 * lo:+.1f}, {100 * hi:+.1f}]%")
         seen_n = set()
-        if r.get("notches_off"):  # (C415: a chain joined at a dart's cut-through is one seam: the cut is sewn shut)
+        if r.get("notches_off"):  # (C416: a chain joined at a dart's cut-through is one seam: the cut is sewn shut)
             r["notches_off"] = [x for x in r["notches_off"] if not _at_cut(x[0], cut_tags)]
         for na, nb, d in r.get("notches_off") or []:  # (C387, t s4-16 / s4-17: listed "FAIL" under a PASS row)
             na = na.lstrip("|").split(">")[-1].split(":")[-1].removesuffix("-notch")  # (a notch, or a chain's joint)
@@ -489,7 +489,7 @@ def gate(B: dict, decl: dict, step1: dict, stand_ref: dict | None = None, step3:
                  "detail": sm})
     from . import draft_dart_cut
     if B.get("darts"):
-        rows.append(draft_dart_cut.row(B))  # (C361: legs meet at their tip; C415: no hand-cut slits)
+        rows.append(draft_dart_cut.row(B))  # (C361: legs meet at their tip; C416: no hand-cut slits)
     from . import draft_notches
     rows.append(draft_notches.row(B))  # (C412: a notch outside its piece, copied from the part it was drawn from)
     from . import draft_darts_inv

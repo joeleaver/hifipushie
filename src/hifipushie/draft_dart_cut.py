@@ -1,4 +1,4 @@
-"""A DART INSIDE A PIECE (C415): a fish dart, or a dart ending in a pocket mouth, declared as drawn; the tool opens it.
+"""A DART INSIDE A PIECE (C416): a fish dart, or a dart ending in a pocket mouth, declared as drawn; the tool opens it.
 
 Trial s4-23 (2026-11-11, the suit jacket): the forepart's fish dart (tip under the chest, widest at the waist, dying out
 under the pocket mouth) is a closed path INSIDE the piece. A cloth mesh has no holes, and draft_own sewed only darts open
@@ -30,7 +30,7 @@ import numpy as np
 SLIT = 0.0008  # m between the two sides of the release cut (apart for Delaunay; under the darts row's 1 mm)
 STEP = 0.003  # m: the release is sampled this fine
 FORM = ('darts [{"piece", "inside": <path name of the part: the dart drawn closed inside the piece>, "release": [part '
-        'point, ..., named outline point where two edges meet], "why"?}] (C415: a fish dart / a dart ending in a pocket '
+        'point, ..., named outline point where two edges meet], "why"?}] (C416: a fish dart / a dart ending in a pocket '
         'mouth: the tool cuts it through along release and sews dart and cut shut)')
 
 
@@ -257,7 +257,7 @@ SLIT_MM = 3.0  # an open dart narrower than this where it meets the outline is a
 
 def row(B: dict) -> dict:
     """The flat gate's `darts` row: each dart's two legs run from the outline to ONE tip (C361), and an open dart is a
-    dart, not a slit cut by hand to open one drawn inside the piece (C415)."""
+    dart, not a slit cut by hand to open one drawn inside the piece (C416)."""
     from . import pattern
 
     def arc(e):

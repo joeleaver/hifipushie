@@ -394,7 +394,7 @@ def test_a_dart_open_on_the_outline_is_sewn(home):  # (t s4-1: no way to declare
     assert any("no edge nope" in b for b in do.validate(decl, STEP1, out["parts"]))
 
 
-def test_a_slit_cut_by_hand_to_open_a_dart_fails(home):  # (t s4-22 / s4-23: 1 mm slits to the hem; C415)
+def test_a_slit_cut_by_hand_to_open_a_dart_fails(home):  # (t s4-22 / s4-23: 1 mm slits to the hem; C416)
     import copy
     from hifipushie import cloth, draft_own as do
     src = RECT.replace(
@@ -417,7 +417,7 @@ def test_a_slit_cut_by_hand_to_open_a_dart_fails(home):  # (t s4-22 / s4-23: 1 m
     assert r["status"] == "FAIL" and "slit cut by hand" in r["why"] and "inside" in r["why"], r
 
 
-def test_a_dart_inside_the_piece_is_cut_through_and_sewn(home):  # (t s4-23: a fish dart slit to the hem by hand; C415)
+def test_a_dart_inside_the_piece_is_cut_through_and_sewn(home):  # (t s4-23: a fish dart slit to the hem by hand; C416)
     import copy
     import numpy as np
     from hifipushie import cloth, draft_own as do, draft_dart_cut as dcut, pattern
@@ -457,7 +457,7 @@ def test_a_dart_inside_the_piece_is_cut_through_and_sewn(home):  # (t s4-23: a f
     M = cloth.mesh(B)
     k = B["seams"].index(legs)
     assert k in set(int(x) for x in M["sew_seam"])
-    cross = copy.deepcopy(decl)  # (a pocket mouth crossing the dart's side: the cut stops at the side, C415)
+    cross = copy.deepcopy(decl)  # (a pocket mouth crossing the dart's side: the cut stops at the side, C416)
     cross["edges"]["panel.L"].update({"back_a": "tl>lm", "back_b": "lm>bl"})
     cross["edges"]["panel.L"].pop("back")
     cross["seams"][1]["a"] = ["panel.L:back_a", "panel.L:back_b"]

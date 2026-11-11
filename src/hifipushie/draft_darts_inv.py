@@ -7,9 +7,9 @@ declared. A dart is shaping: cloth taken out between two legs that meet at a tip
 
 The row: every step-1 detail that is a dart (its `kind` is "dart", or its name or `what` names one) and is built (full or
 simplified) needs a drafted dart (declarations `darts`) on each piece it is `on`: open on the outline ({piece, legs},
-C361), or drawn inside the piece ({piece, inside, release}, C415: a fish dart, a dart ending in a pocket mouth; the tool
+C361), or drawn inside the piece ({piece, inside, release}, C416: a fish dart, a dart ending in a pocket mouth; the tool
 cuts it through along release and sews it). The s4-21 text said "slit it to a seam"; s4-22 and s4-23 then cut 1 mm
-slits to the hem by hand, a seam down the front no tailor cuts (C415).
+slits to the hem by hand, a seam down the front no tailor cuts (C416).
 """
 from __future__ import annotations
 
