@@ -92,37 +92,6 @@ def weights(Bp: dict | None, M: dict, g: dict | None = None) -> np.ndarray:
     return (fabric_factor(g) if BEND_FABRIC else 1.0) * interfacing_kinds(Bp or {}, M, (g or {}).get("interfacing_kind"))
 
 
-def cot_laplacian(F: np.ndarray, U: np.ndarray, n: int):
-    """(L (n, n) csr, lumped area (n,)) of the flat pattern U (per face corners (m, 3, 2) or per vertex (n, 2) with
-    F (m, 3) into n vertices): L = D - W, W_ij = (cot a + cot b) / 2."""
-    F = np.asarray(F, int)
-    Uc = U if U.ndim == 3 else U[F]
-    Uc = np.concatenate([Uc, np.zeros(Uc.shape[:2] + (1,))], 2)
-    I, J, Wt = [], [], []
-    area = np.zeros(n)
-    for k in range(3):
-        i, j = F[:, k], F[:, (k + 1) % 3]
-        a_ = Uc[:, k] - Uc[:, (k + 2) % 3]
-        b_ = Uc[:, (k + 1) % 3] - Uc[:, (k + 2) % 3]
-        cr = np.linalg.norm(np.cross(a_, b_), axis=1)
-        cot = np.sum(a_ * b_, 1) / np.maximum(cr, 1e-14)
-        I += [i, j]
-        J += [j, i]
-        Wt += [0.5 * cot, 0.5 * cot]
-        np.add.at(area, F[:, k], cr / 6.0)
-    W = coo_matrix((np.concatenate(Wt), (np.concatenate(I), np.concatenate(J))), shape=(n, n)).tocsr()
-    return (diags(np.asarray(W.sum(1)).ravel()) - W).tocsr(), area
-
-
-def boundary(F: np.ndarray, n: int) -> np.ndarray:
-    """(n,) True on the surface's boundary (edges in one face only)."""
-    E = np.sort(np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]], 1)
-    ue, c = np.unique(E, axis=0, return_counts=True)
-    b = np.zeros(n, bool)
-    b[ue[c == 1].ravel()] = True
-    return b
-
-
 def hinges(F: np.ndarray, U: np.ndarray):
     """Interior edges of the (welded) mesh as hinges: (H (h, 4) vertex ids [e0, e1, opposite in face A, opposite in
     face B], alpha (h, 4) the hinge's curvature stencil, el (h,) the edge's rest length, ar (h,) the two faces' rest

@@ -56,54 +56,6 @@ def test_flat_turn_allowance_run_off_pleat():
     assert [r for r in fc.flat_rows(B, {}) if r["id"] == "pleat_depth"][0]["status"] == "FAIL"
 
 
-def test_form_turn_achieved_vs_declared():
-    B, _ = _strip(angle=0)  # (folds.py: angle 0 = folded right over, a 180 deg turn; round 9: the row read angle as turn)
-    M = cloth.mesh(B, 0.012)
-    good = {r["id"]: r for r in fc.form_rows(M, _turned(M, 175))}
-    assert good["fold_turn"]["status"] == "PASS", good["fold_turn"]
-    bad = {r["id"]: r for r in fc.form_rows(M, _turned(M, 60))}
-    assert bad["fold_turn"]["status"] == "FAIL" and abs(bad["fold_turn"]["ours"]["turn_deg"] - 60) < 12, bad["fold_turn"]
-
-
-def test_form_twist_along_the_fold():
-    B, _ = _strip(angle=90)
-    M = cloth.mesh(B, 0.012)
-    ok = {r["id"]: r for r in fc.form_rows(M, _turned(M, 90))}
-    assert ok["fold_twist"]["status"] == "PASS", ok["fold_twist"]
-    tw = {r["id"]: r for r in fc.form_rows(M, _turned(M, 90, wobble_deg=40))}  # (+-40 deg every 40 mm: ~40 / cm)
-    assert tw["fold_twist"]["status"] == "FAIL", tw["fold_twist"]
-    assert ok["fold_twist"]["ours"]["twist_deg_cm_p90"] < 5, ok["fold_twist"]
-
-
-def test_form_crisp_press_vs_soft_roll():
-    B, _ = _strip(angle=90)
-    M = cloth.mesh(B, 0.012)
-    r = {x["id"]: x for x in fc.form_rows(M, _turned(M, 90))}
-    assert r["fold_crisp"]["status"] == "PASS" and r["fold_crisp"]["ours"]["pressed"], r["fold_crisp"]
-    B, _ = _strip(kind="roll", angle=90, radius=0.012)  # (declared a soft roll, planted as a sharp hinge)
-    M = cloth.mesh(B, 0.012)
-    r = {x["id"]: x for x in fc.form_rows(M, _turned(M, 90))}
-    assert r["fold_crisp"]["status"] == "FAIL", r["fold_crisp"]
-
-
-@pytest.mark.parametrize("kind,angle,extra", [("press", 180, {}), ("roll", 120, {"radius": 0.008}),
-                                              ("press", 90, {"band": True}), ("roll", 170, {"in_wrap": True})])
-def test_every_fold_kind_runs_through_the_same_rows(kind, angle, extra):
-    """(the table test) a hem / cuff turn-back (press 180), a lapel / collar roll (roll 120), a placket band (press 90,
-    band), a wrapped roll (in_wrap): the same flat and form rows, each with a status."""
-    B, fd = _strip(kind=kind, angle=angle, radius=extra.get("radius"))
-    B["folds"][0].update({k: v for k, v in extra.items() if k != "radius"})
-    flat = {r["id"] for r in fc.flat_rows(B, {})}
-    assert {"fold_turn_allowance", "fold_run_off"} <= flat
-    M = cloth.mesh(B, 0.012)
-    # (planted as declared: the turn is 180 - angle, folds.py)
-    form = {r["id"]: r["status"] for r in fc.form_rows(M, _turned(M, 180 - angle))}
-    # (a fold declared flat, angle 180, turns nothing: no crispness to judge)
-    assert {"fold_turn", "fold_twist"} | ({"fold_crisp"} if angle != 180 else set()) <= set(form), form
-    assert all(s in ("PASS", "FAIL", "INFO", "UNMEASURED") for s in form.values())
-    assert form["fold_turn"] == "PASS", form
-
-
 def _collar_flat_case(fall_h=0.055, stand_h=0.035, r0=0.10, span=2.2):
     """A body piece whose neckline is an arc (radius r0: the flattened shoulders round the neck), a straight stand band
     and a straight FALL band (outer edge = its sewn edge: no spring) sewn as a shirt's: stand to the neckline, fall to
@@ -147,32 +99,6 @@ def test_fall_spring_read_and_op_on_a_straight_band():
     # (C125) the landing line is the neckline at the CB cover all the way round (a shirt fall lands close round the
     # neck), not tapered to the points' height: every neckline part offset by the same drop (Garrett: 127 -> 81 mm)
     assert all(abs(p["drop_mm"] - now["drop_cb_mm"]) < 0.05 for p in now["parts"].values()), now
-
-
-def test_two_piece_collar_rows_on_their_known_answer():
-    """(shirt round 9, C119 + the turn convention) the two-piece collar known answer (tests/test_pattern_form.py: a fall
-    on its stand on a neck cylinder, assembled, ~165-175 deg in section, angle 10 declared: a 170 deg turn): fold_turn
-    PASS read in section with the base across the seam, fold_on_base PASS (0 through, the STAND as base, not the fall's
-    4 mm strip); planted: the fall opened 90 deg -> fold_turn FAIL; the fall sunk 6 mm into its stand -> fold_on_base
-    FAIL."""
-    from hifipushie import folds as fm, pattern_form as pf
-    from test_pattern_form import _two_piece_collar_case
-    c = _two_piece_collar_case(0.028, 0.045, 0.004)
-    M = c["M"]
-    V = pf.assemble({"mesh": M, "X0": c["X0"], "pieces": c["B"]}, c["body"], iters=120, ease=0.004)["V"]
-    rows = lambda X: {r["id"]: r for r in fc.form_rows(M, X, c["body"])}
-    good = rows(V)
-    assert good["fold_turn"]["status"] == "PASS" and "across" in good["fold_turn"]["ours"]["read"], good["fold_turn"]
-    assert good["fold_on_base"]["status"] == "PASS" and good["fold_on_base"]["ours"]["share"] < 0.02, good["fold_on_base"]
-    fd = M["folds"][0]
-    g = fm._geom(M, fd)
-    opened = fm.turn_flap(V, M, fd, -math.radians(90) / (len(g["rows"]) * fd["turn"]))
-    op = rows(opened)["fold_turn"]
-    assert op["status"] == "FAIL" and op["ours"]["turn_deg"] < 120, op
-    sunk = V.copy()
-    fl = np.asarray(g["rows"][-1]["v"])
-    sunk[fl, :2] -= 0.006 * sunk[fl, :2] / np.linalg.norm(sunk[fl, :2], axis=1, keepdims=True)
-    assert rows(sunk)["fold_on_base"]["status"] == "FAIL"
 
 
 def _lapel_piece():

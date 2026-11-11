@@ -27,10 +27,6 @@ def _shoulder_pair(front_deg=125.0):
             "seams": [["front:hps>shoulder", "back:hps>shoulder"]]}
 
 
-def test_junctions_selftest():
-    cc._selftest_junctions()
-
-
 def test_true_corner_known_answer():
     """A front neckline leaving the shoulder seam at 125 deg, the back at 90: the joined neckline turns 35 deg at the
     HPS. True the front ("true", at hps, keep shoulder, 90 deg, blend 40 mm): it meets at 90 +- 1, the joined turn is

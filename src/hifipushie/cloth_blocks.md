@@ -36,10 +36,6 @@ design_garment(name, "jacket", design={
 look_pattern(name, "jacket")
 ```
 
-`garment_reference(principles="derivations")` lists, per garment category, which block and which operations make
-it and why (shirt, blazer, cropped jacket with a shawl collar, wrap dress, hoodie, raglan, A-line skirt, wide
-trousers); `principles="blazer"` gives one; `"operations"`, `"blocks"` and `"rules"` give the vocabulary.
-
 **Blocks** (`"block"`; options in `"block_options"`). Every construction point is named (cfNeck, hps, shoulder,
 armholePitch, armhole, waist, hem, cfHem, bust, the darts' points...), so operations address points, never numbers.
 

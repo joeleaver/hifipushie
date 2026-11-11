@@ -407,14 +407,6 @@ def press_flap(V: np.ndarray, F: np.ndarray, uv: np.ndarray, flap: np.ndarray, l
 MADE_LAPEL = {"lay": 0.003, "roll_r": 0.004, "line_reach": 0.025, "roll_break": 0.002, "roll_top": 0.007, "roll_width": 2.5}
 
 
-def away_simple(V: np.ndarray, F: np.ndarray, out: np.ndarray) -> np.ndarray:
-    """Faces wound so their normals agree with per-vertex outward normals `out`."""
-    if not len(F):
-        return F
-    fn = np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]])
-    return np.where(((fn * out[F].mean(1)).sum(1) < 0)[:, None], F[:, ::-1], F)
-
-
 def made_lapel(V: np.ndarray, F: np.ndarray, uv: np.ndarray, sel: np.ndarray, flap: np.ndarray, line: tuple,
                roll: np.ndarray, out: np.ndarray, under: list | None = None, **kw) -> tuple:
     """The lapel CONSTRUCTED on the finished drape (a made piece, like the collar; construct key lapel="made"): a
@@ -1245,67 +1237,6 @@ def _at_lengths(G: np.ndarray, L0: np.ndarray) -> np.ndarray:
             d = _unit(P[-1] - P[-2])
             out[i, past] = P[-1] + (L0[i, past] - cl[-1])[:, None] * d
     return out
-
-
-def _rodrigues(X: np.ndarray, k: np.ndarray, th: np.ndarray) -> np.ndarray:
-    """Vectors X [n, r, 3] turned about unit axes k [n, 3] by th [n] radians."""
-    c, s_ = np.cos(th)[:, None, None], np.sin(th)[:, None, None]
-    kk = k[:, None, :]
-    return X * c + np.cross(kk, X) * s_ + kk * (X * kk).sum(-1, keepdims=True) * (1 - c)
-
-
-def seat_fall(G: np.ndarray, under: Under, gap: float, max_deg: float = 40.0, touch: float = 0.001, smooth: float = 2.0,
-              reach: float = 0.06, keep: np.ndarray | None = None) -> tuple:
-    """A made collar's FALL turned down onto what it lies on (dress-garrett ai): G [n stations, m rows (sewn edge ->
-    outer edge), 3]. The fall is a board hinged at the roll: each station's rows past its roll top (its highest row)
-    are turned as one about the seam's tangent there, by the least angle that brings the outer edge within `touch`
-    of `gap` over the cloth under it (at most `max_deg`); the angles evened along the seam (Gaussian, `smooth`
-    stations); stations already lying down are not moved. Turned, not drawn point by point: per-point projection onto
-    the forepart + turned lapel crumpled the fall and the back's roll (ai s1). The transition / end lay stood the outer
-    edge 20-26 mm off the forepart by the side neck (a boxy tab in side view, a dark gap under the edge) and nothing
-    drew it down (the final settle only pushes out). keep [n] bool: stations never turned (a notched collar's ends,
-    laid on the lapel as a board: turned about the seam they folded into the forepart, ai s3).
-    Returns (G, {"outer_over_mm" before / after [p50, max], "deg"})."""
-    G = np.array(G, float)
-    n, m = G.shape[:2]
-    r0 = np.minimum(np.argmax(G[:, :, 2], axis=1), m - 2)
-    H = G[np.arange(n), r0]
-    k = _unit(np.gradient(H, axis=0))
-    rows = np.arange(m)[None] > r0[:, None]  # (moved rows)
-
-    def turned(th):
-        X = G - H[:, None]
-        Y = _rodrigues(X, k, th) + H[:, None]
-        return np.where(rows[..., None], Y, G)
-
-    def over(X):
-        _, _, b = under.settle(X[:, -1].copy(), gap, hug=0.0, reach=reach)
-        return np.where(np.isfinite(b), b, np.inf)
-    o0 = over(G)
-    grid = np.radians(np.linspace(-max_deg, max_deg, int(2 * max_deg / 2.5) + 1))
-    O = np.stack([over(turned(np.full(n, t))) for t in grid])  # [angles, n]
-    th = np.zeros(n)
-    keep = np.zeros(n, bool) if keep is None else np.asarray(keep, bool)
-    for i in range(n):
-        if keep[i] or o0[i] <= touch or not np.isfinite(o0[i]):
-            continue
-        ok = np.where(O[:, i] <= touch)[0]
-        j = ok[np.argmin(np.abs(grid[ok]))] if len(ok) else int(np.argmin(O[:, i]))
-        th[i] = grid[j] if O[j, i] < o0[i] else 0.0
-    if smooth > 0:
-        x = np.arange(n)
-        W = np.exp(-0.5 * ((x[:, None] - x[None]) / smooth) ** 2)
-        th = np.where(keep, 0.0, (W @ th) / W.sum(1))
-    th = np.where(np.abs(th) > np.radians(0.5), th, 0.0)
-    G2 = turned(th)
-    # (kept clear, push out only, on the turned stations alone: the jacket's own neckline lies under the back's stand,
-    # and settling the untouched back against it ridged the roll, ai s2)
-    mv = rows & (th != 0)[:, None]
-    T, _, _ = under.settle(G2[:, 1:].reshape(-1, 3), gap, hug=0.0)
-    G2[:, 1:] = np.where(mv[:, 1:, None], T.reshape(n, m - 1, 3), G2[:, 1:])
-    o1 = over(G2)
-    f = lambda o: [round(float(np.percentile(o[np.isfinite(o)], 50)) * 1000, 1), round(float(o[np.isfinite(o)].max()) * 1000, 1)]
-    return G2, {"outer_over_mm": {"before": f(o0), "after": f(o1)}, "deg": np.round(np.degrees(th), 1)}
 
 
 def patch_transition(G: np.ndarray, s: np.ndarray, zone: np.ndarray, rowf: np.ndarray, widen: int = 1) -> np.ndarray:

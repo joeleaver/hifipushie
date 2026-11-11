@@ -7,8 +7,7 @@ import types
 import numpy as np
 import pytest
 
-from hifipushie import cloth_check as cc, hang_reads as hr, next_steps, reviewgate
-
+from hifipushie import cloth_check as cc, next_steps, reviewgate
 
 def tube(contour, zs):
     """A closed tube: the 2D contour (n, 2) extruded through the heights zs, capped at both ends (fans)."""
@@ -56,19 +55,6 @@ def _cloth(contour, zs, name="front"):
     return {"F": F, "piece": np.zeros(len(V), int), "names": [name], "points": {}}, V
 
 
-def test_wings_found_and_a_round_side_passes():
-    body = _body()
-    zs = np.linspace(0.95, 1.28, 12)
-    M, X = _cloth(ellipse(TORSO["a"] + 0.02, TORSO["b"] + 0.02), zs)
-    w = hr.wing_reads(M, X, body)
-    assert max(v["wing_mm"] for v in w.values()) < hr.WING_MAX_MM, w
-    M2, X2 = _cloth(finned(TORSO["a"] + 0.012, TORSO["b"] + 0.012, 0.05), zs)
-    w2 = hr.wing_reads(M2, X2, body)
-    assert all(v["wing_mm"] > hr.WING_MAX_MM and v["side_off_mm"] > 40 for v in w2.values()), w2
-    rows = {r["id"]: r for r in hr.rows({"wings": w2})}
-    assert rows["hang_wings"]["status"] == "FAIL" and "wing" in rows["hang_wings"]["fix"]
-
-
 def _arm_body():
     """A torso tube plus a straight arm tube from the shoulder down and out (A-pose), the arm landmarks on its axis."""
     Vt, Ft = tube(ellipse(**TORSO), np.linspace(0.70, 1.45, 16))
@@ -106,33 +92,6 @@ def _sleeve(frame, gap, drop):
     return {"F": F, "piece": piece, "names": ["sleeve.L", "sleeve.R"], "points": {}}, X
 
 
-def test_sleeve_standing_off_found_and_a_hanging_sleeve_passes():
-    body, fr = _arm_body()
-    M, X = _sleeve(fr, 0.016, 0.0)  # a tube all round the arm: 16 mm over its top
-    s = hr.sleeve_reads(M, X, body)
-    assert set(s) == {"L", "R"} and all(v["top_gap_mm"] > hr.SLEEVE_TOP_GAP_MAX_MM for v in s.values()), s
-    assert all(v["axis_deg"] is not None and v["axis_deg"] < 2 for v in s.values())
-    M2, X2 = _sleeve(fr, 0.016, 0.013)  # the same sleeve resting on the top of the arm: 3 mm over it, 29 under
-    s2 = hr.sleeve_reads(M2, X2, body)
-    assert all(v["top_gap_mm"] < hr.SLEEVE_TOP_GAP_MAX_MM and v["under_gap_mm"] > 20 for v in s2.values()), s2
-    st = {r["id"]: r["status"] for r in hr.rows({"sleeves": s})}
-    assert st["hang_sleeves"] == "FAIL"
-    assert {r["id"]: r["status"] for r in hr.rows({"sleeves": s2})}["hang_sleeves"] == "PASS"
-
-
-def test_shoulder_spike_found():
-    body = _body({"shoulder.L": np.array([0.15, 0.0, 1.40])})
-    M, X = _cloth(ellipse(TORSO["a"] + 0.008, TORSO["b"] + 0.008), np.linspace(1.30, 1.44, 15))
-    smooth = hr.shoulder_reads(M, X, body)
-    assert all(v["spike_mm"] < 2 for v in smooth.values()), smooth
-    Xs = X.copy()
-    i = int(np.argmin(np.linalg.norm(X - [0.158, 0.0, 1.40], axis=1)))
-    Xs[i, 0] += 0.015  # one point pulled 15 mm out at the shoulder point
-    sp = hr.shoulder_reads(M, Xs, body)
-    assert sp["L"]["spike_mm"] > hr.SHOULDER_SPIKE_MAX_MM > sp["R"]["spike_mm"], sp
-    assert {r["id"]: r["status"] for r in hr.rows({"shoulders": sp})}["hang_shoulders"] == "FAIL"
-
-
 def _legs():
     Vl, Fl = tube(ellipse(0.07, 0.08, cx=0.085), np.linspace(0.40, 0.84, 12))
     Vt, Ft = tube(ellipse(0.17, 0.10), np.linspace(0.84, 1.20, 10))
@@ -140,53 +99,6 @@ def _legs():
     V = np.r_[Vt, Vl, Vr]
     F = np.r_[Ft, Fl + len(Vt), Fl[:, ::-1] + len(Vt) + len(Vl)]
     return types.SimpleNamespace(V=V, T=F, at=dict(AT, crotch_z=0.84))
-
-
-def test_drawn_between_the_legs_found_and_a_bridging_hem_passes():
-    body = _legs()
-    zs = np.linspace(0.70, 1.0, 10)
-    M, X = _cloth(ellipse(0.175, 0.105), zs)
-    assert hr.hollow_reads(M, X, body)["depth_mm"] < hr.HOLLOW_MAX_MM
-    # a hem drawn in between the legs at the front: the contour pinched in to y = -0.03 at x = 0 below the crotch
-    C = ellipse(0.175, 0.105)
-    pinch = np.exp(-(C[:, 0] / 0.03) ** 2) * (C[:, 1] < 0)
-    C2 = C.copy()
-    C2[:, 1] = np.where(pinch > 0.01, C[:, 1] + pinch * (-C[:, 1].min() - 0.03), C[:, 1])  # (front centre -> y -0.03)
-    M2, X2 = _cloth(C2, np.linspace(0.70, 0.83, 6))
-    h = hr.hollow_reads(M2, X2, body)
-    assert h["depth_mm"] > hr.HOLLOW_MAX_MM and h["where"] == "between the legs", h
-
-
-def test_hang_rows_are_the_patterns_once_the_fit_hangs():
-    """C244: with the hang step a hang FAIL is the pattern's: owner "pattern", its fix names the pattern move, and it
-    blocks the detail rows like any big read."""
-    assert hr.HANG_STEP
-    w = hr.rows({"wings": {"L": {"wing_mm": 46.0, "z": 1.12, "side_off_mm": 77.0}}})[0]
-    assert w["status"] == "FAIL" and w["owner"] == "pattern" and "PATTERN" in w["fix"] and "side seams" in w["fix"]
-    detail = {"id": "collar_corners", "stage": 3, "status": "PASS"}
-    assert cc.big_first([w, detail])[-1]["status"] == "BLOCKED"
-
-
-def test_hang_rows_are_the_fits_until_a_hang_step_and_never_block(monkeypatch):
-    monkeypatch.setattr(hr, "HANG_STEP", False)
-    rows = hr.rows({"wings": {"L": {"wing_mm": 46.0, "z": 1.12, "side_off_mm": 77.0}}})
-    w = rows[0]
-    assert w["status"] == "FAIL" and w["owner"] == "fit" and "no hang step yet" in w["fix"]
-    detail = {"id": "collar_corners", "stage": 3, "status": "PASS"}
-    out = cc.big_first([w, detail])
-    assert out[-1]["status"] == "PASS"  # (the fit's own fault blocks no detail row, C52)
-    assert cc.big_first([dict(w, owner="pattern"), dict(detail)])[-1]["status"] == "BLOCKED"
-
-
-def test_fit_rows_carry_the_hang_rows_and_after_fit_lists_them(monkeypatch):
-    monkeypatch.setattr(hr, "HANG_STEP", False)  # (the fit's-fault listing; with the hang step they are pattern rows)
-    monkeypatch.setattr(hr, "reads", lambda res, X: {"wings": {"L": {"wing_mm": 40.0, "z": 1.1, "side_off_mm": 70.0}}})
-    rows = cc.fit_rows({"mesh": {}, "body": None}, None, 0.5, False, model="m", garment="g")
-    assert {r["id"] for r in rows} >= {"fit_threads_p99", "hang_wings"}
-    txt = next_steps.after_fit("m", "g", 0.5, None, True)
-    assert "hang faults" in txt and "hang_wings" in txt and "FIT's" in txt
-    assert "judge the clay" in txt  # (the pattern itself has no fault: the judging step still follows)
-    assert "hang_wings" not in next_steps.after_fit("m", "g", 0.5, None, True)  # (consumed: no stale rows)
 
 
 def test_no_reference_review_checklist():

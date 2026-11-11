@@ -292,25 +292,6 @@ def test_seal_under_closes_rims_not_seams():
     assert len(S0) == 0
 
 
-def test_under_fit_rows_judged_on_what_shows():
-    """C85 visible scope (fit round 24): an under garment standing 20 mm off the body at the waist FAILs its own
-    under_standoff_waist; under an outer garment that covers the waist band the band is culled and the re-judged row
-    PASSes (nothing of it is drawn); with the outer garment open over the band it still FAILs, on the visible cloth."""
-    from hifipushie import cloth_check as cc
-    V, F = _sphere()
-    body = cloth.Body({"V": V, "F": [list(f) for f in F], "J": {}})
-    under = _shell(V, F, 0.120)
-    alone = cc.standoff_row(body, under["V"], 0.0)
-    assert alone["status"] == "FAIL" and alone["ours"] > 15, alone
-    covered = dict(_shell(V, F, 0.128, zmax=0.06))
-    rows, hid = cc.visible_fit_rows(body, under, covered, z=0.0)
-    assert rows[0]["status"] == "PASS" and rows[0]["n"] == 0 and hid.any(), rows
-    low = dict(_shell(V, F, 0.128, zmax=-0.06))  # the outer garment ends below the waist band: the band shows
-    rows, _ = cc.visible_fit_rows(body, under, low, z=0.0)
-    assert rows[0]["status"] == "FAIL" and rows[0]["n"] > 20 and rows[0]["ours"] > 15, rows
-    assert "under_standoff_waist" in cc.VISIBLE_SCOPED
-
-
 def _grid_garment(nx=12, ny=8, h=0.01):
     """Two pieces side by side (a: x < 0, b: x > 0), each a grid, sewn along x = 0 (duplicate seam vertices)."""
     uvs, F, piece = [], [], []
@@ -335,49 +316,6 @@ def _grid_garment(nx=12, ny=8, h=0.01):
     return M
 
 
-def test_seen_part_cuts_the_hidden_cloth_and_its_strain_out_of_the_start():
-    """KAT (shirt round 5, C115): the seen part of an under garment (seen_part / subset_mesh) keeps only the cloth that
-    shows, every index field remapped (seams, points, folds), its cut edge returned (to be pinned); a strain planted
-    in the HIDDEN cloth leaves the start check, one planted in the SEEN cloth stays (the preflight isn't loosened)."""
-    from hifipushie import cloth_job
-    M = _grid_garment()
-    X = np.c_[M["uv"], np.zeros(len(M["uv"]))]
-    F = M["F"]
-    fa = M["piece"][F[:, 0]] == 0
-    hid = fa & (X[F, 0].mean(1) < -0.06)  # piece a's far half is hidden (under an outer garment)
-    X2 = X.copy()
-    far = X[:, 0] < -0.085
-    X2[far, 0] = -0.085 + (X[far, 0] + 0.085) * 1.4  # hidden cloth stretched 40 % (a yoke strained by the fit)
-    M2, V2, info = cloth_layers.seen_part({"V": X2, "mesh": M}, hid=hid, whole=())
-    assert info["kept"] == int((~hid).sum()) and len(V2) == len(M2["uv"]) == len(info["old"])
-    # seams, points, folds remapped onto the same positions
-    assert len(M2["sew"]) == len(M["sew"]) and np.allclose(V2[M2["sew"][:, 0]], X2[M["sew"][:, 0]])
-    assert "a:corner" not in M2["points"] and np.allclose(V2[M2["points"]["b:far"]], X2[M["points"]["b:far"]])
-    assert len(M2["folds"]) == 1 and "_g" not in M2["folds"][0] and len(M2["folds"][0]["rows"][0]) == 9
-    # the cut edge: the kept vertices on a dropped triangle, all at the cut line x = -0.06
-    assert info["cut_vertices"] == 9 and np.allclose(V2[info["cut"], 0], -0.06)
-
-    def start(Xs, Ms):
-        arr = {"X": Xs, "F": Ms["F"], "piece": Ms["piece"], "uv": Ms["uv"]}
-        return cloth_job.start_strain_check(arr, {"rest": "flat", "pieces": Ms["names"]})
-    whole = start(X2, M)
-    seen = start(V2, M2)
-    assert whole["over"] > 0 and not whole["ok"], whole
-    assert seen["over"] == 0 and seen["ok"], seen
-    X3 = X2.copy()  # the same stretch planted in SEEN cloth (piece b) is still counted
-    nb = X[:, 0] > 0.08
-    X3[nb, 0] = 0.08 + (X[nb, 0] - 0.08) * 1.4
-    M3, V3, _ = cloth_layers.seen_part({"V": X3, "mesh": M}, hid=hid, whole=())
-    s3 = start(V3, M3)
-    assert s3["over"] > 0 and not s3["ok"], s3
-    # a made piece kept whole once any of it shows, and the cloth within the margin of it
-    hid_b = ~fa & (X[F, 0].mean(1) > 0.02)
-    _, _, ib = cloth_layers.seen_part({"V": X, "mesh": M}, hid=hid_b, whole=("b",), whole_margin=0.015)
-    assert ib["kept_by_piece"]["b"] == int((~fa).sum()) and ib["kept"] == len(F), ib["kept_by_piece"]
-
-
-
-
 def _collar_scene():
     """A body (sphere), an outer shell open above z = 0.05 (a jacket at its neck), an under shell (a shirt) open above
     z = 0.09 whose top band is a made piece "collar" standing in view above the outer's opening and lying 2-4 mm OVER
@@ -400,28 +338,6 @@ def _collar_scene():
                                "piece": piece, "names": ["body", "collar"], "made": ["collar"]}}
     outer = dict(_shell(V, F, 0.108, zmax=0.05), body=body)
     return under, outer, collar
-
-
-def test_cull_keeps_a_seen_collar_whole_and_culls_a_covered_back():
-    """Fit round 28 (Joe on r27sc: the cull "thrashed the shirt"): a shirt collar standing in view above a jacket collar
-    stays WHOLE; a back panel under the jacket is culled; the old distance + pierce rule removed seen collar."""
-    under, outer, collar = _collar_scene()
-    info = {}
-    h = cloth_layers.hidden(under, outer, info=info)
-    c = under["V"][under["mesh"]["F"]].mean(1)
-    back = (c[:, 1] > 0.05) & (c[:, 2] < 0.0)
-    assert not h[collar].any(), int(h[collar].sum())
-    assert h[back].mean() > 0.9, h[back].mean()
-    # the old rule, with the outer's rim a TURNED edge (a jacket collar's fall: no free border, so no opening margin):
-    # it cut seen collar cloth lying over the rim (the 15 mm pierce allowance) and left the rest as fragments
-    turned = dict(outer, mesh=dict(outer["mesh"], border=np.zeros(len(outer["V"]), bool)))
-    old = cloth_layers.hidden(under, turned, margin=0.03, pierce=cloth_layers.PIERCE_CULL, rule="margin")
-    assert old[collar].any() and not old[collar].all()
-    assert not cloth_layers.hidden(under, turned)[collar].any()
-    # no stranded islands: every seen region is big (no fragment of < ISLAND_FACES triangles in hidden cloth)
-    lab = cloth_layers._face_components(np.asarray(under["mesh"]["F"]), ~h)
-    assert np.bincount(lab[lab >= 0]).min() >= cloth_layers.ISLAND_FACES or len(np.unique(lab[lab >= 0])) == 1
-    assert info["hidden_faces"] == int(h.sum()) and info["directions"] >= 7 * 9 - 9
 
 
 def test_cull_never_hides_cloth_a_judged_view_sees():

@@ -391,8 +391,6 @@ def test_made_band_folded_welt():
     print("ok", info)
 
 
-
-
 def test_made_band_fold_read_from_drape():
     """dress-tess w1 (2026-10-15): construct.bands on the real sweater found no 360 deg fold record, so fold "auto"
     built the welt UNFOLDED at its whole cut (114.8 mm, "folded": false, 62% crumpled, 286 crossings). Without a record
@@ -449,8 +447,6 @@ def test_seam_gaps_leave_out_pieces_a_made_part_replaces():
     g1 = cloth.seam_gaps(V, V, M, made)
     assert g1["open"] == 0 and g1["pairs"] == 2 and g1["replaced_pairs"] == 1
     assert g1["made_seam"]["pairs"] == 1 and abs(g1["made_seam"]["max"] - 1.0) < 1e-6
-
-
 
 
 def test_mirror_pairs_and_symmetrize_make_left_and_right_one_shape():
@@ -593,34 +589,6 @@ def test_fair_edge_runs_redraws_a_crowded_hooked_end_and_keeps_ordinary_corners(
     V3, info = cloth_made.fair_edge_runs(H, F)
     assert info["moved"] > 0 and out(V3) < 0.5 * out(H), (out(H), out(V3), info)
     assert np.allclose(V3[nx * 3:], H[nx * 3:])  # past the relaxed rings: untouched
-
-
-
-def test_seat_fall_turns_a_raised_fall_down_and_keeps_kept_stations():
-    """dress-garrett ai: seat_fall turns each station's rows past its roll top about the seam tangent until the outer
-    edge lies `gap` over the cloth; a station already down, or in `keep`, is not moved; column lengths are kept."""
-    import numpy as np
-    from hifipushie import cloth_made as cm
-    # the cloth: a floor at z=0 (a big two-triangle sheet, wound up)
-    fV = np.array([[-1, -1, 0], [1, -1, 0], [1, 1, 0], [-1, 1, 0]], float)
-    fF = np.array([[0, 1, 2], [0, 2, 3]])
-    u = cm.Under([{"V": fV, "F": fF, "sheet": True}])
-    n, m = 9, 6
-    G = np.zeros((n, m, 3))
-    for i in range(n):  # seam along x at z=0.02, the roll top row 1 at z=0.03, the fall standing out level along -y
-        G[i, 0] = [0.01 * i, 0.0, 0.02]
-        G[i, 1] = [0.01 * i, -0.005, 0.03]
-        for r in range(2, m):
-            G[i, r] = [0.01 * i, -0.005 - 0.008 * (r - 1), 0.03 - 0.0005 * (r - 1)]
-    keep = np.zeros(n, bool)
-    keep[0] = True
-    G2, info = cm.seat_fall(G, u, 0.004, smooth=0.0, keep=keep)
-    assert np.allclose(G2[0], G[0])  # kept
-    assert np.allclose(G2[:, :2], G[:, :2])  # the seam and the roll top stay
-    assert (G2[1:, -1, 2] < 0.012).all(), G2[1:, -1, 2]  # the outer edge turned down toward the floor
-    assert (G2[1:, -1, 2] > 0.0035).all()  # and kept clear of it
-    L = lambda X: np.linalg.norm(np.diff(X, axis=1), axis=-1).sum(1)
-    assert np.allclose(L(G2), L(G), atol=1e-6)  # turned as a board: its length as cut
 
 
 def test_even_outer_evens_the_outer_edge_and_keeps_the_seam():

@@ -26,8 +26,6 @@ These checks prove the draft is consistent, not that it is the garment in the re
 description's items on the draft (guide(topic="cloth"), stage 2). Fix what fails in the sheet (`design_garment`
 again), then look again.
 
-## Stage 3: the construction plan (`check_garment(stages=["construction"])`)
-
 *How makers do it:* collars, cuffs, plackets and waistbands are made finished on the table (interfaced, turned,
 pressed) before they meet the garment. In MD these are fold angle + strength on internal lines, fold arrangement,
 interfacing presets and layers. Nobody simulates a collar into shape.
@@ -39,25 +37,6 @@ The plan lists:
 - **Fold lines**, **interfacing**, **made or draped** per piece, and the simulation's stages as they will run.
 
 ### Fold lines (garment key `folds`)
-
-`{"piece", "line", "angle", "strength", "kind": "press" | "roll", "radius"}`:
-- `angle` is the dihedral on the pattern's face side (the side away from the body): 180 flat, 0 folded right over
-  onto the face (a collar's fall over its stand, a lapel rolled onto the chest, a turned-back cuff), 360 folded right
-  under (a hem, a facing, a placket).
-- `line`: a line name of the piece, two point names, points in metres, `{"edge": "piece:a>b", "offset": m}` (parallel
-  to an edge) or `{"mid": "x"}` (lengthwise through a band's middle). A fold runs from edge to edge of its piece.
-- `kind` "press" is one sharp crease; "roll" spreads the turn over an arc of `radius` (as many vertex rows as the
-  mesh carries). `strength` 0..1 is how hard the crease holds its angle. `flap` (a point or mark name) says which
-  side turns when the default (less sewn edge, then the smaller side) is wrong.
-- What a fold does (`folds.py`): the mesh gets a row of vertices on the line; the placement lays the piece unfolded
-  and turns the flap about the row, as far as the fold asks or as it clears what's under it; the solver keeps it
-  (made pieces rest as placed; ZOZO rests ordinary cloth on the flat pattern with the fold's hinges at their angle and
-  20x stiffer at strength 1; Blender rests on the placement, a fold a U 8 mm across).
-- `look_cloth` and the report measure each fold: the turn across it and the gap between flap and base.
-- A simulated crease is a wedge 5-7 deg open (contact gap), its layers 3-6 mm apart at 1-2 cm triangles. A
-  constructed one (method "settle") is a U two cloth layers across: 1.6 mm.
-- End a roll fold a few cm above a fastening (over front ~2 cm above button 1, under front ~6 cm): a roll line that
-  crosses a band's inner row at a shallow angle makes a sliver triangle and the start fails.
 
 ### Geometry or maps: a game artist's call (folded bands, `represent`)
 
@@ -89,28 +68,6 @@ separate rounded edge, folded.
 
 ### Closures (garment / design-table key `closures`)
 
-One entry per closure:
-`{"name": "front", "kind": "buttons", "over": "front.L", "under": "front.R", "edge": {"over": "a>b", "under": "a>b"},
-"band": {"over": 0.03, "under": 0.018}, "state": "closed"}`.
-- `over` laps over `under` (the same piece for a cuff or waistband). Fastenings are marks `buttonhole<n>` on `over`
-  paired with `button<n>` on `under` (other prefixes `holes`, `buttons`; or `"at": [[over mark, under mark], ...]`).
-- `band` + `edge` give the placket its own edge in the mesh and raise it by its layers.
-- `state`: "closed", "open", `{"open_above": mark}` (the fastenings above a mark undone) or `{"open_top": n}` (the n
-  highest undone, whatever their names).
-- The entry makes the button stitches, the buttons as small geometry (also in the export and scene) and a report
-  line per closure (closed is <= 6 mm apart). A `front_closure`, `cuff` or `fly` chosen on the sheet with no closure
-  entry fails here; a closure that didn't hold fails stage 5. `kind: "zip"` takes `"seam": [arc, arc]`.
-- What is fastened is the closure's `state`, set on the garment without repeating the entry: a garment's entry of a
-  name is laid over the design's key by key (`[{"name": "front", "state": "open"}]`: its buttons undone, still on
-  the under front; stage 3 lists it "worn open"). How it is WORN open is styling (fit_garment's wear ops,
-  style_garment), not a sim; a sim is at most a wrinkle source.
-- In a drafted garment the op `{"op": "buttons", "piece": "front", "n": 2, "state": "open", "size": 0.02}` writes
-  the closure itself (left front over right).
-- A front worn `open` starts the fronts apart (`open_gap`, default 0.16 m at the hem). Started lapped like a
-  buttoned one, an open jacket hangs closed and tents.
-
-### Built on the form (shirts, jackets, coats, knits with seam-laid bands)
-
 A tailor builds a forepart on a form, not round a cylinder. Kinds with `worn_top` (garment key overrides) start each
 front and back where it is WORN: below the armpit on the torso cylinder, above it laid up the body column by column
 and hung so its top lands on the shoulder ridge; side panels hang with them. Shoulder and CB seams are pinned shut,
@@ -141,8 +98,6 @@ down to the neck edge where the lapel's roll line crosses the neckline; `"roll":
   2 -> 12 cm apart at the hips). Judge against a reference in its own pose.
 - Press the under garment harder (`under_cap` 0.004) so the outer one keeps its girth.
 
-## Stage 4: arrange (`check_garment(stages=["place"])`)
-
 *How makers do it:* MD's arrangement points put each piece on a bounding cylinder round the body part it covers,
 symmetric pairs symmetric, before any simulation.
 
@@ -157,23 +112,3 @@ each on a tube round its own leg (`leg.L` / `leg.R`, set by the trouser block). 
 - a self-closed band (waistband, cuff, buttoned stand) that starts open: it must START closed ("<band> starts with its
   fastening N mm open"); give it 2-3% ease or seat it where the body is smaller;
 - layer gaps at the start; seam gaps at the start.
-
-**What a seam does in the sim is mostly decided here.** A seam the solver must close from far apart closes badly or
-not at all, and stiffer stitches don't help. Read the start's seam gaps before simulating, and fix the start, not
-the solver:
-- Stretch is shear too: edges within 5% of the pattern can be 9-12% stretched along the diagonal.
-- One cylinder for a fitted torso leaves the waist's arc in one seam: on a suppressed-waist jacket the side-back
-  seam starts 135-160 mm open and ends open. Not fixed yet: read that seam's start gap on any fitted jacket.
-- A jacket's armhole too high for the body (sleeve starting down the arm, `sleeve_down` over 0.02, armhole start
-  gaps far over ~9 cm): lower it (`armhole_depth` 0.12-0.14).
-- Start an armhole's seam chain where the sleeve's top meets the shoulder seam (started at the front pitch, the
-  sleeve is sewn in rotated).
-- A waistband's `along` chain starts at the band's own opening (a band wrapped `side: front` opens at CB: start at
-  `back.R:cWaist`); half a turn off sews it on twisted.
-- A padded body (the under garment pushed out) can fold in hollows (the neck under an open collar, the pit); if a
-  layered start shows a piece far off where it should be, suspect the pad (`under_cap`, the under collar).
-- New lower-body designs: read the leg start seam gaps (a few cm, not 15+).
-
-**Mirror check.** One side of a symmetric garment wrong after the sim: before changing the draft or solver, look at
-the start (`check_garment(stages=["place"])`, no simulation) and compare every sim input with its mirror image: pattern, body / padded collider,
-poses, start positions, carried made pieces, stiffness and fold arrays.
