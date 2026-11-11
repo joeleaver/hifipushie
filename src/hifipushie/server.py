@@ -119,6 +119,7 @@ def _tool_with_errors(_reg=None):
                 return fn
             # Only the core is registered natively (`_register_core`); every tool is reachable by call_tool.
             _TOOLS[fn.__name__] = (register, run)
+            _FUNCS[fn.__name__] = fn
             if _STARTED:  # a tool defined after start-up (a plugin module, a test's extra tools): native at once
                 _register(fn.__name__)
             return fn  # module-level name stays the plain function (tests and scripts call it directly)
@@ -135,6 +136,7 @@ mcp.tool = _tool_with_errors()
 # A domain may say what it makes (`subject` words) and where a job in it starts (`steps` in order, or one `entry`
 # tool): find_route.py reads a job's domain from the subject words alone, never from a stray word match (C400).
 _TOOLS: dict[str, tuple] = {}  # name -> (register, wrapped coroutine), filled by the decorator
+_FUNCS: dict[str, object] = {}  # name -> the plain function (find_tool reads its docstring and signature)
 TOOL_GROUPS: dict[str, dict] = {
     "core": {"about": "native tools: models, specs, look, check, measure, history, the guide, find / call any tool",
              "tools": ["guide", "find_tool", "call_tool", "list_models", "get_model", "kit_reference", "put_model",
@@ -435,7 +437,7 @@ def _group_of(name: str) -> str:
 
 def _first_sentence(name: str) -> str:
     import inspect
-    doc = " ".join(inspect.cleandoc(getattr(globals().get(name), "__doc__", None) or "").split())
+    doc = " ".join(inspect.cleandoc(getattr(_FUNCS.get(name), "__doc__", None) or "").split())
     m = re.match(r"(.+?[.!?])(\s|$)", doc)
     return m.group(1) if m else doc
 
@@ -476,7 +478,7 @@ def _params(name: str) -> list[tuple[str, str, bool, str]]:
     """(name, type text, required, default text) for each of a tool's arguments (ctx left out)."""
     import inspect
     out = []
-    for p in inspect.signature(globals()[name]).parameters.values():
+    for p in inspect.signature(_FUNCS[name]).parameters.values():
         if p.name == "ctx":
             continue
         ann = p.annotation if isinstance(p.annotation, str) else getattr(p.annotation, "__name__", str(p.annotation))
@@ -527,7 +529,7 @@ def _tool_fields(name: str) -> list[tuple[float, set[str]]]:
     if name not in _FIELDS:
         g = _group_of(name)
         _FIELDS[name] = [(4.0, _words(name.replace("_", " "))),
-                         (2.0, _words(inspect.cleandoc(globals()[name].__doc__ or ""))),
+                         (2.0, _words(inspect.cleandoc(_FUNCS[name].__doc__ or ""))),
                          (1.0, _words(g + " " + TOOL_GROUPS.get(g, {}).get("about", ""))),
                          (1.0, _words(_section_text(name))),
                          (4.0, _words(head_route.KEYWORDS.get(name, "")
