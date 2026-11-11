@@ -16,10 +16,19 @@ from the measurements the piece was drafted from:
   Pieces of the other side take the loops mirrored. Nothing names a limb.
 - PANEL: an open piece starts over the region between its tapes: its top at the highest top of the length paths it
   names (a waist-to-knee panel at the waist, an hps-to-waist one at the hps); `panel_dz`.
-- FALLBACK: a piece that names no measurement with geometry starts as before (the torso's rings, the limb's joint
-  axis), said in the build's reads (`reads["starts"]`) and so in its answer.
+- NO TAPE (P2, docs/proposals/place_where_measured.md): a built piece (every piece but plies and floating layers, which
+  follow their host) naming no step-3 tape with geometry is REFUSED by name before anything is placed (`untaped`, called
+  first in GarmentBuild.run): "step 4 names no tape for <piece>". Nothing is guessed. A piece WITH tapes but none of the
+  kind its start reads (a tube with no girth on its side, a panel with no length spanning it) still starts on the torso's
+  rings / the limb's joint axis, said by name in reads["starts"] (P3 retires those with the shirt and hussar controls).
+- A STIFF PIECE'S EDGE ON ITS TAPE (P2, `lay_on_tape`): an edge step 4 names on a tape (edge_tapes) is laid along that
+  tape's line by arc length from the end they share: a centre piece (a collar) from its middle (CB) outward, the half on
+  the worn +X side along the tape, the other half along it mirrored (x -> -x); a sided piece from its edge's end nearest
+  the centre line in its flat (flats run from the centre line), a .R piece on the mirrored tape. A tape shorter than the
+  edge is refused (back to step 3: measure it on). The tape lies on the skin: the laid line is lifted to GAP off it.
 
-`attach(M, step1, step3, step4)`: M["starts"] = {"pieces": {piece: [names]}, "tapes": {name: {kind, pts}}}.
+`attach(M, step3, step4)`: M["starts"] = {"pieces": {piece: [names]}, "tapes": {name: {kind, pts}},
+"edges": {piece: {edge: {"tape", "arc"}}}}.
 """
 from __future__ import annotations
 
@@ -61,8 +70,117 @@ def attach(M: dict, step3: dict, step4: dict) -> dict:
     from . import tape_geom
     T = tape_geom.tapes(step3)
     M["starts"] = {"pieces": dict((step4 or {}).get("piece_measurements") or {}),
-                   "tapes": {k: {"kind": v["kind"], "pts": v[v["kind"]].tolist()} for k, v in T.items()}}
+                   "tapes": {k: {"kind": v["kind"], "pts": v[v["kind"]].tolist()} for k, v in T.items()},
+                   "edges": dict((step4 or {}).get("edge_tapes") or {})}
     return M["starts"]
+
+
+# ---------------------------------------------------------------- P2: no tape, refused; a stiff edge on its tape
+def untaped(b) -> list:
+    """Built pieces (not plies / floating layers: they follow their host) that name no step-3 tape with geometry."""
+    st = b.net.M.get("starts") or {}
+    names, T = st.get("pieces") or {}, st.get("tapes") or {}
+    carried = set(b.roles.carried)
+    return [p for p in b.net.names if p not in carried and not any(n in T for n in names.get(p) or [])]
+
+
+def refuse_untaped(b):
+    from .chain_core import ChainRefused
+    bad = untaped(b)
+    if bad:
+        raise ChainRefused(f"step 4 names no tape for {', '.join(bad)}: back to step 4, declare tapes (draft_pattern "
+                           "declarations tapes {piece: [the step-3 tapes it was drafted on] | {edge: tape}}, a stiff piece's "
+                           "edge sewn to the body cloth on the tape it lies along); step 5 places every piece where the body "
+                           "was measured for it, never from a rule")
+
+
+CENTRE_TOL = 0.005  # m: a tape's end this near x = 0 is on the centre line
+
+
+def _resample(P, step=0.002):
+    s = np.r_[0, np.cumsum(np.linalg.norm(np.diff(P, axis=0), axis=1))]
+    q = np.arange(0, s[-1] + 1e-12, step)
+    return np.column_stack([np.interp(q, s, P[:, k]) for k in range(3)])
+
+
+def from_centre(kind: str, P) -> np.ndarray:
+    """The tape as a line from its end on the centre line, running to the worn +X side: a path from the end nearer
+    x = 0 (both on it: the back one; mirrored when it lies on -X); a loop from where it crosses x = 0 at the back, the way it goes to +X."""
+    P = np.asarray(P, float)
+    if kind == "loop":
+        Q = _resample(np.r_[P, P[:1]] if np.linalg.norm(P[0] - P[-1]) > 1e-9 else P)[:-1]
+        near = np.abs(Q[:, 0]) <= max(np.abs(Q[:, 0]).min() * 1.5, 0.003)
+        k = int(np.flatnonzero(near)[np.argmax(Q[near, 1])])  # (the back's crossing: largest y)
+        Q = np.roll(Q, -k, axis=0)
+        if Q[1:len(Q) // 4, 0].mean() < 0:
+            Q = np.r_[Q[:1], Q[1:][::-1]]
+        return np.r_[Q, Q[:1]]
+    ends_c = np.abs(P[[0, -1], 0]) < CENTRE_TOL
+    if (ends_c.all() and P[-1, 1] > P[0, 1]) or (not ends_c.all() and abs(P[-1, 0]) < abs(P[0, 0])):
+        P = P[::-1]  # (from the end on the centre line; both on it, CB to CF round the neck: from the back one)
+    if P[:, 0].mean() < 0:
+        P = P * [-1, 1, 1]
+    return P
+
+
+def _lift(contact, P, gap, passes=4):
+    """P moved out along the body's normal until every point is gap off it (a few passes: the surface curves)."""
+    for _ in range(passes):
+        sd, nrm = contact.query(P)
+        if (sd >= gap - 1e-5).all():
+            break
+        P = P + nrm * np.maximum(gap - sd, 0.0)[:, None]
+    return P
+
+
+def _at(Q, d):
+    s = np.r_[0, np.cumsum(np.linalg.norm(np.diff(Q, axis=0), axis=1))]
+    return np.column_stack([np.interp(d, s, Q[:, k]) for k in range(3)]), float(s[-1])
+
+
+def lay_on_tape(b, piece: str, chain, mid: int | None = None, su: float = 1.0):
+    """(P2) The positions of `chain` (a stiff piece's ordered edge vertices sewn to the body cloth) laid on the tape step 4
+    names for that edge (module doc), GAP off the body, and what it read. mid: the chain index at the centre line (a
+    centre piece); su: +1 when the chain's later indices from mid run to worn +X. Raises ChainRefused by name."""
+    from .chain_core import GAP, ChainRefused, hand_of
+    net = b.net
+    st = net.M.get("starts") or {}
+    em = (st.get("edges") or {}).get(piece) or {}
+    if not em and hand_of(piece):
+        em = (st.get("edges") or {}).get(piece[:-2]) or {}
+    names = sorted({e.get("tape") for e in em.values() if isinstance(e, dict) and e.get("tape")})
+    T = st.get("tapes") or {}
+    if not names:
+        raise ChainRefused(f"step 4 names no tape for {piece}'s edge sewn to the body cloth: back to step 4, declare "
+                           f"tapes.{piece} {{edge: tape}} (the step-3 tape that edge lies along); a stiff piece is laid "
+                           "on its tape, never on a ring")
+    if len(names) > 1:
+        raise ChainRefused(f"{piece}: its edge sewn to the body cloth names {len(names)} tapes ({', '.join(names)}); it is "
+                           "laid along one line: back to step 3, take one tape along the whole seam line (body_tape "
+                           "length from / via / to over the surface), and name it for each of those edges in step 4")
+    n = names[0]
+    if n not in T:
+        raise ChainRefused(f"{piece}: tape {n!r} has no line in step 3: back to step 3, retake it with body_tape")
+    Q = from_centre(T[n]["kind"], T[n]["pts"])
+    chain = np.asarray(chain, np.int64)
+    s = np.r_[0, np.cumsum(np.linalg.norm(np.diff(net.uv[chain], axis=0), axis=1))]
+    if mid is not None:  # (a centre piece: from its middle outward, the -X half on the mirrored tape)
+        d = (s - s[mid]) * su
+    else:  # (a sided piece from its centre-line end; a .R piece laid as its .L, then mirrored)
+        d = s if abs(net.uv[chain[0], 0]) <= abs(net.uv[chain[-1], 0]) else s[-1] - s
+        d = d * (-1.0 if hand_of(piece) < 0 else 1.0)
+    P, L = _at(Q, np.abs(d))
+    if np.abs(d).max() > L + 0.002:  # (d < 0: the -X side, laid on +X then mirrored)
+        raise ChainRefused(f"{piece}: tape {n!r} runs {L * 1e3:.0f} mm from the centre line, the edge laid on it needs "
+                           f"{np.abs(d).max() * 1e3:.0f} mm: back to step 3, measure {n!r} on to where that edge ends")
+    P = _lift(b.body.contact, P, GAP)  # (the tape lies on the skin; the cloth GAP off it: on the +X side, then mirrored)
+    neg = d < 0
+    P[neg] = P[neg] * [-1, 1, 1]
+    P = _lift(b.body.contact, P, GAP, 1)  # (a body's mesh is never exactly mirror symmetric: what that leaves under GAP)
+    rd = {"tape": n, "kind": T[n]["kind"], "edge_mm": round(float(s[-1] * 1e3), 1), "tape_mm": round(L * 1e3, 1),
+          "laid_from": "the centre line, both ways (the -X half mirrored)" if mid is not None else "its centre-line end"}
+    b.reads.setdefault("starts", {})[piece] = f"edge laid on its tape {n} ({rd['edge_mm']} mm of {rd['tape_mm']} mm)"
+    return P, rd
 
 
 def _tapes_of(net, piece: str) -> tuple[list, list]:

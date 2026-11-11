@@ -139,7 +139,20 @@ def _stand_flat():
     k = pat.M["piece"] == 1
     x = uv[k, 0]
     uv[k, 1] = uv[k, 1] * (1 + 0.5 * (x / 0.22) ** 2)  # (ends 60 mm, CB 40 mm)
+    pat.M["starts"] = neck_base_starts()  # (P2: its neck edge laid on the neck-base tape, from CB)
     return pat, vid
+
+
+def neck_base_loop(r=0.0705, z=1.458, n=64):
+    """The lathe's neck base as a step-3 loop: round the neck on the shoulders' slope (r 0.0705: 443 mm round)."""
+    th = np.linspace(0, 2 * np.pi, n + 1)
+    return np.c_[r * np.sin(th), -r * np.cos(th), np.full(n + 1, z)].tolist()
+
+
+def neck_base_starts():
+    return {"pieces": {"body": ["neckBase"], "collar": ["neckBase"]},
+            "tapes": {"neckBase": {"kind": "loop", "pts": neck_base_loop()}},
+            "edges": {"collar": {"neck": {"tape": "neckBase", "arc": None}}}}
 
 
 def test_the_stand_top_edge_is_its_whole_top_not_its_tallest_ear():
