@@ -255,7 +255,7 @@ _COLL: dict = {}
 def collider(name: str, spec: dict, sc) -> Collider:
     """The model's Collider (cached in memory and on disk by the body's geometry, like the scalp)."""
     from . import sdf, store
-    from .hair import _geometry_key
+    from .hair_head import _geometry_key
     from .spec import compile_prims, geometry
     key = _geometry_key(spec)
     if key in _COLL:
@@ -310,7 +310,8 @@ def _lengths(length, W):
 
 def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
     """{name: lock} for groom.loose."""
-    from .hair import _line_at, _part_x, _poisson, az_el, inside, weights
+    from .hair import az_el
+    from .hair_groom import _line_at, _part_x, _poisson, inside, weights
     p = params(g["loose"])
     sp = float(p["spacing"])
     # roots from `inset` m inside the hairline (default 4 mm). A short cut wants them ON the line (0.0005): 4 mm in, the
@@ -449,7 +450,7 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
     wt = np.zeros(m)
     er = None
     if tk:  # TUCKED behind the ear: hair rooted over and in front of the ear is combed back behind it
-        from .hair import ear as _ear
+        from .hair_groom import ear as _ear
         er = _ear(sc)
         ef, eb = (float(er["front"]), float(er["back"])) if er else (80.0, 105.0)
         azs = ((az + 180) % 360) - 180  # (+ = the person's left)
@@ -743,7 +744,7 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
         d = _unit(q - P[:, k - 1])
         P[:, k] = P[:, k - 1] + d * ds[:, None]
     locks = {}
-    from .hair import _grey
+    from .hair_grow import _grey
     gq = g.get("grey") or {}
     GR = sum(W[:, i_] * float(gq.get(r_, 0.0)) for i_, r_ in enumerate(REGIONS)) / np.maximum(W.sum(1), 1e-9)
     w0 = float(p["width"]) * sp

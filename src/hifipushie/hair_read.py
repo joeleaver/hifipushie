@@ -56,7 +56,7 @@ def _ss(x):
 
 def _lab_px(a):
     """CIE Lab of sRGB 0..255 pixels (..., 3)."""
-    from .hair import _lab
+    from .hair_card_fit import _lab
     return np.stack(_lab(np.asarray(a, float)), -1)
 
 
@@ -126,10 +126,11 @@ def frames(name: str, spec: dict | None = None, views=None, images: dict | None 
     "skull" (the bare skull's silhouette, bool), "yaw"}. Cached per process by the pictures and cameras."""
     from PIL import Image
     from scipy import ndimage as ndi
-    from . import faceparse, hair, humanfit
+    from . import faceparse, humanfit
+    from . import hair_card_fit, hair_head
     spec = store.load(name) if spec is None else spec
-    sc = hair.scalp(name, spec)
-    refs = hair.human_refs(name)
+    sc = hair_head.scalp(name, spec)
+    refs = hair_card_fit.human_refs(name)
     out = []
     for i, cam in enumerate(refs.get("cameras") or []):
         if views is not None and i not in views:
@@ -481,7 +482,7 @@ def baby_hairs(a_skin, hair_p, skin_p, mm: float) -> int:
 
 def strand_field(img, mask, mm: float):
     """Per pixel the strand direction (deg, image axes, y down, axial) and coherence, over `mask` (hair)."""
-    from .hair import _orientation
+    from .hair_trace import _orientation
     ang, coh = _orientation(img, max(0.8 / mm, 1.0))
     return ang, np.where(mask, coh, 0.0)
 
@@ -610,7 +611,7 @@ def colour_split(img, dense, mm: float, T: float | None = None) -> dict:
     """The dense hair's colour (colour_bands with variation) and a TWO-MODE split: the pigmented hair (darker) and the
     light / grey strands (lighter, low chroma), at the Otsu threshold of L*. seen = the median of the upper half of the
     pigmented mode (its lit side, as look.seen wants); grey = the median of the light strands."""
-    from .hair import colour_bands
+    from .hair_card_fit import colour_bands
     a = np.asarray(img, float)[..., :3]
     m = np.asarray(dense, bool)
     if m.sum() < 200:
@@ -661,9 +662,9 @@ def read(name: str, spec: dict | None = None, authority: int | None = None, log=
     """Measure the hair on every fitted reference view (see the module's text). authority = the view whose colour is
     the target (default: the most frontal)."""
     from scipy import ndimage as ndi
-    from . import hair
+    from . import hair_head
     spec = store.load(name) if spec is None else spec
-    sc = hair.scalp(name, spec)
+    sc = hair_head.scalp(name, spec)
     fs = frames(name, spec) if fs is None else fs
     if not fs:
         raise ValueError(f"{name}: no fitted reference views (human_refs.json cameras: block_in / face solve make them)")
@@ -1010,7 +1011,7 @@ def start(r: dict, spec: dict) -> dict:
     c = s.get("colour") or {}
     look = {}
     if c:
-        from .hair import grey_age
+        from .hair_groom import grey_age
         cr = c.get("chroma_ratio")
         young = (grey_age(spec) <= 0.2) if spec else False  # (under ~34 the light pixels are LIT hair, not grey hairs)
         lit_not_grey = cr is not None and cr >= GREY_CHROMA
@@ -1082,7 +1083,7 @@ def apply(name: str, out: str | None = None, authority: int | None = None, seed:
     """read + start + groom: the hair patch is saved (and grown) onto `out` (a copy of `name` without hair, its
     human_refs carried) or onto `name`. Returns {"read", "start", "text"}."""
     import shutil
-    from . import hair
+    from . import hair_spec
     r = read(name, authority=authority, log=log)
     spec = store.load(name)
     s = start(r, spec)
@@ -1099,10 +1100,10 @@ def apply(name: str, out: str | None = None, authority: int | None = None, seed:
     sp = store.load(dst)
     h = sp.setdefault("hair", {})
     h["style"] = s["hair"]["style"]
-    h["strands"] = hair.merge_patch(h.get("strands") or {}, s["hair"]["strands"])
-    h["look"] = hair.merge_patch(h.get("look") or {}, s["hair"]["look"])
-    hair.validate(sp)
+    h["strands"] = hair_spec.merge_patch(h.get("strands") or {}, s["hair"]["strands"])
+    h["look"] = hair_spec.merge_patch(h.get("look") or {}, s["hair"]["look"])
+    hair_spec.validate(sp)
     store.save(dst, sp, "hair_from_reference: style / strands / look")
-    gr = hair.groom(dst, replace=True, note="hair_from_reference", patch={**s["hair"]["groom"], "seed": int(seed)})
+    gr = hair_spec.groom(dst, replace=True, note="hair_from_reference", patch={**s["hair"]["groom"], "seed": int(seed)})
     text = r["text"] + "\n" + s["text"] + f"\nsaved {dst} v{gr['version']}: grew " + ", ".join(f"{t} {n}" for t, n in gr["grown"].items())
     return {"read": r, "start": s, "text": text}

@@ -64,17 +64,17 @@ def default_style(spec: dict) -> None:
 
 def is_short(name: str, spec: dict) -> bool:
     """The mean lock of a loose groom is under hair.MASS_MIN: the test cards_job uses for a short cut."""
-    from . import hair
+    from . import hair_head, hair_job, hair_spec
     h = spec.get("hair") or {}
     locks = h.get("locks") or {}
     if not locks or not (h.get("groom") or {}).get("loose"):
         return False
-    sc = hair.scalp(name, spec)
+    sc = hair_head.scalp(name, spec)
     lens = []
     for lk in locks.values():
         if len(lk.get("pts") or []) >= 2:
-            lens.append(float(np.linalg.norm(np.diff(hair.lock_world(sc, lk, lk["pts"]), axis=0), axis=1).sum()))
-    return bool(lens) and float(np.mean(lens)) < hair.MASS_MIN
+            lens.append(float(np.linalg.norm(np.diff(hair_spec.lock_world(sc, lk, lk["pts"]), axis=0), axis=1).sum()))
+    return bool(lens) and float(np.mean(lens)) < hair_job.MASS_MIN
 
 
 def style_warning(spec: dict) -> str:
@@ -103,10 +103,11 @@ def head_key(sc) -> str:
 
 def head_warning(name: str, spec: dict | None = None) -> str:
     """hair.head against the model's head now. A groom with no stored hash (grown before it existed) says nothing."""
-    from . import hair, store
+    from . import store
+    from . import hair_head
     spec = store.load(name) if spec is None else spec
     was = (spec.get("hair") or {}).get("head")
-    if not was or was == head_key(hair.scalp(name, spec)):
+    if not was or was == head_key(hair_head.scalp(name, spec)):
         return ""
     return (f"WARNING the head changed under this groom: {name}'s hair was grown on another head. Re-seat or regrow it "
             "and judge hairline, stand-off and coverage again before trusting anything here")

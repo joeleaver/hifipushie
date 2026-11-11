@@ -3086,7 +3086,8 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
     fo_ = ((spec.get("hair") or {}).get("export") or {}).get("fade")
     if fo_:  # (sh8) hair.export.fade: the same map the hair export writes (hair_fade.build is deterministic per seed)
         from . import hair as hairmod_, hair_fade
-        ctx["skin_fade"] = {"map": hair_fade.build(hairmod_.scalp(name, spec), fo_),
+        from . import hair_export, hair_head
+        ctx["skin_fade"] = {"map": hair_fade.build(hair_head.scalp(name, spec), fo_),
                             "part": (spec.get("skin") or {}).get("part", "body")}
         log.append(f"hair fade: {ctx['skin_fade']['map']['hairs']} cut hairs, baked into {ctx['skin_fade']['part']}")
     for ai, an in enumerate(names):
@@ -3129,12 +3130,13 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
     extra_ext = {}
     if (spec.get("hair") or {}).get("locks"):  # curve locks (hair.py): meshed and baked in Blender, their own atlas
         from . import hair as hairmod
+        from . import hair_export, hair_head
         spec = hair_tier_default(spec, role, log)
         from . import hair_route
         hw_ = hair_route.head_warning(name, spec)
         if hw_:
             log.append(hw_)
-        hp = hairmod.export_part(name, out_dir, spec, texture=min(texture, 2048), log=log)
+        hp = hair_export.export_part(name, out_dir, spec, texture=min(texture, 2048), log=log)
         if hp is not None:
             hpart, hfiles = hp
             pn_h = (spec["hair"].get("part") or "hair")
@@ -3157,13 +3159,13 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
             # a lock's sheen runs along it (the uv's v): anisotropy turned 90 degrees from the tangent (u, round the
             # lens), and a soft warm sheen
             lk = hairmod.full_look(spec["hair"].get("look"))
-            sheen = [round(float(c), 3) for c in hairmod.srgb_to_linear(lk["sheen"])]
+            sheen = [round(float(c), 3) for c in hair_export.srgb_to_linear(lk["sheen"])]
             extra_ext[len(atlas_files) - 1] = {
                 # (r59) half the specular, in the sheen's colour (hair.card_specular_tint): the default white x 2 mirrored
                 # the key light off the crown's cards as a white plate (Tess rc2i, Garrett v5)
                 # (no specular texture: the hair's is a flat 0.5; F0 = 0.04 x factor x colour = 0.02 x tint)
-                "KHR_materials_specular": {"specularFactor": hairmod.CARD_SPECULAR,
-                                           "specularColorFactor": hairmod.card_specular_tint(sheen)},
+                "KHR_materials_specular": {"specularFactor": hair_export.CARD_SPECULAR,
+                                           "specularColorFactor": hair_export.card_specular_tint(sheen)},
                 "KHR_materials_anisotropy": {"anisotropyStrength": float(lk.get("anisotropic", 0.7)),
                                              "anisotropyRotation": 1.5708},
                 "KHR_materials_sheen": {"sheenColorFactor": sheen, "sheenRoughnessFactor": 0.35}}
@@ -3443,18 +3445,19 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
             # hair.export_hair), cut for their budget; thinning LOD0's cards dropped the tail first. (Unrigged too,
             # round 25: whole layers dropped once, 11996 -> 5324 at LOD1 and flat at LOD2 / LOD3.)
             from . import hair as hairmod
+            from . import hair_export, hair_head
             hb_ = next((i for i, b in enumerate(rigged["bones"]) if b["name"].endswith("Head")), 0) if rigged else 0
             for k, r in enumerate(ratios, 1):
                 tier_ = lodmod.HAIR_TIERS[min(k, len(lodmod.HAIR_TIERS)) - 1]
                 sp_ = {**spec, "hair": {**spec["hair"], "export": {**(spec["hair"].get("export") or {}), "tier": tier_}}}
                 try:
-                    tp_, _tf = hairmod.export_cards(name, out_dir / f"_lod{k}", sp_, log)
+                    tp_, _tf = hair_export.export_cards(name, out_dir / f"_lod{k}", sp_, log)
                 except Exception as e:  # (LOD0 hair kept)
                     log.append(f"WARNING LOD{k}: hair tier {tier_} failed ({type(e).__name__}: {e}); LOD0's cards kept")
                     continue
                 tp_.pop("hair", None)
                 own_ = None
-                if hairmod.share_atlas(tp_, _tf, dict(atlas_files[parts[pn_h]["atlas"]][1])):
+                if hair_export.share_atlas(tp_, _tf, dict(atlas_files[parts[pn_h]["atlas"]][1])):
                     tp_["atlas"] = parts[pn_h]["atlas"]  # (its uv on LOD0's atlas: a tier's atlas lacks the baked rows)
                 else:  # its own maps beside the GLBs (a tier whose pictures differ from LOD0's)
                     import shutil
@@ -3649,7 +3652,7 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
             "seconds": round(time.time() - t, 1), "log": log}
     try:  # the engine-agnostic shading notes beside the GLB (shading.py): what each material is meant to do
         from . import shading
-        from .hair import look_of as _hlook
+        from .hair_groom import look_of as _hlook
         sj, sm = shading.write(info, out_dir, aname, looks=looks,
                                hair_look=_hlook(spec) if spec.get("hair") else None, eyes_part=ek[0] if ek else None)
         info["shading"] = {"json": str(sj), "md": str(sm)}

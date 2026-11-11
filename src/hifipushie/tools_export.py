@@ -158,10 +158,10 @@ def sync(name: str, resolution: int = 256, hair_only: bool = False, cloth_only: 
                 f"({len(r['made'])} objects replaced) in {r['seconds']}s"
                 + (f"\npulled first: {json.dumps(changes)}" if changes else "") + ("\n" + "\n".join(log) if log else ""))
     if hair_only:
-        from . import hair
+        from . import hair_look
         log: list = []
         changes = scene.pull(name, log)
-        r = hair.sync(name)
+        r = hair_look.sync(name)
         return (f"hair synced into {scene.blend_path(name)}: {r['made']} locks in {r['seconds']}s"
                 + (f"\npulled first: {json.dumps(changes)}" if changes else "") + ("\n" + "\n".join(log) if log else ""))
     r = scene.sync(name, resolution)

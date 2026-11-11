@@ -549,7 +549,7 @@ def frames(P, C, ang, core=None):
 def _lock_cards(lk: dict, C, S: dict, rng, n: int = 72) -> list:
     """The cards of one resolved lock: each {"P" centre line, "X" across (unit), "N" normal, "hw" half width, "u"
     the lock's parameter, "s" m along, "kind", "layer", "bend" (the volume's outward direction there)}."""
-    from .hair import lock_width
+    from .hair_spec import lock_width
     inp = lk["inputs"]
     S = {**S, **(lk.get("strands") or {})}
     P, rad, tilt, u, s = spine(lk, n)

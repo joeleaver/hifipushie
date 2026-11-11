@@ -357,30 +357,30 @@ def test_lid_fold_slit_designed():
 # Hand-shaping hair in Blender (2026-09-30): edits, deletions and Shift+D copies come back, and a regrow keeps them
 def test_hair_pull_hand_locks():
     import numpy as np
-    from hifipushie import hair
-    sc = hair.Scalp([0, 0, 1.7], np.full((180, 81), 0.1), {})
-    old = hair.scalp
-    hair.scalp = lambda name, spec=None: sc
+    from hifipushie import hair_head, hair_look, hair_spec
+    sc = hair_head.Scalp([0, 0, 1.7], np.full((180, 81), 0.1), {})
+    old = hair_head.scalp
+    hair_head.scalp = lambda name, spec=None: sc
     try:
         lk = {"tier": "drawn", "pts": [[0, 30, 0.0], [-40, 30, 0.01]], "width": 0.05, "thickness": 0.006}
         spec = {"hair": {"locks": {"sweep1": dict(lk), "sweep2": dict(lk), "g01": dict(lk, tier="gap")}}}
         moved = sc.point(np.array([0, -45.0]), np.array([30, 28.0]), np.array([0.0, 0.012]))
         got = {"sweep1": {"pts": moved.tolist(), "radius": [1, 1], "tilt": [0, 0.3], "inputs": {"Width": 0.07},
-                          "hash": hair.lock_hash(spec["hair"]["locks"]["sweep1"], sc)},
+                          "hash": hair_spec.lock_hash(spec["hair"]["locks"]["sweep1"], sc)},
                "__deleted__": ["g01"],
                "__new__": {"sweep1_001": {"pts": moved.tolist(), "radius": [1, 1], "tilt": [0, 0],
                                           "inputs": {"Width": 0.04, "Thickness": 0.005}}}}
         log = []
-        ch = hair.pull_locks(spec, "x", got, log)
+        ch = hair_look.pull_locks(spec, "x", got, log)
         L = spec["hair"]["locks"]
         assert set(ch) == {"hair.sweep1", "hair.g01", "hair.sweep1_001"}, ch
         assert L["sweep1"]["hand"] and L["sweep1"]["width"] == 0.07 and L["sweep1"]["tilt"] == [0, 0.3]
         assert L["sweep1_001"]["tier"] == "hand" and L["sweep1_001"]["width"] == 0.04
         assert "g01" not in L and spec["hair"]["removed"] == ["g01"]
         assert "sweep2" in L and not L["sweep2"].get("hand")
-        hair.validate(spec)
+        hair_spec.validate(spec)
     finally:
-        hair.scalp = old
+        hair_head.scalp = old
 
 
 _LOCK_SCRIPT = r'''
@@ -439,22 +439,22 @@ def test_hair_lock_rebuild_keeps_inputs_and_winds_outward():
 def test_hair_under_clumps_across_the_back():
     """2026-10-01: under clumps between back locks either side of az 180 were averaged across the front (a lock
     over the face), and a clump crossing 180 within itself too."""
-    from hifipushie import hair
+    from hifipushie import hair_drawn
     c = [{"name": "bk1", "azel": [[175, 58], [179, 38], [181, 10], [181, -18]], "width": 0.08},
          {"name": "bk2", "azel": [[-140, 54], [-155, 34], [-163, 8], [-168, -20]], "width": 0.06},
          {"name": "sw1", "azel": [[30, 30], [0, 30]], "width": 0.05}, {"name": "sw2", "azel": [[40, 40], [0, 40]]}]
-    u = hair._under_clumps(c, None, {"sw": False})
+    u = hair_drawn._under_clumps(c, None, {"sw": False})
     assert [x["name"] for x in u] == ["bk1_bk2_under"], u
     az = (u[0]["azel"][0][0] + 360) % 360
     assert 150 < az < 220, u[0]["azel"]
-    assert hair._under_clumps(c, None, 1.0)[0]["sink"] == 1.0
+    assert hair_drawn._under_clumps(c, None, 1.0)[0]["sink"] == 1.0
 
 
 def test_hair_through_the_tools():
     """2026-10-01: hair was reachable only from Python. The tools exist, edit_model edits one lock's fields through a
     dotted kind ("hair.locks"), the validation names the bad key, the export/look keys the pipeline reads validate,
     and a stale scene copy that reads back as the spec's own lock is not reported."""
-    from hifipushie import hair
+    from hifipushie import hair_head, hair_look, hair_spec
     for t in ("groom_hair", "look_hair", "hair_reference"):
         assert callable(getattr(server, t)), t
     assert "silhouette" in server.guide("hair").lower()
@@ -464,25 +464,25 @@ def test_hair_through_the_tools():
                                  {"op": "set", "kind": "hair.groom", "name": "volume", "value": {"top": 0.04}}])
     assert out["hair"]["locks"]["sweep1"]["width"] == 0.07 and out["hair"]["locks"]["sweep1"]["pts"] == lk["pts"]
     assert out["hair"]["groom"]["volume"] == {"top": 0.04}
-    hair.validate(out)
+    hair_spec.validate(out)
     bad = store.apply_ops(spec, [{"op": "set", "kind": "hair.locks", "name": "sweep1", "value": {"wdth": 0.07}}])
-    assert "wdth" in str(_exc(hair.validate, bad))
-    assert "stage" in str(_exc(hair.validate, {"hair": {"stage": "clumps"}}))
-    assert hair.merge_patch({"a": {"b": 1, "c": 2}}, {"a": {"b": None, "d": 3}}) == {"a": {"c": 2, "d": 3}}
+    assert "wdth" in str(_exc(hair_spec.validate, bad))
+    assert "stage" in str(_exc(hair_spec.validate, {"hair": {"stage": "clumps"}}))
+    assert hair_spec.merge_patch({"a": {"b": 1, "c": 2}}, {"a": {"b": None, "d": 3}}) == {"a": {"c": 2, "d": 3}}
     import numpy as np
-    sc = hair.Scalp([0, 0, 1.7], np.full((180, 81), 0.1), {})
-    old = hair.scalp
-    hair.scalp = lambda name, spec=None: sc
+    sc = hair_head.Scalp([0, 0, 1.7], np.full((180, 81), 0.1), {})
+    old = hair_head.scalp
+    hair_head.scalp = lambda name, spec=None: sc
     try:
         s2 = {"hair": {"locks": {"sweep1": dict(lk, pts=[[0, 30, 0.0], [320, 30, 0.01]])}}}  # (azimuths read back 0..360)
         P = sc.point(np.array([0.0, -40.0]), np.array([30.0, 30.0]), np.array([0.0, 0.01]))
         got = {"sweep1": {"pts": P.tolist(), "radius": [1, 1], "tilt": [0, 0], "inputs": {}, "hash": "stale"}}
         log = []
-        assert hair.pull_locks(s2, "x", got, log) == {} and not log, log
+        assert hair_look.pull_locks(s2, "x", got, log) == {} and not log, log
         got["sweep1"]["pts"] = sc.point(np.array([0.0, -50.0]), np.array([30.0, 30.0]), np.array([0.0, 0.01])).tolist()
-        assert hair.pull_locks(s2, "x", got, log) == {} and "another version" in log[0], log
+        assert hair_look.pull_locks(s2, "x", got, log) == {} and "another version" in log[0], log
     finally:
-        hair.scalp = old
+        hair_head.scalp = old
 
 
 def _exc(fn, *a):
@@ -498,19 +498,19 @@ def test_hair_folds_regions_and_shared_lens():
     flakes along the part: `folds` must see it and `ease_bends` must take it out; outline rays are labelled by head
     region; a second figure in the same picture keeps the first's focal length (free, it ran off to infinity)."""
     import numpy as np
-    from hifipushie import hair
+    from hifipushie import hair_drawn, hair_head, hair_spec, hair_trace
     A, E = np.arange(0.0, 360.0, 2.0), np.arange(-70.0, 90.01, 2.0)
-    sc = hair.Scalp([0.0, 0.0, 0.0], np.full((len(A), len(E)), 0.09), {})
+    sc = hair_head.Scalp([0.0, 0.0, 0.0], np.full((len(A), len(E)), 0.09), {})
     # an L on the top of a ball: 6 cm along, a right angle, 6 cm on; 3 cm wide (drawn paths are 40 points)
     xy = np.r_[np.c_[np.linspace(0.06, 0.0, 20), np.zeros(20)], np.c_[np.zeros(19), np.linspace(0.003, 0.06, 19)]]
-    a, e = hair.top_to_azel(sc, xy)
-    Q = hair._catmull(sc.point(a, e, 0.0), 40)
+    a, e = hair_drawn.top_to_azel(sc, xy)
+    Q = hair_spec._catmull(sc.point(a, e, 0.0), 40)
     half = np.full(len(Q), 0.015)
-    assert hair.bend_ratio(sc, Q, half).max() > 1.0
+    assert hair_drawn.bend_ratio(sc, Q, half).max() > 1.0
     lk = {"name": "L", "pts": Q[::10].tolist(), "inputs": {"Width": 0.03, "Root": 1.0, "Belly": 0.05, "Taper": 0.0}}
-    assert "L" in hair.folds(sc, [lk])
-    assert hair.bend_ratio(sc, hair.ease_bends(sc, Q, half), half).max() < hair.BEND_EASE + 0.05
-    assert list(hair.region_of([0, 60, -60, 130, -130, 180, 10], [0, 0, 0, 0, 0, 0, 70])) == \
+    assert "L" in hair_spec.folds(sc, [lk])
+    assert hair_drawn.bend_ratio(sc, hair_drawn.ease_bends(sc, Q, half), half).max() < hair_drawn.BEND_EASE + 0.05
+    assert list(hair_trace.region_of([0, 60, -60, 130, -130, 180, 10], [0, 0, 0, 0, 0, 0, 70])) == \
         ["front", "side.L", "side.R", "back.L", "back.R", "back", "top"]
 
 
@@ -521,20 +521,21 @@ def test_hair_hairline_edge_round3():
     drawn clump is patched by name without resending the list."""
     import numpy as np
     from hifipushie import hair
+    from hifipushie import hair_drawn, hair_groom, hair_head, hair_lockmesh, hair_spec, hair_trace
     A, E = np.arange(0.0, 360.0, 2.0), np.arange(-70.0, 90.01, 2.0)
-    sc = hair.Scalp([0.0, 0.0, 0.0], np.full((len(A), len(E)), 0.09), {})
-    g = hair._merge(hair.GROOM, {})
-    line = hair.hairline(sc, g)
-    V, F = hair.cap_mesh(sc, g, 0.002)
+    sc = hair_head.Scalp([0.0, 0.0, 0.0], np.full((len(A), len(E)), 0.09), {})
+    g = hair_groom._merge(hair.GROOM, {})
+    line = hair_groom.hairline(sc, g)
+    V, F = hair_lockmesh.cap_mesh(sc, g, 0.002)
     a, e, _ = sc.coords(V)
-    on = np.abs(e - hair._line_at(line, a)) < 1e-3  # a row of vertices exactly on the line, every column
+    on = np.abs(e - hair_groom._line_at(line, a)) < 1e-3  # a row of vertices exactly on the line, every column
     assert len(np.unique(np.round(a[on]))) >= 359
     # a clump laid on the hairline: its edge (half width 15 mm) 2 mm inside, all along
-    q = np.c_[np.linspace(40, -40, 40), np.full(40, hair._line_at(line, 0.0) + 15.0)]
-    Q = hair._catmull(sc.point(q[:, 0], q[:, 1], 0.0), 40)
-    Q2 = hair._to_hairline(sc, line, Q, np.full(len(Q), 0.015), 0.002)
+    q = np.c_[np.linspace(40, -40, 40), np.full(40, hair_groom._line_at(line, 0.0) + 15.0)]
+    Q = hair_spec._catmull(sc.point(q[:, 0], q[:, 1], 0.0), 40)
+    Q2 = hair_drawn._to_hairline(sc, line, Q, np.full(len(Q), 0.015), 0.002)
     a2, e2 = hair.az_el(Q2 - sc.C)
-    d = hair.inside(sc, line, a2, e2)
+    d = hair_groom.inside(sc, line, a2, e2)
     assert np.abs(d - 0.017).max() < 0.001, d
     # front_edge: a straight traced line over a mask whose edge is clean, then sawtoothed
     W = 400
@@ -543,9 +544,9 @@ def test_hair_hairline_edge_round3():
     yy, xx = np.mgrid[0:W, 0:W]
     clean = yy < 200
     saw = yy < 200 + 6 * (((xx // 10) % 2) * 2 - 1)
-    fc, fs = hair.front_edge(cam, tr, clean, 0.5), hair.front_edge(cam, tr, saw, 0.5)
+    fc, fs = hair_trace.front_edge(cam, tr, clean, 0.5), hair_trace.front_edge(cam, tr, saw, 0.5)
     assert fc["rough_mm"] < 0.3 and fs["rough_mm"] > 1.0 and fs["tooth_mm"] > 2.0, (fc, fs)
-    out = hair.merge_patch([{"name": "a1", "width": 1}, {"name": "a2", "width": 2}, {"name": "b", "width": 3}],
+    out = hair_spec.merge_patch([{"name": "a1", "width": 1}, {"name": "a2", "width": 2}, {"name": "b", "width": 3}],
                            {"a*": {"root": 0.1}, "b": None, "c": {"width": 4}})
     assert out == [{"name": "a1", "width": 1, "root": 0.1}, {"name": "a2", "width": 2, "root": 0.1},
                    {"name": "c", "width": 4}], out

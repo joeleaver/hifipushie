@@ -152,7 +152,7 @@ def _smooth_field(p, seed: int, scale: float = 0.03) -> float:
 def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free: int = 32) -> dict:
     """{"head": G, "free": G}: G = {"counts", "pts", "side", "out", "weight", "lock", "names"} (the guide arrays of
     blender_strands.curves_object; `weight` = each lock's share of the strands, by its section)."""
-    from .hair import lock_width
+    from .hair_spec import lock_width
     out = {}
     even_all = float(S.get("even") or 0.0) >= EVEN_ALL
     lam = max(float(S["wavelength"]), 0.01)
@@ -321,7 +321,7 @@ def scalp_mesh(sc, g: dict, line, S: dict, step: float = 3.0) -> dict:
     """The scalp inside the hairline (a margin outside it) as a triangle mesh with a UV map (u = azimuth / 360,
     v = elevation over its range: a chart Blender's Interpolate and Curves sculpt tools attach hair to) and
     `hp_density`: 0 just outside the hairline, 1 `soft` m inside, thinned along the parting."""
-    from .hair import _part, inside
+    from .hair_groom import _part, inside
     A = np.arange(0.0, 360.0 + 1e-6, step)  # (the seam column twice: az 0 and 360)
     e0 = float(np.floor(max(line.min() - 12.0, sc.EL[0] + 2)))
     E = np.arange(e0, 88.0 + 1e-6, step)
@@ -402,7 +402,7 @@ def scalp_mesh(sc, g: dict, line, S: dict, step: float = 3.0) -> dict:
                                           np.stack([(uvv[fan[:, 0], 0] + uvv[fan[:, 1], 0]) / 2,
                                                     np.ones(len(fan))], 1)], 1)])
     del uvp
-    from .hair import _part_x
+    from .hair_groom import _part_x
     xp_ = _part_x(g) if (float(S.get("even") or 0.0) > 0 and (g.get("parting") or {}).get("side", "left") != "none") else None
     if xp_ is not None:
         # TWO ISLANDS split along the part (the even layer interpolates with "Part by Mesh Islands"): a child takes its
@@ -483,7 +483,7 @@ def _split_zone(sc, g: dict, AA, EE, d_in, fa):
         return np.ones_like(d_in, dtype=float)
     tk = lo.get("tuck")
     if tk:
-        from .hair import ear as _ear
+        from .hair_groom import ear as _ear
         er = _ear(sc)
         ef, eb = (float(er["front"]), float(er["back"])) if er else (80.0, 105.0)
         top_ = float(er["top"]) if er else sc.C[2] - 0.01
@@ -523,7 +523,8 @@ def under_guides(sc, g: dict, line, locks: list, S: dict, seed: int = 0, n: int 
     locks over it (the direction of the nearest lock spines, laid in the scalp's tangent plane) for `under_length`,
     rising from the skin to just under those locks. Seeds on the hairline itself are the baby hairs: short."""
     from scipy.spatial import cKDTree
-    from .hair import az_el, inside
+    from .hair import az_el
+    from .hair_groom import inside
     if float(S["under"]) <= 0:
         return None
     rng = np.random.default_rng([seed, 77])
@@ -717,7 +718,8 @@ def stacks(S: dict, n_head: float, n_free: float, n_under: float, area: float, s
 def job(sc, g: dict, spec: dict, locks: list, tmp: Path, count: int | None = None, col=None) -> dict:
     """What blender_strands.show needs (files in tmp)."""
     import re
-    from .hair import hair_of, hairline, look_of
+    from .hair_groom import hairline, look_of
+    from .hair_spec import hair_of
     h = hair_of(spec)
     S = hc.strands_of(spec)
     if count:
@@ -729,7 +731,7 @@ def job(sc, g: dict, spec: dict, locks: list, tmp: Path, count: int | None = Non
     bands = [k for k in locks if re.fullmatch(r"t\d*band", k["name"])]
     hair_locks = [k for k in locks if k not in bands]
     line = hairline(sc, g)
-    from .hair import inside
+    from .hair_groom import inside
     for k_ in hair_locks:  # locks rooted at the hairline: their strands start one by one over a longer stretch
         if not k_.get("free"):
             a0, e0_, h0 = sc.coords(np.asarray(k_["pts"][0], float)[None])
@@ -1009,7 +1011,7 @@ def cap_chart(sc, g: dict, line, S: dict, D: dict | None, e0: float, size: int =
     inside the hairline. So the hairline is an alpha edge of single hairs, and no skin shows under the cards: the
     game hair's cap texture. {"alpha", "id", "depth"} (size, size)."""
     from PIL import Image, ImageDraw
-    from .hair import _part, inside
+    from .hair_groom import _part, inside
     W = H = int(size)
     ss = 2
     ims = [Image.new("L", (W * ss, H * ss), 0) for _ in range(2)]

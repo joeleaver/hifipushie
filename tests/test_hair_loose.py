@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from test_hair_strands import _hanging, _lock, _strands  # noqa: E402
 
 from hifipushie import hair, hair_loose as hl  # noqa: E402
+from hifipushie import hair_groom, hair_head, hair_seat
 from hifipushie import hair_cards as hc  # noqa: E402
 from hifipushie import hair_strands as hs  # noqa: E402
 
@@ -25,7 +26,7 @@ def _ball_head(step=0.01):
     """A head without a body: a 9.5 cm ball as the scalp's rays see it, and its signed distance as the collider
     (plus a slab of shoulders 17 cm under the centre)."""
     C = np.array([0.0, 0.0, 1.6])
-    sc = hair.Scalp(C, None, {})
+    sc = hair_head.Scalp(C, None, {})
     sc.R = np.full((len(sc.A), len(sc.E)), 0.095)
     lo = C + np.asarray(hl.BOX[0])
     n = np.ceil((np.asarray(hl.BOX[1]) - np.asarray(hl.BOX[0])) / step).astype(int) + 1
@@ -36,8 +37,8 @@ def _ball_head(step=0.01):
 
 def _grow(loose, parting="left"):
     sc, col = _ball_head()
-    g = hair._merge(hair.GROOM, {"loose": loose, "parting": {"side": parting}, "seed": 2})
-    line = hair.hairline(sc, g)
+    g = hair_groom._merge(hair.GROOM, {"loose": loose, "parting": {"side": parting}, "seed": 2})
+    line = hair_groom.hairline(sc, g)
     return sc, col, hl.grow(sc, g, line, np.random.default_rng(2), col)
 
 
@@ -466,19 +467,19 @@ def test_groom_fits_a_smaller_head():
     volume, hairline offsets, the swoop's depth), traced hairline heights move with the head's centre and scale about
     it, unitless keys stay; the grown hair is shorter by the same share. Without fit nothing changes."""
     sc, col = _ball_head()
-    ref = hair.head_ref(sc)
-    small = hair.Scalp(sc.C + [0, 0, -0.01], None, {})
+    ref = hair_groom.head_ref(sc)
+    small = hair_head.Scalp(sc.C + [0, 0, -0.01], None, {})
     small.R = sc.R * 0.88
-    g = hair._merge(hair.GROOM, {"loose": {"length": 0.05, "spacing": 0.009, "swoop": {"depth": 0.04}},
+    g = hair_groom._merge(hair.GROOM, {"loose": {"length": 0.05, "spacing": 0.009, "swoop": {"depth": 0.04}},
                                  "volume": {"front": 0.01, "across": 0.1},
                                  "hairline": {"temples": 0.01, "front_points": [[0, 1.69], [20, 1.68]]}, "fit": ref})
-    f = hair.fit_to_head(g, small)
+    f = hair_seat.fit_to_head(g, small)
     assert abs(f["loose"]["length"] - 0.044) < 1e-9 and abs(f["loose"]["spacing"] - 0.00792) < 1e-9
     assert abs(f["loose"]["swoop"]["depth"] - 0.0352) < 1e-9 and abs(f["volume"]["front"] - 0.0088) < 1e-9
     assert f["volume"]["across"] == 0.1 and abs(f["hairline"]["temples"] - 0.0088) < 1e-9
     z0 = sc.C[2]
     assert abs(f["hairline"]["front_points"][0][1] - (z0 - 0.01 + (1.69 - z0) * 0.88)) < 1e-9
-    assert "fit" not in f and hair.fit_to_head({**g, "fit": None}, small)["loose"]["length"] == 0.05
+    assert "fit" not in f and hair_seat.fit_to_head({**g, "fit": None}, small)["loose"]["length"] == 0.05
 
 
 def test_carried_groom_keeps_its_hairline_on_the_head():
@@ -487,22 +488,22 @@ def test_carried_groom_keeps_its_hairline_on_the_head():
     ([az, el, h] about the centre) instead of standing up the brow over them (the bare V, 2026-10-10). A groom
     already fitted keeps its own fit; the source spec isn't changed."""
     sc, _ = _ball_head()
-    low = hair.Scalp(sc.C + [0, 0, -0.0044], sc.R.copy(), {})
+    low = hair_head.Scalp(sc.C + [0, 0, -0.0044], sc.R.copy(), {})
     groom = {"hairline": {"front_points": [[0, 1.66], [20, 1.659], [35, 1.655]]}}
     src = {"hair": {"groom": groom, "locks": {}}}
-    h = hair.carry("src", src, sc=sc)
-    assert h["groom"]["fit"] == {**hair.head_ref(sc), "abs_r": 0.095} and "fit" not in src["hair"]["groom"]
-    as_written = hair.hairline(low, hair._merge(hair.GROOM, groom))
-    carried = hair.hairline(low, hair._merge(hair.GROOM, h["groom"]))
-    own = hair.hairline(sc, hair._merge(hair.GROOM, groom))
+    h = hair_seat.carry("src", src, sc=sc)
+    assert h["groom"]["fit"] == {**hair_groom.head_ref(sc), "abs_r": 0.095} and "fit" not in src["hair"]["groom"]
+    as_written = hair_groom.hairline(low, hair_groom._merge(hair.GROOM, groom))
+    carried = hair_groom.hairline(low, hair_groom._merge(hair.GROOM, h["groom"]))
+    own = hair_groom.hairline(sc, hair_groom._merge(hair.GROOM, groom))
     for a in (0, 20, 35):
         assert abs(carried[a] - own[a]) < 0.3, (a, carried[a], own[a])
         assert as_written[a] - own[a] > 2.0, (a, as_written[a], own[a])  # (the bug: the line climbs ~2.6 deg)
     fitted = {"hair": {"groom": {**groom, "fit": {"r": 0.1, "c": [0, 0, 1.7]}}}}
     # (a groom already fitted keeps its fit, and gains abs_r: the head its tie metres were grown at, see below)
-    assert hair.carry("src", fitted, sc=sc)["groom"]["fit"] == {"r": 0.1, "c": [0, 0, 1.7], "abs_r": 0.095}
+    assert hair_seat.carry("src", fitted, sc=sc)["groom"]["fit"] == {"r": 0.1, "c": [0, 0, 1.7], "abs_r": 0.095}
     twice = {"hair": {"groom": {**groom, "fit": {"r": 0.1, "c": [0, 0, 1.7], "abs_r": 0.09}}}}
-    assert hair.carry("src", twice, sc=sc)["groom"]["fit"]["abs_r"] == 0.09
+    assert hair_seat.carry("src", twice, sc=sc)["groom"]["fit"]["abs_r"] == 0.09
 
 
 def test_carried_tie_scales_its_absolute_metres():
@@ -511,20 +512,20 @@ def test_carried_tie_scales_its_absolute_metres():
     its tail grew. Now they scale by this head over fit.abs_r (the head they were grown at), shares stay, and a groom
     on its own head (abs_r = its radius) is unchanged."""
     sc, _ = _ball_head()
-    big = hair.Scalp(sc.C, sc.R * 1.15, {})
+    big = hair_head.Scalp(sc.C, sc.R * 1.15, {})
     tie = {"gather": {"volume": {"crown": 0.012, "side": 0.008, "rise": 0.02, "arc": 0.5, "hold": 1.0, "locks": 0.4}},
            "wisps": {"length": [0.05, 0.14], "count": 9}, "tail": {"length": 0.2, "sway": 0.004, "locks": 39}}
-    g = hair._merge(hair.GROOM, {"tie": tie, "fit": {**hair.head_ref(sc), "abs_r": 0.095}})
-    f = hair.fit_to_head(g, big)
+    g = hair_groom._merge(hair.GROOM, {"tie": tie, "fit": {**hair_groom.head_ref(sc), "abs_r": 0.095}})
+    f = hair_seat.fit_to_head(g, big)
     v = f["tie"]["gather"]["volume"]
     assert abs(v["crown"] - 0.0138) < 1e-9 and abs(v["rise"] - 0.023) < 1e-9
     assert v["arc"] == 0.5 and v["hold"] == 1.0 and v["locks"] == 0.4
     assert np.allclose(f["tie"]["wisps"]["length"], [0.0575, 0.161]) and f["tie"]["wisps"]["count"] == 9
     assert abs(f["tie"]["tail"]["length"] - 0.23) < 1e-9 and abs(f["tie"]["tail"]["sway"] - 0.0046) < 1e-9
     assert f["tie"]["tail"]["locks"] == 39
-    assert hair.fit_to_head(g, sc) is g  # (its own head: as written)
-    old = hair._merge(hair.GROOM, {"tie": tie, "fit": hair.head_ref(sc)})  # (no abs_r: grown before; as it was)
-    assert hair.fit_to_head(old, big)["tie"]["wisps"]["length"] == [0.05, 0.14]
+    assert hair_seat.fit_to_head(g, sc) is g  # (its own head: as written)
+    old = hair_groom._merge(hair.GROOM, {"tie": tie, "fit": hair_groom.head_ref(sc)})  # (no abs_r: grown before; as it was)
+    assert hair_seat.fit_to_head(old, big)["tie"]["wisps"]["length"] == [0.05, 0.14]
 
 
 def test_reseat_keeps_every_lock_on_a_bigger_head():
@@ -532,11 +533,11 @@ def test_reseat_keeps_every_lock_on_a_bigger_head():
     and its height x k; far off it (a hanging tail) it moves with the head, scaled about its centre; widths scale; the
     lengths of every lock grow by k (the regrow re-rolled which wisp was long)."""
     sc, _ = _ball_head()
-    big = hair.Scalp(sc.C + [0, 0.002, -0.015], sc.R * 1.15, {})
+    big = hair_head.Scalp(sc.C + [0, 0.002, -0.015], sc.R * 1.15, {})
     near = {"tier": "tie", "width": 0.01, "thickness": 0.005, "pts": [[30.0, 40.0, 0.002], [60.0, 20.0, 0.004]],
             "strands": {"wave": 0.008, "density": 1.3}}
     tail = {"tier": "tie", "space": "xyz", "width": 0.012, "thickness": 0.006, "pts": [[0.0, 0.11, -0.05], [0.0, 0.13, -0.2]]}
-    out = hair.seat_locks({"hair": {"locks": {"a": near, "t": tail}}}, sc, big)
+    out = hair_seat.seat_locks({"hair": {"locks": {"a": near, "t": tail}}}, sc, big)
     a = np.asarray(out["a"]["pts"])
     assert np.allclose(a[:, :2], [[30, 40], [60, 20]], atol=0.02) and np.allclose(a[:, 2], [0.0023, 0.0046], atol=1e-4)
     assert abs(out["a"]["width"] - 0.0115) < 1e-9 and abs(out["a"]["strands"]["wave"] - 0.0092) < 1e-9
@@ -548,19 +549,19 @@ def test_reseat_keeps_every_lock_on_a_bigger_head():
 def test_default_grey_follows_age():
     """The default temple / sideburn grey put grey locks on a young head; it now follows the model's age
     (none to 30, all of it from 50); a groom's own grey and models without an age are unchanged."""
-    g19 = hair.groom_params({"base": {"body": {"age": 19}}, "hair": {"groom": {}}})
+    g19 = hair_groom.groom_params({"base": {"body": {"age": 19}}, "hair": {"groom": {}}})
     assert all(v == 0 for v in g19["grey"].values())
-    g60 = hair.groom_params({"base": {"body": {"age": 60}}, "hair": {"groom": {}}})
+    g60 = hair_groom.groom_params({"base": {"body": {"age": 60}}, "hair": {"groom": {}}})
     assert g60["grey"] == hair.GROOM["grey"]
-    g40 = hair.groom_params({"skin": {"age": 40}, "hair": {"groom": {}}})
+    g40 = hair_groom.groom_params({"skin": {"age": 40}, "hair": {"groom": {}}})
     assert g40["grey"]["temples"] == pytest.approx(0.5 * hair.GROOM["grey"]["temples"])
-    assert hair.groom_params({"hair": {"groom": {}}})["grey"] == hair.GROOM["grey"]
+    assert hair_groom.groom_params({"hair": {"groom": {}}})["grey"] == hair.GROOM["grey"]
     mine = {"temples": 0.2}
-    assert hair.groom_params({"base": {"body": {"age": 19}}, "hair": {"groom": {"grey": mine}}})["grey"]["temples"] == 0.2
+    assert hair_groom.groom_params({"base": {"body": {"age": 19}}, "hair": {"groom": {"grey": mine}}})["grey"]["temples"] == 0.2
     # locks groomed earlier carry their grey: the look's grey_locks default follows age too
-    assert hair.look_of({"base": {"body": {"age": 19}}, "hair": {}})["grey_locks"] == 0.0
-    assert hair.look_of({"base": {"body": {"age": 19}}, "hair": {"look": {"grey_locks": 0.7}}})["grey_locks"] == 0.7
-    assert hair.look_of({"hair": {}})["grey_locks"] == 1.0
+    assert hair_groom.look_of({"base": {"body": {"age": 19}}, "hair": {}})["grey_locks"] == 0.0
+    assert hair_groom.look_of({"base": {"body": {"age": 19}}, "hair": {"look": {"grey_locks": 0.7}}})["grey_locks"] == 0.7
+    assert hair_groom.look_of({"hair": {}})["grey_locks"] == 1.0
 
 
 def test_fade_taper_shortens_toward_the_line_without_a_bald_band():
@@ -572,13 +573,13 @@ def test_fade_taper_shortens_toward_the_line_without_a_bald_band():
 
     def nape(loose):
         sc, _c, locks = _grow(loose, parting="none")
-        line = hair.hairline(sc, hair._merge(hair.GROOM, {"loose": loose, "parting": {"side": "none"}, "seed": 2}))
+        line = hair_groom.hairline(sc, hair_groom._merge(hair.GROOM, {"loose": loose, "parting": {"side": "none"}, "seed": 2}))
         rows = []
         for lk in locks.values():
             P = np.asarray(lk["pts"]) + sc.C
             a, e, _ = sc.coords(P[:1])
             if abs(((a[0] + 180) % 360) - 180) > 150 and e[0] < 0:
-                d = float(hair.inside(sc, line, a, e)[0])
+                d = float(hair_groom.inside(sc, line, a, e)[0])
                 rows.append((d, np.linalg.norm(np.diff(P, axis=0), axis=1).sum(),
                              (lk.get("strands") or {}).get("density", 1.0)))
         return np.asarray(rows)
@@ -611,7 +612,7 @@ def test_region_blend_widens_the_transitions():
     el = np.linspace(-30, 80, 111)
     az = np.full_like(el, 90.0)
     d = np.full_like(el, 0.06)
-    w1, w2 = hair.weights(az, el, d), hair.weights(az, el, d, 2.0)
+    w1, w2 = hair_groom.weights(az, el, d), hair_groom.weights(az, el, d, 2.0)
     top1, top2 = w1[:, 1], w2[:, 1]
     assert np.allclose(top1[el <= 22], 0) and np.allclose(top1[el >= 42], 1)
     i = np.argmin(np.abs(el - 32))
@@ -718,13 +719,13 @@ def test_bend_from_keeps_the_hairline_row_down():
 
     def rows(loose):
         sc, _c, locks = _grow(loose, parting="none")
-        line = hair.hairline(sc, hair._merge(hair.GROOM, {"loose": loose, "parting": {"side": "none"}, "seed": 2}))
+        line = hair_groom.hairline(sc, hair_groom._merge(hair.GROOM, {"loose": loose, "parting": {"side": "none"}, "seed": 2}))
         out = []
         for lk in locks.values():
             P = np.asarray(lk["pts"]) + sc.C
             a, e, _ = sc.coords(P[:1])
             if abs(((a[0] + 180) % 360) - 180) < 20:
-                d = float(hair.inside(sc, line, a, e)[0])
+                d = float(hair_groom.inside(sc, line, a, e)[0])
                 out.append((d, np.linalg.norm(P - sc.C, axis=1).max() - 0.095))
         return np.array(out)
     r0, r1 = rows({**base, "bend": bend}), rows({**base, "bend": {**bend, "from": 0.02}})
@@ -745,12 +746,12 @@ def test_bend_from_gates_the_bend():
 
     def locks(loose):
         sc, _c, lk = _grow(loose, parting="none")
-        line = hair.hairline(sc, hair._merge(hair.GROOM, {"loose": loose, "parting": {"side": "none"}, "seed": 2}))
+        line = hair_groom.hairline(sc, hair_groom._merge(hair.GROOM, {"loose": loose, "parting": {"side": "none"}, "seed": 2}))
         out = {}
         for k, v in lk.items():
             P = np.asarray(v["pts"]) + sc.C
             a, e, _ = sc.coords(P[:1])
-            out[k] = (float(hair.inside(sc, line, a, e)[0]), P)
+            out[k] = (float(hair_groom.inside(sc, line, a, e)[0]), P)
         return out
     l0 = locks(base)
     l1 = locks({**base, "bend": {"rise": {"front": 0.012}, "lay": 1.0, "up": 1.0, "from": fr}})

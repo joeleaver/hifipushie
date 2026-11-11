@@ -57,7 +57,8 @@ def test_hair_budget_numbers_are_budgets_json():
 
 
 def test_hair_budget_refuses_drawn_over_max_and_counts_card_faces():
-    from hifipushie import asset, budgets, hair
+    from hifipushie import asset, budgets
+    from hifipushie import hair_export
     asset.hair_budget.selftest()
     asset.budget_check.selftest()
     rb = budgets.role("crowd")
@@ -65,7 +66,7 @@ def test_hair_budget_refuses_drawn_over_max_and_counts_card_faces():
                     "layers": {"cap": [0, 100], "layer0": [100, 1500]}}}
     g = asset.budget_check(rb, rep, {})
     assert g["fail"] and g["hair"]["card_faces"] == 850 and g["hair"]["vertices"] == 900
-    assert hair.BUDGET_UNIT == "card_faces"  # the cards are fitted to card faces, not drawn triangles
+    assert hair_export.BUDGET_UNIT == "card_faces"  # the cards are fitted to card faces, not drawn triangles
     src = (ROOT / "src/hifipushie/asset.py").read_text()
     assert 'if budget_gate["fail"]:' in src and "vertices=len(hpart[\"verts\"])" in src
 

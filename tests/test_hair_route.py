@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from test_hair_loose import _ball_head  # noqa: E402
 
 from hifipushie import hair, hair_read, hair_route as hr, server, store  # noqa: E402
+from hifipushie import hair_head, hair_spec
 
 
 @pytest.fixture
@@ -27,7 +28,7 @@ def model(monkeypatch):
 
     monkeypatch.setattr(store, "load", load)
     monkeypatch.setattr(store, "save", save)
-    monkeypatch.setattr(hair, "scalp", lambda name, spec=None: box["sc"])
+    monkeypatch.setattr(hair_head, "scalp", lambda name, spec=None: box["sc"])
     return box
 
 
@@ -71,12 +72,12 @@ def test_cards_refused_from_groom_hair(model):
                                           ({"shells": {"height": [1]}}, "height")])
 def test_export_mistakes_refused(export, word):
     with pytest.raises(hair.HairError, match=word):
-        hair.validate({"hair": {"export": export}})
+        hair_spec.validate({"hair": {"export": export}})
 
 
 def test_every_export_key_the_code_reads_passes():
-    hair.validate({"hair": {"export": {k: None for k in hr.EXPORT_KEYS if k not in ("style",)}}})
-    hair.validate({"hair": {"export": {"style": "shells", "shells": {"heights": [0.6], "tiers": {"far": 0}}}}})
+    hair_spec.validate({"hair": {"export": {k: None for k in hr.EXPORT_KEYS if k not in ("style",)}}})
+    hair_spec.validate({"hair": {"export": {"style": "shells", "shells": {"heights": [0.6], "tiers": {"far": 0}}}}})
 
 
 def test_shells_reach_the_export_through_edit_model():
