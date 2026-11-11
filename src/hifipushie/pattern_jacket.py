@@ -828,45 +828,6 @@ pd.OPS.update({"jacket_neck": op_jacket_neck, "waist_suppression": op_waist_supp
 
 
 # ---------------------------------------------------------------- a design's op list, rewritten by the rules
-def jacket_ops(ops: list, tape: dict, button_mm: float = 20.0, pockets: str = "flap", break_y: float | None = None) -> list:
-    """The jacket design's ops with the tailor's rules applied (each changed op carries its "source")."""
-    R = rules(tape, button_mm)
-    out = []
-    for op in ops:
-        op = dict(op)
-        k = op["op"]
-        if k == "neckline":
-            out.append({"op": "jacket_neck", "source": src(3, 4)})
-            continue
-        if k == "take_in":
-            continue  # (replaced by waist_suppression)
-        if k == "round_corner" and str(op.get("piece", "")).startswith("front") and op.get("corner") == "stand.b":
-            # the rounded front hem drafted by R25 (cut away from the lower button), not a free corner radius
-            out.append({"op": "front_cutaway", "piece": op["piece"], "corner": "stand.b", "source": src(25, 13)})
-            continue
-        if k == "contour" and op.get("edge") == "centre_back":
-            op["at"] = [[lv, (0.0 if lv == "waist" else v)] for lv, v in op["at"]]  # the waist share: R8
-        if k == "lapel":
-            op["stand"] = R["overlap"]["value"]
-            op["source"] = (op.get("source", "") + f"; stand (overlap) = the button's diameter {button_mm:.0f} mm: "
-                            + src(12)).strip("; ")
-        if k == "buttons" and op.get("spacing") is None and op.get("spacing_frac") is None:
-            op["spacing_frac"] = 0.30  # R13 (fit round 9: the op's fixed 90 mm default had replaced the rule)
-            op["source"] = (op.get("source", "") + "; second button 30 % of break -> hem below the first: "
-                            + src(13)).strip("; ")
-        if k == "collar":
-            out.append({"op": "collar_two_piece", "point": op.get("point", 0.0), "source": src(16, 17, 18)})
-            continue
-        out.append(op)
-        if k == "facing" and str(op.get("piece", "")).startswith("front"):
-            out.append({"op": "lapel_turn", "piece": op["piece"], "facing": op.get("name"), "source": src(27)})
-    # waist suppression after the panel seams exist (after the last style line / join / contour on them)
-    last = max(i for i, o_ in enumerate(out) if o_["op"] in ("style_line", "join", "contour"))
-    out.insert(last + 1, {"op": "waist_suppression", "source": src(8, 10)})
-    if pockets in ("flap", "flap+chest"):
-        i = next(i for i, o_ in enumerate(out) if o_["op"] == "buttons")
-        out.insert(i + 1, {"op": "jacket_pockets", "chest": pockets == "flap+chest", "source": src(21, 22)})
-    return out
 
 
 def op_jacket_pockets(D: dict, chest: bool = False, **o) -> None:

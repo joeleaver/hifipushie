@@ -33,8 +33,6 @@ import numpy as np
 
 from . import pattern
 
-BLOCKS = ("bodice", "knit", "sleeve", "trouser", "skirt")
-
 
 def bez(p0, c1, c2, p1, n=14):
     """Cubic Bezier points without p0."""

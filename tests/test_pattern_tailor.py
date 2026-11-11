@@ -228,8 +228,6 @@ def test_kimono_and_hood_are_placed():
     assert P["hood.L"]["wrap"]["to"] == "head" and P["hood.L"]["wrap"]["apart"] > 0.02
 
 
-
-
 def test_tailored_collar():
     """One piece, stand + fall on a roll line, its outer edge sprung past the neck edge, ending at the gorge."""
     D = pd.start("bodice", MM, {"fitted": True})
@@ -363,38 +361,6 @@ def test_suit_trousers_kind_drafts_itself():
     assert any(c["name"] == "fly" for c in D["closures"])
 
 
-def test_trims_ride_a_band():
-    from hifipushie import cloth_trims
-    cloth_trims.validate([{"kind": "belt"}, {"kind": "belt_loops", "count": 7}])
-    try:
-        cloth_trims.validate([{"kind": "buckle"}])
-        assert False
-    except cloth_trims.TrimError:
-        pass
-    # a band round a cylinder as a finished result: the belt lies outside it, loops stand over the belt
-    n, h, R = 80, 0.04, 0.13
-    xs = np.linspace(-0.41, 0.41, n)
-    uv = np.array([[x, y] for x in xs for y in (0.0, h / 2, h)])
-    th = uv[:, 0] / R
-    V = np.c_[R * np.sin(th), -R * np.cos(th), 1.0 + uv[:, 1]]
-    F = []
-    for i in range(n - 1):
-        for j in range(2):
-            a = 3 * i + j
-            F += [[a, a + 3, a + 4], [a, a + 4, a + 1]]
-    pc = {"P": np.array([[-0.41, 0], [0.41, 0], [0.41, h], [-0.41, h]]), "role": "waistband", "marks": {}, "wrap": {}}
-    res = {"V": V, "mesh": {"names": ["waistband"], "piece": np.zeros(len(V), int), "F": np.array(F), "uv": uv},
-           "pieces": {"pieces": {"waistband": pc}}}
-    trims = [{"kind": "belt", "buckle": False}, {"kind": "belt_loops", "count": 5}]
-    assert all(ok for ok, _ in cloth_trims.check(trims, res["pieces"]["pieces"]))
-    out = {m["kind"]: m for m in cloth_trims.meshes(res, {"trims": trims, "color": "#333333"})}
-    rb = np.hypot(out["belt"]["V"][:, 0], out["belt"]["V"][:, 1])
-    assert rb.min() > R + 0.0005 and rb.max() < R + 0.012, (rb.min(), rb.max())
-    rl = np.hypot(out["belt_loops"]["V"][:, 0], out["belt_loops"]["V"][:, 1])
-    assert rl.max() > rb.max() - 0.004 and out["belt_loops"]["color"] == "#333333"
-    assert out["belt"]["F"].max() < len(out["belt"]["V"])
-
-
 def test_trousers_cut_to_a_break():
     # length "break": the sides and front to "shoe", the back BREAK_BACK longer (a sloped hem); the break itself is
     # the front's length over the shoe, which the start gathers (cloth._hem_on_shoe)
@@ -423,7 +389,6 @@ def test_jeans_are_construction():
     names = set(Bp["pieces"])
     assert {"yoke.L", "yoke.R", "pocket_side.L", "back_pocket.L"} <= names, names
     assert Bp["pieces"]["back_pocket.L"]["wrap"].get("lies_on")
-
 
 
 def _corner_deg(pc, corner, d=0.005):

@@ -122,35 +122,38 @@ def test_threads_read_warp_and_weft_not_the_bias():
     assert th.report(X2)["max_pct"] == pytest.approx(10.0, abs=0.01)
 
 
-GATED = ("fit_garment", "style_garment", "release_garment", "arrange_garment", "dress", "look_cloth", "check_garment",
-         "check_garment_reference", "game_garment")
+REMOVED = ("fit_garment", "style_garment", "release_garment", "arrange_garment", "dress", "look_cloth", "check_garment",
+           "check_garment_reference", "game_garment")
 
 
-@pytest.mark.skipif(server.LEGACY_CLOTH, reason="legacy cloth on")
 def test_only_path_for_clothes():
-    """A blind agent asking how to make clothes lands on the chain path and nothing else."""
+    """A blind agent asking how to make clothes lands on the chain path. The older routes (fit on a form, a styled fit,
+    a sim, what read their results) are deleted, not gated: no tool, no guide section, no switch that brings them back."""
     for q in ("make a shirt", "fit a garment", "dress the character", "drape a jacket on the body", "clothes", "simulate cloth"):
         t = server.find_tool(q, limit=8)
         assert "Clothes: garment_plan" in t and "chain_garment" in t, (q, t)  # (T4: a garment starts at its reading)
         names = re.findall(r"^\d+\. (\w+) ", t, re.M)
-        assert not set(names) & set(GATED), (q, names)
+        assert not set(names) & set(REMOVED), (q, names)
     full = server.find_tool("")
-    for g in GATED:
+    for g in REMOVED:
         assert not re.search(r"\b" + g + r"\b", full)
     assert "chain_garment" in full
     ins = server.mcp.instructions
-    assert "chain_garment" in ins and not any(g in ins for g in GATED)
-    for g in GATED:
-        with pytest.raises(ValueError, match="chain_garment"):
+    assert "chain_garment" in ins and not any(g in ins for g in REMOVED)
+    for g in REMOVED:
+        assert g not in server._TOOLS and not hasattr(server, g), g
+        with pytest.raises(ValueError, match="no tool"):
             asyncio.run(server.call_tool(g, {}))
-        assert "chain_garment" in server.guide(g)
+        with pytest.raises(ValueError):
+            server.guide(g)
+    assert not hasattr(server, "GATED_CLOTH") and not hasattr(server, "LEGACY_CLOTH")
     for topic in ("cloth", "cloth_tools", "cloth_construction", "spec", "tools", ""):
         t = server.guide(topic)
-        assert not any(re.search(r"\b" + g + r"\b", t) for g in GATED), topic
+        assert not any(re.search(r"\b" + g + r"\b", t) for g in REMOVED if g != "dress") and "dress(" not in t, topic
     assert "chain_garment" in server.guide("cloth")
     for t in ("look_pattern", "pattern_check", "garment_from_reference", "review_view", "alter_pattern"):
         s = server.guide(t)
-        assert not any(re.search(r"\b" + g + r"\b", s) for g in GATED if g != "dress") and "dress`" not in s, t
+        assert not any(re.search(r"\b" + g + r"\b", s) for g in REMOVED if g != "dress") and "dress`" not in s, t
 
 
 def test_chain_tool_strict_arguments():

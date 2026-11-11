@@ -49,10 +49,6 @@ def _ring_from(pc: dict, pts: list) -> None:
     pc["P"], pc["names"] = new["P"], new["names"]
 
 
-def _walk(pc: dict, a: str, b: str, via: str | None = None) -> list:
-    return pattern.arc_indices(pc, f"{a}>{via}>{b}" if via else f"{a}>{b}")
-
-
 def _shoulder_dir(D: dict, piece: str) -> np.ndarray:
     """Unit vector along the front shoulder seam from the shoulder point toward the neck point (the seam may have
     been cut by a style line: taken from the draft's shoulder_front edge)."""

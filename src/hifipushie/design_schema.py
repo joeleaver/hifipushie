@@ -467,27 +467,6 @@ def fs_replacements(design: str, opts: dict, table_opts: dict | None = None) -> 
     return out
 
 
-def refresh_freesewing_options(designs=None) -> dict:
-    """Re-dump freesewing_options.json from the FreeSewing pack (Node + the pack; run when the pack changes)."""
-    import shutil
-    import subprocess
-    from . import assets, freesewing
-    pack = assets.pack("freesewing")
-    if designs is None:
-        from .cloth import designs as cdesigns
-        designs = sorted(k for k, v in cdesigns().items() if not k.startswith("_") and isinstance(v, dict)
-                         and (pack / "node_modules" / "@freesewing" / k).exists())
-    script = Path(__file__).with_name("freesewing_option_table.mjs")
-    run = pack / "option_table.mjs"
-    shutil.copyfile(script, run)
-    r = subprocess.run([freesewing._node(), str(run), *designs], capture_output=True, text=True, cwd=pack, timeout=120)
-    if r.returncode != 0:
-        raise RuntimeError(r.stderr[-1500:])
-    out = json.loads(r.stdout)
-    FS_OPTIONS_PATH.write_text(json.dumps(out, indent=1, sort_keys=True) + "\n")
-    return out
-
-
 # ---------------------------------------------------------------- the design sheet and the compiled garment
 
 

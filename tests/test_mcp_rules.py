@@ -71,34 +71,8 @@ def _waive_all(rec):
 
 # ------------------------------------------------------------------ next steps are generated from the result
 
-def test_next_steps_follow_the_result():
-    fail = {"status": "FAIL", "rows": [{"id": "seams", "status": "FAIL"}, {"id": "rise", "status": "UNMEASURED"},
-                                       {"id": "drape", "status": "SIM"}]}
-    t = next_steps.after_pattern_check(fail, "m", "jacket")
-    assert "refuses until it passes" in t and "seams" in t and "rise" in t and "drape" not in t
-    ok = dict(fail, status="PASS_WAIVED", waived={"seams": "x", "rise": "y"})
-    t = next_steps.after_pattern_check(ok, "m", "jacket")
-    assert "chain_garment" in t and "DON'T" not in t
-    # fit: a red strain or a pierce names the pattern fix; a clean one says judge one view at a time
-    assert "fix on the pattern" in next_steps.after_fit("m", "j", 30.0, 0, True)
-    assert "pierce" in next_steps.after_fit("m", "j", 0.5, 12, True)
-    clean = next_steps.after_fit("m", "j", 0.5, None, False)
-    assert "ONE view per review_view" in clean and "not validated" in clean
-    assert "no reference" in next_steps.after_look("garment", False)
-    assert "BESIDE its reference" in next_steps.after_look("garment", True)
-    assert "did NOT run" in next_steps.after_review(None, False)
-    bad = [{"a": "front:a>b", "b": "back:a>b", "ok": False}]
-    assert "match" in next_steps.after_alter(bad, "m", "j") and "pattern_check" in next_steps.after_alter([], "m", "j")
-
 
 # ------------------------------------------------------------------ defaults
-
-def test_garment_looks_default_to_diag():
-    for fn in (server.pattern_check, server.fit_garment, server.look_cloth):
-        assert inspect.signature(fn).parameters["diag"].default is None, fn.__name__
-    rows = server._diag_rows(None)
-    assert rows == [["panels", "seams", "turned"], ["strain", "layers"]]
-    assert server._diag_rows(False) == [] and server._diag_rows(["strain"]) == [["strain"]]
 
 
 def test_instructions_and_guide_carry_the_order():
@@ -125,24 +99,6 @@ def test_pattern_check_fail_says_dont_simulate(gate):
     # FAIL / UNMEASURED rows are listed before the passing ones
     lines = [ln.split()[0] for ln in txt.splitlines() if ln.startswith("  ") and ln.split()[0].isupper()]
     assert lines.index("UNMEASURED") < lines.index("PASS")
-
-
-def test_dress_refuses_without_a_pass_and_names_the_tool(gate):
-    before = dict(cloth._JOBS)
-    txt = server.dress(MODEL, "skirt")
-    assert "NOT simulated" in txt and 'call_tool("pattern_check", {"name": "t", "garment": "skirt"})' in txt, txt
-    assert cloth._JOBS == before  # no sim was started
-    txt = server.dress(MODEL, "skirt", force=True)  # force skips the stage checks, never the pattern gate
-    assert "NOT simulated" in txt and cloth._JOBS == before
-
-
-def test_fit_refuses_until_the_pattern_passes(gate, skirt_waive):
-    txt = server.fit_garment(MODEL, "skirt")
-    assert isinstance(txt, str) and "not fitted" in txt and "pattern_check" in txt
-    out = server.pattern_check(MODEL, "skirt", waive=dict(skirt_waive), diag=False)
-    (t,) = _texts(out)
-    assert "PASS_WAIVED" in t and "chain_garment" in t and "DON'T" not in t
-    assert cc.gate_status(MODEL, "skirt")["passed"]
 
 
 def test_alter_pattern_drafts_before_saving_and_needs_a_new_gate(gate):
@@ -219,100 +175,7 @@ def _game_inputs(cross: bool):
     return {"shirt": sh, "jacket": jk}, {"shirt": ["jacket"], "jacket": []}, body, []
 
 
-def test_game_garment_refuses_a_crossing_lod_and_names_the_fix(tmp_path, monkeypatch):
-    monkeypatch.setattr(server, "_game_drapes", lambda name, spec, garments: _game_inputs(True))
-    monkeypatch.setattr(store, "load", lambda name: {})
-    txt = server.game_garment("m", lods=[0.03, 0.06], out_dir=str(tmp_path / "gg"))
-    assert "pierce shirt through jacket: 14 faces" in txt and "LOD1" in txt
-    assert "NOT baked, no GLB written" in txt and "finer edge at that LOD" in txt and "gap_rings=2" in txt
-    assert "by hand" in txt and 'game_garment("m") again' in txt and "judge_asset" not in txt
-    assert not (tmp_path / "gg").exists()  # refused: nothing written, nothing baked
-
-
-def test_game_garment_clean_writes_lods_and_says_judge(tmp_path, monkeypatch):
-    monkeypatch.setattr(server, "_game_drapes", lambda name, spec, garments: _game_inputs(False))
-    monkeypatch.setattr(store, "load", lambda name: {})
-    txt = server.game_garment("m", lods=[0.03, 0.06], bake=False, out_dir=str(tmp_path / "gg"))
-    assert "pierce shirt through jacket: 0 faces" in txt and "faces culled under its covers" in txt
-    assert "NOT baked" not in txt and "bake=True) writes the GLBs" in txt and "rest pose only" in txt
-    for k in (0, 1):
-        for g in ("shirt", "jacket"):
-            assert (tmp_path / "gg" / f"LOD{k}" / f"low_{g}.npz").exists()
-    # baked: judge each GLB, then one crop per review_view call
-    L = [{"lod": 0, "h": 0.03, "pierce": [{"under": "shirt", "cover": "jacket", "faces": 0}], "cracks": {"shirt": 0}}]
-    t = next_steps.after_game_garment(L, "m", ["/x/LOD0/game_shirt.glb"], True)
-    assert 'judge_asset("/x/LOD0/game_shirt.glb")' in t and "ONE per review_view" in t and "rest pose" not in t
-    L[0]["cracks"] = {"shirt": 3}
-    assert "crack" in next_steps.after_game_garment(L, "m", None, True)
-
-
-def test_game_garment_needs_a_drape(home):
-    with pytest.raises(Exception, match="no drape for skirt"):
-        server._game_drapes(MODEL, store.load(MODEL), ["skirt"])
-    with pytest.raises(ValueError, match="no garment"):
-        server._game_drapes(MODEL, store.load(MODEL), ["cape"])
-
-
 # ------------------------------------------------------------------ renders (under bin/capped)
 
 needs_gpu = pytest.mark.skipif(not os.environ.get("HIFIPUSHIE_CAPPED"), reason="renders: run under bin/capped")
 
-
-@needs_gpu
-def test_render_pattern_check_and_fit_default_to_diag(gate, skirt_waive):
-    out = server.pattern_check(MODEL, "skirt", views=["front", "back"], size=320)
-    assert len(_images(out)) == 2  # flat sheet + diag sheet (two rows)
-    server.pattern_check(MODEL, "skirt", waive=dict(skirt_waive), diag=False)
-    out = server.fit_garment(MODEL, "skirt", views=["front", "back"], size=320)
-    (txt,) = _texts(out)
-    assert len(_images(out)) == 3  # clay + diag + own colour under the game light (C107)
-    assert "threads (warp / weft) vs the flat pattern: p99" in txt and "next:" in txt
-    assert list((store.HOME / "_looks" / MODEL).glob("fit_skirt_diag_r0_*.png"))  # single views for review_view
-
-
-def test_one_form_switch_for_gate_and_tools():
-    """The gate, the MCP tools and next_steps read ONE dress-form switch: cloth_check.form_validated() (the manual
-    override or pattern_form.form_validated(): flag + a record whose rows all pass). fit_garment reads on_form's
-    under garment ("A", "mesh"; its name is the garment key "over"); alter_pattern reads the junctions rows' fields."""
-    fit = inspect.getsource(server.fit_garment)
-    assert "cc.form_validated()" in fit and "pattern_form.form_validated" not in fit
-    assert 'u["A"]' in fit and 'u["mesh"]' in fit and '.get("over")' in fit
-    alt = inspect.getsource(server.alter_pattern)
-    assert "cc.junctions(" in alt and "truing_corners" in alt
-    assert all(k in alt for k in ("['at']", "['turn_deg']", "['seam']", '["ok"]'))
-    for mod in (server, next_steps):
-        src = inspect.getsource(mod)
-        assert "FORM_VALIDATED" not in src and "pattern_form.form_validated" not in src
-    gate = inspect.getsource(cc.pattern_gate)
-    assert "form_validated()" in gate and "FORM_VALIDATED" not in gate
-
-
-def test_views_close_ups_and_misfit_noise(tmp_path):
-    """(C239, tee trials t4 / t5) fit_garment's view names resolve ("three" crashed) and an unknown one lists the valid
-    names; a region close-up is framed from the body's landmarks; review_view refuses a detail judged on a whole
-    figure; a few triangles barely past their cap are not a misfit."""
-    import types
-    import numpy as np
-    from PIL import Image
-    from hifipushie import server, next_steps
-    assert server._views(["front", "three"])[1]["name"] == "three"
-    with pytest.raises(ValueError, match="front, side, back, three, top"):
-        server._views(["neck"])
-    body = types.SimpleNamespace(at={"hps.L": [0.06, 0.0, 1.5], "shoulder.L": [0.2, 0.0, 1.43], "hips_z": 0.95})
-    lo, hi = server._focus_box(body, "neck")
-    assert np.allclose((lo + hi) / 2, [0.0, 0.0, 1.5]) and (hi - lo)[2] < 0.3
-    with pytest.raises(ValueError, match="unknown focus"):
-        server._focus_box(body, "knee")
-    full = np.full((400, 200, 3), 60, np.uint8)
-    full[30:395, 80:120] = 200  # a figure standing in the frame, background above it
-    close = np.full((300, 300, 3), 60, np.uint8)
-    close[0:300, 50:250] = 200  # a close-up: cut by the top edge
-    pf_, pc_ = tmp_path / "full.png", tmp_path / "close.png"
-    Image.fromarray(full).save(pf_)
-    Image.fromarray(close).save(pc_)
-    with pytest.raises(ValueError, match="whole figure"):
-        server.framing_refusal("crew neckline and neckband, front", str(pf_))
-    server.framing_refusal("crew neckline and neckband, front", str(pc_))
-    server.framing_refusal("whole silhouette, front", str(pf_))
-    assert next_steps.misfit_lines({"over_cap_by_piece": {"back": {"n": 1, "max_pct": 0.2}}}) == []
-    assert next_steps.misfit_lines({"over_cap_by_piece": {"back": {"n": 12, "max_pct": 0.6}}})

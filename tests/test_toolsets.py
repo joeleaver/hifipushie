@@ -41,7 +41,10 @@ def test_every_tool_in_one_group():
     groups = [t for s in server.TOOL_GROUPS.values() for t in s["tools"]]
     assert len(groups) == len(set(groups)), "a tool in two groups"
     assert set(groups) == set(server._TOOLS), set(groups) ^ set(server._TOOLS)
-    kept = set(BEFORE) - set(server.GATED_CLOTH)  # (the older clothing routes are gated: not offered, C262)
+    removed = {"fit_garment", "style_garment", "release_garment", "arrange_garment", "dress", "look_cloth", "check_garment",
+               "check_garment_reference", "game_garment"}  # (the older clothing routes: deleted 2026-11-10, C408)
+    kept = set(BEFORE) - removed
+    assert not removed & set(groups)
     assert kept <= set(groups), kept - set(groups)
     assert len(BEFORE) == 75 and set(groups) - set(BEFORE) == {"find_tool", "call_tool"} | ADDED
     assert not hasattr(server, "enable_toolset") and not hasattr(server, "TOOLSETS")

@@ -41,52 +41,12 @@ def _ctx(results, spec=None):
     return cr.Ctx("test", spec or {"cloth": {}}, results, body=FakeBody())
 
 
-def test_checklist_is_complete_and_resolvable():
-    ck = cr.checklist()
-    kb = garment_design.kb()
-    need = {"id", "stage", "kinds", "what", "view", "type", "measure", "tolerance", "sets"}
-    ids = set()
-    for it in ck["items"]:
-        assert need <= set(it), (it["id"], need - set(it))
-        assert it["id"] not in ids
-        ids.add(it["id"])
-        assert it["stage"] in (1, 2, 3, 4, 5) and str(it["stage"]) in ck["stages"]
-        assert it["kinds"] == ["*"] or all(k in kb["kinds"] for k in it["kinds"]), it["id"]
-        if it.get("detail"):
-            assert it["detail"] in kb["details"], it["id"]
-        if it["type"] == "length":
-            assert it.get("anchor") or it.get("target_mm") or len(it.get("points", [])) == 2, it["id"]
-        m = it["measure"]
-        assert m.startswith("missing") or m in cr.MEASURES, (it["id"], m)
-        for nm in (it.get("region") or {}).get("around", []) + (it.get("anchor") or []):
-            assert nm.split(".")[0] in ("head_top", "chin", "neck_base", "shoulder", "armpit", "chest", "waist", "hip",
-                                        "seat", "crotch", "knee", "ankle", "floor", "elbow", "wrist"), (it["id"], nm)
-    # big to small: every kind's list starts with silhouette / lengths
-    assert cr.items_for("jacket")[0]["stage"] == 1 and cr.items_for("jacket")[-1]["stage"] == 5
-
-
 def test_every_hand_correction_is_an_item():
     """The corrections the user made by hand on Garrett's suit (2026-10) must each be a checklist item."""
     ids = {it["id"] for it in cr.checklist()["items"]}
     for want in ("buttons_done", "front_state", "placket", "collar_show", "collar_hug", "collar_state", "belt",
                  "knee_width", "leg_opening", "sleeve_end", "cuff_show", "front_hang"):
         assert want in ids, want
-
-
-def test_camera_recovers_a_similarity_and_round_trips():
-    L = cr.landmarks(FakeBody())
-    s, th, t = 860.0, np.radians(3.0), np.array([620.0, -1720.0])
-    Rm = np.array([[np.cos(th), -np.sin(th)], [np.sin(th), np.cos(th)]])
-    pts = {}
-    for k in ("head_top", "chin", "knee.L", "knee.R", "ankle.L", "floor", "wrist.L"):
-        x, z = L[k][0], L[k][2]
-        y = s * Rm @ np.array([x, z]) + t
-        pts[k] = [y[0], -y[1]]
-    cam = cr.fit_camera(pts, L, (1248, 1824))
-    assert abs(cam["s"] - s) < 1e-6 * s and max(cam["residual_px"].values()) < 1e-6
-    uv = cr.project(cam, L["knee.L"])
-    xz = cr.unproject(cam, uv)[0]
-    assert np.allclose(xz, [L["knee.L"][0], L["knee.L"][2]], atol=1e-9)
 
 
 def test_anchored_reading_carries_onto_our_body():

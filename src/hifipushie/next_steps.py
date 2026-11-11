@@ -3,22 +3,10 @@
 without a human-written brief (Joe 2026-10-19: "we don't want to make it work just for this session, but anyone who
 uses the mcp"). Each function returns a short "next: ..." block, specific to the result, never boilerplate.
 
-The order for a garment: pattern -> pattern_check (flat) -> fit_garment (on the form) -> judge (clay + diag beside the
-reference, one view per review) -> optional sim, only as a wrinkle source -> game mesh. Post-sim closing and hand
-finishing are NOT steps: measured 2026-10-19 (dress-garrett), they pushed face strain p99 from 4.7 % to 66-74 %.
+The older clothing routes these lines served (the fit on the form, the sim, the game garment) were deleted on
+2026-11-10 (C408); what is left serves pattern_check, the looks and the reviews.
 """
 from __future__ import annotations
-
-# THE FIT IS READ ON THE THREADS (C64, C166; threads hard, 2026-10-26): a face's warp / weft stretch past its cloth's
-# cap (pattern_form.THREADS_HARD: 2 % woven, a knit piece what its own seams ask), p99 over the drawn faces, in % past
-# the cap. Face (principal) strain counted the bias's free shear as stretch: the hoodie trial read 13.9 % on threads
-# at 6.6 %. With the threads hard a misfit shows as what the fit could NOT reach (MISFIT_*), named for the pattern.
-THREAD_OVER_P99_MAX = 1.0
-MISFIT_SEW_MM = 3.0  # a seam left open by more than this: the pattern can't close it without stretching
-MISFIT_INSIDE_MM = 2.0  # cloth deeper than this inside the body (shallower: the contact's own tolerance)
-MISFIT_NECK_MM = 10.0
-MISFIT_OVER_N = 5  # triangles past their cap in one piece before it is a misfit
-MISFIT_OVER_PCT = 1.0  # ... or one of them this far (%) past it  # a neck point this far off the body's: the neckline / shoulder is mis-drafted (C167)
 
 
 def _ids(rows, status) -> list:
@@ -53,80 +41,6 @@ def after_pattern_check(rec: dict, model: str, garment: str) -> str:
     return "\n".join(out)
 
 
-def misfit_lines(info: dict) -> list[str]:
-    """What the fit could not reach, from on_form's A_info, as pattern faults with where and how much."""
-    out = []
-    gap = info.get("sew_gap_mm")
-    if gap is not None and gap > MISFIT_SEW_MM:
-        out.append(f"a seam stays open {gap:.0f} mm: the pieces can't meet without stretching: true the seam lengths "
-                   "or let the pattern out there")
-    for k, mm in (info.get("neck_point_mm") or {}).items():
-        if mm is not None and mm > MISFIT_NECK_MM:
-            out.append(f"neck point {k} {mm:.0f} mm off the body's: the neckline / shoulder can't reach it (C167)")
-    ins = {k: v for k, v in (info.get("inside_by_piece") or {}).items() if v.get("depth_mm", 0) > MISFIT_INSIDE_MM}
-    if ins:
-        out.append("cloth inside the body (the pattern can't go round there without stretching: let it out there, "
-                   "or a limb went through a sleeve): " + ", ".join(f"{k} {v['n']} vertices, {v['depth_mm']:.0f} mm deep"
-                                                               for k, v in sorted(ins.items(), key=lambda kv: -kv[1]["n"])))
-    # (a few triangles barely past the cap are the solver's noise, not a pattern fault: tee trials t3 / t4 / t5 read "1
-    # triangles, up to 0 % over" in most fits and spent attention on it; reported from MISFIT_OVER_N triangles or a
-    # MISFIT_OVER_PCT overshoot)
-    ov = {k: v for k, v in (info.get("over_cap_by_piece") or {}).items()
-          if v.get("n", 0) >= MISFIT_OVER_N or v.get("max_pct", 0) >= MISFIT_OVER_PCT}
-    if ov:
-        out.append("threads past their cap where the cloth meets the form or the layer under it (too small there: let "
-                   "it out): " + ", ".join(f"{k} {v['n']} triangles, up to {v['max_pct']:.0f} % over"
-                                           for k, v in sorted(ov.items(), key=lambda kv: -kv[1]["n"])))
-    return out
-
-
-def after_fit(model: str, garment: str, strain_p99: float | None, pierce: int | None, validated: bool,
-              backfaces: int | None = None, worn_open: bool = False, misfit: list[str] | None = None) -> str:
-    """fit_garment's next step from what it measured on the form. strain_p99: threads past their cap, p99 % (see
-    THREAD_OVER_P99_MAX). misfit: what the fit could not reach (misfit_lines). worn_open: the design says the closure
-    is worn open: the form judges it CLOSED and one release sim opens it (Joe 2026-10-20)."""
-    out = []
-    if worn_open:
-        out.append(f"worn open: judge the CLOSED fit here (top button fastened), then release_garment(\"{model}\", "
-                   f"\"{garment}\"): ONE short sim from this fit that undoes the closure and lets the fronts hang under "
-                   "gravity (no holds on the form: five rounds of them failed)")
-    bad = []
-    if strain_p99 is not None and strain_p99 > THREAD_OVER_P99_MAX:
-        bad.append(f"threads p99 {strain_p99:.1f} % past their cap (> {THREAD_OVER_P99_MAX:g} %): the pattern is too "
-                   "small / mis-shaped where the strain map is red: fix the PATTERN there (not the solver, not a hand pass)")
-    bad += list(misfit or [])
-    if pierce:
-        # NOT a composing fault (Joe 2026-10-22, C153): the under garment's covered triangles are culled later, so its
-        # show-through is reported, never a fix; judge the outer garment's own shape (the under one hidden)
-        out.append(f"layer pierce {pierce} faces of the under garment (magenta): INFO only, the covered under-layer is "
-                   "culled later (C153); judge this garment's own shape with the under one hidden")
-    if backfaces:
-        bad.append(f"{backfaces} faces seen from behind (red in the backfaces view): a piece inside out or a flap "
-                   "turned the wrong way")
-    # HOW IT HANGS (hang_reads, lesson 2 of trials t3-t7): the fit's hang rows, read by cloth_check.fit_rows just before
-    # this. The fit's own faults (owner "fit": no hang step yet) are listed as faults with their fix but apart from the
-    # pattern's, so an agent doesn't re-draft a pattern to chase them (hoodie t6 / shirt t7 spent rounds that way).
-    from . import cloth_check
-    hang = [r for r in cloth_check.LAST_HANG.pop((model, garment), []) if r.get("status") in ("FAIL", "UNMEASURED")]
-    bad += [f"{r['id']}: {r.get('fix') or r.get('why')}" for r in hang if not cloth_check.fit_owned(r)]
-    fit_hang = [r for r in hang if cloth_check.fit_owned(r)]
-    if bad:
-        out.append("next: fix on the pattern, then pattern_check and fit_garment again:")
-        out += [f"  {b}" for b in bad]
-    if fit_hang:
-        out.append("hang faults (FAIL: how it hangs is wrong; the FIT's, not the pattern's: no hang step yet, so judge "
-                   "the pattern by its other rows and name these in every review / report, never call the fit right):")
-        out += [f"  FAIL {r['id']}: {r['fix']}" for r in fit_hang]
-    if not bad:
-        out.append("next: judge the clay AND the diag views beside the reference, ONE view per review_view call "
-                   "(no contact sheets, no captions); a clean form is not a right garment")
-    if not validated:
-        out.append("  the dress form is not validated yet: its readings are INFO, the flat gate decides")
-    out.append("  a sim is optional and only a wrinkle source; never close or hand-finish after it (strain p99 went "
-               "4.7 % -> 66-74 % that way)")
-    return "\n".join(out)
-
-
 def after_alter(rows: list, model: str, garment: str) -> str:
     """alter_pattern's next step from the walked seams."""
     bad = [r for r in rows if not r.get("ok", True)]
@@ -146,16 +60,6 @@ def after_look(kind: str, has_reference: bool, how: str = "") -> str:
             "review_view per region (one view per call)" + (f": {how}" if how else ""))
 
 
-def after_dress_refused(blocked: dict, model: str) -> str:
-    """dress refused for want of a PASS: what to run."""
-    lines = []
-    for g, why in blocked.items():
-        lines.append(f"{g}: NOT simulated: {why}")
-        lines.append(f"  next: call_tool(\"pattern_check\", {{\"name\": \"{model}\", \"garment\": \"{g}\"}}), fix its FAIL / UNMEASURED rows, fit_garment, "
-                     "judge; a sim comes after (optional: a wrinkle source)")
-    return "\n".join(lines)
-
-
 def after_review(verdict: str | None, dry: bool) -> str:
     if dry:
         return ("next: give this ONE pair image and the prompt to an independent reviewer (a fresh agent with no "
@@ -167,39 +71,3 @@ def after_review(verdict: str | None, dry: bool) -> str:
                 "each point in the notes, never override a MAJOR by opinion")
     return "next: the review did NOT run (no verdict): this is not 0 MAJORs; retry or use dry=True"
 
-
-def after_game_garment(lods: list[dict], model: str, baked: list | None, posed: bool) -> str:
-    """game_garment's next step from what each LOD measured: an under layer crossing its cover (pierce_faces) or a
-    crack (missing boundary edges) at ANY LOD refuses the bake; clean -> judge the GLBs, one view per review."""
-    bad, cracks = [], []
-    for L in lods:
-        for r in L["pierce"]:
-            if r["faces"]:
-                bad.append(f"LOD{L['lod']} (edge {L['h'] * 1000:.0f} mm): {r['under']} crosses {r['cover']} in "
-                           f"{r['faces']} faces")
-        for g, n in (L.get("cracks") or {}).items():
-            if n:
-                cracks.append(f"LOD{L['lod']} {g}: {n} boundary edges missing (a crack at a seam)")
-    out = []
-    if bad or cracks:
-        out.append("next: NOT baked, no GLB written: an under layer showing through (or a crack) at any LOD fails the "
-                   "game garment:")
-        out += [f"  {b}" for b in bad + cracks]
-        if bad:
-            out.append("  fix: a finer edge at that LOD (lods=[...]: a coarse cover's faces sink further, its chord sag "
-                       "grows with the edge) or gap_rings=2 (the gap reaches one more ring past the cover's edge); at the "
-                       "cover's free edges (collar, lapel, cuffs) where neither moves it, draft the under garment further "
-                       "under on the pattern (\"over\" ease, pattern_check + fit_garment again). Never push vertices by hand")
-        out.append(f"  then game_garment(\"{model}\") again")
-        return "\n".join(out)
-    if baked is None:
-        out.append(f"next: clean at every LOD; game_garment(\"{model}\", bake=True) writes the GLBs (normal + AO baked "
-                   "from the drape)")
-    else:
-        out.append(f"next: judge_asset(\"{baked[0]}\") (and each LOD's GLB, against= the approved build's garment for "
-                   "the A/B), then the crops ONE per review_view call, reference beside each; a clean measure is not a "
-                   "right garment")
-    if not posed:
-        out.append("  rest pose only: give poses=[the export's clip dumps (npz)] to measure the crossings in motion "
-                   "(INFO until the garment is skinned)")
-    return "\n".join(out)

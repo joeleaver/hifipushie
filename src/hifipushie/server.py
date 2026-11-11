@@ -233,39 +233,9 @@ def enable_all() -> list[str]:
     return added
 
 
-# THE ONE PATH (Joe 2026-11-01: "that should be the only path available to the agent for starting clothing"). These tools
-# start or continue a garment the old way (fit on the form, styling a fit, a sim, what reads their results). They stay
-# plain Python for the library and its tests; the MCP layer doesn't offer them: not listed, not found, not callable, their
-# guide sections hidden. HIFIPUSHIE_LEGACY_CLOTH=1 in the server's environment restores all of it (C262).
-GATED_CLOTH = ("fit_garment", "style_garment", "release_garment", "arrange_garment", "dress", "look_cloth", "check_garment",
-               "check_garment_reference", "game_garment")
-LEGACY_CLOTH = os.environ.get("HIFIPUSHIE_LEGACY_CLOTH") == "1"
-_GATED: dict[str, tuple] = {}
-
-
-def _gate_cloth():
-    if LEGACY_CLOTH:
-        TOOL_GROUPS["cloth"]["tools"] = TOOL_GROUPS["cloth"]["tools"] + [t for t in GATED_CLOTH if t != "game_garment"]
-        TOOL_GROUPS["export"]["tools"] = TOOL_GROUPS["export"]["tools"] + ["game_garment"]
-        return
-    for t in GATED_CLOTH:
-        if t in _TOOLS:
-            _GATED[t] = _TOOLS.pop(t)
-
-
-def _gated_paragraphs(text: str) -> str:
-    """A guide text without the paragraphs about the gated routes."""
-    if LEGACY_CLOTH:
-        return text
-    import re
-    pat = re.compile(r"\b(" + "|".join(GATED_CLOTH) + r")\b|\bsims?\b|\bdress\(|\bon_form\b|on the form|dress form", re.I)
-    return "\n\n".join(p for p in text.split("\n\n") if not pat.search(p))
-
-
 def _register_core():
     """Called once all tools are defined: register the core natively; the rest stay reachable via call_tool."""
     global _STARTED
-    _gate_cloth()
     for t in CORE:
         _register(t)
     _STARTED = True
@@ -360,12 +330,10 @@ def guide(topic: str = "") -> str:
             return (f"guide topic {t!r}: {GUIDE_TOPICS[t]} is not in this checkout (an installed package without "
                     "the repo's docs/)" + (" -- guide(topic=\"cloth_design\") has the tailoring numbers"
                                            if "tailoring" in t else ""))
-        txt = _gated_paragraphs(p.read_text())
-        if t == "cloth" and not LEGACY_CLOTH:
+        txt = p.read_text()
+        if t == "cloth":
             txt = _CHAIN_GUIDE + "\n\n" + txt
         return txt
-    if topic.strip() in _GATED:
-        return f"{topic.strip()} is not available: garments start with chain_garment. guide(topic=\"chain_garment\")"
     if topic.strip() in _TOOLS:
         return _tool_section(topic.strip())
     raise ValueError('topic is "" (the modelling playbook), a domain ("' + '", "'.join(k for k in GUIDE_TOPICS if k)
@@ -653,9 +621,6 @@ async def call_tool(name: str, args: dict | None = None, ctx: Context | None = N
     has its full text. Unknown, missing or mistyped args: an error naming the parameters it expects."""
     import difflib
     from pydantic import ValidationError
-    if name in _GATED:
-        raise ValueError(f"{name} is not available: garments start with garment_plan (garment_plan -> body_tape -> draft_pattern -> "
-                         "chain_garment -> look_chain); find_tool(\"make a garment\") shows the steps")
     if name not in _TOOLS or name == "call_tool":
         near = difflib.get_close_matches(name, list(_TOOLS), n=3)
         raise ValueError(f"no tool {name!r}" + (f" (did you mean {', '.join(near)}?)" if near else "")
@@ -2032,126 +1997,6 @@ def hair_reference(name: str, trace: dict | None = None, image_path: str | None 
 
 # ---------------------------------------------------------------- cloth
 
-def _cloth_status(st: dict) -> str:
-    s = st["state"]
-    tail = f" ({st['lines'][-1]})" if st.get("lines") else ""
-    if s == "running":
-        return f"running {st.get('seconds', 0)}s{tail}"
-    if s == "failed":
-        return f"FAILED: {st.get('error')}"
-    return s + tail
-
-
-@mcp.tool(structured_output=False)
-def dress(name: str, garment: str | None = None, spec: dict | None = None, state: str | dict | None = None,
-          quality: str | None = None, replace: bool = False, wait: float = 50.0, note: str = "", force: bool = False):
-    """Put a garment on the model and simulate it (drafted, sewn, settled, cleaned up). spec: the garment patch
-    (pattern, fabric, color, closures, ...; replace=True); state "worn"|"draped"|"hung"; quality "draft"|"final";
-    wait (s); force skips the stage 1-3 gate. Call again to poll. Details: guide(topic="dress")."""
-    from . import cloth
-    if spec is not None or state is not None or quality is not None:
-        if garment is None:
-            raise ValueError("name the garment to change: dress(name, garment=..., spec={...})")
-        full = store.load(name)
-        gs = full.setdefault("cloth", {})
-        from .hair import merge_patch
-        g = {} if replace else dict(gs.get(garment) or {})
-        if spec is not None:
-            g = merge_patch(g, _spec_arg(spec))
-        if state is not None:
-            g["state"] = state
-        if quality is not None:
-            g["quality"] = quality
-        gs[garment] = g
-        v = store.save(name, full, note or f"dress {garment}")
-        head = f"saved {name} v{v}\n"
-    else:
-        head = ""
-        if garment is not None and garment not in (store.load(name).get("cloth") or {}):
-            raise ValueError(f"no garment {garment!r}: give its spec (dress(name, garment, spec={{...}}))")
-    if not force:  # the workflow's gate: no sim over a pattern that fails its own construction checks
-        from . import cloth_workflow
-        spec_g = store.load(name)
-        blocked = []
-        for gn in ([garment] if garment else list(spec_g.get("cloth") or {})):
-            if cloth.cached(name, spec_g, gn) is not None:
-                continue  # already simulated: nothing new starts
-            fails = cloth_workflow.gate(name, gn, spec_g)
-            if fails:
-                blocked.append(f"{gn}: NOT simulated, {len(fails)} construction failures (check_garment for the "
-                               "full stages; dress(..., force=True) simulates anyway):\n" + "\n".join(f"  {x}" for x in fails))
-        if blocked:
-            return head + "\n".join(blocked)
-    # the PATTERN GATE (codified C11 / M2): no sim starts without a PASS record for this exact pattern + body. The sim
-    # job refuses too (cloth_job.require_pattern_gate), but there it surfaced as a FAILED background job; here the
-    # refusal names what to run. force does NOT skip it (the logged override is HIFIPUSHIE_SIM_WITHOUT_PATTERN_GATE).
-    from . import cloth_check as cc_, next_steps
-    if not os.environ.get(cc_.GATE_ENV_OVERRIDE, "").strip():
-        spec_g = store.load(name)
-        refused = {}
-        for gn in ([garment] if garment else list(spec_g.get("cloth") or {})):
-            if cloth.cached(name, spec_g, gn) is not None:
-                continue
-            st = cc_.gate_status(name, gn, spec_g)
-            if not st["passed"]:
-                refused[gn] = st["why"]
-                continue
-            uf = cc_.under_fit_status(name, gn, spec_g)  # (C85: never an outer garment over an unfitted under one)
-            if not uf["passed"]:
-                refused[gn] = f"its under garment doesn't fit yet: {uf['why']} (fit_garment(\"{name}\", \"{uf['under']}\"))"
-        if refused:
-            return head + next_steps.after_dress_refused(refused, name)
-    sts = cloth.dress(name, [garment] if garment else None, wait=float(wait))
-    out = []
-    spec_now = store.load(name)
-    for gn, st in sts.items():
-        if st["state"] == "done":
-            res = cloth.cached(name, spec_now, gn)
-            out.append(cloth.report(gn, res) if res is not None else f"{gn}: done")
-        else:
-            out.append(f"{gn}: {_cloth_status(st)}")
-    return head + "\n".join(out) + (f"\nnext: call_tool(\"look_cloth\", {{\"name\": \"{name}\"}}) for renders (strain map, close-ups with focus=...)"
-                                    if all(s["state"] == "done" for s in sts.values()) else
-                                    "\ncall dress(name) or look_cloth(name) again for progress")
-
-
-@mcp.tool(structured_output=False)
-def look_cloth(name: str, garments: list[str] | None = None, views: list[str] | None = None, strain: bool = True,
-               size: int = 640, focus: str | list[float] | None = None, zoom: float = 0.4, textured: bool = False,
-               body: bool = True, save: str | None = None, result: str | None = None, props: list[str] | None = None,
-               diag: list | bool | None = None):
-    """Renders of the simulated garments on the body: clay + strain map, and by DEFAULT the diag views (panels+seams+
-    turned; strain+layers; diag=False none), with the per-garment report. garments, views, strain, focus ([x,y,z] |
-    "garment:piece") + zoom, textured, body, size, save; result = a cloth job's out.npz; props = parts drawn with the
-    body ([] none). Details: guide(topic="look_cloth")."""
-    from . import cloth, next_steps
-    vs = tuple(views or ("front", "side", "back", "three"))
-    sheet, text = cloth.look(name, garments, views=vs, strain=strain, size=size, focus=focus, zoom=zoom, body=body,
-                             textured=textured, result=result, props=props)
-    if sheet is None:
-        return text
-    from . import cloth_workflow
-    spec_now = store.load(name)
-    extra = []
-    gnames = garments or list(spec_now.get("cloth") or {})
-    for gn in gnames:  # stage 5: the numeric targets
-        try:
-            r = cloth_workflow.run(name, gn, ("sim",), images=False, spec=spec_now)
-            extra.append(f"targets {gn} (stage 5):\n" + cloth_workflow.text(r))
-        except Exception as e:
-            extra.append(f"targets {gn}: could not measure: {e}")
-    out = [_out(sheet, save)]
-    if _diag_rows(diag) and focus is None and result is None:  # (close-ups and carried results: clay only)
-        done = [(gn, cloth.cached(name, spec_now, gn)) for gn in gnames]
-        done = [(gn, r) for gn, r in done if r is not None and r.get("mesh") is not None]
-        if done:
-            ims, d = _garment_sheets(name, "cloth", done[0][1]["body"], [(gn, r["V"], r["mesh"]) for gn, r in done],
-                                     vs, min(size, 560), clay=False, diag=diag)
-            out += [_out(im, _save_suffix(save, tag)) for tag, im in ims]
-            extra.append(f"diag single views (one per review_view call): {d}")
-    extra.append(next_steps.after_look("garment", _has_reference(name, spec_now)))
-    return out + [text + "\n\n" + "\n".join(extra)]
-
 
 def _merge_patch(base, patch):
     """patch merged into base: objects key by key, null deletes, anything else replaces."""
@@ -3027,20 +2872,6 @@ def garment_from_reference(name: str, garments: dict, views: list[dict] | str, a
 
 
 @mcp.tool(structured_output=False)
-def check_garment_reference(name: str, garments: list[str] | None = None, save: str | None = None, top: int = 9):
-    """Judge the cached garment sims against the reference reading (cloth_refs.json): ranked misses and a focus sheet.
-    garments, top, save. Details: guide(topic="check_garment_reference")."""
-    from . import cloth_reference as cr
-    import tempfile
-    path = store.HOME / name / "cloth_refs.json"
-    if not path.exists():
-        return f"no reading for {name}: run garment_from_reference first"
-    tmp = Path(save) if save else Path(tempfile.mkdtemp()) / "cloth_ref_focus.png"
-    out = cr.check(name, garments, path, panels=tmp, top=top)
-    return [_out(PILImage.open(out["panels"]), save), out["text"]]
-
-
-@mcp.tool(structured_output=False)
 def garment_reference_brief(garments: dict, subject: str = "a man", outfit: str = "", name: str | None = None,
                             views: list[dict] | None = None) -> str:
     """The shot list (and prompts) for garment reference images; garments {name: kind}, subject, outfit, name (a model
@@ -3143,24 +2974,7 @@ def look_pattern(name: str, garment: str, save: str | None = None):
     return [_out(ims[0], save), txt]
 
 
-@mcp.tool(structured_output=False)
-def check_garment(name: str, garment: str, stages: list[str] | None = None, images: bool = True,
-                  save: str | None = None):
-    """Clothing workflow checks, failures first. stages (default all): "design", "pattern", "construction", "place",
-    "sim". images (pattern sheet, placed start), save. Details: guide(topic="check_garment")."""
-    from . import cloth_workflow
-    res = cloth_workflow.run(name, garment, tuple(stages or cloth_workflow.STAGES), images=images)
-    out = []
-    for r in res:
-        for tag, im in r["images"]:
-            out.append(_out(im, _save_suffix(save, tag)))
-    out.append(cloth_workflow.text(res))
-    return out if len(out) > 1 else out[0]
-
-
 # ---------------------------------------------------------------- the garment gates as tools (codified M1-M8)
-# The order a garment follows (next_steps.py): pattern -> pattern_check (flat) -> fit_garment (on the form) -> judge
-# (clay + diag beside the reference, one view per review_view) -> optional sim, a wrinkle source only -> game mesh.
 # Each tool's text ends with the next step the gate rules require, generated from its result.
 
 # diagnostic rows every garment look renders unless told otherwise (gates.md LOOK, codified C13): construction first
@@ -3222,27 +3036,6 @@ def _views(views) -> tuple:
             raise ValueError(f"unknown view {v!r}: use {', '.join(NATIVE_VIEWS + tuple(VIEW_DIRS))} (a region close-up: "
                              "focus=\"neck\" | shoulders | chest | hem | sleeve)")
     return tuple(out)
-
-
-FOCUS = ("neck", "shoulders", "chest", "hem", "sleeve")
-
-
-def _focus_box(body, focus: str):
-    """The render box of a region close-up, from the body's landmarks (hps.L, shoulder.L, hips_z)."""
-    at = {k: np.asarray(v, float).reshape(-1) for k, v in (getattr(body, "at", {}) or {}).items()}
-    if focus not in FOCUS:
-        raise ValueError(f"unknown focus {focus!r}: use {', '.join(FOCUS)}")
-    if "hps.L" not in at or "shoulder.L" not in at:
-        raise ValueError("focus needs the body's hps / shoulder landmarks (a base human)")
-    h, sh = at["hps.L"][-3:], at["shoulder.L"][-3:]
-    z_hip = float(at["hips_z"][-1]) if "hips_z" in at else float(h[2]) - 0.55
-    c, half = {"neck": (h * [0, 1, 1], [0.17, 0.17, 0.13]),
-               "shoulders": (sh * [0, 1, 1], [abs(sh[0]) + 0.09, 0.2, 0.15]),
-               "chest": (np.array([0.0, h[1], h[2] - 0.2]), [0.26, 0.2, 0.18]),
-               "hem": (np.array([0.0, h[1], z_hip]), [0.3, 0.25, 0.16]),
-               "sleeve": (sh + [0.04, 0.0, -0.12], [0.16, 0.16, 0.18])}[focus]
-    c, half = np.asarray(c, float), np.asarray(half, float)
-    return c - half, c + half
 
 
 def _garment_sheets(name: str, tag: str, body, garments: list, views, size: int, clay: bool, diag,
@@ -3359,308 +3152,6 @@ def pattern_check(name: str, garment: str, refs: str | dict | None = None, waive
                + "\n".join("  " + ln for ln in pattern_sheet.text_lines(Bp, sm))  # (the sheet is shape only: C288)
                + "\n" + next_steps.after_pattern_check(rec, name, garment))
     return out
-
-
-@mcp.tool(structured_output=False)
-def fit_garment(name: str, garment: str, views: list[str] | None = None, size: int = 560, clay: bool = True,
-                diag: list | bool | None = None, force: bool = False, save: str | None = None, styled: bool = True,
-                focus: str | None = None):
-    """The garment assembled from its pattern on the body (the dress form), NO sim: clay + diag (default
-    panels+seams+turned; strain+layers), strain p99 and layer pierce, and the next step. Refuses until pattern_check
-    PASSes (force=True looks anyway, said in the text). Then styled as its kind is worn (C146; styled=False: closed).
-    views (front, three, side, back, top), size, clay, diag, save. focus: a CLOSE-UP of one region (neck, shoulders,
-    chest, hem, sleeve), framed from the body's landmarks: judge a detail beside a close-up reference with it. Details:
-    guide(topic="fit_garment")."""
-    from . import cloth, cloth_check as cc, diag_render, next_steps
-    spec = store.load(name)
-    if garment not in (spec.get("cloth") or {}):
-        raise ValueError(f"no garment {garment!r} (have {', '.join(spec.get('cloth') or {}) or 'none'})")
-    from . import pattern_form
-    # (fit round 33) the fit IS the gate's placement: its own keys are checked (a layered garment's body is its under
-    # garment's form fit, which the sim path's lookup never matched)
-    res = pattern_form.on_form(name, garment, spec)
-    st = cc.gate_status(name, garment, spec, res=res)
-    if not st["passed"] and not force:
-        return (f"{garment}: not fitted: {st['why']}\nnext: call_tool(\"pattern_check\", {{\"name\": \"{name}\", \"garment\": \"{garment}\"}}) and fix its rows "
-                "first; the form judges a pattern that passed flat (force=True only to look)")
-    uf = cc.under_fit_status(name, garment, spec)  # (C85: the under garment fits on its own first)
-    if not uf["passed"] and not force and not uf.get("provisional"):
-        return (f"{garment}: not fitted: its under garment doesn't fit yet: {uf['why']}\nnext: call_tool(\"fit_garment\", "
-                f"{{\"name\": \"{name}\", \"garment\": \"{uf['under']}\"}}) and fix it until its own fit PASSes (tucked, its fullness soft against the body); "
-                "never fit an outer garment over an under garment that doesn't fit (force=True only to look)")
-    X = res["A"]
-    # HOW IT IS WORN, set by hand (C146): the wear's style ops (garment_kb kinds.<kind>.wear.<tie|no_tie>.style) run on
-    # the closed fit; a garment that declares its own worn_open (the old fold / pin route) or "style": false skips it
-    style_txt = ""
-    gx = cloth.expanded(spec["cloth"][garment])
-    # (C174: a garment worn open is fitted open (C171) and styled by its kind's "open" wear: the fronts below the break)
-    if styled and gx.get("style", True) is not False and (res.get("form_under") is None or gx.get("worn_open")):
-        from . import garment_pull as gpl
-        fu_ = res.get("form_under")  # (C205: the under garment's own cloth is the styling floor, C202, as the fit's C200)
-        Xs, sinfo = gpl.worn_style(res["mesh"], np.asarray(X, float), (np.asarray(res["body"].V, float),
-                                   np.asarray(res["body"].T, int)), gx,
-                                   under=None if fu_ is None else (np.asarray(fu_["A"], float),
-                                                                   np.asarray(fu_["mesh"]["F"]), fu_["mesh"]))
-        if sinfo is not None:
-            X = res["A"] = pattern_form.styled_hard(res, Xs)  # (STYLE_HARD, C244: the styling ends threads-hard)
-            style_txt = "  worn (C146: the wear's style ops on the closed fit): " + "; ".join(
-                f"{next(iter(o))} {json.dumps(next(iter(o.values())), default=str)[:90]}" for o in sinfo) + "\n"
-            if "collar" in res["mesh"]["names"] and "collar:leftTopEdge" in res["mesh"]["points"]:
-                try:
-                    style_txt += "  open collar reads (item | target | ours):\n" + "".join(
-                        f"    {r['status']} {r['id']} | {r['target']} | {r['ours']}\n" for r in gpl.open_collar_rows(res["mesh"], X))
-                except (KeyError, ValueError) as e:
-                    style_txt += f"  open collar reads: n/a ({e})\n"
-    try:  # THE NECK-SHOULDER LUMP (garrett collar r2): the shoulder seam's crest and the body cloth's bump by the neck point
-        from . import garment_pull as gpl
-        bvf = (np.asarray(res["body"].V, float), np.asarray(res["body"].T, int))
-        nl = gpl.neck_lump_rows(res["mesh"], np.asarray(X, float), bvf)
-        if nl:
-            style_txt += "  neck-shoulder lump reads (item | target | ours):\n" + "".join(
-                f"    {r['status']} {r['id']} | {r['target']} | {r['ours']}\n" for r in nl)
-    except (KeyError, ValueError, AttributeError) as e:
-        style_txt += f"  neck-shoulder lump reads: n/a ({e})\n"
-    validated = cc.form_validated()  # the gate's one form switch (override or pattern_form's passing record)
-    how = "assembled on the dress form (pattern_form)"
-    under = None
-    if res.get("form_under") is not None:
-        # on_form's under garment: "A" = its assembled vertices (pressed as the sims press it), "mesh"; the name is
-        # the garment key "over"
-        u = res["form_under"]
-        under = (cloth.expanded(spec["cloth"][garment]).get("over") or "under", u["A"], u["mesh"])
-    vis_txt = ""
-    if not uf["passed"] and uf.get("provisional") and res.get("form_under") is not None:
-        # (C85, fit round 24) the under garment failed only rows about cloth that may be hidden: judged on what shows
-        vr = cc.rejudge_under_visible(name, garment, spec, res)
-        if not vr["passed"] and not force:
-            return (f"{garment}: not fitted: its under garment doesn't fit where it SHOWS under {garment}: {vr['why']}\n"
-                    f"next: call_tool(\"fit_garment\", {{\"name\": \"{name}\", \"garment\": \"{uf['under']}\"}}) and fix it until those rows PASS (force=True only "
-                    "to look)")
-        vis_txt = f"  under garment judged on what shows (C85 visible scope): {vr['why']}\n"
-        if vr["passed"]:
-            uf = dict(uf, passed=True)
-    M = res["mesh"]
-    # (C64 / C166, threads hard 2026-10-26: read the THREADS past their cap, the bias's shear apart)
-    from . import pattern_form as _pf
-    ts_, sh_ = _pf.face_threads(M, res.get("pieces"), X)
-    inf_ = res.get("A_info") or {}
-    cp_ = inf_.get("thread_cap_pct")
-    cap_f = np.full(len(ts_), (cp_ if isinstance(cp_, (int, float)) else _pf.FIT_THREAD_CAP * 100) / 100)
-    if isinstance(cp_, dict):
-        for k_, nm_ in enumerate(M["names"]):
-            if nm_ in cp_:
-                cap_f[np.asarray(M["piece"])[np.asarray(M["F"])[:, 0]] == k_] = cp_[nm_] / 100
-    if _pf.CREASE_CAP is not None:  # (a fold row's allowance, as the fit gives it: pattern_form.crease_faces)
-        cr_ = _pf.crease_faces(M)
-        cap_f[cr_] = np.maximum(cap_f[cr_], _pf.CREASE_CAP)
-    dr_ = cc.drawn_faces(res)  # (a tucked garment: the cloth under the trousers line is not judged)
-    s, sh_, cap_f = ts_[dr_], sh_[dr_], cap_f[dr_]
-    over = np.maximum(s - cap_f, 0.0)
-    p99 = float(np.percentile(over, 99) * 100) if len(s) else None
-    misfit = next_steps.misfit_lines(inf_)
-    pierce = None
-    if under is not None:
-        from . import garment_game
-        pierce = int(garment_game.pierce_faces(under[1], under[2]["F"], X, M["F"]))
-    fit_txt = ""
-    if under is None:  # (C85: a garment fitted alone writes its own fit record; an outer garment waits for it)
-        worn_under = any(cloth.expanded(g_).get("over") == garment for k_, g_ in (spec.get("cloth") or {}).items()
-                         if k_ != garment)
-        rows = cc.fit_rows(res, X, p99, worn_under, g=spec["cloth"][garment], model=name, garment=garment)
-        cc.write_fit_record(name, garment, st["keys"], rows)
-        fit_txt = "  own fit (C85): " + "; ".join(f"{r['status']} {r['id']} {r.get('ours')}" for r in rows) + "\n"
-    elif not uf["passed"]:
-        fit_txt = f"  FORCED: the under garment's own fit has not passed ({uf['why']})\n"
-    if under is not None:  # (an outer garment's hang is read too: cloth_check.LAST_HANG, listed by next_steps.after_fit)
-        cc.hang_fit_rows(res, X, name, garment)
-    gs = ([under] if under else []) + [(garment, X, M)]
-    box_ = _focus_box(res["body"], focus) if focus else None
-    tag_ = f"fit_{garment}" + (f"_{focus}" if focus else "")
-    ims, d = _garment_sheets(name, tag_, res["body"], gs, views, max(size, 700) if focus else size, clay=clay,
-                             diag=diag, box=box_)
-    saved_ = [_save_suffix(save, t) for t, _ in ims] if save else []
-    txt = (f"{name}:{garment}: {how}{'' if st['passed'] else ' -- FORCED: the pattern gate has not passed'}\n"
-           f"  threads (warp / weft) vs the flat pattern: p99 {float(np.percentile(s, 99) * 100):.1f} %, max "
-           f"{float(s.max() * 100):.1f} %; past their cap p99 {p99:.1f} % (gate <= {next_steps.THREAD_OVER_P99_MAX:g} %); "
-           f"cap {cp_ if cp_ is not None else 'none (threads not hard)'} %\n"
-           f"  bias shear p99 {float(np.percentile(sh_, 99)):.0f} deg (jams past {_pf.SHEAR_LOCK_DEG:g})\n"
-           f"  what the fit could not reach: {'; '.join(misfit) if misfit else 'nothing'}\n"
-           f"  layer pierce: {'n/a (no under garment)' if pierce is None else f'{pierce} faces'}\n"
-           f"  single views for review_view: {d} ({tag_}_<clay|own>_<view>.png)\n"
-           + (f"  saved: {', '.join(saved_)}\n" if saved_ else "")
-           + (f"  close-up: {focus} (framed from the body's landmarks)\n" if focus else
-              "  (a detail beside a close-up reference: focus=\"neck\" | shoulders | chest | hem | sleeve)\n")
-           + style_txt + fit_txt + vis_txt)
-    return [_out(im, _save_suffix(save, tag)) for tag, im in ims] + [
-        txt + next_steps.after_fit(name, garment, p99, pierce, validated, misfit=misfit,
-                                   worn_open=bool(cloth.expanded(spec["cloth"][garment]).get("worn_open")))]
-
-
-@mcp.tool(structured_output=False)
-def release_garment(name: str, garment: str, release: list[str] | None = None, submit: bool = False):
-    """WORN OPEN = the closed fit + ONE release sim (Joe 2026-10-20): fits the garment CLOSED on the dress form, then
-    writes one short cloth job started from that fit with the closure in `release` (default ["front"]) not sewn, and
-    preflights it; submit=True runs it (refused without the pattern gate's PASS). Full text:
-    guide(topic="release_garment")."""
-    from . import cloth_job, cloth_release, cloth_check as cc
-    spec = store.load(name)
-    if garment not in (spec.get("cloth") or {}):
-        raise ValueError(f"no garment {garment!r} (have {', '.join(spec.get('cloth') or {}) or 'none'})")
-    st = cc.gate_status(name, garment, spec)
-    if not st["passed"]:
-        return (f"{garment}: not released: {st['why']}\nnext: call_tool(\"pattern_check\", {{\"name\": \"{name}\", \"garment\": \"{garment}\"}}) first; the release "
-                "sim needs the pattern gate's PASS like every sim")
-    r = cloth_release.from_form(name, garment, spec, release=tuple(release or ("front",)))
-    jd = cloth_release.write(store.HOME / "_cache" / "release" / f"{name}_{garment}" / "sim", r["cfg"], r["arrays"],
-                             r["res"]["mesh"]["names"], r["gate"])
-    pre = cloth_release.preflight(jd)
-    lines = [f"{name}:{garment}: release job {jd}", f"  start: {json.dumps(r['info'], default=str)}",
-             f"  preflight ok {pre['ok']}: body {pre['body_mm']:.2f} mm / {pre['body_pairs']} pairs, strain "
-             f"{json.dumps({k: v for k, v in pre['strain'].items() if k != 'worst'}, default=str)}"]
-    if not pre["ok"]:
-        return "\n".join(lines + ["next: the start fails the preflight: fix the fit (strain over the limit = the "
-                                  "pattern too small there; pairs = layers through each other), not the solver"])
-    if not submit:
-        return "\n".join(lines + [f"next: call_tool(\"release_garment\", {{\"name\": \"{name}\", \"garment\": \"{garment}\", \"submit\": true}}) runs it (one sim)"])
-    with cloth_job.submitting():
-        d, log_ = cloth_release.run(jd, progress=lambda *_: None, log=lambda *_: None)
-    mv = cloth_release.moved(r["res"]["mesh"], r["arrays"]["X"], d["V"])
-    still = float(np.abs(d["V"] - d["Vprev"]).max() * 1000) if "Vprev" in d else None
-    lines += [f"  moved from the fit (mm per piece): {json.dumps(mv)}", f"  still moving (last 6 frames): {still} mm"]
-    return "\n".join(lines + ["next: judge the released result beside the reference (clay + diag, one view per "
-                              "review_view); a front that hangs crossed over is a DRAFT balance fault: fix the pattern"])
-
-
-@mcp.tool(structured_output=False)
-def arrange_garment(name: str, garment: str, pins: list[dict], keep: bool = False, pull: float | None = None,
-                    release: list[str] | None = None, hold_ring_mm: float = 0.0, submit: bool = False):
-    """ARRANGE a worn garment BY HAND (Joe 2026-10-20): the release job plus SOFT pins (each {"at": "piece:point" |
-    "piece:a..b", "to" | "by" | "targets"}) pulled over 1 s, held, then let go; reports each pin's reach and the
-    springback. keep, pull, release, hold_ring_mm, submit: guide(topic="arrange_garment") has every parameter."""
-    from . import cloth_job, cloth_release, cloth_check as cc
-    spec = store.load(name)
-    if garment not in (spec.get("cloth") or {}):
-        raise ValueError(f"no garment {garment!r} (have {', '.join(spec.get('cloth') or {}) or 'none'})")
-    if not pins:
-        raise ValueError("pins: at least one {\"at\": ..., \"to\" | \"by\" | \"targets\": ...}")
-    st = cc.gate_status(name, garment, spec)
-    if not st["passed"]:
-        return (f"{garment}: not arranged: {st['why']}\nnext: call_tool(\"pattern_check\", {{\"name\": \"{name}\", \"garment\": \"{garment}\"}}) first; the "
-                "arrangement is a sim and needs the pattern gate's PASS like every sim")
-    arr_opt = {"keep": bool(keep), **({"pull": float(pull)} if pull is not None else {})}
-    r = cloth_release.from_form(name, garment, spec, release=tuple(release or ("front",)), pins=pins,
-                                arrange=arr_opt, hold_ring=float(hold_ring_mm) / 1000)
-    jd = cloth_release.write(store.HOME / "_cache" / "arrange" / f"{name}_{garment}" / "sim", r["cfg"], r["arrays"],
-                             r["res"]["mesh"]["names"], r["gate"])
-    pre = cloth_release.preflight(jd)
-    lines = [f"{name}:{garment}: arrangement job {jd}", f"  pins: {json.dumps(r['info']['arrange'])}",
-             f"  preflight ok {pre['ok']}: body {pre['body_mm']:.2f} mm / {pre['body_pairs']} pairs"]
-    if not pre["ok"]:
-        return "\n".join(lines + ["next: the start fails the preflight: fix the fit, not the solver"])
-    if not submit:
-        return "\n".join(lines + [f"next: call_tool(\"arrange_garment\", {{..., \"submit\": true}}) runs it (one sim)"])
-    with cloth_job.submitting():
-        d, _ = cloth_release.run(jd, progress=lambda *_: None, log=lambda *_: None)
-    M = r["res"]["mesh"]
-    rep = cloth_release.arranged(M, r["arrays"], d, keep=bool(keep), X_ref=r["arrays"]["X"])
-    W, wi = cloth_release.weld_seams(M, d["V"])
-    np.savez(jd.parent / "arranged.npz", V=W, Vsim=d["V"], Vheld=d.get("Vheld", d["V"]))
-    lines += [f"  arranged: {json.dumps(rep)}", f"  seams after the weld: {json.dumps(wi['after'])}; open: "
-              f"{json.dumps(wi['open'][:6])}", f"  result: {jd.parent / 'arranged.npz'} (V welded)"]
-    nxt = ("the pins spring back: arrange_garment(..., keep=True) keeps light pins (\"placed by hand\")"
-           if rep["status"] == "springs back" else "judge the arranged result beside the reference (clay + diag, one "
-           "view per review); check no front through front, no lift, the lapel rolling to its break")
-    return "\n".join(lines + [f"next: {nxt}"])
-
-
-@mcp.tool(structured_output=False)
-def style_garment(name: str, garment: str, ops: list[dict], free: list[str] | None = None,
-                  hold_below: str | None = None, views: list[str] | None = None, size: int = 560, clay: bool = True,
-                  diag: list | bool | None = None, force: bool = False, save: str | None = None):
-    """STYLE a worn garment by hand, as people do (C142 / C143): the garment fitted on the form (no sim), then a
-    SEQUENCE of ops, each as far as the cloth goes without stretching: {"pull": {"handles": [{"at": "piece:point" |
-    "piece:a..b" | [...], "dir": [x,y,z] | side | out | up | down | easy | {"side": 1, "up": 0.3}, "side_from"?,
-    "patch"?}]}}, {"turn": {"turns": [{"at", "about": [a, b], "deg", "toward"?}]}}, {"smooth": {"pieces": [...]}},
-    {"relax": {}}, {"hold": {"pieces", "within_deg", "of"}}. Earlier grips / holds stay. free (default: the gripped pieces), hold_below ("closure:front").
-    Details: guide(topic="style_garment")."""
-    from . import cloth_check as cc, garment_pull as gpl, pattern_form
-    spec = store.load(name)
-    if garment not in (spec.get("cloth") or {}):
-        raise ValueError(f"no garment {garment!r} (have {', '.join(spec.get('cloth') or {}) or 'none'})")
-    ops = _spec_arg(ops)
-    if not ops or not all(isinstance(o, dict) and len(o) == 1 and next(iter(o)) in
-                          ("pull", "turn", "smooth", "relax", "hold", "push") for o in ops):
-        raise ValueError('ops: a list of {"pull": {"handles": [...]}} | {"turn": {"turns": [...]}} | '
-                         '{"smooth": {"pieces": [...]}} | {"relax": {}} | {"hold": {"pieces": [...], "within_deg"?}}')
-    st = cc.gate_status(name, garment, spec)
-    if not st["passed"] and not force:
-        return (f"{garment}: not styled: {st['why']}\nnext: call_tool(\"pattern_check\", {{\"name\": \"{name}\", \"garment\": \"{garment}\"}}) and fix its rows "
-                "first; styling starts from the form fit of a pattern that passed flat (force=True only to look)")
-    res = pattern_form.on_form(name, garment, spec)
-    X_fit, M, body = np.asarray(res["A"], float), res["mesh"], res["body"]
-    pid = np.asarray(M["piece"])
-    if free is None:
-        at = [h["at"] for o in ops for h in (o.get("pull") or {}).get("handles", [])] + \
-             [t["at"] for o in ops for t in (o.get("turn") or {}).get("turns", [])]
-        free = sorted({M["names"][int(pid[v])] for a in at for v in gpl.vertices(M, a)} |
-                      {p for o in ops for p in (o.get("smooth") or {}).get("pieces", [])} |
-                      {p for o in ops for p in (o.get("hold") or {}).get("pieces", [])})
-    held = gpl.hold_mask(M, X_fit, free, hold_below)
-    bvf = (np.asarray(body.V, float), np.asarray(body.T, int))
-    Xn, infos = gpl.style(M, X_fit, held, ops, body=bvf)
-    lines = [f"{name}:{garment}: styled on the form{'' if st['passed'] else ' -- FORCED: the pattern gate has not passed'}",
-             f"  free: {', '.join(free)}; held below {hold_below or '-'} ({int(held.sum())} of {len(X_fit)} vertices held)"]
-    stops = []
-    for k, op in enumerate(infos):
-        (kind, inf), = op.items()
-        if kind == "pull":
-            stops.append(inf["stopped"])
-            lines.append(f"  {k + 1} pull: moved (mm) {json.dumps(inf['moved_mm'])} in {inf['steps']} steps of "
-                         f"{inf['step_mm']:g} mm, stopped by {inf['stopped']}; threads p99 start {inf['stretch_p99_start']} "
-                         f"/ least {inf['stretch_p99_least']} / end {inf['stretch_p99_end']} % (tol {inf['tol_pct']:g} % "
-                         f"over the least), shear p99 {inf['shear_p99_deg'][0]} -> {inf['shear_p99_deg'][1]} deg (lock "
-                         f"{inf['shear_lock_deg']}); gripped {json.dumps(inf['gripped'])}")
-        elif kind == "turn":
-            lines.append(f"  {k + 1} turn: {json.dumps(inf['turns'])}; threads p99 {inf['stretch_p99_start']} -> "
-                         f"{inf['stretch_p99_end']} %, shear p99 {inf['shear_p99_deg'][0]} -> {inf['shear_p99_deg'][1]} deg")
-        elif kind == "relax":
-            lines.append(f"  {k + 1} relax: threads p99 {inf['stretch_p99'][0]} -> {inf['stretch_p99'][1]} %")
-        elif kind == "hold":
-            lines.append(f"  {k + 1} hold: {inf['held']} vertices kept where they are for the later ops")
-        elif kind != "smooth" or "rounds" not in inf:  # (push and the wear's own ops: reported as they are; read as a
-            # smooth they crashed every style_garment call, KeyError 'rounds', tee t3 / shirt t7)
-            lines.append(f"  {k + 1} {kind}: " + json.dumps(inf, default=str)[:300])
-        else:
-            lines.append(f"  {k + 1} smooth {', '.join(inf.get('pieces') or [inf.get('border', '')])}: {inf['rounds']} rounds, "
-                         + (f"roughness p95 {inf['rough_p95_mm'][0]} -> {inf['rough_p95_mm'][1]} mm" if "rough_p95_mm" in inf
-                            else f"kink {inf['kink_deg'][0]} -> {inf['kink_deg'][1]} deg")
-                         + f", threads p99 {inf['stretch_p99'][0]} -> {inf['stretch_p99'][1]} %")
-    crum = {p: [round(float(np.percentile(gpl.crumple(M, X_fit, p), 95)), 3),
-                round(float(np.percentile(c, 95)), 3)] for p in free if len(c := gpl.crumple(M, Xn, p))}
-    pts = sorted({h["at"] for o in ops for h in (o.get("pull") or {}).get("handles", [])
-                  if isinstance(h["at"], str) and ".." not in h["at"]})
-    tips = {p: {"fit": gpl.tip_read(M, X_fit, p), "styled": gpl.tip_read(M, Xn, p), "folded": gpl.folded(M, Xn, p)}
-            for p in pts}
-    out_dir = store.HOME / "_cache" / "style" / f"{name}_{garment}"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    np.savez(out_dir / "styled.npz", V=Xn, V_fit=X_fit)
-    lines += [f"  crumple p95, fit -> styled (mm; layered flaps read ~2 in the fit): {json.dumps(crum)}",
-              f"  pulled points' tips (crumple / stretch max / twist; folded faces near): {json.dumps(tips)}",
-              f"  result: {out_dir / 'styled.npz'} (V; V_fit = the form fit)"]
-    if clay or diag is not False:
-        ims, d = _garment_sheets(name, f"style_{garment}", body, [(garment, Xn, M)], views, size, clay=clay, diag=diag)
-        lines.append(f"  single views for review_view: {d}")
-    else:  # (no renders asked: no GPU lock)
-        ims = []
-    if "max_move" in stops:
-        nxt = ("a pull ran to max_move: something it should pull against is free (hold more: free / hold_below / a "
-               "turn first), or raise its max_move")
-    elif any(t["folded"] > 1 for t in tips.values()):
-        nxt = "cloth folds over near a pulled point: grab a bigger patch (handle \"patch\") or pull another way"
-    else:
-        nxt = ("judge clay + diag beside the reference, one view per review_view; too far or not far enough = change "
-               "the direction or what is held, never pin a handle at a coordinate; ripples left = a smooth op")
-    return [_out(im, _save_suffix(save, tag)) for tag, im in ims] + ["\n".join(lines) + f"\nnext: {nxt}"]
 
 
 def _chain_gate(name: str, garment: str, spec: dict) -> str | None:
@@ -4180,79 +3671,6 @@ def judge_asset(glb: str, head: str | None = None, tag: str | None = None, again
            + (f"; blind A/B with controls: bin/judge ab {ref} {run} <out dir> (--dry: one trio per reviewer turn)"
               if ref else ""))
     return (judge.format_report(rep) + f"\n\nrun {run}: {len(crops)} crops in {run / 'crops'}\n" + nxt)
-
-
-def _game_drapes(name: str, spec: dict, garments: list[str] | None) -> tuple[dict, dict, np.ndarray, list]:
-    """game_garment's inputs: {garment: garment_game drape} for the asked garments AND every garment over them (their
-    covers), {garment: covers}, the rest body points, and the covers added unasked."""
-    from . import asset, cloth, garment_game as gg
-    have = list(spec.get("cloth") or {})
-    if not have:
-        raise ValueError(f"{name} has no garments (design_garment / dress first)")
-    for g in garments or []:
-        if g not in have:
-            raise ValueError(f"no garment {g!r} (have {', '.join(have)})")
-    covers = gg.covers_of(asset.garment_over(spec), have)
-    want = list(garments or have)
-    added = [c for g in want for c in covers[g] if c not in want]
-    want += list(dict.fromkeys(added))
-    drapes, body, missing = {}, None, []
-    for g in want:
-        res = cloth.cached(name, spec, g)
-        if res is None:
-            missing.append(g)
-            continue
-        gx = cloth.thaw(spec, spec["cloth"][g])[0] if spec["cloth"][g].get("frozen") else cloth.expanded(spec["cloth"][g])
-        drapes[g] = gg.from_result(res, gx, g)
-        body = np.asarray(res["body"].V, float) if body is None else body
-    if missing:
-        raise ValueError(f"no drape for {', '.join(missing)}: the game garment is re-gridded from a finished drape "
-                         "(dress it, or a frozen drape) after pattern_check + fit_garment")
-    return drapes, {g: [c for c in covers[g] if c in drapes] for g in drapes}, body, added
-
-
-@mcp.tool(structured_output=False)
-def game_garment(name: str, garments: list[str] | None = None, lods: list[float] | None = None,
-                 poses: list[str] | None = None, bake: bool = True, texture: int = 2048, occluders: str | None = None,
-                 gap_rings: int = 1, out_dir: str | None = None) -> str:
-    """Opt-in game garments from the drape the way game artists make them: each LOD a clean re-grid of the FLAT
-    pattern mapped onto the drape (shared seams, pattern UVs), covered under-layer faces culled, the drape baked
-    high -> low (normal + AO) into GLBs. Measures every under layer crossing its cover at every LOD (pierce faces) and
-    REFUSES the bake if any crosses. lods (edges m), poses, bake, texture, occluders, gap_rings, out_dir. Details:
-    guide(topic="game_garment")."""
-    from . import garment_game as gg, next_steps
-    spec = store.load(name)
-    drapes, covers, body, added = _game_drapes(name, spec, garments)
-    zs = [np.load(Path(p).expanduser()) for p in poses or []]
-    log_lines: list = []
-    L = gg.build_lods(drapes, covers, body, tuple(lods or gg.LOD_EDGES), zs, gap_rings, log=log_lines.append)
-    od = Path(out_dir).expanduser() if out_dir else store._dir(name) / "game_garment"
-    lines = [f"{name}: game garments {', '.join(drapes)}" + (f" (covers added: {', '.join(added)})" if added else "")
-             + f" -> {od}"]
-    for x in L:
-        tris = ", ".join(f"{g} {b['triangles']}" for g, b in x["builds"].items())
-        lines.append(f"  LOD{x['lod']} edge {x['h'] * 1000:.0f} mm: triangles {tris}")
-        for g, b in x["builds"].items():
-            c = b.get("cull") or {}
-            if c:
-                lines.append(f"    {g}: {c['faces'] - c['faces_kept']} of {c['faces']} faces culled under its covers"
-                             + (f", covered ring {c['layer_gap_m'] * 1000:.1f} mm deeper ({c['layer_gap_vertices']} "
-                                "vertices)" if c.get("layer_gap_m") else ""))
-        for r in x["pierce"]:
-            lines.append(f"    pierce {r['under']} through {r['cover']}: {r['faces']} faces"
-                         + (f" (posed max {r['posed_max']}, INFO)" if "posed_max" in r else ""))
-        for g, n in x["cracks"].items():
-            if n:
-                lines.append(f"    CRACK {g}: {n} boundary edges missing")
-    clean = not any(r["faces"] for x in L for r in x["pierce"]) and not any(n for x in L for n in x["cracks"].values())
-    baked = None
-    if clean:
-        jobs = gg.write(L, drapes, body, od, texture)
-        lines.append(f"  low meshes + detail maps: {od}/LOD<k>")
-        if bake:
-            baked = gg.bake(jobs, od, occluders)["glbs"]
-            lines.append("  GLBs: " + ", ".join(baked))
-    return "\n".join(lines) + "\n" + next_steps.after_game_garment(L, name, baked, bool(zs))
 
 
 # ---------------------------------------------------------------- terrain
@@ -4861,18 +4279,6 @@ _register_core()
 
 def main():
     mcp.run()
-
-
-def import_main():
-    """hifipushie-import FILE [NAME]: save a spec JSON file (e.g. examples/goblin.json) as a model."""
-    import sys
-    args = sys.argv[1:]
-    if not 1 <= len(args) <= 2 or args[0] in ("-h", "--help"):
-        sys.exit("usage: hifipushie-import FILE.json [NAME]   (NAME defaults to the file's name)")
-    src = Path(args[0])
-    name = args[1] if len(args) > 1 else src.stem
-    print(put_model(name, json.loads(src.read_text()), f"imported from {src.name}").split("\n")[0],
-          f"-> {store.HOME / name}")
 
 
 if __name__ == "__main__":
