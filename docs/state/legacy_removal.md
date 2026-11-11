@@ -27,7 +27,7 @@ Rule (Joe, 2026-11-10): no backwards compatibility. No gate, no switch, no shim;
   lines) -> 15 modules along its sections (terrain_mesh.MODULES). Pure moves; the tile export's state hashes them all.
 - The split, step 3 (landed, dadb8c09; same tag; ledger C415): hair.py (5,694 lines) -> 15 modules (hair.MODULES). Its
   sections call each other both ways: 28 functions import a later module themselves; rebound names read as module.name.
-- The split, step 4 (branch split-heads; tag archive/before-split-heads; ledger C417): face_ruler.py (3,154), base.py
+- The split, step 4 (landed, merge "split-heads"; tag archive/before-split-heads; ledger C417): face_ruler.py (3,154), base.py
   (2,830), faceshapes.py (3,139) -> 10 modules each. face_ruler and base are pure moves (base.MODULES: the skin caches
   that hashed base.py by name hash them all). faceshapes: four names rebound at run time live in faceshapes_consts;
   class GnmFace (1,788 lines) keeps its name and has its methods in five mixins. Old blank lines restored in all splits.
