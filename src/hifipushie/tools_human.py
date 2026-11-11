@@ -505,8 +505,8 @@ def block_in_solve(name: str, out: str | None = None, share: float = 1.0, seen: 
 
 
 def fr_say(k: str) -> str:
-    from . import face_ruler as fr
-    return fr.EXPR_SAY.get(k, k)
+    from . import face_ruler_blockin
+    return face_ruler_blockin.EXPR_SAY.get(k, k)
 
 
 @mcp.tool(structured_output=False)
@@ -517,10 +517,10 @@ def face_ruler(name: str, save: str | None = None):
     limbus through the fitted cameras (yaw left free), not by eye and not from detector landmarks. NOT READ = these
     pictures do not show it. Start a block-in from this table. Returns the pictures with the reads drawn (save: the
     path) and the table. Details: guide(topic="face_ruler")."""
-    from . import face_ruler as fr
-    c = fr.compare(name)
+    from . import face_ruler_compare
+    c = face_ruler_compare.compare(name)
     path = save or str(store.HOME / "human_renders" / f"face_ruler_{name}.png")
-    im = fr.overlay(c)
+    im = face_ruler_compare.overlay(c)
     im.save(path)
     return [_png(im), c["text"] + f"\noverlay (green = the model's outline through each fitted camera, yellow = where "
                                   f"the picture's skin outline was read against it, magenta / cyan = iris centres picture / model): {path}"]

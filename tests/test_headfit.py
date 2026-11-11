@@ -140,18 +140,19 @@ def test_without_the_keys_nothing_changes():
     """A seed-only head on a MakeHuman body, as existing characters have: the head built is gnm_head of the head dict
     as given (no identity added, the default scale, the fixed graft plane), bit for bit."""
     from hifipushie import base as basemod
+    from hifipushie import base_gnm_head, base_implied, base_measures
     b = {"body": {"source": "makehuman", "age": 60, "sex": 1.0, "weight": 0.6}, "eyes": "eyes",
          "head": {"source": "gnm", "seed": 5, "spread": 0.7, "mouth_gap": 0.0}}
-    s = basemod.inject({"base": b, "joints": {}})
-    h = basemod.head_of({"joints": s["joints"]}, b)
+    s = base_implied.inject({"base": b, "joints": {}})
+    h = base_measures.head_of({"joints": s["joints"]}, b)
     assert not h.get("room")
     tpl, tj, J = basemod.source(b), basemod.template_joints(b), s["joints"]
     eb = np.array(tpl["face"]["landmarks"]["eye.L"]) * [0, 1, 1]
     mid = np.array(J["head"]["pos"], float) + eb - np.array(tj["head"]["pos"])
-    ref = basemod.gnm_head(b["head"], mid, np.array([0, 0, 1.0]))
+    ref = base_gnm_head.gnm_head(b["head"], mid, np.array([0, 0, 1.0]))
     assert h["verts"].shape == ref["verts"].shape and np.array_equal(h["verts"], ref["verts"])
     assert np.array_equal(h["plane"][0], ref["plane"][0])
-    on = basemod.head_of({"joints": s["joints"]}, {**b, "head": {**b["head"], "follow_body": True}})
+    on = base_measures.head_of({"joints": s["joints"]}, {**b, "head": {**b["head"], "follow_body": True}})
     assert on.get("room") and not np.array_equal(on["verts"][:100], ref["verts"][:100])
 
 

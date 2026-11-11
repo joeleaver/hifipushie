@@ -78,8 +78,6 @@ def carry(src: str, src_spec: dict | None = None, sc: Scalp | None = None) -> di
 
 
 SEAT_NEAR, SEAT_FAR = 0.03, 0.09  # m off the source scalp: closer, a point keeps its scalp address (az, el, h x k);
-
-
 # further (a hanging tail, wisps below the jaw), it moves rigidly with the head (scaled about its centre); between, a blend
 SEAT_STRAND_M = ("wave", "wavelength", "roots_m", "clump_size", "curl")  # lock strand dials in metres
 

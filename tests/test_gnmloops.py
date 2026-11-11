@@ -9,6 +9,7 @@ import numpy as np
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from hifipushie import assets, base, gnmloops, humans, onemesh  # noqa: E402
+from hifipushie import base_identity, base_imls, base_surface
 from hifipushie.spec import expand_mirror  # noqa: E402
 
 
@@ -48,7 +49,7 @@ def test_loops_are_closed_manifold_and_symmetric():
     mi = gnmloops._raw()["mirror"]  # (GNM's own template is symmetric only to ~0.1 mm: the asset's is exact)
     par = P["parents"]
     assert all(set(mi[par[j]].tolist()) == set(par[m[j]].tolist()) for j in range(k))
-    g = base._gnm_data()
+    g = base_identity._gnm_data()
     # GNM's tables extend by the parents' mean; take() reads them at new ids
     B = g["vertex_identity_basis"][:3]
     assert np.allclose(gnmloops.take(B, np.arange(gnmloops.N_RAW + k), axis=1), gnmloops.ext(B, axis=1), atol=1e-6)
@@ -68,7 +69,7 @@ def test_one_mesh_unchanged_by_the_loops():
             gnmloops.ENABLED = on
             onemesh._CACHE.pop(("tpl", onemesh._tkey(sp["base"])), None)
             base._CACHE.clear()
-            out[on] = (onemesh.template(sp["base"]), base.surface(e, sp["base"]))
+            out[on] = (onemesh.template(sp["base"]), base_surface.surface(e, sp["base"]))
     finally:
         gnmloops.ENABLED = True
         base._CACHE.clear()
@@ -77,7 +78,7 @@ def test_one_mesh_unchanged_by_the_loops():
     assert len(t1["P"]) == n0 + 530 and len(t1["S"]) == len(t0["S"]) + 530
     assert np.array_equal(t0["P"], t1["P"][:n0]) and np.array_equal(t0["fid"], t1["fid"][:n0])
     V0 = s0["verts"]
-    d = np.abs(base._sd_body(V0, s1) - base._sd_body(V0, s0))
+    d = np.abs(base_imls._sd_body(V0, s1) - base_imls._sd_body(V0, s0))
     assert d.max() < 5e-5, d.max()
     a = onemesh.asset()
     assert np.abs(a["w"].sum(1) - 1).max() < 1e-5 and a["uv"].min() >= 0 and a["uv"].max() <= 1

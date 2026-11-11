@@ -2,7 +2,7 @@
 
 look(shapes={"jawOpen": 0.8, ...}) shows a face-kit model posed in ARKit weights in seconds, with no export: the
 model is meshed as export_asset meshes it (the slit's part at face.voxels(), so the lips' inner faces are real;
-cached by geometry), and the export's own code (faceshapes.apply: the neutral's close, the seal, every shape's
+cached by geometry), and the export's own code (faceshapes_apply.apply: the neutral's close, the seal, every shape's
 displacement) runs on that mesh. Only the vertices near the face are worked on. Correctives are set as the export's
 notes tell an engine to (faceshapes.playback: jawOpen_mouthSmile = min(jawOpen, mouthSmile)); one given by hand is
 kept and said. Weights are absolute, as an engine sets them: a rest expression is not added to them;
@@ -31,6 +31,7 @@ from pathlib import Path
 import numpy as np
 
 from . import faceshapes
+from . import faceshapes_apply
 from . import spec as specmod
 from . import store
 
@@ -61,7 +62,7 @@ def weights(shapes: dict, where: str = "shapes") -> dict:
     except ValueError as e:
         raise specmod.SpecError(f"{where}: {e}") from None
     out = faceshapes.playback(w)
-    present = faceshapes.names_of([n for n in w])
+    present = faceshapes_apply.names_of([n for n in w])
     out = {k: v for k, v in out.items() if k in w or k in present}
     bad = {c: (v, out.get(c, 0.0)) for c, v in given.items() if abs(v - out.get(c, 0.0)) > 0.01}
     NOTES[:] = [f"{where}: {c} {v:.2f} kept as given; its formula {faceshapes.CORRECTIVES[c][0]}("
@@ -98,7 +99,7 @@ def _key(spec: dict, resolution: int, voxels: dict) -> str:
 def fine_mesh(name: str, spec: dict, resolution: int, log: list) -> Path:
     """The model meshed as export_asset meshes it for face shapes (asset.split with the face's voxels), cached."""
     from . import asset
-    face = faceshapes.face_of(spec)
+    face = faceshapes_apply.face_of(spec)
     vox = face.voxels()
     key = _key(spec, resolution, vox)
     bd = store._dir(name) / "build"
@@ -118,7 +119,7 @@ def fine_mesh(name: str, spec: dict, resolution: int, log: list) -> Path:
 
 def _region(name: str, spec: dict, resolution: int, names: list, log: list) -> dict:
     """The fine mesh's face region as apply() parts, the shapes `names` on it (neutral + seal cached by geometry)."""
-    face = faceshapes.face_of(spec)
+    face = faceshapes_apply.face_of(spec)
     fp = fine_mesh(name, spec, resolution, log)
     z = dict(np.load(fp))
     V, F, P = z["verts"].astype(np.float64), z["faces"], z["part"]
@@ -143,7 +144,7 @@ def _region(name: str, spec: dict, resolution: int, names: list, log: list) -> d
             if str(zn["key"]) == key:
                 neutrals = {k: zn[k] for k in zn.files if k != "key"}
     fresh = not neutrals
-    faceshapes.apply(spec, parts, names or ["jawOpen"], log, quick=True, neutrals=neutrals)
+    faceshapes_apply.apply(spec, parts, names or ["jawOpen"], log, quick=True, neutrals=neutrals)
     if fresh:  # (no shape: the neutral alone, which apply() sets with any shape)
         np.savez(np_, key=np.array(key), **neutrals)
     return {"V": V, "F": F, "P": P, "pnames": pnames, "parts": parts, "rows": rows}
@@ -201,7 +202,7 @@ def scene_moves(info: dict, path: Path) -> Path:
 
 
 def note(spec: dict, w: dict, secs: float, scene_voxel: float | None = None) -> str:
-    face = faceshapes.face_of(spec)
+    face = faceshapes_apply.face_of(spec)
     s = (f"posed in face shapes ({secs}s): " + ", ".join(f"{k} {v:.2f}" for k, v in w.items() if v)
          + " (absolute weights, correctives by formula unless given)" + "".join(" | " + n for n in NOTES))
     if scene_voxel is not None:

@@ -1,5 +1,5 @@
 """FACE PARSING (refread, 2026-10-11): a per-pixel read of a picture of a head: skin / hair / ears / neck / clothes /
-brows / nose / lips / background, on ANY background and on paintings. face_ruler.photo_masks assumes a plain backdrop
+brows / nose / lips / background, on ANY background and on paintings. face_ruler_outline.photo_masks assumes a plain backdrop
 and warm skin: on Garrett's two paintings it found 31-56 outline samples (Tess's studio photos: ~195).
 
 Two nets, both run on CPU in the detector venv (likeness.VENV: OpenCV dnn + MediaPipe) as a subprocess, ~1 s a
@@ -143,7 +143,7 @@ def to_picture(prob, box, size) -> np.ndarray:
 def masks(img, cam, head, origin=(0.0, 0.0), scale: float = 1.0, model: str | None = None) -> tuple:
     """A picture of the model's head through cam (img = the camera's picture, or its crop at origin / scale): (the
     figure's mask, where it is BARE SKIN (face, ears, neck; not hair, cloth, glasses), {group: probability map}), all in
-    img's pixels. Same meaning as face_ruler.photo_masks, for any background."""
+    img's pixels. Same meaning as face_ruler_outline.photo_masks, for any background."""
     from . import humanfit
     P = (humanfit.project(cam, np.asarray(head["L"], float)[:68]) - np.asarray(origin, float)) * float(scale)
     box = head_box(P, img.size)

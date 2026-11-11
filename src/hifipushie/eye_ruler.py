@@ -424,8 +424,9 @@ def _brow(lum, uu, upc, a, b, cb) -> dict:
 
 def _ring(ht, c):
     """The lid margin ring's vertex rows around the eye centred at c (skin rows next to the socket lining)."""
-    from . import base as basemod, blockin_eyes as be
-    g = basemod._gnm_data()
+    from . import blockin_eyes as be
+    from . import base_identity
+    g = base_identity._gnm_data()
     Vh = np.asarray(ht["verts"], float)
     F = be._tris(ht["faces"])
     sk = np.flatnonzero(np.asarray(g["skin"]))
@@ -461,8 +462,8 @@ def model(spec: dict, cam: dict, brows: bool = True, px_mm: float = STEP) -> lis
     kk = mm / px_mm                                  # raster px per picture px
     _, k, ps = likeness.render(mesh, cam, box, px=int(round((box[2] - box[0]) * kk)), brows=False, passes=True)
     part = ps["part"]
-    from . import base as _basemod
-    r_iris = 1000.0 * _basemod.drawn_iris(spec, r)   # the dressing's own iris (skin.eyes.iris_size), else GNM's limbus
+    from . import base_implied
+    r_iris = 1000.0 * base_implied.drawn_iris(spec, r)   # the dressing's own iris (skin.eyes.iris_size), else GNM's limbus
     # for the identity (its eyeball: eyes_000), else our own ball's 0.51 r
     Vh = np.asarray(ht["verts"], float)
     out = []
@@ -639,8 +640,8 @@ def compare(name: str, model_name: str | None = None) -> dict:
         d = b - a
         rows.append({"measure": measure, "photo": float(a), "model": float(b), "diff": float(d), "tol": float(tol),
                      "off": bool(np.isfinite(d) and abs(d) > tol), "note": note})
-    from . import base as _basemod
-    native = _basemod.eye_native(spec) is not None and not ((spec.get("skin") or {}).get("eyes") or {}).get("iris_size")
+    from . import base_implied
+    native = base_implied.eye_native(spec) is not None and not ((spec.get("skin") or {}).get("eyes") or {}).get("iris_size")
     row("iris diameter", ph["iris"], mo["iris"], 2 * ERR["iris"],
         'block_in_step {"iris_mm": mm}: GNM\'s limbus for the identity (eyes_000); the eyeball stays GNM\'s' if native else
         "skin.eyes.iris_size (the drawn iris; the eyeball stays as it is)")
@@ -679,7 +680,7 @@ def compare(name: str, model_name: str | None = None) -> dict:
         if native:
             moves.append(f'block_in_step {{"iris_mm": {ph["iris"]:.2f}}} (GNM\'s limbus component, identity eyes_000: the iris, the pupil '
                          "and the cornea's base with it; the eyeball itself is GNM's 14.6 mm sphere x the head's scale, which its lids are shaped on)")
-        elif _basemod.eye_native(spec) is None and ((spec.get("base") or {}).get("head") or {}).get("eye_radius"):
+        elif base_implied.eye_native(spec) is None and ((spec.get("base") or {}).get("head") or {}).get("eye_radius"):
             moves.append(f"skin.eyes.iris_size {ph['iris'] / 1000:.4f} (the drawn iris). This head still OVERRIDES GNM's eyeball "
                          "(base.head.eye_radius: a smaller ball its lids stand off); a rebuild drops the key (block_in_start does)")
         else:

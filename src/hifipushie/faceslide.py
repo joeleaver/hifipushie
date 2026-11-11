@@ -3,7 +3,7 @@
 The user (2026-10-09): "If we need more control around the eye area, we'll have to update the mesh and/or sliders on
 the one-mesh, we shouldn't just randomly sculpt." So: each slider is a displacement of GNM's template head (its 17821
 vertices + the lids' loops, gnmloops.py), authored ONCE here from the template's own landmarks, in GNM's frame (mm on
-the template), applied like an identity component (`base.gnm_head`: added to the vertices right after GNM's identity,
+the template), applied like an identity component (`base_gnm_head.gnm_head`: added to the vertices right after GNM's identity,
 so the landmarks, the pushes, the hook onto the body and every later op ride on it) and solved by the same
 least-change fits. `base.head.sliders = {name: value | [right, left]}`, value in [-1, 1] = the adult population's
 spread (an estimate per slider: UNITS, mm at +1), 0 = the template.
@@ -215,9 +215,9 @@ def template() -> dict:
     """GNM's template with the loops: X (n, 3), normals, exterior mask, landmarks (68, 3), mirror map (n,)."""
     if "tpl" in _CACHE:
         return _CACHE["tpl"]
-    from . import base as basemod
+    from . import base_identity
     from . import gnmloops
-    g = basemod._gnm_data()
+    g = base_identity._gnm_data()
     X = gnmloops.ext(g["template_vertex_positions"].astype(float))
     Q = gnmloops.plan()["quads"]
     n = np.zeros_like(X)
@@ -243,7 +243,7 @@ def template() -> dict:
 def head_template(V: np.ndarray) -> dict:
     """template()'s dict for a head of GNM's raw vertices V (its frame): positions with the loops, normals, landmarks;
     masks, rims and the mirror map are the template's."""
-    from . import base as basemod
+    from . import base_identity
     from . import gnmloops
     T = dict(template())
     X = gnmloops.ext(np.asarray(V, float))
@@ -252,7 +252,7 @@ def head_template(V: np.ndarray) -> dict:
     for a, b, c in ((0, 1, 3), (1, 2, 0), (2, 3, 1), (3, 0, 2)):
         np.add.at(n, Q[:, a], np.cross(X[Q[:, b]] - X[Q[:, a]], X[Q[:, c]] - X[Q[:, a]]))
     n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-15)
-    g = basemod._gnm_data()
+    g = base_identity._gnm_data()
     T.update(X=X, n=n, lm=np.array([sum(float(w) * X[int(v)] for v, w in zip(r[0::2], r[1::2])) for r in g["lm68"]]),
              own=True)
     return T
@@ -513,7 +513,8 @@ def _lip_rings() -> dict:
     from collections import defaultdict
 
     from . import base as basemod
-    g = basemod._gnm_data()
+    from . import base_identity
+    g = base_identity._gnm_data()
     skin = np.asarray(g["skin"], bool)
     Q = np.asarray(g["quads"])
     Q = Q[skin[Q].all(1)]
@@ -750,7 +751,7 @@ def values(sliders: dict | None) -> dict:
     return out
 
 
-HEAD_FIELDS = ("eye_crease_depth",)  # sliders laid on the head's own shape (base.gnm_head passes V)
+HEAD_FIELDS = ("eye_crease_depth",)  # sliders laid on the head's own shape (base_gnm_head.gnm_head passes V)
 
 
 def head_fields(V: np.ndarray, names=HEAD_FIELDS) -> dict:

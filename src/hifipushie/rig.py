@@ -996,9 +996,9 @@ def skin_parts(spec: dict, rb: list[dict], meshes: dict, smooth: int = SMOOTH) -
         sp = max(n, key=n.get) if n else None
     skin = {sp} | set((spec.get("face_shapes") or {}).get("parts") or ())
     if spec.get("base"):  # the reference: the base body's own quads, whole (the export's skin under clothes is gone)
-        from . import base as basemod
+        from . import base_implied, base_surface
         from .spec import expand_mirror as _em
-        surf = basemod.surface(basemod.inject(_em(spec)), spec["base"])
+        surf = base_surface.surface(base_implied.inject(_em(spec)), spec["base"])
         Wq, fq = surf["quads"]
         Wq = np.asarray(Wq, float)
         Tq = np.array([(f[0], f[j], f[j + 1]) for f in fq for j in range(1, len(f) - 1)])
@@ -1638,10 +1638,10 @@ def _flesh_tree(spec: dict, rb: list[dict]):
     if spec.get("base"):  # a base body has no modelling bones (its bones are clothes, straps): each rig bone's
         # flesh is a cone along its own segment as thick as the base body there (the median distance of the base's
         # vertices that lie nearest it), measured once, so every part (skin, shirt, shoes) gets the same weights
-        from . import base as basemod
+        from . import base_implied, base_surface
         from .spec import expand_mirror as _em
-        s = basemod.inject(_em(spec))
-        W = np.asarray(basemod.surface(s, spec["base"])["quads"][0], float)
+        s = base_implied.inject(_em(spec))
+        W = np.asarray(base_surface.surface(s, spec["base"])["quads"][0], float)
         D = np.stack([_seg_dist(W, A[q], B[q]) for q in range(len(ids))], 1)
         near = D.argmin(1)
         base_r = np.array([float(np.median(D[near == q, q])) if (near == q).sum() > 3 else np.nan

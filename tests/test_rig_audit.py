@@ -39,11 +39,11 @@ def _human():
     """(spec, bones, base quad vertices, triangles, surface) or None without the packs."""
     if "human" not in _C:
         try:
-            from hifipushie import base as basemod
+            from hifipushie import base_implied, base_surface
             from hifipushie.spec import expand_mirror
             spec = json.loads((ROOT / "examples" / "gnm_talk.json").read_text())
             bones = rig.rig_bones(spec)
-            surf = basemod.surface(basemod.inject(expand_mirror(spec)), spec["base"])
+            surf = base_surface.surface(base_implied.inject(expand_mirror(spec)), spec["base"])
         except Exception as e:  # the packs aren't here
             print("  (skipped: %s)" % str(e).splitlines()[0][:80])
             _C["human"] = None

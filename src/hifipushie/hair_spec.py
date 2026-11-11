@@ -286,8 +286,6 @@ def root_ends(sc: Scalp, g: dict, locks: list, n: int = 80) -> dict:
 
 
 ROOT_RISE = 0.003  # m
-
-
 FIN_MM = 3.0  # an edge standing this much more than the lock's own thickness over the layer reads as a fin
 
 

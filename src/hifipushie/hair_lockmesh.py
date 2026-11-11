@@ -306,12 +306,8 @@ def coverage(sc: Scalp, AA, EE, P, reach: float = 0.004):
 
 
 SHELL_MIN_GAP = 0.0004  # (sh6) m: each shell stands at least this far over the layer below it, the hairline included
-
-
 # (eased to 0 there, cap and shells were the same triangles: coincident alpha-tested layers render as holes / z-fight)
 SHELL_HROW_DROP = None  # (sh6) {"fa": [a0, a1], "el_max": deg}: the shells style's hairline-row cards whose middle lies
-
-
 # a0..a1 deg from the front and under el_max deg over the scalp centre are dropped (Garrett's sideburn: dense cards drew
 # flat grey dabs with round ends at game distance; the cap's tapered strands are the sideburn there)
 def shell_gaps(dhs, gap=None) -> list:
@@ -342,17 +338,9 @@ def _hrow_dropped(sc, c_) -> bool:
 
 
 SHELL_EDGE_LIFT = None  # (sh4) m: the shells cap's lift at the hairline (None = the full lift everywhere)
-
-
 SHELL_LIFT_EASE = 0.005  # (sh4) m in from the hairline over which the lift eases to SHELL_EDGE_LIFT
-
-
 CAP_RELAX_FLOOR = True  # (round 30) the relaxed cap keeps the floor cap_under_cards gave it (lift off the scalp)
-
-
 CAP_RELAX = 60  # (round 26) iterations: the card cap's radius relaxed over its mesh, only lowered (0 = off)
-
-
 CAP_SMOOTH = 0.0  # deg: the mass cap's height smoothed over this (gaussian sigma, 0 = off; round 26)
 
 

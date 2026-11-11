@@ -668,8 +668,8 @@ def prims(s: dict, stream: list) -> list:
     kkey = hashlib.sha1(np.ascontiguousarray(keep).tobytes()).hexdigest()
     balls = np.zeros((0, 4))
     if s.get("base"):
-        from . import base as basemod
-        head = basemod.head_of(s, s["base"])
+        from . import base_measures
+        head = base_measures.head_of(s, s["base"])
         if head is not None and head.get("eyes") is not None:
             balls = np.array([[*np.asarray(c, float), float(head["eye_r"])] for c in head["eyes"]])
     layer = max([p.layer for p in stream if p.op != "intersect"] or [0])
@@ -764,7 +764,7 @@ EXPRESSION = {
 
 def expression(spec: dict, parts: dict, log: list) -> dict:
     """The folds' share of each face shape, added to the export's morph targets in place (asset.export, after
-    faceshapes.apply; parts: {part: {"verts", "corner_vert", "shapes": {name: (delta, n0, n1)}}}). Per fold prim and
+    faceshapes_apply.apply; parts: {part: {"verts", "corner_vert", "shapes": {name: (delta, n0, n1)}}}). Per fold prim and
     vertex the fold's own displacement there is measured on the field (the part's field without that fold minus with
     it, along the fold-free normal); a shape with gain g adds (g - 1) x it. skin["fold_expressions"] = False turns it
     off. Returns {fold side: {shape: max mm}}."""

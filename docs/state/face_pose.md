@@ -4,13 +4,13 @@ For: Baynard Racing's racers (Puddles the pig, face kit + mouth interior); gener
 
 ## Current best (branch face-pose)
 - `look(name, shapes={...} | "rest" | preset)`: the model meshed as export_asset meshes it (asset.split with
-  face.voxels(), resolution 256; cached build/face_fine.npz by geometry), the export's own faceshapes.apply on the
+  face.voxels(), resolution 256; cached build/face_fine.npz by geometry), the export's own faceshapes_apply.apply on the
   face's region (quick=True: no diagnostics), neutral + lip seal cached (build/face_neutral.npz). Weights absolute;
   correctives by formula, a hand-set one kept and said. Clay (paint=False) is exact; painted carries the moves onto
   the scene meshes (blender_scene._shape_pose: nearest posed point of the same part, this render only).
 - `face_shapes.rest = {ARKit: w}`: carried, not baked. GLB mesh.weights = rest (Playweft pw-gltf reads them as
   defaults), mesh.extras.restExpression, json face_shapes.rest + rest_how, rig.md "Face shapes: rest expression".
-- Code: facepose.py (spec in its docstring), faceshapes.apply(quick=, neutrals=), server.look(shapes=),
+- Code: facepose.py (spec in its docstring), faceshapes_apply.apply(quick=, neutrals=), server.look(shapes=),
   scene.look(shape_pose=) + scene.slit_voxel, asset REST_HOW / write_glb weights, rignotes face section.
 - Tests: tests/test_facepose.py (5). Proof sheet: examples/face_pose_match.py.
 

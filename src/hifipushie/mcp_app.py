@@ -39,7 +39,6 @@ end with "next:": do what it says. Traps: guide(topic="traps"). Terrain tools ma
 ask them, don't answer them yourself.
 """
 
-
 mcp = MCPServer("hifipushie", instructions=INSTRUCTIONS)
 
 
@@ -118,7 +117,6 @@ def _tool_with_errors(_reg=None):
 
 mcp.tool = _tool_with_errors()
 
-
 # A small native core + find_tool + call_tool. MCP clients don't refresh their tool list mid-session (a trial agent
 # called enable_toolset("cloth,human") and never saw the tools), and 100+ schemas cost context on every turn. So the
 # server registers only CORE natively; find_tool searches every tool and call_tool runs any of them (C-row in
@@ -182,11 +180,7 @@ TOOL_GROUPS: dict[str, dict] = {
                 "about": "ground clutter kits (rocks, logs, leaves ...) for terrain",
                 "tools": ["make_clutter", "look_clutter", "clutter_kit"]},
 }
-
-
 CORE: list[str] = TOOL_GROUPS["core"]["tools"]
-
-
 _STARTED = False  # set once the core is registered
 
 

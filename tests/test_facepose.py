@@ -1,5 +1,5 @@
 """Face shapes in a look and the rest expression (facepose.py): weights with correctives filled in by formula (a
-hand-set one kept and said), the posed mesh equal to the export's own shapes (faceshapes.apply on the same fine mesh),
+hand-set one kept and said), the posed mesh equal to the export's own shapes (faceshapes_apply.apply on the same fine mesh),
 the neutral's cache reused, face_shapes.rest written as the GLB meshes' default weights, and the evidence that a baked
 rest can't reach a closed mouth. Our own mesher only: no Blender.
 
@@ -21,6 +21,7 @@ import pytest  # noqa: E402
 from PIL import Image  # noqa: E402
 
 from hifipushie import asset, facepose, faceshapes, store  # noqa: E402
+from hifipushie import faceshapes_apply, faceshapes_face
 from hifipushie.spec import SpecError  # noqa: E402
 
 store.HOME = Path(_TMP)
@@ -73,7 +74,7 @@ def test_pose_is_the_exports_shapes():
         n = faceshapes.vertex_normals(V[keep], tri)[tri.ravel()]
         parts = {pn: {"verts": V[keep], "corner_vert": tri.ravel(), "normal": n.astype(np.float32),
                       "tangent": np.tile([1.0, 0, 0], (len(n), 1)).astype(np.float32)}}
-        faceshapes.apply(spec, parts, [k for k in GRIN], [])
+        faceshapes_apply.apply(spec, parts, [k for k in GRIN], [])
         p = parts[pn]
         want = p["verts"] + sum(w.get(nm, 0.0) * sh[0] for nm, sh in p["shapes"].items())
         err = np.linalg.norm(X[keep] - want, axis=1).max()
@@ -102,7 +103,7 @@ def test_rest_in_the_glb():
     rest = facepose.rest_of(store.load(name))
     assert rest["jawOpen_mouthSmile"] == pytest.approx(0.4)
     spec = store.load(name)
-    fine = faceshapes.Face(spec).voxels()
+    fine = faceshapes_face.Face(spec).voxels()
     ctx = asset.split(spec, RES, True, [], min_share=1, voxels=fine)
     path = asset.mesh_parts(ctx, Path(_TMP) / "high.npz")
     with np.load(path) as z:
@@ -118,7 +119,7 @@ def test_rest_in_the_glb():
         parts[pn] = {"verts": v, "corner_vert": cv, "normal": faceshapes.vertex_normals(v, tri)[cv].astype(np.float32),
                      "tangent": np.tile([1.0, 0, 0], (len(cv), 1)).astype(np.float32),
                      "uv": np.zeros((len(cv), 2), np.float32), "sign": np.ones(len(cv), np.float32), "atlas": 0}
-    faceshapes.apply(spec, parts, ["jawOpen", "mouthSmileLeft", "mouthSmileRight", "eyeBlinkLeft"], [])
+    faceshapes_apply.apply(spec, parts, ["jawOpen", "mouthSmileLeft", "mouthSmileRight", "eyeBlinkLeft"], [])
     for p in parts.values():
         if p.get("shapes"):
             p["shape_rest"] = rest
@@ -126,7 +127,7 @@ def test_rest_in_the_glb():
     Image.new("RGBA", (4, 4), (128, 128, 255, 255)).save(png)
     glb = Path(_TMP) / "gob.glb"
     asset.write_glb(glb, "gob", parts, [("0", {"basecolor": png, "orm": png, "normal": png, "specular": png})])
-    got = faceshapes.read_glb(glb)
+    got = faceshapes_apply.read_glb(glb)
     body = got["body"]
     ws = dict(zip(body["names"], body["weights"]))
     assert ws["jawOpen"] == pytest.approx(0.5) and ws["eyeBlinkLeft"] == 0.0

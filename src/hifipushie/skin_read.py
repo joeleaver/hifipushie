@@ -105,10 +105,12 @@ def stage_spec(spec: dict) -> dict:
 
 
 def _code() -> str:
+    from . import base as basemod
     src = Path(__file__).parent
     return hashlib.sha1(b"".join((src / f).read_bytes() for f in
                                  ("skin.py", "skin_features.py", "skin_makeup.py", "skin_marks.py", "skin_swatch.py", "skin_folds.py", "paint.py",
-                                  "paintnodes.py", "blender_scene.py", "base.py", "skin_look.py", "scene.py"))).hexdigest()[:12]
+                                  "paintnodes.py", "blender_scene.py", "base.py", *(f"{m}.py" for m in basemod.MODULES),  # (base.py was split, C417)
+                                  "skin_look.py", "scene.py"))).hexdigest()[:12]
 
 
 def stage(name: str, spec: dict | None = None, log=print) -> str:
@@ -455,8 +457,8 @@ def _eye_classes(f: dict, mesh: dict, spec: dict) -> tuple:
     fwd = np.asarray(ht.get("forward", [0, -1, 0]), float)
     fwd = fwd / np.linalg.norm(fwd)
     r = float(ht.get("eye_r", 0.012))
-    from . import base as _basemod
-    ir = _basemod.drawn_iris(spec, 0.012, legacy=0.0059 / 0.012)   # skin.eyes.iris_size, GNM's limbus, else 11.8 mm
+    from . import base_implied
+    ir = base_implied.drawn_iris(spec, 0.012, legacy=0.0059 / 0.012)   # skin.eyes.iris_size, GNM's limbus, else 11.8 mm
     a_iris = np.arcsin(min(ir / r, 0.99))
     scl, iris = np.zeros(f["eye"].shape, bool), np.zeros(f["eye"].shape, bool)
     X = f["X"][f["eye"]]

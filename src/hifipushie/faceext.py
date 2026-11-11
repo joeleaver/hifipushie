@@ -62,10 +62,11 @@ def _target(group: str, name: str) -> tuple:
 def _frame():
     """(R, s, t): world (MakeHuman's reference body) = s * gnm @ R.T + t, fitted on GNM's bound vertices."""
     if "frame" not in _C:
-        from . import base as basemod, onemesh
+        from . import onemesh
+        from . import base_identity
         a = onemesh.asset()
         val = np.asarray(a["g_valid"], bool)
-        A = basemod._gnm_data()["template_vertex_positions"].astype(float)[val]
+        A = base_identity._gnm_data()["template_vertex_positions"].astype(float)[val]
         B = np.asarray(a["g_neutral"], float)[val]
         ca, cb = A.mean(0), B.mean(0)
         U, S, Vt = np.linalg.svd((B - cb).T @ (A - ca))
@@ -97,8 +98,8 @@ def carry(group: str, name: str) -> np.ndarray:
 def identity_basis() -> tuple:
     """(B (120, 3m), skin index (m,)): GNM's head identity components over the head's exterior skin vertices."""
     if "ib" not in _C:
-        from . import base as basemod
-        g = basemod._gnm_data()
+        from . import base_identity
+        g = base_identity._gnm_data()
         names = [str(x) for x in g["identity_names"]]
         comps = [i for i, x in enumerate(names) if x.startswith("head")][:120]
         sk = np.flatnonzero(np.asarray(g["groups"]["skin_exterior"], float) > 0.5)
@@ -211,8 +212,8 @@ WINDOW_MOUTH = 0.0
 def _window(region: np.ndarray, width: float) -> np.ndarray:
     """(n,) 1 on the region's exterior skin, easing (smoothstep) to 0 at `width` from it, 0 elsewhere."""
     from scipy.spatial import cKDTree
-    from . import base as basemod
-    g = basemod._gnm_data()
+    from . import base_identity
+    g = base_identity._gnm_data()
     X = np.asarray(g["template_vertex_positions"], float)
     ext = np.asarray(g["groups"]["skin_exterior"], float) > 0.5
     reg = region[:len(X)] & ext
@@ -264,12 +265,12 @@ SMOOTH = 12          # Laplacian passes over GNM's skin (raw quads): MakeHuman's
 
 
 def smooth(d: np.ndarray, n: int = SMOOTH) -> np.ndarray:
-    from . import base as basemod
+    from . import base_identity
     import scipy.sparse as sp
     if "adj" not in _C:
-        q = np.asarray(basemod._gnm_data()["quads"])
+        q = np.asarray(base_identity._gnm_data()["quads"])
         e = np.r_[q[:, [0, 1]], q[:, [1, 2]], q[:, [2, 3]], q[:, [3, 0]]]
-        m = len(basemod._gnm_data()["template_vertex_positions"])
+        m = len(base_identity._gnm_data()["template_vertex_positions"])
         A = sp.coo_matrix((np.ones(len(e)), (e[:, 0], e[:, 1])), (m, m)).tocsr()
         A = ((A + A.T) > 0).astype(float)
         deg = np.asarray(A.sum(1)).ravel()
@@ -281,8 +282,8 @@ def smooth(d: np.ndarray, n: int = SMOOTH) -> np.ndarray:
 
 
 def build(names=None) -> dict:
-    from . import base as basemod
-    ext = np.asarray(basemod._gnm_data()["groups"]["skin_exterior"], float) > 0.5
+    from . import base_identity
+    ext = np.asarray(base_identity._gnm_data()["groups"]["skin_exterior"], float) > 0.5
     out = dict(np.load(TABLE)) if TABLE.exists() else {}
     for k in names or EXT:
         d, share, cn = field(k)
@@ -304,8 +305,9 @@ def build(names=None) -> dict:
 def field(k: str) -> tuple:
     """(extension k's field at +1 before its fold-free scale (template vertices incl. the loops), the share the
     identity's cheap directions made, their number)."""
-    from . import base as basemod, faceslide, gnmloops
-    g = basemod._gnm_data()
+    from . import faceslide, gnmloops
+    from . import base_identity
+    g = base_identity._gnm_data()
     T = faceslide.template()
     mi = T["mirror"]
     ext = np.asarray(g["groups"]["skin_exterior"], float) > 0.5
@@ -421,9 +423,9 @@ def fill_inside(d: np.ndarray) -> np.ndarray:
     stayed."""
     import scipy.sparse as sp
     from scipy.sparse.linalg import spsolve
-    from . import base as basemod
+    from . import base_identity
     if "inside" not in _C:
-        g = basemod._gnm_data()
+        g = base_identity._gnm_data()
         grp = lambda k: np.asarray(g["groups"][k], float) > 0.5  # noqa: E731
         _C["inside"] = grp("skin") & ~grp("skin_exterior") & ~grp("upper_lip") & ~grp("lower_lip") & ~grp("mouth_sock")
     ins = _C["inside"]

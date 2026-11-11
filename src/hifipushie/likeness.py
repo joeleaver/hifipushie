@@ -259,9 +259,10 @@ def model_mesh_from_state(st: dict) -> dict:
     from . import likeness_shape as ls
     ears = None
     try:
-        from . import base as basemod, onemesh
+        from . import onemesh
+        from . import base_identity
         gid = np.asarray(onemesh.asset()["gnm_id"], int)[np.asarray(tpl["fid"])]
-        eg = np.asarray(basemod._gnm_data()["groups"]["ears"], float) > 0.5
+        eg = np.asarray(base_identity._gnm_data()["groups"]["ears"], float) > 0.5
         ears = np.where((gid >= 0) & eg[np.maximum(gid, 0)])[0]
     except Exception:  # noqa: BLE001  (not a one-mesh template: no ear vertices known)
         ears = None

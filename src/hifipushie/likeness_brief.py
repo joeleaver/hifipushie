@@ -51,7 +51,7 @@ STUDY = ("priority (measured): 1 a neutral long-lens FRONT, 2 a TRUE PROFILE, 3 
          "third picture), 4 a three-quarter for judging. Every picture of one set must be the same head: a view that "
          "disagrees with the others by more than 5 mm is dropped by the fit.")
 # (readmix, 2026-10-13) the camera's DISTANCE is the one thing a picture does not say: a 20 % error is 4 mm of cheekbone width
-# at 0.3 m, 1.6 at 1 m, 0.8 at 2 m (face_ruler.distance_cost)
+# at 0.3 m, 1.6 at 1 m, 0.8 at 2 m (face_ruler_camera.distance_cost)
 DISTANCE = ("distance: front and three-quarter shots from 1.5-2 m or further through a long lens (2-3x zoom on a phone), never a "
             "selfie at arm's length; STATE the distance or the lens (lens_mm) with each picture and keep the original files "
             "(their EXIF carries the lens; a cropped picture's does not).")

@@ -50,7 +50,7 @@ Tested (gnmdrive2, 42 synthetic pairs): closing the 8 LARGEST of these 23 gaps p
 1. **Measure, don't guess.** For each measure below, read the gap between the two heads in the view named (px on the
    sheet x the mm per px in its title; front widths are TOTALS, left edge to right edge), in mm, target minus yours.
    With two GNM heads, `gnm_mm.gaps(Va, Vb)` is the ruler. From PICTURES (a block-in's photos, or renders of a
-   target): `face_ruler(name)` / `face_ruler.read(head, views)` reads the same 23 gaps off the outlines and iris
+   target): `face_ruler(name)` / `face_ruler_solve.read(head, views)` reads the same 23 gaps off the outlines and iris
    centres, with each row's error (set s6: drivers with it 11 / 14, by eye 3 / 14 on s5). Trust its rows over your
    eye: in the test every row a driver disputed (under_chin, nose_length, the vault) was right.
 2. **Take the largest gaps first, in population sd** (gap / the sd in the table), not in mm: 3 mm of lower lip (sd

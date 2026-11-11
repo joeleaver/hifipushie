@@ -271,10 +271,10 @@ HOLD_CHEEK = 0.25  # weight of holding the cheeks' fronts in image fits (x 1 / m
 def _cheek_basis(st: dict) -> np.ndarray:
     """d(cheek front points, world) / d(identity component): (120, n, 3) for GNM's cheek-region vertices facing
     forward (subsampled)."""
-    from . import base as basemod
+    from . import base_identity
     from . import headfit
     g = headfit._gnm()
-    gd = basemod._gnm_data()
+    gd = base_identity._gnm_data()
     c = st["head"]["carry"]
     R, s_ = np.asarray(c["R"], float), float(c["s"])
     key = "_cheek_idx"
@@ -546,10 +546,10 @@ def side_effects(st0: dict, st1: dict, asked: set, near=None) -> dict:
 
 def _regions(tpl: dict) -> dict:
     """Named regions of the template's vertices (bool masks)."""
-    from . import base as basemod
+    from . import base_identity
     from . import onemesh
     a = onemesh.asset()
-    g = basemod._gnm_data()
+    g = base_identity._gnm_data()
     gid = a["gnm_id"][tpl["fid"]]
     G = {k: (np.asarray(v) > 0.5) for k, v in g["groups"].items()}
     pick = lambda *names: np.where(gid >= 0, np.any([G[n][np.maximum(gid, 0)] for n in names], axis=0), False)  # noqa: E731
@@ -811,7 +811,7 @@ def _silhouette(st: dict, cam: dict, outline: np.ndarray, skip_ears: bool = True
     nearest silhouette vertex of the head (edges between faces turned toward and away from the camera; GNM's own
     vertices above the stitch), its world position, how it moves per identity component (as the landmarks:
     _lm_basis) and the outline's normal there. None if nothing matched."""
-    from . import base as basemod
+    from . import base_identity
     from . import headfit, onemesh
     from scipy.spatial import cKDTree
     tpl, c = st["tpl"], st["head"]["carry"]
@@ -820,7 +820,7 @@ def _silhouette(st: dict, cam: dict, outline: np.ndarray, skip_ears: bool = True
     fade = np.asarray(onemesh.asset()["g_fade"], float)
     head = (gid >= 0) & (fade[np.maximum(gid, 0)] > 0.3)
     if skip_ears:  # an ear's rim is silhouette too, and no face outline follows it
-        ears = np.asarray(basemod._gnm_data()["groups"]["ears"], float) > 0.5
+        ears = np.asarray(base_identity._gnm_data()["groups"]["ears"], float) > 0.5
         head &= ~ears[np.maximum(gid, 0)]
     T = np.array([(f[0], f[j], f[j + 1]) for f in _faces(tpl) for j in range(1, len(f) - 1)])
     T = T[head[T].all(1)]
@@ -847,7 +847,7 @@ def _silhouette(st: dict, cam: dict, outline: np.ndarray, skip_ears: bool = True
         return None
     vs = sv[j[ok]]
     g = headfit._gnm()
-    Bv = np.asarray(basemod._gnm_data()["vertex_identity_basis"], float)[g["comps"]][:, gid[vs]]
+    Bv = np.asarray(base_identity._gnm_data()["vertex_identity_basis"], float)[g["comps"]][:, gid[vs]]
     Bv = float(c["s"]) * (Bv - g["JB"].mean(1, keepdims=True)) @ np.asarray(c["R"], float).T
     Bv = Bv * fade[gid[vs]][None, :, None]
     return {"X": P[vs], "B": Bv, "p": o[ok], "n": nrm[ok]}
@@ -861,9 +861,9 @@ EAR_FREE = 0.012  # m: holds this close to an ear let go so it can ride (structu
 
 def _gnm_normals(Vg: np.ndarray) -> np.ndarray:
     """Vertex normals of GNM's mesh at positions Vg (GNM's frame: facing +z, y up)."""
-    from . import base as basemod
+    from . import base_identity
     from . import retopo
-    q = np.asarray(basemod._gnm_data()["quads"])
+    q = np.asarray(base_identity._gnm_data()["quads"])
     T = np.r_[q[:, [0, 1, 2]], q[:, [0, 2, 3]]]
     return retopo._vnormals(Vg, T)
 
@@ -885,9 +885,9 @@ def fit_outline(base: dict, views: list, cameras: list, rounds: int = 3, symmetr
     structure: width is BONE (cheekbones, jaw angles, temples, chin): targets on the soft mid-cheek count
     STRUCTURE_SOFT, and the cheek's front (GNM's cheek regions, facing forward) is held where it is, so the warp
     widens the head's sides instead of filling the cheeks (pass 2 without it: a pear-shaped, jowly face)."""
-    from . import base as basemod
+    from . import base_identity
     from . import onemesh
-    g = basemod._gnm_data()
+    g = base_identity._gnm_data()
     cur = copy.deepcopy(base)
     names = [str(n) for n in g["identity_names"]]
     rep = {"rounds": []}
@@ -896,7 +896,7 @@ def fit_outline(base: dict, views: list, cameras: list, rounds: int = 3, symmetr
         hd = onemesh.head_desc(cur)
         c = st["head"]["carry"]
         Rh, s = np.asarray(c["R"], float), float(c["s"])
-        idn = dict(basemod.fit_identity(hd["fit"])) if hd.get("fit") else {}
+        idn = dict(base_identity.fit_identity(hd["fit"])) if hd.get("fit") else {}
         idn.update(hd.get("identity") or {})
         call = np.array([float(idn.get(n, 0.0)) for n in names])
         Vg = np.asarray(g["template_vertex_positions"], float) + np.tensordot(call, np.asarray(g["vertex_identity_basis"], float), 1)
@@ -1054,9 +1054,9 @@ def fit_region(base: dict, cameras: list, targets: list, group, feather: int = 8
     so the step is one ridge least squares; `hold` = 68-landmark indices kept where they are (default: everything
     outside the nose and the brows' inner ends). A region of the same `name` (default the group) is replaced
     (re-fitted on top of its own components). Refused if it breaks the mesh (unless force)."""
-    from . import base as basemod
+    from . import base_identity
     from . import onemesh
-    g = basemod._gnm_data()
+    g = base_identity._gnm_data()
     names = [str(n) for n in g["identity_names"]][:REGION_K]
     VB = np.asarray(g["vertex_identity_basis"], float)[:REGION_K]
     st0 = state(base)
@@ -1064,7 +1064,7 @@ def fit_region(base: dict, cameras: list, targets: list, group, feather: int = 8
     Rh, s, nar = np.asarray(c["R"], float), float(c["s"]), float(c["narrow"])
     gid_all = np.asarray(onemesh.asset()["gnm_id"], int)[np.asarray(st0["tpl"]["fid"])]
     fade = np.asarray(onemesh.asset()["g_fade"], float)
-    rw = basemod.region_weight(group, int(feather))
+    rw = base_identity.region_weight(group, int(feather))
     rname = name or (group if isinstance(group, str) else "+".join(group))
     regs = list((base.get("head") or {}).get("regions") or [])
     old = next((r for r in regs if r.get("name") == rname), None)

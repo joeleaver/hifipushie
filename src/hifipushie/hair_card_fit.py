@@ -38,34 +38,18 @@ def card_classes(before: list, after: list, S: dict, seg, locks: dict) -> dict:
 
 
 FRONT_SHORT = 0.0  # (round 46, opt-in) m: clump cards (not face / fly) shorter than this rooted in front of and above the
-
-
 # head centre (FRONT_SHORT_YZ: y < [0], z > [1] from C) are dropped: r45a's dark splintered patch where the part meets the
 # forehead was 17-20 mm, 6-vertex cards at vcol .37-.46 wearing a long card's tile squashed (its tips = the serrations)
 FRONT_SHORT_YZ = (-0.05, 0.02)
-
-
 CAP_TONE = 1.4  # (round 45; default after the blind A/B r45a vs r44d NEW 2 / OLD 0 / SAME 2) x the card cap's vertex colour under the colour model (0.9 / peak:
-
-
 # ~0.35 on Tess vs the cards' ~0.65; the cap's albedo 52 vs the cards' 85-93 in the crown box): where it shows between
 # cards it is ~40 % of the darkest crown pixels at 2x its area share (t45/capshare.py)
 CAP_TONE_TIERS: dict = {}  # (round 47, opt-in) tier -> CAP_TONE there: the far tier (group "free") keeps no head cards, so
-
-
 # its whole head IS the cap at CAP_TONE's darker-than-cards value: LOD3's head read a shade darker than LOD0's
 CAP_BARE_FLOOR = True  # a cap vertex with no coverage card within CAP_FAR lies at the floor (False: its mass height, before round 18)
-
-
 CAP_UNDER = 0.0025  # m: the cap stays this far under the lowest coverage card over it
-
-
 CAP_FAR = 12.0  # deg: a cap vertex with no card within CAP_REACH takes the nearest cards' height within this
-
-
 CAP_TOP_EL = 0.0  # (round 32; opt-in) deg: over this elevation a cap vertex with no card within CAP_REACH takes the
-
-
 # HIGHEST of the nearest cards' heights within CAP_FAR (not the lowest less CAP_UNDER): no card passes over el 80, so the
 # top of the dome was the cap at the seated roots' height, a dip between the crown's cards (Joe: "chopped off"); 0 = off
 CAP_REACH = 4.0  # deg: the cards over a cap vertex are those within this angle of it (seen from the head's centre)
@@ -415,8 +399,6 @@ def reference_image(name: str, reference: str | None = None):
     if p and Path(p).exists():
         return Path(p), cam.get("crop") or tr.get("crop")
     return None, None
-
-
 VIEWS = {"front": (0.0, 5.0), "three_quarter": (40.0, 12.0), "side": (90.0, 5.0), "back": (180.0, 10.0),
          "top": (20.0, 60.0), "three_quarter_r": (-40.0, 12.0), "side_r": (-90.0, 5.0),
          "back_quarter": (140.0, 8.0), "wide_r": (-95.0, 4.0, 0.95), "wide_back": (165.0, 6.0, 0.95),

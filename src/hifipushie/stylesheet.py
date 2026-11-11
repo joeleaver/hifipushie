@@ -116,10 +116,11 @@ def _within(v, rng):
 
 def check(name: str) -> list[dict]:
     """The model against its sheet's rules: [{"rule", "value", "target", "ok"}]. Measured: face ratios from the GNM
-    fit (interocular units: the chin against the philtrum, nose and mouth widths), the planes (base.plane_measures:
+    fit (interocular units: the chin against the philtrum, nose and mouth widths), the planes (base_measures.plane_measures:
     the front/side corner's radius, the muzzle), the eye opening (height/width and how much of the iris the lids
     cover, from the posed head mesh)."""
-    from . import base, store
+    from . import store
+    from . import base_measures
     from . import spec as S
     spec = store.load(name)
     sh = sheet_of(spec)
@@ -130,18 +131,18 @@ def check(name: str) -> list[dict]:
     head = (spec.get("base") or {}).get("head")
     if head:
         e = S.expand_mirror(spec)
-        h = base.head_of(e, spec["base"])
-        m = base.posed_measures(h)
+        h = base_measures.head_of(e, spec["base"])
+        m = base_measures.posed_measures(h)
         vals = {"chin_over_philtrum": (m["eye_chin"] - m["eye_seam"]) / (m["eye_seam"] - m["eye_nose"]),
-                "nose_width": m["nose_width"], "mouth_width": m["mouth_width"], "ala_width": base.ala_width(h),
+                "nose_width": m["nose_width"], "mouth_width": m["mouth_width"], "ala_width": base_measures.ala_width(h),
                 "mouth_corner_lift": 1000 * float(0.5 * (h["lm68"][48][2] + h["lm68"][54][2])
                                                   - 0.5 * (h["lm68"][62][2] + h["lm68"][66][2]))}
-        vals.update(base.plane_measures(h))
-        vals.update(base.eye_size(h))
-        op = base.eye_opening(h)[0]
+        vals.update(base_measures.plane_measures(h))
+        vals.update(base_measures.eye_size(h))
+        op = base_measures.eye_opening(h)[0]
         if op:
             vals["eye_h_over_w"] = op["h"] / op["w"]
-            iris = 1000 * float(((spec.get("paint") or {}).get("iris.L") or {}).get("width", 0)) * base.IRIS_SPOT
+            iris = 1000 * float(((spec.get("paint") or {}).get("iris.L") or {}).get("width", 0)) * base_measures.IRIS_SPOT
             if iris:
                 vals["iris_over_eye_w"] = iris / op["w"]
                 vals["lid_cover_top"] = max(0.0, (iris / 2 - op["top"]) / iris)

@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from hifipushie import assets, face_ruler as fr, mpread, store
+from hifipushie import face_ruler_blockin, face_ruler_camera, face_ruler_nose, face_ruler_outline, face_ruler_solve
 
 try:
     assets.pack("gnm")
@@ -54,7 +55,7 @@ def test_the_mix_reads_no_oval_and_nothing_past_its_turn():
 def tess():
     from hifipushie import blockin as bi
     spec = store.load(REF)
-    return spec, fr.model_head(spec), bi._refs(REF)
+    return spec, face_ruler_blockin.model_head(spec), bi._refs(REF)
 
 
 @need_ref
@@ -92,7 +93,7 @@ def test_mp_obs_reads_a_known_change_and_nothing_on_the_head_itself(tess):
     s2 = min(ob["sig"] for ob in mpread.obs(head, view, reading(head), neff=10))
     assert s2 > 1.5 * s1
     # a profile is not read
-    side = next((c for c in rj["cameras"] if c and abs(fr.view_yaw(c)) > 60), None)
+    side = next((c for c in rj["cameras"] if c and abs(face_ruler_camera.view_yaw(c)) > 60), None)
     if side is not None:
         assert mpread.obs(head, {"cam": side, "kind": "profile"}, np.zeros((478, 2))) == []
 
@@ -116,28 +117,28 @@ def test_hair_edge_is_one_sided(tess):
     skin = np.where(xx > cx, grow, shrink)
     hair = ndi.binary_dilation(fig, iterations=int(round(25.0 / mmpx))) & ~skin
     view = {"cam": cam, "kind": "front", "hair_edge": {"skin": skin, "hair": hair}}
-    obs = fr._hair_edge_obs(head, view, fig)
+    obs = face_ruler_outline._hair_edge_obs(head, view, fig)
     assert len(obs) >= 10 and {ob["type"] for ob in obs} == {"hairedge"}
     assert all(ob["p"][0] > cx for ob in obs)                      # only where the skin shows OUTSIDE the model
     o = np.array([ob["o"] for ob in obs])
-    assert 2.0 < np.median(o) < 4.0 and (o >= fr.HAIR_EDGE_MIN).all()
+    assert 2.0 < np.median(o) < 4.0 and (o >= face_ruler_outline.HAIR_EDGE_MIN).all()
     # skin against BACKGROUND (no hair beside it) is not this read's business
-    assert fr._hair_edge_obs(head, {**view, "hair_edge": {"skin": skin, "hair": np.zeros_like(hair)}}, fig) == []
+    assert face_ruler_outline._hair_edge_obs(head, {**view, "hair_edge": {"skin": skin, "hair": np.zeros_like(hair)}}, fig) == []
     # and a profile takes none (observe)
-    assert not fr._hair_edge_obs(head, {"cam": cam, "kind": "front"}, fig)
+    assert not face_ruler_outline._hair_edge_obs(head, {"cam": cam, "kind": "front"}, fig)
 
 
 def test_known_lens(tmp_path):
     from PIL import Image
     p = tmp_path / "a.png"
     Image.new("RGB", (40, 60)).save(p)
-    assert fr.lens_known({"image": str(p)}) is None
-    assert fr.lens_known({"image": str(p), "lens_mm": 24}) == 24.0
+    assert face_ruler_camera.lens_known({"image": str(p)}) is None
+    assert face_ruler_camera.lens_known({"image": str(p), "lens_mm": 24}) == 24.0
     ex = Image.Exif()
     ex.get_ifd(0x8769)[41989] = 26
     Image.new("RGB", (40, 60)).save(tmp_path / "b.jpg", exif=ex)
-    assert fr.lens_known({"image": str(tmp_path / "b.jpg")}) == 26.0
-    assert fr.PHOTO_CAM_DIST_LENS <= 10.0 < fr.PHOTO_CAM_DIST_DENSE
+    assert face_ruler_camera.lens_known({"image": str(tmp_path / "b.jpg")}) == 26.0
+    assert face_ruler_camera.PHOTO_CAM_DIST_LENS <= 10.0 < face_ruler_camera.PHOTO_CAM_DIST_DENSE
 
 
 def test_expression_prior_pins_a_neutral_picture():
@@ -149,9 +150,9 @@ def test_expression_prior_pins_a_neutral_picture():
     head["Jm"] = np.zeros((len(gnm_mm.NAMES), K))
     head["measures"] = {n: 0.0 for n in gnm_mm.NAMES}
     obs = [{"type": "lip", "view": "front", "name": f"l{i}", "o": 1.0, "J": np.array([0.2, 0.0, 0.0, 1.0]), "sig": 0.3} for i in range(6)]
-    a = fr.solve(obs, head)
-    b = fr.solve(obs, head, expr_prior={"front": {"happy": (0.0, 0.01)}})
-    c = fr.solve(obs, head, expr_prior={"front": {"happy": (0.9, 0.05)}})
+    a = face_ruler_solve.solve(obs, head)
+    b = face_ruler_solve.solve(obs, head, expr_prior={"front": {"happy": (0.0, 0.01)}})
+    c = face_ruler_solve.solve(obs, head, expr_prior={"front": {"happy": (0.9, 0.05)}})
     assert a["expr"]["front"]["happy"][0] > 0.5 and abs(b["expr"]["front"]["happy"][0]) < 0.05
     assert abs(c["expr"]["front"]["happy"][0] - 0.9) < 0.1
     assert b["dc"][0] > 3 * abs(a["dc"][0]) and abs(c["dc"][0]) < 0.6 * b["dc"][0]
@@ -162,7 +163,7 @@ def test_nostril_read_finds_drawn_openings_and_refuses_bare_skin(tess):
     from PIL import Image, ImageDraw
     spec, head, rj = tess
     cam = rj["cameras"][0]
-    rims = fr.nostril_rims(head)
+    rims = face_ruler_nose.nostril_rims(head)
     assert min(len(r) for r in rims) >= 6
     V = np.asarray(head["V"], float)
     assert V[rims[0], 0].mean() < 0 < V[rims[1], 0].mean()                  # the subject's right first
@@ -178,14 +179,14 @@ def test_nostril_read_finds_drawn_openings_and_refuses_bare_skin(tess):
             rx, ry = 0.5 * np.ptp(P[:, 0]), 0.5 * np.ptp(P[:, 1])
             d.ellipse([c[0] - rx, c[1] - ry, c[0] + rx, c[1] + ry], fill=(25, 15, 12))
         return im
-    assert fr._nostril_obs(head, {"img": Image.new("RGB", (w, h), (200, 160, 140)), "cam": cam, "kind": "front"}) == []     # no opening: no read
-    o0 = {ob["name"]: ob["o"] for ob in fr._nostril_obs(head, {"img": picture(0.0), "cam": cam, "kind": "front"})}
-    o2 = {ob["name"]: ob["o"] for ob in fr._nostril_obs(head, {"img": picture(2.0), "cam": cam, "kind": "front"})}
+    assert face_ruler_nose._nostril_obs(head, {"img": Image.new("RGB", (w, h), (200, 160, 140)), "cam": cam, "kind": "front"}) == []     # no opening: no read
+    o0 = {ob["name"]: ob["o"] for ob in face_ruler_nose._nostril_obs(head, {"img": picture(0.0), "cam": cam, "kind": "front"})}
+    o2 = {ob["name"]: ob["o"] for ob in face_ruler_nose._nostril_obs(head, {"img": picture(2.0), "cam": cam, "kind": "front"})}
     assert len(o0) == 4 and len(o2) == 4
     # both openings drawn 2 mm further OUT: the left one's ends move +2 along the line (toward the subject's left), the right one's -2
     for k, sgn in (("nostril_l_lateral", 1), ("nostril_l_medial", 1), ("nostril_r_lateral", -1), ("nostril_r_medial", -1)):
         assert abs((o2[k] - o0[k]) - 2.0 * sgn) < 0.5, (k, o0[k], o2[k])
-    assert fr.NOSTRIL is False                                                # not a default: one head's validation
+    assert face_ruler_nose.NOSTRIL is False                                                # not a default: one head's validation
 
 
 def test_distance_lens_exif_crop_and_the_brief(tmp_path):
@@ -199,17 +200,17 @@ def test_distance_lens_exif_crop_and_the_brief(tmp_path):
     ifd[41989], ifd[41988], ifd[40962], ifd[40963] = 24, 2.0, 4000, 3000
     Image.new("RGB", (400, 300)).save(tmp_path / "resized.jpg", exif=ex)
     Image.new("RGB", (300, 300)).save(tmp_path / "cropped.jpg", exif=ex)
-    a, b = fr.lens_info({"image": str(tmp_path / "resized.jpg")}), fr.lens_info({"image": str(tmp_path / "cropped.jpg")})
+    a, b = face_ruler_camera.lens_info({"image": str(tmp_path / "resized.jpg")}), face_ruler_camera.lens_info({"image": str(tmp_path / "cropped.jpg")})
     assert a["mm"] == 48.0 and a["source"] == "exif" and not a["warn"]
     assert b["mm"] is None and "CROPPED" in b["warn"]
     # a pinned lens: the scale freedom moves the camera, the focal length stays; without it the focal length scales
     cam = {"r": [0.0, 0.0, 0.0], "t": [0.0, 0.0, 0.4], "f": 1500.0, "size": [1000, 1400], "centre": [0.0, 0.0, 1.6], "yaw": 0.0}
-    m1, m2 = fr.cam_moved(cam, sc=10.0, lens=True), fr.cam_moved(cam, sc=10.0, dist=20.0)
+    m1, m2 = face_ruler_solve.cam_moved(cam, sc=10.0, lens=True), face_ruler_solve.cam_moved(cam, sc=10.0, dist=20.0)
     assert m1["f"] == 1500.0 and abs(m1["t"][2] - 0.4 / 1.1) < 1e-9
-    assert fr.cam_moved(cam, sc=10.0, dist=20.0, lens=True)["t"][2] == m1["t"][2]         # no free distance with a known lens
+    assert face_ruler_solve.cam_moved(cam, sc=10.0, dist=20.0, lens=True)["t"][2] == m1["t"][2]         # no free distance with a known lens
     assert m2["f"] > 1500.0 * 1.1 and m2["t"][2] > 0.4
     # what a distance error costs: large close up, small from 2 m; the nose's own width hardly at all
-    c3, c20 = fr.distance_cost(0.3), fr.distance_cost(2.0)
+    c3, c20 = face_ruler_camera.distance_cost(0.3), face_ruler_camera.distance_cost(2.0)
     assert 3.0 < abs(c3["cheekbone"]) < 5.5 and abs(c20["cheekbone"]) < 1.2 and abs(c3["alar"]) < 0.6
     assert 1.4 < c3["nose_vs_ears"] < 1.65 and c20["nose_vs_ears"] < 1.1
 
@@ -217,16 +218,16 @@ def test_distance_lens_exif_crop_and_the_brief(tmp_path):
 def test_unknown_distance_marks_the_deep_widths_inferred():
     cam = {"r": [0.0, 0.0, 0.0], "t": [0.0, 0.0, 0.45], "f": 1500.0, "size": [1000, 1400], "centre": [0.0, 0.0, 1.6], "yaw": 0.0}
     views = [{"kind": "front", "cam": cam, "name": "selfie.jpg"}]
-    inf = fr.distance_inferred(views, [{"mm": None}])
+    inf = face_ruler_camera.distance_inferred(views, [{"mm": None}])
     assert {"cheekbone_width", "jaw_width", "gonial_width"} <= set(inf) and inf["cheekbone_width"] > inf["jaw_width"] > 2.0
     assert "nose_width" not in inf and "mouth_width" not in inf           # one depth: distance-free
-    assert fr.distance_inferred(views, [{"mm": 24.0, "source": "exif"}]) == {}       # a known lens: nothing inferred
-    far = fr.distance_inferred([{"kind": "front", "cam": {**cam, "t": [0.0, 0.0, 2.5]}}], [None])
+    assert face_ruler_camera.distance_inferred(views, [{"mm": 24.0, "source": "exif"}]) == {}       # a known lens: nothing inferred
+    far = face_ruler_camera.distance_inferred([{"kind": "front", "cam": {**cam, "t": [0.0, 0.0, 2.5]}}], [None])
     assert far.get("cheekbone_width", 0.0) < 0.5 * inf["cheekbone_width"]      # from 2.5 m it matters much less
-    L = fr.distance_lines(views, [{"mm": None}])
+    L = face_ruler_camera.distance_lines(views, [{"mm": None}])
     assert any(x.startswith("DISTANCE selfie.jpg: NOT KNOWN") for x in L) and any(x.startswith("STRONG PERSPECTIVE") for x in L)
     assert any(x.startswith("INFERRED (the camera's distance") for x in L)
-    L2 = fr.distance_lines(views, [{"mm": 24.0, "source": "exif"}])
+    L2 = face_ruler_camera.distance_lines(views, [{"mm": 24.0, "source": "exif"}])
     assert any("from its lens (24 mm eq., EXIF)" in x for x in L2) and not any(x.startswith("INFERRED") for x in L2)
 
 
@@ -236,14 +237,14 @@ def test_one_lens_convention_and_a_crop_frame():
     w, h = 1200, 1600
     f = 50.0 / 43.27 * float(np.hypot(w, h))
     cam = {"f": f, "size": [w, h]}
-    assert abs(fr.lens_mm(cam) - 50.0) < 1e-6
+    assert abs(face_ruler_camera.lens_mm(cam) - 50.0) < 1e-6
     assert abs(hm.lens_prior({"size": [w, h], "lens_mm": 50.0})[0] - f) < 1e-6          # stated and replied in one convention
     # a head cropped out of a 6000 x 4000 frame taken through an 85 mm lens: the same focal length in pixels as the frame's
     ff = 85.0 / 43.27 * float(np.hypot(6000, 4000))
     got = hm.lens_prior({"size": [w, h], "lens_mm": 85.0, "frame": [6000, 4000]})[0]
     assert abs(got - ff) < 1e-6 and got > 3 * hm.lens_prior({"size": [w, h], "lens_mm": 85.0})[0]
-    assert abs(fr.lens_mm({"f": ff, "size": [w, h]}, frame=[6000, 4000]) - 85.0) < 1e-6
-    assert fr.LM_NOSE_WIDE == 0.0                                            # off: failed on held-out subjects
+    assert abs(face_ruler_camera.lens_mm({"f": ff, "size": [w, h]}, frame=[6000, 4000]) - 85.0) < 1e-6
+    assert face_ruler_camera.LM_NOSE_WIDE == 0.0                                            # off: failed on held-out subjects
 
 
 def test_fallback_blend_stays_on_the_simplex():
@@ -268,7 +269,7 @@ def test_alar_read_follows_a_drawn_wing(tess):
     spec, head, rj = tess
     cam = rj["cameras"][0]
     w, h = cam["size"]
-    prs0 = fr.alar_profiles(head, cam, Image.new("RGB", (w, h), (200, 160, 140)))
+    prs0 = face_ruler_nose.alar_profiles(head, cam, Image.new("RGB", (w, h), (200, 160, 140)))
     assert len(prs0) == 2 and all(len(p["v"]) >= 2 for p in prs0)
 
     def picture(out_mm):
@@ -280,9 +281,9 @@ def test_alar_read_follows_a_drawn_wing(tess):
                 q = p + u * (out_mm + 0.6) / pr["mm1"]
                 d.ellipse([q[0] - 0.6 / pr["mm1"], q[1] - 1.2 / pr["mm1"], q[0] + 0.6 / pr["mm1"], q[1] + 1.2 / pr["mm1"]], fill=(110, 80, 70))
         return im
-    a = {ob["name"]: ob["o"] for ob in fr._alar_obs(head, {"img": picture(0.0), "cam": cam, "kind": "front"})}
-    b = {ob["name"]: ob["o"] for ob in fr._alar_obs(head, {"img": picture(2.0), "cam": cam, "kind": "front"})}
+    a = {ob["name"]: ob["o"] for ob in face_ruler_nose._alar_obs(head, {"img": picture(0.0), "cam": cam, "kind": "front"})}
+    b = {ob["name"]: ob["o"] for ob in face_ruler_nose._alar_obs(head, {"img": picture(2.0), "cam": cam, "kind": "front"})}
     assert set(a) == set(b) == {"alar_r", "alar_l"}
     for k in a:
         assert abs((b[k] - a[k]) - 2.0) < 0.6, (k, a[k], b[k])
-    assert fr._alar_obs(head, {"img": Image.new("RGB", (w, h), (200, 160, 140)), "cam": cam, "kind": "front"}) == []
+    assert face_ruler_nose._alar_obs(head, {"img": Image.new("RGB", (w, h), (200, 160, 140)), "cam": cam, "kind": "front"}) == []

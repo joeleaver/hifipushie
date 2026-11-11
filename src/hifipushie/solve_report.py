@@ -134,7 +134,7 @@ def _cov(Jx, w, pri, n1):
 
 
 def support(post: dict, obs: list, groups: bool = True) -> dict:
-    """What the solved system knows of each measure. post = face_ruler.solve's "post" (the columns as solved: identity,
+    """What the solved system knows of each measure. post = face_ruler_solve.solve's "post" (the columns as solved: identity,
     cameras, nuisances; each read's final weight: its sigma after adapt / the cmax relaxation / the robust loss), obs
     the same solve's observations. -> {"names", "prior" (sd, row units), "post", "read", "by": per measure the groups
     (type, view) ranked by how much of its posterior precision is theirs (share 0..1), "n": reads per group}."""
@@ -241,10 +241,11 @@ def footprint() -> dict:
 
 
 def direct(post: dict, obs: list, views: list, head: dict, groups: bool = True) -> dict:
-    """The DIRECT read of every measure (see above). post / obs = the solve's (face_ruler.solve "post"; the cameras' and
+    """The DIRECT read of every measure (see above). post / obs = the solve's (face_ruler_solve.solve "post"; the cameras' and
     nuisances' columns and priors and each read's final weight come from it), views = its views (their cameras), head =
-    face_ruler.model_head. -> {"read" (n,), "by": per measure [(group, share)], "n": the reads that look at a point}."""
+    face_ruler_blockin.model_head. -> {"read" (n,), "by": per measure [(group, share)], "n": the reads that look at a point}."""
     from . import face_ruler as fr
+    from . import face_ruler_features
     rw, fp = rows(), footprint()
     Jx, w, pri, n1 = post["Jx"], np.asarray(post["w"], float), post["pri"], post["n1"]
     cams = {}
@@ -268,7 +269,7 @@ def direct(post: dict, obs: list, views: list, head: dict, groups: bool = True) 
     k_ = lambda A, B: np.exp(-((A[:, None, :] - B[None, :, :]) ** 2).sum(-1) / (2 * RHO ** 2))  # noqa: E731
     C = Jx[ii][:, n1:]
     Koo = s2 * (N3 @ N3.T) * k_(X, X) + (C * pri[n1:] ** 2) @ C.T + np.diag(1.0 / np.maximum(w[ii], 1e-12))
-    g2m = fr._gnm_to_model(head)
+    g2m = face_ruler_features._gnm_to_model(head)
     R, sc = np.asarray(head["R"], float), float(head["sc"])
     V = np.asarray(head["V"], float) * 1000.0
     eL = int(np.argmax(E[:, 0]))                                # the subject's left eye: world +X

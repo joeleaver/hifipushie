@@ -202,7 +202,8 @@ def atlas(base: dict, size: int = SIZE) -> dict:
     columns), "tri" (their triangle), "bary", "T" (triangles: template vertex indices), "uvT" (triangles' atlas
     coordinates), "V" (template vertices at rest), "head" (vertex is the head's), "gid" (GNM vertex or -1), "fade",
     "mm" (mm per texel, median), per-vertex "groups" {name: weight}}. Image row 0 is the top (v = v1)."""
-    from . import base as basemod, likeness as lk, onemesh
+    from . import likeness as lk, onemesh
+    from . import base_identity
     key = hashlib.sha1(json.dumps([base, size, VERSION], sort_keys=True, default=str).encode()).hexdigest()
     if _ATLAS.get("key") == key:
         return _ATLAS["at"]
@@ -228,7 +229,7 @@ def atlas(base: dict, size: int = SIZE) -> dict:
     b = bary[ii, jj]
     b /= b.sum(1, keepdims=True)
     tri = np.round(tid[ii, jj, 0]).astype(int)
-    G = basemod._gnm_data()["groups"]
+    G = base_identity._gnm_data()["groups"]
     groups = {}
     for k, g in G.items():
         g = np.asarray(g, float)
@@ -1103,8 +1104,8 @@ def make(name: str, spec: dict | None = None, views=None, size: int = SIZE, deli
             maps["strand"] = _strands(np.asarray(img), maps["hair"], mpp)
         s = sample_view(at, mesh, cam, np.asarray(img), maps)
         s["_skin_map"] = maps.get("skin")
-        from . import face_ruler as _fr
-        s["iris"] = iris_profile(img, v) if abs(_fr.view_yaw(cam)) <= IRIS_YAW else None
+        from . import face_ruler_camera
+        s["iris"] = iris_profile(img, v) if abs(face_ruler_camera.view_yaw(cam)) <= IRIS_YAW else None
         ok, notes = exclude(at, s, mesh, cam, img, v, parse, ears)
         face = _sstep((s["facing"] - FACE[0]) / (FACE[1] - FACE[0]))
         s["conf"] = (s["vis"] * face * ok * ~s["clip"]).astype(np.float32)

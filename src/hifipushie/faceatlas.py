@@ -11,7 +11,7 @@ comprehend the model"; the study: docs/notes/gnm_atlas.md).
   attribute changes by da and everything the population couples with it comes along, but what `hold` names stays.
   That is humanmacro's free direction for one attribute and its held mode generalised to named holds.
 - `COUPLED`: the face sliders that ARE such directions (an attribute GNM expresses, R2 ~ 1); base.head.slider_mode
-  "coupled" applies them through the identity (base.gnm_head), the rest stay local morphs for detail GNM lacks
+  "coupled" applies them through the identity (base_gnm_head.gnm_head), the rest stay local morphs for detail GNM lacks
   (the crease, lid margin, lower-lip taper, tip definition...). +1 = +1 population sd of the attribute.
 """
 from __future__ import annotations
@@ -43,8 +43,8 @@ HYBRID = {"eye_hood"}
 
 def _gnm():
     if "g" not in _C:
-        from . import base as basemod
-        g = basemod._gnm_data()
+        from . import base_identity
+        g = base_identity._gnm_data()
         names = [str(x) for x in g["identity_names"]]
         comps = [i for i, x in enumerate(names) if x.startswith("head")][:K]
         _C["g"] = {"comps": comps, "V0": g["template_vertex_positions"].astype(float),

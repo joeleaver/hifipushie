@@ -18,22 +18,22 @@ sys.path.insert(0, str(ROOT / "bin" / "hooks"))
 
 # -- 3. expressions are parameter mixes only ----------------------------------------------------------------------
 def test_sculpted_expression_deltas_are_refused(monkeypatch):
-    from hifipushie import faceshapes as fs
-    monkeypatch.delenv(fs.ALLOW_SCULPT_ENV, raising=False)
-    monkeypatch.setattr(fs, "SHAPE_SCULPT", "/x/sculpt.npz")
+    from hifipushie import faceshapes_apply, faceshapes_consts
+    monkeypatch.delenv(faceshapes_consts.ALLOW_SCULPT_ENV, raising=False)
+    monkeypatch.setattr(faceshapes_consts, "SHAPE_SCULPT", "/x/sculpt.npz")
     with pytest.raises(ValueError, match="hand-sculpted"):  # from the environment
-        with fs.character_fits({"base": {"head": {}}}, []):
+        with faceshapes_consts.character_fits({"base": {"head": {}}}, []):
             pass
-    monkeypatch.setattr(fs, "SHAPE_SCULPT", "")
+    monkeypatch.setattr(faceshapes_consts, "SHAPE_SCULPT", "")
     with pytest.raises(ValueError, match="hand-sculpted"):  # from the spec
-        with fs.character_fits({"base": {"head": {"face_fits": {"sculpt": "s.npz"}}}}, [], "/x"):
+        with faceshapes_consts.character_fits({"base": {"head": {"face_fits": {"sculpt": "s.npz"}}}}, [], "/x"):
             pass
-    monkeypatch.setattr(fs, "SHAPE_SCULPT", "/x/sculpt.npz")
+    monkeypatch.setattr(faceshapes_consts, "SHAPE_SCULPT", "/x/sculpt.npz")
     with pytest.raises(ValueError, match="hand-sculpted"):  # and at the point of use
-        fs._sculpted({}, "body", 3, [])
-    monkeypatch.setenv(fs.ALLOW_SCULPT_ENV, "1")  # the one explicit opt-out: logged
+        faceshapes_apply._sculpted({}, "body", 3, [])
+    monkeypatch.setenv(faceshapes_consts.ALLOW_SCULPT_ENV, "1")  # the one explicit opt-out: logged
     log = []
-    fs.refuse_sculpt("/x/sculpt.npz", log=log)
+    faceshapes_consts.refuse_sculpt("/x/sculpt.npz", log=log)
     assert log and log[0].startswith("WARNING")
 
 

@@ -7,7 +7,7 @@ spec, to edit like any other model. `describe(spec)` measures the body against t
 
 Clothes ("outfit"): "tee_shorts" (default from 2 years), "onesie" (default under 2: a baby's bodysuit over a nappy),
 "underwear" (briefs + a crop top), "none". Figures are dressed by default. The clothes are cloth with their own volume
-(base.garment: closed over the body's dips, hanging from the chest and belly as a tube), not shells of the skin, which
+(base_tubes.garment: closed over the body's dips, hanging from the chest and belly as a tube), not shells of the skin, which
 read as body paint (navel, muscles and nipples printed through). An adult woman has a bust by default (`bust_default`,
 MakeHuman's breast targets), lifted when dressed as a bra lifts it; `face` gives each seed its own features.
 """
@@ -100,7 +100,7 @@ def outfit(base: dict, kind: str, colors: dict | None = None) -> dict:
     k = H / 1.7  # lengths below are an adult's, scaled to the body
     cloth = lambda **kw: {"close": 40, "ease": round(0.004 * k, 4), "tube_ease": round(0.012 * k, 4), **kw}  # noqa: E731
     if kind == "tee_shorts":
-        # cloth with its own volume (base.garment): closed over the body's dips, hanging from the chest and belly as a
+        # cloth with its own volume (base_tubes.garment): closed over the body's dips, hanging from the chest and belly as a
         # tube down to the hem (no navel, no muscles, the bust bridged), the shorts' legs tubes from the thigh
         parts["tee"] = {"shell": "body", "offset": round(0.005 * k, 4), "color": c["tee"], "roughness": 0.85, "blend": 0.004,
                         "garment": cloth(hang=TEE["hang"], ease=round(TEE["ease"] * k, 4), tube_ease=round(TEE["tube_ease"] * k, 4),

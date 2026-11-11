@@ -1151,17 +1151,18 @@ def graft_head(V, L, S, spec: dict, prims, log: list, unsub: int = 1, gap: float
     the bridge relaxed. Returns (V, L, S)."""
     import copy
     import tempfile
-    from . import asset, base as basemod
+    from . import asset
+    from . import base_measures
     s = expand_mirror(spec)
     b = copy.deepcopy(spec["base"])
     b["head"] = {**b["head"], "subdivide": 0}
-    h = basemod.head_of(s, b)
+    h = base_measures.head_of(s, b)
     c, n = h["plane"][0], h["plane"][1]
     HL = np.array([v for f in h["faces"] for v in f])
     HS = np.array([len(f) for f in h["faces"]])
     Vb, Lb, Sb = _neck_cut(V, L, S, c, n, -1, 0.004)  # (the template's neck rings tilt up to the nape)
     Vh, Lh, Sh = _neck_cut(h["verts"], HL, HS, c, n, +1, -0.002)  # (GNM's neck rings tilt across the plane)
-    if h.get("lips_zipped"):  # the head's own mesh is closed at the lips' contact (base._zip_lips): the seam is
+    if h.get("lips_zipped"):  # the head's own mesh is closed at the lips' contact (base_gnm_parts._zip_lips): the seam is
         # an edge loop already, on the field's lip line
         log.append(f"head: lips closed in the head mesh ({h['lips_zipped']} seam vertices)")
     elif "lm_lip_seam" in s["joints"] and float(np.linalg.norm(h["lm68"][62] - h["lm68"][66])) < 0.0015:
@@ -1244,15 +1245,16 @@ def turned(V, T, prims, near=0.0015):
 
 def base_quads(spec: dict, log: list) -> dict | None:
     """A base body's OWN quads as its topology (the same dict as `wrap`): the posed body mesh the field is made from
-    (`base.surface()["quads"]`: MakeHuman's or the template's animation topology, fingers and all), its vertices
+    (`base_surface.surface()["quads"]`: MakeHuman's or the template's animation topology, fingers and all), its vertices
     dropped onto the field (a subdivision cage stands a little off its limit surface; pushes and strokes count),
     a grafted head bridged on as before. Carrying ANOTHER template onto a base (the stylised male's digit tubes
     onto MakeHuman's close-set fingers) tore both hands at the webs and the thumb's root, at rest: the golfer's
     "cracked" disc hand, 2251 faces still turned after the untangle. parts.body.topology = "template" for that path.
     None when the base has no quads of its own."""
     from . import base as basemod
+    from . import base_identity, base_surface
     s = expand_mirror(spec)
-    sf = basemod.surface(s, spec["base"])
+    sf = base_surface.surface(s, spec["base"])
     if not sf.get("quads"):
         return None
     Vq, fq = sf["quads"]
@@ -1271,7 +1273,7 @@ def base_quads(spec: dict, log: list) -> dict | None:
         tpl = basemod.source(spec["base"])
         gnm = np.asarray(onemesh.asset()["gnm_exact"], int)[np.asarray(tpl["fid"])]  # (gnmloops: the lids' new
         # vertices carry their own ids, >= gnmloops.N_RAW; GNM's tables are read at their first parent's: raw_id)
-        g = basemod._gnm_data()
+        g = base_identity._gnm_data()
         from . import gnmloops
         rid = np.maximum(gnmloops.raw_id(gnm), 0)
         ext = np.asarray(g["groups"]["skin_exterior"]) > 0.5
@@ -1333,9 +1335,9 @@ def lid_keep(gnm, faces, rings: int | None = None) -> np.ndarray:
 def face_keep(gnm, faces, rings: int | None = None, groups=None) -> np.ndarray:
     """(one mesh) per cage vertex, 0..1: how much of its drop onto the field is undone: 1 on GNM's face (the
     FACE_KEEP_GROUPS: eyes, mouth, nose; the cage there is the approved head), fading to 0 over LID_KEEP_RINGS rings."""
-    from . import base as basemod
+    from . import base_identity
     from . import gnmloops
-    g = basemod._gnm_data()
+    g = base_identity._gnm_data()
     gnm = np.asarray(gnm, int)
     rid = np.maximum(gnmloops.raw_id(gnm), 0)
     eye = np.zeros(len(rid), bool)
@@ -1374,12 +1376,12 @@ def _with_mouth_sock(V, L, S, gnm, spec, s, log):
     """(onemesh.py) GNM's mouth sock added to the one mesh's own quads: the skin's open mouth loop (the end of the
     inner lip rolls) closed by GNM's own oral cavity, placed as the head places its skin, so a parted or opened mouth
     shows a mouth, not the inside of the head. Not with zipped lips (a closed mouth has no loop)."""
-    from . import base as basemod
+    from . import base_identity
     from . import onemesh
     h = onemesh.head(s, spec["base"])
     if h.get("lips_zipped"):
         return V, L, S, gnm
-    g = basemod._gnm_data()
+    g = base_identity._gnm_data()
     c = h["carry"]
     sock = np.asarray(g["groups"]["mouth_sock"]) > 0.5
     where = np.full(len(sock), -1)

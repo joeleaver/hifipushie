@@ -4,7 +4,7 @@ shapes"). Like the eye step (blockin_eyes.py): one MAP solve over GNM's identity
 the rest of the face held. Result: base.head.identity + the lower-face comps in base.head.expression; lip_seal and
 mouth_gap cleared (GNM's own expression closes the lips).
 
-Why (gnm_atlas.md "## gnmdetail"): the lip seal (faceslide.seal_delta on the head + base._sealed_field for the field)
+Why (gnm_atlas.md "## gnmdetail"): the lip seal (faceslide.seal_delta on the head + base_surface._sealed_field for the field)
 closes a parted neutral by moving the lips whole and fading the move out across the vermilion border: on Tess the
 rendered border's turn fell from 24 deg (the one mesh) to 11 deg (the dressed stage), the upper vermilion came forward
 instead of turning down, and the lips read as a flat painted pad. Closed by GNM's expression instead the border keeps
@@ -42,16 +42,16 @@ SIG_LEAD = 0.3          # mm: the lower lip ahead of the upper at the contact (r
 
 
 def _names():
-    from . import base as basemod
-    n = [str(x) for x in basemod._gnm_data()["expression_names"]]
+    from . import base_identity
+    n = [str(x) for x in base_identity._gnm_data()["expression_names"]]
     return [k for k in n if k.startswith("lower_face_region")][:NL]
 
 
 def border_loops():
     """Head rows (onemesh.head_template's verts: GNM's skin rows) of the upper / lower vermilion border, ordered by x:
     GNM's upper_lip / lower_lip groups' vertices next to exterior skin outside both lips."""
-    from . import base as basemod
-    g = basemod._gnm_data()
+    from . import base_identity
+    g = base_identity._gnm_data()
     grp = lambda k: np.asarray(g["groups"][k], float) > 0.5  # noqa: E731
     ext, lips = grp("skin_exterior"), grp("upper_lip") | grp("lower_lip")
     Q = np.asarray(g["quads"], int)
@@ -80,11 +80,12 @@ def ring_rows(k: int | None = None):
     """Head rows of GNM's lip ring k (rings out from the skin's open mouth loop, faceslide._lip_rings; default the
     CONTACT ring, base.LIP_RING: landmarks 61-63 / 65-67 sit on it), its upper and lower halves (GNM's upper_lip /
     lower_lip groups)."""
-    from . import base as basemod, faceslide
+    from . import faceslide
+    from . import base_identity
     R = faceslide._lip_rings()
     C = R["rings"][R["contact"] if k is None else k]
     up = R["upper"][C]
-    g = basemod._gnm_data()
+    g = base_identity._gnm_data()
     sk = np.flatnonzero(np.asarray(g["skin"]))
     row = np.full(len(g["skin"]), -1)
     row[sk] = np.arange(len(sk))
@@ -154,10 +155,11 @@ def _similarity(A, B):
 def head_to_world(base: dict, ht: dict):
     """The map from head_template's frame to the posed one mesh's (humanfit.state, the cameras' frame): a similarity
     fitted on the face's GNM vertices. Returns (f(X) -> world, rms mm)."""
-    from . import base as basemod, humanfit, onemesh
+    from . import humanfit, onemesh
+    from . import base_identity
     st = humanfit.state(base)
     tpl = st["tpl"]
-    g = basemod._gnm_data()
+    g = base_identity._gnm_data()
     sk = np.flatnonzero(np.asarray(g["skin"]))
     gid = np.asarray(onemesh.asset()["gnm_id"], int)[np.asarray(tpl["fid"])]
     of = np.full(len(g["skin"]), -1)

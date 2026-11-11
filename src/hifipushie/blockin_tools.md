@@ -197,7 +197,7 @@ Limits: plain backgrounds only (no outline otherwise: the table says how many re
 nostrils, brows' shape are not read on photos (eye_ruler / lip_read / brow_read do those); a non-neutral expression
 moves the lips and chin rows. The returned image is the pictures with the model's outline (green, through the
 refined cameras), the reads (yellow) and the iris centres (magenta picture, cyan model): check that yellow sits on
-skin edges only. Python: face_ruler.compare(name); on any pictures face_ruler.read(head, views) with head =
+skin edges only. Python: face_ruler_compare.compare(name); on any pictures face_ruler_solve.read(head, views) with head =
 gnm_head(c) or model_head(spec); clay pictures of GNM heads also read pupils, lip edges and brow tops by colour.
 
 ### `brow_read`

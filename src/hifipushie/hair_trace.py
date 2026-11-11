@@ -87,8 +87,6 @@ def front_edge(cam: dict, tr: dict, mask, mm_px: float, owners=None) -> dict | N
 
 
 FLOW_BAND = (0.004, 0.028)  # m inside the traced hairline: the band whose strand direction front_flow compares
-
-
 FLOW_BINS = 6
 
 

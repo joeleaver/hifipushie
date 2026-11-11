@@ -61,8 +61,6 @@ def _tangents(V, T, UV):
 
 
 EXPORT = {"segments": 24, "sides": 10}  # per lock (spec["hair"]["export"] overrides): 12 x 8 read faceted in the
-
-
 # export (the lens's thin edges shaded as flat planes), 24 x 10 is ~20k triangles for 45 locks
 def export_part(name: str, out_dir: Path, spec: dict | None = None, texture: int = 1024, segments: int | None = None,
                 sides: int | None = None, log: list | None = None) -> tuple[dict, dict] | None:
@@ -105,8 +103,6 @@ def export_part(name: str, out_dir: Path, spec: dict | None = None, texture: int
 
 
 EXPORT_CARDS = {"triangles": 12000, "tier": None, "cap_step": 6.0, "alpha_cutoff": 0.33, "shadow_proxy": True}  # spec["hair"]["export"] overrides
-
-
 CARD_RECIPE = (
     "Hair cards. Draw two-sided with one normal for both faces (the mesh's normals are already bent toward the hair "
     "volume: do not flip them on back faces). Alpha: the base colour's alpha, alpha-tested at alpha_cutoff with "
@@ -119,11 +115,7 @@ CARD_RECIPE = (
 
 
 BACK_FACES = 1  # (c6) export each card's back face as its own triangles (outward normals) + a single-sided material
-
-
 BUDGET_UNIT = "card_faces"  # (hair-budget rule 2026-10-19) a tier's budget counts card faces (one side);
-
-
 # drawn triangles (back faces included) must fit the role's range max (checked at export: asset.hair_budget)
 CARD_RECIPE_FACES = CARD_RECIPE.replace(
     "Draw two-sided with one normal for both faces (the mesh's normals are already bent toward the hair "
@@ -345,8 +337,6 @@ def back_faces(T, lay, corner: tuple) -> tuple:
 
 
 CARD_ROUGH_MIN = 0.6  # (r59) the cards' roughness floor in the export's ORM: the outer, lit hair (aux.b high) came out at
-
-
 # 0.425 (the 0.5 floor x 0.85), and an isotropic engine lobe at that mirrored the key light off the crown's flat cards as
 # one white plate (Tess rc2i's "white glossy crown"; 0.65 / 0.75 in the game preview took it away, 0.6 + the tinted half
 # specular below leaves a faint warm sheen). The baked-cap path already says it: "glossy, it was tin foil".

@@ -357,9 +357,9 @@ def prims(s: dict, base_prim=None) -> list:
         return []
     from scipy.spatial import cKDTree
 
-    from . import base as basemod
+    from . import base_measures
     from .spec import Prim
-    head = basemod.head_of(s, s["base"])
+    head = base_measures.head_of(s, s["base"])
     if head is None:
         return []
     out = []

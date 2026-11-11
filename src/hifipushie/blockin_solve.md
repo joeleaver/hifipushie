@@ -77,7 +77,7 @@ Read guide(topic="block_in") first: the loop, the stage-0 description and the se
      a 70 mm portrait (a view flagged `"generated": true`: 105 mm, what our generated head shots behave like) and the
      distance is free under the prior above; the DISTANCE line says NOT KNOWN, what a 20 % error costs at that
      distance, and whether a side view is there to pin the face's depth. WHAT A DISTANCE ERROR COSTS (a 20 % error,
-     mm of apparent width; geometry, `face_ruler.distance_cost`):
+     mm of apparent width; geometry, `face_ruler_camera.distance_cost`):
        camera at   nose vs the ears' plane   cheekbone width   jaw width   nose's own width
        0.3 m       x1.50                     4.0               2.4         0.3
        0.5 m       x1.28                     2.8               1.6         0.2
@@ -107,7 +107,7 @@ Read guide(topic="block_in") first: the loop, the stage-0 description and the se
      from it (the groove's shadow beside the wing) is read against it, one read a side, its bias measured at the truth on
      five scanned heads (+0.3 mm). On three held-out scanned heads the solved alar width came from +1.1..+1.7 mm wide to
      +0.4..+0.7. Neither face detector reads it: both draw a more average, wider nose. The nostril openings
-     (face_ruler.NOSTRIL) stay off (one head's validation).
+     (face_ruler_nose.NOSTRIL) stay off (one head's validation).
    - HAIR OVER THE FACE'S EDGE (`hair_edge="on"`, the default). An outline is read only where the figure's edge is bare
      skin. With loose hair down both sides a front picture gives NO outline (the reply lists OUTLINE READS per view and
      warns NO OUTLINE for a view under 20): the face's widths there are GNM's average, not a measurement. Where the

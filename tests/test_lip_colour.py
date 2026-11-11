@@ -9,6 +9,7 @@ import numpy as np
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from hifipushie import assets, base, humanfit, humans, onemesh, paint, skin  # noqa: E402
+from hifipushie import base_identity, base_measures
 
 
 def _ok():
@@ -33,8 +34,8 @@ def test_lip_layers_cover_the_vermilion():
         np.add.at(n, Q[:, a], np.cross(P[Q[:, b]] - P[Q[:, a]], P[Q[:, c]] - P[Q[:, a]]))
     n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-15)
     EJ = paint._expanded(sp)["joints"]
-    assert sum(k.startswith("verm_") for k in EJ) == 4 * base.VERM_N  # the vermilion's own edges as joints
-    g = base._gnm_data()
+    assert sum(k.startswith("verm_") for k in EJ) == 4 * base_measures.VERM_N  # the vermilion's own edges as joints
+    g = base_identity._gnm_data()
     gid = np.maximum(np.asarray(onemesh.asset()["gnm_id"], int)[np.asarray(st["tpl"]["fid"])], 0)
     ext = np.asarray(g["groups"]["skin_exterior"]) > 0.5
     lys = skin.layers(sp)

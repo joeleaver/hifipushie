@@ -202,33 +202,19 @@ def baby_locks(sc: Scalp, g: dict, S: dict, seed: int = 0) -> list:
 # from bigger clumps, never the same thin cards thinned out; "free" = only hair off the head gets cards, the cap
 # (the scalp chart) and the tail's core carry the rest.
 SHELL_FINS = 0.0  # (sh3) shells style: keep the flow-top / arch cards whose middle lies within this share of the head's
-
-
 # radius of the front or side OUTLINE (|unit dir . y| or |. x| under it) and above SHELL_FIN_EL: fins for the top's
 # volume / outline (0 = off: hairline rows only). hair.export.shells.fins overrides.
 SHELL_FIN_EL = 20.0  # deg over the head centre
-
-
 SHELL_FIN_TIERS = ("hero", "main")
-
-
 def _hcap_vm():
     from . import hair_cap as hcap_
     return hcap_.VALUE_MAP
 
 
 SHELL_CARD_VALUE = 1.0  # (sh4) shells style: the kept cards' (hairline rows, fins) colour x this, toned to the cap
-
-
 SHELL_TIERS = {"hero": 2, "main": 2, "npc": 1, "far": 0}  # (sh1) shells per tier (hair.export.shells.tiers overrides)
-
-
 _CHARTS: dict = {}  # the last short chart baked (every tier of an export wears the same one)
-
-
 MASS_MIN = 0.06  # m: loose hair shorter than this (mean lock length) gets no mass shell under its cards
-
-
 # A SHORT cut (loose hair under MASS_MIN) as game artists build it: the cap, wearing the scalp chart with EVERY strand
 # of the groom drawn where it lies (1 texel a strand at a 2048 chart: ~0.3 mm), carries the look; over it only a
 # sparse layer of cards for what stands off the head (the lifted front, the silhouette's breakup), each on a tile of
@@ -238,100 +224,42 @@ SHORT_TIERS = {"hero": {"triangles": 16000, "cap_step": 6.0, "group": "pair", "l
                "main": {"triangles": 8000, "cap_step": 7.5, "group": "pair", "layers": 1, "baby": 0.0, "fly": 1},
                "npc": {"triangles": 4000, "cap_step": 10.0, "group": "lock", "layers": 1, "baby": 0.0, "fly": 0},
                "far": {"triangles": 1500, "group": "lock", "layers": 1, "baby": 0.0, "fly": 0}}
-
-
 EVEN_SHORT_CAP = 1  # (c1, 2026-10-18) an EVEN short groom (clumps-cut cards) still wears the short cut's baked cap
-
-
 # (hair_cap.chart: every strand drawn, grey by lock): hs.cap_chart reads no hair_even strands (G88a c1c: bare scalp patches)
 EVEN_CAP_KEEP = 0.6  # (c3) x the even cap's mid height: the least it keeps under its cards (0: the scalp floor, c2's hero holes)
-
-
 EVEN_CLUMPS = 1  # (c2) an even groom is cut by visual clumps at every tier (0: the hero tier only, before c2)
-
-
 EVEN_SHORT_LIFT = 1  # and that cap stands at the hair's mid height (the short cut's mass) when 1 (c1e: default); 0 = on the scalp (c1d: under the skin, bare patches)
-
-
 SHORT_TOP = 0.6  # x a clump's spread along its normal: a short cut's card stands at the top of its clump
-
-
 SHORT_TIP = 0.0015  # m: how far a short cut's card tips rise off the cap (x 0.2-1.6 per card)
-
-
 SWOOP_CARDS = 3  # a swoop's dedicated cards (one lock)
-
-
 CUT_GROUPS = ["sub", "pair", "lock", "free"][:3]  # finer -> coarser card cuts (clump_cards' groups; "free" drops lying hair)
-
-
 PRIO_FLY = 2.0  # budget priority offsets (lower = kept first): single hairs after every coverage layer
-
-
 PRIO_FREE = -0.6  # hanging hair (free locks: a tail) before the second layer of hair lying on the head
-
-
 PRIO_HALO = 0.35  # pooled single hairs (the halo as ~30 fly cards, ~400 triangles): kept just before a tail's second layer
-
-
 PRIO_FACE = -0.8  # face-framing hair (wisps, curls at the temples) before anything but the coverage layer's core
-
-
 FACE_IN, FACE_AZ = 0.02, 115.0  # m inside the hairline, deg from the front: where a free lock's root counts as face-framing
-
-
 ARCH_TIERS: dict = {"main": 0.6, "npc": 0.4, "far": 0.25}  # (round 35; default from round 36 = f1) tier -> share of hair_clumps.ARCH arch cards per run at that tier (e.g. {"main": 0.6,
-
-
 # "npc": 0.4, "far": 0.25}; {} = off): the crown arch (and with hair_clumps.ARCH_FILL its cap fill) carried to LOD1-3, fewer
 # and wider, so the crown doesn't drop at the LOD0 -> LOD1 switch
 COVER_TIERS: dict = {}  # (round 33) tier -> share of hair_clumps.PART_COVER cover cards per side at that tier (e.g.
-
-
 # {"main": 0.6, "npc": 0.4}; {} = off): the part cover row thinned with the tiers
 CUT_SHARE = 0.45  # the coverage layer of every lock must fit this share of a tier's triangles, else the cut coarsens
-
-
 SWOOP_WIDTH = 0.026  # m: their width
-
-
 SWOOP_BACK = 0.003  # m inside the hairline where they start
-
-
 SWOOP_LAYERS = 3  # each swoop card is this many stacked cards of the fine short tiles
-
-
 SWOOP_GAP = 0.0012  # m between those layers
-
-
 SWOOP_LIFT = 0.007  # m the swoop's cards rise mid-lock over where its strands lie (its wave)
-
-
 BABY_TONE = 1.0  # (round 43, opt-in) baby-hair cards' vertex tone x this. Tess's "nape tick marks" (18-38 mm dark dashes
-
-
 # under the tie, vertex colour .32-.49 vs the tail's .65) are THESE cards (baby_locks all round the hairline, kind "baby",
 # cls None: hair_clumps' NAPE_LIFT / NAPE_SHORT only see clump cards, so round 42's lever never reached them; t43/trace.py)
 BABY_NAPE = (0.05, 0.02)  # (round 44; default after a blind A/B vs r42c NEW 2 / OLD 0 / SAME 2) (z, y) m: on a TIED groom, baby cards rooted lower than z under the scalp's
-
-
 # centre AND more than y behind it are dropped (the groom has no baby hairs at the nape under a gather: they drew
 # Tess's dark tick marks there; t43/ticks.py found them at z < -0.06, y > +0.025). () = off
 SHORT_BABY_PRIO = 0.3  # a short cut's baby hairs (the hero tier's soft hairline) are kept before second-layer cards
-
-
 SHORT_STRAIGHT = 0.6  # share a short cut's card is drawn toward its straight chord (no hooks)
-
-
 SHORT_EDGE = 0.0  # m inside the hairline where a short cut's cards end (past it their thick strands stood as wires)
-
-
 SHORT_GREY = 0.45  # a short cut's card is darker by this x (the greyest locks' grey share - its own lock's)
-
-
 SHORT_ATLAS = 2048
-
-
 CARD_TIERS = {
     "hero": {"cap_step": 6.0, "group": "sub", "layers": 3, "card_width": 0.012, "segment": 0.008,
              "fly": 2, "baby": 2.0, "core_sides": 12, "mass": 5000, "cut": "clumps"},
@@ -342,8 +270,6 @@ CARD_TIERS = {
     "far": {"cap_step": 14.0, "cap": "mass", "group": "free", "layers": 1, "card_width": 0.07, "segment": 0.05,
             "baby": 0.0, "core_sides": 6, "mass": 800},
 }
-
-
 # the tiers ARE the hair's LODs: their triangles come from the export budgets (budgets.json, a hero character's
 # hair_cards at LOD0..3: sourced, not chosen here; it was a made-up 40k / 16k / 6k / 1.5k). A groom's own
 # hair.export.tier_triangles {tier: n} or hair.export.role (hero / main_npc / secondary_npc / crowd) overrides
@@ -374,8 +300,6 @@ def tier_settings(tier: str, short: bool = False, even: bool = False) -> dict:
 # (c13, coordinator 2026-10-19) a tier's DRAWN triangles (back faces included) stay within its role's RANGE maximum in
 # budgets.json (hair_cards range[1]): the tiers are the roles' hair (hero 50k, main_npc 20k, secondary_npc 8k, crowd 1.5k)
 CARD_CUT_SHARE = 0.8  # the clumps cut aims at this share of the tier's budget (card faces; the budget fit trims the rest:
-
-
 # c13a's hero cut made 15.3k card faces for a 25k-face allowance, main / npc / far are bound by their drawn maxima)
 TIER_ROLE = {"hero": "hero", "main": "main_npc", "npc": "secondary_npc", "far": "crowd"}
 

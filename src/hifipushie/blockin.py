@@ -203,8 +203,8 @@ def region_pcs(region: str, n: int = 8) -> np.ndarray:
     sd, the coefficients being unit variance) that move that region most; the rest of the head moves as GNM couples it.
     Sign: + moves the region forward (out of the face) on average. (n, 170)."""
     if region not in _PCS:
-        from . import base as basemod
-        g = basemod._gnm_data()
+        from . import base_identity
+        g = base_identity._gnm_data()
         if region not in g["groups"]:
             raise ValueError(f"pc: no GNM region {region!r} (one of {', '.join(sorted(g['groups']))})")
         msk = np.asarray(g["groups"][region]) > 0.5
@@ -386,7 +386,7 @@ def start(name: str, refs, sex=None, age: float | None = None, body: dict | None
     male = (s in ("male", "m", "man")) if isinstance(s, str) else float(s) >= 0.5
     for k in STRIP:
         hd.pop(k, None)
-    # the rest mouth closed by GNM's own lower-face expression (base.lip_close_delta), not the seal: the seal's
+    # the rest mouth closed by GNM's own lower-face expression (base_gnm_parts.lip_close_delta), not the seal: the seal's
     # membrane flattened the vermilion border (its turn 24 -> 11 deg on Tess) and moved the lips whole (gnmdetail2)
     for k in ("lip_seal", "mouth_gap"):
         hd.pop(k, None)
@@ -741,8 +741,8 @@ def _per_view(base: dict, rj: dict, VI, make) -> dict:
 
 
 def _expr_names(comps: dict | None = None) -> list:
-    from . import base as basemod
-    names = [str(n) for n in basemod._gnm_data()["expression_names"]]
+    from . import base_identity
+    names = [str(n) for n in base_identity._gnm_data()["expression_names"]]
     out = []
     for reg, n in (comps or EXPR_COMPS).items():
         out += [nm for nm in names if nm.rsplit("_", 1)[0] == reg][:int(n)]
@@ -941,16 +941,16 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
             sp["base"]["head"][k] = v
     set_identity(sp, c)
     for k, v in idx_extra.items():
-        from . import base as basemod
-        if k not in [str(n) for n in basemod._gnm_data()["identity_names"]]:
+        from . import base_identity, base_implied
+        if k not in [str(n) for n in base_identity._gnm_data()["identity_names"]]:
             raise ValueError(f"id:{k}: not a GNM identity component (eyes_000..002, teeth_000..079)")
         sp["base"]["head"]["identity"][k] = round(v, 5)
     if iris_mm is not None:
-        from . import base as basemod
+        from . import base_identity, base_implied
         if sp["base"]["head"].get("eye_radius"):
             raise ValueError("iris_mm: the head overrides GNM's eyeball (base.head.eye_radius); with the override the drawn "
                              "iris is skin.eyes.iris_size. Drop the key first (block_in_step {\"eye_radius\": 0})")
-        li = basemod.limbus_identity(sp, iris_mm)
+        li = base_implied.limbus_identity(sp, iris_mm)
         sp["base"]["head"]["identity"]["eyes_000"] = li["eyes_000"]
         if isinstance((sp.get("skin") or {}).get("eyes"), dict):   # (the dressing's own drawn size would hide the limbus)
             sp["skin"]["eyes"].pop("iris_size", None)
@@ -1027,7 +1027,7 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
 
 # block_in_solve's defaults (solvereads, 2026-10-12; each decided by the validation in the notes' "## solvereads")
 SOLVE_HOLD = None            # "auto": every measure no read looks at is held at the start head's value
-SOLVE_EXPRESSION = False     # "view" | "shared": the pictures' expression as a nuisance (face_ruler.EXPR_SET)
+SOLVE_EXPRESSION = False     # "view" | "shared": the pictures' expression as a nuisance (face_ruler_blockin.EXPR_SET)
 SOLVE_JAW_LM = None          # detector landmarks added to the differential anchors (the jaw line: 3..13)
 CAM_FIRST = 1                # cameras-first rounds of every block_in_solve call (the head held; "refit": 2, wider, and the new start)
 SEESAW_COS = -0.2            # a step whose cosine with the last call's step is under this is halved
@@ -1040,14 +1040,15 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
                hold=SOLVE_HOLD, expression=SOLVE_EXPRESSION, jaw_lm=SOLVE_JAW_LM, report: bool = True,
                damp: bool = True, chin: dict | None = None, dense: bool | None = None, mp: bool | None = None,
                hair_edge: bool | None = None, nostrils: bool | None = None) -> dict:
-    """ONE JOINT STEP (reruns, 2026-10-11): the face ruler's own solve applied whole. face_ruler.compare reads every
+    """ONE JOINT STEP (reruns, 2026-10-11): the face ruler's own solve applied whole. face_ruler_compare.compare reads every
     reference view at once (skin outlines, iris centres, the turned views' limbus) and finds the most likely identity
     change under GNM's prior with each camera's shift / scale / roll / yaw / pitch free; until now only the measures
     were read off it. Here `share` of that change becomes the step and the cameras the solve ended on are kept (read
     through the old cameras the result looks a size wrong). Tess from the class mean: one step = |c| 5.4 -> 10.7,
     table 22 / 26, about where ten hand rounds got. It does NOT see the inside of the face (lids, lips' borders, the
     nose's planes): the eye and lips steps follow. -> step()'s report + "solve": {"n", "dc", "c", "max_sd", "cameras"}."""
-    from . import face_ruler as fr, store
+    from . import store
+    from . import face_ruler_camera, face_ruler_compare
     c0 = identity(store.load(src))
     # the prior is on the WHOLE identity: centred on the block-in's start head (its class mean), not on this call's
     # change (a second call used to move |dc| 4 more and walk a component to 3.1 sd)
@@ -1057,7 +1058,7 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
         off = c0 - identity(store.load(root))
     if cameras not in ("free", "trust", "refit"):
         raise ValueError('block_in_solve: cameras = "free" (fitted cameras: shift / scale / roll / yaw / pitch / distance under '
-                         'a wide prior: face_ruler.PHOTO_CAM_SD7), "trust" (measured cameras: a third of those widths) or '
+                         'a wide prior: face_ruler_camera.PHOTO_CAM_SD7), "trust" (measured cameras: a third of those widths) or '
                          '"refit" (cameras fitted on ANOTHER head: laid on this head first, then free). A prior, never a '
                          'clip, on the WHOLE camera move since the block-in started: use the same setting on every call.')
     k = 1.0 / 3.0 if cameras == "trust" else 1.0
@@ -1084,21 +1085,21 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
                          + 'laid on THIS head first this call (cameras="refit" instead of "free"); later calls use what you pass')
         cameras = "refit"
     cam0 = None if cameras == "refit" else (rj0.get("blockin") or {}).get("cam_done")
-    cam_sd = {kk: tuple(k * x for x in v) for kk, v in fr.PHOTO_CAM_SD7.items()}
+    cam_sd = {kk: tuple(k * x for x in v) for kk, v in face_ruler_camera.PHOTO_CAM_SD7.items()}
     from . import denselm
-    if (fr.DENSE if dense is None else dense) and denselm.available():      # the dense landmarks read perspective (distance to 5-9 %)
-        cam_sd = {kk: tuple(v[:6]) + (k * fr.PHOTO_CAM_DIST_DENSE,) for kk, v in cam_sd.items()}
+    if (face_ruler_camera.DENSE if dense is None else dense) and denselm.available():      # the dense landmarks read perspective (distance to 5-9 %)
+        cam_sd = {kk: tuple(v[:6]) + (k * face_ruler_camera.PHOTO_CAM_DIST_DENSE,) for kk, v in cam_sd.items()}
     b0 = rj0.get("blockin") or {}
     # (readmix) A KNOWN LENS holds its view's distance, dense or not: the prior is on the whole move since block_in_start,
     # whose fit stood at that lens
     lens_notes = []
-    kinds0 = b0.get("kinds") or [fr.kind_of(v.get("yaw", 0)) for v in rj0["views"]]
+    kinds0 = b0.get("kinds") or [face_ruler_compare.kind_of(v.get("yaw", 0)) for v in rj0["views"]]
     for v_, kk in zip(rj0["views"], kinds0):
-        lm_ = fr.lens_known(v_)
-        if lm_ and kk in cam_sd and len(cam_sd[kk]) > 6 and cam_sd[kk][6] > fr.PHOTO_CAM_DIST_LENS:
-            cam_sd[kk] = tuple(cam_sd[kk][:6]) + (fr.PHOTO_CAM_DIST_LENS,)
+        lm_ = face_ruler_camera.lens_known(v_)
+        if lm_ and kk in cam_sd and len(cam_sd[kk]) > 6 and cam_sd[kk][6] > face_ruler_camera.PHOTO_CAM_DIST_LENS:
+            cam_sd[kk] = tuple(cam_sd[kk][:6]) + (face_ruler_camera.PHOTO_CAM_DIST_LENS,)
             lens_notes.append(f"LENS: {str(v_.get('image', kk)).split('/')[-1]} was taken through a known {lm_:.0f} mm lens (35 mm equivalent): its camera's "
-                              f"distance is held to +- {fr.PHOTO_CAM_DIST_LENS:g} % of the start's")
+                              f"distance is held to +- {face_ruler_camera.PHOTO_CAM_DIST_LENS:g} % of the start's")
     # carried across the block-in's calls: the down-weighting the pictures needed (it may come down 15 % a call, never
     # jump), each view's kind (from its fitted camera at the first solve) and its outline reader
     relax0 = 1.0 + RELAX_KEEP * (float(b0.get("relax", 1.0)) - 1.0)
@@ -1127,7 +1128,7 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
         else:
             chin["size"] = True
             chin["size_note"] = ("SIZE: held at the start head's: " + size_info["why"])
-    c = fr.compare(src, rounds=rounds, prior_off=off, cam_sd=cam_sd, lids=lids, lips=lips, anchors=anchors, parse=parse,
+    c = face_ruler_compare.compare(src, rounds=rounds, prior_off=off, cam_sd=cam_sd, lids=lids, lips=lips, anchors=anchors, parse=parse,
                    normals=normals, adapt=adapt, cam_first=2 if cameras == "refit" else CAM_FIRST, cam_reset=cameras == "refit", cmax=cmax,
                    cam_done0=cam0 if cam0 is not None else np.zeros((len(rj0["views"]), 7)),
                    relax0=relax0, hold=hold, held0=b0.get("held") if hold == "auto" else None, expr=expression, kinds=b0.get("kinds"), readers=b0.get("readers"), jaw_lm=jaw_lm, chin=chin, dense=dense,
@@ -1175,7 +1176,7 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
                     "max_sd": float(np.abs(c0 + dc).max()), "sig_scale": {f"{t} {v}": round(float(x), 2) for (t, v), x in c["sig_scale"].items()}, "cameras": np.round(np.asarray(c["cam_done"], float), 2).tolist(),
                     "camera_step": np.round(np.asarray(c["cam_step"], float), 2).tolist(), "relax": float(c["relax"]),
                     "held": list(c.get("held") or []), "expression": xp, "damped": damped, "kinds": list(c["kinds"]), "readers": list(c["readers"]),
-                    "view_yaw": [round(abs(fr.view_yaw(v["cam"])), 1) for v in c["views"]],
+                    "view_yaw": [round(abs(face_ruler_camera.view_yaw(v["cam"])), 1) for v in c["views"]],
                     "stated_yaw": [abs(float(v.get("yaw", 0.0) or 0.0)) for v in rj0["views"]], "camera_lines": list(c.get("camera_lines") or []), "bound": list(c.get("bound") or []),
                     "disagree": {f"{t} {v}": round(x["sig"], 2) for (t, v), x in (c.get("disagree") or {}).items()},
                     "n_view": c.get("n_view") or {}, "inferred": c.get("inferred") or {}}
@@ -1211,7 +1212,8 @@ def iris_size(name: str, off=None) -> dict:
     identity), "iris_size" (the size against the start's that would make an AVERAGE iris fit), "iris_sd" (0.07: irises
     differ +- 7 % between people), "prior_sd" (GNM's spread of head size), "weight" / "combined_sd" (the two combined),
     "text"}. off: the identity's change since the block-in's start (default: read from the log's root)."""
-    from . import base as basemod, blockin_eyes as be, solve_report as sr, store
+    from . import blockin_eyes as be, solve_report as sr, store
+    from . import base_implied
     sp = store.load(name)
     if off is None:
         root = (_refs(name).get("blockin") or {}).get("root")
@@ -1220,7 +1222,7 @@ def iris_size(name: str, off=None) -> dict:
     psd, isd = sr.size_prior_sd(), sr.SIZE_IRIS_SIG
     out = {"read": False, "now": now, "iris_sd": isd, "prior_sd": psd, "weight": psd ** 2 / (psd ** 2 + isd ** 2),
            "combined_sd": float(1 / np.sqrt(1 / psd ** 2 + 1 / isd ** 2))}
-    if basemod.eye_native(sp) is None:
+    if base_implied.eye_native(sp) is None:
         return {**out, "why": "the head overrides GNM's eyeball (base.head.eye_radius): its iris is not GNM's limbus",
                 "text": "IRIS SIZE CHECK: not read (the head overrides GNM's eyeball)"}
     try:
@@ -1235,7 +1237,7 @@ def iris_size(name: str, off=None) -> dict:
         sp0["base"]["head"]["identity"].pop("eyes_000", None)
     if isinstance((sp0.get("skin") or {}).get("eyes"), dict):
         sp0["skin"]["eyes"].pop("iris_size", None)
-    mean_mm = 2000.0 * float(basemod.eye_native(sp0)["limbus"])
+    mean_mm = 2000.0 * float(base_implied.eye_native(sp0)["limbus"])
     rel = mean_mm / float(ic["photo_mm"]) - 1.0          # how much larger the head must be than NOW for an average iris
     tot = (1 + now) * (1 + rel) - 1
     out.update(read=True, photo_mm=float(ic["photo_mm"]), mean_mm=mean_mm, iris_now=rel, iris_size=tot)
@@ -1411,8 +1413,9 @@ def table_delta(t0: dict, t1: dict) -> list:
 def haircap(mesh: dict, st: dict) -> np.ndarray:
     """Per-vertex colour: skin, and a neutral dark cap over GNM's scalp (outside its hockey_mask face region, not the
     ears, above the ears' bottom): bald clay reads male."""
-    from . import base as basemod, likeness, onemesh
-    g = basemod._gnm_data()
+    from . import likeness, onemesh
+    from . import base_identity
+    g = base_identity._gnm_data()
     gid = np.asarray(onemesh.asset()["gnm_id"], int)[np.asarray(st["tpl"]["fid"])]
     ok = gid >= 0
     hm_ = np.zeros(len(gid))
@@ -1640,8 +1643,9 @@ LIP_TINT = np.array([0.98, 0.74, 0.74])   # the clay's vermilion, x skin: presen
 
 def lip_tint(mesh: dict, st: dict, share: float = 0.8) -> None:
     """The vermilion tinted on the clay (GNM's upper_lip / lower_lip groups): untinted clay lips barely read as lips."""
-    from . import base as basemod, onemesh
-    g = basemod._gnm_data()
+    from . import onemesh
+    from . import base_identity
+    g = base_identity._gnm_data()
     gid = np.asarray(onemesh.asset()["gnm_id"], int)[np.asarray(st["tpl"]["fid"])]
     ok = gid >= 0
     w = np.zeros(len(gid))

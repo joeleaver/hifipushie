@@ -78,7 +78,7 @@ MIX: dict = {"eye contour": (0.9, 1.0, None), "commissures": (1.1, 1.4, None), "
 NEFF = 16                        # a view's MediaPipe reads count as this many independent ones: one network regresses the whole
 #                                  mesh, neighbours err together (the participation ratio of its residuals' covariance on 2,400
 #                                  near-frontal renders: 16 for the inner face's 864 reads, 6 for the lips' 80, 5.5 for the eyes' 64)
-PX = 0.6                         # picture px: the detector's own scatter on a small face (as face_ruler.LM_PX)
+PX = 0.6                         # picture px: the detector's own scatter on a small face (as face_ruler_camera.LM_PX)
 BIAS = False                     # the learned bias by yaw (mp_gnm.json "bins") taken out of each read: on the real photographs it did
 #                                  not help the features read here (lip seam 1.53 -> 1.68, eye contour 1.07 -> 1.07): off
 ENABLED = True                   # reference_views(mp=None) takes this
@@ -130,11 +130,12 @@ def sigma(feat: str, turn: float, mix: dict | None = None):
 def obs(head: dict, view: dict, P, mix: dict | None = None, neff: float | None = None) -> list:
     """The view's MediaPipe reads. P: (478, 2) the detector's points on the picture (picture px)."""
     from . import face_ruler as fr
+    from . import face_ruler_camera, face_ruler_features
     if P is None or "gid" not in head or not available():
         return []
     cam = view["cam"]
-    g2m = fr._gnm_to_model(head)
-    yaw, turn = cam_yaw(cam), abs(fr.view_yaw(cam))
+    g2m = face_ruler_features._gnm_to_model(head)
+    yaw, turn = cam_yaw(cam), abs(face_ruler_camera.view_yaw(cam))
     out = []
     V = np.asarray(head["V"], float)
     for pt in table()["points"]:
@@ -152,7 +153,7 @@ def obs(head: dict, view: dict, P, mix: dict | None = None, neff: float | None =
         p = np.asarray(P[int(pt["mp"])], float)
         s_ = float(np.hypot(sg, PX * mm1))
         if view.get("style") == "photo" and not view.get("render") and pt["feature"] in ("vermilion border", "lip seam", "commissures"):
-            b = b + np.array([0.0, fr.lip_bias("mp", f"mp{pt['mp']}") if abs(yaw) < 25 else 0.0])
+            b = b + np.array([0.0, face_ruler_features.lip_bias("mp", f"mp{pt['mp']}") if abs(yaw) < 25 else 0.0])
         for ax in (0, 1):
             out.append({"type": "mp", "view": view["kind"], "name": f"mp{pt['mp']}.{'xy'[ax]}", "o": float(p[ax] - q[0, ax]) * mm1 - float(b[ax]),
                         "J": Jp[ax] * mm1, "sig": s_, "p": list(map(float, q[0])), "q": list(map(float, p)), "X": list(map(float, X)),

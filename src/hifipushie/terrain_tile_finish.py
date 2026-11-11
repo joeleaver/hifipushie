@@ -261,8 +261,6 @@ def _light(light):
 
 
 RELIEF_CHART = 2.5  # the ground's maps-only relief on cliff tiles is band-limited as if their texel were this x larger:
-
-
 # their charts' texel grids don't line up across a tile border (ground tiles' do), so fine relief differed there
 BAKE_PIECE = 120_000  # texels per bake job (a 64 m tile's LOD 0 atlas at 13-16 texels/m is 1.2-2.6M: 10-20 jobs)
 
@@ -301,7 +299,6 @@ def _bake_border(c, stem, k):
         return None
     lo, hi = c["G"].bounds(int(m.group(1)), int(m.group(2)))
     return (lo, hi, BORDER_FLAT / c["cfg"]["_density"][min(k, len(c["cfg"]["_density"]) - 1)])
-
 
 def _job_finish(stem):
     """A tile LOD's maps assembled from its baked pieces, and its GLB written. Returns (bytes, the maps report)."""
