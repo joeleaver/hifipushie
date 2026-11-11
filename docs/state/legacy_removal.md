@@ -49,10 +49,9 @@ The clothes guides (cloth_guide, cloth_design, cloth_construction, cloth_sim, cl
 cloth_background) are what was left after the old paragraphs went: they need one rewrite to steps 0-10.
 
 ## Tools (not in the repo): /mnt/data/hifipushie/deadcode/
-dead.py, why.py, frontier.py, hyp.py, apply.py, check.py (unreachable code, function by function; conservative);
-proof.py (builds and flat checks against the parent tree); surface.py (the tool surface as one JSON). Splits: outline.py,
-unit_deps.py, edges.py, rebound.py (before); split_module.py, split_class.py + plan_<module>.py; then rehome.py
-(constants back to the base), repoint.py, regap.py, retail.py, shadow_check.py; proofs same_units.py, rehomed_all.py.
+Dead code: dead.py, why.py, frontier.py, hyp.py, apply.py, check.py. Proofs: proof.py (builds, flat checks), surface.py
+(the tool surface), same_units.py, same_members.py, rehomed_all.py. Splits: outline.py, unit_deps.py, rebound.py (before);
+split_module.py, split_class.py, rehome.py + plan_<module>.py; repoint.py, regap.py, retail.py, shadow_check.py (after).
 
 ## Also unreachable today, outside clothes (not touched; check blender_* by hand, Blender runs them by path)
 blender_cards 446 lines, faceext 376, terrain_seams 201, flipfit 137, faceatlas 105, gnm_controls 90, blender_lashes 86.
