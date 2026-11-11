@@ -96,6 +96,15 @@ def test_a_seamless_stiff_piece_floats_in_the_largest_soft_piece_at_its_place():
     assert H.part_of("canvas.L") is None and H.part_of("front.L").stiffened_by == ["canvas.L"]
 
 
+def test_soft_on_soft_is_never_a_ply_so_the_canvas_keeps_its_host():  # (t s5-2; C418)
+    pl = {"to": "torso", "side": "front"}
+    sew = [("front.L", e, "inner.L", e) for e in ("left", "top", "right", "bottom")]
+    net = _net({"front.L": (0.3, 0.5), "inner.L": (0.3, 0.5), "canvas.L": (0.2, 0.3)}, stiff=["canvas.L"], sew=sew,
+               place={"front.L": pl, "inner.L": pl, "canvas.L": pl})
+    H = ch.read(net)  # (sewn all round and congruent, but both soft: it hangs inside, not a ply)
+    assert H.plies == {} and set(H.layers) == {"canvas.L"}, (H.plies, H.layers)  # (two equal soft pieces: either hosts)
+
+
 def test_a_roll_on_a_soft_piece_is_its_own_fold_on_a_stiff_part_a_fall():
     folds = [{"name": "lapel", "piece": "front.L", "kind": "roll"}, {"name": "roll", "piece": "collar", "kind": "roll"}]
     net = _net({"front.L": (0.3, 0.5), "stand": (0.2, 0.04), "collar": (0.2, 0.07)}, stiff=["stand", "collar"],

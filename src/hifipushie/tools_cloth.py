@@ -74,8 +74,13 @@ def _chain_text(st: dict) -> str:
     return "\n".join(lines)
 
 
-def _chain_call(name: str, garment: str, wear: str, opening: float | None = None, **more) -> str:
-    args = {"name": name, "garment": garment, "wear": wear}
+def _tag(wear: str | None) -> str:
+    """The wear in an answer's head: none when the style plan decides it (C418, t s5-2: an open jacket read "(closed)")."""
+    return f" ({wear})" if wear else ""
+
+
+def _chain_call(name: str, garment: str, wear: str | None, opening: float | None = None, **more) -> str:
+    args = {"name": name, "garment": garment, **({"wear": wear} if wear else {})}
     if opening is not None:
         args["opening"] = opening
     return f"call_tool(\"chain_garment\", {json.dumps(dict(args, **more))})"
@@ -116,7 +121,8 @@ def chain_garment(name: str, garment: str, wear: str | None = None, opening: flo
     if garment not in (spec.get("cloth") or {}):
         return _chain_gate(name, garment, spec)
     w = chain_plan.planned_wear(_cs.load_plan(name, garment), wear, opening)  # (T7: the plan wins; raises on a contradiction)
-    wear = w["state"]
+    job = w["state"]  # (the job's folder; the answers name a wear only when no style plan decides it: C418)
+    wear = None if "plan" in w else job
     from . import chain_layers as _cl
     try:  # (worn over another garment: its approved build is the collider, part of the job key; T9)
         under = _cl.under_for(name, garment)
@@ -129,11 +135,11 @@ def chain_garment(name: str, garment: str, wear: str | None = None, opening: flo
             raise ValueError("waive: {structure row id: the reason it is accepted}, each reason a sentence")
         w["waive"] = {str(k): str(v) for k, v in waive.items()}
     key = cg.job_key(spec, garment, w, ((_cs.load_plan(name, garment) or {}).get("style") or {}).get("blockin"))  # (F10)
-    d = cg.job_dir(name, garment, wear)
+    d = cg.job_dir(name, garment, job)
     st = cg.live_status(d)
     if st.get("stage") in cg.RUNNING:
         if st.get("key") != key or rebuild:  # (two workers in one folder would write over each other)
-            return (f"{name}:{garment} ({wear}): a job of a different pattern or opening is at stage {st['stage']}; it ends first.\n"
+            return (f"{name}:{garment}{_tag(wear)}: a job of a different pattern or opening is at stage {st['stage']}; it ends first.\n"
                     f"next: {_chain_call(name, garment, wear, opening)} when this one has ended")
     elif st.get("key") != key or rebuild:
         refused = _chain_gate(name, garment, spec)
@@ -154,20 +160,21 @@ def chain_garment(name: str, garment: str, wear: str | None = None, opening: flo
     while st.get("stage") in cg.RUNNING and _t.time() - t0 < float(wait):
         _t.sleep(min(2.0, float(wait)))
         st = cg.live_status(d)
-    return _cl.with_answer(_chain_answer(name, garment, wear, st, opening), st)
+    return _cl.with_answer(_chain_answer(name, garment, wear, st, opening, job=job), st)
 
 
-def _chain_answer(name: str, garment: str, wear: str, st: dict, opening: float | None = None) -> str:
+def _chain_answer(name: str, garment: str, wear: str | None, st: dict, opening: float | None = None,
+                  job: str | None = None) -> str:
     """Every answer of the job names the next call."""
     from . import chain_garment as cg
-    look = f"call_tool(\"look_chain\", {{\"name\": \"{name}\", \"garment\": \"{garment}\", \"wear\": \"{wear}\"}})"
+    look = f"call_tool(\"look_chain\", {{\"name\": \"{name}\", \"garment\": \"{garment}\", \"wear\": \"{job or wear}\"}})"
     stage = st.get("stage", "queued")
     again = _chain_call(name, garment, wear, opening)
     if stage == "refused":
         sc = st.get("structure") or {}
         bad = [r["id"] for r in sc.get("rows") or [] if r["status"] in ("FAIL", "UNMEASURED") and not r.get("waived")]
         more = f"\n  structure (the build, read before the refusal): {sc.get('verdict')}; failing: {', '.join(bad)}" if sc else ""
-        return (f"{name}:{garment} ({wear}): refused: {st.get('refused')}{more}\nnext: fix it in your draft (draft_pattern runs the flat gate), "
+        return (f"{name}:{garment}{_tag(wear)}: refused: {st.get('refused')}{more}\nnext: fix it in your draft (draft_pattern runs the flat gate), "
                 f"then {again}")
     if stage == "stage_failed":  # (F5: the build stopped at a stage's gate: start, chains or surfaces)
         from . import chain_stages as cst
@@ -177,17 +184,17 @@ def _chain_answer(name: str, garment: str, wear: str, st: dict, opening: float |
         sc = st.get("structure") or {}
         bad = [r for r in sc.get("rows") or [] if r["status"] in ("FAIL", "UNMEASURED") and not r.get("waived")]
         ok = [r["id"] for r in sc.get("rows") or [] if r["status"] == "PASS"]
-        return (f"{name}:{garment} ({wear}): built; STRUCTURE {sc.get('verdict')}: the hang does not run ({len(bad)} rows "
+        return (f"{name}:{garment}{_tag(wear)}: built; STRUCTURE {sc.get('verdict')}: the hang does not run ({len(bad)} rows "
                 f"fail; pass: {', '.join(ok) or 'none'})\n" + "\n".join(cs.row_line(r) for r in bad) +
                 f"\nnext: {look} to see the build beside your reference; then each row's change (in your draft: draft_pattern, "
                 f"then {again}); a row the reference can't decide: {again[:-2]}, \"waive\": {{\"<row id>\": "
                 f"\"<why>\"}}}})")
     if stage == "awaiting_approval":
         from . import chain_presim as cp
-        return cp.awaiting_text(name, garment, wear, st, f"{name}:{garment} ({wear}): built; STRUCTURE "
+        return cp.awaiting_text(name, garment, wear, st, f"{name}:{garment}{_tag(wear)}: built; STRUCTURE "
                                 f"{(st.get('structure') or {}).get('verdict')}\n{_chain_text(st)}", again, look)
     if stage == "failed":
-        return (f"{name}:{garment} ({wear}): the build failed: {st.get('error')}\nnext: report this to the coordinator as a tool "
+        return (f"{name}:{garment}{_tag(wear)}: the build failed: {st.get('error')}\nnext: report this to the coordinator as a tool "
                 f"fault, with the text above; don't work round it. {_chain_call(name, garment, wear, opening, rebuild=True)} starts over")
     head = {"queued": "starting", "building": "building", "resuming": "resuming from the saved build (no rebuild)", "built": "built; the structure check is reading the build", "hanging": "built; the hang is running",
             "hung": "hung; the last lengths are being read", "done": "built and hung"}.get(stage, stage)
@@ -200,7 +207,7 @@ def _chain_answer(name: str, garment: str, wear: str, st: dict, opening: float |
         body = (f"  structure: {sc.get('verdict')} ({len(sc.get('rows') or [])} rows" +
                 (f"; waived: {', '.join(r['id'] for r in sc['rows'] if r.get('waived'))}" if any(r.get("waived") for r in sc.get("rows") or []) else "")
                 + ")" + (f"\n{body}" if body else ""))
-    txt = f"{name}:{garment} ({wear}): {head}" + (f"\n{body}" if body else "") + (f"\n  {st['record']}" if st.get("record") else "")
+    txt = f"{name}:{garment}{_tag(wear)}: {head}" + (f"\n{body}" if body else "") + (f"\n  {st['record']}" if st.get("record") else "")
     if stage == "done":
         from . import chain_presim as cp
         g = cp.threads_gate(st)
