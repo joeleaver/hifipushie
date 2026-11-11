@@ -199,3 +199,15 @@ def test_a_fold_line_may_be_a_curved_path_of_the_part():  # (s4-20: a roll line 
     L = pattern.fold_line({"collar": pc}, {"name": "roll", "piece": "collar", "line": "rollLine"})
     assert len(L) > 20 and abs(L[:, 0].min()) < 1e-6 and abs(L[:, 0].max() - 1) < 1e-6 and L[:, 1].max() > 0.29
     assert ds._line({"pieces": {"collar": pc}, "edge_arcs": {}}, "collar", "rollLine") is not None
+
+
+def test_a_dart_the_inventory_builds_is_drafted_not_marked():
+    """C410: trial s4-21 declared step 1's front fish dart as a mark only; the forepart had no shaping and all rows passed."""
+    from hifipushie import draft_darts_inv as ddi
+    step1 = {"details": {"front_dart.L": {"what": "front fish dart: waist suppression", "on": ["front.L"], "build": "full"},
+                         "pocket.L": {"what": "flap pocket", "on": ["front.L"]},
+                         "tuck": {"what": "a pleat", "kind": "dart", "on": ["back"], "build": "omit"}}}
+    r = ddi.row(step1, {"darts": []})
+    assert r["status"] == "FAIL" and "front_dart.L on front.L" in r["why"] and "1 inventory darts" in r["value"]
+    assert ddi.row(step1, {"darts": [{"piece": "front", "legs": ["a", "b"]}]})["status"] == "PASS"
+    assert ddi.row({"details": {"pocket.L": {"what": "flap pocket"}}}, {}) is None
