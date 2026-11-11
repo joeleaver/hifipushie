@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from hifipushie import likeness as lk
-from hifipushie import likeness_fit, likeness_measure, likeness_notes, likeness_sides, likeness_stages
+from hifipushie import likeness_measure, likeness_notes, likeness_sides, likeness_stages
 
 
 def face(rot_deg=0.0, scale=1.0, tilt=5.0, arch=4.0, hump=3.0):
@@ -97,7 +97,7 @@ def test_checklist_is_consistent():
             assert it["tol"] is None
             continue
         assert it["tol"] > 0
-        if it["measure"]["kind"] in likeness_sides.SPECIAL:
+        if it["measure"]["kind"] in lk.SPECIAL:
             continue
         try:
             v = likeness_measure.value(s, it["measure"], 1.0)
@@ -204,8 +204,8 @@ def test_expression_on_a_reference_goes_to_the_pose():
             {"id": "brow_eye", "view": "front", "score": 3.0, "miss": 2.5}]
     want, _, _ = likeness_stages.stage_wants({"rows": rows}, "brows", skip=b)
     assert want == {}                                                  # the squinted brow isn't an identity ask
-    assert likeness_notes.EXPR_LEVERS["eye_opening"][0].startswith("pose.")
-    for ids in likeness_notes.EXPR_BIAS.values():
+    assert lk.EXPR_LEVERS["eye_opening"][0].startswith("pose.")
+    for ids in lk.EXPR_BIAS.values():
         assert all(any(it["id"] == i for it in lk.checklist()) for i in ids)
 
 
@@ -294,7 +294,7 @@ def test_contour_items_in_the_checklist():
     assert len(items) >= 10 and all(it["measure"]["key"] in lp.KEYS for it in items)
     ids = {it["id"] for it in lk.checklist()}
     assert all(r in ids for it in items for r in it.get("replaces", []))
-    assert all(i in ids for part in likeness_fit.PROFILE_ITEMS.values() for i in part)
+    assert all(i in ids for part in lk.PROFILE_ITEMS.values() for i in part)
 
 
 def test_character_read(tmp_path, monkeypatch):

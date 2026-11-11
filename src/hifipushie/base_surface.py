@@ -7,19 +7,14 @@ import json
 import numpy as np
 from scipy.spatial import cKDTree
 
+from . import base
+from . import base as base_mod
 from . import retopo
-from .base import OWN_REACH, SEAM, VERSION, _CACHE, _source_key, source
+from .base import _source_key, source
 from .base_gnm_parts import mouth_mode, mouth_open, sock_points
 from .base_imls import _catmull_clark, _normals_and_h, _sd_body
 from .base_measures import head_of
 from .base_tubes import _neck_tube, _push, _soften, _tube_weight
-
-SEAL_OVERLAP = 0.0  # m: the contact rows pushed past each other for the FIELD (0.4 mm made the two lip sheets cross:
-# small holes in the field along the seam, Tess ts_h7)
-SEAL_H = 1.0  # the field's kernel widened this much at a sealed seam (2.0 tried: it blurred the seam's V into bigger holes)
-SEAL_H_REACH = 0.0025
-SEAL_V = (0.5, 0.25, 0.1)  # share of the vertical gap the 1st, 2nd, 3rd rows out from a sealed contact close (field only)
-
 
 def _sealed_field(W, faces, sf: dict):
     """A sealed mouth (lip_seal) for the field only (the template's quads, the export's and the face shapes', keep the
@@ -31,12 +26,12 @@ def _sealed_field(W, faces, sf: dict):
     drop[np.asarray(sf["drop"], int)] = True
     F = [f for f in faces if not drop[np.asarray(f)].all()]
     W = np.array(W, float)
-    W[np.asarray(sf["up"], int), 2] -= SEAL_OVERLAP
-    W[np.asarray(sf["lo"], int), 2] += SEAL_OVERLAP
+    W[np.asarray(sf["up"], int), 2] -= base.SEAL_OVERLAP
+    W[np.asarray(sf["lo"], int), 2] += base.SEAL_OVERLAP
     # the V between the closed lips' fronts made shallower: the next rows out drawn toward the seam (by the vertical
     # gap between the two lips' rows at that x). Left as GNM shapes them, the V narrowed to the mesher's ~1 mm before
     # it closed and came out as a row of specks along the seam (Tess ts_h7)
-    for (ru, rl), wgt in zip(sf.get("outer") or [], sf.get("v") or SEAL_V):
+    for (ru, rl), wgt in zip(sf.get("outer") or [], sf.get("v") or base.SEAL_V):
         ru, rl = np.asarray(ru, int), np.asarray(rl, int)
         if len(ru) < 3 or len(rl) < 3:
             continue
@@ -71,9 +66,9 @@ def surface(spec_expanded: dict, base: dict) -> dict:
         from . import onemesh
         settings["one"] = onemesh.VERSION if not onemesh.native(base) else onemesh.build_version(base)
     used["_eyes"] = [spec_expanded["joints"][e]["pos"] for e in ("eye.L", "eye.R") if e in spec_expanded["joints"]]
-    key = hashlib.sha1(json.dumps([name, used, settings, VERSION], sort_keys=True, default=float).encode()).hexdigest()
-    if key in _CACHE:
-        return _CACHE[key]
+    key = hashlib.sha1(json.dumps([name, used, settings, base_mod.VERSION], sort_keys=True, default=float).encode()).hexdigest()
+    if key in base_mod._CACHE:
+        return base_mod._CACHE[key]
     girth = dict(base.get("girth") or {})
     for j, g in list(girth.items()):  # mirrored
         if j.endswith(".L"):
@@ -111,7 +106,7 @@ def surface(spec_expanded: dict, base: dict) -> dict:
         # own width the mesher (~1 mm) cut it into a row of pits (Tess ts_h7: dark specks along the seam)
         cs = np.asarray(W, float)[np.r_[np.asarray(tpl["seal_field"]["up"], int), np.asarray(tpl["seal_field"]["lo"], int)]]
         dz = cKDTree(cs).query(V)[0]
-        h = h * (1 + (SEAL_H - 1) * np.clip(1 - dz / SEAL_H_REACH, 0, 1))
+        h = h * (1 + (base_mod.SEAL_H - 1) * np.clip(1 - dz / base_mod.SEAL_H_REACH, 0, 1))
     if own_neck:  # MakeHuman's neck is rings of long thin quads: with the mean edge as the kernel's width the field
         # was faceted between the rings (fine level lines down the neck). The longest edge at each vertex instead.
         # (Tried on the one mesh, 2026-10-08: no visible change, and a wider kernel over its neck bridge, or one
@@ -131,7 +126,7 @@ def surface(spec_expanded: dict, base: dict) -> dict:
         # both sets overlap across +-SEAM and their points are weighted down across it (C2 ramps): cut hard at the
         # plane, the two surfaces' few-mm mismatch left a ragged crack
         ub = (V - c) @ pn
-        kb = (ub <= SEAM) | (axis_d > 0.2)
+        kb = (ub <= base_mod.SEAM) | (axis_d > 0.2)
         def ramp(x):
             x = np.clip(x, 0, 1)
             return x ** 3 * (x * (6 * x - 15) + 10)
@@ -139,15 +134,15 @@ def surface(spec_expanded: dict, base: dict) -> dict:
         uh = (H - c) @ pn
         if own_neck:  # the head's skin eased onto the body's own head where they meet (they differ by millimetres:
             # cross-faded as they were, the seam showed as a soft step), fading out OWN_REACH above the plane
-            reach = OWN_REACH * float(head["carry"]["s"])
-            near = np.flatnonzero((uh > -2 * SEAM) & (uh < reach))
+            reach = base_mod.OWN_REACH * float(head["carry"]["s"])
+            near = np.flatnonzero((uh > -2 * base_mod.SEAM) & (uh < reach))
             nh = head["normals"][near]
             # each head point's closest point of the body's own SKIN (its triangles; only skin facing the same way: a
             # baby's chin lies on its chest), and the normal there. (The weighted mean of the nearest body VERTICES
             # sat under the surface and drew the points onto the mesh's rings: a ribbed band round the throat.)
             from . import rig_template
             T = np.array([(q[0], q[j], q[j + 1]) for q in F for j in range(1, len(q) - 1)])
-            T = T[(((V[T].mean(1) - c) @ pn) > -4 * SEAM) & (((V[T].mean(1) - c) @ pn) < reach + 0.03)]
+            T = T[(((V[T].mean(1) - c) @ pn) > -4 * base_mod.SEAM) & (((V[T].mean(1) - c) @ pn) < reach + 0.03)]
             Q = rig_template.from_surface(V, T, np.c_[V, N], H[near], nh)
             tgt, nb_ = Q[:, :3], Q[:, 3:]
             # how far each point is trusted to be the same skin: by its distance and by facing the same way, without
@@ -162,22 +157,22 @@ def surface(spec_expanded: dict, base: dict) -> dict:
             # (the whole way inside the overlap, sideways too, with the body's normals: a ribbed band round the throat)
             # (a last step onto the body's field itself, tried against the fine lines on the throat, tore a ring
             # round the neck at the plane: the lines were the body's own kernel width, see h above)
-        kh = uh > -SEAM
+        kh = uh > -base_mod.SEAM
 
-        wb = np.where(axis_d[kb] > 0.2, 1.0, 1 - ramp((ub[kb] + SEAM) / (2 * SEAM)))
-        wh = ramp((uh[kh] + SEAM) / (2 * SEAM))
+        wb = np.where(axis_d[kb] > 0.2, 1.0, 1 - ramp((ub[kb] + base_mod.SEAM) / (2 * base_mod.SEAM)))
+        wh = ramp((uh[kh] + base_mod.SEAM) / (2 * base_mod.SEAM))
         hh = head["h"]
         if own_neck:  # where the two skins still stand apart in the overlap (under a child's jaw the body's and the
             # head's are different surfaces, 5-10 mm apart) each point's kernel is as wide as the gap, so the field
             # blends them into one closed skin; with their own few-mm kernels the sheets ended in free edges: a slot
             # across the throat with shards in it
-            gap = np.linalg.norm(tgt - H[near], axis=1) * (1 - ramp((uh[near] - SEAM) / SEAM))
+            gap = np.linalg.norm(tgt - H[near], axis=1) * (1 - ramp((uh[near] - base_mod.SEAM) / base_mod.SEAM))
             hh = hh.copy()
             hh[near] = np.maximum(hh[near], 1.3 * gap)
-            bn = np.flatnonzero(kb & (ub > -2 * SEAM) & (axis_d <= 0.2))
+            bn = np.flatnonzero(kb & (ub > -2 * base_mod.SEAM) & (axis_d <= 0.2))
             db, _ = cKDTree(H[near]).query(V[bn])
             h = h.copy()
-            h[bn] = np.maximum(h[bn], 1.3 * np.minimum(db, 0.03) * ramp((ub[bn] + 2 * SEAM) / SEAM))
+            h[bn] = np.maximum(h[bn], 1.3 * np.minimum(db, 0.03) * ramp((ub[bn] + 2 * base_mod.SEAM) / base_mod.SEAM))
         V = np.r_[V[kb], H[kh]]
         N = np.r_[N[kb], head["normals"][kh]]
         h = np.r_[h[kb], hh[kh]]
@@ -192,9 +187,9 @@ def surface(spec_expanded: dict, base: dict) -> dict:
            "key": key, "head": None, "graft": None if one else head, "src": src, "template": tpl.get("name"),
            "wt": wt if head is not None and not one else None,
            "seam": (head["plane"][0], head["plane"][1], 0.2) if head is not None and not one else None}
-    if len(_CACHE) > 8:
-        _CACHE.pop(next(k for k in _CACHE if not isinstance(k, tuple)))
-    _CACHE[key] = out
+    if len(base_mod._CACHE) > 8:
+        base_mod._CACHE.pop(next(k for k in base_mod._CACHE if not isinstance(k, tuple)))
+    base_mod._CACHE[key] = out
     return out
 
 

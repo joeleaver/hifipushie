@@ -99,6 +99,17 @@ def template_joints(name="male_stylized") -> dict:
     return json.loads(json.dumps(_CACHE[key]))
 
 
+CORNEA_BIG = 0.2  # m: the near-flat spheres that cut the iris plane (sag 0.09 mm over the iris; at the other eye, 6 cm
+# across, their surface is ~9 mm off its plane: each touches only its own eye)
+
+SEALED_BACK = 0.006  # m: a sealed mouth's slit starts this far behind the lips' front; its bag moves back by it too
+
+SEAL_OVERLAP = 0.0  # m: the contact rows pushed past each other for the FIELD (0.4 mm made the two lip sheets cross:
+# small holes in the field along the seam, Tess ts_h7)
+SEAL_H = 1.0  # the field's kernel widened this much at a sealed seam (2.0 tried: it blurred the seam's V into bigger holes)
+SEAL_H_REACH = 0.0025
+SEAL_V = (0.5, 0.25, 0.1)  # share of the vertical gap the 1st, 2nd, 3rd rows out from a sealed contact close (field only)
+
 GNM = "gnm/shape/data/versions/v3_0/gnm_head.npz"  # in the assets pack "gnm" (assets.py; Apache 2.0, see SOURCE.txt)
 GNM_CUT = 0.19  # GNM's own frame (Y up): the graft plane's height, above its bib's open edge (0.135), under its chin
 GNM_BAND = 0.028
@@ -107,7 +118,82 @@ EYE_SEAT = 0.0008  # m: the lid rims' clearance outside the eyeball (head.eye_ra
 GNM_TILT = 20.0  # degrees
 LIP_RING = 2  # GNM: the inner-lip contact ring (landmarks 61-63, 65-67), rings out from the skin's open mouth loop
 
+IRIS_SPOT = 1.83  # an iris paint spot's diameter on the eyeball seen from the front, over its "width" (measured in renders)
 
+# face landmarks as joints (iBUG 68 order, GNM's head_sparse_68: barycentric on its mesh), subject's left = ".L"
+LANDMARKS = {"lm_chin": 8, "lm_nose_tip": 30, "lm_nose_base": 33, "lm_nose_bridge": 27, "lm_lip_upper": 51,
+             "lm_lip_lower": 57, "lm_mouth_corner.L": 54, "lm_nostril.L": 35, "lm_eye_inner.L": 42,
+             "lm_eye_outer.L": 45, "lm_brow_inner.L": 22, "lm_brow_mid.L": 24, "lm_brow_outer.L": 26,
+             **{f"lm_jaw_{k}.L": 16 - k for k in range(8)},
+             # the lips' outline (outer vermilion edge, the subject's left half) and the inner lip line, for paint
+             # outlines: upper peak, upper side, lower side, lower mid-side; inner upper/lower
+             "lm_lip_peak.L": 52, "lm_lip_upper_side.L": 53, "lm_lip_lower_side.L": 55, "lm_lip_lower_mid.L": 56,
+             "lm_lip_inner_upper.L": 63, "lm_lip_inner_lower.L": 65, "lm_lip_inner_upper": 62,
+             "lm_lip_inner_lower": 66}
+
+VERM_N = 17  # points along each edge of the lips' outlines (skin.OUTLINES_DENSE)
+
+FIT_KEYS = ("face_width", "jaw_width", "chin_width", "eye_chin", "eye_mouth", "eye_nose", "nose_width",
+            "mouth_width", "eye_seam")
+
+# pose: landmark moves (world m, before the head's scale) solved as the least change of GNM's regional expression
+# components; every other landmark is held. Keys -> (landmark ids, direction in GNM's frame: x = the head's left,
+# y up, z forward); ".L" landmarks mirror (x flips)
+POSE = {"smile": ([48, 54], [0.35, 1.0, -0.15]),  # mouth corners up (and a little out and back)
+        "mouth_width": ([48, 54], [1.0, 0.0, 0.0]),  # each corner out
+        "lid_upper": ([37, 38, 43, 44], [0.0, -1.0, 0.0]),  # upper lid margins down (closes the eye)
+        "lid_lower": ([40, 41, 46, 47], [0.0, 1.0, 0.0]),  # lower lid margins up (a smile's lower lid)
+        "mouth_raise": (list(range(48, 68)), [0.0, 1.0, 0.0]),  # the whole mouth up (a shorter philtrum)
+        "brow_inner": ([20, 21, 22, 23], [0.0, 1.0, 0.0]),  # inner brow up (open, kind; negative: a frown)
+        "brow_outer": ([17, 18, 25, 26], [0.0, 1.0, 0.0])}  # outer brow up (negative: drooping, relaxed)
+POSE_HOLD = 0.35  # weight of holding every landmark not moved (the rest of the face stays put)
+
+HOLLOW_RADIUS = 0.016  # m: a hollow cheek's reach
+JAW_RADIUS = 0.009     # m: a bony jaw corner's reach (crisp: a soft one is a jowl)
+JAW_TUCK_RADIUS = 0.014  # m: the tucked under-jaw's reach
+HOOD_FORWARD = 0.4  # a hooded lid's fold comes down and this share of that forward, over the lid
+HOOD_REACH = 0.5    # its fold's height: this share of the lid-to-brow distance (and its centre 0.45 of the way up)
+
+JAWLINE_RADIUS = 0.034   # m: how far from the old jaw line the skin still follows its move
+JAWLINE_SIGMA = 0.014    # m: along the line, each point follows the stretch of jaw line nearest it
+JAWLINE_TUCK = 0.016     # m: depth of the band under the new border / behind the new ramus that is drawn in
+JAWLINE_SMOOTH = 2       # rounds of smoothing of the move over the mesh
+
+LEAN_RADIUS = 0.03    # m: how far from the jaw's border the thinning reaches
+LEAN_KEEP = 0.004     # m: the border itself (this near the line) keeps its place: the bone doesn't thin
+
+EAR_BLEND = 0.004  # m: the band at an ear's root over which its turn fades in (the skin round it is untouched)
+EAR_ROOT = 0.003   # m: ear vertices this near the rest of the skin are its attachment
+
+PLANES_KEEP = {("nose_region",): 10, ("upper_lip_region", "lower_lip_region", "chin_region"): 30}  # features _planes
+# leaves alone (group names: feather rounds); the lips and chin fade out wide: feathered at 10 the kept muzzle met the
+# pushed cheek in a crease (a smile fold beside the mouth)
+
+MOUTH_PUSHED = 0.001  # m: lips a style moved this far off GNM's own surface no longer fit GNM's teeth (the kit's interior)
+MOUTH_PARTED = 0.0015  # m: inner lips further apart than this = an open mouth (the bag is cut; closed, a fill)
+EYE_PART_VOXEL = 0.00025   # m: the eyes part's own voxel (see implied_parts)
+# GNM's two tooth rows are separate parts: in one part's field the rows touch at the bite and were meshed as ONE
+# piece, so jawOpen (the lower row's move, the upper row's none) stretched the triangles joining them into shards.
+# min_triangles per row: at 600 for both rows a decimated row bulged out through the closed lips; the export now takes
+# GNM's own quads for the rows (asset.own_mouth_meshes, 2828 triangles a row) and the floor keeps them whole.
+TEETH_PARTS = ("teeth", "teeth_lower")  # (upper row, lower row), each with its gums
+MOUTH_PARTS = {"teeth": {"color": [0.86, 0.83, 0.74], "roughness": 0.3, "voxel": 0.0004, "min_triangles": 4000},
+               "teeth_lower": {"color": [0.86, 0.83, 0.74], "roughness": 0.3, "voxel": 0.0004, "min_triangles": 4000},
+               "tongue": {"color": [0.62, 0.46, 0.43], "roughness": 0.45, "voxel": 0.0008, "min_triangles": 4000}}
+GUM_COLOR = [0.68, 0.32, 0.33]
+BAG_COLOR = [0.2, 0.07, 0.07]
+MOUTH_SUBDIVIDE = 2  # Catmull-Clark rounds on GNM's teeth / tongue before their field (edges ~2 mm -> ~0.5 mm)
+
+TEETH_CROWN_GROW = 1.35  # GNM's crowns are ~7 mm tall where a front incisor's is ~10.5 (adult mean); reviews expr_r7 /
+# r8 and the coordinator: "small pegs", the reference's incisors about twice the height below the lip
+TEETH_ARC = 0.0008  # m: the biting edge rises this much from the centrals to the canines (16 mm out), on a parabola
+TEETH_LEVEL_BAND = 0.0012  # m across: the neighbourhood a vertex reads its tooth's edge from
+TEETH_WIDEN = 1.05  # the arch across (GNM's 27 mm at 6 mm behind the front; inter-canine ~34 mm)
+
+MOUTH_SHELL = {"teeth": 0.003, "teeth_lower": 0.003, "tongue": 0.008}  # m: how deep under GNM's surface a piece's solid reaches
+
+LIP_CLOSE = {"n": 40, "span": 0.97, "x": 15, "gap": 0.15, "overlap": 0.2, "lead": 0.3, "hold": 0.3, "corner": 0.6, "iters": 4}
+_LIPC: dict = {}
 
 # The modules this one was split into (C417). What hashed base.py by its file name (skin_read, skin_look) hashes these too.
 MODULES = ("base_imls", "base_identity", "base_head_shape", "base_gnm_parts", "base_gnm_head", "base_measures",

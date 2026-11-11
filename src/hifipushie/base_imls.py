@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from . import base
 from . import retopo
-from .base import FAR, K, SEAM
 
 def _catmull_clark(V, faces):
     """One Catmull-Clark step on a closed polygon mesh: (verts, quads)."""
@@ -70,7 +70,7 @@ def _unit(v):
     return v / np.linalg.norm(v)
 
 
-def _imls(X, pr, k=K):
+def _imls(X, pr, k=base.K):
     """IMLS over one surface's vertices at points X (n, 3)."""
     d, i = pr["tree"].query(X, k=k)
     P, N, h = pr["verts"][i], pr["normals"][i], pr["h"][i]
@@ -90,7 +90,7 @@ def _imls(X, pr, k=K):
         # nearer than the mesh's largest face the far value was exactly 0 (slabs of the region's box in the air
         # before a loose tee). There the plane fit itself, never more than half the nearest vertex's distance
         far = np.where(far == 0, np.sign(imls) * np.minimum(np.abs(imls), 0.5 * d[:, 0]), far)
-    t = np.clip((d[:, 0] - FAR) / FAR, 0.0, 1.0)  # past FAR from every vertex: conservative distance, for culling
+    t = np.clip((d[:, 0] - base.FAR) / base.FAR, 0.0, 1.0)  # past FAR from every vertex: conservative distance, for culling
     return np.where(ws > 1e-12, (1 - t) * imls + t * far, far)
 
 
@@ -101,11 +101,11 @@ def _sd_body(p: np.ndarray, pr: dict) -> np.ndarray:
     # near a head graft's seam the two point sets overlap with ramped weights; there the k nearest must reach both
     # (the head's points are twice as dense: 32 nearest were all one set's, and the surface stepped where it switched)
     c, pn, r = pr["seam"]
-    near = np.abs((X - c) @ pn) < 2 * SEAM
+    near = np.abs((X - c) @ pn) < 2 * base.SEAM
     near &= np.linalg.norm(np.cross(X - c, pn), axis=1) < r
     out = np.empty(len(X))
     if (~near).any():
         out[~near] = _imls(X[~near], pr)
     if near.any():
-        out[near] = _imls(X[near], pr, k=4 * K)
+        out[near] = _imls(X[near], pr, k=4 * base.K)
     return out.reshape(p.shape[:-1])

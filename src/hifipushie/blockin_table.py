@@ -6,8 +6,8 @@ import json
 
 import numpy as np
 
+from . import blockin
 from . import blockin_models
-from .blockin import FLAGGED, GROUPS
 from .blockin_expression import _per_view
 
 # ---------------------------------------------------------------- the target table
@@ -51,8 +51,8 @@ def _row(r: dict) -> dict:
     d = r["model"] - r["photo"]
     row = {k: r[k] for k in ("id", "view", "unit", "photo", "model", "tol")}
     row.update({"diff": round(d, 3), "ok": bool(r["tol"] and abs(d) <= r["tol"])})
-    if r["id"] in FLAGGED:
-        row["flag"] = FLAGGED[r["id"]]
+    if r["id"] in blockin.FLAGGED:
+        row["flag"] = blockin.FLAGGED[r["id"]]
     elif r["unit"] == "%" and r["model"] == 0.0 and r["photo"] != 0.0:
         # (radix / dorsum width, nasolabial fold, under-eye read exactly 0.00 on every clay: no reading there)
         row["flag"] = "the clay reader returned nothing (0.00 exactly): shown, not counted"
@@ -63,14 +63,14 @@ def table(name: str) -> dict:
     """{group: [{id, view, unit, photo, model, diff, tol, ok, flag?}]}: the five target groups (likeness items)."""
     R = rows(name)
     out = {}
-    for g, ids in GROUPS.items():
+    for g, ids in blockin.GROUPS.items():
         out[g] = [_row(r) for i in ids for r in sorted((r for r in R if r["id"] == i), key=lambda r: r["vi"])]
     return out
 
 
 def feature_table(name: str, feature: str) -> dict:
     """The feature's own checklist rows (every likeness item of its stages), as one table group."""
-    st, extra = FEATURES[feature]["stages"], FEATURES[feature].get("items", ())
+    st, extra = blockin.FEATURES[feature]["stages"], blockin.FEATURES[feature].get("items", ())
     return {feature: [_row(r) for r in rows(name) if r["stage"] in st or r["id"] in extra]}
 
 
@@ -112,32 +112,3 @@ def table_delta(t0: dict, t1: dict) -> list:
                 out.append(f"{r['id']} {r['view']}: {o['diff']:+.2f} -> {r['diff']:+.2f} (tol {r['tol']:.2f}){ch}"
                            + (" [flag]" if "flag" in r else ""))
     return out
-
-
-# Joe (2026-10-10): "having the reviewer focus more on each feature, then zoom back out after making each change".
-# Per feature: the model's 68 landmarks that frame and register it, MediaPipe's matching points on the picture (the
-# same anatomical points: feature-local registration, a 2D shift), MediaPipe contours drawn for the local outline
-# difference, and the checklist stages whose rows are its table.
-FEATURES = {
-    "eyes": {"lm": list(range(17, 27)) + list(range(36, 48)), "pairs": [(36, 33), (39, 133), (42, 362), (45, 263)],
-             "lines": [[33, 246, 161, 160, 159, 158, 157, 173, 133, 155, 154, 153, 145, 144, 163, 7, 33],
-                       [263, 466, 388, 387, 386, 385, 384, 398, 362, 382, 381, 380, 374, 373, 390, 249, 263],
-                       [70, 63, 105, 66, 107], [300, 293, 334, 296, 336], [46, 53, 52, 65, 55], [276, 283, 282, 295, 285]],
-             "stages": ("eyes", "brows"), "items": ("under_eye", "brow_ridge", "prof_brow_ridge"), "squint_mm": 3.0, "pad": 1.12},
-    "nose": {"lm": list(range(27, 36)) + [39, 42], "pairs": [(27, 168), (30, 4), (31, 98), (33, 2), (35, 327)],
-             "lines": [[168, 6, 197, 195, 5, 4], [64, 98, 97, 2, 326, 327, 294], [48, 115, 220, 45, 4, 275, 440, 344, 278]],
-             "stages": ("nose",), "squint_mm": 3.0},
-    "mouth": {"lm": list(range(48, 68)) + [33], "pairs": [(48, 61), (54, 291), (51, 0), (57, 17), (62, 13), (66, 14)],
-              "lines": [[61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291, 375, 321, 405, 314, 17, 84, 181, 91, 146, 61],
-                        [78, 191, 80, 81, 82, 13, 312, 311, 310, 415, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95, 78]],
-              "stages": ("mouth",), "items": ("nasolabial_fold",), "squint_mm": 3.0},
-    "chin_jaw": {"lm": list(range(3, 14)) + [57], "pairs": [(8, 152), (57, 17), (6, 176), (10, 400)],
-                 "lines": [[132, 58, 172, 136, 150, 149, 176, 148, 152, 377, 400, 378, 379, 365, 397, 288, 361]],
-                 "stages": ("chin_jaw",), "items": ("width_jaw", "width_chin", "jaw_taper", "jaw_gonial", "jaw_ramus",
-                                                    "jaw_border", "corner_jaw", "jaw_neck_step"), "squint_mm": 5.0},
-    "cheeks": {"lm": [1, 2, 3, 13, 14, 15, 31, 35, 36, 45, 48, 54], "pairs": [(36, 33), (45, 263), (31, 98), (35, 327)],
-               "lines": [[127, 234, 93, 132, 58], [356, 454, 323, 361, 288]],
-               "stages": (), "items": ("width_cheekbone", "corner_cheekbone", "cheek_hollow", "nasolabial_fold",
-                                       "under_eye", "width_temple", "corner_temple"), "squint_mm": 6.0},
-    "ears": {"lm": [0, 1, 2, 15, 16], "pairs": [], "lines": [], "stages": ("ears",), "squint_mm": 4.0},
-}

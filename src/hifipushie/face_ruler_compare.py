@@ -4,28 +4,22 @@ from __future__ import annotations
 
 import numpy as np
 
+from . import face_ruler
 from .face_ruler import _cam_points, clay
-from .face_ruler_blockin import EXPR_SET, expr_prior_of, model_head
+from .face_ruler_blockin import expr_prior_of, model_head
 from .face_ruler_camera import (
-    CHIN_LM_AXES, CHIN_TIE, DENSE, LENS_PINS, MODEL_ERR, MP_DROPS_ANCHORS, NECK_HOLD, PHOTO_CAM_SD7, SIDE_MIN,
-    SIZE_HOLD, TIE_OPEN, _anchor_obs, _dense_obs, dense_predict, distance_inferred, distance_lines, lens_info,
-    lens_mm, view_pitch, view_yaw,
+    _anchor_obs, _dense_obs, dense_predict, distance_inferred, distance_lines, lens_info, lens_mm, view_pitch,
+    view_yaw,
 )
 from .face_ruler_features import _iris_obs, _lid_obs, _lip_obs, _normal_obs, _normals_of_model, _shade_obs
-from .face_ruler_nose import ALAR, NOSTRIL, NOSTRIL_TURN, _alar_obs, _nostril_obs
+from .face_ruler_nose import _alar_obs, _nostril_obs
 from .face_ruler_orbit import orbit_text, text
-from .face_ruler_outline import (
-    HAIR_EDGE, OUTLINE_FEW, PARSE_MODEL, PARSE_SIG, PLAIN_MIN, PLAIN_READS, _curve, photo_masks, plain_backdrop,
-)
+from .face_ruler_outline import _curve, photo_masks, plain_backdrop
 from .face_ruler_solve import cam_sd_of, observe, read
 
 def kind_of(yaw: float) -> str:
     a = abs(float(yaw or 0.0))
     return "front" if a < 20 else ("3q" if a < 70 else "profile")
-
-
-VIEW_DOUBT = 15.0                     # degrees between a view's stated yaw and its fitted camera's turn: say so
-KIND_SAY = {"front": "a front view", "3q": "a three-quarter view", "profile": "a profile"}
 
 
 def camera_lines(views0: list, views1: list, cam_done, cam_sd, stated=None) -> list:
@@ -60,10 +54,10 @@ def view_sanity(views: list, cameras: list) -> list:
             continue
         fy = abs(view_yaw(cam))
         w = ""
-        if abs(fy - st) > VIEW_DOUBT:
+        if abs(fy - st) > face_ruler.VIEW_DOUBT:
             nm = str(v.get("image", "")).split("/")[-1]
-            w = (f"VIEW: {nm} was given as {KIND_SAY[kind_of(st)]} (yaw {st:.0f}) but its fitted camera is turned {fy:.0f} deg"
-                 + (f" = {KIND_SAY[kind_of(fy)]}" if kind_of(fy) != kind_of(st) else "")
+            w = (f"VIEW: {nm} was given as {face_ruler.KIND_SAY[kind_of(st)]} (yaw {st:.0f}) but its fitted camera is turned {fy:.0f} deg"
+                 + (f" = {face_ruler.KIND_SAY[kind_of(fy)]}" if kind_of(fy) != kind_of(st) else "")
                  + (": NO TRUE SIDE VIEW (at this angle the far brow and cheek show in front of the profile line; forehead "
                     "slope, eye depth and chin projection ride on this one camera's angle: INFERRED)" if st >= 70 else
                     ": it shows less of the side than a 3/4 should (the far cheek's outline reads width, little depth)" if fy < st
@@ -86,14 +80,14 @@ def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool
     from . import blockin_clay, blockin_models
     rj = blockin_models._refs(name)
     spec = store.load(name)
-    head = model_head(spec, expr={"names": EXPR_SET} if expr else None)
+    head = model_head(spec, expr={"names": face_ruler.EXPR_SET} if expr else None)
     views, notes = [], []
     want_mp = bool(mpread.ENABLED if mp is None else mp) and mpread.available() and likeness_detect.detector_available()
-    want_he = bool(HAIR_EDGE if hair_edge is None else hair_edge)
+    want_he = bool(face_ruler.HAIR_EDGE if hair_edge is None else hair_edge)
     iris_mm = None
     chin = dict(chin or {})
-    if chin.get("chin_lm", CHIN_LM_AXES) == "auto":
-        side = any(cam and abs(view_yaw(cam)) >= SIDE_MIN for cam in rj["cameras"])
+    if chin.get("chin_lm", face_ruler.CHIN_LM_AXES) == "auto":
+        side = any(cam and abs(view_yaw(cam)) >= face_ruler.SIDE_MIN for cam in rj["cameras"])
         chin["chin_lm"] = "none" if side else "xy"
         if side and anchors == "differential":
             notes.append("CHIN: the detector's chin points are left out: this set has a side view, whose outline reads the chin's "
@@ -112,7 +106,7 @@ def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool
             view["render"] = True
         li = lens_info(v)
         view["lens"] = li
-        if li["mm"] and LENS_PINS:       # a known lens: the focal length stays, the picture's scale is the camera's distance
+        if li["mm"] and face_ruler.LENS_PINS:       # a known lens: the focal length stays, the picture's scale is the camera's distance
             view["lens_known"] = True
         if li["warn"]:
             notes.append(li["warn"])
@@ -143,7 +137,7 @@ def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool
                 # scanned head the mouth's width went from +0.6 to +2.3 mm: 102 anchors at 1 mm each were replaced by reads that
                 # count as 16. They stay; the mesh's reads are ADDED at their honest weight)
                 a = [] if anchors == "none" else _anchor_obs(h, vw, pts, det if anchors == "differential" else None,
-                                                             skip=tuple(range(17, 68)) if (m and MP_DROPS_ANCHORS) else ())
+                                                             skip=tuple(range(17, 68)) if (m and face_ruler.MP_DROPS_ANCHORS) else ())
                 return m + a
             extras.append(_mp_and_anchors)
         elif anchors != "none":
@@ -158,15 +152,15 @@ def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool
                 use = rd0 == "parser"            # re-decided per call it flipped with the head (outline 211 -> 77 -> 160)
             elif parse == "auto":    # the plain-background reader where it works (a finer edge), the parser elsewhere
                 n0 = sum(ob["type"] == "outline" for ob in observe(head, [dict(view, limbus=False, jaw=False)], colour=False))
-                use = plain_backdrop(img) < PLAIN_MIN or n0 < PLAIN_READS
+                use = plain_backdrop(img) < face_ruler.PLAIN_MIN or n0 < face_ruler.PLAIN_READS
             view["reader"] = "parser" if use else "plain"
             if use:
                 from . import faceparse
                 try:
-                    view["mask"], view["trust"], _ = faceparse.masks(img, cam, head, model=parse if parse in faceparse.SIZE else PARSE_MODEL)
-                    view["outline_sig"] = PARSE_SIG
+                    view["mask"], view["trust"], _ = faceparse.masks(img, cam, head, model=parse if parse in faceparse.SIZE else face_ruler.PARSE_MODEL)
+                    view["outline_sig"] = face_ruler.PARSE_SIG
                     view["ears"] = True      # the parser knows hair from skin: an ear it shows bare is the head's outline
-                    notes.append(f"{view['name']}: outline from the face parser ({parse if parse in faceparse.SIZE else PARSE_MODEL})")
+                    notes.append(f"{view['name']}: outline from the face parser ({parse if parse in faceparse.SIZE else face_ruler.PARSE_MODEL})")
                 except (FileNotFoundError, RuntimeError, ValueError) as e:
                     notes.append(f"{view['name']}: the face parser is not available ({str(e)[:160]}): plain-background outline")
                     view["reader"] = "plain"
@@ -174,7 +168,7 @@ def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool
             # the skin | hair boundary as a ONE-SIDED outline read (_hair_edge_obs): needs the parser, whatever reads the outline
             try:
                 from . import faceparse
-                fm = faceparse.masks(img, cam, head, model=PARSE_MODEL)[2]
+                fm = faceparse.masks(img, cam, head, model=face_ruler.PARSE_MODEL)[2]
                 if "hair" in fm:
                     view["hair_edge"] = {"skin": fm["skin"] > 0.5, "hair": fm["hair"] > 0.5}
             except (FileNotFoundError, RuntimeError, ValueError) as e:
@@ -200,13 +194,13 @@ def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool
                     extras.append(lambda h, vw, lev=lev: _lip_obs(h, vw, lev))
                 except Exception as e:  # noqa: BLE001
                     notes.append(f"{view['name']}: the lip borders were not read ({e})")
-        if (NOSTRIL if nostrils is None else nostrils) and k != "profile":      # the nose's own read: the nostril openings
+        if (face_ruler.NOSTRIL if nostrils is None else nostrils) and k != "profile":      # the nose's own read: the nostril openings
             extras.append(_nostril_obs)
-        if (ALAR if alar is None else alar) and k != "profile":                 # the nose's width from the wings' edges
+        if (face_ruler.ALAR if alar is None else alar) and k != "profile":                 # the nose's width from the wings' edges
             extras.append(_alar_obs)
         if shade:
             extras.append(_shade_obs)
-        if DENSE if dense is None else dense:      # our own dense landmarks (absolute; the picture is read ONCE per call)
+        if face_ruler.DENSE if dense is None else dense:      # our own dense landmarks (absolute; the picture is read ONCE per call)
             try:
                 pred = dense_predict(head, view)
                 if pred is None:
@@ -226,7 +220,7 @@ def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool
     return head, views, notes
 
 
-def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD7, hair: bool = True, views: list | None = None,
+def compare(name: str, rounds: int = 3, cam_sd=face_ruler.PHOTO_CAM_SD7, hair: bool = True, views: list | None = None,
             prior_off=None, lids: bool = False, lips: bool = False, shade: bool = False, anchors: str = "differential",
             parse: bool | str = False, normals: bool = False, cam_first: int = 0, adapt: bool = False, cam_reset: bool = True,
             cam_done0=None, cmax: float | None = None, relax0: float = 1.0, hold=None, held0=None, expr: bool | str = False,
@@ -242,8 +236,8 @@ def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD7, hair: bool = True,
     if only is not None:          # a subset of the pictures (indices): what one view alone says
         views = [v for i, v in enumerate(views) if i in set(int(j) for j in only)]
     tie = None
-    tc = (chin or {}).get("tie", CHIN_TIE)
-    sz = (chin or {}).get("size", SIZE_HOLD)
+    tc = (chin or {}).get("tie", face_ruler.CHIN_TIE)
+    sz = (chin or {}).get("size", face_ruler.SIZE_HOLD)
     if sz is not False and sz is not None:      # True: held at the start's; a number: held at that size against the start's
         tgt = 0.0 if sz is True else float(sz)
         tie = {"names": (), "size": True, "size_target": tgt}
@@ -251,7 +245,7 @@ def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD7, hair: bool = True,
             "SIZE: the head's overall size is HELD at the block-in's start head's (the class mean on this body): no "
             "picture reads it (each camera's scale and distance are free), shape is free. block_in_solve(size=\"free\") "
             "releases it; size=\"iris\" lets the picture's iris pull it (weakly: +- 7 % person to person); teeth would read it better"))
-    nk = (chin or {}).get("neck", NECK_HOLD)
+    nk = (chin or {}).get("neck", face_ruler.NECK_HOLD)
     if nk is not False and nk is not None:
         # THE NECK (nativedefault). On a GNM-NATIVE head only (a body-carried head's neck is the body's: GNM's is faded
         # out): True / "prior" = ANSUR II's neck girth for the model's sex and stature as a PRIOR (its mean, its own sd);
@@ -286,7 +280,7 @@ def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD7, hair: bool = True,
         side = any(abs(view_yaw(v["cam"])) >= 60.0 for v in views)       # a side view's outline reads the profile line
         t35 = [abs(view_yaw(v["cam"])) for v in views]
         names = tuple(sr.TIE) if isinstance(tc, (bool, int, float)) else (tuple(tc.split("+")) if isinstance(tc, str) else tuple(tc))
-        if any(TIE_OPEN[0] <= y <= TIE_OPEN[1] for y in t35):            # a TRUE 3/4: the far jaw and chin make its silhouette
+        if any(face_ruler.TIE_OPEN[0] <= y <= face_ruler.TIE_OPEN[1] for y in t35):            # a TRUE 3/4: the far jaw and chin make its silhouette
             names = tuple(n for n in names if n not in ("jaw_width", "gonial_width", "jaw_square"))
             notes.append("CHIN / JAW: a view turned 35-60 deg shows the far jaw on its silhouette: jaw width and squareness are left to the pictures")
         tie = {**(tie or {}), "names": names, "given": sr.TIE_GIVEN + (sr.TIE_GIVEN_SIDE if side else ()), "sig": float((chin or {}).get("tie_sig", sr.TIE_SIG))}
@@ -299,7 +293,7 @@ def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD7, hair: bool = True,
     sd = gnm_mm.sd()
     for r in res["gaps"]:
         r["picture"] = r["current"] + r["gap"]
-        r["err"] = float(np.hypot(r["err"], MODEL_ERR[r["measure"]]))
+        r["err"] = float(np.hypot(r["err"], face_ruler.MODEL_ERR[r["measure"]]))
         r["read"] = float(max(0.0, 1 - (r["err"] / sd[r["measure"]]) ** 2))
     n = {t: sum(ob["type"] == t for ob in res["obs"]) for t in ("outline", "hairedge", "iris", "landmark", "limbus", "lid", "lip", "jaw", "cloth", "ramp", "shade", "normal", "dense", "mp", "nostril", "alar")}
     # OUTLINE READS PER VIEW (readmix): the total hid a front picture with none (loose hair: the figure's edge is hair)
@@ -308,15 +302,15 @@ def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD7, hair: bool = True,
         f"{v.get('name', v['kind'])} ({v['kind']}): {n_view[v['kind']]['outline']}" + (f" + {n_view[v['kind']]['hairedge']} one-sided at the skin | hair edge" if n_view[v['kind']]["hairedge"] else "") for v in views)]
     for v in views:
         nv = n_view[v["kind"]]
-        if nv["outline"] < OUTLINE_FEW:
-            notes.append(f"NO OUTLINE: {v.get('name', v['kind'])} ({KIND_SAY.get(v['kind'], v['kind'])}) gives {nv['outline']} outline reads (the figure's edge there is hair, "
+        if nv["outline"] < face_ruler.OUTLINE_FEW:
+            notes.append(f"NO OUTLINE: {v.get('name', v['kind'])} ({face_ruler.KIND_SAY.get(v['kind'], v['kind'])}) gives {nv['outline']} outline reads (the figure's edge there is hair, "
                          "cloth or a busy background, not skin)" + (f"; {nv['hairedge']} one-sided reads at the skin | hair edge say where the face is at least as wide" if nv["hairedge"] else "")
                          + (": the face's WIDTHS in this view (cheekbone, jaw, gonial) are " + ("the dense landmarks' and " if nv["dense"] else "") + "GNM's average for the rest of the head, not a measurement"
                             if v["kind"] != "profile" else ": the profile line is not read"))
     from . import mpread
     notes = list(notes) + mpread.nose_lines(res["obs"]) + nostril_lines(res["obs"], views)
     for r in res["orbit"]:        # the orbit rows' error: never under the block-in path's validated floor
-        fl = np.sqrt(sum((w * MODEL_ERR[k]) ** 2 for k, w in gnm_mm.ORBIT_SEEN[r["row"]].items()))
+        fl = np.sqrt(sum((w * face_ruler.MODEL_ERR[k]) ** 2 for k, w in gnm_mm.ORBIT_SEEN[r["row"]].items()))
         r["err"] = float(np.hypot(r["err"], fl))
         r["read"] = float(max(0.0, 1 - (r["err"] / r["sd"]) ** 2))
     cams = []
@@ -382,13 +376,10 @@ def nostril_lines(obs: list, views: list) -> list:
                        + ", ".join(f"{ob['name'][8:].replace('_', ' ')} {ob['o']:+.1f} mm" for ob in oo)
                        + (f"; the openings' outer width picture - model {wd:+.1f} mm" if wd is not None else "")
                        + " (read at the call's last round: near 0 = the model's nostrils lie on the picture's)")
-        elif (NOSTRIL and abs(view_yaw(v["cam"])) <= NOSTRIL_TURN):
+        elif (face_ruler.NOSTRIL and abs(view_yaw(v["cam"])) <= face_ruler.NOSTRIL_TURN):
             out.append(f"NOSE: no nostril opening found in {v.get('name', v['kind'])} (hidden under the tip, filled by a flat light, or a "
                        "moustache): the nose's WIDTH is not read in this view")
     return out
-
-
-DISAGREE = 2.0        # a read group left at more than this many of its own sigmas (rms) after the solve is named
 
 
 def disagreement(res: dict) -> dict:
@@ -403,9 +394,9 @@ def disagreement(res: dict) -> dict:
                 g.setdefault((ob["type"], ob["view"]), []).append((float(r), float(r) * float(ob["sig"])))
     groups = {k: {"n": len(v), "sig": float(np.sqrt(np.mean([a * a for a, _ in v]))), "mm": float(np.sqrt(np.mean([b * b for _, b in v])))} for k, v in g.items()}
     lines = []
-    bad = sorted(((k, x) for k, x in groups.items() if x["sig"] > DISAGREE and x["n"] >= 2), key=lambda t: -t[1]["sig"])
+    bad = sorted(((k, x) for k, x in groups.items() if x["sig"] > face_ruler.DISAGREE and x["n"] >= 2), key=lambda t: -t[1]["sig"])
     if bad:
-        lines.append("DISAGREE (reads the solved head and cameras still miss by more than " + f"{DISAGREE:g} of their own sigmas, rms): "
+        lines.append("DISAGREE (reads the solved head and cameras still miss by more than " + f"{face_ruler.DISAGREE:g} of their own sigmas, rms): "
                      + "; ".join(f"{t} in the {vw} picture {x['sig']:.1f} sigma ({x['mm']:.1f} mm, {x['n']} reads)" for (t, vw), x in bad)
                      + ": that read, that picture's camera, or a shape GNM does not reach there")
     bd = res.get("bound") or []

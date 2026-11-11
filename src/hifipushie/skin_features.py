@@ -427,6 +427,7 @@ def _gnm_mouth(spec, out, part) -> None:
     (paint.painted_values): the gum line is GNM's scalloped one, not a height. Teeth and tongue keep their parts'
     flat colours (base_gnm_parts.MOUTH_PARTS): no enamel translucency, no tongue texture, no wet film yet."""
     from . import base_gnm_parts, base_identity, base_imls, base_measures
+    from . import base
     from . import paint as _paint
     from . import spec as _specmod
     b = spec.get("base") or {}
@@ -450,24 +451,24 @@ def _gnm_mouth(spec, out, part) -> None:
     # (the inner rolls are NOT a scene layer: with the lips closed the scene's surface has no rolls (the fill behind the
     # seam), so a painted cloud there found the outer lips instead (v8: lipstick red). The export paints them on the
     # low poly's own triangles by GNM index: asset.bake's "inner_paint", values from inner_lip_values)
-    out["skin:mouth_bag"] = {"part": part, "color": list(base_gnm_parts.BAG_COLOR), "roughness": 0.4, "specular": 0.5,
+    out["skin:mouth_bag"] = {"part": part, "color": list(base.BAG_COLOR), "roughness": 0.4, "specular": 0.5,
                              "mask": [{"painted": pid}]}
-    for k, tpart in (("teeth_upper", base_gnm_parts.TEETH_PARTS[0]), ("teeth_lower", base_gnm_parts.TEETH_PARTS[1])):
+    for k, tpart in (("teeth_upper", base.TEETH_PARTS[0]), ("teeth_lower", base.TEETH_PARTS[1])):
         V, F = mp[k]["verts"], [list(map(int, f)) for f in mp[k]["faces"]]
         gum = mp[k]["gum"].astype(float)[:, None].repeat(3, 1)
-        for _ in range(base_gnm_parts.MOUTH_SUBDIVIDE):
+        for _ in range(base.MOUTH_SUBDIVIDE):
             V2, F2 = base_imls._catmull_clark(V, F)
             gum = base_imls._catmull_clark(gum, F)[0]  # (the group's weight subdivided like the positions)
             V, F = V2, F2
         N, h = base_imls._normals_and_h(V, F)
         pid = _paint.save_painted(V, N, np.clip((gum[:, 0] - 0.35) / 0.3, 0, 1), 0.0012)
         out["skin:gums" + ("" if tpart == "teeth" else "_lower")] = {
-            "part": tpart, "color": list(base_gnm_parts.GUM_COLOR), "roughness": 0.4, "specular": 0.5, "mask": [{"painted": pid}]}
+            "part": tpart, "color": list(base.GUM_COLOR), "roughness": 0.4, "specular": 0.5, "mask": [{"painted": pid}]}
     if TEETH_BACK:
         out_ = np.asarray(mp["frame"][1], float)
-        for k, tpart in (("teeth_upper", base_gnm_parts.TEETH_PARTS[0]), ("teeth_lower", base_gnm_parts.TEETH_PARTS[1])):
+        for k, tpart in (("teeth_upper", base.TEETH_PARTS[0]), ("teeth_lower", base.TEETH_PARTS[1])):
             V, F = mp[k]["verts"], [list(map(int, f)) for f in mp[k]["faces"]]
-            for _ in range(base_gnm_parts.MOUTH_SUBDIVIDE):
+            for _ in range(base.MOUTH_SUBDIVIDE):
                 V, F = base_imls._catmull_clark(V, F)
             N, _h = base_imls._normals_and_h(V, F)
             dep = float((V @ out_).max()) - V @ out_
@@ -479,7 +480,7 @@ def _gnm_mouth(spec, out, part) -> None:
         # the tongue's back darkened into the throat (expr_r15: the flat-coloured dorsum read as "a flat red back wall"
         # in jawOpen; a real tongue's back falls into the mouth's shadow): by depth behind its tip, along the mouth's `out`
         V, F = mp["tongue"]["verts"], [list(map(int, f)) for f in mp["tongue"]["faces"]]
-        for _ in range(base_gnm_parts.MOUTH_SUBDIVIDE):
+        for _ in range(base.MOUTH_SUBDIVIDE):
             V, F = base_imls._catmull_clark(V, F)
         N, _h = base_imls._normals_and_h(V, F)
         out_ = np.asarray(mp["frame"][1], float)

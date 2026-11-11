@@ -115,8 +115,112 @@ def smoothstep(e0, e1, x):
     return u * u * (3 - 2 * u)
 
 
+# ---------------------------------------------------------------- volumes
+NORMAL_H = 0.125  # the normals' stencil, voxels: exact on each side of a crease (split_normals splits at creases)
+NEAR = 2.5  # how far from a volume's surface the rock character reaches (m)
+# the rock relief is evaluated only where its weight is over RELIEF_CUT (a cost cull), and eased in from there to
+# RELIEF_FADE, so the field stays continuous where the cull starts (Field._solid)
+RELIEF_CUT = 0.01
+RELIEF_FADE = 0.1
+JUMP_LIMIT = 3  # sampled texels with a step under them (terrain_bake.bake_texels) a tile LOD may have (seam_check)
+BURIED_DEEP = 0.1  # a face is buried when its centre is deeper in the rock than this x sqrt(its area) (and > the LOD threshold)
+FLOAT_PIECE = 50.0  # m2: closed cliff pieces off the tile border that never reach the ground, under this: dropped, logged
+FLOAT_TOL = 0.15  # m over the pushed heightmap that still counts as reaching the ground (terrain_cliffs.floating's tol)
+EXPOSED_OFF = 0.5  # m out along a face's normal: rock there = behind the visible surface (terrain_cliffs.EXPOSED_OFF)
+BURIED_SHADE = 0.6  # the buried back's material: the rock's mean colour under it x this (never white)
+FALL_SEAT = 0.5  # fallen blocks seat this share of the rock relief's reach (x its weight) under the column's ground
+
+TUBE_RUN = 16  # segments a tube evaluates together, at the points in their run's reach (Tube.sd)
+
+
+STACK ={"radius": 0.75}
+STACK_BUILD = 0.05  # m: the most rock relief may build out from a stack
+STACK_CARVE = 0.3  # m: ... and carve into it (cartoon facets 1.4 x cut a fin of a stack loose 5 m up: the stack's own
+# form carries its shape, the relief is texture on it)
+# a solid sea stack's radius x the sea's stack radius; its form is terrain_stack.FORM (a jointed column), a style's
+# sheet may override it (rock.stack)
+
+ROOF_SPAN = 0.5  # the rock over an opening: at least this share of its span (thinner read as a lid on a hole)
+
+# a fixed rotation for the facet lattice, so its creases don't line up with the world's axes
+_ROT = np.linalg.qr(np.array([[0.62, -0.51, 0.33], [0.27, 0.71, 0.58], [-0.49, -0.12, 0.74]]))[0]
+
+
+# a second rotation, for the lattice that warps the facet lattice (see _pl_facets)
+_ROT_W = np.linalg.qr(np.array([[0.3, 0.8, -0.2], [-0.7, 0.1, 0.6], [0.5, -0.4, 0.7]]))[0]
+
+THIN_LEVELS = 48  # at most this many height levels per thin piece (_local_thickness)
+
+HOLD_REACH = 30.0  # m from a river's water line where the 3D field's ground keeps the banks the terrain grid has
+HOLD_FREEBOARD = 0.3  # m over the water the banks are kept (forms.water grades banks from level + 0.3)
+
+FACE_SLOPE_H = 0.25  # m: the stencil of the slope correction where a fall's face edits the column (Field.column)
+
+THIN_STRATA = {"spacing": 1.7, "jitter": 0.2, "ramp": 0.5, "depth": 1.0, "tone": 1.0}  # thin rock's strata
+# (`strata`): bed spacing, jitter share, plane ramp, soft beds' set-back (m); tone: soft beds' darkening
+THIN_VOID = 8.0  # m: within this of a cave or notch thin rock keeps the old rule (Field.steep's tenth)
+THIN_RELIEF = 0.35  # thin rock's relief: at most this share of its local half-thickness (Field.thin_cap); 0 = the old
+# rule (thin fins and stacks took a tenth of the relief: smooth, Durdle Door without its beds)
+THIN_TONE = 1.0  # how much of the full bed tone thin fins take back (Materials, rock colour)
+BLOCK_TONE = {"bed": 0.06, "thin": 0.08, "block": 0.04, "p_fresh": 0.05, "fresh": 0.08, "warm": [0.04, 0.0, -0.06],
+              "along": 0.10, "under_ledge": 0.12}
+
+# ---------------------------------------------------------------- tiles
+
+# the lattice's z planes sit this fraction of a voxel off round heights: flat floors at round heights (sea level, a
+# cave floor at 5.5 m) lay exactly on lattice planes, every corner there was a zero, and marching cubes left
+# non-manifold slivers (the seam check caught them). x and y stay on the tile borders.
+ZOFF = 0.137
+
+PRE = 32  # x a coarse LOD's budget: what its dense-mesh fallback reaches in one pyfqmr pass before the budget search
+# (replayed on the alps block's 12 fallbacks: 85 -> 37 s, faces <= the old ones in every case, summed error p99
+# 6.2 -> 5.7 m; 4x and 8x were faster still but their meshes sat further off the rock at the same count)
+
+PINCH_GAP = 0.005  # m each copy of a pinched vertex steps into its own sheet (`_unpinch`)
+
+
+SPECK_FACES = 16  # a closed piece this small split off by `_unpinch` is dropped (`_drop_closed_specks`)
+
+WELD = 1e-3  # x voxel: canonical border vertices joined by a chain edge and closer than this are one vertex
+
 _CTX: dict = {}  # what the export's worker processes read (forked: shared, not pickled)
 
+
+WORKER_GB = 2.0  # a tile worker's peak PSS with maps: 1.04 GB on pebble (0.5 m voxel), 1.93 GB on a 10 x 10 tile block
+# of t3_alps (1 m voxel, a 3 x 4 km terrain in the parent); field calls chunked, dense meshes streamed through
+# <out>/_work (2.2 GB on pebble before that)
+
+OVER_BUDGET = 2.0  # a tile LOD with more than this x its triangle budget fails the export's checks (said per tile)
+
+LIGHTS = {  # render_tiles(light=...) presets: the sky's dust/air (Nishita), sun watts, sky strength, exposure
+    "hazy": {"dust": 0.3, "air": 0.8, "sun_energy": 2.4, "sky_strength": 0.12, "exposure": 0.0},
+    # matched to a clear sunny photo (the Pebble 7th): its sky deep blue (v ~0.75 s ~0.45 at the top), crisp shadows
+    # exposure metered on the sun's height (`meter` stops per doubling of sin(height) over 25 deg)
+    "clear": {"dust": 0.02, "air": 1.0, "sun_energy": 3.2, "sky_strength": 0.08, "exposure": -0.35, "meter": 0.8,
+              # the sky as the camera sees it, deeper (camera and glossy rays only: the light it casts is unchanged), and
+              # the sea a deep blue body with water's IOR (measured against the photo: the sea there h 212 s 0.45-0.49)
+              "sky_sat": 1.3, "sky_value": 1.12, "sky_horizon_tint": [0.5, 0.72, 1.0],
+              "water": [0.006, 0.028, 0.065], "water_roughness": 0.12,
+              "haze_scale": 3.0},  # (clear air: the photo's sea stays deep blue to the horizon, 3 km off)
+}
+
+RELIEF_CHART = 2.5  # the ground's maps-only relief on cliff tiles is band-limited as if their texel were this x larger:
+# their charts' texel grids don't line up across a tile border (ground tiles' do), so fine relief differed there
+BAKE_PIECE = 120_000  # texels per bake job (a 64 m tile's LOD 0 atlas at 13-16 texels/m is 1.2-2.6M: 10-20 jobs)
+
+BORDER_FLAT = 1.5  # texels: every LOD's normal maps eased to the low poly's normal this close to a tile's edge
+
+WORST_BORDERS = 4  # borders listed per failing map channel
+SHARD_LIMIT = [0.01, 0.05, 0.5]  # % of a LOD's area allowed to have corner normals against its faces
+# the same border point decoded from both tiles' maps (each samples its own texels, 8-bit, bilinear): normals p50 and
+# p95 (deg) and colour p95 (0..1) allowed, per LOD. A seam would shift the median; a few aliased texels at sharp
+# detail don't. LOD 2 (0.4 m texels on a mesh 0.5 m off the rock) is looser: where its triangles stray far from the
+# rock's normal the map can't bend past its surface (z >= 0.02) and the two sides clamp differently
+MAP_SEAM = [
+    {"normal": (3.0, 15.0), "colour": 0.08, "orm": 0.08, "height_m": 0.03, "weights": 0.1},
+    {"normal": (3.0, 15.0), "colour": 0.12, "orm": 0.1, "height_m": 0.06, "weights": 0.15},
+    {"normal": (6.0, 50.0), "colour": 0.2, "orm": 0.15, "height_m": 0.15, "weights": 0.25},
+]
 
 # The modules this one was split into (C414), in the order the pipeline runs them. The tile export's state hashes the
 # code of all of them (codehash.digest(*MODULES)): before the split that was this one module's import closure.

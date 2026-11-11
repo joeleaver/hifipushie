@@ -5,14 +5,11 @@ import json
 
 import numpy as np
 
-from .likeness import TARGETS, checklist, stage_names
+from . import likeness
+from .likeness import checklist, stage_names
 from .likeness_measure import Side, Unmeasurable, _confidence, _item, points_of
-from .likeness_notes import EXPR_BIAS, YAW_ITEMS, YAW_MM, picture_notes
-from .likeness_sides import INFER_TOL, SPECIAL, _allowed, _near_sign, _refs, measure_sides, model_sides, photo_sides
-
-MIRROR = {61: 291, 234: 454, 33: 263, 133: 362, 145: 374, 159: 386, 129: 358, 98: 327, 172: 397, 105: 334, 70: 300,
-          107: 336, 52: 282, 58: 288, 136: 365, 116: 345, 123: 352, 50: 280, 205: 425, 147: 376, 187: 411, 93: 323}
-
+from .likeness_notes import picture_notes
+from .likeness_sides import _allowed, _near_sign, _refs, measure_sides, model_sides, photo_sides
 
 def _shape_rows(it, photos, models, kinds) -> list:
     from . import likeness_shape as ls
@@ -30,7 +27,7 @@ def _shape_rows(it, photos, models, kinds) -> list:
             continue
         vals = []
         for sgn in _near_sign(ph["side"]):
-            pidx = (lambda i, s=sgn: MIRROR.get(i, i) if s > 0 else i)
+            pidx = (lambda i, s=sgn: likeness.MIRROR.get(i, i) if s > 0 else i)
             exs = sh["ex"]
             reg = ls.region_centre(ph["side"], m["region"], sgn, exs, sh["ey"], sh["ppm"], sh["to_px"], pidx)
             ref = ls.region_centre(ph["side"], m["ref"], sgn, exs, sh["ey"], sh["ppm"], sh["to_px"], pidx)
@@ -95,11 +92,6 @@ def profile_read(ph, md, traces):
     return md["profile"]
 
 
-CONTOUR_WHY = {"upper_lip": "the lips don't break this contour (no notch between them at this angle)",
-               "lower_lip": "the lips don't break this contour (no notch between them at this angle)",
-               "forehead_slope": "the trace doesn't run 4 cm up the forehead"}
-
-
 def _contour_rows(it, photos, models, kinds, traces) -> list:
     rows = []
     key = it["measure"]["key"]
@@ -129,7 +121,7 @@ def _contour_rows(it, photos, models, kinds, traces) -> list:
                 marks.append([o + ex * kk[n][1] / rd["mmpx"] + ey * kk[n][0] / rd["mmpx"] for n in nm if n in kk])
             r["marks"] = marks
         else:
-            r["why"] = CONTOUR_WHY.get(key, "the line 'nose' is not traced on this picture" if nose and "nose" not in rd["photo"]
+            r["why"] = likeness.CONTOUR_WHY.get(key, "the line 'nose' is not traced on this picture" if nose and "nose" not in rd["photo"]
                                        else "needs the hand-placed point 'alar_base.R' / '.L' (the near wing's base) on this picture"
                                        if nose and "alar" not in rd["photo"]["kn"] and key in ("nose_base_incl", "tip_height", "columella_show")
                                        else "not found on this contour")
@@ -250,7 +242,7 @@ def measure_reference(name: str, save: bool = True, photos=None) -> dict:
                                             "detector": p["side"].source == "detector"} for p in photos],
              "stages": [s["name"] for s in stage_names()], "items": items}
     if save:
-        (store.HOME / name / TARGETS).write_text(json.dumps(sheet, indent=1))
+        (store.HOME / name / likeness.TARGETS).write_text(json.dumps(sheet, indent=1))
     return sheet
 
 
@@ -292,14 +284,14 @@ def compare(name: str, base: dict | None = None, photos=None, cameras=None, mesh
     order = [s["name"] for s in stage_names()]
     for it in checklist():
         kind = it["measure"]["kind"]
-        if kind in SPECIAL:
+        if kind in likeness.SPECIAL:
             got = (_shape_rows(it, photos, models, kinds) if kind == "shape" else _jaw_rows(it, photos, models, kinds, traces)
                    if kind == "jaw" else _contour_rows(it, photos, models, kinds, traces))
             if not got:
                 got = [{"vi": "-", "why": " or ".join(it["views"]) + " view needed"}]
             for g in got:
                 vi = g["vi"]
-                tol = it["tol"] * (INFER_TOL if g.get("inferred") else 1.0)
+                tol = it["tol"] * (likeness.INFER_TOL if g.get("inferred") else 1.0)
                 a = g.get("photo")
                 b = 0.0 if kind == "shape" and a is not None else g.get("model")
                 r = {"id": it["id"], "name": it["name"], "stage": it["stage"], "tier": order.index(it["stage"]) + 1,
@@ -326,7 +318,7 @@ def compare(name: str, base: dict | None = None, photos=None, cameras=None, mesh
         for vi in pv[it["id"]]:
             a, b = pv[it["id"]][vi], mv[it["id"]].get(vi)
             inferred = vi != "-" and _allowed(it, kinds[vi], kinds)[1]
-            tol = (it["tol"] or 0) * (INFER_TOL if inferred else 1.0) or it["tol"]
+            tol = (it["tol"] or 0) * (likeness.INFER_TOL if inferred else 1.0) or it["tol"]
             r = {"id": it["id"], "name": it["name"], "stage": it["stage"], "tier": order.index(it["stage"]) + 1,
                  "view": kinds[vi] if vi != "-" else "-", "vi": vi, "unit": it["unit"], "tol": tol,
                  "control": it["control"], "reliability": it.get("reliability", ""), "photo": a, "model": b,
@@ -359,16 +351,16 @@ def compare(name: str, base: dict | None = None, photos=None, cameras=None, mesh
     cmp = {"rows": rows, "photos": photos, "models": models, "name": name, "points_from": points_from}
     cmp["pictures"] = [picture_notes(p, m) for p, m in zip(photos, models)]
     for r in rows:   # a turned picture whose yaw is in doubt: its depth items are judged wider
-        if r.get("kind") == "contour" and r["score"] >= 0 and _item(r["id"])["measure"]["key"] in YAW_ITEMS:
+        if r.get("kind") == "contour" and r["score"] >= 0 and _item(r["id"])["measure"]["key"] in likeness.YAW_ITEMS:
             d = cmp["pictures"][r["vi"]].get("yaw_doubt")
             if d:
-                r["tol"] = r["tol"] + YAW_MM * d
+                r["tol"] = r["tol"] + likeness.YAW_MM * d
                 r["score"] = abs(r["miss"]) / r["tol"]
                 r["reliability"] = f"yaw in doubt by {d:.0f} deg (tolerance widened); " + r.get("reliability", "")
     rows.sort(key=lambda r: (-(r["score"] > 1.0), -r["score"] * r.get("rank", 1.0) if r["score"] > 1.0 else r["tier"], -r["score"]))
     for r in rows:   # items an expression on that picture biases
         if r["vi"] != "-":
             for nm, v in (cmp["pictures"][r["vi"]].get("expressions") or {}).items():
-                if r["id"] in EXPR_BIAS.get(nm, []):
+                if r["id"] in likeness.EXPR_BIAS.get(nm, []):
                     r["expression"] = f"{nm} {v:.2f}"
     return cmp

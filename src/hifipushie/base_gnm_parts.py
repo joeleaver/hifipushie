@@ -4,7 +4,8 @@ from __future__ import annotations
 import numpy as np
 from scipy.spatial import cKDTree
 
-from .base import LIP_RING, _CACHE, source
+from . import base
+from .base import source
 from .base_identity import _gnm_data
 from .base_imls import _catmull_clark, _imls, _normals_and_h, _unit
 
@@ -30,16 +31,16 @@ def _gnm_piece_sets(g: dict) -> list:
     inner and outer shells): that eye's lid margins and the socket lining behind them (lidrings -2 .. 2), so it keeps
     GNM's own relation to the lids. Upper teeth, lower teeth and tongue, as ONE piece (the rows stay registered):
     GNM's lip and chin regions (wide on purpose: a seal that presses the lips together must not shrink the teeth)."""
-    if "piece_sets" not in _CACHE:
+    if "piece_sets" not in base._CACHE:
         from . import lidrings
         gr = {k: np.asarray(v) > 0.5 for k, v in g["groups"].items()}
         t, mir = lidrings.topo(), lidrings.mirror()
         ring = np.concatenate([t["loops"][k] for k in range(-2, 3)])
         mouth = gr["upper_teeth_and_gums"] | gr["lower_teeth_and_gums"] | gr["tongue"]
-        _CACHE["piece_sets"] = [(np.flatnonzero(gr["left_eye"]), ring), (np.flatnonzero(gr["right_eye"]), mir[ring]),
+        base._CACHE["piece_sets"] = [(np.flatnonzero(gr["left_eye"]), ring), (np.flatnonzero(gr["right_eye"]), mir[ring]),
                                 (np.flatnonzero(mouth), np.flatnonzero(gr["upper_lip_region"] | gr["lower_lip_region"]
                                                                         | gr["chin_region"]))]
-    return _CACHE["piece_sets"]
+    return base._CACHE["piece_sets"]
 
 
 def _gnm_pieces(V: np.ndarray, Vg: np.ndarray, g: dict, En: np.ndarray | None = None, fade=None) -> np.ndarray:
@@ -109,22 +110,6 @@ def gnm_eyes(V: np.ndarray, g: dict) -> list:
     return out
 
 
-MOUTH_PUSHED = 0.001  # m: lips a style moved this far off GNM's own surface no longer fit GNM's teeth (the kit's interior)
-MOUTH_PARTED = 0.0015  # m: inner lips further apart than this = an open mouth (the bag is cut; closed, a fill)
-EYE_PART_VOXEL = 0.00025   # m: the eyes part's own voxel (see implied_parts)
-# GNM's two tooth rows are separate parts: in one part's field the rows touch at the bite and were meshed as ONE
-# piece, so jawOpen (the lower row's move, the upper row's none) stretched the triangles joining them into shards.
-# min_triangles per row: at 600 for both rows a decimated row bulged out through the closed lips; the export now takes
-# GNM's own quads for the rows (asset.own_mouth_meshes, 2828 triangles a row) and the floor keeps them whole.
-TEETH_PARTS = ("teeth", "teeth_lower")  # (upper row, lower row), each with its gums
-MOUTH_PARTS = {"teeth": {"color": [0.86, 0.83, 0.74], "roughness": 0.3, "voxel": 0.0004, "min_triangles": 4000},
-               "teeth_lower": {"color": [0.86, 0.83, 0.74], "roughness": 0.3, "voxel": 0.0004, "min_triangles": 4000},
-               "tongue": {"color": [0.62, 0.46, 0.43], "roughness": 0.45, "voxel": 0.0008, "min_triangles": 4000}}
-GUM_COLOR = [0.68, 0.32, 0.33]
-BAG_COLOR = [0.2, 0.07, 0.07]
-MOUTH_SUBDIVIDE = 2  # Catmull-Clark rounds on GNM's teeth / tongue before their field (edges ~2 mm -> ~0.5 mm)
-
-
 def mouth_mode(b: dict, head: dict | None = None) -> str:
     """Which mouth a base's head has: "gnm" (GNM's own mouth bag, teeth and gums, tongue: THE DEFAULT for a GNM head),
     "kit" (the face kit's slit / bag / teeth / tongue behind the lips: base.head.interior, as every head made before
@@ -144,7 +129,7 @@ def mouth_mode(b: dict, head: dict | None = None) -> str:
                          'base.head.interior) or "none"')
     if m == "kit":
         return "kit" if hd.get("interior") else "none"
-    if head is not None and float(head.get("mouth_off") or 0.0) > MOUTH_PUSHED:
+    if head is not None and float(head.get("mouth_off") or 0.0) > base.MOUTH_PUSHED:
         return "kit" if hd.get("interior") else "none"
     return "gnm"
 
@@ -159,7 +144,7 @@ def mouth_open(b: dict, head: dict) -> bool:
     if (b.get("body") or {}).get("source") == "human":
         return source(b).get("seal_field") is None
     lm = head["lm68"]
-    return float(np.linalg.norm(lm[62] - lm[66])) > MOUTH_PARTED
+    return float(np.linalg.norm(lm[62] - lm[66])) > base.MOUTH_PARTED
 
 
 def mouth_note(b: dict, head: dict | None) -> str | None:
@@ -168,7 +153,7 @@ def mouth_note(b: dict, head: dict | None) -> str | None:
     if hd is None or head is None or hd.get("mouth", "gnm" if not hd.get("interior") else "kit") != "gnm":
         return None
     off = float(head.get("mouth_off") or 0.0)
-    if off > MOUTH_PUSHED:
+    if off > base.MOUTH_PUSHED:
         return (f"mouth: the head's style moved the lips {off * 1000:.1f} mm off GNM's own surface (pushes / simplify / "
                 f"shape ops on the built head), so GNM's teeth and tongue no longer sit behind them: "
                 + ("the face kit's interior (base.head.interior) is used instead" if hd.get("interior") else
@@ -215,13 +200,6 @@ def gnm_mouth(head: dict) -> dict:
     return out
 
 
-TEETH_CROWN_GROW = 1.35  # GNM's crowns are ~7 mm tall where a front incisor's is ~10.5 (adult mean); reviews expr_r7 /
-# r8 and the coordinator: "small pegs", the reference's incisors about twice the height below the lip
-TEETH_ARC = 0.0008  # m: the biting edge rises this much from the centrals to the canines (16 mm out), on a parabola
-TEETH_LEVEL_BAND = 0.0012  # m across: the neighbourhood a vertex reads its tooth's edge from
-TEETH_WIDEN = 1.05  # the arch across (GNM's 27 mm at 6 mm behind the front; inter-canine ~34 mm)
-
-
 def _grow_crowns(V: np.ndarray, gum: np.ndarray, ml: dict, sgn: float) -> np.ndarray:
     """A tooth row with its crowns TEETH_CROWN_GROW taller, from the biting edge (it stays put) toward the gum, the
     gum carried along rigidly by the extra height; the arch TEETH_WIDEN wider about the midline. sgn: +1 the upper
@@ -241,11 +219,11 @@ def _grow_crowns(V: np.ndarray, gum: np.ndarray, ml: dict, sgn: float) -> np.nda
     ci = np.where(crown)[0]
     tr = cKDTree(x[ci, None])
     dd, nb = tr.query(x[:, None], k=min(64, len(ci)))
-    hh = np.where(dd <= max(TEETH_LEVEL_BAND, 0.0), h[ci[nb]], np.nan)
+    hh = np.where(dd <= max(base.TEETH_LEVEL_BAND, 0.0), h[ci[nb]], np.nan)
     hh[:, 0] = h[ci[nb[:, 0]]]  # (a gum vertex past the crowns' ends: its nearest crown vertex's tooth)
     tip, gtop = np.nanmin(hh, 1), np.nanmax(hh, 1)
     c0 = float(np.percentile(tip[ci][np.abs(x[ci] - mid) < 0.006], 50))
-    target = c0 + TEETH_ARC * ((x - mid) / 0.016) ** 2
+    target = c0 + base.TEETH_ARC * ((x - mid) / 0.016) ** 2
     wv = np.clip(1 - (h - tip) / np.maximum(gtop - tip, 1e-4), 0, 1) * crown
     V = V + (sgn * (target - tip) * wv)[:, None] * up[None]
     h = sgn * ((V - M) @ up)
@@ -253,20 +231,17 @@ def _grow_crowns(V: np.ndarray, gum: np.ndarray, ml: dict, sgn: float) -> np.nda
     top = float(np.percentile(h[crown], 97))
     t = h - edge
     ht = top - edge
-    grow = np.where(t <= 0, 0.0, np.where(t < ht, t, ht)) * (TEETH_CROWN_GROW - 1)
-    return V + (sgn * grow)[:, None] * up[None] + ((x - mid) * (TEETH_WIDEN - 1))[:, None] * side[None]
+    grow = np.where(t <= 0, 0.0, np.where(t < ht, t, ht)) * (base.TEETH_CROWN_GROW - 1)
+    return V + (sgn * grow)[:, None] * up[None] + ((x - mid) * (base.TEETH_WIDEN - 1))[:, None] * side[None]
 
 
-def _piece_points(V, faces, rounds: int = MOUTH_SUBDIVIDE) -> dict:
+def _piece_points(V, faces, rounds: int = base.MOUTH_SUBDIVIDE) -> dict:
     """A GNM piece's quads as an IMLS point set (verts, normals, h, tree): subdivided, normals outward."""
     F = [list(map(int, f)) for f in faces]
     for _ in range(rounds):
         V, F = _catmull_clark(V, F)
     N, h = _normals_and_h(V, F)
     return {"verts": V, "normals": N, "h": h, "hmax": float(h.max()), "tree": cKDTree(V), "seam": None}
-
-
-MOUTH_SHELL = {"teeth": 0.003, "teeth_lower": 0.003, "tongue": 0.008}  # m: how deep under GNM's surface a piece's solid reaches
 
 
 def gnm_mouth_field(head: dict) -> list:
@@ -276,9 +251,9 @@ def gnm_mouth_field(head: dict) -> list:
     sock joins the head's own point set (surface: sock_points), as it joins GNM's skin."""
     mp = gnm_mouth(head)
     out = []
-    for name, part in (("teeth_upper", TEETH_PARTS[0]), ("teeth_lower", TEETH_PARTS[1]), ("tongue", "tongue")):
+    for name, part in (("teeth_upper", base.TEETH_PARTS[0]), ("teeth_lower", base.TEETH_PARTS[1]), ("tongue", "tongue")):
         pr = _piece_points(mp[name]["verts"], mp[name]["faces"])
-        pr["t"] = MOUTH_SHELL[part]
+        pr["t"] = base.MOUTH_SHELL[part]
         pad = 2 * pr["hmax"]
         out.append({"name": f"gnm_{name}", "part": part, "op": "add", "kind": "gnmpiece", "blend": 0.0, "layer": 0,
                     "params": pr, "lo": pr["verts"].min(0) - pad, "hi": pr["verts"].max(0) + pad})
@@ -316,10 +291,6 @@ def sock_points(head: dict) -> dict:
     return mp["sock"]["points"]
 
 
-LIP_CLOSE = {"n": 40, "span": 0.97, "x": 15, "gap": 0.15, "overlap": 0.2, "lead": 0.3, "hold": 0.3, "corner": 0.6, "iters": 4}
-_LIPC: dict = {}
-
-
 def lip_close_delta(V: np.ndarray, g: dict, scale: float = 1.4) -> np.ndarray:
     """head["lip_close"]: GNM's OWN closing of the rest mouth (gnmdetail2), in place of the seal's membrane: the least
     change of the lower-face EXPRESSION (its first 40 comps, unit prior) that puts the contact ring's two halves
@@ -328,8 +299,8 @@ def lip_close_delta(V: np.ndarray, g: dict, scale: float = 1.4) -> np.ndarray:
     mouth closed. The vermilion border keeps GNM's turn (the seal halved it); the field leaves the crossed inner rolls
     out (onemesh.CLOSED_SEAL_V). V: GNM's raw vertices (its frame: Y up, facing +Z). Returns the (n, 3) move."""
     from . import faceslide
-    P = LIP_CLOSE
-    if "sub" not in _LIPC:
+    P = base.LIP_CLOSE
+    if "sub" not in base._LIPC:
         R = faceslide._lip_rings()
         C = R["rings"][R["contact"]]
         up = R["upper"][C]
@@ -342,11 +313,11 @@ def lip_close_delta(V: np.ndarray, g: dict, scale: float = 1.4) -> np.ndarray:
         for k in range(68):
             for v, w in zip(lm_ids[k], lm_w[k]):
                 W[k, pos[int(v)]] += w
-        _LIPC.update(sub=sub, U=np.array([pos[int(v)] for v in C[up]]), L=np.array([pos[int(v)] for v in C[~up]]),
+        base._LIPC.update(sub=sub, U=np.array([pos[int(v)] for v in C[up]]), L=np.array([pos[int(v)] for v in C[~up]]),
                      lower=lower, Bfull=np.asarray(g["expression_basis"], float)[lower], W=W,
                      hold=[i for i in range(68) if not 48 <= i < 68])
-        _LIPC["B"] = _LIPC["Bfull"][:, sub]
-    S = _LIPC
+        base._LIPC["B"] = base._LIPC["Bfull"][:, sub]
+    S = base._LIPC
     mm = 1000.0 * float(scale)
     Vs0 = V[S["sub"]]
     L0 = S["W"] @ Vs0
@@ -389,7 +360,7 @@ def lip_close_delta(V: np.ndarray, g: dict, scale: float = 1.4) -> np.ndarray:
     return np.tensordot(c, S["Bfull"], 1)
 
 
-def _zip_lips(W, faces, seam, reach=0.045, ring=LIP_RING):
+def _zip_lips(W, faces, seam, reach=0.045, ring=base.LIP_RING):
     """Closed lips as one surface: GNM's skin (mouth bag left out) ends in an open loop a few mm inside the lips,
     and its inner lip rolls face each other behind the contact. Over closed lips those rolls left sealed air pockets
     in the field behind the lips, and a slot the export's low poly and its bake fell into (a dark jagged slit with

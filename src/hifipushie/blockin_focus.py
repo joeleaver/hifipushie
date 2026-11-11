@@ -6,25 +6,21 @@ from pathlib import Path
 
 import numpy as np
 
+from . import blockin
 from . import blockin_models
 from .blockin_clay import brows_on, detect_view, presented_mesh
 from .blockin_expression import _per_view
 from .blockin_look import _eye_anchor, fill, lit_render, profile_contour
 from .blockin_models import _log_path
-from .blockin_table import FEATURES
-
-RAKE = np.array([-0.85, -0.35, -0.25])   # camera frame: a grazing key from the picture's upper left (forms, not tone)
-RAKE = RAKE / np.linalg.norm(RAKE)
-
 
 def _feature_box(feature, L2, P_ear=None):
     """A square crop (picture pixels) around the feature's projected landmarks (the ear: its projected vertices)."""
-    Q = P_ear if feature == "ears" and P_ear is not None and len(P_ear) else L2[FEATURES[feature]["lm"]]
+    Q = P_ear if feature == "ears" and P_ear is not None and len(P_ear) else L2[blockin.FEATURES[feature]["lm"]]
     lo, hi = Q.min(0), Q.max(0)
     c = 0.5 * (lo + hi)
     # (a profile foreshortens the eye corners' span to a few mm: the nasion-chin length doesn't, ~0.75 x the span)
     io = max(float(np.linalg.norm(L2[45] - L2[36])), 0.75 * float(np.linalg.norm(L2[27] - L2[8])))
-    side = max(FEATURES[feature].get("pad", 1.5) * float(np.max(hi - lo)), 0.55 * io)
+    side = max(blockin.FEATURES[feature].get("pad", 1.5) * float(np.max(hi - lo)), 0.55 * io)
     return (c[0] - side / 2, c[1] - side / 2, c[0] + side / 2, c[1] + side / 2)
 
 
@@ -37,9 +33,9 @@ def focus(name: str, feature: str, out: str, views: list | None = None, T: int =
     from PIL import Image, ImageDraw, ImageFilter
     from . import humanfit, store
     from . import likeness_render
-    if feature not in FEATURES:
-        raise ValueError(f"focus: one of {', '.join(FEATURES)}")
-    F = FEATURES[feature]
+    if feature not in blockin.FEATURES:
+        raise ValueError(f"focus: one of {', '.join(blockin.FEATURES)}")
+    F = blockin.FEATURES[feature]
     rj = blockin_models._refs(name)
     VI = list(range(len(rj["views"]))) if views is None else [int(v) for v in views]
     if feature == "ears":
@@ -100,7 +96,7 @@ def focus(name: str, feature: str, out: str, views: list | None = None, T: int =
         to = lambda Q: [((q[0] - box[0]) * k, (q[1] - box[1]) * k) for q in Q]  # noqa: E731
         to_ph = lambda Q: [((q[0] - pbox[0]) * k, (q[1] - pbox[1]) * k) for q in Q]  # noqa: E731
         # (from the side the face looks to: a right-facing profile's front is on the picture's right)
-        rk_dir = RAKE * [-1.0, 1.0, 1.0] if float(v.get("yaw", 0)) >= 70 else RAKE
+        rk_dir = blockin.RAKE * [-1.0, 1.0, 1.0] if float(v.get("yaw", 0)) >= 70 else blockin.RAKE
         rake = lambda m: fill(*likeness_render.render(m, cam, box, px=px, brows=False, passes=True, ao=True, shadow=4.0,  # noqa: E731
                                                 light=(0.3, rk_dir, 1.0, 0.0))[::2], share=0.3)
         rk = rake(mesh)

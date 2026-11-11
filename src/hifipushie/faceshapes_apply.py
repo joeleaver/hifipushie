@@ -167,8 +167,8 @@ def apply(spec: dict, parts: dict, face_shapes, log: list, quick: bool = False, 
             p["tangent"] = turn(np.asarray(p["tangent"], np.float64), n0m[cv], n0[cv]).astype(p["tangent"].dtype)
         lower = None
         if kind == "teeth" and getattr(face, "gnm_mouth", False):  # GNM's rows are parts of their own
-            from . import base_gnm_parts
-            lower = np.full(len(Xm), base == base_gnm_parts.TEETH_PARTS[1])
+            from . import base as base_mod
+            lower = np.full(len(Xm), base == base_mod.TEETH_PARTS[1])
         elif kind == "teeth":  # each connected piece whose middle is under the parting line is the lower row
             from scipy.sparse import coo_matrix
             from scipy.sparse.csgraph import connected_components

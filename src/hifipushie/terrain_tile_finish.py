@@ -7,14 +7,13 @@ import math
 
 import numpy as np
 
+from . import terrain_mesh
 from . import terrain_sharp
 from .profiling import span as _span
 from .terrain_field import Metric
 from .terrain_gltf import _to_gltf, write_glb
 from .terrain_materials import _linear
-from .terrain_mesh import _CTX
 from .terrain_tile_mesh import _face_normals
-from .terrain_volumes import NORMAL_H
 
 def _corner_normals(P, F, field, h):
     """Each face corner's normal read from the field just inside its face (so on its face's side of a crease), and
@@ -36,7 +35,7 @@ def snap_creases(P, F, field, v, movable, angle=25.0, rounds=2):
     crease came out as a row of teeth. Only vertices whose faces turn by more than `angle` are tried; a move is kept
     if it stays within half a voxel, on the surface, and turns no face over."""
     P = P.copy()
-    h = NORMAL_H * v
+    h = terrain_mesh.NORMAL_H * v
     cosa = math.cos(math.radians(angle))
     for _ in range(rounds):
         fn = _face_normals(P, F)
@@ -173,7 +172,7 @@ def _textured_prep(P, N, W, F, k, origin, stem):
     work dir; `_job_bake` bakes the texels in pieces across the pool and `_job_finish` assembles the maps (base colour,
     ORM, normal embedded; height and layer-weight maps beside the GLB in maps/) and writes the GLB."""
     from . import terrain_bake
-    c = _CTX
+    c = terrain_mesh._CTX
     cfg, v0 = c["cfg"], c["v0"]
     dens = cfg["_density"][min(k, len(cfg["_density"]) - 1)]
     with _span("maps/unwrap"):
@@ -240,36 +239,18 @@ def _morton(X, cell):
     return np.argsort(key, kind="stable")
 
 
-LIGHTS = {  # render_tiles(light=...) presets: the sky's dust/air (Nishita), sun watts, sky strength, exposure
-    "hazy": {"dust": 0.3, "air": 0.8, "sun_energy": 2.4, "sky_strength": 0.12, "exposure": 0.0},
-    # matched to a clear sunny photo (the Pebble 7th): its sky deep blue (v ~0.75 s ~0.45 at the top), crisp shadows
-    # exposure metered on the sun's height (`meter` stops per doubling of sin(height) over 25 deg)
-    "clear": {"dust": 0.02, "air": 1.0, "sun_energy": 3.2, "sky_strength": 0.08, "exposure": -0.35, "meter": 0.8,
-              # the sky as the camera sees it, deeper (camera and glossy rays only: the light it casts is unchanged), and
-              # the sea a deep blue body with water's IOR (measured against the photo: the sea there h 212 s 0.45-0.49)
-              "sky_sat": 1.3, "sky_value": 1.12, "sky_horizon_tint": [0.5, 0.72, 1.0],
-              "water": [0.006, 0.028, 0.065], "water_roughness": 0.12,
-              "haze_scale": 3.0},  # (clear air: the photo's sea stays deep blue to the horizon, 3 km off)
-}
-
-
 def _light(light):
     """A light preset's settings (render_tiles(light=)): a LIGHTS name, a dict, or {} for none."""
     if isinstance(light, str):
-        return LIGHTS.get(light, {})
+        return terrain_mesh.LIGHTS.get(light, {})
     return light or {}
-
-
-RELIEF_CHART = 2.5  # the ground's maps-only relief on cliff tiles is band-limited as if their texel were this x larger:
-# their charts' texel grids don't line up across a tile border (ground tiles' do), so fine relief differed there
-BAKE_PIECE = 120_000  # texels per bake job (a 64 m tile's LOD 0 atlas at 13-16 texels/m is 1.2-2.6M: 10-20 jobs)
 
 
 def _job_bake(args):
     """One piece of a tile LOD's atlas: texels [a, b) baked (terrain_bake.bake_texels), saved for _job_finish."""
     from . import terrain_bake
     stem, k, a, b = args
-    c = _CTX
+    c = terrain_mesh._CTX
     d = np.load(c["work"] / f"bake_{stem}.npz")
     reach = max(0.6, 4 * c["cfg"]["error"][k] + 0.5)
     bf = c["bakefield"][k]
@@ -282,30 +263,27 @@ def _job_bake(args):
     vals = terrain_bake.bake_texels(surface, c["mats"], d["P"], d["N"], d["T4"], d["uv"], d["F"], tuple(d["size"]),
                                     d["t"][a:b], d["xs"][a:b], d["ys"][a:b], d["inside"][a:b], c["layer_rough"],
                                     bf, first=a, gfield=c.get("weightfield"), lines=lines,
-                                    texel=RELIEF_CHART / c["cfg"]["_density"][min(k, len(c["cfg"]["_density"]) - 1)],
+                                    texel=terrain_mesh.RELIEF_CHART / c["cfg"]["_density"][min(k, len(c["cfg"]["_density"]) - 1)],
                                     border=_bake_border(c, stem, k),
                                     map_texel=1.0 / c["cfg"]["_density"][min(k, len(c["cfg"]["_density"]) - 1)])
     np.savez(c["work"] / f"baked_{stem}_{a:09d}.npz", **vals)
-
-
-BORDER_FLAT = 1.5  # texels: every LOD's normal maps eased to the low poly's normal this close to a tile's edge
 
 
 def _bake_border(c, stem, k):
     """(lo, hi, fade m) for a cliff tile's LOD k bake (terrain_bake.bake_texels `border`), else None."""
     import re
     m = re.match(r"tile_(\d+)_(\d+)_lod(\d+)$", stem)
-    if not m or BORDER_FLAT <= 0:  # (LOD 0 too: eased at LOD 1-2 only, LOD 0 against LOD 2 read p50 7.3 deg (limit 6))
+    if not m or terrain_mesh.BORDER_FLAT <= 0:  # (LOD 0 too: eased at LOD 1-2 only, LOD 0 against LOD 2 read p50 7.3 deg (limit 6))
         return None
     lo, hi = c["G"].bounds(int(m.group(1)), int(m.group(2)))
-    return (lo, hi, BORDER_FLAT / c["cfg"]["_density"][min(k, len(c["cfg"]["_density"]) - 1)])
+    return (lo, hi, terrain_mesh.BORDER_FLAT / c["cfg"]["_density"][min(k, len(c["cfg"]["_density"]) - 1)])
 
 def _job_finish(stem):
     """A tile LOD's maps assembled from its baked pieces, and its GLB written. Returns (bytes, the maps report)."""
     import pickle
     from PIL import Image
     from . import terrain_bake
-    c = _CTX
+    c = terrain_mesh._CTX
     out, work = c["out"], c["work"]
     d = np.load(work / f"bake_{stem}.npz")
     tx = {"size": tuple(int(x) for x in d["size"]), "ys": d["ys"], "xs": d["xs"], "t": d["t"], "inside": d["inside"],

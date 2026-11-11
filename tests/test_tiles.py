@@ -37,7 +37,7 @@ def _shell(T):
 def _mc(G, cf, vols, ij):
     idx, F, _ = terrain_tile_mesh._tile_mc(cf, G, ij[0], ij[1], 0, vols)
     v = G.voxel
-    return np.c_[G.origin[0] + idx[:, 0] * v, G.origin[1] + idx[:, 1] * v, (idx[:, 2] + terrain_tile_mesh.ZOFF) * v], F
+    return np.c_[G.origin[0] + idx[:, 0] * v, G.origin[1] + idx[:, 1] * v, (idx[:, 2] + tm.ZOFF) * v], F
 
 
 def test_cover_named_by_type(T):
@@ -239,7 +239,7 @@ def test_relief_fades_in_at_its_cut(base, G):
     xs, ys = np.arange(lo[0] + 1, hi[0] - 1, 0.5), np.arange(lo[1] + 1, hi[1] - 1, 0.5)
     X, Y = np.meshgrid(xs, ys)
     w = base.relief_at(X.ravel(), Y.ravel()).reshape(X.shape)
-    cut = terrain_volumes.RELIEF_CUT
+    cut = tm.RELIEF_CUT
     a = np.argwhere((w[:, :-1] - cut) * (w[:, 1:] - cut) < 0)  # (grid pairs straddling the cut, along x)
     assert len(a) > 20, len(a)
     a = a[np.linspace(0, len(a) - 1, 60).astype(int)]
@@ -395,11 +395,11 @@ def test_long_tube_by_runs():
     tb = terrain_volumes.Tube("t", nodes, 3.5, 2.5, nodes[:, 2], rough=0.2, seed=4)
     P = np.c_[rng.uniform(-10, 310, 20000), rng.uniform(-50, 50, 20000), rng.uniform(0, 60, 20000)]
     got = tb.sd(P, detail=True)
-    run, terrain_volumes.TUBE_RUN = terrain_volumes.TUBE_RUN, 10 ** 6
+    run, tm.TUBE_RUN = tm.TUBE_RUN, 10 ** 6
     try:
         ref = tb.sd(P, detail=True)
     finally:
-        terrain_volumes.TUBE_RUN = run
+        tm.TUBE_RUN = run
     near = ref[0] < tb.reach - 1.0
     assert near.sum() > 1000
     for g, r in zip(got, ref):
@@ -427,7 +427,7 @@ def test_pinched_sheets_split():
     assert not terrain_tile_mesh._manifold(F)
     P2, F2 = terrain_tile_mesh._split_nonmanifold(P, F)
     assert terrain_tile_mesh._manifold(F2) and len(P2) == len(P) + 2 and len(F2) == len(F), (len(P2), F2)
-    assert np.abs(P2[F2] - P[F]).max() <= terrain_tile_mesh.PINCH_GAP + 1e-9 and len(terrain_tile_mesh._boundary_edges(F2)) == 0
+    assert np.abs(P2[F2] - P[F]).max() <= tm.PINCH_GAP + 1e-9 and len(terrain_tile_mesh._boundary_edges(F2)) == 0
     assert len(np.unique(P2, axis=0)) == len(P2)  # (apart: a GLB read back by position stays unpinched)
     assert terrain_tile_mesh._split_nonmanifold(P, np.r_[A, B[1:]]) is None  # (open there)
     # the export's decimation takes such a mesh instead of calling it a fold
@@ -456,7 +456,7 @@ def test_unpinch_drops_specks():
         F = F2
     P = np.array(V)
     F = np.array(F, np.int64)
-    assert terrain_tile_mesh._manifold(F) and len(F) >= 8 * terrain_tile_mesh.SPECK_FACES
+    assert terrain_tile_mesh._manifold(F) and len(F) >= 8 * tm.SPECK_FACES
     a, b = F[0, 0], F[0, 1]  # (a tetrahedron outside the shell on one of its edges)
     out = (P[a] + P[b]) / 2 * 1.3
     out2 = out + np.cross(P[b] - P[a], out) * 0.2

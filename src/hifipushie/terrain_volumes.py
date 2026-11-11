@@ -7,24 +7,9 @@ import zlib
 
 import numpy as np
 
+from . import terrain_mesh
 from . import noise
-from .terrain_mesh import DEFAULTS, smax, smoothstep
-
-# ---------------------------------------------------------------- volumes
-NORMAL_H = 0.125  # the normals' stencil, voxels: exact on each side of a crease (split_normals splits at creases)
-NEAR = 2.5  # how far from a volume's surface the rock character reaches (m)
-# the rock relief is evaluated only where its weight is over RELIEF_CUT (a cost cull), and eased in from there to
-# RELIEF_FADE, so the field stays continuous where the cull starts (Field._solid)
-RELIEF_CUT = 0.01
-RELIEF_FADE = 0.1
-JUMP_LIMIT = 3  # sampled texels with a step under them (terrain_bake.bake_texels) a tile LOD may have (seam_check)
-BURIED_DEEP = 0.1  # a face is buried when its centre is deeper in the rock than this x sqrt(its area) (and > the LOD threshold)
-FLOAT_PIECE = 50.0  # m2: closed cliff pieces off the tile border that never reach the ground, under this: dropped, logged
-FLOAT_TOL = 0.15  # m over the pushed heightmap that still counts as reaching the ground (terrain_cliffs.floating's tol)
-EXPOSED_OFF = 0.5  # m out along a face's normal: rock there = behind the visible surface (terrain_cliffs.EXPOSED_OFF)
-BURIED_SHADE = 0.6  # the buried back's material: the rock's mean colour under it x this (never white)
-FALL_SEAT = 0.5  # fallen blocks seat this share of the rock relief's reach (x its weight) under the column's ground
-
+from .terrain_mesh import smax, smoothstep
 
 class Tube:
     """A passage along a polyline of nodes: an elliptical cross-section (half width rw across, rh up) that varies
@@ -50,7 +35,7 @@ class Tube:
         # NEAR): cut off inside that reach, the field jumped at the box's edge (shards). The ellipse's distance
         # under-reads along its long axis by the aspect ratio, hence the factor.
         aspect = float(np.max(np.maximum(self.rw / self.rh, self.rh / self.rw)))
-        r = np.maximum(self.rw, self.rh).max() + (self.blend + rough + NEAR + 0.5) * aspect
+        r = np.maximum(self.rw, self.rh).max() + (self.blend + rough + terrain_mesh.NEAR + 0.5) * aspect
         self.reach = float(r)
         self.lo, self.hi = self.nodes.min(0) - r, self.nodes.max(0) + r
         if self.floor is not None:
@@ -76,11 +61,11 @@ class Tube:
         aspect = float(np.max(np.maximum(self.rw / self.rh, self.rh / self.rw)))
         span = (reach + abs(self.rough) + (1.6 * self.beds["amp"] if self.beds else 0.0)) * aspect + rmax
         full = np.arange(len(p))
-        for r0 in range(0, len(segs), TUBE_RUN):
-            run = segs[r0:r0 + TUBE_RUN]
+        for r0 in range(0, len(segs), terrain_mesh.TUBE_RUN):
+            run = segs[r0:r0 + terrain_mesh.TUBE_RUN]
             ns = self.nodes[[run[0][0]] + [j for _, j in run]]
             lo_, hi_ = ns.min(0) - span, ns.max(0) + span
-            if len(segs) > TUBE_RUN:
+            if len(segs) > terrain_mesh.TUBE_RUN:
                 sel = np.flatnonzero(np.all((p >= lo_) & (p <= hi_), axis=1))
                 if not len(sel):
                     continue
@@ -92,7 +77,7 @@ class Tube:
             for i, j in run:
                 b_, a_, z_ = self._seg(ps, i, j, rgh, b_, a_, z_)
             best[sel], above[sel], size[sel] = b_, a_, z_
-        if len(segs) > TUBE_RUN:  # (points no run reaches: past the reach, a bound)
+        if len(segs) > terrain_mesh.TUBE_RUN:  # (points no run reaches: past the reach, a bound)
             far = ~np.isfinite(best)
             best[far] = reach
         return (best, above, size) if detail else best
@@ -133,15 +118,6 @@ class Tube:
         return bool(np.all(self.hi >= lo) and np.all(self.lo <= hi))
 
 
-TUBE_RUN = 16  # segments a tube evaluates together, at the points in their run's reach (Tube.sd)
-
-
-STACK ={"radius": 0.75}
-STACK_BUILD = 0.05  # m: the most rock relief may build out from a stack
-STACK_CARVE = 0.3  # m: ... and carve into it (cartoon facets 1.4 x cut a fin of a stack loose 5 m up: the stack's own
-# form carries its shape, the relief is texture on it)
-# a solid sea stack's radius x the sea's stack radius; its form is terrain_stack.FORM (a jointed column), a style's
-# sheet may override it (rock.stack)
 class Stack:
     """A sea stack as solid rock (op "add" over the heightfield's own stack): a jointed column (terrain_stack.Column:
     a plan of joint faces, near-vertical walls stepping back at a few levels, a flat dipping top or a spire, a
@@ -152,7 +128,7 @@ class Stack:
                  foot=None):
         from .terrain_stack import Column
         self.name, self.op, self.blend, self.relief = name, "add", float(blend), 1.0
-        self.build = STACK_BUILD  # (its rock relief carves; see Field._solid)
+        self.build = terrain_mesh.STACK_BUILD  # (its rock relief carves; see Field._solid)
         # the heightfield's own stack (a slim core) taken away within `clip` m of the centre above the plinth, so the
         # solid stack alone is the form: two steep surfaces crossing inside its notch meshed as shards
         self.clip = None if clip is None else (float(clip), float(base) + 0.5)
@@ -160,9 +136,9 @@ class Stack:
             int(seed)
         self.col = Column(self.xy, self.base, self.top, self.r, self.seed,
                           sea=(self.base + 2.0) if sea is None else sea, stage=stage, over=over, foot=foot)
-        m = max(self.col.reach, self.clip[0] if self.clip else 0.0) + self.blend + NEAR + 1.0
-        self.lo = np.r_[self.xy - m, self.col.foot - NEAR]
-        self.hi = np.r_[self.xy + m, self.top + 1.0 + NEAR]
+        m = max(self.col.reach, self.clip[0] if self.clip else 0.0) + self.blend + terrain_mesh.NEAR + 1.0
+        self.lo = np.r_[self.xy - m, self.col.foot - terrain_mesh.NEAR]
+        self.hi = np.r_[self.xy + m, self.top + 1.0 + terrain_mesh.NEAR]
 
     def sd(self, p, detail=False):
         f = self.col.sd(p)
@@ -187,10 +163,10 @@ def stacks(T):
         rc = STACK_CORE * float(a["radius"]) + 0.11 * float(a["height"]) + 0.8  # (the core, spread at 84 deg, + margin)
         from .terrain_style import stack_form
         # its rock runs down into the sea floor round it (the lowest ground within twice its radius, 1.5 m in)
-        r2 = 2.0 * STACK["radius"] * float(a["radius"]) + 2.0 * T.cell
+        r2 = 2.0 * terrain_mesh.STACK["radius"] * float(a["radius"]) + 2.0 * T.cell
         near = np.hypot(T.X - xy[0], T.Y - xy[1]) < r2
         foot = float(T.H[near].min()) - 1.5 if near.any() else sea - 3.0
-        out.append(Stack(f"stack{i}", xy, sea - 2.0, top, STACK["radius"] * float(a["radius"]), 3000 + i, clip=rc,
+        out.append(Stack(f"stack{i}", xy, sea - 2.0, top, terrain_mesh.STACK["radius"] * float(a["radius"]), 3000 + i, clip=rc,
                          sea=sea, over=stack_form(T, xy), foot=foot))
     stages = ", ".join(sorted({s.col.stage for s in out}))
     note = (f"stacks: {len(out)} as jointed rock columns ({stages}: joint faces, steps at a few levels, notch, "
@@ -207,7 +183,7 @@ class Mound:
         self.name, self.op, self.blend, self.relief = name, "add", float(blend), 0.0
         self.at, self.r, self.h = np.asarray(at, float), float(radius), float(height)
         self.rough, self.rough_scale, self.seed = float(rough), float(rough_scale), int(seed)
-        m = self.r + self.blend + self.rough + NEAR + 1.0
+        m = self.r + self.blend + self.rough + terrain_mesh.NEAR + 1.0
         self.lo = self.at - np.array([m, m, 1.5 + self.blend + self.rough])
         self.hi = self.at + np.array([m, m, self.h + m])
 
@@ -283,7 +259,7 @@ def volumes(T) -> tuple[list[Tube], list[str]]:
     for k, (name, v) in enumerate(spec.items()):
         kind = v.get("type")
         seed = zlib.crc32(name.encode()) % 10000
-        common = dict(op=v.get("op", "subtract"), blend=v.get("blend", DEFAULTS["blend"]), rough=v.get("rough", 0.4),
+        common = dict(op=v.get("op", "subtract"), blend=v.get("blend", terrain_mesh.DEFAULTS["blend"]), rough=v.get("rough", 0.4),
                       rough_scale=v.get("rough_scale", 3.0), seed=seed)
         at, _, adir = T.address(v["at"])  # an address's own direction (e.g. "cliff_foot:<address>": into the rock)
         at = np.asarray(at, float)
@@ -388,7 +364,7 @@ def volumes(T) -> tuple[list[Tube], list[str]]:
             # lowers where the rock over it thins, and ends where even a 1.8 m passage wouldn't keep it (a 0.7 m roof
             # broke through; a turf skin over a hole read as a lid)
             ground = T.sample(xy)
-            rmin = np.maximum(1.5, ROOF_SPAN * 2 * rw)
+            rmin = np.maximum(1.5, terrain_mesh.ROOF_SPAN * 2 * rw)
             room = ground - fl - rmin
             under = ground > fl + 0.5 * rh  # (the part out in the open has no roof)
             fix = []
@@ -409,7 +385,7 @@ def volumes(T) -> tuple[list[Tube], list[str]]:
             ch = float(v.get("chamber", 0.0))
             if ch > 0 and len(xy) == n + 1:  # a domed chamber at the end, on the passage's floor
                 g_end = float(T.sample(xy[-1:])[0])
-                ch_fit = min(ch, (g_end - fl[-1]) / (0.8 + 2 * ROOF_SPAN), (g_end - fl[-1] - 1.5) / 0.8) \
+                ch_fit = min(ch, (g_end - fl[-1]) / (0.8 + 2 * terrain_mesh.ROOF_SPAN), (g_end - fl[-1] - 1.5) / 0.8) \
                     if v.get("roof_rule", True) else ch
                 if ch_fit < ch:
                     fix.append(f"chamber r {ch:.0f} -> {max(ch_fit, 0):.1f} m (its roof)")
@@ -449,7 +425,7 @@ def volumes(T) -> tuple[list[Tube], list[str]]:
                 for i, p_ in enumerate(pts):
                     dn = _downhill(T, p_)
                     for fr in (1.0, 0.8, 0.6, 0.45, 0.3, 0.2):
-                        if T.height(p_ - dn * depth * ease[i] * fr) - floor - hh[i] >= max(1.5, ROOF_SPAN * hh[i]):
+                        if T.height(p_ - dn * depth * ease[i] * fr) - floor - hh[i] >= max(1.5, terrain_mesh.ROOF_SPAN * hh[i]):
                             break
                     else:  # (a low stretch of cliff: the notch dies out to a nick)
                         fr = 0.15
@@ -467,9 +443,6 @@ def volumes(T) -> tuple[list[Tube], list[str]]:
     return out, notes
 
 
-ROOF_SPAN = 0.5  # the rock over an opening: at least this share of its span (thinner read as a lid on a hole)
-
-
 def _arch_size(v, avail, roof_min):
     """An arch's height, span and roof from the rock standing over its floor (avail): 0.65 of it high unless given,
     0.8 of that wide (capped at 8 m; arches are taller than wide), and a roof of at least `roof_min` and ROOF_SPAN x
@@ -477,13 +450,13 @@ def _arch_size(v, avail, roof_min):
     h = float(v.get("height", 0.65 * avail))
     w = float(v.get("width", min(8.0, 0.8 * h)))
     for _ in range(4):
-        roof = max(roof_min, ROOF_SPAN * w)
+        roof = max(roof_min, terrain_mesh.ROOF_SPAN * w)
         if avail - h >= roof - 1e-6:
             break
         h = avail - roof
         if "width" not in v:
             w = min(8.0, 0.8 * h)
-    roof = max(roof_min, ROOF_SPAN * w)
+    roof = max(roof_min, terrain_mesh.ROOF_SPAN * w)
     if h < 2 or avail - h < roof - 1e-6:
         return None, None, None
     return h, w, roof

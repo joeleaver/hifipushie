@@ -114,7 +114,7 @@ def test_sea_fall_matches_mesh():
     r = terrain_tile_mesh._tile_mc(cf, G, i, j, 0, vols)
     v = G.v(0)
     idx, F = r[0], r[1]
-    P = np.c_[G.origin[0] + idx[:, 0] * v, G.origin[1] + idx[:, 1] * v, (idx[:, 2] + terrain_tile_mesh.ZOFF) * v]
+    P = np.c_[G.origin[0] + idx[:, 0] * v, G.origin[1] + idx[:, 1] * v, (idx[:, 2] + tm.ZOFF) * v]
     P, _ = terrain_field.project(cf, P, v)
     lo, hi = G.origin + np.array([i, j]) * G.tile + 0.5, G.origin + np.array([i + 1, j + 1]) * G.tile - 0.5
     u = np.r_[np.arange(-6.0, -0.49, 0.25), np.arange(0.5, 8.01, 0.25)]  # (off the face itself: a vertical face has

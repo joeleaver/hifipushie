@@ -121,7 +121,7 @@ def test_hair_edge_is_one_sided(tess):
     assert len(obs) >= 10 and {ob["type"] for ob in obs} == {"hairedge"}
     assert all(ob["p"][0] > cx for ob in obs)                      # only where the skin shows OUTSIDE the model
     o = np.array([ob["o"] for ob in obs])
-    assert 2.0 < np.median(o) < 4.0 and (o >= face_ruler_outline.HAIR_EDGE_MIN).all()
+    assert 2.0 < np.median(o) < 4.0 and (o >= fr.HAIR_EDGE_MIN).all()
     # skin against BACKGROUND (no hair beside it) is not this read's business
     assert face_ruler_outline._hair_edge_obs(head, {**view, "hair_edge": {"skin": skin, "hair": np.zeros_like(hair)}}, fig) == []
     # and a profile takes none (observe)
@@ -138,7 +138,7 @@ def test_known_lens(tmp_path):
     ex.get_ifd(0x8769)[41989] = 26
     Image.new("RGB", (40, 60)).save(tmp_path / "b.jpg", exif=ex)
     assert face_ruler_camera.lens_known({"image": str(tmp_path / "b.jpg")}) == 26.0
-    assert face_ruler_camera.PHOTO_CAM_DIST_LENS <= 10.0 < face_ruler_camera.PHOTO_CAM_DIST_DENSE
+    assert fr.PHOTO_CAM_DIST_LENS <= 10.0 < fr.PHOTO_CAM_DIST_DENSE
 
 
 def test_expression_prior_pins_a_neutral_picture():
@@ -186,7 +186,7 @@ def test_nostril_read_finds_drawn_openings_and_refuses_bare_skin(tess):
     # both openings drawn 2 mm further OUT: the left one's ends move +2 along the line (toward the subject's left), the right one's -2
     for k, sgn in (("nostril_l_lateral", 1), ("nostril_l_medial", 1), ("nostril_r_lateral", -1), ("nostril_r_medial", -1)):
         assert abs((o2[k] - o0[k]) - 2.0 * sgn) < 0.5, (k, o0[k], o2[k])
-    assert face_ruler_nose.NOSTRIL is False                                                # not a default: one head's validation
+    assert fr.NOSTRIL is False                                                # not a default: one head's validation
 
 
 def test_distance_lens_exif_crop_and_the_brief(tmp_path):
@@ -244,7 +244,7 @@ def test_one_lens_convention_and_a_crop_frame():
     got = hm.lens_prior({"size": [w, h], "lens_mm": 85.0, "frame": [6000, 4000]})[0]
     assert abs(got - ff) < 1e-6 and got > 3 * hm.lens_prior({"size": [w, h], "lens_mm": 85.0})[0]
     assert abs(face_ruler_camera.lens_mm({"f": ff, "size": [w, h]}, frame=[6000, 4000]) - 85.0) < 1e-6
-    assert face_ruler_camera.LM_NOSE_WIDE == 0.0                                            # off: failed on held-out subjects
+    assert fr.LM_NOSE_WIDE == 0.0                                            # off: failed on held-out subjects
 
 
 def test_fallback_blend_stays_on_the_simplex():

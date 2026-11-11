@@ -40,9 +40,6 @@ def _polylines(edges):
     return out
 
 
-WELD = 1e-3  # x voxel: canonical border vertices joined by a chain edge and closer than this are one vertex
-
-
 def _weld_rows(plane_edges, CP, corner, tol):
     """{row: the row it is welded to} for canonical border rows joined by a border chain edge and closer than tol.
     Two marching-cubes crossings whose Newton steps converge on one point (a corner of pebble's karst passage in a tile

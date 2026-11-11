@@ -5,10 +5,11 @@ from __future__ import annotations
 import numpy as np
 from scipy import ndimage
 
+from . import terrain_mesh
 from . import fieldjit, noise
 from .profiling import span as _span
-from .terrain_mesh import LAYERS, LAYER_OF, _f64, smoothstep
-from .terrain_relief import THIN_STRATA, _bed_noise, bed_planes, strata
+from .terrain_mesh import _f64, smoothstep
+from .terrain_relief import _bed_noise, bed_planes, strata
 from .terrain_volumes import _sea
 
 # ---------------------------------------------------------------- materials
@@ -24,11 +25,11 @@ def rock_colours(T):
     arid = T.world["kind"] in ("canyon", "dunes", "plateau")
     hn = (T.H - T.H.min()) / max(np.ptp(T.H), 1)
     base = np.array([0.58, 0.38, 0.26]) if arid else np.array(terrain_rock.params(T).get("rock_colour",
-                                                                                       LAYERS["rock"]["color"]))
+                                                                                       terrain_mesh.LAYERS["rock"]["color"]))
     c = base + 0.06 * hn[..., None]
     for name, m in T.cover.items():
         spec = design._spec_cover(T, name)
-        if LAYER_OF.get(spec.get("type", name)) == "rock":
+        if terrain_mesh.LAYER_OF.get(spec.get("type", name)) == "rock":
             a = np.clip(m, 0, 1)[..., None]
             c = c * (1 - a) + np.array(design.cover_colour(T, name)) * a
     tone = (getattr(T, "rock", None) or {}).get("tone") if isinstance(getattr(T, "rock", None), dict) else None
@@ -53,7 +54,7 @@ class Materials:
         for name, m in T.cover.items():
             c = design._spec_cover(T, name)
             typ = c.get("type", name)
-            layer = LAYER_OF.get(typ, "grass")
+            layer = terrain_mesh.LAYER_OF.get(typ, "grass")
             tree = bool(c.get("trees"))
             self.cover.append((name, layer, 0.6 if tree else 1.0, terrain_ground.KIND_OF.get(typ)))
             order.append(layer)
@@ -67,7 +68,7 @@ class Materials:
             self.layers = list(dict.fromkeys(self.layers + ["wet_rock", *terrain_stream.LAYERS]))
         col = ground_colours(T, cover=True)
         wet = ~np.isnan(T.water)
-        col[wet] = np.array(LAYERS["sand"]["color"]) * 0.8
+        col[wet] = np.array(terrain_mesh.LAYERS["sand"]["color"]) * 0.8
         if getattr(T, "spec", {}).get("ground_character", True) is not False:
             # (a cell's cover colour sampled as is drew every cover edge as the grid's staircase: fairways were cut-out
             # stickers with stepped edges; softened over about a cell, and warped a little where sampled)
@@ -78,7 +79,7 @@ class Materials:
             # with the same crisp weights as the layers (from the cell grid, a fairway's or a bunker's edge was the
             # grid's 2-cell blur however crisp its weight: soft stickers)
             bare = ground_colours(T, cover=False)
-            bare[wet] = np.array(LAYERS["sand"]["color"]) * 0.8
+            bare[wet] = np.array(terrain_mesh.LAYERS["sand"]["color"]) * 0.8
             self.display_bare = np.stack([ndimage.gaussian_filter(bare[..., i], 0.9) for i in range(3)], -1)
             self.cover_col = {name: np.asarray(design.cover_colour(T, name), float) for name, *_ in self.cover}
         self.rock_grid = rock_colours(T)
@@ -99,7 +100,7 @@ class Materials:
 
     def layer_ref(self, name):
         """A layer's reference look for the manifest (rock: this terrain's own rock colour)."""
-        ref = dict(LAYERS[name])
+        ref = dict(terrain_mesh.LAYERS[name])
         if name == "rock":
             ref["color"] = [round(float(x), 3) for x in self.rock_ref]
         elif name == "wet_rock":
@@ -300,7 +301,7 @@ class Materials:
             c = self.ground.tint(self, P, N, c, kinds, mown)
         if self.sea is not None:
             wet = smoothstep(0.2, 1.2, self.sea - P[:, 2])[:, None]
-            c = c * (1 - wet) + np.array(LAYERS["sand"]["color"]) * 0.8 * wet
+            c = c * (1 - wet) + np.array(terrain_mesh.LAYERS["sand"]["color"]) * 0.8 * wet
         # the rock's own colour where the heightfield views paint it (the kind's rock, strata bands, rock cover
         # layers such as black lava or a cliff's grey), not one grey for every terrain
         rc = np.stack([self._grid(self.rock_grid[..., i], xy) for i in range(3)], 1)
@@ -314,7 +315,7 @@ class Materials:
             if r.get("blocks") and getattr(self.field, "thin", None) is not None:
                 # thin fins and stacks (an arch's fin) take little relief (Field.thin: carved, their tops floated off),
                 # so their beds show in colour instead: Durdle Door's banding, not a smooth tan wall
-                calm = calm + (1.0 - calm) * np.clip(self._grid(self.field.thin, xy), 0, 1) * THIN_TONE
+                calm = calm + (1.0 - calm) * np.clip(self._grid(self.field.thin, xy), 0, 1) * terrain_mesh.THIN_TONE
             th = lambda k: 1 + calm * (-0.16 + 0.26 * _bed_noise(xy, k, 40.0, r["seed"] + 30))
             # (each bed's tone eases into the next over ~0.2 m where the plane shows, a step aliased along every
             # bedding plane in the maps; over metres where it doesn't: no line there)
@@ -331,7 +332,7 @@ class Materials:
             bf = self.field
             while bf is not None and not hasattr(bf, "thin_at"):
                 bf = getattr(bf, "base", None)
-            if THIN_RELIEF > 0 and THIN_STRATA["depth"] > 0 and bf is not None and getattr(bf, "thin_parts", None):
+            if terrain_mesh.THIN_RELIEF > 0 and terrain_mesh.THIN_STRATA["depth"] > 0 and bf is not None and getattr(bf, "thin_parts", None):
                 # thin rock's strata in colour too: soft beds (sitting back) darker and warmer, hard ones paler
                 _, tw = bf.thin_at(P)
                 kt = np.flatnonzero(tw > 1e-3)
@@ -339,7 +340,7 @@ class Materials:
                     zoff = r["bed_offset"](P[kt, :2]) if r.get("bed_offset") else 0.0
                     so = strata(P[kt], zoff, r["seed"], tone=True)
                     st = np.sqrt(tw[kt])  # (as the geometry's strata)
-                    f = 1 + st * THIN_STRATA["tone"] * (0.3 - so)
+                    f = 1 + st * terrain_mesh.THIN_STRATA["tone"] * (0.3 - so)
                     rc[kt] = rc[kt] * f[:, None] * (1 + st[:, None] * 0.06 * so[:, None] * np.array([1.0, 0.0, -1.0]))
         # crevices, joints and the backs of overhangs darker (how open the field is half a metre out along the
         # normal: a cheap occlusion that needs no ray tracing, the same in every engine)
@@ -360,13 +361,6 @@ class Materials:
         return Wm.astype(np.float32), c
 
 
-# (`strata`): bed spacing, jitter share, plane ramp, soft beds' set-back (m); tone: soft beds' darkening
-THIN_VOID = 8.0  # m: within this of a cave or notch thin rock keeps the old rule (Field.steep's tenth)
-THIN_RELIEF = 0.35  # thin rock's relief: at most this share of its local half-thickness (Field.thin_cap); 0 = the old
-# rule (thin fins and stacks took a tenth of the relief: smooth, Durdle Door without its beds)
-THIN_TONE = 1.0  # how much of the full bed tone thin fins take back (Materials, rock colour)
-BLOCK_TONE = {"bed": 0.06, "thin": 0.08, "block": 0.04, "p_fresh": 0.05, "fresh": 0.08, "warm": [0.04, 0.0, -0.06],
-              "along": 0.10, "under_ledge": 0.12}
 # block_colour's spread: per bed and per block (+-), thin packages darker, the share of freshly spalled blocks and how
 # much paler (and warmer, per channel) they are; weathering along the beds (+-) and the darkening under each ledge
 def block_colour(P, N, rc, r, fd, lines=True):
@@ -392,7 +386,7 @@ def block_colour(P, N, rc, r, fd, lines=True):
     # (a thin package is darker only where it sits back, by as much as it does (terrain_blocks._bed_value's stretches
     # and depth): darker all along, it was a ruled band across the pebble chasm)
     rec = terrain_blocks.package_recess(P[:, :2], K, j, B)
-    tone = 1 + (BLOCK_TONE["bed"] * (2 * hsh(K, j, 1) - 1) - BLOCK_TONE["thin"] * I["thin"] * rec) * eb
+    tone = 1 + (terrain_mesh.BLOCK_TONE["bed"] * (2 * hsh(K, j, 1) - 1) - terrain_mesh.BLOCK_TONE["thin"] * I["thin"] * rec) * eb
     # (lines=False: the open bed planes and joints are drawn crisp from the lines map, terrain_swatch.structure_lines)
     dark = 0.5 * I["bed_crack"] * (1 - eb) * lines  # (bed planes: faint; the geometry draws the ledges)
     fresh = np.zeros(len(P))
@@ -403,12 +397,12 @@ def block_colour(P, N, rc, r, fd, lines=True):
     for m, (bi, w) in enumerate(zip(I["blocks"], I["weights"])):
         jj = (K * 16 + j) * 5 + m
         e_m = ease(I["edges"][m])
-        tone = tone * (1 + w * BLOCK_TONE["block"] * (2 * hsh(bi, jj, 2) - 1) * e_m * (0.55 + 0.9 * within))
-        fresh = np.maximum(fresh, w * (hsh(bi, jj, 3) < BLOCK_TONE["p_fresh"]) * e_m * spall)
+        tone = tone * (1 + w * terrain_mesh.BLOCK_TONE["block"] * (2 * hsh(bi, jj, 2) - 1) * e_m * (0.55 + 0.9 * within))
+        fresh = np.maximum(fresh, w * (hsh(bi, jj, 3) < terrain_mesh.BLOCK_TONE["p_fresh"]) * e_m * spall)
         if lines:
             dark = np.maximum(dark, w * (1 - ease(I["open"][m])))  # (open joints only: most boundaries are closed)
     # freshly spalled faces: paler and warmer (unweathered rock under the grey patina)
-    tone = tone * (1 + BLOCK_TONE["fresh"] * fresh * eb)
+    tone = tone * (1 + terrain_mesh.BLOCK_TONE["fresh"] * fresh * eb)
     dark = np.maximum(dark, np.clip(1.6 * I["master"], 0, 1))  # (master joints: always open)
     tone = tone * (1 - 0.18 * dark)
     # stains: dark streaks hanging from the ledges (each super-bed's top), 0.25-0.8 m wide, 2-12 m long, narrowing and
@@ -437,11 +431,11 @@ def block_colour(P, N, rc, r, fd, lines=True):
     # the plane itself (a step there aliases in the maps)
     bz = P[:, 2] + zoff
     band = noise._value_noise(np.ascontiguousarray(np.c_[u / 6.0, bz / 0.9, K1 * 0.37]), sd + 8)
-    tone = tone * (1 + BLOCK_TONE["along"] * (2 * band - 1) * vert)
+    tone = tone * (1 + terrain_mesh.BLOCK_TONE["along"] * (2 * band - 1) * vert)
     ul = np.exp(-d / 1.2) * smoothstep(0.0, 0.2, d) * (0.5 + noise._value_noise(
         np.ascontiguousarray(np.c_[u / 9.0, K1 * 0.53, np.zeros(len(P))]), sd + 9))
-    tone = tone * (1 - BLOCK_TONE["under_ledge"] * ul * vert)
-    out = rc * tone[:, None] * (1 + (fresh * eb)[:, None] * np.array(BLOCK_TONE["warm"]))
+    tone = tone * (1 - terrain_mesh.BLOCK_TONE["under_ledge"] * ul * vert)
+    out = rc * tone[:, None] * (1 + (fresh * eb)[:, None] * np.array(terrain_mesh.BLOCK_TONE["warm"]))
     # lichen on tops: up-facing ledges and block tops, patchy, a dull grey-green (pale lichen read as foam on the ledges)
     up = np.clip((N[:, 2] - 0.4) / 0.35, 0, 1)
     li = np.clip((noise.fbm(P, 0.9, 2, seed=sd + 5) - 0.55) / 0.2, 0, 1) * up

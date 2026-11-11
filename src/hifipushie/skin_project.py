@@ -204,6 +204,7 @@ def atlas(base: dict, size: int = SIZE) -> dict:
     "mm" (mm per texel, median), per-vertex "groups" {name: weight}}. Image row 0 is the top (v = v1)."""
     from . import onemesh
     from . import likeness_render
+    from . import likeness
     from . import base_identity
     key = hashlib.sha1(json.dumps([base, size, VERSION], sort_keys=True, default=str).encode()).hexdigest()
     if _ATLAS.get("key") == key:
@@ -217,15 +218,15 @@ def atlas(base: dict, size: int = SIZE) -> dict:
     H = int(round(size * (hi[1] - lo[1]) / (hi[0] - lo[0])))
     sx = ((uvT[..., 0] - lo[0]) / (hi[0] - lo[0]) * W).ravel()
     sy = ((hi[1] - uvT[..., 1]) / (hi[1] - lo[1]) * H).ravel()
-    if not likeness_render._RUN:
-        likeness_render._RUN.append(likeness_render._raster())
+    if not likeness._RUN:
+        likeness._RUN.append(likeness_render._raster())
     F = np.arange(3 * len(T)).reshape(-1, 3)
     bary = np.zeros((H, W, 3))
     zb = np.full((H, W), np.inf)
-    likeness_render._RUN[0](sx, sy, np.zeros(len(sx)), np.ascontiguousarray(F), np.tile(np.eye(3), (len(T), 1)), W, H, bary, zb)
+    likeness._RUN[0](sx, sy, np.zeros(len(sx)), np.ascontiguousarray(F), np.tile(np.eye(3), (len(T), 1)), W, H, bary, zb)
     tid = np.zeros((H, W, 3))
     zb2 = np.full((H, W), np.inf)
-    likeness_render._RUN[0](sx, sy, np.zeros(len(sx)), np.ascontiguousarray(F), np.repeat(np.arange(len(T), dtype=float), 3)[:, None] * np.ones(3), W, H, tid, zb2)
+    likeness._RUN[0](sx, sy, np.zeros(len(sx)), np.ascontiguousarray(F), np.repeat(np.arange(len(T), dtype=float), 3)[:, None] * np.ones(3), W, H, tid, zb2)
     ii, jj = np.nonzero(np.isfinite(zb))
     b = bary[ii, jj]
     b /= b.sum(1, keepdims=True)

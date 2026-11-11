@@ -89,6 +89,7 @@ class GnmFace(_GnmSolve, _GnmMoves, _GnmMouth, _GnmLids, _GnmLips, Face):
         """GNM's own mouth (base_gnm_parts.gnm_mouth): the numbers the kit's slit and bag gave (the lips' depth, the bag's
         half sizes in the mouth's frame, how fine the teeth are meshed), and the pieces' own vertices."""
         from . import base_gnm_parts, base_identity
+        from . import base
         mp = base_gnm_parts.gnm_mouth(self.head)
         self.slit = max(float(m["gap"]), 0.001)
         self.slit_part = b.get("part", "body")
@@ -99,8 +100,8 @@ class GnmFace(_GnmSolve, _GnmMoves, _GnmMouth, _GnmLids, _GnmLips, Face):
         own = np.asarray(g["groups"]["mouth_sock"])[mp["sock"]["ids"]] > 0.5
         P = (mp["sock"]["verts"][own] - self.M) @ np.stack([self.side, self.out, self.up], 1)
         self.bag = 0.5 * (P.max(0) - P.min(0))
-        self.parts_teeth, self.parts_tongue = set(base_gnm_parts.TEETH_PARTS), {"tongue"}
-        self.teeth_t = 3 * float(base_gnm_parts.MOUTH_PARTS["teeth"]["voxel"])
+        self.parts_teeth, self.parts_tongue = set(base.TEETH_PARTS), {"tongue"}
+        self.teeth_t = 3 * float(base.MOUTH_PARTS["teeth"]["voxel"])
         self.tongue = None
 
     def neutral(self, Xm: np.ndarray, kind: str, index=None) -> np.ndarray:

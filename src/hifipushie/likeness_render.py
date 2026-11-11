@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from .likeness import NEAR, RENDER_PX
+from . import likeness
 
 # ---- the model through a reference's camera: a clay render -----------------------------------------------------------
 def _raster():
@@ -39,16 +39,6 @@ def _raster():
                         for c in range(3):
                             img[py, px, c] = w0 * C[i0, c] + w1 * C[i1, c] + w2 * C[i2, c]
     return run
-
-
-_RUN = []
-
-
-KEY = np.array([-0.35, -0.45, -0.82])  # camera frame (x right, y down, z into the picture): a soft key from the upper left
-
-
-KEY /= np.linalg.norm(KEY)
-SKIN = np.array([222.0, 196.0, 176.0])
 
 
 def _sphere(c, r, fwd, n=28):
@@ -98,11 +88,6 @@ def model_mesh_from_state(st: dict) -> dict:
     return {"V": V, "F": F, "eyes": eyes, "L": st["L"], "state": st, "ears": ears, "shape3d": ls.measures3d(st)}
 
 
-SHADOW_MM = 0.25     # shadow / AO depth maps: mm per map pixel
-AO_DIRS = 96         # AO: directions over the sphere (a Fibonacci set), each one orthographic depth map
-
-
-OCCLUDE_R = 0.2      # m: occluders are the mesh within this of the eyes' midpoint (a one-mesh body is 1.7 m tall:
                      # its depth maps at SHADOW_MM were 27 Mpx; nothing below the neck shadows the face in these views)
 
 def _occluders(mesh: dict):
@@ -112,7 +97,7 @@ def _occluders(mesh: dict):
     V, F = mesh["V"], mesh["F"]
     if mesh["eyes"]:
         c = np.mean([e[0].mean(0) for e in mesh["eyes"]], 0)
-        near = np.linalg.norm(V - c, axis=1) < OCCLUDE_R
+        near = np.linalg.norm(V - c, axis=1) < likeness.OCCLUDE_R
         F = F[near[F].all(1)]
     Vs, Fs, n = [V], [F], len(V)
     for Ve, Fe, _ in mesh["eyes"]:
@@ -140,9 +125,9 @@ class _DepthMap:
     depth = -X . d (smaller = nearer the source); `lit(X, n)` says which points the source sees (no occluder nearer
     than the point, with a slope-scaled bias)."""
 
-    def __init__(self, V, F, d, mm=SHADOW_MM):
-        if not _RUN:
-            _RUN.append(_raster())
+    def __init__(self, V, F, d, mm=likeness.SHADOW_MM):
+        if not likeness._RUN:
+            likeness._RUN.append(_raster())
         d = np.asarray(d, float) / np.linalg.norm(d)
         a = np.array([1.0, 0, 0]) if abs(d[0]) < 0.9 else np.array([0, 1.0, 0])
         u = np.cross(d, a)
@@ -155,7 +140,7 @@ class _DepthMap:
         W, H = int(np.ceil(q[:, 0].max())) + 3, int(np.ceil(q[:, 1].max())) + 3
         self.zb = np.full((H, W), np.inf)
         dummy = np.zeros((H, W, 3))
-        _RUN[0](q[:, 0], q[:, 1], -(V @ d), np.ascontiguousarray(F), np.zeros((len(V), 3)), W, H, dummy, self.zb)
+        likeness._RUN[0](q[:, 0], q[:, 1], -(V @ d), np.ascontiguousarray(F), np.zeros((len(V), 3)), W, H, dummy, self.zb)
         # 3 x 3 max filter of the occluder depth: a point is tested against its own surface's farthest neighbour, so the
         # rasterised surface never shadows itself (map aliasing), while a real occluder (mm in front) still does
         from scipy.ndimage import maximum_filter
@@ -175,7 +160,7 @@ class _DepthMap:
         return z <= self.zmax[i, j] + bias
 
 
-def ambient_occlusion(mesh: dict, n_dirs: int = AO_DIRS, mm: float = 0.5) -> np.ndarray:
+def ambient_occlusion(mesh: dict, n_dirs: int = likeness.AO_DIRS, mm: float = 0.5) -> np.ndarray:
     """Per-vertex ambient occlusion of the skin (cosine-weighted visibility of the sky over each vertex's hemisphere,
     1 = open), the eyeballs occluding too; cached on the mesh dict. What makes the nostrils, the stomion, the lid
     crease's fold and the alar groove dark in a photo's soft light, which smooth-normal clay can't."""
@@ -191,7 +176,7 @@ def ambient_occlusion(mesh: dict, n_dirs: int = AO_DIRS, mm: float = 0.5) -> np.
     num, den = np.zeros(len(V)), np.zeros(len(V))
     near = np.ones(len(V), bool)
     if mesh["eyes"]:
-        near = np.linalg.norm(V - np.mean([e[0].mean(0) for e in mesh["eyes"]], 0), axis=1) < OCCLUDE_R
+        near = np.linalg.norm(V - np.mean([e[0].mean(0) for e in mesh["eyes"]], 0), axis=1) < likeness.OCCLUDE_R
     for d in D:
         c = vn @ d
         up = (c > 0) & near
@@ -205,7 +190,7 @@ def ambient_occlusion(mesh: dict, n_dirs: int = AO_DIRS, mm: float = 0.5) -> np.
     return mesh["_ao"]
 
 
-def render(mesh: dict, cam: dict, box, px: int = RENDER_PX, brows: bool = True, passes: bool = False, light=None,
+def render(mesh: dict, cam: dict, box, px: int = likeness.RENDER_PX, brows: bool = True, passes: bool = False, light=None,
            ao: bool = False, shadow: bool = False):
     """(PIL image, scale px per picture pixel): the model through the reference's camera, cropped to box (picture
     pixels), lit by a key from the upper left (smooth normals), eyes with irises, brows drawn. passes=True also
@@ -217,8 +202,8 @@ def render(mesh: dict, cam: dict, box, px: int = RENDER_PX, brows: bool = True, 
     direct light's visibility per pixel, "ao" per pixel)."""
     from PIL import Image, ImageDraw
     from . import humanfit
-    if not _RUN:
-        _RUN.append(_raster())
+    if not likeness._RUN:
+        likeness._RUN.append(_raster())
     if ao or shadow:
         return _render_shaded(mesh, cam, box, px, brows, passes, light, ao, shadow)
     x0, y0, x1, y1 = box
@@ -236,30 +221,30 @@ def render(mesh: dict, cam: dict, box, px: int = RENDER_PX, brows: bool = True, 
             Xc = (V - np.asarray(cam["centre"])) @ Rc.T + np.asarray(cam["t"])
             P = humanfit.project(cam, V)
             fn = np.cross(Xc[F[:, 1]] - Xc[F[:, 0]], Xc[F[:, 2]] - Xc[F[:, 0]])
-            keep = ((fn * Xc[F].mean(1)).sum(1) < 0) & (Xc[F][:, :, 2] > NEAR).all(1)
+            keep = ((fn * Xc[F].mean(1)).sum(1) < 0) & (Xc[F][:, :, 2] > likeness.NEAR).all(1)
             vn = np.zeros_like(Xc)
             for c in range(3):
                 np.add.at(vn, F[:, c], fn)
             vn /= np.maximum(np.linalg.norm(vn, axis=1, keepdims=True), 1e-15)
             args = ((P[:, 0] - x0) * k, (P[:, 1] - y0) * k, Xc[:, 2].copy(), np.ascontiguousarray(F[keep]))
-            _RUN[0](*args, np.ascontiguousarray(vn), W, H, nimg, zn)
-            _RUN[0](*args, np.ascontiguousarray(np.full_like(vn, float(min(pi, 1)))), W, H, pimg, zq)
+            likeness._RUN[0](*args, np.ascontiguousarray(vn), W, H, nimg, zn)
+            likeness._RUN[0](*args, np.ascontiguousarray(np.full_like(vn, float(min(pi, 1)))), W, H, pimg, zq)
     for V, F, col in parts:
         Xc = (V - np.asarray(cam["centre"])) @ Rc.T + np.asarray(cam["t"])
         P = humanfit.project(cam, V)
         fn = np.cross(Xc[F[:, 1]] - Xc[F[:, 0]], Xc[F[:, 2]] - Xc[F[:, 0]])
-        keep = ((fn * Xc[F].mean(1)).sum(1) < 0) & (Xc[F][:, :, 2] > NEAR).all(1)   # facing the camera
+        keep = ((fn * Xc[F].mean(1)).sum(1) < 0) & (Xc[F][:, :, 2] > likeness.NEAR).all(1)   # facing the camera
         vn = np.zeros_like(Xc)
         for c in range(3):
             np.add.at(vn, F[:, c], fn)
         vn /= np.maximum(np.linalg.norm(vn, axis=1, keepdims=True), 1e-15)
-        sh = 0.24 + 0.76 * np.clip(vn @ KEY, 0, 1) ** 1.3 + 0.06 * np.clip(-vn[:, 2], 0, 1)
+        sh = 0.24 + 0.76 * np.clip(vn @ likeness.KEY, 0, 1) ** 1.3 + 0.06 * np.clip(-vn[:, 2], 0, 1)
         if light is not None and col is None:  # the photo's light (linear luminance -> sRGB grey, skin-tinted)
             lum = np.clip((light[0] + vn @ np.asarray(light[1])) / max(light[2] if len(light) > 2 else 0.2, 1e-6), 0.0, 3.0)
             sh = 0.8 * lum ** (1 / 2.2)   # the face's median at 0.8 of the skin colour
-        base_c = (np.asarray(mesh["C"], float) if mesh.get("C") is not None else np.broadcast_to(SKIN, Xc.shape)) if col is None else col
+        base_c = (np.asarray(mesh["C"], float) if mesh.get("C") is not None else np.broadcast_to(likeness.SKIN, Xc.shape)) if col is None else col
         C = np.clip(base_c * sh[:, None], 0, 255)
-        _RUN[0]((P[:, 0] - x0) * k, (P[:, 1] - y0) * k, Xc[:, 2].copy(), np.ascontiguousarray(F[keep]),
+        likeness._RUN[0]((P[:, 0] - x0) * k, (P[:, 1] - y0) * k, Xc[:, 2].copy(), np.ascontiguousarray(F[keep]),
                 np.ascontiguousarray(C), W, H, img, zb)
     im = Image.fromarray(img.astype(np.uint8))
     if brows:
@@ -274,9 +259,6 @@ def render(mesh: dict, cam: dict, box, px: int = RENDER_PX, brows: bool = True, 
     return im, k
 
 
-SOFT_N = 16   # soft shadows: samples over the light's disc
-
-
 def _light_disc(d, deg: float) -> list:
     """Directions over a disc light of angular radius deg about d (a Fibonacci spiral; [d] for a point light)."""
     d = np.asarray(d, float) / np.linalg.norm(d)
@@ -287,8 +269,8 @@ def _light_disc(d, deg: float) -> list:
     u /= np.linalg.norm(u)
     v = np.cross(d, u)
     out = []
-    for i in range(SOFT_N):
-        r = np.tan(np.radians(deg)) * np.sqrt((i + 0.5) / SOFT_N)
+    for i in range(likeness.SOFT_N):
+        r = np.tan(np.radians(deg)) * np.sqrt((i + 0.5) / likeness.SOFT_N)
         t = i * np.pi * (3 - 5 ** 0.5)
         e = d + r * (np.cos(t) * u + np.sin(t) * v)
         out.append(e / np.linalg.norm(e))
@@ -312,7 +294,7 @@ def _render_shaded(mesh, cam, box, px, brows, passes, light, ao, shadow):
     W, H = int(round((x1 - x0) * k)), int(round((y1 - y0) * k))
     Rc = humanfit._cam_rot(cam)
     aov = ambient_occlusion(mesh) if ao else np.ones(len(mesh["V"]))
-    key_c = np.asarray(light[1], float) if light is not None else KEY
+    key_c = np.asarray(light[1], float) if light is not None else likeness.KEY
     key_w = Rc.T @ (key_c / max(np.linalg.norm(key_c), 1e-12))   # world direction to the light
     parts = [(mesh["V"], mesh["F"], None, aov)] + [(V, F, col, None) for V, F, col in mesh["eyes"]]
     img_a, img_d = np.full((H, W, 3), 238.0), np.zeros((H, W, 3))
@@ -323,13 +305,13 @@ def _render_shaded(mesh, cam, box, px, brows, passes, light, ao, shadow):
         Xc = (V - np.asarray(cam["centre"])) @ Rc.T + np.asarray(cam["t"])
         P = humanfit.project(cam, V)
         fn = np.cross(Xc[F[:, 1]] - Xc[F[:, 0]], Xc[F[:, 2]] - Xc[F[:, 0]])
-        keep = ((fn * Xc[F].mean(1)).sum(1) < 0) & (Xc[F][:, :, 2] > NEAR).all(1)
+        keep = ((fn * Xc[F].mean(1)).sum(1) < 0) & (Xc[F][:, :, 2] > likeness.NEAR).all(1)
         vn = np.zeros_like(Xc)
         for c in range(3):
             np.add.at(vn, F[:, c], fn)
         vn /= np.maximum(np.linalg.norm(vn, axis=1, keepdims=True), 1e-15)
         args = ((P[:, 0] - x0) * k, (P[:, 1] - y0) * k, Xc[:, 2].copy(), np.ascontiguousarray(F[keep]))
-        base_c = (np.asarray(mesh["C"], float) if mesh.get("C") is not None else np.broadcast_to(SKIN, Xc.shape)) if col is None else col
+        base_c = (np.asarray(mesh["C"], float) if mesh.get("C") is not None else np.broadcast_to(likeness.SKIN, Xc.shape)) if col is None else col
         avv = np.ones(len(V)) if av is None else av
         if light is not None and col is None and len(light) > 4 and light[4] is not None:
             # (blockin2) a 2nd-order spherical-harmonics light fitted on the photo's skin (ambient + key + fill / bounce
@@ -353,12 +335,12 @@ def _render_shaded(mesh, cam, box, px, brows, passes, light, ao, shadow):
             Cd = 0.8 * np.clip(dirc, 0, 3)[:, None] * base_c
         else:
             Ca = base_c * ((0.24 + 0.06 * np.clip(-vn[:, 2], 0, 1)) * avv)[:, None]
-            Cd = base_c * (0.76 * np.clip(vn @ KEY, 0, 1) ** 1.3)[:, None]
-        _RUN[0](*args, np.ascontiguousarray(Ca), W, H, img_a, za)
-        _RUN[0](*args, np.ascontiguousarray(Cd), W, H, img_d, zd)
-        _RUN[0](*args, np.ascontiguousarray(vn), W, H, nimg, zn)
-        _RUN[0](*args, np.ascontiguousarray(np.full_like(vn, float(min(pi, 1)))), W, H, pimg, zq)
-        _RUN[0](*args, np.ascontiguousarray(np.repeat(avv[:, None], 3, 1)), W, H, aimg, zo)
+            Cd = base_c * (0.76 * np.clip(vn @ likeness.KEY, 0, 1) ** 1.3)[:, None]
+        likeness._RUN[0](*args, np.ascontiguousarray(Ca), W, H, img_a, za)
+        likeness._RUN[0](*args, np.ascontiguousarray(Cd), W, H, img_d, zd)
+        likeness._RUN[0](*args, np.ascontiguousarray(vn), W, H, nimg, zn)
+        likeness._RUN[0](*args, np.ascontiguousarray(np.full_like(vn, float(min(pi, 1)))), W, H, pimg, zq)
+        likeness._RUN[0](*args, np.ascontiguousarray(np.repeat(avv[:, None], 3, 1)), W, H, aimg, zo)
     lit = np.ones((H, W))
     on = np.isfinite(zn)
     if shadow and on.any() and np.all(np.isfinite(key_w)) and np.linalg.norm(key_c) > 1e-9:   # (no direct light: no shadow)

@@ -4,13 +4,10 @@ from __future__ import annotations
 import numpy as np
 from scipy.spatial import cKDTree
 
+from . import base
 from . import retopo
-from .base import EYE_SEAT, GNM_BAND, GNM_CHIN, GNM_CUT, GNM_TILT, _WARNED
 from .base_gnm_parts import _gnm_pieces, _zip_lips, gnm_eyes, lip_close_delta
-from .base_head_shape import (
-    HOLLOW_RADIUS, JAW_RADIUS, JAW_TUCK_RADIUS, _chin, _ears, _hood, _jawline, _lean, _nose_tip, _planes,
-    _round_tip, _sstep,
-)
+from .base_head_shape import _chin, _ears, _hood, _jawline, _lean, _nose_tip, _planes, _round_tip, _sstep
 from .base_identity import _gnm_coeffs, _gnm_data, _local_smooth, fit_identity, pose_expression, regional_identity
 from .base_imls import _catmull_clark, _normals_and_h
 
@@ -50,8 +47,8 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
     if head.get("shape"):  # (faceslide.py) the older shape ops still work, but say what replaces them
         from . import faceslide
         for msg in faceslide.deprecated(head["shape"]):
-            if msg not in _WARNED:
-                _WARNED.add(msg)
+            if msg not in base._WARNED:
+                base._WARNED.add(msg)
                 import warnings
                 warnings.warn(msg, DeprecationWarning, stacklevel=2)
     if head.get("sliders"):  # (faceslide.py) the face sliders: morph targets on GNM's template + the lids' loops,
@@ -152,13 +149,13 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
         return eye_mid + s * (X - mid) @ R.T
     # the graft plane through the neck's axis, tilted GNM_TILT down at the front: level, it ran into the jaw under the
     # chin (the chin sits ~6 mm over GNM_CUT) while the back must stay above the bib's open edge
-    cut_y = GNM_CUT
+    cut_y = base.GNM_CUT
     if head.get("plane_follows_chin"):  # (headfit.py) a longer or shorter jaw takes the plane with it: fixed, a low
         # chin sat in the graft band
         chin = sum(float(w) * V[int(v)] for v, w in zip(g["lm68"][8][0::2], g["lm68"][8][1::2]))
-        cut_y = float(np.clip(GNM_CUT + (chin[1] - GNM_CHIN), 0.155, 0.21))
+        cut_y = float(np.clip(base.GNM_CUT + (chin[1] - base.GNM_CHIN), 0.155, 0.21))
     cut = place(np.array([mid[0], cut_y, J[0][2]]))
-    ta = np.radians(GNM_TILT)
+    ta = np.radians(base.GNM_TILT)
     pn = R @ np.array([0.0, np.cos(ta), np.sin(ta)])
     lm = place(np.array([sum(float(w) * V[int(v)] for v, w in zip(row[0::2], row[1::2])) for row in g["lm68"]]))
     skin = g["skin"]
@@ -252,7 +249,7 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
         pp = np.linalg.norm(rel - t_[:, None] * dr_, axis=1)
         okr = (t_ > 0) & (pp < 0.004 * s)
         off_ = (W[okr][np.argmin(t_[okr])] - c0).tolist() if okr.any() else (W[np.argmin(np.linalg.norm(rel, axis=1))] - c0).tolist()
-        late.append({"lm": ids_, "offset": off_, "radius": float(hc.get("radius", HOLLOW_RADIUS)) * s / 1.12,
+        late.append({"lm": ids_, "offset": off_, "radius": float(hc.get("radius", base.HOLLOW_RADIUS)) * s / 1.12,
                      "amount": -float(hc["amount"])})
     if shape.get("jaw_angle"):  # a bony jaw corner: the gonial angle (between lm 3 and 4) stands out, crisp, and the
         # soft under-jaw from the corner toward the chin is tucked up behind the jaw line, so the line reads as an edge.
@@ -263,7 +260,7 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
         # lower (where the jaw's underside meets the neck on a section at lm 3's x; measured on Garrett's head)
         cg = lm[3] + np.array([0.0, 0.033, -0.020]) * s / 1.12
         late.append({"lm": [3], "offset": (W[np.argmin(np.linalg.norm(W - cg, axis=1))] - lm[3]).tolist(),
-                     "radius": float(ja.get("radius", JAW_RADIUS)) * s / 1.12, "amount": amt})
+                     "radius": float(ja.get("radius", base.JAW_RADIUS)) * s / 1.12, "amount": amt})
         tk = float(ja.get("tuck", 1.2 * amt))
         if tk:
             ct = 0.5 * (lm[5] + lm[6])
@@ -273,7 +270,7 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
             band = np.abs(W[:, 0] - below[0]) < 0.002 * s
             cand = W[band] if band.any() else W
             late.append({"lm": [5, 6], "offset": (cand[np.argmin(np.linalg.norm(cand - below, axis=1))] - ct).tolist(),
-                         "radius": float(ja.get("tuck_radius", JAW_TUCK_RADIUS)) * s / 1.12, "amount": -tk})
+                         "radius": float(ja.get("tuck_radius", base.JAW_TUCK_RADIUS)) * s / 1.12, "amount": -tk})
     if late:  # bumps after the under-eye/nostril smoothing (which erased pushes in its region: a
         # lifted upper cheek under the lower lid, filling the socket hollow that shaded as a dark ring)
         W, lm = _pushes(W, lm, late)
@@ -332,7 +329,7 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
             lo, hi = -0.02, 0.02
             for _ in range(40):  # the smallest move back where every rim point is EYE_SEAT outside the sphere
                 m = 0.5 * (lo + hi)
-                if np.linalg.norm(rim - (c + m * back), axis=1).min() >= r_ball + EYE_SEAT:
+                if np.linalg.norm(rim - (c + m * back), axis=1).min() >= r_ball + base.EYE_SEAT:
                     hi = m
                 else:
                     lo = m
@@ -354,6 +351,6 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
             "gnm_world": place(V),
             "eye_open": float(np.mean(rim[[1, 2], 2]) - np.mean(rim[[4, 5], 2])),  # the opening's height
             "lm68": lm, "skin_index": skin_index, "lips_zipped": zipped, "carry": carry,
-            "plane": (cut, pn, s * GNM_BAND),
+            "plane": (cut, pn, s * base.GNM_BAND),
             # (faceslide.py) the sliders' own move of the lids' loop vertices over their parents' mean (world)
             "loop_offsets": None if slide is None else s * (slide * [float(head.get("narrow", 1.0)), 1, 1]) @ R.T}

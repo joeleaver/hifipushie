@@ -342,7 +342,7 @@ def test_hold_rivers():
     ref = H.copy()
     ref[:, 28:33] = 8.0
     out = terrain_relief.hold_rivers(T_, Hf, ref)
-    assert out[22, 37] == 10.0 + terrain_relief.HOLD_FREEBOARD, out[22, 37]
+    assert out[22, 37] == 10.0 + tm.HOLD_FREEBOARD, out[22, 37]
     assert out[22, 30] == 8.0
     assert (out[:, :20] == Hf[:, :20]).all()
     print("ok hold rivers")
