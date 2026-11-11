@@ -87,13 +87,11 @@ def test_a_panel_starts_between_its_tapes_and_the_fallback_is_named():
     assert "top of waistToKnee" in b.reads["starts"]["skirt"]
 
 
-def test_a_tube_naming_no_sided_girth_falls_back_by_name():
+def test_a_piece_sewn_to_itself_naming_no_sided_girth_is_no_tube():
+    """(P2) A dart sewn closed doesn't make a tube: the jacket's fronts were started round the arm's joint axis."""
     pieces = {"sleeve.L": (0.0, 0.3, -0.6, 0.0, 6, 8)}
     b = _build(pieces, {"sleeve.L": ["waist"]}, [("sleeve.L", 0, "sleeve.L", 5)])
-    assert b.roles.tubes == ["sleeve.L"]  # (sewn to itself: a tube, by the old rule)
-    X = b._tube_points("sleeve.L", b.net.verts("sleeve.L"))
-    assert np.isfinite(X).all()
-    assert any(v.startswith("FALLBACK") for v in b.reads["starts"].values())
+    assert b.roles.panels == ["sleeve.L"] and not b.roles.tubes
 
 
 def test_step4_lists_each_pieces_measurements():

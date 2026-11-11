@@ -17,7 +17,7 @@ else the role its name reads as, garment_design.role_of). Names never pick a sta
   construction only: a declared role or a name never makes a stand (it did: collar_stand / neckband; a stiff collar
   with no roll whose name read collar_fall was refused, the suit jacket's collar among them).
 - RINGS: other wholly interfaced pieces (cuffs, waistbands).
-- TUBE: a soft piece sewn to itself, OR several soft pieces of a limb role (sleeve, leg) on one side sewn to each other
+- TUBE: soft pieces closed round girths measured on their side (piece_start.tube_groups; P2: sewn to itself alone is no tube), OR several soft pieces of a limb role (sleeve, leg) on one side sewn to each other
   (a two-piece sleeve: top sleeve + undersleeve). A group is started round the limb's axis piece after piece, each over
   its share of the girth at that height (tube_group_points); every later stage treats its pieces as tube cloth.
 - PANELS: every other soft piece, wrapped round the torso; a back cut in halves (back.L / back.R from a CB seam) counts
@@ -98,10 +98,12 @@ def zip_pairs(net, front: dict) -> dict:
 
 
 def _tube_groups(net, soft: list, role: dict, self_sewn: set, sewn: dict) -> dict:
-    """{piece: [its tube's pieces]}: a self-sewn soft piece alone; limb-role soft pieces of one side sewn to each other."""
+    """{piece: [its tube's pieces]}: limb-role soft pieces of one side sewn to each other. (P2: a piece sewn to itself is a
+    tube only round girths measured on its side, piece_start.tube_groups: the jacket's fronts, sewn to themselves at the
+    fish dart, read as tubes here and were started round the ARM's joint axis, looping out at the hips.)"""
     from .chain_garment import hand_of
-    out = {p: [p] for p in soft if p in self_sewn}
-    limb = [p for p in soft if role[p] in TUBE_ROLES and p not in out]
+    out: dict = {}
+    limb = [p for p in soft if role[p] in TUBE_ROLES]
     seen: set = set()
     for p in limb:
         if p in seen:

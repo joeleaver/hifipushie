@@ -6,7 +6,7 @@ carries only PATTERN_KEYS, so a fit has no way in.
 ROLES come from the pattern's construction, never from names (read_roles, chain_holds.read): a stiff piece with a "roll"
 fold is a FALL; the wholly interfaced piece it is sewn to is its BAND; a stiff part sewn along the body cloth's neckline
 with nothing on it is a STAND (chain_roles.neck_part); other wholly interfaced pieces closed on themselves are RINGS
-(cuffs, waistbands); a soft piece sewn to itself is a TUBE (sleeves); other soft pieces are PANELS wrapped round the
+(cuffs, waistbands); a soft piece closed round girths measured on its side is a TUBE (sleeves); other soft pieces are PANELS wrapped round the
 torso. A closure between two pieces is the FRONT. A role the core can't build is refused by name; no fallback path.
 
 THE ORDER (R3c, C399; each from a visible fault, C259-C262): ONE sequence for every garment, read from what holds what
