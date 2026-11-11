@@ -6,7 +6,8 @@ Before the build solves lengths each piece needs a start near where it is worn. 
 from the measurements the piece was drafted from:
 
 - STEP 4 keeps each piece's measurement list (`piece_measurements`): the body names on step 1's seams its edges are
-  on, plus its draft part's own `measurements` (FreeSewing's part config, pattern_parts). A pair's two pieces share it.
+  on, plus its draft part's own `measurements` (FreeSewing's part config, pattern_parts), plus the tapes its
+  declarations name (`tapes`, draft_tapes.py: P1; the flat gate refuses a piece with none). A pair's two pieces share it.
 - STEP 3 keeps where each was taken (tape_geom: a girth's loop, a length's path).
 - TUBE: soft pieces of one side whose seams close them round (one sewn to itself, or two joined by two separate
   seams) whose girth loops lie on that side of the body (a loop that doesn't hold the centre line) and one of whose
@@ -47,10 +48,11 @@ def piece_measurements(step1: dict, decl: dict, parts_cfg: dict, pieces: list) -
         part = (d or {}).get("part")
         pc = (parts_cfg or {}).get(part) or {}
         own.setdefault(n, set()).update(pc.get("measurements") or [])
+    from . import draft_tapes  # (P1: the tapes step 4 declares each piece / edge drafted on)
     out = {}
     for p in pieces:
         base = p[:-2] if p.endswith((".L", ".R")) else p
-        out[p] = sorted(own.get(p, own.get(base, set())))
+        out[p] = sorted(own.get(p, own.get(base, set())) | set(draft_tapes.names_of(decl or {}, p)))
     return out
 
 

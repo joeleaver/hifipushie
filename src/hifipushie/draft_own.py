@@ -26,6 +26,10 @@ Declarations (JSON beside the code; names are step 1's):
   pocket mouth): {"piece", "inside": <its closed path of the part>, "release": [part points..., named outline point]}:
   drawn as it is, never cut by hand; the tool cuts it through along release and sews dart and cut shut (draft_dart_cut.py,
   C416).
+  tapes {piece: [step-3 tape names] | {edge: tape name}} (P1): the tapes each piece was drafted on, merged into the
+  record's piece_measurements (step 5 starts the piece on them); an edge map names the tape an edge LAID ON THE BODY lies
+  along (kept as edge_tapes): a stiff piece sewn to soft cloth names one for that edge (a collar's neck edge on the
+  neckline tape). Row piece_tapes (draft_tapes.py) FAILs a piece with none, a name step 3 hasn't taken (back to 3).
   departs {edge: why} (C381): a step-1 seam drafted more than 30 % off its approved estimate, said with what the
   reference shows there (else row style_lengths FAILs).
   marks {detail: mark | [marks]}: WHERE each step-1 detail sits on the pattern, decided here once (garment_details.py
@@ -53,7 +57,7 @@ MARK_FORM = ("a mark = {piece, mirror?: true, and one of: at: [{point, dx, dy} |
              "[positions]}; an edge: a declared edge name or 'a>b' along the outline (C361: the form was only in a "
              "docstring a blind agent can't read)")
 TIMEOUT = 60  # s
-DECL_KEYS = {"pieces", "edges", "seams", "stiff", "folds", "closures", "omit", "notes", "marks", "darts", "departs"}
+DECL_KEYS = {"pieces", "edges", "seams", "stiff", "folds", "closures", "omit", "notes", "marks", "darts", "departs", "tapes"}
 def _roles() -> list:
     from .garment_design import kb
     return [r for r in kb()["roles"] if not r.startswith("_")] + ["collar_band"]
@@ -300,7 +304,8 @@ def validate(decl: dict, step1: dict, parts: dict | None = None) -> list:
                 dp.expand(decl, parts)
             except DraftRefused as e:
                 bad.append(str(e))
-    return bad + validate_marks(decl, step1)
+    from . import draft_tapes  # (P1: the step-3 tapes each piece / edge was drafted on, by name)
+    return bad + draft_tapes.validate(decl) + validate_marks(decl, step1)
 
 
 def validate_marks(decl: dict, step1: dict) -> list:
@@ -504,6 +509,8 @@ def gate(B: dict, decl: dict, step1: dict, stand_ref: dict | None = None, step3:
         rows += draft_body_lengths.style_rows(B, step1, step3)
         from . import draft_girths  # (C383: the pattern round the body at its girths' levels)
         rows += draft_girths.rows(B, step3, fit, body)
+        from . import draft_tapes  # (P1: every piece placed where the body was measured for it)
+        rows.append(draft_tapes.row(B, B.get("decl") or decl, step3))
     inv = step1.get("pieces") or {}
     from .draft_pairs import base_name
     dx = B.get("decl") or decl  # (pairs expanded: draft_pairs)

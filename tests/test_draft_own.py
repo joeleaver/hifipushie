@@ -29,7 +29,10 @@ STEP1 = {"pieces": {"panel.L": {"build": "full"}, "panel.R": {"build": "full"}},
 DECL = {"pieces": {"panel.L": {"part": "test.panel", "place": {"to": "torso", "side": "front"}},
                    "panel.R": {"part": "test.panel", "mirror": True, "place": {"to": "torso", "side": "back"}}},
         "edges": {"panel.L": {"side": "tr>br", "back": "tl>bl"}, "panel.R": {"side": "tr>br", "back": "tl>bl"}},
-        "seams": [{"a": "panel.L:side", "b": "panel.R:side"}, {"a": "panel.L:back", "b": "panel.R:back"}]}
+        "seams": [{"a": "panel.L:side", "b": "panel.R:side"}, {"a": "panel.L:back", "b": "panel.R:back"}],
+        "tapes": {"panel.L": ["waist"], "panel.R": ["waist"]}}
+WAIST_LOOP = [[0.15 * __import__("math").cos(t / 8), 0.1 * __import__("math").sin(t / 8), 1.0] for t in range(51)]
+STEP3 = {"measurements": [{"name": "waist", "mm": 800.0, "kind": "girth", "loop": WAIST_LOOP}]}
 
 
 def _pack():
@@ -59,7 +62,7 @@ def _record(home, model="tm", garment="g"):
     gr.write(model, garment, "0", "done", output={"kind": "test"}, reference=str(ref))
     gr.write(model, garment, "1", "done", output=STEP1)
     gr.write(model, garment, "2", "done", output={"state": {}})
-    gr.write(model, garment, "3", "done", output={"measurements": [{"name": "waist", "mm": 800.0, "kind": "girth"}]})
+    gr.write(model, garment, "3", "done", output=STEP3)
 
 
 def test_rectangle_drafts_converts_and_passes(home):
@@ -855,3 +858,38 @@ def test_seams_crossed_row_names_two_points_sewn_into_one():
     pat.M["sew"] = np.r_[pat.M["sew"], np.array(extra, np.int64)]
     r = draft_links.crossed_row(pat.M)
     assert r["status"] == "FAIL" and "sewn into one point" in r["why"] and r["back_to"] == "4"
+
+
+# ---------------------------------------------------------------- P1: the step-3 tapes each piece was drafted on
+def test_tapes_merge_into_piece_measurements_and_edge_tapes():
+    from hifipushie import draft_tapes as dt, piece_start
+    decl = {"pieces": {"panel": {"part": "test.panel", "pair": True}}, "edges": {"panel": {"side": "tr>br"}},
+            "tapes": {"panel": {"side": "side_line"}, "panel.L": ["waist"]}}
+    pm = piece_start.piece_measurements({}, decl, {"test.panel": {"measurements": []}}, ["panel.L", "panel.R"])
+    assert pm == {"panel.L": ["side_line", "waist"], "panel.R": ["side_line"]}
+    et = dt.edge_tapes(decl, ["panel.L", "panel.R"], {"panel.L": {"side": "tr>br"}})
+    assert et["panel.L"]["side"] == {"tape": "side_line", "arc": "tr>br"} and et["panel.R"]["side"]["tape"] == "side_line"
+    bad = "\n".join(dt.validate(dict(decl, tapes={"sleeve": ["waist"], "panel": {"hem": "waist"}, "panel.R": "waist"})))
+    assert "tapes.sleeve: not a drafted piece" in bad and "tapes.panel.hem: no edge 'hem' declared on 'panel'" in bad
+    assert "tapes.panel.R: 'waist': a list of step-3 tape names" in bad
+    assert dt.validate(decl) == []
+
+
+def _tape_row(decl):
+    from hifipushie import draft_tapes as dt
+    return dt.row({"pieces": {"panel.L": {}, "panel.R": {}}}, decl, STEP3)
+
+
+def test_piece_tapes_row_fails_each_way_and_passes():
+    r = _tape_row({k: v for k, v in DECL.items() if k != "tapes"})
+    assert r["status"] == "FAIL" and "no step-3 tape with geometry: panel.L (no tapes), panel.R (no tapes)" in r["why"], r
+    r = _tape_row(dict(DECL, tapes={"panel.L": ["waist"], "panel.R": ["neckline"]}))
+    assert r["status"] == "FAIL" and r["back_to"] == "3" and "tape 'neckline' is not in step 3" in r["why"], r
+    assert "measure that line in step 3" in r["why"]
+    stiff = dict(DECL, stiff=["panel.L"])
+    r = _tape_row(stiff)
+    assert r["status"] == "FAIL" and "stiff panel.L:side is sewn to soft panel.R but names no tape" in r["why"], r
+    assert "panel.R:" not in r["why"]  # (the soft side needs no edge tape)
+    r = _tape_row(dict(stiff, tapes={"panel.L": {"side": "waist", "back": "waist"}, "panel.R": ["waist"]}))
+    assert r["status"] == "PASS" and r["value"].startswith("2 of 2"), r
+    assert _tape_row(DECL)["status"] == "PASS"
