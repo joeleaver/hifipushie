@@ -281,7 +281,8 @@ def test_the_tool_builds_the_planned_state(monkeypatch, tmp_path):
     assert calls[-1]["state"] == "closed" and "plan" not in calls[-1]
     monkeypatch.setattr(cs, "load_plan", lambda m, g: _plan())
     t = server.chain_garment("m", "shirt", wait=0)
-    assert calls[-1]["state"] == "open" and calls[-1]["spread"] == 1.6 and "(open)" in t
+    assert calls[-1]["state"] == "open" and calls[-1]["spread"] == 1.6  # (C418: the plan decides; no wear label, none
+    assert "(open)" not in t and "(closed)" not in t and '"wear"' not in t.split("next:")[-1]  # in the next call)
     with pytest.raises(ValueError, match="contradicts the style plan"):
         server.chain_garment("m", "shirt", wear="closed", wait=0)
 
