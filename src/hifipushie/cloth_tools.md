@@ -145,7 +145,10 @@ design, no recipe; src/hifipushie/draft_own.py's docstring is the spec). Needs s
   point ON the outline; a point inside the piece isn't a mark: C376) (an edge: a declared edge name, or "pointA>pointB" /
   "a>via>b" along the piece's outline); `omit` {piece: why} (a built step-1 piece you don't cut); `darts` [{"piece",
   "legs": [edge, edge]}]: a dart OPEN on the outline (the seam path in to its tip and out), each leg declared
-  "outline point>tip", sewn to each other (a dart drawn inside the piece isn't sewn: cut it into the outline);
+  "outline point>tip", sewn to each other; a dart drawn INSIDE the piece (a fish dart, a dart ending in a pocket
+  mouth) is declared as drawn, never cut open by hand: {"piece", "inside": <its closed path of the part>, "release":
+  [part points..., named outline point]}: the tool cuts it through along release (through a pocket mouth to the nearest
+  seam, or straight to it) and sews dart and cut shut (C416);
   `marks` {detail: mark | [marks]}: WHERE each built step-1 detail sits (a closure's holes and buttons are its own marks: each on
   the piece step 1 puts it on): a
   mark = {"piece", "mirror"?: true (again on the .L <-> .R piece), and ONE of: "at": [{"point": name, "dx", "dy"} (mm, dy UP the piece: FreeSewing's y is -dy) |
