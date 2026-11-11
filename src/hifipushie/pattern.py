@@ -244,9 +244,32 @@ def area(P: np.ndarray) -> float:
     return 0.5 * float(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1)))
 
 
+class NoPoint(KeyError):
+    """A named point a declaration used that the piece hasn't; str() is the message (a KeyError's is its repr)."""
+
+    def __str__(self) -> str:
+        return str(self.args[0]) if self.args else ""
+
+
+def no_point(piece: dict, point: str, kinds: str = "outline") -> NoPoint:
+    """The refusal for a point name the piece hasn't (C408, t s4-20: a fold line's "'collarstandCbTop'", a bare KeyError,
+    left the agent to guess the rule): what may be named there and the nearest names that exist. kinds "outline": an
+    edge's points; "line": a fold / mark line's points (outline points, snippets, or a path of the part by name)."""
+    import difflib
+    pool = list(piece.get("names") or {}) + (list(piece.get("marks") or {}) if kinds == "line" else [])
+    near = difflib.get_close_matches(point, pool, n=4, cutoff=0.5) or sorted(pool, key=lambda k: (k[:3] != point[:3], k))[:4]
+    allowed = ("its outline's named points (a point the part's seam path passes through)" if kinds == "outline" else
+               "its outline's named points, the design's snippets on the part (marks), or ONE path of the part by name "
+               "as the whole line (a curved line: draw it as a path in design.mjs and give its name)")
+    lines = f"; its paths: {', '.join(sorted(piece.get('lines') or {}))}" if kinds == "line" and piece.get("lines") else ""
+    return NoPoint(f"piece {piece['name']!r} has no point {point!r}: only {allowed} reach the flat pattern (a point "
+                   f"inside the part is dropped: make it a snippet, or split the outline at it); nearest: "
+                   f"{', '.join(near)}{lines}")
+
+
 def index_of(piece: dict, point: str) -> int:
     if point not in piece["names"]:
-        raise KeyError(f"piece {piece['name']!r} has no point {point!r} (has {', '.join(sorted(piece['names']))})")
+        raise no_point(piece, point)
     return piece["names"][point]
 
 
@@ -409,7 +432,7 @@ def _outline_hit(P: np.ndarray, a: np.ndarray, d: np.ndarray) -> float | None:
 
 def fold_line(pcs: dict, f: dict, step: float = 0.003) -> np.ndarray:
     """A fold entry's line in its piece's pattern coordinates, (k, 2), running from outline to outline. Line forms:
-    a line name of the piece; [pointOrMark, pointOrMark] (`_line`, "name+[dx,dy]" offsets); [[x, y], ...];
+    a line name of the piece (a FreeSewing path of the part by name, not hidden: a CURVED fold line, C408); [pointOrMark, pointOrMark] (`_line`, "name+[dx,dy]" offsets); [[x, y], ...];
     {"edge": "piece:a>b", "offset": m} (parallel to that edge, `offset` into the piece); {"mid": "x" | "y"} (straight
     through the piece's middle along x (a band's lengthwise middle) or along y). What lies outside the piece is cut
     off, and an end that stops short of the outline by less than `reach` (default 1.5 cm) runs on straight to it (a
@@ -424,7 +447,10 @@ def fold_line(pcs: dict, f: dict, step: float = 0.003) -> np.ndarray:
         enm, _, arc = ln["edge"].rpartition(":")
         if enm and enm != nm:
             raise ValueError(f"fold on {nm}: its edge {ln['edge']!r} is on another piece")
-        L = _resampled(P[arc_indices(pc, arc)], step)
+        try:
+            L = _resampled(P[arc_indices(pc, arc)], step)
+        except NoPoint as e:
+            raise NoPoint(f"folds {f.get('name', '')!r} on {nm}: line edge {arc!r}: {e}") from None
         t = np.gradient(L, axis=0)
         nrm = np.c_[-t[:, 1], t[:, 0]]
         nrm /= np.linalg.norm(nrm, axis=1, keepdims=True) + 1e-12
@@ -437,12 +463,11 @@ def fold_line(pcs: dict, f: dict, step: float = 0.003) -> np.ndarray:
         lo, hi = P.min(0), P.max(0)
         c = 0.5 * (lo + hi)
         Q = np.array([[lo[0], c[1]], [hi[0], c[1]]]) if ln["mid"] == "x" else np.array([[c[0], lo[1]], [c[0], hi[1]]])
-    elif isinstance(ln, str):
-        if ln not in pc["lines"]:
-            raise KeyError(f"fold on {nm}: no line {ln!r} (has {', '.join(sorted(pc['lines']))})")
-        Q = np.asarray(pc["lines"][ln], float)
     else:
-        Q = np.asarray(_line(pc, ln), float)
+        try:
+            Q = np.asarray(_line(pc, ln), float)
+        except NoPoint as e:  # (C408: the declaration that named it, what it may name, the nearest names)
+            raise NoPoint(f"folds {f.get('name', '')!r} on {nm}: line {ln!r}: {e}") from None
     Q = _resampled(Q, step)
     ins = _poly_inside(P, Q)
     if ins.sum() >= 2:  # the longest run inside the piece
@@ -797,11 +822,15 @@ def _line(piece, spec):
     """A line as [[x, y], [x, y]]: given directly, by two point names, or a line name. A point name may carry an
     offset "name+[dx,dy]"."""
     if isinstance(spec, str):
+        if spec not in piece["lines"]:
+            raise no_point(piece, spec, "line")
         return piece["lines"][spec]
     out = []
     for v in spec:
         if isinstance(v, str):
             base, _, off = v.partition("+")
+            if base not in piece["names"] and base not in piece["marks"]:
+                raise no_point(piece, base, "line")
             q = piece["P"][index_of(piece, base)] if base in piece["names"] else piece["marks"][base]
             out.append(q + (np.asarray(eval_vec(off)) if off else 0))
         else:

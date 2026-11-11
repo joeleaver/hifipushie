@@ -101,3 +101,101 @@ def test_a_point_both_sides_name_decides_where_cf_and_side_dont():
     assert '"neck>notch" -> "notch>neck"' in r["fix"]
     B["seams"] = [["a:notch>shoulderL", "b:notch>neck"]]
     assert dse.rows(B)[0]["status"] == "PASS"
+
+
+def _fall_B(f, fold=True, band=False):
+    """Backs (concave neck, CB to the side neck) and fronts (neck dropping to CF), a collar sewn round all four necks:
+    with fold, a fall with its roll fold 25 mm up (stand 25, fall 45: lands 20 mm down); with band, a 30 mm band and a
+    fall 38 mm deep on its top (lands 8 mm down). f scales the outer edge round its middle."""
+    from hifipushie import pattern
+    xs = np.linspace(0, 0.08, 9)
+    t = np.linspace(0, np.pi / 2, 12)
+    pcs = {}
+    for sd in ("L", "R"):
+        pcs[f"back.{sd}"] = {"name": f"back.{sd}", "P": np.array([(x, -0.02 * (1 - (x / 0.08) ** 2)) for x in xs] + [
+            (0.2, -0.05), (0.2, -0.5), (0, -0.5)]), "names": {"cb": 0, "hps": 8}, "marks": {}, "lines": {}}
+        pcs[f"front.{sd}"] = {"name": f"front.{sd}", "P": np.array([(0.08 * (1 - np.cos(u)), -0.07 * np.sin(u))
+            for u in t] + [(0.08, -0.5), (0.25, -0.5), (0.2, 0.0)]), "names": {"hps": 0, "cf": 11}, "marks": {}, "lines": {}}
+    W = 2 * (pattern.length(pcs["back.L"]["P"][:9]) + pattern.length(pcs["front.L"]["P"][:12]))
+    xb = [0, W / 4, W / 2, 3 * W / 4, W]
+
+    def strip(nm, h, ff):
+        top = [(W / 2 + ff * W / 2, h), (W / 2, h), (W / 2 - ff * W / 2, h)]
+        return {"name": nm, "P": np.array([(x, 0) for x in xb] + top), "names": {"bl": 0, "q1": 1, "bm": 2, "q3": 3,
+                "br": 4, "tr": 5, "tm": 6, "tl": 7}, "marks": {}, "lines": {}}
+    neck = {"neck1": "bl>q1", "neck2": "q1>bm", "neck3": "bm>q3", "neck4": "q3>br"}
+    seams = [[["collar:bl>q1", "collar:q1>bm", "collar:bm>q3", "collar:q3>br"],
+              ["front.R:cf>hps", "back.R:hps>cb", "back.L:cb>hps", "front.L:hps>cf"]]]
+    arcs = {"back.L": {"neck": "cb>hps"}, "back.R": {"neck": "hps>cb"}, "front.L": {"neck": "hps>cf"},
+            "front.R": {"neck": "cf>hps"}}
+    folds, stiff = [], ["collar"]
+    if band:
+        pcs["collar"] = strip("collar", 0.03, 1.0)
+        pcs["fall"] = strip("fall", 0.038, f)
+        seams.append(["fall:bl>bm>br", "collar:tl>tm>tr"])
+        arcs["collar"] = dict(neck, top="tl>tm>tr")
+        arcs["fall"] = {"stand": "bl>bm>br", "outer": "tl>tm>tr"}
+        stiff.append("fall")
+    else:
+        pcs["collar"] = strip("collar", 0.07, f)
+        arcs["collar"] = dict(neck, outer="tl>tm>tr")
+        if fold:
+            folds.append({"name": "roll", "piece": "collar", "kind": "roll", "line": {"edge": "bl>bm>br", "offset": 0.025}})
+    B = {"pieces": pcs, "seams": seams, "edge_arcs": arcs, "folds": folds}
+    decl = {"pieces": {"collar": {"role": "collar_band" if band else "collar_fall"}}, "stiff": stiff}
+    return B, decl
+
+
+def test_a_falls_outer_edge_is_judged_where_it_lands():  # (s4-20: 558 mm against the 68 mm gorge read 8.230 PASS; C408)
+    from hifipushie import draft_fall as df
+    B, decl = _fall_B(1.0)
+    r = df.row(B, decl, {"pieces": {}})
+    T = r["detail"][0]["target"]
+    assert abs(r["detail"][0]["d"] - 0.02) < 1e-3 and r["detail"][0]["line"] > r["detail"][0]["neck"], r
+    W = r["detail"][0]["N"]
+    ok = df.row(*_fall_B(T / W), {"pieces": {}})
+    assert ok["status"] == "PASS" and abs(ok["detail"][0]["ratio"] - 1) < 0.01, ok
+    long = df.row(*_fall_B(1.12 * T / W), {"pieces": {}})
+    assert long["status"] == "FAIL" and "straighten the collar" in long["why"], long
+    short = df.row(*_fall_B(0.88 * T / W), {"pieces": {}})
+    assert short["status"] == "FAIL" and "spread the collar" in short["why"], short
+    nofold = df.row(*_fall_B(1.0, fold=False), {"pieces": {}})
+    assert nofold["status"] == "INFO" and "declare the collar's roll fold" in nofold["value"], nofold
+
+
+def test_a_shirt_collar_on_its_band_lands_on_the_band_seam_fall():  # (simon's 1.024 spread passes; the floor stays: C408)
+    from hifipushie import draft_fall as df, draft_shape as ds
+    B, decl = _fall_B(1.024, band=True)
+    r = df.row(B, decl, {"pieces": {}})
+    D = r["detail"][0]
+    assert r["status"] == "PASS" and abs(D["d"] - 0.008) < 1e-3, r
+    assert "collar's height and fall's depth" in r["value"], r
+    fl = {x["id"]: x for x in ds.rows(B, decl, {"pieces": {}})}
+    assert fl["shape_fall"]["status"] == "PASS" and "fall_landing" in " ".join(fl), fl
+    assert df.row(*_fall_B(1.0, band=True), {"pieces": {}})["status"] == "PASS"  # (inside 4 %: the floor rejects it)
+    assert {x["id"]: x for x in ds.rows(*_fall_B(1.0, band=True), {"pieces": {}})}["shape_fall"]["status"] == "FAIL"
+
+
+def test_a_fold_line_point_the_part_hasnt_is_refused_by_declaration_with_nearest_names():  # (s4-20; C408)
+    import pytest
+    from hifipushie import pattern
+    pc = {"name": "collar", "P": np.array([[0, 0], [1, 0], [1, 1], [0, 1]], float), "names": {"rollL": 0, "rollR": 1},
+          "marks": {"rollCb": np.array([0.5, 0.3])}, "lines": {"rollLine": np.array([[0, 0.2], [0.5, 0.3], [1, 0.2]])}}
+    with pytest.raises(KeyError) as e:
+        pattern.fold_line({"collar": pc}, {"name": "collar_roll", "piece": "collar", "line": ["rollR", "rollCbTop", "rollL"]})
+    m = str(e.value)
+    assert m.startswith("folds 'collar_roll' on collar") and "snippets" in m and "rollCb" in m.split("nearest:")[1], m
+    assert "rollLine" in m and not m.startswith("'"), m
+    with pytest.raises(KeyError) as e:
+        pattern.arc_indices(pc, "rollL>rolR")
+    assert "nearest: rollR" in str(e.value) and "outline" in str(e.value), str(e.value)
+
+
+def test_a_fold_line_may_be_a_curved_path_of_the_part():  # (s4-20: a roll line given as 3 points made a V; C408)
+    from hifipushie import draft_shape as ds, pattern
+    pc = {"name": "collar", "P": np.array([[0, 0], [1, 0], [1, 1], [0, 1]], float), "names": {"a": 0, "b": 1}, "marks": {},
+          "lines": {"rollLine": np.array([[0.01, 0.2]] + [[x, 0.3 - 0.1 * (2 * x - 1) ** 2] for x in np.linspace(0.1, 0.9, 9)]
+                                         + [[0.99, 0.2]])}}
+    L = pattern.fold_line({"collar": pc}, {"name": "roll", "piece": "collar", "line": "rollLine"})
+    assert len(L) > 20 and abs(L[:, 0].min()) < 1e-6 and abs(L[:, 0].max() - 1) < 1e-6 and L[:, 1].max() > 0.29
+    assert ds._line({"pieces": {"collar": pc}, "edge_arcs": {}}, "collar", "rollLine") is not None

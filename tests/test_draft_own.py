@@ -359,7 +359,7 @@ def test_shape_stand_reads_a_folded_stand_whole_and_its_fall_as_a_fall():
     v = r["shape_stand"]["value"]
     assert v.count("collar (") == 1 and "fall" not in v.split(";")[0].split(":")[0], v
     assert "collar (band): neck edge rising (hugs) +30.0 mm" in v, v
-    assert r["shape_fall"]["value"].startswith("fall: outer edge"), r["shape_fall"]
+    assert "fall's outer edge" in r["shape_fall"]["value"].split(";")[0], r["shape_fall"]
     assert ds.full_arc(s, ["sh>fe", "cb>sh"]) == "fe.m>cb>fe" and ds.full_arc(s, ["ft>cbt"]) == "ft.m>cbt>ft"
     assert np.isfinite(ds.rise(s["P"][:n], s["P"][n + n // 2]))
 
