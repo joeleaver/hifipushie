@@ -45,14 +45,15 @@ def _waive_all(rec):
 
 def test_instructions_and_guide_carry_the_order():
     ins = server.INSTRUCTIONS
-    assert "pattern_check" in ins and "chain_garment" in ins and "review_view" in ins
+    assert all(s in ins for s in ("garment_plan", "draft_pattern", "chain_garment", "review_view"))  # (the one path, in order)
+    assert ins.index("garment_plan") < ins.index("draft_pattern") < ins.index("chain_garment")
     assert "built on the drape" not in ins and "finished by hand" not in ins  # (wrong since 2026-10-19)
     assert len(ins) < 3000
     g = server.guide("cloth")
-    assert "pattern_check" in g and "chain_garment" in g
+    assert "draft_pattern" in g and "chain_garment" in g
     assert server.guide("traps").startswith("# Traps")
     assert server.guide("tailoring")  # the principles, or where they are while on their branch
-    for t in ("pattern_check", "chain_garment", "look_chain", "alter_pattern", "review_view", "judge_asset"):
+    for t in ("pattern_check", "chain_garment", "look_chain", "review_view", "judge_asset"):
         assert server.guide(t).startswith(f"### `{t}`"), t
 
 

@@ -32,7 +32,7 @@ STEP 1 "parts": {pieces, details, closures, seams, centre?, over?, define?}
             for a piece with no outline (garment_parts_edges.py, C343), hidden?: [its edges this view can't show],
             free?: [its edges left open, finished: a turned hem, a facing's inner edge] (every edge of a built piece is
             sewn, trimmed, closed or free: C348)}}
-  details  {name: {what, on: [pieces], cloth? (braid, zip tape...), follows?: ["piece:edge"] (a trim along edges: its
+  details  {name: {what, kind? (dart: drafted as an opened dart at step 4, C410), on: [pieces], cloth? (braid, zip tape...), follows?: ["piece:edge"] (a trim along edges: its
             place comes from them when they are drawn), count?, seen, from?, build, why?, where?: {view, at: [[u,v],..] |
             outline | outlines}}}
   closures {name: {what, pieces: [pieces it joins; one for a band closing on itself], details?: [details],
