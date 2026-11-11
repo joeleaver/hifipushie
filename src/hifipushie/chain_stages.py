@@ -515,7 +515,7 @@ def answer(name: str, garment: str, wear: str, st: dict, again: str, look_call: 
     bad = [r for r in g.get("rows") or [] if r["status"] == "FAIL"]
     ok = [r["id"] for r in g.get("rows") or [] if r["status"] == "PASS"]
     passed = [s for s in STAGES[:STAGES.index(g.get("stage", "start"))]]
-    return (f"{name}:{garment} ({wear}): stage_failed: {g.get('stage')} ({len(bad)} rows fail; passed stages: "
+    return (f"{name}:{garment}{f' ({wear})' if wear else ''}: stage_failed: {g.get('stage')} ({len(bad)} rows fail; passed stages: "
             f"{', '.join(passed) or 'none'}; pass here: {', '.join(ok[:12]) or 'none'}); nothing after it ran\n"
             + "\n".join(row_line(r) for r in bad[:12]) + (f"\n  ... {len(bad) - 12} more" if len(bad) > 12 else "")
             + f"\n  back to step {g.get('back_to')}: {g.get('change')}"

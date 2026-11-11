@@ -137,7 +137,9 @@ class StiffStages:
         """Every other edge and fold row of the stiff pieces, as chains, between the ones already fixed."""
         net, R = self.net, self.roles
         rs = net.root
-        for p in [q for q in (R.band, R.fall) if q and (q != R.band or hasattr(self, "sb"))]:  # (F1: stages that ran)
+        for p in [q for q in (R.band, R.fall) if q and (q != R.band or hasattr(self, "sb"))
+                  and (q != R.fall or hasattr(self, "fall_ch"))]:  # (F1: stages that ran; C418: a one-piece collar's
+            # fall, rolled by the crease turn, has no fall stage: s5-2's notch collar crashed on fall_ch)
             pid = net.pid(p)
             m = net.chain_piece == pid
             ids = net.link_of_chain[m]

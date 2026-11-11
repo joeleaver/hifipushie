@@ -18,6 +18,9 @@ free inside. A jacket's top collar and undercollar are sewn along the fall and b
   curved, maps rigidly onto its partner. A front + facing (the front edge only) is 0.0 mm, and so are a yoke on a back
   and a shoulder seam. Their areas are 0.00-0.09 against 0.41-1.08 for the plies (canvas 1.08, collar facing 0.58,
   collar / undercollar 0.41).
+- STIFF. One of the two is wholly interfaced. Every ply measured has one (a canvas, a collar, an undercollar). Two soft
+  pieces sewn round an edge hang one inside the other (INSIDE below): s5-2's facing, sewn down the front edge and round
+  the hem, closed round 0.30 of its area and was read as a ply of the front, which carried it point for point (C418).
 - IN ONE RUN. The sewn stretch of each outline is one run (a pocket: the canvas all round, the facing's end-top-end,
   the collar's end-fall-end). Two halves of a tube sewn along both sides, congruent when cut alike (a synthetic trouser
   leg's front and back), make two runs, and its two ends stay open.
@@ -28,7 +31,7 @@ piece the stages build; the others follow its surface (place_plies). A part is s
 interfaced.
 
 LAYERS. A wholly interfaced piece with no seams at all (a jacket's chest canvas) floats inside the soft piece worn at the
-same place (to, side) on the same side (.L / .R). It stiffens that host and is not built on its own. When several soft
+same place (to, side) on the same side (.L / .R): a piece of its own, or the outer piece of a part (C418). It stiffens that host and is not built on its own. When several soft
 pieces share the place, the host is the largest: the body cloth, where a facing is a strip along its edge.
 PLACED (R3c2): a layer still has points, and R3c's jacket left its canvases' 1103 each at the origin, held there through
 the chains ("held_length 77658 % off"). One design draws a layer and its host in ONE draft frame (the jacket's canvas:
@@ -175,9 +178,10 @@ def sewn_runs(net, p: int, verts: set) -> int:
 def ply_pairs(net) -> list:
     """[(p, q, rms, share)] for every piece pair that passes both ply tests (module doc)."""
     pairs, _ = _sewn(net)
+    stiff = [float(net.stiff[net.verts(nm)].mean()) > WHOLE for nm in net.names]
     out = []
     for (p, q), ab in pairs.items():
-        if p > q or len(ab) < 3:
+        if p > q or len(ab) < 3 or not (stiff[p] or stiff[q]):  # (C418: soft on soft hangs INSIDE, never a ply)
             continue
         ab = np.asarray(ab)
         rms = rigid_rms(net.uv[ab[:, 0]], net.uv[ab[:, 1]])
@@ -217,10 +221,18 @@ def read(net) -> Holds:
     closed = {c.get(k) for c in net.M.get("closures") or [] for k in ("over", "under")}
     floating = [i for i in range(n) if whole[i] and i not in seamed and names[i] not in closed]
     place = net.M.get("place") or {}
+
+    def _outer_of(j):  # (the piece a part's stages build: the one with the most sewn length outside the part, as below)
+        g = groups[find(j)]
+        if len(g) == 1:
+            return j
+        gs = set(g)
+        out = {k: set(v for q in range(n) if q not in gs for v, _ in pairs.get((k, q), [])) for k in g}
+        return max(g, key=lambda k: (_sewn_length(net, k, out[k]), whole[k], -k))
     layers: dict = {}
     for i in floating:
         pl, sd = place.get(names[i]), _side(names[i])
-        cand = [j for j in range(n) if not whole[j] and j not in floating and len(groups[find(j)]) == 1 and pl
+        cand = [j for j in range(n) if not whole[j] and j not in floating and pl and _outer_of(j) == j
                 and place.get(names[j]) == pl and _side(names[j]) == sd]
         if cand:
             layers[names[i]] = names[max(cand, key=lambda j: _area(net.uv, net.F[np.all(net.piece[net.F] == j, axis=1)]))]
@@ -230,11 +242,7 @@ def read(net) -> Holds:
         if g[0] in layer_ids:
             continue
         gs = set(g)
-        if len(g) > 1:
-            outside = {j: set(v for q in range(n) if q not in gs for v, _ in pairs.get((j, q), [])) for j in g}
-            outer = max(g, key=lambda j: (_sewn_length(net, j, outside[j]), whole[j], -j))
-        else:
-            outer = g[0]
+        outer = _outer_of(g[0])
         pt = Part(names[outer], [names[outer]] + [names[j] for j in g if j != outer], names[outer], any(whole[j] for j in g))
         for j in g:
             of[j] = pt
