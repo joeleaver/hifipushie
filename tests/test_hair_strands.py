@@ -94,30 +94,30 @@ def test_join_of_nothing_is_an_empty_mesh():
 def test_short_hair_is_drawn_on_the_cap():
     """A short cut's own strands (hair off its locks, lying on the head) are drawn in the scalp chart when the cut
     is short: the cap carries the look; otherwise only the scalp layer is."""
-    from hifipushie import hair
-    A = np.arange(0.0, 360.0, hair.Scalp.STEP)
-    E = np.arange(hair.Scalp.EL[0], hair.Scalp.EL[1] + 1e-6, hair.Scalp.STEP)
-    sc = hair.Scalp([0.0, 0.0, 1.7], np.full((len(A), len(E)), 0.09), {})
-    g = hair.groom_params({"hair": {"groom": {"parting": {"side": "none"}}}})
+    from hifipushie import hair_groom, hair_head
+    A = np.arange(0.0, 360.0, hair_head.Scalp.STEP)
+    E = np.arange(hair_head.Scalp.EL[0], hair_head.Scalp.EL[1] + 1e-6, hair_head.Scalp.STEP)
+    sc = hair_head.Scalp([0.0, 0.0, 1.7], np.full((len(A), len(E)), 0.09), {})
+    g = hair_groom.groom_params({"hair": {"groom": {"parting": {"side": "none"}}}})
     line = np.full(360, -20.0)
     P = sc.point(np.linspace(80.0, 100.0, 12), np.full(12, 30.0), np.full(12, 0.006))  # a strand 6 mm over the scalp
     D = {"pts": P.astype(np.float32), "counts": np.array([12], np.int32), "lock": np.array([0], np.int32),
          "sub": np.zeros(1, np.float32), "rand": np.array([0.9], np.float32), "radius": np.zeros(1, np.float32),
          "obj": np.array([0], np.int32), "names": np.array(["hair_guides_free"])}
     S = {**hc.strands_of({}), "soft": 0.008}
-    c0 = hs.cap_chart(sc, g, line, S, D, float(hair.Scalp.EL[0]), 256)
-    c1 = hs.cap_chart(sc, g, line, S, D, float(hair.Scalp.EL[0]), 256, short=True)
+    c0 = hs.cap_chart(sc, g, line, S, D, float(hair_head.Scalp.EL[0]), 256)
+    c1 = hs.cap_chart(sc, g, line, S, D, float(hair_head.Scalp.EL[0]), 256, short=True)
     assert np.abs(c1["id"] - c0["id"]).max() > 0.2  # the strand's own id is in the short chart only
     assert (np.abs(c1["id"] - 0.9) < 0.05).sum() >= 8 and (np.abs(c0["id"] - 0.9) < 0.05).sum() == 0
 
 
 def _ball_scalp():
-    from hifipushie import hair
-    A = np.arange(0.0, 360.0, hair.Scalp.STEP)
-    E = np.arange(hair.Scalp.EL[0], hair.Scalp.EL[1] + 1e-6, hair.Scalp.STEP)
-    sc = hair.Scalp([0.0, 0.0, 1.7], np.full((len(A), len(E)), 0.09), {})
-    g = hair.groom_params({"hair": {"groom": {"parting": {"side": "none"}}}})
-    return sc, g, np.full(360, -20.0), float(hair.Scalp.EL[0])
+    from hifipushie import hair_groom, hair_head
+    A = np.arange(0.0, 360.0, hair_head.Scalp.STEP)
+    E = np.arange(hair_head.Scalp.EL[0], hair_head.Scalp.EL[1] + 1e-6, hair_head.Scalp.STEP)
+    sc = hair_head.Scalp([0.0, 0.0, 1.7], np.full((len(A), len(E)), 0.09), {})
+    g = hair_groom.groom_params({"hair": {"groom": {"parting": {"side": "none"}}}})
+    return sc, g, np.full(360, -20.0), float(hair_head.Scalp.EL[0])
 
 
 def _crop(sc, n=4000, length=0.02, seed=0, lean=(1.0, 0.0), h=(0.001, 0.008)):
@@ -300,11 +300,11 @@ class _Ball:
 
 
 def test_cards_kept_out_of_the_head():
-    from hifipushie import hair
+    from hifipushie import hair_card_fit
     sc = _Ball()
     V = np.array([[0.0, -0.095, 0.02], [0.0, -0.11, 0.02], [0.05, -0.08, 0.03]], np.float32)  # 1st and 3rd inside
     M = {"verts": V, "card": np.array([0, 0, 1])}
-    r = hair.card_clearance(sc, M, ["wisp", "side"], fix=0.0015)
+    r = hair_card_fit.card_clearance(sc, M, ["wisp", "side"], fix=0.0015)
     assert r["under"] == 2 and r["deepest_mm"] > 2 and "wisp" in r["locks"], r
     assert (np.linalg.norm(M["verts"], axis=1) >= 0.1 + 0.0014).all()
     assert hk.mesh_verdict({**r, "deepest_mm": 5.0})[0].startswith("WARNING")
@@ -340,8 +340,8 @@ def test_checks_see_stamps_and_planks():
 
 
 def test_tiers_are_fewer_and_wider():
-    from hifipushie import hair
-    T = hair.CARD_TIERS
+    from hifipushie import hair_job
+    T = hair_job.CARD_TIERS
     order = ["hero", "main", "npc", "far"]
     assert [T[k]["triangles"] for k in order] == sorted((T[k]["triangles"] for k in order), reverse=True)
     assert [T[k]["card_width"] for k in order] == sorted(T[k]["card_width"] for k in order)
@@ -350,7 +350,8 @@ def test_tiers_are_fewer_and_wider():
 
 def test_export_tier_as_an_engine_gets_it():
     """With Blender and the workspace model: one tier exported, re-imported, judged against the strands."""
-    from hifipushie import hair, store
+    from hifipushie import store
+    from hifipushie import hair_export, hair_job
     name = os.environ.get("HIFIPUSHIE_HAIR_TEST_MODEL", "hs_tess")
     try:
         store.load(name)
@@ -359,9 +360,9 @@ def test_export_tier_as_an_engine_gets_it():
         return
     import tempfile
     with tempfile.TemporaryDirectory() as tmp:
-        rep = hair.export_hair(name, tmp, tiers=("npc",), groom=False, check=True)
+        rep = hair_export.export_hair(name, tmp, tiers=("npc",), groom=False, check=True)
         t = rep["tiers"]["npc"]
-        assert t["triangles"] <= hair.CARD_TIERS["npc"]["triangles"], t["triangles"]
+        assert t["triangles"] <= hair_job.CARD_TIERS["npc"]["triangles"], t["triangles"]
         ch = rep["checks"]["npc"]
         for mode in ("test", "dither"):
             for v, r in ch[mode].items():

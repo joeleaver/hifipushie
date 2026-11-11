@@ -2,7 +2,7 @@
 cap single; layers stay contiguous ranges; the material is single-sided."""
 import numpy as np
 
-from hifipushie import hair
+from hifipushie import hair_export
 
 
 def test_back_faces():
@@ -11,7 +11,7 @@ def test_back_faces():
     lay = np.array([-1, 0, 1])
     N = np.tile([0.0, 0.0, 1.0], (9, 1))
     UV = np.arange(18, dtype=float).reshape(9, 2)
-    T2, (N2, UV2) = hair.back_faces(T, lay, (N, UV))
+    T2, (N2, UV2) = hair_export.back_faces(T, lay, (N, UV))
     assert len(T2) == 5 and (T2[0] == T[0]).all()  # cap: one face
     assert (T2[1] == T[1]).all() and (T2[2] == T[1][::-1]).all()  # card: front, then its back
     assert (T2[3] == T[2]).all() and (T2[4] == T[2][::-1]).all()
@@ -24,8 +24,8 @@ def test_back_faces():
 
 
 def test_single_sided_material():
-    assert hair.BACK_FACES == 1
-    assert "not doubleSided" in hair.CARD_RECIPE_FACES and hair.CARD_RECIPE_FACES != hair.CARD_RECIPE
+    assert hair_export.BACK_FACES == 1
+    assert "not doubleSided" in hair_export.CARD_RECIPE_FACES and hair_export.CARD_RECIPE_FACES != hair_export.CARD_RECIPE
 
 
 if __name__ == "__main__":

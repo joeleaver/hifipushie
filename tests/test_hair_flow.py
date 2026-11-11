@@ -23,18 +23,19 @@ sys.path.insert(0, os.path.dirname(__file__))
 from test_hair_loose import _ball_head  # noqa: E402
 
 from hifipushie import hair, hair_flow as hf, hair_tied as ht  # noqa: E402
+from hifipushie import hair_groom, hair_spec
 
 
 def _grow(tied, seed=2):
     sc, _ = _ball_head()
     spec = {"hair": {"style": "strands", "groom": {"tied": tied, "seed": seed}}}
-    g = hair.groom_params(spec)
-    line = hair.hairline(sc, g)
+    g = hair_groom.groom_params(spec)
+    line = hair_groom.hairline(sc, g)
     return sc, g, line, ht.grow(sc, g, line, np.random.default_rng(seed))
 
 
 def _world(sc, lk):
-    return hair.lock_world(sc, lk, lk["pts"])
+    return hair_spec.lock_world(sc, lk, lk["pts"])
 
 
 def test_defaults_are_an_ordinary_ponytail():
@@ -92,7 +93,7 @@ def test_every_way_ends_in_the_tie_and_stays_in_the_hair():
             far = np.degrees(np.arccos(np.clip(hair.dirs(pts[:, 0], pts[:, 1]) @ tie, -1, 1))) > 25
             fa = np.abs(((pts[:, 0] + 180) % 360) - 180)
             over = tp["gather"]["overhang"] + 6.0  # (smoothing rounds the keep-in's corner by a few degrees)
-            lim = hair._line_at(line, pts[:, 0]) - over
+            lim = hair_groom._line_at(line, pts[:, 0]) - over
             ok = (pts[:, 1] >= lim) | ~far | ((fa > 52) & (fa < 112))
             assert ok.all(), (tied, k, pts[~ok])
 
@@ -191,7 +192,7 @@ def test_wisps_are_soft_clumps_that_hug_the_head():
         a0 = abs(float(hf._wrap(az[0])))
         if a0 < 44:  # the front's: never far down the forehead (over the eyes)
             fa = np.abs(hf._wrap(az))
-            lo = hair._line_at(line, az % 360) - 27.0
+            lo = hair_groom._line_at(line, az % 360) - 27.0
             assert np.all((el > lo) | (fa >= 48)), k
     sides = [np.sign((_world(sc, lk) - sc.C)[0, 0]) for lk in ws.values()]
     assert sides.count(1.0) == sides.count(-1.0)
@@ -204,7 +205,7 @@ def test_wisps_are_soft_clumps_that_hug_the_head():
     assert not soft(_grow({"neatness": 1.0})[3])
     assert not soft(_grow({"neatness": 0.3, "wisps": 0})[3])
     assert soft(_grow({"neatness": 0.3})[3])
-    assert hair.needs_body(g)  # they lie on the body's own surface
+    assert hair_groom.needs_body(g)  # they lie on the body's own surface
     # softness: wider, more hairs
     so = lambda v: hf.style({"wisps": {"amount": 0.5, "softness": v}})["tie"]["wisps"]  # noqa: E731
     assert so(1.0)["hairs"][1] > so(0.0)["hairs"][1]
@@ -296,7 +297,7 @@ def test_hairline_is_a_band_that_thins_out():
         fa = abs(float(hf._wrap(az)))
         if fa > 35:  # (the forehead and its corners: no strip, no climb)
             continue
-        din.append(float(hair.inside(sc, line, az % 360, el)))
+        din.append(float(hair_groom.inside(sc, line, az % 360, el)))
         dens.append(lk["strands"]["density"])
         fine.append(lk["strands"]["fine"])
         wid.append(lk["width"])
@@ -310,7 +311,7 @@ def test_hairline_is_a_band_that_thins_out():
     assert fine[out].mean() > 0.3 > fine[inn].mean()  # the rim is drawn fine
     assert wid.max() < 0.8 * sp  # narrow locks
     # the temple / sideburn strip is rooted (round four made no lock there: bare skin with wisps over it)
-    e_ear = 0.5 * (float(hair._line_at(line, 95.0)) + float(hair._line_at(line, 265.0)))
+    e_ear = 0.5 * (float(hair_groom._line_at(line, 95.0)) + float(hair_groom._line_at(line, 265.0)))
     strip = lambda L: sum(1 for lk in L.values()  # noqa: E731
                           if 50 < abs(float(hf._wrap(lk["pts"][0][0]))) < 100 and lk["pts"][0][1] < e_ear - 2.0)
     assert strip(band) >= 4 and strip(hard) == 0, (strip(band), strip(hard))
@@ -328,7 +329,7 @@ def test_hairline_is_a_band_that_thins_out():
     lk = dict(next(iter(band.values())), name="tg0_0")
     lk["inputs"] = {"Width": lk["width"], "Thickness": lk["thickness"], "Taper": lk["taper"], "Belly": lk["belly"],
                     "Root": lk["root"], "Cup": lk["cup"]}
-    lk["pts"] = hair.lock_world(sc, lk, lk["pts"]).tolist()
+    lk["pts"] = hair_spec.lock_world(sc, lk, lk["pts"]).tolist()
     lk["space"] = "world"
     try:
         G = hs.lock_guides([lk], sc.C, hc.strands_of({"hair": {"groom": {"tied": {}}}}))
@@ -639,7 +640,7 @@ def test_sideburn_grows_no_lock_to_the_tie():
     ear): full locks from there climbed to the flow and their starts were a dark toothed tuft over bare skin. (A soft
     hairline roots it again, thin: test_hairline_is_a_band_that_thins_out.)"""
     sc, g, line, locks = _grow({"tightness": 0.9, "hairline": 0})
-    e_ear = 0.5 * (float(hair._line_at(line, 95.0)) + float(hair._line_at(line, 265.0)))
+    e_ear = 0.5 * (float(hair_groom._line_at(line, 95.0)) + float(hair_groom._line_at(line, 265.0)))
     n = 0
     for k, lk in locks.items():
         if k.startswith("tg0_"):
@@ -676,7 +677,7 @@ def test_style_words():
     S = hc.strands_of({"hair": {"groom": {"tied": {"neatness": 0.0}}, "strands": {"halo": 0.05, "free": {"frizz": 0.9}}}})
     assert S["halo"] == 0.05 and S["free"]["frizz"] == 0.9 and "flyaway" in S["free"]
     try:
-        hair.groom_params({"hair": {"groom": {"tied": {}, "tie": {"at": [180, 20]}}}})
+        hair_groom.groom_params({"hair": {"groom": {"tied": {}, "tie": {"at": [180, 20]}}}})
         raise AssertionError("tied + tie accepted")
     except hair.HairError as e:
         assert "detail" in str(e)
@@ -693,7 +694,7 @@ def test_half_up_gathers_only_the_top():
 def test_old_tie_grooms_are_untouched():
     assert ht.TIE["gather"]["mode"] == "rows" and ht.TIE["tail"]["hang"] is False and ht.TIE["escaped"] is None
     sc, _ = _ball_head()
-    g = hair._merge(hair.GROOM, {"tie": {"at": [176, 25]}, "parting": {"side": "centre"}, "seed": 2})
-    locks = ht.grow(sc, g, hair.hairline(sc, g), np.random.default_rng(2))
-    assert not hair.needs_body(g)
+    g = hair_groom._merge(hair.GROOM, {"tie": {"at": [176, 25]}, "parting": {"side": "centre"}, "seed": 2})
+    locks = ht.grow(sc, g, hair_groom.hairline(sc, g), np.random.default_rng(2))
+    assert not hair_groom.needs_body(g)
     assert sum(k.startswith("tg0_") for k in locks) and not any(k.startswith("te") for k in locks)

@@ -83,17 +83,18 @@ def test_every_tier_fits_its_drawn_budget_back_faces_counted():
     side); its DRAWN triangles (the cap once, every other triangle twice when cards export their back faces) stay within
     the tier's role's RANGE maximum (hero 50k, main_npc 20k, secondary_npc 8k, crowd 1.5k). Both hold for the cards
     fitted to card_allowance, and the binding one is met within a card's triangles when cards are plentiful."""
-    from hifipushie import hair, hair_cards as hc
-    assert {t: hair.tier_drawn_max(t) for t in hair.CARD_TIERS} == {"hero": 50000, "main": 20000, "npc": 8000, "far": 1500}
+    from hifipushie import hair_cards as hc
+    from hifipushie import hair_job
+    assert {t: hair_job.tier_drawn_max(t) for t in hair_job.CARD_TIERS} == {"hero": 50000, "main": 20000, "npc": 8000, "far": 1500}
     D, locks = _groom()
-    for tier in hair.CARD_TIERS:
-        budget, dmax = hair.tier_triangles(tier), hair.tier_drawn_max(tier)
-        S_ = {**hc.STRANDS, **S, **{k: v for k, v in hair.tier_settings(tier).items() if k not in ("triangles", "cap_step", "cap")}}
+    for tier in hair_job.CARD_TIERS:
+        budget, dmax = hair_job.tier_triangles(tier), hair_job.tier_drawn_max(tier)
+        S_ = {**hc.STRANDS, **S, **{k: v for k, v in hair_job.tier_settings(tier).items() if k not in ("triangles", "cap_step", "cap")}}
         cards = hk.cut(D, locks, C, S_, None, 0, triangles=budget)
         assert cards, tier
         for bf in (True, False):
             cap, other = budget // 10, 40
-            f, fixed, allow = hair.card_allowance(budget, cap, other, back_faces=bf, drawn_max=dmax)
+            f, fixed, allow = hair_job.card_allowance(budget, cap, other, back_faces=bf, drawn_max=dmax)
             assert f == (2 if bf else 1)
             # the arithmetic: the allowance meets the tighter of the two limits exactly
             assert allow == max(min(budget - cap - other, (dmax - cap - f * other) // f), 200), (tier, bf, allow)
@@ -103,7 +104,7 @@ def test_every_tier_fits_its_drawn_budget_back_faces_counted():
             assert faces <= budget, (tier, bf, faces, budget)
             assert drawn <= dmax, (tier, bf, drawn, dmax)
     # legacy (drawn_max None): the budget itself counts drawn triangles (c10 / c11 callers)
-    assert hair.card_allowance(25000, 2000, 100, back_faces=True) == (2, 2200, 11400)
+    assert hair_job.card_allowance(25000, 2000, 100, back_faces=True) == (2, 2200, 11400)
 
 
 def test_fit_floor_keeps_a_class_share():

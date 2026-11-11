@@ -7,7 +7,8 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from hifipushie import hair, lods
+from hifipushie import lods
+from hifipushie import hair_export
 
 
 def _atlas(d: Path, img: np.ndarray) -> dict:
@@ -40,13 +41,13 @@ def test_share_atlas():
         want = _alpha_at(tiles, uv)
         part = {"uv": uv.copy()}
         assert not np.array_equal(_alpha_at(hero, uv), want)  # the round-27 fault: tier uv on LOD0's atlas
-        assert hair.share_atlas(part, f1, f0)
+        assert hair_export.share_atlas(part, f1, f0)
         assert np.array_equal(_alpha_at(hero, part["uv"]), want), "tier uv must land on the same texels"
         same = {"uv": uv.copy()}
-        assert hair.share_atlas(same, f0, f0) and np.array_equal(same["uv"], uv)
+        assert hair_export.share_atlas(same, f0, f0) and np.array_equal(same["uv"], uv)
         other = _atlas(t / "other", rng.integers(0, 255, (64, 128, 4), dtype=np.uint8))
         keep = {"uv": uv.copy()}
-        assert not hair.share_atlas(keep, other, f0) and np.array_equal(keep["uv"], uv)  # different pictures: own maps
+        assert not hair_export.share_atlas(keep, other, f0) and np.array_equal(keep["uv"], uv)  # different pictures: own maps
 
 
 def test_ribbon_lod():

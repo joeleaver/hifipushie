@@ -11354,7 +11354,7 @@ def export_part(name: str, spec: dict, out_dir, texture: int = 1024, log=print) 
     its inside). The uv is the flat pattern (`atlas_uv`); the maps carry the sewing detail drawn from the pattern
     (`detail_maps`: seam grooves, topstitching, hems, buttons) in the base colour and the normal map."""
     from PIL import Image
-    from . import hair as hairmod
+    from . import hair_export
     from . import closures as closuremod
     out_dir = Path(out_dir)
     parts = []
@@ -11456,7 +11456,7 @@ def export_part(name: str, spec: dict, out_dir, texture: int = 1024, log=print) 
             UVall = np.r_[UVall, uv[closuremod.button_texels(M, bt)]]  # (the button drawn at its own mark: at a closed
             # fastening the button sits on the hole, whose texel is thread)
         UVc = UVall[Fall.ravel()]  # per corner
-        n, tt, sg = hairmod._tangents(Vall, Fall, UVc)
+        n, tt, sg = hair_export._tangents(Vall, Fall, UVc)
         # the shared normals (outer shell; the inner shell the opposite), tangents made orthogonal to them again
         nv = np.concatenate(NV + [np.zeros((len(Vall) - n_own, 3))])
         cw = Fall.ravel()
