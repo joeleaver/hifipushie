@@ -26,5 +26,4 @@ generator keeps the person):
 - the same identity, light, scale and camera height in every view.
 
 The brief's shape ({subject, common: {prompt, negative}, shots: [{id, view, light, purpose, must_show, prompt}],
-text}) is shared with the clothing checklist's (`cloth_reference.reference_brief`), so one generator step can serve
-both.
+text}).

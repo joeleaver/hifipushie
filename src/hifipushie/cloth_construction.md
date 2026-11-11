@@ -2,8 +2,6 @@
 
 Read guide(topic="cloth") first. These stages run in seconds and decide most of what a simulation can do.
 
-## Stage 2: the pattern, laid flat (`look_pattern`)
-
 *How makers do it:* a pattern maker "walks" each seam (measures one edge along the other), checks notches meet, and
 measures the pattern against the body before cutting. In Marvelous Designer you read the 2D window before you press
 simulate.
@@ -21,10 +19,6 @@ Checks, failures first:
   notches. Both sides of a seam are sewn by fraction of their length, so a notch mismatch is a real misalignment.
 - **Fit.** Ease against the body per girth, inside the fit's band. Negative ease on a woven is TOO SMALL.
 - **Loose pieces.** Every piece is sewn to something.
-
-These checks prove the draft is consistent, not that it is the garment in the reference: also measure the
-description's items on the draft (guide(topic="cloth"), stage 2). Fix what fails in the sheet (`design_garment`
-again), then look again.
 
 *How makers do it:* collars, cuffs, plackets and waistbands are made finished on the table (interfaced, turned,
 pressed) before they meet the garment. In MD these are fold angle + strength on internal lines, fold arrangement,

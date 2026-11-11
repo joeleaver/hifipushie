@@ -33,7 +33,7 @@ class BandStages:
         if R.band is None:
             return
         if R.band_closure is None:
-            raise ChainRefused(f"{R.band}: no closure on the band; next: add its button to the pattern (design_garment)")
+            raise ChainRefused(f"{R.band}: no closure on the band; next: add its button in your draft's declarations (draft_pattern)")
         uv = net.uv
         soft_sewn = set()
         for p in R.panels:

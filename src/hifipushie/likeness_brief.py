@@ -5,7 +5,7 @@ responsible for generating them. But when we are, we can try to get the best one
 
 - `reference_brief(kind="head" | "figure")`: the shot list the likeness checklist wants, what makes each shot usable,
   and the prompt wording for an image generator (one common identity block + a per-shot line, so the person stays the
-  same across views). Shape shared with the clothing checklist's brief (cloth_reference.reference_brief): {"subject",
+  same across views). Shape: {"subject",
   "common": {"prompt", "negative"}, "shots": [{"id", "view": {"yaw", "pitch", "framing"}, "light", "purpose": [item
   ids], "must_show": [...], "prompt"}], "text"}.
 - `check_references(views)`: what a set of pictures lacks or does badly: views present (the detector's head pose),

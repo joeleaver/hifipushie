@@ -37,7 +37,7 @@ BACK = {"arrange": ("5", "the ARRANGE lay (chain_sew.lay): each piece flat on on
                      "measurements its pieces were drafted from): draft_pattern with the piece larger there"),
         "start": ("5", "the START (piece_start): the piece's measurement list (step 4 piece_measurements) or where its "
                        "tapes were taken (step 3 body_tape), then chain_garment again"),
-        "chains": ("5", "the CHAIN stage: a length off its cut is the pattern's (alter_pattern at the named line); a tube "
+        "chains": ("5", "the CHAIN stage: a length off its cut is the pattern's (change the named line in your draft: draft_pattern); a tube "
                         "or pair pulled off its start is the start or the seams joining it (pattern_check)"),
         "surfaces": ("6", "the SURFACES lay (chain_garment soft fill between the chains): torn or crumpled before any "
                           "solve is the lay, not the cloth"),
@@ -330,7 +330,7 @@ def gate_chains(b, X) -> dict:
     c = b.chain_read(X)
     rows = [_row("length", c["free_worst_pct"], MAX_FREE_PCT, c["free_worst_pct"] <= MAX_FREE_PCT,
                  "MAX_FREE_PCT (chain_garment): a free chain link off its cut, worst, read at the chain stage",
-                 f"{c['free_worst_line']}: the pattern can't make this line here (alter_pattern at it) or the start "
+                 f"{c['free_worst_line']}: the pattern can't make this line here (change it in your draft: draft_pattern) or the start "
                  "put it where it can't reach")]
     if "held_worst_pct" in c:
         rows.append(_row("held_length", c["held_worst_pct"], MAX_FREE_PCT, c["held_worst_pct"] <= MAX_FREE_PCT,

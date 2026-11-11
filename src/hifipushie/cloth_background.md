@@ -95,12 +95,6 @@ A draft source we don't have: write own `pieces` (outlines in metres with named 
 A kind in `garment_kb.json` can carry `draft` (block, block_options, `fit_options` per fit), and a detail choice can
 carry `draft.ops` (the operation that makes it) and `trims`. Then the sheet is only the decisions:
 
-```
-design_garment(name, "trousers", design={"kind": "suit_trousers", "fit": "tailored"},
-               spec={"quality": "draft", "backend": "zozo", "color": "#2e2f33"})
-look_pattern(name, "trousers")       # leg cut from HIS leg, seat ease in the fit's band, fly, creases, band, trims
-```
-
 makes flat-front tailored trousers: the trouser block with the leg cut from the leg's own girths, an `extended`
 waistband opening at the centre front, a `zip_fly`, `pressed` creases, shaped back darts, belt loops and a belt.
 Change a decision in `details` (`"crease": "none"`, `"belt": "none"`, `"fly": {"choice": "zip_fly", "op": {"length":

@@ -9613,7 +9613,7 @@ def validate(spec: dict) -> None:
         pat = g.get("pattern")
         if pat is None and not g.get("pieces"):
             raise ClothError(f'{where}: needs "pattern": {{"from": design}} ({", ".join(names + list(garment_blocks.BLOCKS))}) '
-                             'or own "pieces" + "seams", or a "design" sheet (design_garment)')
+                             'or own "pieces" + "seams", or a "design" sheet')
         if pat is not None and isinstance(pat, dict) and pat.get("from") in garment_blocks.BLOCKS:
             okp = {"from", "options", "measurements"} | set(garment_blocks.WORDS[pat["from"]])
             bad = {k for k in set(pat) - okp if k != "source" and not k.endswith("_source")}

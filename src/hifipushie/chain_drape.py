@@ -428,12 +428,12 @@ def rule_items(plan: dict | None) -> list:
                      "chain_drape held_ring / the start paths: a build fault, report it"),
          dict(id="drape_held_exact", read="drape_held_worst_pct", range=[None, 2.0], stage=1, on="build",
               source="rule: the held line is built exactly from the pattern (chain_garment MAX_FREE_PCT 2 %)",
-              change="the held line can't rest at its cut length round the neck base: the neck edge (alter_pattern) "
+              change="the held line can't rest at its cut length round the neck base: the neck edge (in your draft: draft_pattern) "
                      "or chain_drape held_ring")]
     if any(x["falls"] == "up" for x in dp.values()):
         I.append(dict(id="hood_on_head", read="hood_over_head_mm", range=[0.0, None], stage=2, on="hang",
                       source="rule: a hood worn up (step 2 drape falls up) rests ON the head: its top above the head's",
-                      change="the hood is too short to reach over the head (alter_pattern its height) or it fell off"))
+                      change="the hood is too short to reach over the head (raise it in your draft: draft_pattern) or it fell off"))
     return I
 
 

@@ -40,7 +40,7 @@ paint; check and look after each stage. Every change is checkpointed (history / 
 Tools: a small core is native; every other tool (plan, scene, export, human, likeness, hair, cloth, terrain,
 plants, clutter) runs through call_tool(name, args): find_tool("what you want to do") names the tool with its
 parameters and an example call; find_tool("") lists every tool by domain. Domains have a guide topic (hair,
-cloth, cloth_reference, skin, human, block_in, likeness, terrain, vegetation, clutter): read it before working there.
+cloth, skin, human, block_in, likeness, terrain, vegetation, clutter): read it before working there.
 A person's head from pictures: the artist block-in (guide topic block_in) is the default.
 Clothes: garment_plan (read, parts, style plan) -> body_tape -> draft_pattern (your own FreeSewing design; its flat gate)
 -> chain_garment (the only way a garment is built: the pattern's own lengths, in the planned state) -> garment_details ->
@@ -318,7 +318,7 @@ def _spec_arg(spec) -> dict:
 @mcp.tool(structured_output=False)
 def guide(topic: str = "") -> str:
     """The playbook and reference. topic "" = modelling playbook (read before modelling); a domain: "hair", "cloth",
-    "cloth_reference", "skin", "human", "block_in", "gnm_driving" (a difference you see -> the GNM control),
+    "skin", "human", "block_in", "gnm_driving" (a difference you see -> the GNM control),
     "likeness", "terrain", "vegetation", "clutter", "tools" (core tools' reference), "traps" (symptom -> real
     cause), "gates" (describe, measure, look, approve), "tailoring"; or any tool's name (or "tool:<name>") for that tool's full parameters and behaviour. Details: guide(topic="guide")."""
     t = topic.strip().lower()
@@ -346,15 +346,14 @@ garment_plan (read, parts, style) -> body_tape -> draft_pattern -> chain_garment
 hem, fold and roll line is a chain at its exact cut length, sewn points are one node, and only bends are free: stiff parts
 (band, collar, cuffs, plackets) are built first from the pattern's interfacing and hold their own shape; the soft cloth
 hangs from them under gravity; lengths have the last word. Your choices are the DESIGN (the pattern) and the WEAR ("closed",
-"open", how far an open collar opens). Nothing else is a setting. A fault is fixed on the pattern (alter_pattern),
-pattern_check, chain_garment again. If a length can't hold the tool names the piece and the line.
+"open", how far an open collar opens). Nothing else is a setting. A fault is fixed in your draft (draft_pattern, which runs the
+flat gate), then chain_garment again. If a length can't hold the tool names the piece and the line.
 Judge with look_chain: the whole figure, focus="neck" for the collar close, a piece's name for that piece alone, four sides,
 with reference= beside every view; review_view one view per call."""
 
 
 # guide topics -> files; each domain file ends with "## Tool reference": a "### `tool`" section per tool
 GUIDE_TOPICS = {"": "guide.md", "tools": "tools_guide.md", "hair": "hair_guide.md", "cloth": "cloth_guide.md",
-                "cloth_reference": "cloth_reference_guide.md", "cloth reference": "cloth_reference_guide.md",
                 "skin": "skin_guide.md", "human": "human_guide.md", "humans": "human_guide.md",
                 "block_in": "blockin_guide.md", "blockin": "blockin_guide.md", "block-in": "blockin_guide.md",
                 "likeness": "likeness_guide.md", "terrain": "terrain_guide.md", "vegetation": "vegetation_guide.md",
@@ -2972,8 +2971,8 @@ def _chain_answer(name: str, garment: str, wear: str, st: dict, opening: float |
         sc = st.get("structure") or {}
         bad = [r["id"] for r in sc.get("rows") or [] if r["status"] in ("FAIL", "UNMEASURED") and not r.get("waived")]
         more = f"\n  structure (the build, read before the refusal): {sc.get('verdict')}; failing: {', '.join(bad)}" if sc else ""
-        return (f"{name}:{garment} ({wear}): refused: {st.get('refused')}{more}\nnext: fix it on the pattern (alter_pattern), "
-                f"pattern_check, then {again}")
+        return (f"{name}:{garment} ({wear}): refused: {st.get('refused')}{more}\nnext: fix it in your draft (draft_pattern runs the flat gate), "
+                f"then {again}")
     if stage == "stage_failed":  # (F5: the build stopped at a stage's gate: start, chains or surfaces)
         from . import chain_stages as cst
         return cst.answer(name, garment, wear, st, again, look)
@@ -2984,8 +2983,8 @@ def _chain_answer(name: str, garment: str, wear: str, st: dict, opening: float |
         ok = [r["id"] for r in sc.get("rows") or [] if r["status"] == "PASS"]
         return (f"{name}:{garment} ({wear}): built; STRUCTURE {sc.get('verdict')}: the hang does not run ({len(bad)} rows "
                 f"fail; pass: {', '.join(ok) or 'none'})\n" + "\n".join(cs.row_line(r) for r in bad) +
-                f"\nnext: {look} to see the build beside your reference; then each row's change (alter_pattern, "
-                f"pattern_check, then {again}); a row the reference can't decide: {again[:-2]}, \"waive\": {{\"<row id>\": "
+                f"\nnext: {look} to see the build beside your reference; then each row's change (in your draft: draft_pattern, "
+                f"then {again}); a row the reference can't decide: {again[:-2]}, \"waive\": {{\"<row id>\": "
                 f"\"<why>\"}}}})")
     if stage == "awaiting_approval":
         from . import chain_presim as cp
@@ -3079,7 +3078,7 @@ def look_chain(name: str, garment: str, wear: str = "closed", focus: str | None 
         refused = gr.from_look_chain(name, garment, wear, src.name == "final.pkl", [p for _, p in paths])
         txt += f"\n  {refused}" if refused else ""
     return ims + [txt + f"\n  views: {', '.join(p for _, p in paths)}\nnext: judge beside your reference (review_view, one view per "
-                  "call); a fault: fix it on the pattern (alter_pattern), pattern_check, chain_garment again; close views: focus=\"neck\" or a "
+                  "call); a fault: fix it in your draft (draft_pattern), then chain_garment again; close views: focus=\"neck\" or a "
                   "piece's name"]
 
 

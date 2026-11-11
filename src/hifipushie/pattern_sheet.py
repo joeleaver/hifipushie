@@ -3,7 +3,7 @@ for numbers). Every piece at one scale: its outline, grain arrow, notches, butto
 lines (dashed blue), interfacing (hatched), ONE large piece name inside the piece (sized down to fit, or left off and
 said so in `img.info["names_off"]`), every seam pair in one colour on both its edges, a 10 cm scale bar and a big
 legend mapping each colour to its seam's name. No numbers on the image: sizes, cut counts, lengths and ease are in
-`text_lines` (every caller puts them in its text answer). Stage 2 of the clothing workflow (look_pattern)."""
+`text_lines` (every caller puts them in its text answer)."""
 from __future__ import annotations
 
 import colorsys

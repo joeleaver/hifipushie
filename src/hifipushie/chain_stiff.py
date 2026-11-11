@@ -105,7 +105,7 @@ class StiffStages:
                         best = (c_, al, ph)
             if best is None:
                 raise ChainRefused(f"{pname}: no crease through the first fastened button clears the placket's top edge. "
-                                   "next: check the button position against the neck (design_garment)")
+                                   "next: check the button position against the neck in your draft's declarations (draft_pattern)")
             r_ = minimize(lambda q: float(((fold(uv[top], q[0], q[1])[0] - Tgt) ** 2).sum()), best[1:], method="Nelder-Mead",
                           options={"xatol": 1e-3, "fatol": 1e-9})
             al, ph = r_.x
