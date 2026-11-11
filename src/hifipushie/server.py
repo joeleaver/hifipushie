@@ -172,8 +172,8 @@ TOOL_GROUPS: dict[str, dict] = {
               # the workflow's order (find_tool ranks a matched domain's early steps first)
               "steps": ["garment_plan", "body_tape", "draft_pattern", "chain_garment", "garment_details", "look_chain", "garment_appearance", "export_garment"],
               "about": "garments: design, pattern, the pattern gate, alterations, the chain build (the only start), references",
-              "tools": ["garment_plan", "draft_pattern", "pattern_parts", "garment_details", "garment_appearance", "export_garment", "design_garment", "look_pattern", "alter_pattern", "pattern_check", "chain_garment", "look_chain",
-                        "garment_record", "body_tape", "garment_reference", "garment_from_reference", "garment_reference_brief"]},
+              "tools": ["garment_plan", "body_tape", "draft_pattern", "pattern_parts", "pattern_check", "chain_garment", "garment_details",
+                        "look_chain", "garment_appearance", "export_garment", "garment_record"]},
     "terrain": {"subject": "terrain landscape mountain valley river hill island lake coast canyon heightmap",
                 "entry": "set_terrain", "about": "terrain and game levels (height fields in a level designer's words)",
                 "tools": ["set_terrain", "check_terrain", "look_terrain", "export_terrain", "terrain_history"]},
@@ -2803,297 +2803,14 @@ def _save_suffix(save: str | None, tag: str) -> str | None:
     return str(p.with_name(f"{p.stem}_{tag}{p.suffix or '.png'}"))
 
 
-@mcp.tool(structured_output=False)
-def garment_reference(kind: str | None = None, detail: str | None = None, principles: str | None = None) -> str:
-    """The clothing knowledge base: kind (one garment kind), detail (one detail's choices), or principles
-    ("blocks"|"operations"|"derivations"|<category>|"rules"|"all"); no args = the index. Details:
-    guide(topic="garment_reference")."""
-    from . import garment_design
-    K = garment_design.kb()
-    if principles:
-        P = K["principles"]
-        if principles == "all":
-            return json.dumps(P, indent=1)
-        if principles in P and not principles.startswith("_"):
-            return json.dumps({principles: P[principles], "three_principles": P["three_principles"]}, indent=1)
-        if principles in P["derivations"]:
-            return json.dumps({principles: P["derivations"][principles], "operations": P["operations"]}, indent=1)
-        raise ValueError(f"principles is blocks, operations, derivations, rules, all, or a derivation: "
-                         f"{', '.join(k for k in P['derivations'] if not k.startswith('_'))}")
-    if kind:
-        if kind not in K["kinds"]:
-            raise ValueError(f"no kind {kind!r} (have {', '.join(k for k in K['kinds'] if not k.startswith('_'))})")
-        srcs = [d for d, v in K["designs"].items() if not d.startswith("_") and kind in v.get("kinds", [v.get("kind")])]
-        from . import design_targets
-        # (C243) the kind's checklist FIRST: the template the brief is written as (design.targets), each item with its
-        # one definition, units, default and range; the draft solves it, pattern_check measures it
-        tpl = design_targets.template(kind)
-        head = ({"targets_template": tpl, "how": "describe the brief as these items: design_garment(design={\"kind\": "
-                 f"\"{kind}\", \"targets\": {{item: value}}}}); the draft solves each, pattern_check measures each "
-                 "(rows target:<item>). Items left out take the default."} if tpl else
-                {"targets_template": f"none yet for {kind} (kinds with one: {', '.join(design_targets.kinds_with_targets())})"})
-        return json.dumps({"kind": kind, **head, **K["kinds"][kind], "draft_sources": srcs}, indent=1)
-    if detail:
-        if detail not in K["details"]:
-            raise ValueError(f"no detail {detail!r} (have {', '.join(k for k in K['details'] if not k.startswith('_'))})")
-        return json.dumps(K["details"][detail], indent=1)
-    L = ["kinds: " + ", ".join(f"{k} (fits {'/'.join(v.get('fit', {})) or '-'})" for k, v in K["kinds"].items() if not k.startswith("_")),
-         "details: " + "; ".join(f"{d}: {', '.join(c for c in v if not c.startswith('_'))}" for d, v in K["details"].items()
-                                 if not d.startswith("_")),
-         "fabrics: " + ", ".join(f"{k} ({v.get('gsm')} g/m2, {v.get('stretch')})" for k, v in K["fabrics"].items() if not k.startswith("_")),
-         "draft sources: " + "; ".join(f"{d} -> {v['kind']} (can: {', '.join(f'{x}=' + '/'.join(c) for x, c in v['can'].items())})"
-                                       for d, v in K["designs"].items() if not d.startswith("_")),
-         "targets: " + ", ".join(k for k in K["targets"] if not k.startswith("_")),
-         "principles (designing a new garment = block + operations; garment_reference(principles=...)): blocks "
-         + ", ".join(K["principles"]["blocks"]) + "; operations " + ", ".join(K["principles"]["operations"])
-         + "; derivations " + ", ".join(k for k in K["principles"]["derivations"] if not k.startswith("_")),
-         "lessons: " + " | ".join(x["lesson"] for x in K["lessons"])]
-    return "\n".join(L)
-
-
-@mcp.tool(structured_output=False)
-def garment_from_reference(name: str, garments: dict, views: list[dict] | str, answers: dict | None = None,
-                           save: bool = True) -> str:
-    """NOT a garment's start (that is garment_plan: read, parts, style into the garment record). Reads landmark-anchored
-    target lengths off reference art into cloth_refs.json for pattern_check refs=. garments {name: kind}, views
-    [{image, kind, points, crops}]; without answers: the form; with answers: the patch (not applied). save. Details:
-    guide(topic="garment_from_reference")."""
-    from . import cloth_reference as cr
-    vs = json.loads(views) if isinstance(views, str) else views
-    path = store.HOME / name / "cloth_refs.json"
-    out = cr.read(name, garments, vs, answers, save=path if (save and answers) else None)
-    if not answers:
-        return out["text"] + "\n(a garment starts at garment_plan step='read': this form only feeds pattern_check's reference rows)" + "\nnext: answer the form: the same call with answers={garment: {item id: answer}}"
-    # (C278: the reading is only used where it is passed: pattern_check's reference rows stay UNMEASURED without refs=)
-    nxt = "; ".join(f"call_tool(\"pattern_check\", {json.dumps({'name': name, 'garment': g_, 'refs': str(path)})})"
-                    for g_ in garments) if save else "the same call with save=True, then pattern_check with refs= its path"
-    return (out["text"] + "\nnext: apply each patch you agree with (design_garment: its design, color at the garment), then " + nxt
-            + "; an item the reference doesn't show stays UNMEASURED: waive it by name there (waive={id: why})")
-
-
-@mcp.tool(structured_output=False)
-def garment_reference_brief(garments: dict, subject: str = "a man", outfit: str = "", name: str | None = None,
-                            views: list[dict] | None = None) -> str:
-    """The shot list (and prompts) for garment reference images; garments {name: kind}, subject, outfit, name (a model
-    for the wear state); views = validate a set of pictures instead. Details:
-    guide(topic="garment_reference_brief")."""
-    from . import cloth_reference as cr
-    if views:
-        return cr.check_references(views, garments)["text"]
-    refs = (store.HOME / name / "cloth_refs.json") if name else None
-    b = cr.reference_brief(garments, subject=subject, outfit=outfit, model=name,
-                           refs=refs if refs is not None and refs.exists() else None)
-    return (b["text"] + "\n\nPROMPTS:\n" + "\n\n".join(f"[{s['id']}] {s['prompt']}" for s in b["shots"])
-            + "\n\nNEGATIVE: " + b["common"]["negative"])
-
-
-@mcp.tool(structured_output=False)
-def design_garment(name: str, garment: str, design: dict | None = None, spec: dict | None = None,
-                   replace: bool = False, note: str = "") -> str:
-    """Clothing stage 1: the design sheet in spec.cloth[garment].design (kind, from or block + ops, fit, fabric,
-    details, pattern, notes, auto_true, truing_corners), merged (replace=True replaces; null deletes a key). spec:
-    other garment keys. Every key, op, op parameter, block option and FreeSewing option is checked: an unknown one is
-    an error naming the valid ones with units and defaults; a call that fails saves nothing. Returns the resolved
-    sheet, failures first, and what each option set replaces. Next: look_pattern. Details:
-    guide(topic="design_garment")."""
-    from . import cloth_workflow
-    from .hair import merge_patch
-    full = store.load(name)
-    gs = full.setdefault("cloth", {})
-    g = {} if replace else dict(gs.get(garment) or {})
-    if design is not None:
-        g["design"] = merge_patch(dict(g.get("design") or {}), _spec_arg(design))
-    if spec is not None:
-        g = merge_patch(g, _spec_arg(spec))
-    if not g.get("design"):
-        raise ValueError("give the design sheet: design={'kind': ..., 'from': ..., 'details': {...}}")
-    gs[garment] = g
-    # TRANSACTIONAL (C241): checked and run on the trial spec first, saved last; a call that raises saves nothing
-    # (shirt t7: crashed calls had already saved their ops and the next call applied them twice)
-    design_contract_check(g, f"cloth {garment!r}", design=True)
-    from . import cloth
-    cloth.validate(full)  # (the garment keys, as the save will check them: refused before the stage runs)
-    tg_lines = _solve_targets(name, garment, full, g)
-    r = cloth_workflow.run(name, garment, ("design",), images=False, spec=full)
-    replaced = _design_replacements(g)
-    v = store.save(name, full, note or f"design {garment}")
-    return (f"saved {name} v{v}\n" + cloth_workflow.text(r)
-            + ("\n" + "\n".join(tg_lines) if tg_lines else "")
-            + ("\noptions set (each REPLACES its default, it does not add to it):\n  " + "\n  ".join(replaced)
-               if replaced else "")
-            + f"\nnext: call_tool(\"look_pattern\", {{\"name\": \"{name}\", \"garment\": \"{garment}\"}})")
-
-
-def _solve_targets(name: str, garment: str, full: dict, g: dict) -> list:
-    """THE KIND'S CHECKLIST IS THE DESIGN INPUT (C243): the sheet's targets solved on this body (design_targets.solve:
-    each numeric item's option / op turned until the drafted pattern measures it), stored as design.solved; the
-    reply's lines, target -> drafted per item. A sheet without targets drops a stale "solved"."""
-    from . import cloth, cloth_workflow, design_targets as dt
-    sheet = g["design"]
-    if not sheet.get("targets"):
-        sheet.pop("solved", None)
-        return []
-    try:
-        c = cloth_workflow.Ctx(name, garment, full)
-        meas = c.meas
-        out = dt.solve(g, meas, lambda gg: cloth.pieces(cloth._garment_for_sim(gg), meas), body=c.body)
-    except dt.TargetError as e:
-        raise ValueError(str(e))
-    sheet["solved"] = {k: (float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else v)
-                       for k, v in out["solved"].items()}
-    rows_ = dt.rows(out["Bp"], sheet, sheet.get("kind") or "", body=c.body)
-    return dt.reply_lines(rows_, out["plan"], out)
-
-
-def design_contract_check(g: dict, where: str, design: bool = True) -> None:
-    """design_garment / alter_pattern's strict contract (design_schema, C241): raises ValueError naming the valid keys,
-    their units, sign and default. design=False (alter_pattern): garment keys + alteration ops only."""
-    from . import design_schema, pattern as pattern_mod
-    try:
-        design_schema.check_garment(g, where, design=design)
-    except (design_schema.ContractError, pattern_mod.AlterError) as e:
-        raise ValueError(str(e))
-
-
-def _design_replacements(g: dict) -> list:
-    from . import design_schema
-    return design_schema.design_notes(g)
-
-
-@mcp.tool(structured_output=False)
-def look_pattern(name: str, garment: str, save: str | None = None):
-    """Clothing stage 2: the garment drafted to the body as a flat pattern sheet, with the checks (choices evidenced,
-    seam ease, notches, ease vs body), failures first. save. Next: pattern_check. Details:
-    guide(topic="look_pattern")."""
-    from . import cloth_workflow
-    res = cloth_workflow.run(name, garment, ("design", "pattern"), images=True)
-    ims = [im for r in res for _, im in r["images"]]
-    txt = cloth_workflow.text(res)
-    if not ims:
-        return txt
-    return [_out(ims[0], save), txt]
-
-
 # ---------------------------------------------------------------- the garment gates as tools (codified M1-M8)
 # Each tool's text ends with the next step the gate rules require, generated from its result.
-
-# diagnostic rows every garment look renders unless told otherwise (gates.md LOOK, codified C13): construction first
-# (panel colours, seam / fold lines, turned flaps), then strain + layer pierce
-DIAG_DEFAULT = (("panels", "seams", "turned"), ("strain", "layers"))
-
-
-def _diag_rows(diag) -> list:
-    """The diag argument -> rows of modes. None / True: DIAG_DEFAULT; False / []: none; ["strain", ...]: one row;
-    [["panels"], ["strain"]]: those rows."""
-    if diag is None or diag is True:
-        return [list(r) for r in DIAG_DEFAULT]
-    if not diag:
-        return []
-    if all(isinstance(x, str) for x in diag):
-        return [list(diag)]
-    return [list(r) for r in diag]
 
 
 def _render_dir(name: str) -> Path:
     d = store.HOME / "_looks" / name
     d.mkdir(parents=True, exist_ok=True)
     return d
-
-
-def _garment_box(Xs: list):
-    X = np.concatenate([np.asarray(x, float) for x in Xs])
-    lo, hi = X.min(0) - 0.08, X.max(0) + 0.08
-    c, half = (lo + hi) / 2, np.maximum((hi - lo) / 2, 0.5)
-    return c - half, c + half
-
-
-def _hstack(paths: list) -> PILImage.Image:
-    ims = [PILImage.open(p).convert("RGB") for p in paths]
-    h = max(im.height for im in ims)
-    ims = [im.resize((max(1, int(im.width * h / im.height)), h)) for im in ims]
-    out = PILImage.new("RGB", (sum(im.width for im in ims), h), "white")
-    x = 0
-    for im in ims:
-        out.paste(im, (x, 0))
-        x += im.width
-    return out
-
-
-VIEW_DIRS = {"three": {"name": "three", "dir": [-0.65, -0.72, 0.15]}, "top": {"name": "top", "dir": [0.0, -0.05, 1.0]}}
-NATIVE_VIEWS = ("front", "side", "back")
-
-
-def _views(views) -> tuple:
-    """View names -> what the renderers take (a name or {"name", "dir"}). An unknown name is refused with the list
-    (tee trials t4 / t5: "three", the default, and "neck" crashed on a missing PNG)."""
-    out = []
-    for v in views or ("front", "three", "side", "back"):
-        if isinstance(v, dict) or v in NATIVE_VIEWS:
-            out.append(v)
-        elif v in VIEW_DIRS:
-            out.append(VIEW_DIRS[v])
-        else:
-            raise ValueError(f"unknown view {v!r}: use {', '.join(NATIVE_VIEWS + tuple(VIEW_DIRS))} (a region close-up: "
-                             "focus=\"neck\" | shoulders | chest | hem | sleeve)")
-    return tuple(out)
-
-
-def _garment_sheets(name: str, tag: str, body, garments: list, views, size: int, clay: bool, diag,
-                    box=None) -> tuple:
-    """Clay strip and diag sheet of garments [(name, V, mesh dict)] on the body. Returns ([(label, PIL image)],
-    the single-view PNGs' folder). Takes the GPU (resources.heavy). box: a region close-up (_focus_box)."""
-    from . import cloth, diag_render, resources
-    rows = _diag_rows(diag)
-    views = _views(views)
-    asp = 1.0 if box is not None else 0.62  # (a close-up is square)
-    box = box if box is not None else _garment_box([V for _, V, _ in garments])
-    d = _render_dir(name)
-    objs = [{"name": "body", "V": body.V, "F": body.T, "color": "#c9b8a6"}]
-    cols = ["#5b7fa6", "#8a6f4e", "#4e8a6f", "#7a4e8a"]
-    for i, (gn, V, M) in enumerate(garments):
-        objs.append({"name": gn, "V": np.asarray(V, float), "F": M["F"], "mesh": M, "layer": i,
-                     "color": cols[i % len(cols)]})
-    out = []
-    with resources.heavy(f"mcp {tag} {name}", gb=4, gpu=True):
-        if clay:
-            pngs = cloth.render(objs, str(d / f"{tag}_clay"), views=views, resolution=size, box=box, aspect=asp)
-            out.append(("clay", _hstack(pngs)))
-        if rows:
-            p = diag_render.sheet([(" + ".join(r), objs, {"diag": r}) for r in rows], d / f"{tag}_diag.png", None,
-                                  views=views, resolution=size, box=box, aspect=asp)
-            out.append(("diag", PILImage.open(p).convert("RGB")))
-        if clay:  # (C100) each garment in its OWN colour (+ woven stripe) under the game light: the colour is judged
-            # here, never on the clay strip's fixed identification colours
-            pngs = cloth.render(own_colour_objects(name, objs), str(d / f"{tag}_own"), views=views, resolution=size,
-                                box=box, textured=True, aspect=asp)
-            out.append(("own colour", _hstack(pngs)))
-    return out, d
-
-
-def own_colour_objects(name: str, objs: list) -> list:
-    """(C100) render objects with each garment's SPEC colour, roughness, sheen and stripe (garment keys color /
-    roughness / sheen / stripe {pitch_mm, contrast, duty, dir}) and its pattern uv (the stripe runs on it); the body
-    keeps its own. A garment without a spec colour keeps the object's."""
-    from . import cloth
-    try:
-        gs = store.load(name).get("cloth") or {}
-    except Exception:  # noqa: BLE001 (no spec: the objects as given)
-        gs = {}
-    out = []
-    for o in objs:
-        g = cloth.expanded(gs[o["name"]]) if isinstance(gs.get(o["name"]), dict) else None
-        o = dict(o)
-        if g:
-            o["color"] = g.get("color", o.get("color"))
-            for k in ("roughness", "sheen"):
-                if g.get(k) is not None:
-                    o[k] = float(g[k])
-            if isinstance(g.get("stripe"), dict):
-                o["stripe"] = dict(g["stripe"])
-            if o.get("mesh") is not None and o["mesh"].get("uv") is not None:
-                o["uv"] = np.asarray(o["mesh"]["uv"], float)
-        out.append(o)
-    return out
 
 
 def _has_reference(name: str, spec: dict) -> bool:
@@ -3107,73 +2824,31 @@ def _has_reference(name: str, spec: dict) -> bool:
     return bool((spec.get("base") or {}).get("refs") or spec.get("references") or spec.get("blockin"))
 
 
-def _gate_rows_text(rec: dict) -> str:
-    order = {"FAIL": 0, "UNMEASURED": 1, "PASS": 2, "INFO": 3, "SIM": 4}
-    w = rec.get("waived") or {}
-    lines = [f"pattern gate {rec.get('model')}:{rec.get('garment')}: {rec['status']}"
-             + (" (no reference reading given: refs=...)" if not rec.get("refs", True) else "")]
-    for r in sorted(rec.get("rows") or [], key=lambda r: order.get(r["status"], 5)):
-        st = "WAIVED" if w.get(r["id"]) else r["status"]
-        val = "" if r.get("ours") is None else f" ours {r['ours']}"
-        val += "" if r.get("ref") is None else f" ref {r['ref']}"
-        lines.append(f"  {st:<10} {r['id']}{val}" + (f": {r['why']}" if r.get("why") and st != "PASS" else "")
-                     + (f"\n             fix: {r['fix']}" if r.get("fix") and st not in ("PASS", "WAIVED") else ""))
-    return "\n".join(lines)
-
-
 @mcp.tool(structured_output=False)
-def pattern_check(name: str, garment: str, refs: str | dict | None = None, waive: dict | None = None,
-                  views: list[str] | None = None, size: int = 480, diag: list | bool | None = None,
-                  save: str | None = None):
-    """THE PATTERN GATE, flat, no sim: measures every checklist item on the drafted + placed pattern, writes the record
-    chain_garment needs (it refuses without a PASS). Returns the flat pattern sheet, the diag views of the pattern
-    as the gate read it (default panels+seams+turned; strain+layers; diag=False none), the per-item
-    table and the next step.
-    refs (reference reading), waive {id: reason}, views, size, save. Details: guide(topic="pattern_check")."""
-    from . import cloth_check as cc, next_steps, pattern_sheet
-    if _own_draft(name, garment):
-        from . import draft_own_tool as dot  # (drafted with draft_pattern: the general flat gate, re-read: T5)
-        return dot.check_text(name, garment)
-    keep: dict = {}
-    rec = cc.pattern_gate(name, garment, refs=refs, waive=waive, log=lambda *_: None, keep=keep)
-    res = keep["res"]
-    Bp = res["pieces_full"]
-    kind = rec.get("kind") or ""
-    sm = cc.seams(Bp, kind)
-    flat = pattern_sheet.render(Bp, f"{name}:{garment} flat pattern", seam_rows=sm)
-    out = [_out(flat, _save_suffix(save, "flat"))]
-    if _diag_rows(diag):
-        ims, _ = _garment_sheets(name, f"pattern_{garment}", res["body"], [(garment, res["A"], res["mesh"])],
-                                 views, size, clay=False, diag=diag)
-        out += [_out(im, _save_suffix(save, tag)) for tag, im in ims]
-    from . import garment_record as gr  # (step 4 of the garment record)
-    refused = gr.from_pattern_check(name, garment, rec, str(cc.record_path(rec["pattern"], rec["body"])), flat)
-    out.append(_gate_rows_text(rec) + (f"\n  {refused}" if refused else "") + "\n"
-               + "\n".join("  " + ln for ln in pattern_sheet.text_lines(Bp, sm))  # (the sheet is shape only: C288)
-               + "\n" + next_steps.after_pattern_check(rec, name, garment))
-    return out
+def pattern_check(name: str, garment: str):
+    """STEP 4's FLAT GATE AGAIN, on a garment drafted with draft_pattern: the general flat gate re-read from the saved
+    draft and step 4 rewritten (chain_garment refuses without its PASS). Returns the per-row table and the next step.
+    Details: guide(topic="pattern_check")."""
+    if not _own_draft(name, garment):
+        raise ValueError(f"{garment} on {name} has no draft of its own to check: step 4 is draft_pattern (your own "
+                         "FreeSewing design and its declarations), which runs this gate itself")
+    from . import draft_own_tool as dot  # (drafted with draft_pattern: the general flat gate, re-read: T5)
+    return dot.check_text(name, garment)
 
 
 def _chain_gate(name: str, garment: str, spec: dict) -> str | None:
     """None when the garment may be built; else the refusal, naming the next step."""
-    from . import cloth, cloth_check as cc, pattern_form
     if garment not in (spec.get("cloth") or {}):
-        return (f"no garment {garment!r} on {name} (have {', '.join(spec.get('cloth') or {}) or 'none'}).\nnext: "
-                f"call_tool(\"design_garment\", {{\"name\": \"{name}\", \"garment\": \"{garment}\", \"design\": {{...}}}})")
-    if (spec["cloth"][garment].get("pattern") or {}).get("from") == "own":  # (draft_pattern: step 4's flat gate, T5)
-        from . import garment_record as gr
-        v = ((gr.load(name, garment)["steps"]["4"].get("gate") or {}).get("verdict"))
-        return None if v == "PASS" else (f"{garment}: step 4's flat gate is {v or 'not run'}.\nnext: call_tool("
-                                         f"\"pattern_check\", {{\"name\": \"{name}\", \"garment\": \"{garment}\"}})")
-    g = json.loads(json.dumps(spec["cloth"][garment]))
-    g["mesh_refine"] = pattern_form.form_refine(g)
-    src, _ = pattern_form.form_source(name, garment, spec, g)
-    res = cloth.build(cloth._garment_for_sim(g), src, f"{name}:{garment}", log=lambda *_: None, place_only=True)
-    st = cc.gate_status(name, garment, spec, res=res)
-    if not st["passed"]:
-        return (f"{garment}: not built: {st['why']}\nnext: call_tool(\"pattern_check\", {{\"name\": \"{name}\", \"garment\": "
-                f"\"{garment}\"}}), fix its rows on the pattern, then chain_garment again")
-    return None
+        return (f"no garment {garment!r} on {name} (have {', '.join(spec.get('cloth') or {}) or 'none'}).\nnext: a garment "
+                f"starts at its reading: call_tool(\"garment_plan\", {{\"name\": \"{name}\", \"garment\": \"{garment}\", "
+                "\"step\": \"read\", ...})")
+    if (spec["cloth"][garment].get("pattern") or {}).get("from") != "own":
+        return (f"{garment}: it has no draft of its own (step 4), and a garment is built only from one.\nnext: "
+                f"call_tool(\"draft_pattern\", {{\"name\": \"{name}\", \"garment\": \"{garment}\", ...}})")
+    from . import garment_record as gr  # (draft_pattern: step 4's flat gate, T5)
+    v = ((gr.load(name, garment)["steps"]["4"].get("gate") or {}).get("verdict"))
+    return None if v == "PASS" else (f"{garment}: step 4's flat gate is {v or 'not run'}.\nnext: call_tool("
+                                     f"\"pattern_check\", {{\"name\": \"{name}\", \"garment\": \"{garment}\"}})")
 
 
 def _chain_text(st: dict) -> str:
@@ -3532,53 +3207,6 @@ def garment_appearance(name: str, garment: str, appearance: dict | None = None, 
     from . import garment_appearance_tool as gat
     looks, txt = gat.run(name, garment, _spec_arg(appearance) if isinstance(appearance, str) else appearance, wear, role, look)
     return [_out(PILImage.open(p_).convert("RGB"), None) for p_ in looks] + [txt] if looks else txt
-
-
-@mcp.tool(structured_output=False)
-def alter_pattern(name: str, garment: str, ops: list[dict], replace: bool = False, note: str = ""):
-    """A pattern maker's alteration on the flat pattern (garment key "alter", applied in order): slash_spread, turn,
-    move, scale, slit, trim, true (a corner trued to 90 deg), match (walk the seam: an edge made the length of the
-    edges it's sewn to). Pattern coordinates: metres, x right, y UP (move {"by": [0, -0.01]} lowers a point 10 mm).
-    Every op and key is checked first (an unknown one names each op's keys with units and defaults); drafted, read and
-    rendered before saving: a call that fails saves nothing. replace=True replaces the list. Returns the flat sheet,
-    the walked seams and the next step. note. Details: guide(topic="alter_pattern")."""
-    from . import cloth, cloth_check as cc, next_steps, pattern_sheet
-    full = store.load(name)
-    gs = full.get("cloth") or {}
-    if garment not in gs:
-        raise ValueError(f"no garment {garment!r} (have {', '.join(gs) or 'none'})")
-    ops = _spec_arg(ops)
-    if not isinstance(ops, list) or not all(isinstance(o, dict) and o.get("op") for o in ops):
-        raise ValueError('ops is a list of {"op": ..., "piece": ..., ...}')
-    g = dict(gs[garment])
-    g["alter"] = list(ops) if replace else list(g.get("alter") or []) + list(ops)
-    design_contract_check(g, f"cloth {garment!r}", design=False)  # (the new ops named by their index in the list)
-    trial = json.loads(json.dumps(full))
-    trial["cloth"][garment] = g
-    res = cloth.build(cloth._garment_for_sim(g), cloth.model_body(name, trial, g, simulate=False),
-                      f"{name}:{garment}", log=lambda *_: None, place_only=True)
-    # TRANSACTIONAL (C241): everything the reply reads runs BEFORE the save (shirt t7: alter_pattern crashed after
-    # saving, "'bool' object is not iterable" in the truing read, and the next call applied its 4 ops twice)
-    Bp = res["pieces_full"]
-    kind = cloth.expanded(g).get("design", {}).get("kind") or ""
-    rows = cc.seams(Bp, kind)
-    lines = ["walked seams (A | B, mm, ease):"]
-    for r in rows:
-        lines.append(f"  {'ok ' if r['ok'] else 'BAD'} {r['a']} | {r['b']}: {r['len_a_mm']} / {r['len_b_mm']} "
-                     f"({r['ease'] * 100:+.1f} %, {r['kind']})"
-                     + (f" notches off {r['notches_off']}" if r["notches_off"] else ""))
-    # truing, read as the gate's "truing" row reads it (garment key truing_corners = design corners)
-    bad = [j for j in cc.junctions(Bp, corners=tuple(g.get("truing_corners") or ())) if not j["ok"]]
-    lines.append(f"truing: {len(bad)} seam end(s) turn > {cc.TRUE_DEG:g} deg"
-                 + (": " + "; ".join(f"{j['at']} {j['turn_deg']} deg ({' | '.join(map(str, j['seam']))})"
-                                     for j in bad[:5]) if bad else ""))
-    im = pattern_sheet.render(Bp, f"{name}:{garment} flat pattern", seam_rows=rows)
-    lines += pattern_sheet.text_lines(Bp)[:len(Bp["pieces"]) + 1]  # (the pieces' sizes: the sheet is shape only, C288)
-    tail = next_steps.after_alter(rows, name, garment)
-    full["cloth"][garment] = g
-    v = store.save(name, full, note or f"alter {garment}: " + ", ".join(o["op"] for o in ops))
-    lines.insert(0, f"saved {name} v{v}: {len(g['alter'])} alteration(s) on {garment}")
-    return [_out(im, None), "\n".join(lines) + "\n" + tail]
 
 
 REPO = Path(__file__).resolve().parents[2]  # (bin/review, docs/notes: present in a source checkout)

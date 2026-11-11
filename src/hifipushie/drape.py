@@ -50,32 +50,11 @@ from scipy import sparse
 from scipy.sparse.linalg import factorized
 from scipy.spatial import cKDTree
 
-STAND_MODE = "neck"  # round 2: the stand on the NECK (neck_stand). "skin": r1's (flares); "lean": r1 lever 2 (DEAD:
-
 
 # ---------------------------------------------------------------- surfaces
 
 
 # ---------------------------------------------------------------- the worn spec
-
-
-def drape_state(entry: dict) -> str:
-    """The worn state the band is draped in: the DESIGN's state (entry "worn": "open" | "closed"; the older "state"
-    key read the same), default "closed". Garrett's shirt is worn open (the concept), so its collar is draped open and
-    the closed state is the secondary reach check (drape band round 3, coordinator 2026-10-21)."""
-    return str(entry.get("worn") or entry.get("state") or "closed")
-
-
-MESH_FRAME = 2  # the drape mesh's flat coords = the piece's (flat_frame, round 3); frame-1 drapes are stale
-
-
-def worn_key(entry: dict) -> str:
-    """The worn spec's key: what the flat pieces were generated from (the gate compares it)."""
-    k = {kk: entry.get(kk) for kk in ("along", "layers", "turn", "base")}
-    k["state"] = drape_state(entry)
-    k["stand_mode"] = entry.get("stand_mode") or STAND_MODE  # (round 2: the stand's build changed: r1 pieces are stale)
-    k["mesh_frame"] = MESH_FRAME  # (round 3: a frame-1 stand placed mirrored: its drape mesh is stale)
-    return hashlib.sha1(json.dumps(k, sort_keys=True, default=str).encode()).hexdigest()[:16]
 
 
 # ---------------------------------------------------------------- building the band
@@ -141,38 +120,6 @@ def stored_pieces(entry: dict) -> dict:
             pc["drape"] = mesh[nm]
         pcs[nm] = pc
     return pcs
-
-
-def gate_rows(g: dict) -> list:
-    """Pattern gate rows: each drape entry's pieces must have been generated from its CURRENT worn spec
-    (drape_band_current), and the flattening's distortion within the limit (drape_band_flat)."""
-    rows = []
-    for e in g.get("drape") or []:
-        o = e.get("out") or {}
-        cur = worn_key(e)
-        ok = bool(o) and o.get("key") == cur
-        rows.append({"id": f"drape_band_current:{e.get('name', '')}", "stage": 2, "status": "PASS" if ok else "FAIL",
-                     "measure": "drape.worn_key", "ours": {"stored": o.get("key"), "worn_spec": cur},
-                     "why": "the flat pieces are generated FROM the worn spec (Joe 2026-10-21); a changed worn spec "
-                            "needs drape.draft again"})
-        lay = (o.get("report") or {}).get("layers") or {}
-        if lay:
-            worst = max(v["strain_p99_pct"] for v in lay.values())
-            rows.append({"id": f"drape_band_flat:{e.get('name', '')}", "stage": 2,
-                         "status": "PASS" if worst <= FLAT_P99_LIMIT * 100 else "FAIL", "measure": "drape.flatten",
-                         "ours": {nm: v["strain_p99_pct"] for nm, v in lay.items()},
-                         "target": f"edge strain p99 <= {FLAT_P99_LIMIT * 100:.1f} %"})
-        rc = o.get("reach") or {}
-        if rc:  # (the other state's reach: reported, not a gate; the design's own state is the one draped)
-            rows.append({"id": f"drape_band_reach:{e.get('name', '')}", "stage": 2, "status": "INFO",
-                         "measure": "drape.reach",
-                         "ours": {"draped": drape_state(e), "other": rc.get("state"), "ok": rc.get("ok"),
-                                  "p99_pct": {nm: v.get("strain_p99_pct") for nm, v in (rc.get("layers") or {}).items()}},
-                         "target": f"info only: the secondary state within {rc.get('limit_pct')} % p99"})
-    return rows
-
-
-FLAT_P99_LIMIT = 0.02  # a draped band that can't be flattened within this isn't a pattern piece (needs a dart / seam)
 
 
 def replace_pieces(out: dict, g: dict) -> tuple[dict, list]:

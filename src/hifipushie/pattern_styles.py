@@ -912,18 +912,6 @@ def _end_at(D: dict, piece: str, old: str, new: str) -> None:
     D["lines"] = {k: (tuple(fix(x) for x in v) if isinstance(v, (list, tuple)) else v) for k, v in D["lines"].items()}
 
 
-def declared_shoulder_drop(g: dict) -> float:
-    """m: the shoulder drop a garment's design DECLARES (its drop_shoulder ops, the kind's and details' included):
-    what cloth_check's shoulder seam row adds to the body's seam for the seam's end."""
-    from . import cloth
-    try:
-        pat = (cloth.expanded(g or {}) or {}).get("pattern") or {}
-    except Exception:  # (a sheet that doesn't compile is judged elsewhere)
-        pat = (g or {}).get("pattern") or {}
-    return float(sum(float(o_.get("drop", DROP_SHOULDER)) for o_ in pat.get("ops") or []
-                     if isinstance(o_, dict) and o_.get("op") == "drop_shoulder"))
-
-
 pd.OPS.update({"drop_shoulder": op_drop_shoulder})
 
 

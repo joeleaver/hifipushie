@@ -48,7 +48,6 @@ BUTTON_DONE_MM = 8.0  # a button pair's two vertices within this = fastened (f1b
 SCAN_STEP_MM = 5.0
 COLLAR_CLOSED_MM = 70.0  # collar points closer than this = a closed / standing collar; wider than COLLAR_SPREAD_MM = spread
 COLLAR_SPREAD_MM = 110.0
-FALL_COVER_MM = (5.0, 25.0)  # the worn fall covers the stand seam by >= 5 mm (checklist collar_band; Aldrich, Metric
 # Pattern Cutting for Menswear, shirt collars: the fall 10-15 mm deeper than the stand), <= 25 (a fall that deep reads
 # as a cape on a shirt collar)
 STAND_RUNS_OFF_MM = 6.0  # a stand under this at its ends "runs off" (the jacket's two-piece stand: R28 ~3 mm)
@@ -139,71 +138,6 @@ def front_reads(X, M, hps_z: float, closure: str = "front") -> dict:
     return out
 
 
-LAPEL_FACE_ROWS = (150, 200, 250, 300, 350)  # mm below the HPS (the concept's traced rows, canvas s12)
-
-
-def _section_x(X, F, z):
-    """|x| of the points where triangles F cross the plane at height z (front view sections), (n,) array."""
-    P = X[F]
-    dz = P[:, :, 2] - z
-    xs = []
-    for i, j in ((0, 1), (1, 2), (2, 0)):
-        a, b = dz[:, i], dz[:, j]
-        m = (a * b < 0) | ((a == 0) & (b != 0))
-        if m.any():
-            t = a[m] / (a[m] - b[m])
-            xs.append(np.abs(P[m, i, 0] + t * (P[m, j, 0] - P[m, i, 0])))
-    return np.concatenate(xs) if xs else np.zeros(0)
-
-
-def lapel_face_reads(X, M, hps_z: float, turned=None, rows=LAPEL_FACE_ROWS) -> dict:
-    """The LAPEL FACE as the front view shows it (C218), per side (L = +x): at each row (mm below hps_z) the roll edge
-    (the front piece's CF-most section point: the roll's crest seen from the front), the outer edge (the turned cloth's
-    outermost section point) and the face = outer - roll, x cos of the roll edge's local lean (perpendicular to the
-    roll); lapel_face_end_below_hps_mm: the lowest row (1 mm steps) with turned cloth beyond the roll, i.e. where the
-    face ends (the concept: the break, 386). turned: bool per face of M["F"] (default folds.flap_faces: the cloth past a
-    fold's last row). No front with a turned flap: {}."""
-    from . import folds as fm
-    X = np.asarray(X, float)
-    F = np.asarray(M["F"])
-    if not len(F):
-        return {}
-    turned = fm.flap_faces(M, F) if turned is None else np.asarray(turned, bool)
-    pid = np.asarray(M["piece"])
-    rr = _roles(M)
-    out: dict = {}
-    for k, r in enumerate(rr):
-        if r != "front":
-            continue
-        fk = pid[F[:, 0]] == k
-        if not (fk & turned).any():
-            continue
-        s = "L" if X[pid == k, 0].mean() > 0 else "R"
-        Ff, Ft = F[fk], F[fk & turned]
-        zt = X[np.unique(Ft), 2]
-        prof = []
-        for dmm in np.arange(math.floor((hps_z - zt.max()) * 1000), math.ceil((hps_z - zt.min()) * 1000) + 1):
-            z = hps_z - dmm / 1000
-            xt, xf = _section_x(X, Ft, z), _section_x(X, Ff, z)
-            if len(xt) and len(xf):
-                prof.append((float(dmm), float(xf.min()) * 1000, float(xt.max()) * 1000))
-        if not prof:
-            continue
-        P = np.asarray(prof)
-        out[f"lapel_face_end_below_hps_{s}_mm"] = round(float(P[-1, 0]), 1)
-        for d in rows:
-            if not (P[0, 0] <= d <= P[-1, 0]):
-                out[f"lapel_face_{s}_{d}_mm"] = 0.0 if d > P[-1, 0] else None
-                continue
-            ro, xo = np.interp(d, P[:, 0], P[:, 1]), np.interp(d, P[:, 0], P[:, 2])
-            near = np.abs(P[:, 0] - d) <= 25
-            lean = np.polyfit(P[near, 0], P[near, 1], 1)[0] if near.sum() > 3 else 0.0
-            out[f"lapel_face_{s}_{d}_mm"] = round(float((xo - ro) * math.cos(math.atan(lean))), 1)
-            out[f"lapel_roll_{s}_{d}_mm"] = round(float(ro), 1)
-            out[f"lapel_outer_{s}_{d}_mm"] = round(float(xo), 1)
-    return out
-
-
 def collar_reads(X, M, hps_z: float) -> dict:
     """The collar's worn state (front view: x across, z up): the fall's points, its turn over the stand at CB."""
     X = np.asarray(X, float)
@@ -237,22 +171,6 @@ def collar_reads(X, M, hps_z: float) -> dict:
     return out
 
 
-def tuck_reads(X, body, line_z: float, keep=None) -> dict:
-    """Cloth below the tuck line (line_z, m; the garment over it covers it): its p90 signed stand-off off the body in
-    the band from the line to 150 mm below (|x| < 0.22: the torso, not the arms) and the hem's depth below the line."""
-    from . import pattern_form
-    X = np.asarray(X, float)
-    sel = (X[:, 2] < line_z) & (X[:, 2] > line_z - 0.15) & (np.abs(X[:, 0]) < 0.22)
-    if keep is not None:
-        sel &= np.asarray(keep, bool)
-    if not sel.any():
-        return {"tuck_standoff_p90_mm": None, "hem_below_line_mm": round(float(line_z - X[:, 2].min()) * 1000, 1)}
-    d = pattern_form._body_surface(body).signed(X[sel])[0]
-    return {"tuck_standoff_p90_mm": round(float(np.percentile(d, 90)) * 1000, 1),
-            "tuck_standoff_p50_mm": round(float(np.median(d)) * 1000, 1),
-            "hem_below_line_mm": round(float(line_z - X[:, 2].min()) * 1000, 1)}
-
-
 def tuck_line_z(body, g: dict) -> float | None:
     """The tuck line for a garment with the design key "tucked" (true, or {"line": landmark z name | z (m), "drop":
     m added}): default the body's waist_z (a trousers waistband sits there). None: not tucked."""
@@ -266,25 +184,6 @@ def tuck_line_z(body, g: dict) -> float | None:
     if z is None:
         return None
     return float(np.asarray(z).reshape(-1)[-1]) + float(t.get("drop", 0.0))
-
-
-def big_reads(res: dict, X=None, g: dict | None = None) -> dict:
-    """Every big read of a garment assembled on the form (res: pattern_form.on_form / cloth.build; X its vertices)."""
-    X = np.asarray(res["A"] if X is None else X, float)
-    M, body = res["mesh"], res["body"]
-    at = getattr(body, "at", {}) or {}
-    hps = at.get("hps.L")
-    if hps is None:
-        return {}
-    hz = float(np.asarray(hps, float).reshape(-1)[2])
-    out = {**front_reads(X, M, hz), **collar_reads(X, M, hz)}
-    if any(str(fd.get("name", "")).startswith("lapel") for fd in M.get("folds") or []):
-        out.update(lapel_face_reads(X, M, hz))
-    lz = tuck_line_z(body, g or {})
-    if lz is not None:
-        torso = ~_mask(M, ("sleeve", "cuff", "collar_stand", "collar_fall"))
-        out.update(tuck_reads(X, body, lz, keep=torso), tuck_line_below_hps_mm=round((hz - lz) * 1000, 1))
-    return out
 
 
 # ---------------------------------------------------------------------------------------------------------- flat
@@ -507,41 +406,6 @@ def fall_spring_reads(Bp: dict, g: dict | None = None) -> dict:
             "pieces": [cp["stand"], cp["fall"]]}
 
 
-def flat_closure_reads(Bp: dict, closure: str = "front") -> dict:
-    """The front band's width (each front's band / placket fold offset) and the front closure's button spacing on the
-    flat pattern (the over piece's marks named by its pairs), mm."""
-    out = {}
-    bands = [abs(float(f["line"]["offset"])) * 1000 for f in Bp.get("folds") or []
-             if f.get("band") and isinstance(f.get("line"), dict) and "offset" in f["line"]]
-    if bands:
-        out["placket_width_mm"] = round(max(bands), 1)
-        out["placket_widths_mm"] = [round(b, 1) for b in bands]
-    for c in Bp.get("closures") or []:
-        if c.get("name") != closure:
-            continue
-        pc = (Bp.get("pieces") or {}).get(c.get("over"))
-        if pc is None:
-            continue
-        ys = []
-        for pr in c.get("pairs") or []:
-            for nm in pr:
-                v = (pc.get("marks") or {}).get(nm)
-                if v is None and nm in pc.get("names", {}):
-                    v = pc["P"][pc["names"][nm]]
-                if v is not None and len(np.asarray(v).reshape(-1)) == 2:
-                    ys.append(float(np.asarray(v, float).reshape(-1)[1]))
-                    break
-        if len(ys) > 1:
-            ys = sorted(ys)
-            out["button_spacing_mm"] = round(float(np.median(np.diff(ys))) * 1000, 1)
-            out["buttons_marked"] = len(ys)
-    return out
-
-
-def flat_reads(Bp: dict, g: dict | None = None) -> dict:
-    return {**collar_draft_reads(Bp, g), **flat_closure_reads(Bp)}
-
-
 # ---------------------------------------------------------------------------------------------------------- colour
 
 
@@ -562,22 +426,6 @@ def colour_row(item: dict, ours: dict, ref: dict | None = None) -> dict:
 
 
 # ---------------------------------------------------------------------------------------------------------- checklist
-def checklist_path(piece: str) -> Path:
-    from . import store
-    return store.HOME / "checklists" / f"{piece}.json"
-
-
-def checklist_items(g: dict | None, model: str = "", garment: str = "") -> tuple:
-    """(piece name, items) of the garment's piece checklist: garment key "checklist" (a piece name under
-    workspace/checklists/), else <model>_<garment>. (None, []) when there is none."""
-    g = g or {}
-    for nm in [g.get("checklist"), f"{model}_{garment}" if model and garment else None]:
-        if nm and checklist_path(nm).exists():
-            try:
-                return nm, list(json.loads(checklist_path(nm).read_text()).get("items") or [])
-            except Exception:  # noqa: BLE001 (a broken checklist is no checklist: the gate says so)
-                return nm, []
-    return None, []
 
 
 def _get(readings: dict, key: str):
@@ -634,10 +482,4 @@ def checklist_rows(items: list, readings: dict, stage: str) -> list:
             row.update(status="FAIL" if bad else "PASS", **({"miss": "; ".join(bad)} if bad else {}))
         rows.append(row)
     return rows
-
-
-# the cloth_reference measures that are big reads of the WORN state: read on the form fit, never deferred to a sim
-FORM_READ = {"front_state": ("front_state", "v_bottom_below_hps_mm"), "buttons_done": ("buttons_done",
-             "first_done_below_hps_mm"), "collar_state": ("collar_state", "collar_points_apart_mm"),
-             "tucked": ("tuck_standoff_p90_mm",), "placket_finish": ("placket_width_mm",)}
 
