@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from hifipushie import assets, face_ruler as fr, store
-from hifipushie import face_ruler_blockin, face_ruler_camera, face_ruler_compare, face_ruler_features, face_ruler_outline, face_ruler_solve
+from hifipushie import face_ruler_blockin, face_ruler_compare, face_ruler_features, face_ruler_outline, face_ruler_solve
 
 try:
     assets.pack("gnm")
@@ -167,7 +167,7 @@ def test_parser_outline_agrees_with_the_plain_reader_on_a_studio_photo():
     v0, v1 = dict(plain[1], limbus=False), dict(parsed[1], limbus=False)   # the 3/4 picture
     a = {tuple(np.round(ob["p"], 1)): ob["o"] for ob in face_ruler_solve.observe(head, [v0], colour=False) if ob["type"] == "outline"}
     b = [ob for ob in face_ruler_solve.observe(head, [v1], colour=False) if ob["type"] == "outline"]
-    assert len(b) >= 50 and all(ob["sig"] == face_ruler_outline.PARSE_SIG for ob in b)
+    assert len(b) >= 50 and all(ob["sig"] == fr.PARSE_SIG for ob in b)
     d = np.array([ob["o"] - a[tuple(np.round(ob["p"], 1))] for ob in b if tuple(np.round(ob["p"], 1)) in a])
     assert len(d) >= 40 and abs(d.mean()) < 0.4 and d.std() < 0.6        # mm
 
@@ -187,7 +187,7 @@ def test_solve_step_is_not_forced_and_keeps_the_cameras_whole_move():
         rj = json.loads((store.HOME / a / "human_refs.json").read_text())
         done = np.asarray(rj["blockin"]["cam_done"], float)
         assert done.shape == (3, 7) and np.allclose(done, so["cameras"], atol=0.01)     # (solvecams: + distance)
-        lim = 4.0 * np.array([face_ruler_camera.PHOTO_CAM_SD7[k] for k in ("front", "3q", "profile")])   # a prior now, no clip: a good set stays well inside it
+        lim = 4.0 * np.array([fr.PHOTO_CAM_SD7[k] for k in ("front", "3q", "profile")])   # a prior now, no clip: a good set stays well inside it
         assert (np.abs(done) <= lim + 1e-6).all() and len(so["camera_lines"]) == 3
         r2 = blockin_steps.solve_step(a, out=b)
         s2 = r2["solve"]

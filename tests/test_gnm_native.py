@@ -292,8 +292,8 @@ def test_size_is_held_and_the_iris_is_its_weak_ruler():
     """No picture reads the head's overall size (every camera's scale is free), so the joint solve holds it at the
     start head's by default (Joe, 2026-10-12: "I'd trust the model more"); the iris may pull it, weakly."""
     from hifipushie import solve_report as sr
-    from hifipushie import face_ruler_camera
-    assert face_ruler_camera.SIZE_HOLD is True
+    from hifipushie import face_ruler
+    assert face_ruler.SIZE_HOLD is True
     g = sr.size_gain()
     psd = sr.size_prior_sd()
     assert g.shape == (170,) and 0.015 < psd < 0.08                 # GNM's own spread of head size: a few per cent

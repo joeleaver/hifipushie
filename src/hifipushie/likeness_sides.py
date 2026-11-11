@@ -5,7 +5,8 @@ import json
 
 import numpy as np
 
-from .likeness import OVAL, checklist
+from . import likeness
+from .likeness import checklist
 from .likeness_detect import detect, detect_region
 from .likeness_measure import Side, Unmeasurable, value, view_kind
 from .likeness_render import _mm_per_px, model_mesh, render
@@ -59,21 +60,15 @@ def photo_sides(refs: dict) -> list:
     return out
 
 
-REFIT = ("three_quarter", "profile")  # views whose camera is refitted on the detector's points (a loose painting)
-REFIT_ROUNDS = 2
-INFER_TOL = 1.5     # a profile item read from a three-quarter view ("inferred"): its tolerance x this
-SPECIAL = ("shape", "jaw", "contour")   # measured in compare (they need the model's render or a trace), not from points alone
-
-
 def _refit(mesh, ph, cam):
     """The camera refitted for this picture: the detector's 478 on the photo against the model's surface under the same
     detector points on its render (unprojected through the render's depth), pose and focal, REFIT_ROUNDS rounds."""
     from . import likeness_shape as ls
     if ph["side"].P is None:
         return cam, None
-    keep = np.setdiff1d(np.arange(468), OVAL)
+    keep = np.setdiff1d(np.arange(468), likeness.OVAL)
     res = None
-    for _ in range(REFIT_ROUNDS):
+    for _ in range(likeness.REFIT_ROUNDS):
         im, k, ps = render(mesh, cam, ph["box"], passes=True)
         Pm = detect([im])[0]
         if Pm is None:
@@ -103,7 +98,7 @@ def model_sides(base: dict, photos: list, mesh=None, cameras=None, refit: bool =
         mesh = meshes[i] if meshes else mesh
         cam, box = (cameras[i] if cameras else ph["cam"]), ph["box"]
         cres = None
-        if refit and ph["kind"] in REFIT and not cameras:
+        if refit and ph["kind"] in likeness.REFIT and not cameras:
             cam, cres = _refit(mesh, ph, cam)
         im, k, ps = render(mesh, cam, box, passes=True)
         P = detect([im])[0]
@@ -116,9 +111,6 @@ def model_sides(base: dict, photos: list, mesh=None, cameras=None, refit: bool =
             md["img_lit"] = render(mesh, cam, box, light=(md["shade"]["c0"], md["shade"]["w"], md["shade"]["med"]))[0]
         out.append(md)
     return out
-
-
-SHADE_LIGHT = "sh"   # the shading rows' light: "sh" (fit_light_sh) | "linear" (fit_light: c0 + w.n), as before 2026-10-10
 
 
 def _shade(ph, md) -> dict | None:
@@ -137,7 +129,7 @@ def _shade(ph, md) -> dict | None:
     if mask.sum() < 500:
         return None
     c0, w, rms = ls.fit_light(Y, ps["nrm"], mask)
-    if SHADE_LIGHT == "sh":   # (blockin2) the shading rows' residual under ambient + key + fill / bounce: the linear
+    if likeness.SHADE_LIGHT == "sh":   # (blockin2) the shading rows' residual under ambient + key + fill / bounce: the linear
         # light predicted the nose's underside (and every down-facing plane) near black, so those rows read the light
         a_sh, _ = ls.fit_light_sh(Y, ps["nrm"], mask)
         R = ls.residual_sh(Y, ps["nrm"], a_sh, mask, 1.5 * ppm)
@@ -163,7 +155,7 @@ def measure_sides(sides: list, kinds: list, mmpxs: list) -> dict:
     jaw items are left to compare (`SPECIAL`)."""
     out = {}
     for it in checklist():
-        if it["measure"]["kind"] in SPECIAL:
+        if it["measure"]["kind"] in likeness.SPECIAL:
             continue
         row = {}
         for vi, (s, vk, mp) in enumerate(zip(sides, kinds, mmpxs)):

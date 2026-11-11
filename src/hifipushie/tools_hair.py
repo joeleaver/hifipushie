@@ -38,7 +38,7 @@ def _hair_counts(spec: dict) -> str:
 
 def _hair_gates(look) -> str:
     """The numbers a hair look measures, each with what it should be."""
-    from . import hair_spec
+    from . import hair
     lines = []
     g = getattr(look, "gate", None) or {}
     if g:
@@ -74,13 +74,13 @@ def _hair_gates(look) -> str:
     fi = getattr(look, "fins", None)
     if fi:
         lines.append(f"fins ({len(fi)}; a lock edge standing over the layer by more than the lock's own thickness + "
-                     f"{hair_spec.FIN_MM:g} mm, [mm over, u along it]; narrow the lock, lower its lie or lay it along the "
+                     f"{hair.FIN_MM:g} mm, [mm over, u along it]; narrow the lock, lower its lie or lay it along the "
                      f"volume's curve): " + ", ".join(f"{n} {v[0]} at {v[1]}" for n, v in list(fi.items())[:12])
                      + (" ..." if len(fi) > 12 else ""))
     re_ = getattr(look, "root_ends", None)
     if re_:
         lines.append(f"blunt root ends ({len(re_)}; the lock's width in mm where it rises out of the layer, > "
-                     f"{hair_spec.ROOT_END_MM:g}: the cut end shows as a crescent fin at a parting or scales along a "
+                     f"{hair.ROOT_END_MM:g}: the cut end shows as a crescent fin at a parting or scales along a "
                      f"hairline; lower the clump's `root` (0.1) and raise `climb` (0.025 m)): " + ", ".join(
                          f"{n} {w}" for n, w in list(re_.items())[:12]) + (" ..." if len(re_) > 12 else ""))
     fits = getattr(look, "fits", None) or ({"matched": look.fit} if getattr(look, "fit", None) else {})
@@ -217,7 +217,8 @@ def look_hair(name: str, views: list[str] | None = None, size: int = 480, clay: 
     measure {"view": "ref2", "mask": png, "tie": [x, y], "colour": true} (outline / tail / colour against that
     picture). Needs `sync` once (of the model or its stage). Details: guide(topic="look_hair")."""
     from . import hair_route
-    from . import hair_card_fit, hair_drawn, hair_head, hair_job, hair_look, hair_spec
+    from . import hair_card_fit, hair_drawn, hair_head, hair_look, hair_spec
+    from . import hair
     views = list(views) if views else ["front", "three_quarter", "side", "back", "top"]
     if "around" in views:  # every side, with the bust (hair that hangs): the angles a front-tuned groom is wrong from
         i = views.index("around")
@@ -229,9 +230,9 @@ def look_hair(name: str, views: list[str] | None = None, size: int = 480, clay: 
     measure = _spec_arg(measure) if measure else None
     if measure and measure.get("view") and measure["view"] not in views:
         views.append(measure["view"])
-    bad = [v for v in views if v not in hair_card_fit.VIEWS and not re.fullmatch(r"ref\d+", str(v))]
+    bad = [v for v in views if v not in hair.VIEWS and not re.fullmatch(r"ref\d+", str(v))]
     if bad:
-        raise ValueError(f"unknown views {bad} (have {', '.join(hair_card_fit.VIEWS)}, layout, ref0.. = the reference "
+        raise ValueError(f"unknown views {bad} (have {', '.join(hair.VIEWS)}, layout, ref0.. = the reference "
                          f"pictures' fitted cameras)")
     spec = store.load(name)
     if not (spec.get("hair") or {}):
@@ -240,8 +241,8 @@ def look_hair(name: str, views: list[str] | None = None, size: int = 480, clay: 
     text = _hair_counts(spec)
     stored = spec
     if tier is not None:
-        if tier not in hair_job.CARD_TIERS:
-            raise ValueError(f"tier is one of {', '.join(hair_job.CARD_TIERS)}")
+        if tier not in hair.CARD_TIERS:
+            raise ValueError(f"tier is one of {', '.join(hair.CARD_TIERS)}")
         spec = {**spec, "hair": {**spec["hair"], "style": "cards"}}
     if not only_layout:
         sheet, secs, fr = hair_look.look(name, views=tuple(views), size=size, reference=reference, spec=spec, clay=clay,
@@ -304,16 +305,17 @@ def export_hair(name: str, out_dir: str, tiers: list[str] | None = None, groom: 
     into out_dir, one atlas. tiers: default main, npc, far; add "hero" for a close camera. groom=True also writes
     Alembic/USD strands; check=True judges the re-imported cards. save. Details: guide(topic="export_hair")."""
     from . import hair_route
-    from . import hair_export, hair_job
+    from . import hair_export
+    from . import hair
     spec = store.load(name)
     if (spec.get("hair") or {}).get("style") != "strands":
         raise ValueError(f"{name}'s hair style is {(spec.get('hair') or {}).get('style', 'locks')!r}: export_hair cuts "
                          f"cards from a strand groom (groom_hair(name, style=\"strands\")); solid locks go out with "
                          f"export_asset")
     tiers = list(tiers) if tiers else ["main", "npc", "far"]
-    bad = [t for t in tiers if t not in hair_job.CARD_TIERS]
+    bad = [t for t in tiers if t not in hair.CARD_TIERS]
     if bad:
-        raise ValueError(f"unknown tiers {bad} (have {', '.join(hair_job.CARD_TIERS)})")
+        raise ValueError(f"unknown tiers {bad} (have {', '.join(hair.CARD_TIERS)})")
     rep = hair_export.export_hair(name, Path(out_dir).expanduser(), tiers=tuple(tiers), groom=groom, check=check, sheet=save)
     lines = [f"{t}: {r['triangles']} triangles, {r['bytes'] // 1024} KB, {r['glb']}" for t, r in rep["tiers"].items()]
     if rep.get("groom"):

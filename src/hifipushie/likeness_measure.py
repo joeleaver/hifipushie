@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from .likeness import OVAL, _MP_TO_LM, checklist
+from . import likeness
+from .likeness import checklist
 
 # ---- measuring: the same 2D quantity on the photo and on the model, through one camera ------------------------------
 class Unmeasurable(Exception):
@@ -29,8 +30,8 @@ class Side:
         for i in idx:
             if self.P is not None:
                 out.append(self.P[i])
-            elif self.lm is not None and i in _MP_TO_LM and np.isfinite(self.lm[_MP_TO_LM[i]]).all():
-                out.append(self.lm[_MP_TO_LM[i]])
+            elif self.lm is not None and i in likeness._MP_TO_LM and np.isfinite(self.lm[likeness._MP_TO_LM[i]]).all():
+                out.append(self.lm[likeness._MP_TO_LM[i]])
             else:
                 raise Unmeasurable(f"point {i} needs the detector (not in the 68)")
         return np.mean(out, 0)
@@ -62,7 +63,7 @@ def points_of(m: dict) -> list:
         elif k in ("outer", "inner"):
             out += list(np.ravel(v))
         elif k == "kind" and v == "width":
-            out += OVAL
+            out += likeness.OVAL
     return sorted({int(i) for i in out})
 
 
@@ -72,7 +73,7 @@ def _width_ends(side: Side, level) -> tuple:
         raise Unmeasurable("face widths need the detector's face oval")
     ex, ey = side.frame()
     c = side.pt(level)
-    o = side.P[OVAL]
+    o = side.P[likeness.OVAL]
     s = (o - c) @ ey
     xs = []
     for p in range(len(o)):

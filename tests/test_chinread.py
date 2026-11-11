@@ -21,9 +21,9 @@ need_ref = pytest.mark.skipif(not (store.HOME / REF / "human_refs.json").exists(
 
 
 def test_defaults_what_validated_is_on_what_did_not_is_off():
-    assert face_ruler_camera.CHIN_LM_AXES == "auto" and face_ruler_camera.SIDE_MIN == 60.0
-    assert face_ruler_jaw.RAMP is False and face_ruler_jaw.CLOTH_EDGE is False and face_ruler_camera.CHIN_TIE is False and face_ruler_camera.SIZE_HOLD is True   # (size: held since 2026-10-12, Joe's decision: no picture reads it; tests/test_gnm_native.py)
-    assert face_ruler_camera.LM_STRETCH is False and face_ruler_camera.LM_SIG_SCALE == 1.0
+    assert fr.CHIN_LM_AXES == "auto" and fr.SIDE_MIN == 60.0
+    assert fr.RAMP is False and fr.CLOTH_EDGE is False and fr.CHIN_TIE is False and fr.SIZE_HOLD is True   # (size: held since 2026-10-12, Joe's decision: no picture reads it; tests/test_gnm_native.py)
+    assert fr.LM_STRETCH is False and fr.LM_SIG_SCALE == 1.0
 
 
 def test_tie_row_is_the_part_of_a_measure_the_read_ones_do_not_explain():
@@ -85,7 +85,7 @@ def test_size_row_is_the_faces_scale():
 def test_chin_points_are_left_out_when_the_set_has_a_side_view():
     from hifipushie import blockin_models
     rj = blockin_models._refs(REF)
-    assert any(abs(face_ruler_camera.view_yaw(c)) >= face_ruler_camera.SIDE_MIN for c in rj["cameras"])          # Tess's set has one (67 deg)
+    assert any(abs(face_ruler_camera.view_yaw(c)) >= fr.SIDE_MIN for c in rj["cameras"])          # Tess's set has one (67 deg)
     head, views, notes = face_ruler_compare.reference_views(REF, lids=False, lips=False, parse=False)
     assert all(v["chin"]["chin_lm"] == "none" for v in views) and any(n.startswith("CHIN:") for n in notes)
     v = views[0]
@@ -105,7 +105,7 @@ def test_chin_points_are_left_out_when_the_set_has_a_side_view():
 def test_a_set_without_a_side_view_keeps_the_chin_points(monkeypatch):
     from hifipushie import blockin_models
     rj = copy.deepcopy(blockin_models._refs(REF))
-    keep = [i for i, c in enumerate(rj["cameras"]) if abs(face_ruler_camera.view_yaw(c)) < face_ruler_camera.SIDE_MIN]
+    keep = [i for i, c in enumerate(rj["cameras"]) if abs(face_ruler_camera.view_yaw(c)) < fr.SIDE_MIN]
     rj["views"], rj["cameras"] = [rj["views"][i] for i in keep], [rj["cameras"][i] for i in keep]
     monkeypatch.setattr(blockin_models, "_refs", lambda name: rj)
     head, views, notes = face_ruler_compare.reference_views(REF, lids=False, lips=False, parse=False)
@@ -121,4 +121,4 @@ def test_the_unvalidated_reads_run_only_when_asked():
     obs = face_ruler_solve.observe(head, v, colour=False)
     assert not any(ob["type"] in ("ramp", "cloth") for ob in obs)
     for ob in face_ruler_jaw._ramp_obs(head, dict(views[1])):                # asked: reads carry a shift in mm and the model's own Jacobian
-        assert abs(ob["o"]) <= face_ruler_jaw.RAMP_REACH + 0.26 and len(ob["J"]) == 170 and ob["ncc"] >= face_ruler_jaw.RAMP_NCC
+        assert abs(ob["o"]) <= fr.RAMP_REACH + 0.26 and len(ob["J"]) == 170 and ob["ncc"] >= fr.RAMP_NCC

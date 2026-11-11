@@ -6,21 +6,14 @@ import time
 
 import numpy as np
 
+from . import skin_read
 from .skin_read import _lin, _srgb, _unlab, lab
-from .skin_read_context import (
-    ATLAS_SHADE_SIGMA, ATLAS_ZONE_BOUND, Context, EXPOSURE_SIGMA, FACE_BOUND, PLAIN, PRIOR_TONE, PRUNE,
-    SHADE_LOCAL, SHADE_MAX, SHADE_SAY, SHADE_SIGMA, SHADE_SIGMA_BEARD, SHADE_SIGMA_PLAIN, TONE_BOUND,
-    TONE_BOUND_WHITE, TONE_CHROMA, TONE_CHROMA_WHITE, TONE_SIGMA, TONE_SIGMA_WHITE, WHITE_ALBEDO, WHITE_SIGMA,
-    ZONES, ZONE_BOUND, regions, shade_colour,
-)
+from .skin_read_context import Context, regions, shade_colour
 from .skin_read_fold_fit import fold_fit
-from .skin_read_params import (
-    BEARD_EVEN, BEARD_MIN, BOUNDS, BROW_COLOUR_MM, DEFAULT_GROUPS, FIT_POINTS, GROUPS, IRIS_MM, LIP_SIGMA_L, PRIOR,
-    SIGMA, STUBBLE_PROTO, _get, _path_set, _set, _stubble_opts, _unset,
-)
-from .skin_read_reads import IRIS_R_PX, iris_colour, read
+from .skin_read_params import _get, _path_set, _set, _stubble_opts, _unset
+from .skin_read_reads import iris_colour, read
 
-def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print, prior_L: float | None = None, lid_prior: bool = True,
+def fit(r: dict, groups=skin_read.DEFAULT_GROUPS, stubble: bool | None = None, log=print, prior_L: float | None = None, lid_prior: bool = True,
         prior_ab=None, prior_tone: dict | None = None, prior_face: dict | None = None, prior_x: dict | None = None,
         iris_prev=None) -> dict:
     """spec["skin"] set from a read: {"skin": the new description, "changes": [(parameter, old, new, why)], "text",
@@ -33,14 +26,14 @@ def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print, 
     sk = copy.deepcopy(sk0)
     R = regions(c)
     anchored = c.anchor["kind"] != "none"
-    names = [p for g in groups for p in GROUPS.get(g, ()) if (g != "tone" or anchored)]
+    names = [p for g in groups for p in skin_read.GROUPS.get(g, ()) if (g != "tone" or anchored)]
     # the beard: the stubble layers' opacity scaled zone by zone (a prototype when the face has none)
     sx = sk.get("sex")
     may = (stubble if stubble is not None else (sx is None or float(sx) > 0.5)) and "stubble" in groups and getattr(c, "beard_zones", None) is not None
     st0 = _stubble_opts(sk)
     proto = False
     if "stubble" in groups and st0 is None and may:
-        sk.setdefault("hair", {})["stubble"] = dict(STUBBLE_PROTO)
+        sk.setdefault("hair", {})["stubble"] = dict(skin_read.STUBBLE_PROTO)
         proto = True
     st_on = "stubble" in groups and _stubble_opts(sk) is not None
     bz = skin_marks.BEARD_ZONES if st_on else ()
@@ -48,10 +41,10 @@ def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print, 
     reg = [k for k, x in r["regions"].items() if x["read"]]
     any_w = np.max([R[k] for k in reg], 0) * (c.w > 0)
     idx = np.flatnonzero(any_w > 0.05)
-    if len(idx) > FIT_POINTS:   # (small regions whole: lips, lids; the rest thinned)
+    if len(idx) > skin_read.FIT_POINTS:   # (small regions whole: lips, lids; the rest thinned)
         small = np.max([R[k] for k in reg if r["regions"][k]["px"] < 6000] or [np.zeros(len(c.w))], 0)[idx] > 0.05
         rest = np.flatnonzero(~small)
-        take = np.random.default_rng(0).choice(rest, max(FIT_POINTS - int(small.sum()), 1000), replace=False) if len(rest) > FIT_POINTS else rest
+        take = np.random.default_rng(0).choice(rest, max(skin_read.FIT_POINTS - int(small.sum()), 1000), replace=False) if len(rest) > skin_read.FIT_POINTS else rest
         idx = np.sort(np.r_[idx[small], idx[take]])
     sub = c.alb.subset(idx)
     Wk = {k: (c.w[idx] * R[k][idx]) for k in reg}
@@ -70,8 +63,8 @@ def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print, 
         return np.array([lab(Wk[k] @ A) for k in reg]), s
 
     x0 = np.array([_get(sk, p) for p in names] + [0.0 if proto else 1.0] * len(bz), float)
-    lo = np.array([BOUNDS[p][0] for p in names] + [0.0] * len(bz))
-    hi = np.array([BOUNDS[p][1] for p in names] + [2.5] * len(bz))
+    lo = np.array([skin_read.BOUNDS[p][0] for p in names] + [0.0] * len(bz))
+    hi = np.array([skin_read.BOUNDS[p][1] for p in names] + [2.5] * len(bz))
     x0 = np.clip(x0, lo + 1e-4, hi - 1e-4)
     m0, _ = model(x0)
     base0 = m0   # (a prototype beard starts at scale 0: the face the read was made against)
@@ -80,7 +73,7 @@ def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print, 
     for k in reg:
         bv = list((r["regions"][k].get("by_view") or {}).values())
         sp = np.std(bv, 0) if len(bv) > 1 else np.array([2.0, 0.6, 0.6])
-        s0 = (LIP_SIGMA_L, SIGMA[1], SIGMA[2]) if k.startswith("lip_") else SIGMA
+        s0 = (skin_read.LIP_SIGMA_L, skin_read.SIGMA[1], skin_read.SIGMA[2]) if k.startswith("lip_") else skin_read.SIGMA
         sig.append(np.hypot(s0, sp) / np.sqrt(min(r["regions"][k]["px"], 2000.0) / 2000.0))
     sig = np.array(sig)
 
@@ -91,17 +84,17 @@ def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print, 
     np_ = len(names) + len(bz)
     # the lightness anchor (context): the plain skin's albedo L* is held to the prior tone's (the start's), loosely
     # when a known white gives the exposure; the exposure itself is then free (prior) or the white's.
-    Wp = c.w[idx] * ((c.plain[idx] > 0.5) if getattr(c, "plain", None) is not None else np.max([R[z][idx] for z in PLAIN if z in R], 0))
+    Wp = c.w[idx] * ((c.plain[idx] > 0.5) if getattr(c, "plain", None) is not None else np.max([R[z][idx] for z in skin_read.PLAIN if z in R], 0))
     Wp = Wp / max(Wp.sum(), 1e-9)
     white = c.anchor.get("lightness") == "white" and c.anchor.get("exposure") is not None
     e_mid = float(c.anchor["exposure"]) if white else 0.0
-    e_sig = WHITE_SIGMA if white else EXPOSURE_SIGMA
-    L_sig, L_bound = (TONE_SIGMA_WHITE, TONE_BOUND_WHITE) if white else (TONE_SIGMA, TONE_BOUND)
+    e_sig = skin_read.WHITE_SIGMA if white else skin_read.EXPOSURE_SIGMA
+    L_sig, L_bound = (skin_read.TONE_SIGMA_WHITE, skin_read.TONE_BOUND_WHITE) if white else (skin_read.TONE_SIGMA, skin_read.TONE_BOUND)
 
     # THE WHOLE FACE (skinfolds2): every skin zone's trusted pixels, stubble apart. Holding the PLAIN zones alone let
     # the eye-zone and lower-face layers run to their limits (Tess: eyelids 2.5, under_eye 2.5, lower_cool 1.9: a mask
     # round the eyes and a darker, yellower lower face at an unchanged "plain" lightness)
-    zreg = [k for k in reg if k in ZONES]
+    zreg = [k for k in reg if k in skin_read.ZONES]
     Wf = c.w[idx] * (np.max([R[k][idx] for k in zreg], 0) if zreg else 0.0)
     Wf = Wf / max(Wf.sum(), 1e-9)
 
@@ -122,7 +115,7 @@ def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print, 
 
     st_start = tone_stats(np.array([_get(sk, p) for p in names], float))
     ab0 = st_start[0][1:] if prior_ab is None else np.asarray(prior_ab, float)
-    C_bound = TONE_CHROMA_WHITE if white else TONE_CHROMA
+    C_bound = skin_read.TONE_CHROMA_WHITE if white else skin_read.TONE_CHROMA
     if prior_face is None:       # (a later round: still the FIRST round's face)
         prior_face = {"lab": [float(v_) for v_ in st_start[1]], "zones": {k: [float(v_) for v_ in o] for k, o in st_start[2].items()}}
     Lf0 = float(prior_face["lab"][0])
@@ -138,9 +131,9 @@ def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print, 
     Tlin = np.clip(_unlab(target), 1e-5, None)
     # (the PLAIN zones are the lit skin the exposure is levelled on: nearly no shade of their own, or a white's "this
     # skin is darker than you say" would be explained away as shade everywhere)
-    s_sig = np.array([0.0 if k.startswith("lip_") else SHADE_SIGMA_BEARD if (k.startswith("beard:") and st_on) else
-                      SHADE_SIGMA_PLAIN if k in PLAIN else (ATLAS_SHADE_SIGMA if r.get("source") == "atlas" else SHADE_SIGMA) for k in reg])
-    ZB = ATLAS_ZONE_BOUND if r.get("source") == "atlas" else ZONE_BOUND
+    s_sig = np.array([0.0 if k.startswith("lip_") else skin_read.SHADE_SIGMA_BEARD if (k.startswith("beard:") and st_on) else
+                      skin_read.SHADE_SIGMA_PLAIN if k in skin_read.PLAIN else (skin_read.ATLAS_SHADE_SIGMA if r.get("source") == "atlas" else skin_read.SHADE_SIGMA) for k in reg])
+    ZB = skin_read.ATLAS_ZONE_BOUND if r.get("source") == "atlas" else skin_read.ZONE_BOUND
 
     def shaded(sv, e):
         return lab(Tlin * np.exp(e + sv[:, None] * qs[None, :]))
@@ -153,7 +146,7 @@ def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print, 
             r_ = (m - t0) / sig
             Jc = -(t1 - t0) / 1e-3 / sig
             ds = -((Jc * r_).sum(1) + sv / np.maximum(s_sig, 1e-9) ** 2) / ((Jc * Jc).sum(1) + 1.0 / np.maximum(s_sig, 1e-9) ** 2)
-            sv = np.where(on, np.clip(sv + ds, 0.0, SHADE_MAX), 0.0)
+            sv = np.where(on, np.clip(sv + ds, 0.0, skin_read.SHADE_MAX), 0.0)
         return sv
 
     def resid(x):
@@ -172,13 +165,13 @@ def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print, 
         # synthetic heads: exposure x 0.4-0.5 and every region "20-30 L in shade", which is a colour cast along the
         # shade colour by another name (toneval F2: plain zones 20 L off, 21 regions at the cap).
         fr_ = sv[s_sig > 0.1]
-        local = [len(reg) ** 0.5 * (float(np.percentile(fr_, 25)) if len(fr_) >= 4 else 0.0) / SHADE_LOCAL]
+        local = [len(reg) ** 0.5 * (float(np.percentile(fr_, 25)) if len(fr_) >= 4 else 0.0) / skin_read.SHADE_LOCAL]
         return np.concatenate([((m - tg) / sig).ravel(), sv / np.maximum(s_sig, 1e-9) * (s_sig > 0), local,
-                               PRIOR * len(reg) ** 0.5 * pw * (x[:np_] - x0[:np_]) / (hi - lo)[:np_]] +
-                              ([len(bz) ** 0.5 * (bs - bs.mean()) / BEARD_EVEN] if len(bz) else []) + hold)
+                               skin_read.PRIOR * len(reg) ** 0.5 * pw * (x[:np_] - x0[:np_]) / (hi - lo)[:np_]] +
+                              ([len(bz) ** 0.5 * (bs - bs.mean()) / skin_read.BEARD_EVEN] if len(bz) else []) + hold)
 
     L0 = float(prior_L) if prior_L is not None else float(st_start[0][0])   # (a later round: still the FIRST tone's lightness)
-    pw = np.array([PRIOR_TONE if p_.startswith("tone.") else 1.0 for p_ in names] + [1.0] * len(bz))
+    pw = np.array([skin_read.PRIOR_TONE if p_.startswith("tone.") else 1.0 for p_ in names] + [1.0] * len(bz))
     if free_e:
         x0, lo, hi = np.r_[x0, e_mid], np.r_[lo, -1.2], np.r_[hi, 1.2]
 
@@ -210,7 +203,7 @@ def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print, 
         xt = sol.x.copy()
         xt[i_] = x0[i_]
         c_try = cost(xt)
-        if c_try - c_now < PRUNE:
+        if c_try - c_now < skin_read.PRUNE:
             sol.x[:] = xt
             c_now = c_try
     tone_note = zone_note = None
@@ -254,7 +247,7 @@ def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print, 
         def inside(xs_):
             pl, fl, _ = tone_stats(xs_)
             return (abs(float(pl[0]) - L0) <= L_bound and float(np.hypot(*(pl[1:] - ab0))) <= C_bound
-                    and abs(float(fl[0]) - Lf0) <= (L_bound if white else FACE_BOUND)
+                    and abs(float(fl[0]) - Lf0) <= (L_bound if white else skin_read.FACE_BOUND)
                     and float(np.hypot(*(fl[1:] - np.asarray(prior_face["lab"][1:], float)))) <= C_bound)
         if ti and not inside(sol.x):
             xs = sol.x.copy()
@@ -291,8 +284,8 @@ def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print, 
         f"chi2 {float((((base0 - target0) / sig) ** 2).sum()):.0f} -> {float((((m1 - target) / sig) ** 2).sum()):.0f}; shade colour q {np.round(qs, 3).tolist()}")
     changes = []
     for p, a, b in zip(names, x0, sol.x[:len(names)]):
-        if abs(b - a) > 0.01 * (BOUNDS[p][1] - BOUNDS[p][0]):
-            at = " (at its bound: the picture asks for more than this control gives)" if min(b - BOUNDS[p][0], BOUNDS[p][1] - b) < 2e-3 * (BOUNDS[p][1] - BOUNDS[p][0]) and b != a else ""
+        if abs(b - a) > 0.01 * (skin_read.BOUNDS[p][1] - skin_read.BOUNDS[p][0]):
+            at = " (at its bound: the picture asks for more than this control gives)" if min(b - skin_read.BOUNDS[p][0], skin_read.BOUNDS[p][1] - b) < 2e-3 * (skin_read.BOUNDS[p][1] - skin_read.BOUNDS[p][0]) and b != a else ""
             changes.append((p, round(float(a), 3), round(float(b), 3), "region colours" + at))
         elif _path_set(sk0, p):
             _set(sk1, p, _get(sk0, p))
@@ -311,7 +304,7 @@ def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print, 
         v = {z: zw0[z] * float(s[i]) for i, z in enumerate(bz)}
         seen = {z: r["regions"].get(f"beard:{z}", {}).get("read", False) for z in bz}
         top = max([v[z] for z in bz if seen[z]] or [0.0])
-        if top < BEARD_MIN:
+        if top < skin_read.BEARD_MIN:
             if not proto:
                 changes.append(("hair.stubble", "on", "off", "no beard shadow in the pictures"))
             sk1.get("hair", {}).pop("stubble", None)
@@ -353,7 +346,7 @@ def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print, 
         shown = col0 + g * (0.55 - col0)
         want = _srgb(np.clip(_lin(shown) * np.asarray(b["colour_ratio"]), 0, 1))
         new = dict(hb)
-        if native <= BROW_COLOUR_MM and np.abs(lab(_lin(want)) - lab(_lin(shown))).max() > 2.0:
+        if native <= skin_read.BROW_COLOUR_MM and np.abs(lab(_lin(want)) - lab(_lin(shown))).max() > 2.0:
             new["color"] = "#" + "".join(f"{int(round(255 * float(x))):02x}" for x in np.clip(want, 0, 1))
             new["grey"] = 0.0
             changes.append(("hair.brows.color", hb.get("color", "(default)") + (f" grey {g}" if g else ""), new["color"], f"brow hair colour x {b['colour_ratio']}"))
@@ -364,7 +357,7 @@ def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print, 
             changes.append(("hair.brows.density", round(d0, 3), d1, f"brow band coverage x {b['coverage_ratio']}"))
         sk1.setdefault("hair", {})["brows"] = new
     # eyeballs
-    if "eyeballs" in groups and sk1.get("eyes") is not False and native <= IRIS_MM:
+    if "eyeballs" in groups and sk1.get("eyes") is not False and native <= skin_read.IRIS_MM:
         from . import paint
         ey = dict(sk1.get("eyes") or {})
         e = r["eyes"].get("iris_rel") or {}
@@ -386,20 +379,20 @@ def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print, 
                                                        f"({e['views']} eye(s); INFERRED: the sclera taken as ours, the hue is the picture's)"))
         else:
             changes.append(("eyes.iris", ey.get("iris", "default"), ey.get("iris", "default"),
-                            f"NOT READ: no view shows an iris of {IRIS_R_PX:g} px radius with sclera beside it: the iris colour is NOT the picture's (set skin.eyes.iris by hand)"))
+                            f"NOT READ: no view shows an iris of {skin_read.IRIS_R_PX:g} px radius with sclera beside it: the iris colour is NOT the picture's (set skin.eyes.iris by hand)"))
         if ey:
             sk1["eyes"] = ey
     if "folds" in groups and r.get("folds"):
         changes += fold_fit(sk1, r["folds"], True, lid_prior=lid_prior)
     resid_rows = {k: {"before": [round(float(x), 2) for x in (base0[i] - target0[i])], "after": [round(float(x), 2) for x in (m1[i] - target[i])]}
                   for i, k in enumerate(reg)}
-    shade = {k: round(float(sv1[i]), 3) for i, k in enumerate(reg) if sv1[i] >= SHADE_SAY}
+    shade = {k: round(float(sv1[i]), 3) for i, k in enumerate(reg) if sv1[i] >= skin_read.SHADE_SAY}
     out = {"skin": sk1, "changes": changes, "residual": resid_rows, "exposure": round(expo, 3),
            "iris_ratio": (r["eyes"].get("iris_rel") or {}).get("ratio") if "eyeballs" in groups else None,
            "shade": {"q": [round(float(v_), 3) for v_ in qs], "regions": shade,
-                     "L": {k: round(float(lab(Tlin[i])[0] - lab(Tlin[i] * np.exp(sv1[i] * qs))[0]), 1) for i, k in enumerate(reg) if sv1[i] >= SHADE_SAY}},
+                     "L": {k: round(float(lab(Tlin[i])[0] - lab(Tlin[i] * np.exp(sv1[i] * qs))[0]), 1) for i, k in enumerate(reg) if sv1[i] >= skin_read.SHADE_SAY}},
            "face": {"prior": [round(float(v_), 2) for v_ in prior_face["lab"]], "fitted": [round(float(v_), 2) for v_ in st_end[1]],
-                    "bound": FACE_BOUND, "zones": {k: [round(float(v_), 2) for v_ in (o - np.asarray(prior_face["zones"].get(k, o), float))] for k, o in st_end[2].items()},
+                    "bound": skin_read.FACE_BOUND, "zones": {k: [round(float(v_), 2) for v_ in (o - np.asarray(prior_face["zones"].get(k, o), float))] for k, o in st_end[2].items()},
                     "note": zone_note, "prior_face": prior_face},
            "tone": {"anchor": c.anchor.get("lightness", "prior") if free_e else "not read", "prior_L": round(L0, 2),
                     "prior_ab": [round(float(x), 2) for x in ab0],
@@ -414,14 +407,14 @@ def fit_text(f: dict) -> str:
     if t.get("anchor") == "not read":
         L.append("  TONE: not read (no white balance in the pictures: no neutral backdrop, no white): lightness and hue stay the model's")
     elif t:
-        L.append(f"  TONE LIGHTNESS: anchor = {'a known white in the picture (INFERRED albedo ' + str(WHITE_ALBEDO) + ')' if t['anchor'] == 'white' else 'the PRIOR (the stated skin.tone)'}; "
+        L.append(f"  TONE LIGHTNESS: anchor = {'a known white in the picture (INFERRED albedo ' + str(skin_read.WHITE_ALBEDO) + ')' if t['anchor'] == 'white' else 'the PRIOR (the stated skin.tone)'}; "
                  f"plain skin L* {t['prior_L']} -> {t['fitted_L']} (bound +-{t['bound']}); the picture's exposure against our render x {f.get('exposure', 1.0)}"
                  + (f"; {t['note']}" if t.get("note") else ""))
     fc = f.get("face")
     if fc:
-        worst = sorted(fc["zones"].items(), key=lambda kv: -max(abs(kv[1][0]) / ZONE_BOUND[0], float(np.hypot(kv[1][1], kv[1][2])) / ZONE_BOUND[1]))[:4]
+        worst = sorted(fc["zones"].items(), key=lambda kv: -max(abs(kv[1][0]) / skin_read.ZONE_BOUND[0], float(np.hypot(kv[1][1], kv[1][2])) / skin_read.ZONE_BOUND[1]))[:4]
         L.append(f"  WHOLE FACE (mean albedo of every skin zone, stubble apart): Lab {fc['prior']} -> {fc['fitted']} (bound +-{fc['bound']} L*); "
-                 f"zones against the face, moved most from the prior (bounds {ZONE_BOUND[0]} L*, {ZONE_BOUND[1]} a*b*): " +
+                 f"zones against the face, moved most from the prior (bounds {skin_read.ZONE_BOUND[0]} L*, {skin_read.ZONE_BOUND[1]} a*b*): " +
                  "; ".join(f"{k} {v}" for k, v in worst) + (f". HELD: {fc['note']}" if fc.get("note") else ""))
     sh = f.get("shade")
     if sh and sh["regions"]:
@@ -440,7 +433,7 @@ def fit_text(f: dict) -> str:
     return "\n".join(L)
 
 
-def apply(name: str, out: str | None = None, groups=DEFAULT_GROUPS, rounds: int = 2, anchor: str = "auto", stubble: bool | None = None,
+def apply(name: str, out: str | None = None, groups=skin_read.DEFAULT_GROUPS, rounds: int = 2, anchor: str = "auto", stubble: bool | None = None,
           brow_shape: bool = True, log=print, tone=None, white=None) -> dict:
     """Read the references, set spec["skin"] from the read, save (onto `out`: a block-in fork of `name`, or `name`
     itself). rounds: read -> fit -> re-render -> read again (the second round corrects what the first could only
@@ -458,8 +451,8 @@ def apply(name: str, out: str | None = None, groups=DEFAULT_GROUPS, rounds: int 
         store.save(dst, spec, "skin_from_reference: the stated tone (the lightness prior)")
     prior_L = prior_ab = prior_face = None
     sk_p = store.load(dst).get("skin") or {}
-    prior_tone = {p_: _get(sk_p, p_) for p_ in GROUPS["tone"]}
-    prior_x = {p_: _get(sk_p, p_) for g_ in ("zones", "eyes") for p_ in GROUPS[g_]}
+    prior_tone = {p_: _get(sk_p, p_) for p_ in skin_read.GROUPS["tone"]}
+    prior_x = {p_: _get(sk_p, p_) for g_ in ("zones", "eyes") for p_ in skin_read.GROUPS[g_]}
     for k in range(max(int(rounds), 1)):
         r = read(dst, anchor=anchor, log=log, white=white)
         f = fit(r, groups=groups, stubble=stubble, log=log, prior_L=prior_L, prior_ab=prior_ab, prior_tone=prior_tone,

@@ -5,15 +5,10 @@ from pathlib import Path
 
 import numpy as np
 
-from .likeness import OVAL
+from . import likeness
 from .likeness_compare import compare
 from .likeness_measure import Side, Unmeasurable, _item, _width_ends, _width_lines
 from .likeness_notes import _fmt, table_text
-
-# ---- focus panels: photo | model at the same crop and camera, the feature drawn on both -----------------------------
-PANEL_PX = 300
-PHOTO_COL, MODEL_COL = (255, 60, 40), (40, 210, 255)
-
 
 def _draw_feature(d, Q, idx, col, r=3):
     for i in idx:
@@ -31,7 +26,7 @@ def _region_pts(side: Side, idx):
     return out
 
 
-def panel(cmp: dict, row: dict, px: int = PANEL_PX):
+def panel(cmp: dict, row: dict, px: int = likeness.PANEL_PX):
     """One focus panel for a row: [photo | model], both cropped round the feature in the reference picture's pixels;
     the photo's points red, the model's blue on both halves (the gap between them is the miss)."""
     from PIL import Image, ImageDraw
@@ -39,11 +34,11 @@ def panel(cmp: dict, row: dict, px: int = PANEL_PX):
     ph, md = cmp["photos"][vi], cmp["models"][vi]
     m = _item(row["id"])["measure"]
     widths = _width_lines(m)
-    idx = [i for i in row["points"] if i not in OVAL] if widths else row["points"]
+    idx = [i for i in row["points"] if i not in likeness.OVAL] if widths else row["points"]
     pp, mp_ = _region_pts(ph["side"], idx), _region_pts(md["side"], idx)
     segs = []
     for lv in widths:
-        for sd, col in ((ph["side"], PHOTO_COL), (md["side"], MODEL_COL)):
+        for sd, col in ((ph["side"], likeness.PHOTO_COL), (md["side"], likeness.MODEL_COL)):
             try:
                 segs.append((_width_ends(sd, lv), col))
             except Unmeasurable:
@@ -56,16 +51,16 @@ def panel(cmp: dict, row: dict, px: int = PANEL_PX):
         for reg, ref, rr, rf in row.get("regions") or []:
             circles += [(reg / k + b0[:2], rr / k, (255, 220, 60)), (ref / k + b0[:2], rf / k, (120, 230, 120))]
     if row.get("kind") == "contour":
-        for pts_, col in zip(row.get("marks") or [], (PHOTO_COL, MODEL_COL)):
+        for pts_, col in zip(row.get("marks") or [], (likeness.PHOTO_COL, likeness.MODEL_COL)):
             for g in pts_:
                 circles.append((np.asarray(g), 2.0 / max(md["mmpx"], 1e-6), col))
     if row.get("kind") in ("jaw", "contour"):
         pp, mp_ = {}, {}
         for Q, Qm, gp, gm in row.get("traces") or []:
-            polys.append((Q, PHOTO_COL))
+            polys.append((Q, likeness.PHOTO_COL))
             if Qm is not None:
-                polys.append((Qm, MODEL_COL))
-            for g, col in ((gp, PHOTO_COL), (gm, MODEL_COL)):
+                polys.append((Qm, likeness.MODEL_COL))
+            for g, col in ((gp, likeness.PHOTO_COL), (gm, likeness.MODEL_COL)):
                 if g is not None:
                     circles.append((np.asarray(g), 4.0 / max(md["mmpx"], 1e-6), col))
         from . import likeness_shape as ls
@@ -101,8 +96,8 @@ def panel(cmp: dict, row: dict, px: int = PANEL_PX):
             d.line([tuple((q - box[:2]) * s) for q in np.asarray(Q, float)], fill=col, width=2)
         for (p, q), col in segs:
             d.line([tuple((p - box[:2]) * s), tuple((q - box[:2]) * s)], fill=col, width=2)
-        _draw_feature(d, {i: (p - box[:2]) * s for i, p in pp.items()}, pp, PHOTO_COL)
-        _draw_feature(d, {i: (p - box[:2]) * s for i, p in mp_.items()}, mp_, MODEL_COL, r=2)
+        _draw_feature(d, {i: (p - box[:2]) * s for i, p in pp.items()}, pp, likeness.PHOTO_COL)
+        _draw_feature(d, {i: (p - box[:2]) * s for i, p in mp_.items()}, mp_, likeness.MODEL_COL, r=2)
     out = Image.new("RGB", (2 * px + 6, px + 34), (24, 24, 28))
     out.paste(a, (0, 34))
     out.paste(b, (px + 6, 34))
@@ -135,7 +130,7 @@ def focus_sheet(cmp: dict, out: str, top: int = 8, judge: bool = True, cols: int
                 rows.append(r)
     tiles = [panel(cmp, r) for r in rows]
     if not tiles:
-        tiles = [Image.new("RGB", (2 * PANEL_PX + 6, PANEL_PX + 34), (24, 24, 28))]
+        tiles = [Image.new("RGB", (2 * likeness.PANEL_PX + 6, likeness.PANEL_PX + 34), (24, 24, 28))]
     w, h = tiles[0].size
     n = len(tiles)
     sheet = Image.new("RGB", (cols * w + (cols - 1) * 8, ((n + cols - 1) // cols) * (h + 8) + 22), (14, 14, 16))

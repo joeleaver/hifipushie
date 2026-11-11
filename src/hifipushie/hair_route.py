@@ -64,7 +64,8 @@ def default_style(spec: dict) -> None:
 
 def is_short(name: str, spec: dict) -> bool:
     """The mean lock of a loose groom is under hair.MASS_MIN: the test cards_job uses for a short cut."""
-    from . import hair_head, hair_job, hair_spec
+    from . import hair_head, hair_spec
+    from . import hair
     h = spec.get("hair") or {}
     locks = h.get("locks") or {}
     if not locks or not (h.get("groom") or {}).get("loose"):
@@ -74,7 +75,7 @@ def is_short(name: str, spec: dict) -> bool:
     for lk in locks.values():
         if len(lk.get("pts") or []) >= 2:
             lens.append(float(np.linalg.norm(np.diff(hair_spec.lock_world(sc, lk, lk["pts"]), axis=0), axis=1).sum()))
-    return bool(lens) and float(np.mean(lens)) < hair_job.MASS_MIN
+    return bool(lens) and float(np.mean(lens)) < hair.MASS_MIN
 
 
 def style_warning(spec: dict) -> str:

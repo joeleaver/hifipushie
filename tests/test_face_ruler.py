@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 
 from hifipushie import assets, face_ruler as fr, gnm_mm
-from hifipushie import face_ruler_camera, face_ruler_orbit, face_ruler_solve
+from hifipushie import face_ruler_orbit, face_ruler_solve
 
 try:
     assets.pack("gnm")
@@ -71,7 +71,7 @@ def test_a_fitted_camera_costs_the_absolute_sizes():
     head, views = fr.gnm_head(cA), _views(cB)
     obs = face_ruler_solve.observe(head, views)
     a = {r["measure"]: r for r in face_ruler_solve.solve(obs, head, views=views)["gaps"]}
-    b = {r["measure"]: r for r in face_ruler_solve.solve(obs, head, views=views, cam_sd=face_ruler_camera.CAM_SD)["gaps"]}
+    b = {r["measure"]: r for r in face_ruler_solve.solve(obs, head, views=views, cam_sd=fr.CAM_SD)["gaps"]}
     assert b["pupils_apart"]["err"] > 1.5 * a["pupils_apart"]["err"]
     assert b["skull_back"]["err"] > 1.3 * a["skull_back"]["err"]
     assert b["lower_lip_forward"]["err"] < 1.0

@@ -19,7 +19,9 @@ import numpy as np  # noqa: E402
 from PIL import Image  # noqa: E402
 
 from hifipushie import asset, faceshapes, sdf, store  # noqa: E402
-from hifipushie import faceshapes_apply, faceshapes_consts, faceshapes_face, faceshapes_gnm
+from hifipushie import faceshapes_apply, faceshapes_face, faceshapes_gnm
+from hifipushie import faceshapes
+from hifipushie import faceshapes
 from hifipushie.spec import SpecError, compile_prims  # noqa: E402
 
 store.HOME = Path(_TMP)
@@ -389,8 +391,8 @@ def _lid_line(face, V, d, s, nb=10):
     lm = np.asarray(face.head["lm68"], float)
     ev = face.eyes[s]
     c, r = np.asarray(ev["c"], float), float(ev["r"])
-    ci, co = faceshapes_consts._mirror_ids([42, 45], s)
-    pairs = list(zip(faceshapes_consts._mirror_ids([43, 44], s), faceshapes_consts._mirror_ids([47, 46], s)))
+    ci, co = faceshapes._mirror_ids([42, 45], s)
+    pairs = list(zip(faceshapes._mirror_ids([43, 44], s), faceshapes._mirror_ids([47, 46], s)))
     side = lm[co] - lm[ci]
     width = float(np.linalg.norm(side))
     side = side / width
@@ -440,13 +442,13 @@ def test_blink_lids_meet():
     sp.simplify_mesh(target_count=int(len(T) * 0.3), aggressiveness=5, preserve_border=True, verbose=False)
     v2, f2, _ = sp.getMesh()
     names = ["eyeBlinkLeft", "eyeBlinkRight"]
-    keep = faceshapes_consts.LID_SEAL
+    keep = faceshapes.LID_SEAL
     try:
         for X, F in ((V, T), (np.asarray(v2, float), np.asarray(f2))):
             n0 = faceshapes.vertex_normals(X, F)
-            faceshapes_consts.LID_SEAL = False
+            faceshapes.LID_SEAL = False
             raw = face.displacements(X, X, n0, "skin", names)
-            faceshapes_consts.LID_SEAL = True
+            faceshapes.LID_SEAL = True
             D = face.displacements(X, X, n0, "skin", names)
             for s in ("Left", "Right"):
                 g0, r0 = _lid_line(face, X, raw[f"eyeBlink{s}"], s)
@@ -456,14 +458,14 @@ def test_blink_lids_meet():
                 # the upper lid is MEANT to pass the lower lid's line by LID_OVER (a seal, no slit), and by LID_SAG
                 # more mid-eye (the closed lid's line dips over the globe): more than half a millimetre past that is
                 # a fault
-                assert g1.min() > -(faceshapes_consts.LID_OVER + faceshapes_consts.LID_SAG + 0.0005), (s, "the lids cross", g1.min())
+                assert g1.min() > -(faceshapes.LID_OVER + faceshapes.LID_SAG + 0.0005), (s, "the lids cross", g1.min())
                 assert np.ptp(g1) < 0.4 * np.ptp(g0), (s, "no tidier than unsealed", np.ptp(g1), np.ptp(g0))
                 assert r1 < 0.00025 and r1 < r0, (s, "the lid line is ragged", r1, r0)
                 # the seal only moves the lids: nothing past the eye's own neighbourhood
                 far = np.linalg.norm(X - face.eyes[s]["c"], axis=1) > 2.2 * face.eyes[s]["r"]
                 assert np.abs(D[f"eyeBlink{s}"][far] - raw[f"eyeBlink{s}"][far]).max() < 1e-9
     finally:
-        faceshapes_consts.LID_SEAL = keep
+        faceshapes.LID_SEAL = keep
 
 
 def test_blink_seal_leaves_the_cheek():
@@ -484,7 +486,7 @@ def test_blink_seal_leaves_the_cheek():
     V = np.asarray(h["verts"], float)
     T = np.array([(f[0], f[j], f[j + 1]) for f in h["faces"] for j in range(1, len(f) - 1)])
     names = ["eyeBlinkLeft", "eyeBlinkRight"]
-    keep, opts = faceshapes_consts.LID_SEAL, face.lid_seal
+    keep, opts = faceshapes.LID_SEAL, face.lid_seal
     try:
         for share in (0.3, 0.1, 0.05):
             sp = pyfqmr.Simplify()
@@ -493,9 +495,9 @@ def test_blink_seal_leaves_the_cheek():
             v2, f2, _ = sp.getMesh()
             X, F = np.asarray(v2, float), np.asarray(f2)
             n0 = faceshapes.vertex_normals(X, F)
-            faceshapes_consts.LID_SEAL = False
+            faceshapes.LID_SEAL = False
             raw = face.displacements(X, X, n0, "skin", names)
-            faceshapes_consts.LID_SEAL = True
+            faceshapes.LID_SEAL = True
             D = face.displacements(X, X, n0, "skin", names)
             first, Fw, _ = faceshapes_apply.weld(X, F)
             for s in ("Left", "Right"):
@@ -515,26 +517,26 @@ def test_blink_seal_leaves_the_cheek():
                 assert u1[0] < max(u0[0] + 0.06, 0.12), (share, s, "the sealed blink is jagged under the eye", u1, u0)
                 if share < 0.3:  # (a game face's density: the whole shape under the export log's limit)
                     off = face.off_margins(nm, X[first])
-                    assert faceshapes_apply.unevenness(X[first], Fw, D[nm][first], off)[0] < 0.75 * faceshapes_apply.UNEVEN_LIMIT, (share, s)
+                    assert faceshapes_apply.unevenness(X[first], Fw, D[nm][first], off)[0] < 0.75 * faceshapes.UNEVEN_LIMIT, (share, s)
         # a spike reads as one: one vertex moved 3 mm alone
         d = np.zeros_like(X)
         d[np.argmin(np.linalg.norm(X - face.eyes["Left"]["c"] + 0.02 * face.up, axis=1))] = 0.003 * face.up
-        assert faceshapes_apply.unevenness(X[first], Fw, d[first])[0] > faceshapes_apply.UNEVEN_LIMIT
+        assert faceshapes_apply.unevenness(X[first], Fw, d[first])[0] > faceshapes.UNEVEN_LIMIT
         # spec.face_shapes.lid_seal: false = the basis's own blink; a wrong key is refused
-        face.lid_seal = faceshapes_consts.lid_seal_options(False)
+        face.lid_seal = faceshapes.lid_seal_options(False)
         off = face.displacements(X, X, n0, "skin", names)
         assert np.abs(off["eyeBlinkLeft"] - raw["eyeBlinkLeft"]).max() < 1e-12
-        face.lid_seal = faceshapes_consts.lid_seal_options(0.5)
+        face.lid_seal = faceshapes.lid_seal_options(0.5)
         half = face.displacements(X, X, n0, "skin", names)
         a = np.linalg.norm(half["eyeBlinkLeft"] - raw["eyeBlinkLeft"], axis=1).max()
         assert 0 < a < np.linalg.norm(D["eyeBlinkLeft"] - raw["eyeBlinkLeft"], axis=1).max()
         try:
-            faceshapes_consts.lid_seal_options({"amont": 1})
+            faceshapes.lid_seal_options({"amont": 1})
             raise AssertionError("a misspelt lid_seal key passed")
         except SpecError:
             pass
     finally:
-        faceshapes_consts.LID_SEAL, face.lid_seal = keep, opts
+        faceshapes.LID_SEAL, face.lid_seal = keep, opts
 
 
 GNM_EXAMPLE = EXAMPLE.with_name("gnm_talk.json")
@@ -665,7 +667,7 @@ def test_jaw_leaves_the_body_under_the_neck():
             # the lips' seam is closed at neutral and at eyeBlink: nothing inside the contact ring seen from the front
             for nm, X in (("neutral", Xn), ("eyeBlinkLeft", Xn + D["eyeBlinkLeft"])):
                 a = face.seam_showing(X, T, idx)
-                assert a is not None and a <= faceshapes_consts.SEAM_SHOWING, (nm, a)
+                assert a is not None and a <= faceshapes.SEAM_SHOWING, (nm, a)
         D.pop("eyeBlinkLeft")
         mv = np.max([np.linalg.norm(d, axis=1) for d in D.values()], 0)
         assert mv[~trunk].max() > 0.015, how  # (the jaw does open)
@@ -706,7 +708,7 @@ def test_exported_squint_matches_fit():
     as the FITTED GNM head (HP_SQUINT_SPEC: the head model's spec.json, e.g. tp_k19's, posed read-only with the fit's coefficients, the eye
     components x SMILE_FIT_EYE_GAIN) moves it, within 0.25 mm. Skipped without HP_SQUINT_GLB / HP_SQUINT_SPEC / HP_SMILE_FIT."""
     glb = os.environ.get("HP_SQUINT_GLB")
-    if not glb or not faceshapes_consts.SMILE_FIT or not os.environ.get("HP_SQUINT_SPEC"):
+    if not glb or not faceshapes.SMILE_FIT or not os.environ.get("HP_SQUINT_SPEC"):
         print("skip: HP_SQUINT_GLB / HP_SQUINT_SPEC / HP_SMILE_FIT not set")
         return
     import copy
@@ -722,10 +724,10 @@ def test_exported_squint_matches_fit():
                 V = V + a * np.asarray(m["targets"][k], float)
         return V
     names = [str(n) for n in base_identity._gnm_data()["expression_names"]]
-    e = np.asarray(np.load(faceshapes_consts.SMILE_FIT), float).copy()
+    e = np.asarray(np.load(faceshapes.SMILE_FIT), float).copy()
     for i, n in enumerate(names[:len(e)]):
         if n.startswith(("left_eye", "right_eye")):
-            e[i] *= faceshapes_consts.SMILE_FIT_EYE_GAIN
+            e[i] *= faceshapes.SMILE_FIT_EYE_GAIN
     spec = json.loads(Path(os.environ["HP_SQUINT_SPEC"]).read_text())  # (this module points HIFIPUSHIE_HOME at a temp dir)
 
     def gnm(ev):
@@ -756,7 +758,7 @@ def test_exported_squint_matches_fit():
         print(f"eye{side}: upper {1e3 * ex[0]:+.2f} (fit {1e3 * fi[0]:+.2f}) lower {1e3 * ex[1]:+.2f} (fit {1e3 * fi[1]:+.2f}) mm,"
               f" neutral opening {1e3 * ex[2]:.2f} (fit head {1e3 * fi[2]:.2f}) mm")
         # (r43) the export's lower lid travels SMILE_LOWLID_GAIN x the fit's at the lid's centre (a hand pass on the solve)
-        lo = fi[1] * float(os.environ.get("HP_SMILE_LOWLID_GAIN", faceshapes_consts.SMILE_LOWLID_GAIN))
+        lo = fi[1] * float(os.environ.get("HP_SMILE_LOWLID_GAIN", faceshapes.SMILE_LOWLID_GAIN))
         assert abs(ex[0] - fi[0]) < 0.00025 and abs(ex[1] - lo) < 0.00025, (side, ex, fi, lo)
 
 

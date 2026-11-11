@@ -193,14 +193,14 @@ def test_expression_basis_matches_the_models_own_expression():
     import copy
     from hifipushie import humanfit
     spec = store.load(REF)
-    head = face_ruler_blockin.model_head(spec, expr={"names": face_ruler_blockin.EXPR_SET})
+    head = face_ruler_blockin.model_head(spec, expr={"names": fr.EXPR_SET})
     x = head["expr"]
-    assert head["B"].shape[0] == 170 + len(face_ruler_blockin.EXPR_SET) and head["LB"].shape[0] == 170 + len(face_ruler_blockin.EXPR_SET)
+    assert head["B"].shape[0] == 170 + len(fr.EXPR_SET) and head["LB"].shape[0] == 170 + len(fr.EXPR_SET)
     assert 0.6 < x["kx"] < 1.2 and x["kx_res"] < 0.5
     sp2 = copy.deepcopy(spec)
     sp2["base"]["head"]["expression"] = face_ruler_blockin.expression_coeffs({"squint": 0.6, "mouth_left": 0.4})
     L0, L1 = (np.asarray(humanfit.state(s_["base"])["L"], float)[:68] for s_ in (spec, sp2))
-    i, j = face_ruler_blockin.EXPR_SET.index("squint"), face_ruler_blockin.EXPR_SET.index("mouth_left")
+    i, j = fr.EXPR_SET.index("squint"), fr.EXPR_SET.index("mouth_left")
     pred = 0.6 * head["LB"][170 + i] + 0.4 * head["LB"][170 + j]
     d = L1 - L0
     assert np.corrcoef(d.ravel(), pred.ravel())[0, 1] > 0.85
@@ -220,7 +220,7 @@ def test_solve_step_reports_and_carries_its_state():
         so = r1["solve"]
         assert so["report"]["rows"] and isinstance(so["report"]["text"], str)
         assert so["held"] and "skull_width" in so["held"]
-        assert set(so["expression"]) and all(len(d) == len(face_ruler_blockin.EXPR_SET) for d in so["expression"].values())
+        assert set(so["expression"]) and all(len(d) == len(fr.EXPR_SET) for d in so["expression"].values())
         assert so["kinds"] == ["front", "3q", "profile"] and all(x in ("plain", "parser", "points") for x in so["readers"])
         b1 = blockin_models._refs(a)["blockin"]
         assert b1["relax"] >= 1.0 and b1["kinds"] == so["kinds"] and b1["readers"] == so["readers"]
@@ -230,7 +230,7 @@ def test_solve_step_reports_and_carries_its_state():
         assert abs(moved) < 0.5 * rw["sd"][k]                    # held: under her hair nothing reads the skull's width
         r2 = blockin_steps.solve_step(a, out=b, cameras="free", rounds=2, hold="auto", expression="view")
         assert r2["solve"]["readers"] == so["readers"]           # ONE outline reader per view for the whole block-in
-        assert r2["solve"]["relax"] >= 1.0 + blockin_steps.RELAX_KEEP * (so["relax"] - 1.0) - 1e-6
+        assert r2["solve"]["relax"] >= 1.0 + bi.RELAX_KEEP * (so["relax"] - 1.0) - 1e-6
         assert r2["solve"]["dc"] < so["dc"]
     finally:
         for n in (root, a, b):

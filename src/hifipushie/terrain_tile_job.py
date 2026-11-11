@@ -8,24 +8,23 @@ from pathlib import Path
 
 import numpy as np
 
+from . import terrain_mesh
 from . import profiling
 from .profiling import span as _span
 from .terrain_field import project
 from .terrain_gltf import _to_gltf, write_glb
 from .terrain_materials import _linear
-from .terrain_mesh import _CTX
 from .terrain_tile_border import _collapse_border
 from .terrain_tile_finish import (
     _compact, _on_border, _prim, _shared, _textured_prep, _unflip_corners, _vertex_normals, split_normals,
 )
-from .terrain_tile_jobs import OVER_BUDGET, _dense, _work
-from .terrain_tile_mesh import PRE, _boundary_edges, _decimate
-from .terrain_volumes import BURIED_DEEP, BURIED_SHADE, EXPOSED_OFF, NORMAL_H
+from .terrain_tile_jobs import _dense, _work
+from .terrain_tile_mesh import _boundary_edges, _decimate
 
 def _job_tile(ij):
     """Write one tile's LODs and collision (runs in a worker: everything it reads is in _CTX)."""
     i, j = ij
-    c = _CTX
+    c = terrain_mesh._CTX
     G, v0, field, mats, cfg, out, vols = c["G"], c["v0"], c["field"], c["mats"], c["cfg"], c["out"], c["vols"]
     dense, collapsed, pos, depth, dirn = c["dense"], c["collapsed"], c["pos"], c["depth"], c["dirn"]
     CN, CW, CC, mat = c["CN"], c["CW"], c["CC"], c["mat"]
@@ -79,7 +78,7 @@ def _job_tile(ij):
             with _span(f"tile/lod{k}/decimate from dense"):
                 # (a coarse LOD from the dense mesh: one pass to PRE x its budget first, LOD 0 as it always was)
                 Pd, Fd = _decimate(Pk, Fk, cfg["error"][k], cfg["budget"][k], field, border_ok,
-                                   pre=PRE * cfg["budget"][k] if k > 0 else None)
+                                   pre=terrain_mesh.PRE * cfg["budget"][k] if k > 0 else None)
         if k > 0 and prevs and len(Fd) > max(cfg["budget"][k], len(prevs[-1][1])):
             # this LOD from the dense mesh folded at every count: from an earlier LOD's mesh instead (the last one
             # first), its border collapsed to this LOD's chain (the same chain either way: neighbours still agree)
@@ -117,7 +116,7 @@ def _job_tile(ij):
         before = Pd.copy()
         with _span(f"tile/lod{k}/project"):
             Pd[~bd], N[~bd] = project(field, Pd[~bd], v0)
-        hn = NORMAL_H * v0
+        hn = terrain_mesh.NORMAL_H * v0
         # where projecting a coarse vertex folds its faces, it stays where decimation put it
         fold = ~bd & ((_vertex_normals(Pd, Fd) * N).sum(1) < 0.3)
         if fold.any():
@@ -165,7 +164,7 @@ def _job_tile(ij):
                 # (deep for its size: a big flat face over rounded rock has its centre a little inside it: a 570 m2
                 # face of a near-empty tile, centre 0.36 m in, was called buried at LOD 0)
                 fa = np.linalg.norm(np.cross(Ps[Fs[:, 1]] - Ps[Fs[:, 0]], Ps[Fs[:, 2]] - Ps[Fs[:, 0]]), axis=1) / 2
-                bur = (field.front(Ps[Fs].mean(1)) < -np.maximum(thr, BURIED_DEEP * np.sqrt(fa))) & \
+                bur = (field.front(Ps[Fs].mean(1)) < -np.maximum(thr, terrain_mesh.BURIED_DEEP * np.sqrt(fa))) & \
                     (np.abs(field.front(Ps))[Fs].max(1) > thr)
                 # (and still in rock half a metre out along the face's own normal: what faces open air from just under
                 # the surface is seen, as `terrain_cliffs.exposed_buried` judges it)
@@ -173,9 +172,9 @@ def _job_tile(ij):
                 if len(kb):
                     fn = np.cross(Ps[Fs[kb, 1]] - Ps[Fs[kb, 0]], Ps[Fs[kb, 2]] - Ps[Fs[kb, 0]])
                     fn /= np.maximum(np.linalg.norm(fn, axis=1, keepdims=True), 1e-12)
-                    bur[kb] = field.front(Ps[Fs[kb]].mean(1) + EXPOSED_OFF * fn) < 0
+                    bur[kb] = field.front(Ps[Fs[kb]].mean(1) + terrain_mesh.EXPOSED_OFF * fn) < 0
                     if hasattr(field, "region"):  # (under the pushed heightmap counts as hidden)
-                        q = Ps[Fs[kb]].mean(1) + EXPOSED_OFF * fn
+                        q = Ps[Fs[kb]].mean(1) + terrain_mesh.EXPOSED_OFF * fn
                         bur[kb] |= q[:, 2] <= field.region.height(q[:, 0], q[:, 1]) + 0.05
             Ps, Fs, Ns, src = _unflip_corners(Ps, Fs, Ns, src, ~bur, bd[src])
         stem = f"tile_{i}_{j}_lod{k}"
@@ -193,7 +192,7 @@ def _job_tile(ij):
             # (its own material name: an importer that drops extras, Godot's, saw the back as a second skirt surface)
             # (and its own colour: the rock's mean colour there, in shade. White, it showed as pale plates wherever an
             # engine drew a piece of the back in the open (it ignores COLOR_0 without a vertex-colour material))
-            cb = _linear(np.asarray(C[src][np.unique(Fs[bur])], float)[:, :3].mean(0)) * BURIED_SHADE
+            cb = _linear(np.asarray(C[src][np.unique(Fs[bur])], float)[:, :3].mean(0)) * terrain_mesh.BURIED_SHADE
             tile_mats = tile_mats + [{**mat[0], "name": "terrain_buried",
                                       "pbrMetallicRoughness": {**mat[0]["pbrMetallicRoughness"],
                                                                "baseColorFactor": [*map(float, cb), 1.0]}}]
@@ -218,7 +217,7 @@ def _job_tile(ij):
                 write_glb(glb["path"], stem, prims, trans, glb["mats"], extras=glb["extras"], images=images)
         if k == int(cfg["collision"]):
             cf = f"collision_{i}_{j}.glb"
-            Pc, Fc = _collision_mesh(Pd, Fd, int(cfg.get("collision_budget") or OVER_BUDGET * cfg["budget"][k]))
+            Pc, Fc = _collision_mesh(Pd, Fd, int(cfg.get("collision_budget") or terrain_mesh.OVER_BUDGET * cfg["budget"][k]))
             write_glb(out / cf, f"collision_{i}_{j}", [{"attrs": {"POSITION": _to_gltf(Pc - origin)},
                                                         "indices": Fc}], trans, None,
                       extras={"tile": [i, j], "collision": True, "from_lod": k})

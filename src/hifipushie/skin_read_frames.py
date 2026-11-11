@@ -10,7 +10,8 @@ from pathlib import Path
 
 import numpy as np
 
-from .skin_read import CLIP, EEVEE, FACE, LIGHT, N, STAGE, _lin, _srgb
+from . import skin_read
+from .skin_read import _lin, _srgb
 
 # ---------------------------------------------------------------- the dressed stage
 def stage_spec(spec: dict) -> dict:
@@ -41,7 +42,7 @@ def stage(name: str, spec: dict | None = None, log=print) -> str:
     """The stage model of `name` (or of `spec`, a variant of it), synced when its spec or the skin code changed."""
     from . import scene, store, stylesheet
     st = stage_spec(spec or store.load(name))
-    sn = STAGE + name
+    sn = skin_read.STAGE + name
     key = hashlib.sha1(json.dumps(st, sort_keys=True, default=str).encode()).hexdigest()[:16] + _code()
     d = store._dir(sn)
     d.mkdir(parents=True, exist_ok=True)
@@ -73,7 +74,7 @@ def fitted_frame(cam: dict, crop, name: str) -> dict:
             "center": (eye + fwd).tolist(), "near": 0.01, "scale": None, "axes": None}
 
 
-def shoot(sn: str, frames: list, lighting: dict | None, size: int = 2 * N, flat: bool = False, samples: int = 24) -> dict:
+def shoot(sn: str, frames: list, lighting: dict | None, size: int = 2 * skin_read.N, flat: bool = False, samples: int = 24) -> dict:
     """Frames of a stage under one lighting: {frame name: RGBA uint8 array}. flat: the unlit albedo."""
     from PIL import Image
     from . import scene
@@ -81,7 +82,7 @@ def shoot(sn: str, frames: list, lighting: dict | None, size: int = 2 * N, flat:
     with tempfile.TemporaryDirectory() as tmp:
         fr = [{**f, "out": str(Path(tmp) / f"{f['name']}.png")} for f in frames]
         job = {"blend": str(scene.blend_path(sn)), "views": fr, "size": size, "samples": samples, "hide": [], "flat": flat,
-               "transparent": True, "mode": "render", "eevee": EEVEE}
+               "transparent": True, "mode": "render", "eevee": skin_read.EEVEE}
         if lighting and not flat:
             job["lighting"] = {**lighting, "target": fr[0]["center"]}
         scene._blender(job, 2400)
@@ -102,7 +103,7 @@ def boxes(name: str) -> list:
 def lighting(name: str, vi: int) -> dict:
     """LIGHT re-aimed and re-balanced to view vi's own fitted light."""
     from . import blockin_look
-    return blockin_look.photo_lighting(name, LIGHT, vi)
+    return blockin_look.photo_lighting(name, skin_read.LIGHT, vi)
 
 
 def photo_light(name: str, vi: int | None = None) -> dict:
@@ -118,7 +119,7 @@ def photo_light(name: str, vi: int | None = None) -> dict:
     lt = lighting(name, vi)
     ev = None
     try:
-        ev = json.loads((store._dir(STAGE + name) / "sr_exposure.json").read_text()).get(str(vi))
+        ev = json.loads((store._dir(skin_read.STAGE + name) / "sr_exposure.json").read_text()).get(str(vi))
     except Exception:  # noqa: BLE001
         pass
     lt["exposure"] = float(ev) if ev is not None else 0.0
@@ -166,8 +167,8 @@ def capture(name: str, spec: dict | None = None, views: list | None = None, log=
         img = Image.open(v["image"]).convert("RGB")
         w, h = cam["size"]
         ib = tuple(int(round(x)) for x in box)
-        P = _lin(np.asarray(img.crop(ib).resize((N, N), Image.LANCZOS), float) / 255.0)
-        _, k, ps = likeness_render.render(mesh, cam, box, px=N, passes=True)
+        P = _lin(np.asarray(img.crop(ib).resize((skin_read.N, skin_read.N), Image.LANCZOS), float) / 255.0)
+        _, k, ps = likeness_render.render(mesh, cam, box, px=skin_read.N, passes=True)
         zb, nrm, part = ps["zb"], ps["nrm"], ps["part"]
         part = part[..., 0] if part.ndim == 3 else part
         on = np.isfinite(zb)
@@ -176,25 +177,25 @@ def capture(name: str, spec: dict | None = None, views: list | None = None, log=
         u, vv = box[0] + (jj + 0.5) / k, box[1] + (ii + 0.5) / k
         Rc = humanfit._cam_rot(cam)
         Xc = np.c_[(u - w / 2) / cam["f"] * z, (vv - h / 2) / cam["f"] * z, z]
-        X = np.zeros((N, N, 3))
+        X = np.zeros((skin_read.N, skin_read.N, 3))
         X[ii, jj] = (Xc - np.asarray(cam["t"], float)) @ Rc + np.asarray(cam["centre"], float)
-        nw = np.zeros((N, N, 3))
+        nw = np.zeros((skin_read.N, skin_read.N, 3))
         nw[ii, jj] = nrm[ii, jj] @ Rc
-        fac = np.zeros((N, N))
+        fac = np.zeros((skin_read.N, skin_read.N))
         fac[ii, jj] = -(nrm[ii, jj] * (Xc / np.linalg.norm(Xc, axis=1, keepdims=True))).sum(1)
         pm = _picture_masks(img, cam, mesh)
         parse = {}
         for kname, m in pm.items():
-            parse[kname] = np.asarray(Image.fromarray(np.round(m * 255).astype(np.uint8)).crop(ib).resize((N, N), Image.BILINEAR), float) / 255.0
+            parse[kname] = np.asarray(Image.fromarray(np.round(m * 255).astype(np.uint8)).crop(ib).resize((skin_read.N, skin_read.N), Image.BILINEAR), float) / 255.0
         ys_ = np.nonzero((on & (np.round(part) == 0)).any(1))[0]
-        chin_y = box[1] + (float(np.percentile(ys_, 80)) if len(ys_) else 0.8 * N) / k       # picture px: under this is not face
+        chin_y = box[1] + (float(np.percentile(ys_, 80)) if len(ys_) else 0.8 * skin_read.N) / k       # picture px: under this is not face
         f = {"view": i, "white_patch": white_patch(_lin(np.asarray(img, float) / 255.0), pm, chin_y),
              "P": P, "X": X, "n": nw, "skin": on & (np.round(part) == 0), "eye": on & (np.round(part) == 1),
              "facing": fac, "parse": parse, "mm": 1000.0 * float(np.median(z)) / cam["f"] / k, "box": list(box), "cam": cam,
              "mm_native": 1000.0 * float(np.median(z)) / cam["f"],
              "image": v["image"], "yaw": float(v.get("yaw", 0.0))}
         if render:
-            r = np.asarray(Image.fromarray(shots[i]).resize((N, N), Image.LANCZOS), float) / 255.0
+            r = np.asarray(Image.fromarray(shots[i]).resize((skin_read.N, skin_read.N), Image.LANCZOS), float) / 255.0
             f["R"], f["alpha"] = _lin(r[..., :3]), r[..., 3]
             f["R2"] = shots[i][..., :3].copy()          # (sRGB uint8, 2N: the lid's fold line is read on it)
         out.append(f)
@@ -203,14 +204,14 @@ def capture(name: str, spec: dict | None = None, views: list | None = None, log=
 
 def trust(f: dict) -> np.ndarray:
     """0..1 per pixel: the model's skin facing the camera, the picture's parser agreeing it is skin, nothing clipped."""
-    t = f["skin"] * np.clip((f["facing"] - FACE[0]) / (FACE[1] - FACE[0]), 0, 1)
+    t = f["skin"] * np.clip((f["facing"] - skin_read.FACE[0]) / (skin_read.FACE[1] - skin_read.FACE[0]), 0, 1)
     if f["parse"]:
         t = t * np.clip((f["parse"]["skin"] - 0.5) / 0.3, 0, 1) * np.clip((0.4 - f["parse"]["hair"]) / 0.3, 0, 1)
     ps = _srgb(f["P"])
-    t = t * ((ps.min(-1) > CLIP[0]) & (ps.max(-1) < CLIP[1]))
+    t = t * ((ps.min(-1) > skin_read.CLIP[0]) & (ps.max(-1) < skin_read.CLIP[1]))
     if "R" in f:
         rs = _srgb(f["R"])
-        t = t * (f["alpha"] > 0.98) * ((rs.min(-1) > CLIP[0]) & (rs.max(-1) < CLIP[1]))
+        t = t * (f["alpha"] > 0.98) * ((rs.min(-1) > skin_read.CLIP[0]) & (rs.max(-1) < skin_read.CLIP[1]))
     if "atlas_conf" in f:      # (the atlas as the source: where a picture vouches for the de-lit albedo)
         t = t * f["atlas_conf"]
     return t
@@ -352,9 +353,6 @@ class Albedo:
         return self._mask(self.st, f"zone:{name}", ly)
 
 
-WHITE_PX = 250          # it needs this many pixels in a view's crop
-
-
 def white_patch(img: np.ndarray, parse: dict, chin_y: float, box=None) -> dict | None:
     """The candidate white of a WHOLE picture (linear rgb, (h, w, 3)): what the parser calls clothing (or the figure
     that is neither skin nor hair) under the face, bright and unclipped: {"Y" (the median of its lit 40 %), "rgb",
@@ -374,8 +372,8 @@ def white_patch(img: np.ndarray, parse: dict, chin_y: float, box=None) -> dict |
         m = np.asarray(cloth) > 0.6
         m[: int(max(chin_y, 0))] = False               # under the chin only (no hat, no headband)
     srgb = _srgb(img)
-    m &= (srgb.max(-1) < CLIP[1]) & (srgb.min(-1) > (0.2 if box is not None else 0.35))
-    if m.sum() < WHITE_PX:
+    m &= (srgb.max(-1) < skin_read.CLIP[1]) & (srgb.min(-1) > (0.2 if box is not None else 0.35))
+    if m.sum() < skin_read.WHITE_PX:
         return None
     c = img[m]
     y = c @ Yv

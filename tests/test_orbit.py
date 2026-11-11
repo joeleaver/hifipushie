@@ -99,7 +99,7 @@ def test_limbus_read_in_turned_views():
             if rd is None or (k == "profile" and rd["open"] < 0.0):
                 continue
             tru = fr._cam_points(cam, lb[j]["X"][None])[1][0] - fr._cam_points(cam, la[j]["X"][None])[1][0]
-            if rd["sharp"] <= 0 or rd["score"] < face_ruler_orbit.LIMBUS_MIN:
+            if rd["sharp"] <= 0 or rd["score"] < fr.LIMBUS_MIN:
                 continue
             err = (rd["d"] - tru) * rd["mmpx"]
             if k == "3q" and rd["open"] > 0.75:

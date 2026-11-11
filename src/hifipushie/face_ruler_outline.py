@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from .face_ruler import REACH_MM, SIG, STEP_MM, _cam_points, _proj_jac
+from . import face_ruler
+from .face_ruler import _cam_points, _proj_jac
 
 # ---- outlines ---------------------------------------------------------------------------------------------------------
 def _curve(mask, sigma: float = 1.0):
@@ -45,12 +46,6 @@ def plain_backdrop(img, thr: float = 30.0) -> float:
     a = np.asarray(img.convert("RGB"), float)
     b = np.r_[a[:4].reshape(-1, 3), a[:, :4].reshape(-1, 3), a[:, -4:].reshape(-1, 3)]
     return float((np.abs(b - np.median(b, 0)).sum(-1) < thr).mean())
-
-
-PARSE_MODEL = "mediapipe"   # faceparse: the outline's parser (validated: spikes/refread/pval.py)
-PARSE_SIG = 0.5             # mm: an outline read off the parser's mask (rms 0.2-0.5 on dressed renders, painted backdrop)
-PLAIN_MIN = 0.75            # parse="auto": the plain-background reader is used when the backdrop is this plain ...
-PLAIN_READS = 40            # ... and it finds this many outline samples in the view; else the parser
 
 
 def photo_masks(img, cam, head, thr: float = 30.0, origin=(0.0, 0.0), scale: float = 1.0):
@@ -109,7 +104,7 @@ def _outline_obs(head, view, mask_model, mask_pic, trust=None, curve=None):
     o = np.asarray(view.get("origin", (0.0, 0.0)), float)
     Pi = (P - o) * s                                    # model vertices in image px
     mmpx = float(np.median(Xc[sv, 2]) / cam["f"] * 1000.0) / s
-    S = _resample(cm, STEP_MM / mmpx)
+    S = _resample(cm, face_ruler.STEP_MM / mmpx)
     if len(S) < 8:
         return []
     T = np.gradient(S, axis=0)
@@ -132,7 +127,7 @@ def _outline_obs(head, view, mask_model, mask_pic, trust=None, curve=None):
         if dv[k] > 2.5 / mmpx or not (edge < S[k, 0] < W - edge and edge < S[k, 1] < H - edge):
             continue
         # the picture's outline along the normal: nearest picture-outline point within a narrow cone of the normal
-        idx = tp.query_ball_point(S[k], REACH_MM / mmpx)
+        idx = tp.query_ball_point(S[k], face_ruler.REACH_MM / mmpx)
         if not idx:
             continue
         D = cpd[idx] - S[k]
@@ -161,15 +156,9 @@ def _outline_obs(head, view, mask_model, mask_pic, trust=None, curve=None):
         v = int(sv[iv[k]])
         Jp, mm1 = _proj_jac(cam, head, v)
         out.append({"type": "outline", "view": view["kind"], "o": float(along[j]) * mm1 / s, "J": (N[k] @ Jp) * mm1,
-                    "sig": SIG["outline"], "v": v, "p": S[k].tolist(), "n": N[k].tolist(), "q": qp.tolist(),
+                    "sig": face_ruler.SIG["outline"], "v": v, "p": S[k].tolist(), "n": N[k].tolist(), "q": qp.tolist(),
                     "X": head["V"][v].tolist()})
     return out
-
-
-HAIR_EDGE = True            # reference_views(hair_edge=None) takes this
-SIG_HAIR_EDGE = 0.8         # mm: a skin | hair boundary off the parser (its outline reads: 0.5; + strands lying on the skin)
-HAIR_EDGE_MIN = 0.5         # mm: the read is ONE-SIDED: only a boundary this far OUTSIDE the model's outline pulls
-OUTLINE_FEW = 20            # a view with fewer two-sided outline reads than this is said to have none worth the name
 
 
 def _hair_edge_obs(head, view, mask_model):
@@ -192,7 +181,7 @@ def _hair_edge_obs(head, view, mask_model):
     V = np.asarray(head["V"], float)
     keep = (np.asarray(head["gid"], int) >= 0) & ~np.asarray(head["ears"], bool) & ~hair_vertices(head) & (V[:, 2] > float(np.asarray(head["L"], float)[8, 2]) + 0.004)
     for ob in _outline_obs(head, view, mask_model, skin, None):
-        if not keep[ob["v"]] or ob["o"] < HAIR_EDGE_MIN:
+        if not keep[ob["v"]] or ob["o"] < face_ruler.HAIR_EDGE_MIN:
             continue
         q, n = np.asarray(ob["q"], float), np.asarray(ob["n"], float)
         ok = True
@@ -201,7 +190,7 @@ def _hair_edge_obs(head, view, mask_model):
             ok &= bool(hair[qo[1], qo[0]])
         if not ok:
             continue
-        ob["type"], ob["sig"], ob["name"] = "hairedge", SIG_HAIR_EDGE, "hairedge"
+        ob["type"], ob["sig"], ob["name"] = "hairedge", face_ruler.SIG_HAIR_EDGE, "hairedge"
         out.append(ob)
     return out
 
@@ -296,7 +285,7 @@ def _colour_obs(head, view, im_model, im_pic):
         X = ((np.full(len(ii_), 1.0 / len(ii_)) if w is None else np.asarray(w, float))[:, None] * head["V"][ii_]).sum(0)
         for ax in axes:
             out.append({"type": typ, "view": kind, "name": f"{name}.{'xy'[ax]}", "o": float(pb[ax] - pa[ax]) * mm1 / s,
-                        "J": Jp[ax] * mm1, "sig": sig or SIG[typ], "p": list(map(float, pa)), "q": list(map(float, pb)),
+                        "J": Jp[ax] * mm1, "sig": sig or face_ruler.SIG[typ], "p": list(map(float, pa)), "q": list(map(float, pb)),
                         "X": X.tolist()})
 
     if kind in ("front", "3q"):

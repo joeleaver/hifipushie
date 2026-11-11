@@ -99,7 +99,8 @@ def test_lash_shapes_ride_the_lid():
 
 def test_clear_cornea():
     """base.cornea.clear: the iris plane `depth` behind the apex, the lens part between, and its implied part."""
-    from hifipushie import base_gnm_parts, base_implied
+    from hifipushie import base_implied
+    from hifipushie import base
     R, rc, bulge = 0.0118, 0.62 * 0.0118, 0.09 * 0.0118
     c, gz = np.array([0.03, 0.0, 1.6]), np.array([0.0, -1.0, 0.0])
     b = {"eyes": "eyes", "cornea": {"clear": True, "depth": 0.0028}}
@@ -115,7 +116,7 @@ def test_clear_cornea():
     assert 0.0055 < np.sqrt(R * R - plane * plane) < 0.0068
     d = base_implied.part_defs({"base": b, "parts": {"eyes_cornea": {"roughness": 0.05}}})
     assert d["eyes_cornea"]["transmission"] == 1.0 and d["eyes_cornea"]["roughness"] == 0.05
-    assert base_implied.implied_parts({"base": {"eyes": "eyes", "cornea": True}}) == {"eyes": {"voxel": base_gnm_parts.EYE_PART_VOXEL}}   # (only the eyes' own fine voxel)
+    assert base_implied.implied_parts({"base": {"eyes": "eyes", "cornea": True}}) == {"eyes": {"voxel": base.EYE_PART_VOXEL}}   # (only the eyes' own fine voxel)
 
 
 def test_lashes_default_and_off():

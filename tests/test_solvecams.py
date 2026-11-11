@@ -50,7 +50,8 @@ def test_camera_distance_is_a_freedom_that_keeps_the_picture_scale():
     """cam_moved(dist=): the camera further away with the lens to match: the head's centre stays where it is in the
     picture and as large; points nearer / further than the centre move (perspective). _cam_columns has its column."""
     from hifipushie import humanfit
-    from hifipushie import face_ruler_camera, face_ruler_solve
+    from hifipushie import face_ruler_solve
+    from hifipushie import face_ruler
     cam = {"r": [0.02, 0.0, 0.01], "t": [0.01, -0.02, 0.8], "f": 2700.0, "size": [1152, 1536], "centre": [0.0, -0.13, 1.58], "yaw": -40.0}
     far = face_ruler_solve.cam_moved(cam, dist=30.0)
     assert abs(far["t"][2] / cam["t"][2] - np.exp(0.3)) < 1e-9 and abs(far["f"] / cam["f"] - np.exp(0.3)) < 1e-9
@@ -60,15 +61,15 @@ def test_camera_distance_is_a_freedom_that_keeps_the_picture_scale():
     assert np.abs(a[1:] - b[1:]).max() > 2.0                  # depth off the centre: perspective changes
     obs = [{"type": "landmark", "view": "3q", "name": f"lm{i}.{ax}", "o": 0.0, "J": np.zeros(170), "sig": 1.0, "p": list(map(float, a[i])), "X": list(map(float, X[i]))}
            for i in range(3) for ax in "xy"]
-    C, pri = face_ruler_solve._cam_columns(obs, [{"kind": "3q", "cam": cam}], face_ruler_camera.PHOTO_CAM_SD7)
+    C, pri = face_ruler_solve._cam_columns(obs, [{"kind": "3q", "cam": cam}], face_ruler.PHOTO_CAM_SD7)
     assert C.shape == (6, 7) and len(pri) == 7 and np.abs(C[:2, 6]).max() < 1e-6 and np.abs(C[2:, 6]).max() > 0.01
-    assert face_ruler_camera.PHOTO_CAM_SD7["front"][5] >= 5.0                # the front camera's pitch is free under a prior (not +-2 with a clip)
+    assert face_ruler.PHOTO_CAM_SD7["front"][5] >= 5.0                # the front camera's pitch is free under a prior (not +-2 with a clip)
 
 
 def test_dense_reads_are_no_surer_than_their_measured_error():
-    from hifipushie import face_ruler_camera
-    assert "ears" not in face_ruler_camera.DENSE_REGIONS and "scalp_neck" not in face_ruler_camera.DENSE_REGIONS
-    assert face_ruler_camera.DENSE_REGION_SIG["profile"]["lids"] > face_ruler_camera.DENSE_REGION_SIG["front"]["lids"] >= 2.0   # a true profile's lids: 4 mm on renders;
+    from hifipushie import face_ruler
+    assert "ears" not in face_ruler.DENSE_REGIONS and "scalp_neck" not in face_ruler.DENSE_REGIONS
+    assert face_ruler.DENSE_REGION_SIG["profile"]["lids"] > face_ruler.DENSE_REGION_SIG["front"]["lids"] >= 2.0   # a true profile's lids: 4 mm on renders;
     #   the front's 0.5 (renders) is 2.1 on photographs of scanned heads (readmix): each floor is the larger measurement
-    assert min(min(v.values()) for v in face_ruler_camera.DENSE_REGION_SIG.values()) >= 1.3
-    assert face_ruler_camera.DENSE is False
+    assert min(min(v.values()) for v in face_ruler.DENSE_REGION_SIG.values()) >= 1.3
+    assert face_ruler.DENSE is False

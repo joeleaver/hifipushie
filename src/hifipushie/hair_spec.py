@@ -218,9 +218,6 @@ def lock_width(inp: dict, u):
     return rise * (1 - taper * fall ** 0.8)
 
 
-FOLD_LIMIT = 1.0  # in-plane bend x half width: at 1 the lock's inner edge runs backwards (folds over itself)
-
-
 def folds(sc: Scalp, locks: list, n: int = 80) -> dict:
     """Locks that fold over themselves: where the spine turns within the lock's flat side tighter than its half width
     (in-plane curvature x half width >= 1), the inner edge runs backwards and the lens crumples into overlapping
@@ -244,12 +241,9 @@ def folds(sc: Scalp, locks: list, n: int = 80) -> dict:
         r = np.abs(k) * half
         r[[0, -1]] = 0.0  # the ends' one-sided differences
         i = int(np.argmax(r))
-        if r[i] >= FOLD_LIMIT:
+        if r[i] >= hair.FOLD_LIMIT:
             out[lk["name"]] = [round(float(r[i]), 2), round(float(u[i]), 2)]
     return out
-
-
-ROOT_END_MM = 15.0  # a root end wider than this where it rises out of the layer reads as a blunt end
 
 
 def root_ends(sc: Scalp, g: dict, locks: list, n: int = 80) -> dict:
@@ -271,7 +265,7 @@ def root_ends(sc: Scalp, g: dict, locks: list, n: int = 80) -> dict:
         inp = lk["inputs"]
         f = lock_width(inp, u)
         top = h + 0.5 * inp["Thickness"] * f
-        up = np.nonzero((top - U > ROOT_RISE) & (u < 0.5))[0]
+        up = np.nonzero((top - U > hair.ROOT_RISE) & (u < 0.5))[0]
         if not len(up):
             continue
         k = up[0]
@@ -280,13 +274,9 @@ def root_ends(sc: Scalp, g: dict, locks: list, n: int = 80) -> dict:
         run = float(np.linalg.norm(np.diff(S[j:k + 1], axis=0), axis=1).sum()) if k > j else 0.0
         steep = min(1.0, (top[k] - U[k]) / max(run, 1e-6))  # 1: a wall; a long low ramp shows no cut
         w = 1000 * inp["Width"] * f[k] * steep
-        if w > ROOT_END_MM:
+        if w > hair.ROOT_END_MM:
             out[lk["name"]] = round(float(w), 1)
     return dict(sorted(out.items(), key=lambda kv: -kv[1]))
-
-
-ROOT_RISE = 0.003  # m
-FIN_MM = 3.0  # an edge standing this much more than the lock's own thickness over the layer reads as a fin
 
 
 def fins(sc: Scalp, g: dict, locks: list, n: int = 60) -> dict:
@@ -318,9 +308,6 @@ def fins(sc: Scalp, g: dict, locks: list, n: int = 60) -> dict:
         x = (best - inp["Thickness"]) * 1000
         x[(u < 0.1) | (u > 0.95)] = -np.inf
         k = int(np.argmax(x))
-        if x[k] > FIN_MM:
+        if x[k] > hair.FIN_MM:
             out[lk["name"]] = [round(float(x[k]), 1), round(float(u[k]), 2)]
     return dict(sorted(out.items(), key=lambda kv: -kv[1][0]))
-
-
-LIFT_RAMP = 0.03  # m: a lift grows to its full height this far in from the hairline

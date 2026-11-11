@@ -733,7 +733,7 @@ def rock_scale(T) -> tuple[np.ndarray, np.ndarray]:
     # round each one its own size is written in (half-thickness = its radius, its height over the sea)
     st = (getattr(T, "sea", None) or {}).get("stacks") if isinstance(getattr(T, "sea", None), dict) else None
     if st:
-        from .terrain_volumes import STACK
+        from .terrain_mesh import STACK
         for a in st:
             r = STACK["radius"] * float(a["radius"])
             m = np.hypot(T.X - a["xy"][0], T.Y - a["xy"][1]) < r + 3.0 * T.cell

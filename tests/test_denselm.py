@@ -7,6 +7,7 @@ import pytest
 
 from hifipushie import assets, denselm, store
 from hifipushie import face_ruler_blockin, face_ruler_camera
+from hifipushie import face_ruler
 
 try:
     assets.pack("gnm")
@@ -99,7 +100,7 @@ def test_dense_obs_reads_a_known_change_and_nothing_on_the_head_itself(tess):
         Q[j] = ob["p"]
     obs = face_ruler_camera._dense_obs(head, view, {"xy": Q, "sigma": np.full(L["n"], 0.5)})
     assert max(abs(ob["o"]) for ob in obs) < 1e-6                                  # the head itself: nothing to read
-    assert min(ob["sig"] for ob in obs) >= face_ruler_camera.DENSE_SIG_FLOOR
+    assert min(ob["sig"] for ob in obs) >= face_ruler.DENSE_SIG_FLOOR
     # a known identity change: the reading of the changed head, against J dc
     r = np.random.default_rng(5).standard_normal(170)
     dc = 3.0 * r / np.linalg.norm(r)

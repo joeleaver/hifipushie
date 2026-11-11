@@ -85,9 +85,10 @@ def test_every_tier_fits_its_drawn_budget_back_faces_counted():
     fitted to card_allowance, and the binding one is met within a card's triangles when cards are plentiful."""
     from hifipushie import hair_cards as hc
     from hifipushie import hair_job
-    assert {t: hair_job.tier_drawn_max(t) for t in hair_job.CARD_TIERS} == {"hero": 50000, "main": 20000, "npc": 8000, "far": 1500}
+    from hifipushie import hair
+    assert {t: hair_job.tier_drawn_max(t) for t in hair.CARD_TIERS} == {"hero": 50000, "main": 20000, "npc": 8000, "far": 1500}
     D, locks = _groom()
-    for tier in hair_job.CARD_TIERS:
+    for tier in hair.CARD_TIERS:
         budget, dmax = hair_job.tier_triangles(tier), hair_job.tier_drawn_max(tier)
         S_ = {**hc.STRANDS, **S, **{k: v for k, v in hair_job.tier_settings(tier).items() if k not in ("triangles", "cap_step", "cap")}}
         cards = hk.cut(D, locks, C, S_, None, 0, triangles=budget)

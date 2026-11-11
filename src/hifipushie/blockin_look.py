@@ -6,8 +6,8 @@ from pathlib import Path
 
 import numpy as np
 
+from . import blockin
 from . import blockin_models
-from .blockin import FILL, LIGHT, SQUINT_MM
 from .blockin_clay import _front, brows_on, detect_view, presented_mesh
 from .blockin_expression import _per_view, view_base, view_expression
 from .blockin_models import _boxes
@@ -58,7 +58,7 @@ def lit_render(mesh: dict, cam: dict, img, box=None, px=None, soft: float = 8.0)
         mask = ps["part"] == 0
     c0, w, _ = ls.fit_light(Y, ps["nrm"], mask)
     lt = (c0, w, float(np.median(Y[mask])), 1.0)
-    if LIGHT == "sh":   # ambient + key + fill / bounce: the c0 + w.n light put the nose's base at black (Garrett:
+    if blockin.LIGHT == "sh":   # ambient + key + fill / bounce: the c0 + w.n light put the nose's base at black (Garrett:
         # the band under the nose 0.19-0.34 of the tip's light, his picture 0.6-0.7; SH 0.66)
         _, _, p1 = likeness_render.render(mesh, cam, box, px=px, brows=False, passes=True, ao=True)
         m1 = mask & (p1["part"] == 0) & (np.linalg.norm(p1["nrm"], axis=-1) > 0.5)
@@ -142,7 +142,7 @@ def fill(im, ps, share: float = None):
     on = ps["part"] >= 0
     if not on.any():
         return im.convert("RGB")
-    f = (FILL if share is None else share) * float(np.percentile(a[ps["part"] == 0].mean(-1), 75)) if (ps["part"] == 0).any() else 0.0
+    f = (blockin.FILL if share is None else share) * float(np.percentile(a[ps["part"] == 0].mean(-1), 75)) if (ps["part"] == 0).any() else 0.0
     b = a.copy()
     b[on] = np.sqrt(a[on] ** 2 + f ** 2)
     return Image.fromarray(np.clip(b, 0, 255).astype(np.uint8))
@@ -287,7 +287,7 @@ def look(name: str, out: str, views: list | None = None, T: int = 330, before: s
             olA = np.asarray(ol).copy()
             olA[e] = (30, 200, 30)
             ol = Image.fromarray(olA)
-        sg = float(SQUINT_MM / likeness_render._mm_per_px(cam, mesh["L"][27:48]) * k)
+        sg = float(blockin.SQUINT_MM / likeness_render._mm_per_px(cam, mesh["L"][27:48]) * k)
         sq = lambda im: im.convert("L").filter(ImageFilter.GaussianBlur(sg)).convert("RGB")  # noqa: E731
         y = 18 + i * per * (T + 18)
         for j, im in enumerate((ph, cl, ov, ol, sq(ph), sq(cl))):

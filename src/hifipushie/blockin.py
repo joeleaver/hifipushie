@@ -272,3 +272,83 @@ def direction(name: str) -> np.ndarray:
 def _macro_read(c) -> dict:
     from . import humanmacro as hm
     return hm.read(np.asarray(c, float)[:hm.K])
+
+
+CAM_STALE = (0.10, 0.30)     # cameras are STALE when the head's landmarks through them are this far off the pictures' own
+# stored points: 10 % in size, or 0.3 of the face's spread in place (a head switched to native is 10-20 % larger)
+
+NATIVE_REFUSE = {
+    "head_scale": "a GNM-native head stands at GNM's own size (x base.head.size, by default the stature's allometry); the "
+                  "style's head_size is not applied to it",
+    "gnm_base": "a GNM-native head IS GNM's true base: there is no MakeHuman head under it to blend",
+    "gnm_base_rest": "a GNM-native head IS GNM's true base: there is no MakeHuman head under it to blend",
+    "dimorphism": "the dimorphism field is MakeHuman's sex difference laid on the body-carried head; a GNM-native head has none "
+                  "(the sex is in the identity: the `sex` move)",
+    "eye_size": "a GNM-native head has GNM's own eyeball at its real size (the lids are shaped on it); the iris is the "
+                "identity's limbus (iris_mm)",
+}
+
+FIT_LENS_SD = 0.05      # block_in_start's camera fit: the lens at its prior (EXIF / lens_mm, else a 70 mm portrait), +- this
+FIT_PITCH_SD = 5.0      # ... and the camera level with the head, +- this many degrees
+
+# ---------------------------------------------------------------- per-picture expression
+# GNM's identity is the relaxed neutral; a picture shows the person WITH an expression (a front picture with a slight smile:
+# fuller lips, lifted corners, a cheek apple). Comparing the neutral clay with it leaks the smile into mouth / cheek
+# identity steps. Each view may carry its own fitted expression (human_refs "expressions": one {GNM expression comp:
+# value} per view, {} = neutral), applied in look / focus / the table / lid reads / camera refits, never to the model.
+# Lower face only by default: with 6 eye-region comps per side a fit dropped the upper lid from 0.75 to 0.36 iris
+# radii (the detector's calibrated lid points disagree with the iris-radius lid read that lid_read matches: the comps
+# fought the lid pose); EYE_COMPS is the opt-in (a picture that clearly squints)
+EXPR_COMPS = {"lower_face_region": 20}
+EYE_COMPS = {"left_eye_region": 6, "right_eye_region": 6}
+EXPR_SD = {"lower_face_region": 0.8, "left_eye_region": 0.5, "right_eye_region": 0.5}
+
+# block_in_solve's defaults (solvereads, 2026-10-12; each decided by the validation in the notes' "## solvereads")
+SOLVE_HOLD = None            # "auto": every measure no read looks at is held at the start head's value
+SOLVE_EXPRESSION = False     # "view" | "shared": the pictures' expression as a nuisance (face_ruler_blockin.EXPR_SET)
+SOLVE_JAW_LM = None          # detector landmarks added to the differential anchors (the jaw line: 3..13)
+CAM_FIRST = 1                # cameras-first rounds of every block_in_solve call (the head held; "refit": 2, wider, and the new start)
+SEESAW_COS = -0.2            # a step whose cosine with the last call's step is under this is halved
+RELAX_KEEP = 0.85            # the cmax down-weighting comes down at most this share a call (it goes up at once)
+
+BROW_RGB = np.array([70.0, 52.0, 40.0])
+
+LIP_TINT = np.array([0.98, 0.74, 0.74])   # the clay's vermilion, x skin: presentation only (no reader sees it)
+
+_IRIS: dict = {}
+
+# Joe (2026-10-10): "having the reviewer focus more on each feature, then zoom back out after making each change".
+# Per feature: the model's 68 landmarks that frame and register it, MediaPipe's matching points on the picture (the
+# same anatomical points: feature-local registration, a 2D shift), MediaPipe contours drawn for the local outline
+# difference, and the checklist stages whose rows are its table.
+FEATURES = {
+    "eyes": {"lm": list(range(17, 27)) + list(range(36, 48)), "pairs": [(36, 33), (39, 133), (42, 362), (45, 263)],
+             "lines": [[33, 246, 161, 160, 159, 158, 157, 173, 133, 155, 154, 153, 145, 144, 163, 7, 33],
+                       [263, 466, 388, 387, 386, 385, 384, 398, 362, 382, 381, 380, 374, 373, 390, 249, 263],
+                       [70, 63, 105, 66, 107], [300, 293, 334, 296, 336], [46, 53, 52, 65, 55], [276, 283, 282, 295, 285]],
+             "stages": ("eyes", "brows"), "items": ("under_eye", "brow_ridge", "prof_brow_ridge"), "squint_mm": 3.0, "pad": 1.12},
+    "nose": {"lm": list(range(27, 36)) + [39, 42], "pairs": [(27, 168), (30, 4), (31, 98), (33, 2), (35, 327)],
+             "lines": [[168, 6, 197, 195, 5, 4], [64, 98, 97, 2, 326, 327, 294], [48, 115, 220, 45, 4, 275, 440, 344, 278]],
+             "stages": ("nose",), "squint_mm": 3.0},
+    "mouth": {"lm": list(range(48, 68)) + [33], "pairs": [(48, 61), (54, 291), (51, 0), (57, 17), (62, 13), (66, 14)],
+              "lines": [[61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291, 375, 321, 405, 314, 17, 84, 181, 91, 146, 61],
+                        [78, 191, 80, 81, 82, 13, 312, 311, 310, 415, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95, 78]],
+              "stages": ("mouth",), "items": ("nasolabial_fold",), "squint_mm": 3.0},
+    "chin_jaw": {"lm": list(range(3, 14)) + [57], "pairs": [(8, 152), (57, 17), (6, 176), (10, 400)],
+                 "lines": [[132, 58, 172, 136, 150, 149, 176, 148, 152, 377, 400, 378, 379, 365, 397, 288, 361]],
+                 "stages": ("chin_jaw",), "items": ("width_jaw", "width_chin", "jaw_taper", "jaw_gonial", "jaw_ramus",
+                                                    "jaw_border", "corner_jaw", "jaw_neck_step"), "squint_mm": 5.0},
+    "cheeks": {"lm": [1, 2, 3, 13, 14, 15, 31, 35, 36, 45, 48, 54], "pairs": [(36, 33), (45, 263), (31, 98), (35, 327)],
+               "lines": [[127, 234, 93, 132, 58], [356, 454, 323, 361, 288]],
+               "stages": (), "items": ("width_cheekbone", "corner_cheekbone", "cheek_hollow", "nasolabial_fold",
+                                       "under_eye", "width_temple", "corner_temple"), "squint_mm": 6.0},
+    "ears": {"lm": [0, 1, 2, 15, 16], "pairs": [], "lines": [], "stages": ("ears",), "squint_mm": 4.0},
+}
+RAKE = np.array([-0.85, -0.35, -0.25])   # camera frame: a grazing key from the picture's upper left (forms, not tone)
+
+RAKE = RAKE / np.linalg.norm(RAKE)
+
+
+# The modules this one was split into (C419). Its constants stay HERE (C422): tests/test_constants_address.py.
+MODULES = ("blockin_models", "blockin_expression", "blockin_steps", "blockin_table", "blockin_clay",
+           "blockin_look", "blockin_focus", "blockin_lid_measure")

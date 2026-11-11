@@ -3,6 +3,7 @@ cap single; layers stay contiguous ranges; the material is single-sided."""
 import numpy as np
 
 from hifipushie import hair_export
+from hifipushie import hair
 
 
 def test_back_faces():
@@ -24,8 +25,8 @@ def test_back_faces():
 
 
 def test_single_sided_material():
-    assert hair_export.BACK_FACES == 1
-    assert "not doubleSided" in hair_export.CARD_RECIPE_FACES and hair_export.CARD_RECIPE_FACES != hair_export.CARD_RECIPE
+    assert hair.BACK_FACES == 1
+    assert "not doubleSided" in hair.CARD_RECIPE_FACES and hair.CARD_RECIPE_FACES != hair.CARD_RECIPE
 
 
 if __name__ == "__main__":

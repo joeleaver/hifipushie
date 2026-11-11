@@ -6,10 +6,12 @@ import json
 
 import numpy as np
 
+from . import base
+from . import base as base_mod
 from . import retopo
-from .base import _CACHE, source, template_joints
+from .base import source, template_joints
 from .base_gnm_head import gnm_head
-from .base_identity import FIT_KEYS, _gnm_data
+from .base_identity import _gnm_data
 from .base_imls import _unit
 
 def head_of(s: dict, base: dict):
@@ -43,12 +45,12 @@ def head_of(s: dict, base: dict):
                 **({"simplify_keep": st["simplify_keep"]} if "simplify_keep" in st and "simplify_keep" not in head
                    else {})}
     key = ("head", json.dumps([head, mid.round(5).tolist(), up.round(5).tolist()], sort_keys=True))
-    if key not in _CACHE:
-        _CACHE[key] = gnm_head(head, mid, up)
+    if key not in base_mod._CACHE:
+        base_mod._CACHE[key] = gnm_head(head, mid, up)
         if headfit.applies(base):
-            _CACHE[key]["room"] = True
-            _CACHE[key]["own_neck"] = bool(head.get("own_neck"))
-    return _CACHE[key]
+            base_mod._CACHE[key]["room"] = True
+            base_mod._CACHE[key]["own_neck"] = bool(head.get("own_neck"))
+    return base_mod._CACHE[key]
 
 
 def posed_measures(head: dict) -> dict:
@@ -61,7 +63,7 @@ def posed_measures(head: dict) -> dict:
     x = lm[:, 0]
     vals = [x[16] - x[0], x[12] - x[4], x[10] - x[6], ey - z[8], ey - z[57], ey - z[33], x[35] - x[31],
             x[54] - x[48], ey - 0.5 * (z[62] + z[66])]
-    return {k: round(float(abs(v) / io), 3) for k, v in zip(FIT_KEYS, vals)}
+    return {k: round(float(abs(v) / io), 3) for k, v in zip(base.FIT_KEYS, vals)}
 
 
 def plane_measures(head: dict) -> dict:
@@ -125,9 +127,6 @@ def ala_width(head: dict) -> float:
     return float((V[iv, 0].max() - V[iv, 0].min()) / io)
 
 
-IRIS_SPOT = 1.83  # an iris paint spot's diameter on the eyeball seen from the front, over its "width" (measured in renders)
-
-
 def eye_size(head: dict) -> dict:
     """The eye opening's size from its lid landmarks seen from the front, over the interocular (eye centres): width
     corner to corner (lm 36-39 / 42-45), height upper lid margin to lower (37-41, 38-40 / 43-47, 44-46), both eyes'
@@ -181,22 +180,10 @@ def eye_opening(head: dict, cell: float = 0.0005) -> list:
     return out
 
 
-# face landmarks as joints (iBUG 68 order, GNM's head_sparse_68: barycentric on its mesh), subject's left = ".L"
-LANDMARKS = {"lm_chin": 8, "lm_nose_tip": 30, "lm_nose_base": 33, "lm_nose_bridge": 27, "lm_lip_upper": 51,
-             "lm_lip_lower": 57, "lm_mouth_corner.L": 54, "lm_nostril.L": 35, "lm_eye_inner.L": 42,
-             "lm_eye_outer.L": 45, "lm_brow_inner.L": 22, "lm_brow_mid.L": 24, "lm_brow_outer.L": 26,
-             **{f"lm_jaw_{k}.L": 16 - k for k in range(8)},
-             # the lips' outline (outer vermilion edge, the subject's left half) and the inner lip line, for paint
-             # outlines: upper peak, upper side, lower side, lower mid-side; inner upper/lower
-             "lm_lip_peak.L": 52, "lm_lip_upper_side.L": 53, "lm_lip_lower_side.L": 55, "lm_lip_lower_mid.L": 56,
-             "lm_lip_inner_upper.L": 63, "lm_lip_inner_lower.L": 65, "lm_lip_inner_upper": 62,
-             "lm_lip_inner_lower": 66}
-
-
 def _landmark_joints(head: dict) -> dict:
     lm = head["lm68"]
     out = {}
-    for name, i in LANDMARKS.items():
+    for name, i in base.LANDMARKS.items():
         p = lm[i]
         out[name] = {"pos": [round(float(x), 4) for x in p], "r": 0.005}
     for name in ("lm_lid_upper.L", "lm_lid_lower.L"):
@@ -211,15 +198,12 @@ def _landmark_joints(head: dict) -> dict:
     return out
 
 
-VERM_N = 17  # points along each edge of the lips' outlines (skin.OUTLINES_DENSE)
-
-
 def _vermilion_edges() -> dict:
     """GNM's lips' outline edges (its raw ids, right corner -> left, VERM_N each): the upper / lower vermilion's outer
     border (the upper_lip / lower_lip groups' edge against the skin: the 68 landmarks 48-59 lie on it, but seven
     chords cut the Cupid's bow and the corners off) and the inner edges (the contact ring's upper / lower halves)."""
-    if "verm_edges" in _CACHE:
-        return _CACHE["verm_edges"]
+    if "verm_edges" in base._CACHE:
+        return base._CACHE["verm_edges"]
     from . import faceslide
     g = _gnm_data()
     X = np.asarray(g["template_vertex_positions"], float)
@@ -238,8 +222,8 @@ def _vermilion_edges() -> dict:
     side = R["upper"][C]  # (GNM's own upper_lip / lower_lip groups)
     out["iu"], out["il"] = C[side][np.argsort(X[C[side], 0])], C[~side][np.argsort(X[C[~side], 0])]
     # VERM_N samples of each by index along x (the edges are single-valued enough in x for an outline)
-    _CACHE["verm_edges"] = {k: v[np.round(np.linspace(0, len(v) - 1, VERM_N)).astype(int)] for k, v in out.items()}
-    return _CACHE["verm_edges"]
+    base._CACHE["verm_edges"] = {k: v[np.round(np.linspace(0, len(v) - 1, base.VERM_N)).astype(int)] for k, v in out.items()}
+    return base._CACHE["verm_edges"]
 
 
 def _vermilion_joints(head: dict) -> dict:

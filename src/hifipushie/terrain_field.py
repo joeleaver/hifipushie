@@ -7,14 +7,12 @@ import math
 import numpy as np
 from scipy import ndimage
 
+from . import terrain_mesh
 from . import fieldjit, profiling
 from .profiling import span as _span
-from .terrain_materials import THIN_RELIEF, THIN_VOID
 from .terrain_mesh import _f64, smax, smin, smoothstep
 from .terrain_relief import _local_thickness, _structure_grain, dig_bunker, dig_doline, hold_rivers, rock_relief
-from .terrain_volumes import (
-    FALL_SEAT, NEAR, NORMAL_H, RELIEF_CUT, RELIEF_FADE, STACK_BUILD, STACK_CARVE, Tube, cut_neck,
-)
+from .terrain_volumes import Tube, cut_neck
 
 class Metric:
     """A Field read for distances (the AO's rays): its value with the waterfalls' slope taken from the faced column
@@ -28,9 +26,6 @@ class Metric:
         if getattr(self.field, "faces", None) is None:
             return self.field.value(p)
         return self.field.value(p, metric=True)
-
-
-FACE_SLOPE_H = 0.25  # m: the stencil of the slope correction where a fall's face edits the column (Field.column)
 
 
 class Field:
@@ -79,9 +74,9 @@ class Field:
             # The relief's own weight keeps thin rock (an arch's fin, slim stacks, narrow headlands): bounded there by
             # the rock's local half-thickness at the point's height (`thin_cap`), so it can't carve through or cut a
             # top off. Field.steep (the cliff region, fallen blocks, the heightfield facets' removal) stays as before.
-            self.relief_w = self.steep if THIN_RELIEF <= 0 else self.steep.copy()
+            self.relief_w = self.steep if terrain_mesh.THIN_RELIEF <= 0 else self.steep.copy()
             self.steep = self.steep * (1 - 0.9 * self.thin)
-            if THIN_RELIEF <= 0:
+            if terrain_mesh.THIN_RELIEF <= 0:
                 self.relief_w = self.steep
             else:
                 # (on the ground before any style softened it: a thin piece runs along a coast across zones and its
@@ -152,7 +147,7 @@ class Field:
                 # level top under-reported the field there 6x, so the AO rays found rock everywhere: a black slab
                 # in the game (pushieworld note 124)
                 xk, yk = np.asarray(x, float)[k], np.asarray(y, float)[k]
-                e = FACE_SLOPE_H
+                e = terrain_mesh.FACE_SLOPE_H
                 hx = [self.faces.column(xk + d, yk, col(xk + d, yk), col) for d in (e, -e)]
                 hy = [self.faces.column(xk, yk + d, col(xk, yk + d), col) for d in (e, -e)]
                 gx, gy = (hx[0] - hx[1]) / (2 * e), (hy[0] - hy[1]) / (2 * e)
@@ -252,7 +247,7 @@ class Field:
         if not len(k):
             return R
         out = np.asarray(R, float).copy()
-        cap = np.maximum(THIN_RELIEF * hw[k], 1e-6)
+        cap = np.maximum(terrain_mesh.THIN_RELIEF * hw[k], 1e-6)
         out[k] = out[k] + t[k] * (cap * np.tanh(out[k] / cap) - out[k])
         return out
 
@@ -287,13 +282,13 @@ class Field:
             if near is not None:
                 # rock relief on walls and roofs, scaled to the passage (a 1 m slot doesn't take 0.8 m facets), and
                 # none on floors (a person walks there)
-                w = smoothstep(NEAR, 0.0, d) * self._relief_cap(size) * smoothstep(0.3, 1.5, above)
+                w = smoothstep(terrain_mesh.NEAR, 0.0, d) * self._relief_cap(size) * smoothstep(0.3, 1.5, above)
                 near[k] = np.maximum(near[k], w * vol.relief)
                 if getattr(vol, "build", None) is not None and getattr(self, "build_w", None) is not None:
                     # (a volume whose relief may only carve, or build at most `build` m: see Stack)
                     # (1 on and in the stack, whatever share of the relief its size allows: weighted by that share the
                     # cap held only partly and a 0.46 m carve cut the top of an anime stack loose)
-                    self.build_w[k] = np.maximum(self.build_w[k], smoothstep(NEAR, 0.0, d))
+                    self.build_w[k] = np.maximum(self.build_w[k], smoothstep(terrain_mesh.NEAR, 0.0, d))
                 if self.floor_guard is not None:
                     self.floor_guard[k] = np.minimum(self.floor_guard[k], np.where(np.isinf(above), 1.0,
                                                                                   smoothstep(0.3, 1.5, above)))
@@ -321,7 +316,7 @@ class Field:
                 with _span("field.fallen", leaf=True):
                     # (the ground a block sits on: the column's, less what the rock relief carves there at most:
                     # seated on the column alone a block hung 0.7 m over relief-carved rock)
-                    carve = FALL_SEAT * self.rock["reach"]
+                    carve = terrain_mesh.FALL_SEAT * self.rock["reach"]
                     sd = terrain_blocks.fallen_sd(
                         p[kf], lambda xy: self.column(xy[:, 0], xy[:, 1])[0]
                         - carve * np.clip(self.relief_at(xy[:, 0], xy[:, 1]), 0, 1),
@@ -336,7 +331,7 @@ class Field:
                 # rock between a face and the void behind it is thin whatever the grid says (full relief over a sea
                 # cave's mouth cut a piece of its roof free 4 m over the heightmap; capping it by the slab's thickness
                 # instead folded cave walls into shards)
-                nv = smoothstep(THIN_VOID, 0.5 * THIN_VOID, dvoid)
+                nv = smoothstep(terrain_mesh.THIN_VOID, 0.5 * terrain_mesh.THIN_VOID, dvoid)
                 j = np.flatnonzero(nv > 0)
                 if len(j):
                     rw = rw.copy()
@@ -348,7 +343,7 @@ class Field:
                 # its 1.8 m facets built a sheet of rock across crown_tube (pushieworld note 117: width 0, a 1.3 m
                 # step), which the walk without rock relief (set_terrain's) never saw
                 reach = self.rock["reach"]
-                cv_ = smoothstep(NEAR, 0.0, dvoid) * (1.0 - smoothstep(2.0 * reach, reach, depth))
+                cv_ = smoothstep(terrain_mesh.NEAR, 0.0, dvoid) * (1.0 - smoothstep(2.0 * reach, reach, depth))
                 j = np.flatnonzero(cv_ > 0)
                 if len(j):
                     rw = rw.copy()
@@ -358,13 +353,13 @@ class Field:
                 if cm.any():
                     rw = rw * (1.0 - cm)
             w = np.maximum(rw * guard, near)
-            k = np.flatnonzero((w > RELIEF_CUT) & (np.abs(F) < self.rock["reach"]))
+            k = np.flatnonzero((w > terrain_mesh.RELIEF_CUT) & (np.abs(F) < self.rock["reach"]))
             if len(k):
                 # (the weight eased to 0 AT the cut: taken as it was, the relief stepped in at w = 0.01 as 1% of its
                 # full size, a 2-3 cm step in the field along the weight's 0.01 contour, metres out on the grass round
                 # every rock face; the maps' normals drew it as thin dark dashed cracks: pushieworld note 104)
                 w = w.copy()
-                w[k] = w[k] * smoothstep(RELIEF_CUT, RELIEF_FADE, w[k])
+                w[k] = w[k] * smoothstep(terrain_mesh.RELIEF_CUT, terrain_mesh.RELIEF_FADE, w[k])
                 g = self.grain_at(p[k, 0], p[k, 1]) if self.grain is not None else None
                 fd = self.face_dir(p[k, 0], p[k, 1])
                 a_ = rw[k] * guard[k]
@@ -380,7 +375,7 @@ class Field:
                                                           sharp=getattr(self.micro, "sharp", None))
                         if "sharp" in I:  # (the maps' share of the blocks weighted as rock_relief weights them)
                             I["sharp"] = I["sharp"] * smoothstep(4.0, 1.5, depth[k]) * (1.0 - u) ** 3
-                hw, tw = self.thin_at(p[k]) if THIN_RELIEF > 0 else (None, None)
+                hw, tw = self.thin_at(p[k]) if terrain_mesh.THIN_RELIEF > 0 else (None, None)
                 if nv is not None and tw is not None:  # (none of thin rock's rules near a void: see above)
                     tw = tw * (1.0 - nv[k])
                 ts = tw
@@ -397,7 +392,7 @@ class Field:
                         # stood a lip of rock in the air (tl2_island stack2, a 30-triangle piece floating 0.75 m over
                         # the heightmap); blended by the stack's relief weight, so the field stays continuous
                         bw = self.build_w[k]
-                        R = R + bw * (np.clip(R, -STACK_BUILD, STACK_CARVE) - R)
+                        R = R + bw * (np.clip(R, -terrain_mesh.STACK_BUILD, terrain_mesh.STACK_CARVE) - R)
                     F[k] = F[k] + (R if tw is None else self.thin_cap(R, hw, tw))
                 if self.micro is not None:  # (bake-only fine rock: below the meshing voxel, for the maps)
                     with _span("field.micro", leaf=True):
@@ -503,7 +498,7 @@ def _project(field, P, v, fixed=None, iterations=4):
         ok = np.isfinite(step).all(1)
         P[todo[ok]] -= step[ok]
         todo = todo[ok & (n[:, 0] > 1e-4 * v)]
-    _, g = field.value_gradient(P, NORMAL_H * v)
+    _, g = field.value_gradient(P, terrain_mesh.NORMAL_H * v)
     # (where the field is flat at the scale of the normal's stencil (the cliff shell's back deep under a lip, where
     # front and back are capped constants), the gradient is zero: a zero normal in the GLB (invalid glTF), and the
     # seam check read the two tiles' identical zero normals as "differ by 90 deg". Wider stencils, then up)

@@ -446,6 +446,7 @@ def block_in_solve(name: str, out: str | None = None, share: float = 1.0, seen: 
     (default "prior": ANSUR's girth), dense, detector, hair_edge, hold, expression, chin_points, anchors, parse, out,
     share, seen, save. A known lens (lens_mm / EXIF) keeps its distance. Details: guide(topic="block_in_solve")."""
     from . import blockin_steps
+    from . import blockin
     if parse not in ("auto", "on", "off"):
         raise ValueError('block_in_solve: parse = "auto" | "on" | "off"')
     if hold not in ("default", "auto", "none") or expression not in ("default", "view", "shared", "lower", "none"):
@@ -456,8 +457,8 @@ def block_in_solve(name: str, out: str | None = None, share: float = 1.0, seen: 
         raise ValueError('block_in_solve: dense = "on" | "off"; detector = "mesh" | "anchors"; hair_edge = "on" | "off" (each also "default")')
     rep = blockin_steps.solve_step(name, out=out, share=share, seen=seen, cameras=cameras, anchors=anchors,
                         parse={"auto": "auto", "on": True, "off": False}[parse],
-                        hold={"default": blockin_steps.SOLVE_HOLD, "auto": "auto", "none": None}[hold],
-                        expression={"default": blockin_steps.SOLVE_EXPRESSION, "view": "view", "shared": "shared", "lower": "lower", "none": False}[expression],
+                        hold={"default": blockin.SOLVE_HOLD, "auto": "auto", "none": None}[hold],
+                        expression={"default": blockin.SOLVE_EXPRESSION, "view": "view", "shared": "shared", "lower": "lower", "none": False}[expression],
                         chin={"chin_lm": {"auto": "auto", "on": "xy", "off": "none"}[chin_points],
                               "size": {"held": True, "free": False, "iris": "iris", "iris_pin": "iris_pin"}[size],
                               "neck": {"prior": True, "held": "held", "free": False}[neck] if isinstance(neck, str) else float(neck)},
@@ -507,8 +508,8 @@ def block_in_solve(name: str, out: str | None = None, share: float = 1.0, seen: 
 
 
 def fr_say(k: str) -> str:
-    from . import face_ruler_blockin
-    return face_ruler_blockin.EXPR_SAY.get(k, k)
+    from . import face_ruler as face_ruler_mod
+    return face_ruler_mod.EXPR_SAY.get(k, k)
 
 
 @mcp.tool(structured_output=False)

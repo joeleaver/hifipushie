@@ -33,6 +33,8 @@ import json
 import os
 from pathlib import Path
 
+import numpy as np
+
 CHECKLIST = Path(__file__).with_name("likeness.json")
 VENV = os.environ.get("HIFIPUSHIE_MEDIAPIPE", "/mnt/data/hifipushie/facerefs_venv")
 DETECT_PX = 768       # the face crop is scaled to this before detection (MediaPipe works on ~200-800 px faces)
@@ -75,6 +77,92 @@ def stage_names() -> list:
     return json.loads(CHECKLIST.read_text())["stages"]
 
 
+# ---- detection (MediaPipe in its own venv: Apache-2.0, not a dependency of the package) ----------------------------
+_DETECT_SRC = r'''
+import json, sys
+import numpy as np
+import mediapipe as mp
+from mediapipe.tasks import python as mpt
+from mediapipe.tasks.python import vision
+from PIL import Image
+opts = vision.FaceLandmarkerOptions(base_options=mpt.BaseOptions(model_asset_path=sys.argv[2]), num_faces=1,
+                                    output_face_blendshapes=True, output_facial_transformation_matrixes=True)
+det = vision.FaceLandmarker.create_from_options(opts)
+out = []
+for p in sys.argv[3:]:
+    im = Image.open(p).convert("RGB")
+    res = det.detect(mp.Image(image_format=mp.ImageFormat.SRGB, data=np.asarray(im)))
+    if not res.face_landmarks:
+        out.append(None)
+        continue
+    d = {"P": [[q.x * im.size[0], q.y * im.size[1]] for q in res.face_landmarks[0]]}
+    if res.face_blendshapes:
+        d["bs"] = {b.category_name: round(float(b.score), 4) for b in res.face_blendshapes[0]}
+    if res.facial_transformation_matrixes:
+        d["M"] = np.asarray(res.facial_transformation_matrixes[0], float).tolist()
+    out.append(d)
+json.dump(out, open(sys.argv[1], "w"))
+'''
+
+_RUN = []
+KEY = np.array([-0.35, -0.45, -0.82])  # camera frame (x right, y down, z into the picture): a soft key from the upper left
+
+KEY /= np.linalg.norm(KEY)
+SKIN = np.array([222.0, 196.0, 176.0])
+
+SHADOW_MM = 0.25     # shadow / AO depth maps: mm per map pixel
+AO_DIRS = 96         # AO: directions over the sphere (a Fibonacci set), each one orthographic depth map
+
+
+OCCLUDE_R = 0.2      # m: occluders are the mesh within this of the eyes' midpoint (a one-mesh body is 1.7 m tall:
+
+SOFT_N = 16   # soft shadows: samples over the light's disc
+
+REFIT = ("three_quarter", "profile")  # views whose camera is refitted on the detector's points (a loose painting)
+REFIT_ROUNDS = 2
+INFER_TOL = 1.5     # a profile item read from a three-quarter view ("inferred"): its tolerance x this
+SPECIAL = ("shape", "jaw", "contour")   # measured in compare (they need the model's render or a trace), not from points alone
+
+SHADE_LIGHT = "sh"   # the shading rows' light: "sh" (fit_light_sh) | "linear" (fit_light: c0 + w.n), as before 2026-10-10
+
+MIRROR = {61: 291, 234: 454, 33: 263, 133: 362, 145: 374, 159: 386, 129: 358, 98: 327, 172: 397, 105: 334, 70: 300,
+          107: 336, 52: 282, 58: 288, 136: 365, 116: 345, 123: 352, 50: 280, 205: 425, 147: 376, 187: 411, 93: 323}
+
+CONTOUR_WHY = {"upper_lip": "the lips don't break this contour (no notch between them at this angle)",
+               "lower_lip": "the lips don't break this contour (no notch between them at this angle)",
+               "forehead_slope": "the trace doesn't run 4 cm up the forehead"}
+
+# ---- what a set of pictures can support -----------------------------------------------------------------------------
+YAW_DOUBT = 6.0        # deg between the detector's head yaw and the fitted camera's: past it the picture isn't one projection
+YAW_MM = 0.5           # mm of tolerance added per degree of that doubt on a turned view's depth items (1 deg ~ 1 mm of gap)
+YAW_ITEMS = ("nose_gap", "nose_tip", "cheek_line", "chin_projection", "brow_ridge")
+EXPR = {"smile": (("mouthSmileLeft", "mouthSmileRight"), 0.3), "mouth open": (("jawOpen",), 0.15),
+        "squint": (("eyeBlinkLeft", "eyeBlinkRight", "eyeSquintLeft", "eyeSquintRight"), 0.45),
+        "brows raised": (("browInnerUp", "browOuterUpLeft", "browOuterUpRight"), 0.4),
+        "frown": (("browDownLeft", "browDownRight"), 0.45)}
+# THE RULE: an expression read on a reference is not the person's shape. The items it moves are fitted through the
+# model's POSE (base.head.pose: an expression), not its identity; the neutral head keeps typical values.
+EXPR_BIAS = {"squint": ["eye_opening", "eye_aspect", "upper_lid_show", "brow_eye"],
+             "frown": ["brow_eye", "brow_tilt", "brow_arch"],
+             "brows raised": ["brow_eye", "brow_arch", "brow_tilt", "eye_opening", "upper_third"],
+             "smile": ["mouth_corner_tilt", "mouth_width", "nasolabial_fold", "upper_lip", "eye_opening", "width_mouth"],
+             "mouth open": ["lower_third", "lower_over_middle", "face_height", "chin_height", "upper_lip", "lower_lip",
+                            "lip_ratio", "mouth_line"]}
+# item -> the pose lever that takes it when an expression biases it (path, step, range, default)
+EXPR_LEVERS = {"eye_opening": ("pose.lid_upper", 0.001, (-0.003, 0.004), 0.0),
+               "brow_eye": ("pose.brow_inner", -0.001, (-0.004, 0.003), 0.0),
+               "mouth_corner_tilt": ("pose.smile", 0.001, (-0.004, 0.004), 0.0)}
+
+# ---- focus panels: photo | model at the same crop and camera, the feature drawn on both -----------------------------
+PANEL_PX = 300
+PHOTO_COL, MODEL_COL = (255, 60, 40), (40, 210, 255)
+
+# ---- staged fitting from the sheet: big to small, each stage through an existing control, guarded ------------------
+JAW_CONTOUR = set(range(0, 7)) | set(range(10, 17))  # the 68's jaw contour: GNM's and the detector's differ (onemesh2):
+#                                                     widths come from the outline fit instead; the chin (7-9) stays
+
+_PHOTOS = {}
+
 LEVERS = {
     # item id: (path in base.head, step, (lo, hi), default) -- 1-D secant fits on the item's own signed miss
     "cheek_hollow": ("shape.hollow", 0.002, (0.0, 0.008), 0.0),
@@ -94,9 +182,7 @@ LEVERS = {
     "mouth_corner_tilt": ("pose.smile", 0.001, (-0.004, 0.004), 0.0),
 }
 
-
 LEVERS["prof_brow_ridge"] = ("features.brow_ridge", 0.4, (-1.5, 1.5), 0.0)
-
 
 LEVERS["prof_nose_base"] = ("shape.nose_tip.up", 5.0, (-10.0, 25.0), 0.0)   # the tip turned up / down (deg)
 LEVERS["prof_tip_height"] = ("shape.nose_tip.up", 5.0, (-10.0, 25.0), 0.0)
@@ -123,3 +209,33 @@ LEVERS["prof_lower_lip"] = ("sliders.lip_lower_roll", 0.25, (-1.0, 1.0), 0.0)
 # the nose's dorsal widths (shading items: the side wall off the dorsal line against the dorsum)
 LEVERS["radix_width"] = ("sliders.nose_radix_width", 0.25, (-1.0, 1.0), 0.0)
 LEVERS["dorsum_width"] = ("sliders.nose_dorsum_width", 0.25, (-1.0, 1.0), 0.0)
+LEVER_VIEWS = {"shape": ("front",)}   # shading is scored on the front photo only (a painting's light isn't one light)
+
+
+BARE = {"nose_tip": "up"}   # controls that may be a bare number: which key of their dict form it is
+
+PROFILE_PARTS = {   # part -> (region group(s), contour, heights it reads (levels, mm either side), landmarks held)
+    "nose": ("nose_region", "nose", None, None),
+    "chin": (["chin_region", "lower_lip_region"], "outer", ("sto", 6.0, "chin", 9.0),
+             [i for i in range(17, 68) if i not in (55, 56, 57, 58, 59, 65, 66, 67)]),
+    # the cheek's fullness at the mouth's height (the far cheek's line in a turned view), the front outline held
+    "cheek": (["left_cheek_region", "right_cheek_region"], "outer", ("sn", 2.0, "sto", 10.0), list(range(17, 68))),
+}
+PROFILE_ITEMS = {"cheek": ["prof_cheek_line"], "nose": ["prof_nose_tip", "prof_nose_gap", "prof_nose_length", "prof_bridge_bow"],
+                 "chin": ["prof_chin", "prof_chin_height", "prof_mentolabial"]}
+PROFILE_ROUNDS = 5
+PROFILE_DONE = 1.5    # mm rms of the contour's miss at its vertices: done
+
+
+PROFILE_FRONT = {"nose": list(range(27, 36)), "chin": [7, 8, 9, 56, 57, 58]}
+
+
+PROFILE_HOLD_N = 60     # region vertices held in the front picture's plane
+PROFILE_HOLD_W = 3      # ... each counted this many times against a contour vertex
+PROFILE_GAIN = 0.7      # share of the contour's miss asked a round (to the contour, not past it)
+PROFILE_SIGMA = 1.6     # a round that takes the region's components past this is not taken (plausibility)
+
+
+# The modules this one was split into (C419). Its constants stay HERE (C422): tests/test_constants_address.py.
+MODULES = ("likeness_detect", "likeness_render", "likeness_measure", "likeness_sides", "likeness_compare",
+           "likeness_notes", "likeness_panels", "likeness_stages", "likeness_fit")

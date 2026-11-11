@@ -3,25 +3,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from .face_ruler import _C, _gnm
-
-EXPR_SET = ("compress_face", "surprise", "squint", "lips_roll_in", "corners_down", "happy", "mouth_left", "mouth_right")
-EXPR_SAY = {"compress_face": "frown / brows drawn down and together", "surprise": "brows raised (jaw dropped)", "squint": "squint",
-            "lips_roll_in": "lips pressed", "corners_down": "mouth corners down", "happy": "smile (corners pulled)",
-            "mouth_left": "mouth pulled to its left", "mouth_right": "mouth pulled to its right"}
-# the reads an expression may explain: the INTERIOR ones. TRIED with the outlines in (solvereads): per-view expression then
-# ate the profile (compress +0.9, surprise -0.9 on the 72 deg view: chin 10 mm back, the head 3.5 mm rms from the truth
-# after three calls against 1.8 without the term): a silhouette cannot tell an expression from a shape.
-EXPR_TYPES = ("landmark", "lid", "lip", "dense", "mp")
-# (readmix, 2026-10-14) expression="lower": each picture's LOWER-FACE expression free (the mouth: a slight smile, lips pressed /
-# rolled, corners down, mouth to one side), the upper face's classes PINNED at neutral (EXPR_PIN): solvereads' and groundtruth's
-# per-view runs let squint / surprise / compress take the misfit ("finds 0.18 of 0.30 plus spurious surprise / squint");
-# a side view's expression pinned too (its reads are the outline, which the expression never explains). MediaPipe's
-# blendshape scores are NOT a gate: a slight smile (GNM's happy x0.3, dressed) scores mouthSmile 0.024, neutral 0.001
-# (spikes/readmix/smilecal.py: on clay the score stays under 0.11 up to happy 0.3; one head scored 0 at 0.6)
-EXPR_LOWER = ("happy", "lips_roll_in", "corners_down", "mouth_left", "mouth_right")
-EXPR_PIN = 0.02
-
+from . import face_ruler
+from .face_ruler import _gnm
 
 def expr_prior_of(expr, views) -> dict | None:
     if expr != "lower":
@@ -29,18 +12,17 @@ def expr_prior_of(expr, views) -> dict | None:
     out = {}
     for v in views:
         side = v["kind"] == "profile"
-        out[v["kind"]] = {n: (0.0, EXPR_PIN) for n in EXPR_SET if side or n not in EXPR_LOWER}
+        out[v["kind"]] = {n: (0.0, face_ruler.EXPR_PIN) for n in face_ruler.EXPR_SET if side or n not in face_ruler.EXPR_LOWER}
     return out
-EXPR_SD = 0.35              # prior sd of one expression coefficient (1 = GNM's full prototype of that expression class)
 
 
-def expression_protos(names=EXPR_SET) -> np.ndarray:
+def expression_protos(names=face_ruler.EXPR_SET) -> np.ndarray:
     """(n, 383) GNM expression coefficients of the sampler's class prototypes (gnm_sampler.prototype)."""
     key = ("xproto", tuple(names))
-    if key not in _C:
+    if key not in face_ruler._C:
         from . import gnm_sampler
-        _C[key] = np.array([gnm_sampler.prototype(n) for n in names], float)
-    return _C[key]
+        face_ruler._C[key] = np.array([gnm_sampler.prototype(n) for n in names], float)
+    return face_ruler._C[key]
 
 
 def expression_coeffs(amounts: dict) -> dict:
@@ -54,12 +36,12 @@ def expression_coeffs(amounts: dict) -> dict:
 def _expr_fields(names) -> np.ndarray:
     """(n, V, 3): each prototype's move of GNM's vertices (raw GNM frame, m)."""
     key = ("xfield", tuple(names))
-    if key not in _C:
+    if key not in face_ruler._C:
         from . import gnm_controls
         EB = gnm_controls.gnm()["EB"]
         P = expression_protos(names)
-        _C[key] = np.array([np.tensordot(e.astype(np.float32), EB[:len(e)], 1) for e in P], np.float32)
-    return _C[key]
+        face_ruler._C[key] = np.array([np.tensordot(e.astype(np.float32), EB[:len(e)], 1) for e in P], np.float32)
+    return face_ruler._C[key]
 
 
 def model_head(spec: dict, c=None, kappa=None, expr=None) -> dict:
@@ -80,7 +62,7 @@ def model_head(spec: dict, c=None, kappa=None, expr=None) -> dict:
     gid = np.asarray(onemesh.asset()["gnm_id"], int)[np.asarray(tpl["fid"])]
     fade = np.asarray(onemesh.asset()["g_fade"], float)
     hv = (gid >= 0) & (fade[np.maximum(gid, 0)] > 0.3)
-    if "mh" not in _C:
+    if "mh" not in face_ruler._C:
         g = base_identity._gnm_data()
         names = [str(n) for n in g["identity_names"]]
         comps = [i for i, n in enumerate(names) if n.startswith("head")][:170]
@@ -92,11 +74,11 @@ def model_head(spec: dict, c=None, kappa=None, expr=None) -> dict:
         face = gr["hockey_mask"].copy()
         face[np.asarray(hm.space()["sets"]["under_chin"], int)] = True
         IBh = np.asarray(g["vertex_identity_basis"])[comps].astype(np.float32)
-        _C["mh"] = {"face": face, "LB": np.einsum("lv,kvc->klc", sp["WL"], IBh.astype(np.float64)),
+        face_ruler._C["mh"] = {"face": face, "LB": np.einsum("lv,kvc->klc", sp["WL"], IBh.astype(np.float64)),
                     "IB": IBh,
                     "JB": np.array([g["joint_identity_basis"][i][2:4] for i in comps], float),
                     "hair": (~gr["hockey_mask"]) & (~gr["ears"]) & (T[:, 1] > ycut - 0.005)}
-    mh = _C["mh"]
+    mh = face_ruler._C["mh"]
     R, sc = np.asarray(carry["R"], float), float(carry["s"])
     idx = np.where(hv)[0]
     jm = mh["JB"].mean(1, keepdims=True)
