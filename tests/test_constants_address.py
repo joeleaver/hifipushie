@@ -36,7 +36,7 @@ def families() -> dict:
             if isinstance(node, ast.Assign) and [getattr(t, "id", None) for t in node.targets] == ["MODULES"]:
                 mods = [e.value for e in getattr(node.value, "elts", []) if isinstance(e, ast.Constant) and isinstance(e.value, str)]
                 if mods and all((SRC / f"{m}.py").exists() for m in mods):
-                    out[p.stem] = mods
+                    out[p.stem] = [m for m in mods if m != p.stem]  # (a list may name its own module)
     return out
 
 
