@@ -303,7 +303,7 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
     skin_index, zipped = None, 0
     if head.get("mouth_gap") is not None and float(head["mouth_gap"]) < 0.0015 and head.get("zip_lips", True):
         W, faces, skin_index, zipped = _zip_lips(W, faces, 0.5 * (lm[62] + lm[66]))
-    # what face shapes need to carry GNM expression deltas onto the head (faceshapes.GnmFace): the posed GNM vertices
+    # what face shapes need to carry GNM expression deltas onto the head (faceshapes_gnm.GnmFace): the posed GNM vertices
     # in its own frame, the placement, the skin's polygons before subdividing (deltas subdivide like positions)
     carry = {"V": V, "esc": esc, "R": R, "s": s, "mid": mid, "eye_mid": np.asarray(eye_mid, float),
              "narrow": float(head.get("narrow", 1.0)), "skin": skin, "faces": [list(f) for f in faces],

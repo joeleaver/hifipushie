@@ -2306,7 +2306,7 @@ def write_glb(path: Path, name: str, parts: dict, atlases: list[tuple[str, dict[
         a body's vertices."""
         dp = (np.asarray(d, np.float64)[src] @ _Z_TO_Y.T).astype(np.float32)
         nn = _safe_unit(nrm.astype(np.float64) @ _Z_TO_Y, [0.0, 0.0, 1.0])  # back to Blender axes, as n0/n1
-        from .faceshapes import turn
+        from .faceshapes_apply import turn
         dn = ((turn(nn, n0[src], n1[src]) - nn) @ _Z_TO_Y.T).astype(np.float32)
         return {"POSITION": sparse(dp, True), "NORMAL": sparse(dn)}
 
@@ -2508,9 +2508,9 @@ def export(name: str, out_dir: Path, *args, **kw) -> dict:
             pass
     with resources.heavy(f"export {name}", kind="export_asset", model=name, log=waiting,
                          gb=export_gb(store.load(name), name)):
-        from . import faceshapes
+        from . import faceshapes_consts
         notes = []
-        with faceshapes.character_fits(store.load(name), notes, store._dir(name)):  # per-character fits from the spec, not the env
+        with faceshapes_consts.character_fits(store.load(name), notes, store._dir(name)):  # per-character fits from the spec, not the env
             for m in notes:
                 waiting(m)
             res = _export(name, out_dir, *args, **kw)
@@ -2803,7 +2803,7 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
     movable asset (a prefab of one instance too), as in the Blender scene. The paint and AO maps are baked by
     Cycles from the model's Blender scene (`scene_maps`; AO is each asset's own, as an engine expects).
     face_shapes: True (every ARKit shape faceshapes.py makes) or a list of names: morph targets on the parts that
-    move with the face (faceshapes.apply), the neutral's mouth closed; listed per part in the json.
+    move with the face (faceshapes_apply.apply), the neutral's mouth closed; listed per part in the json.
     lods: True (lods.LOD_RATIOS) or a list of shares of LOD0's triangles: <asset>_LOD<k>.glb beside the GLB, the same
     skeleton, weights, face shapes and atlas (they reference LOD0's maps by file name); hair cards by whole layers.
     cloth_triangles: the simulated garments together decimated to this many triangles (their sim mesh, two-sided, is
@@ -2862,13 +2862,14 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
     fine, tri_focus, rest_w = {}, [], {}
     if face_shapes:  # say now, not after the bake, that the face can't take them; mesh the slit open; keep
         # triangles at the lids and lips
-        from . import faceshapes
-        faceshapes.names_of(face_shapes)
-        fface = faceshapes.face_of(spec)
+        from . import faceshapes_apply
+        from .spec import SpecError
+        faceshapes_apply.names_of(face_shapes)
+        fface = faceshapes_apply.face_of(spec)
         from . import facepose
         rest_w = facepose.rest_of(spec)  # face_shapes.rest: carried as the meshes' default weights, not baked
-        if set(rest_w) - set(faceshapes.names_of(face_shapes)):
-            raise faceshapes.SpecError(f"face_shapes.rest uses {sorted(set(rest_w) - set(faceshapes.names_of(face_shapes)))}, "
+        if set(rest_w) - set(faceshapes_apply.names_of(face_shapes)):
+            raise SpecError(f"face_shapes.rest uses {sorted(set(rest_w) - set(faceshapes_apply.names_of(face_shapes)))}, "
                             "which this export's face_shapes leave out")
         fine, tri_focus = fface.voxels(), fface.tri_focus()
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -3325,6 +3326,7 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
     shapes = {}
     if face_shapes:  # after the bake and the skin: both use the meshed (open-mouthed) low poly
         from . import faceshapes
+        from . import faceshapes_apply
         tf = time.time()
         for pn, (tp, _) in topo.items():  # (one mesh, own quads) each low-poly vertex's GNM vertex: face shapes
             # by index. Only when the low poly is still the topology's vertices as they were written
@@ -3335,22 +3337,22 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
             elif pn in parts and "gnm" in z.files:
                 log.append(f"WARNING face shapes: {pn}'s low poly isn't its topology's vertices: shapes by projection")
         moving = {pn: p for pn, p in parts.items() if pn not in pf_of and not report[pn].get("curves")}
-        if os.environ.get("HP_SHAPES_DUMP"):  # (debug / fast tuning: the parts as faceshapes.apply gets them, so a
+        if os.environ.get("HP_SHAPES_DUMP"):  # (debug / fast tuning: the parts as faceshapes_apply.apply gets them, so a
             # shape constant can be retried on them in seconds; spikes/game_ready/shapesfast.py)
             import copy
             import pickle
             with open(os.environ["HP_SHAPES_DUMP"], "wb") as fh:
                 pickle.dump({"spec": spec, "parts": copy.deepcopy(moving), "face_shapes": face_shapes}, fh)
-        shapes = faceshapes.apply(spec, moving, face_shapes, log)
+        shapes = faceshapes_apply.apply(spec, moving, face_shapes, log)
         from . import skin_folds
         fx = skin_folds.expression(spec, {pn: parts[pn] for pn in shapes}, log)   # the folds' own change with each shape
         for pn, nms in shapes.items():
             report[pn]["face_shapes"] = nms
             if fx and parts[pn].get("shapes") and pn.split("/")[-1].split("~")[0] == (spec.get("skin") or {}).get("part", "body"):
                 report[pn]["fold_expressions"] = fx
-            if parts[pn].get("shape_unevenness"):  # (faceshapes.unevenness: shapes over UNEVEN_COUNT, worst vertex)
+            if parts[pn].get("shape_unevenness"):  # (faceshapes_apply.unevenness: shapes over UNEVEN_COUNT, worst vertex)
                 report[pn]["face_shape_unevenness"] = parts[pn].pop("shape_unevenness")
-        log.append(f"face shapes: {len(faceshapes.names_of(face_shapes))} on {len(shapes)} parts in "
+        log.append(f"face shapes: {len(faceshapes_apply.names_of(face_shapes))} on {len(shapes)} parts in "
                    f"{time.time() - tf:.1f}s")
         if rigged and hf is not None:  # whatever a face shape moves is head: it must not also bend with the neck
             moved = {}
@@ -3630,10 +3632,10 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
                         "head": (f"rigid: {hf['how']}; falloff to the neck over {hf['band'] * 1e3:.0f} mm below; "
                                  "face-shape vertices, teeth, tongue and eyes Head 1.0") if hf else "not rigid"}}
                if rigged else {}),
-            **({"face_shapes": {"names": faceshapes.names_of(face_shapes), "parts": shapes,
+            **({"face_shapes": {"names": faceshapes_apply.names_of(face_shapes), "parts": shapes,
                                 **({"rest": rest_w} if rest_w else {}), "rest_how": REST_HOW,
                                 "correctives": {c: f"{op}({a}, {b})" for c, (op, a, b) in faceshapes.CORRECTIVES.items()
-                                                if c in faceshapes.names_of(face_shapes)},
+                                                if c in faceshapes_apply.names_of(face_shapes)},
                                 "convention": "ARKit blendshape names; glTF morph targets (names in mesh.extras."
                                               "targetNames, default weights = face_shapes.rest, else 0), FBX blend shapes of the same names; "
                                               "neutral = mouth closed, each shape its full extent at 1.0, additive; "

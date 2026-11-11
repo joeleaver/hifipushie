@@ -69,6 +69,7 @@ def pose(name: str, mix, out: str | None = None) -> dict:
     """<out> = <name>'s head in the mix: the ARKit shapes' GNM expression coefficients summed on top of the head's own
     base.head.expression (a lips step's closing stays). -> {"out", "weights", "components", "largest"}."""
     from . import faceshapes
+    from . import faceshapes_apply, faceshapes_gnm
     sp = copy.deepcopy(store.load(name))
     head = (sp.get("base") or {}).get("head") or {}
     if head.get("posed"):
@@ -77,8 +78,8 @@ def pose(name: str, mix, out: str | None = None) -> dict:
     weights = faceshapes.expression(mix)
     if not any(weights.values()):
         raise ValueError("set_expression: every weight is 0; the neutral is the model itself")
-    face = faceshapes.face_of(sp)
-    if not isinstance(face, faceshapes.GnmFace):
+    face = faceshapes_apply.face_of(sp)
+    if not isinstance(face, faceshapes_gnm.GnmFace):
         raise ValueError(f"set_expression: {name} has no GNM head, so no expression parameters")
     none = sorted(k for k, v in weights.items() if v and (k in faceshapes.NO_COEFFS or faceshapes.family(k) == "look"))
     if none:

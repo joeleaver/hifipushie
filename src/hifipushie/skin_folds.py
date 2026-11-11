@@ -764,7 +764,7 @@ EXPRESSION = {
 
 def expression(spec: dict, parts: dict, log: list) -> dict:
     """The folds' share of each face shape, added to the export's morph targets in place (asset.export, after
-    faceshapes.apply; parts: {part: {"verts", "corner_vert", "shapes": {name: (delta, n0, n1)}}}). Per fold prim and
+    faceshapes_apply.apply; parts: {part: {"verts", "corner_vert", "shapes": {name: (delta, n0, n1)}}}). Per fold prim and
     vertex the fold's own displacement there is measured on the field (the part's field without that fold minus with
     it, along the fold-free normal); a shape with gain g adds (g - 1) x it. skin["fold_expressions"] = False turns it
     off. Returns {fold side: {shape: max mm}}."""

@@ -17,7 +17,8 @@ import pytest
 _TMP = tempfile.mkdtemp(prefix="hp-gnmnative-")
 os.environ.setdefault("HIFIPUSHIE_HOME", _TMP)
 
-from hifipushie import assets, base, faceshapes, humans, lidrings, onemesh, sdf  # noqa: E402
+from hifipushie import assets, base, humans, lidrings, onemesh, sdf  # noqa: E402
+from hifipushie import faceshapes_apply, faceshapes_gnm
 from hifipushie import base_gnm_parts, base_identity, base_implied, base_measures
 from hifipushie import spec as specmod  # noqa: E402
 from hifipushie.spec import empty_spec  # noqa: E402
@@ -207,8 +208,8 @@ def test_gnm_mouth_pieces_in_the_field():
 
 def test_jaw_open_moves_gnms_own_pieces_and_opens_the_bag():
     sp0 = _spec()
-    face = faceshapes.face_of(sp0)
-    assert isinstance(face, faceshapes.GnmFace) and face.gnm_mouth
+    face = faceshapes_apply.face_of(sp0)
+    assert isinstance(face, faceshapes_gnm.GnmFace) and face.gnm_mouth
     cf = face.shape_coeffs("jawOpen")
     assert cf and all(k.startswith("lower_face_region") for k in cf)
     sp1 = _spec(expression=cf)
@@ -235,7 +236,7 @@ def test_jaw_open_moves_gnms_own_pieces_and_opens_the_bag():
 
 def test_face_shapes_on_gnms_own_mouth():
     sp = _spec()
-    face = faceshapes.face_of(sp)
+    face = faceshapes_apply.face_of(sp)
     mp = base_gnm_parts.gnm_mouth(face.head)
     names = ["jawOpen", "mouthSmileLeft", "tongueOut", "eyeBlinkLeft", "mouthClose"]
     lowv, upv, tgv = mp["teeth_lower"]["verts"], mp["teeth_upper"]["verts"], mp["tongue"]["verts"]

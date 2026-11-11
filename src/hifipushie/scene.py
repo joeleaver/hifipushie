@@ -1246,10 +1246,10 @@ def look(name: str, views: list[str] | None = None, cameras: list[dict] | None =
 
 def slit_voxel(name: str, resolution: int = 256) -> float | None:
     """The voxel sync meshes the face kit's slit part at (None: no face kit mouth)."""
-    from . import faceshapes
+    from . import faceshapes_apply
     spec = store.load(name)
     try:
-        face = faceshapes.face_of(spec)
+        face = faceshapes_apply.face_of(spec)
     except Exception:
         return None
     ctx = asset.split(spec, resolution, True, [], min_share=1)

@@ -218,6 +218,7 @@ def test_face_shapes_by_index_on_own_quads():
     onto the field, and the neutral's lips meet on GNM's contact ring. jawOpen moves evenly (the projected path's
     strands read 3.2 on the same mesh)."""
     from hifipushie import faceshapes, humans, retopo
+    from hifipushie import faceshapes_apply
     sp = humans.spec(age=40, sex=1.0, seed=3, skin=False, source="human",
                      head={"interior": {"teeth": {"show": 0.0035}, "tongue": True}})  # (GNM's own lips: no mouth_gap)
     sp.setdefault("parts", {}).setdefault("body", {})["topology"] = "wrap"
@@ -226,7 +227,7 @@ def test_face_shapes_by_index_on_own_quads():
     assert (gnm >= 0).sum() > 10000 and any(x.startswith("mouth:") for x in r["log"])
     st = np.r_[0, np.cumsum(S)[:-1]]
     T = np.array([(L[a], L[a + j], L[a + j + 1]) for a, k in zip(st, S) for j in range(1, k - 1)])
-    face = faceshapes.face_of(sp)
+    face = faceshapes_apply.face_of(sp)
     Xn = V + face.neutral(V, "skin", gnm)
     R = face._lip_rings()
     assert R["ok"]
@@ -236,10 +237,10 @@ def test_face_shapes_by_index_on_own_quads():
     assert gap.mean() < 0.0012, gap.mean()
     n0 = faceshapes.vertex_normals(Xn, T)
     D = face.displacements(V, Xn, n0, "skin", ["jawOpen", "eyeBlinkLeft"], None, gnm)
-    first, Tw, _ = faceshapes.weld(Xn, T)
+    first, Tw, _ = faceshapes_apply.weld(Xn, T)
     for nm in ("jawOpen", "eyeBlinkLeft"):
-        u = faceshapes.unevenness(Xn[first], Tw, D[nm][first], face.off_margins(nm, Xn[first]))[0]
-        assert u < faceshapes.UNEVEN_LIMIT, (nm, u)
+        u = faceshapes_apply.unevenness(Xn[first], Tw, D[nm][first], face.off_margins(nm, Xn[first]))[0]
+        assert u < faceshapes_apply.UNEVEN_LIMIT, (nm, u)
     assert np.linalg.norm(D["jawOpen"], axis=1).max() > 0.015
 
 

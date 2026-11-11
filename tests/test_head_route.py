@@ -7,6 +7,7 @@ import json
 import pytest
 
 from hifipushie import blockin as bi, faceshapes, head_route, humans, server, store
+from hifipushie import faceshapes_apply
 from hifipushie.spec import empty_spec
 
 
@@ -117,7 +118,7 @@ def test_pose_is_parameters_on_a_new_model(man):
 
 @pytest.mark.parametrize("shape", ["mouthSmileLeft", "cheekSquintLeft", "jawOpen"])
 def test_offset_built_shapes_have_parameters(man, shape):
-    assert faceshapes.face_of(man).shape_coeffs(shape)
+    assert faceshapes_apply.face_of(man).shape_coeffs(shape)
 
 
 def test_every_human_and_likeness_tool_ends_in_next():
