@@ -149,6 +149,11 @@ design, no recipe; src/hifipushie/draft_own.py's docstring is the spec). Needs s
   mouth) is declared as drawn, never cut open by hand: {"piece", "inside": <its closed path of the part>, "release":
   [part points..., named outline point]}: the tool cuts it through along release (through a pocket mouth to the nearest
   seam, or straight to it) and sews dart and cut shut (C416);
+  `tapes` {piece: [step-3 tape names] | {edge: tape}}: the step-3 tapes EVERY piece was drafted on (a pair's base name
+  covers both sides); step 5 starts the piece on them, never from a rule. An edge map names the tape an edge laid on the
+  body lies along: a STIFF piece sewn to soft cloth names one for each sewn edge (a collar's neck edge on the tape of
+  the line it sits on: a jacket's runs back neck, via the shoulder, down the gorge; measure that line in step 3 with
+  body_tape if it isn't there). Row piece_tapes FAILs a piece with none, or a name step 3 hasn't taken (back to step 3);
   `marks` {detail: mark | [marks]}: WHERE each built step-1 detail sits (a closure's holes and buttons are its own marks: each on
   the piece step 1 puts it on): a
   mark = {"piece", "mirror"?: true (again on the .L <-> .R piece), and ONE of: "at": [{"point": name, "dx", "dy"} (mm, dy UP the piece: FreeSewing's y is -dy) |
