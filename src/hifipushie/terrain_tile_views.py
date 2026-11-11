@@ -7,9 +7,10 @@ from pathlib import Path
 import numpy as np
 from scipy import ndimage
 
+from . import terrain_mesh
 from .terrain_gltf import _from_gltf, read_glb
 from .terrain_materials import Materials
-from .terrain_tile_finish import LIGHTS, _light
+from .terrain_tile_finish import _light
 from .terrain_tile_jobs import build_field
 from .terrain_tile_mesh import _boundary_edges
 
@@ -118,7 +119,7 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
            "textured": bool(textured), "channel": channel, "ids": bool(ids), "kinds": kinds,
            "haze": (float(haze) * float(_light(light).get("haze_scale", 1.0))) if haze else None, "notes": notes,
            "props": _site_props(T, box) if props else [], "grade": grade,
-           "light": LIGHTS.get(light, light) if isinstance(light, str) else light}
+           "light": terrain_mesh.LIGHTS.get(light, light) if isinstance(light, str) else light}
     if textured == "layered":  # the engine recipe: tiling layers over the baked maps
         job["layers"] = [{"path": str((out / L["textures"]["height"]).resolve()), "scale": L["scale"],
                           "strength": L["textures"]["detail_strength"], "attr": L["weights"], "channel": L["channel"]}

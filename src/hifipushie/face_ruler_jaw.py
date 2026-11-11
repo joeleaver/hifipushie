@@ -4,38 +4,32 @@ from __future__ import annotations
 
 import numpy as np
 
-from .face_ruler import _C, _bil, _cam_points, _gnm, _proj_jac, clay
-from .face_ruler_outline import PARSE_MODEL, _resample
-
-# ---- the jaw's edge against the neck (skin on skin: no silhouette, no parser class) -----------------------------------
-JAW_REACH = 7.0             # mm: the picture's step is looked for this far either side of the model's contour
-JAW_MIN = 0.035             # luminance (0..1): the least step from the lit jaw to the neck under it
-SIG_JAW = 0.8               # mm: one jaw-under read (validated on dressed renders: spikes/solvereads/jval.py)
-JAW_STEP = 2.0              # mm between reads along the contour
-
+from . import face_ruler
+from .face_ruler import _bil, _cam_points, _gnm, _proj_jac, clay
+from .face_ruler_outline import _resample
 
 def _head_edges(head):
     key = ("edges", len(head["F"]), int(head["F"][0, 0]))
-    if key not in _C:
+    if key not in face_ruler._C:
         F = np.asarray(head["F"])
         e = np.sort(np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]], 1)
-        _C[key] = np.unique(e, axis=0)
-    return _C[key]
+        face_ruler._C[key] = np.unique(e, axis=0)
+    return face_ruler._C[key]
 
 
 def _jaw_set(head):
     """Model vertices where the jaw's lower edge can lie: exterior skin from the lower lip's height down to 3 cm under
     the chin, in front of the ears (fixed on GNM's template)."""
     key = ("jawset", len(head["gid"]))
-    if key not in _C:
+    if key not in face_ruler._C:
         sp = _gnm()["sp"]
         T, gr = sp["T"] * 1000, sp["gr"]
         L = sp["WL"] @ T
         ok = gr["skin_exterior"] & (T[:, 1] < L[57, 1] - 4.0) & (T[:, 1] > L[8, 1] - 30.0) & (T[:, 2] > 0.5 * (L[0, 2] + L[16, 2]) + 5.0)
         ok &= ~(gr["upper_lip"] | gr["lower_lip"] | gr["ears"])
         gid = np.asarray(head["gid"], int)
-        _C[key] = (gid >= 0) & ok[np.maximum(gid, 0)]
-    return _C[key]
+        face_ruler._C[key] = (gid >= 0) & ok[np.maximum(gid, 0)]
+    return face_ruler._C[key]
 
 
 def jaw_contour(head, cam):
@@ -101,14 +95,14 @@ def _jaw_obs(head, view, ps):
     order = idx[np.argsort(pi[idx, 0])]
     sel, last = [], []
     for i in order:
-        if all(np.hypot(*(pi[i] - pi[j])) * mm1[i] >= JAW_STEP for j in last[-12:]):
+        if all(np.hypot(*(pi[i] - pi[j])) * mm1[i] >= face_ruler.JAW_STEP for j in last[-12:]):
             sel.append(i)
             last.append(i)
     out = []
     for i in sel:
         m1 = float(mm1[i])
         sg = max(0.7 / m1, 1.0)                                # smoothing: 0.7 mm, at least a pixel
-        ts = np.arange(-JAW_REACH / m1 - 3 * sg, JAW_REACH / m1 + 3 * sg + 1e-9, 0.5)
+        ts = np.arange(-face_ruler.JAW_REACH / m1 - 3 * sg, face_ruler.JAW_REACH / m1 + 3 * sg + 1e-9, 0.5)
         tg = np.array([-n2[i, 1], n2[i, 0]])
         prof = np.zeros(len(ts))
         for off in (-1.5, -0.75, 0.0, 0.75, 1.5):               # five parallel lines 0.75 mm apart: skin texture averages out
@@ -116,13 +110,13 @@ def _jaw_obs(head, view, ps):
             prof += _bil(lum, q[:, 0], q[:, 1])
         prof = ndi.gaussian_filter1d(prof / 5.0, sg / 0.5)
         d = np.gradient(prof, 0.5)                              # per px
-        inr = np.abs(ts) <= JAW_REACH / m1
+        inr = np.abs(ts) <= face_ruler.JAW_REACH / m1
         k = int(np.argmin(np.where(inr, d, np.inf)))
         if not (0 < k < len(ts) - 1) or not inr[k - 1] or not inr[k + 1]:
             continue
         w_ = int(round(1.5 * sg / 0.5))
         step = float(prof[max(k - w_, 0)] - prof[min(k + w_, len(ts) - 1)])
-        if step < JAW_MIN:
+        if step < face_ruler.JAW_MIN:
             continue
         far = np.abs(ts - ts[k]) > 3.0 * sg
         if (d[inr & far] < 0.6 * d[k]).any():                   # another step as strong elsewhere in reach: ambiguous
@@ -133,17 +127,9 @@ def _jaw_obs(head, view, ps):
         Jp, mmc = _proj_jac(cam, head, E[i], w=[1 - t[i], t[i]])
         Xw = head["V"][E[i, 0]] * (1 - t[i]) + head["V"][E[i, 1]] * t[i]
         out.append({"type": "jaw", "view": view["kind"], "name": f"jaw_{i}", "o": e * m1, "J": (n2[i] @ Jp) * mmc,
-                    "sig": SIG_JAW, "n": n2[i].tolist(), "p": pi[i].tolist(), "q": (pi[i] + e * n2[i]).tolist(),
+                    "sig": face_ruler.SIG_JAW, "n": n2[i].tolist(), "p": pi[i].tolist(), "q": (pi[i] + e * n2[i]).tolist(),
                     "X": list(map(float, Xw)), "step": step})
     return out
-
-
-# ---- the jaw / chin in front of CLOTH (chinread): skin on cloth, inside the figure's mask ----------------------------------
-CLOTH_EDGE = False          # default of view["chin"]["cloth"]
-CLOTH_REACH = 9.0           # mm: the picture's skin / cloth edge is looked for this far either side of the model's contour
-SIG_CLOTH = 0.6             # mm: one read (validated on dressed renders with a collar laid behind the jaw: spikes/chinread/clval.py)
-CLOTH_STEP = 2.0            # mm between reads along the contour
-CLOTH_DROP = 0.012          # m: the model's own surface (or nothing) lies at least this far behind the contour, 2.5 and 5 mm outside it
 
 
 def _parse_maps(view, head):
@@ -153,7 +139,7 @@ def _parse_maps(view, head):
         from . import faceparse
         try:
             _, _, full = faceparse.masks(view["img"], view["cam"], head, origin=view.get("origin", (0.0, 0.0)),
-                                         scale=float(view.get("scale", 1.0)), model=PARSE_MODEL)
+                                         scale=float(view.get("scale", 1.0)), model=face_ruler.PARSE_MODEL)
             view["_parse"] = {"skin": full["skin"], "cloth": full["cloth"], "figure": full["figure"]}
         except (FileNotFoundError, RuntimeError, ValueError):
             view["_parse"] = None
@@ -191,25 +177,25 @@ def _cloth_obs(head, view, ps):
     qi = pi - n2 * (1.0 / mm1)[:, None]
     dq = zat(qi) - X[:, 2]                                     # (1 mm inside a grazing surface stands ~1 cm nearer)
     qo2 = pi + n2 * (5.0 / mm1)[:, None]                       # a REAL step in depth behind it (a garment lies well behind a
-    keep = inb & (zat(qo) - X[:, 2] > CLOTH_DROP) & (zat(qo2) - X[:, 2] > CLOTH_DROP) & (dq > -0.03) & (dq < 0.004)   # jaw that stands in front of it: where the skin merely turns under and runs on into a collar the edge is the collar's)
+    keep = inb & (zat(qo) - X[:, 2] > face_ruler.CLOTH_DROP) & (zat(qo2) - X[:, 2] > face_ruler.CLOTH_DROP) & (dq > -0.03) & (dq < 0.004)   # jaw that stands in front of it: where the skin merely turns under and runs on into a collar the edge is the collar's)
     idx = np.flatnonzero(keep)
     if len(idx) < 3:
         return []
     order = idx[np.argsort(pi[idx, 0])]
     sel, last = [], []
     for i in order:
-        if all(np.hypot(*(pi[i] - pi[j])) * mm1[i] >= CLOTH_STEP for j in last[-12:]):
+        if all(np.hypot(*(pi[i] - pi[j])) * mm1[i] >= face_ruler.CLOTH_STEP for j in last[-12:]):
             sel.append(i)
             last.append(i)
     out = []
     for i in sel:
         m1 = float(mm1[i])
-        ts = np.arange(-CLOTH_REACH - 4.0, CLOTH_REACH + 4.0 + 1e-9, 0.25)          # mm along the normal
+        ts = np.arange(-face_ruler.CLOTH_REACH - 4.0, face_ruler.CLOTH_REACH + 4.0 + 1e-9, 0.25)          # mm along the normal
         q = pi[i][None] + (ts / m1)[:, None] * n2[i][None]
         if q[:, 0].min() < 1 or q[:, 1].min() < 1 or q[:, 0].max() > W - 2 or q[:, 1].max() > H - 2:
             continue
         sk, cl = _bil(S, q[:, 0], q[:, 1]), _bil(C, q[:, 0], q[:, 1])
-        dn = np.flatnonzero((sk[:-1] >= 0.5) & (sk[1:] < 0.5) & (np.abs(ts[:-1]) <= CLOTH_REACH))
+        dn = np.flatnonzero((sk[:-1] >= 0.5) & (sk[1:] < 0.5) & (np.abs(ts[:-1]) <= face_ruler.CLOTH_REACH))
         good = []
         for k in dn:
             a, b = sk[k], sk[k + 1]
@@ -224,20 +210,9 @@ def _cloth_obs(head, view, ps):
         Jp, mmc = _proj_jac(cam, head, E[i], w=[1 - t[i], t[i]])
         Xw = head["V"][E[i, 0]] * (1 - t[i]) + head["V"][E[i, 1]] * t[i]
         out.append({"type": "cloth", "view": view["kind"], "name": f"cloth_{i}", "o": e, "J": (n2[i] @ Jp) * mmc,
-                    "sig": SIG_CLOTH, "n": n2[i].tolist(), "p": pi[i].tolist(), "q": (pi[i] + e / m1 * n2[i]).tolist(),
+                    "sig": face_ruler.SIG_CLOTH, "n": n2[i].tolist(), "p": pi[i].tolist(), "q": (pi[i] + e / m1 * n2[i]).tolist(),
                     "X": list(map(float, Xw))})
     return out
-
-
-# ---- the jaw's lower edge as a SHADING ramp, picture against our own render under the picture's light (chinread) ---------
-RAMP = False                # default of view["chin"]["ramp"]
-RAMP_LM = (4, 12)           # the jaw line's landmarks the profiles cross: the jaw's body and the chin (the ramus is a silhouette)
-RAMP_STEP = 3.0             # mm between profiles along the jaw line
-RAMP_HALF = 13.0            # mm: a profile's half length across the jaw line
-RAMP_REACH = 7.0            # mm: the largest shift looked for
-RAMP_MIN = 0.10             # the least fall of the profile (share of its lit level) in the render AND in the picture
-RAMP_NCC = 0.90             # the least correlation of the two profiles at the best shift
-SIG_RAMP = 1.0              # mm: one profile's shift (validated: spikes/chinread/rval.py)
 
 
 def _lit_model(head, view):
@@ -286,8 +261,8 @@ def _ramp_obs(head, view):
     H, W = lp.shape
     L = np.asarray(head["L"], float)
     Xc, P = _cam_points(cam, L[:68])
-    mm = float(np.median(Xc[RAMP_LM[0]:RAMP_LM[1] + 1, 2])) / cam["f"] * 1000.0          # mm per px at the jaw
-    S = _resample(P[RAMP_LM[0]:RAMP_LM[1] + 1], RAMP_STEP / mm)
+    mm = float(np.median(Xc[face_ruler.RAMP_LM[0]:face_ruler.RAMP_LM[1] + 1, 2])) / cam["f"] * 1000.0          # mm per px at the jaw
+    S = _resample(P[face_ruler.RAMP_LM[0]:face_ruler.RAMP_LM[1] + 1], face_ruler.RAMP_STEP / mm)
     if len(S) < 4:
         return []
     T = np.gradient(S, axis=0)
@@ -305,9 +280,9 @@ def _ramp_obs(head, view):
     if len(vis) < 50:
         return []
     tree = cKDTree(Vp[vis])
-    ts = np.arange(-RAMP_HALF, RAMP_HALF + 1e-9, 0.25)
+    ts = np.arange(-face_ruler.RAMP_HALF, face_ruler.RAMP_HALF + 1e-9, 0.25)
     sg = 1.0 / 0.25                                            # 1 mm
-    nsh = int(round(RAMP_REACH / 0.25))
+    nsh = int(round(face_ruler.RAMP_REACH / 0.25))
     core = slice(nsh, len(ts) - nsh)
     part = ps["part"]
     pm = _parse_maps(view, head)       # the picture's bare skin: the parser's (stubble and shade are skin to it), else the reader's
@@ -332,7 +307,7 @@ def _ramp_obs(head, view):
         pr = ndi.gaussian_filter1d(pr / 5.0, sg, mode="nearest")
         fall_r = (pr[core].max() - pr[core].min()) / max(pr[core].max(), 1e-6)
         fall_p = (pp.max() - pp.min()) / max(pp.max(), 1e-6)
-        if fall_r < RAMP_MIN or fall_p < RAMP_MIN:
+        if fall_r < face_ruler.RAMP_MIN or fall_p < face_ruler.RAMP_MIN:
             continue
         a = pr[core] - pr[core].mean()
         na = float(np.linalg.norm(a))
@@ -342,7 +317,7 @@ def _ramp_obs(head, view):
             b = b - b.mean()
             cc[j] = float(a @ b) / max(na * float(np.linalg.norm(b)), 1e-12)
         j = int(np.argmax(cc))
-        if cc[j] < RAMP_NCC or j in (0, len(cc) - 1):
+        if cc[j] < face_ruler.RAMP_NCC or j in (0, len(cc) - 1):
             continue
         far = np.abs(np.arange(len(cc)) - j) > int(3.0 / 0.25)
         if far.any() and cc[far].max() > cc[j] - 0.02:          # no clear best shift (a straight ramp: its place is free)
@@ -357,7 +332,7 @@ def _ramp_obs(head, view):
             continue
         v = int(vis[iv])
         Jp, mm1 = _proj_jac(cam, head, v)
-        out.append({"type": "ramp", "view": view["kind"], "name": f"ramp_{k}", "o": e, "J": (N[k] @ Jp) * mm1, "sig": SIG_RAMP,
+        out.append({"type": "ramp", "view": view["kind"], "name": f"ramp_{k}", "o": e, "J": (N[k] @ Jp) * mm1, "sig": face_ruler.SIG_RAMP,
                     "n": N[k].tolist(), "p": q[kk].tolist(), "q": (q[kk] + e / mm * N[k]).tolist(), "X": head["V"][v].tolist(),
                     "ncc": float(cc[j]), "fall": (float(fall_r), float(fall_p))})
     return out

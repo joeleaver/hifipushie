@@ -7,16 +7,14 @@ import time
 
 import numpy as np
 
+from . import blockin
 from . import blockin_models
-from .blockin import (
-    BODY_KEYS, GNM_EXPR_SET, GNM_SET, HEAD_KEYS, LOCAL_SD, POSE_KEYS, SHAPE_MOVES, _macro_read, direction,
-    identity, set_identity, vocabulary,
-)
-from .blockin_expression import EXPR_COMPS, EYE_COMPS, fit_expression
+from .blockin import _macro_read, direction, identity, set_identity, vocabulary
+from .blockin_expression import fit_expression
 from .blockin_models import (
-    NATIVE_REFUSE, _adopt_log, _boxes, _log_path, _next_name, _placement, _save, cameras_fit, fit_cameras, log,
+    _adopt_log, _boxes, _log_path, _next_name, _placement, _save, cameras_fit, fit_cameras, log,
 )
-from .blockin_table import FEATURES, feature_table, passes, table, table_delta
+from .blockin_table import feature_table, passes, table, table_delta
 
 def expression_step(src: str, out: str | None = None, views: list | None = None, clear: bool = False,
                     comps: dict | None = None, eyes: bool = False, seen: str = "", why: str = "") -> dict:
@@ -38,7 +36,7 @@ def expression_step(src: str, out: str | None = None, views: list | None = None,
         if clear:
             ex[vi] = {}
             continue
-        f = fit_expression(sp["base"], rj["views"][vi], rj["cameras"][vi], comps=comps or ({**EXPR_COMPS, **EYE_COMPS} if eyes else None))
+        f = fit_expression(sp["base"], rj["views"][vi], rj["cameras"][vi], comps=comps or ({**blockin.EXPR_COMPS, **blockin.EYE_COMPS} if eyes else None))
         ex[vi], fits[vi] = f["expression"], f
     rj["expressions"] = ex
     out = out or _next_name(src)
@@ -98,25 +96,25 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
     from . import onemesh
     if onemesh.native(sp["base"]):
         # (nativedefault) on a GNM-native head these keys do NOTHING (onemesh drops them): refused, not silently ignored
-        bad = [k for k in (moves or {}) if k in NATIVE_REFUSE]
+        bad = [k for k in (moves or {}) if k in blockin.NATIVE_REFUSE]
         if bad:
-            raise ValueError("; ".join(f"block_in_step {k}: REFUSED on a GNM-native head: {NATIVE_REFUSE[k]}" for k in bad)
+            raise ValueError("; ".join(f"block_in_step {k}: REFUSED on a GNM-native head: {blockin.NATIVE_REFUSE[k]}" for k in bad)
                              + ". (A child or a stylised figure: edit_model set_key base.head.size.)")
     for k, v in (moves or {}).items():
         v = float(v)
-        if k in BODY_KEYS:
+        if k in blockin.BODY_KEYS:
             sp["base"]["body"][k] = v
-        elif k in HEAD_KEYS:
-            sp["base"]["head"][HEAD_KEYS[k]] = v
+        elif k in blockin.HEAD_KEYS:
+            sp["base"]["head"][blockin.HEAD_KEYS[k]] = v
         elif k == "head_scale":
             sp["base"].setdefault("style", {}).setdefault("human", {})["head_size"] = v
-        elif k in POSE_KEYS:
+        elif k in blockin.POSE_KEYS:
             sp["base"]["head"].setdefault("pose", {})[k] = v
-        elif k.startswith("id:") and k[3:].startswith(GNM_SET):   # GNM's eye / teeth identity components, SET (sd)
+        elif k.startswith("id:") and k[3:].startswith(blockin.GNM_SET):   # GNM's eye / teeth identity components, SET (sd)
             idx_extra[k[3:]] = v
             if abs(v) > 3.0:
                 big.append(f"{k} (past 3 sd)")
-        elif k.startswith("ex:") and k[3:].startswith(GNM_EXPR_SET):   # the pupil / tongue expression components, SET
+        elif k.startswith("ex:") and k[3:].startswith(blockin.GNM_EXPR_SET):   # the pupil / tongue expression components, SET
             sp["base"]["head"].setdefault("expression", {})[k[3:]] = v
         elif k == "iris_mm":   # the iris' diameter (mm at the model): GNM's limbus component, solved after the identity
             iris_mm = v
@@ -133,8 +131,8 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
         elif k.startswith("shape:"):   # DESIGNED soft-tissue ops (age): not data; flagged in the log and reply
             from . import faceslide, headage
             nm = k[6:]
-            if nm not in SHAPE_MOVES:
-                raise ValueError(f"shape: one of {', '.join(SHAPE_MOVES)} (designed ops: faceslide's age sliders in "
+            if nm not in blockin.SHAPE_MOVES:
+                raise ValueError(f"shape: one of {', '.join(blockin.SHAPE_MOVES)} (designed ops: faceslide's age sliders in "
                                  "their units, headage's ops in m / share)")
             if nm in faceslide.AGE_SLIDERS:
                 sp["base"]["head"].setdefault("sliders", {})[nm] = v
@@ -148,8 +146,8 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
             if nm not in faceslide.UNITS:
                 raise ValueError(f"local: no slider {nm!r} (faceslide: {', '.join(sorted(faceslide.UNITS))})")
             sp["base"]["head"].setdefault("sliders", {})[nm] = v
-            if nm in LOCAL_SD and abs(v) > 2.5 * LOCAL_SD[nm]:
-                big.append(f"{k} (population sd {LOCAL_SD[nm]})")
+            if nm in blockin.LOCAL_SD and abs(v) > 2.5 * blockin.LOCAL_SD[nm]:
+                big.append(f"{k} (population sd {blockin.LOCAL_SD[nm]})")
         elif k.startswith(("sculpt:", "relief:")):
             from . import gnm_controls as gcm
             sc = gcm.sculpt(**gcm.parse_sculpt(k))
@@ -236,8 +234,8 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
     rnd = 1 + max([e.get("round", 0) for e in lg] or [0])
     if lg and lg[-1].get("to") != src:
         lg[-1]["reverted"] = f"the next step went from {src}, not {lg[-1].get('to')}"
-    if feature and feature not in FEATURES:
-        raise ValueError(f"feature: one of {', '.join(FEATURES)}")
+    if feature and feature not in blockin.FEATURES:
+        raise ValueError(f"feature: one of {', '.join(blockin.FEATURES)}")
     entry = {"round": rnd, "from": src, "to": out, "moves": moves, "cameras": cameras, "camera_moves": cam_moves,
              "feature": feature, "seen": seen, "why": why, **({"designed": designed} if designed else {}),
              **({"sculpt": sculpts} if sculpts else {}), **({"hooding": hood} if hood else {}),
@@ -259,19 +257,10 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
             "table": t1, "before": passes(t0), "manual": manual}
 
 
-# block_in_solve's defaults (solvereads, 2026-10-12; each decided by the validation in the notes' "## solvereads")
-SOLVE_HOLD = None            # "auto": every measure no read looks at is held at the start head's value
-SOLVE_EXPRESSION = False     # "view" | "shared": the pictures' expression as a nuisance (face_ruler_blockin.EXPR_SET)
-SOLVE_JAW_LM = None          # detector landmarks added to the differential anchors (the jaw line: 3..13)
-CAM_FIRST = 1                # cameras-first rounds of every block_in_solve call (the head held; "refit": 2, wider, and the new start)
-SEESAW_COS = -0.2            # a step whose cosine with the last call's step is under this is halved
-RELAX_KEEP = 0.85            # the cmax down-weighting comes down at most this share a call (it goes up at once)
-
-
 def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int = 3, seen: str = "",
                cameras: str = "free", lids: bool = True, lips: bool = True, anchors: str = "differential",
                parse: bool | str = "auto", normals: bool = False, adapt: bool = True, cmax: float | None = 3.0,
-               hold=SOLVE_HOLD, expression=SOLVE_EXPRESSION, jaw_lm=SOLVE_JAW_LM, report: bool = True,
+               hold=blockin.SOLVE_HOLD, expression=blockin.SOLVE_EXPRESSION, jaw_lm=blockin.SOLVE_JAW_LM, report: bool = True,
                damp: bool = True, chin: dict | None = None, dense: bool | None = None, mp: bool | None = None,
                hair_edge: bool | None = None, nostrils: bool | None = None) -> dict:
     """ONE JOINT STEP (reruns, 2026-10-11): the face ruler's own solve applied whole. face_ruler_compare.compare reads every
@@ -283,6 +272,7 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
     nose's planes): the eye and lips steps follow. -> step()'s report + "solve": {"n", "dc", "c", "max_sd", "cameras"}."""
     from . import store
     from . import face_ruler_camera, face_ruler_compare
+    from . import face_ruler
     c0 = identity(store.load(src))
     # the prior is on the WHOLE identity: centred on the block-in's start head (its class mean), not on this call's
     # change (a second call used to move |dc| 4 more and walk a component to 3.1 sd)
@@ -319,10 +309,10 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
                          + 'laid on THIS head first this call (cameras="refit" instead of "free"); later calls use what you pass')
         cameras = "refit"
     cam0 = None if cameras == "refit" else (rj0.get("blockin") or {}).get("cam_done")
-    cam_sd = {kk: tuple(k * x for x in v) for kk, v in face_ruler_camera.PHOTO_CAM_SD7.items()}
+    cam_sd = {kk: tuple(k * x for x in v) for kk, v in face_ruler.PHOTO_CAM_SD7.items()}
     from . import denselm
-    if (face_ruler_camera.DENSE if dense is None else dense) and denselm.available():      # the dense landmarks read perspective (distance to 5-9 %)
-        cam_sd = {kk: tuple(v[:6]) + (k * face_ruler_camera.PHOTO_CAM_DIST_DENSE,) for kk, v in cam_sd.items()}
+    if (face_ruler.DENSE if dense is None else dense) and denselm.available():      # the dense landmarks read perspective (distance to 5-9 %)
+        cam_sd = {kk: tuple(v[:6]) + (k * face_ruler.PHOTO_CAM_DIST_DENSE,) for kk, v in cam_sd.items()}
     b0 = rj0.get("blockin") or {}
     # (readmix) A KNOWN LENS holds its view's distance, dense or not: the prior is on the whole move since block_in_start,
     # whose fit stood at that lens
@@ -330,13 +320,13 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
     kinds0 = b0.get("kinds") or [face_ruler_compare.kind_of(v.get("yaw", 0)) for v in rj0["views"]]
     for v_, kk in zip(rj0["views"], kinds0):
         lm_ = face_ruler_camera.lens_known(v_)
-        if lm_ and kk in cam_sd and len(cam_sd[kk]) > 6 and cam_sd[kk][6] > face_ruler_camera.PHOTO_CAM_DIST_LENS:
-            cam_sd[kk] = tuple(cam_sd[kk][:6]) + (face_ruler_camera.PHOTO_CAM_DIST_LENS,)
+        if lm_ and kk in cam_sd and len(cam_sd[kk]) > 6 and cam_sd[kk][6] > face_ruler.PHOTO_CAM_DIST_LENS:
+            cam_sd[kk] = tuple(cam_sd[kk][:6]) + (face_ruler.PHOTO_CAM_DIST_LENS,)
             lens_notes.append(f"LENS: {str(v_.get('image', kk)).split('/')[-1]} was taken through a known {lm_:.0f} mm lens (35 mm equivalent): its camera's "
-                              f"distance is held to +- {face_ruler_camera.PHOTO_CAM_DIST_LENS:g} % of the start's")
+                              f"distance is held to +- {face_ruler.PHOTO_CAM_DIST_LENS:g} % of the start's")
     # carried across the block-in's calls: the down-weighting the pictures needed (it may come down 15 % a call, never
     # jump), each view's kind (from its fitted camera at the first solve) and its outline reader
-    relax0 = 1.0 + RELAX_KEEP * (float(b0.get("relax", 1.0)) - 1.0)
+    relax0 = 1.0 + blockin.RELAX_KEEP * (float(b0.get("relax", 1.0)) - 1.0)
     chin = dict(chin or {})
     size_info = None
     if chin.get("size") in ("iris", "iris_pin"):
@@ -363,7 +353,7 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
             chin["size"] = True
             chin["size_note"] = ("SIZE: held at the start head's: " + size_info["why"])
     c = face_ruler_compare.compare(src, rounds=rounds, prior_off=off, cam_sd=cam_sd, lids=lids, lips=lips, anchors=anchors, parse=parse,
-                   normals=normals, adapt=adapt, cam_first=2 if cameras == "refit" else CAM_FIRST, cam_reset=cameras == "refit", cmax=cmax,
+                   normals=normals, adapt=adapt, cam_first=2 if cameras == "refit" else blockin.CAM_FIRST, cam_reset=cameras == "refit", cmax=cmax,
                    cam_done0=cam0 if cam0 is not None else np.zeros((len(rj0["views"]), 7)),
                    relax0=relax0, hold=hold, held0=b0.get("held") if hold == "auto" else None, expr=expression, kinds=b0.get("kinds"), readers=b0.get("readers"), jaw_lm=jaw_lm, chin=chin, dense=dense,
                    mp=mp, hair_edge=hair_edge, nostrils=nostrils)
@@ -378,7 +368,7 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
     if last is not None and damp and damped == 1.0:
         last = np.asarray(last, float)
         cs = float(dc @ last / max(np.linalg.norm(dc) * np.linalg.norm(last), 1e-12))
-        if cs < SEESAW_COS:
+        if cs < blockin.SEESAW_COS:
             damped = 0.5
     dc = damped * dc
     rep = step(src, {}, out=out, seen=seen or "the face ruler's joint solve (outlines, irises, limbus; every view)",

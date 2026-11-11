@@ -6,15 +6,9 @@ import math
 
 import numpy as np
 
+from . import terrain_mesh
 from . import profiling
 from .profiling import span as _span
-
-# ---------------------------------------------------------------- tiles
-
-# the lattice's z planes sit this fraction of a voxel off round heights: flat floors at round heights (sea level, a
-# cave floor at 5.5 m) lay exactly on lattice planes, every corner there was a zero, and marching cubes left
-# non-manifold slivers (the seam check caught them). x and y stay on the tile borders.
-ZOFF = 0.137
 
 class Grid:
     """The world's tile grid and the meshing lattice per LOD."""
@@ -79,7 +73,7 @@ def _tile_mc(field, G: Grid, i, j, k, vols):
     c0, c1 = int(math.floor(zlo / v)) - pad, int(math.ceil(zhi / v)) + pad
     ic = np.arange(c0, c1 + 1)
     hcol, scol = field.column(X.ravel(), Y.ravel())
-    Z = (ic + ZOFF) * v
+    Z = (ic + terrain_mesh.ZOFF) * v
     F = (Z[None, :] - hcol[:, None]) * scol[:, None]
     P = np.stack(np.broadcast_arrays(X.ravel()[:, None], Y.ravel()[:, None], Z[None, :]), -1).reshape(-1, 3)
     F = F.ravel()
@@ -130,7 +124,7 @@ def _key_geometry(keys, G, k):
     lo = K[:, 1:].astype(float)
     hi = lo.copy()
     hi[np.arange(len(K)), ax] += 1
-    to_w = lambda a: np.c_[G.origin[0] + a[:, 0] * v, G.origin[1] + a[:, 1] * v, (a[:, 2] + ZOFF) * v]
+    to_w = lambda a: np.c_[G.origin[0] + a[:, 0] * v, G.origin[1] + a[:, 1] * v, (a[:, 2] + terrain_mesh.ZOFF) * v]
     n = int(round(G.tile / v))
     NX, NY = int(round(G.span[0] / v)), int(round(G.span[1] / v))
     fixed = np.zeros((len(K), 3), bool)
@@ -147,9 +141,6 @@ def _boundary_edges(faces):
     return e[cnt[inv] == 1]
 
 
-PRE = 32  # x a coarse LOD's budget: what its dense-mesh fallback reaches in one pyfqmr pass before the budget search
-# (replayed on the alps block's 12 fallbacks: 85 -> 37 s, faces <= the old ones in every case, summed error p99
-# 6.2 -> 5.7 m; 4x and 8x were faster still but their meshes sat further off the rock at the same count)
 def _decimate(P, faces, err, budget, field, border_ok=None, pre=None):
     """Fewest triangles (pyfqmr, open borders locked) whose surface stays within `err` of the field (99th percentile
     at face centres and edge midpoints, over what the undecimated mesh already misses), capped at `budget`.
@@ -299,12 +290,6 @@ def _drop_twins(v, f):
     return v[used], remap[f]
 
 
-PINCH_GAP = 0.005  # m each copy of a pinched vertex steps into its own sheet (`_unpinch`)
-
-
-SPECK_FACES = 16  # a closed piece this small split off by `_unpinch` is dropped (`_drop_closed_specks`)
-
-
 def _split_nonmanifold(v, f):
     """`_unpinch` until no edge has more than two faces: a pinch whose faces were paired across the sheets (the other
     of the two ways round) stays shared after a pass, and the next pass pairs it the other way. None if it can't.
@@ -335,9 +320,9 @@ def _drop_closed_specks(v, f):
     if nc < 2:
         return v, f
     size = np.bincount(lab)
-    if size.max() < 8 * SPECK_FACES:  # (only beside a real sheet: a mesh of nothing but small pieces is left as it is)
+    if size.max() < 8 * terrain_mesh.SPECK_FACES:  # (only beside a real sheet: a mesh of nothing but small pieces is left as it is)
         return v, f
-    small = np.flatnonzero(size <= SPECK_FACES)
+    small = np.flatnonzero(size <= terrain_mesh.SPECK_FACES)
     if not len(small):
         return v, f
     drop = np.zeros(nf, bool)
@@ -446,7 +431,7 @@ def _unpinch(v, f, offset=0):
             ix = np.array(comp)
             nb = np.setdiff1d(f[ix], [p])
             dv = v[nb].mean(0) - v[p]
-            q = v[p] + PINCH_GAP * dv / max(np.linalg.norm(dv), 1e-12)
+            q = v[p] + terrain_mesh.PINCH_GAP * dv / max(np.linalg.norm(dv), 1e-12)
             if ci == 0:
                 v2[p] = q
                 continue

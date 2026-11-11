@@ -83,6 +83,7 @@ def test_hrow_drop_region():
     """(sh6) SHELL_HROW_DROP drops only hairline-row cards inside its angle band and under its elevation."""
     import numpy as np
     from hifipushie import hair_lockmesh
+    from hifipushie import hair
 
     class Sc:
         C = np.zeros(3)
@@ -97,15 +98,15 @@ def test_hrow_drop_region():
         a, e = np.radians(az), np.radians(el)
         p = np.array([np.sin(a) * np.cos(e), -np.cos(a) * np.cos(e), np.sin(e)]) * 0.1
         return {"P": np.array([p, p]), "hrow": hrow}
-    old = hair_lockmesh.SHELL_HROW_DROP
+    old = hair.SHELL_HROW_DROP
     try:
-        hair_lockmesh.SHELL_HROW_DROP = {"fa": [65, 95], "el_max": -3.0}
+        hair.SHELL_HROW_DROP = {"fa": [65, 95], "el_max": -3.0}
         assert hair_lockmesh._hrow_dropped(Sc(), card(80, -15))
         assert hair_lockmesh._hrow_dropped(Sc(), card(-80, -15))   # both sides
         assert not hair_lockmesh._hrow_dropped(Sc(), card(80, 5))  # over the ear: kept
         assert not hair_lockmesh._hrow_dropped(Sc(), card(30, -15))  # temple: kept
         assert not hair_lockmesh._hrow_dropped(Sc(), card(80, -15, hrow=False))
-        hair_lockmesh.SHELL_HROW_DROP = None
+        hair.SHELL_HROW_DROP = None
         assert not hair_lockmesh._hrow_dropped(Sc(), card(80, -15))
     finally:
-        hair_lockmesh.SHELL_HROW_DROP = old
+        hair.SHELL_HROW_DROP = old

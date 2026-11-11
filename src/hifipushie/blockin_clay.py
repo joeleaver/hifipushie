@@ -3,14 +3,14 @@ from __future__ import annotations
 
 import numpy as np
 
-from .blockin import BROWS_L, BROWS_R, HAIR_RGB
+from . import blockin
 
 # ---------------------------------------------------------------- clay presentation
 def haircap(mesh: dict, st: dict) -> np.ndarray:
     """Per-vertex colour: skin, and a neutral dark cap over GNM's scalp (outside its hockey_mask face region, not the
     ears, above the ears' bottom): bald clay reads male."""
     from . import onemesh
-    from . import likeness_render
+    from . import likeness
     from . import base_identity
     g = base_identity._gnm_data()
     gid = np.asarray(onemesh.asset()["gnm_id"], int)[np.asarray(st["tpl"]["fid"])]
@@ -22,13 +22,13 @@ def haircap(mesh: dict, st: dict) -> np.ndarray:
     L = st["L"]
     zcut = 0.5 * (L[1, 2] + L[15, 2])
     w = ok * (1 - hm_) * (1 - ear) * np.clip((mesh["V"][:, 2] - zcut) / 0.01, 0, 1)
-    return (1 - w)[:, None] * likeness_render.SKIN + w[:, None] * HAIR_RGB
+    return (1 - w)[:, None] * likeness.SKIN + w[:, None] * blockin.HAIR_RGB
 
 
 def eye_presentation(mesh: dict, iris=(128, 112, 82)) -> dict:
     """A presentable eye for whole-face reads (dark iris caps dominated every clay read): a light iris with a darker
     limbal ring and pupil, and a lash line (the skin hugging the upper half of each eyeball, darkened)."""
-    from . import likeness_render
+    from . import likeness
     out = []
     fwd = np.asarray(mesh["state"]["head"].get("forward", [0, -1, 0]), float)
     fwd = fwd / np.linalg.norm(fwd)
@@ -39,7 +39,7 @@ def eye_presentation(mesh: dict, iris=(128, 112, 82)) -> dict:
                        np.where(cs[:, None] > 0.86, [60, 50, 40], [238, 234, 228]))).astype(float)
         out.append((V, F_, col))
     mesh["eyes"] = out
-    C = np.asarray(mesh["C"] if mesh.get("C") is not None else np.tile(likeness_render.SKIN, (len(mesh["V"]), 1)), float).copy()
+    C = np.asarray(mesh["C"] if mesh.get("C") is not None else np.tile(likeness.SKIN, (len(mesh["V"]), 1)), float).copy()
     for V, _, _ in out:
         c = V.mean(0)
         r = float(np.median(np.linalg.norm(V - c, axis=1)))
@@ -56,12 +56,9 @@ def draw_photo_brows(im, P, to):
     from PIL import ImageDraw
     d = ImageDraw.Draw(im)
     P = np.asarray(P, float)[:, :2]
-    for up, lo in (BROWS_R, BROWS_L):
+    for up, lo in (blockin.BROWS_R, blockin.BROWS_L):
         d.polygon([tuple(p) for p in to(np.r_[P[up], P[lo][::-1]])], fill=(70, 52, 40))
     return im
-
-
-BROW_RGB = np.array([70.0, 52.0, 40.0])
 
 
 def brow_source(mesh: dict, rj: dict) -> dict | None:
@@ -84,7 +81,7 @@ def brow_source(mesh: dict, rj: dict) -> dict | None:
         P = np.asarray(P, float)[:, :2]
         # the band rasterised SUPERSAMPLED over its own box (a full-figure picture's brows are a few pixels tall:
         # nearest samples of a picture-resolution mask came out as stair steps), sampled bilinearly
-        polys = [np.r_[P[up], P[lo][::-1]] for up, lo in (BROWS_R, BROWS_L)]
+        polys = [np.r_[P[up], P[lo][::-1]] for up, lo in (blockin.BROWS_R, blockin.BROWS_L)]
         allp = np.concatenate(polys)
         pad = max(6.0, 0.05 * float(allp[:, 0].max() - allp[:, 0].min()))   # (room for the tails past the band)
         o = allp.min(0) - pad
@@ -100,7 +97,7 @@ def brow_source(mesh: dict, rj: dict) -> dict | None:
         Wb, Hb = int(np.ceil(allp.max(0)[0] + pad - o[0])), int(np.ceil(allp.max(0)[1] + pad - o[1]))
         crop = np.asarray(img.crop((int(o[0]), int(o[1]), int(o[0]) + Wb, int(o[1]) + Hb)), float)
         msk = (np.asarray(hb) > 0) if hb is not None else (np.asarray(m.resize((Wb, Hb), Image.BILINEAR)) > 127)
-        rgb = BROW_RGB
+        rgb = blockin.BROW_RGB
         if msk.shape == crop.shape[:2] and msk.sum() > 20:
             px_ = crop[msk]
             lum_ = px_.mean(1)
@@ -213,7 +210,7 @@ def seat_brows(im, ps, cam, box, k, B: dict, strength: float = 0.9):
     vis = np.zeros(len(rr), bool)
     vis[inz] = (B["part"][zi[inz, 1], zi[inz, 0]] == 0) & (depth[inz] < B["zb"][zi[inz, 1], zi[inz, 0]] + 0.0025)
     al = al * vis * strength
-    a[rr, cc] = a[rr, cc] * (1 - al[:, None]) + np.asarray(B.get("rgb", BROW_RGB), float) * al[:, None]
+    a[rr, cc] = a[rr, cc] * (1 - al[:, None]) + np.asarray(B.get("rgb", blockin.BROW_RGB), float) * al[:, None]
     return Image.fromarray(np.clip(a, 0, 255).astype(np.uint8))
 
 
@@ -237,9 +234,6 @@ def draw_brows(im, mesh, cam, box, k, mm: float = 2.0):
     return im
 
 
-LIP_TINT = np.array([0.98, 0.74, 0.74])   # the clay's vermilion, x skin: presentation only (no reader sees it)
-
-
 def lip_tint(mesh: dict, st: dict, share: float = 0.8) -> None:
     """The vermilion tinted on the clay (GNM's upper_lip / lower_lip groups): untinted clay lips barely read as lips."""
     from . import onemesh
@@ -252,10 +246,7 @@ def lip_tint(mesh: dict, st: dict, share: float = 0.8) -> None:
         w[ok] = np.maximum(w[ok], np.asarray(g["groups"][grp], float)[gid[ok]])
     C = np.asarray(mesh["C"], float)
     a = (share * np.clip(w, 0, 1))[:, None]
-    mesh["C"] = C * (1 - a) + C * LIP_TINT * a
-
-
-_IRIS: dict = {}
+    mesh["C"] = C * (1 - a) + C * blockin.LIP_TINT * a
 
 
 def photo_iris(rj: dict | None):
@@ -267,7 +258,7 @@ def photo_iris(rj: dict | None):
     vf = _front(rj)
     v = rj["views"][vf]
     key = v["image"]
-    if key not in _IRIS:
+    if key not in blockin._IRIS:
         img = Image.open(v["image"]).convert("RGB")
         P = detect_view(img, v)
         col = None
@@ -286,8 +277,8 @@ def photo_iris(rj: dict | None):
             lum = q.mean(1)
             q = q[lum <= np.percentile(lum, 90)]
             col = tuple(float(x) for x in np.median(q, 0))
-        _IRIS[key] = col
-    return _IRIS[key]
+        blockin._IRIS[key] = col
+    return blockin._IRIS[key]
 
 
 def presented_mesh(base: dict, eyes: bool = True, rj: dict | None = None) -> dict:

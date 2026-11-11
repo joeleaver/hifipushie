@@ -3,12 +3,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from .faceshapes import CHEEK_RAISE, LIP_CLEAR, SOFT_EDGE, SOFT_ROUNDS, _bump, _ss, vertex_normals
-from .faceshapes_consts import (
-    SOCK_SMOOTH, SOCK_SMOOTH_REL, WRAP_ANGLE, WRAP_CENTRE, WRAP_INSIDE, WRAP_KEEP, WRAP_OFFSET, WRAP_REACH,
-    WRAP_RINGS, WRAP_ROUNDS, WRAP_SPREAD,
-)
-
+from . import faceshapes
+from .faceshapes import _bump, _ss, vertex_normals
 
 class _GnmMouth:
     """GnmFace's mouth interior and cheeks: clearing and wrapping the teeth, the sock, soft edges, the cheek's
@@ -38,8 +34,8 @@ class _GnmMouth:
         for k, near in zip(ids, tree.query_ball_point(V[ids, :2], r)):
             if near:
                 front = T[near, 2].max()
-                if V[k, 2] < front + LIP_CLEAR and V[k, 2] > front - 0.012:  # (behind it, not the far side of the head)
-                    push[k] = front + LIP_CLEAR - V[k, 2]
+                if V[k, 2] < front + faceshapes.LIP_CLEAR and V[k, 2] > front - 0.012:  # (behind it, not the far side of the head)
+                    push[k] = front + faceshapes.LIP_CLEAR - V[k, 2]
         if not push.any():
             return dV
         Q = g["quads"]
@@ -109,22 +105,22 @@ class _GnmMouth:
         Tt = V[tid]
         up_ids = np.asarray(mp["teeth_upper"]["ids"])
         front = float(V[up_ids, 2].max())
-        C = np.array([float(np.median(V[up_ids, 0])), 0.0, front - WRAP_CENTRE / s_])
+        C = np.array([float(np.median(V[up_ids, 0])), 0.0, front - faceshapes.WRAP_CENTRE / s_])
 
         def polar(P):
             q = P - C
             return np.arctan2(q[:, 0], q[:, 2]), np.hypot(q[:, 0], q[:, 2])
         ta, tr = polar(Tt)
-        wv = np.array([v for v, lv in R["lev"].items() if WRAP_RINGS[0] <= lv <= ring + WRAP_RINGS[1]], int)
+        wv = np.array([v for v, lv in R["lev"].items() if faceshapes.WRAP_RINGS[0] <= lv <= ring + faceshapes.WRAP_RINGS[1]], int)
         if not len(wv):
             return dV
         va, vr = polar(V[wv])
-        tree = cKDTree(np.column_stack([ta * WRAP_CENTRE / s_, Tt[:, 1]]))
-        near = tree.query_ball_point(np.column_stack([va * WRAP_CENTRE / s_, V[wv, 1]]), WRAP_ANGLE / s_)
+        tree = cKDTree(np.column_stack([ta * faceshapes.WRAP_CENTRE / s_, Tt[:, 1]]))
+        near = tree.query_ball_point(np.column_stack([va * faceshapes.WRAP_CENTRE / s_, V[wv, 1]]), faceshapes.WRAP_ANGLE / s_)
         gaps = np.full(len(wv), np.nan)
         for j, nb in enumerate(near):
             if nb:
-                gaps[j] = vr[j] - (float(tr[nb].max()) + WRAP_OFFSET / s_)
+                gaps[j] = vr[j] - (float(tr[nb].max()) + faceshapes.WRAP_OFFSET / s_)
         if measure:
             return wv, gaps
         # relative to the rest (the closed mouth as GNM rests it): a vertex keeps the stand-off it has at rest, never
@@ -136,10 +132,10 @@ class _GnmMouth:
         fixed = np.zeros(len(V), bool)
         for j, k in enumerate(wv):
             gap = gaps[j]
-            if not np.isfinite(gap) or not (-WRAP_INSIDE / s_ < gap < WRAP_REACH / s_):
+            if not np.isfinite(gap) or not (-faceshapes.WRAP_INSIDE / s_ < gap < faceshapes.WRAP_REACH / s_):
                 continue
             r0 = rest.get(int(k), np.nan)
-            keep = WRAP_KEEP * max(0.0, r0) if np.isfinite(r0) else 0.0
+            keep = faceshapes.WRAP_KEEP * max(0.0, r0) if np.isfinite(r0) else 0.0
             new = gap if 0.0 <= gap <= keep else (keep if gap > keep else 0.0)
             if new == gap:
                 continue
@@ -150,11 +146,11 @@ class _GnmMouth:
             return dV
         skin_or_sock = np.asarray(g["skin"], bool) | (np.asarray(g["groups"]["mouth_sock"]) > 0.5)
         M0 = 0.5 * (G["X0"][62] + G["X0"][66])
-        region = skin_or_sock & (np.linalg.norm(V0 - M0, axis=1) < WRAP_SPREAD / s_)
+        region = skin_or_sock & (np.linalg.norm(V0 - M0, axis=1) < faceshapes.WRAP_SPREAD / s_)
         teeth = np.zeros(len(V), bool)
         teeth[tid] = True
         region &= ~teeth
-        return dV + self._relax(mv, fixed, region, WRAP_ROUNDS)
+        return dV + self._relax(mv, fixed, region, faceshapes.WRAP_ROUNDS)
 
     def _smooth_sock(self, Xn: np.ndarray, d: np.ndarray, index, rest: bool = False) -> np.ndarray:
         """(one mesh, own quads) A shape's offsets with the mouth sock's POSED shape smoothed (Taubin, no shrinking)
@@ -176,7 +172,7 @@ class _GnmMouth:
             return d
 
         def taubin(P):
-            for _ in range(SOCK_SMOOTH):
+            for _ in range(faceshapes.SOCK_SMOOTH):
                 P = P + 0.5 * (self._relax(P, ~mv, mv & on, 1) - P)
                 P = P - 0.53 * (self._relax(P, ~mv, mv & on, 1) - P)
             return P
@@ -184,7 +180,7 @@ class _GnmMouth:
         B = np.zeros((len(sock), 3))
         A[idx[rows]] = Xn[rows]
         B[idx[rows]] = Xn[rows] + d[rows]
-        dA, dB = (taubin(A) - A if SOCK_SMOOTH_REL and not rest else 0.0), taubin(B) - B  # (the rest's own subtracted)
+        dA, dB = (taubin(A) - A if faceshapes.SOCK_SMOOTH_REL and not rest else 0.0), taubin(B) - B  # (the rest's own subtracted)
         out = np.array(d, float)
         sel = rows[sock[idx[rows]]]
         out[sel] += (dB - dA)[idx[sel]]
@@ -197,7 +193,7 @@ class _GnmMouth:
         averaged over the skin's quads `rounds` times, blended in by that ratio."""
         G = self._setup()
         Q = G["g"]["quads"]
-        rounds = SOFT_ROUNDS if rounds is None else rounds
+        rounds = faceshapes.SOFT_ROUNDS if rounds is None else rounds
         S = np.array(dV, float)
         cnt = np.zeros(len(S))
         for k in range(4):
@@ -209,7 +205,7 @@ class _GnmMouth:
                 np.add.at(acc, Q[:, k], m)
             S = np.where(cnt[:, None] > 0, acc / np.maximum(cnt, 1)[:, None], S)
         mag = np.linalg.norm(dV, axis=1)
-        b = 1 - _ss(mag / (SOFT_EDGE * max(float(mag.max()), 1e-9)))
+        b = 1 - _ss(mag / (faceshapes.SOFT_EDGE * max(float(mag.max()), 1e-9)))
         return dV * (1 - b[:, None]) + S * b[:, None]
 
     def _cheek_raise(self, s: str) -> np.ndarray:
@@ -220,8 +216,8 @@ class _GnmMouth:
         w = np.clip(g["groups"][f"{k}_zygomatic_region"] + 0.7 * g["groups"][f"{k}_infraorbital_region"], 0, 1)
         w = self._feather(w)
         out = np.zeros_like(V)
-        out[:, 1] = CHEEK_RAISE[0] * G["wg"] * w  # GNM frame: y up, z forward
-        out[:, 2] = CHEEK_RAISE[1] * G["wg"] * w
+        out[:, 1] = faceshapes.CHEEK_RAISE[0] * G["wg"] * w  # GNM frame: y up, z forward
+        out[:, 2] = faceshapes.CHEEK_RAISE[1] * G["wg"] * w
         return out
 
     def _feather(self, w: np.ndarray, rounds: int = 8) -> np.ndarray:

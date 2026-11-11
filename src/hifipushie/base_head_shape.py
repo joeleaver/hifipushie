@@ -3,15 +3,9 @@ from __future__ import annotations
 
 import numpy as np
 
+from . import base
 from . import retopo
 from .base_identity import _lm_of, _local_smooth, region_weight
-
-HOLLOW_RADIUS = 0.016  # m: a hollow cheek's reach
-JAW_RADIUS = 0.009     # m: a bony jaw corner's reach (crisp: a soft one is a jowl)
-JAW_TUCK_RADIUS = 0.014  # m: the tucked under-jaw's reach
-HOOD_FORWARD = 0.4  # a hooded lid's fold comes down and this share of that forward, over the lid
-HOOD_REACH = 0.5    # its fold's height: this share of the lid-to-brow distance (and its centre 0.45 of the way up)
-
 
 def _nose_tip(W, lm, spec, s):
     """base.head.shape.nose_tip = deg | {"up": deg, "reach": share}: the nose's BASE line tilted: the tip and columella
@@ -134,12 +128,6 @@ def _chin(W, lm, spec, mx, s):
     return W + field(W), lm + field(lm)
 
 
-JAWLINE_RADIUS = 0.034   # m: how far from the old jaw line the skin still follows its move
-JAWLINE_SIGMA = 0.014    # m: along the line, each point follows the stretch of jaw line nearest it
-JAWLINE_TUCK = 0.016     # m: depth of the band under the new border / behind the new ramus that is drawn in
-JAWLINE_SMOOTH = 2       # rounds of smoothing of the move over the mesh
-
-
 def _jawline(W, lm, ear, spec, mx, s, faces=None):
     """base.head.shape.jawline = {"below_lobe", "forward", "out", "tuck", "radius", "top"} (m): the mandible built as
     an L in profile, by construction: the jaw LINE itself is moved, with the skin on both sides of it.
@@ -159,8 +147,8 @@ def _jawline(W, lm, ear, spec, mx, s, faces=None):
     fwd = float(sp.get("forward", 0.004)) * k
     out = float(sp.get("out", 0.0)) * k
     tuck = float(sp.get("tuck", 0.0)) * k
-    R = float(sp.get("radius", JAWLINE_RADIUS)) * k
-    sig = float(sp.get("sharp", JAWLINE_SIGMA)) * k  # smaller = a sharper turn at the angle
+    R = float(sp.get("radius", base.JAWLINE_RADIUS)) * k
+    sig = float(sp.get("sharp", base.JAWLINE_SIGMA)) * k  # smaller = a sharper turn at the angle
     W = W.copy()
     lm = lm.copy()
     W0 = W.copy()
@@ -214,7 +202,7 @@ def _jawline(W, lm, ear, spec, mx, s, faces=None):
                 upd = d < best_d
                 best_d[upd], best_s[upd], best_t[upd] = d[upd], sgn[upd], ((j + t) / 2)[upd]
             dout = np.where(best_s > 0, best_d, 0.0)
-            band = np.clip(dout / (0.003 * k), 0, 1) * np.exp(-(dout / (JAWLINE_TUCK * k)) ** 2)
+            band = np.clip(dout / (0.003 * k), 0, 1) * np.exp(-(dout / (base.JAWLINE_TUCK * k)) ** 2)
             along = _sstep(best_t / 0.1) * (1 - _sstep((best_t - 0.8) / 0.2))
             near_side = _sstep((np.abs(W[:, 0] - mx) - 0.02 * k) / (0.02 * k))
             W[:, 0] = W[:, 0] - sx * band * along * near_side * side * off_ear * tuck
@@ -224,21 +212,18 @@ def _jawline(W, lm, ear, spec, mx, s, faces=None):
             wn = np.exp(-((W[:, 2] - zc) / (0.02 * k)) ** 2) * np.exp(-((W[:, 1] - g[1]) / (0.035 * k)) ** 2)
             wn = wn * _sstep((np.abs(W[:, 0] - mx) - 0.02 * k) / (0.02 * k)) * side * off_ear
             W[:, 0] = W[:, 0] - sx * wn * nk
-    if faces is not None and int(sp.get("smooth", JAWLINE_SMOOTH)):
+    if faces is not None and int(sp.get("smooth", base.JAWLINE_SMOOTH)):
         E = np.array(sorted({(min(f[i], f[(i + 1) % len(f)]), max(f[i], f[(i + 1) % len(f)])) for f in faces
                              for i in range(len(f))}))
         deg = np.bincount(E.ravel(), minlength=len(W))
         Dm = W - W0
-        for _ in range(int(sp.get("smooth", JAWLINE_SMOOTH))):
+        for _ in range(int(sp.get("smooth", base.JAWLINE_SMOOTH))):
             Dm = Dm + 0.5 * retopo._lap(Dm, E, deg)
         W = W0 + Dm
     tr = cKDTree(W0)
     for i in range(0, 17):
         lm[i] = lm[i] + (W - W0)[tr.query(lm[i])[1]]
     return W, lm
-
-LEAN_RADIUS = 0.03    # m: how far from the jaw's border the thinning reaches
-LEAN_KEEP = 0.004     # m: the border itself (this near the line) keeps its place: the bone doesn't thin
 
 
 def _lean(W, lm, ear, spec, mx, s, faces):
@@ -258,7 +243,7 @@ def _lean(W, lm, ear, spec, mx, s, faces):
     und = float(sp.get("under_jaw", 0.0)) * k
     sub = float(sp.get("submental", sp.get("under_jaw", 0.0))) * k
     jow = float(sp.get("jowl", 0.0)) * k
-    R = float(sp.get("radius", LEAN_RADIUS)) * k
+    R = float(sp.get("radius", base.LEAN_RADIUS)) * k
     O = np.array([lm[i] for i in range(2, 15)])
     seg = np.linalg.norm(np.diff(O, axis=0), axis=1)
     u = np.r_[0, np.cumsum(seg)] / seg.sum()
@@ -269,7 +254,7 @@ def _lean(W, lm, ear, spec, mx, s, faces):
     T = np.array([(f[0], f[i], f[i + 1]) for f in faces for i in range(1, len(f) - 1)])
     N = retopo._vnormals(W, T)
     h = q[:, 2] - W[:, 2]                                   # > 0: below the border
-    rise = _sstep((d - LEAN_KEEP * k) / (0.008 * k)) * np.exp(-(np.maximum(d - 0.012 * k, 0) / R) ** 2)
+    rise = _sstep((d - base.LEAN_KEEP * k) / (0.008 * k)) * np.exp(-(np.maximum(d - 0.012 * k, 0) / R) ** 2)
     below = _sstep(h / (0.004 * k))
     above = _sstep(-h / (0.004 * k))
     ax = np.abs(W[:, 0] - mx)
@@ -292,10 +277,6 @@ def _lean(W, lm, ear, spec, mx, s, faces):
     return W + Dm, lm
 
 
-EAR_BLEND = 0.004  # m: the band at an ear's root over which its turn fades in (the skin round it is untouched)
-EAR_ROOT = 0.003   # m: ear vertices this near the rest of the skin are its attachment
-
-
 def _ears(W, ear, spec, mx, s):
     """base.head.shape.ears = {"out": deg, "size": factor, "blend": m}: each auricle turned RIGIDLY about its
     attachment line, so the helix rim swings out from the head and the root stays put. The line runs from the lobe's
@@ -316,7 +297,7 @@ def _ears(W, ear, spec, mx, s):
             continue
         P = W[idx]
         d_root = rest.query(P)[0]
-        root = P[d_root < max(EAR_ROOT * k, np.percentile(d_root, 10))]
+        root = P[d_root < max(base.EAR_ROOT * k, np.percentile(d_root, 10))]
         low = root[np.argmin(root[:, 2])]
         front = root[root[:, 1] <= np.median(root[:, 1])]      # (the head faces -y)
         top = front[np.argmax(front[:, 2])]
@@ -325,7 +306,7 @@ def _ears(W, ear, spec, mx, s):
         def rot(v, a, ax=ax):
             return v * np.cos(a) + np.cross(ax, v) * np.sin(a) + ax * (v @ ax)[..., None] * (1 - np.cos(a))
         d0 = float(np.percentile(d_root, 12))                  # the attached ring itself stays (its edges to the head keep their length)
-        w = _sstep((d_root - d0) / (float(spec.get("blend", EAR_BLEND)) * k))[:, None]
+        w = _sstep((d_root - d0) / (float(spec.get("blend", base.EAR_BLEND)) * k))[:, None]
         a = out if ((w * (rot(P - low, out) - (P - low)))[:, 0] * sg).sum() > 0 else -out  # the rim goes outward
         Q = low + rot(P - low, a) * size
         W[idx] = P + w * (Q - P)
@@ -351,8 +332,8 @@ def _hood(W, lm, hood, exterior=None):
     itself."""
     h = hood if isinstance(hood, dict) else {"amount": hood}
     a = float(h["amount"])
-    fw = float(h.get("forward", HOOD_FORWARD))
-    reach = float(h.get("reach", HOOD_REACH))
+    fw = float(h.get("forward", base.HOOD_FORWARD))
+    reach = float(h.get("reach", base.HOOD_REACH))
     lat = float(h.get("lateral", 0.0))
     ext = float(h.get("extent", 1.0))
     cr_w = float(h.get("crease_width", 0.0018))     # m: the S's half width
@@ -409,9 +390,6 @@ def _sstep(x):
     return x * x * (3 - 2 * x)
 
 
-PLANES_KEEP = {("nose_region",): 10, ("upper_lip_region", "lower_lip_region", "chin_region"): 30}  # features _planes
-# leaves alone (group names: feather rounds); the lips and chin fade out wide: feathered at 10 the kept muzzle met the
-# pushed cheek in a crease (a smile fold beside the mouth)
 def _planes(V: np.ndarray, pts: np.ndarray, n: float, g: dict, hold: float = 0.8, keep: float = 1.0) -> tuple:
     """A head's front and side planes meeting at a tighter corner (a stylised head: the forehead slab turning
     sharply into the side plane at the temple, on down the cheekbone to the jaw corner). Per 2 mm height band, the
@@ -466,6 +444,6 @@ def _planes(V: np.ndarray, pts: np.ndarray, n: float, g: dict, hold: float = 0.8
         Y[:, 2] = zc + (X[:, 2] - zc) * k
         return Y
     ears = g["groups"]["ears"]
-    kw = np.max([region_weight(list(gs), f) for gs, f in PLANES_KEEP.items()], axis=0)
+    kw = np.max([region_weight(list(gs), f) for gs, f in base.PLANES_KEEP.items()], axis=0)
     wm = (1.0 - np.clip(ears, 0, 1)) * (1.0 - keep * kw)
     return move(V, wm), move(np.asarray(pts, float))

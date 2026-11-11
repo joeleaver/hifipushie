@@ -8,7 +8,8 @@ from pathlib import Path
 
 import numpy as np
 
-from .blockin import STRIP, data, default_gnm_base, identity, set_identity
+from . import blockin
+from .blockin import data, default_gnm_base, identity, set_identity
 from .blockin_expression import fit_expression, view_base
 
 # ---------------------------------------------------------------- models, references, the log
@@ -121,7 +122,7 @@ def start(name: str, refs, sex=None, age: float | None = None, body: dict | None
     if s is None:
         raise ValueError("block-in start: say the sex (sex='male' | 'female' | 0..1): the base is that sex's class mean")
     male = (s in ("male", "m", "man")) if isinstance(s, str) else float(s) >= 0.5
-    for k in STRIP:
+    for k in blockin.STRIP:
         hd.pop(k, None)
     # the rest mouth closed by GNM's own lower-face expression (base_gnm_parts.lip_close_delta), not the seal: the seal's
     # membrane flattened the vermilion border (its turn 24 -> 11 deg on Tess) and moved the lips whole (gnmdetail2)
@@ -303,8 +304,6 @@ def carry_cameras(base0: dict, base1: dict, cams: list) -> tuple:
     return out, {"scale": s, "shift": float(np.linalg.norm(b0 - a0))}
 
 
-CAM_STALE = (0.10, 0.30)     # cameras are STALE when the head's landmarks through them are this far off the pictures' own
-# stored points: 10 % in size, or 0.3 of the face's spread in place (a head switched to native is 10-20 % larger)
 def cameras_fit(base: dict, rj: dict) -> dict:
     """Do the fitted cameras belong to THIS head? Per view with stored landmark points (lm0..67, six or more): the model's same
     landmarks through its camera against the picture's points: {"scale": size ratio model / picture (median over
@@ -325,19 +324,7 @@ def cameras_fit(base: dict, rj: dict) -> dict:
     if not sc:
         return {"scale": 1.0, "off": 0.0, "n": 0, "stale": False}
     r, o = float(np.median(sc)), float(np.median(of))
-    return {"scale": r, "off": o, "n": len(sc), "stale": bool(abs(r - 1) > CAM_STALE[0] or o > CAM_STALE[1])}
-
-
-NATIVE_REFUSE = {
-    "head_scale": "a GNM-native head stands at GNM's own size (x base.head.size, by default the stature's allometry); the "
-                  "style's head_size is not applied to it",
-    "gnm_base": "a GNM-native head IS GNM's true base: there is no MakeHuman head under it to blend",
-    "gnm_base_rest": "a GNM-native head IS GNM's true base: there is no MakeHuman head under it to blend",
-    "dimorphism": "the dimorphism field is MakeHuman's sex difference laid on the body-carried head; a GNM-native head has none "
-                  "(the sex is in the identity: the `sex` move)",
-    "eye_size": "a GNM-native head has GNM's own eyeball at its real size (the lids are shaped on it); the iris is the "
-                "identity's limbus (iris_mm)",
-}
+    return {"scale": r, "off": o, "n": len(sc), "stale": bool(abs(r - 1) > blockin.CAM_STALE[0] or o > blockin.CAM_STALE[1])}
 
 
 def native_step(src: str, out: str | None = None, seen: str = "") -> dict:
@@ -404,17 +391,13 @@ def fork(src: str, name: str, replace: bool = False) -> dict:
     return entry
 
 
-FIT_LENS_SD = 0.05      # block_in_start's camera fit: the lens at its prior (EXIF / lens_mm, else a 70 mm portrait), +- this
-FIT_PITCH_SD = 5.0      # ... and the camera level with the head, +- this many degrees
-
-
 def fit_cameras(base: dict, views: list, rj: dict | None = None) -> list:
     """Each picture's camera fitted on this head, the head held (humanfit_map's camera-only fit); with rj, each view's
     camera on the head as that picture shows it (its fitted expression)."""
     from . import humanfit_map
     # (solvecams) the detector's points cannot tell the camera's PITCH or its LENS / distance (known heads: pitch 4.6 deg
     # rms, distance -78 .. +94 %): both under a prior here (level; the view's lens); the joint solve refines them
-    cp = {"lens_sd": FIT_LENS_SD, "pitch_sd": FIT_PITCH_SD}
+    cp = {"lens_sd": blockin.FIT_LENS_SD, "pitch_sd": blockin.FIT_PITCH_SD}
     if rj and any(rj.get("expressions") or []):
         return [humanfit_map.fit(view_base(base, rj, i), [v], free=(), cam_prior=cp)[1]["cameras"][0] for i, v in enumerate(views)]
     _, rep = humanfit_map.fit(base, views, free=(), cam_prior=cp)

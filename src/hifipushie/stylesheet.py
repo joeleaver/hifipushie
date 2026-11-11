@@ -121,6 +121,7 @@ def check(name: str) -> list[dict]:
     cover, from the posed head mesh)."""
     from . import store
     from . import base_measures
+    from . import base
     from . import spec as S
     spec = store.load(name)
     sh = sheet_of(spec)
@@ -142,7 +143,7 @@ def check(name: str) -> list[dict]:
         op = base_measures.eye_opening(h)[0]
         if op:
             vals["eye_h_over_w"] = op["h"] / op["w"]
-            iris = 1000 * float(((spec.get("paint") or {}).get("iris.L") or {}).get("width", 0)) * base_measures.IRIS_SPOT
+            iris = 1000 * float(((spec.get("paint") or {}).get("iris.L") or {}).get("width", 0)) * base.IRIS_SPOT
             if iris:
                 vals["iris_over_eye_w"] = iris / op["w"]
                 vals["lid_cover_top"] = max(0.0, (iris / 2 - op["top"]) / iris)

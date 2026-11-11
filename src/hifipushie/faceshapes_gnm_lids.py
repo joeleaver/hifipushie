@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import numpy as np
 
+from . import faceshapes
 from .faceshapes import _bump, _ss
-from .faceshapes_consts import LID_EDGE, LID_FADE, LID_OVER_FADE, LID_PINCH, LID_SAG, _mirror_ids
-
+from .faceshapes import _mirror_ids
 
 class _GnmLids:
     """GnmFace's lids: the blink's seal (both margins brought onto one smooth line) and its helpers."""
@@ -58,8 +58,8 @@ class _GnmLids:
         # vertex" of such a bin was a cheek vertex 13 mm under the eye, which was then lifted to the line.
         inside = np.abs(u) < 0.5 * width
         cu, cl = front & upper & (dh < -5e-4), front & ~upper
-        mu_all = cu & self._lid_edge(u, hp, cu & inside, -1.0, LID_EDGE[0])
-        ml_all = cl & self._lid_edge(u, hp, cl & inside, 1.0, LID_EDGE[1])
+        mu_all = cu & self._lid_edge(u, hp, cu & inside, -1.0, faceshapes.LID_EDGE[0])
+        ml_all = cl & self._lid_edge(u, hp, cl & inside, 1.0, faceshapes.LID_EDGE[1])
         for k in range(nb):
             mu = np.flatnonzero(mu_all & (bi == k))
             ml = np.flatnonzero(ml_all & (bi == k))
@@ -79,13 +79,13 @@ class _GnmLids:
         # read "almost straight, a strip pasted across the eye" (expr_r5)
         # (the UPPER lid's target only: lowering the lower lid with it moved the skin under the eye, test
         # test_blink_seal_leaves_the_cheek; the upper lid is the line one sees, passing in front of the lower)
-        sag = LID_SAG * np.clip(1 - (2 * bc / width) ** 2, 0, 1)
+        sag = faceshapes.LID_SAG * np.clip(1 - (2 * bc / width) ** 2, 0, 1)
         # the upper lid goes `over` past the line only where the lids are two sheets: toward the corners they are one
         # skin, and the overlap turned over the small triangles there that have a vertex on each lid (Garrett's 20k
         # export, right eye blinked: 3 triangles at the inner corner, a dark notch; 1 of 0.9 mm2 left)
-        if LID_OVER_FADE:
-            over_b = over * _ss((LID_FADE[1] * width - np.abs(bc)) / ((LID_FADE[1] - LID_FADE[0]) * width))
-            over = over * _ss((LID_FADE[1] * width - np.abs(u)) / ((LID_FADE[1] - LID_FADE[0]) * width))
+        if faceshapes.LID_OVER_FADE:
+            over_b = over * _ss((faceshapes.LID_FADE[1] * width - np.abs(bc)) / ((faceshapes.LID_FADE[1] - faceshapes.LID_FADE[0]) * width))
+            over = over * _ss((faceshapes.LID_FADE[1] * width - np.abs(u)) / ((faceshapes.LID_FADE[1] - faceshapes.LID_FADE[0]) * width))
         else:
             over_b = np.full(nb, over)
         ends = _bump(np.abs(u), 0.5 * width, 0.62 * width) * amount  # (fades out past the corners)
@@ -105,8 +105,8 @@ class _GnmLids:
         hp = h0 + d @ up
         t = np.clip((hp - (ln - band)) / (2 * band), 0.0, 1.0)
         tu = np.clip((hp - (lu - band)) / (2 * band), 0.0, 1.0)
-        for sel, new in ((zone & upper & (hp < lu + band), lu - over + tu ** LID_PINCH * (band + over)),
-                         (zone & ~upper & (hp > ln - band), ln - band * (1 - t) ** LID_PINCH)):
+        for sel, new in ((zone & upper & (hp < lu + band), lu - over + tu ** faceshapes.LID_PINCH * (band + over)),
+                         (zone & ~upper & (hp > ln - band), ln - band * (1 - t) ** faceshapes.LID_PINCH)):
             if sel.any():
                 d[sel] += ((new[sel] - hp[sel]) * ends[sel])[:, None] * up
         return d

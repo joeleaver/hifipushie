@@ -4,18 +4,9 @@ from __future__ import annotations
 import numpy as np
 
 from .spec import SpecError
-from . import faceshapes_consts
-from .faceshapes import (
-    CLOSE_LOWER, CLOSE_SEAL, SMILE_JAW_CANCEL, SMILE_JAW_CANCEL_LM, SMILE_PROTO, SMILE_SIDE_MM, SQUINT_LOWER,
-    _rodrigues, _ss, _unit,
-)
-from .faceshapes_consts import (
-    CHIN, JAW, JAW_ARCH, JAW_ARCH_POW, JAW_CORNER_OUT, JAW_FIT_GAIN, JAW_LIP_LIFT, JAW_LOWER_BACK, JAW_PRIOR,
-    JAW_ROLL_TUCK, JAW_TUCK_FADE, JAW_UPPER_LIFT, JAW_WIDEN, LEFT, LOWER_LIP, SMILE_CORNER_UP, SMILE_FIT_EYE_GAIN,
-    SMILE_FIT_SOFT, SMILE_LOWER_HOLD, SMILE_LOWLID_GAIN, SMILE_UPPER_HOLD, SMILE_UPPER_LIFT, UPPER_LIP,
-    _mirror_ids,
-)
-
+from . import faceshapes
+from .faceshapes import _rodrigues, _ss, _unit
+from .faceshapes import _mirror_ids
 
 class _GnmMoves:
     """GnmFace's moves: each ARKit shape as GNM offsets (the jaw, the fitted smile and jaw, the smile
@@ -29,7 +20,7 @@ class _GnmMoves:
         X0 = G["X0"]
         Pg = 0.5 * (X0[0] + X0[16])
         out = {}
-        for ids, k in ((JAW + LOWER_LIP, 1.0), ([2, 14, 48, 54, 60, 64], 0.5)):
+        for ids, k in ((faceshapes.JAW + faceshapes.LOWER_LIP, 1.0), ([2, 14, 48, 54, 60, 64], 0.5)):
             for i in ids:
                 if ang is not None:
                     q = X0[i] - Pg
@@ -53,7 +44,7 @@ class _GnmMoves:
             for i in side(ids):
                 mv[i] = np.asarray(mv.get(i, np.zeros(3)), float) + k * np.asarray([d[0] * sx, d[1], d[2]], float)
         mv = {}
-        if name == "jawOpen" and faceshapes_consts.JAW_FIT:
+        if name == "jawOpen" and faceshapes.JAW_FIT:
             return self._jaw_fit(), None
         if name == "jawOpen":  # the upper lip held (left at HOLD the solve dragged it 5 mm down with the jaw, over the
             # upper teeth: expr_r4 "upper teeth hidden"), its inner edge a little up off the incisors
@@ -62,60 +53,60 @@ class _GnmMoves:
             mid = 0.5 * (X0[48, 0] + X0[54, 0])
             mv.update(self._jaw_upper_lift())
             for i in (48, 54, 60, 64):
-                mv[i] = mv[i] + np.array([np.sign(X0[i, 0] - mid) * JAW_CORNER_OUT, 0.0, 0.0])
+                mv[i] = mv[i] + np.array([np.sign(X0[i, 0] - mid) * faceshapes.JAW_CORNER_OUT, 0.0, 0.0])
             for i in (55, 56, 57, 58, 59):
-                mv[i] = mv[i] + np.array([0.0, 0.0, -JAW_LOWER_BACK])
+                mv[i] = mv[i] + np.array([0.0, 0.0, -faceshapes.JAW_LOWER_BACK])
             # the basis can't lift the upper lip off the incisors while the jaw drops (landmarks reach -0.5 mm of
             # +6): v16's upper lip edge sat 1.3 mm BELOW the incisal edge, "no upper teeth" (expr_r6). Lifted
             # directly: the vermilion (GNM's upper_lip group) JAW_LIP_LIFT up, feathered into the skin above.
-            return self._solve(mv, "mouth", prior=JAW_PRIOR) + self._jaw_lip_lift(), None
+            return self._solve(mv, "mouth", prior=faceshapes.JAW_PRIOR) + self._jaw_lip_lift(), None
         if name == "jawForward":
             return self._jaw_moves(shift=[0, 0, 0.12]), "mouth"
         if name in ("jawLeft", "jawRight"):
             return self._jaw_moves(shift=[0.12 * sx, 0, 0]), "mouth"
         if name == "mouthClose":  # alone: the closed lips firmed forward a little, never into each other (the
             # closing against an open jaw is jawOpen_mouthClose's)
-            put(mv, UPPER_LIP + LOWER_LIP, [0, 0, CLOSE_SEAL * 0.05])
-            hold(mv, CHIN)
+            put(mv, faceshapes.UPPER_LIP + faceshapes.LOWER_LIP, [0, 0, faceshapes.CLOSE_SEAL * 0.05])
+            hold(mv, faceshapes.CHIN)
             return mv, "mouth"
         if name == "jawOpen_mouthClose":  # against a full jawOpen: the lower lip back up most of the way, the upper
             # down the rest. Against jawOpen as SOLVED (its prior leaves the lips short of the rigid turn): against
             # the turn itself, the lips closed past each other (A2F's warm f31: 4.2 mm)
             G = self._setup()
-            dVj = self._solve(self._jaw_moves(self.open), "mouth", prior=JAW_PRIOR)
+            dVj = self._solve(self._jaw_moves(self.open), "mouth", prior=faceshapes.JAW_PRIOR)
             Lj = np.einsum("ln,nd->ld", G["Wlm"], dVj) / G["wg"]
             # the GAP it opened (its lower lip's move less its upper lip's: the solve moves the upper lip a little too)
-            pair = dict(zip([59, 58, 57, 56, 55, 67, 66, 65], UPPER_LIP))
+            pair = dict(zip([59, 58, 57, 56, 55, 67, 66, 65], faceshapes.UPPER_LIP))
             gap = {i: Lj[i] - (Lj[pair[i]] if i in pair else 0.0) for i in range(68)}
-            for i in LOWER_LIP:
-                mv[i] = -CLOSE_LOWER * gap[i]
+            for i in faceshapes.LOWER_LIP:
+                mv[i] = -faceshapes.CLOSE_LOWER * gap[i]
             for lo_, up_ in pair.items():
-                mv[up_] = (1 - CLOSE_LOWER) * gap[lo_]
-            for i in JAW:
+                mv[up_] = (1 - faceshapes.CLOSE_LOWER) * gap[lo_]
+            for i in faceshapes.JAW:
                 mv[i] = np.zeros(3)
             return self._solve(mv, "mouth") - self._jaw_lip_lift(), None  # (jawOpen's direct lip lift taken back)
         if name == "jawOpen_mouthSmile":  # (r31) jawOpen's direct lip lift taken back under a smile (CORRECTIVES);
             # (r32) and its landmark lift (JAW_UPPER_LIFT) too, x SMILE_JAW_CANCEL_LM: the same solve as jawOpen's with
             # only the upper lip's lifts as targets (the solve is linear: this is exactly their share of jawOpen)
-            d = -SMILE_JAW_CANCEL * self._jaw_lip_lift()
-            if SMILE_JAW_CANCEL_LM:
+            d = -faceshapes.SMILE_JAW_CANCEL * self._jaw_lip_lift()
+            if faceshapes.SMILE_JAW_CANCEL_LM:
                 lift = self._jaw_upper_lift()
                 mv = {i: np.zeros(3) for i in self._jaw_moves(self.open)}
-                mv.update({i: -SMILE_JAW_CANCEL_LM * v for i, v in lift.items()})
+                mv.update({i: -faceshapes.SMILE_JAW_CANCEL_LM * v for i, v in lift.items()})
                 for i in (48, 54, 60, 64, 55, 56, 57, 58, 59):
                     mv.setdefault(i, np.zeros(3))
-                d = d + self._solve(mv, "mouth", prior=JAW_PRIOR)
+                d = d + self._solve(mv, "mouth", prior=faceshapes.JAW_PRIOR)
             return d, None
         if name == "mouthFunnel":
             put(mv, [48, 54], [0, 0, 0]), put(mv, [54], [-0.08, 0, 0.06]), put(mv, [48], [0.08, 0, 0.06])
-            put(mv, UPPER_LIP[:5], [0, 0.07, 0.1]), put(mv, LOWER_LIP[:5], [0, -0.07, 0.1])
+            put(mv, faceshapes.UPPER_LIP[:5], [0, 0.07, 0.1]), put(mv, faceshapes.LOWER_LIP[:5], [0, -0.07, 0.1])
             put(mv, [61, 62, 63], [0, 0.07, 0.06]), put(mv, [65, 66, 67], [0, -0.07, 0.06])
             return mv, "mouth"
         if name == "mouthPucker":  # (the chin held: pucker + rollLower + shrugLower, A2F's usual mix, bulged it 10 mm)
             put(mv, [54], [-0.14, 0, 0.07]), put(mv, [48], [0.14, 0, 0.07])
             put(mv, [53, 55], [-0.07, 0, 0.1]), put(mv, [49, 59], [0.07, 0, 0.1])
             put(mv, [50, 51, 52, 56, 57, 58, 61, 62, 63, 65, 66, 67], [0, 0, 0.1])
-            hold(mv, CHIN)
+            hold(mv, faceshapes.CHIN)
             return mv, "mouth"
         if name in ("mouthLeft", "mouthRight"):
             for i in range(48, 68):
@@ -126,7 +117,7 @@ class _GnmMoves:
             # inner lips closed again (parting is mouthUpperUp / LowerDown's). The landmark solve (corners out / up)
             # read "pinched corners, cheek pouches, no nasolabial fold, eyes unchanged" (expr_r4 / r5); the prototype
             # pulls the corners up AND back into a crescent, the cheeks bunch and the folds form.
-            if faceshapes_consts.SMILE_FIT:
+            if faceshapes.SMILE_FIT:
                 return self._smile_fit(s, "lower"), None
             return self._smile_proto(s, "lower"), None
         if name.startswith("mouthFrown"):
@@ -142,20 +133,20 @@ class _GnmMoves:
             # mostly back (tucked under the upper lip), little up: with less back travel, A2F's stacks (pucker +
             # rollLower + the sealed jaw + shrug) pushed the lower lip up INTO the upper one
             put(mv, [56, 57, 58], [0, 0.02, -0.1]), put(mv, [65, 66, 67], [0, 0.01, -0.09])
-            hold(mv, CHIN)
+            hold(mv, faceshapes.CHIN)
             return mv, "mouth"
         if name == "mouthRollUpper":
             put(mv, [50, 51, 52], [0, -0.04, -0.08]), put(mv, [61, 62, 63], [0, -0.02, -0.07])
             return mv, "mouth"
         if name == "mouthShrugLower":  # the lower lip and chin pushed up (mentalis), not out
-            put(mv, LOWER_LIP, [0, 0.03, 0.015]), put(mv, [7, 8, 9], [0, 0.02, 0])
+            put(mv, faceshapes.LOWER_LIP, [0, 0.03, 0.015]), put(mv, [7, 8, 9], [0, 0.02, 0])
             hold(mv, [5, 6, 10, 11])
             return mv, "mouth"
         if name == "mouthShrugUpper":
-            put(mv, UPPER_LIP, [0, 0.05, 0.03])
+            put(mv, faceshapes.UPPER_LIP, [0, 0.05, 0.03])
             return mv, "mouth"
         if name.startswith("mouthPress"):
-            put(mv, LEFT["upper"] + [51, 62], [0, -0.02, -0.02], 1.0), put(mv, LEFT["lower"] + [57, 66], [0, 0.02, -0.02])
+            put(mv, faceshapes.LEFT["upper"] + [51, 62], [0, -0.02, -0.02], 1.0), put(mv, faceshapes.LEFT["lower"] + [57, 66], [0, 0.02, -0.02])
             put(mv, [54], [0.03, 0, -0.01])
             return mv, "mouth"
         # (not forward off the teeth: forward, the parted lips showed their pink inner rolls where the reference shows
@@ -169,7 +160,7 @@ class _GnmMoves:
             return mv, "mouth"
         if name.startswith("eyeBlink"):
             X0 = self._setup()["X0"]
-            for up_i, lo_i in LEFT["lid_upper"]:
+            for up_i, lo_i in faceshapes.LEFT["lid_upper"]:
                 u, lo = side([up_i])[0], side([lo_i])[0]
                 gap = (X0[lo] - X0[u]) / self._setup()["wg"]
                 # down (and a little forward: over the ball), meeting the lower lid a little past it (at 0.8/0.2
@@ -179,15 +170,15 @@ class _GnmMoves:
             return mv, "eyes"
         if name.startswith("eyeWide") or name.startswith("eyeSquint"):
             X0 = self._setup()["X0"]
-            ku, kl = (-0.35, -0.15) if name.startswith("eyeWide") else (0.1, SQUINT_LOWER)
-            for up_i, lo_i in LEFT["lid_upper"]:
+            ku, kl = (-0.35, -0.15) if name.startswith("eyeWide") else (0.1, faceshapes.SQUINT_LOWER)
+            for up_i, lo_i in faceshapes.LEFT["lid_upper"]:
                 u, lo = side([up_i])[0], side([lo_i])[0]
                 gap = (X0[lo] - X0[u]) / self._setup()["wg"]
                 mv[u] = ku * gap * np.array([0, 1.0, 0.0])
                 mv[lo] = -kl * gap * np.array([0, 1.0, 0.0])
             return mv, "eyes"
         if name.startswith("cheekSquint"):  # the cheek up, plus the smile prototype's own eye share on this side
-            if faceshapes_consts.SMILE_FIT:
+            if faceshapes.SMILE_FIT:
                 return self._smile_fit(s, "eyes"), None
             return self._cheek_raise(s) + self._smile_proto(s, "eyes"), None
         if name.startswith("noseSneer"):  # the nostril's wing and the skin beside it up
@@ -218,26 +209,26 @@ class _GnmMoves:
         """GNM offsets (its frame, every vertex) of the FITTED smile (SMILE_FIT) on side s: "lower" = its lower-face
         components faded across the midline (SMILE_SIDE_MM), teeth cleared; "eyes" = its components of that side's eye."""
         G = self._setup()
-        key = ("smile_fit", s, part, faceshapes_consts.SMILE_FIT, SMILE_FIT_SOFT, SMILE_FIT_EYE_GAIN, SMILE_LOWLID_GAIN)
+        key = ("smile_fit", s, part, faceshapes.SMILE_FIT, faceshapes.SMILE_FIT_SOFT, faceshapes.SMILE_FIT_EYE_GAIN, faceshapes.SMILE_LOWLID_GAIN)
         if key in G:
             return G[key]
         EB = G["g"]["expression_basis"]
-        e = np.asarray(np.load(faceshapes_consts.SMILE_FIT), float)
+        e = np.asarray(np.load(faceshapes.SMILE_FIT), float)
         reg = G["regions"]
         if part == "eyes":
             ids = [i for i in reg["left_eye" if s == "Left" else "right_eye"] if i < len(e)]
-            dE = SMILE_FIT_EYE_GAIN * self._soft_edge(np.tensordot(e[ids], EB[ids], 1), SMILE_FIT_SOFT)
-            if SMILE_LOWLID_GAIN != 1.0:  # (r43) the lower lid's travel x gain (the fit lifts ~60% of the photo's)
+            dE = faceshapes.SMILE_FIT_EYE_GAIN * self._soft_edge(np.tensordot(e[ids], EB[ids], 1), faceshapes.SMILE_FIT_SOFT)
+            if faceshapes.SMILE_LOWLID_GAIN != 1.0:  # (r43) the lower lid's travel x gain (the fit lifts ~60% of the photo's)
                 w = self._lower_lid_weight(dE)
-                dE = dE * (1.0 + (SMILE_LOWLID_GAIN - 1.0) * w)[:, None]
+                dE = dE * (1.0 + (faceshapes.SMILE_LOWLID_GAIN - 1.0) * w)[:, None]
             G[key] = dE
             return G[key]
         ids = [i for i in reg["lower_face"] if i < len(e)]
-        dS = self._clear_teeth(self._soft_edge(np.tensordot(e[ids], EB[ids], 1), SMILE_FIT_SOFT))
+        dS = self._clear_teeth(self._soft_edge(np.tensordot(e[ids], EB[ids], 1), faceshapes.SMILE_FIT_SOFT))
         X0 = G["X0"]
         mid = float(np.mean(X0[[27, 28, 29, 30, 33, 51, 57, 62, 66], 0]))
         x = np.asarray(G["c"]["V"], float)[:, 0] - mid
-        w = 0.5 * (1 + np.tanh(x / (SMILE_SIDE_MM * 0.001 / float(G["c"].get("s", 1.0)))))
+        w = 0.5 * (1 + np.tanh(x / (faceshapes.SMILE_SIDE_MM * 0.001 / float(G["c"].get("s", 1.0)))))
         G[key] = dS * (w if s == "Left" else 1 - w)[:, None]
         return G[key]
 
@@ -269,12 +260,12 @@ class _GnmMoves:
     def _jaw_fit(self) -> np.ndarray:
         """GNM offsets (its frame, every vertex) of the FITTED jaw opening (JAW_FIT): its lower-face components, teeth cleared."""
         G = self._setup()
-        key = ("jaw_fit", faceshapes_consts.JAW_FIT, JAW_FIT_GAIN, JAW_ROLL_TUCK, JAW_TUCK_FADE, JAW_WIDEN)
+        key = ("jaw_fit", faceshapes.JAW_FIT, faceshapes.JAW_FIT_GAIN, faceshapes.JAW_ROLL_TUCK, faceshapes.JAW_TUCK_FADE, faceshapes.JAW_WIDEN)
         if key not in G:
-            e = JAW_FIT_GAIN * np.asarray(np.load(faceshapes_consts.JAW_FIT), float)
+            e = faceshapes.JAW_FIT_GAIN * np.asarray(np.load(faceshapes.JAW_FIT), float)
             ids = [i for i in G["regions"]["lower_face"] if i < len(e)]
             d = np.tensordot(e[ids], G["g"]["expression_basis"][ids], 1)
-            if JAW_ROLL_TUCK:
+            if faceshapes.JAW_ROLL_TUCK:
                 gr = {k: np.asarray(v) > 0.5 for k, v in G["g"]["groups"].items()}
                 V = np.asarray(G["c"]["V"], float)
                 n = min(len(V), len(d), len(gr["skin_exterior"]))
@@ -286,7 +277,7 @@ class _GnmMoves:
                 if iv is not None:
                     m_ = min(len(iv), n)
                     roll[:m_] = (np.asarray(iv, float)[:m_] > 0.99) & ~gr["mouth_sock"][:m_]
-                print(f"faceshapes: jawOpen tucks {int(roll.sum())} inner-roll vertices back (JAW_ROLL_TUCK {JAW_ROLL_TUCK})", flush=True)
+                print(f"faceshapes: jawOpen tucks {int(roll.sum())} inner-roll vertices back (JAW_ROLL_TUCK {faceshapes.JAW_ROLL_TUCK})", flush=True)
                 ext = np.zeros(len(d), bool)
                 ext[:n] = ((gr["upper_lip"] | gr["lower_lip"]) & gr["skin_exterior"])[:n]
                 f = V[ext[:len(V)]].mean(0) - V[np.flatnonzero(gr["mouth_sock"][:n])].mean(0)
@@ -294,13 +285,13 @@ class _GnmMoves:
                 f /= np.linalg.norm(f)
                 s = np.clip(np.abs(d[roll, 1]) / (0.2 * G["wg"]), 0.0, 1.0)
                 a = np.zeros(len(d))
-                a[roll] = s if not JAW_TUCK_FADE else 1.0  # (r43) per-vertex travel left one roll vertex (GNM 10766, travel
+                a[roll] = s if not faceshapes.JAW_TUCK_FADE else 1.0  # (r43) per-vertex travel left one roll vertex (GNM 10766, travel
                 # under the 20%-width cap while its neighbours sat at it) 1.4 mm less tucked than the ring round it
-                if JAW_TUCK_FADE:  # (r43) the tuck smoothed in space (Gaussian, JAW_TUCK_FADE x 0.5 mm): on the rolls alone
+                if faceshapes.JAW_TUCK_FADE:  # (r43) the tuck smoothed in space (Gaussian, JAW_TUCK_FADE x 0.5 mm): on the rolls alone
                     # one lower-lip vertex (GNM 10766, outside GNM's quads graph, so a quad feather can't reach it) went
                     # 1.75 mm past its neighbours (jawOpen uneven 0.53 > UNEVEN_LIMIT, test_onemesh); the rolls' mean kept
                     from scipy.spatial import cKDTree
-                    sig = JAW_TUCK_FADE * 0.0005 / float(G["c"].get("s", 1.0))
+                    sig = faceshapes.JAW_TUCK_FADE * 0.0005 / float(G["c"].get("s", 1.0))
                     P = np.zeros((len(d), 3))
                     P[:n] = V[:n]
                     near = np.flatnonzero(cKDTree(P[roll]).query(P, distance_upper_bound=4 * sig)[0] < np.inf)
@@ -318,14 +309,14 @@ class _GnmMoves:
                         return af
                     af = smooth(a)
                     a = af * (a[roll].mean() / max(af[roll].mean(), 1e-12))
-                    amt = JAW_ROLL_TUCK * G["wg"]
+                    amt = faceshapes.JAW_ROLL_TUCK * G["wg"]
                     for _ in range(8):  # where the teeth stop the tuck (_clear_teeth pushes those vertices back out, one
                         # by one: GNM 10766 sat 1.8 mm proud of its ring), the tuck gives way, smoothly
                         dt = d - (amt * a)[:, None] * f[None]
                         push = np.clip(((self._clear_teeth(dt) - dt) @ f), 0.0, None)
                         a = smooth(np.clip(a - push / amt, 0.0, None))
-                d -= (JAW_ROLL_TUCK * G["wg"] * a)[:, None] * f[None]
-            if JAW_WIDEN:  # (r43) the opening wider: the lips, their rings and the sock stretched out from the mouth's middle
+                d -= (faceshapes.JAW_ROLL_TUCK * G["wg"] * a)[:, None] * f[None]
+            if faceshapes.JAW_WIDEN:  # (r43) the opening wider: the lips, their rings and the sock stretched out from the mouth's middle
                 # (in the shape, so x its weight; review r42: "about 10% narrower and shorter")
                 gr = {k: np.asarray(v) > 0.5 for k, v in G["g"]["groups"].items()}
                 V = np.asarray(G["c"]["V"], float)
@@ -335,7 +326,7 @@ class _GnmMoves:
                 lw = np.clip(self._feather(lw, 6) * 1.5, 0.0, 1.0)
                 X0 = G["X0"]
                 mid = float(np.mean(X0[[51, 57, 62, 66], 0]))
-                d[:n, 0] += JAW_WIDEN * (V[:n, 0] - mid) * lw[:n]
+                d[:n, 0] += faceshapes.JAW_WIDEN * (V[:n, 0] - mid) * lw[:n]
             G[key] = self._clear_teeth(d)
         return G[key]
 
@@ -344,13 +335,13 @@ class _GnmMoves:
         lower-face components, faded across the midline (SMILE_SIDE_MM), plus a solve that closes the inner lips it
         parts; "eyes" = its components of that side's eye region."""
         G = self._setup()
-        key = ("smile_proto", s, part, SMILE_UPPER_LIFT, SMILE_CORNER_UP, SMILE_UPPER_HOLD, SMILE_LOWER_HOLD)
+        key = ("smile_proto", s, part, faceshapes.SMILE_UPPER_LIFT, faceshapes.SMILE_CORNER_UP, faceshapes.SMILE_UPPER_HOLD, faceshapes.SMILE_LOWER_HOLD)
         if key in G:
             return G[key]
         from . import gnm_sampler
         g = G["g"]
         EB = g["expression_basis"]
-        e = SMILE_PROTO[1] * np.asarray(gnm_sampler.expression()(np.zeros(64), gnm_sampler.ex_label(SMILE_PROTO[0]))[0], float)
+        e = faceshapes.SMILE_PROTO[1] * np.asarray(gnm_sampler.expression()(np.zeros(64), gnm_sampler.ex_label(faceshapes.SMILE_PROTO[0]))[0], float)
         reg = G["regions"]
         if part == "eyes":
             ids = [i for i in reg["left_eye" if s == "Left" else "right_eye"] if i < len(e)]
@@ -361,11 +352,11 @@ class _GnmMoves:
         dS = np.tensordot(e[ids], EB[ids], 1)
         L = G["Wlm"] @ dS / G["wg"]
         mv = {}
-        if SMILE_CORNER_UP != 1.0:  # the corners' rise scaled (Tess: corners 5-8% io above the reference smile)
+        if faceshapes.SMILE_CORNER_UP != 1.0:  # the corners' rise scaled (Tess: corners 5-8% io above the reference smile)
             for c in (48, 54):
-                mv[c] = np.array([0.0, -(1.0 - SMILE_CORNER_UP) * float(L[c][1]), 0.0])
-        for hold, ids_ in ((SMILE_UPPER_HOLD, {50: 1.0, 51: 1.0, 52: 1.0, 49: 0.5, 53: 0.5}),
-                           (SMILE_LOWER_HOLD, {56: 1.0, 57: 1.0, 58: 1.0, 55: 0.5, 59: 0.5})):
+                mv[c] = np.array([0.0, -(1.0 - faceshapes.SMILE_CORNER_UP) * float(L[c][1]), 0.0])
+        for hold, ids_ in ((faceshapes.SMILE_UPPER_HOLD, {50: 1.0, 51: 1.0, 52: 1.0, 49: 0.5, 53: 0.5}),
+                           (faceshapes.SMILE_LOWER_HOLD, {56: 1.0, 57: 1.0, 58: 1.0, 55: 0.5, 59: 0.5})):
             if hold:  # (r35) the outer lip edges' vertical travel taken back (the inner edges still part over the teeth)
                 for c, f in ids_.items():
                     mv[c] = np.array([0.0, -hold * f * float(L[c][1]), 0.0])
@@ -384,12 +375,12 @@ class _GnmMoves:
             if left * G["wg"] < 3e-4:
                 break
         dS = dS + self._solve(mv, "mouth")
-        if SMILE_UPPER_LIFT[0]:  # the upper lip's middle up off the incisors: the opening's top an arch (a crescent)
-            lift = self._jaw_lip_lift(SMILE_UPPER_LIFT[0], SMILE_UPPER_LIFT[1], SMILE_UPPER_LIFT[2])
+        if faceshapes.SMILE_UPPER_LIFT[0]:  # the upper lip's middle up off the incisors: the opening's top an arch (a crescent)
+            lift = self._jaw_lip_lift(faceshapes.SMILE_UPPER_LIFT[0], faceshapes.SMILE_UPPER_LIFT[1], faceshapes.SMILE_UPPER_LIFT[2])
             dS = dS + lift
-            if SMILE_UPPER_HOLD:  # (r35) the lift's own rise of the outer edge taken back too, the inner edge (61-63) kept
+            if faceshapes.SMILE_UPPER_HOLD:  # (r35) the lift's own rise of the outer edge taken back too, the inner edge (61-63) kept
                 Ll = G["Wlm"] @ lift / G["wg"]
-                mv2 = {c: np.array([0.0, -SMILE_UPPER_HOLD * f * float(Ll[c][1]), 0.0])
+                mv2 = {c: np.array([0.0, -faceshapes.SMILE_UPPER_HOLD * f * float(Ll[c][1]), 0.0])
                        for c, f in {50: 1.0, 51: 1.0, 52: 1.0, 49: 0.5, 53: 0.5}.items()}
                 mv2.update({c: np.zeros(3) for c in (61, 62, 63)})
                 dS = dS + self._solve(mv2, "mouth")
@@ -397,7 +388,7 @@ class _GnmMoves:
         X0 = G["X0"]
         mid = float(np.mean(X0[[27, 28, 29, 30, 33, 51, 57, 62, 66], 0]))
         x = np.asarray(G["c"]["V"], float)[:, 0] - mid
-        w = 0.5 * (1 + np.tanh(x / (SMILE_SIDE_MM * 0.001 / float(G["c"].get("s", 1.0)))))
+        w = 0.5 * (1 + np.tanh(x / (faceshapes.SMILE_SIDE_MM * 0.001 / float(G["c"].get("s", 1.0)))))
         w = w if s == "Left" else 1 - w
         out = dS * w[:, None]
         G[key] = out
@@ -410,9 +401,9 @@ class _GnmMoves:
         mid, half = 0.5 * (X0[48, 0] + X0[54, 0]), 0.5 * abs(X0[54, 0] - X0[48, 0])
 
         def arch(i):
-            return max(1.0 - JAW_ARCH * abs((X0[i, 0] - mid) / half) ** JAW_ARCH_POW, 0.0)
-        mv = {i: np.array([0.0, JAW_UPPER_LIFT[1] * arch(i), 0.0]) for i in UPPER_LIP[:5]}
-        mv.update({i: np.array([0.0, JAW_UPPER_LIFT[0] * arch(i), 0.0]) for i in UPPER_LIP[5:]})
+            return max(1.0 - faceshapes.JAW_ARCH * abs((X0[i, 0] - mid) / half) ** faceshapes.JAW_ARCH_POW, 0.0)
+        mv = {i: np.array([0.0, faceshapes.JAW_UPPER_LIFT[1] * arch(i), 0.0]) for i in faceshapes.UPPER_LIP[:5]}
+        mv.update({i: np.array([0.0, faceshapes.JAW_UPPER_LIFT[0] * arch(i), 0.0]) for i in faceshapes.UPPER_LIP[5:]})
         return mv
 
     def _jaw_lip_lift(self, amount: float | None = None, arch: float | None = None, power: float | None = None) -> np.ndarray:
@@ -420,9 +411,9 @@ class _GnmMoves:
         feathered into the skin above (0.4 of upper_lip_region). amount / arch / power override JAW_LIP_LIFT /
         JAW_ARCH / JAW_ARCH_POW (the smile's SMILE_UPPER_LIFT uses it with its own arch)."""
         G = self._setup()
-        JAW_LIP_LIFT = globals()["JAW_LIP_LIFT"] if amount is None else amount
-        JAW_ARCH = globals()["JAW_ARCH"] if arch is None else arch
-        JAW_ARCH_POW = globals()["JAW_ARCH_POW"] if power is None else power
+        JAW_LIP_LIFT = faceshapes.JAW_LIP_LIFT if amount is None else amount
+        JAW_ARCH = faceshapes.JAW_ARCH if arch is None else arch
+        JAW_ARCH_POW = faceshapes.JAW_ARCH_POW if power is None else power
         key = ("jaw_lip_lift", JAW_LIP_LIFT, JAW_ARCH, JAW_ARCH_POW)
         if key not in G:
             gr = G["g"]["groups"]

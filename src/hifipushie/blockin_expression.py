@@ -6,18 +6,7 @@ import json
 
 import numpy as np
 
-# ---------------------------------------------------------------- per-picture expression
-# GNM's identity is the relaxed neutral; a picture shows the person WITH an expression (a front picture with a slight smile:
-# fuller lips, lifted corners, a cheek apple). Comparing the neutral clay with it leaks the smile into mouth / cheek
-# identity steps. Each view may carry its own fitted expression (human_refs "expressions": one {GNM expression comp:
-# value} per view, {} = neutral), applied in look / focus / the table / lid reads / camera refits, never to the model.
-# Lower face only by default: with 6 eye-region comps per side a fit dropped the upper lid from 0.75 to 0.36 iris
-# radii (the detector's calibrated lid points disagree with the iris-radius lid read that lid_read matches: the comps
-# fought the lid pose); EYE_COMPS is the opt-in (a picture that clearly squints)
-EXPR_COMPS = {"lower_face_region": 20}
-EYE_COMPS = {"left_eye_region": 6, "right_eye_region": 6}
-EXPR_SD = {"lower_face_region": 0.8, "left_eye_region": 0.5, "right_eye_region": 0.5}
-
+from . import blockin
 
 def view_expression(rj: dict, vi: int) -> dict:
     ex = rj.get("expressions") or []
@@ -52,7 +41,7 @@ def _expr_names(comps: dict | None = None) -> list:
     from . import base_identity
     names = [str(n) for n in base_identity._gnm_data()["expression_names"]]
     out = []
-    for reg, n in (comps or EXPR_COMPS).items():
+    for reg, n in (comps or blockin.EXPR_COMPS).items():
         out += [nm for nm in names if nm.rsplit("_", 1)[0] == reg][:int(n)]
     return out
 
@@ -65,7 +54,7 @@ def fit_expression(base: dict, view: dict, cam: dict, comps: dict | None = None,
     Returns {"expression", "chi2": [before, after], "points", "norm"}."""
     from . import humanfit, humanfit_map as hm
     names = _expr_names(comps)
-    sd = {**EXPR_SD, **(sd or {})}
+    sd = {**blockin.EXPR_SD, **(sd or {})}
     prec = np.array([1.0 / float(sd[n.rsplit("_", 1)[0]]) ** 2 for n in names])
     rj1 = {"expressions": [None]}
 

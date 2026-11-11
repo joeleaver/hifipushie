@@ -7,6 +7,7 @@ from pathlib import Path
 
 import numpy as np
 
+from . import hair
 from . import store
 from . import hair_head
 from .hair import HairError, _unit, dirs
@@ -37,24 +38,6 @@ def card_classes(before: list, after: list, S: dict, seg, locks: dict) -> dict:
     return dict(sorted(out.items()))
 
 
-FRONT_SHORT = 0.0  # (round 46, opt-in) m: clump cards (not face / fly) shorter than this rooted in front of and above the
-# head centre (FRONT_SHORT_YZ: y < [0], z > [1] from C) are dropped: r45a's dark splintered patch where the part meets the
-# forehead was 17-20 mm, 6-vertex cards at vcol .37-.46 wearing a long card's tile squashed (its tips = the serrations)
-FRONT_SHORT_YZ = (-0.05, 0.02)
-CAP_TONE = 1.4  # (round 45; default after the blind A/B r45a vs r44d NEW 2 / OLD 0 / SAME 2) x the card cap's vertex colour under the colour model (0.9 / peak:
-# ~0.35 on Tess vs the cards' ~0.65; the cap's albedo 52 vs the cards' 85-93 in the crown box): where it shows between
-# cards it is ~40 % of the darkest crown pixels at 2x its area share (t45/capshare.py)
-CAP_TONE_TIERS: dict = {}  # (round 47, opt-in) tier -> CAP_TONE there: the far tier (group "free") keeps no head cards, so
-# its whole head IS the cap at CAP_TONE's darker-than-cards value: LOD3's head read a shade darker than LOD0's
-CAP_BARE_FLOOR = True  # a cap vertex with no coverage card within CAP_FAR lies at the floor (False: its mass height, before round 18)
-CAP_UNDER = 0.0025  # m: the cap stays this far under the lowest coverage card over it
-CAP_FAR = 12.0  # deg: a cap vertex with no card within CAP_REACH takes the nearest cards' height within this
-CAP_TOP_EL = 0.0  # (round 32; opt-in) deg: over this elevation a cap vertex with no card within CAP_REACH takes the
-# HIGHEST of the nearest cards' heights within CAP_FAR (not the lowest less CAP_UNDER): no card passes over el 80, so the
-# top of the dome was the cap at the seated roots' height, a dip between the crown's cards (Joe: "chopped off"); 0 = off
-CAP_REACH = 4.0  # deg: the cards over a cap vertex are those within this angle of it (seen from the head's centre)
-
-
 def cap_under_cards(sc: Scalp, V, cards: list, floor: float = 0.0015, bare_floor: bool | None = None):
     """Cap vertices pushed down (toward the head's centre) to CAP_UNDER under the lowest coverage card within
     CAP_REACH, never under `floor` off the scalp; where no card passes over a vertex it keeps its height."""
@@ -71,27 +54,27 @@ def cap_under_cards(sc: Scalp, V, cards: list, floor: float = 0.0015, bare_floor
     va, ve, vh = sc.coords(V)
     tree = cKDTree(dirs(pa, pe))
     dv = dirs(va, ve)
-    near = tree.query_ball_point(dv, 2 * np.sin(np.radians(CAP_REACH) / 2))
+    near = tree.query_ball_point(dv, 2 * np.sin(np.radians(hair.CAP_REACH) / 2))
     lo = np.array([ph[n].min() if n else np.inf for n in near])
     far = ~np.isfinite(lo)  # no card over it: the nearest cards within CAP_FAR set its height (the hair over it lies
     if far.any():  # no higher than the cards round it)
-        dd, ii = tree.query(dv[far], k=8, distance_upper_bound=2 * np.sin(np.radians(CAP_FAR) / 2))
+        dd, ii = tree.query(dv[far], k=8, distance_upper_bound=2 * np.sin(np.radians(hair.CAP_FAR) / 2))
         ok = np.isfinite(dd)
         lo[far] = np.where(ok.any(1), np.where(ok, ph[np.minimum(ii, len(ph) - 1)], np.inf).min(1), np.inf)
-        if CAP_TOP_EL > 0:
+        if hair.CAP_TOP_EL > 0:
             top_ = far.copy()
-            top_[far] = (ve[far] > CAP_TOP_EL) & ok.any(1)
+            top_[far] = (ve[far] > hair.CAP_TOP_EL) & ok.any(1)
             if top_.any():
                 hi_ = np.where(ok, ph[np.minimum(ii, len(ph) - 1)], -np.inf).max(1)
-                lo[top_] = hi_[top_[far]] + CAP_UNDER
+                lo[top_] = hi_[top_[far]] + hair.CAP_UNDER
     # no card over a vertex nor near it: a hole in the coverage (the part's gap, a narrowed card), so the cap lies on
     # the scalp there (CAP_BARE_FLOOR). Kept at its mass height, those vertices stood up through the hair as points
     # (b25's front-top "cat ears" where BEND_HW narrowed layer-0 cards; b26's knob at the strand part, round 18)
-    h = np.where(np.isfinite(lo), np.minimum(vh, np.maximum(lo - CAP_UNDER, floor)),
-                 np.minimum(vh, floor) if (CAP_BARE_FLOOR if bare_floor is None else bare_floor) else vh)
+    h = np.where(np.isfinite(lo), np.minimum(vh, np.maximum(lo - hair.CAP_UNDER, floor)),
+                 np.minimum(vh, floor) if (hair.CAP_BARE_FLOOR if bare_floor is None else bare_floor) else vh)
     # and no vertex stands over its neighbours' mean (single vertices left at the envelope were spikes)
     vt = cKDTree(dv)
-    nb = vt.query_ball_point(dv, 2 * np.sin(np.radians(CAP_REACH) / 2))
+    nb = vt.query_ball_point(dv, 2 * np.sin(np.radians(hair.CAP_REACH) / 2))
     h = np.minimum(h, np.array([h[n].mean() for n in nb]) + 0.001)
     return V + (h - vh)[:, None] * _unit(V - sc.C)
 
@@ -117,19 +100,16 @@ def cap_fill_arch(sc: Scalp, V, arch: list):
     if not ok.any():
         return V
     ang = np.degrees(2 * np.arcsin(np.clip(np.where(ok, dd, 0.0) / 2, 0, 1)))
-    wk = np.where(ok, np.exp(-(ang / max(CAP_REACH, 1e-3)) ** 2), 0.0)
+    wk = np.where(ok, np.exp(-(ang / max(hair.CAP_REACH, 1e-3)) ** 2), 0.0)
     hh_ = (wk * ph[np.minimum(ii, len(ph) - 1)]).sum(1) / np.maximum(wk.sum(1), 1e-12)
     a0 = np.where(ok[:, 0], ang[:, 0], np.inf)
-    f = np.clip((_hk.FILL_REACH - a0) / max(_hk.FILL_REACH - CAP_REACH, 1e-3), 0.0, 1.0)
+    f = np.clip((_hk.FILL_REACH - a0) / max(_hk.FILL_REACH - hair.CAP_REACH, 1e-3), 0.0, 1.0)
     w = f * f * (3 - 2 * f)
     tgt = hh_ - _hk.FILL_UNDER
     h = np.where(ok[:, 0], np.maximum(vh, vh + w * (tgt - vh)), vh)
     print(f"cap fill: {int((h > vh + 1e-4).sum())} cap vertices raised under {len(arch)} arch cards "
           f"(max {1000 * float((h - vh).max()):.1f} mm)", flush=True)
     return V + (h - vh)[:, None] * _unit(V - sc.C)
-
-
-CARD_CLEAR = 0.0015  # m: every card vertex stays this far outside the head (None: measure only)
 
 
 def card_clearance(sc: Scalp, M: dict, locks: list, fix: float | None = None, col=None) -> dict:
@@ -399,37 +379,14 @@ def reference_image(name: str, reference: str | None = None):
     if p and Path(p).exists():
         return Path(p), cam.get("crop") or tr.get("crop")
     return None, None
-VIEWS = {"front": (0.0, 5.0), "three_quarter": (40.0, 12.0), "side": (90.0, 5.0), "back": (180.0, 10.0),
-         "top": (20.0, 60.0), "three_quarter_r": (-40.0, 12.0), "side_r": (-90.0, 5.0),
-         "back_quarter": (140.0, 8.0), "wide_r": (-95.0, 4.0, 0.95), "wide_back": (165.0, 6.0, 0.95),
-         "wide_front": (-20.0, 4.0, 0.9), "close": (-30.0, 25.0, 0.45),
-         "close_back": (150.0, 20.0, 0.45), "close_front": (12.0, 8.0, 0.4), "close_side": (75.0, 15.0, 0.42),
-         # (az, el, distance, m the target sits under the head centre): the bust, for hair that falls
-         "bust_front": (0.0, 4.0, 1.25, 0.14), "bust_three_quarter": (40.0, 8.0, 1.25, 0.14),
-         "bust_side": (90.0, 4.0, 1.25, 0.14), "bust_back": (180.0, 6.0, 1.25, 0.14), "bust_side_r": (-90.0, 4.0, 1.25, 0.14),
-         "bust_back_quarter": (140.0, 8.0, 1.25, 0.14), "long_back": (180.0, 4.0, 1.9, 0.26),
-         "long_side": (90.0, 4.0, 1.9, 0.26)}
 
 
 def cameras(sc: Scalp, views, dist: float = 0.62, fov: float = 30.0) -> list:
     out = []
     target = sc.C + np.array([0.0, 0.0, 0.0])
     for v in views:
-        az, el, *dd = VIEWS[v]
+        az, el, *dd = hair.VIEWS[v]
         tg = target - np.array([0.0, 0.0, dd[1] if len(dd) > 1 else 0.0])
         eye = tg + dirs(az, el) * (dd[0] if dd else dist)  # close-ups: the material at work
         out.append({"name": v, "eye": eye.tolist(), "target": tg.tolist(), "fov": fov})
     return out
-
-
-# Lights for strand / card looks (each a sun; "dir" points from the head toward the light). Hair is read by its
-# highlight band and by light coming through its edge: a key from the front, a soft fill, and a rim from behind
-# (what a portrait photographer calls the hair light). Solid locks keep the stage's single sun.
-LIGHTS = {
-    "salon": {"lights": [{"dir": [-0.45, -0.75, 0.55], "energy": 3.0, "angle": 8.0},
-                         {"dir": [0.8, -0.45, 0.15], "energy": 0.7, "angle": 30.0, "specular": 0.0,
-                          "color": [0.86, 0.9, 1.0]},
-                         {"dir": [0.35, 0.8, 0.5], "energy": 4.5, "angle": 5.0, "color": [1.0, 0.96, 0.9]}],
-              "world": {"color": [0.77, 0.81, 0.86], "strength": 0.5}},
-    "flat": {"lights": [{"dir": [-0.4, -0.7, 0.6], "energy": 3.5, "angle": 3.0}]},
-}

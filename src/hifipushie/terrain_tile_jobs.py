@@ -4,26 +4,23 @@ from __future__ import annotations
 
 import numpy as np
 
+from . import terrain_mesh
 from . import fieldjit, terrain_sharp
 from .profiling import span as _span
 from .terrain_field import Field, project
-from .terrain_mesh import DEFAULTS, MODULES, _CTX
 from .terrain_relief import rock_config
 from .terrain_tile_border import _collapse_border
 from .terrain_tile_finish import snap_creases
-from .terrain_tile_mesh import ZOFF, _border_keys, _boundary_edges, _tile_mc
-from .terrain_volumes import FLOAT_PIECE, FLOAT_TOL, _sea, stacks, through_view, volumes
+from .terrain_tile_mesh import _border_keys, _boundary_edges, _tile_mc
+from .terrain_volumes import _sea, stacks, through_view, volumes
 
-WORKER_GB = 2.0  # a tile worker's peak PSS with maps: 1.04 GB on pebble (0.5 m voxel), 1.93 GB on a 10 x 10 tile block
-# of t3_alps (1 m voxel, a 3 x 4 km terrain in the parent); field calls chunked, dense meshes streamed through
-# <out>/_work (2.2 GB on pebble before that)
 def _pool():
     """A fork pool sized by free memory (`resources.workers`), guarded: 16 fixed workers x ~2 GB plus other jobs
     OOM-killed the user's desktop twice."""
     import multiprocessing
     from concurrent.futures import ProcessPoolExecutor
     from . import resources
-    n = resources.workers(_CTX.get("worker_gb", WORKER_GB), cap=16)
+    n = resources.workers(terrain_mesh._CTX.get("worker_gb", terrain_mesh.WORKER_GB), cap=16)
     fieldjit.warm()  # (compiled kernels in the parent: the forked workers inherit them, none compiles its own)
     # (one BLAS thread a worker: each inherited the parent's 4, which spun on every small matmul)
     ex = ProcessPoolExecutor(max_workers=n, mp_context=multiprocessing.get_context("fork"),
@@ -35,7 +32,7 @@ def _job_maps(args):
     """A tile's heightmap (2^k + 1 samples, edges shared with the neighbours) and splat PNGs (runs in a worker)."""
     from PIL import Image
     i, j, lo = args
-    c = _CTX
+    c = terrain_mesh._CTX
     G, field, mats, cfg, out, hrange = c["G"], c["base"], c["mats"], c["cfg"], c["out"], c["hrange"]
     lo = np.array(lo)
     extra = {}
@@ -76,7 +73,7 @@ def _job_maps(args):
 
 def _job_ground(ij):
     from . import terrain_cliffs
-    c = _CTX
+    c = terrain_mesh._CTX
     i, j = ij
     lo, _ = c["G"].bounds(i, j)
     return terrain_cliffs.ground_tile(c["region"], c["mats"], i, j, lo, int(c["cfg"]["heightmap"]) or 65,
@@ -85,7 +82,7 @@ def _job_ground(ij):
 
 def _job_mc(ij):
     """A tile's marching cubes and its border vertices' lattice-edge keys (runs in a worker)."""
-    c = _CTX
+    c = terrain_mesh._CTX
     i, j = ij
     if hasattr(c["field"], "empty") and c["field"].empty(*c["G"].bounds(i, j)):
         return None
@@ -113,12 +110,12 @@ def _dense(c, ij):
 
 def _job_dense(ij):
     """A tile's LOD0 mesh: marching cubes on the lattice, interior projected, border vertices the canonical ones."""
-    c = _CTX
+    c = terrain_mesh._CTX
     G, v0, field, reg, CP = c["G"], c["v0"], c["field"], c["reg"], c["CP"]
     rng, kk, _ = c["mc"][ij]
     d = np.load(_work(c, "mc", *ij))
     idx, faces = d["idx"], d["faces"]
-    P = np.c_[G.origin[0] + idx[:, 0] * v0, G.origin[1] + idx[:, 1] * v0, (idx[:, 2] + ZOFF) * v0]
+    P = np.c_[G.origin[0] + idx[:, 0] * v0, G.origin[1] + idx[:, 1] * v0, (idx[:, 2] + terrain_mesh.ZOFF) * v0]
     border = np.array(sorted(kk), np.int64)
     rows = np.array([reg[kk[q]] for q in border], np.int64)
     alias, gone = c.get("alias") or {}, np.zeros(0, np.int64)
@@ -144,7 +141,7 @@ def _job_dense(ij):
     mov[border] = False
     if c["cfg"].get("sharp", True):  # creases on mesh edges (extended marching cubes), not a sawtooth
         n0 = len(P)
-        to_world = lambda q: np.array([G.origin[0] + q[0] * v0, G.origin[1] + q[1] * v0, (q[2] + ZOFF) * v0])
+        to_world = lambda q: np.array([G.origin[0] + q[0] * v0, G.origin[1] + q[1] * v0, (q[2] + terrain_mesh.ZOFF) * v0])
         with _span("dense/sharp features"):
             P, faces, N, _ = terrain_sharp.feature_points(P, faces, idx, N, field, to_world, v0, mov,
                                                           bounds=G.bounds(*ij))
@@ -156,10 +153,10 @@ def _job_dense(ij):
     vrow[gone] = -1  # (merged into their weld's kept vertex: unused)
     with _span("dense/specks + save"):
         clr = None
-        if hasattr(field, "region") and float(c["cfg"].get("float_piece_m2", FLOAT_PIECE)) > 0:
+        if hasattr(field, "region") and float(c["cfg"].get("float_piece_m2", terrain_mesh.FLOAT_PIECE)) > 0:
             clr = P[:, 2] - field.region.height(P[:, 0], P[:, 1])
         faces, dropped = _drop_specks(P, faces, vrow >= 0, float(c["cfg"].get("min_piece_m2", 4.0)), clr,
-                                      float(c["cfg"].get("float_piece_m2", FLOAT_PIECE)))
+                                      float(c["cfg"].get("float_piece_m2", terrain_mesh.FLOAT_PIECE)))
         np.savez(_work(c, "dense", *ij), P=P, faces=faces, vrow=vrow)
     # the area its maps will cover (a cliff shell's visible front only): the export's texel density is chosen from it
     area = 0.0
@@ -176,7 +173,7 @@ def _chunks(fn, X, n=200_000):
     return np.concatenate([fn(X[i:i + n]) for i in range(0, len(X), n)]) if len(X) else np.zeros(0)
 
 
-def _drop_specks(P, F, on_border, min_area, clearance=None, float_area=0.0, tol=FLOAT_TOL):
+def _drop_specks(P, F, on_border, min_area, clearance=None, float_area=0.0, tol=terrain_mesh.FLOAT_TOL):
     """Closed pieces of a tile's mesh smaller than `min_area` m2 that touch no tile border: bubbles where the field
     grazes zero just off a steep face (rock relief on a 60 deg wall: 14-triangle specks floating 15 m up).
     With `clearance` (each vertex's height over the pushed heightmap: a cliff shell), closed pieces off the border
@@ -212,18 +209,18 @@ def _drop_specks(P, F, on_border, min_area, clearance=None, float_area=0.0, tol=
 
 def _job_collapse(args):
     ij, keep_rows, k = args
-    P, faces, vrow = _dense(_CTX, ij)
+    P, faces, vrow = _dense(terrain_mesh._CTX, ij)
     drop = np.flatnonzero((vrow >= 0) & ~np.isin(vrow, keep_rows))
     with _span("collapse border"):
         Fk, bad = _collapse_border(P, faces, drop)
-    np.save(_work(_CTX, "col", ij[0], ij[1], k), Fk)
+    np.save(_work(terrain_mesh._CTX, "col", ij[0], ij[1], k), Fk)
     return {int(vrow[u]) for u in bad}
 
 
 def _job_dense_full(ij):
     """A tile's dense LOD0 (`_job_dense`), its marching cubes first when the last export made them (incremental: the
     border keys came from the state). Those must come out as stored: a difference would break the invariant."""
-    c = _CTX
+    c = terrain_mesh._CTX
     if not _work(c, "mc", *ij).exists():
         r = _job_mc(ij)
         want = c["mc"][ij]
@@ -235,7 +232,7 @@ def _job_dense_full(ij):
 def _job_prep_tile(ij):
     """The work files a tile's LODs read when the last export made its dense mesh and collapses: made again, with
     this export's kept vertices."""
-    c = _CTX
+    c = terrain_mesh._CTX
     if not _work(c, "dense", *ij).exists():
         _job_dense_full(ij)
     for k, kr in enumerate(c["keep"]):  # (the same sorted rows the collapse loop passed)
@@ -245,7 +242,7 @@ def _job_prep_tile(ij):
 def build_field(T, cfg=None):
     """The 3D field of a terrain: (field, volume pieces, notes, caves)."""
     from . import terrain_caves
-    cfg = {**DEFAULTS, **((T.spec.get("export") or {}).get("tiles") or {}), **(cfg or {})}
+    cfg = {**terrain_mesh.DEFAULTS, **((T.spec.get("export") or {}).get("tiles") or {}), **(cfg or {})}
     vols, notes = volumes(T)
     if cfg.get("stacks", True) and _sea(T) is not None:
         sv, sn = stacks(T)
@@ -307,9 +304,9 @@ def _fingerprint(T, cfg, base, field, mats, region, G, hrange):
                    Frame("region cells", (region.nx - 1, region.ny - 1), "xy", G.origin[0], G.origin[1], region.d)]
     roots = {"field": field, "base": base, "materials": mats, "terrain cover": dict(T.cover),
              "terrain frame": (float(T.xs[0]), float(T.ys[0]), float(T.cell), tuple(T.H.shape)),
-             "region": region, "detail": _CTX.get("detail"), "detail entry": _CTX.get("detail_entry"),
+             "region": region, "detail": terrain_mesh._CTX.get("detail"), "detail entry": terrain_mesh._CTX.get("detail_entry"),
              "config": {k: v for k, v in cfg.items() if k not in ("incremental", "corridors")}, "heights range": hrange,
-             "grid": G, "sea": _sea(T), "code": codehash.digest(*MODULES)}
+             "grid": G, "sea": _sea(T), "code": codehash.digest(*terrain_mesh.MODULES)}
     return Fingerprint(roots, frames, base.vols, float(cfg["cave_wall"]) + 3.0)
 
 
@@ -323,9 +320,6 @@ class TilesCheckFailed(RuntimeError):
         self.result = result
 
 
-OVER_BUDGET = 2.0  # a tile LOD with more than this x its triangle budget fails the export's checks (said per tile)
-
-
 def budget_check(manifest_tiles, cfg, lods, caves=()):
     """Tile LODs over OVER_BUDGET x their triangle budget, with what the numbers say about why. `caves`: the caves'
     names (a tile a cave passes under is heavy for a reason the designer can act on)."""
@@ -335,7 +329,7 @@ def budget_check(manifest_tiles, cfg, lods, caves=()):
             if not L or k >= lods:
                 continue
             b = cfg["budget"][min(k, len(cfg["budget"]) - 1)]
-            if L["triangles"] <= OVER_BUDGET * b:
+            if L["triangles"] <= terrain_mesh.OVER_BUDGET * b:
                 continue
             mc = L.get("marching_cubes_triangles") or 0
             if mc and L["triangles"] > 0.9 * mc:

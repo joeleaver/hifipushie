@@ -3,6 +3,7 @@ floating 20 mm over it. Shadows must fall where the geometry says; AO must darke
 import numpy as np
 
 from hifipushie import likeness_render
+from hifipushie import likeness
 
 
 def _grid(n, half, z):
@@ -41,7 +42,7 @@ def test_shadow_falls_where_the_geometry_says():
 def test_soft_light_disc_directions():
     d = np.array([0.2, -0.5, 0.8])
     ds = likeness_render._light_disc(d, 10.0)
-    assert len(ds) == likeness_render.SOFT_N
+    assert len(ds) == likeness.SOFT_N
     cos = np.array(ds) @ (d / np.linalg.norm(d))
     assert (cos > np.cos(np.radians(10.5))).all() and cos.min() < np.cos(np.radians(5))
     assert len(likeness_render._light_disc(d, 0.0)) == 1

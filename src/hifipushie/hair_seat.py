@@ -9,7 +9,8 @@ import re
 import numpy as np
 
 from . import store
-from . import hair_groom, hair_head
+from . import hair_head
+from . import hair
 from .hair import HairError
 from .hair_groom import ear, head_ref
 from .hair_head import Scalp
@@ -29,7 +30,7 @@ def fit_to_head(g: dict, sc: Scalp) -> dict:
     import copy as _copy
     g = _copy.deepcopy(g)
 
-    def scale(d, path, k=k, unitless=hair_groom._UNITLESS):
+    def scale(d, path, k=k, unitless=hair._UNITLESS):
         node = d
         for key in path[:-1]:
             node = node.get(key) if isinstance(node, dict) else None
@@ -46,10 +47,10 @@ def fit_to_head(g: dict, sc: Scalp) -> dict:
         elif isinstance(v, list) and all(isinstance(x, (int, float)) for x in v):
             node[path[-1]] = [x * k for x in v]
 
-    for path in hair_groom._METRE_KEYS:
+    for path in hair._METRE_KEYS:
         scale(g, path)
     if abs(k_tie - 1.0) >= 2e-4:
-        for path, unitless in hair_groom._TIE_KEYS.items():
+        for path, unitless in hair._TIE_KEYS.items():
             scale(g, path, k_tie, unitless)
     fp = (g.get("hairline") or {}).get("front_points")
     if fp:
@@ -77,14 +78,6 @@ def carry(src: str, src_spec: dict | None = None, sc: Scalp | None = None) -> di
     return h
 
 
-SEAT_NEAR, SEAT_FAR = 0.03, 0.09  # m off the source scalp: closer, a point keeps its scalp address (az, el, h x k);
-# further (a hanging tail, wisps below the jaw), it moves rigidly with the head (scaled about its centre); between, a blend
-SEAT_STRAND_M = ("wave", "wavelength", "roots_m", "clump_size", "curl")  # lock strand dials in metres
-
-
-SEAT_EAR_FADE = (25.0, 35.0)  # deg: the ear warp fades out this far above the ear's top / round the ear's azimuths
-
-
 def _ear_warp(sa: Scalp, sb: Scalp):
     """(az, el) on head A -> (az, el) on head B that carries A's ear onto B's (both sides): hair that passed over the
     top of A's ear passes over B's. Without it, tp_h3's ear (its top 0.15 R higher than tess_a1's) stood in the way of
@@ -100,11 +93,11 @@ def _ear_warp(sa: Scalp, sb: Scalp):
 
     def warp(a, e):  # (elevation only: the ears' azimuths differ by a degree or two)
         a, e = np.asarray(a, float), np.asarray(e, float)
-        g = np.interp(e, [la, ta, ta + SEAT_EAR_FADE[0]], [lb - la, tb - ta, 0.0])
+        g = np.interp(e, [la, ta, ta + hair.SEAT_EAR_FADE[0]], [lb - la, tb - ta, 0.0])
         de = np.zeros_like(e)
         for mid in (mid_a, 360.0 - mid_a):
             dz = np.abs((a - mid + 180.0) % 360.0 - 180.0)
-            w = np.clip(1.0 - (dz - half) / SEAT_EAR_FADE[1], 0.0, 1.0)
+            w = np.clip(1.0 - (dz - half) / hair.SEAT_EAR_FADE[1], 0.0, 1.0)
             de += w * w * (3 - 2 * w) * g
         return a, np.clip(e + de, -89.0, 89.0)
     return warp
@@ -129,7 +122,7 @@ def seat_locks(src_spec: dict, sa: Scalp, sb: Scalp) -> dict:
         a2, e2 = warp(a, e)
         near = sb.point(a2, e2, hh * k)
         far = np.asarray(sb.C, float) + k * (P - np.asarray(sa.C, float))
-        w = np.clip((hh - SEAT_NEAR) / (SEAT_FAR - SEAT_NEAR), 0.0, 1.0)
+        w = np.clip((hh - hair.SEAT_NEAR) / (hair.SEAT_FAR - hair.SEAT_NEAR), 0.0, 1.0)
         w = (w * w * (3 - 2 * w))[:, None]
         return (1 - w) * near + w * far
 
@@ -154,7 +147,7 @@ def seat_locks(src_spec: dict, sa: Scalp, sb: Scalp) -> dict:
             lk["radius"] = [round(float(r) * k, 5) for r in lk["radius"]]
         st = lk.get("strands")
         if isinstance(st, dict):
-            for key in SEAT_STRAND_M:
+            for key in hair.SEAT_STRAND_M:
                 if isinstance(st.get(key), (int, float)):
                     st[key] = round(float(st[key]) * k, 5)
         out[n] = lk

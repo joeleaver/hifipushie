@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from . import hair, hair_spec
+from . import hair
 from .hair import HairError, _ss, _unit, az_el, dirs, under
 from .hair_groom import _line_at, envelope, groom_params, hairline, inside, weights
 from .hair_head import Scalp
@@ -34,7 +34,7 @@ def lift(spec: dict, sc: Scalp, by: dict, fill: bool = False) -> tuple:
         d_in = inside(sc, line, az, el)
         # eased in from the hairline (LIFT_RAMP): lifted at the line itself, the hair's edge stood off the skin as
         # a shelf with a dark gap under it at the temples
-        return (weights(az, el, d_in) @ vals) * _ss(d_in / hair_spec.LIFT_RAMP)
+        return (weights(az, el, d_in) @ vals) * _ss(d_in / hair.LIFT_RAMP)
 
     moved, skipped, mx = 0, [], 0.0
     for n, lk in (hs.get("locks") or {}).items():
@@ -217,10 +217,6 @@ def _hull_lift(sc: Scalp, AA, EE, H, d_in, extra, band=12.0):
     return H
 
 
-GATE_VIEWS = (("front", 0.0, ("left", "right")), ("three_quarter", 40.0, ("left",)),
-              ("three_quarter_r", -40.0, ("right",)))
-
-
 def _outline(sc: Scalp, P, az: float, sgn: float, edges):
     """The outline (outermost lateral extent, m) of points P per height bin, seen along azimuth az, one side."""
     a = np.radians(az)
@@ -252,7 +248,6 @@ def _silhouette_fill(sc: Scalp, AA, EE, H, d_in, extra, rounds: int = 14, cap=No
     """Raise the underlayer where the hair's outline (underlayer + the locks' outsides) dents inside its own convex
     envelope in the front and 3/4 views, below the crown band: under the wide top locks the sides pinched in at
     the temples (a divot either side). The underlayer is pushed out only near the outline, where it can fill it."""
-    from . import hair_look
     from scipy.ndimage import gaussian_filter
     hair_m = d_in > 0.002
     H = H.copy()
@@ -260,11 +255,11 @@ def _silhouette_fill(sc: Scalp, AA, EE, H, d_in, extra, rounds: int = 14, cap=No
         V = sc.point(AA, EE, H)
         P = np.vstack([V[hair_m], extra]) if len(extra) else V[hair_m]
         z0 = (sc.lm["lm_brow_mid.L"][2] if "lm_brow_mid.L" in sc.lm else float(sc.C[2])) + 0.02
-        ztop = P[:, 2].max() - 0.01 - hair_look.CROWN_BAND
+        ztop = P[:, 2].max() - 0.01 - hair.CROWN_BAND
         edges = np.arange(z0, ztop, 0.002)
         raise_ = np.zeros(H.shape)
         worst = 0.0
-        for _n, az, sides in GATE_VIEWS:
+        for _n, az, sides in hair.GATE_VIEWS:
             for side in sides:
                 sgn = 1.0 if side == "left" else -1.0
                 prof, right = _outline(sc, P, az, sgn, edges)
@@ -281,7 +276,7 @@ def _silhouette_fill(sc: Scalp, AA, EE, H, d_in, extra, rounds: int = 14, cap=No
                 near = _ss((x - (np.where(inb, prof[kz], np.inf) - 0.015)) / 0.012)
                 lat = np.maximum((dirs(AA, EE) @ right), 0.25)
                 raise_ = np.maximum(raise_, need * near / lat)
-        if worst * 1000 <= 0.3 * hair_look.GATE_MM:  # the python outline (lock_extents) runs ~1 mm short of Blender's
+        if worst * 1000 <= 0.3 * hair.GATE_MM:  # the python outline (lock_extents) runs ~1 mm short of Blender's
             break
         r = gaussian_filter(raise_, sigma=(4.0, 4.0), mode=("wrap", "nearest"))  # broad: a sharp raise read as a shelf
         H = H + 1.5 * r
@@ -305,17 +300,12 @@ def coverage(sc: Scalp, AA, EE, P, reach: float = 0.004):
     return np.clip(gaussian_filter(grid.astype(float), sigma=r, mode=("wrap", "nearest")) * 1.6, 0, 1)
 
 
-SHELL_MIN_GAP = 0.0004  # (sh6) m: each shell stands at least this far over the layer below it, the hairline included
-# (eased to 0 there, cap and shells were the same triangles: coincident alpha-tested layers render as holes / z-fight)
-SHELL_HROW_DROP = None  # (sh6) {"fa": [a0, a1], "el_max": deg}: the shells style's hairline-row cards whose middle lies
-# a0..a1 deg from the front and under el_max deg over the scalp centre are dropped (Garrett's sideburn: dense cards drew
-# flat grey dabs with round ends at game distance; the cap's tapered strands are the sideburn there)
 def shell_gaps(dhs, gap=None) -> list:
     """(sh6) The shells' offsets over the cap (one array per shell, inner first), each raised to at least `gap`
     (SHELL_MIN_GAP) over the one below. Eased to 0 at the hairline, cap and shells were the SAME triangles there: two
     alpha-tested layers on one surface render holes (Garrett's black specks along the nape and the sideburn top: shells
     1 + 2 alone made them, each alone none) or z-fight in an engine."""
-    g = SHELL_MIN_GAP if gap is None else float(gap)
+    g = hair.SHELL_MIN_GAP if gap is None else float(gap)
     out, prev = [], None
     for d in dhs:
         d = np.asarray(d, float)
@@ -326,22 +316,15 @@ def shell_gaps(dhs, gap=None) -> list:
 
 def _hrow_dropped(sc, c_) -> bool:
     """(sh7: SHELL_HROW_DROP may be a list of regions: the sideburn, and over the ear / the nape where the fade is paint)"""
-    if not c_.get("hrow") or not SHELL_HROW_DROP:
+    if not c_.get("hrow") or not hair.SHELL_HROW_DROP:
         return False
     a_, e_, _h = sc.coords(np.asarray(c_["P"], float).mean(0)[None])
     fa_ = abs(((float(a_[0]) + 180) % 360) - 180)
-    for r_ in (SHELL_HROW_DROP if isinstance(SHELL_HROW_DROP, list) else [SHELL_HROW_DROP]):
+    for r_ in (hair.SHELL_HROW_DROP if isinstance(hair.SHELL_HROW_DROP, list) else [hair.SHELL_HROW_DROP]):
         lo_, hi_ = r_.get("fa", (0.0, 180.0))
         if lo_ <= fa_ <= hi_ and float(e_[0]) < float(r_.get("el_max", 90.0)):
             return True
     return False
-
-
-SHELL_EDGE_LIFT = None  # (sh4) m: the shells cap's lift at the hairline (None = the full lift everywhere)
-SHELL_LIFT_EASE = 0.005  # (sh4) m in from the hairline over which the lift eases to SHELL_EDGE_LIFT
-CAP_RELAX_FLOOR = True  # (round 30) the relaxed cap keeps the floor cap_under_cards gave it (lift off the scalp)
-CAP_RELAX = 60  # (round 26) iterations: the card cap's radius relaxed over its mesh, only lowered (0 = off)
-CAP_SMOOTH = 0.0  # deg: the mass cap's height smoothed over this (gaussian sigma, 0 = off; round 26)
 
 
 def cap_mesh(sc: Scalp, g: dict, height: float, mass: bool = False, step: float = 1.0, sunk: bool = False,
@@ -369,10 +352,10 @@ def cap_mesh(sc: Scalp, g: dict, height: float, mass: bool = False, step: float 
                 H = _silhouette_fill(sc, AA, EE, H, d_in, extra, cap=H0)  # underlayer rises to close the dent (only there)
         if ease > 0:  # the volume comes up from the hairline over `ease` m (a far tier's cap: at full height from
             H = H * (0.3 + 0.7 * _ss(d_in / ease))  # the line it was a thick brim over the forehead)
-        if CAP_SMOOTH > 0:  # (round 26) the sunk volume smoothed over the head: its top was a flat block with notches
+        if hair.CAP_SMOOTH > 0:  # (round 26) the sunk volume smoothed over the head: its top was a flat block with notches
             # (cards' gaps between) that stood up at the front crown's outline (the RC review's "flat spike" at 1 / 3 m)
             from scipy.ndimage import gaussian_filter
-            sg = CAP_SMOOTH / max(step, 1e-3)
+            sg = hair.CAP_SMOOTH / max(step, 1e-3)
             H = np.where(d_in > 0, gaussian_filter(H, (sg, sg), mode=("wrap", "nearest")), H)
         H = np.maximum(H, 0.0015 * _ss(d_in / 0.004))
     else:

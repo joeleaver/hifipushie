@@ -8,6 +8,7 @@ from pathlib import Path
 
 import numpy as np
 
+from . import terrain_mesh
 from .terrain_gltf import _from_gltf, read_glb
 from .terrain_tile_finish import _unit_rows
 from .terrain_tile_mesh import _boundary_edges
@@ -196,7 +197,7 @@ def map_seams(out, tiles, lods, kind="tiles", memo=None):
         if not diffs:
             continue
         name = f"lod{ka}" if ka == kb else f"lod{ka}_vs_lod{kb}"
-        lim = MAP_SEAM[min(max(ka, kb), len(MAP_SEAM) - 1)]
+        lim = terrain_mesh.MAP_SEAM[min(max(ka, kb), len(terrain_mesh.MAP_SEAM) - 1)]
         r = {"points": int(sum(len(v) for v in diffs["normal"]))}
         for c, vs in diffs.items():
             v = np.concatenate(vs)
@@ -212,20 +213,6 @@ def map_seams(out, tiles, lods, kind="tiles", memo=None):
         r["ok"] = not bad
         r["bad"] = bad
         if bad:  # the borders it is worst on, per failing channel: [p95, tile, tile]
-            r["worst"] = {c: [list(w) for w in sorted(per.get(c, []), reverse=True)[:WORST_BORDERS]] for c in bad}
+            r["worst"] = {c: [list(w) for w in sorted(per.get(c, []), reverse=True)[:terrain_mesh.WORST_BORDERS]] for c in bad}
         res[name] = r
     return res
-
-
-WORST_BORDERS = 4  # borders listed per failing map channel
-
-
-# the same border point decoded from both tiles' maps (each samples its own texels, 8-bit, bilinear): normals p50 and
-# p95 (deg) and colour p95 (0..1) allowed, per LOD. A seam would shift the median; a few aliased texels at sharp
-# detail don't. LOD 2 (0.4 m texels on a mesh 0.5 m off the rock) is looser: where its triangles stray far from the
-# rock's normal the map can't bend past its surface (z >= 0.02) and the two sides clamp differently
-MAP_SEAM = [
-    {"normal": (3.0, 15.0), "colour": 0.08, "orm": 0.08, "height_m": 0.03, "weights": 0.1},
-    {"normal": (3.0, 15.0), "colour": 0.12, "orm": 0.1, "height_m": 0.06, "weights": 0.15},
-    {"normal": (6.0, 50.0), "colour": 0.2, "orm": 0.15, "height_m": 0.15, "weights": 0.25},
-]

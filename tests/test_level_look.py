@@ -7,6 +7,7 @@ import numpy as np
 
 from hifipushie import terrain, terrain_ground, terrain_swatch
 from hifipushie import terrain_materials, terrain_relief, terrain_tile_jobs, terrain_volumes
+from hifipushie import terrain_mesh
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -166,9 +167,9 @@ def test_thin_rock(T):
     assert np.sqrt((R * R).mean()) > 0.3, np.sqrt((R * R).mean())
     full = (t > 0.999) & np.isfinite(hw)
     if full.any():
-        assert (np.abs(R[full]) <= terrain_materials.THIN_RELIEF * hw[full] + 1e-6).all()
+        assert (np.abs(R[full]) <= terrain_mesh.THIN_RELIEF * hw[full] + 1e-6).all()
     st = terrain_relief.strata(P, 0.0, 4242)
-    assert 0.05 < (st > 0.1).mean() < 0.9 and st.max() <= terrain_relief.THIN_STRATA["depth"] + 1e-9
+    assert 0.05 < (st > 0.1).mean() < 0.9 and st.max() <= terrain_mesh.THIN_STRATA["depth"] + 1e-9
     # continuous along z: no jumps between beds (a jump meshes as shards)
     z = np.arange(0, 20, 0.01)
     col = terrain_relief.strata(np.c_[np.full(len(z), 200.0), np.full(len(z), 80.0), z], 0.0, 4242)

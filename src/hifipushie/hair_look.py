@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 
 from . import store
-from . import hair, hair_card_fit, hair_head, hair_job
+from . import hair, hair_head
 from .hair import _unit, dirs
 from .hair_card_fit import cameras, human_ref_frames, make_stage, reference_image, stage_path
 from .hair_groom import groom_params, hairline, inside
@@ -72,7 +72,7 @@ def look(name: str, views=("front", "three_quarter", "side", "back", "top"), siz
         if light is None and style in ("strands", "cards"):
             light = "salon"
         if light:
-            j["lighting"] = hair_card_fit.LIGHTS[light] if isinstance(light, str) else light
+            j["lighting"] = hair.LIGHTS[light] if isinstance(light, str) else light
         if engine == "cycles" and style == "strands":
             j.update(hair_bounces=10, denoise=bool(denoise), adaptive_threshold=0.01,
                      samples=samples or 96)
@@ -216,7 +216,7 @@ def look_glb(name: str, glb, views=("wide_r", "back_quarter", "close_front", "th
         j = {"mode": "hair_glb_look", "blend": str(sp), "views": frames, "size": size, "glb": str(glb) if glb else None,
              "alpha": alpha, "samples": 16, "look_engine": engine}
         if light:
-            j["lighting"] = hair_card_fit.LIGHTS[light] if isinstance(light, str) else light
+            j["lighting"] = hair.LIGHTS[light] if isinstance(light, str) else light
         out = _blender(j)
         imgs = [Image.open(f["out"]).convert("RGB") for f in frames]
     info = next((json.loads(ln[6:]) for ln in out.splitlines() if ln.startswith("@@glb")), {})
@@ -257,7 +257,7 @@ def check_tiers(name: str, export: dict | str | Path, tiers=None, save: str | No
         r["warnings"] = sorted(set(hk.verdict(r["test"], far=tier == "far") + hk.verdict(r["dither"], far=tier == "far")
                                    + hk.mesh_verdict(e.get("clearance"))))
         out["warnings"] += [f"{tier}: {w}" for w in r["warnings"]]
-        if solid and tier in hair_job.CARD_TIERS:
+        if solid and tier in hair.CARD_TIERS:
             sc_ = {**spec, "hair": {**hair_of(spec), "style": "cards"}}
             sh, _, _ = look(name, views=views, size=size, spec=sc_, clay=False, budget=tier, debug="layers")
             rows.append((f"{tier}: cards as solid quads by layer (cap + core grey, 0 red, 1 green, 2 blue, 3 yellow, "
@@ -324,9 +324,6 @@ def _project_frame(fm: dict, P, W: int):
     return np.stack([(x + 1) / 2 * W, (1 - (y + 1) / 2) * W], -1), z
 
 
-BARE_BAND = 0.015  # m inside the hairline: bare volume there is reported as "<region> hairline"
-
-
 def bare_regions(sc: Scalp, g: dict, capV, fm: dict, red, total: int, cam: dict | None = None) -> dict:
     """Where the bare volume shows in a view: each underlayer pixel of the id pass labelled by the head region of the
     underlayer point it shows (the nearest projected vertex), "<region> hairline" within BARE_BAND of the hairline.
@@ -356,20 +353,13 @@ def bare_regions(sc: Scalp, g: dict, capV, fm: dict, red, total: int, cam: dict 
     v = owner[ri[ys, xs], ci[ys, xs]]
     a, e, _ = sc.coords(capV[v])
     d_in = inside(sc, hairline(sc, g), a, e)
-    lab = np.char.add(hair_trace.region_of(a, e).astype(str), np.where(d_in < BARE_BAND, " hairline", ""))
+    lab = np.char.add(hair_trace.region_of(a, e).astype(str), np.where(d_in < hair.BARE_BAND, " hairline", ""))
     out = {}
     for L in np.unique(lab):
         s = float((lab == L).sum() / total)
         if s >= 0.005:
             out[str(L)] = round(s, 3)
     return dict(sorted(out.items(), key=lambda kv: -kv[1]))
-
-
-GATE_MM = 1.5  # the deepest dent allowed in the hair's outline (front and 3/4), mm, from the brows up to...
-GATE_SCALE = 0.012  # m: the outline is gated on shapes at least one lock row tall (smoothed over it): a waist or
-# divot is tens of mm; a clump's step where one lock ends over the next is a notch, the relief we want
-NOTCH_SCALE = 0.006  # m: notches (clump steps at the outline) are measured on this and reported, target 2-5 mm
-CROWN_BAND = 0.02  # ...this far under the top (the top's outline is the lock crowns: reported, not gated)
 
 
 def silhouette_gate(sc: Scalp, V, views=(("front", 0.0, ("left", "right")), ("three_quarter", 40.0, ("left",)),
@@ -401,11 +391,11 @@ def silhouette_gate(sc: Scalp, V, views=(("front", 0.0, ("left", "right")), ("th
                 if k > 1 and np.isfinite(raw).all():
                     return np.convolve(np.pad(raw, k // 2, mode="edge"), np.ones(k) / k, mode="valid")[:len(edges)]
                 return raw
-            prof = smoothed(NOTCH_SCALE)
+            prof = smoothed(hair.NOTCH_SCALE)
             good = ~np.isnan(prof)
             if good.sum() >= 4:  # the notches: clump steps (6 mm smoothing), reported
                 Pn = np.stack([prof[good], edges[good]], 1)
-                Pn = Pn[Pn[:, 1] <= ztop - CROWN_BAND]
+                Pn = Pn[Pn[:, 1] <= ztop - hair.CROWN_BAND]
                 if len(Pn) >= 4:
                     b = Pn[:, 0].min() - 1.0
                     P2 = np.vstack([Pn, [[b, Pn[0, 1]], [b, Pn[-1, 1]]]])
@@ -414,7 +404,7 @@ def silhouette_gate(sc: Scalp, V, views=(("front", 0.0, ("left", "right")), ("th
                     hv = hv[np.argsort(hv[:, 1])]
                     res[side + "_notch"] = round(float(((np.interp(Pn[:, 1], hv[:, 1], hv[:, 0]) - Pn[:, 0])
                                                         * 1000).max()), 1)
-            prof = smoothed(GATE_SCALE)
+            prof = smoothed(hair.GATE_SCALE)
             good = ~np.isnan(prof)
             if good.sum() < 4:
                 continue
@@ -429,7 +419,7 @@ def silhouette_gate(sc: Scalp, V, views=(("front", 0.0, ("left", "right")), ("th
                 return (np.interp(P[:, 1], hv[:, 1], hv[:, 0]) - P[:, 0]) * 1000
             # the gated band: brows + 2 cm up to CROWN_BAND under the top, its own envelope (the lock crowns on top
             # are the clumps; a chord from them down onto the sides is reported as "full", not gated)
-            crown = P[:, 1] > ztop - CROWN_BAND
+            crown = P[:, 1] > ztop - hair.CROWN_BAND
             full = dents(P)
             res[side + "_crown"] = round(float(full[crown].max()), 1) if crown.any() else 0.0
             res[side + "_full"] = round(float(full.max()), 1)
@@ -442,7 +432,7 @@ def silhouette_gate(sc: Scalp, V, views=(("front", 0.0, ("left", "right")), ("th
                 worst = (float(gap[i]), round(float(P[i, 1]), 3))
         res["at"] = worst[1]
         out[name] = res
-        ok &= worst[0] <= GATE_MM
+        ok &= worst[0] <= hair.GATE_MM
     out["pass"] = bool(ok)
     return out
 

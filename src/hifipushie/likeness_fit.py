@@ -6,15 +6,14 @@ from pathlib import Path
 
 import numpy as np
 
-from .likeness import LEVERS, checklist, stage_names
+from . import likeness
+from .likeness import checklist, stage_names
 from .likeness_compare import compare, profile_read
 from .likeness_measure import _item
-from .likeness_notes import EXPR_LEVERS, _fmt, expression_bias
+from .likeness_notes import _fmt, expression_bias
 from .likeness_panels import focus_sheet
 from .likeness_sides import _refs
-from .likeness_stages import (
-    LEVER_VIEWS, _photos, _signed, _stage, _undone, _views_with, lever_value, stage_wants, with_lever,
-)
+from .likeness_stages import _photos, _signed, _stage, _undone, _views_with, lever_value, stage_wants, with_lever
 
 def _lever_fit(name, base, photos, start, cmp0, k, ids, lever, force, log) -> tuple:
     """1-D secant on the lever for the items' signed miss, from `base` (measured: cmp0); every candidate
@@ -23,7 +22,7 @@ def _lever_fit(name, base, photos, start, cmp0, k, ids, lever, force, log) -> tu
     from . import humanfit
     path, step, (lo, hi), dflt = lever
     kind = _item(ids[0])["measure"]["kind"]
-    views = LEVER_VIEWS.get(kind)
+    views = likeness.LEVER_VIEWS.get(kind)
     x0 = lever_value(base, path, dflt)
     st0 = humanfit.state(base)
     f0 = _signed(cmp0, ids, views)
@@ -132,11 +131,11 @@ def fit_stage(name: str, stage: str, base: dict | None = None, force: bool = Fal
         rep["steps"].append((f"profile contour ({part})", {}))
     done = set()
     for it in checklist():
-        lv_of = lambda i: EXPR_LEVERS[i] if (i in biased and i in EXPR_LEVERS) else LEVERS.get(i)  # noqa: E731
+        lv_of = lambda i: likeness.EXPR_LEVERS[i] if (i in biased and i in likeness.EXPR_LEVERS) else likeness.LEVERS.get(i)  # noqa: E731
         if it["stage"] != stage or lv_of(it["id"]) is None or it["id"] in done:
             continue
         lever = lv_of(it["id"])
-        ids = [i for i in list(LEVERS) + list(EXPR_LEVERS) if lv_of(i) and lv_of(i)[0] == lever[0] and _item(i)["stage"] == stage]
+        ids = [i for i in list(likeness.LEVERS) + list(likeness.EXPR_LEVERS) if lv_of(i) and lv_of(i)[0] == lever[0] and _item(i)["stage"] == stage]
         ids = list(dict.fromkeys(ids))
         # a contour reading (mm, geometry) drives the lever alone where there is one: mixed with the shading's % the
         # mean miss means nothing
@@ -153,7 +152,7 @@ def fit_stage(name: str, stage: str, base: dict | None = None, force: bool = Fal
     gaps = []
     for r in cur_cmp["rows"]:
         it = _item(r["id"])
-        if it["stage"] == stage and r["score"] > 1.0 and not it.get("solve") and r["id"] not in LEVERS \
+        if it["stage"] == stage and r["score"] > 1.0 and not it.get("solve") and r["id"] not in likeness.LEVERS \
                 and not any(w in it["control"] for w in ("fit_outline", "fit_hood")):
             gaps.append(f"{it['name']} [{r['view']}] ({r['miss']:+.2f} {it['unit']}): {it['control']}")
     rep["gaps"] = gaps
@@ -180,28 +179,6 @@ def fit_stage(name: str, stage: str, base: dict | None = None, force: bool = Fal
     return rep
 
 
-PROFILE_PARTS = {   # part -> (region group(s), contour, heights it reads (levels, mm either side), landmarks held)
-    "nose": ("nose_region", "nose", None, None),
-    "chin": (["chin_region", "lower_lip_region"], "outer", ("sto", 6.0, "chin", 9.0),
-             [i for i in range(17, 68) if i not in (55, 56, 57, 58, 59, 65, 66, 67)]),
-    # the cheek's fullness at the mouth's height (the far cheek's line in a turned view), the front outline held
-    "cheek": (["left_cheek_region", "right_cheek_region"], "outer", ("sn", 2.0, "sto", 10.0), list(range(17, 68))),
-}
-PROFILE_ITEMS = {"cheek": ["prof_cheek_line"], "nose": ["prof_nose_tip", "prof_nose_gap", "prof_nose_length", "prof_bridge_bow"],
-                 "chin": ["prof_chin", "prof_chin_height", "prof_mentolabial"]}
-PROFILE_ROUNDS = 5
-PROFILE_DONE = 1.5    # mm rms of the contour's miss at its vertices: done
-
-
-PROFILE_FRONT = {"nose": list(range(27, 36)), "chin": [7, 8, 9, 56, 57, 58]}
-
-
-PROFILE_HOLD_N = 60     # region vertices held in the front picture's plane
-PROFILE_HOLD_W = 3      # ... each counted this many times against a contour vertex
-PROFILE_GAIN = 0.7      # share of the contour's miss asked a round (to the contour, not past it)
-PROFILE_SIGMA = 1.6     # a round that takes the region's components past this is not taken (plausibility)
-
-
 def _front_holds(cmp, part) -> list:
     """The part's skin held where a FRONT picture has it (fit_region targets at their own projection): a turned view's
     contour says how far things stand along the front camera's line of sight; heights and widths are the front
@@ -222,11 +199,11 @@ def _front_holds(cmp, part) -> list:
         else:
             c = 0.5 * (L[8] + L[57])
             ids = np.nonzero(np.linalg.norm(V - c, axis=1) < 0.032)[0]
-        if len(ids) > PROFILE_HOLD_N:
-            ids = ids[np.linspace(0, len(ids) - 1, PROFILE_HOLD_N).astype(int)]
+        if len(ids) > likeness.PROFILE_HOLD_N:
+            ids = ids[np.linspace(0, len(ids) - 1, likeness.PROFILE_HOLD_N).astype(int)]
         uv = humanfit.project(md["cam"], V[ids])
         out += [{"view": vi, "tpl": [int(a)] * 3, "bary": [1.0, 0.0, 0.0], "uv": [float(u[0]), float(u[1])], "hold": True}
-                for a, u in zip(ids, uv)] * PROFILE_HOLD_W
+                for a, u in zip(ids, uv)] * likeness.PROFILE_HOLD_W
     return out
 
 
@@ -236,7 +213,7 @@ def _rms(tg) -> float:
 
 def _profile_targets(cmp, traces, part) -> list:
     from . import likeness_profile as lp
-    group, contour, rng, hold = PROFILE_PARTS[part]
+    group, contour, rng, hold = likeness.PROFILE_PARTS[part]
     tg = []
     for vi, (ph, md) in enumerate(zip(cmp["photos"], cmp["models"])):
         rd = profile_read(ph, md, traces)
@@ -246,12 +223,12 @@ def _profile_targets(cmp, traces, part) -> list:
         if rng:
             lv = rd["model_levels"]
             vr = (lv[rng[0]] + rng[1], lv[rng[2]] + rng[3])
-        tg += lp.targets(rd, md["mesh"], md["cam"], vi, contour, v_range=vr, gain=PROFILE_GAIN)
+        tg += lp.targets(rd, md["mesh"], md["cam"], vi, contour, v_range=vr, gain=likeness.PROFILE_GAIN)
     return tg
 
 
 def _profile_score(cmp, part):
-    v = [r["score"] for r in cmp["rows"] if r["id"] in PROFILE_ITEMS[part] and r["score"] >= 0]
+    v = [r["score"] for r in cmp["rows"] if r["id"] in likeness.PROFILE_ITEMS[part] and r["score"] >= 0]
     return float(np.sum(np.square(v))) if v else None
 
 
@@ -276,8 +253,8 @@ def fit_profile(name: str, base: dict | None = None, parts=("nose", "chin"), for
     traces = ls.load_points(name)
     log = []
     for part in parts:
-        group, contour, rng, hold = PROFILE_PARTS[part]
-        for rnd in range(PROFILE_ROUNDS):
+        group, contour, rng, hold = likeness.PROFILE_PARTS[part]
+        for rnd in range(likeness.PROFILE_ROUNDS):
             s0 = _profile_score(cmp, part)
             if s0 is None:
                 log.append(f"  {part}: no contour on the references (likeness_points 'profile'" + (" / 'nose'" if part == "nose" else "") + ")")
@@ -287,7 +264,7 @@ def fit_profile(name: str, base: dict | None = None, parts=("nose", "chin"), for
                 log.append(f"  {part}: {len(tg)} contour vertices: too few")
                 break
             miss = _rms(tg)
-            if miss < PROFILE_DONE:
+            if miss < likeness.PROFILE_DONE:
                 log.append(f"  {part}: contour within {miss:.1f} mm rms")
                 break
             nb, r = humanfit.fit_region(cur, cams0, tg + _front_holds(cmp, part), group, hold=hold, force=force,
@@ -301,8 +278,8 @@ def fit_profile(name: str, base: dict | None = None, parts=("nose", "chin"), for
             miss1 = _rms(tg1)
             # pins: every FRONT-view item (any stage) when run alone; the earlier stages' in a staged fit
             und = _undone(start, c, k) if start is not None else _undone(cmp_first, c, 99)
-            if float(r.get("largest_sigma") or 0) > PROFILE_SIGMA and not force:
-                log.append(f"  {part} round {rnd + 1}: not taken (components at {r.get('largest_sigma')} sigma, limit {PROFILE_SIGMA})")
+            if float(r.get("largest_sigma") or 0) > likeness.PROFILE_SIGMA and not force:
+                log.append(f"  {part} round {rnd + 1}: not taken (components at {r.get('largest_sigma')} sigma, limit {likeness.PROFILE_SIGMA})")
                 break
             note = (f"{len(tg)} contour vertices, contour rms {miss:.1f} -> {miss1:.1f} mm, share {r.get('share')}, largest "
                     f"{r.get('largest_sigma')} sigma; items' score {s0:.1f} -> {s1 if s1 is None else round(s1, 1)}")

@@ -970,11 +970,11 @@ def own_mouth_meshes(mesh: Path, mp: dict, log: list) -> None:
     field (IMLS shell, 0.4 mm) decimated to 1200 triangles a row read "jagged, separate pegs with gaps, fang tips"
     (expr_r4 / r5) where GNM's 1414 quads are clean teeth. The parts' min_triangles (base_gnm_parts.MOUTH_PARTS) keep them whole.
     Normals: area-weighted from the quads, turned so the front of the row faces forward."""
-    from . import base_gnm_parts
+    from . import base
     z = dict(np.load(mesh))
     names = [str(n) for n in z["part_names"]]
     V, F, N, P = z["verts"].astype(np.float64), z["faces"], z["normals"].astype(np.float64), z["part"]
-    for gn, pn in (("teeth_upper", base_gnm_parts.TEETH_PARTS[0]), ("teeth_lower", base_gnm_parts.TEETH_PARTS[1]), ("tongue", "tongue")):
+    for gn, pn in (("teeth_upper", base.TEETH_PARTS[0]), ("teeth_lower", base.TEETH_PARTS[1]), ("tongue", "tongue")):
         if pn not in names:
             continue
         i = names.index(pn)
@@ -2508,9 +2508,9 @@ def export(name: str, out_dir: Path, *args, **kw) -> dict:
             pass
     with resources.heavy(f"export {name}", kind="export_asset", model=name, log=waiting,
                          gb=export_gb(store.load(name), name)):
-        from . import faceshapes_consts
+        from . import faceshapes
         notes = []
-        with faceshapes_consts.character_fits(store.load(name), notes, store._dir(name)):  # per-character fits from the spec, not the env
+        with faceshapes.character_fits(store.load(name), notes, store._dir(name)):  # per-character fits from the spec, not the env
             for m in notes:
                 waiting(m)
             res = _export(name, out_dir, *args, **kw)
@@ -2887,14 +2887,15 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
     own_surface = None
     if face_shapes and getattr(fface, "gnm_mouth", False):  # GNM's own teeth and tongue lie behind the closed lips
         from . import base_gnm_parts
+        from . import base
         mp = base_gnm_parts.gnm_mouth(fface.head)
         pts = {k: base_gnm_parts._piece_points(mp[k]["verts"], mp[k]["faces"])["verts"] for k in ("teeth_upper", "teeth_lower", "tongue")}
-        own_surface = {base_gnm_parts.TEETH_PARTS[0]: pts["teeth_upper"], base_gnm_parts.TEETH_PARTS[1]: pts["teeth_lower"],
+        own_surface = {base.TEETH_PARTS[0]: pts["teeth_upper"], base.TEETH_PARTS[1]: pts["teeth_lower"],
                        "tongue": pts["tongue"]}
         own_mouth_meshes(high, mp, log)
         # (their own vertices ARE the surface: every face kept, whatever covers the rows in the neutral)
-        own_surface.update({base_gnm_parts.TEETH_PARTS[0]: np.asarray(mp["teeth_upper"]["verts"], float),
-                            base_gnm_parts.TEETH_PARTS[1]: np.asarray(mp["teeth_lower"]["verts"], float),
+        own_surface.update({base.TEETH_PARTS[0]: np.asarray(mp["teeth_upper"]["verts"], float),
+                            base.TEETH_PARTS[1]: np.asarray(mp["teeth_lower"]["verts"], float),
                             "tongue": np.asarray(mp["tongue"]["verts"], float)})
     prune_hidden(ctx, high, log, own_surface)
     if texel_density:
@@ -3165,7 +3166,7 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
                 # (r59) half the specular, in the sheen's colour (hair.card_specular_tint): the default white x 2 mirrored
                 # the key light off the crown's cards as a white plate (Tess rc2i, Garrett v5)
                 # (no specular texture: the hair's is a flat 0.5; F0 = 0.04 x factor x colour = 0.02 x tint)
-                "KHR_materials_specular": {"specularFactor": hair_export.CARD_SPECULAR,
+                "KHR_materials_specular": {"specularFactor": hairmod.CARD_SPECULAR,
                                            "specularColorFactor": hair_export.card_specular_tint(sheen)},
                 "KHR_materials_anisotropy": {"anisotropyStrength": float(lk.get("anisotropic", 0.7)),
                                              "anisotropyRotation": 1.5708},

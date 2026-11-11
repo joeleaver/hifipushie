@@ -7,6 +7,7 @@ import json
 
 import numpy as np
 
+from . import hair as hair_mod
 from . import hair
 from .hair import HairError, _part_side, _ss, _unit, az_el, full_look
 from .hair_head import Scalp
@@ -62,9 +63,6 @@ def needs_body(g: dict) -> bool:
                for t in (tie if isinstance(tie, list) else [tie]))
 
 
-GREY_AGES = (30.0, 50.0)   # the default groom grey: none before the first age, all of it from the second
-
-
 def grey_age(spec: dict) -> float:
     """0..1: the share of the default temple / sideburn grey a groom gets, by the model's age (base.body.age, else
     skin.age); a model without an age keeps the full default."""
@@ -73,7 +71,7 @@ def grey_age(spec: dict) -> float:
         age = (spec.get("skin") or {}).get("age")
     if age is None:
         return 1.0
-    return float(np.clip((float(age) - GREY_AGES[0]) / (GREY_AGES[1] - GREY_AGES[0]), 0.0, 1.0))
+    return float(np.clip((float(age) - hair.GREY_AGES[0]) / (hair.GREY_AGES[1] - hair.GREY_AGES[0]), 0.0, 1.0))
 
 
 def look_of(spec: dict, h: dict | None = None) -> dict:
@@ -85,18 +83,6 @@ def look_of(spec: dict, h: dict | None = None) -> dict:
     if "grey_locks" not in (h.get("look") or {}):
         lk["grey_locks"] = grey_age(spec)
     return lk
-
-
-POCKET = 0.012  # m: (one mesh) air this deep along a scalp ray is outside the head, not a pocket in it (an ear canal)
-HAIRLINE_JOIN = 25.0  # deg of azimuth over which the default line past traced front_points eases onto their end
-
-
-EAR_OPEN = 19  # cells of azimuth (x Scalp.STEP deg = 38): what stands off the head narrower than this is "a bump"
-EAR_BUMP = 0.004  # m a ray must stand off the head without the bump to count as ear
-EAR_LOW = 0.0015  # m: ... and what the ear is grown into from there
-EAR_OVER = 0.006  # m the line runs over the found ear's top by default (groom.hairline.ear)
-EAR_CLEAR = 0.003  # m: the hairline never runs lower over the found ear than this above its top
-SIDEBURNS = 0.014  # m the sideburn reaches below the found ear's top by default
 
 
 def ear(sc: Scalp) -> dict | None:
@@ -115,9 +101,9 @@ def ear(sc: Scalp) -> dict | None:
     R = np.asarray(sc.R, float)
     na = len(sc.A)
     Rs = 0.5 * (R + R[(-np.arange(na)) % na])
-    pad = EAR_OPEN + 4
+    pad = hair.EAR_OPEN + 4
     Rp = np.concatenate([Rs[-pad:], Rs, Rs[:pad]], 0)
-    D = Rs - ndimage.grey_opening(Rp, size=(EAR_OPEN, 1))[pad:-pad]
+    D = Rs - ndimage.grey_opening(Rp, size=(hair.EAR_OPEN, 1))[pad:-pad]
     ia = np.nonzero((sc.A >= 66) & (sc.A <= 126))[0]
     W = D[ia]
     AA, EE = np.meshgrid(sc.A[ia], sc.E, indexing="ij")
@@ -127,7 +113,7 @@ def ear(sc: Scalp) -> dict | None:
         z0 = sc.lm["lm_nose_base"][2] - 0.05
     else:
         z1, z0 = sc.C[2] + 0.06, sc.C[2] - 0.12
-    M = (W > EAR_BUMP) & (W < 0.055) & (Zw < z1) & (Zw > z0) & (EE > sc.EL[0] + 4)
+    M = (W > hair.EAR_BUMP) & (W < 0.055) & (Zw < z1) & (Zw > z0) & (EE > sc.EL[0] + 4)
     lab, n = ndimage.label(M, structure=np.ones((3, 3), int))
     best, cells = 0.0, None
     for c in range(1, n + 1):
@@ -143,10 +129,10 @@ def ear(sc: Scalp) -> dict | None:
         return None
     # ... grown into what stands off less but belongs to it (hysteresis): the helix's top and front lie nearly flat
     # on the head, and the bump over EAR_BUMP alone was the ear's back half (the line then crossed the ear's top)
-    lo = (W > EAR_LOW) & (W < 0.055) & (Zw < z1) & (Zw > z0) & (EE > sc.EL[0] + 4)
+    lo = (W > hair.EAR_LOW) & (W < 0.055) & (Zw < z1) & (Zw > z0) & (EE > sc.EL[0] + 4)
     lab2, _ = ndimage.label(lo, structure=np.ones((3, 3), int))
     cells = np.isin(lab2, np.unique(lab2[cells])) & lo
-    thr = EAR_LOW
+    thr = hair.EAR_LOW
     # its top, between the highest cell over the threshold and the one above it
     jj = np.arange(W.shape[1])
     top, az_top = -np.inf, 0.0
@@ -183,7 +169,7 @@ def hairline(sc: Scalp, g: dict) -> np.ndarray:
         if er is not None:  # (a head without landmarks that HAS ears, e.g. a template body: the line over the found
             # ear instead of 18 deg above the head joint; explicit elevations still win)
             _, e_t, _ = sc.coords(sc.point(er["az_top"], 0.0, 0.0) * [1, 1, 0] + [0, 0, er["top"] + 0.01])
-            _, e_s, _ = sc.coords(sc.point(er["front"] - 8.0, 0.0, 0.0) * [1, 1, 0] + [0, 0, er["top"] - SIDEBURNS])
+            _, e_s, _ = sc.coords(sc.point(er["front"] - 8.0, 0.0, 0.0) * [1, 1, 0] + [0, 0, er["top"] - hair.SIDEBURNS])
             dflt.update({"ear_az": er["front"] + 6.0, "ear_el": float(e_t), "sideburn_el": float(e_s)})
         ea = float(hl.get("ear_az", dflt["ear_az"]))
         el = {k: float(hl.get(k, dflt[k])) for k in ("front_el", "temple_el", "sideburn_el", "ear_el", "nape_el")}
@@ -224,8 +210,8 @@ def hairline(sc: Scalp, g: dict) -> np.ndarray:
             # `ear` below EAR_CLEAR (old grooms patched the high guess with negative values) is raised to it
             ear_top = er["top"]
             af, ab = er["front"], er["back"]
-            clear = max(float(EAR_OVER if hl.get("ear") is None else hl["ear"]), EAR_CLEAR)
-            sb = ear_top - max(float(SIDEBURNS if hl.get("sideburns") is None else hl["sideburns"]), 0.004 - clear)
+            clear = max(float(hair.EAR_OVER if hl.get("ear") is None else hl["ear"]), hair.EAR_CLEAR)
+            sb = ear_top - max(float(hair.SIDEBURNS if hl.get("sideburns") is None else hl["sideburns"]), 0.004 - clear)
             lob = max(min(ear_bot, ear_top - 0.02), er["lobe"])
             ctrl = [c for c in front if c[0] < af - 16] + [
                 (af - 11, sb + 0.007), (af - 7.5, sb), (af - 3.5, sb + 0.003), (af + 0.5, ear_top + clear),
@@ -238,7 +224,7 @@ def hairline(sc: Scalp, g: dict) -> np.ndarray:
         ca = np.array([c[0] for c in ctrl])
         cz = np.array([c[1] for c in ctrl])
         dz = fp[-1][1] - float(np.interp(fp[-1][0], ca, cz))
-        ctrl = fp + [(a, z + dz * max(0.0, 1.0 - (a - fp[-1][0]) / HAIRLINE_JOIN)) for a, z in ctrl
+        ctrl = fp + [(a, z + dz * max(0.0, 1.0 - (a - fp[-1][0]) / hair.HAIRLINE_JOIN)) for a, z in ctrl
                      if a > fp[-1][0] + 4]
     # z -> elevation on the scalp, per control's azimuth (the column's first height reaching z, from the bottom)
     A, E = [], []
@@ -268,7 +254,7 @@ def inside(sc: Scalp, line, az, el):
     (along the elevation alone, the steep run from temple to sideburn measured long and creased the mass)."""
     from scipy.spatial import cKDTree
     key = (id(sc), float(np.sum(line)))
-    tree = _LINES.get(key)
+    tree = hair._LINES.get(key)
     if tree is None:
         a = np.arange(0.0, 360.0, 0.1)
         e = _line_at(line, a)
@@ -283,16 +269,13 @@ def inside(sc: Scalp, line, az, el):
             e1 = e[i] + (e[(i + 1) % len(e)] - e[i]) * t
             extra.append(sc.point(a1, e1, 0.0))
         tree = cKDTree(np.concatenate(extra))
-        if len(_LINES) > 8:
-            _LINES.clear()
-        _LINES[key] = tree
+        if len(hair._LINES) > 8:
+            hair._LINES.clear()
+        hair._LINES[key] = tree
     az, el = np.asarray(az, float), np.asarray(el, float)
     d, _ = tree.query(sc.point(az, el, 0.0).reshape(-1, 3))
     d = d.reshape(az.shape)
     return np.where(el >= _line_at(line, az), d, -d)
-
-
-_LINES: dict = {}
 
 
 def weights(az, el, d_in, blend: float = 1.0):
@@ -322,9 +305,6 @@ def envelope(sc: Scalp, g: dict, line, az, el):
     return np.maximum(H, _fill(sc, g, line)(az, el) * (d_in > 0)), d_in
 
 
-_FILLS: dict = {}
-
-
 def _fill(sc: Scalp, g: dict, line):
     """Per azimuth round the sides, the hair's profile (in the vertical plane through the centre) filled out to its
     convex hull: where the full top meets the close sides the outline pinched in above the temples (a waist in the
@@ -332,8 +312,8 @@ def _fill(sc: Scalp, g: dict, line):
     from scipy.interpolate import RegularGridInterpolator
     from scipy.spatial import ConvexHull
     key = (id(sc), json.dumps(g, sort_keys=True, default=float), float(np.sum(line)))
-    if key in _FILLS:
-        return _FILLS[key]
+    if key in hair_mod._FILLS:
+        return hair_mod._FILLS[key]
     A = np.arange(0.0, 361.0, 2.0)
     E = np.arange(-60.0, 90.01, 1.0)
     out = np.zeros((len(A), len(E)))
@@ -366,9 +346,9 @@ def _fill(sc: Scalp, g: dict, line):
     def f(az, el):
         az, el = np.asarray(az, float), np.asarray(el, float)
         return fill(np.stack([az % 360, np.clip(el, -60, 90)], -1).reshape(-1, 2)).reshape(np.shape(az))
-    if len(_FILLS) > 8:
-        _FILLS.clear()
-    _FILLS[key] = f
+    if len(hair_mod._FILLS) > 8:
+        hair_mod._FILLS.clear()
+    hair_mod._FILLS[key] = f
     return f
 
 
@@ -545,29 +525,6 @@ def _poisson(sc: Scalp, rng, spacing_at, ok, n_try=6000):
         chosen.append(i)
         pts = np.vstack([pts, P[i]])
     return az[chosen], el[chosen]
-
-
-# the groom's keys in metres (scaled with the head by `fit`); lists of [az, z] keep az and scale z about the centre
-_METRE_KEYS = {("length",), ("volume",), ("hairline", "temples"), ("hairline", "temple_dip"), ("hairline", "ear"),
-               ("hairline", "sideburns"), ("hairline", "nape"), ("parting", "offset"), ("parting", "width"),
-               ("parting", "length"), ("parting", "front"), ("loose", "length"), ("loose", "spacing"), ("loose", "lift"), ("loose", "lift_ramp"),
-               ("loose", "body"), ("loose", "thickness"), ("loose", "level"), ("loose", "swoop", "depth"),
-               ("loose", "swoop", "length"), ("loose", "fringe", "length"), ("loose", "fringe", "depth"),
-               ("loose", "fringe", "level"), ("tie", "out"), ("tie", "gather", "lift"), ("tie", "gather", "width"),
-               ("tie", "tail", "length"), ("tie", "tail", "fullness"), ("tie", "curtain", "lift"),
-               ("tie", "frame", "length"), ("tie", "frame", "width")}
-_UNITLESS = {"across", "ramp"}  # (volume.across / ramp are shares, not metres)
-# The tie's own geometry that a tied STYLE writes in absolute metres (hair_flow.style: the dome's stand-off, wisp and
-# stray lengths, the tail's sway / air / lock waves). Until 2026-10-14 fit_to_head did not scale these: th_W18 carried
-# onto tp_h3 (a 15 % bigger scalp) kept its dome and face wisps at the old head's size while its tail scaled (review:
-# "shorter face wisps", a flatter top). They scale by this head over the one they were last GROWN at (`fit.abs_r`,
-# stamped by carry), so a groom regrown on its own head is unchanged. Value: the dict's keys that are NOT metres.
-_TIE_KEYS = {("tie", "gather", "volume"): {"arc", "layers", "locks", "cross", "hold"}, ("tie", "gather", "puff"): set(),
-             ("tie", "gather", "zig"): set(), ("tie", "gather", "above"): set(), ("tie", "wisps", "length"): set(),
-             ("tie", "wisps", "over"): set(), ("tie", "tail", "stray_length"): set(), ("tie", "tail", "sway"): set(),
-             ("tie", "tail", "sway_length"): set(), ("tie", "tail", "flick"): set(), ("tie", "tail", "air"): set(),
-             ("tie", "tail", "lock_wave"): set(), ("tie", "tail", "lock_wavelength"): set(),
-             ("tie", "tail", "coil_radius"): set(), ("tie", "escaped", "length"): set()}
 
 
 def head_ref(sc: Scalp) -> dict:

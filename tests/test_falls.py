@@ -129,7 +129,7 @@ def test_face_normals(T, field=None):
     """The meshing field's normal on a fall's face points out of it, downstream (the slope correction taken from the
     faced column right up to the face swung 1 -> 0.01 -> 1 across the riser; normals sampled off the surface turned
     against the face: black shards on Kaze's sea-cliff fall at LOD 1-2). The AO's Metric field is only for AO."""
-    from hifipushie import terrain_volumes
+    from hifipushie import terrain_mesh
     cf, R, G, *_ = field or _cliff_field(T)
     f = T.falls[0]
     c, t_, n = _frame(f)
@@ -147,7 +147,7 @@ def test_face_normals(T, field=None):
             pts.append(P(0.5 * (lo + hi))[0])
     pts = np.array(pts)
     assert len(pts) > 30, len(pts)
-    g = cf.value_gradient(pts, terrain_volumes.NORMAL_H * G.v(0))[1]
+    g = cf.value_gradient(pts, terrain_mesh.NORMAL_H * G.v(0))[1]
     g /= np.linalg.norm(g, axis=1, keepdims=True)
     out = g[:, :2] @ t_
     assert (out > 0.3).mean() > 0.97, np.sort(out)[:8]

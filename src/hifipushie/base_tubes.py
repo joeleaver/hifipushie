@@ -7,8 +7,8 @@ import json
 import numpy as np
 from scipy.spatial import cKDTree
 
+from . import base
 from . import retopo
-from .base import LOW_LOOP, SEAM, TUBE_BAND, VERSION, _CACHE
 from .base_imls import _catmull_clark, _normals_and_h, _sd_body, _unit
 
 def _push(W, tpl, pushes):
@@ -57,7 +57,7 @@ def _neck_loops(tpl):
     """The template's closed edge loops round the neck under its chin (loops there tilt: low at the throat, high at
     the nape), highest first: ([loops], the head's top vertex)."""
     key = ("neck_loops", tpl["name"], len(tpl["P"]), float(tpl["P"][:, 2].max()))
-    if key not in _CACHE:
+    if key not in base._CACHE:
         P = tpl["P"]
         faces, nb, ef = retopo.topology(tpl["L"], tpl["S"])
         eye = np.array(tpl["face"]["landmarks"]["eye.L"])
@@ -82,8 +82,8 @@ def _neck_loops(tpl):
             raise ValueError("base: no closed loop round the body's neck under its chin to graft the head onto "
                              "(try another body age / weight)")
         found.sort(key=lambda f: -f[0])
-        _CACHE[key] = ([f[1] for f in found], top)
-    return _CACHE[key]
+        base._CACHE[key] = ([f[1] for f in found], top)
+    return base._CACHE[key]
 
 
 def _neck_tube(W, faces, tpl, s, head, step=0.006):
@@ -95,7 +95,7 @@ def _neck_tube(W, faces, tpl, s, head, step=0.006):
     pc, pn, band = head["plane"]
     # the highest loop wholly LOW_LOOP under the overlap with the head: a loop reaching into it (a bigger head's plane
     # sits lower) left the taper no room, and the seam showed as a ridge with flecks
-    loop = next((lp for lp in loops if ((W[lp] - pc) @ pn).max() < -(SEAM + LOW_LOOP)), loops[-1])
+    loop = next((lp for lp in loops if ((W[lp] - pc) @ pn).max() < -(base.SEAM + base.LOW_LOOP)), loops[-1])
     J = s["joints"]
     n = _unit(np.array(J["head"]["pos"], float) - np.array(J["neck"]["pos"], float))
     ring0 = W[loop]
@@ -128,10 +128,10 @@ def _neck_tube(W, faces, tpl, s, head, step=0.006):
     # neck, slice by slice: matched only at the plane, the tube stood up to 1 cm proud of the head's narrowing neck
     # just above it and the blended points made flecks; below the overlap a cubic Hermite from the loop's radius and
     # slope
-    us = np.linspace(-SEAM, SEAM, 9)
+    us = np.linspace(-base.SEAM, base.SEAM, 9)
     R = np.array([head_r(u) for u in us])  # (levels, loop)
     npn = float(n @ pn)
-    h_start = ((pc - foot0 - R[0][:, None] * d) @ pn - SEAM) / npn  # the height where each vertex enters the overlap
+    h_start = ((pc - foot0 - R[0][:, None] * d) @ pn - base.SEAM) / npn  # the height where each vertex enters the overlap
     s1 = (R[1] - R[0]) / ((us[1] - us[0]) / npn)  # the head's slope there, per metre of height
     height = float((W[top] - c0) @ n) + 0.02
     # the body's slope under the loop (radius change per metre of height), so the tube leaves the loop along the
@@ -157,7 +157,7 @@ def _neck_tube(W, faces, tpl, s, head, step=0.006):
         r = h00 * r0 + h10 * m0 + h01 * R[0] + h11 * m1
         over = hh > L  # in the overlap: the head's radius at this vertex's u
         if over.any():
-            u = (hh - L[over]) * npn - SEAM
+            u = (hh - L[over]) * npn - base.SEAM
             j = np.clip(np.searchsorted(us, u) - 1, 0, len(us) - 2)
             f = np.clip((u - us[j]) / (us[j + 1] - us[j]), 0, 1)
             cols = np.flatnonzero(over)
@@ -311,7 +311,7 @@ def _tube_weight(X, m):
     """How much of the field at X is a tube's (the rest is the cloth made from the body): 0 at the tube's start,
     easing to 1 over TUBE_BAND along it, times its side (a trouser leg: x on its own side) and away from the arms
     (the torso). A smooth union of the two swelled ~k/6 where they crossed: a ridge round the chest."""
-    w = _smooth01(((X - m["o"]) @ m["u"]) / m.get("band", TUBE_BAND))
+    w = _smooth01(((X - m["o"]) @ m["u"]) / m.get("band", base.TUBE_BAND))
     if m.get("side"):
         w = w * _smooth01(m["side"] * X[:, 0] / 0.03 + 0.5)
     if m.get("arms"):
@@ -349,7 +349,7 @@ def _tubes(X, J, g: dict, hang: float, B=None) -> list:
         zt = float(tb.get("top", J["shoulder.L"][2] - 0.07 if "shoulder.L" in J else J["chest"][2] + 0.1))
         zb = float(tb.get("bottom", J["hip.L"][2] - 0.15 if "hip.L" in J else pel[2] - 0.15))
         t = _garment_tube(X, ~arm, np.array([c[0], c[1], zt]), [0, 0, -1.0], zt - zb, tb, hang or 0.8, ease,
-                          {"arms": arms, "band": float(tb.get("band", TUBE_BAND)), "taper": tb.get("arms") == "taper"}, B)
+                          {"arms": arms, "band": float(tb.get("band", base.TUBE_BAND)), "taper": tb.get("arms") == "taper"}, B)
         if t is not None:
             out.append(t)
     if g.get("legs") is not None and "hip.L" in J and "knee.L" in J:
@@ -363,7 +363,7 @@ def _tubes(X, J, g: dict, hang: float, B=None) -> list:
             s = (X - o) @ u
             keep &= (s > -0.05) & (np.linalg.norm(np.cross(X - o, u), axis=1) < 0.2)
             t = _garment_tube(X, keep, o, u, float(lg.get("length", 0.9)) * ln, lg, hang or 0.5, ease,
-                              {"side": sign, "band": float(lg.get("band", TUBE_BAND))}, B)
+                              {"side": sign, "band": float(lg.get("band", base.TUBE_BAND))}, B)
             if t is not None:
                 out.append(t)
     return out
@@ -385,13 +385,13 @@ def garment(key: str, g: dict, offset: float, joints: dict) -> dict:
         as tubes along hip -> knee (`_tubes`); tube_ease: m.
     Returns a list of IMLS point sets (one primitive each; with tubes, one set mixing them by weight).
     Folds are strokes on the part (op "crease"/"clay", part: the garment)."""
-    if key not in _CACHE:
+    if key not in base._CACHE:
         raise KeyError("garment: the base surface isn't built (compile the spec's base first)")
-    W0, faces = _CACHE[key]["quads"]
+    W0, faces = base._CACHE[key]["quads"]
     W0 = np.asarray(W0, float)
-    gk = ("garment", key, json.dumps(g, sort_keys=True, default=str), round(float(offset), 5), VERSION)
-    if gk in _CACHE:
-        return _CACHE[gk]
+    gk = ("garment", key, json.dumps(g, sort_keys=True, default=str), round(float(offset), 5), base.VERSION)
+    if gk in base._CACHE:
+        return base._CACHE[gk]
     E = np.array(sorted({(min(f[k], f[(k + 1) % len(f)]), max(f[k], f[(k + 1) % len(f)])) for f in faces
                          for k in range(len(f))}))
     N0, _ = _normals_and_h(W0, faces)
@@ -437,7 +437,7 @@ def garment(key: str, g: dict, offset: float, joints: dict) -> dict:
     Nb, _ = _normals_and_h(Vb, F)
     u = ((V - Vb) * Nb).sum(1)  # the subdivided cloth still clear of the subdivided body
     V = V + np.maximum(offset - u, 0)[:, None] * Nb
-    surf = _CACHE[key]
+    surf = base._CACHE[key]
     if surf.get("graft") is not None:  # and clear of the real body: a grafted head's neck is wider at its base than
         # the template's own, and poked through the shirt beside the collar
         N, _ = _normals_and_h(V, F)
@@ -456,5 +456,5 @@ def garment(key: str, g: dict, offset: float, joints: dict) -> dict:
                 "hmax": max([out[0]["hmax"]] + [t["hmax"] for t in tubes]), "head": None}]
     for k, o in enumerate(out):
         o["key"] = hashlib.sha1(repr((gk, k)).encode()).hexdigest()
-    _CACHE[gk] = out
+    base._CACHE[gk] = out
     return out

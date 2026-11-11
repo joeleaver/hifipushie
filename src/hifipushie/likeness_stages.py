@@ -6,12 +6,10 @@ import json
 
 import numpy as np
 
-from .likeness import TARGETS, checklist, stage_names
-from .likeness_sides import SPECIAL, photo_sides
+from . import likeness
+from .likeness import checklist, stage_names
+from .likeness_sides import photo_sides
 
-# ---- staged fitting from the sheet: big to small, each stage through an existing control, guarded ------------------
-JAW_CONTOUR = set(range(0, 7)) | set(range(10, 17))  # the 68's jaw contour: GNM's and the detector's differ (onemesh2):
-#                                                     widths come from the outline fit instead; the chin (7-9) stays
 def _stage(name: str) -> dict:
     for s in stage_names():
         if s["name"] == name:
@@ -26,7 +24,7 @@ def stage_points(stage: str) -> list:
         pts += s["points"]
         if s["name"] == stage:
             break
-    return sorted(set(pts) - JAW_CONTOUR)
+    return sorted(set(pts) - likeness.JAW_CONTOUR)
 
 
 def stage_plan(name: str | None = None) -> str:
@@ -34,7 +32,7 @@ def stage_plan(name: str | None = None) -> str:
     sheet = None
     if name:
         from . import store
-        p = store.HOME / name / TARGETS
+        p = store.HOME / name / likeness.TARGETS
         sheet = json.loads(p.read_text()) if p.exists() else None
     lines = []
     for i, s in enumerate(stage_names(), 1):
@@ -64,15 +62,12 @@ def _views_with(refs: dict, pts: list) -> list:
     return out
 
 
-_PHOTOS = {}
-
-
 def _photos(refs: dict) -> list:
     k = hashlib.sha1(json.dumps(refs["views"], sort_keys=True).encode()).hexdigest()
-    if k not in _PHOTOS:
-        _PHOTOS.clear()
-        _PHOTOS[k] = photo_sides(refs)
-    return _PHOTOS[k]
+    if k not in likeness._PHOTOS:
+        likeness._PHOTOS.clear()
+        likeness._PHOTOS[k] = photo_sides(refs)
+    return likeness._PHOTOS[k]
 
 
 def stage_wants(cmp: dict, stage: str, skip=()) -> tuple:
@@ -105,12 +100,6 @@ def stage_wants(cmp: dict, stage: str, skip=()) -> tuple:
     return want, pins, gaps
 
 
-LEVER_VIEWS = {"shape": ("front",)}   # shading is scored on the front photo only (a painting's light isn't one light)
-
-
-BARE = {"nose_tip": "up"}   # controls that may be a bare number: which key of their dict form it is
-
-
 def lever_value(base: dict, path: str, default: float) -> float:
     if path.startswith("nudge:"):
         return 0.0
@@ -118,8 +107,8 @@ def lever_value(base: dict, path: str, default: float) -> float:
     keys = path.split(".")
     for k in keys[:-1]:
         d = d.get(k) or {}
-        if isinstance(d, (int, float)) and k in BARE:   # shape.nose_tip = 12 means {"up": 12}
-            d = {BARE[k]: d}
+        if isinstance(d, (int, float)) and k in likeness.BARE:   # shape.nose_tip = 12 means {"up": 12}
+            d = {likeness.BARE[k]: d}
         if not isinstance(d, dict):   # (a control given as a bare number: shape.hollow = 0.005)
             return default
     v = d.get(keys[-1], default) if isinstance(d, dict) else default
@@ -143,7 +132,7 @@ def with_lever(base: dict, path: str, x: float, force: bool = False) -> tuple:
     keys = path.split(".")
     for k in keys[:-1]:
         if not isinstance(d.get(k), dict):
-            d[k] = {BARE[k]: d[k]} if isinstance(d.get(k), (int, float)) and k in BARE else {}
+            d[k] = {likeness.BARE[k]: d[k]} if isinstance(d.get(k), (int, float)) and k in likeness.BARE else {}
         d = d[k]
     d[keys[-1]] = round(float(x), 5)
     return out, False
@@ -166,7 +155,7 @@ def _undone(start: dict, cur: dict, k: int) -> list:
         # pins are the items read steadily: detector distances / angles in a front view. The shading and traced-jaw
         # readers move by more than a tolerance when anything nearby changes, and a turned view's camera is refitted
         # per model: holding those vetoed every later stage (first run: eyes, mouth and chin all refused).
-        if r.get("kind") in SPECIAL or r["view"] != "front":
+        if r.get("kind") in likeness.SPECIAL or r["view"] != "front":
             continue
         if r["score"] >= 0 and b["score"] >= 0 and r["score"] > max(b["score"], 1.0) + 0.5:
             out.append((b, r))

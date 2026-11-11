@@ -46,7 +46,7 @@ def _hex(c):
 def skull_radius(sc) -> np.ndarray:
     """The scalp's rays with the ears opened away (grey opening along the azimuth, as hair.ear finds them): (360/STEP,
     n_el) radius of the skull's own skin."""
-    from .hair_groom import EAR_OPEN
+    from .hair import EAR_OPEN
     return ndimage.grey_opening(np.asarray(sc.R, float), size=(EAR_OPEN, 1), mode="wrap")
 
 

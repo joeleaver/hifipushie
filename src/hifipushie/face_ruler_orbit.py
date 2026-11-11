@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from .face_ruler import SIG_LIMBUS, _bil, _cam_points, _proj_jac_pt
+from . import face_ruler
+from .face_ruler import _bil, _cam_points, _proj_jac_pt
 
 def orbit_rows(res: dict, head: dict) -> list:
     """The orbit as a side view shows it (gnm_mm.ORBIT_SEEN: each a combination of the measures): [{"row", "current",
@@ -28,14 +29,6 @@ def orbit_rows(res: dict, head: dict) -> list:
     return out
 
 
-ORBIT_SAY = {"apex_behind_nasion": "the corneal apex behind the nasion (+ = deeper-set)",
-             "brow_over_apex": "the brow ridge ahead of the cornea (+ = more overhang)",
-             "apex_ahead_of_side_rim": "the cornea ahead of the orbit's side rim (+ = more eye shows from the side)",
-             "apex_ahead_of_cheek": "the cornea ahead of the cheek under the eye (- = the cheek leads)",
-             "brows_over_eyes": "the brow's height over the pupil",
-             "brow_hollow": "the hollow under the brow (+ = sunken)"}
-
-
 def orbit_text(rows: list) -> str:
     """The orbit's table: what a side view shows, model -> picture, +- the reader's error."""
     out = ["ORBIT (eye depth; a big-mass decision: set it BEFORE any lid work)   model -> picture   gap +-err"]
@@ -44,7 +37,7 @@ def orbit_text(rows: list) -> str:
         if r["read"] < 0.75:
             flag = "  NOT READ (these pictures do not pin it: the population's guess)"
         out.append(f"  {r['row']:24s} {r['current']:6.1f} -> {r['current'] + r['gap']:6.1f} mm  {r['gap']:+5.1f} +-{r['err']:.1f} "
-                   f"(sd {r['sd']:.1f})  {ORBIT_SAY[r['row']]}{flag}")
+                   f"(sd {r['sd']:.1f})  {face_ruler.ORBIT_SAY[r['row']]}{flag}")
     return "\n".join(out)
 
 
@@ -113,7 +106,7 @@ def limbus_read(lum, cam, lb: dict, origin=(0.0, 0.0), scale: float = 1.0, reach
     to = eye_c - X
     to /= np.linalg.norm(to)
     op = float(to @ fwd)                              # how open the disc is to the camera (1 = face on)
-    if op < -0.05 or (far and op < FAR_OPEN):
+    if op < -0.05 or (far and op < face_ruler.FAR_OPEN):
         return None
     near_side = 1.0 if (to @ lat) >= 0 else -1.0      # which side arc is nearer the camera (+ = temple)
     th = np.radians(np.arange(-40, 41, 10.0))
@@ -162,7 +155,7 @@ def limbus_read(lum, cam, lb: dict, origin=(0.0, 0.0), scale: float = 1.0, reach
         # BOTH side arcs must sit on an edge: one arc on a strong edge (the far eye's sclera against the nose, a lash
         # line) scored as well as the limbus (3 of 8 far eyes read 2.6-5.8 mm off)
         a, b = st[:, arc > 0].mean(1), st[:, arc < 0].mean(1)
-        return 0.5 * (a + b) - 0.5 * np.maximum(LIMBUS_MIN - np.minimum(a, b), 0.0)
+        return 0.5 * (a + b) - 0.5 * np.maximum(face_ruler.LIMBUS_MIN - np.minimum(a, b), 0.0)
     R = reach_mm / mmpx
     best = None
     for step, span, c0 in ((0.3 / mmpx, R, np.zeros(2)), (0.06 / mmpx, 0.45 / mmpx, None)):
@@ -182,20 +175,8 @@ def limbus_read(lum, cam, lb: dict, origin=(0.0, 0.0), scale: float = 1.0, reach
     f2 = (_cam_points(cam, (X + 0.001 * fwd)[None])[1][0] - o) * scale - pc      # the picture's direction of "forward"
     f2 = f2 / max(np.linalg.norm(f2), 1e-9)
     if op < 0.5:      # a side view: the reader puts the edge LIMBUS_SIDE_BIAS mm forward of the model's own limbus
-        d = d - LIMBUS_SIDE_BIAS / mmpx * f2 * (1.0 if LIMBUS_SIDE_BIAS else 0.0)
+        d = d - face_ruler.LIMBUS_SIDE_BIAS / mmpx * f2 * (1.0 if face_ruler.LIMBUS_SIDE_BIAS else 0.0)
     return {"d": d, "p": pc, "q": pc + d, "score": sc, "sharp": sharp, "open": op, "mmpx": mmpx, "fwd": f2}
-
-
-FAR_OPEN = 0.8           # the far eye is read only in views turned under ~37 deg: at 45 it is half behind the bridge and, on a head
-                         # that is not the model's, read 2-4.6 mm off (5 dressed pairs) even with both arcs on the model's eyeball
-
-LIMBUS_MIN = 0.03        # a limbus read under this edge contrast (luminance 0..1), or no better than another place, is dropped
-# mm: in a side view (the disc under half open) the reader puts the edge this far FORWARD of the model's own limbus
-# (spikes/orbit/oval.py limbus: 16 dressed profile pictures of 8 known heads, +0.40, sd 0.18; a 3/4's near eye: +0.09,
-# sd 0.18, left alone). On a PHOTO the cornea's dome lies over that edge: unvalidated there, so the side read's sigma
-# is 0.5 mm, not the renders' 0.2.
-LIMBUS_SIDE_BIAS = 0.4
-SIG_LIMBUS_SIDE = (0.5, 0.9)
 
 
 def _limbus_obs(head, view, iris_mm=None):
@@ -216,13 +197,13 @@ def _limbus_obs(head, view, iris_mm=None):
     for j, lb in enumerate(lbs):
         rd = limbus_read(lum, cam, lb, view.get("origin", (0.0, 0.0)), float(view.get("scale", 1.0)), far=dist[j] > min(dist) + 1e-6,
                          part=view.get("_part"), valid=view.get("_valid"))
-        if rd is None or rd["score"] < LIMBUS_MIN or rd["sharp"] <= 0.0:
+        if rd is None or rd["score"] < face_ruler.LIMBUS_MIN or rd["sharp"] <= 0.0:
             continue
         Jp, mm1 = _proj_jac_pt(cam, lb["X"], lb["B"])
         s = float(view.get("scale", 1.0))
         for ax in (0, 1):
             out.append({"type": "limbus", "view": view["kind"], "name": f"limbus_{'rl'[j]}.{'xy'[ax]}", "o": float(rd["d"][ax]) * mm1 / s,
-                        "J": Jp[ax] * mm1, "sig": (SIG_LIMBUS if rd["open"] >= 0.5 else SIG_LIMBUS_SIDE)[ax], "p": list(map(float, rd["p"])), "q": list(map(float, rd["q"])),
+                        "J": Jp[ax] * mm1, "sig": (face_ruler.SIG_LIMBUS if rd["open"] >= 0.5 else face_ruler.SIG_LIMBUS_SIDE)[ax], "p": list(map(float, rd["p"])), "q": list(map(float, rd["q"])),
                         "X": list(map(float, lb["X"])), "score": rd["score"], "sharp": rd["sharp"], "open": rd["open"]})
     return out
 

@@ -10,21 +10,21 @@ from pathlib import Path
 
 import numpy as np
 
+from . import terrain_mesh
 from . import profiling
 from .terrain_field import _lattice_values, project
 from .terrain_materials import Materials
-from .terrain_mesh import DEFAULTS, DENSITY_FILL, LAYERS, _CTX
 from .terrain_relief import facet
 from .terrain_seam_check import lake_outlines, seam_check
-from .terrain_tile_border import WELD, _needs, _polylines, _simplify, _weld_rows
-from .terrain_tile_finish import BAKE_PIECE, _job_bake, _job_finish, _planes, _thickness
+from .terrain_tile_border import _needs, _polylines, _simplify, _weld_rows
+from .terrain_tile_finish import _job_bake, _job_finish, _planes, _thickness
 from .terrain_tile_job import _job_tile
 from .terrain_tile_jobs import (
-    OVER_BUDGET, TilesCheckFailed, _fingerprint, _job_collapse, _job_dense_full, _job_ground, _job_maps, _job_mc,
+    TilesCheckFailed, _fingerprint, _job_collapse, _job_dense_full, _job_ground, _job_maps, _job_mc,
     _job_prep_tile, _pool, _swatch, _work, budget_check, build_field,
 )
 from .terrain_tile_mesh import Grid, _key_geometry
-from .terrain_volumes import FLOAT_PIECE, _sea
+from .terrain_volumes import _sea
 
 def export_tiles(T, out_dir, cfg: dict | None = None, log=print) -> dict:
     """See `_export_tiles`; holds the machine's heavy-job slot (`resources.heavy`) so exports don't stack up."""
@@ -42,15 +42,15 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
     from PIL import Image
     import copy
     t_all = time.time()
-    cfg = {**DEFAULTS, **((T.spec.get("export") or {}).get("tiles") or {}), **(cfg or {})}
+    cfg = {**terrain_mesh.DEFAULTS, **((T.spec.get("export") or {}).get("tiles") or {}), **(cfg or {})}
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     import shutil
     workdir = out / "_work"  # per-tile dense meshes, streamed through disk; removed at the end
     shutil.rmtree(workdir, ignore_errors=True)
     workdir.mkdir()
-    _CTX.clear()
-    _CTX["work"] = workdir
+    terrain_mesh._CTX.clear()
+    terrain_mesh._CTX["work"] = workdir
     timing = {}
     prof = profiling.Report(progress=log)  # per stage: wall, workers' busy share, stragglers; spans, field counts (manifest "profile")
     tile_key = lambda ij: f"{ij[0]},{ij[1]}"
@@ -63,14 +63,14 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
     G = Grid(T, cfg)
     if cfg.get("detail") and base.rock is not None:  # (the tiling detail's projection, read by the workers)
         from . import terrain_swatch
-        _CTX["detail"] = terrain_swatch.DetailProjection(base, base.rock)
+        terrain_mesh._CTX["detail"] = terrain_swatch.DetailProjection(base, base.rock)
         de = _swatch(out, base.rock, cfg["texel_density"][0], cfg["detail_source"])  # (cached by seed + code)
-        de.update(texcoord=1 + bool(int(cfg["splat"])), bins=_CTX["detail"].BINS, line_d=terrain_swatch.LINE_D,
+        de.update(texcoord=1 + bool(int(cfg["splat"])), bins=terrain_mesh._CTX["detail"].BINS, line_d=terrain_swatch.LINE_D,
                   layers=[nm for nm in ("rock", "wet_rock") if nm in mats.layers], recipe=terrain_swatch.RECIPE,
                   gltf=("each cliff tile LOD's baked material carries extras.hifipushie_detail: texture indices of "
                         "the embedded lines map and of the swatch images (files in materials/, by uri), and the UV "
                         "set; glTF viewers ignore it and show the macro maps"))
-        _CTX["detail_entry"] = de
+        terrain_mesh._CTX["detail_entry"] = de
         # (the drawn lines go to the lines map, crisp, instead of blurring into the macro colour)
         mats.lines_in_maps = bool(cfg.get("lines", True))
     region = None
@@ -118,7 +118,7 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
     v0 = G.voxel
     mc = {}
     reg = {}
-    _CTX.update(field=field, G=G, vols=vols, base=base)
+    terrain_mesh._CTX.update(field=field, G=G, vols=vols, base=base)
     redo = [ij for ij in tiles if not (ij in old and old[ij]["field"] == fkey[ij][0] and "mc" in old[ij])]
     if prev_state is not None:
         changed = [ij for ij in redo if ij in old]
@@ -161,12 +161,12 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
     _st = prof.stage("border chains (parent)")
     _st.__enter__()
     corner = fixed[:, 0] & fixed[:, 1]
-    alias = _weld_rows(plane_edges, CP, corner, WELD * v0)
+    alias = _weld_rows(plane_edges, CP, corner, terrain_mesh.WELD * v0)
     if alias:  # (the chains run through each weld's kept row; every tile's dense mesh merges its vertices the same way)
         plane_edges = {pl: {tuple(sorted((alias.get(a, a), alias.get(b, b)))) for a, b in e
                             if alias.get(a, a) != alias.get(b, b)} for pl, e in plane_edges.items()}
-        log(f"{len(alias)} border vertices welded to a neighbour closer than {WELD * v0:.2g} m")
-    _CTX["alias"] = alias
+        log(f"{len(alias)} border vertices welded to a neighbour closer than {terrain_mesh.WELD * v0:.2g} m")
+    terrain_mesh._CTX["alias"] = alias
     lines = {pl: _polylines(e) for pl, e in plane_edges.items()}
     keep = []
     prev = {pl: [(ln, closed) for ln, closed in L] for pl, L in lines.items()}
@@ -187,7 +187,7 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
 
     # ---- 3. per tile: LOD0 projected; each LOD = border chains collapsed to its kept vertices, then decimated
     t0 = time.time()
-    _CTX.update(field=field, G=G, v0=v0, mc=mc, reg=reg, CP=CP, CN=CN, cfg=cfg)
+    terrain_mesh._CTX.update(field=field, G=G, v0=v0, mc=mc, reg=reg, CP=CP, CN=CN, cfg=cfg)
     work = [ij for ij, r in mc.items() if r is not None]
     # each tile's border rows as its dense mesh takes them (welds merged), and what its dense mesh depends on: its
     # field, its canonical border vertices, and their order (a weld keeps the lowest row)
@@ -215,10 +215,10 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
     dropped_pieces = [{"tile": list(ij), **d} for ij in sorted(work) for d in ns[ij]["dense"]["dropped"]]
     if dropped_pieces:
         log(f"dropped {len(dropped_pieces)} small cliff piece(s) standing clear of the ground (under "
-            f"{float(cfg.get('float_piece_m2', FLOAT_PIECE)):g} m2 each; manifest dropped_pieces): "
+            f"{float(cfg.get('float_piece_m2', terrain_mesh.FLOAT_PIECE)):g} m2 each; manifest dropped_pieces): "
             + ", ".join(f"{d['m2']:g} m2 at {d['at']} ({d['clearance_m']:g} m up)" for d in dropped_pieces[:6]))
     dense = set(work)
-    _CTX["dense"] = dense
+    terrain_mesh._CTX["dense"] = dense
     timing["dense LOD0"] = time.time() - t0
     t0 = time.time()
     # one texel density per LOD for every tile: the asked one, or what the tile with the most rock can fit in
@@ -226,7 +226,7 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
     # sharp rock beside soft in squares of tiles)
     area = max([ns[ij]["dense"]["area"] for ij in work] + [1.0])
     tmax = int(cfg["texture_max"])
-    cfg["_density"] = [min(float(d), math.sqrt(DENSITY_FILL * tmax * tmax / area)) for d in cfg["texel_density"]]
+    cfg["_density"] = [min(float(d), math.sqrt(terrain_mesh.DENSITY_FILL * tmax * tmax / area)) for d in cfg["texel_density"]]
     if cfg["_density"][0] < cfg["texel_density"][0]:
         log(f"texel density {cfg['_density'][0]:.1f}/m at LOD 0 (asked {cfg['texel_density'][0]:g}): the largest "
             f"tile's rock ({area:.0f} m2) in a {tmax} atlas")
@@ -278,7 +278,7 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
                         todo.setdefault(k, []).append((ij, kr, k))
             if todo:
                 with _pool() as ex:
-                    need_dense = sorted({a[0] for t in todo.values() for a in t if not _work(_CTX, "dense", *a[0]).exists()})
+                    need_dense = sorted({a[0] for t in todo.values() for a in t if not _work(terrain_mesh._CTX, "dense", *a[0]).exists()})
                     if need_dense:  # (tiles whose dense mesh the last export made: made again, one job a tile)
                         prof.pool_map(ex, _job_dense_full, need_dense, "dense LOD0 again (for collapses)", tile_key)
                     for k, jobs in sorted(todo.items()):
@@ -306,7 +306,7 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
 
         t0 = time.time()
         manifest_tiles = []
-        _CTX.update(mats=mats, cfg=cfg, out=out, vols=vols, collapsed=collapsed, pos=pos, depth=depth, dirn=dirn,
+        terrain_mesh._CTX.update(mats=mats, cfg=cfg, out=out, vols=vols, collapsed=collapsed, pos=pos, depth=depth, dirn=dirn,
                     CN=CN, CW=CW, CC=CC, mat=mat, keep=[np.array(sorted(kk), np.int64) for kk in keep])
         if cfg.get("maps"):  # the field the maps are baked from: the rock with its bake-only fine relief
             import copy
@@ -324,7 +324,7 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
                     bf.edit_wmin = 2.5 / dens
                 if base.rock is not None and float(cfg["micro"]) > 0:
                     bf.micro = terrain_bake.micro_relief(base.rock, float(cfg["micro"]), 1.0 / dens,
-                                                         fine="detail" not in _CTX)
+                                                         fine="detail" not in terrain_mesh._CTX)
                 if region is not None:  # (a cliff's visible face: the rock, its ground sunk toward the region's edge)
                     bf = terrain_cliffs.CliffField(bf, region).front_field()
                 bfs.append(bf)
@@ -335,8 +335,8 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
             # the 0.4 m normal of texels on the true ground beside it to the horizontal, and their weights to rock:
             # a dark line on the grass along every overlay edge, pushieworld note 104)
             gf = base
-            _CTX.update(bakefield=bfs, weightfield=gf,
-                        layer_rough=np.array([LAYERS[nm]["roughness"] for nm in mats.layers]))
+            terrain_mesh._CTX.update(bakefield=bfs, weightfield=gf,
+                        layer_rough=np.array([terrain_mesh.LAYERS[nm]["roughness"] for nm in mats.layers]))
         # every tile's LODs (decimation, atlases), and as each tile is done its atlases' texels baked in pieces across
         # the pool, and each atlas's maps assembled and its GLB written once its pieces are in: a 3 x 3 block's
         # stragglers (one tile decimating for minutes) no longer hold the bake back
@@ -356,7 +356,7 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
                     # (at most BAKE_PIECE texels a piece, and a small atlas still spread over ~16 jobs: a preview's one
                     # tile. Never by the pool's size: that follows free memory, and where a piece starts changes a few
                     # texels' facet lookups (the walk chains from the last point): exports differed run to run)
-                    step = int(np.clip(q["n"] / 16, BAKE_PIECE / 6, BAKE_PIECE))
+                    step = int(np.clip(q["n"] / 16, terrain_mesh.BAKE_PIECE / 6, terrain_mesh.BAKE_PIECE))
                     cuts = list(range(0, q["n"], step))
                     left[q["stem"]] = len(cuts)
                     jobs += [(_job_bake, (q["stem"], q["k"], a, min(a + step, q["n"])), f"{q['stem']}@{a}")
@@ -369,7 +369,7 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
             return []
         # each tile's LODs keyed by its dense mesh and everything _job_tile reads of its border vertices (rows as `pos`
         # finds them): which each LOD keeps, normals, weights, colours, skirt depths and directions; and the density
-        kp = _CTX["keep"]
+        kp = terrain_mesh._CTX["keep"]
         tkey = {}
         for ij in tiles:
             if ij in dense:
@@ -438,16 +438,16 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
     hm, sp = int(cfg["heightmap"]), int(cfg["splat"])
     for sub in ("heightmaps", "splats"):
         (out / sub).mkdir(exist_ok=True)
-    _CTX.update(hrange=hrange)
+    terrain_mesh._CTX.update(hrange=hrange)
     ground = []
     if region is not None:
         # the ground: pushed heightmaps, holes, grid meshes; splats as before (on the heightmap's own tiles)
         pbr = {"baseColorFactor": [1, 1, 1, 1], "metallicFactor": 0.0, "roughnessFactor": 0.92}
         cfg["_hrange"] = hrange
-        cfg["_layer_rough"] = np.array([LAYERS[nm]["roughness"] for nm in mats.layers])
+        cfg["_layer_rough"] = np.array([terrain_mesh.LAYERS[nm]["roughness"] for nm in mats.layers])
         cfg["_ground_mat"] = [{"name": "terrain_reference", "pbrMetallicRoughness": pbr},
                               {"name": "terrain_skirt", "doubleSided": True, "pbrMetallicRoughness": pbr}]
-        _CTX.update(region=region, mats=mats, cfg=cfg, out=out)
+        terrain_mesh._CTX.update(region=region, mats=mats, cfg=cfg, out=out)
         gkey = {ij: inc._h(fkey[ij][0], "ground") for ij in tiles}
         og = {ij: old[ij]["ground"] for ij in tiles if "ground" in old.get(ij, {})}
         redo = [ij for ij in tiles if not (ij in og and og[ij]["key"] == gkey[ij] and inc.files_ok(out, og[ij]["files"]))]
@@ -586,7 +586,7 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
         style_sec = terrain_style.write(out, T, {nm: mats.layer_ref(nm) for nm in mats.layers},
                                         tiles=[(i, j, tuple(float(x) for x in np.concatenate(G.bounds(i, j))))
                                                for j in range(G.nj) for i in range(G.ni)], layers=mats.layers)
-    detail = _CTX.get("detail_entry")
+    detail = terrain_mesh._CTX.get("detail_entry")
     _st.__exit__(None, None, None)
     manifest = {
         "format": "hifipushie terrain tiles 1",
@@ -744,8 +744,8 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
                 log(f"cave steps on the collision meshes not measured: {ex_}")
         timing["cave walk"] = time.time() - t0
     over = budget_check(manifest_tiles, cfg, G.lods, [cv.name for cv in caves] if caves else [])
-    manifest["budget_check"] = {"limit": f"{OVER_BUDGET:g} x the LOD's budget", "over": over}
-    manifest["dropped_pieces"] = {"limit_m2": float(cfg.get("float_piece_m2", FLOAT_PIECE)), "pieces": dropped_pieces}
+    manifest["budget_check"] = {"limit": f"{terrain_mesh.OVER_BUDGET:g} x the LOD's budget", "over": over}
+    manifest["dropped_pieces"] = {"limit_m2": float(cfg.get("float_piece_m2", terrain_mesh.FLOAT_PIECE)), "pieces": dropped_pieces}
     for o in over[:12]:
         log(f"OVER BUDGET: tile {o['tile'][0]},{o['tile'][1]} LOD {o['lod']}: {o['triangles']} triangles against "
             f"{o['budget']}: {o['why']}")
@@ -842,7 +842,7 @@ def preview_tiles(T, out_dir, at, radius=40.0, density=6.0, cfg=None, log=print)
     `density` texels/m, ground maps at half their density, no checks. The same code path as the export (so what it
     shows is what an export bakes), sized for rock design rounds: a tile or four in about a minute instead of a block
     export's 15+. Render it with `render_tiles(T, out_dir, views)`."""
-    base = {**DEFAULTS, **((T.spec.get("export") or {}).get("tiles") or {}), **(cfg or {})}
+    base = {**terrain_mesh.DEFAULTS, **((T.spec.get("export") or {}).get("tiles") or {}), **(cfg or {})}
     G = Grid(T, base)
     xy = np.asarray(at, float)[:2] if isinstance(at, (list, tuple)) else np.asarray(T.address(at)[0], float)
     lo = np.floor((xy - radius - G.origin) / G.tile).astype(int).clip(0, [G.ni - 1, G.nj - 1])

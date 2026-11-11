@@ -3,13 +3,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from .faceshapes import SMILE_SIDE_MM, _ss, _unit
-from .faceshapes_consts import (
-    CHEEK_LIFT, CORNER_CLOSE, CORNER_TUCK, LIP_CORNER, LIP_FADE, LIP_HOLD, LIP_MEET, LIP_TAPER, ROLL_BEHIND,
-    ROLL_PASSES, ROLL_SMOOTH, ROLL_TUCK_SLACK, SMILE_EDGE_LIFT, SMILE_FOLD, SMILE_FOLD_CORNER, SMILE_FOLD_PAST,
-    SMILE_LIFT, TUCK_SPAN,
-)
-
+from . import faceshapes
+from .faceshapes import _ss, _unit
 
 class _GnmLips:
     """GnmFace's lips: the lip rings, the corners' meeting, the rolls behind and tucked, the seam check, the
@@ -46,7 +41,7 @@ class _GnmLips:
         dq = collections.deque(lev)
         while dq:
             v = dq.popleft()
-            if lev[v] >= basemod.LIP_RING + LIP_HOLD + LIP_FADE:
+            if lev[v] >= basemod.LIP_RING + faceshapes.LIP_HOLD + faceshapes.LIP_FADE:
                 continue
             for w in adj[v]:
                 if w not in lev:
@@ -78,7 +73,7 @@ class _GnmLips:
         h = halves(ring)
         if h:
             out.update(ok=True, up=h[0], lo=h[1])
-            out["outer"] = {k: halves(k) for k in list(range(0, ring)) + list(range(ring + 1, ring + LIP_HOLD + 2))}
+            out["outer"] = {k: halves(k) for k in list(range(0, ring)) + list(range(ring + 1, ring + faceshapes.LIP_HOLD + 2))}
         # the mouth sock, ring by ring in from the loop (negative levels): it rides with the lips' close, fading
         # (left still, the loop's ring stretched against it in every shape that takes the close back)
         sock = np.asarray(g["groups"]["mouth_sock"]) > 0.5
@@ -93,7 +88,7 @@ class _GnmLips:
         sl = {v: 0 for v in loop}
         while dq:
             v = dq.popleft()
-            if sl[v] >= LIP_FADE:
+            if sl[v] >= faceshapes.LIP_FADE:
                 continue
             for w in sadj[v]:
                 if w not in sl and sock[w] and not skin[w]:
@@ -145,8 +140,8 @@ class _GnmLips:
                     continue
                 span_ = max(float(P[:, 0].max() - P[:, 0].min()), 1e-9)
                 edge_ = np.minimum(P[:, 0] - P[:, 0].min(), P[:, 0].max() - P[:, 0])
-                w_ = ROLL_SMOOTH * (1 - _ss(np.clip(edge_ / (TUCK_SPAN * span_), 0, 1)))
-                for _ in range(ROLL_PASSES):
+                w_ = faceshapes.ROLL_SMOOTH * (1 - _ss(np.clip(edge_ / (faceshapes.TUCK_SPAN * span_), 0, 1)))
+                for _ in range(faceshapes.ROLL_PASSES):
                     P[1:-1] += w_[1:-1, None] * (0.5 * (P[:-2] + P[2:]) - P[1:-1])
                 X[ids] = P
         for k, hk in (R.get("outer") or {}).items():
@@ -160,15 +155,15 @@ class _GnmLips:
                 return d / max(float(d[-1]), 1e-12)
             su, sl = arc(Pu), arc(Pl)
             span = max(float(Pu[:, 0].max() - Pu[:, 0].min()), 1e-9)
-            wk = 1.0 if k < ring else 1 - (k - ring - 1) / (LIP_HOLD + 1)  # (the rolls inside the contact ring too)
+            wk = 1.0 if k < ring else 1 - (k - ring - 1) / (faceshapes.LIP_HOLD + 1)  # (the rolls inside the contact ring too)
             for P, s, Q, sq, verts in ((Pu, su, Pl, sl, u), (Pl, sl, Pu, su, l)):
                 other = np.column_stack([np.interp(s, sq, Q[:, j]) for j in range(3)])
                 edge = np.minimum(P[:, 0] - P[:, 0].min(), P[:, 0].max() - P[:, 0])
-                wc = CORNER_CLOSE * wk * (1 - _ss(np.clip(edge / (LIP_CORNER * span), 0, 1)))
+                wc = faceshapes.CORNER_CLOSE * wk * (1 - _ss(np.clip(edge / (faceshapes.LIP_CORNER * span), 0, 1)))
                 for j, v in enumerate(verts):
                     D[row[v]] += wc[j] * 0.5 * (other[j] - P[j])
-                if k <= ring and CORNER_TUCK:   # the rolls (and a share of the contact ring) sink back at the corners:
-                    tk = CORNER_TUCK * (ring + 1 - k) / (ring + 1) * (1 - _ss(np.clip(edge / (TUCK_SPAN * span), 0, 1)))
+                if k <= ring and faceshapes.CORNER_TUCK:   # the rolls (and a share of the contact ring) sink back at the corners:
+                    tk = faceshapes.CORNER_TUCK * (ring + 1 - k) / (ring + 1) * (1 - _ss(np.clip(edge / (faceshapes.TUCK_SPAN * span), 0, 1)))
                     for j, v in enumerate(verts):   # bunched there, they stood out through the lips as lumps
                         Tk[row[v]] = max(Tk[row[v]], float(tk[j]))   # (a corner vertex is in both halves: once)
         return (X - X0) + D - Tk[:, None] * self.out
@@ -181,7 +176,7 @@ class _GnmLips:
         (expr_r8..r12, "notch", "pink sliver", "jagged seam"). Displacements; vertices already behind are kept."""
         R = self._lip_rings()
         D = np.zeros_like(X)
-        if not R["ok"] or not ROLL_BEHIND:
+        if not R["ok"] or not faceshapes.ROLL_BEHIND:
             return D
         from . import base as basemod
         ring = basemod.LIP_RING
@@ -198,7 +193,7 @@ class _GnmLips:
         if not len(inner):
             return D
         xi = X[inner] @ self.side
-        lim = np.interp(np.clip(xi, xs[0], xs[-1]), xs, dep) - ROLL_BEHIND
+        lim = np.interp(np.clip(xi, xs[0], xs[-1]), xs, dep) - faceshapes.ROLL_BEHIND
         over = (X[inner] - self.M) @ self.out - lim
         D[inner] = -np.maximum(over, 0.0)[:, None] * self.out[None]
         return D
@@ -299,7 +294,7 @@ class _GnmLips:
                            and bool(R["side"].get(v, True)) == (sgn > 0)], int)
             if not len(rv):
                 continue
-            lim = np.interp(np.clip(P[rv] @ self.side, xs[0], xs[-1]), xs, hs) - sgn * ROLL_TUCK_SLACK
+            lim = np.interp(np.clip(P[rv] @ self.side, xs[0], xs[-1]), xs, hs) - sgn * faceshapes.ROLL_TUCK_SLACK
             h = (P[rv] - self.M) @ self.up
             short = np.maximum(sgn * (lim - h), 0.0)  # how far it hangs past its lip's edge
             out[rv] += (sgn * short)[:, None] * self.up[None]
@@ -309,7 +304,7 @@ class _GnmLips:
         """(one mesh, own quads) SMILE_EDGE_LIFT: the upper lip's edge (its contact ring and the inner rolls, fading
         over SMILE_EDGE_LIFT[1] rings outward) lifted up the incisors, arched (full at the middle, 0 at the corners),
         this side's half faded across the midline like the prototype (SMILE_SIDE_MM)."""
-        A, E, pw = SMILE_EDGE_LIFT
+        A, E, pw = faceshapes.SMILE_EDGE_LIFT
         R = self._lip_rings()
         if not R["ok"]:
             return d
@@ -335,7 +330,7 @@ class _GnmLips:
                 continue
             x = P[rv] @ self.side - mid
             arch = np.clip(1.0 - np.abs(x / half) ** pw, 0.0, 1.0)
-            sw = 0.5 * (1 + np.tanh(sg * x / (SMILE_SIDE_MM * 0.001)))
+            sw = 0.5 * (1 + np.tanh(sg * x / (faceshapes.SMILE_SIDE_MM * 0.001)))
             out[rv] += (A * wl * arch * sw)[:, None] * self.up[None]
         return out
 
@@ -348,8 +343,8 @@ class _GnmLips:
         the mouth's corner lifted SMILE_LIFT[0], fading over SMILE_LIFT[1] ("corners pulled sideways, not up")."""
         lm = np.asarray(self.head["lm68"], float)
         a, c = (lm[35], lm[54]) if side == "Left" else (lm[31], lm[48])
-        b = c + (c - a) * SMILE_FOLD_PAST
-        depth, width, bulge, reach = SMILE_FOLD
+        b = c + (c - a) * faceshapes.SMILE_FOLD_PAST
+        depth, width, bulge, reach = faceshapes.SMILE_FOLD
         ab = b - a
         L = float(np.linalg.norm(ab))
         t = np.clip((X - a) @ ab / L ** 2, 0, 1)
@@ -359,21 +354,21 @@ class _GnmLips:
         dist = np.linalg.norm(r, axis=1)
         sgn_out = np.sign(r @ _unit(np.cross(self.out, ab) if side == "Left" else np.cross(ab, self.out)))
         ends = np.sin(np.pi * t) ** 0.7 * (np.abs((X - Q) @ self.out) < 0.02)
-        if SMILE_FOLD_CORNER:  # held off the mouth corner (the lips' seam tears under a deep crease)
-            ends = ends * _ss(np.clip(np.linalg.norm(X - c, axis=1) / SMILE_FOLD_CORNER, 0, 1))
+        if faceshapes.SMILE_FOLD_CORNER:  # held off the mouth corner (the lips' seam tears under a deep crease)
+            ends = ends * _ss(np.clip(np.linalg.norm(X - c, axis=1) / faceshapes.SMILE_FOLD_CORNER, 0, 1))
         crease = -depth * np.exp(-(dist / width) ** 2)
         cheek = bulge * np.where(sgn_out > 0, np.exp(-(np.maximum(dist - width, 0) / reach) ** 2) *
                                  (1 - np.exp(-(dist / width) ** 2)), 0.0)
-        lift = SMILE_LIFT[0] * np.exp(-(np.linalg.norm(X - c, axis=1) / SMILE_LIFT[1]) ** 2) * float(corner)  # the corner up
+        lift = faceshapes.SMILE_LIFT[0] * np.exp(-(np.linalg.norm(X - c, axis=1) / faceshapes.SMILE_LIFT[1]) ** 2) * float(corner)  # the corner up
         push = np.zeros(len(X))
-        if CHEEK_LIFT[0] or CHEEK_LIFT[2]:  # the cheek mass up (and out) under the eye, held at the lower lid
+        if faceshapes.CHEEK_LIFT[0] or faceshapes.CHEEK_LIFT[2]:  # the cheek mass up (and out) under the eye, held at the lower lid
             lid = lm[[46, 47] if side == "Left" else [40, 41]].mean(0)
-            C = lid + CHEEK_LIFT[3] * (c - lid)
-            g = np.exp(-(np.linalg.norm(X - C, axis=1) / CHEEK_LIFT[1]) ** 2)
+            C = lid + faceshapes.CHEEK_LIFT[3] * (c - lid)
+            g = np.exp(-(np.linalg.norm(X - C, axis=1) / faceshapes.CHEEK_LIFT[1]) ** 2)
             below = (lid - X) @ self.up
             g = g * _ss(np.clip(below / max(0.5 * float((lid - C) @ self.up), 1e-4), 0, 1))
-            lift = lift + CHEEK_LIFT[0] * g
-            push = CHEEK_LIFT[2] * g
+            lift = lift + faceshapes.CHEEK_LIFT[0] * g
+            push = faceshapes.CHEEK_LIFT[2] * g
         return ((crease + cheek) * ends + push)[:, None] * np.asarray(nrm, float) + lift[:, None] * self.up[None]
 
     def _meet_share(self, D: np.ndarray, M: np.ndarray, index) -> float:
@@ -419,7 +414,7 @@ class _GnmLips:
             mid = 0.5 * (P + other)
             gap = other - P
             n = np.linalg.norm(gap, axis=1, keepdims=True)
-            push = np.where(n > 1e-9, gap / np.maximum(n, 1e-9), 0.0) * LIP_MEET
+            push = np.where(n > 1e-9, gap / np.maximum(n, 1e-9), 0.0) * faceshapes.LIP_MEET
             for k, v in enumerate(verts):
                 mv[v] = mid[k] + push[k] - P[k]
         ring = basemod.LIP_RING
@@ -438,12 +433,12 @@ class _GnmLips:
         for v, lv in R["lev"].items():
             if v not in row:
                 continue
-            fw = (1.0 if lv <= ring + LIP_HOLD else max(0.0, 1.0 - (lv - ring - LIP_HOLD) / LIP_FADE)) if lv >= 0 \
-                else max(0.0, 1.0 + lv / (LIP_FADE + 1.0))  # (in the sock: fading toward the throat)
+            fw = (1.0 if lv <= ring + faceshapes.LIP_HOLD else max(0.0, 1.0 - (lv - ring - faceshapes.LIP_HOLD) / faceshapes.LIP_FADE)) if lv >= 0 \
+                else max(0.0, 1.0 + lv / (faceshapes.LIP_FADE + 1.0))  # (in the sock: fading toward the throat)
             if fw <= 0:
                 continue
             xs, M, span = fx[bool(R["side"][v])]
             x = float(X[row[v], 0])
-            taper = float(_ss(np.clip((min(x - xs[0], xs[-1] - x)) / (LIP_TAPER * span), 0, 1)))
+            taper = float(_ss(np.clip((min(x - xs[0], xs[-1] - x)) / (faceshapes.LIP_TAPER * span), 0, 1)))
             D[row[v]] = fw * taper * np.array([np.interp(x, xs, M[:, j]) for j in range(3)])
         return D

@@ -8,11 +8,11 @@ from pathlib import Path
 import numpy as np
 from scipy.spatial import cKDTree
 
+from . import terrain_mesh
 from .terrain_gltf import _from_gltf, read_glb
-from .terrain_map_seams import MAP_SEAM, map_seams
+from .terrain_map_seams import map_seams
 from .terrain_tile_border import _chain_dist
 from .terrain_tile_mesh import _boundary_edges, _face_normals
-from .terrain_volumes import JUMP_LIMIT
 
 # ---------------------------------------------------------------- the seam check
 def seam_check(out_dir, normal_deg=1.0, memo=None) -> dict:
@@ -94,9 +94,9 @@ def seam_check(out_dir, normal_deg=1.0, memo=None) -> dict:
             per = sorted(((q["area_m2"], q["faces"], ij) for ij, q in per if q["faces"]), reverse=True)[:6]
             sh["tiles"] = [{"tile": list(ij), "faces": n_, "area_m2": a_} for a_, n_, ij in per]
         summary[f"lod{k}_shards"] = sh
-        if sh["area_pct"] > SHARD_LIMIT[min(k, len(SHARD_LIMIT) - 1)]:
+        if sh["area_pct"] > terrain_mesh.SHARD_LIMIT[min(k, len(terrain_mesh.SHARD_LIMIT) - 1)]:
             failures.append(f"LOD {k}: {sh['faces']} faces ({sh['area_pct']}% of the visible area, limit "
-                            f"{SHARD_LIMIT[min(k, len(SHARD_LIMIT) - 1)]}%) with corner normals "
+                            f"{terrain_mesh.SHARD_LIMIT[min(k, len(terrain_mesh.SHARD_LIMIT) - 1)]}%) with corner normals "
                             f"against the face: black shards (e.g. at {sh['at'][:3]}; most in tiles "
                             + ", ".join(f"{q['tile'][0]},{q['tile'][1]} ({q['faces']})" for q in sh["tiles"][:4]) + ")")
         if open_inside or nonman or dup_dir:
@@ -219,7 +219,7 @@ def seam_check(out_dir, normal_deg=1.0, memo=None) -> dict:
         summary["map_seams"] = ms
         for key, r in ms.items():
             if not r["ok"]:
-                lim_ = MAP_SEAM[min(int(key[-1]), len(MAP_SEAM) - 1)]
+                lim_ = terrain_mesh.MAP_SEAM[min(int(key[-1]), len(terrain_mesh.MAP_SEAM) - 1)]
                 failures.append(f"{key}: baked maps differ across tile borders in {r['bad']}: "
                                 + ", ".join(f"{c} p50/p95 {r[c]} (limit "
                                             f"{lim_[c] if c in lim_ else lim_['weights']}); worst borders "
@@ -237,10 +237,10 @@ def seam_check(out_dir, normal_deg=1.0, memo=None) -> dict:
                 jl.append((n, i, j, k, (L["maps"].get("jump_at") or [None])[0]))
     summary["soft_ground_jumps"] = {"total": sum(a[0] for a in jl), "tile_lods": len(jl),
                                     "worst": [[a[1], a[2], a[3], a[0], a[4]] for a in sorted(jl, key=lambda a: -a[0])[:5]]}
-    over = [a for a in jl if a[0] > JUMP_LIMIT]
+    over = [a for a in jl if a[0] > terrain_mesh.JUMP_LIMIT]
     if over:
         over.sort(key=lambda a: -a[0])
-        failures.append(f"steps in the baked surface on soft ground in {len(over)} tile LODs (over {JUMP_LIMIT} sampled "
+        failures.append(f"steps in the baked surface on soft ground in {len(over)} tile LODs (over {terrain_mesh.JUMP_LIMIT} sampled "
                         "texels each): " + ", ".join(f"{i},{j} LOD {k} {n} at {at[:3] if at else '?'}"
                                                      for n, i, j, k, at in over[:4])
                         + " (thin dark lines in the normal map: a step in the field's value, e.g. a weight cut off)")
@@ -271,9 +271,6 @@ def lake_outlines(T) -> dict:
                      "area_m2": round(float(lk["area"]), 1), "depth_m": round(float(lk.get("depth", 0)), 2),
                      "outline": rings}
     return out
-
-
-SHARD_LIMIT = [0.01, 0.05, 0.5]  # % of a LOD's area allowed to have corner normals against its faces
 
 
 def _shards(surfs):

@@ -5,31 +5,10 @@ from pathlib import Path
 
 import numpy as np
 
+from . import likeness
 from .likeness_detect import head_yaw
 from .likeness_measure import Unmeasurable, _item
 from .likeness_sides import _near_sign
-
-# ---- what a set of pictures can support -----------------------------------------------------------------------------
-YAW_DOUBT = 6.0        # deg between the detector's head yaw and the fitted camera's: past it the picture isn't one projection
-YAW_MM = 0.5           # mm of tolerance added per degree of that doubt on a turned view's depth items (1 deg ~ 1 mm of gap)
-YAW_ITEMS = ("nose_gap", "nose_tip", "cheek_line", "chin_projection", "brow_ridge")
-EXPR = {"smile": (("mouthSmileLeft", "mouthSmileRight"), 0.3), "mouth open": (("jawOpen",), 0.15),
-        "squint": (("eyeBlinkLeft", "eyeBlinkRight", "eyeSquintLeft", "eyeSquintRight"), 0.45),
-        "brows raised": (("browInnerUp", "browOuterUpLeft", "browOuterUpRight"), 0.4),
-        "frown": (("browDownLeft", "browDownRight"), 0.45)}
-# THE RULE: an expression read on a reference is not the person's shape. The items it moves are fitted through the
-# model's POSE (base.head.pose: an expression), not its identity; the neutral head keeps typical values.
-EXPR_BIAS = {"squint": ["eye_opening", "eye_aspect", "upper_lid_show", "brow_eye"],
-             "frown": ["brow_eye", "brow_tilt", "brow_arch"],
-             "brows raised": ["brow_eye", "brow_arch", "brow_tilt", "eye_opening", "upper_third"],
-             "smile": ["mouth_corner_tilt", "mouth_width", "nasolabial_fold", "upper_lip", "eye_opening", "width_mouth"],
-             "mouth open": ["lower_third", "lower_over_middle", "face_height", "chin_height", "upper_lip", "lower_lip",
-                            "lip_ratio", "mouth_line"]}
-# item -> the pose lever that takes it when an expression biases it (path, step, range, default)
-EXPR_LEVERS = {"eye_opening": ("pose.lid_upper", 0.001, (-0.003, 0.004), 0.0),
-               "brow_eye": ("pose.brow_inner", -0.001, (-0.004, 0.003), 0.0),
-               "mouth_corner_tilt": ("pose.smile", 0.001, (-0.004, 0.004), 0.0)}
-
 
 def expression_bias(pictures: list, view: str | None = "front") -> dict:
     """{item id: "squint 0.70"}: the items an expression read on the references biases (in pictures of that view)."""
@@ -38,7 +17,7 @@ def expression_bias(pictures: list, view: str | None = "front") -> dict:
         if view and pn.get("view") != view:
             continue
         for nm, v in (pn.get("expressions") or {}).items():
-            for iid in EXPR_BIAS.get(nm, []):
+            for iid in likeness.EXPR_BIAS.get(nm, []):
                 out.setdefault(iid, f"{nm} {v:.2f}")
     return out
 
@@ -68,7 +47,7 @@ def picture_notes(ph: dict, md: dict | None = None) -> dict:
     out["head_yaw"] = head_yaw(info.get("M"))
     cam = md["cam"] if md else ph["cam"]
     cy = abs(float(cam.get("yaw", 0.0)))
-    if out["head_yaw"] is not None and ph["kind"] != "front" and abs(abs(out["head_yaw"]) - cy) > YAW_DOUBT:
+    if out["head_yaw"] is not None and ph["kind"] != "front" and abs(abs(out["head_yaw"]) - cy) > likeness.YAW_DOUBT:
         out["yaw_doubt"] = abs(abs(out["head_yaw"]) - cy)
         out["problems"].append(f"NOT ONE PROJECTION: the detector reads the head turned {abs(out['head_yaw']):.0f} deg, the fitted camera "
                                f"{cy:.0f} (a painting / generated picture): distances and widths are the FRONT picture's; this one gives "
@@ -78,12 +57,12 @@ def picture_notes(ph: dict, md: dict | None = None) -> dict:
     if f < 60:
         out["problems"].append(f"short lens (~{f:.0f} mm equivalent): perspective swells the nose, shrinks the ears")
     bs = info.get("bs") or {}
-    for nm, (keys, lim) in EXPR.items():
+    for nm, (keys, lim) in likeness.EXPR.items():
         v = max((bs.get(k, 0.0) for k in keys), default=0.0)
         if v > lim:
             out.setdefault("expressions", {})[nm] = float(v)
             out["problems"].append(f"{nm} ({v:.2f}): an expression, not shape; it biases "
-                                   + ", ".join(EXPR_BIAS[nm]) + " (fit those through the pose)")
+                                   + ", ".join(likeness.EXPR_BIAS[nm]) + " (fit those through the pose)")
     sh = md.get("shade") if md else None
     if sh:
         out["light_hard"] = round(sh["hard"], 2)

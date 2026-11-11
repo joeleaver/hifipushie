@@ -3,8 +3,9 @@ from __future__ import annotations
 
 import numpy as np
 
+from . import base
 from .base import source, template_joints
-from .base_gnm_parts import EYE_PART_VOXEL, MOUTH_PARTS, gnm_eyes, mouth_lips, mouth_mode, mouth_open
+from .base_gnm_parts import gnm_eyes, mouth_lips, mouth_mode, mouth_open
 from .base_identity import _gnm_data
 from .base_measures import _landmark_joints, head_of
 
@@ -116,8 +117,6 @@ def inject(spec: dict) -> dict:
     return out
 
 
-CORNEA_BIG = 0.2  # m: the near-flat spheres that cut the iris plane (sag 0.09 mm over the iris; at the other eye, 6 cm
-# across, their surface is ~9 mm off its plane: each touches only its own eye)
 def clear_cornea(b: dict, c, gz, R: float, rc: float, bulge: float, sd: str = ".L") -> dict:
     """base.cornea = {"clear": true, "depth": m (0.0028)}: the eye as a game head builds it (MetaHuman's refractive
     cornea, done with geometry). The eyeball's front is cut flat at the iris plane, `depth` behind the cornea's apex
@@ -130,7 +129,7 @@ def clear_cornea(b: dict, c, gz, R: float, rc: float, bulge: float, sd: str = ".
     eyes = b["eyes"]
     apex = R + bulge
     d_i = apex - depth  # the iris plane's distance from the ball's centre
-    big = CORNEA_BIG
+    big = base.CORNEA_BIG
     at = lambda k: [round(float(x), 5) for x in c + k * gz]  # noqa: E731
     return {
         f"iris_cut{sd}": {"at": at(d_i + big), "size": [big] * 3, "op": "subtract", "blend": 0.0, "part": eyes},
@@ -153,9 +152,9 @@ def implied_parts(spec: dict) -> dict:
         out[f"{b['eyes']}_cornea"] = {"color": "#ffffff", "transmission": 1.0, "ior": 1.376, "roughness": 0.02,
                                       "specular": 0.6, "voxel": 0.0003, "rig_bone": None}
     if mouth_mode(b) == "gnm":
-        out.update({k: dict(v) for k, v in MOUTH_PARTS.items()})
+        out.update({k: dict(v) for k, v in base.MOUTH_PARTS.items()})
     if b.get("eyes"):   # the eyeballs meshed fine (the scene voxel left the iris / pupil edge and the cornea in visible
-        out.setdefault(b["eyes"], {})["voxel"] = EYE_PART_VOXEL   # polygon steps in every close-up)
+        out.setdefault(b["eyes"], {})["voxel"] = base.EYE_PART_VOXEL   # polygon steps in every close-up)
     return out
 
 
@@ -167,9 +166,6 @@ def part_defs(spec: dict) -> dict:
     return defs
 
 
-SEALED_BACK = 0.006  # m: a sealed mouth's slit starts this far behind the lips' front; its bag moves back by it too
-
-
 def sealed_interior(mi: dict, head: dict) -> dict:
     """The interior's slit and bag (subtracts) for a SEALED mouth: their cuts reached through the fused lips (the slit
     from in front of them, the bag's box to ~2 mm of their front): a row of holes and pale "fangs" (the teeth through
@@ -179,10 +175,10 @@ def sealed_interior(mi: dict, head: dict) -> dict:
     mi = dict(mi)
     for k, v in list(mi.items()):
         if k.endswith("_mouth_slit"):
-            v = {**v, "values": {**v["values"], "n1": [-SEALED_BACK] * len(np.atleast_1d(v["values"]["n1"]))}}
+            v = {**v, "values": {**v["values"], "n1": [-base.SEALED_BACK] * len(np.atleast_1d(v["values"]["n1"]))}}
             mi[k] = v
         elif k.endswith("_mouth_bag"):
-            mi[k] = {**v, "at": [round(float(x), 5) for x in np.asarray(v["at"], float) - SEALED_BACK * out_dir]}
+            mi[k] = {**v, "at": [round(float(x), 5) for x in np.asarray(v["at"], float) - base.SEALED_BACK * out_dir]}
     return mi
 
 

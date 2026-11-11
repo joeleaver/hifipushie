@@ -3,10 +3,11 @@ from __future__ import annotations
 
 import numpy as np
 
+from . import faceshapes
 from . import spec as specmod
 from .spec import SpecError
-from .faceshapes import ALL, CLOSE_LOWER, CLOSE_SEAL, _bump, _rodrigues, _ss, _unit
-from .faceshapes_consts import lid_seal_options
+from .faceshapes import _bump, _rodrigues, _ss, _unit
+from .faceshapes import lid_seal_options
 
 class Face:
     """The face kit's anatomy, read from the kit-expanded spec: mouth frame and parting line, slit, bag, teeth and
@@ -26,9 +27,9 @@ class Face:
         opts = spec.get("face_shapes") or {}
         self.amount = {str(a): float(v) for a, v in (opts.get("amount") or {}).items()}
         self.skin_parts = {str(p) for p in (opts.get("parts") or [])}
-        bad = [a for a in self.amount if a not in ALL]
+        bad = [a for a in self.amount if a not in faceshapes.ALL]
         if bad:
-            raise SpecError(f"face_shapes.amount: unknown shape(s) {bad} (have the ARKit names {', '.join(ALL)})")
+            raise SpecError(f"face_shapes.amount: unknown shape(s) {bad} (have the ARKit names {', '.join(faceshapes.ALL)})")
         e = specmod.expand_mirror(spec)
         J, B = e["joints"], e["blobs"]
         prims = {p.name: p for p in specmod.compile_prims(spec)}
@@ -463,11 +464,11 @@ class Face:
                 # alone (A2F drives it with the jaw shut): the closed lips firmed forward a little, never into each
                 # other (a vertical press here intersected the human's lips on 70 of 765 A2F frames); the closing
                 # against an open jaw is the corrective's
-                d = lips[:, None] * out * CLOSE_SEAL * 0.03 * w
+                d = lips[:, None] * out * faceshapes.CLOSE_SEAL * 0.03 * w
             elif name == "jawOpen_mouthClose":
                 # against a full jawOpen: the lips meet, the lower lip doing most of it (meeting half way, the upper
                 # lip hung like a curtain)
-                d = -CLOSE_LOWER * jo * ll[:, None] + (1 - CLOSE_LOWER) * delta * (lu * wjp)[:, None]
+                d = -faceshapes.CLOSE_LOWER * jo * ll[:, None] + (1 - faceshapes.CLOSE_LOWER) * delta * (lu * wjp)[:, None]
             elif name == "jawOpen_mouthSmile":  # (the GNM path's corrective; nothing on the older template path)
                 d = np.zeros((len(lips), 3))
             elif name == "mouthFunnel":

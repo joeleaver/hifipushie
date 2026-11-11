@@ -60,8 +60,6 @@ def _tangents(V, T, UV):
     return n, tt, np.where(sign == 0, 1.0, sign)
 
 
-EXPORT = {"segments": 24, "sides": 10}  # per lock (spec["hair"]["export"] overrides): 12 x 8 read faceted in the
-# export (the lens's thin edges shaded as flat planes), 24 x 10 is ~20k triangles for 45 locks
 def export_part(name: str, out_dir: Path, spec: dict | None = None, texture: int = 1024, segments: int | None = None,
                 sides: int | None = None, log: list | None = None) -> tuple[dict, dict] | None:
     """The hair as an export part: (part dict as asset.lowpoly makes them: verts, corner_vert, uv, normal, tangent,
@@ -75,7 +73,7 @@ def export_part(name: str, out_dir: Path, spec: dict | None = None, texture: int
         return None
     if hair_of(spec).get("style") in ("cards", "strands"):  # (a strand groom ships as cards cut from it)
         return export_cards(name, Path(out_dir), spec, log)
-    ex = {**EXPORT, **((spec.get("hair") or {}).get("export") or {})}
+    ex = {**hair.EXPORT, **((spec.get("hair") or {}).get("export") or {})}
     segments = int(segments or ex["segments"])
     sides = int(sides or ex["sides"])
     t = time.time()
@@ -100,28 +98,6 @@ def export_part(name: str, out_dir: Path, spec: dict | None = None, texture: int
     log.append(f"hair: {len(T)} triangles ({segments} x {sides} per lock + the underlayer), maps {texture}^2 baked by Cycles "
                f"from the locks' own material in {time.time() - t:.1f}s")
     return part, files
-
-
-EXPORT_CARDS = {"triangles": 12000, "tier": None, "cap_step": 6.0, "alpha_cutoff": 0.33, "shadow_proxy": True}  # spec["hair"]["export"] overrides
-CARD_RECIPE = (
-    "Hair cards. Draw two-sided with one normal for both faces (the mesh's normals are already bent toward the hair "
-    "volume: do not flip them on back faces). Alpha: the base colour's alpha, alpha-tested at alpha_cutoff with "
-    "dithering + temporal AA, or alpha-to-coverage with MSAA; keep the alpha's coverage in the mips (or bias mips "
-    "-1). COLOR_0 multiplies the base colour: the root-to-tip ramp, a value per lock and per card, lower layers "
-    "darker. Anisotropic highlight along the hair: TANGENT's bitangent (the atlas's v) runs root to tip. The aux "
-    "texture holds R = root gradient (1 at the root), G = a value per strand (shift the highlight and the value "
-    "with it), B = depth in the clump (0 deep: darker, less specular; usable as pixel depth offset), A = alpha. "
-    "LODs: drop the cards of `layer` 2, then 1 (extras.layers gives each layer's triangle range).")
-
-
-BACK_FACES = 1  # (c6) export each card's back face as its own triangles (outward normals) + a single-sided material
-BUDGET_UNIT = "card_faces"  # (hair-budget rule 2026-10-19) a tier's budget counts card faces (one side);
-# drawn triangles (back faces included) must fit the role's range max (checked at export: asset.hair_budget)
-CARD_RECIPE_FACES = CARD_RECIPE.replace(
-    "Draw two-sided with one normal for both faces (the mesh's normals are already bent toward the hair "
-    "volume: do not flip them on back faces).",
-    "Every card's back is its own triangles (reversed winding, the SAME outward normal): draw single-sided with "
-    "back-face culling (the material is not doubleSided), so no engine flips a normal.")
 
 
 def _gpu_vertices(part: dict) -> int:
@@ -165,8 +141,6 @@ def export_constants(h: dict):
             if mod_ not in ("hair", "hair_cap", "hair_cards"):
                 raise ValueError(f"hair.export.constants: {k}: module must be hair, hair_cap or hair_cards")
             m = importlib.import_module(f"hifipushie.{mod_}")
-            if mod_ == "hair" and not hasattr(m, att):  # (hair.py was split, C415: a spec still says "hair.X")
-                m = next((x for x in (importlib.import_module(f"hifipushie.{n}") for n in hair.MODULES) if hasattr(x, att)), m)
             if not hasattr(m, att):
                 raise ValueError(f"hair.export.constants: {k}: no such constant")
             old.append((m, att, getattr(m, att)))
@@ -186,7 +160,7 @@ def _export_hair(name, out_dir, tiers, groom, spec, check, sheet, textures) -> d
     out_dir = Path(out_dir)
     h = hair_of(spec)
     lk = look_of(spec, h)
-    rep = {"tiers": {}, "recipe": CARD_RECIPE}
+    rep = {"tiers": {}, "recipe": hair.CARD_RECIPE}
     log: list = []
     fade_note = None
     if (h.get("export") or {}).get("fade"):  # (sh7) the short hair's edge fade, painted into the head's skin (hair_fade)
@@ -336,13 +310,6 @@ def back_faces(T, lay, corner: tuple) -> tuple:
     return np.asarray(T).ravel()[cr].reshape(-1, 3), tuple(a[cr] for a in corner)
 
 
-CARD_ROUGH_MIN = 0.6  # (r59) the cards' roughness floor in the export's ORM: the outer, lit hair (aux.b high) came out at
-# 0.425 (the 0.5 floor x 0.85), and an isotropic engine lobe at that mirrored the key light off the crown's flat cards as
-# one white plate (Tess rc2i's "white glossy crown"; 0.65 / 0.75 in the game preview took it away, 0.6 + the tinted half
-# specular below leaves a faint warm sheen). The baked-cap path already says it: "glossy, it was tin foil".
-CARD_SPECULAR = 0.5  # (r59) the combined character GLB's hair KHR_materials_specular factor (half a dielectric's) ...
-
-
 def card_specular_tint(sheen_linear) -> list:
     """(r59) ... and its colour: the hair's sheen, normalised to max 1 (light off and through hairs takes their colour).
     The character export (asset.py) writes specularFactor CARD_SPECULAR, specularColorFactor this, no specular texture,
@@ -369,7 +336,7 @@ def _export_cards(name: str, out_dir: Path, spec: dict, log: list) -> tuple[dict
     t = time.time()
     out_dir.mkdir(parents=True, exist_ok=True)
     h = hair_of(spec)
-    ex = {**EXPORT_CARDS, **{k: v for k, v in (h.get("export") or {}).items() if k in EXPORT_CARDS}}
+    ex = {**hair.EXPORT_CARDS, **{k: v for k, v in (h.get("export") or {}).items() if k in hair.EXPORT_CARDS}}
     j = job(name, {**spec, "hair": {**h, "style": "cards"}},
             budget=ex["tier"] or int(ex["triangles"]), cap_step=float(ex["cap_step"]))
     cd = j["cards"]
@@ -384,7 +351,7 @@ def _export_cards(name: str, out_dir: Path, spec: dict, log: list) -> tuple[dict
     tt = tt - (tt * n).sum(1, keepdims=True) * n
     tt = np.where(np.linalg.norm(tt, axis=1, keepdims=True) > 1e-9, _unit(tt), _unit(np.cross(n, [0.0, 0.0, 1.0])))
     lay = M["layer"][T[:, 0]]
-    if BACK_FACES:  # (c6) each card's back as its own triangles, wound the other way, with the SAME (outward) normal,
+    if hair.BACK_FACES:  # (c6) each card's back as its own triangles, wound the other way, with the SAME (outward) normal,
         # tangent and sign: a single-sided material then never flips a normal, in any viewer (glTF's doubleSided rule
         # reverses a back face's normal: a card on the head seen from below its plane went black = the crown shards).
         # Vertices are shared (same position / normal / uv), so only the index count grows; layers stay ranges.
@@ -396,8 +363,8 @@ def _export_cards(name: str, out_dir: Path, spec: dict, log: list) -> tuple[dict
     part = {"verts": V.astype(np.float32), "corner_vert": T.ravel().astype(np.int64), "uv": UV.astype(np.float32),
             "normal": n.astype(np.float32), "tangent": tt.astype(np.float32), "sign": sg.astype(np.float32),
             "vcolor": M["col"].astype(np.float32),
-            "hair": {"alpha_cutoff": float(ex["alpha_cutoff"]), "layers": ranges, "recipe": CARD_RECIPE if not BACK_FACES else CARD_RECIPE_FACES,
-                     "back_faces": bool(BACK_FACES),
+            "hair": {"alpha_cutoff": float(ex["alpha_cutoff"]), "layers": ranges, "recipe": hair.CARD_RECIPE if not hair.BACK_FACES else hair.CARD_RECIPE_FACES,
+                     "back_faces": bool(hair.BACK_FACES),
                      "strands": hc.strands_of(spec), "budget": cd["budget"], "clearance": cd.get("clearance")}}
     if ex.get("shadow_proxy", True):  # the hair's shadow caster (opaque hull of the cards, shadow-only)
         sp_ = hc.shadow_proxy(M["verts"], M["tris"])
@@ -412,7 +379,7 @@ def _export_cards(name: str, out_dir: Path, spec: dict, log: list) -> tuple[dict
     if cd.get("flow"):
         files["flow"] = out_dir / "hair_flow.png"
         Image.open(cd["flow"]).convert("RGB").save(files["flow"])
-    rough = np.clip(max(float(lk.get("roughness", 0.42)), 0.5) * (1.25 - 0.4 * aux[..., 2]), CARD_ROUGH_MIN, 1.0)
+    rough = np.clip(max(float(lk.get("roughness", 0.42)), 0.5) * (1.25 - 0.4 * aux[..., 2]), hair.CARD_ROUGH_MIN, 1.0)
     if cd.get("short"):  # a baked cap is a surface of many hairs' highlights already in its picture and normal map:
         rough = np.clip(max(float(lk.get("roughness", 0.42)), 0.85) * (1.12 - 0.15 * aux[..., 2]), 0.05, 1.0)  # glossy, it was tin foil
     occ = 0.55 + 0.45 * aux[..., 2]

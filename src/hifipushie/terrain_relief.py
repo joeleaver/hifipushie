@@ -7,9 +7,10 @@ import math
 import numpy as np
 from scipy import ndimage
 
+from . import terrain_mesh
 from . import fieldjit, noise, profiling
 from .profiling import span as _span
-from .terrain_mesh import DEFAULTS, _f64, smoothstep
+from .terrain_mesh import _f64, smoothstep
 
 # ---------------------------------------------------------------- the field
 def rock_relief(p, r, g=None, jw=None, fd=None, u=None, blk=None, thin=None):
@@ -95,7 +96,7 @@ def rock_relief(p, r, g=None, jw=None, fd=None, u=None, blk=None, thin=None):
                     ob = blk[kb]
                 out = out + 0.0
                 out[kb] += (np.ones(len(p)) * wb)[kb] * ob
-    if thin is not None and THIN_STRATA["depth"] > 0:
+    if thin is not None and terrain_mesh.THIN_STRATA["depth"] > 0:
         kt = np.flatnonzero(np.asarray(thin, float) > 1e-3)
         if len(kt):
             out = out + 0.0
@@ -125,7 +126,7 @@ def strata(p, zoff, seed, tone=False):
     along the strike (~12 m, the bed index a noise coordinate) so no bed is a ruled line. Beds hand over across +-ramp
     (>= 2 voxels in all: finer meshed as sawtooth). Durdle Door's fin reads by these, not by its facets.
     tone=True: each point's bed softness instead (0..1, eased across the planes the same way: the colour's banding)."""
-    S, J, ramp, depth = (THIN_STRATA[k] for k in ("spacing", "jitter", "ramp", "depth"))
+    S, J, ramp, depth = (terrain_mesh.THIN_STRATA[k] for k in ("spacing", "jitter", "ramp", "depth"))
     zb = p[:, 2] + zoff
     i0 = np.floor(zb / S).astype(np.int64)
     bnd = lambda i: (i + J * (2 * _bed_hash(i, seed + 31) - 1)) * S  # (bed i spans bnd(i) .. bnd(i + 1))
@@ -189,14 +190,6 @@ def _joints(p, r, fd=None):
     return out
 
 
-# a fixed rotation for the facet lattice, so its creases don't line up with the world's axes
-_ROT = np.linalg.qr(np.array([[0.62, -0.51, 0.33], [0.27, 0.71, 0.58], [-0.49, -0.12, 0.74]]))[0]
-
-
-# a second rotation, for the lattice that warps the facet lattice (see _pl_facets)
-_ROT_W = np.linalg.qr(np.array([[0.3, 0.8, -0.2], [-0.7, 0.1, 0.6], [0.5, -0.4, 0.7]]))[0]
-
-
 def _hash3(ix, iy, iz, seed):
     """Three pseudo-random values -1..1 per lattice point from one 64-bit hash (16 bits each)."""
     h = ((ix * 73856093) ^ (iy * 19349663) ^ (iz * 83492791) ^ (seed * 2654435761)).astype(np.uint64)
@@ -238,9 +231,9 @@ def _pl_facets(p, size, seed, warp=0.45):
     piecewise-linear maps is still piecewise linear: facets stay planar, creases stay C0). Unwarped, every crease lay
     on the lattice's planes and diagonals: a face showed a few fixed crease directions at a fixed spacing, a quilt of
     rhombs and rectangles (the user's "squares in the rocks")."""
-    q = (p @ _ROT.T) / size
+    q = (p @ terrain_mesh._ROT.T) / size
     if warp:
-        q = q + warp * _pl_walk((p @ _ROT_W.T) / (1.7 * size), seed + 1001, vec=True)
+        q = q + warp * _pl_walk((p @ terrain_mesh._ROT_W.T) / (1.7 * size), seed + 1001, vec=True)
     return _pl_walk(q, seed)
 
 
@@ -341,7 +334,7 @@ def rock_config(T, cfg):
     off = _gridded(lambda xy: wander(xy) + (base(xy) if base else 0.0), T)
     # bed steps ramp over 2 voxels either side of their plane (0.8 voxel meshed as a sawtooth that cast jagged
     # shadows); the crisp notch at the bedding plane is in the maps (terrain_bake.micro_relief)
-    vox = float(cfg.get("voxel", DEFAULTS["voxel"]))
+    vox = float(cfg.get("voxel", terrain_mesh.DEFAULTS["voxel"]))
     out = {"size": size, "facets": fac, "bedding": bd, "bed": bed, "bed_offset": off, "seed": 4242,
            "reach": 1.4 * fac + 0.7 * bd + 1.0, "bed_edge": max(0.05, 2.0 * vox / bed)}
     bk = float(rc.get("blocks", 1.0)) * mult
@@ -434,9 +427,6 @@ def dig_doline(T, H, d):
     return H - d["depth"] * (1 - s) ** 2
 
 
-THIN_LEVELS = 48  # at most this many height levels per thin piece (_local_thickness)
-
-
 def _local_thickness(H, c, r_open, thin):
     """Where the ground is thin (`thin` > 0: fins, stacks, narrow headlands), the rock's local half-thickness per
     height level: at each level z, the radius of the largest disc inside {H > z} that covers the cell (the
@@ -457,7 +447,7 @@ def _local_thickness(H, c, r_open, thin):
         th = thin[j0:j1, i0:i1]
         zlo = float(Hs[own].min()) - 1.0
         zhi = float(Hs[own].max()) + 1.0
-        nz = int(min(THIN_LEVELS, max(2, math.ceil((zhi - zlo) / c) + 1)))
+        nz = int(min(terrain_mesh.THIN_LEVELS, max(2, math.ceil((zhi - zlo) / c) + 1)))
         dz = (zhi - zlo) / (nz - 1)
         hw = np.zeros((nz,) + Hs.shape)
         for iz in range(nz):
@@ -480,10 +470,6 @@ def _local_thickness(H, c, r_open, thin):
     return lab, comps
 
 
-HOLD_REACH = 30.0  # m from a river's water line where the 3D field's ground keeps the banks the terrain grid has
-HOLD_FREEBOARD = 0.3  # m over the water the banks are kept (forms.water grades banks from level + 0.3)
-
-
 def hold_rivers(T, H, ref):
     """H (the field's ground grid after its own edits: facets taken out, styles softened) kept from dropping below a
     river's banks: within HOLD_REACH of a water line, wherever `ref` (the terrain's ground) stands at least
@@ -500,20 +486,17 @@ def hold_rivers(T, H, ref):
         live = wd > 0
         if not live.any():
             continue
-        lo, hi = xy[live].min(0) - HOLD_REACH, xy[live].max(0) + HOLD_REACH
+        lo, hi = xy[live].min(0) - terrain_mesh.HOLD_REACH, xy[live].max(0) + terrain_mesh.HOLD_REACH
         ix = np.flatnonzero((xs >= lo[0]) & (xs <= hi[0]))
         iy = np.flatnonzero((ys >= lo[1]) & (ys <= hi[1]))
         if not len(ix) or not len(iy):
             continue
         X, Y = np.meshgrid(xs[ix], ys[iy])
-        d, i = cKDTree(xy[live]).query(np.c_[X.ravel(), Y.ravel()], distance_upper_bound=HOLD_REACH)
-        g = np.where(np.isfinite(d), lv[live][np.minimum(i, live.sum() - 1)] + HOLD_FREEBOARD, np.inf).reshape(X.shape)
+        d, i = cKDTree(xy[live]).query(np.c_[X.ravel(), Y.ravel()], distance_upper_bound=terrain_mesh.HOLD_REACH)
+        g = np.where(np.isfinite(d), lv[live][np.minimum(i, live.sum() - 1)] + terrain_mesh.HOLD_FREEBOARD, np.inf).reshape(X.shape)
         sub = guard[iy[0]:iy[-1] + 1, ix[0]:ix[-1] + 1]
         np.minimum(sub, g, out=sub)
     hold = np.isfinite(guard) & (ref >= guard) & (H < guard)
     if not hold.any():
         return H
     return np.where(hold, guard, H)
-
-
-THIN_STRATA = {"spacing": 1.7, "jitter": 0.2, "ramp": 0.5, "depth": 1.0, "tone": 1.0}  # thin rock's strata

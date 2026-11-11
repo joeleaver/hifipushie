@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from .face_ruler import _C, _cam_points, _clay_crop, _gnm, _proj_jac_pt, clay
+from . import face_ruler
+from .face_ruler import _cam_points, _clay_crop, _gnm, _proj_jac_pt, clay
 from .face_ruler_outline import photo_masks
 
 def _iris_obs(head, view, eyes_pic):
@@ -24,9 +25,6 @@ def _iris_obs(head, view, eyes_pic):
     return out
 
 
-SIG_LID = (0.2, 0.4, 0.4)   # mm: a lid margin at a column within 7 mm of the iris centre / beyond it / a canthus
-
-
 def _lid_obs(head, view, rv):
     """THE LIDS IN THE SAME SOLVE (reruns, 2026-10-11): the eye ruler's read of the front picture (rv = eye_ruler.mean:
     upper / lower margin at its columns, the canthi; mm at the model in the eye's own frame, from the iris centre)
@@ -39,17 +37,17 @@ def _lid_obs(head, view, rv):
     gg = _gnm()["sp"]
     T = gg["T"]
     r0 = np.asarray(lidrings.topo()["loops"][0], int)
-    if "lid_mv" not in _C:
-        _C["lid_mv"] = {}
+    if "lid_mv" not in face_ruler._C:
+        face_ruler._C["lid_mv"] = {}
     key = len(head["gid"])
-    if key not in _C["lid_mv"]:
+    if key not in face_ruler._C["lid_mv"]:
         gid = np.asarray(head["gid"], int)
         first = {}
         for i, g_ in enumerate(gid):
             if g_ >= 0 and g_ not in first:
                 first[int(g_)] = i
-        _C["lid_mv"][key] = np.array([first.get(int(g_), -1) for g_ in r0])
-    mv = _C["lid_mv"][key]
+        face_ruler._C["lid_mv"][key] = np.array([first.get(int(g_), -1) for g_ in r0])
+    mv = face_ruler._C["lid_mv"][key]
     ok = mv >= 0
     r0, mv = r0[ok], mv[ok]
     j = int(np.argmax([float(e[0]) for e in head["eye_X"]]))        # the subject's left eye (world +X)
@@ -73,24 +71,16 @@ def _lid_obs(head, view, rv):
             if not (np.isfinite(pic[k]) and np.isfinite(mod[k])):
                 continue
             out.append({"type": "lid", "view": "eye frame", "name": f"lid_{nm}_{u:+.0f}.y", "o": float(pic[k] - mod[k]),
-                        "J": col_J(sel, float(u)), "sig": SIG_LID[0] if abs(u) < 7 else SIG_LID[1], "of": view.get("kind", "front")})
+                        "J": col_J(sel, float(u)), "sig": face_ruler.SIG_LID[0] if abs(u) < 7 else face_ruler.SIG_LID[1], "of": view.get("kind", "front")})
     io, ii = int(np.argmax(x)), int(np.argmin(x))
     if np.isfinite(rv["outer"][0]):
         out.append({"type": "lid", "view": "eye frame", "name": "canthus_out.x", "o": float(rv["outer"][0] + be.OUT_RING - mg["ring_out"][0]),
-                    "J": Bx[:, io], "sig": SIG_LID[2], "of": view.get("kind", "front")})
+                    "J": Bx[:, io], "sig": face_ruler.SIG_LID[2], "of": view.get("kind", "front")})
     if np.isfinite(rv["inner"][0]):
         JL = (np.asarray(head["LB"][:, 42, 0], float) - EB[:, 0]) * 1000.0
         out.append({"type": "lid", "view": "eye frame", "name": "canthus_in.x", "o": float(rv["inner"][0] - mg["inner"][0]),
-                    "J": JL, "sig": SIG_LID[2], "of": view.get("kind", "front")})
+                    "J": JL, "sig": face_ruler.SIG_LID[2], "of": view.get("kind", "front")})
     return out
-
-
-NU_SD = 2.0                 # prior sd of an observation's own nuisance columns (log units: wide)
-SIG_SHADE = 0.05            # log luminance: one shading sample (validated on clay pairs: spikes/reruns/shval.py)
-SHADE_N = 350               # shading samples per view
-SHADE_REGIONS = ("forehead_region", "left_temple_region", "right_temple_region", "left_zygomatic_region",
-                 "right_zygomatic_region", "left_parotid_region", "right_parotid_region", "left_infraorbital_region",
-                 "right_infraorbital_region", "left_cheek_region", "right_cheek_region", "chin_region")
 
 
 def _vnormals(V, F):
@@ -109,7 +99,7 @@ def _shade_model(head) -> dict:
         return head["_shade"]
     gr = _gnm()["gr"]
     sel = np.zeros(len(next(iter(gr.values()))), bool)
-    for k in SHADE_REGIONS:
+    for k in face_ruler.SHADE_REGIONS:
         sel |= gr[k]
     gid = np.asarray(head["gid"], int)
     V, F = np.asarray(head["V"], float), np.asarray(head["F"], int)
@@ -193,8 +183,8 @@ def _shade_obs(head, view):
     k, y, S, n = k[good], y[good], S[good], n[good]
     if len(k) < 40:
         return []
-    if len(k) > SHADE_N:
-        pick = np.round(np.linspace(0, len(k) - 1, SHADE_N)).astype(int)
+    if len(k) > face_ruler.SHADE_N:
+        pick = np.round(np.linspace(0, len(k) - 1, face_ruler.SHADE_N)).astype(int)
         k, y, S, n = k[pick], y[pick], S[pick], n[pick]
     wv = sol[1:]
     dNc = np.einsum("knc,dc->knd", sm["dN"][:, k], Rc)                # (170, n, 3) camera frame
@@ -206,30 +196,24 @@ def _shade_obs(head, view):
         nu = {f"sh_{kind}_1": 1.0, f"sh_{kind}_x": u[i, 0], f"sh_{kind}_y": u[i, 1], f"sh_{kind}_xx": u[i, 0] ** 2,
               f"sh_{kind}_xy": u[i, 0] * u[i, 1], f"sh_{kind}_yy": u[i, 1] ** 2}
         out.append({"type": "shade", "view": "shade:" + kind, "name": f"shade_{kind}_{i}", "o": float(o[i]), "J": J[:, i],
-                    "sig": SIG_SHADE, "nu": nu, "px": list(map(float, px[k[i]])),
+                    "sig": face_ruler.SIG_SHADE, "nu": nu, "px": list(map(float, px[k[i]])),
                     "vid": int(sm["idx"][k[i]])})
     view["_shade_light"] = (float(sol[0]), [float(x) for x in sol[1:]], int(len(k)))
     return out
 
 
-SIG_NORMAL = 0.10           # radians: one learned-normal sample's tangent component (spikes/refread/nrmval.py)
-NORMAL_N = 400              # normal samples per view
-NORMAL_REGIONS = SHADE_REGIONS + ("nose_region",)
-
-
-def _normal_model(head, regions=NORMAL_REGIONS) -> dict:
+def _normal_model(head, regions=face_ruler.NORMAL_REGIONS) -> dict:
     """as _shade_model for any set of GNM regions (cached on the head)."""
     key = "_nm_" + ",".join(regions)
     if key in head:
         return head[key]
     old = head.pop("_shade", None)
-    global SHADE_REGIONS
-    keep = SHADE_REGIONS
+    keep = face_ruler.SHADE_REGIONS
     try:
-        SHADE_REGIONS = tuple(regions)
+        face_ruler.SHADE_REGIONS = tuple(regions)
         head[key] = _shade_model(head)
     finally:
-        SHADE_REGIONS = keep
+        face_ruler.SHADE_REGIONS = keep
         head.pop("_shade", None)
         if old is not None:
             head["_shade"] = old
@@ -294,8 +278,8 @@ def _normal_obs(head, view, differential=None):
         ref = fnm.at(differential, px[k])
     g = np.isfinite(ne).all(1) & np.isfinite(ref).all(1)
     k, ne, ref = k[g], ne[g], ref[g]
-    if len(k) > NORMAL_N:
-        pick = np.round(np.linspace(0, len(k) - 1, NORMAL_N)).astype(int)
+    if len(k) > face_ruler.NORMAL_N:
+        pick = np.round(np.linspace(0, len(k) - 1, face_ruler.NORMAL_N)).astype(int)
         k, ne, ref = k[pick], ne[pick], ref[pick]
     n = nc_[k]
     t1 = np.cross(n, [0.0, 1.0, 0.0])
@@ -309,45 +293,34 @@ def _normal_obs(head, view, differential=None):
             rot = np.cross(n[i], t)
             nu = {f"nr_{kind}_x": rot[0], f"nr_{kind}_y": rot[1], f"nr_{kind}_z": rot[2], f"nr_{kind}_gain": float(zc @ t)}
             out.append({"type": "normal", "view": "normal:" + kind, "name": f"normal_{kind}_{i}.{a}", "o": float((ne[i] - ref[i]) @ t),
-                        "J": dNc[:, i] @ t, "sig": SIG_NORMAL, "nu": nu, "px": list(map(float, px[k[i]])),
+                        "J": dNc[:, i] @ t, "sig": face_ruler.SIG_NORMAL, "nu": nu, "px": list(map(float, px[k[i]])),
                         "vid": int(sm["idx"][k[i]])})
     return out
 
 
-SIG_LIP = 0.3               # mm: a vermilion border vertex against the picture's traced border
-# (readmix, 2026-10-14) THE LIPS' READS ON A PHOTOGRAPH ARE NOT THE MODEL'S BORDER ROWS: at the TRUE head (seven HSRD training
-# subjects, the scan-fitted identity through the rig's cameras) the photograph's colour edge lies 0.5-2.4 mm ABOVE GNM's
-# upper border row and 0.4-4.0 mm BELOW its lower one (most at the middle), and MediaPipe's border points and the
-# differential anchors (picture minus our render) agree: our render's lips look thinner to every reader than the same
-# lips photographed. Uncorrected, the solve makes lips 3-8 mm too tall. Each read's mean vertical offset (per border
-# position / point) is taken out of a PHOTO's lip reads (lip_photo_bias.json; spikes/readmix/lipbias.py); per-person
-# scatter remains (sd 0.5-2.5 mm). The colour edge itself belongs to the PAINT, placed from the picture.
-LIP_PHOTO_BIAS = False      # OFF (2026-10-14, the coordinator's decision): on three held-out HSRD heads it took the lip heights' error
-#                             4.4 -> 1.8 mm against the fit's vertices, but the scan's SURFACE did not confirm it (lips 1.06 / 0.69 /
-#                             1.60 -> 1.03 / 0.80 / 1.76 mm; one chin 1.29 -> 2.00): an option, docs/notes/readmix.md "## TALL LIPS"
 def lip_bias(kind: str, key: str) -> float:
     """The calibrated vertical offset (mm, + = the photo's point lies lower) of a lip read at the true head; 0 if none."""
-    if not LIP_PHOTO_BIAS:
+    if not face_ruler.LIP_PHOTO_BIAS:
         return 0.0
-    if "lipcal" not in _C:
+    if "lipcal" not in face_ruler._C:
         import json as _json
         from pathlib import Path as _P
         f = _P(__file__).with_name("lip_photo_bias.json")
-        _C["lipcal"] = _json.loads(f.read_text())["cal"] if f.exists() else {}
-    v = (_C["lipcal"].get(kind) or {}).get(key)
+        face_ruler._C["lipcal"] = _json.loads(f.read_text())["cal"] if f.exists() else {}
+    v = (face_ruler._C["lipcal"].get(kind) or {}).get(key)
     return float(v[0]) if v else 0.0
 
 
 def _gnm_to_model(head) -> dict:
     """GNM vertex id -> a model vertex of head["V"] (the first that carries it)."""
     key = ("g2m", len(head["gid"]))
-    if key not in _C:
+    if key not in face_ruler._C:
         first = {}
         for i, g_ in enumerate(np.asarray(head["gid"], int)):
             if g_ >= 0 and g_ not in first:
                 first[int(g_)] = i
-        _C[key] = first
-    return _C[key]
+        face_ruler._C[key] = first
+    return face_ruler._C[key]
 
 
 def _lip_obs(head, view, ev):
@@ -384,6 +357,6 @@ def _lip_obs(head, view, ev):
             ub = int(np.clip(round((float((px[i] - c0_) @ ex_) / max(half_, 1e-9) + 1) * 5), 0, 10))
             b_ = lip_bias("lip", f"{nm}:{ub}") if photo else 0.0
             out.append({"type": "lip", "view": view["kind"], "name": f"lip_{nm}_{i}", "o": float(d[i]) * mm1 / s_ - b_ * float(n[1]), "n": n.tolist(),
-                        "J": (n @ Jp) * mm1, "sig": SIG_LIP, "p": list(map(float, px[i])), "q": list(map(float, q[i])),
+                        "J": (n @ Jp) * mm1, "sig": face_ruler.SIG_LIP, "p": list(map(float, px[i])), "q": list(map(float, q[i])),
                         "X": list(map(float, X[i]))})
     return out
