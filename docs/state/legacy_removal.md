@@ -21,7 +21,7 @@ Rule (Joe, 2026-11-10): no backwards compatibility. No gate, no switch, no shim;
   - 281 functions and constants, fold_checks whole; their tests. Source 207.5k -> 202.4k lines; 1,792 tests collect.
 - Proof for each cut, parent tree against branch, separate fresh homes: cf_shirt and wf_simon closed and open
   (load_garment + GarmentBuild.run) bit-identical in X; flat_check on the s4-19 jacket and s4-14 hussar identical.
-- The split (tags archive/before-split-*; 1-4 landed, 5 on branch split-skin-blockin):
+- The split (tags archive/before-split-*; all landed):
   1 server.py (3,913 lines; C413) -> mcp_app, tool_common, tools_find, one tools_<domain>.py each; tool surface identical.
   2 terrain_mesh.py (5,680; C414) -> 15 modules (terrain_mesh.MODULES), pure moves; the tile state hashes them all.
   3 hair.py (5,694; C415) -> 15 modules (hair.MODULES); 28 functions import a later module themselves; rebound names late.
