@@ -182,6 +182,9 @@ def run(name: str, garment: str, design: str, declarations: dict, options: dict 
     except (KeyError, ValueError, IndexError) as e:
         nan = " (a NaN: a point with no value, or a curve between two points that coincide; pattern_parts(design, " \
               "part=...) names a part's points with no value)" if "nan" in str(e).lower() else ""
+        from .pattern import NoPoint
+        if isinstance(e, KeyError) and not isinstance(e, NoPoint):  # (C408: never a bare 'name')
+            e = f"no {e.args[0]!r} where a declaration names it (a piece, edge or point name the draft hasn't)"
         raise do.DraftRefused(f"the converter refused the draft: {e}{nan}") from None
     blk = do.block(g["pattern"])
     B["edge_arcs"], B["decl"] = blk["edge_arcs"], blk["decl"]

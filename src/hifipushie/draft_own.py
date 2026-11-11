@@ -15,8 +15,11 @@ Declarations (JSON beside the code; names are step 1's):
   edges {piece: {edge: "pointA>pointB" | "a>via>b" | {"path": a path of the part}}}
   seams [{"a": "piece:edge" | [chain: edges in order, each starting where the one before ended], "b": ..., "ease": [lo,
   hi] (a over b, -1), "why"}]: step 1's seams, sewn
-  stiff [piece] (interfaced); folds [{"name", "piece", "line": edge | arc | {"edge", "offset"}, "kind", ...}] (style
-  folds too: a rolled cuff); closures [closures.py entries, "edge": {"over": edge, "under": edge}]; omit {piece: why};
+  stiff [piece] (interfaced); folds [{"name", "piece", "line": edge | arc | {"edge", "offset"} | a path of the part by
+  name (a CURVED fold line: draw it as a path in design.mjs, e.g. a collar's roll line through its CB) | [point, point,
+  ...] (outline points or snippets; points inside the part are dropped by the converter), "kind", ...}] (style
+  folds too: a rolled cuff; pattern.fold_line; a name it hasn't is refused naming the fold, what it may name and the
+  nearest names: C408); closures [closures.py entries, "edge": {"over": edge, "under": edge}]; omit {piece: why};
   darts [{"piece", "legs": [edge, edge], "why"?}] (C361; each leg declared "outline point>tip"): a dart OPEN on the outline (the seam path runs in along one
   leg to the tip and out along the other), its two legs declared edges of the piece, sewn to each other (the seam check
   holds them to one length; they must meet at the tip). A dart drawn inside a piece (a fish dart's closed path) isn't
