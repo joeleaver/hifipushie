@@ -29,9 +29,8 @@ Rule (Joe, 2026-11-10): no backwards compatibility. No gate, no switch, no shim;
   5 skin_read.py, blockin.py, likeness.py (7.1k; C419) -> 8, 9, 10 modules; blockin_models._refs read late. Its check
     for names left behind found a live bug (blockin.ruler); tests/test_undefined_names.py guards all modules.
 - CONSTANTS STAY (C422, branch constants-stay): export scripts outside the repo set module.NAME (assembly/exp.py
-  HP_FS_SET, assembly_garrett/s15/sh4t.py, haircards/t47/r47.sh). Splits 2-5 had moved constants with their sections;
-  for hair and faceshapes the scripts' values were then ignored. Now each family's base module holds every constant
-  and the others read base.NAME; tests/test_constants_address.py (a family = a module with MODULES).
+  HP_FS_SET, assembly_garrett/s15/sh4t.py, haircards/t47/r47.sh). Splits 2-5 had moved constants; for hair and faceshapes
+  those values were then ignored. Now a family's base module holds every constant: tests/test_constants_address.py.
 - Still over 500 lines because one function is: terrain_tiles 928 (_export_tiles 799), hair_cards_job 600 (cards_job
   570): refactoring, not moving. Also terrain_volumes, faceshapes_face 596, hair_look, hair_groom, blockin_steps.
 - Not done: module docstrings in drape, zozo_hang, garment_pull, cloth_check still describe removed parts (fix at split).
