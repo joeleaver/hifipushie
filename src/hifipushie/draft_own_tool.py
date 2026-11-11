@@ -100,7 +100,7 @@ def flat_check(name: str, garment: str) -> tuple[list, dict, dict]:
     from . import draft_marks
     rows.append(draft_marks.place(cloth.mesh(B), blk["decl"], rd["1"])[0])  # (C380: the pairs expanded, as step 7)
     from . import draft_links
-    rows.append(draft_links.saved_row(name, garment))  # (C395: step 4 FAILs what step 5 refuses, the build's mesh)
+    rows += draft_links.saved_rows(name, garment)  # (C395, C403: step 4 FAILs what step 5 refuses, the build's mesh)
     return rows, B, decl
 
 
@@ -205,7 +205,7 @@ def run(name: str, garment: str, design: str, declarations: dict, options: dict 
     spec["cloth"] = cl
     ver = store.save(name, spec, f"draft_pattern {garment}")
     from . import draft_links  # (C395: step 4 FAILs what step 5 refuses, read on the build's own mesh of this draft)
-    rows.append(draft_links.saved_row(name, garment))
+    rows += draft_links.saved_rows(name, garment)
     v = do.verdict(rows)
     keys = [k for k in cg.PATTERN_KEYS if k in M]
     out = {"dir": str(d), "pieces": list(B["pieces"]), "seams": len(B["seams"]), "measurements": sorted(meas),

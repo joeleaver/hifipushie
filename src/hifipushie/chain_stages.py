@@ -8,7 +8,8 @@ where it ends, before the next stage runs:
 
 1. START (seconds, before any soft solve) on the soft start (piece_start): every tube closed round each girth loop it was
    measured at (`round:<tube>@<loop>`), .L / .R starts mirror each other (`mirror:<piece>`), no start sunk into the body
-   (`inside:<piece>`). Back to step 5's start (piece_start) or step 3 / 4 (a tape or a piece's measurement list).
+   (`inside:<piece>`), every vertex of a built piece placed (`placed:<piece>`: none at the origin or 0.5 m off the
+   body) and no seam sewn end to end the wrong way round (`crossed:<piece>`), chain_placed.py. Back to step 5's start (piece_start) or step 3 / 4 (a tape or a piece's measurement list).
 2. CHAINS (after the chain solve, before surfaces): every free chain at its length (MAX_FREE_PCT, the existing 2 % rule:
    `length`, `held_length`), each tube still round its loops and each pair still mirrored where its start put it.
 3. SURFACES (after the fill between the chains, BEFORE the slow thread solve): coverage (`holes:<piece>`: no face torn
@@ -293,6 +294,10 @@ def gate_start(b, X) -> dict:
                          f"p90 mm from its seam's place; limit a quarter of that sewn edge's flat length",
                          f"{p} starts away from the band it is sewn to: the band's placement (which way round it runs, "
                          "its height) or the piece's start", "mm"))
+    from .chain_placed import crossed_rows, placed_rows  # (R3c2: a point nothing placed, or a seam sewn the wrong way
+    pr, reads["unplaced"] = placed_rows(b, X, _row)       # round, is a named refusal, not "lines to the floor")
+    cr, reads["crossed"] = crossed_rows(b, _row)
+    rows += pr + cr
     ins = inside_reads(b, X)
     reads["inside"] = ins
     lim = 0.1  # (the share: one point in ten through the body is a misplaced piece, not ease: a reading of the start)

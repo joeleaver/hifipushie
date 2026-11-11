@@ -750,3 +750,17 @@ def test_seam_links_row_fails_what_the_build_refuses():
     pat.M["uv"][vid("b", 10, 0), 0] += 0.006  # (one side's last link 6 mm longer: the corners don't meet)
     r = draft_links.row(pat.M)
     assert r["status"] == "FAIL" and "a / b: one side 20.00 mm, the other 26.00 mm" in r["why"] and r["back_to"] == "4"
+
+
+def test_seams_crossed_row_names_two_points_sewn_into_one():
+    """C403: step 4 runs the build's own crossed check: a seam sewn end to end the wrong way joins a piece's two ends."""
+    from test_chain_loops import _pattern
+    from hifipushie import draft_links
+    pat, vid = _pattern({"a": (0.0, 0.2, 0.0, 0.05, 11, 3), "b": (0.0, 0.2, 0.05, 0.1, 11, 3),
+                         "c": (0.0, 0.05, 0.1, 0.15, 3, 3)}, sew_rows=[("a", -1, "b", 0)])
+    assert draft_links.crossed_row(pat.M)["status"] == "PASS"
+    import numpy as np
+    extra = [[vid("c", 0, 0), vid("a", 0, 0)], [vid("c", 0, 0), vid("a", 10, 0)]]  # (c's corner sewn to both ends of a)
+    pat.M["sew"] = np.r_[pat.M["sew"], np.array(extra, np.int64)]
+    r = draft_links.crossed_row(pat.M)
+    assert r["status"] == "FAIL" and "sewn into one point" in r["why"] and r["back_to"] == "4"

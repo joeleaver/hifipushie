@@ -2,7 +2,7 @@
 
 Landed on main 2026-11-10 (built on limb loops, C375; this run 2026-11-05). Step 3 of
 the creature-topology project, asked for by Joe through Baynard Racing (Puddles' open mouth). Exploring run (no gate).
-Ledger C402. Limb part of the thread: docs/state/limb_loops.md.
+Ledger C405. Limb part of the thread: docs/state/limb_loops.md.
 
 ## What the tools hold now (mouthloops.py docstring = spec)
 - Any subtracted blob of a `topology: "limbs"` part that breaks its skin is an opening (a mouth, a beak's gape):

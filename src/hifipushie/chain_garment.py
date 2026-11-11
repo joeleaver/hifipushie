@@ -212,12 +212,27 @@ class GarmentBuild(SoftStages, StiffStages, HangJob, Build):
         self._plies()
         return out
 
+    def soft_start(self):
+        """(R3c2) The soft start with every ply and floating layer on its host's start, so nothing of a built piece starts
+        at the origin and the pieces sewn to them start at their seams (chain_holds.place_plies / place_layers)."""
+        X = super().soft_start()
+        if self.holds is not None and self.holds.inside:  # (a facing starts inside its front, not as a torso panel)
+            from .chain_holds import place_inside
+            place_inside(self, X)
+        if self.holds is not None and (self.holds.plies or self.holds.layers):
+            from .chain_holds import place_layers, place_plies
+            place_plies(self, X=X)
+            place_layers(self, X=X)
+            m = np.isin(self.net.piece, [self.net.pid(p) for p in list(self.holds.plies) + list(self.holds.layers)])
+            m = np.isin(self.net.root, self.net.root[m])
+            self.X[m] = X[m]  # (held: the solve keeps them where their host's start put them)
+        return X
+
     def _plies(self):
         if self.holds is not None and (self.holds.plies or self.holds.layers):
-            from .chain_holds import place_plies
+            from .chain_holds import place_layers, place_plies
             place_plies(self)
-            if self.holds.layers:  # (not built: they stiffen their host, R3c gives them their effect)
-                self.reads["layers"] = {k: {"stiffens": v, "built": False} for k, v in self.holds.layers.items()}
+            place_layers(self)  # (R3c2: a layer inside its host, its stiffness on the host where it lies)
 
     def chain_read(self, X) -> dict:
         """Chains at X. A soft link with both ends sewn to a stiff part is gathered into it (a sleeve into its cuff):

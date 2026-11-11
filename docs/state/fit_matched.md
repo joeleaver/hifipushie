@@ -1,7 +1,7 @@
 # Fit to fitted cameras (fit_view.py, tool fit_matched): STATE 2026-11-10
 
 LANDED on main 2026-11-10 (branch fit-part, Joe approved). Asked for by Baynard Racing (gap 33: no fit
-of a part to a concept; Puddles' ears). Not pushed. Ledger C403.
+of a part to a concept; Puddles' ears). Not pushed. Ledger C406.
 
 ## What the tools hold now (fit_view.py docstring = spec)
 - `fit_matched(name, targets, only, params, lock, press, ...)`: fit.py's Levenberg-Marquardt (`fit.solve`, split
@@ -32,4 +32,4 @@ turn_side fitted on it, IoU 0.95-0.97)
 3. press takes one join point; two symmetric parts need one target each (or a list: not built).
 
 NEXT: Baynard fixes the ear's form (crease, rim, tip thickness) by hand.
-History: this page + commits on fit-part; ledger C403.
+History: this page + commits on fit-part; ledger C406.

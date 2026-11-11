@@ -6,6 +6,8 @@ fails much later (T13b: the cloak's hood.R:neck CF>CB against the cloak's CB>CF,
 front waist "cfWaist>sideWaist" sewn to the band's "sd>cf", held 3736 %). Twice a flat gate passed it.
 
 What the pattern knows about where an edge end sits, read from the outline, never from a garment:
+  - the point's own NAME on both sides (C403): a point both sides name (a design's parts drafted from one block share
+    them: notch, collarCorner, neck) is one place; named at one side's start and the other's end is reversed;
   - the centre line: a point named cf* / cb* (or centre / center + front / back, "nape" = the back of the neck), and
     on a piece cut on the fold, a point on the fold line (x = 0) = "centre" (either);
   - the side: a point named side* / sd*;
@@ -72,6 +74,7 @@ def _side_ends(B: dict, side) -> dict:
         if abs(d[1]) >= VERTICAL * abs(d[0]) and abs(d[1]) > 0:
             up = 1 if d[1] < 0 else -1
     return {"start": _end(pa, sa, fold(first[0])), "end": _end(pb, ea, fold(last[0])), "up": up,
+            "sname": sa, "ename": ea, "pieces": {first[0], last[0]},
             "label": f"{first[0]}:{first[1]}" if len(es) == 1 else f"{first[0]}:{first[1]} .. {last[0]}:{last[1]}"}
 
 
@@ -90,7 +93,19 @@ def reversed_seams(B: dict) -> list:
         if x["up"] and y["up"] and x["up"] != y["up"]:
             cross.append(f"{x['label']} runs {'down' if x['up'] > 0 else 'up'} its piece, "
                          f"{y['label']} runs {'down' if y['up'] > 0 else 'up'}")
+        # (C403: a point both sides NAME sits at the same place: the jacket's undercollar "notch>collarCorner>shoulderL"
+        # against the front's "neck>collarCorner>notch" passed, notch and shoulder being no cf / cb / side; sewn so, the
+        # front's neck point and its notch, 106 mm apart, became one node; a piece sewn to itself is left to the build)
+        if not (x["pieces"] & y["pieces"]):
+            nm_cross = [f"point {x['sname']} at {x['label']}'s start is {y['label']}'s end"
+                        for _ in [0] if x["sname"] == y["ename"] and x["sname"] != y["sname"]]
+            nm_cross += [f"point {x['ename']} at {x['label']}'s end is {y['label']}'s start"
+                         for _ in [0] if x["ename"] == y["sname"] and x["ename"] != y["ename"]]
+            nm_along = x["sname"] == y["sname"] or x["ename"] == y["ename"]
+            if nm_cross and not nm_along:
+                cross += nm_cross
         along = _same(x["start"], y["start"]) or _same(x["end"], y["end"]) or (x["up"] and x["up"] == y["up"])
+        along = along or x["sname"] == y["sname"] or x["ename"] == y["ename"]
         if cross and not along:
             e = y["label"] if isinstance(Bs, str) else x["label"]
             pts = e.split(":", 1)[1].split(">") if " .. " not in e else []

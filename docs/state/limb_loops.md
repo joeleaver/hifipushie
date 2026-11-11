@@ -29,7 +29,7 @@ the Baynard notes folder limb_loops/)
   notch is still there in both (body strip between the junctions: weights, not loops); the seat about the same.
 - Real export (pudrt.glb, 2026-11-05): by eye NOT a clear win (crotch pucker, belly fold). Superseded by the gate below.
 
-## Gate on today's Puddles (2026-11-10, landed from branch limbs-gate, ledger C404): NO-GO
+## Gate on today's Puddles (2026-11-10, landed from branch limbs-gate, ledger C407): NO-GO
 Bar: the quad-cage's (tag archive/quad-retopo), /mnt/data/hifipushie/limbsgate/measure.py; pud2 v83 exported both
 ways (export_asset rig=True). Plain decimation: 11,225 tris, folds 9 (armpits), turned 8, body p99 0.42 / max 1.3 mm,
 coverage p99 3.21. "limbs" (rest 9000): 10,558 tris, folds 122, turned 98, body p99 1.99 / max 39.9, coverage 3.88;

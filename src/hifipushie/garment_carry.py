@@ -11,7 +11,8 @@ stale with `stale_why`, the reason garment_record shows.
 
 Validators (CHECKS): step 1 = garment_plan.check_parts on step 0; step 2 = check_style on steps 0 + 1; step 3 = every
 measurement step 1 names (its `measurements`) is among step 3's taken rows; step 4 = draft_own.validate (the saved
-declarations against step 1, and the drafted parts); later steps are never carried past a changed step 1 (they're builds:
+declarations against step 1, and the drafted parts) AND its flat gate as pattern_check would run it now (C404: a check
+added since, or a step-2 fold the draft doesn't declare, FAILs it: carried as "PASS" it would hide that); later steps are never carried past a changed step 1 (they're builds:
 rebuild). A step whose own inputs already match (step 3 after a carried step 2) is still checked: when it fails it is
 marked stale (`stale_why`) though its inputs match.
 """
@@ -48,6 +49,18 @@ def _check(sid: str, out: dict, rec: dict) -> str:
             bad = do.validate(decl, o["1"], parts)
             if bad:
                 return "the draft's declarations don't match step 1 now: " + "; ".join(bad[:3])
+            # (C404: the flat gate itself, as pattern_check would run it now: trial s2-6's step-2 retake carried step 4
+            # forward as "gate PASS" while its draft FAILed planned_folds (a fold step 2 now turns, not drafted) and
+            # seams_crossed; declarations matching step 1 is not the gate passing)
+            from . import draft_own_tool as dot
+            try:
+                rows = dot.flat_check(rec["model"], rec["garment"])[0]
+            except (do.DraftRefused, KeyError, ValueError, OSError) as e:
+                return f"its flat gate couldn't be re-run (pattern_check): {str(e)[:200]}"
+            fails = [r for r in rows if r.get("status") == "FAIL"]
+            if fails:
+                return ("its flat gate FAILs now (pattern_check): " + "; ".join(
+                    f"{r['id']}: {str(r.get('why') or r.get('value'))[:160]}" for r in fails[:4]))
         else:
             return f"step {sid} is a build: run it again"
     except gp.PlanRefused as e:

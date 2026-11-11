@@ -88,3 +88,16 @@ def test_a_lapels_roll_fold_is_not_a_collar_fall():  # (t s4-5; C366)
          "folds": [{"piece": "front.L", "kind": "roll"}, {"piece": "undercollar", "kind": "roll"}], "seams": []}
     f = ds.fall_pieces(B, {}, {})
     assert "front.L" not in f and "undercollar" in f
+
+
+def test_a_point_both_sides_name_decides_where_cf_and_side_dont():
+    """C403: the jacket's undercollar "notch>..>shoulderL" against the front's "neck>..>notch" passed (no cf / cb / side):
+    a point both sides name is one place, so notch at one's start and the other's end is reversed."""
+    a = _rect("a", 0.2, 0.05, {"bl": "notch", "br": "shoulderL", "tr": "t1", "tl": "t2"})
+    b = _rect("b", 0.2, 0.05, {"bl": "neck", "br": "notch", "tr": "u1", "tl": "u2"})
+    B = {"pieces": {"a": a, "b": b}, "seams": [["a:notch>shoulderL", "b:neck>notch"]], "decl": {"pieces": {}}}
+    r = dse.rows(B)[0]
+    assert r["status"] == "FAIL" and "point notch at a:notch>shoulderL's start is b:neck>notch's end" in r["why"]
+    assert '"neck>notch" -> "notch>neck"' in r["fix"]
+    B["seams"] = [["a:notch>shoulderL", "b:notch>neck"]]
+    assert dse.rows(B)[0]["status"] == "PASS"

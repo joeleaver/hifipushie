@@ -13,7 +13,8 @@ Declarations (JSON beside the code; names are step 1's):
   pieces {piece: {"part": draft part, "fold": "x0", "mirror", "flip_y", "pair", "cut": n, "grain": deg, "place": {wrap}}}
   ("pair": true = cut 2 as a mirrored pair, NAME.L + NAME.R, seams per side: draft_pairs.py; "mirror" only flips)
   edges {piece: {edge: "pointA>pointB" | "a>via>b" | {"path": a path of the part}}}
-  seams [{"a": "piece:edge" | [chain], "b": ..., "ease": [lo, hi] (a over b, -1), "why"}]: step 1's seams, sewn
+  seams [{"a": "piece:edge" | [chain: edges in order, each starting where the one before ended], "b": ..., "ease": [lo,
+  hi] (a over b, -1), "why"}]: step 1's seams, sewn
   stiff [piece] (interfaced); folds [{"name", "piece", "line": edge | arc | {"edge", "offset"}, "kind", ...}] (style
   folds too: a rolled cuff); closures [closures.py entries, "edge": {"over": edge, "under": edge}]; omit {piece: why};
   darts [{"piece", "legs": [edge, edge], "why"?}] (C361; each leg declared "outline point>tip"): a dart OPEN on the outline (the seam path runs in along one
@@ -267,7 +268,8 @@ def validate(decl: dict, step1: dict, parts: dict | None = None) -> list:
         if not any((a_ in A and b_ in B) or (b_ in A and a_ in B) for A, B in sewn):
             bad.append(f"step 1 seam {a} <-> {b} is not sewn: a declared seam with {a} on one side and {b} on the other "
                        "(either may be one edge of a chain: a two-piece sleeve's cap set into the whole armhole as ONE seam, "
-                       "[cap edges] = [armhole edges], sews every cap / armhole pair of step 1: C365)")
+                       "[cap edges] = [armhole edges], sews every cap / armhole pair of step 1: C365; each edge of a chain starts "
+                       "where the one before it ended, both chains the same way round: C403)")
     for i, dt in enumerate(decl.get("darts") or []):
         p, legs = dp.base_name(str((dt or {}).get("piece")), decl), (dt or {}).get("legs")
         if p not in pcs:
