@@ -11,12 +11,12 @@ How the one mesh takes its shape:
   body's own head (which MakeHuman shapes with the rest: a baby's, an old woman's) carries GNM's head: a similarity
   (the head's size) plus a remainder smoothed over GNM's mesh, held hard at the stitch (`bound`). Ears, lids' insides,
   nostrils and the mouth ride; eyes, teeth and tongue follow the skin beside them as rigid pieces with a scale.
-- GNM's identity / expression components (and everything base.gnm_head does with them: fit, regions, pose,
+- GNM's identity / expression components (and everything base_gnm_head.gnm_head does with them: fit, regions, pose,
   mouth_gap, eye size, planes, pushes, simplify) are applied on top, x the head's size, faded to nothing over the
-  rings above the stitch (`hook`, called by base.gnm_head): the neck is always the body's.
+  rings above the stitch (`hook`, called by base_gnm_head.gnm_head): the neck is always the body's.
 - `template(base)` is the fused mesh as a body template (what base.source returns): MakeHuman's vertices below its
   neck loop, the bridge's, GNM's skin above its ring; `head(s, base)` is the head's dict (landmarks, eyes, carry) as
-  base.head_of returns it, posed with the spec's joints by the same warp as the body.
+  base_measures.head_of returns it, posed with the spec's joints by the same warp as the body.
 - Skin weights are the asset's (`weights`): MakeHuman's hand-made ones, by index on the body and through the
   binding on the head.
 """
@@ -29,13 +29,13 @@ import numpy as np
 
 _CACHE: dict = {}
 CLOSED_GAP = 0.0008     # m: a GNM-closed mouth (the contact ring's halves within this, corner to corner) gets the seam field
-CLOSED_SEAL_V = (0.5,)  # its rows drawn toward the seam (base.SEAL_V's): the first only. The seal's three rows halved the
+CLOSED_SEAL_V = (0.5,)  # its rows drawn toward the seam (base_surface.SEAL_V's): the first only. The seal's three rows halved the
 # vermilion border's turn; the first alone keeps the border and makes the seam a V (-60 / +27 deg each side, Tess)
-VERSION = 15  # bump when the one mesh's built field changes (store's build key, base.surface's key; old paths keep theirs)
+VERSION = 15  # bump when the one mesh's built field changes (store's build key, base_surface.surface's key; old paths keep theirs)
 DIMORPHISM = 0.8  # as headfit's: under a seed's individuality MakeHuman's own difference reads as neither sex
 ANCHORS = 48  # skin vertices a loose piece (eye, teeth, tongue) follows
 HEAD_KEYS = ("toward", "dimorphism", "features", "follow_body", "like", "neck", "attach", "size")  # head keys handled
-# here (the rest are base.gnm_head's)
+# here (the rest are base_gnm_head.gnm_head's)
 # (headbody, 2026-10-12) base.head.attach "native": GNM's head UNTOUCHED, at GNM's own size (metres; x base.head.size),
 # down to the seam ring (the asset's stitch, GNM's neck ring 13); the BODY is fitted to it (stature, neck). See `native`.
 NATIVE_REACH = 0.11  # m over the body's surface from the seam ring: how far the body's neck / shoulders give to meet it
@@ -69,11 +69,11 @@ def _reference() -> dict:
     from scipy.sparse.linalg import factorized
     from scipy.spatial import cKDTree
 
-    from . import base as basemod
+    from . import base_identity
     from . import makehuman
     a = asset()
     meta = json.loads(str(a["meta"]))
-    g = basemod._gnm_data()
+    g = base_identity._gnm_data()
     Pref = np.asarray(makehuman.body(json.loads(str(a["reference"])))["P"], float)
     val = a["g_valid"]
     tri, bar = a["g_tri"], a["g_bary"].astype(float)
@@ -161,7 +161,7 @@ NATIVE_VERSION = 2  # bump when a NATIVE head's build changes (2: seated by the 
 
 
 def build_version(base: dict | None) -> str:
-    """What store / base.surface key a one-mesh build on."""
+    """What store / base_surface.surface key a one-mesh build on."""
     return f"{VERSION}" + (f"n{NATIVE_VERSION}" if native(base) else "")
 
 
@@ -178,8 +178,8 @@ def _pivot(params: dict) -> tuple:
     """Where GNM's HEAD JOINT (joint 1: the skull on the spine) lies on the MakeHuman body made from `params`, and the
     size of that body's own head over GNM's template: GNM's template fitted (translation + uniform scale) to the head
     the body carries, above the neck. -> (pivot (3,), k)."""
-    from . import base as basemod
-    g = basemod._gnm_data()
+    from . import base_identity
+    g = base_identity._gnm_data()
     r = _reference()
     a = asset()
     bd = bound(params, 1.0)
@@ -211,8 +211,8 @@ def _bib() -> dict:
     ids), "lev": ring per GNM vertex, "ids": its vertices}. It is GNM's own statement of how this head's neck meets
     shoulders: the head is seated by it and the body's neck base is laid on it (`_seat`, `_neck_follow`)."""
     if "bib" not in _CACHE:
-        from . import base as basemod
-        g = basemod._gnm_data()
+        from . import base_identity
+        g = base_identity._gnm_data()
         lev = asset()["g_lev"].astype(int)[:len(g["template_vertex_positions"])]
         ring = _reference()["meta"]["RING"]
         Q = np.asarray(g["quads"])
@@ -341,9 +341,9 @@ def native_size(base: dict) -> dict:
 def _native_desc(base: dict, hd: dict, params: dict) -> dict:
     """head_desc for attach "native": the head's scale is GNM's (x size), the body's height is solved so the top of
     the head stands at the stated stature, and hd["bound"]["native"] carries the placement."""
-    from . import base as basemod
+    from . import base_identity
     from . import makehuman
-    g = basemod._gnm_data()
+    g = base_identity._gnm_data()
     user = base.get("head") or {}
     stature = float(params["height"]) if params.get("height") else float(np.asarray(makehuman.body(params)["P"])[:, 2].max())
     sex = float(np.clip(params.get("sex", 1.0), 0, 1))
@@ -358,7 +358,7 @@ def _native_desc(base: dict, hd: dict, params: dict) -> dict:
     # nothing, the body's neck base is laid on GNM's bib wherever it stands. GNM's neck is its own length x size; on a
     # very tall body the report flags "top of head over the pit of the throat" short. Known limit.)
     # the head's top over its pivot: GNM's evaluation of the identity (what the head will be, but for expression / pose)
-    ci = basemod._gnm_coeffs(g["identity_names"], hd.get("identity") or {}, hd.get("seed"), hd.get("spread", 1.0))
+    ci = base_identity._gnm_coeffs(g["identity_names"], hd.get("identity") or {}, hd.get("seed"), hd.get("spread", 1.0))
     ext = np.asarray(g["skin"], bool) & (np.asarray(g["groups"]["skin_exterior"]) > 0.5)
     Vy = (g["template_vertex_positions"][ext, 1] + np.tensordot(ci, g["vertex_identity_basis"][:, ext, 1], 1)).max()
     Jy = g["template_joint_positions"][1, 1] + float(np.tensordot(ci, g["joint_identity_basis"][:, 1, 1], 1))
@@ -493,8 +493,8 @@ def neck_fade() -> np.ndarray:
     key = ("neck_fade",)
     if key in _CACHE:
         return _CACHE[key]
-    from . import base as basemod
-    g = basemod._gnm_data()
+    from . import base_identity
+    g = base_identity._gnm_data()
     a = asset()
     f = a["g_fade"].astype(float)
     Vt = g["template_vertex_positions"].astype(float)
@@ -517,15 +517,15 @@ def neck_fade() -> np.ndarray:
 
 
 def hook(V, J, head: dict, R, eye_mid, s: float, mid):
-    """Called by base.gnm_head just before it places the head (GNM's frame): everything it made of GNM's template
+    """Called by base_gnm_head.gnm_head just before it places the head (GNM's frame): everything it made of GNM's template
     (identity, expression, regions, pose, eye size, planes...) is kept as a DIFFERENCE from the template, faded out
     toward the stitch, and laid on the head this body carries. Returns (V, J)."""
-    from . import base as basemod
+    from . import base_identity
     nat = head["bound"].get("native")
     if nat:  # (headbody) GNM's own evaluation, whole: only moved so its head joint lands on the body's skull pivot
         T = (np.asarray(nat["pivot"], float) - np.asarray(eye_mid, float)) @ R / s - np.asarray(J, float)[1] + mid
         return V + T, np.asarray(J, float) + T
-    g = basemod._gnm_data()
+    g = base_identity._gnm_data()
     a = asset()
     bd = bound(head["bound"]["body"], float(head["bound"].get("toward", 1.0)))
     Vt = g["template_vertex_positions"].astype(float)
@@ -574,8 +574,8 @@ def face_weight(blend: float = 0.03) -> np.ndarray:
     key = ("face_w", round(blend, 5))
     if key not in _CACHE:
         from scipy.spatial import cKDTree
-        from . import base as basemod
-        g = basemod._gnm_data()
+        from . import base_identity
+        g = base_identity._gnm_data()
         Vt = g["template_vertex_positions"].astype(float)
         m = np.asarray(g["groups"]["hockey_mask"], float) > 0.5
         d = cKDTree(Vt[m]).query(Vt)[0]
@@ -589,13 +589,13 @@ def _eye_mid(mb: dict) -> np.ndarray:
 
 
 def head_desc(base: dict) -> dict:
-    """The head dict base.gnm_head gets: the base's own head keys, the style layer, and what binds it to the body."""
+    """The head dict base_gnm_head.gnm_head gets: the base's own head keys, the style layer, and what binds it to the body."""
     params = body_params(base)
     hd = {k: v for k, v in (base.get("head") or {}).items() if k not in HEAD_KEYS and k != "source"}
     toward = float((base.get("head") or {}).get("toward", 1.0))
     bd = bound(params, toward)
     st = base.get("style") or {}
-    if st:  # as base.head_of: the style layer multiplies the head's own settings (the head's SIZE is the body's here)
+    if st:  # as base_measures.head_of: the style layer multiplies the head's own settings (the head's SIZE is the body's here)
         hd = {**hd, "eyes": float(hd.get("eyes", 1.0)) * float(st.get("eyes", 1.0)),
               "simplify": float(hd.get("simplify", 0.0)) + float(st.get("simplify", 0.0)),
               **({"shape": {**st["shape"], **(hd.get("shape") or {})}} if st.get("shape") else {}),
@@ -641,13 +641,13 @@ def head_desc(base: dict) -> dict:
 
 
 def head_template(base: dict) -> dict:
-    """The head in the body's own (template) pose: base.gnm_head's dict."""
-    from . import base as basemod
+    """The head in the body's own (template) pose: base_gnm_head.gnm_head's dict."""
+    from . import base_gnm_head
     hd = head_desc(base)
     key = ("head_t", json.dumps(hd, sort_keys=True, default=float))
     if key not in _CACHE:
         mb = bound(hd["bound"]["body"], hd["bound"]["toward"])["mh"]
-        _CACHE[key] = basemod.gnm_head(hd, _eye_mid(mb), np.array([0.0, 0.0, 1.0]))
+        _CACHE[key] = base_gnm_head.gnm_head(hd, _eye_mid(mb), np.array([0.0, 0.0, 1.0]))
     return _CACHE[key]
 
 
@@ -664,9 +664,9 @@ def template(base: dict) -> dict:
     key = ("tpl", _tkey(base))
     if key in _CACHE:
         return _CACHE[key]
-    from . import base as basemod
+    from . import base_identity
     a = asset()
-    g = basemod._gnm_data()
+    g = base_identity._gnm_data()
     bd = bound(hd["bound"]["body"], hd["bound"]["toward"])
     mb, P = bd["mh"], bd["P"]
     ht = head_template(base)
@@ -717,7 +717,7 @@ def template(base: dict) -> dict:
     else:
         seal_v = None
     if sealed and ht.get("skin_index") is None:
-        # (faceslide / base._sealed_field) the closed mouth's field: the rolls inside the contact ring left out, the
+        # (faceslide / base_surface._sealed_field) the closed mouth's field: the rolls inside the contact ring left out, the
         # contact rows overlapped
         from . import faceslide
         R = faceslide._lip_rings()
@@ -827,14 +827,14 @@ def _carried(ht: dict, mv, dz: float = 0.0) -> dict:
     eye midpoint face shapes carry their deltas with."""
     from scipy.spatial import cKDTree
 
-    from . import base as basemod
+    from . import base_imls
     from . import retopo
     sh = np.array([0.0, 0.0, dz])
     W = mv(ht["verts"]) - sh
     A0, A1 = ht["verts"] - ht["verts"].mean(0), W - W.mean(0)
     U, _, Vt = np.linalg.svd(A0.T @ A1)
     Rp = (U @ np.diag([1, 1, np.sign(np.linalg.det(U @ Vt))]) @ Vt).T
-    N, h = basemod._normals_and_h(W, ht["faces"])
+    N, h = base_imls._normals_and_h(W, ht["faces"])
     cut, pn, band = ht["plane"]
     carry = dict(ht["carry"])
     carry["R"] = Rp @ carry["R"]
@@ -870,7 +870,7 @@ def head_rest(base: dict) -> dict:
 
 
 def head(s: dict, base: dict) -> dict:
-    """The head's dict for everything that asks base.head_of (landmarks, eyes, mouth, face shapes), in the pose the
+    """The head's dict for everything that asks base_measures.head_of (landmarks, eyes, mouth, face shapes), in the pose the
     spec's joints give the body: the template-pose head carried by the same skeleton warp as the body's vertices."""
     from . import retopo
     tpl = template(base)
@@ -934,8 +934,8 @@ def _ring_loop(k: int) -> np.ndarray:
     """GNM's neck ring k as an ordered closed loop of GNM vertex ids."""
     key = ("ring_loop", int(k))
     if key not in _CACHE:
-        from . import base as basemod
-        g = basemod._gnm_data()
+        from . import base_identity
+        g = base_identity._gnm_data()
         lev = asset()["g_lev"].astype(int)[:len(g["template_vertex_positions"])]
         ids = set(int(v) for v in np.flatnonzero(lev == k))
         adj = {v: set() for v in ids}
@@ -970,8 +970,8 @@ def attach_report(base: dict) -> dict:
     narrowest ring, "body": the body's own neck there, "ring": GNM's girth at the seam ring}, "checks": [{"name",
     "value", "range" (lo, hi), "ok"}], "flags": [text], "ignored": [keys with no effect], "text"}. A wrong neck or
     head-on-shoulders proportion is a FLAG here, not something to find by eye."""
-    from . import base as basemod
-    g = basemod._gnm_data()
+    from . import base_identity
+    g = base_identity._gnm_data()
     hd = head_desc(base)
     tpl = template(base)
     ht = head_rest(base)
@@ -980,7 +980,7 @@ def attach_report(base: dict) -> dict:
     W = np.asarray(ht["gnm_world"], float)
     skin = np.asarray(g["skin"], bool) & (np.asarray(g["groups"]["skin_exterior"]) > 0.5)
     lev = a["g_lev"].astype(int)[:len(skin)]
-    ci = basemod._gnm_coeffs(g["identity_names"], hd.get("identity") or {}, hd.get("seed"), hd.get("spread", 1.0))
+    ci = base_identity._gnm_coeffs(g["identity_names"], hd.get("identity") or {}, hd.get("seed"), hd.get("spread", 1.0))
     Vg = (g["template_vertex_positions"] + np.tensordot(ci, g["vertex_identity_basis"], 1)).astype(float)
     m = skin & (lev >= _reference()["meta"]["RING"] + 12)
     size = float(np.sqrt(((W[m] - W[m].mean(0)) ** 2).sum() / ((Vg[m] - Vg[m].mean(0)) ** 2).sum()))

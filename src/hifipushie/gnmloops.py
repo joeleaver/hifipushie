@@ -8,7 +8,7 @@ strip is a CLOSED edge ring of GNM's quads (200, 200 and 118 quads; they run rou
 nose's sides and through the inner corners, where the rings cross themselves and each other: a quad crossed both
 ways is cut in four round a centre vertex), so the loops need no poles and are mirror symmetric with the mesh.
 
-Nothing about GNM's own vertices changes: `base._gnm_data` stays GNM's (every fit, region, Laplacian and binding
+Nothing about GNM's own vertices changes: `base_identity._gnm_data` stays GNM's (every fit, region, Laplacian and binding
 runs on it exactly as before) and the new vertices are APPENDED after GNM's 17821 (GNM ids N_RAW + j) and after the
 asset's own (asset ids). Each is the mean of its PARENTS (an edge's two ends, or a quad's four corners), applied
 where the head's vertices are final (`onemesh.template`), so the old vertices are bit-identical; per-vertex tables

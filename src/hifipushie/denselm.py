@@ -37,8 +37,9 @@ REGIONS = (("lids", ("lids",)), ("lips", ("upper_lip", "lower_lip")),
 
 
 def _groups() -> tuple:
-    from . import base as basemod, onemesh
-    g = basemod._gnm_data()
+    from . import onemesh
+    from . import base_identity
+    g = base_identity._gnm_data()
     gr = {k: np.asarray(v) > 0.5 for k, v in g["groups"].items()}
     T = np.asarray(g["template_vertex_positions"], float)
     a = onemesh.asset()
@@ -267,7 +268,7 @@ def landmarks_v3() -> dict:
     not hold) and the PHILTRUM ("philtrum": the upper-lip region between the nose and the border). Mirror pairs."""
     L2 = landmarks_v2()
     T, gr, present, g = _groups()
-    from . import base as basemod, faceslide
+    from . import faceslide
     ext, skin = gr["skin_exterior"], np.asarray(g["skin"], bool)
     Q = np.asarray(g["quads"], int)
     e = np.r_[Q[:, [0, 1]], Q[:, [1, 2]], Q[:, [2, 3]], Q[:, [3, 0]]]

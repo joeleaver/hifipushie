@@ -74,8 +74,8 @@ def test_asset_topology():
 def test_the_stitch_follows_every_body():
     """Ring A lies on the body's own surface (the binding's target) within 0.5 mm from 1 to 78 years, and the whole
     bound head within 1 mm (p95) of the body's own head: nothing to graft, nothing to cross-fade."""
-    from hifipushie import base
-    g = base._gnm_data()
+    from hifipushie import base_identity
+    g = base_identity._gnm_data()
     skin_ids = np.flatnonzero(g["skin"])
     row = {int(v): i for i, v in enumerate(skin_ids)}
     a, r = onemesh.asset(), onemesh._reference()
@@ -133,7 +133,8 @@ def test_identity_fades_out_at_the_stitch():
 
 def test_old_paths_never_touch_it():
     """A MakeHuman + GNM graft and the plain template build without one call into onemesh."""
-    from hifipushie import base, humans
+    from hifipushie import humans
+    from hifipushie import base_surface
     from hifipushie.spec import expand_mirror
     saved = {k: getattr(onemesh, k) for k in ("template", "head", "hook", "bound")}
 
@@ -143,7 +144,7 @@ def test_old_paths_never_touch_it():
         for k in saved:
             setattr(onemesh, k, boom)
         for sp in (humans.spec(age=30, sex=1.0, seed=3, skin=False), {"base": {"template": "male_stylized"}, "joints": {}, "bones": {}, "blobs": {}}):
-            sf = base.surface(expand_mirror(sp), sp["base"])
+            sf = base_surface.surface(expand_mirror(sp), sp["base"])
             assert sf["template"] != "human"
     finally:
         for k, v in saved.items():
@@ -153,7 +154,8 @@ def test_old_paths_never_touch_it():
 def test_whole_person_builds_and_measures_as_the_old_path():
     """humans.spec(source="human"): the same body measures as the grafted path (stature, head height within 1%),
     landmarks and eyes come from the one mesh, the base's surface is one mesh with no seam."""
-    from hifipushie import base, humans
+    from hifipushie import humans
+    from hifipushie import base_surface
     from hifipushie.spec import expand_mirror
     for age, sex in ((3, 0.0), (30, 1.0)):
         new = humans.spec(age=age, sex=sex, seed=5, skin=False, source="human")
@@ -164,7 +166,7 @@ def test_whole_person_builds_and_measures_as_the_old_path():
         e = expand_mirror(new)
         for j in ("lm_chin", "lm_nose_tip", "eye.L", "eye.R", "eye_front.L", "lm_jaw_4.L"):
             assert j in e["joints"], j
-        sf = base.surface(e, new["base"])
+        sf = base_surface.surface(e, new["base"])
         assert sf["template"] == "human" and sf["seam"] is None and sf["wt"] is None and sf["graft"] is None
         assert len(sf["src"]) == len(sf["quads"][0])
         chin = np.array(e["joints"]["lm_chin"]["pos"])
@@ -175,10 +177,11 @@ def test_weights_by_index():
     """The rig's template weights for the one mesh: rows sum to 1, the crown is Head's, a fingertip its finger's, and
     above the stitch nothing is left on the arm's side."""
     from hifipushie import base, humans, rig, rig_template
+    from hifipushie import base_surface
     from hifipushie.spec import expand_mirror
     sp = humans.spec(age=30, sex=1.0, seed=5, skin=False, source="human")
     e = expand_mirror(sp)
-    sf = base.surface(e, sp["base"])
+    sf = base_surface.surface(e, sp["base"])
     rb = rig.rig_bones(sp)
     W = rig_template.template_weights(sp, rb, sf)
     assert W is not None and W.shape == (len(sf["quads"][0]), len(rb))
@@ -198,12 +201,12 @@ def test_weights_by_index():
 def test_head_size_scales_about_the_centre_line():
     """style.human.head_size scales the head about the neck's top ON THE CENTRE LINE: the eyes stay mirror images
     and the eye midpoint stays at x = 0 (the pivot once fell to a bounding-box corner: the face moved 10 mm sideways)."""
-    from hifipushie import base as basemod
+    from hifipushie import base_measures
     from hifipushie.spec import expand_mirror
     from hifipushie import humans
     sp = humans.spec(age=40, sex=1.0, seed=3, skin=False, source="human")
     sp["base"].setdefault("style", {})["human"] = {"head_size": 1.12}
-    h = basemod.head_of(expand_mirror(sp), sp["base"])
+    h = base_measures.head_of(expand_mirror(sp), sp["base"])
     E = np.asarray(h["eyes"], float)
     assert abs(E[0, 0] + E[1, 0]) < 1e-4, E
     assert abs(E[0, 1] - E[1, 1]) < 1e-3 and abs(E[0, 2] - E[1, 2]) < 1e-3, E  # (a seed is a hair asymmetric: 0.2 mm)
@@ -243,18 +246,18 @@ def test_face_shapes_by_index_on_own_quads():
 def test_stored_warp_survives_features():
     """A human() keeps base.head.features (the seed's look); head_desc used to REPLACE base.head.warp with the
     features' warp, so every fit_outline on such a head was dropped (Tess: widths moved 0.0 mm in 3 rounds)."""
-    from hifipushie import base as basemod
+    from hifipushie import base_measures
     from hifipushie import humans
     from hifipushie.spec import expand_mirror
     sp = humans.spec(age=22, sex=0.0, seed=35, skin=False, source="human")
     assert sp["base"]["head"].get("features"), "the case needs a head with features"
-    h0 = basemod.head_of(expand_mirror(sp), sp["base"])
+    h0 = base_measures.head_of(expand_mirror(sp), sp["base"])
     w = {"at": [[0.071, 0.24, 0.033], [-0.071, 0.24, 0.033]], "coef": [[0.004, 0.0, 0.0], [-0.004, 0.0, 0.0]],
          "sigma": 0.022}  # GNM frame: the cheeks at the mouth (as fit_outline writes)
     sp["base"]["head"]["warp"] = w
     hd = onemesh.head_desc(sp["base"])
     assert isinstance(hd["warp"], list) and hd["warp"][-1] == w and len(hd["warp"]) == 2, hd.get("warp")
-    h1 = basemod.head_of(expand_mirror(sp), sp["base"])
+    h1 = base_measures.head_of(expand_mirror(sp), sp["base"])
     d = max(float(np.abs(np.asarray(h1[k], float) - np.asarray(h0[k], float)).max())
             for k in h0 if isinstance(h0[k], (list, np.ndarray)) and np.asarray(h0[k]).dtype.kind == "f"
             and np.shape(h0[k]) == np.shape(h1.get(k)))

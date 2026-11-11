@@ -387,9 +387,9 @@ def _compile(spec: dict) -> list[Prim]:
 
 
 def _base(s: dict, k_default: float) -> Prim:
-    from . import base as basemod
+    from . import base_surface
     b = s["base"]
-    surf = basemod.surface(s, b)
+    surf = base_surface.surface(s, b)
     V = surf["verts"] if surf["head"] is None else np.r_[surf["verts"], surf["head"]["verts"]]
     pad = float(surf["h"].max()) * 2
     return Prim("base", "base", "add", float(b["blend"]) if b.get("blend") is not None else k_default,
@@ -401,17 +401,17 @@ def _base(s: dict, k_default: float) -> Prim:
 
 
 def _gnm_mouth(s: dict, body_part: str) -> list[Prim]:
-    """GNM's own mouth for a GNM head (base.mouth_mode "gnm"): teeth + gums and tongue as parts of their own
-    (base.gnm_mouth_field; the bag is in the head's own field: base.sock_points)."""
-    from . import base as basemod
+    """GNM's own mouth for a GNM head (base_gnm_parts.mouth_mode "gnm"): teeth + gums and tongue as parts of their own
+    (base_gnm_parts.gnm_mouth_field; the bag is in the head's own field: base_gnm_parts.sock_points)."""
+    from . import base_gnm_parts, base_measures
     b = s["base"]
-    if basemod.mouth_mode(b) != "gnm":
+    if base_gnm_parts.mouth_mode(b) != "gnm":
         return []
-    head = basemod.head_of(s, b)
-    if head is None or basemod.mouth_mode(b, head) != "gnm":
+    head = base_measures.head_of(s, b)
+    if head is None or base_gnm_parts.mouth_mode(b, head) != "gnm":
         return []
     return [Prim(e["name"], e["kind"], e["op"], e["blend"], e["layer"], e["lo"], e["hi"], e["params"], reach=1.0,
-                 part=e["part"] or body_part) for e in basemod.gnm_mouth_field(head)]
+                 part=e["part"] or body_part) for e in base_gnm_parts.gnm_mouth_field(head)]
 
 
 def _deform(s: dict, prims: list[Prim]) -> list[Prim]:
@@ -566,8 +566,8 @@ def _parts(prims: list[Prim], defs: dict, k_default: float, joints: dict | None 
                 if d.get("garment") and bq is None:
                     raise SpecError(f"part {name!r}: a garment is built from a base body (spec base)")
                 if d.get("garment"):  # a garment with its own volume: from the base mesh, closed and eased (base.py)
-                    from . import base as basemod
-                    gs = basemod.garment(bq.params["key"], d["garment"], off, joints or {})
+                    from . import base_tubes
+                    gs = base_tubes.garment(bq.params["key"], d["garment"], off, joints or {})
                     shells = [Prim(f"{name}:garment{k or ''}", "base", "add", float(d.get("garment_blend", 0.02)), 0,
                                    g["verts"].min(0) - 0.05, g["verts"].max(0) + 0.05, g, reach=1.0, part=name)
                               for k, g in enumerate(gs)]

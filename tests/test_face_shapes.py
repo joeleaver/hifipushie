@@ -709,7 +709,8 @@ def test_exported_squint_matches_fit():
         print("skip: HP_SQUINT_GLB / HP_SQUINT_SPEC / HP_SMILE_FIT not set")
         return
     import copy
-    from hifipushie import base, humanfit, likeness, rig_audit
+    from hifipushie import humanfit, likeness, rig_audit
+    from hifipushie import base_identity
     g = rig_audit.read_glb(glb)["meshes"]
     W = {"mouthSmileLeft": 1.0, "mouthSmileRight": 1.0, "cheekSquintLeft": 1.0, "cheekSquintRight": 1.0}
 
@@ -719,7 +720,7 @@ def test_exported_squint_matches_fit():
             if k in m.get("targets", {}):
                 V = V + a * np.asarray(m["targets"][k], float)
         return V
-    names = [str(n) for n in base._gnm_data()["expression_names"]]
+    names = [str(n) for n in base_identity._gnm_data()["expression_names"]]
     e = np.asarray(np.load(faceshapes.SMILE_FIT), float).copy()
     for i, n in enumerate(names[:len(e)]):
         if n.startswith(("left_eye", "right_eye")):
@@ -855,16 +856,17 @@ def test_face_keep_regions_match_source():
         print("skip: HP_FACE_KEEP_SPEC not set")
         return
     from hifipushie import base as basemod, onemesh, gnmloops, retopo
+    from hifipushie import base_identity, base_surface
     from hifipushie.spec import expand_mirror
     spec = json.loads(Path(m).read_text())
     log = []
     r = retopo.base_quads(spec, log)
-    sf = basemod.surface(expand_mirror(spec), spec["base"])
+    sf = base_surface.surface(expand_mirror(spec), spec["base"])
     Vq = np.asarray(sf["quads"][0], float)
     tpl = basemod.source(spec["base"])
     gnm = np.asarray(onemesh.asset()["gnm_exact"], int)[np.asarray(tpl["fid"])]
     rid = np.maximum(gnmloops.raw_id(gnm), 0)
-    g = basemod._gnm_data()
+    g = base_identity._gnm_data()
     ext = (gnm >= 0) & (np.asarray(g["groups"]["skin_exterior"]) > 0.5)[rid]
     V = np.asarray(r["verts"], float)[:len(Vq)]
 

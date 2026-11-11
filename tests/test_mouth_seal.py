@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "spikes", "facesliders"))
 
 from hifipushie import assets, base, humans, spec as specmod, store  # noqa: E402
+from hifipushie import base_implied
 
 NAME = "_test_mouth_seal"
 
@@ -41,7 +42,7 @@ def test_sealed_interior_held_behind_the_lips():
     _model()
     blobs = specmod.expand_mirror(store.load(NAME)).get("blobs") or {}
     slit = [v for k, v in blobs.items() if k.endswith("_mouth_slit")]
-    assert slit and max(np.atleast_1d(slit[0]["values"]["n1"])) <= -base.SEALED_BACK + 1e-9, slit
+    assert slit and max(np.atleast_1d(slit[0]["values"]["n1"])) <= -base_implied.SEALED_BACK + 1e-9, slit
     assert [k for k in blobs if "teeth" in k], list(blobs)
 
 

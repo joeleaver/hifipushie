@@ -39,8 +39,8 @@ def space() -> dict:
     (the 68 + eye centres, 68 = the subject's left), "L0", "LB", "gr" vertex groups, "ext" exterior skin, "sets"}."""
     if "sp" in _C:
         return _C["sp"]
-    from . import base
-    g = base._gnm_data()
+    from . import base_identity
+    g = base_identity._gnm_data()
     names = [str(n) for n in g["identity_names"]]
     comps = [i for i, n in enumerate(names) if n.startswith("head")]
     w = lambda X: np.stack([X[..., 0], -X[..., 2], X[..., 1]], -1)  # noqa: E731

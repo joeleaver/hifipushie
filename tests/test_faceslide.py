@@ -9,6 +9,7 @@ import numpy as np
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from hifipushie import assets, base, faceslide, gnmloops, humanfit, humans  # noqa: E402
+from hifipushie import base_identity
 
 
 def _gnm_ok():
@@ -72,7 +73,7 @@ def test_no_fold_or_slot_at_the_extremes():
     a0 = np.einsum("ij,ij->i", n0[pairs[:, 0]], n0[pairs[:, 1]])
     rim = T["rim"]
     J = T["J"][2:4]
-    g = base._gnm_data()
+    g = base_identity._gnm_data()
     eyes = np.flatnonzero(np.asarray(g["groups"]["eyes"]) > 0.5)
     for name in faceslide.NAMES:
         for v in (-1.0, 1.0):
@@ -98,7 +99,7 @@ def test_no_fold_or_slot_at_the_extremes():
             assert np.abs(D[eyes]).max() == 0, name
             if name in faceslide.MOUTH_SLIDERS:  # no lip through the other: the contact ring's upper side never down,
                 # its lower side never up
-                lmr = base._gnm_data()["lm68"]
+                lmr = base_identity._gnm_data()["lm68"]
                 dy = lambda i: sum(float(w) * D[int(vv)][1] for vv, w in zip(lmr[i][0::2], lmr[i][1::2]))  # noqa: E731
                 assert min(dy(i) for i in (61, 62, 63)) > -5e-5 and max(dy(i) for i in (65, 66, 67)) < 5e-5, name
             if name == "canthal_tilt":
@@ -156,7 +157,7 @@ def test_lip_seal_closes_along_the_width_and_opens_again():
     if not _gnm_ok():
         return
     from hifipushie import onemesh
-    g = base._gnm_data()
+    g = base_identity._gnm_data()
     b = humans.spec(age=40, sex=1.0, seed=None, skin=False, source="human")["base"]
     b["head"].pop("mouth_gap", None)
     got = {}
@@ -199,9 +200,9 @@ def test_lip_seal_holds_across_identities():
 
 
 def test_sealed_mouth_has_no_pocket_or_slit_in_the_field():
-    """The built field (base.surface: what every mesher meshes) of a sealed mouth: inside all the way from the lips'
+    """The built field (base_surface.surface: what every mesher meshes) of a sealed mouth: inside all the way from the lips'
     front to 6 mm behind the contact, at 15 places across the width, every 0.25 mm (finer than the dressed ~1 mm
-    meshing). Before base._sealed_field the touching lips closed a pocket of 'outside' behind the seam (Tess: a row of
+    meshing). Before base_surface._sealed_field the touching lips closed a pocket of 'outside' behind the seam (Tess: a row of
     pits and fragments along the seam, in clay too)."""
     if not _gnm_ok():
         return
@@ -232,7 +233,7 @@ def test_crease_sits_on_the_heads_own_fold():
     Hc = faceslide._fold_turn(X, u, h, sel, H0, ny)
     assert np.abs(np.asarray(Hc) - 4.0 * mm).max() < 0.4 * mm, (np.min(Hc), np.max(Hc))
     assert np.array_equal(faceslide._fold_turn(X, u, h, sel, H0, np.full(4000, 0.3)), H0)
-    X0 = np.asarray(base._gnm_data()["template_vertex_positions"], float)
+    X0 = np.asarray(base_identity._gnm_data()["template_vertex_positions"], float)
     D = faceslide.delta({"eye_crease_depth": 1.0}, X0)
     T0 = faceslide.template()
     assert D is not None and np.isfinite(D).all() and np.abs(D[T0["rim"]]).max() < 5e-5
@@ -244,7 +245,7 @@ def test_nose_sliders_hold_the_alar_base_and_the_tip():
     if not _gnm_ok():
         return
     T = faceslide.template()
-    lmr = base._gnm_data()["lm68"]
+    lmr = base_identity._gnm_data()["lm68"]
 
     def at(D, i):
         return sum(float(w) * D[int(v)] for v, w in zip(lmr[i][0::2], lmr[i][1::2]))

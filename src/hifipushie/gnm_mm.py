@@ -15,8 +15,9 @@ _C: dict = {}
 
 def _space():
     if "sp" not in _C:
-        from . import base as basemod, humanmacro as hm
-        g = basemod._gnm_data()
+        from . import humanmacro as hm
+        from . import base_identity
+        g = base_identity._gnm_data()
         names = [str(n) for n in g["identity_names"]]
         comps = [i for i, n in enumerate(names) if n.startswith("head")]
         IB = np.asarray(g["vertex_identity_basis"])[comps].astype(np.float64)

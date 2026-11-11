@@ -1151,9 +1151,10 @@ def body_mesh(spec: dict | None = None, params: dict | None = None) -> dict:
 
 
 def _body_mesh_spec(spec: dict) -> dict:
-    from . import base as basemod, spec as specmod
+    from . import spec as specmod
+    from . import base_surface
     se = specmod.expand_mirror(spec)
-    srf = basemod.surface(se, spec["base"])
+    srf = base_surface.surface(se, spec["base"])
     W, faces = srf["quads"]
     J = {k: np.asarray(v["pos"], float) for k, v in se["joints"].items()}
     return {"V": np.asarray(W), "F": [list(f) for f in faces], "J": J, "key": srf["key"]}

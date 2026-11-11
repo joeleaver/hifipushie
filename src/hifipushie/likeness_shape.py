@@ -140,7 +140,7 @@ def _cheek_band(st, P, T, f0, f1, levels) -> float:
 
 
 def _corner_radius(V, z0, xc, yc) -> float:
-    """The tightest turn (mm) of the head's horizontal section 30-80 deg round from the front (base.plane_measures)."""
+    """The tightest turn (mm) of the head's horizontal section 30-80 deg round from the front (base_measures.plane_measures)."""
     from scipy.ndimage import gaussian_filter1d
     P = V[np.abs(V[:, 2] - z0) < 0.0015][:, :2] - [xc, yc]
     if len(P) < 20:

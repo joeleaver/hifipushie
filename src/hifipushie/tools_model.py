@@ -74,8 +74,9 @@ def _saved(name: str, v: int, spec: dict, extra: str = "") -> str:
     if hd and (hd.get("shape") or hd.get("simplify") or b.get("style")):
         # (GNM's own mouth needs the lips where GNM puts them: a style that pushed them falls back, and says so)
         try:
-            from . import base as basemod, spec as specmod
-            note = basemod.mouth_note(b, basemod.head_of({"joints": specmod.expand_mirror(spec)["joints"]}, b))
+            from . import spec as specmod
+            from . import base_gnm_parts, base_measures
+            note = base_gnm_parts.mouth_note(b, base_measures.head_of({"joints": specmod.expand_mirror(spec)["joints"]}, b))
             if note:
                 warn += f"WARNING: {note}\n"
         except Exception:  # noqa: BLE001  (a report line must never fail a save)

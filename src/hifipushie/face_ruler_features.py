@@ -369,8 +369,9 @@ def _lip_obs(head, view, ev):
     upper / lower polylines, px) against the model's border loops (GNM's lip-group vertices next to skin) through the
     view's camera: per border vertex its distance to the picture's border (mm, along the line to the nearest point),
     moving with the vertex. Every other border vertex; past the traced part's ends there is no evidence."""
-    from . import base as basemod, blockin_lips as bl
-    sk = np.flatnonzero(np.asarray(basemod._gnm_data()["skin"]))
+    from . import blockin_lips as bl
+    from . import base_identity
+    sk = np.flatnonzero(np.asarray(base_identity._gnm_data()["skin"]))
     g2m = _gnm_to_model(head)
     cam = view["cam"]
     s_ = float(view.get("scale", 1.0))

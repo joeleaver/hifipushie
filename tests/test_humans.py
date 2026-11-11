@@ -156,12 +156,12 @@ def test_dressed_by_default():
 def test_child_head_keeps_the_bodys_neck():
     """A head that follows its body is that body's own head, so the body keeps its neck and arms (the old neck tube,
     cut at a loop under the graft plane, took a toddler's shoulders and arms off with the head)."""
-    from hifipushie import base as basemod
+    from hifipushie import base_surface
     from hifipushie import humans
     from hifipushie.spec import expand_mirror
     sp = humans.spec(3, 0.0, skin=False, outfit_kind="none")
     s = expand_mirror(sp)
-    sf = basemod.surface(s, s["base"])
+    sf = base_surface.surface(s, s["base"])
     assert sf["graft"]["own_neck"]
     V = sf["verts"]
     wrist = np.array(s["joints"]["wrist.L"]["pos"])
@@ -170,7 +170,7 @@ def test_child_head_keeps_the_bodys_neck():
     # an adult's followed head too; a head set apart from its body (`like`) keeps the tube
     b = {"body": {"source": "makehuman", "age": 30, "sex": 0.0}, "head": {"source": "gnm", "follow_body": True, "seed": 3, "like": {"age": 60}}}
     s2 = expand_mirror({"symmetry": True, "base": b, "joints": {}, "bones": {}, "blobs": {}})
-    assert not basemod.surface(s2, s2["base"])["graft"].get("own_neck")
+    assert not base_surface.surface(s2, s2["base"])["graft"].get("own_neck")
 
 
 if __name__ == "__main__":

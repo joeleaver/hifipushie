@@ -51,12 +51,13 @@ def body_field(spec: dict, rb: list[dict]):
     """(Wq, Tq, dense weights, spread) of the base body's surface: the template's hand-made weights (MakeHuman) or
     ours by distance (rig.skin_parts' reference); spread: the template knows no twist bones (rig._spread_twist)."""
     import json
-    from . import base as basemod, rig, rig_template
+    from . import rig, rig_template
+    from . import base_implied, base_surface
     from .spec import expand_mirror
     key = json.dumps([spec.get("base"), [b["name"] for b in rb]], sort_keys=True, default=str)
     if key in _FIELD:
         return _FIELD[key]
-    surf = basemod.surface(basemod.inject(expand_mirror(spec)), spec["base"])
+    surf = base_surface.surface(base_implied.inject(expand_mirror(spec)), spec["base"])
     Wq, fq = surf["quads"]
     Wq = np.asarray(Wq, float)
     Tq = np.array([(f[0], f[j], f[j + 1]) for f in fq for j in range(1, len(f) - 1)])

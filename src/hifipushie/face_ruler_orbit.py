@@ -72,8 +72,8 @@ def limbus_model(head: dict, iris_mm: float | None = None) -> list:
     ht = st["head"]
     fwd = np.asarray(ht.get("forward", [0, -1, 0]), float)
     r = float(ht["eye_r"])
-    from . import base as _basemod
-    ri = _basemod.drawn_iris(head["spec"], r)   # skin.eyes.iris_size, else GNM's limbus (its eyeball), else 0.51 r
+    from . import base_implied
+    ri = base_implied.drawn_iris(head["spec"], r)   # skin.eyes.iris_size, else GNM's limbus (its eyeball), else 0.51 r
     if iris_mm:
         ri = iris_mm / 2000.0
     up = np.array([0.0, 0.0, 1.0]) - fwd * fwd[2]

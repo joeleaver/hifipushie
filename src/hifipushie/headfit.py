@@ -194,8 +194,8 @@ def wanted(base: dict) -> dict:
 
 
 def _gnm():
-    from . import base
-    g = base._gnm_data()
+    from . import base_identity
+    g = base_identity._gnm_data()
     if "gnm" not in _CACHE:
         t = table()
         names = [str(n) for n in g["identity_names"]]
@@ -243,8 +243,8 @@ def _body_axes():
     (the fields) fitted in GNM's components over the whole skin. A seed loses its part along them (a random person
     leans male or female, old or heavy, as much as the asked head does)."""
     if "axes" not in _CACHE:
-        from . import base
-        g, gd = _gnm(), base._gnm_data()
+        from . import base_identity
+        g, gd = _gnm(), base_identity._gnm_data()
         skin = np.asarray(gd["skin"], bool)
         io = float(abs(g["J0"][0][0] - g["J0"][1][0]))
         B = np.asarray(gd["vertex_identity_basis"])[g["comps"]][:, skin].reshape(len(g["comps"]), -1).astype(float).T
@@ -302,13 +302,13 @@ def follow(base: dict, head: dict) -> dict:
     identity entries win), "warp" (the rest of the move), "scale" (with follow_body, unless given). Cached."""
     key = _key(base, head)
     if key not in _CACHE:
-        from . import base as basemod
+        from . import base_identity
         g = _gnm()
         want = wanted(base)
         shaped = want["follow"] or bool((head.get("like") or {}))
         d = _feature_move(want["features"]) if want["features"] else np.zeros((len(g["L0"]), 3))
         w = _weights()
-        c0 = basemod._gnm_coeffs(g["names"], None, head.get("seed"), head.get("spread", 1.0))[g["comps"]]
+        c0 = base_identity._gnm_coeffs(g["names"], None, head.get("seed"), head.get("spread", 1.0))[g["comps"]]
         Q = _body_axes()
         c0 = c0 - Q @ (Q.T @ c0) * min(want["amount"], 1.0)  # the seed without its own sex / age / weight
         L = g["L0"] + np.tensordot(c0, g["LB"], 1)
@@ -364,7 +364,7 @@ def follow(base: dict, head: dict) -> dict:
     if "field" in f:
         out["field"] = f["field"]
         fd = f["field"]
-        # the head is then its body's own head, millimetres apart: the body keeps its neck (base.surface)
+        # the head is then its body's own head, millimetres apart: the body keeps its neck (base_surface.surface)
         if (_follows(base) and fd["amount"] == 1.0 and fd["toward"] == 1.0 and not head.get("like")
                 and head.get("neck", "own") != "tube"):
             out["own_neck"] = True

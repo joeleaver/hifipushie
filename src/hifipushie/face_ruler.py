@@ -82,8 +82,9 @@ _C: dict = {}
 # ---- the model side ---------------------------------------------------------------------------------------------------
 def _gnm() -> dict:
     if "g" not in _C:
-        from . import base as basemod, gnm_mm
-        g = basemod._gnm_data()
+        from . import gnm_mm
+        from . import base_identity
+        g = base_identity._gnm_data()
         sp = gnm_mm._space()
         gr = sp["gr"]
         Q = np.asarray(g["quads"], int)

@@ -17,7 +17,7 @@ solved in the identity alone, on GNM's own vertices, in one linear step:
 a miss ALONG the surface counts a quarter (a vertex sliding in the skin is not a shape error); three rounds for the
 normals. GNM frame, raw mm. What it cannot give (GNM has none in 2000 heads): a re-entrant tuck, skin over skin.
 
-THE BALL. Our eyeball (base.gnm_head) is seated against the six lid landmarks, not the lid's surface, and is not GNM's
+THE BALL. Our eyeball (base_gnm_head.gnm_head) is seated against the six lid landmarks, not the lid's surface, and is not GNM's
 own ball, so a platform at the donor's stand-off can let it through the skin (el_f3: a brown patch on the lid).
 `lid_step` measures the lid's stand-off from OUR ball on the shipped head after the solve and raises the designed
 platform (`clear`) until every lid vertex clears it by GUARD."""
@@ -227,9 +227,10 @@ def solve(c0, cdn, hc_person=None, *, e=None, clear: float = 0.0, hold: float = 
 def _skin_rings() -> np.ndarray:
     """Per row of onemesh.head_template's skin vertices: the lid ring of either eye (99 elsewhere)."""
     if "sr" not in _C:
-        from . import base as basemod, lidrings
+        from . import lidrings
+        from . import base_identity
         t, mir = lidrings.topo(), lidrings.mirror()
-        sk = np.flatnonzero(np.asarray(basemod._gnm_data()["skin"]))
+        sk = np.flatnonzero(np.asarray(base_identity._gnm_data()["skin"]))
         ring = np.where(t["ring"] != 99, t["ring"], t["ring"][mir])
         up = _g()["T"][:, 1] > _g()["J"][2][1] + 0.0005
         _C["sr"] = (ring[sk], up[sk])
@@ -237,7 +238,7 @@ def _skin_rings() -> np.ndarray:
 
 
 def ball_clearance(ht: dict, rings=range(1, 8)) -> dict:
-    """The lid skin's stand-off from OUR eyeball on a shipped head (onemesh.head_template / base.gnm_head): {"min" (mm,
+    """The lid skin's stand-off from OUR eyeball on a shipped head (onemesh.head_template / base_gnm_head.gnm_head): {"min" (mm,
     the least over rings 1..7 of both lids, both eyes: under 0 the ball is through the skin), "upper" (the upper lid's
     least), "rings": {ring: least}, "landmarks" (the six lid landmarks' least: what the seat itself clears)}."""
     ring, up = _skin_rings()
@@ -255,8 +256,9 @@ def ball_clearance(ht: dict, rings=range(1, 8)) -> dict:
 
 def world_scale(ht: dict, c0, e=None) -> float:
     """World mm per raw GNM mm round the eye on a shipped head (the head's scale x the body's hook x eyes)."""
-    from . import base as basemod, gnm_controls as gc, lidrings
-    sk = np.flatnonzero(np.asarray(basemod._gnm_data()["skin"]))
+    from . import gnm_controls as gc, lidrings
+    from . import base_identity
+    sk = np.flatnonzero(np.asarray(base_identity._gnm_data()["skin"]))
     loc = -np.ones(len(_g()["T"]), int)
     loc[sk] = np.arange(len(sk))
     ids = np.concatenate([lidrings.upper_ids(k) for k in range(0, 9)])

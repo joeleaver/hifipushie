@@ -202,7 +202,8 @@ def atlas(base: dict, size: int = SIZE) -> dict:
     columns), "tri" (their triangle), "bary", "T" (triangles: template vertex indices), "uvT" (triangles' atlas
     coordinates), "V" (template vertices at rest), "head" (vertex is the head's), "gid" (GNM vertex or -1), "fade",
     "mm" (mm per texel, median), per-vertex "groups" {name: weight}}. Image row 0 is the top (v = v1)."""
-    from . import base as basemod, likeness as lk, onemesh
+    from . import likeness as lk, onemesh
+    from . import base_identity
     key = hashlib.sha1(json.dumps([base, size, VERSION], sort_keys=True, default=str).encode()).hexdigest()
     if _ATLAS.get("key") == key:
         return _ATLAS["at"]
@@ -228,7 +229,7 @@ def atlas(base: dict, size: int = SIZE) -> dict:
     b = bary[ii, jj]
     b /= b.sum(1, keepdims=True)
     tri = np.round(tid[ii, jj, 0]).astype(int)
-    G = basemod._gnm_data()["groups"]
+    G = base_identity._gnm_data()["groups"]
     groups = {}
     for k, g in G.items():
         g = np.asarray(g, float)

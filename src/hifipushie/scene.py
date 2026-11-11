@@ -282,15 +282,16 @@ def kept_face(spec: dict) -> np.ndarray | None:
     eyes / mouth / nose / ears skin of a base's GNM head, one mesh or grafted), or None without one. The scene meshes
     its part at the part's voxel (7 mm on a body): there the bake's source surface lay 1.0 mm median, 3-6 mm along the
     alae, off the kept face (game_ready.md r67), which is what face_refine fixes."""
-    from . import base as basemod, retopo
+    from . import retopo
+    from . import base_identity, base_measures
     from .spec import expand_mirror
     b = spec.get("base") or {}
     if not retopo.FACE_KEEP or not b.get("head") or (b.get("head") or {}).get("source", "gnm") != "gnm":
         return None
-    h = basemod.head_of(expand_mirror(spec), b)
+    h = base_measures.head_of(expand_mirror(spec), b)
     if h is None:
         return None
-    g = basemod._gnm_data()
+    g = base_identity._gnm_data()
     V = np.asarray(h["verts"], float)
     ids = np.asarray(h["skin_index"], int) if h.get("skin_index") is not None else np.arange(len(V))
     m = np.zeros(len(V), bool)
@@ -409,7 +410,7 @@ def objects(name: str, resolution: int = 256, log: list | None = None) -> tuple[
     vx = float(np.round(ctx["voxel"], 3))  # a round voxel: resolution edits that don't change it keep the cache
     cache = store._dir(name) / "scene_cache"
     cache.mkdir(exist_ok=True)
-    from .base import part_defs
+    from .base_implied import part_defs
     defs = part_defs(spec)  # (the base's implied parts too: a clear cornea's lens)
     pf_of = {pn: pf for pf, d in ctx["prefabs"].items() for pn in d["parts"]}
     from . import hides as hidesmod
@@ -1085,7 +1086,7 @@ def sync(name: str, resolution: int = 256) -> dict:
     objs, insts, prog = objects(name, resolution, log)
     t2 = time.time()
     spec = store.load(name)
-    from .base import part_defs
+    from .base_implied import part_defs
     defs = part_defs(spec)
     bases = {}
     from . import skin

@@ -78,8 +78,8 @@ BROWS = list(range(17, 27))
 
 
 def _names():
-    from . import base as basemod
-    n = [str(x) for x in basemod._gnm_data()["expression_names"]]
+    from . import base_identity
+    n = [str(x) for x in base_identity._gnm_data()["expression_names"]]
     return [f"left_eye_region_{k:03d}" for k in range(NE)], [f"right_eye_region_{k:03d}" for k in range(NE)], n
 
 
@@ -146,8 +146,8 @@ class Reader:
     from onemesh.head_template (the subject's LEFT eye, +x)."""
 
     def __init__(self, ht):
-        from . import base as basemod
-        g = basemod._gnm_data()
+        from . import base_identity
+        g = base_identity._gnm_data()
         V = np.asarray(ht["verts"], float)
         F = _tris(ht["faces"])
         # the head's rows are GNM's skin vertices in order (+ the lid loops appended): the margin = skin rows next to
@@ -442,8 +442,8 @@ def iris_check(name: str) -> dict:
     spec = store.load(name)
     base = spec["base"]
     st = humanfit.state(base)
-    from . import base as basemod
-    native = basemod.eye_native(spec) is not None   # GNM's own eyeball: the iris is its limbus (identity eyes_000)
+    from . import base_implied
+    native = base_implied.eye_native(spec) is not None   # GNM's own eyeball: the iris is its limbus (identity eyes_000)
     mm = likeness._mm_per_px(cam, st["L"][27:48])
     photo = 2 * float(np.mean([e["r_px"] for e in lb])) * mm
     det_px = float(np.mean([e["detector_px"] for e in lb]))
@@ -452,19 +452,19 @@ def iris_check(name: str) -> dict:
         det = 2 * det_px * mm
         r0 = float(st["head"].get("eye_r", 0.012))
         return {"photo_mm": None, "detector_mm": det,
-                "model_mm": 2000 * (basemod.drawn_iris(spec, r0) if native else 0.51 * 0.985 * r0),
+                "model_mm": 2000 * (base_implied.drawn_iris(spec, r0) if native else 0.51 * 0.985 * r0),
                 "ratio": None, "eye_radius": None, "eyes_000": None, "iris_rgb": None, "iris_hex": None,
                 "text": (f"IRIS: not readable on the front picture (iris radius {det_px:.1f} px, {mm:.2f} mm / px: the "
                          f"limbus needs {MIN_IRIS_PX:.0f} px; the detector's ring gives {det:.1f} mm +- {2 * mm:.1f}). "
                          f"Use a closer picture of the eyes to set the iris' size (block_in_step {{\"iris_mm\": mm}}) / colour")}
     r_ball = float(st["head"].get("eye_r", 0.012))
-    model = 2000 * basemod.drawn_iris(spec, r_ball) if native else 2 * 0.51 * 0.985 * r_ball * 1000
+    model = 2000 * base_implied.drawn_iris(spec, r_ball) if native else 2 * 0.51 * 0.985 * r_ball * 1000
     k_eye = float(base["head"].get("eyes") or 1.0)
     want = None if native else r_ball * photo / model / k_eye
     e000 = None
     if native:
         try:
-            e000 = basemod.limbus_identity(spec, photo)["eyes_000"]
+            e000 = base_implied.limbus_identity(spec, photo)["eyes_000"]
         except ValueError:
             e000 = None
     rgb = np.mean([e["rgb"] for e in lb], 0)
@@ -564,8 +564,9 @@ def crease_target(name: str, heights) -> np.ndarray:
 def socket(c, expression: dict) -> dict:
     """The socket readings (SOCKET, humanmacro z-scores) of identity c with the head's expression applied: GNM's mesh
     (humanmacro.head) + the expression basis, so a lid tucked back by the eye-region expression counts."""
-    from . import base as basemod, humanmacro as hm
-    g = basemod._gnm_data()
+    from . import humanmacro as hm
+    from . import base_identity
+    g = base_identity._gnm_data()
     names = {str(n): i for i, n in enumerate(g["expression_names"])}
     V = hm.head(np.asarray(c, float))
     for k, v in (expression or {}).items():

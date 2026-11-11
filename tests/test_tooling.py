@@ -339,7 +339,7 @@ def test_mesh_quality():
 def test_lid_fold_slit_designed():
     import numpy as np
     from hifipushie import asset, gnm_fold
-    from hifipushie.base import _gnm_data
+    from hifipushie.base_identity import _gnm_data
     n = len(_gnm_data()["groups"]["skin_exterior"])
     cfg = {"amount": 1.0}
     ids = set(gnm_fold.slit_ids(cfg))

@@ -100,7 +100,7 @@ ZONES = {
 # ---------------------------------------------------------------- geometry
 
 def gnm() -> dict:
-    """GNM's arrays incl. what base._gnm_data leaves out (skinning, joints' parents), GNM frame (x = the subject's
+    """GNM's arrays incl. what base_identity._gnm_data leaves out (skinning, joints' parents), GNM frame (x = the subject's
     left, y up, z forward), metres."""
     if "g" in _C:
         return _C["g"]

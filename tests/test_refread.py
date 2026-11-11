@@ -116,11 +116,12 @@ def test_lid_obs_reads_a_known_lid_change(tess):
 
 @need_ref
 def test_lip_obs_reads_a_known_border_change(tess):
-    from hifipushie import base as basemod, blockin as bi, blockin_lips as bl
+    from hifipushie import blockin as bi, blockin_lips as bl
+    from hifipushie import base_identity
     A, B, dc = tess
     rj = bi._refs(REF)
     view = {"cam": rj["cameras"][bi._front(rj)], "kind": "front"}
-    sk = np.flatnonzero(np.asarray(basemod._gnm_data()["skin"]))
+    sk = np.flatnonzero(np.asarray(base_identity._gnm_data()["skin"]))
     g2m = face_ruler_features._gnm_to_model(B)
     ev = {}
     for nm, rows in zip(("upper", "lower"), bl.border_loops()):

@@ -203,8 +203,8 @@ def region_pcs(region: str, n: int = 8) -> np.ndarray:
     sd, the coefficients being unit variance) that move that region most; the rest of the head moves as GNM couples it.
     Sign: + moves the region forward (out of the face) on average. (n, 170)."""
     if region not in _PCS:
-        from . import base as basemod
-        g = basemod._gnm_data()
+        from . import base_identity
+        g = base_identity._gnm_data()
         if region not in g["groups"]:
             raise ValueError(f"pc: no GNM region {region!r} (one of {', '.join(sorted(g['groups']))})")
         msk = np.asarray(g["groups"][region]) > 0.5
@@ -386,7 +386,7 @@ def start(name: str, refs, sex=None, age: float | None = None, body: dict | None
     male = (s in ("male", "m", "man")) if isinstance(s, str) else float(s) >= 0.5
     for k in STRIP:
         hd.pop(k, None)
-    # the rest mouth closed by GNM's own lower-face expression (base.lip_close_delta), not the seal: the seal's
+    # the rest mouth closed by GNM's own lower-face expression (base_gnm_parts.lip_close_delta), not the seal: the seal's
     # membrane flattened the vermilion border (its turn 24 -> 11 deg on Tess) and moved the lips whole (gnmdetail2)
     for k in ("lip_seal", "mouth_gap"):
         hd.pop(k, None)
@@ -741,8 +741,8 @@ def _per_view(base: dict, rj: dict, VI, make) -> dict:
 
 
 def _expr_names(comps: dict | None = None) -> list:
-    from . import base as basemod
-    names = [str(n) for n in basemod._gnm_data()["expression_names"]]
+    from . import base_identity
+    names = [str(n) for n in base_identity._gnm_data()["expression_names"]]
     out = []
     for reg, n in (comps or EXPR_COMPS).items():
         out += [nm for nm in names if nm.rsplit("_", 1)[0] == reg][:int(n)]
@@ -941,16 +941,16 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
             sp["base"]["head"][k] = v
     set_identity(sp, c)
     for k, v in idx_extra.items():
-        from . import base as basemod
-        if k not in [str(n) for n in basemod._gnm_data()["identity_names"]]:
+        from . import base_identity, base_implied
+        if k not in [str(n) for n in base_identity._gnm_data()["identity_names"]]:
             raise ValueError(f"id:{k}: not a GNM identity component (eyes_000..002, teeth_000..079)")
         sp["base"]["head"]["identity"][k] = round(v, 5)
     if iris_mm is not None:
-        from . import base as basemod
+        from . import base_identity, base_implied
         if sp["base"]["head"].get("eye_radius"):
             raise ValueError("iris_mm: the head overrides GNM's eyeball (base.head.eye_radius); with the override the drawn "
                              "iris is skin.eyes.iris_size. Drop the key first (block_in_step {\"eye_radius\": 0})")
-        li = basemod.limbus_identity(sp, iris_mm)
+        li = base_implied.limbus_identity(sp, iris_mm)
         sp["base"]["head"]["identity"]["eyes_000"] = li["eyes_000"]
         if isinstance((sp.get("skin") or {}).get("eyes"), dict):   # (the dressing's own drawn size would hide the limbus)
             sp["skin"]["eyes"].pop("iris_size", None)
@@ -1212,7 +1212,8 @@ def iris_size(name: str, off=None) -> dict:
     identity), "iris_size" (the size against the start's that would make an AVERAGE iris fit), "iris_sd" (0.07: irises
     differ +- 7 % between people), "prior_sd" (GNM's spread of head size), "weight" / "combined_sd" (the two combined),
     "text"}. off: the identity's change since the block-in's start (default: read from the log's root)."""
-    from . import base as basemod, blockin_eyes as be, solve_report as sr, store
+    from . import blockin_eyes as be, solve_report as sr, store
+    from . import base_implied
     sp = store.load(name)
     if off is None:
         root = (_refs(name).get("blockin") or {}).get("root")
@@ -1221,7 +1222,7 @@ def iris_size(name: str, off=None) -> dict:
     psd, isd = sr.size_prior_sd(), sr.SIZE_IRIS_SIG
     out = {"read": False, "now": now, "iris_sd": isd, "prior_sd": psd, "weight": psd ** 2 / (psd ** 2 + isd ** 2),
            "combined_sd": float(1 / np.sqrt(1 / psd ** 2 + 1 / isd ** 2))}
-    if basemod.eye_native(sp) is None:
+    if base_implied.eye_native(sp) is None:
         return {**out, "why": "the head overrides GNM's eyeball (base.head.eye_radius): its iris is not GNM's limbus",
                 "text": "IRIS SIZE CHECK: not read (the head overrides GNM's eyeball)"}
     try:
@@ -1236,7 +1237,7 @@ def iris_size(name: str, off=None) -> dict:
         sp0["base"]["head"]["identity"].pop("eyes_000", None)
     if isinstance((sp0.get("skin") or {}).get("eyes"), dict):
         sp0["skin"]["eyes"].pop("iris_size", None)
-    mean_mm = 2000.0 * float(basemod.eye_native(sp0)["limbus"])
+    mean_mm = 2000.0 * float(base_implied.eye_native(sp0)["limbus"])
     rel = mean_mm / float(ic["photo_mm"]) - 1.0          # how much larger the head must be than NOW for an average iris
     tot = (1 + now) * (1 + rel) - 1
     out.update(read=True, photo_mm=float(ic["photo_mm"]), mean_mm=mean_mm, iris_now=rel, iris_size=tot)
@@ -1412,8 +1413,9 @@ def table_delta(t0: dict, t1: dict) -> list:
 def haircap(mesh: dict, st: dict) -> np.ndarray:
     """Per-vertex colour: skin, and a neutral dark cap over GNM's scalp (outside its hockey_mask face region, not the
     ears, above the ears' bottom): bald clay reads male."""
-    from . import base as basemod, likeness, onemesh
-    g = basemod._gnm_data()
+    from . import likeness, onemesh
+    from . import base_identity
+    g = base_identity._gnm_data()
     gid = np.asarray(onemesh.asset()["gnm_id"], int)[np.asarray(st["tpl"]["fid"])]
     ok = gid >= 0
     hm_ = np.zeros(len(gid))
@@ -1641,8 +1643,9 @@ LIP_TINT = np.array([0.98, 0.74, 0.74])   # the clay's vermilion, x skin: presen
 
 def lip_tint(mesh: dict, st: dict, share: float = 0.8) -> None:
     """The vermilion tinted on the clay (GNM's upper_lip / lower_lip groups): untinted clay lips barely read as lips."""
-    from . import base as basemod, onemesh
-    g = basemod._gnm_data()
+    from . import onemesh
+    from . import base_identity
+    g = base_identity._gnm_data()
     gid = np.asarray(onemesh.asset()["gnm_id"], int)[np.asarray(st["tpl"]["fid"])]
     ok = gid >= 0
     w = np.zeros(len(gid))

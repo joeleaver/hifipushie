@@ -668,8 +668,8 @@ def prims(s: dict, stream: list) -> list:
     kkey = hashlib.sha1(np.ascontiguousarray(keep).tobytes()).hexdigest()
     balls = np.zeros((0, 4))
     if s.get("base"):
-        from . import base as basemod
-        head = basemod.head_of(s, s["base"])
+        from . import base_measures
+        head = base_measures.head_of(s, s["base"])
         if head is not None and head.get("eyes") is not None:
             balls = np.array([[*np.asarray(c, float), float(head["eye_r"])] for c in head["eyes"]])
     layer = max([p.layer for p in stream if p.op != "intersect"] or [0])

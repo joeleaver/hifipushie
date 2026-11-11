@@ -129,10 +129,10 @@ def _fit_cam(cam, X, uv, wt):
 
 def _evidence(st, views) -> list:
     """Per view: world points X (n, 3) of the current head, their identity basis XB (K, n, 3), pixels, sigma (mm)."""
-    from . import base as basemod
+    from . import base_identity
     from . import headfit, humanfit, onemesh
     g = headfit._gnm()
-    gd = basemod._gnm_data()
+    gd = base_identity._gnm_data()
     tpl, c = st["tpl"], st["head"]["carry"]
     R, s = np.asarray(c["R"], float), float(c["s"])
     P = np.asarray(tpl["P"], float)

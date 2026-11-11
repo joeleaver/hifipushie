@@ -40,8 +40,8 @@ def nostril_rims(head) -> list:
     nose skin that border the nostril's interior."""
     key = ("nrim", len(head["gid"]))
     if key not in _C:
-        from . import base as basemod
-        g, gg = basemod._gnm_data(), _gnm()
+        from . import base_identity
+        g, gg = base_identity._gnm_data(), _gnm()
         gr, T = gg["gr"], gg["sp"]["T"]
         Q = np.asarray(g["quads"], int)
         ext, sk, nose = gr["skin_exterior"], gr["skin"], gr["nose_region"]

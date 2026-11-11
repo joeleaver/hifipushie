@@ -237,9 +237,9 @@ LINES = {  # tapered lines: [(anchor, offset)], radius (interocular distances)
     "brow.L": ([("lm_brow_inner.L", (0.0, 0, 0)), ("lm_brow_mid.L", (0, 0, 0)), ("lm_brow_outer.L", (0, 0, -0.01))],
                [0.085, 0.09, 0.045]),
 }
-_VN = 17  # base.VERM_N
+_VN = 17  # base_measures.VERM_N
 _V = lambda k, rev=False: [f"verm_{k}{i:02d}" for i in (range(_VN - 1, -1, -1) if rev else range(_VN))]  # noqa: E731
-OUTLINES_DENSE = {  # on a GNM head (base._vermilion_joints): right corner -> left along the outer edge, back along
+OUTLINES_DENSE = {  # on a GNM head (base_measures._vermilion_joints): right corner -> left along the outer edge, back along
     # the inner one; "lips" border to border
     "lip_upper": _V("u") + _V("iu", True),
     "lip_lower": _V("il") + _V("l", True),
@@ -427,7 +427,7 @@ def zone(spec: dict, name: str, grow: float = 1.0, what: str = "zone") -> list:
             return out
         if stem in OUTLINES:
             pts = OUTLINES[stem]
-            if stem in OUTLINES_DENSE and "verm_u00" in J:  # (a GNM head: the vermilion's own edges, base.VERM_N
+            if stem in OUTLINES_DENSE and "verm_u00" in J:  # (a GNM head: the vermilion's own edges, base_measures.VERM_N
                 # points each; the 68 landmarks' seven chords cut the bow and corners off, and the face's pale
                 # pores / stubble layers ("lips" subtracted) painted there: the upper lip read pale whatever
                 # skin.lips said)
@@ -655,13 +655,13 @@ def layers(spec: dict) -> dict:
     """The skin's paint layers, in order: {"skin:<name>": layer}."""
     if not spec.get("skin"):
         return {}
-    from . import base as _basemod
-    eg = _basemod.eye_native(spec) if (spec.get("base") or {}).get("eyes") else None  # (GNM's eye: its limbus and pupil
+    from . import base_gnm_parts, base_implied
+    eg = base_implied.eye_native(spec) if (spec.get("base") or {}).get("eyes") else None  # (GNM's eye: its limbus and pupil
     # are the drawn iris' defaults, and come from the identity / expression, not from the joints)
     key = hashlib.sha1(json.dumps([spec["skin"], (spec.get("base") or {}).get("lashes"), VERSION,
                                    [round(eg["limbus"], 6), round(eg["pupil"], 4)] if eg else None,
                                    # (GNM's own mouth: its gum and bag masks are made from the head as built)
-                                   (spec.get("base") or {}).get("head") if _basemod.mouth_mode(spec.get("base") or {}) == "gnm"
+                                   (spec.get("base") or {}).get("head") if base_gnm_parts.mouth_mode(spec.get("base") or {}) == "gnm"
                                    else None], sort_keys=True,
                                   default=str).encode()).hexdigest()
     J = _joints(spec)

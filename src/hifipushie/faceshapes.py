@@ -17,9 +17,9 @@ neutral (closed) one.
 
 A GNM head (base.head.source "gnm", class GnmFace) works the other way: each shape is GNM's own expression basis,
 solved as the least change of its regional components that moves some of the 68 landmarks and holds the rest (as
-base.pose_expression does), carried from the head's skin vertices onto the export's (inverse distance over the
+base_identity.pose_expression does), carried from the head's skin vertices onto the export's (inverse distance over the
 nearest few; the bag, teeth and tongue, away from the skin, take the jaw's rigid motion fitted to the jaw line). It
-needs base.head.interior (the kit's slit/bag/teeth/tongue behind the head's lips, base.mouth_interior) and
+needs base.head.interior (the kit's slit/bag/teeth/tongue behind the head's lips, base_implied.mouth_interior) and
 base.head.mouth_gap >= 0.002 (lips parted while modelling; closed ones are zipped into one seam). The neutral
 closes the lips through the basis too. Blinks are pushed out of the eyeball, and sealed on the low poly
 (`GnmFace._lid_seal`): both lids' margins are brought onto one smooth line (the basis closes the eye, but each
@@ -939,7 +939,7 @@ def apply(spec: dict, parts: dict, face_shapes, log: list, quick: bool = False, 
         kind = "teeth" if base in face.parts_teeth else "tongue" if base in face.parts_tongue else "skin"
         if any(e.get("part") in (base, base[:-len("_cornea")] if base.endswith("_cornea") else None)
                for e in face.eyes.values()):
-            kind = "eyes"  # the eyeballs' own part (and a clear cornea's lens, base.clear_cornea): only the eyeLook
+            kind = "eyes"  # the eyeballs' own part (and a clear cornea's lens, base_implied.clear_cornea): only the eyeLook
             # shapes turn them
         Xm = np.asarray(p["verts"], np.float64)
         if kind == "skin":
@@ -970,8 +970,8 @@ def apply(spec: dict, parts: dict, face_shapes, log: list, quick: bool = False, 
             p["tangent"] = turn(np.asarray(p["tangent"], np.float64), n0m[cv], n0[cv]).astype(p["tangent"].dtype)
         lower = None
         if kind == "teeth" and getattr(face, "gnm_mouth", False):  # GNM's rows are parts of their own
-            from . import base as basemod
-            lower = np.full(len(Xm), base == basemod.TEETH_PARTS[1])
+            from . import base_gnm_parts
+            lower = np.full(len(Xm), base == base_gnm_parts.TEETH_PARTS[1])
         elif kind == "teeth":  # each connected piece whose middle is under the parting line is the lower row
             from scipy.sparse import coo_matrix
             from scipy.sparse.csgraph import connected_components
@@ -1091,7 +1091,7 @@ def read_glb(path) -> dict:
 
 # ---- GNM heads (base.head.source "gnm") ---------------------------------------------------------------------------
 
-# Each ARKit shape on a grafted GNM head is GNM's own expression basis, solved like base.pose_expression: the least
+# Each ARKit shape on a grafted GNM head is GNM's own expression basis, solved like base_identity.pose_expression: the least
 # change of the regional expression components that moves some of the 68 landmarks as said and holds the rest.
 # Moves are in GNM's frame (x = the head's left, y up, z forward), in units of the mouth's width (corner to corner);
 # ".L" lists name the head's left landmarks and mirror (x flips) for the right. Landmarks: jaw line 0-16 (8 the
@@ -1329,20 +1329,20 @@ LIP_TAPER = 0.04  # share of the mouth's width over which the close tapers to no
 LIP_HOLD, LIP_FADE = 2, 4  # rings past the contact ring that ride with it fully (the lip's front), then fade out over
 
 class GnmFace(Face):
-    """A GNM head (base.py): its mouth from the landmarks (base.mouth_lips); its interior GNM's OWN (base.mouth_mode
+    """A GNM head (base.py): its mouth from the landmarks (base_gnm_parts.mouth_lips); its interior GNM's OWN (base_gnm_parts.mouth_mode
     "gnm", the default: mouth bag, teeth and tongue, each moved by its own share of a shape's expression coefficients)
     or the face kit's (base.head.interior: kits._interior, moved rigidly with the jaw); its shapes from GNM's
     expression basis carried onto the export."""
 
     def __init__(self, spec: dict):
-        from . import base as basemod
+        from . import base_gnm_parts, base_measures
         b = spec["base"]
         hd = b["head"]
         e = specmod.expand_mirror(spec)
-        head = basemod.head_of({"joints": e["joints"]}, b)
-        mode = basemod.mouth_mode(b, head)
+        head = base_measures.head_of({"joints": e["joints"]}, b)
+        mode = base_gnm_parts.mouth_mode(b, head)
         self.gnm_mouth = mode == "gnm"
-        self.note = basemod.mouth_note(b, head)
+        self.note = base_gnm_parts.mouth_note(b, head)
         if mode == "none":
             raise SpecError("face_shapes on a GNM head needs a mouth that can open: GNM's own (the default; "
                             + (self.note or "base.head.mouth is \"none\" here")
@@ -1362,7 +1362,7 @@ class GnmFace(Face):
             raise SpecError(f"face_shapes.amount: unknown shape(s) {bad} (have the ARKit names {', '.join(ALL)})")
         prims = {p.name: p for p in specmod.compile_prims(spec)}
         self.head = head
-        m = basemod.mouth_lips(head)
+        m = base_gnm_parts.mouth_lips(head)
         lm = head["lm68"]
         self.M, self.out, self.up, self.side = m["M"], m["out"], m["up"], m["side"]
         self.width = m["width"]
@@ -1383,7 +1383,7 @@ class GnmFace(Face):
                          "part": b.get("eyes")} for s, c in zip(("Left", "Right"), head["eyes"])}
         eg = head.get("eye_gnm")
         if eg and b.get("cornea") is not False:  # GNM's own eyeball: its corneal sphere stands proud of the ball, and
-            # a lid must clear it too (displacements): centre on the gaze line, as base.inject places the bulge
+            # a lid must clear it too (displacements): centre on the gaze line, as base_implied.inject places the bulge
             for s, sfx in (("Left", ".L"), ("Right", ".R")):
                 if f"eye_front{sfx}" in e["joints"]:
                     c = self.eyes[s]["c"]
@@ -1399,21 +1399,21 @@ class GnmFace(Face):
         self._gnm = {}
 
     def _gnm_mouth_parts(self, m: dict, b: dict):
-        """GNM's own mouth (base.gnm_mouth): the numbers the kit's slit and bag gave (the lips' depth, the bag's
+        """GNM's own mouth (base_gnm_parts.gnm_mouth): the numbers the kit's slit and bag gave (the lips' depth, the bag's
         half sizes in the mouth's frame, how fine the teeth are meshed), and the pieces' own vertices."""
-        from . import base as basemod
-        mp = basemod.gnm_mouth(self.head)
+        from . import base_gnm_parts, base_identity
+        mp = base_gnm_parts.gnm_mouth(self.head)
         self.slit = max(float(m["gap"]), 0.001)
         self.slit_part = b.get("part", "body")
         self.slit_u = np.array([0.0, 0.92])
         self.slit_h = np.array([0.5 * self.slit, 0.25 * 0.5 * self.slit])
         self.thick = 2.2 * self.lip
-        g = basemod._gnm_data()
+        g = base_identity._gnm_data()
         own = np.asarray(g["groups"]["mouth_sock"])[mp["sock"]["ids"]] > 0.5
         P = (mp["sock"]["verts"][own] - self.M) @ np.stack([self.side, self.out, self.up], 1)
         self.bag = 0.5 * (P.max(0) - P.min(0))
-        self.parts_teeth, self.parts_tongue = set(basemod.TEETH_PARTS), {"tongue"}
-        self.teeth_t = 3 * float(basemod.MOUTH_PARTS["teeth"]["voxel"])
+        self.parts_teeth, self.parts_tongue = set(base_gnm_parts.TEETH_PARTS), {"tongue"}
+        self.teeth_t = 3 * float(base_gnm_parts.MOUTH_PARTS["teeth"]["voxel"])
         self.tongue = None
 
     # ---- GNM's frame, the solve, the carry ---------------------------------------------------------------------
@@ -1423,8 +1423,8 @@ class GnmFace(Face):
             return self._gnm
         from scipy.spatial import cKDTree
 
-        from . import base as basemod
-        g = basemod._gnm_data()
+        from . import base_identity
+        g = base_identity._gnm_data()
         c = self.head["carry"]
         V = c["V"]
         Wlm = np.zeros((68, len(V)))
@@ -1533,10 +1533,10 @@ class GnmFace(Face):
         tooth row never takes the other row's move)."""
         from scipy.spatial import cKDTree
 
-        from . import base as basemod
+        from . import base_gnm_parts
         G = self._setup()
-        mp = basemod.gnm_mouth(self.head)
-        dW = self._by_index(dV)  # (a piece takes an expression's offsets as the skin does: base._gnm_pieces)
+        mp = base_gnm_parts.gnm_mouth(self.head)
+        dW = self._by_index(dV)  # (a piece takes an expression's offsets as the skin does: base_gnm_parts._gnm_pieces)
         names = {"teeth": ("teeth_upper", "teeth_lower"), "tongue": ("tongue",), "sock": ("sock",)}[kind]
         trees = G.setdefault("piece_trees", {})
         for n in names:
@@ -1979,11 +1979,11 @@ class GnmFace(Face):
         behind a tooth's front at its height (GNM frame: z forward), within 1.5 mm across, is pushed forward to
         LIP_CLEAR in front of it; the push is spread over the skin's quads so it reads as the lip riding the teeth."""
         from scipy.spatial import cKDTree
-        from . import base as basemod
+        from . import base_gnm_parts
         G = self._setup()
         g = G["g"]
         V = np.asarray(G["c"]["V"], float) + dV
-        mp = basemod.gnm_mouth(self.head)
+        mp = base_gnm_parts.gnm_mouth(self.head)
         T = np.concatenate([V[np.asarray(mp[k]["ids"])] for k in ("teeth_upper", "teeth_lower")])
         gr = g["groups"]
         lips = np.clip(sum(np.asarray(gr[k], float) for k in ("upper_lip", "lower_lip", "upper_lip_region",
@@ -2052,6 +2052,7 @@ class GnmFace(Face):
         lips and sock round them, fading to nothing WRAP_SPREAD from the mouth's middle."""
         from scipy.spatial import cKDTree
         from . import base as basemod
+        from . import base_gnm_parts
         G = self._setup()
         g = G["g"]
         s_ = float(G["c"].get("s", 1.0))
@@ -2061,7 +2062,7 @@ class GnmFace(Face):
         if not R["ok"]:
             return dV
         ring = basemod.LIP_RING
-        mp = basemod.gnm_mouth(self.head)
+        mp = base_gnm_parts.gnm_mouth(self.head)
         tid = np.concatenate([np.asarray(mp[k]["ids"]) for k in ("teeth_upper", "teeth_lower")])
         Tt = V[tid]
         up_ids = np.asarray(mp["teeth_upper"]["ids"])
@@ -2214,7 +2215,7 @@ class GnmFace(Face):
         """GNM offsets (its frame, every GNM vertex) -> offsets of the head mesh's vertices (head["verts"]): the eye
         scaling's local magnification, the head's narrowing, the placement (scale, turn), then Catmull-Clark as the
         skin was (linear in the positions: all the offsets go through one subdivision side by side)."""
-        from . import base as basemod
+        from . import base_imls
         c = self._setup()["c"]
         cols = []
         for dV in dVs:
@@ -2228,19 +2229,19 @@ class GnmFace(Face):
             cols.append(dW)
         D, faces = np.concatenate(cols, 1), c["faces"]
         for _ in range(c["subdivide"]):
-            D, faces = basemod._catmull_clark(D, faces)
+            D, faces = base_imls._catmull_clark(D, faces)
         return [D[:, 3 * k:3 * k + 3] for k in range(len(dVs))]
 
     def _carried_scalar(self, f: np.ndarray) -> np.ndarray:
         """A per-GNM-vertex value (a vertex group) on the head mesh's vertices, subdivided like the positions."""
-        from . import base as basemod
+        from . import base_imls
         c = self._setup()["c"]
         v = np.asarray(f, float)[c["skin"]]
         if c["skin_index"] is not None:
             v = v[c["skin_index"] >= 0]
         D, faces = np.repeat(v[:, None], 3, 1), c["faces"]
         for _ in range(c["subdivide"]):
-            D, faces = basemod._catmull_clark(D, faces)
+            D, faces = base_imls._catmull_clark(D, faces)
         return D[:, 0]
 
     def _onto(self, X: np.ndarray, dW: np.ndarray):
@@ -2404,8 +2405,8 @@ class GnmFace(Face):
         line jawOpen turns about) by the angle that best fits the row, then the row's mean remaining shift (world):
         (rotation, origin, t), applied as (X - origin) @ R.T + t. (A free Procrustes on the row, a short arc that
         GNM also bends 2.6 mm, swung the tongue's root UP 4.5 mm.)"""
-        from . import base as basemod
-        mp = basemod.gnm_mouth(self.head)
+        from . import base_gnm_parts
+        mp = base_gnm_parts.gnm_mouth(self.head)
         ids = np.asarray(mp["teeth_lower"]["ids"])
         P0 = np.asarray(mp["teeth_lower"]["verts"], float)
         D = self._by_index(dV)[ids]

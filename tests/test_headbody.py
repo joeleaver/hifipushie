@@ -30,17 +30,17 @@ def _b(head=None, style=None, **body):
 
 
 def _gnm(ident, expression=None):
-    from hifipushie import base as B
-    g = B._gnm_data()
-    ci = B._gnm_coeffs(g["identity_names"], ident)
+    from hifipushie import base_identity
+    g = base_identity._gnm_data()
+    ci = base_identity._gnm_coeffs(g["identity_names"], ident)
     V = g["template_vertex_positions"] + np.tensordot(ci, g["vertex_identity_basis"], 1)
     return g, V.astype(float)
 
 
 def _head_rows():
     """GNM's skin vertices from the seam ring up (the vertices the head mesh is made of)."""
-    from hifipushie import base as B
-    g = B._gnm_data()
+    from hifipushie import base_identity
+    g = base_identity._gnm_data()
     a = onemesh.asset()
     return np.asarray(g["skin"], bool) & (a["g_lev"].astype(int) >= onemesh._reference()["meta"]["RING"])
 
@@ -72,14 +72,14 @@ def test_head_is_gnms_evaluation_under_one_similarity():
 def test_lip_close_is_the_only_other_move_and_it_is_gnms_expression():
     """With the rest mouth closed (lip_close: GNM's lower-face expression, our coefficients) the head differs from
     template + identity only inside GNM's expression basis; the skull and the eyes do not move at all."""
-    from hifipushie import base as B
+    from hifipushie import base_identity
     keep = _head_rows()
     b0 = _b(age=30, sex=1.0)
     b1 = _b({"lip_close": True}, age=30, sex=1.0)
     W0, W1 = (np.asarray(onemesh.head_rest(b)["gnm_world"], float) for b in (b0, b1))
     d = (W1 - W0)[keep]
     assert np.abs(d).max() > 1e-4  # (it does close the lips)
-    g = B._gnm_data()
+    g = base_identity._gnm_data()
     low = [i for i, n in enumerate(g["expression_names"]) if str(n).startswith("lower_face")]
     E = np.asarray(g["expression_basis"])[low][:, keep] @ onemesh._RG.T
     A = E.reshape(len(low), -1).T

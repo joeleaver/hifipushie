@@ -385,12 +385,12 @@ SDF = {"cone": sd_cone, "ellipsoid": sd_ellipsoid, "lids": sd_lids, "box": sd_bo
 
 
 def _sd_gnm_piece(p, pr):
-    from .base import sd_gnm_piece
+    from .base_gnm_parts import sd_gnm_piece
     return sd_gnm_piece(p, pr)
 
 
 def _sd_base(p, pr):
-    from .base import sd_base
+    from .base_surface import sd_base
     return sd_base(p, pr)
 def mod_fold(cur: np.ndarray, p: np.ndarray, pr: dict, chunk: int = 4096) -> np.ndarray:
     """The upper lid's fold (lidfold.py): along a line on the skin (pts, normals nrm, `up` the across direction up the

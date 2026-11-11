@@ -14,7 +14,7 @@ up; lower 70-80, 6-7 mm, finer and paler, angled down and out; none over the inn
 Lashes group in small clumps (their tips touch), cross a little, and the outer ones sweep outward.
 
 The margin (`lid_lines`): the eye opening as seen along the head's forward axis is where the eyeball stands in front
-of the skin (the skin runs on into the socket, there is no edge loop: base.eye_opening's method), traced round each
+of the skin (the skin runs on into the socket, there is no edge loop: base_measures.eye_opening's method), traced round each
 eye from its centre; the lash line is that rim, a little out onto the lid (the upper margin faces down, so from the
 front its edge IS the lash line; the lower margin faces up, so its lash line lies ~0.5 mm below the visible rim).
 Purely geometric: it follows any head (sliders, pose, identity) the field is built from.
@@ -428,13 +428,13 @@ def _hex(h):
 
 def for_spec(spec: dict, cfg: dict | None = None) -> dict | None:
     """The lashes of a spec's base head (world space, as the field is built), cached by the head and settings."""
-    from . import base as basemod
+    from . import base_measures
     from .spec import expand_mirror
     cfg = cfg or wanted(spec)
     if cfg is None:
         return None
     s = expand_mirror(spec)
-    head = basemod.head_of(s, s["base"])
+    head = base_measures.head_of(s, s["base"])
     if head is None:
         return None
     key = hashlib.sha1(json.dumps([cfg, VERSION], sort_keys=True).encode()
@@ -479,7 +479,7 @@ def export_part(spec: dict, out_dir, log=print):
 
     from PIL import Image
 
-    from . import base as basemod
+    from . import base_measures
     from . import hair_export
     from .spec import expand_mirror
     cfg = wanted(spec)
@@ -489,7 +489,7 @@ def export_part(spec: dict, out_dir, log=print):
     if m is None:
         return None
     s = expand_mirror(spec)
-    head = basemod.head_of(s, s["base"])
+    head = base_measures.head_of(s, s["base"])
     V = np.asarray(m["verts"], np.float64)
     T = np.asarray(m["tris"], np.int64)
     uv_v = np.c_[np.where(m["lid"] == 0, 0.25, 0.75), 0.1 + 0.8 * m["along"]]

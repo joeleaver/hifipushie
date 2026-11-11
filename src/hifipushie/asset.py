@@ -968,13 +968,13 @@ def _deep_hidden(V: np.ndarray, hidden: np.ndarray, part: np.ndarray, rim: float
 def own_mouth_meshes(mesh: Path, mp: dict, log: list) -> None:
     """GNM's tooth rows and tongue as their OWN quads (triangulated) in place of the parts' field meshes in the high mesh: the
     field (IMLS shell, 0.4 mm) decimated to 1200 triangles a row read "jagged, separate pegs with gaps, fang tips"
-    (expr_r4 / r5) where GNM's 1414 quads are clean teeth. The parts' min_triangles (base.MOUTH_PARTS) keep them whole.
+    (expr_r4 / r5) where GNM's 1414 quads are clean teeth. The parts' min_triangles (base_gnm_parts.MOUTH_PARTS) keep them whole.
     Normals: area-weighted from the quads, turned so the front of the row faces forward."""
-    from . import base as basemod
+    from . import base_gnm_parts
     z = dict(np.load(mesh))
     names = [str(n) for n in z["part_names"]]
     V, F, N, P = z["verts"].astype(np.float64), z["faces"], z["normals"].astype(np.float64), z["part"]
-    for gn, pn in (("teeth_upper", basemod.TEETH_PARTS[0]), ("teeth_lower", basemod.TEETH_PARTS[1]), ("tongue", "tongue")):
+    for gn, pn in (("teeth_upper", base_gnm_parts.TEETH_PARTS[0]), ("teeth_lower", base_gnm_parts.TEETH_PARTS[1]), ("tongue", "tongue")):
         if pn not in names:
             continue
         i = names.index(pn)
@@ -1735,8 +1735,8 @@ def _designed_interior(topo, verts, creases: bool = True, lid_fold=None) -> np.n
     if "gnm" not in z.files or len(z["verts"]) != len(verts) or not np.allclose(np.asarray(verts, float), z["verts"],
                                                                                    atol=1e-5):
         return None
-    from . import base as basemod
-    g = basemod._gnm_data()
+    from . import base_identity
+    g = base_identity._gnm_data()
     from . import gnmloops
     gid = gnmloops.raw_id(np.asarray(z["gnm"], int))  # (the lids' new vertices: as their first parent)
     gr = {k: np.asarray(v) > 0.5 for k, v in g["groups"].items()}
@@ -2857,7 +2857,7 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
             if "skin.folds" in m_:
                 log.append(m_)
     aname = asset_name or name
-    from .base import part_defs
+    from .base_implied import part_defs
     defs = part_defs(spec)  # (the base's implied parts too: a clear cornea's lens)
     fine, tri_focus, rest_w = {}, [], {}
     if face_shapes:  # say now, not after the bake, that the face can't take them; mesh the slit open; keep
@@ -2885,15 +2885,15 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
     log.append(f"meshed {len(ctx['streams'])} parts in {time.time() - tm:.1f}s (scene voxel {ctx['voxel'] * 1000:.1f} mm)")
     own_surface = None
     if face_shapes and getattr(fface, "gnm_mouth", False):  # GNM's own teeth and tongue lie behind the closed lips
-        from . import base as basemod
-        mp = basemod.gnm_mouth(fface.head)
-        pts = {k: basemod._piece_points(mp[k]["verts"], mp[k]["faces"])["verts"] for k in ("teeth_upper", "teeth_lower", "tongue")}
-        own_surface = {basemod.TEETH_PARTS[0]: pts["teeth_upper"], basemod.TEETH_PARTS[1]: pts["teeth_lower"],
+        from . import base_gnm_parts
+        mp = base_gnm_parts.gnm_mouth(fface.head)
+        pts = {k: base_gnm_parts._piece_points(mp[k]["verts"], mp[k]["faces"])["verts"] for k in ("teeth_upper", "teeth_lower", "tongue")}
+        own_surface = {base_gnm_parts.TEETH_PARTS[0]: pts["teeth_upper"], base_gnm_parts.TEETH_PARTS[1]: pts["teeth_lower"],
                        "tongue": pts["tongue"]}
         own_mouth_meshes(high, mp, log)
         # (their own vertices ARE the surface: every face kept, whatever covers the rows in the neutral)
-        own_surface.update({basemod.TEETH_PARTS[0]: np.asarray(mp["teeth_upper"]["verts"], float),
-                            basemod.TEETH_PARTS[1]: np.asarray(mp["teeth_lower"]["verts"], float),
+        own_surface.update({base_gnm_parts.TEETH_PARTS[0]: np.asarray(mp["teeth_upper"]["verts"], float),
+                            base_gnm_parts.TEETH_PARTS[1]: np.asarray(mp["teeth_lower"]["verts"], float),
                             "tongue": np.asarray(mp["tongue"]["verts"], float)})
     prune_hidden(ctx, high, log, own_surface)
     if texel_density:

@@ -55,8 +55,8 @@ def expression_protos(names=EXPR_SET) -> np.ndarray:
 
 def expression_coeffs(amounts: dict) -> dict:
     """{expression class: amount} -> base.head.expression's {GNM expression comp: value}."""
-    from . import base as basemod
-    names = [str(n) for n in basemod._gnm_data()["expression_names"]]
+    from . import base_identity
+    names = [str(n) for n in base_identity._gnm_data()["expression_names"]]
     e = sum(float(a) * expression_protos((k,))[0] for k, a in amounts.items())
     return {n: round(float(x), 5) for n, x in zip(names, np.atleast_1d(e)) if abs(x) >= 1e-4}
 
@@ -77,7 +77,8 @@ def model_head(spec: dict, c=None, kappa=None, expr=None) -> dict:
     mask, the head's vertices with their move per GNM identity comp (as humanfit._silhouette: the head's carry and the
     stitch's fade), the measures of its GNM identity (gnm_mm, GNM's own mm). c: another identity (170) on the same model."""
     import copy
-    from . import base as basemod, blockin as bi, gnm_mm, headfit, humanfit, likeness, onemesh
+    from . import blockin as bi, gnm_mm, headfit, humanfit, likeness, onemesh
+    from . import base_identity
     if c is not None:
         spec = copy.deepcopy(spec)
         bi.set_identity(spec, c)
@@ -89,7 +90,7 @@ def model_head(spec: dict, c=None, kappa=None, expr=None) -> dict:
     fade = np.asarray(onemesh.asset()["g_fade"], float)
     hv = (gid >= 0) & (fade[np.maximum(gid, 0)] > 0.3)
     if "mh" not in _C:
-        g = basemod._gnm_data()
+        g = base_identity._gnm_data()
         names = [str(n) for n in g["identity_names"]]
         comps = [i for i, n in enumerate(names) if n.startswith("head")][:170]
         gg = _gnm()
