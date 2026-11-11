@@ -27,7 +27,7 @@ Rule (Joe, 2026-11-10): no backwards compatibility. No gate, no switch, no shim;
   3 hair.py (5,694; C415) -> 15 modules (hair.MODULES); 28 functions import a later module themselves; rebound names late.
   4 face_ruler.py, base.py, faceshapes.py (9.1k; C417) -> 10 each; base.MODULES in the skin caches' hashes; four rebound
     names in faceshapes_consts; class GnmFace (1,788 lines) keeps its name, its methods in five mixins.
-  5 skin_read.py, blockin.py, likeness.py (7.1k; C418) -> 8, 9, 10 modules, pure moves; blockin_models._refs read late.
+  5 skin_read.py, blockin.py, likeness.py (7.1k; C419) -> 8, 9, 10 modules, pure moves; blockin_models._refs read late.
     The check for names left behind found a live bug (blockin.ruler); tests/test_undefined_names.py now guards all modules.
 - Still over 500 lines because one function is: terrain_tiles 928 (_export_tiles 799), hair_cards_job 604 (cards_job
   570). They need refactoring, not moving. Also terrain_volumes 610, faceshapes_face 595, hair_groom 591, hair_look 571,

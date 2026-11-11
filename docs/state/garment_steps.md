@@ -27,7 +27,6 @@ the hussar jacket), so no tool quietly becomes a shirt tool.
 | 10 | Export | game mesh, retopology, skinned to the character's rig | none for chain garments | budgets | the whole step |
 Known for iteration: steps 5-6: plackets: the front edge kinks between buttons, fronts meet 0.86, open plackets ragged (Joe saw it on the T14 shirt; rows placket_straight + closure_front FAIL); the build mesh's irregular border strip (test: rows
 following the outline; are the ragged plackets from it?). Step 8: open wear hung with 1 in 5 faces past the thread cap.
-ORDER: tooling for every step first; then the steps one at a time, shirt + hussar together, each iterated until good.
 ## Tooling runs (one deliverable each, in order; "minimal" = the step works end to end for any garment, not yet good)
 | # | Run | Steps | Size | Needs |
 |---|---|---|---|---|
@@ -56,5 +55,6 @@ METHOD NOW (Joe 2026-11-03): one STEP per blind trial (/mnt/data/hifipushie/tria
 judged with Joe beside the reference, fixed, rerun, then the next step; tests run once when a step is declared done.
 APPROVED (Joe): hussar 0-4 (s4-14/ws); jacket 0-3 (step 2 s2-6/ws: ties, fold bends; step 4 revoked). Step 5 rebuilt
 per docs/proposals/step5_one_build.md: R1-R3d DONE (C391-C395, C399, C401), layers + plies placed (C402); step 4 now
-FAILs crossed seams (C403); the carry re-runs step 4 (C404). Jacket s4-20..23 fixed C408 C410 C412 C416 (inside darts
-cut by the tool); hussar: step 2 (prose sleeve bend), step 4 (underarm, armhole chain). NEXT: judge jacket s4-24 with Joe.
+FAILs crossed seams (C403); the carry re-runs step 4 (C404). Jacket 0-4 APPROVED (s4-24; C408-C416). s5-2: C418 fixed, then the
+start flung pieces off the body with one 5.9 mm row failing (trials/s5dbg). Hussar: step 2 (sleeve bend), step 4 (underarm,
+armhole chain). NEXT: start gate + soft start (R4) on the jacket, or hussar s5 (Joe).

@@ -1,4 +1,4 @@
-"""No module reads a global name it never binds. Such a read is a NameError waiting in a body no test runs (C418:
+"""No module reads a global name it never binds. Such a read is a NameError waiting in a body no test runs (C419:
 blockin.ruler read `store` without importing it, so gnm_controls(ruler="a,b") failed on every call). A split or a
 deletion that leaves a name behind fails here too."""
 import ast
