@@ -28,6 +28,9 @@ Rule (Joe, 2026-11-10): no backwards compatibility. No gate, no switch, no shim;
   102 tools) -> mcp_app (app, decorator, registry), tool_common, tools_find, tools_model, tools_plan, tools_export,
   tools_human, tools_likeness, tools_skin, tools_hair, tools_cloth, tools_terrain, tools_plants, tools_clutter;
   largest 592 lines. Proof: the whole tool surface byte-identical before and after (deadcode/surface.py).
+- The split, step 2 (branch split-terrain-mesh; tag archive/before-split-terrain-hair; ledger C414): terrain_mesh.py
+  (5,680 lines) -> 15 modules along its sections (terrain_mesh.MODULES lists them). terrain_tiles is 928 lines: one
+  function of 799. The tile export's state hashes all of them, as before.
 - Not done: module docstrings in trimmed files (drape, zozo_hang, fold_checks, garment_pull, cloth_check) still describe
   removed parts. Fix them when each file is split.
 
@@ -47,7 +50,8 @@ cloth_background) are what was left after the old paragraphs went: they need one
 dead.py (what the tools reach, function by function), why.py (why a symbol is live), frontier.py (links from live code
 into the old modules), hyp.py (what a cut would free), apply.py (delete and keep imports consistent), check.py (source
 and tests against main), proof.py (builds and flat checks against the parent tree), split_server.py and surface.py
-(a file split by tool domain, and the tool surface as one JSON to compare). Conservative: a class is kept whole, a
+(a file split by tool domain, and the tool surface as one JSON to compare), split_module.py with a plan_<module>.py
+(any module split along line breakpoints, callers rewritten), shadow_check.py, undefined.py. Conservative: a class is kept whole, a
 module named in a string is kept whole.
 
 ## Also unreachable today, outside clothes (not touched)
