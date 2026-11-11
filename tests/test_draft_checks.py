@@ -211,3 +211,16 @@ def test_a_dart_the_inventory_builds_is_drafted_not_marked():
     assert r["status"] == "FAIL" and "front_dart.L on front.L" in r["why"] and "1 inventory darts" in r["value"]
     assert ddi.row(step1, {"darts": [{"piece": "front", "legs": ["a", "b"]}]})["status"] == "PASS"
     assert ddi.row({"details": {"pocket.L": {"what": "flap pocket"}}}, {}) is None
+
+
+def test_a_notch_outside_its_piece_fails_one_inside_is_listed():
+    """C412: s4-22's facing and canvas carried the front's notches, up to 275 mm off them; every row passed."""
+    from hifipushie import draft_notches as dn
+    pc = _rect("facing", 0.1, 0.5, {"bl": "a", "br": "b", "tr": "c", "tl": "d"})
+    pc["marks"] = {"top-notch": [0.05, 0.5], "pocket-notch": [0.05, 0.25]}
+    B = {"pieces": {"facing": pc}}
+    r = dn.row(B)
+    assert r["status"] == "INFO" and "facing:pocket-notch" in r["why"]
+    pc["marks"]["waist-notch"] = [0.25, 0.3]
+    r = dn.row(B)
+    assert r["status"] == "FAIL" and "facing:waist-notch 150 mm" in r["why"] and r["back_to"] == "4"
