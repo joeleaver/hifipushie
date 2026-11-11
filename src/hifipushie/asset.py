@@ -3165,7 +3165,7 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
                 # (r59) half the specular, in the sheen's colour (hair.card_specular_tint): the default white x 2 mirrored
                 # the key light off the crown's cards as a white plate (Tess rc2i, Garrett v5)
                 # (no specular texture: the hair's is a flat 0.5; F0 = 0.04 x factor x colour = 0.02 x tint)
-                "KHR_materials_specular": {"specularFactor": hair_export.CARD_SPECULAR,
+                "KHR_materials_specular": {"specularFactor": hairmod.CARD_SPECULAR,
                                            "specularColorFactor": hair_export.card_specular_tint(sheen)},
                 "KHR_materials_anisotropy": {"anisotropyStrength": float(lk.get("anisotropic", 0.7)),
                                              "anisotropyRotation": 1.5708},

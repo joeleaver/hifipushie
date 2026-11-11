@@ -178,12 +178,13 @@ def notes(info: dict, aname: str, looks: dict | None = None, hair_look: dict | N
                       "LOD1+ mesh instances (visibility ranges)",
                       "scalp: the cap carries the scalp chart; under it the skin's own scalp tint"]
                 from . import hair_export
+                from . import hair
                 tint_ = hair_export.card_specular_tint(hair_export.srgb_to_linear(lk["sheen"])) if lk.get("sheen") else [1.0] * 3
                 f.append(f"specular for an isotropic (standard PBR) fallback: F0 0.02 x tint {tint_} (half a dielectric's, "
-                         f"in the sheen's colour; KHR_materials_specular), roughness >= {hair_export.CARD_ROUGH_MIN} in the ORM: "
+                         f"in the sheen's colour; KHR_materials_specular), roughness >= {hair.CARD_ROUGH_MIN} in the ORM: "
                          "at the lit hair's own gloss a card mirrors the key light as one white plate (the crown)")
                 m["params"] = {"alpha_mode": "MASK", "alpha_cutoff": 0.33, "two_sided": True,
-                               "specular_level": 0.5 * hair_export.CARD_SPECULAR, "specular_tint": tint_,
+                               "specular_level": 0.5 * hair.CARD_SPECULAR, "specular_tint": tint_,
                                "albedo_terms": dict(HAIR_ALBEDO_TERMS), "aux_shade": None,
                                "look": {k_: lk.get(k_) for k_ in ("lit", "gap", "sheen", "gloss", "tip_alpha",
                                                                   "backscatter", "scatter", "root_dark", "sun")

@@ -252,7 +252,3 @@ def fit_metrics(name: str, sc: Scalp, cam: dict, spec: dict, hair_mask=None, tr:
         out["clumps"] = errs
         out["clump_dir_deg_mean"] = round(float(np.mean([v[1] for v in errs.values()])), 1)
     return out
-
-
-EDGE_SMOOTH = 0.008  # m: the hairline edge's own sweep is the edge with tips/notches narrower than ~this taken out
-EDGE_REACH = 0.03  # m: how far either side of the traced hairline the rendered edge is looked for

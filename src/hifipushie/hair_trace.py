@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import numpy as np
 
+from . import hair as hair_mod
 from . import store
-from . import hair_head, hair_reference
+from . import hair_head
+from . import hair
 from .hair import HairError
 from .hair_card_fit import reference_image
 from .hair_drawn import top_to_azel
@@ -40,7 +42,7 @@ def front_edge(cam: dict, tr: dict, mask, mm_px: float, owners=None) -> dict | N
         face = _to_crop(cam, list(tr["landmarks"].values()), Wm).mean(0)
         if np.mean(((face - L) * nrm).sum(1)) < 0:
             nrm = -nrm
-    reach = hair_reference.EDGE_REACH * 1000 * px_mm
+    reach = hair.EDGE_REACH * 1000 * px_mm
     s = np.arange(-reach, reach + 1e-9, 0.5)
     S = L[:, None, :] + s[None, :, None] * nrm[:, None, :]  # (n, k, [x, y])
     hv = map_coordinates(mask.astype(float), [S[..., 1].ravel(), S[..., 0].ravel()], order=1, mode="constant",
@@ -54,7 +56,7 @@ def front_edge(cam: dict, tr: dict, mask, mm_px: float, owners=None) -> dict | N
     e, tt = e[k], t[k] / px_mm
     # the sweep: a running median then a light Gaussian (a median keeps the temple's corners, which are design, and
     # drops tips and notches narrower than EDGE_SMOOTH: a Gaussian alone counted every corner as roughness)
-    sm = gaussian_filter1d(median_filter(e, size=2 * int(hair_reference.EDGE_SMOOTH * 1000 / 1.5) + 1, mode="nearest"), 1.0,
+    sm = gaussian_filter1d(median_filter(e, size=2 * int(hair.EDGE_SMOOTH * 1000 / 1.5) + 1, mode="nearest"), 1.0,
                            mode="nearest")
     r = e - sm
     turn = np.abs(np.diff(np.arctan2(np.diff(e), np.diff(tt)) - np.arctan2(np.diff(sm), np.diff(tt))))
@@ -84,10 +86,6 @@ def front_edge(cam: dict, tr: dict, mask, mm_px: float, owners=None) -> dict | N
                 teeth[who] = round(float(r[i]), 1)  # + a tip hanging out, - a notch
         out["teeth"] = teeth
     return out
-
-
-FLOW_BAND = (0.004, 0.028)  # m inside the traced hairline: the band whose strand direction front_flow compares
-FLOW_BINS = 6
 
 
 def _orientation(img, sigma: float):
@@ -132,11 +130,11 @@ def front_flow(cam: dict, tr: dict, ref_img, our_img, mask, mm_px: float) -> dic
             nrm = -nrm
     line_ang = np.degrees(np.arctan2(tg[:, 1], tg[:, 0]))
     bins = []
-    edges = np.linspace(0, len(L), FLOW_BINS + 1).astype(int)
-    for b in range(FLOW_BINS):
+    edges = np.linspace(0, len(L), hair.FLOW_BINS + 1).astype(int)
+    for b in range(hair.FLOW_BINS):
         rs, os_ = [], []
         for i in range(edges[b], edges[b + 1]):
-            for dmm in np.linspace(FLOW_BAND[0] * 1000, FLOW_BAND[1] * 1000, 7):
+            for dmm in np.linspace(hair.FLOW_BAND[0] * 1000, hair.FLOW_BAND[1] * 1000, 7):
                 x, y = L[i] + dmm * px_mm * nrm[i]
                 xi, yi = int(round(x)), int(round(y))
                 if not (0 <= xi < W and 0 <= yi < W) or not mask[yi, xi]:
@@ -159,9 +157,6 @@ def front_flow(cam: dict, tr: dict, ref_img, our_img, mask, mm_px: float) -> dic
     return {"bins": bins, "err_deg": round(float(np.mean(err)), 1)}
 
 
-REGION_NAMES = ("front", "top", "side.L", "side.R", "back.L", "back.R", "back")
-
-
 def region_of(az, el):
     """The head region a point on the hair is in, by where it sits round the centre: top (el >= 55), else front
     (within 45 deg of the face), side (45-110 deg round: his left .L is az > 0), back.L / back.R (110-160), back."""
@@ -170,9 +165,6 @@ def region_of(az, el):
     reg = np.where(fa < 45, "front", np.where(fa < 110, "side", np.where(fa < 160, "back", "back_")))
     reg = np.where(reg == "back_", "back", np.char.add(reg, np.where(reg == "front", "", lr)))
     return np.where(np.asarray(el) >= 55, "top", reg)
-
-
-OUTLINE_STEP = 3.0  # deg: the matched view's outline is sampled on rays from the head centre this far apart
 
 
 def outline_regions(sc: Scalp, cam: dict, spec: dict, R, M, tr: dict, mm_px: float):
@@ -202,7 +194,7 @@ def outline_regions(sc: Scalp, cam: dict, spec: dict, R, M, tr: dict, mm_px: flo
     cy = (tr["clip_y"] - y0) * Wm / max(x1 - x0, y1 - y0) if tr.get("clip_y") is not None else Wm
     rr = np.arange(0.0, 1.5 * Wm, 0.5)
     rows = {}
-    for th in np.arange(0.0, 360.0, OUTLINE_STEP):
+    for th in np.arange(0.0, 360.0, hair_mod.OUTLINE_STEP):
         t = np.radians(th)
         u, v = c[0] + rr * np.sin(t), c[1] - rr * np.cos(t)
         ok = (u >= 0) & (u < Wm) & (v >= 0) & (v < min(Wm, cy))
@@ -216,8 +208,8 @@ def outline_regions(sc: Scalp, cam: dict, spec: dict, R, M, tr: dict, mm_px: flo
         if v[ok][inR][np.argmax(rr[ok][inR])] > cy - 4:  # the clip line, not an outline
             continue
         r_mod = rr[ok][inM].max() if inM.any() else 0.0
-        near = np.abs(((th_v - th + 180) % 360) - 180) < OUTLINE_STEP
-        nears = np.abs(((th_s - th + 180) % 360) - 180) < OUTLINE_STEP
+        near = np.abs(((th_v - th + 180) % 360) - 180) < hair_mod.OUTLINE_STEP
+        nears = np.abs(((th_s - th + 180) % 360) - 180) < hair_mod.OUTLINE_STEP
         if not near.any() or not nears.any():
             continue
         k = np.argmax(np.where(near, r_v, -1))
@@ -225,7 +217,7 @@ def outline_regions(sc: Scalp, cam: dict, spec: dict, R, M, tr: dict, mm_px: flo
         r_sc = r_s[nears].max()
         rows.setdefault(reg, []).append((r_mod - r_ref, r_ref - r_sc, r_mod - r_sc))
     out = {}
-    for reg in REGION_NAMES:
+    for reg in hair_mod.REGION_NAMES:
         if reg not in rows:
             continue
         a = np.asarray(rows[reg]) * mm_px

@@ -5,6 +5,7 @@ import hashlib
 
 import numpy as np
 
+from . import hair
 from . import store
 from . import hair_head
 from .hair import _ss, _unit, az_el, under
@@ -139,12 +140,6 @@ def split_tips(sc: Scalp, g: dict, line, name: str, lk: dict, n: int = 2, at: fl
     return out
 
 
-ROOT_TILT = 0.5  # the climbing root's tilt, x the lie's tilt behind it (1: nape rows folded at their roots)
-ROOT_CLIMB = 0.012  # m: the shortest run over which a drawn clump's root rises from under the layer to lie on it
-TILT_MAX = 1.3  # rad: the most a drawn clump's flat side turns off facing away from the head centre
-BEND_EASE = 0.7  # drawn clumps are eased until their spine's in-plane bend x half width is under this
-
-
 def bend_ratio(sc: Scalp, Q, half):
     """Per point of a dense path on the head: how tightly it turns along the head's surface x the half width there
     (>= 1: a lock that wide folds its inner edge)."""
@@ -158,7 +153,7 @@ def bend_ratio(sc: Scalp, Q, half):
     return r
 
 
-def ease_bends(sc: Scalp, Q, half, limit: float = BEND_EASE, rounds: int = 200):
+def ease_bends(sc: Scalp, Q, half, limit: float = hair.BEND_EASE, rounds: int = 200):
     """A dense path on the head smoothed (ends held, kept on the scalp's rays) where it turns tighter than `limit` x
     half width allows: a wide clump drawn round a sharp corner sweeps a wide curve instead."""
     Q = np.asarray(Q, float).copy()
@@ -294,7 +289,7 @@ def drawn(sc: Scalp, g: dict, clumps: list) -> dict:
         # in 5 mm, and the tilted lens folded there)
         # "climb" (m): how long the root takes to rise onto the layer; long, a narrow root (root 0.05-0.1) grows out
         # of the layer and the lock's body forms further back, with no blunt root end showing
-        t1 = min(max(0.08, float(c.get("climb", ROOT_CLIMB)) / max(cq[-1], 1e-9)), 0.4)
+        t1 = min(max(0.08, float(c.get("climb", hair.ROOT_CLIMB)) / max(cq[-1], 1e-9)), 0.4)
         tt = np.r_[0.0, t1, np.linspace(max(0.25, t1 + 0.12), 1.0, 4)] * cq[-1]
         Q = np.stack([np.interp(tt, cq, Q[:, k]) for k in range(3)], 1)
         a, e = az_el(Q - sc.C)
@@ -319,10 +314,10 @@ def drawn(sc: Scalp, g: dict, clumps: list) -> dict:
         # sideways at a parting, so its own tilt came out ~100 deg off the next one's: the lens twisted through
         # itself at the root (the flakes along the part); and no point lies more than TILT_MAX off the head's own
         tilt[0] = tilt[1]
-        tilt = np.clip(tilt, -TILT_MAX, TILT_MAX)
+        tilt = np.clip(tilt, -hair.TILT_MAX, hair.TILT_MAX)
         # where the root climbs out of the layer the spine bends up: a lens turned on its side there bends within its
         # own plane and folds (the nape rows' flags), so the climb faces out (ROOT_TILT of the lie's tilt)
-        tilt[:2] = ROOT_TILT * tilt[2]
+        tilt[:2] = hair.ROOT_TILT * tilt[2]
         cup = lie_cup(sc, w, P)
         if laid:  # its hairline edge brought down onto the layer under it
             cup = _edge_cup(sc, g, line, P, tilt, 0.5 * w * lock_width(

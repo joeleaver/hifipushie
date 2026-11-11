@@ -26,7 +26,8 @@ In Blender every lock is a curve object in the "hair" collection with the "hp_lo
 (`blender_hair.py`): grab its control points and the mesh follows live.
 
 
-Where the code is (split by responsibility, C415): this module holds the constants, HairError and the small shared
+Where the code is (split by responsibility, C415; constants back here, C421): this module holds EVERY constant of
+the family (set at hair.NAME by specs, scripts and tests; the other modules read hair.NAME), HairError and the small shared
 helpers; hair_head the scalp; hair_groom, hair_seat and hair_grow the groom; hair_spec the spec and hair_lockmesh the
 lock geometry; hair_job, hair_cards_job and hair_card_fit the Blender jobs; hair_look the looks and gates;
 hair_export the export; hair_drawn the drawn clumps; hair_reference and hair_trace a reference picture.
@@ -251,6 +252,256 @@ def az_el(v):
     return np.degrees(np.arctan2(u[..., 0], -u[..., 1])) % 360, np.degrees(np.arcsin(np.clip(u[..., 2], -1, 1)))
 
 
-# The modules this one was split into (C415). hair.export.constants finds a constant named "hair.X" in any of them.
+_SCALPS: dict = {}
+
+GREY_AGES = (30.0, 50.0)   # the default groom grey: none before the first age, all of it from the second
+
+POCKET = 0.012  # m: (one mesh) air this deep along a scalp ray is outside the head, not a pocket in it (an ear canal)
+HAIRLINE_JOIN = 25.0  # deg of azimuth over which the default line past traced front_points eases onto their end
+
+
+EAR_OPEN = 19  # cells of azimuth (x Scalp.STEP deg = 38): what stands off the head narrower than this is "a bump"
+EAR_BUMP = 0.004  # m a ray must stand off the head without the bump to count as ear
+EAR_LOW = 0.0015  # m: ... and what the ear is grown into from there
+EAR_OVER = 0.006  # m the line runs over the found ear's top by default (groom.hairline.ear)
+EAR_CLEAR = 0.003  # m: the hairline never runs lower over the found ear than this above its top
+SIDEBURNS = 0.014  # m the sideburn reaches below the found ear's top by default
+
+_LINES: dict = {}
+
+_FILLS: dict = {}
+
+# the groom's keys in metres (scaled with the head by `fit`); lists of [az, z] keep az and scale z about the centre
+_METRE_KEYS = {("length",), ("volume",), ("hairline", "temples"), ("hairline", "temple_dip"), ("hairline", "ear"),
+               ("hairline", "sideburns"), ("hairline", "nape"), ("parting", "offset"), ("parting", "width"),
+               ("parting", "length"), ("parting", "front"), ("loose", "length"), ("loose", "spacing"), ("loose", "lift"), ("loose", "lift_ramp"),
+               ("loose", "body"), ("loose", "thickness"), ("loose", "level"), ("loose", "swoop", "depth"),
+               ("loose", "swoop", "length"), ("loose", "fringe", "length"), ("loose", "fringe", "depth"),
+               ("loose", "fringe", "level"), ("tie", "out"), ("tie", "gather", "lift"), ("tie", "gather", "width"),
+               ("tie", "tail", "length"), ("tie", "tail", "fullness"), ("tie", "curtain", "lift"),
+               ("tie", "frame", "length"), ("tie", "frame", "width")}
+_UNITLESS = {"across", "ramp"}  # (volume.across / ramp are shares, not metres)
+# The tie's own geometry that a tied STYLE writes in absolute metres (hair_flow.style: the dome's stand-off, wisp and
+# stray lengths, the tail's sway / air / lock waves). Until 2026-10-14 fit_to_head did not scale these: th_W18 carried
+# onto tp_h3 (a 15 % bigger scalp) kept its dome and face wisps at the old head's size while its tail scaled (review:
+# "shorter face wisps", a flatter top). They scale by this head over the one they were last GROWN at (`fit.abs_r`,
+# stamped by carry), so a groom regrown on its own head is unchanged. Value: the dict's keys that are NOT metres.
+_TIE_KEYS = {("tie", "gather", "volume"): {"arc", "layers", "locks", "cross", "hold"}, ("tie", "gather", "puff"): set(),
+             ("tie", "gather", "zig"): set(), ("tie", "gather", "above"): set(), ("tie", "wisps", "length"): set(),
+             ("tie", "wisps", "over"): set(), ("tie", "tail", "stray_length"): set(), ("tie", "tail", "sway"): set(),
+             ("tie", "tail", "sway_length"): set(), ("tie", "tail", "flick"): set(), ("tie", "tail", "air"): set(),
+             ("tie", "tail", "lock_wave"): set(), ("tie", "tail", "lock_wavelength"): set(),
+             ("tie", "tail", "coil_radius"): set(), ("tie", "escaped", "length"): set()}
+
+SEAT_NEAR, SEAT_FAR = 0.03, 0.09  # m off the source scalp: closer, a point keeps its scalp address (az, el, h x k);
+# further (a hanging tail, wisps below the jaw), it moves rigidly with the head (scaled about its centre); between, a blend
+SEAT_STRAND_M = ("wave", "wavelength", "roots_m", "clump_size", "curl")  # lock strand dials in metres
+
+
+SEAT_EAR_FADE = (25.0, 35.0)  # deg: the ear warp fades out this far above the ear's top / round the ear's azimuths
+
+FOLD_LIMIT = 1.0  # in-plane bend x half width: at 1 the lock's inner edge runs backwards (folds over itself)
+
+ROOT_END_MM = 15.0  # a root end wider than this where it rises out of the layer reads as a blunt end
+
+ROOT_RISE = 0.003  # m
+FIN_MM = 3.0  # an edge standing this much more than the lock's own thickness over the layer reads as a fin
+
+LIFT_RAMP = 0.03  # m: a lift grows to its full height this far in from the hairline
+
+GATE_VIEWS = (("front", 0.0, ("left", "right")), ("three_quarter", 40.0, ("left",)),
+              ("three_quarter_r", -40.0, ("right",)))
+
+SHELL_MIN_GAP = 0.0004  # (sh6) m: each shell stands at least this far over the layer below it, the hairline included
+# (eased to 0 there, cap and shells were the same triangles: coincident alpha-tested layers render as holes / z-fight)
+SHELL_HROW_DROP = None  # (sh6) {"fa": [a0, a1], "el_max": deg}: the shells style's hairline-row cards whose middle lies
+# a0..a1 deg from the front and under el_max deg over the scalp centre are dropped (Garrett's sideburn: dense cards drew
+# flat grey dabs with round ends at game distance; the cap's tapered strands are the sideburn there)
+
+SHELL_EDGE_LIFT = None  # (sh4) m: the shells cap's lift at the hairline (None = the full lift everywhere)
+SHELL_LIFT_EASE = 0.005  # (sh4) m in from the hairline over which the lift eases to SHELL_EDGE_LIFT
+CAP_RELAX_FLOOR = True  # (round 30) the relaxed cap keeps the floor cap_under_cards gave it (lift off the scalp)
+CAP_RELAX = 60  # (round 26) iterations: the card cap's radius relaxed over its mesh, only lowered (0 = off)
+CAP_SMOOTH = 0.0  # deg: the mass cap's height smoothed over this (gaussian sigma, 0 = off; round 26)
+
+# Card budgets by what the hair is for (triangles for the whole hair: cards, cap, baby hairs, tie). Epic's Hair Card
+# Generator tutorial spends ~54k on a hero's LOD 0 in five layers (coverage 4%, mid 14%, top 46%, fly-aways 18%, short
+# hairs 18%); a game character whose whole body is ~46k can't. The layers below are ours: 0 = the opaque coverage
+# (dense / hairline tiles), 1 = mid, 2+ = top and break-up, fly-aways and baby hairs on top; the cap is the scalp chart.
+# group: how big a clump of strands one card stands for (hair_cards.clump_cards): a lower tier has FEWER, WIDER cards
+# from bigger clumps, never the same thin cards thinned out; "free" = only hair off the head gets cards, the cap
+# (the scalp chart) and the tail's core carry the rest.
+SHELL_FINS = 0.0  # (sh3) shells style: keep the flow-top / arch cards whose middle lies within this share of the head's
+# radius of the front or side OUTLINE (|unit dir . y| or |. x| under it) and above SHELL_FIN_EL: fins for the top's
+# volume / outline (0 = off: hairline rows only). hair.export.shells.fins overrides.
+SHELL_FIN_EL = 20.0  # deg over the head centre
+SHELL_FIN_TIERS = ("hero", "main")
+
+SHELL_CARD_VALUE = 1.0  # (sh4) shells style: the kept cards' (hairline rows, fins) colour x this, toned to the cap
+SHELL_TIERS = {"hero": 2, "main": 2, "npc": 1, "far": 0}  # (sh1) shells per tier (hair.export.shells.tiers overrides)
+_CHARTS: dict = {}  # the last short chart baked (every tier of an export wears the same one)
+MASS_MIN = 0.06  # m: loose hair shorter than this (mean lock length) gets no mass shell under its cards
+# A SHORT cut (loose hair under MASS_MIN) as game artists build it: the cap, wearing the scalp chart with EVERY strand
+# of the groom drawn where it lies (1 texel a strand at a 2048 chart: ~0.3 mm), carries the look; over it only a
+# sparse layer of cards for what stands off the head (the lifted front, the silhouette's breakup), each on a tile of
+# many fine strands with soft tips and no opaque base, plus single-hair cards along the hairline. Cards cut one per
+# clump and worn on the dense tile read as torn paper / leaf litter at bust distance (Garrett's crop).
+SHORT_TIERS = {"hero": {"triangles": 16000, "cap_step": 6.0, "group": "pair", "layers": 2, "baby": 0.0, "fly": 2},
+               "main": {"triangles": 8000, "cap_step": 7.5, "group": "pair", "layers": 1, "baby": 0.0, "fly": 1},
+               "npc": {"triangles": 4000, "cap_step": 10.0, "group": "lock", "layers": 1, "baby": 0.0, "fly": 0},
+               "far": {"triangles": 1500, "group": "lock", "layers": 1, "baby": 0.0, "fly": 0}}
+EVEN_SHORT_CAP = 1  # (c1, 2026-10-18) an EVEN short groom (clumps-cut cards) still wears the short cut's baked cap
+# (hair_cap.chart: every strand drawn, grey by lock): hs.cap_chart reads no hair_even strands (G88a c1c: bare scalp patches)
+EVEN_CAP_KEEP = 0.6  # (c3) x the even cap's mid height: the least it keeps under its cards (0: the scalp floor, c2's hero holes)
+EVEN_CLUMPS = 1  # (c2) an even groom is cut by visual clumps at every tier (0: the hero tier only, before c2)
+EVEN_SHORT_LIFT = 1  # and that cap stands at the hair's mid height (the short cut's mass) when 1 (c1e: default); 0 = on the scalp (c1d: under the skin, bare patches)
+SHORT_TOP = 0.6  # x a clump's spread along its normal: a short cut's card stands at the top of its clump
+SHORT_TIP = 0.0015  # m: how far a short cut's card tips rise off the cap (x 0.2-1.6 per card)
+SWOOP_CARDS = 3  # a swoop's dedicated cards (one lock)
+CUT_GROUPS = ["sub", "pair", "lock", "free"][:3]  # finer -> coarser card cuts (clump_cards' groups; "free" drops lying hair)
+PRIO_FLY = 2.0  # budget priority offsets (lower = kept first): single hairs after every coverage layer
+PRIO_FREE = -0.6  # hanging hair (free locks: a tail) before the second layer of hair lying on the head
+PRIO_HALO = 0.35  # pooled single hairs (the halo as ~30 fly cards, ~400 triangles): kept just before a tail's second layer
+PRIO_FACE = -0.8  # face-framing hair (wisps, curls at the temples) before anything but the coverage layer's core
+FACE_IN, FACE_AZ = 0.02, 115.0  # m inside the hairline, deg from the front: where a free lock's root counts as face-framing
+ARCH_TIERS: dict = {"main": 0.6, "npc": 0.4, "far": 0.25}  # (round 35; default from round 36 = f1) tier -> share of hair_clumps.ARCH arch cards per run at that tier (e.g. {"main": 0.6,
+# "npc": 0.4, "far": 0.25}; {} = off): the crown arch (and with hair_clumps.ARCH_FILL its cap fill) carried to LOD1-3, fewer
+# and wider, so the crown doesn't drop at the LOD0 -> LOD1 switch
+COVER_TIERS: dict = {}  # (round 33) tier -> share of hair_clumps.PART_COVER cover cards per side at that tier (e.g.
+# {"main": 0.6, "npc": 0.4}; {} = off): the part cover row thinned with the tiers
+CUT_SHARE = 0.45  # the coverage layer of every lock must fit this share of a tier's triangles, else the cut coarsens
+SWOOP_WIDTH = 0.026  # m: their width
+SWOOP_BACK = 0.003  # m inside the hairline where they start
+SWOOP_LAYERS = 3  # each swoop card is this many stacked cards of the fine short tiles
+SWOOP_GAP = 0.0012  # m between those layers
+SWOOP_LIFT = 0.007  # m the swoop's cards rise mid-lock over where its strands lie (its wave)
+BABY_TONE = 1.0  # (round 43, opt-in) baby-hair cards' vertex tone x this. Tess's "nape tick marks" (18-38 mm dark dashes
+# under the tie, vertex colour .32-.49 vs the tail's .65) are THESE cards (baby_locks all round the hairline, kind "baby",
+# cls None: hair_clumps' NAPE_LIFT / NAPE_SHORT only see clump cards, so round 42's lever never reached them; t43/trace.py)
+BABY_NAPE = (0.05, 0.02)  # (round 44; default after a blind A/B vs r42c NEW 2 / OLD 0 / SAME 2) (z, y) m: on a TIED groom, baby cards rooted lower than z under the scalp's
+# centre AND more than y behind it are dropped (the groom has no baby hairs at the nape under a gather: they drew
+# Tess's dark tick marks there; t43/ticks.py found them at z < -0.06, y > +0.025). () = off
+SHORT_BABY_PRIO = 0.3  # a short cut's baby hairs (the hero tier's soft hairline) are kept before second-layer cards
+SHORT_STRAIGHT = 0.6  # share a short cut's card is drawn toward its straight chord (no hooks)
+SHORT_EDGE = 0.0  # m inside the hairline where a short cut's cards end (past it their thick strands stood as wires)
+SHORT_GREY = 0.45  # a short cut's card is darker by this x (the greyest locks' grey share - its own lock's)
+SHORT_ATLAS = 2048
+CARD_TIERS = {
+    "hero": {"cap_step": 6.0, "group": "sub", "layers": 3, "card_width": 0.012, "segment": 0.008,
+             "fly": 2, "baby": 2.0, "core_sides": 12, "mass": 5000, "cut": "clumps"},
+    "main": {"cap_step": 5.0, "group": "pair", "layers": 2, "card_width": 0.02, "segment": 0.012,
+             "baby": 0.6, "core_sides": 10, "mass": 3500},
+    "npc": {"cap_step": 8.0, "group": "lock", "layers": 1, "card_width": 0.028, "segment": 0.025,
+            "baby": 0.0, "core_sides": 8, "mass": 1800},
+    "far": {"cap_step": 14.0, "cap": "mass", "group": "free", "layers": 1, "card_width": 0.07, "segment": 0.05,
+            "baby": 0.0, "core_sides": 6, "mass": 800},
+}
+# the tiers ARE the hair's LODs: their triangles come from the export budgets (budgets.json, a hero character's
+# hair_cards at LOD0..3: sourced, not chosen here; it was a made-up 40k / 16k / 6k / 1.5k). A groom's own
+# hair.export.tier_triangles {tier: n} or hair.export.role (hero / main_npc / secondary_npc / crowd) overrides
+CARD_TIER_LOD = {"hero": 0, "main": 1, "npc": 2, "far": 3}
+
+# (c13, coordinator 2026-10-19) a tier's DRAWN triangles (back faces included) stay within its role's RANGE maximum in
+# budgets.json (hair_cards range[1]): the tiers are the roles' hair (hero 50k, main_npc 20k, secondary_npc 8k, crowd 1.5k)
+CARD_CUT_SHARE = 0.8  # the clumps cut aims at this share of the tier's budget (card faces; the budget fit trims the rest:
+# c13a's hero cut made 15.3k card faces for a 25k-face allowance, main / npc / far are bound by their drawn maxima)
+TIER_ROLE = {"hero": "hero", "main": "main_npc", "npc": "secondary_npc", "far": "crowd"}
+
+FRONT_SHORT = 0.0  # (round 46, opt-in) m: clump cards (not face / fly) shorter than this rooted in front of and above the
+# head centre (FRONT_SHORT_YZ: y < [0], z > [1] from C) are dropped: r45a's dark splintered patch where the part meets the
+# forehead was 17-20 mm, 6-vertex cards at vcol .37-.46 wearing a long card's tile squashed (its tips = the serrations)
+FRONT_SHORT_YZ = (-0.05, 0.02)
+CAP_TONE = 1.4  # (round 45; default after the blind A/B r45a vs r44d NEW 2 / OLD 0 / SAME 2) x the card cap's vertex colour under the colour model (0.9 / peak:
+# ~0.35 on Tess vs the cards' ~0.65; the cap's albedo 52 vs the cards' 85-93 in the crown box): where it shows between
+# cards it is ~40 % of the darkest crown pixels at 2x its area share (t45/capshare.py)
+CAP_TONE_TIERS: dict = {}  # (round 47, opt-in) tier -> CAP_TONE there: the far tier (group "free") keeps no head cards, so
+# its whole head IS the cap at CAP_TONE's darker-than-cards value: LOD3's head read a shade darker than LOD0's
+CAP_BARE_FLOOR = True  # a cap vertex with no coverage card within CAP_FAR lies at the floor (False: its mass height, before round 18)
+CAP_UNDER = 0.0025  # m: the cap stays this far under the lowest coverage card over it
+CAP_FAR = 12.0  # deg: a cap vertex with no card within CAP_REACH takes the nearest cards' height within this
+CAP_TOP_EL = 0.0  # (round 32; opt-in) deg: over this elevation a cap vertex with no card within CAP_REACH takes the
+# HIGHEST of the nearest cards' heights within CAP_FAR (not the lowest less CAP_UNDER): no card passes over el 80, so the
+# top of the dome was the cap at the seated roots' height, a dip between the crown's cards (Joe: "chopped off"); 0 = off
+CAP_REACH = 4.0  # deg: the cards over a cap vertex are those within this angle of it (seen from the head's centre)
+
+CARD_CLEAR = 0.0015  # m: every card vertex stays this far outside the head (None: measure only)
+
+VIEWS = {"front": (0.0, 5.0), "three_quarter": (40.0, 12.0), "side": (90.0, 5.0), "back": (180.0, 10.0),
+         "top": (20.0, 60.0), "three_quarter_r": (-40.0, 12.0), "side_r": (-90.0, 5.0),
+         "back_quarter": (140.0, 8.0), "wide_r": (-95.0, 4.0, 0.95), "wide_back": (165.0, 6.0, 0.95),
+         "wide_front": (-20.0, 4.0, 0.9), "close": (-30.0, 25.0, 0.45),
+         "close_back": (150.0, 20.0, 0.45), "close_front": (12.0, 8.0, 0.4), "close_side": (75.0, 15.0, 0.42),
+         # (az, el, distance, m the target sits under the head centre): the bust, for hair that falls
+         "bust_front": (0.0, 4.0, 1.25, 0.14), "bust_three_quarter": (40.0, 8.0, 1.25, 0.14),
+         "bust_side": (90.0, 4.0, 1.25, 0.14), "bust_back": (180.0, 6.0, 1.25, 0.14), "bust_side_r": (-90.0, 4.0, 1.25, 0.14),
+         "bust_back_quarter": (140.0, 8.0, 1.25, 0.14), "long_back": (180.0, 4.0, 1.9, 0.26),
+         "long_side": (90.0, 4.0, 1.9, 0.26)}
+
+# Lights for strand / card looks (each a sun; "dir" points from the head toward the light). Hair is read by its
+# highlight band and by light coming through its edge: a key from the front, a soft fill, and a rim from behind
+# (what a portrait photographer calls the hair light). Solid locks keep the stage's single sun.
+LIGHTS = {
+    "salon": {"lights": [{"dir": [-0.45, -0.75, 0.55], "energy": 3.0, "angle": 8.0},
+                         {"dir": [0.8, -0.45, 0.15], "energy": 0.7, "angle": 30.0, "specular": 0.0,
+                          "color": [0.86, 0.9, 1.0]},
+                         {"dir": [0.35, 0.8, 0.5], "energy": 4.5, "angle": 5.0, "color": [1.0, 0.96, 0.9]}],
+              "world": {"color": [0.77, 0.81, 0.86], "strength": 0.5}},
+    "flat": {"lights": [{"dir": [-0.4, -0.7, 0.6], "energy": 3.5, "angle": 3.0}]},
+}
+
+BARE_BAND = 0.015  # m inside the hairline: bare volume there is reported as "<region> hairline"
+
+GATE_MM = 1.5  # the deepest dent allowed in the hair's outline (front and 3/4), mm, from the brows up to...
+GATE_SCALE = 0.012  # m: the outline is gated on shapes at least one lock row tall (smoothed over it): a waist or
+# divot is tens of mm; a clump's step where one lock ends over the next is a notch, the relief we want
+NOTCH_SCALE = 0.006  # m: notches (clump steps at the outline) are measured on this and reported, target 2-5 mm
+CROWN_BAND = 0.02  # ...this far under the top (the top's outline is the lock crowns: reported, not gated)
+
+EXPORT = {"segments": 24, "sides": 10}  # per lock (spec["hair"]["export"] overrides): 12 x 8 read faceted in the
+# export (the lens's thin edges shaded as flat planes), 24 x 10 is ~20k triangles for 45 locks
+
+EXPORT_CARDS = {"triangles": 12000, "tier": None, "cap_step": 6.0, "alpha_cutoff": 0.33, "shadow_proxy": True}  # spec["hair"]["export"] overrides
+CARD_RECIPE = (
+    "Hair cards. Draw two-sided with one normal for both faces (the mesh's normals are already bent toward the hair "
+    "volume: do not flip them on back faces). Alpha: the base colour's alpha, alpha-tested at alpha_cutoff with "
+    "dithering + temporal AA, or alpha-to-coverage with MSAA; keep the alpha's coverage in the mips (or bias mips "
+    "-1). COLOR_0 multiplies the base colour: the root-to-tip ramp, a value per lock and per card, lower layers "
+    "darker. Anisotropic highlight along the hair: TANGENT's bitangent (the atlas's v) runs root to tip. The aux "
+    "texture holds R = root gradient (1 at the root), G = a value per strand (shift the highlight and the value "
+    "with it), B = depth in the clump (0 deep: darker, less specular; usable as pixel depth offset), A = alpha. "
+    "LODs: drop the cards of `layer` 2, then 1 (extras.layers gives each layer's triangle range).")
+
+
+BACK_FACES = 1  # (c6) export each card's back face as its own triangles (outward normals) + a single-sided material
+BUDGET_UNIT = "card_faces"  # (hair-budget rule 2026-10-19) a tier's budget counts card faces (one side);
+# drawn triangles (back faces included) must fit the role's range max (checked at export: asset.hair_budget)
+CARD_RECIPE_FACES = CARD_RECIPE.replace(
+    "Draw two-sided with one normal for both faces (the mesh's normals are already bent toward the hair "
+    "volume: do not flip them on back faces).",
+    "Every card's back is its own triangles (reversed winding, the SAME outward normal): draw single-sided with "
+    "back-face culling (the material is not doubleSided), so no engine flips a normal.")
+
+CARD_ROUGH_MIN = 0.6  # (r59) the cards' roughness floor in the export's ORM: the outer, lit hair (aux.b high) came out at
+# 0.425 (the 0.5 floor x 0.85), and an isotropic engine lobe at that mirrored the key light off the crown's flat cards as
+# one white plate (Tess rc2i's "white glossy crown"; 0.65 / 0.75 in the game preview took it away, 0.6 + the tinted half
+# specular below leaves a faint warm sheen). The baked-cap path already says it: "glossy, it was tin foil".
+CARD_SPECULAR = 0.5  # (r59) the combined character GLB's hair KHR_materials_specular factor (half a dielectric's) ...
+
+ROOT_TILT = 0.5  # the climbing root's tilt, x the lie's tilt behind it (1: nape rows folded at their roots)
+ROOT_CLIMB = 0.012  # m: the shortest run over which a drawn clump's root rises from under the layer to lie on it
+TILT_MAX = 1.3  # rad: the most a drawn clump's flat side turns off facing away from the head centre
+BEND_EASE = 0.7  # drawn clumps are eased until their spine's in-plane bend x half width is under this
+
+EDGE_SMOOTH = 0.008  # m: the hairline edge's own sweep is the edge with tips/notches narrower than ~this taken out
+EDGE_REACH = 0.03  # m: how far either side of the traced hairline the rendered edge is looked for
+
+FLOW_BAND = (0.004, 0.028)  # m inside the traced hairline: the band whose strand direction front_flow compares
+FLOW_BINS = 6
+
+REGION_NAMES = ("front", "top", "side.L", "side.R", "back.L", "back.R", "back")
+
+OUTLINE_STEP = 3.0  # deg: the matched view's outline is sampled on rays from the head centre this far apart
+
+# The modules this one was split into (C415). Their constants stay HERE (C421): tests/test_constants_address.py.
 MODULES = ("hair", "hair_head", "hair_groom", "hair_seat", "hair_grow", "hair_spec", "hair_lockmesh", "hair_job",
            "hair_cards_job", "hair_card_fit", "hair_look", "hair_export", "hair_drawn", "hair_reference", "hair_trace")

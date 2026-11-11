@@ -499,6 +499,7 @@ def test_hair_folds_regions_and_shared_lens():
     region; a second figure in the same picture keeps the first's focal length (free, it ran off to infinity)."""
     import numpy as np
     from hifipushie import hair_drawn, hair_head, hair_spec, hair_trace
+    from hifipushie import hair
     A, E = np.arange(0.0, 360.0, 2.0), np.arange(-70.0, 90.01, 2.0)
     sc = hair_head.Scalp([0.0, 0.0, 0.0], np.full((len(A), len(E)), 0.09), {})
     # an L on the top of a ball: 6 cm along, a right angle, 6 cm on; 3 cm wide (drawn paths are 40 points)
@@ -509,7 +510,7 @@ def test_hair_folds_regions_and_shared_lens():
     assert hair_drawn.bend_ratio(sc, Q, half).max() > 1.0
     lk = {"name": "L", "pts": Q[::10].tolist(), "inputs": {"Width": 0.03, "Root": 1.0, "Belly": 0.05, "Taper": 0.0}}
     assert "L" in hair_spec.folds(sc, [lk])
-    assert hair_drawn.bend_ratio(sc, hair_drawn.ease_bends(sc, Q, half), half).max() < hair_drawn.BEND_EASE + 0.05
+    assert hair_drawn.bend_ratio(sc, hair_drawn.ease_bends(sc, Q, half), half).max() < hair.BEND_EASE + 0.05
     assert list(hair_trace.region_of([0, 60, -60, 130, -130, 180, 10], [0, 0, 0, 0, 0, 0, 70])) == \
         ["front", "side.L", "side.R", "back.L", "back.R", "back", "top"]
 

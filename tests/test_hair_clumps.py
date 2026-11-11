@@ -401,7 +401,8 @@ def test_even_groom_is_cut_by_clumps_at_every_tier():
     """An even groom (strands.even) has no per-lock guide strands: below the hero tier clump_cards found none and the
     lifted cap alone stood as a pompadour (Garrett main / npc / far, c2 2026-10-18). Every tier cuts it by clumps."""
     from hifipushie import hair_job
-    for t in hair_job.CARD_TIERS:
+    from hifipushie import hair
+    for t in hair.CARD_TIERS:
         assert hair_job.tier_settings(t, short=False, even=True).get("cut") == "clumps"
     assert hair_job.tier_settings("main").get("cut") != "clumps"  # a guide-strand groom keeps its per-lock cut
 

@@ -6,6 +6,7 @@ import json
 
 import numpy as np
 
+from . import hair
 from . import store
 from .hair import HairError, _unit, az_el, dirs
 
@@ -59,15 +60,12 @@ def _geometry_key(spec: dict) -> str:
     return hashlib.sha1(json.dumps(g, sort_keys=True, default=float).encode()).hexdigest()[:16]
 
 
-_SCALPS: dict = {}
-
-
 def scalp(name: str, spec: dict | None = None) -> Scalp:
     """The model's Scalp (cached in memory and on disk by the body's geometry: hair edits never recompute it)."""
     spec = store.load(name) if spec is None else spec
     key = _geometry_key(spec)
-    if key in _SCALPS:
-        return _SCALPS[key]
+    if key in hair._SCALPS:
+        return hair._SCALPS[key]
     f = store._dir(name) / f"hair_scalp_{key}.npz"
     if f.exists():
         z = np.load(f, allow_pickle=False)
@@ -78,12 +76,12 @@ def scalp(name: str, spec: dict | None = None) -> Scalp:
             old.unlink()
         np.savez(f, C=sc.C, R=sc.R, lm=json.dumps(sc.lm))
     sc.human = bool(spec.get("base"))  # (a base body: a human head, with or without face landmarks)
-    _SCALPS[key] = sc
+    hair._SCALPS[key] = sc
     return sc
 
 
 def _measure(spec: dict) -> Scalp:
-    from . import hair_groom
+    from . import hair
     from . import sdf
     from .spec import compile_prims, expand_mirror, geometry
     g = {k: v for k, v in geometry(spec).items() if k != "hair"}
@@ -118,7 +116,7 @@ def _measure(spec: dict) -> Scalp:
         # inner surfaces are pockets inside the head: a ray from the centre came out into one 4 cm in (behind the
         # ear), and the locks rooted there hung down the neck. The first crossing into air that STAYS air for
         # POCKET m (the outermost crossing instead sent rays under the ear on to the shoulders: curtains of hair)
-        k = max(1, int(round(hair_groom.POCKET / (ts[1] - ts[0]))))
+        k = max(1, int(round(hair.POCKET / (ts[1] - ts[0]))))
         pad = np.concatenate([out, np.ones((len(out), k), bool)], 1)
         run = np.ones_like(out)
         for j in range(k + 1):

@@ -340,8 +340,8 @@ def test_checks_see_stamps_and_planks():
 
 
 def test_tiers_are_fewer_and_wider():
-    from hifipushie import hair_job
-    T = hair_job.CARD_TIERS
+    from hifipushie import hair
+    T = hair.CARD_TIERS
     order = ["hero", "main", "npc", "far"]
     assert [T[k]["triangles"] for k in order] == sorted((T[k]["triangles"] for k in order), reverse=True)
     assert [T[k]["card_width"] for k in order] == sorted(T[k]["card_width"] for k in order)
@@ -351,7 +351,8 @@ def test_tiers_are_fewer_and_wider():
 def test_export_tier_as_an_engine_gets_it():
     """With Blender and the workspace model: one tier exported, re-imported, judged against the strands."""
     from hifipushie import store
-    from hifipushie import hair_export, hair_job
+    from hifipushie import hair_export
+    from hifipushie import hair
     name = os.environ.get("HIFIPUSHIE_HAIR_TEST_MODEL", "hs_tess")
     try:
         store.load(name)
@@ -362,7 +363,7 @@ def test_export_tier_as_an_engine_gets_it():
     with tempfile.TemporaryDirectory() as tmp:
         rep = hair_export.export_hair(name, tmp, tiers=("npc",), groom=False, check=True)
         t = rep["tiers"]["npc"]
-        assert t["triangles"] <= hair_job.CARD_TIERS["npc"]["triangles"], t["triangles"]
+        assert t["triangles"] <= hair.CARD_TIERS["npc"]["triangles"], t["triangles"]
         ch = rep["checks"]["npc"]
         for mode in ("test", "dither"):
             for v, r in ch[mode].items():
