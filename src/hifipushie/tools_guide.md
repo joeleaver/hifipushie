@@ -245,6 +245,21 @@ left (+X); el + = from above. Saved as <model>/cameras/<label>.json. Returns the
 blue = image only) and the camera. IoU under 0.85 is flagged: the model's shape is far off, or the mask is wrong.
 Re-fit after big shape changes; small ones keep the camera. Puddles (pud2): az -19, el +8.5, IoU 0.93.
 
+
+### `fit_matched`
+
+`fit_matched(name, targets, only, params=None, lock=None, press=None, iterations=20, max_step=0.01, stiffness=0.05, resolution=128)`
+
+Fit elements' numbers (a sheet's spine and stations, a blob's place and size ...) to the pictures their fitted
+cameras see (fit_concept_camera first). Each target names a camera and a box; with `elements` it scores that
+part's OWN outline, traced in the image (`outline` polygons in image pixels, or `mask`), against the pixels where
+the part is seen in front of the rest. A whole silhouette can't see a part spreading over the body behind it or
+shrinking inside it; a part target can. A target without elements scores the whole silhouette (default mask: the
+camera's image foreground). `press` = {"elements", "mm": 3, "join": [x, y, z]}: those elements may sink into the
+rest only in the buried piece at the join (within 1 cm of it); anywhere else deeper than mm is a residual by its
+depth. Without it an outline fit buries tips, which change no outline (Puddles' ears, 20-41 mm into the head).
+Trace the part where it meets the body too: that line is what stops it spreading. Judge the result by
+look_matched / feature_tiles and the blind review, not by IoU: outlines can't see form.
 ### `look_matched`
 
 `look_matched(name, label='concept', resolution=192, samples=32, only_parts=None, hide_parts=None, save=None)`
