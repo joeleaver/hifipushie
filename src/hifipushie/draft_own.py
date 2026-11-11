@@ -470,6 +470,10 @@ def gate(B: dict, decl: dict, step1: dict, stand_ref: dict | None = None, step3:
         rows.append({"id": "darts", "status": "FAIL" if far else "PASS", "value": f"{len(B['darts'])} darts",
                      "target": "each dart's two legs run from the outline to ONE tip (declare both toward the tip)",
                      "why": "; ".join(far), "fix": "declare each leg 'outline point>tip'", "back_to": "4"})
+    from . import draft_darts_inv
+    dr = draft_darts_inv.row(step1, decl)  # (C410: a dart step 1 builds is drafted, never only a mark)
+    if dr:
+        rows.append(dr)
     from . import draft_seam_ends
     rows += draft_seam_ends.rows(B)  # (F6: a seam sewn the wrong way round passes every length row)
     if step3 is not None:  # (F6: the pattern against the body it was measured on, before any build)
