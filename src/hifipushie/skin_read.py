@@ -109,7 +109,7 @@ def _code() -> str:
     src = Path(__file__).parent
     return hashlib.sha1(b"".join((src / f).read_bytes() for f in
                                  ("skin.py", "skin_features.py", "skin_makeup.py", "skin_marks.py", "skin_swatch.py", "skin_folds.py", "paint.py",
-                                  "paintnodes.py", "blender_scene.py", "base.py", *(f"{m}.py" for m in basemod.MODULES),  # (base.py was split, C416)
+                                  "paintnodes.py", "blender_scene.py", "base.py", *(f"{m}.py" for m in basemod.MODULES),  # (base.py was split, C417)
                                   "skin_look.py", "scene.py"))).hexdigest()[:12]
 
 

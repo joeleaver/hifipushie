@@ -29,7 +29,7 @@ bones, strokes, kits, shell parts, paint) edits on top of it.
   matched only at the plane stood proud of the head's narrowing neck and flecked.
 - Topology payoff: `retopo.wrap` of a base-built body starts from the same template, so the export quads follow.
 
-Where the code is (split by responsibility, C416): this module holds the constants, `source` and `template_joints`.
+Where the code is (split by responsibility, C417): this module holds the constants, `source` and `template_joints`.
 base_imls: Catmull-Clark, normals, the IMLS field. base_identity: GNM's data, identity fits, the posed expression,
 region weights. base_head_shape: nose tip, chin, jawline, lean, ears, hood, planes. base_gnm_parts: GNM's eyes and
 mouth, the lips' close and zip. base_gnm_head: `gnm_head`. base_measures: `head_of` and the head's measures and
@@ -109,6 +109,6 @@ LIP_RING = 2  # GNM: the inner-lip contact ring (landmarks 61-63, 65-67), rings 
 
 
 
-# The modules this one was split into (C416). What hashed base.py by its file name (skin_read, skin_look) hashes these too.
+# The modules this one was split into (C417). What hashed base.py by its file name (skin_read, skin_look) hashes these too.
 MODULES = ("base_imls", "base_identity", "base_head_shape", "base_gnm_parts", "base_gnm_head", "base_measures",
            "base_tubes", "base_surface", "base_implied")

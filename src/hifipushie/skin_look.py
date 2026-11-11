@@ -145,7 +145,7 @@ def ensure(name: str, region: str, log: list, voxel: float | None = None) -> str
     from . import base as basemod
     code = hashlib.sha1(b"".join((Path(__file__).parent / f).read_bytes() for f in
                                  ("skin.py", "skin_features.py", "skin_makeup.py", "skin_marks.py", "skin_swatch.py", "paint.py", "paintnodes.py",
-                                  "blender_scene.py", "base.py", *(f"{m}.py" for m in basemod.MODULES),  # (base.py was split, C416)
+                                  "blender_scene.py", "base.py", *(f"{m}.py" for m in basemod.MODULES),  # (base.py was split, C417)
                                   "headfit.py", "skin_look.py"))).hexdigest()[:12]
     if mark.exists() and mark.read_text() == key + code and scene.blend_path(sn).exists():
         mark.touch()  # last use, for store.prune_stages

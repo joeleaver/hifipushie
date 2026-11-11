@@ -32,7 +32,7 @@ A view = {"img": PIL image, "cam": fitted camera (humanfit.project), "kind": "fr
 "style": "clay" | "dressed" | "photo"}; "scale" / "origin" if the image is a crop of the camera's picture.
 ERR: the validated reader error per measure (spikes/faceruler/validate.py; the notes' "## faceruler").
 
-Where the code is (split by responsibility, C416): this module holds the constants and the model side (the GNM head,
+Where the code is (split by responsibility, C417): this module holds the constants and the model side (the GNM head,
 the camera, the clay picture, projection). face_ruler_outline: outlines and colour features. face_ruler_jaw: the jaw's
 lower edge. face_ruler_solve: observe / solve / read. face_ruler_orbit: the orbit's rows, the limbus in a turned view.
 A block-in model against its reference pictures: face_ruler_blockin (the model's head, the expression prior),

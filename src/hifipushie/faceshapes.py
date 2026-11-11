@@ -50,7 +50,7 @@ range of its edge neighbours' moves, per metre of edge; a smooth shape reads ~0 
 sawtooth (a blink's under-eye shadow). Mouth shapes are listed but not warned: the lips part at the slit's ends.
 The json has them per part as face_shape_unevenness.
 
-Where the code is (split by responsibility, C416): this module holds the shape names, presets, combos and small maths.
+Where the code is (split by responsibility, C417): this module holds the shape names, presets, combos and small maths.
 faceshapes_consts: a GNM head's constants and the per-character fits (SMILE_FIT, JAW_FIT, SHAPE_SCULPT and LID_SEAL are
 rebound at run time: read them as faceshapes_consts.NAME). faceshapes_face: class Face (a kit face). faceshapes_gnm:
 class GnmFace, with its methods in mixins by responsibility: faceshapes_gnm_solve (frame, solve, carry),
