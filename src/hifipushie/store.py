@@ -69,9 +69,10 @@ def load(name: str) -> dict:
 
 def validate(spec: dict) -> None:
     """Every check a spec must pass before it is saved (raises SpecError / ValueError)."""
-    from . import cloth, hair, paint, realism, strokes
+    from . import cloth, paint, realism, strokes
+    from . import hair_spec
     realism.validate(spec)
-    hair.validate(spec)
+    hair_spec.validate(spec)
     cloth.validate(spec)
     strokes.check(spec)  # cheap static checks first: seating errors would only show up at build time
     prims = specmod.compile_prims(spec)  # validate before writing
@@ -91,8 +92,9 @@ def _same_but_hair(a: dict, b: dict) -> bool:
 
 def _validate_light(spec: dict) -> None:
     """What a hair/cloth-only edit needs checked (compiling a base body for the full check: ~1 min)."""
-    from . import cloth, hair
-    hair.validate(spec)
+    from . import cloth
+    from . import hair_spec
+    hair_spec.validate(spec)
     cloth.validate(spec)
 
 

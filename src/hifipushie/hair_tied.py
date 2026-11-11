@@ -252,7 +252,8 @@ def grow(sc, g: dict, line, rng, col=None) -> dict:
     """{name: lock} for the groom's tie(s). `col`: the body's collider (hair_loose.Collider): a hanging tail and
     escaped locks lie on the neck and shoulders by it (without one: the scalp's rays, the head alone)."""
     from . import hair_flow
-    from .hair import _line_at, az_el, dirs, inside
+    from .hair import az_el, dirs
+    from .hair_groom import _line_at, inside
     locks = {}
     for ti, tp in enumerate(params(g["tie"])):
         pre = f"t{ti}" if ti else "t"

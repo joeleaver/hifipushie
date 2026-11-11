@@ -11,7 +11,8 @@ strands' share; the start is a valid groom (every key known to hair.validate) an
 import numpy as np
 import pytest
 
-from hifipushie import hair, hair_read as hr
+from hifipushie import hair_read as hr
+from hifipushie import hair_spec
 
 
 def _disk(n, c, r):
@@ -136,7 +137,7 @@ def test_start_is_a_valid_short_cut_groom():
     h = st["hair"]
     assert st["short"]
     spec = {"hair": {"style": h["style"], "groom": h["groom"], "strands": h["strands"], "look": h["look"]}}
-    hair.validate(spec)  # every key known
+    hair_spec.validate(spec)  # every key known
     g = h["groom"]
     assert g["parting"] == {"side": "none"}  # not seen: no part invented
     assert g["hairline"]["front_points"][0][0] == 2.5
@@ -199,7 +200,7 @@ def test_long_hair_gets_a_loose_long_start_and_no_grey_when_young():
     assert out["top"] > out["sides"] > 0 and out["nape"] == 0.0 and out["top"] <= 0.4
     assert h["look"]["grey_amount"] == 0.0 and h["groom"]["grey"] == {"temples": 0.0, "sideburns": 0.0}
     spec = {"hair": {"style": h["style"], "groom": h["groom"], "strands": h["strands"], "look": h["look"]}}
-    hair.validate(spec)
+    hair_spec.validate(spec)
 
 
 def test_lit_hair_is_not_read_as_grey():

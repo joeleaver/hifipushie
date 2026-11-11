@@ -10,9 +10,8 @@ Rule (Joe, 2026-11-10): no backwards compatibility. No gate, no switch, no shim;
     check_garment_reference, game_garment), HIFIPUSHIE_LEGACY_CLOTH and the guide's paragraph filter;
   - every function and constant nothing live reached after that: 284, with modules cloth_over and hang_reads whole;
   - their tests: 3 files whole, parts of 14. Source 214.2k -> 207.5k lines; 1,860 tests collect.
-- The filter hid by word match ("sim", "dress", "on the form") in every guide topic: guide("gates") had no four-gate
-  list, guide("tools") no domain table and no sync / pull / heavy_status sections. Both are back. The clothes guides keep
-  exactly the text agents saw.
+- The filter hid by word match in every guide topic (guide("gates") had no four-gate list, guide("tools") no domain
+  table and no sync / pull / heavy_status sections): both are back. The clothes guides keep the text agents saw.
 - Clothes, cut 2 (landed, 5ba6e0e3; tag archive/before-legacy-cloth-2; ledger C411):
   - tools design_garment, look_pattern, alter_pattern, garment_reference, garment_from_reference,
     garment_reference_brief and the guide topic cloth_reference. No blind step trial called them (17 logs;
@@ -28,11 +27,14 @@ Rule (Joe, 2026-11-10): no backwards compatibility. No gate, no switch, no shim;
   102 tools) -> mcp_app (app, decorator, registry), tool_common, tools_find, tools_model, tools_plan, tools_export,
   tools_human, tools_likeness, tools_skin, tools_hair, tools_cloth, tools_terrain, tools_plants, tools_clutter;
   largest 592 lines. Proof: the whole tool surface byte-identical before and after (deadcode/surface.py).
-- The split, step 2 (branch split-terrain-mesh; tag archive/before-split-terrain-hair; ledger C414): terrain_mesh.py
-  (5,680 lines) -> 15 modules along its sections (terrain_mesh.MODULES lists them). terrain_tiles is 928 lines: one
-  function of 799. The tile export's state hashes all of them, as before.
-- Not done: module docstrings in trimmed files (drape, zozo_hang, fold_checks, garment_pull, cloth_check) still describe
-  removed parts. Fix them when each file is split.
+- The split, step 2 (landed, d9e204a2; tag archive/before-split-terrain-hair; ledger C414): terrain_mesh.py (5,680
+  lines) -> 15 modules along its sections (terrain_mesh.MODULES). Pure moves; the tile export's state hashes them all.
+- The split, step 3 (landed 2026-11-11, merge "split-hair"; same tag; ledger C415): hair.py (5,694 lines) -> 15
+  modules (hair.MODULES). Not pure moves: its sections call each other both ways, so 28 functions import a later
+  module themselves, and names a test or a spec rebinds (and every constant) are read as module.name.
+- Still over 500 lines because one function is: terrain_tiles 928 (_export_tiles 799), hair_cards_job 604 (cards_job
+  570). They need refactoring, not moving. Also terrain_volumes 610, hair_groom 591, hair_look 571.
+- Not done: module docstrings in drape, zozo_hang, garment_pull, cloth_check still describe removed parts (fix at split).
 
 ## What still reaches the old clothes code (measured after cut 2; each cut assumes the ones above it)
 | cut | frees | what it needs first |
@@ -42,7 +44,6 @@ Rule (Joe, 2026-11-10): no backwards compatibility. No gate, no switch, no shim;
 | the design-sheet drafter (design_schema, design_targets, pattern_draft, pattern_jacket, pattern_styles, garment_design): reached only through cloth.pieces / cloth.validate for a garment with a "design" sheet | not measured | the regression garments cf_shirt and wf_simon re-made as own drafts; their error texts still name the deleted tools |
 | the old sim backend: cloth_job and blender_cloth keep cloth.place, cloth._build and cloth_made | not measured | zozo_hang uses cloth_job for job plumbing only: split that off |
 
-The first estimate of 33k deletable lines was by module import, not by function, and was too high.
 The clothes guides (cloth_guide, cloth_design, cloth_construction, cloth_sim, cloth_faults, cloth_blocks,
 cloth_background) are what was left after the old paragraphs went: they need one rewrite to steps 0-10.
 
@@ -54,5 +55,6 @@ split_server.py, split_module.py + plan_<module>.py (splits, callers rewritten),
 ## Also unreachable today, outside clothes (not touched; check blender_* by hand, Blender runs them by path)
 blender_cards 446 lines, faceext 376, terrain_seams 201, flipfit 137, faceatlas 105, gnm_controls 90, blender_lashes 86.
 
-NEXT: split the files over 2,000 lines, one area at a time and only while no agent works in it: terrain_mesh (5.7k),
-hair (5.7k) and asset (3.7k) first; cloth.py and pattern_form wait for the chain-build cut above.
+NEXT: split the files over 2,000 lines, one area at a time and only while no agent works in it: asset (3.7k, after
+the loop-retopology branch is landed or closed), face_ruler, faceshapes, base, skin_read, terrain, clutter, blockin,
+likeness, blender_scene, hair_clumps; cloth.py, pattern_form, garment_pull and cloth_made wait for the chain-build cut.

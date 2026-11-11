@@ -56,7 +56,8 @@ def roots(sc, ga: dict, line, rng, xp=None):
     along each bank of the parting (x = xp m from the middle; without them the nearest roots stood up to a spacing off
     the line and the part was a bare zigzag furrow). With gather.edge also a BAND of fine roots between the line and
     where the inner roots begin (depth = m inside the hairline, 0 on the line; inf for inner roots)."""
-    from .hair import _line_at, _poisson, inside, top_to_azel
+    from .hair_drawn import top_to_azel
+    from .hair_groom import _line_at, _poisson, inside
     sp = float(ga["spacing"])
     edge = float(ga.get("edge") or 0.0)
     a = np.arange(0.0, 360.0, 2.0)
@@ -140,7 +141,8 @@ def roots(sc, ga: dict, line, rng, xp=None):
 def paths(sc, line, D0, tie_d, xp, ga: dict, rng, n: int = 12, t=None):
     """The way of each root (unit directions D0 from the head centre) over the head to the tie: (m, n, 3) unit
     directions, and each way's length (radians). `t`: where along the way the n points stand (default evenly)."""
-    from .hair import _line_at, az_el, dirs
+    from .hair import az_el, dirs
+    from .hair_groom import _line_at
     D = _unit(np.array(D0, float))
     m = len(D)
     tie_d = _unit(np.asarray(tie_d, float))
@@ -289,7 +291,8 @@ def paths(sc, line, D0, tie_d, xp, ga: dict, rng, n: int = 12, t=None):
 
 def gather(sc, g: dict, tp: dict, ga: dict, line, rng, pre: str) -> dict:
     """The gather as a flow field: {name: lock} ([az, el, h] locks named like the rows' ones)."""
-    from .hair import _line_at, _part_x, az_el, dirs
+    from .hair import az_el, dirs
+    from .hair_groom import _line_at, _part_x
     xp = _part_x(g)
     edge = float(ga.get("edge") or 0.0)
     if float(ga.get("zig") or 0.0) > 0 and xp is not None:
@@ -422,7 +425,7 @@ def gather(sc, g: dict, tp: dict, ga: dict, line, rng, pre: str) -> dict:
         # sides and starts were the hard V and its stair steps (th_T51, drawn alone))
         nearf = 0.0
         if edge > 0 and hl[i] != 1:
-            from .hair import inside
+            from .hair_groom import inside
             nearf = edge * (1.0 - float(_ss_t((float(inside(sc, line, az[i] % 360, el[i])) - 0.01) / 0.025))) \
                 * (1.0 - float(_ss_t((abs(float(_wrap(az[i]))) - 60.0) / 30.0)))
         wx = (0.42 + 0.2 * ramp if edge > 0 else 0.6) if hl[i] == 1 else 1.9 - 0.5 * nearf
@@ -484,7 +487,7 @@ def gather(sc, g: dict, tp: dict, ga: dict, line, rng, pre: str) -> dict:
                 # ... but for the locks rooted just inside the hairline at the temples and sideburns: 4 cm wide, lifted
                 # and all their strands starting on one line, their starts were a dark slab with a toothed front edge
                 # 1-2 cm behind the line (what read as a shaved temple): narrow at the root, starts one by one
-                from .hair import inside
+                from .hair_groom import inside
                 d_in = float(inside(sc, line, az[i] % 360, el[i]))
                 nr = float(ga["feather"]) * (1 - float(_ss_t((d_in - 0.012) / 0.03))) * float(_ss_t((abs(float(_wrap(az[i]))) - 28.0) / 20.0))
                 if nr > 0.05:
@@ -753,7 +756,8 @@ def tail(sc, tp: dict, tl: dict, rng, col, pre: str, P0) -> dict:
 def escaped(sc, tp: dict, es: dict, line, rng, col, pre: str) -> dict:
     """Pieces that never reached the tie: each a few SINGLE hairs that share one fall and fray apart toward their
     ends (parallel hairs are a comb strip, lone ones wires): {name: lock} ("xyz" locks with `hairs`)."""
-    from .hair import _line_at, dirs, inside
+    from .hair import dirs
+    from .hair_groom import _line_at, inside
     from .hair_tied import ESCAPED_AT, ESCAPED_STRANDS
     cnt = es["count"] if isinstance(es["count"], (list, tuple)) else [es["count"]] * 2
     cnt = [int(c) for c in cnt]  # [right, left]
@@ -845,7 +849,8 @@ def wisps(sc, tp: dict, ws: dict, line, rng, col, pre: str) -> dict:
 
     Round three's escaped pieces were 1-2 hairs each on their own way, started 14 deg off the surface and bowed in
     random planes: stiff wires standing off the forehead (th_W1)."""
-    from .hair import _line_at, dirs, inside
+    from .hair import dirs
+    from .hair_groom import _line_at, inside
     from .hair_tied import WISP_AT
     cnt = ws["count"] if isinstance(ws["count"], (list, tuple)) else [ws["count"]] * 2
     cnt = [int(c) for c in cnt]  # [right, left]
@@ -1075,7 +1080,8 @@ def curls(sc, tp: dict, ws: dict, line, seed: int, col, pre: str) -> dict:
 
     Not the wisp clumps (hair_flow.wisps: 14-37 hairs fanned flat ON the skin): under lifted hair those were a grey
     veil over the forehead's corners (th_V75..80)."""
-    from .hair import _line_at, dirs
+    from .hair import dirs
+    from .hair_groom import _line_at
     n = ws.get("curls") or 0
     n = [int(c) for c in (n if isinstance(n, (list, tuple)) else [n] * 2)]  # [right, left]
     if max(n) <= 0:
@@ -1213,7 +1219,7 @@ def halo(sc, locks: dict, n: int, seed: int, pre: str) -> dict:
 
 
 def hair_lock_world(sc, lk):
-    from .hair import lock_world
+    from .hair_spec import lock_world
     return lock_world(sc, lk, lk["pts"])
 
 

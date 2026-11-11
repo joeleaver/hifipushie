@@ -400,24 +400,24 @@ def test_even_strands_take_the_nearest_scalp_locks_class():
 def test_even_groom_is_cut_by_clumps_at_every_tier():
     """An even groom (strands.even) has no per-lock guide strands: below the hero tier clump_cards found none and the
     lifted cap alone stood as a pompadour (Garrett main / npc / far, c2 2026-10-18). Every tier cuts it by clumps."""
-    from hifipushie import hair
-    for t in hair.CARD_TIERS:
-        assert hair.tier_settings(t, short=False, even=True).get("cut") == "clumps"
-    assert hair.tier_settings("main").get("cut") != "clumps"  # a guide-strand groom keeps its per-lock cut
+    from hifipushie import hair_job
+    for t in hair_job.CARD_TIERS:
+        assert hair_job.tier_settings(t, short=False, even=True).get("cut") == "clumps"
+    assert hair_job.tier_settings("main").get("cut") != "clumps"  # a guide-strand groom keeps its per-lock cut
 
 
 def test_cap_without_cards_keeps_its_height_when_asked():
     """cap_under_cards: a vertex with no card near lies at the floor (CAP_BARE_FLOOR), unless bare_floor=False (an even
     groom's cap at the hair's mid height: on the floor it was bare scalp, c1d); under a card it never stands over it."""
-    from hifipushie import hair
-    sc = hair.Scalp.__new__(hair.Scalp)
+    from hifipushie import hair_card_fit, hair_head
+    sc = hair_head.Scalp.__new__(hair_head.Scalp)
     sc.C = np.zeros(3)
     sc.r = lambda az, el: np.full(np.shape(az), 0.1)
     d = np.array([[0, 0, 1.0], [1.0, 0, 0]])
     V = d * 0.115  # 15 mm over the scalp
     card = {"P": np.array([[0, -0.01, 0.11], [0, 0.01, 0.11]]), "X": np.array([[1.0, 0, 0]] * 2), "hw": np.array([0.005, 0.005])}
-    h0 = np.linalg.norm(hair.cap_under_cards(sc, V, [card], 0.002, bare_floor=True), axis=1) - 0.1
-    h1 = np.linalg.norm(hair.cap_under_cards(sc, V, [card], 0.002, bare_floor=False), axis=1) - 0.1
+    h0 = np.linalg.norm(hair_card_fit.cap_under_cards(sc, V, [card], 0.002, bare_floor=True), axis=1) - 0.1
+    h1 = np.linalg.norm(hair_card_fit.cap_under_cards(sc, V, [card], 0.002, bare_floor=False), axis=1) - 0.1
     assert h0[0] < 0.0085 and h1[0] < 0.0085  # under the card (its edges ~10.3 mm up, less CAP_UNDER)
     assert h0[1] < 0.0025 and abs(h1[1] - 0.015) < 1e-4  # the side vertex: floor vs kept
 

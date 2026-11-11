@@ -806,8 +806,8 @@ def pull(name: str, log: list | None = None) -> dict:
             changes.update(cloth.pull_garments(spec, name, got["cloth"], log))
         hair_changed = False
         if got.get("hair"):  # locks a person moved, re-shaped or re-numbered (hair.pull_locks)
-            from . import hair
-            hc = hair.pull_locks(spec, name, got["hair"], log)
+            from . import hair_look
+            hc = hair_look.pull_locks(spec, name, got["hair"], log)
             changes.update(hc)
             hair_changed = bool(hc)
     moved = got["moved"]
@@ -879,8 +879,8 @@ def _restamp_hair(name: str, changed: bool, log: list) -> None:
     the hash of its new spec version: left stamped with the old one, the next edit to the same lock read as
     "stale" and was dropped (found hand-shaping dg_hh). Headless pulls leave the file alone (the next sync does it)."""
     if changed and live_session(name):
-        from . import hair
-        hair.sync(name)
+        from . import hair_look
+        hair_look.sync(name)
         log.append("hair: the edited locks re-stamped in the live session")
 
 
@@ -1113,8 +1113,8 @@ def sync(name: str, resolution: int = 256) -> dict:
     job = {"mode": "sync", "blend": str(blend_path(name)), "objects": objs, "instances": insts,
            "program": prog, "bases": bases, "prog_hash": ph, "decals": decal_gizmos(spec, log)}
     if spec.get("hair"):  # the hair's curve locks (hair.py) ride along
-        from . import hair
-        job["hair"] = hair.job(name, spec)
+        from . import hair_job
+        job["hair"] = hair_job.job(name, spec)
     if spec.get("cloth") is not None:  # simulated garments (cloth.py): sewn and settled on the body, as meshes
         from . import cloth
         job["cloth"] = cloth.scene_job(name, spec, log)

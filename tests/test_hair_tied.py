@@ -17,13 +17,14 @@ sys.path.insert(0, os.path.dirname(__file__))
 from test_hair_loose import _ball_head  # noqa: E402
 
 from hifipushie import hair, hair_tied as ht  # noqa: E402
+from hifipushie import hair_groom
 
 
 def _tie(**extra):
     sc, _ = _ball_head()
     tie = {"at": [176, 25], "escape": 0, **extra}
-    g = hair._merge(hair.GROOM, {"tie": tie, "parting": {"side": "centre"}, "seed": 2})
-    line = hair.hairline(sc, g)
+    g = hair_groom._merge(hair.GROOM, {"tie": tie, "parting": {"side": "centre"}, "seed": 2})
+    line = hair_groom.hairline(sc, g)
     return ht.grow(sc, g, line, np.random.default_rng(2))
 
 

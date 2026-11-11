@@ -480,7 +480,7 @@ def export_part(spec: dict, out_dir, log=print):
     from PIL import Image
 
     from . import base as basemod
-    from . import hair as hairmod
+    from . import hair_export
     from .spec import expand_mirror
     cfg = wanted(spec)
     if cfg is None:
@@ -494,7 +494,7 @@ def export_part(spec: dict, out_dir, log=print):
     T = np.asarray(m["tris"], np.int64)
     uv_v = np.c_[np.where(m["lid"] == 0, 0.25, 0.75), 0.1 + 0.8 * m["along"]]
     UVc = uv_v[T.ravel()]
-    _, tt, sg = hairmod._tangents(V, T, UVc)
+    _, tt, sg = hair_export._tangents(V, T, UVc)
     nv = np.asarray(m["normal"], np.float64)[T.ravel()]  # the ribbons' own normals (facing forward), not the faces'
     tt = tt - np.sum(tt * nv, 1, keepdims=True) * nv
     tt /= np.linalg.norm(tt, axis=1, keepdims=True) + 1e-12

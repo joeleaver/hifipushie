@@ -104,7 +104,7 @@ def chart(sc, g: dict, line, S: dict, D: dict, locks: list, e0: float, size: int
     depth, grey, cover; normal (.., 3, tangent space, green up); flow (.., 3: direction east / up in -1..1, strength);
     "lift": {"az", "el", "h"} = the hair's height over the scalp on a coarse grid (m)."""
     from scipy import ndimage
-    from .hair import _part, inside
+    from .hair_groom import _part, inside
     look = look or {}
     W = H = int(size)
     W2, H2 = W * ss, H * ss

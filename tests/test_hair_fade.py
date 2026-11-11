@@ -2,7 +2,7 @@
 import numpy as np
 
 from hifipushie import hair_fade as hf
-from hifipushie.hair import Scalp
+from hifipushie.hair_head import Scalp
 
 C = np.array([0.0, 0.01, 1.62])
 FADE = {"edge": [[0, -20.0], [180, -20.0]], "fade_mm": [[0, 20.0], [180, 20.0]], "fa_min": 55, "seed": 3}
