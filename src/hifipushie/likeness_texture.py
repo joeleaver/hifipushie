@@ -90,7 +90,8 @@ def project(mesh: dict, src_cam: dict, photo: np.ndarray, px_per_m: float | None
     None: as de-lit)."""
     from scipy import ndimage
     from scipy.spatial import cKDTree
-    from . import humanfit, likeness as lk
+    from . import humanfit
+    from . import likeness_render
     from . import likeness_shape as ls
     L = np.asarray(mesh["L"], float)
     centre = L[:68].mean(0)
@@ -104,7 +105,7 @@ def project(mesh: dict, src_cam: dict, photo: np.ndarray, px_per_m: float | None
     cam = ortho_camera(src_cam, centre, half, px_per_m)
     n = cam["size"][0]
     box = (0.0, 0.0, float(n), float(n))
-    _, k, ps = lk.render(mesh, cam, box, px=n, passes=True)
+    _, k, ps = likeness_render.render(mesh, cam, box, px=n, passes=True)
     zb, nrm, part = ps["zb"], ps["nrm"], ps["part"]
     on = np.isfinite(zb)
     ii, jj = np.nonzero(on)
@@ -115,7 +116,7 @@ def project(mesh: dict, src_cam: dict, photo: np.ndarray, px_per_m: float | None
     X = (Xc - np.asarray(cam["t"], float)) @ Rc + np.asarray(cam["centre"], float)
     # seen by the picture's camera? (its own depth buffer, as project_reference)
     spx = int(min(max(w, h), 1600))
-    _, ks, sp = lk.render(mesh, src_cam, (0.0, 0.0, float(w), float(h)), px=spx, passes=True)
+    _, ks, sp = likeness_render.render(mesh, src_cam, (0.0, 0.0, float(w), float(h)), px=spx, passes=True)
     zs = sp["zb"]
     Xs = (X - np.asarray(src_cam["centre"], float)) @ Rs.T + np.asarray(src_cam["t"], float)
     us, vs = src_cam["f"] * Xs[:, 0] / Xs[:, 2] + w / 2, src_cam["f"] * Xs[:, 1] / Xs[:, 2] + h / 2
@@ -305,11 +306,12 @@ def make(name: str, base: dict | None = None, views=None, opacity: float = 0.9, 
     a camera, the front first so later views only fill where it is transparent... each layer lies OVER the ones before:
     list the most trusted LAST)."""
     from PIL import Image
-    from . import likeness as lk, store
+    from . import store
+    from . import likeness_render, likeness_sides
     spec = spec or store.load(name)
     base = base or spec["base"]
-    refs = lk._refs(name)
-    mesh = lk.model_mesh(base)
+    refs = likeness_sides._refs(name)
+    mesh = likeness_render.model_mesh(base)
     tone = None
     if match and spec.get("skin"):
         from . import skin

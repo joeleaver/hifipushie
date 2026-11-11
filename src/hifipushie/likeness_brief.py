@@ -170,15 +170,16 @@ def reference_brief(kind: str = "head", subject: str = "") -> dict:
 # ---- checking a set of pictures ------------------------------------------------------------------------------------
 
 def _photo(image: str, cam=None, points=None, yaw_hint=None) -> dict:
-    """A picture read like likeness.photo_sides, without a model: the detector on the face (found first on the whole
+    """A picture read like likeness_sides.photo_sides, without a model: the detector on the face (found first on the whole
     picture, then again on a crop round it), its blendshapes and head pose."""
     from PIL import Image
     from . import likeness as lk
+    from . import likeness_detect, likeness_measure, likeness_sides
     img = Image.open(image).convert("RGB")
     if points:
-        box = lk._box(points, img.size)
+        box = likeness_sides._box(points, img.size)
     else:
-        P0 = lk.detect([img])[0]
+        P0 = likeness_detect.detect([img])[0]
         if P0 is None:  # a small face in a big picture (a full figure): look in overlapping tiles
             W, H = img.size
             for frac in (0.5, 0.33):
@@ -186,7 +187,7 @@ def _photo(image: str, cam=None, points=None, yaw_hint=None) -> dict:
                 s = max(min(s, W, H), 64)
                 for y in range(0, max(H - s, 0) + 1, max(s // 2, 1)):
                     for x in range(0, max(W - s, 0) + 1, max(s // 2, 1)):
-                        P0 = lk.detect_region(img, (x, y, x + s, y + s))
+                        P0 = likeness_detect.detect_region(img, (x, y, x + s, y + s))
                         if P0 is not None:
                             break
                     if P0 is not None:
@@ -194,21 +195,21 @@ def _photo(image: str, cam=None, points=None, yaw_hint=None) -> dict:
                 if P0 is not None:
                     break
         if P0 is None:
-            return {"image": image, "img": img, "side": lk.Side(None, None), "info": {}, "kind": "unknown", "box": None,
+            return {"image": image, "img": img, "side": likeness_measure.Side(None, None), "info": {}, "kind": "unknown", "box": None,
                     "mmpx": None}
-        box = lk._box({i: p for i, p in enumerate(P0[lk.MP68])}, img.size)
-    info = lk.detect_region(img, box, info=True) or {}
+        box = likeness_sides._box({i: p for i, p in enumerate(P0[lk.MP68])}, img.size)
+    info = likeness_detect.detect_region(img, box, info=True) or {}
     P = info.get("P")
-    yaw = lk.head_yaw(info.get("M"))
-    kind = lk.view_kind(yaw_hint if yaw_hint is not None else (yaw if yaw is not None else 0.0))
-    side = lk.Side(P, None)
+    yaw = likeness_detect.head_yaw(info.get("M"))
+    kind = likeness_measure.view_kind(yaw_hint if yaw_hint is not None else (yaw if yaw is not None else 0.0))
+    side = likeness_measure.Side(P, None)
     mmpx = None
     if cam is not None:
         mmpx = float(cam["t"][2] / cam["f"] * 1000.0)
     elif P is not None:  # a typical adult's inner-eye-corner gap (Farkas: ~32 mm) as the scale
         try:
             mmpx = 32.0 / max(np.linalg.norm(side.pt(133) - side.pt(362)), 1e-6)
-        except lk.Unmeasurable:
+        except likeness_measure.Unmeasurable:
             mmpx = None
     return {"image": image, "img": img, "side": side, "info": info, "kind": kind, "box": box, "mmpx": mmpx,
             "view": {"image": image}, "cam": cam or {"f": 0.0, "size": list(img.size), "t": [0, 0, 1]}, "yaw": yaw}
@@ -244,7 +245,7 @@ PROPS = (("lower_over_middle", ([2], [152]), ([168], [2])), ("mouth_in_lower", (
 def _props(side) -> dict:
     """Vertical proportions (along the face's own axis): nearly unchanged by the head's turn, so a set's pictures of
     one person should agree on them."""
-    from . import likeness as lk
+    from . import likeness_measure
     out = {}
     try:
         ex, ey = side.frame()
@@ -252,7 +253,7 @@ def _props(side) -> dict:
             num = (side.pt(a1) - side.pt(a0)) @ ey
             den = (side.pt(b1) - side.pt(b0)) @ ey
             out[nm] = float(num / den) if abs(den) > 1e-6 else None
-    except lk.Unmeasurable:
+    except likeness_measure.Unmeasurable:
         pass
     return out
 
@@ -284,10 +285,11 @@ def check_references(views: list, name: str | None = None) -> dict:
     """What a set of reference pictures supports. views: [{"image", "yaw"?: deg hint, ...}] or image paths; with
     `name`, the model's fitted cameras (human_refs.json) give the lens and scale for pictures they cover."""
     from . import likeness as lk
+    from . import likeness_notes, likeness_sides
     cams = {}
     if name:
         try:
-            refs = lk._refs(name)
+            refs = likeness_sides._refs(name)
             cams = {v["image"]: (c, v["points"]) for v in refs["views"] for c in [refs["cameras"][refs["views"].index(v)]]}
         except ValueError:
             cams = {}
@@ -296,7 +298,7 @@ def check_references(views: list, name: str | None = None) -> dict:
     for v in vs:
         cam, pts = cams.get(v["image"], (None, None))
         ph = _photo(v["image"], cam, pts, v.get("yaw"))
-        notes = lk.picture_notes(ph) if ph["side"].P is not None else {"problems": ["no face found"], "image": Path(v["image"]).name, "view": "unknown"}
+        notes = likeness_notes.picture_notes(ph) if ph["side"].P is not None else {"problems": ["no face found"], "image": Path(v["image"]).name, "view": "unknown"}
         if cam is None:
             # no fitted camera: nothing to compare the detector's turn with (the stand-in camera's yaw is 0: every turned
             # view of the good Garrett set read "NOT ONE PROJECTION ... the fitted camera 0", a tool fault)
@@ -338,7 +340,7 @@ def check_references(views: list, name: str | None = None) -> dict:
     ears_hidden = all(any("ears hidden" in p for p in n["problems"]) for _, n in pics) if pics else True
     hair_fore = all(any("forehead" in p for p in n["problems"]) for _, n in pics) if pics else True
     for it in lk.checklist():
-        by = [i for i, k in enumerate(kinds) if lk._allowed(it, k, kinds)[0]]
+        by = [i for i, k in enumerate(kinds) if likeness_sides._allowed(it, k, kinds)[0]]
         shot = ("profile_left" if "profile" in it["views"] else "front_raking" if it["measure"]["kind"] == "shape"
                 else "three_quarter_left" if it["measure"]["kind"] == "jaw" else "front")
         why = None
@@ -355,7 +357,7 @@ def check_references(views: list, name: str | None = None) -> dict:
         if why:
             uns.append({"id": it["id"], "name": it["name"], "why": why, "shot": shot})
         else:
-            inferred = all(lk._allowed(it, kinds[i], kinds)[1] for i in by)
+            inferred = all(likeness_sides._allowed(it, kinds[i], kinds)[1] for i in by)
             sup.append({"id": it["id"], "name": it["name"], "by": by,
                         "why": ("inferred from a three-quarter view" if inferred else "")
                         + ("; needs a traced jaw (likeness_points)" if it["measure"]["kind"] == "jaw" else "")

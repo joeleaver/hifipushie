@@ -73,14 +73,14 @@ def detector_points(view: dict):
     if not view.get("image"):
         return None
     from PIL import Image
-    from . import likeness
-    if not likeness.detector_available():
+    from . import likeness_detect, likeness_sides
+    if not likeness_detect.detector_available():
         return None
     img = Image.open(view["image"]).convert("RGB")
     pts = view.get("points") or {}
     if len(pts) >= 4:
-        return likeness.detect_region(img, likeness._box(pts, img.size))
-    d = likeness.detect([img])[0]
+        return likeness_detect.detect_region(img, likeness_sides._box(pts, img.size))
+    d = likeness_detect.detect([img])[0]
     return d
 
 

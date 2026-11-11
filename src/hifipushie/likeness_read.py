@@ -190,9 +190,9 @@ def apply_prior(cmp: dict, read: dict) -> list:
 def _views(name: str) -> list:
     """[(view name, camera, box)]: each reference's camera, then the unseen views made from the front camera."""
     from scipy.spatial.transform import Rotation as R
-    from . import likeness as lk
-    refs = lk._refs(name)
-    photos = lk._photos(refs)
+    from . import likeness_sides, likeness_stages
+    refs = likeness_sides._refs(name)
+    photos = likeness_stages._photos(refs)
     out, front = [], None
     for ph in photos:
         out.append((ph["kind"], ph["cam"], ph["box"]))
@@ -217,12 +217,13 @@ def render_views(name: str, out: str, base: dict | None = None, px: int = 520, l
     from the upper left, brows drawn; panels are labelled with the view's name only (nothing of the reference). For the
     blind read. Returns {"sheet": path, "views": [names]}."""
     from PIL import Image, ImageDraw
-    from . import likeness as lk, store
+    from . import store
+    from . import likeness_render
     base = base or store.load(name)["base"]
-    mesh = lk.model_mesh(base)
+    mesh = likeness_render.model_mesh(base)
     cells, names = [], []
     for nm, cam, box in _views(name):
-        im, k = lk.render(mesh, cam, box, px=px)[:2]
+        im, k = likeness_render.render(mesh, cam, box, px=px)[:2]
         c = Image.new("RGB", (px, px + 20), (238, 238, 238))
         c.paste(im.convert("RGB"), ((px - im.size[0]) // 2, 20 + (px - im.size[1]) // 2))
         if label:
@@ -253,21 +254,22 @@ def project_reference(name: str, out: str, base: dict | None = None, view: int =
     for outlines / proportions. Returns {"sheet", "views", "seen": share of each panel's head pixels that carry the
     picture}."""
     from PIL import Image, ImageDraw
-    from . import humanfit, likeness as lk, store
+    from . import humanfit, store
+    from . import likeness_render, likeness_sides
     base = base or store.load(name)["base"]
-    refs = lk._refs(name)
+    refs = likeness_sides._refs(name)
     src_v, src_cam = refs["views"][view], refs["cameras"][view]
     photo = np.asarray(Image.open(src_v["image"]).convert("RGB"), float)
-    mesh = lk.model_mesh(base)
+    mesh = likeness_render.model_mesh(base)
     w, h = src_cam["size"]
     sbox = (0.0, 0.0, float(w), float(h))
     spx = int(min(max(w, h), 1600))
-    _, ks, sp = lk.render(mesh, src_cam, sbox, px=spx, passes=True)
+    _, ks, sp = likeness_render.render(mesh, src_cam, sbox, px=spx, passes=True)
     zs = sp["zb"]
     Rs = humanfit._cam_rot(src_cam)
     cells, names, seen = [], [], {}
     for nm, cam, box in _views(name):
-        im, k, ps = lk.render(mesh, cam, box, px=px, passes=True)
+        im, k, ps = likeness_render.render(mesh, cam, box, px=px, passes=True)
         zb, nrm = ps["zb"], ps["nrm"]
         H, W = zb.shape
         on = np.isfinite(zb)

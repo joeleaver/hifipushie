@@ -35,7 +35,8 @@ def focus(name: str, feature: str, out: str, views: list | None = None, T: int =
     offset elsewhere doesn't hide its shape. before = another model: a second row photo | before | after | change |
     raking before | raking after. Views where the feature isn't seen (the ear in front) are left out."""
     from PIL import Image, ImageDraw, ImageFilter
-    from . import humanfit, likeness, store
+    from . import humanfit, store
+    from . import likeness_render
     if feature not in FEATURES:
         raise ValueError(f"focus: one of {', '.join(FEATURES)}")
     F = FEATURES[feature]
@@ -100,7 +101,7 @@ def focus(name: str, feature: str, out: str, views: list | None = None, T: int =
         to_ph = lambda Q: [((q[0] - pbox[0]) * k, (q[1] - pbox[1]) * k) for q in Q]  # noqa: E731
         # (from the side the face looks to: a right-facing profile's front is on the picture's right)
         rk_dir = RAKE * [-1.0, 1.0, 1.0] if float(v.get("yaw", 0)) >= 70 else RAKE
-        rake = lambda m: fill(*likeness.render(m, cam, box, px=px, brows=False, passes=True, ao=True, shadow=4.0,  # noqa: E731
+        rake = lambda m: fill(*likeness_render.render(m, cam, box, px=px, brows=False, passes=True, ao=True, shadow=4.0,  # noqa: E731
                                                 light=(0.3, rk_dir, 1.0, 0.0))[::2], share=0.3)
         rk = rake(mesh)
         ov = Image.blend(ph, cl, 0.5)
@@ -125,12 +126,12 @@ def focus(name: str, feature: str, out: str, views: list | None = None, T: int =
             olA = np.asarray(ol).copy()
             olA[e] = (30, 200, 30)
             ol = Image.fromarray(olA)
-        sg = float(F["squint_mm"] / likeness._mm_per_px(cam, mesh["L"][27:48]) * k)
+        sg = float(F["squint_mm"] / likeness_render._mm_per_px(cam, mesh["L"][27:48]) * k)
         sq = lambda im: im.convert("L").filter(ImageFilter.GaussianBlur(sg)).convert("RGB")  # noqa: E731
         y = 18 + i * per * (T + 18)
         for j, im in enumerate((ph, cl, ov, ol, rk, sq(ph), sq(cl))):
             sheet.paste(im.resize((T, T), Image.LANCZOS), (j * T, y))
-        mm = likeness._mm_per_px(cam, mesh["L"][27:48])
+        mm = likeness_render._mm_per_px(cam, mesh["L"][27:48])
         dr.text((4, y + T + 2), f"{feature}, view {vi} (yaw {float(v.get('yaw', 0)):g}): registered at {how}, shift "
                 f"{sh[0]:+.0f}, {sh[1]:+.0f} px; crop {side * mm:.0f} mm", fill=(0, 0, 0))
         if mesh_b is not None:

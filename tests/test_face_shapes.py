@@ -710,7 +710,7 @@ def test_exported_squint_matches_fit():
         print("skip: HP_SQUINT_GLB / HP_SQUINT_SPEC / HP_SMILE_FIT not set")
         return
     import copy
-    from hifipushie import humanfit, likeness, rig_audit
+    from hifipushie import humanfit, rig_audit
     from hifipushie import base_identity
     g = rig_audit.read_glb(glb)["meshes"]
     W = {"mouthSmileLeft": 1.0, "mouthSmileRight": 1.0, "cheekSquintLeft": 1.0, "cheekSquintRight": 1.0}
@@ -732,7 +732,7 @@ def test_exported_squint_matches_fit():
         s = copy.deepcopy(spec)
         if ev is not None:
             s["base"]["head"]["expression"] = {n: float(x) for n, x in zip(names, ev) if abs(x) > 1e-5}
-        m = likeness.model_mesh_from_state(humanfit.state(s["base"]))
+        m = likeness_render.model_mesh_from_state(humanfit.state(s["base"]))
         F = np.asarray(m["F"])
         if F.shape[1] == 4:
             F = np.concatenate([F[:, [0, 1, 2]], F[:, [0, 2, 3]]])
@@ -787,10 +787,11 @@ def test_exported_neutral_eye_opening_matches_source():
     if not glb or not os.environ.get("HP_SQUINT_SPEC"):
         print("skip: HP_SQUINT_GLB / HP_SQUINT_SPEC not set")
         return
-    from hifipushie import humanfit, likeness, rig_audit
+    from hifipushie import humanfit, rig_audit
+    from hifipushie import likeness_render
     g = rig_audit.read_glb(glb)["meshes"]
     spec = json.loads(Path(os.environ["HP_SQUINT_SPEC"]).read_text())
-    m = likeness.model_mesh_from_state(humanfit.state(spec["base"]))
+    m = likeness_render.model_mesh_from_state(humanfit.state(spec["base"]))
     F = np.asarray(m["F"])
     if F.shape[1] == 4:
         F = np.concatenate([F[:, [0, 1, 2]], F[:, [0, 2, 3]]])

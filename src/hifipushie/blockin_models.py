@@ -256,7 +256,8 @@ def with_anchor_points(views: list) -> list:
     set, 2026-10-11: 0 anchors, the 3/4's yaw unpinned). Views with any lm point, profiles and views without a face
     are returned as they are."""
     from . import likeness
-    if not likeness.detector_available():
+    from . import likeness_detect
+    if not likeness_detect.detector_available():
         return views
     from PIL import Image
     out = []
@@ -264,7 +265,7 @@ def with_anchor_points(views: list) -> list:
         pts = v.get("points") or {}
         if (abs(float(v.get("yaw", 0.0))) < 70 and v.get("image")
                 and not any(str(k).startswith("lm") and str(k)[2:].isdigit() for k in pts)):
-            P = likeness.detect([Image.open(v["image"]).convert("RGB")])[0]
+            P = likeness_detect.detect([Image.open(v["image"]).convert("RGB")])[0]
             if P is not None:
                 v = {**v, "points": {**{f"lm{i}": [round(float(P[likeness.MP68[i]][0]), 2), round(float(P[likeness.MP68[i]][1]), 2)]
                                         for i in range(17, 68)}, **pts}}

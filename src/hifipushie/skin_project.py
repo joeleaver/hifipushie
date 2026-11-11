@@ -202,7 +202,8 @@ def atlas(base: dict, size: int = SIZE) -> dict:
     columns), "tri" (their triangle), "bary", "T" (triangles: template vertex indices), "uvT" (triangles' atlas
     coordinates), "V" (template vertices at rest), "head" (vertex is the head's), "gid" (GNM vertex or -1), "fade",
     "mm" (mm per texel, median), per-vertex "groups" {name: weight}}. Image row 0 is the top (v = v1)."""
-    from . import likeness as lk, onemesh
+    from . import onemesh
+    from . import likeness_render
     from . import base_identity
     key = hashlib.sha1(json.dumps([base, size, VERSION], sort_keys=True, default=str).encode()).hexdigest()
     if _ATLAS.get("key") == key:
@@ -216,15 +217,15 @@ def atlas(base: dict, size: int = SIZE) -> dict:
     H = int(round(size * (hi[1] - lo[1]) / (hi[0] - lo[0])))
     sx = ((uvT[..., 0] - lo[0]) / (hi[0] - lo[0]) * W).ravel()
     sy = ((hi[1] - uvT[..., 1]) / (hi[1] - lo[1]) * H).ravel()
-    if not lk._RUN:
-        lk._RUN.append(lk._raster())
+    if not likeness_render._RUN:
+        likeness_render._RUN.append(likeness_render._raster())
     F = np.arange(3 * len(T)).reshape(-1, 3)
     bary = np.zeros((H, W, 3))
     zb = np.full((H, W), np.inf)
-    lk._RUN[0](sx, sy, np.zeros(len(sx)), np.ascontiguousarray(F), np.tile(np.eye(3), (len(T), 1)), W, H, bary, zb)
+    likeness_render._RUN[0](sx, sy, np.zeros(len(sx)), np.ascontiguousarray(F), np.tile(np.eye(3), (len(T), 1)), W, H, bary, zb)
     tid = np.zeros((H, W, 3))
     zb2 = np.full((H, W), np.inf)
-    lk._RUN[0](sx, sy, np.zeros(len(sx)), np.ascontiguousarray(F), np.repeat(np.arange(len(T), dtype=float), 3)[:, None] * np.ones(3), W, H, tid, zb2)
+    likeness_render._RUN[0](sx, sy, np.zeros(len(sx)), np.ascontiguousarray(F), np.repeat(np.arange(len(T), dtype=float), 3)[:, None] * np.ones(3), W, H, tid, zb2)
     ii, jj = np.nonzero(np.isfinite(zb))
     b = bary[ii, jj]
     b /= b.sum(1, keepdims=True)
@@ -292,29 +293,30 @@ def _blur(at: dict, vals: np.ndarray, w: np.ndarray | None, mm: float) -> np.nda
 
 
 def _normals(at: dict, V: np.ndarray) -> np.ndarray:
-    from . import likeness as lk
-    return lk._vertex_normals(V, at["_Fall"]) if "_Fall" in at else lk._vertex_normals(V, at["T"])
+    from . import likeness_render
+    return likeness_render._vertex_normals(V, at["_Fall"]) if "_Fall" in at else likeness_render._vertex_normals(V, at["T"])
 
 
 # ---------------------------------------------------------------- one picture onto the atlas
 
 def sample_view(at: dict, mesh: dict, cam: dict, photo: np.ndarray, maps: dict | None = None) -> dict:
-    """One picture at the atlas' texels through its fitted camera. mesh: likeness.model_mesh of the view's own base
+    """One picture at the atlas' texels through its fitted camera. mesh: likeness_render.model_mesh of the view's own base
     (its expression). photo: (h, w, 3) sRGB 0..255. maps: {name: (h, w) picture-pixel maps} sampled the same way.
     Returns {"rgb" (n, 3) linear, "vis" (seen by the camera), "facing" (cos), "X", "N" (world), "uv" (picture px),
     "mm" (the picture's mm per pixel at the head), "maps": {name: (n,)}, "clip" (a channel clipped)}."""
-    from . import humanfit, likeness as lk
+    from . import humanfit
+    from . import likeness_render
     from .likeness_read import PROJECT_TOL
     V = np.asarray(mesh["V"], float)
     X = interp(at, V)
-    N = interp(at, lk._vertex_normals(V, np.asarray(mesh["F"])))
+    N = interp(at, likeness_render._vertex_normals(V, np.asarray(mesh["F"])))
     N /= np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-12)
     w, h = cam["size"]
     R = humanfit._cam_rot(cam)
     Xc = (X - np.asarray(cam["centre"], float)) @ R.T + np.asarray(cam["t"], float)
     us, vs = cam["f"] * Xc[:, 0] / Xc[:, 2] + w / 2, cam["f"] * Xc[:, 1] / Xc[:, 2] + h / 2
     spx = int(min(max(w, h), 2000))
-    _, ks, sp = lk.render(mesh, cam, (0.0, 0.0, float(w), float(h)), px=spx, brows=False, passes=True)
+    _, ks, sp = likeness_render.render(mesh, cam, (0.0, 0.0, float(w), float(h)), px=spx, brows=False, passes=True)
     zs = sp["zb"]
     a, b = np.round(vs * ks - 0.5).astype(int), np.round(us * ks - 0.5).astype(int)
     inside = (a >= 0) & (a < zs.shape[0]) & (b >= 0) & (b < zs.shape[1]) & (us >= 0.5) & (us < w - 1.5) & (vs >= 0.5) & (vs < h - 1.5) & (Xc[:, 2] > 0.01)
@@ -537,10 +539,10 @@ def transfer(mesh: dict, X: np.ndarray, N: np.ndarray, sub: np.ndarray | None = 
     """The head's light transport at points: {"T" (n, 9): irradiance per unit of each order-2 SH coefficient of the
     light, through each point's own visibility (self-shadow and occlusion in it), "ao" (n,), "D" (directions),
     "sub_vis" (D, m) the visibility of the points `sub` per direction (the key light's search)}."""
-    from . import likeness as lk
-    Vo, Fo = lk._occluders(mesh)
+    from . import likeness_render
+    Vo, Fo = likeness_render._occluders(mesh)
     D = _dirs(n_dirs)
-    Yk = lk.sh9(D)
+    Yk = likeness_render.sh9(D)
     T = np.zeros((len(X), 9), np.float32)
     num, den = np.zeros(len(X), np.float32), np.zeros(len(X), np.float32)
     sv = np.zeros((n_dirs, len(sub)), bool) if sub is not None else None
@@ -552,7 +554,7 @@ def transfer(mesh: dict, X: np.ndarray, N: np.ndarray, sub: np.ndarray | None = 
         up = np.flatnonzero(c > 0)
         if not len(up):
             continue
-        dm = lk._DepthMap(Vo, Fo, d, VIS_MM)
+        dm = likeness_render._DepthMap(Vo, Fo, d, VIS_MM)
         vis = dm.lit(X[up], N[up])
         cv = (c[up] * vis).astype(np.float32)
         T[up] += cv[:, None] * Yk[k].astype(np.float32)
@@ -567,8 +569,8 @@ def transfer(mesh: dict, X: np.ndarray, N: np.ndarray, sub: np.ndarray | None = 
 
 def key_basis(mesh: dict, X: np.ndarray, N: np.ndarray, d, disc: float = KEY_DISC) -> np.ndarray:
     """A soft key light's irradiance at points (cos x the share of its disc that sees the point)."""
-    from . import likeness as lk
-    Vo, Fo = lk._occluders(mesh)
+    from . import likeness_render
+    Vo, Fo = likeness_render._occluders(mesh)
     d = np.asarray(d, float) / np.linalg.norm(d)
     a = np.cross(d, [1.0, 0, 0] if abs(d[0]) < 0.9 else [0, 1.0, 0])
     a /= np.linalg.norm(a)
@@ -579,7 +581,7 @@ def key_basis(mesh: dict, X: np.ndarray, N: np.ndarray, d, disc: float = KEY_DIS
     up = np.flatnonzero(c > 0)
     v = np.zeros(len(up))
     for q in ds:
-        v += lk._DepthMap(Vo, Fo, q / np.linalg.norm(q), VIS_MM).lit(X[up], N[up])
+        v += likeness_render._DepthMap(Vo, Fo, q / np.linalg.norm(q), VIS_MM).lit(X[up], N[up])
     out = np.zeros(len(X), np.float32)
     out[up] = c[up] * v / len(ds)
     return out
@@ -685,7 +687,7 @@ def ours_albedo(at: dict, spec: dict, stride: int = 4, log=print) -> np.ndarray:
     `stride`-th texel (skin_read_frames.Albedo, in Python) and interpolated: (n, 3) linear."""
     import copy
     from scipy import ndimage
-    from . import likeness as lk
+    from . import likeness_render
     from . import skin_read_frames
     sp = copy.deepcopy(spec)
     (sp.get("skin") or {}).pop("projection", None)
@@ -699,7 +701,7 @@ def ours_albedo(at: dict, spec: dict, stride: int = 4, log=print) -> np.ndarray:
     sel = np.flatnonzero((at["ii"] % stride == stride // 2) & (at["jj"] % stride == stride // 2))
     V = at["V"]
     X = interp(at, V)[sel]
-    Nv = lk._vertex_normals(V, at["T"])
+    Nv = likeness_render._vertex_normals(V, at["T"])
     N = interp(at, Nv)[sel]
     N /= np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-12)
     A = skin_read_frames.Albedo(st, X, N, log=log)()
@@ -1074,7 +1076,8 @@ def make(name: str, spec: dict | None = None, views=None, size: int = SIZE, deli
     from PIL import Image
     from scipy import ndimage
     from scipy.spatial import cKDTree
-    from . import likeness as lk, store
+    from . import store
+    from . import likeness_render
     from . import blockin_expression, blockin_models
     t0 = time.time()
     spec = spec or store.load(name)
@@ -1084,7 +1087,7 @@ def make(name: str, spec: dict | None = None, views=None, size: int = SIZE, deli
     VI = [i for i in (range(len(rj["views"])) if views is None else views) if rj["views"][i].get("image") and rj["cameras"][i] is not None]
     if not VI:
         raise ValueError(f"skin_project: {name} has no fitted reference views (human_reference / block_in first)")
-    meshes = blockin_expression._per_view(spec["base"], rj, VI, lambda b: lk.model_mesh(b))
+    meshes = blockin_expression._per_view(spec["base"], rj, VI, lambda b: likeness_render.model_mesh(b))
     plain = _plain(at)
     regs = region_masks(at)
     beard = np.zeros(n, bool)
@@ -1294,7 +1297,7 @@ def make(name: str, spec: dict | None = None, views=None, size: int = SIZE, deli
     inner = _blur(at, (direct > 0.6).astype(float), None, 1.5)          # not at the picture's own edges (a border is no line)
     facem = np.max([m for k, m in regs.items() if k not in ("lips", "brow")], 0)
     det = det * _sstep((inner - 0.8) / 0.15) * (1 - _sstep((brow - 0.2) / 0.4)) * facem
-    for Ve, _, _ in lk.model_mesh(spec["base"])["eyes"]:      # not on the lids (the lid's fold and lash line are FORM, not a groove)
+    for Ve, _, _ in likeness_render.model_mesh(spec["base"])["eyes"]:      # not on the lids (the lid's fold and lash line are FORM, not a groove)
         c_ = Ve.mean(0)
         det = det * _sstep((np.linalg.norm(interp(at, at["V"]) - c_, axis=1) - float(np.linalg.norm(Ve - c_, axis=1).max()) - DETAIL_LID) / 0.003)
     ao = np.min([S[vi]["ao"] for vi in VI if "ao" in S[vi]], 0) if any("ao" in S[vi] for vi in VI) else None
@@ -1353,7 +1356,7 @@ def make(name: str, spec: dict | None = None, views=None, size: int = SIZE, deli
     valid = image(at, np.ones(n, bool), False)
     fade = np.clip(interp(at, at["fade"]), 0, 1)
     X0 = interp(at, at["V"])
-    for Ve, _, _ in lk.model_mesh(spec["base"])["eyes"]:      # the lid margins stay the live procedural skin's (wet line,
+    for Ve, _, _ in likeness_render.model_mesh(spec["base"])["eyes"]:      # the lid margins stay the live procedural skin's (wet line,
         c = Ve.mean(0)                                          # caruncle, lash roots): the image is transparent there
         r = float(np.linalg.norm(Ve - c, axis=1).max())
         fade = fade * _sstep((np.linalg.norm(X0 - c, axis=1) - r - LID_OPEN[0]) / LID_OPEN[1])
@@ -1773,13 +1776,13 @@ def stage_light(light: dict, n: int = 24, angle: float = 55.0) -> dict:
     the fewest non-negative soft suns of a fixed direction set + ambient whose order-2 projection it is (NNLS per
     channel), the key as its own sun. For renders set beside the picture: what the tool believes lit it."""
     from scipy.optimize import nnls
-    from . import likeness as lk
+    from . import likeness_render
     sh = np.asarray(light["sh"], float)
     Dq = _dirs(4000)
-    Yq = lk.sh9(Dq)
+    Yq = likeness_render.sh9(Dq)
     G = 4 * np.pi / len(Dq) * Yq.T @ Yq
     D = _dirs(n)
-    A = np.linalg.solve(G, np.pi * lk.sh9(D).T)              # (9, n): a unit sun's order-2 coefficients
+    A = np.linalg.solve(G, np.pi * likeness_render.sh9(D).T)              # (9, n): a unit sun's order-2 coefficients
     amb = np.zeros((9, 1))
     amb[0, 0] = 1.0
     M = np.c_[A, amb]
@@ -1886,7 +1889,8 @@ def marks(name: str, spec: dict | None = None) -> dict:
     noise: skin.features.moles.at takes the list."""
     from PIL import Image
     from scipy import ndimage
-    from . import images, likeness as lk, store
+    from . import images, store
+    from . import likeness_render
     spec = spec or store.load(name)
     pj = (spec.get("skin") or {}).get("projection") or {}
     if not pj.get("albedo") or not pj.get("confidence"):
@@ -1903,7 +1907,7 @@ def marks(name: str, spec: dict | None = None) -> dict:
         if k not in ("lips", "brow"):
             allow |= m
     X = interp(at, at["V"])
-    for Ve, _, _ in lk.model_mesh(spec["base"])["eyes"]:
+    for Ve, _, _ in likeness_render.model_mesh(spec["base"])["eyes"]:
         c_ = Ve.mean(0)
         allow &= np.linalg.norm(X - c_, axis=1) - float(np.linalg.norm(Ve - c_, axis=1).max()) > DETAIL_LID
     A = image(at, allow, False) & (ndimage.gaussian_filter((cf > 0.6).astype(np.float32), 2.0 / at["mm"]) > 0.9)

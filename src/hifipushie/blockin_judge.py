@@ -9,7 +9,8 @@ wrong there. Picture pixels are for judging only: nothing here reaches the model
 import numpy as np
 from PIL import Image, ImageDraw
 
-from . import humanfit, likeness as lk, likeness_read as lr, store
+from . import humanfit, likeness_read as lr, store
+from . import likeness_render
 from . import blockin_clay, blockin_expression, blockin_models
 
 SOURCE_PX = 1000   # a picture's own depth map (visibility), long side
@@ -18,7 +19,7 @@ SOURCE_PX = 1000   # a picture's own depth map (visibility), long side
 def _source(mesh: dict, cam: dict, view: dict) -> dict:
     """A picture and its camera's depth map."""
     w, h = cam["size"]
-    _, k, ps = lk.render(mesh, cam, (0.0, 0.0, float(w), float(h)), px=min(max(w, h), SOURCE_PX), passes=True)
+    _, k, ps = likeness_render.render(mesh, cam, (0.0, 0.0, float(w), float(h)), px=min(max(w, h), SOURCE_PX), passes=True)
     return {"photo": np.asarray(Image.open(view["image"]).convert("RGB"), float), "cam": cam, "k": k, "zb": ps["zb"],
             "R": humanfit._cam_rot(cam)}
 
@@ -44,7 +45,7 @@ def _lay(img: np.ndarray, X: np.ndarray, n: np.ndarray, ii: np.ndarray, jj: np.n
 
 def _skinned(mesh: dict, cam: dict, box: tuple, sources: list, px: int) -> tuple:
     """(the head with the pictures as its skin, the same head's clay) through cam, cropped to box."""
-    im, k, ps = lk.render(mesh, cam, box, px=px, passes=True)
+    im, k, ps = likeness_render.render(mesh, cam, box, px=px, passes=True)
     zb = ps["zb"]
     on = np.isfinite(zb)
     ii, jj = np.nonzero(on)

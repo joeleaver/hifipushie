@@ -430,7 +430,8 @@ def iris_check(name: str) -> dict:
     equal), "iris_rgb" / "iris_hex" (the picture's iris ring colour), "text"}. The lids are matched in iris radii, so a
     drawn iris k x too big opens the eye k x too tall and crowds the brow (Tess: 12.66 mm drawn, 10.7 mm hers)."""
     from PIL import Image
-    from . import humanfit, likeness, store
+    from . import humanfit, store
+    from . import likeness_render
     from . import blockin_clay, blockin_models
     rj = blockin_models._refs(name)
     vi = blockin_clay._front(rj)
@@ -445,7 +446,7 @@ def iris_check(name: str) -> dict:
     st = humanfit.state(base)
     from . import base_implied
     native = base_implied.eye_native(spec) is not None   # GNM's own eyeball: the iris is its limbus (identity eyes_000)
-    mm = likeness._mm_per_px(cam, st["L"][27:48])
+    mm = likeness_render._mm_per_px(cam, st["L"][27:48])
     photo = 2 * float(np.mean([e["r_px"] for e in lb])) * mm
     det_px = float(np.mean([e["detector_px"] for e in lb]))
     kd = det_px / max(float(np.mean([e["r_px"] for e in lb])), 1e-6)
@@ -519,7 +520,8 @@ def ruler_evidence(name: str) -> dict:
     over the margin at RULER_COLS), "crease_dark", "crease_cols" (at u -5 / 0 / +5: the eye step's three sections;
     None when the line is fainter than DARK_LINE), "eyes" (per eye), "mm" (mm per picture px)}."""
     from PIL import Image
-    from . import eye_ruler, humanfit, likeness, store
+    from . import eye_ruler, humanfit, store
+    from . import likeness_render
     from . import blockin_clay, blockin_models
     rj = blockin_models._refs(name)
     vi = blockin_clay._front(rj)
@@ -529,7 +531,7 @@ def ruler_evidence(name: str) -> dict:
     if P is None:
         raise ValueError("eye ruler: the detector found no face on the front picture")
     st = humanfit.state(store.load(name)["base"])
-    mm = likeness._mm_per_px(cam, st["L"][27:48])
+    mm = likeness_render._mm_per_px(cam, st["L"][27:48])
     eyes = eye_ruler.read(img, P, mm)
     m = eye_ruler.mean(eyes)
     cr = np.asarray(m["crease"], float)

@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from hifipushie import likeness as lk
+from hifipushie import likeness_fit, likeness_measure, likeness_notes, likeness_sides, likeness_stages
 
 
 def face(rot_deg=0.0, scale=1.0, tilt=5.0, arch=4.0, hump=3.0):
@@ -38,33 +39,33 @@ def face(rot_deg=0.0, scale=1.0, tilt=5.0, arch=4.0, hump=3.0):
 
 def test_tilt_and_rotation():
     for rot in (0.0, 20.0, -35.0):
-        s = lk.Side(face(rot_deg=rot))
-        assert lk.value(s, {"kind": "tilt", "pairs": [[[133], [33]], [[362], [263]]]}, 1.0) == pytest.approx(5.0, abs=1e-6)
+        s = likeness_measure.Side(face(rot_deg=rot))
+        assert likeness_measure.value(s, {"kind": "tilt", "pairs": [[[133], [33]], [[362], [263]]]}, 1.0) == pytest.approx(5.0, abs=1e-6)
 
 
 def test_dist_width_ratio_level():
-    s = lk.Side(face(scale=2.0, rot_deg=10))
-    assert lk.value(s, {"kind": "dist", "a": [133], "b": [362], "axis": "x"}, 0.5) == pytest.approx(30.0)
-    assert lk.value(s, {"kind": "dist", "pairs": [[[159], [145]], [[386], [374]]], "axis": "y"}, 1.0) == pytest.approx(16.0)
+    s = likeness_measure.Side(face(scale=2.0, rot_deg=10))
+    assert likeness_measure.value(s, {"kind": "dist", "a": [133], "b": [362], "axis": "x"}, 0.5) == pytest.approx(30.0)
+    assert likeness_measure.value(s, {"kind": "dist", "pairs": [[[159], [145]], [[386], [374]]], "axis": "y"}, 1.0) == pytest.approx(16.0)
     w0 = 2 * np.sqrt(60 ** 2 - 10 ** 2)                               # the circle's chord 10 px above its centre
-    w = lk.value(s, {"kind": "width", "level": [468, 473]}, 1.0)
+    w = likeness_measure.value(s, {"kind": "width", "level": [468, 473]}, 1.0)
     assert w == pytest.approx(2 * w0, rel=0.01)
-    r = lk.value(s, {"kind": "ratio", "num": {"kind": "dist", "a": [168], "b": [152], "axis": "y"},
+    r = likeness_measure.value(s, {"kind": "ratio", "num": {"kind": "dist", "a": [168], "b": [152], "axis": "y"},
                      "den": {"kind": "width", "level": [468, 473]}}, 1.0)
     assert r == pytest.approx(100 / w0, rel=0.01)
-    assert lk.value(s, {"kind": "level", "pts": [133, 362], "from": [168], "to": [152]}, 1.0) == pytest.approx(0.4)
+    assert likeness_measure.value(s, {"kind": "level", "pts": [133, 362], "from": [168], "to": [152]}, 1.0) == pytest.approx(0.4)
 
 
 def test_arch_angle_bow():
-    s = lk.Side(face(arch=4.0, hump=3.0))
-    assert lk.value(s, {"kind": "arch", "pairs": [[107, 66, 105, 63, 70], [336, 296, 334, 293, 300]]}, 1.0) == pytest.approx(4.0, abs=0.05)
-    a = lk.value(s, {"kind": "angle", "a": [1], "vertex": [2], "b": [0]}, 1.0)
+    s = likeness_measure.Side(face(arch=4.0, hump=3.0))
+    assert likeness_measure.value(s, {"kind": "arch", "pairs": [[107, 66, 105, 63, 70], [336, 296, 334, 293, 300]]}, 1.0) == pytest.approx(4.0, abs=0.05)
+    a = likeness_measure.value(s, {"kind": "angle", "a": [1], "vertex": [2], "b": [0]}, 1.0)
     u, w = np.array([10, -6]), np.array([0, 14])
     assert a == pytest.approx(np.degrees(np.arccos(u @ w / np.linalg.norm(u) / np.linalg.norm(w))))
-    b = lk.value(s, {"kind": "bow", "line": [168, 6, 197, 195, 5, 4, 1]}, 1.0)
+    b = likeness_measure.value(s, {"kind": "bow", "line": [168, 6, 197, 195, 5, 4, 1]}, 1.0)
     chord = np.array([30, 60]) / np.hypot(30, 60)
     assert b == pytest.approx(3.0 * abs(chord[1]), rel=0.05)     # the hump's height across the chord, + = a hump
-    assert lk.value(lk.Side(face(hump=-3.0)), {"kind": "bow", "line": [168, 6, 197, 195, 5, 4, 1]}, 1.0) < 0
+    assert likeness_measure.value(likeness_measure.Side(face(hump=-3.0)), {"kind": "bow", "line": [168, 6, 197, 195, 5, 4, 1]}, 1.0) < 0
 
 
 def test_landmark_fallback():
@@ -73,20 +74,20 @@ def test_landmark_fallback():
     for i, m in enumerate(lk.MP68):
         lm[i] = P[m]
     lm[68], lm[69] = P[473], P[468]
-    s = lk.Side(None, lm)
-    assert lk.value(s, {"kind": "dist", "a": [133], "b": [362], "axis": "x"}, 1.0) == pytest.approx(30.0)
-    assert lk.value(s, {"kind": "dist", "a": [468], "b": [473], "axis": "x"}, 1.0) == pytest.approx(60.0)
-    with pytest.raises(lk.Unmeasurable):
-        lk.value(s, {"kind": "width", "level": [468, 473]}, 1.0)
-    with pytest.raises(lk.Unmeasurable):
-        lk.value(s, {"kind": "dist", "a": [129], "b": [358], "axis": "x"}, 1.0)   # wings: not in the 68
+    s = likeness_measure.Side(None, lm)
+    assert likeness_measure.value(s, {"kind": "dist", "a": [133], "b": [362], "axis": "x"}, 1.0) == pytest.approx(30.0)
+    assert likeness_measure.value(s, {"kind": "dist", "a": [468], "b": [473], "axis": "x"}, 1.0) == pytest.approx(60.0)
+    with pytest.raises(likeness_measure.Unmeasurable):
+        likeness_measure.value(s, {"kind": "width", "level": [468, 473]}, 1.0)
+    with pytest.raises(likeness_measure.Unmeasurable):
+        likeness_measure.value(s, {"kind": "dist", "a": [129], "b": [358], "axis": "x"}, 1.0)   # wings: not in the 68
 
 
 def test_checklist_is_consistent():
     stages = [s["name"] for s in lk.stage_names()]
     assert stages[:4] == ["proportions", "widths", "structure", "eyes"]  # big to small
     ids = set()
-    s = lk.Side(face())
+    s = likeness_measure.Side(face())
     for it in lk.checklist():
         assert it["id"] not in ids
         ids.add(it["id"])
@@ -96,12 +97,12 @@ def test_checklist_is_consistent():
             assert it["tol"] is None
             continue
         assert it["tol"] > 0
-        if it["measure"]["kind"] in lk.SPECIAL:
+        if it["measure"]["kind"] in likeness_sides.SPECIAL:
             continue
         try:
-            v = lk.value(s, it["measure"], 1.0)
+            v = likeness_measure.value(s, it["measure"], 1.0)
             assert isinstance(v, float)          # (nan where the synthetic face has a zero-size feature)
-        except lk.Unmeasurable:
+        except likeness_measure.Unmeasurable:
             pass
     first = [stages.index(it["stage"]) for it in lk.checklist()]
     assert first == sorted(first)                                      # the file lists items in artists' order
@@ -174,9 +175,9 @@ def test_points_file_round_trip(tmp_path, monkeypatch):
 
 def test_profile_items_inferred_from_three_quarter():
     it = next(i for i in lk.checklist() if i["id"] == "nasolabial_angle")
-    assert lk._allowed(it, "three_quarter", ["front", "three_quarter"]) == (True, True)
-    assert lk._allowed(it, "three_quarter", ["front", "three_quarter", "profile"]) == (False, False)
-    assert lk._allowed(it, "front", ["front"]) == (False, False)
+    assert likeness_sides._allowed(it, "three_quarter", ["front", "three_quarter"]) == (True, True)
+    assert likeness_sides._allowed(it, "three_quarter", ["front", "three_quarter", "profile"]) == (False, False)
+    assert likeness_sides._allowed(it, "front", ["front"]) == (False, False)
 
 
 def test_reference_brief_shape():
@@ -197,27 +198,27 @@ def test_reference_brief_shape():
 
 def test_expression_on_a_reference_goes_to_the_pose():
     pics = [{"view": "front", "expressions": {"squint": 0.7}}, {"view": "three_quarter", "expressions": {"smile": 0.5}}]
-    b = lk.expression_bias(pics)
+    b = likeness_notes.expression_bias(pics)
     assert "eye_opening" in b and "brow_eye" in b and "mouth_corner_tilt" not in b     # front pictures only
     rows = [{"id": "eye_width", "view": "front", "score": 3.0, "miss": 2.5},
             {"id": "brow_eye", "view": "front", "score": 3.0, "miss": 2.5}]
-    want, _, _ = lk.stage_wants({"rows": rows}, "brows", skip=b)
+    want, _, _ = likeness_stages.stage_wants({"rows": rows}, "brows", skip=b)
     assert want == {}                                                  # the squinted brow isn't an identity ask
-    assert lk.EXPR_LEVERS["eye_opening"][0].startswith("pose.")
-    for ids in lk.EXPR_BIAS.values():
+    assert likeness_notes.EXPR_LEVERS["eye_opening"][0].startswith("pose.")
+    for ids in likeness_notes.EXPR_BIAS.values():
         assert all(any(it["id"] == i for it in lk.checklist()) for i in ids)
 
 
 def test_nested_levers():
     base = {"head": {"shape": {"hollow": 0.005}}}
-    nb, _ = lk.with_lever(base, "shape.jawline.below_lobe", 0.05)
+    nb, _ = likeness_stages.with_lever(base, "shape.jawline.below_lobe", 0.05)
     assert nb["head"]["shape"]["jawline"] == {"below_lobe": 0.05} and "jawline" not in base["head"]["shape"]
-    assert lk.lever_value(nb, "shape.jawline.below_lobe", 0.045) == 0.05
-    assert lk.lever_value(base, "shape.jawline.forward", 0.004) == 0.004
-    assert lk.lever_value(base, "shape.hollow", 0.0) == 0.005
+    assert likeness_stages.lever_value(nb, "shape.jawline.below_lobe", 0.045) == 0.05
+    assert likeness_stages.lever_value(base, "shape.jawline.forward", 0.004) == 0.004
+    assert likeness_stages.lever_value(base, "shape.hollow", 0.0) == 0.005
     b2 = {"head": {"shape": {"nose_tip": 12}}}                      # a bare number = {"up": 12}
-    assert lk.lever_value(b2, "shape.nose_tip.up", 0.0) == 12.0
-    nb, _ = lk.with_lever(b2, "shape.nose_tip.round", 0.8)
+    assert likeness_stages.lever_value(b2, "shape.nose_tip.up", 0.0) == 12.0
+    nb, _ = likeness_stages.with_lever(b2, "shape.nose_tip.round", 0.8)
     assert nb["head"]["shape"]["nose_tip"] == {"up": 12, "round": 0.8}
 
 
@@ -227,7 +228,7 @@ def test_stage_wants_pin_earlier_stages():
             {"id": "pupil_distance", "view": "front", "score": 0.5, "miss": 0.4},
             {"id": "canthal_tilt", "view": "front", "score": 2.0, "miss": 4.0},
             {"id": "eye_width", "view": "three_quarter", "score": 9.0, "miss": 9.0}]
-    want, pins, gaps = lk.stage_wants({"rows": rows}, "eyes")
+    want, pins, gaps = likeness_stages.stage_wants({"rows": rows}, "eyes")
     assert want == {"eye_width": "-2.50"}                              # asked by the miss, front view only
     assert pins == {"face_height": "+0"}                               # the earlier stage's measure held
     assert any("Canthal tilt" in g for g in gaps)                      # no solver measure: said, not guessed
@@ -293,7 +294,7 @@ def test_contour_items_in_the_checklist():
     assert len(items) >= 10 and all(it["measure"]["key"] in lp.KEYS for it in items)
     ids = {it["id"] for it in lk.checklist()}
     assert all(r in ids for it in items for r in it.get("replaces", []))
-    assert all(i in ids for part in lk.PROFILE_ITEMS.values() for i in part)
+    assert all(i in ids for part in likeness_fit.PROFILE_ITEMS.values() for i in part)
 
 
 def test_character_read(tmp_path, monkeypatch):

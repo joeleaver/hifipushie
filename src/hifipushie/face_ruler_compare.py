@@ -81,13 +81,14 @@ def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool
     outline where the picture has one (a profile in front of a plain background: blockin_look.profile_contour; any view's
     "outline" points), and on the front picture the iris centres (eye_ruler). -> (views, notes)."""
     from PIL import Image
-    from . import eye_ruler as er, humanfit, likeness, mpread, store
+    from . import eye_ruler as er, humanfit, mpread, store
+    from . import likeness_detect, likeness_render, likeness_sides
     from . import blockin_clay, blockin_models
     rj = blockin_models._refs(name)
     spec = store.load(name)
     head = model_head(spec, expr={"names": EXPR_SET} if expr else None)
     views, notes = [], []
-    want_mp = bool(mpread.ENABLED if mp is None else mp) and mpread.available() and likeness.detector_available()
+    want_mp = bool(mpread.ENABLED if mp is None else mp) and mpread.available() and likeness_detect.detector_available()
     want_he = bool(HAIR_EDGE if hair_edge is None else hair_edge)
     iris_mm = None
     chin = dict(chin or {})
@@ -123,8 +124,8 @@ def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool
         mp_view = want_mp and cam is not None and abs(view_yaw(cam)) < mpread.TURNS[-1] + 10.0
         if (anchors == "differential" and has_lm) or mp_view:
             # the detector on the picture, on the crop the table uses (a view without stored points: round the model's own landmarks)
-            box = likeness._box(pts if has_lm else {f"lm{i}": q_ for i, q_ in enumerate(_cam_points(cam, np.asarray(head["L"], float)[:68])[1])}, img.size)
-            Pd = likeness.detect_region(img, box)
+            box = likeness_sides._box(pts if has_lm else {f"lm{i}": q_ for i, q_ in enumerate(_cam_points(cam, np.asarray(head["L"], float)[:68])[1])}, img.size)
+            Pd = likeness_detect.detect_region(img, box)
             if Pd is None:
                 notes.append(f"{view['name']}: the detector finds no face" + (": its stored points are absolute anchors" if has_lm else ""))
             else:
@@ -181,7 +182,7 @@ def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool
         if k == "front":
             try:
                 P = blockin_clay.detect_view(img, v)
-                mm = likeness._mm_per_px(cam, humanfit.state(spec["base"])["L"][27:48])
+                mm = likeness_render._mm_per_px(cam, humanfit.state(spec["base"])["L"][27:48])
                 eyes = er.read(img, P, mm)
                 extras.append(lambda h, vw, eyes=eyes: _iris_obs(h, vw, eyes))
                 iris_mm = float(np.mean([e["iris"] for e in eyes]))

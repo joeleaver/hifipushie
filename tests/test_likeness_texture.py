@@ -6,7 +6,8 @@ import sys
 
 import numpy as np
 
-from hifipushie import assets, humanfit as hf, likeness as lk, likeness_texture as lt
+from hifipushie import assets, humanfit as hf, likeness_texture as lt
+from hifipushie import likeness_render
 
 
 def _have():
@@ -26,11 +27,11 @@ def setup():
     if _C:
         return _C
     b = {"body": {"source": "human", "age": 40, "sex": 1.0}, "head": {"seed": 3, "spread": 0.5}}
-    mesh = lk.model_mesh(b)
+    mesh = likeness_render.model_mesh(b)
     L = np.asarray(mesh["L"], float)
     w, h = 640, 800
     cam = {"r": [0.0, 0.0, 0.0], "yaw": 0.0, "centre": L[:68].mean(0).tolist(), "t": [0.0, 0.0, 1.6], "f": 2400.0, "size": [w, h]}
-    im, k = lk.render(mesh, cam, (0.0, 0.0, float(w), float(h)), px=max(w, h), brows=False)[:2]
+    im, k = likeness_render.render(mesh, cam, (0.0, 0.0, float(w), float(h)), px=max(w, h), brows=False)[:2]
     photo = np.asarray(im.convert("RGB").resize((w, h)), float)
     marks = {30: (255, 0, 0), 54: (0, 255, 0), 27: (0, 0, 255)}         # nose tip, the left mouth corner, nasion
     yy, xx = np.mgrid[0:h, 0:w]

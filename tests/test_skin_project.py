@@ -4,7 +4,8 @@ atlas through a known camera, and the de-lighting against a KNOWN albedo shaded 
 own light transport."""
 import numpy as np
 
-from hifipushie import assets, humanfit as hf, likeness as lk, skin, skin_project as sp
+from hifipushie import assets, humanfit as hf, skin, skin_project as sp
+from hifipushie import likeness_render
 from hifipushie.spec import SpecError
 
 B = {"body": {"source": "human", "age": 40, "sex": 1.0}, "head": {"seed": 3, "spread": 0.5}}
@@ -23,7 +24,7 @@ def _have():
 
 def setup():
     if not _C:
-        _C.update(at=sp.atlas(B, 512), mesh=lk.model_mesh(B))
+        _C.update(at=sp.atlas(B, 512), mesh=likeness_render.model_mesh(B))
     return _C
 
 
@@ -52,7 +53,7 @@ def test_atlas_and_lookup():
     far = sp.lookup(B, np.array([[0.0, -0.1, 1.2], [0.3, 0.0, 1.0]]))[2]
     assert (far == 0).all()
     # a point 1 mm off the surface still lands; 2 cm off does not
-    N = sp.interp(at, lk._vertex_normals(at["V"], at["T"]))
+    N = sp.interp(at, likeness_render._vertex_normals(at["V"], at["T"]))
     N /= np.linalg.norm(N, axis=1, keepdims=True)
     assert (sp.lookup(B, X[idx] + 0.001 * N[idx])[2][ok] > 0.9).mean() > 0.97
     assert (sp.lookup(B, X[idx] + 0.02 * N[idx])[2] == 0).mean() > 0.97      # (a few land on another fold of the head: an ear)
@@ -86,7 +87,7 @@ def test_delight_known_light():
     c = setup()
     at, mesh = c["at"], c["mesh"]
     X = sp.interp(at, at["V"])
-    N = sp.interp(at, lk._vertex_normals(at["V"], at["T"]))
+    N = sp.interp(at, likeness_render._vertex_normals(at["V"], at["T"]))
     N /= np.linalg.norm(N, axis=1, keepdims=True)
     front = np.flatnonzero((N[:, 1] < -0.3) & (sp.interp(at, at["groups"]["hockey_mask"]) > 0.5))
     rng = np.random.default_rng(2)

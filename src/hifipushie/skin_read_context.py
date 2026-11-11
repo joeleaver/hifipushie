@@ -160,13 +160,14 @@ class Context:
 
 def context(name: str, spec: dict | None = None, frames: list | None = None, anchor: str = "auto", log=print, white=None) -> Context:
     from scipy import ndimage
-    from . import likeness as lk, store
+    from . import store
+    from . import likeness_render
     spec = spec or store.load(name)
     src = atlas_source(spec) if frames is None else None
     if src is not None:       # the de-lit atlas is the picture (no stage, no render): docs/notes/skin.md "## projskin"
         frames = atlas_frames(spec, capture(name, spec, log=log, render=False), src, log=log)
     frames = frames or capture(name, spec, log=log)
-    mesh = lk.model_mesh(spec["base"])
+    mesh = likeness_render.model_mesh(spec["base"])
     an = _anchor([{**f, "P": f.get("P_photo", f["P"])} for f in frames], mesh, spec, anchor if anchor not in ("prior", "white") else "auto")
     wh, wh_why = {}, {}
     decl = {int(d_["view"]): d_ for d_ in (white or [])}

@@ -1,5 +1,5 @@
-"""The eye region read like with like: the same detector (MediaPipe's 478, likeness.detect) on the photo and on a
-render through the photo's camera, measures in mm at the face's depth on the face's own axes (likeness.Side.frame:
+"""The eye region read like with like: the same detector (MediaPipe's 478, likeness_detect.detect) on the photo and on a
+render through the photo's camera, measures in mm at the face's depth on the face's own axes (likeness_measure.Side.frame:
 ex across, ey DOWN the face).
 
 `measures(P, mmpx)` -> {"<name>": [subject's right, left]} per eye; `table(rows)` prints photo / model rows;
@@ -31,7 +31,7 @@ TOL = {"open": 0.8, "width": 1.2, "aspect": 0.03, "iris_r": 0.4, "cover": 0.6, "
 
 
 def frame(P) -> tuple:
-    from .likeness import Side
+    from .likeness_measure import Side
     return Side(np.asarray(P, float), None, "detector").frame()
 
 

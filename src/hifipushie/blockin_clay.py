@@ -9,7 +9,8 @@ from .blockin import BROWS_L, BROWS_R, HAIR_RGB
 def haircap(mesh: dict, st: dict) -> np.ndarray:
     """Per-vertex colour: skin, and a neutral dark cap over GNM's scalp (outside its hockey_mask face region, not the
     ears, above the ears' bottom): bald clay reads male."""
-    from . import likeness, onemesh
+    from . import onemesh
+    from . import likeness_render
     from . import base_identity
     g = base_identity._gnm_data()
     gid = np.asarray(onemesh.asset()["gnm_id"], int)[np.asarray(st["tpl"]["fid"])]
@@ -21,13 +22,13 @@ def haircap(mesh: dict, st: dict) -> np.ndarray:
     L = st["L"]
     zcut = 0.5 * (L[1, 2] + L[15, 2])
     w = ok * (1 - hm_) * (1 - ear) * np.clip((mesh["V"][:, 2] - zcut) / 0.01, 0, 1)
-    return (1 - w)[:, None] * likeness.SKIN + w[:, None] * HAIR_RGB
+    return (1 - w)[:, None] * likeness_render.SKIN + w[:, None] * HAIR_RGB
 
 
 def eye_presentation(mesh: dict, iris=(128, 112, 82)) -> dict:
     """A presentable eye for whole-face reads (dark iris caps dominated every clay read): a light iris with a darker
     limbal ring and pupil, and a lash line (the skin hugging the upper half of each eyeball, darkened)."""
-    from . import likeness
+    from . import likeness_render
     out = []
     fwd = np.asarray(mesh["state"]["head"].get("forward", [0, -1, 0]), float)
     fwd = fwd / np.linalg.norm(fwd)
@@ -38,7 +39,7 @@ def eye_presentation(mesh: dict, iris=(128, 112, 82)) -> dict:
                        np.where(cs[:, None] > 0.86, [60, 50, 40], [238, 234, 228]))).astype(float)
         out.append((V, F_, col))
     mesh["eyes"] = out
-    C = np.asarray(mesh["C"] if mesh.get("C") is not None else np.tile(likeness.SKIN, (len(mesh["V"]), 1)), float).copy()
+    C = np.asarray(mesh["C"] if mesh.get("C") is not None else np.tile(likeness_render.SKIN, (len(mesh["V"]), 1)), float).copy()
     for V, _, _ in out:
         c = V.mean(0)
         r = float(np.median(np.linalg.norm(V - c, axis=1)))
@@ -70,7 +71,8 @@ def brow_source(mesh: dict, rj: dict) -> dict | None:
     the front AND are visible from the front: they follow the surface, foreshorten and are occluded like paint. Cached
     on the mesh dict. None when the front picture's detector misses (draw_brows' landmark line is the fallback)."""
     from PIL import Image, ImageDraw, ImageFilter
-    from . import humanfit, likeness
+    from . import humanfit
+    from . import likeness_render
     if "_brows" in mesh:
         return mesh["_brows"]
     vf = _front(rj)
@@ -109,8 +111,8 @@ def brow_source(mesh: dict, rj: dict) -> dict | None:
         c = 0.5 * (L2.min(0) + L2.max(0))
         side = 1.5 * float(np.max(L2.max(0) - L2.min(0)))
         box = (c[0] - side / 2, c[1] - side / 2, c[0] + side / 2, c[1] + side / 2)
-        _, k, ps = likeness.render(mesh, cam, box, px=1200, brows=False, passes=True)
-        mmpx = likeness._mm_per_px(cam, mesh["state"]["L"][27:48])
+        _, k, ps = likeness_render.render(mesh, cam, box, px=1200, brows=False, passes=True)
+        mmpx = likeness_render._mm_per_px(cam, mesh["state"]["L"][27:48])
         soft = m.filter(ImageFilter.GaussianBlur(max(0.5 / mmpx, 0.4) * ss))   # (a ~0.5 mm soft edge)
         out = {"cam": cam, "rgb": rgb, "mask": np.asarray(soft, float) / 255.0, "mo": o, "ss": ss, "zb": ps["zb"], "part": ps["part"],
                "box": box, "k": k}
@@ -127,13 +129,13 @@ def brow_hair_band(img, polys, o, cam, mesh, grow_mm: float = 2.0, dark: float =
     density (its darkness against the skin, 0..1)."""
     from PIL import Image, ImageDraw, ImageFilter
     from scipy import ndimage
-    from . import likeness
+    from . import likeness_render
     allp = np.concatenate(polys)
     hi = allp.max(0) + (allp.min(0) - o)   # (the same margin as the caller gave below the band)
     W, H = int(np.ceil(hi[0] - o[0])), int(np.ceil(hi[1] - o[1]))
     if W < 4 or H < 4:
         return None
-    mmpx = likeness._mm_per_px(cam, mesh["state"]["L"][27:48])
+    mmpx = likeness_render._mm_per_px(cam, mesh["state"]["L"][27:48])
     band = Image.new("L", (W, H), 0)
     d = ImageDraw.Draw(band)
     for poly in polys:
@@ -224,10 +226,11 @@ def brows_on(im, ps, mesh, rj, cam, box, k):
 def draw_brows(im, mesh, cam, box, k, mm: float = 2.0):
     """Brows as a line through the model's brow landmarks (views the detector can't read)."""
     from PIL import ImageDraw
-    from . import humanfit, likeness
+    from . import humanfit
+    from . import likeness_render
     L = humanfit.project(cam, mesh["L"])
     d = ImageDraw.Draw(im)
-    wpx = max(1, int(round(mm / likeness._mm_per_px(cam, mesh["L"]) * k)))
+    wpx = max(1, int(round(mm / likeness_render._mm_per_px(cam, mesh["L"]) * k)))
     for a, b in ((17, 22), (22, 27)):
         d.line([((L[i, 0] - box[0]) * k, (L[i, 1] - box[1]) * k) for i in range(a, b)], fill=(70, 52, 40), width=wpx,
                joint="curve")
@@ -290,9 +293,10 @@ def photo_iris(rj: dict | None):
 def presented_mesh(base: dict, eyes: bool = True, rj: dict | None = None) -> dict:
     """The clay as presented for whole-face reads: hair cap, tinted lips, a presentable eye (the person's iris colour
     from the front picture when rj is given)."""
-    from . import humanfit, likeness
+    from . import humanfit
+    from . import likeness_render
     st = humanfit.state(base)
-    mesh = likeness.model_mesh_from_state(st)
+    mesh = likeness_render.model_mesh_from_state(st)
     mesh["C"] = haircap(mesh, st)
     lip_tint(mesh, st)
     if eyes:
@@ -304,8 +308,8 @@ def presented_mesh(base: dict, eyes: bool = True, rj: dict | None = None) -> dic
 def detect_view(img, view: dict):
     """MediaPipe on a reference picture; where the face is small in a big picture (a full-figure concept), on a crop
     around the clicked points."""
-    from . import likeness
-    P = likeness.detect([img])[0]
+    from . import likeness_detect
+    P = likeness_detect.detect([img])[0]
     if P is not None:
         return P
     pts = np.array([p for p in (view.get("points") or {}).values()], float)
@@ -313,7 +317,7 @@ def detect_view(img, view: dict):
         return None
     lo, hi = pts.min(0), pts.max(0)
     c, s = 0.5 * (lo + hi), 1.8 * float(np.max(hi - lo))
-    return likeness.detect_region(img, (c[0] - s / 2, c[1] - s / 2, c[0] + s / 2, c[1] + s / 2))
+    return likeness_detect.detect_region(img, (c[0] - s / 2, c[1] - s / 2, c[0] + s / 2, c[1] + s / 2))
 
 
 def _front(rj: dict) -> int:

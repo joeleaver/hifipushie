@@ -8,7 +8,7 @@ shipped), TorchScript on CPU in its own venv (HIFIPUSHIE_NORMALS_VENV, default /
 torch CPU wheel + numpy + pillow), one subprocess per picture (~20-60 s, ~5 GB), cached by the crop's bytes.
 
   estimate(img, box)            unit normals of a 3:4 crop of the picture: {"n": (h, w, 3) float32 in the CAMERA frame
-                                of face_ruler / likeness.render (x right, y down, z away from the camera), "box"}
+                                of face_ruler / likeness_render.render (x right, y down, z away from the camera), "box"}
   head_box(P, size)             the 3:4 crop a head wants
   at(res, px)                   normals at picture pixels (bilinear, renormalised)
 Validation (spikes/refread/nrmval.py) and its verdict: the notes' "## refread".

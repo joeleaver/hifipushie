@@ -67,13 +67,14 @@ def model_head(spec: dict, c=None, kappa=None, expr=None) -> dict:
     mask, the head's vertices with their move per GNM identity comp (as humanfit._silhouette: the head's carry and the
     stitch's fade), the measures of its GNM identity (gnm_mm, GNM's own mm). c: another identity (170) on the same model."""
     import copy
-    from . import blockin as bi, gnm_mm, headfit, humanfit, likeness, onemesh
+    from . import blockin as bi, gnm_mm, headfit, humanfit, onemesh
+    from . import likeness_render
     from . import base_identity
     if c is not None:
         spec = copy.deepcopy(spec)
         bi.set_identity(spec, c)
     st = humanfit.state(spec["base"])
-    mesh = likeness.model_mesh_from_state(st)
+    mesh = likeness_render.model_mesh_from_state(st)
     tpl, carry = st["tpl"], st["head"]["carry"]
     P = np.asarray(tpl["P"], float)
     gid = np.asarray(onemesh.asset()["gnm_id"], int)[np.asarray(tpl["fid"])]

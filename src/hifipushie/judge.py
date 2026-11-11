@@ -372,8 +372,8 @@ def state_sig(r: dict) -> str:
 # ------------------------------------------------------------------ crops
 
 def _detect(img):
-    from . import likeness
-    P = likeness.detect([img.convert("RGB")])[0]
+    from . import likeness_detect
+    P = likeness_detect.detect([img.convert("RGB")])[0]
     if P is None:  # a small face in a big frame: once more on the alpha / centre box
         return None
     return np.asarray(P, float)
@@ -464,7 +464,8 @@ def photo_crops(head: str, out: Path) -> dict:
     render crops' size. out/photo/<view>__<feature>.png. The photo's state is "photo" (compared with renders under
     that view's photo_light only)."""
     from PIL import Image
-    from . import likeness, store
+    from . import store
+    from . import likeness_detect
     refs = json.loads((store.HOME / head / "human_refs.json").read_text())
     out = Path(out) / "photo"
     out.mkdir(parents=True, exist_ok=True)
@@ -474,7 +475,7 @@ def photo_crops(head: str, out: Path) -> dict:
         img = Image.open(refs["views"][vi]["image"]).convert("RGB")
         P = _detect(img)
         if P is None:
-            P0 = likeness.detect_region(img, (0, 0, img.width, img.height))
+            P0 = likeness_detect.detect_region(img, (0, 0, img.width, img.height))
             P = None if P0 is None else np.asarray(P0, float)
         if P is None:
             continue

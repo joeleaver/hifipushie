@@ -36,14 +36,15 @@ def lid_photo(img, view: dict | None = None) -> dict | None:
 def lid_model(base: dict, cam: dict) -> dict:
     """The model's lid margins read the same way on its front render: the visible eyeball (render part 1) in the column
     through the iris centre (the eyeball's forward pole), in the drawn iris cap's projected radius."""
-    from . import humanfit, likeness
+    from . import humanfit
+    from . import likeness_render
     st = humanfit.state(base)
-    mesh = likeness.model_mesh_from_state(st)
+    mesh = likeness_render.model_mesh_from_state(st)
     P = humanfit.project(cam, st["L"])
     c = 0.5 * (P.min(0) + P.max(0))
     s = 1.4 * float(np.max(P.max(0) - P.min(0)))
     box = (c[0] - s / 2, c[1] - s / 2, c[0] + s / 2, c[1] + s / 2)
-    _, k, ps = likeness.render(mesh, cam, box, px=1400, brows=False, passes=True)
+    _, k, ps = likeness_render.render(mesh, cam, box, px=1400, brows=False, passes=True)
     fwd = np.asarray(st["head"].get("forward", [0, -1, 0]), float)
     r = float(st["head"].get("eye_r", 0.012)) * 0.985
     out = {}

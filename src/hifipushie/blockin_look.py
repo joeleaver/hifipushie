@@ -16,20 +16,21 @@ def lit_render(mesh: dict, cam: dict, img, box=None, px=None, soft: float = 8.0)
     """The model at the picture's pixels (box), lit like the photo: the light fitted on the face's skin (two passes:
     c0 + w.n, then the ambient's AO share and the direct's scale with AO and a soft cast shadow)."""
     from PIL import Image
-    from . import likeness, likeness_shape as ls
+    from . import likeness_shape as ls
+    from . import likeness_measure, likeness_render
     W, H = cam["size"]
     box = box or (0.0, 0.0, float(W), float(H))
     px = px or int(max(box[2] - box[0], box[3] - box[1]))
-    _, k, ps = likeness.render(mesh, cam, box, px=px, brows=False, passes=True)
+    _, k, ps = likeness_render.render(mesh, cam, box, px=px, brows=False, passes=True)
     Hh, Ww = ps["zb"].shape
     crop = img.crop(tuple(int(round(v)) for v in box)).resize((Ww, Hh), Image.LANCZOS)
     Y = ls._lin(crop)
     P = mesh.get("_photo_P")
-    side = likeness.Side(np.asarray(P, float)[:, :2], None) if P is not None else None
+    side = likeness_measure.Side(np.asarray(P, float)[:, :2], None) if P is not None else None
     mask = ps["part"] == 0
     if side is not None:
         try:
-            mmpx = likeness._mm_per_px(cam, mesh["L"][27:36])
+            mmpx = likeness_render._mm_per_px(cam, mesh["L"][27:36])
             mask = ls.skin_mask(side, (Hh, Ww), lambda Q: (np.asarray(Q, float) - [box[0], box[1]]) * k, k / mmpx) & mask
         except Exception:  # noqa: BLE001  (a crop the skin mask can't place: the whole skin)
             pass
@@ -37,7 +38,7 @@ def lit_render(mesh: dict, cam: dict, img, box=None, px=None, soft: float = 8.0)
         # a feature's crop of a clicked profile: the light is fitted on the whole face (inside a crop of one eye the
         # fit saw lashes, brow hair and wall, and lit the clay to white), then the crop is rendered with it
         _, lt, _ = lit_render(mesh, cam, img, soft=soft)
-        im, _, ps = likeness.render(mesh, cam, box, px=px, brows=False, passes=True, ao=True, shadow=soft, light=lt)
+        im, _, ps = likeness_render.render(mesh, cam, box, px=px, brows=False, passes=True, ao=True, shadow=soft, light=lt)
         return im, lt, ps
     else:
         # no detector on the picture (a clicked profile): the light is fitted inside the face's landmark hull only;
@@ -59,9 +60,9 @@ def lit_render(mesh: dict, cam: dict, img, box=None, px=None, soft: float = 8.0)
     lt = (c0, w, float(np.median(Y[mask])), 1.0)
     if LIGHT == "sh":   # ambient + key + fill / bounce: the c0 + w.n light put the nose's base at black (Garrett:
         # the band under the nose 0.19-0.34 of the tip's light, his picture 0.6-0.7; SH 0.66)
-        _, _, p1 = likeness.render(mesh, cam, box, px=px, brows=False, passes=True, ao=True)
+        _, _, p1 = likeness_render.render(mesh, cam, box, px=px, brows=False, passes=True, ao=True)
         m1 = mask & (p1["part"] == 0) & (np.linalg.norm(p1["nrm"], axis=-1) > 0.5)
-        X = likeness.sh9(p1["nrm"][m1]) * p1["ao"][m1][:, None]
+        X = likeness_render.sh9(p1["nrm"][m1]) * p1["ao"][m1][:, None]
         use = np.ones(len(X), bool)
         a = np.zeros(9)
         for _ in range(4):
@@ -72,9 +73,9 @@ def lit_render(mesh: dict, cam: dict, img, box=None, px=None, soft: float = 8.0)
             use = np.abs(r) < 2.5 * r[use].std()
         if np.all(np.isfinite(a)) and use.sum() >= 50:
             lt = (c0, w, float(np.median(Y[mask])), 1.0, a)
-            im, k, ps = likeness.render(mesh, cam, box, px=px, brows=False, passes=True, ao=True, light=lt)
+            im, k, ps = likeness_render.render(mesh, cam, box, px=px, brows=False, passes=True, ao=True, light=lt)
             return im, lt, ps
-    _, _, p2 = likeness.render(mesh, cam, box, px=px, brows=False, passes=True, ao=True, shadow=soft, light=lt)
+    _, _, p2 = likeness_render.render(mesh, cam, box, px=px, brows=False, passes=True, ao=True, shadow=soft, light=lt)
     dn = p2["nrm"] @ np.asarray(w, float)
     m2 = mask & (p2["part"] == 0)
     X = np.c_[np.ones(m2.sum()), p2["ao"][m2], (np.maximum(dn, 0) * p2["lit"])[m2], np.minimum(dn, 0)[m2]]
@@ -86,7 +87,7 @@ def lit_render(mesh: dict, cam: dict, img, box=None, px=None, soft: float = 8.0)
     w2 = np.asarray(w, float) * max(float(C), 0.0)
     lt2 = (c0n, w2, lt[2], aw)
     lt = lt2 if np.all(np.isfinite(lt2[1])) and np.isfinite(c0n) else lt
-    im, k, ps = likeness.render(mesh, cam, box, px=px, brows=False, passes=True, ao=True, shadow=soft, light=lt)
+    im, k, ps = likeness_render.render(mesh, cam, box, px=px, brows=False, passes=True, ao=True, shadow=soft, light=lt)
     return im, lt, ps
 
 
@@ -229,6 +230,7 @@ def look(name: str, out: str, views: list | None = None, T: int = 330, before: s
     Returns {"out", "views": [{"view", "shift_px"}]}."""
     from PIL import Image, ImageDraw, ImageFilter
     from . import humanfit, likeness, store
+    from . import likeness_render
     rj = blockin_models._refs(name)
     base = store.load(name)["base"]
     VI = list(range(len(rj["views"]))) if views is None else [int(v) for v in views]
@@ -285,7 +287,7 @@ def look(name: str, out: str, views: list | None = None, T: int = 330, before: s
             olA = np.asarray(ol).copy()
             olA[e] = (30, 200, 30)
             ol = Image.fromarray(olA)
-        sg = float(SQUINT_MM / likeness._mm_per_px(cam, mesh["L"][27:48]) * k)
+        sg = float(SQUINT_MM / likeness_render._mm_per_px(cam, mesh["L"][27:48]) * k)
         sq = lambda im: im.convert("L").filter(ImageFilter.GaussianBlur(sg)).convert("RGB")  # noqa: E731
         y = 18 + i * per * (T + 18)
         for j, im in enumerate((ph, cl, ov, ol, sq(ph), sq(cl))):

@@ -42,8 +42,9 @@ def test_a_wider_jaw_measures_wider():
     try:
         assets.pack("gnm")
         assets.pack("makehuman")
-        from hifipushie import humanfit as hf, likeness as lk
-        if not lk.detector_available():
+        from hifipushie import humanfit as hf
+        from hifipushie import likeness_detect, likeness_render
+        if not likeness_detect.detector_available():
             raise RuntimeError("no detector")
     except Exception as err:
         print("skipped:", str(err)[:80])
@@ -52,11 +53,11 @@ def test_a_wider_jaw_measures_wider():
     got = {}
     for z in (-2.0, 2.0):
         bb = hf._with_identity(b, hm.apply(hf.identity(b), {"jaw_width": z}, held=True))
-        mesh = lk.model_mesh(bb)
+        mesh = likeness_render.model_mesh(bb)
         L = np.asarray(mesh["L"], float)
         cam = {"r": [0.0, 0.0, 0.0], "yaw": 0.0, "centre": L[:68].mean(0).tolist(), "t": [0.0, 0.0, 1.5], "f": 2000.0, "size": [640, 640]}
-        im = lk.render(mesh, cam, (0.0, 0.0, 640.0, 640.0), px=640)[0].convert("RGB")
-        d = lk.detect([im])[0]
+        im = likeness_render.render(mesh, cam, (0.0, 0.0, 640.0, 640.0), px=640)[0].convert("RGB")
+        d = likeness_detect.detect([im])[0]
         assert d is not None
         P = d["P"] if isinstance(d, dict) else d
         got[z] = hx.measure(np.asarray(im), np.asarray(P)[:, :2], backdrop=False)["macros"]["jaw_width"][0]

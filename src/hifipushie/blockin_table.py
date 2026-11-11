@@ -22,7 +22,8 @@ def _spec_hash(name: str) -> str:
 def rows(name: str) -> list:
     """Every likeness checklist row (photo vs model through the model's fitted cameras): [{id, stage, view, unit,
     photo, model, tol}] with numbers on both sides; cached in the model's directory by its base + cameras."""
-    from . import likeness as lk, store
+    from . import store
+    from . import likeness_compare, likeness_render
     h = _spec_hash(name)
     p = store.HOME / name / "blockin_rows.json"
     if p.exists():
@@ -33,9 +34,9 @@ def rows(name: str) -> list:
     base, rj = store.load(name)["base"], blockin_models._refs(name)
     meshes = None
     if any(rj.get("expressions") or []):   # each picture against the head with ITS expression
-        mv = _per_view(base, rj, range(len(rj["views"])), lk.model_mesh)
+        mv = _per_view(base, rj, range(len(rj["views"])), likeness_render.model_mesh)
         meshes = [mv[i] for i in range(len(rj["views"]))]
-    for r in lk.compare(name, base, mesh=meshes)["rows"]:
+    for r in likeness_compare.compare(name, base, mesh=meshes)["rows"]:
         a, b = r.get("photo"), r.get("model")
         if not isinstance(a, (int, float)) or not isinstance(b, (int, float)) or not np.isfinite(a) or not np.isfinite(b):
             continue

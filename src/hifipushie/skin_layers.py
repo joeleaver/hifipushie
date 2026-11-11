@@ -186,7 +186,8 @@ def lips_from_indications(name: str, spec: dict, at: dict, base: np.ndarray, log
     and darkest 25 % of each left out: highlights, the parting's shadow), brought to albedo by the plain skin's gain
     (atlas / picture). Returns {"od": (n, 3) optical density over the base, "upper", "lower" (sRGB albedo), "mask"}."""
     from PIL import Image, ImageDraw
-    from . import likeness as lk, store
+    from . import store
+    from . import likeness_render
     from . import blockin_clay, blockin_expression, blockin_models
     from . import skin_read_reads
     rj = blockin_models._refs(name)
@@ -199,7 +200,7 @@ def lips_from_indications(name: str, spec: dict, at: dict, base: np.ndarray, log
     polys = skin_read_reads.lip_polygons(P)
     ph = sp._lin(np.asarray(img, float) / 255.0)
     H, W = ph.shape[:2]
-    mesh = blockin_expression._per_view(spec["base"], rj, [vi], lambda b: lk.model_mesh(b))[vi]
+    mesh = blockin_expression._per_view(spec["base"], rj, [vi], lambda b: likeness_render.model_mesh(b))[vi]
     smp = sp.sample_view(at, mesh, cam, np.asarray(img))
     cols, masks = {}, {}
     for key in ("lip_upper", "lip_lower"):
@@ -285,11 +286,11 @@ def blink_still(spec: dict) -> np.ndarray:
     line: looks by the pose's own lid weight, the export as its own map the engine multiplies by 1 - eyeBlink); masking
     them off the lid outright cost the open eye its crease (the open eye is what is seen)."""
     import copy
-    from . import likeness as lk
+    from . import likeness_render
     b2 = copy.deepcopy(spec["base"])
     b2.setdefault("head", {})["pose"] = {**(b2["head"].get("pose") or {}), "lid_upper": BLINK_POSE}
-    V0 = np.asarray(lk.model_mesh(spec["base"])["V"], float)
-    V1 = np.asarray(lk.model_mesh(b2)["V"], float)
+    V0 = np.asarray(likeness_render.model_mesh(spec["base"])["V"], float)
+    V1 = np.asarray(likeness_render.model_mesh(b2)["V"], float)
     d = np.linalg.norm(V1 - V0, axis=1) * 1000.0
     # (under 0.5 mm = still: a blink nudges the whole face a little, and the lid share took the ears' and nostrils'
     # occlusion into the exported blink map)
@@ -298,27 +299,27 @@ def blink_still(spec: dict) -> np.ndarray:
 
 def occlusion(spec: dict, at: dict, part: str | None = None) -> np.ndarray:
     """THE BAKED OCCLUSION (per texel, (n, 3) multiplier 0..1) from the head's FINAL geometry (forms first: lid fold, crease
-    tail, bags, nasolabial; nostrils, ears): per-vertex ambient occlusion (likeness.ambient_occlusion: cosine-weighted sky
+    tail, bags, nasolabial; nostrils, ears): per-vertex ambient occlusion (likeness_render.ambient_occlusion: cosine-weighted sky
     visibility) x a cavity term (skin concave against its neighbours' mean), a little warmer where darker. The atlas was
     de-lit WITH this occlusion in its shading model (skin_project's per-texel visibility), so it does not carry the
     crease's darkness; this map puts it back for renderers that don't (EEVEE's GI loses a lid fold's occlusion; a game's
     real-time light), as a multiply layer whose strength is measured against the photo (eyecmp)."""
     from scipy import sparse
-    from . import likeness as lk
-    mesh = lk.model_mesh(spec["base"])
+    from . import likeness_render
+    mesh = likeness_render.model_mesh(spec["base"])
     # WITHOUT the eyeballs as occluders: the lid margins against the ball read near black (a dark ring round each
     # opening, "raccoon" eyes on an older test head's first bake); the eyes' own occlusion paint (skin.eyes.occlusion) is the margin's
     mesh = {k: v for k, v in mesh.items() if not k.startswith("_")}
     mesh["eyes"] = []
     V, F = np.asarray(mesh["V"], float), np.asarray(mesh["F"])
-    ao = np.clip(lk.ambient_occlusion(mesh), 0, 1)
+    ao = np.clip(likeness_render.ambient_occlusion(mesh), 0, 1)
     n = len(V)
     E = np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]]
     A = sparse.coo_matrix((np.ones(len(E) * 2), (np.r_[E[:, 0], E[:, 1]], np.r_[E[:, 1], E[:, 0]])), shape=(n, n)).tocsr()
     A.data[:] = 1.0
     deg = np.asarray(A.sum(1)).ravel()
     mean = (A @ V) / np.maximum(deg, 1)[:, None]
-    vn = lk._vertex_normals(V, F)
+    vn = likeness_render._vertex_normals(V, F)
     conc = np.clip(((mean - V) * vn).sum(1) * 1000.0, 0, None)              # mm the skin sits below its neighbours
     conc = (A @ conc + conc) / (deg + 1)                                       # one smoothing step (vertex noise)
     cav = np.clip(conc / OCC_CAV_MM, 0, 1)
@@ -366,12 +367,13 @@ def crease_map(spec: dict, at: dict) -> np.ndarray:
     """(n,) 0..1 per texel: the lid fold's slit (gnm_fold.slit_ids: the crease line and its tail) as a soft line ~0.6 mm
     wide, for a crease-only cavity layer (darker only in the fold, its strength measured against the photo by occfit:
     the broad occlusion bake alone left an older test head's crease line at 0.09-0.25 against his photo's 0.30-0.49)."""
-    from . import gnm_fold, likeness as lk, onemesh
+    from . import gnm_fold, onemesh
+    from . import likeness_render
     lf = ((spec.get("base") or {}).get("head") or {}).get("lid_fold")
     if not lf:
         return np.zeros(len(at["ii"]))
     ids = gnm_fold.slit_ids(lf)
-    mesh = lk.model_mesh(spec["base"])
+    mesh = likeness_render.model_mesh(spec["base"])
     tpl = mesh["state"]["tpl"]
     fid = np.asarray(tpl["fid"])
     gidall = np.asarray(onemesh.asset()["gnm_id"])
@@ -527,8 +529,8 @@ def decompose(name: str, spec: dict | None = None, log=print, lips: str = "texel
             out_l["lips"] = {"amount": {"m": li["mask"]}, "od": li["od"], "support": "lips", "mm": EDGE_MM, "indications": li}
     # surfaces no picture saw that sit in occlusion (nostril interior, the inner lip at the seam, the lid's tuck): dark
     # and warm by their own ambient occlusion (INFERRED), on the shade (neutral) and redness (haemoglobin) layers
-    from . import likeness as lk
-    ao = np.clip(sp.interp(at, lk.ambient_occlusion(lk.model_mesh(spec["base"]))), 0, 1)
+    from . import likeness_render
+    ao = np.clip(sp.interp(at, likeness_render.ambient_occlusion(likeness_render.model_mesh(spec["base"]))), 0, 1)
     cav = np.where(~meas, np.clip((CAVITY[0] - ao) / CAVITY[1], 0, 1), 0.0)
     # only inside an unmeasured REGION (a nostril, the seam's inner faces), never along a sliver of unmeasured texels (a
     # UV seam or a thin gap between views on open skin drew a thin dark scratch on a jaw)
@@ -540,7 +542,7 @@ def decompose(name: str, spec: dict | None = None, log=print, lips: str = "texel
     # never on the lids: the skin tucked under a fold is occluded at rest but a blink shows it (a dark patch on a closed
     # lid); only surfaces that stay hidden (nostril interiors, the lip seam) take the dark-warm term
     X_ = sp.interp(at, at["V"])
-    for Ve, _, _ in lk.model_mesh(spec["base"])["eyes"]:
+    for Ve, _, _ in likeness_render.model_mesh(spec["base"])["eyes"]:
         c_ = Ve.mean(0)
         cav = cav * sp._sstep((np.linalg.norm(X_ - c_, axis=1) - float(np.linalg.norm(Ve - c_, axis=1).max()) - 0.008) / 0.004)
     cav = sp._blur(at, cav, None, 1.0)      # (0.3 mm: a hard-edged pale crescent where it stopped, under the outer corner)

@@ -103,7 +103,7 @@ def limbus_read(lum, cam, lb: dict, origin=(0.0, 0.0), scale: float = 1.0, reach
     ALONG THE EYE'S AXIS at the side arc nearer the camera (in a profile the iris shows through the cornea in front of
     the limbus' plane, the sclera lies behind it), and the far (nose-side) arc is used only when the disc is still
     open (cos > 0.45). -> {"d": (dx, dy) px, "p": the model's centre px, "q": the picture's, "score", "sharp", "open"}
-    or None when the eye faces away. part: the model's own part picture through this camera (likeness.render's pass:
+    or None when the eye faces away. part: the model's own part picture through this camera (likeness_render.render's pass:
     >= 1 = eyeball): an arc the MODEL hides behind the nose bridge or a lid (under 60 % of it on the eyeball) is not
     read, and no read at all without the arc nearer the camera (a 45 deg view hides most of the far eye)."""
     from . import humanfit

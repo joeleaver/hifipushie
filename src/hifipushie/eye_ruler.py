@@ -445,12 +445,13 @@ def model(spec: dict, cam: dict, brows: bool = True, px_mm: float = STEP) -> lis
     read() + "c" (the iris centre in picture px), "gap" (mm of socket lining showing between the lid margin ring and
     the eyeball, per COLS, upper / lower), "ring" (the margin ring in the eye frame), "platform" (the lid skin under
     the fold that a front view shows), "crease_depth". brows=False skips the brow decal's read."""
-    from . import humanfit, likeness
+    from . import humanfit
+    from . import likeness_render
     base = spec["base"]
     st = humanfit.state(base)
     ht = st["head"]
-    mesh = likeness.model_mesh_from_state(st)
-    mm = likeness._mm_per_px(cam, st["L"][27:48])
+    mesh = likeness_render.model_mesh_from_state(st)
+    mm = likeness_render._mm_per_px(cam, st["L"][27:48])
     fwd = np.asarray(ht.get("forward", [0, -1, 0]), float)
     r = float(ht["eye_r"])
     eyes = sorted([np.asarray(c, float) for c in ht["eyes"]], key=lambda c: c[0])      # subject's right (-x) first
@@ -460,7 +461,7 @@ def model(spec: dict, cam: dict, brows: bool = True, px_mm: float = STEP) -> lis
     lo_, hi_ = poles.min(0) - pad, poles.max(0) + pad
     box = (lo_[0], lo_[1] - 6.0 / mm, hi_[0], hi_[1])
     kk = mm / px_mm                                  # raster px per picture px
-    _, k, ps = likeness.render(mesh, cam, box, px=int(round((box[2] - box[0]) * kk)), brows=False, passes=True)
+    _, k, ps = likeness_render.render(mesh, cam, box, px=int(round((box[2] - box[0]) * kk)), brows=False, passes=True)
     part = ps["part"]
     from . import base_implied
     r_iris = 1000.0 * base_implied.drawn_iris(spec, r)   # the dressing's own iris (skin.eyes.iris_size), else GNM's limbus
@@ -617,7 +618,8 @@ def compare(name: str, model_name: str | None = None) -> dict:
     model) pupils apart, "moves": [text], "text"}. mm at the model; u = toward the outer corner, v = up, from each
     eye's iris centre; both eyes' mean."""
     from PIL import Image
-    from . import humanfit, likeness, store
+    from . import humanfit, store
+    from . import likeness_render
     from . import blockin_clay, blockin_models
     rj = blockin_models._refs(name)
     vi = blockin_clay._front(rj)
@@ -628,7 +630,7 @@ def compare(name: str, model_name: str | None = None) -> dict:
         raise ValueError("eye_ruler: the detector found no face on the front picture")
     spec = store.load(model_name or name)
     st = humanfit.state(spec["base"])
-    mm = likeness._mm_per_px(cam, st["L"][27:48])
+    mm = likeness_render._mm_per_px(cam, st["L"][27:48])
     eyes = read(img, P, mm, debug=True)
     px = float(np.mean([e["iris"] for e in eyes])) / mm
     tru = model(spec, cam)

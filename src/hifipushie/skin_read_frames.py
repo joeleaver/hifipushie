@@ -145,14 +145,15 @@ def capture(name: str, spec: dict | None = None, views: list | None = None, log=
     "facing", "parse" {skin, hair, figure..: picture-parser probabilities}, "mm" per pixel, "box", "cam"}].
     spec: a variant of the model's spec to dress the stage with (default: the saved one). render=False: no R."""
     from PIL import Image
-    from . import humanfit, likeness as lk, resources, store
+    from . import humanfit, resources, store
+    from . import likeness_render
     from . import blockin_models
     spec = spec or store.load(name)
     rj = blockin_models._refs(name)
     bx = boxes(name)
     idx = [i for i in (range(len(rj["views"])) if views is None else views)
            if rj["views"][i].get("image") and rj["cameras"][i] is not None]
-    mesh = lk.model_mesh(spec["base"])
+    mesh = likeness_render.model_mesh(spec["base"])
     out = []
     shots = {}
     if render:
@@ -166,7 +167,7 @@ def capture(name: str, spec: dict | None = None, views: list | None = None, log=
         w, h = cam["size"]
         ib = tuple(int(round(x)) for x in box)
         P = _lin(np.asarray(img.crop(ib).resize((N, N), Image.LANCZOS), float) / 255.0)
-        _, k, ps = lk.render(mesh, cam, box, px=N, passes=True)
+        _, k, ps = likeness_render.render(mesh, cam, box, px=N, passes=True)
         zb, nrm, part = ps["zb"], ps["nrm"], ps["part"]
         part = part[..., 0] if part.ndim == 3 else part
         on = np.isfinite(zb)

@@ -227,16 +227,16 @@ LM_NOSE_WIDE = 0.0          # OFF (2026-10-14): scored on the three HELD-OUT HSR
 #                             wide nose of the two calibration heads is not a constant of the detector
 def _detect_model(head, cam, box):
     """The detector's 478 points (picture px) on the MODEL's own clay picture through cam, cropped to box as the
-    picture's own detection is (likeness.model_sides does the same for the table); cached by head and camera."""
-    from . import likeness
+    picture's own detection is (likeness_sides.model_sides does the same for the table); cached by head and camera."""
+    from . import likeness_detect, likeness_render
     key = (np.asarray(head["c"], np.float32).tobytes(),
            tuple(np.round(np.r_[cam["r"], cam["t"], cam["f"], cam.get("yaw", 0.0), cam["centre"]], 6)), tuple(np.round(box, 1)))
     D = _C.setdefault("det", {})
     if key not in D:
         if len(D) > 64:
             D.clear()
-        im, k = likeness.render(head["mesh"], cam, box)[:2]
-        P = likeness.detect([im])[0]
+        im, k = likeness_render.render(head["mesh"], cam, box)[:2]
+        P = likeness_detect.detect([im])[0]
         D[key] = None if P is None else np.asarray(P, float) / k + [box[0], box[1]]
     return D[key]
 
