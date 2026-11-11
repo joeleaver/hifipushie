@@ -7,7 +7,7 @@ patterns' blend renormalised so it keeps its contrast). The face normal comes fr
 gradient `fd` (Field.face_dir): normal ~ (fd, 1). Vertical projections are stretched `stretch` up the face (the rock's
 grain: joints run vertical).
 
-Why not 3D: a random-height field on a cubic lattice (the Freudenthal split, terrain_mesh._pl_facets) put every crease
+Why not 3D: a random-height field on a cubic lattice (the Freudenthal split, terrain_relief._pl_facets) put every crease
 on one lattice's planes and diagonals: a face showed a few fixed crease directions at one spacing, a quilt of diamonds
 from 40-150 m (the user's "squares in the rocks"); warping that lattice helped little (autocorrelation peak 0.46 vs
 0.55). A 3D Delaunay of Poisson-disk seeds has slivers (near-flat tetrahedra: random heights over them made needles

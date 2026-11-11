@@ -28,6 +28,9 @@ Rule (Joe, 2026-11-10): no backwards compatibility. No gate, no switch, no shim;
   102 tools) -> mcp_app (app, decorator, registry), tool_common, tools_find, tools_model, tools_plan, tools_export,
   tools_human, tools_likeness, tools_skin, tools_hair, tools_cloth, tools_terrain, tools_plants, tools_clutter;
   largest 592 lines. Proof: the whole tool surface byte-identical before and after (deadcode/surface.py).
+- The split, step 2 (branch split-terrain-mesh; tag archive/before-split-terrain-hair; ledger C414): terrain_mesh.py
+  (5,680 lines) -> 15 modules along its sections (terrain_mesh.MODULES lists them). terrain_tiles is 928 lines: one
+  function of 799. The tile export's state hashes all of them, as before.
 - Not done: module docstrings in trimmed files (drape, zozo_hang, fold_checks, garment_pull, cloth_check) still describe
   removed parts. Fix them when each file is split.
 
@@ -43,16 +46,13 @@ The first estimate of 33k deletable lines was by module import, not by function,
 The clothes guides (cloth_guide, cloth_design, cloth_construction, cloth_sim, cloth_faults, cloth_blocks,
 cloth_background) are what was left after the old paragraphs went: they need one rewrite to steps 0-10.
 
-## Tool (not in the repo): /mnt/data/hifipushie/deadcode/
-dead.py (what the tools reach, function by function), why.py (why a symbol is live), frontier.py (links from live code
-into the old modules), hyp.py (what a cut would free), apply.py (delete and keep imports consistent), check.py (source
-and tests against main), proof.py (builds and flat checks against the parent tree), split_server.py and surface.py
-(a file split by tool domain, and the tool surface as one JSON to compare). Conservative: a class is kept whole, a
-module named in a string is kept whole.
+## Tools (not in the repo): /mnt/data/hifipushie/deadcode/
+dead.py, why.py, frontier.py, hyp.py, apply.py, check.py (unreachable code, function by function; conservative);
+proof.py (builds and flat checks against the parent tree); surface.py (the tool surface as one JSON);
+split_server.py, split_module.py + plan_<module>.py (splits, callers rewritten), shadow_check.py, undefined.py.
 
-## Also unreachable today, outside clothes (not touched)
+## Also unreachable today, outside clothes (not touched; check blender_* by hand, Blender runs them by path)
 blender_cards 446 lines, faceext 376, terrain_seams 201, flipfit 137, faceatlas 105, gnm_controls 90, blender_lashes 86.
-Check blender_* by hand before deleting: Blender runs them by path.
 
 NEXT: split the files over 2,000 lines, one area at a time and only while no agent works in it: terrain_mesh (5.7k),
 hair (5.7k) and asset (3.7k) first; cloth.py and pattern_form wait for the chain-build cut above.

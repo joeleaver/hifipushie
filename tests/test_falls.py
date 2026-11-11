@@ -82,9 +82,10 @@ def test_sea(T):
 
 def _cliff_field(T, tile=32):
     from hifipushie import terrain_cliffs as tc, terrain_mesh as tm
+    from hifipushie import terrain_tile_jobs, terrain_tile_mesh
     cfg = {**tm.DEFAULTS, "tile": tile}
-    base, vols, *_ = tm.build_field(T, cfg)
-    G = tm.Grid(T, cfg)
+    base, vols, *_ = terrain_tile_jobs.build_field(T, cfg)
+    G = terrain_tile_mesh.Grid(T, cfg)
     R = tc.Region(T, base, G, cfg)
     return tc.CliffField(base, R), R, G, vols, cfg
 
@@ -128,7 +129,7 @@ def test_face_normals(T, field=None):
     """The meshing field's normal on a fall's face points out of it, downstream (the slope correction taken from the
     faced column right up to the face swung 1 -> 0.01 -> 1 across the riser; normals sampled off the surface turned
     against the face: black shards on Kaze's sea-cliff fall at LOD 1-2). The AO's Metric field is only for AO."""
-    from hifipushie import terrain_mesh as tm
+    from hifipushie import terrain_volumes
     cf, R, G, *_ = field or _cliff_field(T)
     f = T.falls[0]
     c, t_, n = _frame(f)
@@ -146,7 +147,7 @@ def test_face_normals(T, field=None):
             pts.append(P(0.5 * (lo + hi))[0])
     pts = np.array(pts)
     assert len(pts) > 30, len(pts)
-    g = cf.value_gradient(pts, tm.NORMAL_H * G.v(0))[1]
+    g = cf.value_gradient(pts, terrain_volumes.NORMAL_H * G.v(0))[1]
     g /= np.linalg.norm(g, axis=1, keepdims=True)
     out = g[:, :2] @ t_
     assert (out > 0.3).mean() > 0.97, np.sort(out)[:8]
@@ -154,10 +155,11 @@ def test_face_normals(T, field=None):
 
 
 def test_clutter(T):
-    from hifipushie import terrain_mesh as tm, terrain_stream as ts
-    base = tm.build_field(T)[0]
+    from hifipushie import terrain_stream as ts
+    from hifipushie import terrain_materials, terrain_tile_jobs
+    base = terrain_tile_jobs.build_field(T)[0]
     field = getattr(base, "base", base)
-    mats = tm.Materials(T, base)
+    mats = terrain_materials.Materials(T, base)
     C = ts.clutter(T, mats, field)
     kinds = {k: i for i, k in enumerate(ts.KINDS)}
     big = T.falls[1]
@@ -176,20 +178,21 @@ def test_lip_open(T):
     the faces' step, but its slope correction was the grid's ramp (s 0.15 on crown_beck's 17 m fall), the field
     under-reported distance 6x up from the top, the AO rays found rock everywhere (ORM 10-47 / 255: a black slab), and
     the stream layers read dry bank / bare earth there (the level grid's cells straddle the drop)."""
-    from hifipushie import terrain_bake as tb, terrain_mesh as tm
-    base = tm.build_field(T)[0]
+    from hifipushie import terrain_bake as tb
+    from hifipushie import terrain_field, terrain_materials, terrain_tile_jobs
+    base = terrain_tile_jobs.build_field(T)[0]
     f = T.falls[1]
     c, t_, n = _frame(f)
     pts = np.array([c + u * t_ + v * n for u in (-2.5, -1.5, -0.8) for v in (-0.25, 0.0, 0.25) * np.array(f["width"])])
     h, s = base.column(pts[:, 0], pts[:, 1])
     X = np.c_[pts, h]
-    up = tm.Metric(base).value(X + [0, 0, 3.0])  # (the AO's field; the meshing field eases to it 0.5-1.5 m from the lip)
+    up = terrain_field.Metric(base).value(X + [0, 0, 3.0])  # (the AO's field; the meshing field eases to it 0.5-1.5 m from the lip)
     far = np.abs(np.array([u for u in (-2.5, -1.5, -0.8) for _ in range(3)])) >= 1.5
     assert (base.value(X[far] + [0, 0, 3.0]) > 2.4).all()
     assert (up > 2.4).all(), (up, s)  # (metres: 3 m up is ~3 m from the surface)
-    ao = tb.ambient(tm.Metric(base), X, np.tile([0, 0, 1.0], (len(X), 1)))
+    ao = tb.ambient(terrain_field.Metric(base), X, np.tile([0, 0, 1.0], (len(X), 1)))
     assert ao.min() > 0.4, ao  # (open flat ground reads ~0.54; it read 0 before)
-    mats = tm.Materials(T, base)
+    mats = terrain_materials.Materials(T, base)
     Wt, _ = mats.weights(X, np.tile([0, 0, 1.0], (len(X), 1)))
     L = mats.layers
     bedrock = Wt[:, L.index("wet_rock")] + Wt[:, L.index("rock")]

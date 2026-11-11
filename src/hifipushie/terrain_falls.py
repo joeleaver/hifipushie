@@ -14,7 +14,7 @@ round a plunge pool at the foot, and the river running on from the pool's level.
   width of the sheet, the pool (centre xyz at the pool's water level, radius, depth) and `into` ("river" | "sea" |
   "lake"): what the game needs to draw the falling sheet and the spray.
 The water's level (river_water_lines) steps at the lip; easing and the bank rule act on each reach on its own.
-- `Faces` (on the 3D field, terrain_mesh.Field): the face a vertical step on the lip line, the rock relief off along the
+- `Faces` (on the 3D field, terrain_field.Field): the face a vertical step on the lip line, the rock relief off along the
   water, and the sheet's clearance air whatever else the field builds (pushieworld note 120)."""
 
 from __future__ import annotations

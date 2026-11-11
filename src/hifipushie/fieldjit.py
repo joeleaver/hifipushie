@@ -570,7 +570,7 @@ def facets(p, size, seed, w, stretch, group, triangulation, gain, normalise=None
     return _facets_sum(w, vout, float(gain))
 
 
-# ---------------------------------------------------------------- terrain_mesh._pl_walk (the warped facet lattice)
+# ---------------------------------------------------------------- terrain_relief._pl_walk (the warped facet lattice)
 
 if ON:
     _U16 = np.uint64(16)
@@ -595,7 +595,7 @@ if ON:
 
     @njit(cache=True)
     def pl_walk(q, seed, vec):
-        """terrain_mesh._pl_walk: corner values of the unit lattice interpolated over the Freudenthal tetrahedra.
+        """terrain_relief._pl_walk: corner values of the unit lattice interpolated over the Freudenthal tetrahedra.
         Axes walked from the largest fraction down (ties in index order; a tie's middle corner has weight 0, so the
         order between tied axes doesn't change the value). (n,) or (n, 3) with vec (the first column filled when
         not vec)."""
