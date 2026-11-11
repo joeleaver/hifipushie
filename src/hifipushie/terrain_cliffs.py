@@ -1,6 +1,6 @@
 """Cliff overlay: the game-standard split of 3D terrain. The heightmap stays the base (tiled on the world grid, as an
 engine's terrain system wants it); every stretch steeper than a threshold, and every place a cave, arch or notch opens,
-gets a separate 3D mesh cut from the same rock field (terrain_mesh.Field: facets, beds, volumes), laid over it.
+gets a separate 3D mesh cut from the same rock field (terrain_field.Field: facets, beds, volumes), laid over it.
 
 How the two fit without cutting holes except where a void must show through:
 - The region: S(x, y) in 0..1, 1 on ground steeper than `cliff_slope` (and the rock character's own mask) and round
@@ -27,6 +27,7 @@ from scipy import ndimage
 
 from . import fieldjit
 from . import terrain_mesh as tm
+from . import terrain_field, terrain_gltf, terrain_map_seams, terrain_tile_finish, terrain_tile_mesh
 
 
 def _smooth(e0, e1, x):
@@ -78,7 +79,7 @@ class Region:
     """Where the cliff meshes go (S), the pushed heightmap and the holes, on the world's heightmap lattice (spacing
     `d` = tile / (samples - 1), from the tile grid's origin: tiles' samples are lattice nodes)."""
 
-    def __init__(self, T, base: tm.Field, G: tm.Grid, cfg: dict):
+    def __init__(self, T, base: terrain_field.Field, G: terrain_tile_mesh.Grid, cfg: dict):
         self.base, self.G = base, G
         hm = int(cfg["heightmap"]) or 65
         self.d = d = G.tile / (hm - 1)
@@ -270,10 +271,10 @@ WHOLE_ADDS = __import__("os").environ.get("HIFIPUSHIE_WHOLE_ADDS") == "1"  # (se
 
 
 class CliffField:
-    """The shell the cliff meshes are cut from (see the module docstring). Looks like a terrain_mesh.Field to the tile
+    """The shell the cliff meshes are cut from (see the module docstring). Looks like a terrain_field.Field to the tile
     exporter: column, solid, value, value_gradient, rock."""
 
-    def __init__(self, base: tm.Field, region: Region):
+    def __init__(self, base: terrain_field.Field, region: Region):
         self.base, self.region = base, region
         self.rock, self.vols = base.rock, base.vols
         self.zpad = region.thick + region.sink  # (the tile's lattice reaches this far under the ground)
@@ -421,7 +422,7 @@ class CliffField:
                 return cf.lift(p)
 
             def relief_at(self, x, y):
-                """The rock character's weight at columns (terrain_mesh.Field.relief_at)."""
+                """The rock character's weight at columns (terrain_field.Field.relief_at)."""
                 return cf.base.relief_at(x, y)
 
             def designed_step(self, x, y):
@@ -511,7 +512,7 @@ def ground_tile(R: Region, mats, i, j, lo, n, lods, out: Path, cfg):
     from .profiling import span
     with span("ground/vertex weights"):
         W0, C0 = mats.weights(P0, N0)
-    trans = tm._to_gltf(np.array([[lo[0], lo[1], 0.0]]))[0]
+    trans = terrain_gltf._to_gltf(np.array([[lo[0], lo[1], 0.0]]))[0]
     origin = np.array([lo[0], lo[1], 0.0])
     mat = cfg["_ground_mat"]
     fine = None
@@ -543,16 +544,16 @@ def ground_tile(R: Region, mats, i, j, lo, n, lods, out: Path, cfg):
                                                     f"ground_{i}_{j}_lod{k}")
             prims = [prim]
         else:
-            prims = [tm._prim(P - origin, Nn, C, W, F, 0, {"role": "surface"}, mats, lo, cfg)]
+            prims = [terrain_tile_finish._prim(P - origin, Nn, C, W, F, 0, {"role": "surface"}, mats, lo, cfg)]
         # skirts on shared borders: down by how far this LOD's edge strays from the finest one (+ a margin)
         sk = _ground_skirts(P0, n, st, G, lo)
         if sk is not None:
             SP, SF, sv = sk
-            prims.append(tm._prim(SP - origin, np.repeat(N0[sv], 2, 0), np.repeat(C0[sv], 2, 0),
+            prims.append(terrain_tile_finish._prim(SP - origin, np.repeat(N0[sv], 2, 0), np.repeat(C0[sv], 2, 0),
                                   np.repeat(W0[sv], 2, 0), SF, 1, {"role": "skirt"}, mats, lo, cfg))
         fn = f"ground_{i}_{j}_lod{k}.glb"
         from . import terrain_bake
-        tm.write_glb(out / fn, f"ground_{i}_{j}_lod{k}", prims, trans,
+        terrain_gltf.write_glb(out / fn, f"ground_{i}_{j}_lod{k}", prims, trans,
                      mat + ([terrain_bake.material("terrain_baked")] if images else []),
                      extras={"tile": [i, j], "lod": k, "ground": True}, images=images)
         entry["lods"].append({"file": fn, "triangles": int(len(F)), "bytes": (out / fn).stat().st_size})
@@ -560,7 +561,7 @@ def ground_tile(R: Region, mats, i, j, lo, n, lods, out: Path, cfg):
             entry["lods"][-1]["maps"] = binfo
         if k == int(cfg["collision"]):
             cf = f"ground_collision_{i}_{j}.glb"
-            tm.write_glb(out / cf, f"ground_collision_{i}_{j}", [{"attrs": {"POSITION": tm._to_gltf(P - origin)},
+            terrain_gltf.write_glb(out / cf, f"ground_collision_{i}_{j}", [{"attrs": {"POSITION": terrain_gltf._to_gltf(P - origin)},
                                                                   "indices": F}], trans, None,
                          extras={"tile": [i, j], "collision": True})
             entry["collision"] = cf
@@ -614,8 +615,8 @@ def _ground_baked(R, mats, fine, P, N, W, F, k, lo, origin, cfg, out, stem):
         wfiles.append(fn)
     images = [(tb.jpeg(maps["basecolor"]), "image/jpeg"), (tb.png(maps["orm"], "RGB"), "image/png"),
               (tb.png(maps["normal"], "RGB"), "image/png")]
-    attrs = {"POSITION": tm._to_gltf(P - origin), "NORMAL": tm._to_gltf(N),
-             "TANGENT": np.c_[tm._to_gltf(T4[:, :3]), T4[:, 3]], "TEXCOORD_0": uv}
+    attrs = {"POSITION": terrain_gltf._to_gltf(P - origin), "NORMAL": terrain_gltf._to_gltf(N),
+             "TANGENT": np.c_[terrain_gltf._to_gltf(T4[:, :3]), T4[:, 3]], "TEXCOORD_0": uv}
     sq = int(cfg["splat"])
     if sq:
         mg = int(cfg["splat_margin"])
@@ -680,8 +681,8 @@ def ground_check(out: Path, M: dict, R: Region | None = None, memo=None, tile_ke
     data = {}
     for (i, j), e in tiles.items():
         for k, L in enumerate(e["lods"]):
-            tr, prims = tm.read_glb(out / L["file"])
-            P = tm._from_gltf(prims[0]["POSITION"].astype(np.float64)) + tm._from_gltf(tr[None])[0]
+            tr, prims = terrain_gltf.read_glb(out / L["file"])
+            P = terrain_gltf._from_gltf(prims[0]["POSITION"].astype(np.float64)) + terrain_gltf._from_gltf(tr[None])[0]
             data[i, j, k] = (P, prims[0]["indices"])
     bad_edges = 0
     for (i, j) in tiles:
@@ -706,7 +707,7 @@ def ground_check(out: Path, M: dict, R: Region | None = None, memo=None, tile_ke
     if hm_bad:
         failures.append(f"{hm_bad} heightmap tile edges differ from their neighbours'")
     if M.get("maps"):
-        ms = tm.map_seams(out, M["ground"], lods, memo=memo)
+        ms = terrain_map_seams.map_seams(out, M["ground"], lods, memo=memo)
         summary["map_seams"] = ms
         for key, r in ms.items():
             if not r["ok"]:
@@ -785,12 +786,12 @@ def buried_over_ground(out: Path, M: dict, lod: int = 0) -> dict:
         n = H.shape[0] - 1
         d = T / n
         x0, y0 = g["min"][0], g["min"][1]
-        tr, prims = tm.read_glb(out / L["file"])
-        o = tm._from_gltf(tr[None])[0]
+        tr, prims = terrain_gltf.read_glb(out / L["file"])
+        o = terrain_gltf._from_gltf(tr[None])[0]
         for p in prims:
             if p["extras"].get("role") != "buried":
                 continue
-            P = tm._from_gltf(p["POSITION"].astype(np.float64)) + o
+            P = terrain_gltf._from_gltf(p["POSITION"].astype(np.float64)) + o
             F = p["indices"]
             c = P[F].mean(1)
             a = np.linalg.norm(np.cross(P[F[:, 1]] - P[F[:, 0]], P[F[:, 2]] - P[F[:, 0]]), axis=1) / 2
@@ -826,12 +827,12 @@ def exposed_buried(out: Path, M: dict, R: Region, tiles=None) -> list[dict]:
         for k, L in enumerate(e["lods"]):
             if not L:
                 continue
-            tr, prims = tm.read_glb(out / L["file"])
-            o = tm._from_gltf(tr[None])[0]
+            tr, prims = terrain_gltf.read_glb(out / L["file"])
+            o = terrain_gltf._from_gltf(tr[None])[0]
             for p in prims:
                 if p["extras"].get("role") != "buried":
                     continue
-                P = tm._from_gltf(p["POSITION"].astype(np.float64)) + o
+                P = terrain_gltf._from_gltf(p["POSITION"].astype(np.float64)) + o
                 F = p["indices"]
                 n = np.cross(P[F[:, 1]] - P[F[:, 0]], P[F[:, 2]] - P[F[:, 0]])
                 a = np.linalg.norm(n, axis=1) / 2
@@ -864,13 +865,13 @@ def floating(out: Path, M: dict, R: Region, lod: int = 0, tol: float = 0.15, mem
         L = e["lods"][lod]
         if not L:
             continue
-        tr, prims = tm.read_glb(out / L["file"])
-        o = tm._from_gltf(tr[None])[0]
+        tr, prims = terrain_gltf.read_glb(out / L["file"])
+        o = terrain_gltf._from_gltf(tr[None])[0]
         tp = []
         for p in prims:
             if p["extras"].get("role") == "skirt":
                 continue
-            P = tm._from_gltf(p["POSITION"].astype(np.float64)) + o
+            P = terrain_gltf._from_gltf(p["POSITION"].astype(np.float64)) + o
             Ps.append(P)
             tp.append(P)
             Fs.append(p["indices"] + off)

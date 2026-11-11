@@ -1,5 +1,5 @@
 """A jointed rock column: the form of a sea stack (or any free-standing pillar of bedded, jointed rock) as a signed
-distance, for the 3D tiles (terrain_mesh.Stack).
+distance, for the 3D tiles (terrain_volumes.Stack).
 
 How real stacks are made (Old Harry, the Twelve Apostles, Duncansby, Yesnaby, the Old Man of Hoy; photos and measures
 in workspace/level_refs/stacks): the sea widens JOINTS (near-vertical fracture sets, usually two roughly at right

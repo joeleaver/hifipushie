@@ -24,7 +24,7 @@ import numpy as np
 from scipy import ndimage
 
 from . import noise, profiling
-from . import terrain_mesh as tm
+from . import terrain_relief
 from .profiling import span as _span
 
 
@@ -54,14 +54,14 @@ def micro_relief(r, amount=1.0, texel=0.1, fine=True):
     J = r.get("joints")
 
     def f(p, fd=None, u=None, g=None, I=None):
-        fac = lambda size, sd: tm.facet(p, size, sd, fd, u)  # (irregular triangles on faces: terrain_facets)
+        fac = lambda size, sd: terrain_relief.facet(p, size, sd, fd, u)  # (irregular triangles on faces: terrain_facets)
         out = 0.06 * a1 * fac(1.2, seed)
         if a2 > 0:
             out = out + 0.015 * a2 * fac(0.45, seed + 1)
         if J and ac > 0:  # hairline cracks along the joint sets, on their candidate planes (most not meshed)
             for m, d in enumerate(J["dirs"][:2]):
                 sp = J["spacing"][m]
-                q = (p[:, :2] @ np.asarray(d)) / sp + 0.37 * tm._pl_facets(p, 2.0, seed + 9 + m)
+                q = (p[:, :2] @ np.asarray(d)) / sp + 0.37 * terrain_relief._pl_facets(p, 2.0, seed + 9 + m)
                 dist = np.abs(q - np.round(q)) * sp
                 out = out + 0.03 * ac * np.clip(1 - dist / 0.12, 0, 1) ** 2
         if r.get("blocks") and fd is not None and (ac > 0 or al > 0):
@@ -87,7 +87,7 @@ def micro_relief(r, amount=1.0, texel=0.1, fine=True):
             out = out + 0.06 * ac * np.clip(1 - np.abs(c) / 0.1, 0, 1) ** 2  # cracks where the net crosses zero
         if bed and (an > 0 or al > 0) and not r.get("blocks"):  # (with blocks their bed planes are the beds: the big
             # beds' notch drew two dark lines along the whole pebble chasm)
-            B = tm.bed_planes(p, r, g)
+            B = terrain_relief.bed_planes(p, r, g)
             zb = B["z"]
             e = np.abs(zb - np.round(zb)) * bed  # m from the nearest bedding plane
             # the bedding plane's notch: a smooth trough (a cusp stair-stepped when a close view magnified its texels)
@@ -596,7 +596,7 @@ def bake_texels(surface, mats, P, N, T4, uv, F, size, t, xs, ys, inside, layers_
 # the normal at JUMP_H and twice that differs by more than JUMP_DEG right at it. Counted per tile LOD (every 7th
 # texel, as the texel error)
 JUMP_SOFT = 0.2
-JUMP_RELIEF = 0.1  # (terrain_mesh.RELIEF_FADE: past it the rock character is in full)
+JUMP_RELIEF = 0.1  # (terrain_volumes.RELIEF_FADE: past it the rock character is in full)
 JUMP_H = 0.03  # m: the surface normal's own stencil scale (terrain_mesh: the voxel / 16)
 JUMP_DEG = 6.0
 

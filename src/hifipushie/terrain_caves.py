@@ -27,7 +27,8 @@ import zlib
 
 import numpy as np
 
-from .terrain_mesh import Mound, Tube, _daylight, _downhill, _sea, smoothstep
+from .terrain_mesh import smoothstep
+from .terrain_volumes import Mound, Tube, _daylight, _downhill, _sea
 
 KINDS = {
     "sea": {"width": 6.0, "height": 4.5, "chamber": 8.0, "depth": None, "rough": 0.4},
@@ -40,7 +41,7 @@ KINDS = {
 class Cave:
     def __init__(self, name, kind, nodes, edges, tubes, notes, dolines=()):
         self.name, self.kind, self.nodes, self.edges, self.tubes, self.notes = name, kind, nodes, edges, tubes, notes
-        self.dolines = list(dolines)  # ground edits (terrain_mesh.dig_doline)
+        self.dolines = list(dolines)  # ground edits (terrain_relief.dig_doline)
 
 
 def build(T, rock=None) -> list[Cave]:
@@ -589,7 +590,7 @@ def collision_steps(paths, out, tiles, lod) -> list[str]:
     under each point (`collision_floor`, written into the path as "collision_floor") and the largest step between
     half-metre points, beside the field's ("largest_step_m", "largest_step_collision_m"). Report lines."""
     from pathlib import Path
-    from . import terrain_mesh as tm
+    from . import terrain_gltf
     out = Path(out)
     if not paths:
         return []
@@ -602,10 +603,10 @@ def collision_steps(paths, out, tiles, lod) -> list[str]:
         if ((pts >= lo - 1) & (pts <= hi + 1)).all(1).any():
             near.add((e["i"], e["j"]))
     for ij in sorted(near):
-        tr, prims = tm.read_glb(out / have[ij]["collision"])
-        o = tm._from_gltf(tr[None])[0]
+        tr, prims = terrain_gltf.read_glb(out / have[ij]["collision"])
+        o = terrain_gltf._from_gltf(tr[None])[0]
         for p in prims:
-            P = tm._from_gltf(p["POSITION"].astype(np.float64)) + o
+            P = terrain_gltf._from_gltf(p["POSITION"].astype(np.float64)) + o
             Ps.append(P)
             Fs.append(p["indices"].astype(np.int64) + n)
             n += len(P)
@@ -678,11 +679,12 @@ def light_field(T):
     """The caves and a field to walk them in, cheaply: the height field with the volumes and caves cut out, no rock
     character (relief, beds, blocks) and no sea stacks. Seconds, where the tile export's field takes minutes."""
     from . import terrain_mesh as tm
+    from . import terrain_field, terrain_relief, terrain_volumes
     karst = any((c or {}).get("kind") == "karst" for c in (T.spec.get("caves") or {}).values())
-    rock = tm.rock_config(T, dict(tm.DEFAULTS)) if karst else None  # (karst floors lie on the rock's beds)
+    rock = terrain_relief.rock_config(T, dict(tm.DEFAULTS)) if karst else None  # (karst floors lie on the rock's beds)
     caves = build(T, rock)
-    vols, _ = tm.volumes(T)
-    field = tm.Field(T, vols + [tb for cv in caves for tb in cv.tubes], None,
+    vols, _ = terrain_volumes.volumes(T)
+    field = terrain_field.Field(T, vols + [tb for cv in caves for tb in cv.tubes], None,
                      dolines=[d for cv in caves for d in cv.dolines],
                      cuts=[v.cut for v in vols if getattr(v, "cut", None)])
     return caves, field
@@ -848,7 +850,7 @@ def early(T) -> tuple[list[str], list[str]]:
         lines, warns = [f"caves: can't build: {e}"], [f"caves: {e}"]
         T._cave_early = (key, lines, warns)
         return lines, warns
-    from .terrain_mesh import _sea
+    from .terrain_volumes import _sea
     walk = check(caves, field, sea=_sea(T))
     sv = survey(T, caves)
     lines = [f"caves (walked now through the height field with the caves cut out, no rock relief: "

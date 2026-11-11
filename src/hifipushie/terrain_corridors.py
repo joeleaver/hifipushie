@@ -58,7 +58,7 @@ def _chunks(xy, pad, size, what):
 
 def rects(T, c, box=None) -> list[dict]:
     """The corridors' rects (lo, hi, what), snapped out to the spacing's lattice, inside the terrain (and `box`)."""
-    from .terrain_mesh import lake_outlines
+    from .terrain_seam_check import lake_outlines
     buf, size, sp = c["buffer"], c["size"], c["spacing"]
     out = []
     for name, w in (getattr(T, "river_water_lines", None) or {}).items():
@@ -202,7 +202,7 @@ DRAWN_MAX = 0.5  # m: the drawn LOD 0 cliff surface stands in for the field's to
 
 def _tile_surface(path):
     """World-space triangles (n, 3, 3) of a tile LOD's "surface" primitive (the visible cliff shell), or None."""
-    from .terrain_mesh import read_glb, _from_gltf
+    from .terrain_gltf import read_glb, _from_gltf
     try:
         t, prims = read_glb(path)
     except FileNotFoundError:
@@ -239,7 +239,7 @@ def drawn_top(tris, x0, y1, sp, rows, cols):
 
 def write(T, field, region, out, cfg, box=None, log=print, grid=None) -> dict | None:
     """Every corridor rect sampled and written (corridors/corridor_<n>.npy); the manifest's "corridors" entry.
-    `grid` (terrain_mesh.Grid, with the tiles already written in `out`): where a cliff shell is on top, the samples are
+    `grid` (terrain_tile_mesh.Grid, with the tiles already written in `out`): where a cliff shell is on top, the samples are
     its drawn LOD 0 surface (within DRAWN_MAX of the field), so the water solved on a corridor stands on what the game
     draws (pushieworld note 125: up to 10-20 cm apart under a fall, more than the water was deep)."""
     import time

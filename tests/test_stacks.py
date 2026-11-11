@@ -139,7 +139,8 @@ def _coast_field():
     import json
     import tempfile
     from pathlib import Path
-    from hifipushie import terrain, terrain_mesh as tm
+    from hifipushie import terrain
+    from hifipushie import terrain_tile_jobs
     spec = {"world": {"kind": "coast", "base": 10}, "extent": [[0, 0], [160, 160]], "cell": 1.0,
             "tilt": {"down": "south", "grade": 0.25},
             "sea": {"level": 0, "shore": "cliffs", "cliffs": {"height": [22, 30], "stacks": {"count": 3}}},
@@ -148,7 +149,7 @@ def _coast_field():
     d = Path(tempfile.mkdtemp())
     (d / "spec.json").write_text(json.dumps(spec))
     T = terrain.load(d / "spec.json")
-    field, vols, _, _ = tm.build_field(T)
+    field, vols, _, _ = terrain_tile_jobs.build_field(T)
     return T, field
 
 
@@ -169,21 +170,21 @@ def test_no_piece_detached(style):
     """In a terrain's field (stack + heightfield + rock relief + fallen blocks), every solid piece from under a stack's
     foot to over its top reaches the ground or the box's sides, with every style's stack form. Found: the island's
     stack2 had a lip of relief-built rock over its notch (30 triangles 0.75 m over the heightmap: stack relief now
-    builds at most terrain_mesh.STACK_BUILD); a column's rim hung over a deeper sea floor and the relief cut pieces off
+    builds at most terrain_volumes.STACK_BUILD); a column's rim hung over a deeper sea floor and the relief cut pieces off
     (`foot`: it runs into the floor; fallen blocks seat BOULDER_SEAT deep); ts_slice_a's anime stack stood beside a
     sliver of the heightfield's lobed core cut loose 5-12 m up by the clip under it (124 triangles 9.6 m up: the core
     is round now)."""
-    from hifipushie import terrain_mesh as tm
+    from hifipushie import terrain_volumes
     T, field = _coast_field()
     over = _style_forms()[style]
     vols = []
     for v in field.vols:  # (each stack again with this style's form, as stacks(T) makes it in that style's zone)
-        if isinstance(v, tm.Stack):
-            v = tm.Stack(v.name, v.xy, v.base, v.top, v.r, v.seed, clip=v.clip[0] if v.clip else None, sea=v.col.sea,
+        if isinstance(v, terrain_volumes.Stack):
+            v = terrain_volumes.Stack(v.name, v.xy, v.base, v.top, v.r, v.seed, clip=v.clip[0] if v.clip else None, sea=v.col.sea,
                          over=over, foot=v.col.foot)
         vols.append(v)
     field.vols = vols
-    st = [v for v in vols if isinstance(v, tm.Stack)]
+    st = [v for v in vols if isinstance(v, terrain_volumes.Stack)]
     assert st, "the test coast has no stacks"
     s18 = ndimage.generate_binary_structure(3, 2)
     for v in st:

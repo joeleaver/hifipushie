@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 
 from hifipushie import terrain, terrain_mesh as tm, terrain_stream as ts, terrain_style, terrain_swatch
+from hifipushie import terrain_materials, terrain_relief, terrain_tile_jobs
 
 SPEC = {"world": {"kind": "farmland", "base": 14}, "extent": [[0, 0], [256, 256]], "cell": 1.0,
         "rivers": {"brook": {"source": [20, 236, 13], "through": [[100, 190], [110, 120], [180, 90]],
@@ -27,9 +28,9 @@ def _load(spec):
 
 
 def _mats(T):
-    base = tm.build_field(T)[0]
+    base = terrain_tile_jobs.build_field(T)[0]
     field = getattr(base, "base", base)
-    return field, tm.Materials(T, base)
+    return field, terrain_materials.Materials(T, base)
 
 
 def _channel(T, S, n=4000, seed=1):
@@ -340,8 +341,8 @@ def test_hold_rivers():
     Hf[20:25, 29:32] = 8.0  # (the channel itself: left alone, the terrain's own ground there is under the water)
     ref = H.copy()
     ref[:, 28:33] = 8.0
-    out = tm.hold_rivers(T_, Hf, ref)
-    assert out[22, 37] == 10.0 + tm.HOLD_FREEBOARD, out[22, 37]
+    out = terrain_relief.hold_rivers(T_, Hf, ref)
+    assert out[22, 37] == 10.0 + terrain_relief.HOLD_FREEBOARD, out[22, 37]
     assert out[22, 30] == 8.0
     assert (out[:, :20] == Hf[:, :20]).all()
     print("ok hold rivers")

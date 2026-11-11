@@ -10,6 +10,7 @@ from pathlib import Path
 import numpy as np
 
 from hifipushie import terrain, terrain_caves, terrain_mesh as tm
+from hifipushie import terrain_tile_jobs, terrain_volumes
 
 SPEC = {"world": {"kind": "coast", "base": 10}, "extent": [[0, 0], [160, 160]], "cell": 2,
         "tilt": {"down": "south", "grade": 0.4},
@@ -68,9 +69,9 @@ def test_survey_numbers(T):
 def test_same_verdict_as_the_full_field(T):
     """The light field (no rock character) walks to the same verdicts as the export's field."""
     caves, light = terrain_caves.light_field(T)
-    a = terrain_caves.check(caves, light, sea=tm._sea(T))
-    full, _, _, caves2 = tm.build_field(T, dict(tm.DEFAULTS))
-    b = terrain_caves.check(caves2, full, sea=tm._sea(T))
+    a = terrain_caves.check(caves, light, sea=terrain_volumes._sea(T))
+    full, _, _, caves2 = terrain_tile_jobs.build_field(T, dict(tm.DEFAULTS))
+    b = terrain_caves.check(caves2, full, sea=terrain_volumes._sea(T))
     assert [("PASSES" in x) for x in a] == [("PASSES" in x) for x in b], (a, b)
 
 

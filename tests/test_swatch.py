@@ -73,10 +73,11 @@ def test_structure_lines_follow_the_rock():
     distance to the nearest plane of the point's own bed was noise inside thin packages, and a strength gated to a texel
     round it stepped row by row: sawteeth and thorns along the 0.5 m mesh). Columns of points up a face on pebble."""
     from pathlib import Path
-    from hifipushie import terrain, terrain_mesh as tm
+    from hifipushie import terrain
+    from hifipushie import terrain_tile_jobs
     spec = Path(__file__).resolve().parents[1] / "examples" / "pebble_disc.json"
     T = terrain.load(spec)
-    field = tm.build_field(T)[0]
+    field = terrain_tile_jobs.build_field(T)[0]
     texel = 1 / 8.0
     z = np.arange(-2.0, 40.0, 0.01)
     drawn = 0

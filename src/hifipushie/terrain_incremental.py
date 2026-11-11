@@ -1,5 +1,5 @@
 """Incremental tile export: after a spec edit, only the tiles the edit can reach are meshed, decimated and baked
-again; every other tile's files are left as they are on disk (terrain_mesh.export_tiles).
+again; every other tile's files are left as they are on disk (terrain_tiles.export_tiles).
 
 The rule is the invariant: an incremental export equals a cold export of the same spec, byte for byte (the manifest's
 timing fields aside). So nothing is decided from the spec. Each tile's work is keyed by the inputs it actually reads:
@@ -20,7 +20,7 @@ timing fields aside). So nothing is decided from the spec. Each tile's work is k
   changes its unchanged neighbour's key too, and the neighbour is redone: the border rule needs no special case.
 
 State lives in <out>/_incremental/state.pkl (written at the end of every export, deleted at the start: an export that
-dies leaves a cold one next). Code changes make it cold (`codehash.digest("terrain_mesh")`)."""
+dies leaves a cold one next). Code changes make it cold (`codehash.digest(*terrain_mesh.MODULES)`)."""
 
 from __future__ import annotations
 
@@ -199,7 +199,7 @@ class Fingerprint:
         if isinstance(o, types.FunctionType):
             # (its code is in the code digest; what it closes over is data)
             self._tok(h, "fn", o.__module__, o.__qualname__)
-            fr = getattr(o, "frame", None)  # (terrain_mesh._gridded: a spline over its own grid)
+            fr = getattr(o, "frame", None)  # (terrain_relief._gridded: a spline over its own grid)
             if isinstance(fr, Frame):
                 self.arrays.append((f"{path}.grid", o.grid, [fr]))
                 self._tok(h, "gridfn", fr.x0, fr.y0, fr.d, fr.order, fr.shape)
