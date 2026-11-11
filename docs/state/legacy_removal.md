@@ -21,18 +21,17 @@ Rule (Joe, 2026-11-10): no backwards compatibility. No gate, no switch, no shim;
   - 281 functions and constants, fold_checks whole; their tests. Source 207.5k -> 202.4k lines; 1,792 tests collect.
 - Proof for each cut, parent tree against branch, separate fresh homes: cf_shirt and wf_simon closed and open
   (load_garment + GarmentBuild.run) bit-identical in X; flat_check on the s4-19 jacket and s4-14 hussar identical.
-- The split, step 1 (landed, dd81c38a; tag archive/before-split-server; ledger C413): server.py (3,913 lines, 102
-  tools) -> mcp_app, tool_common, tools_find and one tools_<domain>.py each. Proof: the tool surface byte-identical.
-- The split, step 2 (landed, d9e204a2; tag archive/before-split-terrain-hair; ledger C414): terrain_mesh.py (5,680
-  lines) -> 15 modules along its sections (terrain_mesh.MODULES). Pure moves; the tile export's state hashes them all.
-- The split, step 3 (landed, dadb8c09; same tag; ledger C415): hair.py (5,694 lines) -> 15 modules (hair.MODULES). Its
-  sections call each other both ways: 28 functions import a later module themselves; rebound names read as module.name.
-- The split, step 4 (landed, merge "split-heads"; tag archive/before-split-heads; ledger C417): face_ruler.py (3,154), base.py
-  (2,830), faceshapes.py (3,139) -> 10 modules each. face_ruler and base are pure moves (base.MODULES: the skin caches
-  that hashed base.py by name hash them all). faceshapes: four names rebound at run time live in faceshapes_consts;
-  class GnmFace (1,788 lines) keeps its name and has its methods in five mixins. Old blank lines restored in all splits.
+- The split (tags archive/before-split-*; 1-4 landed, 5 on branch split-skin-blockin):
+  1 server.py (3,913 lines; C413) -> mcp_app, tool_common, tools_find, one tools_<domain>.py each; tool surface identical.
+  2 terrain_mesh.py (5,680; C414) -> 15 modules (terrain_mesh.MODULES), pure moves; the tile state hashes them all.
+  3 hair.py (5,694; C415) -> 15 modules (hair.MODULES); 28 functions import a later module themselves; rebound names late.
+  4 face_ruler.py, base.py, faceshapes.py (9.1k; C417) -> 10 each; base.MODULES in the skin caches' hashes; four rebound
+    names in faceshapes_consts; class GnmFace (1,788 lines) keeps its name, its methods in five mixins.
+  5 skin_read.py, blockin.py, likeness.py (7.1k; C418) -> 8, 9, 10 modules, pure moves; blockin_models._refs read late.
+    The check for names left behind found a live bug (blockin.ruler); tests/test_undefined_names.py now guards all modules.
 - Still over 500 lines because one function is: terrain_tiles 928 (_export_tiles 799), hair_cards_job 604 (cards_job
-  570). They need refactoring, not moving. Also terrain_volumes 610, faceshapes_face 595, hair_groom 591, hair_look 571.
+  570). They need refactoring, not moving. Also terrain_volumes 610, faceshapes_face 595, hair_groom 591, hair_look 571,
+  blockin_steps 538, skin_read_folds 525.
 - Not done: module docstrings in drape, zozo_hang, garment_pull, cloth_check still describe removed parts (fix at split).
 
 ## What still reaches the old clothes code (measured after cut 2; each cut assumes the ones above it)
@@ -56,5 +55,5 @@ shadow_check.py (after).
 blender_cards 446 lines, faceext 376, terrain_seams 201, flipfit 137, faceatlas 105, gnm_controls 90, blender_lashes 86.
 
 NEXT: split the files over 2,000 lines, one area at a time and only while no agent works in it: asset (3.7k, after
-the loop-retopology branch is landed or closed), skin_read, terrain, blockin, clutter, blender_scene, likeness,
-hair_clumps; cloth.py, pattern_form, garment_pull and cloth_made wait for the chain-build cut.
+the loop-retopology branch is landed or closed), terrain, clutter, blender_scene, hair_clumps; cloth.py, pattern_form,
+garment_pull and cloth_made wait for the chain-build cut. Then the two giant functions, then the re-review.
