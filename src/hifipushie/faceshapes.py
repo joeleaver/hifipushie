@@ -1188,7 +1188,7 @@ LIPS_MEET = True  # (one mesh, own quads) close the neutral's lips on GNM's cont
 # mouthClose / the visemes are for). One mesh, own quads only (index given); a kit face keeps its sealed neutral.
 NEUTRAL_PARTED = __import__("os").environ.get("HP_NEUTRAL_PARTED", "1") != "0"
 # (r36, fitted shapes) SMILE_FIT: a .npy of GNM's 383 expression coefficients FITTED to a reference smile photo with the
-# identity held (assembly/fitexpr.py: face_ruler.read, per-picture expression over a population PCA prior of GNM's face
+# identity held (assembly/fitexpr.py: face_ruler_solve.read, per-picture expression over a population PCA prior of GNM's face
 # expression space; the fitted neutral photo's expression subtracted). Set: mouthSmile = its lower-face components on
 # each side (faded across the midline), cheekSquint = its eye components on that side; none of the smile's hand
 # constants (SMILE_PROTO / holds / lifts / corner pull / fold) apply. Interior handling (teeth clear / wrap, sock, tucks) stays.

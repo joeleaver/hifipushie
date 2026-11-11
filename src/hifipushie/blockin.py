@@ -1027,7 +1027,7 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
 
 # block_in_solve's defaults (solvereads, 2026-10-12; each decided by the validation in the notes' "## solvereads")
 SOLVE_HOLD = None            # "auto": every measure no read looks at is held at the start head's value
-SOLVE_EXPRESSION = False     # "view" | "shared": the pictures' expression as a nuisance (face_ruler.EXPR_SET)
+SOLVE_EXPRESSION = False     # "view" | "shared": the pictures' expression as a nuisance (face_ruler_blockin.EXPR_SET)
 SOLVE_JAW_LM = None          # detector landmarks added to the differential anchors (the jaw line: 3..13)
 CAM_FIRST = 1                # cameras-first rounds of every block_in_solve call (the head held; "refit": 2, wider, and the new start)
 SEESAW_COS = -0.2            # a step whose cosine with the last call's step is under this is halved
@@ -1040,14 +1040,15 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
                hold=SOLVE_HOLD, expression=SOLVE_EXPRESSION, jaw_lm=SOLVE_JAW_LM, report: bool = True,
                damp: bool = True, chin: dict | None = None, dense: bool | None = None, mp: bool | None = None,
                hair_edge: bool | None = None, nostrils: bool | None = None) -> dict:
-    """ONE JOINT STEP (reruns, 2026-10-11): the face ruler's own solve applied whole. face_ruler.compare reads every
+    """ONE JOINT STEP (reruns, 2026-10-11): the face ruler's own solve applied whole. face_ruler_compare.compare reads every
     reference view at once (skin outlines, iris centres, the turned views' limbus) and finds the most likely identity
     change under GNM's prior with each camera's shift / scale / roll / yaw / pitch free; until now only the measures
     were read off it. Here `share` of that change becomes the step and the cameras the solve ended on are kept (read
     through the old cameras the result looks a size wrong). Tess from the class mean: one step = |c| 5.4 -> 10.7,
     table 22 / 26, about where ten hand rounds got. It does NOT see the inside of the face (lids, lips' borders, the
     nose's planes): the eye and lips steps follow. -> step()'s report + "solve": {"n", "dc", "c", "max_sd", "cameras"}."""
-    from . import face_ruler as fr, store
+    from . import store
+    from . import face_ruler_camera, face_ruler_compare
     c0 = identity(store.load(src))
     # the prior is on the WHOLE identity: centred on the block-in's start head (its class mean), not on this call's
     # change (a second call used to move |dc| 4 more and walk a component to 3.1 sd)
@@ -1057,7 +1058,7 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
         off = c0 - identity(store.load(root))
     if cameras not in ("free", "trust", "refit"):
         raise ValueError('block_in_solve: cameras = "free" (fitted cameras: shift / scale / roll / yaw / pitch / distance under '
-                         'a wide prior: face_ruler.PHOTO_CAM_SD7), "trust" (measured cameras: a third of those widths) or '
+                         'a wide prior: face_ruler_camera.PHOTO_CAM_SD7), "trust" (measured cameras: a third of those widths) or '
                          '"refit" (cameras fitted on ANOTHER head: laid on this head first, then free). A prior, never a '
                          'clip, on the WHOLE camera move since the block-in started: use the same setting on every call.')
     k = 1.0 / 3.0 if cameras == "trust" else 1.0
@@ -1084,21 +1085,21 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
                          + 'laid on THIS head first this call (cameras="refit" instead of "free"); later calls use what you pass')
         cameras = "refit"
     cam0 = None if cameras == "refit" else (rj0.get("blockin") or {}).get("cam_done")
-    cam_sd = {kk: tuple(k * x for x in v) for kk, v in fr.PHOTO_CAM_SD7.items()}
+    cam_sd = {kk: tuple(k * x for x in v) for kk, v in face_ruler_camera.PHOTO_CAM_SD7.items()}
     from . import denselm
-    if (fr.DENSE if dense is None else dense) and denselm.available():      # the dense landmarks read perspective (distance to 5-9 %)
-        cam_sd = {kk: tuple(v[:6]) + (k * fr.PHOTO_CAM_DIST_DENSE,) for kk, v in cam_sd.items()}
+    if (face_ruler_camera.DENSE if dense is None else dense) and denselm.available():      # the dense landmarks read perspective (distance to 5-9 %)
+        cam_sd = {kk: tuple(v[:6]) + (k * face_ruler_camera.PHOTO_CAM_DIST_DENSE,) for kk, v in cam_sd.items()}
     b0 = rj0.get("blockin") or {}
     # (readmix) A KNOWN LENS holds its view's distance, dense or not: the prior is on the whole move since block_in_start,
     # whose fit stood at that lens
     lens_notes = []
-    kinds0 = b0.get("kinds") or [fr.kind_of(v.get("yaw", 0)) for v in rj0["views"]]
+    kinds0 = b0.get("kinds") or [face_ruler_compare.kind_of(v.get("yaw", 0)) for v in rj0["views"]]
     for v_, kk in zip(rj0["views"], kinds0):
-        lm_ = fr.lens_known(v_)
-        if lm_ and kk in cam_sd and len(cam_sd[kk]) > 6 and cam_sd[kk][6] > fr.PHOTO_CAM_DIST_LENS:
-            cam_sd[kk] = tuple(cam_sd[kk][:6]) + (fr.PHOTO_CAM_DIST_LENS,)
+        lm_ = face_ruler_camera.lens_known(v_)
+        if lm_ and kk in cam_sd and len(cam_sd[kk]) > 6 and cam_sd[kk][6] > face_ruler_camera.PHOTO_CAM_DIST_LENS:
+            cam_sd[kk] = tuple(cam_sd[kk][:6]) + (face_ruler_camera.PHOTO_CAM_DIST_LENS,)
             lens_notes.append(f"LENS: {str(v_.get('image', kk)).split('/')[-1]} was taken through a known {lm_:.0f} mm lens (35 mm equivalent): its camera's "
-                              f"distance is held to +- {fr.PHOTO_CAM_DIST_LENS:g} % of the start's")
+                              f"distance is held to +- {face_ruler_camera.PHOTO_CAM_DIST_LENS:g} % of the start's")
     # carried across the block-in's calls: the down-weighting the pictures needed (it may come down 15 % a call, never
     # jump), each view's kind (from its fitted camera at the first solve) and its outline reader
     relax0 = 1.0 + RELAX_KEEP * (float(b0.get("relax", 1.0)) - 1.0)
@@ -1127,7 +1128,7 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
         else:
             chin["size"] = True
             chin["size_note"] = ("SIZE: held at the start head's: " + size_info["why"])
-    c = fr.compare(src, rounds=rounds, prior_off=off, cam_sd=cam_sd, lids=lids, lips=lips, anchors=anchors, parse=parse,
+    c = face_ruler_compare.compare(src, rounds=rounds, prior_off=off, cam_sd=cam_sd, lids=lids, lips=lips, anchors=anchors, parse=parse,
                    normals=normals, adapt=adapt, cam_first=2 if cameras == "refit" else CAM_FIRST, cam_reset=cameras == "refit", cmax=cmax,
                    cam_done0=cam0 if cam0 is not None else np.zeros((len(rj0["views"]), 7)),
                    relax0=relax0, hold=hold, held0=b0.get("held") if hold == "auto" else None, expr=expression, kinds=b0.get("kinds"), readers=b0.get("readers"), jaw_lm=jaw_lm, chin=chin, dense=dense,
@@ -1175,7 +1176,7 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
                     "max_sd": float(np.abs(c0 + dc).max()), "sig_scale": {f"{t} {v}": round(float(x), 2) for (t, v), x in c["sig_scale"].items()}, "cameras": np.round(np.asarray(c["cam_done"], float), 2).tolist(),
                     "camera_step": np.round(np.asarray(c["cam_step"], float), 2).tolist(), "relax": float(c["relax"]),
                     "held": list(c.get("held") or []), "expression": xp, "damped": damped, "kinds": list(c["kinds"]), "readers": list(c["readers"]),
-                    "view_yaw": [round(abs(fr.view_yaw(v["cam"])), 1) for v in c["views"]],
+                    "view_yaw": [round(abs(face_ruler_camera.view_yaw(v["cam"])), 1) for v in c["views"]],
                     "stated_yaw": [abs(float(v.get("yaw", 0.0) or 0.0)) for v in rj0["views"]], "camera_lines": list(c.get("camera_lines") or []), "bound": list(c.get("bound") or []),
                     "disagree": {f"{t} {v}": round(x["sig"], 2) for (t, v), x in (c.get("disagree") or {}).items()},
                     "n_view": c.get("n_view") or {}, "inferred": c.get("inferred") or {}}

@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 from hifipushie import assets, face_ruler as fr, store
+from hifipushie import face_ruler_blockin, face_ruler_camera, face_ruler_compare, face_ruler_features, face_ruler_outline, face_ruler_solve
 
 try:
     assets.pack("gnm")
@@ -45,7 +46,7 @@ def test_adapt_raises_the_sigma_of_reads_the_head_cannot_explain():
     head = fr.gnm_head(np.zeros(170))
     c = _step(2, 4.0)
     obs = _synthetic(c, 400, 0.3) + _synthetic(c, 60, 3.0, seed=7, typ="lip")      # lips: ten times noisier than claimed
-    plain, ad = fr.solve(obs, head), fr.solve(obs, head, adapt=True)
+    plain, ad = face_ruler_solve.solve(obs, head), face_ruler_solve.solve(obs, head, adapt=True)
     assert ad["sig_scale"][("lip", "front")] > 3.0
     assert ad["sig_scale"][("outline", "front")] < 1.5
     assert np.linalg.norm(ad["dc"] - c) <= np.linalg.norm(plain["dc"] - c) + 1e-6
@@ -56,11 +57,11 @@ def test_cmax_keeps_every_component_within_reach():
     c = np.zeros(170)
     c[40] = 6.0                                     # the reads insist on a 6 sd component
     obs = _synthetic(c, 300, 0.3)
-    free, held = fr.solve(obs, head), fr.solve(obs, head, cmax=3.0)
+    free, held = face_ruler_solve.solve(obs, head), face_ruler_solve.solve(obs, head, cmax=3.0)
     assert np.abs(free["dc"]).max() > 4.0
     assert np.abs(held["dc"]).max() <= 3.0 + 2e-3
     assert held["bound"] == [40] and held["relax"] == 1.0      # (solvecams) held AT the bound; no read down-weighted
-    ok = fr.solve(_synthetic(_step(3, 4.0), 300, 0.3), head, cmax=3.0)
+    ok = face_ruler_solve.solve(_synthetic(_step(3, 4.0), 300, 0.3), head, cmax=3.0)
     assert ok["bound"] == []                        # nothing forced: nothing held
 
 
@@ -73,8 +74,8 @@ def test_camera_prior_is_on_the_whole_move():
     ob = {"type": "landmark", "view": "front", "name": "lm30.x", "o": 0.0, "J": np.zeros(170), "sig": 5.0, "p": p.tolist(),
           "q": p.tolist(), "X": X.tolist()}
     sd = (2.0, 2.0, 5.0, 1.2)
-    first = fr.solve([ob], head, cam_sd=sd, views=[view])
-    again = fr.solve([ob], head, cam_sd=sd, views=[view], cam_done=[[4.0, 0.0, 0.0, 0.0]])
+    first = face_ruler_solve.solve([ob], head, cam_sd=sd, views=[view])
+    again = face_ruler_solve.solve([ob], head, cam_sd=sd, views=[view], cam_done=[[4.0, 0.0, 0.0, 0.0]])
     assert abs(first["cam"][0]) < 0.2               # a camera at its start with nothing to read stays
     assert again["cam"][0] < -2.0                   # one that already moved 4 mm (2 sd) is drawn back, not left to walk
 
@@ -85,8 +86,8 @@ def test_plain_backdrop():
     plain = np.full((200, 160, 3), 215, np.uint8)
     plain[60:, 50:110] = (180, 140, 120)            # a figure that leaves through the bottom edge
     busy = rng.integers(0, 255, (200, 160, 3)).astype(np.uint8)
-    assert fr.plain_backdrop(Image.fromarray(plain)) > 0.95
-    assert fr.plain_backdrop(Image.fromarray(busy)) < 0.3
+    assert face_ruler_outline.plain_backdrop(Image.fromarray(plain)) > 0.95
+    assert face_ruler_outline.plain_backdrop(Image.fromarray(busy)) < 0.3
 
 
 # ---- on a block-in model with fitted references ---------------------------------------------------------------------------
@@ -94,7 +95,7 @@ def test_plain_backdrop():
 @pytest.fixture(scope="module")
 def tess():
     spec = store.load(REF)
-    A = fr.model_head(spec)
+    A = face_ruler_blockin.model_head(spec)
     dc = _step()
     return A, A["rebuild"](A["c"] + dc), dc
 
@@ -106,10 +107,10 @@ def test_lid_obs_reads_a_known_lid_change(tess):
     ht = onemesh.head_template(B["spec"]["base"])
     mg = be.Reader(ht).margins(ht)
     rv = {"up": mg["up"], "lo": mg["lo"] + be.LO_BIAS, "outer": [mg["ring_out"][0] - be.OUT_RING, 0.0], "inner": mg["inner"]}
-    obs = fr._lid_obs(A, {}, rv)
+    obs = face_ruler_features._lid_obs(A, {}, rv)
     assert len(obs) >= 12 and all(ob["type"] == "lid" and ob["view"] == "eye frame" for ob in obs)
     _agree(obs, dc)
-    same = fr._lid_obs(B, {}, rv)                   # the head the read came from: nothing left to read
+    same = face_ruler_features._lid_obs(B, {}, rv)                   # the head the read came from: nothing left to read
     assert np.abs([ob["o"] for ob in same]).max() < 0.05
 
 
@@ -120,28 +121,28 @@ def test_lip_obs_reads_a_known_border_change(tess):
     rj = bi._refs(REF)
     view = {"cam": rj["cameras"][bi._front(rj)], "kind": "front"}
     sk = np.flatnonzero(np.asarray(basemod._gnm_data()["skin"]))
-    g2m = fr._gnm_to_model(B)
+    g2m = face_ruler_features._gnm_to_model(B)
     ev = {}
     for nm, rows in zip(("upper", "lower"), bl.border_loops()):
         mv = [g2m[int(sk[r])] for r in np.asarray(rows) if int(sk[r]) in g2m]
         ev[nm] = fr._cam_points(view["cam"], np.asarray(B["V"], float)[mv])[1]
-    obs = fr._lip_obs(A, view, ev)
+    obs = face_ruler_features._lip_obs(A, view, ev)
     assert len(obs) >= 12 and {ob["name"].split("_")[1] for ob in obs} == {"upper", "lower"}
     _agree(obs, dc)
-    assert np.abs([ob["o"] for ob in fr._lip_obs(B, view, ev)]).max() < 0.05
+    assert np.abs([ob["o"] for ob in face_ruler_features._lip_obs(B, view, ev)]).max() < 0.05
 
 
 @need_ref
 def test_anchors_are_differential_and_carry_the_chin_and_the_3q_irises(tess):
     A, B, dc = tess
     # (chinread: with a side view in the set the detector's chin points are left out by default; asked for, they are in)
-    head, views, notes = fr.reference_views(REF, parse=False, chin={"chin_lm": "xy"})
+    head, views, notes = face_ruler_compare.reference_views(REF, parse=False, chin={"chin_lm": "xy"})
     front, tq = views[0], views[1]
     oa = front["extra"](A, front)
     lm = [ob for ob in oa if ob["type"] == "landmark"]
     assert lm and all(ob.get("diff") for ob in lm)                          # the detector on picture AND render
     assert {"lm7.x", "lm8.y", "lm9.x"} <= {ob["name"] for ob in lm}       # the chin's three
-    dflt = fr.reference_views(REF, parse=False)[1][0]
+    dflt = face_ruler_compare.reference_views(REF, parse=False)[1][0]
     assert not {"lm7.x", "lm8.y", "lm9.x"} & {ob["name"] for ob in dflt["extra"](A, dflt)}     # Tess's set has a side view
     ob_ = [ob for ob in front["extra"](B, front) if ob["type"] == "landmark"]
     d = np.array([a["o"] - b["o"] for a, b in zip(lm, ob_)])                # the render moved with the head
@@ -149,7 +150,7 @@ def test_anchors_are_differential_and_carry_the_chin_and_the_3q_irises(tess):
     assert np.corrcoef(d, pred)[0, 1] > 0.6
     ir = [ob for ob in tq["extra"](A, tq) if ob["type"] == "iris"]
     assert len(ir) == 4 and all(ob.get("diff") for ob in ir)                # both irises of the turned view
-    absolute = fr.reference_views(REF, parse=False, anchors="absolute")[1][0]
+    absolute = face_ruler_compare.reference_views(REF, parse=False, anchors="absolute")[1][0]
     assert not any(ob.get("diff") for ob in absolute["extra"](A, absolute))
 
 
@@ -158,13 +159,13 @@ def test_parser_outline_agrees_with_the_plain_reader_on_a_studio_photo():
     from hifipushie import faceparse
     if not faceparse.available():
         pytest.skip("asset pack faceparse / the detector venv not installed")
-    head, plain, _ = fr.reference_views(REF, parse=False)
-    _, parsed, notes = fr.reference_views(REF, parse=True)
+    head, plain, _ = face_ruler_compare.reference_views(REF, parse=False)
+    _, parsed, notes = face_ruler_compare.reference_views(REF, parse=True)
     assert any("face parser" in n for n in notes)
     v0, v1 = dict(plain[1], limbus=False), dict(parsed[1], limbus=False)   # the 3/4 picture
-    a = {tuple(np.round(ob["p"], 1)): ob["o"] for ob in fr.observe(head, [v0], colour=False) if ob["type"] == "outline"}
-    b = [ob for ob in fr.observe(head, [v1], colour=False) if ob["type"] == "outline"]
-    assert len(b) >= 50 and all(ob["sig"] == fr.PARSE_SIG for ob in b)
+    a = {tuple(np.round(ob["p"], 1)): ob["o"] for ob in face_ruler_solve.observe(head, [v0], colour=False) if ob["type"] == "outline"}
+    b = [ob for ob in face_ruler_solve.observe(head, [v1], colour=False) if ob["type"] == "outline"]
+    assert len(b) >= 50 and all(ob["sig"] == face_ruler_outline.PARSE_SIG for ob in b)
     d = np.array([ob["o"] - a[tuple(np.round(ob["p"], 1))] for ob in b if tuple(np.round(ob["p"], 1)) in a])
     assert len(d) >= 40 and abs(d.mean()) < 0.4 and d.std() < 0.6        # mm
 
@@ -184,7 +185,7 @@ def test_solve_step_is_not_forced_and_keeps_the_cameras_whole_move():
         rj = json.loads((store.HOME / a / "human_refs.json").read_text())
         done = np.asarray(rj["blockin"]["cam_done"], float)
         assert done.shape == (3, 7) and np.allclose(done, so["cameras"], atol=0.01)     # (solvecams: + distance)
-        lim = 4.0 * np.array([fr.PHOTO_CAM_SD7[k] for k in ("front", "3q", "profile")])   # a prior now, no clip: a good set stays well inside it
+        lim = 4.0 * np.array([face_ruler_camera.PHOTO_CAM_SD7[k] for k in ("front", "3q", "profile")])   # a prior now, no clip: a good set stays well inside it
         assert (np.abs(done) <= lim + 1e-6).all() and len(so["camera_lines"]) == 3
         r2 = bi.solve_step(a, out=b)
         s2 = r2["solve"]

@@ -1,6 +1,6 @@
 """LEARNED SURFACE NORMALS of a picture of a head (refread, 2026-10-11): what no outline sees, the surface INSIDE the
 silhouette (cheek fullness, the planes of the face). The hand-built lambertian shading read failed its validation
-(face_ruler._shade_obs: its own error is as large as a 2 mm cheek change's signal); this is the same idea with a
+(face_ruler_features._shade_obs: its own error is as large as a 2 mm cheek change's signal); this is the same idea with a
 learned monocular normal estimator in the photometric model's place.
 
 The estimator: Meta's Sapiens normal model, 0.3b (asset pack "facenormals"; CC BY-NC 4.0: a MEASURING TOOL, never

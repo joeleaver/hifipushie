@@ -98,8 +98,8 @@ def lens_prior(v: dict) -> tuple:
     mm = v.get("lens_mm")
     sd = 0.05
     if mm is None and v.get("image"):
-        from . import face_ruler      # (readmix) FocalLengthIn35mmFilm x DigitalZoomRatio; a picture cropped after capture: not used
-        mm = face_ruler.lens_info(v)["mm"]
+        from . import face_ruler_camera
+        mm = face_ruler_camera.lens_info(v)["mm"]
         sd = 0.08
     if mm:
         return float(mm) / 43.27 * diag, sd

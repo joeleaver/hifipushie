@@ -5,7 +5,8 @@ uv run python -m pytest -q tests/test_denselm.py"""
 import numpy as np
 import pytest
 
-from hifipushie import assets, denselm, face_ruler as fr, store
+from hifipushie import assets, denselm, store
+from hifipushie import face_ruler_blockin, face_ruler_camera
 
 try:
     assets.pack("gnm")
@@ -76,7 +77,7 @@ def test_crop_box_and_crop():
 def tess():
     from hifipushie import blockin as bi
     spec = store.load(REF)
-    head = fr.model_head(spec)
+    head = face_ruler_blockin.model_head(spec)
     rj = bi._refs(REF)
     return spec, head, rj
 
@@ -87,26 +88,26 @@ def test_dense_obs_reads_a_known_change_and_nothing_on_the_head_itself(tess):
     cam = rj["cameras"][0]
     view = {"cam": cam, "kind": "front"}
     L = denselm.landmarks()
-    assert fr._dense_obs(head, view, None) == []
+    assert face_ruler_camera._dense_obs(head, view, None) == []
     # the detector's reading, made up: the model's own vertices through the camera, sure everywhere
     pred0 = {"xy": np.zeros((L["n"], 2)), "sigma": np.full(L["n"], 0.5)}
-    obs0 = fr._dense_obs(head, view, pred0)
+    obs0 = face_ruler_camera._dense_obs(head, view, pred0)
     assert len(obs0) > 800 and {ob["type"] for ob in obs0} == {"dense"}
     Q = np.zeros((L["n"], 2))
     for ob in obs0:
         j = L["names"].index(ob["name"][:-2])
         Q[j] = ob["p"]
-    obs = fr._dense_obs(head, view, {"xy": Q, "sigma": np.full(L["n"], 0.5)})
+    obs = face_ruler_camera._dense_obs(head, view, {"xy": Q, "sigma": np.full(L["n"], 0.5)})
     assert max(abs(ob["o"]) for ob in obs) < 1e-6                                  # the head itself: nothing to read
-    assert min(ob["sig"] for ob in obs) >= fr.DENSE_SIG_FLOOR
+    assert min(ob["sig"] for ob in obs) >= face_ruler_camera.DENSE_SIG_FLOOR
     # a known identity change: the reading of the changed head, against J dc
     r = np.random.default_rng(5).standard_normal(170)
     dc = 3.0 * r / np.linalg.norm(r)
     h2 = head["rebuild"](head["c"] + dc)
     Q2 = np.zeros((L["n"], 2))
-    for ob in fr._dense_obs(h2, view, pred0):
+    for ob in face_ruler_camera._dense_obs(h2, view, pred0):
         Q2[L["names"].index(ob["name"][:-2])] = ob["p"]
-    obs = fr._dense_obs(head, view, {"xy": Q2, "sigma": np.full(L["n"], 0.5)})
+    obs = face_ruler_camera._dense_obs(head, view, {"xy": Q2, "sigma": np.full(L["n"], 0.5)})
     o = np.array([ob["o"] for ob in obs])
     pr = np.array([ob["J"][:170] for ob in obs]) @ dc
     assert np.corrcoef(o, pr)[0, 1] > 0.9
@@ -114,8 +115,8 @@ def test_dense_obs_reads_a_known_change_and_nothing_on_the_head_itself(tess):
     # an unsure landmark is left out, a less sure one counts less
     sg = np.full(L["n"], 0.5)
     sg[:50] = 1e3
-    assert len(fr._dense_obs(head, view, {"xy": Q, "sigma": sg})) < len(obs)
-    regs = {ob["region"] for ob in fr._dense_obs(head, {**view, "chin": {"dense_regions": ("chin", "cheeks")}}, {"xy": Q, "sigma": np.full(L["n"], 0.5)})}
+    assert len(face_ruler_camera._dense_obs(head, view, {"xy": Q, "sigma": sg})) < len(obs)
+    regs = {ob["region"] for ob in face_ruler_camera._dense_obs(head, {**view, "chin": {"dense_regions": ("chin", "cheeks")}}, {"xy": Q, "sigma": np.full(L["n"], 0.5)})}
     assert regs == {"chin", "cheeks"}
 
 

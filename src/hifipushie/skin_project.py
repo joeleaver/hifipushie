@@ -1103,8 +1103,8 @@ def make(name: str, spec: dict | None = None, views=None, size: int = SIZE, deli
             maps["strand"] = _strands(np.asarray(img), maps["hair"], mpp)
         s = sample_view(at, mesh, cam, np.asarray(img), maps)
         s["_skin_map"] = maps.get("skin")
-        from . import face_ruler as _fr
-        s["iris"] = iris_profile(img, v) if abs(_fr.view_yaw(cam)) <= IRIS_YAW else None
+        from . import face_ruler_camera
+        s["iris"] = iris_profile(img, v) if abs(face_ruler_camera.view_yaw(cam)) <= IRIS_YAW else None
         ok, notes = exclude(at, s, mesh, cam, img, v, parse, ears)
         face = _sstep((s["facing"] - FACE[0]) / (FACE[1] - FACE[0]))
         s["conf"] = (s["vis"] * face * ok * ~s["clip"]).astype(np.float32)

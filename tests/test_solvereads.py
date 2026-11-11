@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from hifipushie import assets, face_ruler as fr, solve_report as sr, store
+from hifipushie import face_ruler_blockin, face_ruler_camera, face_ruler_compare, face_ruler_solve
 
 try:
     assets.pack("gnm")
@@ -48,7 +49,7 @@ def test_support_says_which_measure_the_reads_pin():
     rng = np.random.default_rng(0)
     J = np.outer(rng.standard_normal(60), r)               # 60 reads of ONE direction: the chin's
     c = 2.0 * r
-    out = fr.solve(_obs(J, J @ c), head)
+    out = face_ruler_solve.solve(_obs(J, J @ c), head)
     sup = sr.support(out["post"], _obs(J, J @ c))
     assert sup["read"][i] > 0.95
     assert 1 - (q @ np.linalg.inv((J.T * out["post"]["w"]) @ J + np.eye(170)) @ q) / (q @ q) < 0.01
@@ -81,10 +82,10 @@ def test_hold_keeps_an_unread_measure_at_the_start():
     c = rng.standard_normal(170)
     c *= 6.0 / np.linalg.norm(c)
     obs = _obs(J, J @ c)
-    free = fr.solve(obs, head)
+    free = face_ruler_solve.solve(obs, head)
     read = np.ones(len(rw["names"]))
     read[k] = 0.0
-    held = fr.solve(obs + sr.hold_rows(read), head)
+    held = face_ruler_solve.solve(obs + sr.hold_rows(read), head)
     assert abs(rw["R"][k] @ free["dc"]) > 0.5              # the correlations moved eye depth
     assert abs(rw["R"][k] @ held["dc"]) < 0.2 * abs(rw["R"][k] @ free["dc"])
     resid = lambda d: np.sqrt(np.mean((J @ (c - d)) ** 2))  # noqa: E731
@@ -110,12 +111,12 @@ def test_cmax_is_a_bound_not_a_factor():
     is raised and nothing is carried (the factor went x15 for a component at 3.11 sd and stuck)."""
     head = fr.gnm_head(np.zeros(170))
     obs = _forced()
-    a = fr.solve(obs, head, cmax=3.0)
+    a = face_ruler_solve.solve(obs, head, cmax=3.0)
     assert a["relax"] == 1.0 and a["bound"] == [40]
     assert abs(np.abs(a["dc"]).max() - 3.0) < 1e-3
-    b = fr.solve(obs, head, cmax=3.0, relax0=5.0)          # an old carried factor changes nothing
+    b = face_ruler_solve.solve(obs, head, cmax=3.0, relax0=5.0)          # an old carried factor changes nothing
     assert np.allclose(a["dc"], b["dc"])
-    free = fr.solve(_obs(*(lambda J: (J, J @ np.r_[2.0, np.zeros(169)]))(np.random.default_rng(2).standard_normal((200, 170)))), head, cmax=3.0)
+    free = face_ruler_solve.solve(_obs(*(lambda J: (J, J @ np.r_[2.0, np.zeros(169)]))(np.random.default_rng(2).standard_normal((200, 170)))), head, cmax=3.0)
     assert free["bound"] == []
 
 
@@ -132,10 +133,10 @@ def test_expression_columns_take_a_pictures_expression_out_of_the_identity():
         o = Jid @ c + X @ e + 0.3 * rng.standard_normal(250)
         obs += _obs(np.c_[Jid, X], o, typ="landmark", view=view)
         plain += _obs(Jid, o, typ="landmark", view=view)
-    with_x, without = fr.solve(obs, head), fr.solve(plain, head)
+    with_x, without = face_ruler_solve.solve(obs, head), face_ruler_solve.solve(plain, head)
     assert np.linalg.norm(with_x["dc"] - c) < 0.6 * np.linalg.norm(without["dc"] - c)
     assert abs(with_x["expr"]["front"]["squint"][0] - 0.8) < 0.1 and abs(with_x["expr"]["3q"]["happy"][0] + 0.3) < 0.1
-    shared = fr.solve(obs, head, expr_mode="shared")
+    shared = face_ruler_solve.solve(obs, head, expr_mode="shared")
     assert list(shared["expr"]) == ["all"] and 0.55 < shared["expr"]["all"]["squint"][0] < 0.85
     # the NULL: neutral pictures return no expression and the identity a solve without the term returns
     obs0, plain0 = [], []
@@ -145,7 +146,7 @@ def test_expression_columns_take_a_pictures_expression_out_of_the_identity():
         o = Jid @ c + 0.3 * rng.standard_normal(250)
         obs0 += _obs(np.c_[Jid, X], o, typ="landmark", view=view)
         plain0 += _obs(Jid, o, typ="landmark", view=view)
-    a, b = fr.solve(obs0, head), fr.solve(plain0, head)
+    a, b = face_ruler_solve.solve(obs0, head), face_ruler_solve.solve(plain0, head)
     assert max(abs(v[0]) for d in a["expr"].values() for v in d.values()) < 0.05
     assert np.linalg.norm(a["dc"] - b["dc"]) < 0.1
 
@@ -153,16 +154,16 @@ def test_expression_columns_take_a_pictures_expression_out_of_the_identity():
 # ---- the views' sanity ------------------------------------------------------------------------------------------------
 
 def test_view_yaw_is_the_fitted_cameras_turn():
-    assert abs(fr.view_yaw(fr.camera("front"))) < 1e-6
-    assert abs(abs(fr.view_yaw(fr.camera("3q"))) - 35.0) < 1e-6
-    assert abs(abs(fr.view_yaw(fr.camera(-72.0))) - 72.0) < 1e-6
-    assert abs(abs(fr.view_yaw(fr.cam_moved(fr.camera("profile"), yaw=-10.0))) - 100.0) < 1e-6
+    assert abs(face_ruler_camera.view_yaw(fr.camera("front"))) < 1e-6
+    assert abs(abs(face_ruler_camera.view_yaw(fr.camera("3q"))) - 35.0) < 1e-6
+    assert abs(abs(face_ruler_camera.view_yaw(fr.camera(-72.0))) - 72.0) < 1e-6
+    assert abs(abs(face_ruler_camera.view_yaw(face_ruler_solve.cam_moved(fr.camera("profile"), yaw=-10.0))) - 100.0) < 1e-6
     views = [{"image": "a/front.png", "yaw": 0}, {"image": "a/tq.png", "yaw": 45}, {"image": "a/profile.png", "yaw": -90}]
-    s = fr.view_sanity(views, [fr.camera("front"), fr.camera(-23.0), fr.camera(-72.0)])
+    s = face_ruler_compare.view_sanity(views, [fr.camera("front"), fr.camera(-23.0), fr.camera(-72.0)])
     assert not s[0]["warn"]
     assert "three-quarter" in s[1]["warn"] and "23" in s[1]["warn"]
     assert "NO TRUE SIDE VIEW" in s[2]["warn"] and s[2]["kind"] == "profile" and s[1]["kind"] == "3q"
-    assert not any(x["warn"] for x in fr.view_sanity(views, [fr.camera("front"), fr.camera(-40.0), fr.camera(-88.0)]))
+    assert not any(x["warn"] for x in face_ruler_compare.view_sanity(views, [fr.camera("front"), fr.camera(-40.0), fr.camera(-88.0)]))
 
 
 def test_check_references_words():
@@ -174,7 +175,7 @@ def test_check_references_words():
 
 @need_ref
 def test_direct_read_knows_what_the_pictures_show():
-    c = fr.compare(REF, rounds=1, lids=True, lips=True, parse=False, adapt=True)
+    c = face_ruler_compare.compare(REF, rounds=1, lids=True, lips=True, parse=False, adapt=True)
     assert c["post"] is not None
     sup = sr.support(c["post"], c["obs"], groups=False)
     drc = sr.direct(c["post"], c["obs"], c["views"], c["head"])
@@ -192,14 +193,14 @@ def test_expression_basis_matches_the_models_own_expression():
     import copy
     from hifipushie import humanfit
     spec = store.load(REF)
-    head = fr.model_head(spec, expr={"names": fr.EXPR_SET})
+    head = face_ruler_blockin.model_head(spec, expr={"names": face_ruler_blockin.EXPR_SET})
     x = head["expr"]
-    assert head["B"].shape[0] == 170 + len(fr.EXPR_SET) and head["LB"].shape[0] == 170 + len(fr.EXPR_SET)
+    assert head["B"].shape[0] == 170 + len(face_ruler_blockin.EXPR_SET) and head["LB"].shape[0] == 170 + len(face_ruler_blockin.EXPR_SET)
     assert 0.6 < x["kx"] < 1.2 and x["kx_res"] < 0.5
     sp2 = copy.deepcopy(spec)
-    sp2["base"]["head"]["expression"] = fr.expression_coeffs({"squint": 0.6, "mouth_left": 0.4})
+    sp2["base"]["head"]["expression"] = face_ruler_blockin.expression_coeffs({"squint": 0.6, "mouth_left": 0.4})
     L0, L1 = (np.asarray(humanfit.state(s_["base"])["L"], float)[:68] for s_ in (spec, sp2))
-    i, j = fr.EXPR_SET.index("squint"), fr.EXPR_SET.index("mouth_left")
+    i, j = face_ruler_blockin.EXPR_SET.index("squint"), face_ruler_blockin.EXPR_SET.index("mouth_left")
     pred = 0.6 * head["LB"][170 + i] + 0.4 * head["LB"][170 + j]
     d = L1 - L0
     assert np.corrcoef(d.ravel(), pred.ravel())[0, 1] > 0.85
@@ -218,7 +219,7 @@ def test_solve_step_reports_and_carries_its_state():
         so = r1["solve"]
         assert so["report"]["rows"] and isinstance(so["report"]["text"], str)
         assert so["held"] and "skull_width" in so["held"]
-        assert set(so["expression"]) and all(len(d) == len(fr.EXPR_SET) for d in so["expression"].values())
+        assert set(so["expression"]) and all(len(d) == len(face_ruler_blockin.EXPR_SET) for d in so["expression"].values())
         assert so["kinds"] == ["front", "3q", "profile"] and all(x in ("plain", "parser", "points") for x in so["readers"])
         b1 = bi._refs(a)["blockin"]
         assert b1["relax"] >= 1.0 and b1["kinds"] == so["kinds"] and b1["readers"] == so["readers"]

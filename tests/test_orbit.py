@@ -85,20 +85,21 @@ def _views(c, kinds, **kw):
 def test_limbus_read_in_turned_views():
     """The limbus of a known head read in a 3/4 and a profile clay picture: the read shift = the true shift."""
     from hifipushie import face_ruler as fr, gnm_mm
+    from hifipushie import face_ruler_orbit
     cA = 0.5 * np.random.default_rng(4).normal(size=170)
     cB = cA + 3.0 * gnm_mm.direction("mm:eyes_forward") + 2.0 * gnm_mm.direction("mm:pupils_apart")
     A, B = fr.gnm_head(cA), fr.gnm_head(cB)
     n = 0
     for k in ("3q", "profile"):
         cam = fr.camera(k)
-        lum = fr._lum(fr.clay(B, cam))
-        la, lb = fr.limbus_model(A), fr.limbus_model(B)
+        lum = face_ruler_orbit._lum(fr.clay(B, cam))
+        la, lb = face_ruler_orbit.limbus_model(A), face_ruler_orbit.limbus_model(B)
         for j in (0, 1):
-            rd = fr.limbus_read(lum, cam, la[j])
+            rd = face_ruler_orbit.limbus_read(lum, cam, la[j])
             if rd is None or (k == "profile" and rd["open"] < 0.0):
                 continue
             tru = fr._cam_points(cam, lb[j]["X"][None])[1][0] - fr._cam_points(cam, la[j]["X"][None])[1][0]
-            if rd["sharp"] <= 0 or rd["score"] < fr.LIMBUS_MIN:
+            if rd["sharp"] <= 0 or rd["score"] < face_ruler_orbit.LIMBUS_MIN:
                 continue
             err = (rd["d"] - tru) * rd["mmpx"]
             if k == "3q" and rd["open"] > 0.75:
@@ -111,17 +112,18 @@ def test_ruler_reads_eye_depth_and_orbit_rows():
     """Front + 3/4 + profile clay of a head whose eye unit sits 3 mm further forward: the ruler reads it (camera
     known), the orbit rows come with errors, and a front picture alone does not read it."""
     from hifipushie import face_ruler as fr, gnm_mm
+    from hifipushie import face_ruler_orbit, face_ruler_solve
     cA = 0.5 * np.random.default_rng(4).normal(size=170)
     cB = cA + 3.0 * gnm_mm.direction("mm:eyes_forward") - 2.0 * gnm_mm.direction("mm:brow_ridge_forward")
-    res = fr.read(fr.gnm_head(cA), _views(cB, ("front", "3q", "profile")))
+    res = face_ruler_solve.read(fr.gnm_head(cA), _views(cB, ("front", "3q", "profile")))
     got = {r["measure"]: r for r in res["gaps"]}
     assert abs(got["eyes_forward"]["gap"] - 3.0) < 1.0, got["eyes_forward"]
     orb = {r["row"]: r for r in res["orbit"]}
     assert set(orb) == set(gnm_mm.ORBIT_SEEN)
     assert abs(orb["apex_behind_nasion"]["gap"] + got["eyes_forward"]["gap"]) < 1e-6
     assert orb["apex_behind_nasion"]["gap"] < -1.5 and orb["apex_behind_nasion"]["err"] > 0
-    assert "ORBIT" in fr.orbit_text(res["orbit"])
-    one = fr.read(fr.gnm_head(cA), _views(cB, ("front",), hair=True))
+    assert "ORBIT" in face_ruler_orbit.orbit_text(res["orbit"])
+    one = face_ruler_solve.read(fr.gnm_head(cA), _views(cB, ("front",), hair=True))
     o1 = {r["row"]: r for r in one["orbit"]}
     assert o1["apex_behind_nasion"]["err"] > 2 * orb["apex_behind_nasion"]["err"]      # depth is not in a front view
 
@@ -130,14 +132,15 @@ def test_camera_yaw_is_a_freedom_with_its_error():
     """A profile camera turned 4 deg: with yaw left free the solve gives the turn back (sign and about the size) and the
     eye depth's error is larger than with the camera known."""
     from hifipushie import face_ruler as fr, gnm_mm
+    from hifipushie import face_ruler_solve
     cA = 0.5 * np.random.default_rng(4).normal(size=170)
     cB = cA + 3.0 * gnm_mm.direction("mm:eyes_forward")
     views = _views(cB, ("front", "3q", "profile"))
-    known = fr.read(fr.gnm_head(cA), [dict(v) for v in views])
-    views[2]["cam"] = fr.cam_moved(views[2]["cam"], yaw=4.0)
-    assert abs(fr.cam_moved(fr.camera("front"), yaw=3.0)["yaw"] - 3.0) < 1e-9
+    known = face_ruler_solve.read(fr.gnm_head(cA), [dict(v) for v in views])
+    views[2]["cam"] = face_ruler_solve.cam_moved(views[2]["cam"], yaw=4.0)
+    assert abs(face_ruler_solve.cam_moved(fr.camera("front"), yaw=3.0)["yaw"] - 3.0) < 1e-9
     sd6 = {"front": (0.5, 0.5, 0.5, 0.3, 1.0, 1.0), "3q": (0.5, 0.5, 0.5, 0.3, 1.0, 1.0), "profile": (0.5, 0.5, 0.5, 0.3, 6.0, 1.0)}
-    free = fr.read(fr.gnm_head(cA), views, rounds=4, cam_sd=sd6)
+    free = face_ruler_solve.read(fr.gnm_head(cA), views, rounds=4, cam_sd=sd6)
     assert len(free["cam_done"][2]) == 6
     assert -7.0 < free["cam_done"][2][4] < -1.5, free["cam_done"][2]          # turned back
     e0 = {r["measure"]: r["err"] for r in known["gaps"]}["eyes_forward"]

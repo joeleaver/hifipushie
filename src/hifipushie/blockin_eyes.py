@@ -753,7 +753,8 @@ def orbit_status(name: str, log=print) -> dict:
     by its base + cameras): {"state": "unread" (no row these pictures pin: no side view, or inside the reader's error
     everywhere) | "off" (a read row is out by more than twice its error) | "ok", "rows", "text"}."""
     import json
-    from . import blockin as bi, face_ruler as fr, store
+    from . import blockin as bi, store
+    from . import face_ruler_compare
     h = bi._spec_hash(name)
     p = store.HOME / name / "blockin_orbit.json"
     rows = None
@@ -763,7 +764,7 @@ def orbit_status(name: str, log=print) -> dict:
             rows = d["rows"]
     if rows is None:
         try:
-            rows = fr.compare(name)["orbit"]
+            rows = face_ruler_compare.compare(name)["orbit"]
         except Exception as e:  # noqa: BLE001
             return {"state": "unread", "rows": [], "text": f"ORBIT: not read ({e}). The eye's depth and the brow over it are "
                     "set BEFORE the lid (face_ruler; mm:eyes_forward, mm:brows_over_eyes, mm:brow_ridge_forward)."}
