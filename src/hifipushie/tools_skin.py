@@ -98,7 +98,8 @@ def skin_from_reference(name: str, out: str = "", groups: list[str] | None = Non
     redness, periorbital, brows, lips, beard, shade: skin.stack). painting=True: the per-picture read instead (tone, zones,
     lips, beard, brows, freckles, folds). read_only=True: the read alone. No pores or roughness are read. out: save to a
     copy. Details: guide(topic="skin_from_reference")."""
-    from . import skin_layers, skin_project as spj, skin_read, store
+    from . import skin_layers, skin_project as spj, store
+    from . import skin_read_fit, skin_read_frames, skin_read_params, skin_read_reads
     dst = out or name
     project, pre = skin_route.plan_read(store.load(name), project, painting, read_only)
     if project:
@@ -106,10 +107,10 @@ def skin_from_reference(name: str, out: str = "", groups: list[str] | None = Non
         pre += a["text"] + "\n\n"
         name = dst
     if read_only:
-        return pre + skin_read.read(name, anchor=anchor, log=lambda s: None, white=white)["text"] + skin_route.after_read(dst, read_only=True)
-    has_atlas = skin_read.atlas_source(store.load(name)) is not None
-    g = tuple(groups) if groups else (tuple(x for x in skin_read.DEFAULT_GROUPS if x not in ("eyes", "folds")) if has_atlas else skin_read.DEFAULT_GROUPS)
-    r = skin_read.apply(name, out=(out or None) if not project else None, groups=g, rounds=rounds,
+        return pre + skin_read_reads.read(name, anchor=anchor, log=lambda s: None, white=white)["text"] + skin_route.after_read(dst, read_only=True)
+    has_atlas = skin_read_frames.atlas_source(store.load(name)) is not None
+    g = tuple(groups) if groups else (tuple(x for x in skin_read_params.DEFAULT_GROUPS if x not in ("eyes", "folds")) if has_atlas else skin_read_params.DEFAULT_GROUPS)
+    r = skin_read_fit.apply(name, out=(out or None) if not project else None, groups=g, rounds=rounds,
                         anchor=anchor, stubble=stubble, log=lambda s: None, tone=tone, white=white)
     text = pre + r["text"]
     if layers and has_atlas:

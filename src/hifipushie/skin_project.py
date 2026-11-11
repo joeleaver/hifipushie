@@ -682,10 +682,11 @@ def fit_light(view: dict, target: np.ndarray, fit: np.ndarray, key: bool = True,
 
 def ours_albedo(at: dict, spec: dict, stride: int = 4, log=print) -> np.ndarray:
     """OUR skin's albedo (the model's own paint layers, no projection) at the atlas' texels: evaluated on every
-    `stride`-th texel (skin_read.Albedo, in Python) and interpolated: (n, 3) linear."""
+    `stride`-th texel (skin_read_frames.Albedo, in Python) and interpolated: (n, 3) linear."""
     import copy
     from scipy import ndimage
-    from . import likeness as lk, skin_read
+    from . import likeness as lk
+    from . import skin_read_frames
     sp = copy.deepcopy(spec)
     (sp.get("skin") or {}).pop("projection", None)
     # nor the measured STACK (made from an earlier atlas): taken as "ours", each new atlas was retoned to the last stack's
@@ -693,7 +694,7 @@ def ours_albedo(at: dict, spec: dict, stride: int = 4, log=print) -> np.ndarray:
     # the photo's 1.17)
     (sp.get("skin") or {}).pop("stack", None)
     (sp.get("skin") or {}).pop("only", None)
-    st = skin_read.stage_spec(sp)
+    st = skin_read_frames.stage_spec(sp)
     H, W = at["shape"]
     sel = np.flatnonzero((at["ii"] % stride == stride // 2) & (at["jj"] % stride == stride // 2))
     V = at["V"]
@@ -701,7 +702,7 @@ def ours_albedo(at: dict, spec: dict, stride: int = 4, log=print) -> np.ndarray:
     Nv = lk._vertex_normals(V, at["T"])
     N = interp(at, Nv)[sel]
     N /= np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-12)
-    A = skin_read.Albedo(st, X, N, log=log)()
+    A = skin_read_frames.Albedo(st, X, N, log=log)()
     h, w = (H + stride - 1) // stride, (W + stride - 1) // stride
     C = np.zeros((h, w, 3))
     M = np.zeros((h, w), bool)
@@ -1724,7 +1725,7 @@ def apply(name: str, out: str | None = None, remove: bool = False, opacity: floa
     (d / "report.txt").write_text(r["text"])
     pj = {"albedo": images.ingest(d / ("raw.png" if raw else "albedo.png")), "detail": images.ingest(d / "detail.png"), "box": [round(float(x), 6) for x in r["box"]],
           "opacity": float(opacity), "detail_depth": float(detail_depth), "head": lt.head_key(spec["base"]), "delight": not raw, "version": VERSION,
-          # the MEASUREMENT skin_from_reference fits the procedural skin to (skin_read.atlas_source): the de-lit albedo, where a
+          # the MEASUREMENT skin_from_reference fits the procedural skin to (skin_read_frames.atlas_source): the de-lit albedo, where a
           # picture vouches for it, and each view's fitted light colour (against a backdrop it gives the tone's hue)
           "confidence": images.ingest(d / "confidence.png"),
           "light_colour": {str(k): v["light_colour"] for k, v in r["report"]["views"].items() if v.get("light_colour")},

@@ -186,7 +186,8 @@ def lips_from_indications(name: str, spec: dict, at: dict, base: np.ndarray, log
     and darkest 25 % of each left out: highlights, the parting's shadow), brought to albedo by the plain skin's gain
     (atlas / picture). Returns {"od": (n, 3) optical density over the base, "upper", "lower" (sRGB albedo), "mask"}."""
     from PIL import Image, ImageDraw
-    from . import blockin as bi, likeness as lk, skin_read as sr, store
+    from . import blockin as bi, likeness as lk, store
+    from . import skin_read_reads
     rj = bi._refs(name)
     vi = bi._front(rj)
     v, cam = rj["views"][vi], rj["cameras"][vi]
@@ -194,7 +195,7 @@ def lips_from_indications(name: str, spec: dict, at: dict, base: np.ndarray, log
     P = bi.detect_view(img, v)
     if P is None or len(P) < 468:
         return None
-    polys = sr.lip_polygons(P)
+    polys = skin_read_reads.lip_polygons(P)
     ph = sp._lin(np.asarray(img, float) / 255.0)
     H, W = ph.shape[:2]
     mesh = bi._per_view(spec["base"], rj, [vi], lambda b: lk.model_mesh(b))[vi]

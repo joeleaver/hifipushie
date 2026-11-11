@@ -39,7 +39,7 @@ def has_refs(name: str) -> bool:
 
 
 def _atlas(spec: dict) -> bool:
-    """A de-lit atlas the read can use (skin_read.atlas_source, without opening the images)."""
+    """A de-lit atlas the read can use (skin_read_frames.atlas_source, without opening the images)."""
     from . import skin_project
     pj = (spec.get("skin") or {}).get("projection")
     return bool(isinstance(pj, dict) and pj.get("albedo") and pj.get("confidence") and pj.get("delight", True)

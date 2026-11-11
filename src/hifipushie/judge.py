@@ -233,10 +233,10 @@ def glb_double_sided(js) -> dict:
 def _shots_job(head: str | None) -> list:
     photo = {}
     if head:
-        from . import skin_read
+        from . import skin_read_frames
         for v, vi in PHOTO_VIEWS.items():
             try:
-                photo[v] = skin_read.photo_light(head, _photo_index(head, vi))
+                photo[v] = skin_read_frames.photo_light(head, _photo_index(head, vi))
             except Exception as e:  # noqa: BLE001
                 raise RuntimeError(f"judge: no photo light for {head} view {v}: {e}")
     out = []
