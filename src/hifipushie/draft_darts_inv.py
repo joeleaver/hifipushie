@@ -6,9 +6,10 @@ shaping of its own, and every row passed: marks_placed counted it placed, and th
 declared. A dart is shaping: cloth taken out between two legs that meet at a tip. A mark can't take cloth out.
 
 The row: every step-1 detail that is a dart (its `kind` is "dart", or its name or `what` names one) and is built (full or
-simplified) needs a drafted dart (declarations `darts [{piece, legs}]`) on each piece it is `on`. A dart that ends in
-another detail (a pocket mouth) is still opened on the outline: the slit runs through that detail to a seam, its legs
-declared toward the tip (draft_own's darts form, C361).
+simplified) needs a drafted dart (declarations `darts`) on each piece it is `on`: open on the outline ({piece, legs},
+C361), or drawn inside the piece ({piece, inside, release}, C416: a fish dart, a dart ending in a pocket mouth; the tool
+cuts it through along release and sews it). The s4-21 text said "slit it to a seam"; s4-22 and s4-23 then cut 1 mm
+slits to the hem by hand, a seam down the front no tailor cuts (C416).
 """
 from __future__ import annotations
 
@@ -38,8 +39,11 @@ def row(step1: dict, decl: dict) -> dict | None:
     return {"id": "darts_drafted", "status": "FAIL" if miss else "PASS",
             "value": f"{len(want)} inventory darts, {len(miss)} not drafted",
             "target": "every dart step 1 builds is an opened dart on its piece (declarations darts), not a mark",
-            "why": ("; ".join(miss[:6]) + ": a mark takes no cloth out, so the piece has no shaping there. change: open "
-                    "the dart on the outline (its two legs from the outline to one tip, declared 'outline point>tip'; a "
-                    "dart ending in a pocket mouth is slit through the pocket line to a seam) and declare it in darts "
-                    "[{piece, legs}]; or, if the reference shows no dart, back to step 1") if miss else "",
+            "why": ("; ".join(miss[:6]) + ": a mark takes no cloth out, so the piece has no shaping there. change: draft "
+                    "the dart as the reference shows it and declare it: a dart open on the outline as darts [{piece, "
+                    "legs: [edge, edge]}] (each leg 'outline point>tip'); a dart inside the piece (a fish dart, a dart "
+                    "ending in a pocket mouth) as darts [{piece, inside: <its closed path>, release: [points..., outline "
+                    "point]}]: never cut it open by hand, the tool cuts it through along release (through the pocket "
+                    "mouth to the nearest seam, or straight to it) and sews it; or, if the reference shows no dart, back "
+                    "to step 1") if miss else "",
             "back_to": "4", "source": "step 1's details vs the draft's darts (draft_darts_inv.py, C410)"}

@@ -56,5 +56,5 @@ METHOD NOW (Joe 2026-11-03): one STEP per blind trial (/mnt/data/hifipushie/tria
 judged with Joe beside the reference, fixed, rerun, then the next step; tests run once when a step is declared done.
 APPROVED (Joe): hussar 0-4 (s4-14/ws); jacket 0-3 (step 2 s2-6/ws: ties, fold bends; step 4 revoked). Step 5 rebuilt
 per docs/proposals/step5_one_build.md: R1-R3d DONE (C391-C395, C399, C401), layers + plies placed (C402); step 4 now
-FAILs crossed seams (C403); the carry re-runs step 4's gate (C404). Jacket step 4: draft the collar roll, flip the neck
-seams, order the armhole chain. Hussar: step 2 (prose sleeve bend), step 4 (underarm, armhole chain). NEXT: jacket s4 (Joe).
+FAILs crossed seams (C403); the carry re-runs step 4 (C404). Jacket s4-20..23 fixed C408 C410 C412 C416 (inside darts
+cut by the tool); hussar: step 2 (prose sleeve bend), step 4 (underarm, armhole chain). NEXT: judge jacket s4-24 with Joe.
