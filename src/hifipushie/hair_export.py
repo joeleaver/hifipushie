@@ -173,7 +173,7 @@ def export_constants(h: dict):
             if mod_ not in ("hair", "hair_cap", "hair_cards"):
                 raise ValueError(f"hair.export.constants: {k}: module must be hair, hair_cap or hair_cards")
             m = importlib.import_module(f"hifipushie.{mod_}")
-            if mod_ == "hair" and not hasattr(m, att):  # (hair.py was split, C414: a spec still says "hair.X")
+            if mod_ == "hair" and not hasattr(m, att):  # (hair.py was split, C415: a spec still says "hair.X")
                 m = next((x for x in (importlib.import_module(f"hifipushie.{n}") for n in hair.MODULES) if hasattr(x, att)), m)
             if not hasattr(m, att):
                 raise ValueError(f"hair.export.constants: {k}: no such constant")

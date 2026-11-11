@@ -26,7 +26,7 @@ In Blender every lock is a curve object in the "hair" collection with the "hp_lo
 (`blender_hair.py`): grab its control points and the mesh follows live.
 
 
-Where the code is (split by responsibility, C414): this module holds the constants, HairError and the small shared
+Where the code is (split by responsibility, C415): this module holds the constants, HairError and the small shared
 helpers; hair_head the scalp; hair_groom, hair_seat and hair_grow the groom; hair_spec the spec and hair_lockmesh the
 lock geometry; hair_job, hair_cards_job and hair_card_fit the Blender jobs; hair_look the looks and gates;
 hair_export the export; hair_drawn the drawn clumps; hair_reference and hair_trace a reference picture.
@@ -274,6 +274,6 @@ def az_el(v):
     return np.degrees(np.arctan2(u[..., 0], -u[..., 1])) % 360, np.degrees(np.arcsin(np.clip(u[..., 2], -1, 1)))
 
 
-# The modules this one was split into (C414). hair.export.constants finds a constant named "hair.X" in any of them.
+# The modules this one was split into (C415). hair.export.constants finds a constant named "hair.X" in any of them.
 MODULES = ("hair", "hair_head", "hair_groom", "hair_seat", "hair_grow", "hair_spec", "hair_lockmesh", "hair_job",
            "hair_cards_job", "hair_card_fit", "hair_look", "hair_export", "hair_drawn", "hair_reference", "hair_trace")
