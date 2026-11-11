@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 
 from hifipushie import server
+from hifipushie import mcp_app, tools_find
 
 SKILL = Path(__file__).resolve().parents[1] / ".claude" / "skills" / "hifipushie" / "SKILL.md"
 
@@ -16,9 +17,9 @@ def test_skill_names_only_real_tools_and_topics():
     assert "enable_toolset" not in text and "toolset" not in text.lower()
     # a backticked snake_case name, and anything written as a call, is a tool
     named = set(re.findall(r"`([a-z]+_[a-z_]+)", text)) | set(re.findall(r"`([a-z_]+)\(", text))
-    assert named and not named - set(server._TOOLS), named - set(server._TOOLS)
+    assert named and not named - set(mcp_app._TOOLS), named - set(mcp_app._TOOLS)
     topics = set(re.findall(r'guide\(topic="([a-z_]+)"\)', text)) | set(re.findall(r'`"([a-z_]+)"`', text))
-    assert topics and not {t for t in topics if t not in server.GUIDE_TOPICS and t not in server._TOOLS}, topics
+    assert topics and not {t for t in topics if t not in tools_find.GUIDE_TOPICS and t not in mcp_app._TOOLS}, topics
 
 
 def test_skill_lists_the_native_core_and_the_clothes_path():

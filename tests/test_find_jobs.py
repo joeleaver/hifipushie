@@ -10,6 +10,7 @@ each with its reason: a miss that starts passing fails the test, so the list sta
 uv run python tests/test_find_jobs.py     # the table, one line per job
 """
 from hifipushie import server
+from hifipushie import tools_find
 
 TOP = 3
 
@@ -107,7 +108,7 @@ def test_a_tool_for_the_job_comes_before_one_that_mentions_it():
 
 def test_one_stem_for_a_word_and_its_plural():
     for a, b in (("tree", "trees"), ("silhouette", "silhouettes"), ("pose", "posing"), ("freckle", "freckles")):
-        assert server._stem(a) == server._stem(b), (a, b)
+        assert tools_find._stem(a) == tools_find._stem(b), (a, b)
 
 
 def test_a_job_that_starts_a_workflow_still_gets_it_in_order():

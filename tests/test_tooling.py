@@ -13,6 +13,7 @@ import tempfile
 os.environ["HIFIPUSHIE_HOME"] = tempfile.mkdtemp(prefix="hp_tooling_")
 
 from hifipushie import server, store  # noqa: E402
+from hifipushie import mcp_app  # noqa: E402
 from hifipushie.spec import SpecError  # noqa: E402
 
 
@@ -587,7 +588,7 @@ def test_older_makehuman_pack_still_opens_a_male_body():
                     makehuman.body(params)
                     raise AssertionError("a female body loaded without its targets")
                 except FileNotFoundError as e:
-                    text = server._error_text(e)
+                    text = mcp_app._error_text(e)
                     assert "hifipushie-assets fetch makehuman" in text and "sex" in text and "-female-" in text, text
             assert makehuman.weights() is None
             spec = {"base": {"body": {"source": "makehuman", "age": 45}}}

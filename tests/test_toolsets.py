@@ -8,6 +8,7 @@ import os
 import sys
 
 from hifipushie import server
+from hifipushie import mcp_app, tools_find
 
 # the 75 tools the server had before toolsets (2026-10-09): none may be lost (all reachable by call_tool)
 BEFORE = """guide list_models get_model kit_reference put_model edit_model look measure clearance set_reference compare fit
@@ -40,7 +41,7 @@ def _tokens(tools) -> int:
 def test_every_tool_in_one_group():
     groups = [t for s in server.TOOL_GROUPS.values() for t in s["tools"]]
     assert len(groups) == len(set(groups)), "a tool in two groups"
-    assert set(groups) == set(server._TOOLS), set(groups) ^ set(server._TOOLS)
+    assert set(groups) == set(mcp_app._TOOLS), set(groups) ^ set(mcp_app._TOOLS)
     removed = {"fit_garment", "style_garment", "release_garment", "arrange_garment", "dress", "look_cloth", "check_garment",
                "check_garment_reference", "game_garment",  # (the older clothing routes: deleted 2026-11-10, C409)
                "design_garment", "look_pattern", "garment_reference", "garment_from_reference",
@@ -82,10 +83,10 @@ def test_core_over_stdio():
 def test_short_descriptions_point_at_the_guide():
     """Every description is short; whatever it leaves out is in its guide section (verbatim from the old text), and
     every parameter is named in the description or the section."""
-    for name in server._TOOLS:
+    for name in mcp_app._TOOLS:
         doc = inspect.cleandoc(getattr(server, name).__doc__)
         assert len(doc) < 700, (name, len(doc))
-        sec = server._tool_section(name)
+        sec = tools_find._tool_section(name)
         assert sec.startswith(f"### `{name}`"), name
         if len(sec) > len(doc) + 200:
             assert f'guide(topic="{name}")' in doc, name
@@ -99,9 +100,9 @@ def test_short_descriptions_point_at_the_guide():
     assert server.guide("look").startswith("### `look`") and "paint_layer" in server.guide("look")
     assert "Tool reference" in server.guide("tools")
     # every tool's section is reachable through guide(): "tool:<name>" always, the bare name unless a topic shadows it
-    for name in server._TOOLS:
+    for name in mcp_app._TOOLS:
         assert server.guide(f"tool:{name}").startswith(f"### `{name}`"), name
-        if name.lower() not in server.GUIDE_TOPICS:
+        if name.lower() not in tools_find.GUIDE_TOPICS:
             assert server.guide(name).startswith(f"### `{name}`"), name
     assert server.guide("skin").startswith("#") and server.guide("tool:skin").startswith("### `skin`")
 
@@ -113,7 +114,7 @@ def test_compact_schema():
                         "c": {"anyOf": [{"type": "object", "additionalProperties": True}, {"type": "string"},
                                         {"type": "null"}], "default": None}},
          "required": ["title"], "title": "fArguments", "type": "object"}
-    c = server._compact_schema(s)
+    c = mcp_app._compact_schema(s)
     assert c == {"properties": {"title": {"type": "string"}, "v": {"items": {"type": "number"}, "type": "array"},
                                 "c": {"anyOf": [{"type": "object"}, {"type": "string"}]}},
                  "required": ["title"], "type": "object"}, c

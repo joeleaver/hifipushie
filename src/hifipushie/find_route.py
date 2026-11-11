@@ -7,7 +7,7 @@ garment tool's long text and came back as the five garment steps, the tool that 
 tool ("make a tree" led with plant_form). Measured on tests/test_find_jobs.py's plain jobs: 21 of 35 found.
 
 The rule, the same for every domain:
-- A domain says what it makes: its `subject` words in server.TOOL_GROUPS. A job is in the domain whose subject words
+- A domain says what it makes: its `subject` words in mcp_app.TOOL_GROUPS. A job is in the domain whose subject words
   it uses; two domains with as many each is no domain. Nothing is read off the scores.
 - In a domain the answer leads with the tool the job's verb names ("look at the garment" -> look_chain: the job's
   first word, when it isn't a subject word, matched on tool NAMES only: a purpose sentence that says "fit or drape"

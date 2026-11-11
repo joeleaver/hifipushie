@@ -24,6 +24,10 @@ Rule (Joe, 2026-11-10): no backwards compatibility. No gate, no switch, no shim;
 - Proof for each cut, parent tree against branch, separate fresh homes: cf_shirt and wf_simon closed and open
   (load_garment + GarmentBuild.run) bit-identical in X; flat_check on the s4-19 jacket and s4-14 hussar identical.
   Harness: /mnt/data/hifipushie/deadcode/proof.py.
+- The split, step 1 (branch split-server; tag archive/before-split-server; ledger C413): server.py (3,913 lines, all
+  102 tools) -> mcp_app (app, decorator, registry), tool_common, tools_find, tools_model, tools_plan, tools_export,
+  tools_human, tools_likeness, tools_skin, tools_hair, tools_cloth, tools_terrain, tools_plants, tools_clutter;
+  largest 592 lines. Proof: the whole tool surface byte-identical before and after (deadcode/surface.py).
 - Not done: module docstrings in trimmed files (drape, zozo_hang, fold_checks, garment_pull, cloth_check) still describe
   removed parts. Fix them when each file is split.
 
@@ -42,12 +46,13 @@ cloth_background) are what was left after the old paragraphs went: they need one
 ## Tool (not in the repo): /mnt/data/hifipushie/deadcode/
 dead.py (what the tools reach, function by function), why.py (why a symbol is live), frontier.py (links from live code
 into the old modules), hyp.py (what a cut would free), apply.py (delete and keep imports consistent), check.py (source
-and tests against main). Conservative: a class is kept whole, a module named in a string is kept whole.
+and tests against main), proof.py (builds and flat checks against the parent tree), split_server.py and surface.py
+(a file split by tool domain, and the tool surface as one JSON to compare). Conservative: a class is kept whole, a
+module named in a string is kept whole.
 
 ## Also unreachable today, outside clothes (not touched)
 blender_cards 446 lines, faceext 376, terrain_seams 201, flipfit 137, faceatlas 105, gnm_controls 90, blender_lashes 86.
 Check blender_* by hand before deleting: Blender runs them by path.
 
-NEXT: the split. server.py first (3.9k lines, every tool in one file: one module per tool domain), then the files
-over 2,000 lines, one area at a time and only while no agent works in it. The remaining clothes cuts above each
-wait on a decision named in their row.
+NEXT: split the files over 2,000 lines, one area at a time and only while no agent works in it: terrain_mesh (5.7k),
+hair (5.7k) and asset (3.7k) first; cloth.py and pattern_form wait for the chain-build cut above.

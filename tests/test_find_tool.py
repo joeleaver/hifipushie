@@ -7,6 +7,7 @@ from mcp.server.mcpserver import Image
 from mcp.server.mcpserver.exceptions import ToolError
 
 from hifipushie import server
+from hifipushie import mcp_app, tools_find
 
 GARMENT_TOOLS = set(server.TOOL_GROUPS["cloth"]["tools"])
 
@@ -51,7 +52,7 @@ def test_find_tool_gives_params_and_an_example():
 
 def test_empty_query_lists_every_tool():
     text = server.find_tool("")
-    for t in server._TOOLS:
+    for t in mcp_app._TOOLS:
         assert t in text, t
     for g in server.TOOL_GROUPS:
         assert f"\n{g} (" in text, g
@@ -73,16 +74,16 @@ def test_call_tool_returns_images_like_a_native_call():
         """A test tool returning a look-style [Image, str]."""
         return [Image(data=buf.getvalue(), format="png"), label]
 
-    server._TOOLS["_img_probe"] = (None, _img_probe)  # (not registered natively: reached only by call_tool)
-    server._img_probe = _img_probe
+    mcp_app._TOOLS["_img_probe"] = (None, _img_probe)  # (not registered natively: reached only by call_tool)
+    mcp_app._FUNCS["_img_probe"] = _img_probe  # (the plain function, where find_tool and call_tool read signatures)
     try:
         res = _call("_img_probe", {"label": "probe"})
         kinds = [c.type for c in res.content]
         assert kinds == ["image", "text"], kinds
         assert res.content[0].mime_type == "image/png" and res.content[1].text == "probe"
     finally:
-        del server._TOOLS["_img_probe"], server._img_probe
-        server._CALL_TOOLS.pop("_img_probe", None)
+        del mcp_app._TOOLS["_img_probe"], mcp_app._FUNCS["_img_probe"]
+        tools_find._CALL_TOOLS.pop("_img_probe", None)
 
 
 def test_bad_args_name_the_expected_parameters():
@@ -96,13 +97,13 @@ def test_bad_args_name_the_expected_parameters():
 
 
 def test_every_tool_reachable_through_call_tool():
-    for name in server._TOOLS:
+    for name in mcp_app._TOOLS:
         if name == "call_tool":
             continue
-        tool = server._tool_obj(name)  # the SDK Tool call_tool validates and runs through
-        want = {p[0] for p in server._params(name)}
+        tool = tools_find._tool_obj(name)  # the SDK Tool call_tool validates and runs through
+        want = {p[0] for p in tools_find._params(name)}
         assert set(tool.fn_metadata.arg_model.model_fields) == want, name
-        assert server._param_text(name) and server._example(name), name
+        assert tools_find._param_text(name) and tools_find._example(name), name
 
 
 if __name__ == "__main__":
