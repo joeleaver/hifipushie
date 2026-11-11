@@ -24,7 +24,7 @@ Rule (Joe, 2026-11-10): no backwards compatibility. No gate, no switch, no shim;
 - Proof for each cut, parent tree against branch, separate fresh homes: cf_shirt and wf_simon closed and open
   (load_garment + GarmentBuild.run) bit-identical in X; flat_check on the s4-19 jacket and s4-14 hussar identical.
   Harness: /mnt/data/hifipushie/deadcode/proof.py.
-- The split, step 1 (branch split-server; tag archive/before-split-server; ledger C413): server.py (3,913 lines, all
+- The split, step 1 (landed, dd81c38a; tag archive/before-split-server; ledger C413): server.py (3,913 lines, all
   102 tools) -> mcp_app (app, decorator, registry), tool_common, tools_find, tools_model, tools_plan, tools_export,
   tools_human, tools_likeness, tools_skin, tools_hair, tools_cloth, tools_terrain, tools_plants, tools_clutter;
   largest 592 lines. Proof: the whole tool surface byte-identical before and after (deadcode/surface.py).
