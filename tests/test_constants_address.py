@@ -1,4 +1,4 @@
-"""A split module keeps its constants: `module.NAME` stays the ONE place a constant is set and read (C421).
+"""A split module keeps its constants: `module.NAME` stays the ONE place a constant is set and read (C422).
 
 Export scripts, specs and tests set module constants by name (HP_FS_SET="SMILE_FIT_SOFT=0", hair.SHELL_EDGE_LIFT = 0.0,
 hk.FILL=1). When hair.py and faceshapes.py were split, their constants went with their sections: the scripts' values

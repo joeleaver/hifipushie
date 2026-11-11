@@ -26,7 +26,7 @@ In Blender every lock is a curve object in the "hair" collection with the "hp_lo
 (`blender_hair.py`): grab its control points and the mesh follows live.
 
 
-Where the code is (split by responsibility, C415; constants back here, C421): this module holds EVERY constant of
+Where the code is (split by responsibility, C415; constants back here, C422): this module holds EVERY constant of
 the family (set at hair.NAME by specs, scripts and tests; the other modules read hair.NAME), HairError and the small shared
 helpers; hair_head the scalp; hair_groom, hair_seat and hair_grow the groom; hair_spec the spec and hair_lockmesh the
 lock geometry; hair_job, hair_cards_job and hair_card_fit the Blender jobs; hair_look the looks and gates;
@@ -502,6 +502,6 @@ REGION_NAMES = ("front", "top", "side.L", "side.R", "back.L", "back.R", "back")
 
 OUTLINE_STEP = 3.0  # deg: the matched view's outline is sampled on rays from the head centre this far apart
 
-# The modules this one was split into (C415). Their constants stay HERE (C421): tests/test_constants_address.py.
+# The modules this one was split into (C415). Their constants stay HERE (C422): tests/test_constants_address.py.
 MODULES = ("hair", "hair_head", "hair_groom", "hair_seat", "hair_grow", "hair_spec", "hair_lockmesh", "hair_job",
            "hair_cards_job", "hair_card_fit", "hair_look", "hair_export", "hair_drawn", "hair_reference", "hair_trace")

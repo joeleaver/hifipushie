@@ -50,7 +50,7 @@ range of its edge neighbours' moves, per metre of edge; a smooth shape reads ~0 
 sawtooth (a blink's under-eye shadow). Mouth shapes are listed but not warned: the lips part at the slit's ends.
 The json has them per part as face_shape_unevenness.
 
-Where the code is (split by responsibility, C417; constants back here, C421): this module holds the shape names,
+Where the code is (split by responsibility, C417; constants back here, C422): this module holds the shape names,
 presets, combos, small maths, EVERY constant of the family and the per-character fits (env_fits, character_fits,
 refuse_sculpt). A constant is set at faceshapes.NAME (HP_FS_SET, tests, character_fits) and the other modules read it
 as faceshapes.NAME when they use it. faceshapes_face: class Face (a kit face). faceshapes_gnm: class GnmFace, with its
@@ -485,6 +485,6 @@ def family(name: str) -> str:
     return "mouth"
 
 
-# The modules this one was split into (C417). Its constants stay HERE (C421): tests/test_constants_address.py.
+# The modules this one was split into (C417). Its constants stay HERE (C422): tests/test_constants_address.py.
 MODULES = ("faceshapes_face", "faceshapes_apply", "faceshapes_gnm", "faceshapes_gnm_solve", "faceshapes_gnm_moves",
            "faceshapes_gnm_mouth", "faceshapes_gnm_lids", "faceshapes_gnm_lips")

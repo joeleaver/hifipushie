@@ -236,6 +236,6 @@ PROFILE_GAIN = 0.7      # share of the contour's miss asked a round (to the cont
 PROFILE_SIGMA = 1.6     # a round that takes the region's components past this is not taken (plausibility)
 
 
-# The modules this one was split into (C419). Its constants stay HERE (C421): tests/test_constants_address.py.
+# The modules this one was split into (C419). Its constants stay HERE (C422): tests/test_constants_address.py.
 MODULES = ("likeness_detect", "likeness_render", "likeness_measure", "likeness_sides", "likeness_compare",
            "likeness_notes", "likeness_panels", "likeness_stages", "likeness_fit")

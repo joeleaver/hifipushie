@@ -196,5 +196,6 @@ LIP_CLOSE = {"n": 40, "span": 0.97, "x": 15, "gap": 0.15, "overlap": 0.2, "lead"
 _LIPC: dict = {}
 
 # The modules this one was split into (C417). What hashed base.py by its file name (skin_read, skin_look) hashes these too.
+# Its constants stay HERE (C422): tests/test_constants_address.py.
 MODULES = ("base_imls", "base_identity", "base_head_shape", "base_gnm_parts", "base_gnm_head", "base_measures",
            "base_tubes", "base_surface", "base_implied")

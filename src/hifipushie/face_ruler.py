@@ -452,6 +452,6 @@ KIND_SAY = {"front": "a front view", "3q": "a three-quarter view", "profile": "a
 DISAGREE = 2.0        # a read group left at more than this many of its own sigmas (rms) after the solve is named
 
 
-# The modules this one was split into (C417). Its constants stay HERE (C421): tests/test_constants_address.py.
+# The modules this one was split into (C417). Its constants stay HERE (C422): tests/test_constants_address.py.
 MODULES = ("face_ruler_outline", "face_ruler_jaw", "face_ruler_solve", "face_ruler_orbit", "face_ruler_blockin",
            "face_ruler_features", "face_ruler_nose", "face_ruler_camera", "face_ruler_compare")
