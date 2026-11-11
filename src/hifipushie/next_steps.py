@@ -4,7 +4,7 @@ without a human-written brief (Joe 2026-10-19: "we don't want to make it work ju
 uses the mcp"). Each function returns a short "next: ..." block, specific to the result, never boilerplate.
 
 The older clothing routes these lines served (the fit on the form, the sim, the game garment) were deleted on
-2026-11-10 (C408); what is left serves pattern_check, the looks and the reviews.
+2026-11-10 (C409); what is left serves pattern_check, the looks and the reviews.
 """
 from __future__ import annotations
 

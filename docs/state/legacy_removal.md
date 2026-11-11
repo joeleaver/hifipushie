@@ -5,7 +5,7 @@ Rule (Joe, 2026-11-10): no backwards compatibility. No gate, no switch, no shim;
 
 ## Done
 - Pass 1 (landed, d8f3e9b9; tag archive/before-legacy-pass1): nine unreferenced modules, 13 spikes.
-- Clothes, cut 1 (branch legacy-cloth; tag archive/before-legacy-cloth; ledger C408):
+- Clothes, cut 1 (branch legacy-cloth; tag archive/before-legacy-cloth; ledger C409):
   - the nine gated tools (fit_garment, style_garment, release_garment, arrange_garment, dress, look_cloth, check_garment,
     check_garment_reference, game_garment), HIFIPUSHIE_LEGACY_CLOTH and the guide's paragraph filter;
   - every function and constant nothing live reached after that: 284, with modules cloth_over and hang_reads whole;

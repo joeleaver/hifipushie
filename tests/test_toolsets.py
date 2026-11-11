@@ -42,7 +42,7 @@ def test_every_tool_in_one_group():
     assert len(groups) == len(set(groups)), "a tool in two groups"
     assert set(groups) == set(server._TOOLS), set(groups) ^ set(server._TOOLS)
     removed = {"fit_garment", "style_garment", "release_garment", "arrange_garment", "dress", "look_cloth", "check_garment",
-               "check_garment_reference", "game_garment"}  # (the older clothing routes: deleted 2026-11-10, C408)
+               "check_garment_reference", "game_garment"}  # (the older clothing routes: deleted 2026-11-10, C409)
     kept = set(BEFORE) - removed
     assert not removed & set(groups)
     assert kept <= set(groups), kept - set(groups)

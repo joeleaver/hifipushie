@@ -1,7 +1,7 @@
 """The vertices a styling pin names on a garment mesh (`pin_vertices`), used by garment_pull.
 
 What was here before (the release and arrange sims of a fitted garment, tools release_garment / arrange_garment) was
-deleted with the older clothing routes on 2026-11-10 (C408).
+deleted with the older clothing routes on 2026-11-10 (C409).
 """
 from __future__ import annotations
 

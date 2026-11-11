@@ -15,6 +15,11 @@ Rows (`rows(B, decl, step1)`; B = draft_own.block + cloth.pieces, its pieces in 
     law). T5b's universal "the ends rise" rule was one style taken for all (Joe: "the collar curves the wrong direction").
   shape_fall: a FALL (role collar_fall, or a piece with a "roll" fold): its outer line (an edge named outer / fall /
     edge, else its fold line) over its stand seam: simon.collar 1.024, jaeger.collar 1.038 -> >= 1.012 (half simon's).
+    Read against the collar's whole neck line (draft_fall.covered: an undercollar's neck edges, notch to notch; a
+    shirt collar's seam to its band), not the first edge it is sewn by (C408: a notch collar's gorge read 8.230).
+  shape_fall_landing: where the fall's outer edge LANDS (draft_fall.py, its docstring the rule): (fall - stand) below
+    the neck seam at CB, read off the collar's roll fold (or its band); the outer edge against the line there on the
+    garment's flat pieces, + lift, within 4 %: too long = straighten the collar, too short = spread it (C408).
   shape_cap: a SLEEVE cap (a seam joining pieces placed on an arm to pieces on the torso): cap height (grain-wise span
     of the cap edges; a two-piece sleeve's parts share FreeSewing's frame) over the armhole depth (the deepest body
     piece's armhole span): brian 0.52 (a shirt block), bent 0.72 (a two-piece jacket sleeve) -> [0.47, 0.79].
@@ -267,6 +272,8 @@ def _line(B: dict, p: str, ln):
     pc = B["pieces"][p]
     if isinstance(ln, dict) and isinstance(ln.get("edge"), str) and not ln.get("offset"):
         return pc["P"][pattern.arc_indices(pc, ln["edge"])]
+    if isinstance(ln, str) and ln in (pc.get("lines") or {}) and ln not in (B.get("edge_arcs") or {}).get(p, {}):
+        return pattern.fold_line(B["pieces"], {"piece": p, "line": ln})  # (a path of the part: a curved fold, C408)
     if isinstance(ln, str):
         return pc["P"][pattern.arc_indices(pc, (B.get("edge_arcs") or {}).get(p, {}).get(ln, ln))]
     if isinstance(ln, list) and all(isinstance(x, str) and x in pc["names"] for x in ln):
@@ -276,8 +283,23 @@ def _line(B: dict, p: str, ln):
 
 def fall_rows(B: dict, decl: dict, step1: dict) -> dict:
     from . import pattern
-    vals, why = [], []
-    for p in sorted(fall_pieces(B, decl, step1)):
+    from . import draft_fall
+    vals, why, done = [], [], set()
+    for u in draft_fall.units(B, decl, step1):  # (C408: the whole neck line, not the first edge: a notch collar's gorge)
+        N, what = draft_fall.covered(B, u)
+        p, oix = draft_fall._outer(B, u, decl, step1)
+        if N <= 0 or p is None:
+            continue
+        done |= set(u["falls"])
+        O = pattern.length(B["pieces"][p]["P"][oix])
+        s = O / N
+        vals.append(f"{'+'.join(u['pieces'])}: {p}'s outer edge {1000 * O:.0f} / neck line ({what}) {1000 * N:.0f} mm "
+                    f"= {s:.3f}")
+        if s < FALL_SPREAD:
+            why.append(f"{p}: its outer edge is {s:.3f} x its neck line (target >= {FALL_SPREAD:.3f}): it can't turn "
+                       "down and spread over the stand. change: lengthen the outer edge (curve the stand seam's ends up "
+                       "/ spread the fall), e.g. extend simon.collar (collarBend, collarFlare)")
+    for p in sorted(fall_pieces(B, decl, step1) - done):
         seam = next((a[0] for A, Bs in _seam_pairs(B) for a, b in ((A, Bs), (Bs, A))
                      if len(a) == 1 and a[0].split(":", 1)[0] == p and all(e.split(":", 1)[0] != p for e in b)), None)
         if seam is None:
@@ -385,4 +407,10 @@ def rows(B: dict, decl: dict, step1: dict, stand_ref: dict | None = None) -> lis
         except (KeyError, ValueError, IndexError, TypeError) as x:
             out.append({"id": "shape_" + f.__name__.replace("_rows", ""), "status": "INFO",
                         "value": "n/a", "why": f"{type(x).__name__}: {str(x)[:160]}"})
+    from . import draft_fall  # (C408: where the fall's outer edge lands, against the line there)
+    try:
+        out.insert(2, draft_fall.row(B, decl, step1))
+    except (KeyError, ValueError, IndexError, TypeError) as x:
+        out.insert(2, {"id": "shape_fall_landing", "status": "INFO", "value": "n/a",
+                       "why": f"{type(x).__name__}: {str(x)[:160]}"})
     return out

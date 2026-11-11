@@ -176,7 +176,7 @@ design, no recipe; src/hifipushie/draft_own.py's docstring is the spec). Needs s
   {edge: "a>b" | "a>via>b" (outline points) | {"path": a path of the part}}}; `seams` [{"a": "piece:edge" | [chain in
   order], "b": ..., "ease": [lo, hi] (a over b - 1), "why"}] (every step-1 seam; a seam sewn to several edges is one
   chain: a two-piece sleeve's cap edges against the armhole's front, side and back as ONE seam [cap chain] = [armhole
-  chain], when its seams don't land on the body's); `stiff` [piece]; `folds` [{"name", "piece", "line": [p, q] | edge, "kind": "press" | "roll"}] (a step-1 seam of
+  chain], when its seams don't land on the body's); `stiff` [piece]; `folds` [{"name", "piece", "line": [p, q, ...] (outline points or snippets) | edge | a path of the part by name (a curved fold: a collar's roll line drawn as a path), "kind": "press" | "roll"}] (a step-1 seam of
   kind fold is a fold named like its edge); `closures` [{"name", "kind", "over", "under", "edge": {"over": edge,
   "under": edge}, "at": [[hole, button]]}] (holes on `over`, the piece that laps on top: a man's left front; buttons on
   `under`; each a SNIPPET's name, `snippets.btn1 = new Snippet('button', p)` -> "btn1", or a
@@ -200,7 +200,11 @@ design, no recipe; src/hifipushie/draft_own.py's docstring is the spec). Needs s
   draft: what step 5 refuses, step 4 FAILs, C395), seams_crossed (no seam joins two points of one piece far apart: an
   edge declared the wrong way, or a chain [e1, e2, ..] whose edges don't each start where the one before ended; C403), truing (info), and SHAPE per role (draft_shape.py; each FAIL says `change:`): a stand / band's neck
   edge rises at its front ends (stand >= 0.24 x the neckline's front drop, jaeger; band > 0) and its free edge is shorter;
-  a fall's outer edge >= 1.012 x its stand seam (simon); a sleeve cap 0.47-0.79 x the armhole depth (brian, bent); no
+  a fall's outer edge >= 1.012 x its whole neck line (simon; an undercollar's neck edges, or a shirt collar's seam to
+  its band); shape_fall_landing (draft_fall.py, C408): the fall's outer edge against the line it lands on, (fall - stand)
+  below the neck seam at CB read off the collar's roll fold (or its band), walked on the backs' flat pieces (the fronts'
+  necks at their own length: the collar turns with the lapel) + lift, within 4 % (too long: straighten the collar; too
+  short: spread it); a sleeve cap 0.47-0.79 x the armhole depth (brian, bent); no
   straight edge sewn to a curved one. Name a stand's free edge `top`, a fall's `outer`, neck edges `neck*`. A piece's
   `role` (optional; else its name decides) is one of garment_kb's roles (collar_stand, collar_fall, ...); a layer sewn
   edge to edge onto a piece by the same edge names (its canvas, inner collar) takes that piece's shape: no role needed. An outline seen in the reference
