@@ -44,7 +44,7 @@ def test_every_tool_in_one_group():
     removed = {"fit_garment", "style_garment", "release_garment", "arrange_garment", "dress", "look_cloth", "check_garment",
                "check_garment_reference", "game_garment",  # (the older clothing routes: deleted 2026-11-10, C409)
                "design_garment", "look_pattern", "garment_reference", "garment_from_reference",
-               "garment_reference_brief"}  # (and the design-sheet tools nobody called, C410)
+               "garment_reference_brief"}  # (and the design-sheet tools nobody called, C411)
     kept = set(BEFORE) - removed
     assert not removed & set(groups)
     assert kept <= set(groups), kept - set(groups)
