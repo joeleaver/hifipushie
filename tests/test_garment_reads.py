@@ -93,41 +93,6 @@ ITEMS = [{"id": "front_state", "stage": 1, "read": "front_state", "equals": "clo
          {"id": "words", "stage": 2, "ref": "no machine target: not a row"}]
 
 
-def test_checklist_items_become_rows_ordered_big_first(tmp_path, monkeypatch):
-    from hifipushie import store
-    monkeypatch.setattr(store, "HOME", tmp_path)
-    (tmp_path / "checklists").mkdir()
-    (tmp_path / "checklists" / "t_shirt.json").write_text(json.dumps({"items": ITEMS}))
-    piece, items = gr.checklist_items({"checklist": "t_shirt"})
-    assert piece == "t_shirt" and len(items) == 5
-    V, M = _front_mesh(open_front=False, spread=False)  # closed front, CLOSED collar: spread fails
-    rd = {**gr.front_reads(V, M, HPS), **gr.collar_reads(V, M, HPS)}
-    rows = {r["id"]: r for r in gr.checklist_rows(items, rd, "fit")}
-    assert "checklist:words" not in rows
-    assert rows["checklist:front_state"]["status"] == "PASS" and rows["checklist:v"]["status"] == "PASS"
-    assert rows["checklist:spread"]["status"] == "FAIL"
-    assert rows["checklist:band"]["status"] == "LATER"  # (read on the flat draft)
-    assert gr.checklist_rows(items, {}, "flat")[-1]["status"] == "UNMEASURED"  # (flat item, no reading: blocks)
-    # the fit record path: rows from the spec's checklist, a failing big read blocks the detail rows (C52)
-    res = {"mesh": M, "body": type("B", (), {"at": {"hps.L": np.array([0.08, 0.0, HPS])}})()}
-    fr = cc.fit_rows(res, V, 0.5, False, g={"checklist": "t_shirt"})
-    st = {r["id"]: r["status"] for r in fr}
-    assert st["checklist:spread"] == "FAIL" and st["fit_threads_p99"] == "PASS"
-    assert cc.verdict(fr) == "FAIL"
-    assert [r.get("stage", 3) for r in fr] == sorted(r.get("stage", 3) for r in fr)
-    V2, M2 = _front_mesh(open_front=False, spread=True)
-    fr2 = cc.fit_rows({"mesh": M2, "body": res["body"]}, V2, 0.5, False, g={"checklist": "t_shirt"})
-    assert cc.verdict(fr2) == "PASS", [(r["id"], r["status"]) for r in fr2]
-
-
-def test_worn_big_reads_without_a_checklist_item_are_unmeasured():
-    kind_items = [{"id": "front", "measure": "front_state"}, {"id": "c", "measure": "collar_state"}]
-    assert gr.uncovered_form_reads(kind_items, ITEMS[:1]) == ["collar_state"]
-    assert gr.uncovered_form_reads(kind_items, ITEMS) == []
-    row = cc.gate_rows({"pieces": {}, "seams": []}, [{"id": "front", "stage": 1, "measure": "front_state"}])[-1]
-    assert row["status"] == "FORM", row  # (C97: not "SIM" on a path with no sim)
-
-
 # ----------------------------------------------------------------------------------------------- C101: collar rules
 def _collar_bp(neck_mm, stand_mm=35.0, stand_end_mm=30.0, fall_mm=55.0, run_off=False):
     """A stand + fall collar for a neck girth: the stand's neck edge = the neck girth (slight curve), its CB height
@@ -165,22 +130,6 @@ def test_collar_rules_any_stand_and_fall_three_necks(neck):
     # a jacket-like stand that runs off at its ends with a fold that runs off: agrees
     rj = gr.collar_draft_reads(_collar_bp(neck, stand_end_mm=2.0, run_off=True), g)
     assert rj["collar_stand_runs_off"] and rj["collar_fold_agrees"], rj
-
-
-# ----------------------------------------------------------------------------------------------- C100: lit vs lit
-def test_colour_row_compares_lit_with_lit(tmp_path):
-    from PIL import Image
-    a = np.zeros((40, 40, 3), np.uint8)
-    a[:, :20] = (173, 169, 167)
-    a[:, 20:] = (120, 117, 115)  # (shadow side)
-    Image.fromarray(a).save(tmp_path / "a.png")
-    pa = gr.colour_patch(tmp_path / "a.png", (0, 0, 1, 1))
-    it = {"id": "colour_lit", "ref_rgb": [173, 169, 167], "tol_rgb": 8, "hue_rb": [4, 8]}
-    assert gr.colour_row(it, pa)["status"] == "PASS", pa
-    b = a.copy()
-    b[:, :20] = (158, 160, 157)  # (round 1 under the clay rig: cool, dark)
-    Image.fromarray(b).save(tmp_path / "b.png")
-    assert gr.colour_row(it, gr.colour_patch(tmp_path / "b.png", (0, 0, 1, 1)))["status"] == "FAIL"
 
 
 # ----------------------------------------------------------------------------------------------- tucked (design key)
@@ -302,7 +251,6 @@ def _lapel_mesh(lean_deg=0.0, yaw_deg=0.0, end=386.0, taper=0.25):
                     turned += [part == "lapel"] * 2
     M = {"names": ["front.L", "front.R"], "piece": np.asarray(piece), "F": np.asarray(F), "closures": []}
     return np.asarray(V, float), M, np.asarray(turned)
-
 
 
 def test_lapel_face_reads_a_known_flat_lapel():

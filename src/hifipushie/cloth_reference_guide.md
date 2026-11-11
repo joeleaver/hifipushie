@@ -1,10 +1,5 @@
 # Reading garments from reference art
 
-How professionals read a garment off a picture, and how hifipushie turns that reading into a design sheet and later
-judges a simulated garment against it. Tools: `garment_from_reference` (read: the form, the camera, the sheet, the
-target table), `check_garment_reference` (check: ranked misses and focus panels), `garment_reference` (the knowledge
-base the choices come from). The checklist itself is data: `cloth_checklist.json`.
-
 The face has an equivalent list (the likeness checklist, FISWG-based). The clothing list is harder for four reasons:
 it depends on the garment KIND; it covers construction AND drape AND wear state AND material; many items are CHOICES
 (a notched or a peaked lapel, one button done up or two) rather than numbers; and garments are layered, so one
@@ -99,14 +94,6 @@ close crop or leave it at the KB's default.
    numbers with tolerances, stored in `<model>/cloth_refs.json`). It does not apply the patch: review it, then
    `design_garment`.
 
-## Checking a simulation (check_garment_reference)
-
-Reads the cached sims only (never starts one). For each item: our value, the reference's, the miss in tolerances.
-Ranked misses: stage first (a wrong length matters more than a wrong placket), then the miss's size. Focus panels:
-the reference crop | our garment drawn through the SAME fitted camera, the item's region outlined. Items whose
-`measure` is missing are listed apart ("can't judge: no measure"), and so are items the reference marked not
-visible.
-
 Read the panels before believing a number: a measure can be wrong (a hem read on a flared front corner, a cuff show
 read on a sleeve that rode up on one arm). The report says which misses are the MEASURE's fault when it can tell
 (the item's reference confidence is low, or the two arms disagree by more than the tolerance).
@@ -167,17 +154,6 @@ the view, the choices or the points to mark). With answers ({garment: {item id: 
 garment (choices -> details, wear -> closures / tie / over, fabric, colour) and the target table (lengths anchored
 on body landmarks, widths in metres), stored in <model>/cloth_refs.json. The patch is NOT applied: review it, then
 design_garment / edit the garment. look_chain with reference= judges the result against it.
-
-### `check_garment_reference`
-
-`check_garment_reference(name, garments=None, save=None, top=9)`
-
-Judge the model's simulated garments against its reference reading (<model>/cloth_refs.json, written by
-garment_from_reference): every checklist item measured on the CACHED sims (never simulates), the misses ranked
-(misses in tolerances x stage weight x confidence: a wrong length outranks a wrong placket), items the picture
-didn't show judged against the tailoring rule where there is one (collar show, cuff show, tent), what can't be
-judged and why; and a focus sheet: per ranked miss the reference crop | our garments drawn through the SAME fitted
-camera, the reading's points in red, ours in blue. Read the panels before believing a number.
 
 ### `garment_reference_brief`
 

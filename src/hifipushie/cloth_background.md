@@ -79,52 +79,8 @@ detail. Raise the fabric's bending, coarsen the final mesh, smooth more, and kee
 
 ## Sources
 
-- Marvelous Designer manual: arrangement points, particle distance, layers, fold lines, simulation properties, fabric
-  physical properties.
-  - https://support.marvelousdesigner.com/hc/en-us/articles/47358324263705-Add-Arrangement-Point
-  - https://support.marvelousdesigner.com/hc/en-us/articles/47358145573401
-  - https://support.marvelousdesigner.com/hc/en-us/articles/47358288780441
-  - https://support.marvelousdesigner.com/hc/en-us/articles/47358354961049-Fold-Pattern
-  - https://support.marvelousdesigner.com/hc/en-us/articles/47358125463321-Simulation-Properties
-  - https://support.marvelousdesigner.com/hc/en-us/articles/47358432358809
-- Marvelous Designer Creator's Field Guide 2024 (blocking at 20 mm, final 5 mm or less, collision thickness and skin
-  offset, freeze/deactivate, layer order):
-  https://s3.marvelousdesigner.com/newmdweb/case/20240626/MD+User+Guide+2024.pdf
-- Stylised garments with Marvelous Designer (Pixel; stiff bending, pressure on layer clones):
-  https://blog.siggraph.org/2022/07/creating-stylized-garments-for-pixel-with-marvelous-designer.html/
-- 80.lv breakdowns:
-  - remesh + ProjectAll, the sculpt pass, IMM stitches:
-    https://80.lv/articles/breakdown-detailed-3d-model-of-fantasy-archer
-  - layers, freezing, retopology: https://80.lv/articles/the-punisher-clothes-production-retopology-texturing
-  - stylised cloth: https://80.lv/articles/001agt-eureka-sculpting-stylized-cloth-pbr-texturing
-  - thickness, export: https://80.lv/articles/making-a-dress-and-a-leather-jacket-in-marvelous-designer
-  - retopology budgets: https://80.lv/articles/scavenger-clothes-production-and-retopology-in-maya
-- Folds: force maps, tension/compression, quiet areas, order of the sculpt:
-  https://vkgamedev.com/blog/sculpt-clothing-folds-blender-zbrush;
-  Hogarth's seven folds: https://www.thivolan-art.com/post/how-to-construct-the-7-folds
-- The simulation as a blockout, never shipped raw: https://polycount.com/discussion/150497/marvelous-designer
-- UVs from the flat pattern: https://www.gamedev.zone/character-pipeline-2-clothing-retopo-from-marvelous-with-maya/
-- Cloth shading (sheen/fuzz): https://dev.epicgames.com/documentation/en-us/unreal-engine/shading-models-in-unreal-engine
-- Pixar's garment pipeline (a coarse authored mesh, a triangle simulation mesh, a render mesh with procedural thickness
-  and seams): https://dl.acm.org/doi/fullHtml/10.1145/3532836.3536252
-- Tailoring practice behind the knowledge base (see cloth_audit.md for the measured comparison):
-  - shirt collars (stand, fall, roll, points): https://www.threadsmagazine.com/project-guides/fit-and-sew-tops/creating-professional-looking-shirt-collars
-  - skirt and trouser blocks, ease and darts: Winifred Aldrich, Metric Pattern Cutting (the skirt block here follows it)
-  - FreeSewing design docs (Simon, Carlton/Carlita instructions: belt, back pleat, roll line): https://freesewing.eu/docs/designs/
-  - fabric measurement for virtual garments (bending, buckling): https://support.clo3d.com/hc/en-us/articles/115002797808-Adjust-Buckling-Ratio
-
 
 ## A new garment kind, start to finish (the skirt)
-
-```
-design_garment(name, "skirt", design={"kind": "skirt", "from": "skirt_block", "fit": "a_line",
-               "fabric": "cotton_twill"}, spec={"quality": "draft"})
-look_pattern(name, "skirt")                      # front, two backs, waistband; darts; ease per girth
-check_garment(name, "skirt", stages=["construction", "place"])
-dress(name, "skirt")                             # the draft
-look_cloth(name, ["skirt"])                      # verdict + targets: hem level, waistband at the waist
-design_garment(name, "skirt", design={"fit": "straight"})          # change the cut in the sheet, look again
-```
 
 `skirt_block` options (in the sheet's `pattern`): `length` (m below the waist), `ease` {waist, seat}, `flare` (m per
 side seam at the hem), `darts`, `waistband` (height), `overlap`, `closure` (cb_zip, side_zip).
@@ -150,28 +106,3 @@ waistband opening at the centre front, a `zip_fly`, `pressed` creases, shaped ba
 Change a decision in `details` (`"crease": "none"`, `"belt": "none"`, `"fly": {"choice": "zip_fly", "op": {"length":
 0.16}}`), the cut in `fit` (tailored = slim leg, slim = skinny, classic = straight) or any number in `block_options`
 (they lie over the kind's). An op of the same name in the sheet's own `ops` replaces the detail's.
-
-What a pattern cutter decides first, and where it is here:
-- **The leg** (`block_options.leg`: skinny, slim, tapered, straight, wide; or `knee` / `hem` in metres as half the
-  finished circumference). Knee = the knee girth + the cut's ease, never tighter than the calf + its ease; hem = a
-  share of the knee, never under heel-and-instep + 20 mm (the hem must pass the foot). `tailor.measure` reads
-  `upperLeg`, `knee`, `calf`, `ankle`, `heel` off the body. Stage 2 says the ease per leg and whether the hem can be
-  pulled on.
-- **Length** (`length`: break, floor, shoe, ankle, cropped, calf, knee, shorts). "break" (the suit trousers'
-  default) is cut 30 mm over the floor with the back 12 mm longer than the front; the start hangs each column to the
-  floor, stops it on whatever faces up under it (the shoe) and gathers the extra into the bottom 9 cm: one soft break,
-  no ankle showing. Give the shoes as colliders
-  (`collide: ["shoes", "soles"]`) or the hem passes through them. Cutting the length from the shoe's own heights came
-  out 5 cm short: cut from the floor. "shoe" ends the hem 3 cm over the floor with no back difference.
-- **The legs start on the legs** (a tube round each leg's own axis, blended into the seat at the crotch): on one
-  cylinder per leg a slim leg's front and back started as slabs 17-21 cm apart at the seams.
-- **Tucked in or worn free** is decided on the trousers: `over: "shirt"` tucks the shirt (it is pressed under them);
-  without it the shirt hangs over the waistband and hides the belt.
-- **The crease** is the grain line: through the middle of knee and hem on both pieces. Without it a suit trouser
-  reads as a pyjama leg whatever its cut.
-- **Seat ease** is read from the centre seam's line to the side seam; the forks lie between the legs.
-- **Back darts** (`back_dart` intake, `dart_length`, `dart_taper` 0..1): a shaped dart's legs run in toward the
-  fold over its last third, so the tip dies away; straight legs end in a poke that reads as an open tuck.
-- **Trims** (garment key `trims`, `cloth_trims.py`): a belt (with a buckle) and belt loops are built ON the
-  finished waistband after the sim, as artists model them on the simulated trousers; they are in `look_cloth`,
-  not in the sim, the scene or the export yet.

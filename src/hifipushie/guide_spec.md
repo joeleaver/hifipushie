@@ -111,16 +111,11 @@ from spec.hair.groom) -> look_hair (renders + gates: outline dents, bare volume,
 edit_model kind "hair.locks" ... ; hair_reference matches a reference picture (camera from face landmarks, traced part,
 hairline and clumps carried onto the head); sync(hair_only=True) puts the locks in scene.blend, pull brings hand edits back.
 
-Clothes are sewn, then finished: spec["cloth"] garments are drafted to the body's measurements (FreeSewing designs or
-your own pattern pieces), sewn and settled by Blender's cloth sim, cleaned up, with seams/stitching/hems from the
-pattern. Work in a maker's stages (guide(topic="cloth")): design_garment (the design sheet: kind, fabric, fit, every
-construction choice; garment_reference lists them) -> look_pattern (the flat pattern sheet + checks: seams, ease, each
-choice evidenced; alter_pattern for truing and walked seams) -> pattern_check (the flat gate: dress refuses without
-its PASS) -> fit_garment (assembled on the form, no sim: clay + diag, strain p99) -> judge beside the reference, one
-review_view per view -> dress only as a wrinkle source -> look_cloth (clay + diag) -> game mesh. Fit, hang and made
-pieces are fixed in the pattern, never in the solver and never by closing or hand-finishing a drape after a sim
-(measured: strain p99 4.7 % -> 66-74 %). States worn / draped (tablecloths, blankets) / hung;
-sync(cloth_only=True) puts garments in scene.blend, pull brings colour and sculpt edits back.
+Clothes have one path (guide(topic="cloth")): garment_plan (read the reference, name the parts, plan the style) ->
+body_tape (the body's measurements, by name) -> draft_pattern (your own FreeSewing design and its flat gate) ->
+chain_garment (the only way a garment is built: every edge and seam at the pattern's own length) -> garment_details ->
+look_chain beside the reference -> garment_appearance -> export_garment. garment_record shows every step. Never tune
+anything: a fault is fixed at the step that names it.
 
 Terrain (landscapes and game levels) is separate: a height field described in a level designer's words (a basin, a
 pass, a village site, a road, forest here, "this must be visible from there"). Read guide(topic="terrain"), then

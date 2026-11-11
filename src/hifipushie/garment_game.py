@@ -35,82 +35,13 @@ from scipy.spatial import Delaunay, cKDTree
 from hifipushie import validated
 
 INNER_T = 0.001  # m: the inner (back) faces sit this far inside the outer ones (explicit back faces, codified A7)
-CULL_MARGIN = 0.03  # m: covered faces this close to an uncovered vertex stay (a hidden edge never shows a gap)
-CULL_REACH = 0.06  # m: a cover within this distance along the normal hides the vertex (asset.UNDER_CLOTH_REACH)
 CORNER_DEG = 30.0  # a pattern outline turning more than this at a vertex is a corner: free runs keep it
 MADE_MIN_ROWS = 8  # a made part (collar, stand, cuff) keeps at least this many rows across: a collar's roll is a fold
-# a 26 mm grid can't hold (3 rows over a 49 mm collar baked its roll as a smeared band); artists put loops there
-CULL_BACK_REACH = 0.02  # m: a cover this close BEHIND an under vertex also covers it (it pokes through: still hidden
 # under the cover, not exposed; 0 = the proof4/5 cull, which kept every poking sleeve face because it "looked uncovered")
 PIERCE_REACH = 0.015  # m: an under vertex with its cover this close BEHIND it (along -normal) pokes through
 
 
 # ---------------------------------------------------------------- drape
-
-def load(pkl) -> dict:
-    """The frozen drape (cloth.freeze pickle): see from_result."""
-    d = pickle.load(open(pkl, "rb"))
-    return from_result(d["res"], d["g"], d["garment"])
-
-
-def from_result(r: dict, g: dict, name: str) -> dict:
-    """A built drape (cloth.cached / thaw result, g the expanded garment): V (sim, final), F, uv (flat pattern,
-    metres), piece, names, sew pairs + seam ids, made parts (grids), and the sim pieces the made parts replace or hide."""
-    m = r["mesh"]
-    made = (r.get("made") or {}).get("parts", [])
-    info = (r.get("made") or {}).get("info", {})
-    drop = set()
-    for p in made:
-        drop |= set(p.get("replaces") or [])
-    hides = info.get("hides")
-    if isinstance(hides, (list, tuple)):
-        drop |= set(hides)
-    return {"name": name, "V": np.asarray(r["V"], float), "F": np.asarray(m["F"], np.int64),
-            "uv": np.asarray(m["uv"], float), "piece": np.asarray(m["piece"], np.int64), "names": list(m["names"]),
-            "sew": np.asarray(m["sew"], np.int64).reshape(-1, 2), "sew_seam": np.asarray(m["sew_seam"], np.int64),
-            "made": made, "drop": drop, "color": g.get("color"), "thickness": (r.get("fabric") or {}).get("thickness"),
-            "mesh": m, "g": g}
-
-
-def sim_atlas(drape: dict) -> tuple[dict, float]:
-    """The garment's own pattern atlas (cloth.atlas_uv, the layout its painted maps use: seams, topstitching, hems,
-    buttons from cloth.write_maps): per piece name the offset c with atlas uv = (pattern uv + c) / side, and side (m).
-    A made part takes the slot of the sim piece it replaces (same name)."""
-    from . import cloth
-    out, side = cloth.atlas_uv(drape["mesh"])
-    c = {}
-    for k, n in enumerate(drape["names"]):
-        s = np.nonzero(drape["piece"] == k)[0]
-        c[n] = (out[s[0]] * side - drape["uv"][s[0]])
-    return c, side
-
-
-def detail_maps(drape: dict, out_stem, texture: int) -> dict:
-    """The garment's painted detail (cloth.write_maps on the drape's own atlas): basecolor + detail normal PNGs."""
-    from . import cloth
-    uv, side = cloth.atlas_uv(drape["mesh"])
-    return cloth.write_maps(Path(out_stem), drape["mesh"], uv, side, drape["g"], texture)
-
-
-def high_mesh(drape: dict, body: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray]:
-    """The bake source: the drape at full resolution (dropped sim pieces out, made parts in). body (points): every
-    piece wound to face away from it, as the low (the sim's mirrored panels come wound inward; a normal bake through
-    an inward high reads inverted, its AO black)."""
-    pc, F0 = drape["piece"], drape["F"]
-    groups = [F0[pc[F0[:, 0]] == i] for i, n in enumerate(drape["names"]) if n not in drape["drop"]]
-    Vs, off = [drape["V"]], len(drape["V"])
-    for p in drape["made"]:
-        Vs.append(np.asarray(p["V"], float)); groups.append(np.asarray(p["F"], np.int64) + off); off += len(p["V"])
-    V = np.concatenate(Vs)
-    if body is not None:
-        tree = cKDTree(body)
-        for k, F in enumerate(groups):
-            fn = np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]])
-            c = V[F].mean(1)
-            _, i = tree.query(c)
-            if np.sum((fn * (c - body[i])).sum(1) > 0) < 0.5 * len(F):
-                groups[k] = F[:, ::-1].copy()
-    return V, np.concatenate(groups)
 
 
 # ---------------------------------------------------------------- panel boundaries and seams
@@ -350,51 +281,6 @@ def remesh_panel(drape: dict, name: str, bd: dict, h: float, lines=()) -> dict:
             "missing_boundary_edges": int(missing), "name": name}
 
 
-def regrid_made(p: dict, h: float) -> dict:
-    """A made part (a (u, v) grid: collar, stand, cuff) re-gridded at ~h along each grid direction."""
-    from scipy.ndimage import map_coordinates
-    gu, gv = p["grid"]
-    V = np.asarray(p["V"], float).reshape(gu, gv, 3); uv = np.asarray(p["uv"], float).reshape(gu, gv, 2)
-    Lu = np.linalg.norm(np.diff(V, axis=0), axis=2).sum(0).mean(); Lv = np.linalg.norm(np.diff(V, axis=1), axis=2).sum(1).mean()
-    nu, nv = max(2, int(round(Lu / h)) + 1), max(2, int(round(Lv / h)) + 1)
-    if Lv <= Lu:
-        nv = max(nv, min(MADE_MIN_ROWS, gv))
-    else:
-        nu = max(nu, min(MADE_MIN_ROWS, gu))
-    I, J = np.meshgrid(np.linspace(0, gu - 1, nu), np.linspace(0, gv - 1, nv), indexing="ij")
-    samp = lambda X: np.stack([map_coordinates(X[..., k], [I, J], order=1) for k in range(X.shape[-1])], -1).reshape(-1, X.shape[-1])
-    q = np.arange(nu * nv).reshape(nu, nv)
-    a, b, c, d = q[:-1, :-1].ravel(), q[1:, :-1].ravel(), q[1:, 1:].ravel(), q[:-1, 1:].ravel()
-    T = np.concatenate([np.stack([a, c, b], 1), np.stack([a, d, c], 1)])
-    # (p["F"] (0, gv, gv+1) = (a, b, c) order): keep the made part's winding
-    T = T[:, ::-1]
-    bnd = np.concatenate([q[:, 0], q[-1, 1:], q[::-1, -1][1:], q[0, ::-1][1:-1]])
-    fe = np.stack([bnd, np.roll(bnd, -1)], 1)
-    return {"V": samp(V), "uv": samp(uv), "T": T, "gid": -np.ones(nu * nv, int), "free_edges": fe, "name": p["name"],
-            "missing_boundary_edges": 0, "made": True}
-
-
-def remesh(drape: dict, h: float, body: np.ndarray | None = None) -> list[dict]:
-    """The game garment at edge ~h: every kept panel and made part, seams shared. body (points): each piece wound so
-    most of its area faces away from the body (mirrored .R panels come out of the flat pattern mirrored)."""
-    bd = boundaries(drape, h)
-    pieces = [remesh_panel(drape, n, bd[n], h) for n in bd]
-    pieces += [regrid_made(p, h) for p in drape["made"]]
-    _weld_corners(pieces)
-    if body is not None:
-        tree = cKDTree(body)
-        for p in pieces:
-            V, T = p["V"], p["T"]
-            fn = np.cross(V[T[:, 1]] - V[T[:, 0]], V[T[:, 2]] - V[T[:, 0]])
-            # away-from-body per VERTEX (a vertex lies on the drape): a coarse face's centroid sits inside the body on
-            # a tube (3 faces round a sleeve at h ~9 cm), so a centroid test wound LOD3 pieces inward (2026-10-19)
-            _, i = tree.query(V)
-            out = (V - body[i])[T].mean(1)
-            if np.sum((fn * out).sum(1) > 0) < 0.5 * len(T):
-                p["T"] = T[:, ::-1].copy()
-    return pieces
-
-
 def outward(P: np.ndarray, N: np.ndarray, body: np.ndarray) -> np.ndarray:
     """N with its sign turned away from the nearest body point (orientation-free tests)."""
     _, i = cKDTree(body).query(P)
@@ -482,61 +368,6 @@ def ray_hits(O: np.ndarray, D: np.ndarray, V: np.ndarray, T: np.ndarray, reach: 
     return res
 
 
-def pose_field(rest: np.ndarray, posed: np.ndarray, X: np.ndarray, k: int = 4) -> np.ndarray:
-    """X carried into a pose by the displacement of the nearest k posed reference vertices (inverse distance)."""
-    d, i = cKDTree(rest).query(X, k=k)
-    w = 1.0 / np.maximum(d, 1e-5); w /= w.sum(1, keepdims=True)
-    return X + np.einsum("nk,nkd->nd", w, (posed - rest)[i])
-
-
-def body_points(z, keys=("body", "head"), rest: bool = False) -> np.ndarray:
-    return np.vstack([z[f"{k}:{'rest' if rest else 'posed'}"] for k in keys])
-
-
-def pose_by_body(z, X: np.ndarray) -> np.ndarray:
-    """X carried into pose z by the body's own displacement (nearest body vertices): how a game garment skinned from
-    the body moves. Every layer takes the same field, so layering survives except where the body itself folds."""
-    return pose_field(body_points(z, rest=True), body_points(z), X)
-
-
-def covered_cull(under: dict, covers: list[tuple[dict, str]], poses: list, margin: float | None = None,
-                 reach: float = CULL_REACH, back_reach: float | None = None,
-                 body: np.ndarray | None = None) -> tuple[np.ndarray, dict]:
-    """Faces of `under` (a merged mesh) covered in EVERY pose, with a margin: a vertex is covered when its normal ray
-    hits a cover within reach, in the rest pose and in each pose; covered vertices within `margin` (3D) of an
-    uncovered one stay. covers [(merged mesh, pose key)], poses [npz]: each pose moves every mesh by its key's
-    reference displacement (pose_field); no poses = the rest pose only, body (rest points) winds the normals.
-    Returns (face keep mask, report)."""
-    br = CULL_BACK_REACH if back_reach is None else back_reach
-    margin = CULL_MARGIN if margin is None else margin
-    cov = np.ones(len(under["V"]), bool)
-    frames = [None] + list(poses)
-    for z in frames:
-        Vu = under["V"] if z is None else pose_by_body(z, under["V"])
-        Bz = body if z is None and (body is not None and not poses) else body_points(poses[0] if z is None else z,
-                                                                                         rest=z is None)
-        Nu = outward(Vu, normals(Vu, under["T"], under["weld"]), Bz)
-        hit = np.zeros(len(Vu), bool)
-        for c, ck in covers:
-            Vc = c["V"] if z is None else pose_by_body(z, c["V"])
-            hit |= np.isfinite(ray_hits(Vu, Nu, Vc, c["T"], reach))
-            if br > 0:  # the cover BEHIND (the under layer pokes through it here): still covered, not exposed
-                hit |= np.isfinite(ray_hits(Vu, -Nu, Vc, c["T"], br))
-        cov &= hit
-    # fold the welded copies together (a seam vertex is covered only if every copy is)
-    acc = np.ones(under["weld"].max() + 1, bool); np.logical_and.at(acc, under["weld"], cov); cov = acc[under["weld"]]
-    open_ = ~cov
-    if open_.any():
-        d, _ = cKDTree(under["V"][open_]).query(under["V"])
-        deep = cov & (d > margin)
-    else:
-        deep = cov
-    keep = ~deep[under["T"]].all(1)
-    under["covered"] = cov  # kept-but-covered vertices: the margin ring (layer_gap moves only these)
-    return keep, {"vertices_covered_all_poses": int(cov.sum()), "deep": int(deep.sum()), "faces": len(keep),
-                  "faces_kept": int(keep.sum()), "poses": len(frames)}
-
-
 def pierce_count(under_V, under_T, cover_V, cover_T, body, reach: float = PIERCE_REACH, weld=None) -> int:
     """Under vertices with a cover surface BEHIND them (toward the body, within reach): poking through the cover."""
     used = np.unique(under_T)
@@ -621,22 +452,6 @@ def pierce_faces(under_V, under_T, cover_V, cover_T) -> int:
     return int(crossing_faces(under_V, under_T, cover_V, cover_T).sum())
 
 
-def folded_faces(V: np.ndarray, T: np.ndarray, cos_max: float = -0.2) -> int:
-    """Faces turned against their edge neighbours (normal . mean neighbour normal < cos_max): flips and folds."""
-    fn = np.cross(V[T[:, 1]] - V[T[:, 0]], V[T[:, 2]] - V[T[:, 0]])
-    fn /= np.maximum(np.linalg.norm(fn, axis=1, keepdims=True), 1e-15)
-    e = np.concatenate([np.sort(T[:, [0, 1]], 1), np.sort(T[:, [1, 2]], 1), np.sort(T[:, [2, 0]], 1)])
-    f = np.tile(np.arange(len(T)), 3)
-    key = e[:, 0] * (int(T.max()) + 1) + e[:, 1]
-    o = np.argsort(key); ks, fs = key[o], f[o]
-    same = ks[1:] == ks[:-1]
-    a, b = fs[:-1][same], fs[1:][same]
-    acc = np.zeros_like(fn); np.add.at(acc, a, fn[b]); np.add.at(acc, b, fn[a])
-    acc /= np.maximum(np.linalg.norm(acc, axis=1, keepdims=True), 1e-15)
-    has = np.linalg.norm(acc, axis=1) > 0.5
-    return int(((fn * acc).sum(1) < cos_max)[has].sum())
-
-
 # ---------------------------------------------------------------- shell, atlas
 
 def shell(m: dict, full_T: np.ndarray | None = None, t: float = INNER_T) -> dict:
@@ -691,166 +506,5 @@ def atlas(pieces: list[dict], gap: float = 0.02) -> tuple[list[np.ndarray], floa
     return uvs, side
 
 
-def chord_sag(low: dict, high_V: np.ndarray, high_T: np.ndarray, q: float = 95.0, reach: float = 0.05) -> float:
-    """How far a re-grid's faces sink below the surface it samples (the chord error, metres, percentile q over face
-    centroids): the distance along the low face normal (either way) to the high surface, counted where the high
-    surface lies OUTSIDE the low face (outward = the merged normals' side)."""
-    V, T = low["V"], low["T"]
-    c = V[T].mean(1)
-    fn = np.cross(V[T[:, 1]] - V[T[:, 0]], V[T[:, 2]] - V[T[:, 0]])
-    fn /= np.maximum(np.linalg.norm(fn, axis=1, keepdims=True), 1e-15)
-    fn *= np.sign((fn * low["N"][T].mean(1)).sum(1))[:, None]
-    out = ray_hits(c, fn, high_V, high_T, reach)
-    inn = ray_hits(c, -fn, high_V, high_T, reach)
-    sag = np.where(out < inn, out, 0.0)
-    return float(np.percentile(sag[np.isfinite(sag)], q))
-
-
-def build(drape: dict, h: float, covers=None, poses=(), cull: bool = False, body=None,
-          layer_gap: float = 0.0, gap_rings: int = 0) -> dict:
-    """The game garment at edge h: remesh, (cull under covers), atlas, shell. covers [(merged mesh, pose key)];
-    body: rest body points (winding). layer_gap (m, with cull): kept vertices covered in every pose (the margin ring
-    under the cover's edge) sit this much further in: the cover's chord sag at this LOD (chord_sag), so its coarse
-    faces never dip through them. gap_rings: also the vertices this many face rings out from those (the faces that
-    straddle the cover's free edge, where the layers touch)."""
-    pieces = remesh(drape, h, body)
-    m = merged(pieces)
-    m["key"] = f"cloth_{drape['name']}"
-    keep_f, rep = np.ones(len(m["T"]), bool), {}
-    if cull and covers:
-        keep_f, rep = covered_cull(m, covers, poses, body=body)
-        if layer_gap > 0:
-            mv = m["covered"] & np.isin(np.arange(len(m["V"])), m["T"][keep_f])
-            for _ in range(gap_rings):  # + the faces that straddle the cover's edge (one coarse face reaches under it)
-                ring = np.zeros(len(mv), bool); ring[m["T"][keep_f][mv[m["T"][keep_f]].any(1)].ravel()] = True
-                acc = np.zeros(m["weld"].max() + 1, bool); np.logical_or.at(acc, m["weld"], ring); mv = acc[m["weld"]]
-            Nb = outward(m["V"], m["N"], body) if body is not None else m["N"]  # toward the body, whatever the winding
-            m["V_bake"] = m["V"]  # the drape surface: the bake casts from here (a moved vertex baked the jacket)
-            m["V"] = m["V"] - Nb * layer_gap * mv[:, None]
-            rep["layer_gap_m"], rep["layer_gap_vertices"] = layer_gap, int(mv.sum())
-    if "mesh" in drape:  # the garment's own atlas: its painted detail maps fit
-        c, side = sim_atlas(drape)
-        uvs = []
-        for p in pieces:
-            if p.get("made"):
-                q = next((x for x in drape["made"] if x["name"] == p["name"]), None)
-                lo = np.asarray(q["uv"], float).min(0)
-                sim_lo = drape["uv"][drape["piece"] == drape["names"].index(p["name"])].min(0) if p["name"] in drape["names"] else lo
-                uvs.append((p["uv"] - lo + sim_lo + c.get(p["name"], 0.0)) / side)
-            else:
-                uvs.append((p["uv"] + c[p["name"]]) / side)
-    else:
-        uvs, side = atlas(pieces)
-    m["uv"] = np.vstack(uvs)
-    mk = dict(m); mk["T"] = m["T"][keep_f]
-    sh = shell(mk, m["T"])
-    if "V_bake" in m:
-        sh["V_bake"] = np.vstack([m["V_bake"], m["V_bake"] - m["N"] * INNER_T])
-    return {"pieces": pieces, "merged": m, "kept": mk, "game": sh, "atlas_side_m": side, "cull": rep, "h": h,
-            "missing_boundary_edges": sum(p["missing_boundary_edges"] for p in pieces),
-            "triangles": len(sh["T"])}
-
-
 # ---------------------------------------------------------------- the MCP path (server.game_garment)
 
-LOD_EDGES = (0.03, 0.042, 0.0588, 0.0823)  # m: proof6g's LOD0-3 (each 1.4x coarser: ~v8's per-LOD triangle totals)
-GAP_RINGS = 1  # proof6g: the kept-but-covered ring + one face ring out (the faces straddling the cover's free edge)
-BAKE_GB = 6.0  # the Blender bake's declared peak (resources.heavy): Garrett jacket + shirt, 4 LODs, Cycles CPU
-
-
-def covers_of(over: dict, names) -> dict:
-    """{garment: the garments over it} (every garment whose chain of "over" reaches it: a coat covers the sweater
-    AND the shirt under it), from asset.garment_over's {garment: the one it is worn over}."""
-    out = {g: [] for g in names}
-    for o in names:
-        x, seen = over.get(o), set()
-        while x is not None and x not in seen and x != o:
-            seen.add(x)
-            if x in out:
-                out[x].append(o)
-            x = over.get(x)
-    return out
-
-
-def build_lods(drapes: dict, covers: dict, body: np.ndarray, edges=LOD_EDGES, poses=(), gap_rings: int = GAP_RINGS,
-               log=print) -> list[dict]:
-    """Every garment at every LOD edge, outer garments first (their kept LOD mesh is the cover the under ones are
-    culled by and measured against at THAT LOD); an under garment's covered ring sits the covers' chord sag deeper.
-    Per LOD: {"lod", "h", "builds" {garment: build}, "pierce" [{"under", "cover", "faces", "posed_max"}],
-    "cracks" {garment: missing boundary edges}}."""
-    order = sorted(drapes, key=lambda g: len(covers.get(g) or []))
-    highs: dict = {}
-    out = []
-    for li, h in enumerate(edges):
-        builds: dict = {}
-        for g in order:
-            cs = [c for c in covers.get(g) or [] if c in builds]
-            gap = 0.0
-            for c in cs:
-                if c not in highs:
-                    highs[c] = high_mesh(drapes[c], body)
-                gap = max(gap, chord_sag(builds[c]["kept"], *highs[c]))
-            builds[g] = build(drapes[g], float(h), covers=[(builds[c]["kept"], f"cloth_{c}") for c in cs],
-                              poses=poses, cull=bool(cs), body=body, layer_gap=gap, gap_rings=gap_rings if gap else 0)
-            log(f"LOD{li} h {h * 1000:.0f} mm {g}: {builds[g]['triangles']} triangles"
-                + (f", layer gap {gap * 1000:.1f} mm" if gap else ""))
-        rows = []
-        for g in order:
-            u = builds[g]["kept"]
-            for c in covers.get(g) or []:
-                cv = builds[c]["kept"]
-                r = {"under": g, "cover": c, "faces": pierce_faces(u["V"], u["T"], cv["V"], cv["T"]) if len(u["T"]) else 0}
-                if poses:
-                    r["posed_max"] = max(pierce_faces(pose_by_body(z, u["V"]), u["T"], pose_by_body(z, cv["V"]), cv["T"])
-                                         for z in poses) if len(u["T"]) else 0
-                rows.append(r)
-        out.append({"lod": li, "h": float(h), "builds": builds, "pierce": rows,
-                    "cracks": {g: int(b["missing_boundary_edges"]) for g, b in builds.items()}})
-    return out
-
-
-def write(lods: list[dict], drapes: dict, body: np.ndarray, out_dir, texture: int = 2048) -> list[dict]:
-    """Low meshes (npz), the high (bake source) and the painted detail maps per garment and LOD under out_dir/LOD<k>;
-    returns the Blender bake job's garment entries (blender_garment_game.py)."""
-    out_dir = Path(out_dir)
-    jobs = []
-    for L in lods:
-        d = out_dir / f"LOD{L['lod']}"
-        d.mkdir(parents=True, exist_ok=True)
-        size = max(256, int(texture) >> L["lod"])
-        for g, b in L["builds"].items():
-            gm = b["game"]
-            np.savez(d / f"low_{g}.npz", V=gm["V"], V_bake=gm.get("V_bake", gm["V"]), T=gm["T"], uv=gm["uv"], N=gm["N"],
-                     outer_faces=gm["outer_faces"])
-            hp = out_dir / f"high_{g}.npz"
-            if not hp.exists():
-                Vh, Fh = high_mesh(drapes[g], body)
-                np.savez(hp, V=Vh, F=Fh)
-            e = {"name": f"game_{g}", "low": str(d / f"low_{g}.npz"), "high": str(hp), "size": size,
-                 "color": drapes[g].get("color") or "#808080", "roughness": float(drapes[g]["g"].get("roughness", 0.85)),
-                 "out_glb": str(d / f"game_{g}.glb"), "out_dir": str(d)}
-            if "mesh" in drapes[g]:
-                dm = detail_maps(drapes[g], d / f"detail_{g}", size)
-                e.update(detail_normal=str(dm["normal"]), basecolor=str(dm["basecolor"]))
-            jobs.append(e)
-    return jobs
-
-
-def bake(jobs: list[dict], out_dir, occluders: str | None = None, log=print) -> dict:
-    """The high -> low normal + AO bake and the GLBs (one Blender job, under the machine's heavy-job queue)."""
-    import json
-    import subprocess
-    from . import render, resources
-    out_dir = Path(out_dir)
-    job = {"occluders_glb": occluders, "skip": [j["name"].replace("game_", "cloth_") for j in jobs] + ["hair", "lashes"],
-           "ao_distance": 0.15, "ao_samples": 32, "garments": jobs}
-    jp = out_dir / "bake_job.json"
-    jp.write_text(json.dumps(job, indent=1))
-    script = Path(__file__).with_name("blender_garment_game.py")
-    with resources.heavy("garment_game bake", gb=BAKE_GB, log=log):
-        r = subprocess.run([render.BLENDER, "-b", "--factory-startup", "--python", str(script), "--", str(jp)],
-                           capture_output=True, text=True)
-    if r.returncode != 0 or not all(Path(j["out_glb"]).exists() for j in jobs):
-        tail = "\n".join(ln for ln in (r.stdout + r.stderr).splitlines() if "Error" in ln or "Traceback" in ln)[-1500:]
-        raise RuntimeError(f"garment_game bake failed (rc {r.returncode}): {tail or r.stderr[-1500:]}")
-    return {"glbs": [j["out_glb"] for j in jobs], "job": str(jp)}

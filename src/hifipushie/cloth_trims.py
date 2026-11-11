@@ -44,29 +44,6 @@ def _on(t: dict, pcs: dict) -> str | None:
     return next((n for n, pc in pcs.items() if (pc.get("role") or n) == "waistband"), None)
 
 
-def check(trims: list, pcs: dict) -> list:
-    """[(ok, text)] per trim against the pattern: the piece it rides exists and is wide enough."""
-    out = []
-    for t in trims or []:
-        nm = _on(t, pcs)
-        if nm is None:
-            out.append((False, f"trim {t['kind']}: no piece {t.get('on') or 'of role waistband'} to ride on"))
-            continue
-        P = pcs[nm]["P"]
-        h = float(np.ptp(P[:, 1]))
-        if t["kind"] == "belt":
-            w = float(t.get("width", 0.032))
-            ok = w <= h + 0.004
-            out.append((ok, f"trim belt on {nm}: {w * 1000:.0f} mm wide on a {h * 1000:.0f} mm band"
-                        + ("" if ok else ": wider than its band (it would hang over the edge)")))
-        else:
-            n = int(t.get("count", 7))
-            sp = float(np.ptp(P[:, 0])) / max(n, 1)
-            out.append((n >= 5, f"trim belt_loops on {nm}: {n} loops, about {sp * 1000:.0f} mm apart"
-                        + ("" if n >= 5 else " (trousers carry 5-7: fewer and the belt rides up between them)")))
-    return out
-
-
 class _Chart:
     """A piece's finished surface as a function of its pattern coordinates: position and outward normal."""
 

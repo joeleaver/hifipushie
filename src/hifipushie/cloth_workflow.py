@@ -31,7 +31,6 @@ from . import cloth, cloth_check, garment_design
 STAGES = ("design", "pattern", "construction", "place", "sim")
 
 
-
 def waist_band_for_body(waist_band, chest_band, sz: dict) -> list | None:
     """A kind's waist band is written for a body whose waist is a little under its chest (a man's: ~0.9). A garment
     cut STRAIGHT from the chest (its own waist girth at least 0.9 x its chest girth: a jumper, a boxy tee, a
@@ -1148,8 +1147,3 @@ def text(results: list, verbose: bool = True) -> str:
             L += [f"  {x}" if not x.startswith("  ") else f"  {x}" for x in r["info"]]
     return "\n".join(L)
 
-
-def gate(name: str, gname: str, spec: dict | None = None) -> list:
-    """The hard failures of stages 1-3 (what dress refuses to simulate over)."""
-    res = run(name, gname, ("design", "pattern", "construction"), images=False, spec=spec)
-    return [f"{r['stage']}: {x}" for r in res for x in r["fail"]]

@@ -17,7 +17,7 @@ call; `find_tool("")` lists every tool by domain. Before working in a domain, re
 | human | human, measure_human, fit_human, nudge_human, human_reference, block_in_start, block_in_look, block_in_step, set_expression, lid_read, eye_ruler, face_ruler, brow_read, skin, look_skin, skin_reference, skin_from_reference, skin_project | guide(topic="human"), guide(topic="block_in"), guide(topic="skin") |
 | likeness | likeness, fit_likeness, likeness_points, character_read, project_reference, texture_from_reference, reference_brief, check_references | guide(topic="likeness") |
 | hair | groom_hair, tie_hair, look_hair, hair_reference, export_hair | guide(topic="hair") |
-| cloth | design_garment, look_pattern, check_garment, dress, look_cloth, garment_reference, garment_from_reference, check_garment_reference, garment_reference_brief | guide(topic="cloth"), guide(topic="cloth_reference") |
+| cloth | garment_plan, body_tape, draft_pattern, pattern_parts, chain_garment, garment_details, look_chain, garment_appearance, export_garment, garment_record, design_garment, look_pattern, alter_pattern, pattern_check, garment_reference, garment_from_reference, garment_reference_brief | guide(topic="cloth"), guide(topic="cloth_reference") |
 | terrain | set_terrain, check_terrain, look_terrain, export_terrain, terrain_history | guide(topic="terrain") |
 | plants | grow_plant, edit_plant, get_plant, look_plant, look_plants, plant_form, plant_reference, export_plant, wind_plant, sync_plant, plant_history, grow_stand, look_stand, export_stand | guide(topic="vegetation") |
 | clutter | make_clutter, look_clutter, clutter_kit | guide(topic="clutter") |
@@ -39,11 +39,10 @@ topic="terrain": the terrain vocabulary (landscapes and game levels in a level d
 basins, passes, canyons, sites, routes, walls, cover, intent checks), for set_terrain and the other terrain tools.
 topic="hair": hair from a description of the hairstyle: realistic strand grooms (tied with tie_hair, loose with
 groom_hair), short cuts as shells, game export (export_asset; export_hair is the hair alone); topic="hair_locks": stylised sculpted locks.
-topic="cloth": garments the way pattern makers and garment artists make them, in stages (design sheet, flat
-pattern and its checks, construction plan, arrangement, draft, final), with design_garment, look_pattern,
-check_garment, garment_reference, dress, look_cloth and sync(cloth_only=True).
+topic="cloth": garments on their one path: garment_plan -> body_tape -> draft_pattern -> chain_garment ->
+garment_details -> look_chain -> export_garment; garment_record shows every step.
 topic="cloth_reference": reading garments from reference art as tech designers, tailors and garment artists do
-(the checklist, big to small), with garment_from_reference, check_garment_reference and garment_reference_brief
+(the checklist, big to small), with garment_from_reference and garment_reference_brief
 (the shot list for getting good references, and a validator for a set of pictures).
 topic="skin": human skin the way character artists texture it, in stages (base tone, colour zones, large
 features, fine features, micro detail, cosmetics, shading check), with skin, look_skin and skin_reference.
@@ -244,7 +243,6 @@ black) for a busy background. Conventions as look's views: az 0 = from the front
 left (+X); el + = from above. Saved as <model>/cameras/<label>.json. Returns the overlay (red = model only,
 blue = image only) and the camera. IoU under 0.85 is flagged: the model's shape is far off, or the mask is wrong.
 Re-fit after big shape changes; small ones keep the camera. Puddles (pud2): az -19, el +8.5, IoU 0.93.
-
 
 ### `fit_matched`
 
@@ -560,33 +558,6 @@ boxes: per crop L* p10 / p50 / p90, chroma, blotch, edge difference. only: crop 
 Heavy: renders under bin/capped with the GPU lock (minutes; cached per GLB content). Numbers are measures, not a
 verdict: the text ends with the next step (review the crops one per review_view call; the blind A/B with controls
 is `bin/judge ab`).
-
-### `game_garment`
-
-`game_garment(name, garments=None, lods=None, poses=None, bake=True, texture=2048, occluders=None, gap_rings=1,
-out_dir=None)`
-
-Opt-in game garments (garment_game.py; export_asset's own cloth path is untouched), made the way game artists make
-them from a Marvelous / CLO drape: the finished drape is the HIGH poly; each LOD is a clean re-grid of the FLAT pattern
-at one edge length, mapped onto the drape through each panel's own 2D -> 3D (seams resampled once and shared by both
-sides: no cracks, no T-junctions; made parts re-gridded from their own grids). UVs = the garment's own pattern atlas
-(its painted detail maps fit). An under garment's faces covered by the garments over it (the "over" chain: a coat
-covers the sweater AND the shirt) in the rest pose and every pose given are deleted, with a 3 cm margin; the kept
-ring under a cover sits that cover's chord sag deeper at THAT LOD (a coarse cover's faces sink 2 mm at LOD0, 22 mm at
-LOD3); gap_rings also moves the faces straddling the cover's free edge. Explicit inner faces + a rim on free edges.
-LODs are coarser re-grids (no decimation). garments: default every garment with a drape; the covers of an asked
-garment are added (said in the text). lods: edges in metres (default 0.03, 0.042, 0.059, 0.082: ~1.4x per LOD).
-poses: npz clip dumps from the export ("body:rest" / "body:posed" ...): the cull holds in every frame and posed
-crossings are reported (INFO: the garment moves by the body field until it is skinned).
-
-THE GATE: per LOD, every under layer's faces crossing its cover (garment_game.pierce_faces, triangle-triangle, known
-answers in validated.GATE_MEASURES) and missing boundary edges (cracks). Any crossing or crack at ANY LOD: nothing
-is written or baked, and the text names the LOD, the pair, the count and the fix (a finer edge at that LOD,
-gap_rings=2, or the under garment drafted further under on the pattern; never vertices pushed by hand). Clean: low
-meshes, the high and the detail maps under out_dir/LOD<k> (default <model dir>/game_garment); bake=True bakes the
-drape high -> low (tangent normal + AO, occluders = the character GLB for the AO) into one GLB per garment per LOD
-(texture halves per LOD, >= 256). Heavy: the bake runs Blender under the machine's heavy-job queue (minutes). The
-text ends with the next step: judge_asset on each GLB, then the crops one per review_view call.
 
 ### `call_tool`
 

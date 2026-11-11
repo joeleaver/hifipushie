@@ -52,7 +52,6 @@ FALL_COVER_MM = (5.0, 25.0)  # the worn fall covers the stand seam by >= 5 mm (c
 # Pattern Cutting for Menswear, shirt collars: the fall 10-15 mm deeper than the stand), <= 25 (a fall that deep reads
 # as a cape on a shirt collar)
 STAND_RUNS_OFF_MM = 6.0  # a stand under this at its ends "runs off" (the jacket's two-piece stand: R28 ~3 mm)
-TUCK_STANDOFF_MM = 10.0  # tucked cloth below the line lies within this of the body (= cloth_check.UNDER_STANDOFF)
 COLLAR_FABRIC_SOURCE = ("a shirt collar: two layers of the shell + a fused interlining (~0.3 mm, INFERRED: typical shirt "
                         "collar fusibles 0.25-0.35 mm); its stand the same stack (C43: turn of cloth from the fabrics)")
 
@@ -141,11 +140,6 @@ def front_reads(X, M, hps_z: float, closure: str = "front") -> dict:
 
 
 LAPEL_FACE_ROWS = (150, 200, 250, 300, 350)  # mm below the HPS (the concept's traced rows, canvas s12)
-LAPEL_FACE_SOURCE = ("canvas s12 (C218): the lapel read that missed the thin lapels was the OUTER EDGE's offset off CF "
-                     "(122 vs the concept's 127-134 at 150 below HPS, 'only 5-12 mm apart') while the visible lapel FACE "
-                     "ended 55 mm above the concept's break and was 4-25 mm narrower from 200 down. Read like the traced "
-                     "concept: front view, per row from the roll (the front's CF-most edge) to the turned cloth's outermost "
-                     "edge, perpendicular to the roll's lean")
 
 
 def _section_x(X, F, z):
@@ -407,14 +401,6 @@ def collar_draft_reads(Bp: dict, g: dict | None = None) -> dict:
 
 
 FALL_PATH_TAPER = False  # (C125) True = round 9's path: the drop tapers u^2 from the CB cover to the points' height
-FALL_PATH_SOURCE = ("shirt round 11 (C125): a shirt collar's fall lands close round the neck, its outer edge parallel to "
-                    "the stand seam at the CB cover (10-15 mm, Aldrich) all the way to the front; the points are the "
-                    "fall's own corners lying on the fronts, not a deeper landing line. Round 9's path tapered the drop "
-                    "u^2 to the points' height (42.7 mm at the ends: the front necklines offset 27 mm, +42 / +48 mm "
-                    "each) and sprang the fall 127 mm past its sewn edge: on the form it spread over the shoulders as "
-                    "a cape. Shirt drafting: the fall's outer edge ~ the neckline + a few cm of spring (Aldrich, "
-                    "Metric Pattern Cutting for Menswear, two-piece shirt collar: the collar drafted on a near-rectangle "
-                    "with a small front lift)")
 SPRING_TOL_MM = (-6.0, 30.0)  # the fall's whole outer edge vs its landing path (R18's -3 / +15 per half, both halves)
 SPRING_SOURCE = ("R18 / C43 generalised to any stand + fall collar (shirt round 9): turned down over its stand, the "
                  "fall's outer edge lies on the body where it lands (the neckline offset by the edge's drop below the "
@@ -521,75 +507,6 @@ def fall_spring_reads(Bp: dict, g: dict | None = None) -> dict:
             "pieces": [cp["stand"], cp["fall"]]}
 
 
-CORNER_STRAIN_MAX = 10.0  # % at a collar / band corner (the made pieces start within 7 % p99 on the form; shirting
-# yields ~3-5 % before it puckers: above 10 % the corner reads torn)
-CORNER_FOLDED_MAX = 2
-CORNER_SOURCE = ("Joe on shirt round 8's collar crop: 'the front corners of the collar are torn': at the right band end "
-                 "strain 31 % (stand) / 22 % (the fall's sewn end) after the arrangement's single-vertex pins pulled the "
-                 "band ends 35 mm; a shirting corner pulled past ~10 % reads frayed. Crumpled = a cell whose normal "
-                 "opposes its 6 mm neighbours' mean, outside the fold's hinge band (the roll's own turn is not a crumple)")
-
-
-def collar_corner_reads(M: dict, X, Bp: dict, reach: float = 0.02) -> dict:
-    """The corners of a stand + fall collar (the fall's free-outline corners: its points; its sewn edge's ends; the
-    stand's ends): per corner, the faces within `reach` (pattern) of it: strain max / p99 (%), crumpled cells (normal
-    against its neighbours' mean, outside every fold's hinge band: the roll's rows + 4 mm), the cells' pattern edge
-    (mm), the corner's pattern angle. -> {"<piece>:<index>": {..., "ok"}} ({} without such a collar)."""
-    from scipy.spatial import cKDTree
-    from . import diag_render, folds as fm
-    cp = collar_pieces(Bp) if Bp else None
-    if not cp or M is None:
-        return {}
-    X = np.asarray(X, float)
-    F = np.asarray(M["F"]); uv = np.asarray(M["uv"], float); pid = np.asarray(M["piece"]); names = list(M["names"])
-    s = diag_render.face_strain(X, F, uv) * 100
-    N = np.cross(X[F[:, 1]] - X[F[:, 0]], X[F[:, 2]] - X[F[:, 0]])
-    N /= np.linalg.norm(N, axis=1, keepdims=True) + 1e-15
-    C = X[F].mean(1)
-    hinge = np.zeros(len(F), bool)
-    for fd in M.get("folds") or []:
-        if fd["piece"] in (cp["stand"], cp["fall"]) and len(fd["rows"]):
-            g = fm._geom(M, fd)
-            rv = np.concatenate([np.asarray(r["row"]) for r in g["rows"]])
-            kf = names.index(fd["piece"])
-            d = cKDTree(uv[rv]).query(uv[F].mean(1))[0]
-            hinge |= (pid[F[:, 0]] == kf) & (d < 0.004)
-    pcs = Bp["pieces"]
-    corners = []
-    fP = np.asarray(pcs[cp["fall"]]["P"], float)
-    for i in (cp["outer"][0], cp["outer"][-1], cp["sewn"][0], cp["sewn"][-1]):
-        corners.append((cp["fall"], i, fP))
-    sP = np.asarray(pcs[cp["stand"]]["P"], float)
-    from . import pattern
-    ne = pattern.arc_indices(pcs[cp["stand"]], cp["neck_e"])
-    te = pattern.arc_indices(pcs[cp["stand"]], cp["top_e"])
-    for i in (ne[0], ne[-1], te[0], te[-1]):
-        corners.append((cp["stand"], i, sP))
-    Cu = uv[F].mean(1)  # (neighbours in the PATTERN: in 3D a turned flap lies 1-2 mm over its base, opposite)
-    tr = cKDTree(Cu)
-    out = {}
-    for pn, i, P in corners:
-        k = names.index(pn)
-        q = P[i]
-        a, b = P[i - 1] - q, P[(i + 1) % len(P)] - q
-        ang = math.degrees(math.acos(float(np.clip(a @ b / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-15), -1, 1))))
-        idx = np.where((pid[F[:, 0]] == k) & (np.linalg.norm(uv[F].mean(1) - q, axis=1) < reach))[0]
-        if not len(idx):
-            continue
-        crum = 0
-        for f in idx[~hinge[idx]]:
-            nb = [j for j in tr.query_ball_point(Cu[f], 0.006) if pid[F[j, 0]] == k and j != f and not hinge[j]]
-            if nb and N[f] @ N[nb].mean(0) < 0:
-                crum += 1
-        el = np.linalg.norm(uv[F[idx]] - uv[F[idx]][:, [1, 2, 0]], axis=2)
-        smax = float(np.abs(s[idx]).max())
-        out[f"{pn}:{i}"] = {"strain_max": round(smax, 1), "strain_p99": round(float(np.percentile(np.abs(s[idx]), 99)), 1),
-                            "crumpled": crum, "faces": int(len(idx)), "edge_mm": round(float(np.median(el)) * 1000, 1),
-                            "corner_deg": round(ang, 1),
-                            "ok": bool(smax <= CORNER_STRAIN_MAX and crum <= CORNER_FOLDED_MAX)}
-    return out
-
-
 def flat_closure_reads(Bp: dict, closure: str = "front") -> dict:
     """The front band's width (each front's band / placket fold offset) and the front closure's button spacing on the
     flat pattern (the over piece's marks named by its pairs), mm."""
@@ -626,20 +543,6 @@ def flat_reads(Bp: dict, g: dict | None = None) -> dict:
 
 
 # ---------------------------------------------------------------------------------------------------------- colour
-def colour_patch(png, box) -> dict:
-    """Lit (60-90th luminance percentile) and shadow (5-15th) mean sRGB of a box (fractions x0, y0, x1, y1) of a PNG:
-    the same read on the reference and on ours (C100: lit vs lit)."""
-    from PIL import Image
-    im = np.asarray(Image.open(png).convert("RGB")).astype(float)
-    h, w = im.shape[:2]
-    x0, y0, x1, y1 = int(box[0] * w), int(box[1] * h), int(box[2] * w), int(box[3] * h)
-    P = im[y0:y1, x0:x1].reshape(-1, 3)
-    o = np.argsort(P @ np.array([0.2126, 0.7152, 0.0722]))
-    n = len(o)
-    lit = P[o[int(.6 * n):int(.9 * n)]].mean(0)
-    sh = P[o[int(.05 * n):int(.15 * n)]].mean(0)
-    return {"lit": [round(float(v), 1) for v in lit], "shadow": [round(float(v), 1) for v in sh],
-            "r_minus_b": round(float(lit[0] - lit[2]), 1)}
 
 
 def colour_row(item: dict, ours: dict, ref: dict | None = None) -> dict:
@@ -738,15 +641,3 @@ FORM_READ = {"front_state": ("front_state", "v_bottom_below_hps_mm"), "buttons_d
              "first_done_below_hps_mm"), "collar_state": ("collar_state", "collar_points_apart_mm"),
              "tucked": ("tuck_standoff_p90_mm",), "placket_finish": ("placket_width_mm",)}
 
-
-def uncovered_form_reads(kind_items: list, items: list) -> list:
-    """FORM_READ measures the garment kind's reference items ask for that no checklist item reads (C97: each one needs
-    a checklist item with a target, or it is never judged)."""
-    want = {it.get("measure") for it in kind_items if it.get("measure") in FORM_READ}
-    have = set()
-    for it in items:
-        if gated(it):
-            ks = it["read"] if isinstance(it["read"], list) else [it["read"]]
-            have |= {k.split("[")[0].rsplit(".", 1)[0] if k.rsplit(".", 1)[-1] in ("max", "min", "mean") else
-                     k.split("[")[0] for k in ks}
-    return sorted(m for m in want if not (set(FORM_READ[m]) & have))

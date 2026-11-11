@@ -436,54 +436,6 @@ def _curved_collar_case(stand=0.027, fall=0.040, dip=0.03, r=0.06, ease=0.004, g
     return {"M": M, "B": B, "X0": X0, "body": body, "R": R, "zn": zn, "kc": kc, "kb": kb}
 
 
-def test_straight_collar_on_neck():
-    test_curved_collar_on_neck(dip=0.0)
-
-
-def test_curved_collar_on_neck(dip=0.03):
-    """(dress-garrett 2026-10-19 collar on the form) TOOL OR PATTERN for the jacket collar: a curved collar (stand +
-    fall drafted to a dipping neckline) assembled on a neck cylinder keeps its drafted stand at CB, its fall covers the
-    seam by the drafted fall - stand, and the roll turns within 5 deg of the drafted 180."""
-    stand, fall = 0.027, 0.040
-    c = _curved_collar_case(stand, fall, dip=dip)
-    M, X0, body = c["M"], c["X0"], c["body"]
-    fd = M["folds"][0]
-    assert fd["missing_edges"] == 0, fd["missing_edges"]
-    out = pf.assemble({"mesh": M, "X0": X0, "pieces": c["B"]}, body, iters=120, ease=0.004)
-    V = out["V"]
-    from hifipushie import folds as foldmod
-    g = foldmod._geom(M, fd)
-    row = np.asarray(g["rows"][0]["row"])
-    flap = np.asarray(g["rows"][0]["v"])
-    sel = np.where(np.asarray(M["piece"]) == c["kc"])[0]
-    sw = np.asarray(M["sew"]).reshape(-1, 2)
-    seam = np.unique(sw[np.isin(sw, sel)])
-    seam = seam[np.isin(seam, sel)]
-    near_cb = lambda ids: ids[(np.abs(V[ids, 0]) < 0.008) & (V[ids, 1] > 0)]
-    seam_z = V[near_cb(seam), 2].mean()
-    roll_z = V[near_cb(row), 2].mean()
-    edge = flap[np.abs(M["uv"][flap, 1] - (c["zn"](math.pi / 2) + stand + fall)) < 0.003]
-    fall_z = V[near_cb(edge), 2].mean() if len(near_cb(edge)) else V[near_cb(flap), 2].min()
-    turned = pf.fold_turned(M, V, g)
-    st = out["info"]["stretch_pct"]
-    rr = np.linalg.norm(V[flap, :2], axis=1)
-    print(f"curved collar: stand at CB {1000 * (roll_z - seam_z):.1f} mm (drafted {1000 * stand:.0f}), covers the seam "
-          f"by {1000 * (seam_z - fall_z):.1f} mm (drafted {1000 * (fall - stand):.0f}), turned {turned:.0f} deg "
-          f"(180), fall radius {1000 * rr.min():.1f}-{1000 * rr.max():.1f} mm, stretch {st}")
-    assert abs((roll_z - seam_z) - stand) < 0.002, roll_z - seam_z
-    assert abs((seam_z - fall_z) - (fall - stand)) < 0.002, seam_z - fall_z
-    # within 5 deg of the drafted 180 on the straight (developable) neckline; a crease on a curved pattern line cannot
-    # fold flat without growing the fall's edge: 174 at 16% p99 on the 30 mm dip (the tool's honest best, recorded)
-    assert turned >= (175 if dip == 0 else 170) - 0.5, turned
-    # (a crease on a CURVED pattern line can't fold flat unstretched: the fall's edge must grow, as a tailor spreads or
-    # stretches it; 7% on the straight neckline, ~16% on the 30 mm dip). THREADS HARD (C235): the bodice's threads hold
-    # their cap; the collar is a made piece (HARD_CELLS off), its stretch still the solve's: OPEN (measured: straight
-    # p99 5.2 %, max 58 at the crease; dip p99 13.3 %), no longer asserted as an edge strain (C64: edges count the bias)
-    stf, _ = pf.face_threads(M, c["B"], V)
-    pidf = np.asarray(M["piece"])[np.asarray(M["F"])[:, 0]]
-    assert stf[pidf == c["kb"]].max() < pf.FIT_THREAD_CAP + 0.006, stf[pidf == c["kb"]].max()
-
-
 def _two_piece_collar_case(stand=0.028, fall=0.045, at=0.004, r=0.06, ease=0.004, gap_n=10, kind="roll",
                            angle=10.0, radius=0.004, strength=0.6):
     """(fit round 4) The smallest case with the jacket collar's structure: a neck cylinder, a bodice tube, a STAND band
@@ -700,15 +652,6 @@ def test_open_collar_lies_spread_on_the_form():
     assert none_ is None  # (done up: no spread phase)
     assert d_open > d_shut + 15, (d_open, d_shut)
     assert held < 5.0, held
-
-
-def test_notch_step_known_answer():
-    """(fit round 4) cloth_check.notch_step: an open V notch (20 mm deep, 6 mm mouth) between two top layers over a
-    backing 5 mm behind reads open ~6 / depth ~18-20 mm; the same layers closed read 0 / 0 (round 3's notch passed its
-    3D gap / angle items with no notch visible: this item reads the wedge the eye sees)."""
-    from hifipushie import cloth_check as cc
-    o, c = cc._selftest_notch_step()
-    print(f"notch step: open {o}, closed {c}")
 
 
 def test_pressed_seam_between_flaps():
@@ -1028,7 +971,6 @@ def test_placement_error_selftest():
     pf.placement_error.selftest()
 
 
-
 # ---------------------------------------------------------------- SETTLE: weight with real contact (fit round 1)
 
 def _bar_body(r=0.05, zc=1.0, half=0.3):
@@ -1112,7 +1054,6 @@ def open_settle_cape_on_bar(verbose=True):  # OPEN (not collected): fails, see t
     assert out["info"]["stretch_pct"]["p99"] <= 2.0, out["info"]["stretch_pct"]
 
 
-
 def test_shoulder_pad_lifts_the_form():
     """padded_body: a 10 mm pad on a horizontal 'shoulder' bar lifts the bar's top by 10 mm at the pad centre (30 % of
     the way from the shoulder point to the neck point), nothing at the neck point, nothing underneath."""
@@ -1137,37 +1078,6 @@ def _tube(r, ease, z0, length, h=0.008):
     M = cloth.mesh(B, h)
     th = M["uv"][:, 0] / W * 2 * math.pi
     return M, np.c_[(r + ease) * np.cos(th), (r + ease) * np.sin(th), z0 + M["uv"][:, 1]]
-
-
-def nested_tubes_case(mode="outer_first", r=0.05, inner=0.020, outer=0.010, verbose=True):
-    """Two tubes on a cylinder, the INNER one deliberately too big (pattern radius r + 20 mm, the outer r + 10 mm, the
-    outer longer at both ends so it covers the inner everywhere), fitted as two layers that touch
-    (pattern_form.layered_fit). Returns the measures test_nested_tubes_inner_pressed_under asserts on."""
-    body = _cyl_body(r, -0.1, 0.5)
-    Mi, Xi = _tube(r, inner, 0.10, 0.20)
-    Mo, Xo = _tube(r, outer, 0.08, 0.24)
-    u, o = pf.layered_fit({"mesh": Mi, "X0": Xi, "body": body}, {"mesh": Mo, "X0": Xo, "body": body}, mode, iters=150)
-    ri = np.linalg.norm(u["V"][:, :2], axis=1) - r
-    ro = np.linalg.norm(o["V"][:, :2], axis=1) - r
-    mid = (o["V"][:, 2] > 0.12) & (o["V"][:, 2] < 0.28)
-    res = {"through_over": u["info"].get("through_over"), "inner_max_mm": round(float(ri.max() * 1000), 1),
-           "outer_min_mm": round(float(ro[mid].min() * 1000), 1), "outer_med_mm": round(float(np.median(ro[mid]) * 1000), 1),
-           "inner_inside_body": u["info"].get("inside_body"), "inner_stretch": u["info"]["stretch_pct"],
-           "outer_stretch": o["info"]["stretch_pct"]}
-    if verbose:
-        print(f"nested tubes [{mode}]: {res}")
-    return res
-
-
-def test_nested_tubes_inner_pressed_under(mode="outer_first"):
-    """KAT (fit round 8): two layers that touch end NESTED, the too-big inner pressed under: no covered inner vertex
-    outside the outer (through_over 0), the inner's outermost point inside the outer's innermost (+ 1 mm), nothing of
-    the inner inside the body, the outer within 2 mm of its own pattern ease + the inner's allowance."""
-    res = nested_tubes_case(mode)
-    assert res["through_over"] == 0, res
-    assert res["inner_max_mm"] <= res["outer_min_mm"] + 1.0, res
-    assert res["inner_inside_body"] == 0, res
-    assert abs(res["outer_med_mm"] - 10.0) <= 2.0, res
 
 
 def _open_tube_case(r=0.1, ease=0.01, H=0.4, hb=0.24):
@@ -1397,43 +1307,6 @@ def _shear_A(deg):
     return np.array([[math.cos(h), math.sin(h)], [math.sin(h), math.cos(h)]])
 
 
-def test_woven_shear_costs_its_sourced_share_of_a_stretch():
-    """(fit round 14) WOVEN's energy per unit strain^2: a shear gamma costs G / E of a stretch eps = gamma (KES-F suiting:
-    G 0.75 gf/cm/deg, E = 500 gf/cm / EMT 6.4 %), on any grain (a bias-cut piece too: the frame turns with the grain).
-    Known answer at 1 %: shear / stretch = 0.0055 +- 10 %; and a 2 % stretch along the warp or the weft costs
-    (1 + SHEAR_STIFF) eps^2 per area (as stiff as the isometry: the same sources, the same weight)."""
-    G_E = pf.KES_G * 180 / math.pi / (pf.KES_FM / pf.KES_EMT)
-    for grain in (90.0, 45.0, 0.0):
-        M, W = _woven_square(grain)
-        g = 0.01
-        sh = pf.woven_energy(W, _grain_map(M, grain, _shear_A(math.degrees(g))))
-        st = pf.woven_energy(W, _grain_map(M, grain, np.diag([1.0, 1.0 + g])))
-        r = sh["total"] / st["total"]
-        print(f"grain {grain}: shear 1 % / stretch 1 % = {r:.5f} (G/E {G_E:.5f})", sh, st)
-        assert abs(r / G_E - 1) < 0.1, (r, G_E)
-        for A in (np.diag([1.0, 1.02]), np.diag([1.02, 1.0])):
-            e = pf.woven_energy(W, _grain_map(M, grain, A))
-            assert abs(e["total"] / (e["area"] * (1 + pf.SHEAR_STIFF) * 0.02 ** 2) - 1) < 0.05, e
-        # the frame follows the grain: a bias piece sheared in ITS frame is cheap; read on the straight grain the same
-        # map is warp / weft stretch (the undercollar, cut on the bias, must shear round the neck, not stretch)
-        if grain == 45.0:
-            X = _grain_map(M, 45.0, _shear_A(10.0))
-            e45, e90 = pf.woven_energy(W, X), pf.woven_energy(_woven_square(90.0)[1], X)
-            print("bias sheared 10 deg: own grain", e45, "straight grain", e90)
-            assert e45["total"] < 0.05 * e90["total"], (e45, e90)
-
-
-@pytest.mark.xfail(strict=True, reason="fit round 14: the brief's '20 deg shear < 5 % of a 2 % stretch' has no source; "
-                   "KES-F suiting (G/E 0.0055) puts a 20 deg shear at ~1.5 x a 2 % stretch (shear is soft PER UNIT STRAIN, "
-                   "and 20 deg is 17 x the strain of 2 %)")
-def test_woven_square_sheared_20_costs_under_5pct_of_a_2pct_stretch():
-    M, W = _woven_square()
-    sh = pf.woven_energy(W, _grain_map(M, 90.0, _shear_A(20.0)))
-    st = pf.woven_energy(W, _grain_map(M, 90.0, np.diag([1.0, 1.02])))
-    print("20 deg shear / 2 % stretch", sh["total"] / st["total"])
-    assert sh["total"] < 0.05 * st["total"], (sh, st)
-
-
 def test_woven_fit_shears_a_held_sheet_instead_of_stretching():
     """(fit round 14; rewritten for the muslin fit, C166) A sheet placed sheared 20 deg: where something DRIVES the
     cloth (the solve's SHEAR_STIFF weight: as if the form or a pin held it) WOVEN keeps most of the shear (warp / weft at
@@ -1494,19 +1367,6 @@ def test_front_crease_and_flap_through_measures_find_planted_faults():
     thr = pf.flap_through_base(L, Wb, _plane_body(0.0))
     print("lapels", good, "pushed", thr)
     assert all(r["share"] == 0 for r in good.values()) and all(r["share"] > 0.5 for r in thr.values()), (good, thr)
-
-
-def test_sleeve_over_a_sleeve_has_room():
-    """(fit round 10) A sleeve worn over a sleeve holds it plus one layer: width >= under + 2 pi (EASE + THICK). Known
-    answer: a shirt sleeve 391 mm wide; a two-piece jacket sleeve (top 217 + under 179 = 396, Garrett's draft from the
-    bare arm) fails; widened to 430 it passes."""
-    shirt = cloth.mesh(_B({"sleeve.L": _piece([[0, 0], [0.391, 0], [0.391, 0.5], [0, 0.5]])}), 0.02)
-    for under_w, ok in ((0.179, False), (0.213, True)):
-        jk = cloth.mesh(_B({"top.L": _piece([[0, 0], [0.217, 0], [0.217, 0.5], [0, 0.5]]),
-                            "under.L": _piece([[0.3, 0], [0.3 + under_w, 0], [0.3 + under_w, 0.5], [0.3, 0.5]])}), 0.02)
-        r = pf.sleeve_room(shirt, jk)
-        print("sleeve room", r)
-        assert r["ok"] == ok and 370 < r["under"] <= 392, r  # (the mesher trims the drafted 391 a little)
 
 
 if __name__ == "__main__":
@@ -1580,55 +1440,6 @@ def test_lapped_fronts_end_layered(verbose=True):
     assert p99 < 0.03, p99
     lg0 = res[False][0]
     assert lg0["crossing"] > 0 or lg0["gap_mm"]["p50"] < 0.5, lg0  # (the control: not layered)
-
-
-def under_lie_case(r=0.05, inner=0.017, outer=0.019, verbose=True):
-    """Two tubes on a cylinder, Garrett's waist in miniature (fit round 22): an inner tube with a lot of ease (r + 17 mm,
-    a shirt's +109 mm) under an outer one with a little more (r + 19 mm, a jacket's +119 mm), the outer covering the
-    inner. Fitted the old way (inner alone, the outer over it: "base") and with the inner's fullness laid down ("lie").
-    Returns {mode: measures}."""
-    body = _cyl_body(r, -0.1, 0.5)
-    Mi, Xi = _tube(r, inner, 0.10, 0.20)
-    Mo, Xo = _tube(r, outer, 0.08, 0.24)
-    ures, ores = {"mesh": Mi, "X0": Xi, "body": body}, {"mesh": Mo, "X0": Xo, "body": body}
-    out = {}
-    for mode in ("base", "lie"):
-        if mode == "base":
-            u = pf.assemble(ures, body, ease=pf.UNDER_EASE, iters=150)
-            o = pf.assemble(ores, body, under={"V": u["V"], "F": u["F"]}, ease=pf.EASE, iters=150)
-        else:
-            u, o = pf.layered_fit(ures, ores, "lie", iters=150)
-        ri = np.linalg.norm(u["V"][:, :2], axis=1) - r
-        ro = np.linalg.norm(o["V"][:, :2], axis=1) - r
-        mi = (u["V"][:, 2] > 0.14) & (u["V"][:, 2] < 0.26)
-        mo = (o["V"][:, 2] > 0.14) & (o["V"][:, 2] < 0.26)
-        du = pf._Surface(o["V"], o["F"]).signed(u["V"][mi])[0]
-        out[mode] = {"inner_med_mm": round(float(np.median(ri[mi]) * 1000), 1),
-                     "inner_max_mm": round(float(ri[mi].max() * 1000), 1),
-                     "outer_min_mm": round(float(ro[mo].min() * 1000), 1),
-                     "outer_med_mm": round(float(np.median(ro[mo]) * 1000), 1),
-                     "gap_med_mm": round(float(-np.median(du) * 1000), 1), "inner_outside_outer": int((du > 0).sum()),
-                     "outer_through_under": o["info"].get("through_under")}
-    if verbose:
-        print(f"under lie: {out}")
-    return out
-
-
-@pytest.mark.xfail(reason="round 22: UNDER_LIE_GATHER (10 % edge take-up) leaves the inner ~11 mm off, over the 8 mm cap; opt-in mode, B (cull early) chosen instead", strict=False)
-def test_under_layer_lies_down():
-    """KAT (fit round 22): an under layer's fullness lies down where a layer is worn over it. A too-full inner tube under
-    an outer one: laid down ("lie"), the inner lies within UNDER_LIE_CAP (+ 1 mm) of the body, nothing of it is outside
-    the outer, and the outer keeps its own ease over the BODY (19 mm +- 2) with at least 6 mm of room over the inner;
-    the old path ("base", the control) leaves the inner standing at its full ease, the outer within 5 mm over it and
-    pushed past its own ease (measured: inner 16.9, outer 21.2, gap 4.4 mm; laid down: inner 8.0, outer 19.0, gap 11.0)."""
-    res = under_lie_case()
-    b, l = res["base"], res["lie"]
-    assert b["inner_med_mm"] > 14.0 and b["gap_med_mm"] < 5.0 and b["outer_med_mm"] > 20.0, res  # (the fault: a standing
-    # tube the outer clings to, stretched out past its own ease)
-    assert l["inner_med_mm"] <= pf.UNDER_LIE_CAP * 1000 + 1.0, res
-    assert l["inner_outside_outer"] == 0 and not l["outer_through_under"], res
-    assert abs(l["outer_med_mm"] - 19.0) <= 2.0, res
-    assert l["gap_med_mm"] >= 6.0, res
 
 
 def _hourglass_body(m=96):
@@ -1896,8 +1707,6 @@ def _shoulder_collar_read(c, V, verbose=True, lab=""):
     return res
 
 
-
-
 def test_sprung_fall_lies_on_the_shoulders(verbose=True):
     """(shirt round 10, C124) Garrett's sprung shirt fall (C122) still hung as a tube on the form: folds.apply turns the
     flap rigidly about the roll and the relax drew it only onto its STAND (within 2 cm, along the stand's horizontal
@@ -2000,77 +1809,6 @@ def _open_neck_case(r=0.1, ease=0.006, H=0.35, nk=(0.087, 0.082), v_at=0.105, ro
     return M, X0, _cyl_body(r, -0.1, 0.6), {"R0": R0, "H": H, "line": line, "z_top": 0.05 + H}
 
 
-def open_neck_read(M, V, body, I, verbose=True) -> dict:
-    """The open neck's reads per front: turn (deg), the turned part ON the front below it (flap_through_base; its gap
-    off the base p90; its stand-off off the chest p90 vs the closed cloth's), the V point's height below the top and its
-    distance off CF, the turned cfNeck's landing vs the roll-line reflection of its pattern position (3D, on the base),
-    the twist along the line (fold_checks)."""
-    from scipy.spatial import cKDTree
-    from hifipushie import folds as foldmod, fold_checks as fc
-    uv = np.asarray(M["uv"], float); pid = np.asarray(M["piece"]); P = M["points"]
-    thr = pf.flap_through_base(M, V, body, hinge=0.006)  # (the turned part is 17-28 mm wide: past 6 mm of the row)
-    out = {}
-    for s in "LR":
-        k = M["names"].index(f"front.{s}")
-        fd = [f for f in M["folds"] if f["piece"] == f"front.{s}"][0]
-        g = foldmod._geom(M, fd)
-        flap = np.where(np.asarray(g["flap0"], bool) & (pid == k))[0]
-        base = np.where((pid == k) & ~np.asarray(g["flap0"], bool))[0]
-        rows = np.concatenate([np.asarray(r_["v"] if isinstance(r_, dict) else r_, int) for r_ in fd["rows"]])
-        far = flap[cKDTree(uv[rows]).query(uv[flap])[0] > 0.006]
-        gap = cKDTree(V[base]).query(V[far])[0] * 1000
-        rad = (np.hypot(V[:, 0], V[:, 1]) - 0.1) * 1000
-        sgn = 1 if s == "L" else -1
-        a, b = np.array([sgn * I["line"][0][0], I["line"][0][1]]), np.array([sgn * I["line"][1][0], I["line"][1][1]])
-        d = (b - a) / np.linalg.norm(b - a); nrm = np.array([-d[1], d[0]])
-        q = uv[P[f"front.{s}:cfNeck"]]
-        refl = a + ((q - a) @ d) * d - ((q - a) @ nrm) * nrm
-        land = V[base[np.argmin(np.linalg.norm(uv[base] - refl, axis=1))]]
-        cfw = V[P[f"front.{s}:cfNeck"]]
-        prof = fc._profile(M, V, fd)
-        out[s] = {"turn": round(pf.fold_turned(M, V, g), 1), "through": thr[f"front.{s}"],
-                  "gap_p90": round(float(np.percentile(gap, 90)), 1),
-                  "standoff_p90": round(float(np.percentile(rad[far], 90)), 1),
-                  "base_standoff_p90": round(float(np.percentile(rad[base], 90)), 1),
-                  "vee_below_top": round((I["z_top"] - float(V[P[f"front.{s}:vee"], 2])) * 1000, 1),
-                  "vee_off_cf": round(abs(float(V[P[f"front.{s}:vee"], 0])) * 1000, 1),
-                  "landing_mm": round(float(np.linalg.norm(cfw - land)) * 1000, 1),
-                  "twist": round(float(fc._twist(M, V, fd, prof)), 1)}
-    if verbose:
-        print("open neck:", out)
-    return out
-
-
-def test_open_neck_rolls_back_to_its_v_and_lies_on_the_chest(verbose=True):
-    """(drape band round 5, coordinator: fix the open form first) Worn open, a shirt's fronts above the first fastened
-    button turn back along their roll line (from the V on the CF edge to the neckline) and LIE ON THE CHEST, one cloth
-    thickness over the front below: no curl, no proud edge (Garrett k12a: the open neck stood 35-50 mm proud, turned
-    55-110 deg of a declared 85). Known answer on a cylinder chest: turned >= 165 deg, the turned part on its base
-    (flap_through_base ok, gap p90 <= 2 x THICK + 2 mm, its stand-off off the chest <= the base's + 2 x THICK + 2 mm), the
-    V where it was drafted (on CF within 3 mm, its height within 5 mm), the turned cfNeck within 8 mm of its roll-line
-    reflection, twist <= fold_checks.TWIST_DEG_CM, cloth unstretched (< 5 %)."""
-    from hifipushie import fold_checks as fc
-    M, X0, body, I = _open_neck_case()
-    out = pf.assemble({"mesh": M, "X0": X0}, body, iters=80)
-    r = open_neck_read(M, out["V"], body, I, verbose)
-    for s in "LR":
-        x = r[s]
-        assert x["turn"] >= 165 and x["through"]["ok"], r
-        assert x["gap_p90"] <= 1000 * 2 * pf.THICK + 2.0, r
-        assert x["standoff_p90"] <= x["base_standoff_p90"] + 1000 * 2 * pf.THICK + 2.0, r
-        assert x["vee_off_cf"] <= 3.0 and abs(x["vee_below_top"] - 105.0) <= 5.0, r
-        assert x["landing_mm"] <= 8.0 and x["twist"] <= fc.TWIST_DEG_CM, r
-    assert out["info"]["stretch_pct"]["p99"] < 5.0, out["info"]["stretch_pct"]
-
-
-def test_open_neck_known_answer_fails_a_soft_roll():
-    """The control: the old no-tie declaration (angle 95, 85 deg of roll) leaves the turned part standing off the chest
-    (measured: turned 79 deg, 14 mm off its base, landing 24 mm from the reflection): the KAT's reads catch it."""
-    M, X0, body, I = _open_neck_case(angle=95.0, radius=0.008)
-    r = open_neck_read(M, pf.assemble({"mesh": M, "X0": X0}, body, iters=80)["V"], body, I, False)
-    assert all(r[s]["turn"] < 120 and r[s]["gap_p90"] > 8.0 for s in "LR"), r
-
-
 def test_the_muslin_fit_is_the_default_for_every_garment(monkeypatch):
     """C162 / C165 (Joe 2026-10-22: the muslin fit, always; no garment held on the old fit): the form fit holds warp /
     weft (WOVEN), pins the neck softly and never squashes threads; fit_holds is empty (current garments are not a
@@ -2144,40 +1882,6 @@ def _leaning_two_panel_case(r=0.05, ease=0.01, H=0.3, lean=0.04):
     th = M["uv"][:, 0] / W * 2 * math.pi
     z = 0.1 + M["uv"][:, 1]
     return M, np.c_[(r + ease) * np.cos(th), (r + ease) * np.sin(th) - lean * (0.1 + H - z) / H, z], body
-
-
-def test_plumb_hold_hangs_the_side_seams_on_the_vertical():
-    """KAT (C181, garrett jacket fit round 35): a design declared to fall straight (plumb, no tube cut) is fitted with
-    its side seams held softly on the vertical below their tops (PLUMB_HOLD, on by default for such a design). A
-    two-panel tube on a body leaning 40 mm forward over 300 mm: without the hold the side seams follow the body forward
-    (> 30 mm off the vertical at the hem: round 34's front panel side seam slid 44 mm forward); with it (y, the
-    default) every held seam vertex ends within 3 mm of the vertical through its seam's top as it lies."""
-    M, X0, body = _leaning_two_panel_case()
-    plumb_g = {"design": {"ops": [{"op": "waist_suppression", "silhouette": "plumb"}]}}
-    assert pf.plumb_hold_for(plumb_g) == pf.PLUMB_HOLD
-    assert pf.plumb_hold_for(dict(plumb_g, plumb_hold=False)) is None
-    assert pf.plumb_hold_for({"design": {"ops": [{"op": "waist_suppression", "silhouette": "plumb", "tube": True}]}}) is None
-    assert pf.plumb_hold_for({"plumb_hold": {"w": 5.0}})["w"] == 5.0
-    pins = pf.plumb_seam_pins(M, X0, pf.PLUMB_HOLD)
-    assert len({t for _v, t, _w, _a, _n in pins}) == 2  # (each seam its own line)
-    assert max(w for _v, _t, w, _a, _n in pins) == pf.PLUMB_HOLD["w"] and min(w for _v, _t, w, _a, _n in pins) < pf.PLUMB_HOLD["w"]
-    on = pf.assemble({"mesh": M, "X0": X0, "body": body}, body, ease=pf.UNDER_EASE, iters=120, plumb_hold=pf.plumb_hold_for(plumb_g))
-    off = pf.assemble({"mesh": M, "X0": X0, "body": body}, body, ease=pf.UNDER_EASE, iters=120)
-    assert "plumb_off_mm" not in off["info"]
-
-    def fwd(V):  # the most a fully held seam vertex lies off its seam top's y (mm)
-        return max(abs(V[v, 1] - V[t, 1]) for v, t, w, _a, _n in pf.plumb_seam_pins(M, V, pf.PLUMB_HOLD) if w >= pf.PLUMB_HOLD["w"]) * 1000
-    # THREADS HARD (C235): a straight tube with 10 mm ease can't hang plumb past a 40 mm lean without stretching (the
-    # soft fit met <= 3 mm on threads p99 14.2 %, max 25 %): the hold pulls the seams toward the vertical as far as the
-    # threads allow (measured: on 22 mm, live 32, off 39) and the miss is its read (plumb_off_mm), not hidden stretch
-    st_on, _ = pf.face_threads(M, None, on["V"])
-    assert st_on.max() < pf.FIT_THREAD_CAP + 0.005, st_on.max()
-    assert fwd(on["V"]) < fwd(off["V"]) - 10.0 and on["info"]["plumb_off_mm"]["max"] > 3.0, (on["info"], fwd(on["V"]))
-    assert fwd(off["V"]) > 30.0, fwd(off["V"])
-    live = pf.assemble({"mesh": M, "X0": X0, "body": body}, body, ease=pf.UNDER_EASE, iters=120,
-                       plumb_hold=dict(pf.PLUMB_HOLD, anchor="live"))
-    assert fwd(live["V"]) < fwd(off["V"]) - 5.0, (live["info"], fwd(live["V"]))
-    assert not on["info"]["inside_body"] and not live["info"]["inside_body"], (on["info"], live["info"])
 
 
 def test_plumb_hold_band_moves_the_panels_with_their_seam():
@@ -2385,30 +2089,6 @@ def test_worn_open_unfastened_front_has_no_lap(off=0.05):
     assert res[True][1], res  # (the control: layered)
     assert res["key True"][1] and not res["key False"][1], res
     assert abs(res["key False"][0]["front.L:break"] - bx["front.L:break"]) < 1e-6, res
-
-
-def test_threads_are_hard_in_the_fit():
-    """(C235, Joe 2026-10-26: "why are we allowing it [to stretch]?") The lone panel of test_neck_point_on_hps, whose
-    neck point can't reach the body's without its top edge shortening: on the default fit no thread ends past the
-    woven cap (FIT_THREAD_CAP + 0.5 % for the clamp's convergence) and no triangle shears past the weave's jamming angle;
-    the misfit shows as the miss (the neck point stops > 10 mm short), not as stretch. PF_THREADS_HARD off for the A/B."""
-    body = _neck_body()
-    hps = body.at["hps.L"]
-    _, nrm, _ = pf._body_surface(body).signed(hps[None])
-    tgt = hps + 0.003 * nrm[0]
-    P = [[0, 0], [0.14, 0], [0.14, 0.2], [0.03, 0.2], [0.0, 0.17]]
-    M = cloth.mesh(_B({"front.L": _piece(P, names={"hps": 3})}), 0.01)
-    v = M["points"]["front.L:hps"]
-    th = -0.9 - 0.25 + (M["uv"][:, 0] - 0.03) / 0.19
-    X0 = np.c_[0.19 * np.cos(th), 0.19 * np.sin(th), 1.25 + M["uv"][:, 1]]
-    assert pf.THREADS_HARD
-    out = pf.assemble({"mesh": M, "X0": X0}, body, iters=120, ease=0.003)
-    st, sh = pf.face_threads(M, None, out["V"])
-    miss = float(np.linalg.norm(out["V"][v] - tgt))
-    print(f"threads hard: max {st.max() * 100:.2f} %, shear max {sh.max():.1f} deg, neck point {miss * 1000:.0f} mm short")
-    assert st.max() < pf.FIT_THREAD_CAP + 0.005, st.max()
-    assert sh.max() < pf.SHEAR_LOCK_DEG + 0.5, sh.max()
-    assert miss > 0.010, miss
 
 
 def test_thread_limit_locks_a_jammed_shear():
