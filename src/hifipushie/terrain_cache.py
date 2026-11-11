@@ -1,9 +1,9 @@
 """Built terrains cached on disk: a second export, look or check of the same spec (and the same code) skips the
-build (terrain.load: 50-150 s on the bigger maps; a cached one loads in about a second).
+build (terrain_model.load: 50-150 s on the bigger maps; a cached one loads in about a second).
 
 Keyed by the spec's content without its 3D-only sections (`THREE_D`: caves, volumes, export, views, styles, which only the
 tile export and the views read), the saved terrain kinds (kinds.json: a kind the designer defined changes how its spec
-builds) and `codehash.digest("terrain")`: the source of every module the build imports, so a cache entry can't be
+builds) and `codehash.digest("terrain", *terrain.MODULES)`: the source of every module the build imports, so a cache entry can't be
 read after a code change. The build itself never sees the 3D sections (they are attached after it, cached or not),
 so a hit and a miss give the same terrain by construction, and editing a cave or an arch reuses the build.
 
@@ -40,14 +40,14 @@ def cap_gb() -> float:
 
 
 def key(spec: dict) -> str:
-    from . import codehash
+    from . import codehash, terrain
     from .terrain_world import _user_kinds
     flat = {k: v for k, v in spec.items() if k not in THREE_D}
     kinds, _ = _user_kinds()
     h = hashlib.sha1()
     h.update(json.dumps(flat, sort_keys=True).encode())
     h.update(b"\0kinds\0" + json.dumps(kinds, sort_keys=True).encode())
-    h.update(b"\0code\0" + codehash.digest("terrain").encode())
+    h.update(b"\0code\0" + codehash.digest("terrain", *terrain.MODULES).encode())  # (terrain.py was split, C423)
     return h.hexdigest()
 
 
@@ -83,7 +83,7 @@ def _register_kind(T):
 def build(spec: dict, log=None):
     """The Terrain for `spec`: from the disk cache when this spec (minus its 3D sections) was built by this code
     before, else built and cached. Raises terrain_world.Questions like Terrain()."""
-    from .terrain import Terrain
+    from .terrain_model import Terrain
     d = directory()
     flat = {k: v for k, v in spec.items() if k not in THREE_D}
     if d is None:

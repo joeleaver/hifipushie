@@ -10,7 +10,8 @@ from pathlib import Path
 
 import numpy as np
 
-from hifipushie import terrain, terrain_mesh as tm, terrain_stream as ts, terrain_style, terrain_swatch
+from hifipushie import terrain_mesh as tm, terrain_stream as ts, terrain_style, terrain_swatch
+from hifipushie import terrain_model
 from hifipushie import terrain_materials, terrain_relief, terrain_tile_jobs
 
 SPEC = {"world": {"kind": "farmland", "base": 14}, "extent": [[0, 0], [256, 256]], "cell": 1.0,
@@ -24,7 +25,7 @@ SPEC = {"world": {"kind": "farmland", "base": 14}, "extent": [[0, 0], [256, 256]
 def _load(spec):
     d = Path(tempfile.mkdtemp())
     (d / "spec.json").write_text(json.dumps(spec))
-    return terrain.load(d / "spec.json")
+    return terrain_model.load(d / "spec.json")
 
 
 def _mats(T):

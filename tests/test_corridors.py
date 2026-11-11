@@ -10,7 +10,8 @@ from pathlib import Path
 
 import numpy as np
 
-from hifipushie import terrain, terrain_cliffs, terrain_corridors as co, terrain_mesh as tm
+from hifipushie import terrain_cliffs, terrain_corridors as co, terrain_mesh as tm
+from hifipushie import terrain_model
 from hifipushie import terrain_field, terrain_gltf, terrain_tile_jobs, terrain_tile_mesh
 
 SPEC = {"world": {"kind": "farmland", "base": 40}, "extent": [[0, 0], [256, 320]], "cell": 1.0,
@@ -23,7 +24,7 @@ SPEC = {"world": {"kind": "farmland", "base": 40}, "extent": [[0, 0], [256, 320]
 def _load(spec):
     d = Path(tempfile.mkdtemp())
     (d / "spec.json").write_text(json.dumps(spec))
-    return terrain.load(d / "spec.json")
+    return terrain_model.load(d / "spec.json")
 
 
 def test_corridors(T):

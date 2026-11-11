@@ -489,7 +489,7 @@ CONTRACT_LOG = {
         "first loader crashed on \"snow\": null): a STATE or block that does not apply is an EMPTY OBJECT {} or an object saying so (litter: "
         "snow = the snow numbers with coverage 0 and hidden true; clutter.wet {}), an absent LIST is [] (instance_tints), and only an absent "
         "TEXT, FILE or single NUMBER is null (tint, collision, textures.normal, textures.seasons, lod_switch_m.lod2, style.foliage, impostor). "
-        "Same day: rock pictures hold their stated colour as their mean and a cliff's tone range (clutter.tone_range); clutter.wet.row names "
+        "Same day: rock pictures hold their stated colour as their mean and a cliff's tone range (clutter_build.tone_range); clutter.wet.row names "
         "the clutter.csv column (`water`, m) the wet line comes from, `sink` (m) buries a row deeper.",
 }
 IMPOSTOR_AZIMUTHS = (0, 90)  # the two pictures: looking along +y (image right = +x), then along +x (image right = -y)

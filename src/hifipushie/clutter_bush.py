@@ -18,6 +18,7 @@ import math
 import numpy as np
 
 from . import clutter
+from . import clutter_forms
 
 LOD1_KEEP = 0.42  # share of LOD 0's sprays LOD 1 keeps
 LOD1_MIN = 12
@@ -137,7 +138,7 @@ def bough_tile(px: int, paint: dict, color, season: dict, seed: int, dark: float
             side = 1 if i % 2 == 0 else -1
             ang = lean + (math.radians(rng.uniform(34, 64)) * side if i < n - 1 else rng.uniform(-0.2, 0.2))
             d = np.array([math.sin(ang), -math.cos(ang)])
-            L = clutter._u(rng, sp["leaf"]) / 0.34 * (0.7 + 0.4 * math.sin(math.pi * min(t + 0.15, 1.0)))
+            L = clutter_forms._u(rng, sp["leaf"]) / 0.34 * (0.7 + 0.4 * math.sin(math.pi * min(t + 0.15, 1.0)))
             W = L * sp["round"]
             nr = np.array([-d[1], d[0]])
             us = np.linspace(0, 1, 9)
@@ -238,7 +239,7 @@ def _mask(quads, tiles, az, R, H, px=96):
 
 
 def build(spec: dict, progress=None) -> dict:
-    """The open bush: variants' three LODs and the atlas per season (see the module's text). Same shape as clutter.build."""
+    """The open bush: variants' three LODs and the atlas per season (see the module's text). Same shape as clutter_build.build."""
     from PIL import Image
     cfg = clutter.resolve(spec)
     f, paint = cfg["form"], cfg["paint"]

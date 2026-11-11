@@ -4,6 +4,7 @@ import numpy as np
 
 from hifipushie import hair_cards as hc
 from hifipushie import hair_clumps as hk
+from hifipushie import hair_clumps_bake, hair_clumps_cut, hair_clumps_fit, hair_clumps_part
 
 
 def _groom(n_per=60, waves=True, seed=0):
@@ -62,9 +63,9 @@ def test_no_card_spans_a_part_the_groom_shows():
     # (round 37: cards are judged against their source) the test groom's part line is bare (the two locks lie either
     # side of x = 0): a visible part, so no card spans it or roots on it
     D, locks = _groom()
-    cards = hk.cut(D, locks, C, S, side_of=side_of, triangles=600)
+    cards = hair_clumps_cut.cut(D, locks, C, S, side_of=side_of, triangles=600)
     St = cards[0]["_St"]
-    vis = hk.part_visible(St, C, side_of)
+    vis = hair_clumps_part.part_visible(St, C, side_of)
     P0 = np.array([[0.0, y, 0.01] for y in (0.01, 0.0, -0.01)])
     assert np.all(vis.dip(P0) >= hk.PART_DIP), vis.dip(P0)
     head = [c for c in cards if c["cls"] == "head"]
@@ -101,16 +102,16 @@ def test_cover_row_may_span_a_part_the_groom_does_not_show(monkeypatch):
     # groom's part is a soft line under fuzz; the part-safe arch of round 36 cut a V notch the groom doesn't have)
     monkeypatch.setattr(hk, "ARCH", 1)
     D, locks = _covered_groom()
-    cards = hk.cut(D, locks, C, S, side_of=side_of, triangles=600)
+    cards = hair_clumps_cut.cut(D, locks, C, S, side_of=side_of, triangles=600)
     St = cards[0]["_St"]
-    vis = hk.part_visible(St, C, side_of)
+    vis = hair_clumps_part.part_visible(St, C, side_of)
     P0 = np.array([[0.0, y, 0.01] for y in (0.01, 0.0, -0.01)])
     assert np.all(vis.dip(P0) < hk.PART_DIP), vis.dip(P0)
     arch = [c for c in cards if c.get("arch")]
     assert any(len(set(np.sign(St["root"][c["strands"], 0]).tolist())) == 2 for c in arch)
     # the round-36 rule (every part distance counts) keeps them to one side each
     monkeypatch.setattr(hk, "PART_VISIBLE", 0)
-    cards = hk.cut(D, locks, C, S, side_of=side_of, triangles=600)
+    cards = hair_clumps_cut.cut(D, locks, C, S, side_of=side_of, triangles=600)
     St = cards[0]["_St"]
     for c in (c for c in cards if c.get("arch")):
         assert len(set(np.sign(St["root"][c["strands"], 0]).tolist())) == 1
@@ -118,7 +119,7 @@ def test_cover_row_may_span_a_part_the_groom_does_not_show(monkeypatch):
 
 def test_card_follows_its_clumps_wave_and_starts_at_its_first_roots():
     D, locks = _groom()
-    cards = hk.cut(D, locks, C, S, side_of=side_of, triangles=600)
+    cards = hair_clumps_cut.cut(D, locks, C, S, side_of=side_of, triangles=600)
     St = cards[0]["_St"]
     c = max((c for c in cards if c["cls"] == "head" and c["layer"] == 0), key=lambda c: len(c["strands"]))
     # the centre line keeps the wave: its sideways swing (minus the drift) is most of the strands' own 8 mm
@@ -133,7 +134,7 @@ def test_card_follows_its_clumps_wave_and_starts_at_its_first_roots():
 
 def test_flyaways_are_single_strand_cards():
     D, locks = _groom()
-    cards = hk.cut(D, locks, C, S, triangles=600)
+    cards = hair_clumps_cut.cut(D, locks, C, S, triangles=600)
     fly = [c for c in cards if c["cls"] == "fly"]
     assert fly and all(len(c["strands"]) == 1 for c in fly)
     assert all(float(np.max(c["hw"])) <= hk.FLY_W + 1e-9 for c in fly)
@@ -141,9 +142,9 @@ def test_flyaways_are_single_strand_cards():
 
 def test_bake_draws_each_cards_strands_into_its_island():
     D, locks = _groom()
-    cards = hk.cut(D, locks, C, S, side_of=side_of, triangles=600)
+    cards = hair_clumps_cut.cut(D, locks, C, S, side_of=side_of, triangles=600)
     St = cards[0].pop("_St")
-    B = hk.bake(cards, St, 256, 128)
+    B = hair_clumps_bake.bake(cards, St, 256, 128)
     assert B["alpha"].shape == (128, 256) and B["tone"].shape == (128, 256)
     for c, (x, y, w, h) in zip(cards, B["islands"]):
         assert 0 <= x and x + w <= 256 and 0 <= y and y + h <= 128
@@ -160,10 +161,10 @@ def test_bake_draws_each_cards_strands_into_its_island():
 
 def test_shared_tiles_are_finer_than_unique_islands_and_every_card_wears_one():
     D, locks = _groom()
-    cards = hk.cut(D, locks, C, S, side_of=side_of, triangles=600)
+    cards = hair_clumps_cut.cut(D, locks, C, S, side_of=side_of, triangles=600)
     St = cards[0].pop("_St")
-    U = hk.bake(cards, St, 256, 128)
-    B = hk.bake_tiles(cards, St, 256, 128, n=4)
+    U = hair_clumps_bake.bake(cards, St, 256, 128)
+    B = hair_clumps_bake.bake_tiles(cards, St, 256, 128, n=4)
     assert len(B["reps"]) < len(cards) and len(B["islands"]) == len(cards) == len(B["tint"])
     assert B["texel"] < U["texel"], "shared pictures should get more texels per mm than one island per card"
     for i, isl in enumerate(B["islands"]):
@@ -178,12 +179,12 @@ def test_shared_tiles_are_finer_than_unique_islands_and_every_card_wears_one():
 
 def test_atlas_stacks_the_bake_and_remaps_tile_uvs():
     D, locks = _groom()
-    cards = hk.cut(D, locks, C, S, side_of=side_of, triangles=600)
+    cards = hair_clumps_cut.cut(D, locks, C, S, side_of=side_of, triangles=600)
     St = cards[0].pop("_St")
     Sx = {**hc.STRANDS, "atlas": 256, "source": "drawn"}
     top = hc.atlas(Sx, {})
     W = top["color"].shape[1]
-    B = hk.bake(cards, St, W, 128)
+    B = hair_clumps_bake.bake(cards, St, W, 128)
     at = hc.atlas(Sx, {}, bake={**B, "key": "t"})
     assert at["color"].shape[0] == top["color"].shape[0] + 128 and at["rows"] == top["color"].shape[0]
     m = {"uv": np.array([[0.1, 0.0], [0.2, 1.0]], np.float32)}
@@ -205,10 +206,10 @@ def test_atlas_stacks_the_bake_and_remaps_tile_uvs():
 def test_head_cards_stay_under_the_strands_outer_surface():
     D, locks = _groom()
     St = hk.strands(D, locks)
-    env = hk.envelope(St, C, deg=6.0)
+    env = hair_clumps_fit.envelope(St, C, deg=6.0)
     P = np.nanmean(St["Q"][:60, :30], 0) + np.array([0.0, 0.0, 0.02])  # a card lifted 2 cm over its strands
     c = {"P": P, "X": np.tile([1.0, 0, 0], (len(P), 1)), "hw": np.full(len(P), 0.002)}
-    hk._under_envelope(c, env, C)
+    hair_clumps_fit._under_envelope(c, env, C)
     e, r = env(c["P"])
     ok = np.isfinite(e)
     assert ok.sum() > 5 and (r[ok] <= e[ok] + 1e-4).all()
@@ -224,7 +225,7 @@ def test_shade_is_deeper_under_more_hair():
     for k in ("counts", "lock", "sub", "rand", "radius", "obj"):
         D2[k] = np.concatenate([D[k], D[k]])
     St = hk.strands(D2, locks)
-    sh = hk.strand_shade(St, C, locks)
+    sh = hair_clumps_bake.strand_shade(St, C, locks)
     n = len(D["counts"]) - 6  # (the lock strands of the lower sheet)
     lower, upper = sh[:n, 2:20].mean(), sh[len(D["counts"]):len(D["counts"]) + n, 2:20].mean()
     assert lower > upper + 0.1, (lower, upper)
@@ -250,7 +251,7 @@ def test_centre_line_does_not_kink_where_strands_end():
 def test_clump_cards_taper_to_a_point_not_a_square_end():
     # g1_b15 (game distance, 1 m): square-cut card ends read as a sawtooth comb along the tail; the geometry tapers
     D, locks = _groom()
-    cards = hk.cut(D, locks, C, S, side_of=side_of, triangles=600)
+    cards = hair_clumps_cut.cut(D, locks, C, S, side_of=side_of, triangles=600)
     for c in [c for c in cards if c["cls"] == "head" and not c.get("fly")][:10]:
         hw, s = np.asarray(c["hw"]), np.asarray(c["s"])
         mid = hw[(s > 0.3 * s[-1]) & (s < 0.7 * s[-1])].max()
@@ -260,41 +261,42 @@ def test_clump_cards_taper_to_a_point_not_a_square_end():
 def test_head_layers_lie_close_over_frizzy_clumps():
     """A frizzy crown clump (spread along its normal 12 mm) keeps its head layers within ~2 mm of each other (b15: top
     cards 4-18 mm over the layer under them, the backdrop showing through along the crown); a tail keeps its volume."""
-    from hifipushie import hair_clumps as hc
+    from hifipushie import hair_clumps_fit
     sn = np.full(10, 0.012)
-    gaps = [float(np.max(hc.layer_offset(sn, la + 1, "head") - hc.layer_offset(sn, la, "head"))) for la in (0, 1)]
+    gaps = [float(np.max(hair_clumps_fit.layer_offset(sn, la + 1, "head") - hair_clumps_fit.layer_offset(sn, la, "head"))) for la in (0, 1)]
     assert max(gaps) <= 0.0025, gaps
-    assert float(np.max(hc.layer_offset(sn, 2, "tail") - hc.layer_offset(sn, 0, "tail"))) > 0.015
+    assert float(np.max(hair_clumps_fit.layer_offset(sn, 2, "tail") - hair_clumps_fit.layer_offset(sn, 0, "tail"))) > 0.015
 
 
 def test_side_head_layers_reach_clump_outer_strands():
     """On the head's sides the top head card lies on its clump's outer strands (silhgeo g0: cards 10-20 mm narrower than
     the groom at ear height, front at 1 m), the layers moving out together (gaps unchanged); over the crown nothing moves."""
     from hifipushie import hair_clumps as hc
+    from hifipushie import hair_clumps_fit
     rng = np.random.default_rng(3)
     z = np.linspace(0.0, -0.08, 21)
     off = rng.normal(0, 0.005, 60)  # the clump's strands spread 5 mm along its normal (+x, out of the head's side)
     Q = np.stack([np.stack([np.full_like(z, 0.09 + o), np.zeros_like(z) + 0.002 * rng.normal(), z], 1) for o in off])
     Q = np.concatenate([Q, np.full((60, 160 - len(z), 3), np.nan)], 1)
-    c = hc.fit(Q, hc._cen_of(np.array([0.0, 0.0, 0.03]), None), reference=True)
+    c = hair_clumps_fit.fit(Q, hc._cen_of(np.array([0.0, 0.0, 0.03]), None), reference=True)
     assert c is not None and "out" in c
     mid = slice(len(c["P"]) // 4, len(c["P"]) // 2)
     assert np.all(np.abs(c["N"][mid, 0]) > 0.9), c["N"][mid]
     o90 = float(np.percentile(off - off.mean(), 90)) * float(np.sign(c["N"][mid, 0].mean()))
     assert abs(float(np.median(c["out"][mid])) - o90) < 0.002, (np.median(c["out"][mid]), o90)
-    yo = [hc.card_offset(c, la, 3, "head", np.array([0.0, 0.0, 0.03])) for la in range(3)]
+    yo = [hair_clumps_fit.card_offset(c, la, 3, "head", np.array([0.0, 0.0, 0.03])) for la in range(3)]
     assert float(np.median(yo[2][mid])) > o90 - 0.002  # the top layer at the outer strands
     for la in (0, 1):  # gaps between layers as layer_offset's
-        g0 = hc.layer_offset(c["sn"], la + 1, "head") - hc.layer_offset(c["sn"], la, "head")
+        g0 = hair_clumps_fit.layer_offset(c["sn"], la + 1, "head") - hair_clumps_fit.layer_offset(c["sn"], la, "head")
         assert np.allclose(yo[la + 1] - yo[la], g0)
     crown = {**c, "P": c["P"] + [-0.09, 0.0, 0.2]}  # the same clump over the crown: layer_offset alone
-    assert np.allclose(hc.card_offset(crown, 2, 3, "head", np.zeros(3)), hc.layer_offset(c["sn"], 2, "head"))
+    assert np.allclose(hair_clumps_fit.card_offset(crown, 2, 3, "head", np.zeros(3)), hair_clumps_fit.layer_offset(c["sn"], 2, "head"))
     # a tail's layers move out together to its outer strands too (the tail beside the neck: cards +97 vs strands +111 mm)
-    yt = [hc.card_offset(crown, la, 3, "tail", np.zeros(3)) for la in range(3)]
-    top_t = hc.layer_offset(c["sn"], 2, "tail")
-    want = top_t + hc.TAIL_OUT * np.maximum(0.0, c["out"] - top_t)
+    yt = [hair_clumps_fit.card_offset(crown, la, 3, "tail", np.zeros(3)) for la in range(3)]
+    top_t = hair_clumps_fit.layer_offset(c["sn"], 2, "tail")
+    want = top_t + hk.TAIL_OUT * np.maximum(0.0, c["out"] - top_t)
     assert np.allclose(yt[2], want) and np.all(yt[2] >= top_t - 1e-12)
-    assert np.allclose(yt[1] - yt[0], hc.layer_offset(c["sn"], 1, "tail") - hc.layer_offset(c["sn"], 0, "tail"))
+    assert np.allclose(yt[1] - yt[0], hair_clumps_fit.layer_offset(c["sn"], 1, "tail") - hair_clumps_fit.layer_offset(c["sn"], 0, "tail"))
 
 
 def test_face_wisp_cards_are_lit_and_lighter():
@@ -302,12 +304,13 @@ def test_face_wisp_cards_are_lit_and_lighter():
     groom's 54, a quarter of its area), with more hairs per picture."""
     from hifipushie import hair_clumps as hc
     # (round 24: 10 hairs at alpha 0.9 drew the temple wisps as broad opaque pale sheets; 4 at 0.7 see-through, gSc-like)
-    assert hc.WISP_LIFT > 0 and hc.WISP_KIDS_FACE >= 4 and hc.WISP_ALPHA < 0.9
+    assert hc.WISP_LIFT > 0 and hc.WISP_KIDS_FACE >= 4 and hk.WISP_ALPHA < 0.9
 
 
 def test_crown_loops_found_straight_hair_kept(monkeypatch=None):
     """A looping strand rooted on the crown is a crown loop (left out of head cards); a straight one and a loop rooted low are not."""
     from hifipushie import hair_clumps as hk_
+    from hifipushie import hair_clumps_fit
     old = hk_.CROWN_LOOP
     hk_.CROWN_LOOP = 0.6
     a = np.linspace(0, 1.8 * np.pi, 40)
@@ -317,7 +320,7 @@ def test_crown_loops_found_straight_hair_kept(monkeypatch=None):
     Q = np.stack([loop, straight, low])
     St = {"Q": Q, "root": Q[:, 0], "len": np.array([np.linalg.norm(np.diff(q, axis=0), axis=1).sum() for q in Q])}
     try:
-        assert hk_.crown_loops(St, np.zeros(3)).tolist() == [True, False, False]
+        assert hair_clumps_fit.crown_loops(St, np.zeros(3)).tolist() == [True, False, False]
     finally:
         hk_.CROWN_LOOP = old
 
@@ -358,10 +361,10 @@ def test_part_cover_row_arches_over_the_part_with_soft_tips(monkeypatch):
     def part_top(cards):
         P = np.concatenate([c["P"] for c in cards if c["cls"] == "head"])
         return float(P[np.abs(P[:, 0]) < 0.004, 2].max(initial=0.0))
-    plain = hk.cut(D, locks, C0, S, side_of=side_of, triangles=1500)
+    plain = hair_clumps_cut.cut(D, locks, C0, S, side_of=side_of, triangles=1500)
     assert not any(c.get("cover") for c in plain)
     monkeypatch.setattr(hk, "PART_COVER", 4)
-    cards = hk.cut(D, locks, C0, S, side_of=side_of, triangles=1500)
+    cards = hair_clumps_cut.cut(D, locks, C0, S, side_of=side_of, triangles=1500)
     St = cards[0]["_St"]
     cov = [c for c in cards if c.get("cover")]
     for sx in (-1.0, 1.0):  # a row on each side, front to back
@@ -429,14 +432,14 @@ def test_card_grey_follows_its_locks():
     locks = [{"name": "top", "inputs": {"Grey": 0.2}}, {"name": "side", "inputs": {"Grey": 0.7}}]
     St = {"lock": np.array([0, 0, 1, 1])}
     cards = [{"strands": [0, 1]}, {"strands": [2, 3]}, {"strands": [1, 2]}]
-    g = hk.card_grey(cards, St, locks, {"grey_locks": 1.0})
+    g = hair_clumps_bake.card_grey(cards, St, locks, {"grey_locks": 1.0})
     assert np.allclose(g, [0.2, 0.7, 0.45])
-    assert hk.card_grey(cards, St, [{"name": "a"}, {"name": "b"}], {}) is None
+    assert hair_clumps_bake.card_grey(cards, St, [{"name": "a"}, {"name": "b"}], {}) is None
 
 
 def test_no_card_spans_the_part():
     D, locks = _groom()
-    cards = hk.cut(D, locks, C, S, side_of=side_of, triangles=600)
+    cards = hair_clumps_cut.cut(D, locks, C, S, side_of=side_of, triangles=600)
     St = cards[0]["_St"]
     head = [c for c in cards if c["cls"] == "head"]
     assert head
@@ -450,7 +453,7 @@ def test_envelope_grade_spreads_a_back_step():
     """(c13) GRADE_SLOPE: a 6 mm step in the strands' radius on the back (elev 30) is spread down over GRADE_BAND at the
     slope; the front (|az| < GRADE_AZ) and everything above the step are untouched."""
     import numpy as np
-    from hifipushie import hair_clumps as hk
+    from hifipushie import hair_clumps_fit
     C = np.zeros(3)
     rng = np.random.default_rng(0)
     pts = []
@@ -461,7 +464,7 @@ def test_envelope_grade_spreads_a_back_step():
             pts.append(np.stack([r * np.cos(e) * np.sin(a), -r * np.cos(e) * np.cos(a), r * np.sin(e)], 1))
     Q = np.concatenate(pts)
     St = {"Q": Q[:, None, :].repeat(2, 1), "cls": np.array(["head"] * len(Q))}
-    plain, graded = hk.envelope(St, C, pct=90), hk.envelope(St, C, pct=90, grade=0.0003)
+    plain, graded = hair_clumps_fit.envelope(St, C, pct=90), hair_clumps_fit.envelope(St, C, pct=90, grade=0.0003)
 
     def at(az, el):
         a, e = np.radians(az), np.radians(el)

@@ -84,9 +84,9 @@ def cap_fill_arch(sc: Scalp, V, arch: list):
     (fully within CAP_REACH of an arch card's surface, eased out to nothing at FILL_REACH): the arch lies on a mass,
     not over the scalp. Only ever raised; the height is a gaussian-weighted mean of the arch surface heights near."""
     from scipy.spatial import cKDTree
-    from . import hair_clumps as _hk
+    from . import hair_clumps
     V = np.asarray(V, float)
-    if not arch or not _hk.ARCH_FILL:
+    if not arch or not hair_clumps.ARCH_FILL:
         return V
     P = np.concatenate([np.asarray(c["P"], float) + k_ * np.asarray(c["X"], float) * np.asarray(c["hw"], float)[:, None]
                         for c in arch for k_ in (-0.7, 0.0, 0.7)])
@@ -95,7 +95,7 @@ def cap_fill_arch(sc: Scalp, V, arch: list):
     tree = cKDTree(dirs(pa, pe))
     dv = dirs(va, ve)
     ch = lambda deg: 2 * np.sin(np.radians(deg) / 2)
-    dd, ii = tree.query(dv, k=16, distance_upper_bound=ch(_hk.FILL_REACH))
+    dd, ii = tree.query(dv, k=16, distance_upper_bound=ch(hair_clumps.FILL_REACH))
     ok = np.isfinite(dd)
     if not ok.any():
         return V
@@ -103,9 +103,9 @@ def cap_fill_arch(sc: Scalp, V, arch: list):
     wk = np.where(ok, np.exp(-(ang / max(hair.CAP_REACH, 1e-3)) ** 2), 0.0)
     hh_ = (wk * ph[np.minimum(ii, len(ph) - 1)]).sum(1) / np.maximum(wk.sum(1), 1e-12)
     a0 = np.where(ok[:, 0], ang[:, 0], np.inf)
-    f = np.clip((_hk.FILL_REACH - a0) / max(_hk.FILL_REACH - hair.CAP_REACH, 1e-3), 0.0, 1.0)
+    f = np.clip((hair_clumps.FILL_REACH - a0) / max(hair_clumps.FILL_REACH - hair.CAP_REACH, 1e-3), 0.0, 1.0)
     w = f * f * (3 - 2 * f)
-    tgt = hh_ - _hk.FILL_UNDER
+    tgt = hh_ - hair_clumps.FILL_UNDER
     h = np.where(ok[:, 0], np.maximum(vh, vh + w * (tgt - vh)), vh)
     print(f"cap fill: {int((h > vh + 1e-4).sum())} cap vertices raised under {len(arch)} arch cards "
           f"(max {1000 * float((h - vh).max()):.1f} mm)", flush=True)

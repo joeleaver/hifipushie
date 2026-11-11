@@ -147,7 +147,8 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
     St_ = None
     if clumped:  # cards cut by visual clumps across locks and textured from their own strands (hair_clumps.py)
         from . import hair_clumps
-        cards = hair_clumps.cut(D, hair_locks, sc.C, S, part_side_of(sc, g), int(g.get("seed", 0)),
+        from . import hair_clumps_bake, hair_clumps_cut, hair_clumps_fit, hair_clumps_part
+        cards = hair_clumps_cut.cut(D, hair_locks, sc.C, S, part_side_of(sc, g), int(g.get("seed", 0)),
                                 triangles=int(hair.CARD_CUT_SHARE * int(budget)) if budget else 20000)
         St_ = cards[0].pop("_St") if cards else None
     elif D is not None:  # cards cut from the groom's own strands, clustered as coarsely as the tier asks
@@ -193,22 +194,23 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
                 c_["prio"] = p_
         if (not clumped and not short and hair.COVER_TIERS and tier_name
                 and float(hair.COVER_TIERS.get(tier_name, 0.0)) > 0):  # (round 33) the part's cover row at a coarser tier:
-            # hair_clumps.part_cover with fewer, wider cards (COVER_TIERS x PART_COVER per side) on the tiles
+            # hair_clumps_part.part_cover with fewer, wider cards (COVER_TIERS x PART_COVER per side) on the tiles
             from . import hair_clumps as _hk
-            n_cov = int(round(float(hair.COVER_TIERS[tier_name]) * max(_hk.PART_COVER, 1)))
+            from . import hair_clumps_bake, hair_clumps_cut, hair_clumps_fit, hair_clumps_part
+            n_cov = int(round(float(hair.COVER_TIERS[tier_name]) * max(hair_clumps.PART_COVER, 1)))
             if n_cov > 0:
                 St_c = _hk.strands(D, hair_locks)
-                so_c = (_hk.strand_part(St_c, sc.C) if _hk.PART_FROM_STRANDS else None) or part_side_of(sc, g)
+                so_c = (hair_clumps_part.strand_part(St_c, sc.C) if hair_clumps.PART_FROM_STRANDS else None) or part_side_of(sc, g)
                 if so_c is not None:
-                    env_c = _hk.envelope(St_c, sc.C, pct=_hk.ENV_PCT)
-                    pc_, hw_ = _hk.PART_COVER, _hk.COVER_HW
-                    _hk.PART_COVER, _hk.COVER_HW = n_cov, hw_ * max(1.0, float(_hk.PART_COVER) / n_cov) ** 0.5
+                    env_c = hair_clumps_fit.envelope(St_c, sc.C, pct=hair_clumps.ENV_PCT)
+                    pc_, hw_ = hair_clumps.PART_COVER, hair_clumps.COVER_HW
+                    hair_clumps.PART_COVER, hair_clumps.COVER_HW = n_cov, hw_ * max(1.0, float(hair_clumps.PART_COVER) / n_cov) ** 0.5
                     try:
-                        cov_ = _hk.part_cover(St_c, sc.C, so_c, env_c,
-                                              np.nonzero((St_c["cls"] == "head") & ~_hk.crown_loops(St_c, sc.C))[0],
+                        cov_ = hair_clumps_part.part_cover(St_c, sc.C, so_c, env_c,
+                                              np.nonzero((St_c["cls"] == "head") & ~hair_clumps_fit.crown_loops(St_c, sc.C))[0],
                                               int(g.get("seed", 0)))
                     finally:
-                        _hk.PART_COVER, _hk.COVER_HW = pc_, hw_
+                        hair_clumps.PART_COVER, hair_clumps.COVER_HW = pc_, hw_
                     top_ = max([int(c_["layer"]) for c_ in cards if c_["kind"] != "fly"] or [0])
                     for c_ in cov_:
                         c_.update(kind="medium" if top_ == 0 else "sparse", layer=top_, prio=top_ + 0.5,
@@ -221,18 +223,19 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
         if (not clumped and not short and hair.ARCH_TIERS and tier_name
                 and float(hair.ARCH_TIERS.get(tier_name, 0.0)) > 0):  # (round 35) the crown arch at a coarser tier
             from . import hair_clumps as _hk
-            n_ar = max(1, int(round(float(hair.ARCH_TIERS[tier_name]) * max(_hk.ARCH, 1))))
+            from . import hair_clumps_bake, hair_clumps_cut, hair_clumps_fit, hair_clumps_part
+            n_ar = max(1, int(round(float(hair.ARCH_TIERS[tier_name]) * max(hair_clumps.ARCH, 1))))
             St_c = _hk.strands(D, hair_locks)
-            ar_, hw_ = _hk.ARCH, _hk.ARCH_HW
-            _hk.ARCH, _hk.ARCH_HW = n_ar, hw_ * max(1.0, float(max(_hk.ARCH, 1)) / n_ar) ** 0.5
+            ar_, hw_ = hair_clumps.ARCH, hair_clumps.ARCH_HW
+            hair_clumps.ARCH, hair_clumps.ARCH_HW = n_ar, hw_ * max(1.0, float(max(hair_clumps.ARCH, 1)) / n_ar) ** 0.5
             try:
-                so_ = (_hk.strand_part(St_c, sc.C) if _hk.PART_FROM_STRANDS else None) or part_side_of(sc, g)
-                if so_ is not None and _hk.PART_VISIBLE:  # (round 37) only where the groom shows the part
-                    so_ = _hk.part_visible(St_c, sc.C, so_)
-                arc_ = _hk.arch_row(St_c, sc.C, np.nonzero((St_c["cls"] == "head") & ~_hk.crown_loops(St_c, sc.C))[0],
+                so_ = (hair_clumps_part.strand_part(St_c, sc.C) if hair_clumps.PART_FROM_STRANDS else None) or part_side_of(sc, g)
+                if so_ is not None and hair_clumps.PART_VISIBLE:  # (round 37) only where the groom shows the part
+                    so_ = hair_clumps_part.part_visible(St_c, sc.C, so_)
+                arc_ = hair_clumps_part.arch_row(St_c, sc.C, np.nonzero((St_c["cls"] == "head") & ~hair_clumps_fit.crown_loops(St_c, sc.C))[0],
                                     int(g.get("seed", 0)), side_of=so_)
             finally:
-                _hk.ARCH, _hk.ARCH_HW = ar_, hw_
+                hair_clumps.ARCH, hair_clumps.ARCH_HW = ar_, hw_
             top_ = max([int(c_["layer"]) for c_ in cards if c_["kind"] != "fly"] or [0])
             for c_ in arc_:
                 c_.update(kind="medium" if top_ == 0 else "sparse", layer=top_, prio=top_ + 0.5,
@@ -510,16 +513,17 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
     if clumped and St_ is not None and any(c_["kind"] == "baked" for c_ in cards):  # each kept clump card's picture
         # baked from its own strands, under the tiles (sh4: a shells far tier keeps no cards at all: nothing to bake)
         from . import hair_clumps
+        from . import hair_clumps_bake, hair_clumps_cut, hair_clumps_fit, hair_clumps_part
         bk = [c_ for c_ in cards if c_["kind"] == "baked"]
         Wt = int(at["color"].shape[1])
         Hb = int(S.get("bake_rows") or Wt // 2)
         nt_ = int(S.get("bake_tiles", hair_clumps.TILES))
         if nt_ > 0:  # shared pictures (a few dozen tiles at a fine texel, tinted per card): unique islands for ~500
             # cards in one block were ~1 texel/mm, smeared bands with no strands (c5-c7)
-            B = hair_clumps.bake_tiles(bk, St_, Wt, Hb, n=nt_, seed=int(g.get("seed", 0)), look=lk, C=sc.C,
+            B = hair_clumps_bake.bake_tiles(bk, St_, Wt, Hb, n=nt_, seed=int(g.get("seed", 0)), look=lk, C=sc.C,
                                        locks=hair_locks)
         else:
-            B = hair_clumps.bake(bk, St_, Wt, Hb, seed=int(g.get("seed", 0)), look=lk, C=sc.C, locks=hair_locks)
+            B = hair_clumps_bake.bake(bk, St_, Wt, Hb, seed=int(g.get("seed", 0)), look=lk, C=sc.C, locks=hair_locks)
         at = make_atlas({**B, "key": hashlib.sha1(B["alpha"].tobytes() + (np.nan_to_num(B["gshare"]).tobytes()
                                                                          if B.get("gshare") is not None else b"")).hexdigest()})
         Ht, Hall = at["rows"], at["rows_total"]

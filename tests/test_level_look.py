@@ -5,7 +5,8 @@ from pathlib import Path
 
 import numpy as np
 
-from hifipushie import terrain, terrain_ground, terrain_swatch
+from hifipushie import terrain_ground, terrain_swatch
+from hifipushie import terrain_model
 from hifipushie import terrain_materials, terrain_relief, terrain_tile_jobs, terrain_volumes
 from hifipushie import terrain_mesh
 
@@ -17,7 +18,7 @@ def _pebble():
     import tempfile
     d = Path(tempfile.mkdtemp())
     (d / "spec.json").write_text((ROOT / "examples" / "pebble_disc.json").read_text())
-    return terrain.load(d / "spec.json")
+    return terrain_model.load(d / "spec.json")
 
 
 def test_arch_and_roofs(T):

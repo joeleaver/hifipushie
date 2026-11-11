@@ -63,7 +63,8 @@ def look_terrain(name: str, map: bool = True, masks: bool = False, views: list[d
     """Terrain images: map (hillshade + annotations), masks, perspective views [{name, eye, lift, look, fov, sun}] or
     spec_views, tiles (render the exported tiles), haze, light, styles (swatch sheet), size. Details:
     guide(topic="look_terrain")."""
-    from . import terrain, terrain_tools as tt
+    from . import terrain_tools as tt
+    from . import terrain_views
     from .terrain_world import Questions
     try:
         T = tt.build(name)
@@ -73,11 +74,11 @@ def look_terrain(name: str, map: bool = True, masks: bool = False, views: list[d
     ver = len(tt.history(name))  # files carry the version they show (a later look doesn't overwrite them)
     out, notes = [], []
     if map:
-        im = terrain.map_image(T, px=size)
+        im = terrain_views.map_image(T, px=size)
         out.append(_out(im, str(d / f"map_v{ver}.png")))
         notes.append(f"map: {d / f'map_v{ver}.png'}")
     if masks:
-        sheet = terrain.mask_sheet(T)
+        sheet = terrain_views.mask_sheet(T)
         if sheet is None:
             notes.append("no cover layers, so no masks")
         else:
@@ -130,7 +131,7 @@ def look_terrain(name: str, map: bool = True, masks: bool = False, views: list[d
                 notes.append(f"view: {pth}")
             notes += json.loads((td / "render_job.json").read_text()).get("notes", [])
             return out + ["\n".join(notes)]
-        for pth in terrain.render(T, d / "views", vs):
+        for pth in terrain_views.render(T, d / "views", vs):
             out.append(_out(PILImage.open(pth), None))
             notes.append(f"view: {pth}")
         notes += T.view_notes

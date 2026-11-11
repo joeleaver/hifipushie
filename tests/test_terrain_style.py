@@ -166,11 +166,11 @@ COAST = {"world": {"kind": "coast", "base": 10}, "extent": [[0, 0], [128, 128]],
 
 def _field(styles=None):
     import copy
-    from hifipushie import terrain
+    from hifipushie import terrain_model
     d = Path(tempfile.mkdtemp())
     sp = copy.deepcopy(COAST)
     (d / "spec.json").write_text(json.dumps(sp))
-    T = terrain.load(d / "spec.json")
+    T = terrain_model.load(d / "spec.json")
     if styles:
         T.spec["zones"] = {"downs": "west", "paint": "east"}
         T.zones = dict(T.spec["zones"])
