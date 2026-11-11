@@ -86,7 +86,7 @@ def collar_extra(X, M, bV, bT, at) -> dict:
         out["collar_fall_cb_width_mm"] = round(float(np.ptp(fb[:, 2])) * 1000, 1)
     stn = X[np.where(_pieces(M, ("collar_stand",)))[0]]
     sf = stn[stn[:, 1] < cf[1] + 0.03]
-    if not len(fall) and len(sf):  # a stand: its state is its top ends' (its neck ends meet where the front below is shut)
+    if not len(fall) and len(sf):  # a stand: its state is its top ends' (its neck ends lie where its tape puts them, P2)
         sf = sf[sf[:, 2] >= sf[:, 2].max() - 0.012]
     sl, sr_ = sf[sf[:, 0] > 0], sf[sf[:, 0] <= 0]
     if len(sl) and len(sr_):  # a band closing on itself: its two front ends touch (<= BAND_SHUT_MM) or stand apart

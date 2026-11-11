@@ -129,15 +129,6 @@ def first_tied(closure: dict | None, uv) -> tuple | None:
     return max(v, key=lambda p: float(uv[p[0]][1])) if v else None
 
 
-def top_tied(closure: dict | None, uv) -> bool:
-    """Its topmost pair is tied (a stand's neck ends meet over a front done up at its top)."""
-    v = [tuple(p) for p in (closure or {}).get("v") or []]
-    if not v:
-        return False
-    k = max(range(len(v)), key=lambda i: float(uv[v[i][0]][1]))
-    return bool((closure.get("closed") or [False] * len(v))[k])
-
-
 def ties_of_wear(wear: dict) -> dict:
     """No record (no step-2 ties): the `wear` argument read as ties, as closure_ties.of_style reads an old record. "open"
     is the band's own closure left undone, the front's pairs as the pattern has them; "closed" is every pattern pair."""

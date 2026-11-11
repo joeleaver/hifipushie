@@ -25,7 +25,7 @@ input, chain_drape: R3e folds them into this sequence.
    A piece naming no step-3 tape is refused by name before anything is placed (piece_start.refuse_untaped). Its own closure TIED: closed on its own button. UNTIED (band_untied): the
    pressed curve kept round the back, relaxed straight past the side necks, started swung open; the sewn fronts held to
    the topmost TIED front pair (started on the torso: nothing soft is built yet), and with none tied held by nothing.
-   A stand's neck ends meet where the front's top pair is tied. Worn straight = mirror symmetric.
+   A stand's neck ends lie where its tape ends (P2). Worn straight = mirror symmetric.
 2. A PART RESTING ON A PART (a fall on its band): roll line, outer edge, ends: exact chains; lines across may shorten
    where the leaf curves, full width where it lies flat at the back; the point's triangle is rigid. Outside faces out.
    Its band untied: its points spread as the plan's bend says.
