@@ -13,7 +13,7 @@ Rule (Joe, 2026-11-10): no backwards compatibility. No gate, no switch, no shim;
 - The filter hid by word match ("sim", "dress", "on the form") in every guide topic: guide("gates") had no four-gate
   list, guide("tools") no domain table and no sync / pull / heavy_status sections. Both are back. The clothes guides keep
   exactly the text agents saw.
-- Clothes, cut 2 (branch legacy-cloth-2; tag archive/before-legacy-cloth-2; ledger C411):
+- Clothes, cut 2 (landed, 5ba6e0e3; tag archive/before-legacy-cloth-2; ledger C411):
   - tools design_garment, look_pattern, alter_pattern, garment_reference, garment_from_reference,
     garment_reference_brief and the guide topic cloth_reference. No blind step trial called them (17 logs;
     garment_reference once, and its kind names confused the agent);
@@ -48,5 +48,6 @@ and tests against main). Conservative: a class is kept whole, a module named in 
 blender_cards 446 lines, faceext 376, terrain_seams 201, flipfit 137, faceatlas 105, gnm_controls 90, blender_lashes 86.
 Check blender_* by hand before deleting: Blender runs them by path.
 
-NEXT: land legacy-cloth-2 once the garment coordinator or Joe has read the reworded messages. Then the split:
-server.py first (4.4k lines, every tool in one file), then the files over 2,000 lines.
+NEXT: the split. server.py first (3.9k lines, every tool in one file: one module per tool domain), then the files
+over 2,000 lines, one area at a time and only while no agent works in it. The remaining clothes cuts above each
+wait on a decision named in their row.
