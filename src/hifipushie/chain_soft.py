@@ -304,7 +304,7 @@ class SoftStages:
                 self.reads.setdefault("ring_closed_at", {})[ring] = {"mm": [round(C0 * 1e3, 1), round(C * 1e3, 1), round(C1 * 1e3, 1)], "gap_mm": round(best[0] * 1e3, 2)}
             if P is None:
                 raise ChainRefused(f"{ring}: closed length {C * 1e3:.0f} mm does not clear the limb anywhere up the {tube}. "
-                                   "next: lengthen the ring in the pattern (alter_pattern)")
+                                   "next: lengthen the ring in your draft (draft_pattern)")
             self.X[rv] = P
             self.X[net.root[rv]] = P
             self.reads["rings"][ring] = {"radius_mm": round(r * 1e3, 1), "at_mm_along_limb": round(s_end * 1e3, 1), "tube_mm": round(Lt * 1e3, 1)}

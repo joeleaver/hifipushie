@@ -216,7 +216,7 @@ class FallStages:
         neck, roll = ch["neck"], ch["roll"]
         r_t = float(self.pat.fold_radius.get(R.fold.get("name"), self.pat.fold_radius.get(R.fall, 0.0)))
         if r_t <= 0:
-            raise ChainRefused(f"{R.fall} roll: no radius in the pattern's fold entry. next: give the fold a radius (design_garment)")
+            raise ChainRefused(f"{R.fall} roll: no radius in the pattern's fold entry. next: give the fold a radius in your draft's declarations (draft_pattern)")
         S_ = X[rs[neck]]
         Bb = X[rs[self.sb[cKDTree(uv[self.sb, :1]).query(uv[neck, :1])[1]]]]
         n_ = len(S_)

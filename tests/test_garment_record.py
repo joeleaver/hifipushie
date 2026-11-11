@@ -100,26 +100,6 @@ def test_tool_answer_and_sheet(home):
     assert p.exists() and "sheet:" in ims[-1] and Image.open(p).size[0] > 360
 
 
-def test_pattern_check_writes_step4(home, monkeypatch):
-    from hifipushie import cloth_check as cc, next_steps, pattern_sheet, server
-    rec = {"status": "FAIL", "kind": "shirt", "pattern": "ph", "body": "bh", "rows": [{"id": "seam_pairs", "status": "FAIL"}]}
-
-    def gate(name, garment, refs=None, waive=None, log=None, keep=None):
-        keep["res"] = {"pieces_full": {}}
-        return rec
-    monkeypatch.setattr(cc, "pattern_gate", gate)
-    monkeypatch.setattr(cc, "seams", lambda *a: [])
-    monkeypatch.setattr(pattern_sheet, "render", lambda *a, **k: Image.new("RGB", (30, 30)))
-    monkeypatch.setattr(next_steps, "after_pattern_check", lambda *a: "next: x")
-    out = server.pattern_check("m", "shirt", diag=False)
-    assert "record: m:shirt: step 4 (draft) refused" in out[-1]
-    _upto(home, "m", "shirt", "3")
-    server.pattern_check("m", "shirt", diag=False)
-    st = gr.load("m", "shirt")["steps"]["4"]
-    assert st["status"] == "failed" and st["back_to"] == "4" and st["gate"]["rows"][0]["id"] == "seam_pairs"
-    assert st["look"][0].endswith("step4_flat.png")
-
-
 def test_chain_worker_writes_steps_5_6_8(home, monkeypatch):
     from hifipushie import chain_garment as cg, resources
     _upto(home, "m", "shirt", "4")

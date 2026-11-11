@@ -145,7 +145,7 @@ def read_roles(net):
         cand = [p for p in sewn[fall] if whole[p] and p not in carried]
         if not cand:
             raise ChainRefused(f"{fall}: a roll piece sewn straight to the body cloth (no interfaced band): a chain build "
-                               "needs the band it stands on. next: add a band to the pattern (design_garment)")
+                               "needs the band it stands on. next: add a band to your draft (draft_pattern)")
         band = cand[0]
     # (no fall: a stand on the neckline is read by the build, which knows the body: neck_part)
     faults = sided_faults(net, role, whole, self_sewn, carried)

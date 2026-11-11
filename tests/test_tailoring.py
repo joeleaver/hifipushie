@@ -75,29 +75,6 @@ def _bp(D):
             "closures": D.get("closures") or []}
 
 
-def _rows(Bp, tape, g=None):
-    return {r["id"]: r for r in pj.tailor_rows(Bp, tape, g or {"design": {"details": {"pockets": "flap"}}})}
-
-
-def test_falls_straight_design_drops_the_band_top_below_the_chest():
-    """(fit round 34, C179) A plumb jacket's ease below the chest is the fall's (chest carried down + the reference's
-    flare): the kind's band keeps its bottom there and drops its top; the tube cut and suits keep the band as written."""
-    from hifipushie import cloth_workflow as cw
-    ws = lambda **k: {"design": {"ops": [dict({"op": "waist_suppression"}, **k)]}}
-    assert cw.falls_straight_design(ws(silhouette="plumb"))
-    assert not cw.falls_straight_design(ws(silhouette="plumb", tube=True))
-    assert not cw.falls_straight_design(ws(silhouette="suit")) and not cw.falls_straight_design({})
-    assert set(cw.FALL_BAND_REGIONS) == {"waist", "hips", "seat"}
-
-
-def test_sagitta_tells_a_band_from_a_crescent():
-    t = np.linspace(0, 1, 50)
-    band = np.c_[t * 0.24, 0.012 * t ** 2]
-    a = np.linspace(0, 1.2, 50)
-    crescent = np.c_[0.2 * np.sin(a), 0.2 * (1 - np.cos(a))]  # a neckline-like arc
-    assert pj.sagitta_ratio(band) < 0.08 < pj.sagitta_ratio(crescent)
-
-
 # ---------------------------------------------------------------- tracks Jaeger at three sizes
 def _jaeger_ok():
     if not shutil.which("node"):

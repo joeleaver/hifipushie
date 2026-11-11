@@ -17,13 +17,13 @@ garment-sized section and solved as a network with the body as a floor; surfaces
 opened before any soft cloth (its sewn front limited by its cut distance to the topmost tied front pair, by nothing when none is
 tied), and the plackets fold along a solved crease through that tied pair only; every fold step 2 plans (a lapel rolled to its
 break, a cuff turned back) is then turned about the draft's own fold row to its turn_deg and lies on its lies_on, lengths exact,
-gated per fold (stage "crease": turn within 15 deg, never sunk inside; chain_crease.py, C401); then the STRUCTURE check reads the build (never a hang) against the garment record's style plan (step 2's rows and numeric bends, each judged by its kind; C286) plus general rules: the fall lying, turned over its stand, each closure in its planned state (and a closed one meeting), the hem level left to right, the soft cloth not crumpled (soft_cloth_smooth: each soft piece's bump p90 <= 2x a smooth 40 mm tube's at its mesh size). No style plan, or a row with no build reading yet: UNMEASURED by name (waive with a reason or add the reading). A FAIL ends the job "structure_failed": the answer lists each failing row with its target, source and change: (the alter_pattern op, design option or build stage to fix); waive={row id: why} re-reads the saved build (no rebuild) and accepts those rows by name (PASS_WAIVED). After a pass the job stops at "awaiting_approval" (step 7a of the garment record: nothing is hung that wasn't approved built): the answer gives the sheet and the exact approve command for Joe or the coordinator; an agent never approves. Once approved, the same call resumes the hang from the saved build (HIFIPUSHIE_PRESIM_APPROVAL=optional: it hangs straight away). Then the soft cloth hangs under gravity (ZOZO, 5-10 min) with the stiff parts held; lengths last. The hang's gate (step 8): any face past the thread cap FAILS, with back to step 5 and a change: line; the cap is the cloth's, never a setting. wear: "closed" or
+gated per fold (stage "crease": turn within 15 deg, never sunk inside; chain_crease.py, C401); then the STRUCTURE check reads the build (never a hang) against the garment record's style plan (step 2's rows and numeric bends, each judged by its kind; C286) plus general rules: the fall lying, turned over its stand, each closure in its planned state (and a closed one meeting), the hem level left to right, the soft cloth not crumpled (soft_cloth_smooth: each soft piece's bump p90 <= 2x a smooth 40 mm tube's at its mesh size). No style plan, or a row with no build reading yet: UNMEASURED by name (waive with a reason or add the reading). A FAIL ends the job "structure_failed": the answer lists each failing row with its target, source and change: (what to change in your draft, or the build stage to fix); waive={row id: why} re-reads the saved build (no rebuild) and accepts those rows by name (PASS_WAIVED). After a pass the job stops at "awaiting_approval" (step 7a of the garment record: nothing is hung that wasn't approved built): the answer gives the sheet and the exact approve command for Joe or the coordinator; an agent never approves. Once approved, the same call resumes the hang from the saved build (HIFIPUSHIE_PRESIM_APPROVAL=optional: it hangs straight away). Then the soft cloth hangs under gravity (ZOZO, 5-10 min) with the stiff parts held; lengths last. The hang's gate (step 8): any face past the thread cap FAILS, with back to step 5 and a change: line; the cap is the cloth's, never a setting. wear: "closed" or
 "open". opening: only with "open": collar points this many neck widths apart (default 1.7, 1.0 .. 2.6). A job: the call starts it
 and answers with its stage after at most wait s (0 .. 280); a build takes 2-10 min, then the hang runs, both slower on a loaded
 machine. Call again with the same arguments for the stage: that never starts a second build. Once built the answer carries the chains,
 threads, seams and band numbers. A finished job answers with its result; a changed pattern starts anew; rebuild=True starts over.
 Every answer's next: names the call. A worker that dies reads as failed, not as running for ever. Refuses: an unpassed pattern gate (next:
-pattern_check); a line whose length can't hold (named, next: alter_pattern there); a start the solver would refuse (a tool
+pattern_check); a line whose length can't hold (named, next: change it in your draft, draft_pattern); a start the solver would refuse (a tool
 fault, named: report it). Nothing is pushed, cut or loosened to get past a refusal.
 
 ### `look_chain`
@@ -33,44 +33,6 @@ the body; a piece's name = that piece alone, large, four sides. Sewn seams are j
 reference: an image path shown beside each view. Judge each view yourself against the reference, then review_view one view per call.
 
 The full documentation of this topic's tools: their MCP descriptions are the short form. guide(topic="<tool name>") returns one section. These tools are the `cloth` domain: run them with call_tool(name, args); find_tool(\"<job>\") gives each one's parameters and an example call.
-
-### `design_garment`
-
-`design_garment(name, garment, design=None, spec=None, replace=False, note='')`
-
-Stage 1 of the clothing workflow (guide(topic="cloth")): the design sheet, decided before any drafting, as a
-pattern maker does. STRICT (C241): every sheet key, detail param, op, op parameter, block option and FreeSewing
-option is checked; an unknown one is an error listing the valid ones with units, sign and default; a failed call
-saves nothing; each FreeSewing option set is reported with the default it REPLACES (Simon's lengthBonus default
-0.25: 0.05 gives 0.05, not 0.30). Units, signs, which keys go on which route: guide(topic="cloth_design"). Stored in spec["cloth"][garment]["design"] (merged key by key, null deletes; replace=True
-replaces the garment). design: {"kind": shirt | blouse | tee | hoodie | jacket | coat | trousers | shorts | skirt |
-dress | flat, "from": a draft source that can make it (simon, carlton, skirt_block; or DESIGN it: "block":
-bodice | knit | trouser | skirt, "block_options": {...}, "ops": [pattern operations] (garment_reference(principles=
-"operations" | "derivations"): a garment with no ready-made draft is a block + operations); or leave out and give own
-pieces + seams in spec), "fit": the kind's fit (slim, regular, a_line...), "fabric": a fabric (cotton_shirting,
-oxford, linen, cotton_twill, denim, wool_suiting, wool_coating, jersey, rib_knit, french_terry) or a solver preset,
-"details": {collar: shirt_collar | band | convertible | notched_lapel | shawl | hood | rib_neckband | ...,
-cuff: barrel | french | rib | hemmed | ..., sleeve_placket, front_closure, placket, waistband, skirt_closure, hem,
-darts, ...: a choice or {"type": choice, "options": {raw draft options}}}, "pattern": {draft words: ease, length,
-options...}, "notes"}. Left-out details take the kind's defaults (garment_reference(kind=...)).
-spec: other garment keys (color, state, quality, backend, resolution...), merged the same way.
-Returns the resolved sheet (every choice, where it came from, the dimensions to work to) with hard failures first:
-a choice the source can't make, a choice that needs another (a barrel cuff needs a sleeve placket). Next:
-look_pattern.
-
-### `look_pattern`
-
-`look_pattern(name, garment, save=None)`
-
-Stage 2 of the clothing workflow: the garment drafted to the body and laid out flat on a pattern sheet (every
-piece at one scale with one large name, grain arrow, notches, buttons/buttonholes, fold lines (blue dashed),
-interfacing (hatched), each seam pair in one colour on both its edges, a 10 cm bar and a big colour legend; shape
-only: every piece's size and every seam's lengths and ease are in the text answer), plus the checks before any sim, failures first: every design-sheet choice
-evidenced in the pieces and seam table (a turned collar has a fold line, a barrel cuff is closed and interfaced,
-the fall covers the stand...), every seam's ease in its band (sleeve cap by kind, bands, plain seams), notches
-aligned, ease against the body per girth inside the fit's band, every piece sewn to something, the details'
-dimensions. Fix failures in the design sheet (design_garment) or the garment's pattern options before going on.
-Next: pattern_check.
 
 ### `garment_record`
 `garment_record(name, garment, sheet=False, step="")`: (step="N": that step's saved output in full, to retake it changing only what's refused) the garment record (src/hifipushie/garment_record.py; the steps:
@@ -283,64 +245,13 @@ build; step 10 is then not written: the text says so). Writes <job>/export/<garm
 and step 10; the look is SHAPE: the GLB with the body in EEVEE (asset.preview), rest beside the reference, and posed.
 Not done: LODs, the normal bake of the folds (garment_game.bake), layering culls (a shirt under a jacket).
 
-### `alter_pattern`
-
-`alter_pattern(name, garment, ops, replace=False, note='')`
-
-A pattern maker's alteration on the FLAT pattern: ops appended to the garment key "alter" (replace=True replaces the
-list) and applied in order after the draft (pattern.apply). Units: metres, fractions for ease, degrees. Coordinates:
-x right, **y UP** (+y toward the neck / the cap). Ops (pattern.ALTER_OPS; every key checked, an unknown or missing
-one is an error listing the op's keys with units and defaults):
-- slash_spread {piece, line, amount (m opened at the free end, + adds cloth), hinge "a" | "b" | "none"}
-- turn {piece, line (a straight fold line), keep (a point on the side kept)}
-- move {piece, point, by [dx, dy] m (y UP: [0, -0.01] lowers the point 10 mm), falloff 0.05 m}
-- scale {piece, line, amount (m added parallel across the line, - shortens)}
-- slit {piece, line, width 0.003, name}; trim {piece, edge "a>b", length m OR match [edges], name}
-- true {piece, at, keep, deg 90, blend 0.04}: the edge leaving point `at` bent so the piece's corner there is `deg`,
-  the kept seam unmoved (necklines / armholes meet the shoulder seam at ~90 deg)
-- match {piece, edge "piece:a>b", to ["piece:a>b", ...] (a LIST), line (or {piece: line}), ease}: WALK THE SEAM, the
-  pieces lengthened across `line` until `edge` equals the summed `to` edges x (1 + ease)
-A line is a line name, [[x, y], [x, y]] m, or two point names ("name+[dx,dy]" offsets). A draft op (round_corner,
-reshape...) is refused here with the reason: draft ops run on a block draft (design_garment ops). Nothing is saved
-unless the whole call succeeds (drafted, placed, seams walked and the sheet rendered before the save). Each op that
-changes a default carries "source" (where the number came from; the gate warns without one).
-Returns the flat pattern sheet and every seam walked (A | B lengths, ease, notches off; truing junctions where the
-build has them), then the next step: seams that don't walk -> "match" them; else pattern_check (the gate record is
-per pattern, so any alteration needs a new one).
-
 ### `pattern_check`
 
-`pattern_check(name, garment, refs=None, waive=None, views=None, size=480, diag=None, save=None)`
+`pattern_check(name, garment)`
 
-THE PATTERN GATE (codified C11): the garment drafted and placed on its body (no sim) and every cloth_checklist item
-of its kind measured there: seam lengths / ease / notches, lengths and widths, design choices, the neckline
-standoff; where this build has them, truing (junction angles), the collar draft and notch, flat tailor rows. Items
-with no pattern-stage measure or no reference reading are UNMEASURED and block; drape items are SIM (judged later);
-trial-placement readings are INFO until the form is validated. The record (/mnt/data/hifipushie/pattern_gate/<key>.json,
-keyed by the pattern's content hash + the body's) is what chain_garment checks: it refuses
-without a PASS for exactly this pattern + body.
-refs: the reference reading (cloth_reference.read's output or its saved path). waive: {item id: reason} accepts a
-FAIL / UNMEASURED row by name (recorded; PASS_WAIVED).
-Returns: the FLAT pattern sheet (shape only: pieces, grain, notches, seam pairs by colour; the pieces' sizes and the
-seams' lengths and ease are in the text), the DIAG views of the
-placed pattern (by default two rows: panels + seams + turned, then strain + layers; diag=False none, or your own
-modes / rows), and the per-item table FAIL / UNMEASURED first, then "next:": on a FAIL the rows to fix and "don't
-simulate"; on a PASS chain_garment. views (default front, three, side, back), size (px), save (PNG path prefix).
-Renders take the GPU lock.
+STEP 4's FLAT GATE AGAIN, on a garment drafted with draft_pattern. draft_pattern runs this gate itself each time you
+draft; pattern_check re-reads the same gate from the saved draft (after a tool change, or when chain_garment says step
+4's gate is not PASS) and rewrites step 4 in the garment record. chain_garment refuses a garment whose step 4 is not
+PASS. A garment with no draft of its own is refused: draft it with draft_pattern.
+Returns the per-row table, FAIL first, and "next:". A FAIL is fixed in your draft (draft_pattern), never here.
 
-### `garment_reference`
-
-`garment_reference(kind=None, detail=None, principles=None)`
-
-The clothing knowledge base (garment_kb.json): garment kinds (fit ease bands, default details, sewing order),
-detail choices (collar, cuff, sleeve_placket, front_closure, placket, waistband, fly, skirt_closure, pockets, hem,
-yoke, darts, pleats, back_vent, belt, lining, shoulder, topstitch) with what each is made of, its seams, fold
-lines, interfacing, the dimensions a tailor works to and the evidence checks that prove it's in a pattern; fabrics
-with physical numbers; what each draft source (simon, carlton, skirt_block) can and can't make; the numeric
-targets a simulated garment is judged by. kind: one kind's entry; detail: one detail kind's choices. No args: the
-index.
-principles: how to DESIGN a garment that has no ready-made draft (block + operations): "blocks" (the basic
-patterns and the rules they are drafted by), "operations" (dart moves, slash and spread, style lines, extensions,
-facings, collars from the neckline, sleeves into the armhole: what each does and what it keeps matched),
-"derivations" (per garment category: which block, which operations, why; or one name, e.g. "blazer"), "rules"
-(ease, balance, grain, shaping, seams, proportions), "all".

@@ -6,7 +6,7 @@ import math
 import numpy as np
 import pytest
 
-from hifipushie import cloth, fold_checks as fc
+from hifipushie import cloth
 from test_pattern_form import _B, _piece, _flat
 
 P = [[0, 0], [0.3, 0], [0.3, 0.12], [0, 0.12]]
@@ -35,27 +35,6 @@ def _turned(M, theta_deg, wobble_deg=0.0, through=False):
     return X
 
 
-def test_flat_turn_allowance_run_off_pleat():
-    B, _ = _strip()
-    rows = {r["id"]: r for r in fc.flat_rows(B, {"fabric": "shirting"})}
-    assert rows["fold_turn_allowance"]["status"] == "PASS" and rows["fold_run_off"]["status"] == "PASS", rows
-    B, _ = _strip(line=((0.0, 0.118), (0.3, 0.118)))  # (2 mm of flap: no room for the turn)
-    assert {r["id"]: r for r in fc.flat_rows(B, {})}["fold_turn_allowance"]["status"] == "FAIL"
-    B, _ = _strip(line=((0.0, 0.04), (0.2, 0.04)))  # (stops 100 mm short, no run-off declared)
-    B["folds"][0]["line"] = [[0.0, 0.04], [0.2, 0.04]]
-    from hifipushie import pattern
-    pattern.fold_line  # (fold_line runs a line on to the outline within 1.5 cm only)
-    assert {r["id"]: r for r in fc.flat_rows(B, {})}["fold_run_off"]["status"] == "FAIL"
-    B["folds"][0]["run_off"] = {"ends": "end", "off": 0.05, "over": 0.03}
-    assert {r["id"]: r for r in fc.flat_rows(B, {})}["fold_run_off"]["status"] == "PASS"
-    B, _ = _strip()
-    B["pleats"] = [{"piece": "r", "a": [[0.10, 0.0], [0.10, 0.12]], "b": [[0.14, 0.0], [0.14, 0.12]], "depth": 0.02,
-                    "press": "left"}]
-    assert [r for r in fc.flat_rows(B, {}) if r["id"] == "pleat_depth"][0]["status"] == "PASS"
-    B["pleats"][0]["depth"] = 0.03
-    assert [r for r in fc.flat_rows(B, {}) if r["id"] == "pleat_depth"][0]["status"] == "FAIL"
-
-
 def _collar_flat_case(fall_h=0.055, stand_h=0.035, r0=0.10, span=2.2):
     """A body piece whose neckline is an arc (radius r0: the flattened shoulders round the neck), a straight stand band
     and a straight FALL band (outer edge = its sewn edge: no spring) sewn as a shirt's: stand to the neckline, fall to
@@ -75,30 +54,6 @@ def _collar_flat_case(fall_h=0.055, stand_h=0.035, r0=0.10, span=2.2):
            folds=[{"name": "collar roll", "piece": "collar", "line": {"edge": "cL>cM>cR", "offset": 0.006}, "angle": 0,
                    "kind": "roll", "radius": 0.0015, "strength": 0.6}])
     return B
-
-
-def test_fall_spring_read_and_op_on_a_straight_band():
-    """(shirt round 9, the funnel) KNOWN ANSWER, flat: a straight fall band on a curved neckline is short of its landing
-    path (the neckline offset by the fall's cover below the seam, here 55 - 6 - turn - (35 + 6) ~ 6 mm at CB, more at
-    the ends, + pi x its stand-off): collar_fall_spring FAILs; cloth.spring_fall bends it so its outer edge is the path
-    (within the tolerance) with its sewn edge unchanged (+-0.5 mm: it still matches the stand); a fall already sprung
-    is left alone."""
-    from hifipushie import garment_reads as gr, cloth_check as cc
-    B = _collar_flat_case()
-    rd = gr.fall_spring_reads(B, {"fabric": "shirting"})
-    assert rd and rd["fall_short_mm"] > 6, rd
-    row = [r for r in cc.collar_rule_rows(B, {"fabric": "shirting"}) if r["id"] == "collar_fall_spring"][0]
-    assert row["status"] == "FAIL", row
-    rec = cloth.spring_fall(B["pieces"], B["seams"], B["folds"], {"fabric": "shirting"})
-    assert rec, rec
-    now = gr.fall_spring_reads(B, {"fabric": "shirting"})
-    assert abs(now["fall_sewn_mm"] - rd["fall_sewn_mm"]) < 0.5, (rd, now)
-    assert gr.SPRING_TOL_MM[0] <= -now["fall_short_mm"] <= gr.SPRING_TOL_MM[1], now
-    assert [r for r in cc.collar_rule_rows(B, {"fabric": "shirting"}) if r["id"] == "collar_fall_spring"][0]["status"] == "PASS"
-    assert cloth.spring_fall(B["pieces"], B["seams"], B["folds"], {"fabric": "shirting"}) == {}
-    # (C125) the landing line is the neckline at the CB cover all the way round (a shirt fall lands close round the
-    # neck), not tapered to the points' height: every neckline part offset by the same drop (Garrett: 127 -> 81 mm)
-    assert all(abs(p["drop_mm"] - now["drop_cb_mm"]) < 0.05 for p in now["parts"].values()), now
 
 
 def _lapel_piece():

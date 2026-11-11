@@ -1144,30 +1144,6 @@ def test_open_front_hangs_without_moving_its_side_seams(off=0.05):
     assert res[False][0] > 0.010, res[False]
 
 
-def test_open_front_edge_has_no_step_at_the_break():
-    """(fit round 11, Joe: "the notches cut in the bottom of the lapels") A front edge worn open is ONE line through the
-    break. Known answer, the open-front tube, worn open at TWO points (break 50 mm, cfHem 80 mm off CF): the rigid swing
-    meets only the last point, so with the edge held at its swung x (EDGE_FIELD False) the break's own pin dragged that
-    one vertex out of the edge (a step > BREAK_STEP_MM: the fault); with the edge field the edge carries the points'
-    corrections and the break sits on the edge's line (step <= BREAK_STEP_MM), both points still met within 5 mm."""
-    M, X0, body = _open_tube_case()
-    P = M["points"]
-    saved = (pf.WORN_EDGE, pf.OPEN_HOLD, pf.EDGE_FIELD)
-    res = {}
-    try:
-        for fld in (False, True):
-            pf.WORN_EDGE, pf.OPEN_HOLD, pf.EDGE_FIELD = True, True, fld
-            V = pf.assemble({"mesh": M, "X0": X0}, body, iters=80, worn_open={"break": 0.05, "cfHem": 0.08})["V"]
-            eb = pf.edge_through_break(M, V)
-            miss = max(abs(abs(V[P[f"front.{s}:{n}"], 0]) - o) for s in "LR" for n, o in (("break", 0.05), ("cfHem", 0.08)))
-            res[fld] = (max(r["step_mm"] for r in eb.values()), miss)
-            print(f"edge field {fld}: {eb}, worst point miss {miss * 1000:.1f} mm")
-    finally:
-        pf.WORN_EDGE, pf.OPEN_HOLD, pf.EDGE_FIELD = saved
-    assert res[False][0] > pf.BREAK_STEP_MM, res
-    assert res[True][0] <= pf.BREAK_STEP_MM and res[True][1] < 0.005, res
-
-
 def _open_tube_lapel_case(r=0.1, ease=0.01, H=0.4, hb=0.2):
     """The open-front tube with LAPELS (fit round 11): each front's CF edge runs up from the hem to the break (hb), then
     out to a lapel point and back to the neck point "hps" (0.03 off CF at the top); a pressed "lapel roll" fold from the
@@ -1209,79 +1185,6 @@ def test_open_hold_stops_at_the_break_not_the_roll_top():
     finally:
         pf.WORN_EDGE, pf.OPEN_HOLD, pf.HOLD_NAMED = saved
     assert 0.35 < n[True] / n[False] < 0.65, n
-
-
-def lapel_turn_case(roll_turn: bool, off: float = 0.05, verbose: bool = True, woven: bool = False) -> dict:
-    """The worn-open front with a lapel on a cylinder, ROLL_TURN on / off (fit round 12): chest drift from the closed fit
-    (front vertices above the break, off the lapel, 40 mm+ from the roll line), the chest's stand-off from the body, the
-    lapel's turn, the free edge below the break, the step at the break."""
-    from scipy.spatial import cKDTree
-    M, X0, body = _open_tube_lapel_case()
-    pid = np.asarray(M["piece"]); uv = np.asarray(M["uv"], float); P = M["points"]
-    saved = (pf.WORN_EDGE, pf.OPEN_HOLD, pf.ROLL_TURN, pf.CHEST_HOLD, pf.WOVEN)
-    res = {}
-    try:
-        pf.WORN_EDGE, pf.OPEN_HOLD, pf.WOVEN = True, True, woven
-        closed = pf.assemble({"mesh": M, "X0": X0}, body, iters=80)["V"]
-        pf.ROLL_TURN, pf.CHEST_HOLD = roll_turn, (1.0 if roll_turn else 0.0)
-        out = pf.assemble({"mesh": M, "X0": X0}, body, iters=80, worn_open={"break": off})
-    finally:
-        pf.WORN_EDGE, pf.OPEN_HOLD, pf.ROLL_TURN, pf.CHEST_HOLD, pf.WOVEN = saved
-    V = out["V"]
-    from hifipushie import folds as foldmod
-    for s in "LR":
-        k = M["names"].index(f"front.{s}")
-        fd = [f for f in M["folds"] if f["piece"] == f"front.{s}"][0]
-        g = foldmod._geom(M, fd)
-        row = np.asarray(fd["rows"][0], int)
-        zb = float(closed[P[f"front.{s}:break"], 2])
-        dr = cKDTree(uv[row]).query(uv)[0]
-        chest = np.where((pid == k) & ~np.asarray(g["flap0"], bool) & (closed[:, 2] > zb + 0.02) & (dr > 0.04))[0]
-        drift = np.linalg.norm(V[chest] - closed[chest], axis=1) * 1000
-        stand = (np.hypot(V[chest, 0], V[chest, 1]) - 0.1) * 1000
-        border = np.asarray(M["border"], bool)
-        low = np.where((pid == k) & border & (np.abs(uv[:, 0]) < 1e-6) & (closed[:, 2] < zb - 0.02))[0]
-        res[s] = {"chest_drift_p90": round(float(np.percentile(drift, 90)), 1),
-                  "chest_stand_p90": round(float(np.percentile(stand, 90)), 1),
-                  "turn_deg": round(pf.fold_turned(M, V, g), 0),
-                  "edge_below_min": round(float(np.abs(V[low, 0]).min()) * 1000, 1),
-                  "break_x": round(abs(float(V[P[f"front.{s}:break"], 0])) * 1000, 1)}
-    eb = pf.edge_through_break(M, V)
-    for s in "LR":
-        res[s]["step_mm"] = eb[f"front.{s}"]["step_mm"]
-    res["through"] = pf.flap_through_base(M, V, body)
-    res["stretch"] = out["info"]["stretch_pct"]
-    if woven:
-        W = pf._woven_setup(M, None, np.asarray(M["F"]), pf._edges(np.asarray(M["F"])), np.zeros(len(uv), bool))
-        sh = pf.woven_shear_deg(W, V)
-        res["shear_deg"] = {"p50": round(float(np.median(sh)), 1), "p99": round(float(np.percentile(sh, 99)), 1)}
-        res["grain_stretch"] = out["info"].get("grain_stretch_pct")
-    if verbose:
-        print(f"lapel turn ROLL_TURN {roll_turn} WOVEN {woven}: {res}")
-    return res
-
-
-@pytest.mark.xfail(strict=True, reason="fit round 12: an isometric (shear-stiff) front cannot open its break with its chest and "
-                   "side seams fixed: the lapels compress through their base. Fit round 14: WOVEN (KES-F shear) does not "
-                   "fix it: lapels 26 / 40 % through (66 / 90 off), turn 143 / 150 deg, the base strip along the roll line "
-                   "crumples in the WEFT (+-30 %, not shear) between the pressed row and the held chest")
-def test_open_front_turns_its_lapel_not_its_chest(off=0.05):
-    """(fit round 12, coordinator-approved method) Worn open, a jacket's chest stays on the body; only the lapel turns,
-    about its roll line, and the front below the break hangs from the break. Known answer, the open tube with lapels,
-    worn open at the break 50 mm: ROLL_TURN keeps the chest within 6 mm (p90) of the closed fit and within 8 mm of the
-    body, the lapel turned past 160 deg, the edge below the break hangs at least 45 mm off CF, the break met within 5 mm
-    and no step at the break (<= BREAK_STEP_MM); the old rigid swing of the whole upper front moved the chest further
-    (> 1.5 x): the fault that set every hold above the break fighting it. Also the lapel ON its base (flap_through_base
-    ok) and the cloth unstretched (p99 < 5 %). XFAIL (r12): ROLL_TURN + CHEST_HOLD keep the chest (drift 0, stand 6 mm)
-    but the lapels go 66 / 90 % through their base, stretch p99 13 %; the start field alone moves the chest 34 mm."""
-    new, old = lapel_turn_case(True, off, woven=True), lapel_turn_case(False, off)
-    for s in "LR":
-        r = new[s]
-        assert r["chest_drift_p90"] <= 6.0 and r["chest_stand_p90"] <= 8.0, new
-        assert r["turn_deg"] >= 160 and r["edge_below_min"] >= (off - 0.005) * 1000, new
-        assert abs(r["break_x"] - off * 1000) <= 5.0 and r["step_mm"] <= pf.BREAK_STEP_MM, new
-        assert old[s]["chest_drift_p90"] > 1.5 * r["chest_drift_p90"], (old, new)
-    assert all(v["ok"] for v in new["through"].values()) and new["grain_stretch"]["p99"] < 5.0, new
 
 
 def _woven_square(grain=90.0, h=0.01):
@@ -1332,41 +1235,6 @@ def test_woven_fit_shears_a_held_sheet_instead_of_stretching():
     assert out[(False, False, "shear")][0] < 5.0 and out[(True, True, "shear")][0] > 10.0, out
     assert out[(True, False, "shear")][0] < 5.0, out  # (free: nothing drives the shear)
     assert all(abs(out[(w, h, "stretch")][1]) < 0.5 for w, h in ((False, False), (True, False), (True, True))), out
-
-
-def test_front_crease_and_flap_through_measures_find_planted_faults():
-    """(fit round 11, Joe: "hopefully there's not a sharp fold here", "the tops of the lapels are embedded") The two form
-    measures behind gate rows front_crease / lapel_on_base, validated on known answers. front_creases: the open tube's
-    closed fit (a smooth cylinder) passes; the same with front.L below the break kinked 60 deg about a vertical line
-    fails with an interior max >= 50. flap_through_base: the mirrored lapels assembled lie on their bases (share 0);
-    the flaps pushed 5 mm into the chest side, through their bases, read share > 0.5."""
-    M, X0, body = _open_tube_case()
-    V = pf.assemble({"mesh": M, "X0": X0}, body, iters=80)["V"]
-    ok = pf.front_creases(M, V)
-    print("smooth tube", ok)
-    assert ok and all(r["ok"] for r in ok.values()), ok
-    pid = np.asarray(M["piece"]); k = M["names"].index("front.L"); uv = np.asarray(M["uv"])
-    Vk = V.copy()
-    zb = V[M["points"]["front.L:break"], 2]
-    m = (pid == k) & (uv[:, 0] < 0.05) & (V[:, 2] < zb - 0.02)
-    piv = V[(pid == k) & (np.abs(uv[:, 0] - 0.05) < 0.007)].mean(0)
-    Vk[m] = piv + pf._rodrigues(V[m] - piv, np.tile([0.0, 0.0, 1.0], (int(m.sum()), 1)), np.full(int(m.sum()), np.radians(60)))
-    bad = pf.front_creases(M, Vk)
-    print("kinked tube", bad)
-    assert not bad["front.L"]["ok"] and bad["front.L"]["interior_max"] >= 50, bad
-    from hifipushie import folds as foldmod
-    L = _mirrored_lapels("press")
-    X0 = np.c_[L["uv"][:, 0], np.full(len(L["uv"]), -0.006), 1.0 + L["uv"][:, 1]]
-    W = pf.assemble({"mesh": L, "X0": X0}, _plane_body(0.0), iters=80, attract=0.0)["V"]
-    good = pf.flap_through_base(L, W, _plane_body(0.0))
-    F = np.asarray(L["F"])
-    flm = foldmod.flap_faces(L, F)
-    fl, base = np.unique(F[flm]), np.unique(F[~flm])
-    Wb = W.copy()
-    Wb[np.setdiff1d(fl, base), 1] += 0.005  # (+y: toward the chest, behind the base)
-    thr = pf.flap_through_base(L, Wb, _plane_body(0.0))
-    print("lapels", good, "pushed", thr)
-    assert all(r["share"] == 0 for r in good.values()) and all(r["share"] > 0.5 for r in thr.values()), (good, thr)
 
 
 if __name__ == "__main__":

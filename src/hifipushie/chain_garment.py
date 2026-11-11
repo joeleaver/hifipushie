@@ -110,7 +110,8 @@ class Build(BandStages, FallStages):
         m = float(self.net.link_cut[:, 1].sum()) and self.net.seam_mismatch()["max_pct"]
         if self.reads["seam_truing"]["max_mm"] > SEAM_LINK_MM:
             raise ChainRefused(f"a seam's two sides differ by {self.reads['seam_truing']['max_mm']} mm over one link: "
-                               "next: true the pattern (pattern_check, alter_pattern); a chain can't be two lengths")
+                               "next: back to step 4: true the seam ends in your draft (draft_pattern; its seam_links row names "
+                               "the link); a chain can't be two lengths")
         self._mirror()
 
     # ---- helpers
@@ -261,7 +262,7 @@ class GarmentBuild(SoftStages, StiffStages, HangJob, Build):
 
     def _near_point(self, v: int, piece: str) -> str:
         """(C278) the worst link named by the pattern point nearest it on its piece: flat coordinates alone don't say
-        where to alter_pattern."""
+        where to change the draft."""
         net = self.net
         pts = [(n.split(":", 1)[1], i) for n, i in (net.M.get("points") or {}).items()
                if isinstance(i, (int, np.integer)) and n.startswith(piece + ":")]
@@ -277,8 +278,8 @@ class GarmentBuild(SoftStages, StiffStages, HangJob, Build):
         self.reads["chains"] = c
         if c["free_worst_pct"] > MAX_FREE_PCT:
             raise ChainRefused(f"a length can't hold: {c['free_worst_line']} is {c['free_worst_pct']} % off its cut (limit "
-                               f"{MAX_FREE_PCT} %). next: the pattern can't make this line on this body: look_pattern, then "
-                               "alter_pattern at that line, pattern_check, chain_garment again")
+                               f"{MAX_FREE_PCT} %). next: the pattern can't make this line on this body: change "
+                               "that line in your draft (draft_pattern runs the flat gate), then chain_garment again")
         if c.get("held_worst_pct", 0.0) > MAX_FREE_PCT:  # (F1: a link held at both ends is still a length)
             raise ChainRefused(f"a held length can't hold: {c['held_worst_line']} is {c['held_worst_pct']} % off its cut "
                                f"(limit {MAX_FREE_PCT} %). next: look_chain at that line; the stiff piece's cut can't take "

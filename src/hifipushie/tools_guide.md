@@ -17,7 +17,7 @@ call; `find_tool("")` lists every tool by domain. Before working in a domain, re
 | human | human, measure_human, fit_human, nudge_human, human_reference, block_in_start, block_in_look, block_in_step, set_expression, lid_read, eye_ruler, face_ruler, brow_read, skin, look_skin, skin_reference, skin_from_reference, skin_project | guide(topic="human"), guide(topic="block_in"), guide(topic="skin") |
 | likeness | likeness, fit_likeness, likeness_points, character_read, project_reference, texture_from_reference, reference_brief, check_references | guide(topic="likeness") |
 | hair | groom_hair, tie_hair, look_hair, hair_reference, export_hair | guide(topic="hair") |
-| cloth | garment_plan, body_tape, draft_pattern, pattern_parts, chain_garment, garment_details, look_chain, garment_appearance, export_garment, garment_record, design_garment, look_pattern, alter_pattern, pattern_check, garment_reference, garment_from_reference, garment_reference_brief | guide(topic="cloth"), guide(topic="cloth_reference") |
+| cloth | garment_plan, body_tape, draft_pattern, pattern_parts, chain_garment, garment_details, look_chain, garment_appearance, export_garment, garment_record, pattern_check | guide(topic="cloth") |
 | terrain | set_terrain, check_terrain, look_terrain, export_terrain, terrain_history | guide(topic="terrain") |
 | plants | grow_plant, edit_plant, get_plant, look_plant, look_plants, plant_form, plant_reference, export_plant, wind_plant, sync_plant, plant_history, grow_stand, look_stand, export_stand | guide(topic="vegetation") |
 | clutter | make_clutter, look_clutter, clutter_kit | guide(topic="clutter") |
@@ -41,9 +41,6 @@ topic="hair": hair from a description of the hairstyle: realistic strand grooms 
 groom_hair), short cuts as shells, game export (export_asset; export_hair is the hair alone); topic="hair_locks": stylised sculpted locks.
 topic="cloth": garments on their one path: garment_plan -> body_tape -> draft_pattern -> chain_garment ->
 garment_details -> look_chain -> export_garment; garment_record shows every step.
-topic="cloth_reference": reading garments from reference art as tech designers, tailors and garment artists do
-(the checklist, big to small), with garment_from_reference and garment_reference_brief
-(the shot list for getting good references, and a validator for a set of pictures).
 topic="skin": human skin the way character artists texture it, in stages (base tone, colour zones, large
 features, fine features, micro detail, cosmetics, shading check), with skin, look_skin and skin_reference.
 topic="vegetation": trees the way vegetation artists make them (a species' habit, age and setting grown, then

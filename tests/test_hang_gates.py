@@ -108,19 +108,3 @@ def test_no_reference_review_checklist():
     with pytest.raises(ValueError, match="hang"):
         reviewgate.checklist_prompt("nope")
 
-
-def test_gate_targets_are_the_drafts_rules():
-    # the designed cap judged on the kind's rule, not on the ask (hoodie t6: ask 0.6 % landed -0.45 %)
-    note = {"ease": [0.006 - 0.012, 0.006 + 0.012], "why": "sleeve cap ease 0.6% (designed)"}
-    assert cc.note_band(note, "hoodie")["ease"] == [-0.03, 0.03]
-    assert cc.note_band(note, "no_such_kind") == note
-    other = {"ease": [0.0, 0.02], "why": "dart released into gathers"}
-    assert cc.note_band(other, "hoodie") is other
-    # the collar stand from the neck (shirt t7: neckHeight 35 mm -> 22 mm stand; practice 30..35 contradicted it)
-    d = cc.rule_dims("shirt", {"neckHeight": 35.0})["stand_cb"]
-    assert d[0] == 20.0 and 22.0 <= d[1] <= 23.0
-    res = {"details": {"collar": {"choice": "shirt_collar", "kb": {"dims": {"stand_cb": [30, 35], "fall_cover": [6, 12]}}}}}
-    r2 = cc.with_rule_dims(res, "shirt", {"neckHeight": 35.0})
-    assert r2["details"]["collar"]["kb"]["dims"] == {"stand_cb": d, "fall_cover": [6, 12]}
-    assert res["details"]["collar"]["kb"]["dims"]["stand_cb"] == [30, 35]  # (the kb itself untouched)
-    assert cc.rule_dims("hoodie", {"neckHeight": 35.0}) == {}

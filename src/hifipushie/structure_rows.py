@@ -34,56 +34,56 @@ _C = "chain_garment / chain_net: a build fault, report it"
 KINDS = {
     "collar_points_apart": dict(desc="the collar points' distance (front view)", units=("mm", "ratio", "px"),
                                 base="neck_width", read="collar_points_apart_mm", needs=("collar_fall",),
-                                change="move the fall's point corner (alter_pattern) or the collar bend (style plan); "
+                                change="move the fall's point corner (in your draft: draft_pattern) or the collar bend (style plan); "
                                        "else the FALL stage holds the leaves in: " + _C),
     "collar_tilt": dict(desc="the collar's top line in the side view, back high, front low", units=("deg",),
                         read="collar_top_tilt_deg", needs=("collar_stand",),
-                        change="drop the CF neckline (alter_pattern move the front neck point down); else the BAND "
+                        change="drop the CF neckline (in your draft, draft_pattern: move the front neck point down); else the BAND "
                                "stage holds the band level: " + _C),
     "collar_rise": dict(desc="a stand collar's rise from the neckline, deg from horizontal (90 = upright)", units=("deg",),
                         read="collar_rise_deg", needs=("collar_stand",),
-                        change="the stand's curve (alter_pattern on its neck edge) or the BAND stage"),
+                        change="the stand's curve (in your draft, draft_pattern: on its neck edge) or the BAND stage"),
     "collar_points_drop": dict(desc="the collar points below the collar's back top (side view)", units=("mm", "ratio", "px"),
                                base="neck_width", read="collar_points_below_back_top_mm", needs=("collar_fall",),
-                               change="alter_pattern move the fall's point corner down / up"),
+                               change="in your draft (draft_pattern): move the fall's point corner down / up"),
     "collar_height": dict(desc="the collar's height at its front (a stand collar's CF height)", units=("mm", "ratio", "px"),
                           base="closure_length", read="collar_front_height_mm", needs=("collar_stand",),
-                          change="the stand's height at CF (alter_pattern move the stand's front top corner)"),
+                          change="the stand's height at CF (in your draft, draft_pattern: move the stand's front top corner)"),
     "fall_back_width": dict(desc="the collar fall's depth at CB (back / side view)", units=("mm", "ratio", "px"),
                             base="neck_width", read="collar_fall_cb_width_mm", needs=("collar_fall",),
-                            change="the fall's depth at CB (alter_pattern move the fall's CB outer corner)"),
+                            change="the fall's depth at CB (in your draft, draft_pattern: move the fall's CB outer corner)"),
     "v_depth": dict(desc="an open neck's V bottom below the higher collar point: where the fronts meet, or, on fronts "
                          "that never meet (an open jacket), where the lapels' roll lines end (the break) (C352)", units=("mm", "ratio", "px"),
                     base="neck_width", read="v_below_points_mm", needs=("front",),
-                    change="the first fastened button (alter_pattern move the front's button marks) or the band's state"),
+                    change="the first fastened button (in your draft, draft_pattern: move the front's button marks) or the band's state"),
     "fronts_apart": dict(desc="an open front's gap, front edge to front edge, at a height (front view; at: the two "
                               "edge points on one row, the row named in note: a landmark or a step-0 height)",
                          units=("mm", "ratio", "px"), base="shoulder_width", read=None,
                          missing="no fronts-apart reading yet (C351)",
-                         change="the closure's state (style plan) or the fronts' widths at CF (alter_pattern)"),
+                         change="the closure's state (style plan) or the fronts' widths at CF (in your draft: draft_pattern)"),
     "front_edge_plumb": dict(desc="a closed front's edge off vertical (worst 40 mm stretch: kinks show)", units=("deg",),
                              read="front_edge_kink_deg", needs=("front",),
-                             change="the fronts' lengths either side of CF (alter_pattern match) or the button spacing; "
+                             change="the fronts' lengths either side of CF (in your draft, draft_pattern: make them equal) or the button spacing; "
                                     "else the PLACKETS / soft network: " + _C),
     "hem_front_back": dict(desc="the back hem above (+) the front hem at CB / CF", units=("mm", "ratio", "px"),
                            base="closure_length", read="hem_cf_cb_mm", needs=("front", "back"),
-                           change="the front and back lengths at CF / CB (alter_pattern move the hem points)"),
+                           change="the front and back lengths at CF / CB (in your draft, draft_pattern: move the hem points)"),
     "sleeve_end": dict(points=True, desc="the sleeve's end past (+) the wrist joint along the arm (one arm: at = its sleeve end "
                             "point, never a line across the body)", units=("mm",),
                        read="sleeve_past_wrist_mm", needs=("sleeve",),
-                       change="alter_pattern move the sleeve's hem points (or the cuff depth); else the RINGS stage"),
+                       change="in your draft (draft_pattern): move the sleeve's hem points (or the cuff depth); else the RINGS stage"),
     "cuff_ease": dict(points=True, desc="the cuff's girth less the wrist's", units=("mm",), read="cuff_ease_mm", needs=("cuff",),
-                      change="alter_pattern scale the cuff's length (or move its button mark)"),
+                      change="in your draft (draft_pattern): scale the cuff's length (or move its button mark)"),
     "garment_length": dict(points=True, step0_on="torso",
                            desc="where the hem ends on the body: step 0 measured it on the model, so the target names "
                                 "that step-0 height ({height: 'hem'}), never a second number (C353); at: the hem point "
                                 "at the side",
                            units=("mm", "ratio", "px"), base="closure_length", read=None,
-                           missing="no hem-at-landmark reading yet", change="the body length (alter_pattern)"),
+                           missing="no hem-at-landmark reading yet", change="the body length (in your draft: draft_pattern)"),
     "cutaway_drop": dict(desc="a cutaway front's lowest points below the closure's end (the lowest fastening, or where "
                               "the fronts part), measured straight down; at: the closure's end and the lowest point", units=("mm", "ratio", "px"),
                          base="closure_length", read="cutaway_drop_mm",
-                         change="the front's hem points (alter_pattern move the cutaway's tip) or the closure's end"),
+                         change="the front's hem points (in your draft, draft_pattern: move the cutaway's tip) or the closure's end"),
     "trim_row_count": dict(points=True, desc="rows of a trim (frogging, buttons, braid) per side", units=("count",), read=None,
                            missing="no trims on chain builds yet (T10)", change="the detail's count (step 1)"),
     "trim_row_pitch": dict(desc="the spacing of a trim's rows", units=("mm", "ratio", "px"), base="closure_length",
@@ -96,20 +96,20 @@ KINDS = {
     "drape_hem_height": dict(desc="a draped piece's hem above the floor (front view; ratio of stature: the figure's "
                                   "height in the picture)", units=("mm", "ratio", "px"), base="stature",
                              read="drape_hem_height_mm", on="hang", needs_drape="down",
-                             change="the draped piece's length from its held line (alter_pattern its hem radius)"),
+                             change="the draped piece's length from its held line (in your draft, draft_pattern: its hem radius)"),
     "drape_hem_spread": dict(desc="a draped piece's hem width, side to side (front view)", units=("mm", "ratio", "px"),
                              base="shoulder_width", read="drape_hem_spread_mm", on="hang", needs_drape="down",
-                             change="the draped piece's fullness at the hem (alter_pattern its hem arc: a half circle vs "
+                             change="the draped piece's fullness at the hem (in your draft, draft_pattern: its hem arc: a half circle vs "
                                     "a full circle)"),
     "drape_front_back": dict(desc="a draped piece's back hem below (+) its front hem (side view)",
                              units=("mm", "ratio", "px"), base="stature", read="drape_back_below_front_mm", on="hang",
-                             needs_drape="down", change="the front / back lengths from the held line (alter_pattern)"),
+                             needs_drape="down", change="the front / back lengths from the held line (in your draft: draft_pattern)"),
     "hood_opening": dict(desc="a hood's face opening, side to side (front view)", units=("mm", "ratio", "px"),
                          base="neck_width", read="hood_opening_mm", on="hang", needs_drape="up",
-                         change="the hood's face edge (alter_pattern its front edge length / the neck edge)"),
+                         change="the hood's face edge (in your draft, draft_pattern: its front edge length / the neck edge)"),
     "hood_depth": dict(desc="a hood's depth from its face edge to its back (side view)", units=("mm", "ratio", "px"),
                        base="neck_width", read="hood_depth_mm", on="hang", needs_drape="up",
-                       change="the hood's depth (alter_pattern its back seam out / in)"),
+                       change="the hood's depth (in your draft, draft_pattern: its back seam out / in)"),
     "not_judged": dict(desc="a part the reference can't judge (no view of it): listed, never a gate row; no target "
                             "(C353)", units=()),
 }
@@ -166,16 +166,16 @@ def rule_items(roles: set, soft: list, closures: dict) -> list:
         I.append(dict(id="collar_leaves_lie", read="collar_leaf_standoff_p90_mm", range=[None, 10.0], stage=1,
                       source="rule: a fall rests on the cloth under it (chain_garment LAYER + 2 mm = 5 mm); a coarse "
                              "panel mesh (20 mm) reads up to ~5 mm more: <= 10 mm",
-                      change="the fall's outer edge is too short to lie down (alter_pattern slash_spread it) or the FALL "
+                      change="the fall's outer edge is too short to lie down (in your draft, draft_pattern: lengthen it, a slash and spread) or the FALL "
                              "stage holds it up: " + _C))
         if "collar_stand" in roles:
             I.append(dict(id="collar_turned", read="fall_above_stand_mm", range=[None, 0.0], stage=1,
                           source="rule: a fall collar turns down over its stand at CB (garment_reads.collar_reads)",
-                          change="the roll line / fall depth (alter_pattern on the collar's roll fold) or the FALL stage"))
+                          change="the roll line / fall depth (in your draft, draft_pattern: on the collar's roll fold) or the FALL stage"))
     if {"front", "back"} <= roles:
         I.append(dict(id="hem_level_lr", read="hem_left_right_mm", range=[None, 10.0], stage=2,
                       source="rule: a mirrored pattern worn straight hangs level left to right; <= 10 mm (one 10 mm "
-                             "panel edge)", change="front.L / front.R lengths differ (alter_pattern match) or the soft "
+                             "panel edge)", change="front.L / front.R lengths differ (in your draft, draft_pattern: make them equal) or the soft "
                                                    "network starts askew: " + _C))
     for c, st in closures.items():
         I.append(dict(id=f"closure_{c}", read=f"closure_state:{c}", equals=st["state"], stage=1,
@@ -186,7 +186,7 @@ def rule_items(roles: set, soft: list, closures: dict) -> list:
         if st["state"] == "closed" and st.get("read") == "front_state":
             I.append(dict(id=f"closure_{c}_meets", read="front_met_share", range=[0.9, None], stage=1,
                           source=f"rule: a closed closure's edges meet (garment_reads MEET_MM 2 mm) over >= 0.9 of it; "
-                                 f"plan ties.{c}: every fastening done up", change="the fronts gape: the button marks (alter_pattern "
+                                 f"plan ties.{c}: every fastening done up", change="the fronts gape: the button marks (in your draft, draft_pattern: "
                                                                  "move) or the PLACKETS / soft network: " + _C))
     if soft:
         I.append(dict(id="soft_cloth_smooth", read="soft_rough_over_limit", range=[None, 1.0], stage=1,

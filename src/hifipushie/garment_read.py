@@ -70,7 +70,7 @@ def check_read(p: dict, body=None) -> dict:
                 bad.append(f"{w}.colour.at: [[u, v], ...] pixels on the view where the cloth shows plainly")
         if isinstance(col, dict) and _uv_list(col.get("at")) and isinstance(col.get("view"), int) \
                 and Path(str(views[col["view"]].get("image", ""))).exists():
-            from .cloth_reference import _sample_colour  # (garment_from_reference's working colour reading)
+            from .cloth_reference import _sample_colour  # (the working colour reading)
             c["colour"] = _sample_colour(views[col["view"]]["image"], col["at"])
             c["colour_from"] = {"view": col["view"], "at": col["at"]}
         elif not isinstance(col, dict) and not (isinstance(col, list) and len(col) == 3 and all(_num(x) for x in col)):

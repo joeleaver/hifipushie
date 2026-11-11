@@ -9,48 +9,6 @@ The older clothing routes these lines served (the fit on the form, the sim, the 
 from __future__ import annotations
 
 
-def _ids(rows, status) -> list:
-    return [r["id"] for r in rows if r.get("status") == status]
-
-
-def after_pattern_check(rec: dict, model: str, garment: str) -> str:
-    """pattern_check's next step from its gate record."""
-    w = rec.get("waived") or {}
-    rows = [r for r in rec.get("rows") or [] if not w.get(r["id"])]
-    fails, unm = _ids(rows, "FAIL"), _ids(rows, "UNMEASURED")
-    ok = rec.get("status") in ("PASS", "PASS_WAIVED")
-    out = []
-    if not ok and (fails or unm):
-        out.append(f"next: the pattern gate is {rec.get('status')}: chain_garment refuses until it passes.")
-        if fails:
-            out.append(f"  fix these rows on the flat pattern first (alter_pattern / design_garment): {', '.join(fails)}")
-        if unm:
-            out.append(f"  unmeasured (no reading = no pass): {', '.join(unm)}: give a reference reading "
-                       f"(garment_from_reference) or waive each BY NAME with a reason (waive={{id: why}})")
-        out.append(f"  then pattern_check(\"{model}\", \"{garment}\") again")
-    elif not ok:
-        out.append(f"next: the pattern gate is {rec.get('status')}: chain_garment refuses until it passes; re-run pattern_check")
-    else:
-        info = _ids(rows, "INFO")
-        out.append(f"next: call_tool(\"chain_garment\", {{\"name\": \"{model}\", \"garment\": \"{garment}\", \"wear\": \"closed\"}}): the only way "
-                   "a garment is started; then look_chain beside the reference, one view at a time (review_view)")
-        if info:
-            out.append(f"  INFO rows (not gating): {', '.join(info[:8])}")
-    for w in rec.get("warnings") or []:
-        out.append(f"  warning: {w}")
-    return "\n".join(out)
-
-
-def after_alter(rows: list, model: str, garment: str) -> str:
-    """alter_pattern's next step from the walked seams."""
-    bad = [r for r in rows if not r.get("ok", True)]
-    if bad:
-        return ("next: these seams don't walk (lengths differ past their declared ease): "
-                + "; ".join(f"{r.get('a', '?')} | {r.get('b', '?')}" for r in bad[:6])
-                + f" -- match them (op \"match\") before pattern_check(\"{model}\", \"{garment}\")")
-    return f"next: call_tool(\"pattern_check\", {{\"name\": \"{model}\", \"garment\": \"{garment}\"}}) (the flat gate: the record is per pattern, so re-run it)"
-
-
 def after_look(kind: str, has_reference: bool, how: str = "") -> str:
     """look / look_cloth / look_skin: what a look must be before it is forwarded. how: the call that does it."""
     if not has_reference:

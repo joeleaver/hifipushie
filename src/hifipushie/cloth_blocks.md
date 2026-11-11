@@ -20,22 +20,6 @@ the flat draft.
 
 A ready-made draft (`from: simon`) is a reference and a proof. The capability is this:
 
-```
-design_garment(name, "jacket", design={
-  "kind": "jacket", "block": "bodice", "fit": "regular", "fabric": "wool_suiting",
-  "block_options": {"fitted": true},
-  "ops": [
-    {"op": "style_line", "piece": "front", "name": "princessF", "from": {"edge": "hps>shoulder", "t": 0.5},
-     "to": {"edge": "hem>cfHem", "t": 0.45}, "via": ["bust"], "names": ["front", "side_front"], "take_in": 0.03},
-    {"op": "style_line", "piece": "back", "name": "princessB", "from": {"edge": "hps>shoulder", "t": 0.5},
-     "to": {"edge": "hem>cbHem", "t": 0.45}, "via": [[0.09, -0.30]], "names": ["back", "side_back"], "take_in": 0.035},
-    {"op": "extend", "piece": "front", "edge": "cfNeck>cfHem", "amount": 0.02, "name": "stand"},
-    {"op": "facing", "piece": "front", "edges": "stand", "width": 0.07},
-    {"op": "sleeve", "cap_ease": 0.045}, {"op": "two_piece"}],
-  "details": {...}})
-look_pattern(name, "jacket")
-```
-
 **Blocks** (`"block"`; options in `"block_options"`). Every construction point is named (cfNeck, hps, shoulder,
 armholePitch, armhole, waist, hem, cfHem, bust, the darts' points...), so operations address points, never numbers.
 
@@ -46,14 +30,6 @@ armholePitch, armhole, waist, hem, cfHem, bust, the darts' points...), so operat
 | sleeve (op `sleeve`) | biceps, arm lengths, wrist, **the armhole** | Width = biceps + ease; cap length = armhole + cap ease; the cap's height is solved from those two. A wide sleeve gets a low cap, a narrow one a high cap. `length` a level (`"short"` mid upper arm, `"elbow"`, `"three_quarter"`, `"long"`) or metres; a short sleeve hems at about its own width; `hem_width` overrides |
 | `trouser` | waist, seat, rise, leg lengths | Seat quarters -1 / +1 cm; fork = seat / 16 + 5 mm (back about double); the back seam slanted and raised; the back inseam 5 mm short |
 | skirt (`from: skirt_block`) | waist, seat | Quarters with ease; the difference shared between side seam and darts |
-
-**Operations** (`"ops"`, applied in order to HALF pieces, centre at x = 0; `unfold` runs last by itself).
-Units: metres for every length (`amount`, `width`, `height`, `depth`, `radius`, `falloff`, `spacing`...), fractions
-for eases / shares / ratios (0.15 = 15 %), degrees for angles. Coordinates: x right (out from the centre line), **y
-UP** (+y toward the neck on a bodice, the cap on a sleeve): `reshape` `"by": [0, -0.01]` lowers the point 10 mm.
-Each op's parameters are read from its code and checked when `design_garment` is called: an unknown one (the
-sleeve takes `biceps_ease`, not `ease`) or a missing required one is an error that lists the op's parameters with
-units and defaults. Ops run only on a block draft; a FreeSewing draft's pieces are shaped by `alter_pattern`.
 
 | Op | What it does | What it keeps |
 |---|---|---|
@@ -105,15 +81,6 @@ seam has cut it in two.
 Every seam is measured after the operations. Its two sides are the same length, or the operation that made them
 differ **declared** the ease (a cap's ease, gathers from a dart, a stretched inseam): stage 2 shows it as
 `declared` with the reason. Anything else is a failure to fix in the operations, not in the solver.
-
-The rules of thumb (`garment_reference(principles="rules")`):
-- **Ease** is wearing ease plus design ease. Woven chest: fitted 5-8%, shirt 10-20%, jacket 8-15% over a shirt,
-  coat 15-30% over a jacket; knits 0 or negative. A skirt or trouser waist 0-3%.
-- **Balance.** Front and back hang level from the shoulder. The front is longer over a bust by the dart's intake.
-- **Grain** runs down the centre front and back, the sleeve's centre and the trouser crease.
-- **Shaping** points at an apex and stops 15-25 mm short of it.
-- **Proportions.** Button stand = the button's diameter. Facings 60-90 mm. A princess line crosses the shoulder a
-  third to half way along and passes over the apex.
 
 Our bodice block matches FreeSewing's Brian at the same ease to a few mm (chest, armhole depth, shoulder and side
 seams, necklines); our sleeve solves its cap for the width asked, so it is narrower with a higher cap than Brian's.

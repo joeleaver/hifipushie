@@ -15,25 +15,6 @@
 
 ## Stage 0: describe the garment (before any template or default)
 
-Write this down per garment, as items with a value, how you'll measure it on yours, and a tolerance. Mark each item
-read / measured / inferred (not visible in the reference: say so, don't guess). `garment_from_reference` gives you
-the item list as a form and turns your answers into a design-sheet patch and a target table
-(guide(topic="cloth_reference")); if you work by hand, cover the same ground:
-
-**Write the measurable items as the kind's checklist, and design FROM it (C243).** `garment_reference(kind=...)`
-returns `targets_template`: every item the kind takes (body_length, sleeve_length, shoulder, fit and the ease per
-girth, neckline, band heights, hem_shape, every detail as a choice) with its one definition, units, default and range.
-Give them as targets, not as options: `design_garment(design={"kind": "tee", "targets": {"fit": "regular",
-"body_length": "hips", "sleeve_length": "short", "neckline": "crew"}})`. The draft SOLVES each (lengths as body
-levels, ease, the dropped shoulder's drop, the shirttail's rise, band heights; FreeSewing options found on the draft)
-and the reply prints target -> drafted per item; pattern_check measures the same items (rows `target:<item>`). Don't
-translate a target into an option by hand: an option or op you give yourself OVERRIDES its target (the reply says so).
-An item the draft can't make is refused with the reason.
-
-Then pick the kind, draft source or block, fit, fabric and details, and say which item justifies each. Kinds,
-details and fabrics: guide(topic="cloth_design"), `garment_reference(kind=...)` (read the kind's `lessons` before
-designing it).
-
 ## Stage 2: measure the draft against the description
 
 ## Craft rules (each once; the reasons and numbers are in the sub-topics)

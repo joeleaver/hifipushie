@@ -128,29 +128,6 @@ def test_drop_shoulder_recuts_the_armhole_and_lowers_the_cap():
         pd.apply(pd.start("knit", MM), [{"op": "kimono"}, {"op": "drop_shoulder"}])
 
 
-def test_the_shoulder_gate_takes_a_declared_drop():
-    """cloth_check.shoulder_seam_row: the body's shoulder point stays held to the body (as before); a seam that runs on
-    past it to "shoulderDrop" is held to the drop the design DECLARES (hoodie t6: a real 50 mm drop failed 'body +-
-    10' and cost 4 rounds). An undeclared extension fails."""
-    from hifipushie import cloth_check as cc
-    hps, shp = np.array([0.0612, -0.0365, 1.5489]), np.array([0.217, -0.0182, 1.4844])
-    body = SimpleNamespace(at={"hps.L": hps, "shoulder.L": shp})
-    ln, dr = float(np.linalg.norm(shp - hps)), float(hps[2] - shp[2])
-    run = np.sqrt(ln ** 2 - dr ** 2)
-    u = np.array([run, -dr]) / ln
-
-    def mesh(ext):
-        uv = np.array([[0.087, 0.0], [0.087 + run, -dr], [0.087 + run + u[0] * ext, -dr + u[1] * ext]])
-        return {"points": {"front:hps": 0, "front:shoulder": 1, "front:shoulderDrop": 2}, "uv": uv}
-    g = {"shoulder_slope": "chord", "pattern": {"from": "draft", "block": "knit", "ops": [{"op": "drop_shoulder", "drop": 0.05}]}}
-    row = cc.shoulder_seam_row(mesh(0.05), body, g, "")
-    assert row["status"] == "PASS", row
-    assert row["ours"]["declared_drop_mm"] == 50.0 and abs(row["ours"]["pieces"]["front"]["drop_past_mm"] - 50) < 0.1
-    bad = cc.shoulder_seam_row(mesh(0.05), body, dict(g, pattern={"from": "draft", "block": "knit", "ops": []}), "")
-    assert bad["status"] == "FAIL" and "declared 0" in bad["miss"], bad
-    assert ps.declared_shoulder_drop({"design": {"kind": "hoodie", "details": {"shoulder": "dropped"}}}) == ps.DROP_SHOULDER
-
-
 def _simon(g):
     from hifipushie import cloth
     try:
@@ -189,45 +166,6 @@ def _route(K, k):
     real = [(d, v) for d, v in K["designs"].items() if not d.startswith("_") and d != "draft"]
     ds = [d for d, v in real if v.get("kind") == k] or [d for d, v in real if k in (v.get("kinds") or [])]
     return ds[0] if ds else "draft"
-
-
-def test_every_kind_drafts_its_defaults():
-    """trials.md lesson 7: a sheet {kind} with nothing else drafts on the average body, every seam resolving and no
-    default the source can't make (shirt t7: the tower placket; the hoodie, jacket, trousers, shorts and dress had no
-    draft at all). A drafted kind's seams are matched or declared. Kinds made of the garment's own pieces (flat) have
-    no draft to default to."""
-    from hifipushie import cloth, garment_design as gd
-    K = gd.kb()
-    for k in [k for k in K["kinds"] if not k.startswith("_")]:
-        if K["kinds"][k].get("own_pieces"):
-            continue
-        fr = _route(K, k)
-        sheet = {"kind": k} if fr is None else {"kind": k, "from": fr}
-        gd.validate(sheet)
-        r = gd.resolve(sheet)
-        assert not r["problems"], (k, r["problems"])
-        g = {"design": sheet}
-        B = _simon(g) if fr == "simon" else cloth.pieces(g, MM)
-        assert B["pieces"], k
-        for s in B["seams"]:
-            for side in s:
-                for e in ([side] if isinstance(side, str) else side):
-                    pn, arc = e.split(":", 1)
-                    pattern.arc_indices(B["pieces"][pn], arc)
-        if r["from"] == "draft":
-            D = pd.build(MM, gd.compile_sheet(sheet)["pattern"])["_D"]
-            bad = [t for ok, t in pd.consistency(D) if not ok]
-            # KNOWN (pattern_blocks.trouser, not this change): the back inseam's 5 mm stretch is declared as 0.4-0.9 %
-            # (5 mm over a full leg); on a shorts leg the same 5 mm is 1.2 %. The band should be 5 mm over the leg drafted
-            if k == "shorts":
-                bad = [t for t in bad if "back inseam is stretched" not in t]
-            assert not bad, (k, bad)
-    # the kinds whose defaults pass their own evidence too (the others' lapels, facings and closures are design ops)
-    for k in ("tee", "hoodie", "sweater", "trousers", "shorts", "jeans", "suit_trousers", "skirt"):
-        sheet = {"kind": k} if _route(K, k) is None else {"kind": k, "from": _route(K, k)}
-        r = gd.resolve(sheet)
-        ev = [t for ok, d, c, t in gd.evidence(r, cloth.pieces({"design": sheet}, MM), MM) if not ok]
-        assert not ev, (k, ev)
 
 
 def test_a_dropped_hoodie_from_its_details():

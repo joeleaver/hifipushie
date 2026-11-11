@@ -40,36 +40,6 @@ def _draft(meas=MM):
     return f
 
 
-def _solved(sheet):
-    g = {"design": copy.deepcopy(sheet)}
-    out = dt.solve(g, MM, _draft(), body=BODY)
-    g["design"]["solved"] = out["solved"]
-    return g, out
-
-
-def test_every_item_has_one_definition_and_every_kind_lists_real_items():
-    """One definition per item, used by the input, the draft, the gate and the review: units, what it is on the body,
-    how the pattern is measured, what it sets, the review sentence; numeric items carry the gate's tolerance. Every
-    kind's checklist names only real items with values in their units, and garment_reference's template covers them."""
-    I = dt.items()
-    for k, it in I.items():
-        for f in ("type", "stage", "units", "definition", "pattern", "sets", "review"):
-            assert it.get(f) not in (None, ""), (k, f)
-        if it["type"] not in ("choice", "neckline"):
-            assert it.get("tolerance", 0) > 0 or it["type"] == "hem", k
-    kinds = dt.kinds_with_targets()
-    assert {"tee", "hoodie", "shirt"} <= set(kinds)
-    for kind in kinds:
-        tg = gd.kb()["kinds"][kind]["targets"]
-        for item, v in tg.items():
-            assert item in I or item in dt.choice_items(kind), (kind, item)
-            dt.normalise(item, v, kind)
-        tpl = dt.template(kind)
-        assert set(dt.kind_items(kind)) == set(tpl), kind
-        assert tpl["chest_ease"]["range"], kind
-    assert dt.template("jacket") == {}  # (no checklist yet: said, not guessed)
-
-
 def test_unknown_items_and_bad_units_are_refused_with_the_kinds_list():
     """The C241 contract for targets: an unknown item names every item the kind takes with its units; a value in the
     wrong units says what the item takes; a kind with no checklist says which kinds have one."""
@@ -115,47 +85,6 @@ def test_each_target_maps_to_what_makes_it():
         dt.plan({"kind": "tee", "targets": {"waist_ease": 0.1}})
     p = dt.plan({"kind": "tee", "targets": {"body_length": "seat"}, "block_options": {"length": {"to": "hips", "below": 0.02}}})
     assert any("overrides" in o and "body_length" in o for o in p["overrides"])
-
-
-def test_the_draft_solves_the_targets_and_the_gate_reads_the_same_items():
-    """Round 1 passes the measurable items by construction: a tee, a relaxed dropped-shoulder hoodie with rib bands
-    and a long-sleeve dress shirt with a shirttail, each from kind + targets only, solved on the average-male tape;
-    the gate's rows (cloth_check.target_rows: the same definitions) all PASS on the solved draft. A length asked as a
-    level is the FINISHED hem (the hoodie's rib band below the block's hem), a sleeve the finished sleeve (cuff + the
-    drop included)."""
-    sheets = [{"kind": "tee", "targets": {"fit": "regular", "body_length": "hips", "sleeve_length": "short",
-                                          "neckline": "crew"}},
-              {"kind": "hoodie", "targets": {"fit": "relaxed", "body_length": "hips", "shoulder": "dropped",
-                                             "collar": "hood", "pockets": "kangaroo", "cuff": "rib", "hem": "rib_band"}},
-              {"kind": "shirt", "targets": {"fit": "regular", "sleeve_length": "long", "collar": "shirt_collar",
-                                            "hem_shape": "shirttail"}}]
-    for sheet in sheets:
-        g, out = _solved(sheet)
-        assert not out["unreached"], (sheet["kind"], out["unreached"])
-        assert out["drafts"] <= dt.MAX_DRAFTS + 1
-        rows = cc.target_rows(out["Bp"], g, sheet["kind"], BODY)
-        judged = [r for r in rows if r["status"] != "INFO"]
-        assert judged and all(r["status"] == "PASS" for r in judged), (sheet["kind"], [r for r in judged if r["status"] != "PASS"])
-        ids = {r["id"] for r in rows}
-        assert {"target:body_length", "target:sleeve_length", "target:chest_ease", "target:shoulder"} <= ids
-        gd.validate(g["design"])  # (the solved sheet saves)
-    # the hoodie: band at the hip line, the block's hem one band height above it; the drop and the cuff in the sleeve
-    g, out = _solved(sheets[1])
-    M = dt.measure(out["Bp"], body=BODY)
-    assert M["body_length"] == pytest.approx(MM["hpsToHipLineBack"] / 1000, abs=0.005)
-    assert M["shoulder"] == pytest.approx(0.05, abs=0.003) and M["hem_band_height"] == pytest.approx(0.065, abs=0.001)
-    assert out["solved"]["block_options.length.below"] == pytest.approx(-0.065, abs=0.002)
-
-
-def test_a_target_the_sheet_overrides_is_measured_anyway():
-    """An explicit option wins over its target (said in the reply) and the gate still measures the target: a FAIL row
-    naming the override and the fix, never a silent pass."""
-    sheet = {"kind": "tee", "targets": {"body_length": "seat"}, "block_options": {"length": {"to": "hips"}}}
-    g, out = _solved(sheet)
-    r = {x["id"]: x for x in cc.target_rows(out["Bp"], g, "tee", BODY)}["target:body_length"]
-    assert r["status"] == "FAIL" and "overrides" in r.get("why", "") and r.get("fix")
-    lines = dt.reply_lines(cc.target_rows(out["Bp"], g, "tee", BODY), out["plan"], out)
-    assert any(ln.strip().startswith("OVERRIDE") for ln in lines)
 
 
 def test_a_short_sleeve_has_no_elbow_below_its_hem():

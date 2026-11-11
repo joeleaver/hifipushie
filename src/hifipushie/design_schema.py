@@ -446,27 +446,6 @@ def check_fs_options(design: str, opts, where: str = "design") -> None:
             raise ContractError(f"{where}: {design} option {k} is a number ({_fs_doc(k, e)}), got {v!r}")
 
 
-def fs_replacements(design: str, opts: dict, table_opts: dict | None = None) -> list:
-    """One line per option the garment sets: what it replaces (lesson 4: lengthBonus 0.05 replaced the default 0.25,
-    shirt t7 cut 17 cm in two probes)."""
-    T = fs_options(design) or {}
-    out = []
-    for k, v in (opts or {}).items():
-        e = T.get(k)
-        if not e:
-            continue
-        d = (table_opts or {}).get(k, e.get("default"))
-        src = "the design table's" if table_opts and k in table_opts else "FreeSewing's default"
-        if v == d:
-            continue
-        if e.get("type") == "pct" and isinstance(v, (int, float)) and isinstance(d, (int, float)):
-            rng = "" if e["min"] <= v <= e["max"] else f" (outside FreeSewing's {e['min']:g}..{e['max']:g})"
-            out.append(f"{k} {v:g} replaces {src} {d:g} (pct {d * 100:g}): total {v:g}{rng}")
-        elif v != d:
-            out.append(f"{k} {v!r} replaces {src} {d!r}")
-    return out
-
-
 # ---------------------------------------------------------------- the design sheet and the compiled garment
 
 
@@ -542,48 +521,3 @@ def check_pattern(pat, where: str = "garment", route: bool = True) -> None:
     elif fs_options(fr) is not None:
         check_fs_options(fr, pat.get("options"), f"{where} pattern.options")
 
-
-def check_garment(g: dict, where: str = "garment", design: bool = True) -> None:
-    """The garment as design_garment / alter_pattern will save it: garment keys, the alteration ops and (design=True,
-    design_garment) the sheet and the compiled pattern, route included. All checked before anything is saved."""
-    from . import cloth, garment_design as gd, pattern
-    for k in ("auto_true",):
-        if g.get(k) is not None and not isinstance(g[k], bool):
-            raise ContractError(f"{where} {k} is true / false, got {g[k]!r}")
-    check_truing_corners(g.get("truing_corners"), where)
-    if design:
-        if g.get("design"):
-            gd.validate(g["design"], where)
-            check_sheet(g["design"], where, route=True)
-        check_pattern(cloth.expanded(g).get("pattern"), where)
-    if g.get("alter") is not None:
-        pattern.check_alter(g["alter"], f"{where} alter")
-
-
-def design_notes(g: dict) -> list:
-    """Lines for design_garment's output: what each option the garment sets replaces."""
-    from . import cloth
-    try:
-        gx = cloth.expanded(g)
-    except Exception:
-        return []
-    pat = gx.get("pattern") or {}
-    fr = pat.get("from")
-    out = []
-    if fs_options(fr) is not None:
-        tbl = (cloth.designs().get(fr) or {}).get("options") or {}
-        opts = dict(pat.get("options") or {})
-        words = (cloth.designs().get(fr) or {}).get("words", {})
-        for k, v in pat.items():  # (design words: "length" -> lengthBonus ...)
-            if k in words and k != "ease" and isinstance(words[k], str):
-                opts[words[k]] = v
-        for k, v in (pat.get("ease") or {}).items():
-            if k in words.get("ease", {}):
-                opts[words["ease"][k]] = v
-        out += fs_replacements(fr, opts, tbl)
-    elif fr == "draft":
-        have = block_options(pat.get("block") or "bodice")
-        for k, v in (pat.get("block_options") or {}).items():
-            if k in have and have[k] is not None and v != have[k] and k != "length_bonus":
-                out.append(f"block {k} {v!r} replaces the default {have[k]!r}")
-    return out

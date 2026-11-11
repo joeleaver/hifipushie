@@ -115,17 +115,6 @@ def test_block_options_unknown_names_the_block_options_with_units():
     ds.check_block_options("trouser", {"waist_drop": 0.07, "dart_taper": 0.6}, "design")
 
 
-def test_ops_on_a_freesewing_draft_are_refused_with_the_reason():
-    """shirt t7: round_corner on a Simon draft saved with no error and did nothing."""
-    g = {"design": {"kind": "shirt", "from": "simon", "ops": [{"op": "round_corner", "piece": "front",
-                                                                 "corner": "hem"}]}}
-    msg = _err(ds.check_garment, g, "cloth 'shirt'")
-    assert "never runs them" in msg and "alter_pattern" in msg and '"ops": null' in msg
-    gd.validate(g["design"], "cloth 'shirt'")  # (every other save still takes a model saved before the contract)
-    msg = _err(ds.check_garment, {"design": {"kind": "shirt", "from": "simon", "block_options": {"x": 1}}}, "g")
-    assert "block options run only on a design drafted from a block" in msg
-
-
 def test_detail_params_are_checked():
     msg = _err(gd.validate, {"kind": "shirt", "from": "simon", "details": {"cuff": {"type": "barrel", "opts": {}}}})
     assert 'details.cuff: unknown key "opts"' in msg and '"options"' in msg
@@ -134,20 +123,6 @@ def test_detail_params_are_checked():
 def test_design_sheet_keys_name_the_valid_ones():
     msg = _err(gd.validate, {"kind": "tee", "colour": "#fff"})
     assert "colour" in msg and "kind" in msg and "auto_true" in msg
-
-
-def test_auto_true_and_truing_corners_are_design_and_garment_keys():
-    """shirt t7: the gate's fix text named "auto_true" and the garment refused it; truing_corners: true then crashed
-    alter_pattern ("'bool' object is not iterable")."""
-    sheet = dict(HOODIE, auto_true=True, truing_corners=["collar:standTip"])
-    gd.validate(sheet)
-    comp = gd.compile_sheet(sheet)
-    assert comp["auto_true"] is True and comp["truing_corners"] == ["collar:standTip"]
-    assert "auto_true" in cloth.GARMENT_KEYS
-    ds.check_garment({"design": dict(HOODIE), "auto_true": False}, "g")
-    msg = _err(ds.check_garment, {"design": dict(HOODIE), "truing_corners": True}, "g")
-    assert "list of seam-end labels" in msg and '"auto_true": true' in msg
-    assert "true / false" in _err(gd.validate, dict(HOODIE, auto_true="yes"))
 
 
 # ------------------------------------------------------------------ FreeSewing options
@@ -160,15 +135,6 @@ def test_freesewing_option_table_and_unknown_option():
     assert 'no option "lengthBonnus"' in msg and "lengthBonus (fraction, default 0.25 = FreeSewing pct 25" in msg
     assert "REPLACES the default" in msg
     assert "one of straight, baseball, slashed" in _err(ds.check_fs_options, "simon", {"hemStyle": "curved"})
-
-
-def test_an_option_that_replaces_a_default_says_so():
-    """shirt t7: lengthBonus 0.05 REPLACED the default 0.25 and two probes cut 17 cm."""
-    notes = ds.design_notes({"design": {"kind": "shirt", "from": "simon", "pattern": {"options": {"lengthBonus": 0.05}}}})
-    assert any(n.startswith("lengthBonus 0.05 replaces FreeSewing's default 0.25 (pct 25): total 0.05") for n in notes), notes
-    # the pattern word "length" is Simon's lengthBonus too
-    notes = ds.design_notes({"design": {"kind": "shirt", "from": "simon", "pattern": {"length": 0.3}}})
-    assert any(n.startswith("lengthBonus 0.3 replaces") for n in notes), notes
 
 
 # ------------------------------------------------------------------ alteration ops
@@ -222,24 +188,6 @@ def test_design_table_alterations_pass():
             pattern.check_alter([dict(op, amount=0.01)], f"{d} {nm}")
 
 
-@pytest.mark.parametrize("model,design", [("trial_tshirt_t5", True), ("trial_hoodie_t6", True),
-                                          ("trial_shirt_t7", False), ("gc_garrett", True), ("wf_simon", True)])
-def test_workspace_models_still_validate(model, design):
-    if not (WORKSPACE / model / "spec.json").exists():
-        pytest.skip(f"no {model} here")
-    old = store.HOME
-    store.HOME = WORKSPACE
-    try:
-        sp = store.load(model)
-    finally:
-        store.HOME = old
-    for gn, g in (sp.get("cloth") or {}).items():
-        if isinstance(g, dict) and not g.get("frozen"):
-            ds.check_garment(g, f"{model}:{gn}", design=design)
-            if g.get("design"):
-                gd.validate(g["design"], f"{model}:{gn}")
-
-
 # ------------------------------------------------------------------ a failed call saves nothing
 
 
@@ -252,37 +200,3 @@ def home(monkeypatch):
     store.save("t_contract", store.load("t"), "copy for test_design_contract")
     return WS
 
-
-def test_design_garment_failing_saves_nothing(home, monkeypatch):
-    v0 = len(store.history("t_contract"))
-    with pytest.raises(ValueError):
-        server.design_garment("t_contract", "skirt", design={"ops": [{"op": "sleeve", "ease": 0.1}]})
-    assert len(store.history("t_contract")) == v0
-    from hifipushie import cloth_workflow
-
-    def boom(*a, **k):
-        raise RuntimeError("stage crashed")
-    monkeypatch.setattr(cloth_workflow, "run", boom)
-    with pytest.raises(RuntimeError):
-        server.design_garment("t_contract", "skirt", design={"notes": "a change"})
-    assert len(store.history("t_contract")) == v0
-    assert "notes" not in store.load("t_contract")["cloth"]["skirt"]["design"]
-
-
-def test_alter_pattern_failing_after_the_draft_saves_nothing(home, monkeypatch):
-    """shirt t7: alter_pattern crashed AFTER saving (the truing read) and the next call applied its ops twice."""
-    v0 = len(store.history("t_contract"))
-    n0 = len(store.load("t_contract")["cloth"]["skirt"].get("alter") or [])
-    with pytest.raises(ValueError) as e:
-        server.alter_pattern("t_contract", "skirt", [{"op": "move", "piece": "front", "point": "sideHem"}])
-    assert 'missing "by"' in str(e.value)
-    from hifipushie import cloth_check as cc
-
-    def boom(*a, **k):
-        raise TypeError("'bool' object is not iterable")
-    monkeypatch.setattr(cc, "junctions", boom)
-    with pytest.raises(TypeError):
-        server.alter_pattern("t_contract", "skirt", [{"op": "move", "piece": "front", "point": "sideHem",
-                                                      "by": [0.0, -0.005], "source": "test"}])
-    assert len(store.history("t_contract")) == v0
-    assert len(store.load("t_contract")["cloth"]["skirt"].get("alter") or []) == n0
