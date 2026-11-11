@@ -94,5 +94,5 @@ def crossed_rows(b, row) -> tuple[list, dict]:
                         "limit none",
                         f"a seam joining {n} to {' / '.join(oth)} is sewn end to end the wrong way round (its two edges run "
                         f"opposite ways), so {n}:{a} and {n}:{c} are sewn together: draft_pattern (step 4) with that seam's "
-                        "edges running the same way, then chain_garment again"))
+                        "edges running the same way (its seams_crossed row names them, C403), then chain_garment again"))
     return rows, {n: [list(x) for x in v] for n, v in bad.items()}

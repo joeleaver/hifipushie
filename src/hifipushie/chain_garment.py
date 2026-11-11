@@ -110,7 +110,8 @@ class Build(BandStages, FallStages):
         m = float(self.net.link_cut[:, 1].sum()) and self.net.seam_mismatch()["max_pct"]
         if self.reads["seam_truing"]["max_mm"] > SEAM_LINK_MM:
             raise ChainRefused(f"a seam's two sides differ by {self.reads['seam_truing']['max_mm']} mm over one link: "
-                               "next: true the pattern in your draft (draft_pattern; pattern_check re-reads it); a chain can't be two lengths")
+                               "next: back to step 4: true the seam ends in your draft (draft_pattern; its seam_links row names "
+                               "the link); a chain can't be two lengths")
         self._mirror()
 
     # ---- helpers
