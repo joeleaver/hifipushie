@@ -328,7 +328,7 @@ def _alar(pts, fr, mmpx):
 
 def read(ph_img, lines: dict, md: dict, ph_box, P_photo=None, points: dict | None = None) -> dict | None:
     """Everything for one picture: the photo's contours (the outer one snapped to its edge), the model's, both sets of
-    key points and measures. md = likeness.model_sides entry (cam, passes, k, mesh, mmpx, side.lm = the model's
+    key points and measures. md = likeness_sides.model_sides entry (cam, passes, k, mesh, mmpx, side.lm = the model's
     landmarks projected); P_photo = the detector's points on the photo (heights of its own mouth / brow / chin)."""
     from . import humanfit
     P = lines.get("profile")

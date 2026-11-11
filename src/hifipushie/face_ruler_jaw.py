@@ -241,17 +241,18 @@ SIG_RAMP = 1.0              # mm: one profile's shift (validated: spikes/chinrea
 
 
 def _lit_model(head, view):
-    """The model's own render under the PICTURE's fitted light (blockin.lit_render: c0 + w.n, ambient occlusion, a soft
+    """The model's own render under the PICTURE's fitted light (blockin_look.lit_render: c0 + w.n, ambient occlusion, a soft
     cast shadow), in the view's picture pixels: (luminance 0..1, passes). The light is fitted once per view."""
     from PIL import Image
-    from . import blockin as bi, likeness
+    from . import likeness_render
+    from . import blockin_look
     cam, img = view["cam"], view["img"]
     w, h = cam["size"]
     if view.get("_light") is None:
-        im, lt, ps = bi.lit_render(head["mesh"], cam, img)
+        im, lt, ps = blockin_look.lit_render(head["mesh"], cam, img)
         view["_light"] = lt
     else:
-        im, _, ps = likeness.render(head["mesh"], cam, (0.0, 0.0, float(w), float(h)), px=int(max(w, h)), brows=False, passes=True,
+        im, _, ps = likeness_render.render(head["mesh"], cam, (0.0, 0.0, float(w), float(h)), px=int(max(w, h)), brows=False, passes=True,
                                     ao=True, shadow=8.0, light=view["_light"])
     if im.size != img.size:
         im = im.resize(img.size, Image.LANCZOS)

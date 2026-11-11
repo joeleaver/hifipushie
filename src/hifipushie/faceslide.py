@@ -813,7 +813,8 @@ def read_eyes(st: dict, cam: dict | None = None, px: int = 700) -> dict:
     rim's projected vertices."""
     from scipy.ndimage import map_coordinates
 
-    from . import humanfit, likeness
+    from . import humanfit
+    from . import likeness_render
     cam = cam or eye_camera(st)
     P = np.asarray(st["tpl"]["P"], float)
     L = np.asarray(st["L"], float)
@@ -829,7 +830,7 @@ def read_eyes(st: dict, cam: dict | None = None, px: int = 700) -> dict:
     top, bot = float(uv[near, 1].min()), float(uv[near, 1].max())
     out = {"canthal_tilt": float(np.degrees(np.arctan2(-d[1], abs(d[0])))), "open": (bot - top) / mm_px}
     box = (c[0] - 16 * mm_px, c[1] - 16 * mm_px, c[0] + 16 * mm_px, c[1] + 8 * mm_px)
-    im, k = likeness.render(likeness.model_mesh_from_state(st), cam, box, px=px, brows=False)
+    im, k = likeness_render.render(likeness_render.model_mesh_from_state(st), cam, box, px=px, brows=False)
     a = np.asarray(im.convert("RGB"), float) / 255.0
     Y = 0.2126 * a[..., 0] + 0.7152 * a[..., 1] + 0.0722 * a[..., 2]
     hs = np.arange(0.0, 14.0, 0.1)
@@ -883,7 +884,8 @@ def nose_widths(img, P, mmpx: float) -> dict:
 def read_mouth(st: dict, cam: dict | None = None, px: int = 500) -> dict:
     """The lips read from a clay render's depth pass through a front camera at the mouth: {"upper_proj", "lower_proj":
     mm the upper / lower vermilion's middle stands in front of the subnasale (lm 33), sampled over 1.5 mm}."""
-    from . import humanfit, likeness
+    from . import humanfit
+    from . import likeness_render
     L = np.asarray(st["L"], float)
     c3 = 0.5 * (L[51] + L[57])
     cam = cam or {"r": [0.0, 0.0, 0.0], "t": [0.0, 0.0, 0.5], "f": 6000.0, "size": [2000, 2000],
@@ -891,7 +893,7 @@ def read_mouth(st: dict, cam: dict | None = None, px: int = 500) -> dict:
     mm_px = 0.001 * cam["f"] / float(cam["t"][2])
     c = humanfit.project(cam, c3[None])[0]
     box = (c[0] - 30 * mm_px, c[1] - 30 * mm_px, c[0] + 30 * mm_px, c[1] + 20 * mm_px)
-    _, k, ps = likeness.render(likeness.model_mesh_from_state(st), cam, box, px=px, brows=False, passes=True)
+    _, k, ps = likeness_render.render(likeness_render.model_mesh_from_state(st), cam, box, px=px, brows=False, passes=True)
     zb = ps["zb"]
 
     def z_at(p):

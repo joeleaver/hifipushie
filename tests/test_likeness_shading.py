@@ -1,8 +1,8 @@
-"""The fast renderer's shading passes (likeness._DepthMap shadows, ambient_occlusion): a floor with a square tile
+"""The fast renderer's shading passes (likeness_render._DepthMap shadows, ambient_occlusion): a floor with a square tile
 floating 20 mm over it. Shadows must fall where the geometry says; AO must darken under the tile."""
 import numpy as np
 
-from hifipushie import likeness as lk
+from hifipushie import likeness_render
 
 
 def _grid(n, half, z):
@@ -29,7 +29,7 @@ def test_shadow_falls_where_the_geometry_says():
     n = np.tile([0, 0, 1.0], (nf, 1))
     for ang in (0.0, 30.0):
         d = np.array([np.sin(np.radians(ang)), 0, np.cos(np.radians(ang))])
-        lit = lk._DepthMap(V, F, d).lit(floor, n)
+        lit = likeness_render._DepthMap(V, F, d).lit(floor, n)
         # exact: the ray from p toward the light meets the tile's plane at p + 0.02 * d / d_z
         hit = floor[:, :2] + 0.02 * d[:2] / d[2]
         shadowed = (np.abs(hit) < 0.01).all(1)
@@ -40,11 +40,11 @@ def test_shadow_falls_where_the_geometry_says():
 
 def test_soft_light_disc_directions():
     d = np.array([0.2, -0.5, 0.8])
-    ds = lk._light_disc(d, 10.0)
-    assert len(ds) == lk.SOFT_N
+    ds = likeness_render._light_disc(d, 10.0)
+    assert len(ds) == likeness_render.SOFT_N
     cos = np.array(ds) @ (d / np.linalg.norm(d))
     assert (cos > np.cos(np.radians(10.5))).all() and cos.min() < np.cos(np.radians(5))
-    assert len(lk._light_disc(d, 0.0)) == 1
+    assert len(likeness_render._light_disc(d, 0.0)) == 1
 
 
 def test_ambient_occlusion_matches_the_open_sky():
@@ -54,7 +54,7 @@ def test_ambient_occlusion_matches_the_open_sky():
     Vt, Ft = _grid(13, 0.03, 0.01)
     V, F, nf = np.r_[Vf, Vt], np.r_[Ff, Ft + len(Vf)], len(Vf)
     mesh = {"V": V, "F": F, "eyes": []}
-    ao = lk.ambient_occlusion(mesh, n_dirs=96)
+    ao = likeness_render.ambient_occlusion(mesh, n_dirs=96)
     floor = V[:nf]
     under = (np.abs(floor[:, :2]) < 0.004).all(1)
     open_ = (np.abs(floor[:, :2]) > 0.2).any(1)

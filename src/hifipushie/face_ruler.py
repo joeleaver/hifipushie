@@ -123,11 +123,11 @@ def camera(kind: str = "front", centre=None, px: int = 880, half: float = 0.15, 
 
 
 def _cap_colours(head):
-    from . import likeness
+    from . import likeness_render
     W, L, gr = head["V"], head["L"], head["gr"]
     zcut = 0.5 * (L[1, 2] + L[15, 2])
     w = (~gr["hockey_mask"]) * (~gr["ears"]) * np.clip((W[:, 2] - zcut) / 0.01, 0, 1)
-    C = (1 - w)[:, None] * likeness.SKIN + w[:, None] * np.array([62.0, 46.0, 36.0])
+    C = (1 - w)[:, None] * likeness_render.SKIN + w[:, None] * np.array([62.0, 46.0, 36.0])
     lip = gr["upper_lip"] | gr["lower_lip"]
     C[lip] = C[lip] * np.array([0.98, 0.78, 0.76])
     return C
@@ -142,10 +142,10 @@ def _mesh(head, cap=True):
 
 def clay(head: dict, cam: dict, passes: bool = False, light=None):
     """The head's clay picture through cam (the camera's whole frame): hair cap, GNM's eyes, drawn brows, lip tint."""
-    from . import likeness
+    from . import likeness_render
     w, h = cam["size"]
     mesh = head["mesh"] if "mesh" in head else _mesh(head)
-    out = likeness.render(mesh, cam, (0, 0, w, h), px=max(w, h), brows="mesh" not in head, light=light, passes=passes)
+    out = likeness_render.render(mesh, cam, (0, 0, w, h), px=max(w, h), brows="mesh" not in head, light=light, passes=passes)
     return (out[0], out[2]) if passes else out[0]
 
 
@@ -175,12 +175,12 @@ def _proj_jac(cam, head, idx, w=None):
 
 
 def _clay_crop(head, view):
-    from . import likeness
+    from . import likeness_render
     cam, s, o = view["cam"], float(view["scale"]), view.get("origin", (0.0, 0.0))
     w, h = view["img"].size
     box = (o[0], o[1], o[0] + w / s, o[1] + h / s)
     mesh = head["mesh"] if "mesh" in head else _mesh(head)
-    out = likeness.render(mesh, cam, box, px=max(w, h), brows="mesh" not in head, passes=True)
+    out = likeness_render.render(mesh, cam, box, px=max(w, h), brows="mesh" not in head, passes=True)
     return out[0], out[2]
 
 

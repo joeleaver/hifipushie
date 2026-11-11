@@ -101,7 +101,7 @@ changes no shape: a new model (out) whose references carry each picture's fitted
 view with a detector, |yaw| < 70; a profile's few clicks can't separate expression from shape). Reply: per view chi2
 before -> after on the detector points, |e| and the largest comps, then the table delta and a sheet before (neutral)
 | after (with the expression). Stored in human_refs.json "expressions" (one {GNM expression comp: value} per view,
-{} = neutral); blockin.view_base(base, refs, vi) gives the head as that picture shows it.
+{} = neutral); blockin_expression.view_base(base, refs, vi) gives the head as that picture shows it.
 
 ### `block_in_solve`
 ONE JOINT STEP: face_ruler's solve over every reference view (skin outlines + the one-sided skin | hair edge, irises, limbus, lid margins, lip borders, MediaPipe's mesh for eye contours / mouth corners / lip seam and border; GNM's prior on the whole identity; cameras under a prior) applied whole as a block-in step, the solve's cameras kept. Use it FIRST from block_in_start's head, 3-4 calls until |dc| < 2, instead of closing measures one at a time. cameras: "free" | "trust" (a third of the freedom) | "refit" (cameras fitted on ANOTHER head: laid on this one first; first call only): a PRIOR on each camera's whole move since the start (shift, scale, roll, yaw, pitch, distance), never a clip; a view with a known lens (lens_mm / EXIF) keeps its distance to +-7 %. detector: "mesh" (default: MediaPipe's mesh as absolute reads of the features it is good at) | "anchors" (its 68 landmarks as differential anchors, as before). dense: "off" (default) | "on" (our dense landmark network: a coarse read on real faces). hair_edge: "on" (default) | "off". anchors: "differential" | "absolute" | "none". chin_points: "auto" (default: the detector's chin points are left out when the set has a side view, 60 deg or more) | "on" | "off". parse: "auto" (outlines from the face parser where the plain-background reader finds too few) | "on" | "off". Nothing is forced: a component that would pass 3 sd is held at the bound (AT THE BOUND in the reply), no read is down-weighted for it. The reply lists OUTLINE READS per view (NO OUTLINE warns), the CAMERA lines, DISAGREE (read groups left past 2 sigma), what MOVED WITH NO READ, what moved far on a weak read and what is unread (treat those as inferred), a view whose stated kind disagrees with its fitted camera, and a DAMPED step. hold: "none" (default) | "auto". expression: "none" (default) | "view" | "shared" (the pictures' expression as a nuisance; did not validate). It does not see the surface inside the silhouette (cheeks), nor the chin's own width and the jaw's lower edge from front / shallow views. Parameters: name, out, share, seen, save, cameras, anchors, chin_points, parse, hold, expression, size, neck, dense, detector, hair_edge. See section 3b.
@@ -112,7 +112,7 @@ mean on that body) and leaves shape free: `size="held"`, the default; the reply'
 `size="iris"`: the front picture's iris against GNM's mean limbus (GNM's eyeball is absolute: 6.0 +- 0.44 mm) pulls
 it weakly (weight 0.34 against GNM's +- 5 % spread of size: combined +- 4 %), where the iris is at least 12 px in
 radius and the head has GNM's own eyeball; `size="iris_pin"`: the iris' size whole (an average iris assumed; the
-chain see-saws a little). `blockin.iris_size(name)` gives the check without solving ("an average iris says the head
+chain see-saws a little). `blockin_steps.iris_size(name)` gives the check without solving ("an average iris says the head
 is x % against its size now"). Do not compare two solved heads' millimetres without it: size first.
 NECK (native heads): the neck's girth is not read directly by any picture, and GNM's identity moves it
 36 mm per sd (its female class mean is 363 mm, 11 % over ANSUR II's 330 +- 18; its male 385 against 398 +- 25). The
@@ -126,7 +126,7 @@ mm ... no direct read (INFERRED)". A body-carried head has no neck term (its nec
 `block_in_step {"neck_mm": mm}` (the least identity change, size and the face's measures held).
 HEAD SIZE on a native head: GNM's own metres x `base.head.size`, by default the stature's allometry (ANSUR: head
 height goes as stature ^ 0.29 women / 0.24 men; 1.000 at 1.627 / 1.755 m); the solve's size hold keeps the IDENTITY's
-size at the start head's on top of that, and the reply says so ("HEAD SIZE: ..."). `blockin.iris_size` (the iris as a
+size at the start head's on top of that, and the reply says so ("HEAD SIZE: ..."). `blockin_steps.iris_size` (the iris as a
 ruler) reads in real millimetres there.
 CAMERAS OF ANOTHER HEAD: the solve first measures whether the cameras belong to this head (its landmarks through them
 against the pictures' stored points). A head switched to native by an edit is refused with the step that carries

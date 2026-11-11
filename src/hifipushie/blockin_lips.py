@@ -13,7 +13,7 @@ overshot), so the closing is solved WITH the picture's border:
   - the vermilion border traced on the picture (lipborder.read: MediaPipe's outer lip contour refined to the a* edge,
     the corners left to the detector) vs GNM's border loops (the upper_lip / lower_lip groups' outer edges) through the
     front camera, point to polyline, sigma SIG_BORDER mm. The picture's fitted expression (human_refs "expressions",
-    blockin.view_expression) is added for this term: the picture's smile is not the neutral's;
+    blockin_expression.view_expression) is added for this term: the picture's smile is not the neutral's;
   - the neutral's lips in contact: the inner-lip landmark pairs (61-67, 62-66, 63-65) at 0 mm, sigma SIG_GAP;
   - the 68 landmarks off the mouth held at SIG_HOLD mm, the mouth corners at SIG_CORNER;
   - priors |dc|^2 + |e|^2 (both unit variance).
@@ -199,8 +199,9 @@ def _poly_dist(Q, poly):
 
 def photo_evidence(img, view: dict) -> dict:
     """The front picture's traced borders (px) and the scale, from MediaPipe + lipborder.read."""
-    from . import blockin as bi, lipborder
-    P = np.asarray(bi.detect_view(img, view), float)
+    from . import lipborder
+    from . import blockin_clay
+    P = np.asarray(blockin_clay.detect_view(img, view), float)
     r = lipborder.read(img, P)
     n = len(r["upper"])
     u = np.linspace(0, 1, n)
@@ -231,14 +232,15 @@ def lip_read(name: str) -> dict:
     borders' miss (rms, and mean offset + = the model's outside the picture's), the seam's miss, the Cupid's bow (mm,
     both), the neutral's contact gaps (max / median / min mm) and its inner rolls' smallest gap (- = crossing)."""
     from PIL import Image
-    from . import blockin as bi, onemesh, store
-    rj = bi._refs(name)
-    vi = bi._front(rj)
+    from . import onemesh, store
+    from . import blockin_clay, blockin_expression, blockin_models
+    rj = blockin_models._refs(name)
+    vi = blockin_clay._front(rj)
     v = rj["views"][vi]
     ev = photo_evidence(Image.open(v["image"]).convert("RGB"), v)
     base = store.load(name)["base"]
     hn = onemesh.head_template(base)
-    hv = onemesh.head_template(bi.view_base(base, rj, vi))
+    hv = onemesh.head_template(blockin_expression.view_base(base, rj, vi))
     to_world, _ = head_to_world(base, hn)
     q = lip_reads(hv, ev, to_world, rj["cameras"][vi])
     qn = lip_reads(hn)
@@ -412,18 +414,19 @@ def solve(base: dict, ev: dict, cam: dict, view_ex: dict | None = None, iters: i
 
 
 def lips_step(name: str, out: str | None = None, seen: str = "", iters: int = 6, log=print) -> dict:
-    """The block-in step: solve on the front picture, then write it as a new model (blockin.step with the identity /
+    """The block-in step: solve on the front picture, then write it as a new model (blockin_steps.step with the identity /
     expression set, lip_seal and mouth_gap cleared)."""
     from PIL import Image
-    from . import blockin as bi, store
-    rj = bi._refs(name)
-    vi = bi._front(rj)
+    from . import store
+    from . import blockin_clay, blockin_expression, blockin_models, blockin_steps
+    rj = blockin_models._refs(name)
+    vi = blockin_clay._front(rj)
     v = rj["views"][vi]
     ev = photo_evidence(Image.open(v["image"]).convert("RGB"), v)
     base = store.load(name)["base"]
-    s = solve(base, ev, rj["cameras"][vi], view_ex=bi.view_expression(rj, vi), iters=iters, log=log)
+    s = solve(base, ev, rj["cameras"][vi], view_ex=blockin_expression.view_expression(rj, vi), iters=iters, log=log)
     a, b = s["read0"], s["read"]
-    rep = bi.step(name, {}, out=out, seen=seen or "lip borders vs the picture (lips step)",
+    rep = blockin_steps.step(name, {}, out=out, seen=seen or "lip borders vs the picture (lips step)",
                   why=(f"lips step (identity + GNM lower-face expression closing the neutral; no seal): border miss "
                        f"{a['miss_upper']:.2f} / {a['miss_lower']:.2f} -> {b['miss_upper']:.2f} / {b['miss_lower']:.2f} mm, "
                        f"bow {a['bow']:.2f} -> {b['bow']:.2f} mm; |dc| {s['dc']:.2f}, |e| {s['e']:.2f}"),

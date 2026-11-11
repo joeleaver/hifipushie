@@ -83,8 +83,8 @@ def test_size_row_is_the_faces_scale():
 
 @need_ref
 def test_chin_points_are_left_out_when_the_set_has_a_side_view():
-    from hifipushie import blockin as bi
-    rj = bi._refs(REF)
+    from hifipushie import blockin_models
+    rj = blockin_models._refs(REF)
     assert any(abs(face_ruler_camera.view_yaw(c)) >= face_ruler_camera.SIDE_MIN for c in rj["cameras"])          # Tess's set has one (67 deg)
     head, views, notes = face_ruler_compare.reference_views(REF, lids=False, lips=False, parse=False)
     assert all(v["chin"]["chin_lm"] == "none" for v in views) and any(n.startswith("CHIN:") for n in notes)
@@ -103,11 +103,11 @@ def test_chin_points_are_left_out_when_the_set_has_a_side_view():
 
 @need_ref
 def test_a_set_without_a_side_view_keeps_the_chin_points(monkeypatch):
-    from hifipushie import blockin as bi
-    rj = copy.deepcopy(bi._refs(REF))
+    from hifipushie import blockin_models
+    rj = copy.deepcopy(blockin_models._refs(REF))
     keep = [i for i, c in enumerate(rj["cameras"]) if abs(face_ruler_camera.view_yaw(c)) < face_ruler_camera.SIDE_MIN]
     rj["views"], rj["cameras"] = [rj["views"][i] for i in keep], [rj["cameras"][i] for i in keep]
-    monkeypatch.setattr(bi, "_refs", lambda name: rj)
+    monkeypatch.setattr(blockin_models, "_refs", lambda name: rj)
     head, views, notes = face_ruler_compare.reference_views(REF, lids=False, lips=False, parse=False)
     assert all(v["chin"]["chin_lm"] == "xy" for v in views) and not any(n.startswith("CHIN:") for n in notes)
     names = {ob["name"] for ob in views[0]["extra"](head, views[0]) if ob["type"] == "landmark"}

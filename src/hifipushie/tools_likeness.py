@@ -14,13 +14,13 @@ def likeness(name: str, targets: bool = False, top: int = 8):
     """The likeness checklist (~50 facial features) on a one-mesh human vs its fitted reference pictures: ranked
     misses, coverage, focus panels. targets=True measures the references alone and stores the target sheet and stage
     plan. top = how many panels. Measures only. Details: guide(topic="likeness")."""
-    from . import likeness as lk
+    from . import likeness_compare, likeness_panels, likeness_stages
     if targets:
         from . import head_route
-        sh = lk.measure_reference(name)
-        return lk.sheet_text(sh) + ("" if head_route.is_block_in(name) else
-                                    "\n\nstage plan (fit_likeness, big to small):\n" + lk.stage_plan(name))
-    txt, out, _ = lk.report(name, top=top)
+        sh = likeness_compare.measure_reference(name)
+        return likeness_compare.sheet_text(sh) + ("" if head_route.is_block_in(name) else
+                                    "\n\nstage plan (fit_likeness, big to small):\n" + likeness_stages.stage_plan(name))
+    txt, out, _ = likeness_panels.report(name, top=top)
     return [_png(PILImage.open(out)), txt + f"\nfocus sheet: {out}"]
 
 
@@ -29,15 +29,16 @@ def fit_likeness(name: str, stage: str, force: bool = False, save: bool = True):
     """ONE stage of the likeness fit (proportions, widths, eyes, brows, nose, mouth, chin_jaw, ears, profile): misses
     solved minimal-change, earlier stages pinned, integrity-guarded. Run likeness(targets=True) first; approve each
     stage's panels. force, save. Details: guide(topic="fit_likeness")."""
-    from . import head_route, likeness as lk
+    from . import head_route
+    from . import likeness_fit, likeness_notes, likeness_panels
     head_route.refuse_off_route(name, "fit_likeness")
     pn = str(store.HOME / "human_renders" / f"lk_{name}_stage_{stage}.png")
     if stage == "profile":   # the nose and chin on a turned view's contours alone (likeness_points 'profile' / 'nose')
-        base, cmp, log = lk.fit_profile(name, force=force, save=save)
+        base, cmp, log = likeness_fit.fit_profile(name, force=force, save=save)
         rows = [r for r in cmp["rows"] if r.get("kind") == "contour" and r["score"] >= 0]
-        lk.focus_sheet(cmp, pn, rows=rows, cols=3)
-        return [_png(PILImage.open(pn)), "\n".join(log) + "\n" + lk.table_text({**cmp, "rows": rows}) + f"\npanels: {pn}"]
-    rep = lk.fit_stage(name, stage, force=force, save=save, panels=pn)
+        likeness_panels.focus_sheet(cmp, pn, rows=rows, cols=3)
+        return [_png(PILImage.open(pn)), "\n".join(log) + "\n" + likeness_notes.table_text({**cmp, "rows": rows}) + f"\npanels: {pn}"]
+    rep = likeness_fit.fit_stage(name, stage, force=force, save=save, panels=pn)
     out = [rep["text"] + f"\npanels: {pn}"]
     if Path(pn).exists():
         out.insert(0, _png(PILImage.open(pn)))

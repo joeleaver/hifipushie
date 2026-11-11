@@ -58,11 +58,30 @@ def test_mm_moves_move_their_measure_alone():
 
 def test_step_reply_carries_the_manual():
     """block_in_step's report text has the manual's entries for its `seen` (no model needed: step_text on a report)."""
-    from hifipushie import blockin as bi
+    from hifipushie import blockin_steps
     rep = {"entry": {"to": "x", "round": 1, "from": "w", "c_norm": 1.0, "read": {}, "coupled": [], "passes": {},
                      "camera_moves": []},
            "c0": 1.0, "big": [], "delta": [], "before": {}, "manual": gm.suggest("the muzzle stands forward", top=1)}
-    assert "pc:upper_lip_region0" in bi.step_text(rep)
+    assert "pc:upper_lip_region0" in blockin_steps.step_text(rep)
+
+
+def test_ruler_takes_model_names(monkeypatch):
+    """gnm_controls(ruler="a,b") gives ruler two model NAMES, and ruler loads them. It read `store` without importing
+    it, so every ruler call by name was a NameError (found 2026-11-11 by the split's undefined-name check)."""
+    import numpy as np
+    from hifipushie import blockin as bi, store
+    rng = np.random.default_rng(4)
+    ids = {"m_a": rng.normal(0, 1, 170), "m_b": rng.normal(0, 1, 170)}
+
+    def load(name):
+        spec = {"base": {"head": {}}}
+        bi.set_identity(spec, ids[name])
+        return spec
+    monkeypatch.setattr(store, "load", load)
+    by_name = bi.ruler("m_a", "m_b")
+    by_vec = bi.ruler(np.round(ids["m_a"], 5), np.round(ids["m_b"], 5))  # (set_identity keeps 5 decimals)
+    assert [r["measure"] for r in by_name] == [r["measure"] for r in by_vec]
+    assert all(abs(x["gap"] - y["gap"]) < 1e-9 for x, y in zip(by_name, by_vec))
 
 
 def test_ruler_reads_the_gaps_and_its_moves_close_them():

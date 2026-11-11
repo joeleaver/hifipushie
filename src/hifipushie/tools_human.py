@@ -197,12 +197,12 @@ def human_reference(name: str, views: list[dict] | str, fit: bool = True, free: 
 def _blockin_sheet(name: str, save: str | None, views: list | None = None, table: bool = True,
                    before: str | None = None) -> list:
     """The block-in look as tool output: [the sheet, the target table]."""
-    from . import blockin as bi
+    from . import blockin_look, blockin_table
     out = save or str(store.HOME / "human_renders" / f"blockin_{name}.png")
-    r = bi.look(name, out, views=views, before=before)
+    r = blockin_look.look(name, out, views=views, before=before)
     text = f"sheet: {r['out']} (" + ", ".join(f"view {v['view']} eye shift {v['shift_px']} px" for v in r["views"]) + ")"
     if table:
-        text += "\n" + bi.table_text(bi.table(name))
+        text += "\n" + blockin_table.table_text(blockin_table.table(name))
     return [_png(PILImage.open(r["out"])), text]
 
 
@@ -217,8 +217,8 @@ def block_in_start(name: str, refs: str | list[dict], sex: str | float | None = 
     "yaw": deg, "lens_mm": mm}, ...] (check_references first) or a one-mesh human with fitted references; sex, age,
     body (base.body keys; nothing reads a body from pictures), ethnicity (a GNM class or a blend {class: weight};
     default the pooled mean), cameras, carry, replace, save, expression. Details: guide(topic="block_in_start")."""
-    from . import blockin as bi
-    e = bi.start(name, _spec_arg(refs) if isinstance(refs, str) and refs.strip().startswith("[") else refs, sex=sex,
+    from . import blockin_models
+    e = blockin_models.start(name, _spec_arg(refs) if isinstance(refs, str) and refs.strip().startswith("[") else refs, sex=sex,
                  age=age, body=body, ethnicity=ethnicity, cameras=cameras, replace=replace,
                  expression=expression, carry=carry)
     s = e["start"]
@@ -249,10 +249,10 @@ def block_in_look(name: str, views: list[int] | None = None, table: bool = True,
     light + its own rows. judge=True: THE JUDGING SHEET, photo | blend | the pictures projected as the head's skin |
     clay: clay alone reads younger and softer, judge here every few rounds. read / keep log your ZOOM OUT verdict on the
     step that made name. views, table, save, before. Details: guide(topic="block_in_look")."""
-    from . import blockin as bi
+    from . import blockin_focus, blockin_lid_measure, blockin_table
     note = ""
     if read or keep is not None:
-        bi.note(name, read, keep)
+        blockin_focus.note(name, read, keep)
         note = f"logged on the step that made {name}: zoom-out read" + ("" if keep is None else f", kept={keep}") + "\n"
     if judge:
         from . import blockin_judge as bj
@@ -261,12 +261,12 @@ def block_in_look(name: str, views: list[int] | None = None, table: bool = True,
                 "turned head, the geometry is wrong there"]
     if focus:
         out = save or str(store.HOME / "human_renders" / f"blockin_{name}_{focus}.png")
-        r = bi.focus(name, focus, out, views=views, before=before)
+        r = blockin_focus.focus(name, focus, out, views=views, before=before)
         text = note + f"focus sheet {focus}: {r['out']} (" + "; ".join(f"view {v['view']}: {v['registered']}, shift {v['shift_px']} px" for v in r["views"]) + ")"
         if table:
-            text += "\n" + bi.table_text(bi.feature_table(name, focus))
+            text += "\n" + blockin_table.table_text(blockin_table.feature_table(name, focus))
             if focus == "eyes":
-                text += "\n" + bi.lid_text(bi.lid_read(name))
+                text += "\n" + blockin_lid_measure.lid_text(blockin_lid_measure.lid_read(name))
         return [_png(PILImage.open(r["out"])), text]
     out = _blockin_sheet(name, save, views=views, table=table, before=before)
     out[1] = note + out[1]
@@ -281,13 +281,14 @@ def block_in_step(name: str, moves: dict, out: str | None = None, seen: str = ""
     "chin_height": 0.5, "eye_spacing!": 0.3, "sculpt:<zone>": 1}); seen / why logged; feature = the feature zoomed in
     on (its before | after crops come back too); cameras; look; save. Refused before the first block_in_solve
     (hand_first=True overrides). Details: guide(topic="block_in_step")."""
-    from . import blockin as bi, head_route
+    from . import head_route
+    from . import blockin_focus, blockin_models, blockin_steps, blockin_table
     mv = _spec_arg(moves) if isinstance(moves, str) else dict(moves or {})
     if "attach" in mv:   # (nativedefault) the head switched to GNM-native, its cameras carried: a step of its own
         if mv != {"attach": "native"}:
             raise ValueError('block_in_step: {"attach": "native"} is a step of its own (the head switched to GNM-native, the '
                              "cameras carried)")
-        r = bi.native_step(name, out=out, seen=seen)
+        r = blockin_models.native_step(name, out=out, seen=seen)
         to = r["entry"]["to"]
         text = (f"{to} (from {name}): the head is GNM-NATIVE now (true base, GNM's own size, the body fitted). CAMERAS CARRIED "
                 f"onto its new size and place (x{r['scale']:.3f}, the face moved {1000 * r['shift']:.0f} mm): the next block_in_solve "
@@ -299,8 +300,8 @@ def block_in_step(name: str, moves: dict, out: str | None = None, seen: str = ""
         sh = _blockin_sheet(to, save, before=None)
         return [sh[0], text + "\n" + sh[1]]
     head_route.require_solved(name, hand_first)
-    rep = bi.step(name, mv, out=out, seen=seen, why=why, cameras=cameras, feature=feature)
-    text = bi.step_text(rep)
+    rep = blockin_steps.step(name, mv, out=out, seen=seen, why=why, cameras=cameras, feature=feature)
+    text = blockin_steps.step_text(rep)
     if not look:
         return text
     to = rep["entry"]["to"]
@@ -308,9 +309,9 @@ def block_in_step(name: str, moves: dict, out: str | None = None, seen: str = ""
     if feature:
         fo = str(Path(save).with_name(Path(save).stem + f"_{feature}.png")) if save else \
             str(store.HOME / "human_renders" / f"blockin_{to}_{feature}.png")
-        r = bi.focus(to, feature, fo, before=name)
+        r = blockin_focus.focus(to, feature, fo, before=name)
         res.append(_png(PILImage.open(r["out"])))
-        text += f"\nZOOM IN sheet ({feature}, before | after): {r['out']}\n" + bi.table_text(bi.feature_table(to, feature))
+        text += f"\nZOOM IN sheet ({feature}, before | after): {r['out']}\n" + blockin_table.table_text(blockin_table.feature_table(to, feature))
     sh = _blockin_sheet(to, save, before=name)
     return [*res, sh[0], text + "\nZOOM OUT (the whole face):\n" + sh[1]]
 
@@ -324,9 +325,9 @@ def block_in_expression(name: str, out: str | None = None, views: list[int] | No
     picture as it smiles. A new model (out), shape unchanged; views (default: detector views), clear=True removes them;
     eyes=True adds eye-region comps (a squinting picture; they can fight the lid pose).
     Fit once the big forms are in; refit after large identity moves. Details: guide(topic="block_in_expression")."""
-    from . import blockin as bi
-    rep = bi.expression_step(name, out=out, views=views, clear=clear, eyes=eyes, seen=seen, why=why)
-    text = bi.expression_text(rep)
+    from . import blockin_steps
+    rep = blockin_steps.expression_step(name, out=out, views=views, clear=clear, eyes=eyes, seen=seen, why=why)
+    text = blockin_steps.expression_text(rep)
     if not look:
         return text
     to = rep["entry"]["to"]
@@ -393,8 +394,9 @@ def lid_read(name: str, match: bool | str = False, out: str | None = None, seen:
     lid; fold="none": the opening only), with the eyeball guard; nothing painted. expression=True: GNM's eye-region expression too. out, save (focus=eyes
     sheet), seen. Details: guide(topic="lid_read")."""
     from . import blockin as bi
+    from . import blockin_focus, blockin_lid_measure, blockin_steps
     if not match:
-        return bi.lid_text(bi.lid_read(name))
+        return blockin_lid_measure.lid_text(blockin_lid_measure.lid_read(name))
     if match == "pose":
         raise ValueError('lid_read: match="pose" is retired; match=True is the eye step')
     from . import blockin_eyes as be
@@ -402,9 +404,9 @@ def lid_read(name: str, match: bool | str = False, out: str | None = None, seen:
     rep = be.eye_step(name, out=out, seen=seen, log=lines.append, expression=expression, donor=donor, fold=fold)
     to = rep["entry"]["to"]
     path = save or str(store.HOME / "human_renders" / f"blockin_{to}_eyes.png")
-    bi.focus(to, "eyes", path, before=name)
+    blockin_focus.focus(to, "eyes", path, before=name)
     e = rep["eyes"]
-    txt = (bi.step_text(rep) + "\n" + "\n".join(lines) + "\n" + be.text(e) + "\n" + bi.lid_text(bi.lid_read(to))
+    txt = (blockin_steps.step_text(rep) + "\n" + "\n".join(lines) + "\n" + be.text(e) + "\n" + blockin_lid_measure.lid_text(blockin_lid_measure.lid_read(to))
            + f"\nfocus=eyes sheet (before | after, raking light): {path}")
     c0_, c1_ = bi.identity(store.load(name)), bi.identity(store.load(to))   # NOTHING FORCED is the solve's rule, not yet
     big = int((abs(c1_) > 3.0).sum())                                       # this step's: say it when the step breaks it
@@ -443,7 +445,7 @@ def block_in_solve(name: str, out: str | None = None, share: float = 1.0, seen: 
     block_in_start's head, 3-4 calls until |dc| < 2. The reply says what MOVED WITH NO READ. cameras, size, neck
     (default "prior": ANSUR's girth), dense, detector, hair_edge, hold, expression, chin_points, anchors, parse, out,
     share, seen, save. A known lens (lens_mm / EXIF) keeps its distance. Details: guide(topic="block_in_solve")."""
-    from . import blockin as bi
+    from . import blockin_steps
     if parse not in ("auto", "on", "off"):
         raise ValueError('block_in_solve: parse = "auto" | "on" | "off"')
     if hold not in ("default", "auto", "none") or expression not in ("default", "view", "shared", "lower", "none"):
@@ -452,10 +454,10 @@ def block_in_solve(name: str, out: str | None = None, share: float = 1.0, seen: 
         raise ValueError('block_in_solve: chin_points = "auto" | "on" | "off"')
     if dense not in ("default", "on", "off") or detector not in ("default", "mesh", "anchors") or hair_edge not in ("default", "on", "off"):
         raise ValueError('block_in_solve: dense = "on" | "off"; detector = "mesh" | "anchors"; hair_edge = "on" | "off" (each also "default")')
-    rep = bi.solve_step(name, out=out, share=share, seen=seen, cameras=cameras, anchors=anchors,
+    rep = blockin_steps.solve_step(name, out=out, share=share, seen=seen, cameras=cameras, anchors=anchors,
                         parse={"auto": "auto", "on": True, "off": False}[parse],
-                        hold={"default": bi.SOLVE_HOLD, "auto": "auto", "none": None}[hold],
-                        expression={"default": bi.SOLVE_EXPRESSION, "view": "view", "shared": "shared", "lower": "lower", "none": False}[expression],
+                        hold={"default": blockin_steps.SOLVE_HOLD, "auto": "auto", "none": None}[hold],
+                        expression={"default": blockin_steps.SOLVE_EXPRESSION, "view": "view", "shared": "shared", "lower": "lower", "none": False}[expression],
                         chin={"chin_lm": {"auto": "auto", "on": "xy", "off": "none"}[chin_points],
                               "size": {"held": True, "free": False, "iris": "iris", "iris_pin": "iris_pin"}[size],
                               "neck": {"prior": True, "held": "held", "free": False}[neck] if isinstance(neck, str) else float(neck)},
@@ -501,7 +503,7 @@ def block_in_solve(name: str, out: str | None = None, share: float = 1.0, seen: 
     return [sh[0], warn + f"joint solve: {so['n']} reads; |dc| {so['dc']:.2f}, |c| {so['c']:.2f}, largest component {so['max_sd']:.2f} sd; "
                    f"cameras' whole move since the start (shift mm, shift mm, scale %, roll, yaw, pitch deg, distance % per view; a prior, not a clip: see the CAMERA lines): {so['cameras']}"
                    f" (this call: {so['camera_step']})\n" + notes + (rp + "\n" if rp else "")
-                   + bi.step_text(rep) + "\n" + sh[1]]
+                   + blockin_steps.step_text(rep) + "\n" + sh[1]]
 
 
 def fr_say(k: str) -> str:
@@ -533,14 +535,15 @@ def lip_read(name: str, match: bool = False, out: str | None = None, seen: str =
     over the identity + GNM's lower-face expression for the picture's borders and seam, the neutral closed by GNM's
     expression (no seal), the rest of the face held. out, save (focus=mouth sheet), seen. Details:
     guide(topic="lip_read")."""
-    from . import blockin as bi, blockin_lips as bl
+    from . import blockin_lips as bl
+    from . import blockin_focus, blockin_steps
     if not match:
         return bl.read_text(bl.lip_read(name))
     lines = []
     rep = bl.lips_step(name, out=out, seen=seen, log=lines.append)
     to = rep["entry"]["to"]
     path = save or str(store.HOME / "human_renders" / f"blockin_{to}_mouth.png")
-    bi.focus(to, "mouth", path, before=name)
-    txt = (bi.step_text(rep) + "\n" + "\n".join(lines) + "\n" + bl.text(rep["lips"]) + "\n" + bl.read_text(bl.lip_read(to))
+    blockin_focus.focus(to, "mouth", path, before=name)
+    txt = (blockin_steps.step_text(rep) + "\n" + "\n".join(lines) + "\n" + bl.text(rep["lips"]) + "\n" + bl.read_text(bl.lip_read(to))
            + f"\nfocus=mouth sheet (before | after, raking light): {path}")
     return [_png(PILImage.open(path)), txt]

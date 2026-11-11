@@ -9,7 +9,9 @@ wrong there. Picture pixels are for judging only: nothing here reaches the model
 import numpy as np
 from PIL import Image, ImageDraw
 
-from . import blockin as bi, humanfit, likeness as lk, likeness_read as lr, store
+from . import humanfit, likeness_read as lr, store
+from . import likeness_render
+from . import blockin_clay, blockin_expression, blockin_models
 
 SOURCE_PX = 1000   # a picture's own depth map (visibility), long side
 
@@ -17,7 +19,7 @@ SOURCE_PX = 1000   # a picture's own depth map (visibility), long side
 def _source(mesh: dict, cam: dict, view: dict) -> dict:
     """A picture and its camera's depth map."""
     w, h = cam["size"]
-    _, k, ps = lk.render(mesh, cam, (0.0, 0.0, float(w), float(h)), px=min(max(w, h), SOURCE_PX), passes=True)
+    _, k, ps = likeness_render.render(mesh, cam, (0.0, 0.0, float(w), float(h)), px=min(max(w, h), SOURCE_PX), passes=True)
     return {"photo": np.asarray(Image.open(view["image"]).convert("RGB"), float), "cam": cam, "k": k, "zb": ps["zb"],
             "R": humanfit._cam_rot(cam)}
 
@@ -43,7 +45,7 @@ def _lay(img: np.ndarray, X: np.ndarray, n: np.ndarray, ii: np.ndarray, jj: np.n
 
 def _skinned(mesh: dict, cam: dict, box: tuple, sources: list, px: int) -> tuple:
     """(the head with the pictures as its skin, the same head's clay) through cam, cropped to box."""
-    im, k, ps = lk.render(mesh, cam, box, px=px, passes=True)
+    im, k, ps = likeness_render.render(mesh, cam, box, px=px, passes=True)
     zb = ps["zb"]
     on = np.isfinite(zb)
     ii, jj = np.nonzero(on)
@@ -64,13 +66,13 @@ def _skinned(mesh: dict, cam: dict, box: tuple, sources: list, px: int) -> tuple
 
 def sheet(name: str, out: str, views: list | None = None, T: int = 420) -> dict:
     """The judging sheet of block-in model name. -> {"out", "views"}."""
-    rj = bi._refs(name)
+    rj = blockin_models._refs(name)
     base = store.load(name)["base"]
     VI = list(range(len(rj["views"]))) if views is None else [int(v) for v in views]
     every = range(len(rj["views"]))
-    meshes = bi._per_view(base, rj, every, lambda b: bi.presented_mesh(b, rj=rj))
-    boxes = (rj.get("blockin") or {}).get("boxes") or bi._boxes(base, rj)
-    front = bi._front(rj)
+    meshes = blockin_expression._per_view(base, rj, every, lambda b: blockin_clay.presented_mesh(b, rj=rj))
+    boxes = (rj.get("blockin") or {}).get("boxes") or blockin_models._boxes(base, rj)
+    front = blockin_clay._front(rj)
     order = [i for i in every if i != front] + [front]
     cols = ("photo", "50% blend (photo + projected)", "the pictures projected as skin", "clay")
     S = Image.new("RGB", (T * len(cols), 18 + (T + 4) * len(VI)), "white")

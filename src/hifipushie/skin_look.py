@@ -245,9 +245,9 @@ def look(name: str, views=DEFAULT, size: int = 768, light: str | None = None, fl
     if light is not None and light not in LIGHTS and light != "photo":
         raise ValueError(f"look_skin: light is one of {', '.join(LIGHTS)}, photo")
     lights = dict(LIGHTS)
-    if light == "photo":   # the front reference's fitted light at the picture's exposure (skin_read.photo_light)
-        from . import skin_read
-        lights["photo"] = {k: v for k, v in skin_read.photo_light(name).items() if k not in ("fitted", "measured")}
+    if light == "photo":   # the front reference's fitted light at the picture's exposure (skin_read_frames.photo_light)
+        from . import skin_read_frames
+        lights["photo"] = {k: v for k, v in skin_read_frames.photo_light(name).items() if k not in ("fitted", "measured")}
     spec = store.load(name)
     cams = cameras(spec)
     miss = [v for v in views if v not in cams]
@@ -328,7 +328,7 @@ def _crop_of(spec: dict, cam: dict, region: str) -> list:
     io = interocular(J)
     Rc = humanfit._cam_rot(cam)
     c0, t0 = np.asarray(cam["centre"], float), np.asarray(cam["t"], float)
-    pos = c0 - Rc.T @ t0                                   # (the camera's own position: skin_read.fitted_frame)
+    pos = c0 - Rc.T @ t0                                   # (the camera's own position: skin_read_frames.fitted_frame)
     side = region[-2:] if region[-2:] in (".L", ".R") else (".R" if pos[0] < J["lm_nose_tip"][0] else ".L")
     region = region[:-2] if region[-2:] in (".L", ".R") else region
     sx = -1.0 if side == ".R" else 1.0
@@ -352,7 +352,9 @@ def beside(name: str, region: str, view: int | None = None, size: int = 768, lig
     picture's fitted camera, under its fitted light at its exposure. The two files are what review_view takes. Returns
     (the two side by side, text). Photo pixels here are for judging: they are written to the workspace only."""
     from PIL import Image
-    from . import blockin, resources, skin_read, skin_route
+    from . import resources, skin_route
+    from . import blockin_clay, blockin_models
+    from . import skin_read_frames
     if views or flat or layer:
         raise ValueError("look_skin: beside is one region, lit like its picture: it takes no views, flat or layer")
     if light not in (None, "photo"):
@@ -363,17 +365,17 @@ def beside(name: str, region: str, view: int | None = None, size: int = 768, lig
         raise ValueError(f"look_skin: beside is one of {', '.join(skin_route.REGIONS)} (.L / .R picks a side)")
     if isinstance(view, int) and not isinstance(view, bool) and view < 0:
         raise ValueError("look_skin: view is a reference picture's index")
-    rj, spec = blockin._refs(name), store.load(name)
-    vi = blockin._front(rj) if view is None else view
+    rj, spec = blockin_models._refs(name), store.load(name)
+    vi = blockin_clay._front(rj) if view is None else view
     if vi >= len(rj["views"]) or not rj["views"][vi].get("image") or rj["cameras"][vi] is None:
         raise ValueError(f"look_skin: reference view {vi} has no picture or no fitted camera ({len(rj['views'])} views)")
     cam = rj["cameras"][vi]
-    box = skin_read.boxes(name)[vi] if base == "face" else _crop_of(spec, cam, region)
+    box = skin_read_frames.boxes(name)[vi] if base == "face" else _crop_of(spec, cam, region)
     log: list = []
-    lt = skin_read.photo_light(name, vi)
+    lt = skin_read_frames.photo_light(name, vi)
     with resources.heavy(f"look_skin beside {name}", gb=8, gpu=True, log=log.append):
         sn = ensure(name, "head", log)
-        px = skin_read.shoot(sn, [skin_read.fitted_frame(cam, box, "v")],
+        px = skin_read_frames.shoot(sn, [skin_read_frames.fitted_frame(cam, box, "v")],
                              {k: v for k, v in lt.items() if k not in ("fitted", "measured")}, size=size)["v"]
     res = Image.alpha_composite(Image.new("RGBA", (size, size), (128, 128, 128, 255)), Image.fromarray(px).convert("RGBA")).convert("RGB")
     ref = Image.open(rj["views"][vi]["image"]).convert("RGB").crop(tuple(int(round(x)) for x in box)).resize((size, size), Image.LANCZOS)

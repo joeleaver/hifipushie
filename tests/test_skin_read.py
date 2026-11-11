@@ -8,6 +8,7 @@ import tempfile
 import numpy as np
 
 from hifipushie import paint, skin, skin_folds as sf, skin_marks as mk, skin_read as sr, store
+from hifipushie import skin_read_context, skin_read_fit, skin_read_fold_fit, skin_read_folds, skin_read_frames, skin_read_params, skin_read_reads
 from hifipushie.spec import SpecError
 from test_skin import head_spec
 
@@ -30,12 +31,12 @@ def _tmp(fn):
 def test_valley_lab_and_specks():
     u = np.arange(-9, 9.01, 0.25)
     flat = 0.01 * u                                           # a slope: no valley
-    assert sr._valley(flat, u, 5.0, 4.0)[0] == 0.0
+    assert skin_read_folds._valley(flat, u, 5.0, 4.0)[0] == 0.0
     v = flat - 0.1 * np.exp(-0.5 * ((u - 1.5) / 1.0) ** 2)
-    d, at = sr._valley(v, u, 5.0, 4.0)
+    d, at = skin_read_folds._valley(v, u, 5.0, 4.0)
     assert 0.07 < d < 0.11 and abs(at - 1.5) < 0.3, (d, at)
     edge = flat - 0.1 * np.exp(-0.5 * ((u - 6.0) / 1.0) ** 2)   # a valley beside the search window: not this fold's
-    assert sr._valley(edge, u, 5.0, 4.0)[0] == 0.0
+    assert skin_read_folds._valley(edge, u, 5.0, 4.0)[0] == 0.0
     lin = np.array([[0.5, 0.3, 0.2], [0.1, 0.05, 0.04]])
     assert np.allclose(sr._lab_scale(sr.lab(lin), 0.6), sr.lab(lin * 0.6), atol=1e-6)
     # dark specks per cm2: 40 dots of 1 mm on 4 cm x 4 cm of 0.25 mm pixels
@@ -45,19 +46,19 @@ def test_valley_lab_and_specks():
     for cx, cy in rng.uniform(12, 148, (40, 2)):
         img = img * (1 - 0.25 * np.exp(-0.5 * (((xx - cx) ** 2 + (yy - cy) ** 2) / 2.0 ** 2)))
     where = np.ones((160, 160), bool)
-    n = sr._specks(img, where, 0.25)
+    n = skin_read_reads._specks(img, where, 0.25)
     assert 1.5 < n < 4.5, n                                   # 40 on ~13 cm2 of eroded area, a few merged
-    assert sr._specks(np.full((160, 160), 0.5), where, 0.25) == 0.0
+    assert skin_read_reads._specks(np.full((160, 160), 0.5), where, 0.25) == 0.0
 
 
 def test_get_set_and_fold_options():
     sk = {"tone": {"fitzpatrick": 2}, "features": {"flush": {"amount": 0.3, "where": ["cheek"]}}}
-    assert abs(sr._get(sk, "tone.melanin") - 0.14) < 1e-9 and sr._get(sk, "features.flush") == 0.3
-    assert sr._get(sk, "zones.periorbital") == 0.0 and sr._get(sk, "zones.perioral_red") == 1.0 and sr._get(sk, "lips.lower.blood") == 1.0
+    assert abs(skin_read_params._get(sk, "tone.melanin") - 0.14) < 1e-9 and skin_read_params._get(sk, "features.flush") == 0.3
+    assert skin_read_params._get(sk, "zones.periorbital") == 0.0 and skin_read_params._get(sk, "zones.perioral_red") == 1.0 and skin_read_params._get(sk, "lips.lower.blood") == 1.0
     s2 = copy.deepcopy(sk)
-    sr._set(s2, "features.flush", 0.6); sr._set(s2, "lips.lower.melanin", 1.4); sr._set(s2, "zones.nose_red", 2.0)
+    skin_read_params._set(s2, "features.flush", 0.6); skin_read_params._set(s2, "lips.lower.melanin", 1.4); skin_read_params._set(s2, "zones.nose_red", 2.0)
     assert s2["features"]["flush"] == {"amount": 0.6, "where": ["cheek"]} and s2["lips"]["lower"]["melanin"] == 1.4
-    sr._unset(s2, sk, "lips.lower.melanin"); sr._unset(s2, sk, "zones.nose_red")
+    skin_read_params._unset(s2, sk, "lips.lower.melanin"); skin_read_params._unset(s2, sk, "zones.nose_red")
     assert "lips" not in s2 and "zones" not in s2
     skin.params({"skin": {"lips": {"lower": {"blood": 1.5}}, "zones": {"perioral_red": 0.5, "periorbital": 1.0}}})
     o = sf.options({"nasolabial": 0.8, "tear_trough": {"amount": 1.0, "L": {"shift": [1, 2, 1], "extent": [0.1, 0.8]}}, "lid_fold": 0})
@@ -165,7 +166,7 @@ def test_folds_are_geometry():
     assert new[1] > cur[1] and new[0] <= 0.0, new       # pushed in outside, but the point 0.1 mm off the ball stays inside the skin
 
 
-class _Fake(sr.Context):
+class _Fake(skin_read_context.Context):
     pass
 
 
@@ -185,20 +186,20 @@ def test_colour_read_and_fit_recover_zones():
     c.anchor = {"kind": "none", "gain": {}, "note": ""}
     c.views = [{"view": 0, "weight": 1.0}]
     c.X, c.n, c.w, c.view, c.pix = V, N, np.ones(len(V)), np.zeros(len(V), int), np.arange(len(V))
-    c.alb = sr.Albedo(spec, V, N)
+    c.alb = skin_read_frames.Albedo(spec, V, N)
     c.A0 = c.alb()
     c.T = c.alb(truth)
     c.rho = c.T / c.A0
     c.dlab = sr.lab(c.T) - sr.lab(c.A0)
     c.J = J
-    R = sr.regions(c)
-    rows = {k: sr._region(c, w) for k, w in R.items()}
+    R = skin_read_context.regions(c)
+    rows = {k: skin_read_context._region(c, w) for k, w in R.items()}
     assert rows["cheek"]["read"] and rows["cheek"]["d"][1] > 0.4 and rows["forehead"]["d"][2] < -0.5, (rows["cheek"], rows["forehead"])
     lips_read = rows["lip_lower"]["read"]            # (the hand-made head's lips are a few vertices)
     assert not lips_read or rows["lip_lower"]["d"][1] < -1.0, rows["lip_lower"]
     r = {"ctx": c, "regions": rows, "freckles": {"read": False, "have": 0.0, "views": {}}, "brows": {"read": False}, "eyes": {}}
-    f = sr.fit(r, groups=("zones", "lips"), log=lambda s: None)
-    g = lambda p: sr._get(f["skin"], p)  # noqa: E731
+    f = skin_read_fit.fit(r, groups=("zones", "lips"), log=lambda s: None)
+    g = lambda p: skin_read_params._get(f["skin"], p)  # noqa: E731
     # (overlapping layers are not unique: more mid-face red may come back as some flush; the ALBEDO is what is recovered)
     assert g("zones.midface_red") > 1.3 and g("zones.forehead_yellow") < 0.6, f["text"]
     assert not lips_read or abs(g("lips.blood") - 0.5) < 0.2, f["text"]
@@ -208,8 +209,8 @@ def test_colour_read_and_fit_recover_zones():
     assert err1[1] < 0.4 * err0[1] and err1[2] < 0.6 * err0[2], (err0, err1)
     # the null: the picture's albedo = ours -> nothing changes
     c.T = c.A0.copy(); c.dlab = np.zeros_like(c.A0)
-    rows = {k: sr._region(c, w) for k, w in R.items()}
-    f0 = sr.fit({**r, "regions": rows}, groups=("zones", "lips"), log=lambda s: None)
+    rows = {k: skin_read_context._region(c, w) for k, w in R.items()}
+    f0 = skin_read_fit.fit({**r, "regions": rows}, groups=("zones", "lips"), log=lambda s: None)
     assert not f0["changes"], f0["text"]
 
 
@@ -223,7 +224,7 @@ def test_fold_fit_rules():
           "fields": {"forehead": {"readable": True, "picture": 1.5, "ours": 0.8, "diff": 0.7},
                      "crows_feet": {"readable": False, "why": "cannot tell"}}}
     sk = {"age": 30, "wrinkles": {"nasolabial": 0.6}}
-    ch = sr.fold_fit(sk, fr, True)
+    ch = skin_read_fold_fit.fold_fit(sk, fr, True)
     n = sk["folds"]["nasolabial"]
     assert 0.9 < n["amount"] <= 1.5 and n["L"]["shift"] == [1.0] * 9 and n["L"]["extent"] == [0.0, 0.7] and n["R"]["amount"] == 0.0, n
     assert sk["wrinkles"]["nasolabial"] == 0.0, "the legacy landmark line is replaced by the measured fold"
@@ -233,11 +234,11 @@ def test_fold_fit_rules():
     # ours has it, the picture does not: taken off
     gone = side(absent_in_picture=True, ours=0.15, excess=0.15)
     sk2 = {"age": 30, "folds": {"tear_trough": 1.0}}
-    sr.fold_fit(sk2, {"folds": {"tear_trough": {"readable": True, "sides": {".L": gone, ".R": gone}}}, "fields": {}}, True)
+    skin_read_fold_fit.fold_fit(sk2, {"folds": {"tear_trough": {"readable": True, "sides": {".L": gone, ".R": gone}}}, "fields": {}}, True)
     assert "folds" not in sk2 or sk2["folds"].get("tear_trough", {"amount": 0})["amount"] < 0.45, sk2
     # the null: nothing present, nothing in excess -> untouched
     sk3 = {"age": 30, "folds": {"tear_trough": 0.7}}
-    assert sr.fold_fit(sk3, {"folds": {"tear_trough": {"readable": True, "sides": {".L": side(), ".R": side()}}}, "fields": {}}, True) == []
+    assert skin_read_fold_fit.fold_fit(sk3, {"folds": {"tear_trough": {"readable": True, "sides": {".L": side(), ".R": side()}}}, "fields": {}}, True) == []
     assert sk3["folds"] == {"tear_trough": 0.7}
 
 
@@ -245,14 +246,14 @@ def test_step_and_tone_bound():
     """The side-lit STEP detector's sign rule, and the fit's amount by how a fold was read."""
     side = lambda **kw: {"present": False, "absent_in_picture": False, "picture": 0.0, "ours": 0.0, "diff": 0.0, "excess": 0.0,  # noqa: E731
                          "share": 0.0, "confidence": 0.0, "views": [0], **kw}
-    st = side(present=True, by="step", step=0.5 * sr.STEP_REF["nasolabial"], step_share=0.8, confidence=0.9, extent=[0.1, 0.9], shift=[2.0] * 9)
+    st = side(present=True, by="step", step=0.5 * skin_read_folds.STEP_REF["nasolabial"], step_share=0.8, confidence=0.9, extent=[0.1, 0.9], shift=[2.0] * 9)
     lash = side(present=True, by="lash line", amount=0.8, confidence=0.9, extent=[0.0, 1.0], shift=[-1.5] * 9, picture=0.3, ours=0.1, diff=0.2)
     sk = {"age": 50}
-    sr.fold_fit(sk, {"folds": {"nasolabial": {"readable": True, "sides": {".L": st, ".R": side()}},
+    skin_read_fold_fit.fold_fit(sk, {"folds": {"nasolabial": {"readable": True, "sides": {".L": st, ".R": side()}},
                                "lid_fold": {"readable": True, "sides": {".L": lash, ".R": lash}}}, "fields": {}}, True)
     assert abs(sk["folds"]["nasolabial"]["amount"] - 0.5) < 0.02 and sk["folds"]["nasolabial"]["L"]["shift"] == [2.0] * 9, sk
     assert abs(sk["folds"]["lid_fold"]["amount"] - 0.8) < 0.02 and sk["folds"]["lid_fold"]["L"]["shift"] == [-1.5] * 9, sk
-    assert sr.TONE_BOUND <= 3.0 < sr.TONE_BOUND_WHITE
+    assert skin_read_context.TONE_BOUND <= 3.0 < skin_read_context.TONE_BOUND_WHITE
 
 
 def test_shade_white_and_bounds():
@@ -260,34 +261,34 @@ def test_shade_white_and_bounds():
     constants, every fold calibrated."""
     x = np.array([[0.6, 0.42, 0.33], [0.1, 0.2, 0.05]])
     assert np.abs(sr._unlab(sr.lab(x)) - x).max() < 1e-6
-    assert set(sr.FOLD_REF) == set(sf.FOLDS) == set(sr.STEP_REF) == set(sf.RELIEF) == set(sf.OCCLUSION)
+    assert set(skin_read_folds.FOLD_REF) == set(sf.FOLDS) == set(skin_read_folds.STEP_REF) == set(sf.RELIEF) == set(sf.OCCLUSION)
     # a chin's notch: a groove with a lobe on BOTH sides
     pr = {"G": np.array([0.0009]), "sg": np.array([0.002]), "O": np.array([0.0006]), "Pl": np.array([0.0]), "lee": 1.0, "sym": True, "has_roll": True,
           "r0": 0.0055, "so": 0.0035, "sh": 0.004, "has_plat": False, "ph": 0.001}
     v = sf.profile(np.array([-0.0055, 0.0, 0.0055]), pr, np.zeros(3, int))
     assert v[1] < -0.0008 and abs(v[0] - v[2]) < 1e-9 and v[0] > 0.0005, v
-    assert sr.SHADE_SIGMA_PLAIN < 0.1 < sr.SHADE_SIGMA and sr.FACE_BOUND <= sr.TONE_BOUND_WHITE and sr.ZONE_BOUND[0] <= 5
+    assert skin_read_context.SHADE_SIGMA_PLAIN < 0.1 < skin_read_context.SHADE_SIGMA and skin_read_context.FACE_BOUND <= skin_read_context.TONE_BOUND_WHITE and skin_read_context.ZONE_BOUND[0] <= 5
     # a picture: grey backdrop 0.5, a face-coloured block, a shirt under it
     def pic(shirt):
         img = np.full((200, 160, 3), 0.5)
         img[40:110, 50:110] = [0.45, 0.3, 0.24]
         img[130:200, 20:140] = shirt
         cloth = np.zeros((200, 160)); cloth[130:200, 20:140] = 1.0
-        f = {"white_patch": sr.white_patch(img, {"cloth": cloth, "figure": cloth, "skin": cloth * 0, "hair": cloth * 0}, 115.0), "view": 0}
+        f = {"white_patch": skin_read_frames.white_patch(img, {"cloth": cloth, "figure": cloth, "skin": cloth * 0, "hair": cloth * 0}, 115.0), "view": 0}
         return f
-    q, why = sr._white(pic([0.8, 0.8, 0.8]), backdrop_Y=0.5)
-    assert q is not None and why == "found" and abs(q["Y"] - 0.8) < 0.01 and q["albedo"] == sr.WHITE_ALBEDO and q["where"][1] >= 115, (q, why)
-    q, why = sr._white(pic([0.36, 0.36, 0.38]), backdrop_Y=0.5)
+    q, why = skin_read_context._white(pic([0.8, 0.8, 0.8]), backdrop_Y=0.5)
+    assert q is not None and why == "found" and abs(q["Y"] - 0.8) < 0.01 and q["albedo"] == skin_read_context.WHITE_ALBEDO and q["where"][1] >= 115, (q, why)
+    q, why = skin_read_context._white(pic([0.36, 0.36, 0.38]), backdrop_Y=0.5)
     assert q is None and "backdrop" in why, why                       # a pale grey shirt under a brighter backdrop
-    q, why = sr._white(pic([0.8, 0.5, 0.4]), backdrop_Y=0.5)
+    q, why = skin_read_context._white(pic([0.8, 0.5, 0.4]), backdrop_Y=0.5)
     assert q is None and "coloured" in why, why
-    assert sr._white({"view": 0})[0] is None
+    assert skin_read_context._white({"view": 0})[0] is None
     # declared: any box of the picture, taken at the caller's word
     with tempfile.TemporaryDirectory() as d:
         from PIL import Image
         img = np.full((200, 160, 3), 0.5); img[10:60, 10:60] = [0.6, 0.62, 0.6]
         Image.fromarray(np.round(255 * sr._srgb(img)).astype(np.uint8)).save(d + "/p.png")
-        q, why = sr._white({"view": 0, "image": d + "/p.png"}, declared={"box": [12, 12, 58, 58], "albedo": 0.7})
+        q, why = skin_read_context._white({"view": 0, "image": d + "/p.png"}, declared={"box": [12, 12, 58, 58], "albedo": 0.7})
         assert why == "declared" and q["albedo"] == 0.7 and abs(q["Y"] - 0.613) < 0.02 and q["declared"], q
 
 
@@ -305,24 +306,24 @@ def test_fold_rules2():
     coarse = "on its landmark path (the pictures are too coarse to place it)"
     hit = side(present=True, by="valley", picture=0.1, diff=0.1, share=0.6, confidence=0.9, placed=coarse)
     sk = {"age": 50}
-    ch = sr.fold_fit(sk, {"folds": {"tear_trough": {"readable": True, "sides": {".L": side(placed=coarse), ".R": hit}}}, "fields": {}}, True)
+    ch = skin_read_fold_fit.fold_fit(sk, {"folds": {"tear_trough": {"readable": True, "sides": {".L": side(placed=coarse), ".R": hit}}}, "fields": {}}, True)
     t = sk["folds"]["tear_trough"]
     assert 0.4 < t["amount"] < 0.6 and "L" not in t and "R" not in t, t                 # both sides the same amount
     assert any("INFERRED from the other side" in c_[3] for c_ in ch), ch
     # round 2: the read side is "as ours", the unread one reads "ours has more": the pair stays
-    sr.fold_fit(sk, {"folds": {"tear_trough": {"readable": True, "sides": {".L": side(placed=coarse, absent_in_picture=True, ours=0.05, excess=0.05),
+    skin_read_fold_fit.fold_fit(sk, {"folds": {"tear_trough": {"readable": True, "sides": {".L": side(placed=coarse, absent_in_picture=True, ours=0.05, excess=0.05),
                                                                          ".R": side(placed=coarse, picture=0.1, ours=0.1)}}}, "fields": {}}, False)
     t2 = sf.options(sk["folds"])["tear_trough"]
     assert abs(t2["sides"][".L"]["amount"] - t2["sides"][".R"]["amount"]) < 0.05 and t2["amount"] > 0.4, t2
     # fine pictures: a side that reads absent stays absent
     sk = {"age": 50}
-    sr.fold_fit(sk, {"folds": {"tear_trough": {"readable": True, "sides": {".L": side(), ".R": {**hit, "placed": None, "extent": [0.0, 1.0]}}}}, "fields": {}}, True)
+    skin_read_fold_fit.fold_fit(sk, {"folds": {"tear_trough": {"readable": True, "sides": {".L": side(), ".R": {**hit, "placed": None, "extent": [0.0, 1.0]}}}}, "fields": {}}, True)
     sk["folds"]["tear_trough"]["R"] if False else None
     assert sf.options(sk["folds"])["tear_trough"]["sides"][".L"]["amount"] == 0.0, sk
     # a soft fold is not laid as a nick
     sk = {"age": 50}
     m = side(present=True, by="valley", picture=0.1, diff=0.1, share=0.5, confidence=0.9, extent=[0.0, 0.3])
-    sr.fold_fit(sk, {"folds": {"marionette": {"readable": True, "sides": {".L": m, ".R": m}}}, "fields": {}}, True)
+    skin_read_fold_fit.fold_fit(sk, {"folds": {"marionette": {"readable": True, "sides": {".L": m, ".R": m}}}, "fields": {}}, True)
     e = sk["folds"]["marionette"]["L"]["extent"]
     assert e[1] - e[0] >= sf.FOLDS["marionette"]["min_extent"] - 0.01, e
     # the lid's lip: no room over the ball -> the profile stands out just over the line instead of going in
@@ -382,17 +383,18 @@ def test_iris_colour_keeps_the_hue():
     """(readmix) the iris from the read: the change is limited as a whole, never per channel (the old clip turned the
     default brown into orange-brown where the picture's iris was grey-green)."""
     from hifipushie import paint, skin_read as sr
+    from hifipushie import skin_read_reads
     lin = lambda h: sr._lin(np.asarray(paint.colour(h), float)[:3])  # noqa: E731
     brown, green = "#5a3a1e", "#6b7f6a"
     ratio = lin(green) / lin(brown)                      # what the read says when ours is brown and the picture's is grey-green
     assert ratio[2] > 4 and ratio[0] < 2                 # (far outside the old 0.5 .. 2 clip on blue)
-    got = lin(sr.iris_colour(np.asarray(paint.colour(brown), float)[:3], ratio))
+    got = lin(skin_read_reads.iris_colour(np.asarray(paint.colour(brown), float)[:3], ratio))
     want = lin(green)
     assert np.abs(got / got.sum() - want / want.sum()).max() < 0.02          # the picture's chromaticity
     assert got[1] >= got[0] * 0.98                                            # not orange
     # nothing to change: the same colour back
-    assert sr.iris_colour(np.asarray(paint.colour(green), float)[:3], [1.0, 1.0, 1.0]) == green
+    assert skin_read_reads.iris_colour(np.asarray(paint.colour(green), float)[:3], [1.0, 1.0, 1.0]) == green
     # a wild read (an iris "x 40 brighter") is limited in lightness, its hue kept
-    wild = lin(sr.iris_colour(np.asarray(paint.colour(brown), float)[:3], 40 * ratio))
-    assert wild @ np.array([0.2126, 0.7152, 0.0722]) <= sr.IRIS_Y[1] + 1e-3
+    wild = lin(skin_read_reads.iris_colour(np.asarray(paint.colour(brown), float)[:3], 40 * ratio))
+    assert wild @ np.array([0.2126, 0.7152, 0.0722]) <= skin_read_reads.IRIS_Y[1] + 1e-3
     assert np.abs(wild / wild.sum() - want / want.sum()).max() < 0.03

@@ -114,9 +114,9 @@ def overlay(img, r, path, crop_pad=0.35):
 
 
 if __name__ == "__main__":
-    from hifipushie import likeness
+    from hifipushie import likeness_detect
     img = Image.open(sys.argv[1]).convert("RGB")
-    P = likeness.detect([img])[0]
+    P = likeness_detect.detect([img])[0]
     r = read(img, P)
     print("mm/px", round(r["mmpx"], 4), "| offsets from MediaPipe (mm, + outward): upper",
           np.round(r["off_up"][r["keep"]][::6], 2).tolist(), "| lower", np.round(r["off_lo"][r["keep"]][::6], 2).tolist())

@@ -6,7 +6,8 @@ import json
 
 import pytest
 
-from hifipushie import blockin as bi, faceshapes, head_route, humans, server, store
+from hifipushie import faceshapes, head_route, humans, server, store
+from hifipushie import blockin_steps
 from hifipushie import faceshapes_apply
 from hifipushie.spec import empty_spec
 
@@ -75,8 +76,8 @@ def test_hand_step_needs_the_solve(home):
 def test_over_one_sd_reads_mm_against_its_measure():
     from hifipushie import gnm_mm
     k, sd = next(iter(gnm_mm.sd().items()))
-    assert not bi.over_sd(f"mm:{k}", 0.9 * sd) and bi.over_sd(f"mm:{k}", 1.1 * sd)
-    assert not bi.over_sd("chin_height", 0.9) and bi.over_sd("chin_height", 1.1)
+    assert not blockin_steps.over_sd(f"mm:{k}", 0.9 * sd) and blockin_steps.over_sd(f"mm:{k}", 1.1 * sd)
+    assert not blockin_steps.over_sd("chin_height", 0.9) and blockin_steps.over_sd("chin_height", 1.1)
 
 
 def test_presets_are_generic_and_mixes_are_checked():
