@@ -121,7 +121,7 @@ def ruler(a, b) -> list[dict]:
     become; each a model name, a spec or a (170,) identity. b - a for the 23 measures, largest (in population sd)
     first; each row's gap is the amount of the `mm:<measure>` move that closes it. GNM's own head (the identity comps
     alone: a model's gnm_base share / age ops are not in it)."""
-    from . import gnm_mm
+    from . import gnm_mm, store
 
     def cof(x):
         if isinstance(x, str):
