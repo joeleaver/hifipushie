@@ -381,18 +381,6 @@ def _try(fn, *a, **k) -> str:
         return f"record: {e}"
 
 
-def from_pattern_check(model: str, garment: str, rec: dict, gate_path: str = "", flat=None) -> str:
-    """pattern_check (step 4's gate): its verdict and rows; the flat sheet as the step's look."""
-    look = []
-    if flat is not None:
-        look = [str(look_dir(model, garment) / "step4_flat.png")]
-        flat.save(look[0])
-    ok = rec.get("status") in ("PASS", "PASS_WAIVED")
-    return _try(write, model, garment, "4", "done" if ok else "failed", by="pattern_check", look=look,
-                output={"gate_record": str(gate_path), "kind": rec.get("kind"), "pattern": rec.get("pattern")},
-                gate={"verdict": rec.get("status"), "rows": rec.get("rows")})
-
-
 def from_chain(model: str, garment: str, wear: str, d: Path, st: dict) -> str:
     """chain_garment's worker at its end: step 5 (the chains), 6 (structure rows), 8 (the hang)."""
     stage, sc = st.get("stage"), st.get("structure") or {}

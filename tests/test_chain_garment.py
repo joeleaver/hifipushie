@@ -95,7 +95,7 @@ def test_refusal_names_the_line():
     with pytest.raises(cg.ChainRefused) as e:
         b.gate_lengths()
     t = str(e.value)
-    assert "p0 edge" in t and "next:" in t and "alter_pattern" in t
+    assert "p0 edge" in t and "next:" in t and "draft_pattern" in t
 
 
 def test_contact_side_and_floor():
@@ -123,7 +123,9 @@ def test_threads_read_warp_and_weft_not_the_bias():
 
 
 REMOVED = ("fit_garment", "style_garment", "release_garment", "arrange_garment", "dress", "look_cloth", "check_garment",
-           "check_garment_reference", "game_garment")
+           "check_garment_reference", "game_garment",
+           "design_garment", "look_pattern", "alter_pattern", "garment_reference", "garment_from_reference",
+           "garment_reference_brief")
 
 
 def test_only_path_for_clothes():
@@ -151,7 +153,7 @@ def test_only_path_for_clothes():
         t = server.guide(topic)
         assert not any(re.search(r"\b" + g + r"\b", t) for g in REMOVED if g != "dress") and "dress(" not in t, topic
     assert "chain_garment" in server.guide("cloth")
-    for t in ("look_pattern", "pattern_check", "garment_from_reference", "review_view", "alter_pattern"):
+    for t in ("pattern_check", "review_view", "chain_garment", "look_chain"):
         s = server.guide(t)
         assert not any(re.search(r"\b" + g + r"\b", s) for g in REMOVED if g != "dress") and "dress`" not in s, t
 

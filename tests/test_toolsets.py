@@ -24,7 +24,7 @@ ADDED = {"fit_concept_camera", "look_matched", "feature_tiles", "join_report",  
          "fit_matched",  # (fit a part to fitted-camera pictures: its seen outline, a press limit; Baynard gap 33)
          "garment_details", "pattern_parts", "garment_appearance", "export_garment", "block_in_start", "block_in_look", "block_in_step", "block_in_solve", "lid_read", "block_in_expression", "gnm_controls", "lip_read",
          "brow_read", "eye_ruler", "face_ruler", "tie_hair", "skin_from_reference", "hair_from_reference", "skin_project",
-         "pattern_check", "alter_pattern", "review_view", "judge_asset",  # (the garment gates as tools, 2026-10-19)
+         "pattern_check", "review_view", "judge_asset",  # (the garment gates as tools, 2026-10-19)
          "chain_garment", "look_chain",  # (the one way to start a garment; the older routes are gated, C262)
          "garment_record",  # (one file per garment, every step's output and status: T1, C281)
          "body_tape",  # (garment step 3: measure a body by name, T3, C283)
@@ -42,7 +42,9 @@ def test_every_tool_in_one_group():
     assert len(groups) == len(set(groups)), "a tool in two groups"
     assert set(groups) == set(server._TOOLS), set(groups) ^ set(server._TOOLS)
     removed = {"fit_garment", "style_garment", "release_garment", "arrange_garment", "dress", "look_cloth", "check_garment",
-               "check_garment_reference", "game_garment"}  # (the older clothing routes: deleted 2026-11-10, C409)
+               "check_garment_reference", "game_garment",  # (the older clothing routes: deleted 2026-11-10, C409)
+               "design_garment", "look_pattern", "garment_reference", "garment_from_reference",
+               "garment_reference_brief"}  # (and the design-sheet tools nobody called, C410)
     kept = set(BEFORE) - removed
     assert not removed & set(groups)
     assert kept <= set(groups), kept - set(groups)

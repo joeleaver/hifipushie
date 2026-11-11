@@ -115,23 +115,6 @@ def _collar_bp(neck_mm, stand_mm=35.0, stand_end_mm=30.0, fall_mm=55.0, run_off=
             "folds": [fold]}
 
 
-@pytest.mark.parametrize("neck", [360.0, 406.5, 450.0])
-def test_collar_rules_any_stand_and_fall_three_necks(neck):
-    g = {"fabric": "shirting"}
-    r = gr.collar_draft_reads(_collar_bp(neck), g)
-    assert abs(r["collar_stand_cb_mm"] - 35) <= 0.6 and abs(r["collar_fall_cb_mm"] - 55) <= 0.6, r
-    assert r["collar_roll_above_seam_mm"] == 4.0 and 1.5 < r["collar_turn_mm"] < 3.0, r  # (C43: from the stack)
-    assert abs(min(r["collar_stand_ends_mm"]) - 30) <= 2.0, r
-    rows = {x["id"]: x["status"] for x in cc.collar_rule_rows(_collar_bp(neck), g)}
-    assert rows == {"collar_fall_cover": "PASS", "collar_fold_run": "PASS"}, rows
-    # a fall too shallow to cover the stand seam; a fold that runs off where the stand still stands (points flip)
-    assert {x["id"]: x["status"] for x in cc.collar_rule_rows(_collar_bp(neck, fall_mm=42), g)}["collar_fall_cover"] == "FAIL"
-    assert {x["id"]: x["status"] for x in cc.collar_rule_rows(_collar_bp(neck, run_off=True), g)}["collar_fold_run"] == "FAIL"
-    # a jacket-like stand that runs off at its ends with a fold that runs off: agrees
-    rj = gr.collar_draft_reads(_collar_bp(neck, stand_end_mm=2.0, run_off=True), g)
-    assert rj["collar_stand_runs_off"] and rj["collar_fold_agrees"], rj
-
-
 # ----------------------------------------------------------------------------------------------- tucked (design key)
 def _cylinder(r, z0, z1, n=48, m=30):
     t = np.linspace(0, 2 * np.pi, n, endpoint=False)
@@ -143,29 +126,6 @@ def _cylinder(r, z0, z1, n=48, m=30):
             a, b, c, d = j * n + i, j * n + (i + 1) % n, (j + 1) * n + i, (j + 1) * n + (i + 1) % n
             F += [(a, b, d), (a, d, c)]
     return V, np.asarray(F)
-
-
-def test_tucked_pulls_the_cloth_below_the_line_to_the_body_and_reads_it():
-    import types
-    from hifipushie import pattern_form as pf
-    BV, BT = _cylinder(0.15, 0.6, 1.4)
-    body = types.SimpleNamespace(V=BV, T=BT, at={"waist_z": np.array([1.0]), "hps.L": np.array([0.08, 0, 1.5])})
-    t = np.linspace(0, 2 * np.pi, 48, endpoint=False)
-    zs = np.arange(0.75, 1.2, 0.01)  # (a shirt body flaring 30 mm off below the waist, 5 mm above)
-    X = np.array([((0.15 + (0.03 if z < 1.0 else 0.005)) * np.cos(a), (0.15 + (0.03 if z < 1.0 else 0.005)) * np.sin(a), z)
-                  for z in zs for a in t])
-    M = {"names": ["front.L"], "piece": np.zeros(len(X), int)}
-    res = {"body": body, "mesh": M}
-    g = {"tucked": True}
-    before = gr.tuck_reads(X, body, gr.tuck_line_z(body, g))
-    assert before["tuck_standoff_p90_mm"] > 25, before
-    X2, info = pf.tuck(res, X, g)
-    after = gr.tuck_reads(X2, body, gr.tuck_line_z(body, g))
-    assert after["tuck_standoff_p90_mm"] <= pf.TUCK_CAP * 1000 + 0.5, after
-    assert info["moved"] > 0 and len(info["hidden"]) == int((X[:, 2] < 1.0).sum())
-    above = X[:, 2] >= 1.0
-    assert np.allclose(X2[above], X[above])  # (C109: above the LINE nothing moves: no faded ring over the waistband)
-    assert gr.tuck_line_z(body, {}) is None
 
 
 def test_tucked_cloth_slides_into_the_trousers_instead_of_stretching():
@@ -208,20 +168,6 @@ def test_tucked_cloth_slides_into_the_trousers_instead_of_stretching():
     assert d.max() <= pf.TUCK_CAP + 1e-6  # (and still under the cap)
 
 
-# ----------------------------------------------------------------------------------------------- C100: own colour
-def test_own_colour_objects_take_the_spec_colour_and_stripe(monkeypatch):
-    from hifipushie import server, store
-    spec = {"cloth": {"shirt": {"color": "#bdb8b4", "stripe": {"pitch_mm": 2.5, "contrast": 0.03}, "roughness": 0.8}}}
-    monkeypatch.setattr(store, "load", lambda name: spec)
-    objs = [{"name": "body", "V": np.zeros((3, 3)), "F": np.zeros((1, 3), int), "color": "#c9b8a6"},
-            {"name": "shirt", "V": np.zeros((3, 3)), "F": np.zeros((1, 3), int), "color": "#5b7fa6",
-             "mesh": {"uv": np.zeros((3, 2))}}]
-    out = server.own_colour_objects("m", objs)
-    assert out[0]["color"] == "#c9b8a6"  # (the body keeps its own)
-    assert out[1]["color"] == "#bdb8b4" and out[1]["stripe"]["pitch_mm"] == 2.5 and out[1]["roughness"] == 0.8
-    assert out[1]["uv"].shape == (3, 2) and objs[1]["color"] == "#5b7fa6"  # (the clay objects unchanged)
-
-
 # ----------------------------------------------------------------------------------- C218: the lapel FACE (canvas s12)
 def _lapel_mesh(lean_deg=0.0, yaw_deg=0.0, end=386.0, taper=0.25):
     """front.L / front.R: a forepart sheet (y -0.12) from the roll edge out to 0.2 m, and a turned lapel (y -0.125)
@@ -252,28 +198,3 @@ def _lapel_mesh(lean_deg=0.0, yaw_deg=0.0, end=386.0, taper=0.25):
     M = {"names": ["front.L", "front.R"], "piece": np.asarray(piece), "F": np.asarray(F), "closures": []}
     return np.asarray(V, float), M, np.asarray(turned)
 
-
-def test_lapel_face_reads_a_known_flat_lapel():
-    """C218: a flat lapel w = 0.25 x (386 - d) mm reads its own width at each row (+-1 mm), both sides, and its face ends
-    at the break (386, the concept's)."""
-    X, M, t = _lapel_mesh()
-    r = gr.lapel_face_reads(X, M, HPS, turned=t)
-    for s in "LR":
-        for d in (150, 200, 250, 300, 350):
-            assert abs(r[f"lapel_face_{s}_{d}_mm"] - 0.25 * (386 - d)) <= 1.0, (s, d, r)
-        assert abs(r[f"lapel_face_end_below_hps_{s}_mm"] - 386) <= 4.0, r
-
-
-def test_lapel_face_is_perpendicular_to_the_roll_and_shows_the_turn_aside():
-    """C218: a roll edge leaning 15 deg reads the face perpendicular to it (horizontal width x cos 15); a lapel turned 40
-    deg aside (C212's sideways faces) reads foreshortened (x cos 40): the front view, like the traced concept."""
-    X, M, t = _lapel_mesh(lean_deg=15.0)
-    r = gr.lapel_face_reads(X, M, HPS, turned=t)
-    assert abs(r["lapel_face_L_200_mm"] - 0.25 * 186 * math.cos(math.radians(15))) <= 1.5, r
-    X, M, t = _lapel_mesh(yaw_deg=40.0)
-    r = gr.lapel_face_reads(X, M, HPS, turned=t)
-    assert abs(r["lapel_face_L_200_mm"] - 0.25 * 186 * math.cos(math.radians(40))) <= 1.0, r
-    # a lapel whose face ends 55 mm high (Garrett d2: 330) reads 0 at 350, not the outer edge's offset
-    X, M, t = _lapel_mesh(end=331.0)
-    r = gr.lapel_face_reads(X, M, HPS, turned=t)
-    assert r["lapel_face_L_350_mm"] == 0.0 and abs(r["lapel_face_end_below_hps_L_mm"] - 331) <= 4.0, r

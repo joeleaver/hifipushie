@@ -86,9 +86,9 @@ def test_call_tool_returns_images_like_a_native_call():
 
 
 def test_bad_args_name_the_expected_parameters():
-    e = _error("design_garment", {"nme": "x"})
+    e = _error("pattern_check", {"nme": "x"})
     assert "unknown argument(s) nme" in e and "missing required name, garment" in e, e
-    assert "design_garment expects: name: str, garment: str" in e, e
+    assert "pattern_check expects: name: str, garment: str" in e, e
     e = _error("look_chain", {"name": "x", "garment": "y", "size": "big"})
     assert "bad argument(s): size" in e and "look_chain expects:" in e, e
     e = _error("chain_garmnt", {})

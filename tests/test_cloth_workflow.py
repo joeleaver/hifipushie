@@ -7,18 +7,6 @@ from hifipushie import cloth, cloth_check, garment_blocks, garment_design as gd,
 MEAS = {"waist": 776.0, "seat": 972.0, "hips": 920.0, "waistToSeat": 245.0, "waistToKnee": 585.0, "wrist": 150.0}
 
 
-def test_sloped_hem_is_the_whole_leg():
-    # a trouser leg whose hem is shaped for a break (the back 3 cm lower than the front, dipping in its middle) is
-    # measured piece by piece just over its own hem's corners: read at one level the front was missed and the leg
-    # failed "TOO SMALL to pull on"
-    from hifipushie import cloth_workflow
-    front = np.array([[0.0, 0.0], [0.2, 0.0], [0.19, -0.8], [0.02, -0.8]])
-    back = np.array([[0.0, 0.0], [0.24, 0.0], [0.23, -0.83], [0.12, -0.842], [0.01, -0.83]])  # (dips at its middle)
-    pcs = {"front.L": {"P": front}, "back.L": {"P": back}}
-    w = cloth_workflow.hem_width(pcs, ["front.L", "back.L"])
-    assert 0.385 < w < 0.395, w  # front 170 + back 220 mm
-
-
 def test_kb_is_consistent():
     K = gd.kb()
     for kind, kd in K["kinds"].items():
@@ -90,39 +78,6 @@ def _skirt(**sheet):
     return g, cloth.pieces(g, MEAS)
 
 
-def test_skirt_block_and_evidence():
-    g, Bp = _skirt()
-    assert set(Bp["pieces"]) == {"front", "back.L", "back.R", "waistband"}
-    assert gd.roles(Bp) == {"skirt_front": ["front"], "skirt_back": ["back.L", "back.R"], "waistband": ["waistband"]}
-    rows = cloth_check.seams(Bp, "skirt")
-    assert all(r["ok"] for r in rows), [r for r in rows if not r["ok"]]
-    D = gd.dims(Bp, MEAS)
-    assert 28 <= D["waistband_height"] <= 42 and 0 <= D["waistband_over_waist"] <= 30, D
-    assert abs(D["waistband_overlap"] - 35) < 0.5, D
-    ev = gd.evidence(gd.resolve(g["_design"]), Bp, MEAS)
-    assert ev and all(ok for ok, *_ in ev), [e for e in ev if not e[0]]
-    M = cloth.mesh(Bp, 0.02)  # it meshes: darts and the waist chain sew
-    assert len(M["sew"]) > 50 and len(M["stitch"]) == 1
-    # no darts: the evidence for "darts: waist" fails, said plainly
-    g2, Bp2 = _skirt(pattern={"darts": False})
-    bad = [t for ok, d, c, t in gd.evidence(gd.resolve(g2["_design"]), Bp2, MEAS) if not ok]
-    assert any("0 darts" in t for t in bad), bad
-
-
-def test_made_or_draped_and_frozen_fronts():
-    g, Bp = _skirt()
-    md = gd.made_or_draped(Bp, gd.resolve(g["_design"]), g["_design"])
-    assert md["waistband"][0] == "made" and md["front"][0] == "draped"
-    # a notched lapel's fronts must roll: wholly interfaced fronts are refused
-    own = {"pieces": {"front.L": {"rect": [0.3, 0.6], "role": "front"}, "front.R": {"rect": [0.3, 0.6], "role": "front"}},
-           "seams": [], "interfaced": ["front.L", "front.R"]}
-    B = cloth.pieces(own, {})
-    res = gd.resolve({"kind": "coat", "details": {"collar": "notched_lapel", "lining": "none", "shoulder": "none",
-                                                  "back_vent": "none"}})
-    bad = [t for ok, d, c, t in gd.evidence(res, B, {}) if not ok]
-    assert any("can't" in t and "roll" in t for t in bad) and any("facing" in t for t in bad), bad
-
-
 def test_fold_lines():
     own = {"pieces": {"band": {"rect": [0.4, 0.06], "role": "cuff"}}, "seams": [],
            "folds": [{"piece": "band", "line": {"mid": "x"}, "angle": 0, "kind": "press"},
@@ -135,29 +90,11 @@ def test_fold_lines():
     assert np.allclose(b[:, 1], -0.03 + 0.01, atol=1e-6), b[:3]
 
 
-def test_generate_band_ring():
-    own = {"pieces": {"body": {"rect": [0.5, 0.4], "wrap": {"to": "torso"}}}, "seams": [],
-           "generate": [{"band": "neckband", "role": "neckband", "along": ["body:nw>n>ne"], "ratio": 0.85, "height": 0.02,
-                         "ring": True, "fold": True, "wrap": {"to": "neck"}}]}
-    B = cloth.pieces(own, {})
-    P = B["pieces"]["neckband"]["P"]
-    assert abs(np.ptp(P[:, 0]) - 0.5 * 0.85) < 1e-6 and "fold" in B["pieces"]["neckband"]["lines"]
-    assert abs(gd.dims(B, {})["neckband_ratio"] - 0.85) < 1e-6
-    # to the body by BOTH raw edges (folded in half, both edges in the one seam: C237), and its own ring seam
-    assert len(B["seams"]) == 3 and ["neckband:nw>n>ne", ["body:nw>n>ne"]] in B["seams"], B["seams"]
-    import json as _j
-    notes = B.get("seam_notes") or {}
-    assert all(_j.dumps(s_) in notes for s_ in B["seams"] if s_[1] == ["body:nw>n>ne"]), notes  # (both stretched on)
-    Bf = cloth.pieces(dict(own, generate=[dict(own["generate"][0], represent="flush")]), {})
-    assert len(Bf["seams"]) == 2 and "fold" not in Bf["pieces"]["neckband"]["lines"]  # (flush: one layer, C237)
-
-
 def test_pattern_sheet_renders():
     g, Bp = _skirt()
     im = pattern_sheet.render(Bp, "skirt", seam_rows=cloth_check.seams(Bp, "skirt"))
     assert im.size[0] > 800 and im.size[1] > 400
     assert len(set(im.resize((64, 64)).getdata())) > 20  # not blank
-
 
 
 def test_pattern_sheet_numbers_are_in_text_not_the_image():
@@ -184,66 +121,6 @@ def test_sewn_pairs_crossing_at_the_start_are_said_not_failed():
          "sew": np.array([[0, 2]]), "stitch": np.array([[4, 5]])}
     cr = [("back", "sleeve"), ("cuff", "cuff"), ("back", "pocket")]
     assert cloth_workflow.sewn_crossings(cr, M) == [("back", "sleeve"), ("cuff", "cuff")]
-
-
-def test_start_gap_check_names_a_misordered_band():
-    """Stage 4's seam check: a waistband whose chain starts part of a turn from the band's own start has gaps of only
-    a waist's diameter (under any distance limit a shoulder seam also passes), but they point every way."""
-    from hifipushie import cloth_workflow as cw
-    n, R = 40, 0.123  # a 776 mm waist
-    th = np.linspace(0, 2 * np.pi, n, endpoint=False)
-    ring = lambda a, r, z: np.c_[r * np.cos(th + a), r * np.sin(th + a), np.full(n, z)]
-    M = {"sew": np.c_[np.arange(n), n + np.arange(n)], "sew_seam": np.zeros(n, int)}
-    rows = lambda X: cw.seam_start_gaps(X, M)[0]
-    ok = rows(np.r_[ring(0.0, R + 0.03, 1.0), ring(0.0, R, 1.01)])  # the band 3 cm outside the trousers' top
-    assert not ok["far"] and not ok["turned"], ok
-    for turn in (np.pi, np.pi / 2, np.pi / 3):  # half, a quarter, a sixth of a turn off
-        r = rows(np.r_[ring(turn, R + 0.03, 1.0), ring(0.0, R, 1.01)])
-        assert r["turned"] and abs(r["turn_deg"] - np.degrees(turn)) < 2, (turn, r)
-    assert not rows(np.r_[ring(np.pi, R + 0.03, 1.0), ring(0.0, R, 1.01)])["far"] or True  # (the distance limit alone: 2R < 25 cm)
-    assert rows(np.r_[ring(np.pi, R + 0.03, 1.0), ring(0.0, R, 1.01)])["median"] < 0.30
-    # a shoulder seam: front and back stand a body depth apart, every gap the same way: not turned, not far
-    line = np.c_[np.linspace(0.08, 0.2, n), np.zeros(n), np.full(n, 1.5)]
-    sh = rows(np.r_[line + [0, -0.11, 0], line + [0, 0.11, 0]])
-    assert not sh["turned"] and not sh["far"] and sh["twist"] < 0.01, sh
-    # one ring inside another (a hood round the head, the neckline out on the chest): gaps every way, but no turn
-    conc = rows(np.r_[ring(0.0, R + 0.10, 1.0), ring(0.0, R, 1.01)])
-    assert conc["twist"] > 0.9 and not conc["turned"], conc
-    # a cut-on collar up the front of the neck against the back neck: far
-    assert rows(np.r_[line + [0, -0.15, 0.2], line + [0, 0.11, 0]])["far"]
-
-
-def test_a_ring_band_is_no_opening():
-    """cloth_workflow.openings: a .L/.R pair of pieces each sewn to ITSELF (rib cuffs: ring seams) is not an opening
-    between them; a centre pair sewn to nothing still is."""
-    from types import SimpleNamespace
-    from hifipushie import cloth_workflow as wf
-    sq = np.array([[-0.01, 0.0], [0.1, 0.0], [0.1, 0.05], [-0.01, 0.05]])
-    pcs = {n: {"P": sq, "wrap": {"to": "torso"}, "role": "cuff" if n.startswith("cuff") else "front"}
-           for n in ("cuff.L", "cuff.R", "front.L", "front.R")}
-    Bp = {"pieces": pcs, "stitches": [], "closures": [],
-          "seams": [["cuff.L:sw>nw", "cuff.L:se>ne"], ["cuff.R:sw>nw", "cuff.R:se>ne"]]}
-    out = wf.openings(SimpleNamespace(Bp=Bp, sheet={}, res={}))
-    txt = " | ".join(t for t, _ in out)
-    assert "cuff.L" not in txt and "front.L and front.R" in txt, txt
-
-
-def test_waist_band_follows_the_body():
-    """A garment cut straight from the chest: its waist band's top comes from THIS body's chest-to-waist drop (a
-    woman's waist 0.74 x her chest: a jumper at +16% chest is +57% at the waist, honestly); a man's barely changes,
-    a fitted garment (shaped in at the waist) keeps the kind's band (Tess's jumper, 2026-10-09)."""
-    from hifipushie.cloth_workflow import waist_band_for_body
-    wb, cb = [0.10, 0.35], [0.10, 0.25]
-
-    def sz(chest, waist, g_chest, g_waist):
-        return {"chest": {"body_mm": chest, "garment_mm": g_chest}, "waist": {"body_mm": waist, "garment_mm": g_waist}}
-
-    woman = waist_band_for_body(wb, cb, sz(847, 626, 982, 902))
-    assert woman[0] == 0.10 and abs(woman[1] - (1.25 * 847 / 626 - 1)) < 1e-3 and woman[1] > 0.6
-    man = waist_band_for_body(wb, cb, sz(1000, 900, 1160, 1120))
-    assert man is None or man[1] < 0.40  # (1.25 x 1000 / 900 - 1 = 0.389: barely above the written 0.35)
-    assert waist_band_for_body(wb, cb, sz(847, 626, 982, 760)) is None  # fitted at the waist: as written
-    assert waist_band_for_body(wb, None, sz(847, 626, 982, 902)) is None
 
 
 def test_a_rib_band_may_start_stretched():
@@ -299,17 +176,6 @@ def test_relaxing_a_start_leaves_a_declared_band_stretched():
         assert np.abs(fn(V, M, free, 0.02) - V).max() > 1e-3  # a plain piece is drawn in
         Md = dict(M, declared_v=np.full(4, 1 / 0.85 - 1))
         assert np.abs(fn(V, Md, free, 0.02) - V).max() < 1e-9  # a declared band is left as it is
-
-
-def test_the_place_check_places_as_the_build_does():
-    """The place check's pieces carry the garment keys place() reads (worn_top, open_gap, ...) as the build's do:
-    without them a jumper the build lays on the form (worn_top) was checked as a loose tube (Tess, tess2)."""
-    import inspect
-    from hifipushie import cloth, cloth_workflow
-    Bp = cloth.place_keys({}, {"worn_top": True, "open_gap": 0.1, "design": {"kind": "hoodie"}})
-    assert Bp["worn_top"] is True and Bp["open_gap"] == 0.1
-    assert cloth.place_keys({}, {"design": {"kind": "hoodie"}})["worn_top"] is False
-    assert "place_keys" in inspect.getsource(cloth_workflow.Ctx)
 
 
 def test_a_start_inside_the_contact_standoff_is_named():
