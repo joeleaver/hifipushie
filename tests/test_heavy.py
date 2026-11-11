@@ -369,6 +369,7 @@ def test_estimates_only_rise(env):
 def test_server_cancel_sets_the_event(env):
     import anyio
     from hifipushie import server
+    from hifipushie import mcp_app
     seen = {}
 
     def register_capture(*a, **k):
@@ -384,7 +385,7 @@ def test_server_cancel_sets_the_event(env):
                 return
             time.sleep(0.02)
 
-    server._tool_with_errors(register_capture)()(slow_tool)
+    mcp_app._tool_with_errors(register_capture)()(slow_tool)
 
     async def go():
         with anyio.move_on_after(0.3):

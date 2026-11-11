@@ -1,7 +1,7 @@
 """The hair route: what walks an agent down one correct path using only the tools (hair readiness audit 2026-11-01).
 
 The rules a tool can carry: which style a call gets, what it refuses (`check_style_arg`, `check_export`), the warnings
-it adds (`style_warning`, `shells_warning`, `head_warning`) and the `next:` line each hair tool ends with. server.py
+it adds (`style_warning`, `shells_warning`, `head_warning`) and the `next:` line each hair tool ends with. tools_hair.py
 only calls these, so the route is read and changed here. The path itself is the block at the top of hair_guide.md.
 
 Hair modules import this lazily and it imports `hair` lazily (hair.validate needs the checks, the checks need

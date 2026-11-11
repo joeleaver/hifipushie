@@ -171,12 +171,13 @@ def test_put_and_edit_model_report_joins():
 
 def test_look_resolves_a_fitted_camera():
     from hifipushie import server
+    from hifipushie import tools_model
     _figure("fig")
     matched.fit_camera("fig", str(_concept("fig", _cam())))
-    c = server._resolve_camera("fig", {"fitted": "concept"})
+    c = tools_model._resolve_camera("fig", {"fitted": "concept"})
     assert len(c["eye"]) == 3 and 5 <= c["fov"] <= 150 and len(c["up"]) == 3
     try:
-        server._resolve_camera("fig", {"fitted": "nope"})
+        tools_model._resolve_camera("fig", {"fitted": "nope"})
     except ValueError as e:
         assert "fit_concept_camera" in str(e)
     else:

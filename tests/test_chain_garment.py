@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 from hifipushie import chain_garment as cg, chain_net as cn, server
+from hifipushie import mcp_app, tools_cloth
 
 
 def _strip(n=9, w=0.1, h=0.02, x0=0.0, piece=0):
@@ -143,7 +144,7 @@ def test_only_path_for_clothes():
     ins = server.mcp.instructions
     assert "chain_garment" in ins and not any(g in ins for g in REMOVED)
     for g in REMOVED:
-        assert g not in server._TOOLS and not hasattr(server, g), g
+        assert g not in mcp_app._TOOLS and not hasattr(server, g), g
         with pytest.raises(ValueError, match="no tool"):
             asyncio.run(server.call_tool(g, {}))
         with pytest.raises(ValueError):
@@ -183,13 +184,13 @@ def _job_model(monkeypatch, tmp_path, script: str):
                 " st.update(k)\n (d/'status.json').write_text(json.dumps(st))\n" + script)
         return subprocess.Popen([sys.executable, "-c", code, str(d)]).pid
 
-    monkeypatch.setattr(server, "_chain_spawn", spawn)
+    monkeypatch.setattr(tools_cloth, "_chain_spawn", spawn)
     return calls, json
 
 
 def test_job_answers_at_once_and_a_poll_never_starts_a_second(monkeypatch, tmp_path):
     calls, _ = _job_model(monkeypatch, tmp_path, "put(stage='building')\ntime.sleep(4)\nput(stage='done', reads={})\n")
-    monkeypatch.setattr(server, "_chain_gate", lambda *a: None)
+    monkeypatch.setattr(tools_cloth, "_chain_gate", lambda *a: None)
     t = server.chain_garment("m", "shirt", wait=0)
     assert 'next: call_tool("chain_garment"' in t and '"wear": "closed"' in t
     t = server.chain_garment("m", "shirt", wait=0)
@@ -275,7 +276,7 @@ def test_ties_are_which_fastenings_are_done_up():
 def test_the_tool_builds_the_planned_state(monkeypatch, tmp_path):
     from hifipushie import chain_structure as cs
     calls, _ = _job_model(monkeypatch, tmp_path, "put(stage='building')\ntime.sleep(2)\n")
-    monkeypatch.setattr(server, "_chain_gate", lambda *a: None)
+    monkeypatch.setattr(tools_cloth, "_chain_gate", lambda *a: None)
     server.chain_garment("m", "shirt", wait=0)  # no record: closed, as before
     assert calls[-1]["state"] == "closed" and "plan" not in calls[-1]
     monkeypatch.setattr(cs, "load_plan", lambda m, g: _plan())
@@ -287,21 +288,21 @@ def test_the_tool_builds_the_planned_state(monkeypatch, tmp_path):
 
 def test_job_open_poll_keeps_the_opening(monkeypatch, tmp_path):
     _job_model(monkeypatch, tmp_path, "put(stage='building')\ntime.sleep(2)\n")
-    monkeypatch.setattr(server, "_chain_gate", lambda *a: None)
+    monkeypatch.setattr(tools_cloth, "_chain_gate", lambda *a: None)
     t = server.chain_garment("m", "shirt", wear="open", opening=1.5, wait=0)
     assert '"opening": 1.5' in t.split("next:")[1]
 
 
 def test_job_dead_worker_reads_failed(monkeypatch, tmp_path):
     _job_model(monkeypatch, tmp_path, "put(stage='building')\nimport os\nos._exit(9)\n")
-    monkeypatch.setattr(server, "_chain_gate", lambda *a: None)
+    monkeypatch.setattr(tools_cloth, "_chain_gate", lambda *a: None)
     t = server.chain_garment("m", "shirt", wait=15)
     assert "the worker died" in t and "rebuild" in t
 
 
 def test_job_refusal_is_immediate_and_starts_nothing(monkeypatch, tmp_path):
     calls, _ = _job_model(monkeypatch, tmp_path, "")
-    monkeypatch.setattr(server, "_chain_gate", lambda *a: "shirt: not built: FAIL\nnext: call_tool(\"pattern_check\")")
+    monkeypatch.setattr(tools_cloth, "_chain_gate", lambda *a: "shirt: not built: FAIL\nnext: call_tool(\"pattern_check\")")
     assert "not built" in server.chain_garment("m", "shirt")
     assert not calls
 
@@ -438,7 +439,7 @@ def test_structure_fail_answer_lists_rows_and_look_shows_the_build(monkeypatch, 
                                        "ref": [20.0, None], "source": "kind default", "change": "lower the CF neckline"},
                                       {"id": "cuff_fit", "status": "PASS", "stage": 2, "ours": {"k": 30}}]}
     _job_model(monkeypatch, tmp_path, f"put(stage='structure_failed', structure={sc!r})\n")
-    monkeypatch.setattr(server, "_chain_gate", lambda *a: None)
+    monkeypatch.setattr(tools_cloth, "_chain_gate", lambda *a: None)
     t = server.chain_garment("m", "shirt", wait=20)
     assert "STRUCTURE FAIL" in t and "the hang does not run" in t and "collar_under_jaw" in t
     assert "change: lower the CF neckline" in t and 'next: call_tool("look_chain"' in t and '"waive"' in t
@@ -468,7 +469,7 @@ def _presim_model(monkeypatch, tmp_path, verdict="PASS", **kw):
     from hifipushie import garment_record as gr, store
     seen = _stub_worker(monkeypatch, tmp_path, verdict, **kw)
     monkeypatch.setattr(store, "load", lambda n: {"bones": {}, "cloth": {"shirt": {"design": {"kind": "shirt"}}}})
-    monkeypatch.setattr(server, "_chain_gate", lambda *a: None)
+    monkeypatch.setattr(tools_cloth, "_chain_gate", lambda *a: None)
     for sid in ("0", "1", "2", "3", "4"):
         gr.write("m", "shirt", sid, "done", output={"n": sid})
     calls = []
@@ -477,7 +478,7 @@ def _presim_model(monkeypatch, tmp_path, verdict="PASS", **kw):
         calls.append(w)
         cg.worker(name, garment, w)
         return os.getpid()
-    monkeypatch.setattr(server, "_chain_spawn", spawn)
+    monkeypatch.setattr(tools_cloth, "_chain_spawn", spawn)
     return seen, calls
 
 

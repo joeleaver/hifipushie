@@ -66,11 +66,11 @@ def _put_back(env: dict, cwd: str) -> None:
 
 def _registry():
     """The MCP tool registry as it stands (None before hifipushie.server is imported: nothing to put back then)."""
-    s = sys.modules.get("hifipushie.server")
-    if s is None:
+    if sys.modules.get("hifipushie.server") is None:
         return None
+    s, f = sys.modules["hifipushie.mcp_app"], sys.modules["hifipushie.tools_find"]  # (the registry; call_tool's cache)
     groups = {k: (g["tools"], list(g["tools"])) for k, g in s.TOOL_GROUPS.items()}
-    return (s, dict(s._TOOLS), dict(s.mcp._tool_manager._tools), dict(s._CALL_TOOLS), groups)
+    return (s, dict(s._TOOLS), dict(s.mcp._tool_manager._tools), (f._CALL_TOOLS, dict(f._CALL_TOOLS)), groups, dict(s._FUNCS))
 
 
 def _put_back_registry(snap) -> None:
@@ -79,12 +79,12 @@ def _put_back_registry(snap) -> None:
     sys.modules too, so the next test importing it registers its tools afresh."""
     if snap is None:
         return
-    s, tools, native, call, groups = snap
+    s, tools, native, (call_live, call), groups, funcs = snap
     for name in set(s._TOOLS) - set(tools):
         mod = getattr(s._TOOLS[name][1], "__module__", "") or ""
         if not mod.startswith("hifipushie"):
             sys.modules.pop(mod, None)
-    for live, saved in ((s._TOOLS, tools), (s.mcp._tool_manager._tools, native), (s._CALL_TOOLS, call)):
+    for live, saved in ((s._TOOLS, tools), (s.mcp._tool_manager._tools, native), (call_live, call), (s._FUNCS, funcs)):
         if live != saved:
             live.clear()
             live.update(saved)

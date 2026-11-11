@@ -60,8 +60,8 @@ Test subjects: examples/troll.json (reference), workspace/goblin, fox.
 - Start of every garment: `chain_net.py` + `chain_garment.py` (docstrings are the spec); older cloth routes deleted (C409).
 - Export: `asset.py` + `blender_asset.py` (docs/notes/asset.md, game_ready.md), `rig.py` (docs/notes/rig.md),
   `retopo.py` (docs/notes/retopo.md), `budgets.py` + budgets.json (docs/notes/budgets.md).
-- `resources.py` (docs/notes/resources.md); `server.py` MCP tools (mcp 2.x MCPServer; every tool wrapped by
-  `_tool_with_errors`). Audits: bin/audit, bin/audit-summary (docs/notes/audit.md).
+- `resources.py` (docs/notes/resources.md); `server.py` gathers the MCP tools: `mcp_app.py` (app, registry,
+  `_tool_with_errors`), `tools_<domain>.py`, `tool_common.py`. Audits: bin/audit, bin/audit-summary (docs/notes/audit.md).
 - Performance invariants (field_at chunking, PartGrid reuse, caches keyed by content): docs/notes/performance.md.
 
 ## Testing
