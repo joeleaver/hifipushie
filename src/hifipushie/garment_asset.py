@@ -10,12 +10,18 @@ records(name, spec) -> {garment: record}: the model's garments that have a garme
 exported(rec) -> (glb, warnings), or NotShipped(why; next: the call): a garment whose look (step 9) is not approved, or
     whose step 10 is missing or stale, is NOT in the character's export (stages consume approved pieces), and the
     export's log says so first. A step 10 whose own gate FAILED is shipped as exported, with a WARNING naming the rows.
-parts(name, recs, out_dir, log) -> (cparts, weights, looks, left_out):
+lod_files(rec) -> {k: (glb, share)}: the garment's own LOD files (C439: export_garment writes <garment>_LOD<k>.glb, the
+    same pattern re-grid at a coarser grid). One file per LOD: the character's export takes them AS THEY ARE instead
+    of decimating LOD0 (the generic decimator kinked the shirt at LOD2 and tore its fronts at LOD3).
+parts(name, recs, out_dir, log) -> (cparts, weights, looks, left_out, lods):
     cparts as cloth.export_part gives them, [(part name, part, files)]: "cloth_<garment>" (two-sided, part["shell"]
     as lods_part._lod_shell and asset_hidden read it) and, when the garment has details (buttons ...),
     "cloth_<garment>_details" on a small palette texture (one cell per detail's colour, roughness, metallic);
     weights {part name: (bone names, J, W)}; looks {part name: {"alpha_cutoff"}} for an alpha-cut base map;
-    left_out [(garment, why)].
+    left_out [(garment, why)]; lods {k: {part name: (part | None, weights | None, share)}} from the LOD files
+    (None: the LOD leaves the part out, details too small to see there). A shipped garment with NO LOD files is
+    logged as a WARNING naming export_garment: asset_export then decimates it like any part.
+take_lods(own, parts, lp, lr, rep, bones) -> log line: one LOD's chain parts into asset_export's LOD (its LOD loop).
 bone_weights(weights, bones) -> {part name: (J, W)} in the export rig's bone order.
 read(glb) -> the garment GLB as arrays in Blender axes (garment_glb.write's inverse).
 """
@@ -69,11 +75,17 @@ def exported(rec: dict) -> tuple[Path, list]:
     warn = []
     if s["10"]["status"] == "failed":
         bad = [r for r in ((st.get("gate") or {}).get("rows") or []) if r.get("status") not in ("PASS", "INFO")]
-        ids = [str(r.get("id") or r.get("row")) for r in bad if r.get("id") or r.get("row")]
-        # (the record keeps a row's "id"; step 10 names its rows "row", so its record has none: say how many)
-        warn.append(f"step 10's own gate FAILED ({'; '.join(ids) if ids else f'{len(bad)} row(s)'}; {call} names them): "
-                    "shipped as exported")
+        warn.append(f"step 10's own gate FAILED ({'; '.join(str(r['id']) for r in bad if 'id' in r)}): shipped as exported")
     return glb, warn
+
+
+def lod_files(rec: dict) -> dict:
+    """{k: (glb, share of the garment's budget)} for the LOD files step 10 recorded that are still on disk."""
+    out = {}
+    for x in ((rec["steps"]["10"].get("output") or {}).get("lods") or []):
+        if Path(x["glb"]).exists():
+            out[int(x["lod"])] = (Path(x["glb"]), float(x["share"]))
+    return out
 
 
 def read(path) -> dict:
@@ -185,16 +197,22 @@ def _flat_maps(stem: Path, colour=(204, 204, 204), rough=0.85) -> dict:
     return f
 
 
-def garment_part(gname: str, m: dict, out_dir: Path) -> tuple[dict, dict, bool]:
-    """(part, files, alpha_cut) for the garment's own mesh: its maps written as the asset's map files."""
-    import io
-    from PIL import Image
-    stem = Path(out_dir) / f"cloth_{gname}"
+def own_part(m: dict) -> dict:
+    """The garment's own mesh (a read() mesh) as an export part, its two-sided layout named when it has one."""
     uv = m["uv"] if m["uv"] is not None else np.full((len(m["V"]), 2), 0.5)
     part = part_of(m["V"], m["T"], uv, m["N"])
     sh = shell_of(m["V"], m["T"])
     if sh:
         part["shell"] = sh
+    return part
+
+
+def garment_part(gname: str, m: dict, out_dir: Path) -> tuple[dict, dict, bool]:
+    """(part, files, alpha_cut) for the garment's own mesh: its maps written as the asset's map files."""
+    import io
+    from PIL import Image
+    stem = Path(out_dir) / f"cloth_{gname}"
+    part = own_part(m)
     maps = m["maps"] or {}
     if maps.get("base"):
         files = {"basecolor": stem.parent / f"{stem.name}_basecolor.png", "normal": stem.parent / f"{stem.name}_normal.png",
@@ -218,6 +236,22 @@ def garment_part(gname: str, m: dict, out_dir: Path) -> tuple[dict, dict, bool]:
     return part, files, bool(m["alpha_cut"] and maps.get("base"))
 
 
+def details_mesh(meshes: list, cells: dict) -> tuple[dict, np.ndarray, np.ndarray]:
+    """(part, J, W): detail meshes as ONE part, each on its own palette cell (cells: {mesh name: cell index})."""
+    n = len(cells)
+    Vs, Ts, UVs, Ns, Js, Ws, k = [], [], [], [], [], [], 0
+    for m in meshes:
+        V, T = m["V"], m["T"]
+        Vs.append(V)
+        Ts.append(T + k)
+        UVs.append(np.tile([(cells[m["name"]] + 0.5) / n, 0.5], (len(V), 1)))
+        Ns.append(m["N"] if m["N"] is not None else _vertex_normals(V, T))
+        Js.append(m["J"])
+        Ws.append(m["W"])
+        k += len(V)
+    return part_of(np.vstack(Vs), np.vstack(Ts), np.vstack(UVs), np.vstack(Ns)), np.vstack(Js), np.vstack(Ws)
+
+
 def details_part(gname: str, meshes: list, out_dir: Path) -> tuple[dict, dict, np.ndarray, np.ndarray]:
     """(part, files, J, W): a garment's details as ONE part, each detail's colour / roughness / metallic in its own
     cell of a palette (one material for every button, not one each)."""
@@ -226,51 +260,48 @@ def details_part(gname: str, meshes: list, out_dir: Path) -> tuple[dict, dict, n
     n = len(meshes)
     base = np.zeros((CELL, CELL * n, 3), np.uint8)
     orm = np.zeros((CELL, CELL * n, 3), np.uint8)
-    Vs, Ts, UVs, Ns, Js, Ws, k = [], [], [], [], [], [], 0
     for i, m in enumerate(meshes):
         base[:, i * CELL:(i + 1) * CELL] = [round(255 * float(x)) for x in m["colour"]]
         orm[:, i * CELL:(i + 1) * CELL] = (255, round(255 * m["roughness"]), round(255 * m["metallic"]))
-        V, T = m["V"], m["T"]
-        Vs.append(V)
-        Ts.append(T + k)
-        UVs.append(np.tile([(i + 0.5) / n, 0.5], (len(V), 1)))
-        Ns.append(m["N"] if m["N"] is not None else _vertex_normals(V, T))
-        Js.append(m["J"])
-        Ws.append(m["W"])
-        k += len(V)
-    part = part_of(np.vstack(Vs), np.vstack(Ts), np.vstack(UVs), np.vstack(Ns))
+    part, J, W = details_mesh(meshes, {m["name"]: i for i, m in enumerate(meshes)})
     files = {"basecolor": stem.parent / f"{stem.name}_basecolor.png", "normal": stem.parent / f"{stem.name}_normal.png",
              "orm": stem.parent / f"{stem.name}_orm.png", "specular": stem.parent / f"{stem.name}_specular_gltf.png"}
     Image.fromarray(base).save(files["basecolor"])
     Image.fromarray(orm).save(files["orm"])
     Image.new("RGB", (16, 16), (128, 128, 255)).save(files["normal"])
     Image.new("RGBA", (16, 16), (255, 255, 255, 128)).save(files["specular"])
-    return part, files, np.vstack(Js), np.vstack(Ws)
+    return part, files, J, W
 
 
-def parts(name: str, recs: dict, out_dir, log=print) -> tuple[list, dict, dict, list]:
+def _split(g: dict, gname: str) -> tuple[dict, list]:
+    """(the garment's own mesh, its detail meshes) of a read() file."""
+    own = ([m for m in g["meshes"] if m["name"] == gname] or g["meshes"][:1])[0]
+    return own, [m for m in g["meshes"] if m is not own]
+
+
+def parts(name: str, recs: dict, out_dir, log=print) -> tuple[list, dict, dict, list, dict]:
     out_dir = Path(out_dir)
-    cparts, weights, looks, left = [], {}, {}, []
+    cparts, weights, looks, left, lods = [], {}, {}, [], {}
     for gname, rec in recs.items():
+        call = f'export_garment("{name}", "{gname}")'
         try:
             glb, warn = exported(rec)
         except NotShipped as e:
             left.append((gname, str(e)))
             continue
         g = read(glb)
-        own = [m for m in g["meshes"] if m["name"] == gname] or g["meshes"][:1]
-        det = [m for m in g["meshes"] if m is not own[0]]
-        if any(m["J"] is None or m["W"] is None for m in own + det):
-            left.append((gname, f"its exported file has no skin weights ({glb}); next: export_garment(\"{name}\", \"{gname}\")"))
+        own, det = _split(g, gname)
+        if any(m["J"] is None or m["W"] is None for m in [own] + det):
+            left.append((gname, f"its exported file has no skin weights ({glb}); next: {call}"))
             continue
-        part, files, cut = garment_part(gname, own[0], out_dir)
+        part, files, cut = garment_part(gname, own, out_dir)
         pn = f"cloth_{gname}"
         cparts.append((pn, part, files))
-        weights[pn] = (g["bones"], own[0]["J"], own[0]["W"])
+        weights[pn] = (g["bones"], own["J"], own["W"])
         if cut:
             looks[pn] = {"alpha_cutoff": 0.5}
         sh = part.get("shell")
-        log(f"cloth {gname}: the chain garment as export_garment wrote it ({glb.name}: {len(own[0]['T'])} triangles"
+        log(f"cloth {gname}: the chain garment as export_garment wrote it ({glb.name}: {len(own['T'])} triangles"
             + (f", {sh['outer']} outer, {sh['thickness'] * 1000:.1f} mm thick" if sh else ", one-sided")
             + f"; its own maps and weights), not rebuilt")
         if det:
@@ -281,7 +312,59 @@ def parts(name: str, recs: dict, out_dir, log=print) -> tuple[list, dict, dict, 
                 f"{sum(len(m['T']) for m in det)} triangles) as one part on a palette")
         for w in warn:
             log(f"WARNING cloth {gname}: {w}")
-    return cparts, weights, looks, left
+        cells = {m["name"]: i for i, m in enumerate(det)}
+        own_lods = lod_files(rec)
+        for k, (f, share) in own_lods.items():
+            gk = read(f)
+            ok, dk = _split(gk, gname)
+            dk = [m for m in dk if m["name"] in cells]
+            lods.setdefault(k, {})[pn] = (own_part(ok), (gk["bones"], ok["J"], ok["W"]), share)
+            if det:  # (a LOD without details leaves the part out: too small to see at its distance)
+                lods[k][pn + "_details"] = (None, None, share)
+                if dk:
+                    dp, dJ, dW = details_mesh(dk, cells)
+                    lods[k][pn + "_details"] = (dp, (gk["bones"], dJ, dW), share)
+        if own_lods:
+            log(f"cloth {gname}: its own LOD files ({', '.join(f'LOD{k} {f.name}' for k, (f, _) in sorted(own_lods.items()))}):"
+                " the pattern re-grid at a coarser grid, taken as they are (never decimated)")
+        else:
+            log(f"WARNING cloth {gname}: its export has no LOD files, so its LODs are DECIMATED from LOD0 like any part "
+                f"(that kinks and tears a chain garment); next: {call} again (it writes one file per LOD), then this export")
+    return cparts, weights, looks, left, lods
+
+
+def take_lods(own: dict, parts: dict, lp: dict, lr: dict | None, rep: dict, bones: list | None) -> str:
+    """One LOD's chain parts from the garments' own LOD files, put into asset_export's LOD in place of a decimation:
+    own {part name: (part | None, weights, share)} (parts()' lods[k]); parts: LOD0's (the atlas index and the pose
+    correctives are carried from it: each LOD vertex takes them at its closest point of LOD0's surface, as
+    lods_part.lod_part does); lp / lr["weights"] / rep: this LOD's parts, rig weights and report. A part the LOD
+    leaves out is not in lp. Returns the log line."""
+    from . import garment_export as ge
+    from . import lods as lodmod
+    bits = []
+    for pn, (part, w, share) in own.items():
+        p0 = parts[pn]
+        n0 = len(p0["corner_vert"]) // 3
+        if part is None:
+            lp.pop(pn, None)
+            if lr is not None:
+                lr["weights"].pop(pn, None)
+            rep[pn] = {"triangles0": n0, "triangles": 0, "own_lod": True}
+            bits.append(f"{pn} left out (too small to see at this LOD)")
+            continue
+        q = {**part, "atlas": p0.get("atlas", 0)}
+        sh0 = {nm: v for nm, v in (p0.get("shapes") or {}).items() if nm.startswith(lodmod.POSE_SHAPE)}
+        if sh0:
+            c, b = ge.on_surface(q["verts"], p0["verts"], np.asarray(p0["corner_vert"], np.int64).reshape(-1, 3))
+            unit = lambda a: a / np.maximum(np.linalg.norm(a, axis=1, keepdims=True), 1e-12)  # noqa: E731
+            at = lambda a: np.einsum("nk,nkc->nc", b, np.asarray(a, np.float64)[c])  # noqa: E731
+            q["shapes"] = {nm: (at(d), unit(at(n_a)), unit(at(n_b))) for nm, (d, n_a, n_b) in sh0.items()}
+        lp[pn] = q
+        if lr is not None:
+            lr["weights"].update(bone_weights({pn: w}, bones))
+        rep[pn] = {"triangles0": n0, "triangles": len(q["corner_vert"]) // 3, "own_lod": True}
+        bits.append(f"{pn} {rep[pn]['triangles']} ({share:g} of its budget)")
+    return "the garments' own LOD files (export_garment's re-grid; not decimated): " + ", ".join(bits)
 
 
 def bone_weights(weights: dict, bones: list) -> dict:

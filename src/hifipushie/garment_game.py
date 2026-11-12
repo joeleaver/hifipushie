@@ -112,39 +112,70 @@ def boundaries(drape: dict, h) -> dict:
     resampled ONCE (canonical fractions along its pair list) and both sides take those samples: the 3D point is the
     mean of the two sides, so the two panels meet exactly. Returns {piece: {"loop2d", "loop3d", "gid", "free"}}:
     gid = a global id per boundary sample (shared by both sides of a seam), free = per loop edge, not on a seam.
-    h: one edge length, or {piece name: h} (a seam takes the finer of its two sides; garment_export: stiff pieces finer)."""
+    h: one edge length, or {piece name: h} (a seam takes the finer of its two sides; garment_export: stiff pieces finer).
+    A seam is shared per STRETCH (C439): a chain of its pairs that follow each other along the outline on BOTH sides.
+    One side of a seam is often several stretches: a sleeve cap sewn to front, yoke and back; a collar stand to both
+    fronts and the yoke; a cuff sewn to a sleeve end that the placket slit cuts in two. Keyed by the whole seam, the
+    other side's part was not found again, was resampled as a free edge of its own and got a rim: an open loop at
+    every armhole, neckline and cuff that only read closed while the grid was fine."""
     V, uv, F, pc = drape["V"], drape["uv"], drape["F"], drape["piece"]
     hd = h if isinstance(h, dict) else None
     hp = (lambda n: hd[n]) if hd is not None else (lambda n: h)
     sew, ss = drape["sew"], drape["sew_seam"]
-    side = {}  # vertex -> (seam, 'a'|'b', partner)
-    for (a, b), s in zip(sew, ss):
+    side, at = {}, {}  # vertex -> (seam, side, partner); (vertex, seam, side) -> its pairs
+    for i, ((a, b), s) in enumerate(zip(sew, ss)):
         side.setdefault(int(a), []).append((int(s), 0, int(b)))
         side.setdefault(int(b), []).append((int(s), 1, int(a)))
+        at.setdefault((int(a), int(s), 0), []).append(i)
+        at.setdefault((int(b), int(s), 1), []).append(i)
+    outline = {}
+    for i, n in enumerate(drape["names"]):  # (a dropped piece's outline still says which of its vertices are neighbours)
+        Fi = F[(pc[F] == i).all(1)]
+        if not len(Fi):
+            continue
+        loop = max(_loops(Fi), key=lambda L: abs(_area2(uv[L])))
+        outline[n] = loop[::-1] if _area2(uv[loop]) < 0 else loop
+    nxt = {frozenset((L[j], L[(j + 1) % len(L)])) for L in outline.values() for j in range(len(L))}
+    seg = list(range(len(sew)))  # union-find over the pairs: a stretch = pairs consecutive on both sides
 
-    def lab(u, v):
+    def find(i):
+        while seg[i] != i:
+            seg[i] = seg[seg[i]]
+            i = seg[i]
+        return i
+
+    def join(I, J, k):  # pairs I at one vertex, J at the same or the next one, on side k: joined when the other
+        for i in I:     # side's vertices are the same or neighbours too
+            for j in J:
+                x, y = int(sew[i][1 - k]), int(sew[j][1 - k])
+                if i != j and (x == y or frozenset((x, y)) in nxt):
+                    seg[find(i)] = find(j)
+    for (u, s, k), I in at.items():
+        join(I, I, k)
+    for e in nxt:
+        u, v = tuple(e)
+        for (s, k, _) in set(side.get(u, [])):
+            join(at[(u, s, k)], at.get((v, s, k), ()), k)
+
+    def lab(u, v):  # (seam, side, stretch)
         for (s, k, _) in side.get(u, []):
-            if any(s2 == s and k2 == k for (s2, k2, _) in side.get(v, [])):
-                return (s, k)
+            for i in at[(u, s, k)]:
+                if any(find(i) == find(j) for j in at.get((v, s, k), ())):
+                    return (s, k, find(i))
         return None
 
     runs = {}
-    for i, n in enumerate(drape["names"]):
+    for n, loop in outline.items():
         if n in drape["drop"]:
             continue
-        Fi = F[(pc[F] == i).all(1)]
-        loops = _loops(Fi)
-        loop = max(loops, key=lambda L: abs(_area2(uv[L])))
-        if _area2(uv[loop]) < 0:
-            loop = loop[::-1]
         labs = [lab(loop[j], loop[(j + 1) % len(loop)]) for j in range(len(loop))]
         # free runs break at the pattern's corners (a run resampled evenly would cut a hem corner off)
         P = uv[loop]
         d0, d1 = P - np.roll(P, 1, 0), np.roll(P, -1, 0) - P
         cosang = (d0 * d1).sum(1) / np.maximum(np.linalg.norm(d0, axis=1) * np.linalg.norm(d1, axis=1), 1e-15)
         corner = cosang < np.cos(np.radians(CORNER_DEG))
-        seg = np.cumsum(corner)
-        labs = [("free", int(seg[j])) if lb is None else lb for j, lb in enumerate(labs)]
+        cseg = np.cumsum(corner)
+        labs = [("free", int(cseg[j])) if lb is None else lb for j, lb in enumerate(labs)]
         # rotate so the loop starts at a label change
         ch = [j for j in range(len(labs)) if labs[j] != labs[j - 1]]
         r0 = ch[0] if ch else 0
@@ -157,7 +188,7 @@ def boundaries(drape: dict, h) -> dict:
             rr.append((labs[j], [loop[x % len(loop)] for x in range(j, k + 2)]))
             j = k + 1
         runs[n] = rr
-    # canonical seam samples, keyed by the frozenset of side-a vertices / side-b vertices
+    # canonical seam samples, keyed by (seam, stretch, side): the chain of that side's vertices
     canon, gid_n = {}, [0]
 
     def new_ids(m):
@@ -168,25 +199,33 @@ def boundaries(drape: dict, h) -> dict:
         for lb, ch in rr:
             if lb[0] == "free" or lb[1] != 0:
                 continue
-            s = lb[0]
-            pa = {int(a): int(b) for (a, b), t in zip(sew, ss) if t == s}
+            s, _, g = lb
+            pa = {int(a): int(b) for i, ((a, b), t) in enumerate(zip(sew, ss)) if t == s and find(i) == g}
             A = np.array(ch); B = np.array([pa[x] for x in ch])
             L = 0.5 * (np.linalg.norm(np.diff(V[A], axis=0), axis=1).sum() + np.linalg.norm(np.diff(V[B], axis=0), axis=1).sum())
             m = max(1, int(round(L / min(hp(n), hp(drape["names"][int(pc[B[0]])])))))
             f = _arc_fracs(0.5 * (V[A] + V[B]), m)
             P = 0.5 * (_interp_chain(V[A], f) + _interp_chain(V[B], f))
             c = {"P": P, "uvA": _interp_chain(uv[A], f), "uvB": _interp_chain(uv[B], f), "gid": new_ids(m + 1)}
-            canon[frozenset(A.tolist())] = (c, 0, A[0])
-            canon[frozenset(B.tolist())] = (c, 1, B[0])
+            canon[(s, g, 0)], canon[(s, g, 1)] = (c, A), (c, B)
+
+    def backwards(ch, C, P):  # does the run `ch` go against the canonical chain C (samples P)?
+        pos = {}
+        for i, v in enumerate(C.tolist()):
+            pos.setdefault(v, i)
+        idx = [pos[v] for v in ch if v in pos]
+        if len(idx) >= 2 and idx[0] != idx[-1]:
+            return idx[0] > idx[-1]
+        return np.linalg.norm(V[ch[0]] - P[-1]) < np.linalg.norm(V[ch[0]] - P[0])
     out = {}
     for n, rr in runs.items():
         L2, L3, G, FR = [], [], [], []
         for lb, ch in rr:
-            key = frozenset(ch)
-            if lb[0] != "free" and key in canon:
-                c, k, first = canon[key]
-                u2 = c["uvB" if k else "uvA"]; P = c["P"]; g = list(c["gid"])
-                if ch[0] != first:
+            key = (lb[0], lb[2], lb[1]) if lb[0] != "free" else None
+            if key in canon:
+                c, C = canon[key]
+                u2 = c["uvB" if lb[1] else "uvA"]; P = c["P"]; g = list(c["gid"])
+                if backwards(ch, C, P):
                     u2, P, g = u2[::-1], P[::-1], g[::-1]
                 free = False
             else:
