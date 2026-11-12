@@ -139,10 +139,10 @@ TOOL_GROUPS: dict[str, dict] = {
                          "for bin/review, how parts join the body (stalk or base)",
                 "tools": ["fit_concept_camera", "look_matched", "feature_tiles", "join_report", "fit_matched"]},
     "features": {"about": "sculpt from reference pictures: read a picture's views, patches and form lines, name its "
-                          "features as marks on it (the feature map), measure a model feature by feature",
+                          "features as marks on it (the feature map), build the masses from their marks, measure a "
+                          "model feature by feature",
                  "subject": "feature features turnaround",
-                 "steps": ["read_reference", "mark_features", "feature_report"],
-                 "tools": ["read_reference", "mark_features", "feature_report"]},
+                 "tools": ["read_reference", "mark_features", "build_masses", "feature_report"]},
     "scene": {"about": "the Blender scene (sync, pull) and the heavy-job queue",
               "tools": ["sync", "pull", "heavy_status", "heavy_queue"]},
     "export": {"about": "OBJ export, game-ready assets (GLB/FBX, PBR maps), the export rig, judging a GLB",

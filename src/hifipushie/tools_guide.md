@@ -293,6 +293,17 @@ Adds named features to the model's feature map (kind, on, join, separate, author
 view) and returns the map drawn on `view`, the table and what the map still owes. With no features it only shows
 the map. Marks and fields: guide(topic="features").
 
+### `build_masses`
+
+`build_masses(name, how, symmetry=True, view=None, save=None)`
+
+Builds masses of the feature map into the model from their marks (masses.py): how {feature: {"as": "ball" |
+"trunk" | "tube", ...}}. A ball is a super blob from the marks' boxes; a trunk is a loft with a section per height
+(width from the front or back mark, depth and lean from the side mark); a tube is a chain of bones along the
+mark's long axis ("along" x / y / z overrides), "joints" stations. A ".L" is built and mirrored. What no mark
+shows is listed as ASSUMED. The built elements are written into the map, and the feature report follows.
+The sculptor's page: guide(topic="features").
+
 ### `feature_report`
 
 `feature_report(name, elements=None, views=None, view=None, resolution=144, save=None)`

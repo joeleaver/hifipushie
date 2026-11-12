@@ -292,7 +292,9 @@ def footprints(spec: dict, fm: dict, elements: dict, views: list[str], cams: dic
     part_ids = [str(q) for q in got["parts"]]
     part_fields = got["fields"].astype(float)
     whole = sdf.Grid(part_fields.min(0), got["origin"], float(got["voxel"]))
-    moved_views = featurealign.align_flat(name, fm, cams, whole) if name else []
+    # a model built from the map (build_masses) lives where the pictures put it: only a model made some other way
+    # is laid under the views first
+    moved_views = featurealign.align_flat(name, fm, cams, whole) if name and fm.get("frame") != "map" else []
     shells = {k for k, dfn in (ex.get("parts") or {}).items() if isinstance(dfn, dict) and dfn.get("shell")}
     part_of = {n: e.get("part", "body") for kind in ("blobs", "bones") for n, e in ex[kind].items()}
     adds = {p.name for p in prims if p.op == "add" and p.part not in shells}

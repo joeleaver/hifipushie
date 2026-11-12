@@ -16,7 +16,7 @@ def read_reference(name: str, image: str | None = None, views: list[str] | None 
     (one name per figure, left to right: "front", "side" (faces picture-left), "side_r", "back"; any other name is
     a perspective picture), height (m, feet to top of the first such view). Later calls: view (+ focus [x0, y0,
     x1, y1] in its pixels) to look closer; detail coarse / medium / fine re-cuts the patches. Then mark_features.
-    Details: guide(topic="features")."""
+    Details: guide(topic="read_reference"); the page: guide(topic="features")."""
     from . import featuremap, refread
     if image:
         if not views:
@@ -73,7 +73,7 @@ def mark_features(name: str, features: dict | None = None, remove: list[str] | N
     "authority": view, "inferred": words, "marks": {view: {"patches": [ids] | "box" | "ellipse" | "polygon" |
     "line" (view px), "minus": {...}, "mirror": bool} | null}}}. A call adds to the map (marks are replaced per
     view named; null clears one). Returns the map on every view (or one `view`, with rulers and focus), each
-    feature's place and size, and what the map still owes. Details: guide(topic="features")."""
+    feature's place and size, and what the map still owes. Details: guide(topic="mark_features"); the page: guide(topic="features")."""
     from . import featuremap
     fm = featuremap.mark(name, features or {}, remove, notes) if (features or remove or notes is not None) \
         else featuremap.load(name)
@@ -97,7 +97,7 @@ def feature_report(name: str, elements: dict | None = None, views: list[str] | N
     HIDDEN, OFF (how far, how big, how much of the mark it covers) or right. elements: {feature: [the model's
     element names / patterns / "part:<part>"]} says what makes each feature (remembered). The whole outline is one
     row; the features inside it are the rest: a sculpt is not done on its outline. Returns the table and, for
-    `view`, the picture with its marks beside the model with its footprints. Details: guide(topic="features")."""
+    `view`, the picture with its marks beside the model with its footprints. Details: guide(topic="feature_report"); the page: guide(topic="features")."""
     from . import featuresee
     rep = featuresee.report(name, elements, views, resolution)
     by = rep["by_feature"]
@@ -122,6 +122,39 @@ def feature_report(name: str, elements: dict | None = None, views: list[str] | N
     ok = [f"{r['feature']} ({r['view']}, covers {r['iou']:.0%})" for r in rep["rows"] if r["status"] == "right"]
     if ok:
         lines.append("right: " + ", ".join(ok))
+    view = view or next(iter(rep["cams"]), None)
+    if view is None:
+        return "\n".join(lines)
+    return [_out(featuresee.draw(name, rep, view), save), "\n".join(lines)]
+
+
+@mcp.tool(structured_output=False)
+def build_masses(name: str, how: dict, symmetry: bool = True, view: str | None = None, save: str | None = None):
+    """Turn masses of the feature map into shapes, their numbers read off the marks: no coordinate typed. how:
+    {feature: {"as": "ball" (one rounded lump) | "trunk" (an upright mass through cross-sections) | "tube" (a limb
+    or horn along its own axis, as bones), "round": 2 = round .. higher = squarer, "sections" / "joints": how
+    many, "along": "x" | "y" | "z", "part": its own part, "blend": m, "depth" / "y" / "x": what no mark shows}}.
+    Makes the model if there is none; a feature built again replaces what was built for it. Returns what was
+    made, what had to be assumed, and the feature report with a picture. Details: guide(topic="build_masses"); the page: guide(topic="features")."""
+    from . import featuremap, featuresee, masses
+    res = masses.build(name, how, symmetry)
+    lines = [f"saved {name} v{res['version']}: built {len(res['made'])} masses: "
+             + ", ".join(f"{f} ({featuremap.load(name)['features'][f].get('as')})" for f in sorted(res["made"]))]
+    lines += [f"  ASSUMED {n}" for n in res["notes"]]
+    rep = featuresee.report(name)
+    by = rep["by_feature"]
+    lines.append("whole outline against each picture: " + ", ".join(f"{v} {i:.0%}" for v, i in rep["outline"].items()))
+    lines += [f"  MOVED {m}" for m in rep["moved_views"]]
+    fm = rep["map"]
+    for st in ("NOT MADE", "OFF", "HIDDEN", "CAN'T MEASURE", "right"):
+        fs = sorted(f for f, s in by.items() if s == st and fm["features"][f]["kind"] == "mass")
+        if fs:
+            lines.append(f"masses {st}: " + ", ".join(fs))
+    for r in rep["rows"]:
+        if r["status"] in ("OFF", "HIDDEN", "CAN'T MEASURE") and fm["features"][r["feature"]]["kind"] == "mass":
+            lines.append(f"  {r['status']} {r['feature']} ({r['view']}): {r['why']}")
+    forms = sum(1 for f, s in by.items() if fm["features"][f]["kind"] == "form" and s == "NOT MADE")
+    lines.append(f"forms not made yet: {forms} (they are laid on the masses once the masses are right)")
     view = view or next(iter(rep["cams"]), None)
     if view is None:
         return "\n".join(lines)

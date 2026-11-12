@@ -4,7 +4,7 @@ A model can match its reference's outline and still be wrong everywhere inside i
 no mouth. The outline is one feature. The feature map names all of them, as marks on the reference's own pictures,
 so the sculpt is built from them and measured against each one. Make it BEFORE any shape is made.
 
-## The three calls
+## The calls
 
 1. `read_reference(name, image, views, height)`: cuts a sheet into its views (one name per figure, left to right)
    and gives each a camera. Flat views to scale: `"front"`, `"back"`, `"side"` (the figure faces the picture's
@@ -19,8 +19,10 @@ so the sculpt is built from them and measured against each one. Make it BEFORE a
    Read EVERY picture before marking, and mark each feature in every picture that shows it.
 2. `mark_features(name, features)`: you name what you see. It returns the map drawn on the picture, each
    feature's place and size, and what the map STILL OWES.
-3. `feature_report(name, elements)`: once there is a model, says for every feature whether it is made, and how
-   far it is from its mark. `elements` says which of the model's elements make each feature.
+3. `build_masses(name, how)`: turns the map's masses into shapes, their numbers read off your marks. You say
+   what each mass IS; you type no coordinate. It makes the model if there is none.
+4. `feature_report(name, elements)`: says for every feature whether it is made, and how far it is from its mark.
+   `elements` says which of the model's elements make a feature (build_masses writes that itself).
 
 ## What a feature is
 
@@ -85,6 +87,32 @@ Example (a made-up subject):
                  "marks": {"front": {"patches": [14, 15]}}, "inferred": "its thickness: no side view shows it"},
       "rim":    {"kind": "form", "on": "body", "marks": {"front": {"patches": [3]}, "side": {"patches": [2]}}},
       "stripe": {"kind": "paint", "on": "body", "marks": {"front": {"patches": [22, 23, 27]}}}})
+
+## Building the masses
+
+Build once the map owes nothing. For every mass say what it is, `"as"`:
+
+- `"ball"`: one rounded lump. Its middle and its three half sizes come from the boxes of its marks.
+- `"trunk"`: one upright mass through cross-sections: at each height its width from the front (or back) mark,
+  its depth and its lean from the side mark. For a mass that stands up and sits on the centre line.
+- `"tube"`: something long that tapers, along its own axis: up, sideways or forward, and it may bend. Built as a
+  chain of bones through `"joints"` stations (3 by default; more for a curve), each station's middle and half
+  sizes read across the axis in both views. `"along": "x" | "y" | "z"` if the long axis it picks is wrong.
+
+`"round"`: 2 is round in section, higher is squarer, like a soft block (a ball's or trunk's own judgement call:
+look at the outline's corners). `"sections"`: how many heights a trunk is read at (7; more for a wavy outline).
+`"part"`: its own part for a thing that is separate. `"blend"`: metres, how softly it melts into what it touches
+(small for a thing that sits ON another, larger for one that grows OUT of it; the `join` you wrote says which).
+
+Both views are needed for a shape: what a missing view would give is listed as ASSUMED, and for a ball with no
+side mark you must give `"y"` (where it sits front to back). `.L` is built and mirrored to `.R`.
+
+    build_masses("jug", {"body": {"as": "trunk", "round": 2.2}, "handle": {"as": "tube", "joints": 5, "y": 0.0},
+                         "knob": {"as": "ball"}})
+
+It answers with the feature report for the masses and a picture. A mass that is OFF is fixed in its MARK (redraw
+it, in the view that is wrong) or in what you said it is, then built again: building a feature again replaces
+what was built before. Don't move on to forms until every mass is right from every view.
 
 ## What the map owes
 

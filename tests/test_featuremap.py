@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from hifipushie import featuremap, featuresee, matched, refread, sdf, store
+from hifipushie import featuremap, featuresee, masses, matched, refread, sdf, store
 from hifipushie.spec import compile_prims
 
 K, W, H, GROUND = 0.0025, 200, 350, 340
@@ -239,3 +239,35 @@ def test_a_flat_views_camera_and_the_small_helpers():
     assert refread.colour_word((240, 200, 40)) == "yellow" and refread.colour_word((30, 30, 30)) == "black"
     assert refread.nice_step(300) == 50 and refread.nice_step(60) == 10
     assert featuremap.twin("ear.L") == "ear.R" and featuremap.twin("nose") is None
+
+
+def test_masses_are_built_from_their_marks(fig):
+    """The figure's masses rebuilt from the marks alone land on the picture: no number typed."""
+    featuremap.mark("fig", _features(fig["marks"]))
+    true = store.load("fig")
+    try:
+        store.save("fig", {**true, "blobs": {"body": true["blobs"]["body"]}}, "only a body left: the rest is built")
+        res = masses.build("fig", {"body": {"as": "trunk"}, "head": {"as": "trunk", "sections": 5}, "snout": {"as": "ball"},
+                                   "eye.L": {"as": "ball"}, "eye.R": {"as": "ball"}, "ear.L": {"as": "tube"},
+                                   "ear.R": {"as": "tube"}})
+        spec = res["spec"]
+        eye = spec["blobs"]["eye.L"]
+        assert np.allclose(eye["at"], [0.06, -0.125, 0.67], atol=0.012), eye["at"]   # where the true eye is
+        assert "eye.R" not in spec["blobs"]                                           # (mirrored, not built twice)
+        widest = max(s["half_width"] for s in spec["blobs"]["body"]["sections"])
+        assert abs(widest - 0.16) < 0.02, widest                                      # the true body is 0.16 half wide
+        assert res["made"]["ear.R"] == [featuremap.twin(n) for n in res["made"]["ear.L"]]
+        rep = featuresee.report("fig", resolution=128)
+        assert min(rep["outline"].values()) > 0.9, rep["outline"]
+        assert not rep["moved_views"]                                                 # built in the map's own frame
+        bad = [r for r in rep["rows"] if r["status"] != "right"]
+        assert len(bad) <= 1, bad
+        with pytest.raises(ValueError, match="as is one of"):
+            masses.build("fig", {"snout": {"as": "blob"}})
+    finally:
+        store.save("fig", true, "the true figure again")
+        fm = featuremap.load("fig")
+        fm.pop("frame", None)
+        for n in fig["marks"]:
+            fm["features"][n].update(elements=[n], built=[])
+        featuremap.save("fig", fm)

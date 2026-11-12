@@ -1,0 +1,276 @@
+"""Masses from their outlines: a mass marked on a reference's flat views (featuremap.py) becomes a shape in the
+model, its numbers read off the marks. The sculptor says WHAT each mass is; no coordinate is typed.
+
+Why (Baynard Racing, 2026-11-12): a block-in typed as numbers cost six saves for a head and ten for a horn, and
+still missed the outline by centimetres, because every number was read off a picture by eye and typed. The marks
+already hold those numbers.
+
+A mass is built `as`:
+  "ball"   one rounded lump: its middle and three half sizes from the marks' boxes (an eye, a nose, a hoof, a head
+           that is nearly a ball). `round`: 2 = an ellipsoid, higher = squarer (a soft block).
+  "trunk"  one upright mass through cross-sections: at each height its width from the front (or back) mark and its
+           depth and lean from the side mark (a torso, an upright head, a neck). `round` as above, per section.
+           `sections`: how many (default 7).
+  "tube"   a tapering limb or horn along the mark's own long axis, which may run up, sideways or forward and may
+           bend: a chain of bones through `joints` + 1 stations (default 2 bones), each station's middle and half
+           sizes read across the axis in both views. The bones are the limb's bones later, for the rig.
+What the two views can't give is said, never silently guessed: a mass marked in one flat view takes its depth from
+its width (or `depth`, metres), and its place along the missing axis from `y` / `x` (or the mass it is `on`).
+
+`.L` / `.R`: with symmetry (the default) the `.L` mass is built and mirrored; a `.R` with no `.L` twin is built
+from its own marks and mirrored the other way. Each built feature's `elements` are written into the map, so
+feature_report measures them at once. Building a feature again replaces what was built for it before.
+"""
+from __future__ import annotations
+
+import numpy as np
+
+from . import featuremap, refread, store
+
+KINDS = ("ball", "trunk", "tube")
+
+
+def _flat(fm: dict, name: str, feature: str) -> dict:
+    """The feature's marks as world extents: {"xz": (x, z) point cloud from front / back marks, "yz": from side
+    marks}, metres, mirrored to the creature's own axes."""
+    out = {}
+    for v, g in fm["features"][feature]["marks"].items():
+        rec = fm["views"][v]
+        if rec["kind"] not in refread.ORTHO:
+            continue
+        k, c0, ground = rec["m_per_px"], rec["centre_px"], rec["ground_px"]
+        ys, xs = np.where(featuremap.mask(name, feature, v))
+        sign = -1.0 if rec["kind"] in ("back", "side_r") else 1.0
+        pts = np.stack([sign * (xs + 0.5 - c0) * k, (ground - ys - 0.5) * k], 1)
+        key = "xz" if rec["kind"] in ("front", "back") else "yz"
+        out[key] = pts if key not in out else np.concatenate([out[key], pts])
+    return out
+
+
+def _span(pts: np.ndarray, along: int, lo: float, hi: float, half: float):
+    """(min, max) of the other coordinate among the points within `half` of each of the slice positions."""
+    a, b = pts[:, along], pts[:, 1 - along]
+    k = (a >= lo - half) & (a <= hi + half)
+    return (float(b[k].min()), float(b[k].max())) if k.any() else None
+
+
+def _stations(pts: np.ndarray, along: int, n: int, inset: float = 0.08):
+    """n slices across a point cloud along one of its axes: [(position, low, high)], ends set in a little (the last
+    rows of a rounded end are a point)."""
+    lo, hi = float(pts[:, along].min()), float(pts[:, along].max())
+    at = np.linspace(lo + inset * (hi - lo), hi - inset * (hi - lo), n)
+    half = max((hi - lo) / (2.5 * n), 0.002)
+    out = []
+    for t in at:
+        s = _span(pts, along, t, t, half)
+        if s:
+            out.append((float(t), s[0], s[1]))
+    return out, lo, hi
+
+
+def _need(f: dict, feature: str, key: str):
+    if key not in f:
+        have = "front or back" if key == "xz" else "side"
+        raise ValueError(f"{feature}: no {have} mark, so it can't be built from its outlines yet: mark it there")
+    return f[key]
+
+
+def _ball(feature: str, f: dict, how: dict, notes: list) -> dict:
+    xz = f.get("xz")
+    yz = f.get("yz")
+    if xz is None and yz is None:
+        raise ValueError(f"{feature}: no mark in a flat view")
+    zs = np.concatenate([p[:, 1] for p in (xz, yz) if p is not None])
+    z0, z1 = float(zs.min()), float(zs.max())
+    if xz is not None:
+        x0, x1 = float(xz[:, 0].min()), float(xz[:, 0].max())
+    else:
+        x0 = x1 = None
+    if yz is not None:
+        y0, y1 = float(yz[:, 0].min()), float(yz[:, 0].max())
+    else:
+        y0 = y1 = None
+    rz = (z1 - z0) / 2
+    if x0 is None:
+        rx = float(how.get("depth", (y1 - y0))) / 2 if "depth" in how else (y1 - y0) / 2
+        cx = float(how.get("x", 0.0))
+        notes.append(f"{feature}: no front mark: its width is taken as its depth ({2 * rx * 1000:.0f} mm) at x {cx:+.3f}")
+    else:
+        rx, cx = (x1 - x0) / 2, (x0 + x1) / 2
+    if y0 is None:
+        ry = float(how["depth"]) / 2 if "depth" in how else min(rx, rz)
+        if "y" not in how:
+            raise ValueError(f"{feature}: no side mark, so where it sits front to back is unknown: mark it in the side "
+                             f"view, or give y (metres, front is negative)")
+        cy = float(how["y"])
+        notes.append(f"{feature}: no side mark: depth {2 * ry * 1000:.0f} mm at y {cy:+.3f} is your word, not the picture's")
+    else:
+        ry, cy = (y1 - y0) / 2, (y0 + y1) / 2
+    return {"blobs": {feature: {"shape": "super", "at": [round(cx, 4), round(cy, 4), round((z0 + z1) / 2, 4)],
+                                "size": [round(max(rx, 0.002), 4), round(max(ry, 0.002), 4), round(max(rz, 0.002), 4)],
+                                "squareness": float(how.get("round", 2.0))}}}
+
+
+def _trunk(feature: str, f: dict, how: dict, notes: list) -> dict:
+    xz = _need(f, feature, "xz")
+    yz = f.get("yz")
+    n = int(how.get("sections", 7))
+    st, z0, z1 = _stations(xz, 1, n)
+    cx = float(np.mean([(a + b) / 2 for _, a, b in st]))
+    if yz is None:
+        notes.append(f"{feature}: no side mark: its depth is taken as {how.get('depth_ratio', 0.85):.2f} of its width, upright")
+    sections = []
+    for z, a, b in st:
+        hw = (b - a) / 2
+        side = _span(yz, 1, z, z, max((z1 - z0) / (2.5 * n), 0.002)) if yz is not None else None
+        if side:
+            hd, oy = (side[1] - side[0]) / 2, (side[0] + side[1]) / 2
+        else:
+            hd, oy = hw * float(how.get("depth_ratio", 0.85)), float(how.get("y", 0.0))
+        sections.append({"z": round(z, 4), "half_width": round(max(hw, 0.003), 4), "half_depth": round(max(hd, 0.003), 4),
+                         "offset_y": round(oy, 4), "squareness": float(how.get("round", 2.3))})
+    return {"blobs": {feature: {"shape": "loft", "at": [round(cx, 4), 0.0, 0.0], "sections": sections,
+                                "top": {"z": round(z1, 4)}, "bottom": {"z": round(z0, 4)}}}}
+
+
+def _tube(feature: str, f: dict, how: dict, notes: list) -> dict:
+    xz, yz = f.get("xz"), f.get("yz")
+    ext = {}
+    if xz is not None:
+        ext["x"] = float(np.ptp(xz[:, 0]))
+    if yz is not None:
+        ext["y"] = float(np.ptp(yz[:, 0]))
+    ext["z"] = max(float(np.ptp(p[:, 1])) for p in (xz, yz) if p is not None)
+    axis = how.get("along") or max(ext, key=ext.get)
+    if axis not in ext:
+        raise ValueError(f"{feature}: along is one of {sorted(ext)} for the views it is marked in")
+    n = int(how.get("joints", 3))
+    side = feature[-2:] if feature[-2:] in (".L", ".R") else ""
+    base = feature[:len(feature) - len(side)]
+    P, half = [], []  # each station: its middle [x, y, z] and half sizes across the axis (two numbers)
+    if axis == "z":
+        ref = xz if xz is not None else yz
+        st, _, _ = _stations(ref, 1, n, 0.04)
+        for z, a, b in st:
+            if xz is not None:
+                cx, hx = (a + b) / 2, (b - a) / 2
+            else:
+                cx, hx = float(how.get("x", 0.0)), None
+            s = _span(yz, 1, z, z, 0.01) if yz is not None else None
+            if s:
+                cy, hy = (s[0] + s[1]) / 2, (s[1] - s[0]) / 2
+            elif xz is None:
+                cy, hy = (a + b) / 2, (b - a) / 2
+            else:
+                cy, hy = float(how.get("y", 0.0)), None
+            hx, hy = hx if hx is not None else hy, hy if hy is not None else hx
+            P.append([cx, cy, z])
+            half.append((hx, hy))  # (width along x, depth along y)
+        if yz is None:
+            notes.append(f"{feature}: no side mark: round in section at y {how.get('y', 0.0):+.3f}")
+    elif axis == "x":
+        st, _, _ = _stations(xz, 0, n, 0.04)
+        cy = float(yz[:, 0].mean()) if yz is not None else float(how.get("y", 0.0))
+        dy = float(np.ptp(yz[:, 0])) / 2 if yz is not None else None
+        hmax = max((b - a) / 2 for _, a, b in st)
+        for x, a, b in st:
+            hz = (b - a) / 2
+            P.append([x, cy, (a + b) / 2])
+            half.append(((dy * hz / hmax) if dy else hz, hz))  # (depth along y, height along z)
+        if yz is None:
+            notes.append(f"{feature}: no side mark: round in section at y {cy:+.3f}")
+    else:
+        st, _, _ = _stations(yz, 0, n, 0.04)
+        cx = float(xz[:, 0].mean()) if xz is not None else float(how.get("x", 0.0))
+        dx = float(np.ptp(xz[:, 0])) / 2 if xz is not None else None
+        hmax = max((b - a) / 2 for _, a, b in st)
+        for y, a, b in st:
+            hz = (b - a) / 2
+            P.append([cx, y, (a + b) / 2])
+            half.append(((dx * hz / hmax) if dx else hz, hz))  # (width along x, height along z)
+    if len(P) < 2:
+        raise ValueError(f"{feature}: its mark is too small to find a run of stations along {axis}")
+    ai = "xyz".index(axis)  # a bone ends in a round cap one radius past its joint: set the end joints in by that
+    run = np.concatenate([p[:, 0 if axis != "z" else 1] for p in ((xz,) if axis == "x" else (yz,) if axis == "y" else
+                                                                  tuple(q for q in (xz, yz) if q is not None))])
+    lo, hi = float(run.min()), float(run.max())
+    P[0][ai] = lo + min(max(half[0]), 0.4 * (hi - lo))
+    P[-1][ai] = hi - min(max(half[-1]), 0.4 * (hi - lo))
+    joints, bones = {}, {}
+    for i, (p, (w, h)) in enumerate(zip(P, half)):
+        joints[f"{base}_j{i}{side}"] = {"pos": [round(c, 4) for c in p], "r": round(max(min(w, h), 0.002), 4)}
+    for i in range(len(P) - 1):
+        (w0, h0), (w1, h1) = half[i], half[i + 1]
+        r0, r1 = max(w0, h0, 0.002), max(w1, h1, 0.002)
+        bones[f"{base}_b{i}{side}"] = {"a": f"{base}_j{i}{side}", "b": f"{base}_j{i + 1}{side}", "r_a": round(r0, 4),
+                                       "r_b": round(r1, 4),
+                                       "flat": [round((w0 / r0 + w1 / r1) / 2, 3), round((h0 / r0 + h1 / r1) / 2, 3)],
+                                       "group": feature, "join": 0.004}
+    return {"joints": joints, "bones": bones}
+
+
+def build(name: str, how: dict, symmetry: bool = True) -> dict:
+    """Build the masses named in `how` {feature: {"as": kind, ...}} into model `name` (made if it doesn't exist).
+    Returns {"spec", "version", "made": {feature: [elements]}, "notes": [...]}."""
+    fm = featuremap.load(name)
+    if not fm["features"]:
+        raise ValueError(f"{name} has no feature map: read_reference, then mark_features")
+    have = (store._dir(name) / "spec.json").exists()
+    spec = store.load(name) if have else {"symmetry": bool(symmetry), "blend": 0.02, "joints": {}, "bones": {}, "blobs": {}}
+    for k in ("joints", "bones", "blobs"):
+        spec.setdefault(k, {})
+    notes, made = [], {}
+    for feature, h in how.items():
+        if feature not in fm["features"]:
+            raise ValueError(f"no feature {feature!r} in the map (have {sorted(fm['features'])})")
+        c = fm["features"][feature]
+        if c["kind"] != "mass":
+            raise ValueError(f"{feature} is a {c['kind']}: build_masses builds masses (a form is laid on a mass)")
+        kind = (h or {}).get("as")
+        if kind not in KINDS:
+            raise ValueError(f"{feature}: as is one of {KINDS} (a ball: one rounded lump; a trunk: an upright mass "
+                             f"through cross-sections; a tube: a limb or horn along its own axis)")
+        tw = featuremap.twin(feature)
+        sym = bool(spec.get("symmetry", True))
+        if sym and feature.endswith(".R") and tw in how:
+            continue  # its .L twin is built and mirrored
+        src = _flat(fm, name, feature)
+        if not src:
+            raise ValueError(f"{feature}: not marked in any flat view (front, back, side)")
+        flip = sym and feature.endswith(".R")
+        if flip:  # build it as the .L it mirrors from
+            src = {k: v * np.array([-1.0 if k == "xz" else 1.0, 1.0]) for k, v in src.items()}
+        target = tw if flip else feature
+        part = {"ball": _ball, "trunk": _trunk, "tube": _tube}[kind](target, src, h, notes)
+        for old in c.get("built") or []:  # what was built for it before goes
+            for k in ("joints", "bones", "blobs"):
+                spec[k].pop(old, None)
+        new_names = {n for k in ("bones", "blobs") for n in (part.get(k) or {})}
+        stay = [n for n in c.get("elements") or [] if n not in (c.get("built") or []) and n not in new_names
+                and any(n in spec[k] for k in ("bones", "blobs"))]
+        if stay:
+            notes.append(f"{feature}: {stay} made it before and was not built here, so it is still in the model beside "
+                         f"the new shape: take it out (edit_model) if the new shape replaces it")
+        names = []
+        for k in ("joints", "bones", "blobs"):
+            for n, e in (part.get(k) or {}).items():
+                if k != "joints":
+                    if h.get("part"):
+                        e["part"] = h["part"]
+                    if "blend" in h:
+                        e["blend"] = float(h["blend"])
+                    names.append(n)
+                spec[k][n] = e
+        built = [n for k in ("joints", "bones", "blobs") for n in (part.get(k) or {})]
+        mirror = lambda n: featuremap.twin(n) or n  # noqa: E731
+        own = [mirror(n) for n in names] if flip else names
+        c["elements"], c["built"], c["as"] = own, built, kind
+        made[feature] = own
+        if sym and tw and tw in fm["features"] and fm["features"][tw]["kind"] == "mass":
+            fm["features"][tw]["elements"] = [mirror(n) for n in own]
+            fm["features"][tw]["as"] = kind
+            made[tw] = fm["features"][tw]["elements"]
+    fm["frame"] = "map"  # the model is built where the pictures put it: a report must not slide the views onto it
+    version = store.save(name, spec, "build_masses: " + ", ".join(sorted(made)))
+    featuremap.save(name, fm)
+    return {"spec": spec, "version": version, "made": made, "notes": notes}
