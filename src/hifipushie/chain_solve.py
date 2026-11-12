@@ -36,6 +36,9 @@ THE METHOD, and why. Rounds of
    PROJ_TOL. Why: PD's springs only approach a length; the projection makes it exact. It is the last word of the solve.
 The report reads the residuals at the end (chain_solve_terms.report). Deterministic: no random numbers, fixed orders,
 direct factorisations. Self-contact is not handled here (N1); plies and layers are N2's constraints.
+Factors (PD's and LM's): CHOLMOD, METIS ordering, supernodal, analysed once per solve and refactored (gn.Factor says why,
+with N1c's numbers). PD runs 200 passes, then 100 per stiffening (N1c, 6k points: 400 first passes gave LM the same 11
+factors and E 4.32 vs 4.33; 100 cost LM 5 more factors, dearer than the 100 passes saved).
 """
 from __future__ import annotations
 
@@ -155,6 +158,7 @@ class _PD:
         A = sp.identity(nn, format="csr") * (PROX / REF ** 2)
         for S, W, _ in B:
             A = A + S.T @ sp.diags(W) @ S
+        self.M = sp.hstack([S.T @ sp.diags(W) for S, W, _ in B], format="csr")  # (a pass's right side: one product)
         A = sp.tril(A, format="csc")
         A.sort_indices()
         with threadpool_limits(1):
@@ -206,9 +210,7 @@ class _PD:
         return np.r_[tc, td]
 
     def step(self, Xn):
-        rhs = Xn * (PROX / REF ** 2)
-        for (S, W, _), P in zip(self.B, self.targets(Xn)):
-            rhs = rhs + S.T @ (W[:, None] * P)
+        rhs = Xn * (PROX / REF ** 2) + self.M @ np.concatenate(self.targets(Xn))
         with threadpool_limits(1):
             return self.F.solve(rhs)
 
@@ -327,7 +329,7 @@ def _project(Xn, t, ct, gap, iters: int = 40, log=None):
 
 
 def solve(net: cn.Network, X0, body=None, ties=(), folds=(), pulls=(), stiffness=None, gap: float = GAP,
-          pd_iters: int = 400, polish_rounds: int = 2,
+          pd_iters: int = 200, polish_rounds: int = 2,
           lm_iters: int = 30, log=None) -> tuple:
     """Every point free; see the module doc. Returns (X per vertex, report)."""
     t0 = time.time()
