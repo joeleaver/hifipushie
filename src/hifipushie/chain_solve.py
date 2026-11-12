@@ -58,6 +58,7 @@ W_FOLD = 30.0  # PD weight of a fold quad's turn (rows / flat distance from the 
 W_TIE = 1e3  # PD weight of a tie (rows / REF)
 REF = 0.01  # m: pulls and ties are weighed per this distance (weight 1: 1 cm off costs as much as a strain of 1)
 PROX = 1e-3  # PD's proximal weight per node (rows / REF): keeps the matrix definite, damps nothing measurable
+ROUND_TOL = 0.01  # a round whose projection changes E by less than this fraction is the last
 TOL_PCT = 2.0  # a link past this % off its cut is reported (over_tol)
 PROJ_TOL = 1e-4  # the projection's own target: links and exact edges within this fraction
 STEP = 0.02  # m: a projection pass's largest move
@@ -359,6 +360,9 @@ def solve(net: cn.Network, X0, body=None, ties=(), folds=(), pulls=(), stiffness
         passes.append(np_)
         if log:
             log(f"round {rnd}: lm passes {k} ({nf} factors, E {E:.4g}), projection passes {np_}")
+        Ep = float(np.sum(gn.residuals(Xn, t, W_GN, near, gap, jac=False)[0] ** 2))
+        if abs(Ep - E) <= ROUND_TOL * E:  # (the projection barely moved the energy: another round would not either)
+            break
     t["Xn"] = Xn
     X = Xn[t["nid"]]
     rep = terms.report(net, X, t, None if ct is None else (ct, gap), TOL_PCT)
