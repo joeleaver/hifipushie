@@ -20,12 +20,11 @@ Rule (Joe, 2026-11-10): no backwards compatibility. No gate, no switch, no shim;
   on the s4-19 jacket and s4-14 hussar identical.
 - The split (tags archive/before-split-*): constants never move (C422); every other unit moves unchanged.
   1 server.py (3,913 lines; C413) -> mcp_app, tool_common, tools_find, one tools_<domain>.py each; tool surface identical.
-  2 terrain_mesh.py (5,680; C414) -> 15 modules; the tile state hashes them all. 3 hair.py (5,694; C415) -> 15.
-  4 face_ruler.py, base.py, faceshapes.py (9.1k; C417) -> 10, 10, 9; class GnmFace keeps its name, methods in five mixins.
-  5 skin_read.py, blockin.py, likeness.py (7.1k; C419) -> 8, 9, 10. 6 terrain.py, clutter.py, hair_clumps.py (6.7k;
-    C424) -> 8, 8, 6; class Terrain in terrain_model. 7 skin_project.py, vegetation.py, terrain_design.py (5.7k) -> 9, 6, 7.
-  8 (C427) rig, retopo, hair_cards, hair_flow, veg_style, asset, lods, paint, terrain_style, humanfit, hair_read,
-    images (19.5k) -> 71 modules. asset.export stays (the export scripts call it).
+  2 terrain_mesh.py (5,680; C414) -> 15 modules. 3 hair.py (5,694; C415) -> 15. 4 face_ruler.py, base.py, faceshapes.py
+    (9.1k; C417) -> 10, 10, 9; class GnmFace in five mixins. 5 skin_read.py, blockin.py, likeness.py (7.1k; C419) -> 8, 9, 10.
+  6 terrain.py, clutter.py, hair_clumps.py (6.7k; C424) -> 8, 8, 6; class Terrain in terrain_model. 7 skin_project.py,
+    vegetation.py, terrain_design.py (5.7k) -> 9, 6, 7. 8 (C427) rig, retopo, hair_cards, hair_flow, veg_style, asset,
+    lods, paint, terrain_style, humanfit, hair_read, images (19.5k) -> 71; asset.export stays (the export scripts call it).
   9 (branch split-tier4; C428) skin, skin_features, terrain_cliffs, onemesh, scene, veg_export, terrain_stream,
     hair_strands, veg_tools, assemble (11.4k) -> 43 modules.
 - CONSTANTS STAY (C422): export scripts outside the repo set module.NAME (assembly/exp.py HP_FS_SET,
